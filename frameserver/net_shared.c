@@ -160,39 +160,29 @@ void net_newseg(struct conn_state* conn, int kind, char* key)
 		goto fail;
 	}
 
-/* parent wants to send something */
-	if (kind == 0){
-		if (conn->state_out.state != STATE_NONE){
-			LOG("(net-srv) cannot transfer while there is an outgoing "
+	struct conn_segcont* cont = kind == SEGMENT_TRANSFER ?
+		&conn->state_out : &conn->state_in;
+
+	if (cont->state != STATE_NONE){
+			LOG("(net) cannot set new segment while there is an outgoing "
 				"transfer already in progress.");
 			goto fail;
-		}
-
-		conn->state_out.ctx = arcan_shmif_acquire(
-			key, SHMIF_OUTPUT, true, true );
-
-		struct arcan_shmif_cont* shms = &conn->state_out.ctx;
-
-		conn->state_out.ofs = 0;
-		conn->state_out.lim = shms->addr->w * 
-			shms->addr->h * ARCAN_SHMPAGE_VCHANNELS;
-	
-		arcan_shmif_calcofs(shms->addr, 
-			(uint8_t**) &conn->state_out.vidp, 
-			(uint8_t**) &conn->state_out.audp
-		);	
-
-		arcan_shmif_setevqs(shms->addr, shms->esem, 
-			&conn->state_out.inevq, 
-			&conn->state_out.outevq, false);
-
-		return;
 	}
-/* server is ready to accept */
-	else if (kind == 1){
+
+	cont->ctx = arcan_shmif_acquire(key, kind == SEGMENT_TRANSFER ? 
+		SHMIF_OUTPUT : SHMIF_INPUT, true, true );
+
+	struct arcan_shmif_cont* shms = &cont->ctx;
+
+	cont->ofs = 0;
+	cont->lim = shms->addr->w * shms->addr->h * ARCAN_SHMPAGE_VCHANNELS;
 	
-		return;
-	}
+	arcan_shmif_calcofs(shms->addr, 
+		(uint8_t**) &cont->vidp, (uint8_t**) &cont->audp);	
+
+	arcan_shmif_setevqs(shms->addr, shms->esem, 
+		&cont->inevq, &cont->outevq, false);
+	return;
 	
 fail:
 	LOG("(net) segment setup failed, notifying parent.\n");
@@ -251,6 +241,132 @@ slide:
 	}
 	return true;
 }
+
+static void flushvid(struct conn_state* self)
+{
+	self->state_in.ctx.addr->vready = true;
+	arcan_shmif_signal(&self->state_in.ctx, SHMIF_SIGVID);
+	arcan_shmif_drop(&self->state_in.ctx);
+	self->state_in.state = STATE_NONE;
+	self->state_in.ofs = 0;
+	self->state_in.lim = 0;
+}
+
+bool net_hl_decode(struct conn_state* self, 
+	enum net_tags tag, size_t len, char* val)
+{
+	if (self->connstate != CONN_AUTHENTICATED){
+		LOG("(net-cl) permission error, block transfer to "
+			"an unauthenticated session is not permitted.\n");
+		return false;
+	}
+
+	switch (tag){
+/* 
+ * there are two ways in which we can propagate information
+ * about an incoming image object, one is "in advance" by
+ * having the parent give us an input segment, then we resize
+ * that when we know the dimensions. The other is that we 
+ * explicitly request a new segment to draw into, and then
+ * we will have to wait for a response from the parent before
+ * moving on.
+ */
+	case TAG_STATE_IMGOBJ:
+		if (self->state_in.state == STATE_NONE){
+			if (len < 4) /*w, h, little-endian */
+				return false;
+	
+			int desw = (int16_t)val[0] | (int16_t)val[1] << 8;
+			int desh = (int16_t)val[2] | (int16_t)val[3] << 8;
+
+			printf("got request for image, %d x %d\n", desw, desh); 
+			if (self->state_in.ctx.addr){
+				if (!arcan_shmif_resize(&self->state_in.ctx, desw, desh)){
+					LOG("incoming data segment outside allowed dimensions (%d x %d)"
+						", terminating.\n", desw, desh);
+					return false;
+				}
+				self->state_in.lim = desw * desh * ARCAN_SHMPAGE_VCHANNELS;
+				self->state_in.state = STATE_IMG;
+			} 
+			else {
+				arcan_event outev = {
+					.kind = EVENT_EXTERNAL_NOTICE_SEGREQ,
+					.category = EVENT_EXTERNAL,
+					.data.external.noticereq.width = desw,
+					.data.external.noticereq.height = desh
+				};
+
+				arcan_event_enqueue(self->outevq, &outev);
+				self->blocked = true;
+/* need to process the eventqueue here as there may be
+ * packets pending */
+			}
+		}
+	break;
+
+	case TAG_STATE_EOB:
+		if (self->state_in.state == STATE_IMG){
+			flushvid(self);
+		}
+		else if (self->state_in.state == STATE_DATA){
+			close(self->state_in.fd);
+			self->state_in.fd = BADFD;
+		}
+	break;
+
+	case TAG_STATE_DATABLOCK:
+/* silent drop */
+		if (self->state_in.state == STATE_NONE){
+			return true; 
+		}
+/* streaming, no limit */
+		else if (self->state_in.state == STATE_DATA){
+			while(len > 0){
+				size_t nw = write(self->state_in.fd, val, len);
+				if (nw == -1 && (errno != EAGAIN || errno != EINTR))
+					break;
+				else 
+					continue;	
+
+				len -= nw;
+				val += nw;
+			}	
+		}
+		else if (self->state_in.state == STATE_IMG){
+			ssize_t ub = self->state_in.lim - self->state_in.ofs;
+			size_t ntw = ub > len ? len : ub; 
+		 	memcpy(self->state_in.vidp + self->state_in.ofs, val, ntw);	
+			self->state_in.ofs += ntw;
+			if (self->state_in.ofs == self->state_in.lim)
+				flushvid(self);
+		}
+		return true;
+	break;
+
+	case TAG_STATE_DATAOBJ:
+		if (self->state_in.state == STATE_NONE){
+			return true; /* silent drop */
+		}
+		else if (self->state_in.state == STATE_IMG){
+			return false; /* protocol error */
+		}
+		else {
+/* need some message to hint that we have a state transfer incoming */
+		}
+	break;	
+/* 
+ * flush package, this could potentially be locked to the 
+ * responsiveness of the recipient.
+ */
+	default:
+	break;
+	}
+	
+	return true;
+}
+
+
 
 bool net_pack_basic(struct conn_state* state, 
 	enum net_tags tag, size_t sz, char* buf)

@@ -69,6 +69,18 @@ enum connection_state {
 	CONN_AUTHENTICATED
 };
 
+struct conn_segcont {
+		int fd;
+		size_t ofs, lim;
+
+		enum xfer_state state;
+		
+		struct arcan_shmif_cont ctx;
+		uint8_t* vidp;
+		uint16_t* audp;
+		arcan_evctx inevq, outevq;	
+}; 
+
 struct conn_state {
 	arcan_evctx* outevq;
 	apr_socket_t* inout;
@@ -94,6 +106,7 @@ struct conn_state {
 	bool (*flushout)(struct conn_state*);
 
 /* PING/PONG (for TCP) is bound to other messages */
+	bool blocked;
 	unsigned long long connect_stamp, last_ping, last_pong;
 	int delay;
 
@@ -111,19 +124,7 @@ struct conn_state {
  * at the same time for each connection. 
  * These can either use an arcan input or a pipe/file as source/destination. 
  */
-	struct {
-		int fd;
-		size_t ofs, lim;
-
-		enum xfer_state state;
-		
-		struct arcan_shmif_cont ctx;
-		uint8_t* vidp;
-		uint16_t* audp;
-		arcan_evctx inevq, outevq;	
-
-	} state_in, state_out;
-
+	struct conn_segcont state_in, state_out;
 	int slot;
 };
 
@@ -162,3 +163,4 @@ enum seg_kinds {
 	SEGMENT_RECEIVE = 1
 };
 void net_newseg(struct conn_state* conn, int kind, char* key);
+bool net_hl_decode(struct conn_state* conn, enum net_tags, size_t, char*);
