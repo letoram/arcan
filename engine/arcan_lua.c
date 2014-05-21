@@ -4717,9 +4717,9 @@ static int procimage_get(lua_State* ctx)
 	}
 
 	uint8_t* img = ud->bufptr;
-	uint8_t r = img[(y * ud->width + x + 0) * GL_PIXEL_BPP];
-	uint8_t g = img[(y * ud->width + x + 1) * GL_PIXEL_BPP];
-	uint8_t b = img[(y * ud->width + x + 2) * GL_PIXEL_BPP];
+	uint8_t r = img[(y * ud->width + x) * GL_PIXEL_BPP + 0];
+	uint8_t g = img[(y * ud->width + x) * GL_PIXEL_BPP + 1];
+	uint8_t b = img[(y * ud->width + x) * GL_PIXEL_BPP + 2];
 
 	int mono = luaL_optnumber(ctx, 4, 0);
 
@@ -4782,17 +4782,6 @@ static enum arcan_ffunc_rv proctarget(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 	else {
 		memcpy(scrapbuf, buf, s_buf); 
 	}
-
-/*
- * enable for getting dumps of what's sent to calc targets 
-		static int calc = 10;
-		static bool saved;
-		if (calc-- == 0 && !saved){
-			arcan_rgba32_pngfile(fopen("test.png", "w+"), 
-				scrapbuf, width, height, false);
-			saved = true;
-		}
-*/
 
 	struct proctarget_src* src = state.ptr;
 	lua_rawgeti(src->ctx, LUA_REGISTRYINDEX, src->cbfun);
