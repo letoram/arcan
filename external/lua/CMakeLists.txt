@@ -10,12 +10,12 @@ set (PATCH_LEVEL 5 )
 set (VERSION ${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_LEVEL})
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
-	add_definition( -DLUA_USE_POSIX )
+	add_definitions( -DLUA_USE_POSIX )
 	set (LIBRARIES
 		m
 	)
 elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-	add_definition( -DLUA_USE_LINUX )
+	add_definitions( -DLUA_USE_LINUX )
 	set (LIBRARIES
 		m
 	)
