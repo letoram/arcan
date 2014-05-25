@@ -53,7 +53,7 @@ static bool err_catch_queueout(struct conn_state* self,
 }
 
 apr_socket_t* net_prepare_socket(const char* host, apr_sockaddr_t* 
-	althost, int sport, bool tcp, apr_pool_t* mempool)
+	althost, int* sport, bool tcp, apr_pool_t* mempool)
 {
 	char errbuf[64];
 	apr_socket_t* ear_sock = NULL;
@@ -66,10 +66,10 @@ apr_socket_t* net_prepare_socket(const char* host, apr_sockaddr_t*
 /* we bind here rather than parent => xfer(FD) as this is never
  * supposed to use privileged ports. */
 		rv = apr_sockaddr_info_get(&addr, 
-			host, APR_INET, sport, 0, mempool);
+			host, APR_INET, *sport, 0, mempool);
 		if (rv != APR_SUCCESS){
 			LOG("(net) -- couldn't setup host (%s):%d, giving up.\n", 
-				host ? host : "(DEFAULT)", sport);
+				host ? host : "(DEFAULT)", *sport);
 			goto sock_failure;
 		}
 	}
@@ -80,7 +80,7 @@ apr_socket_t* net_prepare_socket(const char* host, apr_sockaddr_t*
 
 	if (rv != APR_SUCCESS){
 		LOG("(net) -- couldn't create listening socket, on (%s):%d, "
-			"giving up.\n", host ? host: "(DEFAULT)", sport);
+			"giving up.\n", host ? host: "(DEFAULT)", *sport);
 		goto sock_failure;
 	}
 
@@ -99,13 +99,25 @@ apr_socket_t* net_prepare_socket(const char* host, apr_sockaddr_t*
 		int sockdesc, one = 1;
 		apr_os_sock_get(&sockdesc, ear_sock);
 		setsockopt(sockdesc, SOL_SOCKET, SO_BROADCAST, (void *)&one, sizeof(int));
+		setsockopt(sockdesc, SOL_SOCKET, SO_REUSEPORT, (void *)&one, sizeof(int));
 #else
+#ifndef APR_SO_REUSEPORT
+#define APR_SO_REUSEPORT 15
+#endif
 		apr_socket_opt_set(ear_sock, APR_SO_BROADCAST, 1);
+		apr_socket_opt_set(ear_sock, APR_SO_REUSEPORT, 1);
+		apr_socket_opt_set(ear_sock, APR_SO_REUSEADDR, 1);
 #endif
 	}
 
-	if (!tcp || apr_socket_listen(ear_sock, SOMAXCONN) == APR_SUCCESS)
+	if (!tcp || apr_socket_listen(ear_sock, SOMAXCONN) == APR_SUCCESS){
+		apr_sockaddr_t* addr;
+		apr_socket_addr_get(&addr, APR_REMOTE, ear_sock);
+		if (addr)
+			*sport = addr->port;
+
 		return ear_sock;
+	}
 
 sock_failure:
 	apr_strerror(rv, errbuf, 64);
@@ -366,7 +378,100 @@ bool net_hl_decode(struct conn_state* self,
 	return true;
 }
 
+static uint32_t version_magic(bool req)
+{
+	char buf[32], (* ch) = buf;
+	sprintf(buf, "%s_ARCAN_%d_%d", req ? "REQ" : "REP", 
+		ARCAN_VERSION_MAJOR, ARCAN_VERSION_MINOR);
 
+	uint32_t hash = 5381;
+	int c;
+
+	while ((c = *(ch++)))
+		hash = ((hash << 5) + hash) + c;
+
+	return hash;
+}
+
+char* net_unpack_discover(char* inb, bool req, char** pk, 
+	char** name, char** cookie, char** host, int* port)
+{
+	uint32_t mv;
+	memcpy(&mv, inb, sizeof(uint32_t));
+	mv = ntohl(mv);
+
+	if (!version_magic(req))
+		return NULL;
+
+/* constant should be equal to number of fields in packet */
+	char* res = malloc(NET_HEADER_SIZE + 5);
+	memset(res, '\0', NET_HEADER_SIZE + 5);
+
+/* set offsets into chunk buffer, implicitly adding '\0' to each str */ 
+	*cookie = &res[NET_IDENT_SIZE + 1];
+	*name = &res[NET_IDENT_SIZE + NET_COOKIE_SIZE + 2];
+	*pk = &res[NET_IDENT_SIZE + NET_COOKIE_SIZE + NET_NAME_SIZE + 3];
+	*host = &res[NET_IDENT_SIZE + NET_COOKIE_SIZE + 
+		NET_NAME_SIZE + NET_KEY_SIZE + 4];
+
+/* unpack into chunk buffer */
+	memcpy(*cookie, &inb[NET_IDENT_SIZE], NET_COOKIE_SIZE);
+	memcpy(*name, &inb[NET_IDENT_SIZE + NET_COOKIE_SIZE], NET_NAME_SIZE);
+	memcpy(*pk, &inb[NET_IDENT_SIZE + NET_COOKIE_SIZE + 
+		NET_NAME_SIZE], NET_KEY_SIZE);
+	memcpy(*host, &inb[NET_IDENT_SIZE + 
+		NET_COOKIE_SIZE + NET_NAME_SIZE + NET_KEY_SIZE], NET_ADDR_SIZE);
+
+/* parse host and extract port */
+	char* ofp = *host + NET_ADDR_SIZE;
+	*port = 0;
+
+	while (ofp > *host){
+		if (*ofp == ':'){
+			*ofp = '\0';
+			*port = strtol(ofp+1, NULL, 10);
+			break;
+		}
+
+		ofp--;
+	}
+
+	printf("discover(inc): key[%s], port[%d], cookie[%d, %d, %d, %d], host[%s]\n", *pk, *port, (*cookie)[0], (*cookie)[1], (*cookie)[2], (*cookie)[3], *host);
+
+	return res;
+}
+
+char* net_pack_discover(bool req, 
+	char* key, char* name, char* cookie, char* host, int port, size_t* d_sz)
+{
+	if (!key || !name || !cookie || !host || strlen(host) > NET_ADDR_SIZE - 5)
+		return NULL;
+
+	char* res = malloc(NET_HEADER_SIZE);
+
+	uint32_t mv = htonl( version_magic(req) );
+	memset(res, '\0', NET_HEADER_SIZE);
+
+/* calculate offsets */
+	char* ofs_cookie = &res[NET_IDENT_SIZE];
+	char* ofs_name = &res[NET_IDENT_SIZE + NET_COOKIE_SIZE];
+	char* ofs_key = &res[NET_IDENT_SIZE + NET_COOKIE_SIZE + NET_NAME_SIZE];
+	char* ofs_host = &res[NET_IDENT_SIZE + NET_COOKIE_SIZE + 
+		NET_NAME_SIZE + NET_KEY_SIZE];
+
+/* set fields */
+	memcpy(res, &mv, sizeof(uint32_t));
+	memcpy(ofs_cookie, cookie, NET_COOKIE_SIZE);
+	strncpy(ofs_name, name, NET_NAME_SIZE);
+	memcpy(ofs_key, key, NET_KEY_SIZE);
+ 	snprintf(ofs_host, NET_ADDR_SIZE, "%s:%d", host, port);	
+
+	printf("discover(out): key[%s], port[%d], cookie[%d, %d, %d, %d], host[%s]\n",
+		ofs_key, port, ofs_cookie[0], ofs_cookie[1], ofs_cookie[2], ofs_cookie[3], ofs_host);
+
+	*d_sz = NET_HEADER_SIZE;
+	return res;
+}
 
 bool net_pack_basic(struct conn_state* state, 
 	enum net_tags tag, size_t sz, char* buf)

@@ -342,8 +342,9 @@ typedef struct arcan_netevent{
 	union {
 		struct {
 			char key[32];
+			char ident[15];
+/* max ipv6 textual representation, 39 + strsep + port */
 			char addr[46]; 
-/* max ipv6 textual representation, 39 */
 		} host;
 
 		char message[78];

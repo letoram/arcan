@@ -53,8 +53,15 @@ static struct {
 
 	file_handle tmphandle;
 
+	char* name;
+	char public_key[NET_KEY_SIZE];
+	char private_key[NET_KEY_SIZE];
+
 	struct conn_state conn;
-} clctx = {0};
+} clctx = {
+	.public_key = {'C', 'L', 'I', 'E', 'N', 'T', 'P', 'U', 'B', 'L', 'I', 'C'},
+	.name = "anonymous"		
+};
 
 static ssize_t queueout_data(struct conn_state* conn)
 {
@@ -107,6 +114,13 @@ static bool client_inevq_process(apr_socket_t* outconn)
 				LOG("(net-cl) inputevent unfinished, implement "
 					"event_pack()/unpack(), ignored\n");
 			break;
+
+/* we can only pass the public key on the command-line,
+ * not the private one.   
+			case EVENT_NET_KEYUPDATE:
+
+			break;
+*/
 
 			case EVENT_NET_CUSTOMMSG:
 				if (clctx.conn.connstate < CONN_CONNECTED)
@@ -189,151 +203,130 @@ static bool client_inevq_process(apr_socket_t* outconn)
 	return true;
 }
 
-static uint32_t version_magic(bool req)
-{
-	char buf[32], (* ch) = buf;
-	sprintf(buf, "%s_ARCAN_%d_%d", req ? "REQ" : "REP", 
-		ARCAN_VERSION_MAJOR, ARCAN_VERSION_MINOR);
-
-	uint32_t hash = 5381;
-	int c;
-
-	while ((c = *(ch++)))
-		hash = ((hash << 5) + hash) + c;
-
-	return hash;
-}
-
-/* Client Discovery Protocol Implementation
- * ----------
- * Every (discover_delay) seconds, the client sends a UDP packet to 
- * either a IPv4 broadcast or a dictionary server. The request packet is 
- * comprised of a MAX_HEADER_SIZE packet, with a 4 byte network byte order
- * magic value that encodes the version number and if it is a request or
- * response (see version_magic function) along with a MAX_PUBLIC_KEY_SIZE
- * public key (NaCL generated) and the rest of the packet will be ignored
- * (req/rep are the same size to prevent magnification) Servers responds
- * with 1..n similar packets, but are encrypted with the public key of the
- * client and contains a public key and destination host (port is hardcoded
- * at build time, see DEFAULT_DISCOVER_*_PORT).
+/*
+ * host   : destination index server (or NULL for broadcast)
+ * optkey : if (!passive) retry until we get a response where public key
+ *          OR name matches optkey. If NULL, just use the first reply received.
+ * passive : never quit, just forward responses to parent.
  *
- * if passive, the event interface will be used to propagate info on 
- * servers up to the FE
+ * returns a point to a dynamically allocated buffer that will also 
+ * free up (replhost, replkey) or NULL.
  */
-static char* host_discover(char* host, bool usenacl, bool passive)
+static char* host_discover(const char* reqhost, 
+	const char* optkey, bool passive, char** outhost, char** pkey) 
 {
-/*	const int addr_maxlen = 45; RFC4291 */
-	char reqmsg[ MAX_HEADER_SIZE ], repmsg[ MAX_HEADER_SIZE + 1 ];
+	char* reqmsg, repbuf[ NET_HEADER_SIZE ];
+	char* retv = NULL;
 
-	memset(reqmsg, 0, MAX_HEADER_SIZE);
-	uint32_t mv = htonl( version_magic(true) );
-	memcpy(reqmsg, &mv, sizeof(uint32_t));
-	repmsg[MAX_HEADER_SIZE] = '\0';
+	int port;
+
+/* no strict requirements for this one, only used in limiting
+ * replay / DoS- response possibility. */ 
+	int32_t magic_v = rand();
+	char magic[5] = {0};
+	memcpy(magic, &magic_v, sizeof(int32_t));
+
+	size_t dst_sz;
+	reqmsg = net_pack_discover(true, 
+		clctx.public_key, clctx.name, (char*)magic, "", 0, &dst_sz);
 
 	apr_status_t rv;
 	apr_sockaddr_t* addr;
 
-/* specific, single, redirector host OR IPV4 broadcast */
-	apr_sockaddr_info_get(&addr, host ? host : "255.255.255.255", 
+/* specific, single, redirector host OR IPV4 broadcast, 
+ * multicast groups, IPv6 support etc. should go here */
+	apr_sockaddr_info_get(&addr, reqhost ? reqhost : "255.255.255.255", 
 		APR_INET, DEFAULT_DISCOVER_REQ_PORT, 0, clctx.mempool);
 
+	int rport = DEFAULT_DISCOVER_RESP_PORT;
 	apr_socket_t* broadsock = net_prepare_socket("0.0.0.0", NULL, 
-		DEFAULT_DISCOVER_RESP_PORT, false, clctx.mempool);
+		&rport, false, clctx.mempool);
+
 	if (!broadsock){
 		LOG("(net-cl) -- host discover failed, couldn't prepare"
 			"	listening socket.\n");
 		return NULL;
 	}
-
 	apr_socket_timeout_set(broadsock, DEFAULT_CLIENT_TIMEOUT);
 
 	while (true){
-		apr_size_t nts = MAX_HEADER_SIZE, ntr;
+		apr_size_t nts = dst_sz, ntr;
 		apr_sockaddr_t recaddr;
-retry:
+		arcan_event dev;
 
+/* we only retry on full timeout, never on a broken incoming package
+ * else broken replies could be used to amplify */
 		if ( ( rv = apr_socket_sendto(broadsock, addr, 0, 
 			reqmsg, &nts) ) != APR_SUCCESS)
 			break;
 
-		ntr = MAX_HEADER_SIZE;
-		rv  = apr_socket_recvfrom(&recaddr, broadsock, 0, repmsg, &ntr);
+retry_partial:
+/* flush and check for exit */
+		while (1 == arcan_event_poll(&clctx.outevq, &dev))
+			if (dev.category == EVENT_TARGET && dev.kind == TARGET_COMMAND_EXIT)
+				return NULL;
 
-		if (rv == APR_SUCCESS){
-			if (ntr == MAX_HEADER_SIZE){
-				uint32_t magic, rmagic;
-				memcpy(&magic, repmsg, 4);
-				rmagic = ntohl(magic);
+		ntr = NET_HEADER_SIZE;
+		rv  = apr_socket_recvfrom(&recaddr, broadsock, 0, repbuf, &ntr);
 
-				if (version_magic(false) == rmagic){
+		if (rv != APR_SUCCESS)
+			goto done;
+	
+		char* repmsg, (* name), (* cookie);
+		if (ntr != NET_HEADER_SIZE || !(repmsg = net_unpack_discover(
+			repbuf, false, pkey, &name, &cookie, outhost, &port))){
+			goto retry_partial;
+		}
+
+		if (memcmp(cookie, (char*)magic, 4) != 0){
+			free(repmsg);
+			goto retry_partial;
+		}	
+
+/* valid, unpacked package */
 /* if no IP is set, the IP is that of the sending source */
-					if (strncmp(&repmsg[MAX_PUBLIC_KEY_SIZE + IDENT_SIZE], 
-						"0.0.0.0", 7) == 0){
-						char strbuf[MAX_ADDR_SIZE];
-						apr_sockaddr_ip_getbuf(strbuf, MAX_ADDR_SIZE, &recaddr);
+		if (strcmp(*outhost, "0.0.0.0") == 0)
+			apr_sockaddr_ip_getbuf(*outhost, NET_ADDR_SIZE - 5, &recaddr);
 
 /* passive, will background scan until the FE terminate */
-						if (!passive){
-							apr_socket_close(broadsock);
-							return strdup(strbuf);
-						}
-						else {
-							arcan_event ev = {
-											.category = EVENT_NET, 
-											.kind = EVENT_NET_DISCOVERED
-							};
-							arcan_event dev;
+		if (passive){
+			arcan_event ev = {
+				.category = EVENT_NET, 
+				.kind = EVENT_NET_DISCOVERED
+			};
+			strncpy(ev.data.network.host.addr, *outhost, NET_ADDR_SIZE);
+			strncpy(ev.data.network.host.key, *pkey, NET_KEY_SIZE);
+			strncpy(ev.data.network.host.key, name, NET_NAME_SIZE);
 
-							strncpy(ev.data.network.host.addr, strbuf, MAX_ADDR_SIZE);
-							arcan_event_enqueue(&clctx.outevq, &ev);
-
-/* flush the queue */
-							while ( 1 == arcan_event_poll(&clctx.outevq, &dev)){
-								if (dev.category == EVENT_TARGET && dev.kind == 
-									TARGET_COMMAND_EXIT)
-									return NULL;
-							}
-						}
-
-					}
-					else
-						return strdup(&repmsg[MAX_PUBLIC_KEY_SIZE + IDENT_SIZE]);
-				}
-				else; /* our own request or bad response */
-			}
+			arcan_event_enqueue(&clctx.outevq, &ev);
 		}
-		else{ /* short read or, more likely, broken / purposely malformed */
-			goto retry;
+		else if (optkey == NULL || 
+			strcmp(optkey, *pkey) == 0 || strcmp(name, optkey) == 0){
+			retv = malloc(strlen(*outhost) + 7);
+			sprintf(retv, "%s:%d", *outhost, (uint16_t)port);
+			apr_socket_close(broadsock);
+			goto done;
 		}
 
-		sleep(5);
+		free(repmsg);
 	}
 
-	char errbuf[64];
-	apr_strerror(rv, errbuf, 64);
-	LOG("(net-cl) -- send failed during discover, %s\n", errbuf);
-
-	return NULL;
+done:
+	free(	reqmsg );
+	return retv;
 }
 
-/*
- * Missing hoststr; we broadcast our request and 
- * bonds with the first/best session to respond
- *
- * hoststr == =passive, never leave the discover loop,
- * just push detected server responses to parent
- *
- * hoststr == =19.ip.address forward discover requests to
- * specified destination
- *
- * hoststr == NULL, get first / best (we're in a trusted network)
- *
- * mode -> CLIENT_DISCOVERY_NACL, only accept requests that use
- * our per/session public key
- */
-void arcan_net_client_session(const char* shmkey, 
-	char* hoststr, enum client_modes mode)
+static bool wait_keypair()
 {
+/* while-loop inevq. wait for event to arrive */
+	return true;
+}
+
+void arcan_net_client_session(struct arg_arr* args, const char* shmkey)
+{
+	const char* host = NULL;
+	arg_lookup(args, "host", 0, &host);
+	
 	struct arcan_shmif_cont shmcont = 
 		arcan_shmif_acquire(shmkey, SHMIF_INPUT, true, false);
 
@@ -345,27 +338,33 @@ void arcan_net_client_session(const char* shmkey,
 	arcan_shmif_setevqs(shmcont.addr, shmcont.esem, 
 		&(clctx.inevq), &(clctx.outevq), false);
 
+	arg_lookup(args, "ident", 0, (const char**) &clctx.name);
+
+	if (arg_lookup(args, "nacl", 0, &host)){
+		if (!wait_keypair())
+			return;		
+	}
+	else{
+/* generate public/private keypair */
+	}
+
 	apr_initialize();
 	apr_pool_create(&clctx.mempool, NULL);
 
-	if ( (mode == CLIENT_DISCOVERY && hoststr == NULL) || 
-		mode == CLIENT_DISCOVERY_NACL){
-		bool passive = false;
+	const char* reqkey = NULL;
+	char* hoststr, (* hostkey);
+	arg_lookup(args, "reqkey", 0, &reqkey);
 
-		if (hoststr){
-			if (hoststr[0] == '=')
-				hoststr++;
-			if (strcmp(hoststr, "passive") == 0){
-				hoststr = NULL;
-				passive = true;	
-			}
-		}
+	if (host && strcmp(host, ":discovery") == 0){
+		host_discover(host, reqkey, true, &hoststr, &hostkey); 
+		return;
+	}
 
-		hoststr = host_discover(hoststr, mode == CLIENT_DISCOVERY_NACL, passive);
-		if (!hoststr){
-			LOG("(net) -- couldn't find any Arcan- compatible server.\n");
-			return;
-		}
+	char* hostbuf = host_discover(host, reqkey, false, &hoststr, &hostkey); 
+
+	if (!hostbuf){
+		LOG("(net) -- couldn't find any Arcan- compatible server.\n");
+		return;
 	}
 
 /* "normal" connection finally */

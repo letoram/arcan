@@ -45,13 +45,18 @@ enum net_states{
 	STATE_RLEBLOCK = 1
 };
 
-/* IDENT:NAME:PKEY:ADDR (port is a compile-time constant)
- * max addr is ipv6 textual representation + strsep + port */
-#define IDENT_SIZE 4
-#define MAX_NAME_SIZE 15 
-#define MAX_PUBLIC_KEY_SIZE 64
-#define MAX_ADDR_SIZE 45
-#define MAX_HEADER_SIZE 128
+/* 
+ * IDENTCOOKIENAMEPKEYADDR 
+ * max addr is ipv6 textual representation + strsep + port.
+ * client req doesn't have to specify a name here, server 
+ * response should contain cookie to reduce spoofed replies.
+ */
+#define NET_IDENT_SIZE 4
+#define NET_COOKIE_SIZE 4
+#define NET_NAME_SIZE 15
+#define NET_KEY_SIZE 32 
+#define NET_ADDR_SIZE 45
+#define NET_HEADER_SIZE 128
 
 enum xfer_state {
 	STATE_NONE = 0,
@@ -141,11 +146,15 @@ enum server_modes {
 	SERVER_DIRECTORY_NACL,
 };
 
-void arcan_net_client_session(
-	const char* shmkey, char* hoststr, enum client_modes mode);
+char* net_unpack_discover(char* inb, bool req, char** pk, 
+	char** name, char** cookie, char** host, int* port);
+char* net_pack_discover(bool req, 
+	char* key, char* name, char* cookie, char* host, int port, size_t* d_sz);
+
+void arcan_net_client_session(struct arg_arr* args, const char* shmkey);
 
 apr_socket_t* net_prepare_socket(const char* host, apr_sockaddr_t* 
-	althost, int sport, bool tcp, apr_pool_t* mempool);
+	althost, int* sport, bool tcp, apr_pool_t* mempool);
 
 void net_setup_cell(struct conn_state* conn, 
 	arcan_evctx* evq, apr_pollset_t* pollset);
