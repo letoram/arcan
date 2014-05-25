@@ -101,8 +101,13 @@ struct {
 	file_handle tmphandle;
 
 	unsigned n_conn;
-
-} srvctx = {0};
+	
+	int inport;
+	char lt_keypair_pubkey[NET_KEY_SIZE], lt_keypair_privkey[NET_KEY_SIZE];
+} srvctx = {
+	.lt_keypair_pubkey = {'P', 'U', 'B', 'L', 'I', 'C'},
+	.lt_keypair_privkey = {'P', 'R', 'I', 'V', 'A', 'T', 'E'}
+};
 
 /*
  * placeholder marker for data that should be rendered to the 
@@ -372,19 +377,19 @@ static void server_accept_connection(int limit, apr_socket_t* ear_sock,
 	arcan_event_enqueue(&srvctx.outevq, &outev);
 }
 
-static uint32_t version_magic(bool req)
+static char* get_redir(char* pk, char* n, 
+	apr_sockaddr_t* src, char** outkey, int* redir_port)
 {
-	char buf[32], (* ch) = buf;
-	sprintf(buf, "%s_ARCAN_%d_%d", req ? "REQ" : "REP", 
-		ARCAN_VERSION_MAJOR, ARCAN_VERSION_MINOR);
+/* 
+ * -- NOTE -- 
+ * entry point for adding honeypot redirections, load balancing etc.
+ * based on src addr, public key, name ...
+ */
 
-	uint32_t hash = 5381;
-	int c;
+	*redir_port = srvctx.inport;
+	*outkey = (char*) srvctx.lt_keypair_pubkey;
 
-	while ((c = *(ch++)))
-		hash = ((hash << 5) + hash) + c;
-
-	return hash;
+	return "0.0.0.0";		
 }
 
 /* something to read on gk_sock, silent discard if it's not a 
@@ -398,55 +403,58 @@ static uint32_t version_magic(bool req)
  * response using that. It's not particularly portable though, 
  * but a relevant side-note
  */
-static void server_gatekeeper_message(apr_socket_t* gk_sock, 
-	const char* gk_redir)
+static void server_gatekeeper_message(apr_socket_t* gk_sock, char* ident)
 {
 /* partial reads etc. are just ignored, client have to resend. */
-	char gk_inbuf[MAX_HEADER_SIZE], gk_outbuf[MAX_HEADER_SIZE];
-	apr_size_t ntr = MAX_HEADER_SIZE;
+	char inbuf[NET_HEADER_SIZE];
+	apr_size_t ntr = NET_HEADER_SIZE;
+
 	apr_sockaddr_t src_addr;
 
-	if (strlen(gk_redir) >= MAX_ADDR_SIZE)
+	if (apr_socket_recvfrom(&src_addr, gk_sock, 0, inbuf, &ntr) != APR_SUCCESS ||
+		ntr != NET_HEADER_SIZE)
+			return;
+
+	char* pubkey, (* name), (* cookie), (* host);
+	int port;
+
+	char* unpack = net_unpack_discover(inbuf, true, 
+		&pubkey, &name, &cookie, &host, &port);
+
+	if (!unpack)
 		return;
+	
+	char* redir_key;
+	int redir_port;
+	char* redir_addr = get_redir(pubkey, name, 
+		&src_addr, &redir_key, &redir_port);
 
-/* with matching cookie, use public key (or plaintext if 0) */
-	if (apr_socket_recvfrom(&src_addr, gk_sock, 0, gk_inbuf, &ntr) == 
-		APR_SUCCESS && ntr == MAX_HEADER_SIZE){
-		uint32_t srcmagic;
-		memcpy(&srcmagic, gk_inbuf, IDENT_SIZE);
+/* server does not provide service to the addr/key/name combination */
+	if (!redir_addr){
+	 free(unpack);
+	 return;
+	}
 
-		if (version_magic(true) == ntohl(srcmagic)){
-			char pkey[64];
-			memcpy(pkey, &gk_inbuf[IDENT_SIZE], MAX_PUBLIC_KEY_SIZE);
+	size_t outsz;
+	char* outbuf = net_pack_discover(false, 
+		redir_key, ident, cookie, redir_addr, redir_port, &outsz);	
+	free(unpack);
 
-/* construct reply dynamically to allow different gk_redirections 
- * (honeypots etc.) and different public keys */
-			uint32_t repmagic = htonl(version_magic(false));
-			memcpy(gk_outbuf, &repmagic, sizeof(uint32_t));
-			memset(&gk_outbuf[IDENT_SIZE], 0, MAX_PUBLIC_KEY_SIZE);
-			memcpy(&gk_outbuf[IDENT_SIZE + MAX_PUBLIC_KEY_SIZE], gk_redir, 
-				strlen(gk_redir));
-
-/* shortread, shortwrite etc. are all ignored, assumes that OS 
- * will just gladly accept without blocking (too long),
- * it's ~128bytes so ... */
-			apr_size_t tosend = MAX_HEADER_SIZE;
-			src_addr.port = DEFAULT_DISCOVER_RESP_PORT;
-			apr_socket_sendto(gk_sock, &src_addr, 0, gk_outbuf, &tosend);
-			GRAPH_EVENT("gatekeeper reply sent\n");
-		}
-		else;
-
+	if (outbuf){
+		src_addr.port = DEFAULT_DISCOVER_RESP_PORT;
+		apr_socket_sendto(gk_sock, &src_addr, 0, outbuf, &outsz);
+		free(outbuf);
 	}
 }
 
 static apr_socket_t* server_prepare_gatekeeper(char* host)
 {
+	int port = DEFAULT_DISCOVER_REQ_PORT;
 	return net_prepare_socket(host, NULL, 
-		DEFAULT_DISCOVER_REQ_PORT, false, srvctx.mempool);
+		&port, false, srvctx.mempool);
 }
 
-static void server_session(const char* host, int limit)
+static void server_session(const char* host, char* ident, int limit)
 {
 	apr_pollset_t* poll_in;
 	apr_int32_t pnum;
@@ -474,11 +482,11 @@ static void server_session(const char* host, int limit)
 
 	int sleeptime = 5 * 1000; 
 	int retrycount = 10;
+
 	apr_socket_t* ear_sock;
-	
+
 retry:
-	ear_sock = net_prepare_socket(host, NULL, 
-		DEFAULT_CONNECTION_PORT, true, srvctx.mempool);
+	ear_sock = net_prepare_socket(host, NULL, &srvctx.inport, true, srvctx.mempool);
 
 	if (!ear_sock){
 		if (retrycount--){
@@ -560,7 +568,7 @@ retry:
 				continue;
 			}
 			else if (cb == gk_sock){
-				server_gatekeeper_message(gk_sock, "0.0.0.0");
+				server_gatekeeper_message(gk_sock, ident);
 				continue;
 			}
 /* this socket is used for OOB FD transfers and as a pollable semaphore */
@@ -632,11 +640,7 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 	if (arg_lookup(args, "mode", 0, &rk) && strcmp("client", rk) == 0){
 		char* dsthost = NULL;
 		arg_lookup(args, "host", 0, (const char**) &dsthost);
-
-		if (dsthost)
-			arcan_net_client_session(shmkey, dsthost, CLIENT_SIMPLE);
-		else
-			arcan_net_client_session(shmkey, dsthost, CLIENT_DISCOVERY); 
+		arcan_net_client_session(args, shmkey);
 		return;
 	}
 
@@ -682,9 +686,17 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 
 	char* listenhost = NULL;
 	char* limstr = NULL;
+	char* identstr = "anonymous";
 
 	arg_lookup(args, "host", 0, (const char**) &listenhost);
 	arg_lookup(args, "limit", 0, (const char**) &limstr);
+	arg_lookup(args, "ident", 0, (const char**) &identstr);
+	
+	const char* tmpstr;
+	srvctx.inport = 0;
+	if (arg_lookup(args, "port", 0, &tmpstr)){
+		srvctx.inport = strtoul(tmpstr, NULL, 10);
+	}
 
 	long int limv = DEFAULT_CONNECTION_CAP;
 	if (limstr)
@@ -693,7 +705,7 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 	if (limv <= 0 || limv > DEFAULT_CONNECTION_CAP)
 		limv = DEFAULT_CONNECTION_CAP;
 
-	server_session(listenhost, limv);
+	server_session(listenhost, identstr, limv);
 
 cleanup:
 	arg_cleanup(args);
