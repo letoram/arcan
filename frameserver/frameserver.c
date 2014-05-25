@@ -312,11 +312,12 @@ int main(int argc, char** argv)
 {
 	char* resource = argv[1];
 	char* keyfile  = argv[2];
-	char* fsrvmode = argv[3];
-	
-	if (argc != 4 || !resource || !keyfile || !fsrvmode){
+	char* fsrvmode = argc == 4 ? argv[3] : getenv("ARCAN_ARG");
+	fsrvmode = fsrvmode == NULL ? "" : fsrvmode;
+
+	if (argc < 3 || argc > 4 || !resource || !keyfile || !fsrvmode){
 #ifdef _DEBUG
-		printf("arcan_frameserver(debug) resource keyfile fsrvmode\n");
+		printf("arcan_frameserver(debug) resource keyfile [fsrvmode]\n");
 #else
 		printf("arcan_frameserver - Invalid arguments (shouldn't be "
 			"launched outside of ARCAN).\n");

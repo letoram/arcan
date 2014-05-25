@@ -723,7 +723,8 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 		close(sockp[0]);
 		sprintf(convb, "%i", sockp[1]);
 		setenv("ARCAN_SOCKIN_FD", convb, 1);
-
+		setenv("ARCAN_ARG", setup.args.builtin.mode, 1);
+	
 /*
  * frameservers that are semi-trusted currently get an
  * environment variable to help search for theme-relative resources
@@ -749,13 +750,12 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 		signal(SIGINT, SIG_IGN);
 	
 		if (setup.use_builtin){
-			char* argv[5] = { 
+			char* argv[4] = { 
 				arcan_binpath, 
 				strdup(setup.args.builtin.resource), 
-				ctx->shm.key, 
-				strdup(setup.args.builtin.mode), 
-			NULL};
-	
+				ctx->shm.key
+			};
+
 			execv(arcan_binpath, argv);
 			arcan_fatal("FATAL, arcan_frameserver_spawn_server(), "
 				"couldn't spawn frameserver(%s) with %s:%s. Reason: %s\n", 
