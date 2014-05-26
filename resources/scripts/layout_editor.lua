@@ -1082,7 +1082,7 @@ local function layout_show(self)
 					end
 				
 					if (stat.kind == "resized") then
-						play_movie(src); 
+						layout_imagepos(self, src, val);
 					end
 				end);
 
