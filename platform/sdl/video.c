@@ -141,7 +141,7 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 		arcan_video_display.msasamples);
 	}
 
-	snprintf(caption, 63, "Arcan");
+	snprintf(caption, 63, "Arcan (%s)", arcan_themename);
 	SDL_WM_SetCaption(caption, "Arcan");
 
 	arcan_video_display.fullscreen = fs;
