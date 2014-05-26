@@ -482,42 +482,53 @@ static void rebase_transform(struct surface_transform* current, arcan_tickv ofs)
 		rebase_transform(current->next, ofs);
 }
 
-/* Sweeps src and matches 1:1 with cells in dst if they are set as "persistent",
- * if such a relation exists, copy it downwards and reset the cell so its 
- * resources won't be deallocated */
-static void transfer_persists(struct arcan_video_context* src, 
-	struct arcan_video_context* dst, bool delsrc)
+static void push_transfer_persists(
+	struct arcan_video_context* src, 
+	struct arcan_video_context* dst)
 {
-/* for delsrc (pop), the item needs to exist and be persistent in BOTH src,dst 
- * otherwise (push) dst can be assumed empty */
 	for (int i = 1; i < src->vitem_limit - 1; i++){
-		if (src->vitems_pool[i].flags.in_use && src->vitems_pool[i].flags.persist &&
-			(!delsrc || (dst->vitems_pool[i].flags.in_use && 
-			dst->vitems_pool[i].flags.persist))){				
-
-/* cross- referencing world- outside context isn't permitted */
-			dst->vitems_pool[i].parent = &dst->world;
-
-/* pop remove from src */
-			if (delsrc){
-				detach_fromtarget(&src->stdoutp, &src->vitems_pool[i]);
-					memcpy(&dst->vitems_pool[i], 
-					&src->vitems_pool[i], sizeof(arcan_vobject));
-				memset(&src->vitems_pool[i], 0, sizeof(arcan_vobject));
-			}
-			else{
-				dst->nalive++;
-				memcpy(&dst->vitems_pool[i], 
-					&src->vitems_pool[i], sizeof(arcan_vobject));
-				src->vitems_pool[i].owner = NULL;
-				attach_object(&dst->stdoutp, &dst->vitems_pool[i]);
-				trace("vcontext_stack_push() : transfer-attach: %s\n", 
-					src->vitems_pool[i].tracetag);
-			}
-		}
-/* of loop */
+		arcan_vobject* srcobj = &src->vitems_pool[i];
+		arcan_vobject* dstobj = &dst->vitems_pool[i];
+		
+		if (!srcobj->flags.in_use || !srcobj->flags.persist)
+			continue;
+			
+		detach_fromtarget(&src->stdoutp, srcobj);
+		memcpy(dstobj, srcobj, sizeof(arcan_vobject));
+		dst->nalive++; /* fake allocate */
+		dstobj->parent = &dst->world; /* don't cross- reference worlds */
+		attach_object(&dst->stdoutp, dstobj); 
+		trace("vcontext_stack_push() : transfer-attach: %s\n", srcobj->tracetag); 
 	}
+}
 
+/*
+ * if an object exists in src, is flagged persist,
+ * and a similar (shadow) object is flagged persist in dst,
+ * update the state in dst with src and detach/remove from src.
+ */
+static void pop_transfer_persists(
+	struct arcan_video_context* src, 
+	struct arcan_video_context* dst)
+{
+	for (int i = 1; i < src->vitem_limit - 1; i++){
+		arcan_vobject* srcobj = &src->vitems_pool[i];
+		arcan_vobject* dstobj = &dst->vitems_pool[i];
+
+		if (!(srcobj->flags.in_use && srcobj->flags.persist && 
+			dstobj->flags.in_use && dstobj->flags.persist))
+			continue;
+		
+		arcan_vobject* parent = dstobj->parent;
+
+		detach_fromtarget(&src->stdoutp, srcobj);
+		src->nalive--;
+
+		memcpy(dstobj, srcobj, sizeof(arcan_vobject));
+		attach_object(&dst->stdoutp, dstobj); 
+		dstobj->parent = parent;
+		memset(srcobj, '\0', sizeof(arcan_vobject));
+	}
 }
 
 signed arcan_video_pushcontext()
@@ -554,7 +565,8 @@ signed arcan_video_pushcontext()
 	current_context->rtargets[0].first = NULL;
 
 /* propagate persistent flagged objects upwards */
-	transfer_persists(&vcontext_stack[ vcontext_ind - 1], current_context, false);
+	push_transfer_persists(
+		&vcontext_stack[ vcontext_ind - 1], current_context);
 	FLAG_DIRTY();
 
 	return arcan_video_nfreecontexts();
@@ -636,7 +648,8 @@ unsigned arcan_video_popcontext()
 {
 /* propagate persistent flagged objects downwards */
 	if (vcontext_ind > 0)
-		transfer_persists(current_context, &vcontext_stack[vcontext_ind-1], true);
+		pop_transfer_persists(
+			current_context, &vcontext_stack[vcontext_ind-1]);
 
 	deallocate_gl_context(current_context, true);
 
@@ -923,10 +936,13 @@ static bool detach_fromtarget(struct rendertarget* dst, arcan_vobject* src)
 		torem->previous->next = torem->next;
 	}
 
+/* (4.) mark as something easy to find in dumps */
+	torem->elem = (arcan_vobject*) 0xfeedface;
+
 /* cleanup torem */
 	arcan_mem_free(torem);
 
-	if (src->owner == dst) 
+	if (src->owner == dst)
 		src->owner = NULL;
 
 	if (dst->color && dst != &current_context->stdoutp){
@@ -1584,7 +1600,9 @@ arcan_errc arcan_video_shareglstore(arcan_vobj_id sid, arcan_vobj_id did)
 	if (src && dst && src != dst){
 		if (src->vstore->txmapped == TXSTATE_OFF || 
 			src->vstore->vinf.text.glid == 0 ||
-			src->flags.persist || dst->flags.persist || src->flags.clone ||
+			src->flags.persist || 
+			dst->flags.persist ||
+		 	src->flags.clone ||
 			dst->flags.clone)
 			return ARCAN_ERRC_UNACCEPTED_STATE;
 
