@@ -2413,6 +2413,8 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		lua_pushvid(ctx, ev->data.frameserver.video);
 		lua_newtable(ctx);
 		int top = lua_gettop(ctx);
+				
+		tblnum(ctx, "source_audio", ev->data.frameserver.audio, top);
 
 		switch(ev->kind){
 			case EVENT_FRAMESERVER_TERMINATED :
@@ -2441,7 +2443,6 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				tblnum(ctx, "width", ev->data.frameserver.width, top);
 				tblnum(ctx, "height", ev->data.frameserver.height, top);
 				tblnum(ctx, "mirrored", ev->data.frameserver.glsource, top);
-				tblnum(ctx, "source_audio", ev->data.frameserver.audio, top);
 
 				dst_cb = ev->data.frameserver.otag;
 			break;
