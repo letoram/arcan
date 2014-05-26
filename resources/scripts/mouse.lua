@@ -23,7 +23,7 @@ local mstate = {
 	autohide = false,
 	hide_base = 40,
 	hide_count = 40,
-	hidden = false,
+	hidden = true,
 
 -- mouse event is triggered
 	accel_x      = 1,
@@ -37,9 +37,20 @@ local mstate = {
 	x_ofs        = 0,
 	y_ofs        = 0,
 	last_hover   = 0,
+	x = 0,
+	y  = 0
 };
 
 local function mouse_cursorupd(x, y)
+	if (mstate.hidden and (x ~= 0 or y ~= 0)) then
+		instant_image_transform(mstate.cursor);
+		blend_image(mstate.cursor, 1.0, 10);
+		mstate.hidden = false;
+	
+	elseif (mstate.hidden) then
+		return;
+	end
+
 	x = x * mstate.accel_x;
 	y = y * mstate.accel_y;
 
@@ -54,12 +65,6 @@ local function mouse_cursorupd(x, y)
 	mstate.x = mstate.x > VRESW and VRESW-1 or mstate.x; 
 	mstate.y = mstate.y > VRESH and VRESH-1 or mstate.y; 
 	mstate.hide_count = mstate.hide_base;
-
-	if (mstate.hidden) then
-		instant_image_transform(mstate.cursor);
-		blend_image(mstate.cursor, 1.0, 10);
-		mstate.hidden = false;
-	end
 
 	move_image(mstate.cursor, mstate.x + mstate.x_ofs, 
 		mstate.y + mstate.y_ofs);
@@ -146,6 +151,44 @@ function mouse_state()
 	return mstate;
 end
 
+function mouse_destroy()
+	mouse_handlers = {};
+	mouse_handlers.click = {};
+	mouse_handlers.cver  = {};
+	mouse_handlers.cut   = {};
+  mouse_handlers.drag  = {};
+	mouse_handlers.drop  = {};
+	mouse_handlers.over = {};
+	mouse_handlers.motion = {};
+	mouse_handlers.dblclick = {};
+	mouse_handlers.rclick = {};
+	mstate.handlers = mouse_handlers;
+	mstate.eventtrace = false;
+	mstate.btns = {false, false, false};
+	mstate.cur_over = {};
+	mstate.hover_track = {};
+	mstate.autohide = false;
+	mstate.hide_base = 40;
+	mstate.hide_count = 40;
+	mstate.hidden = true;
+	mstate.accel_x = 1;
+	mstate.accel_y = 1;
+	mstate.dblclickstep = 6;
+	mstate.drag_delta = 8;
+	mstate.hover_ticks = 30;
+	mstate.hover_thresh = 12;
+	mstate.counter = 0;
+	mstate.hover_count = 0;
+	mstate.x_ofs = 0;
+	mstate.y_ofs = 0;
+	mstate.last_hover = 0;
+	toggle_mouse_grab(MOUSE_GRABOFF);
+	if (valid_vid(mstate.cursor)) then
+		delete_image(mstate.cursor);
+		mstate.cursor = BADID;
+	end
+end
+
 --
 -- Load / Prepare cursor, read default acceleration and 
 -- filtering settings.
@@ -154,9 +197,9 @@ end
 --
 function mouse_setup(cvid, clayer, pickdepth, cachepick, hidden)
 	mstate.cursor = cvid; 
+	mstate.hidden = false;
 	mstate.x = math.floor(VRESW * 0.5);
 	mstate.y = math.floor(VRESH * 0.5);
-
 
 	if (hidden ~= nil and hidden ~= true) then
 	else
@@ -374,13 +417,19 @@ end
 -- the owner of vid
 -- 
 function mouse_addlistener(tbl, events)
+	if (tbl == nil) then
+		warning("mouse_addlistener(), refusing to add empty table.\n");
+		warning( debug.traceback() );
+		return;
+	end
+
 	if (tbl.own == nil) then
 		warning("mouse_addlistener(), missing own function in argument.\n");
 	end
 
 	if (tbl.name == nil) then
-		print(" -- mouse listener missing identifier -- ");
-		print( debug.traceback() );
+		warning(" -- mouse listener missing identifier -- ");
+		warning( debug.traceback() );
 	end
 
 	for ind, val in ipairs(events) do

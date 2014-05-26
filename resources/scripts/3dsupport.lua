@@ -641,7 +641,6 @@ function setup_cabinet_model(modelname, restbl, options)
 					FRAMESERVER_LOOP, function(source, tbl)
 	
 					if (tbl.kind ~= "frameserver_terminated") then
-						play_movie(source);
 						res:update_display(source, def3d_fullbright_flip);
 					else
 						res:display_broken();
