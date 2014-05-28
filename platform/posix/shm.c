@@ -32,7 +32,7 @@ char* arcan_findshmkey(int* dfd, bool semalloc){
 	int retrycount = 10;
 	size_t pb_ofs = 0;
 
-	const char* pattern = "/arcan_%i_%im";
+	const char pattern[] = "/arcan_%i_%im";
 	char playbuf[sizeof(pattern) + 8];
 
 	while (1){
