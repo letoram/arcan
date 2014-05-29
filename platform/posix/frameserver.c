@@ -82,9 +82,22 @@ void arcan_frameserver_dropshared(arcan_frameserver* src)
 	if (shmpage && -1 == munmap((void*) shmpage, src->shm.shmsize))
 		arcan_warning("BUG -- arcan_frameserver_free(), munmap failed: %s\n",
 			strerror(errno));
-			
+
 	shm_unlink( src->shm.key );
-	free(src->shm.key);
+
+/* step 2, semaphore handles */
+	char* work = strdup(src->shm.key);
+	work[strlen(work) - 1] = 'v';
+	sem_unlink(work);
+
+	work[strlen(work) - 1] = 'a';
+	sem_unlink(work);
+
+	work[strlen(work) - 1] = 'e';
+	sem_unlink(work);
+	free(work);
+
+	arcan_mem_free(src->shm.key);
 }
 
 void arcan_frameserver_killchild(arcan_frameserver* src)
