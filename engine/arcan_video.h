@@ -602,6 +602,14 @@ arcan_errc arcan_video_pushasynch(arcan_vobj_id id);
  */
 arcan_errc arcan_video_scaletxcos(arcan_vobj_id id, float sfs, float sft);
 
+/*
+ * Create a new storage based on the one in used by [id] and resampled
+ * using the shader specified with [prg]. Associate this new storage with
+ * the [id] container. 
+ */
+arcan_errc arcan_video_resampleobject(arcan_vobj_id id, 
+	int neww, int newh, arcan_shader_id prg); 
+
 /* Object hierarchy related functions */
 arcan_errc arcan_video_linkobjs(arcan_vobj_id src, arcan_vobj_id parent, 
 	enum arcan_transform_mask mask);

@@ -695,6 +695,77 @@ arcan_vobj_id arcan_video_allocid(bool* status, struct arcan_video_context* ctx)
 	return ARCAN_EID;
 }
 
+arcan_errc arcan_video_resampleobject(arcan_vobj_id vid, 
+	int neww, int newh, arcan_shader_id shid)
+{
+	arcan_vobject* vobj = arcan_video_getobject(vid);
+	if (!vobj)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+
+/* allocate a temporary storage object, 
+ * a temporary transfer object,
+ * and a temporary rendertarget */ 
+	size_t new_sz = neww * newh * GL_PIXEL_BPP;
+	uint8_t* dstbuf = arcan_alloc_mem(new_sz, 
+		ARCAN_MEM_VBUFFER, ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE);
+
+	if (!dstbuf)
+		return ARCAN_ERRC_OUT_OF_SPACE;	
+
+	arcan_vobj_id xfer = arcan_video_nullobject(neww, newh, 0);
+	if (xfer == ARCAN_EID){
+		arcan_mem_free(dstbuf);
+		return ARCAN_ERRC_OUT_OF_SPACE;
+	}
+/* dstbuf is now managed by the glstore in xfer */
+
+	arcan_video_shareglstore(vid, xfer);
+	arcan_video_objectopacity(xfer, 1.0, 0);
+	arcan_video_setprogram(xfer, shid);
+
+	img_cons cons = {.w = neww, .h = newh, .bpp = GL_PIXEL_BPP};
+	arcan_vobj_id dst = arcan_video_rawobject(
+		dstbuf, new_sz, cons, neww, newh, 1);
+
+	if (dst == ARCAN_EID){
+		arcan_video_deleteobject(xfer);
+		arcan_mem_free(dstbuf);
+		return ARCAN_ERRC_OUT_OF_SPACE;
+	}
+
+/* set up a rendertarget and a proxy transfer object */
+	arcan_errc rts = arcan_video_setuprendertarget(
+		dst, 0, true, RENDERTARGET_COLOR);
+
+	if (rts != ARCAN_OK){
+		arcan_video_deleteobject(dst);
+		arcan_video_deleteobject(xfer);
+		return rts;
+	}
+
+	vobj->origw = neww;
+	vobj->origh = newh;
+
+/* draw, transfer storages and cleanup, xfer will 
+ * be deleted implicitly when dst cascades */
+	arcan_video_attachtorendertarget(dst, xfer, true);
+	arcan_video_forceupdate(dst);
+	arcan_video_shareglstore(dst, vid);
+	arcan_video_deleteobject(dst);
+	arcan_video_objectscale(vid, 1.0, 1.0, 1.0, 0);
+
+/* readback so we can survive push/pop and restore external */
+	if (!arcan_video_display.conservative){
+		struct storage_info_t* dstore = vobj->vstore;
+		glBindTexture(GL_TEXTURE_2D, dstore->vinf.text.glid); 
+		glGetTexImage(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, 
+		dstore->vinf.text.raw);
+		glBindTexture(GL_TEXTURE_2D, 0);
+	}
+
+	return ARCAN_OK;
+}
+
 arcan_errc arcan_video_mipmapset(arcan_vobj_id vid, bool enable)
 {
 	arcan_vobject* vobj = arcan_video_getobject(vid);
