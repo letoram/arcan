@@ -90,8 +90,6 @@ apr_socket_t* net_prepare_socket(const char* host, apr_sockaddr_t*
 		goto sock_failure;
 	}
 
-	apr_socket_opt_set(ear_sock, APR_SO_REUSEADDR, 1);
-
 /* apparently only fixed in APR1.5 and beyond, 
  * while the one in ubuntu and friends is 1.4 */
 	if (!tcp){
@@ -111,8 +109,9 @@ apr_socket_t* net_prepare_socket(const char* host, apr_sockaddr_t*
 	}
 
 	if (!tcp || apr_socket_listen(ear_sock, SOMAXCONN) == APR_SUCCESS){
-		apr_sockaddr_t* addr;
-		apr_socket_addr_get(&addr, APR_REMOTE, ear_sock);
+		apr_sockaddr_t* addr = NULL;
+
+		apr_socket_addr_get(&addr, APR_LOCAL, ear_sock);
 		if (addr)
 			*sport = addr->port;
 

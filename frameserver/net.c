@@ -499,7 +499,9 @@ retry:
 			return;
 	}
 
-	LOG("(net-srv) -- listening interface up on %s\n", host ? host : "(global)");
+	LOG("(net-srv) -- listening interface up on %s:%d\n", 
+		host ? host : "(global)", srvctx.inport);
+
 	srvctx.pollset = poll_in;
 
 /* the pollset is created noting that we have the responsibility for
