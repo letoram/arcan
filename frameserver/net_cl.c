@@ -212,13 +212,12 @@ static bool client_inevq_process(apr_socket_t* outconn)
  * returns a point to a dynamically allocated buffer that will also 
  * free up (replhost, replkey) or NULL.
  */
-static char* host_discover(const char* reqhost, 
-	const char* optkey, bool passive, char** outhost, char** pkey) 
+static bool host_discover(const char* reqhost, 
+	const char* optkey, bool passive, 
+	char** outhost, int* outport, char** pkey) 
 {
 	char* reqmsg, repbuf[ NET_HEADER_SIZE ];
-	char* retv = NULL;
-
-	int port;
+	bool retv = false; 
 
 /* no strict requirements for this one, only used in limiting
  * replay / DoS- response possibility. */ 
@@ -274,7 +273,7 @@ retry_partial:
 	
 		char* repmsg, (* name), (* cookie);
 		if (ntr != NET_HEADER_SIZE || !(repmsg = net_unpack_discover(
-			repbuf, false, pkey, &name, &cookie, outhost, &port))){
+			repbuf, false, pkey, &name, &cookie, outhost, outport))){
 			goto retry_partial;
 		}
 
@@ -288,7 +287,8 @@ retry_partial:
 		if (strcmp(*outhost, "0.0.0.0") == 0)
 			apr_sockaddr_ip_getbuf(*outhost, NET_ADDR_SIZE - 5, &recaddr);
 
-/* passive, will background scan until the FE terminate */
+/* passive, will background scan until we get killed or sent 
+ * TARGET_COMMAND_EXIT */
 		if (passive){
 			arcan_event ev = {
 				.category = EVENT_NET, 
@@ -302,8 +302,7 @@ retry_partial:
 		}
 		else if (optkey == NULL || 
 			strcmp(optkey, *pkey) == 0 || strcmp(name, optkey) == 0){
-			retv = malloc(strlen(*outhost) + 7);
-			sprintf(retv, "%s:%d", *outhost, (uint16_t)port);
+			retv = true;
 			apr_socket_close(broadsock);
 			goto done;
 		}
@@ -353,16 +352,17 @@ void arcan_net_client_session(struct arg_arr* args, const char* shmkey)
 
 	const char* reqkey = NULL;
 	char* hoststr, (* hostkey);
+	int outport = DEFAULT_CONNECTION_PORT;
+
 	arg_lookup(args, "reqkey", 0, &reqkey);
 
 	if (host && strcmp(host, ":discovery") == 0){
-		host_discover(host, reqkey, true, &hoststr, &hostkey); 
+		host_discover(host, reqkey, true, &hoststr, &outport, &hostkey); 
 		return;
 	}
 
-	char* hostbuf = host_discover(host, reqkey, false, &hoststr, &hostkey); 
-
-	if (!hostbuf){
+	if (!host_discover(host, reqkey, 
+		false, &hoststr, &outport, &hostkey)){
 		LOG("(net) -- couldn't find any Arcan- compatible server.\n");
 		return;
 	}
@@ -373,7 +373,7 @@ void arcan_net_client_session(struct arg_arr* args, const char* shmkey)
 
 /* obtain connection using a blocking socket */
 	apr_sockaddr_info_get(&sa, hoststr, 
-		APR_INET, DEFAULT_CONNECTION_PORT, 0, clctx.mempool);
+		APR_INET, outport, 0, clctx.mempool);
 	apr_socket_create(&sock, sa->family, 
 		SOCK_STREAM, APR_PROTO_TCP, clctx.mempool);
 	apr_socket_opt_set(sock, APR_SO_NONBLOCK, 0);
