@@ -787,6 +787,31 @@ static int rotateimage(lua_State* ctx)
 	return 0;
 }
 
+static int resampleimage(lua_State* ctx)
+{
+	LUA_TRACE("resample_image");
+	arcan_vobject* vobj;
+	arcan_vobj_id sid = luaL_checkvid(ctx, 1, &vobj);
+	arcan_shader_id shid = lua_type(ctx, 2) == LUA_TSTRING ?
+	arcan_shader_lookup(luaL_checkstring(ctx, 2)) : luaL_checknumber(ctx, 2);
+	int width = luaL_checknumber(ctx, 3);
+	int height = luaL_checknumber(ctx, 4);
+
+	if (width <= 0||width > MAX_SURFACEW || height <= 0||height > MAX_SURFACEH)
+		arcan_fatal("resample_image(), illegal dimensions"
+			" requested (%d:%d x %d:%d)\n", 
+			width, MAX_SURFACEW, height, MAX_SURFACEH
+		);
+
+	if (ARCAN_OK != arcan_video_setprogram(sid, shid))
+		arcan_warning("arcan_video_setprogram(%d, %d) -- couldn't set shader," 
+			"invalid vobj or shader id specified.\n", sid, shid);
+	else
+		arcan_video_resampleobject(sid, width, height, shid);
+
+	return 0;
+}
+
 /* Input is absolute values,
  * arcan_video_objectscale takes relative to initial size */
 static int scaleimage2(lua_State* ctx)
@@ -6505,6 +6530,7 @@ static const luaL_Reg imgfuns[] = {
 {"rotate_image",             rotateimage        },
 {"scale_image",              scaleimage         },
 {"resize_image",             scaleimage2        },
+{"resample_image",           resampleimage      }, 
 {"blend_image",              imageopacity       },
 {"persist_image",            imagepersist       },
 {"image_parent",             imageparent        },
