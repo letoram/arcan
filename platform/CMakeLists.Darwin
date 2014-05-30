@@ -11,6 +11,7 @@ set (PLATFORM_SOURCES
 	${PLATFORM_PATH}/paths.c
 	${PLATFORM_PATH}/../darwin/sem.c
 	${PLATFORM_PATH}/shm.c
+	${PLATFORM_PATH}/base64.c
 	${PLATFORM_PATH}/../darwin/time.c
 	${PLATFORM_PATH}/warning.c
 	${PLATFORM_PATH}/frameserver.c
@@ -26,8 +27,10 @@ set (SDL_PLATFORM_SOURCES
 
 set (FSRV_PLATFORM_SOURCES
 	${CMAKE_SOURCE_DIR}/frameserver/frameserver.c
+	${PLATFORM_PATH}/base64.c
 	${PLATFORM_PATH}/warning.c
 	${PLATFORM_PATH}/../darwin/time.c
+	${PLATFORM_PATH}/base64.c
 	${PLATFORM_PATH}/sem.c
 	${PLATFORM_PATH}/shm.c
 )

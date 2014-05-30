@@ -89,6 +89,8 @@ struct mempool_meta {
  *   - guard pages separate each allocation
  */
 
+int system_page_size = 4096;
+
 /*
  * map initial pools, pre-fill some video buffers, 
  * get limits and assert that our build-time minimal

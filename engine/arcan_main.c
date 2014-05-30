@@ -75,7 +75,7 @@ bool stdout_redirected = false;
 /*
  * default, probed / replaced on some systems
  */ 
-int system_page_size = 4096;
+extern int system_page_size;
 
 static const struct option longopts[] = {
 	{ "help",         no_argument,       NULL, '?'},

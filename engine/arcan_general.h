@@ -348,6 +348,16 @@ void arcan_mem_lock(void*);
 void arcan_mem_unlock(void*);
 
 /*
+ * Support function for packing binary blobs as [a-Z0-9+/] 
+ * at the expense of storage space. 
+ */
+uint8_t* arcan_base64_decode(const uint8_t* instr, 
+	size_t* outsz, enum arcan_memhint);
+
+uint8_t* base64_encode(
+	const uint8_t* data, size_t inl, size_t* outl, enum arcan_memhint hint);
+
+/*
  * generate a LUA (and possibly other relevant states) dump
  * into resourcepath/logs/prefix_timestamp.exts
  * key is a message describing the reason,
