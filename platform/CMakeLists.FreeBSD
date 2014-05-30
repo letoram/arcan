@@ -9,6 +9,7 @@ ${PLATFORM_PATH}/resource_io.c
 ${PLATFORM_PATH}/ilaunch.c
 ${PLATFORM_PATH}/strip_traverse.c
 ${PLATFORM_PATH}/paths.c
+${PLATFORM_PATH}/base64.c
 ${PLATFORM_PATH}/sem.c
 ${PLATFORM_PATH}/shm.c
 ${PLATFORM_PATH}/time.c
@@ -21,6 +22,7 @@ ${PLATFORM_PATH}/../sdl/video.c
 set (FSERV_PLATFORM_SOURCES
 ${PLATFORM_PATH}/warning.c
 ${PLATFORM_PATH}/time.c
+${PLATFORM_PATH}/base64.c
 ${PLATFORM_PATH}/sem.c
 ${PLATFORM_PATH}/shm.c
 )

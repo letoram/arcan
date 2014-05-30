@@ -17,6 +17,7 @@ ${WIN32_PATH}/resource_io.c
 ${WIN32_PATH}/warning.c
 ${WIN32_PATH}/map_resource.c
 ${WIN32_PATH}/frameserver.c
+${WIN32_PATH}/../posix/base64.c
 platform/sdl/event.c
 platform/sdl/video.c
 )
@@ -24,6 +25,7 @@ platform/sdl/video.c
 set (FSERV_PLATFORM_SOURCES
 ${WIN32_PATH}/warning.c
 ${WIN32_PATH}/time.c
+${WIN32_PATH}/../posix/base64.c
 ${WIN32_PATH}/sem.c
 ${WIN32_PATH}/shm.c
 ${WIN32_PATH}/realpath.c
