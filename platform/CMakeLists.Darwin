@@ -1,7 +1,6 @@
 set (PLATFORM_PATH ${CMAKE_SOURCE_DIR}/platform/posix)
 
 set (PLATFORM_SOURCES
-	${PLATFORM_PATH}/../stub/mem.c
 	${PLATFORM_PATH}/fmt_open.c
 	${PLATFORM_PATH}/glob.c
 	${PLATFORM_PATH}/map_resource.c
@@ -11,6 +10,7 @@ set (PLATFORM_SOURCES
 	${PLATFORM_PATH}/paths.c
 	${PLATFORM_PATH}/../darwin/sem.c
 	${PLATFORM_PATH}/shm.c
+	${PLATFORM_PATH}/mem.c
 	${PLATFORM_PATH}/base64.c
 	${PLATFORM_PATH}/../darwin/time.c
 	${PLATFORM_PATH}/warning.c
@@ -32,6 +32,7 @@ set (FSRV_PLATFORM_SOURCES
 	${PLATFORM_PATH}/../darwin/time.c
 	${PLATFORM_PATH}/base64.c
 	${PLATFORM_PATH}/sem.c
+	${PLATFORM_PATH}/mem.c
 	${PLATFORM_PATH}/shm.c
 )
 
