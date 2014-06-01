@@ -276,16 +276,31 @@ static void toggle_logdev(const char* prefix)
  * defined, and n' different others with the _mode suffix attached and 
  * the unused subsystems won't be #defined in.
  */
+static void dumpargs(int argc, char** argv)
+{
+	printf("invalid number of arguments (%d):\n", argc);
+ 	printf("[1 mode] : %s\n", argc > 1 && argv[1] ? argv[1] : "");	
+	printf("[2 key] : %s\n", argc > 2 && argv[2] ? argv[2] : "");
+	printf("environment (ARCAN_ARG) : %s\n", 
+		getenv("ARCAN_ARG") ? getenv("ARCAN_ARG") : "");
+	printf("environment (ARCAN_SOCKIN_FD) : %s\n",
+		getenv("ARCAN_SOCKIN_FD") ? getenv("ARCAN_SOCKIN_FD") : "");
+	printf("environment (ARCAN_CONNPATH) : %s\n",
+		getenv("ARCAN_CONNPATH") ? getenv("ARCAN_CONNPATH") : "");
+	printf("environment (ARCAN_CONNKEY) : %s\n",
+		getenv("ARCAN_CONKEY") ? getenv("ARCAN_CONNKEY") : "");
+}
+
 #ifdef ARCAN_FRAMESERVER_SPLITMODE
 int main(int argc, char** argv)
 {
-	if (argc != 4){
-		printf("arcan_frameserver - Invalid arguments (shouldn't be "
-			"launched outside of ARCAN).\n");
+	if (argc != 3){
+		dumpargs(argc, argv);
 		return 1;
-	}	
+	}
 
-	char* fsrvmode = argv[3];
+	dumpargs(argc, argv);
+	char* fsrvmode = argv[1];
 	if (strcmp(fsrvmode, "net-cl") == 0 || strcmp(fsrvmode, "net-srv") == 0){
 		fsrvmode = "net";
 	}
@@ -295,33 +310,20 @@ int main(int argc, char** argv)
 	snprintf(newarg, newbin, "%s_%s", argv[0], fsrvmode);
 
 	argv[0] = newarg;
+	printf("newarg: %s\n", newarg);
 	return execv(newarg, argv);
 }
 
 #else
-
-/* args accepted;
- * fname
- * keyfile
- * these are set-up by the parent before exec, so is the sempage.
- * all of these are derived from the keyfile (last char replaced with
- * v, a, e for sems) and we release vid (within a few seconds or get killed).
- */
-
- int main(int argc, char** argv)
+int main(int argc, char** argv)
 {
-	char* resource = argv[1];
+	char* resource = getenv("ARCAN_ARG");
 	char* keyfile  = argv[2];
-	char* fsrvmode = argc == 4 ? argv[3] : getenv("ARCAN_ARG");
+	char* fsrvmode = argv[1];
 	fsrvmode = fsrvmode == NULL ? "" : fsrvmode;
 
-	if (argc < 3 || argc > 4 || !resource || !keyfile || !fsrvmode){
-#ifdef _DEBUG
-		printf("arcan_frameserver(debug) resource keyfile [fsrvmode]\n");
-#else
-		printf("arcan_frameserver - Invalid arguments (shouldn't be "
-			"launched outside of ARCAN).\n");
-#endif
+	if (argc != 3 || !resource || !keyfile || !fsrvmode){
+		dumpargs(argc, argv);
 		return 1;
 	}
 
@@ -397,7 +399,8 @@ int main(int argc, char** argv)
 	}
 #endif
 
-	LOG("frameserver launch failed, unsupported mode (%s)\n", fsrvmode);
+	printf("frameserver launch failed, unsupported mode (%s)\n", fsrvmode);
+	dumpargs(argc, argv);
 	return 0;
 }
 #endif

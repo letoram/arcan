@@ -14,7 +14,6 @@
 #include <unistd.h>
 
 #include <sys/mman.h>
-#include <ucontext.h>
 
 #include <arcan_math.h>
 #include <arcan_general.h>
