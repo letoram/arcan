@@ -736,7 +736,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 		close(sockp[0]);
 		sprintf(convb, "%i", sockp[1]);
 		setenv("ARCAN_SOCKIN_FD", convb, 1);
-		setenv("ARCAN_ARG", setup.args.builtin.mode, 1);
+		setenv("ARCAN_ARG", setup.args.builtin.resource, 1);
 	
 /*
  * frameservers that are semi-trusted currently get an
@@ -765,8 +765,9 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 		if (setup.use_builtin){
 			char* argv[4] = { 
 				arcan_binpath, 
-				strdup(setup.args.builtin.resource), 
-				ctx->shm.key
+				strdup(setup.args.builtin.mode), 
+				ctx->shm.key,
+				NULL
 			};
 
 			execv(arcan_binpath, argv);
