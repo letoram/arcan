@@ -143,9 +143,14 @@ class Generic
 		if libloader
 			if File.exists?(@options[:frameserver])
 				info  = {}
-				args  = @options[:in_windows] ? "nokey 0 0 0 libretro" : "nokey libretro"
-				args  = "#{@options[:frameserver]} \"core=#{targetpath}/#{target}#{extension}:info\" #{args}"
-				
+				args = ""
+				if @options[:in_windows]
+					args  = "#{@options[:frameserver]} nokey 0 0 0 libretro \"core=#{targetpath}/#{target}#{extension}:info\" #{args}"
+				else
+					ENV["ARCAN_ARG"] = "core=#{targetpath}/#{target}#{extension}:info"
+					args = "#{@options[:frameserver]} libretro nokey"
+				end
+						
 				begin
 					in_block = false
 	
