@@ -347,7 +347,7 @@ typedef struct arcan_netevent{
 			char addr[46]; 
 		} host;
 
-		char message[78];
+		char message[93];
 	};
 } arcan_netevent;
 

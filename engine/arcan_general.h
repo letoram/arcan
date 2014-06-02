@@ -354,8 +354,8 @@ void arcan_mem_unlock(void*);
 uint8_t* arcan_base64_decode(const uint8_t* instr, 
 	size_t* outsz, enum arcan_memhint);
 
-uint8_t* base64_encode(
-	const uint8_t* data, size_t inl, size_t* outl, enum arcan_memhint hint);
+uint8_t* arcan_base64_encode(const uint8_t* data, 
+	size_t inl, size_t* outl, enum arcan_memhint hint);
 
 /*
  * generate a LUA (and possibly other relevant states) dump
