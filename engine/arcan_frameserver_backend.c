@@ -74,6 +74,10 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 		.kind = TARGET_COMMAND_EXIT
 	};
 
+	if (src->desc.pbo_transfer && src->desc.upload_pbo[0] != 0){
+		glDeleteBuffers(2, src->desc.upload_pbo);
+	}
+
 	arcan_frameserver_pushevent(src, &exev);
 	arcan_frameserver_killchild(src);
  
