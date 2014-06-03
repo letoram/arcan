@@ -54,8 +54,6 @@ static void spawn_guardthread(struct guard_struct gs)
 	pthread_create(&pth, &pthattr, guard_thread, hgs);
 }
 
-/* Dislike pulling stunts like this,
- * but it saved a lot of bad codepaths */
 #if _WIN32
 
 #define sleep(n) Sleep(1000 * n)
@@ -102,10 +100,9 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 	if (!noguard)
 		spawn_guardthread(gs);
 
-/*
- * Type-specific handling if necessary here
- */ 
-
+	arcan_shmif_setevqs(&res, &res->inevq, 
+		res.esem, &res.inevq, &res.outevq, false); 
+	
 	arcan_warning("arcan_frameserver() -- shmpage configured and filled.\n");
 	return res;
 }
@@ -124,7 +121,8 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey)
 #include <sys/un.h>
 
 struct arcan_shmif_cont arcan_shmif_acquire(
-	const char* shmkey, int shmif_type, char force_unlink, char noguard){
+	const char* shmkey, int shmif_type, char force_unlink, char noguard)
+{
 	struct arcan_shmif_cont res = {0};
 
 	unsigned bufsize = ARCAN_SHMPAGE_MAX_SZ;
@@ -389,9 +387,9 @@ void arcan_shmif_setevqs(struct arcan_shmif_page* dst,
 	inq->eventbuf_sz = ARCAN_SHMPAGE_QUEUE_SZ; 
 
 	outq->local =false;
-	outq->eventbuf = dst->parentdevq.evqueue;
-	outq->front = &dst->parentdevq.front;
-	outq->back  = &dst->parentdevq.back;
+	outq->eventbuf = dst->parentevq.evqueue;
+	outq->front = &dst->parentevq.front;
+	outq->back  = &dst->parentevq.back;
 	outq->eventbuf_sz = ARCAN_SHMPAGE_QUEUE_SZ; 
 }
 
@@ -469,8 +467,12 @@ bool arcan_shmif_resize(struct arcan_shmif_cont* arg,
 
 		if (arcan_shmif_integrity_check(arg->addr)){
 			arg->addr->resized = true;
-
-/* spinlock until acknowledged */
+			arcan_shmif_calcofs(arg->addr, &arg->vidp, &arg->audp);
+/* 
+ * spin until acknowledged,
+ * re-using the "wait on sync-fd" approach might
+ * be worthwile (test latency to be sure). 
+ */
 			while(arg->addr->resized && arg->addr->dms);
 
 			return true;
