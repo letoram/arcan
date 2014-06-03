@@ -646,8 +646,9 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 	arcan_event_queuetransfer(arcan_event_defaultctx(), &src->inqueue, 
 		src->queue_mask, 0.5, src->vid);
 
-/* may happen multiple- times, reasonably costly, might
- * want rate-limit this */
+/* may happen multiple- times, reasonably costly, 
+ * might want rate-limit this -- FIXME propagate resize to
+ * backend in order to enforce dimension limits */
 	if ( shmpage->resized ){
 		vfunc_state cstate = *arcan_video_feedstate(src->vid);
 		img_cons store = {

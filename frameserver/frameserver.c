@@ -299,7 +299,6 @@ int main(int argc, char** argv)
 		return 1;
 	}
 
-	dumpargs(argc, argv);
 	char* fsrvmode = argv[1];
 	if (strcmp(fsrvmode, "net-cl") == 0 || strcmp(fsrvmode, "net-srv") == 0){
 		fsrvmode = "net";

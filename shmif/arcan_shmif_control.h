@@ -111,6 +111,18 @@ static const int ARCAN_SHMPAGE_SAMPLERATE = 44100;
 static const int ARCAN_SHMPAGE_RESAMPLER_QUALITY = 5;
 static const int ARCAN_SHMPAGE_ACHANNELS = 2;
 
+#ifndef PP_SHMPAGE_MAXW
+#define PP_SHMPAGE_MAXW 4096 
+#endif
+
+#ifndef PP_SHMPAGE_MAXH
+#define PP_SHMPAGE_MAXH 2048 
+#endif
+
+#ifndef PP_SHMPAGE_SHMKEYLIM
+#define PP_SHMPAGE_SHMKEYLIM 78
+#endif
+
 /*
  * This is somewhat of a formatting hint; for now,
  * only RGBA32 buffers are actually used (and the streaming
@@ -120,18 +132,6 @@ static const int ARCAN_SHMPAGE_ACHANNELS = 2;
  * pack in 4x8bit channels interleaved and then hint the
  * conversion in the shader used  
  */ 
-#ifndef PP_SHMPAGE_MAXW
-#define PP_SHMPAGE_MAXW 1920
-#endif
-
-#ifndef PP_SHMPAGE_MAXH
-#define PP_SHMPAGE_MAXH 1080
-#endif
-
-#ifndef PP_SHMPAGE_SHMKEYLIM
-#define PP_SHMPAGE_SHMKEYLIM 78
-#endif
-
 static const int ARCAN_SHMPAGE_VCHANNELS = 4;
 static const int ARCAN_SHMPAGE_MAXW = PP_SHMPAGE_MAXW;
 static const int ARCAN_SHMPAGE_MAXH = PP_SHMPAGE_MAXH;
@@ -145,11 +145,8 @@ static const int ARCAN_SHMPAGE_AUDIOBUF_SZ = 288000;
 /*	ARCAN_SHMPAGE_MAXAUDIO_FRAME * 3 / ARCAN_SHMPAGE_ACHANNELS; */
 
 static const int ARCAN_SHMPAGE_VIDEOBUF_SZ = 8294400;
+static const int ARCAN_SHMPAGE_MAX_SZ = 48294400;
 /* ARCAN_SHMPAGE_MAXW * ARCAN_SHMPAGE_MAXH * ARCAN_SHMPAGE_VCHANNELS */
-
-static const int ARCAN_SHMPAGE_MAX_SZ = 8647936; 
-/* ARCAN_SHMPAGE_AUDIOBUF_SZ + ARCAN_SHMPAGE_VIDEOBUF_SZ + 
-  sizeof(struct arcan_event) * ARCAN_SHMPAGE_QUEUE_SZ * 2) + 512 */
 
 enum arcan_shmif_type {
 	SHMIF_INPUT,
@@ -170,6 +167,10 @@ struct arcan_shmif_cont {
 	sem_handle vsem;
 	sem_handle asem;
 	sem_handle esem;
+	struct arcan_evctx inevq;
+	struct arcan_evctx outev;
+	uint8_t* vidp;
+	uint8_t* audp;
 };
 
 struct arcan_shmif_page {
@@ -190,7 +191,7 @@ struct arcan_shmif_page {
 	struct {
 		struct arcan_event evqueue[ PP_QUEUE_SZ ];
 		uint32_t front, back;
-	} childdevq, parentdevq;
+	} childdevq, parentevq;
 
 /* will be checked frequently, likely before transfers.
  * if the DMS is released, the parent (or child or both) will
