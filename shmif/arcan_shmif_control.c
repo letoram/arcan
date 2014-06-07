@@ -100,8 +100,8 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 	if (!noguard)
 		spawn_guardthread(gs);
 
-	arcan_shmif_setevqs(&res, &res->inevq, 
-		res.esem, &res.inevq, &res.outevq, false); 
+	arcan_shmif_setevqs(&res, res.esem, &res.inev, &res.outev, false); 
+		arcan_shmif_calcofs(res.addr, &res.vidp, &res.audp);
 	
 	arcan_warning("arcan_frameserver() -- shmpage configured and filled.\n");
 	return res;
@@ -195,6 +195,9 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 	if (!noguard)
 		spawn_guardthread(gs);
 
+	arcan_shmif_setevqs(res.addr, res.esem, &res.inev, &res.outev, false); 
+	arcan_shmif_calcofs(res.addr, &res.vidp, &res.audp);
+	
 	return res;
 }
 
@@ -399,18 +402,15 @@ void arcan_shmif_signal(struct arcan_shmif_cont* ctx, int mask)
 	if (mask == SHMIF_SIGVID){
 		ctx->addr->vready = true;
 		arcan_sem_wait(ctx->vsem);
-		assert(ctx->addr->vready == false);
 	}
 	else if (mask == SHMIF_SIGAUD){ 
 		ctx->addr->aready = true;
 		arcan_sem_wait(ctx->asem);
-		assert(ctx->addr->aready == false);
 	}
 	else if (mask == (SHMIF_SIGVID | SHMIF_SIGAUD)){
 		ctx->addr->vready = ctx->addr->aready = true;
 		arcan_sem_wait(ctx->vsem);
 		arcan_sem_wait(ctx->asem);
-		assert(ctx->addr->aready == false && ctx->addr->vready == false);
 	}
 	else 
 		;
@@ -461,25 +461,22 @@ void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 bool arcan_shmif_resize(struct arcan_shmif_cont* arg, 
 	unsigned width, unsigned height)
 {
-	if (arg->addr){
-		arg->addr->w = width;
-		arg->addr->h = height;
+	if (!arg->addr || !arcan_shmif_integrity_check(arg->addr))
+		return false;
 
-		if (arcan_shmif_integrity_check(arg->addr)){
-			arg->addr->resized = true;
-			arcan_shmif_calcofs(arg->addr, &arg->vidp, &arg->audp);
+	arg->addr->w = width;
+	arg->addr->h = height;
+	arg->addr->resized = true;
+
 /* 
  * spin until acknowledged,
  * re-using the "wait on sync-fd" approach might
  * be worthwile (test latency to be sure). 
  */
-			while(arg->addr->resized && arg->addr->dms);
+		while(arg->addr->resized && arg->addr->dms);
+			arcan_shmif_calcofs(arg->addr, &arg->vidp, &arg->audp);
 
-			return true;
-		}
-	}
-
-	return false;
+	return true;
 }
 
 static char* strrep(char* dst, char key, char repl)
