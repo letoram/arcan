@@ -167,7 +167,7 @@ struct arcan_shmif_cont {
 	sem_handle vsem;
 	sem_handle asem;
 	sem_handle esem;
-	struct arcan_evctx inevq;
+	struct arcan_evctx inev;
 	struct arcan_evctx outev;
 	uint8_t* vidp;
 	uint8_t* audp;
