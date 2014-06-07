@@ -6,6 +6,8 @@ local mouse_handlers = {
 	over  = {},
 	out   = {}, 
   drag  = {},
+	press = {},
+	release = {},
 	drop  = {},
 	hover = {},
 	motion = {},
@@ -32,6 +34,8 @@ local mstate = {
 	drag_delta   = 8,  -- wiggle-room for drag
 	hover_ticks  = 30, -- time of inactive cursor before hover is triggered 
 	hover_thresh = 12, -- pixels movement before hover is released
+	click_timeout= 6;  -- maximum number of ticks before a press-release pair isn't a tick
+	click_cnt    = 0,
 	counter      = 0,
 	hover_count  = 0,
 	x_ofs        = 0,
@@ -48,7 +52,7 @@ local function mouse_cursorupd(x, y)
 		mstate.hidden = false;
 	
 	elseif (mstate.hidden) then
-		return;
+		return 0, 0;
 	end
 
 	x = x * mstate.accel_x;
@@ -273,10 +277,29 @@ local function lmbhandler(hists, press)
 		mstate.predrag = {};
 		mstate.predrag.list = hists;
 		mstate.predrag.count = mstate.drag_delta;
+		mstate.click_cnt = mstate.click_timeout;
 		mstate.lmb_global_press();
+
+		for key, val in pairs(hists) do
+			local res = linear_find_vid(mstate.handlers.press, val, "press");
+			if (res) then
+				if (res:press(val, mstate.x, mstate.y)) then
+					break;
+				end
+			end
+		end
 
 	else -- release
 		mstate.lmb_global_release();
+
+		for key, val in pairs(hists) do
+			local res = linear_find_vid(mstate.handlers.press, val, "release");
+			if (res) then
+				if (res:release(val, mstate.x, mstate.y)) then
+					break;
+				end
+			end
+		end
 
 		if (mstate.eventtrace) then
 			warning("left click");
@@ -295,13 +318,15 @@ local function lmbhandler(hists, press)
 					end
 				end
 			end
--- only click if we havn't started dragging
+-- only click if we havn't started dragging or the button was released quickly
 		else
-			for key, val in pairs(hists) do
-				local res = linear_find_vid(mstate.handlers.click, val, "click");
-				if (res) then
-					if (res:click(val, mstate.x, mstate.y)) then
-						break;
+			if (mstate.click_cnt > 0) then
+				for key, val in pairs(hists) do
+					local res = linear_find_vid(mstate.handlers.click, val, "click");
+					if (res) then
+						if (res:click(val, mstate.x, mstate.y)) then
+							break;
+						end
 					end
 				end
 			end
@@ -330,8 +355,16 @@ local function lmbhandler(hists, press)
 end
 
 function mouse_input(x, y, state)
+	if (x == nil or y == nil) then
+		print(debug.traceback());
+	end
+
 	x, y = mouse_cursorupd(x, y);
 	mstate.hover_count = 0;
+
+	if (x == nil or y == nil) then
+		print(debug.traceback());
+	end
 
 	if (#mstate.hover_track > 0) then
 		local dx = math.abs(mstate.hover_x - mstate.x);
@@ -384,6 +417,7 @@ function mouse_input(x, y, state)
 -- change in left mouse-button state?
 	if (state[1] ~= mstate.btns[1]) then
 		lmbhandler(hists, state[1]);
+
 	elseif (state[3] ~= mstate.btns[3]) then
 		rmbhandler(hists, state[3]);
 	else 
@@ -475,6 +509,7 @@ end
 function mouse_tick(val)
 	mstate.counter = mstate.counter + val;
 	mstate.hover_count = mstate.hover_count + 1;
+	mstate.click_cnt = mstate.click_cnt > 0 and mstate.click_cnt - 1 or 0;
 
 	if (mstate.autohide and mstate.hidden == false) then
 		mstate.hide_count = mstate.hide_count - val;
