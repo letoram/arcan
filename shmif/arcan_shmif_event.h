@@ -370,7 +370,6 @@ typedef struct arcan_extevent {
 	union {
 		uint8_t message[78];
 		int32_t state_sz;
-		uint32_t code;
 
 		struct {
 			uint8_t message[3]; /* 3 character country code */
