@@ -25,6 +25,7 @@ static struct {
 
 static int symtbl_out[1024];
 static int* symtbl_in;
+static int track_modifier(int key, bool active);
 
 int mouse_button_map[] = { 
 	rfbButton1Mask,
@@ -83,9 +84,8 @@ static void client_chat(rfbClient* client, int value, char* msg)
  * send as message;
  * we have rfbTextChatOpen, rfbTextChatClose, rfbTextChatFinished
  */
-
-	if (text)
-		LOG("chat (%s)\n", text);
+	if (msg)
+		LOG("msg (%s)\n", msg);
 }
 
 static void client_selection(rfbClient* client, const char* text, int len)
@@ -94,13 +94,16 @@ static void client_selection(rfbClient* client, const char* text, int len)
 	LOG("selection (%s)\n", text);
 }
 
+static void client_keyled(rfbClient* client, int state, int mode)
+{
+	LOG("ledstate (%d, %d)\n", state, mode);
+}
+
 static char* client_password(rfbClient* client)
 {
 	LOG("(vnc-cl) requested password\n");
 	return strdup(vncctx.pass);
 }
-
-static 
 
 static void client_connect(const char* host)
 {
@@ -125,8 +128,9 @@ static void client_connect(const char* host)
  * scale (next is level)
  * last argument is host 
  */
-	int argc = 1;
+	int argc = 2;
 	char* argv[] = {
+		(char*)host,
 		(char*)host,
 		NULL
 	};
@@ -201,9 +205,24 @@ static void cleanup()
 		rfbClientCleanup(vncctx.client);
 }
 
+static void cl_unstick()
+{
+	SendKeyEvent(vncctx.client, XK_Shift_R, false);
+	SendKeyEvent(vncctx.client, XK_Shift_L, false);
+	SendKeyEvent(vncctx.client, XK_Control_R, false);
+	SendKeyEvent(vncctx.client, XK_Control_L, false);
+	SendKeyEvent(vncctx.client, XK_Alt_R, false);
+	SendKeyEvent(vncctx.client, XK_Alt_L, false);
+	SendKeyEvent(vncctx.client, XK_Meta_R, false);
+	SendKeyEvent(vncctx.client, XK_Meta_L, false);
+	SendKeyEvent(vncctx.client, XK_Super_L, false);
+	SendKeyEvent(vncctx.client, XK_Super_R, false);
+}
+
 static void map_cl_input(arcan_ioevent* ioev)
 {
 	static int mcount, mx, my, bmask;
+	int sym = ioev->input.translated.keysym;
 
 	if (ioev->devkind != EVENT_IDEVKIND_KEYBOARD && 
 		ioev->devkind != EVENT_IDEVKIND_MOUSE)
@@ -211,16 +230,20 @@ static void map_cl_input(arcan_ioevent* ioev)
 
 	if (ioev->datatype == EVENT_IDATATYPE_TRANSLATED){
 		int kv = 0;
-	
-		if (ioev->input.translated.keysym >= 0 &&
-			ioev->input.translated.keysym < sizeof(symtbl_out) / sizeof(symtbl_out[0])){
-			kv = symtbl_out[ioev->input.translated.keysym];
+
+		if (sym >= 0 && sym < sizeof(symtbl_out) / sizeof(symtbl_out[0])){
+			kv = symtbl_out[sym];
 		}
 
+/* last resort, just use the unicode value and hope for the best */
 		if (kv == 0)
 			kv = ioev->input.translated.subid;
 
-		SendKeyEvent(vncctx.client, kv, ioev->input.digital.active);		
+		printf("kv: %d, in: %d, mod: %d\n", 
+			ioev->input.translated.keysym, kv, 
+			ioev->input.translated.modifiers);
+			
+		SendKeyEvent(vncctx.client, kv, ioev->input.translated.active);		
 	}
 	else if (ioev->datatype == EVENT_IDATATYPE_DIGITAL){
 		int btn = ioev->input.digital.subid;
@@ -249,10 +272,6 @@ static void map_cl_input(arcan_ioevent* ioev)
 		vncctx.shmcont.addr->h, true);
 }
 
-/* 
- * Bidirectional internal <-> X keysym translation table
- * Patched together from Xev dumps + ClanLib (BSD licensed)
- */
 static void gen_symtbl()
 {
 	symtbl_out[8] = XK_BackSpace;
@@ -262,66 +281,31 @@ static void gen_symtbl()
 	symtbl_out[19] = XK_Pause;
 	symtbl_out[27] = XK_Escape;
 	symtbl_out[32] = XK_space;
-	symtbl_out[127] = XK_Delete;
-	symtbl_out[256] = XK_KP_0;
-	symtbl_out[257] = XK_KP_1;
-	symtbl_out[258] = XK_KP_2;
-	symtbl_out[259] = XK_KP_3;
-	symtbl_out[260] = XK_KP_4;
-	symtbl_out[261] = XK_KP_5;
-	symtbl_out[262] = XK_KP_6;
-	symtbl_out[263] = XK_KP_7;
-	symtbl_out[264] = XK_KP_8;
-	symtbl_out[265] = XK_KP_9;
-	symtbl_out[266] = XK_KP_Decimal;
-	symtbl_out[267] = XK_KP_Divide;
-	symtbl_out[268] = XK_KP_Multiply; 
-	symtbl_out[269] = XK_KP_Subtract;
-	symtbl_out[270] = XK_KP_Add;
-	symtbl_out[271] = XK_KP_Enter;
-	symtbl_out[272] = XK_KP_Equal;
-	symtbl_out[273] = XK_KP_Up;
-	symtbl_out[274] = XK_KP_Down;
-	symtbl_out[275] = XK_KP_Left;
-	symtbl_out[276] = XK_KP_Right;
-	symtbl_out[277] = XK_KP_Insert;
-	symtbl_out[278] = XK_KP_Home;
-	symtbl_out[279] = XK_KP_End;
-	symtbl_out[280] = XK_KP_Page_Up;
-	symtbl_out[281] = XK_KP_Page_Down;
-	symtbl_out[282] = XK_F1;
-	symtbl_out[283] = XK_F2;
-	symtbl_out[284] = XK_F3;
-	symtbl_out[285] = XK_F4;
-	symtbl_out[286] = XK_F5;
-	symtbl_out[287] = XK_F6;
-	symtbl_out[288] = XK_F7;
-	symtbl_out[289] = XK_F8;
-	symtbl_out[290] = XK_F9;
-	symtbl_out[291] = XK_F10;
-	symtbl_out[292] = XK_F11;
-	symtbl_out[293] = XK_F12;
-	symtbl_out[294] = XK_F13;
-	symtbl_out[295] = XK_F14;
-	symtbl_out[296] = XK_F15;
-	symtbl_out[300] = XK_Num_Lock;
-	symtbl_out[301] = XK_Caps_Lock;
-	symtbl_out[302] = XK_Scroll_Lock;
-	symtbl_out[303] = XK_Shift_R;
-	symtbl_out[304] = XK_Shift_L;
-	symtbl_out[305] = XK_Control_R;
-	symtbl_out[306] = XK_Control_L;
-	symtbl_out[307] = XK_Alt_R;
-	symtbl_out[308] = XK_Alt_L;
-	symtbl_out[309] = XK_Meta_R;
-	symtbl_out[310] = XK_Meta_L;
-	symtbl_out[311] = XK_Super_L;
-	symtbl_out[312] = XK_Super_R;
-	symtbl_out[313] = XK_Mode_switch;
-	symtbl_out[315] = XK_Help;
-	symtbl_out[316] = XK_Print;
-	symtbl_out[317] = XK_Sys_Req;
-	symtbl_out[318] = XK_Break;
+	symtbl_out[33] = XK_exclam;
+	symtbl_out[34] = XK_quotedbl;
+	symtbl_out[35] = XK_numbersign;
+	symtbl_out[36] = XK_dollar;
+	symtbl_out[37] = XK_percent;
+	symtbl_out[38] = XK_ampersand;
+	symtbl_out[39] = XK_apostrophe;
+	symtbl_out[40] = XK_parenleft;
+	symtbl_out[41] = XK_parenright;
+	symtbl_out[42] = XK_asterisk;
+	symtbl_out[43] = XK_plus;
+	symtbl_out[44] = XK_comma;
+	symtbl_out[45] = XK_minus;
+	symtbl_out[46] = XK_period;
+	symtbl_out[47] = XK_slash;	
+	symtbl_out[48] = XK_0;
+	symtbl_out[49] = XK_1;
+	symtbl_out[50] = XK_2;
+	symtbl_out[51] = XK_3;
+	symtbl_out[52] = XK_4;
+	symtbl_out[53] = XK_5;
+	symtbl_out[54] = XK_6;
+	symtbl_out[55] = XK_7;
+	symtbl_out[56] = XK_8;
+	symtbl_out[57] = XK_9;
 	symtbl_out[58] = XK_colon;
 	symtbl_out[59] = XK_semicolon;
 	symtbl_out[60] = XK_less;
@@ -361,6 +345,7 @@ static void gen_symtbl()
 	symtbl_out[120] = XK_x;
 	symtbl_out[121] = XK_y;
 	symtbl_out[122] = XK_z;
+	symtbl_out[127] = XK_Delete;
 	symtbl_out[160] = XK_nobreakspace;
 	symtbl_out[161] = XK_exclamdown;
 	symtbl_out[162] = XK_cent;
@@ -458,6 +443,65 @@ static void gen_symtbl()
 	symtbl_out[254] = XK_uacute;
 	symtbl_out[255] = XK_ucircumflex;
 
+	symtbl_out[256] = XK_KP_0;
+	symtbl_out[257] = XK_KP_1;
+	symtbl_out[258] = XK_KP_2;
+	symtbl_out[259] = XK_KP_3;
+	symtbl_out[260] = XK_KP_4;
+	symtbl_out[261] = XK_KP_5;
+	symtbl_out[262] = XK_KP_6;
+	symtbl_out[263] = XK_KP_7;
+	symtbl_out[264] = XK_KP_8;
+	symtbl_out[265] = XK_KP_9;
+	symtbl_out[266] = XK_KP_Decimal;
+	symtbl_out[267] = XK_KP_Divide;
+	symtbl_out[268] = XK_KP_Multiply; 
+	symtbl_out[269] = XK_KP_Subtract;
+	symtbl_out[270] = XK_KP_Add;
+	symtbl_out[271] = XK_KP_Enter;
+	symtbl_out[272] = XK_KP_Equal;
+	symtbl_out[273] = XK_KP_Up;
+	symtbl_out[274] = XK_KP_Down;
+	symtbl_out[275] = XK_KP_Left;
+	symtbl_out[276] = XK_KP_Right;
+	symtbl_out[277] = XK_KP_Insert;
+	symtbl_out[278] = XK_KP_Home;
+	symtbl_out[279] = XK_KP_End;
+	symtbl_out[280] = XK_KP_Page_Up;
+	symtbl_out[281] = XK_KP_Page_Down;
+	symtbl_out[282] = XK_F1;
+	symtbl_out[283] = XK_F2;
+	symtbl_out[284] = XK_F3;
+	symtbl_out[285] = XK_F4;
+	symtbl_out[286] = XK_F5;
+	symtbl_out[287] = XK_F6;
+	symtbl_out[288] = XK_F7;
+	symtbl_out[289] = XK_F8;
+	symtbl_out[290] = XK_F9;
+	symtbl_out[291] = XK_F10;
+	symtbl_out[292] = XK_F11;
+	symtbl_out[293] = XK_F12;
+	symtbl_out[294] = XK_F13;
+	symtbl_out[295] = XK_F14;
+	symtbl_out[296] = XK_F15;
+	symtbl_out[300] = XK_Num_Lock;
+	symtbl_out[301] = XK_Caps_Lock;
+	symtbl_out[302] = XK_Scroll_Lock;
+	symtbl_out[303] = XK_Shift_R;
+	symtbl_out[304] = XK_Shift_L;
+	symtbl_out[305] = XK_Control_R;
+	symtbl_out[306] = XK_Control_L;
+	symtbl_out[307] = XK_Alt_R;
+	symtbl_out[308] = XK_Alt_L;
+	symtbl_out[309] = XK_Meta_R;
+	symtbl_out[310] = XK_Meta_L;
+	symtbl_out[311] = XK_Super_L;	
+	symtbl_out[312] = XK_Super_R;
+	symtbl_out[313] = XK_Mode_switch;
+	symtbl_out[315] = XK_Help;
+	symtbl_out[316] = XK_Print;
+	symtbl_out[317] = XK_Sys_Req;
+	symtbl_out[318] = XK_Break;
 	symtbl_in = malloc(65536 * sizeof(*symtbl_in));
 	memset(symtbl_in, '\0', 65536 * sizeof(*symtbl_in));
 	for (int i=0; i < sizeof(symtbl_out)/sizeof(symtbl_out[0]); i++){
@@ -509,15 +553,42 @@ void arcan_frameserver_avfeed_run(const char* resource,
 
 	while (true){
 		int rc = WaitForMessage(vncctx.client, 100);
-		if (-1 == rc)
+		if (-1 == rc){
+			arcan_event outev = {
+				.category = EVENT_EXTERNAL,
+				.kind = EVENT_EXTERNAL_NOTICE_FAILURE,
+				.data.external.message = "(01) server connection broken"
+			};
+
+			arcan_event_enqueue(&vncctx.shmcont.outev, &outev);
 			break;
+		}
 
 		if (rc > 0)
-			if (!HandleRFBServerMessage(vncctx.client))
+			if (!HandleRFBServerMessage(vncctx.client)){
+				arcan_event outev = {
+					.category = EVENT_EXTERNAL,
+					.kind = EVENT_EXTERNAL_NOTICE_FAILURE,
+					.data.external.message = "(02) couldn't parse server message"
+				};
+
+				arcan_event_enqueue(&vncctx.shmcont.outev, &outev);
 				break;
+			}
 
 		if (vncctx.dirty){
 			vncctx.dirty = false;
+/*
+ * couldn't find a decent flag to set this in 
+ * the first draw batch unfortunately 
+ */
+			int nb = vncctx.shmcont.addr->w * vncctx.shmcont.addr->h * 
+				ARCAN_SHMPAGE_VCHANNELS;
+
+			for (int ofs = ARCAN_SHMPAGE_VCHANNELS-1; 
+				ofs < nb; ofs += ARCAN_SHMPAGE_VCHANNELS)
+				vncctx.shmcont.vidp[ofs] = 0xff;
+
 			arcan_shmif_signal(&vncctx.shmcont, SHMIF_SIGVID);
 		}
 
@@ -530,12 +601,12 @@ void arcan_frameserver_avfeed_run(const char* resource,
 						vncctx.shmcont.addr->w, vncctx.shmcont.addr->h, FALSE);	
 				break;
 
-				case TARGET_COMMAND_MESSAGE:
-/* set text */
-				break;
-
 				case TARGET_COMMAND_EXIT:
 					return;
+
+				case TARGET_COMMAND_RESET:
+					cl_unstick();
+				break;					
 
 				default:
 					LOG("unhandled target event (%d)\n", inev.kind);
