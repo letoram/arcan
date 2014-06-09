@@ -227,21 +227,18 @@ static struct {
 
 extern char* _n_strdup(const char* instr, const char* alt);
 
-static void last_function(lua_State* ctx)
+static inline void colon_escape(char* instr)
 {
-	lua_Debug ar;
-
-	if (lua_getstack(ctx, 1, &ar)){
-		lua_getinfo(ctx, "Snl", &ar);
-		if (ar.currentline > 1) {
-			arcan_warning("%s:%d: ", ar.short_src, ar.currentline);
-		}
+	while(*instr){
+		if (*instr == ':')
+			*instr = '\t';
+		instr++;
 	}
 }
+
 static void dump_call_trace(lua_State* ctx)
 {
 #if LUA_VERSION_NUM == 501
-		arcan_warning("-- call trace --");
 		lua_getfield(ctx, LUA_GLOBALSINDEX, "debug");
 		if (!lua_istable(ctx, -1))
 			lua_pop(ctx, 1);
@@ -260,6 +257,18 @@ static void dump_call_trace(lua_State* ctx)
 #endif
 }
 
+static void last_function(lua_State* ctx)
+{
+	lua_Debug ar;
+	if (lua_getstack(ctx, 1, &ar)){
+		lua_getinfo(ctx, "Snl", &ar);
+		if (ar.currentline > 1) {
+			arcan_warning("%s:%d: ", ar.short_src, ar.currentline);
+		}
+	}
+
+	dump_call_trace(ctx);	
+}
 static void wraperr(struct arcan_luactx* ctx, 
 	int errc, const char* src);
 
@@ -485,6 +494,7 @@ static inline arcan_vobj_id luaL_checkvid(
 		abort();
 
 	if (res == ARCAN_EID){
+		arcan_warning("\ncall-trace:\n");
 		dump_call_trace(ctx);
 		dump_stack(ctx);
 		arcan_fatal("Bad VID requested (%"PRIxVOBJ")\n", res);
@@ -1604,12 +1614,13 @@ static int targetsuspend(lua_State* ctx)
 
 	arcan_vobj_id vid = luaL_checkvid(ctx, 1, NULL);
 	vfunc_state* state = arcan_video_feedstate(vid);
-	arcan_frameserver* fsrv = state->ptr;
 
-	if (!state || state->tag != ARCAN_TAG_FRAMESERV || !fsrv){
-		arcan_fatal("suspend_target(), "
-			"referenced object not connected to a frameserver.\n");
+	if (!state || state->tag != ARCAN_TAG_FRAMESERV || !state->ptr){
+		arcan_warning("suspend_target(), "
+			"referenced object is not connected to a frameserver.\n");
+		return 0;
 	}
+	arcan_frameserver* fsrv = state->ptr;
 
 	arcan_event ev = {
 		.kind = TARGET_COMMAND_PAUSE,
@@ -1618,6 +1629,22 @@ static int targetsuspend(lua_State* ctx)
 		
 	arcan_frameserver_pause(fsrv);
 	arcan_frameserver_pushevent(fsrv, &ev);
+
+	return 0;
+}
+
+static int targetdrop(lua_State* ctx)
+{
+	LUA_TRACE("drop_target");
+
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);	
+	vfunc_state* vstate = arcan_video_feedstate(id);
+
+	if (!vstate || vstate->tag != ARCAN_TAG_FRAMESERV)
+		arcan_fatal("drop_target(), "
+			"referenced object is not connected to a frameserver.\n");
+
+	arcan_frameserver_free(vstate->ptr);	
 
 	return 0;
 }
@@ -1754,9 +1781,8 @@ static int loadmovie(lua_State* ctx)
 			char msg[fnlen];
 			msg[fnlen-1] = 0;
 
-			for (int i = 0; i <= flen; i++)
-				if (fname[i] == ':') fname[i] = '\t'; /* escape for windows et. al */
-
+			colon_escape(fname);
+			
 			if (optlen > 0)
 				snprintf(msg, fnlen-1, "%s:file=%s", argstr, fname);
 			else
@@ -2297,6 +2323,21 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 					tblnum(ctx, "id", ev->data.network.connid, top);
 				break;
 
+				case EVENT_NET_DISCOVERED:
+				tblstr(ctx, "kind", "discovered", top);
+				tblstr(ctx, "address", ev->data.network.host.addr, top);
+				tblstr(ctx, "ident", ev->data.network.host.ident, top);
+				size_t outl;
+				uint8_t* strkey = arcan_base64_encode(
+					(const uint8_t*) ev->data.network.host.key,
+					sizeof(ev->data.network.host.key) / sizeof(ev->data.network.host.key[0]), 
+					&outl, ARCAN_MEM_SENSITIVE | ARCAN_MEM_NONFATAL);
+				if (strkey){
+					tblstr(ctx, "key", (const char*) strkey, top);
+					free(strkey);
+				}
+				break;
+
 				case EVENT_NET_INPUTEVENT:
 					arcan_warning("pushevent(net_inputevent_not_handled )\n");
 				break;
@@ -2335,38 +2376,41 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			lua_newtable(ctx);
 			int top = lua_gettop(ctx);
 			switch (ev->kind){
-			case EVENT_EXTERNAL_NOTICE_IDENT:
+			case EVENT_EXTERNAL_IDENT:
 				tblstr(ctx, "kind", "ident", top);
 				slimpush(mcbuf, sizeof(ev->data.external.message) /
 					sizeof(ev->data.external.message[0]), 
 					(char*)ev->data.external.message);
 				tblstr(ctx, "message", mcbuf, top);
 			break;
-			case EVENT_EXTERNAL_NOTICE_COREOPT:
+			case EVENT_EXTERNAL_COREOPT:
 				tblstr(ctx, "kind", "coreopt", top);
 				slimpush(mcbuf, sizeof(ev->data.external.message) /
 					sizeof(ev->data.external.message[0]), 
 					(char*)ev->data.external.message);
 				tblstr(ctx, "argument", mcbuf, top);
 			break;
-			case EVENT_EXTERNAL_NOTICE_MESSAGE:
+			case EVENT_EXTERNAL_MESSAGE:
 				slimpush(mcbuf, sizeof(ev->data.external.message) /
 					sizeof(ev->data.external.message[0]), 
 					(char*)ev->data.external.message);	
 				tblstr(ctx, "kind", "message", top);
 				tblstr(ctx, "message", mcbuf, top); 
 			break;
-			case EVENT_EXTERNAL_NOTICE_FAILURE:
+			case EVENT_EXTERNAL_FAILURE:
 				tblstr(ctx, "kind", "failure", top);
-				tblnum(ctx, "code", ev->data.external.code, top);
+				slimpush(mcbuf, sizeof(ev->data.external.message) /
+					sizeof(ev->data.external.message[0]), 
+					(char*)ev->data.external.message);	
+				tblstr(ctx, "message", mcbuf, top); 
 			break;
-			case EVENT_EXTERNAL_NOTICE_FRAMESTATUS:
+			case EVENT_EXTERNAL_FRAMESTATUS:
 				tblstr(ctx, "kind", "frame", top);
 				tblnum(ctx, "frame", 
 					ev->data.external.framestatus.framenumber, top);
 			break;
 
-			case EVENT_EXTERNAL_NOTICE_STREAMINFO:
+			case EVENT_EXTERNAL_STREAMINFO:
 				slimpush(mcbuf, sizeof(ev->data.external.streaminf.message) /
 					sizeof(ev->data.external.streamstat.timestr[0]),
 					(char*)ev->data.external.streamstat.timestr);
@@ -2377,7 +2421,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 					streamtype(ev->data.external.streaminf.datakind),top);
 			break;
 
-			case EVENT_EXTERNAL_NOTICE_STREAMSTATUS:
+			case EVENT_EXTERNAL_STREAMSTATUS:
 				tblstr(ctx, "kind", "streamstatus", top);
 					slimpush(mcbuf, sizeof(ev->data.external.streamstat.timestr) /
 					sizeof(ev->data.external.streamstat.timestr[0]), 
@@ -2393,17 +2437,17 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 					ev->data.external.streamstat.streaming!=0,top);
 			break;
 
-			case EVENT_EXTERNAL_NOTICE_SEGREQ:
+			case EVENT_EXTERNAL_SEGREQ:
 				tblstr(ctx, "kind", "segment_request", top);
 				tblnum(ctx, "reqid", ev->data.external.noticereq.id, top);
 				tblnum(ctx, "type", ev->data.external.noticereq.type, top); 
 			break;
 			
-			case EVENT_EXTERNAL_NOTICE_STATESIZE:
+			case EVENT_EXTERNAL_STATESIZE:
 				tblstr(ctx, "kind", "state_size", top);
 				tblnum(ctx, "state_size", ev->data.external.state_sz, top);
 			break;
-			case EVENT_EXTERNAL_NOTICE_RESOURCE:
+			case EVENT_EXTERNAL_RESOURCE:
 				tblstr(ctx, "kind", "resource_status", top);
 				tblstr(ctx, "message", (char*)ev->data.external.message, top);
 			break;
@@ -3201,7 +3245,7 @@ static int getgenres(lua_State* ctx)
 static int allocsurface(lua_State* ctx)
 {
 	LUA_TRACE("alloc_surface");
-	img_cons cons = {0};
+	img_cons cons = {};
 	cons.w = luaL_checknumber(ctx, 1);
 	cons.h = luaL_checknumber(ctx, 2);
 	cons.bpp = GL_PIXEL_BPP;
@@ -3342,6 +3386,8 @@ static int rawsurface(lua_State* ctx)
 	int desh = luaL_checknumber(ctx, 2);
 	int bpp  = luaL_checknumber(ctx, 3);
 
+	const char* dumpstr = luaL_optstring(ctx, 5, NULL);
+
 	if (bpp != 1 && bpp != 3 && bpp != 4)
 		arcan_fatal("rawsurface(), invalid source channel count (%d)"
 			"	accepted values: 1, 2, 4\n", bpp);
@@ -3371,7 +3417,7 @@ static int rawsurface(lua_State* ctx)
 						lua_rawgeti(ctx, 4, ofs++);
 						r = lua_tonumber(ctx, -1);
 						lua_pop(ctx, 1);
-						RGBAPACK( r, r, r, 0xff, cptr++ );
+						RGBAPACK(r, r, r, 0xff, cptr++);
 					break;
 
 					case 3:
@@ -3398,6 +3444,22 @@ static int rawsurface(lua_State* ctx)
 						RGBAPACK(r, g, b, a, cptr++);
 					}
 			}
+
+		if (dumpstr){
+			char* fname = arcan_expand_resource(dumpstr, false);
+			if (!fname)
+				arcan_warning("screenshot() -- refusing to overwrite existing "
+					"(%s)\n", fname);
+			else{
+				FILE* fpek = fopen(fname, "wb");
+				if (!fpek)
+					arcan_warning("screenshot() -- couldn't open (%s) "
+						"for writing.\n", fname);
+				else 
+					arcan_rgba32_pngfile(fpek, (char*)buf, desw, desh, 0);
+			}
+			free(fname);
+		}
 
 		arcan_vobj_id id = arcan_video_rawobject(buf, 
 			cons.w * cons.h * GL_PIXEL_BPP, cons, desw, desh, 0);
@@ -4417,15 +4479,6 @@ static char* lookup_hijack(int gameid)
 	return newstr;
 }
 
-static void escapestr(char* instr)
-{
-	while(instr && *instr){
-		if (*instr == ':')
-			*instr = '\t';
-		instr++;
-	}
-}
-
 static int targetalloc(lua_State* ctx)
 {
 	LUA_TRACE("target_alloc");
@@ -4528,7 +4581,7 @@ static int targetlaunch(lua_State* ctx)
 
 		char** argbase = cmdline.data.strarr;
 		while(*argbase)
-			escapestr(*argbase++);
+			colon_escape(*argbase++);
 
 		if (internal && resourcestr)
  /* for lib / frameserver targets, we assume that
@@ -4543,7 +4596,7 @@ static int targetlaunch(lua_State* ctx)
 						strlen(argstr ? argstr : "")  + 1;
 
 /* escape resource, unpack in frameserver fixes it */
-					escapestr(resourcestr);
+					colon_escape(resourcestr);
 					metastr = arcan_alloc_mem(arglim, ARCAN_MEM_STRINGBUF,
 						ARCAN_MEM_TEMPORARY, ARCAN_MEMALIGN_NATURAL);
 
@@ -6004,35 +6057,101 @@ void arcan_lua_eachglobal(lua_State* ctx, char* prefix,
 */
 }
 
+/* slightly more flexible argument management, just find the first callback */
+static inline intptr_t find_lua_callback(lua_State* ctx)
+{	
+	int nargs = lua_gettop(ctx);
+
+	for (int i = 1; i <= nargs; i++)
+		if (lua_isfunction(ctx, i)){
+			lua_pushvalue(ctx, i);
+			return luaL_ref(ctx, LUA_REGISTRYINDEX);
+		}
+
+	return (intptr_t) 0;
+}
+
+static inline int find_lua_type(lua_State* ctx, int type, int ofs)
+{
+	int nargs = lua_gettop(ctx);
+
+	for (int i = 1; i <= nargs; i++){
+		int ltype = lua_type(ctx, i);
+		if (ltype == type)
+			if (ofs-- == 0)
+				return i;
+	}
+
+	return 0;
+}
+
+static bool lua_launch_fsrv(lua_State* ctx, 
+	struct frameserver_envp* args, intptr_t callback)
+{
+	arcan_frameserver* intarget = arcan_frameserver_alloc();
+	intarget->tag = callback;
+
+	if (arcan_frameserver_spawn_server(intarget, *args) == ARCAN_OK){
+		lua_pushvid(ctx, intarget->vid);
+		return true;
+	}
+	else {
+		lua_pushvid(ctx, ARCAN_EID);
+		free(intarget);
+		return false;
+	}
+}
+
 static int net_listen(lua_State* ctx)
 {
 	LUA_TRACE("net_listen");
 
-	arcan_frameserver* intarget = arcan_frameserver_alloc();
-  int nargs =	lua_gettop(ctx);
-	intptr_t ref = 0;
+	intptr_t ref = find_lua_callback(ctx);
 
-/* slightly more flexible argument management, just find the first callback */
-	for (int i = 1; i <= nargs; i++){
-		if (lua_isfunction(ctx, i)){
-			lua_pushvalue(ctx, i);
-			ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
-			break;
-		}
-	}
-
-	intarget->tag = ref;
 	struct frameserver_envp args = {
 		.use_builtin = true,
 		.args.builtin.mode = "net-srv",
 		.args.builtin.resource = "mode=server"
 	};
+	lua_launch_fsrv(ctx, &args, ref);
 
-	if (arcan_frameserver_spawn_server(intarget, args) == ARCAN_OK)
-		lua_pushvid(ctx, intarget->vid);
-	else {
-		lua_pushvid(ctx, ARCAN_EID);
-		free(intarget);
+	return 1;
+}
+
+static int net_discover(lua_State* ctx)
+{
+	LUA_TRACE("net_discover");
+
+	int ind = find_lua_type(ctx, LUA_TSTRING, 0);
+	intptr_t ref = find_lua_callback(ctx);
+
+	if (ind){
+		const char* lua_str = luaL_checkstring(ctx, ind);
+		char consstr[] = "mode=client:discover:";
+		size_t tmplen = strlen(lua_str) + sizeof(consstr);
+
+		char* tmpstr = arcan_alloc_mem(tmplen, ARCAN_MEM_STRINGBUF,
+			ARCAN_MEM_TEMPORARY, ARCAN_MEMALIGN_NATURAL);
+		
+		snprintf(tmpstr, tmplen, "%s%s", consstr, lua_str);
+
+ 		struct frameserver_envp args = {
+			.args.builtin.mode = "net-cl",
+			.use_builtin = true,
+			.args.builtin.resource = tmpstr
+		};
+
+		lua_launch_fsrv(ctx, &args, ref);
+		arcan_mem_free(tmpstr);
+	} 
+	else 
+	{
+		struct frameserver_envp args = {
+			.args.builtin.mode = "net-cl",
+			.use_builtin = true,
+			.args.builtin.resource = "mode=client:discover"
+		};
+		lua_launch_fsrv(ctx, &args, ref);
 	}
 
 	return 1;
@@ -6041,37 +6160,21 @@ static int net_listen(lua_State* ctx)
 static int net_open(lua_State* ctx)
 {
 	LUA_TRACE("net_open");
-	arcan_frameserver* intarget = arcan_frameserver_alloc();
 
-	const char* host = lua_isstring(ctx, 1) ? luaL_checkstring(ctx, 1) : NULL;
-	int nargs = lua_gettop(ctx);
-	intptr_t ref = 0;
+	char* host = lua_isstring(ctx, 1) ? 
+		(char*) luaL_checkstring(ctx, 1) : NULL;
 
-/* slightly more flexible argument management, just find the first callback */
-	for (int i = 1; i <= nargs; i++)
-		if (lua_isfunction(ctx, i)){
-			lua_pushvalue(ctx, i);
-			ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
-			break;
-		}
+	intptr_t ref = find_lua_callback(ctx);
 
 /* populate and escape, due to IPv6 addresses etc. actively using :: */
 	char* workstr = NULL;
 	size_t work_sz = 0;
 
-	if (host){
-		workstr = strdup(host);
-		char* tmpstr = workstr;
-		while (*tmpstr){
-			if (*tmpstr == ':') *tmpstr = '\t';
-			tmpstr++;
-		}
-
-		work_sz = strlen(workstr);
-	}
+	if (host)
+		colon_escape(host);
 
 	char* instr = arcan_alloc_mem(work_sz + strlen("mode=client:host=") + 1,
-		ARCAN_MEM_STRINGBUF, 0, ARCAN_MEMALIGN_NATURAL);
+		ARCAN_MEM_STRINGBUF, ARCAN_MEM_TEMPORARY, ARCAN_MEMALIGN_NATURAL);
 
 	sprintf(instr,"mode=client%s%s", host ? ":host=" : "", workstr ? workstr:"");
 
@@ -6081,14 +6184,7 @@ static int net_open(lua_State* ctx)
 		.args.builtin.resource = instr
 	};
 
-	intarget->tag = ref;
-	if (arcan_frameserver_spawn_server(intarget, args) == ARCAN_OK){
-		lua_pushvid(ctx, intarget->vid);
-	}
-	else {
-		lua_pushvid(ctx, ARCAN_EID);
-		free(intarget);
-	}
+	lua_launch_fsrv(ctx, &args, ref);
 
 	free(instr);
 	free(workstr);
@@ -6443,6 +6539,7 @@ static const luaL_Reg tgtfuns[] = {
 {"input_target",               targetinput              },
 {"suspend_target",             targetsuspend            },
 {"resume_target",              targetresume             },
+{"drop_target",                targetdrop               },
 {"target_portconfig",          targetportcfg            },
 {"target_framemode",           targetskipmodecfg        },
 {"target_verbose",             targetverbose            },
@@ -6685,6 +6782,7 @@ static const luaL_Reg netfuns[] = {
 {"net_listen",       net_listen      },
 {"net_push_srv",     net_pushsrv     },
 {"net_disconnect",   net_disconnect  },
+{"net_discover",     net_discover    },
 {"net_authenticate", net_authenticate},
 {"net_accept",       net_accept      },
 {"net_refresh",      net_refresh     },

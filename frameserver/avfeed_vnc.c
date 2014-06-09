@@ -25,7 +25,6 @@ static struct {
 
 static int symtbl_out[1024];
 static int* symtbl_in;
-static int track_modifier(int key, bool active);
 
 int mouse_button_map[] = { 
 	rfbButton1Mask,
@@ -141,62 +140,6 @@ static void client_connect(const char* host)
 	}
 
 	LOG("(vnc-cl) connected.\n");
-}
-
-static void server_pointer (int buttonMask,int x,int y,rfbClientPtr cl)
-{
-
-}
-
-static void server_key(rfbBool down,rfbKeySym key,rfbClientPtr cl)
-{
-	
-}
-
-static enum rfbNewClientAction server_newclient(rfbClientPtr cl)
-{
-	return RFB_CLIENT_ACCEPT;
-}
-
-static void server_loop()
-{
-	const char* argv[] = {
-		"listennofork",
-		"scale",
-		 "1",
-		 NULL
-	};
-
-	int argc = 3;
-
-	rfbScreenInfoPtr server = rfbGetScreen(&argc, (char**) argv, 
-		vncctx.shmcont.addr->w, vncctx.shmcont.addr->h, 8, 3, 4); 
-
-	server->frameBuffer = (char*) vncctx.shmcont.vidp;
-	server->desktopName = "arcan VNC session";
-	server->alwaysShared = TRUE; /* what does this one do? */
-	server->ptrAddEvent = server_pointer;
-	server->kbdAddEvent = server_key;
-	server->newClientHook = server_newclient;
-
-	rfbInitServer(server);
-	rfbRunEventLoop(server, -1, TRUE);
-
-	arcan_event ev;
-	while (arcan_event_wait(&vncctx.shmcont.outev, &ev)){
-		switch(ev.kind){
-		case TARGET_COMMAND_STEPFRAME:
-/* approximate the deviating rectangle, transfer and set flag,
- * remove flag on send rfbMarkRectAsModified(server,0,0,WIDTH,HEIGHT);
- */
-		break;
-/*
- *rfbRegisterTightVNCFileTransferExtension();
- */
-		default:
-		break;
-		}
-	}
 }
 
 static void cleanup()
@@ -528,14 +471,6 @@ void arcan_frameserver_avfeed_run(const char* resource,
 	
 	gen_symtbl();
 
-	if (strcmp(host, "listen") == 0){
-/* dimensions is set by the parent, so just acquire and use. */
-		vncctx.shmcont = arcan_shmif_acquire(keyfile, SHMIF_OUTPUT, true, false); 
-		arcan_sem_post(vncctx.shmcont.vsem);
-		server_loop();
-		return;
-	}
-
 /* client connect / loop */
 	int port = 5900;
 	const char* argtmp = NULL;
@@ -556,7 +491,7 @@ void arcan_frameserver_avfeed_run(const char* resource,
 		if (-1 == rc){
 			arcan_event outev = {
 				.category = EVENT_EXTERNAL,
-				.kind = EVENT_EXTERNAL_NOTICE_FAILURE,
+				.kind = EVENT_EXTERNAL_FAILURE,
 				.data.external.message = "(01) server connection broken"
 			};
 
@@ -568,7 +503,7 @@ void arcan_frameserver_avfeed_run(const char* resource,
 			if (!HandleRFBServerMessage(vncctx.client)){
 				arcan_event outev = {
 					.category = EVENT_EXTERNAL,
-					.kind = EVENT_EXTERNAL_NOTICE_FAILURE,
+					.kind = EVENT_EXTERNAL_FAILURE,
 					.data.external.message = "(02) couldn't parse server message"
 				};
 

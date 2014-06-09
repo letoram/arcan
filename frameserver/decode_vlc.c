@@ -165,7 +165,7 @@ static void audio_flush()
 {
 	pthread_mutex_lock(&decctx.tsync);
 		arcan_event ev = {
-			.kind = EVENT_EXTERNAL_NOTICE_FLUSHAUD,
+			.kind = EVENT_EXTERNAL_FLUSHAUD,
 			.category = EVENT_EXTERNAL
 		};
 
@@ -209,7 +209,7 @@ static void push_streamstatus()
 
 	struct arcan_event status = {
 		.category = EVENT_EXTERNAL,
-		.kind = EVENT_EXTERNAL_NOTICE_STREAMSTATUS,
+		.kind = EVENT_EXTERNAL_STREAMSTATUS,
 		.data.external.streamstat.frameno = c++
 	};
 

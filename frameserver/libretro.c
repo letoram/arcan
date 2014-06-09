@@ -638,7 +638,7 @@ static void update_varset( struct retro_variable* data )
 	int count = 0;
 	arcan_event outev = {
 		.category = EVENT_EXTERNAL,
-		.kind = EVENT_EXTERNAL_NOTICE_COREOPT
+		.kind = EVENT_EXTERNAL_COREOPT
 	};
 
 	size_t msgsz = sizeof(outev.data.external.message) / 
@@ -1445,7 +1445,7 @@ static void setup_3dcore(struct retro_hw_render_callback* ctx)
  */
 	arcan_event ev = {
 		.category = EVENT_EXTERNAL,
-		.kind = EVENT_EXTERNAL_NOTICE_SEGREQ
+		.kind = EVENT_EXTERNAL_SEGREQ
 	};
 
 	arcan_event_enqueue(&retroctx.outevq, &ev);
@@ -1601,7 +1601,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 /* send some information on what core is actually loaded etc. */
 		arcan_event outev = {
 			.category = EVENT_EXTERNAL,
-			.kind = EVENT_EXTERNAL_NOTICE_IDENT
+			.kind = EVENT_EXTERNAL_IDENT
 		};
 
 		size_t msgsz = sizeof(outev.data.external.message) / 
@@ -1636,7 +1636,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		retroctx.gameinfo.size = bufsize;
 		
 /* load the game, and if that fails, give up */
-		outev.kind = EVENT_EXTERNAL_NOTICE_RESOURCE;
+		outev.kind = EVENT_EXTERNAL_RESOURCE;
 		snprintf((char*)outev.data.external.message, msgsz, "loading");
 		arcan_event_enqueue(&retroctx.outevq, &outev);
 		if (snprintf(logbuf, logbuf_sz, "loading game...") >= logbuf_sz)
@@ -1717,7 +1717,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
  * savestate might possibly be, the frontend need to know this in order 
  * to determine strategy for netplay and for enabling / disabling savestates */
 		retroctx.state_sz = retroctx.serialize_size();
-		outev.kind = EVENT_EXTERNAL_NOTICE_STATESIZE;
+		outev.kind = EVENT_EXTERNAL_STATESIZE;
 		outev.category = EVENT_EXTERNAL;
 		outev.data.external.state_sz = retroctx.state_sz; 
 		arcan_event_enqueue(&retroctx.outevq, &outev);
@@ -1774,7 +1774,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 
 /* some FE applications need a grasp of "where" we are frame-wise, 
  * particularly for single-stepping etc. */
-			outev.kind = EVENT_EXTERNAL_NOTICE_FRAMESTATUS;
+			outev.kind = EVENT_EXTERNAL_FRAMESTATUS;
 			outev.data.external.framestatus.framenumber++;
 			arcan_event_enqueue(&retroctx.outevq, &outev);
 

@@ -302,7 +302,7 @@ bool net_hl_decode(struct conn_state* self,
 			} 
 			else {
 				arcan_event outev = {
-					.kind = EVENT_EXTERNAL_NOTICE_SEGREQ,
+					.kind = EVENT_EXTERNAL_SEGREQ,
 					.category = EVENT_EXTERNAL,
 					.data.external.noticereq.width = desw,
 					.data.external.noticereq.height = desh
