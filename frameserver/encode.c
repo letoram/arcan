@@ -28,9 +28,6 @@
 struct {
 /* IPC */
 	struct arcan_shmif_cont shmcont;
-	struct arcan_evctx inevq;
-	struct arcan_evctx outevq; /* UNUSED */
-	uint8_t* vidp, (* audp);   /* precalc dstptrs into shm */
 	int lastfd;        /* sent from parent */
 
 /* Multiplexing / Output */
@@ -92,7 +89,7 @@ struct {
 static void flush_audbuf()
 {
 	size_t ntc = recctx.shmcont.addr->abufused;
-	uint8_t* dataptr = recctx.audp;
+	uint8_t* dataptr = recctx.shmcont.audp;
 	
 	if (!recctx.acontext){
 		recctx.shmcont.addr->abufused = 0;
@@ -312,7 +309,7 @@ forceencode:
 
 static int encode_video(bool flush)
 {
-	uint8_t* srcpl[4] = {recctx.vidp, NULL, NULL, NULL};
+	uint8_t* srcpl[4] = {recctx.shmcont.vidp, NULL, NULL, NULL};
 	int srcstr[4] = {0, 0, 0, 0};
 	srcstr[0] = recctx.vcontext->width * recctx.bpp;
 
@@ -481,7 +478,7 @@ static void log_callback(void* ptr, int level, const char* fmt, va_list vl)
 /*
  * expects ccontext to be populated elsewhere
  */
-static bool setup_ffmpeg_encode(const char* resource, int desw, int desh)
+static bool setup_ffmpeg_encode(struct arg_arr* args, int desw, int desh)
 {
 	struct arcan_shmif_page* shared = recctx.shmcont.addr;
 	assert(shared);
@@ -515,12 +512,7 @@ static bool setup_ffmpeg_encode(const char* resource, int desw, int desh)
 
 	bool noaudio = false, stream_outp = false;
 	float fps    = 25;
-
-	struct arg_arr* args = arg_unpack(resource);
-	if (!args){
-		LOG("(encode) Couldn't parse arguments: \"%s\"\n", resource);
-	}
-		
+	
 	const char (* vck) = NULL, (* ack) = NULL, (* cont) = NULL,
 		(* streamdst) = NULL;
 
@@ -548,8 +540,8 @@ static bool setup_ffmpeg_encode(const char* resource, int desw, int desh)
 
 /* sanity- check decoded values */
 	if (fps < 4 || fps > 60){
-			LOG("(encode:%s) bad framerate (fps) argument,"
-				"	defaulting to 25.0fps\n", resource);
+			LOG("(encode:) bad framerate (fps) argument, "
+				"defaulting to 25.0fps\n");
 			fps = 25;
 	}
 
@@ -593,10 +585,7 @@ static bool setup_ffmpeg_encode(const char* resource, int desw, int desh)
 		return false;
 	}
 
-	arcan_shmif_calcofs(shared, &(recctx.vidp), &(recctx.audp) );
-
 	if (video.storage.video.codec){
-
 		if ( video.setup.video(&video, desw, desh, fps, vbr, stream_outp) ){
 			recctx.encvbuf_sz = desw * desh * bpp;
 			recctx.bpp = bpp;
@@ -687,8 +676,8 @@ int arcan_frameserver_encode_intrun(const char* resstr,
 	recctx.ccontext   = sws_getContext(w, h, PIX_FMT_RGBA, 
 		w, h, PIX_FMT_YUV420P, SWS_FAST_BILINEAR, NULL, NULL, NULL);
 
-	recctx.vidp = vidp;
-	recctx.audp = audp;
+	recctx.shmcont.vidp = vidp;
+	recctx.shmcont.audp = audp;
 
 	char* output_fname = "default.mkv";
 	recctx.lastfd = open(output_fname, O_CREAT | O_RDWR, 0700);
@@ -706,14 +695,138 @@ int arcan_frameserver_encode_intrun(const char* resstr,
 	return 1;
 }
 
+#ifdef HAVE_VNCSERVER
+#include <rfb/rfb.h>
+static struct {
+	const char* pass;
+	pthread_mutex_t outsync;
+	rfbScreenInfoPtr server;
+} vncctx = {0};
+
+static void server_pointer (int buttonMask,int x,int y,rfbClientPtr cl)
+{
+	printf("%d, %d\n", x, y);
+}
+
+static void server_key(rfbBool down,rfbKeySym key,rfbClientPtr cl)
+{
+	printf("keysym: %d\n", key);	
+}
+
+static enum rfbNewClientAction server_newclient(rfbClientPtr cl)
+{
+	return RFB_CLIENT_ACCEPT;
+}
+
+static void vnc_serv_deltaupd()
+{
+	printf("updating: %d, %d\n", recctx.shmcont.addr->w, recctx.shmcont.addr->h);
+	rfbMarkRectAsModified(vncctx.server, 0, 0, recctx.shmcont.addr->w,
+		recctx.shmcont.addr->h);
+	arcan_sem_post(recctx.shmcont.vsem);
+}
+
+static void vnc_serv_run(struct arg_arr* args)
+{
+/* at this point, we really should drop ALL syscalls 
+ * that aren't strict related to socket manipulation */
+	int port = 5900;
+
+	const char* name = "Arcan VNC session";
+	const char* tmpstr;
+
+	arg_lookup(args, "name", 0, &name);
+	arg_lookup(args, "pass", 0, &vncctx.pass);
+
+	if (arg_lookup(args, "port", 0, &tmpstr)){
+		port = strtoul(tmpstr, NULL, 10);
+	}
+
+	int argc = 0;
+	char* argv[] = {NULL};
+
+	vncctx.server = rfbGetScreen(&argc, (char**) argv, 
+		recctx.shmcont.addr->w, recctx.shmcont.addr->h, 8, 3, 4); 
+
+/*
+ * other relevant members;
+ * width, height, (nevershared or alwaysshared) dontdisconnect, 
+ * port, autoport, width should be %4==0,
+ * permitFileTransfer, maxFd, authPasswd, ...
+ */
+
+	vncctx.server->frameBuffer = (char*) recctx.shmcont.vidp;
+	vncctx.server->desktopName = "Arcan VNC session";
+	vncctx.server->alwaysShared = TRUE;
+	vncctx.server->ptrAddEvent = server_pointer;
+	vncctx.server->newClientHook = server_newclient;
+	vncctx.server->kbdAddEvent = server_key;
+	vncctx.server->port = port;
+
+/*
+ * other hooks;
+ * server->getCursorPtr, setTranslateFunction, displayHook,
+ * displayFinishedHook, KeyboardLedStateHook, xvpHook, setXCutText
+ *
+ */
+
+/* signal that we're ready to receive */
+	arcan_sem_post(recctx.shmcont.vsem);
+
+	rfbInitServer(vncctx.server);
+	rfbRunEventLoop(vncctx.server, -1, TRUE);
+
+	arcan_event ev;
+	while (arcan_event_wait(&recctx.shmcont.inev, &ev) != 0){
+		if (ev.category != EVENT_TARGET)
+			continue;
+
+		switch(ev.kind){
+		case TARGET_COMMAND_STEPFRAME:
+			LOG("stepframe\n");
+			vnc_serv_deltaupd();
+		break;
+
+		case TARGET_COMMAND_EXIT:
+			goto done;
+		break;
+
+		default:
+			LOG("unknown: %d\n", ev.kind); 
+		}
+	}
+
+done:
+	return;
+}
+
+#endif
+
 void arcan_frameserver_encode_run(const char* resource,
 	const char* keyfile)
 {
-/* setup shmpage etc. resolution etc. is already in 
- * place thanks to the parent */
+	struct arg_arr* args = arg_unpack(resource);
+	if (!args){
+		LOG("(encode) Couldn't parse arguments: \"%s\"\n", resource);
+		return;
+	}
+
+	/* setup shmpage etc. 
+ * resolution etc. is already defined in the parent */ 
 	recctx.shmcont = arcan_shmif_acquire(keyfile, SHMIF_OUTPUT, true, false);
-	arcan_shmif_setevqs(recctx.shmcont.addr, recctx.shmcont.esem, 
-		&(recctx.inevq), &(recctx.outevq), false);
+
+	const char* argval;
+	if (arg_lookup(args, "protocol", 0, &argval)){
+#ifdef HAVE_VNCSERVER
+		if (strcmp(argval, "vnc") == 0){
+			vnc_serv_run(args);
+			return;
+		}
+#endif
+
+		LOG("unsupported encoding protocol (%s) specified, giving up.\n", argval);
+		return;
+	}
 
 	bool firstframe = false;
 
@@ -724,7 +837,7 @@ void arcan_frameserver_encode_run(const char* resource,
 /* fail here means there's something wrong with 
  * frameserver - main app connection */
 		arcan_event ev;
-		if (0 == arcan_event_wait(&recctx.inevq, &ev))
+		if (0 == arcan_event_wait(&recctx.shmcont.inev, &ev))
 			break;
 
 		if (ev.category == EVENT_TARGET){
@@ -741,7 +854,7 @@ void arcan_frameserver_encode_run(const char* resource,
 				recctx.lastfd = frameserver_readhandle(&ev);
 #endif
 				LOG("received file-descriptor, setting up encoder.\n");
-				if (!setup_ffmpeg_encode(resource, recctx.shmcont.addr->w,
+				if (!setup_ffmpeg_encode(args, recctx.shmcont.addr->w,
 					recctx.shmcont.addr->h))
 					return;
 				else{

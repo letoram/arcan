@@ -52,6 +52,7 @@ option(ENABLE_LIBRETRO "Build with libretro support in frameserver" ON)
 option(ENABLE_LIBRETRO3D "Add 3D core support to libretro frameserver" ON)
 option(ENABLE_VIDDEC "Build with libVLC video decoding support in frameserver" ON)
 option(ENABLE_VIDENC "Build with FFMPEG video encoding support in frameserver" ON)
+option(ENABLE_VIDENCVNC "Build video encoder with VNC server support" ON)
 option(ENABLE_LED "Build with LED controller support in core" ON)
 option(ENABLE_HMD "Build with Head-Mounted Display support in core" ON)
 option(ENABLE_SIMD "Build with SIMD vector instruction set support" ON)
@@ -79,6 +80,7 @@ message("")
 message("   -DENABLE_NET=[On|Off] : Build networking frameserver (requires apache portable runtime libraries, APR)")
 message("   -DENABLE_VIDDEC=[On|Off] : Build video decoding frameserver (requires libvlc libraries)")
 message("   -DENABLE_VIDENC=[On|Off] : Build video encoding frameserver (requires ffmpeg libraries)")
+message("   -DENABLE_VIDENCVNC=[On|Off] :       |-> Add VNC server support (if libvncserver is found)")
 message("")
 message("   -DENABLE_LIBRETRO=[On|Off] : Build libretro frameserver")
 message("   -DENABLE_LIRETRO3D=[On|Off] : |--> Enable 3D support in libretro frameserver")
@@ -477,6 +479,7 @@ endif()
 
 if (${ENABLE_VIDENC})
 	FIND_PACKAGE ( FFMPEG REQUIRED)
+
 	message("--> Adding video encoding (ffmpeg) support.") 
 	set(FSRV_ENCODE_LIBRARIES 
 		${FFMPEG_LIBRARIES}
@@ -490,6 +493,18 @@ if (${ENABLE_VIDENC})
 		frameserver/encode_presets.c
 		frameserver/encode_presets.h
 	)
+
+	if (${ENABLE_VIDENCVNC})
+		FIND_PACKAGE(VNC)
+		if (${LIBVNC_FOUND}) 
+			message("   |--> VNC Server libraries found, enabling vnc support in encoder.")
+			list(APPEND INCLUDE_DIRS ${LIBVNC_INCLUDE_DIRS})
+			set_property(SOURCE frameserver/encode.c PROPERTY COMPILE_DEFINITIONS HAVE_VNCSERVER)
+		 	list(APPEND FSRV_ENCODE_LIBRARIES ${LIBVNC_LIBRARIES})
+		else()
+			message("   |--> VNC Server libraries not found, disabling vnc support.")
+		endif()	
+	endif()
 
 	list(APPEND INCLUDE_DIRS
 		${FFMPEG_INCLUDE_DIRS}

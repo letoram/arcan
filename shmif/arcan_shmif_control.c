@@ -473,8 +473,9 @@ bool arcan_shmif_resize(struct arcan_shmif_cont* arg,
  * re-using the "wait on sync-fd" approach might
  * be worthwile (test latency to be sure). 
  */
-		while(arg->addr->resized && arg->addr->dms);
-			arcan_shmif_calcofs(arg->addr, &arg->vidp, &arg->audp);
+	while(arg->addr->resized && arg->addr->dms)
+		;
+	arcan_shmif_calcofs(arg->addr, &arg->vidp, &arg->audp);
 
 	return true;
 }
