@@ -696,6 +696,7 @@ int arcan_frameserver_encode_intrun(const char* resstr,
 }
 
 #ifdef HAVE_VNCSERVER
+#include "xsymconv.h"
 #include <rfb/rfb.h>
 static struct {
 	const char* pass;
@@ -705,12 +706,39 @@ static struct {
 
 static void server_pointer (int buttonMask,int x,int y,rfbClientPtr cl)
 {
-	printf("%d, %d\n", x, y);
+	arcan_event outev = {
+		.category = EVENT_EXTERNAL,
+		.kind = EVENT_EXTERNAL_CURSORINPUT,
+		.data.external.cursor.id = 0,
+		.data.external.cursor.x = x,
+		.data.external.cursor.y = y
+	};
+
+	outev.data.external.cursor.buttons[0] = buttonMask & (1 << 1);
+	outev.data.external.cursor.buttons[1] = buttonMask & (1 << 2);
+	outev.data.external.cursor.buttons[2] = buttonMask & (1 << 3);
+	outev.data.external.cursor.buttons[3] = buttonMask & (1 << 4);
+	outev.data.external.cursor.buttons[4] = buttonMask & (1 << 5);
+
+	LOG("sending cursor event: %d, %d\n", x, y);
+	arcan_event_enqueue(&recctx.shmcont.outev, &outev);
 }
 
 static void server_key(rfbBool down,rfbKeySym key,rfbClientPtr cl)
 {
-	printf("keysym: %d\n", key);	
+	arcan_event outev = {
+		.category = EVENT_EXTERNAL,
+		.kind = EVENT_EXTERNAL_KEYINPUT,
+		.data.external.key.id = 0,
+		.data.external.key.keysym = 0,
+		.data.external.key.active = down
+	};
+
+	if (key < 65536)
+		outev.data.external.key.keysym = symtbl_in[key]; 
+
+	LOG("sending key event: %d\n", outev.data.external.key.keysym);
+	arcan_event_enqueue(&recctx.shmcont.outev, &outev);
 }
 
 static enum rfbNewClientAction server_newclient(rfbClientPtr cl)
@@ -720,7 +748,12 @@ static enum rfbNewClientAction server_newclient(rfbClientPtr cl)
 
 static void vnc_serv_deltaupd()
 {
-	printf("updating: %d, %d\n", recctx.shmcont.addr->w, recctx.shmcont.addr->h);
+/*
+ * FIXME: subdivide image into a dynamic set of tiles,
+ * maintain a backbuffer, compare each tile center (and shared corners)
+ * for changes, if change detected, scan outwards until match found.
+ * Mark each rect-region as modified.
+ */
 	rfbMarkRectAsModified(vncctx.server, 0, 0, recctx.shmcont.addr->w,
 		recctx.shmcont.addr->h);
 	arcan_sem_post(recctx.shmcont.vsem);
@@ -731,6 +764,7 @@ static void vnc_serv_run(struct arg_arr* args)
 /* at this point, we really should drop ALL syscalls 
  * that aren't strict related to socket manipulation */
 	int port = 5900;
+	gen_symtbl();
 
 	const char* name = "Arcan VNC session";
 	const char* tmpstr;
@@ -755,6 +789,9 @@ static void vnc_serv_run(struct arg_arr* args)
  * permitFileTransfer, maxFd, authPasswd, ...
  */
 
+/*
+ * FIXME: missing password auth
+ */
 	vncctx.server->frameBuffer = (char*) recctx.shmcont.vidp;
 	vncctx.server->desktopName = "Arcan VNC session";
 	vncctx.server->alwaysShared = TRUE;
@@ -783,7 +820,6 @@ static void vnc_serv_run(struct arg_arr* args)
 
 		switch(ev.kind){
 		case TARGET_COMMAND_STEPFRAME:
-			LOG("stepframe\n");
 			vnc_serv_deltaupd();
 		break;
 

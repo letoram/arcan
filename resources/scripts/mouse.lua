@@ -506,6 +506,16 @@ function mouse_droplistener(tbl)
 	end
 end
 
+function mouse_hide()
+	instant_image_transform(mstate.cursor);
+	blend_image(mstate.cursor, 0.0, 20, INTERP_EXPOUT);
+end
+
+function mouse_show()
+	instant_image_transform(mstate.cursor);
+	blend_image(mstate.cursor, 1.0, 20, INTERP_EXPOUT);
+end
+
 function mouse_tick(val)
 	mstate.counter = mstate.counter + val;
 	mstate.hover_count = mstate.hover_count + 1;

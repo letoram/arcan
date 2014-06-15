@@ -374,6 +374,18 @@ typedef struct arcan_extevent {
 		int32_t state_sz;
 
 		struct {
+			uint8_t id;
+			uint32_t x, y;
+			uint8_t buttons[5];
+		} cursor;
+
+		struct{
+			uint8_t id;
+			int keysym;
+			uint8_t active;
+		} key;
+
+		struct {
 			uint8_t message[3]; /* 3 character country code */
 			uint8_t streamid;   /* key used to tell the decoder to switch */
 			uint8_t datakind;   /* 0: audio, 1: video, 2: text, 3: overlay */

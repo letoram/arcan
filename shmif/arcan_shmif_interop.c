@@ -75,7 +75,6 @@ int arcan_event_wait(struct arcan_evctx* ctx, struct arcan_event* dst)
 	volatile int* ks = (volatile int*) ctx->synch.killswitch;
 
 	while (*ctx->front == *ctx->back && *ks){
-		fprintf(stderr, "going to sleep, eventqueue empty\n");	
 		arcan_sem_wait(ctx->synch.handle);
 	}
 	
