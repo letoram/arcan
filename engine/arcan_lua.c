@@ -2437,6 +2437,25 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 					ev->data.external.streamstat.streaming!=0,top);
 			break;
 
+			case EVENT_EXTERNAL_CURSORINPUT:
+				tblstr(ctx, "kind", "cursor_input", top);
+				tblnum(ctx, "id", ev->data.external.cursor.id, top);
+				tblnum(ctx, "x", ev->data.external.cursor.x, top);
+				tblnum(ctx, "y", ev->data.external.cursor.y, top);
+				tblbool(ctx, "button_1", ev->data.external.cursor.buttons[0], top);
+				tblbool(ctx, "button_2", ev->data.external.cursor.buttons[1], top);
+				tblbool(ctx, "button_3", ev->data.external.cursor.buttons[2], top);
+				tblbool(ctx, "button_4", ev->data.external.cursor.buttons[3], top);
+				tblbool(ctx, "button_5", ev->data.external.cursor.buttons[4], top);
+			break;
+
+			case EVENT_EXTERNAL_KEYINPUT:
+				tblstr(ctx, "kind", "key_input", top);
+				tblnum(ctx, "id", ev->data.external.cursor.id, top);
+				tblnum(ctx, "keysym", ev->data.external.key.keysym, top);
+				tblbool(ctx, "active", ev->data.external.key.active, top);	
+			break;
+
 			case EVENT_EXTERNAL_SEGREQ:
 				tblstr(ctx, "kind", "segment_request", top);
 				tblnum(ctx, "reqid", ev->data.external.noticereq.id, top);
