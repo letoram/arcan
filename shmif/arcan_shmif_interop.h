@@ -45,18 +45,18 @@
  * resided in the platform subdirectories or as part of 
  * arcan_general.h */
 
-#ifdef _WIN32
-#include PLATFORM_HEADER
-#else
-#define BADFD -1
-#include <pthread.h>
-#include <semaphore.h>
-
-typedef int pipe_handle;
-typedef int file_handle;
-typedef pid_t process_handle;
-typedef sem_t* sem_handle;
+#ifndef LOG
+#define LOG(...) (fprintf(stderr, __VA_ARGS__))
 #endif
+
+/*
+ * this header should define the types:
+ * pipe_handle, file_handle, process_handle, sem_handle, arcan_errc
+ * arcan_vobj_id, arcan_aobj_id (unused in shmif)
+ * along with semaphore handling prototypes and timing functions.
+ * See the default platform/platform.h header for examples.
+ */
+#include PLATFORM_HEADER
 
 struct arcan_event;
 struct arcan_evctx;
@@ -66,18 +66,6 @@ struct arcan_evctx;
  * implemented and pulled in, shouldn't be more complicated than
  * mapping to the corresponding platform/ functions. 
  */
-long long int arcan_timemillis();
-void arcan_timesleep(unsigned long);
-
-int arcan_sem_post(sem_handle sem);
-int arcan_sem_unlink(sem_handle sem, char* key);
-int arcan_sem_wait(sem_handle sem);
-int arcan_sem_trywait(sem_handle sem);
-
-typedef int8_t arcan_errc;
-typedef long long arcan_vobj_id;
-typedef int arcan_aobj_id;
-
 /*
  * Try and dequeue the element in the front of the queue with (wait)
  * or without (poll) blocking execution. 

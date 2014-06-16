@@ -17,7 +17,7 @@ message("---- Building frameserver in SPLIT mode ----")
 			${FSRV_DECODE_SOURCES}
 		)
 		set_property(TARGET arcan_frameserver_movie APPEND PROPERTY
-			COMPILE_DEFINITIONS ENABLE_FSRV_DECODE)
+			COMPILE_DEFINITIONS ENABLE_FSRV_DECODE DEFAULT_FSRV_MODE=\"movie\")
 		target_link_libraries(arcan_frameserver_movie 
 			${STDLIB} 
 			${FSRV_PLATFORM_LIBRARIES}
@@ -33,7 +33,7 @@ message("---- Building frameserver in SPLIT mode ----")
 			${FSRV_ENCODE_SOURCES}
 		)
 		set_property(TARGET arcan_frameserver_record APPEND PROPERTY
-			COMPILE_DEFINITIONS ENABLE_FSRV_ENCODE)	
+			COMPILE_DEFINITIONS ENABLE_FSRV_ENCODE DEFAULT_FSRV_MODE=\"record\")
 		target_link_libraries(arcan_frameserver_record 
 			${STDLIB} 
 			${FSRV_PLATFORM_LIBRARIES}
@@ -49,7 +49,7 @@ message("---- Building frameserver in SPLIT mode ----")
 			${FSRV_AVFEED_SOURCES}
 		)
 		set_property(TARGET arcan_frameserver_avfeed APPEND PROPERTY
-			COMPILE_DEFINITIONS ENABLE_FSRV_AVFEED)
+			COMPILE_DEFINITIONS ENABLE_FSRV_AVFEED DEFAULT_FSRV_MODE=\"avfeed\")
 		target_link_libraries(arcan_frameserver_avfeed
 			${STDLIB}
 			${FSRV_AVFEED_LIBRARIES}
@@ -63,8 +63,9 @@ message("---- Building frameserver in SPLIT mode ----")
 			${FSRV_PLATFORM_SOURCES}
 			${FSRV_NET_SOURCES}
 		)
+# shouldn't be run as non-auth. 
 		set_property(TARGET arcan_frameserver_net APPEND PROPERTY
-			COMPILE_DEFINITIONS ENABLE_FSRV_NET)
+			COMPILE_DEFINITIONS ENABLE_FSRV_NET	DEFAULT_FSRV_MODE=\"\")
 		target_link_libraries(arcan_frameserver_net 
 			${STDLIB}
 			${FSRV_PLATFORM_LIBRARIES}
@@ -80,7 +81,7 @@ message("---- Building frameserver in SPLIT mode ----")
 			${FSRV_LIBRETRO_SOURCES}
 		)
 		set_property(TARGET arcan_frameserver_libretro APPEND PROPERTY
-						COMPILE_DEFINITIONS ENABLE_FSRV_LIBRETRO) 
+			COMPILE_DEFINITIONS ENABLE_FSRV_LIBRETRO DEFAULT_FSRV_MODE=\"libretro\") 
 		target_link_libraries(arcan_frameserver_libretro 
 			${STDLIB}
 			${FSRV_PLATFORM_LIBRARIES}

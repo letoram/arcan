@@ -43,7 +43,7 @@
 
 #ifdef FRAMESERVER_LIBRETRO_3D
 #include GL_HEADERS
-#ifdef FRAMSESERVER_LIBRETRO_3D_RETEXTURE
+#ifdef FRAMESERVER_LIBRETRO_3D_RETEXTURE
 #include "retexture.h"
 #endif
 #include "../platform/platform.h"

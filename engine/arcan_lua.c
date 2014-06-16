@@ -80,6 +80,7 @@
 	#define lua_rawlen(x, y) lua_objlen(x, y)
 #endif
 
+#include "arcan_shmif.h"
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_video.h"
@@ -7081,7 +7082,7 @@ static inline void dump_props(FILE* dst, surface_properties props)
 	fprintf_float(dst, "props.opacity = ", props.opa, ";\n");
 }
 
-static inline int qused(arcan_evctx* dq)
+static inline int qused(struct arcan_evctx* dq)
 {
 	return *(dq->front) > *(dq->back) ? dq->eventbuf_sz -
 	*(dq->front) + *(dq->back) : *(dq->back) - *(dq->front);

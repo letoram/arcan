@@ -34,6 +34,7 @@
 #include <al.h>
 #include <alc.h>
 
+#include "arcan_shmif.h"
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_video.h"

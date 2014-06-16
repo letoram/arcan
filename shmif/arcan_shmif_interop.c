@@ -5,7 +5,7 @@
  All rights reserved.
  
  Redistribution and use in source and binary forms, 
- with or without modification, are permitted provided that the 
+ ,with or without modification, are permitted provided that the 
  following conditions are met:
  
  1. Redistributions of source code must retain the above copyright notice, 
@@ -87,7 +87,7 @@ int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src)
 /* child version doesn't use any masking */
 
 	while ( ((*ctx->back + 1) % ctx->eventbuf_sz) == *ctx->front){
-		fprintf(stderr, "going to sleep, eventqueue full\n");
+		LOG("arcan_event_enqueue(), going to sleep, eventqueue full\n");
 		arcan_sem_wait(ctx->synch.handle);
 	}
 	

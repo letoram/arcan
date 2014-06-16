@@ -38,6 +38,7 @@
 #define GL_MAX_TEXTURE_UNITS 8 
 #endif
 
+#include "arcan_shmif.h"
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_event.h"

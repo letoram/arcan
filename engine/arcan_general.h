@@ -37,7 +37,6 @@
 #define PRIxVOBJ "lld"
 
 #include PLATFORM_HEADER
-#include "arcan_shmif.h"
 
 #ifndef _WIN32
 

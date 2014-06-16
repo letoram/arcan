@@ -293,6 +293,11 @@ void arcan_frameserver_decode_run(const char* resource, const char* keyfile)
 
 /* connect to display server */
 	struct arg_arr* args = arg_unpack(resource);
+	if (!args){
+		LOG("Error decoding arguments, giving up.\n");
+		return;
+	}
+
 	decctx.shmcont = arcan_shmif_acquire(keyfile, SHMIF_INPUT, true, false);
 
 /* decode external arguments, map the necessary ones to VLC */

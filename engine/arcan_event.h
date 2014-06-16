@@ -22,16 +22,18 @@
 #ifndef _HAVE_ARCAN_EPRIV
 #define _HAVE_ARCAN_EPRIV
 
+struct arcan_evctx;
+
 /* check timers, poll IO events and timing calculations
  * out : (NOT NULL) storage- container for number of ticks that has passed
  *                   since the last call to arcan_process
  * ret : range [0 > n < 1] how much time has passed towards the next tick */
-float arcan_event_process(arcan_evctx*, unsigned* nticks);
+float arcan_event_process(struct arcan_evctx*, unsigned* nticks);
 
 /* force a keyboard repeat- rate */
-void arcan_event_keyrepeat(arcan_evctx*, unsigned rate);
+void arcan_event_keyrepeat(struct arcan_evctx*, unsigned rate);
 
-arcan_evctx* arcan_event_defaultctx();
+struct arcan_evctx* arcan_event_defaultctx();
 
 /* 
  * Pushes as many events from srcqueue to dstqueue as possible 
@@ -41,17 +43,18 @@ arcan_evctx* arcan_event_defaultctx();
  * specifying a source ID (can be ARCAN_EID) will be used for rewrites
  * if the category has a source identifier
  */
-void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
+void arcan_event_queuetransfer(
+	struct arcan_evctx* dstqueue, struct arcan_evctx* srcqueue,
 	enum ARCAN_EVENT_CATEGORY allowed, float saturation, arcan_vobj_id source);
 
 /* ignore-all on enqueue */
-void arcan_event_maskall(arcan_evctx*);
+void arcan_event_maskall(struct arcan_evctx*);
 
 /* drop any mask, including maskall */
-void arcan_event_clearmask(arcan_evctx*);
+void arcan_event_clearmask(struct arcan_evctx*);
 
 /* set a specific mask, somewhat limited */
-void arcan_event_setmask(arcan_evctx*, unsigned mask);
+void arcan_event_setmask(struct arcan_evctx*, unsigned mask);
 
 int64_t arcan_frametime();
 
@@ -67,11 +70,11 @@ int64_t arcan_frametime();
  * the default behaviour is to not erase unprocessed events that are made 
  * irrelevant due to a deleted object.
  */
-void arcan_event_erase_vobj(arcan_evctx* ctx, 
+void arcan_event_erase_vobj(struct arcan_evctx* ctx, 
 	enum ARCAN_EVENT_CATEGORY category, arcan_vobj_id source);
 
-void arcan_event_init(arcan_evctx* dstcontext);
-void arcan_event_deinit(arcan_evctx*);
+void arcan_event_init(struct arcan_evctx* dstcontext);
+void arcan_event_deinit(struct arcan_evctx*);
 
 /*
  * Update/get the active filter setting for the specific 
@@ -93,7 +96,7 @@ arcan_errc arcan_event_analogstate(int devid, int axisid,
 	int* kernel_size, enum ARCAN_ANALOGFILTER_KIND* mode);
 
 /* look for new joystick / analog devices */
-void arcan_event_rescan_idev(arcan_evctx* ctx);
+void arcan_event_rescan_idev(struct arcan_evctx* ctx);
 
 const char* arcan_event_devlabel(int devid);
 
