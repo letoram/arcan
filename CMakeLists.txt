@@ -364,6 +364,7 @@ set (
  shmif/arcan_shmif_interop.h
  shmif/arcan_shmif_interop.c
  shmif/arcan_shmif_control.c
+ shmif/arcan_shmif_control.h
  shmif/arcan_shmif_event.h
  shmif/arcan_shmif.h
 )

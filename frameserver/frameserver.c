@@ -275,6 +275,10 @@ static void toggle_logdev(const char* prefix)
  * a main arcan_frameserver binary is produced with ARCAN_FRAMESERVER_SPLITMODE
  * defined, and n' different others with the _mode suffix attached and 
  * the unused subsystems won't be #defined in.
+ *
+ * The intent is also to implement sandboxing setup and loading here,
+ * one part as a package format (FAP) with FUSE + chroot,
+ * another using local sandboxing options (seccomp and capsicum)
  */
 static void dumpargs(int argc, char** argv)
 {
@@ -309,7 +313,6 @@ int main(int argc, char** argv)
 	snprintf(newarg, newbin, "%s_%s", argv[0], fsrvmode);
 
 	argv[0] = newarg;
-	printf("newarg: %s\n", newarg);
 	return execv(newarg, argv);
 }
 
@@ -317,31 +320,30 @@ int main(int argc, char** argv)
 int main(int argc, char** argv)
 {
 	char* resource = getenv("ARCAN_ARG");
-	char* keyfile  = argv[2];
-	char* fsrvmode = argv[1];
-	fsrvmode = fsrvmode == NULL ? "" : fsrvmode;
+	char* keyfile  = NULL;
+	char* fsrvmode = NULL;
 
-	if (argc != 3 || !resource || !keyfile || !fsrvmode){
-		dumpargs(argc, argv);
-		return 1;
-	}
+	if (argc != 3){
+#ifdef DEFAULT_FSRV_MODE
+		fsrvmode = DEFAULT_FSRV_MODE;
+#endif
 
-/* this is not passed as a command-line argument in order to reuse code with 
- * arcan_target where we don't have control over argv. furthermore, 
- * it requires the FD to be valid from an environment perspective 
- * (already open socket that can pass file-descriptors */
-	if (getenv("ARCAN_SOCKIN_FD")){
-		sockin_fd = strtol( getenv("ARCAN_SOCKIN_FD"), NULL, 10 );
-	}
-	else if (getenv("ARCAN_CONNPATH")){
-		keyfile = arcan_shmif_connect(
-			getenv("ARCAN_CONNPATH"), getenv("ARCAN_CONNKEY"));
-
-		if (!keyfile){
+		if ( getenv("ARCAN_CONNPATH")){
+			keyfile = arcan_shmif_connect(
+				getenv("ARCAN_CONNPATH"), getenv("ARCAN_CONNKEY")
+			);
+		}
+		else
 			LOG("no shared memory key could be acquired, "
 				"check socket at ARCAN_CONNKEY environment.\n");
-			return 1;
-		}
+	} else {
+		keyfile = argv[2];
+		fsrvmode = argv[1];
+	}
+
+	if (!keyfile || !fsrvmode){
+		dumpargs(argc, argv);
+		return 1;
 	}
 
 /*

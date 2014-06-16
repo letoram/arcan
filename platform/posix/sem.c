@@ -14,8 +14,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include <arcan_math.h>
-#include <arcan_general.h>
+#include PLATFORM_HEADER
 
 int arcan_sem_post(sem_handle sem)
 {
@@ -37,7 +36,7 @@ int arcan_sem_wait(sem_handle sem)
 	return sem_wait(sem);
 }
 
-int arcan_sem_init(sem_t** sem, int val)
+int arcan_sem_init(sem_handle* sem, unsigned val)
 {
 	if (*sem == NULL){
 		*sem = malloc(sizeof(sem_t));

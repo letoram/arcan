@@ -50,7 +50,8 @@
  *
  * 2. Separate out all the "arcan internal" categories / states
  *
- * 3. Make this into a proper protocol / IPC part 
+ * 3. Make this into a proper protocol / IPC part
+ *
  */ 
 
 enum ARCAN_EVENT_CATEGORY {

@@ -9,6 +9,7 @@
 #include <math.h>
 #include <stdarg.h>
 #include <assert.h>
+#include <string.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -18,9 +19,9 @@
 #include <string.h>
 #include <pthread.h>
 
-#include <arcan_math.h>
+/*#include <arcan_math.h>
 #include <arcan_general.h>
-#include <arcan_event.h>
+#include <arcan_event.h>*/
 
 #include "arcan_shmif.h"
 
@@ -80,7 +81,7 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 		FILE_MAP_ALL_ACCESS, 0, 0, ARCAN_SHMPAGE_MAX_SZ);
 
 	if ( res.addr == NULL ) {
-		arcan_warning("fatal: Couldn't map the allocated shared "
+		LOG("fatal: Couldn't map the allocated shared "
 			"memory buffer (%i) => error: %i\n", shmkey, GetLastError());
 		CloseHandle(shmh);
 		return res;
@@ -103,7 +104,7 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 	arcan_shmif_setevqs(&res, res.esem, &res.inev, &res.outev, false); 
 		arcan_shmif_calcofs(res.addr, &res.vidp, &res.audp);
 	
-	arcan_warning("arcan_frameserver() -- shmpage configured and filled.\n");
+	LOG("arcan_frameserver() -- shmpage configured and filled.\n");
 	return res;
 }
 
@@ -115,6 +116,7 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey)
 	return NULL;
 }
 
+#define LOG(...) (fprintf(stderr, __VA_ARGS__))
 #else
 #include <sys/mman.h>
 #include <sys/socket.h>
@@ -131,7 +133,7 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 	fd = shm_open(shmkey, O_RDWR, 0700);
 
 	if (-1 == fd){
-		arcan_warning("arcan_frameserver(getshm) -- couldn't open "
+		LOG("arcan_frameserver(getshm) -- couldn't open "
 			"keyfile (%s), reason: %s\n", shmkey, strerror(errno));
 		return res;
 	}
@@ -150,12 +152,12 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 		shm_unlink(shmkey);
 
 	if (res.addr == MAP_FAILED){
-		arcan_warning("arcan_frameserver(getshm) -- couldn't map keyfile"
+		LOG("arcan_frameserver(getshm) -- couldn't map keyfile"
 			"	(%s), reason: %s\n", shmkey, strerror(errno));
 		return res;
 	}
 
-	arcan_warning("arcan_frameserver(getshm) -- mapped to %" PRIxPTR
+	LOG("arcan_frameserver(getshm) -- mapped to %" PRIxPTR
 		" \n", (uintptr_t) res.addr);
 
 /* step 2, semaphore handles */
@@ -179,7 +181,7 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 	if (res.asem == 0x0 ||
 		res.esem == 0x0 ||
 		res.vsem == 0x0 ){
-		arcan_warning("arcan_shmif_control(getshm) -- couldn't "
+		LOG("arcan_shmif_control(getshm) -- couldn't "
 			"map semaphores (basekey: %s), giving up.\n", shmkey);
 		free(res.addr);
 		res.addr = MAP_FAILED;
@@ -204,7 +206,7 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 char* arcan_shmif_connect(const char* connpath, const char* connkey)
 {
 	if (!connpath){
-		arcan_warning("arcan_shmif_connect(), missing connpath, giving up.\n");
+		LOG("arcan_shmif_connect(), missing connpath, giving up.\n");
 		return NULL;
 	}
 
@@ -246,22 +248,22 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey)
 	};
 
 	if (-1 == sock){
-		arcan_warning("arcan_shmif_connect(), "
+		LOG("arcan_shmif_connect(), "
 			"couldn't allocate socket, reason: %s\n", strerror(errno));
 		goto end;
 	}
 
 	size_t lim = sizeof(dst.sun_path) / sizeof(dst.sun_path[0]);
 	if (lim < conn_sz){
-		arcan_warning("arcan_shmif_connect(), "
-			"specified connection path exceeds limits (%d)\n", lim);
+		LOG("arcan_shmif_connect(), "
+			"specified connection path exceeds limits (%zu)\n", lim);
 		goto end;
 	}
 	memcpy(dst.sun_path, workbuf, conn_sz);
 
 /* connection or not, unlink the connection path */
 	if (connect(sock, (struct sockaddr*) &dst, sizeof(struct sockaddr_un)) < 0){
-		arcan_warning("arcan_shmif_connect(%s), "
+		LOG("arcan_shmif_connect(%s), "
 			"couldn't connect to server, reason: %s.\n", 
 			dst.sun_path, strerror(errno)
 		);
@@ -276,7 +278,7 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey)
 	if (connkey){
 		size_t nw = snprintf(wbuf, PP_SHMPAGE_SHMKEYLIM, "%s\n", connkey);
 		if (nw >= PP_SHMPAGE_SHMKEYLIM){
-			arcan_warning("arcan_shmif_connect(%s), "
+			LOG("arcan_shmif_connect(%s), "
 				"ident string (%s) exceeds limit (%d).\n", 
 				workbuf, connkey, PP_SHMPAGE_SHMKEYLIM
 			);
@@ -285,7 +287,7 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey)
 		}
 
 		if (write(sock, wbuf, nw) < nw){
-			arcan_warning("arcan_shmif_connect(%s), "
+			LOG("arcan_shmif_connect(%s), "
 				"error sending connection string, reason: %s\n", 
 				workbuf, strerror(errno)
 			);
@@ -298,7 +300,7 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey)
 	size_t ofs = 0;
 	do {
 		if (-1 == read(sock, wbuf + ofs, 1)){
-			arcan_warning("arcan_shmif_connect(%s), "
+			LOG("arcan_shmif_connect(%s), "
 				"invalid response received during shmpage negotiation.\n", workbuf);
 			close(sock);
 			goto end;
@@ -341,7 +343,7 @@ static void* guard_thread(void* gs)
 					arcan_sem_post(gstr->semset[i]);
 
 			sleep(5);
-			arcan_warning("frameserver::guard_thread -- couldn't shut"
+			LOG("frameserver::guard_thread -- couldn't shut"
 				"	down gracefully, exiting.\n");
 			exit(EXIT_FAILURE);
 		}
@@ -356,7 +358,7 @@ bool arcan_shmif_integrity_check(struct arcan_shmif_page* shmp)
 {
 	if (shmp->major != ARCAN_VERSION_MAJOR ||
 		shmp->minor != ARCAN_VERSION_MINOR){
-		arcan_warning("frameserver::shmif integrity check failed\n");
+		LOG("frameserver::shmif integrity check failed\n");
 		return false;
 	}
 	return true;

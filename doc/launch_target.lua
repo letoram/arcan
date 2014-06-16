@@ -20,7 +20,7 @@
 -- @note: for kind == "frame", frame
 -- @note: for kind == "message", message
 -- @note: for kind == "ident", message
--- @note: for kind == "failure", code
+-- @note: for kind == "failure", message
 -- @note: for kind == "state_size", state_size
 -- @note: for kind == "unknown", unknown
 -- @note: for kind == "resource_status", "message"

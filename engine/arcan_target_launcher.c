@@ -39,6 +39,7 @@
 #include <assert.h>
 #include <errno.h>
 
+#include "arcan_shmif.h"
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_video.h"
@@ -52,7 +53,8 @@
 int arcan_target_launch_external(const char* fname, char** argv)
 {
 	if (arcan_video_prepare_external() == false){
-		arcan_warning("Warning, arcan_target_launch_external(), couldn't push current context, aborting launch.\n");
+		arcan_warning("Warning, arcan_target_launch_external(), "
+			"couldn't push current context, aborting launch.\n");
 		return 0;
 	}
 	
@@ -76,18 +78,23 @@ int arcan_target_launch_external(const char* fname, char** argv)
 	}
 }
 
-/* note for debugging internal launch (particularly the hijack lib)
+/* 
+ * note for debugging internal launch (particularly the hijack lib)
  * (linux only)
  * gdb, break just before the fork
- * set follow-fork-mode child, add a breakpoint to the yet unresolved hijack_init symbol
- * and move on. 
- * for other platforms, patch the hijacklib loader to set an infinite while loop on a volatile flag,
- * break the process and manually change the memory of the flag */
+ * set follow-fork-mode child, add a breakpoint to the yet 
+ * unresolved hijack_init symbol and move on. 
+ * for other platforms, patch the hijacklib loader to set an infinite
+ * while loop on a volatile flag, break the process and manually 
+ * change the memory of the flag 
+ */
 
-arcan_frameserver* arcan_target_launch_internal(const char* fname, char* hijack, char** argv)
+arcan_frameserver* arcan_target_launch_internal(const char* fname, 
+	char* hijack, char** argv)
 {
 	if (hijack == NULL){
-		arcan_warning("Warning: arcan_target_launch_internal() called without a proper hijack lib.\n");
+		arcan_warning("Warning: arcan_target_launch_internal() "
+			"called without a proper hijack lib.\n");
 		return NULL;
 	}
 

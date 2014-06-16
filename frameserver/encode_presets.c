@@ -8,11 +8,12 @@
 #include <stdint.h>
 #include <unistd.h>
 
+#include <arcan_shmif.h>
 #include <arcan_math.h>
 #include <arcan_general.h>
 #include <arcan_event.h>
 #include <frameserver.h>
-#include <encode_presets.h>
+#include "encode_presets.h"
 
 static void vcodec_defaults(struct codec_ent* dst, unsigned width, 
 	unsigned height, float fps, unsigned vbr)
