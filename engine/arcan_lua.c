@@ -6495,6 +6495,9 @@ static void register_tbl(lua_State* ctx, const luaL_Reg* funtbl)
 	}
 }
 
+/*
+ * just experiments, should setup a real
+ * hid- lua mapping here
 #include <hidapi/hidapi.h>
 int turretcmd(lua_State* ctx)
 {
@@ -6516,6 +6519,7 @@ int turretcmd(lua_State* ctx)
 	lua_pushboolean(ctx, true);
 	return 1;
 }
+*/
 
 arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 {
@@ -6614,7 +6618,7 @@ static const luaL_Reg dbfuns[] = {
  */
 #define EXT_MAPTBL_CUSTOM
 static const luaL_Reg custfuns[] = {
-{"turret_cmd", turretcmd},
+/* {"turret_cmd", turretcmd}, */
 {NULL, NULL}
 };
 #undef EXT_MAPTBL_CUSTOM
