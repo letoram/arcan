@@ -34,8 +34,6 @@
 #define ARCAN_FONT_CACHE_LIMIT 8
 #endif
 
-#include GL_HEADERS
-
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_video.h"
@@ -76,7 +74,16 @@ static struct text_format last_style = {
 };
 
 static unsigned int font_cache_size = ARCAN_FONT_CACHE_LIMIT;
-static struct font_entry font_cache[ARCAN_FONT_CACHE_LIMIT] = {0};
+static struct font_entry font_cache[ARCAN_FONT_CACHE_LIMIT] = {
+};
+
+static uint16_t nexthigher(uint16_t k)
+{
+	k--;
+	for (int i=1; i < sizeof(uint16_t) * 8; i = i * 2)
+		k = k | k >> i;
+	return k+1;
+}
 
 /*
  * This one is a mess,
@@ -169,6 +176,7 @@ void arcan_video_reset_fontcache()
 #define TEXT_EMBEDDEDICON_MAXH 256
 #endif
 
+#ifndef RENDERFUN_NOSUBIMAGE
 TTF_Surface* text_loadimage(const char* const infn, img_cons cons)
 {
 	char* path = arcan_find_resource(infn, 
@@ -227,6 +235,7 @@ TTF_Surface* text_loadimage(const char* const infn, img_cons cons)
 
 	return NULL;
 }
+#endif
 
 static char* extract_color(struct text_format* prev, char* base){
 	char cbuf[3];
@@ -305,6 +314,7 @@ static char* extract_font(struct text_format* prev, char* base){
 	return base;
 }
 
+#ifndef RENDERFUN_NOSUBIMAGE
 static char* extract_image_simple(struct text_format* prev, char* base){
 	char* wbase = base;
 
@@ -395,6 +405,7 @@ static char* extract_image(struct text_format* prev, char* base)
 		return NULL;
 	}
 }
+#endif
 
 static struct text_format formatend(char* base, struct text_format prev, 
 	char* orig, bool* ok) {
@@ -440,8 +451,10 @@ retry:
 				prev.style | TTF_STYLE_BOLD); break;
 		case 'i': prev.style = (inv ? prev.style & !TTF_STYLE_ITALIC :
 				 prev.style | TTF_STYLE_ITALIC); break;
+#ifndef RENDERFUN_NOSUBIMAGE
 		case 'p': base = extract_image_simple(&prev, base); break;
 		case 'P': base = extract_image(&prev, base); break;
+#endif
 		case '#': base = extract_color(&prev, base); break;
 		case 'f': base = extract_font(&prev, base); break;
 
