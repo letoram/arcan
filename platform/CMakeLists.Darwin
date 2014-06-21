@@ -69,7 +69,7 @@ else()
 		${definitions} main=SDL_main)
 endif()
 
-add_definitions(-DPLATFORM_HEADER=\"${PLATFORM_PATH}/platform.h\"
+add_definitions(-DPLATFORM_HEADER=\"${PLATFORM_PATH}/../platform.h\"
 	-DGL_HEADERS=\"${PLATFORM_PATH}/../sdl/glheaders.h\")
 
 add_definitions(-DLUA_51 -D_WITH_DPRINTF -D__UNIX -D__APPLE__)
