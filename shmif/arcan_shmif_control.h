@@ -144,6 +144,11 @@ static const int ARCAN_SHMPAGE_MAXH = PP_SHMPAGE_MAXH;
 static const int ARCAN_SHMPAGE_AUDIOBUF_SZ = 288000;
 /*	ARCAN_SHMPAGE_MAXAUDIO_FRAME * 3 / ARCAN_SHMPAGE_ACHANNELS; */
 
+#ifndef RGBA
+#define RGBA(r, g, b, a)( ((uint32_t)(a) << 24) | ((uint32_t) (b) << 16) |\
+((uint32_t) (g) << 8) | ((uint32_t) (r)) )
+#endif
+
 static const int ARCAN_SHMPAGE_VIDEOBUF_SZ = 8294400;
 static const int ARCAN_SHMPAGE_MAX_SZ = 48294400;
 /* ARCAN_SHMPAGE_MAXW * ARCAN_SHMPAGE_MAXH * ARCAN_SHMPAGE_VCHANNELS */
