@@ -518,6 +518,20 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
  * send connection data, set emptyframe.  
  * 
  */
+static bool memcmp_nodep(const void* s1, const void* s2, size_t n)
+{
+	const uint8_t* p1 = s1;
+	const uint8_t* p2 = s2;
+
+	uint8_t diffv = 0;
+
+	while (n--){
+		diffv |= *p1++ ^ *p2++;	
+	}
+
+	return !(diffv != 0);
+}
+
 static enum arcan_ffunc_rv socketverify(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 	uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned mode,
 	vfunc_state state)
@@ -525,7 +539,7 @@ static enum arcan_ffunc_rv socketverify(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 	arcan_frameserver* tgt = state.ptr;
 	char ch;
 	size_t ntw;
-	
+
 	switch (cmd){
 	case FFUNC_POLL:
 		if (tgt->clientkey[0] == '\0')
@@ -535,11 +549,14 @@ static enum arcan_ffunc_rv socketverify(enum arcan_ffunc_cmd cmd, uint8_t* buf,
  * elaborate buffering strategy */
 		while (-1 != read(tgt->sockout_fd, &ch, 1)){
 			if (ch == '\n'){
-/* pad to limit length, compare 0 as to not expose timing */
+/* 0- pad to max length */
 				memset(tgt->sockinbuf + tgt->sockrofs, '\0', 
 					PP_SHMPAGE_SHMKEYLIM - tgt->sockrofs);
-				if (memcmp(tgt->sockinbuf, tgt->clientkey, PP_SHMPAGE_SHMKEYLIM) == 0)
+
+/* alternative memcmp to not be used as a timing oracle */
+				if (memcmp_nodep(tgt->sockinbuf, tgt->clientkey, PP_SHMPAGE_SHMKEYLIM))
 					goto send_key;
+
 				arcan_warning("platform/frameserver.c(), key verification failed on %"
 					PRIxVOBJ", received: %s\n", tgt->vid, tgt->sockinbuf);
 				tgt->child_alive = false;
@@ -569,11 +586,15 @@ static enum arcan_ffunc_rv socketverify(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 	break;	
 	}
 
-
 /* switch to resize polling default handler */
 send_key:
 	arcan_warning("platform/frameserver.c(), connection verified.\n");
 
+/* Note: we here assume that we can write without blocking, which is 
+ * usually the case. There might be a DoS opportunity here with a 
+ * connection that somehow gets our socket write to block/lock here,
+ * if that's ever a real concern, switch to select and just drop connection
+ * if we can't write enough. */
 	ntw = snprintf(tgt->sockinbuf, PP_SHMPAGE_SHMKEYLIM, "%s\n", tgt->shm.key);
 	write(tgt->sockout_fd, tgt->sockinbuf, ntw); 
 
