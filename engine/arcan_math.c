@@ -45,16 +45,16 @@ quat default_quat;
  */
 #ifndef ARCAN_MATH_SIMD 
 void mult_matrix_vecf(const float* restrict matrix, 
-	const float* restrict inv, const float* restrict out)
+	const float* restrict inv, float* restrict out)
 {
 	int i;
 
 	for (i=0; i<4; i++) 
 		out[i] =
-		in[0] * matrix[0*4+i] +
-		in[1] * matrix[1*4+i] +
-		in[2] * matrix[2*4+i] +
-		in[3] * matrix[3*4+i];
+		inv[0] * matrix[0*4+i] +
+		inv[1] * matrix[1*4+i] +
+		inv[2] * matrix[2*4+i] +
+		inv[3] * matrix[3*4+i];
 }
 
 void multiply_matrix(float* restrict dst, float* restrict a, float* restrict b)
