@@ -151,15 +151,11 @@ struct libretro_ctx {
 
 /* SHM- API input /output */
 	struct arcan_shmif_cont shmcont;
-	uint8_t* vidp, (* audp);
 	struct graph_context* graphing;
 	int graphmode;
 	file_handle last_fd; /* state management */
 	struct arcan_evctx inevq;
 	struct arcan_evctx outevq;
-
-/* set as a canary after audb at a recalc to detect overflow */
-	uint8_t* audguardb;
 
 /* internal resampling */
 	int16_t* audbuf;
@@ -243,21 +239,12 @@ static void resize_shmpage(int neww, int newh, bool first)
 		exit(1);
 	}
 
-/* align buffer pointers according to protocol */
-	arcan_shmif_calcofs(
-		retroctx.shmcont.addr, &(retroctx.vidp), &(retroctx.audp) );
-
-/* audguard adds an easy detection to vidp write overflows (broken readback) 
- * in 3d and audio-output not in synch with video */
-	retroctx.audguardb = retroctx.audp + ARCAN_SHMPAGE_AUDIOBUF_SZ;
-	retroctx.audguardb[0] = 0xde;
-	retroctx.audguardb[1] = 0xad;
-
 /* graphing context just works on offsets into the page, need to reset */
 	if (retroctx.graphing != NULL)
 		graphing_destroy(retroctx.graphing);
 
-	retroctx.graphing = graphing_new(neww, newh, (uint32_t*) retroctx.vidp);
+	retroctx.graphing = graphing_new(neww, 
+		newh, (uint32_t*) retroctx.shmcont.vidp);
 
 /* will be reallocated if needed and not set so just free and unset */
 	if (retroctx.ntsc_imb){
@@ -307,7 +294,8 @@ static void push_ntsc(unsigned width, unsigned height,
 		width, height, outp, linew * 2);
 
 	for (int row = 1; row < height * 2; row += 2)
-	memcpy(&retroctx.vidp[row * linew], &retroctx.vidp[(row-1) * linew], linew); 
+		memcpy(&retroctx.shmcont.vidp[row * linew], 
+			&retroctx.shmcont.vidp[(row-1) * linew], linew); 
 }
 
 /* better distribution for conversion (white is white ..) */
@@ -454,7 +442,8 @@ static void libretro_vidcb(const void* data, unsigned width,
 /* method one, just read color attachment, when this is working,
  * switch to PBO transfers and possible Flip-Flop FBOs */
   glBindTexture(GL_TEXTURE_2D, retroctx.fbos[retroctx.fbo_ind].col);
-	glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, retroctx.vidp);
+	glGetTexImage(GL_TEXTURE_2D, 0, 
+		GL_RGBA, GL_UNSIGNED_BYTE, retroctx.shmcont.vidp);
 	glBindTexture(GL_TEXTURE_2D, 0);
 
 /* method two, pixels of buffer out */ 
@@ -476,7 +465,7 @@ static void libretro_vidcb(const void* data, unsigned width,
 
 /* lastly, convert / blit, this will possibly clip */
 	if (retroctx.converter)
-		retroctx.converter(data, (void*) retroctx.vidp, width, 
+		retroctx.converter(data, (void*) retroctx.shmcont.vidp, width, 
 			height, pitch, ntscconv);
 }
 
@@ -1805,7 +1794,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 					spx_uint32_t nsamp = retroctx.audbuf_ofs >> 1;
 					speex_resampler_process_interleaved_int(retroctx.resampler, 
 						(const spx_int16_t*) retroctx.audbuf, &nsamp, 
-						(spx_int16_t*) retroctx.audp, &outc);
+						(spx_int16_t*) retroctx.shmcont.audp, &outc);
 
 					if (outc)
 						retroctx.shmcont.addr->abufused += outc * 
@@ -1832,7 +1821,6 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 
 			retroctx.xferbuf_ofs = (retroctx.xferbuf_ofs + 1) % 
 				( sizeof(retroctx.xfer_ringbuf) / sizeof(retroctx.xfer_ringbuf[0]) );
-			assert(retroctx.audguardb[0] == 0xde && retroctx.audguardb[1] == 0xad);
 		}
 
 	}

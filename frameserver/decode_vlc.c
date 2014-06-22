@@ -302,7 +302,9 @@ void arcan_frameserver_decode_run(const char* resource, const char* keyfile)
 
 /* decode external arguments, map the necessary ones to VLC */
 	const char* val;
-	bool noaudio = false;
+
+/*
+ 	bool noaudio = false;
 	bool novideo = false;
 
 	if (arg_lookup(args, "noaudio", 0, &val)){
@@ -310,6 +312,7 @@ void arcan_frameserver_decode_run(const char* resource, const char* keyfile)
 	} 
 	else if (arg_lookup(args, "novideo", 0, &val))
 		novideo = true;
+*/
 
 	char const* vlc_argv[] = {
 		"-I", "dummy", 
