@@ -42,6 +42,36 @@ message("---- Building frameserver in SPLIT mode ----")
 		LIST(APPEND FSRV_TARGETS arcan_frameserver_record)
 	endif()
 
+	if (FSRV_TERMINAL_SOURCES)
+		add_executable(arcan_frameserver_terminal
+			${FSRV_SOURCES}
+			${FSRV_PLATFORM_SOURCES}
+			${FSRV_TERMINAL_SOURCES})
+		set_property(TARGET arcan_frameserver_terminal APPEND PROPERTY
+			COMPILE_DEFINITIONS ENABLE_FSRV_TERMINAL DEFAULT_FSRV_MODE=\"terminal\")
+		target_link_libraries(arcan_frameserver_terminal
+			${STDLIB}
+			${FSRV_PLATFORM_LIBRARIES}
+			${FSRV_TERMINAL_LIBRARIES}
+		)
+		LIST(APPEND FSRV_TARGETS arcan_frameserver_terminal)
+	endif()
+
+	if (FSRV_REMOTING_SOURCES)
+		add_executable(arcan_frameserver_remoting
+			${FSRV_SOURCES}
+			${FSRV_PLATFORM_SOURCES}
+			${FSRV_REMOTING_SOURCES})
+		set_property(TARGET arcan_frameserver_terminal APPEND PROPERTY
+			COMPILE_DEFINITIONS ENABLE_FSRV_REMOTING DEFAULT_FSRV_MODE=\"remoting\")
+		target_link_libraries(arcan_frameserver_remoting
+			${STDLIB}
+			${FSRV_PLATFORM_LIBRARIES}
+			${FSRV_REMOTING_LIBRARIES}
+		)
+		LIST(APPEND FSRV_TARGETS arcan_frameserver_remoting)
+	endif()
+
 	if (FSRV_AVFEED_SOURCES)
 		add_executable(arcan_frameserver_avfeed
 			${FSRV_SOURCES}
@@ -134,7 +164,25 @@ message("---- Building Frameserver in COMBINED mode ----")
 			${FSRV_LIBRETRO_LIBRARIES})
 		list(APPEND definitions ENABLE_FSRV_LIBRETRO)
 	endif()
-	
+
+	if (FSRV_TERMINAL_SOURCES)
+		message(" |-> terminal added to frameserver")
+		list(APPEND FSRV_SOURCES
+			${FSRV_TERMINAL_SOURCES})
+		list(APPEND FSRV_LIBRARIES
+			${FSRV_TERMINAL_LIBRARIES})
+		list(APPEND definitions ENABLE_FSRV_TERMINAL)
+	endif()
+
+	if (FSRV_REMOTING_SOURCES)
+		message(" |-> remoting added to frameserver")
+		list(APPEND FSRV_SOURCES
+			${FSRV_REMOTING_SOURCES})
+		list(APPEND FSRV_LIBRARIES
+			${FSRV_REMOTING_LIBRARIES})
+		list(APPEND definitions ENABLE_FSRV_REMOTING)
+	endif()
+
 	add_executable( arcan_frameserver ${FSRV_SOURCES} ${FSRV_PLATFORM_SOURCES})
 	target_link_libraries(arcan_frameserver ${FSRV_PLATFORM_LIBRARIES})
 	set_property(TARGET arcan_frameserver APPEND PROPERTY

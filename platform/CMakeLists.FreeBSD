@@ -17,6 +17,7 @@ ${PLATFORM_PATH}/warning.c
 ${PLATFORM_PATH}/frameserver.c
 ${PLATFORM_PATH}/../sdl/event.c
 ${PLATFORM_PATH}/../sdl/video.c
+${PLATFORM_PATH}/fdpassing.c
 )
 
 set (FSERV_PLATFORM_SOURCES
@@ -25,6 +26,7 @@ ${PLATFORM_PATH}/time.c
 ${PLATFORM_PATH}/base64.c
 ${PLATFORM_PATH}/sem.c
 ${PLATFORM_PATH}/shm.c
+${PLATFORM_PATH}/fdpassing.c
 )
 
 if (${ENABLE_LIBRETRO})

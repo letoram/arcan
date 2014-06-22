@@ -15,6 +15,7 @@ set (PLATFORM_SOURCES
 	${PLATFORM_PATH}/time.c
 	${PLATFORM_PATH}/warning.c
 	${PLATFORM_PATH}/frameserver.c
+	${PLATFORM_PATH}/fdpassing.c
 )
 
 set (FSRV_PLATFORM_SOURCES
@@ -24,6 +25,7 @@ set (FSRV_PLATFORM_SOURCES
 	${PLATFORM_PATH}/shm.c
 	${PLATFORM_PATH}/base64.c
 	${PLATFORM_PATH}/mem.c
+	${PLATFORM_PATH}/fdpassing.c
 )
 
 set (LWA_PLATFORM_SOURCES
