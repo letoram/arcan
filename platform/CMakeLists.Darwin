@@ -15,6 +15,7 @@ set (PLATFORM_SOURCES
 	${PLATFORM_PATH}/../darwin/time.c
 	${PLATFORM_PATH}/warning.c
 	${PLATFORM_PATH}/frameserver.c
+	${PLATFORM_PATH}/fdpassing.c
 	${CMAKE_SOURCE_DIR}/external/hidapi/hid_darwin.c 
 	${CMAKE_SOURCE_DIR}/external/hidapi/hidapi.h 
 )
@@ -33,6 +34,7 @@ set (FSRV_PLATFORM_SOURCES
 	${PLATFORM_PATH}/base64.c
 	${PLATFORM_PATH}/sem.c
 	${PLATFORM_PATH}/mem.c
+	${PLATFORM_PATH}/fdpassing.c
 	${PLATFORM_PATH}/shm.c
 )
 

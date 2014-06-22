@@ -47,25 +47,28 @@ else()
 endif()
 
 option(ENABLE_ASAN "Build with Address-Sanitizer, (gcc >= 4.8, clang >= 3.1)" OFF)
+option(ENABLE_LUAJIT "Use the luajit-5.1 VM (if found)" ON)
+option(ENABLE_SIMD "Build with SIMD vector instruction set support" ON)
+option(ENABLE_LED "Build with LED controller support in core" ON)
+option(ENABLE_HMD "Build with Head-Mounted Display support in core" OFF)
+if (NOT WIN32)
+	option(EGL_VIDEO_PLATFORM "Build video subsystem using EGL (will disable SDL)" OFF)
+	option(ENABLE_GLES2 "Use GLES2 rather than OpenGL 2.1 (requires EGL)" OFF)
+	option(ENABLE_X11 "Use an XWindows Display for the GLES context (requires EGL)" OFF)
+	option(MUSL_LIBC "Use the MUSL libc implementation (incomplete)" OFF)
+endif()
+option(ENABLE_LWA "Build a lightweight arcan (arcan_lwa) with nested platform" OFF)
+option(ENABLE_SIMD_ALIGNED "Assert that SIMD data sources are 16-byte aligned" OFF)
 option(ENABLE_NET "Build with networking support in frameserver" ON)
 option(ENABLE_LIBRETRO "Build with libretro support in frameserver" ON)
 option(ENABLE_LIBRETRO3D "Add 3D core support to libretro frameserver" ON)
 option(ENABLE_VIDDEC "Build with libVLC video decoding support in frameserver" ON)
 option(ENABLE_VIDENC "Build with FFMPEG video encoding support in frameserver" ON)
 option(ENABLE_VIDENCVNC "Build video encoder with VNC server support" ON)
-option(ENABLE_LED "Build with LED controller support in core" ON)
-option(ENABLE_HMD "Build with Head-Mounted Display support in core" ON)
-option(ENABLE_SIMD "Build with SIMD vector instruction set support" ON)
-option(ENABLE_SIMD_ALIGNED "Assert that SIMD data sources are 16-byte aligned" OFF)
-option(ENABLE_LWA "Build a lightweight arcan (arcan_lwa) with nested platform" OFF)
-option(ENABLE_LUAJIT "Use the luajit-5.1 VM (if found)" ON)
-
+option(ENABLE_VNCCLIENT "Build remoting frameserver with VNC client support" ON)
 if (NOT WIN32)
-	option(SPLIT_FRAMESERVER "Split frameservers into separate binaries" OFF)
-	option(EGL_VIDEO_PLATFORM "Build video subsystem using EGL (will disable SDL)" OFF)
-	option(ENABLE_GLES2 "Use GLES2 rather than OpenGL 2.1 (requires EGL)" OFF)
-	option(ENABLE_X11 "Use an XWindows Display for the GLES context (requires EGL)" OFF)
-	option(MUSL_LIBC "Use the MUSL libc implementation (incomplete)" OFF)
+	option(ENABLE_TERMINAL "Build terminal frameserver" ON)
+	option(SPLIT_FRAMESERVER "Split frameservers into separate binaries" ON)
 endif()
 
 option(SQLITE_AMALGAMATE "Use the SQLite Amalgamation" OFF)
@@ -76,31 +79,31 @@ message("   -DCMAKE_BUILD_TYPE=[Debug|Release|Profile|DebugTrace]")
 message("   -DENABLE_ASAN=[Off|On] : Build with Address Sanitizer enabled")
 message("   -DENABLE_SIMD=[On|Off] : Enable SIMD optimized instructions")
 message("   -DENABLE_SIMD_ALIGNED=[Off|On] : |--> SIMD support assumes 16-byte aligned data")
-message("")
-message("   -DENABLE_NET=[On|Off] : Build networking frameserver (requires apache portable runtime libraries, APR)")
-message("   -DENABLE_VIDDEC=[On|Off] : Build video decoding frameserver (requires libvlc libraries)")
-message("   -DENABLE_VIDENC=[On|Off] : Build video encoding frameserver (requires ffmpeg libraries)")
-message("   -DENABLE_VIDENCVNC=[On|Off] :       |-> Add VNC server support (if libvncserver is found)")
-message("")
-message("   -DENABLE_LIBRETRO=[On|Off] : Build libretro frameserver")
-message("   -DENABLE_LIRETRO3D=[On|Off] : |--> Enable 3D support in libretro frameserver")
-message("")
+message("audio/video/input support:")
+message("   -DEGL_VIDEO_PLATFORM=[Off|On] : Build with EGL video platform (replaces SDL)")
+message("   -DENABLE_GLES2=[Off|On] :       |--> EGL platform uses GLES2 API)")
+message("   -DENABLE_X11=[Off|On] :         |--> EGL platform uses X11 Windowing")
+message("optimization / core features:")
 message("   -DENABLE_LED=[On|Off] : Build with LED controller support in core")
 message("   -DENABLE_HMD=[On|Off] : Build with Head-Mounted Display support in core")
 message("   -DENABLE_LWA=[Off|On] : Build lightweight additional arcan client (arcan-in-arcan)")
 message("   -DENABLE_LUAJIT=[On|Off] : link with luajit51 (if found)")
+message("   -DMUSL_LIBC=[Off|On] build and link with MUSL Libc (incomplete)") 
 message("   -DSQLITE_AMALGAMATE=[Off|On] : Build / Link with the SQLite Amalgamation")
-
+message("frameserver features:")
 if (NOT WIN32) 
 message("   -DSPLIT_FRAMESERVER=[Off|On] : Build frameserver in split-chain loading mode (each role gets a separate binary")
+message("   -DENABLE_NET=[On|Off] : Build networking frameserver (requires apache portable runtime libraries, APR)")
+message("   -DENABLE_VIDDEC=[On|Off] : Build video decoding frameserver (requires libvlc libraries)")
+message("   -DENABLE_VIDENC=[On|Off] : Build video encoding frameserver (requires ffmpeg libraries)")
+message("   -DENABLE_VIDENCVNC=[On|Off] :       |-> Add VNC server support (if libvncserver is found)")
+message("   -DENABLE_LIBRETRO=[On|Off] : Build libretro frameserver")
+message("   -DENABLE_LIRETRO3D=[On|Off] : |--> Enable 3D support in libretro frameserver")
 message("")
-message("   -DEGL_VIDEO_PLATFORM=[Off|On] : Build with EGL video platform (replaces SDL)")
-message("   -DENABLE_GLES2=[Off|On] :       |--> EGL platform uses GLES2 API)")
-message("   -DENABLE_X11=[Off|On] :         |--> EGL platform uses X11 Windowing")
-message("")
-message("   -DMUSL_LIBC=[Off|On] build and link with MUSL Libc (incomplete)") 
 endif()
 message("")
+
+set (FRAMESERVER_MODESTRING "")
 
 #
 # Hooks added here to later switch to -nostdlib -nodefaultlibs and
@@ -408,6 +411,7 @@ endif(ENABLE_HMD)
 # Enable / Disable individual frameserver features
 if (ENABLE_LIBRETRO)
 	message("--> Adding libretro support.")
+	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}libretro ")
 	set(FSRV_LIBRETRO_SOURCES
 	 frameserver/libretro.h
 	 frameserver/libretro.c
@@ -438,6 +442,7 @@ endif()
 if (ENABLE_NET)
 	message("--> Adding networking support.") 
 	FIND_PACKAGE(APR REQUIRED) 
+	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}net-cl net-srv ")
 
 	list(APPEND INCLUDE_DIRS ${APR_INCLUDE_DIR})
 	list(APPEND FSRV_NET_LIBRARIES ${APR_LIBRARIES} )
@@ -463,6 +468,7 @@ if (AVFEED_SOURCES)
 endif()
 
 if (${ENABLE_VIDDEC})
+	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}decode ")
 	FIND_PACKAGE( VLC REQUIRED )
 	set(FSRV_DECODE_SOURCES 
 		frameserver/decode_vlc.c
@@ -475,6 +481,31 @@ if (${ENABLE_VIDDEC})
 	
 	list(APPEND INCLUDE_DIRS
 		${LIBVLC_INCLUDE_DIR}
+	)
+endif()
+
+if (${ENABLE_TERMINAL})
+	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}terminal ")
+	message("--> Adding terminal support.")
+	set(FSRV_TERMINAL_SOURCES
+		frameserver/arcterm.c
+	)
+	set(FSRV_TERMINAL_LIBRARIES
+		util
+	)
+endif()
+
+if (${ENABLE_REMOTING})
+	FIND_PACKAGE(VNC REQUIRED)
+	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}vnc ")
+	message("--> Adding remoting (vnc) support.")
+	set(FSRV_REMOTING_LIBRARIES
+		${LIBVNC_LIBRARIES})
+	set(FSRV_REMOTING_SOURCES
+		frameserver/remoting.c
+	)
+	list(APPEND INCLUDE_DIRS
+		${LIBVNC_INCLUDE_DIRS}
 	)
 endif()
 
