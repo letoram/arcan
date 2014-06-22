@@ -102,7 +102,7 @@ void arcan_frameserver_dropshared(arcan_frameserver* src)
 
 void arcan_frameserver_killchild(arcan_frameserver* src)
 {
-	if (!src || src->subsegment)
+	if (!src || src->flags.subsegment)
 		return;
 
 /* 
@@ -133,7 +133,7 @@ bool arcan_frameserver_validchild(arcan_frameserver* src){
 
 /* free (consequence of a delete call on the associated vid)
  * will disable the child_alive flag */
-	if (!src || !src->child_alive)
+	if (!src || !src->flags.alive)
 		return false;
 
 /* this means that we have a child that we have no monitoring strategy
@@ -151,7 +151,7 @@ bool arcan_frameserver_validchild(arcan_frameserver* src){
 	int ec = waitpid(src->child, &status, WNOHANG);
 
 	if (ec == src->child){
-		src->child_alive = false;
+		src->flags.alive = false;
 		errno = EINVAL;
 		return false;
 	} 
@@ -161,70 +161,29 @@ bool arcan_frameserver_validchild(arcan_frameserver* src){
 
 arcan_errc arcan_frameserver_pushfd(arcan_frameserver* fsrv, int fd)
 {
-	arcan_errc rv = ARCAN_ERRC_BAD_ARGUMENT;
-
 	if (!fsrv || fd == 0)
-		return rv; 
-
-	char empty = '!';
+		return ARCAN_ERRC_BAD_ARGUMENT; 
 	
-/* 
- * Horrible interface (thanks Linux) and disguisting workaround (thanks GNU)
- * This may not be the place to rally for compiler ***-ups but not agreeing on a 
- * decent error managament system (intervals, what's that?) 
- * and keeping the whole Wgnu-shoot-me-now system... 
- */ 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wgnu-variable-sized-type-not-at-end"
-	struct cmsgbuf {
-		struct cmsghdr hdr;
-		int fd[1];
-	} msgbuf;
-#pragma GCC diagnostic pop
-
-	struct iovec nothing_ptr = {
-		.iov_base = &empty,
-		.iov_len = 1
-	};
-	
-	struct msghdr msg = {
-		.msg_name = NULL,
-		.msg_namelen = 0,
-		.msg_iov = &nothing_ptr,
-		.msg_iovlen = 1,
-		.msg_flags = 0,
-		.msg_control = &msgbuf,
-		.msg_controllen = CMSG_LEN(sizeof(int))
-	};
-
-	struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
-	cmsg->cmsg_len = msg.msg_controllen;
-	cmsg->cmsg_level = SOL_SOCKET;
-	cmsg->cmsg_type  = SCM_RIGHTS;
-	int* dptr = (int*) CMSG_DATA(cmsg);
-	*dptr = fd;
-		
-	if (sendmsg(fsrv->sockout_fd, &msg, 0) >= 0){
-		rv = ARCAN_OK;
+	if (arcan_pushhandle(fd, fsrv->sockout_fd)){
 		arcan_event ev = {
 			.category = EVENT_TARGET,
 			.kind = TARGET_COMMAND_FDTRANSFER
 		};
 		
 		arcan_frameserver_pushevent( fsrv, &ev );
+		return ARCAN_OK;
 	}
-	else
-		arcan_warning("frameserver_pushfd(%d->%d) failed, reason(%d) : %s\n", 
-			fd, fsrv->sockout_fd, errno, strerror(errno));
+
+	arcan_warning("frameserver_pushfd(%d->%d) failed, reason(%d) : %s\n", 
+		fd, fsrv->sockout_fd, errno, strerror(errno));
 	
-	close(fd);
-	return rv;
+	return ARCAN_ERRC_BAD_ARGUMENT;
 }
 
 static bool shmalloc(arcan_frameserver* ctx, 
 	bool namedsocket, const char* optkey)
 {
-	size_t shmsize = ARCAN_SHMPAGE_MAX_SZ;
+	size_t shmsize = ARCAN_SHMPAGE_START_SZ;
 	struct arcan_shmif_page* shmpage;
 	int shmfd = 0;
 
@@ -337,9 +296,9 @@ static bool shmalloc(arcan_frameserver* ctx,
 		return false;
 	}
 
-	shmpage = (void*) mmap(NULL, shmsize, PROT_READ | PROT_WRITE, 
-		MAP_SHARED, shmfd, 0);
-	close(shmfd);
+	ctx->shm.handle = shmfd;
+	shmpage = (void*) mmap(
+		NULL, shmsize, PROT_READ | PROT_WRITE, MAP_SHARED, shmfd, 0);
 
 	if (MAP_FAILED == shmpage){
 		arcan_warning("arcan_frameserver_spawn_server(unix) -- couldn't "
@@ -356,6 +315,7 @@ fail:
 	shmpage->parent = getpid();
 	shmpage->major = ARCAN_VERSION_MAJOR;
 	shmpage->minor = ARCAN_VERSION_MINOR;
+	shmpage->segment_size = shmsize;
 	ctx->shm.ptr = shmpage;
 	free(work);
 
@@ -372,7 +332,7 @@ fail:
 arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	arcan_frameserver* ctx, bool input, int hintw, int hinth, int tag)
 {
-	if (!ctx || ctx->child_alive == false)
+	if (!ctx || ctx->flags.alive == false)
 		return NULL;
 	
 	arcan_frameserver* newseg = arcan_frameserver_alloc();
@@ -423,8 +383,8 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
  	newseg->desc = vinfo;
 	newseg->source = ctx->source ? strdup(ctx->source) : NULL;
 	newseg->vid = newvid;
-	newseg->use_pbo = ctx->use_pbo;
-	newseg->subsegment = true;
+	newseg->flags.pbo = ctx->flags.pbo;
+	newseg->flags.subsegment = true;
 
 /* Transfer the new event socket, along with
  * the base-key that will be used to find shmetc.
@@ -459,7 +419,7 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
  */
 	newseg->launchedtime = arcan_timemillis();
 	newseg->child = ctx->child;
-	newseg->child_alive = true;
+	newseg->flags.alive = true;
 
 /* NOTE: should we allow some segments to map events
  * with other masks, or should this be a separate command
@@ -474,13 +434,13 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
  */
 	if (input){
 		newseg->kind = ARCAN_FRAMESERVER_OUTPUT;
-		newseg->socksig = true;
+		newseg->flags.socksig = true;
 		keyev.data.target.ioevs[0].iv = 1;
 		keyev.data.target.ioevs[1].iv = tag;
 	}
 	else {
 		newseg->kind = ARCAN_FRAMESERVER_INTERACTIVE;
-		newseg->socksig = true;
+		newseg->flags.socksig = true;
 	}
 
 /*
@@ -559,7 +519,7 @@ static enum arcan_ffunc_rv socketverify(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 
 				arcan_warning("platform/frameserver.c(), key verification failed on %"
 					PRIxVOBJ", received: %s\n", tgt->vid, tgt->sockinbuf);
-				tgt->child_alive = false;
+				tgt->flags.alive = false;
 			}
 			else
 				tgt->sockinbuf[tgt->sockrofs++] = ch;
@@ -568,13 +528,13 @@ static enum arcan_ffunc_rv socketverify(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 				arcan_warning("platform/frameserver.c(), socket "
 					"verify failed on %"PRIxVOBJ", terminating.\n", tgt->vid);
 /* will terminate the frameserver session */
-				tgt->child_alive = false; 
+				tgt->flags.alive = false; 
 			}
 		}
 		if (errno != EAGAIN && errno != EINTR){
 			arcan_warning("platform/frameserver.c(), "
 				"read broken on %"PRIxVOBJ", reason: %s\n", tgt->vid); 
-			tgt->child_alive = false;
+			tgt->flags.alive = false;
 		}
 		return FFUNC_RV_NOFRAME;
 
@@ -648,7 +608,7 @@ static int8_t socketpoll(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 				return socketverify(cmd, buf, s_buf, width, height, bpp, mode, state);
 				}
 				else if (errno == EFAULT || errno == EINVAL)
-					tgt->child_alive = false;		
+					tgt->flags.alive = false;		
 			}
 		break;
 
@@ -681,8 +641,7 @@ arcan_frameserver* arcan_frameserver_listen_external(const char* key)
  * defaults for an external connection is similar to that of avfeed/libretro 
  */
 	res->kind = ARCAN_FRAMESERVER_INTERACTIVE;
-	res->socksig = false;
-	res->pending = true;
+	res->flags.socksig = false;
 	res->launchedtime = arcan_timemillis();
 	res->child = BROKEN_PROCESS_HANDLE; 
 	img_cons cons = {.w = 32, .h = 32, .bpp = 4};

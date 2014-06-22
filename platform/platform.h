@@ -30,6 +30,8 @@ typedef int arcan_aobj_id;
 
 long long int arcan_timemillis();
 void arcan_timesleep(unsigned long);
+file_handle arcan_fetchhandle(int insock);
+bool arcan_pushhandle(file_handle in, int channel);
 
 /*void platform_video_bufferswap();
 bool platform_video_init(uint16_t w, uint16_t h, uint8_t bpp, bool fs,

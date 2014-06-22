@@ -221,8 +221,8 @@ arcan_errc arcan_png_rgba32(char* inbuf, size_t inbuf_sz,
 			png_read_row(png_ptr, (png_bytep) rowdec, NULL);
 	
 			for (int col = 0; col < w * 4; col += 4){
-				RGBAPACK(rowdec[col], rowdec[col+1], rowdec[col+2], 
-					rowdec[col+3], out32++);
+				*out32++ = RGBA(rowdec[col], 
+					rowdec[col+1], rowdec[col+2], rowdec[col+3]);
 			}
 			out32 -= vflip ? w + w : 0;
 		}

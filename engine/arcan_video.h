@@ -49,13 +49,12 @@
 ((uint32_t) (g) << 8) | ((uint32_t) (r)) )
 #endif
 
-#ifndef RGBAPACK
-#define RGBAPACK(r, g, b, a, d)\
-{\
-	((uint32_t *)(d))[0] = ((uint32_t)(a) << 24) | ((uint32_t)(b) << 16) |\
-		((uint32_t)(g) << 8) | (uint32_t)(r);\
-}
-#endif
+/*
+ * Used for frameserver<->video where the A channel of the input should
+ * be ignored when uploading.
+ */
+#define RGBA_FULLALPHA_REPACK(inv)(	RGBA( ((inv) & 0x000000ff), \
+(((inv) & 0x0000ff00) >> 8), (((inv) & 0x00ff0000) >> 16), 0xff) )
 
 #ifndef CONTEXT_STACK_LIMIT
 #define CONTEXT_STACK_LIMIT 8
@@ -64,6 +63,12 @@
 #ifndef GL_PIXEL_FORMAT
 #define GL_PIXEL_FORMAT GL_RGBA
 #endif
+
+#ifndef VIDEO_PIXEL_TYPE
+#define VIDEO_PIXEL_TYPE uint32_t
+#endif
+
+typedef VIDEO_PIXEL_TYPE av_pixel; 
 
 #ifndef GL_PIXEL_BPP
 #define GL_PIXEL_BPP 4
