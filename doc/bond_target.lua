@@ -1,0 +1,15 @@
+-- bond_target
+-- @short: Setup a state transfer pipe between two targets.
+-- @inargs: srcvid, dstvid, [tag]
+-- @outargs: 
+-- @longdescr: Call this function to synchronize state between 
+-- two instances of the same frameserver. Internally, this will
+-- create a pipe where the writing end is pushed into *srcvid* and
+-- the reading end is pushed into *dstvid*. Then both ends get 
+-- corresponding restore/store state requests.
+-- It is also possible for either *srcvid* or *dstvid* to be a 
+-- networking instance (with an optional tag for a networking 
+-- server to set recipient domain). 
+-- @group: targetcontrol 
+-- @cfunction: targetbond
+-- @related:
