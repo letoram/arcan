@@ -141,11 +141,13 @@ static void launchtty()
 /* opt_io?! term-mode |= MODE_PRINT, opt_io == "-", open etc. */
 }
 
+/*
 static void disable_shell()
 {
 	kill(term.pid, SIGHUP);
 	exit(EXIT_SUCCESS);
 }
+*/
 
 static void pop_inbuf(int fd)
 {
@@ -184,7 +186,7 @@ retry:
 	memmove(inbuf, tail, inbuf_len);
 }
 
-void arcan_frameserver_avfeed_run(const char* resource, const char* keyfile)
+void arcan_frameserver_terminal_run(const char* resource, const char* keyfile)
 {
 	shmcont = arcan_shmif_acquire(keyfile, SHMIF_OUTPUT, true, false);
 	if (!shmcont.addr){
