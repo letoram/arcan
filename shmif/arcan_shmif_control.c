@@ -19,10 +19,6 @@
 #include <string.h>
 #include <pthread.h>
 
-/*#include <arcan_math.h>
-#include <arcan_general.h>
-#include <arcan_event.h>*/
-
 #include "arcan_shmif.h"
 
 /* This little function tries to get around all the insane problems
@@ -39,10 +35,13 @@ struct guard_struct {
 	sem_handle semset[3];
 	int parent;
 	volatile uintptr_t* dms; /* dead man's switch */
+	pthread_mutex_t synch;
 };
+
 static void* guard_thread(void* gstruct);
 
-static void spawn_guardthread(struct guard_struct gs)
+static void spawn_guardthread(struct guard_struct gs, 
+	struct arcan_shmif_cont* d)
 {
 	struct guard_struct* hgs = malloc(sizeof(struct guard_struct));
 	*hgs = gs;
@@ -51,7 +50,9 @@ static void spawn_guardthread(struct guard_struct gs)
 	pthread_attr_t pthattr;
 	pthread_attr_init(&pthattr);
 	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
+	pthread_mutex_init(&hgs->synch, NULL);
 
+	d->guard = hgs;
 	pthread_create(&pth, &pthattr, guard_thread, hgs);
 }
 
@@ -74,6 +75,7 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 {
 	struct arcan_shmif_cont res = {0};
 	assert(shmkey);
+	assert(sizeof(res.priv) >= sizeof(struct guard_struct)); 
 
 	HANDLE shmh = (HANDLE) strtoul(shmkey, NULL, 10);
 
@@ -103,7 +105,7 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 
 	arcan_shmif_setevqs(&res, res.esem, &res.inev, &res.outev, false); 
 		arcan_shmif_calcofs(res.addr, &res.vidp, &res.audp);
-	
+
 	LOG("arcan_frameserver() -- shmpage configured and filled.\n");
 	return res;
 }
@@ -122,12 +124,17 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey)
 #include <sys/socket.h>
 #include <sys/un.h>
 
+static struct arcan_shmif_page* map_shm(size_t sz, int fd)
+{
+	return (struct arcan_shmif_page*)
+		mmap(NULL, sz, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+}
+
 struct arcan_shmif_cont arcan_shmif_acquire(
 	const char* shmkey, int shmif_type, char force_unlink, char noguard)
 {
 	struct arcan_shmif_cont res = {0};
 
-	unsigned bufsize = ARCAN_SHMPAGE_MAX_SZ;
 	int fd = -1;
 
 	fd = shm_open(shmkey, O_RDWR, 0700);
@@ -138,15 +145,8 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 		return res;
 	}
 
-/* map up the shared key- file */
-	res.addr = (struct arcan_shmif_page*) mmap(NULL,
-		bufsize,
-		PROT_READ | PROT_WRITE,
-		MAP_SHARED,
-		fd,
-	0);
-
-	close(fd);
+	res.addr = map_shm(ARCAN_SHMPAGE_START_SZ, fd);
+	res.shmh = fd; 
 
 	if (force_unlink) 
 		shm_unlink(shmkey);
@@ -195,7 +195,7 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 	};
 
 	if (!noguard)
-		spawn_guardthread(gs);
+		spawn_guardthread(gs, &res);
 
 	arcan_shmif_setevqs(res.addr, res.esem, &res.inev, &res.outev, false); 
 	arcan_shmif_calcofs(res.addr, &res.vidp, &res.audp);
@@ -336,15 +336,18 @@ static void* guard_thread(void* gs)
 
 	while (true){
 		if (!parent_alive(gstr)){
+			pthread_mutex_lock(&gstr->synch);
 			*(gstr->dms) = false;
 
 			for (int i = 0; i < sizeof(gstr->semset) / sizeof(gstr->semset[0]); i++)
 				if (gstr->semset[i])
 					arcan_sem_post(gstr->semset[i]);
-
+			
+			pthread_mutex_unlock(&gstr->synch);
 			sleep(5);
 			LOG("frameserver::guard_thread -- couldn't shut"
 				"	down gracefully, exiting.\n");
+
 			exit(EXIT_FAILURE);
 		}
 
@@ -463,12 +466,16 @@ void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 bool arcan_shmif_resize(struct arcan_shmif_cont* arg, 
 	unsigned width, unsigned height)
 {
-	if (!arg->addr || !arcan_shmif_integrity_check(arg->addr))
+	if (!arg->addr || !arcan_shmif_integrity_check(arg->addr))	
 		return false;
 
 	arg->addr->w = width;
 	arg->addr->h = height;
 	arg->addr->resized = true;
+
+	LOG("request resize to (%d:%d) approx ~%zu bytes (currently: %zu).\n", 
+		width, height, width * height * ARCAN_SHMPAGE_VCHANNELS + 
+		sizeof(struct arcan_shmif_page) + ARCAN_SHMPAGE_AUDIOBUF_SZ, arg->shmsize); 
 
 /* 
  * spin until acknowledged,
@@ -477,8 +484,39 @@ bool arcan_shmif_resize(struct arcan_shmif_cont* arg,
  */
 	while(arg->addr->resized && arg->addr->dms)
 		;
-	arcan_shmif_calcofs(arg->addr, &arg->vidp, &arg->audp);
 
+	if (!arg->addr->dms)
+		return false;
+
+	if (arg->shmsize != arg->addr->segment_size){
+/*
+ * the guard struct, if present, has another thread running that may
+ * trigger the dms. BUT now the dms may be relocated so we must lock
+ * guard and update and recalculate everything. 
+ */
+		struct guard_struct* gs = (struct guard_struct*) arg->guard;
+		if (gs)
+			pthread_mutex_lock(&gs->synch);
+
+		munmap(arg->addr, arg->shmsize);
+		arg->shmsize = arg->addr->segment_size;
+
+		arg->addr = map_shm(arg->shmsize, arg->shmh);
+		if (!arg->addr){
+			LOG("arcan_shmif_resize() failed on segment remapping.\n");
+			return false;
+		}
+
+		arcan_shmif_setevqs(arg->addr, arg->esem, &arg->inev, &arg->outev, false); 
+
+		if (gs)
+			pthread_mutex_unlock(&gs->synch);
+	}
+
+/* free, mmap again --
+ * parent has ftruncated and copied contents */
+
+	arcan_shmif_calcofs(arg->addr, &arg->vidp, &arg->audp);
 	return true;
 }
 
