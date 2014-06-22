@@ -71,21 +71,11 @@ typedef struct {
 	uint16_t width;
 	uint16_t height;
 	uint16_t bpp;
-	uint8_t sformat;
-	uint8_t dformat;
-	int16_t vskipthresh;
-	int16_t resynchthresh; 
 
 /* audio */
 	unsigned samplerate;
 	uint8_t channels;
 	uint16_t vfthresh;
-
-/* transfer */
-	bool pbo_transfer;
-	bool explicit_xfer;
-	unsigned pbo_index;
-	unsigned upload_pbo[2];
 
 /* if the user wants detailed
  * info about the latest frame that was 
@@ -124,6 +114,7 @@ typedef struct arcan_frameserver {
 	shm_handle shm;
 	sem_handle vsync, async, esync; 
 	file_handle sockout_fd;
+	process_handle child;
 
 /* used for connections negotiated via socket
  * (sockout_fd) */
@@ -131,9 +122,20 @@ typedef struct arcan_frameserver {
 	char* clientkey[PP_SHMPAGE_SHMKEYLIM];
 	off_t sockrofs;
 	char* sockaddr;
-	bool pending;
+
+/* transfer */
+	unsigned pbo;
+
+	struct {
+		bool socksig;
+		bool alive;
+		bool pbo;
+		bool explicit;
+		bool subsegment;
+		bool no_alpha_copy;
+	} flags;
 	
-/* for monitoring hooks, NULL term. */
+/* for monitoring hooks, 0 entry terminates. */
 	arcan_aobj_id* alocks;
 	arcan_aobj_id aid;
 	arcan_vobj_id vid;
@@ -144,31 +146,13 @@ typedef struct arcan_frameserver {
 		struct frameserver_audsrc* inaud;
 	} amixer;
 
-/* used for playing, pausing etc. */
+/* playstate control and statistics */ 
 	enum arcan_playstate playstate;
 	int64_t lastpts;
-	int64_t starttime;
-	int64_t launchedtime;
-	bool socksig;
+	int64_t launchedtime; 
+	unsigned vfcount;
 
 	enum arcan_frameserver_kinds kind;
-	
-/* timing, only relevant if nopts == false */
-	uint32_t vfcount;
-	bool reclock;
-	double audioclock;
-
-	process_handle child;
-	long long childp;
-	bool child_alive;
-
-/* some properties are disabled / ignored for subsegments */
-	bool subsegment;
-
-/* not all scenarios dictate a use of PBOs, as the flip-flop approach use
- * introduces a possible 1-frame latency from upload to display, which requires
- * an active frameserver for the last frame to be visible */
-	bool use_pbo;
 
 /* precalc offsets into mapped shmpage, calculated at resize */
 	uint8_t* vidp, (* audp);
@@ -191,7 +175,6 @@ struct frameserver_envp {
 	int init_w, init_h;
 
 	union {
-
 		struct {
 			const char* const resource;
 /* current: movie, libretro, record, net-cl, net-srv */

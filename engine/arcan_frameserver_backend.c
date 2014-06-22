@@ -61,7 +61,7 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 	struct arcan_shmif_page* shmpage = (struct arcan_shmif_page*)
 		src->shm.ptr;
 
-	if (!shmpage || !src->child_alive)
+	if (!shmpage || !src->flags.alive)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
 	shmpage->dms = false;
@@ -75,15 +75,16 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 		.kind = TARGET_COMMAND_EXIT
 	};
 
-	if (src->desc.pbo_transfer && src->desc.upload_pbo[0] != 0){
+/*	if (src->desc.pbo_transfer && src->desc.upload_pbo[0] != 0){
 		glDeleteBuffers(2, src->desc.upload_pbo);
 	}
+*/
 
 	arcan_frameserver_pushevent(src, &exev);
 	arcan_frameserver_killchild(src);
  
 	src->child = BROKEN_PROCESS_HANDLE;
-	src->child_alive = false;
+	src->flags.alive = false;
 
 	arcan_frameserver_dropshared(src);
 	src->shm.ptr = NULL;
@@ -95,13 +96,13 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 		base++;
 	}
 
+	vfunc_state emptys = {0};
 	arcan_mem_free(src->audb);
 
 #ifndef _WIN32
 	close(src->sockout_fd);
 #endif
 
-	vfunc_state emptys = {0};
 	arcan_audio_stop(src->aid);
 	arcan_video_alterfeed(src->vid, NULL, emptys);
 	arcan_mem_free(src);
@@ -132,7 +133,7 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
 /* bunch of terminating conditions -- frameserver messes 
  * with the structure to provoke a vulnerability, frameserver 
  * dying or timing out, ... */
-	if ( src->child_alive && 
+	if ( src->flags.alive && 
 		(arcan_shmif_integrity_check(src->shm.ptr) == false ||
 		arcan_frameserver_validchild(src) == false)){
 
@@ -168,7 +169,7 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst,
  * polling and need to respond quickly to enqueued events,
  */
 	if (dst && ev){
-		rv = dst->child_alive ?
+		rv = dst->flags.alive ?
 			(arcan_event_enqueue(&dst->outqueue, ev), ARCAN_OK) :
 			ARCAN_ERRC_UNACCEPTED_STATE;
 
@@ -178,7 +179,7 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst,
 #define MSG_DONTWAIT 0
 #endif
 
-		if (dst->socksig){
+		if (dst->flags.socksig){
 			int sn = 0;
 			send(dst->sockout_fd, &sn, sizeof(int), MSG_DONTWAIT);
 		}
@@ -191,64 +192,53 @@ static int push_buffer(arcan_frameserver* src, char* buf, unsigned int glid,
 	unsigned sw, unsigned sh, unsigned bpp,
 	unsigned dw, unsigned dh, unsigned dpp)
 {
-	int8_t rv;
 	FLAG_DIRTY();
 
-	if (sw != dw ||
-		sh != dh) {
-		uint16_t cpy_width  = (dw > sw ? sw : dw);
-		uint16_t cpy_height = (dh > sh ? sh : dh);
-		assert(bpp == dpp);
-
-		for (uint16_t row = 0; row < cpy_height && row < cpy_height; row++)
-			memcpy(buf + (row * sw * bpp), buf, cpy_width * bpp);
-
-		rv = FFUNC_RV_COPIED;
-		return rv;
+	if (sw != dw || sh != dh){
+		arcan_warning("non 1:1 buffer push requested, ignored.\n");
+		return FFUNC_RV_NOUPLOAD;
 	}
 
 	glBindTexture(GL_TEXTURE_2D, glid);
 
-/* flip-floping PBOs, simply using one risks the chance of turning a PBO 
- * operation synchronous, eliminating much of the point in using them
- * in the first place. Note that with PBOs running, we currently have
- * one frame delay in that the buffer won't be activate until the next 
- * frame is about to be queued. This works fine on a streaming source
- * but not in other places unfortunately */
-	if (src->desc.pbo_transfer){
-#ifdef VIDEO_PBO_FLIPFLOP
-		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 
-			src->desc.upload_pbo[src->desc.pbo_index]);
-
-		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, sw, sh, 
-			GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, 0);
-
-		src->desc.pbo_index = 1 - src->desc.pbo_index;
-
-		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 
-			src->desc.upload_pbo[src->desc.pbo_index]);
+	if (src->flags.pbo){
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, src->pbo);
 		void* ptr = glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
+		if (ptr){
+			if (src->flags.no_alpha_copy){
+				uint32_t* src = (uint32_t*) buf;
+				uint32_t* dst = (uint32_t*) ptr;
 
-		if (ptr)
-			memcpy(ptr, buf, sw * sh * bpp);
+				for (int y = 0; y < sh; y++)
+					for (int x = 0; x < sw; x++){
+						av_pixel px = *src++;
+						*dst++ = RGBA_FULLALPHA_REPACK(px);
+					}
+			}
+			else
+				memcpy(ptr, buf, sw * sh * bpp);
+		}
 
-		glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
-		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
-#else
-		glBindBuffer(GL_PIXEL_UNPACK_BUFFER,
-			src->desc.upload_pbo[0]);
-		void* ptr = glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
-		if (ptr)
-			memcpy(ptr, buf, sw * sh * bpp);
 		glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
 		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, sw, sh, 
 			GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, 0);
 		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
-#endif
 	}
-	else
+	else{
+		if (src->flags.no_alpha_copy){
+			av_pixel* src = (av_pixel*) buf;
+			av_pixel* dst = (av_pixel*) buf;
+			size_t ntc = sw * sh;
+
+			while (ntc--){
+				av_pixel px = *src++;
+				*dst++ = RGBA_FULLALPHA_REPACK(px);
+			}
+		}
+
 		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, sw, sh,
 			GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, buf);
+	}
 
 	glBindTexture(GL_TEXTURE_2D, 0);
 
@@ -273,13 +263,14 @@ enum arcan_ffunc_rv arcan_frameserver_emptyframe(
 {
 	arcan_frameserver* tgt = state.ptr;
 	struct arcan_shmif_page* shmpage;
-	
+
 	if (state.tag == ARCAN_TAG_FRAMESERV && state.ptr)
 	switch (cmd){
 		case FFUNC_POLL:
   		shmpage = tgt->shm.ptr;
-			if (shmpage->resized) 
+			if (shmpage->resized){
 				arcan_frameserver_tick_control(tgt);
+			}
 			return shmpage->vready;	
 
 		case FFUNC_TICK:
@@ -401,8 +392,8 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe(
  * Audio will keep on buffering until overflow,
  */
 	else if (cmd == FFUNC_READBACK){
-		if ( (src->desc.explicit_xfer && arcan_sem_wait(src->vsync) == 0) ||
-			(!src->desc.explicit_xfer && arcan_sem_trywait(src->vsync) == 0)){
+		if ( (src->flags.explicit && arcan_sem_wait(src->vsync) == 0) ||
+			(!src->flags.explicit && arcan_sem_trywait(src->vsync) == 0)){
 			memcpy(src->vidp, buf, s_buf);
 			if (src->ofs_audb){
 					memcpy(src->audp, src->audb, src->ofs_audb);
@@ -647,84 +638,84 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 	arcan_event_queuetransfer(arcan_event_defaultctx(), &src->inqueue, 
 		src->queue_mask, 0.5, src->vid);
 
-/* may happen multiple- times, reasonably costly, 
- * might want rate-limit this -- FIXME propagate resize to
- * backend in order to enforce dimension limits */
-	if ( shmpage->resized ){
-		vfunc_state cstate = *arcan_video_feedstate(src->vid);
-		img_cons store = {
-			.w = shmpage->w, 
-			.h = shmpage->h, 
-			.bpp = ARCAN_SHMPAGE_VCHANNELS
-		};
+	if (!shmpage->resized)
+		return;
 
-		src->desc.width = store.w; 
-		src->desc.height = store.h; 
-		src->desc.bpp = store.bpp;
+/*
+ * this is a rather costly operation that we want to rate-control or 
+ * at least monitor as multiple resizes in a short amount of time 
+ * is indicative of something foul going on.
+ */
+	vfunc_state cstate = *arcan_video_feedstate(src->vid);
+	img_cons store = {
+		.w = shmpage->w, 
+		.h = shmpage->h, 
+		.bpp = ARCAN_SHMPAGE_VCHANNELS
+	};
 
-/* resize the source vid in a way that won't propagate to user scripts */
-		src->desc.samplerate = ARCAN_SHMPAGE_SAMPLERATE;
-		src->desc.channels = ARCAN_SHMPAGE_ACHANNELS;
+	src->desc.width = store.w; 
+	src->desc.height = store.h; 
+	src->desc.bpp = store.bpp;
 
-		arcan_event_maskall(arcan_event_defaultctx());
-/* this will also emit the resize event */
-		arcan_video_resizefeed(src->vid, store, store);
-		arcan_event_clearmask(arcan_event_defaultctx());
-		arcan_shmif_calcofs(shmpage, &(src->vidp), &(src->audp));
+/* resize the source vid in a way that won't propagate to user scripts
+ * as we want the resize event to be forwarded to the regular callback */
+	arcan_event_maskall(arcan_event_defaultctx());
+	src->desc.samplerate = ARCAN_SHMPAGE_SAMPLERATE;
+	src->desc.channels = ARCAN_SHMPAGE_ACHANNELS;
+ 
+	arcan_video_resizefeed(src->vid, store, store);
+
+	arcan_event_clearmask(arcan_event_defaultctx());
+	arcan_shmif_calcofs(shmpage, &(src->vidp), &(src->audp));
 
 /* for PBO transfers, new buffers etc. need to be prepared
  * that match the new internal resolution */
-		glBindTexture(GL_TEXTURE_2D, 
-			arcan_video_getobject(src->vid)->vstore->vinf.text.glid);
+	glBindTexture(GL_TEXTURE_2D, 
+		arcan_video_getobject(src->vid)->vstore->vinf.text.glid);
 
-		if (src->desc.pbo_transfer)
-			glDeleteBuffers(2, src->desc.upload_pbo);
+	if (src->flags.pbo){
+		if (src->pbo)
+			glDeleteBuffers(1, &src->pbo);
 
-/* PBO support has on some buggy drivers been dynamically failing,
- * this was a safety fallback for that kind of behavior */
-		src->desc.pbo_transfer = src->use_pbo;
+		glGenBuffers(1, &src->pbo);
+		glBindBuffer(GL_PIXEL_PACK_BUFFER, src->pbo);
+		glBufferData(GL_PIXEL_PACK_BUFFER, store.w * store.h * store.bpp, 
+				NULL, GL_STREAM_DRAW);
+		av_pixel* ptr = (av_pixel*) glMapBuffer(
+			GL_PIXEL_PACK_BUFFER, GL_WRITE_ONLY);
 
-		if (src->use_pbo){
-			glGenBuffers(2, src->desc.upload_pbo);
-			for (int i = 0; i < 2; i++){
-				glBindBuffer(GL_PIXEL_PACK_BUFFER, src->desc.upload_pbo[i]);
-				glBufferData(GL_PIXEL_PACK_BUFFER, store.w * store.h * store.bpp, 
-					NULL, GL_STREAM_DRAW);
-				void* ptr = glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_WRITE_ONLY);
-				if (ptr){
-					memset(ptr, 0, store.w * store.h * store.bpp);
-				}
-				glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
-				glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
-			}
-			glBindTexture(GL_TEXTURE_2D, 0);
-		}
+		for (int y = 0; y < store.h; y++)
+			for (int x = 0; x < store.w; x++)
+				*ptr++ = RGBA(0, 0, 0, 0xff);		
+			
+		glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
+		glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+	}
+	
+	glBindTexture(GL_TEXTURE_2D, 0);
 
 /*
  * with a resize, our framequeues are possibly invalid, dump them
  * and rebuild, slightly different if we don't maintain a queue 
  * (present as soon as possible)
  */
-		arcan_video_alterfeed(src->vid, 
-			arcan_frameserver_videoframe_direct, cstate);
+	arcan_video_alterfeed(src->vid, arcan_frameserver_videoframe_direct, cstate);
 
-		arcan_event rezev = {
-			.category = EVENT_FRAMESERVER,
-			.kind = EVENT_FRAMESERVER_RESIZED,
-			.data.frameserver.width = store.w,
-			.data.frameserver.height = store.h,
-			.data.frameserver.video = src->vid,
-			.data.frameserver.audio = src->aid,
-			.data.frameserver.otag = src->tag,
-			.data.frameserver.glsource = shmpage->glsource
-		};
+	arcan_event rezev = {
+		.category = EVENT_FRAMESERVER,
+		.kind = EVENT_FRAMESERVER_RESIZED,
+		.data.frameserver.width = store.w,
+		.data.frameserver.height = store.h,
+		.data.frameserver.video = src->vid,
+		.data.frameserver.audio = src->aid,
+		.data.frameserver.otag = src->tag,
+		.data.frameserver.glsource = shmpage->glsource
+	};
 
-		arcan_event_enqueue(arcan_event_defaultctx(), &rezev);
+	arcan_event_enqueue(arcan_event_defaultctx(), &rezev);
 
 /* acknowledge the resize */
-		shmpage->resized = false;
-	}
-
+	shmpage->resized = false;
 }
 
 arcan_errc arcan_frameserver_pause(arcan_frameserver* src)
@@ -763,11 +754,11 @@ arcan_frameserver* arcan_frameserver_alloc()
 	arcan_frameserver* res = arcan_alloc_mem(sizeof(arcan_frameserver),
 		ARCAN_MEM_VTAG, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL); 
 
-	res->use_pbo = arcan_video_display.pbo_support;
+	res->flags.pbo = arcan_video_display.pbo_support;
 	res->watch_const = 0xdead;
 
 	res->playstate = ARCAN_PLAYING;
-	res->child_alive = true;
+	res->flags.alive = true;
 
 /* shm- related settings are deferred as this is called previous to mapping
  * (spawn_subsegment / spawn_server) so setting up the eventqueues with
@@ -789,7 +780,7 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 		if ((strcmp(setup.args.builtin.mode, "movie") == 0) ||
 		(strcmp(setup.args.builtin.mode, "avfeed") == 0)){
 			ctx->kind     = ARCAN_FRAMESERVER_AVFEED;
-			ctx->socksig  = false;
+			ctx->flags.socksig = false;
 			ctx->aid      = arcan_audio_feed((arcan_afunc_cb)
 											arcan_frameserver_audioframe_shared, ctx, &errc);
 			ctx->sz_audb  = 0; 
@@ -804,7 +795,7 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 												arcan_frameserver_audioframe_direct, ctx, &errc);
 			ctx->kind     = ARCAN_FRAMESERVER_INTERACTIVE;
 			ctx->sz_audb  = 1024 * 64;
-			ctx->socksig  = false;
+			ctx->flags.socksig = false;
 			ctx->ofs_audb = 0;
 			ctx->audb     = arcan_alloc_mem(ctx->sz_audb,
 				ARCAN_MEM_ABUFFER, 0, ARCAN_MEMALIGN_PAGE);
@@ -815,14 +806,14 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
  * different signalling mechanism for flushing events */
 		else if (strcmp(setup.args.builtin.mode, "net-cl") == 0){
 			ctx->kind    = ARCAN_FRAMESERVER_NETCL;
-			ctx->use_pbo = false;
-			ctx->socksig = true;
+			ctx->flags.pbo = false;
+			ctx->flags.socksig = true;
 			ctx->queue_mask = EVENT_EXTERNAL | EVENT_NET;
 		}
 		else if (strcmp(setup.args.builtin.mode, "net-srv") == 0){
 			ctx->kind    = ARCAN_FRAMESERVER_NETSRV;
-			ctx->use_pbo = false;
-			ctx->socksig = true;
+			ctx->flags.pbo = false;
+			ctx->flags.socksig = true;
 			ctx->queue_mask = EVENT_EXTERNAL | EVENT_NET;
 		}
 

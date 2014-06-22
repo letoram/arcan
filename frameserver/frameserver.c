@@ -52,8 +52,8 @@ void arcan_frameserver_net_run(
 	const char* resource, const char* keyfile);
 void arcan_frameserver_avfeed_run(
 	const char* resource, const char* keyfile);
-
-int sockin_fd = -1;
+void arcan_frameserver_terminal_run(
+	const char* resource, const char* keyfile);
 
 /* 
  * arcan_general functions assumes these are valid for searchpaths etc.
@@ -162,47 +162,14 @@ bool frameserver_dumprawfile_handle(const void* const data, size_t sz_data,
  * cutting down on defines */
 int frameserver_readhandle(arcan_event* inev)
 {
-	int rv = -1;
-	
-/* some would call this black magic. They'd be right. */
-	if (sockin_fd != -1){
-		char empty;
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wgnu-variable-sized-type-not-at-end"
-		struct cmsgbuf {
-			struct cmsghdr hdr;
-			int fd[1];
-		} msgbuf;
-#pragma GCC diagnostic pop
-
-		struct iovec nothing_ptr = {
-			.iov_base = &empty,
-			.iov_len = 1
-		};
-		
-		struct msghdr msg = {
-			.msg_name = NULL,
-			.msg_namelen = 0,
-			.msg_iov = &nothing_ptr,
-			.msg_iovlen = 1,
-			.msg_flags = 0,
-			.msg_control = &msgbuf,
-			.msg_controllen = sizeof(struct cmsghdr) + sizeof(int)
-		};
-		
-		struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
-		cmsg->cmsg_len = msg.msg_controllen;
-		cmsg->cmsg_level = SOL_SOCKET;
-		cmsg->cmsg_type  = SCM_RIGHTS;
-		int* dfd = (int*) CMSG_DATA(cmsg);
-		*dfd = -1;
-		
-		if (recvmsg(sockin_fd, &msg, 0) >= 0)
-			rv = msgbuf.fd[0];
+	static int sockin_fd = -1;
+	if (sockin_fd == -1){
+		char* sockin = getenv("ARCAN_SOCKIN_FD");
+		if (sockin)
+			sockin_fd = strtoul(sockin, NULL, 10);
 	}
-	
-	return rv;
+
+	return arcan_fetchhandle(sockin_fd);
 }
 
 /* set currently active library for loading symbols */
@@ -233,12 +200,11 @@ void* frameserver_requirefun(const char* const sym, bool module)
 	return dlsym(lastlib, sym);
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-function"
 static void toggle_logdev(const char* prefix)
-#pragma GCC diagnostic pop
 {
 	const char* const logdir = getenv("ARCAN_FRAMESERVER_LOGDIR");
+	if (!prefix)
+		return;
 
 	if (logdir){
 		char timeb[16];
@@ -303,6 +269,9 @@ int main(int argc, char** argv)
 		return 1;
 	}
 
+/* seriously doing this to work around compiler warnings, ./facepalm */ 
+	toggle_logdev(NULL);
+
 	char* fsrvmode = argv[1];
 	if (strcmp(fsrvmode, "net-cl") == 0 || strcmp(fsrvmode, "net-srv") == 0){
 		fsrvmode = "net";
@@ -356,8 +325,11 @@ int main(int argc, char** argv)
 		sleep(10);
 	}
 	
-/* these are enabled based on build-system toggles */
-
+/* 
+ * These are enabled based on build-system toggles,
+ * a global define, FRAMESERVER_MODESTRING includes a space
+ * separated list of enabled frameserver archetypes.
+ */
 #ifdef ENABLE_FSRV_NET
 	if (strcmp(fsrvmode, "net-cl") == 0 || strcmp(fsrvmode, "net-srv") == 0){
 		toggle_logdev("net");
@@ -367,17 +339,33 @@ int main(int argc, char** argv)
 #endif
 
 #ifdef ENABLE_FSRV_DECODE
-	if (strcmp(fsrvmode, "movie") == 0 || strcmp(fsrvmode, "audio") == 0){
+	if (strcmp(fsrvmode, "decode") == 0){
 		toggle_logdev("dec");
 		arcan_frameserver_decode_run(resource, keyfile);
 		return 0;
 	}
 #endif
 
+#ifdef ENABLE_FSRV_TERMINAL
+	if (strcmp(fsrvmode, "terminal") == 0){
+		toggle_logdev("term");
+		arcan_frameserver_terminal_run(resource, keyfile);
+		return 0;
+	}
+#endif	
+
 #ifdef ENABLE_FSRV_ENCODE
 	if (strcmp(fsrvmode, "record") == 0){
 		toggle_logdev("rec");
 		arcan_frameserver_encode_run(resource, keyfile);
+		return 0;
+	}
+#endif
+
+#ifdef ENABLE_FSRV_REMOTING
+	if (strcmp(fsrvmode, "remoting") == 0){
+		toggle_logdev("remoting");
+		arcan_frameserver_remoting_run(resource, keyfile);
 		return 0;
 	}
 #endif

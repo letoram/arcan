@@ -15,8 +15,9 @@
 
 #include <sys/mman.h>
 
-#include <arcan_math.h>
-#include <arcan_general.h>
+#include "arcan_math.h"
+#include "arcan_general.h"
+#include "arcan_video.h"
 
 #ifdef MADV_DONTDUMP
 #define NO_DUMPFLAG MADV_DONTDUMP
@@ -49,6 +50,9 @@ struct mempool_meta {
  *    hope is that MEM_VBUFFER + READONLY can be used with
  *    future low-level graphics interfaces to directly map
  *    and manage GPU resources.
+ *
+ *    MEM_VBUFFER + BZERO uses the _video.h RGBA packing and 
+ *    PIXEL_BPP to set alpha channel to fully on.
  *
  * ARCAN_MEM_VSTRUCT =>
  *  - scratch-page + tightly packed ring-buffer, 16-byte align
@@ -96,6 +100,16 @@ int system_page_size = 4096;
  * and maximal settings fit.
  */
 void arcan_mem_init()
+{
+
+}
+
+/*
+ * there should essentially be NO memory blocks marked 
+ * TEMPORARY or SENSITIVE (NON VIDEO/AUDIO) alive at this
+ * point, use the tick point to check and trap as leaks.
+ */
+void arcan_mem_tick()
 {
 }
 
@@ -171,7 +185,13 @@ void* arcan_alloc_mem(size_t nb,
 	}
 
 	if (hint & ARCAN_MEM_BZERO){
-		memset(rptr, '\0', total);
+		if (type == ARCAN_MEM_VBUFFER){
+			av_pixel* buf = (av_pixel*) rptr;
+			for (int i = 0; i < nb; i += GL_PIXEL_BPP)
+				*buf++ = RGBA(0, 0, 0, 255);	
+		}
+		else
+			memset(rptr, '\0', total);
 	}
 
 	return rptr;

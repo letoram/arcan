@@ -121,8 +121,9 @@ typedef int acoord;
 	example: */
 
 #define LUA_TRACE(fsym)
-/*#define LUA_TRACE(fsym) fprintf(stderr, "(%lld:%s)->%s\n", \
-		arcan_timemillis(), lua_ctx_store.lastsrc, fsym); */
+/* #define LUA_TRACE(fsym) fprintf(stderr, "(%lld:%s)->%s\n", \
+		arcan_timemillis(), lua_ctx_store.lastsrc, fsym); 
+*/
 
 #define LUA_DEPRECATE(fsym) \
 	arcan_warning("%s, DEPRECATED, discontinue "\
@@ -1797,7 +1798,7 @@ static int loadmovie(lua_State* ctx)
 
 	struct frameserver_envp args = {
 		.use_builtin = true,
-		.args.builtin.mode = "movie",
+		.args.builtin.mode = "decode",
 		.args.builtin.resource = fname
 	};
 
@@ -3282,7 +3283,7 @@ static int allocsurface(lua_State* ctx)
 
 	for (int y = 0; y < cons.h; y++)
 		for (int x = 0; x < cons.w; x++)
-			RGBAPACK(0, 0, 0, 0xff, cptr++);
+			*cptr = RGBA(0, 0, 0, 0xff);
 
 	arcan_vobj_id id = arcan_video_rawobject(
 		buf, cons.w * cons.h * GL_PIXEL_BPP, cons, cons.w, cons.h, 0);
@@ -3320,7 +3321,7 @@ static int fillsurface(lua_State* ctx)
 
 		for (int y = 0; y < cons.h; y++)
 			for (int x = 0; x < cons.w; x++)
-				RGBAPACK(r, g, b, 0xff, cptr++);
+				*cptr++ = RGBA(r, g, b, 0xff);
 
 		arcan_vobj_id id = arcan_video_rawobject(buf, 
 			cons.w * cons.h * GL_PIXEL_BPP, cons, desw, desh, 0);
@@ -3437,7 +3438,7 @@ static int rawsurface(lua_State* ctx)
 						lua_rawgeti(ctx, 4, ofs++);
 						r = lua_tonumber(ctx, -1);
 						lua_pop(ctx, 1);
-						RGBAPACK(r, r, r, 0xff, cptr++);
+						*cptr++ = RGBA(r, r, r, 0xff);
 					break;
 
 					case 3:
@@ -3448,7 +3449,7 @@ static int rawsurface(lua_State* ctx)
 						lua_rawgeti(ctx, 4, ofs++);
 						b = lua_tonumber(ctx, -1);
 						lua_pop(ctx, 3);
-						RGBAPACK(r, g, b, 0xff, cptr++);
+						*cptr++ = RGBA(r, g, b, 0xff);
 					break;
 
 					case 4:
@@ -3461,7 +3462,7 @@ static int rawsurface(lua_State* ctx)
 						lua_rawgeti(ctx, 4, ofs++);
 						a = lua_tonumber(ctx, -1);
 						lua_pop(ctx, 4);
-						RGBAPACK(r, g, b, a, cptr++);
+						*cptr++ = RGBA(r, g, b, a);
 					}
 			}
 
@@ -3511,7 +3512,7 @@ static int randomsurface(lua_State* ctx)
 	for (int y = 0; y < cons.h; y++)
 		for (int x = 0; x < cons.w; x++){
 			unsigned char val = 20 + random() % 235;
-			RGBAPACK(val, val, val, 0xff, cptr++);
+			*cptr++ = RGBA(val, val, val, 0xff);
 		}
 
 	arcan_vobj_id id = arcan_video_rawobject(buf, desw * desh * 4, cons,
@@ -4179,21 +4180,59 @@ static int targetseek(lua_State* ctx)
 	return 0;
 }
 
+enum target_flags {
+	TARGET_FLAG_SYNCHRONOUS = 0,
+	TARGET_FLAG_NO_ALPHA_UPLOAD = 1,
+	TARGET_FLAG_VERBOSE = 2
+};
+
+static void updateflag(arcan_vobj_id vid, enum target_flags flag, bool toggle)
+{
+	vfunc_state* state = arcan_video_feedstate(vid);
+
+	if (!(state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr)){
+		arcan_warning("targetverbose() vid(%"PRIxVOBJ") is not "
+			"connected to a frameserver\n", vid);
+		return;
+	}
+
+	arcan_frameserver* fsrv = (arcan_frameserver*) state->ptr;
+
+	switch (flag){
+	case TARGET_FLAG_SYNCHRONOUS:
+		fsrv->flags.explicit = toggle;
+	break;
+
+	case TARGET_FLAG_VERBOSE:
+		fsrv->desc.callback_framestate = toggle;
+	break;
+
+	case TARGET_FLAG_NO_ALPHA_UPLOAD:
+		fsrv->flags.no_alpha_copy = toggle;
+	break;
+	}
+
+}
+
+static int targetflags(lua_State* ctx)
+{
+	LUA_TRACE("target_flags");
+	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
+	enum target_flags flag = luaL_checknumber(ctx, 2);
+	if (flag < TARGET_FLAG_SYNCHRONOUS || flag > TARGET_FLAG_VERBOSE)
+		arcan_fatal("target_flags() unknown flag value (%d)\n", flag);
+ 	bool toggle = luaL_optnumber(ctx, 3, 1) == 1;
+	updateflag(tgt, flag, toggle);
+
+	return 0;	
+}
+
 static int targetsynchronous(lua_State* ctx)
 {
 	LUA_TRACE("target_synchronous");
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
-
-	vfunc_state* state = arcan_video_feedstate(tgt);
-
-	if (!(state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr)){
-		arcan_warning("targetverbose() vid(%"PRIxVOBJ") is not "
-			"connected to a frameserver\n", tgt);
-		return 0;
-	}
-
-	arcan_frameserver* fsrv = (arcan_frameserver*) state->ptr;
-	fsrv->desc.explicit_xfer = true;
+ 	bool toggle = luaL_optnumber(ctx, 3, 1) == 1;
+	updateflag(tgt, TARGET_FLAG_SYNCHRONOUS, toggle);
 
 	return 0;	
 }
@@ -4202,19 +4241,8 @@ static int targetverbose(lua_State* ctx)
 {
 	LUA_TRACE("target_verbose");
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
-	bool toggle = luaL_optnumber(ctx, 2, 1) == 1; 
-
-	vfunc_state* state = arcan_video_feedstate(tgt);
-
-	if (!(state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr)){
-		arcan_warning("targetverbose() vid(%"PRIxVOBJ") is not "
-			"connected to a frameserver\n", tgt);
-
-		return 0;
-	}
-
-	arcan_frameserver* fsrv = (arcan_frameserver*) state->ptr;
-	fsrv->desc.callback_framestate = toggle;
+ 	bool toggle = luaL_optnumber(ctx, 3, 1) == 1;
+	updateflag(tgt, TARGET_FLAG_VERBOSE, toggle);
 
 	return 0;	
 }
@@ -4323,6 +4351,8 @@ static int targetrestore(lua_State* ctx)
 				return 1;
 			}
 			else; /* note that this will leave an empty statefile in the filesystem */
+
+			close(fd);
 		}
 	}
 	lua_pushboolean(ctx, false);
@@ -5025,6 +5055,7 @@ static int spawn_recfsrv(lua_State* ctx,
 
 		if (fd){
 			arcan_frameserver_pushfd( mvctx, fd );
+			close(fd);
 			mvctx->alocks = aidlocks;
 
 /* 
@@ -6231,7 +6262,7 @@ static inline arcan_frameserver* luaL_checknet(lua_State* ctx,
 		arcan_fatal("%s -- Frameserver connected to VID is not in client mode "
 			"(net_open vs net_listen)\n", prefix);
 
-	if (fsrv->subsegment)
+	if (fsrv->flags.subsegment)
 		arcan_fatal("%s -- Subsegment argument target not allowed\n", prefix);
 
 	*dvobj = vobj;
@@ -6249,7 +6280,6 @@ static int net_pushcl(lua_State* ctx)
 
 	int t = lua_type(ctx, 2);
 	arcan_vobject* dvobj, (* srcvobj);
-	arcan_vobj_id dvid;
 	luaL_checkvid(ctx, 1, &srcvobj);
 
 	switch(t){
@@ -6263,7 +6293,7 @@ static int net_pushcl(lua_State* ctx)
 		break;
 
 		case LUA_TNUMBER:
- 			dvid = luaL_checkvid(ctx, 2, &dvobj);
+ 			luaL_checkvid(ctx, 2, &dvobj);
 			uintptr_t ref = 0;
 
 			if (lua_isfunction(ctx, 3) && !lua_iscfunction(ctx, 3)){
@@ -6349,7 +6379,7 @@ static int net_pushsrv(lua_State* ctx)
 		arcan_fatal("net_pushsrv() -- bad arg1, VID "
 			"is not a frameserver.\n");
 
-	if (fsrv->subsegment)
+	if (fsrv->flags.subsegment)
 		arcan_fatal("net_pushsrv() -- cannot push VID to a subsegment.\n");
 
 	if (!fsrv->kind == ARCAN_FRAMESERVER_NETSRV)
@@ -6568,6 +6598,7 @@ static const luaL_Reg tgtfuns[] = {
 {"target_framemode",           targetskipmodecfg        },
 {"target_verbose",             targetverbose            },
 {"target_synchronous",         targetsynchronous        },
+{"target_flags",               targetflags              },
 {"target_pointsize",           targetpointsize          },
 {"target_linewidth",           targetlinewidth          },
 {"target_postfilter",          targetpostfilter         },
@@ -6853,6 +6884,9 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"BLEND_NORMAL",   BLEND_NORMAL  },
 {"FRAMESERVER_LOOP", 0},
 {"FRAMESERVER_NOLOOP", 1}, 
+{"TARGET_SYNCHRONOUS", 0},
+{"TARGET_NOALPHA", 1},
+{"TARGET_VERBOSE", 2},
 {"RENDERTARGET_NOSCALE",  RENDERTARGET_NOSCALE },
 {"RENDERTARGET_SCALE",    RENDERTARGET_SCALE   },
 {"RENDERTARGET_NODETACH", RENDERTARGET_NODETACH},
@@ -7127,11 +7161,11 @@ static inline void dump_vstate(FILE* dst, arcan_vobject* vobj)
 \tkind = [[%s]]};\n",
 	fsrv->source ? fsrv->source : "NULL",
 	(long long) fsrv->lastpts,
-	(int) fsrv->socksig,
-	(int) fsrv->use_pbo,
+	(int) fsrv->flags.socksig,
+	(int) fsrv->flags.pbo,
 	(int) fsrv->sz_audb,
 	(int) fsrv->ofs_audb,
-	(int) fsrv->child_alive,
+	(int) fsrv->flags.alive,
 	(int) fsrv->inqueue.eventbuf_sz,
 	qused(&fsrv->inqueue),
 	(int) fsrv->outqueue.eventbuf_sz,

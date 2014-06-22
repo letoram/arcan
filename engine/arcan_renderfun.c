@@ -817,9 +817,10 @@ void* renderfun_renderfmtstr(const char* message,
 		*d_sz = *dw * *dh * GL_PIXEL_BPP;
 
 		raw = arcan_alloc_mem(*d_sz, ARCAN_MEM_VBUFFER, 
-			ARCAN_MEM_TEMPORARY | ARCAN_MEM_BZERO | ARCAN_MEM_NONFATAL,
-		 	ARCAN_MEMALIGN_PAGE);
-		
+			ARCAN_MEM_TEMPORARY | ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE);
+	
+		memset(raw, '\0', *d_sz);
+
 		if (!raw)
 			goto cleanup;
 
