@@ -1445,7 +1445,7 @@ uint16_t arcan_video_screenh()
 	return arcan_video_display.height;
 }
 
-uint16_t nexthigher(uint16_t k)
+static uint16_t nexthigher(uint16_t k)
 {
 	k--;
 	for (int i=1; i < sizeof(uint16_t) * 8; i = i * 2)
