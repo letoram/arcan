@@ -139,10 +139,10 @@ static const int ARCAN_SHMPAGE_MAXH = PP_SHMPAGE_MAXH;
 /* 
  * The final shmpage size will be a function of the constants 
  * above, along with a few extra bytes to make room for the
- * header structure (audioframe * 3 / shmpage_achannels)
+ * header structure (audioframe * 3 / shmpage_achannels),
+ * legacy from ffmpeg.
  */
 static const int ARCAN_SHMPAGE_AUDIOBUF_SZ = 288000;
-/*	ARCAN_SHMPAGE_MAXAUDIO_FRAME * 3 / ARCAN_SHMPAGE_ACHANNELS; */
 
 #ifndef RGBA
 #define RGBA(r, g, b, a)( ((uint32_t)(a) << 24) | ((uint32_t) (b) << 16) |\
@@ -150,6 +150,7 @@ static const int ARCAN_SHMPAGE_AUDIOBUF_SZ = 288000;
 #endif
 
 static const int ARCAN_SHMPAGE_VIDEOBUF_SZ = 8294400;
+static const int ARCAN_SHMPAGE_START_SZ = 2041088;
 static const int ARCAN_SHMPAGE_MAX_SZ = 48294400;
 /* ARCAN_SHMPAGE_MAXW * ARCAN_SHMPAGE_MAXH * ARCAN_SHMPAGE_VCHANNELS */
 
@@ -169,13 +170,21 @@ enum arcan_shmif_sigmask {
  */
 struct arcan_shmif_cont {
 	struct arcan_shmif_page* addr;
+
+	intptr_t shmh; /* handle reference to be able to resize */
+	size_t shmsize; /* may grow / shrink on resize operations */
+
 	sem_handle vsem;
 	sem_handle asem;
 	sem_handle esem;
+
 	struct arcan_evctx inev;
 	struct arcan_evctx outev;
+
 	uint8_t* vidp;
 	uint8_t* audp;
+
+	void* guard; /* used in _control for guard threads etc. */
 };
 
 struct arcan_shmif_page {
@@ -203,6 +212,16 @@ struct arcan_shmif_page {
  * drop the connection. */
 	volatile int8_t resized;
 
+/*
+ * On a resize, parent will update segment_size. If this differs from
+ * the previously known size (tracked in cont), the segment should be remapped.
+ * Parent ignores the value here and maintains a local copy.
+ * This allows the parent to dictate if segments should be shrunk
+ * to optimal- fit video- buffer or not based on the larger
+ * memory subsystems. 
+ */
+	size_t segment_size;
+
 /* when released, it is assumed that the parent or child or both
  * has failed and everything should be dropped and terminated */
 	volatile uintptr_t dms;
@@ -225,7 +244,7 @@ struct arcan_shmif_page {
  * Current video output dimensions, if these deviate from the
  * agreed upon dimensions (i.e. change w,h and set the resized flag to !0)
  * the parent will simply ignore the data presented.
- */ 	
+ */
 	uint16_t w, h;
 
 /* 
