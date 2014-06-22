@@ -102,11 +102,11 @@ static char* client_password(rfbClient* client)
 	return strdup(vncctx.pass);
 }
 
-static void client_connect(const char* host)
+static bool client_connect(const char* host, int port)
 {
 /* how to transfer / set credentials .. */
 
-	LOG("(vnc-cl) connecting to %s\n", host);
+	LOG("(vnc-cl) connecting to %s:%d\n", host, port);
 	vncctx.client = rfbGetClient(8, 3, 4);
 	vncctx.client->MallocFrameBuffer = client_resize;
 	vncctx.client->canHandleNewFBSize = true;
@@ -115,29 +115,18 @@ static void client_connect(const char* host)
 	vncctx.client->GotXCutText = client_selection;
 	vncctx.client->GetPassword = client_password;
 	vncctx.client->HandleKeyboardLedState = client_keyled;
-
-/*
- * possible argc, argv;
- * listen (incoming), listennofork,
- * play (previos recording)
- * encodings (next is type)
- * compress (next is level)
- * scale (next is level)
- * last argument is host 
- */
-	int argc = 2;
-	char* argv[] = {
-		(char*)host,
-		(char*)host,
-		NULL
-	};
-
-	if (!rfbInitClient(vncctx.client, &argc, argv)){
+	vncctx.client->serverHost = strdup(host);
+	vncctx.client->serverPort = port;
+	vncctx.client->destHost = strdup(host);
+	vncctx.client->destPort = port;
+	
+	if (!rfbInitClient(vncctx.client, NULL, NULL)){
 		LOG("(vnc-cl) couldn't initialize client.\n");
-		return;
+		return false;
 	}
 
 	LOG("(vnc-cl) connected.\n");
+	return true;
 }
 
 static void cleanup()
@@ -214,7 +203,7 @@ static void map_cl_input(arcan_ioevent* ioev)
 }
 
 
-void arcan_frameserver_avfeed_run(const char* resource, 
+void arcan_frameserver_vnc_run(const char* resource, 
 	const char* keyfile)
 {
 	struct arg_arr* args = arg_unpack(resource);
@@ -236,11 +225,11 @@ void arcan_frameserver_avfeed_run(const char* resource,
 		port = strtoul(argtmp, NULL, 10);
 	}
 
-	char buf[ strlen(host) + 8];
-	snprintf(buf, sizeof(buf), "%s:%d", host, port);
-
 	vncctx.shmcont = arcan_shmif_acquire(keyfile, SHMIF_INPUT, true, false);
-	client_connect(buf);
+	if (!client_connect(host, port)){
+		return;
+	}
+
 	vncctx.client->frameBuffer = vncctx.shmcont.vidp;
 	atexit( cleanup );
 
