@@ -129,9 +129,7 @@ static struct {
 		
 	char* shmkey;
 		
-	struct arcan_evctx inevq, outevq;
 	struct arcan_shmif_cont shared;
-	uint8_t* vidp, (* audp);
 } global = {
 		.desfmt = {
 			.BitsPerPixel = 32,
@@ -290,8 +288,15 @@ SDL_GrabMode ARCAN_SDL_WM_GrabInput(SDL_GrabMode mode)
 }
 
 void ARCAN_target_init(){
-	global.shmkey = getenv("ARCAN_SHMKEY");
-	global.shared = arcan_shmif_acquire(global.shmkey, 
+	if (getenv("ARCAN_CONNPATH")){
+		global.shmkey = arcan_shmif_connect(
+			getenv("ARCAN_CONNPATH"), getenv("ARCAN_CONNKEY"));
+	}
+
+	if (!global.shmkey)
+		global.shmkey = getenv("ARCAN_SHMKEY");
+
+	global.shared = arcan_shmif_acquire(global.shmkey,
 		SHMIF_INPUT, true, false);
 
 	if (!global.shared.addr){
@@ -308,13 +313,7 @@ void ARCAN_target_init(){
 		sleep(10);
 	}
 	
-	arcan_shmif_resize( &(global.shared), 32, 32);
-	arcan_shmif_calcofs(global.shared.addr, &global.vidp, &global.audp);
-	arcan_shmif_setevqs(global.shared.addr, 
-		global.shared.esem, &(global.inevq), &(global.outevq), false);
-
 	global.ntsc_opts = snes_ntsc_rgb;
-
 }
 
 void ARCAN_target_shmsize(int w, int h, int bpp)
@@ -342,12 +341,12 @@ void ARCAN_target_shmsize(int w, int h, int bpp)
 			global.ntsc_imb = NULL;
 		}
 	}
-	
-	arcan_shmif_resize( &(global.shared), w, h);
-	arcan_shmif_calcofs(global.shared.addr, &global.vidp, &global.audp);
+
+	if (!	arcan_shmif_resize( &(global.shared), w, h) )
+		exit(EXIT_FAILURE);
 
 	uint32_t px = 0xff000000;
-	uint32_t* vidp = (uint32_t*) global.vidp;
+	uint32_t* vidp = (uint32_t*) global.shared.vidp;
 	for (int i = 0; i < w * h * 4; i++)
 		*vidp = px;
 }
@@ -580,7 +579,7 @@ int ARCAN_SDL_PollEvent(SDL_Event* inev)
 	
 	trace("SDL_PollEvent()\n");
 	
-	while ( arcan_event_poll(&global.inevq, &ev) ){
+	while ( arcan_event_poll(&global.shared.inev, &ev) ){
 		switch (ev.category){
 		case EVENT_IO:
 			if (global.gotsdl)
@@ -616,7 +615,7 @@ static void push_audio()
 		SDL_mutexP(global.abuf_synch);
 		
 			if (global.samplerate == ARCAN_SHMPAGE_SAMPLERATE){
-				memcpy(global.audp, global.encabuf, 
+				memcpy(global.shared.audp, global.encabuf, 
 					global.encabuf_ofs * sizeof(int16_t));
 			} else {
 				spx_uint32_t outc  = ARCAN_SHMPAGE_AUDIOBUF_SZ; 
@@ -625,7 +624,7 @@ static void push_audio()
 				
 				speex_resampler_process_interleaved_int(global.resampler, 
 					(const spx_int16_t*) global.encabuf, &nsamp, 
-					(spx_int16_t*) global.audp, &outc);
+					(spx_int16_t*) global.shared.audp, &outc);
 				if (outc)
 					global.shared.addr->abufused += 
 						outc * ARCAN_SHMPAGE_ACHANNELS * sizeof(uint16_t);
@@ -648,12 +647,12 @@ static void push_ntsc()
 /* only draw on every other line, so we can easily mix or blend interleaved */
 	snes_ntsc_blit(global.ntscctx, global.ntsc_imb, 
 		global.sourcew, 0, global.sourcew, global.sourceh, 
-		global.vidp, line_sz * 2);
+		global.shared.vidp, line_sz * 2);
 
 /* just line-double for now */
 	for (int row = 1; row < global.sourceh * 2; row += 2)
-		memcpy(&global.vidp[row * line_sz], 
-			&global.vidp[(row-1) * line_sz], line_sz);
+		memcpy(&global.shared.vidp[row * line_sz], 
+			&global.shared.vidp[(row-1) * line_sz], line_sz);
 }
 
 static bool cmpfmt(SDL_PixelFormat* a, SDL_PixelFormat* b){
@@ -690,13 +689,15 @@ static void copysurface(SDL_Surface* src){
 	else {
 		if (cmpfmt(src->format, &PixelFormat_RGBA888)){
 			SDL_LockSurface(src);
-			memcpy(global.vidp, src->pixels, src->w * src->h * sizeof(int32_t));
+			memcpy(global.shared.vidp, 
+				src->pixels, src->w * src->h * sizeof(int32_t));
 			SDL_UnlockSurface(src);
 		} else {
 			SDL_Surface* surf = SDL_ConvertSurface(src, 
 				&PixelFormat_RGBA888, SDL_SWSURFACE);
 			SDL_LockSurface(surf);
-			memcpy(global.vidp, surf->pixels, surf->w * surf->h * sizeof(int32_t));
+			memcpy(global.shared.vidp, 
+				surf->pixels, surf->w * surf->h * sizeof(int32_t));
 			SDL_UnlockSurface(surf);
 			SDL_FreeSurface(surf);
 		}
@@ -804,7 +805,7 @@ void ARCAN_SDL_GL_SwapBuffers()
  */
 
 	glReadPixels(0, 0, global.sourcew, global.sourceh, 
-		GL_RGBA, GL_UNSIGNED_BYTE, global.vidp);
+		GL_RGBA, GL_UNSIGNED_BYTE, global.shared.vidp);
 	trace("buffer read (%d, %d)\n", global.sourcew, global.sourceh);
 	
 /*
@@ -813,7 +814,7 @@ void ARCAN_SDL_GL_SwapBuffers()
  */
 	if (global.ntscconv && global.ntsc_imb){
 		uint16_t* dbuf = global.ntsc_imb;
-		uint8_t*   inb = (uint8_t*) global.vidp;
+		uint8_t*   inb = (uint8_t*) global.shared.vidp;
 	
 		for (int y = 0; y < global.sourcew; y++)
 			for (int x = 0; x < global.sourceh; x++){

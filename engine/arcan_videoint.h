@@ -339,9 +339,6 @@ void arcan_video_setblend(const surface_properties* dprops,
 void arcan_debug_tracetag_dump();
 #endif
 
-/* only ever used for next power of two concerning dislay resolutions */
-uint16_t nexthigher(uint16_t k);
-
 struct arcan_img_meta;
 void push_globj(arcan_vobject*, bool noupload, bool mipmap);
 void generate_basic_mapping(float* dst, float st, float tt);
