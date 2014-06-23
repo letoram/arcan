@@ -664,6 +664,39 @@ arcan_frameserver* arcan_frameserver_listen_external(const char* key)
 	return res;	
 }
 
+bool arcan_frameserver_resize(shm_handle* src, int w, int h)
+{
+	w = abs(w);
+	h = abs(h);
+
+	size_t sz = arcan_shmif_getsize(w, h);
+	if (sz > ARCAN_SHMPAGE_MAX_SZ)
+		return false;
+
+/*
+ * Don't resize unless the gain is ~20%
+ */
+	if (sz < src->shmsize && sz > (float)src->shmsize * 0.8)
+		return true;
+
+/* create a temporary copy */
+	char* tmpbuf = arcan_alloc_mem(sizeof(struct arcan_shmif_page),
+		ARCAN_MEM_VSTRUCT, ARCAN_MEM_TEMPORARY, ARCAN_MEMALIGN_NATURAL);
+
+	memcpy(tmpbuf, src->ptr, sizeof(struct arcan_shmif_page));
+
+/* unmap + truncate + map */
+	munmap(src->ptr, src->shmsize);
+	src->shmsize = sz;	
+	ftruncate(src->handle, sz);
+	src->ptr = mmap(NULL, sz, PROT_READ | PROT_WRITE, MAP_SHARED, src->handle,0); 
+	memcpy(src->ptr, tmpbuf, sizeof(struct arcan_shmif_page));
+	src->ptr->segment_size = sz;
+
+	arcan_mem_free(tmpbuf);
+	return true;
+}
+
 arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, 
 	struct frameserver_envp setup)
 {
