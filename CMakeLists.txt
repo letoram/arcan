@@ -372,6 +372,10 @@ set (
  shmif/arcan_shmif.h
 )
 
+# We do this because f*** GNU C extensions. Seriously.
+set_property(SOURCE platform/posix/fdpassing.c 
+	APPEND PROPERTY COMPILE_FLAGS -w )
+
 if (ENABLE_SIMD)
 	message("--> Enabling SIMD")
 	set_property(SOURCE engine/arcan_math.c
