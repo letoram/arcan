@@ -248,6 +248,7 @@ void arcan_frameserver_dropsemaphores_keyed(char*);
  * is intact and look for any state-changes, e.g. resize (which would 
  * require a recalculation of shared memory layout */
 void arcan_frameserver_tick_control(arcan_frameserver*);
+bool arcan_frameserver_resize(shm_handle*, int, int);
 
 /* default implementations for shared memory framequeue readers, 
  * two with separate sync (vidcb audcb) and one where sync is 

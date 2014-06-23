@@ -367,6 +367,12 @@ void arcan_shmif_drop(struct arcan_shmif_cont*);
 void arcan_shmif_signal(struct arcan_shmif_cont*, int mask);
 
 /*
+ * Support function to calculate the size of a shared memory
+ * segment given the specified dimensions (width, height).
+ */
+size_t arcan_shmif_getsize(unsigned width, unsigned height);
+
+/*
  * This is currently a "stub" (merely version check)
  * although it is suggested that both frameservers and parents 
  * repeatedly invokes it as part of rendering / eventloops or 

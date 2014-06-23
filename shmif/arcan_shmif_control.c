@@ -26,9 +26,9 @@
  * semaphores and a parent<->child circular dependency (like we have here).
  *
  * Sleep a fixed amount of seconds, wake up and check if parent is alive.
- * If that's true, go back to sleep -- otherwise -- wake up, pop open 
+ * If that's true, go back to sleep -- otherwise -- wake up, pop open
  * all semaphores set the disengage flag and go back to a longer sleep
- * that it shouldn't wake up from. Show this sleep be engaged anyhow, 
+ * that it shouldn't wake up from. Show this sleep be engaged anyhow,
  * shut down forcefully. */
 
 struct guard_struct {
@@ -40,7 +40,7 @@ struct guard_struct {
 
 static void* guard_thread(void* gstruct);
 
-static void spawn_guardthread(struct guard_struct gs, 
+static void spawn_guardthread(struct guard_struct gs,
 	struct arcan_shmif_cont* d)
 {
 	struct guard_struct* hgs = malloc(sizeof(struct guard_struct));
@@ -68,18 +68,18 @@ static inline bool parent_alive()
 	return IsWindow(parent);
 }
 
-/* force_unlink isn't used here as the semaphores are 
+/* force_unlink isn't used here as the semaphores are
  * passed as inherited handles */
 struct arcan_shmif_cont arcan_shmif_acquire(
 	const char* shmkey, int shmif_type, char force_unlink, char noguard)
 {
 	struct arcan_shmif_cont res = {0};
 	assert(shmkey);
-	assert(sizeof(res.priv) >= sizeof(struct guard_struct)); 
+	assert(sizeof(res.priv) >= sizeof(struct guard_struct));
 
 	HANDLE shmh = (HANDLE) strtoul(shmkey, NULL, 10);
 
-	res.addr = (struct arcan_shmif_page*) MapViewOfFile(shmh, 
+	res.addr = (struct arcan_shmif_page*) MapViewOfFile(shmh,
 		FILE_MAP_ALL_ACCESS, 0, 0, ARCAN_SHMPAGE_MAX_SZ);
 
 	if ( res.addr == NULL ) {
@@ -103,8 +103,10 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 	if (!noguard)
 		spawn_guardthread(gs);
 
-	arcan_shmif_setevqs(&res, res.esem, &res.inev, &res.outev, false); 
-		arcan_shmif_calcofs(res.addr, &res.vidp, &res.audp);
+	arcan_shmif_setevqs(&res, res.esem, &res.inev, &res.outev, false);
+	arcan_shmif_calcofs(res.addr, &res.vidp, &res.audp);
+
+	res.shmsize = res.addr->segment_size;
 
 	LOG("arcan_frameserver() -- shmpage configured and filled.\n");
 	return res;
@@ -146,9 +148,9 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 	}
 
 	res.addr = map_shm(ARCAN_SHMPAGE_START_SZ, fd);
-	res.shmh = fd; 
+	res.shmh = fd;
 
-	if (force_unlink) 
+	if (force_unlink)
 		shm_unlink(shmkey);
 
 	if (res.addr == MAP_FAILED){
@@ -164,17 +166,17 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 	char* work = strdup(shmkey);
 	work[strlen(work) - 1] = 'v';
 	res.vsem = sem_open(work, 0);
-	if (force_unlink) 
+	if (force_unlink)
 		sem_unlink(work);
 
 	work[strlen(work) - 1] = 'a';
 	res.asem = sem_open(work, 0);
-	if (force_unlink) 
+	if (force_unlink)
 		sem_unlink(work);
 
 	work[strlen(work) - 1] = 'e';
 	res.esem = sem_open(work, 0);
-	if (force_unlink) 
+	if (force_unlink)
 		sem_unlink(work);
 	free(work);
 
@@ -197,9 +199,11 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 	if (!noguard)
 		spawn_guardthread(gs, &res);
 
-	arcan_shmif_setevqs(res.addr, res.esem, &res.inev, &res.outev, false); 
+	arcan_shmif_setevqs(res.addr, res.esem, &res.inev, &res.outev, false);
 	arcan_shmif_calcofs(res.addr, &res.vidp, &res.audp);
-	
+
+	res.shmsize = res.addr->segment_size;
+
 	return res;
 }
 
@@ -210,14 +214,14 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey)
 		return NULL;
 	}
 
-	char* res = NULL;	
+	char* res = NULL;
 	char* workbuf = NULL;
 	size_t conn_sz;
 
-/* the rules for resolving the connection socket namespace are 
+/* the rules for resolving the connection socket namespace are
  * somewhat complex, i.e. on linux we have the atrocious \0 prefix
  * that defines a separate socket namespace, if we don't specify
- * an absolute path, the key will resolve to be relative your 
+ * an absolute path, the key will resolve to be relative your
  * HOME environment (BUT we also have an odd size limitation to
  * sun_path to take into consideration). */
 #ifdef __linux
@@ -234,7 +238,7 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey)
 		conn_sz = strlen(connpath) + strlen(auxp) + sizeof(ARCAN_SHM_PREFIX) + 1;
 		workbuf = malloc(conn_sz);
 		snprintf(workbuf, conn_sz, "%s/%s%s", auxp, ARCAN_SHM_PREFIX, connpath);
-	} 
+	}
 	else {
 		conn_sz = strlen(connpath) + sizeof(ARCAN_SHM_PREFIX);
 		workbuf = malloc(conn_sz);
@@ -264,7 +268,7 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey)
 /* connection or not, unlink the connection path */
 	if (connect(sock, (struct sockaddr*) &dst, sizeof(struct sockaddr_un)) < 0){
 		LOG("arcan_shmif_connect(%s), "
-			"couldn't connect to server, reason: %s.\n", 
+			"couldn't connect to server, reason: %s.\n",
 			dst.sun_path, strerror(errno)
 		);
 		close(sock);
@@ -279,7 +283,7 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey)
 		size_t nw = snprintf(wbuf, PP_SHMPAGE_SHMKEYLIM, "%s\n", connkey);
 		if (nw >= PP_SHMPAGE_SHMKEYLIM){
 			LOG("arcan_shmif_connect(%s), "
-				"ident string (%s) exceeds limit (%d).\n", 
+				"ident string (%s) exceeds limit (%d).\n",
 				workbuf, connkey, PP_SHMPAGE_SHMKEYLIM
 			);
 			close(sock);
@@ -288,7 +292,7 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey)
 
 		if (write(sock, wbuf, nw) < nw){
 			LOG("arcan_shmif_connect(%s), "
-				"error sending connection string, reason: %s\n", 
+				"error sending connection string, reason: %s\n",
 				workbuf, strerror(errno)
 			);
 			close(sock);
@@ -305,13 +309,13 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey)
 			close(sock);
 			goto end;
 		}
-	} 
+	}
 	while(wbuf[ofs++] != '\n' && ofs < PP_SHMPAGE_SHMKEYLIM);
 	wbuf[ofs-1] = '\0';
 
 /* 4. omitted, just return a copy of the key and let someone else
  * perform the arcan_shmif_acquire call. Just set the env. */
-	res = strdup(wbuf); 
+	res = strdup(wbuf);
 	snprintf(wbuf, PP_SHMPAGE_SHMKEYLIM, "%d", sock);
 	setenv("ARCAN_SOCKIN_FD", wbuf, true);
 
@@ -342,7 +346,7 @@ static void* guard_thread(void* gs)
 			for (int i = 0; i < sizeof(gstr->semset) / sizeof(gstr->semset[0]); i++)
 				if (gstr->semset[i])
 					arcan_sem_post(gstr->semset[i]);
-			
+
 			pthread_mutex_unlock(&gstr->synch);
 			sleep(5);
 			LOG("frameserver::guard_thread -- couldn't shut"
@@ -367,7 +371,7 @@ bool arcan_shmif_integrity_check(struct arcan_shmif_page* shmp)
 	return true;
 }
 
-void arcan_shmif_setevqs(struct arcan_shmif_page* dst, 
+void arcan_shmif_setevqs(struct arcan_shmif_page* dst,
 	sem_handle esem, arcan_evctx* inq, arcan_evctx* outq, bool parent)
 {
 	if (parent){
@@ -392,13 +396,13 @@ void arcan_shmif_setevqs(struct arcan_shmif_page* dst,
 	inq->eventbuf = dst->childdevq.evqueue;
 	inq->front = &dst->childdevq.front;
 	inq->back  = &dst->childdevq.back;
-	inq->eventbuf_sz = ARCAN_SHMPAGE_QUEUE_SZ; 
+	inq->eventbuf_sz = ARCAN_SHMPAGE_QUEUE_SZ;
 
 	outq->local =false;
 	outq->eventbuf = dst->parentevq.evqueue;
 	outq->front = &dst->parentevq.front;
 	outq->back  = &dst->parentevq.back;
-	outq->eventbuf_sz = ARCAN_SHMPAGE_QUEUE_SZ; 
+	outq->eventbuf_sz = ARCAN_SHMPAGE_QUEUE_SZ;
 }
 
 #include <assert.h>
@@ -408,7 +412,7 @@ void arcan_shmif_signal(struct arcan_shmif_cont* ctx, int mask)
 		ctx->addr->vready = true;
 		arcan_sem_wait(ctx->vsem);
 	}
-	else if (mask == SHMIF_SIGAUD){ 
+	else if (mask == SHMIF_SIGAUD){
 		ctx->addr->aready = true;
 		arcan_sem_wait(ctx->asem);
 	}
@@ -417,12 +421,12 @@ void arcan_shmif_signal(struct arcan_shmif_cont* ctx, int mask)
 		arcan_sem_wait(ctx->vsem);
 		arcan_sem_wait(ctx->asem);
 	}
-	else 
+	else
 		;
 }
 
-void arcan_shmif_forceofs(struct arcan_shmif_page* shmp, 
-	uint8_t** dstvidptr, uint8_t** dstaudptr, unsigned width, 
+void arcan_shmif_forceofs(struct arcan_shmif_page* shmp,
+	uint8_t** dstvidptr, uint8_t** dstaudptr, unsigned width,
 	unsigned height, unsigned bpp)
 {
 	uint8_t* base = (uint8_t*) shmp;
@@ -447,10 +451,10 @@ void arcan_shmif_forceofs(struct arcan_shmif_page* shmp,
 	}
 }
 
-void arcan_shmif_calcofs(struct arcan_shmif_page* shmp, 
+void arcan_shmif_calcofs(struct arcan_shmif_page* shmp,
 	uint8_t** dstvidptr, uint8_t** dstaudptr)
 {
-	arcan_shmif_forceofs(shmp, dstvidptr, dstaudptr, 
+	arcan_shmif_forceofs(shmp, dstvidptr, dstaudptr,
 		shmp->w, shmp->h, ARCAN_SHMPAGE_VCHANNELS);
 }
 
@@ -463,24 +467,29 @@ void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 #endif
 }
 
-bool arcan_shmif_resize(struct arcan_shmif_cont* arg, 
+size_t arcan_shmif_getsize(unsigned width, unsigned height)
+{
+	return width * height * ARCAN_SHMPAGE_VCHANNELS +
+		sizeof(struct arcan_shmif_page) + ARCAN_SHMPAGE_AUDIOBUF_SZ;
+}
+
+bool arcan_shmif_resize(struct arcan_shmif_cont* arg,
 	unsigned width, unsigned height)
 {
-	if (!arg->addr || !arcan_shmif_integrity_check(arg->addr))	
+	if (!arg->addr || !arcan_shmif_integrity_check(arg->addr))
 		return false;
 
 	arg->addr->w = width;
 	arg->addr->h = height;
 	arg->addr->resized = true;
 
-	LOG("request resize to (%d:%d) approx ~%zu bytes (currently: %zu).\n", 
-		width, height, width * height * ARCAN_SHMPAGE_VCHANNELS + 
-		sizeof(struct arcan_shmif_page) + ARCAN_SHMPAGE_AUDIOBUF_SZ, arg->shmsize); 
+	LOG("request resize to (%d:%d) approx ~%zu bytes (currently: %zu).\n",
+		width, height, arcan_shmif_getsize(width, height), arg->shmsize);
 
-/* 
+/*
  * spin until acknowledged,
  * re-using the "wait on sync-fd" approach might
- * be worthwile (test latency to be sure). 
+ * be worthwile (test latency to be sure).
  */
 	while(arg->addr->resized && arg->addr->dms)
 		;
@@ -492,25 +501,27 @@ bool arcan_shmif_resize(struct arcan_shmif_cont* arg,
 /*
  * the guard struct, if present, has another thread running that may
  * trigger the dms. BUT now the dms may be relocated so we must lock
- * guard and update and recalculate everything. 
+ * guard and update and recalculate everything.
  */
+		size_t new_sz = arg->addr->segment_size;
 		struct guard_struct* gs = (struct guard_struct*) arg->guard;
 		if (gs)
 			pthread_mutex_lock(&gs->synch);
 
 		munmap(arg->addr, arg->shmsize);
-		arg->shmsize = arg->addr->segment_size;
-
+		arg->shmsize = new_sz;
 		arg->addr = map_shm(arg->shmsize, arg->shmh);
 		if (!arg->addr){
 			LOG("arcan_shmif_resize() failed on segment remapping.\n");
 			return false;
 		}
 
-		arcan_shmif_setevqs(arg->addr, arg->esem, &arg->inev, &arg->outev, false); 
+		arcan_shmif_setevqs(arg->addr, arg->esem, &arg->inev, &arg->outev, false);
 
-		if (gs)
+		if (gs){
+			gs->dms = &arg->addr->dms;
 			pthread_mutex_unlock(&gs->synch);
+		}
 	}
 
 /* free, mmap again --
@@ -561,10 +572,10 @@ struct arg_arr* arg_unpack(const char* resource)
 	char* base    = strdup(resource);
 	char* workstr = base;
 
-/* sweep for key=val:key:key style packed arguments, 
+/* sweep for key=val:key:key style packed arguments,
  * since this is used in such a limited fashion (RFC 3986 at worst),
- * we use a replacement token rather than an escape one, 
- * so \t becomes : post-process 
+ * we use a replacement token rather than an escape one,
+ * so \t becomes : post-process
  */
 	while (curarg < argc){
 		char* endp  = workstr;
@@ -619,7 +630,7 @@ void arg_cleanup(struct arg_arr* arr)
 	}
 }
 
-bool arg_lookup(struct arg_arr* arr, const char* val, 
+bool arg_lookup(struct arg_arr* arr, const char* val,
 	unsigned short ind, const char** found)
 {
 	int pos = 0;

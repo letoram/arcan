@@ -39,7 +39,7 @@
 #include <time.h>
 #include <dlfcn.h>
 
-#include <arcan_shmif.h> 
+#include <arcan_shmif.h>
 #include "frameserver.h"
 
 void arcan_frameserver_decode_run(
@@ -55,7 +55,7 @@ void arcan_frameserver_avfeed_run(
 void arcan_frameserver_terminal_run(
 	const char* resource, const char* keyfile);
 
-/* 
+/*
  * arcan_general functions assumes these are valid for searchpaths etc.
  * since we want to use some of those functions, we need a linkerhack or two.
  * These should be refactored to use the platform* functions
@@ -67,19 +67,19 @@ void* frameserver_getrawfile(const char* fname, ssize_t* dstsize)
 	*dstsize = -1;
 
 	if (-1 == stat(fname, &filedat)){
-		LOG("arcan_frameserver(get_rawfile) stat (%s) failed, reason: %d,%s\n", 
+		LOG("arcan_frameserver(get_rawfile) stat (%s) failed, reason: %d,%s\n",
 			fname, errno, strerror(errno));
 		return NULL;
 	}
-	
+
 	if (-1 == (fd = open(fname, O_RDONLY)))
 	{
-		LOG("arcan_frameserver(get_rawfile) open (%s) failed, reason: %d:%s\n", 
+		LOG("arcan_frameserver(get_rawfile) open (%s) failed, reason: %d:%s\n",
 			fname, errno, strerror(errno));
 		return NULL;
 	}
-	
-	void* buf = mmap(NULL, filedat.st_size, PROT_READ | 
+
+	void* buf = mmap(NULL, filedat.st_size, PROT_READ |
 		PROT_WRITE, MAP_PRIVATE, fd, 0);
 
 	if (buf == MAP_FAILED){
@@ -98,17 +98,17 @@ void* frameserver_getrawfile_handle(file_handle fd, ssize_t* dstsize)
 	struct stat filedat;
 	void* rv = NULL;
 	*dstsize = -1;
-	
+
 	if (-1 == fstat(fd, &filedat)){
-		LOG("arcan_frameserver(get_rawfile) stat (%d) failed, reason: %d,%s\n", 
+		LOG("arcan_frameserver(get_rawfile) stat (%d) failed, reason: %d,%s\n",
 			fd, errno, strerror(errno));
 		goto error;
 	}
-	
-	void* buf = mmap(NULL, filedat.st_size, PROT_READ | 
+
+	void* buf = mmap(NULL, filedat.st_size, PROT_READ |
 		PROT_WRITE, MAP_PRIVATE, fd, 0);
 	if (buf == MAP_FAILED){
-		LOG("arcan_frameserver(get_rawfile) mmap failed (fd: %d, size: %zd)\n", 
+		LOG("arcan_frameserver(get_rawfile) mmap failed (fd: %d, size: %zd)\n",
 			fd, (ssize_t) filedat.st_size);
 		goto error;
 	}
@@ -120,11 +120,11 @@ error:
 	return rv;
 }
 
-bool frameserver_dumprawfile_handle(const void* const data, size_t sz_data, 
+bool frameserver_dumprawfile_handle(const void* const data, size_t sz_data,
 	file_handle dst, bool finalize)
 {
 	bool rv = false;
-	
+
 	if (dst != BADFD)
 	{
 		off_t ofs = 0;
@@ -145,7 +145,7 @@ bool frameserver_dumprawfile_handle(const void* const data, size_t sz_data,
 			ofs += nw;
 		}
 		rv = true;
-		
+
 		out:
 		if (finalize)
 			close(dst);
@@ -153,11 +153,11 @@ bool frameserver_dumprawfile_handle(const void* const data, size_t sz_data,
 	 else
 		 LOG("arcan_frameserver(dumprawfile) -- request to dump to invalid "
 			"file handle ignored, no output set by parent.\n");
-	
+
 	return rv;
 }
 
-/* inev is part of the argument in order for Win32 and others that can 
+/* inev is part of the argument in order for Win32 and others that can
  * pass handles in a less hackish way to do so by reusing symbols and
  * cutting down on defines */
 int frameserver_readhandle(arcan_event* inev)
@@ -200,6 +200,11 @@ void* frameserver_requirefun(const char* const sym, bool module)
 	return dlsym(lastlib, sym);
 }
 
+static void close_logdev()
+{
+	fflush(stderr);
+}
+
 static void toggle_logdev(const char* prefix)
 {
 	const char* const logdir = getenv("ARCAN_FRAMESERVER_LOGDIR");
@@ -212,7 +217,7 @@ static void toggle_logdev(const char* prefix)
 		struct tm* basetime = localtime(&t);
 		strftime(timeb, sizeof(timeb)-1, "%y%m%d_%H%M", basetime);
 
-		size_t logbuf_sz = strlen(logdir) + 
+		size_t logbuf_sz = strlen(logdir) +
 			sizeof("/fsrv__yymmddhhss.txt") + strlen(prefix);
 		char* logbuf = malloc(logbuf_sz + 1);
 
@@ -223,13 +228,15 @@ static void toggle_logdev(const char* prefix)
 				stderr = stdout;
 		}
 	}
+
+	atexit(close_logdev);
 }
 
 /*
  * Splitmode warrant some explaining,
  * in the mode we use the frameserver binary as a chainloader;
  * we select a different binary (our own name + _mode and
- * just pass the environment onwards. We also get the benefit 
+ * just pass the environment onwards. We also get the benefit
  * of testing the main process resolve against double forking.
  *
  * This is done to limit the effect of some libraries having unreasonable
@@ -239,7 +246,7 @@ static void toggle_logdev(const char* prefix)
  *
  * This is mostly implemented in the build system;
  * a main arcan_frameserver binary is produced with ARCAN_FRAMESERVER_SPLITMODE
- * defined, and n' different others with the _mode suffix attached and 
+ * defined, and n' different others with the _mode suffix attached and
  * the unused subsystems won't be #defined in.
  *
  * The intent is also to implement sandboxing setup and loading here,
@@ -249,9 +256,9 @@ static void toggle_logdev(const char* prefix)
 static void dumpargs(int argc, char** argv)
 {
 	printf("invalid number of arguments (%d):\n", argc);
- 	printf("[1 mode] : %s\n", argc > 1 && argv[1] ? argv[1] : "");	
+ 	printf("[1 mode] : %s\n", argc > 1 && argv[1] ? argv[1] : "");
 	printf("[2 key] : %s\n", argc > 2 && argv[2] ? argv[2] : "");
-	printf("environment (ARCAN_ARG) : %s\n", 
+	printf("environment (ARCAN_ARG) : %s\n",
 		getenv("ARCAN_ARG") ? getenv("ARCAN_ARG") : "");
 	printf("environment (ARCAN_SOCKIN_FD) : %s\n",
 		getenv("ARCAN_SOCKIN_FD") ? getenv("ARCAN_SOCKIN_FD") : "");
@@ -269,7 +276,7 @@ int main(int argc, char** argv)
 		return 1;
 	}
 
-/* seriously doing this to work around compiler warnings, ./facepalm */ 
+/* seriously doing this to work around compiler warnings, ./facepalm */
 	toggle_logdev(NULL);
 
 	char* fsrvmode = argv[1];
@@ -316,16 +323,16 @@ int main(int argc, char** argv)
 	}
 
 /*
- * set this env whenever you want to step through the 
- * frameserver as launched from the parent 
+ * set this env whenever you want to step through the
+ * frameserver as launched from the parent
  */
 	if (getenv("ARCAN_FRAMESERVER_DEBUGSTALL")){
 		LOG("frameserver_debugstall, waiting 10s to continue. pid: %d\n",
 			(int) getpid());
 		sleep(10);
 	}
-	
-/* 
+
+/*
  * These are enabled based on build-system toggles,
  * a global define, FRAMESERVER_MODESTRING includes a space
  * separated list of enabled frameserver archetypes.
@@ -352,7 +359,7 @@ int main(int argc, char** argv)
 		arcan_frameserver_terminal_run(resource, keyfile);
 		return 0;
 	}
-#endif	
+#endif
 
 #ifdef ENABLE_FSRV_ENCODE
 	if (strcmp(fsrvmode, "record") == 0){
