@@ -7,13 +7,13 @@
 
 /*
  * a lot of the filtering here is copied of platform/sdl/event.c,
- * as it is scheduled for deprecation, we've not bothered designing 
+ * as it is scheduled for deprecation, we've not bothered designing
  * an interface for the axis bits to be shared
  */
 
 /* toggleable options:
  * WITH_X11 - adds X11 support for keyboard and mouse,
- *            this will disable the use of /dev/input* for 
+ *            this will disable the use of /dev/input* for
  *            those kinds of devices
  */
 
@@ -47,7 +47,7 @@ extern Display* x11_display;
 #define DEVPREFIX "/dev/input/event"
 
 struct axis_opts {
-/* none, avg, drop */ 
+/* none, avg, drop */
 	enum ARCAN_ANALOGFILTER_KIND mode;
 	enum ARCAN_ANALOGFILTER_KIND oldmode;
 
@@ -88,7 +88,7 @@ struct arcan_devnode {
 	enum devnode_type type;
 	union {
 		struct {
-			struct axis_opts data;	
+			struct axis_opts data;
 		} sensor;
 		struct {
 			unsigned short axes;
@@ -102,27 +102,27 @@ struct arcan_devnode {
 			struct axis_opts flt[2];
 		} cursor;
 		struct {
-			bool incomplete;		
+			bool incomplete;
 		} touch;
 	};
 };
 
-static inline bool process_axis(arcan_evctx* ctx, 
+static inline bool process_axis(arcan_evctx* ctx,
 	struct axis_opts* daxis, int16_t samplev, int16_t* outv)
 {
 	if (daxis->mode == ARCAN_ANALOGFILTER_NONE)
 		return false;
-	
+
 	if (daxis->mode == ARCAN_ANALOGFILTER_PASS)
 		goto accept_sample;
 
 /* quickfilter deadzone */
 	if (abs(samplev) < daxis->deadzone){
 		if (!daxis->indzone){
-			samplev = 0; 
+			samplev = 0;
 			daxis->indzone = true;
 		}
-		else 
+		else
 			return false;
 	}
 	else
@@ -134,7 +134,7 @@ static inline bool process_axis(arcan_evctx* ctx,
 			samplev = daxis->lower;
 			daxis->inlzone = true;
 			daxis->inuzone = false;
-		}	
+		}
 		else
 			return false;
 	}
@@ -152,7 +152,7 @@ static inline bool process_axis(arcan_evctx* ctx,
 
 	daxis->flt_kernel[ daxis->kernel_ofs++ ] = samplev;
 
-/* don't proceed until the kernel is filled */ 
+/* don't proceed until the kernel is filled */
 	if (daxis->kernel_ofs < daxis->kernel_sz)
 		return false;
 
@@ -161,15 +161,15 @@ static inline bool process_axis(arcan_evctx* ctx,
 
 		if (daxis->mode == ARCAN_ANALOGFILTER_ALAST){
 			samplev = daxis->flt_kernel[daxis->kernel_sz - 1];
-		} 
+		}
 		else {
 			for (int i = 0; i < daxis->kernel_sz; i++)
 				tot += daxis->flt_kernel[i];
 
-			samplev = tot != 0 ? tot / daxis->kernel_sz : 0; 
+			samplev = tot != 0 ? tot / daxis->kernel_sz : 0;
 		}
 
-	} 
+	}
 	else;
 	daxis->kernel_ofs = 0;
 
@@ -179,7 +179,7 @@ accept_sample:
 }
 
 static inline void process_mousemotion(arcan_evctx* ctx,
-	int16_t xv, int16_t xrel, int16_t yv, int16_t yrel)	
+	int16_t xv, int16_t xrel, int16_t yv, int16_t yrel)
 {
 	int16_t dstv, dstv_r;
 	arcan_event nev = {
@@ -191,9 +191,9 @@ static inline void process_mousemotion(arcan_evctx* ctx,
 		.data.io.input.analog.devid  = ARCAN_MOUSEIDBASE,
 		.data.io.input.analog.gotrel = true,
 		.data.io.input.analog.nvalues = 2
-	}; 
+	};
 
-	snprintf(nev.label, 
+	snprintf(nev.label,
 		sizeof(nev.label) - 1, "mouse");
 
 	if (process_axis(ctx, &iodev.mx, xv, &dstv) &&
@@ -201,7 +201,7 @@ static inline void process_mousemotion(arcan_evctx* ctx,
 		nev.data.io.input.analog.subid = 0;
 		nev.data.io.input.analog.axisval[0] = dstv;
 		nev.data.io.input.analog.axisval[1] = dstv_r;
-		arcan_event_enqueue(ctx, &nev);	
+		arcan_event_enqueue(ctx, &nev);
 	}
 
 	if (process_axis(ctx, &iodev.my, yv, &dstv) &&
@@ -209,27 +209,27 @@ static inline void process_mousemotion(arcan_evctx* ctx,
 		nev.data.io.input.analog.subid = 1;
 		nev.data.io.input.analog.axisval[0] = dstv;
 		nev.data.io.input.analog.axisval[1] = dstv_r;
-		arcan_event_enqueue(ctx, &nev);	
+		arcan_event_enqueue(ctx, &nev);
 	}
 }
 
 static void set_analogstate(struct axis_opts* dst,
 	int lower_bound, int upper_bound, int deadzone,
 	int kernel_size, enum ARCAN_ANALOGFILTER_KIND mode)
-{	
+{
 	dst->lower = lower_bound;
 	dst->upper = upper_bound;
 	dst->deadzone = deadzone;
 	dst->kernel_sz = kernel_size;
 	dst->mode = mode;
 	dst->kernel_ofs = 0;
-}	
+}
 
 arcan_errc arcan_event_analogstate(int devid, int axisid,
 	int* lower_bound, int* upper_bound, int* deadzone,
 	int* kernel_size, enum ARCAN_ANALOGFILTER_KIND* mode)
 {
-/* special case, whatever device is permitted to 
+/* special case, whatever device is permitted to
  * emit cursor events at the moment */
 	if (devid == -1){
 		if (axisid == 0){
@@ -281,11 +281,11 @@ arcan_errc arcan_event_analogstate(int devid, int axisid,
 		*deadzone = src->deadzone;
 		*kernel_size = src->kernel_sz;
 	break;
-	
+
 	case DEVNODE_TOUCH:
 		return ARCAN_ERRC_BAD_RESOURCE;
 	break;
-	}	
+	}
 
 	return ARCAN_OK;
 }
@@ -324,14 +324,14 @@ void arcan_event_analogall(bool enable, bool mouse)
 			} */
 }
 
-void arcan_event_analogfilter(int devid, 
+void arcan_event_analogfilter(int devid,
 	int axisid, int lower_bound, int upper_bound, int deadzone,
 	int buffer_sz, enum ARCAN_ANALOGFILTER_KIND kind)
 {
 	struct axis_opts opt;
 	int kernel_lim = sizeof(opt.flt_kernel) / sizeof(opt.flt_kernel[0]);
 
-	if (buffer_sz > kernel_lim) 
+	if (buffer_sz > kernel_lim)
 		buffer_sz = kernel_lim;
 
 	if (buffer_sz <= 0)
@@ -346,27 +346,27 @@ void arcan_event_analogfilter(int devid,
 
 	if (axisid < 0 || axisid >= iodev.nodes[devid].game.axes)
 		return;
-	
+
 	struct axis_opts* daxis = &iodev.nodes[devid].game.adata[axisid];
 
 	if (0){
 setmouse:
 		if (axisid == 0){
-			set_analogstate(&iodev.mx, lower_bound, 
+			set_analogstate(&iodev.mx, lower_bound,
 				upper_bound, deadzone, buffer_sz, kind);
-			set_analogstate(&iodev.mx_r, lower_bound, 
-				upper_bound, deadzone, buffer_sz, kind);
-		} 
-		else if (axisid == 1){
-			set_analogstate(&iodev.my, lower_bound, 
-				upper_bound, deadzone, buffer_sz, kind);
-			set_analogstate(&iodev.my_r, lower_bound, 
+			set_analogstate(&iodev.mx_r, lower_bound,
 				upper_bound, deadzone, buffer_sz, kind);
 		}
-		return;	
+		else if (axisid == 1){
+			set_analogstate(&iodev.my, lower_bound,
+				upper_bound, deadzone, buffer_sz, kind);
+			set_analogstate(&iodev.my_r, lower_bound,
+				upper_bound, deadzone, buffer_sz, kind);
+		}
+		return;
 	}
 
-	set_analogstate(daxis, lower_bound, 
+	set_analogstate(daxis, lower_bound,
 		upper_bound, deadzone, buffer_sz, kind);
 }
 
@@ -398,7 +398,7 @@ void platform_event_process(arcan_evctx* ctx)
 				last_my = xev.xmotion.y;
 				mouse_init = true;
 			} else {
-				process_mousemotion(ctx, xev.xmotion.x, 
+				process_mousemotion(ctx, xev.xmotion.x,
 					xev.xmotion.x - last_mx, xev.xmotion.y,
 					xev.xmotion.y - last_my
 				);
@@ -409,7 +409,7 @@ void platform_event_process(arcan_evctx* ctx)
 
 			printf("mouse: %d, %d\n", xev.xmotion.x, xev.xmotion.y);
 		break;
-		
+
 		case KeyPress:
 		break;
 		}
@@ -484,11 +484,11 @@ void platform_device_lock(int devind, bool state)
 
 void platform_event_init(arcan_evctx* ctx)
 {
-	arcan_event_analogfilter(-1, 0, 
-		-32768, 32767, 0, 1, ARCAN_ANALOGFILTER_AVG); 
-	arcan_event_analogfilter(-1, 1, 
-		-32768, 32767, 0, 1, ARCAN_ANALOGFILTER_AVG); 
-	
+	arcan_event_analogfilter(-1, 0,
+		-32768, 32767, 0, 1, ARCAN_ANALOGFILTER_AVG);
+	arcan_event_analogfilter(-1, 1,
+		-32768, 32767, 0, 1, ARCAN_ANALOGFILTER_AVG);
+
 	/*
 	 * for keyboard -- use stdin but with a bunch of modes set,
 	 * install signal handlers for ABURT, BUS, FPE, ILL, QUIT, etc.
@@ -498,7 +498,7 @@ void platform_event_init(arcan_evctx* ctx)
 	 * might possible patch _event to support longer (utf8 limit)
 	 * resulting characters for real non-latin input
 	 *
-	 * set default repeat rate 
+	 * set default repeat rate
 	 */
 
 	arcan_event_rescan_idev(ctx);

@@ -35,8 +35,8 @@ void arcan_event_keyrepeat(struct arcan_evctx*, unsigned rate);
 
 struct arcan_evctx* arcan_event_defaultctx();
 
-/* 
- * Pushes as many events from srcqueue to dstqueue as possible 
+/*
+ * Pushes as many events from srcqueue to dstqueue as possible
  * without over-saturating. allowed defines which kind of category
  * that will be transferred, other events will be ignored.
  * The saturation cap is defined in 0..1 range as % of full capacity
@@ -63,31 +63,31 @@ int64_t arcan_frametime();
  * we can get situations where we have a queue of events related to
  * a certain vid/aid, after the user has explicitly asked for it to be deleted.
  *
- * This means the user either has to check for this condition by tracking 
+ * This means the user either has to check for this condition by tracking
  * the object (possibly dangling references etc.)
  * or that we sweep the queue and erase the tracks of the object in question.
  *
- * the default behaviour is to not erase unprocessed events that are made 
+ * the default behaviour is to not erase unprocessed events that are made
  * irrelevant due to a deleted object.
  */
-void arcan_event_erase_vobj(struct arcan_evctx* ctx, 
+void arcan_event_erase_vobj(struct arcan_evctx* ctx,
 	enum ARCAN_EVENT_CATEGORY category, arcan_vobj_id source);
 
 void arcan_event_init(struct arcan_evctx* dstcontext);
 void arcan_event_deinit(struct arcan_evctx*);
 
 /*
- * Update/get the active filter setting for the specific 
- * devid / axis (-1 for all) lower_bound / upper_bound sets the 
- * [lower < n < upper] where only n values are passed into the filter core 
+ * Update/get the active filter setting for the specific
+ * devid / axis (-1 for all) lower_bound / upper_bound sets the
+ * [lower < n < upper] where only n values are passed into the filter core
  * (and later on, possibly as events)
- * 
+ *
  * Buffer_sz is treated as a hint of how many samples in should be considered
  * before emitting a sample out.
  *
  * The implementation is left to the respective platform/input code to handle.
  */
-void arcan_event_analogfilter(int devid, 
+void arcan_event_analogfilter(int devid,
 	int axisid, int lower_bound, int upper_bound, int deadzone,
 	int buffer_sz, enum ARCAN_ANALOGFILTER_KIND kind);
 
@@ -101,9 +101,9 @@ void arcan_event_rescan_idev(struct arcan_evctx* ctx);
 const char* arcan_event_devlabel(int devid);
 
 /*
- * Quick-helper to toggle all analog device samples on / off  
+ * Quick-helper to toggle all analog device samples on / off
  * If mouse is set the action will also be toggled on mouse x / y
- * This will keep track of the old state, but repeating the same 
+ * This will keep track of the old state, but repeating the same
  * toggle will flush state memory. All devices (except mouse) start
  * in off mode.
  */
@@ -111,10 +111,10 @@ void arcan_event_analogall(bool enable, bool mouse);
 
 /*
  * Set A/D mappings, when the specific dev/axis enter or exit
- * the set interval, a digital press/release event with the 
+ * the set interval, a digital press/release event with the
  * set subid will be emitted. This is intended for analog sticks/buttons,
  * not touch- class displays that need a more refined classification/
- * remapping system. 
+ * remapping system.
  *
  * The implementation is left to the respective platform/input code to handle.
  */

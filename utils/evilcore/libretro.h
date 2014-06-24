@@ -566,7 +566,7 @@ enum retro_mod
                                            // If this interface is not used, libretro cores should log to stderr as desired.
 #define RETRO_ENVIRONMENT_GET_PERF_INTERFACE 28
                                            // struct retro_perf_callback * --
-                                           // Gets an interface for performance counters. This is useful for performance logging in a 
+                                           // Gets an interface for performance counters. This is useful for performance logging in a
                                            // cross-platform way and for detecting architecture-specific features, such as SIMD support.
 
 enum retro_log_level
@@ -716,7 +716,7 @@ typedef void (*retro_camera_frame_raw_framebuffer_t)(const uint32_t *buffer, uns
 //
 // texture_target is the texture target for the GL texture.
 // These can include e.g. GL_TEXTURE_2D, GL_TEXTURE_RECTANGLE, and possibly more depending on extensions.
-// 
+//
 // affine points to a packed 3x3 column-major matrix used to apply an affine transform to texture coordinates. (affine_matrix * vec3(coord_x, coord_y, 1.0))
 // After transform, normalized texture coord (0, 0) should be bottom-left and (1, 1) should be top-right (or (width, height) for RECTANGLE).
 //
@@ -830,7 +830,7 @@ struct retro_hw_render_callback
    unsigned version_minor; // Minor version number for core GL context.
 
    bool cache_context; // If this is true, the frontend will go very far to avoid resetting context in scenarios like toggling fullscreen, etc.
-   // The reset callback might still be called in extreme situations such as if the context is lost beyond recovery. 
+   // The reset callback might still be called in extreme situations such as if the context is lost beyond recovery.
    // For optimal stability, set this to false, and allow context to be reset at any time.
    retro_hw_context_reset_t context_destroy; // A callback to be called before the context is destroyed. Resources can be deinitialized at this step. This can be set to NULL, in which resources will just be destroyed without any notification.
    bool debug_context; // Creates a debug context.

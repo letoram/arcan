@@ -1,17 +1,17 @@
 -- null_surface
 -- @short: Create a minimalistic video object.
--- @inargs: startw, starth 
+-- @inargs: startw, starth
 -- @outargs: vid
 -- @longdescr: Null surfaces is a special object container, similar to instances
 -- but with less restrictions. They can be used as a lower level clone through
--- image_sharestorage or as attribute containers for larger hierarchies of 
+-- image_sharestorage or as attribute containers for larger hierarchies of
 -- objects used for clipping or movable anchors without the cost of hidden
 -- fill_surface style objects.
--- @note: intial starting dimensions still need to be specified in order for 
--- other lookup functions e.g. image_surface_initial_properties to work 
+-- @note: intial starting dimensions still need to be specified in order for
+-- other lookup functions e.g. image_surface_initial_properties to work
 -- without workarounds.
--- dependencies 
--- @group: image 
+-- dependencies
+-- @group: image
 -- @cfunction: arcan_lua_nullsurface
 -- @related: fill_surface, image_sharestorage
 function main()

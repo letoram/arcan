@@ -146,4 +146,4 @@ int TTF_WasInit(void);
 /* Get the kerning size of two glyphs */
 int TTF_GetFontKerningSize(TTF_Font *font, int prev_index, int index);
 
-#endif 
+#endif

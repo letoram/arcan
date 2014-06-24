@@ -17,7 +17,7 @@ local function awbwnd_alloc(tbl)
 	tbl.anchor = null_surface(tbl.w, tbl.h);
 	image_tracetag(tbl.anchor, tbl.name .. ".anchor");
 	image_mask_set(tbl.anchor, MASK_UNPICKABLE);
-	show_image(tbl.anchor);	
+	show_image(tbl.anchor);
 	move_image(tbl.anchor, tbl.x, tbl.y);
 	tbl.temp = {};
 	tbl.handlers = {};
@@ -45,7 +45,7 @@ function awbwnd_set_border(s, sz, r, g, b)
 			show_image(s.borders[v]);
 			image_tracetag(s.borders[v], "awbwnd_border(" .. v .. ")");
 		end
-		
+
 		s.default_resize = s.resize;
 		s.resize = function(self, neww, newh, completed, dt)
 			if (dt == nil) then
@@ -57,9 +57,9 @@ function awbwnd_set_border(s, sz, r, g, b)
 			move_image(s.borders.t, 0 - sz, 0 - sz, dt);
 			move_image(s.borders.b, 0 - sz, s.h, dt);
 			move_image(s.borders.l, 0 - sz, 0, dt);
-			move_image(s.borders.r, s.w, 0, dt); 
+			move_image(s.borders.r, s.w, 0, dt);
 
-			resize_image(s.borders.t, s.w + sz * 2,  sz, dt); 
+			resize_image(s.borders.t, s.w + sz * 2,  sz, dt);
 			resize_image(s.borders.r, sz, s.h, dt);
 			resize_image(s.borders.l, sz, s.h, dt);
 			resize_image(s.borders.b, s.w + sz * 2,  sz, dt);
@@ -108,7 +108,7 @@ local function awbwnd_resize(self, neww, newh, finished, canvassz)
 	newh = newh >= self.minh and newh or self.minh;
 
 	local vspace = newh;
-	local hspace = neww; 
+	local hspace = neww;
 	local yofs   = 0;
 	local xofs   = 0;
 
@@ -132,7 +132,7 @@ local function awbwnd_resize(self, neww, newh, finished, canvassz)
 	if (self.dir.b) then
 		vspace = vspace - self.dir.b.rsize;
 		move_image(self.dir.b.vid, 0, yofs + vspace);
-		self.dir.b:resize(neww, self.dir.b.size); 
+		self.dir.b:resize(neww, self.dir.b.size);
 	end
 
 	if (self.dir.l) then
@@ -144,9 +144,9 @@ local function awbwnd_resize(self, neww, newh, finished, canvassz)
 
 	if (self.dir.r) then
 		hspace = hspace - self.dir.r.rsize;
-	
+
 		if (self.dir.r.rsize ~= self.dir.r.size) then
-			move_image(self.dir.r.vid, xofs + hspace + 
+			move_image(self.dir.r.vid, xofs + hspace +
 				self.dir.r.rsize - self.dir.r.size, yofs);
 		else
 			move_image(self.dir.r.vid, xofs + hspace, yofs);
@@ -160,9 +160,9 @@ local function awbwnd_resize(self, neww, newh, finished, canvassz)
 	end
 
 	resize_image(self.anchor, neww, newh);
-	move_image(self.canvas.vid, xofs, yofs); 
+	move_image(self.canvas.vid, xofs, yofs);
 
--- cache these values as they're somewhat expensive to 
+-- cache these values as they're somewhat expensive to
 -- calculate and used reasonably often
 	self.w = neww;
 	self.h = newh;
@@ -188,7 +188,7 @@ end
 --
 local function awbwnd_own(self, vid)
 	local rv = nil;
-	local t = {self.canvas, self.dir.tt, self.dir.t, 
+	local t = {self.canvas, self.dir.tt, self.dir.t,
 		self.dir.r, self.dir.l, self.dir.b};
 
 	for ind, val in ipairs(t) do
@@ -208,7 +208,7 @@ local function awbwnd_move(self, newx, newy, timeval)
 	if (self.anchor == nil) then
 		return;
 	end
-	
+
 	move_image(self.anchor, newx, newy, timeval);
 	self.x = newx;
 	self.y = newy;
@@ -242,7 +242,7 @@ local function awbwnd_destroy(self, timeval)
 --
 -- workaround for (cascade-window in minimize getting deleted)
 --
-	awbwman_minimize_drop(self);	
+	awbwman_minimize_drop(self);
 
 --
 -- just quickly spot invocations that miss :
@@ -302,11 +302,11 @@ local function awbbar_minsz(bar)
 
 	if (bar.vertical) then
 		w = bar.rsize;
-		h = (#bar.left + #bar.right) * bar.size + 
+		h = (#bar.left + #bar.right) * bar.size +
 			(bar.fill and bar.fill.minsz or 0);
 	else
 		h = bar.rsize;
-		w = (#bar.left + #bar.right) * bar.size + 
+		w = (#bar.left + #bar.right) * bar.size +
 			(bar.fill and bar.fill.minsz or 0);
 	end
 
@@ -338,7 +338,7 @@ local function awbbar_resize(self, neww, newh)
 	local storep = image_storage_properties(self.vid);
 	local stepx;
 	local stepy;
-	local lim; 
+	local lim;
 
 	if (self.vertical) then
 		stepx = 0;
@@ -355,8 +355,8 @@ local function awbbar_resize(self, neww, newh)
 	local lofs = 0;
 	for i=1,#self.left do
 		local w, h = self.rzfun(self.left[i].vid, self.size, self.vertical);
-		move_image(self.left[i].vid, math.floor(self.left[i].xofs + stepx * lofs), 
-			math.floor(self.left[i].yofs + stepy * lofs)); 
+		move_image(self.left[i].vid, math.floor(self.left[i].xofs + stepx * lofs),
+			math.floor(self.left[i].yofs + stepy * lofs));
 		lofs = lofs + w + self.left[i].xofs + self.spacing;
 		lim = lim - w;
 	end
@@ -366,7 +366,7 @@ local function awbbar_resize(self, neww, newh)
 		local w, h = self.rzfun(self.right[i].vid, self.size, self.vertical);
 		rofs = rofs + w;
 
-		move_image(self.right[i].vid, math.floor(stepx * (self.w - rofs)), 
+		move_image(self.right[i].vid, math.floor(stepx * (self.w - rofs)),
 			math.floor(stepy * (self.h - rofs)));
 
 		lim = lim - w;
@@ -449,7 +449,7 @@ local function awbbar_addicon(self, name, dir, image, trig)
 
 		icontbl.maxsz = 0;
 		icontbl.minsz = 0;
-		self.fill = icontbl; 
+		self.fill = icontbl;
 		order_image(icon, 1);
 	else
 		return nil;
@@ -465,7 +465,7 @@ local function awbbar_addicon(self, name, dir, image, trig)
 end
 
 --
--- This little odd design is mostly legacy before the mouse 
+-- This little odd design is mostly legacy before the mouse
 -- API was steady, could(should?) be replaced with individual
 -- handlers for each button.
 --
@@ -484,7 +484,7 @@ local function awbbar_own(self, vid, state)
 					return true;
 				end
 
-				if (val.trigger and val:trigger(mx - self.parent.x, 
+				if (val.trigger and val:trigger(mx - self.parent.x,
 					my - self.parent.y)) then
 					return true;
 				end
@@ -495,7 +495,7 @@ local function awbbar_own(self, vid, state)
 end
 
 local function awbbar_inactive(self)
-	if (self.w == nil) then 
+	if (self.w == nil) then
 		return;
 	end
 
@@ -508,7 +508,7 @@ local function awbbar_active(self)
 	if (self.w == nil) then
 		return;
 	end
-	
+
 	switch_default_texmode(TEX_REPEAT, TEX_REPEAT, self.vid);
 	image_sharestorage(self.activeimg, self.vid);
 	self:resize(self.w, self.h);
@@ -527,10 +527,10 @@ local function awbbar_hover(self, vid, x, y, state)
 	end
 end
 
-local function awbwnd_addbar(self, dir, activeimg, 
+local function awbwnd_addbar(self, dir, activeimg,
 	inactiveimg, bsize, rsize, options)
 
-	if (dir ~= "t" and dir ~= "b" and dir ~= "l" and 
+	if (dir ~= "t" and dir ~= "b" and dir ~= "l" and
 		dir ~= "r" and dir ~= "tt") then
 		return nil;
 	end
@@ -594,7 +594,7 @@ local function awbwnd_addbar(self, dir, activeimg,
 	end
 
 	self.dir[dir] = awbbar;
-	
+
 -- resize will move / cascade etc.
 	self:resize(self.w, self.h);
 	awbbar:active();
@@ -603,10 +603,10 @@ end
 
 local function awbwnd_update_canvas(self, vid, mirrored)
 	if (mirrored == nil) then
-		mirrored = 0; 
+		mirrored = 0;
 	end
 
-	if (vid == nil or vid == BADID) then	
+	if (vid == nil or vid == BADID) then
 		return;
 	end
 
@@ -615,7 +615,7 @@ local function awbwnd_update_canvas(self, vid, mirrored)
 	order_image(vid, 0);
 	show_image(vid);
 
-	image_set_txcos_default(vid, mirrored); 
+	image_set_txcos_default(vid, mirrored);
 
 	move_image(vid, self.canvasx, self.canvasy);
 	resize_image(vid, self.canvasw, self.canvash);
@@ -640,16 +640,16 @@ local function awbwnd_update_canvas(self, vid, mirrored)
 	self.canvas = canvastbl;
 	image_tracetag(vid, "awbwnd(" .. self.name ..").canvas");
 
-	if (oldcanvas and valid_vid(oldcanvas.vid) and 
+	if (oldcanvas and valid_vid(oldcanvas.vid) and
 		oldcanvas.vid ~= vid) then
 		delete_image(oldcanvas.vid);
 	end
 end
 
 local function awbwnd_active(self)
-	local tbl = {self.dir.t, self.dir.tt, self.dir.l, 
+	local tbl = {self.dir.t, self.dir.tt, self.dir.l,
 		self.dir.b, self.dir.r, self.canvas};
-	
+
 	for i, v in ipairs(tbl) do
 		if (v and v.active) then
 			v:active();
@@ -659,7 +659,7 @@ local function awbwnd_active(self)
 end
 
 local function awbwnd_inactive(self)
-	local tbl = {self.dir.t, self.dir.tt, self.dir.l, 
+	local tbl = {self.dir.t, self.dir.tt, self.dir.l,
 		self.dir.b, self.dir.r, self.canvas};
 
 	for i, v in ipairs(tbl) do
@@ -667,7 +667,7 @@ local function awbwnd_inactive(self)
 			v:inactive();
 		end
 	end
-	
+
 end
 
 local function awbwnd_show(self)
@@ -685,7 +685,7 @@ end
 local function awbwnd_hide(self, dstx, dsty)
 	self.hidetbl = {
 		x = self.x,
-		y = self.y, 
+		y = self.y,
 		w = self.w,
 		h = self.h
 	};
@@ -700,7 +700,7 @@ function awbwnd_subwin_inputfunc(self, iotbl)
 	if (iotbl.active == false and iotbl.utf8 == "") then
 		return;
 	end
-	
+
 	if (iotbl.lutsym == "HOME") then
 		self.caretpos = 1;
 		self.chofs    = 1;
@@ -711,7 +711,7 @@ function awbwnd_subwin_inputfunc(self, iotbl)
 		self.chofs = self.caretpos - self.ulim;
 		self.chofs = self.chofs < 1 and 1 or self.chofs;
 		self.chofs = string.utf8lalign(self.msg, self.chofs);
-	
+
 		self:redraw();
 
 	elseif (iotbl.lutsym == "LEFT") then
@@ -806,7 +806,7 @@ function awbwnd_subwin_input(trigger, lblfun, options)
 	end
 
 	if (not res.noborder) then
-		res.border = color_surface(res.w, res.h, options.borderr, 
+		res.border = color_surface(res.w, res.h, options.borderr,
 			options.borderg, options.borderb);
 		image_inherit_order(res.border, true);
 		order_image(res.border, 2);
@@ -817,7 +817,7 @@ function awbwnd_subwin_input(trigger, lblfun, options)
 		res.borderw = 0;
 	end
 
-	res.canvas = color_surface(res.w - res.borderw * 2, 
+	res.canvas = color_surface(res.w - res.borderw * 2,
 		res.h - res.borderw * 2, options.bgr, options.bgg, options.bgb);
 	link_image(res.canvas, res.anchor);
 	image_inherit_order(res.canvas, true);
@@ -825,15 +825,15 @@ function awbwnd_subwin_input(trigger, lblfun, options)
 
 	move_image(res.canvas, res.borderw, res.borderw);
 
--- size caret, figure out upper clipping limits etc. using 
+-- size caret, figure out upper clipping limits etc. using
 -- a reference character image
 	local ctv = lblfun("A");
 	local ch  = image_surface_properties(ctv);
 	res.ulim  = math.ceil(res.w / ch.width);
 	delete_image(ctv);
 
-	res.caret = color_surface(2, ch.height, 
-		options.caretr, options.caretg, options.caretb); 
+	res.caret = color_surface(2, ch.height,
+		options.caretr, options.caretg, options.caretb);
 
 	link_image(res.caret, res.canvas);
 	image_inherit_order(res.caret, true);
@@ -849,7 +849,7 @@ function awbwnd_subwin_input(trigger, lblfun, options)
 	show_image(res.canvas);
 
 	res.clip_msg = function(self, cv)
-		local uc  = string.utf8ralign(self.msg, 
+		local uc  = string.utf8ralign(self.msg,
 			cv and cv or (self.chofs + self.ulim));
 
 		return string.gsub(string.sub(self.msg, self.chofs, uc), "\\", "\\\\");
@@ -881,7 +881,7 @@ function awbwnd_subwin_input(trigger, lblfun, options)
 	end
 
 --
--- Anchor, border, canvas, test, cursor 
+-- Anchor, border, canvas, test, cursor
 --
 	res.validator = function(self)
 		return true;
@@ -890,7 +890,7 @@ function awbwnd_subwin_input(trigger, lblfun, options)
 	res.cascade = {};
 
 	res.resize = function(self, neww, newh)
-		local height = newh; 
+		local height = newh;
 
 		if (res.textvid and height == nil) then
 			local props = image_surface_properties(res.textvid);
@@ -903,7 +903,7 @@ function awbwnd_subwin_input(trigger, lblfun, options)
 		if (valid_vid(res.border)) then
 			resize_image(res.border, neww, newh);
 		end
-	
+
 		resize_image(res.canvas, neww - res.borderw * 2, newh - res.borderw * 2);
 		res:update_caret();
 	end
@@ -944,7 +944,7 @@ function awbwnd_subwin_input(trigger, lblfun, options)
 		if (res.textvid) then
 			delete_image(res.textvid);
 		end
-		
+
 		delete_image(res.border);
 		for k, v in pairs(res) do
 			res[v] = nil;
@@ -989,14 +989,14 @@ end
 
 local function awbwnd_addhandler(self, slot, fptr)
 	if (self[slot] ~= nil) then
-		if (type(self[slot]) == "table") then			
+		if (type(self[slot]) == "table") then
 			self:drop_handler(slot, fptr);
 			table.insert(self[slot], fptr);
 
 		elseif (type(self[slot]) == "function") then
 			self[slot] = {self[slot], fptr};
 		end
-	
+
 	else
 		self[slot] = fptr;
 	end
@@ -1031,7 +1031,7 @@ function awbwnd_create(options)
 		name       = "awbwnd",
     update_canvas = awbwnd_update_canvas,
 
--- defaults 
+-- defaults
    w           = math.floor(VRESW * 0.3),
    h           = math.floor(VRESH * 0.3),
 	 x           = math.floor(0.5 * (VRESW - (VRESW * 0.3)));
@@ -1060,7 +1060,7 @@ function awbwnd_create(options)
 --
 -- project option ontop of the default settings
 -- but don't allow unrecognized options to pollute the
--- namespace 
+-- namespace
 --
 	for key, val in pairs(options) do
 		if (restbl[key]) then

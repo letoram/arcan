@@ -20,7 +20,7 @@ elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 		m
 	)
 elseif (${CMAKE_SYSTEM_NAME} MATCHES "Windows")
-	set (LIBRARIES 
+	set (LIBRARIES
 		m
 	)
 endif ()

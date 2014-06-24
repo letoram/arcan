@@ -12,7 +12,7 @@
 -- highlight-when-pushed (or perhaps even something more
 -- esoteric like hooking LED- up to internal- launch
 -- target memory value ;-)
--- 
+--
 -- suggested changes currently not covered include
 -- moving the labels from a sequence to a user controlled field,
 -- so that if the LABEL group is selected (menu_left/right) you
@@ -27,12 +27,12 @@ local function ledconf_destroy(self)
 	expire_image(self.border, 20);
 	blend_image(self.border, 0.0, 20);
 	expire_image(self.anchor, 20);
-	
+
 if (self.msgheader and self.msgheader ~= BADID) then
 	delete_image(self.msgheader);
 	delete_image(self.valvid);
 end
-	
+
 	self.active = true;
 	self:flush();
 end
@@ -45,10 +45,10 @@ local function ledconf_new(self, labels)
 	self.config = true;
 	self.anchor = fill_surface(1, 1, 0, 0, 0);
 	move_image(self.anchor, -1, -1);
-		
+
 	self.border = fill_surface(VRESW * 0.33 + 6, VRESH * 0.33 + 6, settings.colourtable.dialog_border.r, settings.colourtable.dialog_border.g, settings.colourtable.dialog_border.b );
 	self.window = fill_surface(VRESW * 0.33, VRESH * 0.33, settings.colourtable.dialog_window.r, settings.colourtable.dialog_window.g, settings.colourtable.dialog_window.b );
-	
+
 	link_image(self.border, self.anchor);
 	link_image(self.window, self.anchor);
 	blend_image(self.anchor, 1.0, 15);
@@ -56,7 +56,7 @@ local function ledconf_new(self, labels)
 	blend_image(self.window, settings.colourtable.dialog_window.a);
 	order_image(self.anchor, 0);
 	move_image(self.window, 3, 3);
-		
+
 	self.ctrlval = 0;
 	self.groupid = 0;
 	self.ledval = 0;
@@ -78,22 +78,22 @@ local function ledconf_flush(self)
 		close_rawresource();
 		return;
 	end
-	
+
 	for key, value in pairs(self.table) do
 		write_rawresource( "ledconf[\"" .. key .. "\"] = {" .. value[1] .. ", " .. value[2] .. "};" );
 	end
-			                 
+
 	write_rawresource("return ledconf;");
 	close_rawresource();
 end
 
 local function ledconf_nextlabel(self, store)
 	if (self.active) then return false; end
-	
+
 	if (store) then
 		self.table[ self.labels[ self.labelofs ] ] = { self.ctrlval, self.ledval };
 	end
-	
+
 	self.labelofs = self.labelofs + 1;
 
 	if (self.labelofs > # self.labels) then
@@ -102,21 +102,21 @@ local function ledconf_nextlabel(self, store)
 		if (self.msgheader) then
 			delete_image(self.msgheader);
 		end
-		
+
 		self.msgheader = render_text( settings.colourtable.fontstr .. [[Welcome to LEDconf!\r\nPlease set values for label:\n\r\#00ffae]] .. self.labels[self.labelofs] ..
 				[[\n\r\#ffffffCtrl:\tLed#]]);
 		local props = image_surface_properties(self.msgheader);
-		
+
 		resize_image(self.window, props.width + 10, props.height + 40);
 		resize_image(self.border, props.width + 16, props.height + 46);
-		
+
 		link_image(self.msgheader, self.window);
 		image_mask_clear(self.msgheader, MASK_SCALE);
 		image_mask_clear(self.msgheader, MASK_OPACITY);
 		order_image(self.msgheader,image_surface_properties(self.window).order + 1);
 		move_image(self.msgheader, 5, 5);
 		show_image(self.msgheader);
-		
+
 		move_image(self.anchor, VRESW * 0.5 - props.width * 0.5, VRESH * 0.5 - (props.height + 10) * 0.5, 0);
 		return true;
 	end
@@ -126,7 +126,7 @@ end
 
 local function ledconf_drawvals(self)
 	local msg = "";
-	
+
 	if (self.groupid == 0) then
 		msg = settings.colourtable.fontstr .. [[\#ff0000]] .. tostring(self.ctrlval) .. [[\t\#ffffff]] .. tostring(self.ledval);
 	else
@@ -138,7 +138,7 @@ local function ledconf_drawvals(self)
 	end
 
 	local props = image_surface_properties(self.msgheader);
-	
+
 	self.valvid = render_text( msg );
 	link_image(self.valvid, self.window);
 	image_clip_on(self.valvid);
@@ -146,7 +146,7 @@ local function ledconf_drawvals(self)
 	move_image(self.valvid, 5, props.y + props.height + 5, NOW);
 	order_image(self.valvid, props.order);
 	show_image(self.valvid);
-	
+
 end
 
 local function ledconf_flush(self)
@@ -177,7 +177,7 @@ local function ledconf_value_change(self, val)
 	else
 		self.ledval = (self.ledval + val) % lv;
 	end
-	
+
 	self:set_led( self.ctrlval, self.ledval, 1);
 	self:drawvals(self);
 end
@@ -196,7 +196,7 @@ local function ledconf_set_led_label(self, label, active)
 			self:set_led(val[1], val[2], active and 1 or 0);
 		end
 end
--- 
+--
 local function ledconf_clearall(self)
 	for i=0,LEDCONTROLLERS-1 do
 		j = 0;
@@ -256,14 +256,14 @@ function ledconf_listtoggle(self, labellist)
 	end
 
 	list = {};
-	
+
 	for key, val in pairs(labellist) do
 		local refr = self.table[ val ];
 		if (refr) then
 			list[ tostring(refr[1]) .. ":" .. tostring(refr[2]) ] = 1;
 		end
 	end
-	
+
 	for key, val in pairs( self.ledcache ) do
 		if (list[key] == nil) then
 			self:set_led( val[1], val[2], 0);
@@ -281,7 +281,7 @@ function ledconf_toggle(self, players, buttons)
 	if (type(players) ~= "number" or type(buttons) ~= "number") then return false; end
 
 	local list = {};
-	
+
 	for np=1,players do
 		for nb=1,buttons do
 			local labelstr = "PLAYER" .. tostring(np) .. "_BUTTON" .. tostring(nb);
@@ -314,7 +314,7 @@ local ledcfgtbl = {
 		destroy = ledconf_destroy,
 		ledcache = {};
 	}
-	
+
 	for k, v in ipairs(arguments) do
 		if (string.sub(v, 1, 8) == "ledname=") then
 			local fn = string.sub(v, 9);
@@ -337,7 +337,7 @@ local ledcfgtbl = {
 		local ledsym = system_load(ledcfgtbl.ledfile);
 		ledcfgtbl.table = ledsym();
 		ledcfgtbl.active = true;
-	elseif LEDCONTROLLERS > 0 then 
+	elseif LEDCONTROLLERS > 0 then
 		ledcfgtbl.active = false;
 		ledcfgtbl:new(labels);
 		ledcfgtbl:clearall();

@@ -1,17 +1,17 @@
 -- glob_resource
--- @short: Search the different datastores for resources matching a certain pattern. 
+-- @short: Search the different datastores for resources matching a certain pattern.
 -- @inargs: pattern, *domain
 -- @outargs: strtbl
--- @longdescr: 
+-- @longdescr:
 -- @note: By default, both the THEME and RESOURCE domain are searched, starting
 -- with THEME.
--- @note: The results contain only filename and, possibly, extension. 
+-- @note: The results contain only filename and, possibly, extension.
 -- Everything before the last / delimiter will be tripped.
 -- @note: The scan is shallow, meaning that it will not recurse into subdirectories.
--- @group: resource 
+-- @group: resource
 -- @cfunction: arcan_lua_globresource
 -- @related: resource
--- @flags: 
+-- @flags:
 function main()
 #ifdef MAIN
 	local tbl = glob_resource("*");

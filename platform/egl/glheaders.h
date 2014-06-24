@@ -1,5 +1,5 @@
 /*
- * These are only for the rather rare combination of 
+ * These are only for the rather rare combination of
  * EGL + regular OpenGL (rather than GLW,GLX,...)
  */
 
@@ -8,7 +8,7 @@
 
 #include <EGL/egl.h>
 
-bool platform_video_init(uint16_t w, uint16_t h, 
+bool platform_video_init(uint16_t w, uint16_t h,
 	uint8_t bpp, bool fs, bool frames);
 
 void platform_video_timing(float* vsync, float* stddev, float* variance);
@@ -31,13 +31,13 @@ long long int arcan_timemillis();
  * zero them out here
  */
 #define GL_DEPTH_STENCIL_ATTACHMENT 0
-#define GL_STREAM_READ 0 
+#define GL_STREAM_READ 0
 #define GL_DEPTH24_STENCIL8 0
 #define GL_CLAMP GL_CLAMP_TO_EDGE
 #define glDrawBuffer(X)
 #define glReadBuffer(X)
 #define GL_PIXEL_PACK_BUFFER 0
-#define GL_PIXEL_UNPACK_BUFFER 0 
+#define GL_PIXEL_UNPACK_BUFFER 0
 #define GL_MAX_TEXTURE_UNITS 8
 #define glGetTexImage(A,B,C,D,E)
 #define glMapBuffer(A,B) NULL

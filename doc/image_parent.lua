@@ -1,9 +1,9 @@
 -- image_parent
 -- @short: Return a reference to the parent object.
--- @inargs: vid 
+-- @inargs: vid
 -- @outargs: parentvid
--- @group: image 
--- @related: image_children, link_image, valid_vid  
+-- @group: image
+-- @related: image_children, link_image, valid_vid
 -- @cfunction: arcan_lua_imageparent
 function main()
 #ifdef MAIN

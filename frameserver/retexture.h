@@ -32,7 +32,7 @@
 void arcan_retexture_alloc(unsigned long djbv, int* bucket, int* id);
 
 /*
- * Using the internal ID numbering scheme (bucket:id), 
+ * Using the internal ID numbering scheme (bucket:id),
  * update a preexisting slot
  */
 void arcan_retexture_update(int bucket, int id,
@@ -46,10 +46,10 @@ void* arcan_retexture_fetchp(int bucket, int id,
 	int* w, int* h, int* bpp, int* stride);
 
 /*
- * Retrieve the local copy for the specified GLID, only if 
+ * Retrieve the local copy for the specified GLID, only if
  * arcan_retexture_init has been setup with 'local' copies activated.
  */
-void* arcan_retexture_fetchid(unsigned tid, 
+void* arcan_retexture_fetchid(unsigned tid,
 	int* w, int* h, int* bpp, int* stride);
 
 /*
@@ -62,8 +62,8 @@ void* arcan_retexture_fetchid(unsigned tid,
 void arcan_retexture_init(arcan_event* ann, bool local);
 
 /*
- * Disable or enable collection / manipulation 
- * based on what's currently running. 
+ * Disable or enable collection / manipulation
+ * based on what's currently running.
  */
 void arcan_retexture_disable();
 void arcan_retexture_enable();

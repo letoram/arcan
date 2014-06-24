@@ -1,13 +1,13 @@
 -- rendertarget_forceupdate
--- @short: Manually perform an out-of-loop update of a rendertarget 
+-- @short: Manually perform an out-of-loop update of a rendertarget
 -- @inargs: vid
--- @longdescr: For short-lived rendertarget/calctarget calls it may 
+-- @longdescr: For short-lived rendertarget/calctarget calls it may
 -- be inconvenient to let the engine schedule the job and defer destruction.
 -- For those settings, a manual forceupdate can be issued for more fine-grained
 -- life-cycle control.
 -- @note: Passing a vid that is not a rendertarget is considered a terminal
 -- state transition.
--- @group: targetcontrol 
+-- @group: targetcontrol
 -- @cfunction: rendertargetforce
 -- @related:
 function main()

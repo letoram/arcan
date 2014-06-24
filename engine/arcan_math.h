@@ -7,12 +7,12 @@
  * modify it under the terms of the GNU General Public License
  * as published by the Free Software Foundation; either version 3
  * of the License, or (at your option) any later version.
- 
+
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- 
+
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,USA.
@@ -24,8 +24,8 @@
 
 /*
  * I know it's dumb to roll your own mathlib by now,
- * replace with something quick at your own leisure -- 
- * I use this as a refresher-course ;-) 
+ * replace with something quick at your own leisure --
+ * I use this as a refresher-course ;-)
  */
 
 #define EPSILON 0.000001f
@@ -47,7 +47,7 @@ typedef struct {
 		struct {
 			float x, y, z;
 		};
-		float xyz[3]; 
+		float xyz[3];
 	};
 } vector;
 
@@ -75,9 +75,9 @@ void scale_matrix(float*, float, float, float);
 void translate_matrix(float*, float, float, float);
 void identity_matrix(float*);
 void multiply_matrix(float* restrict dst, float* restrict a, float* restrict b);
-quat quat_matrix(float* src); 
+quat quat_matrix(float* src);
 void matr_lookat(float* m, vector position, vector dstpos, vector up);
-void mult_matrix_vecf(const float* restrict inmatr, 
+void mult_matrix_vecf(const float* restrict inmatr,
 	const float* restrict, float* restrict outv);
 
 /* Vectors */
@@ -132,7 +132,7 @@ vector taitbryan_forwardv(float roll, float pitch, float yaw);
 
 void update_view(orientation* dst, float roll, float pitch, float yaw);
 
-void build_projection_matrix(float* m, float near, float far, 
+void build_projection_matrix(float* m, float near, float far,
 	float aspect, float fov);
 void build_orthographic_matrix(float* m, const float left, const float right,
 	const float bottom, const float top, const float near, const float far);
@@ -140,13 +140,13 @@ void build_orthographic_matrix(float* m, const float left, const float right,
 int project_matrix(float objx, float objy, float objz, const float model[16],
 	const float projection[16], const int viewport[4], float*, float*, float*);
 
-void update_frustum(float* projection, 
+void update_frustum(float* projection,
 	float* modelview, float dstfrustum[6][4]);
 
 enum cstate frustum_sphere(const float frustum[6][4],
 	const float x, const float y, const float z, const float radius);
 
-bool frustum_point(const float frustum[6][4], 
+bool frustum_point(const float frustum[6][4],
 	const float x, const float y, const float z);
 
 enum cstate frustum_aabb(const float frustum[6][4],

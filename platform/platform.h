@@ -3,7 +3,7 @@
  * needed for building / porting to a different platform.
  *
  * In addition, the video and event layers will also need to be implemented.
- */ 
+ */
 
 #ifndef HAVE_PLATFORM_HEADER
 #define HAVE_PLATFORM_HEADER

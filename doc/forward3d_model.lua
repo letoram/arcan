@@ -1,7 +1,7 @@
 -- forward3d_model
--- @short: Push the model along its view vector.  
+-- @short: Push the model along its view vector.
 -- @inargs: modelvid, factor, *time*
--- @group: 3d 
+-- @group: 3d
 -- @cfunction: arcan_lua_forwardmodel
 -- @related:
 function main()

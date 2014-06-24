@@ -17,7 +17,7 @@ function segtest()
 			print(source, type(source));
 			newvid, newaid, key = target_alloc(source, seg2);
 			print("target_alloc():", newvid, newaid, key);
-	
+
 		elseif(status.kind == "resized") then
 			show_image(source);
 			resize_image(source, VRESW * 0.5, VRESH);

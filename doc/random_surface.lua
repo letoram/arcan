@@ -1,10 +1,10 @@
 -- random_surface
--- @short: Generate a pseudo-random image surface. 
--- @inargs: width, height 
--- @outargs: vid 
+-- @short: Generate a pseudo-random image surface.
+-- @inargs: width, height
+-- @outargs: vid
 -- @longdescr: Generate a simple high- frequency 1D noise texture packed in a
 -- RGBA surface with an "always one" alpha channel.
--- @group: image 
+-- @group: image
 -- @note: In its current form, it merely wraps random() calls which is not
 -- particularly useful for graphics purposes in contrast to more controllable
 -- ones (e.g. Perlin Noise), future revisions to this function will include

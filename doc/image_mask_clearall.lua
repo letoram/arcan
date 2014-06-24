@@ -1,8 +1,8 @@
 -- image_mask_clearall
 -- @short: Set the status of all user-modifiable flags to their off state.
 -- @inargs: vid
--- @group: image 
--- @note: Some mask values are ignored for certain object types, 
+-- @group: image
+-- @note: Some mask values are ignored for certain object types,
 -- e.g. MASK_LIVING for cloned objects.
 -- @cfunction: arcan_lua_clearall
 -- @related: image_mask_clear, image_mask_set, image_mask_toggle

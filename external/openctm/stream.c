@@ -259,7 +259,7 @@ int _ctmStreamWritePackedInts(_CTMcontext * self, CTMint * aData,
   size_t bufSize, outPropsSize;
   unsigned char * packed, outProps[5], *tmp;
 #ifdef __DEBUG_
-  CTMuint negCount = 0;  
+  CTMuint negCount = 0;
 #endif
 
   // Allocate memory for interleaved array

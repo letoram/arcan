@@ -3,7 +3,7 @@
 -- @inargs: vcells, acells, abufs, presilence
 -- @note: This is an expensive and unpredictable option and, with future
 -- buffering improvements in decode frameserver, should be used sparringly.
--- @group: vidsys 
+-- @group: vidsys
 -- @cfunction: arcan_lua_setqueueopts
 -- @related: default_movie_queueopts
 

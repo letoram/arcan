@@ -14,7 +14,7 @@
 -- @note: The operation can be forced asynchronous by either doing an operation which requires
 -- a stable state for the current context (e.g. push/pop_video_context) or by explicitly calling
 -- image_pushasynch.
--- @group: image 
+-- @group: image
 -- @cfunction: arcan_lua_loadimageasynch
 -- @related: image_pushasynch load_image
 function main()

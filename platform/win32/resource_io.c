@@ -22,9 +22,9 @@ static data_source* alloc_datasource()
 	res->len    =  0;
 
 /* trace for this value to track down leaks */
-	res->source = tag_resleak; 
-	
-	return res;	
+	res->source = tag_resleak;
+
+	return res;
 }
 
 void arcan_release_resource(data_source* sptr)
@@ -52,10 +52,10 @@ data_source arcan_open_resource(const char* url)
 		if (res.fd != INVALID_HANDLE_VALUE){
 			res.start  = 0;
 			res.source = strdup(url);
-			res.len    = 0; /* map resource can figure it out */ 
+			res.len    = 0; /* map resource can figure it out */
 		}
 	}
-	else 
+	else
 		res.fd = BADFD;
 
 	return res;

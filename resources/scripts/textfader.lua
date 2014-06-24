@@ -7,7 +7,7 @@ local function utf8forward(src, ofs, steps)
 				ofs = ofs + 1;
 			until (ofs > string.len(src) or utf8kind( string.byte(src, ofs) ) < 2);
 		end
-		
+
 		steps = steps - 1;
 	end
 
@@ -25,7 +25,7 @@ local function formatskip(str, ofs)
 		end
 
 -- proper escaping for backslasht
-		if (ch2 == "\\") then 
+		if (ch2 == "\\") then
 			break;
 		end
 
@@ -42,7 +42,7 @@ local function formatskip(str, ofs)
 			while ( string.sub(str, ofs, ofs) ~= "," ) do
 				ofs = utf8forward(str, ofs, 1);
 			end
-			
+
 			ofs = utf8forward(str, ofs, 1);
 
 			while ( tonumber( string.sub(str, ofs, ofs) ) ~= nil ) do
@@ -79,7 +79,7 @@ local function textfader_step(self)
 		if (self.cpos == self.last) then
 			self.cpos = formatskip(self.message, utf8forward(self.message, self.cpos, 1) );
 		end
-		
+
 		self.clife = 0;
 		self.smessage = string.sub(self.message, 1, self.cpos);
 
@@ -104,7 +104,7 @@ function textfader_create( rawtext, xpos, ypos, opacity, speed )
 		alive = true,
 		rmsg = BADID
 	};
-	
+
 	assert(0 < speed);
 
 	fdrtbl.step = textfader_step;

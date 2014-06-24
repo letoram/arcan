@@ -10,7 +10,7 @@ testlines_normal = {
 	[[Multi\ffonts/default.ttf,16Size and \pfonttest.ico, \ticon]],
 	[[differently\P12,12,fonttest.ico, sized \P16,16,fonttest.ico, even huge \P128,128,fonttest.ico, icons]],
 	[[\!iaxis on an analog device for:\n\r CURSOR_X\t 0 samples grabbed]],
-	[[\n\n\n]]	
+	[[\n\n\n]]
 };
 
 testlines_error = {
@@ -26,22 +26,22 @@ testlines_error = {
 
 function fonttest()
 	yofs = 0;
-	
+
 	for i=1,#testlines_normal do
 		print("(" ..i .. ")" .. testlines_normal[i]);
 		print(testlines_normal);
-				
+
 		vid, lines = render_text(testlines_normal[i]);
 		for j=1,#lines do
 			print(lines[j]);
 		end
-		
+
 		show_image(vid);
 		move_image(vid, 0, yofs, 0);
 		props = image_surface_properties(vid);
 		yofs = yofs + props["height"];
 	end
-	
+
 end
 
 function fonttest_input(inputbl)

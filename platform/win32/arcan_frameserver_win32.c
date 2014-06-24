@@ -43,12 +43,12 @@ void arcan_frameserver_avfeed_run(
 
 const int audio_samplerate = DST_SAMPLERATE;
 const int audio_channels   = DST_AUDIOCHAN;
-const int video_channels   = DST_VIDEOCHAN; 
+const int video_channels   = DST_VIDEOCHAN;
 
 FILE* logdev;
 
 /*
- * arcan_shmif_acquire actually uses these 
+ * arcan_shmif_acquire actually uses these
  */
 HWND parent = 0;
 sem_handle async, vsync, esync;
@@ -91,7 +91,7 @@ void* frameserver_getrawfile_handle(file_handle fh, ssize_t* ressize)
 		DWORD retc;
 		ov.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
 
-		if (!ReadFile(fh, retb, *ressize, &retc, &ov) 
+		if (!ReadFile(fh, retb, *ressize, &retc, &ov)
 			&& GetLastError() == ERROR_IO_PENDING){
 			if (!GetOverlappedResult(fh, &ov, &retc, TRUE)){
 				free(retb);
@@ -109,7 +109,7 @@ void* frameserver_getrawfile_handle(file_handle fh, ssize_t* ressize)
 }
 
 /* always close handle */
-bool frameserver_dumprawfile_handle(const void* const buf, 
+bool frameserver_dumprawfile_handle(const void* const buf,
 	size_t bufs, file_handle fh, bool finalize)
 {
 	bool rv = false;
@@ -123,7 +123,7 @@ bool frameserver_dumprawfile_handle(const void* const buf,
 		ov.OffsetHigh = 0xFFFFFFFF;
 		ov.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
 
-		if (!WriteFile(fh, buf, bufs, &retc, &ov) 
+		if (!WriteFile(fh, buf, bufs, &retc, &ov)
 			&& GetLastError() == ERROR_IO_PENDING){
 			if (!GetOverlappedResult(fh, &ov, &retc, TRUE)){
 				LOG("frameserver(win32)_dumprawfile : "
@@ -140,13 +140,13 @@ bool frameserver_dumprawfile_handle(const void* const buf,
 }
 
 /*
- * assumed to live as long as the frameserver is alive, 
- * and killed / closed alongside process 
+ * assumed to live as long as the frameserver is alive,
+ * and killed / closed alongside process
  */
 void* frameserver_getrawfile(const char* resource, ssize_t* ressize)
 {
-	HANDLE fh = CreateFile( resource, GENERIC_READ, 
-		FILE_SHARE_READ, NULL, OPEN_EXISTING, 
+	HANDLE fh = CreateFile( resource, GENERIC_READ,
+		FILE_SHARE_READ, NULL, OPEN_EXISTING,
 			FILE_FLAG_SEQUENTIAL_SCAN, NULL );
 	if (fh == INVALID_HANDLE_VALUE)
 		return NULL;
@@ -186,7 +186,7 @@ void* frameserver_requirefun(const char* const name, bool global)
 static void toggle_logdev(const char* prefix)
 {
 	const char* logdir = getenv("ARCAN_FRAMESERVER_LOGDIR");
-	
+
 	if (!logdir)
 		logdir = "./resources/logs";
 
@@ -196,12 +196,12 @@ static void toggle_logdev(const char* prefix)
 		struct tm* basetime = localtime(&t);
 		strftime(timeb, sizeof(timeb)-1, "%y%m%d_%H%M", basetime);
 
-		size_t logbuf_sz = strlen(logdir) + 
+		size_t logbuf_sz = strlen(logdir) +
 			sizeof("/fsrv__yymmddhhss.txt") + strlen(prefix);
 
 		char* logbuf = malloc(logbuf_sz + 1);
 
-		snprintf(logbuf, logbuf_sz+1, 
+		snprintf(logbuf, logbuf_sz+1,
 			"%s/fsrv_%s_%s.txt", logdir, prefix, timeb);
 		logdev = freopen(logbuf, "a", stderr);
 	}
@@ -220,7 +220,7 @@ int main(int argc, char* argv[])
 #else
 /*
  * set this env whenever you want to step through the
- * frameserver as launched from the parent 
+ * frameserver as launched from the parent
  */
 	toggle_logdev("main");
 	LOG("arcan_frameserver(win32) -- launched with %d args.\n", argc);
@@ -234,10 +234,10 @@ int main(int argc, char* argv[])
 	}
 
 /*
- * the convention on windows doesn't include 
+ * the convention on windows doesn't include
  * the program name as first argument,
- * but some execution contexts may use it, 
- * e.g. ruby / cygwin / ... so skew the arguments 
+ * but some execution contexts may use it,
+ * e.g. ruby / cygwin / ... so skew the arguments
  */
  	if (7 == argc){
 		argv++;
@@ -261,7 +261,7 @@ int main(int argc, char* argv[])
 	char* keyfile  = argv[1];
 
 #ifdef ENABLE_FSRV_DECODE
-	if (strcmp(fsrvmode, "decode") == 0 
+	if (strcmp(fsrvmode, "decode") == 0
 		|| strcmp(fsrvmode, "audio") == 0){
 		toggle_logdev("decode");
 		LOG("decode(%s:%s) : %s\n", fsrvmode, keyfile, resource);
@@ -271,7 +271,7 @@ int main(int argc, char* argv[])
 #endif
 
 #ifdef ENABLE_FSRV_NET
-	if (strcmp(fsrvmode, "net-cl") == 0 
+	if (strcmp(fsrvmode, "net-cl") == 0
 		|| strcmp(fsrvmode, "net-srv") == 0){
 		toggle_logdev("net");
 		LOG("net(%s) : %s\n", keyfile, resource);

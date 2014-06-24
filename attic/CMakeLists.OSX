@@ -1,5 +1,5 @@
 #
-# This is mostly out of date, although it should be possible to get 
+# This is mostly out of date, although it should be possible to get
 # up to speed without much effort, it still requires someone taking on
 # that job for OSX
 #
@@ -13,20 +13,20 @@ find_library(IOKIT NAMES IOKit)
 find_library(COREFOUNDATION NAMES CoreFoundation)
 LIST(APPEND MAIN_LIBRARIES ${IOKIT} ${COREFOUNDATION})
 LIST(APPEND FSRV_LIBRARIES ${COREFOUNDATION})
-LIST(APPEND SOURCES 
-	SDLMain.m 
-	${CMAKE_EXTERNAL_SRCDIR}/external/hidapi/hid_mac.c 
-	${CMAKE_EXTERNAL_SRCDIR}/external/hidapi/hidapi.h 
-	arcan_target_launcher.c 
+LIST(APPEND SOURCES
+	SDLMain.m
+	${CMAKE_EXTERNAL_SRCDIR}/external/hidapi/hid_mac.c
+	${CMAKE_EXTERNAL_SRCDIR}/external/hidapi/hidapi.h
+	arcan_target_launcher.c
 	arcan_frameserver_backend_unix.c)
 LIST(APPEND FSRV_SOURCES frameserver/arcan_frameserver.c)
 
 add_definitions(-D__APPLE__ -D__UNIX -DLUA_51)
 
-add_library( arcan_hijack SHARED 
-	arcan_target_osx.c 
-	arcan_frameserver_shmpage.c 
-	arcan_event.c 
+add_library( arcan_hijack SHARED
+	arcan_target_osx.c
+	arcan_frameserver_shmpage.c
+	arcan_event.c
 	frameserver/ntsc/snes_ntsc.c )
 
 target_link_libraries( arcan_hijack ${SDL_LIBRARY} ${OPENGL_gl_LIBRARY} )
@@ -52,10 +52,10 @@ set(THEME_DST "../Resources/themes")
 set(RESOURCES_DST "../Resources/resources")
 
 install(TARGETS arcan_hijack DESTINATION ${BIN_DST})
-install(FILES ${CMAKE_SOURCE_DIR}/arcan_romman.rb 
-	DESTINATION ${BIN_DST} 
+install(FILES ${CMAKE_SOURCE_DIR}/arcan_romman.rb
+	DESTINATION ${BIN_DST}
 	PERMISSIONS
-	WORLD_READ WORLD_EXECUTE OWNER_WRITE OWNER_READ 
+	WORLD_READ WORLD_EXECUTE OWNER_WRITE OWNER_READ
 	OWNER_EXECUTE GROUP_READ GROUP_EXECUTE)
 
 SET(CPACK_GENERATOR ${CPACK_GENERATOR};Bundle)

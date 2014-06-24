@@ -78,11 +78,11 @@ int arcan_target_launch_external(const char* fname, char** argv)
 
 	/* merge argv */
 	si.cb = sizeof(si);
-	if (CreateProcess(0, cmdline, 0, 0, FALSE, 
+	if (CreateProcess(0, cmdline, 0, 0, FALSE,
 		CREATE_NO_WINDOW, 0, 0, &si, &pi)) {
 		while (1) {
 			MSG msg;
-			if (!GetExitCodeProcess(pi.hProcess, &exitcode) 
+			if (!GetExitCodeProcess(pi.hProcess, &exitcode)
 				|| exitcode != STILL_ACTIVE)
 				break;
 

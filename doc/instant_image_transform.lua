@@ -1,10 +1,10 @@
 -- instant_image_transform
 -- @short: Immediately perform all pending transformations.
 -- @inargs: vid
--- @group: image 
+-- @group: image
 -- @cfunction: arcan_lua_instanttransform
--- @related: copy_image_transform, 
--- image_transform_cycle, reset_image_transform, transfer_image_transform 
+-- @related: copy_image_transform,
+-- image_transform_cycle, reset_image_transform, transfer_image_transform
 function main()
 #ifdef MAIN
 	a = fill_surface(32, 32, 255, 0, 0);

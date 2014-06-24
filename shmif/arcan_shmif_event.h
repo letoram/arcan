@@ -1,33 +1,33 @@
-/* 
+/*
  Arcan Shared Memory Interface, Event Namespace
  Copyright (c) 2014, Bjorn Stahl
  All rights reserved.
- 
- Redistribution and use in source and binary forms, 
- with or without modification, are permitted provided that the 
+
+ Redistribution and use in source and binary forms,
+ with or without modification, are permitted provided that the
  following conditions are met:
- 
- 1. Redistributions of source code must retain the above copyright notice, 
+
+ 1. Redistributions of source code must retain the above copyright notice,
  this list of conditions and the following disclaimer.
 
- 2. Redistributions in binary form must reproduce the above copyright notice, 
- this list of conditions and the following disclaimer in the documentation 
+ 2. Redistributions in binary form must reproduce the above copyright notice,
+ this list of conditions and the following disclaimer in the documentation
  and/or other materials provided with the distribution.
- 
- 3. Neither the name of the copyright holder nor the names of its contributors 
- may be used to endorse or promote products derived from this software without 
+
+ 3. Neither the name of the copyright holder nor the names of its contributors
+ may be used to endorse or promote products derived from this software without
  specific prior written permission.
- 
- THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" 
- AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, 
- THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE 
- ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE 
- LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, 
- OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
- SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS 
- INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN 
- CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
- ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF 
+
+ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+ THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY,
+ OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
  THE POSSIBILITY OF SUCH DAMAGE.
 */
 
@@ -40,9 +40,9 @@
 
 /*
  * This part of the interface is still rather crude and messy,
- * being a blob that has grown organically through the course 
+ * being a blob that has grown organically through the course
  * of the project (and initially just being a part of the engine
- * internals, not of the shmif), and will be refactored in 
+ * internals, not of the shmif), and will be refactored in
  * incremental steps.
  *
  * 1. Document the EXTERNAL NOTICES, NET_, TARGET_COMMANDS
@@ -52,7 +52,7 @@
  *
  * 3. Make this into a proper protocol / IPC part
  *
- */ 
+ */
 
 enum ARCAN_EVENT_CATEGORY {
 	EVENT_SYSTEM      = 1,
@@ -73,17 +73,17 @@ enum ARCAN_EVENT_SYSTEM {
 
 enum ARCAN_TARGET_COMMAND {
 /* notify that the child will be shut down / killed,
- * this happens in three steps (1) dms is released, 
+ * this happens in three steps (1) dms is released,
  * (2) exit is enqueued, (3) sigterm is sent. */
 	TARGET_COMMAND_EXIT,
 
-/* notify that there is a file descriptor to be retrieved and 
- * set as the input/output fd for other command events, additional 
- * ievs define destionation slot (net-srv), mode (state, res, ...) 
+/* notify that there is a file descriptor to be retrieved and
+ * set as the input/output fd for other command events, additional
+ * ievs define destionation slot (net-srv), mode (state, res, ...)
  * and size */
 	TARGET_COMMAND_FDTRANSFER,
-	
-/* libretro/hijack: hinting event for frameskip modes 
+
+/* libretro/hijack: hinting event for frameskip modes
  * (auto, process every n frames, singlestep) */
 	TARGET_COMMAND_FRAMESKIP,
 	TARGET_COMMAND_STEPFRAME,
@@ -92,18 +92,18 @@ enum ARCAN_TARGET_COMMAND {
  * for on-load options, use commandline arguments */
 	TARGET_COMMAND_COREOPT,
 
-/* libretro: store to last FDTRANSFER FD 
+/* libretro: store to last FDTRANSFER FD
  * net-cl: read from FD, package and send to srv */
 	TARGET_COMMAND_STORE,
 
 /* libretro: restore from last FD */
 	TARGET_COMMAND_RESTORE,
 
-/* libretro/hijack: hinting event for reseting state 
+/* libretro/hijack: hinting event for reseting state
  * to the first known initial steady one */
 	TARGET_COMMAND_RESET,
 
-/* hinting event for attempting to block the entire 
+/* hinting event for attempting to block the entire
  * process until unpause is triggered */
 	TARGET_COMMAND_PAUSE,
 	TARGET_COMMAND_UNPAUSE,
@@ -121,13 +121,13 @@ enum ARCAN_TARGET_COMMAND {
  * or absolute in the current streams */
 	TARGET_COMMAND_SEEKTIME,
 
-/* for audio / video synchronization in video decode/encode 
+/* for audio / video synchronization in video decode/encode
  * (ioevs[0] -> samples per channel) */
 	TARGET_COMMAND_AUDDELAY,
 
 /*
  * to indicate that there's a new segment to be allocated
- * ioev[0].iv carries 
+ * ioev[0].iv carries
  */
 	TARGET_COMMAND_NEWSEGMENT,
 
@@ -146,7 +146,7 @@ enum ARCAN_TARGET_COMMAND {
 };
 
 enum ARCAN_EVENT_IO {
-	EVENT_IO_BUTTON_PRESS, 
+	EVENT_IO_BUTTON_PRESS,
 	EVENT_IO_BUTTON_RELEASE,
 	EVENT_IO_KEYB_PRESS,
 	EVENT_IO_KEYB_RELEASE,
@@ -182,7 +182,7 @@ enum ARCAN_EVENT_FRAMESERVER {
 enum ARCAN_EVENT_EXTERNAL {
 	EVENT_EXTERNAL_MESSAGE = 0,
 	EVENT_EXTERNAL_COREOPT,
-	EVENT_EXTERNAL_IDENT, 
+	EVENT_EXTERNAL_IDENT,
 	EVENT_EXTERNAL_FAILURE,
 	EVENT_EXTERNAL_FRAMESTATUS,
 	EVENT_EXTERNAL_STREAMINFO,
@@ -242,7 +242,7 @@ enum ARCAN_TARGET_SKIPMODE {
 
 enum ARCAN_ANALOGFILTER_KIND {
 	ARCAN_ANALOGFILTER_NONE = 0,
-	ARCAN_ANALOGFILTER_PASS = 1, 
+	ARCAN_ANALOGFILTER_PASS = 1,
 	ARCAN_ANALOGFILTER_AVG  = 2,
  	ARCAN_ANALOGFILTER_ALAST = 3
 };
@@ -256,7 +256,7 @@ typedef union arcan_ioevent_data {
 
 	struct {
 /* axis- values are first relative then absolute if set */
-		int8_t gotrel; 
+		int8_t gotrel;
 		uint8_t devid;
 		uint8_t subid;
 		uint8_t idcount;
@@ -326,7 +326,7 @@ typedef struct arcan_sevent {
 			long long hitag, lotag;
 		} tagv;
 		struct {
-/* only for dev/dbg purposes, expected scripting 
+/* only for dev/dbg purposes, expected scripting
  * frontend to free and not-mask */
 			char* dyneval_msg;
 		} mesg;
@@ -347,7 +347,7 @@ typedef struct arcan_netevent{
 			char key[32];
 			char ident[15];
 /* max ipv6 textual representation, 39 + strsep + port */
-			char addr[46]; 
+			char addr[46];
 		} host;
 
 		char message[93];
@@ -408,7 +408,7 @@ typedef struct arcan_extevent {
 		} streamstat;
 
 /*
- * emitted as a verification / debugging / 
+ * emitted as a verification / debugging /
  * synchronization primitive,
  * EVENT_EXTERNAL_NOTICE_FRAMESTATUS, emitted once for each
  * port actually sampled
@@ -476,7 +476,7 @@ struct arcan_evctx {
 	arcan_event* eventbuf;
 
 /* offsets into the eventbuf queue, parent will always
- * % ARCAN_SHMPAGE_QUEUE_SZ to prevent nasty surprises */ 
+ * % ARCAN_SHMPAGE_QUEUE_SZ to prevent nasty surprises */
 	volatile unsigned* front;
 	volatile unsigned* back;
 
@@ -485,8 +485,8 @@ struct arcan_evctx {
 /*
  * When the child (!local flag) wants the parent to wake it up,
  * the sem_handle (by default, 1) is set to 0 and calls sem_wait.
- * 
- * When the parent pushes data on the event-queue it checks the 
+ *
+ * When the parent pushes data on the event-queue it checks the
  * state if this sem_handle. If it's 0, and some internal
  * dynamic heuristic (if the parent knows multiple- connected
  * events are enqueued, it can wait a bit before waking the child)

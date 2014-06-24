@@ -4,7 +4,7 @@
 -- The currently active context is managed on a stack. Pushing involves
 -- saving the current context on a stack, possibly deallocating data that
 -- can be reloaded or regenerated.
--- @group: vidsys 
+-- @group: vidsys
 -- @cfunction: arcan_lua_pushcontext
 -- @related: pop_video_context, storepop_video_context, storepush_video_context
 function main()

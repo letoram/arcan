@@ -1,11 +1,11 @@
 -- image_surface_initial_properties
--- @short: Retrieve a table describing the initial storage state for the specified object.  
+-- @short: Retrieve a table describing the initial storage state for the specified object.
 -- @inargs: vid
 -- @outargs: proptbl
--- @longdescr: The system distinguishes between transformations that have been applied 
+-- @longdescr: The system distinguishes between transformations that have been applied
 -- after an object was created and the initial state of the object. This function retrieves
 -- the values associated with this initial state and returns it as a property table.
--- @group: image 
+-- @group: image
 -- @cfunction: arcan_lua_getimageinitprop
 -- @related: image_surface_resolve_propreties, image_surface_properties
 function main()

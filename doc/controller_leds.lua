@@ -1,8 +1,8 @@
 -- controller_leds
--- @short: Return the number of addressable LEDs on the specified controller. 
--- @inargs: ctrlind 
+-- @short: Return the number of addressable LEDs on the specified controller.
+-- @inargs: ctrlind
 -- @outargs: nleds
--- @group: iodev 
+-- @group: iodev
 -- @cfunction: arcan_lua_n_leds
 -- @flags:
 function main()

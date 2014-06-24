@@ -26,11 +26,11 @@
 #include <arcan_math.h>
 #include <arcan_general.h>
 
-/* 
+/*
  * some mapping mechanisms other than arcan_map_resource
  * should be used for dealing with single resources larger
  * than this size.
- */ 
+ */
 #ifndef MAX_RESMAP_SIZE
 #define MAX_RESMAP_SIZE (1024 * 1024 * 10)
 #endif
@@ -47,20 +47,20 @@ static data_source* alloc_datasource()
 
 /* trace for this value to track down leaks */
 	res->source = tag_resleak;
-	
+
 	return res;
 }
 
 /* FIXME;
  * on failed mapping, try to read/buffer in accordance with
- * read_safe etc. from POSIX 
+ * read_safe etc. from POSIX
  */
 
-map_region arcan_map_resource(data_source* source, bool allowwrite) 
+map_region arcan_map_resource(data_source* source, bool allowwrite)
 {
 	map_region rv = {0};
 
-	HANDLE fmh = CreateFileMapping(source->fd, NULL, PAGE_READONLY, 
+	HANDLE fmh = CreateFileMapping(source->fd, NULL, PAGE_READONLY,
 		0, 0, NULL);
 
 /* the caller is forced to clean up */
@@ -80,8 +80,8 @@ bool arcan_release_map(map_region region)
 	int rv = -1;
 
 	if (region.sz > 0 && region.ptr)
-		rv = region.mmap ? 
-			UnmapViewOfFile(region.ptr) : 
+		rv = region.mmap ?
+			UnmapViewOfFile(region.ptr) :
 			(free(region.ptr), 0);
 
 	return rv != -1;

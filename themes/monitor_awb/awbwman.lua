@@ -13,7 +13,7 @@ varying vec2 texco;
 void main(){
 	vec4 col = texture2D(map_diffuse, texco);
 	gl_FragColor = vec4(1.0 - col.r,
-		1.0 - col.g, 
+		1.0 - col.g,
 		1.0 - col.b,
 		col.a * obj_opacity);
 }
@@ -61,7 +61,7 @@ local function awbwman_findind(val, tbl)
 end
 
 local function awbwman_updateorder()
-	
+
 	for i,v in ipairs(awb_wtable) do
 		if (v.anchor ~= nil) then
 			order_image(v.anchor, i * 10);
@@ -114,7 +114,7 @@ function string.split(instr, delim)
 	local res = {};
 	local strt = 1;
 	local delim_pos, delim_stp = string.find(instr, delim, strt);
-	
+
 	while delim_pos do
 		table.insert(res, string.sub(instr, strt, delim_pos-1));
 		strt = delim_stp + 1;
@@ -141,7 +141,7 @@ local function awbwman_focus(wnd, nodrop)
 		if (awb_cfg.focus == wnd or awb_cfg.focus_locked) then
 			return;
 		end
-		
+
 -- only inactivate a window that hasn't been destroyed
 		if (awb_cfg.focus.inactive) then
 			awb_cfg.focus:inactive();
@@ -172,7 +172,7 @@ function awbwman_shadow_nonfocus()
 
 	if (awb_cfg.focus_locked)  then
 		local order = image_surface_properties(awb_cfg.focus.anchor).order;
-		awb_cfg.shadowimg = color_surface(VRESW, VRESH, 0, 0, 0); 
+		awb_cfg.shadowimg = color_surface(VRESW, VRESH, 0, 0, 0);
 		order_image(awb_cfg.shadowimg, order - 1);
 		blend_image(awb_cfg.shadowimg, 0.5, awb_cfg.animspeed);
 	else
@@ -230,7 +230,7 @@ local function lineobj(src, x1, y1, x2, y2)
 	end
 
 	rotate_image(src, math.deg( math.atan2(dy, dx) ) );
-	move_image(src, x1 + (dx * 0.5), y1 + (dy * 0.5)); 
+	move_image(src, x1 + (dx * 0.5), y1 + (dy * 0.5));
 	image_origo_offset(src, -1 * (0.5 * len), -0.5);
 
 	return line;
@@ -255,21 +255,21 @@ end
 
 local function awbman_mhandlers(wnd, bar)
 --
--- for the drag and drop case, "fling" the window 
--- if shiftstate is set 
+-- for the drag and drop case, "fling" the window
+-- if shiftstate is set
 --
 	bar.drag = function(self, vid, x, y)
 		reset_image_transform(self.parent.anchor);
 		local mx, my = mouse_xy();
 		awbwman_focus(self.parent);
 
-		if (awb_cfg.meta.shift) then	
+		if (awb_cfg.meta.shift) then
 			if (self.line_beg ~= nil) then
 				lineobj(self.lineobj, self.line_beg[1], self.line_beg[2], mx, my);
 				order_image(self.lineobj, ORDER_MOUSE - 1);
 			else
 				self.line_beg = {mx, my};
-				self.lineobj = color_surface(1, 1, 225, 225, 225); 
+				self.lineobj = color_surface(1, 1, 225, 225, 225);
 			end
 		else
 			props = image_surface_resolve_properties(self.parent.anchor);
@@ -277,7 +277,7 @@ local function awbman_mhandlers(wnd, bar)
 			wnd:move(props.x + x, props.y + y);
 		end
 	end
- 
+
 	bar.dblclick = function(self, vid, x, y)
 		if (wnd.resizable == false) then
 			return;
@@ -346,7 +346,7 @@ local function awbwman_addcaption(bar, caption)
 	local props  = image_surface_properties(caption);
 	local bgsurf = fill_surface(10, 10, 230, 230, 230);
 	local icn = bar:add_icon("caption", "fill", bgsurf);
-	delete_image(bgsurf);	
+	delete_image(bgsurf);
 
 	if (props.height > (bar.size - 2)) then
 		resize_image(caption, 0, bar.size);
@@ -377,7 +377,7 @@ function awbwman_activepopup()
 end
 
 --
--- desired spawning behavior might change (i.e. 
+-- desired spawning behavior might change (i.e.
 -- best fit, random, centered, at cursor, incremental pos, ...)
 --
 local function awbwman_next_spawnpos(wnd)
@@ -440,7 +440,7 @@ function awbwman_spawn(caption, options)
 	if (options == nil) then
 		options = {};
 	end
-	
+
 	options.animspeed = awb_cfg.animspeed;
 
 	if (options.refid ~= nil) then
@@ -468,7 +468,7 @@ function awbwman_spawn(caption, options)
 	end
 
 	wcont.kind = "window";
-	
+
 	local mhands = {};
 	local tmpfun = wcont.destroy;
 
@@ -493,13 +493,13 @@ function awbwman_spawn(caption, options)
 		tmpfun(self, time);
 	end
 
--- single color canvas (but treated as textured) for shader or replacement 
+-- single color canvas (but treated as textured) for shader or replacement
 	local r = 0;
 	local g = 0;
 	local b = 100;
 
 -- separate click handler for the canvas area
--- as more advanced windows types (selection etc.) may need 
+-- as more advanced windows types (selection etc.) may need
 -- to override
 	local canvas = fill_surface(wcont.w, wcont.h, r, g, b);
 	wcont:update_canvas(canvas);
@@ -514,7 +514,7 @@ function awbwman_spawn(caption, options)
 
 	if (options.noicons == nil) then
 		tbar:add_icon("close", "l", awb_cfg.bordericns["close"], function()
-			wcont:destroy(awb_cfg.animspeed);	
+			wcont:destroy(awb_cfg.animspeed);
 		end);
 
 		tbar:add_icon("toback", "r", awb_cfg.bordericns["toback"], function()
@@ -523,12 +523,12 @@ function awbwman_spawn(caption, options)
 		end);
 	end
 
--- "normal" right bar (no scrolling) is mostly transparent and 
--- lies above the canvas area. The resize button needs a separate 
+-- "normal" right bar (no scrolling) is mostly transparent and
+-- lies above the canvas area. The resize button needs a separate
 -- mouse handler
 	if (options.noresize == nil) then
 		local rbar = wcont:add_bar("b", awb_cfg.alphares,
-			awb_cfg.alphares, awb_cfg.topbar_sz - 2, awb_cfg.topbar_sz - 2); 
+			awb_cfg.alphares, awb_cfg.topbar_sz - 2, awb_cfg.topbar_sz - 2);
 
 		image_mask_set(rbar.vid, MASK_UNPICKABLE);
 		local icn = rbar:add_icon("resize", "r", awb_cfg.bordericns["resize"]);
@@ -562,14 +562,14 @@ function awbwman_spawn(caption, options)
 		rhandle.name = "awbwindow_resizebtn";
 		mouse_addlistener(rhandle, {"drag", "drop"});
 		wcont.rhandle = rhandle; -- for deregistration
-	end	
+	end
 
 -- register, push to front etc.
   awbman_mhandlers(wcont, tbar);
 	awbwman_regwnd(wcont);
 
 	if (options.noborder == nil) then
-		wcont:set_border(1, awb_col.dialog_border.r, 
+		wcont:set_border(1, awb_col.dialog_border.r,
 			awb_col.dialog_border.g, awb_col.dialog_border.b);
 	end
 
@@ -577,8 +577,8 @@ function awbwman_spawn(caption, options)
 	blend_image(wcont.anchor, 1.0, awb_cfg.animspeed);
 	wcont:resize(wcont.w, wcont.h);
 	wcont.focus = awbwman_focus;
-	wcont.focused = function(self) 
-		return self == awb_cfg.focus; 
+	wcont.focused = function(self)
+		return self == awb_cfg.focus;
 	end
 
 	if (options.x == nil) then
@@ -600,9 +600,9 @@ function awbwman_cfg()
 end
 
 --
--- While some input (e.g. whatever is passed as input 
+-- While some input (e.g. whatever is passed as input
 -- to mouse_handler) gets treated elsewhere, as is meta state modifier,
--- the purpose of this function is to forward to the current 
+-- the purpose of this function is to forward to the current
 -- focuswnd (if needed) or manipulate whatever is in the popup-slot,
 -- and secondarily, pass through the active input layout and push
 -- to the broadcast domain.
@@ -610,11 +610,11 @@ end
 function awbwman_input(iotbl, keysym)
 
 -- match configured from global?
--- else forward raw input 
+-- else forward raw input
 	if (awb_cfg.popup_active and awb_cfg.popup_active.input ~= nil) then
 		awb_cfg.popup_active:input(iotbl);
-	
-	elseif (awb_cfg.focus and 
+
+	elseif (awb_cfg.focus and
 			awb_cfg.focus.input ~= nil) then
 		awb_cfg.focus:input(iotbl);
 	end
@@ -640,8 +640,8 @@ function awbwman_init(defrndr, mnurndr)
 	awb_cfg.inactiveres = load_image("border_inactive.png");
 	awb_cfg.ttactiveres = load_image("tt_border.png");
 	awb_cfg.ttinactvres = load_image("tt_border.png");
-	awb_cfg.alphares    = fill_surface(32, 32, 50, 50, 200); 
-	
+	awb_cfg.alphares    = fill_surface(32, 32, 50, 50, 200);
+
 	awb_cfg.bordericns["close"]    = load_image("close.png");
 	awb_cfg.bordericns["resize"]   = load_image("resize.png");
 	awb_cfg.bordericns["toback"]   = load_image("toback.png");

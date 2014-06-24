@@ -24,7 +24,7 @@
 
 /*
  * Missing;
- *  The resource mapping between main engine and frameservers is 
+ *  The resource mapping between main engine and frameservers is
  *  1:1, 1 shmpage segment (associated with one vid,aid pair) etc.
  *
  *  There is a need for children to be able to request new video
@@ -34,10 +34,10 @@
  *  This means that we also need to refcount such blocks, to
  *  account for the possibility of the child to flag it as a "won't use"
  *  and for the parent to indicate that the associated VID has been removed.
- *  
+ *
  *  There is also a need to specify "special" storage classes,
- *  in particular sharing GL/GLES textures rather than having 
- *  to go the readback approach. 
+ *  in particular sharing GL/GLES textures rather than having
+ *  to go the readback approach.
  */
 
 /*
@@ -78,13 +78,13 @@ typedef struct {
 	uint16_t vfthresh;
 
 /* if the user wants detailed
- * info about the latest frame that was 
+ * info about the latest frame that was
  * uploaded */
 	bool callback_framestate;
 	unsigned long long framecount;
 	unsigned long long dropcount;
 	unsigned long long lastpts;
-	
+
 } arcan_frameserver_meta;
 
 struct frameserver_audsrc {
@@ -109,10 +109,10 @@ typedef struct arcan_frameserver {
 
 /* original resource, needed for reloading */
 	char* source;
-	
+
 /* OS- specific, defined in general.h */
 	shm_handle shm;
-	sem_handle vsync, async, esync; 
+	sem_handle vsync, async, esync;
 	file_handle sockout_fd;
 	process_handle child;
 
@@ -134,7 +134,7 @@ typedef struct arcan_frameserver {
 		bool subsegment;
 		bool no_alpha_copy;
 	} flags;
-	
+
 /* for monitoring hooks, 0 entry terminates. */
 	arcan_aobj_id* alocks;
 	arcan_aobj_id aid;
@@ -146,10 +146,10 @@ typedef struct arcan_frameserver {
 		struct frameserver_audsrc* inaud;
 	} amixer;
 
-/* playstate control and statistics */ 
+/* playstate control and statistics */
 	enum arcan_playstate playstate;
 	int64_t lastpts;
-	int64_t launchedtime; 
+	int64_t launchedtime;
 	unsigned vfcount;
 
 	enum arcan_frameserver_kinds kind;
@@ -164,7 +164,7 @@ typedef struct arcan_frameserver {
 
 /* usual hack, similar to load_asynchimage */
 	intptr_t tag;
-	uint16_t watch_const; 
+	uint16_t watch_const;
 } arcan_frameserver;
 
 /* contains both structures for managing movie- playback,
@@ -178,30 +178,30 @@ struct frameserver_envp {
 		struct {
 			const char* const resource;
 /* current: movie, libretro, record, net-cl, net-srv */
-			const char* const mode; 
+			const char* const mode;
 		} builtin;
 
 		struct {
 			char* fname; /* program to execute */
 /* key with ARCAN_SHMKEY, ARCAN_SHMSIZE will have
  * its value replaced, key=val, NULL terminated */
-			char** argv; 
-			char** envv; 
+			char** argv;
+			char** envv;
 		} external;
-		
+
 	} args;
 };
 
 /* this will either launch the configured frameserver (use_builtin),
- * or act as a more generic execv of a program that 
+ * or act as a more generic execv of a program that
  * supposedly implements the same shmpage interface and protocol. */
-arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* dst, 
+arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* dst,
 	struct frameserver_envp);
 
 /*
  * setup a frameserver that is idle until an external party connects
  * through a listening socket, then behaves as an avfeed- style
- * frameserver. 
+ * frameserver.
  */
 arcan_frameserver* arcan_frameserver_listen_external(const char* key);
 
@@ -214,76 +214,76 @@ arcan_errc arcan_frameserver_playback(arcan_frameserver*);
 arcan_errc arcan_frameserver_pause(arcan_frameserver*);
 arcan_errc arcan_frameserver_resume(arcan_frameserver*);
 
-/* 
+/*
  * frameserver_pushfd send the file_handle into the process controlled
  * by the specified frameserver and emits a corresponding event into the
  * eventqueue of the frameserver. returns !ARCAN_OK if the socket isn't
  * connected, wrong type, OS can't handle transfer or the FD can't be
- * transferred (e.g. stdin) fd will always be closed in this function. 
- */ 
+ * transferred (e.g. stdin) fd will always be closed in this function.
+ */
 arcan_errc arcan_frameserver_pushfd(arcan_frameserver*, int fd);
 
-/* 
+/*
  * allocate a new frameserver segment, bind it to the same process
- * and communicate the necessary IPC arguments (key etc.) using 
+ * and communicate the necessary IPC arguments (key etc.) using
  * the pre-existing eventqueue of the frameserver controlled by (ctx)
  */
 arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	arcan_frameserver* ctx, bool input, int hintw, int hinth, int tag);
 
-/* take the argument event and add it to the event queue of the target, 
+/* take the argument event and add it to the event queue of the target,
  * returns a failure if the event queue in the child is full */
 arcan_errc arcan_frameserver_pushevent(arcan_frameserver*, arcan_event*);
 
-/* poll the frameserver out eventqueue and push it unto the evctx, 
- * filter events that are outside the accepted category / kind */ 
+/* poll the frameserver out eventqueue and push it unto the evctx,
+ * filter events that are outside the accepted category / kind */
 void arcan_frameserver_pollevent(arcan_frameserver*, arcan_evctx*);
 
-/* symbol should only be used by the backend to reach 
+/* symbol should only be used by the backend to reach
  * OS specific implementations (_unix.c / win32 )*/
 void arcan_frameserver_dropsemaphores(arcan_frameserver*);
 void arcan_frameserver_dropsemaphores_keyed(char*);
 
 /* check if the frameserver is still alive, that the shared memory page
- * is intact and look for any state-changes, e.g. resize (which would 
+ * is intact and look for any state-changes, e.g. resize (which would
  * require a recalculation of shared memory layout */
 void arcan_frameserver_tick_control(arcan_frameserver*);
 bool arcan_frameserver_resize(shm_handle*, int, int);
 
-/* default implementations for shared memory framequeue readers, 
- * two with separate sync (vidcb audcb) and one where sync is 
- * locked to vid only but transfer audio frames into 
+/* default implementations for shared memory framequeue readers,
+ * two with separate sync (vidcb audcb) and one where sync is
+ * locked to vid only but transfer audio frames into
  * intermediate buffer as well */
 ssize_t arcan_frameserver_shmvidcb(int fd, void* dst, size_t ntr);
 ssize_t arcan_frameserver_shmaudcb(int fd, void* dst, size_t ntr);
 ssize_t arcan_frameserver_shmvidaudcb(int fd, void* dst, size_t ntr);
 
-/* used for streaming data to the frameserver, 
+/* used for streaming data to the frameserver,
  * audio / video interleaved in one synch */
-enum arcan_ffunc_rv arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, 
-	uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, 
+enum arcan_ffunc_rv arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd,
+	uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height,
 	uint8_t bpp, unsigned int mode, vfunc_state state);
 
 /* used as monitor hook for frameserver audio feeds */
-void arcan_frameserver_avfeedmon(arcan_aobj_id src, uint8_t* buf, 
+void arcan_frameserver_avfeedmon(arcan_aobj_id src, uint8_t* buf,
 	size_t buf_sz, unsigned channels, unsigned frequency, void* tag);
 
-void arcan_frameserver_avfeed_mixer(arcan_frameserver* dst, 
+void arcan_frameserver_avfeed_mixer(arcan_frameserver* dst,
 	int n_sources, arcan_aobj_id* sources);
 void arcan_frameserver_update_mixweight(arcan_frameserver* dst,
 	arcan_aobj_id source, float leftch, float rightch);
 
 /* return a callback function for retrieving appropriate video-feeds */
 enum arcan_ffunc_rv arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd,
-	uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, 
+	uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height,
 	uint8_t bpp, unsigned int mode, vfunc_state state);
 
-enum arcan_ffunc_rv arcan_frameserver_emptyframe(enum arcan_ffunc_cmd cmd, 
-	uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, 
-	uint8_t bpp, unsigned int mode, vfunc_state state); 
+enum arcan_ffunc_rv arcan_frameserver_emptyframe(enum arcan_ffunc_cmd cmd,
+	uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height,
+	uint8_t bpp, unsigned int mode, vfunc_state state);
 
 /* return a callback function for retrieving appropriate audio-feeds */
-arcan_errc arcan_frameserver_audioframe(struct 
+arcan_errc arcan_frameserver_audioframe(struct
 	arcan_aobj* aobj, arcan_aobj_id id, unsigned buffer, void* tag);
 
 /* after a seek operation (or something else that would impose
@@ -291,11 +291,11 @@ arcan_errc arcan_frameserver_audioframe(struct
  * flushes out pending buffers etc. and adjusts clocks */
 arcan_errc arcan_frameserver_flush(arcan_frameserver* fsrv);
 
-/* simplified versions of the above that 
+/* simplified versions of the above that
  * ignores PTS/DTS and doesn't use the framequeue */
 enum arcan_ffunc_rv arcan_frameserver_videoframe_direct(
-	enum arcan_ffunc_cmd cmd, 
-	uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, 
+	enum arcan_ffunc_cmd cmd,
+	uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height,
 	uint8_t bpp, unsigned int mode, vfunc_state state);
 
 arcan_errc arcan_frameserver_audioframe_direct(struct arcan_aobj* aobj,
@@ -303,15 +303,15 @@ arcan_errc arcan_frameserver_audioframe_direct(struct arcan_aobj* aobj,
 
 /*
  * return if the child process associated with the frameserver context
- * is still alive or not 
+ * is still alive or not
  */
 bool arcan_frameserver_validchild(arcan_frameserver* ctx);
 
 /*
  * guarantee that any and all child processes associated or spawned
- * from the child connected will be terminated in as clean a 
+ * from the child connected will be terminated in as clean a
  * manner as possible (thus may not happen immediately although
- * contents of the struct will be reset) 
+ * contents of the struct will be reset)
  */
 void arcan_frameserver_killchild(arcan_frameserver* ctx);
 
@@ -320,15 +320,15 @@ void arcan_frameserver_killchild(arcan_frameserver* ctx);
  */
 void arcan_frameserver_dropshared(arcan_frameserver* ctx);
 
-/* PROCEED WITH EXTREME CAUTION, _configure, 
+/* PROCEED WITH EXTREME CAUTION, _configure,
  * _spawn, _free etc. are among the more complicated functions
- * in the entire project, any changes should be 
+ * in the entire project, any changes should be
  * thoroughly tested for regressions.
- * 
- * part of the spawn_server that is shared between 
+ *
+ * part of the spawn_server that is shared between
  * the unix and the win32 implementations,
  * assumes that shared memory, semaphores etc. are already in place. */
-void arcan_frameserver_configure(arcan_frameserver* ctx, 
+void arcan_frameserver_configure(arcan_frameserver* ctx,
 	struct frameserver_envp setup);
 
 arcan_errc arcan_frameserver_free(arcan_frameserver*);

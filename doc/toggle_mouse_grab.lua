@@ -1,6 +1,6 @@
 -- toggle_mouse_grab
 -- @short: Switch the lock state of the mouse device.
--- @inargs: *optmode* 
+-- @inargs: *optmode*
 -- @outargs: grabstate
 -- @longdescr: For some control schemes, it's important to prevent mouse input from
 -- being dropped due to window managers in the underlying OS. This function allows
@@ -8,7 +8,7 @@
 -- Calling this function always return the current active state.
 -- @note: always provide escape options for the user to disable grab in order to
 -- allow poor desktop environments to recover in the event of a live-lock.
--- @group: iodev 
+-- @group: iodev
 -- @cfunction: arcan_lua_mousegrab
 function main()
 #ifdef MAIN

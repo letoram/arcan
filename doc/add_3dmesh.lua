@@ -1,10 +1,10 @@
 -- add_3dmesh
 -- @short: Load a mesh and attach to a model.
 -- @inargs: dstmodel, resource, *nmaps
--- @outargs: 
+-- @outargs:
 -- @longdescr: Load and decompress a mesh from the specified resource (CTM format) and attach to the model in question. The optional (default 1) nmaps argument specifies how many frameset objects that should be consumed and spent on the different texture units (additional specular, normal etc. maps).
--- @group: 3d 
--- @note: Nmaps is hard- limited to 8, matching the minimum of texture units according to the GLES2.0 standard. 
+-- @group: 3d
+-- @note: Nmaps is hard- limited to 8, matching the minimum of texture units according to the GLES2.0 standard.
 -- @cfunction: arcan_lua_loadmesh
 -- @related: new_3dmodel
 -- @note: The example below is somewhat limited, refer to 'modeldemo' for a more comprehensive example.

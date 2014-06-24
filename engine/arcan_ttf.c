@@ -22,7 +22,7 @@
 /*
  * Modifications:
  *  Removed dependency to SDL
- * 
+ *
  * Planned Modifications:
  *  Add texture-page caching and string packing to better fit GLES/OpenGL
  */
@@ -34,7 +34,7 @@
 #include <stdint.h>
 #include <fcntl.h>
 
-/* Note; 
+/* Note;
  * These should be refactored to use a small pre-allocated pool that
  * doesn't mix with the normal stack */
 #ifdef HAVE_ALLOCA_H
@@ -124,7 +124,7 @@ struct _TTF_Font {
 
 	/* For non-scalable formats, we must remember which font index size */
 	int font_size_family;
-	
+
 	/* really just flags passed into FT_Load_Glyph */
 	int hinting;
 };
@@ -182,7 +182,7 @@ static inline int TTF_strikethrough_top_row(TTF_Font *font)
 	return font->height / 2;
 }
 
-static void TTF_initLineMectrics(const TTF_Font *font,const TTF_Surface 
+static void TTF_initLineMectrics(const TTF_Font *font,const TTF_Surface
 	*textbuf, const int row, uint8_t **pdst, int *pheight)
 {
 	uint8_t *dst;
@@ -206,7 +206,7 @@ static void TTF_drawLine(const TTF_Font *font, const TTF_Surface *textbuf,
 	const int row, const uint32_t color)
 {
 	int line;
-	uint32_t *dst_check = (uint32_t*)textbuf->data + 
+	uint32_t *dst_check = (uint32_t*)textbuf->data +
 		textbuf->width * textbuf->height;
 	uint8_t *dst8; /* destination, byte version */
 	uint32_t *dst;
@@ -285,7 +285,7 @@ int TTF_Init( void )
 	return status;
 }
 
-static unsigned long ft_read(FT_Stream stream, unsigned long ofs, 
+static unsigned long ft_read(FT_Stream stream, unsigned long ofs,
 	unsigned char* buf, unsigned long count)
 {
 	FILE* fpek = stream->descriptor.pointer;
@@ -359,13 +359,13 @@ TTF_Font* TTF_OpenFontIndexRW( FILE* src, int freesrc, int ptsize, long index )
 	for (i = 0; i < face->num_charmaps; i++) {
 		FT_CharMap charmap = face->charmaps[i];
 /* Windows Unicode */
-		if ((charmap->platform_id == 3 && charmap->encoding_id == 1) 
+		if ((charmap->platform_id == 3 && charmap->encoding_id == 1)
 /* Windows Symbol */
 		 || (charmap->platform_id == 3 && charmap->encoding_id == 0)
 /* ISO Unicode */
 		 || (charmap->platform_id == 2 && charmap->encoding_id == 1)
 /* Apple Unicode */
-		 || (charmap->platform_id == 0)) { 
+		 || (charmap->platform_id == 0)) {
 			found = charmap;
 			break;
 		}
@@ -494,7 +494,7 @@ static void Flush_Glyph( c_glyph* glyph )
 	}
 	glyph->cached = 0;
 }
-	
+
 static void Flush_Cache( TTF_Font* font )
 {
 	int i;
@@ -508,7 +508,7 @@ static void Flush_Cache( TTF_Font* font )
 	}
 }
 
-static FT_Error Load_Glyph( TTF_Font* font, uint16_t ch, 
+static FT_Error Load_Glyph( TTF_Font* font, uint16_t ch,
 	c_glyph* cached, int want )
 {
 	FT_Face face;
@@ -562,7 +562,7 @@ static FT_Error Load_Glyph( TTF_Font* font, uint16_t ch,
 			cached->yoffset = 0;
 			cached->advance = FT_CEIL(metrics->horiAdvance);
 		}
-		
+
 		/* Adjust for bold and italic text */
 		if( TTF_HANDLE_STYLE_BOLD(font) ) {
 			cached->maxx += font->glyph_overhang;
@@ -601,12 +601,12 @@ static FT_Error Load_Glyph( TTF_Font* font, uint16_t ch,
 			if( error ) {
 				return error;
 			}
-			FT_Stroker_Set( stroker, font->outline * 64, FT_STROKER_LINECAP_ROUND, 
-				FT_STROKER_LINEJOIN_ROUND, 0 ); 
+			FT_Stroker_Set( stroker, font->outline * 64, FT_STROKER_LINECAP_ROUND,
+				FT_STROKER_LINEJOIN_ROUND, 0 );
 			FT_Glyph_Stroke( &bitmap_glyph, stroker, 1 /*delete the original glyph*/);
 			FT_Stroker_Done( stroker );
 			/* Render the glyph */
-			error = FT_Glyph_To_Bitmap( &bitmap_glyph, mono ? 
+			error = FT_Glyph_To_Bitmap( &bitmap_glyph, mono ?
 				ft_render_mode_mono : ft_render_mode_normal, 0, 1 );
 			if( error ) {
 				FT_Done_Glyph( bitmap_glyph );
@@ -725,7 +725,7 @@ static FT_Error Load_Glyph( TTF_Font* font, uint16_t ch,
 					 * shades of gray.  Instead, it
 					 * returns a black and white surface
 					 * and we have to translate it back
-					 * to a 256 gray shaded surface. 
+					 * to a 256 gray shaded surface.
 					 * */
 					unsigned char *srcp = src->buffer + soffset;
 					unsigned char *dstp = dst->buffer + doffset;
@@ -1102,8 +1102,8 @@ int TTF_SizeUNICODE(TTF_Font *font, const uint16_t *text, int *w, int *h)
 
 		/* handle kerning */
 		if ( use_kerning && prev_index && glyph->index ) {
-			FT_Vector delta; 
-			FT_Get_Kerning( font->face, prev_index, glyph->index, ft_kerning_default, &delta ); 
+			FT_Vector delta;
+			FT_Get_Kerning( font->face, prev_index, glyph->index, ft_kerning_default, &delta );
 			x += delta.x >> 6;
 		}
 
@@ -1123,10 +1123,10 @@ int TTF_SizeUNICODE(TTF_Font *font, const uint16_t *text, int *w, int *h)
 		 * work out correctly.
 		 * */
 			z -= glyph->minx;
-			
+
 		}
 #endif
-		
+
 		z = x + glyph->minx;
 		if ( minx > z ) {
 			minx = z;
@@ -1274,7 +1274,7 @@ TTF_Surface* TTF_RenderUNICODE(TTF_Font *font,
 
 /* check kerning */
 	use_kerning = FT_HAS_KERNING( font->face ) && font->kerning;
-	
+
 /* Load and render each character */
 	xstart = 0;
 	swapped = TTF_byteswapped;
@@ -1308,9 +1308,9 @@ TTF_Surface* TTF_RenderUNICODE(TTF_Font *font,
 		    free(textbuf);
 		    return NULL;
 		}
-		
+
 		glyph = font->current;
-		
+
 /* Ensure the width of the pixmap is correct. On some cases,
  * freetype may report a larger pixmap than possible.*/
 		width = glyph->pixmap.width;
@@ -1319,11 +1319,11 @@ TTF_Surface* TTF_RenderUNICODE(TTF_Font *font,
 
 /* do kerning, if possible AC-Patch */
 		if ( use_kerning && prev_index && glyph->index ) {
-			FT_Vector delta; 
-			FT_Get_Kerning( font->face, prev_index, glyph->index, ft_kerning_default, &delta ); 
+			FT_Vector delta;
+			FT_Get_Kerning( font->face, prev_index, glyph->index, ft_kerning_default, &delta );
 			xstart += delta.x >> 6;
 		}
-		
+
 /* Compensate for the wrap around bug with negative minx's */
 		if ( (ch == text) && (glyph->minx < 0) ) {
 			xstart -= glyph->minx;
@@ -1439,7 +1439,7 @@ int TTF_WasInit( void )
 
 int TTF_GetFontKerningSize(TTF_Font* font, int prev_index, int index)
 {
-	FT_Vector delta; 
-	FT_Get_Kerning( font->face, prev_index, index, ft_kerning_default, &delta ); 
+	FT_Vector delta;
+	FT_Get_Kerning( font->face, prev_index, index, ft_kerning_default, &delta );
 	return (delta.x >> 6);
 }

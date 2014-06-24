@@ -5,7 +5,7 @@
 -- @longdescr: This function first resolves properties (execution environment),
 -- and, depending on if mode is set to LAUNCH_EXTERNAL or LAUNCH_INTERNAL:
 -- (EXTERNAL) deallocate as much resources as possible by saving the current
--- context (push to the context stack), disables audio/video/event subsystems, etc. 
+-- context (push to the context stack), disables audio/video/event subsystems, etc.
 -- executes the target and waits for it to finish.
 -- (INTERNAL) setup a shared memory- based interface and map that as a frameserver
 -- that feeds a video object. Launch the specified target (either as a semi-trusted
@@ -16,7 +16,7 @@
 -- for libretro cores when prefixed with core_
 -- @note: Possible statustbl.kind values; "resized", "ident", "message", "failure",
 -- "frameserver_terminated", "frame", "state_size", "resource_status", "unknown".
--- @note: for kind == "resized", width, height 
+-- @note: for kind == "resized", width, height
 -- @note: for kind == "frame", frame
 -- @note: for kind == "message", message
 -- @note: for kind == "ident", message
@@ -24,7 +24,7 @@
 -- @note: for kind == "state_size", state_size
 -- @note: for kind == "unknown", unknown
 -- @note: for kind == "resource_status", "message"
--- @group: targetcontrol 
+-- @group: targetcontrol
 -- @alias: target_launch
 -- @cfunction: arcan_lua_targetlaunch
 function main()

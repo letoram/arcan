@@ -6,9 +6,9 @@
 -- a new input or output segment through an event with
 -- the 'kind' field set to segment_request and a reqid.
 -- It is then up to the script to respond by either allocating
--- a new segment through _target_alloc_ or refusing and 
--- calling _target_reject_. 
--- @group: targetcontrol 
+-- a new segment through _target_alloc_ or refusing and
+-- calling _target_reject_.
+-- @group: targetcontrol
 -- @cfunction: targetreject
 -- @related:
 function main()

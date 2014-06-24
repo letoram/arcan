@@ -5,7 +5,7 @@
 -- failure to load (parse errors etc.) will only yield a nil result,
 -- not a terminal state transition.
 -- @note: Trying to load a non-existing script is a terminal state transition.
--- @group: system 
+-- @group: system
 -- @cfunction: arcan_lua_dofile
 function main()
 #ifdef MAIN

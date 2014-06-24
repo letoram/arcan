@@ -5,11 +5,11 @@
  * for licensing terms.
  */
 
-/* 
- * This implements using arcan-in-arcan, nested execution as part of 
+/*
+ * This implements using arcan-in-arcan, nested execution as part of
  * the hybrid mode (see engine design docs). We'll set up a GL
  * context, map to that the shared memory, do readbacks etc.
- */ 
+ */
 
 /* 1. we re-use the EGL platform with a little hack */
 
@@ -18,7 +18,7 @@
 #include "../sdl/video_mini.c"
 #else
 #define EGL_SUFFIX static inline ext
-#include "../egl/video.c" 
+#include "../egl/video.c"
 #endif
 
 /* 2. interpose and map to shm */
@@ -40,14 +40,14 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 
 	if (first_init){
 		const char* connkey = getenv("ARCAN_CONNPATH");
-		const char* shmkey = NULL; 
+		const char* shmkey = NULL;
 		if (connkey){
 			shmkey = arcan_shmif_connect(connkey, getenv("ARCAN_CONNKEY"));
 			if (!shmkey)
 				arcan_warning("Couldn't connect through (%s), "
 					"trying ARCAN_SHMKEY env.\n", shmkey);
 		}
-			
+
 		if (!shmkey)
 			shmkey = getenv("ARCAN_SHMKEY");
 
@@ -70,10 +70,10 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 		}
 
 		arcan_shmif_calcofs(shms.addr, (uint8_t**) &vidp, (uint8_t**) &audp);
-		arcan_shmif_setevqs(shms.addr, shms.esem, &inevq, &outevq, false); 
+		arcan_shmif_setevqs(shms.addr, shms.esem, &inevq, &outevq, false);
 
 		first_init = false;
-	} 
+	}
 	else {
 		if (!arcan_shmif_resize( &shms, width, height )){
 			arcan_warning("couldn't set shm dimensions (%d, %d)\n", width, height);
@@ -81,7 +81,7 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 		}
 	}
 
-/* 
+/*
  * currently, we actually never de-init this
  */
 	if (ext_video_init(width, height, bpp, fs, frames))
@@ -92,13 +92,13 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 		glViewport(0, 0, width, height);
 		return true;
 	}
-	else 
+	else
 		return false;
 }
 
 /*
  * These are just direct maps that will be statically sucked in
- */ 
+ */
 void platform_video_shutdown()
 {
 	ext_video_shutdown();
@@ -125,13 +125,13 @@ void platform_video_bufferswap()
 {
 //	SDL_GL_SwapBuffers();
 /* now our color attachment contains the final picture,
- * if we have access to inter-process texture sharing, we can just fling 
+ * if we have access to inter-process texture sharing, we can just fling
  * the FD, for now, readback into the shmpage */
 
-	glReadPixels(0, 0, shms.addr->w, shms.addr->h, 
+	glReadPixels(0, 0, shms.addr->w, shms.addr->h,
 		GL_RGBA, GL_UNSIGNED_BYTE, vidp);
 
-	arcan_shmif_signal(&shms, SHMIF_SIGVID);	
+	arcan_shmif_signal(&shms, SHMIF_SIGVID);
 }
 
 /*
@@ -151,7 +151,7 @@ void arcan_event_analogall(bool enable, bool mouse)
 {
 }
 
-void arcan_event_analogfilter(int devid, 
+void arcan_event_analogfilter(int devid,
 	int axisid, int lower_bound, int upper_bound, int deadzone,
 	int buffer_sz, enum ARCAN_ANALOGFILTER_KIND kind)
 {

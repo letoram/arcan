@@ -4,24 +4,24 @@
 -- @inargs: tgtvid, inputtbl
 -- @outargs: resbool
 -- @longdescr: Push a table describing an input event to the target frameserver
--- and either have it injected into the process event queue (hijacks) or 
+-- and either have it injected into the process event queue (hijacks) or
 -- emulation core input (libretro).
 -- @note: accepted table fields match those described in arcan_api_overview
 -- manpage (kind = touch then devid, subid, pressure, size, x, y),
 -- (kind = analog then devid, subid, relative, samples),
 -- (kind = digital, translated = true then number, keysym, modifiers, devid,
 -- subid, utf8, active)
--- (kind = digital, translated = false then devid, subid, active) 
+-- (kind = digital, translated = false then devid, subid, active)
 -- @note: An additional field, 'label' is also supported, this is used
--- by the libretro frameserver and hijack for semantic hints 
+-- by the libretro frameserver and hijack for semantic hints
 -- (e.g. PLAYER1_BUTTON1)
 -- @note: An additional field, 'pts' is also supported, this is reserved for
 -- the libretro frameserver and hijack to support frame- aligned input even
 -- when skipping or other forms of frame manipulation is performed locally.
 -- @note: instead of preparing these tables manually, it's easier to just
--- inplace modify those you get from themename_input 
+-- inplace modify those you get from themename_input
 -- @note: arguments are flexible, table argument will be used as input table,
 -- number argument will be used as frameserver vid reference.
--- @group: targetcontrol 
+-- @group: targetcontrol
 -- @cfunction: arcan_lua_targetinput
 

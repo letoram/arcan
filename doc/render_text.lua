@@ -1,6 +1,6 @@
 -- render_text
--- @short: Convert a format string to a new video object. 
--- @inargs: message, *vspacing*, *tspacing*   
+-- @short: Convert a format string to a new video object.
+-- @inargs: message, *vspacing*, *tspacing*
 -- @outargs: vid, lineheights
 -- @longdescr: Render a format string into a texture assigned to a new video object.
 -- Return this object along with a table of individual line-heights. The string will
@@ -18,7 +18,7 @@
 -- @tblent: #rrggbb switch font color
 -- @tblent: pfname embedd image
 -- @tblent: Pfname,w,h embedd image, scale to w*h
--- @group: image 
+-- @group: image
 -- @cfunction: arcan_lua_buildstr
 -- @exampletheme: fonttest
 -- @related: text_dimensions

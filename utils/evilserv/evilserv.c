@@ -11,7 +11,7 @@
 #include "frameserver/frameserver.h"
 #include "arcan_frameserver_shmpage.h"
 
-/* 
+/*
  * simple fuzzer / abuse / test container for the
  * frameserver- interface
  */

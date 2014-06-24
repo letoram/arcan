@@ -32,8 +32,8 @@
 
 #include GL_HEADERS
 
-#ifndef RETEXTURE_PREFIX 
-#define RETEXTURE_PREFIX 
+#ifndef RETEXTURE_PREFIX
+#define RETEXTURE_PREFIX
 #endif
 
 #define MERGE(X,Y) X ## Y
@@ -41,14 +41,14 @@
 #define GLLOCAL_SYMBOL(fun) EVAL(RETEXTURE_PREFIX, fun)
 
 /*
- * This weird hack tracks glTexImage* calls with checksum/ID 
+ * This weird hack tracks glTexImage* calls with checksum/ID
  * allowing for dumping or replacing. The reason for the interface
  * design is to allow it to be inserted into both the sdl hijacklib
  * and the libretro frameserver. Other plans including replacing
  * or modifying shaders, VBOs etc.
  */
 
-/* 
+/*
  * Limited set of color formats, only a single thread / glcontext
  * supported for now, no PBO transfers, no compressed textures,
  * no different mipmap- levels, only supported targets are TEXTURE_2D.
@@ -65,7 +65,7 @@
 
 struct track_elem
 {
-/* we split between active and alive for now in order to 
+/* we split between active and alive for now in order to
  * not have to update / reload when the underlying software uses
  * texture caches etc. slots are re-used on !active, !alive. */
 	bool active, alive;
@@ -83,7 +83,7 @@ struct track_elem
 	int updates;
 
 /* inbuf is copied on updates, until the number of updates in the
- * slot exceeds a certain value (or we flag that the extra cost 
+ * slot exceeds a certain value (or we flag that the extra cost
  * is accepted) to differentiate between static textures and those
  * with streaming updates */
 	struct {
@@ -112,7 +112,7 @@ static struct {
 	bool local_copy;
 	int block_sz;
 
-	struct track_bucket* buckets;	
+	struct track_bucket* buckets;
 	int n_buckets;
 
 	struct extcon {
@@ -123,11 +123,11 @@ static struct {
 		struct arcan_evctx outevq;
 	} in, out;
 
-/* notification channel for discoveries / changes */	
+/* notification channel for discoveries / changes */
 	arcan_event* dqueue;
 
 /* forward table for hijacked OGL functions */
-	void (*teximage2d)(GLenum, GLint, GLint, 
+	void (*teximage2d)(GLenum, GLint, GLint,
 		GLsizei, GLsizei, GLint, GLenum, GLenum, const GLvoid*);
 	void (*deletetextures)(GLsizei, const GLuint*);
 
@@ -135,8 +135,8 @@ static struct {
 
 static bool supported_format(GLenum target, GLint format)
 {
-	return (target == GL_TEXTURE_2D && 
-		(	format == (GL_RGBA | GL_BGRA) )); 
+	return (target == GL_TEXTURE_2D &&
+		(	format == (GL_RGBA | GL_BGRA) ));
 }
 
 static struct track_elem* get_elem_byglid(unsigned long glid)
@@ -168,21 +168,21 @@ static struct track_elem* alloc_id(unsigned long id, int* bucket, int* elem)
 	int dbucket = 0;
 
 	for (; dbucket < retexctx.n_buckets; dbucket++)
-		if (retexctx.buckets[dbucket].avail > 0 || 
+		if (retexctx.buckets[dbucket].avail > 0 ||
 			retexctx.buckets[dbucket].total == 0)
 			break;
 
 /* grow pool */
 	if (dbucket == retexctx.n_buckets){
 		size_t new_c = (retexctx.n_buckets + 1) * 2;
-		struct track_bucket* newblock = realloc(retexctx.buckets, 
+		struct track_bucket* newblock = realloc(retexctx.buckets,
 			new_c * sizeof(struct track_bucket));
 
 		if (!newblock)
 			return NULL;
 
 		retexctx.buckets = newblock;
-		memset(&retexctx.buckets[dbucket], '\0', 
+		memset(&retexctx.buckets[dbucket], '\0',
 			sizeof(struct track_bucket) * (new_c - retexctx.n_buckets));
 
 		retexctx.n_buckets = new_c;
@@ -192,15 +192,15 @@ static struct track_elem* alloc_id(unsigned long id, int* bucket, int* elem)
 	if (retexctx.buckets[dbucket].total == 0){
 		size_t nbsz = retexctx.block_sz;
 		retexctx.block_sz *= 1.5;
-						
-		retexctx.buckets[dbucket].elems = 
-			malloc(sizeof(struct track_elem) * nbsz); 
-		
+
+		retexctx.buckets[dbucket].elems =
+			malloc(sizeof(struct track_elem) * nbsz);
+
 		if (!retexctx.buckets[dbucket].elems){
 			return NULL;
 		}
 
-		memset(retexctx.buckets[dbucket].elems, '\0', 
+		memset(retexctx.buckets[dbucket].elems, '\0',
 			sizeof(struct track_elem) * nbsz);
 
 		retexctx.buckets[dbucket].avail = nbsz;
@@ -233,8 +233,8 @@ static struct track_elem* alloc_id(unsigned long id, int* bucket, int* elem)
 /*
  * We use hash (djb on data reversed) as a data identifier
  * across runs or tracking usage patterns where the same texture
- * will be updated in different slots 
- */ 
+ * will be updated in different slots
+ */
 static unsigned long djb_hash(const char* str, size_t nb)
 {
 	unsigned long hash = 5381;
@@ -251,10 +251,10 @@ void arcan_retexture_tick()
 		return;
 
 /* events we are interested in:
- * switching graphing mode 
+ * switching graphing mode
  * (i.e. how active texture preview should be refreshed on the output page)
  * incoming texture
- * (should be copied into local buffer and run through arcan retex_update) 
+ * (should be copied into local buffer and run through arcan retex_update)
  */
 	arcan_event inev;
 	while( arcan_event_poll(&retexctx.in.inevq, &inev) == 1 ){
@@ -263,17 +263,17 @@ void arcan_retexture_tick()
 /*
  * FIXME: Rebuild active texture page (if dirty),
  * signal output for transfer
- */ 
+ */
 }
 
 /* #include "londepng.c" */
 /*
  * It is up to the calling library to perform the actual hijack,
  * e.g. patching the existing symbol to redirect / jump here
- * and a separate stack cleanup 
+ * and a separate stack cleanup
  */
-void GLLOCAL_SYMBOL(glTexImage2D) (GLenum target, GLint level, GLint iformat, 
-	GLsizei width, GLsizei height, GLint border, GLenum format, 
+void GLLOCAL_SYMBOL(glTexImage2D) (GLenum target, GLint level, GLint iformat,
+	GLsizei width, GLsizei height, GLint border, GLenum format,
 	GLenum type, const GLvoid* data)
 {
 	if (!retexctx.running || !supported_format(target, format) ||
@@ -281,15 +281,15 @@ void GLLOCAL_SYMBOL(glTexImage2D) (GLenum target, GLint level, GLint iformat,
 		goto upload;
 
 	size_t nb = width * height * 4;
-	unsigned long id = djb_hash(data, nb); 
+	unsigned long id = djb_hash(data, nb);
 
 	char comp[64];
 	static int seqn;
 	snprintf(comp, 64, "dump_%d_%ld.png", seqn++, id);
 /*	lodepng_encode32_file(comp, data, width, height); */
-/* 
+/*
  * we also use texture updates as a "tick" to determine which
- * cached textured could be discarded to not have the decay run 
+ * cached textured could be discarded to not have the decay run
  * rampant and "leak" memory
  */
 
@@ -301,7 +301,7 @@ void GLLOCAL_SYMBOL(glTexImage2D) (GLenum target, GLint level, GLint iformat,
 		int bucket, elem;
 		delem = alloc_id(did, &bucket, &elem);
 	}
-		
+
 	delem->glid = did;
 
 	if (retexctx.local_copy){
@@ -324,7 +324,7 @@ void GLLOCAL_SYMBOL(glTexImage2D) (GLenum target, GLint level, GLint iformat,
 		return;
 
 upload:
-	retexctx.teximage2d(target, level, iformat, width, 
+	retexctx.teximage2d(target, level, iformat, width,
 		height, border, format, type, data);
 }
 
@@ -351,7 +351,7 @@ void arcan_retexture_update(int bucket, int id,
  * 2. deallocate previous local copy (if any) and get a new one
  * 3. copy data into the new one
  * 4. run appropriate glTexImage call to update
- */ 
+ */
 }
 
 /*
@@ -361,13 +361,13 @@ void arcan_retexture_update(int bucket, int id,
 void* arcan_retexture_fetchp(int bucket, int id,
 	int* w, int* h, int* bpp, int* stride)
 {
-	return NULL; 
+	return NULL;
 }
 
 void* arcan_retexture_fetchid(GLuint tid, int* w,
 	int* h, int* bpp, int* stride)
 {
-	return NULL;	
+	return NULL;
 }
 
 void arcan_retexture_enable()
@@ -381,33 +381,33 @@ void arcan_retexture_disable()
 }
 
 void arcan_retexture_update_shmif(
-	struct arcan_shmif_cont* inseg, 
+	struct arcan_shmif_cont* inseg,
 	struct arcan_shmif_cont* outseg)
 {
 /*
  * FIXME: free if new inseg is sent,
- * this implies that the parent has switched to a different 
+ * this implies that the parent has switched to a different
  * output mechanism (explicit push or stream)
  */
 	if (inseg){
 		retexctx.in.cont = inseg;
-		arcan_shmif_calcofs( retexctx.in.cont->addr, 
+		arcan_shmif_calcofs( retexctx.in.cont->addr,
 			(uint8_t**) &retexctx.in.vidp, (uint8_t**) &retexctx.in.audp);
 		arcan_shmif_setevqs(retexctx.in.cont->addr, retexctx.in.cont->esem,
 			&(retexctx.in.inevq), &(retexctx.in.outevq), false);
-	} 
+	}
 
 	if (outseg){
 		retexctx.out.cont = outseg;
-		arcan_shmif_calcofs( retexctx.out.cont->addr, 
+		arcan_shmif_calcofs( retexctx.out.cont->addr,
 			(uint8_t**) &retexctx.out.vidp, (uint8_t**) &retexctx.out.audp);
 		arcan_shmif_setevqs(retexctx.in.cont->addr, retexctx.in.cont->esem,
 			&(retexctx.in.inevq), &(retexctx.in.outevq), false);
 	}
 }
 
-/* 
- * If <ann> is set, textures arriving / disappearing will be 
+/*
+ * If <ann> is set, textures arriving / disappearing will be
  * emitted to this buffer. Set local to true if we should maintain
  * local copies
  */

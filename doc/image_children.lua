@@ -2,9 +2,9 @@
 -- @short: List the objects in a context that has the specified object as a direct parent
 -- @inargs: vid
 -- @outargs: vidtbl
--- @longdescr: 
+-- @longdescr:
 -- @note: The scan is not recursive, so only first-level children will be listed.
--- @group: image 
+-- @group: image
 -- @cfunction: arcan_lua_imagechildren
 -- @related: image_parent
 function main()

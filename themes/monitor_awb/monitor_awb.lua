@@ -1,9 +1,9 @@
 --
 -- Monitor script based on the AWB- style window management
--- somwhat messy, but it isn't exactly a trivial datamodel 
+-- somwhat messy, but it isn't exactly a trivial datamodel
 -- that we're working with ...
 --
--- 
+--
 --
 
 state = {
@@ -17,7 +17,7 @@ kbdbinds = {};
 sample_triggers = {};
 
 function menulbl(text)
-	return render_text(string.format("\\#0055a9\\f%s,%d %s", 
+	return render_text(string.format("\\#0055a9\\f%s,%d %s",
 		deffont, 10, text));
 end
 
@@ -55,7 +55,7 @@ function monitor_awb()
 
 	kbdbinds[" "] = function()
 		if (LAST_SAMPLE ~= nil) then
-			spawn_sample(LAST_SAMPLE, 1, 1); 
+			spawn_sample(LAST_SAMPLE, 1, 1);
 		end
 	end
 
@@ -76,7 +76,7 @@ function awbmon_help()
 	helpimg = desktoplbl([[\bDefault Monitor Script Helper\!b\n\r\n\r
 \i(global)\!i\n\r
 \bCTRL\!b\t Grab/Release Mouse\n\r
-\bSPACE\!b\t Latest Sample\n\r 
+\bSPACE\!b\t Latest Sample\n\r
 \bF6\!b\tBenchmark View\n\r
 \bALT+F4\!b\t Shutdown\n\r
 \bF11\!b\t Help Window\n\r\nr\r
@@ -113,7 +113,7 @@ function context_vid(smpl, contn)
 Context:\t%d / %d\n\r
 Rtargets:\t%d\n\r
 Vobjects:\t%d (%d) / %d\n\r
-Last Tick:\t%d\n\r]] , contn, #csample.vcontexts, 
+Last Tick:\t%d\n\r]] , contn, #csample.vcontexts,
 #ctx.rtargets, ctx.alive, ctx.vobjs, ctx.limit, ctx.tickstamp));
 
 	return cimg;
@@ -166,14 +166,14 @@ end
 
 -- key order
 local keytbl = {
-	"cellid", 
-	"cellid_translated", 
+	"cellid",
+	"cellid_translated",
 	"parent",
-	"lifetime", 
-	"flags", 
-	"tracetag", 
+	"lifetime",
+	"flags",
+	"tracetag",
 	"opacity",
-	"origw", 
+	"origw",
 	"origh",
 	"posx",
 	"posy",
@@ -188,34 +188,34 @@ local keytbl = {
 	"roty",
 	"rotz",
 	"glstore_glid",
-	"glstore_w", 
-	"glstore_h", 
-	"glstore_bpp", 
-	"glstore_refc", 
+	"glstore_w",
+	"glstore_h",
+	"glstore_bpp",
+	"glstore_refc",
 	"glstore_txu",
 	"glstore_txv",
 	"glstore_prg",
 	"storage_size",
-	"storage_source", 
-	"scalemode", 
-	"filtermode", 
-	"imageproc", 
+	"storage_source",
+	"scalemode",
+	"filtermode",
+	"imageproc",
 	"blendmode",
-	"clipmode", 
-	"mask", 
+	"clipmode",
+	"mask",
 	"order",
-	"valid_cache", 
+	"valid_cache",
 	"rotate_state",
-	"kind", 
-	"frameset_mode", 
-	"frameset_counter", 
+	"kind",
+	"frameset_mode",
+	"frameset_counter",
 	"frameset_capacity",
-	"frameset_current", 
-	"extrefc_framesets", 
+	"frameset_current",
+	"extrefc_framesets",
 	"extrefc_instances",
-	"extrefc_attachments", 
+	"extrefc_attachments",
 	"extrefc_links",
-	"childslots", 
+	"childslots",
 };
 
 -- format string profile
@@ -244,9 +244,9 @@ local typetbl = {
 
 	glstore_glid = "\\n\\r\\#ff9999----------\\#ffffff\\n\\r\\bGL\\!b(id:\\#00ff00 %d \\#ffffff",
 	glstore_w    = " w: \\#00ff00 %d \\#ffffff",
-	glstore_h    = " h: \\#00ff00 %d \\#ffffff", 
+	glstore_h    = " h: \\#00ff00 %d \\#ffffff",
 	glstore_bpp  = " bpp: \\#00ff00 %d \\#ffffff",
-	glstore_refc = " refc: \\#00ff00 %d \\#ffffff\\n\\r\\t", 
+	glstore_refc = " refc: \\#00ff00 %d \\#ffffff\\n\\r\\t",
 	glstore_txu  = " txu: \\#00ff00 %s \\#ffffff",
 	glstore_txv  = " txv: \\#00ff00 %s \\#ffffff",
 	glstore_prg = "prg: \\#00ff00 %s \\#ffffff",
@@ -258,22 +258,22 @@ local typetbl = {
 	imageproc   = "post: \\#00ff00 %s \\#ffffff\\n\\r\\t",
 	blendmode   = "\\tblend: \\#00ff00 %s \\#ffffff",
 	clipmode    = "clip: \\#00ff00 %s \\#ffffff)",
-	storage_size = "size: \\#00ff00 %d \\#ffffff)\\n\\r\\#ff9999----------\\n\\r\\#ffffff", 
+	storage_size = "size: \\#00ff00 %d \\#ffffff)\\n\\r\\#ff9999----------\\n\\r\\#ffffff",
 
 	mask     = "\\n\\r\\bMask:\\!b\\#00ff00 %s\\n\\r\\#ffffff",
 	order    = "\\bOrder: \\!b\\#00ff00 %d \\#ffffff\\n\\r",
 
-	valid_cache   = "\\n\\r\\#ff9999----------\\n\\r\\#ffffff\\bValid Cache:\\!b\\#00ff00 %d \\#ffffff ", 
+	valid_cache   = "\\n\\r\\#ff9999----------\\n\\r\\#ffffff\\bValid Cache:\\!b\\#00ff00 %d \\#ffffff ",
 	rotate_state  = "\\b\\tRotation:\\!b\\#00ff00 %d \\#ffffff\\r\\n",
 	kind = "\\b\\tKind: \\!b\\#00ff00 %s \\#ffffff\\n\\r\\#ff9999----------\\n\\r\\#ffffff",
 
-	frameset_mode      = "\\bFrameset\\!b(mode:\\#00ff00 %s \\#ffffff", 
+	frameset_mode      = "\\bFrameset\\!b(mode:\\#00ff00 %s \\#ffffff",
 	frameset_counter   = "counter:\\#00ff00 %d \\#ffffff",
-	frameset_capacity  = "capacity:\\#00ff00 %d \\#ffffff", 
+	frameset_capacity  = "capacity:\\#00ff00 %d \\#ffffff",
 	frameset_current   = "current:\\#00ff00 %d \\#ffffff)\\n\\r",
 
-	extrefc_framesets   = "\\bRefc\\!b(Framesets: \\#00ff00 %d \\#ffffff", 
-	extrefc_instances   = "Inst: \\#00ff00 %d \\#ffffff", 
+	extrefc_framesets   = "\\bRefc\\!b(Framesets: \\#00ff00 %d \\#ffffff",
+	extrefc_instances   = "Inst: \\#00ff00 %d \\#ffffff",
 	extrefc_attachments = "Attach: \\#00ff00 %d \\#ffffff",
 	extrefc_links       = "Links: \\#00ff00 %d \\#ffffff)\\n\\r",
 	childslots    = "\\bChildren:\\!b\\#00ff00 %d \\#ffffff ",
@@ -292,7 +292,7 @@ function render_sample(smpl)
 	if (smpl.cellid == nil) then
 		return;
 	end
-	
+
 	local strtbl = {};
 -- expand samples:
 	smpl.opacity = smpl.props.opacity;
@@ -311,7 +311,7 @@ function render_sample(smpl)
 
 	for i,v in ipairs(keytbl) do
 		if (smpl[v] ~= nil) then
-			table.insert(strtbl, 
+			table.insert(strtbl,
 				string.format(typetbl[v], string.gsub(tostring(smpl[v]), '\\', '\\\\')));
 		end
 	end
@@ -323,9 +323,9 @@ function samplewnd_step(self, dir)
 	count = self.smpl.vcontexts[self.context].limit;
 	while (count > 0) do
 		self.lastid = self.lastid + dir;
-		self.lastid = self.lastid > self.smpl.vcontexts[self.context].limit 
+		self.lastid = self.lastid > self.smpl.vcontexts[self.context].limit
 			and 1 or self.lastid;
-		self.lastid = self.lastid < 1 
+		self.lastid = self.lastid < 1
 			and self.smpl.vcontexts[self.context].limit or self.lastid;
 		if (self.smpl.vcontexts[self.context].vobjs[self.lastid] ~= nil) then
 			break;
@@ -385,7 +385,7 @@ function samplewnd_stepchild(self)
 		end
 
 		local cvo = self.smpl.vcontexts[self.context].vobjs[cur];
-		if (cvo and cvo.parent == self.lastid) then 
+		if (cvo and cvo.parent == self.lastid) then
 			self.lastid = cur;
 			self:update_smpl(self.smpl.vcontexts[self.context].vobjs[self.lastid]);
 			return;
@@ -399,11 +399,11 @@ function wnd_link(wnd, vid)
 	image_clip_on(vid, CLIP_SHALLOW);
 	image_inherit_order(vid, true);
 	order_image(vid, 1);
-	
+
 	local props = image_surface_properties(vid);
 	props.width = props.width > (0.5 * VRESW) and math.floor(0.5 * VRESW) or
 		props.width;
-	
+
 	wnd:resize(props.width + 20, props.height + 20, true);
 end
 
@@ -468,7 +468,7 @@ function vobjcol(smpl)
 		base_b = 255;
 	end
 
-	return (intensity * base_r), (intensity * base_g), (intensity * base_b); 
+	return (intensity * base_r), (intensity * base_g), (intensity * base_b);
 end
 
 local function lineobj(src, x1, y1, x2, y2)
@@ -494,7 +494,7 @@ end
 -- and use lineobj calls to plot out the relation.
 --
 function spawn_tree(smpl, context)
-	local wnd = awbwman_spawn(menulbl("TreeView:" .. tostring(context) .. 
+	local wnd = awbwman_spawn(menulbl("TreeView:" .. tostring(context) ..
 		tostring(smpl.display.ticks)));
 
 	lvls = {};
@@ -521,7 +521,7 @@ function bench_update(wnd, smpl)
 	if (smpl.benchmark == nil) then
 		return;
 	end
-	
+
 	local bench = smpl.benchmark;
 	local bitmap = {};
 
@@ -536,7 +536,7 @@ function bench_update(wnd, smpl)
 		local row = wnd.maxv - value;
 
 		local cell = ( (row - 1) * w + col ) * 3;
-		
+
 		dst[cell + 1] = r;
 		dst[cell + 2] = g;
 		dst[cell + 3] = b;
@@ -551,7 +551,7 @@ function bench_update(wnd, smpl)
 		bitmap[(i-1)*3+2] = 0;
 		bitmap[(i-1)*3+3] = 0;
 	end
-	
+
 	for i=1,#bench.ticks do
 		plot_sample(bitmap, i - 1, bench.ticks[i], 255, 0, 0);
 	end
@@ -561,8 +561,8 @@ function bench_update(wnd, smpl)
 	end
 
 	for i=1,#bench.framecost do
-		plot_sample(bitmap, i + split1 + split2 - 3, 
-		bench.framecost[i], 0, 200, 255);	
+		plot_sample(bitmap, i + split1 + split2 - 3,
+		bench.framecost[i], 0, 200, 255);
 	end
 
 	local vid = raw_surface(w, wnd.maxv, 3, bitmap);
@@ -678,10 +678,10 @@ function build_allocmap(smpl, context)
 
 	local vid = raw_surface(npix * 2, rows, 3, bitmap);
 	image_texfilter(vid, FILTER_NONE);
-	return vid, rowvs;	
+	return vid, rowvs;
 end
 
-local function get_cellid(canvasvid, mx, my) 
+local function get_cellid(canvasvid, mx, my)
 	local p = image_surface_resolve_properties(canvasvid);
 	local o = image_surface_initial_properties(canvasvid);
 	local sx = p.width / o.width;
@@ -698,9 +698,9 @@ local function get_cellid(canvasvid, mx, my)
 end
 
 function spawn_allocmap(smpl, context)
-	local wnd = awbwman_spawn(menulbl("AllocMap:" .. tostring(context) .. 
+	local wnd = awbwman_spawn(menulbl("AllocMap:" .. tostring(context) ..
 		tostring(smpl.display.ticks)));
-	
+
 	if (smpl == nil) then
 		smpl = LAST_SAMPLE;
 	end
@@ -709,11 +709,11 @@ function spawn_allocmap(smpl, context)
 	wnd:update_canvas(vid);
 	wnd:resize(wnd.w + 20, wnd.h + 20, true);
 
--- figure out what is clicked, and spawn a sample video 
+-- figure out what is clicked, and spawn a sample video
 -- navigated to that particular sample
 	local mh = {
-		own = function(self, vid) 
-			return vid == wnd.canvas.vid; 
+		own = function(self, vid)
+			return vid == wnd.canvas.vid;
 		end,
 
 		motion = function(self, vid, mx, my, relx, rely)
@@ -752,7 +752,7 @@ end
 
 function window_input(self, iotbl)
 	local sym = iotbl.prefix .. iotbl.keysym;
-	
+
 	if (iotbl.active == false) then
 		return;
 	end
@@ -790,7 +790,7 @@ function window_input(self, iotbl)
 end
 
 function spawn_sample(smpl, context, startid)
-	local wnd = awbwman_spawn(menulbl(tostring(context) .. ":" .. 
+	local wnd = awbwman_spawn(menulbl(tostring(context) .. ":" ..
 		tostring(smpl.display.ticks)));
 
 	wnd.step = samplewnd_step;
@@ -802,7 +802,7 @@ function spawn_sample(smpl, context, startid)
 	wnd.step_parent  = samplewnd_stepparent;
 	wnd.step_sibling = samplewnd_stepsibling;
 	wnd.step_child   = samplewnd_stepchild;
-	wnd.input = window_input; 
+	wnd.input = window_input;
 	wnd:step(1);
 	default_mh(wnd);
 end
@@ -848,7 +848,7 @@ function monitor_awb_input(iotbl)
 			minputtbl[iotbl.subid] = iotbl.active;
 			mouse_input(0, 0, minputtbl);
 		end
-	
+
 	elseif (iotbl.kind == "digital" and iotbl.translated) then
 		iotbl.keysym = symtable[iotbl.keysym] and symtable[iotbl.keysym] or "";
 		iotbl.prefix, iotbl.keysym = update_modifiers(iotbl.keysym, iotbl.active);

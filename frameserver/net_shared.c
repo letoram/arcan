@@ -6,7 +6,7 @@
 #define FRAME_HEADER_SIZE 3
 #endif
 
-static bool err_catch_dispatch(struct conn_state* self, enum net_tags tag, 
+static bool err_catch_dispatch(struct conn_state* self, enum net_tags tag,
 	size_t len, char* value)
 {
 	LOG("(net-srv) -- invalid dispatcher invoked, please report.\n");
@@ -38,21 +38,21 @@ static bool err_catch_buffer(struct conn_state* self)
 	abort();
 }
 
-static bool err_catch_pack(struct conn_state* self, 
+static bool err_catch_pack(struct conn_state* self,
 	enum net_tags tag, size_t len, char* buf)
 {
 	LOG("(net-conn) -- invalid pack state specified, please report.\n");
 	abort();
 }
 
-static bool err_catch_queueout(struct conn_state* self, 
+static bool err_catch_queueout(struct conn_state* self,
 	size_t len, char* buf)
 {
 	LOG("(net-srv) -- invalid queueout invoked, please report.\n");
 	abort();
 }
 
-apr_socket_t* net_prepare_socket(const char* host, apr_sockaddr_t* 
+apr_socket_t* net_prepare_socket(const char* host, apr_sockaddr_t*
 	althost, int* sport, bool tcp, apr_pool_t* mempool)
 {
 	char errbuf[64];
@@ -65,17 +65,17 @@ apr_socket_t* net_prepare_socket(const char* host, apr_sockaddr_t*
 	else {
 /* we bind here rather than parent => xfer(FD) as this is never
  * supposed to use privileged ports. */
-		rv = apr_sockaddr_info_get(&addr, 
+		rv = apr_sockaddr_info_get(&addr,
 			host, APR_INET, *sport, 0, mempool);
 		if (rv != APR_SUCCESS){
-			LOG("(net) -- couldn't setup host (%s):%d, giving up.\n", 
+			LOG("(net) -- couldn't setup host (%s):%d, giving up.\n",
 				host ? host : "(DEFAULT)", *sport);
 			goto sock_failure;
 		}
 	}
 
-	rv = apr_socket_create(&ear_sock, addr->family, tcp ? 
-		SOCK_STREAM : SOCK_DGRAM, tcp ? APR_PROTO_TCP : 
+	rv = apr_socket_create(&ear_sock, addr->family, tcp ?
+		SOCK_STREAM : SOCK_DGRAM, tcp ? APR_PROTO_TCP :
 		APR_PROTO_UDP, mempool);
 
 	if (rv != APR_SUCCESS){
@@ -90,7 +90,7 @@ apr_socket_t* net_prepare_socket(const char* host, apr_sockaddr_t*
 		goto sock_failure;
 	}
 
-/* apparently only fixed in APR1.5 and beyond, 
+/* apparently only fixed in APR1.5 and beyond,
  * while the one in ubuntu and friends is 1.4 */
 	if (!tcp){
 #ifndef APR_SO_BROADCAST
@@ -126,7 +126,7 @@ sock_failure:
 	return NULL;
 }
 
-void net_setup_cell(struct conn_state* conn, 
+void net_setup_cell(struct conn_state* conn,
 	arcan_evctx* evq, apr_pollset_t* pollset)
 {
 	conn->inout     = NULL;
@@ -164,7 +164,7 @@ void net_setup_cell(struct conn_state* conn,
 }
 
 void net_newseg(struct conn_state* conn, int kind, char* key)
-{	
+{
 	if (!conn){
 		LOG("(net), invalid destination connection "
 			"specified, shm request ignored.\n");
@@ -180,21 +180,21 @@ void net_newseg(struct conn_state* conn, int kind, char* key)
 			goto fail;
 	}
 
-	cont->ctx = arcan_shmif_acquire(key, kind == SEGMENT_TRANSFER ? 
+	cont->ctx = arcan_shmif_acquire(key, kind == SEGMENT_TRANSFER ?
 		SHMIF_OUTPUT : SHMIF_INPUT, true, true );
 
 	struct arcan_shmif_cont* shms = &cont->ctx;
 
 	cont->ofs = 0;
 	cont->lim = shms->addr->w * shms->addr->h * ARCAN_SHMPAGE_VCHANNELS;
-	
-	arcan_shmif_calcofs(shms->addr, 
-		(uint8_t**) &cont->vidp, (uint8_t**) &cont->audp);	
 
-	arcan_shmif_setevqs(shms->addr, shms->esem, 
+	arcan_shmif_calcofs(shms->addr,
+		(uint8_t**) &cont->vidp, (uint8_t**) &cont->audp);
+
+	arcan_shmif_setevqs(shms->addr, shms->esem,
 		&cont->inevq, &cont->outevq, false);
 	return;
-	
+
 fail:
 	LOG("(net) segment setup failed, notifying parent.\n");
 }
@@ -223,8 +223,8 @@ bool net_buffer_basic(struct conn_state* self)
 		LOG("(net) EOF detected, giving up.\n");
 		return false;
 	}
-	
-	if (sv != APR_SUCCESS){	
+
+	if (sv != APR_SUCCESS){
 		LOG("(net) Error reading from socket\n");
 		return false;
 	}
@@ -245,7 +245,7 @@ slide:
 	if (consumed == self->buf_sz){
 		self->buf_ofs = 0;
 		printf("reset\n");
-	} 
+	}
 	else {
 		memmove(self->inbuffer, &self->inbuffer[consumed], self->buf_sz - consumed);
 		self->buf_ofs -= consumed;
@@ -263,7 +263,7 @@ static void flushvid(struct conn_state* self)
 	self->state_in.lim = 0;
 }
 
-bool net_hl_decode(struct conn_state* self, 
+bool net_hl_decode(struct conn_state* self,
 	enum net_tags tag, size_t len, char* val)
 {
 	if (self->connstate != CONN_AUTHENTICATED){
@@ -273,11 +273,11 @@ bool net_hl_decode(struct conn_state* self,
 	}
 
 	switch (tag){
-/* 
+/*
  * there are two ways in which we can propagate information
  * about an incoming image object, one is "in advance" by
  * having the parent give us an input segment, then we resize
- * that when we know the dimensions. The other is that we 
+ * that when we know the dimensions. The other is that we
  * explicitly request a new segment to draw into, and then
  * we will have to wait for a response from the parent before
  * moving on.
@@ -286,11 +286,11 @@ bool net_hl_decode(struct conn_state* self,
 		if (self->state_in.state == STATE_NONE){
 			if (len < 4) /*w, h, little-endian */
 				return false;
-	
+
 			int desw = (int16_t)val[0] | (int16_t)val[1] << 8;
 			int desh = (int16_t)val[2] | (int16_t)val[3] << 8;
 
-			printf("got request for image, %d x %d\n", desw, desh); 
+			printf("got request for image, %d x %d\n", desw, desh);
 			if (self->state_in.ctx.addr){
 				if (!arcan_shmif_resize(&self->state_in.ctx, desw, desh)){
 					LOG("incoming data segment outside allowed dimensions (%d x %d)"
@@ -299,7 +299,7 @@ bool net_hl_decode(struct conn_state* self,
 				}
 				self->state_in.lim = desw * desh * ARCAN_SHMPAGE_VCHANNELS;
 				self->state_in.state = STATE_IMG;
-			} 
+			}
 			else {
 				arcan_event outev = {
 					.kind = EVENT_EXTERNAL_SEGREQ,
@@ -329,7 +329,7 @@ bool net_hl_decode(struct conn_state* self,
 	case TAG_STATE_DATABLOCK:
 /* silent drop */
 		if (self->state_in.state == STATE_NONE){
-			return true; 
+			return true;
 		}
 /* streaming, no limit */
 		else if (self->state_in.state == STATE_DATA){
@@ -337,17 +337,17 @@ bool net_hl_decode(struct conn_state* self,
 				size_t nw = write(self->state_in.fd, val, len);
 				if (nw == -1 && (errno != EAGAIN || errno != EINTR))
 					break;
-				else 
-					continue;	
+				else
+					continue;
 
 				len -= nw;
 				val += nw;
-			}	
+			}
 		}
 		else if (self->state_in.state == STATE_IMG){
 			ssize_t ub = self->state_in.lim - self->state_in.ofs;
-			size_t ntw = ub > len ? len : ub; 
-		 	memcpy(self->state_in.vidp + self->state_in.ofs, val, ntw);	
+			size_t ntw = ub > len ? len : ub;
+		 	memcpy(self->state_in.vidp + self->state_in.ofs, val, ntw);
 			self->state_in.ofs += ntw;
 			if (self->state_in.ofs == self->state_in.lim)
 				flushvid(self);
@@ -365,22 +365,22 @@ bool net_hl_decode(struct conn_state* self,
 		else {
 /* need some message to hint that we have a state transfer incoming */
 		}
-	break;	
-/* 
- * flush package, this could potentially be locked to the 
+	break;
+/*
+ * flush package, this could potentially be locked to the
  * responsiveness of the recipient.
  */
 	default:
 	break;
 	}
-	
+
 	return true;
 }
 
 static uint32_t version_magic(bool req)
 {
 	char buf[32], (* ch) = buf;
-	sprintf(buf, "%s_ARCAN_%d_%d", req ? "REQ" : "REP", 
+	sprintf(buf, "%s_ARCAN_%d_%d", req ? "REQ" : "REP",
 		ARCAN_VERSION_MAJOR, ARCAN_VERSION_MINOR);
 
 	uint32_t hash = 5381;
@@ -392,7 +392,7 @@ static uint32_t version_magic(bool req)
 	return hash;
 }
 
-char* net_unpack_discover(char* inb, bool req, char** pk, 
+char* net_unpack_discover(char* inb, bool req, char** pk,
 	char** name, char** cookie, char** host, int* port)
 {
 	uint32_t mv;
@@ -406,19 +406,19 @@ char* net_unpack_discover(char* inb, bool req, char** pk,
 	char* res = malloc(NET_HEADER_SIZE + 5);
 	memset(res, '\0', NET_HEADER_SIZE + 5);
 
-/* set offsets into chunk buffer, implicitly adding '\0' to each str */ 
+/* set offsets into chunk buffer, implicitly adding '\0' to each str */
 	*cookie = &res[NET_IDENT_SIZE + 1];
 	*name = &res[NET_IDENT_SIZE + NET_COOKIE_SIZE + 2];
 	*pk = &res[NET_IDENT_SIZE + NET_COOKIE_SIZE + NET_NAME_SIZE + 3];
-	*host = &res[NET_IDENT_SIZE + NET_COOKIE_SIZE + 
+	*host = &res[NET_IDENT_SIZE + NET_COOKIE_SIZE +
 		NET_NAME_SIZE + NET_KEY_SIZE + 4];
 
 /* unpack into chunk buffer */
 	memcpy(*cookie, &inb[NET_IDENT_SIZE], NET_COOKIE_SIZE);
 	memcpy(*name, &inb[NET_IDENT_SIZE + NET_COOKIE_SIZE], NET_NAME_SIZE);
-	memcpy(*pk, &inb[NET_IDENT_SIZE + NET_COOKIE_SIZE + 
+	memcpy(*pk, &inb[NET_IDENT_SIZE + NET_COOKIE_SIZE +
 		NET_NAME_SIZE], NET_KEY_SIZE);
-	memcpy(*host, &inb[NET_IDENT_SIZE + 
+	memcpy(*host, &inb[NET_IDENT_SIZE +
 		NET_COOKIE_SIZE + NET_NAME_SIZE + NET_KEY_SIZE], NET_ADDR_SIZE);
 
 /* parse host and extract port */
@@ -440,7 +440,7 @@ char* net_unpack_discover(char* inb, bool req, char** pk,
 	return res;
 }
 
-char* net_pack_discover(bool req, 
+char* net_pack_discover(bool req,
 	char* key, char* name, char* cookie, char* host, int port, size_t* d_sz)
 {
 	if (!key || !name || !cookie || !host || strlen(host) > NET_ADDR_SIZE - 5)
@@ -455,7 +455,7 @@ char* net_pack_discover(bool req,
 	char* ofs_cookie = &res[NET_IDENT_SIZE];
 	char* ofs_name = &res[NET_IDENT_SIZE + NET_COOKIE_SIZE];
 	char* ofs_key = &res[NET_IDENT_SIZE + NET_COOKIE_SIZE + NET_NAME_SIZE];
-	char* ofs_host = &res[NET_IDENT_SIZE + NET_COOKIE_SIZE + 
+	char* ofs_host = &res[NET_IDENT_SIZE + NET_COOKIE_SIZE +
 		NET_NAME_SIZE + NET_KEY_SIZE];
 
 /* set fields */
@@ -463,7 +463,7 @@ char* net_pack_discover(bool req,
 	memcpy(ofs_cookie, cookie, NET_COOKIE_SIZE);
 	strncpy(ofs_name, name, NET_NAME_SIZE);
 	memcpy(ofs_key, key, NET_KEY_SIZE);
- 	snprintf(ofs_host, NET_ADDR_SIZE, "%s:%d", host, port);	
+ 	snprintf(ofs_host, NET_ADDR_SIZE, "%s:%d", host, port);
 
 	printf("discover(out): key[%s], port[%d], cookie[%d, %d, %d, %d], host[%s]\n",
 		ofs_key, port, ofs_cookie[0], ofs_cookie[1], ofs_cookie[2], ofs_cookie[3], ofs_host);
@@ -472,7 +472,7 @@ char* net_pack_discover(bool req,
 	return res;
 }
 
-bool net_pack_basic(struct conn_state* state, 
+bool net_pack_basic(struct conn_state* state,
 	enum net_tags tag, size_t sz, char* buf)
 {
 	size_t left = state->outbuf_sz - state->outbuf_ofs;
@@ -495,11 +495,11 @@ bool net_pack_basic(struct conn_state* state,
 
 	memcpy(state->outbuffer + state->outbuf_ofs + FRAME_HEADER_SIZE, buf, sz);
 	state->outbuf_ofs += FRAME_HEADER_SIZE + sz;
-	
+
 	return state->queueout(state, state->outbuf_ofs, state->outbuffer);
 }
 
-bool net_dispatch_tlv(struct conn_state* self, enum net_tags tag, 
+bool net_dispatch_tlv(struct conn_state* self, enum net_tags tag,
 	size_t len, char* value)
 {
 	arcan_event newev = {.category = EVENT_NET};
@@ -509,7 +509,7 @@ bool net_dispatch_tlv(struct conn_state* self, enum net_tags tag,
 	case TAG_NETMSG:
 		newev.kind = EVENT_NET_CUSTOMMSG;
 		snprintf(newev.data.network.message,
-			sizeof(newev.data.network.message) / 
+			sizeof(newev.data.network.message) /
 			sizeof(newev.data.network.message[0]), "%s", value);
 		arcan_event_enqueue(self->outevq, &newev);
 	break;
@@ -564,7 +564,7 @@ bool net_flushout_default(struct conn_state* self)
 	if (nts == 0){
 		static bool flush_warn = false;
 
-/* don't terminate on this issue, as there might be a platform/pollset 
+/* don't terminate on this issue, as there might be a platform/pollset
  * combination where this is broken yet will only yield higher CPU usage */
 		if (!flush_warn){
 			LOG("(net-srv) -- flush requested on empty conn_state, "
@@ -580,7 +580,7 @@ bool net_flushout_default(struct conn_state* self)
 	if (nts > 0){
 		if (self->outbuf_ofs - nts == 0){
 			self->outbuf_ofs = 0;
-/* disable POLLOUT until more data has been queued 
+/* disable POLLOUT until more data has been queued
  * (also check for a 'refill' function) */
 		apr_pollset_remove(self->pollset, &self->poll_state);
 			self->poll_state.reqevents  = APR_POLLIN | APR_POLLHUP | APR_POLLERR;
@@ -615,10 +615,10 @@ bool net_queueout_default(struct conn_state* self, size_t buf_sz, char* buf)
  * can assume, we have at least FRAME_HEADER_SIZE bytes in buf
  * extract tag (first byte), extract length (two bytes, LE) and forward
  */
-bool net_validator_tlv(struct conn_state* self, 
+bool net_validator_tlv(struct conn_state* self,
 	size_t len, char* buf, size_t* consumed)
 {
-	size_t block = (uint8_t)self->inbuffer[1] | 
+	size_t block = (uint8_t)self->inbuffer[1] |
 		((uint8_t)self->inbuffer[2] << 8);
 
 	if (self->inbuffer[0] >= TAG_LAST_VALUE)
@@ -630,7 +630,7 @@ bool net_validator_tlv(struct conn_state* self,
 
 	*consumed = block + FRAME_HEADER_SIZE;
 
-	return self->dispatch(self, self->inbuffer[0], 
+	return self->dispatch(self, self->inbuffer[0],
 		block, self->inbuffer + FRAME_HEADER_SIZE);
 }
 

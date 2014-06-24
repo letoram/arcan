@@ -1,13 +1,13 @@
 -- switch_default_imageproc
--- @short: Set the default image post-processing mode. 
--- @inargs: procmode  
--- @longdescr: accepted values are IMAGEPROC_NORMAL where loaded image 
+-- @short: Set the default image post-processing mode.
+-- @inargs: procmode
+-- @longdescr: accepted values are IMAGEPROC_NORMAL where loaded image
 -- will be stored without any additional postprocessing, and IMAGEPROC_FLIPH
 -- where the image will be flipped over the x-axis (so y- row order will be
--- inverted). 
--- @group: vidsys 
+-- inverted).
+-- @group: vidsys
 -- @cfunction: arcan_lua_setimageproc
--- @flags: 
+-- @flags:
 function main()
 #ifdef MAIN
 	switch_default_imageproc(IMAGEPROC_FLIPH);

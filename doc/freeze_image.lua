@@ -1,11 +1,11 @@
 -- freeze_image
--- @short: Tag object as freezed, the next attempt to access it will trigger a crash. 
--- @inargs: vid 
+-- @short: Tag object as freezed, the next attempt to access it will trigger a crash.
+-- @inargs: vid
 -- @longdescr: For debugging purpose, it can at times become frustrating
 -- to figure out where and when an objects gets manipulated into an undesired
 -- state. This function tags the object as frozen, and next time the object is accessed
 -- across the VM barrier, execution is terminated and a dump is generated (logs/).
--- @group: system 
+-- @group: system
 -- @cfunction: arcan_lua_freezeimage
 -- @note: debug_only
 function main()

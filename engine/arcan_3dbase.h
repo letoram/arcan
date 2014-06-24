@@ -22,14 +22,14 @@
 #ifndef _HAVE_ARCAN_3DBASE
 #define _HAVE_ARCAN_3DBASE
 
-/* Loads a compressed triangle mesh and wrap it around a 
+/* Loads a compressed triangle mesh and wrap it around a
  video object */
 void arcan_3d_setdefaults();
 
-arcan_errc arcan_3d_camtag(arcan_vobj_id parent, 
+arcan_errc arcan_3d_camtag(arcan_vobj_id parent,
 	float* projection, bool front, bool back);
 
-arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx, 
+arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx,
 	float maxz, float y, float wdens, float ddens, unsigned nmaps);
 arcan_vobj_id arcan_3d_buildbox(point min, point max, unsigned nmaps);
 
@@ -40,15 +40,15 @@ arcan_errc arcan_3d_swizzlemodel(arcan_vobj_id model);
 arcan_vobj_id arcan_3d_emptymodel();
 arcan_errc arcan_3d_finalizemodel(arcan_vobj_id);
 arcan_errc arcan_3d_infinitemodel(arcan_vobj_id, bool);
-arcan_errc arcan_3d_meshshader(arcan_vobj_id dst, 
+arcan_errc arcan_3d_meshshader(arcan_vobj_id dst,
 	arcan_shader_id shid, unsigned slot);
-arcan_errc arcan_3d_addmesh(arcan_vobj_id dst, 
+arcan_errc arcan_3d_addmesh(arcan_vobj_id dst,
 	data_source resource, unsigned nmaps);
 
 /* destructive transform,
- * apply the specified roll / pitch / yaw transform to all 
+ * apply the specified roll / pitch / yaw transform to all
  * the vertices of the model */
-arcan_errc arcan_3d_baseorient(arcan_vobj_id dst, 
+arcan_errc arcan_3d_baseorient(arcan_vobj_id dst,
 	float roll, float pitch, float yaw);
 
 /* scans through the specified model and all its' meshes,

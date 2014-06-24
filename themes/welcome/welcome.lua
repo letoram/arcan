@@ -11,15 +11,15 @@ function welcome()
 	end
 
 	titlestr = render_text( [[\ffonts/default.ttf,18\bWelcome to ARCAN!]] );
-	move_image(titlestr, 
-		VRESW * 0.5 - (0.5 * image_surface_properties(titlestr).width)); 
+	move_image(titlestr,
+		VRESW * 0.5 - (0.5 * image_surface_properties(titlestr).width));
 	show_image(titlestr);
 
-	intrstr = render_text( 
-[[\ffonts/default.ttf,12\bUsage: 
+	intrstr = render_text(
+[[\ffonts/default.ttf,12\bUsage:
 \!b arcan <cmdline arguments> themename <theme arguments>]] )
 
-	move_image(intrstr, VRESW * 0.5 - 
+	move_image(intrstr, VRESW * 0.5 -
 		(0.5 * image_surface_properties(intrstr).width), 24 );
 
 	show_image(intrstr);
@@ -51,8 +51,8 @@ function welcome()
 	table.insert(st, string.format("Binpath:\\t\\t%s", string.gsub(BINPATH, "\\", "\\\\")));
 	table.insert(st, string.format("Internal:\\t\\t%s", tostring(INTERNALMODE)));
 
-	datawindow = render_text(table.concat(st, "\\n\\r")); 
-	argwindow = render_text( 
+	datawindow = render_text(table.concat(st, "\\n\\r"));
+	argwindow = render_text(
 [[\n\r\ffonts/default.ttf,14\t\bCommand-Line Arguments:\!b
 \n\r\ffonts/default.ttf,12
 -w res  \t(default: 640)\n\r
@@ -79,23 +79,23 @@ function welcome()
 
 	move_image(datawindow, VRESW - image_surface_properties(argwindow).width, 38);
 	move_image(argwindow, 10, 38);
-		
+
 	for i=0,LEDCONTROLLERS-1 do
 		j = 0;
 		while j < controller_leds(i) do
 			set_led(i, j, 1);
 			j = j + 1;
 		end
-		
+
 		last_leds[i] = controller_leds(i) - 1;
-	end	
-	
+	end
+
 	show_image(datawindow);
 	show_image(argwindow);
-	
+
 end
 
-function welcome_input( inputtbl ) 
+function welcome_input( inputtbl )
 	if (inputtbl.kind == "digital" and inputtbl.translated and inputtbl.active) then
 		if (symtable[ inputtbl.keysym ] == "ESCAPE") then
 			shutdown();

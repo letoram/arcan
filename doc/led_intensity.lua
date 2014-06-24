@@ -1,7 +1,7 @@
 -- led_intensity
--- @short: Change the intensity of a specifid LED light. 
+-- @short: Change the intensity of a specifid LED light.
 -- @inargs: ctrlid, ledid, intensity
--- @group: iodev 
+-- @group: iodev
 -- @cfunction: arcan_lua_led_intensity
 -- @related: set_led, set_led_rgb, controller_leds
 -- @note: the LED set of functions can be disabled at buildtime,

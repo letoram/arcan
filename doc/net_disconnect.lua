@@ -1,12 +1,12 @@
 -- net_disconnect
--- @short: Disconnect the specific connection or domain- ID. 
+-- @short: Disconnect the specific connection or domain- ID.
 -- @inargs: connid
--- @outargs: 
--- @longdescr: Misbehaving users or resource contraints may force a server to 
+-- @outargs:
+-- @longdescr: Misbehaving users or resource contraints may force a server to
 -- disconnect one or several clients. The special IDs (0, 1..level) targets
 -- all connection or all connections with a certain level of authentication.
--- @group: network 
+-- @group: network
 -- @cfunction: arcan_lua_net_disconnect
--- @related: net_accept, net_authenticate 
+-- @related: net_accept, net_authenticate
 -- @exampleref: net_simple, net_advanced
 

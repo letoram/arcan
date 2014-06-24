@@ -34,22 +34,22 @@
 quat default_quat;
 
 /* note:
- * there's some reason and rhyme to some of the naive implementations 
+ * there's some reason and rhyme to some of the naive implementations
  * here and why everything isn't SIMD. While profiling isn't yet in
- * the highest of priorities, we want to the function that rely 
- * on (possibly superflous) use of these functions, 
+ * the highest of priorities, we want to the function that rely
+ * on (possibly superflous) use of these functions,
  * and first establish is there a way to cache or omitt the call
- * altogether rather than "hiding" the cost by making the 
+ * altogether rather than "hiding" the cost by making the
  * calculation very efficient. When this subset is reduced to a minimum,
  * the corresponding functions get their turn in vectorization
  */
-#ifndef ARCAN_MATH_SIMD 
-void mult_matrix_vecf(const float* restrict matrix, 
+#ifndef ARCAN_MATH_SIMD
+void mult_matrix_vecf(const float* restrict matrix,
 	const float* restrict inv, float* restrict out)
 {
 	int i;
 
-	for (i=0; i<4; i++) 
+	for (i=0; i<4; i++)
 		out[i] =
 		inv[0] * matrix[0*4+i] +
 		inv[1] * matrix[1*4+i] +
@@ -131,7 +131,7 @@ void matr_lookat(float* m, vector position, vector dstpos, vector up)
 	translate_matrix(m, -position.x, -position.y, -position.z);
 }
 
-void build_orthographic_matrix(float* m, const float left, const float right, 
+void build_orthographic_matrix(float* m, const float left, const float right,
 	const float bottom, const float top, const float nearf, const float farf)
 {
 	float irml = 1.0 / (right - left);
@@ -159,7 +159,7 @@ void build_orthographic_matrix(float* m, const float left, const float right,
 	m[15] = 1.0f;
 }
 
-void build_projection_matrix(float* m, 
+void build_projection_matrix(float* m,
 	float nearv, float farv, float aspect, float fov)
 {
 	const float h = 1.0f / tan(fov * (M_PI / 360.0));
@@ -215,7 +215,7 @@ int pinpoly(int nvert, float *vertx, float *verty, float testx, float testy)
 	int i, j, c = 0;
 	for (i = 0, j = nvert-1; i < nvert; j = i++) {
 		if ( ((verty[i]>testy) != (verty[j]>testy)) &&
-			(testx < (vertx[j]-vertx[i]) * (testy-verty[i]) / 
+			(testx < (vertx[j]-vertx[i]) * (testy-verty[i]) /
 			 (verty[j]-verty[i]) + vertx[i]) )
 			c = !c;
 	}
@@ -257,7 +257,7 @@ quat build_quat(float angdeg, float vx, float vy, float vz)
 
 float len_vector(vector invect)
 {
-	return sqrt(invect.x * invect.x + 
+	return sqrt(invect.x * invect.x +
 		invect.y * invect.y + invect.z * invect.z);
 }
 
@@ -328,20 +328,20 @@ quat inv_quat(quat src)
 
 float len_quat(quat src)
 {
-	return sqrt(src.x * src.x + src.y * 
+	return sqrt(src.x * src.x + src.y *
 		src.y + src.z * src.z + src.w * src.w);
 }
 
 quat norm_quat(quat src)
 {
-	float val = src.x * src.x + src.y * 
+	float val = src.x * src.x + src.y *
 		src.y + src.z * src.z + src.w * src.w;
 
 	if (val > 0.99999 && val < 1.000001)
 		return src;
 
 	val = sqrtf(val);
-	quat res = {.x = src.x / val, .y = src.y / val, 
+	quat res = {.x = src.x / val, .y = src.y / val,
 		.z = src.z / val, .w = src.w / val};
 	return res;
 }
@@ -444,13 +444,13 @@ vector interp_3d_linear(vector sv, vector ev, float fract)
 
 float interp_1d_expout(float sv, float ev, float fract)
 {
-	return fract < EPSILON ? sv : 
+	return fract < EPSILON ? sv :
 		sv + (ev - sv) * (1.0 - powf(2.0, -10.0 * fract));
 }
 
 float interp_1d_expin(float sv, float ev, float fract)
 {
-	return fract < EPSILON ? sv : 
+	return fract < EPSILON ? sv :
 		sv + (ev - sv) * powf(2, 10 * (fract - 1.0));
 }
 
@@ -458,7 +458,7 @@ float interp_1d_expinout(float sv, float ev, float fract)
 {
 	return fract < EPSILON ? sv :
 			fract > 1.0 - EPSILON ? ev :
-				fract < 0.5 ? 
+				fract < 0.5 ?
 					sv + (ev - sv) * ( 0.5 * powf(2, (20 * fract) - 10)) :
 					sv + (ev - sv) * ((-0.5 * powf(2, (-20 * fract) + 10)) + 1);
 }
@@ -467,13 +467,13 @@ vector interp_3d_expin(vector sv, vector ev, float fract)
 {
 	vector res;
 
-	res.x = fract < EPSILON ? sv.x : 
+	res.x = fract < EPSILON ? sv.x :
 		sv.x + (ev.x - sv.x) * powf(2, 10 * (fract - 1.0));
 
-	res.y = fract < EPSILON ? sv.x : 
+	res.y = fract < EPSILON ? sv.x :
 		sv.y + (ev.y - sv.y) * powf(2, 10 * (fract - 1.0));
 
-	res.z = fract < EPSILON ? sv.x : 
+	res.z = fract < EPSILON ? sv.x :
 		sv.z + (ev.z - sv.z) * powf(2, 10 * (fract - 1.0));
 
 	return res;
@@ -484,19 +484,19 @@ vector interp_3d_expinout(vector sv, vector ev, float fract)
 	vector res;
 	res.x = fract < EPSILON ? sv.x :
 			fract > 1.0 - EPSILON ? ev.x :
-				fract < 0.5 ? 
+				fract < 0.5 ?
 					sv.x + (ev.x - sv.x) * ( 0.5 * powf(2, (20 * fract) - 10)) :
 					sv.x + (ev.x - sv.x) * ((-0.5 * powf(2, (-20 * fract) + 10)) + 1);
 
 	res.y = fract < EPSILON ? sv.y :
 			fract > 1.0 - EPSILON ? ev.y :
-				fract < 0.5 ? 
+				fract < 0.5 ?
 					sv.y + (ev.y - sv.y) * ( 0.5 * powf(2, (20 * fract) - 10)) :
 					sv.y + (ev.y - sv.y) * ((-0.5 * powf(2, (-20 * fract) + 10)) + 1);
 
 	res.z = fract < EPSILON ? sv.z :
 			fract > 1.0 - EPSILON ? ev.z :
-				fract < 0.5 ? 
+				fract < 0.5 ?
 					sv.z + (ev.z - sv.z) * ( 0.5 * powf(2, (20 * fract) - 10)) :
 					sv.z + (ev.z - sv.z) * ((-0.5 * powf(2, (-20 * fract) + 10)) + 1);
 
@@ -507,13 +507,13 @@ vector interp_3d_expout(vector sv, vector ev, float fract)
 {
 	vector res;
 
-	res.x = fract < EPSILON ? sv.x : 
+	res.x = fract < EPSILON ? sv.x :
 		sv.x + (ev.x - sv.x) * (1.0 - powf(2.0, -10.0 * fract));
 
-	res.y = fract < EPSILON ? sv.x : 
+	res.y = fract < EPSILON ? sv.x :
 		sv.y + (ev.y - sv.y) * (1.0 - powf(2.0, -10.0 * fract));
 
-	res.z = fract < EPSILON ? sv.x : 
+	res.z = fract < EPSILON ? sv.x :
 		sv.z + (ev.z - sv.z) * (1.0 - powf(2.0, -10.0 * fract));
 
 	return res;
@@ -533,13 +533,13 @@ static inline quat slerp_quatfl(quat a, quat b, float fact, bool r360)
 	float weight_a, weight_b;
 	bool flip = false;
 
-/* r360 if delta > 180degrees) */ 
+/* r360 if delta > 180degrees) */
 	float ct = dot_quat(a, b);
 	if (r360 && ct > 1.0){
 		ct   = -ct;
 		flip = true;
 	}
-	
+
 	float th  = acos(ct);
 	float sth = sin(th);
 
@@ -551,10 +551,10 @@ static inline quat slerp_quatfl(quat a, quat b, float fact, bool r360)
 		weight_a = 1.0f - fact;
 		weight_b = fact;
 	}
-	
+
 	if (flip)
 		weight_b = -weight_b;
-	
+
 	return add_quat(mul_quatf(a, weight_a), mul_quatf(b, weight_b));
 }
 
@@ -562,7 +562,7 @@ static inline quat nlerp_quatfl(quat a, quat b, float fact, bool r360)
 {
 	float tinv = 1.0f - fact;
 	quat rq;
-	
+
 	if (r360 && dot_quat(a, b) < 0.0f)
 		rq = add_quat(mul_quatf(a, tinv), mul_quatf(a, -fact));
 	else
@@ -571,20 +571,20 @@ static inline quat nlerp_quatfl(quat a, quat b, float fact, bool r360)
 	return norm_quat(rq);
 }
 
-quat slerp_quat180(quat a, quat b, float fact){ 
-	return slerp_quatfl(a, b, fact, false); 
+quat slerp_quat180(quat a, quat b, float fact){
+	return slerp_quatfl(a, b, fact, false);
 }
 
 quat slerp_quat360(quat a, quat b, float fact){
-	return slerp_quatfl(a, b, fact, true ); 
+	return slerp_quatfl(a, b, fact, true );
 }
 
-quat nlerp_quat180(quat a, quat b, float fact){ 
-	return nlerp_quatfl(a, b, fact, false); 
+quat nlerp_quat180(quat a, quat b, float fact){
+	return nlerp_quatfl(a, b, fact, false);
 }
 
 quat nlerp_quat360(quat a, quat b, float fact){
-	return nlerp_quatfl(a, b, fact, true ); 
+	return nlerp_quatfl(a, b, fact, true );
 }
 
 float* matr_quatf(quat a, float* dmatr)
@@ -638,8 +638,8 @@ quat build_quat_taitbryan(float roll, float pitch, float yaw)
 	roll  = fmodf(roll + 180.f, 360.f) - 180.f;
 	pitch = fmodf(pitch+ 180.f, 360.f) - 180.f;
 	yaw   = fmodf(yaw  + 180.f, 360.f) - 180.f;
-	
-	quat res = mul_quat( mul_quat( build_quat(pitch, 1.0, 0.0, 0.0), 
+
+	quat res = mul_quat( mul_quat( build_quat(pitch, 1.0, 0.0, 0.0),
 		build_quat(yaw, 0.0, 1.0, 0.0)), build_quat(roll, 0.0, 0.0, 1.0));
 	return res;
 }
@@ -683,13 +683,13 @@ static inline void normalize_plane(float* pl)
 	pl[3] *= mag;
 }
 
-bool frustum_point(const float frustum[6][4], 
+bool frustum_point(const float frustum[6][4],
 	const float x, const float y, const float z)
 {
 	for (int i = 0; i < 6; i++)
 		if (frustum[i][0] * x +
-			  frustum[i][1] * y + 
-				frustum[i][2] * z + 
+			  frustum[i][1] * y +
+				frustum[i][2] * z +
 				frustum[i][3] <= 0.0f)
 			return false;
 
@@ -715,7 +715,7 @@ enum cstate frustum_aabb(const float frustum[6][4],
 		if (frustum[i][0] * x1 + frustum[i][1] * y2 +
 			frustum[i][2] * z1 + frustum[i][3] > 0.0f)
 			continue;
-	
+
 		if (frustum[i][0] * x2 + frustum[i][1] * y2 +
 			frustum[i][2] * z1 + frustum[i][3] > 0.0f)
 			continue;
@@ -744,10 +744,10 @@ enum cstate frustum_sphere(const float frustum[6][4],
 	const float x, const float y, const float z, const float radius)
 {
 	for (int i = 0; i < 6; i++){
-		float dist = 
+		float dist =
 			frustum[i][0] * x +
-			frustum[i][1] * y + 
-			frustum[i][2] * z + 
+			frustum[i][1] * y +
+			frustum[i][2] * z +
 			frustum[i][3];
 
 		if (dist < -radius)
@@ -757,7 +757,7 @@ enum cstate frustum_sphere(const float frustum[6][4],
 			return intersect;
 	}
 
-	return inside;	
+	return inside;
 }
 
 void update_frustum(float* prjm, float* mvm, float frustum[6][4])

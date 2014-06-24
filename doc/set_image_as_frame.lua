@@ -1,11 +1,11 @@
 -- set_image_as_frame
--- @short: Specify the contents of a multi-frame object. 
--- @inargs: contvid, srcvid, index 
+-- @short: Specify the contents of a multi-frame object.
+-- @inargs: contvid, srcvid, index
 -- @longdescr: Objects can be turned into multi-frame objects by calling
--- image_framesetsize which will allocate a static number of slots for 
+-- image_framesetsize which will allocate a static number of slots for
 -- attaching objects. By default, these refer back to the source object,
 -- but each slot can be filled with an object using the set_image_as_frame function.
--- @group: image 
+-- @group: image
 -- @cfunction: arcan_lua_imageasframe
 -- @related: image_framesetsize, image_framecyclemode, image_active_frame
 function main()

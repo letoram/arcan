@@ -54,11 +54,11 @@ enum shader_vertex_attributes {
 /* delete and forget all allocated shaders */
 void arcan_shader_flush();
 
-/* keep the meta-structure, but delete all OpenGL resources 
+/* keep the meta-structure, but delete all OpenGL resources
  * associated with a shader */
 void arcan_shader_unload_all();
 
-/* allocate new OpenGL resources for all allocated shaders, 
+/* allocate new OpenGL resources for all allocated shaders,
  * when reinitializing visual context etc. */
 void arcan_shader_rebuild_all();
 
@@ -67,15 +67,15 @@ void arcan_shader_rebuild_all();
 arcan_errc arcan_shader_activate(arcan_shader_id shid);
 
 /* pack into a new texture and just return an index to use */
-arcan_shader_id arcan_shader_build(const char* tag, const char* geom, 
+arcan_shader_id arcan_shader_build(const char* tag, const char* geom,
 	const char* vert, const char* frag);
 bool arcan_shader_destroy(arcan_shader_id shid);
 
-/* sweep through the list of stored shared, looking for a 
+/* sweep through the list of stored shared, looking for a
  * matching tag, status sets if the result was found or not */
 arcan_shader_id arcan_shader_lookup(const char* tag);
 const char* arcan_shader_lookuptag(arcan_shader_id id);
-bool arcan_shader_lookupprgs(arcan_shader_id id, 
+bool arcan_shader_lookupprgs(arcan_shader_id id,
 	const char** vert, const char** frag);
 bool arcan_shader_valid(arcan_shader_id);
 
@@ -83,14 +83,14 @@ int arcan_shader_vattribute_loc(enum shader_vertex_attributes attr);
 
 /* subid ignored for (! n*) types,
  * value assumed to have type specified in enumlabel,
- * returns the number of times the envv has been used since the last update. */ 
+ * returns the number of times the envv has been used since the last update. */
 int arcan_shader_envv(enum arcan_shader_envts slot, void* value, size_t size);
 
 const char* arcan_shader_symtype(enum arcan_shader_envts env);
 
 /* update a specific uniformslot that will map to whatever shader is active,
  * discarded when another shader is deactivated */
-void arcan_shader_forceunif(const char* label, 
+void arcan_shader_forceunif(const char* label,
 	enum shdrutype type, void* value, bool persist);
 
 #endif

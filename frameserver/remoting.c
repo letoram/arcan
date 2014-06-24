@@ -22,9 +22,9 @@ static struct {
 	int depth;
 	rfbClient* client;
 	bool dirty;
-} vncctx = {0}; 
+} vncctx = {0};
 
-int mouse_button_map[] = { 
+int mouse_button_map[] = {
 	rfbButton1Mask,
 	rfbButton2Mask,
 	rfbButton3Mask,
@@ -42,7 +42,7 @@ static rfbBool client_resize(struct _rfbClient* client)
 	client->updateRect.y = 0;
 	client->updateRect.w = neww;
 	client->updateRect.h = newh;
-	client->format.bitsPerPixel = 32; 
+	client->format.bitsPerPixel = 32;
 
 	if (!arcan_shmif_resize(&vncctx.shmcont, neww, newh)){
 		LOG("client requested a resize outside "
@@ -57,7 +57,7 @@ static rfbBool client_resize(struct _rfbClient* client)
 
 /*
  * updates server->client is checked by maintaining a statistical selection;
- * corners, center-point, sides at an arbitrary tile size. 
+ * corners, center-point, sides at an arbitrary tile size.
  * (so for a 640x480 screen at a tile-size of 16, we use ~10800 samples
  * vs. 307200 per frame. If this is too little to detect relevant changes,
  * we dynamically select tiles for higher samplerates based on previous
@@ -119,7 +119,7 @@ static bool client_connect(const char* host, int port)
 	vncctx.client->serverPort = port;
 	vncctx.client->destHost = strdup(host);
 	vncctx.client->destPort = port;
-	
+
 	if (!rfbInitClient(vncctx.client, NULL, NULL)){
 		LOG("(vnc-cl) couldn't initialize client.\n");
 		return false;
@@ -154,7 +154,7 @@ static void map_cl_input(arcan_ioevent* ioev)
 	static int mcount, mx, my, bmask;
 	int sym = ioev->input.translated.keysym;
 
-	if (ioev->devkind != EVENT_IDEVKIND_KEYBOARD && 
+	if (ioev->devkind != EVENT_IDEVKIND_KEYBOARD &&
 		ioev->devkind != EVENT_IDEVKIND_MOUSE)
 			return;
 
@@ -169,11 +169,11 @@ static void map_cl_input(arcan_ioevent* ioev)
 		if (kv == 0)
 			kv = ioev->input.translated.subid;
 
-		printf("kv: %d, in: %d, mod: %d\n", 
-			ioev->input.translated.keysym, kv, 
+		printf("kv: %d, in: %d, mod: %d\n",
+			ioev->input.translated.keysym, kv,
 			ioev->input.translated.modifiers);
-			
-		SendKeyEvent(vncctx.client, kv, ioev->input.translated.active);		
+
+		SendKeyEvent(vncctx.client, kv, ioev->input.translated.active);
 	}
 	else if (ioev->datatype == EVENT_IDATATYPE_DIGITAL){
 		int btn = ioev->input.digital.subid;
@@ -183,18 +183,18 @@ static void map_cl_input(arcan_ioevent* ioev)
 			value = mouse_button_map[btn];
 
 		bmask = ioev->input.digital.active ? bmask | value : bmask & ~value;
-		SendPointerEvent(vncctx.client, mx, my, bmask); 
+		SendPointerEvent(vncctx.client, mx, my, bmask);
 	}
 	else if (ioev->datatype == EVENT_IDATATYPE_ANALOG){
 		if (ioev->input.analog.subid == 0)
 			mx = ioev->input.analog.axisval[0];
 		else if (ioev->input.analog.subid == 1)
 			my = ioev->input.analog.axisval[0];
-	
+
 /* only send when we get updates in pairs */
 		if (++mcount % 2){
 			mcount = 0;
-			SendPointerEvent(vncctx.client, mx, my, bmask); 
+			SendPointerEvent(vncctx.client, mx, my, bmask);
 		}
 	}
 
@@ -203,7 +203,7 @@ static void map_cl_input(arcan_ioevent* ioev)
 }
 
 
-void arcan_frameserver_vnc_run(const char* resource, 
+void arcan_frameserver_vnc_run(const char* resource,
 	const char* keyfile)
 {
 	struct arg_arr* args = arg_unpack(resource);
@@ -213,9 +213,9 @@ void arcan_frameserver_vnc_run(const char* resource,
 
 	if (!arg_lookup(args, "host", 0, &host)){
 		LOG("avfeed_vnc(), no host specified (host=addr:port or host=listen)\n");
-		return;	
+		return;
 	}
-	
+
 	gen_symtbl();
 
 /* client connect / loop */
@@ -261,13 +261,13 @@ void arcan_frameserver_vnc_run(const char* resource,
 		if (vncctx.dirty){
 			vncctx.dirty = false;
 /*
- * couldn't find a decent flag to set this in 
- * the first draw batch unfortunately 
+ * couldn't find a decent flag to set this in
+ * the first draw batch unfortunately
  */
-			int nb = vncctx.shmcont.addr->w * vncctx.shmcont.addr->h * 
+			int nb = vncctx.shmcont.addr->w * vncctx.shmcont.addr->h *
 				ARCAN_SHMPAGE_VCHANNELS;
 
-			for (int ofs = ARCAN_SHMPAGE_VCHANNELS-1; 
+			for (int ofs = ARCAN_SHMPAGE_VCHANNELS-1;
 				ofs < nb; ofs += ARCAN_SHMPAGE_VCHANNELS)
 				vncctx.shmcont.vidp[ofs] = 0xff;
 
@@ -279,8 +279,8 @@ void arcan_frameserver_vnc_run(const char* resource,
 			if (inev.category == EVENT_TARGET)
 				switch(inev.kind){
 				case TARGET_COMMAND_STEPFRAME:
-					SendFramebufferUpdateRequest(vncctx.client, 0, 0, 
-						vncctx.shmcont.addr->w, vncctx.shmcont.addr->h, FALSE);	
+					SendFramebufferUpdateRequest(vncctx.client, 0, 0,
+						vncctx.shmcont.addr->w, vncctx.shmcont.addr->h, FALSE);
 				break;
 
 				case TARGET_COMMAND_EXIT:
@@ -288,7 +288,7 @@ void arcan_frameserver_vnc_run(const char* resource,
 
 				case TARGET_COMMAND_RESET:
 					cl_unstick();
-				break;					
+				break;
 
 				default:
 					LOG("unhandled target event (%d)\n", inev.kind);
@@ -298,7 +298,7 @@ void arcan_frameserver_vnc_run(const char* resource,
 			else
 				LOG("unhandled event (%d:%d)\n", inev.kind, inev.category);
 		}
-/* map input for mouse motion, keyboard, exit etc. 
+/* map input for mouse motion, keyboard, exit etc.
  * use SendKeyEvent for that, need translation table
  */
 	}

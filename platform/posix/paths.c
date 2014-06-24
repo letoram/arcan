@@ -62,7 +62,7 @@ char* arcan_find_resource(const char* label, int searchmask)
 	playbuf[4095] = '\0';
 
 	if (searchmask & ARCAN_RESOURCE_THEME) {
-		snprintf(playbuf, sizeof(playbuf) - 1, "%s/%s/%s", arcan_themepath, 
+		snprintf(playbuf, sizeof(playbuf) - 1, "%s/%s/%s", arcan_themepath,
 			arcan_themename, label);
 
 		if (file_exists(playbuf))
@@ -114,7 +114,7 @@ bool check_theme(const char* theme)
 	snprintf(playbuf, sizeof(playbuf) - 1, "%s/%s", arcan_themepath, theme);
 
 	if (!is_dir(playbuf)) {
-		arcan_warning("Warning: theme check failed, directory %s not found.\n", 
+		arcan_warning("Warning: theme check failed, directory %s not found.\n",
 			playbuf);
 		return false;
 	}
@@ -122,7 +122,7 @@ bool check_theme(const char* theme)
 	snprintf(playbuf, sizeof(playbuf) - 1, "%s/%s/%s.lua", arcan_themepath,
 		theme, theme);
 	if (!file_exists(playbuf)) {
-		arcan_warning("Warning: theme check failed, script %s not found.\n", 
+		arcan_warning("Warning: theme check failed, script %s not found.\n",
 			playbuf);
 		return false;
 	}
@@ -139,21 +139,21 @@ char* arcan_expand_resource(const char* label, bool global)
 		return NULL;
 
 	if (global) {
-		snprintf(playbuf, sizeof(playbuf) - 1, "%s/%s", arcan_resourcepath, 
+		snprintf(playbuf, sizeof(playbuf) - 1, "%s/%s", arcan_resourcepath,
 			label);
 	}
 	else {
-		snprintf(playbuf, sizeof(playbuf) - 1, "%s/%s/%s", arcan_themepath, 
+		snprintf(playbuf, sizeof(playbuf) - 1, "%s/%s/%s", arcan_themepath,
 			arcan_themename, label);
 	}
 
 	return strdup( playbuf );
 }
 
-char* arcan_find_resource_path(const char* label, const char* path, 
+char* arcan_find_resource_path(const char* label, const char* path,
 	int searchmask)
 {
-	if (label == NULL || 
+	if (label == NULL ||
 		strip_traverse(path) == NULL || strip_traverse(label) == NULL)
 			return NULL;
 
@@ -161,7 +161,7 @@ char* arcan_find_resource_path(const char* label, const char* path,
 	playbuf[4095] = '\0';
 
 	if (searchmask & ARCAN_RESOURCE_THEME) {
-		snprintf(playbuf, sizeof(playbuf) - 1, "%s/%s/%s/%s", arcan_themepath, 
+		snprintf(playbuf, sizeof(playbuf) - 1, "%s/%s/%s/%s", arcan_themepath,
 			arcan_themename, path, label);
 
 		if (file_exists(playbuf))
@@ -169,7 +169,7 @@ char* arcan_find_resource_path(const char* label, const char* path,
 	}
 
 	if (searchmask & ARCAN_RESOURCE_SHARED) {
-		snprintf(playbuf, sizeof(playbuf) - 1, "%s/%s/%s", 
+		snprintf(playbuf, sizeof(playbuf) - 1, "%s/%s/%s",
 			arcan_resourcepath, path, label);
 
 		if (file_exists(playbuf))

@@ -1,11 +1,11 @@
 -- launch_target_capabilities
--- @short: Query the engine for capabilities of a specific target. 
+-- @short: Query the engine for capabilities of a specific target.
 -- @inargs: targetname
 -- @outargs: restbl
 -- @longdescr: Valid restbl properties are: external_launch, internal_launch,
 -- snapshot, rewind, suspend, reset, dynamic_input, ports.
 -- @related: target_launch
--- @group: targetcontrol 
+-- @group: targetcontrol
 -- @cfunction: arcan_lua_targetlaunch_capabilities
 function main()
 #ifdef MAIN

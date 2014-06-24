@@ -1,7 +1,7 @@
 -- image_clip_on
--- @short: Enable clipping for object. 
--- @inargs: vid, *clipmode 
--- @outargs: 
+-- @short: Enable clipping for object.
+-- @inargs: vid, *clipmode
+-- @outargs:
 -- @longdescr: Enable clipping for object. This is only effective for objects
 -- that have been linked to eachother, through instancing or calls to link_image.
 -- The optional *clipmode* argument, (CLIP_ON, CLIP_OFF, CLIP_SHALLOW) determines
@@ -9,7 +9,7 @@
 -- clipping hierarchy resolves to the firstmost object in the parent chain with
 -- clipping disabled. With CLIP_SHALLOW, the region of the parent will be used
 -- for clipping regardless of other states.
--- @group: image 
+-- @group: image
 -- @cfunction: arcan_lua_clipon
 -- @related: image_clip_off
 function main()

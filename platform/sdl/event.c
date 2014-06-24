@@ -18,7 +18,7 @@
 #include <arcan_event.h>
 
 struct axis_opts {
-/* none, avg, drop */ 
+/* none, avg, drop */
 	enum ARCAN_ANALOGFILTER_KIND mode;
 	enum ARCAN_ANALOGFILTER_KIND oldmode;
 
@@ -35,9 +35,9 @@ struct axis_opts {
 };
 
 static struct {
-		struct axis_opts mx, my, 
+		struct axis_opts mx, my,
 			mx_r, my_r;
-	
+
 		bool sticks_init;
 		unsigned short n_joy;
 		struct arcan_stick* joys;
@@ -66,22 +66,22 @@ struct arcan_stick {
 	struct axis_opts* adata;
 };
 
-static inline bool process_axis(arcan_evctx* ctx, 
+static inline bool process_axis(arcan_evctx* ctx,
 	struct axis_opts* daxis, int16_t samplev, int16_t* outv)
 {
 	if (daxis->mode == ARCAN_ANALOGFILTER_NONE)
 		return false;
-	
+
 	if (daxis->mode == ARCAN_ANALOGFILTER_PASS)
 		goto accept_sample;
 
 /* quickfilter deadzone */
 	if (abs(samplev) < daxis->deadzone){
 		if (!daxis->indzone){
-			samplev = 0; 
+			samplev = 0;
 			daxis->indzone = true;
 		}
-		else 
+		else
 			return false;
 	}
 	else
@@ -93,7 +93,7 @@ static inline bool process_axis(arcan_evctx* ctx,
 			samplev = daxis->lower;
 			daxis->inlzone = true;
 			daxis->inuzone = false;
-		}	
+		}
 		else
 			return false;
 	}
@@ -111,7 +111,7 @@ static inline bool process_axis(arcan_evctx* ctx,
 
 	daxis->flt_kernel[ daxis->kernel_ofs++ ] = samplev;
 
-/* don't proceed until the kernel is filled */ 
+/* don't proceed until the kernel is filled */
 	if (daxis->kernel_ofs < daxis->kernel_sz)
 		return false;
 
@@ -120,15 +120,15 @@ static inline bool process_axis(arcan_evctx* ctx,
 
 		if (daxis->mode == ARCAN_ANALOGFILTER_ALAST){
 			samplev = daxis->flt_kernel[daxis->kernel_sz - 1];
-		} 
+		}
 		else {
 			for (int i = 0; i < daxis->kernel_sz; i++)
 				tot += daxis->flt_kernel[i];
 
-			samplev = tot != 0 ? tot / daxis->kernel_sz : 0; 
+			samplev = tot != 0 ? tot / daxis->kernel_sz : 0;
 		}
 
-	} 
+	}
 	else;
 	daxis->kernel_ofs = 0;
 
@@ -144,10 +144,10 @@ static inline void process_axismotion(arcan_evctx* ctx,
 
 	if (iodev.joys[devid].axis < ev->axis)
 		return;
-	
+
 	struct axis_opts* daxis = &iodev.joys[devid].adata[ev->axis];
 	int16_t dstv;
-	
+
 	if (process_axis(ctx, daxis, ev->value, &dstv)){
 		arcan_event newevent = {
 			.kind = EVENT_IO_AXIS_MOVE,
@@ -164,7 +164,7 @@ static inline void process_axismotion(arcan_evctx* ctx,
 	}
 }
 
-static inline void process_mousemotion(arcan_evctx* ctx, 
+static inline void process_mousemotion(arcan_evctx* ctx,
 	const SDL_MouseMotionEvent* const ev)
 {
 	int16_t dstv, dstv_r;
@@ -177,9 +177,9 @@ static inline void process_mousemotion(arcan_evctx* ctx,
 		.data.io.input.analog.devid  = ARCAN_MOUSEIDBASE,
 		.data.io.input.analog.gotrel = true,
 		.data.io.input.analog.nvalues = 2
-	}; 
+	};
 
-	snprintf(nev.label, 
+	snprintf(nev.label,
 		sizeof(nev.label) - 1, "mouse");
 
 	if (process_axis(ctx, &iodev.mx, ev->x, &dstv) &&
@@ -187,7 +187,7 @@ static inline void process_mousemotion(arcan_evctx* ctx,
 		nev.data.io.input.analog.subid = 0;
 		nev.data.io.input.analog.axisval[0] = dstv;
 		nev.data.io.input.analog.axisval[1] = dstv_r;
-		arcan_event_enqueue(ctx, &nev);	
+		arcan_event_enqueue(ctx, &nev);
 	}
 
 	if (process_axis(ctx, &iodev.my, ev->y, &dstv) &&
@@ -195,21 +195,21 @@ static inline void process_mousemotion(arcan_evctx* ctx,
 		nev.data.io.input.analog.subid = 1;
 		nev.data.io.input.analog.axisval[0] = dstv;
 		nev.data.io.input.analog.axisval[1] = dstv_r;
-		arcan_event_enqueue(ctx, &nev);	
+		arcan_event_enqueue(ctx, &nev);
 	}
 }
 
 static void set_analogstate(struct axis_opts* dst,
 	int lower_bound, int upper_bound, int deadzone,
 	int kernel_size, enum ARCAN_ANALOGFILTER_KIND mode)
-{	
+{
 	dst->lower = lower_bound;
 	dst->upper = upper_bound;
 	dst->deadzone = deadzone;
 	dst->kernel_sz = kernel_size;
 	dst->mode = mode;
 	dst->kernel_ofs = 0;
-}	
+}
 
 arcan_errc arcan_event_analogstate(int devid, int axisid,
 	int* lower_bound, int* upper_bound, int* deadzone,
@@ -288,14 +288,14 @@ void arcan_event_analogall(bool enable, bool mouse)
 			}
 }
 
-void arcan_event_analogfilter(int devid, 
+void arcan_event_analogfilter(int devid,
 	int axisid, int lower_bound, int upper_bound, int deadzone,
 	int buffer_sz, enum ARCAN_ANALOGFILTER_KIND kind)
 {
 	struct axis_opts opt;
 	int kernel_lim = sizeof(opt.flt_kernel) / sizeof(opt.flt_kernel[0]);
 
-	if (buffer_sz > kernel_lim) 
+	if (buffer_sz > kernel_lim)
 		buffer_sz = kernel_lim;
 
 	if (buffer_sz <= 0)
@@ -310,27 +310,27 @@ void arcan_event_analogfilter(int devid,
 
 	if (axisid < 0 || axisid >= iodev.joys[devid].axis)
 		return;
-	
+
 	struct axis_opts* daxis = &iodev.joys[devid].adata[axisid];
 
 	if (0){
 setmouse:
 		if (axisid == 0){
-			set_analogstate(&iodev.mx, lower_bound, 
+			set_analogstate(&iodev.mx, lower_bound,
 				upper_bound, deadzone, buffer_sz, kind);
-			set_analogstate(&iodev.mx_r, lower_bound, 
-				upper_bound, deadzone, buffer_sz, kind);
-		} 
-		else if (axisid == 1){
-			set_analogstate(&iodev.my, lower_bound, 
-				upper_bound, deadzone, buffer_sz, kind);
-			set_analogstate(&iodev.my_r, lower_bound, 
+			set_analogstate(&iodev.mx_r, lower_bound,
 				upper_bound, deadzone, buffer_sz, kind);
 		}
-		return;	
+		else if (axisid == 1){
+			set_analogstate(&iodev.my, lower_bound,
+				upper_bound, deadzone, buffer_sz, kind);
+			set_analogstate(&iodev.my_r, lower_bound,
+				upper_bound, deadzone, buffer_sz, kind);
+		}
+		return;
 	}
 
-	set_analogstate(daxis, lower_bound, 
+	set_analogstate(daxis, lower_bound,
 		upper_bound, deadzone, buffer_sz, kind);
 }
 
@@ -345,7 +345,7 @@ static unsigned long djb_hash(const char* str)
 	return hash;
 }
 
-static inline void process_hatmotion(arcan_evctx* ctx, unsigned devid, 
+static inline void process_hatmotion(arcan_evctx* ctx, unsigned devid,
 	unsigned hatid, unsigned value)
 {
 	arcan_event newevent = {
@@ -357,7 +357,7 @@ static inline void process_hatmotion(arcan_evctx* ctx, unsigned devid,
 		.data.io.input.digital.subid = 128 + (hatid * 4)
 	};
 
-	static unsigned hattbl[4] = {SDL_HAT_UP, SDL_HAT_DOWN, 
+	static unsigned hattbl[4] = {SDL_HAT_UP, SDL_HAT_DOWN,
 		SDL_HAT_LEFT, SDL_HAT_RIGHT};
 
 	assert(iodev.n_joy > devid);
@@ -371,7 +371,7 @@ static inline void process_hatmotion(arcan_evctx* ctx, unsigned devid,
 			if ( (oldtbl & hattbl[i]) != (value & hattbl[i]) ){
 				newevent.data.io.input.digital.subid  = ARCAN_HATBTNBASE +
 					(hatid * 4) + i;
-				newevent.data.io.input.digital.active = 
+				newevent.data.io.input.digital.active =
 					(value & hattbl[i]) > 0;
 				arcan_event_enqueue(ctx, &newevent);
 			}
@@ -398,7 +398,7 @@ void platform_event_process(arcan_evctx* ctx)
 {
 	SDL_Event event;
 /* other fields will be set upon enqueue */
-	arcan_event newevent = {.category = EVENT_IO}; 
+	arcan_event newevent = {.category = EVENT_IO};
 
 	while (SDL_PollEvent(&event)) {
 		switch (event.type) {
@@ -407,7 +407,7 @@ void platform_event_process(arcan_evctx* ctx)
 			newevent.data.io.datatype = EVENT_IDATATYPE_DIGITAL;
 			newevent.data.io.devkind  = EVENT_IDEVKIND_MOUSE;
 			newevent.data.io.input.digital.devid = ARCAN_MOUSEIDBASE +
-				event.motion.which; 
+				event.motion.which;
 			newevent.data.io.input.digital.subid = event.button.button;
 			newevent.data.io.input.digital.active = true;
 			snprintf(newevent.label, sizeof(newevent.label) - 1, "mouse%i",
@@ -419,18 +419,18 @@ void platform_event_process(arcan_evctx* ctx)
 			newevent.kind = EVENT_IO_BUTTON_RELEASE;
 			newevent.data.io.datatype = EVENT_IDATATYPE_DIGITAL;
 			newevent.data.io.devkind  = EVENT_IDEVKIND_MOUSE;
-			newevent.data.io.input.digital.devid = ARCAN_MOUSEIDBASE + 
-				event.motion.which; 
+			newevent.data.io.input.digital.devid = ARCAN_MOUSEIDBASE +
+				event.motion.which;
 			newevent.data.io.input.digital.subid = event.button.button;
 			newevent.data.io.input.digital.active = false;
-			snprintf(newevent.label, sizeof(newevent.label) - 1, "mouse%i", 
+			snprintf(newevent.label, sizeof(newevent.label) - 1, "mouse%i",
 				event.motion.which);
 			arcan_event_enqueue(ctx, &newevent);
 		break;
 
 		case SDL_MOUSEMOTION:
 			process_mousemotion(ctx, &event.motion);
-		break; 
+		break;
 
 		case SDL_JOYAXISMOTION:
 			process_axismotion(ctx, &event.jaxis);
@@ -468,7 +468,7 @@ void platform_event_process(arcan_evctx* ctx)
 				event.jbutton.which; /* no multimouse.. */
 			newevent.data.io.input.digital.subid = event.jbutton.button;
 			newevent.data.io.input.digital.active = true;
-			snprintf(newevent.label, sizeof(newevent.label)-1, 
+			snprintf(newevent.label, sizeof(newevent.label)-1,
 				"joystick%i", event.jbutton.which);
 			arcan_event_enqueue(ctx, &newevent);
 		break;
@@ -495,8 +495,8 @@ void platform_event_process(arcan_evctx* ctx)
 			process_hatmotion(ctx, event.jhat.which, event.jhat.hat, event.jhat.value);
 		break;
 
-/* in theory, it should be fine to just manage window resizes by keeping 
- * track of a scale factor to the grid size (window size) specified 
+/* in theory, it should be fine to just manage window resizes by keeping
+ * track of a scale factor to the grid size (window size) specified
  * during launch) */
 		case SDL_ACTIVEEVENT:
 //newevent.kind = (MOUSEFOCUS, INPUTFOCUS, APPACTIVE(0 = icon, 1 = restored)
@@ -561,7 +561,7 @@ void arcan_event_rescan_idev(arcan_evctx* ctx)
 	}
 
 /*
- * (Re) scan/open all joysticks, 
+ * (Re) scan/open all joysticks,
  * look for matching / already present devices
  * and copy their settings.
  */
@@ -576,7 +576,7 @@ void arcan_event_rescan_idev(arcan_evctx* ctx)
 
 /* find existing */
 		if (iodev.joys){
-			for (int j = 0; j < iodev.n_joy; j++){ 
+			for (int j = 0; j < iodev.n_joy; j++){
 				if (iodev.joys[j].hashid == hashid){
 					arcan_warning("found matching\n");
 					sj = &iodev.joys[j];
@@ -623,10 +623,10 @@ void arcan_event_rescan_idev(arcan_evctx* ctx)
 		if (dj->axis > 0){
 			size_t ad_sz = sizeof(struct axis_opts) * dj->axis;
 			dj->adata = malloc(ad_sz);
-			memset(dj->adata, '\0', ad_sz); 
+			memset(dj->adata, '\0', ad_sz);
 			for (int i = 0; i < dj->axis; i++){
 				dj->adata[i].mode = ARCAN_ANALOGFILTER_AVG;
-/* these values are sortof set 
+/* these values are sortof set
  * based on the SixAxis (common enough, and noisy enough) */
 				dj->adata[i].lower    = -32765;
 				dj->adata[i].deadzone = 5000;
@@ -637,7 +637,7 @@ void arcan_event_rescan_idev(arcan_evctx* ctx)
 	}
 
 	drop_joytbl();
-	iodev.n_joy = n_joys; 
+	iodev.n_joy = n_joys;
 	iodev.joys = joys;
 }
 
@@ -649,7 +649,7 @@ void platform_key_repeat(arcan_evctx* ctx, unsigned int rate)
 			SDL_EnableKeyRepeat(0, SDL_DEFAULT_REPEAT_INTERVAL);
 		else{
 			kbdrepeat = rate;
-			SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY, kbdrepeat); 
+			SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY, kbdrepeat);
 		}
 }
 
@@ -679,15 +679,15 @@ void platform_event_init(arcan_evctx* ctx)
 	SDL_ShowCursor(0);
 
 	if (!first_init){
-		arcan_event_analogfilter(-1, 0, 
-			-32768, 32767, 0, 1, ARCAN_ANALOGFILTER_AVG); 
-		arcan_event_analogfilter(-1, 1, 
-			-32768, 32767, 0, 1, ARCAN_ANALOGFILTER_AVG); 
+		arcan_event_analogfilter(-1, 0,
+			-32768, 32767, 0, 1, ARCAN_ANALOGFILTER_AVG);
+		arcan_event_analogfilter(-1, 1,
+			-32768, 32767, 0, 1, ARCAN_ANALOGFILTER_AVG);
 		first_init = true;
 	}
 /* flush out initial storm */
 	SDL_Event dummy[1];
-	while ( SDL_PeepEvents(dummy, 1, SDL_GETEVENT, 
+	while ( SDL_PeepEvents(dummy, 1, SDL_GETEVENT,
 		SDL_EVENTMASK(SDL_MOUSEMOTION)) );
 
 	arcan_event_rescan_idev(ctx);

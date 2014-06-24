@@ -44,7 +44,7 @@ function recordtest()
 		image_texfilter(vid, FILTER_NONE);
 		show_image(source);
 		audio_gain(stat.source_audio, 0.2);
-		
+
 		if (not recording) then
 			recording = true
 			dstvid = fill_surface(VRESW, VRESH, 0, 0, 0, 320, 240);

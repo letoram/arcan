@@ -1,6 +1,6 @@
 -- imagetest
 -- whole bunch of features we want to run through here.
--- 
+--
 -- Basic image loading and deletion are tested in the others, so skip that.
 -- Same with picking (internaltest)
 --
@@ -31,7 +31,7 @@ end
 -- Using persist, so draw once and present in all contexts.
 function drawmenu()
 	local total, used = current_context_usage();
-	
+
 	text_vid = render_text( [[\ffonts/default.ttf,14\#ffffff\bImagetest:\n\r]] ..
 	[[\b\!i(1)\t\!binstancing test\n\r]] ..
 	[[\b\!i(2)\t\!border + transform-stress test\n\r]] ..
@@ -54,7 +54,7 @@ function drawmenu()
 	print("persisting menu, status: ", tostring(persist_image(text_vid)));
 end
 
-function zordervidlim(load) 
+function zordervidlim(load)
 	local step = 254.0 / stacksize;
 
 	for i=1,stacksize-10 do
@@ -76,7 +76,7 @@ function zordervidlim(load)
 		end
 
 		move_image(newid, math.random( VRESW - 16), math.random( VRESH - 16), 0);
-		
+
 		if (newid == BADID) then
 			break;
 		end
@@ -97,22 +97,22 @@ function instancing_test()
 		scale_image(instid, 0.5, 0.5, 0);
 		image_mask_clear(instid, MASK_SCALE);
 		blend_image(instid, 0.5);
-		
+
 		if (instid == BADID) then
 			break;
 		end
-		
+
 		for j=1,254 do
 			move_image(instid, math.random(-128, 128), math.random(-128, 128), 20);
 		end
 	end
-	
-	for j=1,254 do 
+
+	for j=1,254 do
 		move_image(newid, math.random(VRESW), math.random(VRESH), 20);
 	end
 end
 
-function imagetest_input(inputtbl)	
+function imagetest_input(inputtbl)
 	if (inputtbl.kind == "digital" and inputtbl.translated and inputtbl.active) then
 		if (symtable[ inputtbl.keysym ] == "ESCAPE") then
 			shutdown();
@@ -143,11 +143,11 @@ function imagetest_input(inputtbl)
 			num, vid = storepush_video_context();
 			show_image(vid);
 
-			print("Stack push store => " .. tostring(num) .. " => " .. tostring(vid)); 
+			print("Stack push store => " .. tostring(num) .. " => " .. tostring(vid));
 		elseif (symtable[ inputtbl.keysym ] == "f") then
 			num, vid = storepop_video_context();
 			show_image(vid);
-			print("Stack pop store => " .. tostring(num) .. " => "  .. tostring(vid));			
+			print("Stack pop store => " .. tostring(num) .. " => "  .. tostring(vid));
 		elseif (symtable[ inputtbl.keysym ] == "p") then
 			print("Stack pop => " .. tostring ( pop_video_context() ) );
 		elseif (symtable[inputtbl.keysym] == "a") then
@@ -160,7 +160,7 @@ function imagetest_input(inputtbl)
 				table.insert(tbl, math.random(255));
 				table.insert(tbl, math.random(255));
 			end
-				vid = raw_surface(256, 256, 3, tbl); 
+				vid = raw_surface(256, 256, 3, tbl);
 				show_image(vid);
 		end
 	end

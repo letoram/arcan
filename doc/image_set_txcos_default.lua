@@ -2,15 +2,15 @@
 -- @short: Revert to the default set of texture mapping coordinates.
 -- @inargs: vid, *mirror*
 -- @group: image
--- @longdescr: 
--- The engine, by default, manages texture coordinates for video objects. 
+-- @longdescr:
+-- The engine, by default, manages texture coordinates for video objects.
 -- In some rare instances however, the developer may want to hand-tune
 -- these in the pre-rendering stages rather than modifying the coordinates
--- in a shader. To revert back to the default behavior, this function can 
--- be used. If mirror is set to a non-zero integer, 
+-- in a shader. To revert back to the default behavior, this function can
+-- be used. If mirror is set to a non-zero integer,
 -- the mapping generate will be flipped along the Y axis to compensate
 -- for the arcan coordinate system having origo in the upper left corner
--- whileas OpenGL uses the lower left. 
+-- whileas OpenGL uses the lower left.
 -- @cfunction: arcan_lua_settxcos_default
 -- @related: image_set_txcos, image_get_txcos
 function main()

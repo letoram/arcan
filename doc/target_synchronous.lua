@@ -1,7 +1,7 @@
 -- target_synchronous
--- @short: Enforce synchronous transfers 
+-- @short: Enforce synchronous transfers
 -- @inargs: dstvid
--- @outargs: 
+-- @outargs:
 -- @longdescr: This function is potentially dangerous;
 -- there is a tradeoff between responsiveness and reliable readbacks
 -- for recordtargets in that if the frameserver isn't ready to receive
@@ -9,13 +9,13 @@
 -- This asynchronous-discard behavior can be altered on a single frameserver
 -- by calling target_synchronous. This changes synchronization behavior in that
 -- processing will not continue until the frameserver is ready to receive.
--- This means that an untrusted frameserver implementation can potentially 
+-- This means that an untrusted frameserver implementation can potentially
 -- livelock the main engine and will introduce additional jitter between
 -- rendered frames.  If this is performed on a frameserver in decode mode however,
--- the "discard if PTS is too old" behavior will be disabled and the 
+-- the "discard if PTS is too old" behavior will be disabled and the
 -- last presented timestamp will be set to the frame that would've otherwise
 -- been discared.
--- @group: targetcontrol 
+-- @group: targetcontrol
 -- @cfunction: targetsynchronous
 -- @flags: expert
 -- @related:

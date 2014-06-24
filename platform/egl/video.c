@@ -14,12 +14,12 @@
  *  WITH_OGL3     - when the 'nux graphics mess gets cleaned up,
  *                  this is the minimum version to support
  *  WITH_HEADLESS - allocates a GL context that lacks a framebuffer
- *                  only available on systems where we can use the 
+ *                  only available on systems where we can use the
  *                  KHR_ method of context creation (dep, WITH_OGL3)
  *  WITH_RGB565   - Use RGB565 instead of other native formats,
- *                  this also requires GL_PIXEL_BPP to be set and a 
- *                  shmif that has ARCAN_SHMPAGE_VCHANNELS set 3 
- *  WITH_GLEW     - some setups might have problems with calls 
+ *                  this also requires GL_PIXEL_BPP to be set and a
+ *                  shmif that has ARCAN_SHMPAGE_VCHANNELS set 3
+ *  WITH_GLEW     - some setups might have problems with calls
  *                  (particularly if you want to use some fancy extension)
  *                  this library helps with that, but not needed everywhere
  *
@@ -30,7 +30,7 @@
  * for having a default output FBO where our destination textures will reside.
  * This is relevant for the arcan-in-arcan case where the result will be read-back
  * or, even more preferably, shared with the main process. The latter case relies
- * on currently-missing-extensions however. 
+ * on currently-missing-extensions however.
  */
 
 #include <stdio.h>
@@ -101,9 +101,9 @@ static bool setup_xwnd(int w, int h, bool fullscreen)
   hints.input = True;
   hints.flags = InputHint;
   XSetWMHints(x11.xdisp, x11.xwnd, &hints);
- 
+
   XMapWindow(x11.xdisp, x11.xwnd);
-  XStoreName(x11.xdisp, x11.xwnd, "Arcan"); 
+  XStoreName(x11.xdisp, x11.xwnd, "Arcan");
 
 	if (fullscreen){
 		XEvent xev = {0};
@@ -115,11 +115,11 @@ static bool setup_xwnd(int w, int h, bool fullscreen)
   	xev.xclient.message_type = wm_state;
   	xev.xclient.format = 32;
 	  xev.xclient.data.l[0] = 1;
-	  xev.xclient.data.l[1] = fsa; 
+	  xev.xclient.data.l[1] = fsa;
 	  XSendEvent ( x11.xdisp, DefaultRootWindow( x11.xdisp ), False,
 			SubstructureNotifyMask, &xev );
 	}
-  
+
 	egl.wnd = x11.xwnd;
 	return true;
 }
@@ -146,7 +146,7 @@ static struct {
 	uint32_t fb_id;
 
 } gbmkms = {
-	.fd = -1				
+	.fd = -1
 };
 
 #define EGL_NATIVE_DISPLAY gbmkms.dev
@@ -161,8 +161,8 @@ static void restore_gbmkms()
 		return;
 
 	drmModeSetCrtc(gbmkms.fd, gbmkms.old_settings->crtc_id,
-		gbmkms.old_settings->buffer_id, gbmkms.old_settings->x, 
-		gbmkms.old_settings->y, 
+		gbmkms.old_settings->buffer_id, gbmkms.old_settings->x,
+		gbmkms.old_settings->y,
 		&gbmkms.conn->connector_id, 1, &gbmkms.old_settings->mode
 	);
 
@@ -171,7 +171,7 @@ static void restore_gbmkms()
 
 static bool setup_gbmkms(uint16_t* w, uint16_t* h, bool switchres)
 {
-/* we don't got a command-line argument interface in place to set this up 
+/* we don't got a command-line argument interface in place to set this up
  * in any other way (and don't want to go the .cfg route) */
 	const char* dev = getenv("ARCAN_OUTPUT_DEVICE");
 	if (!dev)
@@ -205,7 +205,7 @@ static bool setup_gbmkms(uint16_t* w, uint16_t* h, bool switchres)
 		drmModeFreeConnector(gbmkms.conn);
 		gbmkms.conn = NULL;
 	}
-	
+
 	if (!gbmkms.conn){
 		arcan_warning("platform/egl: "
 			"no active connector found, cannot setup display.\n");
@@ -231,19 +231,19 @@ static bool setup_gbmkms(uint16_t* w, uint16_t* h, bool switchres)
 		arcan_warning("platform/egl: "
 			"no suitable encoder found, cannot setup display.\n");
 		close(gbmkms.fd);
-		gbmkms.fd = -1; 
+		gbmkms.fd = -1;
 		drmModeFreeConnector(gbmkms.conn);
 		gbmkms.conn = NULL;
 		return false;
 	}
 
 /* assumption: first display-mode is the most "suitable",
- * extending this would be sweeping for the user-preferred one */ 
+ * extending this would be sweeping for the user-preferred one */
 	*w = gbmkms.conn->modes[0].hdisplay;
 	*h = gbmkms.conn->modes[0].vdisplay;
 
-	gbmkms.surf = gbm_surface_create(gbmkms.dev, *w, *h, 
-		GBM_BO_FORMAT_XRGB8888, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);	
+	gbmkms.surf = gbm_surface_create(gbmkms.dev, *w, *h,
+		GBM_BO_FORMAT_XRGB8888, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
 	gbmkms.old_settings = drmModeGetCrtc(gbmkms.fd, gbmkms.enc->crtc_id);
 	atexit(restore_gbmkms);
 
@@ -254,7 +254,7 @@ static bool setup_gbmkms(uint16_t* w, uint16_t* h, bool switchres)
 
 #endif
 
-#ifdef WITH_BCM 
+#ifdef WITH_BCM
 #include <bcm_host.h>
 static bool alloc_bcm_wnd(uint16_t* w, uint16_t* h)
 {
@@ -268,9 +268,9 @@ static bool alloc_bcm_wnd(uint16_t* w, uint16_t* h)
   uint32_t dh;
 
   if (graphics_get_display_size(0, &dw, &dh) < 0){
-		return false;					
+		return false;
   }
-  
+
 	VC_RECT_T ddst = {
 		.x = 0,
 		.y = 0
@@ -283,7 +283,7 @@ static bool alloc_bcm_wnd(uint16_t* w, uint16_t* h)
 
 	if (*w == 0)
 		*w = dw;
-	else 
+	else
 		dw = *w;
 
 	if (*h == 0)
@@ -303,7 +303,7 @@ static bool alloc_bcm_wnd(uint16_t* w, uint16_t* h)
 		.mask = 0
 	};
 
-	disp = vc_dispmanx_display_open(0); 
+	disp = vc_dispmanx_display_open(0);
 	upd = vc_dispmanx_update_start(0);
 	elem = vc_dispmanx_element_add(upd, disp,
 		0, /* layer */
@@ -319,8 +319,8 @@ static bool alloc_bcm_wnd(uint16_t* w, uint16_t* h)
 	wnd.element = elem;
 	wnd.width = dw;
 	wnd.height = dh;
-   
-	vc_dispmanx_update_submit_sync(upd); 
+
+	vc_dispmanx_update_submit_sync(upd);
 	egl.wnd = &wnd;
 
 	return true;
@@ -345,18 +345,18 @@ void platform_video_bufferswap()
 
 #ifdef WITH_GBMKMS
 	struct gbm_bo* bo = gbm_surface_lock_front_buffer(gbmkms.surf);
-	
+
 	unsigned handle = gbm_bo_get_handle(bo).u32;
 	unsigned stride = gbm_bo_get_stride(bo);
 
-	if (-1 == drmModeAddFB(gbmkms.fd, 
+	if (-1 == drmModeAddFB(gbmkms.fd,
 		arcan_video_display.width, arcan_video_display.height,
 		24, 32, stride, handle, &gbmkms.fb_id))
 		arcan_fatal("platform/egl: couldn't obtain framebuffer handle\n");
 
 	int fl;
-	if (-1 == 
-		drmModePageFlip(gbmkms.fd, gbmkms.enc->crtc_id,	
+	if (-1 ==
+		drmModePageFlip(gbmkms.fd, gbmkms.enc->crtc_id,
 			gbmkms.fb_id, DRM_MODE_PAGE_FLIP_EVENT, &fl))
 		arcan_fatal("platform/egl: waiting for flip failure\n");
 
@@ -377,15 +377,15 @@ void platform_video_bufferswap()
 bool platform_video_init(uint16_t w, uint16_t h, uint8_t bpp, bool fs,
 	bool frames)
 {
-	EGLint ca[] = { 
-		EGL_CONTEXT_CLIENT_VERSION, 
+	EGLint ca[] = {
+		EGL_CONTEXT_CLIENT_VERSION,
 #ifdef WITH_GLES3
 		3,
 #else
 		2,
 #endif
-		EGL_NONE, 
-		EGL_NONE 
+		EGL_NONE,
+		EGL_NONE
 	};
 
 	EGLint attrlst[] = {
@@ -438,7 +438,7 @@ bool platform_video_init(uint16_t w, uint16_t h, uint8_t bpp, bool fs,
 		arcan_warning("Couldn't initialize EGL\n");
 		return false;
 	}
-	else 
+	else
 		arcan_warning("EGL Version %d.%d Found\n", major, minor);
 
 	if (!eglGetConfigs(egl.disp, NULL, 0, &nc)){
@@ -468,13 +468,13 @@ bool platform_video_init(uint16_t w, uint16_t h, uint8_t bpp, bool fs,
 		return false;
 	}
 
-/* 
+/*
  * Interestingly enough, EGL swap allows dirty rect updates with
  * eglSwapBuffersREegionNOK. In animations, we can, each update,
- * take the full boundary volume or better yet, go quadtree 
+ * take the full boundary volume or better yet, go quadtree
  * and do dirty regions that way. Not leveraged yet but should
  * definitely be a concern later on.
- */ 	
+ */
 	arcan_warning("EGL context active (%d x %d)\n", w, h);
 	arcan_video_display.width = w;
 	arcan_video_display.height = h;
@@ -483,7 +483,7 @@ bool platform_video_init(uint16_t w, uint16_t h, uint8_t bpp, bool fs,
 
 	eglSwapInterval(egl.disp, 1);
 
-/* 
+/*
  * This should be needed less and less with newer GL versions
  */
 #ifdef WITH_GLEW

@@ -22,7 +22,7 @@
 #ifndef _HAVE_ARCAN_FRAMEQUEUE
 #define _HAVE_ARCAN_FRAMEQUEUE
 
-/* these are rather dated, 
+/* these are rather dated,
  * added back when AIO/OSX experiments were made */
 typedef ssize_t(*arcan_rfunc)(int, void*, size_t);
 
@@ -50,7 +50,7 @@ typedef struct frame_queue {
  * mutex for frame_queue manipulation
  * framec for counting available cells in the queue */
 	pthread_t iothread;
-	sem_handle framecount; 
+	sem_handle framecount;
 	pthread_mutex_t framesync;
 	bool alive;
 
@@ -66,9 +66,9 @@ typedef struct frame_queue {
  * connect it asyncronously to [fd] (where applicable)
  * allocate [cell_count] slots with [cell_size] buffer to each cell
  * specify if the data to queue is fixed or variable
- * if rfunc is NULL, it defaults to read() on fd, 
+ * if rfunc is NULL, it defaults to read() on fd,
  * tag queue with idlabel for tracing */
-arcan_errc arcan_framequeue_alloc(frame_queue* queue, int fd, 
+arcan_errc arcan_framequeue_alloc(frame_queue* queue, int fd,
 	unsigned cell_count, unsigned cell_size, arcan_rfunc rfunc, char* idlabel);
 
 /*
@@ -81,7 +81,7 @@ void arcan_framequeue_dequeue(frame_queue* src);
 
 /*
  * cleanup,
- * free all the related buffers and terminate any ongoing AIO calls. 
+ * free all the related buffers and terminate any ongoing AIO calls.
  */
 arcan_errc arcan_framequeue_free(frame_queue* queue);
 

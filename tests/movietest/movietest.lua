@@ -1,9 +1,9 @@
 -- simple script to test most cases of movie management;
 -- a. playback -> end -> cleanup ev.
 -- b. playback -> loop (inf.) (try to kill the frameserver process)
--- c. multiple playback (press 's' to spawn a movie (with low gain, 0.1) at the mouse-cursor 
+-- c. multiple playback (press 's' to spawn a movie (with low gain, 0.1) at the mouse-cursor
 -- d. pause / resume, press 'p' to pause last spawned movie id
--- 
+--
 -- "movietest" files to try;
 -- common containers -- avi, mpg, mng, mkv, flv
 -- hires source (1080p is max)
@@ -15,7 +15,7 @@
 --
 -- frameserver should be expanded to cover webcam devices as well, along with "inverse"
 -- frameserving, meaning to send a specific vid/aid at a fixed sample-rate to the frameserver
--- 
+--
 img = {};
 cursor = {x = 0, y = 0};
 symtable = {}
@@ -28,7 +28,7 @@ function movietest()
 	[[\is\t\b\!is\!bpawn movie instance at cursor\n\r]] ..
 	[[p\t\b\!ip\!bause last spawned movie\n\r]] ..
 	[[r\t\b\!ir\!besume playback on last spawned movie\n\r]] ..
-	[[w\t\b\!iw\!bebcam session\n\r]] .. 
+	[[w\t\b\!iw\!bebcam session\n\r]] ..
 	[[\iESCAPE\t\!ishutdown\n\r]] );
 
 	sprop = image_surface_properties(text_vid);
@@ -36,7 +36,7 @@ function movietest()
 	show_image(text_vid);
 
 	webcam_ind = 0
-	
+
 	vid = load_movie("movietest.avi",
 	function(source, statustbl)
 		if (statustbl.kind == "resized") then
@@ -49,7 +49,7 @@ function movietest()
 	img.cursor = fill_surface(16, 16, 200, 50, 50);
 	order_image(img.cursor, 255);
 	show_image(img.cursor);
-	
+
 	if (vid == 0) then
 		print("movietest.avi not found -- shutting down");
 		shutdown();
@@ -68,28 +68,28 @@ function movietest_frameserver_event(source, tbl)
 		resize_image(source, tbl.width * 0.3, tbl.height * 0.3);
 		show_image(source);
 		play_movie(source);
-	end	
+	end
 end
 
 function movietest_input( inputtbl )
-	
+
 	if (inputtbl.kind == "digital" and inputtbl.translated and inputtbl.active) then
 		if (symtable[ inputtbl.keysym ] == "d") then
-			
+
 		elseif (symtable[ inputtbl.keysym ] == "s") then
 			vid, aid = load_movie("movietest.avi", FRAMESERVER_LOOP);
 			img.last = vid;
 			move_image(vid, cursor.x, cursor.y);
 			show_image(vid);
-			
+
 		elseif (symtable[ inputtbl.keysym ] == "p") then
 			pause_movie(img.last);
-		
+
 		elseif (symtable[ inputtbl.keysym ] == "w") then
 			width = 128 + math.random(1024);
 			height = 128 + math.random(1024);
 			print("Requesting:", "capture:" .. webcam_ind, tostring(width) .. "x" .. tostring(height));
-vid, aid = load_movie("capture:device=" .. webcam_ind .. ":width=" .. tostring(width) .. ":height=" .. tostring(height), FRAMESERVER_NOLOOP, 
+vid, aid = load_movie("capture:device=" .. webcam_ind .. ":width=" .. tostring(width) .. ":height=" .. tostring(height), FRAMESERVER_NOLOOP,
 function(source, status)
 	print("webcam status:", status.kind);
 	if (status.kind == "resized") then
@@ -100,13 +100,13 @@ end );
 			webcam_ind = webcam_ind + 1;
 			move_image(vid, cursor.x, cursor.y);
 			show_image(vid);
-	
+
 		elseif (symtable[ inputtbl.keysym] == "r") then
 			resume_movie(img.last);
 		elseif (symtable[ inputtbl.keysym] == "ESCAPE") then
 			shutdown();
 		end
-		
+
 	elseif (inputtbl.kind == "analog" and inputtbl.source == "mouse") then
 		if inputtbl.subid == 0 then
 		    cursor.x = inputtbl.samples[1];

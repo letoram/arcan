@@ -119,5 +119,5 @@ int ARCAN_SDL_UpperBlit(SDL_Surface *src, SDL_Rect *srcrect, SDL_Surface *dst, S
 void ARCAN_SDL_GL_SwapBuffers()
 {
 	fprintf(stderr, "ARCAN:SDL:GL:SwapBuffers\n");
-	forwardtbl.sdl_swapbuffers();	
+	forwardtbl.sdl_swapbuffers();
 }

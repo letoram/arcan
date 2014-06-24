@@ -324,7 +324,7 @@ class CTMexporter {
     }
 
     /// Wrapper for ctmDefineMesh()
-    void DefineMesh(const CTMfloat * aVertices, CTMuint aVertexCount, 
+    void DefineMesh(const CTMfloat * aVertices, CTMuint aVertexCount,
       const CTMuint * aIndices, CTMuint aTriangleCount,
       const CTMfloat * aNormals)
     {

@@ -75,7 +75,7 @@ SOFTWARE.
  * Unicode number plus 0x01000000. The keysym values in the range
  * 0x01000100 to 0x0110ffff are reserved to represent Unicode
  * characters in the range U+0100 to U+10FFFF.
- * 
+ *
  * While most newer Unicode-based X11 clients do already accept
  * Unicode-mapped keysyms in the range 0x01000100 to 0x0110ffff, it
  * will remain necessary for clients -- in the interest of
@@ -1986,7 +1986,7 @@ SOFTWARE.
 /*
  * Vietnamese
  */
- 
+
 #ifdef XK_VIETNAMESE
 #define XK_Abelowdot                  0x1001ea0  /* U+1EA0 LATIN CAPITAL LETTER A WITH DOT BELOW */
 #define XK_abelowdot                  0x1001ea1  /* U+1EA1 LATIN SMALL LETTER A WITH DOT BELOW */
@@ -2132,7 +2132,7 @@ SOFTWARE.
 #define XK_approxeq                   0x1002248  /* U+2245 ALMOST EQUAL TO */
 #define XK_notapproxeq                0x1002247  /* U+2247 NOT ALMOST EQUAL TO */
 #define XK_notidentical               0x1002262  /* U+2262 NOT IDENTICAL TO */
-#define XK_stricteq                   0x1002263  /* U+2263 STRICTLY EQUIVALENT TO */          
+#define XK_stricteq                   0x1002263  /* U+2263 STRICTLY EQUIVALENT TO */
 #endif /* XK_MATHEMATICAL */
 
 #ifdef XK_BRAILLE

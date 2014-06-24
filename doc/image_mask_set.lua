@@ -1,7 +1,7 @@
 -- image_mask_set
--- @short: Set a status flag on the specified object 
+-- @short: Set a status flag on the specified object
 -- @inargs: vid, maskval
--- @group: image 
+-- @group: image
 -- @cfunction: arcan_lua_setmask
 -- @note: an invalid maskval is considered a terminal state transition.
 -- @related: image_mask_toggle, image_mask_clear, image_mask_clearall

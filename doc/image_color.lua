@@ -1,8 +1,8 @@
 -- image_color
 -- @short: Update the color values for a color_surface
--- @inargs: id, red, green, blue 
+-- @inargs: id, red, green, blue
 -- @outargs: true or false
--- @group: image 
+-- @group: image
 -- @cfunction: arcan_lua_imagecolor
 -- @related:
 function main()

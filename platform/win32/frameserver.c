@@ -15,7 +15,7 @@
 
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, 
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
  * MA 02110-1301, USA.
  *
  */
@@ -50,7 +50,7 @@
 /*
  * refactor needs:
  * should be able to get rid of SDL here
- */ 
+ */
 
 sem_handle async, vsync, esync;
 HANDLE parent;
@@ -101,7 +101,7 @@ static BOOL SafeTerminateProcess(HANDLE hProcess, UINT* uExitCode)
 	if (hRT) {
 		CloseHandle(hRT);
 /*
- (created big stalls, assume target plays somewhat nice) 
+ (created big stalls, assume target plays somewhat nice)
    	WaitForSingleObject((bDup) ? hProcessDup : hProcess, INFINITE);
 		CloseHandle(hRT);
 		bSuccess = TRUE;
@@ -135,7 +135,7 @@ bool arcan_frameserver_validchild(arcan_frameserver* src)
 void arcan_frameserver_dropshared(arcan_frameserver* src)
 {
 	arcan_frameserver_dropsemaphores(src);
-	struct arcan_shmif_page* shmpage = 
+	struct arcan_shmif_page* shmpage =
 		(struct arcan_shmif_page*) src->shm.ptr;
 
 	if (src->shm.ptr && false == UnmapViewOfFile((void*) shmpage))
@@ -169,7 +169,7 @@ arcan_errc arcan_frameserver_pushfd(arcan_frameserver* fsrv, int fd)
 /* assume valid input fd, 64bit issues with this one? */
 		fdh = (HANDLE) _get_osfhandle(fd);
 
-		if (DuplicateHandle(GetCurrentProcess(), fdh, childh, 
+		if (DuplicateHandle(GetCurrentProcess(), fdh, childh,
 			&dh, 0, FALSE, DUPLICATE_SAME_ACCESS)){
 			arcan_event ev = {
 				.category = EVENT_TARGET,
@@ -186,7 +186,7 @@ arcan_errc arcan_frameserver_pushfd(arcan_frameserver* fsrv, int fd)
 			rv = ARCAN_ERRC_BAD_ARGUMENT;
 		}
 
-/*removed: likely suspect for a Windows Exception in 
+/*removed: likely suspect for a Windows Exception in
  * zwClose and friends.	CloseHandle(fdh); */
 		_close(fd);
 	}
@@ -229,7 +229,7 @@ static struct arcan_shmif_page* setupshmipc(HANDLE* dfd)
 		NULL /* null, pass by inheritance */
 	);
 
-	if (*dfd != NULL && (res = MapViewOfFile(*dfd, 
+	if (*dfd != NULL && (res = MapViewOfFile(*dfd,
 			FILE_MAP_ALL_ACCESS, 0, 0, ARCAN_SHMPAGE_MAX_SZ))){
 		memset(res, 0, sizeof(struct arcan_shmif_page));
 		return res;
@@ -241,7 +241,7 @@ error:
 	return NULL;
 }
 
-arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, 
+arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 	struct frameserver_envp setup)
 {
 	img_cons cons = {.w = 32, .h = 32, .bpp = 4};
@@ -268,12 +268,12 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 		ctx->vid = arcan_video_addfobject(
 			(arcan_vfunc_cb)arcan_frameserver_emptyframe, state, cons, 0);
 		ctx->aid = ARCAN_EID;
-	} 
+	}
 	else if (setup.custom_feed == false){
 /* revert back to empty vfunc? */
 		vfunc_state* cstate = arcan_video_feedstate(ctx->vid);
-		arcan_video_alterfeed(ctx->vid, 
-		(arcan_vfunc_cb)arcan_frameserver_emptyframe, *cstate); 
+		arcan_video_alterfeed(ctx->vid,
+		(arcan_vfunc_cb)arcan_frameserver_emptyframe, *cstate);
 	}
 
 	ctx->vsync = CreateSemaphore(&nullsec_attr, 0, 1, NULL);
@@ -295,7 +295,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 	arcan_frameserver_configure(ctx, setup);
 
 	char cmdline[4196];
-	snprintf(cmdline, sizeof(cmdline) - 1, "\"%s\" %i %i %i %i %s", 
+	snprintf(cmdline, sizeof(cmdline) - 1, "\"%s\" %i %i %i %i %s",
 		setup.args.builtin.resource, shmh,
 		ctx->vsync, ctx->async, ctx->esync, setup.args.builtin.mode);
 
@@ -305,19 +305,19 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 
 	si.cb = sizeof(si);
 	if (CreateProcess(
-		"arcan_frameserver.exe", 
+		"arcan_frameserver.exe",
 		cmdline,
 		0, /* don't make the parent process handle inheritable */
 		0, /* don't make the parent thread handle(s) inheritable */
 		TRUE, /* inherit the rest (we want semaphore / shm handle) */
 /* console application, however we don't need a console window spawned with it */
-		CREATE_NO_WINDOW, 
+		CREATE_NO_WINDOW,
 		0, /* don't need an ENV[] */
 		0, /* don't change CWD */
 		&si, /* Startup info */
 		&pi /* process-info */)) {
 
-/* anything else that can happen to the child at 
+/* anything else that can happen to the child at
  * this point is handled in frameserver_tick_control */
 		ctx->child = pi.hProcess;
 		ctx->childp = pi.dwProcessId;

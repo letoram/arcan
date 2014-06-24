@@ -36,7 +36,7 @@ local function GetInfo(StackLvl, WithLineNum)
           Name = What .. "function"
         end
       end
-      
+
       if Name == "C function" then
         Ret = Name
       else
@@ -98,7 +98,7 @@ function Trace()
     do
       Depth = Depth + 1
     end
-    
+
     -- Don't count the iterator itself or the empty frame counted at
     -- the end of the loop:
     Depth = Depth - 2

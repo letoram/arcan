@@ -45,7 +45,7 @@ function string.translateofs(src, ofs, beg)
 		if (kind < 2) then
 			ofs = ofs - 1;
 		end
-		
+
 		i = i + 1;
 	end
 
@@ -56,7 +56,7 @@ function string.utf8len(src, ofs)
 	local i = 0;
 	local rawlen = string.len(src);
 	ofs = ofs < 1 and 1 or ofs
-	
+
 	while (ofs <= rawlen) do
 		local kind = utf8kind( string.byte(src, ofs) );
 		if (kind < 2) then
@@ -72,7 +72,7 @@ end
 function string.insert(src, msg, ofs, limit)
 	local xlofs = src:translateofs(ofs, 1);
 	assert(limit > 0);
-	
+
 	if ofs + string.len(msg) > limit then
 		msg = string.sub(msg, 1, limit - ofs);
 
@@ -81,7 +81,7 @@ function string.insert(src, msg, ofs, limit)
 			msg = string.sub(msg, 1, string.len(msg) - 1);
 		end
 	end
-	
+
 	return string.sub(src, 1, xlofs - 1) .. msg .. string.sub(src, xlofs, string.len(src)), string.len(msg);
 end
 
@@ -90,7 +90,7 @@ function string.delete_at(src, ofs)
 	if (fwd ~= ofs) then
 		return string.sub(src, 1, ofs - 1) .. string.sub(src, fwd, string.len(src));
 	end
-	
+
 	return src;
 end
 
@@ -109,11 +109,11 @@ local function console_buffer_draw(self)
 	local pprops = image_surface_properties(self.console_window_inputbg);
 	local props = image_surface_properties(self.bufferline);
 	local xofs = 0;
-	
+
 	if (props.width > pprops.width) then
 		xofs = 0 - (props.width - pprops.width);
 	end
-	
+
 	move_image(self.bufferline, xofs, self.fontsize * 0.5 - 1, 0);
 	image_clip_on(self.bufferline);
 	show_image(self.bufferline);
@@ -142,7 +142,7 @@ end
 
 local function console_update_msgwin(self)
 	msgcmd = self.fontstr;
-	
+
 	for i=1, self.nlines do
 		local text = "";
 		local cline = #self.linehistory - self.linehistoryofs - (self.nlines - i);
@@ -150,7 +150,7 @@ local function console_update_msgwin(self)
 			text = string.gsub( self.linehistory[ cline ], "\\", "\\\\" ) .. "\\n\\r";
 		else
 		end
-		
+
 		msgcmd = msgcmd .. text;
 	end
 
@@ -177,9 +177,9 @@ local function console_update_caret(self)
 	instant_image_transform(self.caret);
 	local editprop = image_surface_properties(self.bufferline);
 	local xpos = 0;
-	
+
 	if (self.caretpos > 1) then
-		local msgstr = string.sub( self.buffer, 1, 
+		local msgstr = string.sub( self.buffer, 1,
 			string.utf8back(self.buffer, self.caretpos) );
 
 		editprop.width = self.fontsize;
@@ -198,33 +198,33 @@ end
 
 local function console_autocomplete(self)
 	beg = 1;
-	
+
 	for i=self.caretpos,0,-1 do
 		if string.sub(self.buffer, i, i) == " " then
 			beg = i + 1;
 			break;
 		end
 	end
-	
+
 	local prefix = string.sub( self.buffer, beg );
 	local matchlist = {};
 	if (string.len(prefix) == 0) then
 		matchlist = self.autocomplete;
 	else
 		for i,v in pairs(matchlist) do
-		
+
 		end
 	end
-	
+
 	return matchlist;
 end
 
 local function console_input(self, iotbl)
 	local rval = "";
-	
+
 	if (iotbl.kind == "digital" and iotbl.translated and iotbl.active) then
 		symres = self.symtbl[ iotbl.keysym ];
-		
+
 		if (symres == nil and iotbl.utf8 == "") then
 			return false;
 		end
@@ -251,19 +251,19 @@ local function console_input(self, iotbl)
 		elseif (symres == "HOME") then
 			self.caretpos = 0;
 			console_update_caret(self);
-			
+
 		elseif (symres == "END") then
 			self.caretpos = string.len( self.buffer );
 			console_update_caret(self);
-			
+
 		elseif (symres == "LEFT") then
 			self.caretpos = string.utf8back(self.buffer, self.caretpos);
 			console_update_caret(self);
-			
+
 		elseif (symres == "RIGHT") then
 			self.caretpos = string.utf8forward(self.buffer, self.caretpos);
 			console_update_caret(self);
-			
+
 		elseif (symres == "BACKSPACE") then
 			if (self.caretpos > 0) then
 				self.caretpos = string.utf8back(self.buffer, self.caretpos);
@@ -271,12 +271,12 @@ local function console_input(self, iotbl)
 				console_buffer_draw(self);
 				console_update_caret(self);
 			end
-			
+
 		elseif (symres == "DELETE") then
 			self.buffer = string.delete_at(self.buffer, self.caretpos);
 			console_buffer_draw(self);
 			console_update_caret(self);
-			
+
 		elseif (symres == "TAB") then
 
 			local matchlist = console_autocomplete(self);
@@ -287,17 +287,17 @@ local function console_input(self, iotbl)
 
 				console_buffer_draw(self);
 				console_update_caret(self);
-			elseif (#matchlist > 1) then 
+			elseif (#matchlist > 1) then
 				for i, v in pairs( matchlist ) do
 					console_addmsg(self, v);
 				end
 
 				console_update_msgwin(self);
 			end
-			
+
 		elseif (symres == "ESCAPE") then
 -- should really be filtered beforehand, oh well.
-			
+
 		elseif (symres == "RETURN") then
 			table.insert(self.history, self.buffer);
 			console_addmsg(self, self.buffer);
@@ -318,7 +318,7 @@ local function console_input(self, iotbl)
 
 			self.buffer, nch = string.insert(self.buffer, keych, self.caretpos, self.nchars);
 			self.caretpos = self.caretpos + nch;
-			
+
 			console_buffer_draw(self);
 			console_update_caret(self);
 		end
@@ -361,7 +361,7 @@ function create_console(w, h, font, fontsize)
 	if (newtbl.nlines <= 0) then
 		return false;
 	end
-	
+
 	newtbl.fontstr = [[\f]] .. font .. "," .. tostring(fontsize) .. " ";
 	newtbl.fontsize = fontsize;
 
@@ -376,19 +376,19 @@ function create_console(w, h, font, fontsize)
 	link_image(newtbl.console_window, newtbl.console_window_border);
 	link_image(newtbl.console_window_inputbg, newtbl.console_window);
 	link_image(newtbl.caret, newtbl.console_window_inputbg);
-	
+
 	move_image(newtbl.console_window, 3, 3, NOW);
 	move_image(newtbl.console_window_inputbg, 0, h - newtbl.inputbg_height - 6, NOW);
 	move_image(newtbl.caret, 0, 0, NOW);
 
 	image_clip_on(newtbl.console_window_inputbg);
 	image_clip_on(newtbl.caret);
-	
+
 	order_image(newtbl.console_window_border, 250);
 	order_image(newtbl.console_window, 251);
 	order_image(newtbl.console_window_inputbg, 252);
 	order_image(newtbl.caret, 253);
-	
+
 	show_image(newtbl.console_window);
 	show_image(newtbl.console_window_inputbg);
 	show_image(newtbl.caret);
@@ -410,6 +410,6 @@ function create_console(w, h, font, fontsize)
 			self.shortcut = {};
 		end
 	end
-	
+
 	return newtbl;
 end

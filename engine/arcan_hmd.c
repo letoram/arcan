@@ -16,11 +16,11 @@ static const int RIFT_PID = 0x0001;
 
 static hid_device* hmd_handle;
 
-/* 
+/*
 static arcan_vobj_id hmd_dvobj = ARCAN_EID;
 
 static uint8_t keepalive[5] = {
-	8, 0, 0, interval lower 0, interval upper 
+	8, 0, 0, interval lower 0, interval upper
 };
 
 
@@ -28,7 +28,7 @@ static uint8_t keepalive[5] = {
  * -> uint32, recast as float
  *  -> uint32 (0 | [1] << 8, [2] << 16 | [3] << 24
 
-static bool scale_range(uint8_t accel_scale, 
+static bool scale_range(uint8_t accel_scale,
 	uint16_t gyro_scale, uint16_t mag_scale)
 {
 	uint8_t cmd[8] = {0};
@@ -56,11 +56,11 @@ bool arcan_hmd_setup()
 		uint8_t raw[56];
 		if (hid_get_feature_report(hmd_handle, raw, 56) < 0)
 			return ((hmd_handle = NULL), false);
-		
+
 		/* uint16(hres), uint16(vres), uint32(hscreen), uint32(vscreen),
 		 * uint32(center), uint32(lenssep), uint32(leyetos), uint32(reyetos),
 		 * dist[0..5] (float4) */
-	
+
 		hid_set_nonblocking(hmd_handle, 1);
 	}
 
@@ -77,9 +77,9 @@ void arcan_hmd_update()
 {
 	if (!hmd_handle)
 		return;
-	
-	unsigned char hmdbuf[64];  
-	hid_read(hmd_handle, hmdbuf, 64); 
+
+	unsigned char hmdbuf[64];
+	hid_read(hmd_handle, hmdbuf, 64);
 
 /*
  * 1. Scan USB device for sensor information
@@ -95,6 +95,6 @@ void arcan_hmd_shutdown()
 {
 	if (hmd_handle != NULL)
 		hid_close(hmd_handle);
-	
+
 	hmd_handle = NULL;
 }

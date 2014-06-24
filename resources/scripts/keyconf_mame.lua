@@ -1,11 +1,11 @@
 -- basic exporter plugin from a keyconf- based symbol table into a default.cfg style MAME config.
--- 
+--
 -- This works basically by taking the symbols ("labels") from the keyconf table
--- and every mapped symbol with a corresponding translation in xlatetbl will have its 
+-- and every mapped symbol with a corresponding translation in xlatetbl will have its
 -- 'id' format (i.e. analogdigitaltranslated:devid:subdevid) translated to the corresponding MAME version.
 --
 --
--- this table was derived from src/emu/inpttype.h 
+-- this table was derived from src/emu/inpttype.h
 -- left column keyconf labelid right column mame labelid
 local sdlsymtbl = system_load("scripts/symtable_mame.lua")();
 local xlatetbl = {
@@ -111,11 +111,11 @@ MOUSE_Y         = {"P1_PEDAL2", "P1_TRACKBALL_Y"}
 
 local function islabel( instr )
 	rv = true;
-	
+
 	if (string.sub(instr, 1, 7) == "analog:" or
 			string.sub(instr, 1, 8) == "digital:" or
 			string.sub(instr, 1, 11) == "translated:") then
-		rv = false;		
+		rv = false;
 	end
 
 	return rv;
@@ -128,10 +128,10 @@ local function keyidtomame( keyid )
 	for a in string.gmatch(keyid, "[^:]+") do
 		table.insert(tlelem, a);
 	end
-	
+
 	if (tlelem[1] == "analog") then
 		print("Keyconf::Mame conversion, analog (axis) movement currently unsupported, edit the .cfg manually.");
-		
+
 	elseif (string.sub(keyid, 1, 8) == "digital:") then
 -- JOYCODE, index, BUTTON1..n
 -- MOUSECODE, index, BUTTON1..n
@@ -140,7 +140,7 @@ local function keyidtomame( keyid )
 		else
 			resstr = "JOYCODE_" .. tonumber(tlelem[2]) .. "_BUTTON" .. tonumber(tlelem[3]) .. "\n";
 		end
-		
+
 	elseif (tlelem[1] == "translated") then
 -- the other fields are just sdl keysym code, and, if applicable (it can be turned of) :modifier
 		resstr = sdlsymtbl[ tonumber( tlelem[3] ) ];
@@ -162,12 +162,12 @@ end
 
 local function mameentry( id, labels )
 	mameid = keyidtomame( id );
-	
+
 	if (mameid == nil) then
 		print("Keyconf::Mame conversion, couldn't find a mame- accepted corresponding input for: " .. id .. ", ignored.");
 		return false;
 	end
-	
+
 	for ind, lbl in pairs(labels) do
 		local match = xlatetbl[ lbl ];
 		if (match) then
@@ -193,9 +193,8 @@ function keyconf_tomame(keyconf, dstname )
 					mameentry( key, val );
 				end
 			end
-				
+
 			write_rawresource("</input>\n\t</system>\n</mameconfig>\n");
 		end
-	end	
+	end
 end
- 

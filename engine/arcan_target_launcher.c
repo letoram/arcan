@@ -57,7 +57,7 @@ int arcan_target_launch_external(const char* fname, char** argv)
 			"couldn't push current context, aborting launch.\n");
 		return 0;
 	}
-	
+
 	pid_t child = fork();
 	unsigned long ticks = arcan_timemillis();
 
@@ -65,7 +65,7 @@ int arcan_target_launch_external(const char* fname, char** argv)
 		int stat_loc;
 
 			while (-1 == waitpid(child, &stat_loc, 0)){
-				if (errno != EINVAL) 
+				if (errno != EINVAL)
 					break;
 			}
 		arcan_video_restore_external();
@@ -78,18 +78,18 @@ int arcan_target_launch_external(const char* fname, char** argv)
 	}
 }
 
-/* 
+/*
  * note for debugging internal launch (particularly the hijack lib)
  * (linux only)
  * gdb, break just before the fork
- * set follow-fork-mode child, add a breakpoint to the yet 
- * unresolved hijack_init symbol and move on. 
+ * set follow-fork-mode child, add a breakpoint to the yet
+ * unresolved hijack_init symbol and move on.
  * for other platforms, patch the hijacklib loader to set an infinite
- * while loop on a volatile flag, break the process and manually 
- * change the memory of the flag 
+ * while loop on a volatile flag, break the process and manually
+ * change the memory of the flag
  */
 
-arcan_frameserver* arcan_target_launch_internal(const char* fname, 
+arcan_frameserver* arcan_target_launch_internal(const char* fname,
 	char* hijack, char** argv)
 {
 	if (hijack == NULL){
@@ -98,10 +98,10 @@ arcan_frameserver* arcan_target_launch_internal(const char* fname,
 		return NULL;
 	}
 
-	arcan_frameserver* res = arcan_frameserver_alloc(); 
-	
+	arcan_frameserver* res = arcan_frameserver_alloc();
+
 	char shmsize[ 39 ] = {0};
-	
+
 	char* envv[10] = {
 			"LD_PRELOAD", hijack,
 			"DYLD_INSERT_LIBRARIES", hijack,
@@ -109,16 +109,16 @@ arcan_frameserver* arcan_target_launch_internal(const char* fname,
 			"ARCAN_SHMSIZE", "",
 			NULL, NULL
 	};
-	
+
 	struct frameserver_envp args = {
 		.use_builtin = false,
 		.args.external.fname = (char*) fname,
 		.args.external.envv = envv,
 		.args.external.argv = argv
 	};
-	
+
 	snprintf(shmsize, 38, "%ui", (unsigned int) ARCAN_SHMPAGE_MAX_SZ);
-	
+
 	if (
 		arcan_frameserver_spawn_server(res, args) != ARCAN_OK) {
 		free(res);

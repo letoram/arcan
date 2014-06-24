@@ -10,12 +10,12 @@
 
 #include "arcan_math.h"
 
-/* 
+/*
  * If SIMD support is detected in build system,
  * this compilation unit will be added and
- * ARCAN_MATH_SIMD will be defined to exclude 
+ * ARCAN_MATH_SIMD will be defined to exclude
  * the corresponding functions in arcan_math.c
- * this is for x64, for arm -- look 
+ * this is for x64, for arm -- look
  * in arcan_math_neon.c
  */
 
@@ -62,7 +62,7 @@ void mult_matrix_vecf(const float* ina,
 #endif
 }
 
-void multiply_matrix(float* restrict dst, 
+void multiply_matrix(float* restrict dst,
 	float* restrict ina, float* restrict inb)
 {
 #ifdef ARCAN_MATH_ALIGNED_SIMD
@@ -92,7 +92,7 @@ void multiply_matrix(float* restrict dst,
 	t1 = _mm_set1_ps(inb[3]);
 	t2 = _mm_add_ps(_mm_mul_ps(d, t1), t2);
 
-/* can we guarantee alignment? else 
+/* can we guarantee alignment? else
  * __mm_storeu_ps */
 #ifdef ARCAN_MATH_ALIGNED_SIMD
 	_mm_store_ps(&dst[0], t2);

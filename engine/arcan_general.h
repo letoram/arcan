@@ -26,7 +26,7 @@
  * Some of these functions are shared between different platforms
  * and are implemented in arcan_general.c but are also cherry-picked
  * on a "function by function" bases from the corresponding names
- * in platform/system/functionname.c 
+ * in platform/system/functionname.c
  */
 
 /* refactor needs:
@@ -125,7 +125,7 @@ bool arcan_setpaths();
 
 bool check_theme(const char*);
 char* arcan_expand_resource(const char* label, bool global);
-char* arcan_find_resource_path(const char* label, 
+char* arcan_find_resource_path(const char* label,
 	const char* path, int searchmask);
 char* arcan_find_resource(const char* label, int searchmask);
 char* arcan_findshmkey(int* dhd, bool semalloc);
@@ -133,16 +133,16 @@ void arcan_dropshmkey(char* srckey);
 
 const char* strip_traverse(const char* in);
 /*
- * Open and map a resource description (from _expand, _find category 
+ * Open and map a resource description (from _expand, _find category
  * of functions) and return in data_source structure.
  * On failure, fd will be BADFD and source NULL
  */
 data_source arcan_open_resource(const char* uri);
 void arcan_release_resource(data_source* sptr);
-map_region arcan_map_resource(data_source* source, bool wr); 
+map_region arcan_map_resource(data_source* source, bool wr);
 bool arcan_release_map(map_region region);
 
-/* 
+/*
  * Somewhat ad-hoc, mainly just used for mouse grab- style
  * global state changes for now.
  */
@@ -151,28 +151,28 @@ void arcan_device_lock(int devind, bool state);
 void arcan_warning(const char* msg, ...);
 void arcan_fatal(const char* msg, ...);
 
-/* open a file using a format string (fmt + variadic), flags and mode 
+/* open a file using a format string (fmt + variadic), flags and mode
  * matches regular open() semantics.
- * the file_handle wrapper is purposefully not used on this function 
+ * the file_handle wrapper is purposefully not used on this function
  * and for Win32, is expected to be managed by _get_osfhandle */
 int fmt_open(int flags, mode_t mode, const char* fmt, ...);
 
 /* since mingw does not export a glob.h,
  * we have to write a lightweight globber */
-unsigned arcan_glob(char* basename, int searchmask, 
+unsigned arcan_glob(char* basename, int searchmask,
 	void (*cb)(char*, void*), void* tag);
 
 const char* internal_launch_support();
 
 /* update rate of 25 ms / tick,which amounts to a logical time-span of 40 fps,
- * for lower power devices, this can be raised signifantly, 
+ * for lower power devices, this can be raised signifantly,
  * just adjust INTERP_MINSTEP accordingly */
 #ifndef ARCAN_TIMER_TICK
 #define ARCAN_TIMER_TICK 25
 #endif
 
 /*
- * The engine interpolates animations between timesteps (timer_tick clock), 
+ * The engine interpolates animations between timesteps (timer_tick clock),
  * but only if n ms have progressed since the last rendered frame,
  * where n is defined as (INTERP_MINSTEP * ARCAN_TIMER_TICK)
  */
@@ -181,7 +181,7 @@ const char* internal_launch_support();
 #endif
 
 /*
- * Regularly test by redefining this to something outside 1 <= n <= 64k and 
+ * Regularly test by redefining this to something outside 1 <= n <= 64k and
  * not -1, to ensure that no part of the engine or any user scripts rely
  * on hard-coded constants rather than their corresponding symbols.
  */
@@ -189,8 +189,8 @@ const char* internal_launch_support();
 
 #define CAP(X,L,H) ( (((X) < (L) ? (L) : (X)) > (H) ? (H) : (X)) )
 
-/* 
- * found / implemented in arcan_event.c 
+/*
+ * found / implemented in arcan_event.c
  */
 typedef struct {
 	bool bench_enabled;
@@ -206,21 +206,21 @@ typedef struct {
 } arcan_benchdata;
 
 
-/* 
+/*
  * Type / use hinted memory (de-)allocation routines.
  * The simplest version merely maps to malloc/memcpy family,
  * but local platforms can add reasonable protection (mprotect etc.)
  * where applicable, but also to take advantage of non-uniform
- * memory subsystems. 
- * This also includes info-leak protections in the form of hinting to the 
+ * memory subsystems.
+ * This also includes info-leak protections in the form of hinting to the
  * OS to avoid core-dumping certain pages.
- * 
+ *
  * The values are structured like a bitmask in order
  * to hint / switch which groups we want a certain level of protection
- * for. 
+ * for.
  *
  * The raw implementation for this is in the platform,
- * thus, any exotic approaches should be placed there (e.g. 
+ * thus, any exotic approaches should be placed there (e.g.
  * installing custom SIGSEGV handler to zero- out important areas etc).
  *
  * Memory allocated in this way must also be freed using a similar function,
@@ -228,16 +228,16 @@ typedef struct {
  * but also for the allocator to work in a more wasteful manner,
  * meaning to add usage-aware pre/post guard buffers.
  *
- * By default, an external out of memory condition is treated as a 
+ * By default, an external out of memory condition is treated as a
  * terminal state transition (unless you specify ARCAN_MEM_NONFATAL)
  * and allocation therefore never returns NULL.
  *
  * The primary purposes of this wrapper is to track down and control
  * dynamic memory use in the engine, to ease distinguishing memory that
  * comes from the engine and memory that comes from libraries we depend on,
- * and make it easier to debug/detect memory- related issues. This is not 
- * an effective protection against foreign code execution in process by 
- * a hostile party.  
+ * and make it easier to debug/detect memory- related issues. This is not
+ * an effective protection against foreign code execution in process by
+ * a hostile party.
  */
 
 enum arcan_memtypes {
@@ -265,7 +265,7 @@ enum arcan_memtypes {
  * Audio buffers for samples and for frameserver transfers
  * SMALL to MEDIUM, >1M is a monitoring condition.
  */
-	ARCAN_MEM_ABUFFER, 
+	ARCAN_MEM_ABUFFER,
 
 /*
  * Typically temporary buffers for building input/output strings
@@ -319,9 +319,9 @@ enum arcan_memalign {
 /*
  * align: 0 = natural, -1 = page
  */
-void* arcan_alloc_mem(size_t, 
-	enum arcan_memtypes, 
-	enum arcan_memhint, 
+void* arcan_alloc_mem(size_t,
+	enum arcan_memtypes,
+	enum arcan_memhint,
 	enum arcan_memalign);
 
 /*
@@ -333,7 +333,7 @@ void arcan_mem_init();
 
 /*
  * NULL is allowed (and ignored),
- * otherwise 
+ * otherwise
  */
 void arcan_mem_free(void*);
 
@@ -341,19 +341,19 @@ void arcan_mem_free(void*);
  * For memory blocks allocated with ARCAN_MEM_LOCKACCESS,
  * where some OS specific primitive is used for multithreaded
  * access, but also for some types (e.g. frobbed strings,
- * sensitive marked blocks) 
+ * sensitive marked blocks)
  */
 void arcan_mem_lock(void*);
 void arcan_mem_unlock(void*);
 
 /*
- * Support function for packing binary blobs as [a-Z0-9+/] 
- * at the expense of storage space. 
+ * Support function for packing binary blobs as [a-Z0-9+/]
+ * at the expense of storage space.
  */
-uint8_t* arcan_base64_decode(const uint8_t* instr, 
+uint8_t* arcan_base64_decode(const uint8_t* instr,
 	size_t* outsz, enum arcan_memhint);
 
-uint8_t* arcan_base64_encode(const uint8_t* data, 
+uint8_t* arcan_base64_encode(const uint8_t* data,
 	size_t inl, size_t* outl, enum arcan_memhint hint);
 
 /*
@@ -365,13 +365,13 @@ uint8_t* arcan_base64_encode(const uint8_t* data,
 void arcan_state_dump(const char* prefix, const char* key, const char* src);
 
 /*
- * Allocate memory intended for read-only or 
+ * Allocate memory intended for read-only or
  * exec use (JIT, ...)
  */
 void* arcan_alloc_fillmem(const void*,
 	size_t,
-	enum arcan_memtypes, 
-	enum arcan_memhint, 
+	enum arcan_memtypes,
+	enum arcan_memhint,
 	enum arcan_memalign);
 
 void arcan_bench_register_tick(unsigned);

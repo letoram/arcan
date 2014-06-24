@@ -15,7 +15,7 @@
 extern char* arcan_themename;
 extern char* arcan_themepath;
 
-unsigned arcan_glob(char* basename, int searchmask, 
+unsigned arcan_glob(char* basename, int searchmask,
 	void (*cb)(char*, void*), void* tag){
 	HANDLE findh;
 	WIN32_FIND_DATA finddata;
@@ -26,7 +26,7 @@ unsigned arcan_glob(char* basename, int searchmask,
 	char* basepath;
 
 	if ((searchmask & ARCAN_RESOURCE_THEME) > 0){
-		snprintf(playbuf, sizeof(playbuf)-1, "%s/%s/%s", 
+		snprintf(playbuf, sizeof(playbuf)-1, "%s/%s/%s",
 			arcan_themepath, arcan_themename, strip_traverse(basename));
 
 		findh = FindFirstFile(playbuf, &finddata);
@@ -44,7 +44,7 @@ unsigned arcan_glob(char* basename, int searchmask,
 	}
 
 	if ((searchmask & ARCAN_RESOURCE_SHARED) > 0){
-		snprintf(playbuf, sizeof(playbuf)-1, "%s/%s", arcan_resourcepath, 
+		snprintf(playbuf, sizeof(playbuf)-1, "%s/%s", arcan_resourcepath,
 			strip_traverse(basename));
 
 		findh = FindFirstFile(playbuf, &finddata);

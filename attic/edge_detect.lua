@@ -1,8 +1,8 @@
 --
 -- Simple edge detection example
--- Best result is probably combining 
+-- Best result is probably combining
 -- with a gaussian smoothing in beforehand
--- to cut down on noise. 
+-- to cut down on noise.
 --
 -- String.format in width, height, magnitude, lowerb, upperb
 --
@@ -12,7 +12,7 @@ varying vec2 texco;
 
 void main()
 {
-	float dx = 1.0 / %f; /* populate with width */ 
+	float dx = 1.0 / %f; /* populate with width */
   float dy = 1.0 / %f; /* populate with height */
 	float s = texco.s;
 	float t = texco.t;
@@ -46,7 +46,7 @@ void main()
 	if (delta > %f)
 		delta = 1.0;
 
-	gl_FragColor = vec4( delta, delta, delta, 1.0 ); 
+	gl_FragColor = vec4( delta, delta, delta, 1.0 );
 }
 ]];
 
@@ -58,8 +58,8 @@ void main()
 {
 	vec4 sum = vec4(0.0);
 	float ampl = %f;
-	float dx = 1.0 / %f; /* populate with width */ 
-	
+	float dx = 1.0 / %f; /* populate with width */
+
 	sum += texture2D(map_diffuse, vec2(texco.x - (4.0 * dx), texco.y)) * 0.05;
 	sum += texture2D(map_diffuse, vec2(texco.x - (3.0 * dx), texco.y)) * 0.09;
 	sum += texture2D(map_diffuse, vec2(texco.x - (2.0 * dx), texco.y)) * 0.12;
