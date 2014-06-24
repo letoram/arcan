@@ -16,14 +16,14 @@
 #include <libswscale/swscale.h>
 #include <libswresample/swresample.h>
 
-#include <arcan_shmif.h> 
+#include <arcan_shmif.h>
 #include "encode_presets.h"
 #include "frameserver.h"
 
 /* don't build / link to older versions */
 #if LIBAVCODEC_VERSION_MAJOR < 54
 	extern char* dated_ffmpeg_refused_old_build[-1];
-#endif 
+#endif
 
 struct {
 /* IPC */
@@ -38,17 +38,17 @@ struct {
 /* VIDEO */
 /* color format conversion (ccontext) is also used for
  * just populating the image/ color planes properly */
-	struct SwsContext* ccontext; 
+	struct SwsContext* ccontext;
 	AVCodecContext* vcontext;
 	AVStream* vstream;
 	AVCodec* vcodec;
-	int bpp; 
+	int bpp;
 	uint8_t* encvbuf;
-	
+
 /* set to ~twice the size of a full frame, larger than that and
  * we have terrible "compression" on our hands */
 	size_t encvbuf_sz;
-	int vpts_ofs; 
+	int vpts_ofs;
 /* used to rougly displace A/V synchronisation in encoded frames */
 
 /* Timing (shared) */
@@ -62,18 +62,18 @@ struct {
 	AVCodec* acodec;
 	AVStream* astream;
 	int channel_layout;
-	int apts_ofs; /* used to roughly displace A/V 
+	int apts_ofs; /* used to roughly displace A/V
 									 synchronisation in encoded frames */
-	int silence_samples; /* used to dynamically drop or insert 
+	int silence_samples; /* used to dynamically drop or insert
 													silence bytes in buffer_flush */
-	
+
 /* needed for intermediate buffering and format conversion */
 	bool float_samples;
 
 	uint8_t* encabuf;
 	off_t encabuf_ofs;
 	size_t encabuf_sz;
-	
+
 /* needed for encode_audio frame settings */
 	int aframe_smplcnt;
 	size_t aframe_insz, aframe_sz;
@@ -83,35 +83,35 @@ struct {
 	bool extsynch;
 } recctx = {0};
 
-/* flush the audio buffer present in the shared memory page as 
+/* flush the audio buffer present in the shared memory page as
  * quick as possible, resample if necessary, then use the intermediate
  * buffer to feed encoder */
 static void flush_audbuf()
 {
 	size_t ntc = recctx.shmcont.addr->abufused;
 	uint8_t* dataptr = recctx.shmcont.audp;
-	
+
 	if (!recctx.acontext){
 		recctx.shmcont.addr->abufused = 0;
 		return;
 	}
 
 /* parent events can modify this buffer to compensate for streaming desynch,
- * extra work for sample size alignment as shm api calculates 
+ * extra work for sample size alignment as shm api calculates
  * bytes and allows truncating (terrible) */
 	if (recctx.silence_samples > 0){ /* insert n 0- level samples */
-		size_t nti = (recctx.silence_samples << 2) > recctx.encabuf_sz - 
-			recctx.encabuf_ofs ? recctx.encabuf_sz - recctx.encabuf_ofs : 
+		size_t nti = (recctx.silence_samples << 2) > recctx.encabuf_sz -
+			recctx.encabuf_ofs ? recctx.encabuf_sz - recctx.encabuf_ofs :
 			recctx.silence_samples << 2;
-		nti = nti - (nti % 4); 
-	
+		nti = nti - (nti % 4);
+
 		memset(recctx.encabuf + recctx.encabuf_ofs, 0, nti);
 		recctx.encabuf_ofs += nti;
 		recctx.silence_samples = nti >> 2;
-		
-	} 
+
+	}
 	else if (recctx.silence_samples < 0){ /* drop n samples */
-		size_t ntd = (ntc >> 2) > recctx.silence_samples ? 
+		size_t ntd = (ntc >> 2) > recctx.silence_samples ?
 			recctx.silence_samples << 2 : ntc;
 		if (ntd == ntc){
 			recctx.silence_samples -= recctx.silence_samples << 2;
@@ -121,10 +121,10 @@ static void flush_audbuf()
 
 		dataptr += ntd;
 		ntc -= ntd;
-	} 
-	else 
+	}
+	else
 		;
-	
+
 	if (ntc + recctx.encabuf_ofs > recctx.encabuf_sz){
 		ntc = recctx.encabuf_sz - recctx.encabuf_ofs;
 		static bool warned;
@@ -145,26 +145,26 @@ static void flush_audbuf()
 
 /*
  * This is somewhat ugly, a real ffmpeg expert could probably help out here --
- * we don't actually use the resampler for resampling purposes, 
- * output encoder samplerate is forced to the same as SHMPAGE_SAMPLERATE, 
+ * we don't actually use the resampler for resampling purposes,
+ * output encoder samplerate is forced to the same as SHMPAGE_SAMPLERATE,
  * but the resampler API is used to convert between all *** possible
- * expected output formats and filling out plane- alignments etc. 
+ * expected output formats and filling out plane- alignments etc.
  */
 static uint8_t* s16swrconv(int* size, int* nsamp)
 {
 	static struct SwrContext* resampler = NULL;
 	static uint8_t** resamp_outbuf = NULL;
-	
+
 	if (!resampler){
-		resampler = swr_alloc_set_opts(NULL, AV_CH_LAYOUT_STEREO, 
+		resampler = swr_alloc_set_opts(NULL, AV_CH_LAYOUT_STEREO,
 			recctx.acontext->sample_fmt,
-			recctx.acontext->sample_rate, AV_CH_LAYOUT_STEREO, AV_SAMPLE_FMT_S16, 
+			recctx.acontext->sample_rate, AV_CH_LAYOUT_STEREO, AV_SAMPLE_FMT_S16,
 			ARCAN_SHMPAGE_SAMPLERATE, 0, NULL);
 
 		resamp_outbuf = av_malloc(sizeof(uint8_t*) * ARCAN_SHMPAGE_ACHANNELS);
-		av_samples_alloc(resamp_outbuf, NULL, ARCAN_SHMPAGE_ACHANNELS, 
+		av_samples_alloc(resamp_outbuf, NULL, ARCAN_SHMPAGE_ACHANNELS,
 			recctx.aframe_smplcnt, recctx.acontext->sample_fmt, 0);
-		
+
 		if (swr_init(resampler) < 0 ){
 			LOG("(encode) couldn't allocate resampler, giving up.\n");
 			exit(1);
@@ -172,7 +172,7 @@ static uint8_t* s16swrconv(int* size, int* nsamp)
 	}
 
 	const uint8_t* indata[] = {recctx.encabuf, NULL};
-	int rc = swr_convert(resampler, resamp_outbuf, recctx.aframe_smplcnt, 
+	int rc = swr_convert(resampler, resamp_outbuf, recctx.aframe_smplcnt,
 		indata, recctx.aframe_smplcnt);
 
 	if (rc < 0){
@@ -181,9 +181,9 @@ static uint8_t* s16swrconv(int* size, int* nsamp)
 	}
 
 	*nsamp = rc;
-	*size = av_samples_get_buffer_size(NULL, ARCAN_SHMPAGE_ACHANNELS, rc, 
+	*size = av_samples_get_buffer_size(NULL, ARCAN_SHMPAGE_ACHANNELS, rc,
 		recctx.acontext->sample_fmt, 0);
-	memmove(recctx.encabuf, recctx.encabuf + recctx.aframe_insz, 
+	memmove(recctx.encabuf, recctx.encabuf + recctx.aframe_insz,
 		recctx.encabuf_ofs - recctx.aframe_insz);
 
 	recctx.encabuf_ofs -= recctx.aframe_insz;
@@ -198,8 +198,8 @@ static bool encode_audio(bool flush)
 	bool forcetog = false;
 	int got_packet = false;
 
-/* NOTE: 
- * for real sample-rate conversion, this test would need to 
+/* NOTE:
+ * for real sample-rate conversion, this test would need to
  * reflect the state of the resampler internal buffers */
 	if (!flush && recctx.aframe_insz > recctx.encabuf_ofs)
 		return false;
@@ -212,11 +212,11 @@ static bool encode_audio(bool flush)
 
 	int buffer_sz;
 	uint8_t* ptr;
-		
+
 forceencode:
 	ptr = s16swrconv(&buffer_sz, &frame->nb_samples);
 
-	if ( avcodec_fill_audio_frame(frame, ARCAN_SHMPAGE_ACHANNELS, 
+	if ( avcodec_fill_audio_frame(frame, ARCAN_SHMPAGE_ACHANNELS,
 		ctx->sample_fmt, ptr, buffer_sz, 0) < 0 ){
 		LOG("(encode) couldn't fill target audio frame.\n");
 		exit(EXIT_FAILURE);
@@ -224,9 +224,9 @@ forceencode:
 
 	frame->pts = recctx.aframe_ptscnt;
 	recctx.aframe_ptscnt += frame->nb_samples;
-	
+
 	int rv = avcodec_encode_audio2(ctx, &pkt, frame, &got_packet);
-	
+
 	if (0 != rv && !flush){
 		LOG("(encode) : encode_audio, couldn't encode, giving up.\n");
 		exit(EXIT_FAILURE);
@@ -234,24 +234,24 @@ forceencode:
 
 	if (got_packet){
 		if (pkt.pts != AV_NOPTS_VALUE)
-			pkt.pts = av_rescale_q(pkt.pts, ctx->time_base, 
+			pkt.pts = av_rescale_q(pkt.pts, ctx->time_base,
 				recctx.astream->time_base);
 
 		if (pkt.dts != AV_NOPTS_VALUE)
-			pkt.dts = av_rescale_q(pkt.dts, ctx->time_base, 
+			pkt.dts = av_rescale_q(pkt.dts, ctx->time_base,
 				recctx.astream->time_base);
 
 /*
- * NOTE: 
+ * NOTE:
  * we might be mistreating duration both here and in video,
- * investigate! 
+ * investigate!
  */
 		if (pkt.duration > 0)
-			pkt.duration = av_rescale_q(pkt.duration, ctx->time_base, 
+			pkt.duration = av_rescale_q(pkt.duration, ctx->time_base,
 				recctx.astream->time_base);
-	
+
 		pkt.stream_index = recctx.astream->index;
-		
+
 		if (0 != av_interleaved_write_frame(recctx.fcontext, &pkt) && !flush){
 			LOG("(encode) : encode_audio, write_frame failed, giving up.\n");
 			exit(EXIT_FAILURE);
@@ -262,23 +262,23 @@ forceencode:
 
 	av_free_packet(&pkt);
 
-/* 
- * for the flush case, we may have a little bit of buffers left, both in the 
+/*
+ * for the flush case, we may have a little bit of buffers left, both in the
  * encoder and the resampler,
  * CODEC_CAP_DELAY = pframe can be NULL and encode audio is used to flush
- * CODEC_CAP_SMALL_LAST_FRAME or CODEC_CAP_VARIABLE_FRAME_SIZE = 
+ * CODEC_CAP_SMALL_LAST_FRAME or CODEC_CAP_VARIABLE_FRAME_SIZE =
  * we can the last few buffer bytes can be stored as well otherwise those
- * will be discarded 
+ * will be discarded
  */
 
 	if (flush){
-/* 
- * setup a partial new frame with as many samples as we can fit, 
+/*
+ * setup a partial new frame with as many samples as we can fit,
  * change the expected "frame size" to match
- * and then re-use the encode / conversion code 
+ * and then re-use the encode / conversion code
  */
 		if (!forcetog &&
-			((ctx->flags & CODEC_CAP_SMALL_LAST_FRAME) > 0 || 
+			((ctx->flags & CODEC_CAP_SMALL_LAST_FRAME) > 0 ||
 				(ctx->flags & CODEC_CAP_VARIABLE_FRAME_SIZE) > 0)){
 			recctx.aframe_insz = recctx.encabuf_ofs;
 			recctx.aframe_smplcnt = recctx.aframe_insz >> 2;
@@ -313,10 +313,10 @@ static int encode_video(bool flush)
 	int srcstr[4] = {0, 0, 0, 0};
 	srcstr[0] = recctx.vcontext->width * recctx.bpp;
 
-/* the main problem here is that the source material may encompass many 
- * framerates, in fact, even be variable (!) the samplerate we're running 
- * with that is of interest. Thus compare the current time against the next 
- * expected time-slots, if we're running behind, just repeat the last 
+/* the main problem here is that the source material may encompass many
+ * framerates, in fact, even be variable (!) the samplerate we're running
+ * with that is of interest. Thus compare the current time against the next
+ * expected time-slots, if we're running behind, just repeat the last
  * frame N times as to not get out of synch with possible audio. */
 	double mspf = 1000.0 / recctx.fps;
 	long long next_frame = mspf * (double)(recctx.framecount + 1);
@@ -348,11 +348,11 @@ static int encode_video(bool flush)
 
 	if (got_outp){
 		if (pkt.pts != AV_NOPTS_VALUE)
-			pkt.pts = av_rescale_q_rnd(pkt.pts, ctx->time_base, 
+			pkt.pts = av_rescale_q_rnd(pkt.pts, ctx->time_base,
 				recctx.vstream->time_base, AV_ROUND_NEAR_INF | AV_ROUND_PASS_MINMAX);
 
 		if (pkt.dts != AV_NOPTS_VALUE)
-			pkt.dts = av_rescale_q_rnd(pkt.dts, ctx->time_base, 
+			pkt.dts = av_rescale_q_rnd(pkt.dts, ctx->time_base,
 				recctx.vstream->time_base, AV_ROUND_NEAR_INF | AV_ROUND_PASS_MINMAX);
 
 		if (ctx->coded_frame->key_frame)
@@ -360,7 +360,7 @@ static int encode_video(bool flush)
 
 		if (pkt.dts > pkt.pts){
 			static bool dts_warn;
-	
+
 			if (!dts_warn){
 				LOG("(encode) DTS > PTS inconsistency\n");
 				dts_warn = true;
@@ -369,7 +369,7 @@ static int encode_video(bool flush)
 			pkt.dts = pkt.pts;
 		}
 
-		pkt.duration = av_rescale_q(pkt.duration, 
+		pkt.duration = av_rescale_q(pkt.duration,
 			ctx->time_base, recctx.vstream->time_base);
 		pkt.stream_index = recctx.vstream->index;
 
@@ -404,12 +404,12 @@ void arcan_frameserver_stepframe()
 	if (recctx.astream && recctx.vstream){
 		while(1){
 			apts = recctx.astream->pts.val * av_q2d(recctx.astream->time_base);
-			vpts = recctx.vstream->pts.val * av_q2d(recctx.vstream->time_base);	
+			vpts = recctx.vstream->pts.val * av_q2d(recctx.vstream->time_base);
 
 			if (apts < vpts){
 				if (!encode_audio(false))
 					break;
-			} 
+			}
 			else {
 				if (encode_video(false) == 0)
 					break;
@@ -422,7 +422,7 @@ void arcan_frameserver_stepframe()
 	else
 		while (encode_video(false) > 0);
 
-/* acknowledge that a frame has been consumed, 
+/* acknowledge that a frame has been consumed,
  * then return to polling events */
 end:
 	if (!recctx.extsynch)
@@ -441,7 +441,7 @@ static void encoder_atexit()
 
 		if (recctx.vcontext)
 			encode_video(true);
-		
+
 /* write header is done in the encoder_presets fcontext setup,
  * being a bit sloppy with the cleanup and leaving it to the process exit */
 		if (recctx.fcontext){
@@ -470,7 +470,7 @@ static void encoder_atexit()
 	}
 }
 
-static void log_callback(void* ptr, int level, const char* fmt, va_list vl) 
+static void log_callback(void* ptr, int level, const char* fmt, va_list vl)
 {
 	vfprintf(stderr, fmt, vl);
 }
@@ -507,33 +507,33 @@ static bool setup_ffmpeg_encode(struct arg_arr* args, int desw, int desh)
 
 /* codec stdvals, these may be overridden by the codec- options,
  * mostly used as hints to the setup- functions from the presets.* files */
-	unsigned vbr = 5, abr = 5, samplerate = ARCAN_SHMPAGE_SAMPLERATE, 
+	unsigned vbr = 5, abr = 5, samplerate = ARCAN_SHMPAGE_SAMPLERATE,
 		channels = 2, presilence = 0, bpp = 4;
 
 	bool noaudio = false, stream_outp = false;
 	float fps    = 25;
-	
+
 	const char (* vck) = NULL, (* ack) = NULL, (* cont) = NULL,
 		(* streamdst) = NULL;
 
 	const char* val;
-	if (arg_lookup(args, "vbitrate", 0, &val)) 
+	if (arg_lookup(args, "vbitrate", 0, &val))
 		vbr = strtoul(val, NULL, 10) * 1024;
-	if (arg_lookup(args, "abitrate", 0, &val)) 
+	if (arg_lookup(args, "abitrate", 0, &val))
 		abr = strtoul(val, NULL, 10) * 1024;
-	if (arg_lookup(args, "vpreset",  0, &val)) vbr = 
+	if (arg_lookup(args, "vpreset",  0, &val)) vbr =
 		( (vbr = strtoul(val, NULL, 10)) > 10 ? 10 : vbr);
-	if (arg_lookup(args, "apreset",  0, &val)) abr = 
+	if (arg_lookup(args, "apreset",  0, &val)) abr =
 		( (abr = strtoul(val, NULL, 10)) > 10 ? 10 : abr);
 	if (arg_lookup(args, "fps", 0, &val)) fps = strtof(val, NULL);
 	if (arg_lookup(args, "noaudio", 0, &val)) noaudio = true;
-	if (arg_lookup(args, "presilence", 0, &val)) presilence = 
+	if (arg_lookup(args, "presilence", 0, &val)) presilence =
 		( (presilence = strtoul(val, NULL, 10)) > 0 ? presilence : 0);
-	if (arg_lookup(args, "vptsofs", 0, &val)) 
+	if (arg_lookup(args, "vptsofs", 0, &val))
 		recctx.vpts_ofs = ( strtoul(val, NULL, 10) );
-	if (arg_lookup(args, "aptsofs", 0, &val)) 
+	if (arg_lookup(args, "aptsofs", 0, &val))
 		recctx.apts_ofs = ( strtoul(val, NULL, 10) );
-	
+
 	arg_lookup(args, "vcodec", 0, &vck);
 	arg_lookup(args, "acodec", 0, &ack);
 	arg_lookup(args, "container", 0, &cont);
@@ -545,12 +545,12 @@ static bool setup_ffmpeg_encode(struct arg_arr* args, int desw, int desh)
 			fps = 25;
 	}
 
-	LOG("(encode) Avcodec version: %d.%d\n", 
+	LOG("(encode) Avcodec version: %d.%d\n",
 		LIBAVCODEC_VERSION_MAJOR, LIBAVCODEC_VERSION_MINOR);
 	LOG("(encode:args) Parsing complete, values:\nvcodec: (%s:%f "
 		"fps @ %d %s), acodec: (%s:%d rate %d %s), container: (%s)\n",
-		vck?vck:"default",  fps, vbr, vbr <= 10 ? "qual.lvl" : "b/s", 
-		ack?ack:"default", samplerate, abr, abr <= 10 ? "qual.lvl" : "b/s", 
+		vck?vck:"default",  fps, vbr, vbr <= 10 ? "qual.lvl" : "b/s",
+		ack?ack:"default", samplerate, abr, abr <= 10 ? "qual.lvl" : "b/s",
 		cont?cont:"default");
 
 /* overrides some of the other options to provide RDP output etc. */
@@ -560,26 +560,26 @@ static bool setup_ffmpeg_encode(struct arg_arr* args, int desw, int desh)
 		cont = "stream";
 
 		LOG("(encode) enabled streaming output\n");
-		if (!arg_lookup(args, "streamdst", 0, &streamdst) || 
+		if (!arg_lookup(args, "streamdst", 0, &streamdst) ||
 			strncmp("rtmp://", streamdst, 7) != 0){
 			LOG("(encode:args) Streaming requested, but no "
 				"valid streamdst set, giving up.\n");
 			return false;
 		}
 	}
-	
-	struct codec_ent muxer = encode_getcontainer(cont, 
+
+	struct codec_ent muxer = encode_getcontainer(cont,
 		recctx.lastfd, streamdst);
-	struct codec_ent video = encode_getvcodec(vck, 
+	struct codec_ent video = encode_getvcodec(vck,
 		muxer.storage.container.format->flags);
-	struct codec_ent audio = encode_getacodec(ack, 
+	struct codec_ent audio = encode_getacodec(ack,
 		muxer.storage.container.format->flags);
 
 	if (!video.storage.container.context){
 		LOG("(encode) No valid output container found, aborting.\n");
 		return false;
 	}
-	
+
 	if (!video.storage.video.codec && !audio.storage.audio.codec){
 		LOG("(encode) No valid video or audio setup found, aborting.\n");
 		return false;
@@ -594,7 +594,7 @@ static bool setup_ffmpeg_encode(struct arg_arr* args, int desw, int desh)
 			recctx.vcodec = video.storage.video.codec;
 			recctx.vcontext= video.storage.video.context;
 			recctx.pframe = video.storage.video.pframe;
-			
+
 			recctx.vstream->codec = recctx.vcontext;
 			recctx.fps = fps;
 			LOG("(encode) Video output stream: %d x %d %f fps\n", desw, desh, fps);
@@ -613,25 +613,25 @@ static bool setup_ffmpeg_encode(struct arg_arr* args, int desw, int desh)
 			recctx.astream->codec = recctx.acontext;
 
 /* feeding audio encoder by this much each time,
- * frame_size = number of samples per frame, might need to supply the 
+ * frame_size = number of samples per frame, might need to supply the
  * encoder with a fixed amount, each sample covers n channels.
- * aframe_sz is based on S16LE 2ch stereo as this is aligned to the INPUT data, 
+ * aframe_sz is based on S16LE 2ch stereo as this is aligned to the INPUT data,
  * for float conversion, we need to double afterwards
  */
 
 			if ( (recctx.acodec->capabilities & CODEC_CAP_VARIABLE_FRAME_SIZE) > 0){
-				recctx.aframe_smplcnt = recctx.acontext->frame_size ? 
+				recctx.aframe_smplcnt = recctx.acontext->frame_size ?
 					recctx.acontext->frame_size : round( samplerate / fps );
 			}
 			else {
 				recctx.aframe_smplcnt = recctx.acontext->frame_size;
 			}
 
-			recctx.aframe_insz = recctx.aframe_smplcnt * 
+			recctx.aframe_insz = recctx.aframe_smplcnt *
 				ARCAN_SHMPAGE_ACHANNELS * sizeof(uint16_t);
-			recctx.aframe_sz = recctx.aframe_smplcnt * ARCAN_SHMPAGE_ACHANNELS * 
+			recctx.aframe_sz = recctx.aframe_smplcnt * ARCAN_SHMPAGE_ACHANNELS *
 				av_get_bytes_per_sample(recctx.acontext->sample_fmt);
-			LOG("(encode) audio: bytes per sample: %d, samples per frame: %d\n", 
+			LOG("(encode) audio: bytes per sample: %d, samples per frame: %d\n",
 				av_get_bytes_per_sample( recctx.acontext->sample_fmt ),
 			 	recctx.aframe_smplcnt);
 		}
@@ -651,7 +651,7 @@ static bool setup_ffmpeg_encode(struct arg_arr* args, int desw, int desh)
 			 presilence = recctx.encabuf_sz >> 2;
 			recctx.silence_samples = presilence;
 	}
-	
+
 /* signal that we are ready to receive video frames */
 	if (!recctx.extsynch)
 		arcan_sem_post(recctx.shmcont.vsem);
@@ -660,12 +660,12 @@ static bool setup_ffmpeg_encode(struct arg_arr* args, int desw, int desh)
 }
 
 /*
- * This version does not really use the shmpage API but is intended 
+ * This version does not really use the shmpage API but is intended
  * as a logging / side-call for the other frameservers to quickly
  * get an internal recording / logging feature going
- */ 
-int arcan_frameserver_encode_intrun(const char* resstr, 
-	uint8_t* vidp, int w, int h, int bpp, int pixfmt, 
+ */
+int arcan_frameserver_encode_intrun(const char* resstr,
+	uint8_t* vidp, int w, int h, int bpp, int pixfmt,
 	uint8_t* audp, uint32_t** aud_sz)
 {
 	/* inargs packas upp,
@@ -673,7 +673,7 @@ int arcan_frameserver_encode_intrun(const char* resstr,
 	 * öppna upp utresurs som fd (recctx.lastfd)
 	 */
 
-	recctx.ccontext   = sws_getContext(w, h, PIX_FMT_RGBA, 
+	recctx.ccontext   = sws_getContext(w, h, PIX_FMT_RGBA,
 		w, h, PIX_FMT_YUV420P, SWS_FAST_BILINEAR, NULL, NULL, NULL);
 
 	recctx.shmcont.vidp = vidp;
@@ -684,7 +684,7 @@ int arcan_frameserver_encode_intrun(const char* resstr,
 	if (recctx.lastfd == -1)
 		return -1;
 
-	struct arcan_shmif_page* fakepage = 
+	struct arcan_shmif_page* fakepage =
 		malloc(sizeof(struct arcan_shmif_page));
 
 	memset(fakepage, '\0', sizeof(struct arcan_shmif_page));
@@ -735,7 +735,7 @@ static void server_key(rfbBool down,rfbKeySym key,rfbClientPtr cl)
 	};
 
 	if (key < 65536)
-		outev.data.external.key.keysym = symtbl_in[key]; 
+		outev.data.external.key.keysym = symtbl_in[key];
 
 	LOG("sending key event: %d\n", outev.data.external.key.keysym);
 	arcan_event_enqueue(&recctx.shmcont.outev, &outev);
@@ -761,7 +761,7 @@ static void vnc_serv_deltaupd()
 
 static void vnc_serv_run(struct arg_arr* args)
 {
-/* at this point, we really should drop ALL syscalls 
+/* at this point, we really should drop ALL syscalls
  * that aren't strict related to socket manipulation */
 	int port = 5900;
 	gen_symtbl();
@@ -779,12 +779,12 @@ static void vnc_serv_run(struct arg_arr* args)
 	int argc = 0;
 	char* argv[] = {NULL};
 
-	vncctx.server = rfbGetScreen(&argc, (char**) argv, 
-		recctx.shmcont.addr->w, recctx.shmcont.addr->h, 8, 3, 4); 
+	vncctx.server = rfbGetScreen(&argc, (char**) argv,
+		recctx.shmcont.addr->w, recctx.shmcont.addr->h, 8, 3, 4);
 
 /*
  * other relevant members;
- * width, height, (nevershared or alwaysshared) dontdisconnect, 
+ * width, height, (nevershared or alwaysshared) dontdisconnect,
  * port, autoport, width should be %4==0,
  * permitFileTransfer, maxFd, authPasswd, ...
  */
@@ -828,7 +828,7 @@ static void vnc_serv_run(struct arg_arr* args)
 		break;
 
 		default:
-			LOG("unknown: %d\n", ev.kind); 
+			LOG("unknown: %d\n", ev.kind);
 		}
 	}
 
@@ -847,8 +847,8 @@ void arcan_frameserver_encode_run(const char* resource,
 		return;
 	}
 
-	/* setup shmpage etc. 
- * resolution etc. is already defined in the parent */ 
+	/* setup shmpage etc.
+ * resolution etc. is already defined in the parent */
 	recctx.shmcont = arcan_shmif_acquire(keyfile, SHMIF_OUTPUT, true, false);
 
 	const char* argval;
@@ -870,7 +870,7 @@ void arcan_frameserver_encode_run(const char* resource,
 	atexit(encoder_atexit);
 
 	while (true){
-/* fail here means there's something wrong with 
+/* fail here means there's something wrong with
  * frameserver - main app connection */
 		arcan_event ev;
 		if (0 == arcan_event_wait(&recctx.shmcont.inev, &ev))
@@ -878,13 +878,13 @@ void arcan_frameserver_encode_run(const char* resource,
 
 		if (ev.category == EVENT_TARGET){
 			switch (ev.kind){
-/* nothing happens until the first FDtransfer, and consequtive ones should 
- * really only be "useful" in streaming situations, and perhaps not even there, 
+/* nothing happens until the first FDtransfer, and consequtive ones should
+ * really only be "useful" in streaming situations, and perhaps not even there,
  * so consider that scenario untested */
 			case TARGET_COMMAND_FDTRANSFER:
 #ifdef _WIN32
-				recctx.lastfd = _open_osfhandle( 
-/* is this actually safe on 64-bit win? */ 
+				recctx.lastfd = _open_osfhandle(
+/* is this actually safe on 64-bit win? */
 					(intptr_t) frameserver_readhandle(&ev), _O_APPEND );
 #else
 				recctx.lastfd = frameserver_readhandle(&ev);
@@ -896,7 +896,7 @@ void arcan_frameserver_encode_run(const char* resource,
 				else{
 					recctx.ccontext   = sws_getContext(
 						recctx.shmcont.addr->w, recctx.shmcont.addr->h, PIX_FMT_RGBA,
-						recctx.shmcont.addr->w, recctx.shmcont.addr->h, PIX_FMT_YUV420P, 
+						recctx.shmcont.addr->w, recctx.shmcont.addr->h, PIX_FMT_YUV420P,
 						SWS_FAST_BILINEAR, NULL, NULL, NULL
 					);
 				}
@@ -911,17 +911,17 @@ void arcan_frameserver_encode_run(const char* resource,
 			case TARGET_COMMAND_AUDDELAY:
 				LOG("(encode) adjust audio buffering, %d milliseconds.\n",
 					ev.data.target.ioevs[0].iv);
-				recctx.silence_samples += (double) 
+				recctx.silence_samples += (double)
 					(ARCAN_SHMPAGE_SAMPLERATE / 1000.0) * ev.data.target.ioevs[0].iv;
 			break;
 
 			case TARGET_COMMAND_STEPFRAME:
 				if (!firstframe){
 					firstframe = true;
-					recctx.starttime = arcan_timemillis();	
+					recctx.starttime = arcan_timemillis();
 				}
 
-				arcan_frameserver_stepframe(); 
+				arcan_frameserver_stepframe();
 			break;
 
 			case TARGET_COMMAND_STORE:

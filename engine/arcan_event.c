@@ -34,7 +34,7 @@
 
 /* fixed limit of allowed events in queue before old gets overwritten */
 #ifndef ARCAN_EVENT_QUEUE_LIM
-#define ARCAN_EVENT_QUEUE_LIM 500 
+#define ARCAN_EVENT_QUEUE_LIM 500
 #endif
 
 #include "arcan_math.h"
@@ -55,8 +55,8 @@ typedef struct queue_cell queue_cell;
 static arcan_event eventbuf[ARCAN_EVENT_QUEUE_LIM];
 static unsigned eventfront = 0, eventback = 0;
 
-/* 
- * By default, we only have a 
+/*
+ * By default, we only have a
  * single-producer,single-consumer,single-threaded approach
  * but some platforms may need different support, so allow
  * multiple-producers single-consumer at compile-time
@@ -67,7 +67,7 @@ static pthread_mutex_t defctx_mutex = PTHREAD_MUTEX_INITIALIZER;
 #define LOCK() pthread_mutex_lock(&defctx_mutex);
 #define UNLOCK() pthread_mutex_unlock(&defctx_mutex);
 #else
-#define LOCK(X) 
+#define LOCK(X)
 #define UNLOCK(X)
 #endif
 
@@ -98,7 +98,7 @@ static void wake_semsleeper(arcan_evctx* ctx)
 		;
 }
 
-/* 
+/*
  * If the shmpage integrity is somehow compromised,
  * if semaphore use is out of order etc.
  */
@@ -113,7 +113,7 @@ static void pull_killswitch(arcan_evctx* ctx)
 }
 
 /* check queue for event, ignores mask */
-int arcan_event_poll(struct arcan_evctx* ctx, struct arcan_event* dst)
+int arcan_event_poll(arcan_evctx* ctx, struct arcan_event* dst)
 {
 	assert(dst);
 	if (*ctx->front == *ctx->back)
@@ -159,9 +159,9 @@ void arcan_event_setmask(arcan_evctx* ctx, uint32_t mask)
  * This function has a similar prototype to the enqueue defined in
  * the interop.h, but a different implementation to support waking up
  * the child, and that blocking behaviors in the main thread is always
- * forbidden. 
+ * forbidden.
  */
-int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src) 
+int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src)
 {
 /* early-out mask-filter, these are only ever used to silently
  * discard input / output (only operate on head and tail of ringbuffer) */
@@ -169,8 +169,8 @@ int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src)
 		return 1;
 	}
 
-/* 
- * Note, we should add panic /warning hooks here as the internal event 
+/*
+ * Note, we should add panic /warning hooks here as the internal event
  * subsystem is overloaded, which is a sign of something gone wrong.
  * The recover option would be to silently overwrite one of the lesser
  * important (typically, ANALOG INPUTS or frame counters) in the queue
@@ -187,7 +187,7 @@ int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src)
 	ctx->eventbuf[*ctx->back].tickstamp = ctx->c_ticks;
 	*ctx->back = (*ctx->back + 1) % ctx->eventbuf_sz;
 
-/* 
+/*
  * Currently, we just wake the sleeping frameserver up as soon as we get
  * an event (and it's actually sleeping), the better option would be
  * to somehow determine if we'll have more useful events coming in a little
@@ -200,7 +200,7 @@ int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src)
 	else
 		wake_semsleeper(ctx);
 
-	return 1; 
+	return 1;
 }
 
 static inline int queue_used(arcan_evctx* dq)
@@ -210,10 +210,10 @@ int rv = *(dq->front) > *(dq->back) ? dq->eventbuf_sz -
 return rv;
 }
 
-void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue, 
+void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 	enum ARCAN_EVENT_CATEGORY allowed, float saturation, arcan_vobj_id source)
 {
-	if (!srcqueue || !dstqueue || (srcqueue && !srcqueue->front) 
+	if (!srcqueue || !dstqueue || (srcqueue && !srcqueue->front)
 		|| (srcqueue && !srcqueue->back))
 		return;
 
@@ -225,7 +225,7 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 		arcan_event inev;
 		if (arcan_event_poll(srcqueue, &inev) == 0)
 			break;
-		
+
 /*
  * update / translate to make sure the corresponding frameserver<->lua mapping
  * can be found and tracked, there are also a few events that can be handled here
@@ -234,7 +234,7 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 			continue;
 
 		if (inev.category == EVENT_EXTERNAL){
-			arcan_frameserver* tgt; 
+			arcan_frameserver* tgt;
 
 			switch(inev.kind){
 				case EVENT_EXTERNAL_FLUSHAUD:
@@ -270,7 +270,7 @@ int64_t arcan_frametime()
 	return arcan_last_frametime - arcan_tickofset;
 }
 
-/* the main usage case is simply to alternate between process and poll 
+/* the main usage case is simply to alternate between process and poll
  * after a scene has been setup */
 extern void platform_event_process(arcan_evctx* ctx);
 float arcan_event_process(arcan_evctx* ctx, unsigned* dtick)
@@ -282,20 +282,20 @@ float arcan_event_process(arcan_evctx* ctx, unsigned* dtick)
 
 /*
  * compensate for a massive stall, non-monotonic clock
- * or first time initialization 
+ * or first time initialization
  */
 	if (ctx->c_ticks == 0 || delta == 0 || delta > rebase_timer_threshold){
 		ctx->c_ticks = arcan_last_frametime;
 		delta = 1;
 	}
-	
+
 	unsigned nticks = delta / ARCAN_TIMER_TICK;
 	float fragment = ((float)(delta % ARCAN_TIMER_TICK) + 0.0001) /
 		(float) ARCAN_TIMER_TICK;
 
 	if (nticks){
-		arcan_event newevent = {.category = EVENT_TIMER, 
-			.kind = 0, 
+		arcan_event newevent = {.category = EVENT_TIMER,
+			.kind = 0,
 			.data.timer.pulse_count = nticks
 		};
 
@@ -311,8 +311,8 @@ float arcan_event_process(arcan_evctx* ctx, unsigned* dtick)
 
 arcan_benchdata benchdata = {0};
 
-/* 
- * keep the time tracking separate from the other 
+/*
+ * keep the time tracking separate from the other
  * timekeeping parts, discard non-monotonic values
  */
 void arcan_bench_register_tick(unsigned nticks)
@@ -328,10 +328,10 @@ void arcan_bench_register_tick(unsigned nticks)
 		if (lasttick > 0 && ftime > lasttick){
 			unsigned delta = ftime - lasttick;
 			benchdata.ticktime[(unsigned)benchdata.tickofs] = delta;
-			benchdata.tickofs = (benchdata.tickofs + 1) % 
+			benchdata.tickofs = (benchdata.tickofs + 1) %
 				(sizeof(benchdata.ticktime) / sizeof(benchdata.ticktime[0]));
 		}
-		
+
 		lasttick = ftime;
 	}
 }
@@ -343,7 +343,7 @@ void arcan_bench_register_cost(unsigned cost)
 		return;
 
 	benchdata.costcount++;
-	benchdata.costofs = (benchdata.costofs + 1) % 
+	benchdata.costofs = (benchdata.costofs + 1) %
 		(sizeof(benchdata.framecost) / sizeof(benchdata.framecost[0]));
 }
 
@@ -358,7 +358,7 @@ void arcan_bench_register_frame()
 		unsigned delta = ftime - lastframe;
 		benchdata.frametime[(unsigned)benchdata.frameofs] = delta;
 		benchdata.framecount++;
-		benchdata.frameofs = (benchdata.frameofs + 1) % 
+		benchdata.frameofs = (benchdata.frameofs + 1) %
 			(sizeof(benchdata.frametime) / sizeof(benchdata.frametime[0]));
 		}
 
@@ -381,8 +381,8 @@ extern void platform_event_init(arcan_evctx* ctx);
 void arcan_event_init(arcan_evctx* ctx)
 {
 /*
- * non-local (i.e. shmpage resident) event queues has a different 
- * init approach (see frameserver_shmpage.c) 
+ * non-local (i.e. shmpage resident) event queues has a different
+ * init approach (see frameserver_shmpage.c)
  */
 	if (!ctx->local){
 		return;

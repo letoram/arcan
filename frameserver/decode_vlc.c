@@ -18,18 +18,23 @@ struct {
 
 	struct arcan_shmif_cont shmcont;
 
-	bool fft_audio;
+	bool fft_audio, got_video;
 	kiss_fftr_cfg fft_state;
 
-	pthread_mutex_t tsync;
+	pthread_mutex_t tsync, rsync;
 } decctx = {0};
 
 #define LOG(...) (fprintf(stderr, __VA_ARGS__))
 #define AUD_VIS_HRES 2048
 
+static void process_inevq();
+
 static unsigned video_setup(void** ctx, char* chroma, unsigned* width,
 	unsigned* height, unsigned* pitches, unsigned* lines)
 {
+	unsigned rv = 1;
+	decctx.got_video = true;
+
 	chroma[0] = 'R';
 	chroma[1] = 'G';
 	chroma[2] = 'B';
@@ -37,13 +42,17 @@ static unsigned video_setup(void** ctx, char* chroma, unsigned* width,
 
 	*pitches = *width * 4;
 
+	LOG("setup lock\n");
+	pthread_mutex_lock(&decctx.rsync);
 	if (!arcan_shmif_resize(&decctx.shmcont, *width, *height)){
 		LOG("arcan_frameserver(decode) shmpage setup failed, "
 			"requested: (%d x %d)\n", *width, *height);
-		return 0;
-	}
 
-	return 1;
+		rv = 0;
+	}
+	pthread_mutex_unlock(&decctx.rsync);
+
+	return rv;
 }
 
 static void generate_frame()
@@ -138,10 +147,12 @@ static void audio_play(void *data,
 {
 	size_t nb = count * ARCAN_SHMPAGE_ACHANNELS * sizeof(uint16_t);
 
-	if (decctx.shmcont.vidp == NULL)
+	if (!decctx.got_video && decctx.shmcont.addr->w != AUD_VIS_HRES)
 	{
+		pthread_mutex_lock(&decctx.rsync);
 		arcan_shmif_resize(&decctx.shmcont, AUD_VIS_HRES, 2);
 		decctx.fft_audio = true;
+		pthread_mutex_unlock(&decctx.rsync);
 	}
 
 	pthread_mutex_lock(&decctx.tsync);
@@ -168,7 +179,9 @@ static void audio_flush()
 
 static void audio_drain()
 {
+	pthread_mutex_lock(&decctx.tsync);
 	arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGAUD);
+	pthread_mutex_unlock(&decctx.tsync);
 }
 
 static void video_cleanup(void* ctx)
@@ -177,6 +190,8 @@ static void video_cleanup(void* ctx)
 
 static void* video_lock(void* ctx, void** planes)
 {
+	pthread_mutex_lock(&decctx.rsync);
+	LOG("video lock\n");
 	*planes = decctx.shmcont.vidp;
 	return NULL;
 }
@@ -193,7 +208,8 @@ static void video_display(void* ctx, void* picture)
 
 static void video_unlock(void* ctx, void* picture, void* const* planes)
 {
-
+	LOG("video unlock\n");
+	pthread_mutex_unlock(&decctx.rsync);
 }
 
 static void push_streamstatus()
@@ -236,6 +252,7 @@ static void push_streamstatus()
 
 static void player_event(const struct libvlc_event_t* event, void* ud)
 {
+
 	switch(event->type){
 	case libvlc_MediaPlayerPlaying:
 	break;
@@ -252,6 +269,10 @@ static void player_event(const struct libvlc_event_t* event, void* ud)
 	default:
 		printf("unhandled event\n");
 	}
+
+	pthread_mutex_lock(&decctx.rsync);
+	process_inevq();
+	pthread_mutex_unlock(&decctx.rsync);
 }
 
 static libvlc_media_t* find_capture_device(
@@ -278,6 +299,51 @@ static void seek_relative(int seconds)
 	time_v += seconds * 1000;
 	time_v = time_v > 0 ? time_v : 0;
 	libvlc_media_player_set_time(decctx.player, time_v);
+}
+
+static void process_inevq()
+{
+	arcan_event ev;
+
+	while (arcan_event_poll(&decctx.shmcont.inev, &ev) > 0){
+		arcan_tgtevent* tgt = &ev.data.target;
+
+		if (ev.category == EVENT_TARGET)
+		switch(ev.kind){
+		case TARGET_COMMAND_GRAPHMODE:
+/* switch audio /video visualization, RGBA-pack YUV420 hinting,
+ * set_deinterlace */
+		break;
+
+		case TARGET_COMMAND_FRAMESKIP:
+/* change buffering etc. behavior */
+		break;
+
+		case TARGET_COMMAND_SETIODEV:
+/* switch stream
+ * get_spu_count, get_spu_description,
+ * get_title_description, get_chapter_description
+ * get_track, set_track, ...
+ * */
+		break;
+
+		case TARGET_COMMAND_EXIT:
+			decctx.shmcont.addr->dms = false;
+		break;
+
+		case TARGET_COMMAND_SEEKTIME:
+			if (tgt->ioevs[1].iv != 0){
+					seek_relative(tgt->ioevs[1].iv);
+			}
+			else
+				libvlc_media_player_set_position(decctx.player, tgt->ioevs[0].fv);
+		break;
+
+		default:
+			LOG("unhandled target event received (%d:%d)\n", ev.kind, ev.category);
+		}
+	}
+
 }
 
 void arcan_frameserver_decode_run(const char* resource, const char* keyfile)
@@ -357,6 +423,7 @@ void arcan_frameserver_decode_run(const char* resource, const char* keyfile)
 	}
 
 	pthread_mutex_init(&decctx.tsync, NULL);
+	pthread_mutex_init(&decctx.rsync, NULL);
 
 /* register media with vlc, hook up local input mapping */
   decctx.player = libvlc_media_player_new_from_media(media);
@@ -376,60 +443,11 @@ void arcan_frameserver_decode_run(const char* resource, const char* keyfile)
 	libvlc_audio_set_callbacks(decctx.player,
 		audio_play, /*pause*/ NULL, /*resume*/ NULL, audio_flush, audio_drain,NULL);
 
-/* audio callbacks; ctx, play, pause, resume, flush, void*ctx */
-/* register event manager and forward to output events */
-
 	libvlc_media_player_play(decctx.player);
 
-	arcan_event ev;
+	while(decctx.shmcont.addr->dms)
+		sleep(1);
 
-	while(decctx.shmcont.addr->dms && arcan_event_wait(&decctx.shmcont.inev,&ev)){
-		arcan_tgtevent* tgt = &ev.data.target;
-
-		if (ev.category == EVENT_TARGET)
-		switch(ev.kind){
-		case TARGET_COMMAND_GRAPHMODE:
-/* switch audio /video visualization, RGBA-pack YUV420 hinting,
- * set_deinterlace */
-		break;
-
-		case TARGET_COMMAND_FRAMESKIP:
-/* change buffering etc. behavior */
-		break;
-
-		case TARGET_COMMAND_SETIODEV:
-/* switch stream
- * get_spu_count, get_spu_description,
- * get_title_description, get_chapter_description
- * get_track, set_track, ...
- * */
-		break;
-
-		case TARGET_COMMAND_EXIT:
-			goto cleanup;
-		break;
-
-		case TARGET_COMMAND_SEEKTIME:
-			if (tgt->ioevs[1].iv != 0){
-					seek_relative(tgt->ioevs[1].iv);
-			}
-			else
-				libvlc_media_player_set_position(decctx.player, tgt->ioevs[0].fv);
-		break;
-
-		default:
-			LOG("unhandled target event received (%d:%d)\n", ev.kind, ev.category);
-		}
-
-/*
- * seek : libvlc_media_player_set_position (och get_position)
- * libvlc_media_player_set_pause
- *
- */
-	}
-
-cleanup:
-/* cleanup */
  	libvlc_media_player_stop(decctx.player);
  	libvlc_media_player_release(decctx.player);
 	libvlc_release(decctx.vlc);

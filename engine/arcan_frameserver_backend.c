@@ -791,7 +791,7 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
  * movie    = legacy back when we used ffmpeg backend
  * libretro = sync audio and video on video only */
 	if (setup.use_builtin){
-		if ((strcmp(setup.args.builtin.mode, "movie") == 0) ||
+		if ((strcmp(setup.args.builtin.mode, "decode") == 0) ||
 		(strcmp(setup.args.builtin.mode, "avfeed") == 0)){
 			ctx->kind     = ARCAN_FRAMESERVER_AVFEED;
 			ctx->flags.socksig = false;
