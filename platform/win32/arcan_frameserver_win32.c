@@ -261,7 +261,7 @@ int main(int argc, char* argv[])
 	char* keyfile  = argv[1];
 
 #ifdef ENABLE_FSRV_DECODE
-	if (strcmp(fsrvmode, "movie") == 0 
+	if (strcmp(fsrvmode, "decode") == 0 
 		|| strcmp(fsrvmode, "audio") == 0){
 		toggle_logdev("decode");
 		LOG("decode(%s:%s) : %s\n", fsrvmode, keyfile, resource);

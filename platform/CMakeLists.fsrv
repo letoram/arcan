@@ -11,19 +11,19 @@ if (SPLIT_FRAMESERVER)
 message("---- Building frameserver in SPLIT mode ----")
 
 	if (FSRV_DECODE_SOURCES)
-		add_executable(arcan_frameserver_movie
+		add_executable(arcan_frameserver_decode
 			${FSRV_SOURCES}	
 			${FSRV_PLATFORM_SOURCES}
 			${FSRV_DECODE_SOURCES}
 		)
-		set_property(TARGET arcan_frameserver_movie APPEND PROPERTY
-			COMPILE_DEFINITIONS ENABLE_FSRV_DECODE DEFAULT_FSRV_MODE=\"movie\")
-		target_link_libraries(arcan_frameserver_movie 
+		set_property(TARGET arcan_frameserver_decode APPEND PROPERTY
+			COMPILE_DEFINITIONS ENABLE_FSRV_DECODE DEFAULT_FSRV_MODE=\"decode\")
+		target_link_libraries(arcan_frameserver_decode
 			${STDLIB} 
 			${FSRV_PLATFORM_LIBRARIES}
 			${FSRV_DECODE_LIBRARIES}
 		)
-		LIST(APPEND FSRV_TARGETS arcan_frameserver_movie)
+		LIST(APPEND FSRV_TARGETS arcan_frameserver_decode)
 	endif()
 
 	if (FSRV_ENCODE_SOURCES)
