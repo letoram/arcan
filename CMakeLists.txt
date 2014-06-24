@@ -41,7 +41,7 @@ set( MAIN_LIBRARIES )
 #
 if( CMAKE_SIZEOF_VOID_P EQUAL 4 )
 	set( HAVE_64_BIT 0 )
-else() 
+else()
 	option(ENABLE_32BITHIJACK "Build both 64 and 32bit hijack libraries" OFF)
 	set( HAVE_64_BIT 1 )
 endif()
@@ -88,10 +88,10 @@ message("   -DENABLE_LED=[On|Off] : Build with LED controller support in core")
 message("   -DENABLE_HMD=[On|Off] : Build with Head-Mounted Display support in core")
 message("   -DENABLE_LWA=[Off|On] : Build lightweight additional arcan client (arcan-in-arcan)")
 message("   -DENABLE_LUAJIT=[On|Off] : link with luajit51 (if found)")
-message("   -DMUSL_LIBC=[Off|On] build and link with MUSL Libc (incomplete)") 
+message("   -DMUSL_LIBC=[Off|On] build and link with MUSL Libc (incomplete)")
 message("   -DSQLITE_AMALGAMATE=[Off|On] : Build / Link with the SQLite Amalgamation")
 message("frameserver features:")
-if (NOT WIN32) 
+if (NOT WIN32)
 message("   -DSPLIT_FRAMESERVER=[Off|On] : Build frameserver in split-chain loading mode (each role gets a separate binary")
 message("   -DENABLE_NET=[On|Off] : Build networking frameserver (requires apache portable runtime libraries, APR)")
 message("   -DENABLE_VIDDEC=[On|Off] : Build video decoding frameserver (requires libvlc libraries)")
@@ -107,7 +107,7 @@ set (FRAMESERVER_MODESTRING "")
 
 #
 # Hooks added here to later switch to -nostdlib -nodefaultlibs and
-# get a decent libc for linux 
+# get a decent libc for linux
 #
 set (STDLIB
 	m
@@ -115,29 +115,29 @@ set (STDLIB
 )
 
 #
-# Incomplete, major workarounds need to be added for all external deps. etc. 
+# Incomplete, major workarounds need to be added for all external deps. etc.
 # to build without linking in all the glibc filth
 #
-if (MUSL_LIBC) 
+if (MUSL_LIBC)
 	set(MUSL ${CMAKE_CURRENT_SOURCE_DIR}/external/musl)
 	ExternalProject_Add(
 	libmusl
 	SOURCE_DIR ${MUSL}
 	CONFIGURE_COMMAND ${MUSL}/configure --prefix=${MUSL}/.libs --disable-shared
-	PREFIX ${MUSL} 
+	PREFIX ${MUSL}
 	BUILD_COMMAND make
 	BUILD_IN_SOURCE 1
 )
-	
+
 	set(STDLIB ${MUSL}/.libs/lib/libc.a)
 endif()
 
-message("Using compiler: ${CMAKE_C_COMPILER_ID}") 
+message("Using compiler: ${CMAKE_C_COMPILER_ID}")
 
 if ("${CMAKE_C_COMPILER_ID}" MATCHES "GNU")
 	execute_process(
 		COMMAND ${CMAKE_C_COMPILER} -dumpversion OUTPUT_VARIABLE GCC_VERSION)
-	
+
 	if (NOT (GCC_VERSION VERSION_GREATER 4.7 OR GCC_VERSION VERSION_EQUAL 4.7))
 		message(FATAL_ERROR "Ancient GCC Version detected, Arcan needs to be compiled with Clang-3.3+ or 4.7+")
 	endif()
@@ -206,17 +206,17 @@ endif()
 if (EGL_VIDEO_PLATFORM)
     set(VIDEO_PLATFORM "egl")
 		FIND_PACKAGE(EGL REQUIRED)
-	
+
 		if (ENABLE_GLES2)
 			FIND_PACKAGE(GLES2 REQUIRED)
 		else()
-			FIND_PACKAGE(OpenGL REQUIRED)	
+			FIND_PACKAGE(OpenGL REQUIRED)
 		endif()
 
 	if (NOT ENABLE_X11)
 		set(INPUT_PLATFORM "linux")
 	endif()
-	
+
 	if (ENABLE_X11)
 		FIND_PACKAGE(X11 REQUIRED)
 		LIST(APPEND MAIN_LIBRARIES ${X11_LIBRARIES})
@@ -241,11 +241,11 @@ if (NOT VIDEO_PLATFORM OR VIDEO_PLATFORM STREQUAL "sdl")
 	LIST(APPEND INCLUDE_DIRS ${SDL_INCLUDE_DIR} ${GLEW_INCLUDE_DIRS})
 
 	if (${SDLIMAGE_FOUND})
-		message("--> SDL_Image found, adding") 
+		message("--> SDL_Image found, adding")
 		list(APPEND MAIN_LIBRARIES ${SDLIMAGE_LIBRARY})
 		list(APPEND INCLUDE_DIRS ${SDLIMAGE_INCLUDE_DIR})
 		add_definitions(-DSDLIMAGE)
-	endif(${SDLIMAGE_FOUND}) 
+	endif(${SDLIMAGE_FOUND})
 endif()
 
 if (NOT INPUT_PLATFORM OR INPUT_PLATFORM STREQUAL "sdl")
@@ -265,13 +265,13 @@ message("video output (VIDEO_PLATFORM) set to : ${VIDEO_PLATFORM}")
 message("audio output (AUDIO_PLATFORM) set to : ${AUDIO_PLATFORM}")
 message("device input (INPUT_PLATFORM) set to : ${INPUT_PLATFORM}")
 message("\n---- Stage 1: library dependencies and configuration ----")
-# modified version of the 51 package that checks for the lua51_jit option 
+# modified version of the 51 package that checks for the lua51_jit option
 FIND_PACKAGE ( BZip2 REQUIRED )
 FIND_PACKAGE ( ZLIB REQUIRED )
 
-if (NOT SQLITE_AMALGAMATE) 
+if (NOT SQLITE_AMALGAMATE)
 FIND_PACKAGE ( SQLITE3 REQUIRED )
-endif(NOT SQLITE_AMALGAMATE) 
+endif(NOT SQLITE_AMALGAMATE)
 
 message(STATUS "Lua")
 if (ENABLE_LUAJIT)
@@ -304,7 +304,7 @@ LIST (APPEND
 	${PNG_LIBRARIES}
 )
 
-LIST (APPEND 
+LIST (APPEND
 	INCLUDE_DIRS
 	${LUA_INCLUDE_DIR}
 	${OPENAL_INCLUDE_DIR}
@@ -373,7 +373,7 @@ set (
 )
 
 # We do this because f*** GNU C extensions. Seriously.
-set_property(SOURCE platform/posix/fdpassing.c 
+set_property(SOURCE platform/posix/fdpassing.c
 	APPEND PROPERTY COMPILE_FLAGS -w )
 
 if (ENABLE_SIMD)
@@ -439,13 +439,13 @@ if (ENABLE_LIBRETRO)
 		set_property( SOURCE frameserver/libretro.c
 			APPEND PROPERTY COMPILE_DEFINITIONS
 				FRAMESERVER_LIBRETRO_3D
-		)	
+		)
 	endif()
 endif()
 
 if (ENABLE_NET)
-	message("--> Adding networking support.") 
-	FIND_PACKAGE(APR REQUIRED) 
+	message("--> Adding networking support.")
+	FIND_PACKAGE(APR REQUIRED)
 	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}net-cl net-srv ")
 
 	list(APPEND INCLUDE_DIRS ${APR_INCLUDE_DIR})
@@ -474,7 +474,7 @@ endif()
 if (${ENABLE_VIDDEC})
 	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}decode ")
 	FIND_PACKAGE( VLC REQUIRED )
-	set(FSRV_DECODE_SOURCES 
+	set(FSRV_DECODE_SOURCES
 		frameserver/decode_vlc.c
 		external/fft/kiss_fft.c
 		external/fft/kiss_fftr.c
@@ -482,7 +482,7 @@ if (${ENABLE_VIDDEC})
 	set(FSRV_DECODE_LIBRARIES
 		${LIBVLC_LIBRARY}
 	)
-	
+
 	list(APPEND INCLUDE_DIRS
 		${LIBVLC_INCLUDE_DIR}
 	)
@@ -516,8 +516,8 @@ endif()
 if (${ENABLE_VIDENC})
 	FIND_PACKAGE ( FFMPEG REQUIRED)
 
-	message("--> Adding video encoding (ffmpeg) support.") 
-	set(FSRV_ENCODE_LIBRARIES 
+	message("--> Adding video encoding (ffmpeg) support.")
+	set(FSRV_ENCODE_LIBRARIES
 		${FFMPEG_LIBRARIES}
 		pthread
 		${BZIP2_LIBRARIES}
@@ -532,14 +532,14 @@ if (${ENABLE_VIDENC})
 
 	if (${ENABLE_VIDENCVNC})
 		FIND_PACKAGE(VNC)
-		if (${LIBVNC_FOUND}) 
+		if (${LIBVNC_FOUND})
 			message("   |--> VNC Server libraries found, enabling vnc support in encoder.")
 			list(APPEND INCLUDE_DIRS ${LIBVNC_INCLUDE_DIRS})
 			set_property(SOURCE frameserver/encode.c PROPERTY COMPILE_DEFINITIONS HAVE_VNCSERVER)
 		 	list(APPEND FSRV_ENCODE_LIBRARIES ${LIBVNC_LIBRARIES})
 		else()
 			message("   |--> VNC Server libraries not found, disabling vnc support.")
-		endif()	
+		endif()
 	endif()
 
 	list(APPEND INCLUDE_DIRS
@@ -556,7 +556,7 @@ endif (SQLITE_AMALGAMATE)
 
 if (LUA51_JIT)
 	message("--> Enabling JIT- mode for Lua.")
-	set_property(SOURCE engine/arcan_lua.c PROPERTY 
+	set_property(SOURCE engine/arcan_lua.c PROPERTY
 				COMPILE_DEFINITIONS LUA51_JIT)
 endif (LUA51_JIT)
 
@@ -564,7 +564,7 @@ include_directories(${INCLUDE_DIRS})
 
 #
 # OS and more compiler specific files, packaging etc.
-# Expected to 
+# Expected to
 #
 if (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
 	message("\n---- Stage 2, FreeBSD specific configuration ----")
@@ -595,19 +595,19 @@ endif()
 
 #
 # Collective sigh for stupid standard breaking features (nested functions, seriously..).
-# one GNU extension is forcibly used here, variable size structure member 
-# not at end of struct (for Linux/CMSG) else we'd be c11. 
+# one GNU extension is forcibly used here, variable size structure member
+# not at end of struct (for Linux/CMSG) else we'd be c11.
 # C11 requirement is for _Alignas and _Atomic
 #
 install(TARGETS arcan_frameserver ${FSRV_TARGETS} DESTINATION ${BIN_DST})
 install(TARGETS arcan DESTINATION ${BIN_DST})
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/themes/ 
-	DESTINATION ${THEME_DST} 
-	DIRECTORY_PERMISSIONS ${SHARED_PERMISSONS_DIR} 
-	FILE_PERMISSIONS ${SHARED_PERMISSIONS} 
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/themes/
+	DESTINATION ${THEME_DST}
+	DIRECTORY_PERMISSIONS ${SHARED_PERMISSONS_DIR}
+	FILE_PERMISSIONS ${SHARED_PERMISSIONS}
 	PATTERN ".gitignore" EXCLUDE)
 
-if (TEST_DST) 
+if (TEST_DST)
 	install(DIRECTORY ${CMAKE_SOURCE_DIR}/tests/
 		DESTINATION ${TEST_DST}
 		DIRECTORY_PERMISSIONS ${SHARED_PERMISSIONS_DIR}
@@ -615,10 +615,10 @@ if (TEST_DST)
 		PATTERN ".gitignore" EXCLUDE)
 endif (TEST_DST)
 
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/resources/ 
-				DESTINATION ${RESOURCES_DST} 
-				DIRECTORY_PERMISSIONS ${SHARED_PERMISSONS_DIR} 
-				FILE_PERMISSIONS ${SHARED_PERMISSIONS} 
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/resources/
+				DESTINATION ${RESOURCES_DST}
+				DIRECTORY_PERMISSIONS ${SHARED_PERMISSONS_DIR}
+				FILE_PERMISSIONS ${SHARED_PERMISSIONS}
 				PATTERN ".gitignore" EXCLUDE)
 
 INCLUDE(InstallRequiredSystemLibraries)

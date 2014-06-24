@@ -1,11 +1,11 @@
 -- scale_image
--- @short: Set the current scale-factor for the specified image. 
--- @inargs: vid, sx, sy, *dt* 
--- @longdescr: Alter the scale transform for *vid*. These values 
+-- @short: Set the current scale-factor for the specified image.
+-- @inargs: vid, sx, sy, *dt*
+-- @longdescr: Alter the scale transform for *vid*. These values
 -- are relative to the initial dimensions for the object in question,
 -- while function such as resize_image internally converts the absolute
 -- values to relative scale.
--- @group: image 
+-- @group: image
 -- @cfunction: arcan_lua_scaleimage
 -- @related: resize_image
 function main()

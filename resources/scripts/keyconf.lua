@@ -2,9 +2,9 @@
 ----------------------------------------------------------
 -- includable by any theme
 -- will go through a table of desired mappings,
--- and associate these with input events. 
+-- and associate these with input events.
 -- These can then be serialized to a file that the various tools
--- can convert to different targets (generating 
+-- can convert to different targets (generating
 -- configurations) for external launch,
 -- or used for conversion in internal launch.
 -- modify the possible entries as you see fit, these are only helpers.
@@ -12,7 +12,7 @@
 -- This should really have a more "gaming related" version, and good DA/AD mapping / calibration tools.
 ----------------------------------------------------------
 
--- first char is directive, 
+-- first char is directive,
 -- whitespace : optional
 -- r : required
 -- a : analog
@@ -30,7 +30,7 @@ local default_menu_group = {
 
 -- is iterated until the player signals escape,
 -- also, the pattern PLAYERN is also inserted, where N is the
--- current number of the player 
+-- current number of the player
 local default_player_group = {
 	"rUP",
 	"rDOWN",
@@ -61,7 +61,7 @@ local function keyconf_destroy(self)
 		blend_image(self.border, 0.0, 20);
 	end
 	self.border = BADID;
-	
+
 	if (valid_vid(self.anchor)) then
 		expire_image(self.anchor, 20);
 	end
@@ -71,7 +71,7 @@ local function keyconf_destroy(self)
 		delete_image(self.textvid);
 	end
 	self.textvid = BADID;
-	
+
 	self.active = true;
 	self:flush();
 end
@@ -85,12 +85,12 @@ local function keyconf_renderline(self, string, tab)
 -- push to front, render text, resize window, align to current resolution
 	self.textvid = render_text( settings.colourtable.fontstr .. " " .. string, 4, tab);
 	image_tracetag(self.textvid, "keyconfig:text");
-	
+
 	self.line = string;
 	prop = image_surface_properties(self.textvid);
 
 	local vofs = 0;
-	
+
 	link_image(self.textvid, self.window);
 	image_mask_clear(self.textvid, MASK_OPACITY);
 	image_clip_on(self.textvid);
@@ -116,12 +116,12 @@ local function keyconf_new(self)
 
 	self.anchor = fill_surface(1, 1, 0, 0, 0);
 	image_tracetag(self.anchor, "keyconfig:anchor");
-	
+
 	move_image(self.anchor, -1, -1);
-		
+
 	self.border = fill_surface(VRESW * 0.33 + 6, VRESH * 0.33 + 6, settings.colourtable.dialog_border.r, settings.colourtable.dialog_border.g, settings.colourtable.dialog_border.b );
 	image_tracetag(self.border, "keyconfig:border");
-	
+
 	self.window = fill_surface(VRESW * 0.33, VRESH * 0.33, settings.colourtable.dialog_window.r, settings.colourtable.dialog_window.g, settings.colourtable.dialog_window.b );
 	image_tracetag(self.border, "keyconfig:window");
 
@@ -132,7 +132,7 @@ local function keyconf_new(self)
 	blend_image(self.window, settings.colourtable.dialog_window.a);
 	order_image(self.anchor, 0);
 	move_image(self.window, 3, 3);
-	
+
 	keyconf_renderline(self, [[Welcome to Arcan keyconfig!\r\nPlease press a button for\r\n MENU_ESCAPE (required)]], 18);
 	self.label = [[Please press a button for MENU_ESCAPE (required)]];
 
@@ -154,7 +154,7 @@ end
 local function keyconf_playerline(self)
 	line = [[Configure player input (press SELECT to continue):\n\r#Players\t#Buttons\t#Axes\n\r]]
 	local w, h = text_dimensions(settings.colourtable.fontstr .. "#Players");
-	
+
 	if (self.active_group == 0) then
 		line = line .. [[\#ffff00]] .. tostring(self.playercount) .. [[\t\#ffffff]] .. tostring(self.buttoncount) .. [[\t\#ffffff]] .. tostring(self.axescount);
 	elseif (self.active_group == 1) then
@@ -172,7 +172,7 @@ end
 local function keyconf_next_key(self)
 	self.ofs = self.ofs + 1;
 	self.time_lastkey = CLOCK;
-	
+
 	if (self.ofs <= # self.configlist) then
 		local lbl;
 
@@ -198,7 +198,7 @@ local function keyconf_next_key(self)
 			self.analog_samples = {};
 		else
 			local keylbl = (self.ident[self.key] and self.ident[self.key].label) and self.ident[self.key].label or self.key;
-			lbl = lbl .. "Please press a button for:\\n\\r " .. keylbl; 
+			lbl = lbl .. "Please press a button for:\\n\\r " .. keylbl;
 		end
 
 		if (self.ident and self.ident[self.key] and self.ident[self.key].icon) then
@@ -232,7 +232,7 @@ local function keyconf_playersel_gen(self)
 	for ind, val in ipairs(self.player_group) do
 		table.insert(tmppltbl, val);
 	end
-	
+
 -- switch input method, note that we're done with the "playerselect" dialog
 	self.input = self.defaultinput;
 	self.playerconf = true;
@@ -240,7 +240,7 @@ local function keyconf_playersel_gen(self)
 -- ofs previously pointed to past end of configlist
 	self.ofs = self.ofs - 1;
 	self.plvid_lut = {};
-	
+
 	for i=1, self.buttoncount do
 		local key = "rBUTTON" .. tostring(i);
 		table.insert(tmppltbl, key);
@@ -264,9 +264,9 @@ end
 
 local function keyconf_inp_playersel(self, inputtable)
 	local lbl = self:match(inputtable);
-	
+
 	if (inputtable.active and lbl) then
-		for ind, val in pairs(lbl) do 
+		for ind, val in pairs(lbl) do
 			if (val == "MENU_UP" or val == "MENU_DOWN") then
 				local dir = 1;
 				if (val == "MENU_DOWN") then dir = -1; end
@@ -277,7 +277,7 @@ local function keyconf_inp_playersel(self, inputtable)
 				else
 					self.axescount = (self.axescount + dir) > 0 and (self.axescount + dir) or 0;
 				end
-			
+
 			elseif (val == "MENU_LEFT") then
 				self.active_group = (self.active_group - 1) % 3;
 			elseif (val == "MENU_RIGHT") then
@@ -286,7 +286,7 @@ local function keyconf_inp_playersel(self, inputtable)
 				return keyconf_playersel_gen(self);
 			end
 
--- redraw UI to reflect possible changes 
+-- redraw UI to reflect possible changes
 			keyconf_playerline(self);
 			return false;
 		end
@@ -297,11 +297,11 @@ end
 
 local function keyconf_buildtable(self, label, state)
 -- matching label? else early out.
-	matchtbl = self:idtotbl(label); 
+	matchtbl = self:idtotbl(label);
 	if (matchtbl == nil) then return nil; end
-	
+
 -- if we don't get a table from an input event, we build a small empty table,
--- with the expr-eval of state as basis 
+-- with the expr-eval of state as basis
 	worktbl = {};
 	worktbl.label = label;
 
@@ -311,10 +311,10 @@ local function keyconf_buildtable(self, label, state)
 	else
 		worktbl = state;
 	end
-	
+
 -- safety check, analog must be mapped to analog (translated is a subtype of digital so that can be reused)
 	if (worktbl.kind == "analog" and matchtbl.kind ~= "analog") then return nil; end
-	
+
 -- impose state / data values from the worktable unto the matchtbl
 	if (matchtbl.kind == "digital") then
 		matchtbl.active = worktbl.active;
@@ -340,7 +340,7 @@ local function keyconf_match(self, input, label)
 		table.insert(kv, input.label);
 		return kv;
 	end
-	
+
 	if (type(input) == "table") then
 		kv = self.table[ self:id(input) ];
 	else
@@ -358,7 +358,7 @@ local function keyconf_match(self, input, label)
 		else
 			return kv == label;
 		end
-		
+
 		return false;
 	end
 
@@ -369,13 +369,13 @@ local function splits(instr, delim)
 	local res = {};
 	local strt = 1;
 	local delim_pos, delim_stp = string.find(instr, delim, strt);
-	
+
 	while delim_pos do
 		table.insert(res, string.sub(instr, strt, delim_pos-1));
 		strt = delim_stp + 1;
 		delim_pos, delim_stp = string.find(instr, delim, strt);
 	end
-	
+
 	table.insert(res, string.sub(instr, strt));
 	return res;
 end
@@ -391,7 +391,7 @@ local function keyconf_idtotbl(self, idstr)
 		restbl.subid = tonumber(restbl[3]);
 		restbl.source = restbl[4];
 		restbl.active = false;
-		
+
 	elseif (restbl[1] == "translated") then
 		restbl.kind = "digital";
 		restbl.translated = true;
@@ -399,7 +399,7 @@ local function keyconf_idtotbl(self, idstr)
 		restbl.keysym = tonumber(restbl[3]);
 		restbl.modifiers = restbl[4] == nil and 0 or tonumber(restbl[4]);
 		restbl.active = false;
-		
+
 	elseif (restbl[1] == "analog") then
 		restbl.kind = "analog";
 		restbl.devid = tonumber(restbl[2]);
@@ -408,7 +408,7 @@ local function keyconf_idtotbl(self, idstr)
 	else
 		restbl = nil;
 	end
-	
+
 	return restbl;
 end
 
@@ -434,11 +434,11 @@ local function insert_unique(tbl, key)
 			return;
 		end
 	end
-	
+
 	table.insert(tbl, key);
 end
 
--- associate 
+-- associate
 local function keyconf_set(self, inputtable)
 
 -- forward lookup: 1..n
@@ -457,22 +457,22 @@ end
 local function keyconf_analog(self, inputtable)
 -- find which axis that is active, sample 'n' numbers
 	local idstr = self:id(inputtable);
-	
+
 	if (self.analog_samples[idstr] == nil) then
 		self.analog_samples[idstr] = {};
 		table.insert(self.analog_samples[idstr], inputtable);
 	else
--- last inserted sample value should deviate from the previous one by value to prevent noise devices from dominating 
+-- last inserted sample value should deviate from the previous one by value to prevent noise devices from dominating
 		if (self.analog_samples[idstr][#self.analog_samples[idstr]].samples[1] ~= inputtable.samples[1]) then
 			table.insert(self.analog_samples[idstr], inputtable);
 		end
 	end
-	
+
 	local maxkey = "";
 	local smpls  = 0;
 
 	for key, val in pairs(self.analog_samples) do
-		if smpls < #val then 
+		if smpls < #val then
 			maxkey = key;
 			smpls  = #val;
 		end
@@ -482,7 +482,7 @@ local function keyconf_analog(self, inputtable)
 	self.label = "(".. tostring(self.ofs) .. " / " ..tostring(# self.configlist) ..")";
 	self.label = self.label .. [[ Please provide input along \ione \!iaxis on an analog device for:\n\r ]] .. keylbl .. [[\t ]] .. tostring( smpls ) .. " samples grabbed (" ..
 	tostring(self.analog_samplelimit) .. "+ needed)";
-	
+
 	self.label = self.label .. [[\n\r dominant device(:axis) is (]] .. maxkey .. ")";
 	if ( smpls >= self.analog_samplelimit) then
 		self:set(inputtable);
@@ -499,11 +499,11 @@ local function keyconf_input(self, inputtable)
 	end
 
 -- ignore input if cooldown ticks havn't passed,
--- protects against partially bad contacts (getting repeated events), jumpy sticks etc. 
+-- protects against partially bad contacts (getting repeated events), jumpy sticks etc.
 	if (CLOCK - self.time_lastkey < self.cooldown) then
 		return false;
 	end
-	
+
 -- early out, MENU_ESCAPE is defined to skip labels where this is allowed,
 -- meaning a keykind of ' ' or 'a'.
 	if (self:match(inputtable, "MENU_ESCAPE") and inputtable.active) then
@@ -518,7 +518,7 @@ local function keyconf_input(self, inputtable)
 -- analog inputs or just look at the 'press' part.
 	if (self.key_kind == 'a' or self.key_kind == 'A') then
 		if (inputtable.kind == "analog") then self:analoginput(inputtable); end
-		
+
 	elseif (inputtable.kind == "digital" and inputtable.active) then
 		if (self:match(key) ~= nil) then
 			print("Keyconf.lua, Notice: Button (" ..self:id(inputtable) .. ") already in use.\n");
@@ -536,22 +536,22 @@ local function keyconf_tablemod(self, label, iotable)
 		local res = self.table(label);
 
 -- if we have a label => key mapping, extract device/key/keysym IDs and push into
--- iotable, then return it. This allows us to generate tables to send to target_input 
--- using a label as lookup. 
+-- iotable, then return it. This allows us to generate tables to send to target_input
+-- using a label as lookup.
 		if ( type(res) == "String" ) then
 			if (string.sub(key, 1, 7) == "analog:") then
 				iotable.kind = "analog";
-				
+
 			elseif (string.sub(key, 1, 8) == "digital:") then
 				iotable.kind = "digital";
-				
+
 			elseif (string.sub(key, 1, 11) == "translated:") then
 				iotable.kind = "translated";
-				
+
 				return iotable;
 			end
 		end
-		
+
 		return nil;
 end
 
@@ -580,7 +580,7 @@ local function keyconf_flush(self)
 	end
 
 	write_rawresource( "keyconf.player_count = " .. self.playercount .. ";\n" );
-	
+
 	for key, value in pairs(self.table) do
 		if (type(value) == "table") then
 			write_rawresource( "keyconf[\"" .. key .. "\"] = {\"");
@@ -605,52 +605,52 @@ end
 
 local function keyconf_countplayers(self)
 	local count = 0;
-	
+
 	for i=1,9 do
 		if (self.table[ "PLAYER" .. i .. "_UP"]) then
 			count = count + 1;
 		end
 	end
-	
+
 	return count;
 end
 
 local function keyconf_countaxes(self, playerind)
 	local count = 0;
 	local ind = 1;
-	
+
 	while self.table["PLAYER" .. playerind .. "_AXIS" .. ind] do
 		count = count + 1;
 		ind = ind + 1;
 	end
-	
+
 	return count;
 end
 
 local function keyconf_countbuttons(self, playerind)
 	local count = 0;
 	local ind = 1;
-	
+
 	while self.table["PLAYER" .. playerind .. "_BUTTON" .. ind] do
 		count = count + 1;
 		ind = ind + 1;
 	end
-	
+
 	return count;
 end
 
 local function keyconf_sliceplayers(intbl)
 	local restbl = {};
-	
+
 	for key, val in pairs(intbl) do
 
 -- need to scan the subtable
 		if (type(val) == "table") then
 			local lbltbl = {};
-			
+
 			for ind, lbl in ipairs(val) do
-				if (string.match(lbl, "^PLAYER%d.") == nil) then 
-					table.insert(lbltbl, lbl); 
+				if (string.match(lbl, "^PLAYER%d.") == nil) then
+					table.insert(lbltbl, lbl);
 				end
 			end
 
@@ -659,7 +659,7 @@ local function keyconf_sliceplayers(intbl)
 -- just keep the keys that doesn't match the player pattern
 		else
 			if (string.match(key, "^PLAYER%d.") == nil) then
-				restbl[key] = val; 
+				restbl[key] = val;
 			end
 		end
 	end
@@ -675,12 +675,12 @@ local function keyconf_playerreconf(self, nbuttons, naxes, identtbl)
 	self.active      = false;
 	self.playerconf  = false;
 	self.playergroup = {};
-	self.ident       = identtbl; 
+	self.ident       = identtbl;
 	self.playercount = (self.player_count == nil) and 1 or self.player_count;
 	self.buttoncount = (nbuttons == nil) and self:n_buttons(1) or nbuttons;
 	self.axescount   = (naxes == nil) and self:n_axes(1) or naxes;
 
--- then rebuild UI components as a completed keyconf would have it destroyed 
+-- then rebuild UI components as a completed keyconf would have it destroyed
 	self:new();
 
 -- then restore the saved states
@@ -693,7 +693,7 @@ local function keyconf_playerreconf(self, nbuttons, naxes, identtbl)
 end
 
 -- set the current working table.
--- for each stored entry, set prefix if defined 
+-- for each stored entry, set prefix if defined
 function keyconf_create(menugroup, playergroup, keyname)
 	local restbl = {
 		new = keyconf_new,
@@ -717,7 +717,7 @@ function keyconf_create(menugroup, playergroup, keyname)
 		ignore_modifiers = false,
 		keyfile = keyname,
 		input_playersel = keyconf_inp_playersel,
-		cooldown = 200, -- default is 25ms/tick, 200 * 25 = minimum 500ms between each key 
+		cooldown = 200, -- default is 25ms/tick, 200 * 25 = minimum 500ms between each key
 		analog_samplelimit = 200,
 		time_lastkey = CLOCK,
 		active_group = 0,
@@ -747,7 +747,7 @@ function keyconf_create(menugroup, playergroup, keyname)
 			zap_resource(restbl.keyfile);
 		end
 	end
-	
+
 	restbl.menu_group = menugroup and menugroup or default_menu_group;
 
 	if (not playergroup) then
@@ -759,7 +759,7 @@ function keyconf_create(menugroup, playergroup, keyname)
 	else
 		restbl.player_group = playergroup;
 	end
-	
+
 	if ( resource(restbl.keyfile) ) then
 		symfun = system_load(restbl.keyfile);
 		restbl.table = symfun();

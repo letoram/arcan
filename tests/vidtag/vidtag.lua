@@ -21,12 +21,12 @@ function vidtag_frame_pulse()
 		delete_image(textstr);
 	end
 
--- vfc + 1 as the textstr won't be visible until next frame 
+-- vfc + 1 as the textstr won't be visible until next frame
 	textstr = render_text(string.format(
 		[[\ffonts/default.ttf,18\#ffffff frame: %d\n\rtimestamp: %d]], vfc+1,
 			benchmark_timestamp() - timestamp)
-	); 
-	
+	);
+
 	show_image(textstr);
 	if (valid_vid(rendertgt)) then
 		rendertarget_attach(rendertgt, textstr, RENDERTARGET_DETACH);
@@ -47,8 +47,8 @@ function start_recording()
 		ind = ind + 1;
 	until (not resource( outfn ));
 
-	rendertgt = fill_surface(VRESW, VRESH, 0, 0, 0, VRESW, VRESH); 
-	define_recordtarget(rendertgt, outfn, 
+	rendertgt = fill_surface(VRESW, VRESH, 0, 0, 0, VRESW, VRESH);
+	define_recordtarget(rendertgt, outfn,
 		"container=mkv:vcodec=H264:fps=60:vpreset=8:noaudio",
 		{movie}, {}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE, -1);
 

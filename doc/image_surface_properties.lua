@@ -4,9 +4,9 @@
 -- @outargs: proptbl
 -- @longdescr: There are a number of attributes tracked for each object. Those that directly influence rendering and are modifiable through transformations (move, rotate, scale, ...) may vary with time. This function can be used to retrieve either the current state of such attributes, or resolve what the state would be at a future point in time (by providing the *dt* argument).
 -- @note: The fields used in proptbl are: (x, y, z, width, height, angle, roll, pitch, yaw,
--- opacity and order). 
+-- opacity and order).
 -- @note: The values retrieved are expressed in local (object) coordinate space.
--- @group: image 
+-- @group: image
 -- @cfunction: arcan_lua_getimageprop
 -- @related: image_surface_initial_properties, image_surface_resolve_properties,
 -- image_surface_storage_properties

@@ -47,15 +47,15 @@ void arcan_framequeue_step(frame_queue* src)
 }
 
 frame_cell* arcan_framequeue_front(frame_queue* src)
-{	
-	if (src->ci == src->ni) 
+{
+	if (src->ci == src->ni)
 		return NULL;
 
 	return &src->da_cells[src->ci];
 }
 
 void arcan_framequeue_dequeue(frame_queue* src)
-{ 
+{
 	if (src->ci == src->ni)
 		return;
 
@@ -82,7 +82,7 @@ arcan_errc arcan_framequeue_free(frame_queue* queue)
 		pthread_mutex_destroy(&queue->framesync);
 		free(queue->label);
 
-		memset(queue->da_cells[0].buf, '\0', queue->cell_size * queue->c_cells); 
+		memset(queue->da_cells[0].buf, '\0', queue->cell_size * queue->c_cells);
 		arcan_mem_free(queue->da_cells[0].buf);
 		arcan_mem_free(queue->da_cells);
 
@@ -134,15 +134,15 @@ static void* framequeue_loop(void* data)
 	return 0;
 }
 
-arcan_errc arcan_framequeue_alloc(frame_queue* queue, int fd, 
+arcan_errc arcan_framequeue_alloc(frame_queue* queue, int fd,
 	unsigned cell_count, unsigned cell_size, arcan_rfunc rfunc, char* label)
 {
 	assert(queue);
 
 	if (queue->alive)
 		arcan_framequeue_free(queue);
-		
-	queue->c_cells = cell_count; 
+
+	queue->c_cells = cell_count;
 	queue->cell_size = cell_size;
 
 	queue->da_cells = arcan_alloc_mem(sizeof(frame_cell) * queue->c_cells,
@@ -173,10 +173,10 @@ arcan_errc arcan_framequeue_alloc(frame_queue* queue, int fd,
 	if (-1 == arcan_sem_init(&queue->framecount, queue->c_cells - 1)){
 		arcan_warning("couldn't create framequeue synchronization handle");
 	}
-	
+
 	queue->alive = true;
 
-	pthread_create(&queue->iothread, NULL, framequeue_loop, (void*) queue); 
-	
+	pthread_create(&queue->iothread, NULL, framequeue_loop, (void*) queue);
+
 	return ARCAN_OK;
 }

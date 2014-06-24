@@ -1,11 +1,11 @@
--- 
+--
 -- Text input & OSD Keyboard
 --
 -- Labels:
 --  MENU_SELECT (input current cursor item),
 --  MENU_UP, MENU_DOWN, MENU_LEFT, MENU_RIGHT (navigate),
 --  MENU_ESCAPE (quick- cancel)
---  CONTEXT (hide / show keymap) 
+--  CONTEXT (hide / show keymap)
 --
 -- Constructor:
 --  create_keymap(altmap, optionstbl) => table.
@@ -49,13 +49,13 @@ end
 local function gridxy(chrh, col, row)
 	return ( col * chrh ), ( row * chrh );
 end
-	
+
 local function osdkbd_input(self, label, active)
 	if (active == false) then return; end
-	
+
 -- semantics change for input depending on if the keyboard is hidden or not
 	if (self.keyboard_hidden == true and label ~= "CONTEXT") then return; end
-	
+
 	if     (label == "MENU_UP")     then self:steprow(-1);
 	elseif (label == "MENU_DOWN")   then self:steprow(1);
 	elseif (label == "MENU_LEFT")   then self:step(-1);
@@ -82,7 +82,7 @@ local function osdkbd_input(self, label, active)
 			end
 		end
 	end -- of select
-	
+
 	return nil;
 end
 
@@ -91,14 +91,14 @@ local function osdkbd_inputkey(self, iotbl, active)
 -- special treatment for shiftstates
 
 	if (symname == "FIRST" or symname == nil) then symname = self.symtable[ iotbl.keysym ]; end
-	
+
 	if (symname == "LSHIFT" or symname == "RSHIFT") then
 		self.shiftstate = active;
 	end
 
 -- special navigation characters
 	if (active == false) then return; end
-	
+
 	if (symname == "KP_ENTER" or symname == "RETURN") then
 		return self.str;
 
@@ -110,7 +110,7 @@ local function osdkbd_inputkey(self, iotbl, active)
 -- missing (tab for suggestions, up/down without OSD for history)
 -- scan through the map to see that the character is allowed (insensitive search)
 	key = symname;
-	
+
 	if (key) then
 		if (self.shiftstate) then
 			key = string.upper(key);
@@ -125,7 +125,7 @@ local function osdkbd_inputkey(self, iotbl, active)
 				break
 			end
 		end
-		
+
 		if (found ~= nil) then
 			self.str = self.str .. (self.case_insensitive and mk or key);
 			self:update();
@@ -146,16 +146,16 @@ local function utf8forward(src, ofs)
 end
 
 local function osdkbd_update(self)
-	if (self.textvid ~= BADID) then 
-		delete_image(self.textvid); 
+	if (self.textvid ~= BADID) then
+		delete_image(self.textvid);
 	end
 
 	if (#self.str < #self.prefix) then
 		self.str = self.prefix;
 	end
-	
+
 	order = image_surface_properties(self.inputwin).order;
-	
+
 -- Make sure possible "overflow" fits, or scroll the window without yielding a larger input texture
 	local workstr = self.str;
 	local width, height = text_dimensions( [[\ffonts/default.ttf,]] .. self.inph .. [[\#ffffff]] .. string.gsub(workstr, "\\", "\\\\"));
@@ -179,7 +179,7 @@ local function osdkbd_update(self)
 	image_clip_on(self.textvid);
 
 	local width = image_surface_properties(self.textvid).width;
-	
+
 	show_image(self.textvid);
 end
 
@@ -216,13 +216,13 @@ local function osdkbd_steprow(self, dir, noredraw)
 	elseif (self.currow > #self.rows) then
 		self.currow = 1;
 	end
-	
+
 	if (self.curcol > #self.rows[ self.currow ]) then
 		self.curcol = #self.rows[self.currow];
 	end
 
 	if (noredraw) then return; end
-	
+
 	osdkbd_updatecursor(self, self.curcol - 1, self.currow);
 end
 
@@ -251,12 +251,12 @@ local function osdkbd_buildgrid(self, windw, windh)
 			end
 		end
 	end
-	
+
 	self.vidrows = {};
 
 	for i=1, #self.rows do
 		vidcol = {};
-		
+
 		for j=1, #self.rows[i] do
 			if type(self.rows[i][j]) == "string" then
 				vidcol[j] = render_text( [[\ffonts/default.ttf,]] .. self.chrh .. [[\#ffffff]] .. string.gsub(self.rows[i][j], "\\", "\\\\"));
@@ -283,11 +283,11 @@ end
 
 local function osdkbd_buildform(self, windw, windh)
 -- calculate how many buttons per column and how many rows, output text in first row
-	local ctb = settings.colourtable; -- where's the "using" clause when needed .. 
-	
+	local ctb = settings.colourtable; -- where's the "using" clause when needed ..
+
 	self.anchor = fill_surface(1, 1, 0, 0, 0);
 	image_tracetag(self.anchor, "osdkbd anchor");
-	
+
 -- will resize these later based on the button grid
 	self.window = fill_surface(1, 1, ctb.dialog_window.r, ctb.dialog_window.g, ctb.dialog_window.b);
 	image_tracetag(self.window, "osdkbd window");
@@ -300,16 +300,16 @@ local function osdkbd_buildform(self, windw, windh)
 	link_image(self.window, self.anchor);
 	show_image(self.window);
 	show_image(self.border);
-	
+
 	local rowh = windh / (#self.rows + 2);
 	local roww = windw / (self.colmax + 2);
 	self.windw = windw;
 	self.windh = windh;
 	self.chrh = math.floor( rowh > roww and roww or rowh );
 	self.inph  = math.floor(self.chrh * 0.7);
-	
+
 	move_image(self.window, 3, 3);
-	
+
 	self.chrh = self.chrh - (self.chrh % 2);
 
 	osdkbd_buildgrid(self, windw, windh);
@@ -319,12 +319,12 @@ local function osdkbd_buildform(self, windw, windh)
 	self.windoww = self.borderw - 8;
 	self.windowh = self.borderh - 8;
 
-	resize_image(self.border, self.borderw, self.borderh); 
+	resize_image(self.border, self.borderw, self.borderh);
 	resize_image(self.window, self.windoww, self.windowh);
 
 	self.inputwin  = fill_surface(self.windoww, self.chrh, 0.5 * ctb.dialog_window.r, 0.5 * ctb.dialog_window.g, 0.5 * ctb.dialog_window.b);
 	self.cursorvid = fill_surface(self.chrh, self.chrh, ctb.dialog_cursor.r, ctb.dialog_cursor.g, ctb.dialog_cursor.b);
-	
+
 	link_image(self.inputwin, self.window);
 	link_image(self.cursorvid, self.window);
 
@@ -345,7 +345,7 @@ local function osdkbd_show(self)
 	blend_image(self.anchor, 1.0, 5);
 	order_image(self.anchor, 0);
 	order_image(self.border, max_current_image_order() + 1);
-	
+
 	local base = max_current_image_order();
 	order_image(self.window, base);
 	order_image(self.cursorvid, base);
@@ -354,7 +354,7 @@ local function osdkbd_show(self)
 		order_image(self.textvid, base);
 	end
 
-	local itemorder = base + 1; 
+	local itemorder = base + 1;
 	for i=1, #self.vidrows do
 		for j=1, #self.vidrows[i] do
 			local vid = self.vidrows[i][j];
@@ -363,7 +363,7 @@ local function osdkbd_show(self)
 			end
 		end
 	end
-	
+
 end
 
 local function osdkbd_destroy(self)
@@ -406,7 +406,7 @@ function osdkbd_create(map, opts)
 		str = "",
 		textvid = BADID,
 		curcol = 1,
-		currow = 1 
+		currow = 1
 	};
 
 	if (not opts) then
@@ -419,25 +419,25 @@ function osdkbd_create(map, opts)
 		restbl.keymap = osdkbd_restricted_table();
 	end
 
--- make sure global settings are in place 
+-- make sure global settings are in place
 	if (settings == nil) then
 		settings = {};
 	end
-	
+
 	if (settings.colourtable == nil) then
 		settings.colourtable = system_load("scripts/colourtable.lua")();
 	end
 
 	local rows  = {};
 	local crow  = {};
-	
+
 	local maxcol = 0;
 	if (opts.case_insensitive == nil or opts.case_insensitive == true) then
 		restbl.case_insensitive = true;
 	else
 		restbl.case_insensitive = false;
 	end
-	
+
 -- need a local copy of the keysym <=> character mapping table
 	restbl.symtable    = system_load("scripts/symtable.lua")();
 
@@ -450,7 +450,7 @@ function osdkbd_create(map, opts)
 		force_image_blend(res);
 		return res;
 	end
-	
+
 	oktbl.trigger = function(self, parent, active, cleanup)
 		return parent.str;
 	end
@@ -463,7 +463,7 @@ function osdkbd_create(map, opts)
 		force_image_blend(res);
 		return res;
 	end
-	
+
 	erasetbl.trigger = function(self, parent, active, cleanup)
 		if (cleanup) then delete_image(self.image); end
 
@@ -503,19 +503,19 @@ function osdkbd_create(map, opts)
 
 		imgs:push(shifttbl);
 	end
-	
+
 -- split the keymap into rows, note how wide the widest one is,
--- and split the "special" keys along the right side 
+-- and split the "special" keys along the right side
 	for i=1,#restbl.keymap do
 		if (restbl.keymap[i] == "\n") then
 			local num = imgs:pop();
 			if (num) then
 				table.insert(crow, num);
 			end
-			
+
 			if (#crow > maxcol) then maxcol = #crow; end
 
-			table.insert(rows, crow); 
+			table.insert(rows, crow);
 			crow = {};
 		else
 			table.insert(crow, restbl.keymap[i]);
@@ -531,11 +531,11 @@ function osdkbd_create(map, opts)
 		return nil;
 	end
 
--- prepare the rest of the table 
+-- prepare the rest of the table
 	restbl.shift_state       = false;
 	restbl.keyboard_hidden   = false;
 	restbl.button_background = keymap_buttonbg;
-	
+
 	if (opts.prefix) then
 		restbl.prefix = opts.prefix;
 		restbl.str = opts.prefix;
@@ -546,10 +546,10 @@ function osdkbd_create(map, opts)
 	if (opts.startstr) then
 		restbl.str = opts.startstr;
 	end
-	
+
 	restbl.input_key     = osdkbd_inputkey;
 	restbl.update_cursor = osdkbd_updatecursor;
-	
+
 	restbl.input   = osdkbd_input;
 	restbl.rows    = rows;
 	restbl.colmax  = maxcol;
@@ -564,11 +564,11 @@ function osdkbd_create(map, opts)
 
 	restbl.col = 1;
 
--- lastly, populate the grid with synthesized images 
+-- lastly, populate the grid with synthesized images
 	osdkbd_buildform(restbl, VRESW, VRESH);
 	if (restbl.keyboard_hidden) then
 		restbl:hidekbd();
 	end
-	
+
 	return restbl;
 end

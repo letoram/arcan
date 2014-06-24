@@ -1,13 +1,13 @@
 -- show_image
--- @short: Change image opacity to 1.0 
+-- @short: Change image opacity to 1.0
 -- @inargs: vid, *time*
 -- @longdescr: This is a specific case of the more general blend_image function
 -- where the opacity argument has been hard-coded to 1.0 (opaque, visible,
 -- default blendmode is disabled). This function accepts either single VIDs
 -- or a group of VIDs packed in a n-indexed table.
--- @group: image 
+-- @group: image
 -- @cfunction: arcan_lua_showimage
--- @alias: blend_image, hide_image 
+-- @alias: blend_image, hide_image
 function main()
 	a = fill_surface(128, 128, 255, 0, 0);
 #ifdef MAIN

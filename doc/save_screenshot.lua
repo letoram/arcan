@@ -4,10 +4,10 @@
 -- reads back and stores into dstres as a 32bit- RGB PNG.
 -- If flip is set to any integer other than 0, the final image will be flipped
 -- around the Y axis.
--- If a srcid is specified and that id is associated with a 
+-- If a srcid is specified and that id is associated with a
 -- textured backing store, that will be read-back instead of the front buffer.
 -- @inargs: dstres, *flip*, *srcid*
--- @group: resource 
+-- @group: resource
 -- @cfunction: arcan_lua_screenshot
 function main()
 #ifdef MAIN

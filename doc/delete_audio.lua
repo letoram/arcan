@@ -1,10 +1,10 @@
 -- delete_audio
 -- @short: Remove the audio source
 -- @inargs: aid
--- @outargs: 
--- @note: This is undefined for frameserver audio sources as 
+-- @outargs:
+-- @note: This is undefined for frameserver audio sources as
 -- frameserver lifecycle management is tied to the video id
--- @group: audio 
+-- @group: audio
 -- @cfunction: arcan_lua_dropaudio
 -- @related: play_audio, pause_audio, audio_gain
 function main()

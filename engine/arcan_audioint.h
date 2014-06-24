@@ -21,9 +21,9 @@
 #ifndef _HAVE_ARCAN_AUDIOINT
 #define _HAVE_ARCAN_AUDIOINT
 
-#define ARCAN_ASTREAMBUF_LIMIT 8 
+#define ARCAN_ASTREAMBUF_LIMIT 8
 #define ARCAN_ASAMPLE_LIMIT 1024 * 64
-#define ARCAN_ASTREAMBUF_LLIMIT 4096 
+#define ARCAN_ASTREAMBUF_LLIMIT 4096
 struct arcan_aobj_cell;
 
 struct arcan_achain {
@@ -46,7 +46,7 @@ typedef struct arcan_aobj {
 
 /* AOBJ proxy only */
 	arcan_again_cb gproxy;
-	
+
 /* AOBJ_STREAM only */
 	bool streaming;
 
@@ -69,10 +69,10 @@ typedef struct arcan_aobj {
 } arcan_aobj;
 
 /* just a wrapper around alBufferData that takes monitors into account */
-void arcan_audio_buffer(arcan_aobj*, unsigned, void*, 
+void arcan_audio_buffer(arcan_aobj*, unsigned, void*,
 	size_t, unsigned, unsigned, void*);
 
-#ifndef ARCAN_AUDIO_SLIMIT 
+#ifndef ARCAN_AUDIO_SLIMIT
 #define ARCAN_AUDIO_SLIMIT 16
 #endif
 

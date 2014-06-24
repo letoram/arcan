@@ -1,6 +1,6 @@
 -- rendertarget_attach
--- @short: Attach a qualified object to a preexisting rendertarget. 
--- @inargs: rtgt, srcobj, detachfl 
+-- @short: Attach a qualified object to a preexisting rendertarget.
+-- @inargs: rtgt, srcobj, detachfl
 -- @longdescr: Every object is attached to at least one rendertarget,
 -- the standard output for the current context. Some operations however,
 -- either for recording or rendering to texture, define new rendertargets
@@ -9,7 +9,7 @@
 -- @note: Valid values for detachfl are RENDERTARGET_DETACH, RENDERTARGET_NODETACH
 -- @note: A rendertarget cannot be attached to itself.
 -- @note: Persistant objects cannot be part of other rendertargets.
--- @group: targetcontrol 
+-- @group: targetcontrol
 -- @cfunction: arcan_lua_renderattach
 -- @related: define_rendertarget, define_recordtarget
 

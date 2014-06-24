@@ -18,7 +18,7 @@ void arcan_event_analogall(bool enable, bool mouse)
 {
 }
 
-void arcan_event_analogfilter(int devid, 
+void arcan_event_analogfilter(int devid,
 	int axisid, int lower_bound, int upper_bound, int deadzone,
 	int buffer_sz, enum ARCAN_ANALOGFILTER_KIND kind)
 {

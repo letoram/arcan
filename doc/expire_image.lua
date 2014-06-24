@@ -1,14 +1,14 @@
 -- expire_image
--- @short: Schedule the image for deletion 
--- @inargs: vid, timetolive 
+-- @short: Schedule the image for deletion
+-- @inargs: vid, timetolive
 -- @longdescr: For some images, we want to specify not only that it should
--- be deleted but when (often in conjunction with how the transformation 
--- chain is currently running) without tracking time in other means. This 
+-- be deleted but when (often in conjunction with how the transformation
+-- chain is currently running) without tracking time in other means. This
 -- function allows you to specify how many ticks the image has left to live.
 -- @note: for negative or 0 timetolive, this function act as delete_image
--- @note: subsequent calls to this function for the same vid will reset 
+-- @note: subsequent calls to this function for the same vid will reset
 -- the timer to the new value.
--- @group: image 
+-- @group: image
 -- @cfunction: arcan_lua_setlife
 -- @related: delete_image
 function main()

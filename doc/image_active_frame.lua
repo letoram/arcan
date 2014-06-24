@@ -1,9 +1,9 @@
 -- image_active_frame
 -- @short: Set the active (displayed) frame for an object with an allocated frameset.
--- @inargs: vid, index 
--- @outargs: 
--- @longdescr: 
--- @group: image 
+-- @inargs: vid, index
+-- @outargs:
+-- @longdescr:
+-- @group: image
 -- @cfunction: arcan_lua_activeframe
 -- @note: if the frameset index exceeds the capacity of the frameset in question,
 -- whatever is in the first index (0) will be replaced.
@@ -20,7 +20,7 @@ function main()
 	a = fill_surface(320, 200, 0, 0, 0);
 	show_image(a);
 
-	b = fill_surface(32, 32, 255,   0, 0); 
+	b = fill_surface(32, 32, 255,   0, 0);
 	move_image(b, 320, 200);
 
 	c = fill_surface(32, 32,   0, 255, 0);

@@ -27,13 +27,13 @@
 #endif
 
 enum net_tags {
-	TAG_NETMSG           = 0, 
+	TAG_NETMSG           = 0,
 	TAG_STATE_IMGOBJ     = 1,
 	TAG_STATE_DATAOBJ    = 2,
 	TAG_STATE_DATABLOCK  = 3,
 	TAG_NETSTREAM_REQ    = 4,
 	TAG_NETSTREAM_ACK    = 5,
-	TAG_NETINPUT         = 6, 
+	TAG_NETINPUT         = 6,
 	TAG_NETPING          = 7,
 	TAG_NETPONG          = 8,
 	TAG_STATE_EOB        = 9,
@@ -45,16 +45,16 @@ enum net_states{
 	STATE_RLEBLOCK = 1
 };
 
-/* 
- * IDENTCOOKIENAMEPKEYADDR 
+/*
+ * IDENTCOOKIENAMEPKEYADDR
  * max addr is ipv6 textual representation + strsep + port.
- * client req doesn't have to specify a name here, server 
+ * client req doesn't have to specify a name here, server
  * response should contain cookie to reduce spoofed replies.
  */
 #define NET_IDENT_SIZE 4
 #define NET_COOKIE_SIZE 4
 #define NET_NAME_SIZE 15
-#define NET_KEY_SIZE 32 
+#define NET_KEY_SIZE 32
 #define NET_ADDR_SIZE 45
 #define NET_HEADER_SIZE 128
 
@@ -79,12 +79,12 @@ struct conn_segcont {
 		size_t ofs, lim;
 
 		enum xfer_state state;
-		
+
 		struct arcan_shmif_cont ctx;
 		uint8_t* vidp;
 		uint16_t* audp;
-		arcan_evctx inevq, outevq;	
-}; 
+		arcan_evctx inevq, outevq;
+};
 
 struct conn_state {
 	arcan_evctx* outevq;
@@ -94,8 +94,8 @@ struct conn_state {
 
 	enum connection_state connstate;
 
-/* (poll-IN) -> buffer [+ decrypt + decompress] -> validator [verify TLV] -> 
- * dispatch [implement management protocol] -> 
+/* (poll-IN) -> buffer [+ decrypt + decompress] -> validator [verify TLV] ->
+ * dispatch [implement management protocol] ->
  * decode [implement application protocol] */
 	bool (*buffer)(struct conn_state*);
 	bool (*validator)(struct conn_state*, size_t len, char* buf, size_t* consumed);
@@ -103,8 +103,8 @@ struct conn_state {
 	bool (*dispatch)(struct conn_state*, enum net_tags, size_t len, char* value);
 
 /*
- * (input-EV/ongoing transfer) -> (pack) [+ encrypt, compress] -> 
- * queueout -> flushout 
+ * (input-EV/ongoing transfer) -> (pack) [+ encrypt, compress] ->
+ * queueout -> flushout
  */
 	bool (*pack)(struct conn_state*, enum net_tags, size_t len, char* buf);
  	bool (*queueout)(struct conn_state*, size_t len, char* buf);
@@ -122,12 +122,12 @@ struct conn_state {
 
 	char* outbuffer;
 	size_t outbuf_sz;
-	int outbuf_ofs;		
+	int outbuf_ofs;
 
-/* 
- * There can be one incoming and one outgoing state- transfer 
- * at the same time for each connection. 
- * These can either use an arcan input or a pipe/file as source/destination. 
+/*
+ * There can be one incoming and one outgoing state- transfer
+ * at the same time for each connection.
+ * These can either use an arcan input or a pipe/file as source/destination.
  */
 	struct conn_segcont state_in, state_out;
 	int slot;
@@ -146,17 +146,17 @@ enum server_modes {
 	SERVER_DIRECTORY_NACL,
 };
 
-char* net_unpack_discover(char* inb, bool req, char** pk, 
+char* net_unpack_discover(char* inb, bool req, char** pk,
 	char** name, char** cookie, char** host, int* port);
-char* net_pack_discover(bool req, 
+char* net_pack_discover(bool req,
 	char* key, char* name, char* cookie, char* host, int port, size_t* d_sz);
 
 void arcan_net_client_session(struct arg_arr* args, const char* shmkey);
 
-apr_socket_t* net_prepare_socket(const char* host, apr_sockaddr_t* 
+apr_socket_t* net_prepare_socket(const char* host, apr_sockaddr_t*
 	althost, int* sport, bool tcp, apr_pool_t* mempool);
 
-void net_setup_cell(struct conn_state* conn, 
+void net_setup_cell(struct conn_state* conn,
 	arcan_evctx* evq, apr_pollset_t* pollset);
 
 bool net_validator_tlv(struct conn_state*, size_t, char*, size_t* );
@@ -165,7 +165,7 @@ bool net_dispatch_tlv(struct conn_state*, enum net_tags, size_t, char*);
 bool net_pack_basic(struct conn_state*, enum net_tags, size_t, char*);
 bool net_buffer_basic(struct conn_state*);
 bool net_flushout_default(struct conn_state*);
-bool net_queueout_default(struct conn_state*, size_t, char*);  
+bool net_queueout_default(struct conn_state*, size_t, char*);
 
 enum seg_kinds {
 	SEGMENT_TRANSFER = 0,

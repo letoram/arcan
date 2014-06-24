@@ -37,11 +37,11 @@
 #include "arcan_math.h"
 #include "arcan_general.h"
 
-/* 
+/*
  * some mapping mechanisms other than arcan_map_resource
  * should be used for dealing with single resources larger
  * than this size.
- */ 
+ */
 #ifndef MAX_RESMAP_SIZE
 #define MAX_RESMAP_SIZE (1024 * 1024 * 10)
 #endif
@@ -72,9 +72,9 @@ static data_source* alloc_datasource()
 	res->len    =  0;
 
 /* trace for this value to track down leaks */
-	res->source = tag_resleak; 
-	
-	return res;	
+	res->source = tag_resleak;
+
+	return res;
 }
 
 void arcan_release_resource(data_source* sptr)
@@ -92,16 +92,16 @@ void arcan_release_resource(data_source* sptr)
 	if ( sptr->source == tag_resleak )
 		sptr->source = NULL;
 
-/* something broken with the file-descriptor, 
+/* something broken with the file-descriptor,
  * not many recovery options but purposefully leak
  * the memory so that it can be found in core dumps etc. */
 		if (trycount){
 			free( sptr->source );
-			snprintf(playbuf, playbufsize, "broken_fd(%d:%s)", 
+			snprintf(playbuf, playbufsize, "broken_fd(%d:%s)",
 				sptr->fd, sptr->source);
 			sptr->source = strdup(playbuf);
 		} else {
-/* make the released memory distinguishable from a broken 
+/* make the released memory distinguishable from a broken
  * descriptor from a memory analysis perspective */
 			free( sptr->source );
 			sptr->fd     = -1;
@@ -185,7 +185,7 @@ char* arcan_find_resource(const char* label, int searchmask)
 	playbuf[playbufsize-1] = 0;
 
 	if (searchmask & ARCAN_RESOURCE_THEME) {
-		snprintf(playbuf, playbufsize-2, "%s/%s/%s", arcan_themepath, 
+		snprintf(playbuf, playbufsize-2, "%s/%s/%s", arcan_themepath,
 			arcan_themename, label);
 		strip_traverse(playbuf);
 
@@ -204,7 +204,7 @@ char* arcan_find_resource(const char* label, int searchmask)
 	return NULL;
 }
 
-/* 
+/*
  * Somewhat rugged at the moment,
  * Mostly designed the way it is to account for the "zip is a container"
  * approach used in android and elsewhere, or (with some additional work)
@@ -219,10 +219,10 @@ data_source arcan_open_resource(const char* url)
 		if (res.fd != -1){
 			res.start  = 0;
 			res.source = strdup(url);
-			res.len    = 0; /* map resource can figure it out */ 
+			res.len    = 0; /* map resource can figure it out */
 		}
 	}
-	else 
+	else
 		res.fd = BADFD;
 
 	return res;
@@ -520,7 +520,7 @@ const char* internal_launch_support(){
 
 /*
  * simple "buffer (ntr) and only (ntr) bytes blocking from fd" wrap around read.
- * expects (dofs) to point to a preallocated buffer, sufficient to hold (ntr) bytes. 
+ * expects (dofs) to point to a preallocated buffer, sufficient to hold (ntr) bytes.
  */
 static inline bool read_safe(int fd, size_t ntr, int bs, char* dofs)
 {
@@ -531,9 +531,9 @@ static inline bool read_safe(int fd, size_t ntr, int bs, char* dofs)
 
 		if (nr > 0)
 			ntr -= nr;
-		else 
+		else
 			if (errno == EINTR);
-		else 
+		else
 			break;
 
 		if (dofs)
@@ -555,9 +555,9 @@ map_region arcan_map_resource(data_source* source, bool allowwrite)
 	map_region rv = {0};
 	struct stat sbuf;
 
-/* 
+/*
  * if additional properties (size, ...) has not yet been resolved,
- * try and figure things out manually 
+ * try and figure things out manually
  */
 	if (0 == source->len && -1 != fstat(source->fd, &sbuf)){
 		source->len = sbuf.st_size;
@@ -568,17 +568,17 @@ map_region arcan_map_resource(data_source* source, bool allowwrite)
 	if (!source->len)
 		return rv;
 
-/* 
- * for unaligned reads (or in-place modifiable memory) 
- * we manually read the file into a buffer 
+/*
+ * for unaligned reads (or in-place modifiable memory)
+ * we manually read the file into a buffer
  */
 	if (source->start % sysconf(_SC_PAGE_SIZE) != 0 || allowwrite)
 		goto memread;
 
-/* 
+/*
  * The use-cases for most resources mapped in this manner relies on
  * mapping reasonably small buffer lengths for decoding. Reasonably
- * is here defined by MAX_RESMAP_SIZE 
+ * is here defined by MAX_RESMAP_SIZE
  */
 	if (0 < source->len && MAX_RESMAP_SIZE > source->len){
 		rv.sz  = source->len;
@@ -589,13 +589,13 @@ map_region arcan_map_resource(data_source* source, bool allowwrite)
 			char errbuf[64];
 			strerror_r(errno, errbuf, 64);
 			arcan_warning("arcan_map_resource() failed, reason(%d): %s\n\t"
-				"(length)%d, (fd)%d, (offset)%d\n", errno, errbuf, 
+				"(length)%d, (fd)%d, (offset)%d\n", errno, errbuf,
 				rv.sz, source->fd, source->start);
 
 			rv.ptr = NULL;
 			rv.sz  = 0;
-		} 
-		else 
+		}
+		else
 			rv.mmap = true;
 	}
 	return rv;
@@ -612,9 +612,9 @@ memread:
 		if (source->start > 0 && -1 == lseek(source->fd, SEEK_SET, source->start)){
 			rstatus = read_safe(source->fd, source->start, 8192, NULL);
 		}
-		
+
 		if (rstatus){
-			rstatus = read_safe(source->fd, source->len, 8192, rv.ptr);	
+			rstatus = read_safe(source->fd, source->len, 8192, rv.ptr);
 		}
 
 		if (!rstatus){

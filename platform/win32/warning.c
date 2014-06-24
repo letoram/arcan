@@ -26,10 +26,10 @@ void arcan_warning(const char* msg, ...)
 	if (winnolog)
 		return;
 
-/* redirection needed for win (SDL etc. also tries to, but we need 
+/* redirection needed for win (SDL etc. also tries to, but we need
  * to handle things) differently, especially for Win/UAC and permissions,
  * thus we can assume resource/theme
- * folder is r/w but nothing else .. 
+ * folder is r/w but nothing else ..
  */
 	if (!stdout_redirected && arcan_resourcepath != NULL){
 		snprintf(playbuf, sizeof(playbuf) - 1,

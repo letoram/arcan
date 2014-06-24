@@ -33,7 +33,7 @@
 #include <arcan_shmif.h>
 #include <arcan_event.h>
 #include <arcan_video.h>
-#include <arcan_audio.h>	
+#include <arcan_audio.h>
 #include <arcan_frameserver_backend.h>
 
 #define INCR(X, C) ( ( (X) = ( (X) + 1) % (C)) )
@@ -49,10 +49,10 @@ extern char* arcan_binpath;
 static void* nanny_thread(void* arg)
 {
 	pid_t* pid = (pid_t*) arg;
-	
+
 	if (pid){
 		int counter = 10;
-		
+
 		while (counter--){
 			int statusfl;
 			int rv = waitpid(*pid, &statusfl, WNOHANG);
@@ -65,7 +65,7 @@ static void* nanny_thread(void* arg)
 
 			sleep(1);
 		}
-		
+
 		free(pid);
 	}
 
@@ -76,7 +76,7 @@ void arcan_frameserver_dropshared(arcan_frameserver* src)
 {
 	if (!src)
 		return;
-	
+
 	struct arcan_shmif_page* shmpage = src->shm.ptr;
 
 	if (shmpage && -1 == munmap((void*) shmpage, src->shm.shmsize))
@@ -105,19 +105,19 @@ void arcan_frameserver_killchild(arcan_frameserver* src)
 	if (!src || src->flags.subsegment)
 		return;
 
-/* 
- * this one is more complicated than it seems, as we don't want zombies 
- * lying around, yet might be in a context where the child is no-longer 
- * trusted. Double-forking and getting the handle that way is 
- * overcomplicated, maintaining a state-table of assumed-alive children 
+/*
+ * this one is more complicated than it seems, as we don't want zombies
+ * lying around, yet might be in a context where the child is no-longer
+ * trusted. Double-forking and getting the handle that way is
+ * overcomplicated, maintaining a state-table of assumed-alive children
  * until wait says otherwise and then map may lead to dangling pointers
  * with video_deleteobject or sweeping the full state context etc.
- * 
- * Cheapest, it seems, is to actually spawn a guard thread with a 
+ *
+ * Cheapest, it seems, is to actually spawn a guard thread with a
  * sleep + wait cycle, countdown and then send KILL. Other possible
  * idea is (and part of this should be implemented anyway)
- * is to have a session and group, and a plain run a zombie-catcher / kill 
- * broadcaster as a session leader. 
+ * is to have a session and group, and a plain run a zombie-catcher / kill
+ * broadcaster as a session leader.
  */
 	pid_t* pidptr = malloc(sizeof(pid_t));
 	pthread_t pthr;
@@ -137,50 +137,50 @@ bool arcan_frameserver_validchild(arcan_frameserver* src){
 		return false;
 
 /* this means that we have a child that we have no monitoring strategy
- * for currently (i.e. non-authorative) */ 
+ * for currently (i.e. non-authorative) */
 	if (src->child == BROKEN_PROCESS_HANDLE)
-		return true;	
+		return true;
 
-/* 
- * Note that on loop conditions, the pid can change, 
- * thus we have to assume it will be valid in the near future. 
+/*
+ * Note that on loop conditions, the pid can change,
+ * thus we have to assume it will be valid in the near future.
  * PID != privilege, it's simply a process to monitor as hint
- * to what the state of a child is, the child is free to 
+ * to what the state of a child is, the child is free to
  * redirect to anything (heck, including init)..
- */ 
+ */
 	int ec = waitpid(src->child, &status, WNOHANG);
 
 	if (ec == src->child){
 		src->flags.alive = false;
 		errno = EINVAL;
 		return false;
-	} 
+	}
 	else
-	 	return true;	
+	 	return true;
 }
 
 arcan_errc arcan_frameserver_pushfd(arcan_frameserver* fsrv, int fd)
 {
 	if (!fsrv || fd == 0)
-		return ARCAN_ERRC_BAD_ARGUMENT; 
-	
+		return ARCAN_ERRC_BAD_ARGUMENT;
+
 	if (arcan_pushhandle(fd, fsrv->sockout_fd)){
 		arcan_event ev = {
 			.category = EVENT_TARGET,
 			.kind = TARGET_COMMAND_FDTRANSFER
 		};
-		
+
 		arcan_frameserver_pushevent( fsrv, &ev );
 		return ARCAN_OK;
 	}
 
-	arcan_warning("frameserver_pushfd(%d->%d) failed, reason(%d) : %s\n", 
+	arcan_warning("frameserver_pushfd(%d->%d) failed, reason(%d) : %s\n",
 		fd, fsrv->sockout_fd, errno, strerror(errno));
-	
+
 	return ARCAN_ERRC_BAD_ARGUMENT;
 }
 
-static bool shmalloc(arcan_frameserver* ctx, 
+static bool shmalloc(arcan_frameserver* ctx,
 	bool namedsocket, const char* optkey)
 {
 	size_t shmsize = ARCAN_SHMPAGE_START_SZ;
@@ -204,7 +204,7 @@ static bool shmalloc(arcan_frameserver* ctx,
 		size_t lim = sizeof(addr.sun_path) / sizeof(addr.sun_path[0]) - 1;
 		size_t pref_sz = sizeof(ARCAN_SHM_PREFIX) - 1;
 
-		if (optkey == NULL || (optlen = strlen(optkey)) == 0 || 
+		if (optkey == NULL || (optlen = strlen(optkey)) == 0 ||
 			pref_sz + optlen > lim){
 			arcan_warning("posix/frameserver.c:shmalloc(), named socket "
 				"connected requested but with empty/missing/oversized key. cannot "
@@ -223,13 +223,13 @@ static bool shmalloc(arcan_frameserver* ctx,
 		memset(&addr, '\0', sizeof(addr));
 		addr.sun_family = AF_UNIX;
 		char* dst = (char*) &addr.sun_path;
-	
+
 #ifdef __linux
 		if (ARCAN_SHM_PREFIX[0] == '\0')
 		{
 			memcpy(dst, ARCAN_SHM_PREFIX, pref_sz);
 			dst += sizeof(ARCAN_SHM_PREFIX) - 1;
-			memcpy(dst, optkey, optlen); 
+			memcpy(dst, optkey, optlen);
 		}
 		else
 #endif
@@ -242,7 +242,7 @@ static bool shmalloc(arcan_frameserver* ctx,
 				close(fd);
 				goto fail;
 			}
-			
+
 			size_t envlen = strlen(auxp);
 			if (envlen + optlen + pref_sz > lim){
 				arcan_warning("posix/frameserver.c:shmalloc(), applying built-in "
@@ -250,14 +250,14 @@ static bool shmalloc(arcan_frameserver* ctx,
 				close(fd);
 				goto fail;
 			}
-		
+
 			memcpy(dst, auxp, envlen);
 			dst += envlen;
 			*dst++ = '/';
 			memcpy(dst, ARCAN_SHM_PREFIX, pref_sz);
 			dst += pref_sz;
 			memcpy(dst, optkey, optlen);
-		} 
+		}
 /* use prefix in its full form */
 		else {
 			memcpy(dst, ARCAN_SHM_PREFIX, pref_sz);
@@ -265,7 +265,7 @@ static bool shmalloc(arcan_frameserver* ctx,
 			memcpy(dst, optkey, optlen);
 		}
 
-/* this makes things not particularly thread safe, but we should not 
+/* this makes things not particularly thread safe, but we should not
  * be in a multithreaded context anyhow */
 
 		unlink(addr.sun_path);
@@ -283,7 +283,7 @@ static bool shmalloc(arcan_frameserver* ctx,
 
 /* track output socket separately so we can unlink on exit,
  * other options (readlink on proc) or F_GETPATH are unportable
- * (and in the case of readlink .. /facepalm) */ 
+ * (and in the case of readlink .. /facepalm) */
 		ctx->source = strdup(addr.sun_path);
 	}
 
@@ -311,7 +311,7 @@ fail:
 	}
 
 	memset(shmpage, '\0', shmsize);
- 	shmpage->dms = true;	
+ 	shmpage->dms = true;
 	shmpage->parent = getpid();
 	shmpage->major = ARCAN_VERSION_MAJOR;
 	shmpage->minor = ARCAN_VERSION_MINOR;
@@ -320,12 +320,12 @@ fail:
 	free(work);
 
 	return true;
-}	
+}
 
 /*
  * Allocate a new segment (shmalloc), inherit the relevant
  * tracking members from the parent, re-use the segment
- * to notify the new key to be used, mark the segment as 
+ * to notify the new key to be used, mark the segment as
  * pending and set a transitional feed-function that
  * looks for an ident on the socket.
  */
@@ -334,7 +334,7 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 {
 	if (!ctx || ctx->flags.alive == false)
 		return NULL;
-	
+
 	arcan_frameserver* newseg = arcan_frameserver_alloc();
 	if (!shmalloc(newseg, false, NULL)){
 		arcan_frameserver_free(newseg);
@@ -350,8 +350,8 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	img_cons cons = {.w = hintw , .h = hinth, .bpp = ARCAN_SHMPAGE_VCHANNELS};
 	vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = newseg};
 	arcan_frameserver_meta vinfo = {
-		.width = hintw, 
-		.height = hinth, 
+		.width = hintw,
+		.height = hinth,
 		.bpp = GL_PIXEL_BPP
 	};
 	arcan_vobj_id newvid = arcan_video_addfobject((arcan_vfunc_cb)
@@ -363,7 +363,7 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	}
 
 /*
- * set these before pushing to the child to avoid a possible race 
+ * set these before pushing to the child to avoid a possible race
  */
 	newseg->shm.ptr->w = hintw;
 	newseg->shm.ptr->h = hinth;
@@ -402,12 +402,12 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
   	newseg->sockout_fd = sockp[0];
 		arcan_frameserver_pushfd(ctx, sockp[1]);
 	}
-  
+
 	arcan_event keyev = {
 		.category = EVENT_TARGET,
 		.kind = TARGET_COMMAND_NEWSEGMENT,
 		.data.target.ioevs[0].iv = input ? 1 : 0,
-		.data.target.ioevs[1].iv = tag 
+		.data.target.ioevs[1].iv = tag
 	};
 
 	snprintf(keyev.data.target.message,
@@ -415,7 +415,7 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 		"%s", newseg->shm.key);
 
 /*
- * We monitor the same PID (but on frameserver_free, 
+ * We monitor the same PID (but on frameserver_free,
  */
 	newseg->launchedtime = arcan_timemillis();
 	newseg->child = ctx->child;
@@ -425,12 +425,12 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
  * with other masks, or should this be a separate command
  * with a heavy warning? i.e. allowing EVENT_INPUT gives
  * remote-control etc. options, with all the security considerations
- * that comes with it */	
+ * that comes with it */
 	newseg->queue_mask = EVENT_EXTERNAL;
 
 /*
  * Memory- constraints and future refactoring plans means that
- * AVFEED/INTERACTIVE are the only supported subtypes 
+ * AVFEED/INTERACTIVE are the only supported subtypes
  */
 	if (input){
 		newseg->kind = ARCAN_FRAMESERVER_OUTPUT;
@@ -445,28 +445,28 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 
 /*
  * NOTE: experiment with deferring this step as new segments likely
- * won't need / use audio, "Mute" shmif- sessions should also be 
- * permitted to cut down on shm memory use 
+ * won't need / use audio, "Mute" shmif- sessions should also be
+ * permitted to cut down on shm memory use
  */
-	newseg->sz_audb = ARCAN_SHMPAGE_AUDIOBUF_SZ; 
+	newseg->sz_audb = ARCAN_SHMPAGE_AUDIOBUF_SZ;
 	newseg->ofs_audb = 0;
 	newseg->audb = malloc(ctx->sz_audb);
 
 	arcan_shmif_calcofs(newseg->shm.ptr, &(newseg->vidp), &(newseg->audp));
-	arcan_shmif_setevqs(newseg->shm.ptr, newseg->esync, 
+	arcan_shmif_setevqs(newseg->shm.ptr, newseg->esync,
 		&(newseg->inqueue), &(newseg->outqueue), true);
 	newseg->inqueue.synch.killswitch = (void*) newseg;
 	newseg->outqueue.synch.killswitch = (void*) newseg;
 
 	arcan_event_enqueue(&ctx->outqueue, &keyev);
-	return newseg;	
+	return newseg;
 }
 
 /*
  * When we are in this callback state, it means that there's
  * a VID connected to a frameserver that is waiting for a non-authorative
  * connection. (Pending state), to monitor for suspicious activity,
- * maintain a counter here and/or add a timeout and propagate a 
+ * maintain a counter here and/or add a timeout and propagate a
  * "frameserver terminated" session [not implemented].
  *
  * Note that we dont't track the PID of the client here,
@@ -474,9 +474,9 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
  * (BSD vs Linux etc.) so part of the 'non-authoritative' bit is that
  * the server won't kill-signal or check if pid is still alive in this mode.
  *
- * (listen) -> socketpoll (connection) -> socketverify -> (key ? wait) -> ok -> 
- * send connection data, set emptyframe.  
- * 
+ * (listen) -> socketpoll (connection) -> socketverify -> (key ? wait) -> ok ->
+ * send connection data, set emptyframe.
+ *
  */
 static bool memcmp_nodep(const void* s1, const void* s2, size_t n)
 {
@@ -486,7 +486,7 @@ static bool memcmp_nodep(const void* s1, const void* s2, size_t n)
 	uint8_t diffv = 0;
 
 	while (n--){
-		diffv |= *p1++ ^ *p2++;	
+		diffv |= *p1++ ^ *p2++;
 	}
 
 	return !(diffv != 0);
@@ -510,7 +510,7 @@ static enum arcan_ffunc_rv socketverify(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 		while (-1 != read(tgt->sockout_fd, &ch, 1)){
 			if (ch == '\n'){
 /* 0- pad to max length */
-				memset(tgt->sockinbuf + tgt->sockrofs, '\0', 
+				memset(tgt->sockinbuf + tgt->sockrofs, '\0',
 					PP_SHMPAGE_SHMKEYLIM - tgt->sockrofs);
 
 /* alternative memcmp to not be used as a timing oracle */
@@ -528,40 +528,40 @@ static enum arcan_ffunc_rv socketverify(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 				arcan_warning("platform/frameserver.c(), socket "
 					"verify failed on %"PRIxVOBJ", terminating.\n", tgt->vid);
 /* will terminate the frameserver session */
-				tgt->flags.alive = false; 
+				tgt->flags.alive = false;
 			}
 		}
 		if (errno != EAGAIN && errno != EINTR){
 			arcan_warning("platform/frameserver.c(), "
-				"read broken on %"PRIxVOBJ", reason: %s\n", tgt->vid); 
+				"read broken on %"PRIxVOBJ", reason: %s\n", tgt->vid);
 			tgt->flags.alive = false;
 		}
 		return FFUNC_RV_NOFRAME;
 
 	case FFUNC_DESTROY:
 		unlink(tgt->source);
-	
+
 	default:
 		return FFUNC_RV_NOFRAME;
-	break;	
+	break;
 	}
 
 /* switch to resize polling default handler */
 send_key:
 	arcan_warning("platform/frameserver.c(), connection verified.\n");
 
-/* Note: we here assume that we can write without blocking, which is 
- * usually the case. There might be a DoS opportunity here with a 
+/* Note: we here assume that we can write without blocking, which is
+ * usually the case. There might be a DoS opportunity here with a
  * connection that somehow gets our socket write to block/lock here,
  * if that's ever a real concern, switch to select and just drop connection
  * if we can't write enough. */
 	ntw = snprintf(tgt->sockinbuf, PP_SHMPAGE_SHMKEYLIM, "%s\n", tgt->shm.key);
-	write(tgt->sockout_fd, tgt->sockinbuf, ntw); 
+	write(tgt->sockout_fd, tgt->sockinbuf, ntw);
 
 	arcan_video_alterfeed(tgt->vid,
 		arcan_frameserver_emptyframe, state);
 
-	arcan_errc errc;	
+	arcan_errc errc;
 	tgt->aid = arcan_audio_feed((arcan_afunc_cb)
 		arcan_frameserver_audioframe_direct, tgt, &errc);
 	tgt->sz_audb = 1024 * 64;
@@ -585,11 +585,11 @@ static int8_t socketpoll(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 
 	struct pollfd polldscr = {
 		.fd = tgt->sockout_fd,
-		.events = POLLIN	
+		.events = POLLIN
 	};
 
 /* wait for connection, then unlink directory node,
- * switch to verify callback.*/ 
+ * switch to verify callback.*/
 	switch (cmd){
 		case FFUNC_POLL:
 			if (1 == poll(&polldscr, 1, 0)){
@@ -608,7 +608,7 @@ static int8_t socketpoll(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 				return socketverify(cmd, buf, s_buf, width, height, bpp, mode, state);
 				}
 				else if (errno == EFAULT || errno == EINVAL)
-					tgt->flags.alive = false;		
+					tgt->flags.alive = false;
 			}
 		break;
 
@@ -637,13 +637,13 @@ arcan_frameserver* arcan_frameserver_listen_external(const char* key)
 		return NULL;
 	}
 
-/* 
- * defaults for an external connection is similar to that of avfeed/libretro 
+/*
+ * defaults for an external connection is similar to that of avfeed/libretro
  */
 	res->kind = ARCAN_FRAMESERVER_INTERACTIVE;
 	res->flags.socksig = false;
 	res->launchedtime = arcan_timemillis();
-	res->child = BROKEN_PROCESS_HANDLE; 
+	res->child = BROKEN_PROCESS_HANDLE;
 	img_cons cons = {.w = 32, .h = 32, .bpp = 4};
 	vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = res};
 
@@ -656,12 +656,12 @@ arcan_frameserver* arcan_frameserver_listen_external(const char* key)
  * the queues in place.
  */
 	res->queue_mask = EVENT_EXTERNAL;
-	arcan_shmif_setevqs(res->shm.ptr, res->esync, 
+	arcan_shmif_setevqs(res->shm.ptr, res->esync,
 		&(res->inqueue), &(res->outqueue), true);
 	res->inqueue.synch.killswitch = (void*) res;
 	res->outqueue.synch.killswitch = (void*) res;
 
-	return res;	
+	return res;
 }
 
 bool arcan_frameserver_resize(shm_handle* src, int w, int h)
@@ -687,9 +687,9 @@ bool arcan_frameserver_resize(shm_handle* src, int w, int h)
 
 /* unmap + truncate + map */
 	munmap(src->ptr, src->shmsize);
-	src->shmsize = sz;	
+	src->shmsize = sz;
 	ftruncate(src->handle, sz);
-	src->ptr = mmap(NULL, sz, PROT_READ | PROT_WRITE, MAP_SHARED, src->handle,0); 
+	src->ptr = mmap(NULL, sz, PROT_READ | PROT_WRITE, MAP_SHARED, src->handle,0);
 	memcpy(src->ptr, tmpbuf, sizeof(struct arcan_shmif_page));
 	src->ptr->segment_size = sz;
 
@@ -697,7 +697,7 @@ bool arcan_frameserver_resize(shm_handle* src, int w, int h)
 	return true;
 }
 
-arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, 
+arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 	struct frameserver_envp setup)
 {
 	if (ctx == NULL)
@@ -719,15 +719,15 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 		fcntl(sockp[0], F_SETFD, FD_CLOEXEC);
 
 		img_cons cons = {
-			.w = setup.init_w, 
-			.h = setup.init_h, 
+			.w = setup.init_w,
+			.h = setup.init_h,
 			.bpp = 4
 		};
 		vfunc_state state = {
-			.tag = ARCAN_TAG_FRAMESERV, 
+			.tag = ARCAN_TAG_FRAMESERV,
 			.ptr = ctx
 		};
-	
+
 		ctx->source = strdup(setup.args.builtin.resource);
 		ctx->vid = arcan_video_addfobject((arcan_vfunc_cb)
 			arcan_frameserver_emptyframe, state, cons, 0);
@@ -737,20 +737,20 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 		ctx->child       = child;
 
 		arcan_frameserver_configure(ctx, setup);
-	
+
 	} else if (child == 0) {
 		char convb[8];
 
 /*
- * this little thing is used to push file-descriptors between 
- * parent and child, as to not expose child to parents namespace, 
- * and to improve privilege separation 
+ * this little thing is used to push file-descriptors between
+ * parent and child, as to not expose child to parents namespace,
+ * and to improve privilege separation
  */
 		close(sockp[0]);
 		sprintf(convb, "%i", sockp[1]);
 		setenv("ARCAN_SOCKIN_FD", convb, 1);
 		setenv("ARCAN_ARG", setup.args.builtin.resource, 1);
-	
+
 /*
  * frameservers that are semi-trusted currently get an
  * environment variable to help search for theme-relative resources
@@ -760,40 +760,40 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 		if ( getcwd(cwdinbuf, PATH_MAX) ){
 			int baselen = strlen(arcan_themename) + strlen(arcan_themepath);
 			size_t cwd_sz = PATH_MAX + baselen + 1;
-			char cwdbuf[ cwd_sz ]; 
-			snprintf(cwdbuf, cwd_sz, "%s/%s/%s", 
-					cwdinbuf, arcan_themepath, arcan_themename); 
+			char cwdbuf[ cwd_sz ];
+			snprintf(cwdbuf, cwd_sz, "%s/%s/%s",
+					cwdinbuf, arcan_themepath, arcan_themename);
 			setenv("ARCAN_THEMEPATH", cwdbuf, 1);
 		}
 		else
 			setenv("ARCAN_THEMEPATH", ".", 1);
 
 /*
- * we need to mask this signal as when debugging parent process, 
+ * we need to mask this signal as when debugging parent process,
  * GDB pushes SIGINT to children, killing them and changing
- * the behavior in the core process 
+ * the behavior in the core process
  */
 		signal(SIGINT, SIG_IGN);
-	
+
 		if (setup.use_builtin){
-			char* argv[4] = { 
-				arcan_binpath, 
-				strdup(setup.args.builtin.mode), 
+			char* argv[4] = {
+				arcan_binpath,
+				strdup(setup.args.builtin.mode),
 				ctx->shm.key,
 				NULL
 			};
 
 			execv(arcan_binpath, argv);
 			arcan_fatal("FATAL, arcan_frameserver_spawn_server(), "
-				"couldn't spawn frameserver(%s) with %s:%s. Reason: %s\n", 
-				arcan_binpath, setup.args.builtin.mode, 
+				"couldn't spawn frameserver(%s) with %s:%s. Reason: %s\n",
+				arcan_binpath, setup.args.builtin.mode,
 				setup.args.builtin.resource, strerror(errno));
 			exit(1);
 		} else {
 /* hijack lib */
 			char shmsize_s[32];
 			snprintf(shmsize_s, 32, "%zu", ctx->shm.shmsize);
-			
+
 			char** envv = setup.args.external.envv;
 
 			while (envv && *envv){
@@ -801,9 +801,9 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 					setenv("ARCAN_SHMKEY", ctx->shm.key, 1);
 				else if (strcmp(envv[0], "ARCAN_SHMSIZE") == 0)
 					setenv("ARCAN_SHMSIZE", shmsize_s, 1);
-				else 
+				else
 					setenv(envv[0], envv[1], 1);
-				
+
 				envv += 2;
 			}
 
@@ -813,6 +813,6 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 	}
 	else /* -1 */
 		arcan_fatal("fork() failed, check ulimit or similar configuration issue.");
-		
+
 	return ARCAN_OK;
 }

@@ -62,12 +62,12 @@ void platform_video_timing(float* o_sync, float* o_stddev, float* o_variance)
 
 	if (!gottiming){
 		platform_video_bufferswap();
-	
+
 		int retrycount = 0;
 
-/* 
+/*
  * try to get a decent measurement of actual timing, this is not really used for
- * synchronization but rather as a guess of we're actually vsyncing and how 
+ * synchronization but rather as a guess of we're actually vsyncing and how
  * processing should be scheduled in relation to vsync, or if we should yield at
  * appropriate times.
  */
@@ -124,20 +124,20 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 
 	arcan_warning("Notice: [SDL] Video Info: %i, %i, hardware acceleration: %s, "
 		"window manager: %s, VSYNC: %i, MSAA: %i\n",
-			vi->current_w, vi->current_h, vi->hw_available ? "yes" : "no", 
+			vi->current_w, vi->current_h, vi->hw_available ? "yes" : "no",
 			vi->wm_available ? "yes" : "no", arcan_video_display.vsync,
 			arcan_video_display.msasamples);
 
 /* some GL attributes have to be set before creating the video-surface */
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-	SDL_GL_SetAttribute(SDL_GL_SWAP_CONTROL, 
+	SDL_GL_SetAttribute(SDL_GL_SWAP_CONTROL,
 		arcan_video_display.vsync == true ? 1 : 0);
 	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 1);
 	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);
 
 	if (arcan_video_display.msasamples > 0){
 		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
-		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 
+		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES,
 		arcan_video_display.msasamples);
 	}
 
@@ -145,7 +145,7 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	SDL_WM_SetCaption(caption, "Arcan");
 
 	arcan_video_display.fullscreen = fs;
-	arcan_video_display.sdlarg = (fs ? SDL_FULLSCREEN : 0) | 
+	arcan_video_display.sdlarg = (fs ? SDL_FULLSCREEN : 0) |
 		SDL_OPENGL | (frames ? SDL_NOFRAME : 0);
 	screen = SDL_SetVideoMode(width, height, bpp, arcan_video_display.sdlarg);
 
@@ -165,7 +165,7 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
  * else we get the "No GL version" */
 	int err;
 	if ( (err = glewInit()) != GLEW_OK){
-		arcan_fatal("arcan_video_init(), Couldn't initialize GLew: %s\n", 
+		arcan_fatal("arcan_video_init(), Couldn't initialize GLew: %s\n",
 			glewGetErrorString(err));
 		return false;
 	}
@@ -185,7 +185,7 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	arcan_video_display.height = height;
 	arcan_video_display.bpp    = bpp;
 	glViewport(0, 0, width, height);
-		
+
 	return true;
 }
 

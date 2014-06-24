@@ -1,8 +1,8 @@
 -- image_screen_coordinates
 -- @short: Resolve the current transformation change for the object in question and return the coordinates of the four corners in screen space.
--- @inargs: vid 
--- @outargs: x1,y1,x2,y2,x3,y3,x4,y4 
--- @group: image 
+-- @inargs: vid
+-- @outargs: x1,y1,x2,y2,x3,y3,x4,y4
+-- @group: image
 -- @cfunction: arcan_lua_screencoord
 function main()
 #ifdef MAIN

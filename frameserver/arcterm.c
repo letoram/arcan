@@ -73,7 +73,7 @@ static void child_sigh(int a)
 {
 	int status = 0;
 	if (waitpid(term.pid, &status, 0) < 0){
-		LOG("Waiting for child %d failed, reason: %s\n", 
+		LOG("Waiting for child %d failed, reason: %s\n",
 			term.pid, strerror(errno));
 	}
 }
@@ -88,7 +88,7 @@ static void setup_shell()
 		setenv("SHELL", pass->pw_shell, 0);
 		setenv("HOME", pass->pw_dir, 0);
 	}
-	
+
 	unsetenv("COLUMNS");
 	unsetenv("LINES");
 	unsetenv("TERMCAP");
@@ -113,7 +113,7 @@ static void launchtty()
 	struct winsize w_sz = {80, 25, 0, 0};
 
 	if (openpty(&master, &slave, NULL, NULL, &w_sz) < 0){
-		LOG("open_pty failed: %s\n", strerror(errno)); 
+		LOG("open_pty failed: %s\n", strerror(errno));
 		exit(EXIT_FAILURE);
 	}
 
@@ -134,7 +134,7 @@ static void launchtty()
 		setup_shell();
 		exit(EXIT_FAILURE);
 	}
-	
+
 	close(slave);
 	term.child = master;
 	signal(SIGCHLD, child_sigh);
@@ -154,7 +154,7 @@ static void pop_inbuf(int fd)
 	static char inbuf[4096];
 	static int inbuf_len = 0;
 
-	char* tail = inbuf; 
+	char* tail = inbuf;
 	char s[5] = {0};
 	size_t s_sz;
 	long ucodep;
@@ -163,7 +163,7 @@ static void pop_inbuf(int fd)
 /*
  * populate incoming buffer with enough data,
  * sweep the buffer and consume complete utf8 sequences,
- * emit to interpreter one character at a time 
+ * emit to interpreter one character at a time
  */
 	size_t ntr = sizeof(inbuf) / sizeof(inbuf[0]) - inbuf_len;
 retry:
@@ -195,10 +195,10 @@ void arcan_frameserver_terminal_run(const char* resource, const char* keyfile)
 
 	int font_w = 16;
 	int font_h = 8;
-	
+
 	setlocale(LC_CTYPE, "");
 	signal(SIGHUP, SIG_IGN);
-	arcan_shmif_resize(&shmcont, 80 * font_w, 25 * font_h); 
+	arcan_shmif_resize(&shmcont, 80 * font_w, 25 * font_h);
 
 	launchtty();
 
@@ -236,6 +236,6 @@ void arcan_frameserver_terminal_run(const char* resource, const char* keyfile)
 			}
 
 		arcan_shmif_signal(&shmcont, SHMIF_SIGVID);
-	}	
+	}
 }
 

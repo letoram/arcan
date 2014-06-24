@@ -2,7 +2,7 @@
 -- @short: Request that a frameserver serializes its internal state into the
 -- specified resource.
 -- @inargs: targetid, resname
--- @outargs: statusbool 
+-- @outargs: statusbool
 -- @longdescr: Frameservers running targets that expose the snapshot capability
 -- can have their states stored and restored. This function opens the resource
 -- in the main process and then passes the file-handle to the process connected
@@ -10,6 +10,6 @@
 -- @note: This function is scheduled to have some revisions in coming versions,
 -- most notably a. limiting traversal for resname, b. allowing namespace specifier
 -- (SHARED or PRIVATE) and c. allowing hints on intended use (FULL or MINIMAL).
--- @group: targetcontrol 
+-- @group: targetcontrol
 -- @cfunction: arcan_lua_targetsnapshot
 

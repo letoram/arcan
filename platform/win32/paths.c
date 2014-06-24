@@ -76,7 +76,7 @@ char* arcan_find_resource(const char* label, int searchmask)
 	playbuf[4095] = '\0';
 
 	if (searchmask & ARCAN_RESOURCE_THEME) {
-		snprintf(playbuf, sizeof(playbuf) - 1, "%s/%s/%s", arcan_themepath, 
+		snprintf(playbuf, sizeof(playbuf) - 1, "%s/%s/%s", arcan_themepath,
 			arcan_themename, label);
 		strip_traverse(playbuf);
 
@@ -85,7 +85,7 @@ char* arcan_find_resource(const char* label, int searchmask)
 	}
 
 	if (searchmask & ARCAN_RESOURCE_SHARED) {
-		snprintf(playbuf, sizeof(playbuf) - 1, "%s/%s", 
+		snprintf(playbuf, sizeof(playbuf) - 1, "%s/%s",
 			arcan_resourcepath, label);
 		strip_traverse(playbuf);
 
@@ -106,7 +106,7 @@ bool check_theme(const char* theme)
 	snprintf(playbuf, sizeof(playbuf) - 1, "%s/%s", arcan_themepath, theme);
 
 	if (!is_dir(playbuf)) {
-		arcan_warning("Warning: theme check failed, directory %s not found.\n", 
+		arcan_warning("Warning: theme check failed, directory %s not found.\n",
 			playbuf);
 		return false;
 	}
@@ -114,7 +114,7 @@ bool check_theme(const char* theme)
 	snprintf(playbuf, sizeof(playbuf) - 1, "%s/%s/%s.lua", arcan_themepath,
 		theme, theme);
 	if (!file_exists(playbuf)) {
-		arcan_warning("Warning: theme check failed, script %s not found.\n", 
+		arcan_warning("Warning: theme check failed, script %s not found.\n",
 			playbuf);
 		return false;
 	}
@@ -128,18 +128,18 @@ char* arcan_expand_resource(const char* label, bool global)
 	playbuf[4095] = '\0';
 
 	if (global) {
-		snprintf(playbuf, sizeof(playbuf) - 1, "%s/%s", arcan_resourcepath, 
+		snprintf(playbuf, sizeof(playbuf) - 1, "%s/%s", arcan_resourcepath,
 			label);
 	}
 	else {
-		snprintf(playbuf, sizeof(playbuf) - 1, "%s/%s/%s", arcan_themepath, 
+		snprintf(playbuf, sizeof(playbuf) - 1, "%s/%s/%s", arcan_themepath,
 			arcan_themename, label);
 	}
 
 	return strdup( strip_traverse(playbuf) );
 }
 
-char* arcan_find_resource_path(const char* label, const char* path, 
+char* arcan_find_resource_path(const char* label, const char* path,
 	int searchmask)
 {
 	if (label == NULL)
@@ -149,7 +149,7 @@ char* arcan_find_resource_path(const char* label, const char* path,
 	playbuf[4095] = '\0';
 
 	if (searchmask & ARCAN_RESOURCE_THEME) {
-		snprintf(playbuf, sizeof(playbuf) - 1, "%s/%s/%s/%s", arcan_themepath, 
+		snprintf(playbuf, sizeof(playbuf) - 1, "%s/%s/%s/%s", arcan_themepath,
 			arcan_themename, path, label);
 		strip_traverse(playbuf);
 
@@ -158,7 +158,7 @@ char* arcan_find_resource_path(const char* label, const char* path,
 	}
 
 	if (searchmask & ARCAN_RESOURCE_SHARED) {
-		snprintf(playbuf, sizeof(playbuf) - 1, "%s/%s/%s", 
+		snprintf(playbuf, sizeof(playbuf) - 1, "%s/%s/%s",
 			arcan_resourcepath, path, label);
 		strip_traverse(playbuf);
 
@@ -177,7 +177,7 @@ const char* internal_launch_support()
 
 bool arcan_setpaths()
 {
-/* could add a check of the users path cleanup 
+/* could add a check of the users path cleanup
 (that turned out to be a worse mess than before)
  * with AppData etc. from Vista and friends */
 	if (!arcan_resourcepath)

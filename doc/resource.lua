@@ -1,5 +1,5 @@
 -- resource
--- @short: Check if the requested resource path exists. 
+-- @short: Check if the requested resource path exists.
 -- @inargs: name, *domain*
 -- @outargs: longname
 -- @longdescr: This function tries to resolve the path description
@@ -7,7 +7,7 @@
 -- values are RESOURCE_THEME and RESOURCE_SHARED), by default
 -- all domains are scanned, and then resolves the resolved path to
 -- the resolved object, or nil.
--- @group: resource 
+-- @group: resource
 -- @cfunction: arcan_lua_resource
 function main()
 #ifdef MAIN

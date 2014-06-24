@@ -14,7 +14,7 @@
 --  (*) define transition rules (switching layout based on input event)
 --  (*) attach particle system to object
 --  (*) more properties to change
---  (*) alternate, non-menu based interface 
+--  (*) alternate, non-menu based interface
 --  (*) linking / clipping hierarchies
 --  (*) surface synthesis
 --  (*) add more information to each object
@@ -147,7 +147,7 @@ function cascade_visibility(menu, val, parent)
 			parent.infowin = nil;
 		end
 	end
-	
+
 	blend_image(menu.anchor, val);
 	menu:push_to_front();
 end
@@ -165,7 +165,7 @@ local function update_object(props)
 	end
 end
 
--- change the label shown 
+-- change the label shown
 local function update_infowin(self, item)
 	if (self.infowin) then
 		self.infowin:destroy();
@@ -175,12 +175,12 @@ local function update_infowin(self, item)
 	local fmts = {};
 	fmts[ helplbls[item.modes[self.marker]][1] ] = [[\#ffff00]];
 
--- used in the setup/edit/mode. Position a quadrant away from the current item, and show the appropriate help text 
+-- used in the setup/edit/mode. Position a quadrant away from the current item, and show the appropriate help text
 	self.infowin = listview_create( helplbls[item.modes[self.marker]], VRESW / 2, VRESH / 2, fmts );
 
 	local xpos = (item.x < VRESW / 2) and (VRESW / 2) or 0;
 	local ypos = (item.y < VRESH / 2) and (VRESH / 2) or 0;
-	
+
 	self.infowin:show();
 	video_3dorder(ORDER_LAST);
 	move_image(self.infowin.anchor, math.floor(xpos), math.floor(ypos));
@@ -189,7 +189,7 @@ local function update_infowin(self, item)
 end
 
 local function update_object3d(model)
--- we keep this mostly translucent as not to occlude UI elements	
+-- we keep this mostly translucent as not to occlude UI elements
 	blend_image(model.vid, 0.3);
 	move3d_model(model.vid, model.pos[1], model.pos[2], model.pos[3]);
 	rotate3d_model(model.vid, model.ang[1], model.ang[2], model.ang[3], 0, ROTATE_ABSOLUTE);
@@ -198,7 +198,7 @@ end
 local function toggle_colorpicker(vid)
 	local imenu = {};
 	local cellw, cellh;
-	
+
 	cellw = VRESW > 800 and 32 or 12;
 	cellh = VRESH > 600 and 32 or 12;
 
@@ -213,10 +213,10 @@ local function toggle_colorpicker(vid)
 	vid.x = 0;
 	vid.y = 0;
 	vid:update();
-	
+
 	vid.owner.infowin:destroy();
 	vid.owner.infowin = nil;
-	
+
 	imenu["MENU_LEFT"] = function()
 		vid.col = colpick:step_cursor_col(-1);
 		vid.invalidate = true;
@@ -251,7 +251,7 @@ local function toggle_colorpicker(vid)
 		update_infowin(vid.owner, vid);
 		dispatch_pop();
 	end
-	
+
 	imenu["MENU_ESCAPE"] = function()
 		vid.col = vid.tmpcol;
 		imenu["MENU_SELECT"]();
@@ -267,7 +267,7 @@ end
 local function position_item(self, vid, trigger)
 	cascade_visibility(current_menu, 0.0, self);
 	video_3dorder(ORDER_LAST);
-	
+
 	local marker = 1;
 	local imenu = {};
 
@@ -288,7 +288,7 @@ local function position_item(self, vid, trigger)
 		if     (lbl == "size")        then vid:scale(0, tbl.samples[2]);
 		elseif (lbl == "position")    then vid:slide(0, tbl.samples[2]); end
 	end
-	
+
 	imenu["MENU_LEFT"]   = function()
 		local lbl = vid.modes[ self.marker ];
 		if     (lbl == "size")        then vid:scale(grid_stepx * -1, 0);
@@ -321,8 +321,8 @@ local function position_item(self, vid, trigger)
 		elseif (lbl == "orientation") then vid:rotate(-45, true);
 		elseif (lbl == "opacity")     then vid:order(1);
 		elseif (lbl == "position")    then vid:slide(0, grid_stepy * -1);
-		elseif (lbl == "rotate3d")    then vid:axisstep(1); 
-		elseif (lbl == "position3d")  then vid:axisstep(1); 
+		elseif (lbl == "rotate3d")    then vid:axisstep(1);
+		elseif (lbl == "position3d")  then vid:axisstep(1);
 		elseif (lbl == "text_prop")   then vid:cyclefont(1);
 		end
 	end
@@ -369,8 +369,8 @@ local function gen_modify_menu(self, mod)
 					if (valid_vid(tbl.vid)) then
 						self:position(tbl, function()
 							video_3dorder(ORDER_NONE);
-							dispatch_pop(); 
-							cascade_visibility(current_menu, 1.0, self); settings.iodispatch["MENU_ESCAPE"](); 
+							dispatch_pop();
+							cascade_visibility(current_menu, 1.0, self); settings.iodispatch["MENU_ESCAPE"]();
 						end);
 					end
 				end
@@ -413,7 +413,7 @@ local function cancel_quit(self, status)
 	if (self.finalizer ~= nil) then
 		self.finalizer(status);
 	end
-	
+
 end
 
 local function place_item( vid, tbl )
@@ -436,11 +436,11 @@ local function show(self)
 			dispatch_pop();
 		end
 	end
-	
+
 -- sweep groups and build a menu based on that, this is a two-tier hierarchical menu
 	local mainlbls = {};
 	local mainptrs = {};
-	
+
 	for key, val in pairs(self.groups) do
 		if key ~= "_default" then
 			local newlbls = {};
@@ -469,7 +469,7 @@ local function show(self)
 	mainptrs["Delete..."] = function() gen_modify_menu(self, false); end
 	mainptrs["Action..."] = function()
 		local have_sq = true;
-		
+
 		if (self.validation_hook ~= nil) then
 			have_sq = self:validation_hook();
 		end
@@ -500,21 +500,21 @@ local function show(self)
 		if (current_menu.parent ~= nil) then
 			current_menu:destroy();
 			current_menu = current_menu.parent;
-			if (sound == nil or sound == false) then 
-				play_audio(soundmap["MENU_FADE"]); 
+			if (sound == nil or sound == false) then
+				play_audio(soundmap["MENU_FADE"]);
 			end
 		end
 	end
-	
+
 	imenu["MENU_LEFT"]   = escape_menu;
 	imenu["MENU_ESCAPE"] = escape_menu;
-	
+
 	dispatch_push(imenu, "layout editor", nil, -1);
 end
 
 local function save(self)
 	local fname = self.layname;
-	
+
 	if (resource(fname)) then
 		zap_resource(fname);
 	end
@@ -528,7 +528,7 @@ local function save(self)
 	for ind, val in ipairs(LAYRES_CONVTBL) do
 		write_rawresource("layout.types[\"" .. val .. "\"] = {};\n");
 	end
-	
+
 	for ind, val in ipairs(self.items) do
 		val:store();
 	end
@@ -551,7 +551,7 @@ end
 local function scale(self, dx, dy)
 	self.width  = self.width  + dx;
 	self.height = self.height + dy;
-	
+
 	if (self.width <= 0) then
 		self.width = 1;
 	end
@@ -593,7 +593,7 @@ local function slide(self, dx, dy)
 	if (self.y + props.height < 0) then
 		self.y = -props.height + 1;
 	end
-	
+
 	self:update();
 end
 
@@ -623,7 +623,7 @@ local function axisstep(self, step)
 	elseif (self.axis > 3) then
 		self.axis = 1;
 	end
-	
+
 	helplbls["position3d"][1] = "Position (3D), Axis: " .. tostring(self.axis);
 	helplbls["rotate3d"][1]   = "Rotate (3D), Rotate: " .. tostring(self.axis);
 	self:update();
@@ -637,7 +637,7 @@ local function new_3ditem(restbl)
 	restbl.update = update_object3d;
 	restbl.modes  = position_modes_3d;
 	restbl.axisstep = axisstep;
-	
+
 	show_image(restbl.vid);
 
 	restbl.store = function(self)
@@ -656,11 +656,11 @@ local function new_3ditem(restbl)
 		write_rawresource(string.format("table.insert(layout[\"%s\"], itbl);\n", self.idtag));
 		write_rawresource("table.insert(layout.types[itbl.type], itbl);\n");
 	end
-	
+
 	restbl.dirlight = {1.0, 0.0, 0.0};
 	restbl.ambient  = {0.3, 0.3, 0.3};
 	restbl.diffuse  = {0.3, 0.3, 0.3};
-	restbl.ang  = {0.0,  0.0,  0.0};	
+	restbl.ang  = {0.0,  0.0,  0.0};
 	restbl.pos  = {-1.0, 0.0, -4.0};
 	restbl.x    = 0;
 	restbl.y    = 0;
@@ -681,7 +681,7 @@ local function textitem_update(vtbl)
 
 		if (string.len(msg) < vtbl.maxlen) then
 			local blockch = "_";
-			
+
 			local ntc = vtbl.maxlen - string.len(msg);
 			for i=1,ntc do
 				msg = msg .. blockch;
@@ -696,7 +696,7 @@ local function textitem_update(vtbl)
 		vtbl.height = props.height;
 		vtbl.invalidate = false;
 	end
-	
+
 	update_object(vtbl);
 end
 
@@ -739,7 +739,7 @@ local function new_textitem(msg, parent)
 		bold   = false,
 		italic = false,
 		caption = msg,
-		modes = position_modes_text, 
+		modes = position_modes_text,
 		opa = 1.0,
 		ang = 0,
 		tile_h = 1,
@@ -775,7 +775,7 @@ local function new_textitem(msg, parent)
 		write_rawresource(string.format("table.insert(layout[\"%s\"], itbl);\n", self.idtag));
 		write_rawresource("table.insert(layout.types[itbl.type], itbl);\n");
 	end
-	
+
 	restbl.vid  = fill_surface(1, 1, 0, 0, 0);
 	restbl.font = parent.fontlist[parent.fontind];
 
@@ -806,7 +806,7 @@ local function new_2ditem(vid)
 
 	restbl.x = math.floor( 0.5 * (VRESW - restbl.width) );
 	restbl.y = math.floor( 0.5 * (VRESH - restbl.height) );
-	
+
 	return restbl;
 end
 
@@ -815,7 +815,7 @@ local function default_store(self)
 	write_rawresource(string.format("itbl.res  = \"%s\";\n", self.res));
 	write_rawresource(string.format("itbl.type = \"%s\";\n", LAYRES_CONVTBL[self.kind]));
 	write_rawresource(string.format("itbl.idtag = \"%s\";\n", self.idtag));
-	
+
 	if (self.zv ~= nil) then
 		write_rawresource(string.format("itbl.zv = %d;\n", self.zv));
 	end
@@ -839,7 +839,7 @@ local function default_store(self)
 	if (self.ang ~= nil) then
 		write_rawresource(string.format("itbl.ang  = %f;\n", self.ang));
 	end
-	
+
 	write_rawresource(string.format("if (layout[\"%s\"] == nil) then layout[\"%s\"] = {}; end\n", self.idtag, self.idtag));
 	write_rawresource(string.format("table.insert(layout[\"%s\"], itbl);\n", self.idtag));
 	write_rawresource("table.insert(layout.types[itbl.type], itbl);\n");
@@ -848,7 +848,7 @@ end
 local function add_new(self, idtag, label, kind, exclusive, identity)
 	local positem = nil;
 	local lbls = nil;
-	
+
 	if (type(identity) == "function") then
 		identity = identity(label);
 	elseif (valid_vid(identity)) then
@@ -856,7 +856,7 @@ local function add_new(self, idtag, label, kind, exclusive, identity)
 		image_mask_clearall(identity);
 	end
 
--- for items that shouldn't / can't be positioned / placed 
+-- for items that shouldn't / can't be positioned / placed
 	if (kind == LAYRES_SPECIAL and identity == nil) then
 		positem = {};
 		positem.owner = self;
@@ -874,7 +874,7 @@ local function add_new(self, idtag, label, kind, exclusive, identity)
 
 		table.insert(positem.owner.items, positem);
 		return nil;
-	
+
 	elseif (kind == LAYRES_TEXT) then
 		positem = new_textitem(label, self);
 
@@ -897,9 +897,9 @@ local function add_new(self, idtag, label, kind, exclusive, identity)
 	if (positem.store == nil) then
 		positem.store = default_store;
 	end
-	
+
 	self.orderind = self.orderind + 1;
-	
+
 	if (exclusive) then
 		self:find_remove(idtag);
 	end
@@ -914,7 +914,7 @@ local function add_new(self, idtag, label, kind, exclusive, identity)
 
 			table.insert(positem.owner.items, positem);
 		end
-		
+
 		dispatch_pop();
 		video_3dorder(ORDER_NONE);
 		cascade_visibility(current_menu, 1.0, self);
@@ -946,11 +946,11 @@ local function add_resource(self, idtag, identifier, label, group, kind, exclusi
 		table.insert(self.groups[group].labels, identifier);
 		self.groups[group].ptrs[identifier] = function()
 
--- indirection variant on add_submenu, show() will run the label() function 
+-- indirection variant on add_submenu, show() will run the label() function
 			if (type(label) == "function") then
 				local list = label();
 				menu_spawnmenu( gen_tbl_menu( identifier, label(), function(lbl) self:add_new(idtag, lbl, kind, exclusive, identity); end, true) );
-				
+
 			else
 				self:add_new(idtag, label, kind, exclusive, identity);
 			end
@@ -1003,16 +1003,16 @@ local function layout_imagepos(self, src, val)
 	move_image(src, val.pos[1], val.pos[2]);
 	rotate_image(src, val.ang);
 	show_image(src);
-	
+
 	if (type(val.size) == "table") then
 		resize_image(src, val.size[1], val.size[2]);
 	end
-		
+
 	if (val.tile ~= nil) then
 		switch_default_texmode(TEX_REPEAT, TEX_REPEAT, src);
 		image_scale_txcos(src, val.tile[1], val.tile[2]);
 	end
-				
+
 	self.show_trigger(src, val.opa);
 end
 
@@ -1051,21 +1051,21 @@ local function layout_show(self)
 		end
 
 	end
-	
+
 	if (self.static_loaded == nil) then
 		self.temporary_static = {};
 
 		for ind, val in ipairs(self.types["static"]) do
 			imgproc(self.temporary_static, LAYRES_STATIC, val);
 		end
-		
+
 		self.static_loaded = true;
 	end
 
 	for ind, val in ipairs(self.types["image"]) do
 		imgproc(self.temporary, LAYRES_IMAGE, val);
 	end
-	
+
 	for ind, val in ipairs(self.types["fsrv"]) do
 		local res = self.trigger(LAYRES_FRAMESERVER, val);
 		if (res) then
@@ -1074,13 +1074,13 @@ local function layout_show(self)
 				image_mask_clearall(vid); -- clones can't live past their parent so nothing more to do
 				layout_imagepos(self, vid, val);
 			else
-				local vid = load_movie(res, 
-					val.loop and FRAMESERVER_LOOP or FRAMESERVER_NOLOOP, 
+				local vid = load_movie(res,
+					val.loop and FRAMESERVER_LOOP or FRAMESERVER_NOLOOP,
 					function(src, stat)
 					if (stat.source_audio ~= nil) then
 						audio_gain(stat.source_audio, self.default_gain);
 					end
-				
+
 					if (stat.kind == "resized") then
 						layout_imagepos(self, src, val);
 					end
@@ -1097,7 +1097,7 @@ local function layout_show(self)
 
 	for ind, val in ipairs(self.types["model"]) do
 		local msg, cback = self.trigger(LAYRES_MODEL, val);
-	
+
 		if (msg ~= nil and msg.vid) then
 			table.insert(self.temporary, msg.vid);
 			layout_imagepos3d(self, msg, val);
@@ -1134,7 +1134,7 @@ function layout_load(name, callback, options)
 	if (options == nil) then
 		options = {};
 	end
-	
+
 	if (not resource(name)) then
 		return nil;
 	end
@@ -1162,7 +1162,7 @@ function layout_load(name, callback, options)
 		blend_image(vid, 0.0, 10);
 		expire_image(vid, 10);
 	end
-	
+
 	return restbl;
 end
 
@@ -1183,13 +1183,13 @@ function layout_new(name)
 		show = show,
 		fontind = 1,
 		default_gain = 1,
-		items = {}, 
+		items = {},
 		groups = {}
 	};
 
 	layout_cfg.fontlist = glob_resource("fonts/*.ttf");
 
 	system_load("scripts/colourpicker.lua")();
-	
+
 	return layout_cfg;
 end

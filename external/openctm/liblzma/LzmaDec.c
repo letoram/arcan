@@ -147,7 +147,7 @@ static int MY_FAST_CALL LzmaDec_DecodeReal(CLzmaDec *p, SizeT limit, const Byte 
   Byte *dic = p->dic;
   SizeT dicBufSize = p->dicBufSize;
   SizeT dicPos = p->dicPos;
-  
+
   UInt32 processedPos = p->processedPos;
   UInt32 checkDicSize = p->checkDicSize;
   unsigned len = 0;
@@ -331,7 +331,7 @@ static int MY_FAST_CALL LzmaDec_DecodeReal(CLzmaDec *p, SizeT limit, const Byte 
             {
               NORMALIZE
               range >>= 1;
-              
+
               {
                 UInt32 t;
                 code -= range;
@@ -730,7 +730,7 @@ SRes LzmaDec_DecodeToDic(CLzmaDec *p, SizeT dicLimit, const Byte *src, SizeT *sr
   SizeT inSize = *srcLen;
   (*srcLen) = 0;
   LzmaDec_WriteRem(p, dicLimit);
-  
+
   *status = LZMA_STATUS_NOT_SPECIFIED;
 
   while (p->remainLen != kMatchSpecLenStart)
@@ -776,7 +776,7 @@ SRes LzmaDec_DecodeToDic(CLzmaDec *p, SizeT dicLimit, const Byte *src, SizeT *sr
 
       if (p->needInitState)
         LzmaDec_InitStateReal(p);
-  
+
       if (p->tempBufSize == 0)
       {
         SizeT processed;
@@ -907,12 +907,12 @@ SRes LzmaProps_Decode(CLzmaProps *p, const Byte *data, unsigned size)
 {
   UInt32 dicSize;
   Byte d;
-  
+
   if (size < LZMA_PROPS_SIZE)
     return SZ_ERROR_UNSUPPORTED;
   else
     dicSize = data[1] | ((UInt32)data[2] << 8) | ((UInt32)data[3] << 16) | ((UInt32)data[4] << 24);
- 
+
   if (dicSize < LZMA_DIC_MIN)
     dicSize = LZMA_DIC_MIN;
   p->dicSize = dicSize;
@@ -994,7 +994,7 @@ SRes LzmaDecode(Byte *dest, SizeT *destLen, const Byte *src, SizeT *srcLen,
   p.dicBufSize = outSize;
 
   LzmaDec_Init(&p);
-  
+
   *srcLen = inSize;
   res = LzmaDec_DecodeToDic(&p, outSize, src, srcLen, finishMode, status);
 

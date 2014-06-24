@@ -70,10 +70,10 @@ if (VIDEO_PLATFORM STREQUAL "egl")
 
 	if (${ENABLE_LIBRETRO})
 	if (${ENABLE_LIBRETRO3D})
-		list(APPEND FSRV_LIBRETRO_SOURCES 
+		list(APPEND FSRV_LIBRETRO_SOURCES
 			${PLATFORM_PATH}/../egl/video.c)
 		list(APPEND FSRV_LIBRETRO_LIBRARIES
-			${GL_LIBRARIES} 
+			${GL_LIBRARIES}
 		)
 	endif(${ENABLE_LIBRETRO3D})
 	endif(${ENABLE_LIBRETRO})
@@ -82,18 +82,18 @@ elseif(VIDEO_PLATFORM STREQUAL "sdl")
 	add_definitions(-DGL_HEADERS=\"${PLATFORM_PATH}/../sdl/glheaders.h\")
 	list(APPEND PLATFORM_SOURCES ${PLATFORM_PATH}/../sdl/video.c)
 	set_property(SOURCE ${PLATFORM_PATH}/../arcan/video.c
-		APPEND PROPERTY COMPILE_DEFINITIONS 
+		APPEND PROPERTY COMPILE_DEFINITIONS
 		SDL_PLATFORM
 		GL_HEADERS=\"${PLATFORM_PATH}/../sdl/glheaders.h\"
 	)
 
 	if (${ENABLE_LIBRETRO})
 	if (${ENABLE_LIBRETRO3D})
-		list(APPEND FSRV_LIBRETRO_SOURCES 
+		list(APPEND FSRV_LIBRETRO_SOURCES
 			${PLATFORM_PATH}/../sdl/video_mini.c)
-		list(APPEND FSRV_LIBRETRO_LIBRARIES 
-			${SDL_LIBRARY} 
-			${GLEW_LIBRARY} 
+		list(APPEND FSRV_LIBRETRO_LIBRARIES
+			${SDL_LIBRARY}
+			${GLEW_LIBRARY}
 			${OPENGL_gl_LIBRARY}
 		)
 	endif()
@@ -112,7 +112,7 @@ else()
 	message(FATAL_ERROR "Linux: Unsupported input platform (${INPUT_PLATFORM})")
 endif()
 
-LIST(APPEND FSRV_SOURCES frameserver/frameserver.c) 
+LIST(APPEND FSRV_SOURCES frameserver/frameserver.c)
 LIST(APPEND STDLIB
  dl
  rt)
@@ -124,7 +124,7 @@ add_definitions(-DPLATFORM_HEADER=\"${PLATFORM_PATH}/../platform.h\" -std=gnu11
 
 #
 # Uncomment if you want ctags output generated
-# 
+#
 # find_program(GENERATE_TAGS ctags)
 #if (GENERATE_TAGS)
 #	message("--> ctags command found, generating tags output")
@@ -135,20 +135,20 @@ add_definitions(-DPLATFORM_HEADER=\"${PLATFORM_PATH}/../platform.h\" -std=gnu11
 #	LIST(APPEND SOURCES ctags.output)
 #endif (GENERATE_TAGS)
 
-LIST(APPEND SOURCES 
+LIST(APPEND SOURCES
 	${CMAKE_EXTERNAL_SRCDIR}/hidapi/hid_linux.c
 	${CMAKE_EXTERNAL_SRCDIR}/hidapi/hidapi.h
- 	engine/arcan_target_launcher.c 
+ 	engine/arcan_target_launcher.c
 )
 
-LIST(APPEND MAIN_LIBRARIES udev) 
+LIST(APPEND MAIN_LIBRARIES udev)
 
 SET(HIJACK_SOURCES
 	hijack/arcan_target_unix.c
 	hijack/arcan_target.c
-  shmif/arcan_shmif.h	
+  shmif/arcan_shmif.h
 	shmif/arcan_shmif_interop.h
-	shmif/arcan_shmif_control.c 
+	shmif/arcan_shmif_control.c
 	shmif/arcan_shmif_interop.c
 	${PLATFORM_PATH}/warning.c
 	${PLATFORM_PATH}/sem.c
@@ -159,30 +159,30 @@ SET(HIJACK_SOURCES
 #
 # For LWA support, we mimic the video platform used by main arcan
 # (to get GL up and running) and substitute the shmif for input/audio
-# Audio is managed by building / linking a special AL-soft with a 
+# Audio is managed by building / linking a special AL-soft with a
 # backend that uses the shmif.
 #
 if (ENABLE_LWA)
 	message("LWA support enabled, video backend (${VIDEO_PLATFORM} )")
 
-	add_executable(arcan_lwa 
+	add_executable(arcan_lwa
 		${SOURCES}
 		${LWA_PLATFORM_SOURCES}
 	)
 
 #	set_property(TARGET arcan_lwa
-#		APPEND PROPERTY COMPILE_DEFINITIONS 
+#		APPEND PROPERTY COMPILE_DEFINITIONS
 #	)
 endif()
 
-add_library(arcan_hijack SHARED ${HIJACK_SOURCES}) 
+add_library(arcan_hijack SHARED ${HIJACK_SOURCES})
 
-set_property(TARGET arcan_hijack APPEND PROPERTY 
+set_property(TARGET arcan_hijack APPEND PROPERTY
 	COMPILE_DEFINITIONS ENABLE_X11HIJACK ENABLE_WINE_HIJACK)
 
-target_link_libraries(arcan_hijack 
-	${STDLIB} 
-	${SDL_LIBRARY} 
+target_link_libraries(arcan_hijack
+	${STDLIB}
+	${SDL_LIBRARY}
 	${OPENGL_gl_LIBRARY}
 )
 
@@ -199,22 +199,22 @@ if (ENABLE_32BITHIJACK)
 
 	add_library(arcan_hijack32 SHARED ${HIJACK_SOURCES})
 
-	set_property(TARGET arcan_hijack32 APPEND PROPERTY 
+	set_property(TARGET arcan_hijack32 APPEND PROPERTY
 		COMPILE_FLAGS "-m32")
-	set_property(TARGET arcan_hijack32 APPEND PROPERTY 
+	set_property(TARGET arcan_hijack32 APPEND PROPERTY
 		COMPILE_DEFINITIONS ENABLE_X11HIJACK ENABLE_WINE_HIJACK)
 	 	target_link_libraries(arcan_hijack32 ${STDLIB} -m32 )
 	install(TARGETS arcan_hijack32 DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
 endif (ENABLE_32BITHIJACK)
 
-install(FILES ${CMAKE_SOURCE_DIR}/utils/arcan_romman.rb DESTINATION ${BIN_DST} 
-	PERMISSIONS 
-		WORLD_READ WORLD_EXECUTE 
-		OWNER_WRITE OWNER_READ OWNER_EXECUTE 
+install(FILES ${CMAKE_SOURCE_DIR}/utils/arcan_romman.rb DESTINATION ${BIN_DST}
+	PERMISSIONS
+		WORLD_READ WORLD_EXECUTE
+		OWNER_WRITE OWNER_READ OWNER_EXECUTE
 		GROUP_READ GROUP_EXECUTE
 )
 
-install(FILES ${CMAKE_SOURCE_DIR}/doc/arcan.1 
+install(FILES ${CMAKE_SOURCE_DIR}/doc/arcan.1
 	DESTINATION /usr/local/share/man/man1
 )
 

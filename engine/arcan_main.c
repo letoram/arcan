@@ -75,7 +75,7 @@ bool stdout_redirected = false;
 
 /*
  * default, probed / replaced on some systems
- */ 
+ */
 extern int system_page_size;
 
 static const struct option longopts[] = {
@@ -137,7 +137,7 @@ printf("usage:\narcan [-whxyfmstptodgavSrMO] [theme] [themearguments]\n"
 "-S\t--nosound     \tdisable audio output\n"
 "-r\t--scalemode   \tset texture mode:\n"
 "                  \t\t%i(rectangle sized textures, default),\n"
-"                  \t\t%i(scale to power of two)\n\t", 
+"                  \t\t%i(scale to power of two)\n\t",
 	ARCAN_VIMAGE_NOPOW2, ARCAN_VIMAGE_SCALEPOW2);
 }
 
@@ -159,8 +159,8 @@ int main(int argc, char* argv[])
 	int winy      = -1;
 	int timedump  = 0;
 	float vfalign = 0.6;
-	
-/* only used when monitor mode is activated, where we want some 
+
+/* only used when monitor mode is activated, where we want some
  * of the global paths etc. accessible, but not *all* of them */
 	FILE* monitor_outf    = NULL;
 	int monitor           = 0;
@@ -169,7 +169,7 @@ int main(int argc, char* argv[])
 
 	char* dbfname = NULL;
 	int ch;
-	
+
 	srand( time(0) );
 /* VIDs all have a randomized base to provoke crashes in poorly written scripts,
  * only -g will make their base and sequence repeatable */
@@ -199,7 +199,7 @@ int main(int argc, char* argv[])
 	case 'p' : arcan_resourcepath = strdup(optarg); break;
 #ifndef _WIN32
 	case 'M' : monitor = abs( strtol(optarg, NULL, 10) ); break;
-	case 'O' : monitor_arg = strdup( optarg ); break; 
+	case 'O' : monitor_arg = strdup( optarg ); break;
 #endif
 	case 't' : arcan_themepath = strdup(optarg); break;
 	case 'o' : arcan_binpath = strdup(optarg); break;
@@ -210,7 +210,7 @@ int main(int argc, char* argv[])
 	case 'r' :
 		scalemode = strtol(optarg, NULL, 10);
 		printf("scalemode: %d\n", scalemode);
-		if (scalemode != ARCAN_VIMAGE_NOPOW2 && scalemode != 
+		if (scalemode != ARCAN_VIMAGE_NOPOW2 && scalemode !=
 			ARCAN_VIMAGE_SCALEPOW2 && scalemode){
 			arcan_warning("Warning: main(), -r, invalid scalemode. Ignoring.\n");
 			scalemode = ARCAN_VIMAGE_SCALEPOW2;
@@ -257,14 +257,14 @@ int main(int argc, char* argv[])
  * pushed through the sample() function in the LUA space */
 	if (in_monitor){
 		monitor_infd = strtol( getenv("ARCAN_MONITOR_FD"), NULL, 10);
-	 	signal(SIGPIPE, SIG_IGN);	
+	 	signal(SIGPIPE, SIG_IGN);
 	}
 	else if (monitor > 0){
 		extern arcan_benchdata benchdata;
 		benchdata.bench_enabled = true;
 
 		if (strncmp(monitor_arg, "LOG:", 4) == 0){
-			monitor_outf = fopen(&monitor_arg[4], "w+");	
+			monitor_outf = fopen(&monitor_arg[4], "w+");
 			if (NULL == monitor_outf)
 				arcan_fatal("couldn't open log output (%s) for writing\n", monitor_arg[4]);
 			fcntl(fileno(monitor_outf), F_SETFD, FD_CLOEXEC);
@@ -280,19 +280,19 @@ int main(int argc, char* argv[])
 				close(pair[1]);
 
 /* double-fork to get away from parent */
-				if (fork() != 0) 
-					exit(0); 
+				if (fork() != 0)
+					exit(0);
 
-/* 
+/*
  * set the descriptor of the inherited pipe as an envvariable,
  * this will have the program be launched with in_monitor set to true
- * the monitor args will then be ignored and themename replaced with 
- * the monitorarg 
+ * the monitor args will then be ignored and themename replaced with
+ * the monitorarg
  */
 				char monfd_buf[8] = {0};
 				snprintf(monfd_buf, 8, "%d", pair[0]);
 				setenv("ARCAN_MONITOR_FD", monfd_buf, 1);
-				argv[optind] = strdup(monitor_arg);	
+				argv[optind] = strdup(monitor_arg);
 
 				execv(argv[0], argv);
 				exit(1);
@@ -301,10 +301,10 @@ int main(int argc, char* argv[])
 /* don't terminate just because the pipe gets broken (i.e. dead monitor) */
 				close(pair[0]);
 				monitor_outf = fdopen(pair[1], "w");
-			 	signal(SIGPIPE, SIG_IGN);	
+			 	signal(SIGPIPE, SIG_IGN);
 			}
 		}
-		
+
 		fullscreen = false;
 	}
 #endif
@@ -314,8 +314,8 @@ themeswitch:
 
 /*
  * try to open the specified database,
- * if that fails, warn, try to create an empty 
- * database and if that fails, give up. 
+ * if that fails, warn, try to create an empty
+ * database and if that fails, give up.
  */
 	if (!dbfname)
 		dbfname = arcan_expand_resource("arcandb.sqlite", true);
@@ -336,7 +336,7 @@ themeswitch:
 			goto error;
 		}
 	}
-	
+
 	arcan_video_default_scalemode(scalemode);
 
 	if (winx != -1 || winy != -1){
@@ -355,7 +355,7 @@ themeswitch:
 		arcan_fatal("Error; Couldn't initialize video system,"
 			"try other windowing options (-f, -w, ...)\n");
 	}
-	
+
 	errno = 0;
 /* grab audio, (possible to live without) */
 	if (ARCAN_OK != arcan_audio_setup(nosound))
@@ -377,10 +377,10 @@ themeswitch:
 
 /*
  * MINGW implements putenv, so use this to set
- * the system subpath path (BIOS, ..) 
+ * the system subpath path (BIOS, ..)
  */
 	if (getenv("ARCAN_SYSTEMPATH") == NULL){
-		size_t len = strlen(arcan_resourcepath) + sizeof("/games/system") + 
+		size_t len = strlen(arcan_resourcepath) + sizeof("/games/system") +
 			sizeof("ARCAN_SYSTEMPATH=") + 1;
 
 		char* const syspath = malloc(len);
@@ -388,11 +388,11 @@ themeswitch:
 		arcan_warning("Notice: Using default systempath (%s)\n", syspath);
 		putenv(syspath);
 	} else
-		arcan_warning("Notice: Using systempath from environment (%s)\n", 
+		arcan_warning("Notice: Using systempath from environment (%s)\n",
 			getenv("ARCAN_SYSTEMPATH"));
 
 	if (getenv("ARCAN_FRAMESERVER_LOGDIR") == NULL){
-		size_t len = strlen(arcan_resourcepath) + sizeof("/logs") + 
+		size_t len = strlen(arcan_resourcepath) + sizeof("/logs") +
 			sizeof("ARCAN_FRAMESERVER_LOGDIR=/logs");
 
 		char* const logpath = malloc(len);
@@ -408,7 +408,7 @@ themeswitch:
  * would want to be able to hint to mmap which pages that should be avoided
  * so that we could exclude texture data that both comprise most memory used
  * and can be recovered through other means. One option for this would be
- * to push image loading/management to a separate process, 
+ * to push image loading/management to a separate process,
  * debuglevel > 1, dump everything */
 	if (debuglevel == 0);
 	else if (debuglevel == 1) coresize.rlim_max = 10 * 1024 * 1024;
@@ -420,7 +420,7 @@ themeswitch:
 #endif
 
 
-/* setup VM, map arguments and possible overrides */ 
+/* setup VM, map arguments and possible overrides */
 	struct arcan_luactx* luactx = arcan_lua_alloc();
 	arcan_lua_mapfunctions(luactx, debuglevel);
 
@@ -451,12 +451,12 @@ themeswitch:
 	float lastfrag = 0.0f;
 	long long int lastflip = arcan_timemillis();
 	int monitor_counter = monitor;
-	
+
 	arcan_event ev;
 	arcan_evctx* evctx = arcan_event_defaultctx();
 
 	while (!done) {
-/* pollfeed can actually populate event-loops, assuming we don't exceed a 
+/* pollfeed can actually populate event-loops, assuming we don't exceed a
  * compile- time threshold */
 #ifdef ARCAN_HMD
 		arcan_hmd_update();
@@ -466,15 +466,15 @@ themeswitch:
 			arcan_video_pollfeed();
 		}
 
-/* NOTE: might be better if this terminates if we're closing in on a 
+/* NOTE: might be better if this terminates if we're closing in on a
  * deadline as to not be saturated with an onslaught of I/O events. */
-		while (1 == arcan_event_poll(evctx, &ev)){ 
+		while (1 == arcan_event_poll(evctx, &ev)){
 
 /*
  * these events can typically be determined in video_tick(),
- * however there are so many hierarchical dependencies 
+ * however there are so many hierarchical dependencies
  * (linked objs, instances, ...)
- * that a full delete is not really safe there (e.g. event -> callback -> 
+ * that a full delete is not really safe there (e.g. event -> callback ->
  */
 			switch (ev.category){
 			case EVENT_VIDEO:
@@ -496,7 +496,7 @@ themeswitch:
 					arcan_themename = strdup(ev.data.system.data.message);
 					goto themeswitch;
 				}
-				else 
+				else
 					continue;
 			break;
 			}
@@ -519,7 +519,7 @@ themeswitch:
 
 			arcan_audio_tick(nticks);
 			lastfrag = 0.0;
-				
+
 			if (monitor && !in_monitor){
 				if (--monitor_counter == 0){
 					static int mc;
@@ -532,13 +532,13 @@ themeswitch:
 
 /* debugging functionality to generate a dump and abort after n ticks */
 			if (timedump){
-				timedump -= nticks; 
+				timedump -= nticks;
 
 				if (timedump <= 0){
 					arcan_state_dump("timedump", "user requested a dump", __func__);
 					break;
 				}
-			}	
+			}
 		}
 
 /* this is internally buffering and non-blocking, hence the fd use compared
@@ -547,20 +547,20 @@ themeswitch:
 		if (in_monitor)
 			arcan_lua_stategrab(luactx, "sample", monitor_infd);
 #endif
-	
+
 /*
  * difficult decision, should we flip or not?
- * a full- redraw can be costly, so should only really be done if 
- * enough things have changed or if we're closing in on the next 
- * deadline for the unknown video clock, this also depends on if 
- * the user favors energy saving (waitsleep) or responsiveness. 
+ * a full- redraw can be costly, so should only really be done if
+ * enough things have changed or if we're closing in on the next
+ * deadline for the unknown video clock, this also depends on if
+ * the user favors energy saving (waitsleep) or responsiveness.
  */
 		const int min_respthresh = 9;
 
 /* only render if there's enough relevant changes */
 		if (!waitsleep || nticks > 0 || frag - lastfrag > INTERP_MINSTEP){
 
-/* separate between cheap (possibly vsync off or triple buffering) 
+/* separate between cheap (possibly vsync off or triple buffering)
  * flip cost and expensive (vsync on) */
 			if (arcan_video_display.vsync_timing < 8.0){
 				unsigned cost = arcan_video_refresh(frag, true);
@@ -573,7 +573,7 @@ themeswitch:
 
 				int delta = arcan_timemillis() - lastflip;
 				lastflip += delta;
-	
+
 				if (waitsleep && delta < min_respthresh)
 					arcan_timesleep(min_respthresh - delta);
 			}
@@ -589,7 +589,7 @@ themeswitch:
 						framepulse = arcan_lua_callvoidfun(luactx, "frame_pulse", false);
 
 					lastflip += delta;
-				} 
+				}
 			}
 		}
 

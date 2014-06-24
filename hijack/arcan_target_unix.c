@@ -65,11 +65,11 @@ SDL_Surface* ARCAN_SDL_CreateRGBSurface(Uint32 flags, int width, int height,
 SDL_Surface* ARCAN_SDL_SetVideoMode(int w, int h, int ncps, Uint32 flags);
 int ARCAN_SDL_PollEvent(SDL_Event* inev);
 int ARCAN_SDL_Flip(SDL_Surface* screen);
-void ARCAN_SDL_UpdateRect(SDL_Surface* screen, 
-	Sint32 x, Sint32 y, Uint32 w, Uint32 h); 
-void ARCAN_SDL_UpdateRects(SDL_Surface* screen, 
+void ARCAN_SDL_UpdateRect(SDL_Surface* screen,
+	Sint32 x, Sint32 y, Uint32 w, Uint32 h);
+void ARCAN_SDL_UpdateRects(SDL_Surface* screen,
 	int numrects, SDL_Rect* rects);
-int ARCAN_SDL_UpperBlit(SDL_Surface* src, const SDL_Rect* srcrect, 
+int ARCAN_SDL_UpperBlit(SDL_Surface* src, const SDL_Rect* srcrect,
 	SDL_Surface *dst, SDL_Rect *dstrect);
 void ARCAN_SDL_GL_SwapBuffers();
 void ARCAN_glFinish();
@@ -80,10 +80,10 @@ int ARCAN_XNextEvent(Display* disp, XEvent* ev);
 int ARCAN_XPeekEvent(Display* disp, XEvent* ev);
 Bool ARCAN_XGetEventData(Display* display, XGenericEventCookie* event);
 void ARCAN_glXSwapBuffers (Display *dpy, GLXDrawable drawable);
-Bool ARCAN_XQueryPointer(Display* display, Window w, 
-	Window* root_return, Window* child_return, int* rxret, 
+Bool ARCAN_XQueryPointer(Display* display, Window w,
+	Window* root_return, Window* child_return, int* rxret,
 	int* ryret, int* wxret, int* wyret, unsigned* maskret);
-int ARCAN_XCheckIfEvent(Display *display, XEvent *event_return, 
+int ARCAN_XCheckIfEvent(Display *display, XEvent *event_return,
 	Bool (*predicate)(Display*, XEvent*, XPointer), XPointer arg);
 Bool ARCAN_XFilterEvent(XEvent* ev, Window m);
 #endif
@@ -130,12 +130,12 @@ static void* lookupsym(const char* symname, void* bounce, bool fatal){
 		symtbl.last->next = dst;
 		symtbl.last       = dst;
 	}
-	
+
 	dst->sym    = strdup(symname);
 	dst->ptr    = res;
 	dst->bounce = bounce;
 	dst->next   = NULL;
-	
+
 	return res;
 }
 
@@ -146,7 +146,7 @@ static struct symentry* find_symbol(const char* sym)
 	while (res != NULL) {
 		if (strcmp(res->sym, sym) == 0)
 			return res;
-	
+
 		res = res->next;
 	}
 
@@ -166,7 +166,7 @@ static void hijack_init(void){
 	forwardtbl.sdl_updaterect = lookupsym("SDL_UpdateRect", ARCAN_SDL_UpdateRect, true);
 	forwardtbl.sdl_updaterects = lookupsym("SDL_UpdateRects", ARCAN_SDL_UpdateRects, true);
 	forwardtbl.sdl_upperblit = lookupsym("SDL_UpperBlit", ARCAN_SDL_UpperBlit, true);
-	
+
 	forwardtbl.sdl_setvideomode = lookupsym("SDL_SetVideoMode", ARCAN_SDL_SetVideoMode, true);
 	forwardtbl.sdl_creatergbsurface = lookupsym("SDL_CreateRGBSurface", ARCAN_SDL_CreateRGBSurface, true);
 
@@ -210,7 +210,7 @@ void SDL_WarpMouse(uint16_t x, uint16_t y){
 int SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
 {
 	lastsym = "SDL_OpenAudio";
-	return ARCAN_SDL_OpenAudio(desired, obtained);	
+	return ARCAN_SDL_OpenAudio(desired, obtained);
 }
 
 SDL_Surface* SDL_SetVideoMode(int w, int h, int ncps, Uint32 flags)
@@ -250,7 +250,7 @@ void SDL_UpdateRects(SDL_Surface* screen, int numrects, SDL_Rect* rects){
 
 void SDL_UpdateRect(SDL_Surface* surf, Sint32 x, Sint32 y, Uint32 w, Uint32 h){
 	lastsym = "SDL_UpdateRect";
-	ARCAN_SDL_UpdateRect(surf, x, y, w, h);	
+	ARCAN_SDL_UpdateRect(surf, x, y, w, h);
 }
 
 /* disable fullscreen attempts on X11, VideoMode hijack removes it from flags */
@@ -259,7 +259,7 @@ int SDL_WM_ToggleFullscreen(SDL_Surface* screen){
 }
 
 DECLSPEC int SDLCALL SDL_UpperBlit(SDL_Surface *src, SDL_Rect *srcrect, SDL_Surface *dst, SDL_Rect *dstrect){
-	return ARCAN_SDL_UpperBlit(src, srcrect, dst, dstrect);	
+	return ARCAN_SDL_UpperBlit(src, srcrect, dst, dstrect);
 }
 
 void glFinish()
@@ -289,7 +289,7 @@ void* ARCAN_glxGetProcAddr(const GLubyte* symbol)
 /* s'ppose the calls are to flush lookup errors or something.. */
 	dlerror(); dlerror();
 	void* rv = dlsym(NULL, (const char*) symbol);
-	
+
 	dlerror();
 	return rv;
 }

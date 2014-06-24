@@ -1,16 +1,16 @@
 -- copy_surface_properties
--- @short: Copy key surface properties from one VID to another. 
+-- @short: Copy key surface properties from one VID to another.
 -- @inargs: srcvid, dstvid
--- @outargs: 
+-- @outargs:
 -- @longdescr: This function will first resolve the current surface properties of *srcvid* into world space and then store the result in *dstvid*. This covers position, orientation, opacity and scale.
--- @note: The resolved properties will not be translated into the local coordinate space of *dstvid*, thus the results may be undesired if *dstvid* has its dimensions linked relative to another object than worldid. 
+-- @note: The resolved properties will not be translated into the local coordinate space of *dstvid*, thus the results may be undesired if *dstvid* has its dimensions linked relative to another object than worldid.
 -- @note: Scale is treated differently due to its relation with the initial width,height of the source. This is solved by translating the resolved dimension into a scale factor.
--- @note: The rotation transfer does not take any rotation origo offset into account. 
+-- @note: The rotation transfer does not take any rotation origo offset into account.
 -- @note: Using the same object for src and for dst is prohibited.
 -- @group: image
--- @related: copy_image_transform 
+-- @related: copy_image_transform
 -- @cfunction: arcan_lua_copyimageprop
--- @flags: 
+-- @flags:
 function main()
 #ifdef MAIN
 	a = fill_surface(64, 64, 255, 0, 0);

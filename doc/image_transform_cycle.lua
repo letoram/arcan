@@ -1,16 +1,16 @@
 -- image_transform_cycle
--- @short: Toggle transform cycles ON/OFF. 
+-- @short: Toggle transform cycles ON/OFF.
 -- @inargs: vid, toggle
--- @outargs: 
+-- @outargs:
 -- @longdescr: The default behavior for objects with one or several
--- transforms queued is to drop all tracking of a transform state 
+-- transforms queued is to drop all tracking of a transform state
 -- after it has been completed. This function changes that behavior
--- to instead requeue the transform at the end of the chain, 
+-- to instead requeue the transform at the end of the chain,
 -- looping the animation.
 -- @note: Since this makes a lot of the object state variable,
 -- this function has a severe impact on the ability to cache previous
 -- states and can thus be very expensive.
--- @group: image 
+-- @group: image
 -- @cfunction: arcan_lua_cycletransform
 function main()
 #ifdef MAIN

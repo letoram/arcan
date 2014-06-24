@@ -37,12 +37,12 @@ int arcan_sem_wait(sem_handle sem)
 	return sem_wait(sem);
 }
 
-/* 
- * In its infinite wisdom, darwin only supports 
+/*
+ * In its infinite wisdom, darwin only supports
  * named semaphores (seriously). We are forced to
  * either rewrite some parts for this, or simulate
  * named through unnamed.
- */ 
+ */
 int arcan_sem_init(sem_handle* sem, unsigned val)
 {
 	char tmpbuf[32];
@@ -68,7 +68,7 @@ int arcan_sem_destroy(sem_handle sem)
 {
 	if (!sem)
 		return -1;
-	
+
 	int rv = sem_close(sem);
 	return rv;
 }

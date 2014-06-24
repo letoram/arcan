@@ -10,7 +10,7 @@ struct stateman_ctx {
 	int range_start, range_end;
 };
 
-struct stateman_ctx* stateman_setup(size_t state_sz, 
+struct stateman_ctx* stateman_setup(size_t state_sz,
 	ssize_t limit, int precision){
 	return NULL;
 }

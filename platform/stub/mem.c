@@ -22,20 +22,20 @@ void* arcan_alloc_mem(size_t nb,
 }
 
 /*
- * Allocate memory intended for read-only or 
+ * Allocate memory intended for read-only or
  * exec use (JIT, ...)
  */
 void* arcan_alloc_fillmem(const void* data,
 	size_t ds,
-	enum arcan_memtypes type, 
-	enum arcan_memhint hint, 
+	enum arcan_memtypes type,
+	enum arcan_memhint hint,
 	enum arcan_memalign align)
 {
 	void* buf = arcan_alloc_mem(ds, type, hint, align);
 
 	if (!buf)
 		return NULL;
-	
+
 	memcpy(buf, data, ds);
 	return buf;
 }

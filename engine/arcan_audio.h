@@ -41,7 +41,7 @@ typedef arcan_errc(*arcan_afunc_cb)(struct arcan_aobj* aobj, arcan_aobj_id id, u
 
 /* this callback is checked prior to buffering data in OpenAL, which, in their infinite wisdom,
  * does not supply any aggregated means of gathering output or being used as a resampler (or dummy input device
- * for that matter). As the ffmpeg/libav- cruft is not allowed anywhere near the main process, 
+ * for that matter). As the ffmpeg/libav- cruft is not allowed anywhere near the main process,
  * we're left with this sorry hack -> grab buffers, put on a tag+len+data and have the frameserver split
  * the buffer into separate streams and perform samplerate conversion / mixing there. */
 typedef void(*arcan_monafunc_cb)(arcan_aobj_id id, uint8_t* buf, size_t bytes, unsigned channels, unsigned frequency, void* tag);

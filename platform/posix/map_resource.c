@@ -33,11 +33,11 @@
 #include <arcan_math.h>
 #include <arcan_general.h>
 
-/* 
+/*
  * some mapping mechanisms other than arcan_map_resource
  * should be used for dealing with single resources larger
  * than this size.
- */ 
+ */
 #ifndef MAX_RESMAP_SIZE
 #define MAX_RESMAP_SIZE (1024 * 1024 * 10)
 #endif
@@ -51,9 +51,9 @@ static inline bool read_safe(int fd, size_t ntr, int bs, char* dofs)
 
 		if (nr > 0)
 			ntr -= nr;
-		else 
+		else
 			if (errno == EINTR);
-		else 
+		else
 			break;
 
 		if (dofs)
@@ -74,9 +74,9 @@ map_region arcan_map_resource(data_source* source, bool allowwrite)
 	map_region rv = {0};
 	struct stat sbuf;
 
-/* 
+/*
  * if additional properties (size, ...) has not yet been resolved,
- * try and figure things out manually 
+ * try and figure things out manually
  */
 	if (0 == source->len && -1 != fstat(source->fd, &sbuf)){
 		source->len = sbuf.st_size;
@@ -87,18 +87,18 @@ map_region arcan_map_resource(data_source* source, bool allowwrite)
 	if (!source->len)
 		return rv;
 
-/* 
- * for unaligned reads (or in-place modifiable memory) 
- * we manually read the file into a buffer 
+/*
+ * for unaligned reads (or in-place modifiable memory)
+ * we manually read the file into a buffer
  */
 	if (source->start % sysconf(_SC_PAGE_SIZE) != 0 || allowwrite){
 		goto memread;
 	}
 
-/* 
+/*
  * The use-cases for most resources mapped in this manner relies on
  * mapping reasonably small buffer lengths for decoding. Reasonably
- * is here defined by MAX_RESMAP_SIZE 
+ * is here defined by MAX_RESMAP_SIZE
  */
 	if (0 < source->len && MAX_RESMAP_SIZE > source->len){
 		rv.sz  = source->len;
@@ -111,13 +111,13 @@ map_region arcan_map_resource(data_source* source, bool allowwrite)
 				;
 
 			arcan_warning("arcan_map_resource() failed, reason(%d): %s\n\t"
-				"(length)%d, (fd)%d, (offset)%d\n", errno, errbuf, 
+				"(length)%d, (fd)%d, (offset)%d\n", errno, errbuf,
 				rv.sz, source->fd, source->start);
 
 			rv.ptr = NULL;
 			rv.sz  = 0;
-		} 
-		else{ 
+		}
+		else{
 			rv.mmap = true;
 		}
 	}
@@ -135,9 +135,9 @@ memread:
 		if (source->start > 0 && -1 == lseek(source->fd, SEEK_SET, source->start)){
 			rstatus = read_safe(source->fd, source->start, 8192, NULL);
 		}
-		
+
 		if (rstatus){
-			rstatus = read_safe(source->fd, source->len, 8192, rv.ptr);	
+			rstatus = read_safe(source->fd, source->len, 8192, rv.ptr);
 		}
 
 		if (!rstatus){

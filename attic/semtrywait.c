@@ -4,7 +4,7 @@
  * guardthread + sem_wait and wakeup set
  */
 
-int arcan_sem_timedwait_ks(sem_handle semaphore, 
+int arcan_sem_timedwait_ks(sem_handle semaphore,
 	int msecs, volatile int8_t* ks)
 {
 	static int8_t broken_timedwait;
@@ -20,10 +20,10 @@ int arcan_sem_timedwait_ks(sem_handle semaphore,
 
 /*
  * We wait "forever" but that means checking back on
- * the ks regularly. The reason for this rather contrived 
+ * the ks regularly. The reason for this rather contrived
  * solution is the lack of "less messy" and portable approaches
  * to interprocess-named-condition variables
- * (OSX doesn't even provide sem_timedwait) 
+ * (OSX doesn't even provide sem_timedwait)
  */
 	long long start = arcan_timemillis();
 
@@ -60,7 +60,7 @@ int arcan_sem_timedwait_ks(sem_handle semaphore,
 		else {
 			if (sem_trywait(semaphore) == 0)
 				return 0;
-			
+
 			if (msecs > 0){
 				long long cur = arcan_timemillis();
 				if (cur - start >= msecs)

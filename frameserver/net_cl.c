@@ -43,7 +43,7 @@ static struct {
 /* SHM-API interface */
 	struct arcan_shmif_cont shmcont;
 
-	apr_socket_t* evsock; 
+	apr_socket_t* evsock;
 	uint8_t* vidp, (* audp);
 	struct arcan_evctx inevq;
 	struct arcan_evctx outevq;
@@ -60,14 +60,14 @@ static struct {
 	struct conn_state conn;
 } clctx = {
 	.public_key = {'C', 'L', 'I', 'E', 'N', 'T', 'P', 'U', 'B', 'L', 'I', 'C'},
-	.name = "anonymous"		
+	.name = "anonymous"
 };
 
 static ssize_t queueout_data(struct conn_state* conn)
 {
 	if (conn->state_out.state == STATE_NONE)
 		return 0;
-		
+
 	size_t ntc = conn->state_out.lim - conn->state_out.ofs;
 
 	if (conn->state_out.state == STATE_DATA){
@@ -79,12 +79,12 @@ static ssize_t queueout_data(struct conn_state* conn)
 		conn->state_out.ofs += ntc;
 
 		if (ntc == 0){
-			if (!conn->pack(&clctx.conn, TAG_STATE_EOB, 
+			if (!conn->pack(&clctx.conn, TAG_STATE_EOB,
 				0, (char*) conn->state_out.vidp))
 				return -1;
 		}
-		
-		if (!conn->pack(&clctx.conn, TAG_STATE_DATABLOCK, 
+
+		if (!conn->pack(&clctx.conn, TAG_STATE_DATABLOCK,
 			ntc, (char*) conn->state_out.vidp + conn->state_out.ofs))
 			return -1;
 	}
@@ -96,7 +96,7 @@ static ssize_t queueout_data(struct conn_state* conn)
 static bool client_inevq_process(apr_socket_t* outconn)
 {
 	arcan_event ev;
-	uint16_t msgsz = sizeof(ev.data.network.message) / 
+	uint16_t msgsz = sizeof(ev.data.network.message) /
 		sizeof(ev.data.network.message[0]);
 
 /* since we flush the entire eventqueue at once, it means that multiple
@@ -116,7 +116,7 @@ static bool client_inevq_process(apr_socket_t* outconn)
 			break;
 
 /* we can only pass the public key on the command-line,
- * not the private one.   
+ * not the private one.
 			case EVENT_NET_KEYUPDATE:
 
 			break;
@@ -129,7 +129,7 @@ static bool client_inevq_process(apr_socket_t* outconn)
 				if (strlen(ev.data.network.message) + 1 < msgsz)
 					msgsz = strlen(ev.data.network.message) + 1;
 
-				return clctx.conn.pack(&clctx.conn, 
+				return clctx.conn.pack(&clctx.conn,
 					TAG_NETMSG, msgsz, ev.data.network.message);
 			break;
 
@@ -139,21 +139,21 @@ static bool client_inevq_process(apr_socket_t* outconn)
 		}
 		else if (ev.category == EVENT_TARGET){
 			switch (ev.kind){
-			case TARGET_COMMAND_EXIT: 
-				return false; 
+			case TARGET_COMMAND_EXIT:
+				return false;
 			break;
 
-/* 
+/*
  * new transfer (arcan->fsrv) requested, or pending
- * request to accept incoming transfer.  
+ * request to accept incoming transfer.
  * reject: transfer pending or non-authenticated
- * accept: switch to STATEXFER mode 
+ * accept: switch to STATEXFER mode
  */
 			case TARGET_COMMAND_NEWSEGMENT:
 				net_newseg(&clctx.conn,	ev.data.target.ioevs[0].iv,
 					ev.data.target.message);
-			
-/* output type? assume transfer request */	
+
+/* output type? assume transfer request */
 				if (ev.data.target.ioevs[0].iv == 0){
 					char outbuf[4] = {
 						clctx.conn.state_out.ctx.addr->w,
@@ -164,7 +164,7 @@ static bool client_inevq_process(apr_socket_t* outconn)
 					clctx.conn.state_out.state = STATE_IMG;
 					return (clctx.conn.pack(
 						&clctx.conn, TAG_STATE_IMGOBJ, 4, outbuf));
-				} 
+				}
 				else {
 					if (clctx.conn.blocked){
 						clctx.conn.blocked = false;
@@ -209,36 +209,36 @@ static bool client_inevq_process(apr_socket_t* outconn)
  *          OR name matches optkey. If NULL, just use the first reply received.
  * passive : never quit, just forward responses to parent.
  *
- * returns a point to a dynamically allocated buffer that will also 
+ * returns a point to a dynamically allocated buffer that will also
  * free up (replhost, replkey) or NULL.
  */
-static bool host_discover(const char* reqhost, 
-	const char* optkey, bool passive, 
-	char** outhost, int* outport, char** pkey) 
+static bool host_discover(const char* reqhost,
+	const char* optkey, bool passive,
+	char** outhost, int* outport, char** pkey)
 {
 	char* reqmsg, repbuf[ NET_HEADER_SIZE ];
-	bool retv = false; 
+	bool retv = false;
 
 /* no strict requirements for this one, only used in limiting
- * replay / DoS- response possibility. */ 
+ * replay / DoS- response possibility. */
 	int32_t magic_v = rand();
 	char magic[5] = {0};
 	memcpy(magic, &magic_v, sizeof(int32_t));
 
 	size_t dst_sz;
-	reqmsg = net_pack_discover(true, 
+	reqmsg = net_pack_discover(true,
 		clctx.public_key, clctx.name, (char*)magic, "", 0, &dst_sz);
 
 	apr_status_t rv;
 	apr_sockaddr_t* addr;
 
-/* specific, single, redirector host OR IPV4 broadcast, 
+/* specific, single, redirector host OR IPV4 broadcast,
  * multicast groups, IPv6 support etc. should go here */
-	apr_sockaddr_info_get(&addr, reqhost ? reqhost : "255.255.255.255", 
+	apr_sockaddr_info_get(&addr, reqhost ? reqhost : "255.255.255.255",
 		APR_INET, DEFAULT_DISCOVER_REQ_PORT, 0, clctx.mempool);
 
 	int rport = DEFAULT_DISCOVER_RESP_PORT;
-	apr_socket_t* broadsock = net_prepare_socket("0.0.0.0", NULL, 
+	apr_socket_t* broadsock = net_prepare_socket("0.0.0.0", NULL,
 		&rport, false, clctx.mempool);
 
 	if (!broadsock){
@@ -255,7 +255,7 @@ static bool host_discover(const char* reqhost,
 
 /* we only retry on full timeout, never on a broken incoming package
  * else broken replies could be used to amplify */
-		if ( ( rv = apr_socket_sendto(broadsock, addr, 0, 
+		if ( ( rv = apr_socket_sendto(broadsock, addr, 0,
 			reqmsg, &nts) ) != APR_SUCCESS)
 			break;
 
@@ -270,7 +270,7 @@ retry_partial:
 
 		if (rv != APR_SUCCESS)
 			goto done;
-	
+
 		char* repmsg, (* name), (* cookie);
 		if (ntr != NET_HEADER_SIZE || !(repmsg = net_unpack_discover(
 			repbuf, false, pkey, &name, &cookie, outhost, outport))){
@@ -280,18 +280,18 @@ retry_partial:
 		if (memcmp(cookie, (char*)magic, 4) != 0){
 			free(repmsg);
 			goto retry_partial;
-		}	
+		}
 
 /* valid, unpacked package */
 /* if no IP is set, the IP is that of the sending source */
 		if (strcmp(*outhost, "0.0.0.0") == 0)
 			apr_sockaddr_ip_getbuf(*outhost, NET_ADDR_SIZE - 5, &recaddr);
 
-/* passive, will background scan until we get killed or sent 
+/* passive, will background scan until we get killed or sent
  * TARGET_COMMAND_EXIT */
 		if (passive){
 			arcan_event ev = {
-				.category = EVENT_NET, 
+				.category = EVENT_NET,
 				.kind = EVENT_NET_DISCOVERED
 			};
 			strncpy(ev.data.network.host.addr, *outhost, NET_ADDR_SIZE);
@@ -300,7 +300,7 @@ retry_partial:
 
 			arcan_event_enqueue(&clctx.outevq, &ev);
 		}
-		else if (optkey == NULL || 
+		else if (optkey == NULL ||
 			strcmp(optkey, *pkey) == 0 || strcmp(name, optkey) == 0){
 			retv = true;
 			apr_socket_close(broadsock);
@@ -325,8 +325,8 @@ void arcan_net_client_session(struct arg_arr* args, const char* shmkey)
 {
 	const char* host = NULL;
 	arg_lookup(args, "host", 0, &host);
-	
-	struct arcan_shmif_cont shmcont = 
+
+	struct arcan_shmif_cont shmcont =
 		arcan_shmif_acquire(shmkey, SHMIF_INPUT, true, false);
 
 	if (!shmcont.addr){
@@ -334,14 +334,14 @@ void arcan_net_client_session(struct arg_arr* args, const char* shmkey)
 		return;
 	}
 
-	arcan_shmif_setevqs(shmcont.addr, shmcont.esem, 
+	arcan_shmif_setevqs(shmcont.addr, shmcont.esem,
 		&(clctx.inevq), &(clctx.outevq), false);
 
 	arg_lookup(args, "ident", 0, (const char**) &clctx.name);
 
 	if (arg_lookup(args, "nacl", 0, &host)){
 		if (!wait_keypair())
-			return;		
+			return;
 	}
 	else{
 /* generate public/private keypair */
@@ -357,11 +357,11 @@ void arcan_net_client_session(struct arg_arr* args, const char* shmkey)
 	arg_lookup(args, "reqkey", 0, &reqkey);
 
 	if (host && strcmp(host, ":discovery") == 0){
-		host_discover(host, reqkey, true, &hoststr, &outport, &hostkey); 
+		host_discover(host, reqkey, true, &hoststr, &outport, &hostkey);
 		return;
 	}
 
-	if (!host_discover(host, reqkey, 
+	if (!host_discover(host, reqkey,
 		false, &hoststr, &outport, &hostkey)){
 		LOG("(net) -- couldn't find any Arcan- compatible server.\n");
 		return;
@@ -372,18 +372,18 @@ void arcan_net_client_session(struct arg_arr* args, const char* shmkey)
 	apr_socket_t* sock;
 
 /* obtain connection using a blocking socket */
-	apr_sockaddr_info_get(&sa, hoststr, 
+	apr_sockaddr_info_get(&sa, hoststr,
 		APR_INET, outport, 0, clctx.mempool);
-	apr_socket_create(&sock, sa->family, 
+	apr_socket_create(&sock, sa->family,
 		SOCK_STREAM, APR_PROTO_TCP, clctx.mempool);
 	apr_socket_opt_set(sock, APR_SO_NONBLOCK, 0);
 	apr_socket_timeout_set(sock, DEFAULT_CLIENT_TIMEOUT);
 	apr_status_t rc = apr_socket_connect(sock, sa);
 
 	if (rc != APR_SUCCESS){
-		arcan_event ev = { 
+		arcan_event ev = {
 						.category = EVENT_NET,
-					 	.kind = EVENT_NET_NORESPONSE 
+					 	.kind = EVENT_NET_NORESPONSE
 		};
 		snprintf(ev.data.network.host.addr, 40, "%s", hoststr);
 		arcan_event_enqueue(&clctx.outevq, &ev);
@@ -391,7 +391,7 @@ void arcan_net_client_session(struct arg_arr* args, const char* shmkey)
 	}
 
 /* connection completed */
-	arcan_event ev = { 
+	arcan_event ev = {
 		.category = EVENT_NET,
 		.kind = EVENT_NET_CONNECTED
  	};
@@ -399,18 +399,18 @@ void arcan_net_client_session(struct arg_arr* args, const char* shmkey)
 	snprintf(ev.data.network.host.addr, 40, "%s", hoststr);
 	arcan_event_enqueue(&clctx.outevq, &ev);
 
-/* 
+/*
  * setup a pollset for incoming / outgoing and for event notification,
  * we'll use a signaling socket to be able to have the shared memory
  * event-queue poll and monitored in the operation as we're waiting
- * on incoming / outgoing 
+ * on incoming / outgoing
  */
 #ifdef _WIN32
 #else
 	if (getenv("ARCAN_SOCKIN_FD")){
 		int sockin_fd;
 		sockin_fd = strtol( getenv("ARCAN_SOCKIN_FD"), NULL, 10 );
-	
+
 		if (apr_os_sock_put(
 			&clctx.evsock, &sockin_fd, clctx.mempool) != APR_SUCCESS){
 			LOG("(net) -- Couldn't convert FD socket to APR, giving up.\n");
@@ -422,7 +422,7 @@ void arcan_net_client_session(struct arg_arr* args, const char* shmkey)
 		return;
 	}
 #endif
-	
+
 	apr_pollfd_t pfd = {
 		.p = clctx.mempool,
 		.desc.s = sock,
@@ -484,7 +484,7 @@ void arcan_net_client_session(struct arg_arr* args, const char* shmkey)
 			break;
 		else if (q_sz > 0)
 			continue;
-			
+
 		const apr_pollfd_t* ret_pfd;
 		apr_int32_t pnum;
 		apr_status_t status = apr_pollset_poll(
@@ -495,9 +495,9 @@ void arcan_net_client_session(struct arg_arr* args, const char* shmkey)
 			break;
 		}
 
-/* 
+/*
  * client socket: check if it's still alive and buffer / parse
- * event socket: process event-loop 
+ * event socket: process event-loop
  */
 		for (int i = 0; i < pnum; i++){
 			if (ret_pfd[i].client_data == &sock){
@@ -515,13 +515,13 @@ void arcan_net_client_session(struct arg_arr* args, const char* shmkey)
 
 				if (clctx.conn.buffer(&clctx.conn))
 					continue;
-					
+
 				arcan_event_enqueue(&clctx.outevq, &ev);
 				apr_socket_close(clctx.conn.inout);
 				goto giveup;
 			}
 
-/* we're not really concerned with the data on the socket, 
+/* we're not really concerned with the data on the socket,
  * it's just used as a pollable indicator */
 			char flushb[256];
 			apr_size_t szv = sizeof(flushb);
@@ -531,7 +531,7 @@ void arcan_net_client_session(struct arg_arr* args, const char* shmkey)
 				break;
 		}
 	}
-	
+
 giveup:
     LOG("(net-cl) -- shutting down client session.\n");
 	return;

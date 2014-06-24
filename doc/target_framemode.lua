@@ -1,7 +1,7 @@
 -- target_framemode
--- @short: Hint to the target frameserver to restrict frame delivery. 
--- @inargs: tgtid, skipval, *prewake*, *preaud*, *skipdbg1*, *skipdbg2* 
--- @longdescr: Some frameservers can be instructed to ignore 
+-- @short: Hint to the target frameserver to restrict frame delivery.
+-- @inargs: tgtid, skipval, *prewake*, *preaud*, *skipdbg1*, *skipdbg2*
+-- @longdescr: Some frameservers can be instructed to ignore
 -- transferring frames with deadlines that cannot be matched.
 -- The semantics for skipval:
 -- -1 (NONE) -- always deliver every frame, stall if necessary.
@@ -18,6 +18,6 @@
 -- @note: Only libretro follows this pattern at the moment,
 -- but decode and hijack libraries will be updated to include support.
 -- hijack and decode will also
--- @group: targetcontrol 
+-- @group: targetcontrol
 -- @cfunction: arcan_lua_targetskipmodecfg
 

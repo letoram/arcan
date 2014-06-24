@@ -1,14 +1,14 @@
 -- switch_default_texfilter
--- @short: Switch the default texture filtering mode for all newly 
+-- @short: Switch the default texture filtering mode for all newly
 -- created objects.
--- @inargs: filtermode  
+-- @inargs: filtermode
 -- @longdescr: This function accepts either FILTER_NONE, FILTER_LINEAR,
 -- FILTER_BILINEAR and FILTER_TRILINEAR which are texture post-processing
 -- stages usually supported in-hardware. Others will have to be implemented
 -- as temporary rendertargets with appropriate shaders.
 -- @note: any value to filtermode outside the accepted values is a terminal
 -- state transition.
--- @group: vidsys 
+-- @group: vidsys
 -- @cfunction: arcan_lua_settexfilter
 function main()
 #ifdef MAIN

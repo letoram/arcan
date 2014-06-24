@@ -1,19 +1,19 @@
 -- camtag_model
--- @short: Set VID as perspective and (possible) recipient of a 3D pipeline. 
--- @inargs: dstvid, *near*, *far*, *fov*, *aspect*, *front*, *back* 
--- @outargs: 
+-- @short: Set VID as perspective and (possible) recipient of a 3D pipeline.
+-- @inargs: dstvid, *near*, *far*, *fov*, *aspect*, *front*, *back*
+-- @outargs:
 -- @longdescr: In order to activate 3D rendering, one or several cameras need to
 -- be defined. Any VID can be used for this purpose. The optional arguments
 -- (near, far, fov, aspect) are all used to calculate the transformation matrix
 -- that represents the camera (defaults are 0.1, 100.0, 45.0, VRESW/VRESH).
 -- The optional arguments *front* and *back* define which faces that should be
--- drawn (i.e. triangels facing towards the camera, away from the camera or 
+-- drawn (i.e. triangels facing towards the camera, away from the camera or
 -- all triangels).
 -- @note: It is possible to camtag a rendertarget, which will define the default
 -- behavior for that pass, allowing for off-screen 3D rendering for effects
--- such as shadows. 
--- @group: 3d 
+-- such as shadows.
+-- @group: 3d
 -- @cfunction: arcan_lua_camtag
 -- @related: video_3dorder
--- @flags: 
+-- @flags:
 

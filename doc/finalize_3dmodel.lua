@@ -1,13 +1,13 @@
 -- finalize_3dmodel
--- @short: Mark a 3D model as finalized 
+-- @short: Mark a 3D model as finalized
 -- @inargs: vid
--- @outargs: 
+-- @outargs:
 -- @longdescr: Destructive transformations, e.g. scale vertices, baseorient
 -- etc. only make sense if all submeshes that should be added to a model are
 -- available. Since some mesh functions are internally asynchronous, these
--- transforms need to be deferred until mesh data is available. This function 
--- locks the model and prevents further mesh attachments. 
--- @group: 3d 
+-- transforms need to be deferred until mesh data is available. This function
+-- locks the model and prevents further mesh attachments.
+-- @group: 3d
 -- @cfunction: finalmodel
 -- @related:
 

@@ -31,7 +31,7 @@ static void gen_symtbl()
 	symtbl_out[44] = XK_comma;
 	symtbl_out[45] = XK_minus;
 	symtbl_out[46] = XK_period;
-	symtbl_out[47] = XK_slash;	
+	symtbl_out[47] = XK_slash;
 	symtbl_out[48] = XK_0;
 	symtbl_out[49] = XK_1;
 	symtbl_out[50] = XK_2;
@@ -190,7 +190,7 @@ static void gen_symtbl()
 	symtbl_out[265] = XK_KP_9;
 	symtbl_out[266] = XK_KP_Decimal;
 	symtbl_out[267] = XK_KP_Divide;
-	symtbl_out[268] = XK_KP_Multiply; 
+	symtbl_out[268] = XK_KP_Multiply;
 	symtbl_out[269] = XK_KP_Subtract;
 	symtbl_out[270] = XK_KP_Add;
 	symtbl_out[271] = XK_KP_Enter;
@@ -230,7 +230,7 @@ static void gen_symtbl()
 	symtbl_out[308] = XK_Alt_L;
 	symtbl_out[309] = XK_Meta_R;
 	symtbl_out[310] = XK_Meta_L;
-	symtbl_out[311] = XK_Super_L;	
+	symtbl_out[311] = XK_Super_L;
 	symtbl_out[312] = XK_Super_R;
 	symtbl_out[313] = XK_Mode_switch;
 	symtbl_out[315] = XK_Help;

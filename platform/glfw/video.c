@@ -10,7 +10,7 @@
 #include "../../arcan_video.h"
 #include "../../arcan_videoint.h"
 
-static GLFWwindow* screen; 
+static GLFWwindow* screen;
 static bool screen_hidden;
 
 void platform_video_shutdown()
@@ -57,12 +57,12 @@ void platform_video_timing(float* o_sync, float* o_stddev, float* o_variance)
 
 	if (!gottiming){
 		platform_video_bufferswap();
-	
+
 		int retrycount = 0;
 
-/* 
+/*
  * try to get a decent measurement of actual timing, this is not really used for
- * synchronization but rather as a guess of we're actually vsyncing and how 
+ * synchronization but rather as a guess of we're actually vsyncing and how
  * processing should be scheduled in relation to vsync, or if we should yield at
  * appropriate times.
  */
@@ -111,18 +111,18 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 */
 
 /*
- * check for / use 
+ * check for / use
  *  WGL_EXT_swap_control_tear
  */
 
-	screen = glfwCreateWindow(width, height, 
-		"ARCAN", 
+	screen = glfwCreateWindow(width, height,
+		"ARCAN",
 		NULL, /* display preferences */
 		NULL /*share*/
 	);
 
 //	glfwSetSwapInterval(1);
-	arcan_video_display.pbo_support = 
+	arcan_video_display.pbo_support =
 		arcan_video_display.fbo_support = true;
 
 	arcan_video_display.width  = width;

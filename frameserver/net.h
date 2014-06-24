@@ -30,7 +30,7 @@
 #define DEFAULT_DISCOVER_RESP_PORT 6682
 #endif
 
-#ifndef DEFAULT_RLEDEC_SZ 
+#ifndef DEFAULT_RLEDEC_SZ
 #define DEFAULT_RLEDEC_SZ 65536
 #endif
 
@@ -50,11 +50,11 @@
 #endif
 
 #ifndef DEFAULT_CONNECTION_CAP
-#define DEFAULT_CONNECTION_CAP 64 
+#define DEFAULT_CONNECTION_CAP 64
 #endif
 
 /* only effective for state transfer over the TCP channel,
- * additional state data won't be pushed until buffer 
+ * additional state data won't be pushed until buffer
  * status is below SATCAP * OUTBUF_SZ */
 #ifndef DEFAULT_OUTBUF_SATCAP
 #define DEFAULT_OUTBUF_SATCAP 0.5

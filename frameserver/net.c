@@ -21,34 +21,34 @@
 
 /*
  * The networking frameserver / support is somewhat more involved than
- * the others, partly because it defines a set of support functions and 
+ * the others, partly because it defines a set of support functions and
  * modes, but the actual communication logic etc. is part of the script.
  *
  * This means that server pub/priv. key storage and public key verification
- * is an external process from a controlling channel and not a part of 
- * the implementation here. 
+ * is an external process from a controlling channel and not a part of
+ * the implementation here.
  *
- * There are multiple modes which the networking code can be used, 
- * for the server side, there is a public "gatekeeper" that listens for 
+ * There are multiple modes which the networking code can be used,
+ * for the server side, there is a public "gatekeeper" that listens for
  * requests on UDP and responds with a possible public-key, ident and dstip:port
  * for the connection.
  *
- * If the request supplied a non-empty public key, the response will be 
- * encrypted using this key and provide a nonce of its own (or 0 when we 
- * do not need / want a connection between the gatekeeper and the server, 
+ * If the request supplied a non-empty public key, the response will be
+ * encrypted using this key and provide a nonce of its own (or 0 when we
+ * do not need / want a connection between the gatekeeper and the server,
  * then the nonce has to be registered in the client connection tracking
  * structure), which will be used as the base for a counter on the control session.
- * 
+ *
  * If the client accepts the public key (verification happens elsewhere,
  * on an offline channel, through communicating a fingerprint, etc.) it connects
  * to the server. This connection is encrypted, not authenticated. The server
- * should not rely on the client IP to maintain this connection, it will be a 
+ * should not rely on the client IP to maintain this connection, it will be a
  * configurable feature to use TOR or similar local proxy for this session.
  *
- * By default, there's no explicit connection between the gatekeeper and the 
+ * By default, there's no explicit connection between the gatekeeper and the
  * other server, though without knowledge of the server public key it might be
- * hard to get known (though it can be configured to use no public- key, 
- * for semi-trusted LANs etc.). 
+ * hard to get known (though it can be configured to use no public- key,
+ * for semi-trusted LANs etc.).
  *
  * The governing script has to explicitly acknowledge the authenticity of the
  * client (cache / key store of previously known ones etc.) when that is done
@@ -56,7 +56,7 @@
  *
  * A normal connection is only allowed to pass small control messages between
  * each-other. An authenticated session is allowed to do block based state transfers
- * and to initiate streaming sessions.  
+ * and to initiate streaming sessions.
  */
 
 #include "net_shared.h"
@@ -64,10 +64,10 @@
 #include "frameserver.h"
 
 #ifdef _WIN32
-/* Doesn't seem like mingw/apr actually gets the 
+/* Doesn't seem like mingw/apr actually gets the
  * TransmitFile symbol so stub it here */
 #define sleep(X) (Sleep(X * 1000))
-BOOL PASCAL TransmitFile(SOCKET hs, HANDLE hf, DWORD nbtw, DWORD nbps, 
+BOOL PASCAL TransmitFile(SOCKET hs, HANDLE hf, DWORD nbtw, DWORD nbps,
 	LPOVERLAPPED lpo, LPTRANSMIT_FILE_BUFFERS lpTransmitBuffers, DWORD dfl){
     return false;
 }
@@ -76,20 +76,20 @@ BOOL PASCAL TransmitFile(SOCKET hs, HANDLE hf, DWORD nbtw, DWORD nbps,
 /*
  * just rand() XoR key for use with higher level API (Arcan scripting),
  * purpose is just to enforce actual tracking in the script and preventing
- * hard-coded values. 
+ * hard-coded values.
  */
 static int idcookie = 0;
 
 struct {
 /* SHM-API interface */
 	struct arcan_shmif_cont shmcont;
-	apr_socket_t* evsock; 
+	apr_socket_t* evsock;
 	uint8_t* vidp, (* audp);
 	struct arcan_evctx inevq;
 	struct arcan_evctx outevq;
 
 /* for future time-synchronization (ping/pongs interleaved
- * with regular messages, compare drift with timestamps to 
+ * with regular messages, compare drift with timestamps to
  * determine current channel latency */
 	unsigned long long basestamp;
 
@@ -101,7 +101,7 @@ struct {
 	file_handle tmphandle;
 
 	unsigned n_conn;
-	
+
 	int inport;
 	char lt_keypair_pubkey[NET_KEY_SIZE], lt_keypair_privkey[NET_KEY_SIZE];
 } srvctx = {
@@ -110,7 +110,7 @@ struct {
 };
 
 /*
- * placeholder marker for data that should be rendered to the 
+ * placeholder marker for data that should be rendered to the
  * primary output display
  */
 #define GRAPH_EVENT(...) LOG(__VA_ARGS__)
@@ -132,7 +132,7 @@ static struct conn_state* init_conn_states(int limit)
 	return active_cons;
 }
 
-static inline struct conn_state* lookup_connection(struct conn_state* 
+static inline struct conn_state* lookup_connection(struct conn_state*
 	active_cons, int nconns, int id)
 {
 	for (int i = 0; i < nconns; i++){
@@ -171,7 +171,7 @@ static void disconnect(struct conn_state* active_cons, int nconns, int slot)
 			}
 	}
 	else {
-		struct conn_state* target_con = lookup_connection(active_cons, 
+		struct conn_state* target_con = lookup_connection(active_cons,
 			nconns, slot);
 		if (target_con && target_con->connstate > CONN_OFFLINE){
 			GRAPH_EVENT("Disconnecting %d\n", slot);
@@ -184,7 +184,7 @@ static void disconnect(struct conn_state* active_cons, int nconns, int slot)
 	}
 }
 
-static void server_pack_data(struct conn_state* active_cons, 
+static void server_pack_data(struct conn_state* active_cons,
 	int nconns, int id, enum net_tags tag, size_t buf_sz, char* buf)
 {
 	if (id > nconns || id < 0)
@@ -223,7 +223,7 @@ static void client_socket_close(struct conn_state* state)
 static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 {
 	arcan_event ev;
-	uint16_t msgsz = sizeof(ev.data.network.message) / 
+	uint16_t msgsz = sizeof(ev.data.network.message) /
 		sizeof(ev.data.network.message[0]);
 
 	while ( arcan_event_poll(&srvctx.inevq, &ev) == 1 )
@@ -234,12 +234,12 @@ static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 					"event_pack()/unpack(), ignored\n");
 			break;
 
-/* don't confuse this one with EVENT_NET_DISCONNECTED, which is a 
+/* don't confuse this one with EVENT_NET_DISCONNECTED, which is a
  * notification rather than a command */
 			case EVENT_NET_DISCONNECT:
 				disconnect(active_cons, nconns, ev.data.network.connid);
 			break;
-			
+
 			case EVENT_NET_AUTHENTICATE:
 				authenticate(active_cons, nconns, ev.data.network.connid);
 			break;
@@ -249,7 +249,7 @@ static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 
 			case EVENT_NET_CUSTOMMSG:
 				GRAPH_EVENT("Parent pushed message (%s)\n", ev.data.network.message);
-				server_pack_data(active_cons, nconns, ev.data.network.connid, 
+				server_pack_data(active_cons, nconns, ev.data.network.connid,
 					TAG_NETMSG, msgsz, ev.data.network.message);
 			break;
 
@@ -271,7 +271,7 @@ static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 /*
  * ioevs[0] : 1, output (arcan -> frameserver) segment,
  *            implies parents wants to transfer to us.
- *            If we have a pending transfer already, 
+ *            If we have a pending transfer already,
  *            send a protocol error.
  *
  * ioevs[1] : tag, if we've submitted a request for a new segment,
@@ -280,7 +280,7 @@ static bool server_process_inevq(struct conn_state* active_cons, int nconns)
  */
 				case TARGET_COMMAND_NEWSEGMENT:
 					LOG("new segment arrived, id %d\n", ev.data.target.ioevs[1].iv);
-					net_newseg(lookup_connection(active_cons, nconns, 
+					net_newseg(lookup_connection(active_cons, nconns,
 						ev.data.target.ioevs[1].iv), ev.data.target.ioevs[0].iv,
 						ev.data.target.message);
 					close(srvctx.tmphandle);
@@ -290,7 +290,7 @@ static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 /*
  * parent signalling that the previously mapped segment can be used
  * to transfer now. ioevs[0] signals the slot that will be used.
- */			
+ */
 				case TARGET_COMMAND_STEPFRAME:
 
 				break;
@@ -300,7 +300,7 @@ static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 				break;
 
 				case TARGET_COMMAND_STORE:
-/* lookup connection, set state_in or out "fd" member, then add 
+/* lookup connection, set state_in or out "fd" member, then add
  * support to populate on loop */
 					srvctx.tmphandle = 0;
 				break;
@@ -308,9 +308,9 @@ static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 				case TARGET_COMMAND_RESTORE:
 					srvctx.tmphandle = 0;
 				break;
-	
+
 				default:
-					LOG("(net-srv) unhandled target event: %d\n", ev.kind);	
+					LOG("(net-srv) unhandled target event: %d\n", ev.kind);
 			}
 		}
 		else;
@@ -319,7 +319,7 @@ static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 }
 
 
-static void server_accept_connection(int limit, apr_socket_t* ear_sock, 
+static void server_accept_connection(int limit, apr_socket_t* ear_sock,
 	apr_pollset_t* pollset, struct conn_state* active_cons)
 {
 	apr_socket_t* newsock;
@@ -365,23 +365,23 @@ static void server_accept_connection(int limit, apr_socket_t* ear_sock,
 
 	apr_socket_addr_get(&addr, APR_REMOTE, newsock);
 	arcan_event outev = {
-		.kind = EVENT_NET_CONNECTED, 
-		.category = EVENT_NET, 
+		.kind = EVENT_NET_CONNECTED,
+		.category = EVENT_NET,
 		.data.network.connid = active_cons[j].slot
 	};
 
-	size_t out_sz = sizeof(outev.data.network.host.addr) / 
+	size_t out_sz = sizeof(outev.data.network.host.addr) /
 		sizeof(outev.data.network.host.addr[0]);
 	apr_sockaddr_ip_getbuf(outev.data.network.host.addr, out_sz, addr);
 
 	arcan_event_enqueue(&srvctx.outevq, &outev);
 }
 
-static char* get_redir(char* pk, char* n, 
+static char* get_redir(char* pk, char* n,
 	apr_sockaddr_t* src, char** outkey, int* redir_port)
 {
-/* 
- * -- NOTE -- 
+/*
+ * -- NOTE --
  * entry point for adding honeypot redirections, load balancing etc.
  * based on src addr, public key, name ...
  */
@@ -389,18 +389,18 @@ static char* get_redir(char* pk, char* n,
 	*redir_port = srvctx.inport;
 	*outkey = (char*) srvctx.lt_keypair_pubkey;
 
-	return "0.0.0.0";		
+	return "0.0.0.0";
 }
 
-/* something to read on gk_sock, silent discard if it's not a 
- * valid discover message. gk_redir is a srcaddr:port to which the 
- * recipient should try and connect. IF this is set to 0.0.0.0, 
+/* something to read on gk_sock, silent discard if it's not a
+ * valid discover message. gk_redir is a srcaddr:port to which the
+ * recipient should try and connect. IF this is set to 0.0.0.0,
  * the recipient is expected to just use the source address.
  *
- * the explicit alternative to this (as gk_sock may be INADDR_ANY etc. 
+ * the explicit alternative to this (as gk_sock may be INADDR_ANY etc.
  * would be to send a garbage message first, enable IP_PKTINFO/IP_RECVDSTADDR
- * on the socket and check CMSG for a response, then send the real 
- * response using that. It's not particularly portable though, 
+ * on the socket and check CMSG for a response, then send the real
+ * response using that. It's not particularly portable though,
  * but a relevant side-note
  */
 static void server_gatekeeper_message(apr_socket_t* gk_sock, char* ident)
@@ -418,15 +418,15 @@ static void server_gatekeeper_message(apr_socket_t* gk_sock, char* ident)
 	char* pubkey, (* name), (* cookie), (* host);
 	int port;
 
-	char* unpack = net_unpack_discover(inbuf, true, 
+	char* unpack = net_unpack_discover(inbuf, true,
 		&pubkey, &name, &cookie, &host, &port);
 
 	if (!unpack)
 		return;
-	
+
 	char* redir_key;
 	int redir_port;
-	char* redir_addr = get_redir(pubkey, name, 
+	char* redir_addr = get_redir(pubkey, name,
 		&src_addr, &redir_key, &redir_port);
 
 /* server does not provide service to the addr/key/name combination */
@@ -436,8 +436,8 @@ static void server_gatekeeper_message(apr_socket_t* gk_sock, char* ident)
 	}
 
 	size_t outsz;
-	char* outbuf = net_pack_discover(false, 
-		redir_key, ident, cookie, redir_addr, redir_port, &outsz);	
+	char* outbuf = net_pack_discover(false,
+		redir_key, ident, cookie, redir_addr, redir_port, &outsz);
 	free(unpack);
 
 	if (outbuf){
@@ -450,7 +450,7 @@ static void server_gatekeeper_message(apr_socket_t* gk_sock, char* ident)
 static apr_socket_t* server_prepare_gatekeeper(char* host)
 {
 	int port = DEFAULT_DISCOVER_REQ_PORT;
-	return net_prepare_socket(host, NULL, 
+	return net_prepare_socket(host, NULL,
 		&port, false, srvctx.mempool);
 }
 
@@ -467,20 +467,20 @@ static void server_session(const char* host, char* ident, int limit)
 	if (!active_cons)
 		return;
 
-/* we need 1 for each connection (limit) one for the 
+/* we need 1 for each connection (limit) one for the
  * gatekeeper and finally one for each IP (multihomed) */
 	int timeout = -1;
 #ifdef _WIN32
    timeout = 10000;
 #endif
 
-	if (apr_pollset_create(&poll_in, limit + 4, 
+	if (apr_pollset_create(&poll_in, limit + 4,
 		srvctx.mempool, 0) != APR_SUCCESS){
 			LOG("(net-srv) -- Couldn't create server pollset, giving up.\n");
 			return;
 	}
 
-	int sleeptime = 5 * 1000; 
+	int sleeptime = 5 * 1000;
 	int retrycount = 10;
 
 	apr_socket_t* ear_sock;
@@ -499,13 +499,13 @@ retry:
 			return;
 	}
 
-	LOG("(net-srv) -- listening interface up on %s:%d\n", 
+	LOG("(net-srv) -- listening interface up on %s:%d\n",
 		host ? host : "(global)", srvctx.inport);
 
 	srvctx.pollset = poll_in;
 
 /* the pollset is created noting that we have the responsibility for
- * assuring that the descriptors involved stay in scope, thus pfd needs to 
+ * assuring that the descriptors involved stay in scope, thus pfd needs to
  * be here or dynamically allocated */
 	apr_pollfd_t pfd = {
 		.p      = srvctx.mempool,
@@ -525,11 +525,11 @@ retry:
 		.client_data = srvctx.evsock
 	};
 
-/* should be solved in a pretty per host etc. manner and for 
+/* should be solved in a pretty per host etc. manner and for
  * that matter, IPv6 */
 	apr_socket_t* gk_sock = server_prepare_gatekeeper("0.0.0.0");
 	if (gk_sock){
-		LOG("(net-srv) -- gatekeeper listening on broadcast for %s\n", 
+		LOG("(net-srv) -- gatekeeper listening on broadcast for %s\n",
 			host ? host : "(global)");
 		gkpfd.p = srvctx.mempool;
 		gkpfd.desc.s = gk_sock;
@@ -555,7 +555,7 @@ retry:
 			if (cb == ear_sock){
 				if ((evs & APR_POLLHUP) > 0 || (evs & APR_POLLERR) > 0){
 					arcan_event errc = {
-									.kind = EVENT_NET_BROKEN, 
+									.kind = EVENT_NET_BROKEN,
 									.category = EVENT_NET
 					};
 
@@ -565,7 +565,7 @@ retry:
 					return;
 				}
 
-				server_accept_connection(limit, ret_pfd[i].desc.s, 
+				server_accept_connection(limit, ret_pfd[i].desc.s,
 					poll_in, active_cons);
 				continue;
 			}
@@ -586,7 +586,7 @@ retry:
 			}
 			else;
 
-/* always process incoming data first, as there can still 
+/* always process incoming data first, as there can still
  * be something in buffer when HUP / ERR is triggered */
 			bool res = true;
 			struct conn_state* state = cb;
@@ -600,7 +600,7 @@ retry:
 			if ((evs & APR_POLLOUT) > 0)
 				res = state->flushout(state);
 
-			if ( !res || (ret_pfd[i].rtnevents & APR_POLLHUP) > 0 || 
+			if ( !res || (ret_pfd[i].rtnevents & APR_POLLHUP) > 0 ||
 				(ret_pfd[i].rtnevents & APR_POLLERR) > 0){
 				LOG("(net-srv) -- (%s), terminating client connection (%d).\n",
 					res ? "HUP/ERR" : "flush failed", i);
@@ -655,8 +655,8 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 	if (getenv("ARCAN_SOCKIN_FD")){
 		int sockin_fd;
 		sockin_fd = strtol( getenv("ARCAN_SOCKIN_FD"), NULL, 10 );
-	
-		if (apr_os_sock_put(&srvctx.evsock, &sockin_fd, 
+
+		if (apr_os_sock_put(&srvctx.evsock, &sockin_fd,
 			srvctx.mempool) != APR_SUCCESS){
 			LOG("(net) -- Couldn't convert FD socket to APR, giving up.\n");
 			return;
@@ -677,13 +677,13 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 
 	idcookie = rand();
 
-	struct arcan_shmif_cont shmcont = 
+	struct arcan_shmif_cont shmcont =
 		arcan_shmif_acquire(shmkey, SHMIF_INPUT, true, false);
 
 	if (!arcan_shmif_resize(&shmcont, gwidth, gheight))
 		return;
 
-	arcan_shmif_setevqs(shmcont.addr, shmcont.esem, 
+	arcan_shmif_setevqs(shmcont.addr, shmcont.esem,
 		&(srvctx.inevq), &(srvctx.outevq), false);
 
 	char* listenhost = NULL;
@@ -693,7 +693,7 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 	arg_lookup(args, "host", 0, (const char**) &listenhost);
 	arg_lookup(args, "limit", 0, (const char**) &limstr);
 	arg_lookup(args, "ident", 0, (const char**) &identstr);
-	
+
 	const char* tmpstr;
 	srvctx.inport = 0;
 	if (arg_lookup(args, "port", 0, &tmpstr)){

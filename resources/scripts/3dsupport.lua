@@ -114,7 +114,7 @@ shader_uniform(def3d_txcoscroll, "map_diffuse", "i", PERSIST, 0);
 
 local function material_loaded(source, statustbl)
 	if (statustbl.kind == "load_failed") then
-		warning("Material load failed on resource ( " 
+		warning("Material load failed on resource ( "
 			.. tostring(statustbl.resource) .. " )\n");
 	end
 end
@@ -150,10 +150,10 @@ local function load_material(modelname, meshname, synth)
 	return rvid;
 end
 
--- sort so that labels with known alpha attributes, 
+-- sort so that labels with known alpha attributes,
 -- get rendered last (just bezel and marquee in this case)
 local function sort_meshes(a, b)
-	if (a[1] == "bezel" and b[1] ~= "bezel") then 
+	if (a[1] == "bezel" and b[1] ~= "bezel") then
 		return false;
 	elseif (b[1] == "bezel" and a[1] ~= "bezel") then
 		return true;
@@ -169,7 +169,7 @@ function load_model_generic(modelname, rndmissing, synthtbl)
 	local meshes = glob_resource(basep .. "*.ctm");
 
 	if (#meshes == 0) then return nil end
-  
+
 	local model  = {
 		labels = {}, images = {}
 };
@@ -178,16 +178,16 @@ function load_model_generic(modelname, rndmissing, synthtbl)
 -- however it provides a reference point for other vid operations (i.e.
 -- instancing, linking etc.)
 	model.vid = new_3dmodel();
-	image_shader(model.vid, def3d_fullbright); 
+	image_shader(model.vid, def3d_fullbright);
 	image_tracetag(model.vid, "3dmodel(" .. modelname ..")");
-	
+
 	if (model.vid == BADID) then return nil end
 
 	image_framesetsize(model.vid, #meshes);
 	switch_default_imageproc(IMAGEPROC_FLIPH);
 
 	seqlist = {}
-	
+
 	for i=1, #meshes do
 		local ent = {};
 		ent[1] = string.sub(meshes[i], 1, -5);
@@ -196,13 +196,13 @@ function load_model_generic(modelname, rndmissing, synthtbl)
 	end
 
 	table.sort(seqlist, sort_meshes);
-	
+
 	for i=1, #seqlist do
 		local slot = i-1;
 
 		local meshname = seqlist[i][1];
 		local vid = BADID;
-		
+
 		add_3dmesh(model.vid, basep .. seqlist[i][2], 1);
 		model.labels[seqlist[i][1]] = slot;
 		model.screenview = {};
@@ -210,13 +210,13 @@ function load_model_generic(modelname, rndmissing, synthtbl)
 		model.screenview.position    = {x    = 0,     y = 0.5, z = 1.0};
 		model.screenview.orientation = {roll = 0, pitch = 0, yaw = 0};
 
--- we don't load anything else for the 
+-- we don't load anything else for the
 -- display as that'll be replaced with broken_display or dynamic media.
 		if (meshname ~= "display") then
 
 -- for each mesh, find a matching texture.
 -- if we're provided with a table of predefined default-color,
--- we first create a surface with that colour and 
+-- we first create a surface with that colour and
 -- associate it with the mesh immediately
 -- thereafter we asynchronously load the right material
 		if (synthtbl and synthtbl[meshname]) then
@@ -229,19 +229,19 @@ function load_model_generic(modelname, rndmissing, synthtbl)
 			if (mat) then
 				load_image_asynch(mat, function(source, statustbl)
 					if (statustbl.kind ~= "load_failed") then
-						local old = set_image_as_frame(model.vid, 
+						local old = set_image_as_frame(model.vid,
 							source, slot, FRAMESET_DETACH);
-	
+
 						if (valid_vid(old) and old ~= source) then
-							delete_image(old); 
+							delete_image(old);
 						end
 					end
 				end);
 			end
 
--- otherwise, if no texture was found, leave it empty 
+-- otherwise, if no texture was found, leave it empty
 -- or replace with randomized surface
--- or set material when it have been asynchronously loaded 
+-- or set material when it have been asynchronously loaded
 		else
 			vid = load_material(modelname, meshname, rndmissing);
 			set_image_as_frame(model.vid, vid, slot, FRAMESET_DETACH);
@@ -249,23 +249,23 @@ function load_model_generic(modelname, rndmissing, synthtbl)
 
 	end
 	end
-	
+
 	switch_default_imageproc(IMAGEPROC_NORMAL);
-	
+
 	return model;
 end
 
 -- scan <filename> and look for #define SYMBOL <LF> or #ifdef <SYMBOL>
--- and return in two separate lists. 
+-- and return in two separate lists.
 function parse_shader(filename)
 	local defines = {};
 	local conditions = {};
-	
+
 	if (open_rawresource(filename)) then
 		local line = read_rawresource();
-		
+
 		while (line ~= nil) do
-			if (string.match(line, "^%s*//") == nil) then 
+			if (string.match(line, "^%s*//") == nil) then
 				local val = string.match(line, "#define%s+([%w_]+)$");
 
 				if (val) then
@@ -275,10 +275,10 @@ function parse_shader(filename)
 					if (val) then table.insert(conditions, val); end
 				end
 			end
-				
+
 			line = read_rawresource();
 		end
-	
+
 		close_rawresource();
 	end
 
@@ -286,12 +286,12 @@ function parse_shader(filename)
 end
 
 local function shaderproc_line(instr, filter_toggle)
--- if we don't explicitly set a list of 
--- desired defines, we'll just return whatever we get 
+-- if we don't explicitly set a list of
+-- desired defines, we'll just return whatever we get
 	if (filter_toggle == false) then return instr; end
 
--- if the define is a "toggle define", just ignore it 
-	
+-- if the define is a "toggle define", just ignore it
+
 	local defkey = string.match(instr, "#define%s+([%w_]+)$")
 	if (defkey) then
 		return "";
@@ -349,7 +349,7 @@ function load_shader(vertname, fragname, label, defines, versionstr)
 				line = read_rawresource();
 			end
 
-			fprog = table.concat(fragtbl, "\n"); 
+			fprog = table.concat(fragtbl, "\n");
 			close_rawresource();
 		end
 	elseif (type(fragname) == "table") then
@@ -366,56 +366,56 @@ function load_model(modelname)
 -- loaded can't use orient3d and log if it tries to
 	local orient3d = orient3d_model;
 	local oriented = nil;
-	
+
 	orient3d_model = function(vid, r, p, y)
 		oriented = {roll = r, pitch = p, yaw = y};
 	end
-	
+
 	rv = nil;
 -- use one of the generic loaders
 	if (resource("models/" .. modelname .. "/" .. modelname .. ".lua")) then
 		rv = system_load("models/" .. modelname .. "/" .. modelname .. ".lua")();
 	else
 		rv = load_model_generic(modelname);
-		if (rv ~= nil) then 
+		if (rv ~= nil) then
 			rv.format_version = 0.1;
 		end
 	end
 
 	orient3d_model = orient3d;
-	
+
 	if (rv ~= nil) then
 		scale_3dvertices(rv.vid);
 -- add some helper functions, view angles etc. are specified
 -- absolute rather than relative to the base, so we have to translate
 		local o = rv.default_orientation;
 
--- only re-orient if the default orientation deviates 
+-- only re-orient if the default orientation deviates
 -- too much as it's expensive and strips precision
 		if (o.roll > 0.0001 or o.roll < -0.0001 or
 			o.pitch > 0.0001 or o.pitch < -0.0001 or
 			o.yaw > 0.0001 or o.yaw < -0.0001) then
-			orient3d_model(rv.vid, 
-				rv.default_orientation.roll, 
-				rv.default_orientation.pitch, 
+			orient3d_model(rv.vid,
+				rv.default_orientation.roll,
+				rv.default_orientation.pitch,
 				rv.default_orientation.yaw
 			);
 		end
 
 		if (rv.format_version == nil) then
-			rv.screenview.orientation.roll  = 
+			rv.screenview.orientation.roll  =
 				rv.screenview.orientation.roll - rv.default_orientation.roll;
 
-			rv.screenview.orientation.pitch = 
+			rv.screenview.orientation.pitch =
 				rv.screenview.orientation.pitch - rv.default_orientation.pitch;
-	
-			rv.screenview.orientation.yaw = 
+
+			rv.screenview.orientation.yaw =
 				rv.screenview.orientation.yaw   - rv.default_orientation.yaw;
 		end
-	
+
 		finalize_3dmodel(rv.vid);
 	end
-	
+
 	return rv;
 end
 
@@ -435,8 +435,8 @@ local function update_cache()
 	for a,b in pairs(tmptbl) do
 		support3d_modellut[b] = true;
 	end
-	
--- simple format, first line, group name. 
+
+-- simple format, first line, group name.
 -- subsequent lines are sets to map into the group.
 -- an empty line resets the group name.
 -- group1
@@ -474,7 +474,7 @@ end
 function find_cabinet_model(gametbl)
 	names = {};
 
--- setname or setname without extension 
+-- setname or setname without extension
 	table.insert(names, gametbl.setname);
 	local found, len, remainder = string.find(gametbl.setname, "^(.*)%.[^%.]*$")
 	if (found) then table.insert(names, remainder); end
@@ -484,7 +484,7 @@ function find_cabinet_model(gametbl)
 		table.insert(names, support3d_groupmapper[gametbl.setname]);
 	end
 
-	table.insert(names, gametbl.target); 
+	table.insert(names, gametbl.target);
 	table.insert(names, "default_model");
 
 	for ind, val in ipairs(names) do
@@ -498,25 +498,25 @@ end
 
 --
 -- generate and load basic textures etc.
--- until partial persistence is implemented, 
+-- until partial persistence is implemented,
 -- this will need to be run whenever
 -- the stack gets pushed and pop:ed
 --
 function setup_3dsupport(nocam)
 	update_cache();
-	
+
 	if (not valid_vid(support3d.hf_noise)) then
 		switch_default_texmode( TEX_REPEAT, TEX_REPEAT );
 		support3d.hf_noise = random_surface(256, 256);
 		switch_default_texmode( TEX_CLAMP, TEX_CLAMP );
-		shader_uniform(def3d_txcoscroll, 
+		shader_uniform(def3d_txcoscroll,
 			"speedfact", "ff", PERSIST, 12.0, 12.0);
 		image_tracetag(support3d.hf_noise, "3dmodel(noise)");
 	end
 
 	if (not nocam) then
 		local cam = null_surface(1, 1);
-		camtag_model(cam, 0.01, 100.0, 45.0, 1.33, nil, 1, 1); 
+		camtag_model(cam, 0.01, 100.0, 45.0, 1.33, nil, 1, 1);
 		image_tracetag(cam, "3dcamera");
 		return cam;
 	end
@@ -524,13 +524,13 @@ end
 
 --
 -- Try to map a full cabinet model (display, t-mold etc.)
--- modelname, matching subfolder in resources/models 
+-- modelname, matching subfolder in resources/models
 -- 	(this can be generic models, thus we separate restbl)
--- restbl,    result from resource lookup 
+-- restbl,    result from resource lookup
 -- 	(used for loading screenshots etc.)
--- options,   per- cabinet configurable options 
+-- options,   per- cabinet configurable options
 -- 	(t-mold, coindoor type, alternative shaders etc.)
--- 
+--
 function setup_cabinet_model(modelname, restbl, options)
 	local res = load_model(modelname);
 
@@ -538,16 +538,16 @@ function setup_cabinet_model(modelname, restbl, options)
 		res.display = function(self)
 			return self.display_vid;
 		end
-		
--- after calling this function, vid is no-longer 
+
+-- after calling this function, vid is no-longer
 -- the responsibility of the caller
 		res.update_display = function(self, vid, shid)
 -- edge case, asynch- event trigger -> update_display
 -- on something that was deleted the same cycle
-			if not valid_vid(self.vid) then 
+			if not valid_vid(self.vid) then
 				return;
 			end
-	
+
 			if (self.labels["display"] == nil) then
 				delete_image(vid);
 				return;
@@ -558,10 +558,10 @@ function setup_cabinet_model(modelname, restbl, options)
 			else
 				shid = shid and shid or def3d_fullbright;
 			end
-			
--- update the display, free the old resource and 
--- invert texture coordinates (possible) in the vertex shader 
-			local rvid = set_image_as_frame(self.vid, vid, 
+
+-- update the display, free the old resource and
+-- invert texture coordinates (possible) in the vertex shader
+			local rvid = set_image_as_frame(self.vid, vid,
 				self.labels["display"], FRAMESET_DETACH);
 
 			mesh_shader(self.vid, shid, self.labels["display"]);
@@ -586,10 +586,10 @@ function setup_cabinet_model(modelname, restbl, options)
 			end
 
 			self.display_vid = fill_surface(2, 2, r, g, b);
-			local rvid = set_image_as_frame(self.vid, 
-				self.display_vid, 
+			local rvid = set_image_as_frame(self.vid,
+				self.display_vid,
 				self.labels["t-mold"], FRAMESET_DETACH);
-	
+
 			if (valid_vid(rvid)) then
 				delete_image(rvid);
 			end
@@ -603,43 +603,43 @@ function setup_cabinet_model(modelname, restbl, options)
 
 		image_shader(res.vid, def3d_fullbright);
 
--- try and use screenshots etc. from restbl to populate the 
+-- try and use screenshots etc. from restbl to populate the
 -- display- submesh (or just an animated noise texture as a start)
 -- labels to look for: marquee, coinlights, snapshot, display
-		
--- if there's a snapshot slot, no movie but a snapshot found, 
+
+-- if there's a snapshot slot, no movie but a snapshot found,
 -- it will be used in both places
 		local snapvid = nil;
 		if (res.labels["snapshot"] and not options.nosnap) then
 			mesh_shader(res.vid, def3d_fullbright, res.labels["snapshot"]);
-			
+
 			if (restbl.screenshots and #restbl.screenshots > 0) then
 				switch_default_imageproc(IMAGEPROC_FLIPH);
 					snapvid = load_image_asynch(
-						restbl.screenshots[math.random(1,#restbl.screenshots)], 
+						restbl.screenshots[math.random(1,#restbl.screenshots)],
 						material_loaded);
-	
+
 					image_tracetag(snapvid, "3dmodel(" .. modelname .. "):display_snap");
-					local rvid = set_image_as_frame(res.vid, snapvid, 
+					local rvid = set_image_as_frame(res.vid, snapvid,
 						res.labels["snapshot"], FRAMESET_DETACH);
 
 				switch_default_imageproc(IMAGEPROC_NORMAL);
-				if (valid_vid(rvid)) then 
-					delete_image(rvid); 
+				if (valid_vid(rvid)) then
+					delete_image(rvid);
 				end
 			end
 		end
-		
+
 		if (res.labels["display"]) then
--- always "break" the display as a 
--- means of managing the interval between the asynchronous operations and not. 
-			res:display_broken(); 
+-- always "break" the display as a
+-- means of managing the interval between the asynchronous operations and not.
+			res:display_broken();
 
 			if (restbl.movies and #restbl.movies > 0) then
 				vid, aid = load_movie(restbl.movies[
-					math.random(1,#restbl.movies)], 
+					math.random(1,#restbl.movies)],
 					FRAMESERVER_LOOP, function(source, tbl)
-	
+
 					if (tbl.kind ~= "frameserver_terminated") then
 						res:update_display(source, def3d_fullbright_flip);
 					else
@@ -648,13 +648,13 @@ function setup_cabinet_model(modelname, restbl, options)
 				end);
 
 				image_tracetag(vid, "3dmodel(" .. modelname .. "):display_movie");
-	
+
 			elseif (restbl.screenshots and #restbl.screenshots > 0) then
 -- try to reuse already loaded snapshot
 				if (snapvid == nil) then
 					switch_default_imageproc(IMAGEPROC_FLIPH);
 					snapvid = load_image_asynch(
-						restbl.screenshots[math.random(1,#restbl.screenshots)], 
+						restbl.screenshots[math.random(1,#restbl.screenshots)],
 						material_loaded);
 
 					image_tracetag(snapvid, "3dmodel(" .. modelname .. "):display_ss");
@@ -664,14 +664,14 @@ function setup_cabinet_model(modelname, restbl, options)
 				res:update_display(snapvid);
 			else
 			end
-			
+
 		end
 
 		if (res.labels["coinlights"]) then
 			mesh_shader(res.vid, def3d_fullbright, res.labels["coinlights"]);
 		end
-		
--- even if the model may define these, they can be overridden 
+
+-- even if the model may define these, they can be overridden
 -- by having the corresponding media elsewhere
 		if (res.labels["marquee"]) then
 			mesh_shader(res.vid, def3d_backlights, res.labels["marquee"]);
@@ -682,17 +682,17 @@ function setup_cabinet_model(modelname, restbl, options)
 					restbl.marquees[math.random(1,#restbl.marquees)], material_loaded);
 				image_tracetag(marqvid, "3dmodel("..modelname.."):marqueeres");
 
-				local rvid = set_image_as_frame(res.vid, marqvid, 
+				local rvid = set_image_as_frame(res.vid, marqvid,
 					res.labels["marquee"], FRAMESET_DETACH);
 				switch_default_imageproc(IMAGEPROC_NORMAL);
-				
-				if (valid_vid(rvid)) then 
-					delete_image(rvid); 
+
+				if (valid_vid(rvid)) then
+					delete_image(rvid);
 				end
 			end
 		end
 
 	end
-	
+
 	return res;
 end

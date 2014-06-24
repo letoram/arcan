@@ -1,11 +1,11 @@
 -- transfer_image_transform
--- @short: Move the transform chain from one VID to another. 
+-- @short: Move the transform chain from one VID to another.
 -- @inargs: srcvid, dstvid
 -- @longdescr: This function act as an aggregate of copying a transform chain
 -- (including the translation step and related side notes as described in
--- copy_image_transform) from *srcvid* to *dstvid* and then 
+-- copy_image_transform) from *srcvid* to *dstvid* and then
 -- reseting the source transform.
--- @group: image 
+-- @group: image
 -- @cfunction: arcan_lua_transfertransform
 -- @related: copy_image_transform, reset_image_transform
 function main()

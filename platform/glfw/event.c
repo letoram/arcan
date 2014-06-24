@@ -8,7 +8,7 @@
 #include "../../arcan_event.h"
 
 struct axis_opts {
-/* none, avg, drop */ 
+/* none, avg, drop */
 	enum ARCAN_ANALOGFILTER_KIND mode;
 	enum ARCAN_ANALOGFILTER_KIND oldmode;
 
@@ -20,9 +20,9 @@ struct axis_opts {
 };
 
 static struct {
-		struct axis_opts mx, my, 
+		struct axis_opts mx, my,
 			mx_r, my_r;
-	
+
 		bool sticks_init;
 		unsigned short n_joy;
 		struct arcan_stick* joys;
@@ -61,7 +61,7 @@ void arcan_event_analogall(bool enable, bool mouse)
 {
 }
 
-void arcan_event_analogfilter(int devid, 
+void arcan_event_analogfilter(int devid,
 	int axisid, int lower_bound, int upper_bound, int deadzone,
 	int buffer_sz, enum ARCAN_ANALOGFILTER_KIND kind)
 {

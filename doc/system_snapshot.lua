@@ -1,11 +1,11 @@
 -- system_snapshot
--- @short: Create a debugging snapshot 
+-- @short: Create a debugging snapshot
 -- @inargs: outres
--- @note: refuses to overwrite outres if it exists 
+-- @note: refuses to overwrite outres if it exists
 -- (only theme- destination accepted).
--- @note: the format used is the same as used for 
+-- @note: the format used is the same as used for
 -- crash reports and serialization in monitoring mode.
--- @group: system 
+-- @group: system
 -- @cfunction: arcan_lua_syssnap
 function main()
 #ifdef MAIN

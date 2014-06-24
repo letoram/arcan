@@ -1,24 +1,24 @@
 -- define_recordtarget
 -- @short: Create an offscreen audio/video pipeline that can be sampled by a frameserver.
--- @inargs: dstvid, dstres, encodeargs, vidtbl, aidtbl, detacharg, scalearg, samplerate, *callback* 
--- @outargs: 
--- @longdescr: This function takes a *dstvid* (allocated through fill_surface), 
--- and creates a separate audio / video rendertarget populated with the entries 
+-- @inargs: dstvid, dstres, encodeargs, vidtbl, aidtbl, detacharg, scalearg, samplerate, *callback*
+-- @outargs:
+-- @longdescr: This function takes a *dstvid* (allocated through fill_surface),
+-- and creates a separate audio / video rendertarget populated with the entries
 -- in *vidtbl* and *aidtbl*. The *detacharg* can be set to FRAMESERVER_DETACH or
--- FRAMESERVER_NODETACH regulating if the VIDs in *vidtbl* should be removed 
--- from the normal rendering pipeline or not. The *scalearg* can be set to 
--- RENDERTARGET_SCALE or RENDERTARGET_NOSCALE, and comes into play when the 
--- dimensions of the active display fail to match those of *dstvid*. 
--- With RENDERTARGET_SCALE, a transformation matrix is calculated that 
+-- FRAMESERVER_NODETACH regulating if the VIDs in *vidtbl* should be removed
+-- from the normal rendering pipeline or not. The *scalearg* can be set to
+-- RENDERTARGET_SCALE or RENDERTARGET_NOSCALE, and comes into play when the
+-- dimensions of the active display fail to match those of *dstvid*.
+-- With RENDERTARGET_SCALE, a transformation matrix is calculated that
 -- stretches or squeezes the results to fit *dstvid*, with RENDERTARGET_NOSCALE,
--- clipping can occur. The samplerate dictates how often the rendertarget 
--- should be read-back into *dstvid*, with negative numbers meaning 
--- *abs(samplerate)* video frames between each sample, and positive numbers 
--- meaning *samplerate* ticks between each sample. *Encodeargs* are passed 
--- unto the frameserver that is able to process the data sampled, see the 
--- section on *frameserver arguments* for more details. 
--- Lastly, *callback* works as an optional trigger for feedback from the 
--- frameserver (use target_verbose to toggle frametransfer status updates). 
+-- clipping can occur. The samplerate dictates how often the rendertarget
+-- should be read-back into *dstvid*, with negative numbers meaning
+-- *abs(samplerate)* video frames between each sample, and positive numbers
+-- meaning *samplerate* ticks between each sample. *Encodeargs* are passed
+-- unto the frameserver that is able to process the data sampled, see the
+-- section on *frameserver arguments* for more details.
+-- Lastly, *callback* works as an optional trigger for feedback from the
+-- frameserver (use target_verbose to toggle frametransfer status updates).
 -- @group: targetcontrol
 -- @frameserver: vbitrate=kilobitspersecond (1..n)
 -- @frameserver: abitrate=kilobitspersecond (1..n)
@@ -29,13 +29,13 @@
 -- @frameserver: fps=outputframerate
 -- @frameserver: container=identifier (default: mkv)
 -- @frameserver: noaudio (special flag, disables all audio processing)
--- @note: specifying WORLDID instead of a table of VIDs means that the 
+-- @note: specifying WORLDID instead of a table of VIDs means that the
 -- whole of the current active pipeline will be sampled instead.
 -- @note: specifying a valid frameserver connected VID in the dstres slot
 -- will allocate a new output segment and attach to the pre-existing frameserver.
 -- @cfunction: arcan_lua_recordset
 -- @related: define_rendertarget
--- @flags: 
+-- @flags:
 function main()
 #ifdef MAIN
 	a = fill_surface(64, 64, 128, 0, 0);
@@ -58,8 +58,8 @@ function main()
 	cycle_image_transform(c);
 
 	dst = fill_surface(VRESW * 0.5, VRESH * 0.5, 0, 0, 0);
-	define_recordtarget(dst, "output.mkv", "vpreset=8:noaudio:fps=25", {a,c}, {}, 
-		RENDERTARGET_NODETACH, RENDERTARGET_SCALE, -4);  
+	define_recordtarget(dst, "output.mkv", "vpreset=8:noaudio:fps=25", {a,c}, {},
+		RENDERTARGET_NODETACH, RENDERTARGET_SCALE, -4);
 #endif
 
 #ifdef ERROR1

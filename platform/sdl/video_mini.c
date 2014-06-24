@@ -20,7 +20,7 @@
 #define EVAL(X,Y) MERGE(X,Y)
 #define PLATFORM_SYMBOL(fun) EVAL(SDL_MINI_SUFFIX, fun)
 
-/* this is just to re-use the interface for 
+/* this is just to re-use the interface for
  * the libretro- frameserver 3D special case */
 
 bool PLATFORM_SYMBOL(_video_init) (uint16_t width, uint16_t height, uint8_t bpp,
@@ -40,7 +40,7 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t width, uint16_t height, uint8_t bpp,
 	if ( (err = glewInit()) != GLEW_OK){
 		return false;
 	}
-	
+
 	return true;
 }
 

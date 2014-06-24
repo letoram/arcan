@@ -1,13 +1,13 @@
 -- image_texfilter
--- @short: Switch object video filtering mode. 
+-- @short: Switch object video filtering mode.
 -- @inargs: vid, mode
--- @outargs: 
+-- @outargs:
 -- @longdescr: Each object inherits a global default filtering mode upon creation.
 -- This mode can be overridden for individual objects through this function.
 -- Valid filtering modes are: FILTER_NONE, FILTER_LINEAR, FILTER_BILINEAR, FILTER_TRILINEAR
 -- @note: Filtering mode is connected to the gl storage, and the options to share storage
 -- between objects through instancing or explicit sharing will retain this property.
--- @group: image 
+-- @group: image
 -- @cfunction: arcan_lua_changetexfilter
 -- @related: switch_default_texfilter
 function main()

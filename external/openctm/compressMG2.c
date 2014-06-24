@@ -463,7 +463,7 @@ static void _ctmCalcSmoothNormals(_CTMcontext * self, CTMfloat * aVertices,
   // Normalize the normal sums, which gives the unit length smooth normals
   for(i = 0; i < self->mVertexCount; ++ i)
   {
-    len = sqrtf(aSmoothNormals[i * 3] * aSmoothNormals[i * 3] + 
+    len = sqrtf(aSmoothNormals[i * 3] * aSmoothNormals[i * 3] +
                 aSmoothNormals[i * 3 + 1] * aSmoothNormals[i * 3 + 1] +
                 aSmoothNormals[i * 3 + 2] * aSmoothNormals[i * 3 + 2]);
     if(len > 1e-10f)
@@ -875,7 +875,7 @@ int _ctmCompressMesh_MG2(_CTMcontext * self)
   gridIndices[0] = sortVertices[0].mGridIndex;
   for(i = 1; i < self->mVertexCount; ++ i)
     gridIndices[i] = sortVertices[i].mGridIndex - sortVertices[i - 1].mGridIndex;
-  
+
   // Write grid indices
 #ifdef __DEBUG_
   printf("Grid indices: ");

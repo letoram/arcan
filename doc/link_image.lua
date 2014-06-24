@@ -1,12 +1,12 @@
 -- link_image
--- @short: Bind the state-space of one video object to that of another. 
+-- @short: Bind the state-space of one video object to that of another.
 -- @inargs: src, newparent
 -- @longdescr: Full video objects (not instances and other restricted types)
 -- can have their properties be dependent of the state of another. This function
 -- associates *src* with *newparent*, which by default means that opacity, position
 -- orientation becomes relative. The exact properties can be tuned with the _mask class
 -- of functions.
--- @group: image 
+-- @group: image
 -- @cfunction: arcan_lua_linkimage
 function main()
 #ifdef MAIN

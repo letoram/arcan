@@ -22,7 +22,7 @@
 #ifndef _HAVE_ARCAN_DB
 
 /* this solution is pretty rigid to work with,
- * it is likely that future revisions will revert to a 
+ * it is likely that future revisions will revert to a
  * NoSQL with Protocol Buffers kindof solution, but it's a low priority */
 
 struct arcan_dbh;
@@ -71,7 +71,7 @@ enum ARCAN_DB_INPUTMASK {
 /* unless specified, caller is responsible for cleanup for returned strings / db res structs */
 
 /* Opens database and performs sanity check,
- * if themename is not null, make sure there is a table for the specified theme 
+ * if themename is not null, make sure there is a table for the specified theme
  * returns null IF fname can't be opened/read OR sanity check fails */
 arcan_dbh* arcan_db_open(const char* fname, const char* themename);
 void arcan_db_close(arcan_dbh*);
@@ -103,7 +103,7 @@ arcan_dbh_res arcan_db_gamebyid(arcan_dbh* dbh, int gameid);
 
 /* log a database entry for a failed launch,
  * assist in maintaing game-db / config */
-void arcan_db_failed_launch(arcan_dbh*, int); 
+void arcan_db_failed_launch(arcan_dbh*, int);
 
 /* manipulate the launch_counter property of a game */
 long arcan_db_launch_counter(arcan_dbh*, const char* title);

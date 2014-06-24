@@ -1,20 +1,20 @@
 -- image_surface_resolve_properties
--- @short: Retrieve current image properties in world-space. 
--- @inargs: vid 
--- @outargs: proptbl  
+-- @short: Retrieve current image properties in world-space.
+-- @inargs: vid
+-- @outargs: proptbl
 -- @longdescr: Most of the surface_ _properties class of functions return
 -- results in object space. This function will traverse the related set
--- of object hierarchies and resolve the final ones that will be  
+-- of object hierarchies and resolve the final ones that will be
 -- @group: image
--- @note: The fields used in proptbl are: (x, y, z, width, height, 
--- angle, roll, pitch, yaw, opacity and order). 
+-- @note: The fields used in proptbl are: (x, y, z, width, height,
+-- angle, roll, pitch, yaw, opacity and order).
 -- @note: this function has a highly variable cost since the rendering
 -- pipeline normallys caches both resolved properties and resulting
--- transformation matrices, if possible. 
+-- transformation matrices, if possible.
 -- @cfunction: arcan_lua_getimageresolveprop
 -- @related: image_surface_initial_properties, image_surface_properties,
 -- image_surface_storage_properties
--- @flags: 
+-- @flags:
 function main()
 #ifdef MAIN
 	a = fill_surface(32, 32, 255, 0, 0);

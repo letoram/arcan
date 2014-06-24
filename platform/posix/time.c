@@ -29,7 +29,7 @@ long long int arcan_timemillis()
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
 	tp.tv_sec = tp.tv_sec;
-	tp.tv_nsec = tv.tv_usec * 1000; 
+	tp.tv_nsec = tv.tv_usec * 1000;
 */
 
 	return (tp.tv_sec * 1000) + (tp.tv_nsec / 1000000);

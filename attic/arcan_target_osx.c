@@ -21,17 +21,17 @@
 
 /* NOTE; for full OSX support a few key- features are missing;
  * there's a way to exec() a program "discretely in the background"
- * with fullscreen mode on the main- app, initial tests suggests there is some 
+ * with fullscreen mode on the main- app, initial tests suggests there is some
  * kind of priority inversion going on */
 
 #include "arcan_target.c"
 
 /* a lot of this trickery is to do the hijack,
- * and maximise code-reuse among the supported platforms. 
- * 
+ * and maximise code-reuse among the supported platforms.
+ *
  * OSX linker uses a special section of the DATA segment
  * and a two-layer namespace. Thus the symbols of the targetted lib are available under their
- * native name, this is not so with the GNU ld linker, where you need to lookup each symbol 
+ * native name, this is not so with the GNU ld linker, where you need to lookup each symbol
  * dynamically. Thus we use an intermediate table, alongside preprocessor renaming. */
 
 typedef struct interpose_s {

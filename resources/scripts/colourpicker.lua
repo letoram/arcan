@@ -12,7 +12,7 @@
 
 local function hsc_c(h, s, c, m)
 	local rv = {0, 0, 0};
-	
+
 	if (h < 0 or h > 360) then return rv; end
 	if (s < 0 or s > 1  ) then return rv; end
 
@@ -42,7 +42,7 @@ local function hsc_c(h, s, c, m)
 	rv[1] = math.floor(255 * (rv[1] + m));
 	rv[2] = math.floor(255 * (rv[2] + m));
 	rv[3] = math.floor(255 * (rv[3] + m));
-	
+
 	return rv;
 end
 
@@ -82,7 +82,7 @@ local function build_colortable(anchor, rows, cols, w, h, spacing, order)
 
 		rv[i] = row;
 	end
-	
+
 	return rv;
 end
 
@@ -140,7 +140,7 @@ end
 
 function colpicker_new(w, h, x, y, rows, cols)
 	local restbl = {
-		refresh = refresh, 
+		refresh = refresh,
 		input = input,
 		destroy = destroy,
 		step_cursor_row = steprow,
@@ -150,7 +150,7 @@ function colpicker_new(w, h, x, y, rows, cols)
 	};
 
 	local orderbase = max_current_image_order();
-		
+
 	restbl.anchor = fill_surface(1, 1, 0, 0, 0);
 	move_image(restbl.anchor, x, y);
 	image_tracetag(restbl.anchor, "colorpicker anchor");
@@ -160,7 +160,7 @@ function colpicker_new(w, h, x, y, rows, cols)
 	restbl.cellw = w;
 	restbl.cellh = h;
 	restbl.spacing = 4;
-	
+
 	restbl.grid   = build_colortable(restbl.anchor, rows, cols, w, h, restbl.spacing, orderbase + 1);
 	restbl.cursor_vid = fill_surface(w + 4, h + 4, 255, 255, 255);
 
@@ -169,6 +169,6 @@ function colpicker_new(w, h, x, y, rows, cols)
 	show_image(restbl.cursor_vid);
 	image_mask_clear(restbl.cursor_vid, MASK_OPACITY);
 	move_image(restbl.cursor_vid, -2, -2);
-	
-	return restbl;	
+
+	return restbl;
 end

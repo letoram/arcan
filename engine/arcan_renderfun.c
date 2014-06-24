@@ -55,7 +55,7 @@ struct text_format {
 /* pointer into line of text where the format was extracted,
  * only temporary use */
 	char* endofs;
-	
+
 /* whitespace management */
 	bool cr;
 	uint8_t tab;
@@ -88,10 +88,10 @@ static uint16_t nexthigher(uint16_t k)
 /*
  * This one is a mess,
  * (a) begin by splitting the input string into a linked list of data elements.
- * each element can EITHER modfiy to current cursor position OR represent 
+ * each element can EITHER modfiy to current cursor position OR represent
  * a rendered surface.
 
- * (b) take the linked list, sweep through it and figure out which dimensions 
+ * (b) take the linked list, sweep through it and figure out which dimensions
  * it requires, allocate a corresponding storage object.
 
  * (c) sweep the list yet again, render to the storage object.
@@ -121,7 +121,7 @@ static TTF_Font* grab_font(const char* fname, uint8_t size)
 {
 	int leasti = 0, i, leastv = -1;
 
-	if (!fname) 
+	if (!fname)
 		return NULL;
 
 	for (i = 0; i < font_cache_size && font_cache[i].data != NULL; i++){
@@ -129,7 +129,7 @@ static TTF_Font* grab_font(const char* fname, uint8_t size)
 			leasti = i;
 			leastv = font_cache[i].usecount;
 		}
-		if (font_cache[i].size == size && strcmp(font_cache[i].identifier, 
+		if (font_cache[i].size == size && strcmp(font_cache[i].identifier,
 		fname) == 0){
 			font_cache[i].usecount++;
 			return font_cache[i].data;
@@ -142,14 +142,14 @@ static TTF_Font* grab_font(const char* fname, uint8_t size)
 		arcan_warning("grab_font(), Open Font (%s,%d) failed\n", fname, size);
 		return NULL;
 	}
-	
-/* replace? */	
+
+/* replace? */
 	if (i == font_cache_size){
 		i = leasti;
 		free(font_cache[leasti].identifier);
 		TTF_CloseFont(font_cache[leasti].data);
 	}
-	
+
 	font_cache[i].identifier = strdup(fname);
 	font_cache[i].usecount++;
 	font_cache[i].size = size;
@@ -164,11 +164,11 @@ void arcan_video_reset_fontcache()
 		if (font_cache[i].data){
 			TTF_CloseFont(font_cache[i].data);
 			free(font_cache[i].identifier);
-			memset(&font_cache[i], '\0', sizeof(font_cache[0])); 
+			memset(&font_cache[i], '\0', sizeof(font_cache[0]));
 		}
 }
 
-#ifndef TEXT_EMBEDDEDICON_MAXW 
+#ifndef TEXT_EMBEDDEDICON_MAXW
 #define TEXT_EMBEDDEDICON_MAXW 256
 #endif
 
@@ -179,14 +179,14 @@ void arcan_video_reset_fontcache()
 #ifndef RENDERFUN_NOSUBIMAGE
 TTF_Surface* text_loadimage(const char* const infn, img_cons cons)
 {
-	char* path = arcan_find_resource(infn, 
+	char* path = arcan_find_resource(infn,
 		ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);
-	
+
 	data_source inres = arcan_open_resource(path);
 
 	free(path);
 	if (inres.fd == BADFD)
-		return NULL; 
+		return NULL;
 
 	map_region inmem = arcan_map_resource(&inres, false);
 	if (inmem.ptr == NULL){
@@ -198,27 +198,27 @@ TTF_Surface* text_loadimage(const char* const infn, img_cons cons)
 	char* imgbuf;
 	int inw, inh;
 
-	arcan_errc rv = arcan_img_decode(infn, inmem.ptr, inmem.sz, &imgbuf, 
+	arcan_errc rv = arcan_img_decode(infn, inmem.ptr, inmem.sz, &imgbuf,
 		&inw, &inh, &meta, false, malloc);
 
-/* stretchblit is assumed to deal with the edgecase of 
+/* stretchblit is assumed to deal with the edgecase of
  * w ^ h being 0 */
 	if (cons.w > TEXT_EMBEDDEDICON_MAXW || inw > TEXT_EMBEDDEDICON_MAXW)
 		cons.w = TEXT_EMBEDDEDICON_MAXW;
 
 	if (cons.h > TEXT_EMBEDDEDICON_MAXH || inh > TEXT_EMBEDDEDICON_MAXH)
 		cons.h = TEXT_EMBEDDEDICON_MAXH;
-	
+
 	arcan_release_map(inmem);
 	arcan_release_resource(&inres);
-	
+
 	if (imgbuf && rv == ARCAN_OK){
 		TTF_Surface* res = malloc(sizeof(TTF_Surface));
 		res->bpp    = GL_PIXEL_BPP;
-		
+
 		if ((cons.w != 0 && cons.h != 0) && (inw != cons.w || inh != cons.h)){
 			uint32_t* scalebuf = malloc(cons.w * cons.h * GL_PIXEL_BPP);
-			stretchblit(imgbuf, inw, inh, scalebuf, cons.w, cons.h, false); 
+			stretchblit(imgbuf, inw, inh, scalebuf, cons.w, cons.h, false);
 			free(imgbuf);
 			res->width  = cons.w;
 			res->height = cons.h;
@@ -227,8 +227,8 @@ TTF_Surface* text_loadimage(const char* const infn, img_cons cons)
 			res->width  = inw;
 			res->height = inh;
 			res->data   = imgbuf;
-		}	
-			
+		}
+
 		res->stride = res->width * GL_PIXEL_BPP;
 		return res;
 	}
@@ -248,7 +248,7 @@ static char* extract_color(struct text_format* prev, char* base){
 			return NULL;
 		}
 	}
-				
+
 /* now we know 6 valid chars are there, time to collect. */
 	cbuf[0] = *(base - 6); cbuf[1] = *(base - 5); cbuf[2] = 0;
 	prev->col.r = strtol(cbuf, 0, 16);
@@ -264,7 +264,7 @@ static char* extract_color(struct text_format* prev, char* base){
 
 static char* extract_font(struct text_format* prev, char* base){
 	char* fontbase = base, (* numbase), (* orig) = base;
-	
+
 /* find fontname vs fontsize separator */
 	while (*base != ',') {
 		if (*base == 0) {
@@ -274,13 +274,13 @@ static char* extract_font(struct text_format* prev, char* base){
 		}
 		base++;
 	}
-	*base++ = 0; 
-	
+	*base++ = 0;
+
 /* fontbase points to full fontname, find the size */
 	numbase = base;
 	while (*base != 0 && isdigit(*base))
 	base++;
-	
+
 /* error state, no size specifier */
 	if (numbase == base)
 		arcan_warning("Warning: arcan_video_renderstring(), missing size argument "
@@ -290,7 +290,7 @@ static char* extract_font(struct text_format* prev, char* base){
 		*base = 0;
 
 /* resolve resource */
-		char* fname = arcan_find_resource(fontbase, ARCAN_RESOURCE_SHARED | 
+		char* fname = arcan_find_resource(fontbase, ARCAN_RESOURCE_SHARED |
 			ARCAN_RESOURCE_THEME);
 
 		TTF_Font* font = NULL;
@@ -310,7 +310,7 @@ static char* extract_font(struct text_format* prev, char* base){
 		free(fname);
 		*base = ch;
 	}
-	
+
 	return base;
 }
 
@@ -319,9 +319,9 @@ static char* extract_image_simple(struct text_format* prev, char* base){
 	char* wbase = base;
 
 	while (*base && *base != ',') base++;
-	if (*base) 
+	if (*base)
 		*base++ = 0;
-	
+
 	if (strlen(wbase) > 0){
 		prev->imgcons.w = prev->imgcons.h = 0;
 		prev->image = text_loadimage(wbase, prev->imgcons);
@@ -329,7 +329,7 @@ static char* extract_image_simple(struct text_format* prev, char* base){
 			prev->imgcons.w = prev->image->width;
 			prev->imgcons.h = prev->image->height;
 		}
-		
+
 		return base;
 	}
 	else{
@@ -345,7 +345,7 @@ static char* extract_image(struct text_format* prev, char* base)
 
 	char* widbase = base;
 	while (*base && *base != ',' && isdigit(*base)) base++;
-	if (*base && strlen(widbase) > 0) 
+	if (*base && strlen(widbase) > 0)
 		*base++ = 0;
 	else {
 		arcan_warning("Warning: arcan_video_renderstring(), width scan failed,"
@@ -359,7 +359,7 @@ static char* extract_image(struct text_format* prev, char* base)
 			"directive (%s)\n", forcew, widbase);
 		return NULL;
 	}
-	
+
 	char* hghtbase = base;
 	while (*base && *base != ',' && isdigit(*base)) base++;
 	if (*base && strlen(hghtbase) > 0)
@@ -387,7 +387,7 @@ static char* extract_image(struct text_format* prev, char* base)
 			" terminator (,) in sized image scan directive (%s)\n", wbase);
 		return NULL;
 	}
-	
+
 	if (strlen(wbase) > 0){
 		prev->imgcons.w = forcew;
 		prev->imgcons.h = forceh;
@@ -396,7 +396,7 @@ static char* extract_image(struct text_format* prev, char* base)
 			prev->imgcons.w = prev->image->width;
 			prev->imgcons.h = prev->image->height;
 		}
-		
+
 		return base;
 	}
 	else{
@@ -407,22 +407,22 @@ static char* extract_image(struct text_format* prev, char* base)
 }
 #endif
 
-static struct text_format formatend(char* base, struct text_format prev, 
+static struct text_format formatend(char* base, struct text_format prev,
 	char* orig, bool* ok) {
 	struct text_format failed = {0};
 /* don't carry caret modifiers */
-	prev.newline = prev.tab = prev.cr = 0; 
+	prev.newline = prev.tab = prev.cr = 0;
 	bool inv = false;
 	bool whskip = false;
 
 	while (*base) {
 /* skip first whitespace (avoid situation where;
- * \ffonts/test,181889 when writing 1889.. and still 
+ * \ffonts/test,181889 when writing 1889.. and still
  * allow for dynamic input dialogs etc. */
-		if (whskip == false && isspace(*base)) { 
-			base++; 
+		if (whskip == false && isspace(*base)) {
+			base++;
 			whskip = true;
-			continue; 
+			continue;
 		}
 
 /* out of formatstring */
@@ -430,22 +430,22 @@ static struct text_format formatend(char* base, struct text_format prev,
 
 /* all the supported formatting characters;
  * b = bold, i = italic, u = underline, n = newline, r = carriage return,
- * t = tab ! = inverse (bold,italic,underline), #rrggbb = setcolor, 
- * fpath,size = setfont, Pwidth,height,fname(, or NULL) extract 
+ * t = tab ! = inverse (bold,italic,underline), #rrggbb = setcolor,
+ * fpath,size = setfont, Pwidth,height,fname(, or NULL) extract
  * pwidth,height = embedd image (width, height optional) */
 	char cmd;
 
 retry:
 		cmd = *(base+1);
 		base += 2;
-		
+
 		switch (cmd){
 /* the ! prefix is a special case, meaning that we invert the next character */
 		case '!': inv = true; base--; *base = '\\'; goto retry; break;
 		case 't': prev.tab++; break;
 		case 'n': prev.newline++; break;
 		case 'r': prev.cr = true; break;
-		case 'u': prev.style = (inv ? prev.style & TTF_STYLE_UNDERLINE : 
+		case 'u': prev.style = (inv ? prev.style & TTF_STYLE_UNDERLINE :
 				prev.style | TTF_STYLE_UNDERLINE); break;
 		case 'b': prev.style = (inv ? prev.style & !TTF_STYLE_BOLD :
 				prev.style | TTF_STYLE_BOLD); break;
@@ -464,15 +464,15 @@ retry:
 			*ok = false;
 			return failed;
 		}
-		
+
 		if (!base){
 			*ok = false;
 			return failed;
 		}
-		
+
 		inv = false;
-	}	
-	
+	}
+
 	if (*base == 0)
 		prev.endofs = base;
 
@@ -480,12 +480,12 @@ retry:
 	return prev;
 }
 
-static inline void currstyle_cnode(struct text_format* curr_style, 
+static inline void currstyle_cnode(struct text_format* curr_style,
 	const char* const base, struct rcell* cnode, bool sizeonly)
 {
 	if (!sizeonly){
 		cnode->surface = true;
-		
+
 /* image or render font */
 		if (curr_style->image){
 			cnode->data.surf = curr_style->image;
@@ -508,9 +508,9 @@ static inline void currstyle_cnode(struct text_format* curr_style,
 /* just figure out the dimensions */
 	else if (curr_style->font){
 		TTF_SetFontStyle(curr_style->font, curr_style->style);
-		TTF_SizeUTF8(curr_style->font, base, (int*) &cnode->width, 
+		TTF_SizeUTF8(curr_style->font, base, (int*) &cnode->width,
 			(int*) &cnode->height);
-		
+
 /* load only if we don't have a dimension specifier */
 		if (curr_style->imgcons.w && curr_style->imgcons.h){
 			cnode->width = curr_style->imgcons.w;
@@ -554,10 +554,10 @@ static int build_textchain(char* message, struct rcell* root, bool sizeonly)
 					}
 
 /* slide- alloc list of rendered blocks */
-					cnode = cnode->next = 
+					cnode = cnode->next =
 						arcan_alloc_mem(sizeof(struct rcell), ARCAN_MEM_VSTRUCT,
 							ARCAN_MEM_TEMPORARY | ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
-	
+
 					*current = '\\';
 				}
 
@@ -575,14 +575,14 @@ static int build_textchain(char* message, struct rcell* root, bool sizeonly)
 					cnode->data.format.newline = curr_style->newline;
 					cnode->data.format.tab = curr_style->tab;
 					cnode->data.format.cr = curr_style->cr;
-					cnode = cnode->next = 
+					cnode = cnode->next =
 						arcan_alloc_mem(sizeof(struct rcell), ARCAN_MEM_VSTRUCT,
 							ARCAN_MEM_TEMPORARY | ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
-				} 
+				}
 
 				if (curr_style->image){
 					currstyle_cnode(curr_style, base, cnode, sizeonly);
-					cnode = cnode->next = 
+					cnode = cnode->next =
 						arcan_alloc_mem(sizeof(struct rcell), ARCAN_MEM_VSTRUCT,
 							ARCAN_MEM_TEMPORARY | ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 				}
@@ -590,7 +590,7 @@ static int build_textchain(char* message, struct rcell* root, bool sizeonly)
 				current = base = curr_style->endofs;
 /* note, may this be a condition for a break rather than a return? */
 				if (current == NULL)
-					return -1; 
+					return -1;
 
 				msglen = 0;
 			}
@@ -613,7 +613,7 @@ static int build_textchain(char* message, struct rcell* root, bool sizeonly)
 		else{
 			cnode->surface = true;
 			TTF_SetFontStyle(curr_style->font, curr_style->style);
-			cnode->data.surf = TTF_RenderUTF8(curr_style->font, base, 
+			cnode->data.surf = TTF_RenderUTF8(curr_style->font, base,
 				curr_style->col);
 		}
 	}
@@ -622,7 +622,7 @@ static int build_textchain(char* message, struct rcell* root, bool sizeonly)
 		sizeof(struct rcell), ARCAN_MEM_VSTRUCT,
 		ARCAN_MEM_TEMPORARY | ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL
 	);
-	
+
 	cnode->data.format.newline = 1;
 	rv++;
 
@@ -640,14 +640,14 @@ static unsigned int round_mult(unsigned num, unsigned int mult)
 /*
  * tabs are messier still,
  * for each format segment, there may be 'tabc' number of tabsteps,
- * these concern only the current text block and are thus calculated 
- * from a fixed offset. 
+ * these concern only the current text block and are thus calculated
+ * from a fixed offset.
  * */
-static unsigned int get_tabofs(int offset, int tabc, int8_t tab_spacing, 
+static unsigned int get_tabofs(int offset, int tabc, int8_t tab_spacing,
 	unsigned int* tabs)
 {
 	if (!tabs || *tabs == 0) /* tabc will always be >= 1 */
-		return tab_spacing ? 
+		return tab_spacing ?
 			round_mult(offset, tab_spacing) + ((tabc - 1) * tab_spacing) : offset;
 
 /* find last matching tab pos first */
@@ -664,7 +664,7 @@ static unsigned int get_tabofs(int offset, int tabc, int8_t tab_spacing,
 		if (*tabs)
 			offset = *tabs++;
 		else
-			offset += round_mult(offset, tab_spacing); 
+			offset += round_mult(offset, tab_spacing);
 /* out of defined tabs, pad with default spacing */
 
 	}
@@ -672,12 +672,12 @@ static unsigned int get_tabofs(int offset, int tabc, int8_t tab_spacing,
 	return offset;
 }
 
-void arcan_video_stringdimensions(const char* message, int8_t line_spacing, 
+void arcan_video_stringdimensions(const char* message, int8_t line_spacing,
 	int8_t tab_spacing, unsigned* tabs, unsigned* maxw, unsigned* maxh)
 {
 	if (!message)
 		return;
-	
+
 	/* (A) */
 	int chainlines;
 	struct rcell root = {.surface = false};
@@ -685,15 +685,15 @@ void arcan_video_stringdimensions(const char* message, int8_t line_spacing,
 	last_style.newline = 0;
 	last_style.tab = 0;
 	last_style.cr = false;
-	
+
 	if ((chainlines = build_textchain(work, &root, true)) > 0) {
 		struct rcell* cnode = &root;
 		*maxw = 0;
 		*maxh = 0;
-		
+
 		int lineh = 0;
 		int curw = 0;
-		
+
 		while (cnode) {
 			if (cnode->width > 0) {
 				if (cnode->height > lineh + line_spacing)
@@ -704,64 +704,64 @@ void arcan_video_stringdimensions(const char* message, int8_t line_spacing,
 			else {
 				if (cnode->data.format.cr)
 					curw = 0;
-				
+
 				if (cnode->data.format.tab)
 					curw = get_tabofs(curw, cnode->data.format.tab, tab_spacing, tabs);
-				
+
 				if (cnode->data.format.newline > 0)
 					for (int i = cnode->data.format.newline; i > 0; i--) {
 						*maxh += lineh + line_spacing;
 						lineh = 0;
 					}
 			}
-			
+
 			if (curw > *maxw)
 				*maxw = curw;
-			
+
 			cnode = cnode->next;
 		}
 	}
 
 	struct rcell* current = root.next;
-	
+
 	while (current){
 		struct rcell* prev = current;
 		current = current->next;
 		prev->next = (void*) 0xdeadbeef;
 		free(prev);
 	}
-	
+
 	free(work);
 }
 
-/* assumes surf dimensions fit within dst without clipping */	
-static inline void copy_rect(TTF_Surface* surf, uint32_t* dst, 
+/* assumes surf dimensions fit within dst without clipping */
+static inline void copy_rect(TTF_Surface* surf, uint32_t* dst,
 	int pitch, int x, int y)
 {
 	uint32_t* wrk = (uint32_t*) surf->data;
 
 	for (int row = 0; row < surf->height; row++)
-		memcpy( &dst[ (y + row) * pitch + x], 
+		memcpy( &dst[ (y + row) * pitch + x],
 			&wrk[row * surf->width], surf->width * 4);
 }
-	
+
 void* renderfun_renderfmtstr(const char* message,
 	int8_t line_spacing, int8_t tab_spacing, unsigned int* tabs, bool pot,
 	unsigned int* n_lines, unsigned int** lineheights,
-	unsigned short* dw, unsigned short * dh, uint32_t* d_sz, 
+	unsigned short* dw, unsigned short * dh, uint32_t* d_sz,
 	int* maxw, int* maxh)
 {
 	if (!message)
 		return NULL;
 
 	uint32_t* raw = NULL;
-	
+
 /* (A) parse format string and build chains of renderblocks */
 	int chainlines;
 	struct rcell* root = arcan_alloc_mem(sizeof(struct rcell),
 		ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO | ARCAN_MEM_TEMPORARY,
 		ARCAN_MEMALIGN_NATURAL);
-	
+
 	char* work = strdup(message);
 	last_style.newline = 0;
 	last_style.tab = 0;
@@ -809,16 +809,16 @@ void* renderfun_renderfmtstr(const char* message,
 
 			cnode = cnode->next;
 		}
-		
+
 /* (C) render into destination buffers */
 		*dw = pot ? nexthigher(*maxw) : *maxw;
 		*dh = pot ? nexthigher(*maxh) : *maxh;
 
 		*d_sz = *dw * *dh * GL_PIXEL_BPP;
 
-		raw = arcan_alloc_mem(*d_sz, ARCAN_MEM_VBUFFER, 
+		raw = arcan_alloc_mem(*d_sz, ARCAN_MEM_VBUFFER,
 			ARCAN_MEM_TEMPORARY | ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE);
-	
+
 		memset(raw, '\0', *d_sz);
 
 		if (!raw)
@@ -840,12 +840,12 @@ void* renderfun_renderfmtstr(const char* message,
 				if (cnode->data.format.cr)
 					curw = 0;
 
-				if (cnode->data.format.newline > 0) 
+				if (cnode->data.format.newline > 0)
 					line += cnode->data.format.newline;
 			}
 			cnode = cnode->next;
 		}
-	
+
 		if (n_lines)
 			*n_lines = linecount;
 
@@ -854,7 +854,7 @@ void* renderfun_renderfmtstr(const char* message,
 		else
 			arcan_mem_free(lines);
 	}
-	
+
 	struct rcell* current;
 
 cleanup:
@@ -863,18 +863,18 @@ cleanup:
 		assert(current != (void*) 0xdeadbeef);
 		if (current->surface && current->data.surf)
 			arcan_mem_free(current->data.surf);
-			
+
 		struct rcell* prev = current;
 		current = current->next;
 		prev->next = (void*) 0xdeadbeef;
 		arcan_mem_free(prev);
 	}
-	
+
 	arcan_mem_free(work);
 	return raw;
 }
 
-/*  
+/*
  * Stripped down version of SDL rotozoomer, only RGBA<->RGBA upscale
  *
  */
@@ -916,7 +916,7 @@ typedef struct tColorY {
 	uint8_t y;
 } tColorY;
 
-int stretchblit(char* src, int inw, int inh, 
+int stretchblit(char* src, int inw, int inh,
 	uint32_t* dst, int dstw, int dsth, int flipy)
 {
 	int x, y, sx, sy, ssx, ssy, *sax, *say, *csax, *csay, *salast;
@@ -924,7 +924,7 @@ int stretchblit(char* src, int inw, int inh,
 
 	tColorRGBA *c00, *c01, *c10, *c11;
 	tColorRGBA *sp, *csp, *dp;
-	
+
 	int spixelgap, spixelw, spixelh, dgap, t1, t2;
 
 	if ((sax = arcan_alloc_mem((dstw + 1) * sizeof(uint32_t),
@@ -943,11 +943,11 @@ int stretchblit(char* src, int inw, int inh,
 	spixelh = (inh - 1);
 	sx = (int) (65536.0 * (float) spixelw / (float) (dstw - 1));
 	sy = (int) (65536.0 * (float) spixelh / (float) (dsth - 1));
-	
+
 /* Maximum scaled source size */
 	ssx = (inw << 16) - 1;
 	ssy = (inh << 16) - 1;
-	
+
 /* Precalculate horizontal row increments */
 	csx = 0;
 	csax = sax;
@@ -955,13 +955,13 @@ int stretchblit(char* src, int inw, int inh,
 		*csax = csx;
 		csax++;
 		csx += sx;
-		
+
 /* Guard from overflows */
-		if (csx > ssx) { 
-			csx = ssx; 
+		if (csx > ssx) {
+			csx = ssx;
 		}
 	}
-	 
+
 /* Precalculate vertical row increments */
 	csy = 0;
 	csay = say;
@@ -969,7 +969,7 @@ int stretchblit(char* src, int inw, int inh,
 		*csay = csy;
 		csay++;
 		csy += sy;
-		
+
 /* Guard from overflows */
 		if (csy > ssy) {
 			csy = ssy;
@@ -982,7 +982,7 @@ int stretchblit(char* src, int inw, int inh,
 	dgap = 0;
 	spixelgap = inw;
 
-	if (flipy) 
+	if (flipy)
 		sp += (spixelgap * spixelh);
 
 	csay = say;
@@ -999,7 +999,7 @@ int stretchblit(char* src, int inw, int inh,
 			c00 = sp;
 			c01 = sp;
 			c10 = sp;
-		
+
 			if (sstepy) {
 				if (flipy) {
 				c10 -= spixelgap;
@@ -1007,7 +1007,7 @@ int stretchblit(char* src, int inw, int inh,
 				c10 += spixelgap;
  				}
  			}
-			
+
 			c11 = c10;
 			if (sstepx) {
 				c01++;
@@ -1034,12 +1034,12 @@ int stretchblit(char* src, int inw, int inh,
 
 			dp++;
 		}
-		
+
 		salast = csay;
 		csay++;
 		sstep = (*csay >> 16) - (*salast >> 16);
 		sstep *= spixelgap;
-		if (flipy) { 
+		if (flipy) {
 			 sp = csp - sstep;
 		} else {
 			sp = csp + sstep;

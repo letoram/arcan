@@ -1,7 +1,7 @@
 -- image_mask_clear
--- @short: Clear a status flag on the specified object 
+-- @short: Clear a status flag on the specified object
 -- @inargs: vid, maskval
--- @group: image 
+-- @group: image
 -- @cfunction: arcan_lua_clearmask
 -- @note: an invalid maskval is considered a terminal state transition.
 -- @related: image_mask_toggle, image_mask_set, image_mask_clearall

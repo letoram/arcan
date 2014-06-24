@@ -1,6 +1,6 @@
 -- order_image
 -- @short: Alter the drawing order of the specified image.
--- @inargs: vid or tblvid, newzv 
+-- @inargs: vid or tblvid, newzv
 -- @longdescr: The internal rendering pipeline treats images in a linear fashion
 -- and each rendering context is maintained as a list sorted on the current order value.
 -- This will detach the object from the main pipeline and then reattach at the new position.
@@ -11,7 +11,7 @@
 -- @note: newzv cannot be lower than 0
 -- @note: Order can also be relative to the world- order of the resolved parent,
 -- see image_inherit_order.
--- @group: image 
+-- @group: image
 -- @cfunction: arcan_lua_orderimage
 -- @related: image_inherit_order, max_current_image_order
 function main()

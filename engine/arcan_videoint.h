@@ -1,5 +1,5 @@
 /* Arcan-fe, scriptable front-end engine
- * 
+ *
  * Arcan-fe is the legal property of its developers, please refer
  * to the COPYRIGHT file distributed with this source distribution.
  *
@@ -11,7 +11,7 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,USA
@@ -21,7 +21,7 @@
 #define _HAVE_ARCAN_VIDEOINT
 
 #ifndef RENDERTARGET_LIMIT
-#define RENDERTARGET_LIMIT 64 
+#define RENDERTARGET_LIMIT 64
 #endif
 
 #define FLAG_DIRTY() (arcan_video_display.dirty++);
@@ -30,31 +30,31 @@ struct arcan_vobject_litem;
 struct arcan_vobject;
 
 struct rendertarget {
-/* depth and stencil are combined as stencil_index 
+/* depth and stencil are combined as stencil_index
  * formats have poor driver support */
 	unsigned fbo, depth;
 
-/* only used / allocated if readback != 0 */ 
+/* only used / allocated if readback != 0 */
 	unsigned pbo;
-	
+
 /* think of base as identity matrix, sometimes with added scale */
 	_Alignas(16) float base[16];
 	_Alignas(16) float projection[16];
-	
-/* readback == 0, no readback. Otherwise, a readback is requested 
- * every abs(readback) frames. if readback is negative, 
+
+/* readback == 0, no readback. Otherwise, a readback is requested
+ * every abs(readback) frames. if readback is negative,
  * or readback ticks if it is positive */
 	int readback;
 	long long readcnt;
 
-/* flagged after a PBO readback has been issued, 
+/* flagged after a PBO readback has been issued,
  * cleared when buffer have been mapped */
-	bool readreq; 
+	bool readreq;
 
 /* tracked to allow partial pool re-use */
 	bool alive;
 
-/* set this to true if it is certain that the rendertarget 
+/* set this to true if it is certain that the rendertarget
  * shouldn't be cleared on every drawpass */
 	bool noclear;
 
@@ -64,11 +64,11 @@ struct rendertarget {
 	int transfc;
 
 /* each rendertarget can have one possible camera attached to it
- * which affects the 3d pipe. This is defaulted to BADID until 
+ * which affects the 3d pipe. This is defaulted to BADID until
  * a vobj is explicitly camtaged */
 	arcan_vobj_id camtag;
 
-/* color representes the attached vid, 
+/* color representes the attached vid,
  * first is the pipeline (subset of context vid pool) */
 	struct arcan_vobject* color;
 	struct arcan_vobject_litem* first;
@@ -98,7 +98,7 @@ struct transf_rotate{
 	surface_orientation starto, endo;
 };
 
-/* 
+/*
  * these are arranged in a linked list of slots,
  * where one slot may contain one of each transform categories
  * and will be packed "to the left" each time any one of them finishes
@@ -109,11 +109,11 @@ typedef struct surface_transform {
 	struct transf_scale  scale;
 	struct transf_blend  blend;
 	struct transf_rotate rotate;
-	
+
 	struct surface_transform* next;
 } surface_transform;
 
-/* 
+/*
  * refcount is usually defaulted to 1 or ignored,
  * otherwise it indicates that the storage is
  * shared between multiple vobjects (sprite-sheets,
@@ -146,11 +146,11 @@ struct storage_info_t {
 			float g;
 			float b;
 		} col;
-	} vinf; 
+	} vinf;
 
 	unsigned short w, h, bpp;
 	unsigned txu, txv;
-	
+
 	enum arcan_vimage_mode    scale;
 	enum arcan_imageproc_mode imageproc;
 	enum arcan_vfilter_mode   filtermode;
@@ -159,8 +159,8 @@ struct storage_info_t {
 typedef struct arcan_vobject {
 /*
  * image-storage / reference,
- * current_frame is set to default_frame, but could well reference 
- * another object (frameset) 
+ * current_frame is set to default_frame, but could well reference
+ * another object (frameset)
  */
 	struct arcan_vobject* current_frame;
 	uint16_t origw, origh;
@@ -173,17 +173,17 @@ typedef struct arcan_vobject {
 		unsigned short current;         /* current frame, might be "dst"          */
 		enum arcan_framemode framemode; /* multitexture or just active frame      */
 	} frameset_meta;
-	
+
 	struct storage_info_t* vstore;
 	arcan_shader_id program;
-	
+
 	struct {
 		arcan_vfunc_cb ffunc;
 		vfunc_state state;
 		int pcookie;
 	} feed;
 
-/* if NULL, a default mapping will be used */ 
+/* if NULL, a default mapping will be used */
 	float* txcos;
 	enum arcan_blendfunc blendmode;
 
@@ -205,16 +205,16 @@ typedef struct arcan_vobject {
  * allow for dangling references) primary use is for frameserver connections */
 		bool persist;
 	} flags;
-	
+
 /* position */
 	signed int order;
 	surface_properties current;
 	point origo_ofs;
-	
+
 	surface_transform* transform;
 	int transfc;
 	enum arcan_transform_mask mask;
-	
+
 /* transform caching,
  * the invalidated flag will be active as long as there are running
  * transformations for the object in question, or if there's running
@@ -226,7 +226,7 @@ typedef struct arcan_vobject {
 /* life-cycle tracking */
 	unsigned long last_updated;
 	long lifetime;
-	
+
 /* management mappings */
 	struct arcan_vobject* parent;
 	struct arcan_vobject** children;
@@ -235,7 +235,7 @@ typedef struct arcan_vobject {
 	struct rendertarget* owner;
 	arcan_vobj_id cellid;
 
-/* for integrity checks, a destructive operation on a 
+/* for integrity checks, a destructive operation on a
  * !0 reference count is a terminal state */
 	struct {
 		signed framesets;
@@ -263,7 +263,7 @@ struct arcan_video_display {
 	enum arcan_order3d order3d;
 
 	unsigned default_vitemlim;
- 
+
 	arcan_shader_id defaultshdr;
 	arcan_shader_id defclrshdr;
 
@@ -277,16 +277,16 @@ struct arcan_video_display {
 	enum arcan_vimage_mode scalemode;
 	enum arcan_imageproc_mode imageproc;
 	enum arcan_vfilter_mode filtermode;
-	
+
 	unsigned deftxs, deftxt;
 	bool mipmap;
-	
+
 	uint32_t sdlarg;
-	
+
 	unsigned char bpp;
 	unsigned short width, height;
 	uint32_t c_ticks;
-	
+
 	unsigned char msasamples;
 	float vsync_timing, vsync_stddev, vsync_variance;
 	char* txdump;
@@ -294,9 +294,9 @@ struct arcan_video_display {
 
 /* these all represent a subset of the current context that is to be drawn.
  * if (dest != NULL) this means that the vid actually represents a rendertarget,
- * e.g. FBO. The mode defines which output buffers (color, depth, ...) 
- * that should be stored. Readback defines if we want a PBO- or glReadPixels 
- * style  readback into the .raw buffer of the target. reset defines if any of 
+ * e.g. FBO. The mode defines which output buffers (color, depth, ...)
+ * that should be stored. Readback defines if we want a PBO- or glReadPixels
+ * style  readback into the .raw buffer of the target. reset defines if any of
  * the intermediate buffers should be cleared beforehand. first refers to the
  * first object in the subset. if first and dest are null, stop processing
  * the list of rendertargets. */
@@ -320,7 +320,7 @@ extern unsigned vcontext_ind;
 extern struct arcan_video_display arcan_video_display;
 
 int arcan_debug_pumpglwarnings(const char* src);
-void arcan_resolve_vidprop(arcan_vobject* vobj, 
+void arcan_resolve_vidprop(arcan_vobject* vobj,
 	float lerp, surface_properties* props);
 
 arcan_vobject* arcan_video_getobject(arcan_vobj_id id);
@@ -332,7 +332,7 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id);
 arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
 	img_cons forced, bool asynchsrc);
 
-void arcan_video_setblend(const surface_properties* dprops, 
+void arcan_video_setblend(const surface_properties* dprops,
 	const arcan_vobject* elem);
 
 #ifdef _DEBUG
@@ -348,13 +348,13 @@ void arcan_video_joinasynch(arcan_vobject* img, bool emit, bool force);
 /*
  * To split between GLFX/EGL/SDL/etc. All relevant settings are predefined in
  * arcan_video_display, and these just implement the necessary foreplay
- */ 
+ */
 bool arcan_videodev_init();
 void arcan_videodev_deinit();
 
 void arcan_3d_setdefaults();
 
-/* sweep the glstor and bind the corresponding 
+/* sweep the glstor and bind the corresponding
  * texture units (unless we hit the limit that is) */
 unsigned arcan_video_pushglids(struct storage_info_t* glstor,unsigned ofs);
 arcan_vobject_litem* arcan_refresh_3d(arcan_vobj_id camtag,
@@ -363,7 +363,7 @@ arcan_vobject_litem* arcan_refresh_3d(arcan_vobj_id camtag,
 void* renderfun_renderfmtstr(const char* message,
 	int8_t line_spacing, int8_t tab_spacing, unsigned int* tabs, bool pot,
 	unsigned int* n_lines, unsigned int** lineheights,
-	unsigned short* dw, unsigned short* dh, 
+	unsigned short* dw, unsigned short* dh,
 	uint32_t* d_sz, int* maxw, int* maxh);
 
 int stretchblit(char* src, int srcw, int srch,

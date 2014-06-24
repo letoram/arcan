@@ -1,10 +1,10 @@
 -- zap_resource
 -- @short: Unlink a file in the themepath.
 -- @inargs: resstr
--- @outargs: boolres 
--- @group: resource 
+-- @outargs: boolres
+-- @group: resource
 -- @cfunction: arcan_lua_zapresource
--- @flags: 
+-- @flags:
 function main()
 #ifdef MAIN
 	open_rawresource("test.out");

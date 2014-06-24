@@ -28,7 +28,7 @@ static char* tag_resleak = "resource_leak";
 void arcan_release_resource(data_source* sptr)
 {
 /* relying on a working close() is bad form,
- * unfortunately recovery options are few 
+ * unfortunately recovery options are few
  * this could be a race instead, however main
  * app shouldn't be multithreaded. */
 	if (-1 != sptr->fd){
@@ -42,22 +42,22 @@ void arcan_release_resource(data_source* sptr)
 		if ( sptr->source == tag_resleak )
 			sptr->source = NULL;
 
-/* something broken with the file-descriptor, 
+/* something broken with the file-descriptor,
  * not many recovery options but purposefully leak
  * the memory so that it can be found in core dumps etc. */
 		if (trycount && sptr->source){
 	    char playbuf[4096];
   	  playbuf[4095] = '\0';
 
-			snprintf(playbuf, sizeof(playbuf) - 1, "broken_fd(%d:%s)", 
+			snprintf(playbuf, sizeof(playbuf) - 1, "broken_fd(%d:%s)",
 				sptr->fd, sptr->source);
 
 			free( sptr->source );
 			sptr->source = strdup(playbuf);
 			return;
-		} 
+		}
 		else {
-/* make the released memory distinguishable from a broken 
+/* make the released memory distinguishable from a broken
  * descriptor from a memory analysis perspective */
 			free( sptr->source );
 			sptr->fd     = -1;
@@ -67,7 +67,7 @@ void arcan_release_resource(data_source* sptr)
 	}
 }
 
-/* 
+/*
  * Somewhat rugged at the moment,
  * Mostly designed the way it is to account for the "zip is a container"
  * approach used in android and elsewhere, or (with some additional work)
@@ -83,10 +83,10 @@ data_source arcan_open_resource(const char* url)
 			res.start  = 0;
 			res.source = strdup(url);
 			res.len    = 0; /* map resource can figure it out */
-			fcntl(res.fd, F_SETFD, FD_CLOEXEC);	
+			fcntl(res.fd, F_SETFD, FD_CLOEXEC);
 		}
 	}
-	else 
+	else
 		res.fd = BADFD;
 
 	return res;

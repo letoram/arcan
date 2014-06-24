@@ -5,7 +5,7 @@
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 3 
+ * as published by the Free Software Foundation; either version 3
  * of the License, or (at your option) any later version.
 
  * This program is distributed in the hope that it will be useful,
@@ -36,55 +36,55 @@ enum graphing_mode {
 	GRAPH_NET_CLIENT
 };
 
-/* allocate and populate a context structure based on the desired 
+/* allocate and populate a context structure based on the desired
  * graphing mode, note that these graphs are streaming, any history buffer
- * etc. is left as an exercise for whatever frontend is using these. 
- * If the resolution etc. should be changed, then a new context will need 
+ * etc. is left as an exercise for whatever frontend is using these.
+ * If the resolution etc. should be changed, then a new context will need
  * to be allocated */
 struct graph_context* graphing_new(int width, int height, uint32_t* vidp);
 void graphing_destroy(struct graph_context*);
 void graphing_switch_mode(struct graph_context*, enum graphing_mode);
 
-/* ALL context references below this point are silently assumed to 
+/* ALL context references below this point are silently assumed to
  * be from a valid graphing_new call. */
 
 
-/* ------------------------------------------- 
+/* -------------------------------------------
  *      Higher Level control functions
  * -------------------------------------------*/
 
 /* update context video buffer,
- * true if there's data to push to parent, invoke frequently */ 
+ * true if there's data to push to parent, invoke frequently */
 bool graph_refresh(struct graph_context*);
 
-/* -------------------------------------------------- 
- *         Domain Specific Mapping 
+/* --------------------------------------------------
+ *         Domain Specific Mapping
  * --------------------------------------------------*/
 /* client session events */
 void graph_log_connecting(struct graph_context*, char* label);
 void graph_log_connected(struct graph_context*, char* label);
 
 /* server session events */
-void graph_log_connection(struct graph_context*, 
+void graph_log_connection(struct graph_context*,
 	unsigned id, const char* label);
 
 /* shared events */
-void graph_log_discover_req(struct graph_context*, 
+void graph_log_discover_req(struct graph_context*,
 	unsigned id, const char* label);
-void graph_log_discover_rep(struct graph_context*, 
+void graph_log_discover_rep(struct graph_context*,
 	unsigned id, const char* label);
-void graph_log_disconnect(struct graph_context*, 
+void graph_log_disconnect(struct graph_context*,
 	unsigned id, const char* label);
-void graph_log_tlv_in(struct graph_context*, 
+void graph_log_tlv_in(struct graph_context*,
 	unsigned id, const char* label, unsigned tag, unsigned len);
-void graph_log_tlv_out(struct graph_context*, 
+void graph_log_tlv_out(struct graph_context*,
 	unsigned id, const char* label, unsigned tag, unsigned len);
-void graph_log_conn_error(struct graph_context*, 
+void graph_log_conn_error(struct graph_context*,
 	unsigned id, const char* label);
 
 
-/* ---------------------------------------------- 
- *       Lower Level drawing functions 
+/* ----------------------------------------------
+ *       Lower Level drawing functions
  * ----------------------------------------------*/
 /* assumed sanitized inputs, those that return bool
  * will return false if the primitive couldn't fit inside
@@ -116,12 +116,12 @@ void blend_vline(struct graph_context* ctx, int x, int y,
 void blend_hline(struct graph_context* ctx, int x, int y,
 	int width, uint32_t col, float fact);
 
-bool draw_text(struct graph_context* ctx, const char* msg, 
+bool draw_text(struct graph_context* ctx, const char* msg,
 	int x, int y, uint32_t col);
 
 void text_dimensions(struct graph_context* ctx, const char* msg,
 	int* dw, int* dh);
 
-void blend_text(struct graph_context* ctx, const char* msg, 
+void blend_text(struct graph_context* ctx, const char* msg,
 	int x, int y, uint32_t col, float fact);
 #endif

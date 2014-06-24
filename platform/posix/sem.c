@@ -41,7 +41,7 @@ int arcan_sem_init(sem_handle* sem, unsigned val)
 	if (*sem == NULL){
 		*sem = malloc(sizeof(sem_t));
 	}
-	return sem_init(*sem, 0, val); 
+	return sem_init(*sem, 0, val);
 }
 
 int arcan_sem_destroy(sem_handle sem)

@@ -16,28 +16,28 @@ function table.find(table, label)
 		if (b == label) then return a end
 	end
 
-	return nil;  
+	return nil;
 end
 
 function string.split(instr, delim)
 	local res = {};
 	local strt = 1;
 	local delim_pos, delim_stp = string.find(instr, delim, strt);
-	
+
 	while delim_pos do
 		table.insert(res, string.sub(instr, strt, delim_pos-1));
 		strt = delim_stp + 1;
 		delim_pos, delim_stp = string.find(instr, delim, strt);
 	end
-	
+
 	table.insert(res, string.sub(instr, strt));
 	return res;
 end
 
--- (hidden) local dispatch function that gets used when someone pushes a table but no name 
+-- (hidden) local dispatch function that gets used when someone pushes a table but no name
 local function dispatch_input(iotbl, override)
 	local restbl = keyconfig:match(iotbl);
-	
+
 	if (restbl and (iotbl.active or iotbl.kind == "analog")) then
 		for ind,val in pairs(restbl) do
 
@@ -65,7 +65,7 @@ function dispatch_push(tbl, name, triggerfun, rrate)
 	newtbl.name = name;
 	newtbl.rrate = rrate ~= nil and rrate or -1 -- negative one will be replaced with settings.repeatrate
 	newtbl.dispfun = triggerfun and triggerfun or dispatch_input;
-	
+
 	table.insert(settings.dispatch_stack, newtbl);
 	settings.iodispatch = tbl;
 
@@ -76,7 +76,7 @@ function dispatch_push(tbl, name, triggerfun, rrate)
 
 	if (DEBUGLEVEL > 0) then
 		print("dispatch_push(), adding ", tostring(tbl));
-	
+
 		for ind, val in ipairs(settings.dispatch_stack) do
 			print(val.name);
 		end
@@ -90,13 +90,13 @@ end
 
 function dispatch_pop()
 	local input_key = string.lower(THEMENAME) .. "_input";
-	
+
 	if (#settings.dispatch_stack <= 1) then
 		_G[input_key] = dispatch_input;
 		if (DEBUGLEVEL > 0) then
 			print("dispatch_pop(), already at max level.");
 		end
-		
+
 		return "";
 	else
 		table.remove(settings.dispatch_stack, #settings.dispatch_stack);
@@ -127,7 +127,7 @@ function spawn_warning( message, persist )
 		local msgstr = string.gsub(message, "\\", "\\\\");
 		table.insert(msg, msgstr);
 	end
-	
+
 	local infowin     = listview_create( msg, VRESW / 2, VRESH / 2 );
 	infowin:show();
 
@@ -154,7 +154,7 @@ end
 function dialog_option( message, buttons, canescape, valcbs, cleanuphook )
 	local dialogwin = dialog_create(message, buttons);
 	local imenu = {};
-	
+
 	imenu["MENU_LEFT"] = function()
 		dialogwin:input("MENU_LEFT");
 		play_audio(soundmap["GRIDCURSOR_MOVE"]);
@@ -212,7 +212,7 @@ function music_load_playlist(playlist)
 
 	if (open_rawresource("music/playlists/" .. playlist)) then
 		local line = read_rawresource();
-		
+
 		while line do
 			local ch = string.sub(line, 1, 1);
 
@@ -233,7 +233,7 @@ function music_randomize_playlist()
 
 	while #settings.playlist > 0 do
 		local entry = table.remove(settings.playlist, math.random(1, #settings.playlist));
-	
+
 		if (entry) then
 			table.insert(newlist, entry);
 		end
@@ -245,13 +245,13 @@ end
 
 -- Recursively increment the settings.playlist_ofs and look for matching resources (playlists should
 -- be relative the music or music/playlists folder) until a matching resource is found or reccount
--- amount of times exceeds the reccount tries. 
+-- amount of times exceeds the reccount tries.
 function music_next_song(reccount)
 	if (reccount == 0) then
 		spawn_warning("Music Player: Couldn't find next track to play, empty or broken playlist?");
 		return nil;
 	end
-	
+
 	settings.playlist_ofs = settings.playlist_ofs + 1;
 
 	if (settings.playlist_ofs > #settings.playlist) then
@@ -277,7 +277,7 @@ end
 -- and playlist as argument)
 --
 function music_start_bgmusic(playlist)
-	if (settings.last_playlist == playlist) or 
+	if (settings.last_playlist == playlist) or
 		(not music_load_playlist(playlist) or settings.bgmusic == "Disabled") then
     if (imagery.source_audio) then
       audio_gain(imagery.source_audio, settings.bgmusic_gain);
@@ -311,7 +311,7 @@ function music_start_bgmusic(playlist)
 			imagery.musicplayer = load_movie(song,  FRAMESERVER_NOLOOP, musicplayer_trigger);
 			persist_image(imagery.musicplayer);
 			image_tracetag(imagery.musicplayer, "music player");
-		
+
 		elseif (status.kind == "resized") then
 			audio_gain(status.source_audio, settings.bgmusic_gain);
       imagery.source_audio = status.source_audio;
@@ -345,11 +345,11 @@ end
 function build_globmenu(globstr, cbfun, globmask)
 	local lists = glob_resource(globstr, globmask);
 	local resptr = {};
-	
+
 	for i = 1, #lists do
 		resptr[ lists[i] ] = cbfun;
 	end
-	
+
 	return lists, resptr;
 end
 
@@ -381,7 +381,7 @@ function gen_glob_menu(name, globstr, globmask, triggerfun, failtrig)
 			triggerfun(label);
 		end
 	end
-	
+
 	local lists = glob_resource(globstr, globmask);
 	if (lists == nil or #lists == 0) then
 		if (failtrig ~= nil) then
@@ -397,7 +397,7 @@ function gen_glob_menu(name, globstr, globmask, triggerfun, failtrig)
 	return lists, resptr;
 end
 
--- 
+--
 -- Take a table of values and generate functions etc. to match the entries
 -- name     : settings[name] to store under
 -- tbl      : array of string with labels of possible values
@@ -437,12 +437,12 @@ end
 -- base  : start value
 -- step  : value to add to base, or a function that calculates the value using an index
 -- count : number of entries
--- triggerfun : hook to be called when selected 
+-- triggerfun : hook to be called when selected
 function gen_num_menu(name, base, step, count, triggerfun)
 	local reslbl = {};
 	local resptr = {};
 	local clbl = base;
-	
+
 	local basename = function(label, save)
 		settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
 		if (name ~= nil) then
@@ -456,22 +456,22 @@ function gen_num_menu(name, base, step, count, triggerfun)
 		else
 			play_audio(soundmap["MENU_SELECT"]);
 		end
-		
+
 		if (triggerfun) then triggerfun(label); end
 	end
 
 	clbl = base;
 	for i=1,count do
-		if (type(step) == "function") then 
-			clbl = step(i); 
-			if (clbl == nil) then 
+		if (type(step) == "function") then
+			clbl = step(i);
+			if (clbl == nil) then
 				break;
 			end
 		end
 
 		table.insert(reslbl, tostring(clbl));
 		resptr[tostring(clbl)] = basename;
-		
+
 		if (type(step) == "number") then clbl = clbl + step; end
 	end
 
@@ -490,10 +490,10 @@ function add_submenu(dstlbls, dstptrs, label, key, lbls, ptrs, fmt)
 	if (not table.find(dstlbls, label)) then
 		table.insert(dstlbls, label);
 	end
-	
+
 	dstptrs[label] = function()
 		local fmts = {};
-		
+
 		if (key ~= nil) then
 			local ind = tostring(settings[key]);
 
@@ -506,7 +506,7 @@ function add_submenu(dstlbls, dstptrs, label, key, lbls, ptrs, fmt)
 				end
 			end
 		end
-		
+
 		menu_spawnmenu(lbls, ptrs, fmts);
 	end -- of function
 end
@@ -539,27 +539,27 @@ function menu_spawnmenu(list, listptr, fmtlist)
 
 	local xofs = 0;
 	local yofs = 0;
-	
+
 -- figure out where the window is going to be.
 	local aprops_l = image_surface_properties(current_menu.anchor, -1);
 	local wprops_l = image_surface_properties(current_menu.window, -1);
 	local dx = aprops_l.x;
 	local dy = aprops_l.y;
-	
+
 	local winw = wprops_l.width;
 	local winh = wprops_l.height;
-	
+
 	if (dx + winw > VRESW) then
 		print(dx, winw);
 		dx = dx + (VRESW - (dx + winw));
 	end
-	
+
 	if (dy + winh > VRESH) then
 		dy = dy + (VRESH - (dy + winh));
 	end
 
 	move_image( current_menu.anchor, math.floor(dx), math.floor(dy), settings.fadedelay );
-	
+
 	play_audio(soundmap["SUBMENU_TOGGLE"]);
 	return current_menu;
 end
@@ -631,15 +631,15 @@ function gridle_internal_setup(source, datatbl, gametbl)
 			settings.preaud, settings.jitterstep, settings.jitterxfer);
 
 		settings.in_internal = true;
-		
+
 		if (valid_vid(imagery.musicplayer) and settings.bgmusic == "Menu Only") then
 			pause_movie(imagery.musicplayer);
 		end
-		
+
 		internal_aid = datatbl.source_audio;
 		internal_vid = source;
 
--- (reset toggles? Future NOTE: do this on a per game basis, so track id + toggles)  
+-- (reset toggles? Future NOTE: do this on a per game basis, so track id + toggles)
 --
 --  	settings.internal_toggles.bezel     = false;
 --  	settings.internal_toggles.overlay   = false;
@@ -683,15 +683,15 @@ function gridle_internal_cleanup(finishedhook, forced)
 			if (valid_vid(imagery.musicplayer) and settings.bgmusic == "Menu Only") then
 				resume_movie(imagery.musicplayer);
 			end
-			
+
 -- hack around keyconfig being called "per game"
 			keyconfig.table = settings.keyconftbl;
 		end
-	
+
 		undo_displaymodes();
 		gridle_delete_internal_extras();
 
--- since new screenshots /etc. might have appeared, update cache 
+-- since new screenshots /etc. might have appeared, update cache
 		resourcefinder_cache.invalidate = true;
 		local gameno = current_game_cellid();
 		resourcefinder_search(customview.gametbl, true);
@@ -741,7 +741,7 @@ function internallaunch_event(source, datatbl)
 
 	elseif (datatbl.kind == "ident") then
 		settings.internal_ident = datatbl.message;
-		
+
 	elseif (datatbl.kind == "state_size") then
 		if (datatbl.state_size <= 0) then
 			disable_snapshot();
@@ -770,17 +770,17 @@ function menu_defaultdispatch(dst)
 	if (not dst["MENU_UP"]) then
 		dst["MENU_UP"] = function(iotbl)
 			play_audio(soundmap["GRIDCURSOR_MOVE"]);
-			current_menu:move_cursor(-1, true); 
+			current_menu:move_cursor(-1, true);
 		end
 	end
 
 	if (not dst["MENU_DOWN"]) then
 			dst["MENU_DOWN"] = function(iotbl)
 			play_audio(soundmap["GRIDCURSOR_MOVE"]);
-			current_menu:move_cursor(1, true); 
+			current_menu:move_cursor(1, true);
 		end
 	end
-	
+
 	if (not dst["MENU_SELECT"]) then
 		dst["MENU_SELECT"] = function(iotbl)
 			selectlbl = current_menu:select();
@@ -792,7 +792,7 @@ function menu_defaultdispatch(dst)
 			end
 		end
 	end
-	
+
 -- figure out if we should modify the settings table
 	if (not dst["FLAG_FAVORITE"]) then
 		dst["FLAG_FAVORITE"] = function(iotbl)
@@ -805,7 +805,7 @@ function menu_defaultdispatch(dst)
 				end
 			end
 	end
-	
+
 	if (not dst["MENU_ESCAPE"]) then
 		dst["MENU_ESCAPE"] = function(iotbl, restbl, silent)
 			current_menu:destroy();
@@ -818,11 +818,11 @@ function menu_defaultdispatch(dst)
 			end
 		end
 	end
-	
+
 	if (not dst["MENU_RIGHT"]) then
 		dst["MENU_RIGHT"] = dst["MENU_SELECT"];
 	end
-	
+
 	if (not dst["MENU_LEFT"]) then
 		dst["MENU_LEFT"]  = dst["MENU_ESCAPE"];
 	end
@@ -841,7 +841,7 @@ end
 
 function load_key_bool(name, val, opt)
 	local kval = get_key(name);
-	
+
 	if (kval) then
 		settings[val] = tonumber(kval) ~= 0;
 	else

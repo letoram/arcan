@@ -1,7 +1,7 @@
 -- image_mipmap
 -- @short: Forcetoggle image mipmap storage
 -- @inargs: vid, state
--- @outargs: 
+-- @outargs:
 -- @longdescr: Mipmapping is the common procedure of generating
 -- multiple versions of the same image (typically at lower resolutions
 -- for each "level") and letting the rendering subsystem determine
@@ -11,19 +11,19 @@
 -- mipmap state for a video object. Some filtering methods,
 -- FILTER_TRILINEAR in particular, relies on access to lower mipmap levels.
 -- @note: This is a no-operation in memory conservative mode.
--- @note: The default mipmap state for all objects is determined 
--- at compile time (ARCAN_VIDEO_DEFAULT_MIPMAP_STATE), with hardcoded 
+-- @note: The default mipmap state for all objects is determined
+-- at compile time (ARCAN_VIDEO_DEFAULT_MIPMAP_STATE), with hardcoded
 -- mipmap disable defaults for frameservers and for rendertarget storage.
--- @note: The engine does not currently support manually 
+-- @note: The engine does not currently support manually
 -- generated mipmaps. These can be useful in some contexts,
--- particularly when dealing with texture compression or 
--- when optimizing memory use through pre-pass analysis of 
+-- particularly when dealing with texture compression or
+-- when optimizing memory use through pre-pass analysis of
 -- visibility with color-coded mipmap levels.
--- @note: This state transformation is costly with 
+-- @note: This state transformation is costly with
 -- non-trivially determined benefits. In order to reliably switch
 -- openGL backend state, a new GL store needs to be created, thus
 -- the raw texture data is copied and uploaded again.
--- @group: image 
+-- @group: image
 -- @cfunction: imagemipmap
 -- @related:
 function main()

@@ -1,33 +1,33 @@
-/* 
- Arcan AVFeed Frameserver example 
+/*
+ Arcan AVFeed Frameserver example
  Copyright (c) 2014, Bjorn Stahl
  All rights reserved.
- 
- Redistribution and use in source and binary forms, 
- with or without modification, are permitted provided that the 
+
+ Redistribution and use in source and binary forms,
+ with or without modification, are permitted provided that the
  following conditions are met:
- 
- 1. Redistributions of source code must retain the above copyright notice, 
+
+ 1. Redistributions of source code must retain the above copyright notice,
  this list of conditions and the following disclaimer.
 
- 2. Redistributions in binary form must reproduce the above copyright notice, 
- this list of conditions and the following disclaimer in the documentation 
+ 2. Redistributions in binary form must reproduce the above copyright notice,
+ this list of conditions and the following disclaimer in the documentation
  and/or other materials provided with the distribution.
- 
- 3. Neither the name of the copyright holder nor the names of its contributors 
- may be used to endorse or promote products derived from this software without 
+
+ 3. Neither the name of the copyright holder nor the names of its contributors
+ may be used to endorse or promote products derived from this software without
  specific prior written permission.
- 
- THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" 
- AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, 
- THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE 
- ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE 
- LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, 
- OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
- SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS 
- INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN 
- CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
- ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF 
+
+ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+ THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY,
+ OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
  THE POSSIBILITY OF SUCH DAMAGE.
 */
 
@@ -42,12 +42,12 @@
 #include <arcan_shmif.h>
 #include "frameserver.h"
 
-static void update_frame(uint32_t* cptr, 
+static void update_frame(uint32_t* cptr,
 	struct arcan_shmif_cont* shms, uint32_t val)
 {
 	int np = shms->addr->w * shms->addr->h;
 	for (int i = 0; i < np; i++)
-		*cptr++ = val; 
+		*cptr++ = val;
 
 	printf("update: %d\n", val);
 	arcan_shmif_signal(shms, SHMIF_SIGVID);
@@ -65,7 +65,7 @@ static void* segthread(void* arg)
 {
 	struct seginf* seg = (struct seginf*) arg;
 	uint8_t green = 0;
-	
+
 	arcan_shmif_resize(&seg->shms, 320, 200);
 
 	while(seg->shms.addr->dms){
@@ -73,7 +73,7 @@ static void* segthread(void* arg)
 		printf("waiting for events\n");
 		while(1 == arcan_event_wait(&seg->inevq, &ev)){
 			printf("got event\n");
-			if (ev.category == EVENT_TARGET && 
+			if (ev.category == EVENT_TARGET &&
 				ev.kind == TARGET_COMMAND_EXIT){
 				printf("parent requested termination\n");
 				update_frame(seg->vidp, &seg->shms, 0xffffff00);
@@ -89,23 +89,23 @@ static void* segthread(void* arg)
 static void mapseg(int evfd, const char* key)
 {
 	struct arcan_shmif_cont shms = arcan_shmif_acquire(
-		key, SHMIF_INPUT, true, true 
+		key, SHMIF_INPUT, true, true
 	);
 
 	struct seginf* newseg = malloc(sizeof(struct seginf));
 
-	pthread_t thr; 
-	arcan_shmif_calcofs(shms.addr, (uint8_t**) &newseg->vidp, 
+	pthread_t thr;
+	arcan_shmif_calcofs(shms.addr, (uint8_t**) &newseg->vidp,
 		(uint8_t**) &newseg->audp);
 	newseg->shms = shms;
-	arcan_shmif_setevqs(shms.addr, shms.esem, 
+	arcan_shmif_setevqs(shms.addr, shms.esem,
 		&newseg->inevq, &newseg->outevq, false);
 
 	pthread_create(&thr, NULL, segthread, newseg);
 }
 
 /*
- * Quick skeleton to map up a audio/video/input 
+ * Quick skeleton to map up a audio/video/input
  * source to an arcan frameserver along with some helpers.
  */
 void arcan_frameserver_avfeed_run(const char* resource, const char* keyfile)
@@ -123,7 +123,7 @@ void arcan_frameserver_avfeed_run(const char* resource, const char* keyfile)
 		LOG("arcan_frameserver(decode) shmpage setup, resize failed\n");
 		return;
 	}
-	
+
 	uint32_t* vidp;
 	uint16_t* audp;
 
@@ -147,8 +147,8 @@ void arcan_frameserver_avfeed_run(const char* resource, const char* keyfile)
 					printf("got handle (for new event transfer)\n");
 				}
 			}
-			if (ev.kind == TARGET_COMMAND_NEWSEGMENT){	
-				printf("new segment ready, key: %s\n", ev.data.target.message);	
+			if (ev.kind == TARGET_COMMAND_NEWSEGMENT){
+				printf("new segment ready, key: %s\n", ev.data.target.message);
 				mapseg(lastfd, ev.data.target.message);
 			}
 			if (ev.kind == TARGET_COMMAND_EXIT){
@@ -163,7 +163,7 @@ void arcan_frameserver_avfeed_run(const char* resource, const char* keyfile)
  *	event dispatch loop, look at shmpage interop,
  *	valid categories here should (at least)
  *	be EVENT_SYSTEM, EVENT_IO, EVENT_TARGET
- */ 
+ */
 		}
 	}
 }

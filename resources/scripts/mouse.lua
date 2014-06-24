@@ -4,7 +4,7 @@
 local mouse_handlers = {
 	click = {},
 	over  = {},
-	out   = {}, 
+	out   = {},
   drag  = {},
 	press = {},
 	release = {},
@@ -19,7 +19,7 @@ local mstate = {
 -- tables of event_handlers to check for match when
 	handlers = mouse_handlers,
 	eventtrace = false,
-	btns = {false, false, false}, -- always LMB, MMB, RMB 
+	btns = {false, false, false}, -- always LMB, MMB, RMB
 	cur_over = {},
 	hover_track = {},
 	autohide = false,
@@ -30,9 +30,9 @@ local mstate = {
 -- mouse event is triggered
 	accel_x      = 1,
 	accel_y      = 1,
-	dblclickstep = 6,  -- maximum number of ticks between clicks for dblclick 
+	dblclickstep = 6,  -- maximum number of ticks between clicks for dblclick
 	drag_delta   = 8,  -- wiggle-room for drag
-	hover_ticks  = 30, -- time of inactive cursor before hover is triggered 
+	hover_ticks  = 30, -- time of inactive cursor before hover is triggered
 	hover_thresh = 12, -- pixels movement before hover is released
 	click_timeout= 6;  -- maximum number of ticks before a press-release pair isn't a tick
 	click_cnt    = 0,
@@ -50,7 +50,7 @@ local function mouse_cursorupd(x, y)
 		instant_image_transform(mstate.cursor);
 		blend_image(mstate.cursor, 1.0, 10);
 		mstate.hidden = false;
-	
+
 	elseif (mstate.hidden) then
 		return 0, 0;
 	end
@@ -61,16 +61,16 @@ local function mouse_cursorupd(x, y)
 	lmx = mstate.x;
 	lmy = mstate.y;
 
-	mstate.x = mstate.x + x; 
-	mstate.y = mstate.y + y; 
-		
+	mstate.x = mstate.x + x;
+	mstate.y = mstate.y + y;
+
 	mstate.x = mstate.x < 0 and 0 or mstate.x;
 	mstate.y = mstate.y < 0 and 0 or mstate.y;
-	mstate.x = mstate.x > VRESW and VRESW-1 or mstate.x; 
-	mstate.y = mstate.y > VRESH and VRESH-1 or mstate.y; 
+	mstate.x = mstate.x > VRESW and VRESW-1 or mstate.x;
+	mstate.y = mstate.y > VRESH and VRESH-1 or mstate.y;
 	mstate.hide_count = mstate.hide_base;
 
-	move_image(mstate.cursor, mstate.x + mstate.x_ofs, 
+	move_image(mstate.cursor, mstate.x + mstate.x_ofs,
 		mstate.y + mstate.y_ofs);
 	return (mstate.x - lmx), (mstate.y - lmy);
 end
@@ -96,7 +96,7 @@ local function linear_find(table, label)
 		if (b == label) then return a end
 	end
 
-	return nil;  
+	return nil;
 end
 
 local function insert_unique(tbl, key)
@@ -106,7 +106,7 @@ local function insert_unique(tbl, key)
 			return;
 		end
 	end
-	
+
 	table.insert(tbl, key);
 end
 
@@ -194,13 +194,13 @@ function mouse_destroy()
 end
 
 --
--- Load / Prepare cursor, read default acceleration and 
+-- Load / Prepare cursor, read default acceleration and
 -- filtering settings.
--- cicon(string) : path to valid resource for cursor 
+-- cicon(string) : path to valid resource for cursor
 -- clayer(uint)  : which ordervalue for cursor to have
 --
 function mouse_setup(cvid, clayer, pickdepth, cachepick, hidden)
-	mstate.cursor = cvid; 
+	mstate.cursor = cvid;
 	mstate.hidden = false;
 	mstate.x = math.floor(VRESW * 0.5);
 	mstate.y = math.floor(VRESH * 0.5);
@@ -251,7 +251,7 @@ local function mouse_drag(x, y)
 		end
 	end
 end
-	
+
 local function rmbhandler(hists, press)
 	if (press) then
 		mstate.rpress_x = mstate.x;
@@ -267,11 +267,11 @@ local function rmbhandler(hists, press)
 				res:rclick(val, mstate.x, mstate.y);
 			end
 		end
-	end		
+	end
 end
 
 local function lmbhandler(hists, press)
-	if (press) then 
+	if (press) then
 		mstate.press_x = mstate.x;
 		mstate.press_y = mstate.y;
 		mstate.predrag = {};
@@ -350,8 +350,8 @@ local function lmbhandler(hists, press)
 
 		mstate.counter   = 0;
 		mstate.predrag   = nil;
-		mstate.drag      = nil;	
-	end 
+		mstate.drag      = nil;
+	end
 end
 
 function mouse_input(x, y, state)
@@ -376,7 +376,7 @@ function mouse_input(x, y, state)
 					break;
 				end
 			end
-			
+
 			mstate.hover_track = {};
 			mstate.hover_x = nil;
 			mstate.last_hover = CLOCK;
@@ -386,7 +386,7 @@ function mouse_input(x, y, state)
 -- look for new mouse over objects
 -- note that over/out do not filter drag/drop targets, that's up to the owner
 	local hists = mouse_pickfun(mstate.x, mstate.y, mstate.pickdepth, 1);
-	
+
 	for i=1,#hists do
 		if (linear_find(mstate.cur_over, hists[i]) == nil) then
 			table.insert(mstate.cur_over, hists[i]);
@@ -420,11 +420,11 @@ function mouse_input(x, y, state)
 
 	elseif (state[3] ~= mstate.btns[3]) then
 		rmbhandler(hists, state[3]);
-	else 
+	else
 -- otherwise we have motion, if we havn't exceeded predrag threshold,
 -- start with that
 		if (mstate.predrag) then
-				mstate.predrag.count = mstate.predrag.count - 
+				mstate.predrag.count = mstate.predrag.count -
 					(math.abs(x) + math.abs(y));
 
 			if (mstate.predrag.count <= 0) then
@@ -436,20 +436,20 @@ function mouse_input(x, y, state)
 		if (mstate.drag) then
 			mouse_drag(x, y);
 		end
-	end	
+	end
 
 -- remember the button states for next time
 	mstate.btns[1] = state[1];
 	mstate.btns[2] = state[2];
 	mstate.btns[3] = state[3];
-end	
+end
 
--- 
+--
 -- triggers callbacks in tbl when desired events are triggered.
 -- expected members of tbl;
--- own (function(vid)) true | tbl / false if tbl is considered 
+-- own (function(vid)) true | tbl / false if tbl is considered
 -- the owner of vid
--- 
+--
 function mouse_addlistener(tbl, events)
 	if (tbl == nil) then
 		warning("mouse_addlistener(), refusing to add empty table.\n");
@@ -467,11 +467,11 @@ function mouse_addlistener(tbl, events)
 	end
 
 	for ind, val in ipairs(events) do
-		if (mstate.handlers[val] ~= nil and 
+		if (mstate.handlers[val] ~= nil and
 			linear_find(mstate.handlers[val], tbl) == nil) then
 			insert_unique(mstate.handlers[val], tbl);
 		else
-			warning("mouse_addlistener(), unknown event function: " 
+			warning("mouse_addlistener(), unknown event function: "
 				.. val ..".\n");
 		end
 	end
@@ -484,7 +484,7 @@ function mouse_dumphandlers()
 	for ind, val in pairs(mstate.handlers) do
 		warning("\t" .. ind .. ":");
 			for key, vtbl in ipairs(val) do
-				warning("\t\t" .. 
+				warning("\t\t" ..
 					(vtbl.name and vtbl.name or tostring(vtbl)));
 			end
 	end
@@ -498,7 +498,7 @@ end
 function mouse_droplistener(tbl)
 	for key, val in pairs( mstate.handlers ) do
 		for ind, vtbl in ipairs( val ) do
-			if (tbl == vtbl) then 
+			if (tbl == vtbl) then
 				table.remove(val, ind);
 				break;
 			end

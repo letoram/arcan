@@ -1,10 +1,10 @@
 -- valid_vid
 -- @short: Check if vid matches a valid object or not, also accepts NULL/BADID arguments.
 -- @inargs: *vid*
--- @outargs: validbool 
--- @group: vidsys 
+-- @outargs: validbool
+-- @group: vidsys
 -- @cfunction: arcan_lua_validvid
--- @flags: 
+-- @flags:
 function main()
 #ifdef MAIN
 	a = fill_surface(32, 32, 255, 0, 0, 0);

@@ -7,8 +7,8 @@
 
 #include "libretro.h"
 
-/* basic core skeleton just patched from the test- core 
- * used for fuzzing / setup up different levels 
+/* basic core skeleton just patched from the test- core
+ * used for fuzzing / setup up different levels
  * of terrible test-cases for manipulating the arcan
  * frameserver behavior */
 
@@ -36,7 +36,7 @@ static bool audio_overflow;
 
 void retro_init(void)
 {
-	outbuf = malloc(1920 * 1080 * 4);	
+	outbuf = malloc(1920 * 1080 * 4);
 }
 
 void retro_deinit(void)
@@ -235,7 +235,7 @@ static void render_checkered(void)
       for (unsigned x = 0; x < 320; x++)
       {
          unsigned index_x = ((x - x_coord) >> 4) & 1;
-         line[x] = (index_y ^ index_x) ? color_r : color_g; 
+         line[x] = (index_y ^ index_x) ? color_r : color_g;
       }
    }
 

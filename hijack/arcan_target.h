@@ -19,11 +19,11 @@ SDL_Surface* ARCAN_SDL_CreateRGBSurface(Uint32 flags, int width, int height,
 SDL_Surface* ARCAN_SDL_SetVideoMode(int w, int h, int ncps, Uint32 flags);
 int ARCAN_SDL_PollEvent(SDL_Event* inev);
 int ARCAN_SDL_Flip(SDL_Surface* screen);
-void ARCAN_SDL_UpdateRect(SDL_Surface* screen, 
-	Sint32 x, Sint32 y, Uint32 w, Uint32 h); 
-void ARCAN_SDL_UpdateRects(SDL_Surface* screen, 
+void ARCAN_SDL_UpdateRect(SDL_Surface* screen,
+	Sint32 x, Sint32 y, Uint32 w, Uint32 h);
+void ARCAN_SDL_UpdateRects(SDL_Surface* screen,
 	int numrects, SDL_Rect* rects);
-int ARCAN_SDL_UpperBlit(SDL_Surface* src, const SDL_Rect* srcrect, 
+int ARCAN_SDL_UpperBlit(SDL_Surface* src, const SDL_Rect* srcrect,
 	SDL_Surface *dst, SDL_Rect *dstrect);
 void ARCAN_SDL_GL_SwapBuffers();
 void ARCAN_glFinish();
@@ -34,10 +34,10 @@ int ARCAN_XNextEvent(Display* disp, XEvent* ev);
 int ARCAN_XPeekEvent(Display* disp, XEvent* ev);
 Bool ARCAN_XGetEventData(Display* display, XGenericEventCookie* event);
 void ARCAN_glXSwapBuffers (Display *dpy, GLXDrawable drawable);
-Bool ARCAN_XQueryPointer(Display* display, Window w, 
-	Window* root_return, Window* child_return, int* rxret, 
+Bool ARCAN_XQueryPointer(Display* display, Window w,
+	Window* root_return, Window* child_return, int* rxret,
 	int* ryret, int* wxret, int* wyret, unsigned* maskret);
-int ARCAN_XCheckIfEvent(Display *display, XEvent *event_return, 
+int ARCAN_XCheckIfEvent(Display *display, XEvent *event_return,
 	Bool (*predicate)(Display*, XEvent*, XPointer), XPointer arg);
 Bool ARCAN_XFilterEvent(XEvent* ev, Window m);
 #endif
@@ -54,13 +54,13 @@ struct hijack_fwdtbl {
 	int (*sdl_iconify)(void);
 	void (*sdl_updaterect)(SDL_Surface*, Sint32, Sint32, Uint32, Uint32);
 	void (*sdl_updaterects)(SDL_Surface*, int, SDL_Rect*);
-	int (*sdl_upperblit)(SDL_Surface *src, const SDL_Rect *srcrect, 
+	int (*sdl_upperblit)(SDL_Surface *src, const SDL_Rect *srcrect,
 		SDL_Surface *dst, SDL_Rect *dstrect);
 	int (*sdl_flip)(SDL_Surface*);
-	SDL_Surface* (*sdl_creatergbsurface)(Uint32, int, int, 
+	SDL_Surface* (*sdl_creatergbsurface)(Uint32, int, int,
 		int, Uint32, Uint32, Uint32, Uint32);
 	int (*audioproxy)(int, int);
-	
+
 	void (*glLineWidth)(float);
 	void (*glPointSize)(float);
 	void (*glFinish)(void);
@@ -68,31 +68,31 @@ struct hijack_fwdtbl {
 
 #ifdef ENABLE_X11_HIJACK
 	XVisualInfo* (*glXChooseVisual)(Display* dpy, int screen, int* attribList);
-	Window (*XCreateWindow)(Display* display, Window parent, 
-		int x, int y, unsigned int width, 
+	Window (*XCreateWindow)(Display* display, Window parent,
+		int x, int y, unsigned int width,
 		unsigned int height, unsigned int border_width,
-		int depth, unsigned int class, Visual* visual, 
+		int depth, unsigned int class, Visual* visual,
 		unsigned long valuemask, XSetWindowAttributes* attributes);
-	
-	Window (*XCreateSimpleWindow)(Display* display, Window parent, 
-		int x, int y, unsigned int width, unsigned int height, 
+
+	Window (*XCreateSimpleWindow)(Display* display, Window parent,
+		int x, int y, unsigned int width, unsigned int height,
 		unsigned int border_width,
 		unsigned long border, unsigned long background);
 
 	void* (*glXGetProcAddress)(const GLubyte* name);
 
-	Bool (*XQueryPointer)(Display* display, Window w, 
-		Window* root_return, Window* child_return, int* rxret, 
+	Bool (*XQueryPointer)(Display* display, Window w,
+		Window* root_return, Window* child_return, int* rxret,
 		int* ryret, int* wxret, int* wyret, unsigned* maskret);
 	Bool (*XGetEventData)(Display*, XGenericEventCookie*);
 	int (*XCheckIfEvent)(Display*, XEvent*, Bool (*predicate)(), XPointer);
 	Bool (*XFilterEvent)(XEvent*, Window);
 	int (*XNextEvent)(Display*, XEvent*);
 	int (*XPeekEvent)(Display*, XEvent*);
-	
-/* could take the CheckMaskEvent, CheckTypedEvent etc. 
+
+/* could take the CheckMaskEvent, CheckTypedEvent etc.
  * as well as we're just filtering input */
-	
+
 	void (*glXSwapBuffers)(Display *dpy, GLXDrawable drawable);
 #endif
 };

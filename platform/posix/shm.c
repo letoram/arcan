@@ -21,7 +21,7 @@
 
 /*
  * try to allocate a shared memory page and three semaphores (vid / aud / ev)
- * return a pointer to the shared key (this will keep the resources allocated) 
+ * return a pointer to the shared key (this will keep the resources allocated)
  * or NULL on fail. For semalloc == false, it means that semaphores will be
  * allocated / set / used in some other way (win32 ex. pass handles on cmdline)
  */
@@ -40,10 +40,10 @@ char* arcan_findshmkey(int* dfd, bool semalloc){
 		pb_ofs = strlen(playbuf) - 1;
 		fd = shm_open(playbuf, O_CREAT | O_RDWR | O_EXCL, 0700);
 
-	/* 
-	 * with EEXIST, we happened to have a name collision, 
-	 * it is unlikely, but may happen. for the others however, 
-	 * there is something else going on and there's no point retrying 
+	/*
+	 * with EEXIST, we happened to have a name collision,
+	 * it is unlikely, but may happen. for the others however,
+	 * there is something else going on and there's no point retrying
 	 */
 		if (-1 == fd && errno != EEXIST){
 			arcan_warning("arcan_findshmkey(), allocating "

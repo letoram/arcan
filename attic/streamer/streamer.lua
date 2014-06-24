@@ -21,29 +21,29 @@ function get_recstr()
 
 	if (string.sub(settings.out_url, 1, 7) == "rtmp://") then
 		fname = "stream";
-		args  = string.format(recstr, "stream", settings.record_fps, 
+		args  = string.format(recstr, "stream", settings.record_fps,
 			settings.record_aqual, settings.record_vqual,
-			settings.record_vpts, settings.record_apts, 
+			settings.record_vpts, settings.record_apts,
 				":streamdst=" .. string.gsub(settings.out_url, ":", "\t"));
 
 	elseif (string.sub(settings.out_url, 1, 7) == "file://") then
 		fname = string.sub(settings.out_url, 8);
-		args  = string.format(recstr, "MKV", settings.record_fps, 
+		args  = string.format(recstr, "MKV", settings.record_fps,
 			settings.record_aqual, settings.record_vqual,
-			settings.record_vpts, settings.record_apts, ""); 
+			settings.record_vpts, settings.record_apts, "");
 	end
 
 	return fname, args;
 end
 
 function streamer()
-	system_load("scripts/listview.lua")();       
+	system_load("scripts/listview.lua")();
 	system_load("scripts/keyconf.lua")();       -- input configuration dialogs
 	system_load("scripts/3dsupport.lua")();
 	system_load("scripts/layout_editor.lua")(); -- used to define layouts
 	system_load("scripts/osdkbd.lua")();        -- for defining stream destination
 	system_load("scripts/calltrace.lua")();
-	system_load("scripts/resourcefinder.lua")(); 
+	system_load("scripts/resourcefinder.lua")();
 	system_load("scripts/calltrace.lua")();
 	system_load("shared.lua")();
 
@@ -51,10 +51,10 @@ function streamer()
 	setup_3dsupport();
 
 	settings.adevs = list_audio_inputs();
-	
+
 -- regular setup patterns for the necessary inputs
-	keyconfig = keyconf_create({"rMENU_ESCAPE", 
-		"rMENU_UP", "rMENU_DOWN", "rMENU_LEFT", 
+	keyconfig = keyconf_create({"rMENU_ESCAPE",
+		"rMENU_UP", "rMENU_DOWN", "rMENU_LEFT",
 		"rMENU_RIGHT", "rMENU_SELECT", "rCONTEXT", "aMOUSE_X", "aMOUSE_Y"});
 
 	if (keyconfig.active == false) then
@@ -76,7 +76,7 @@ function osdkbd_inputfun(iotbl, dstkbd)
 	local restbl = keyconfig:match(iotbl);
 	local done   = false;
 	local resstr = nil;
-	
+
 	if (restbl) then
 		for ind,val in pairs(restbl) do
 			if (val == "MENU_ESCAPE" and iotbl.active) then
@@ -88,10 +88,10 @@ function osdkbd_inputfun(iotbl, dstkbd)
 				resstr = dstkbd:input(val, iotbl.active);
 
 				if (iotbl.active) then
-					play_audio(val == "MENU_SELECT" and 
+					play_audio(val == "MENU_SELECT" and
 						soundmap["OSDKBD_SELECT"] or soundmap["OSDKBD_MOVE"]);
 				end
-				
+
 -- also allow direct keyboard input
 			elseif (iotbl.translated) then
 				resstr = dstkbd:input_key(iotbl, iotbl.active);
@@ -107,7 +107,7 @@ function osdkbd_inputfun(iotbl, dstkbd)
 	if (resstr) then
 		return true, resstr;
 	end
-	
+
 	return false, nil;
 end
 
@@ -122,7 +122,7 @@ function show_helper()
 
 	if (settings.layout) then
 		table.insert(status, string.format("Layout (%s) Loaded", settings.layout_name));
-		
+
 		if (settings.layout["internal"] ~= nil) then
 			if (settings.gametbl) then
 				table.insert(status, "Game:" .. settings.gametbl.title);
@@ -135,18 +135,18 @@ function show_helper()
 		end
 
 		if (settings.layout["vidcap"] ~= nil) then
-			table.insert(status, tostring(#settings.layout["vidcap"]) 
+			table.insert(status, tostring(#settings.layout["vidcap"])
 				.. " Video Feed Slots");
 			local str = "Feeds: ";
-			
+
 			for ind, val in ipairs(settings.layout["vidcap"]) do
-				str = str .. string.format("(%d) => (%d)", ind, 
+				str = str .. string.format("(%d) => (%d)", ind,
 					settings.vidcap[ind] ~= nil and settings.vidcap[ind] or 0);
 			end
 
 			table.insert(status, str);
 		end
-		
+
 		if (settings.out_url ~= "rtmp://") then
 			local streamlbl = "Stream to:" .. settings.out_url;
 			table.insert(status, streamlbl);
@@ -176,7 +176,7 @@ function start_streaming()
 		toggle_main_menu();
 		return;
 	end
-	
+
 -- allocate intermediate storage
 	local dstvid = fill_surface(VRESW, VRESH, 0, 0, 0, VRESW, VRESH);
 	image_tracetag(dstvid, "[streaming source]");
@@ -191,7 +191,7 @@ function start_streaming()
 	end
 
 	local audset = {};
-	
+
 	for ind, val in pairs(settings.atoggles) do
 		local cap = capture_audio(ind);
 		if (cap ~= nil and cap ~= BADID) then
@@ -207,9 +207,9 @@ function start_streaming()
 	if (#audset == 0) then
 		outurl = outurl .. ":noaudio";
 	end
-	
-	define_recordtarget(dstvid, outfn, outurl, recordset, 
-		audset, RENDERTARGET_NODETACH, RENDERTARGET_SCALE, -1, 
+
+	define_recordtarget(dstvid, outfn, outurl, recordset,
+		audset, RENDERTARGET_NODETACH, RENDERTARGET_SCALE, -1,
 		function(source, status)
 			print("recordtarget status", status.kind);
 		end);
@@ -228,18 +228,18 @@ function start_streaming()
 		settings.layout:destroy();
 		settings.layout = nil;
 	end
-	
+
 --
 -- hide menu, cascade, go!
 --
 	dispatch_push({MENU_ESCAPE = resetfun}, "runtime_input", function(iotbl)
 		local restbl = keyconfig:match(iotbl);
-		
+
 		if (restbl) then
 			for ind, val in pairs(restbl) do
 				if (val and valid_vid(settings.target)) then
 					res = keyconfig:buildtbl(val, iotbl);
-	
+
 					if (res) then
 						res.label = val;
 						target_input(res, settings.target);
@@ -267,13 +267,13 @@ function get_audio_toggles()
 		else
 			settings.atoggles[label] = not settings.atoggles[label];
 		end
-			
-		current_menu.formats[label] = 
+
+		current_menu.formats[label] =
 			settings.atoggles[label] and settings.colourtable.notice_fontstr or nil;
 		current_menu:invalidate();
 		current_menu:redraw();
 	end
-	
+
 	if (#settings.adevs > 0) then
 		for ind, val in ipairs(settings.adevs) do
 			table.insert(lbls, val);
@@ -320,7 +320,7 @@ function query_destination(file)
 -- do this here so we have access to the namespace where osdsavekbd exists
 		dispatch_push({}, "osdkbd (streaming)", function(iotbl)
 			complete, resstr = osdkbd_inputfun(iotbl, osdsavekbd);
-	
+
 			if (complete) then
 				osdsavekbd:destroy();
 				osdsavekbd = nil;
@@ -334,27 +334,27 @@ function query_destination(file)
 		end
 		, -1);
 	end
-	
+
 
 --
--- this parses the currently active layout (if any) 
+-- this parses the currently active layout (if any)
 -- and generates the appropriate menu entries
 -- depends on current layout (if any), target in layout, vidcap feeds in layout
 --
 function toggle_main_menu()
 	ready = settings.out_url ~= "rtmp://";
 
-	target = (settings.layout and settings.layout["internal"] ~= nil) 
+	target = (settings.layout and settings.layout["internal"] ~= nil)
 		and (#settings.layout["internal"] > 0) or nil;
 	nvc = (settings.layout and settings.layout["vidcap"])
 		and #settings.layout["vidcap"] or 0;
-	
+
 	while current_menu ~= nil do
 		current_menu:destroy();
 		dispatch_pop();
 		current_menu = current_menu.parent;
 	end
-	
+
 	local menulbls = {"Layouts...", };
 	local menuptrs = {};
 	local menufmts = {};
@@ -365,28 +365,28 @@ function toggle_main_menu()
 	local streamptrs = {};
 	local streamfmts = {};
 
-	add_submenu(streammenu, streamptrs, "Framerate...", "record_fps", 
+	add_submenu(streammenu, streamptrs, "Framerate...", "record_fps",
 		gen_tbl_menu("record_fps", {12, 24, 25, 30, 50, 60}, function() end));
-	add_submenu(streammenu, streamptrs, "Max Vertical Resolution...", 
+	add_submenu(streammenu, streamptrs, "Max Vertical Resolution...",
 		"record_res", gen_tbl_menu("record_res", {720, 576, 480, 360, 288, 240},
 		function() end));
-	add_submenu(streammenu, streamptrs, "Video Quality...", "record_vqual", 
+	add_submenu(streammenu, streamptrs, "Video Quality...", "record_vqual",
 		gen_tbl_menu("record_vqual", {2, 4, 6, 8, 10}, function() end));
-	add_submenu(streammenu, streamptrs, "Audio Quality...", "record_aqual", 
+	add_submenu(streammenu, streamptrs, "Audio Quality...", "record_aqual",
 		gen_tbl_menu("record_aqual", {2, 4, 6, 8, 10}, function() end));
-	add_submenu(streammenu, streamptrs, "VPTS offset...", "record_vpts", 
+	add_submenu(streammenu, streamptrs, "VPTS offset...", "record_vpts",
 		gen_num_menu("record_vpts", 0, 4, 12, function() end));
-	add_submenu(streammenu, streamptrs, "APTS offset...", "record_apts", 
+	add_submenu(streammenu, streamptrs, "APTS offset...", "record_apts",
 		gen_num_menu("record_apts", 0, 4, 12, function() end));
 	table.insert(streammenu, "Define Stream...");
 	table.insert(streammenu, "Define File...");
 
 	if (settings.layout ~= nil) then
-		add_submenu(menulbls, menuptrs, 
+		add_submenu(menulbls, menuptrs,
 			"Streaming Settings...", nil, streammenu, streamptrs, {});
 
 		table.insert(menulbls, "Audio Sources...");
-		menuptrs["Audio Sources..."] = function() 
+		menuptrs["Audio Sources..."] = function()
 			menu_spawnmenu(get_audio_toggles());
 		end
 	end
@@ -399,12 +399,12 @@ function toggle_main_menu()
 	streamptrs["Define File..."] = function(label, store)
 		query_destination(true);
 	end
-	
+
 	add_submenu(menulbls, menuptrs, "Destination...", streammenu, streamptrs, {});
 
 -- need a layout set in order to know what to define the different slots as
 	if (target) then
-		add_submenu(menulbls, menuptrs, "Setup Game...", nil, 
+		add_submenu(menulbls, menuptrs, "Setup Game...", nil,
 			gen_tbl_menu(nil, list_targets(), list_targetgames, true));
 	end
 
@@ -413,17 +413,17 @@ function toggle_main_menu()
 		local lbls = {};
 
 		for num=1, nvc do
-			add_submenu(lbls, ptrs, "Slot " .. tostring(num) .. "...", nil, 
+			add_submenu(lbls, ptrs, "Slot " .. tostring(num) .. "...", nil,
 				gen_num_menu(nil, 1, 1, 10, function(lbl)
 				settings.vidcap[num] = tonumber(lbl);
 				toggle_main_menu();
 			end ));
 		end
-		
+
 		add_submenu(menulbls, menuptrs, "Video Feeds...", nil, lbls, ptrs, {});
 	end
 
--- if everything is set up correctly, let the user start 
+-- if everything is set up correctly, let the user start
 	if (ready) then
 		table.insert(menulbls, "Start Streaming");
 		menufmts["Start Streaming"] = [[\b\#00ff00]];
@@ -434,22 +434,22 @@ function toggle_main_menu()
 	table.insert(menulbls, "Quit");
 	menuptrs["Quit"] = shutdown;
 	menufmts["Quit"] = [[\#ff0000]];
-	
+
 -- finally, activate (but don't allow escape to terminate)
 	local imenu = {};
 	local escape_menu = function(label, save, sound)
 		if (current_menu.parent ~= nil) then
 			current_menu:destroy();
 			current_menu = current_menu.parent;
-			if (sound == nil or sound == false) then 
-				play_audio(soundmap["MENU_FADE"]); 
+			if (sound == nil or sound == false) then
+				play_audio(soundmap["MENU_FADE"]);
 			end
 		end
 	end
-	
+
 	imenu["MENU_LEFT"]   = escape_menu;
 	imenu["MENU_ESCAPE"] = escape_menu;
-	
+
 	current_menu = listview_create(menulbls, VRESH * 0.9, VRESW / 3, fmts);
 	current_menu.ptrs = menuptrs;
 	current_menu.parent = nil;
@@ -463,7 +463,7 @@ end
 --
 -- Will be triggered everytime the layout editor rebuilds its view
 -- Mostly expect the script to resolve a full resource description
--- based on type and idtag Although some properties could be altered 
+-- based on type and idtag Although some properties could be altered
 -- "in flight" and LAYRES_SPECIAL are even expected to be
 --
 function load_cb(restype, lay)
@@ -471,9 +471,9 @@ function load_cb(restype, lay)
 
 	if (restype == LAYRES_STATIC or restype == LAYRES_MODEL) then
 		if (lay.idtag == "background") then
-			return "backgrounds/" .. lay.res, (function(newvid) 
+			return "backgrounds/" .. lay.res, (function(newvid)
 				settings.background = newvid; end);
-			
+
 		elseif (lay.idtag == "image") then
 			return "images/" .. lay.res;
 
@@ -505,32 +505,32 @@ end
 function run_view(dry_run)
 	settings.layout:show();
 --
--- NOTE: missing: with a dry_run, just use placeholders 
+-- NOTE: missing: with a dry_run, just use placeholders
 -- for all "dynamic" sources
---	
--- NOTE:For creating the record-set, the temporary and 
+--
+-- NOTE:For creating the record-set, the temporary and
 -- temporary_static tables are swept
--- and just re-added. When (if?) MRT or WORLDID 
+-- and just re-added. When (if?) MRT or WORLDID
 -- recordsets are working, we'll switch to that
 --
-	if (settings.layout["internal"] and 
+	if (settings.layout["internal"] and
 		#settings.layout["internal"] > 0 and settings.gametbl) then
-		local internal_vid, internal_aid = launch_target(settings.gametbl.gameid, 
-			LAUNCH_INTERNAL, function(source, status) 
+		local internal_vid, internal_aid = launch_target(settings.gametbl.gameid,
+			LAUNCH_INTERNAL, function(source, status)
 				if (status == "resized") then
 					play_audio(status.source_audio);
 				end
 			end);
-	
+
 		if (not valid_vid(internal_vid)) then
 			spawn_warning("Couldn't launch game, giving up.");
 			return false;
 		end
-			
+
 		show_image(internal_vid);
 		settings.layout:add_imagevid(internal_vid, settings.layout["internal"][1]);
 		settings.target = internal_vid;
-		
+
 -- reuse the VID if we have clones, same with models and "display" ID
 		if (#settings.layout["internal"] > 1) then
 			for i=2, #settings.layout["internal"] do
@@ -541,10 +541,10 @@ function run_view(dry_run)
 		end
 
 	end
-	
+
 --
 -- for each vidcap, check if the user has specified a mapping,
--- if he has, check if there's already a session running 
+-- if he has, check if there's already a session running
 -- (most capture devices don't permit sharing)
 -- and if so, instance, otherwise spawn a new one
 --
@@ -557,17 +557,17 @@ function run_view(dry_run)
 					settings.layout:add_imagevid(newvid, settings.layout["vidcap"][i]);
 				else
 					local elem = settings.layout["vidcap"][i];
-					local reqstr = string.format("capture:device=%d:width=%d:height=%d", 
+					local reqstr = string.format("capture:device=%d:width=%d:height=%d",
 						1, elem.size[1], elem.size[2]);
-					settings.vidcaps[ settings.vidcap[i] ] = 
-						load_movie(reqstr, FRAMESERVER_NOLOOP, 
-							function(source, status) 
+					settings.vidcaps[ settings.vidcap[i] ] =
+						load_movie(reqstr, FRAMESERVER_NOLOOP,
+							function(source, status)
 								if (status.kind == "resized") then
 									resize_image(source, elem.size[1], elem.size[2]);
 								end
 							end
 						);
-					settings.layout:add_imagevid(settings.vidcaps[ 
+					settings.layout:add_imagevid(settings.vidcaps[
 						settings.vidcap[i] ], settings.layout["vidcap"][i]);
 				end
 			end
@@ -578,7 +578,7 @@ function run_view(dry_run)
 	if (settings.layout["bgeffect"]) then
 		update_shader(settings.layout["bgeffect"][1].res);
 	end
-	
+
 	return true;
 end
 
@@ -599,7 +599,7 @@ function list_targetgames(label)
 
 	if not games or #games == 0 then return; end
 	for ind, tbl in ipairs(games) do table.insert(gamelist, tbl.title); end
-	
+
 	settings.current_target = label;
 	lbls, ptrs = gen_tbl_menu(nil, gamelist, setup_game, true);
 	menu_spawnmenu(lbls, ptrs, {});
@@ -620,8 +620,8 @@ function load_layout(lay)
 	settings.vidcaps = {};
 
 	if (settings.layout ~= nil) then
-		toggle_main_menu(settings.layout["internal"] ~= nil and 
-			(#settings.layout["internal"] > 0), 
+		toggle_main_menu(settings.layout["internal"] ~= nil and
+			(#settings.layout["internal"] > 0),
 			settings.layout["vidcap"] and #settings.layout["vidcap"] or 0);
 	else
 		spawn_warning("Couldn't load layout: " .. lay);
@@ -632,11 +632,11 @@ end
 function define_layout()
 	local osdsavekbd = osdkbd_create( osdkbd_alphanum_table(), opts );
 	osdsavekbd:show();
-	
+
 -- do this here so we have access to the namespace where osdsavekbd exists
 	dispatch_push({}, "osdkbd (layout)", function(iotbl)
 		complete, resstr = osdkbd_inputfun(iotbl, osdsavekbd);
-	
+
 		if (complete) then
 			osdsavekbd:destroy();
 			osdsavekbd = nil;
@@ -655,7 +655,7 @@ function define_layout()
 end
 
 function gen_layout_menu()
-	local laymenu, layptrs = build_globmenu("layouts/*.lay", 
+	local laymenu, layptrs = build_globmenu("layouts/*.lay",
 		load_layout, THEME_RESOURCE);
 	local layfmt = {};
 
@@ -668,7 +668,7 @@ end
 
 function update_shader(resname)
 	if (valid_vid(settings.background)) then
-		settings.shader = load_shader("shaders/fullscreen/default.vShader", 
+		settings.shader = load_shader("shaders/fullscreen/default.vShader",
 			"shaders/bgeffects/" .. resname, "bgeffect", {});
 		image_shader(settings.background, settings.shader);
 		shader_uniform(settings.shader, "display", "ff", PERSIST, VRESW, VRESH);
@@ -693,9 +693,9 @@ function hookfun(newitem)
 		newitem.width  = VRESW;
 		newitem.height = VRESH;
 		settings.background = newitem.vid;
-		
+
 		switch_default_texmode(TEX_REPEAT, TEX_REPEAT, newitem.vid);
-			
+
 		newitem:update();
 
 	elseif (newitem.idtag == "bgeffect") then
@@ -719,7 +719,7 @@ function lay_setup(layname)
 		settings.layout:destroy();
 		settings.layout = nil;
 	end
-	
+
 	local identtext = function(key)
 		vid = render_text(settings.colourtable.label_fontstr .. key);
 		return vid;
@@ -732,41 +732,41 @@ function lay_setup(layname)
 		end
 		return vid;
 	end
-	
+
 	layout = layout_new(layname);
-	layout:add_resource("background", "Background...", function() 
-		return glob_resource("backgrounds/*.png"); 
-		end, nil, LAYRES_STATIC, true, 
+	layout:add_resource("background", "Background...", function()
+		return glob_resource("backgrounds/*.png");
+		end, nil, LAYRES_STATIC, true,
 		function(key) return load_image("backgrounds/" .. key); end);
 
-	layout:add_resource("bgeffect", "Background Effect...", function() 
-			return glob_resource("shaders/bgeffects/*.fShader"); end, nil, 
+	layout:add_resource("bgeffect", "Background Effect...", function()
+			return glob_resource("shaders/bgeffects/*.fShader"); end, nil,
 			LAYRES_SPECIAL, true, nil);
-	layout:add_resource("movie", "Movie", "Movie", "Dynamic Media...", 
+	layout:add_resource("movie", "Movie", "Movie", "Dynamic Media...",
 	LAYRES_FRAMESERVER, false, identphold);
 
-	layout:add_resource("image", "Image...", 
-		function() return glob_resource("images/*.png"); end, nil, 
-			LAYRES_STATIC, false, 
+	layout:add_resource("image", "Image...",
+		function() return glob_resource("images/*.png"); end, nil,
+			LAYRES_STATIC, false,
 		function(key) return load_image("images/" .. key); end);
 
 	for ind, val in ipairs( {"Screenshot", "Boxart", "Boxart (Back)",
 		"Fanart", "Bezel", "Marquee"} ) do
-		layout:add_resource(string.lower(val), val, val, 
+		layout:add_resource(string.lower(val), val, val,
 			"Dynamic Media...", LAYRES_IMAGE, false, identphold);
 	end
 
-	for ind, val in ipairs( {"Title", "Genre", "Subgenre", "Setname", 
+	for ind, val in ipairs( {"Title", "Genre", "Subgenre", "Setname",
 		"Manufacturer", "Buttons", "Players", "Year", "Target", "System"} ) do
 		layout:add_resource(string.lower(val), val, val,
 			"Dynamic Text...", LAYRES_TEXT, false, nil);
 	end
-	
-	layout:add_resource("internal", "internal", "Internal Launch", 
-		"Input Feeds...", LAYRES_FRAMESERVER, false, 
+
+	layout:add_resource("internal", "internal", "Internal Launch",
+		"Input Feeds...", LAYRES_FRAMESERVER, false,
 		load_image("images/placeholders/internal.png"));
-	layout:add_resource("vidcap", "vidcap", "Video Capture", 
-		"Input Feeds...", LAYRES_FRAMESERVER, false, 
+	layout:add_resource("vidcap", "vidcap", "Video Capture",
+		"Input Feeds...", LAYRES_FRAMESERVER, false,
 		load_image("images/placeholders/vidcap.png"));
 	layout.post_save_hook = hookfun;
 
@@ -791,7 +791,7 @@ function lay_setup(layname)
 	layout:show();
 end
 
--- the shared code partially uses this, 
+-- the shared code partially uses this,
 -- since the soundmap is empty, just stop sources that are null.
 local oldplay = play_audio;
 function play_audio(source)

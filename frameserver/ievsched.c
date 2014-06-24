@@ -58,7 +58,7 @@ void ievsched_flush(bool log)
 	struct ptsent* current = ievctx.epoch;
 
 	while (current){
-		struct ptsent* cur = current;			
+		struct ptsent* cur = current;
 		current = current->next;
 		free(cur);
 	}
@@ -80,7 +80,7 @@ void ievsched_step(int step)
 
 void ievsched_enqueue(arcan_ioevent* in)
 {
-	if (in->pts <= 0) 
+	if (in->pts <= 0)
 		return;
 }
 
@@ -93,8 +93,8 @@ bool ievsched_poll(arcan_ioevent** dst)
 {
 	*dst = NULL;
 	return false;
-	
+
 	/* if log, then find point and enqueue, else step current clock
-	 * until current == NULL or event clock != current time */ 
+	 * until current == NULL or event clock != current time */
 }
 

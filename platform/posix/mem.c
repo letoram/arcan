@@ -51,7 +51,7 @@ struct mempool_meta {
  *    future low-level graphics interfaces to directly map
  *    and manage GPU resources.
  *
- *    MEM_VBUFFER + BZERO uses the _video.h RGBA packing and 
+ *    MEM_VBUFFER + BZERO uses the _video.h RGBA packing and
  *    PIXEL_BPP to set alpha channel to fully on.
  *
  * ARCAN_MEM_VSTRUCT =>
@@ -61,32 +61,32 @@ struct mempool_meta {
  * ARCAN_MEM_EXTSTRUCT =>
  *  - same as VSTRUCT but different pool
  *
- * ARCAN_MEM_ABUFFER => 
+ * ARCAN_MEM_ABUFFER =>
  *  - similar to VBUFFER but smaller blocks (multiples of 64k)
  *    and no 0xff initialization
  *
  * ARCAN_MEM_STRINGBUF =>
  *  - plan is to require additional meta (i.e. encoding)
- *    aggressively verify checksums (as we know there's little 
+ *    aggressively verify checksums (as we know there's little
  *    data but high risk), dynamically tagged readonly/ sensitive,
  *    also gets all access tracked (in more paranoid settings,
  *    madv. use should also be covered but we don't have the
  *    mechanisms in place for that) by getting the pagefaults
- *    and checking source. 
+ *    and checking source.
  *
- * ARCAN_MEM_VTAG/ATAG => 
- *  - similar to EXTSTRUCT we know that the source is not 
- *    connected to external behaviors 
+ * ARCAN_MEM_VTAG/ATAG =>
+ *  - similar to EXTSTRUCT we know that the source is not
+ *    connected to external behaviors
  *
  * ARCAN_MEM_BINDING =>
  *  - 64k pages managed by additional memory managers,
- *    e.g. allocation calls to virtual machines. Possibly 
- *    connected to a JITing source(!),  
+ *    e.g. allocation calls to virtual machines. Possibly
+ *    connected to a JITing source(!),
  *
  * ARCAN_MEM_MODELDATA =>
  *  - similar to VBUFFER but smaller allocation blocks
  *
- *	ARCAN_MEM_THREADCTX => 
+ *	ARCAN_MEM_THREADCTX =>
  *   - few allocations (should correlate to number of threads)
  *   - assumed shorter life-span
  *   - guard pages separate each allocation
@@ -95,7 +95,7 @@ struct mempool_meta {
 int system_page_size = 4096;
 
 /*
- * map initial pools, pre-fill some video buffers, 
+ * map initial pools, pre-fill some video buffers,
  * get limits and assert that our build-time minimal
  * and maximal settings fit.
  */
@@ -105,7 +105,7 @@ void arcan_mem_init()
 }
 
 /*
- * there should essentially be NO memory blocks marked 
+ * there should essentially be NO memory blocks marked
  * TEMPORARY or SENSITIVE (NON VIDEO/AUDIO) alive at this
  * point, use the tick point to check and trap as leaks.
  */
@@ -116,16 +116,16 @@ void arcan_mem_tick()
 /*static void sigsegv_hand(int sig, siginfo_t* si, void* unused)
 {
 */
-/* 
- * sweep SENSITIVE marked areas and replace with the guard pattern
- * 
- */ 
-
 /*
- * unmap VBUFFER, ABUFFER, MODELDATA 
+ * sweep SENSITIVE marked areas and replace with the guard pattern
+ *
  */
 
-/* 
+/*
+ * unmap VBUFFER, ABUFFER, MODELDATA
+ */
+
+/*
  * Propagate the segmentation fault so the core gets dumped.
  *
  * Should do an integrity sweep and exfiltrate additional
@@ -165,18 +165,18 @@ void* arcan_alloc_mem(size_t nb,
 			if (-1 == posix_memalign(&rptr, system_page_size, total))
 				rptr = NULL;
 		break;
-		
+
 		case ARCAN_MEMALIGN_SIMD:
 			if (-1 == posix_memalign(&rptr, 16, total))
 				rptr = NULL;
 		break;
 		}
 	break;
-		
+
 	case ARCAN_MEM_ENDMARKER:
 	default:
 			abort();
-	}		
+	}
 
 	if (!rptr){
 		if ((hint & ARCAN_MEM_NONFATAL) == 0)
@@ -188,7 +188,7 @@ void* arcan_alloc_mem(size_t nb,
 		if (type == ARCAN_MEM_VBUFFER){
 			av_pixel* buf = (av_pixel*) rptr;
 			for (int i = 0; i < nb; i += GL_PIXEL_BPP)
-				*buf++ = RGBA(0, 0, 0, 255);	
+				*buf++ = RGBA(0, 0, 0, 255);
 		}
 		else
 			memset(rptr, '\0', total);
@@ -198,20 +198,20 @@ void* arcan_alloc_mem(size_t nb,
 }
 
 /*
- * Allocate memory intended for read-only or 
+ * Allocate memory intended for read-only or
  * exec use (JIT, ...)
  */
 void* arcan_alloc_fillmem(const void* data,
 	size_t ds,
-	enum arcan_memtypes type, 
-	enum arcan_memhint hint, 
+	enum arcan_memtypes type,
+	enum arcan_memhint hint,
 	enum arcan_memalign align)
 {
 	void* buf = arcan_alloc_mem(ds, type, hint, align);
 
 	if (!buf)
 		return NULL;
-	
+
 	memcpy(buf, data, ds);
 	return buf;
 }
@@ -220,8 +220,8 @@ void arcan_mem_free(void* inptr)
 {
 /* lock then free */
 /* depending on type and flag, verify integrity,
- * then cleanup. VBUFFER for instance doesn't 
- * automatically shrink, but rather reset and flag 
+ * then cleanup. VBUFFER for instance doesn't
+ * automatically shrink, but rather reset and flag
  * as unused */
 	free(inptr);
 }

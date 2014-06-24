@@ -31,7 +31,7 @@ unsigned arcan_glob(char* basename, int searchmask,
 	playbuf[4095] = '\0';
 
 	if ((searchmask & ARCAN_RESOURCE_THEME) > 0){
-		snprintf(playbuf, sizeof(playbuf)-1, "%s/%s/%s", 
+		snprintf(playbuf, sizeof(playbuf)-1, "%s/%s/%s",
 			arcan_themepath, arcan_themename, basename);
 
 		glob_t res = {0};

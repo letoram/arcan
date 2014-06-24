@@ -42,8 +42,8 @@
  */
 
 /* can be created by taking a TTF font,
- * convert -resize 8x8\! -font Name-Family-Style -pointsize num 
- * label:CodePoint outp.xbm sweep through the desired codepoints and 
+ * convert -resize 8x8\! -font Name-Family-Style -pointsize num
+ * label:CodePoint outp.xbm sweep through the desired codepoints and
  * build the outer array, dump to header and replace */
 #include "font_8x8.h"
 
@@ -62,7 +62,7 @@ struct datapoint {
 	long long int timestamp;
 	char* label; /* optional */
 /* part of the regular dataflow or should be treated as an alarm */
-	bool continuous; 
+	bool continuous;
 
 	char type_id;
 	union {
@@ -75,7 +75,7 @@ struct event_bucket {
 	bool labels;   /* render possibly attached labels */
 
 	/* should basev/maxv/minv be relative to window or accumulate */
-	bool absolute; 
+	bool absolute;
 
 	enum plot_mode mode;
 
@@ -118,17 +118,17 @@ struct graph_context {
 	enum graphing_mode mode;
 };
 
-void blend_hline(struct graph_context* ctx, int x, int y, 
+void blend_hline(struct graph_context* ctx, int x, int y,
 	int width, uint32_t col, float fact)
 {
 }
 
-void blend_vline(struct graph_context* ctx, int x, int y, 
+void blend_vline(struct graph_context* ctx, int x, int y,
 	int width, uint32_t col, float fact)
 {
 }
 
-void draw_hline(struct graph_context* ctx, int x, int y, 
+void draw_hline(struct graph_context* ctx, int x, int y,
 	int width, uint32_t col)
 {
 	width = abs(width);
@@ -146,7 +146,7 @@ void draw_hline(struct graph_context* ctx, int x, int y,
 		*(buf++) = col;
 }
 
-void draw_vline(struct graph_context* ctx, int x, int y, 
+void draw_vline(struct graph_context* ctx, int x, int y,
 	int height, uint32_t col)
 {
 	int dir;
@@ -182,7 +182,7 @@ void clear_tocol(struct graph_context* ctx, uint32_t col)
 		ctx->vidp[i] = col;
 }
 
-bool draw_box(struct graph_context* ctx, int x, int y, 
+bool draw_box(struct graph_context* ctx, int x, int y,
 	int width, int height, uint32_t col)
 {
 	if (x >= ctx->width || y >= ctx->height || x < 0 || y < 0)
@@ -201,7 +201,7 @@ bool draw_box(struct graph_context* ctx, int x, int y,
 	return true;
 }
 
-void draw_square(struct graph_context* ctx, int x, int y, 
+void draw_square(struct graph_context* ctx, int x, int y,
 	int side, uint32_t col)
 {
 	side = abs(side);
@@ -223,7 +223,7 @@ void text_dimensions(struct graph_context* ctx, const char* msg,
 	while (*msg){
 		if (*msg <= 127)
 			nvc++;
-	
+
 		msg++;
 	}
 
@@ -232,7 +232,7 @@ void text_dimensions(struct graph_context* ctx, const char* msg,
 }
 
 /* use the included 8x8 bitmap font to draw simple 7-bit ASCII messages */
-bool draw_text(struct graph_context* ctx, const char* msg, 
+bool draw_text(struct graph_context* ctx, const char* msg,
 	int x, int y, uint32_t txcol)
 {
 	if (y + pxfont_height >= ctx->height)
@@ -254,11 +254,11 @@ bool draw_text(struct graph_context* ctx, const char* msg,
 	return true;
 }
 
-static void draw_bucket(struct graph_context* ctx, struct event_bucket* src, 
+static void draw_bucket(struct graph_context* ctx, struct event_bucket* src,
 	int x, int y, int w, int h)
 {
-/* with labels toggled, the issue is if labels should be 
- * placed closed to the datapoint, or if separate space should be 
+/* with labels toggled, the issue is if labels should be
+ * placed closed to the datapoint, or if separate space should be
  * allocated beneath the grid and use colors to map */
 	draw_vline(ctx, x, y, h, ctx->colors.border);
 	draw_hline(ctx, x, y, w, ctx->colors.border);
@@ -268,7 +268,7 @@ static void draw_bucket(struct graph_context* ctx, struct event_bucket* src,
 
 /* we use the bucket midpoint as 0 for y axis, it should be <= minv */
 /* independent of draw-mode, process non-continous datapoints separately,
- * and distribute evenly across y. */ 
+ * and distribute evenly across y. */
 	switch (src->mode){
 	case PLOT_XY_POINT:
 		while (i != src->buf_front){
@@ -279,12 +279,12 @@ static void draw_bucket(struct graph_context* ctx, struct event_bucket* src,
 		}
 	break;
 	case PLOT_XY_LERP:
-/* check the xv and yv for the datapoint vs. the next datapoint and 
- * linearly fill in the rest */	
+/* check the xv and yv for the datapoint vs. the next datapoint and
+ * linearly fill in the rest */
 	break;
-	case PLOT_XY_ROW:   
-/* for every datapoint, fill from y- base to projected y-point, and 
- * for collisions vs x. scale and horizontal time resolution, additively 
+	case PLOT_XY_ROW:
+/* for every datapoint, fill from y- base to projected y-point, and
+ * for collisions vs x. scale and horizontal time resolution, additively
  * blend to illustrate the intensity between datapoints */
 	break;
 	default:
@@ -292,16 +292,16 @@ static void draw_bucket(struct graph_context* ctx, struct event_bucket* src,
 	}
 }
 
-/* These two functions traverses the history buffer, 
+/* These two functions traverses the history buffer,
  * drops the elements that are outside the current time-window,
- * and converts the others to draw-calls, layout is different 
+ * and converts the others to draw-calls, layout is different
  * for server (1:n) and client (1:1). */
 static bool graph_refresh_server(struct graph_context* ctx)
 {
 	if (ctx->mode == GRAPH_MANUAL)
 		return false;
 
-/* these are responsible for allocating buckets based on mode, 
+/* these are responsible for allocating buckets based on mode,
  * only relevant for GRAPH_NET class */
 	switch (ctx->mode){
 
@@ -359,12 +359,12 @@ struct graph_context* graphing_new(int width, int height, uint32_t* vidp)
 	struct graph_context* rctx = malloc( sizeof(struct graph_context) );
 
 	if (rctx){
-		struct graph_context rv = { 
-			.mode = GRAPH_MANUAL, 
-			.width = width, 
-			.height = height, 
+		struct graph_context rv = {
+			.mode = GRAPH_MANUAL,
+			.width = width,
+			.height = height,
 			.vidp = vidp,
-			.colors.bg = 0xffffffff, 
+			.colors.bg = 0xffffffff,
 			.colors.border = 0xff000000,
 		 	.colors.grid = 0xffaaaaaa,
 		 	.colors.gridalign = 0xffff4444,
@@ -383,7 +383,7 @@ static void drop_buckets(struct graph_context* ctx)
 		for (int i = 0; i < ctx->n_buckets; i++){
 			for (int j = 0; j < ctx->buckets[i].ringbuf_sz; j++)
 				free(ctx->buckets[i].ringbuf[j].label);
-	
+
 			free(ctx->buckets[i].ringbuf);
 		}
 
@@ -401,7 +401,7 @@ void graphing_switch_mode(struct graph_context* ctx, enum graphing_mode mode)
 	switch(mode){
 /* create <connection limit> buckets */
 	case GRAPH_NET_SERVER_SPLIT:
-		mode = GRAPH_MANUAL;			
+		mode = GRAPH_MANUAL;
 	break;
 
 /* server mode, focus on a single targetid */
@@ -450,16 +450,16 @@ void graphing_destroy(struct graph_context* ctx)
 		}
 }
 
-/* all these events are simply translated to a data-point and 
+/* all these events are simply translated to a data-point and
  * inserted into the related bucket */
 void graph_log_connected(struct graph_context* ctx, char* label)
 {
 	assert(ctx);
 	if (ctx->n_buckets == 0)
-		return;	
+		return;
 
 	if (GRAPH_SERVER(ctx->mode)){
-			
+
 	} else {
 	}
 
@@ -469,7 +469,7 @@ void graph_log_connecting(struct graph_context* ctx, char* label)
 {
 	assert(ctx);
 	if (ctx->n_buckets == 0)
-		return;	
+		return;
 
 	if (GRAPH_SERVER(ctx->mode)){
 	}
@@ -478,11 +478,11 @@ void graph_log_connecting(struct graph_context* ctx, char* label)
 
 }
 
-void graph_log_connection(struct graph_context* ctx, 
+void graph_log_connection(struct graph_context* ctx,
 	unsigned id, const char* label)
 {
 	if (ctx->n_buckets == 0)
-		return;	
+		return;
 
 	if (GRAPH_SERVER(ctx->mode)){
 	}
@@ -490,7 +490,7 @@ void graph_log_connection(struct graph_context* ctx,
 	}
 }
 
-void graph_log_disconnect(struct graph_context* ctx, 
+void graph_log_disconnect(struct graph_context* ctx,
 	unsigned id, const char* label)
 {
 	assert(ctx);
@@ -501,7 +501,7 @@ void graph_log_disconnect(struct graph_context* ctx,
 	}
 }
 
-void graph_log_discover_req(struct graph_context* ctx, 
+void graph_log_discover_req(struct graph_context* ctx,
 	unsigned id, const char* label)
 {
 	assert(ctx);
@@ -510,12 +510,12 @@ void graph_log_discover_req(struct graph_context* ctx,
 //	attach_datapoint(ctx, &newp);
 }
 
-void graph_log_discover_rep(struct graph_context* ctx, 
+void graph_log_discover_rep(struct graph_context* ctx,
 	unsigned id, const char* label)
 {
 }
 
-void graph_log_tlv_in(struct graph_context* ctx, unsigned id, 
+void graph_log_tlv_in(struct graph_context* ctx, unsigned id,
 	const char* label, unsigned tag, unsigned len)
 {
 	assert(ctx);
@@ -526,7 +526,7 @@ void graph_log_tlv_in(struct graph_context* ctx, unsigned id,
 	}
 }
 
-void graph_log_tlv_out(struct graph_context* ctx, unsigned id, 
+void graph_log_tlv_out(struct graph_context* ctx, unsigned id,
 	const char* label, unsigned tag, unsigned len)
 {
 	assert(ctx);
@@ -537,7 +537,7 @@ void graph_log_tlv_out(struct graph_context* ctx, unsigned id,
 	}
 }
 
-void graph_log_conn_error(struct graph_context* ctx, 
+void graph_log_conn_error(struct graph_context* ctx,
 	unsigned id, const char* label)
 {
 	assert(ctx);
@@ -548,7 +548,7 @@ void graph_log_conn_error(struct graph_context* ctx,
 	}
 }
 
-void graph_log_message(struct graph_context* ctx, unsigned long timestamp, 
+void graph_log_message(struct graph_context* ctx, unsigned long timestamp,
 	size_t pkg_sz, int stateid, bool oob)
 {
 	assert(ctx);

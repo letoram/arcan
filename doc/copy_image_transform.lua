@@ -1,5 +1,5 @@
 -- copy_image_transform
--- @short: Duplicate the transform chain of one VID and transfer it to another. 
+-- @short: Duplicate the transform chain of one VID and transfer it to another.
 -- @inargs: srcvid, dstvid
 -- @longdescr: This function traverses the entire transform chain of the srcvid, copying each transform step and attaches it to a new chain in dstvid.
 -- @note: This will also initiate a recursive rendering re-order.
@@ -7,10 +7,10 @@
 -- @note: The original transform chain in the destination VID will be removed.
 -- @note: src and dst cannot be the same VID.
 -- @note: Transformations are stored relative of the source objects coordinate space and, with the exception of scale, won't be translated.
--- @group: image 
+-- @group: image
 -- @cfunction: arcan_lua_copytransform
 -- @related: copy_surface_properties
--- @flags: 
+-- @flags:
 function main()
 #ifdef MAIN
 	a = fill_surface(32, 32, 255, 0, 0);

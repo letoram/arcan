@@ -1,7 +1,7 @@
 -- image_origo_offset
--- @short: Shift the current object rotation offset 
--- @inargs: vid, xofs, yofs, *zofs 
--- @group: image 
+-- @short: Shift the current object rotation offset
+-- @inargs: vid, xofs, yofs, *zofs
+-- @group: image
 -- @cfunction: arcan_lua_origoofs
 function main()
 #ifdef MAIN

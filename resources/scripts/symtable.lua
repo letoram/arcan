@@ -488,5 +488,5 @@ local symtable = {};
 			return nil;
 		end
  end
- 
+
 return symtable;

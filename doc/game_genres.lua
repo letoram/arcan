@@ -1,11 +1,11 @@
 -- game_genres
--- @short: Return a list of unique names from the genre field in the datastore. 
--- @inargs: 
--- @outargs: tbl or nil 
--- @longdescr: 
--- @group: database 
+-- @short: Return a list of unique names from the genre field in the datastore.
+-- @inargs:
+-- @outargs: tbl or nil
+-- @longdescr:
+-- @group: database
 -- @cfunction: arcan_lua_getgenres
--- @flags: 
+-- @flags:
 -- @related: game_cmdline, list_games, list_targets, game_info, game_genres
 function main()
 #ifdef MAIN

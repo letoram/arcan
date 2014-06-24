@@ -45,7 +45,7 @@ const char* strip_traverse(const char* input)
 
 			gotch = dc = 0;
 		}
-		else 
+		else
 			gotch++;
 
 		input++;
@@ -53,7 +53,7 @@ const char* strip_traverse(const char* input)
 
 	if (dc == 2 && gotch == 0 && level == 0){
 error:
-		arcan_warning("resource (%s) blocked, traversal outside root\n", input); 
+		arcan_warning("resource (%s) blocked, traversal outside root\n", input);
 		return NULL;
 	}
 

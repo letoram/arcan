@@ -16,8 +16,8 @@ set (PLATFORM_SOURCES
 	${PLATFORM_PATH}/warning.c
 	${PLATFORM_PATH}/frameserver.c
 	${PLATFORM_PATH}/fdpassing.c
-	${CMAKE_SOURCE_DIR}/external/hidapi/hid_darwin.c 
-	${CMAKE_SOURCE_DIR}/external/hidapi/hidapi.h 
+	${CMAKE_SOURCE_DIR}/external/hidapi/hid_darwin.c
+	${CMAKE_SOURCE_DIR}/external/hidapi/hidapi.h
 )
 
 set (SDL_PLATFORM_SOURCES
@@ -39,8 +39,8 @@ set (FSRV_PLATFORM_SOURCES
 )
 
 # map_file is the default and doesn't need to be set here
-set_property(SOURCE ${PLATFORM_PATH}/map_resource.c 
-				PROPERTY COMPILE_FLAGS -DMAP_FILE=0) 
+set_property(SOURCE ${PLATFORM_PATH}/map_resource.c
+				PROPERTY COMPILE_FLAGS -DMAP_FILE=0)
 
 set_property(SOURCE ${CMAKE_SOURCE_DIR}/engine/arcan_main.c
 				PROPERTY COMPILE_FLAGS -Dmain=SDL_main)
@@ -50,12 +50,12 @@ find_library(COREFOUNDATION NAMES CoreFoundation)
 
 if (${ENABLE_LIBRETRO})
 if (${ENABLE_LIBRETRO3D})
-	list(APPEND FSRV_LIBRETRO_SOURCES 
+	list(APPEND FSRV_LIBRETRO_SOURCES
 		${PLATFORM_PATH}/../sdl/video_mini.c
 		${PLATFORM_PATH}/../darwin/SDLmain_fsrv.m)
-	list(APPEND FSRV_LIBRETRO_LIBRARIES 
-		${SDL_LIBRARY} 
-		${GLEW_LIBRARIES} 
+	list(APPEND FSRV_LIBRETRO_LIBRARIES
+		${SDL_LIBRARY}
+		${GLEW_LIBRARIES}
 		${OPENGL_gl_LIBRARY}
 	)
 endif(${ENABLE_LIBRETRO3D})
@@ -87,7 +87,7 @@ if (ENABLE_LWA)
 	message("LWA support enabled, video backend (${VIDEO_PLATFORM})")
 
 	set_property(SOURCE ${PLATFORM_PATH}/../arcan/video.c
-		APPEND PROPERTY COMPILE_DEFINITIONS 
+		APPEND PROPERTY COMPILE_DEFINITIONS
 		SDL_PLATFORM
 		GL_HEADERS=\"${PLATFORM_PATH}/../sdl/glheaders.h\"
 	)
@@ -97,13 +97,13 @@ if (ENABLE_LWA)
 		${PLATFORM_PATH}/../arcan/video.c)
 
 	add_executable( arcan_lwa
-		${SOURCES} 
-		${PLATFORM_SOURCES} 
+		${SOURCES}
+		${PLATFORM_SOURCES}
 		${LWA_SOURCES}
 	)
 
-	set_property(TARGET arcan_lwa 
-		APPEND PROPERTY COMPILE_DEFINITIONS SDL_PLATFORM) 	
+	set_property(TARGET arcan_lwa
+		APPEND PROPERTY COMPILE_DEFINITIONS SDL_PLATFORM)
 endif()
 
 # Packaging and installation. build a DMG which installs to a default
@@ -124,10 +124,10 @@ set(THEME_DST "../Resources/themes")
 set(RESOURCES_DST "../Resources/resources")
 
 #install(TARGETS arcan_hijack DESTINATION ${BIN_DST})
-install(FILES ${CMAKE_SOURCE_DIR}/utils/arcan_romman.rb 
-	DESTINATION ${BIN_DST} 
+install(FILES ${CMAKE_SOURCE_DIR}/utils/arcan_romman.rb
+	DESTINATION ${BIN_DST}
 	PERMISSIONS
-	WORLD_READ WORLD_EXECUTE OWNER_WRITE OWNER_READ 
+	WORLD_READ WORLD_EXECUTE OWNER_WRITE OWNER_READ
 	OWNER_EXECUTE GROUP_READ GROUP_EXECUTE)
 
 SET(CPACK_GENERATOR ${CPACK_GENERATOR};Bundle)

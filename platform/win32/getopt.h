@@ -56,5 +56,5 @@ extern char* optarg;
 
 int getopt_long(int, char * const *, const char *, const struct option *, int *);
 int getopt(int, char * const *, const char *);
- 
+
 #endif /* !_GETOPT_H_ */

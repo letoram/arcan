@@ -39,7 +39,7 @@
 /* to add more devices,
  * 1. patch in the type in the enum.
  * 2. add a constant for corresponding VID/PID,
- *    or alter the init function to actually scan for it and if found, 
+ *    or alter the init function to actually scan for it and if found,
  *    forcecontroller (get the returned index and patch type).
  * 3. add the corresponding enum to the switch in set/unset */
 
@@ -80,7 +80,7 @@ void arcan_led_init()
 		arcan_led_shutdown();
 
 	/* pacdrive scan */
-	for (int i= 0; i < MAX_LED_CONTROLLERS && i < 8 
+	for (int i= 0; i < MAX_LED_CONTROLLERS && i < 8
 		&& n_controllers < MAX_LED_CONTROLLERS; i++)
 		arcan_led_forcecontroller(ULTIMARC_VID, ULTIMARC_PID + i);
 }
@@ -108,7 +108,7 @@ bool arcan_led_set(uint8_t device, int8_t led)
 				dbuf[2] = 0xdd;
 				dbuf[3] = (char) controllers[device].ledmask;
 				dbuf[4] = (char)(controllers[device].ledmask >> 8) & 0xff;
-				hid_write(controllers[device].handle, dbuf, 
+				hid_write(controllers[device].handle, dbuf,
 					sizeof(dbuf) / sizeof(dbuf[0]));
 
 				break;
@@ -138,7 +138,7 @@ bool arcan_led_clear(uint8_t device, int8_t led)
 				dbuf[3] = (char)(controllers[device].ledmask);
 				dbuf[4] = (char)((controllers[device].ledmask >> 8) & 0xff);
 
-				hid_write(controllers[device].handle, dbuf, 
+				hid_write(controllers[device].handle, dbuf,
 					sizeof(dbuf) / sizeof(dbuf[0]));
 				break;
 

@@ -39,7 +39,7 @@ if (${ENABLE_LIBRETRO3D})
 	list(APPEND FSRV_LIBRARIES ${OPENGL_gl_LIBRARY})
 endif(${ENABLE_LIBRETRO3D})
 endif(${ENABLE_LIBRETRO})
- 
+
 add_definitions(-DPLATFORM_HEADER=\"${WIN32_PATH}/platform.h\"
 	-DGL_HEADERS=\"${WIN32_PATH}/../sdl/glheaders.h\"
 	-Wno-missing-braces
@@ -47,19 +47,19 @@ add_definitions(-DPLATFORM_HEADER=\"${WIN32_PATH}/platform.h\"
 )
 
 # the win32/ folder should be merged with the platform sources
-LIST(APPEND SOURCES 
+LIST(APPEND SOURCES
 ${CMAKE_EXTERNAL_SRCDIR}/hidapi/hid_win32.c
-${CMAKE_EXTERNAL_SRCDIR}/hidapi/hidapi.h 
+${CMAKE_EXTERNAL_SRCDIR}/hidapi/hidapi.h
 ${WIN32_PATH}/arcan_target_launcher_win32.c
-${WIN32_PATH}/getopt_win32.c 
-${WIN32_PATH}/getopt.h 
-${WIN32_PATH}/sdl_win32_main.c 
+${WIN32_PATH}/getopt_win32.c
+${WIN32_PATH}/getopt.h
+${WIN32_PATH}/sdl_win32_main.c
 ${DISTR_PATH}/arcan_resource.obj
 ${PLATFORM_SOURCES})
 
-LIST(APPEND FSRV_SOURCES 
-${WIN32_PATH}/arcan_frameserver_win32.c 
-${DISTR_PATH}/arcan_frameserver_resource.obj 
+LIST(APPEND FSRV_SOURCES
+${WIN32_PATH}/arcan_frameserver_win32.c
+${DISTR_PATH}/arcan_frameserver_resource.obj
 ${FSERV_PLATFORM_SOURCES})
 
 LIST(APPEND FSRV_LIBRARIES mingwex ws2_32 winmm pthread)
@@ -92,14 +92,14 @@ ARGS -o ${DISTR_PATH}/arcan_frameserver_resource.obj
 # add_custom_target on the output seems to do absolutely nothing.
 add_custom_target(arcan_romman.exe
 	COMMAND ocra
-	--output ${CMAKE_BINARY_DIR}/arcan_romman.exe 
-	${CMAKE_SOURCE_DIR}/utils/arcan_romman.rb 
+	--output ${CMAKE_BINARY_DIR}/arcan_romman.exe
+	${CMAKE_SOURCE_DIR}/utils/arcan_romman.rb
 	${CMAKE_SOURCE_DIR}/resources/scripts/romman_base.rb
 )
 add_executable( arcan WIN32 ${SOURCES} )
 
 # ------------- Win32 Arcan Launcher Tool -----------
-include_external_msproject(ArcanLauncher 
+include_external_msproject(ArcanLauncher
 	${LAUNCHER_PATH}/ArcanLauncher/ArcanLauncher.csproj
 	TYPE 1FC6864D-77E3-4AE9-AB3F-3E450B4335E4
 	PLATFORM "Any CPU"
@@ -109,13 +109,13 @@ include_external_msproject(ArcanLauncher
 file (GLOB _dlls "${DISTR_PATH}/win32libs/*.dll")
 install(FILES ${_dlls} DESTINATION ${BIN_DST})
 install(FILES ${CMAKE_BINARY_DIR}/arcan_romman.exe DESTINATION ${BIN_DST})
-install(FILES ${DISTR_PATH}/winicon.ico 
+install(FILES ${DISTR_PATH}/winicon.ico
 	DESTINATION ${BIN_DST})
 
-install(FILES ${DISTR_PATH}/COPYRIGHT 
+install(FILES ${DISTR_PATH}/COPYRIGHT
 	DESTINATION ${BIN_DST})
 
-install(FILES ${DISTR_PATH}/oalinst.exe 
+install(FILES ${DISTR_PATH}/oalinst.exe
 	DESTINATION ${BIN_DST})
 
 install(FILES "${LAUNCHER_PATH}/ArcanLauncher/bin/Release/ArcanLauncher.exe"
@@ -123,22 +123,22 @@ install(FILES "${LAUNCHER_PATH}/ArcanLauncher/bin/Release/ArcanLauncher.exe"
 
 # overwrite to reduce hassle on Vista++, only affects themes/resources
 # doesn't seem to have the desired effect however ..
-set(SHARED_PERMISSIONS 
-	OWNER_WRITE 
-	OWNER_READ 
-	GROUP_WRITE 
-	GROUP_READ 
-	WORLD_WRITE 
+set(SHARED_PERMISSIONS
+	OWNER_WRITE
+	OWNER_READ
+	GROUP_WRITE
+	GROUP_READ
+	WORLD_WRITE
 	WORLD_READ
 )
 
-set(SHARED_PERMISSIONS_DIR 
-	${SHARED_PERMISSIONS} 
+set(SHARED_PERMISSIONS_DIR
+	${SHARED_PERMISSIONS}
 	WORLD_EXECUTE
 )
 
 set_target_properties(arcan PROPERTIES
-	COMPILE_FLAGS 
+	COMPILE_FLAGS
 		"-Dmain=SDL_main -DREPLACE_GETOPT"
 )
 
@@ -150,7 +150,7 @@ set_target_properties(arcan PROPERTIES
  SET(CPACK_PACKAGE_VENDOR "Arcan Frontend")
 
 # try to autoinstall OpenAL (if needed)
-SET(CPACK_NSIS_EXTRA_INSTALL_COMMANDS "${CPACK_NSIS_EXTRA_INSTALL_COMMANDS} 
+SET(CPACK_NSIS_EXTRA_INSTALL_COMMANDS "${CPACK_NSIS_EXTRA_INSTALL_COMMANDS}
 WriteRegStr HKLM 'Software\\\\Arcan Frontend\\\\Arcan' 'InstallDir' '\$INSTDIR'
 ExecWait '\\\"$INSTDIR\\\\oalinst.exe\\\" /s' ")
 
