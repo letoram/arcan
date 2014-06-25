@@ -563,6 +563,7 @@ static inline void emit_deliveredframe(arcan_frameserver* src,
 		.data.frameserver.pts = pts,
 		.data.frameserver.counter = framecount,
 		.data.frameserver.otag = src->tag,
+		.data.frameserver.audio = src->aid,
 		.data.frameserver.video = src->vid
 	};
 
@@ -578,6 +579,7 @@ static inline void emit_droppedframe(arcan_frameserver* src,
 		.data.frameserver.pts = pts,
 		.data.frameserver.counter = dropcount,
 		.data.frameserver.otag = src->tag,
+		.data.frameserver.audio = src->aid,
 		.data.frameserver.video = src->vid
 	};
 
@@ -850,6 +852,8 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
  * specialized "per- target" (in order to minimize size and handle 32/64
  * switching parent-vs-child relations */
 	else{
+		ctx->aid = arcan_audio_feed((arcan_afunc_cb)
+			arcan_frameserver_audioframe_direct, ctx, &errc);
 		ctx->kind = ARCAN_HIJACKLIB;
 		ctx->queue_mask = EVENT_EXTERNAL;
 
