@@ -261,9 +261,6 @@ endif()
 FIND_PACKAGE ( Freetype REQUIRED )
 FIND_PACKAGE ( PNG REQUIRED )
 
-message("video output (VIDEO_PLATFORM) set to : ${VIDEO_PLATFORM}")
-message("audio output (AUDIO_PLATFORM) set to : ${AUDIO_PLATFORM}")
-message("device input (INPUT_PLATFORM) set to : ${INPUT_PLATFORM}")
 message("\n---- Stage 1: library dependencies and configuration ----")
 # modified version of the 51 package that checks for the lua51_jit option
 FIND_PACKAGE ( BZip2 REQUIRED )
@@ -517,6 +514,7 @@ if (${ENABLE_VIDENC})
 	FIND_PACKAGE ( FFMPEG REQUIRED)
 
 	message("--> Adding video encoding (ffmpeg) support.")
+	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}encode ")
 	set(FSRV_ENCODE_LIBRARIES
 		${FFMPEG_LIBRARIES}
 		pthread
@@ -534,6 +532,7 @@ if (${ENABLE_VIDENC})
 		FIND_PACKAGE(VNC)
 		if (${LIBVNC_FOUND})
 			message("   |--> VNC Server libraries found, enabling vnc support in encoder.")
+			set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}encode-vnc ")
 			list(APPEND INCLUDE_DIRS ${LIBVNC_INCLUDE_DIRS})
 			set_property(SOURCE frameserver/encode.c PROPERTY COMPILE_DEFINITIONS HAVE_VNCSERVER)
 		 	list(APPEND FSRV_ENCODE_LIBRARIES ${LIBVNC_LIBRARIES})
@@ -557,11 +556,16 @@ endif (SQLITE_AMALGAMATE)
 if (LUA51_JIT)
 	message("--> Enabling JIT- mode for Lua.")
 	set_property(SOURCE engine/arcan_lua.c PROPERTY
-				COMPILE_DEFINITIONS LUA51_JIT)
+					COMPILE_DEFINITIONS LUA51_JIT FRAMESERVER_MODESTRING=\"${FRAMESERVER_MODESTRING}\")
 endif (LUA51_JIT)
 
 include_directories(${INCLUDE_DIRS})
 
+message("\n---- Stage 1 configuration: ----")
+message("video output (VIDEO_PLATFORM) set to : ${VIDEO_PLATFORM}")
+message("audio output (AUDIO_PLATFORM) set to : ${AUDIO_PLATFORM}")
+message("device input (INPUT_PLATFORM) set to : ${INPUT_PLATFORM}")
+message("frameserver features: ${FRAMESERVER_MODESTRING}")
 #
 # OS and more compiler specific files, packaging etc.
 # Expected to
