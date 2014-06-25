@@ -362,25 +362,7 @@ void arcan_frameserver_decode_run(const char* resource, const char* keyfile)
 /* decode external arguments, map the necessary ones to VLC */
 	const char* val;
 
-/*
- 	bool noaudio = false;
-	bool novideo = false;
-
-	if (arg_lookup(args, "noaudio", 0, &val)){
-		noaudio = true;
-	}
-	else if (arg_lookup(args, "novideo", 0, &val))
-		novideo = true;
-*/
-
-	char const* vlc_argv[] = {
-		"-I", "dummy",
-		"--ignore-config",
-		"--no-xlib"
-	};
-	char const vlc_argc = sizeof(vlc_argv) / sizeof(vlc_argv[0]);
-
-	decctx.vlc = libvlc_new(vlc_argc, vlc_argv);
+	decctx.vlc = libvlc_new(0, NULL);
 
 /* special about stream devices is that we can specify external resources (e.g.
  * http://, rtmp:// etc. along with buffer dimensions */
@@ -439,7 +421,9 @@ void arcan_frameserver_decode_run(const char* resource, const char* keyfile)
 	libvlc_video_set_callbacks(decctx.player,
 		video_lock, video_unlock, video_display, NULL);
 
-	libvlc_audio_set_format(decctx.player, "S16N", 44100, 2);
+	libvlc_audio_set_format(decctx.player, "S16N",
+		ARCAN_SHMPAGE_SAMPLERATE, ARCAN_SHMPAGE_ACHANNELS);
+
 	libvlc_audio_set_callbacks(decctx.player,
 		audio_play, /*pause*/ NULL, /*resume*/ NULL, audio_flush, audio_drain,NULL);
 
