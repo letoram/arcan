@@ -15,7 +15,15 @@
 #include <errno.h>
 #include <ctype.h>
 #include <fcntl.h>
+
+#if defined(__linux) 
 #include <pty.h>
+#elif defined(__OpenBSD__) || defined(__APPLE__)
+	#include <util.h>
+#else
+	#include <libutil.h>
+#endif
+
 #include <pwd.h>
 
 #include <sys/ioctl.h>

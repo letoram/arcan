@@ -363,6 +363,10 @@ void arcan_frameserver_decode_run(const char* resource, const char* keyfile)
 	const char* val;
 
 	decctx.vlc = libvlc_new(0, NULL);
+  if (decctx.vlc == NULL){
+  	LOG("Couldn't initialize VLC session, giving up.\n");
+    return;
+  }
 
 /* special about stream devices is that we can specify external resources (e.g.
  * http://, rtmp:// etc. along with buffer dimensions */
