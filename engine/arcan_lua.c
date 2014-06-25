@@ -6957,6 +6957,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 	for (int i = 0; i < sizeof(consttbl) / sizeof(consttbl[0]); i++)
 		arcan_lua_setglobalint(ctx, consttbl[i].key, consttbl[i].val);
 
+	arcan_lua_setglobalstr(ctx, "FRAMESERVER_MODES", FRAMESERVER_MODESTRING );
 	arcan_lua_setglobalstr(ctx, "THEMENAME",    arcan_themename          );
 	arcan_lua_setglobalstr(ctx, "RESOURCEPATH", arcan_resourcepath       );
 	arcan_lua_setglobalstr(ctx, "THEMEPATH",    arcan_themepath          );
