@@ -25,9 +25,10 @@
  *   warrant some kind of tracking to think about how things should
  *   be developed for the future. Due to the desire (need even) to
  *   support both LUA-jit and the reference lua implementation, some
- *   of the usual annoyances (global scope being the default,
+ *   of the usual annoyances: (global scope being the default,
  *   double pollution, 1 indexing, no ; statement delimiter, no ternary
- *   operator, no aggregate operators, ...)
+ *   operator, no aggregate operators, if (true) then return; end type
+ *   quickhacks.
  *
  * - Type coersion; the whole "1" can turn into a number makes for a lot
  *   of problems with WORLDID and BADID being common "number-in-string"
@@ -257,6 +258,34 @@ static void dump_call_trace(lua_State* ctx)
 			}
 	}
 #endif
+}
+
+/* slightly more flexible argument management, just find the first callback */
+static inline intptr_t find_lua_callback(lua_State* ctx)
+{
+	int nargs = lua_gettop(ctx);
+
+	for (int i = 1; i <= nargs; i++)
+		if (lua_isfunction(ctx, i)){
+			lua_pushvalue(ctx, i);
+			return luaL_ref(ctx, LUA_REGISTRYINDEX);
+		}
+
+	return (intptr_t) 0;
+}
+
+static inline int find_lua_type(lua_State* ctx, int type, int ofs)
+{
+	int nargs = lua_gettop(ctx);
+
+	for (int i = 1; i <= nargs; i++){
+		int ltype = lua_type(ctx, i);
+		if (ltype == type)
+			if (ofs-- == 0)
+				return i;
+	}
+
+	return 0;
 }
 
 static void last_function(lua_State* ctx)
@@ -1701,22 +1730,26 @@ static int setupavstream(lua_State* ctx)
 	LUA_TRACE("launch_avfeed");
 	const char* argstr = luaL_optstring(ctx, 1, "");
 	uintptr_t ref = 0;
-	int cbofs = 2;
 
-	if (argstr == NULL){
-		cbofs = 1;
+	const char* modearg = "avfeed";
+
+	if (argstr != NULL){
+		modearg = luaL_optstring(ctx, 2, modearg);
 	}
 
-	if (lua_isfunction(ctx, cbofs) && !lua_iscfunction(ctx, cbofs)){
-		lua_pushvalue(ctx, cbofs);
-		ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
-	};
+	if (strstr(FRAMESERVER_MODESTRING, modearg) == NULL){
+		arcan_warning("launch_avfeed(), requested mode (%s) missing from "
+			"build-time frameserver configuration (%s), rejected.\n",
+			modearg, FRAMESERVER_MODESTRING);
+		return 0;
+	}
 
+	ref = find_lua_callback(ctx);
 	arcan_frameserver* mvctx = arcan_frameserver_alloc();
 
 	struct frameserver_envp args = {
 		.use_builtin = true,
-		.args.builtin.mode = "avfeed",
+		.args.builtin.mode = modearg,
 		.args.builtin.resource = argstr
 	};
 
@@ -6106,34 +6139,6 @@ void arcan_lua_eachglobal(lua_State* ctx, char* prefix,
 	this would in essence intercept all global table updates, meaning that we can,
  	at least, use that as a lookup scope for tab completion etc.
 */
-}
-
-/* slightly more flexible argument management, just find the first callback */
-static inline intptr_t find_lua_callback(lua_State* ctx)
-{
-	int nargs = lua_gettop(ctx);
-
-	for (int i = 1; i <= nargs; i++)
-		if (lua_isfunction(ctx, i)){
-			lua_pushvalue(ctx, i);
-			return luaL_ref(ctx, LUA_REGISTRYINDEX);
-		}
-
-	return (intptr_t) 0;
-}
-
-static inline int find_lua_type(lua_State* ctx, int type, int ofs)
-{
-	int nargs = lua_gettop(ctx);
-
-	for (int i = 1; i <= nargs; i++){
-		int ltype = lua_type(ctx, i);
-		if (ltype == type)
-			if (ofs-- == 0)
-				return i;
-	}
-
-	return 0;
 }
 
 static bool lua_launch_fsrv(lua_State* ctx,
