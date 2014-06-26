@@ -203,7 +203,7 @@ static void map_cl_input(arcan_ioevent* ioev)
 }
 
 
-void arcan_frameserver_vnc_run(const char* resource,
+void arcan_frameserver_remoting_run(const char* resource,
 	const char* keyfile)
 {
 	struct arg_arr* args = arg_unpack(resource);
