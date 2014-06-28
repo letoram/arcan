@@ -150,9 +150,36 @@ static const int ARCAN_SHMPAGE_AUDIOBUF_SZ = 288000;
 #endif
 
 static const int ARCAN_SHMPAGE_VIDEOBUF_SZ = 8294400;
-static const int ARCAN_SHMPAGE_START_SZ = 2041088;
-static const int ARCAN_SHMPAGE_MAX_SZ = 48294400;
-/* ARCAN_SHMPAGE_MAXW * ARCAN_SHMPAGE_MAXH * ARCAN_SHMPAGE_VCHANNELS */
+
+#ifndef PP_SHMPAGE_MAXSZ 
+#define PP_SHMPAGE_MAXSZ 48294400
+#endif
+
+/*
+ * If this define is overridden, make sure that the starting dimensions 
+ * actually fit the minimal (32x32 + buffers + sizeof(struct)
+ */
+#ifndef PP_SHMPAGE_STARTSZ
+#define PP_SHMPAGE_STARTSZ 2014088
+#endif
+
+/*
+ * Some plaforms/implementations do not support dynamically growing/shrinking
+ * shared memory. To cope, we principally have two methods;
+ * one is to overcommit -- always allocate the limit and then just re-map
+ * the same page with lower / greater sizes.
+ *
+ * The other is to allocate a new shared memory with the new size. 
+ * This increases the number of context switches and introduces the constraint
+ * that the event-queues should be EMPTY on both sides during resize calls. 
+ */
+#ifdef ARCAN_SHMIF_OVERCOMMIT
+static const int ARCAN_SHMPAGE_START_SZ = PP_SHMPAGE_MAXSZ; 
+#else
+static const int ARCAN_SHMPAGE_START_SZ = PP_SHMPAGE_STARTSZ;
+#endif
+
+static const int ARCAN_SHMPAGE_MAX_SZ = PP_SHMPAGE_MAXSZ;
 
 enum arcan_shmif_type {
 	SHMIF_INPUT,

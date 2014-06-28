@@ -62,7 +62,7 @@ message("---- Building frameserver in SPLIT mode ----")
 			${FSRV_SOURCES}
 			${FSRV_PLATFORM_SOURCES}
 			${FSRV_REMOTING_SOURCES})
-		set_property(TARGET arcan_frameserver_terminal APPEND PROPERTY
+		set_property(TARGET arcan_frameserver_remoting APPEND PROPERTY
 			COMPILE_DEFINITIONS ENABLE_FSRV_REMOTING DEFAULT_FSRV_MODE=\"remoting\")
 		target_link_libraries(arcan_frameserver_remoting
 			${STDLIB}

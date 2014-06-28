@@ -2,7 +2,7 @@
 -- @short: Create an offscreen audio/video pipeline that can be sampled by a frameserver.
 -- @inargs: dstvid, dstres, encodeargs, vidtbl, aidtbl, detacharg, scalearg, samplerate, *callback*
 -- @outargs:
--- @longdescr: This function takes a *dstvid* (allocated through fill_surface),
+-- @longdescr: This function takes a *dstvid* (allocated through alloc_surface),
 -- and creates a separate audio / video rendertarget populated with the entries
 -- in *vidtbl* and *aidtbl*. The *detacharg* can be set to FRAMESERVER_DETACH or
 -- FRAMESERVER_NODETACH regulating if the VIDs in *vidtbl* should be removed
@@ -14,9 +14,9 @@
 -- clipping can occur. The samplerate dictates how often the rendertarget
 -- should be read-back into *dstvid*, with negative numbers meaning
 -- *abs(samplerate)* video frames between each sample, and positive numbers
--- meaning *samplerate* ticks between each sample. *Encodeargs* are passed
--- unto the frameserver that is able to process the data sampled, see the
--- section on *frameserver arguments* for more details.
+-- meaning *samplerate* ticks between each sample. *encodeargs* are passed
+-- directly in a key=value:key form to the frameserver. See the
+-- section on *frameserver arguments* below for more details.
 -- Lastly, *callback* works as an optional trigger for feedback from the
 -- frameserver (use target_verbose to toggle frametransfer status updates).
 -- @group: targetcontrol
@@ -29,10 +29,17 @@
 -- @frameserver: fps=outputframerate
 -- @frameserver: container=identifier (default: mkv)
 -- @frameserver: noaudio (special flag, disables all audio processing)
+-- @frameserver: protocol=type (for remoting)
+-- @frameserver: pass=password (for remoting)
+-- @frameserver: port=listenport (for remoting)
+-- @frameserver: name=servername (for remoting)
+-- @frameserver: interface=if (for remoting)
 -- @note: specifying WORLDID instead of a table of VIDs means that the
 -- whole of the current active pipeline will be sampled instead.
 -- @note: specifying a valid frameserver connected VID in the dstres slot
 -- will allocate a new output segment and attach to the pre-existing frameserver.
+-- @note: if dstres is empty, no file will be created or pushed. This is useful
+-- for using the encode frameserver for remoting.
 -- @cfunction: arcan_lua_recordset
 -- @related: define_rendertarget
 -- @flags:
@@ -53,13 +60,29 @@ function main()
 	move_image(b, 0, VRESH - 32, 100);
 	move_image(c, 0, 0, 100);
 
-	cycle_image_transform(a);
-	cycle_image_transform(b);
-	cycle_image_transform(c);
+	image_transform_cycle(a, 1);
+	image_transform_cycle(b, 1);
+	image_transform_cycle(c, 1);
 
-	dst = fill_surface(VRESW * 0.5, VRESH * 0.5, 0, 0, 0);
+	dst = alloc_surface(VRESW * 0.5, VRESH * 0.5);
+	
 	define_recordtarget(dst, "output.mkv", "vpreset=8:noaudio:fps=25", {a,c}, {},
 		RENDERTARGET_NODETACH, RENDERTARGET_SCALE, -4);
+#endif
+
+#ifdef MAIN2
+	a = fill_surface(64, 64, 128, 0, 0);
+	move_image(a, VRESW - 64, 0, 100);
+	move_image(a, VRESW - 64, VRESH - 64 ,100);
+	cycle_image_transform(a);
+	dst = alloc_surface(VRESW * 0.5, VRESH * 0.5);
+	define_recordtarget(dst,  "", "protocol=vnc:port=6200:fps=10", {a}, {},
+		RENDERTARGET_NODETACH, RENDERTARGET_SCALE, -4, function(source, status)
+		for k,v in pairs(status) do
+			print("key:", k, "value:", v);
+		end
+	end);
+
 #endif
 
 #ifdef ERROR1

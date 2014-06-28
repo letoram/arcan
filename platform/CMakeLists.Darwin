@@ -71,6 +71,8 @@ else()
 		${definitions} main=SDL_main)
 endif()
 
+add_definitions(-DARCAN_SHMIF_OVERCOMMIT)
+
 add_definitions(-DPLATFORM_HEADER=\"${PLATFORM_PATH}/../platform.h\"
 	-DGL_HEADERS=\"${PLATFORM_PATH}/../sdl/glheaders.h\")
 

@@ -12,6 +12,11 @@
 #include <vlc/vlc.h>
 #include <arcan_shmif.h>
 
+/*
+ * NOTE: we seem to have introduced some kind of locking issue,
+ * quite possibly with the whole tsync/rsync shebang.
+ */ 
+
 struct {
 	libvlc_instance_t* vlc;
 	libvlc_media_player_t* player;
@@ -42,7 +47,6 @@ static unsigned video_setup(void** ctx, char* chroma, unsigned* width,
 
 	*pitches = *width * 4;
 
-	LOG("setup lock\n");
 	pthread_mutex_lock(&decctx.rsync);
 	if (!arcan_shmif_resize(&decctx.shmcont, *width, *height)){
 		LOG("arcan_frameserver(decode) shmpage setup failed, "
@@ -191,7 +195,6 @@ static void video_cleanup(void* ctx)
 static void* video_lock(void* ctx, void** planes)
 {
 	pthread_mutex_lock(&decctx.rsync);
-	LOG("video lock\n");
 	*planes = decctx.shmcont.vidp;
 	return NULL;
 }
@@ -208,7 +211,6 @@ static void video_display(void* ctx, void* picture)
 
 static void video_unlock(void* ctx, void* picture, void* const* planes)
 {
-	LOG("video unlock\n");
 	pthread_mutex_unlock(&decctx.rsync);
 }
 

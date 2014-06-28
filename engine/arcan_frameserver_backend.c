@@ -61,33 +61,35 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 	struct arcan_shmif_page* shmpage = (struct arcan_shmif_page*)
 		src->shm.ptr;
 
-	if (!shmpage || !src->flags.alive)
+	if (!src->flags.alive)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
-	shmpage->dms = false;
-	shmpage->vready = false;
-	shmpage->aready = false;
-	arcan_sem_post( src->vsync );
-	arcan_sem_post( src->async );
+	if (shmpage){
+		arcan_event exev = {
+			.category = EVENT_TARGET,
+		.	kind = TARGET_COMMAND_EXIT
+		};
+		arcan_frameserver_pushevent(src, &exev);
 
-	arcan_event exev = {
-		.category = EVENT_TARGET,
-		.kind = TARGET_COMMAND_EXIT
-	};
+		shmpage->dms = false;
+		shmpage->vready = false;
+		shmpage->aready = false;
+		arcan_sem_post( src->vsync );
+		arcan_sem_post( src->async );
+
+		arcan_frameserver_dropshared(src);
+		src->shm.ptr = NULL;
+	}
 
 /*	if (src->desc.pbo_transfer && src->desc.upload_pbo[0] != 0){
 		glDeleteBuffers(2, src->desc.upload_pbo);
 	}
 */
 
-	arcan_frameserver_pushevent(src, &exev);
-	arcan_frameserver_killchild(src);
+  arcan_frameserver_killchild(src);
 
 	src->child = BROKEN_PROCESS_HANDLE;
 	src->flags.alive = false;
-
-	arcan_frameserver_dropshared(src);
-	src->shm.ptr = NULL;
 
 /* unhook audio monitors */
 	arcan_aobj_id* base = src->alocks;
@@ -133,7 +135,7 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
 /* bunch of terminating conditions -- frameserver messes
  * with the structure to provoke a vulnerability, frameserver
  * dying or timing out, ... */
-	if ( src->flags.alive &&
+	if ( src->flags.alive && src->shm.ptr &&
 		(arcan_shmif_integrity_check(src->shm.ptr) == false ||
 		arcan_frameserver_validchild(src) == false)){
 
@@ -169,7 +171,7 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst,
  * polling and need to respond quickly to enqueued events,
  */
 	if (dst && ev){
-		rv = dst->flags.alive ?
+		rv = dst->flags.alive && dst->shm.ptr ?
 			(arcan_event_enqueue(&dst->outqueue, ev), ARCAN_OK) :
 			ARCAN_ERRC_UNACCEPTED_STATE;
 
@@ -268,8 +270,9 @@ enum arcan_ffunc_rv arcan_frameserver_emptyframe(
 		case FFUNC_POLL:
 			if (tgt->shm.ptr->resized){
 				arcan_frameserver_tick_control(tgt);
+        if (tgt->shm.ptr && tgt->shm.ptr->vready)
+        	return FFUNC_RV_GOTFRAME;
 			}
-			return tgt->shm.ptr->vready;
 
 		case FFUNC_TICK:
 			arcan_frameserver_tick_control(tgt);
@@ -643,9 +646,11 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 	if (!src->shm.ptr->resized)
 		return;
 
-	if (!arcan_frameserver_resize(&src->shm, src->shm.ptr->w, src->shm.ptr->h)){
-		arcan_warning("client requested illegal resize (%d, %d) -- killing.\n",
-			src->shm.ptr->w, src->shm.ptr->h);
+	int neww = src->shm.ptr->w;
+  int newh = src->shm.ptr->h;
+	if (!arcan_frameserver_resize(&src->shm, neww, newh)){
+ 		arcan_warning("client requested illegal resize (%d, %d) -- killing.\n",
+			neww, newh);
 		arcan_frameserver_free(src);
 		return;
 	}
@@ -789,24 +794,10 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 {
 	arcan_errc errc;
 
-/* avfeed   = sync audio and video transfers independently,
- * movie    = legacy back when we used ffmpeg backend
- * libretro = sync audio and video on video only */
 	if (setup.use_builtin){
-		if ((strcmp(setup.args.builtin.mode, "decode") == 0) ||
-		(strcmp(setup.args.builtin.mode, "avfeed") == 0)){
-			ctx->kind     = ARCAN_FRAMESERVER_AVFEED;
-			ctx->flags.socksig = false;
-			ctx->aid      = arcan_audio_feed((arcan_afunc_cb)
-											arcan_frameserver_audioframe_shared, ctx, &errc);
-			ctx->sz_audb  = 0;
-			ctx->ofs_audb = 0;
-
-			ctx->queue_mask = EVENT_EXTERNAL;
-		}
 /* "libretro" (or rather, interactive mode) treats a single pair of
  * videoframe+audiobuffer each transfer, minimising latency is key. */
-		else if (strcmp(setup.args.builtin.mode, "libretro") == 0){
+		if (strcmp(setup.args.builtin.mode, "libretro") == 0){
 			ctx->aid      = arcan_audio_feed((arcan_afunc_cb)
 												arcan_frameserver_audioframe_direct, ctx, &errc);
 			ctx->kind     = ARCAN_FRAMESERVER_INTERACTIVE;
@@ -844,6 +835,16 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 			ctx->sz_audb = ARCAN_SHMPAGE_AUDIOBUF_SZ;
 			ctx->audb = arcan_alloc_mem(ctx->sz_audb,
 				ARCAN_MEM_ABUFFER, 0, ARCAN_MEMALIGN_PAGE);
+			ctx->queue_mask = EVENT_EXTERNAL;
+		}
+		else {
+			ctx->kind     = ARCAN_FRAMESERVER_AVFEED;
+			ctx->flags.socksig = true;
+			ctx->aid      = arcan_audio_feed((arcan_afunc_cb)
+											arcan_frameserver_audioframe_shared, ctx, &errc);
+			ctx->sz_audb  = 0;
+			ctx->ofs_audb = 0;
+
 			ctx->queue_mask = EVENT_EXTERNAL;
 		}
 	}

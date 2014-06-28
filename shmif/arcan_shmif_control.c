@@ -494,8 +494,10 @@ bool arcan_shmif_resize(struct arcan_shmif_cont* arg,
 	while(arg->addr->resized && arg->addr->dms)
 		;
 
-	if (!arg->addr->dms)
+	if (!arg->addr->dms){
+		LOG("dead man switch pulled during resize, giving up.\n");
 		return false;
+	}
 
 	if (arg->shmsize != arg->addr->segment_size){
 /*

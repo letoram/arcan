@@ -54,6 +54,8 @@ void arcan_frameserver_avfeed_run(
 	const char* resource, const char* keyfile);
 void arcan_frameserver_terminal_run(
 	const char* resource, const char* keyfile);
+void arcan_frameserver_remoting_run(
+	const char* resource, const char* keyfile);
 
 /*
  * arcan_general functions assumes these are valid for searchpaths etc.
