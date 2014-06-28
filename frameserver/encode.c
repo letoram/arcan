@@ -753,6 +753,10 @@ static void vnc_serv_deltaupd()
  * maintain a backbuffer, compare each tile center (and shared corners)
  * for changes, if change detected, scan outwards until match found.
  * Mark each rect-region as modified.
+ *
+ * One possible representation for this is to use a display-sized 1byte grid,
+ * where you scan like a regular image, and the value represents the next 
+ * coordinate distance. It's quicker but perhaps not as effective ..
  */
 	rfbMarkRectAsModified(vncctx.server, 0, 0, recctx.shmcont.addr->w,
 		recctx.shmcont.addr->h);
@@ -793,7 +797,7 @@ static void vnc_serv_run(struct arg_arr* args)
  * FIXME: missing password auth
  */
 	vncctx.server->frameBuffer = (char*) recctx.shmcont.vidp;
-	vncctx.server->desktopName = "Arcan VNC session";
+	vncctx.server->desktopName = name;
 	vncctx.server->alwaysShared = TRUE;
 	vncctx.server->ptrAddEvent = server_pointer;
 	vncctx.server->newClientHook = server_newclient;

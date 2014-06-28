@@ -4698,6 +4698,7 @@ static int targetlaunch(lua_State* ctx)
 				};
 
 				if (arcan_frameserver_spawn_server(intarget, args) == ARCAN_OK){
+					arcan_video_objectopacity(intarget->vid, 0.0, 0);
 					lua_pushvid(ctx, intarget->vid);
 					lua_pushaid(ctx, intarget->aid);
 					arcan_db_launch_counter_increment(dbhandle, gameid);
@@ -5064,44 +5065,54 @@ static int spawn_recfsrv(lua_State* ctx,
 	};
 	arcan_video_alterfeed(did, arcan_frameserver_avfeedframe, fftag);
 
-	if ( arcan_frameserver_spawn_server(mvctx, args) == ARCAN_OK ){
+	if ( arcan_frameserver_spawn_server(mvctx, args) != ARCAN_OK ){
+		free(mvctx);
+		return 0;
+	}
 
 /* we define the size of the recording to be that of the storage
  * of the rendertarget vid, this should be allocated through fill_surface */
-		struct arcan_shmif_page* shmpage = mvctx->shm.ptr;
-		shmpage->w = dobj->vstore->w;
-		shmpage->h = dobj->vstore->h;
+	struct arcan_shmif_page* shmpage = mvctx->shm.ptr;
+	shmpage->w = dobj->vstore->w;
+	shmpage->h = dobj->vstore->h;
 
-		arcan_shmif_calcofs(shmpage, &(mvctx->vidp), &(mvctx->audp));
+	arcan_shmif_calcofs(shmpage, &(mvctx->vidp), &(mvctx->audp));
 
 /* pushing the file descriptor signals the frameserver to start receiving
  * (and use the proper dimensions), it is permitted to close and push another
  * one to the same session, with special treatment for "dumb" resource names
  * or streaming sessions */
-		int fd;
-		if (strstr(args.args.builtin.resource, "container=stream") != NULL ||
-			strlen(args.args.builtin.resource) == 0)
-			fd = open(NULFILE, O_WRONLY);
-		else
-			fd = fmt_open(O_CREAT | O_RDWR, S_IRWXU, "%s/%s/%s", arcan_themepath,
-				arcan_themename, resf);
+	int fd = 0;
 
-		if (fd){
-			arcan_frameserver_pushfd( mvctx, fd );
-			close(fd);
-			mvctx->alocks = aidlocks;
+	if (strstr(args.args.builtin.resource, 
+		"container=stream") != NULL || strlen(resf) == 0)
+		fd = open(NULFILE, O_WRONLY);
+	else if (-1 == (
+		fd = fmt_open(O_CREAT | O_RDWR, S_IRWXU, "%s/%s/%s", arcan_themepath,
+			arcan_themename, resf))){
+
+		arcan_warning("recordset(%s/%s/%s) -- couldn't create output.\n",
+			arcan_themepath, arcan_themename, resf);
+	}
+
+	if (fd){
+		arcan_frameserver_pushfd( mvctx, fd );
+		close(fd);
+	}
+
+	mvctx->alocks = aidlocks;
 
 /*
  * lastly, lock each audio object and forcibly attach the frameserver as
  * a monitor. NOTE that this currently doesn't handle the case where we we
  * set up multiple recording sessions sharing audio objects.
  */
-			arcan_aobj_id* base = mvctx->alocks;
-			while(base && *base){
-				void* hookfun;
-				arcan_audio_hookfeed(*base++, mvctx,
-					arcan_frameserver_avfeedmon, &hookfun);
-			}
+	arcan_aobj_id* base = mvctx->alocks;
+	while(base && *base){
+		void* hookfun;
+		arcan_audio_hookfeed(*base++, mvctx,
+			arcan_frameserver_avfeedmon, &hookfun);
+	}
 
 /*
  * if we have several input audio sources, we need to set up an intermediate
@@ -5109,16 +5120,9 @@ static int spawn_recfsrv(lua_State* ctx,
  * and emitts a mixed buffer. This requires that the audio sources operate at
  * the same rate and buffering will converge on the biggest- buffer audio source
  */
-			if (naids > 1)
-				arcan_frameserver_avfeed_mixer(mvctx, naids, aidlocks);
-		}
-		else
-			arcan_warning("recordset(%s/%s/%s)--couldn't create output.\n",
-				arcan_themepath, arcan_themename, resf);
-	}
-	else
-		free(mvctx);
-
+	if (naids > 1)
+		arcan_frameserver_avfeed_mixer(mvctx, naids, aidlocks);
+	
 	return 0;
 }
 
@@ -5240,19 +5244,19 @@ static int recordset(lua_State* ctx)
 
 	luaL_checktype(ctx, 4, LUA_TTABLE);
 	int rc = 0;
-	int nvids         = lua_rawlen(ctx, 4);
+	int nvids = lua_rawlen(ctx, 4);
 
-	int detach        = luaL_checkint(ctx, 6);
-	int scale         = luaL_checkint(ctx, 7);
-	int pollrate      = luaL_checkint(ctx, 8);
+	int detach = luaL_checkint(ctx, 6);
+	int scale = luaL_checkint(ctx, 7);
+	int pollrate = luaL_checkint(ctx, 8);
 
 	int naids = 0;
 	bool global_monitor = false;
 
 	if (lua_type(ctx, 5) == LUA_TTABLE)
-		naids         = lua_rawlen(ctx, 5);
+		naids = lua_rawlen(ctx, 5);
 	else if (lua_type(ctx, 5) == LUA_TNUMBER){
-		naids         = 1;
+		naids = 1;
 		arcan_vobj_id did = luaL_checkvid(ctx, 5, NULL);
 		if (did != ARCAN_VIDEO_WORLDID){
 			arcan_warning("recordset(%d) Unexpected value for audio, "

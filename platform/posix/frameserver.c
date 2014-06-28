@@ -676,6 +676,10 @@ bool arcan_frameserver_resize(shm_handle* src, int w, int h)
 /*
  * Don't resize unless the gain is ~20%
  */
+#ifdef ARCAN_SHMIF_OVERCOMMIT
+	return true;
+#endif
+
 	if (sz < src->shmsize && sz > (float)src->shmsize * 0.8)
 		return true;
 
@@ -687,12 +691,24 @@ bool arcan_frameserver_resize(shm_handle* src, int w, int h)
 
 /* unmap + truncate + map */
 	munmap(src->ptr, src->shmsize);
-	src->shmsize = sz;
-	ftruncate(src->handle, sz);
-	src->ptr = mmap(NULL, sz, PROT_READ | PROT_WRITE, MAP_SHARED, src->handle,0);
-	memcpy(src->ptr, tmpbuf, sizeof(struct arcan_shmif_page));
-	src->ptr->segment_size = sz;
+	src->ptr = NULL;
 
+	src->shmsize = sz;
+	if (-1 == ftruncate(src->handle, sz)){
+		arcan_warning("frameserver_resize() failed, "
+			"bad (broken?) truncate (%s)\n", strerror(errno));
+		return false;
+	}
+
+	src->ptr = mmap(NULL, sz, PROT_READ|PROT_WRITE, MAP_SHARED, src->handle, 0);
+  if (MAP_FAILED == src->ptr){
+  	src->ptr = NULL;
+		arcan_warning("frameserver_resize() failed, reason: %s\n", strerror(errno));
+    return false;
+  }
+  
+  memcpy(src->ptr, tmpbuf, sizeof(struct arcan_shmif_page));
+  src->ptr->segment_size = sz;
 	arcan_mem_free(tmpbuf);
 	return true;
 }

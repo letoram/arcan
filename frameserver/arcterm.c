@@ -185,7 +185,7 @@ retry:
 	inbuf_len += rc;
 	while((s_sz = utf8dec(tail, &ucodep, inbuf_len))){
 		utf8enc(ucodep, s, 4);
-		printf("got %s\n", s);
+		LOG("read %s\n", s);
 		tail += s_sz;
 		inbuf_len -= s_sz;
 	}

@@ -117,8 +117,12 @@ static bool client_connect(const char* host, int port)
 	vncctx.client->HandleKeyboardLedState = client_keyled;
 	vncctx.client->serverHost = strdup(host);
 	vncctx.client->serverPort = port;
+
+/*
+ Note, if these are set, Rfb will actually BOUNCE 
 	vncctx.client->destHost = strdup(host);
 	vncctx.client->destPort = port;
+ */
 
 	if (!rfbInitClient(vncctx.client, NULL, NULL)){
 		LOG("(vnc-cl) couldn't initialize client.\n");
