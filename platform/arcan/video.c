@@ -53,7 +53,7 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 
 		if (!shmkey){
 			arcan_warning("platform/arcan/video.c:platform_video_init(): "
-				"no connection key found, giving up. (see environment ARCAN_SHMKEY)\n");
+				"no connection key found, giving up. (see environment ARCAN_CONNPATH)\n");
 			return false;
 		}
 		shms = arcan_shmif_acquire(shmkey, SHMIF_INPUT, true, false);

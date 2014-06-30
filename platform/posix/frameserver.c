@@ -106,6 +106,12 @@ void arcan_frameserver_killchild(arcan_frameserver* src)
 		return;
 
 /*
+ * only kill non-authoritative connections
+ */
+	if (src->child <= 1)
+		return;
+
+/*
  * this one is more complicated than it seems, as we don't want zombies
  * lying around, yet might be in a context where the child is no-longer
  * trusted. Double-forking and getting the handle that way is
