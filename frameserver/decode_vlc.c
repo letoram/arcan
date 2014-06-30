@@ -11,6 +11,7 @@
 
 #include <vlc/vlc.h>
 #include <arcan_shmif.h>
+#include "frameserver.h"
 
 /*
  * NOTE: we seem to have introduced some kind of locking issue,
@@ -284,6 +285,11 @@ static libvlc_media_t* find_capture_device(
 
 #ifdef WIN32
 
+#elif __APPLE__
+	char url[48];
+	snprintf(url, sizeof(url) / sizeof(url[0]), "qtcapture://%d", id);
+	media = libvlc_media_new_location(decctx.vlc, url);
+
 #else
 	char url[24];
 	snprintf(url,24, "v4l2:///dev/video%d", id);
@@ -327,6 +333,15 @@ static void process_inevq()
  * get_title_description, get_chapter_description
  * get_track, set_track, ...
  * */
+		break;
+
+		case TARGET_COMMAND_FDTRANSFER:
+		{
+			libvlc_media_t* media = libvlc_media_new_fd(
+				decctx.vlc, frameserver_readhandle(&ev));
+			libvlc_media_player_set_media(decctx.player, media);
+			libvlc_media_release(media);
+		}
 		break;
 
 		case TARGET_COMMAND_EXIT:

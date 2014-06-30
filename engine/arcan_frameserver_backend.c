@@ -53,8 +53,12 @@ static inline void emit_deliveredframe(arcan_frameserver* src,
 static inline void emit_droppedframe(arcan_frameserver* src,
 	unsigned long long pts, unsigned long long framecount);
 
+static FILE* fout;
 arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 {
+	if (!fout)
+		fout= fopen("dump.sys", "w");
+
 	if (!src)
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
@@ -80,13 +84,21 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 		arcan_frameserver_dropshared(src);
 		src->shm.ptr = NULL;
 	}
+	fprintf(fout, "exit event sent, shared dropped.\n");
+	fflush(fout);
 
 /*	if (src->desc.pbo_transfer && src->desc.upload_pbo[0] != 0){
 		glDeleteBuffers(2, src->desc.upload_pbo);
 	}
 */
 
+	fprintf(fout, "killing child (%d)\n", src->child);
+	fflush(fout);
+
   arcan_frameserver_killchild(src);
+
+	fprintf(fout, "out of killing child\n");
+	fflush(fout);
 
 	src->child = BROKEN_PROCESS_HANDLE;
 	src->flags.alive = false;
@@ -100,6 +112,8 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 
 	vfunc_state emptys = {0};
 	arcan_mem_free(src->audb);
+	fprintf(fout, "sub bufferes flushed\n");
+	fflush(fout);
 
 #ifndef _WIN32
 	close(src->sockout_fd);
@@ -107,8 +121,10 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 
 	arcan_audio_stop(src->aid);
 	arcan_video_alterfeed(src->vid, NULL, emptys);
-	arcan_mem_free(src);
+	fprintf(fout, "feed function reset!\n");
+	fflush(fout);
 
+	arcan_mem_free(src);
 	return ARCAN_OK;
 }
 

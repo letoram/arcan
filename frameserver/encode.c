@@ -83,6 +83,10 @@ struct {
 	bool extsynch;
 } recctx = {0};
 
+struct cl_track {
+	unsigned conn_id; 
+}; 
+
 /* flush the audio buffer present in the shared memory page as
  * quick as possible, resample if necessary, then use the intermediate
  * buffer to feed encoder */
@@ -427,7 +431,6 @@ void arcan_frameserver_stepframe()
 end:
 	if (!recctx.extsynch)
 		arcan_sem_post(recctx.shmcont.vsem);
-	LOG("pass finished\n");
 }
 
 static void encoder_atexit()
@@ -709,7 +712,7 @@ static void server_pointer (int buttonMask,int x,int y,rfbClientPtr cl)
 	arcan_event outev = {
 		.category = EVENT_EXTERNAL,
 		.kind = EVENT_EXTERNAL_CURSORINPUT,
-		.data.external.cursor.id = 0,
+		.data.external.cursor.id = ((struct cl_track*)cl->clientData)->conn_id,
 		.data.external.cursor.x = x,
 		.data.external.cursor.y = y
 	};
@@ -720,7 +723,6 @@ static void server_pointer (int buttonMask,int x,int y,rfbClientPtr cl)
 	outev.data.external.cursor.buttons[3] = buttonMask & (1 << 4);
 	outev.data.external.cursor.buttons[4] = buttonMask & (1 << 5);
 
-	LOG("sending cursor event: %d, %d\n", x, y);
 	arcan_event_enqueue(&recctx.shmcont.outev, &outev);
 }
 
@@ -729,7 +731,7 @@ static void server_key(rfbBool down,rfbKeySym key,rfbClientPtr cl)
 	arcan_event outev = {
 		.category = EVENT_EXTERNAL,
 		.kind = EVENT_EXTERNAL_KEYINPUT,
-		.data.external.key.id = 0,
+		.data.external.key.id = ((struct cl_track*)cl->clientData)->conn_id,
 		.data.external.key.keysym = 0,
 		.data.external.key.active = down
 	};
@@ -737,12 +739,26 @@ static void server_key(rfbBool down,rfbKeySym key,rfbClientPtr cl)
 	if (key < 65536)
 		outev.data.external.key.keysym = symtbl_in[key];
 
-	LOG("sending key event: %d\n", outev.data.external.key.keysym);
 	arcan_event_enqueue(&recctx.shmcont.outev, &outev);
+}
+
+static void server_dropclient(rfbClientPtr cl)
+{
+	assert(cl->clientData);
+	free(cl->clientData);
+	cl->clientData = NULL;
 }
 
 static enum rfbNewClientAction server_newclient(rfbClientPtr cl)
 {
+	struct cl_track* clt = malloc(sizeof(struct cl_track));
+	static int step_c;
+
+	memset(clt, '\0', sizeof(struct cl_track));
+	clt->conn_id = step_c++;
+	cl->clientData = clt;
+	cl->clientGoneHook = server_dropclient;
+
 	return RFB_CLIENT_ACCEPT;
 }
 
