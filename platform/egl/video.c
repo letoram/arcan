@@ -28,9 +28,7 @@
  *
  * Furthermore, for headless to work well, we also need support in arcan_video
  * for having a default output FBO where our destination textures will reside.
- * This is relevant for the arcan-in-arcan case where the result will be read-back
- * or, even more preferably, shared with the main process. The latter case relies
- * on currently-missing-extensions however.
+ * This is relevant for the arcan-in-arcan case.
  */
 
 #include <stdio.h>
@@ -50,6 +48,14 @@
 #include "arcan_general.h"
 #include "arcan_video.h"
 #include "arcan_videoint.h"
+
+#ifndef EGL_SUFFIX
+#define EGL_SUFFIX platform
+#endif
+
+#define MERGE(X,Y) X ## Y
+#define EVAL(X,Y) MERGE(X,Y)
+#define PLATFORM_SYMBOL(fun) EVAL(EGL_SUFFIX, fun)
 
 static struct {
 	EGLDisplay disp;
@@ -107,7 +113,7 @@ static bool setup_xwnd(int w, int h, bool fullscreen)
 
 	if (fullscreen){
 		XEvent xev = {0};
- 		Atom wm_state   = XInternAtom ( x11.xdisp, "_NET_WM_STATE", False );
+ 		Atom wm_state = XInternAtom ( x11.xdisp, "_NET_WM_STATE", False );
 	  Atom fsa = XInternAtom ( x11.xdisp, "_NET_WM_STATE_FULLSCREEN", False );
 
   	xev.type = ClientMessage;
@@ -328,7 +334,7 @@ static bool alloc_bcm_wnd(uint16_t* w, uint16_t* h)
 
 #endif
 
-void platform_video_bufferswap()
+void PLATFORM_SYMBOL(_video_bufferswap) ()
 {
 #ifdef WITH_X11
 /* should be moved into its own
@@ -374,17 +380,101 @@ void platform_video_bufferswap()
 #define EGL_NATIVE_DISPLAY EGL_DEFAULT_DISPLAY
 #endif
 
-bool platform_video_init(uint16_t w, uint16_t h, uint8_t bpp, bool fs,
-	bool frames)
+#ifdef WITH_OGL3
+#ifdef WITH_HEADLESS
+
+bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
+	uint8_t bpp, bool fs, bool frames)
+{
+
+}
+
+#else
+bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
+	uint8_t bpp, bool fs, bool frames)
+{
+	const EGLint attrlst[] =
+	{
+		EGL_SURFACE_TYPE,
+		EGL_WINDOW_BIT,
+		EGL_RENDERABLE_TYPE,
+		EGL_OPENGL_BIT,
+		EGL_RED_SIZE, 8,
+		EGL_GREEN_SIZE, 8,
+		EGL_BLUE_SIZE, 8,
+		EGL_ALPHA_SIZE, 8,
+		EGL_DEPTH_SIZE, 8,
+		EGL_STENCIL_SIZE, 1,
+		EGL_BUFFER_SIZE, 32,
+		EGL_NONE
+	};
+
+#ifdef WITH_X11
+	if (!setup_xwnd(w, h, fs)){
+		arcan_warning("Couldn't setup Window (X11)\n");
+		return false;
+	}
+#endif
+
+	if (!eglBindAPI(EGL_OPENGL_API)){
+		arcan_warning("Couldn't bind EGL/OpenGL API, "
+			"likely that driver does not support the EGL/OGL combination."
+			"check driver/GL libraries or try a different platform (e.g. GLES2+)\n");
+		return false;
+	}
+
+	GLint major, minor;
+	egl.disp = eglGetDisplay((EGLNativeDisplayType) EGL_NATIVE_DISPLAY);
+	if (!eglInitialize(egl.disp, &major, &minor)){
+		arcan_warning("Couldn't initialize EGL\n");
+		return false;
+	}
+
+	GLint nc;
+	if (!eglGetConfigs(egl.disp, NULL, 0, &nc)){
+		arcan_warning("No configurations found\n");
+		return false;
+	}
+
+	if (!eglChooseConfig(egl.disp, attrlst, &egl.cfg, 1, &nc)){
+		arcan_warning("Couldn't activate/find a useful configuration\n");
+		return false;
+	}
+
+#ifdef WITH_GLEW
+	int err;
+	if ( (err = glewInit()) != GLEW_OK){
+		platform_video_shutdown();
+		arcan_warning("Couldn't initialize GLEW\n");
+		return false;
+	}
+#endif
+
+	arcan_video_display.pbo_support = true;
+	arcan_video_display.width = w;
+	arcan_video_display.height = h;
+	arcan_video_display.bpp = bpp;
+	glViewport(0, 0, w, h);
+
+	eglSwapInterval(egl.disp, 1);
+
+	return true;
+}
+#endif
+
+#else
+bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
+	uint8_t bpp, bool fs, bool frames)
 {
 	EGLint ca[] = {
 		EGL_CONTEXT_CLIENT_VERSION,
-#ifdef WITH_GLES3
+#if defined(WITH_GLES3)
 		3,
+		0,
 #else
 		2,
+		0,
 #endif
-		EGL_NONE,
 		EGL_NONE
 	};
 
@@ -395,9 +485,9 @@ bool platform_video_init(uint16_t w, uint16_t h, uint8_t bpp, bool fs,
 		EGL_ALPHA_SIZE, 8,
 		EGL_DEPTH_SIZE, 8,
 		EGL_STENCIL_SIZE, 1,
-		EGL_BUFFER_SIZE, 16, // ?
-		EGL_RENDERABLE_TYPE, // ?
-		EGL_OPENGL_ES2_BIT, // ?
+		EGL_BUFFER_SIZE, 32,
+		EGL_RENDERABLE_TYPE,
+		EGL_OPENGL_ES2_BIT,
 		EGL_NONE
 	};
 
@@ -420,8 +510,10 @@ bool platform_video_init(uint16_t w, uint16_t h, uint8_t bpp, bool fs,
 	}
 #endif
 
+	eglBindAPI(EGL_OPENGL_ES_API);
+
 	egl.disp = eglGetDisplay((EGLNativeDisplayType) EGL_NATIVE_DISPLAY);
-#if defined(WITH_GLES3) || defined(WITH_OGL3)
+#if defined(WITH_GLES3)
 	arcan_video_display.pbo_support = true;
 #else
 	arcan_video_display.pbo_support = false;
@@ -453,7 +545,8 @@ bool platform_video_init(uint16_t w, uint16_t h, uint8_t bpp, bool fs,
 
 	egl.ctx = eglCreateContext(egl.disp, egl.cfg, EGL_NO_CONTEXT, ca);
 	if (egl.ctx == EGL_NO_CONTEXT){
-		arcan_warning("Couldn't create EGL context\n");
+		arcan_warning("Couldn't create EGL/GLES context, "
+			"requested version: %d.%d \n", ca[1], ca[2]);
 		return false;
 	}
 
@@ -483,28 +576,13 @@ bool platform_video_init(uint16_t w, uint16_t h, uint8_t bpp, bool fs,
 
 	eglSwapInterval(egl.disp, 1);
 
-/*
- * This should be needed less and less with newer GL versions
- */
-#ifdef WITH_GLEW
-	int err;
-	if ( (err = glewInit()) != GLEW_OK){
-		platform_video_shutdown();
-		arcan_warning("Couldn't initialize GLEW\n");
-		return false;
-	}
-#endif
-
 	return true;
 }
+#endif
 
-void platform_video_prepare_external()
-{}
-
-void platform_video_restore_external()
-{}
-
-void platform_video_shutdown()
+void PLATFORM_SYMBOL(_video_prepare_external) () {}
+void PLATFORM_SYMBOL(_video_restore_external) () {}
+void PLATFORM_SYMBOL(_video_shutdown) ()
 {
 	eglDestroyContext(egl.disp, egl.ctx);
 	eglDestroySurface(egl.disp, egl.surf);
@@ -516,13 +594,13 @@ void platform_video_shutdown()
 #endif
 }
 
-void platform_video_timing(float* vsync, float* stddev, float* variance)
+void PLATFORM_SYMBOL(_video_timing) (
+	float* vsync, float* stddev, float* variance)
 {
 	*vsync = 16.667;
 	*stddev = 0.01;
 	*variance = 0.01;
 }
 
-void platform_video_minimize()
-{
-}
+void PLATFORM_SYMBOL(_video_minimize) () {}
+

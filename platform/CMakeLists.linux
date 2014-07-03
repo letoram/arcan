@@ -34,13 +34,17 @@ set (LWA_PLATFORM_SOURCES
 )
 
 if (VIDEO_PLATFORM STREQUAL "egl")
+		set_property(SOURCE ${PLATFORM_PATH}/../egl/video.c 
+			APPEND PROPERTY COMPILE_FLAGS "-Wno-unused-function")
+	
 	if (GLES2_BCM_IMPLEMENTATION)
 		set_property(SOURCE ${PLATFORM_PATH}/../egl/video.c
 			APPEND PROPERTY COMPILE_DEFINITIONS WITH_BCM)
 	endif()
 
+# GLEW does not support GLES
 	if (ENABLE_GLES2)
-		set (GL_LIBRARIES ${GLES2_LIBRARIES} ${EGL_LIBRARIES})
+		set(GL_LIBRARIES ${GLES2_LIBRARIES} ${EGL_LIBRARIES})
 		set(ENABLE_LIBRETRO3D FALSE) #not yet ported
 	else()
 		set(GL_LIBRARIES
@@ -52,8 +56,18 @@ if (VIDEO_PLATFORM STREQUAL "egl")
 	endif()
 
 	if (ENABLE_X11)
+		if (NOT ENABLE_GLES2)
+			set_property(SOURCE ${PLATFORM_PATH}/../egl/video.c
+				APPEND PROPERTY COMPILE_DEFINITIONS
+				WITH_GLEW
+				WITH_OGL3
+						)
+		endif()
+
 		set_property(SOURCE ${PLATFORM_PATH}/../egl/video.c
-			APPEND PROPERTY COMPILE_DEFINITIONS WITH_X11)
+			APPEND PROPERTY COMPILE_DEFINITIONS 
+				WITH_X11
+		)
 
 		set_property(SOURCE ${PLATFORM_PATH}/../linux/event.c
 			APPEND PROPERTY COMPILE_DEFINITIONS WITH_X11)
@@ -61,12 +75,11 @@ if (VIDEO_PLATFORM STREQUAL "egl")
 		set_property(SOURCE ${PLATFORM_PATH}/../egl/video.c
 			APPEND PROPERTY COMPILE_DEFINITIONS WITH_GBMKMS)
 	endif()
-	add_definitions(-DGL_HEADERS=\"${PLATFORM_PATH}/../egl/glheaders.h\")
+
+	set(ARCAN_DEFINITIONS "${ARCAN_DEFINITIONS} GL_HEADERS=\"${PLATFORM_PATH}/../egl/glheaders.h\"")
 
 	list(APPEND MAIN_LIBRARIES ${GL_LIBRARIES})
 	list(APPEND PLATFORM_SOURCES ${PLATFORM_PATH}/../egl/video.c)
-	set_property(SOURCE ${PLATFORM_PATH}/../arcan/video.c
-		APPEND PROPERTY COMPILE_DEFINITIONS EGL_PLATFORM)
 
 	if (${ENABLE_LIBRETRO})
 	if (${ENABLE_LIBRETRO3D})
@@ -79,14 +92,8 @@ if (VIDEO_PLATFORM STREQUAL "egl")
 	endif(${ENABLE_LIBRETRO})
 
 elseif(VIDEO_PLATFORM STREQUAL "sdl")
-	add_definitions(-DGL_HEADERS=\"${PLATFORM_PATH}/../sdl/glheaders.h\")
+	set(ARCAN_DEFINITIONS "${ARCAN_DEFINITIONS} GL_HEADERS=\"${PLATFORM_PATH}/../sdl/glheaders.h\"")
 	list(APPEND PLATFORM_SOURCES ${PLATFORM_PATH}/../sdl/video.c)
-	set_property(SOURCE ${PLATFORM_PATH}/../arcan/video.c
-		APPEND PROPERTY COMPILE_DEFINITIONS
-		SDL_PLATFORM
-		GL_HEADERS=\"${PLATFORM_PATH}/../sdl/glheaders.h\"
-	)
-
 	if (${ENABLE_LIBRETRO})
 	if (${ENABLE_LIBRETRO3D})
 		list(APPEND FSRV_LIBRETRO_SOURCES
@@ -107,6 +114,11 @@ if (INPUT_PLATFORM STREQUAL "sdl")
 elseif (INPUT_PLATFORM STREQUAL "linux")
 	list(APPEND PLATFORM_SOURCES
 		${PLATFORM_PATH}/../linux/event.c
+	)
+# workaround for now, egl video driver does some quick mouse hacks at least
+elseif (INPUT_PLATFORM STREQUAL "x11")
+	list(APPEND PLATFORM_SOURCES
+		${PLATFORM_PATH}/../stub/event.c
 	)
 else()
 	message(FATAL_ERROR "Linux: Unsupported input platform (${INPUT_PLATFORM})")
@@ -157,19 +169,33 @@ SET(HIJACK_SOURCES
 )
 
 #
-# For LWA support, we mimic the video platform used by main arcan
+# For LWA support, we default to a different video platform as all
+# we need is a headless (possibly unaccelerated if paranoid) way of rendering
+# GL into the shared memory buffer.
+#
 # (to get GL up and running) and substitute the shmif for input/audio
 # Audio is managed by building / linking a special AL-soft with a
 # backend that uses the shmif.
 #
 if (ENABLE_LWA)
-	message("LWA support enabled, video backend (${VIDEO_PLATFORM} )")
-
+	message("LWA support enabled, video backend (EGL/X11, hardcoded)")
 	add_executable(arcan_lwa
 		${SOURCES}
 		${LWA_PLATFORM_SOURCES}
 	)
 
+	set_property(TARGET arcan_lwa
+		APPEND PROPERTY COMPILE_DEFINITIONS
+			GL_HEADERS=\"${PLATFORM_PATH}/../egl/glheaders.h\"
+	)
+
+	set_property(SOURCE ${PLATFORM_PATH}/../arcan/video.c
+		APPEND PROPERTY COMPILE_DEFINITIONS 
+			EGL_PLATFORM 
+			WITH_X11
+			WITH_HEADLESS
+	)
+	
 #	set_property(TARGET arcan_lwa
 #		APPEND PROPERTY COMPILE_DEFINITIONS
 #	)
@@ -191,6 +217,11 @@ set(THEME_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/themes)
 set(RESOURCES_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/resources)
 
 add_executable( arcan ${SOURCES} ${PLATFORM_SOURCES} )
+set_property(TARGET arcan APPEND PROPERTY COMPILE_DEFINITIONS ${ARCAN_DEFINITIONS})
+	
+if (${SDLIMAGE_FOUND})
+	set_property(TARGET arcan APPEND PROPERTY COMPILE_DEFINITIONS SDLIMAGE)
+endif()
 
 install(TARGETS arcan_hijack DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
 

@@ -32,6 +32,7 @@
 #include <fcntl.h>
 #include <linux/input.h>
 
+#include "arcan_shmif.h"
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_event.h"
@@ -107,7 +108,7 @@ struct arcan_devnode {
 	};
 };
 
-static inline bool process_axis(arcan_evctx* ctx,
+static inline bool process_axis(struct arcan_evctx* ctx,
 	struct axis_opts* daxis, int16_t samplev, int16_t* outv)
 {
 	if (daxis->mode == ARCAN_ANALOGFILTER_NONE)
@@ -178,7 +179,7 @@ accept_sample:
 	return true;
 }
 
-static inline void process_mousemotion(arcan_evctx* ctx,
+static inline void process_mousemotion(struct arcan_evctx* ctx,
 	int16_t xv, int16_t xrel, int16_t yv, int16_t yrel)
 {
 	int16_t dstv, dstv_r;
@@ -370,18 +371,7 @@ setmouse:
 		upper_bound, deadzone, buffer_sz, kind);
 }
 
-static unsigned long djb_hash(const char* str)
-{
-	unsigned long hash = 5381;
-	int c;
-
-	while ((c = *(str++)))
-		hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
-
-	return hash;
-}
-
-void platform_event_process(arcan_evctx* ctx)
+void platform_event_process(struct arcan_evctx* ctx)
 {
 #ifdef WITH_X11
 	static bool mouse_init;
@@ -419,12 +409,12 @@ void platform_event_process(arcan_evctx* ctx)
 /* poll all open FDs */
 }
 
-void platform_key_repeat(arcan_evctx* ctx, unsigned int rate)
+void platform_key_repeat(struct arcan_evctx* ctx, unsigned int rate)
 {
 /* ioctl for keyboard device */
 }
 
-void arcan_event_rescan_idev(arcan_evctx* ctx)
+void arcan_event_rescan_idev(struct arcan_evctx* ctx)
 {
 /* might just use a discover thread and sync when polled */
 	char ibuf[sizeof(DEVPREFIX) + 4];
@@ -472,7 +462,7 @@ const char* arcan_event_devlabel(int devid)
 		"no identifier" : iodev.nodes[devid].label;
 }
 
-void platform_event_deinit(arcan_evctx* ctx)
+void platform_event_deinit(struct arcan_evctx* ctx)
 {
 	/* keep joystick table around, just close handles */
 }

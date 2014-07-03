@@ -1406,7 +1406,7 @@ static uintptr_t get_framebuffer()
  */
 static void* intercept_procaddr(const char* proc)
 {
-	return SDL_GL_GetProcAddress(proc);
+	return frameserver_requirefun(proc, false);
 }
 
 static void setup_3dcore(struct retro_hw_render_callback* ctx)
