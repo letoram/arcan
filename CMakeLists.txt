@@ -56,8 +56,8 @@ if (NOT WIN32)
 	option(ENABLE_GLES2 "Use GLES2 rather than OpenGL 2.1 (requires EGL)" OFF)
 	option(ENABLE_X11 "Use an XWindows Display for the GLES context (requires EGL)" OFF)
 	option(MUSL_LIBC "Use the MUSL libc implementation (incomplete)" OFF)
+	option(ENABLE_LWA "Build a lightweight arcan (arcan_lwa) with nested platform" OFF)
 endif()
-option(ENABLE_LWA "Build a lightweight arcan (arcan_lwa) with nested platform" OFF)
 option(ENABLE_SIMD_ALIGNED "Assert that SIMD data sources are 16-byte aligned" OFF)
 option(ENABLE_NET "Build with networking support in frameserver" ON)
 option(ENABLE_LIBRETRO "Build with libretro support in frameserver" ON)
@@ -172,6 +172,7 @@ endif (ENABLE_ASAN)
 # paths / locations
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake)
 set(OPENCTM_LIBRARY openctm)
+set (ARCAN_DEFINITIONS "")
 
 # OS Specific libraries / dependencies first
 if(WIN32)
@@ -204,6 +205,10 @@ if(WIN32)
 	set(OS_PLATFORM_NAME "Win32")
 endif()
 
+#
+# This one is a beast when it comes to different combinations;
+# ( EGL, GBMKMS, X11 ) + [opt. extension manager, GLEW] + (GLES | OGL) 
+#
 if (EGL_VIDEO_PLATFORM)
     set(VIDEO_PLATFORM "egl")
 		FIND_PACKAGE(EGL REQUIRED)
@@ -212,6 +217,8 @@ if (EGL_VIDEO_PLATFORM)
 			FIND_PACKAGE(GLES2 REQUIRED)
 		else()
 			FIND_PACKAGE(OpenGL REQUIRED)
+			FIND_PACKAGE(GLEW REQUIRED)
+			LIST(APPEND INCLUDE_DIRS ${GLEW_INCLUDE_DIRS})
 		endif()
 
 	if (NOT ENABLE_X11)
@@ -232,20 +239,29 @@ if (EGL_VIDEO_PLATFORM)
 
 endif()
 
+if (ENABLE_LWA)
+	if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+	else()
+		FIND_PACKAGE(X11 REQUIRED)
+		FIND_PACKAGE(EGL REQUIRED)
+		list(APPEND LWA_LIBRARIES ${X11_LIBRARIES} ${EGL_LIBRARIES})
+	endif()	
+endif()
+
 if (NOT VIDEO_PLATFORM OR VIDEO_PLATFORM STREQUAL "sdl")
 	set(VIDEO_PLATFORM "sdl")
 	FIND_PACKAGE( SDL REQUIRED )
 	FIND_PACKAGE ( OpenGL REQUIRED )
 	FIND_PACKAGE ( GLEW REQUIRED )
 	FIND_PACKAGE ( SDL_image )
-	LIST(APPEND MAIN_LIBRARIES ${GLEW_LIBRARY} ${OPENGL_gl_LIBRARY} ${SDL_LIBRARY})
+	LIST(APPEND MAIN_LIBRARIES ${GLEW_LIBRARY} ${OPENGL_gl_LIBRARY}) 
+	LIST(APPEND ARCANMAIN_LIBRARIES ${SDL_LIBRARY})
 	LIST(APPEND INCLUDE_DIRS ${SDL_INCLUDE_DIR} ${GLEW_INCLUDE_DIRS})
 
 	if (${SDLIMAGE_FOUND})
 		message("--> SDL_Image found, adding")
-		list(APPEND MAIN_LIBRARIES ${SDLIMAGE_LIBRARY})
+		list(APPEND ARCANMAIN_LIBRARIES ${SDLIMAGE_LIBRARY})
 		list(APPEND INCLUDE_DIRS ${SDLIMAGE_INCLUDE_DIR})
-		add_definitions(-DSDLIMAGE)
 	endif(${SDLIMAGE_FOUND})
 endif()
 
@@ -288,12 +304,20 @@ if (NOT LUA_LIBRARIES)
 	set (LUA_LIBRARIES lua51 )
 endif (NOT LUA_LIBRARIES)
 
+#
+# We split MAIN_LIBRARIES into ARCANMAIN_LIBRARIES and MAIN_LIBRARIES
+# as some customisations would conflict with building the LWA version.
+#
+LIST (APPEND
+	ARCANMAIN_LIBRARIES
+	${OPENAL_LIBRARY}
+)
+
 LIST (APPEND
 	MAIN_LIBRARIES
 	${OPENCTM_LIBRARY}
 	${FREETYPE_LIBRARY}
 	${LUA_LIBRARIES}
-	${OPENAL_LIBRARY}
 	${BZIP2_LIBRARIES}
 	${ZLIB_LIBRARY}
 	${ASSERT_LIBRARY}
@@ -570,10 +594,7 @@ message("video output (VIDEO_PLATFORM) set to : ${VIDEO_PLATFORM}")
 message("audio output (AUDIO_PLATFORM) set to : ${AUDIO_PLATFORM}")
 message("device input (INPUT_PLATFORM) set to : ${INPUT_PLATFORM}")
 message("frameserver features: ${FRAMESERVER_MODESTRING}")
-#
-# OS and more compiler specific files, packaging etc.
-# Expected to
-#
+
 if (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
 	message("\n---- Stage 2, FreeBSD specific configuration ----")
 	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/CMakeLists.FreeBSD)
@@ -595,10 +616,47 @@ else()
 endif()
 
 message("\n---- Stage 3, Linking / Packaging ----")
-target_link_libraries( arcan ${STDLIB} ${MAIN_LIBRARIES} )
+target_link_libraries( arcan ${STDLIB} ${MAIN_LIBRARIES} ${ARCANMAIN_LIBRARIES} )
 target_link_libraries( arcan_frameserver ${STDLIB} ${FSRV_LIBRARIES} )
+
+# 
+# For LWA we need some kind of sound backend. In a sandbox,
+# LWA is not (by default) supposed to get access to any audio device outside
+# the shared memory interface. Therefore we build a patched version of 
+# openal, that's linked statically with only a shmif- based backend
+#
+# Current build-system setup forces main arcan and lwa_ version to largely share 
+# the same platform build, which means that the terrible dependency-tree 
+# from the SDL- etc. build remain.
+#
 if (ENABLE_LWA)
-	target_link_libraries( arcan_lwa ${STDLIB} ${MAIN_LIBRARIES} )
+	ExternalProject_Add(openal_soft
+		SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/openal_soft
+		GIT_REPOSITORY "https://github.com/mirror/openal-soft.git"
+		UPDATE_COMMAND ""
+#		PATCH_COMMAND ${EXEC} git am ${CMAKE_CURRENT_SOURCE_DIR}/external/patches/openal.patch
+		INSTALL_COMMAND ""
+		CMAKE_ARGS	
+			-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+			-DCMAKE_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}
+			-DALSOFT_BACKEND_ALSA=OFF 
+			-DALSOFT_BACKEND_OSS=OFF 
+			-DALSOFT_BACKEND_PULSEAUDIO=OFF 
+			-DALSOFT_BACKEND_WAVE=OFF 
+			-DALSOFT_BACKEND_ARCAN=ON 
+			-DALSOFT_EXAMPLES=OFF 
+			-DALSOFT_DLOPEN=OFF 
+			-DALSOFT_UTILS=OFF 
+			-DALSOFT_CONFIG=OFF
+		 	-DLIBTYPE=STATIC	
+			-DALSOFT_ARCAN_SHMIF=${CMAKE_CURRENT_SOURCE_DIR}/shmif
+	)
+
+	add_dependencies( arcan_lwa openal_soft ) 
+	target_link_libraries( arcan_lwa ${STDLIB} ${MAIN_LIBRARIES} ${LWA_LIBRARIES} 
+		${CMAKE_CURRENT_BINARY_DIR}/openal_soft-prefix/src/openal_soft-build/libcommon.a 
+		${CMAKE_CURRENT_BINARY_DIR}/openal_soft-prefix/src/openal_soft-build/libopenal.a 
+	)
 endif()
 
 #

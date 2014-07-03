@@ -29,9 +29,13 @@
 #include <arcan_videoint.h>
 
 static struct arcan_shmif_cont shms;
-static struct arcan_evctx inevq, outevq;
-static uint32_t* vidp;
-static uint32_t* audp;
+
+/*
+ * for the audio support, we re-use openAL soft with a patch to
+ * existing backends to just expose a single device with properties
+ * matching the shmif constants, write into the audp and voila!
+ */
+struct arcan_shmif_cont* arcan_aout = NULL;
 
 bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	bool fs, bool frames)
@@ -57,6 +61,7 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 			return false;
 		}
 		shms = arcan_shmif_acquire(shmkey, SHMIF_INPUT, true, false);
+		arcan_aout = &shms;
 
 		if (shms.addr == NULL){
 			arcan_warning("couldn't connect to parent\n");
@@ -68,9 +73,6 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 			arcan_warning("couldn't set shm dimensions (%d, %d)\n", width, height);
 			return false;
 		}
-
-		arcan_shmif_calcofs(shms.addr, (uint8_t**) &vidp, (uint8_t**) &audp);
-		arcan_shmif_setevqs(shms.addr, shms.esem, &inevq, &outevq, false);
 
 		first_init = false;
 	}
@@ -123,14 +125,19 @@ void platform_video_timing(float* os, float* std, float* ov)
 
 void platform_video_bufferswap()
 {
-//	SDL_GL_SwapBuffers();
-/* now our color attachment contains the final picture,
+/*
+ * now our color attachment contains the final picture,
  * if we have access to inter-process texture sharing, we can just fling
- * the FD, for now, readback into the shmpage */
-
+ * the FD, for now, readback into the shmpage
+ */
 	glReadPixels(0, 0, shms.addr->w, shms.addr->h,
-		GL_RGBA, GL_UNSIGNED_BYTE, vidp);
+		GL_RGBA, GL_UNSIGNED_BYTE, shms.vidp);
 
+/*
+ * we should implement a mapping for TARGET_COMMAND_FRAMESKIP or so
+ * and use to set virtual display timings. ioev[0] => mode, [1] => prewake,
+ * [2] => preaudio, 3/4 for desired jitter (testing / simulation)
+ */
 	arcan_shmif_signal(&shms, SHMIF_SIGVID);
 }
 
@@ -139,7 +146,6 @@ void platform_video_bufferswap()
  * is broken out of the platform layer, we can re-use that to have
  * local filtering untop of the one the engine is doing.
  */
-
 arcan_errc arcan_event_analogstate(int devid, int axisid,
 	int* lower_bound, int* upper_bound, int* deadzone,
 	int* kernel_size, enum ARCAN_ANALOGFILTER_KIND* mode)
@@ -171,9 +177,47 @@ void platform_event_process(arcan_evctx* ctx)
  * but we want to handle some of the target commands separately
  * (with a special path to LUA and a different hook)
  */
-	while (1 == arcan_event_poll(&inevq, &ev)){
-		arcan_event_enqueue(ctx, &ev);
-	}
+	while (1 == arcan_event_poll(&shms.inev, &ev))
+		if (ev.category == EVENT_TARGET)
+		switch(ev.kind){
+/*
+ * Should write a way to serialize the state of the entire engine,
+ * both as a quality indicator, a way to do live desktop migrations
+ */
+		case TARGET_COMMAND_FDTRANSFER:
+			arcan_warning("platform(arcan): fdtransfer not implemented\n");
+		break;
+
+/*
+ * Should only do something if we've set the SKIPMODE to single stepping
+ */
+		case TARGET_COMMAND_STEPFRAME:
+		break;
+
+/*
+ * We might have loading threads still going etc.
+ */
+		case TARGET_COMMAND_PAUSE:
+		case TARGET_COMMAND_UNPAUSE:
+		break;
+
+/*
+ * Could be used with the switch-theme functionality
+ */
+		case TARGET_COMMAND_RESET:
+		break;
+
+		case TARGET_COMMAND_EXIT:
+			ev.category = EVENT_SYSTEM;
+			ev.kind = EVENT_SYSTEM_EXIT;
+			arcan_event_enqueue(ctx, &ev);
+
+/* unlock no matter what so parent can't lock us out */
+			arcan_sem_post(shms.vsem);
+		break;
+		}
+		else
+			arcan_event_enqueue(ctx, &ev);
 }
 
 void arcan_event_rescan_idev(arcan_evctx* ctx)
@@ -196,8 +240,3 @@ void platform_event_init(arcan_evctx* ctx)
 {
 }
 
-/*
- * for the audio support, we re-use openAL soft with a patch to
- * existing backends to just expose a single device with properties
- * matching the shmif constants, write into the audp and voila!
- */
