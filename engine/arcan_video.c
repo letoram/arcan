@@ -4649,7 +4649,6 @@ void arcan_video_refresh_GL(float lerp)
 		memcpy(current_context->stdoutp.projection,
 			arcan_video_display.default_projection, sizeof(float) * 16);
 
-
 /*
  * If we have a color attachment (someone reading WORLDID), there's
  * no point doing an additional renderpass (little reason to define this

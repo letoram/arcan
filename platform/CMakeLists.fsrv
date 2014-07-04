@@ -1,8 +1,6 @@
-#
 # Builds on FSRV_[MODE]_SOURCES, FSRV_[MODE]_LIBRARIES,
 # FSRV_PLATFORM_SOURCES
-#
-#
+# FSRV_SOURCES
 
 set(FSRV_TARGETS
 	arcan_frameserver)

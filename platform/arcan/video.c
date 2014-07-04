@@ -11,15 +11,10 @@
  * context, map to that the shared memory, do readbacks etc.
  */
 
-/* 1. we re-use the EGL platform with a little hack */
-
-#ifdef SDL_PLATFORM
-#define SDL_MINI_SUFFIX static inline ext
-#include "../sdl/video_mini.c"
-#else
-#define EGL_SUFFIX static inline ext
-#include "../egl/video.c"
-#endif
+/* We re-use X11/egl or other platforms with this little hack */ 
+#define PLATFORM_SUFFIX static lwa
+#define WITH_HEADLESS
+#include HEADLESS_PLATFORM
 
 /* 2. interpose and map to shm */
 #include <arcan_shmif.h>
@@ -31,9 +26,8 @@
 static struct arcan_shmif_cont shms;
 
 /*
- * for the audio support, we re-use openAL soft with a patch to
- * existing backends to just expose a single device with properties
- * matching the shmif constants, write into the audp and voila!
+ * audio support uses this symbol as part of a statically linked
+ * OpenAL-soft build that outputs to the shared memory interface
  */
 struct arcan_shmif_cont* arcan_aout = NULL;
 
@@ -86,16 +80,7 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 /*
  * currently, we actually never de-init this
  */
-	if (ext_video_init(width, height, bpp, fs, frames))
-	{
-		arcan_video_display.width = width;
-		arcan_video_display.height = height;
-		arcan_video_display.bpp = bpp;
-		glViewport(0, 0, width, height);
-		return true;
-	}
-	else
-		return false;
+	return lwa_video_init(width, height, bpp, fs, frames);
 }
 
 /*
@@ -103,24 +88,22 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
  */
 void platform_video_shutdown()
 {
-	ext_video_shutdown();
+	lwa_video_shutdown();
 }
 
 void platform_video_prepare_external()
 {
-	ext_video_prepare_external();
+	lwa_video_prepare_external();
 }
 
 void platform_video_restore_external()
 {
-	ext_video_restore_external();
+	lwa_video_restore_external();
 }
 
 void platform_video_timing(float* os, float* std, float* ov)
 {
-	*os = 16.667;
-	*std = 0.0;
-	*ov = 0.0;
+	lwa_video_timing(os, std, ov);
 }
 
 void platform_video_bufferswap()

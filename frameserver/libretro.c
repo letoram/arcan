@@ -211,7 +211,10 @@ static struct libretro_ctx retroctx = {.prewake = 4, .preaudiogen = 0};
 static void update_ntsc(int v1, int v2, int v3, int v4);
 static void push_stats();
 static void log_msg(char* msg, bool flush);
+
+#ifdef FRAMESERVER_LIBRETRO_3D
 static void setup_3dcore(struct retro_hw_render_callback*);
+#endif
 
 static retro_proc_address_t libretro_requirefun(const char* sym)
 {
@@ -734,7 +737,6 @@ step:
 static bool libretro_setenv(unsigned cmd, void* data){
 	char* sysdir;
 	bool rv = true;
-	struct retro_hw_render_callback* hwrend = data;
 
 	if (!retroctx.shmcont.addr)
 		return false;
@@ -847,6 +849,8 @@ static bool libretro_setenv(unsigned cmd, void* data){
 #ifdef FRAMESERVER_LIBRETRO_3D
 	case RETRO_ENVIRONMENT_SET_HW_RENDER | RETRO_ENVIRONMENT_EXPERIMENTAL:
 	case RETRO_ENVIRONMENT_SET_HW_RENDER:
+	{
+		struct retro_hw_render_callback* hwrend = data;
 		if (hwrend->context_type == RETRO_HW_CONTEXT_OPENGL ||
 			hwrend->context_type == RETRO_HW_CONTEXT_OPENGL_CORE){
 			setup_3dcore( hwrend );
@@ -854,6 +858,7 @@ static bool libretro_setenv(unsigned cmd, void* data){
 		}
 		else
 			LOG("unsupported hw context requested.\n");
+	}
 	break;
 #endif
 
