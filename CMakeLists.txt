@@ -52,9 +52,6 @@ option(ENABLE_SIMD "Build with SIMD vector instruction set support" ON)
 option(ENABLE_LED "Build with LED controller support in core" ON)
 option(ENABLE_HMD "Build with Head-Mounted Display support in core" OFF)
 if (NOT WIN32)
-	option(EGL_VIDEO_PLATFORM "Build video subsystem using EGL (will disable SDL)" OFF)
-	option(ENABLE_GLES2 "Use GLES2 rather than OpenGL 2.1 (requires EGL)" OFF)
-	option(ENABLE_X11 "Use an XWindows Display for the GLES context (requires EGL)" OFF)
 	option(MUSL_LIBC "Use the MUSL libc implementation (incomplete)" OFF)
 	option(ENABLE_LWA "Build a lightweight arcan (arcan_lwa) with nested platform" OFF)
 endif()
@@ -78,29 +75,30 @@ message("Cmake options:")
 message("   -DCMAKE_BUILD_TYPE=[Debug|Release|Profile|DebugTrace]")
 message("   -DENABLE_ASAN=[Off|On] : Build with Address Sanitizer enabled")
 message("   -DENABLE_SIMD=[On|Off] : Enable SIMD optimized instructions")
-message("   -DENABLE_SIMD_ALIGNED=[Off|On] : |--> SIMD support assumes 16-byte aligned data")
+message("   -DENABLE_SIMD_ALIGNED=[Off|On] : |--> SIMD support assumes 16-byte alignment")
+message("")
 message("audio/video/input support:")
-message("   -DEGL_VIDEO_PLATFORM=[Off|On] : Build with EGL video platform (replaces SDL)")
-message("   -DENABLE_GLES2=[Off|On] :       |--> EGL platform uses GLES2 API)")
-message("   -DENABLE_X11=[Off|On] :         |--> EGL platform uses X11 Windowing")
+message("   -DVIDEO_PLATFORM=[sdl|x11|egl] :  Set default video platform")
+message("")
 message("optimization / core features:")
 message("   -DENABLE_LED=[On|Off] : Build with LED controller support in core")
 message("   -DENABLE_HMD=[On|Off] : Build with Head-Mounted Display support in core")
-message("   -DENABLE_LWA=[Off|On] : Build lightweight additional arcan client (arcan-in-arcan)")
+message("   -DENABLE_LWA=[Off|On] : Build lightweight additional arcan client") 
 message("   -DENABLE_LUAJIT=[On|Off] : link with luajit51 (if found)")
 message("   -DMUSL_LIBC=[Off|On] build and link with MUSL Libc (incomplete)")
 message("   -DSQLITE_AMALGAMATE=[Off|On] : Build / Link with the SQLite Amalgamation")
+message("")
 message("frameserver features:")
 if (NOT WIN32)
-message("   -DSPLIT_FRAMESERVER=[Off|On] : Build frameserver in split-chain loading mode (each role gets a separate binary")
-message("   -DENABLE_NET=[On|Off] : Build networking frameserver (requires apache portable runtime libraries, APR)")
-message("   -DENABLE_VIDDEC=[On|Off] : Build video decoding frameserver (requires libvlc libraries)")
-message("   -DENABLE_REMOTING=[On|Off] : Build remoting frameserver (requires libvncserver)")
-message("   -DENABLE_VIDENC=[On|Off] : Build video encoding frameserver (requires ffmpeg libraries)")
-message("   -DENABLE_VIDENCVNC=[On|Off] :       |-> Add VNC server support (if libvncserver is found)")
+message("   -DSPLIT_FRAMESERVER=[Off|On] : Build frameserver in split-chain loading")
+message("                                  mode (each role gets a separate binary")
+message("   -DENABLE_NET=[On|Off] : Build networking frameserver (using APR)")
+message("   -DENABLE_VIDDEC=[On|Off] : Build video decoding frameserver (using LibVLC)")
+message("   -DENABLE_REMOTING=[On|Off] : Build remoting frameserver (using vncserver)")
+message("   -DENABLE_VIDENC=[On|Off] : Build video encoding frameserver (using ffmpeg)")
+message("   -DENABLE_VIDENCVNC=[On|Off] :       |-> Add VNC server support") 
 message("   -DENABLE_LIBRETRO=[On|Off] : Build libretro frameserver")
-message("   -DENABLE_LIRETRO3D=[On|Off] : |--> Enable 3D support in libretro frameserver")
-message("")
+message("   -DENABLE_LIBRETRO3D=[On|Off] : |--> Enable 3D support") 
 endif()
 message("")
 
@@ -205,78 +203,67 @@ if(WIN32)
 	set(OS_PLATFORM_NAME "Win32")
 endif()
 
-#
-# This one is a beast when it comes to different combinations;
-# ( EGL, GBMKMS, X11 ) + [opt. extension manager, GLEW] + (GLES | OGL) 
-#
-if (EGL_VIDEO_PLATFORM)
-    set(VIDEO_PLATFORM "egl")
-		FIND_PACKAGE(EGL REQUIRED)
+FIND_PACKAGE ( Freetype REQUIRED )
+FIND_PACKAGE ( PNG REQUIRED )
 
-		if (ENABLE_GLES2)
-			FIND_PACKAGE(GLES2 REQUIRED)
-		else()
-			FIND_PACKAGE(OpenGL REQUIRED)
-			FIND_PACKAGE(GLEW REQUIRED)
-			LIST(APPEND INCLUDE_DIRS ${GLEW_INCLUDE_DIRS})
-		endif()
+if (VIDEO_PLATFORM STREQUAL "x11")
+	set(INPUT_PLATFORM "stub")
 
-	if (NOT ENABLE_X11)
-		set(INPUT_PLATFORM "linux")
+	FIND_PACKAGE(OpenGL REQUIRED)
+	FIND_PACKAGE(GLEW REQUIRED)
+	FIND_PACKAGE(X11 REQUIRED)
+
+	LIST(APPEND INCLUDE_DIRS ${GLEW_INCLUDE_DIRS} ${X11_INCLUDE_DIRS})
+	LIST(APPEND MAIN_LIBRARIES ${OPENGL_gl_LIBRARY} ${GLEW_LIBRARY} ${X11_LIBRARIES})
+	LIST(APPEND LWA_LIBRARIES ${OPENGL_gl_LIBRARY} ${GLEW_LIBRARY} ${X11_LIBRARIES})
+
+	if (ENABLE_LWA)
+		message("Enabling LWA (Arcan-in-Arcan) build using X11 HEADLESS")
+		SET(LWA_HEADLESS "x11/video.c")
 	endif()
 
-	if (ENABLE_X11)
-		FIND_PACKAGE(X11 REQUIRED)
-		LIST(APPEND MAIN_LIBRARIES ${X11_LIBRARIES})
-		LIST(APPEND MAIN_INCLUDE_DIRS ${X11_INCLUDE_DIR})
-		set(INPUT_PLATFORM "x11")
+elseif(VIDEO_PLATFORM STREQUAL "egl")
+	set(INPUT_PLATFORM "stub")
+	FIND_PACKAGE(EGL REQUIRED)
+	FIND_PACKAGE(GLES2 REQUIRED)
+	FIND_PACKAGE(GBMKMS REQUIRED)
+	LIST(APPEND MAIN_LIBRARIES 
+		${EGL_LIBRARIES} 
+		${GLES2_LIBRARIES} 
+		${GBMKMS_LIBRARIES}
+	)
+	LIST(APPEND INCLUDE_DIRS ${GBMKMS_INCLUDE_DIRS})
 
-	elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-		FIND_PACKAGE( GBMKMS REQUIRED )
-		LIST(APPEND MAIN_LIBRARIES ${GBMKMS_LIBRARIES})
-		LIST(APPEND INCLUDE_DIRS ${GBMKMS_INCLUDE_DIRS})
-	endif()
-
-endif()
-
-if (ENABLE_LWA)
-	if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-	else()
-		FIND_PACKAGE(X11 REQUIRED)
-		FIND_PACKAGE(EGL REQUIRED)
-		list(APPEND LWA_LIBRARIES ${X11_LIBRARIES} ${EGL_LIBRARIES})
-	endif()	
-endif()
-
-if (NOT VIDEO_PLATFORM OR VIDEO_PLATFORM STREQUAL "sdl")
-	set(VIDEO_PLATFORM "sdl")
-	FIND_PACKAGE( SDL REQUIRED )
-	FIND_PACKAGE ( OpenGL REQUIRED )
-	FIND_PACKAGE ( GLEW REQUIRED )
-	FIND_PACKAGE ( SDL_image )
-	LIST(APPEND MAIN_LIBRARIES ${GLEW_LIBRARY} ${OPENGL_gl_LIBRARY}) 
-	LIST(APPEND ARCANMAIN_LIBRARIES ${SDL_LIBRARY})
-	LIST(APPEND INCLUDE_DIRS ${SDL_INCLUDE_DIR} ${GLEW_INCLUDE_DIRS})
+elseif (VIDEO_PLATFORM STREQUAL "sdl")
+	set(INPUT_PLATFORM "sdl")
+	FIND_PACKAGE(SDL REQUIRED)
+	FIND_PACKAGE(SDL_image)
+	FIND_PACKAGE(OpenGL REQUIRED)
+	FIND_PACKAGE(GLEW REQUIRED)
+	LIST(APPEND INCLUDE_DIRS ${GLEW_INCLUDE_DIRS} ${SDL_INCLUDE_DIR})
+	LIST(APPEND ARCANMAIN_LIBRARIES ${GLEW_LIBRARY} ${SDL_LIBRARY} ${OPENGL_LIBRARIES})
 
 	if (${SDLIMAGE_FOUND})
 		message("--> SDL_Image found, adding")
 		list(APPEND ARCANMAIN_LIBRARIES ${SDLIMAGE_LIBRARY})
 		list(APPEND INCLUDE_DIRS ${SDLIMAGE_INCLUDE_DIR})
 	endif(${SDLIMAGE_FOUND})
+
+	if (ENABLE_LWA)
+		message("Enabling LWA (Arcan-in-Arcan build using X11 HEADLESS")
+		FIND_PACKAGE(X11 REQUIRED)
+		LIST(APPEND INCLUDE_DIRS ${X11_INCLUDE_DIRS})
+		LIST(APPEND LWA_LIBRARIES ${GLEW_LIBRARY} ${X11_LIBRARIES} ${OPENGL_LIBRARIES})
+		SET(LWA_HEADLESS "x11/video.c")
+	endif()
+
+else()
+	message(FATAL_ERROR "No video platform specified, use -DVIDEO_PLATFORM= (egl,x11 or sdl)")
 endif()
 
-if (NOT INPUT_PLATFORM OR INPUT_PLATFORM STREQUAL "sdl")
-	set(INPUT_PLATFORM "sdl")
-	FIND_PACKAGE( SDL REQUIRED )
-endif()
-
-if (NOT AUDIO_PLATFORM)
-	set(AUDIO_PLATFORM "openal")
-	FIND_PACKAGE( OpenAL REQUIRED )
-endif()
-
-FIND_PACKAGE ( Freetype REQUIRED )
-FIND_PACKAGE ( PNG REQUIRED )
+# no other audio platforms supported currently
+set(AUDIO_PLATFORM "openal")
+FIND_PACKAGE( OpenAL REQUIRED )
 
 message("\n---- Stage 1: library dependencies and configuration ----")
 # modified version of the 51 package that checks for the lua51_jit option
@@ -322,7 +309,6 @@ LIST (APPEND
 	${ZLIB_LIBRARY}
 	${ASSERT_LIBRARY}
 	${SQLITE3_LIBRARIES}
-	${GLEW_LIBRARIES}
 	${PNG_LIBRARIES}
 )
 
@@ -374,26 +360,17 @@ set (
  engine/arcan_shdrmgmt.h
  engine/arcan_frameserver_backend.h
  engine/arcan_frameserver_backend.c
+ shmif/arcan_shmif.h
  shmif/arcan_shmif_interop.h
  shmif/arcan_shmif_control.c
+ shmif/arcan_shmif_control.h
  shmif/arcan_shmif_event.h
- shmif/arcan_shmif.h
 )
 
 # in split-mode, these will bundle with the platform
 # frameserver.c and then each subgroup by its own into
 # a separate binary, in (default) join mode, the final
 # FSRV_SOURCES will be composed of the subgroups
-set (
- FSRV_SOURCES
- shmif/arcan_shmif_interop.h
- shmif/arcan_shmif_interop.c
- shmif/arcan_shmif_control.c
- shmif/arcan_shmif_control.h
- shmif/arcan_shmif_event.h
- shmif/arcan_shmif.h
-)
-
 # We do this because f*** GNU C extensions. Seriously.
 set_property(SOURCE platform/posix/fdpassing.c
 	APPEND PROPERTY COMPILE_FLAGS -w )

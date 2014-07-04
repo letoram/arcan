@@ -1,4 +1,20 @@
 set (PLATFORM_PATH ${CMAKE_SOURCE_DIR}/platform/posix)
+set (GL_PLATFORM_HEADER ${PLATFORM_PATH}/../${VIDEO_PLATFORM}/glheaders.h)
+
+add_definitions(-DGL_HEADERS="${GL_PLATFORM_HEADER}")
+
+message(" scanning for Linux specific libraries. ")
+FIND_PACKAGE(UDev REQUIRED)
+LIST(APPEND MAIN_LIBRARIES ${UDEV_LIBRARIES})
+
+set (SHMIF_SOURCES
+  shmif/arcan_shmif.h
+	shmif/arcan_shmif_interop.h
+	shmif/arcan_shmif_control.c
+	shmif/arcan_shmif_control.h
+	shmif/arcan_shmif_interop.c
+	shmif/arcan_shmif_event.h
+)
 
 set (PLATFORM_SOURCES
 	${PLATFORM_PATH}/mem.c
@@ -16,6 +32,9 @@ set (PLATFORM_SOURCES
 	${PLATFORM_PATH}/warning.c
 	${PLATFORM_PATH}/frameserver.c
 	${PLATFORM_PATH}/fdpassing.c
+	${CMAKE_EXTERNAL_SRCDIR}/hidapi/hid_linux.c
+	${CMAKE_EXTERNAL_SRCDIR}/hidapi/hidapi.h
+ 	engine/arcan_target_launcher.c
 )
 
 set (FSRV_PLATFORM_SOURCES
@@ -26,6 +45,7 @@ set (FSRV_PLATFORM_SOURCES
 	${PLATFORM_PATH}/base64.c
 	${PLATFORM_PATH}/mem.c
 	${PLATFORM_PATH}/fdpassing.c
+	${SHMIF_SOURCES}
 )
 
 set (LWA_PLATFORM_SOURCES
@@ -33,96 +53,25 @@ set (LWA_PLATFORM_SOURCES
 	${PLATFORM_PATH}/../arcan/video.c
 )
 
-if (VIDEO_PLATFORM STREQUAL "egl")
-		set_property(SOURCE ${PLATFORM_PATH}/../egl/video.c 
-			APPEND PROPERTY COMPILE_FLAGS "-Wno-unused-function")
-	
-	if (GLES2_BCM_IMPLEMENTATION)
-		set_property(SOURCE ${PLATFORM_PATH}/../egl/video.c
-			APPEND PROPERTY COMPILE_DEFINITIONS WITH_BCM)
-	endif()
+# we don't want these coming along in LWA_PLATFORM
+LIST(APPEND PLATFORM_SOURCES
+	${PLATFORM_PATH}/../${VIDEO_PLATFORM}/video.c
+	${PLATFORM_PATH}/../${INPUT_PLATFORM}/event.c
+)
 
-# GLEW does not support GLES
-	if (ENABLE_GLES2)
-		set(GL_LIBRARIES ${GLES2_LIBRARIES} ${EGL_LIBRARIES})
-		set(ENABLE_LIBRETRO3D FALSE) #not yet ported
-	else()
-		set(GL_LIBRARIES
-			${EGL_LIBRARIES}
-			${OPENGL_LIBRARIES}
-			${GLEW_LIBRARY}
-		)
-		include_directories(${GLEW_INCLUDE_DIRS})
-	endif()
+SET(HIJACK_SOURCES
+	hijack/arcan_target_unix.c
+	hijack/arcan_target.c
+	${PLATFORM_PATH}/warning.c
+	${PLATFORM_PATH}/sem.c
+	frameserver/ntsc/snes_ntsc.c
+ 	frameserver/resampler/resample.c
+)
 
-	if (ENABLE_X11)
-		if (NOT ENABLE_GLES2)
-			set_property(SOURCE ${PLATFORM_PATH}/../egl/video.c
-				APPEND PROPERTY COMPILE_DEFINITIONS
-				WITH_GLEW
-				WITH_OGL3
-						)
-		endif()
-
-		set_property(SOURCE ${PLATFORM_PATH}/../egl/video.c
-			APPEND PROPERTY COMPILE_DEFINITIONS 
-				WITH_X11
-		)
-
-		set_property(SOURCE ${PLATFORM_PATH}/../linux/event.c
-			APPEND PROPERTY COMPILE_DEFINITIONS WITH_X11)
-	else()
-		set_property(SOURCE ${PLATFORM_PATH}/../egl/video.c
-			APPEND PROPERTY COMPILE_DEFINITIONS WITH_GBMKMS)
-	endif()
-
-	set(ARCAN_DEFINITIONS "${ARCAN_DEFINITIONS} GL_HEADERS=\"${PLATFORM_PATH}/../egl/glheaders.h\"")
-
-	list(APPEND MAIN_LIBRARIES ${GL_LIBRARIES})
-	list(APPEND PLATFORM_SOURCES ${PLATFORM_PATH}/../egl/video.c)
-
-	if (${ENABLE_LIBRETRO})
-	if (${ENABLE_LIBRETRO3D})
-		list(APPEND FSRV_LIBRETRO_SOURCES
-			${PLATFORM_PATH}/../egl/video.c)
-		list(APPEND FSRV_LIBRETRO_LIBRARIES
-			${GL_LIBRARIES}
-		)
-	endif(${ENABLE_LIBRETRO3D})
-	endif(${ENABLE_LIBRETRO})
-
-elseif(VIDEO_PLATFORM STREQUAL "sdl")
-	set(ARCAN_DEFINITIONS "${ARCAN_DEFINITIONS} GL_HEADERS=\"${PLATFORM_PATH}/../sdl/glheaders.h\"")
-	list(APPEND PLATFORM_SOURCES ${PLATFORM_PATH}/../sdl/video.c)
-	if (${ENABLE_LIBRETRO})
-	if (${ENABLE_LIBRETRO3D})
-		list(APPEND FSRV_LIBRETRO_SOURCES
-			${PLATFORM_PATH}/../sdl/video_mini.c)
-		list(APPEND FSRV_LIBRETRO_LIBRARIES
-			${SDL_LIBRARY}
-			${GLEW_LIBRARY}
-			${OPENGL_gl_LIBRARY}
-		)
-	endif()
-	endif()
-endif()
-
-if (INPUT_PLATFORM STREQUAL "sdl")
-	list(APPEND PLATFORM_SOURCES
-		${PLATFORM_PATH}/../sdl/event.c
-	)
-elseif (INPUT_PLATFORM STREQUAL "linux")
-	list(APPEND PLATFORM_SOURCES
-		${PLATFORM_PATH}/../linux/event.c
-	)
-# workaround for now, egl video driver does some quick mouse hacks at least
-elseif (INPUT_PLATFORM STREQUAL "x11")
-	list(APPEND PLATFORM_SOURCES
-		${PLATFORM_PATH}/../stub/event.c
-	)
-else()
-	message(FATAL_ERROR "Linux: Unsupported input platform (${INPUT_PLATFORM})")
-endif()
+set (
+ FSRV_SOURCES
+	${SHMIF_SOURCES}
+)
 
 LIST(APPEND FSRV_SOURCES frameserver/frameserver.c)
 LIST(APPEND STDLIB
@@ -133,40 +82,6 @@ include(${PLATFORM_PATH}/../CMakeLists.fsrv)
 add_definitions(-DPLATFORM_HEADER=\"${PLATFORM_PATH}/../platform.h\" -std=gnu11
 	-Wall -Wno-missing-braces -DCLOCK_SOURCE_RAW -DLUA_51 -D__UNIX
 	-D_POSIX_C_SOURCE -D_GNU_SOURCE)
-
-#
-# Uncomment if you want ctags output generated
-#
-# find_program(GENERATE_TAGS ctags)
-#if (GENERATE_TAGS)
-#	message("--> ctags command found, generating tags output")
-#	set_source_files_properties( ctags.output PROPERTIES GENERATED true )
-#	add_custom_command( OUTPUT ctags.output
-#		COMMAND ctags -R --fields=+iaS --extra=+q -o ctags.output .
-#		WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} )
-#	LIST(APPEND SOURCES ctags.output)
-#endif (GENERATE_TAGS)
-
-LIST(APPEND SOURCES
-	${CMAKE_EXTERNAL_SRCDIR}/hidapi/hid_linux.c
-	${CMAKE_EXTERNAL_SRCDIR}/hidapi/hidapi.h
- 	engine/arcan_target_launcher.c
-)
-
-LIST(APPEND MAIN_LIBRARIES udev)
-
-SET(HIJACK_SOURCES
-	hijack/arcan_target_unix.c
-	hijack/arcan_target.c
-  shmif/arcan_shmif.h
-	shmif/arcan_shmif_interop.h
-	shmif/arcan_shmif_control.c
-	shmif/arcan_shmif_interop.c
-	${PLATFORM_PATH}/warning.c
-	${PLATFORM_PATH}/sem.c
-	frameserver/ntsc/snes_ntsc.c
- 	frameserver/resampler/resample.c
-)
 
 #
 # For LWA support, we default to a different video platform as all
@@ -184,21 +99,8 @@ if (ENABLE_LWA)
 		${LWA_PLATFORM_SOURCES}
 	)
 
-	set_property(TARGET arcan_lwa
-		APPEND PROPERTY COMPILE_DEFINITIONS
-			GL_HEADERS=\"${PLATFORM_PATH}/../egl/glheaders.h\"
-	)
-
-	set_property(SOURCE ${PLATFORM_PATH}/../arcan/video.c
-		APPEND PROPERTY COMPILE_DEFINITIONS 
-			EGL_PLATFORM 
-			WITH_X11
-			WITH_HEADLESS
-	)
-	
-#	set_property(TARGET arcan_lwa
-#		APPEND PROPERTY COMPILE_DEFINITIONS
-#	)
+	set_property(TARGET arcan_lwa APPEND PROPERTY
+		COMPILE_DEFINITIONS HEADLESS_PLATFORM=\"${PLATFORM_PATH}/../${LWA_HEADLESS}\")
 endif()
 
 add_library(arcan_hijack SHARED ${HIJACK_SOURCES})

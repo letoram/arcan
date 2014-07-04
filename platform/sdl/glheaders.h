@@ -15,6 +15,10 @@
 
 #include <glew.h>
 
+#ifdef WITH_HEADLESS
+#include <glxew.h>
+#endif
+
 #include <SDL.h>
 #include <SDL_opengl.h>
 #include <SDL_byteorder.h>
