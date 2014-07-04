@@ -42,7 +42,12 @@
 #include "resampler/speex_resampler.h"
 
 #ifdef FRAMESERVER_LIBRETRO_3D
-#include GL_HEADERS
+
+#define PLATFORM_SUFFIX static retro 
+#define WITH_HEADLESS
+#define HEADLESS_NOARCAN
+#include HEADLESS_PLATFORM
+
 #ifdef FRAMESERVER_LIBRETRO_3D_RETEXTURE
 #include "retexture.h"
 #endif
@@ -1411,7 +1416,13 @@ static uintptr_t get_framebuffer()
  */
 static void* intercept_procaddr(const char* proc)
 {
-	return frameserver_requirefun(proc, false);
+	void* procfun = frameserver_requirefun(proc, false);
+	if (!procfun){
+		LOG("libretro3d, requested symbol (%s) was not found.\n", proc);
+		return NULL;
+	}
+
+	return procfun;
 }
 
 static void setup_3dcore(struct retro_hw_render_callback* ctx)
@@ -1419,14 +1430,13 @@ static void setup_3dcore(struct retro_hw_render_callback* ctx)
 /* we just want a dummy window with a valid openGL context
  * bound and then set up a FBO with the proper dimensions,
  * when things are working, just use a 2x2 window and minimize */
-	if (!platform_video_init(2, 2, 32, false, true)){
+	if (!retro_video_init(2, 2, 32, false, true)){
 		LOG("Couldn't setup OpenGL context\n");
 		exit(1);
 	}
 
 #ifdef FRAMSESERVER_LIBRETRO_3D_RETEXTURE
 	arcan_retexture_init(NULL, false);
-#endif
 
 /*
  * allocate an input and an output segment and map up,
@@ -1441,8 +1451,7 @@ static void setup_3dcore(struct retro_hw_render_callback* ctx)
 	};
 
 	arcan_event_enqueue(&retroctx.shmcont.outev, &ev);
-
-	platform_video_minimize();
+#endif
 
 	ctx->get_current_framebuffer = get_framebuffer;
 	ctx->get_proc_address = (retro_hw_get_proc_address_t) intercept_procaddr;

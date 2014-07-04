@@ -206,6 +206,11 @@ endif()
 FIND_PACKAGE ( Freetype REQUIRED )
 FIND_PACKAGE ( PNG REQUIRED )
 
+if (ENABLE_LIBRETRO3D AND NOT ENABLE_LWA)
+	message("Libretro3D requires LWA build but non- were specified, disabling.")
+	set(ENABLE_LIBRETRO3D OFF)
+endif()
+
 if (VIDEO_PLATFORM STREQUAL "x11")
 	set(INPUT_PLATFORM "stub")
 
@@ -438,7 +443,9 @@ if (ENABLE_LIBRETRO)
 		set_property( SOURCE frameserver/libretro.c
 			APPEND PROPERTY COMPILE_DEFINITIONS
 				FRAMESERVER_LIBRETRO_3D
+				HEADLESS_PLATFORM=\"${CMAKE_CURRENT_SOURCE_DIR}/platform/${LWA_HEADLESS}\"
 		)
+		LIST(APPEND FSRV_LIBRETRO_LIBRARIES ${LWA_LIBRARIES}) 
 	endif()
 endif()
 
