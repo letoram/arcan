@@ -182,7 +182,7 @@ static const int ARCAN_SHMPAGE_START_SZ = PP_SHMPAGE_STARTSZ;
 static const int ARCAN_SHMPAGE_MAX_SZ = PP_SHMPAGE_MAXSZ;
 
 enum arcan_shmif_type {
-	SHMIF_INPUT,
+	SHMIF_INPUT = 1,
 	SHMIF_OUTPUT
 };
 
@@ -211,8 +211,11 @@ struct arcan_shmif_cont {
 	uint8_t* vidp;
 	uint8_t* audp;
 
-	void* guard; /* used in _control for guard threads etc. */
+	void* priv; /* used in _control for guard threads etc. */
 };
+
+typedef enum arcan_shmif_sigmask(
+	*shmif_trigger_hook)(struct arcan_shmif_cont*);
 
 struct arcan_shmif_page {
 /*
@@ -358,6 +361,16 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 char* arcan_shmif_connect(const char* connpath, const char* connkey);
 
 /*
+ * There can be one "post-flag, pre-semaphore" hook that will occur 
+ * before triggering a sigmask and can be used to synch audio to video 
+ * or video to audio during transfers.
+ * 'mask' argument defines the signal mask slot (A xor B only, A or B is 
+ * undefined behavior). The   
+ */
+shmif_trigger_hook arcan_shmif_signalhook(struct arcan_shmif_cont*, 
+	enum arcan_shmif_sigmask mask, shmif_trigger_hook, void* data);
+
+/*
  * Using the specified shmpage state, return pointers into
  * suitable offsets into the shared memory pages for video
  * (planar, packed, RGBA) and audio (limited by abufsize constant).
@@ -411,6 +424,12 @@ void arcan_shmif_signal(struct arcan_shmif_cont*, int mask);
  */
 size_t arcan_shmif_getsize(unsigned width, unsigned height);
 
+/*
+ * Support function to set/unset the primary access segment
+ * (one slot for input. one slot for output), manually managed. 
+ */
+struct arcan_shmif_cont* arcan_shmif_primary(enum arcan_shmif_type);
+void arcan_shmif_setprimary( enum arcan_shmif_type, struct arcan_shmif_cont*);
 /*
  * This is currently a "stub" (merely version check)
  * although it is suggested that both frameservers and parents

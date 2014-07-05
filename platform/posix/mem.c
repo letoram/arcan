@@ -184,6 +184,28 @@ void* arcan_alloc_mem(size_t nb,
 		return NULL;
 	}
 
+/*
+ * Post-alloc hooks
+ */
+	int madvflag = 0;
+
+		switch(type){
+	case ARCAN_MEM_VBUFFER:
+	case ARCAN_MEM_ABUFFER:
+	case ARCAN_MEM_MODELDATA:
+		madvflag |= NO_DUMPFLAG;
+	break;
+
+	default:
+	break;
+	}
+
+	if (hint & ARCAN_MEM_SENSITIVE)
+		madvflag |= NO_DUMPFLAG;
+
+	if (madvflag)
+		madvise(rptr, total, madvflag); 
+
 	if (hint & ARCAN_MEM_BZERO){
 		if (type == ARCAN_MEM_VBUFFER){
 			av_pixel* buf = (av_pixel*) rptr;
