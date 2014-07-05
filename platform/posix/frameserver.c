@@ -18,6 +18,7 @@
 #include <poll.h>
 
 #include <sys/types.h>
+#include <sys/select.h>
 #include <sys/wait.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -70,6 +71,37 @@ static void* nanny_thread(void* arg)
 	}
 
 	return NULL;
+}
+
+/*
+ * the rather odd structure we want for poll on the verify socket
+ */
+static bool fd_avail(int fd, bool* term)
+{
+	struct pollfd fds = {
+		.fd = fd,
+		.events = POLLIN | POLLERR | POLLHUP | POLLNVAL
+	};
+
+	int sv = poll(&fds, 1, 0);
+	*term = false;
+
+	if (-1 == sv){
+		if (errno != EINTR)
+			*term = true;
+
+		return false;
+	}
+
+	if (0 == sv)
+		return false;
+
+	if (fds.revents & (POLLERR | POLLHUP | POLLNVAL))
+		*term = true;
+	else
+		return true;
+
+	return false;
 }
 
 void arcan_frameserver_dropshared(arcan_frameserver* src)
@@ -503,44 +535,52 @@ static enum arcan_ffunc_rv socketverify(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 	vfunc_state state)
 {
 	arcan_frameserver* tgt = state.ptr;
-	char ch;
-	size_t ntw;
+	char ch = '\n';
+	bool term;
 
+/*
+ * We want this code-path exercised no matter what,
+ * so if the caller specified that the first connection should be
+ * accepted no mater what, immediately continue.
+ */
 	switch (cmd){
 	case FFUNC_POLL:
 		if (tgt->clientkey[0] == '\0')
 			goto send_key;
 
-/* only need a few characters, so can get away with not having a more
- * elaborate buffering strategy */
-		while (-1 != read(tgt->sockout_fd, &ch, 1)){
-			if (ch == '\n'){
+/*
+ * We need to read one byte at a time, until we've reached LF or
+ * PP_SHMPAGE_SHMKEYLIM as after the LF the socket may be used
+ * for other things (e.g. event serialization)
+ */
+		if (!fd_avail(tgt->sockout_fd, &term)){
+			if (term)
+				arcan_frameserver_free(tgt);
+			return FFUNC_RV_NOFRAME;
+		}
+
+		read(tgt->sockout_fd, &ch, 1);
+		if (ch == '\n'){
 /* 0- pad to max length */
-				memset(tgt->sockinbuf + tgt->sockrofs, '\0',
-					PP_SHMPAGE_SHMKEYLIM - tgt->sockrofs);
+			memset(tgt->sockinbuf + tgt->sockrofs, '\0',
+				PP_SHMPAGE_SHMKEYLIM - tgt->sockrofs);
 
 /* alternative memcmp to not be used as a timing oracle */
-				if (memcmp_nodep(tgt->sockinbuf, tgt->clientkey, PP_SHMPAGE_SHMKEYLIM))
-					goto send_key;
+			if (memcmp_nodep(tgt->sockinbuf, tgt->clientkey, PP_SHMPAGE_SHMKEYLIM))
+				goto send_key;
 
-				arcan_warning("platform/frameserver.c(), key verification failed on %"
-					PRIxVOBJ", received: %s\n", tgt->vid, tgt->sockinbuf);
-				tgt->flags.alive = false;
-			}
-			else
-				tgt->sockinbuf[tgt->sockrofs++] = ch;
-
-			if (tgt->sockrofs >= PP_SHMPAGE_SHMKEYLIM){
-				arcan_warning("platform/frameserver.c(), socket "
-					"verify failed on %"PRIxVOBJ", terminating.\n", tgt->vid);
-/* will terminate the frameserver session */
-				tgt->flags.alive = false;
-			}
+			arcan_warning("platform/frameserver.c(), key verification failed on %"
+				PRIxVOBJ", received: %s\n", tgt->vid, tgt->sockinbuf);
+			arcan_frameserver_free(tgt);
 		}
-		if (errno != EAGAIN && errno != EINTR){
-			arcan_warning("platform/frameserver.c(), "
-				"read broken on %"PRIxVOBJ", reason: %s\n", tgt->vid);
-			tgt->flags.alive = false;
+		else
+			tgt->sockinbuf[tgt->sockrofs++] = ch;
+
+		if (tgt->sockrofs >= PP_SHMPAGE_SHMKEYLIM){
+			arcan_warning("platform/frameserver.c(), socket "
+				"verify failed on %"PRIxVOBJ", terminating.\n", tgt->vid);
+			arcan_frameserver_free(tgt);
+/* will terminate the frameserver session */
 		}
 		return FFUNC_RV_NOFRAME;
 
@@ -561,7 +601,8 @@ send_key:
  * connection that somehow gets our socket write to block/lock here,
  * if that's ever a real concern, switch to select and just drop connection
  * if we can't write enough. */
-	ntw = snprintf(tgt->sockinbuf, PP_SHMPAGE_SHMKEYLIM, "%s\n", tgt->shm.key);
+	size_t ntw = snprintf(tgt->sockinbuf,
+		PP_SHMPAGE_SHMKEYLIM, "%s\n", tgt->shm.key);
 	write(tgt->sockout_fd, tgt->sockinbuf, ntw);
 
 	arcan_video_alterfeed(tgt->vid,
@@ -582,6 +623,7 @@ static int8_t socketpoll(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 {
 	arcan_frameserver* tgt = state.ptr;
 	struct arcan_shmif_page* shmpage = tgt->shm.ptr;
+	bool term;
 
 	if (state.tag != ARCAN_TAG_FRAMESERV || !shmpage){
 		arcan_warning("platform/posix/frameserver.c:socketpoll, called with"
@@ -589,38 +631,44 @@ static int8_t socketpoll(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 		return FFUNC_RV_NOFRAME;
 	}
 
-	struct pollfd polldscr = {
-		.fd = tgt->sockout_fd,
-		.events = POLLIN
-	};
-
 /* wait for connection, then unlink directory node,
  * switch to verify callback.*/
 	switch (cmd){
 		case FFUNC_POLL:
-			if (1 == poll(&polldscr, 1, 0)){
-				int insock = accept(polldscr.fd, NULL, NULL);
-				if (insock != -1){
-					close(polldscr.fd);
-				tgt->sockout_fd = insock;
-				fcntl(insock, F_SETFD, O_NONBLOCK);
-				arcan_video_alterfeed(tgt->vid, socketverify, state);
-				if (tgt->sockaddr){
-					unlink(tgt->sockaddr);
-					free(tgt->sockaddr);
-					tgt->sockaddr = NULL;
-				}
+			if (!fd_avail(tgt->sockout_fd, &term)){
+				if (term)
+					arcan_frameserver_free(tgt);
 
-				return socketverify(cmd, buf, s_buf, width, height, bpp, mode, state);
-				}
-				else if (errno == EFAULT || errno == EINVAL)
-					tgt->flags.alive = false;
+				return FFUNC_RV_NOFRAME;
 			}
+
+			int insock = accept(tgt->sockout_fd, NULL, NULL);
+			if (-1 == insock)
+				return FFUNC_RV_NOFRAME;
+
+			close(tgt->sockout_fd);
+			tgt->sockout_fd = insock;
+
+			arcan_video_alterfeed(tgt->vid, socketverify, state);
+
+/*
+ * note: we could have a flag here to re-use the address,
+ * but then we'd need to spawn a new ffunc object with corresponding
+ * IPC in beforehand. Left as an exercise to the reader.
+ */
+			if (tgt->sockaddr){
+				unlink(tgt->sockaddr);
+				free(tgt->sockaddr);
+				tgt->sockaddr = NULL;
+			}
+
+			return socketverify(cmd, buf, s_buf, width, height, bpp, mode, state);
 		break;
 
 /* socket is closed in frameserver_destroy */
 		case FFUNC_DESTROY:
 			if (tgt->sockaddr){
+				close(tgt->sockout_fd);
 				unlink(tgt->sockaddr);
 				free(tgt->sockaddr);
 				tgt->sockaddr = NULL;

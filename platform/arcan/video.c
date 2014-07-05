@@ -43,7 +43,7 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 			shmkey = arcan_shmif_connect(connkey, getenv("ARCAN_CONNKEY"));
 			if (!shmkey)
 				arcan_warning("Couldn't connect through (%s), "
-					"trying ARCAN_SHMKEY env.\n", shmkey);
+					"trying ARCAN_SHMKEY env.\n", connkey);
 		}
 
 		if (!shmkey)

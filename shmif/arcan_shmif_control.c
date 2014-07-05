@@ -31,28 +31,40 @@
  * that it shouldn't wake up from. Show this sleep be engaged anyhow,
  * shut down forcefully. */
 
-struct guard_struct {
-	sem_handle semset[3];
-	int parent;
-	volatile uintptr_t* dms; /* dead man's switch */
-	pthread_mutex_t synch;
+struct shmif_hidden {
+	shmif_trigger_hook video_hook;
+	void* video_hook_data;
+
+	shmif_trigger_hook audio_hook;
+	void* audio_hook_data;
+
+	struct {
+		sem_handle semset[3];
+		int parent;
+		volatile uintptr_t* dms; 
+		pthread_mutex_t synch;
+	} guard;
 };
+
+static struct {
+	struct arcan_shmif_cont* input, (* output);
+} primary;
 
 static void* guard_thread(void* gstruct);
 
-static void spawn_guardthread(struct guard_struct gs,
-	struct arcan_shmif_cont* d)
+static void spawn_guardthread(
+	struct shmif_hidden gs, struct arcan_shmif_cont* d)
 {
-	struct guard_struct* hgs = malloc(sizeof(struct guard_struct));
+	struct shmif_hidden* hgs = malloc(sizeof(struct shmif_hidden));
 	*hgs = gs;
 
 	pthread_t pth;
 	pthread_attr_t pthattr;
 	pthread_attr_init(&pthattr);
 	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
-	pthread_mutex_init(&hgs->synch, NULL);
+	pthread_mutex_init(&hgs->guard.synch, NULL);
 
-	d->guard = hgs;
+	d->priv = hgs;
 	pthread_create(&pth, &pthattr, guard_thread, hgs);
 }
 
@@ -109,6 +121,7 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 	res.shmsize = res.addr->segment_size;
 
 	LOG("arcan_frameserver() -- shmpage configured and filled.\n");
+
 	return res;
 }
 
@@ -190,10 +203,12 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 		return res;
 	}
 
-	struct guard_struct gs = {
-		.dms = &res.addr->dms,
-		.semset = { res.asem, res.vsem, res.esem },
-		.parent = res.addr->parent
+	struct shmif_hidden gs = {
+		.guard = {
+			.dms = &res.addr->dms,
+			.semset = { res.asem, res.vsem, res.esem },
+			.parent = res.addr->parent
+		}
 	};
 
 	if (!noguard)
@@ -325,29 +340,30 @@ end:
 }
 
 #include <signal.h>
-static inline bool parent_alive(struct guard_struct* gs)
+static inline bool parent_alive(struct shmif_hidden* gs)
 {
 /* based on the idea that init inherits an orphaned process,
  * return getppid() != 1; won't work for hijack targets that fork() fork() */
-	return kill(gs->parent, 0) != -1;
+	return kill(gs->guard.parent, 0) != -1;
 }
 #endif
 
 static void* guard_thread(void* gs)
 {
-	struct guard_struct* gstr = (struct guard_struct*) gs;
-	*(gstr->dms) = true;
+	struct shmif_hidden* gstr = gs;
+	*(gstr->guard.dms) = true;
 
 	while (true){
 		if (!parent_alive(gstr)){
-			pthread_mutex_lock(&gstr->synch);
-			*(gstr->dms) = false;
+			pthread_mutex_lock(&gstr->guard.synch);
+			*(gstr->guard.dms) = false;
 
-			for (int i = 0; i < sizeof(gstr->semset) / sizeof(gstr->semset[0]); i++)
-				if (gstr->semset[i])
-					arcan_sem_post(gstr->semset[i]);
+			for (int i = 0; i < sizeof(gstr->guard.semset) / 
+					sizeof(gstr->guard.semset[0]); i++)
+				if (gstr->guard.semset[i])
+					arcan_sem_post(gstr->guard.semset[i]);
 
-			pthread_mutex_unlock(&gstr->synch);
+			pthread_mutex_unlock(&gstr->guard.synch);
 			sleep(5);
 			LOG("frameserver::guard_thread -- couldn't shut"
 				"	down gracefully, exiting.\n");
@@ -408,6 +424,14 @@ void arcan_shmif_setevqs(struct arcan_shmif_page* dst,
 #include <assert.h>
 void arcan_shmif_signal(struct arcan_shmif_cont* ctx, int mask)
 {
+	struct shmif_hidden* priv = ctx->priv;
+
+	if (mask == SHMIF_SIGVID && priv->video_hook)
+		mask = priv->video_hook(ctx);
+
+	if (mask == SHMIF_SIGAUD && priv->audio_hook)
+		mask = priv->audio_hook(ctx);
+
 	if (mask == SHMIF_SIGVID){
 		ctx->addr->vready = true;
 		arcan_sem_wait(ctx->vsem);
@@ -506,9 +530,9 @@ bool arcan_shmif_resize(struct arcan_shmif_cont* arg,
  * guard and update and recalculate everything.
  */
 		size_t new_sz = arg->addr->segment_size;
-		struct guard_struct* gs = (struct guard_struct*) arg->guard;
+		struct shmif_hidden* gs = arg->priv;
 		if (gs)
-			pthread_mutex_lock(&gs->synch);
+			pthread_mutex_lock(&gs->guard.synch);
 
 		munmap(arg->addr, arg->shmsize);
 		arg->shmsize = new_sz;
@@ -521,8 +545,8 @@ bool arcan_shmif_resize(struct arcan_shmif_cont* arg,
 		arcan_shmif_setevqs(arg->addr, arg->esem, &arg->inev, &arg->outev, false);
 
 		if (gs){
-			gs->dms = &arg->addr->dms;
-			pthread_mutex_unlock(&gs->synch);
+			gs->guard.dms = &arg->addr->dms;
+			pthread_mutex_unlock(&gs->guard.synch);
 		}
 	}
 
@@ -545,6 +569,46 @@ static char* strrep(char* dst, char key, char repl)
 		}
 
 		return src;
+}
+
+shmif_trigger_hook arcan_shmif_signalhook(struct arcan_shmif_cont* cont,
+	enum arcan_shmif_sigmask mask, shmif_trigger_hook hook, void* data)
+{
+	struct shmif_hidden* priv = cont->priv;
+	shmif_trigger_hook rv = NULL;
+
+	if (mask == (SHMIF_SIGVID | SHMIF_SIGAUD))
+	; 
+	else if (mask == SHMIF_SIGVID){
+		rv = priv->video_hook;
+		priv->video_hook = hook;
+		priv->video_hook_data = data;
+	}
+	else if (mask == SHMIF_SIGAUD){
+		rv = priv->audio_hook;
+		priv->audio_hook = hook;
+		priv->audio_hook_data = data;
+	}
+	else;
+
+	return rv;
+}
+
+struct arcan_shmif_cont* arcan_shmif_primary(enum arcan_shmif_type type)
+{
+	if (type == SHMIF_INPUT)
+		return primary.input;
+	else
+		return primary.output;
+}
+
+void arcan_shmif_setprimary(enum arcan_shmif_type type, 
+	struct arcan_shmif_cont* seg)
+{
+	if (type == SHMIF_INPUT)
+		primary.input = seg;
+	else
+		primary.output = seg;
 }
 
 struct arg_arr* arg_unpack(const char* resource)
