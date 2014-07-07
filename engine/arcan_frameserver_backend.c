@@ -352,6 +352,7 @@ enum arcan_ffunc_rv arcan_frameserver_videoframe_direct(
 			tgt->ofs_audb += ntc;
 			shmpage->abufused = 0;
 			shmpage->aready = false;
+			arcan_sem_post( tgt->async );
 		}
 
 /* interactive frameserver blocks on vsemaphore only,
