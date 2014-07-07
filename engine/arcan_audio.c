@@ -315,7 +315,11 @@ arcan_errc arcan_audio_setup(bool nosound)
  * doesn't allow you to create a nosound or debug/testing audio device
  * (or for that matter, enumerate without an extension, seriously..)
  * so to avoid yet another codepath, we'll just set the listenerGain to 0 */
+#ifdef ARCAN_LWA
+		current_acontext->context = alcCreateContext(alcOpenDevice("arcan"), NULL);
+#else
 		current_acontext->context = alcCreateContext(alcOpenDevice(NULL), NULL);
+#endif
 		alcMakeContextCurrent(current_acontext->context);
 
 		if (nosound){
