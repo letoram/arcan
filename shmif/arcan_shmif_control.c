@@ -41,7 +41,7 @@ struct shmif_hidden {
 	struct {
 		sem_handle semset[3];
 		int parent;
-		volatile uintptr_t* dms; 
+		volatile uintptr_t* dms;
 		pthread_mutex_t synch;
 	} guard;
 };
@@ -295,7 +295,7 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey)
 /* 2. send (optional) connection key, we send that first (keylen + linefeed) */
 	char wbuf[PP_SHMPAGE_SHMKEYLIM+1];
 	if (connkey){
-		size_t nw = snprintf(wbuf, PP_SHMPAGE_SHMKEYLIM, "%s\n", connkey);
+		ssize_t nw = snprintf(wbuf, PP_SHMPAGE_SHMKEYLIM, "%s\n", connkey);
 		if (nw >= PP_SHMPAGE_SHMKEYLIM){
 			LOG("arcan_shmif_connect(%s), "
 				"ident string (%s) exceeds limit (%d).\n",
@@ -358,7 +358,7 @@ static void* guard_thread(void* gs)
 			pthread_mutex_lock(&gstr->guard.synch);
 			*(gstr->guard.dms) = false;
 
-			for (int i = 0; i < sizeof(gstr->guard.semset) / 
+			for (size_t i = 0; i < sizeof(gstr->guard.semset) /
 					sizeof(gstr->guard.semset[0]); i++)
 				if (gstr->guard.semset[i])
 					arcan_sem_post(gstr->guard.semset[i]);
@@ -408,6 +408,17 @@ void arcan_shmif_setevqs(struct arcan_shmif_page* dst,
 		outq->synch.killswitch = &dst->dms;
 	}
 
+#ifdef ARCAN_SHMIF_THREADSAFE_QUEUE
+	if (!inq->synch.init){
+		inq->synch.init = true;
+		pthread_mutex_init(&inq->synch.lock, NULL);
+	}
+if (!inq->synch.init){
+		outq->synch.init = true;
+		pthread_mutex_init(&outq->synch.lock, NULL);
+	}
+#endif
+
 	inq->local = false;
 	inq->eventbuf = dst->childdevq.evqueue;
 	inq->front = &dst->childdevq.front;
@@ -445,8 +456,7 @@ void arcan_shmif_signal(struct arcan_shmif_cont* ctx, int mask)
 		arcan_sem_wait(ctx->vsem);
 		arcan_sem_wait(ctx->asem);
 	}
-	else
-		;
+	else {}
 }
 
 void arcan_shmif_forceofs(struct arcan_shmif_page* shmp,
@@ -578,7 +588,7 @@ shmif_trigger_hook arcan_shmif_signalhook(struct arcan_shmif_cont* cont,
 	shmif_trigger_hook rv = NULL;
 
 	if (mask == (SHMIF_SIGVID | SHMIF_SIGAUD))
-	; 
+	;
 	else if (mask == SHMIF_SIGVID){
 		rv = priv->video_hook;
 		priv->video_hook = hook;
@@ -602,7 +612,7 @@ struct arcan_shmif_cont* arcan_shmif_primary(enum arcan_shmif_type type)
 		return primary.output;
 }
 
-void arcan_shmif_setprimary(enum arcan_shmif_type type, 
+void arcan_shmif_setprimary(enum arcan_shmif_type type,
 	struct arcan_shmif_cont* seg)
 {
 	if (type == SHMIF_INPUT)

@@ -97,11 +97,14 @@ static const int ARCAN_SHMPAGE_QUEUE_SZ = PP_QUEUE_SZ;
 
 /*
  * Default audio storage / transfer characteristics
- * The gist of it is to keep this interface trivially simple
- * for the basic basic sound needs (bell sounds and whatnot)
+ * The gist of it is to keep this interface trivial "for basic sound"
+ * now and prepare an (optional) "advanced toggle" later with
+ * the whole surround sound in floating point at high sample-rates.
  */
 static const int ARCAN_SHMPAGE_MAXAUDIO_FRAME = 192000;
 static const int ARCAN_SHMPAGE_SAMPLERATE = 44100;
+static const int ARCAN_SHMPAGE_ACHANNELS = 2;
+static const int ARCAN_SHMPAGE_SAMPLE_SIZE = sizeof(short);
 
 /*
  * This is a hint to resamplers used as part of whatever
@@ -109,7 +112,6 @@ static const int ARCAN_SHMPAGE_SAMPLERATE = 44100;
  * how do we value audio resampling quality
  */
 static const int ARCAN_SHMPAGE_RESAMPLER_QUALITY = 5;
-static const int ARCAN_SHMPAGE_ACHANNELS = 2;
 
 #ifndef PP_SHMPAGE_MAXW
 #define PP_SHMPAGE_MAXW 4096
@@ -151,12 +153,12 @@ static const int ARCAN_SHMPAGE_AUDIOBUF_SZ = 288000;
 
 static const int ARCAN_SHMPAGE_VIDEOBUF_SZ = 8294400;
 
-#ifndef PP_SHMPAGE_MAXSZ 
+#ifndef PP_SHMPAGE_MAXSZ
 #define PP_SHMPAGE_MAXSZ 48294400
 #endif
 
 /*
- * If this define is overridden, make sure that the starting dimensions 
+ * If this define is overridden, make sure that the starting dimensions
  * actually fit the minimal (32x32 + buffers + sizeof(struct)
  */
 #ifndef PP_SHMPAGE_STARTSZ
@@ -169,12 +171,12 @@ static const int ARCAN_SHMPAGE_VIDEOBUF_SZ = 8294400;
  * one is to overcommit -- always allocate the limit and then just re-map
  * the same page with lower / greater sizes.
  *
- * The other is to allocate a new shared memory with the new size. 
+ * The other is to allocate a new shared memory with the new size.
  * This increases the number of context switches and introduces the constraint
- * that the event-queues should be EMPTY on both sides during resize calls. 
+ * that the event-queues should be EMPTY on both sides during resize calls.
  */
 #ifdef ARCAN_SHMIF_OVERCOMMIT
-static const int ARCAN_SHMPAGE_START_SZ = PP_SHMPAGE_MAXSZ; 
+static const int ARCAN_SHMPAGE_START_SZ = PP_SHMPAGE_MAXSZ;
 #else
 static const int ARCAN_SHMPAGE_START_SZ = PP_SHMPAGE_STARTSZ;
 #endif
@@ -198,9 +200,22 @@ enum arcan_shmif_sigmask {
 struct arcan_shmif_cont {
 	struct arcan_shmif_page* addr;
 
-	intptr_t shmh; /* handle reference to be able to resize */
-	size_t shmsize; /* may grow / shrink on resize operations */
+/* offset- pointers into addr, can change between calls to
+ * shmif_ functions so aliasing is not recommended */
+	uint8_t* vidp;
+	uint8_t* audp;
 
+/* maintain a connection to the shared memory handle in order
+ * to handle resizing (on platforms that support it, otherwise
+ * define ARCAN_SHMIF_OVERCOMMIT which will only recalc pointers
+ * on resize */
+	intptr_t shmh;
+	size_t shmsize;
+
+/*
+ * handles are exposed in the struct rather than in (priv) but
+ * manually manipulating them is not recommended.
+ */
 	sem_handle vsem;
 	sem_handle asem;
 	sem_handle esem;
@@ -208,9 +223,7 @@ struct arcan_shmif_cont {
 	struct arcan_evctx inev;
 	struct arcan_evctx outev;
 
-	uint8_t* vidp;
-	uint8_t* audp;
-
+	void* user; /* tag provided to the user */
 	void* priv; /* used in _control for guard threads etc. */
 };
 
@@ -361,13 +374,13 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 char* arcan_shmif_connect(const char* connpath, const char* connkey);
 
 /*
- * There can be one "post-flag, pre-semaphore" hook that will occur 
- * before triggering a sigmask and can be used to synch audio to video 
+ * There can be one "post-flag, pre-semaphore" hook that will occur
+ * before triggering a sigmask and can be used to synch audio to video
  * or video to audio during transfers.
- * 'mask' argument defines the signal mask slot (A xor B only, A or B is 
- * undefined behavior). The   
+ * 'mask' argument defines the signal mask slot (A xor B only, A or B is
+ * undefined behavior). The
  */
-shmif_trigger_hook arcan_shmif_signalhook(struct arcan_shmif_cont*, 
+shmif_trigger_hook arcan_shmif_signalhook(struct arcan_shmif_cont*,
 	enum arcan_shmif_sigmask mask, shmif_trigger_hook, void* data);
 
 /*
@@ -426,7 +439,7 @@ size_t arcan_shmif_getsize(unsigned width, unsigned height);
 
 /*
  * Support function to set/unset the primary access segment
- * (one slot for input. one slot for output), manually managed. 
+ * (one slot for input. one slot for output), manually managed.
  */
 struct arcan_shmif_cont* arcan_shmif_primary(enum arcan_shmif_type);
 void arcan_shmif_setprimary( enum arcan_shmif_type, struct arcan_shmif_cont*);

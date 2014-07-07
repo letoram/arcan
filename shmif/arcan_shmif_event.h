@@ -39,19 +39,18 @@
 #define ARCAN_MOUSEIDBASE 0
 
 /*
- * This part of the interface is still rather crude and messy,
- * being a blob that has grown organically through the course
- * of the project (and initially just being a part of the engine
- * internals, not of the shmif), and will be refactored in
- * incremental steps.
+ * The types and structures used herein are "transitional" in the sense
+ * that during the later hardening / cleanup phases, we'll move over to
+ * a protobuf based serialization format and only retain the fields that
+ * are actually used in parent<->child communication.
  *
- * 1. Document the EXTERNAL NOTICES, NET_, TARGET_COMMANDS
- *    (as they are used to communicate betewen parent - frameservers)
+ * The only actual categories to rely on / use now for shmif purposes
+ * are TARGET (parent -> child), EXTERNAL (child -> parent), NET
+ * (parent <-> child) and INPUT (parent <-> child).
  *
- * 2. Separate out all the "arcan internal" categories / states
- *
- * 3. Make this into a proper protocol / IPC part
- *
+ * Then the contents of this header will split into a version that
+ * corresponds to what the engine uses internally and what is accessible
+ * in the shmif interface.
  */
 
 enum ARCAN_EVENT_CATEGORY {
@@ -499,6 +498,11 @@ struct arcan_evctx {
 	struct {
 		volatile uintptr_t* killswitch;
 		sem_handle handle;
+
+#ifdef ARCAN_SHMIF_THREADSAFE_QUEUE
+		bool init;
+		pthread_mutex_t lock;
+#endif
 	} synch;
 
 };
