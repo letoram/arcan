@@ -25,12 +25,6 @@
 
 static struct arcan_shmif_cont shms;
 
-/*
- * audio support uses this symbol as part of a statically linked
- * OpenAL-soft build that outputs to the shared memory interface
- */
-struct arcan_shmif_cont* arcan_aout = NULL;
-
 bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	bool fs, bool frames)
 {
@@ -55,7 +49,6 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 			return false;
 		}
 		shms = arcan_shmif_acquire(shmkey, SHMIF_INPUT, true, false);
-		arcan_aout = &shms;
 
 		if (shms.addr == NULL){
 			arcan_warning("couldn't connect to parent\n");
@@ -80,6 +73,7 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 /*
  * currently, we actually never de-init this
  */
+	arcan_shmif_setprimary(SHMIF_INPUT, &shms); 
 	return lwa_video_init(width, height, bpp, fs, frames);
 }
 
