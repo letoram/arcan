@@ -294,7 +294,7 @@ typedef enum arcan_ffunc_rv(*arcan_vfunc_cb)(
  * reload/recreate video objects as needed).
  */
 arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
-	bool fullscreen, bool frames, bool conservative);
+	bool fullscreen, bool frames, bool conservative, const char* caption);
 
 /*
  * Clear the display, deallocate all resources (fonts, shaders,

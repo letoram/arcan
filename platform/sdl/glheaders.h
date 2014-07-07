@@ -24,7 +24,7 @@
 #include <SDL_byteorder.h>
 
 bool platform_video_init(uint16_t w, uint16_t h,
-	uint8_t bpp, bool fs, bool frames);
+	uint8_t bpp, bool fs, bool frames, const char* caption);
 
 void platform_video_bufferswap();
 void platform_video_shutdown();

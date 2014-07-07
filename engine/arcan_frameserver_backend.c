@@ -333,8 +333,8 @@ enum arcan_ffunc_rv arcan_frameserver_videoframe_direct(
 		if (tgt->desc.callback_framestate)
 			emit_deliveredframe(tgt, shmpage->vpts, tgt->desc.framecount++);
 
-		if (tgt->kind == ARCAN_FRAMESERVER_INTERACTIVE && shmpage->abufused > 0){
-
+/* interleave audio / video processing */
+		if (shmpage->aready && shmpage->abufused){
 			size_t ntc = tgt->ofs_audb + shmpage->abufused > tgt->sz_audb ?
 				(tgt->sz_audb - tgt->ofs_audb) : shmpage->abufused;
 
@@ -801,7 +801,7 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 		if (strcmp(setup.args.builtin.mode, "libretro") == 0){
 			ctx->aid      = arcan_audio_feed((arcan_afunc_cb)
 												arcan_frameserver_audioframe_direct, ctx, &errc);
-			ctx->kind     = ARCAN_FRAMESERVER_INTERACTIVE;
+			ctx->segid    = SEGID_GAME;
 			ctx->sz_audb  = 1024 * 64;
 			ctx->flags.socksig = false;
 			ctx->ofs_audb = 0;
@@ -813,13 +813,13 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 /* network client needs less in terms of buffering etc. but instead a
  * different signalling mechanism for flushing events */
 		else if (strcmp(setup.args.builtin.mode, "net-cl") == 0){
-			ctx->kind    = ARCAN_FRAMESERVER_NETCL;
+			ctx->segid = SEGID_NETWORK_CLIENT;
 			ctx->flags.pbo = false;
 			ctx->flags.socksig = true;
 			ctx->queue_mask = EVENT_EXTERNAL | EVENT_NET;
 		}
 		else if (strcmp(setup.args.builtin.mode, "net-srv") == 0){
-			ctx->kind    = ARCAN_FRAMESERVER_NETSRV;
+			ctx->segid = SEGID_NETWORK_SERVER;
 			ctx->flags.pbo = false;
 			ctx->flags.socksig = true;
 			ctx->queue_mask = EVENT_EXTERNAL | EVENT_NET;
@@ -828,7 +828,7 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 /* record instead operates by maintaining up-to-date local buffers,
  * then letting the frameserver sample whenever necessary */
 		else if (strcmp(setup.args.builtin.mode, "record") == 0){
-			ctx->kind = ARCAN_FRAMESERVER_OUTPUT;
+			ctx->segid = SEGID_ENCODER;
 
 /* we don't know how many audio feeds are actually monitored to produce the
  * output, thus not how large the intermediate buffer should be to
@@ -839,7 +839,7 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 			ctx->queue_mask = EVENT_EXTERNAL;
 		}
 		else {
-			ctx->kind     = ARCAN_FRAMESERVER_AVFEED;
+			ctx->segid = SEGID_MEDIA;
 			ctx->flags.socksig = true;
 			ctx->aid      = arcan_audio_feed((arcan_afunc_cb)
 											arcan_frameserver_audioframe_shared, ctx, &errc);
@@ -856,7 +856,8 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 	else{
 		ctx->aid = arcan_audio_feed((arcan_afunc_cb)
 			arcan_frameserver_audioframe_direct, ctx, &errc);
-		ctx->kind = ARCAN_HIJACKLIB;
+		ctx->hijacked = true;
+		ctx->segid = SEGID_UNKNOWN;
 		ctx->queue_mask = EVENT_EXTERNAL;
 
 /* although audio playback tend to be kept in the child process, the
