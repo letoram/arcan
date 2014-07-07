@@ -15,7 +15,9 @@ message("---- Building frameserver in SPLIT mode ----")
 			${FSRV_DECODE_SOURCES}
 		)
 		set_property(TARGET arcan_frameserver_decode APPEND PROPERTY
-			COMPILE_DEFINITIONS ENABLE_FSRV_DECODE DEFAULT_FSRV_MODE=\"decode\")
+			COMPILE_DEFINITIONS ARCAN_SHMIF_THREADSAFE_QUEUE
+			ENABLE_FSRV_DECODE DEFAULT_FSRV_MODE=\"decode\")
+
 		target_link_libraries(arcan_frameserver_decode
 			${STDLIB}
 			${FSRV_PLATFORM_LIBRARIES}
@@ -31,7 +33,8 @@ message("---- Building frameserver in SPLIT mode ----")
 			${FSRV_ENCODE_SOURCES}
 		)
 		set_property(TARGET arcan_frameserver_record APPEND PROPERTY
-			COMPILE_DEFINITIONS ENABLE_FSRV_ENCODE DEFAULT_FSRV_MODE=\"record\")
+			COMPILE_DEFINITIONS ARCAN_SHMIF_THREADSAFE_QUEUE
+			ENABLE_FSRV_ENCODE DEFAULT_FSRV_MODE=\"record\")
 		target_link_libraries(arcan_frameserver_record
 			${STDLIB}
 			${FSRV_PLATFORM_LIBRARIES}
@@ -61,7 +64,8 @@ message("---- Building frameserver in SPLIT mode ----")
 			${FSRV_PLATFORM_SOURCES}
 			${FSRV_REMOTING_SOURCES})
 		set_property(TARGET arcan_frameserver_remoting APPEND PROPERTY
-			COMPILE_DEFINITIONS ENABLE_FSRV_REMOTING DEFAULT_FSRV_MODE=\"remoting\")
+			COMPILE_DEFINITIONS ARCAN_SHMIF_THREADSAFE_QUEUE
+			ENABLE_FSRV_REMOTING DEFAULT_FSRV_MODE=\"remoting\")
 		target_link_libraries(arcan_frameserver_remoting
 			${STDLIB}
 			${FSRV_PLATFORM_LIBRARIES}
@@ -93,7 +97,8 @@ message("---- Building frameserver in SPLIT mode ----")
 		)
 # shouldn't be run as non-auth.
 		set_property(TARGET arcan_frameserver_net APPEND PROPERTY
-			COMPILE_DEFINITIONS ENABLE_FSRV_NET	DEFAULT_FSRV_MODE=\"\")
+			COMPILE_DEFINITIONS ARCAN_SHMIF_THREADSAFE_QUEUE
+			ENABLE_FSRV_NET	DEFAULT_FSRV_MODE=\"\")
 		target_link_libraries(arcan_frameserver_net
 			${STDLIB}
 			${FSRV_PLATFORM_LIBRARIES}
@@ -110,7 +115,7 @@ message("---- Building frameserver in SPLIT mode ----")
 		)
 
 		set_property(TARGET arcan_frameserver_libretro APPEND PROPERTY
-			COMPILE_DEFINITIONS 
+			COMPILE_DEFINITIONS ARCAN_SHMIF_THREADSAFE_QUEUE
 			${ARCAN_DEFINITIONS}
 			ENABLE_FSRV_LIBRETRO DEFAULT_FSRV_MODE=\"libretro\")
 
@@ -129,7 +134,7 @@ message("---- Building frameserver in SPLIT mode ----")
 
 else(SPLIT_FRAMESERVER)
 message("---- Building Frameserver in COMBINED mode ----")
-	set(definitions)
+	set(definitions ARCAN_SHMIF_THREADSAFE_QUEUE)
 
 	if (FSRV_DECODE_SOURCES)
 		message(" |-> encode/decode added to frameserver")
