@@ -43,7 +43,7 @@
 
 #ifdef FRAMESERVER_LIBRETRO_3D
 
-#define PLATFORM_SUFFIX static retro 
+#define PLATFORM_SUFFIX static retro
 #define WITH_HEADLESS
 #define HEADLESS_NOARCAN
 #include HEADLESS_PLATFORM
@@ -739,6 +739,15 @@ step:
 	}
 }
 
+static void libretro_log(enum retro_log_level level, const char* fmt, ...)
+{
+
+}
+
+static struct retro_log_callback log_cb = {
+	.log = libretro_log
+};
+
 static bool libretro_setenv(unsigned cmd, void* data){
 	char* sysdir;
 	bool rv = true;
@@ -849,6 +858,10 @@ static bool libretro_setenv(unsigned cmd, void* data){
 	case RETRO_ENVIRONMENT_SET_KEYBOARD_CALLBACK:
 		LOG("retro- keyboard callback unsupported.\n");
 		rv = false;
+	break;
+
+	case RETRO_ENVIRONMENT_GET_LOG_INTERFACE:
+		*((struct retro_log_callback*) data) = log_cb;
 	break;
 
 #ifdef FRAMESERVER_LIBRETRO_3D
