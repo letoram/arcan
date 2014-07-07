@@ -1,0 +1,222 @@
+From ceb83b1db65bc09231a630fd43813617c148c88c Mon Sep 17 00:00:00 2001
+From: bjornstahl <arcan-fe@nospam>
+Date: Sun, 6 Jul 2014 20:58:12 +0200
+Subject: [PATCH] adding arcan shmif support
+
+---
+ Alc/backends/arcan.c | 167 +++++++++++++++++++++++++++++++++++++++++++++++++++
+ CMakeLists.txt       |  17 ++++++
+ 2 files changed, 184 insertions(+)
+ create mode 100644 Alc/backends/arcan.c
+
+diff --git a/Alc/backends/arcan.c b/Alc/backends/arcan.c
+new file mode 100644
+index 0000000..bae30da
+--- /dev/null
++++ b/Alc/backends/arcan.c
+@@ -0,0 +1,167 @@
++/**
++ * OpenAL cross platform audio library
++ * Copyright (C) 1999-2007 by authors.
++ * This library is free software; you can redistribute it and/or
++ *  modify it under the terms of the GNU Library General Public
++ *  License as published by the Free Software Foundation; either
++ *  version 2 of the License, or (at your option) any later version.
++ *
++ * This library is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ *  Library General Public License for more details.
++ *
++ * You should have received a copy of the GNU Library General Public
++ *  License along with this library; if not, write to the
++ *  Free Software Foundation, Inc., 59 Temple Place - Suite 330,
++ *  Boston, MA  02111-1307, USA.
++ * Or go to http://www.gnu.org/copyleft/lgpl.html
++ */
++
++#ifndef PLATFORM_HEADER
++#define PLATFORM_HEADER "../../../platform/platform.h"
++#endif
++
++#include <stdlib.h>
++#include <stdio.h>
++#include <stdint.h>
++#include <stdbool.h>
++#include <pthread.h>
++
++#include "config.h"
++#include "arcan_shmif.h"
++
++#include "backends/base.h"
++#include "alMain.h"
++#include "alu.h"
++#include "threads.h"
++#include "compat.h"
++
++static ALCenum open_playback(ALCdevice*, const ALCchar*);
++static ALCboolean reset_playback(ALCdevice* dev);
++static ALCboolean start_playback(ALCdevice* dev);
++static void stop_playback(ALCdevice* dev);
++
++static const ALCchar arcan_device[] = "Arcan Shmif";
++static const BackendFuncs arcan_funcs = {
++	open_playback,
++	NULL,
++	reset_playback,
++	start_playback,
++	stop_playback,
++  NULL, /* open capture      */
++  NULL, /* close capture     */
++  NULL, /* start capture     */
++  NULL, /* stop capture      */
++  NULL, /* capture samples   */
++  NULL, /* available samples */
++	ALCdevice_GetLatencyDefault
++};
++
++struct driver_data {
++	struct arcan_shmif_cont* cont;
++	ALCdevice* dev;
++	bool alive;
++	althrd_t thread;
++};
++
++static int mixer_cb(void* in)
++{
++	struct driver_data* ctx = in;
++	ALCdevice* dev = ctx->dev;
++
++#ifndef SYNCH_CLOCK
++	#define SYNCH_CLOCK 60.0
++#endif
++
++	size_t frame_size = ARCAN_SHMPAGE_SAMPLERATE *
++		ARCAN_SHMPAGE_ACHANNELS * ARCAN_SHMPAGE_SAMPLE_SIZE / SYNCH_CLOCK;
++	frame_size += frame_size % 2;
++
++	while(ctx->alive){
++		ALubyte* write_ptr = ctx->cont->audp;
++		aluMixData(dev, write_ptr, frame_size);
++		ctx->cont->addr->abufused += frame_size;
++		arcan_shmif_signal(ctx->cont, SHMIF_SIGAUD);
++	}
++
++	return 0;
++}
++
++static ALCenum open_playback(ALCdevice* dev, const ALCchar* name)
++{
++	struct arcan_shmif_cont* cont = arcan_shmif_primary(SHMIF_INPUT);
++	if (!cont)
++		return ALC_INVALID_VALUE;
++
++	struct driver_data* data = malloc(sizeof(struct driver_data));
++
++	data->alive = true;
++	data->dev = dev;
++	data->cont = cont;
++
++	dev->ExtraData = data;
++	al_string_copy_cstr(&dev->DeviceName, name ? name : "arcan_shmif");
++
++	return ALC_NO_ERROR;
++}
++
++static ALCboolean reset_playback(ALCdevice* dev)
++{
++	struct arcan_shmif_cont* cont = dev->ExtraData;
++	if (!cont->addr)
++		return ALC_FALSE;
++
++	dev->FmtChans = ALC_STEREO_SOFT;
++	dev->FmtType = ALC_SHORT_SOFT;
++	dev->Frequency = ARCAN_SHMPAGE_SAMPLERATE;
++
++	arcan_event ev = {
++			.kind = EVENT_EXTERNAL_FLUSHAUD,
++			.category = EVENT_EXTERNAL
++	};
++	cont->addr->abufused = 0;
++	arcan_event_enqueue(&cont->outev, &ev);
++
++	return ALC_TRUE;
++}
++
++static ALCboolean start_playback(ALCdevice* dev)
++{
++	struct driver_data* data = dev->ExtraData;
++
++	if (althrd_create(&data->thread, mixer_cb, dev) != althrd_success){
++		free(data);
++		return ALC_FALSE;
++	}
++
++	return ALC_TRUE;
++}
++
++static void stop_playback(ALCdevice* dev)
++{
++	struct driver_data* data = dev->ExtraData;
++	int rv;
++
++	data->alive = false;
++	althrd_join(data->thread, &rv);
++	free(data);
++}
++
++ALCboolean alc_arcan_init(BackendFuncs* func_list)
++{
++	*func_list = arcan_funcs;
++	return ALC_TRUE;
++}
++
++void alc_arcan_probe(enum DevProbe type)
++{
++	switch (type){
++	case ALL_DEVICE_PROBE:
++		AppendAllDevicesList(arcan_device);
++	break;
++	default:
++	break;
++	}
++}
++
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 7b5ec71..eb0d5d1 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -681,6 +681,8 @@ SET(HAVE_PULSEAUDIO 0)
+ SET(HAVE_COREAUDIO  0)
+ SET(HAVE_OPENSL     0)
+ SET(HAVE_WAVE       0)
++SET(HAVE_ARCAN      0)
++
+ IF(WIN32 OR HAVE_DLFCN_H)
+     SET(IS_LINKED "")
+     MACRO(ADD_BACKEND_LIBS _LIBS)
+@@ -711,6 +713,21 @@ IF(ALSOFT_REQUIRE_ALSA AND NOT HAVE_ALSA)
+     MESSAGE(FATAL_ERROR "Failed to enabled required ALSA backend")
+ ENDIF()
+
++OPTION(ALSOFT_REQUIRE_ARCAN "Require ARCAN backend" OFF)
++
++IF(ALSOFT_REQUIRE_ARCAN)
++	SET(HAVE_ARCAN 1)
++	SET(BACKENDS "${BACKENDS} Arcan,")
++	FILE(GLOB ARCAN_SHMIF_FILES ${ARCAN_SHMIF_PATH}/*)
++
++	SET(ALC_OBJS ${ALC_OBJS}
++		Alc/backends/arcan.c
++		${ARCAN_SHMIF_PLATFORM})
++
++	LIST(APPEND ALC_OBJS ${ARCAN_SHMIF_FILES})
++	INCLUDE_DIRECTORIES(${ARCAN_SHMIF_PATH})
++ENDIF()
++
+ # Check OSS backend
+ OPTION(ALSOFT_REQUIRE_OSS "Require OSS backend" OFF)
+ FIND_PACKAGE(OSS)
+--
+1.9.1
+
