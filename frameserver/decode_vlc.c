@@ -13,11 +13,6 @@
 #include <arcan_shmif.h>
 #include "frameserver.h"
 
-/*
- * NOTE: we seem to have introduced some kind of locking issue,
- * quite possibly with the whole tsync/rsync shebang.
- */ 
-
 struct {
 	libvlc_instance_t* vlc;
 	libvlc_media_player_t* player;
@@ -27,7 +22,7 @@ struct {
 	bool fft_audio, got_video;
 	kiss_fftr_cfg fft_state;
 
-	pthread_mutex_t tsync, rsync;
+	pthread_mutex_t rsync;
 } decctx = {0};
 
 #define LOG(...) (fprintf(stderr, __VA_ARGS__))
@@ -160,10 +155,10 @@ static void audio_play(void *data,
 		pthread_mutex_unlock(&decctx.rsync);
 	}
 
-	pthread_mutex_lock(&decctx.tsync);
-		memcpy(decctx.shmcont.audp + decctx.shmcont.addr->abufused, samples, nb);
+	pthread_mutex_lock(&decctx.rsync);
+	memcpy(decctx.shmcont.audp + decctx.shmcont.addr->abufused, samples, nb);
 		decctx.shmcont.addr->abufused += nb;
-	pthread_mutex_unlock(&decctx.tsync);
+	pthread_mutex_unlock(&decctx.rsync);
 
 	if (decctx.fft_audio){
 		generate_frame();
@@ -172,21 +167,17 @@ static void audio_play(void *data,
 
 static void audio_flush()
 {
-	pthread_mutex_lock(&decctx.tsync);
-		arcan_event ev = {
-			.kind = EVENT_EXTERNAL_FLUSHAUD,
-			.category = EVENT_EXTERNAL
-		};
+	arcan_event ev = {
+		.kind = EVENT_EXTERNAL_FLUSHAUD,
+		.category = EVENT_EXTERNAL
+	};
 
-		arcan_event_enqueue(&decctx.shmcont.outev, &ev);
-	pthread_mutex_unlock(&decctx.tsync);
+	arcan_event_enqueue(&decctx.shmcont.outev, &ev);
 }
 
 static void audio_drain()
 {
-	pthread_mutex_lock(&decctx.tsync);
 	arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGAUD);
-	pthread_mutex_unlock(&decctx.tsync);
 }
 
 static void video_cleanup(void* ctx)
@@ -202,12 +193,10 @@ static void* video_lock(void* ctx, void** planes)
 
 static void video_display(void* ctx, void* picture)
 {
-	pthread_mutex_lock(&decctx.tsync);
 	if (decctx.shmcont.addr->abufused > 0)
 		arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGAUD | SHMIF_SIGVID);
 	else
 		arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGVID);
-	pthread_mutex_unlock(&decctx.tsync);
 }
 
 static void video_unlock(void* ctx, void* picture, void* const* planes)
@@ -248,9 +237,7 @@ static void push_streamstatus()
 	snprintf((char*)status.data.external.streamstat.timestr, strlim,
 		"%d:%02d:%02d", dh, dm, ds);
 
-	pthread_mutex_lock(&decctx.tsync);
-		arcan_event_enqueue(&decctx.shmcont.outev, &status);
-	pthread_mutex_unlock(&decctx.tsync);
+	arcan_event_enqueue(&decctx.shmcont.outev, &status);
 }
 
 static void player_event(const struct libvlc_event_t* event, void* ud)
@@ -273,9 +260,7 @@ static void player_event(const struct libvlc_event_t* event, void* ud)
 		printf("unhandled event\n");
 	}
 
-	pthread_mutex_lock(&decctx.rsync);
 	process_inevq();
-	pthread_mutex_unlock(&decctx.rsync);
 }
 
 static libvlc_media_t* find_capture_device(
@@ -425,7 +410,6 @@ void arcan_frameserver_decode_run(const char* resource, const char* keyfile)
 		 return;
 	}
 
-	pthread_mutex_init(&decctx.tsync, NULL);
 	pthread_mutex_init(&decctx.rsync, NULL);
 
 /* register media with vlc, hook up local input mapping */
