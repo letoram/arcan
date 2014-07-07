@@ -106,7 +106,7 @@ retry:
 }
 
 bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
-	bool fs, bool frames)
+	bool fs, bool frames, const char* capt)
 {
 	char caption[64] = {0};
 	SDL_Init(SDL_INIT_VIDEO);
@@ -141,7 +141,7 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 		arcan_video_display.msasamples);
 	}
 
-	snprintf(caption, 63, "Arcan (%s)", arcan_themename);
+	snprintf(caption, 63, "%s", capt);
 	SDL_WM_SetCaption(caption, "Arcan");
 
 	arcan_video_display.fullscreen = fs;

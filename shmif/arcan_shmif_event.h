@@ -193,7 +193,8 @@ enum ARCAN_EVENT_EXTERNAL {
 	EVENT_EXTERNAL_SEGREQ,
 	EVENT_EXTERNAL_DATASEQ,
 	EVENT_EXTERNAL_KEYINPUT,
-	EVENT_EXTERNAL_CURSORINPUT
+	EVENT_EXTERNAL_CURSORINPUT,
+	EVENT_EXTERNAL_REGISTER
 };
 
 enum ARCAN_EVENT_VIDEO {
@@ -244,6 +245,24 @@ enum ARCAN_ANALOGFILTER_KIND {
 	ARCAN_ANALOGFILTER_PASS = 1,
 	ARCAN_ANALOGFILTER_AVG  = 2,
  	ARCAN_ANALOGFILTER_ALAST = 3
+};
+
+/*
+ * Some meta- descriptors to propagate ONCE for non-authoritative
+ * connections, used as hinting to window manager script
+ */
+enum ARCAN_SEGID {
+	SEGID_LWA = 0,
+	SEGID_MEDIA,
+	SEGID_NETWORK_SERVER,
+	SEGID_NETWORK_CLIENT,
+	SEGID_SHELL,
+	SEGID_REMOTING,
+	SEGID_ENCODER,
+	SEGID_GAME,
+	SEGID_APPLICATION,
+	SEGID_BROWSER,
+	SEGID_UNKNOWN
 };
 
 typedef union arcan_ioevent_data {
@@ -397,6 +416,11 @@ typedef struct arcan_extevent {
 			uint16_t width;
 			uint16_t height;
 		} noticereq;
+
+		struct {
+			char title[64];
+			enum ARCAN_SEGID kind;
+		} registr;
 
 		struct {
 			uint8_t timestr[9]; /* HH:MM:SS\0 */

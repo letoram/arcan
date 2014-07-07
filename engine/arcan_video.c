@@ -1380,7 +1380,7 @@ const char* defcfprg =
 "}\n";
 
 arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
-	bool fs, bool frames, bool conservative)
+	bool fs, bool frames, bool conservative, const char* caption)
 {
 	static bool firstinit = true;
 
@@ -1395,7 +1395,7 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 		firstinit = false;
 	}
 
-	if (!platform_video_init(width, height, bpp, fs, frames)){
+	if (!platform_video_init(width, height, bpp, fs, frames, caption)){
 		arcan_warning("platform_video_init() failed.\n");
 		return ARCAN_ERRC_BADVMODE;
 	}

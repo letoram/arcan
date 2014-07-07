@@ -471,13 +471,13 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
  * AVFEED/INTERACTIVE are the only supported subtypes
  */
 	if (input){
-		newseg->kind = ARCAN_FRAMESERVER_OUTPUT;
+		newseg->segid = SEGID_ENCODER;
 		newseg->flags.socksig = true;
 		keyev.data.target.ioevs[0].iv = 1;
 		keyev.data.target.ioevs[1].iv = tag;
 	}
 	else {
-		newseg->kind = ARCAN_FRAMESERVER_INTERACTIVE;
+		newseg->segid = SEGID_UNKNOWN;
 		newseg->flags.socksig = true;
 	}
 
@@ -694,7 +694,7 @@ arcan_frameserver* arcan_frameserver_listen_external(const char* key)
 /*
  * defaults for an external connection is similar to that of avfeed/libretro
  */
-	res->kind = ARCAN_FRAMESERVER_INTERACTIVE;
+	res->segid = SEGID_UNKNOWN;
 	res->flags.socksig = false;
 	res->launchedtime = arcan_timemillis();
 	res->child = BROKEN_PROCESS_HANDLE;
@@ -760,7 +760,7 @@ bool arcan_frameserver_resize(shm_handle* src, int w, int h)
 		arcan_warning("frameserver_resize() failed, reason: %s\n", strerror(errno));
     return false;
   }
-  
+
   memcpy(src->ptr, tmpbuf, sizeof(struct arcan_shmif_page));
   src->ptr->segment_size = sz;
 	arcan_mem_free(tmpbuf);

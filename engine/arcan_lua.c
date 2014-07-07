@@ -229,6 +229,7 @@ static struct {
 } lua_ctx_store = {0};
 
 extern char* _n_strdup(const char* instr, const char* alt);
+static inline const char* fsrvtos(enum ARCAN_SEGID ink);
 
 static inline void colon_escape(char* instr)
 {
@@ -2394,6 +2395,8 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		if (arcan_video_findparent(ev->data.external.source) == ARCAN_EID)
 			return;
 
+		int reset = lua_gettop(ctx);
+
 /* need to jump through a few hoops to get hold of the possible callback */
 		arcan_vobject* vobj = arcan_video_getobject(ev->data.external.source);
 
@@ -2504,6 +2507,22 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			case EVENT_EXTERNAL_RESOURCE:
 				tblstr(ctx, "kind", "resource_status", top);
 				tblstr(ctx, "message", (char*)ev->data.external.message, top);
+			break;
+			case EVENT_EXTERNAL_REGISTER:
+				if (fsrv->segid != SEGID_UNKNOWN){
+					arcan_warning("client attempted to change registry ID/type "
+						"this behavior is not permitted and was ignored.\n");
+					lua_settop(ctx, reset);
+					return;
+				} else {
+					tblstr(ctx, "kind", "registered", top);
+					tblstr(ctx, "segkind", fsrvtos(ev->data.external.registr.kind), top);
+					slimpush(mcbuf, sizeof(ev->data.external.registr.title) /
+						sizeof(ev->data.external.registr.title[0]),
+						(char*)ev->data.external.registr.title);
+					tblstr(ctx, "title", mcbuf, top);
+				}
+
 			break;
 			 default:
 				tblstr(ctx, "kind", "unknown", top);
@@ -5084,7 +5103,7 @@ static int spawn_recfsrv(lua_State* ctx,
  * or streaming sessions */
 	int fd = 0;
 
-	if (strstr(args.args.builtin.resource, 
+	if (strstr(args.args.builtin.resource,
 		"container=stream") != NULL || strlen(resf) == 0)
 		fd = open(NULFILE, O_WRONLY);
 	else if (-1 == (
@@ -5122,7 +5141,7 @@ static int spawn_recfsrv(lua_State* ctx,
  */
 	if (naids > 1)
 		arcan_frameserver_avfeed_mixer(mvctx, naids, aidlocks);
-	
+
 	return 0;
 }
 
@@ -6263,11 +6282,11 @@ static inline arcan_frameserver* luaL_checknet(lua_State* ctx,
 
 	arcan_frameserver* fsrv = vobj->feed.state.ptr;
 
-	if (server && fsrv->kind != ARCAN_FRAMESERVER_NETSRV){
+	if (server && fsrv->segid != SEGID_NETWORK_SERVER){
 		arcan_fatal("%s -- Frameserver connected to VID is not in server mode "
 			"(net_open vs net_listen)\n", prefix);
 	}
-	else if (!server && fsrv->kind != ARCAN_FRAMESERVER_NETCL)
+	else if (!server && fsrv->segid != SEGID_NETWORK_CLIENT)
 		arcan_fatal("%s -- Frameserver connected to VID is not in client mode "
 			"(net_open vs net_listen)\n", prefix);
 
@@ -6391,7 +6410,7 @@ static int net_pushsrv(lua_State* ctx)
 	if (fsrv->flags.subsegment)
 		arcan_fatal("net_pushsrv() -- cannot push VID to a subsegment.\n");
 
-	if (!fsrv->kind == ARCAN_FRAMESERVER_NETSRV)
+	if (!fsrv->segid == SEGID_NETWORK_CLIENT)
 		arcan_fatal("net_pushsrv() -- bad arg1, specified frameserver"
 			" is not in client mode (net_open).\n");
 
@@ -6494,9 +6513,9 @@ static int net_refresh(lua_State* ctx)
 	if (!fsrv)
 		return 0;
 
-	if (!fsrv->kind == ARCAN_FRAMESERVER_NETSRV)
+	if (!fsrv->segid == SEGID_NETWORK_SERVER)
 		arcan_fatal("net_pushsrv() -- bad arg1, specified frameserver "
-		"is not in client mode (net_open).\n");
+		"is not in server mode (net_refresh).\n");
 
 	arcan_frameserver_pushevent(fsrv, &outev);
 
@@ -7139,16 +7158,20 @@ static inline int qused(struct arcan_evctx* dq)
 	*(dq->front) + *(dq->back) : *(dq->back) - *(dq->front);
 }
 
-static inline const char* fsrvtos(enum arcan_frameserver_kinds ink)
+static inline const char* fsrvtos(enum ARCAN_SEGID ink)
 {
 	switch(ink){
-	case ARCAN_FRAMESERVER_INPUT: return "input";
-	case ARCAN_FRAMESERVER_OUTPUT: return "output";
-	case ARCAN_FRAMESERVER_INTERACTIVE: return "interactive";
-	case ARCAN_FRAMESERVER_AVFEED: return "avfeed";
-	case ARCAN_FRAMESERVER_NETCL: return "net-client";
-	case ARCAN_FRAMESERVER_NETSRV: return "net-server";
-	case ARCAN_HIJACKLIB: return "hijack";
+	case SEGID_LWA: return "lightweight arcan";
+	case SEGID_MEDIA: return "multimedia";
+	case SEGID_NETWORK_SERVER: return "network-server";
+	case SEGID_NETWORK_CLIENT: return "network-client";
+	case SEGID_SHELL: return "shell";
+	case SEGID_REMOTING: return "remoting";
+	case SEGID_GAME: return "game";
+	case SEGID_APPLICATION: return "application";
+	case SEGID_BROWSER: return "browser";
+	case SEGID_ENCODER: return "encoder";
+	case SEGID_UNKNOWN: return "unknown";
 	}
 	return "";
 }
@@ -7183,7 +7206,7 @@ static inline void dump_vstate(FILE* dst, arcan_vobject* vobj)
 	qused(&fsrv->inqueue),
 	(int) fsrv->outqueue.eventbuf_sz,
 	qused(&fsrv->outqueue),
-	fsrvtos(fsrv->kind));
+	fsrvtos(fsrv->segid));
 	}
 }
 

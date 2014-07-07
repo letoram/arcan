@@ -152,7 +152,9 @@ typedef struct arcan_frameserver {
 	int64_t launchedtime;
 	unsigned vfcount;
 
-	enum arcan_frameserver_kinds kind;
+	enum ARCAN_SEGID segid;
+	bool hijacked;
+	char title[64];
 
 /* precalc offsets into mapped shmpage, calculated at resize */
 	uint8_t* vidp, (* audp);

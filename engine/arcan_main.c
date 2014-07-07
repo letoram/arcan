@@ -350,8 +350,8 @@ themeswitch:
 		fullscreen = false;
 
 /* grab video, (necessary) */
-	if (arcan_video_init(width, height, 32, fullscreen, windowed, conservative)
-		!= ARCAN_OK) {
+	if (arcan_video_init(width, height, 32,
+		fullscreen, windowed, conservative, arcan_themename) != ARCAN_OK) {
 		arcan_fatal("Error; Couldn't initialize video system,"
 			"try other windowing options (-f, -w, ...)\n");
 	}

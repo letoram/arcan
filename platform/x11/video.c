@@ -15,7 +15,7 @@
  * manage input anyhow (LWA mode and Libretro3D support)
  *
  * Anyone interested in improving this, expose the x11 struct (non-static)
- * and add a x11/event.c input driver that processes the event loop, maps 
+ * and add a x11/event.c input driver that processes the event loop, maps
  * as arcan events (frameserver/vnc* bits have some example code for converting
  * keysyms back and forth between X and arcan).
  */
@@ -43,7 +43,7 @@
  * another platform (say arcan/video.c) with additional defines
  * e.g. WITH_HEADLESS and re-use the code.
  */
-#ifndef PLATFORM_SUFFIX 
+#ifndef PLATFORM_SUFFIX
 #define PLATFORM_SUFFIX platform
 #endif
 
@@ -149,7 +149,7 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 
 	glXCreateContextAttribsARB = (glXCreateContextAttribsARBProc)
 		glXGetProcAddressARB( (const GLubyte *) "glXCreateContextAttribsARB");
-		
+
 	glXMakeContextCurrentARB = (glXMakeContextCurrentARBProc)
 		glXGetProcAddressARB( (const GLubyte *) "glXMakeContextCurrent");
 
@@ -166,7 +166,7 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 	}
 
 	int pbuffer_attribs[] = {
-		GLX_PBUFFER_WIDTH, w, 
+		GLX_PBUFFER_WIDTH, w,
 		GLX_PBUFFER_HEIGHT, h,
 		None
 	};
@@ -178,7 +178,7 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 
 #else
 bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
-	uint8_t bpp, bool fs, bool frames)
+	uint8_t bpp, bool fs, bool frames, const char* caption)
 {
 
 #ifdef WITH_HEADLESS
@@ -201,7 +201,7 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 	};
 
 	int err;
-	x11.vi = glXChooseVisual(x11.xdisp, DefaultScreen(x11.xdisp), alist); 
+	x11.vi = glXChooseVisual(x11.xdisp, DefaultScreen(x11.xdisp), alist);
 	if (!x11.vi){
 		arcan_warning("(x11) Couldn't find a suitable visual\n");
 		return false;
@@ -213,7 +213,7 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 		return false;
 	}
 
-	if (!glXMakeCurrent(x11.xdisp, x11.xwnd, x11.ctx)){  
+	if (!glXMakeCurrent(x11.xdisp, x11.xwnd, x11.ctx)){
 		arcan_warning("video_init failed while trying to activate glx context.\n");
 		return false;
 	}
@@ -225,8 +225,8 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 	}
 
 	XSync(x11.xdisp, False);
-	
-#ifndef HEADLESS_NOARCAN	
+
+#ifndef HEADLESS_NOARCAN
 	arcan_video_display.pbo_support = arcan_video_display.fbo_support = true;
 	arcan_video_display.width = w;
 	arcan_video_display.height = h;
@@ -245,7 +245,7 @@ void PLATFORM_SYMBOL(_video_restore_external) () {}
 void PLATFORM_SYMBOL(_video_shutdown) ()
 {
 	glXMakeCurrent(x11.xdisp, None, NULL);
-	glXDestroyContext(x11.xdisp, x11.ctx); 
+	glXDestroyContext(x11.xdisp, x11.ctx);
   XDestroyWindow(x11.xdisp, x11.xwnd);
   XCloseDisplay(x11.xdisp);
 }
