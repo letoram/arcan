@@ -83,7 +83,7 @@ message("")
 message("optimization / core features:")
 message("   -DENABLE_LED=[On|Off] : Build with LED controller support in core")
 message("   -DENABLE_HMD=[On|Off] : Build with Head-Mounted Display support in core")
-message("   -DENABLE_LWA=[Off|On] : Build lightweight additional arcan client") 
+message("   -DENABLE_LWA=[Off|On] : Build lightweight additional arcan client")
 message("   -DENABLE_LUAJIT=[On|Off] : link with luajit51 (if found)")
 message("   -DMUSL_LIBC=[Off|On] build and link with MUSL Libc (incomplete)")
 message("   -DSQLITE_AMALGAMATE=[Off|On] : Build / Link with the SQLite Amalgamation")
@@ -96,9 +96,9 @@ message("   -DENABLE_NET=[On|Off] : Build networking frameserver (using APR)")
 message("   -DENABLE_VIDDEC=[On|Off] : Build video decoding frameserver (using LibVLC)")
 message("   -DENABLE_REMOTING=[On|Off] : Build remoting frameserver (using vncserver)")
 message("   -DENABLE_VIDENC=[On|Off] : Build video encoding frameserver (using ffmpeg)")
-message("   -DENABLE_VIDENCVNC=[On|Off] :       |-> Add VNC server support") 
+message("   -DENABLE_VIDENCVNC=[On|Off] :       |-> Add VNC server support")
 message("   -DENABLE_LIBRETRO=[On|Off] : Build libretro frameserver")
-message("   -DENABLE_LIBRETRO3D=[On|Off] : |--> Enable 3D support") 
+message("   -DENABLE_LIBRETRO3D=[On|Off] : |--> Enable 3D support")
 endif()
 message("")
 
@@ -232,9 +232,9 @@ elseif(VIDEO_PLATFORM STREQUAL "egl")
 	FIND_PACKAGE(EGL REQUIRED)
 	FIND_PACKAGE(GLES2 REQUIRED)
 	FIND_PACKAGE(GBMKMS REQUIRED)
-	LIST(APPEND MAIN_LIBRARIES 
-		${EGL_LIBRARIES} 
-		${GLES2_LIBRARIES} 
+	LIST(APPEND MAIN_LIBRARIES
+		${EGL_LIBRARIES}
+		${GLES2_LIBRARIES}
 		${GBMKMS_LIBRARIES}
 	)
 	LIST(APPEND INCLUDE_DIRS ${GBMKMS_INCLUDE_DIRS})
@@ -445,7 +445,7 @@ if (ENABLE_LIBRETRO)
 				FRAMESERVER_LIBRETRO_3D
 				HEADLESS_PLATFORM=\"${CMAKE_CURRENT_SOURCE_DIR}/platform/${LWA_HEADLESS}\"
 		)
-		LIST(APPEND FSRV_LIBRETRO_LIBRARIES ${LWA_LIBRARIES}) 
+		LIST(APPEND FSRV_LIBRETRO_LIBRARIES ${LWA_LIBRARIES})
 	endif()
 endif()
 
@@ -567,7 +567,7 @@ if (LUA51_JIT)
 	set_property(SOURCE engine/arcan_lua.c PROPERTY
 					COMPILE_DEFINITIONS LUA51_JIT)
 endif (LUA51_JIT)
-	
+
 set_property(SOURCE engine/arcan_lua.c PROPERTY
 	COMPILE_DEFINITIONS FRAMESERVER_MODESTRING=\"${FRAMESERVER_MODESTRING}\")
 
@@ -603,43 +603,52 @@ message("\n---- Stage 3, Linking / Packaging ----")
 target_link_libraries( arcan ${STDLIB} ${MAIN_LIBRARIES} ${ARCANMAIN_LIBRARIES} )
 target_link_libraries( arcan_frameserver ${STDLIB} ${FSRV_LIBRARIES} )
 
-# 
+#
 # For LWA we need some kind of sound backend. In a sandbox,
 # LWA is not (by default) supposed to get access to any audio device outside
-# the shared memory interface. Therefore we build a patched version of 
+# the shared memory interface. Therefore we build a patched version of
 # openal, that's linked statically with only a shmif- based backend
 #
-# Current build-system setup forces main arcan and lwa_ version to largely share 
-# the same platform build, which means that the terrible dependency-tree 
+# Current build-system setup forces main arcan and lwa_ version to largely share
+# the same platform build, which means that the terrible dependency-tree
 # from the SDL- etc. build remain.
 #
 if (ENABLE_LWA)
+	FILE(GLOB ALPATCHES ${CMAKE_CURRENT_SOURCE_DIR}/external/patches/openal/*.patch)
+	LIST(SORT ALPATCHES)
+
 	ExternalProject_Add(openal_soft
 		SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/openal_soft
 		GIT_REPOSITORY "https://github.com/mirror/openal-soft.git"
 		UPDATE_COMMAND ""
-#		PATCH_COMMAND ${EXEC} git am ${CMAKE_CURRENT_SOURCE_DIR}/external/patches/openal.patch
+		PATCH_COMMAND ${EXEC} git am ${ALPATCHES}
 		INSTALL_COMMAND ""
-		CMAKE_ARGS	
+		CMAKE_ARGS
 			-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
 			-DCMAKE_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}
-			-DALSOFT_BACKEND_ALSA=OFF 
-			-DALSOFT_BACKEND_OSS=OFF 
-			-DALSOFT_BACKEND_PULSEAUDIO=OFF 
-			-DALSOFT_BACKEND_WAVE=OFF 
-			-DALSOFT_BACKEND_ARCAN=ON 
-			-DALSOFT_EXAMPLES=OFF 
-			-DALSOFT_DLOPEN=OFF 
-			-DALSOFT_UTILS=OFF 
+			-DALSOFT_BACKEND_ALSA=OFF
+			-DALSOFT_BACKEND_OSS=OFF
+			-DALSOFT_BACKEND_PULSEAUDIO=OFF
+			-DALSOFT_BACKEND_WAVE=OFF
+			-DALSOFT_BACKEND_ARCAN=ON
+			-DALSOFT_REQUIRE_ARCAN=ON
+			-DALSOFT_EXAMPLES=OFF
+			-DALSOFT_DLOPEN=OFF
+			-DALSOFT_UTILS=OFF
 			-DALSOFT_CONFIG=OFF
-		 	-DLIBTYPE=STATIC	
-			-DALSOFT_ARCAN_SHMIF=${CMAKE_CURRENT_SOURCE_DIR}/shmif
+		 	-DLIBTYPE=STATIC
+			-DARCAN_SHMIF_PATH=${CMAKE_CURRENT_SOURCE_DIR}/shmif
+			-DARCAN_SHMIF_PLATFORM=${FSRV_PLATFORM_SOURCES}
+			-DARCAN_SHMIF_PLATFORM_HEADER=${PLATFORM_PATH}/../platform.h
 	)
 
-	add_dependencies( arcan_lwa openal_soft ) 
-	target_link_libraries( arcan_lwa ${STDLIB} ${MAIN_LIBRARIES} ${LWA_LIBRARIES} 
-		${CMAKE_CURRENT_BINARY_DIR}/openal_soft-prefix/src/openal_soft-build/libcommon.a 
-		${CMAKE_CURRENT_BINARY_DIR}/openal_soft-prefix/src/openal_soft-build/libopenal.a 
+	set_property(TARGET arcan_lwa APPEND PROPERTY
+		COMPILE_DEFINITIONS ARCAN_LWA)
+
+	add_dependencies( arcan_lwa openal_soft )
+	target_link_libraries( arcan_lwa ${STDLIB} ${MAIN_LIBRARIES} ${LWA_LIBRARIES}
+		${CMAKE_CURRENT_BINARY_DIR}/openal_soft-prefix/src/openal_soft-build/libcommon.a
+		${CMAKE_CURRENT_BINARY_DIR}/openal_soft-prefix/src/openal_soft-build/libopenal.a
 	)
 endif()
 
