@@ -39,11 +39,11 @@
 #define ARCAN_VERSION_MINOR 5
 #define ARCAN_VERSION_PATCH 0
 
-/* There is a limited amount of types that both arcan
- * and frameservers need to agree on. To limit namespaces
- * this header provides definitions that otherwise would've
- * resided in the platform subdirectories or as part of
- * arcan_general.h */
+/* There is a limited amount of types that both arcan and frameservers
+ * need to agree on. To limit namespaces this header provides definitions
+ * that otherwise would've resided in the platform subdirectories or as
+ * part of arcan_general.h.
+ */
 
 #ifndef LOG
 #define LOG(...) (fprintf(stderr, __VA_ARGS__))
@@ -82,6 +82,10 @@ int arcan_event_wait(struct arcan_evctx*, struct arcan_event* dst);
  * value on failure. The purpose of the try- approach is to let
  * the user distinguish between necessary and merely "helpful"
  * events (e.g. frame numbers, net ping-pongs etc.)
+ *
+ * These methods are thread-safe if and only if
+ * ARCAN_SHMIF_THREADSAFE_QUEUE
+ * has been defined at build-time.
  */
 int arcan_event_enqueue(struct arcan_evctx*,
 	const struct arcan_event* const);
