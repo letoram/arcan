@@ -103,6 +103,14 @@
 #endif
 
 /*
+ * namespaces permitted to be searched for regular resource lookups
+ */
+#ifndef DEFAULT_USERMASK
+#define DEFAULT_USERMASK \
+	(RESOURCE_APPL | RESOURCE_APPL_SHARED | RESOURCE_APPL_TEMP)
+#endif
+
+/*
  * some operations, typically resize, move and rotate suffered a lot from
  * lua floats propagating, meaning that we'd either get subpixel positioning
  * and blurring text etc. as a consequence. For these functions, we now
@@ -201,7 +209,6 @@ static const int RENDERFMT_FULL  = RENDERTARGET_COLOR_DEPTH_STENCIL;
 static const int POSTFILTER_NTSC = 100;
 static const int POSTFILTER_OFF  = 10;
 
-extern char* arcan_themename;
 extern arcan_dbh* dbhandle;
 
 enum arcan_cb_source {
@@ -314,15 +321,14 @@ void arcan_state_dump(const char* key, const char* msg, const char* src)
 		return;
 	}
 
-#define DATESTR "%m%d_%H%M%S"
-	char datestr[ sizeof(DATESTR) * 2 ];
-	char fname[strlen(arcan_resourcepath) + strlen(key) +
-		sizeof("/logs/_.lua") + sizeof(datestr)];
-	strftime(datestr, sizeof(datestr), DATESTR, ltime);
-#undef DATESTR
+	const char* date_ptn = "%m%d_%H%M%S";
+	char date_str[ sizeof(date_ptn) * 2 ];
+	strftime(date_str, sizeof(date_str), date_ptn, ltime);
 
-	snprintf(fname, sizeof(fname),
-		"%s/logs/%s_%s.lua", arcan_resourcepath, key, datestr);
+	char state_fn[ strlen(key) + sizeof(".lua") + sizeof(date_str) ];
+	snprintf(state_fn, sizeof(state_fn), "%s_%s.lua", key, date_str);
+
+	char* fname = arcan_expand_resource(state_fn, RESOURCE_SYS_DEBUG);
 
 	FILE* tmpout = fopen(fname, "w+");
 	if (tmpout){
@@ -334,6 +340,8 @@ void arcan_state_dump(const char* key, const char* msg, const char* src)
 	}
 	else
 		arcan_warning("crashdump requested but (%s) is not accessible.\n", fname);
+
+	arcan_mem_free(fname);
 }
 
 /* dump argument stack, stack trace are shown only when --debug is set */
@@ -366,9 +374,9 @@ static void dump_stack(lua_State* ctx)
 }
 
 
-static inline char* findresource(const char* arg, int searchmask)
+static inline char* findresource(const char* arg, enum arcan_namespaces space)
 {
-	char* res = arcan_find_resource(arg, searchmask);
+	char* res = arcan_find_resource(arg, space);
 /* since this is invoked extremely frequently and is involved in file-system
  * related stalls, maybe a sort of caching mechanism should be implemented
  * (invalidate / refill every N ticks or have a flag to side-step it -- as a lot
@@ -387,8 +395,7 @@ static int zapresource(lua_State* ctx)
 {
 	LUA_TRACE("zap_resource");
 
-	char* path = findresource(
-		luaL_checkstring(ctx, 1), ARCAN_RESOURCE_THEME);
+	char* path = findresource(luaL_checkstring(ctx, 1), DEFAULT_USERMASK);
 
 	if (path && unlink(path) != -1)
 		lua_pushboolean(ctx, false);
@@ -403,14 +410,13 @@ static int rawresource(lua_State* ctx)
 {
 	LUA_TRACE("open_rawresource");
 
-	char* path = findresource(luaL_checkstring(ctx, 1),
-		ARCAN_RESOURCE_THEME | ARCAN_RESOURCE_SHARED);
+	char* path = findresource(luaL_checkstring(ctx, 1), DEFAULT_USERMASK);
 
 	if (lua_ctx_store.rfile)
 		fclose(lua_ctx_store.rfile);
 
-	if (!path) {
-		char* fname = arcan_expand_resource(luaL_checkstring(ctx, 1), false);
+	if (!path){
+		char* fname = arcan_expand_resource(luaL_checkstring(ctx, 1), RESOURCE_APPL);
 		if (fname){
 			lua_ctx_store.rfile = fopen(fname, "w+");
 			free(fname);
@@ -602,8 +608,8 @@ static int loadimage(lua_State* ctx)
 	LUA_TRACE("load_image");
 
 	arcan_vobj_id id = ARCAN_EID;
-	char* path = findresource(luaL_checkstring(ctx, 1),
-		ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);
+	char* path = findresource(luaL_checkstring(ctx, 1), DEFAULT_USERMASK);
+
 	uint8_t prio = luaL_optint(ctx, 2, 0);
 	unsigned desw = luaL_optint(ctx, 3, 0);
 	unsigned desh = luaL_optint(ctx, 4, 0);
@@ -623,8 +629,8 @@ static int loadimageasynch(lua_State* ctx)
 	arcan_vobj_id id = ARCAN_EID;
 	intptr_t ref = 0;
 
-	char* path = findresource(luaL_checkstring(ctx, 1),
-		ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);
+	char* path = findresource(luaL_checkstring(ctx, 1), DEFAULT_USERMASK);
+
 	if (lua_isfunction(ctx, 2) && !lua_iscfunction(ctx, 2)){
 		lua_pushvalue(ctx, 2);
 		ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
@@ -1123,8 +1129,7 @@ static int loadasample(lua_State* ctx)
 	LUA_TRACE("load_asample");
 
 	const char* rname = luaL_checkstring(ctx, 1);
-	char* resource = findresource(rname,
-		ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);
+	char* resource = findresource(rname, DEFAULT_USERMASK);
 	float gain = luaL_optnumber(ctx, 2, 1.0);
 	arcan_aobj_id sid = arcan_audio_load_sample(resource, gain, NULL);
 	free(resource);
@@ -1555,21 +1560,22 @@ static int systemcontextsize(lua_State* ctx)
 	return 0;
 }
 
-char* arcan_luaL_dofile(lua_State* ctx, const char* fname)
+char* arcan_luaL_main(lua_State* ctx, const char* inp, bool file)
 {
-/* since we prefix themename to functions that we look-up,
+/* since we prefix scriptname to functions that we look-up,
  * we need a buffer to expand into with as few read/writes/allocs
  * as possible, arcan_luaL_dofile is only ever invoked when
  * a theme is about to be loaded so here is a decent entrypoint */
+	const int suffix_lim = 34;
+
 	free(lua_ctx_store.prefix_buf);
-	lua_ctx_store.prefix_ofs = strlen(arcan_themename);
-	lua_ctx_store.prefix_buf = arcan_alloc_mem(
-		strlen(fname) + 34,
+	lua_ctx_store.prefix_ofs = arcan_appl_id_len();
+	lua_ctx_store.prefix_buf = arcan_alloc_mem( arcan_appl_id_len() + suffix_lim,
 		ARCAN_MEM_BINDING, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_SIMD
 	);
-	memcpy(lua_ctx_store.prefix_buf, arcan_themename, lua_ctx_store.prefix_ofs);
+	memcpy(lua_ctx_store.prefix_buf, arcan_appl_id(), lua_ctx_store.prefix_ofs);
 
-	int code = luaL_dofile(ctx, fname);
+	int code = (file ? luaL_dofile(ctx, inp) : luaL_dostring(ctx, inp));
 	if (code == 1){
 		const char* msg = lua_tostring(ctx, -1);
 		if (msg)
@@ -1584,7 +1590,7 @@ static int syssnap(lua_State* ctx)
 	LUA_TRACE("system_snapshot");
 
 	const char* instr = luaL_checkstring(ctx, 1);
-	char* fname = findresource(instr, ARCAN_RESOURCE_THEME);
+	char* fname = findresource(instr, RESOURCE_SYS_DEBUG);
 
 	if (fname){
 		arcan_warning("system_statesnap(), "
@@ -1594,25 +1600,18 @@ static int syssnap(lua_State* ctx)
 		return 0;
 	}
 
-	fname = arcan_expand_resource(luaL_checkstring(ctx, 1), false);
+	fname = arcan_expand_resource(luaL_checkstring(ctx, 1), RESOURCE_SYS_DEBUG);
+	FILE* outf = fopen(fname, "w+");
 
-	if (fname){
-		FILE* outf = fopen(fname, "w+");
-
-		if (outf){
-			arcan_lua_statesnap(outf, "", false);
-			fclose(outf);
-		}
-		else
-			arcan_warning("system_statesnpa(), "
-				"couldn't open (%s) for writing.\n", fname);
-
-	} else {
-		arcan_warning("system_statesnap(), "
-			"couldn't resolve destination resource.\n");
+	if (outf){
+		arcan_lua_statesnap(outf, "", false);
+		fclose(outf);
 	}
+	else
+		arcan_warning("system_statesnap(), "
+			"couldn't open (%s) for writing.\n", fname);
 
-	free(fname);
+	arcan_mem_free(fname);
 	return 0;
 }
 
@@ -1623,7 +1622,7 @@ static int dofile(lua_State* ctx)
 	const char* instr = luaL_checkstring(ctx, 1);
 	bool dieonfail = luaL_optnumber(ctx, 2, 1) != 0;
 
-	char* fname = findresource(instr, ARCAN_RESOURCE_THEME|ARCAN_RESOURCE_SHARED);
+	char* fname = findresource(instr, RESOURCE_APPL | RESOURCE_APPL_SHARED);
 	int res = 0;
 
 	if (fname){
@@ -1778,8 +1777,7 @@ static int loadmovie(lua_State* ctx)
 	const char* farg = luaL_checkstring(ctx, 1);
 
 	bool special = is_special_res(farg);
-	char* fname = special ? strdup(farg) : findresource(farg,
-		ARCAN_RESOURCE_THEME | ARCAN_RESOURCE_SHARED);
+	char* fname = special ? strdup(farg) : findresource(farg, DEFAULT_USERMASK);
 	intptr_t ref = (intptr_t) 0;
 
 	const char* argstr = "";
@@ -2895,8 +2893,7 @@ static int loadmesh(lua_State* ctx)
 
 	arcan_vobj_id did = luaL_checkvid(ctx, 1, NULL);
 	unsigned nmaps = luaL_optnumber(ctx, 3, 1);
-	char* path = findresource(luaL_checkstring(ctx, 2),
-		ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);
+	char* path = findresource(luaL_checkstring(ctx, 2), DEFAULT_USERMASK);
 
 	if (path){
 			data_source indata = arcan_open_resource(path);
@@ -3168,7 +3165,7 @@ static int storekey(lua_State* ctx)
 	} else {
 		const char* key = luaL_checkstring(ctx, 1);
 		const char* name = luaL_checkstring(ctx, 2);
-		arcan_db_theme_kv(dbhandle, arcan_themename, key, name);
+		arcan_db_theme_kv(dbhandle, arcan_appl_id(), key, name);
 	}
 
 	return 0;
@@ -3179,7 +3176,7 @@ static int getkey(lua_State* ctx)
 	LUA_TRACE("get_key");
 
 	const char* key = luaL_checkstring(ctx, 1);
-	char* val = arcan_db_theme_val(dbhandle, arcan_themename, key);
+	char* val = arcan_db_theme_val(dbhandle, arcan_appl_id(), key);
 
 	if (val) {
 		lua_pushstring(ctx, val);
@@ -3476,75 +3473,75 @@ static int rawsurface(lua_State* ctx)
 
 	unsigned ofs = 1;
 
-	if (desw > 0 && desh > 0 && desw <= MAX_SURFACEW && desh <= MAX_SURFACEH){
-		uint8_t* buf = arcan_alloc_mem(desw * desh * GL_PIXEL_BPP,
-			ARCAN_MEM_VBUFFER, 0, ARCAN_MEMALIGN_PAGE);
+	if (desw < 0 || desh < 0 || desw > MAX_SURFACEW || desh > MAX_SURFACEH)
+		arcan_fatal("rawsurface(), desired dimensions (%d x %d) "
+			"exceed compile-time limits (%d x %d).\n",
+			desw, desh, MAX_SURFACEW, MAX_SURFACEH
+		);
 
-		uint32_t* cptr = (uint32_t*) buf;
+	uint8_t* buf = arcan_alloc_mem(desw * desh * GL_PIXEL_BPP,
+		ARCAN_MEM_VBUFFER, 0, ARCAN_MEMALIGN_PAGE);
 
-		for (int y = 0; y < cons.h; y++)
-			for (int x = 0; x < cons.w; x++){
-				unsigned char r, g, b, a;
-				switch(bpp){
-					case 1:
-						lua_rawgeti(ctx, 4, ofs++);
-						r = lua_tonumber(ctx, -1);
-						lua_pop(ctx, 1);
-						*cptr++ = RGBA(r, r, r, 0xff);
-					break;
+	uint32_t* cptr = (uint32_t*) buf;
 
-					case 3:
-						lua_rawgeti(ctx, 4, ofs++);
-						r = lua_tonumber(ctx, -1);
-						lua_rawgeti(ctx, 4, ofs++);
-						g = lua_tonumber(ctx, -1);
-						lua_rawgeti(ctx, 4, ofs++);
-						b = lua_tonumber(ctx, -1);
-						lua_pop(ctx, 3);
-						*cptr++ = RGBA(r, g, b, 0xff);
-					break;
+	for (int y = 0; y < cons.h; y++)
+		for (int x = 0; x < cons.w; x++){
+			unsigned char r, g, b, a;
+			switch(bpp){
+			case 1:
+				lua_rawgeti(ctx, 4, ofs++);
+				r = lua_tonumber(ctx, -1);
+				lua_pop(ctx, 1);
+				*cptr++ = RGBA(r, r, r, 0xff);
+			break;
 
-					case 4:
-						lua_rawgeti(ctx, 4, ofs++);
-						r = lua_tonumber(ctx, -1);
-						lua_rawgeti(ctx, 4, ofs++);
-						g = lua_tonumber(ctx, -1);
-						lua_rawgeti(ctx, 4, ofs++);
-						b = lua_tonumber(ctx, -1);
-						lua_rawgeti(ctx, 4, ofs++);
-						a = lua_tonumber(ctx, -1);
-						lua_pop(ctx, 4);
-						*cptr++ = RGBA(r, g, b, a);
-					}
+			case 3:
+				lua_rawgeti(ctx, 4, ofs++);
+				r = lua_tonumber(ctx, -1);
+				lua_rawgeti(ctx, 4, ofs++);
+				g = lua_tonumber(ctx, -1);
+				lua_rawgeti(ctx, 4, ofs++);
+				b = lua_tonumber(ctx, -1);
+				lua_pop(ctx, 3);
+				*cptr++ = RGBA(r, g, b, 0xff);
+			break;
+
+			case 4:
+				lua_rawgeti(ctx, 4, ofs++);
+				r = lua_tonumber(ctx, -1);
+				lua_rawgeti(ctx, 4, ofs++);
+				g = lua_tonumber(ctx, -1);
+				lua_rawgeti(ctx, 4, ofs++);
+				b = lua_tonumber(ctx, -1);
+				lua_rawgeti(ctx, 4, ofs++);
+				a = lua_tonumber(ctx, -1);
+				lua_pop(ctx, 4);
+				*cptr++ = RGBA(r, g, b, a);
 			}
-
-		if (dumpstr){
-			char* fname = arcan_expand_resource(dumpstr, false);
-			if (!fname)
-				arcan_warning("screenshot() -- refusing to overwrite existing "
-					"(%s)\n", fname);
-			else{
-				FILE* fpek = fopen(fname, "wb");
-				if (!fpek)
-					arcan_warning("screenshot() -- couldn't open (%s) "
-						"for writing.\n", fname);
-				else
-					arcan_rgba32_pngfile(fpek, (char*)buf, desw, desh, 0);
-			}
-			free(fname);
 		}
 
-		arcan_vobj_id id = arcan_video_rawobject(buf,
-			cons.w * cons.h * GL_PIXEL_BPP, cons, desw, desh, 0);
-		lua_pushvid(ctx, id);
-		return 1;
+	if (dumpstr){
+		char* fname = arcan_find_resource(dumpstr, RESOURCE_APPL);
+		if (fname){
+			arcan_warning("rawsurface() -- refusing to "
+				"overwrite existing file (%s)\n", fname);
+		}
+		else{
+			fname = arcan_expand_resource(dumpstr, RESOURCE_APPL);
+			FILE* fpek = fopen(fname, "wb");
+			if (!fpek)
+				arcan_warning("rawsurface() - - couldn't open (%s).\n", fname);
+			else
+				arcan_rgba32_pngfile(fpek, (char*)buf, desw, desh, 0);
+		}
+		arcan_mem_free(fname);
 	}
-	else
-		arcan_fatal("rawsurface(%d, %d) unacceptable surface dimensions, "
-			"compile time restriction 0 > (w,y) <= (%d,%d)\n",
-			desw, desh, MAX_SURFACEW, MAX_SURFACEH);
 
-	return 0;
+	arcan_vobj_id id = arcan_video_rawobject(buf,
+		cons.w * cons.h * GL_PIXEL_BPP, cons, desw, desh, 0);
+
+	lua_pushvid(ctx, id);
+	return 1;
 }
 
 /* not intendend to be used as a low-frequency noise function (duh) */
@@ -3780,7 +3777,7 @@ static int warning(lua_State* ctx)
 	char* msg = (char*) luaL_checkstring(ctx, 1);
 
 	if (strlen(msg) > 0)
-		arcan_warning("(%s) %s\n", arcan_themename, msg);
+		arcan_warning("(%s) %s\n", arcan_appl_id(), msg);
 
 	return 0;
 }
@@ -3835,7 +3832,7 @@ static int switchtheme(lua_State *ctx)
 	LUA_TRACE("switch_theme");
 
 	arcan_event ev = {.category = EVENT_SYSTEM, .kind = EVENT_SYSTEM_SWITCHTHEME};
-	const char* newtheme = luaL_optstring(ctx, 1, arcan_themename);
+	const char* newtheme = luaL_optstring(ctx, 1, arcan_appl_id());
 
 	snprintf(ev.data.system.data.message, sizeof(ev.data.system.data.message)
 		/ sizeof(ev.data.system.data.message[0]), "%s", newtheme);
@@ -3964,13 +3961,8 @@ static int globresource(lua_State* ctx)
 	};
 
 	char* label = (char*) luaL_checkstring(ctx, 1);
-	int mask = luaL_optinteger(ctx, 2,
-		ARCAN_RESOURCE_THEME | ARCAN_RESOURCE_SHARED);
-
-	if (mask != ARCAN_RESOURCE_THEME && mask != ARCAN_RESOURCE_SHARED &&
-		mask != (ARCAN_RESOURCE_THEME|ARCAN_RESOURCE_SHARED))
-		arcan_fatal("globresource(%s), invalid mask (%d) specified. "
-			"Expected: RESOURCE_SHARED or RESOURCE_THEME or nil\n");
+	int mask = luaL_optinteger(
+		ctx, 2, DEFAULT_USERMASK) & DEFAULT_USERMASK;
 
 	lua_newtable(ctx);
 	bptr.top = lua_gettop(ctx);
@@ -3985,8 +3977,7 @@ static int resource(lua_State* ctx)
 	LUA_TRACE("resource()");
 
 	const char* label = luaL_checkstring(ctx, 1);
-	int mask = luaL_optinteger(ctx, 2,
-		ARCAN_RESOURCE_THEME | ARCAN_RESOURCE_SHARED);
+	int mask = luaL_optinteger(ctx, 2, DEFAULT_USERMASK);
 	char* res = findresource(label, mask);
 	lua_pushstring(ctx, res);
 	free(res);
@@ -4055,14 +4046,18 @@ static bool use_loader(char* fname)
 		(strcasecmp(ext, ".dll") == 0)) ? true : false;
 }
 
+/*
+ * slated for DEPRECATION
+ */
 static int targetlaunch_capabilities(lua_State* ctx)
 {
-	LUA_TRACE("launch_target_capabilities");
+	LUA_TRACE("launch_target_capabilities (deprecated)");
 
 	char* targetname = strdup( luaL_checkstring(ctx, 1) );
+
 	char* targetexec = arcan_db_targetexec(dbhandle, targetname);
 	char* resourcestr = targetexec ? arcan_find_resource_path(
-		targetexec, "targets", ARCAN_RESOURCE_SHARED) : NULL;
+		targetexec, "targets", RESOURCE_APPL_SHARED) : NULL;
 
 	unsigned rv = 0;
 
@@ -4087,12 +4082,7 @@ static int targetlaunch_capabilities(lua_State* ctx)
  * (sortof prepared for in the build-system) to check how the target is linked,
  *  which dependencies it has etc. */
 			tblbool(ctx, "external_launch", true, top);
-			if (strcmp(internal_launch_support(), "NO SUPPORT") == 0 ||
-				(strcmp(internal_launch_support(), "PARTIAL SUPPORT") == 0 &&
-				 arcan_libpath == NULL))
-				tblbool(ctx, "internal_launch", false, top);
-			else
-				tblbool(ctx, "internal_launch", true, top);
+			tblbool(ctx, "internal_launch", true, top);
 
 			tblbool(ctx, "dynamic input", false, top);
 			tblbool(ctx, "reset", false, top);
@@ -4387,27 +4377,36 @@ static int targetrestore(lua_State* ctx)
 	const char* snapkey = luaL_checkstring(ctx, 2);
 
 	vfunc_state* state = arcan_video_feedstate(tgt);
-	if (state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr){
-		int fd = fmt_open(O_RDONLY, S_IRWXU, "%s/savestates/%s",
-			arcan_resourcepath, snapkey);
-		if (-1 != fd){
-			arcan_frameserver* fsrv = (arcan_frameserver*) state->ptr;
-
-			if ( ARCAN_OK == arcan_frameserver_pushfd( fsrv, fd ) ){
-				arcan_event ev = {
-					.category = EVENT_TARGET,
-					.kind = TARGET_COMMAND_RESTORE };
-				arcan_frameserver_pushevent( fsrv, &ev );
-
-				lua_pushboolean(ctx, true);
-				return 1;
-			}
-			else; /* note that this will leave an empty statefile in the filesystem */
-
-			close(fd);
-		}
+	if (!state || state->tag != ARCAN_TAG_FRAMESERV || !state->ptr){
+		lua_pushboolean(ctx, false);
+		return 1;
 	}
-	lua_pushboolean(ctx, false);
+
+	char* fname = arcan_find_resource(snapkey, RESOURCE_APPL_STATE);
+	int fd = -1;
+	if (fname)
+		fd = open(fname, O_RDONLY, S_IRWXU);
+	free(fname);
+
+	if (-1 == fd){
+		arcan_warning("couldn't load / resolve (%s)\n", snapkey);
+		lua_pushboolean(ctx, false);
+		return 1;
+	}
+
+	arcan_frameserver* fsrv = (arcan_frameserver*) state->ptr;
+	if ( ARCAN_OK == arcan_frameserver_pushfd( fsrv, fd ) ){
+		arcan_event ev = {
+			.category = EVENT_TARGET,
+			.kind = TARGET_COMMAND_RESTORE
+		};
+
+		arcan_frameserver_pushevent( fsrv, &ev );
+		lua_pushboolean(ctx, true);
+	}
+	else
+		lua_pushboolean(ctx, false);
+	close(fd);
 
 	return 1;
 }
@@ -4519,28 +4518,35 @@ static int targetsnapshot(lua_State* ctx)
 
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
 	const char* snapkey = luaL_checkstring(ctx, 2);
-	bool gotval = false;
 
 	vfunc_state* state = arcan_video_feedstate(tgt);
-	if (state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr){
+	if (!state || state->tag != ARCAN_TAG_FRAMESERV || !state->ptr){
+		lua_pushboolean(ctx, false);
+		return 1;
+	}
+	arcan_frameserver* fsrv = state->ptr;
 
-		int fd = fmt_open(O_CREAT | O_WRONLY | O_TRUNC, S_IRWXU,
-			"%s/savestates/%s", arcan_resourcepath, snapkey);
-		if (-1 != fd){
-			if ( ARCAN_OK == arcan_frameserver_pushfd(
-				(arcan_frameserver*) state->ptr, fd ) ){
-				arcan_event ev = {
-					.category = EVENT_TARGET,
-					.kind = TARGET_COMMAND_STORE };
-				arcan_frameserver_pushevent( (arcan_frameserver*) state->ptr, &ev );
+	char* fname = arcan_find_resource(snapkey, RESOURCE_APPL_STATE);
+	int fd = -1;
+	if (fname)
+		fd = open(fname, O_CREAT | O_WRONLY | O_TRUNC, S_IRWXU);
+	arcan_mem_free(fname);
 
-				lua_pushboolean(ctx, true);
-				gotval = true;
-			}
-		}
+	if (-1 == fd){
+		lua_pushboolean(ctx, false);
+		return 1;
 	}
 
-	if (!gotval)
+	if (ARCAN_OK == arcan_frameserver_pushfd(fsrv, fd)){
+		arcan_event ev = {
+			.category = EVENT_TARGET,
+			.kind = TARGET_COMMAND_STORE
+		};
+
+		arcan_frameserver_pushevent(fsrv, &ev);
+		lua_pushboolean(ctx, true);
+	}
+	else
 		lua_pushboolean(ctx, false);
 
 	return 1;
@@ -4563,22 +4569,16 @@ static int targetreset(lua_State* ctx)
 
 static char* lookup_hijack(int gameid)
 {
-	if (!arcan_libpath)
-		return NULL;
-
 	char* res = arcan_db_gametgthijack(dbhandle, gameid);
 
 /* revert to default if the database doesn't tell us anything */
-	if (!res)
+	if (!res && LIBNAME)
 		res = strdup(LIBNAME);
 
-	char* newstr = arcan_alloc_mem(strlen(res) + strlen(arcan_libpath) + 2,
-		ARCAN_MEM_STRINGBUF, ARCAN_MEM_TEMPORARY, ARCAN_MEMALIGN_NATURAL);
+	char* lookup = arcan_expand_resource(res, RESOURCE_SYS_LIBS);
+	arcan_mem_free(res);
 
-	sprintf(newstr, "%s/%s", arcan_libpath, res);
-	free(res);
-
-	return newstr;
+	return lookup;
 }
 
 static int targetalloc(lua_State* ctx)
@@ -4670,8 +4670,9 @@ static int targetlaunch(lua_State* ctx)
 /* see if we know what the game is */
 	arcan_dbh_res cmdline = arcan_db_launch_options(dbhandle, gameid, internal);
 	if (cmdline.kind == 0){
-		char* resourcestr = arcan_find_resource_path(cmdline.data.strarr[0],
-			"targets", ARCAN_RESOURCE_SHARED);
+		char* resourcestr = arcan_find_resource_path(
+			cmdline.data.strarr[0], "targets", RESOURCE_APPL_SHARED);
+
 		if (!resourcestr)
 			goto cleanup;
 
@@ -5103,15 +5104,25 @@ static int spawn_recfsrv(lua_State* ctx,
  * or streaming sessions */
 	int fd = 0;
 
+/* currently we allow null- files and failed lookups to be pushed
+ * for legacy reasons as the trigger for the frameserver to started
+ * recording was when recieving the fd to work with */
 	if (strstr(args.args.builtin.resource,
 		"container=stream") != NULL || strlen(resf) == 0)
 		fd = open(NULFILE, O_WRONLY);
-	else if (-1 == (
-		fd = fmt_open(O_CREAT | O_RDWR, S_IRWXU, "%s/%s/%s", arcan_themepath,
-			arcan_themename, resf))){
+	else {
+		char* fn = arcan_expand_resource(resf, RESOURCE_APPL);
 
-		arcan_warning("recordset(%s/%s/%s) -- couldn't create output.\n",
-			arcan_themepath, arcan_themename, resf);
+/* it is currently allowed to "record over" an existing file without forcing
+ * the caller to use zap_resource first, this should be REFACTORED. */
+		fd = open(fn, O_CREAT | O_RDWR, S_IRWXU);
+		if (-1 == fd){
+			arcan_warning("couldn't create output (%s), "
+				"recorded data will be lost\n", fn);
+			fd = open(NULFILE, O_WRONLY);
+		}
+
+		arcan_mem_free(fn);
 	}
 
 	if (fd){
@@ -6115,28 +6126,26 @@ static int screenshot(lua_State* ctx)
 		arcan_video_screenshot(&databuf, &bufs);
 
 	if (databuf){
-		char* fname = arcan_find_resource(resstr, ARCAN_RESOURCE_THEME);
-		if (!fname){
-			fname = arcan_expand_resource(resstr, false);
-			FILE* dst = fopen(fname, "wb");
-
-			if (dst)
-				arcan_rgba32_pngfile(dst, databuf, dw, dh, flip);
-			else
-				arcan_warning("screenshot() -- couldn't open (%s) "
-					"for writing.\n", fname);
-		}
-		else{
-			arcan_warning("screenshot() -- refusing to overwrite existing "
-				"(%s)\n", fname);
+		char* fname = arcan_find_resource(resstr, RESOURCE_APPL);
+		if (fname){
+			arcan_warning("screeenshot() -- refusing to overwrite existing file.\n");
+			goto cleanup;
 		}
 
-		free(fname);
-		free(databuf);
+		fname = arcan_expand_resource(resstr, RESOURCE_APPL);
+		FILE* dst = fopen(fname, "wb");
+
+		if (dst)
+			arcan_rgba32_pngfile(dst, databuf, dw, dh, flip);
+		else
+			arcan_warning("screenshot() -- couldn't save to (%s).\n", fname);
+
+cleanup:
+		arcan_mem_free(fname);
+		arcan_mem_free(databuf);
 	}
 	else
-		arcan_warning("screenshot() -- request failed, couldn't allocate "
-		"memory.\n");
+		arcan_warning("screenshot() -- insufficient free memory.\n");
 
 	return 0;
 }
@@ -6949,9 +6958,10 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"BADID",   ARCAN_EID         },
 {"CLOCKRATE", ARCAN_TIMER_TICK},
 {"CLOCK",     0               },
-{"THEME_RESOURCE",    ARCAN_RESOURCE_THEME                        },
-{"SHARED_RESOURCE",   ARCAN_RESOURCE_SHARED                       },
-{"ALL_RESOURCES",     ARCAN_RESOURCE_THEME | ARCAN_RESOURCE_SHARED},
+{"THEME_RESOURCE",    RESOURCE_APPL}, /* DEPRECATE */
+{"APPL_RESOURCE",     RESOURCE_APPL},
+{"SHARED_RESOURCE",   RESOURCE_APPL_SHARED },
+{"ALL_RESOURCES",     DEFAULT_USERMASK },
 {"API_VERSION_MAJOR", 0},
 {"API_VERSION_MINOR", 8},
 {"LAUNCH_EXTERNAL",   0},
@@ -6989,11 +6999,12 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 		arcan_lua_setglobalint(ctx, consttbl[i].key, consttbl[i].val);
 
 	arcan_lua_setglobalstr(ctx, "FRAMESERVER_MODES", FRAMESERVER_MODESTRING );
-	arcan_lua_setglobalstr(ctx, "THEMENAME",    arcan_themename          );
-	arcan_lua_setglobalstr(ctx, "RESOURCEPATH", arcan_resourcepath       );
-	arcan_lua_setglobalstr(ctx, "THEMEPATH",    arcan_themepath          );
-	arcan_lua_setglobalstr(ctx, "BINPATH",      arcan_binpath            );
-	arcan_lua_setglobalstr(ctx, "LIBPATH",      arcan_libpath            );
+	arcan_lua_setglobalstr(ctx, "THEMENAME", "deprecated, use APPLID" );
+	arcan_lua_setglobalstr(ctx, "APPLID", arcan_appl_id());
+	arcan_lua_setglobalstr(ctx, "RESOURCEPATH", "deprecated");
+	arcan_lua_setglobalstr(ctx, "THEMEPATH", "deprecated");
+	arcan_lua_setglobalstr(ctx, "BINPATH", "deprecated");
+	arcan_lua_setglobalstr(ctx, "LIBPATH", "deprecated");
 	arcan_lua_setglobalstr(ctx, "INTERNALMODE", internal_launch_support());
 }
 

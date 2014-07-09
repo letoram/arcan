@@ -38,6 +38,31 @@
 
 #include PLATFORM_HEADER
 
+/* update rate of 25 ms / tick,which amounts to a logical time-span of 40 fps,
+ * for lower power devices, this can be raised signifantly,
+ * just adjust INTERP_MINSTEP accordingly */
+#ifndef ARCAN_TIMER_TICK
+#define ARCAN_TIMER_TICK 25
+#endif
+
+/*
+ * The engine interpolates animations between timesteps (timer_tick clock),
+ * but only if n ms have progressed since the last rendered frame,
+ * where n is defined as (INTERP_MINSTEP * ARCAN_TIMER_TICK)
+ */
+#ifndef INTERP_MINSTEP
+#define INTERP_MINSTEP 0.15
+#endif
+
+/*
+ * Regularly test by redefining this to something outside 1 <= n <= 64k and
+ * not -1, to ensure that no part of the engine or any user scripts rely
+ * on hard-coded constants rather than their corresponding symbols.
+ */
+#define ARCAN_EID 0
+
+#define CAP(X,L,H) ( (((X) < (L) ? (L) : (X)) > (H) ? (H) : (X)) )
+
 #ifndef _WIN32
 
 #if __APPLE__
@@ -110,84 +135,210 @@ typedef struct {
 	char* source;
 } data_source;
 
-enum arcan_resourcemask {
-	ARCAN_RESOURCE_THEME = 1,
-	ARCAN_RESOURCE_SHARED = 2
+/*
+ * Editing this table will require modifications in individual platform/path.c
+ * The enum should fullfill the criteria (index = sqrt(enumv)),
+ * exclusive(mask) = mask & (mask - 1) == 0
+ */
+enum arcan_namespaces {
+/* .lua parse/load/execute,
+ * generic resource load
+ * special resource save (screenshots, ...)
+ * rawresource open/write */
+	RESOURCE_APPL = 1,
+
+/*
+ * rawresource open,
+ * generic resource load
+ */
+	RESOURCE_APPL_SHARED = 2,
+
+/*
+ * like RESOURCE_APPL, but reset on exit / reload.
+ */
+	RESOURCE_APPL_TEMP = 4,
+
+/*
+ * eligible recipients for target snapshot/restore
+ */
+	RESOURCE_APPL_STATE = 8,
+
+/*
+ * formatstring \f domain
+ */
+	RESOURCE_SYS_FONT = 16,
+
+/*
+ * frameserver binaries read/execute (write-protected)
+ */
+	RESOURCE_SYS_BINS = 32,
+
+/*
+ * LD_PRELOAD only (write-protected)
+ */
+	RESOURCE_SYS_LIBS = 64,
+
+/*
+ * frameserver log output, state dumps, write-only.
+ */
+	RESOURCE_SYS_DEBUG = 128,
+
+/*
+ * must be set to the vale of the last element
+ */
+	RESOURCE_SYS_ENDM = 128
 };
 
-/* try to set the external chars for:
- * arcan_resourcepath
- * arcan_themepath
- * arcan_libpath (hijack)
- * arcan_binpath (frameserver)
- * best run before applying command-line overrides */
-bool arcan_setpaths();
+/*
+ * implemented in <platform>/paths.c
+ * search for a suitable arcan setup through configuration files,
+ * environment variables, etc.
+ */
+void arcan_set_namespace_defaults();
 
-bool check_theme(const char*);
-char* arcan_expand_resource(const char* label, bool global);
-char* arcan_find_resource_path(const char* label,
-	const char* path, int searchmask);
-char* arcan_find_resource(const char* label, int searchmask);
+/*
+ * implemented in <platform>/paths.c
+ * enumerate the available namespaces, return true if all are set.
+ * if there are missing namespaces and report is set, arcan_warning
+ * will be used to notify which ones are broken.
+ */
+bool arcan_verify_namespaces(bool report);
+
+/*
+ * implemented in <platform>/paths.c
+ * performed after namespace_defaults
+ */
+void arcan_override_namespace(const char* path, enum arcan_namespaces);
+
+/*
+ * implemented in <platform>/paths.c
+ * ensure a sane setup (all namespaces have mapped paths + proper permissions)
+ * then locate / load / map /setup setup a new application with <appl_id>
+ * can be called multiple times (will then unload previous <appl_id>
+ * if the operation fails, the function will return false and <*errc> will
+ * be set to a static error message.
+ */
+bool arcan_verifyload_appl(const char* appl_id, const char** errc);
+
+/*
+ * implemented in <platform>/paths.c
+ * returns the strarting scripts of the specified appl,
+ * along with ID tag and a cached strlen.
+ */
+const char* arcan_appl_basesource(bool* file);
+const char* arcan_appl_id();
+size_t arcan_appl_id_len();
+
+/*
+ * implemented in <platform>/paths.c
+ * Expand <label> into the path denoted by <arcan_namespaces>
+ * verifies traversal on <label>.
+ * Returns dynamically allocated string.
+ */
+char* arcan_expand_resource(const char* label, enum arcan_namespaces);
+
+/*
+ * implemented in <platform>/paths.c
+ * Search <namespaces> after matching <label> (file_exists)
+ * ordered by individual enum value (low to high).
+ * Returns dynamically allocated string on match, else NULL.
+ */
+char* arcan_find_resource(const char* label, enum arcan_namespaces);
+
+/*
+ * implemented in <platform>/find_bypath.c
+ * concatenate <path> and <label>, then forward to arcan_find_resource
+ * return dynamically allocated string on match, else NULL.
+ */
+char* arcan_find_resource_path(
+	const char* label, const char* path, enum arcan_namespaces);
+
+/*
+ * implemented in <platform>/strip_traverse.c
+ * returns <in> on valid string, NULL if traversal rules
+ * would expand outside namespace (symlinks, bind-mounts purposefully allowed)
+ */
+const char* verify_traverse(const char* in);
+
+/*
+ * implemented in <platform>/shm.c
+ * locate allocate a named shared memory block
+ * <semalloc> if set, also allocate named semaphores
+ * returns shm_handle in dhd (where applicable) and dynamically allocated <key>
+ * (example_m + optional example_v, example_a, example_e for semaphores).
+ */
 char* arcan_findshmkey(int* dhd, bool semalloc);
+
+/*
+ * implemented in <platform>/shm.c
+ * drop resources associated with <srckey> where <srckey> is a value
+ * returned from a previous call to <arcan_findshmkey>.
+ */
 void arcan_dropshmkey(char* srckey);
 
-const char* strip_traverse(const char* in);
 /*
- * Open and map a resource description (from _expand, _find category
- * of functions) and return in data_source structure.
- * On failure, fd will be BADFD and source NULL
+ * implemented in <platform>/resource_io.c
+ * take a <name> resoulved from arcan_find_*, arcan_resolve_*,
+ * open / lock / reserve <name> and store relevant metadata in data_source.
+ *
+ * On failure, data_source.fd == BADFD and data_source.source == NULL
  */
-data_source arcan_open_resource(const char* uri);
-void arcan_release_resource(data_source* sptr);
-map_region arcan_map_resource(data_source* source, bool wr);
+data_source arcan_open_resource(const char* name);
+
+/*
+ * implemented in <platform>/resource_io.c
+ * take a previously allocated <data_source> and unlock / release associated
+ * resources. Values in <data_source> are undefined afterwards.
+ */
+void arcan_release_resource(data_source*);
+
+/*
+ * implemented in <platform>/resource_io.c
+ * take an opened <data_source> and create a suitable memory mapping
+ * default protection <read_only>, <read/write> if <wr> is set.
+ * <read/write/execute> is not supported.
+ */
+map_region arcan_map_resource(data_source*, bool wr);
+
+/*
+ * implemented in <platform>/resource_io.c
+ * aliases to contents of <map_region.ptr> will be undefined after call.
+ * returns <true> on successful release.
+ */
 bool arcan_release_map(map_region region);
 
 /*
- * Somewhat ad-hoc, mainly just used for mouse grab- style
- * global state changes for now.
+ * implemented in <platform>/warning.c
+ * regular fprintf(stderr, style trace output logging.
+ * slated for REDESIGN/REFACTOR.
  */
-void arcan_device_lock(int devind, bool state);
-
 void arcan_warning(const char* msg, ...);
 void arcan_fatal(const char* msg, ...);
 
-/* open a file using a format string (fmt + variadic), flags and mode
- * matches regular open() semantics.
- * the file_handle wrapper is purposefully not used on this function
- * and for Win32, is expected to be managed by _get_osfhandle */
+/*
+ * implemented in <platform>/fmt_open.c
+ * open a file using a format string (fmt + variadic),
+ * slated for DEPRECATION, regular _map / resource lookup should
+ * be used whenever possible.
+ *
+ */
 int fmt_open(int flags, mode_t mode, const char* fmt, ...);
 
-/* since mingw does not export a glob.h,
- * we have to write a lightweight globber */
-unsigned arcan_glob(char* basename, int searchmask,
+/*
+ * implemented in <platform>/glob.c
+ * glob <enum_namespaces> based on traditional lookup rules
+ * for pattern matching basename (* wildcard expansion supported).
+ * invoke <cb(relative path, tag)> for each entry found.
+ * returns number of times <cb> was invoked.
+ */
+unsigned arcan_glob(char* basename, enum arcan_namespaces,
 	void (*cb)(char*, void*), void* tag);
 
+/*
+ * slated for DEPRECATION
+ * DATED interface
+ */
 const char* internal_launch_support();
-
-/* update rate of 25 ms / tick,which amounts to a logical time-span of 40 fps,
- * for lower power devices, this can be raised signifantly,
- * just adjust INTERP_MINSTEP accordingly */
-#ifndef ARCAN_TIMER_TICK
-#define ARCAN_TIMER_TICK 25
-#endif
-
-/*
- * The engine interpolates animations between timesteps (timer_tick clock),
- * but only if n ms have progressed since the last rendered frame,
- * where n is defined as (INTERP_MINSTEP * ARCAN_TIMER_TICK)
- */
-#ifndef INTERP_MINSTEP
-#define INTERP_MINSTEP 0.15
-#endif
-
-/*
- * Regularly test by redefining this to something outside 1 <= n <= 64k and
- * not -1, to ensure that no part of the engine or any user scripts rely
- * on hard-coded constants rather than their corresponding symbols.
- */
-#define ARCAN_EID 0
-
-#define CAP(X,L,H) ( (((X) < (L) ? (L) : (X)) > (H) ? (H) : (X)) )
 
 /*
  * found / implemented in arcan_event.c
@@ -207,6 +358,8 @@ typedef struct {
 
 
 /*
+ * (slated for REFACTOR, move into separate header).
+ *
  * Type / use hinted memory (de-)allocation routines.
  * The simplest version merely maps to malloc/memcpy family,
  * but local platforms can add reasonable protection (mprotect etc.)
@@ -347,8 +500,8 @@ void arcan_mem_lock(void*);
 void arcan_mem_unlock(void*);
 
 /*
- * Support function for packing binary blobs as [a-Z0-9+/]
- * at the expense of storage space.
+ * slated to be moved to a utility library for
+ * cryptography / data-passing primitives
  */
 uint8_t* arcan_base64_decode(const uint8_t* instr,
 	size_t* outsz, enum arcan_memhint);
@@ -357,16 +510,23 @@ uint8_t* arcan_base64_encode(const uint8_t* data,
 	size_t inl, size_t* outl, enum arcan_memhint hint);
 
 /*
- * generate a LUA (and possibly other relevant states) dump
- * into resourcepath/logs/prefix_timestamp.exts
- * key is a message describing the reason,
- * src is ann estimation of the origin
+ * implemented in engine/arcan_lua.c (slated for refactoring)
+ * create a number of files in RESOURCE_SYS_DEBUG that
+ * contains as much useful, non-intrusive (to whatever extent possible)
+ * state as possible for debugging purposes.
+ *
+ * These files will be named according to <prefix_type_date.ext>
+ * where <type and ext> are implementation defined.
+ *
+ * <key> is used as an identifier of the particular state dump,
+ * and <src> is an estimation of the origin of the dump request
+ * (e.g. stacktrace).
  */
 void arcan_state_dump(const char* prefix, const char* key, const char* src);
 
 /*
- * Allocate memory intended for read-only or
- * exec use (JIT, ...)
+ * implemented in <platform>/mem.c
+ * aggregates a mem_alloc and a mem_copy from a source buffer.
  */
 void* arcan_alloc_fillmem(const void*,
 	size_t,
@@ -374,21 +534,24 @@ void* arcan_alloc_fillmem(const void*,
 	enum arcan_memhint,
 	enum arcan_memalign);
 
+/*
+ * implemented in engine/arcan_event.c
+ * basic timing and performance tracking measurements for A/V/Logic.
+ */
 void arcan_bench_register_tick(unsigned);
 void arcan_bench_register_cost(unsigned);
 void arcan_bench_register_frame();
 
 /*
+ * LEGACY/REDESIGN
+ * currently used as a hook for locking cursor devices to arcan
+ * in externally managed windowed environments.
+ */
+void arcan_device_lock(int devind, bool state);
+
+/*
  * These are slated for removal / replacement when
  * we add a real package format etc.
  */
-
 extern int system_page_size;
-
-extern char* arcan_themename;
-extern char* arcan_resourcepath;
-extern char* arcan_themepath;
-extern char* arcan_binpath;
-extern char* arcan_libpath;
-extern char* arcan_fontpath;
 #endif

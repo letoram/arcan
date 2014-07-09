@@ -42,8 +42,6 @@ static bool db_init = false;
 static char wbuf[4096] = {0};
 static int wbufsize = 4094;
 
-extern char* arcan_resourcepath;
-
 struct arcan_dbh {
 	sqlite3* dbh;
 
@@ -921,20 +919,21 @@ arcan_dbh_res arcan_db_launch_options(arcan_dbh* dbh, int gameid, bool internal)
 			romset = NULL;
 		}
 		else if ( strcmp(arg, "[romsetfull]") == 0){
-			snprintf(wbuf, wbufsize, "%s/games/%s/%s",
-				arcan_resourcepath, targetname, romset);
-			res.data.strarr[count++] = strdup(wbuf);
+			snprintf(wbuf, wbufsize, "/games/%s/%s", targetname, romset);
+			res.data.strarr[count++] =
+				arcan_expand_resource(wbuf, RESOURCE_APPL_SHARED);
+
 			arcan_mem_free(romset);
 			romset = NULL;
 		}
 		else if ( (strlen(arg) >= 10) && strncmp(arg, "[gamepath]", 10) == 0){
-			snprintf(wbuf, wbufsize, "%s/games%s", arcan_resourcepath, arg + 10);
-			res.data.strarr[count++] = strdup(wbuf);
+			snprintf(wbuf, wbufsize, "/games%s", arg + 10);
+			res.data.strarr[count++] =
+				arcan_expand_resource(wbuf, RESOURCE_APPL_SHARED);
 		}
 		else if ( (strlen(arg) >= 11) && strncmp(arg, "[themepath]", 11) == 0){
-			snprintf(wbuf, wbufsize, "%s/%s/%s", arcan_themepath,
-				arcan_themename, arg + 11);
-			res.data.strarr[count++] = strdup(wbuf);
+			snprintf(wbuf, wbufsize, "/%s", arg + 11);
+			res.data.strarr[count++] = arcan_expand_resource(wbuf, RESOURCE_APPL);
 		}
 		else
 			res.data.strarr[count++] = _n_strdup(arg, NULL);

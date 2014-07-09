@@ -44,6 +44,7 @@
 #include <limits.h>
 #include <errno.h>
 #include <time.h>
+#include <ctype.h>
 
 #include <sqlite3.h>
 
@@ -88,9 +89,7 @@ static const struct option longopts[] = {
 	{ "windowed",     no_argument,       NULL, 's'},
 	{ "debug",        no_argument,       NULL, 'g'},
 	{ "rpath",        required_argument, NULL, 'p'},
-	{ "themepath",    required_argument, NULL, 't'},
-	{ "hijacklib",    required_argument, NULL, 'l'},
-	{ "frameserver",  required_argument, NULL, 'o'},
+	{ "applpath" ,    required_argument, NULL, 't'},
 	{ "conservative", no_argument,       NULL, 'm'},
 	{ "database",     required_argument, NULL, 'd'},
 	{ "scalemode",    required_argument, NULL, 'r'},
@@ -110,7 +109,7 @@ static const struct option longopts[] = {
 
 static void usage()
 {
-printf("usage:\narcan [-whxyfmstptodgavSrMO] [theme] [themearguments]\n"
+printf("usage: arcan [-whxyfmstptdgavSrMO] appname [app specific arguments]\n"
 "-w\t--width       \tdesired width (default: 640)\n"
 "-h\t--height      \tdesired height (default: 480)\n"
 "-x\t--winx        \tforce window x position (default: don't set)\n"
@@ -123,22 +122,53 @@ printf("usage:\narcan [-whxyfmstptodgavSrMO] [theme] [themearguments]\n"
 #endif
 "-q\t--timedump    \twait n ticks, dump snapshot to resources/logs/timedump\n"
 "-s\t--windowed    \ttoggle borderless window mode\n"
-"-p\t--rpath       \tchange path for resources (default: autodetect)\n"
-"-t\t--themepath   \tchange path for themes (default: autodetect)\n"
-"-o\t--frameserver \tforce frameserver (default: autodetect)\n"
-"-l\t--hijacklib   \tforce library for internal launch (default: autodetect)\n"
+"-p\t--rpath       \tchange default searchpath for shared resources\n"
+"-t\t--applpath    \tchange default searchpath for applications\n"
 "-d\t--database    \tsqlite database (default: arcandb.sqlite)\n"
-"-g\t--debug       \ttoggle debug output (stacktraces, events,"
-" coredumps, etc.)\n"
+"-g\t--debug       \ttoggle debug output (events, coredumps, etc.)\n"
 "-a\t--multisamples\tset number of multisamples (default 4, disable 0)\n"
 "-v\t--novsync     \tdisable synch to video refresh (default, vsync on)\n"
 "-V\t--nowait      \tdisable sleeping between superflous frames\n"
 "-F\t--vsync-falign\t (0..1, default: 0.6) balance processing vs. CPU usage\n"
-"-S\t--nosound     \tdisable audio output\n"
-"-r\t--scalemode   \tset texture mode:\n"
-"                  \t\t%i(rectangle sized textures, default),\n"
-"                  \t\t%i(scale to power of two)\n\t",
-	ARCAN_VIMAGE_NOPOW2, ARCAN_VIMAGE_SCALEPOW2);
+"-S\t--nosound     \tdisable audio output\n");
+}
+
+/*
+ * recovery means that we shutdown and reset lua context,
+ * but we try to transfer and adopt frameservers so that we can
+ * have a fail-safe for user- critical programs.
+ */
+bool switch_appl(const char* appname, bool recovery)
+{
+	const char* work = appname;
+
+/* need to sanitize this so it isn't possible to define a new approot */
+	while(*work){
+		if (isalpha(*work) == false){
+			arcan_warning("switch app, invalid character in %s\n", appname);
+			return false;
+		}
+	}
+
+	if (!recovery){
+		arcan_video_shutdown();
+		arcan_audio_shutdown();
+		arcan_event_deinit(arcan_event_defaultctx());
+		arcan_db_close(dbhandle);
+
+		const char* err_msg;
+		if (!arcan_verifyload_appl(appname, &err_msg)){
+			arcan_warning("(verifyload) in switch app "
+				"failed, reason: %s\n", err_msg);
+			return false;
+		}
+
+		return true;
+	}
+	else
+		arcan_warning("switch_appl(), recovery mode not yet implemented.\n");
+
+	return false;
 }
 
 int main(int argc, char* argv[])
@@ -170,6 +200,8 @@ int main(int argc, char* argv[])
 	char* dbfname = NULL;
 	int ch;
 
+	arcan_set_namespace_defaults();
+
 	srand( time(0) );
 /* VIDs all have a randomized base to provoke crashes in poorly written scripts,
  * only -g will make their base and sequence repeatable */
@@ -179,7 +211,7 @@ int main(int argc, char* argv[])
 	switch (ch) {
 	case '?' :
 		usage();
-		exit(1);
+		exit(EXIT_SUCCESS);
 	break;
 	case 'w' : width = strtol(optarg, NULL, 10); break;
 	case 'h' : height = strtol(optarg, NULL, 10); break;
@@ -189,20 +221,18 @@ int main(int argc, char* argv[])
 	case 'F' : vfalign = strtof(optarg, NULL); break;
 	case 'f' : fullscreen = true; break;
 	case 's' : windowed = true; break;
-	case 'l' : arcan_libpath = strdup(optarg); break;
 	case 'd' : dbfname = strdup(optarg); break;
 	case 'S' : nosound = true; break;
 	case 'q' : timedump = strtol(optarg, NULL, 10); break;
 	case 'a' : arcan_video_display.msasamples = strtol(optarg, NULL, 10); break;
 	case 'v' : arcan_video_display.vsync = false; break;
 	case 'V' : waitsleep = false; break;
-	case 'p' : arcan_resourcepath = strdup(optarg); break;
+	case 'p' : arcan_override_namespace(optarg, RESOURCE_APPL_SHARED); break;
 #ifndef _WIN32
 	case 'M' : monitor = abs( strtol(optarg, NULL, 10) ); break;
 	case 'O' : monitor_arg = strdup( optarg ); break;
 #endif
-	case 't' : arcan_themepath = strdup(optarg); break;
-	case 'o' : arcan_binpath = strdup(optarg); break;
+	case 't' : arcan_override_namespace(optarg, RESOURCE_APPL); break;
 	case 'g' :
 		debuglevel++;
 		srand(0xdeadbeef);
@@ -230,18 +260,11 @@ int main(int argc, char* argv[])
 	}
 	}
 
-	if (arcan_setpaths() == false)
-		goto error;
-
-	if (check_theme(*(argv + optind)))
-		arcan_themename = *(argv + optind);
-	else if (check_theme("welcome"))
-		arcan_themename = "welcome";
-	else
-		arcan_fatal("No theme found.\n");
-
-	if (strcmp(arcan_themename, "arcan") == 0){
-		arcan_fatal("Theme name 'arcan' is reserved\n");
+	if (optind >= argc){
+		arcan_warning("Couldn't start, missing 'appname' argument. \n"
+			"Consult the manpage (man arcan) for additional details\n");
+		usage();
+		exit(EXIT_SUCCESS);
 	}
 
 	if (vfalign > 1.0 || vfalign < 0.0){
@@ -249,6 +272,23 @@ int main(int argc, char* argv[])
 		"bad range specified (%f), reverting to default (0.6)\n", vfalign);
 		vfalign = 0.6;
 	}
+
+	const char* err_msg;
+	if (!arcan_verifyload_appl(argv[optind], &err_msg)){
+		arcan_warning("arcan_verifyload_appl(), "
+			"failed to load (%s), reason: %s. Trying fallback.\n",
+			argv[optind], err_msg);
+
+		if (!arcan_verifyload_appl("welcome", &err_msg)){
+			arcan_warning("loading fallback application failed (%s), giving up.\n",
+				err_msg);
+
+			return EXIT_FAILURE;
+		}
+	}
+
+	if (!arcan_verify_namespaces(true))
+		goto error;
 
 #ifndef _WIN32
 /* pipe to file, socket or launch script based on monitor output,
@@ -281,7 +321,7 @@ int main(int argc, char* argv[])
 
 /* double-fork to get away from parent */
 				if (fork() != 0)
-					exit(0);
+					exit(EXIT_SUCCESS);
 
 /*
  * set the descriptor of the inherited pipe as an envvariable,
@@ -295,7 +335,7 @@ int main(int argc, char* argv[])
 				argv[optind] = strdup(monitor_arg);
 
 				execv(argv[0], argv);
-				exit(1);
+				exit(EXIT_FAILURE);
 			}
 			else {
 /* don't terminate just because the pipe gets broken (i.e. dead monitor) */
@@ -310,7 +350,7 @@ int main(int argc, char* argv[])
 #endif
 
 /* also used as restart point for switiching themes */
-themeswitch:
+applswitch:
 
 /*
  * try to open the specified database,
@@ -318,9 +358,9 @@ themeswitch:
  * database and if that fails, give up.
  */
 	if (!dbfname)
-		dbfname = arcan_expand_resource("arcandb.sqlite", true);
+		dbfname = arcan_expand_resource("arcandb.sqlite", RESOURCE_APPL_SHARED);
 
-	dbhandle = arcan_db_open(dbfname, arcan_themename);
+	dbhandle = arcan_db_open(dbfname, arcan_appl_id());
 
 	if (!dbhandle) {
 		arcan_warning("Couldn't open database (requested: %s),"
@@ -328,7 +368,7 @@ themeswitch:
 		FILE* fpek = fopen(dbfname, "a");
 		if (fpek){
 			fclose(fpek);
-			dbhandle = arcan_db_open(dbfname, arcan_themename);
+			dbhandle = arcan_db_open(dbfname, arcan_appl_id());
 		}
 
 		if (!dbhandle){
@@ -350,8 +390,8 @@ themeswitch:
 		fullscreen = false;
 
 /* grab video, (necessary) */
-	if (arcan_video_init(width, height, 32,
-		fullscreen, windowed, conservative, arcan_themename) != ARCAN_OK) {
+	if (arcan_video_init(width, height, 32, fullscreen, windowed,
+		conservative, arcan_appl_id()) != ARCAN_OK){
 		arcan_fatal("Error; Couldn't initialize video system,"
 			"try other windowing options (-f, -w, ...)\n");
 	}
@@ -376,68 +416,51 @@ themeswitch:
 #endif
 
 /*
- * MINGW implements putenv, so use this to set
- * the system subpath path (BIOS, ..)
+ * libretro has the quirk of requiring a scratch "system" directory,
+ * until I/O syscall intercepting through fuse has been acquired,
+ * we'll have to stick with this side-channel (if retro-fsrv is built)
  */
-	if (getenv("ARCAN_SYSTEMPATH") == NULL){
-		size_t len = strlen(arcan_resourcepath) + sizeof("/games/system") +
-			sizeof("ARCAN_SYSTEMPATH=") + 1;
+	if (strstr(FRAMESERVER_MODESTRING, "libretro") &&
+		getenv("ARCAN_SYSTEMPATH") == NULL){
+		char* spath = arcan_expand_resource("games/system", RESOURCE_APPL_SHARED);
+		arcan_warning("Setting libretro system dir to (%s)\n", spath);
+		setenv("ARCAN_SYSTEMPATH", spath, 1);
+	}
 
-		char* const syspath = malloc(len);
-		sprintf(syspath, "ARCAN_SYSTEMPATH=%s/games/system", arcan_resourcepath);
-		arcan_warning("Notice: Using default systempath (%s)\n", syspath);
-		putenv(syspath);
-	} else
-		arcan_warning("Notice: Using systempath from environment (%s)\n",
-			getenv("ARCAN_SYSTEMPATH"));
-
+/*
+ * system integration note here, this could essentially provide
+ * a side-channel into debugdata as the path can be expanded to
+ * the debug directory, thus a compromised frameserver could possibly
+ * leak crash-dumps etc. outside the sandbox. If this is a concern,
+ * change this behavior or define a different logpath in the env.
+ */
 	if (getenv("ARCAN_FRAMESERVER_LOGDIR") == NULL){
-		size_t len = strlen(arcan_resourcepath) + sizeof("/logs") +
-			sizeof("ARCAN_FRAMESERVER_LOGDIR=/logs");
-
-		char* const logpath = malloc(len);
-		sprintf(logpath, "ARCAN_FRAMESERVER_LOGDIR=%s/logs", arcan_resourcepath);
-		putenv(logpath);
+		char* lpath = arcan_expand_resource("", RESOURCE_SYS_DEBUG);
+		setenv("ARCAN_FRAMESERVER_LOGDIR", lpath, 1);
 	}
 
 #ifndef _WIN32
-	struct rlimit coresize = {0};
-
-/* debuglevel 0, no coredumps etc.
- * debuglevel 1, maximum 1M coredump, should prioritize stack etc.
- * would want to be able to hint to mmap which pages that should be avoided
- * so that we could exclude texture data that both comprise most memory used
- * and can be recovered through other means. One option for this would be
- * to push image loading/management to a separate process,
- * debuglevel > 1, dump everything */
-	if (debuglevel == 0);
-	else if (debuglevel == 1) coresize.rlim_max = 10 * 1024 * 1024;
-	else coresize.rlim_max = RLIM_INFINITY;
-
-	coresize.rlim_cur = coresize.rlim_max;
-	setrlimit(RLIMIT_CORE, &coresize);
 	system_page_size = sysconf(_SC_PAGE_SIZE);
 #endif
-
 
 /* setup VM, map arguments and possible overrides */
 	struct arcan_luactx* luactx = arcan_lua_alloc();
 	arcan_lua_mapfunctions(luactx, debuglevel);
 
-	char* themescr = (char*) malloc(strlen(arcan_themename) + 5);
-	sprintf(themescr, "%s.lua", arcan_themename);
-	char* fn = arcan_find_resource(themescr, ARCAN_RESOURCE_THEME);
-
-	char* msg = arcan_luaL_dofile(luactx, fn);
-	if (msg != NULL){
-		arcan_fatal("Fatal: main(), Error loading theme script"
-			"(%s) : (%s)\n", themescr, msg);
-		free(msg);
+	bool inp_file;
+	const char* inp = arcan_appl_basesource(&inp_file);
+	if (!inp){
+		arcan_warning("main(), No main script found for (%s)\n", arcan_appl_id());
 		goto error;
 	}
 
-	free(fn);
-	free(themescr);
+	char* msg = arcan_luaL_main(luactx, inp, inp_file);
+	if (msg != NULL){
+		arcan_warning("main(), Error loading main script for (%s), "
+			"reason: %s\n", arcan_appl_id(), msg);
+		goto error;
+	}
+	free(msg);
 
 /* entry point follows the name of the theme,
  * hand over execution and begin event loop */
@@ -488,13 +511,10 @@ themeswitch:
 					done = true;
 				else if (ev.kind == EVENT_SYSTEM_SWITCHTHEME){
 					arcan_luaL_shutdown(luactx);
-					arcan_video_shutdown();
-					arcan_audio_shutdown();
-					arcan_event_deinit(arcan_event_defaultctx());
-					arcan_db_close(dbhandle);
-
-					arcan_themename = strdup(ev.data.system.data.message);
-					goto themeswitch;
+					if (switch_appl(ev.data.system.data.message, false))
+						goto applswitch;
+					else
+						goto error;
 				}
 				else
 					continue;
@@ -548,12 +568,14 @@ themeswitch:
 			arcan_lua_stategrab(luactx, "sample", monitor_infd);
 #endif
 
-/*
- * difficult decision, should we flip or not?
- * a full- redraw can be costly, so should only really be done if
- * enough things have changed or if we're closing in on the next
- * deadline for the unknown video clock, this also depends on if
- * the user favors energy saving (waitsleep) or responsiveness.
+/* REFACTOR / REDESIGN
+ * the heuristics for when and how to deal with bufferswaps, sleeps etc.
+ * is fairly rigid at the moment, the plan is to refactor this interface
+ * to (a) support a monitor / display definition configuration file,
+ * ( which includes things as display timings or simulated timings)
+ *
+ * (b) specify higher level "strategies" that is initially coupled to display
+ * but can be changed dynamically.
  */
 		const int min_respthresh = 9;
 
@@ -609,7 +631,6 @@ themeswitch:
 	arcan_video_shutdown();
 
 error:
-	exit(1);
-
+	exit(EXIT_SUCCESS);
 	return 0;
 }
