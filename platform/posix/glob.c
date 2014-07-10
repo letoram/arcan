@@ -16,26 +16,22 @@
 #include <arcan_math.h>
 #include <arcan_general.h>
 
-extern char* arcan_themepath;
-extern char* arcan_themename;
-
-unsigned arcan_glob(char* basename, int searchmask,
+unsigned arcan_glob(char* basename, enum arcan_namespaces space,
 	void (*cb)(char*, void*), void* tag)
 {
 	unsigned count = 0;
 
-	if (!basename || strip_traverse(basename) == NULL)
+	if (!basename || verify_traverse(basename) == NULL)
 		return 0;
 
-	char playbuf[4096];
-	playbuf[4095] = '\0';
-
-	if ((searchmask & ARCAN_RESOURCE_THEME) > 0){
-		snprintf(playbuf, sizeof(playbuf)-1, "%s/%s/%s",
-			arcan_themepath, arcan_themename, basename);
+	for (int i = 1; i <= RESOURCE_SYS_ENDM; i <<= 1){
+		if ( (space & i) == 0 )
+			continue;
 
 		glob_t res = {0};
-		if ( glob(playbuf, 0, NULL, &res) == 0 ){
+		char* path = arcan_expand_resource(basename, i);
+
+		if ( glob(path, 0, NULL, &res) == 0 ){
 			char** beg = res.gl_pathv;
 			while(*beg){
 				cb(strrchr(*beg, '/') ? strrchr(*beg, '/')+1 : *beg, tag);
@@ -43,23 +39,11 @@ unsigned arcan_glob(char* basename, int searchmask,
 				count++;
 			}
 		}
-		globfree(&res);
-	}
 
-	if ((searchmask & ARCAN_RESOURCE_SHARED) > 0){
-		snprintf(playbuf, sizeof(playbuf)-1, "%s/%s",arcan_resourcepath,basename);
-		glob_t res = {0};
-
-		if ( glob(playbuf, 0, NULL, &res) == 0 ){
-			char** beg = res.gl_pathv;
-			while(*beg){
-				cb(strrchr(*beg, '/') ? strrchr(*beg, '/')+1 : *beg, tag);
-				beg++;
-				count++;
-			}
-		}
 		globfree(&res);
+		arcan_mem_free(path);
 	}
 
 	return count;
 }
+

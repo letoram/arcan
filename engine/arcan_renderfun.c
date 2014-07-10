@@ -179,8 +179,8 @@ void arcan_video_reset_fontcache()
 #ifndef RENDERFUN_NOSUBIMAGE
 TTF_Surface* text_loadimage(const char* const infn, img_cons cons)
 {
-	char* path = arcan_find_resource(infn,
-		ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);
+	char* path = arcan_find_resource(
+		infn, RESOURCE_SYS_FONT | RESOURCE_APPL_SHARED | RESOURCE_APPL );
 
 	data_source inres = arcan_open_resource(path);
 
@@ -289,9 +289,17 @@ static char* extract_font(struct text_format* prev, char* base){
 		char ch = *base;
 		*base = 0;
 
-/* resolve resource */
-		char* fname = arcan_find_resource(fontbase, ARCAN_RESOURCE_SHARED |
-			ARCAN_RESOURCE_THEME);
+/*
+ * Security note, TTF is a complex format with a history of decoding
+ * vulnerabilities. To lessen this it is wise not to let third parties
+ * define what font is going to get executed. The lines below ALLOW
+ * appl- specified local fonts and appl- specified shared fonts.
+ * In more strict environments, this could be changed to only
+ * RESOURCE_SYS_FONT or move font rendering / packing as a sandboxed
+ * process.
+ */
+		char* fname = arcan_find_resource(fontbase, RESOURCE_SYS_FONT |
+			RESOURCE_APPL | RESOURCE_APPL_SHARED);
 
 		TTF_Font* font = NULL;
 		if (!fname){

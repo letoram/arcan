@@ -808,7 +808,8 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 
 		arcan_frameserver_configure(ctx, setup);
 
-	} else if (child == 0) {
+	}
+	else if (child == 0) {
 		char convb[8];
 
 /*
@@ -825,18 +826,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
  * frameservers that are semi-trusted currently get an
  * environment variable to help search for theme-relative resources
  */
-		char cwdinbuf[ PATH_MAX ];
-
-		if ( getcwd(cwdinbuf, PATH_MAX) ){
-			int baselen = strlen(arcan_themename) + strlen(arcan_themepath);
-			size_t cwd_sz = PATH_MAX + baselen + 1;
-			char cwdbuf[ cwd_sz ];
-			snprintf(cwdbuf, cwd_sz, "%s/%s/%s",
-					cwdinbuf, arcan_themepath, arcan_themename);
-			setenv("ARCAN_THEMEPATH", cwdbuf, 1);
-		}
-		else
-			setenv("ARCAN_THEMEPATH", ".", 1);
+		setenv( "ARCAN_THEMEPATH", arcan_expand_resource("", RESOURCE_APPL), 1);
 
 /*
  * we need to mask this signal as when debugging parent process,
@@ -847,16 +837,16 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 
 		if (setup.use_builtin){
 			char* argv[4] = {
-				arcan_binpath,
+				arcan_expand_resource("", RESOURCE_SYS_BINS),
 				strdup(setup.args.builtin.mode),
 				ctx->shm.key,
 				NULL
 			};
 
-			execv(arcan_binpath, argv);
+			execv(argv[0], argv);
 			arcan_fatal("FATAL, arcan_frameserver_spawn_server(), "
 				"couldn't spawn frameserver(%s) with %s:%s. Reason: %s\n",
-				arcan_binpath, setup.args.builtin.mode,
+				argv[0], setup.args.builtin.mode,
 				setup.args.builtin.resource, strerror(errno));
 			exit(1);
 		} else {

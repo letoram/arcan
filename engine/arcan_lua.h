@@ -32,7 +32,7 @@ struct arcan_luactx* arcan_lua_alloc();
 void arcan_lua_mapfunctions(
 	struct arcan_luactx* dst, int debuglevel);
 
-char* arcan_luaL_dofile(struct arcan_luactx*, const char* fname);
+char* arcan_luaL_main(struct arcan_luactx*, const char* input, bool file_in);
 void arcan_luaL_dostring(struct arcan_luactx*, const char* sbuf);
 void arcan_luaL_shutdown(struct arcan_luactx*);
 

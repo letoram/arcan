@@ -568,7 +568,7 @@ if (LUA51_JIT)
 					COMPILE_DEFINITIONS LUA51_JIT)
 endif (LUA51_JIT)
 
-set_property(SOURCE engine/arcan_lua.c PROPERTY
+set_property(SOURCE engine/arcan_lua.c engine/arcan_main.c PROPERTY
 	COMPILE_DEFINITIONS FRAMESERVER_MODESTRING=\"${FRAMESERVER_MODESTRING}\")
 
 include_directories(${INCLUDE_DIRS})
@@ -641,6 +641,8 @@ if (ENABLE_LWA)
 			-DARCAN_SHMIF_PLATFORM=${FSRV_PLATFORM_SOURCES}
 			-DARCAN_SHMIF_PLATFORM_HEADER=${PLATFORM_PATH}/../platform.h
 	)
+
+#	ExternalProject_Add_Step(openal_soft
 
 	set_property(TARGET arcan_lwa APPEND PROPERTY
 		COMPILE_DEFINITIONS ARCAN_LWA)

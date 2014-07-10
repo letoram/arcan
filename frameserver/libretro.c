@@ -1443,7 +1443,7 @@ static void setup_3dcore(struct retro_hw_render_callback* ctx)
 /* we just want a dummy window with a valid openGL context
  * bound and then set up a FBO with the proper dimensions,
  * when things are working, just use a 2x2 window and minimize */
-	if (!retro_video_init(2, 2, 32, false, true)){
+	if (!retro_video_init(2, 2, 32, false, true, "libretro")){
 		LOG("Couldn't setup OpenGL context\n");
 		exit(1);
 	}

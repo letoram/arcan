@@ -20,7 +20,7 @@
  */
 #include <stdlib.h>
 extern void arcan_warning(const char* msg, ...);
-const char* strip_traverse(const char* input)
+const char* verify_traverse(const char* input)
 {
 	int level = 0;
 	int gotch = 0;

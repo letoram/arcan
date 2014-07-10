@@ -13,6 +13,9 @@
 #include <arcan_math.h>
 #include <arcan_general.h>
 
+/*
+ * DEPRECATED / REDESIGN
+ */
 const char* internal_launch_support(){
-	return arcan_libpath ? "FULL SUPPORT" : "PARTIAL SUPPORT";
+	return "FULL_SUPPORT";
 }
