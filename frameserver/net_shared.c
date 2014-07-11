@@ -97,7 +97,10 @@ apr_socket_t* net_prepare_socket(const char* host, apr_sockaddr_t*
 		int sockdesc, one = 1;
 		apr_os_sock_get(&sockdesc, ear_sock);
 		setsockopt(sockdesc, SOL_SOCKET, SO_BROADCAST, (void *)&one, sizeof(int));
+#ifdef SO_REUSEPORT
 		setsockopt(sockdesc, SOL_SOCKET, SO_REUSEPORT, (void *)&one, sizeof(int));
+#endif
+
 #else
 #ifndef APR_SO_REUSEPORT
 #define APR_SO_REUSEPORT 15

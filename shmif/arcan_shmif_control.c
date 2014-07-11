@@ -38,6 +38,8 @@ struct shmif_hidden {
 	shmif_trigger_hook audio_hook;
 	void* audio_hook_data;
 
+	bool output;
+
 	struct {
 		sem_handle semset[3];
 		int parent;
@@ -53,19 +55,23 @@ static struct {
 static void* guard_thread(void* gstruct);
 
 static void spawn_guardthread(
-	struct shmif_hidden gs, struct arcan_shmif_cont* d)
+	struct shmif_hidden gs, struct arcan_shmif_cont* d, bool thread)
 {
 	struct shmif_hidden* hgs = malloc(sizeof(struct shmif_hidden));
 	*hgs = gs;
 
-	pthread_t pth;
-	pthread_attr_t pthattr;
-	pthread_attr_init(&pthattr);
-	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
-	pthread_mutex_init(&hgs->guard.synch, NULL);
-
+	memset(hgs, '\0', sizeof(struct shmif_hidden));
 	d->priv = hgs;
-	pthread_create(&pth, &pthattr, guard_thread, hgs);
+
+	if (thread){
+		pthread_t pth;
+		pthread_attr_t pthattr;
+		pthread_attr_init(&pthattr);
+		pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
+		pthread_mutex_init(&hgs->guard.synch, NULL);
+
+		pthread_create(&pth, &pthattr, guard_thread, hgs);
+	}
 }
 
 #if _WIN32
@@ -119,6 +125,12 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 	arcan_shmif_calcofs(res.addr, &res.vidp, &res.audp);
 
 	res.shmsize = res.addr->segment_size;
+
+/* signal that we're ready to receive */
+	if (type == SHMIF_OUTPUT){
+		arcan_sem_post(res.vsem);
+		((struct shmif_hidden*)res.priv)->output = true;
+	}
 
 	LOG("arcan_frameserver() -- shmpage configured and filled.\n");
 
@@ -211,8 +223,7 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 		}
 	};
 
-	if (!noguard)
-		spawn_guardthread(gs, &res);
+	spawn_guardthread(gs, &res, noguard);
 
 	arcan_shmif_setevqs(res.addr, res.esem, &res.inev, &res.outev, false);
 	arcan_shmif_calcofs(res.addr, &res.vidp, &res.audp);
@@ -442,6 +453,12 @@ void arcan_shmif_signal(struct arcan_shmif_cont* ctx, int mask)
 
 	if (mask == SHMIF_SIGAUD && priv->audio_hook)
 		mask = priv->audio_hook(ctx);
+
+	if (priv->output){
+		ctx->addr->vready = ctx->addr->aready = false;
+		arcan_sem_post(ctx->vsem);
+		return;
+	}
 
 	if (mask == SHMIF_SIGVID){
 		ctx->addr->vready = true;

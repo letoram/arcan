@@ -2507,7 +2507,8 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				tblstr(ctx, "message", (char*)ev->data.external.message, top);
 			break;
 			case EVENT_EXTERNAL_REGISTER:
-				if (fsrv->segid != SEGID_UNKNOWN){
+				if (fsrv->segid != SEGID_UNKNOWN &&
+					ev->data.external.registr.kind != fsrv->segid){
 					arcan_warning("client attempted to change registry ID/type "
 						"this behavior is not permitted and was ignored.\n");
 					lua_settop(ctx, reset);
