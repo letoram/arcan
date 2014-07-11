@@ -84,8 +84,8 @@ struct {
 } recctx = {0};
 
 struct cl_track {
-	unsigned conn_id; 
-}; 
+	unsigned conn_id;
+};
 
 /* flush the audio buffer present in the shared memory page as
  * quick as possible, resample if necessary, then use the intermediate
@@ -430,7 +430,7 @@ void arcan_frameserver_stepframe()
  * then return to polling events */
 end:
 	if (!recctx.extsynch)
-		arcan_sem_post(recctx.shmcont.vsem);
+		arcan_shmif_signal(&recctx.shmcont, SHMIF_SIGVID);
 }
 
 static void encoder_atexit()
@@ -657,7 +657,7 @@ static bool setup_ffmpeg_encode(struct arg_arr* args, int desw, int desh)
 
 /* signal that we are ready to receive video frames */
 	if (!recctx.extsynch)
-		arcan_sem_post(recctx.shmcont.vsem);
+		arcan_shmif_signal(&recctx.shmcont, SHMIF_SIGVID);
 
 	return true;
 }
@@ -771,12 +771,12 @@ static void vnc_serv_deltaupd()
  * Mark each rect-region as modified.
  *
  * One possible representation for this is to use a display-sized 1byte grid,
- * where you scan like a regular image, and the value represents the next 
+ * where you scan like a regular image, and the value represents the next
  * coordinate distance. It's quicker but perhaps not as effective ..
  */
 	rfbMarkRectAsModified(vncctx.server, 0, 0, recctx.shmcont.addr->w,
 		recctx.shmcont.addr->h);
-	arcan_sem_post(recctx.shmcont.vsem);
+	arcan_shmif_signal(&recctx.shmcont, SHMIF_SIGVID);
 }
 
 static void vnc_serv_run(struct arg_arr* args)
@@ -826,9 +826,6 @@ static void vnc_serv_run(struct arg_arr* args)
  * displayFinishedHook, KeyboardLedStateHook, xvpHook, setXCutText
  *
  */
-
-/* signal that we're ready to receive */
-	arcan_sem_post(recctx.shmcont.vsem);
 
 	rfbInitServer(vncctx.server);
 	rfbRunEventLoop(vncctx.server, -1, TRUE);

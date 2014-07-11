@@ -194,6 +194,7 @@ enum ARCAN_EVENT_EXTERNAL {
 	EVENT_EXTERNAL_DATASEQ,
 	EVENT_EXTERNAL_KEYINPUT,
 	EVENT_EXTERNAL_CURSORINPUT,
+	EVENT_EXTERNAL_CURSORHINT,
 	EVENT_EXTERNAL_REGISTER
 };
 
@@ -409,6 +410,11 @@ typedef struct arcan_extevent {
 			uint8_t streamid;   /* key used to tell the decoder to switch */
 			uint8_t datakind;   /* 0: audio, 1: video, 2: text, 3: overlay */
 		} streaminf;
+
+		struct {
+			uint8_t state;
+			uint8_t message[8];
+		} cursorstat;
 
 		struct {
 			uint32_t id;

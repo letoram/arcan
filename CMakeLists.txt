@@ -104,6 +104,10 @@ message("")
 
 set (FRAMESERVER_MODESTRING "")
 
+if (NOT GIT_MIRROR)
+	SET(GIT_MIRROR "https://www.github.com/mirror")
+endif()
+
 #
 # Hooks added here to later switch to -nostdlib -nodefaultlibs and
 # get a decent libc for linux
@@ -607,21 +611,23 @@ target_link_libraries( arcan_frameserver ${STDLIB} ${FSRV_LIBRARIES} )
 # For LWA we need some kind of sound backend. In a sandbox,
 # LWA is not (by default) supposed to get access to any audio device outside
 # the shared memory interface. Therefore we build a patched version of
-# openal, that's linked statically with only a shmif- based backend
+# openal, that's linked statcally with only a shmif- based backend
 #
 # Current build-system setup forces main arcan and lwa_ version to largely share
 # the same platform build, which means that the terrible dependency-tree
 # from the SDL- etc. build remain.
 #
 if (ENABLE_LWA)
-	FILE(GLOB ALPATCHES ${CMAKE_CURRENT_SOURCE_DIR}/external/patches/openal/*.patch)
-	LIST(SORT ALPATCHES)
+	SET (ALPATCHES
+		${CMAKE_CURRENT_SOURCE_DIR}/external/patches/openal/0001-adding-arcan-shmif-support.patch
+		${CMAKE_CURRENT_SOURCE_DIR}/external/patches/openal/0002-arcan-shmif-backend-working.patch
+	)
 
 	ExternalProject_Add(openal_soft
 		SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/openal_soft
-		GIT_REPOSITORY "https://github.com/mirror/openal-soft.git"
+		GIT_REPOSITORY "${GIT_MIRROR}/openal-soft.git"
 		UPDATE_COMMAND ""
-		PATCH_COMMAND ${EXEC} git am ${ALPATCHES}
+		PATCH_COMMAND ${EXEC} git am -q ${ALPATCHES}
 		INSTALL_COMMAND ""
 		CMAKE_ARGS
 			-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
@@ -642,7 +648,11 @@ if (ENABLE_LWA)
 			-DARCAN_SHMIF_PLATFORM_HEADER=${PLATFORM_PATH}/../platform.h
 	)
 
-#	ExternalProject_Add_Step(openal_soft
+	ExternalProject_Add_Step(openal_soft gitclean
+		WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/external/openal_soft
+		COMMAND git reset --hard HEAD
+		DEPENDERS patch
+	)
 
 	set_property(TARGET arcan_lwa APPEND PROPERTY
 		COMPILE_DEFINITIONS ARCAN_LWA)

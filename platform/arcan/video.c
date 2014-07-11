@@ -11,7 +11,7 @@
  * context, map to that the shared memory, do readbacks etc.
  */
 
-/* We re-use X11/egl or other platforms with this little hack */ 
+/* We re-use X11/egl or other platforms with this little hack */
 #define PLATFORM_SUFFIX static lwa
 #define WITH_HEADLESS
 #include HEADLESS_PLATFORM
@@ -26,7 +26,7 @@
 static struct arcan_shmif_cont shms;
 
 bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
-	bool fs, bool frames)
+	bool fs, bool frames, const char* title)
 {
 	static bool first_init = true;
 
@@ -73,8 +73,8 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 /*
  * currently, we actually never de-init this
  */
-	arcan_shmif_setprimary(SHMIF_INPUT, &shms); 
-	return lwa_video_init(width, height, bpp, fs, frames);
+	arcan_shmif_setprimary(SHMIF_INPUT, &shms);
+	return lwa_video_init(width, height, bpp, fs, frames, title);
 }
 
 /*
