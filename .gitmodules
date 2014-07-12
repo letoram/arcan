@@ -1,9 +1,3 @@
-[submodule "external/musl"]
-	path = external/musl
-	url = git://git.musl-libc.org/musl
 [submodule "external/openal-soft"]
 	path = external/openal-soft
 	url = git://repo.or.cz/openal-soft.git
-[submodule "external/sodium"]
-	path = external/sodium
-	url = git://github.com/jedisct1/libsodium.git
