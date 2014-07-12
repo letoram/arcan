@@ -104,6 +104,13 @@ message("")
 
 set (FRAMESERVER_MODESTRING "")
 
+#
+# These work as a sort of black-list that will be dropped when the VM is initialized
+# For more fine-grained control, we should switch to a white-list approach where
+# : is used as a table:member delimiter to keep certain functions.
+#
+set (LUA_DROPSTR "io os package rawequal rawset rawget setfenv setmetatable coroutine module require")
+
 if (NOT GIT_MIRROR)
 	SET(GIT_MIRROR "https://www.github.com/mirror")
 endif()
@@ -479,6 +486,7 @@ endif()
 if (AVFEED_SOURCES)
 	list(APPEND FSRV_AVFEED_SOURCES ${AVFEED_SOURCES})
 	list(APPEND FSRV_AVFEED_LIBRARIES ${AVFEED_LIBS})
+	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}avfeed ")
 endif()
 
 if (${ENABLE_VIDDEC})
@@ -573,7 +581,9 @@ if (LUA51_JIT)
 endif (LUA51_JIT)
 
 set_property(SOURCE engine/arcan_lua.c engine/arcan_main.c PROPERTY
-	COMPILE_DEFINITIONS FRAMESERVER_MODESTRING=\"${FRAMESERVER_MODESTRING}\")
+	COMPILE_DEFINITIONS FRAMESERVER_MODESTRING=\"${FRAMESERVER_MODESTRING}\"
+	LUA_DROPSTR=\"${LUA_DROPSTR}\")
+
 
 include_directories(${INCLUDE_DIRS})
 
@@ -623,11 +633,17 @@ if (ENABLE_LWA)
 		${CMAKE_CURRENT_SOURCE_DIR}/external/patches/openal/0002-arcan-shmif-backend-working.patch
 	)
 
+#
+# Note the || echo "" on the PATCH_COMMAND line, it was added to have
+# cmake IGNORE the return status of the git am command as when the patches
+# have been applied the first time, they are erroneously added AGAIN IF you
+# do a make clean && make.
+#
 	ExternalProject_Add(openal_soft
 		SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/openal_soft
 		GIT_REPOSITORY "${GIT_MIRROR}/openal-soft.git"
 		UPDATE_COMMAND ""
-		PATCH_COMMAND ${EXEC} git am -q ${ALPATCHES}
+		PATCH_COMMAND ${EXEC} git am -q ${ALPATCHES} || true
 		INSTALL_COMMAND ""
 		CMAKE_ARGS
 			-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
@@ -646,12 +662,6 @@ if (ENABLE_LWA)
 			-DARCAN_SHMIF_PATH=${CMAKE_CURRENT_SOURCE_DIR}/shmif
 			-DARCAN_SHMIF_PLATFORM=${FSRV_PLATFORM_SOURCES}
 			-DARCAN_SHMIF_PLATFORM_HEADER=${PLATFORM_PATH}/../platform.h
-	)
-
-	ExternalProject_Add_Step(openal_soft gitclean
-		WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/external/openal_soft
-		COMMAND git reset --hard HEAD
-		DEPENDERS patch
 	)
 
 	set_property(TARGET arcan_lwa APPEND PROPERTY

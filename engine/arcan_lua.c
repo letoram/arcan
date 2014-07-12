@@ -1568,6 +1568,19 @@ char* arcan_luaL_main(lua_State* ctx, const char* inp, bool file)
  * a theme is about to be loaded so here is a decent entrypoint */
 	const int suffix_lim = 34;
 
+/*
+ * nil out whatever functions / tables the
+ * build- system defined that we should not have.
+ */
+	char* work = strdup(LUA_DROPSTR);
+	char* cch = strtok(work, " ");
+
+	while (cch){
+		lua_pushnil(ctx);
+		lua_setglobal(ctx, cch);
+		cch = strtok(NULL, " ");
+	}
+
 	free(lua_ctx_store.prefix_buf);
 	lua_ctx_store.prefix_ofs = arcan_appl_id_len();
 	lua_ctx_store.prefix_buf = arcan_alloc_mem( arcan_appl_id_len() + suffix_lim,
