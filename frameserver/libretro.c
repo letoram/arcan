@@ -1831,7 +1831,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 /* Frametransfer step */
 				start = arcan_timemillis();
 					add_jitter(retroctx.jitterxfer);
-					arcan_shmif_signal(&retroctx.shmcont, SHMIF_SIGVID);
+					arcan_shmif_signal(&retroctx.shmcont, SHMIF_SIGVID | SHMIF_SIGAUD);
 				stop = arcan_timemillis();
 
 /* statistics and guardbyte verification */
