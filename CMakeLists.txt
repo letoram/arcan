@@ -109,7 +109,7 @@ set (FRAMESERVER_MODESTRING "")
 # For more fine-grained control, we should switch to a white-list approach where
 # : is used as a table:member delimiter to keep certain functions.
 #
-set (LUA_DROPSTR "io os package rawequal rawset rawget setfenv setmetatable coroutine module require")
+set (LUA_DROPSTR "io os package rawequal rawset rawget setfenv coroutine module require")
 
 if (NOT GIT_MIRROR)
 	SET(GIT_MIRROR "https://www.github.com/mirror")
