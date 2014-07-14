@@ -22,25 +22,6 @@
 #include <arcan_math.h>
 #include <arcan_general.h>
 
-static struct {
-	union {
-		struct {
-			char* appl;
-			char* shared;
-			char* temp;
-			char* state;
-			char* font;
-			char* bins;
-			char* libs;
-			char* debug;
-		};
-		char* paths[8];
-	};
-
-	int lenv[8];
-
-} namespaces = {0};
-
 static char* envvs[] = {
 	"ARCAN_APPLPATH",
 	"ARCAN_RESOURCEPATH",
@@ -57,18 +38,7 @@ static size_t appl_len = 0;
 static char* g_appl_id = "#app_not_initialized";
 static char* appl_script = NULL;
 
-const char* lbls[] = {
-		"application",
-		"application-shared",
-		"application-temporary",
-		"application-state",
-		"system-font",
-		"system-binaries",
-		"system-libraries(hijack)",
-		"system-debugoutput"
-};
-
-static inline bool is_dir(const char* fn)
+bool arcan_isdir(const char* fn)
 {
 	struct stat buf;
 	bool rv = false;
@@ -82,7 +52,7 @@ static inline bool is_dir(const char* fn)
 	return rv;
 }
 
-static inline bool file_exists(const char* fn)
+bool arcan_isfile(const char* fn)
 {
 	struct stat buf;
 	bool rv = false;
@@ -94,115 +64,6 @@ static inline bool file_exists(const char* fn)
 		rv = S_ISREG(buf.st_mode);
 
 	return rv;
-}
-
-char* arcan_find_resource(const char* label, enum arcan_namespaces space)
-{
-	if (label == NULL || verify_traverse(label) == NULL)
-		return NULL;
-
-	size_t label_len = strlen(label);
-
-	for (int i = 1, j = 0; i <= RESOURCE_SYS_ENDM; i <<= 1, j++){
-		if ((space & i) == 0)
-			continue;
-
-		char scratch[ namespaces.lenv[j] + label_len + 2 ];
-		snprintf(scratch, sizeof(scratch),
-			label[0] == '/' ? "%s%s" : "%s/%s",
-			namespaces.paths[j], label
-		);
-
-		if (file_exists(scratch))
-			return strdup(scratch);
-	}
-
-	return NULL;
-}
-
-char* arcan_expand_resource(const char* label, enum arcan_namespaces space)
-{
-	assert( space > 0 && (space & (space - 1) ) == 0 );
-
-	if (label == NULL || verify_traverse(label) == NULL)
-		return NULL;
-
-	int space_ind = log2(space);
-
-	size_t len_1 = strlen(label);
-	size_t len_2 = namespaces.lenv[space_ind];
-
-	if (len_1 == 0)
-		return strdup( namespaces.paths[space_ind] );
-
-	char cbuf[ len_1 + len_2 + 2 ];
-	memcpy(cbuf, namespaces.paths[space_ind], len_2);
- 	cbuf[len_2] = '/';
-	memcpy(&cbuf[len_2 + (label[0] == '/' ? 0 : 1)], label, len_1+1);
-
-	return strdup(cbuf);
-}
-
-char* arcan_find_resource_path(const char* label, const char* path,
-	enum arcan_namespaces space)
-{
-	if (label == NULL || path == NULL ||
-		verify_traverse(path) == NULL || verify_traverse(label) == NULL)
-			return NULL;
-
-/* combine the two strings, add / delimiter if necessary and forward */
-	size_t len_1 = strlen(path);
-	size_t len_2 = strlen(label);
-
-	if (len_1 == 0)
-		return arcan_find_resource(label, space);
-
-	if (len_2 == 0)
-		return NULL;
-
-/* append, re-use strlens and null terminate */
-	char buf[ len_1 + len_2 + 2 ];
-	memcpy(buf, path, len_1);
-	buf[len_1] = '/';
-	memcpy(&buf[len_1+1], label, len_2 + 1);
-
-/* simply forward */
-	char* res = arcan_find_resource(buf, space);
-	return res;
-}
-
-bool arcan_verify_namespaces(bool report)
-{
-	bool working = true;
-
-#ifdef _DEBUG
-	arcan_warning("--- Verifying Namespaces: ---\n");
-#endif
-
-/* 1. check namespace mapping for holes */
-	for (int i = 0; i < sizeof(
-		namespaces.paths) / sizeof(namespaces.paths[0]); i++){
-			if (namespaces.paths[i] == NULL){
-				if (working && report){
-					arcan_warning("--- Broken Namespaces detected: ---\n");
-				}
-				if (report)
-					arcan_warning("%s missing (env-var: %s).\n", lbls[i], envvs[i]);
-				working = false;
-		}
-		else{
-#ifdef _DEBUG
-			arcan_warning("%s OK (%s)\n", lbls[i], namespaces.paths[i]);
-#endif
-		}
-	}
-
-#ifdef _DEBUG
-	arcan_warning("--- Namespace Verification Completed ---\n");
-#endif
-/* 2. missing; check permissions for each mounted space */
-
-	return working;
 }
 
 /*
@@ -274,7 +135,7 @@ bool arcan_verifyload_appl(const char* appl_id, const char** errc)
 	char wbuf[ s_ofs + sizeof("/.lua") + app_len + 1];
 
 	snprintf(wbuf, sizeof(wbuf), "%s/%s.lua", subpath, appl_id);
-	if (!file_exists(wbuf)){
+	if (!arcan_isfile(wbuf)){
 		*errc = "missing script matching appl_id (see appname/appname.lua)";
 		free(subpath);
 		return false;
@@ -302,31 +163,15 @@ const char* arcan_appl_id()
 	return g_appl_id;
 }
 
-void arcan_override_namespace(const char* path, enum arcan_namespaces space)
-{
-	if (path == NULL)
-		return;
-
-	assert( space > 0 && (space & (space - 1) ) == 0 );
-	int space_ind = log2(space);
-
-	if (namespaces.paths[space_ind] != NULL){
-		arcan_mem_free(namespaces.paths[space_ind]);
-	}
-
-	namespaces.paths[space_ind] = strdup(path);
-	namespaces.lenv[space_ind] = strlen(namespaces.paths[space_ind]);
-}
-
 static char* binpath_unix()
 {
 	char* binpath = NULL;
 
-	if (file_exists( "./arcan_frameserver") )
+	if (arcan_isfile( "./arcan_frameserver") )
 		binpath = strdup("./arcan_frameserver" );
-	else if (file_exists( "/usr/local/bin/arcan_frameserver"))
+	else if (arcan_isfile( "/usr/local/bin/arcan_frameserver"))
 		binpath = strdup("/usr/local/bin/arcan_frameserver");
-	else if (file_exists( "/usr/bin/arcan_frameserver" ))
+	else if (arcan_isfile( "/usr/bin/arcan_frameserver" ))
 		binpath = strdup("/usr/bin/arcan_frameserver");
 	else ;
 
@@ -337,13 +182,13 @@ static char* libpath_unix()
 {
 	char* libpath = NULL;
 
-	if (file_exists( getenv("ARCAN_HIJACK") ) )
+	if (arcan_isfile( getenv("ARCAN_HIJACK") ) )
 		libpath = strdup( getenv("ARCAN_HIJACK") );
-	else if (file_exists( "./" LIBNAME ) )
+	else if (arcan_isfile( "./" LIBNAME ) )
 		libpath = realpath( "./", NULL );
-	else if (file_exists( "/usr/local/lib/" LIBNAME) )
+	else if (arcan_isfile( "/usr/local/lib/" LIBNAME) )
 		libpath = strdup( "/usr/local/lib/");
-	else if (file_exists( "/usr/lib/" LIBNAME) )
+	else if (arcan_isfile( "/usr/lib/" LIBNAME) )
 		libpath = strdup( "/usr/lib/");
 
 	return libpath;
@@ -373,7 +218,7 @@ static char* unix_find(const char* fname)
 		char buf[ fn_l + strlen(*base) + 2 ];
 		snprintf(buf, sizeof(buf), "%s/%s", *base, fname);
 
-		if (is_dir(buf)){
+		if (arcan_isdir(buf)){
 			res = strdup(buf);
 			break;
 		}
@@ -432,7 +277,7 @@ void arcan_set_namespace_defaults()
  * can override those in turn)
  */
 	for (int i = 0; i < sizeof( envvs ) / sizeof( envvs[0] ); i++){
-		const char* tmp = getenv(lbls[i]);
+		const char* tmp = getenv(envvs[i]);
 		arcan_override_namespace(tmp, 1 << i);
 	}
 }
