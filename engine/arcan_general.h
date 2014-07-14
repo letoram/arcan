@@ -230,7 +230,7 @@ const char* arcan_appl_id();
 size_t arcan_appl_id_len();
 
 /*
- * implemented in <platform>/paths.c
+ * implemented in <platform>/namespace.c
  * Expand <label> into the path denoted by <arcan_namespaces>
  * verifies traversal on <label>.
  * Returns dynamically allocated string.
@@ -238,7 +238,7 @@ size_t arcan_appl_id_len();
 char* arcan_expand_resource(const char* label, enum arcan_namespaces);
 
 /*
- * implemented in <platform>/paths.c
+ * implemented in <platform>/namespace.c
  * Search <namespaces> after matching <label> (file_exists)
  * ordered by individual enum value (low to high).
  * Returns dynamically allocated string on match, else NULL.
@@ -246,7 +246,7 @@ char* arcan_expand_resource(const char* label, enum arcan_namespaces);
 char* arcan_find_resource(const char* label, enum arcan_namespaces);
 
 /*
- * implemented in <platform>/find_bypath.c
+ * implemented in <platform>/namespace.c
  * concatenate <path> and <label>, then forward to arcan_find_resource
  * return dynamically allocated string on match, else NULL.
  */

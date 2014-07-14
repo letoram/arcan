@@ -32,6 +32,7 @@ set (PLATFORM_SOURCES
 	${PLATFORM_PATH}/warning.c
 	${PLATFORM_PATH}/frameserver.c
 	${PLATFORM_PATH}/fdpassing.c
+	${PLATFORM_PATH}/namespace.c
 	${CMAKE_EXTERNAL_SRCDIR}/hidapi/hid_linux.c
 	${CMAKE_EXTERNAL_SRCDIR}/hidapi/hidapi.h
  	engine/arcan_target_launcher.c
@@ -120,7 +121,7 @@ set(RESOURCES_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/resources)
 
 add_executable( arcan ${SOURCES} ${PLATFORM_SOURCES} )
 set_property(TARGET arcan APPEND PROPERTY COMPILE_DEFINITIONS ${ARCAN_DEFINITIONS})
-	
+
 if (${SDLIMAGE_FOUND})
 	set_property(TARGET arcan APPEND PROPERTY COMPILE_DEFINITIONS SDLIMAGE)
 endif()

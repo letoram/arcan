@@ -21,12 +21,7 @@ void platform_video_timing(float* vsync, float* stddev, float* variance);
 void platform_video_minimize();
 long long int arcan_timemillis();
 
-#ifdef WITH_GLES3
-	#include <GLES3/gl3.h>
-	#include <GLES3/gl3ext.h>
-
-#elif WITH_OGL3
-
+#ifdef WITH_OGL3
 	#ifdef WITH_GLEW
 		#define GLEW_STATIC
 		#define GL_GLEXT_PROTOTYPES 1
@@ -36,6 +31,11 @@ long long int arcan_timemillis();
 		#include <GL/glext.h>
 	#endif
 
+#else
+
+#ifdef WITH_GLES3
+	#include <GLES3/gl3.h>
+	#include <GLES3/gl3ext.h>
 #else
 	#include <GLES2/gl2.h>
 	#include <GLES2/gl2ext.h>
@@ -61,5 +61,5 @@ long long int arcan_timemillis();
 	#define glMapBuffer(A,B) NULL
 	#define glUnmapBuffer(A)
 #endif
-
+#endif
 #endif
