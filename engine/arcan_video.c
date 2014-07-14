@@ -267,7 +267,7 @@ void arcan_video_default_imageprocmode(enum arcan_imageproc_mode mode)
 
 static struct rendertarget* find_rendertarget(arcan_vobject* vobj)
 {
-	for (int i = 0; i < current_context->n_rtargets && vobj; i++)
+	for (size_t i = 0; i < current_context->n_rtargets && vobj; i++)
 		if (current_context->rtargets[i].color == vobj)
 			return &current_context->rtargets[i];
 
@@ -277,7 +277,7 @@ static struct rendertarget* find_rendertarget(arcan_vobject* vobj)
 static void addchild(arcan_vobject* parent, arcan_vobject* child)
 {
 	arcan_vobject** slot = NULL;
-	for (int i = 0; i < parent->childslots; i++){
+	for (size_t i = 0; i < parent->childslots; i++){
 		if (parent->children[i] == NULL){
 		 slot = &parent->children[i];
 			break;
@@ -297,7 +297,7 @@ static void addchild(arcan_vobject* parent, arcan_vobject* child)
 		}
 
 		parent->children = news;
-		for (int i = 0; i < 8; i++)
+		for (size_t i = 0; i < 8; i++)
 			parent->children[parent->childslots + i] = NULL;
 
 		slot = &parent->children[parent->childslots];
@@ -326,14 +326,14 @@ static void invalidate_cache(arcan_vobject* vobj)
 
 	vobj->valid_cache = false;
 
-	for (int i = 0; i < vobj->childslots; i++)
+	for (size_t i = 0; i < vobj->childslots; i++)
 		if (vobj->children[i])
 			invalidate_cache(vobj->children[i]);
 }
 
 static void dropchild(arcan_vobject* parent, arcan_vobject* child)
 {
-	for (int i = 0; i < parent->childslots; i++){
+	for (size_t i = 0; i < parent->childslots; i++){
 		if (parent->children[i] == child){
 			parent->children[i] = NULL;
 			if (child->flags.clone)
@@ -352,7 +352,7 @@ static void dropchild(arcan_vobject* parent, arcan_vobject* child)
 static void deallocate_gl_context(struct arcan_video_context* context, bool del)
 {
 /* index (0) is always worldid */
-	for (int i = 1; i < context->vitem_limit; i++) {
+	for (size_t i = 1; i < context->vitem_limit; i++) {
 		if (context->vitems_pool[i].flags.in_use){
 			arcan_vobject* current = &(context->vitems_pool[i]);
 
@@ -416,7 +416,7 @@ static void reallocate_gl_context(struct arcan_video_context* context)
 			sizeof(struct arcan_vobject) * context->vitem_limit,
 				ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 	}
-	else for (int i = 1; i < context->vitem_limit; i++)
+	else for (size_t i = 1; i < context->vitem_limit; i++)
 		if (context->vitems_pool[i].flags.in_use){
 			arcan_vobject* current = &context->vitems_pool[i];
 			surface_transform* ctrans = current->transform;
@@ -487,7 +487,7 @@ static void push_transfer_persists(
 	struct arcan_video_context* src,
 	struct arcan_video_context* dst)
 {
-	for (int i = 1; i < src->vitem_limit - 1; i++){
+	for (size_t i = 1; i < src->vitem_limit - 1; i++){
 		arcan_vobject* srcobj = &src->vitems_pool[i];
 		arcan_vobject* dstobj = &dst->vitems_pool[i];
 
@@ -512,7 +512,7 @@ static void pop_transfer_persists(
 	struct arcan_video_context* src,
 	struct arcan_video_context* dst)
 {
-	for (int i = 1; i < src->vitem_limit - 1; i++){
+	for (size_t i = 1; i < src->vitem_limit - 1; i++){
 		arcan_vobject* srcobj = &src->vitems_pool[i];
 		arcan_vobject* dstobj = &dst->vitems_pool[i];
 
@@ -571,6 +571,111 @@ signed arcan_video_pushcontext()
 	FLAG_DIRTY();
 
 	return arcan_video_nfreecontexts();
+}
+
+void arcan_video_recoverexternal(int* saved,
+	int* truncated, recovery_adoptfun adopt, void* tag)
+{
+	unsigned lastctxa, lastctxc;
+	size_t n_ext = 0;
+
+/* pass, count contexts. */
+	for (size_t i = 0; i <= vcontext_ind; i++){
+		struct arcan_video_context* ctx = &vcontext_stack[i];
+
+		for (size_t j = 1; j < ctx->vitem_limit; j++)
+			if (ctx->vitems_pool[j].flags.in_use &&
+				ctx->vitems_pool[j].feed.state.tag == ARCAN_TAG_FRAMESERV)
+					n_ext++;
+	}
+
+	struct {
+		struct storage_info_t* gl_store;
+		arcan_vfunc_cb ffunc;
+		vfunc_state state;
+		int origw, origh;
+		int zv;
+	} alim[n_ext+1];
+
+	arcan_aobj_id audbuf[n_ext+1];
+
+	if (n_ext == 0)
+		goto clense;
+
+/* clamp number of salvaged objects, save space for WORLDID
+ * and if necessary, increase the size for new contexts */
+	if (n_ext >= VITEM_CONTEXT_LIMIT - 1)
+		n_ext = VITEM_CONTEXT_LIMIT - 1;
+
+	if (n_ext > arcan_video_display.default_vitemlim)
+		arcan_video_display.default_vitemlim = n_ext + 1;
+
+/* pass 2, salvage remains */
+	int s_ofs = 0;
+
+	for (size_t i = 0; i <= vcontext_ind; i++){
+		struct arcan_video_context* ctx = &vcontext_stack[i];
+		for (size_t j = 1; j < ctx->vitem_limit; j++)
+			if (ctx->vitems_pool[j].flags.in_use &&
+				ctx->vitems_pool[j].feed.state.tag == ARCAN_TAG_FRAMESERV){
+				arcan_vobject* cobj = &ctx->vitems_pool[j];
+
+/* only liberate objects if we have enough
+ * space left to store, the rest will be lost */
+				if (s_ofs < n_ext){
+					alim[s_ofs].state = cobj->feed.state;
+					alim[s_ofs].ffunc = cobj->feed.ffunc;
+					alim[s_ofs].gl_store = cobj->vstore;
+					alim[s_ofs].origw = cobj->origw;
+					alim[s_ofs].origh = cobj->origh;
+					alim[s_ofs].zv = i + 1;
+
+					arcan_frameserver* fsrv = cobj->feed.state.ptr;
+					audbuf[s_ofs] = fsrv->aid;
+
+/* disassociate with cobj (when killed in pop, free wont be called),
+ * and increase refcount on storage (won't be killed in pop) */
+					cobj->vstore->refcount++;
+					cobj->feed.state.tag = ARCAN_TAG_NONE;
+					cobj->feed.ffunc = NULL;
+					cobj->feed.state.ptr = NULL;
+
+					s_ofs++;
+				}
+			}
+	}
+
+/* pop them all, will also create a new fresh
+ * context with at least enough space */
+clense:
+	lastctxc = arcan_video_popcontext();
+
+	while ( lastctxc != (lastctxa = arcan_video_popcontext()))
+		lastctxc = lastctxa;
+
+	if (n_ext == 0)
+		return;
+
+/* pass 3, setup new world. */
+	for (size_t i = 0; i < s_ofs; i++){
+		arcan_vobj_id did;
+		arcan_vobject* vobj = new_vobject(&did, current_context);
+		vobj->vstore = alim[i].gl_store;
+		vobj->feed.state = alim[i].state;
+		vobj->feed.ffunc = alim[i].ffunc;
+		vobj->origw = alim[i].origw;
+		vobj->origh = alim[i].origh;
+		vobj->order = alim[i].zv;
+		vobj->blendmode = BLEND_NORMAL;
+
+		arcan_video_attachobject(did);
+
+		if (adopt)
+			adopt(did, tag);
+	}
+
+	arcan_audio_purge(audbuf, s_ofs);
+	arcan_event_purge();
 }
 
 /*
@@ -893,51 +998,52 @@ static arcan_vobject* new_vobject(arcan_vobj_id* id,
 	bool status;
 	arcan_vobj_id fid = arcan_video_allocid(&status, dctx);
 
-	if (status) {
-		rv = dctx->vitems_pool + fid;
-		rv->current_frame = rv;
-		rv->order = 0;
+	if (!status)
+		return NULL;
 
-		rv->vstore = arcan_alloc_mem(
-			sizeof(struct storage_info_t),
-			ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO,
-			ARCAN_MEMALIGN_NATURAL
-		);
+	rv = dctx->vitems_pool + fid;
+	rv->current_frame = rv;
+	rv->order = 0;
 
-		rv->vstore->txmapped   = TXSTATE_TEX2D;
-		rv->vstore->txu        = arcan_video_display.deftxs;
-		rv->vstore->txv        = arcan_video_display.deftxt;
-		rv->vstore->scale      = arcan_video_display.scalemode;
-		rv->vstore->imageproc  = arcan_video_display.imageproc;
-		rv->vstore->filtermode = arcan_video_display.filtermode;
-		rv->vstore->refcount   = 1;
-		rv->childslots = 0;
-		rv->children = NULL;
+	rv->vstore = arcan_alloc_mem(
+		sizeof(struct storage_info_t),
+		ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO,
+		ARCAN_MEMALIGN_NATURAL
+	);
 
-		rv->valid_cache = false;
+	rv->vstore->txmapped   = TXSTATE_TEX2D;
+	rv->vstore->txu        = arcan_video_display.deftxs;
+	rv->vstore->txv        = arcan_video_display.deftxt;
+	rv->vstore->scale      = arcan_video_display.scalemode;
+	rv->vstore->imageproc  = arcan_video_display.imageproc;
+	rv->vstore->filtermode = arcan_video_display.filtermode;
+	rv->vstore->refcount   = 1;
+	rv->childslots = 0;
+	rv->children = NULL;
 
-		rv->blendmode = BLEND_NORMAL;
-		rv->flags.cliptoparent = false;
+	rv->valid_cache = false;
 
-		rv->current.scale.x = 1.0;
-		rv->current.scale.y = 1.0;
-		rv->current.scale.z = 1.0;
+	rv->blendmode = BLEND_NORMAL;
+	rv->flags.cliptoparent = false;
 
-		rv->current.position.x = 0;
-		rv->current.position.y = 0;
-		rv->current.position.z = 0;
+	rv->current.scale.x = 1.0;
+	rv->current.scale.y = 1.0;
+	rv->current.scale.z = 1.0;
 
-		rv->current.rotation.quaternion = default_quat;
+	rv->current.position.x = 0;
+	rv->current.position.y = 0;
+	rv->current.position.z = 0;
 
-		rv->current.opa = 0.0;
+	rv->current.rotation.quaternion = default_quat;
 
-		rv->cellid = fid;
-		assert(rv->cellid > 0);
+	rv->current.opa = 0.0;
 
-		rv->parent = &current_context->world;
-		rv->mask = MASK_ORIENTATION | MASK_OPACITY | MASK_POSITION
-			| MASK_FRAMESET | MASK_LIVING;
-	}
+	rv->cellid = fid;
+	assert(rv->cellid > 0);
+
+	rv->parent = &current_context->world;
+	rv->mask = MASK_ORIENTATION | MASK_OPACITY | MASK_POSITION
+		| MASK_FRAMESET | MASK_LIVING;
 
 	if (id != NULL)
 		*id = fid;
@@ -1448,7 +1554,7 @@ uint16_t arcan_video_screenh()
 static uint16_t nexthigher(uint16_t k)
 {
 	k--;
-	for (int i=1; i < sizeof(uint16_t) * 8; i = i * 2)
+	for (size_t i=1; i < sizeof(uint16_t) * 8; i = i * 2)
 		k = k | k >> i;
 	return k+1;
 }
@@ -1606,7 +1712,7 @@ arcan_errc arcan_video_allocframes(arcan_vobj_id id, unsigned char capacity,
 
 /* we need to drop the current frameset before defining a new one */
 		if (target->frameset){
-			for (int i = 0; i < target->frameset_meta.capacity; i++){
+			for (size_t i = 0; i < target->frameset_meta.capacity; i++){
 				arcan_vobject* torem = target->frameset[i];
 
 				torem->extrefc.framesets--;
@@ -1633,7 +1739,7 @@ arcan_errc arcan_video_allocframes(arcan_vobj_id id, unsigned char capacity,
 			ARCAN_MEM_VSTRUCT, 0, ARCAN_MEMALIGN_NATURAL);
 
 /* fill each slot with references to self */
-		for (int i = 0; i < capacity; i++){
+		for (size_t i = 0; i < capacity; i++){
 			target->frameset[i] = target;
 			target->frameset[i]->extrefc.framesets++;
 			trace("(allocframe) self-attached to (%d:%s)\n", target->cellid,
@@ -1835,7 +1941,7 @@ arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did,
 		rv = ARCAN_ERRC_UNACCEPTED_STATE;
 
 /* linear search for rendertarget matching the destination id */
-		for (int ind = 0; ind < current_context->n_rtargets; ind++){
+		for (size_t ind = 0; ind < current_context->n_rtargets; ind++){
 			if (current_context->rtargets[ind].color == dstobj){
 
 /* find whatever rendertarget we're already attached to, and detach */
@@ -2543,7 +2649,7 @@ static arcan_errc update_zv(arcan_vobject* vobj, unsigned short newzv)
  * take account for the fact that we may relatively speaking shrink
  * the distance between our orderv vs. parent
  */
-	for (int i = 0; i < vobj->childslots; i++)
+	for (size_t i = 0; i < vobj->childslots; i++)
 		if (vobj->children[i] && vobj->children[i]->flags.orderofs){
 			int distance = vobj->children[i]->order - oldv;
 			update_zv(vobj->children[i], newzv + distance);
@@ -2870,7 +2976,7 @@ static void drop_rtarget(arcan_vobject* vobj)
 
 /* sweep the list of rendertarget children, and see if we have the
  * responsibility of cleaning it up */
-	for (int i = 0; i < cascade_c; i++)
+	for (size_t i = 0; i < cascade_c; i++)
 		if (pool[i] && pool[i]->flags.in_use && (pool[i]->owner == dst ||
 			pool[i]->owner->alive == false)){
 			pool[i]->owner = NULL;
@@ -2984,7 +3090,7 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 		}
 
 /* drop all children, add those that should be deleted to the pool */
-		for (int i = 0; i < vobj->childslots; i++){
+		for (size_t i = 0; i < vobj->childslots; i++){
 			arcan_vobject* cur = vobj->children[i];
 			if (cur){
 				if (cur->flags.clone || (cur->mask & MASK_LIVING) > 0)
@@ -3042,7 +3148,7 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
  * entire object to be sure. will help leak detectors as well */
 	memset(vobj, 0, sizeof(arcan_vobject));
 
-	for (int i = 0; i < cascade_c; i++){
+	for (size_t i = 0; i < cascade_c; i++){
 		if (!pool[i])
 			continue;
 
@@ -3113,7 +3219,7 @@ arcan_vobj_id arcan_video_findchild(arcan_vobj_id parentid, unsigned ofs)
 	if (!vobj)
 		return rv;
 
-	for (int i = 0; i < vobj->childslots; i++){
+	for (size_t i = 0; i < vobj->childslots; i++){
 		if (vobj->children[i]){
 			if (ofs > 0)
 				ofs--;
@@ -3688,7 +3794,7 @@ static int tick_rendertarget(struct rendertarget* tgt)
 			elem->feed.ffunc(FFUNC_TICK, 0, 0, 0, 0, 0, 0, elem->feed.state);
 
 /* special case for "unreachables", e.g. detached frameset cells */
-		for (int i = 0; i < elem->frameset_meta.capacity; i++){
+		for (size_t i = 0; i < elem->frameset_meta.capacity; i++){
 			arcan_vobject* cell = elem->frameset[i];
 			if (cell->owner == NULL && cell->feed.ffunc){
 				cell->feed.ffunc(FFUNC_TICK, 0, 0, 0, 0, 0, 0, cell->feed.state);
@@ -3733,7 +3839,7 @@ unsigned arcan_video_tick(unsigned steps, unsigned* njobs)
 		arcan_video_display.dirty +=
 			arcan_shader_envv(TIMESTAMP_D, &tsd, sizeof(uint32_t));
 
-		for (int i = 0; i < current_context->n_rtargets; i++)
+		for (size_t i = 0; i < current_context->n_rtargets; i++)
 			arcan_video_display.dirty +=
 				tick_rendertarget(&current_context->rtargets[i]);
 
@@ -4112,7 +4218,7 @@ void arcan_video_pollfeed(){
 	if (current_context->stdoutp.readreq)
 		poll_readback(&current_context->stdoutp);
 
-	for (int i = 0; i < current_context->n_rtargets; i++)
+	for (size_t i = 0; i < current_context->n_rtargets; i++)
 		poll_list(current_context->rtargets[i].first, vcookie);
 
 	poll_list(current_context->stdoutp.first, vcookie);
@@ -4616,14 +4722,14 @@ void arcan_video_refresh_GL(float lerp)
 		arcan_shader_envv(FRACT_TIMESTAMP_F, &lerp, sizeof(float));
 
 	if (arcan_video_display.fbo_support){
-		for (int ind = 0; ind < current_context->n_rtargets; ind++){
+		for (size_t ind = 0; ind < current_context->n_rtargets; ind++){
 			struct rendertarget* tgt = &current_context->rtargets[ind];
 
 			glBindFramebuffer(GL_FRAMEBUFFER, tgt->fbo);
 			process_rendertarget(tgt, lerp);
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-			for (int ind = 0; ind < current_context->n_rtargets; ind++)
+			for (size_t ind = 0; ind < current_context->n_rtargets; ind++)
 				process_readback(&current_context->rtargets[ind], lerp);
 		}
 	}
@@ -5117,17 +5223,21 @@ unsigned arcan_video_contextusage(unsigned* used)
 	return current_context->vitem_limit-1;
 }
 
-void arcan_video_contextsize(unsigned newlim)
+bool arcan_video_contextsize(unsigned newlim)
 {
+	if (newlim <= 1 || newlim >= VITEM_CONTEXT_LIMIT)
+		return false;
+
 /* this change isn't allowed when the shrink/expand operation would
  * change persistent objects in the stack */
 	if (newlim < arcan_video_display.default_vitemlim)
 		for (unsigned i = 1; i < current_context->vitem_limit-1; i++)
 			if (current_context->vitems_pool[i].flags.in_use &&
 				current_context->vitems_pool[i].flags.persist)
-				return;
+				return false;
 
 	arcan_video_display.default_vitemlim = newlim;
+	return true;
 }
 
 extern void platform_video_restore_external();

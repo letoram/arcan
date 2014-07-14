@@ -315,12 +315,6 @@ done:
 	return retv;
 }
 
-static bool wait_keypair()
-{
-/* while-loop inevq. wait for event to arrive */
-	return true;
-}
-
 void arcan_net_client_session(struct arg_arr* args, const char* shmkey)
 {
 	const char* host = NULL;
@@ -339,10 +333,13 @@ void arcan_net_client_session(struct arg_arr* args, const char* shmkey)
 
 	arg_lookup(args, "ident", 0, (const char**) &clctx.name);
 
-	if (arg_lookup(args, "nacl", 0, &host)){
-		if (!wait_keypair())
-			return;
+	const char* pubkey = NULL, (* privkey) = NULL;
+	if (arg_lookup(args, "pubkey", 0, &pubkey)){
 	}
+
+	if (arg_lookup(args, "privkey", 0, &privkey)){
+	}
+
 	else{
 /* generate public/private keypair */
 	}

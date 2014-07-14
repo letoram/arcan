@@ -60,6 +60,10 @@
 #define CONTEXT_STACK_LIMIT 8
 #endif
 
+#ifndef VITEM_CONTEXT_LIMIT
+#define VITEM_CONTEXT_LIMIT 65536
+#endif
+
 #ifndef GL_PIXEL_FORMAT
 #define GL_PIXEL_FORMAT GL_RGBA
 #endif
@@ -379,9 +383,12 @@ unsigned arcan_video_maxorder();
  * the current context. A special case is that the outmost context
  * can be poped and will then have the new object limit.
  *
- * 0 > newlim < 65535
+ * 0 > newlim < VITEM_CONTEXT_LIMIT
+ *
+ * will fail if shrinking a context would undershoot the number
+ * of persistent- flagged items.
  */
-void arcan_video_contextsize(unsigned newlim);
+bool arcan_video_contextsize(unsigned newlim);
 
 /*
  * Returns the number or free contexts on the context stack.
@@ -644,6 +651,24 @@ arcan_errc arcan_video_rendertarget_setnoclear(arcan_vobj_id did, bool value);
 enum arcan_transform_mask arcan_video_getmask(arcan_vobj_id src);
 arcan_errc arcan_video_transformmask(arcan_vobj_id src,
 	enum arcan_transform_mask mask);
+
+/*
+ * Fallback flush -- will iterate all active contexts, detach frameservers from
+ * their objects (but maintain their gl-store by incrementing the reference
+ * counter), pop-all contexts and finally rebuild a new context with objects
+ * that consist only of the frameservers.
+ *
+ * The main purpose for this is to enable the support of a recovery mode,
+ * where, if something goes wrong in other layers (e.g. scripting), external
+ * processes can be saved.
+ *
+ * CAVEAT: if the total number of frameservers in all contexts > the maximum
+ * limit of objects in a context, the context will be truncated.
+ * This would require a high number of concurrently running processes however.
+ */
+typedef void (*recovery_adoptfun)(arcan_vobj_id new_ent, void*);
+void arcan_video_recoverexternal(int* saved,
+	int* truncated, recovery_adoptfun, void* tag);
 
 /*
  * Convert the mipmapping mode for the video object to on [state=true] or

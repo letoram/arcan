@@ -73,6 +73,14 @@ int64_t arcan_frametime();
 void arcan_event_erase_vobj(struct arcan_evctx* ctx,
 	enum ARCAN_EVENT_CATEGORY category, arcan_vobj_id source);
 
+/*
+ * used as part of trying to salvage external connections while
+ * resetting audio/video/scripting contexts. This sweeps the "to be processed"
+ * event-queue and removes all events that doesn't strictly come from
+ * external sources.
+ */
+void arcan_event_purge();
+
 void arcan_event_init(struct arcan_evctx* dstcontext);
 void arcan_event_deinit(struct arcan_evctx*);
 

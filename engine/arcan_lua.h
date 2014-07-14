@@ -64,6 +64,12 @@ void arcan_lua_pushglobalconsts(struct arcan_luactx* ctx);
  * to account for more snapshots over the same stream */
 void arcan_lua_statesnap(FILE* dst, const char* tag, bool delim);
 
+/*
+ * (tag) will contain the active lua context, will be invoked once
+ * for every frameserver that needs to be adopted by the new context.
+ */
+void arcan_luaL_adopt(arcan_vobj_id id, void* tag);
+
 /* nonblock/read from (dst) filestream until an #ENDBLOCK\n tag is encountered,
  * parse this and push it into the struct arcan_luactx as the first
  * and only argument to the function pointed out with (dstfun). */
