@@ -64,7 +64,7 @@ DDL = {
 	FOREIGN KEY (game) REFERENCES game(gameid)\
 )",
 
-	:theme_arcan => "CREATE TABLE theme_arcan (\
+	:appl_arcan => "CREATE TABLE appl_arcan (\
 	key TEXT,\
 	value TEXT)"
 }
@@ -495,7 +495,7 @@ def reset_db(dbname)
 		db.execute( value )
 	}
 
-	db.execute("INSERT INTO theme_arcan VALUES('dbversion', 2);");
+	db.execute("INSERT INTO appl_arcan VALUES('dbversion', 2);");
 
 	db
 

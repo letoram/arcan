@@ -45,9 +45,9 @@ static int wbufsize = 4094;
 struct arcan_dbh {
 	sqlite3* dbh;
 
-/* cached theme name used for the DBHandle, although
+/* cached appl name used for the DBHandle, although
  * some special functions may use a different one, none outside _db.c should */
-	char* themename;
+	char* applname;
 	sqlite3_stmt* update_kv;
 	sqlite3_stmt* insert_kv;
 	bool intrans;
@@ -66,7 +66,8 @@ char* _n_strdup(const char* instr, const char* alt)
 
 /* any query that just returns a bunch of string rows,
  * build a dbh_res struct out of it */
-static arcan_dbh_res db_string_query(arcan_dbh* dbh, sqlite3_stmt* stmt, arcan_dbh_res* opt)
+static arcan_dbh_res db_string_query(arcan_dbh* dbh,
+	sqlite3_stmt* stmt, arcan_dbh_res* opt)
 {
 	arcan_dbh_res res = {.kind = 0};
 
@@ -114,11 +115,8 @@ static int db_num_query(arcan_dbh* dbh, const char* qry, bool* status)
 
 		sqlite3_finalize(stmt);
 	}
-	else {
-		arcan_warning("Warning: db_num_query(), Couldn't process query: %s, "
-			"possibly broken/incomplete arcandb.sqlite\n", qry);
+	else
 		count = -1;
-	}
 
 	return count;
 }
@@ -134,7 +132,7 @@ static void db_void_query(arcan_dbh* dbh, const char* qry)
 		rc = sqlite3_step(stmt);
 	}
 
-	if (rc != SQLITE_OK){
+	if (rc != SQLITE_OK && rc != SQLITE_DONE){
 		arcan_warning("db_void_query(failed) on %s -- reason: %d\n", qry, rc);
 	}
 
@@ -159,11 +157,11 @@ static void freegame(arcan_db_game* game)
 	arcan_mem_free(game->system);
 }
 
-static void create_theme_group(arcan_dbh* dbh, const char* themename)
+static void create_appl_group(arcan_dbh* dbh, const char* applname)
 {
 	sqlite3_stmt* stmt = NULL;
-	int nw = snprintf(wbuf, wbufsize, "CREATE TABLE theme_%s "
-		"(key TEXT UNIQUE, value TEXT NOT NULL);", themename);
+	int nw = snprintf(wbuf, wbufsize, "CREATE TABLE appl_%s "
+		"(key TEXT UNIQUE, value TEXT NOT NULL);", applname);
 	sqlite3_prepare_v2(dbh->dbh, wbuf, nw, &stmt, NULL);
 	sqlite3_step(stmt);
 	sqlite3_finalize(stmt);
@@ -412,7 +410,8 @@ arcan_dbh_res arcan_db_gamebyid(arcan_dbh* dbh, int gameid)
 		"a.manufacturer AS \"manufacturer\", "
 		"a.target AS \"targetid\", "
 		"a.launch_counter AS \"launch_counter\", "
-		"b.name AS \"target\" FROM game a, target b WHERE a.gameid=? AND b.targetid=a.target;";
+		"b.name AS \"target\" FROM game a, target b "
+		"WHERE a.gameid=? AND b.targetid=a.target;";
 
 	arcan_dbh_res res = {.kind = -1};
 	sqlite3_stmt* stmt = NULL;
@@ -751,10 +750,10 @@ bool arcan_db_kv(arcan_dbh* dbh, const char* key, const char* value)
 	if (!dbh->update_kv){
 		int nw;
 		nw = snprintf(wbuf, wbufsize,
-			"UPDATE theme_%s SET value=? WHERE key=?;",	dbh->themename);
+			"UPDATE appl %s SET value=? WHERE key=?;",	dbh->applname);
 		sqlite3_prepare_v2(dbh->dbh, wbuf, nw, &dbh->update_kv, NULL);
-		nw = snprintf(wbuf, wbufsize, "INSERT INTO theme_%s(key, value) "
-			"VALUES(?, ?);", dbh->themename);
+		nw = snprintf(wbuf, wbufsize, "INSERT INTO appl_%s(key, value) "
+			"VALUES(?, ?);", dbh->applname);
 		sqlite3_prepare_v2(dbh->dbh, wbuf, nw, &dbh->insert_kv, NULL);
 	}
 
@@ -792,9 +791,7 @@ bool arcan_db_kv(arcan_dbh* dbh, const char* key, const char* value)
 	}
 }
 
-/* deprecated, externally themes should use
- * arcan_db_kv class functions instead */
-bool arcan_db_theme_kv(arcan_dbh* dbh, const char* themename,
+bool arcan_db_appl_kv(arcan_dbh* dbh, const char* applname,
 	const char* key, const char* value)
 {
 	bool rv = false;
@@ -803,12 +800,12 @@ bool arcan_db_theme_kv(arcan_dbh* dbh, const char* themename,
 	if (!dbh || !key || !value)
 		return rv;
 
-	char* okey = arcan_db_theme_val(dbh, themename, key);
+	char* okey = arcan_db_appl_val(dbh, applname, key);
 	sqlite3_stmt* stmt = NULL;
 
 	if (okey) {
 		nw = snprintf(wbuf, wbufsize,
-			"UPDATE theme_%s SET value=? WHERE key=?;", themename);
+			"UPDATE appl_%s SET value=? WHERE key=?;", applname);
 		sqlite3_prepare_v2(dbh->dbh, wbuf, nw, &stmt, NULL);
 		sqlite3_bind_text(stmt, 2, key,   -1, SQLITE_TRANSIENT);
 		sqlite3_bind_text(stmt, 1, value, -1, SQLITE_TRANSIENT);
@@ -816,7 +813,7 @@ bool arcan_db_theme_kv(arcan_dbh* dbh, const char* themename,
 	}
 	else {
 		nw = snprintf(wbuf, wbufsize,
-			"INSERT INTO theme_%s(key, value) VALUES(?, ?);", themename);
+			"INSERT INTO appl_%s(key, value) VALUES(?, ?);", applname);
 		sqlite3_prepare_v2(dbh->dbh, wbuf, nw, &stmt, NULL);
 		sqlite3_bind_text(stmt, 1, key,   -1, SQLITE_TRANSIENT);
 		sqlite3_bind_text(stmt, 2, value, -1, SQLITE_TRANSIENT);
@@ -829,7 +826,7 @@ bool arcan_db_theme_kv(arcan_dbh* dbh, const char* themename,
 	return rv;
 }
 
-char* arcan_db_theme_val(arcan_dbh* dbh, const char* themename, const char* key)
+char* arcan_db_appl_val(arcan_dbh* dbh, const char* applname, const char* key)
 {
 	char* rv;
 
@@ -837,7 +834,8 @@ char* arcan_db_theme_val(arcan_dbh* dbh, const char* themename, const char* key)
 		return NULL;
 	sqlite3_stmt* stmt = NULL;
 
-	int nw = snprintf(wbuf, wbufsize, "SELECT value FROM theme_%s WHERE key = ?;", themename);
+	int nw = snprintf(wbuf, wbufsize,
+		"SELECT value FROM appl_%s WHERE key = ?;", applname);
 	sqlite3_prepare_v2(dbh->dbh, wbuf, nw, &stmt, NULL);
 	sqlite3_bind_text(stmt, 1, (char*) key, -1, SQLITE_TRANSIENT);
 	if (sqlite3_step(stmt) == SQLITE_ROW)
@@ -931,7 +929,7 @@ arcan_dbh_res arcan_db_launch_options(arcan_dbh* dbh, int gameid, bool internal)
 			res.data.strarr[count++] =
 				arcan_expand_resource(wbuf, RESOURCE_APPL_SHARED);
 		}
-		else if ( (strlen(arg) >= 11) && strncmp(arg, "[themepath]", 11) == 0){
+		else if ( (strlen(arg) >= 11) && strncmp(arg, "[applpath]", 11) == 0){
 			snprintf(wbuf, wbufsize, "/%s", arg + 11);
 			res.data.strarr[count++] = arcan_expand_resource(wbuf, RESOURCE_APPL);
 		}
@@ -985,6 +983,12 @@ bool arcan_db_free_res(arcan_dbh* dbh, arcan_dbh_res res)
 	return true;
 }
 
+static void setup_ddl(arcan_dbh* dbh)
+{
+	create_appl_group(dbh, "arcan");
+	arcan_db_appl_kv(dbh, "arcan", "dbversion", "2");
+}
+
 /* to detect old databases and upgrade if possible */
 static bool dbh_integrity_check(arcan_dbh* dbh){
 	int tablecount = db_num_query(dbh, "SELECT Count(*) "
@@ -992,24 +996,22 @@ static bool dbh_integrity_check(arcan_dbh* dbh){
 
 /* empty database */
 	if (tablecount <= 0){
-		arcan_warning("empty database, creating tables.\n");
+		arcan_warning("Empty database encountered, running default DDL queries.\n");
+		setup_ddl(dbh);
+
 		return true;
 	}
 
 /* check for descriptor table, missing?
  * that means we have a first- version database, push upgrade */
-	char* valstr = arcan_db_theme_val(dbh, "arcan", "dbversion");
+	char* valstr = arcan_db_appl_val(dbh, "arcan", "dbversion");
 	unsigned vnum = valstr ? strtoul(valstr, NULL, 10) : 0;
 
 	switch (vnum){
 		case 0:
-			arcan_warning("Upgrading old database (v0) to (v2)\n");
-			arcan_db_theme_kv(dbh, "arcan", "dbversion", "1");
-			db_void_query(dbh, "ALTER TABLE game ADD COLUMN system TEXT;");
 		case 1:
-			arcan_warning("Upgrading old database (v1) to (v2)\n");
-			db_void_query(dbh, "ALTER_TABLE target ADD COLUMN hijack TEXT;");
-			arcan_db_theme_kv(dbh, "arcan", "dbversion", "2");
+			arcan_warning("Using old / deprecated database format,please rebuild.\n");
+			return false;
 	}
 
 	return true;
@@ -1024,7 +1026,7 @@ void arcan_db_close(arcan_dbh* ctx)
 	arcan_mem_free(ctx);
 }
 
-arcan_dbh* arcan_db_open(const char* fname, const char* themename)
+arcan_dbh* arcan_db_open(const char* fname, const char* applname)
 {
 	sqlite3* dbh;
 	int rc = 0;
@@ -1034,14 +1036,16 @@ arcan_dbh* arcan_db_open(const char* fname, const char* themename)
 
 	if (!db_init) {
 		int rv = sqlite3_initialize();
-		atexit(sqliteexit);
+		db_init = true;
 
 		if (rv != SQLITE_OK)
 			return NULL;
+
+		atexit(sqliteexit);
 	}
 
-	if (!themename)
-		themename = "_default";
+	if (!applname)
+		applname = "_default";
 
 	if ((rc = sqlite3_open_v2(fname, &dbh, SQLITE_OPEN_READWRITE, NULL))
 		== SQLITE_OK){
@@ -1059,16 +1063,16 @@ arcan_dbh* arcan_db_open(const char* fname, const char* themename)
 			return NULL;
 		}
 
-		res->themename = strdup(themename);
+		res->applname = strdup(applname);
 		const char* sqqry = "SELECT Count(*) FROM ";
 		snprintf(wbuf, wbufsize, "%s%s", sqqry, "target");
 		int tc = db_num_query(res, wbuf, NULL);
 
 		snprintf(wbuf, wbufsize, "%s%s", sqqry, "game");
 		int gc = db_num_query(res, wbuf, NULL);
-		create_theme_group(res, res->themename);
+		create_appl_group(res, res->applname);
 
-		db_void_query(res, "PRAGMA synchronous=0;");
+		db_void_query(res, "PRAGMA synchronous=OFF;");
 
 		arcan_warning("Notice: arcan_db_open(), # targets: "
 			"%i, # games: %i\n", tc, gc);

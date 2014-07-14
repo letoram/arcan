@@ -824,9 +824,9 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 
 /*
  * frameservers that are semi-trusted currently get an
- * environment variable to help search for theme-relative resources
+ * environment variable to help search for appl-relative resources
  */
-		setenv( "ARCAN_THEMEPATH", arcan_expand_resource("", RESOURCE_APPL), 1);
+		setenv( "ARCAN_APPLPATH", arcan_expand_resource("", RESOURCE_APPL), 1);
 
 /*
  * we need to mask this signal as when debugging parent process,

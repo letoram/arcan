@@ -10,8 +10,7 @@ require 'rbconfig'
 # although the program was initially designed to be driven from the command-line entirely,
 # the UI library situation in Ruby is so terrible that the safer and more portable choice is (!)
 # to use Webrick to set-up a local webserver, and Watir to spawn a browser and navigate to this server
-# as an "alternative" UI. The skeleton for this is can be found in scripts/romman_ui.rb, but is still
-# to be completed. 
+# as an "alternative" UI. 
 #
 
 unless File.respond_to? :realpath
