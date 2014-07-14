@@ -18,6 +18,7 @@ ${PLATFORM_PATH}/frameserver.c
 ${PLATFORM_PATH}/../sdl/event.c
 ${PLATFORM_PATH}/../sdl/video.c
 ${PLATFORM_PATH}/fdpassing.c
+${PLATFORM_PATH}/namespace.c
 )
 
 set (FSERV_PLATFORM_SOURCES

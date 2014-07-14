@@ -31,6 +31,9 @@
  * This is relevant for the arcan-in-arcan case.
  */
 
+#define WITH_GBMKMS
+#define WITH_OGL3
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -384,14 +387,14 @@ void PLATFORM_SYMBOL(_video_bufferswap) ()
 #ifdef WITH_HEADLESS
 
 bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
-	uint8_t bpp, bool fs, bool frames)
+	uint8_t bpp, bool fs, bool frames, const char* title)
 {
 
 }
 
 #else
 bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
-	uint8_t bpp, bool fs, bool frames)
+	uint8_t bpp, bool fs, bool frames, const char* title)
 {
 	const EGLint attrlst[] =
 	{
@@ -412,6 +415,12 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 #ifdef WITH_X11
 	if (!setup_xwnd(w, h, fs)){
 		arcan_warning("Couldn't setup Window (X11)\n");
+		return false;
+	}
+#endif
+
+#ifdef WITH_GBMKMS
+	if (!setup_gbmkms(&w, &h, fs)){
 		return false;
 	}
 #endif
@@ -464,7 +473,7 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 
 #else
 bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
-	uint8_t bpp, bool fs, bool frames)
+	uint8_t bpp, bool fs, bool frames, const char* caption)
 {
 	EGLint ca[] = {
 		EGL_CONTEXT_CLIENT_VERSION,

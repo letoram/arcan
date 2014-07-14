@@ -16,6 +16,7 @@ set (PLATFORM_SOURCES
 	${PLATFORM_PATH}/warning.c
 	${PLATFORM_PATH}/frameserver.c
 	${PLATFORM_PATH}/fdpassing.c
+	${PLATFORM_PATH}/namespace.c
 	${CMAKE_SOURCE_DIR}/external/hidapi/hid_darwin.c
 	${CMAKE_SOURCE_DIR}/external/hidapi/hidapi.h
 )
