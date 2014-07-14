@@ -59,6 +59,7 @@
 #include <errno.h>
 #include <pthread.h>
 #include <ctype.h>
+#include <setjmp.h>
 
 #include <string.h>
 #include <fcntl.h>
@@ -130,9 +131,10 @@ typedef int acoord;
 	example: */
 
 #define LUA_TRACE(fsym)
-/* #define LUA_TRACE(fsym) fprintf(stderr, "(%lld:%s)->%s\n", \
+/*
+ * #define LUA_TRACE(fsym) fprintf(stderr, "(%lld:%s)->%s\n", \
 		arcan_timemillis(), lua_ctx_store.lastsrc, fsym);
-*/
+ */
 
 #define LUA_DEPRECATE(fsym) \
 	arcan_warning("%s, DEPRECATED, discontinue "\
@@ -273,7 +275,7 @@ static inline intptr_t find_lua_callback(lua_State* ctx)
 {
 	int nargs = lua_gettop(ctx);
 
-	for (int i = 1; i <= nargs; i++)
+	for (size_t i = 1; i <= nargs; i++)
 		if (lua_isfunction(ctx, i)){
 			lua_pushvalue(ctx, i);
 			return luaL_ref(ctx, LUA_REGISTRYINDEX);
@@ -286,7 +288,7 @@ static inline int find_lua_type(lua_State* ctx, int type, int ofs)
 {
 	int nargs = lua_gettop(ctx);
 
-	for (int i = 1; i <= nargs; i++){
+	for (size_t i = 1; i <= nargs; i++){
 		int ltype = lua_type(ctx, i);
 		if (ltype == type)
 			if (ofs-- == 0)
@@ -350,7 +352,7 @@ static void dump_stack(lua_State* ctx)
 	int top = lua_gettop(ctx);
 	arcan_warning("-- stack dump --\n");
 
-	for (int i = 1; i <= top; i++) {
+	for (size_t i = 1; i <= top; i++) {
 		int t = lua_type(ctx, i);
 
 		switch (t) {
@@ -373,6 +375,32 @@ static void dump_stack(lua_State* ctx)
 	arcan_warning("\n");
 }
 
+/*
+ * A more optimized approach than this one would be to track when the globals
+ * change for C<->LUA related transfer functions and just have
+ * cached function pointers.
+ */
+static bool grabthemefunction(lua_State* ctx, const char* funame, size_t funlen)
+{
+	if (funlen > 0){
+		strncpy(lua_ctx_store.prefix_buf +
+			lua_ctx_store.prefix_ofs + 1, funame, 32);
+
+		lua_ctx_store.prefix_buf[lua_ctx_store.prefix_ofs] = '_';
+		lua_ctx_store.prefix_buf[lua_ctx_store.prefix_ofs + funlen + 1] = '\0';
+	}
+	else
+		lua_ctx_store.prefix_buf[lua_ctx_store.prefix_ofs] = '\0';
+
+	lua_getglobal(ctx, lua_ctx_store.prefix_buf);
+
+	if (!lua_isfunction(ctx, -1)){
+		lua_pop(ctx, 1);
+		return false;
+	}
+
+	return true;
+}
 
 static inline char* findresource(const char* arg, enum arcan_namespaces space)
 {
@@ -676,7 +704,7 @@ static int moveimage(lua_State* ctx)
 	else if (argtype == LUA_TTABLE){
 		int nelems = lua_rawlen(ctx, 1);
 
-		for (int i = 0; i < nelems; i++){
+		for (size_t i = 0; i < nelems; i++){
 			lua_rawgeti(ctx, 1, i+1);
 			arcan_vobj_id id = luaL_checkvid(ctx, -1, NULL);
 			arcan_video_objectmove(id, newx, newy, 1.0, time);
@@ -717,7 +745,7 @@ static int nudgeimage(lua_State* ctx)
 	else if (argtype == LUA_TTABLE){
 		int nelems = lua_rawlen(ctx, 1);
 
-		for (int i = 0; i < nelems; i++){
+		for (size_t i = 0; i < nelems; i++){
 			lua_rawgeti(ctx, 1, i+1);
 			arcan_vobj_id id = luaL_checkvid(ctx, -1, NULL);
 			surface_properties props = arcan_video_current_properties(id);
@@ -822,7 +850,7 @@ static int rotateimage(lua_State* ctx)
 	else if (argtype == LUA_TTABLE){
 		int nelems = lua_rawlen(ctx, 1);
 
-		for (int i = 0; i < nelems; i++){
+		for (size_t i = 0; i < nelems; i++){
 			lua_rawgeti(ctx, 1, i+1);
 			arcan_vobj_id id = luaL_checkvid(ctx, -1, NULL);
 			arcan_video_objectrotate(id, ang, 0.0, 0.0, time);
@@ -952,7 +980,7 @@ static int orderimage(lua_State* ctx)
 	else if (argtype == LUA_TTABLE){
 		int nelems = lua_rawlen(ctx, 1);
 
-		for (int i = 0; i < nelems; i++){
+		for (size_t i = 0; i < nelems; i++){
 			lua_rawgeti(ctx, 1, i+1);
 			arcan_vobj_id id = luaL_checkvid(ctx, -1, NULL);
 			arcan_video_setzv(id, zv);
@@ -992,7 +1020,7 @@ static inline void massopacity(lua_State* ctx,
 	else if (argtype == LUA_TTABLE){
 		int nelems = lua_rawlen(ctx, 1);
 
-		for (int i = 0; i < nelems; i++){
+		for (size_t i = 0; i < nelems; i++){
 			lua_rawgeti(ctx, 1, i+1);
 			arcan_vobj_id id = luaL_checkvid(ctx, -1, NULL);
 			arcan_video_objectopacity(id, val, time);
@@ -1247,7 +1275,7 @@ static int rendertext(lua_State* ctx)
 	lua_newtable(ctx);
 	int top = lua_gettop(ctx);
 
-	for (int i = 0; i < nlines; i++) {
+	for (size_t i = 0; i < nlines; i++) {
 		lua_pushnumber(ctx, i + 1);
 		lua_pushnumber(ctx, lineheights[i]);
 		lua_rawset(ctx, top);
@@ -1307,7 +1335,7 @@ static int settxcos(lua_State* ctx)
 			return 0;
 		}
 
-		for (int i = 0; i < 8; i++){
+		for (size_t i = 0; i < 8; i++){
 			lua_rawgeti(ctx, -1, i+1);
 			txcos[i] = lua_tonumber(ctx, -1);
 			lua_pop(ctx, 1);
@@ -1331,7 +1359,7 @@ static int gettxcos(lua_State* ctx)
 		lua_newtable(ctx);
 		int top = lua_gettop(ctx);
 
-		for (int i = 0; i < 8; i++){
+		for (size_t i = 0; i < 8; i++){
 			lua_pushnumber(ctx, i + 1);
 			lua_pushnumber(ctx, txcos[i]);
 			lua_rawset(ctx, top);
@@ -1550,7 +1578,7 @@ static int systemcontextsize(lua_State* ctx)
 	LUA_TRACE("system_context_size");
 
 	unsigned newlim = luaL_checkint(ctx, 1);
-	if (newlim > 1 && newlim <= 65536){
+	if (newlim > 1 && newlim <= VITEM_CONTEXT_LIMIT){
 		arcan_video_contextsize(newlim);
 	}
 	else
@@ -1596,6 +1624,63 @@ char* arcan_luaL_main(lua_State* ctx, const char* inp, bool file)
 	}
 
 	return NULL;
+}
+
+void arcan_luaL_adopt(arcan_vobj_id id, void* tag)
+{
+	lua_State* ctx = tag;
+	arcan_vobject* vobj = arcan_video_getobject(id);
+	arcan_frameserver* fsrv = NULL;
+
+/* should only be this type at the moment but need to protect ourselves */
+	if (vobj->feed.state.tag == ARCAN_TAG_FRAMESERV){
+		fsrv = vobj->feed.state.ptr;
+		fsrv->tag = (uintptr_t) 0;
+	}
+
+	if (!grabthemefunction(ctx, "adopt", sizeof("adopt") - 1))
+		return;
+
+	int argc = 1;
+	lua_pushvid(ctx, id);
+	if (fsrv){
+		argc++;
+		lua_pushstring(ctx, fsrvtos(fsrv->segid));
+	}
+
+	wraperr(ctx, lua_pcall(ctx, argc, 0, 0), "adopt");
+}
+
+extern jmp_buf arcanmain_recover_state;
+
+static int syscollapse(lua_State* ctx)
+{
+	LUA_TRACE("system_collapse");
+	const char* switch_appl = luaL_optstring(ctx, 1, NULL);
+
+	if (switch_appl){
+		if (strlen(switch_appl) == 0){
+			arcan_fatal("system_collapse(), 0-length appl name not permitted.\n");
+		}
+
+		for (char* work = switch_appl; *work; work++)
+			if (!isalnum(*work) && *work != '_')
+				arcan_fatal("system_collapse(), only aZ_ are permitted in names.\n");
+
+		int saved, truncated;
+		arcan_luaL_shutdown(ctx);
+		const char* errmsg;
+
+		if (!arcan_verifyload_appl(switch_appl, &errmsg))
+			arcan_fatal("system_collapse(), "
+				"failed to load appl (%s), reason: %s\n", switch_appl, errmsg);
+
+		longjmp(arcanmain_recover_state, 1);
+	}
+	else
+		arcan_video_recoverexternal(&saved, &truncated, arcan_luaL_adopt, ctx);
+
+	return 0;
 }
 
 static int syssnap(lua_State* ctx)
@@ -1673,22 +1758,6 @@ static int targetsuspend(lua_State* ctx)
 
 	arcan_frameserver_pause(fsrv);
 	arcan_frameserver_pushevent(fsrv, &ev);
-
-	return 0;
-}
-
-static int targetdrop(lua_State* ctx)
-{
-	LUA_TRACE("drop_target");
-
-	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
-	vfunc_state* vstate = arcan_video_feedstate(id);
-
-	if (!vstate || vstate->tag != ARCAN_TAG_FRAMESERV)
-		arcan_fatal("drop_target(), "
-			"referenced object is not connected to a frameserver.\n");
-
-	arcan_frameserver_free(vstate->ptr);
 
 	return 0;
 }
@@ -2067,7 +2136,7 @@ static int targetinput(lua_State* ctx)
 	/*  sweep the samples subtable, add as many as present (or possible) */
 		lua_getfield(ctx, tblind, "samples");
 		size_t naxiss = lua_rawlen(ctx, -1);
-		for (int i = 0; i < naxiss &&
+		for (size_t i = 0; i < naxiss &&
 			i < sizeof(ev.data.io.input.analog.axisval) /
 				sizeof(ev.data.io.input.analog.axisval[0]); i++){
 			lua_rawgeti(ctx, -1, i+1);
@@ -2112,33 +2181,6 @@ kinderr:
 	return 1;
 }
 
-/*
- * A more optimized approach than this one would be to track when the globals
- * change for C<->LUA related transfer functions and just have
- * cached function pointers.
- */
-static bool grabthemefunction(lua_State* ctx, const char* funame, size_t funlen)
-{
-	if (funlen > 0){
-		strncpy(lua_ctx_store.prefix_buf +
-			lua_ctx_store.prefix_ofs + 1, funame, 32);
-
-		lua_ctx_store.prefix_buf[lua_ctx_store.prefix_ofs] = '_';
-		lua_ctx_store.prefix_buf[lua_ctx_store.prefix_ofs + funlen + 1] = '\0';
-	}
-	else
-		lua_ctx_store.prefix_buf[lua_ctx_store.prefix_ofs] = '\0';
-
-	lua_getglobal(ctx, lua_ctx_store.prefix_buf);
-
-	if (!lua_isfunction(ctx, -1)){
-		lua_pop(ctx, 1);
-		return false;
-	}
-
-	return true;
-}
-
 static inline int funtable(lua_State* ctx, uint32_t kind){
 	lua_newtable(ctx);
 	int top = lua_gettop(ctx);
@@ -2177,7 +2219,7 @@ static char* to_utf8(uint16_t utf16)
 	if (utf16 >= 0x80)
 		count++;
 
-	for (int i=0; i < 5; i++){
+	for (size_t i=0; i < 5; i++){
 		if ( (uint32_t) utf16 >= mask )
 			count++;
 
@@ -2273,7 +2315,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			lua_pushstring(ctx, "samples");
 			lua_newtable(ctx);
 				int top2 = lua_gettop(ctx);
-				for (int i = 0; i < ev->data.io.input.analog.nvalues; i++) {
+				for (size_t i = 0; i < ev->data.io.input.analog.nvalues; i++) {
 					lua_pushnumber(ctx, i + 1);
 					lua_pushnumber(ctx, ev->data.io.input.analog.axisval[i]);
 					lua_rawset(ctx, top2);
@@ -2796,7 +2838,7 @@ static int orderinherit(lua_State* ctx)
 	else if (argtype == LUA_TTABLE){
 		int nelems = lua_rawlen(ctx, 1);
 
-		for (int i = 0; i < nelems; i++){
+		for (size_t i = 0; i < nelems; i++){
 			lua_rawgeti(ctx, 1, i+1);
 			arcan_vobj_id id = luaL_checkvid(ctx, -1, NULL);
 			arcan_video_inheritorder(id, origo);
@@ -3344,8 +3386,8 @@ static int allocsurface(lua_State* ctx)
 
 	uint32_t* cptr = (uint32_t*) buf;
 
-	for (int y = 0; y < cons.h; y++)
-		for (int x = 0; x < cons.w; x++)
+	for (size_t y = 0; y < cons.h; y++)
+		for (size_t x = 0; x < cons.w; x++)
 			*cptr = RGBA(0, 0, 0, 0xff);
 
 	arcan_vobj_id id = arcan_video_rawobject(
@@ -3382,8 +3424,8 @@ static int fillsurface(lua_State* ctx)
 
 		uint32_t* cptr = (uint32_t*) buf;
 
-		for (int y = 0; y < cons.h; y++)
-			for (int x = 0; x < cons.w; x++)
+		for (size_t y = 0; y < cons.h; y++)
+			for (size_t x = 0; x < cons.w; x++)
 				*cptr++ = RGBA(r, g, b, 0xff);
 
 		arcan_vobj_id id = arcan_video_rawobject(buf,
@@ -3498,8 +3540,8 @@ static int rawsurface(lua_State* ctx)
 
 	uint32_t* cptr = (uint32_t*) buf;
 
-	for (int y = 0; y < cons.h; y++)
-		for (int x = 0; x < cons.w; x++){
+	for (size_t y = 0; y < cons.h; y++)
+		for (size_t x = 0; x < cons.w; x++){
 			unsigned char r, g, b, a;
 			switch(bpp){
 			case 1:
@@ -3572,8 +3614,8 @@ static int randomsurface(lua_State* ctx)
 
 	uint8_t* buf = (uint8_t*) cptr;
 
-	for (int y = 0; y < cons.h; y++)
-		for (int x = 0; x < cons.w; x++){
+	for (size_t y = 0; y < cons.h; y++)
+		for (size_t x = 0; x < cons.w; x++){
 			unsigned char val = 20 + random() % 235;
 			*cptr++ = RGBA(val, val, val, 0xff);
 		}
@@ -3843,7 +3885,7 @@ static int shutdown(lua_State *ctx)
 
 static int switchtheme(lua_State *ctx)
 {
-	LUA_TRACE("switch_theme");
+	LUA_DEPRECATE("switch_theme");
 
 	arcan_event ev = {.category = EVENT_SYSTEM, .kind = EVENT_SYSTEM_SWITCHTHEME};
 	const char* newtheme = luaL_optstring(ctx, 1, arcan_appl_id());
@@ -3917,7 +3959,10 @@ static void panic(lua_State* ctx)
 	} else
 		wraperr(ctx, -1, "(panic)");
 
-	arcan_fatal("LUA VM is in an unrecoverable panic state.\n");
+	arcan_warning("LUA VM is in a panic state, "
+		"recovery handover might be impossible.\n");
+
+	longjmp(arcanmain_recover_state, 2);
 }
 
 static void wraperr(lua_State* ctx, int errc, const char* src)
@@ -3940,15 +3985,19 @@ static void wraperr(lua_State* ctx, int errc, const char* src)
 			dump_stack(ctx);
 
 		arcan_state_dump("crash", mesg, src);
-		if (!(lua_ctx_store.debug > 2)){
-			arcan_fatal("Fatal: wraperr(%s, %s)\n", mesg, src);
+
+		if (lua_ctx_store.debug > 2){
+			arcan_warning("Fatal error ignored(%s, %s) through high debuglevel,"
+				" attempting to continue.\n", mesg, src);
+			return;
 		}
 	}
-	else{
-		while ( arcan_video_popcontext() < CONTEXT_STACK_LIMIT -1);
-		arcan_state_dump("crash", mesg, src);
-		arcan_fatal("Fatal: wraperr(), %s, from %s\n", mesg, src);
-	}
+
+	arcan_state_dump("crash", mesg, src);
+	arcan_warning("Script failure, %s from %s. \nHanding over to "
+		"recovery script (or shutdown if none present).\n", mesg, src);
+
+	longjmp(arcanmain_recover_state, 2);
 }
 
 struct globs{
@@ -4065,7 +4114,7 @@ static bool use_loader(char* fname)
  */
 static int targetlaunch_capabilities(lua_State* ctx)
 {
-	LUA_TRACE("launch_target_capabilities (deprecated)");
+	LUA_DEPRECATE("launch_target_capabilities");
 
 	char* targetname = strdup( luaL_checkstring(ctx, 1) );
 
@@ -4127,6 +4176,47 @@ static inline bool tgtevent(arcan_vobj_id dst, arcan_event ev)
 	}
 
 	return false;
+}
+
+static int targethandler(lua_State* ctx)
+{
+	LUA_TRACE("target_updatehandler");
+	arcan_vobject* vobj;
+	luaL_checkvid(ctx, 1, &vobj);
+
+	intptr_t ref = find_lua_callback(ctx);
+
+	if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV || !vobj->feed.state.ptr)
+		arcan_fatal("target_updatehandler(), specified vid (arg 1) not "
+			"associated with a frameserver.");
+
+	arcan_frameserver* fsrv = vobj->feed.state.ptr;
+	fsrv->tag = ref;
+
+	return 0;
+}
+
+static int targetpacify(lua_State* ctx)
+{
+	LUA_TRACE("pacify_target");
+	arcan_vobject* vobj;
+	luaL_checkvid(ctx, 1, &vobj);
+
+	if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV || !vobj->feed.state.ptr)
+		arcan_fatal("target_pacify(), specified vid (arg 1) not "
+			"associated with a frameserver.");
+
+	arcan_frameserver* fsrv = vobj->feed.state.ptr;
+/*
+ * don't want the event to propagate for terminated here
+ */
+	fsrv->tag = (intptr_t) 0;
+
+	arcan_frameserver_free(fsrv);
+	vobj->feed.state.ptr = NULL;
+	vobj->feed.state.tag = ARCAN_TAG_IMAGE;
+
+	return 0;
 }
 
 static int targetreject(lua_State* ctx)
@@ -4277,7 +4367,7 @@ static int targetflags(lua_State* ctx)
 	enum target_flags flag = luaL_checknumber(ctx, 2);
 	if (flag < TARGET_FLAG_SYNCHRONOUS || flag > TARGET_FLAG_VERBOSE)
 		arcan_fatal("target_flags() unknown flag value (%d)\n", flag);
- 	bool toggle = luaL_optnumber(ctx, 3, 1) == 1;
+ 	bool toggle = luaL_optnumber(ctx, 3, 1) != 0;
 	updateflag(tgt, flag, toggle);
 
 	return 0;
@@ -4865,7 +4955,7 @@ static int renderset(lua_State* ctx)
 		arcan_video_setuprendertarget(did, 0,
 			scale == RENDERTARGET_SCALE, format);
 
-		for (int i = 0; i < nvids; i++){
+		for (size_t i = 0; i < nvids; i++){
 			lua_rawgeti(ctx, 2, i+1);
 			arcan_vobj_id setvid = luavid_tovid( lua_tonumber(ctx, -1) );
 			lua_pop(ctx, 1);
@@ -4973,7 +5063,7 @@ static enum arcan_ffunc_rv proctarget(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 		volatile uint32_t* inbuf = (uint32_t*) buf;
 		uint32_t* outbuf = (uint32_t*) scrapbuf;
 
-		for (int i = 0; i < width * height; i++)
+		for (size_t i = 0; i < width * height; i++)
 			outbuf[i] = inbuf[i];
 	}
 	else {
@@ -5210,7 +5300,7 @@ static int procset(lua_State* ctx)
 	if (nvids > 0){
 		bool rtsetup = false;
 
-		for (int i = 0; i < nvids; i++){
+		for (size_t i = 0; i < nvids; i++){
 			lua_rawgeti(ctx, 2, i+1);
 			arcan_vobj_id setvid = luavid_tovid( lua_tointeger(ctx, -1) );
 			lua_pop(ctx, 1);
@@ -5339,7 +5429,7 @@ static int recordset(lua_State* ctx)
 	if (nvids > 0){
 		bool rtsetup = false;
 
-		for (int i = 0; i < nvids; i++){
+		for (size_t i = 0; i < nvids; i++){
 			lua_rawgeti(ctx, 4, i+1);
 			arcan_vobj_id setvid = luavid_tovid( lua_tointeger(ctx, -1) );
 			lua_pop(ctx, 1);
@@ -5386,7 +5476,7 @@ static int recordset(lua_State* ctx)
 		aidlocks[naids] = 0; /* terminate */
 
 /* can't hook the monitors until we have the frameserver in place */
-		for (int i = 0; i < naids; i++){
+		for (size_t i = 0; i < naids; i++){
 			lua_rawgeti(ctx, 5, i+1);
 			arcan_aobj_id setaid = luaaid_toaid( lua_tonumber(ctx, -1) );
 			lua_pop(ctx, 1);
@@ -6644,7 +6734,6 @@ static const luaL_Reg tgtfuns[] = {
 {"input_target",               targetinput              },
 {"suspend_target",             targetsuspend            },
 {"resume_target",              targetresume             },
-{"drop_target",                targetdrop               },
 {"target_portconfig",          targetportcfg            },
 {"target_framemode",           targetskipmodecfg        },
 {"target_verbose",             targetverbose            },
@@ -6658,6 +6747,8 @@ static const luaL_Reg tgtfuns[] = {
 {"target_seek",                targetseek               },
 {"target_coreopt",             targetcoreopt            },
 {"target_reject",              targetreject             },
+{"target_updatehandler",       targethandler            },
+{"pacify_target",              targetpacify             },
 {"stepframe_target",           targetstepframe          },
 {"snapshot_target",            targetsnapshot           },
 {"restore_target",             targetrestore            },
@@ -6700,7 +6791,6 @@ static const luaL_Reg dbfuns[] = {
  */
 #define EXT_MAPTBL_CUSTOM
 static const luaL_Reg custfuns[] = {
-/* {"turret_cmd", turretcmd}, */
 {NULL, NULL}
 };
 #undef EXT_MAPTBL_CUSTOM
@@ -6828,6 +6918,7 @@ static const luaL_Reg sysfuns[] = {
 {"system_load",         dofile           },
 {"system_context_size", systemcontextsize},
 {"system_snapshot",     syssnap          },
+{"system_collapse",     syscollapse      },
 {"utf8kind",            utf8kind         },
 {"decode_modifiers",    decodemod        },
 {"benchmark_enable",    togglebench      },
@@ -6929,18 +7020,15 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"FRAMESET_DETACH",       FRAMESET_DETACH            },
 {"FRAMESERVER_INPUT",     CONST_FRAMESERVER_INPUT    },
 {"FRAMESERVER_OUTPUT",    CONST_FRAMESERVER_OUTPUT   },
-{"FSRV_FLAG_SYNCHRONOUS", TARGET_FLAG_SYNCHRONOUS    },
-{"FSRV_FLAG_NOALPHA",     TARGET_FLAG_NO_ALPHA_UPLOAD},
-{"FSRV_FLAG_VERBOSE",     TARGET_FLAG_VERBOSE},
 {"BLEND_NONE",     BLEND_NONE    },
 {"BLEND_ADD",      BLEND_ADD     },
 {"BLEND_MULTIPLY", BLEND_MULTIPLY},
 {"BLEND_NORMAL",   BLEND_NORMAL  },
 {"FRAMESERVER_LOOP", 0},
 {"FRAMESERVER_NOLOOP", 1},
-{"TARGET_SYNCHRONOUS", 0},
-{"TARGET_NOALPHA", 1},
-{"TARGET_VERBOSE", 2},
+{"TARGET_SYNCHRONOUS", TARGET_FLAG_SYNCHRONOUS},
+{"TARGET_NOALPHA", TARGET_FLAG_NO_ALPHA_UPLOAD},
+{"TARGET_VERBOSE", TARGET_FLAG_VERBOSE},
 {"RENDERTARGET_NOSCALE",  RENDERTARGET_NOSCALE },
 {"RENDERTARGET_SCALE",    RENDERTARGET_SCALE   },
 {"RENDERTARGET_NODETACH", RENDERTARGET_NODETACH},
@@ -7009,7 +7097,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 };
 #undef EXT_CONSTTBL_GLOBINT
 
-	for (int i = 0; i < sizeof(consttbl) / sizeof(consttbl[0]); i++)
+	for (size_t i = 0; i < sizeof(consttbl) / sizeof(consttbl[0]); i++)
 		arcan_lua_setglobalint(ctx, consttbl[i].key, consttbl[i].val);
 
 	arcan_lua_setglobalstr(ctx, "FRAMESERVER_MODES", FRAMESERVER_MODESTRING );
@@ -7327,17 +7415,17 @@ vobj.glstore_refc = %d;\n", src->vstore->vinf.text.glid,
 		fprintf_float(dst, "", src->vstore->vinf.col.b, "};\n");
 	}
 
-	for (int i = 0; i < src->frameset_meta.capacity; i++)
+	for (size_t i = 0; i < src->frameset_meta.capacity; i++)
 	{
-		fprintf(dst, "vobj.frameset[%d] = %"PRIxVOBJ";\n", i + 1,
+		fprintf(dst, "vobj.frameset[%zu] = %"PRIxVOBJ";\n", i + 1,
 			src->frameset[i] ? src->frameset[i]->cellid : ARCAN_EID);
 	}
 
 	if (src->children){
 		fprintf(dst, "vobj.children = {};\n");
 		fprintf(dst, "vobj.childslots = %d;\n", (int) src->childslots);
-		for (int i = 0; i < src->childslots; i++){
-			fprintf(dst, "vobj.children[%d] = %"PRIxVOBJ";\n", i+1, src->children[i] ?
+		for (size_t i = 0; i < src->childslots; i++){
+			fprintf(dst, "vobj.children[%zu] = %"PRIxVOBJ";\n", i+1, src->children[i] ?
 				src->children[i]->cellid : ARCAN_EID);
 		}
 	}
@@ -7412,7 +7500,7 @@ ctx.tickstamp = %lld;\n",
 (long long int) ctx->last_tickstamp
 );
 
-		for (int i = 0; i < ctx->vitem_limit; i++){
+		for (size_t i = 0; i < ctx->vitem_limit; i++){
 			if (ctx->vitems_pool[i].flags.in_use == false)
 				continue;
 

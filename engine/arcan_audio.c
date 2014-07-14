@@ -1020,6 +1020,50 @@ void arcan_audio_tick(uint8_t ntt)
 	}
 }
 
+/*
+ * very inefficient, but the set of IDs to delete is reasonably small
+ */
+void arcan_audio_purge(arcan_aobj_id* ids, size_t nids)
+{
+	arcan_aobj* current = _current_acontext.first;
+	arcan_aobj** previous = &_current_acontext.first;
+
+	while(current){
+		bool match = false;
+
+		for (int i = 0; i < nids; i++){
+			if (ids[i] == current->id){
+				match = true;
+				break;
+			}
+		}
+
+		arcan_aobj* next = current->next;
+		if (!match){
+			(*previous) = next;
+			if (current->feed)
+				current->feed(current, current->id, 0, current->tag);
+
+			_wrap_alError(current, "audio_stop(stop)");
+
+			if (current->alid != AL_NONE){
+				alSourceStop(current->alid);
+				alDeleteSources(1, &current->alid);
+
+				if (current->n_streambuf)
+					alDeleteBuffers(current->n_streambuf, current->streambuf);
+			}
+
+			arcan_mem_free(current);
+		}
+		else {
+			previous = &current->next;
+		}
+
+		current = next;
+	}
+}
+
 static bool _wrap_alError(arcan_aobj* obj, char* prefix)
 {
 	ALenum errc = alGetError();

@@ -262,6 +262,13 @@ bool arcan_verifyload_appl(const char* appl_id, const char** errc)
 		return res;
 	}
 
+	for (int i = 0; i < app_len; i++){
+		if (!isalpha(appl_id[i]) && appl_id[i] != '_'){
+			arcan_warning("switch app, invalid character in %s\n", appl_id);
+			return false;
+		}
+	}
+
 	char* subpath = arcan_expand_resource(appl_id, RESOURCE_APPL);
 	size_t s_ofs = strlen(subpath);
 	char wbuf[ s_ofs + sizeof("/.lua") + app_len + 1];

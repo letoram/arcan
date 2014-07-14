@@ -24,6 +24,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <pthread.h>
+#include <setjmp.h>
 
 #include <string.h>
 #include <signal.h>
@@ -75,6 +76,13 @@ bool stderr_redirected = false;
 bool stdout_redirected = false;
 
 /*
+ * The arcanmain recover state is used either at the volition of the
+ * running script (see system_collapse) or in wrapping a failing pcall.
+ * This allows a simpler recovery script to adopt orphaned frameservers.
+ */
+jmp_buf arcanmain_recover_state;
+
+/*
  * default, probed / replaced on some systems
  */
 extern int system_page_size;
@@ -91,6 +99,7 @@ static const struct option longopts[] = {
 	{ "rpath",        required_argument, NULL, 'p'},
 	{ "applpath" ,    required_argument, NULL, 't'},
 	{ "conservative", no_argument,       NULL, 'm'},
+	{ "fallback",     required_argument, NULL, 'b'},
 	{ "database",     required_argument, NULL, 'd'},
 	{ "scalemode",    required_argument, NULL, 'r'},
 	{ "timedump",     required_argument, NULL, 'q'},
@@ -109,7 +118,7 @@ static const struct option longopts[] = {
 
 static void usage()
 {
-printf("usage: arcan [-whxyfmstptdgavSrMO] appname [app specific arguments]\n"
+printf("usage: arcan [-whxyfmsptbdgavVFS] appname [app specific arguments]\n"
 "-w\t--width       \tdesired width (default: 640)\n"
 "-h\t--height      \tdesired height (default: 480)\n"
 "-x\t--winx        \tforce window x position (default: don't set)\n"
@@ -124,6 +133,7 @@ printf("usage: arcan [-whxyfmstptdgavSrMO] appname [app specific arguments]\n"
 "-s\t--windowed    \ttoggle borderless window mode\n"
 "-p\t--rpath       \tchange default searchpath for shared resources\n"
 "-t\t--applpath    \tchange default searchpath for applications\n"
+"-b\t--fallback    \tset a recovery/fallback application if appname crashes\n"
 "-d\t--database    \tsqlite database (default: arcandb.sqlite)\n"
 "-g\t--debug       \ttoggle debug output (events, coredumps, etc.)\n"
 "-a\t--multisamples\tset number of multisamples (default 4, disable 0)\n"
@@ -140,16 +150,6 @@ printf("usage: arcan [-whxyfmstptdgavSrMO] appname [app specific arguments]\n"
  */
 bool switch_appl(const char* appname, bool recovery)
 {
-	const char* work = appname;
-
-/* need to sanitize this so it isn't possible to define a new approot */
-	while(*work){
-		if (isalpha(*work) == false){
-			arcan_warning("switch app, invalid character in %s\n", appname);
-			return false;
-		}
-	}
-
 	if (!recovery){
 		arcan_video_shutdown();
 		arcan_audio_shutdown();
@@ -173,29 +173,36 @@ bool switch_appl(const char* appname, bool recovery)
 
 int main(int argc, char* argv[])
 {
-	bool windowed     = false;
-	bool fullscreen   = false;
+	bool windowed = false;
+	bool fullscreen = false;
 	bool conservative = false;
-	bool nosound      = false;
-	bool in_monitor   = getenv("ARCAN_MONITOR_FD") != NULL;
-	bool waitsleep    = true;
+	bool nosound = false;
+	bool in_monitor = getenv("ARCAN_MONITOR_FD") != NULL;
+	bool waitsleep = true;
 
 	unsigned char debuglevel = 0;
 
 	int scalemode = ARCAN_VIMAGE_NOPOW2;
-	int width     = 640;
-	int height    = 480;
-	int winx      = -1;
-	int winy      = -1;
-	int timedump  = 0;
+	int width = 640;
+	int height = 480;
+	int winx = -1;
+	int winy = -1;
+	int timedump = 0;
 	float vfalign = 0.6;
 
 /* only used when monitor mode is activated, where we want some
  * of the global paths etc. accessible, but not *all* of them */
-	FILE* monitor_outf    = NULL;
-	int monitor           = 0;
-	int monitor_infd      = -1;
-	char* monitor_arg     = "LOG";
+	FILE* monitor_outf = NULL;
+	int monitor = 0;
+	int monitor_infd = -1;
+	char* monitor_arg = "LOG";
+	char* rescue_appl = "NULL";
+
+/*
+ * if we crash in the Lua VM, switch to this app and have it
+ * adopt our external connections
+ */
+	char* fallback = NULL;
 
 	char* dbfname = NULL;
 	int ch;
@@ -206,8 +213,8 @@ int main(int argc, char* argv[])
 /* VIDs all have a randomized base to provoke crashes in poorly written scripts,
  * only -g will make their base and sequence repeatable */
 
-	while ((ch = getopt_long(argc, argv, "w:h:x:y:?fvVmisp:q:"
-		"t:M:O:o:l:a:d:F:1:2:gr:S", longopts, NULL)) >= 0){
+	while ((ch = getopt_long(argc, argv, "w:h:x:y:?fvVmb:sp:q:"
+		"t:M:O:l:a:d:F:1:2:gS", longopts, NULL)) >= 0){
 	switch (ch) {
 	case '?' :
 		usage();
@@ -228,6 +235,8 @@ int main(int argc, char* argv[])
 	case 'v' : arcan_video_display.vsync = false; break;
 	case 'V' : waitsleep = false; break;
 	case 'p' : arcan_override_namespace(optarg, RESOURCE_APPL_SHARED); break;
+	case 'R' : rescue_appl = strdup(optarg); break;
+	case 'b' : fallback = strdup(optarg); break;
 #ifndef _WIN32
 	case 'M' : monitor = abs( strtol(optarg, NULL, 10) ); break;
 	case 'O' : monitor_arg = strdup( optarg ); break;
@@ -237,14 +246,6 @@ int main(int argc, char* argv[])
 		debuglevel++;
 		srand(0xdeadbeef);
 		break;
-	case 'r' :
-		scalemode = strtol(optarg, NULL, 10);
-		printf("scalemode: %d\n", scalemode);
-		if (scalemode != ARCAN_VIMAGE_NOPOW2 && scalemode !=
-			ARCAN_VIMAGE_SCALEPOW2 && scalemode){
-			arcan_warning("Warning: main(), -r, invalid scalemode. Ignoring.\n");
-			scalemode = ARCAN_VIMAGE_SCALEPOW2;
-		}
 	break;
 	case '1' :
 		stdout_redirected = true;
@@ -439,12 +440,43 @@ applswitch:
 		setenv("ARCAN_FRAMESERVER_LOGDIR", lpath, 1);
 	}
 
+	struct arcan_luactx* luactx;
+
 #ifndef _WIN32
 	system_page_size = sysconf(_SC_PAGE_SIZE);
 #endif
 
+/*
+ * fallback implementation resides here and a little further down
+ * in the "if adopt" block. Use verifyload to reconfigure application
+ * namespace and scripts to run, then recoverexternal will cleanup
+ * audio/video/event and invoke adopt() in the script
+ */
+	bool adopt = false;
+	int jumpcode = setjmp(arcanmain_recover_state);
+
+	if (jumpcode == 1){
+		adopt = true;
+	}
+	else if (jumpcode == 2){
+		if (!fallback){
+			arcan_warning("Lua VM instance failed and no fallback defined, giving up.\n");
+			goto error;
+		}
+
+		const char* errmsg;
+		arcan_luaL_shutdown(luactx);
+		if (!arcan_verifyload_appl(fallback, &errmsg)){
+			arcan_warning("Lua VM error fallback, failure loading (%s), reason: %s\n",
+				fallback, errmsg);
+			goto error;
+		}
+
+		adopt = true;
+	}
+
 /* setup VM, map arguments and possible overrides */
-	struct arcan_luactx* luactx = arcan_lua_alloc();
+	luactx = arcan_lua_alloc();
 	arcan_lua_mapfunctions(luactx, debuglevel);
 
 	bool inp_file;
@@ -469,6 +501,11 @@ applswitch:
 
 	arcan_lua_callvoidfun(luactx, "", true);
 	arcan_lua_callvoidfun(luactx, "show", false);
+
+	if (adopt){
+		int saved, truncated;
+		arcan_video_recoverexternal(&saved, &truncated, arcan_luaL_adopt, luactx);
+	}
 
 	bool done = false, framepulse = true, feedtrig = true;
 	float lastfrag = 0.0f;
@@ -619,18 +656,15 @@ applswitch:
 	}
 
 	arcan_lua_callvoidfun(luactx, "shutdown", false);
-
 #ifdef ARCAN_LED
 	arcan_led_shutdown();
 #endif
-
 #ifdef ARCAN_HMD
 	arcan_hmd_shutdown();
 #endif
-
 	arcan_video_shutdown();
+	return EXIT_SUCCESS;
 
 error:
-	exit(EXIT_SUCCESS);
-	return 0;
+	return EXIT_FAILURE;
 }
