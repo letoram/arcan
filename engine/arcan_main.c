@@ -171,6 +171,35 @@ bool switch_appl(const char* appname, bool recovery)
 	return false;
 }
 
+/*
+ * current several namespaces are (legacy) specified relative
+ * to the old resources namespace, since those are expanded in
+ * set_namespace_defaults where the command-line switch isn't 
+ * available, we have to generate these dependent namespaces 
+ * overrides as well.
+ */
+static void override_resspaces(const char* respath)
+{
+	size_t len = strlen(respath);
+	if (len == 0 || !arcan_isdir(respath)){
+		arcan_warning("-p argument ignored, invalid path specified.");
+		return;
+	}
+
+	char debug_dir[ len + sizeof("/logs") ];
+	char state_dir[ len + sizeof("/savestates") ];
+	char font_dir[ len + sizeof("/fonts") ];
+
+	snprintf(debug_dir, sizeof(debug_dir), "%s/logs", respath);
+	snprintf(state_dir, sizeof(state_dir), "%s/savestates", respath);
+	snprintf(font_dir, sizeof(font_dir), "%s/fonts", respath);
+
+	arcan_override_namespace(respath, RESOURCE_APPL_SHARED);
+	arcan_override_namespace(debug_dir, RESOURCE_SYS_DEBUG);
+	arcan_override_namespace(state_dir, RESOURCE_APPL_STATE);
+	arcan_override_namespace(font_dir, RESOURCE_SYS_FONT);
+}
+
 int main(int argc, char* argv[])
 {
 	bool windowed = false;
@@ -234,7 +263,7 @@ int main(int argc, char* argv[])
 	case 'a' : arcan_video_display.msasamples = strtol(optarg, NULL, 10); break;
 	case 'v' : arcan_video_display.vsync = false; break;
 	case 'V' : waitsleep = false; break;
-	case 'p' : arcan_override_namespace(optarg, RESOURCE_APPL_SHARED); break;
+	case 'p' : override_resspaces(optarg); break;
 	case 'R' : rescue_appl = strdup(optarg); break;
 	case 'b' : fallback = strdup(optarg); break;
 #ifndef _WIN32

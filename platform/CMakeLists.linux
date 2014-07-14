@@ -7,15 +7,6 @@ message(" scanning for Linux specific libraries. ")
 FIND_PACKAGE(UDev REQUIRED)
 LIST(APPEND MAIN_LIBRARIES ${UDEV_LIBRARIES})
 
-set (SHMIF_SOURCES
-  shmif/arcan_shmif.h
-	shmif/arcan_shmif_interop.h
-	shmif/arcan_shmif_control.c
-	shmif/arcan_shmif_control.h
-	shmif/arcan_shmif_interop.c
-	shmif/arcan_shmif_event.h
-)
-
 set (PLATFORM_SOURCES
 	${PLATFORM_PATH}/mem.c
 	${PLATFORM_PATH}/fmt_open.c
@@ -116,7 +107,7 @@ target_link_libraries(arcan_hijack
 )
 
 set(BIN_DST ${CMAKE_INSTALL_PREFIX}/bin)
-set(THEME_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/themes)
+set(APPL_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/appl)
 set(RESOURCES_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/resources)
 
 add_executable( arcan ${SOURCES} ${PLATFORM_SOURCES} )

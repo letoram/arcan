@@ -383,6 +383,15 @@ set (
  shmif/arcan_shmif_event.h
 )
 
+set (SHMIF_SOURCES
+  shmif/arcan_shmif.h
+	shmif/arcan_shmif_interop.h
+	shmif/arcan_shmif_control.c
+	shmif/arcan_shmif_control.h
+	shmif/arcan_shmif_interop.c
+	shmif/arcan_shmif_event.h
+)
+
 # in split-mode, these will bundle with the platform
 # frameserver.c and then each subgroup by its own into
 # a separate binary, in (default) join mode, the final
@@ -519,6 +528,8 @@ endif()
 
 if (${ENABLE_REMOTING})
 	FIND_PACKAGE(VNC REQUIRED)
+
+	if(${LIBVNC_FOUND})
 	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}remoting ")
 	message("--> Adding remoting (vnc) support.")
 	set(FSRV_REMOTING_LIBRARIES
@@ -529,6 +540,9 @@ if (${ENABLE_REMOTING})
 	list(APPEND INCLUDE_DIRS
 		${LIBVNC_INCLUDE_DIRS}
 	)
+	else()
+		message("libvnc not found, remoting disabled.")
+	endif()
 endif()
 
 if (${ENABLE_VIDENC})
@@ -651,7 +665,9 @@ if (ENABLE_LWA)
 			-DALSOFT_BACKEND_ALSA=OFF
 			-DALSOFT_BACKEND_OSS=OFF
 			-DALSOFT_BACKEND_PULSEAUDIO=OFF
+			-DALSOFT_BACKEND_PORTAUDIO=OFF
 			-DALSOFT_BACKEND_WAVE=OFF
+			-DALSOFT_MIDI_FLUIDSYNTH=OFF
 			-DALSOFT_BACKEND_ARCAN=ON
 			-DALSOFT_REQUIRE_ARCAN=ON
 			-DALSOFT_EXAMPLES=OFF
@@ -682,8 +698,8 @@ endif()
 #
 install(TARGETS arcan_frameserver ${FSRV_TARGETS} DESTINATION ${BIN_DST})
 install(TARGETS arcan DESTINATION ${BIN_DST})
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/themes/
-	DESTINATION ${THEME_DST}
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/appl/
+	DESTINATION ${APPL_DST}
 	DIRECTORY_PERMISSIONS ${SHARED_PERMISSONS_DIR}
 	FILE_PERMISSIONS ${SHARED_PERMISSIONS}
 	PATTERN ".gitignore" EXCLUDE)

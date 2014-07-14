@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <assert.h>
+#include <unistd.h>
 
 #include "arcan_shmif.h"
 #include "arcan_math.h"

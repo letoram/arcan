@@ -160,7 +160,7 @@ static struct arcan_shmif_page* map_shm(size_t sz, int fd)
 struct arcan_shmif_cont arcan_shmif_acquire(
 	const char* shmkey, int shmif_type, char force_unlink, char noguard)
 {
-	struct arcan_shmif_cont res = {0};
+	struct arcan_shmif_cont res = {.vidp = NULL};
 
 	int fd = -1;
 
@@ -229,6 +229,12 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 	arcan_shmif_calcofs(res.addr, &res.vidp, &res.audp);
 
 	res.shmsize = res.addr->segment_size;
+
+/* signal that we're ready to receive */
+	if (shmif_type == SHMIF_OUTPUT){
+		arcan_sem_post(res.vsem);
+		((struct shmif_hidden*)res.priv)->output = true;
+	}
 
 	return res;
 }
