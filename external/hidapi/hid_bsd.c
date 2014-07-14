@@ -258,6 +258,7 @@ static int get_usage(uint8_t *report_descriptor, size_t size,
    Note that the data parameter is Unicode in UTF-16LE encoding.
    Return value is the number of bytes in data, or LIBUSB_ERROR_*.
  */
+#if 0
 static inline int libusb_get_string_descriptor(libusb_device_handle *dev,
 	uint8_t descriptor_index, uint16_t lang_id,
 	unsigned char *data, int length)
@@ -268,7 +269,7 @@ static inline int libusb_get_string_descriptor(libusb_device_handle *dev,
 		(LIBUSB_DT_STRING << 8) | descriptor_index,
 		lang_id, data, (uint16_t) length, 1000);
 }
-
+#endif
 #endif
 
 

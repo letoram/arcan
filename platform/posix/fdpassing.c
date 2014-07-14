@@ -1,7 +1,9 @@
 #include <stdlib.h>
+#include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include "../platform.h"
 
 bool arcan_pushhandle(file_handle source, int channel)

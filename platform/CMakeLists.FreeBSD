@@ -1,7 +1,14 @@
 set (PLATFORM_PATH ${CMAKE_SOURCE_DIR}/platform/posix)
+set (GL_PLATFORM_HEADER ${PLATFORM_PATH}/../${VIDEO_PLATFORM}/glheaders.h)
+
+add_definitions(-DGL_HEADERS="${GL_PLATFORM_HEADER}")
+
+message(" scanning for FreeBSD specific libraries. ")
+find_library(ICONV NAMES iconv REQUIRED)
+LIST(APPEND MAIN_LIBRARIES ${ICONV})
 
 set (PLATFORM_SOURCES
-${PLATFORM_PATH}/../stub/mem.c
+${PLATFORM_PATH}/mem.c
 ${PLATFORM_PATH}/fmt_open.c
 ${PLATFORM_PATH}/glob.c
 ${PLATFORM_PATH}/map_resource.c
@@ -13,92 +20,115 @@ ${PLATFORM_PATH}/base64.c
 ${PLATFORM_PATH}/sem.c
 ${PLATFORM_PATH}/shm.c
 ${PLATFORM_PATH}/time.c
+${PLATFORM_PATH}/base64.c
 ${PLATFORM_PATH}/warning.c
 ${PLATFORM_PATH}/frameserver.c
-${PLATFORM_PATH}/../sdl/event.c
-${PLATFORM_PATH}/../sdl/video.c
 ${PLATFORM_PATH}/fdpassing.c
 ${PLATFORM_PATH}/namespace.c
+${CMAKE_EXTERNAL_SRCDIR}/hidapi/hid_bsd.c
+${CMAKE_EXTERNAL_SRCDIR}/hidapi/hidapi.h
+engine/arcan_target_launcher.c
 )
 
-set (FSERV_PLATFORM_SOURCES
+set (FSRV_PLATFORM_SOURCES
 ${PLATFORM_PATH}/warning.c
 ${PLATFORM_PATH}/time.c
-${PLATFORM_PATH}/base64.c
 ${PLATFORM_PATH}/sem.c
 ${PLATFORM_PATH}/shm.c
+${PLATFORM_PATH}/base64.c
+${PLATFORM_PATH}/mem.c
 ${PLATFORM_PATH}/fdpassing.c
+${SHMIF_SOURCES}
 )
 
-if (${ENABLE_LIBRETRO})
-if (${ENABLE_LIBRETRO3D})
-	list(APPEND FSRV_LIBRETRO_SOURCES ${PLATFORM_PATH}/../sdl/video_mini.c)
-	list(APPEND FSRV_LIBRETRO_LIBRARIES ${SDL_LIBRARY})
-	list(APPEND FSRV_LIBRETRO_LIBRARIES ${GLEW_LIBRARIES})
-	list(APPEND FSRV_LIBRETRO_LIBRARIES ${OPENGL_gl_LIBRARY})
-endif(${ENABLE_LIBRETRO3D})
-endif(${ENABLE_LIBRETRO})
+set (LWA_PLATFORM_SOURCES
+	${PLATFORM_SOURCES}
+	${PLATFORM_PATH}/../arcan/video.c
+)
+
+# we don't want these coming along in LWA_PLATFORM
+LIST(APPEND PLATFORM_SOURCES
+	${PLATFORM_PATH}/../${VIDEO_PLATFORM}/video.c
+	${PLATFORM_PATH}/../${INPUT_PLATFORM}/event.c
+)
+
+SET(HIJACK_SOURCES
+	hijack/arcan_target_unix.c
+	hijack/arcan_target.c
+	${PLATFORM_PATH}/warning.c
+	${PLATFORM_PATH}/sem.c
+	frameserver/ntsc/snes_ntsc.c
+ 	frameserver/resampler/resample.c
+)
+
+set (
+ FSRV_SOURCES
+	${SHMIF_SOURCES}
+)
 
 LIST(APPEND FSRV_SOURCES frameserver/frameserver.c)
 LIST(APPEND STDLIB
 	rt
 )
-
-add_definitions(-DPLATFORM_HEADER=\"${PLATFORM_PATH}/platform.h\"
-	-DGL_HEADERS=\"${PLATFORM_PATH}/../sdl/glheaders.h\"
-	-DLUA_51 -D_WITH_DPRINTF -D__UNIX -D_LIBUSB_BSD)
-
-include_directories(platform/freebsd)
-
-LIST(APPEND FSRV_SOURCES frameserver/frameserver.c
-	${FSERV_PLATFORM_SOURCES})
+LIST(APPEND MAIN_LIBRARIES usb)
 
 include(${PLATFORM_PATH}/../CMakeLists.fsrv)
 
-LIST(APPEND SOURCES ${PLATFORM_SOURCES})
-LIST(APPEND SOURCES
-${CMAKE_EXTERNAL_SRCDIR}/hidapi/hid_bsd.c
-${CMAKE_EXTERNAL_SRCDIR}/hidapi/hidapi.h
-	engine/arcan_target_launcher.c
-)
+add_definitions(-DPLATFORM_HEADER=\"${PLATFORM_PATH}/../platform.h\" -std=gnu11
+ -Wall -Wno-missing-braces -Wno-unused-function -DLUA_51 -D_WITH_DPRINTF -D__UNIX -DLIBUSB_BSD)
 
-LIST(APPEND MAIN_LIBRARIES usb rt)
-add_library(arcan_hijack SHARED
-	hijack/arcan_target_unix.c
- 	hijack/arcan_target.c
-	shmif/arcan_shmif.h
-	shmif/arcan_shmif_interop.h
-	shmif/arcan_shmif_control.c
-	shmif/arcan_shmif_interop.c
-	${PLATFORM_PATH}/warning.c
-	${PLATFORM_PATH}/sem.c
-	frameserver/ntsc/snes_ntsc.c
-	frameserver/resampler/resample.c
-)
+#
+# For LWA support, we default to a different video platform as all
+# we need is a headless (possibly unaccelerated if paranoid) way of rendering
+# GL into the shared memory buffer.
+#
+# (to get GL up and running) and substitute the shmif for input/audio
+# Audio is managed by building / linking a special AL-soft with a
+# backend that uses the shmif.
+#
+if (ENABLE_LWA)
+	message("LWA support enabled, video backend (EGL/X11, hardcoded)")
+	add_executable(arcan_lwa
+		${SOURCES}
+		${LWA_PLATFORM_SOURCES}
+	)
 
-set_property(TARGET arcan_hijack PROPERTY
-	COMPILE_DEFINITIONS
-	ENABLE_X11HIJACK
-	ENABLE_WINE_HIJACK
-)
+	set_property(TARGET arcan_lwa APPEND PROPERTY
+		COMPILE_DEFINITIONS HEADLESS_PLATFORM=\"${PLATFORM_PATH}/../${LWA_HEADLESS}\")
+endif()
 
-target_link_libraries(arcan_hijack ${SDL_LIBRARY} ${OPENGL_gl_LIBRARY})
+add_library(arcan_hijack SHARED ${HIJACK_SOURCES})
+
+set_property(TARGET arcan_hijack APPEND PROPERTY
+	COMPILE_DEFINITIONS ENABLE_X11HIJACK ENABLE_WINE_HIJACK)
+
+target_link_libraries(arcan_hijack
+	${STDLIB}
+	${SDL_LIBRARY}
+	${OPENGL_gl_LIBRARY}
+)
 
 set(BIN_DST ${CMAKE_INSTALL_PREFIX}/bin)
-set(THEME_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/themes)
+set(APPL_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/appl)
 set(RESOURCES_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/resources)
 
-add_executable( arcan ${SOURCES})
+add_executable( arcan ${SOURCES} ${PLATFORM_SOURCES} )
+set_property(TARGET arcan APPEND PROPERTY COMPILE_DEFINITIONS ${ARCAN_DEFINITIONS})
+
+if (${SDLIMAGE_FOUND})
+	set_property(TARGET arcan APPEND PROPERTY COMPILE_DEFINITIONS SDLIMAGE)
+endif()
+
+install(TARGETS arcan_hijack DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
+
+install(FILES ${CMAKE_SOURCE_DIR}/utils/arcan_romman.rb DESTINATION ${BIN_DST}
+	PERMISSIONS
+		WORLD_READ WORLD_EXECUTE
+		OWNER_WRITE OWNER_READ OWNER_EXECUTE
+		GROUP_READ GROUP_EXECUTE
+)
 
 install(FILES ${CMAKE_SOURCE_DIR}/doc/arcan.1
 	DESTINATION /usr/local/share/man/man1
 )
 
-install(TARGETS arcan_hijack DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
-install(FILES ${CMAKE_SOURCE_DIR}/utils/arcan_romman.rb
-	DESTINATION ${BIN_DST}
-	PERMISSIONS
-	WORLD_READ WORLD_EXECUTE
-	OWNER_WRITE OWNER_READ OWNER_EXECUTE
- 	GROUP_READ GROUP_EXECUTE
-)
