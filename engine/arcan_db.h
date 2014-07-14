@@ -21,10 +21,15 @@
 
 #ifndef _HAVE_ARCAN_DB
 
-/* this solution is pretty rigid to work with,
- * it is likely that future revisions will revert to a
- * NoSQL with Protocol Buffers kindof solution, but it's a low priority */
-
+/*
+ * This part is rather rigid and specialized to work with.
+ * Future revisions will generalize this to contain
+ * [a. verified and accepted appls]
+ * [b. native, legacy programs and respective hijack libraries]
+ * [c. encrypted keystore]
+ *
+ * appl. key-value store will be split into separate databases
+ */
 struct arcan_dbh;
 typedef struct arcan_dbh arcan_dbh;
 
@@ -71,9 +76,9 @@ enum ARCAN_DB_INPUTMASK {
 /* unless specified, caller is responsible for cleanup for returned strings / db res structs */
 
 /* Opens database and performs sanity check,
- * if themename is not null, make sure there is a table for the specified theme
+ * if applname is not null, make sure there is a table for the specified appl
  * returns null IF fname can't be opened/read OR sanity check fails */
-arcan_dbh* arcan_db_open(const char* fname, const char* themename);
+arcan_dbh* arcan_db_open(const char* fname, const char* applname);
 void arcan_db_close(arcan_dbh*);
 
 /* populate a filtered list of results,
@@ -148,8 +153,8 @@ long int arcan_db_gameid(arcan_dbh* dbh, const char* title, arcan_errc* status);
 bool arcan_db_kv(arcan_dbh* dbh, const char* key, const char* value);
 
 /* these two are fairly rigid, calls can take hundres of ms to complete due to synchronous transfers */
-bool arcan_db_theme_kv(arcan_dbh* dbh, const char* themename, const char* key, const char* value);
-char* arcan_db_theme_val(arcan_dbh* dbh, const char* themename, const char* key);
+bool arcan_db_appl_kv(arcan_dbh* dbh, const char* appl, const char* key, const char* value);
+char* arcan_db_appl_val(arcan_dbh* dbh, const char* appl, const char* key);
 
 /* cleanup for any function that returns a arcan_dbh_res type */
 bool arcan_db_free_res(arcan_dbh* dbh, arcan_dbh_res res);

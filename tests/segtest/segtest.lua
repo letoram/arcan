@@ -11,7 +11,7 @@ end
 function segtest()
 	symtable = system_load("scripts/symtable.lua")();
 
-	test = launch_avfeed("", function(source, status)
+	test = launch_avfeed("", "avfeed", function(source, status)
 		print(status.kind);
 		if (status.kind == "segment_request") then
 			print(source, type(source));

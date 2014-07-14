@@ -4,6 +4,7 @@
 -- @inargs: themename
 -- @note: This is treated as an event, so the current event queue will
 -- be emptied before the switch takes place as to prevent data-loss in frameservers.
+-- @deprecated: As of version 0.5, use system_collapse instead.
 -- @group: system
 -- @cfunction: arcan_lua_switchtheme
 

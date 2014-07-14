@@ -118,7 +118,7 @@ static const struct option longopts[] = {
 
 static void usage()
 {
-printf("usage: arcan [-whxyfmsptbdgavVFS] appname [app specific arguments]\n"
+printf("usage: arcan [-whxyfmsptbdgavVFS] applname [app specific arguments]\n"
 "-w\t--width       \tdesired width (default: 640)\n"
 "-h\t--height      \tdesired height (default: 480)\n"
 "-x\t--winx        \tforce window x position (default: don't set)\n"
@@ -127,7 +127,7 @@ printf("usage: arcan [-whxyfmsptbdgavVFS] appname [app specific arguments]\n"
 "-m\t--conservative\ttoggle conservative memory management (default: off)\n"
 #ifndef _WIN32
 "-M\t--monitor     \tsplit open a debug arcan monitoring session\n"
-"-O\t--monitor-out \tLOG:fname or themename\n"
+"-O\t--monitor-out \tLOG:fname or applname\n"
 #endif
 "-q\t--timedump    \twait n ticks, dump snapshot to resources/logs/timedump\n"
 "-s\t--windowed    \ttoggle borderless window mode\n"
@@ -327,7 +327,7 @@ int main(int argc, char* argv[])
 /*
  * set the descriptor of the inherited pipe as an envvariable,
  * this will have the program be launched with in_monitor set to true
- * the monitor args will then be ignored and themename replaced with
+ * the monitor args will then be ignored and appname replaced with
  * the monitorarg
  */
 				char monfd_buf[8] = {0};
@@ -350,7 +350,7 @@ int main(int argc, char* argv[])
 	}
 #endif
 
-/* also used as restart point for switiching themes */
+/* also used as restart point for switching appls */
 applswitch:
 
 /*
@@ -366,7 +366,7 @@ applswitch:
 	if (!dbhandle) {
 		arcan_warning("Couldn't open database (requested: %s),"
 			"trying to create a new one.\n", dbfname);
-		FILE* fpek = fopen(dbfname, "a");
+		FILE* fpek = fopen(dbfname, "w+");
 		if (fpek){
 			fclose(fpek);
 			dbhandle = arcan_db_open(dbfname, arcan_appl_id());
@@ -472,6 +472,11 @@ applswitch:
 			goto error;
 		}
 
+		if (!arcan_verify_namespaces(true)){
+			arcan_warning("namespace verification failed after loading (%s)\n", fallback);
+			goto error;
+		}
+
 		adopt = true;
 	}
 
@@ -494,7 +499,7 @@ applswitch:
 	}
 	free(msg);
 
-/* entry point follows the name of the theme,
+/* entry point follows the name of the appl,
  * hand over execution and begin event loop */
 	if (argc > optind)
 		arcan_lua_pushargv(luactx, argv + optind + 1);
@@ -546,7 +551,9 @@ applswitch:
 /* note the LUA shutdown() call actually emits this event */
 				if (ev.kind == EVENT_SYSTEM_EXIT)
 					done = true;
-				else if (ev.kind == EVENT_SYSTEM_SWITCHTHEME){
+
+/* slated for deprecation */
+				else if (ev.kind == EVENT_SYSTEM_SWITCHAPPL){
 					arcan_luaL_shutdown(luactx);
 					if (switch_appl(ev.data.system.data.message, false))
 						goto applswitch;

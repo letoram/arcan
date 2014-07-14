@@ -380,7 +380,7 @@ static void dump_stack(lua_State* ctx)
  * change for C<->LUA related transfer functions and just have
  * cached function pointers.
  */
-static bool grabthemefunction(lua_State* ctx, const char* funame, size_t funlen)
+static bool grabapplfunction(lua_State* ctx, const char* funame, size_t funlen)
 {
 	if (funlen > 0){
 		strncpy(lua_ctx_store.prefix_buf +
@@ -1549,7 +1549,7 @@ static int deleteimage(lua_State* ctx)
 		else{
 			dump_call_trace(ctx);
 			dump_stack(ctx);
-			arcan_fatal("Theme tried to delete non-existing object (%.0lf=>%d) from "
+			arcan_fatal("Appl tried to delete non-existing object (%.0lf=>%d) from "
 			"(%s). Relaunch with debug flags (-g) to suppress.\n",
 			srcid, id, luaL_lastcaller(ctx));
 		}
@@ -1593,7 +1593,7 @@ char* arcan_luaL_main(lua_State* ctx, const char* inp, bool file)
 /* since we prefix scriptname to functions that we look-up,
  * we need a buffer to expand into with as few read/writes/allocs
  * as possible, arcan_luaL_dofile is only ever invoked when
- * a theme is about to be loaded so here is a decent entrypoint */
+ * an appl is about to be loaded so here is a decent entrypoint */
 	const int suffix_lim = 34;
 
 /*
@@ -1638,7 +1638,7 @@ void arcan_luaL_adopt(arcan_vobj_id id, void* tag)
 		fsrv->tag = (uintptr_t) 0;
 	}
 
-	if (!grabthemefunction(ctx, "adopt", sizeof("adopt") - 1))
+	if (!grabapplfunction(ctx, "adopt", sizeof("adopt") - 1))
 		return;
 
 	int argc = 1;
@@ -1663,11 +1663,10 @@ static int syscollapse(lua_State* ctx)
 			arcan_fatal("system_collapse(), 0-length appl name not permitted.\n");
 		}
 
-		for (char* work = switch_appl; *work; work++)
+		for (const char* work = switch_appl; *work; work++)
 			if (!isalnum(*work) && *work != '_')
 				arcan_fatal("system_collapse(), only aZ_ are permitted in names.\n");
 
-		int saved, truncated;
 		arcan_luaL_shutdown(ctx);
 		const char* errmsg;
 
@@ -1677,8 +1676,10 @@ static int syscollapse(lua_State* ctx)
 
 		longjmp(arcanmain_recover_state, 1);
 	}
-	else
+	else{
+		int saved, truncated;
 		arcan_video_recoverexternal(&saved, &truncated, arcan_luaL_adopt, ctx);
+	}
 
 	return 0;
 }
@@ -2072,8 +2073,8 @@ static inline bool intblbool(lua_State* ctx, int ind, const char* field){
  * or frameserver. The target_launcher will serialise it to a hijack function
  * which then decodes into a native format (currently most likely SDL).
  * All this hassle (instead of creating a custom Lua object,
- * tag it with the raw event and be done with it) is to allow the theme- to
- * modify or even generate new ones based on in-theme actions.
+ * tag it with the raw event and be done with it) is to allow the appl- to
+ * modify or even generate new ones based on in-appl actions.
  */
 
 /* there is a slight API inconsistency here in that we had (iotbl, vid)
@@ -2280,10 +2281,10 @@ static char* streamtype(int num)
 void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 {
 	if (ev->category == EVENT_SYSTEM &&
-		grabthemefunction(ctx, "system", 6)){
+		grabapplfunction(ctx, "system", 6)){
 		lua_newtable(ctx);
 	}
-	if (ev->category == EVENT_IO && grabthemefunction(ctx, "input", 5)){
+	if (ev->category == EVENT_IO && grabapplfunction(ctx, "input", 5)){
 		int top = funtable(ctx, ev->kind);
 
 		lua_pushstring(ctx, "kind");
@@ -2366,7 +2367,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 	else if (ev->category == EVENT_TIMER){
 		arcan_lua_setglobalint(ctx, "CLOCK", ev->tickstamp);
 
-		if (grabthemefunction(ctx, "clock_pulse", 11)) {
+		if (grabapplfunction(ctx, "clock_pulse", 11)) {
 			lua_pushnumber(ctx, ev->tickstamp);
 			lua_pushnumber(ctx, ev->data.timer.pulse_count);
 			wraperr(ctx, lua_pcall(ctx, 2, 0, 0),"event loop: clock pulse");
@@ -3221,7 +3222,7 @@ static int storekey(lua_State* ctx)
 	} else {
 		const char* key = luaL_checkstring(ctx, 1);
 		const char* name = luaL_checkstring(ctx, 2);
-		arcan_db_theme_kv(dbhandle, arcan_appl_id(), key, name);
+		arcan_db_appl_kv(dbhandle, arcan_appl_id(), key, name);
 	}
 
 	return 0;
@@ -3232,7 +3233,7 @@ static int getkey(lua_State* ctx)
 	LUA_TRACE("get_key");
 
 	const char* key = luaL_checkstring(ctx, 1);
-	char* val = arcan_db_theme_val(dbhandle, arcan_appl_id(), key);
+	char* val = arcan_db_appl_val(dbhandle, arcan_appl_id(), key);
 
 	if (val) {
 		lua_pushstring(ctx, val);
@@ -3883,15 +3884,15 @@ static int shutdown(lua_State *ctx)
 	return 0;
 }
 
-static int switchtheme(lua_State *ctx)
+static int switchappl(lua_State *ctx)
 {
-	LUA_DEPRECATE("switch_theme");
+	LUA_DEPRECATE("switch_appl (use system_collapse instead)");
 
-	arcan_event ev = {.category = EVENT_SYSTEM, .kind = EVENT_SYSTEM_SWITCHTHEME};
-	const char* newtheme = luaL_optstring(ctx, 1, arcan_appl_id());
+	arcan_event ev = {.category = EVENT_SYSTEM, .kind = EVENT_SYSTEM_SWITCHAPPL};
+	const char* newappl = luaL_optstring(ctx, 1, arcan_appl_id());
 
 	snprintf(ev.data.system.data.message, sizeof(ev.data.system.data.message)
-		/ sizeof(ev.data.system.data.message[0]), "%s", newtheme);
+		/ sizeof(ev.data.system.data.message[0]), "%s", newappl);
 	arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 
 	return 0;
@@ -4070,7 +4071,7 @@ static int screencoord(lua_State* ctx)
 
 bool arcan_lua_callvoidfun(lua_State* ctx, const char* fun, bool warn)
 {
-	if ( grabthemefunction(ctx, fun, strlen(fun)) ){
+	if ( grabapplfunction(ctx, fun, strlen(fun)) ){
 		wraperr(ctx, lua_pcall(ctx, 0, 0, 0), fun);
 		return true;
 	}
@@ -6913,7 +6914,7 @@ static const luaL_Reg threedfuns[] = {
 #define EXT_MAPTBL_SYSTEM
 static const luaL_Reg sysfuns[] = {
 {"shutdown",            shutdown         },
-{"switch_theme",        switchtheme      },
+{"switch_appl",         switchappl       },
 {"warning",             warning          },
 {"system_load",         dofile           },
 {"system_context_size", systemcontextsize},
