@@ -9,8 +9,9 @@
 -- include "b" (bool), "i" (int) "f" (float), "ff" (vec2), "fff" (vec3),
 -- "ffff" (vec4), f*16 (mat4). If persistfl is set, the member values
 -- will be stored locally and survives external-launch state transitions.
--- If persistfl is not set, the uniform vales are expected to be continously
--- updated.
+-- Accepted values for *persistfl* are PERSIST or NOPERSIST. If persistfl
+-- is set to NOPERSIST, the uniform values are expected to be updated
+-- on a regular basis.
 -- @group: vidsys
 -- @cfunction: arcan_lua_shader_uniform
 function main()
