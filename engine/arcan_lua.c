@@ -1644,8 +1644,12 @@ void arcan_luaL_adopt(arcan_vobj_id id, void* tag)
 	int argc = 1;
 	lua_pushvid(ctx, id);
 	if (fsrv){
-		argc++;
+		argc += 2;
 		lua_pushstring(ctx, fsrvtos(fsrv->segid));
+		if (strlen(fsrv->title) > 0)
+			lua_pushstring(ctx, fsrv->title);
+		else
+			lua_pushstring(ctx, "_untitled");
 	}
 
 	wraperr(ctx, lua_pcall(ctx, argc, 0, 0), "adopt");
@@ -2569,12 +2573,15 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 						"this behavior is not permitted and was ignored.\n");
 					lua_settop(ctx, reset);
 					return;
-				} else {
+				}
+				else {
 					tblstr(ctx, "kind", "registered", top);
 					tblstr(ctx, "segkind", fsrvtos(ev->data.external.registr.kind), top);
 					slimpush(mcbuf, sizeof(ev->data.external.registr.title) /
 						sizeof(ev->data.external.registr.title[0]),
 						(char*)ev->data.external.registr.title);
+					snprintf(fsrv->title,
+						sizeof(fsrv->title) / sizeof(fsrv->title[0]), "%s", mcbuf);
 					tblstr(ctx, "title", mcbuf, top);
 				}
 
