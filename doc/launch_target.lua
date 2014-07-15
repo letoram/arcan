@@ -15,7 +15,7 @@
 -- *argstr* is a regular k1=v1:k2:k3=v3 kind of argument string, used primarily
 -- for libretro cores when prefixed with core_
 -- @note: Possible statustbl.kind values; "resized", "ident", "message", "failure",
--- "frameserver_terminated", "frame", "state_size", "resource_status", "unknown".
+-- "terminated", "frame", "state_size", "resource_status", "unknown".
 -- @note: for kind == "resized", width, height
 -- @note: for kind == "frame", frame
 -- @note: for kind == "message", message

@@ -640,7 +640,7 @@ function setup_cabinet_model(modelname, restbl, options)
 					math.random(1,#restbl.movies)],
 					FRAMESERVER_LOOP, function(source, tbl)
 
-					if (tbl.kind ~= "frameserver_terminated") then
+					if (tbl.kind ~= "terminated") then
 						res:update_display(source, def3d_fullbright_flip);
 					else
 						res:display_broken();

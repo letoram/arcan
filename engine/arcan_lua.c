@@ -2621,26 +2621,27 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 
 		tblnum(ctx, "source_audio", ev->data.frameserver.audio, top);
 
+		dst_cb = ev->data.frameserver.otag;
+		if (0 == dst_cb){
+			lua_settop(ctx, 0);
+			return;
+		}
+
 		switch(ev->kind){
 			case EVENT_FRAMESERVER_TERMINATED :
-				tblstr(ctx, "kind", "frameserver_terminated", top);
-				dst_cb = ev->data.frameserver.otag;
+				tblstr(ctx, "kind", "terminated", top);
 			break;
 
 			case EVENT_FRAMESERVER_DELIVEREDFRAME :
 				tblstr(ctx, "kind", "frame", top);
 				tblnum(ctx, "pts", ev->data.frameserver.pts, top);
 				tblnum(ctx, "number", ev->data.frameserver.counter, top);
-
-				dst_cb = ev->data.frameserver.otag;
 			break;
 
 			case EVENT_FRAMESERVER_DROPPEDFRAME :
 				tblstr(ctx, "kind", "dropped_frame", top);
 				tblnum(ctx, "pts", ev->data.frameserver.pts, top);
 				tblnum(ctx, "number", ev->data.frameserver.counter, top);
-
-				dst_cb = ev->data.frameserver.otag;
 			break;
 
 			case EVENT_FRAMESERVER_RESIZED :
@@ -2648,21 +2649,14 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				tblnum(ctx, "width", ev->data.frameserver.width, top);
 				tblnum(ctx, "height", ev->data.frameserver.height, top);
 				tblnum(ctx, "mirrored", ev->data.frameserver.glsource, top);
-
-				dst_cb = ev->data.frameserver.otag;
 			break;
 		}
 
-		if (dst_cb){
-			lua_ctx_store.cb_source_tag = ev->data.frameserver.video;
-			lua_ctx_store.cb_source_kind = CB_SOURCE_FRAMESERVER;
-			lua_rawgeti(ctx, LUA_REGISTRYINDEX, dst_cb);
-			lua_replace(ctx, 1);
-			wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "frameserver_event");
-		}
-		else
-			lua_settop(ctx, 0);
-
+		lua_ctx_store.cb_source_tag = ev->data.frameserver.video;
+		lua_ctx_store.cb_source_kind = CB_SOURCE_FRAMESERVER;
+		lua_rawgeti(ctx, LUA_REGISTRYINDEX, dst_cb);
+		lua_replace(ctx, 1);
+		wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "frameserver_event");
 		lua_ctx_store.cb_source_kind = CB_SOURCE_NONE;
 	}
 	else if (ev->category == EVENT_VIDEO){
