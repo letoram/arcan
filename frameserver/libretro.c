@@ -1035,11 +1035,87 @@ static int remaptbl[] = {
 	RETRO_DEVICE_ID_JOYPAD_R3
 };
 
+/*
+ * A static default input layout for apps that provide no
+ * higher-level semantic translation on its own.
+ */
+static void default_map(arcan_ioevent* ioev)
+{
+	if (ioev->datatype == EVENT_IDATATYPE_TRANSLATED){
+		int button = -1;
+		int port = -1;
+
+/* happy coincidence, keysyms here match retro_key (as they both
+ * originate from SDL) */
+		switch(ioev->input.translated.keysym){
+		case RETROK_x:
+			port = 0;
+			button = RETRO_DEVICE_ID_JOYPAD_A;
+		break;
+		case RETROK_z:
+			port = 0;
+			button = RETRO_DEVICE_ID_JOYPAD_B;
+		break;
+		case RETROK_a:
+			port = 0;
+			button = RETRO_DEVICE_ID_JOYPAD_Y;
+		break;
+		case RETROK_s:
+			port = 0;
+			button = RETRO_DEVICE_ID_JOYPAD_X;
+		break;
+		case RETROK_RETURN:
+			port = 0;
+			button = RETRO_DEVICE_ID_JOYPAD_START;
+		break;
+		case RETROK_RSHIFT:
+			port = 0;
+			button = RETRO_DEVICE_ID_JOYPAD_SELECT;
+		break;
+		case RETROK_LEFT:
+			port = 0;
+			button = RETRO_DEVICE_ID_JOYPAD_LEFT;
+		break;
+		case RETROK_RIGHT:
+			port = 0;
+			button = RETRO_DEVICE_ID_JOYPAD_RIGHT;
+		break;
+		case RETROK_UP:
+			port = 0;
+			button = RETRO_DEVICE_ID_JOYPAD_UP;
+		break;
+		case RETROK_DOWN:
+			port = 0;
+			button = RETRO_DEVICE_ID_JOYPAD_DOWN;
+		break;
+		}
+
+		if (-1 != button && -1 != port){
+			retroctx.input_ports[
+				port].buttons[button] = ioev->input.translated.active;
+		}
+	}
+	else if (ioev->datatype == EVENT_IDEVKIND_GAMEDEV){
+		int port_number = ioev->input.digital.devid % MAX_PORTS;
+		int button_number = ioev->input.digital.subid % MAX_BUTTONS;
+		int button = remaptbl[button_number];
+		retroctx.input_ports[
+			port_number].buttons[button] = ioev->input.digital.active;
+	}
+}
+
 static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 {
 	size_t remaptbl_sz = sizeof(remaptbl) / sizeof(remaptbl[0]) - 1;
 	int ind, button = -1, axis;
 	char* subtype;
+
+/*
+ * if the calling script does no translation of its own
+ */
+	if (label[0] == '\0'){
+		return default_map(ioev);
+	}
 
 	retroctx.dirty_input = true;
 
