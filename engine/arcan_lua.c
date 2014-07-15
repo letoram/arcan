@@ -2132,6 +2132,7 @@ static int targetinput(lua_State* ctx)
 		const char* srcstr = intblstr(ctx, tblind, "source");
 
 		ev.kind = EVENT_IO_AXIS_MOVE;
+		ev.data.io.datatype = EVENT_IDATATYPE_ANALOG;
 		ev.data.io.devkind = srcstr && strcmp( srcstr, "mouse") == 0 ?
 			EVENT_IDEVKIND_MOUSE : EVENT_IDEVKIND_GAMEDEV;
 		ev.data.io.input.analog.devid  = intblnum(ctx, tblind, "devid");
