@@ -55,15 +55,15 @@ static struct {
 static void* guard_thread(void* gstruct);
 
 static void spawn_guardthread(
-	struct shmif_hidden gs, struct arcan_shmif_cont* d, bool thread)
+	struct shmif_hidden gs, struct arcan_shmif_cont* d, bool nothread)
 {
 	struct shmif_hidden* hgs = malloc(sizeof(struct shmif_hidden));
-	*hgs = gs;
-
 	memset(hgs, '\0', sizeof(struct shmif_hidden));
+
+	*hgs = gs;
 	d->priv = hgs;
 
-	if (thread){
+	if (!nothread){
 		pthread_t pth;
 		pthread_attr_t pthattr;
 		pthread_attr_init(&pthattr);
