@@ -298,7 +298,7 @@ function music_start_bgmusic(playlist)
 
 -- the chainloading stream trigger
 	local function musicplayer_trigger(source, status)
-		if (status.kind == "frameserver_terminated") then
+		if (status.kind == "terminated") then
 			delete_image(imagery.musicplayer);
       imagery.source_audio = nil;
 
@@ -723,7 +723,7 @@ function internallaunch_event(source, datatbl)
 
 		gridle_internal_setup(source, datatbl, current_game);
 
-	elseif (datatbl.kind == "frameserver_terminated") then
+	elseif (datatbl.kind == "terminated") then
 		order_image(imagery.crashimage, INGAMELAYER_OVERLAY);
 		blend_image(imagery.crashimage, 0.8);
 

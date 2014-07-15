@@ -40,14 +40,21 @@ local function listview_redraw(self)
     for ind = self.page_beg, self.page_end do
 			local tmpname = self.gsub_ignore and self.list[ind] or
 				string.gsub(self.list[ind], "\\", "\\\\");
-			local fmt = self.formats[ tmpname ];
+
+			local prefix = self.formats[ tmpname ] and self.formats[ tmpname ] or "";
+			local suffix = "";
+
+			if (type(prefix) == "table") then
+				suffix = prefix[2] and prefix[2] or "";
+				prefix = prefix[1] and prefix[1] or "";
+			end
 
 			if (string.sub(tmpname, 1, 3) == "---") then
 				renderstr = renderstr .. self.hilight_fontstr ..
 				string.sub(tmpname, 4) .. [[\n\r]];
 			else
-				renderstr = string.format("%s%s%s\\!b\\!i\\n\\r", renderstr, fmt and fmt or
-					self.data_fontstr, tmpname);
+				renderstr = string.format("%s%s%s%s%s\\!b\\!i\\n\\r",
+					self.data_fontstr, prefix, renderstr, tmpname, suffix);
 			end
 		end
 
@@ -92,7 +99,9 @@ local function listview_destroy(self)
 		self.cascade_destroy:destroy();
 	end
 
-	mouse_droplistener(self.mhandler);
+	if (mouse_droplistener) then
+		mouse_droplistener(self.mhandler);
+	end
 
 	resize_image(self.border, 1, 1, self.animspeed, INTERP_EXPOUT);
 	resize_image(self.window, 1, 1, self.animspeed, INTERP_EXPOUT);
@@ -261,7 +270,7 @@ local function window_height(self, nlines)
 	return txh;
 end
 
-function listview_create(elem_list, height, maxw, formatlist, nomouse)
+function listview_create(elem_list, height, maxw, formatlist)
 	local restbl = {
 		show          = listview_show,
 		destroy       = listview_destroy,
@@ -273,6 +282,8 @@ function listview_create(elem_list, height, maxw, formatlist, nomouse)
     invalidate    = listview_invalidate,
 		animspeed = 20
 	};
+
+	assert(elem_list ~= nil and #elem_list > 0);
 
 	if (settings == nil) then
 		settings = {};
