@@ -590,26 +590,6 @@ static inline void emit_droppedframe(arcan_frameserver* src,
 	arcan_event_enqueue(arcan_event_defaultctx(), &deliv);
 }
 
-arcan_errc arcan_frameserver_audioframe_shared(arcan_aobj* aobj,
-	arcan_aobj_id id, unsigned buffer, void* tag)
-{
-	arcan_frameserver* src = (arcan_frameserver*) tag;
-	struct arcan_shmif_page* shmpage = src->shm.ptr;
-
-	if (!shmpage || !shmpage->aready)
-		return ARCAN_ERRC_NOTREADY;
-
-	if (shmpage->abufused)
-		arcan_audio_buffer(aobj, buffer, src->audp, shmpage->abufused,
-			src->desc.channels, src->desc.samplerate, tag);
-
-	shmpage->abufused = 0;
-	shmpage->aready = false;
-	arcan_sem_post(src->async);
-
-	return ARCAN_OK;
-}
-
 arcan_errc arcan_frameserver_audioframe_direct(arcan_aobj* aobj,
 	arcan_aobj_id id, unsigned buffer, void* tag)
 {
@@ -841,11 +821,12 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 		else {
 			ctx->segid = SEGID_MEDIA;
 			ctx->flags.socksig = true;
-			ctx->aid      = arcan_audio_feed((arcan_afunc_cb)
-											arcan_frameserver_audioframe_shared, ctx, &errc);
-			ctx->sz_audb  = 0;
+			ctx->aid = arcan_audio_feed(
+			(arcan_afunc_cb) arcan_frameserver_audioframe_direct, ctx, &errc);
+			ctx->sz_audb  = 1024 * 64;
 			ctx->ofs_audb = 0;
-
+			ctx->audb = arcan_alloc_mem(ctx->sz_audb,
+				ARCAN_MEM_ABUFFER, 0, ARCAN_MEMALIGN_PAGE);
 			ctx->queue_mask = EVENT_EXTERNAL;
 		}
 	}
@@ -865,7 +846,7 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 		ctx->sz_audb  = 1024 * 64;
 		ctx->ofs_audb = 0;
 		ctx->audb = arcan_alloc_mem(ctx->sz_audb,
-			ARCAN_MEM_ABUFFER, 0, ARCAN_MEMALIGN_PAGE);
+				ARCAN_MEM_ABUFFER, 0, ARCAN_MEMALIGN_PAGE);
 	}
 
 /* two separate queues for passing events back and forth between main program

@@ -105,7 +105,6 @@ target_link_libraries(arcan_hijack
 	${SDL_LIBRARY}
 	${OPENGL_gl_LIBRARY}
 )
-
 set(BIN_DST ${CMAKE_INSTALL_PREFIX}/bin)
 set(APPL_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/appl)
 set(RESOURCES_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/resources)

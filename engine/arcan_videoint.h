@@ -257,7 +257,7 @@ typedef struct arcan_vobject_litem arcan_vobject_litem;
 
 struct arcan_video_display {
 	bool suspended, fullscreen, conservative;
-	bool vsync, fbo_support, pbo_support;
+	bool fbo_support, pbo_support;
 
 	int dirty;
 	enum arcan_order3d order3d;

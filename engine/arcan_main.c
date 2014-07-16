@@ -58,6 +58,7 @@
 #include "arcan_video.h"
 #include "arcan_frameserver_backend.h"
 #include "arcan_lua.h"
+#include "../platform/video_platform.h"
 
 #ifdef ARCAN_LED
 #include "arcan_led.h"
@@ -70,10 +71,21 @@
 #include "arcan_db.h"
 #include "arcan_videoint.h"
 
-arcan_dbh* dbhandle = NULL;
+struct {
+	bool in_monitor;
+	int monitor, monitor_counter;
+	int mon_infd;
+	FILE* mon_outf;
+
+	int timedump;
+
+	struct arcan_luactx* lua;
+	uint64_t tick_count;
+} settings = {0};
 
 bool stderr_redirected = false;
 bool stdout_redirected = false;
+arcan_dbh* dbhandle;
 
 /*
  * The arcanmain recover state is used either at the volition of the
@@ -89,6 +101,7 @@ extern int system_page_size;
 
 static const struct option longopts[] = {
 	{ "help",         no_argument,       NULL, '?'},
+	{ "sync-strat",   required_argument, NULL, 'W'},
 	{ "width",        required_argument, NULL, 'w'},
 	{ "height",       required_argument, NULL, 'h'},
 	{ "winx",         required_argument, NULL, 'x'},
@@ -105,11 +118,8 @@ static const struct option longopts[] = {
 	{ "timedump",     required_argument, NULL, 'q'},
 	{ "multisamples", required_argument, NULL, 'a'},
 	{ "nosound",      no_argument,       NULL, 'S'},
-	{ "novsync",      no_argument,       NULL, 'v'},
 	{ "stdout",       required_argument, NULL, '1'},
 	{ "stderr",       required_argument, NULL, '2'},
-	{ "nowait",       no_argument,       NULL, 'V'},
-	{ "vsync-falign", required_argument, NULL, 'F'},
 	{ "monitor",      required_argument, NULL, 'M'},
 	{ "monitor-out",  required_argument, NULL, 'O'},
 	{ "monitor-in",   required_argument, NULL, 'I'},
@@ -118,13 +128,14 @@ static const struct option longopts[] = {
 
 static void usage()
 {
-printf("usage: arcan [-whxyfmsptbdgavVFS] applname [app specific arguments]\n"
+printf("usage: arcan [-whxyfmWMOqsptbdgaS] applname [app specific arguments]\n"
 "-w\t--width       \tdesired width (default: 640)\n"
 "-h\t--height      \tdesired height (default: 480)\n"
 "-x\t--winx        \tforce window x position (default: don't set)\n"
 "-y\t--winy        \tforce window y position (default: don't set)\n"
 "-f\t--fullscreen  \ttoggle fullscreen mode ON (default: off)\n"
 "-m\t--conservative\ttoggle conservative memory management (default: off)\n"
+"-W\t--sync-strat  \tspecify video synchronization strategy (see below)\n"
 #ifndef _WIN32
 "-M\t--monitor     \tsplit open a debug arcan monitoring session\n"
 "-O\t--monitor-out \tLOG:fname or applname\n"
@@ -137,10 +148,15 @@ printf("usage: arcan [-whxyfmsptbdgavVFS] applname [app specific arguments]\n"
 "-d\t--database    \tsqlite database (default: arcandb.sqlite)\n"
 "-g\t--debug       \ttoggle debug output (events, coredumps, etc.)\n"
 "-a\t--multisamples\tset number of multisamples (default 4, disable 0)\n"
-"-v\t--novsync     \tdisable synch to video refresh (default, vsync on)\n"
-"-V\t--nowait      \tdisable sleeping between superflous frames\n"
-"-F\t--vsync-falign\t (0..1, default: 0.6) balance processing vs. CPU usage\n"
-"-S\t--nosound     \tdisable audio output\n");
+"-S\t--nosound     \tdisable audio output\n\n");
+
+	const char** cur = platform_video_synchopts();
+	printf("Video platform synchronization options (-W strat):\n");
+	while(*cur){
+		const char* a = *cur++;
+		const char* b = *cur++;
+		printf("%s - %s\n", a, b);
+	}
 }
 
 /*
@@ -174,8 +190,8 @@ bool switch_appl(const char* appname, bool recovery)
 /*
  * current several namespaces are (legacy) specified relative
  * to the old resources namespace, since those are expanded in
- * set_namespace_defaults where the command-line switch isn't 
- * available, we have to generate these dependent namespaces 
+ * set_namespace_defaults where the command-line switch isn't
+ * available, we have to generate these dependent namespaces
  * overrides as well.
  */
 static void override_resspaces(const char* respath)
@@ -200,14 +216,59 @@ static void override_resspaces(const char* respath)
 	arcan_override_namespace(font_dir, RESOURCE_SYS_FONT);
 }
 
+static void preframe()
+{
+	arcan_lua_callvoidfun(settings.lua, "preframe_pulse", false);
+}
+
+static void postframe()
+{
+	arcan_lua_callvoidfun(settings.lua, "postframe_pulse", false);
+	arcan_bench_register_frame();
+}
+
+static void on_clock_pulse(int nticks)
+{
+/* priority is always in maintaining logical clock and event processing */
+	unsigned njobs;
+
+	arcan_video_tick(nticks, &njobs);
+	arcan_audio_tick(nticks);
+
+	if (settings.monitor && !settings.in_monitor){
+		if (--settings.monitor_counter == 0){
+			static int mc;
+			char buf[8];
+			snprintf(buf, 8, "%d", mc++);
+			settings.monitor_counter = settings.monitor;
+			arcan_lua_statesnap(settings.mon_outf, buf, true);
+		}
+	}
+
+/* debugging functionality to generate a dump and abort after n ticks */
+	if (settings.timedump){
+		settings.timedump--;
+
+	if (!settings.timedump)
+		arcan_state_dump("timedump", "user requested a dump", __func__);
+	}
+
+#ifndef WIN32
+		if (settings.in_monitor)
+			arcan_lua_stategrab(settings.lua, "sample", settings.mon_infd);
+#endif
+
+	settings.tick_count += nticks;
+}
+
 int main(int argc, char* argv[])
 {
+	settings.in_monitor = getenv("ARCAN_MONITOR_FD") != NULL;
+
 	bool windowed = false;
 	bool fullscreen = false;
 	bool conservative = false;
 	bool nosound = false;
-	bool in_monitor = getenv("ARCAN_MONITOR_FD") != NULL;
-	bool waitsleep = true;
 
 	unsigned char debuglevel = 0;
 
@@ -216,16 +277,10 @@ int main(int argc, char* argv[])
 	int height = 480;
 	int winx = -1;
 	int winy = -1;
-	int timedump = 0;
-	float vfalign = 0.6;
 
 /* only used when monitor mode is activated, where we want some
  * of the global paths etc. accessible, but not *all* of them */
-	FILE* monitor_outf = NULL;
-	int monitor = 0;
-	int monitor_infd = -1;
 	char* monitor_arg = "LOG";
-	char* rescue_appl = "NULL";
 
 /*
  * if we crash in the Lua VM, switch to this app and have it
@@ -242,8 +297,8 @@ int main(int argc, char* argv[])
 /* VIDs all have a randomized base to provoke crashes in poorly written scripts,
  * only -g will make their base and sequence repeatable */
 
-	while ((ch = getopt_long(argc, argv, "w:h:x:y:?fvVmb:sp:q:"
-		"t:M:O:l:a:d:F:1:2:gS", longopts, NULL)) >= 0){
+	while ((ch = getopt_long(argc, argv,
+		"w:h:mx:y:fsW:d:Sq:a:p:b:M:O:t:g1:2:", longopts, NULL)) >= 0){
 	switch (ch) {
 	case '?' :
 		usage();
@@ -254,20 +309,17 @@ int main(int argc, char* argv[])
 	case 'm' : conservative = true; break;
 	case 'x' : winx = strtol(optarg, NULL, 10); break;
 	case 'y' : winy = strtol(optarg, NULL, 10); break;
-	case 'F' : vfalign = strtof(optarg, NULL); break;
 	case 'f' : fullscreen = true; break;
 	case 's' : windowed = true; break;
+	case 'W' : platform_video_setsynch(optarg); break;
 	case 'd' : dbfname = strdup(optarg); break;
 	case 'S' : nosound = true; break;
-	case 'q' : timedump = strtol(optarg, NULL, 10); break;
+	case 'q' : settings.timedump = strtol(optarg, NULL, 10); break;
 	case 'a' : arcan_video_display.msasamples = strtol(optarg, NULL, 10); break;
-	case 'v' : arcan_video_display.vsync = false; break;
-	case 'V' : waitsleep = false; break;
 	case 'p' : override_resspaces(optarg); break;
-	case 'R' : rescue_appl = strdup(optarg); break;
 	case 'b' : fallback = strdup(optarg); break;
 #ifndef _WIN32
-	case 'M' : monitor = abs( strtol(optarg, NULL, 10) ); break;
+	case 'M' : settings.monitor = abs( strtol(optarg, NULL, 10) ); break;
 	case 'O' : monitor_arg = strdup( optarg ); break;
 #endif
 	case 't' : arcan_override_namespace(optarg, RESOURCE_APPL); break;
@@ -297,12 +349,6 @@ int main(int argc, char* argv[])
 		exit(EXIT_SUCCESS);
 	}
 
-	if (vfalign > 1.0 || vfalign < 0.0){
-		arcan_warning("Argument Error (-F, --vsync-falign): "
-		"bad range specified (%f), reverting to default (0.6)\n", vfalign);
-		vfalign = 0.6;
-	}
-
 	const char* err_msg;
 	if (!arcan_verifyload_appl(argv[optind], &err_msg)){
 		arcan_warning("arcan_verifyload_appl(), "
@@ -325,19 +371,19 @@ int main(int argc, char* argv[])
  * format will be LUA tables with the exception of each cell ending with
  * #ENDSAMPLE . The block will be sampled, parsed and should return a table
  * pushed through the sample() function in the LUA space */
-	if (in_monitor){
-		monitor_infd = strtol( getenv("ARCAN_MONITOR_FD"), NULL, 10);
+	if (settings.in_monitor){
+		settings.mon_infd = strtol( getenv("ARCAN_MONITOR_FD"), NULL, 10);
 	 	signal(SIGPIPE, SIG_IGN);
 	}
-	else if (monitor > 0){
+	else if (settings.monitor > 0){
 		extern arcan_benchdata benchdata;
 		benchdata.bench_enabled = true;
 
 		if (strncmp(monitor_arg, "LOG:", 4) == 0){
-			monitor_outf = fopen(&monitor_arg[4], "w+");
-			if (NULL == monitor_outf)
+			settings.mon_outf = fopen(&monitor_arg[4], "w+");
+			if (NULL == settings.mon_outf)
 				arcan_fatal("couldn't open log output (%s) for writing\n", monitor_arg[4]);
-			fcntl(fileno(monitor_outf), F_SETFD, FD_CLOEXEC);
+			fcntl(fileno(settings.mon_outf), F_SETFD, FD_CLOEXEC);
 		}
 		else {
 			int pair[2];
@@ -370,7 +416,7 @@ int main(int argc, char* argv[])
 			else {
 /* don't terminate just because the pipe gets broken (i.e. dead monitor) */
 				close(pair[0]);
-				monitor_outf = fdopen(pair[1], "w");
+				settings.mon_outf = fdopen(pair[1], "w");
 			 	signal(SIGPIPE, SIG_IGN);
 			}
 		}
@@ -401,7 +447,7 @@ applswitch:
 			dbhandle = arcan_db_open(dbfname, arcan_appl_id());
 		}
 
-		if (!dbhandle){
+		if (dbhandle){
 			arcan_warning("Couldn't create database, giving up.\n");
 			goto error;
 		}
@@ -469,8 +515,6 @@ applswitch:
 		setenv("ARCAN_FRAMESERVER_LOGDIR", lpath, 1);
 	}
 
-	struct arcan_luactx* luactx;
-
 #ifndef _WIN32
 	system_page_size = sysconf(_SC_PAGE_SIZE);
 #endif
@@ -494,7 +538,7 @@ applswitch:
 		}
 
 		const char* errmsg;
-		arcan_luaL_shutdown(luactx);
+		arcan_luaL_shutdown(settings.lua);
 		if (!arcan_verifyload_appl(fallback, &errmsg)){
 			arcan_warning("Lua VM error fallback, failure loading (%s), reason: %s\n",
 				fallback, errmsg);
@@ -510,8 +554,8 @@ applswitch:
 	}
 
 /* setup VM, map arguments and possible overrides */
-	luactx = arcan_lua_alloc();
-	arcan_lua_mapfunctions(luactx, debuglevel);
+	settings.lua = arcan_lua_alloc();
+	arcan_lua_mapfunctions(settings.lua, debuglevel);
 
 	bool inp_file;
 	const char* inp = arcan_appl_basesource(&inp_file);
@@ -520,7 +564,7 @@ applswitch:
 		goto error;
 	}
 
-	char* msg = arcan_luaL_main(luactx, inp, inp_file);
+	char* msg = arcan_luaL_main(settings.lua, inp, inp_file);
 	if (msg != NULL){
 		arcan_warning("main(), Error loading main script for (%s), "
 			"reason: %s\n", arcan_appl_id(), msg);
@@ -531,23 +575,19 @@ applswitch:
 /* entry point follows the name of the appl,
  * hand over execution and begin event loop */
 	if (argc > optind)
-		arcan_lua_pushargv(luactx, argv + optind + 1);
+		arcan_lua_pushargv(settings.lua, argv + optind + 1);
 
-	arcan_lua_callvoidfun(luactx, "", true);
-	arcan_lua_callvoidfun(luactx, "show", false);
+	arcan_lua_callvoidfun(settings.lua, "", true);
+	arcan_lua_callvoidfun(settings.lua, "show", false);
 
 	if (adopt){
 		int saved, truncated;
-		arcan_video_recoverexternal(&saved, &truncated, arcan_luaL_adopt, luactx);
+		arcan_video_recoverexternal(&saved, &truncated,
+			arcan_luaL_adopt, settings.lua);
 	}
 
-	bool done = false, framepulse = true, feedtrig = true;
-	float lastfrag = 0.0f;
-	long long int lastflip = arcan_timemillis();
-	int monitor_counter = monitor;
-
-	arcan_event ev;
 	arcan_evctx* evctx = arcan_event_defaultctx();
+	bool done = false;
 
 	while (!done) {
 /* pollfeed can actually populate event-loops, assuming we don't exceed a
@@ -555,35 +595,25 @@ applswitch:
 #ifdef ARCAN_HMD
 		arcan_hmd_update();
 #endif
-		if (feedtrig){
-			feedtrig = false;
-			arcan_video_pollfeed();
-		}
+		arcan_video_pollfeed();
+		arcan_audio_refresh();
 
-/* NOTE: might be better if this terminates if we're closing in on a
- * deadline as to not be saturated with an onslaught of I/O events. */
+		arcan_event ev;
 		while (1 == arcan_event_poll(evctx, &ev)){
-
-/*
- * these events can typically be determined in video_tick(),
- * however there are so many hierarchical dependencies
- * (linked objs, instances, ...)
- * that a full delete is not really safe there (e.g. event -> callback ->
- */
 			switch (ev.category){
 			case EVENT_VIDEO:
 				if (ev.kind == EVENT_VIDEO_EXPIRE)
 					arcan_video_deleteobject(ev.data.video.source);
 			break;
 
+/* this event category is never propagated to the scripting engine itself */
 			case EVENT_SYSTEM:
-/* note the LUA shutdown() call actually emits this event */
 				if (ev.kind == EVENT_SYSTEM_EXIT)
 					done = true;
 
 /* slated for deprecation */
 				else if (ev.kind == EVENT_SYSTEM_SWITCHAPPL){
-					arcan_luaL_shutdown(luactx);
+					arcan_luaL_shutdown(settings.lua);
 					if (switch_appl(ev.data.system.data.message, false))
 						goto applswitch;
 					else
@@ -594,104 +624,14 @@ applswitch:
 			break;
 			}
 
-			arcan_lua_pushevent(luactx, &ev);
+			arcan_lua_pushevent(settings.lua, &ev);
 		}
 
-		unsigned nticks;
-		float frag = arcan_event_process(arcan_event_defaultctx(), &nticks);
-
-		if (debuglevel == 4)
-			arcan_warning("main() event_process (%d, %f)\n", nticks, frag);
-
-/* priority is always in maintaining logical clock and event processing */
-		if (nticks > 0){
-			unsigned njobs;
-
-			arcan_video_tick(nticks, &njobs);
-			arcan_bench_register_tick(nticks);
-
-			arcan_audio_tick(nticks);
-			lastfrag = 0.0;
-
-			if (monitor && !in_monitor){
-				if (--monitor_counter == 0){
-					static int mc;
-					char buf[8];
-					snprintf(buf, 8, "%d", mc++);
-					monitor_counter = monitor;
-					arcan_lua_statesnap(monitor_outf, buf, true);
-				}
-			}
-
-/* debugging functionality to generate a dump and abort after n ticks */
-			if (timedump){
-				timedump -= nticks;
-
-				if (timedump <= 0){
-					arcan_state_dump("timedump", "user requested a dump", __func__);
-					break;
-				}
-			}
-		}
-
-/* this is internally buffering and non-blocking, hence the fd use compared
- * to arcan_lua_statesnap above */
-#ifndef _WIN32
-		if (in_monitor)
-			arcan_lua_stategrab(luactx, "sample", monitor_infd);
-#endif
-
-/* REFACTOR / REDESIGN
- * the heuristics for when and how to deal with bufferswaps, sleeps etc.
- * is fairly rigid at the moment, the plan is to refactor this interface
- * to (a) support a monitor / display definition configuration file,
- * ( which includes things as display timings or simulated timings)
- *
- * (b) specify higher level "strategies" that is initially coupled to display
- * but can be changed dynamically.
- */
-		const int min_respthresh = 9;
-
-/* only render if there's enough relevant changes */
-		if (!waitsleep || nticks > 0 || frag - lastfrag > INTERP_MINSTEP){
-
-/* separate between cheap (possibly vsync off or triple buffering)
- * flip cost and expensive (vsync on) */
-			if (arcan_video_display.vsync_timing < 8.0){
-				unsigned cost = arcan_video_refresh(frag, true);
-				feedtrig = true;
-
-				arcan_bench_register_cost(cost);
-				arcan_bench_register_frame();
-					if (framepulse)
-						framepulse = arcan_lua_callvoidfun(luactx, "frame_pulse", false);
-
-				int delta = arcan_timemillis() - lastflip;
-				lastflip += delta;
-
-				if (waitsleep && delta < min_respthresh)
-					arcan_timesleep(min_respthresh - delta);
-			}
-			else {
-				int delta = arcan_timemillis() - lastflip;
-				if (delta >= (float)arcan_video_display.vsync_timing * vfalign){
-					unsigned cost = arcan_video_refresh(frag, true);
-					feedtrig = true;
-
-					arcan_bench_register_cost(cost);
-					arcan_bench_register_frame();
-					if (framepulse)
-						framepulse = arcan_lua_callvoidfun(luactx, "frame_pulse", false);
-
-					lastflip += delta;
-				}
-			}
-		}
-
-		arcan_audio_refresh();
+		float frag = arcan_event_process(evctx, on_clock_pulse);
+		platform_video_synch(settings.tick_count, frag, preframe, postframe);
 	}
 
-	arcan_lua_callvoidfun(luactx, "shutdown", false);
+	arcan_lua_callvoidfun(settings.lua, "shutdown", false);
 #ifdef ARCAN_LED
 	arcan_led_shutdown();
 #endif

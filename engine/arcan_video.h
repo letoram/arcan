@@ -331,7 +331,7 @@ void arcan_video_restore_external();
  * for transformation chains to get smoother animation even when running
  * with a slow logic clock.
  */
-unsigned arcan_video_refresh(float fragment, bool synch);
+unsigned arcan_video_refresh(float fragment);
 
 /*
  * Specify if the 3D pipeline should be processed and if so,

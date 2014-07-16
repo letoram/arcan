@@ -63,6 +63,11 @@ struct {
 	XVisualInfo* vi;
 } x11;
 
+static char* x11_synchopts[] = {
+	"default", "driver- specific GLX swap buffers",
+	NULL
+};
+
 static bool setup_xwnd(int w, int h, bool fullscreen)
 {
 	x11.xdisp = XOpenDisplay(NULL);
@@ -104,20 +109,6 @@ static bool setup_xwnd(int w, int h, bool fullscreen)
 	}
 
 	return true;
-}
-
-void PLATFORM_SYMBOL(_video_bufferswap) ()
-{
-/* should be moved into its own
- * platform module (ofc.) here as a quickhack. */
-	while (XPending(x11.xdisp)){
-		XEvent xev;
-		XNextEvent(x11.xdisp, &xev);
-		if (xev.type == KeyPress)
-						exit(1);
-	}
-
-	glXSwapBuffers(x11.xdisp, x11.xwnd);
 }
 
 #ifdef WITH_OFFSCREEN
@@ -180,11 +171,9 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 	uint8_t bpp, bool fs, bool frames, const char* caption)
 {
-
-#ifdef WITH_HEADLESS
+#if defined(WITH_HEADLESS) || defined(WITH_HEADLESS_MAIN)
 	x11.xdisp = XOpenDisplay(NULL);
 	x11.xwnd = DefaultRootWindow(x11.xdisp);
-
 #else
 	if (!setup_xwnd(w, h, fs)){
 		arcan_warning("(x11) Couldn't setup window\n");
@@ -238,6 +227,37 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 	return true;
 }
 #endif
+
+const char** PLATFORM_SYMBOL(_video_synchopts)()
+{
+	return (const char**) x11_synchopts;
+}
+
+void PLATFORM_SYMBOL(_video_setsynch)(const char* arg)
+{
+	arcan_warning("unhandled synchronization strategy (%s) ignored.\n", arg);
+}
+
+void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
+	video_synchevent pre, video_synchevent post)
+{
+	if (pre)
+		pre();
+
+	arcan_bench_register_cost( arcan_video_refresh(fract) );
+/*
+	while (XPending(x11.xdisp)){
+		XEvent xev;
+		XNextEvent(x11.xdisp, &xev);
+		if (xev.type == KeyPress)
+						exit(1);
+	}
+*/
+
+	glXSwapBuffers(x11.xdisp, x11.xwnd);
+	if (post)
+		post();
+}
 
 void PLATFORM_SYMBOL(_video_prepare_external) () {}
 void PLATFORM_SYMBOL(_video_restore_external) () {}
