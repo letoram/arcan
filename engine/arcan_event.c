@@ -273,7 +273,7 @@ int64_t arcan_frametime()
 /* the main usage case is simply to alternate between process and poll
  * after a scene has been setup */
 extern void platform_event_process(arcan_evctx* ctx);
-float arcan_event_process(arcan_evctx* ctx, unsigned* dtick)
+float arcan_event_process(arcan_evctx* ctx, arcan_tick_cb cb)
 {
 	static const int rebase_timer_threshold = ARCAN_TIMER_TICK * 1000;
 
@@ -303,8 +303,10 @@ float arcan_event_process(arcan_evctx* ctx, unsigned* dtick)
 		arcan_event_enqueue(ctx, &newevent);
 	}
 
-	*dtick = nticks;
+	cb(nticks);
+
 	platform_event_process(ctx);
+	arcan_bench_register_tick(nticks);
 
 	return fragment;
 }

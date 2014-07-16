@@ -29,18 +29,11 @@ typedef long long arcan_vobj_id;
 typedef int arcan_aobj_id;
 
 long long int arcan_timemillis();
+
 void arcan_timesleep(unsigned long);
 file_handle arcan_fetchhandle(int insock);
 bool arcan_pushhandle(file_handle in, int channel);
 
 bool arcan_isdir(const char* path);
 bool arcan_isfile(const char* path);
-
-/*void platform_video_bufferswap();
-bool platform_video_init(uint16_t w, uint16_t h, uint8_t bpp, bool fs,
-	bool frames);
-void platform_video_timing(float* vsync, float* stddev, float* variance);
-void platform_video_minimize();
-long long int arcan_timemillis();
-*/
 #endif

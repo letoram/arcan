@@ -97,7 +97,6 @@ struct arcan_video_display arcan_video_display = {
 	.scalemode = ARCAN_VIMAGE_NOPOW2,
 	.filtermode = ARCAN_VFILTER_BILINEAR,
 	.suspended = false,
-	.vsync = true,
 	.msasamples = 4,
 	.c_ticks = 1,
 	.default_vitemlim = 1024,
@@ -591,6 +590,7 @@ void arcan_video_recoverexternal(int* saved,
 
 	struct {
 		struct storage_info_t* gl_store;
+		char* tracetag;
 		arcan_vfunc_cb ffunc;
 		vfunc_state state;
 		int origw, origh;
@@ -629,6 +629,7 @@ void arcan_video_recoverexternal(int* saved,
 					alim[s_ofs].origw = cobj->origw;
 					alim[s_ofs].origh = cobj->origh;
 					alim[s_ofs].zv = i + 1;
+					alim[s_ofs].tracetag = cobj->tracetag ? strdup(cobj->tracetag) : NULL;
 
 					arcan_frameserver* fsrv = cobj->feed.state.ptr;
 					audbuf[s_ofs] = fsrv->aid;
@@ -667,6 +668,7 @@ clense:
 		vobj->origh = alim[i].origh;
 		vobj->order = alim[i].zv;
 		vobj->blendmode = BLEND_NORMAL;
+		vobj->tracetag = alim[i].tracetag;
 
 		arcan_video_attachobject(did);
 
@@ -691,7 +693,7 @@ unsigned arcan_video_extpopcontext(arcan_vobj_id* dst)
 	size_t dsz;
 
 	FLAG_DIRTY();
-	arcan_video_refresh(0.0, true);
+	arcan_video_refresh(0.0);
 	bool ss = arcan_video_screenshot((void*)&dstbuf, &dsz) == ARCAN_OK;
 	int rv = arcan_video_popcontext();
 
@@ -724,7 +726,7 @@ signed arcan_video_extpushcontext(arcan_vobj_id* dst)
 	size_t dsz;
 
 	FLAG_DIRTY();
-	arcan_video_refresh(0.0, true);
+	arcan_video_refresh(0.0);
 	bool ss = arcan_video_screenshot(&dstbuf, &dsz) == ARCAN_OK;
 	int rv = arcan_video_pushcontext();
 
@@ -1515,12 +1517,6 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
  */
 	platform_video_timing(&arcan_video_display.vsync_timing,
 		&arcan_video_display.vsync_stddev, &arcan_video_display.vsync_variance);
-
-	arcan_warning("arcan_video_init(), timing estimate"
-	"	(mean: %f, deviation: %f, variance: %f)\n",
-		arcan_video_display.vsync_timing,
-		arcan_video_display.vsync_stddev,
-		arcan_video_display.vsync_variance);
 
 	arcan_video_display.conservative = conservative;
 	arcan_video_display.defaultshdr  = arcan_shader_build("DEFAULT",
@@ -4785,16 +4781,13 @@ void arcan_video_refresh_GL(float lerp)
 	arcan_video_display.dirty = 0;
 }
 
-unsigned arcan_video_refresh(float tofs, bool synch)
+unsigned arcan_video_refresh(float tofs)
 {
 /* for less interactive / latency sensitive applications the delta > ..
  * with vsync on, the delta > .. could be removed */
 	long long int pre = arcan_timemillis();
 		arcan_video_refresh_GL(tofs);
 	long long int post = arcan_timemillis();
-
-	if (synch)
-		platform_video_bufferswap();
 
 	return post - pre;
 }

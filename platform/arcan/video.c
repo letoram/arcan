@@ -17,11 +17,24 @@
 #include HEADLESS_PLATFORM
 
 /* 2. interpose and map to shm */
-#include <arcan_shmif.h>
-#include <arcan_math.h>
-#include <arcan_general.h>
-#include <arcan_video.h>
-#include <arcan_videoint.h>
+#include "arcan_shmif.h"
+#include "arcan_math.h"
+#include "arcan_general.h"
+#include "arcan_video.h"
+#include "arcan_videoint.h"
+
+static char* synchopts[] = {
+	"parent", "display server controls synchronisation",
+	"pre-wake", "use the cost of previous frames as estimates, synch as late as possible.",
+	"adaptive", "skip a frame if it is likely that we'll overshoot a synch point.",
+	NULL
+};
+
+static enum {
+	PARENT = 0,
+	PREWAKE,
+	ADAPTIVE
+} syncopt;
 
 static struct arcan_shmif_cont shms;
 
@@ -100,7 +113,27 @@ void platform_video_timing(float* os, float* std, float* ov)
 	lwa_video_timing(os, std, ov);
 }
 
-void platform_video_bufferswap()
+void platform_video_setsynch(const char* arg)
+{
+	int ind = 0;
+
+	while(synchopts[ind]){
+		if (strcmp(synchopts[ind], arg) == 0){
+			syncopt = (ind > 0 ? ind / 2 : ind);
+			break;
+		}
+
+		ind += 2;
+	}
+}
+
+const char** platform_video_synchopts()
+{
+	return (const char**) synchopts;
+}
+
+void platform_video_synch(uint64_t tick_count, float fract,
+	video_synchevent pre, video_synchevent post)
 {
 /*
  * now our color attachment contains the final picture,
@@ -110,12 +143,17 @@ void platform_video_bufferswap()
 	glReadPixels(0, 0, shms.addr->w, shms.addr->h,
 		GL_RGBA, GL_UNSIGNED_BYTE, shms.vidp);
 
+	if (pre)
+		pre();
 /*
  * we should implement a mapping for TARGET_COMMAND_FRAMESKIP or so
  * and use to set virtual display timings. ioev[0] => mode, [1] => prewake,
  * [2] => preaudio, 3/4 for desired jitter (testing / simulation)
  */
 	arcan_shmif_signal(&shms, SHMIF_SIGVID);
+
+	if (post)
+		post();
 }
 
 /*

@@ -7466,7 +7466,6 @@ local restbl = {\n\
 \t\twidth = %d,\n\
 \t\theight = %d,\n\
 \t\tconservative = %d,\n\
-\t\tvsync = %d,\n\
 \t\tmsasamples = %d,\n\
 \t\tticks = %lld,\n\
 \t\tdefault_vitemlim = %d,\n\
@@ -7477,7 +7476,7 @@ local restbl = {\n\
 \tvcontexts = {};\
 };\n\
 ", tag ? tag : "",
-	disp->width, disp->height, disp->conservative ? 1 : 0, disp->vsync ? 1 : 0,
+	disp->width, disp->height, disp->conservative ? 1 : 0,
 	(int)disp->msasamples, (long long int)disp->c_ticks,
 	(int)disp->default_vitemlim,
 	(int)disp->imageproc, (int)disp->scalemode, (int)disp->filtermode);

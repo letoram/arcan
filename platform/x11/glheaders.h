@@ -15,13 +15,6 @@
 #include <glew.h>
 #include <glxew.h>
 
-bool platform_video_init(uint16_t w, uint16_t h,
-	uint8_t bpp, bool fs, bool frames, const char* caption);
-
-void platform_video_bufferswap();
-void platform_video_shutdown();
-void platform_video_timing(float* vsync, float* stddev, float* variance);
-void platform_video_minimize();
-long long int arcan_timemillis();
+#include "../video_platform.h"
 
 #endif

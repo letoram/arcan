@@ -189,7 +189,7 @@ void* arcan_alloc_mem(size_t nb,
  */
 	int madvflag = 0;
 
-		switch(type){
+	switch(type){
 	case ARCAN_MEM_VBUFFER:
 	case ARCAN_MEM_ABUFFER:
 	case ARCAN_MEM_MODELDATA:
@@ -204,12 +204,12 @@ void* arcan_alloc_mem(size_t nb,
 		madvflag |= NO_DUMPFLAG;
 
 	if (madvflag)
-		madvise(rptr, total, madvflag); 
+		madvise(rptr, total, madvflag);
 
 	if (hint & ARCAN_MEM_BZERO){
 		if (type == ARCAN_MEM_VBUFFER){
 			av_pixel* buf = (av_pixel*) rptr;
-			for (int i = 0; i < nb; i += GL_PIXEL_BPP)
+			for (size_t i = 0; i < nb; i += GL_PIXEL_BPP)
 				*buf++ = RGBA(0, 0, 0, 255);
 		}
 		else
@@ -220,8 +220,7 @@ void* arcan_alloc_mem(size_t nb,
 }
 
 /*
- * Allocate memory intended for read-only or
- * exec use (JIT, ...)
+ * Allocate memory intended for read-only or exec use (JIT, ...)
  */
 void* arcan_alloc_fillmem(const void* data,
 	size_t ds,
@@ -235,6 +234,7 @@ void* arcan_alloc_fillmem(const void* data,
 		return NULL;
 
 	memcpy(buf, data, ds);
+
 	return buf;
 }
 
@@ -245,6 +245,8 @@ void arcan_mem_free(void* inptr)
  * then cleanup. VBUFFER for instance doesn't
  * automatically shrink, but rather reset and flag
  * as unused */
+
+
 	free(inptr);
 }
 

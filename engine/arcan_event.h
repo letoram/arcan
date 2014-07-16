@@ -28,7 +28,8 @@ struct arcan_evctx;
  * out : (NOT NULL) storage- container for number of ticks that has passed
  *                   since the last call to arcan_process
  * ret : range [0 > n < 1] how much time has passed towards the next tick */
-float arcan_event_process(struct arcan_evctx*, unsigned* nticks);
+typedef void (*arcan_tick_cb)(int count);
+float arcan_event_process(struct arcan_evctx*, arcan_tick_cb);
 
 /* force a keyboard repeat- rate */
 void arcan_event_keyrepeat(struct arcan_evctx*, unsigned rate);

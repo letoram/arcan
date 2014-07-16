@@ -526,6 +526,15 @@ void arcan_state_dump(const char* prefix, const char* key, const char* src);
 
 /*
  * implemented in <platform>/mem.c
+ * the distance (in time) between ticks determine how long buffers with
+ * the flag ARCAN_MEM_TEMPORARY are allowed to live. Thus, whenever a
+ * tick is processed, no such buffers should be allocated and it is considered
+ * a terminal state condition if one is found.
+ */
+void arcan_mem_tick();
+
+/*
+ * implemented in <platform>/mem.c
  * aggregates a mem_alloc and a mem_copy from a source buffer.
  */
 void* arcan_alloc_fillmem(const void*,

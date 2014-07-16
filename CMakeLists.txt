@@ -78,7 +78,7 @@ message("   -DENABLE_SIMD=[On|Off] : Enable SIMD optimized instructions")
 message("   -DENABLE_SIMD_ALIGNED=[Off|On] : |--> SIMD support assumes 16-byte alignment")
 message("")
 message("audio/video/input support:")
-message("   -DVIDEO_PLATFORM=[sdl|x11|egl] :  Set default video platform")
+message("   -DVIDEO_PLATFORM=[sdl|x11|x11-headless|egl] :  Set default video platform")
 message("")
 message("optimization / core features:")
 message("   -DENABLE_LED=[On|Off] : Build with LED controller support in core")
@@ -109,7 +109,9 @@ set (FRAMESERVER_MODESTRING "")
 # For more fine-grained control, we should switch to a white-list approach where
 # : is used as a table:member delimiter to keep certain functions.
 #
+if (NOT LUA_DROPSTR)
 set (LUA_DROPSTR "io os package rawequal rawset rawget setfenv coroutine module require")
+endif()
 
 if (NOT GIT_MIRROR)
 	SET(GIT_MIRROR "https://www.github.com/mirror")
@@ -174,7 +176,11 @@ if (CMAKE_BUILD_TYPE STREQUAL "DebugTrace")
 endif (CMAKE_BUILD_TYPE STREQUAL "DebugTrace")
 
 if (ENABLE_ASAN)
-	set(CMAKE_C_FLAGS "-fsanitize=address ${CMAKE_C_FLAGS}")
+	if (ASAN_TYPE)
+		set(CMAKE_C_FLAGS "-fsanitize=${ASAN_TYPE} ${CMAKE_C_FLAGS}")
+	else()
+		set(CMAKE_C_FLAGS "-fsanitize=address ${CMAKE_C_FLAGS}")
+	endif()
 endif (ENABLE_ASAN)
 
 # --- Step 1, Dependencies / find package flags
@@ -222,8 +228,13 @@ if (ENABLE_LIBRETRO3D AND NOT ENABLE_LWA)
 	set(ENABLE_LIBRETRO3D OFF)
 endif()
 
-if (VIDEO_PLATFORM STREQUAL "x11")
+if (VIDEO_PLATFORM STREQUAL "x11" OR VIDEO_PLATFORM STREQUAL "x11-headless")
 	set(INPUT_PLATFORM "stub")
+
+	if (VIDEO_PLATFORM STREQUAL "x11-headless")
+		set(VIDEO_PLATFORM "x11")
+		add_definitions(-DWITH_HEADLESS_MAIN)
+	endif()
 
 	FIND_PACKAGE(OpenGL REQUIRED)
 	FIND_PACKAGE(GLEW REQUIRED)
@@ -381,6 +392,7 @@ set (
  shmif/arcan_shmif_control.c
  shmif/arcan_shmif_control.h
  shmif/arcan_shmif_event.h
+ platform/video_platform.h
 )
 
 set (SHMIF_SOURCES
@@ -569,7 +581,7 @@ if (${ENABLE_VIDENC})
 			message("   |--> VNC Server libraries found, enabling vnc support in encoder.")
 			set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}encode-vnc ")
 			list(APPEND INCLUDE_DIRS ${LIBVNC_INCLUDE_DIRS})
-			set_property(SOURCE frameserver/encode.c PROPERTY COMPILE_DEFINITIONS HAVE_VNCSERVER)
+			set_property(SOURCE frameserver/encode.c APPEND PROPERTY COMPILE_DEFINITIONS HAVE_VNCSERVER)
 		 	list(APPEND FSRV_ENCODE_LIBRARIES ${LIBVNC_LIBRARIES})
 		else()
 			message("   |--> VNC Server libraries not found, disabling vnc support.")
@@ -590,11 +602,11 @@ endif (SQLITE_AMALGAMATE)
 
 if (LUA51_JIT)
 	message("--> Enabling JIT- mode for Lua.")
-	set_property(SOURCE engine/arcan_lua.c PROPERTY
+	set_property(SOURCE engine/arcan_lua.c APPEND PROPERTY
 					COMPILE_DEFINITIONS LUA51_JIT)
 endif (LUA51_JIT)
 
-set_property(SOURCE engine/arcan_lua.c engine/arcan_main.c PROPERTY
+set_property(SOURCE engine/arcan_lua.c engine/arcan_main.c APPEND PROPERTY
 	COMPILE_DEFINITIONS FRAMESERVER_MODESTRING=\"${FRAMESERVER_MODESTRING}\"
 	LUA_DROPSTR=\"${LUA_DROPSTR}\")
 
@@ -704,6 +716,12 @@ install(DIRECTORY ${CMAKE_SOURCE_DIR}/appl/
 	FILE_PERMISSIONS ${SHARED_PERMISSIONS}
 	PATTERN ".gitignore" EXCLUDE)
 
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/examples/
+	DESTINATION ${APPL_DST}
+	DIRECTORY_PERMISSIONS ${SHARED_PERMISSIONS_DIR}
+	FILE_PERMISSIONS ${SHARED_PERMISSIONS}
+	PATTERN ".gitignore" EXCLUDE)
+
 if (TEST_DST)
 	install(DIRECTORY ${CMAKE_SOURCE_DIR}/tests/
 		DESTINATION ${TEST_DST}
@@ -721,8 +739,8 @@ install(DIRECTORY ${CMAKE_SOURCE_DIR}/resources/
 INCLUDE(InstallRequiredSystemLibraries)
 set(CPACK_SOURCE_IGNORE_FILES "/\\\\..*$;~$;${CPACK_SOURCE_IGNORE_FILES}")
 set(CPACK_PACKAGE_NAME "Arcan")
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Scriptable frontend for games and emulators")
-set(CPACK_PACKAGE_DESCRIPTION "ARCAN is a fully scriptable front-end for launching and managing emulators, games and other full-screen applications in a visually appealing and embeddable way.")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Lua scriptable 2D/3D multimedia framework.")
+set(CPACK_PACKAGE_DESCRIPTION "Arcan is a fast, portable and lightweight Lua scriptable multimedia framework for developing games, visualization tools, monitoring systems and desktop applications. Among its many features, it can act as a display server, compositor and app- engine with support for video encoding, decoding and streaming, networking and remoting protocols e.g. VNC, hijacking and manipulating legacy application for in-process probing, and more.")
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/distr/LICENSE.txt")
 
 set(CPACK_PACKAGE_VERSION_MAJOR ${MAJOR_VERSION} )
