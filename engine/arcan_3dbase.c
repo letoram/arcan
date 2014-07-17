@@ -116,50 +116,6 @@ typedef struct {
 	arcan_vobject* parent;
 } arcan_3dmodel;
 
-/*
-static void build_quadbox(float n, float p, float** verts,
-	float** txcos, unsigned* nverts)
-{
-	float lut[6][12] = {
-		{n,p,p,   n,p,n,   p,p,n,   p,p,p},
-		{n,n,n,   n,n,p,   p,n,p,   p,n,n},
-		{n,p,p,   n,n,p,   n,n,n,   n,p,n},
-		{p,p,n,   p,n,n,   p,n,p,   p,p,p},
-		{n,p,n,   n,n,n,   p,n,n,   p,p,n},
-		{p,p,p,   p,n,p,   n,n,p,   n,p,p}
-	};
-
-	*nverts = 24;
-	*verts = malloc(sizeof(float) * (*nverts * 3));
-	*txcos = malloc(sizeof(float) * (*nverts * 2));
-
-	unsigned ofs = 0, tofs = 0;
-	for (unsigned i = 0; i < 6; i++){
-		*txcos[tofs++] = 1.0f;
-		*txcos[tofs++] = 0.0;
-		*txcos[tofs++] = 1.0f;
-		*txcos[tofs++] = 1.0;
-		*txcos[tofs++] = 0.0f;
-		*txcos[tofs++] = 1.0;
-		*txcos[tofs++] = 0.0f;
-		*txcos[tofs++] = 0.0;
-
-	 	*verts[ofs++] = lut[i][0];
-		*verts[ofs++] = lut[i][1];
-		*verts[ofs++] = lut[i][2];
-	 	*verts[ofs++] = lut[i][3];
-		*verts[ofs++] = lut[i][4];
-		*verts[ofs++] = lut[i][5];
-		*verts[ofs++] = lut[i][6];
-	  *verts[ofs++] = lut[i][7];
-		*verts[ofs++] = lut[i][8];
-		*verts[ofs++] = lut[i][9];
-		*verts[ofs++] = lut[i][10];
-	 	*verts[ofs++] = lut[i][11];
-	}
-}
-*/
-
 static void build_hplane(point min, point max, point step,
 						 float** verts, unsigned** indices, float** txcos,
 						 unsigned* nverts, unsigned* nindices)
@@ -579,28 +535,71 @@ arcan_errc arcan_3d_swizzlemodel(arcan_vobj_id dst)
 	return rv;
 }
 
-arcan_vobj_id arcan_3d_buildbox(point min, point max, unsigned nmaps)
-{
-	vfunc_state state = {.tag = ARCAN_TAG_3DOBJ};
-	arcan_vobj_id rv = ARCAN_EID;
-	img_cons empty = {0};
-
-	rv = arcan_video_addfobject(ffunc_3d, state, empty, 1);
-	arcan_fatal("arcan_3d_buildbox() incomplete \n");
-
-	return rv;
-}
-
-arcan_vobj_id arcan_3d_buildcube(float mpx, float mpy,
-	float mpz, float base, unsigned nmaps)
+arcan_vobj_id arcan_3d_buildcube(float d, unsigned nmaps)
 {
 	vfunc_state state = {.tag = ARCAN_TAG_3DOBJ};
 	img_cons empty = {0};
 	arcan_vobj_id rv = arcan_video_addfobject(ffunc_3d, state, empty, 1);
+
 	if (rv == ARCAN_EID)
 		return rv;
 
-	arcan_fatal("arcan_3d_buildcube() incomplete \n");
+/* wait with setting the full model until we know we have a fobject */
+	arcan_3dmodel* newmodel = arcan_alloc_mem(sizeof(arcan_3dmodel),
+		ARCAN_MEM_VTAG, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
+	state.ptr = (void*) newmodel;
+	arcan_video_alterfeed(rv, ffunc_3d, state);
+	pthread_mutex_init(&newmodel->lock, NULL);
+	arcan_video_allocframes(rv, 1, ARCAN_FRAMESET_SPLIT);
+	newmodel->geometry = arcan_alloc_mem(sizeof(struct geometry), ARCAN_MEM_VTAG,
+		ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
+
+	newmodel->geometry->nmaps = nmaps;
+	newmodel->geometry->indexformat = GL_UNSIGNED_SHORT;
+	newmodel->geometry->complete = true;
+	newmodel->geometry->ntris = 2 * 6;
+	newmodel->geometry->nindices = 12 * 3;
+
+	float verts[] = {
+		-d, -d,  d,  d, -d,  d,
+		 d,  d,  d, -d,  d,  d,
+		-d, -d, -d, -d,  d, -d,
+		-d,  d, -d, -d,  d,  d,
+		 d,  d,  d,  d,  d, -d,
+		-d, -d, -d,  d, -d, -d,
+		 d, -d,  d, -d, -d,  d,
+		 d, -d, -d,  d,  d, -d,
+		 d,  d, -d,  d,  d,  d,
+     d,  d,  d,  d, -d,  d,
+    -d, -d, -d, -d, -d,  d,
+		-d,  d,  d, -d,  d, -d
+	};
+	newmodel->geometry->verts = arcan_alloc_fillmem(verts, sizeof(verts),
+		ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_SIMD);
+
+	short indices[] = {
+		 0,  1,  2,  0,  2,  3,
+		 4,  5,  6,  4,  6,  7,
+		 8,  9,  10, 8, 10, 11,
+		12, 13, 14, 12, 14, 15,
+		16, 17, 18, 16, 18, 19,
+		20, 21, 22, 20, 22, 23
+	};
+	newmodel->geometry->indices = arcan_alloc_fillmem(indices, sizeof(indices),
+		ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_SIMD);
+
+	float txcos[] = {
+		0, 0, 1, 0, 1, 1, 0, 1,
+		0, 0, 1, 0, 1, 0, 0, 1,
+		0, 0, 1, 0, 1, 1, 0, 1,
+		0, 0, 1, 0, 1, 1, 0, 0,
+		0, 0, 1, 0, 1, 1, 0, 1,
+		0, 0, 1, 0, 1, 1, 0, 1
+	};
+	newmodel->geometry->txcos = arcan_alloc_fillmem(txcos, sizeof(txcos),
+		ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_SIMD);
+	newmodel->geometry->complete = true;
+	newmodel->flags.complete = true;
 
 	return rv;
 }
@@ -615,38 +614,40 @@ arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx,float maxz,
 
 	arcan_3dmodel* newmodel = NULL;
 
-	if (rv != ARCAN_EID){
-		point minp = {.x = minx, .y = y, .z = minz};
-		point maxp = {.x = maxx, .y = y, .z = maxz};
-		point step = {.x = wdens, .y = 0, .z = ddens};
+	if (rv == ARCAN_EID)
+		return rv;
 
-		newmodel = arcan_alloc_mem(sizeof(arcan_3dmodel), ARCAN_MEM_VTAG,
-			ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
+	point minp = {.x = minx, .y = y, .z = minz};
+	point maxp = {.x = maxx, .y = y, .z = maxz};
+	point step = {.x = wdens, .y = 0, .z = ddens};
 
-		pthread_mutex_init(&newmodel->lock, NULL);
+	newmodel = arcan_alloc_mem(sizeof(arcan_3dmodel), ARCAN_MEM_VTAG,
+		ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
 
-		state.ptr = (void*) newmodel;
-		arcan_video_alterfeed(rv, ffunc_3d, state);
+	pthread_mutex_init(&newmodel->lock, NULL);
 
-		struct geometry** nextslot = &(newmodel->geometry);
-		while (*nextslot)
-			nextslot = &((*nextslot)->next);
+	state.ptr = (void*) newmodel;
+	arcan_video_alterfeed(rv, ffunc_3d, state);
 
-		*nextslot = arcan_alloc_mem(sizeof(struct geometry), ARCAN_MEM_VTAG,
-			ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
+	struct geometry** nextslot = &(newmodel->geometry);
+	while (*nextslot)
+		nextslot = &((*nextslot)->next);
 
-		(*nextslot)->nmaps = nmaps;
-		newmodel->geometry = *nextslot;
-		build_hplane(minp, maxp, step, &newmodel->geometry->verts,
-			(unsigned int**)&newmodel->geometry->indices,
-					 &newmodel->geometry->txcos, &newmodel->geometry->nverts,
-					 &newmodel->geometry->nindices);
+	*nextslot = arcan_alloc_mem(sizeof(struct geometry), ARCAN_MEM_VTAG,
+		ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
 
-		newmodel->geometry->ntris = newmodel->geometry->nindices / 3;
-		arcan_video_allocframes(rv, 1, ARCAN_FRAMESET_SPLIT);
-		newmodel->geometry->indexformat = GL_UNSIGNED_INT;
-		newmodel->geometry->complete = true;
-	}
+	(*nextslot)->nmaps = nmaps;
+	newmodel->geometry = *nextslot;
+	build_hplane(minp, maxp, step, &newmodel->geometry->verts,
+		(unsigned int**)&newmodel->geometry->indices,
+		&newmodel->geometry->txcos, &newmodel->geometry->nverts,
+		&newmodel->geometry->nindices);
+
+	newmodel->geometry->ntris = newmodel->geometry->nindices / 3;
+	arcan_video_allocframes(rv, 1, ARCAN_FRAMESET_SPLIT);
+	newmodel->geometry->indexformat = GL_UNSIGNED_INT;
+	newmodel->geometry->complete = true;
+	newmodel->flags.complete = true;
 
 	return rv;
 }
