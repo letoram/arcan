@@ -24,6 +24,19 @@ connection_path = "arcan";
 meta_key = "MENU";
 
 --
+-- when adopting from a crashed script, we only accept the following:
+--
+accepted_types = {};
+accepted_types["lightweight arcan"] = true;
+accepted_types["multimedia"] = true;
+accepted_types["shell"] = true;
+accepted_types["remoting"] = true;
+accepted_types["game"] = true;
+accepted_types["application"] = true;
+accepted_types["browser"] = true;
+accepted_types["encoder"] = true;
+
+--
 -- inigo quilez (iq, 2013 @shadertoy.com, CC-BY-NC 3.0)
 -- simple animated background shader to make the default less boring
 --
@@ -123,9 +136,11 @@ function miniwm()
 -- create the animated background
 	background = null_surface(VRESW, VRESH, 0, 0, 0);
 	show_image(background);
+	image_tracetag(background, "background");
 	local shid = build_shader(nil, bgshader, "background");
 	shader_uniform(shid, "display", "ff", PERSIST, VRESW, VRESH);
 	image_shader(background, shid);
+	freeze_image(background);
 
 -- setup input handler for META + KEY WM specific actions
 	dispatchtbl["TAB"] = {cycle_active, "Cycle Active Program"};
@@ -154,7 +169,11 @@ function miniwm_clock_pulse()
 end
 
 function miniwm_adopt(vid, wnd_type, wnd_title)
-	print("adopt", wnd_type, wnd_title);
+	if (accepted_types[wnd_type] == nil) then
+		delete_image(vid);
+		return;
+	end
+
 	register_window(vid, string.gsub(wnd_title, "\\", "\\\\") .." (adopted)");
 	target_updatehandler(vid, default_cb);
 end
@@ -334,6 +353,13 @@ function global_popup()
 		fptr[windows[i].name] = function()
 			activate_window(windows[i]);
 		end;
+	end
+
+	table.insert(list, "Dump State");
+	fptr["Dump State"] = function()
+		zap_resource("dump.lua");
+		system_snapshot("dump.lua");
+		warning("saved state to (dump.lua)");
 	end
 
 	table.insert(list, "Quit");
