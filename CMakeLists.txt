@@ -246,8 +246,13 @@ if (VIDEO_PLATFORM STREQUAL "x11" OR VIDEO_PLATFORM STREQUAL "x11-headless")
 	LIST(APPEND LWA_LIBRARIES ${OPENGL_gl_LIBRARY} ${GLEW_LIBRARY} ${X11_LIBRARIES})
 
 	if (ENABLE_LWA)
-		message("Enabling LWA (Arcan-in-Arcan) build using X11 HEADLESS")
-		SET(LWA_HEADLESS "x11/video.c")
+		if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+			message("Enabling LWA (Arcan-in-Arcan) build using Darwin HEADLESS")
+			SET(LWA_HEADLESS "darwin/video.c")
+		else()
+			message("Enabling LWA (Arcan-in-Arcan) build using X11 HEADLESS")
+			SET(LWA_HEADLESS "x11/video.c")
+		endif()
 	endif()
 
 elseif(VIDEO_PLATFORM STREQUAL "egl")
@@ -282,7 +287,13 @@ elseif (VIDEO_PLATFORM STREQUAL "sdl")
 		FIND_PACKAGE(X11 REQUIRED)
 		LIST(APPEND INCLUDE_DIRS ${X11_INCLUDE_DIRS})
 		LIST(APPEND LWA_LIBRARIES ${GLEW_LIBRARY} ${X11_LIBRARIES} ${OPENGL_LIBRARIES})
-		SET(LWA_HEADLESS "x11/video.c")
+		if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+			message("Enabling LWA (Arcan-in-Arcan) build using Darwin HEADLESS")
+			SET(LWA_HEADLESS "darwin/video.c")
+		else()
+			message("Enabling LWA (Arcan-in-Arcan) build using X11 HEADLESS")
+			SET(LWA_HEADLESS "x11/video.c")
+		endif()
 	endif()
 
 else()
@@ -611,6 +622,14 @@ set_property(SOURCE engine/arcan_lua.c engine/arcan_main.c APPEND PROPERTY
 	COMPILE_DEFINITIONS FRAMESERVER_MODESTRING=\"${FRAMESERVER_MODESTRING}\"
 	LUA_DROPSTR=\"${LUA_DROPSTR}\")
 
+set (SHMIF_SOURCES
+  shmif/arcan_shmif.h
+	shmif/arcan_shmif_interop.h
+	shmif/arcan_shmif_control.c
+	shmif/arcan_shmif_control.h
+	shmif/arcan_shmif_interop.c
+	shmif/arcan_shmif_event.h
+)
 
 include_directories(${INCLUDE_DIRS})
 
