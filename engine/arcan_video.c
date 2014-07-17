@@ -4952,7 +4952,7 @@ static bool obj_visible(arcan_vobject* vobj)
 unsigned int arcan_video_rpick(arcan_vobj_id* dst,
 	unsigned count, int x, int y)
 {
-	if (count == 0)
+	if (count == 0 || !current_context->stdoutp.first)
 		return 0;
 
 /* skip to last item, then scan backwards */
