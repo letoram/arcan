@@ -104,7 +104,7 @@ bool arcan_verifyload_appl(const char* appl_id, const char** errc)
 
 /* if the user specifies an absolute or relative path,
  * we override the default namespace setting */
-	if (appl_id[0] == '/' || appl_id[0] == '.'){
+	if (appl_id[0] == '/' || appl_id[0] == '.' || strchr(appl_id, '/')){
 		char* work = strdup(appl_id);
 		char* dir = strdup( dirname(work) );
 		free(work);
@@ -125,7 +125,7 @@ bool arcan_verifyload_appl(const char* appl_id, const char** errc)
 
 	for (int i = 0; i < app_len; i++){
 		if (!isalpha(appl_id[i]) && appl_id[i] != '_'){
-			arcan_warning("switch app, invalid character in %s\n", appl_id);
+			*errc = "invalid character in appl_id (only aZ_ allowed)\n";
 			return false;
 		}
 	}
