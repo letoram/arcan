@@ -3036,18 +3036,12 @@ static int buildbox(lua_State* ctx)
 {
 	LUA_TRACE("build_3dbox");
 
-/* FIXME: incomplete
- point minp, maxp;
+	float depth = luaL_checknumber(ctx, 1);
+	unsigned nmaps = luaL_optnumber(ctx, 2, 1);
 
-	minp.x = luaL_checknumber(ctx, 1);
-	minp.y = luaL_checknumber(ctx, 2);
-	minp.z = luaL_checknumber(ctx, 3);
-	maxp.x = luaL_checknumber(ctx, 4);
-	maxp.y = luaL_checknumber(ctx, 5);
-	maxp.z = luaL_checknumber(ctx, 6);
-*/
+	lua_pushvid(ctx, arcan_3d_buildcube(depth, nmaps));
 
-	return 0;
+	return 1;
 }
 
 static int swizzlemodel(lua_State* ctx)

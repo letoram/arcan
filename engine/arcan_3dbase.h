@@ -31,7 +31,7 @@ arcan_errc arcan_3d_camtag(arcan_vobj_id parent,
 
 arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx,
 	float maxz, float y, float wdens, float ddens, unsigned nmaps);
-arcan_vobj_id arcan_3d_buildbox(point min, point max, unsigned nmaps);
+arcan_vobj_id arcan_3d_buildcube(float depth, unsigned nmaps);
 
 arcan_errc arcan_3d_swizzlemodel(arcan_vobj_id model);
 
