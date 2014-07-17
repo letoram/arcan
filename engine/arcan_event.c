@@ -238,10 +238,12 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 
 			switch(inev.kind){
 				case EVENT_EXTERNAL_FLUSHAUD:
-					tgt = arcan_video_feedstate(source)->ptr;
-					if (tgt)
-						arcan_frameserver_flush(tgt);
-					continue;
+					if (arcan_video_feedstate(source)){
+						tgt = arcan_video_feedstate(source)->ptr;
+						if (tgt)
+							arcan_frameserver_flush(tgt);
+						continue;
+					}
 				break;
 
 				default:

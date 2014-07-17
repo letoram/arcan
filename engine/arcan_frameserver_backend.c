@@ -785,6 +785,7 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 			ctx->sz_audb  = 1024 * 64;
 			ctx->flags.socksig = false;
 			ctx->ofs_audb = 0;
+			ctx->segid = SEGID_GAME;
 			ctx->audb     = arcan_alloc_mem(ctx->sz_audb,
 				ARCAN_MEM_ABUFFER, 0, ARCAN_MEMALIGN_PAGE);
 			ctx->queue_mask = EVENT_EXTERNAL;

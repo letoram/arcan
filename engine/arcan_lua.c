@@ -1693,7 +1693,7 @@ static int syssnap(lua_State* ctx)
 	LUA_TRACE("system_snapshot");
 
 	const char* instr = luaL_checkstring(ctx, 1);
-	char* fname = findresource(instr, RESOURCE_SYS_DEBUG);
+	char* fname = findresource(instr, RESOURCE_APPL);
 
 	if (fname){
 		arcan_warning("system_statesnap(), "
@@ -1703,7 +1703,7 @@ static int syssnap(lua_State* ctx)
 		return 0;
 	}
 
-	fname = arcan_expand_resource(luaL_checkstring(ctx, 1), RESOURCE_SYS_DEBUG);
+	fname = arcan_expand_resource(luaL_checkstring(ctx, 1), RESOURCE_APPL);
 	FILE* outf = fopen(fname, "w+");
 
 	if (outf){
