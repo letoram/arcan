@@ -289,6 +289,32 @@ enum arcan_ffunc_rv arcan_frameserver_emptyframe(
 	return FFUNC_RV_NOFRAME;
 }
 
+static void check_audb(arcan_frameserver* tgt, struct arcan_shmif_page* shmpage)
+{
+/* interleave audio / video processing */
+	if (!(shmpage->aready && shmpage->abufused))
+		return;
+
+	size_t ntc = tgt->ofs_audb + shmpage->abufused > tgt->sz_audb ?
+		(tgt->sz_audb - tgt->ofs_audb) : shmpage->abufused;
+
+	if (ntc == 0){
+		static bool overflow;
+		if (!overflow){
+			arcan_warning("frameserver_videoframe_direct(), incoming buffer "
+				"overflow for: %d, resetting.\n", tgt->vid);
+			overflow = true;
+		}
+		tgt->ofs_audb = 0;
+	}
+
+	memcpy(&tgt->audb[tgt->ofs_audb], tgt->audp, ntc);
+	tgt->ofs_audb += ntc;
+	shmpage->abufused = 0;
+	shmpage->aready = false;
+	arcan_sem_post( tgt->async );
+}
+
 enum arcan_ffunc_rv arcan_frameserver_videoframe_direct(
 	enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf,
 	uint16_t width, uint16_t height, uint8_t bpp,
@@ -310,6 +336,8 @@ enum arcan_ffunc_rv arcan_frameserver_videoframe_direct(
 			arcan_frameserver_tick_control(tgt);
 			shmpage = tgt->shm.ptr;
 		}
+
+		check_audb(tgt, shmpage);
 
 		return tgt->playstate == ARCAN_PLAYING && shmpage->vready
 				&& (tgt->ofs_audb < 2 * ARCAN_ASTREAMBUF_LLIMIT);
@@ -333,27 +361,7 @@ enum arcan_ffunc_rv arcan_frameserver_videoframe_direct(
 		if (tgt->desc.callback_framestate)
 			emit_deliveredframe(tgt, shmpage->vpts, tgt->desc.framecount++);
 
-/* interleave audio / video processing */
-		if (shmpage->aready && shmpage->abufused){
-			size_t ntc = tgt->ofs_audb + shmpage->abufused > tgt->sz_audb ?
-				(tgt->sz_audb - tgt->ofs_audb) : shmpage->abufused;
-
-			if (ntc == 0){
-				static bool overflow;
-				if (!overflow){
-					arcan_warning("frameserver_videoframe_direct(), incoming buffer "
-						"overflow for: %d, resetting.\n", tgt->vid);
-					overflow = true;
-				}
-				tgt->ofs_audb = 0;
-			}
-
-			memcpy(&tgt->audb[tgt->ofs_audb], tgt->audp, ntc);
-			tgt->ofs_audb += ntc;
-			shmpage->abufused = 0;
-			shmpage->aready = false;
-			arcan_sem_post( tgt->async );
-		}
+		check_audb(tgt, shmpage);
 
 /* interactive frameserver blocks on vsemaphore only,
  * so set monitor flags and wake up */

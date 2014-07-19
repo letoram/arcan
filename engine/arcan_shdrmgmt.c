@@ -93,7 +93,6 @@ struct shader_cont {
 	char* label;
 	char (* vertex), (* fragment);
 	GLuint prg_container, obj_vertex, obj_fragment;
-
 	GLint locations[sizeof(ofstbl) / sizeof(ofstbl[0])];
 /* match attrsymtbl */
 	GLint attributes[4];
@@ -122,7 +121,6 @@ static struct {
 	char guard;
 } shdr_global = {.base = 10000, .active_prg = -1, .guard = 64};
 
-
 static bool build_shader(const char*, GLuint*, GLuint*, GLuint*,
 	const char*, const char*);
 static void kill_shader(GLuint* dprg, GLuint* vprg, GLuint* fprg);
@@ -132,28 +130,37 @@ static void setv(GLint loc, enum shdrutype kind, void* val,
 {
 #ifdef SHADER_TRACE
 	arcan_warning("[shader], location(%d), kind(%s:%d), id(%s), program(%s)\n",
-			loc, typestrtbl[kind], kind, id, program);
+			loc, symtbl[kind], kind, id, program);
 #endif
 
 /* add more as needed, just match the current shader_envts */
 	switch (kind){
 	case shdrbool:
 	case shdrint:
-		glUniform1i(loc, *(GLint*) val); break;
+	glUniform1i(loc, *(GLint*) val);
+	break;
 
-	case shdrfloat : glUniform1f(loc, ((GLfloat*) val)[0]);
-									 break;
-	case shdrvec2  : glUniform2f(loc, ((GLfloat*) val)[0],
-																	  ((GLfloat*) val)[1]);
-									 break;
-	case shdrvec3  : glUniform3f(loc, ((GLfloat*) val)[0], ((GLfloat*) val)[1],
-																	  ((GLfloat*) val)[2]);
-									 break;
-	case shdrvec4  : glUniform4f(loc, ((GLfloat*) val)[0], ((GLfloat*) val)[1],
-																	  ((GLfloat*) val)[2], ((GLfloat*) val)[3]);
-									 break;
-	case shdrmat4x4: glUniformMatrix4fv(loc, 1, false, (GLfloat*) val);
-									 break;
+	case shdrfloat :
+	glUniform1f(loc, ((GLfloat*) val)[0]);
+	break;
+
+	case shdrvec2 :
+	glUniform2f(loc, ((GLfloat*) val)[0], ((GLfloat*) val)[1]);
+	break;
+
+	case shdrvec3 :
+	glUniform3f(loc, ((GLfloat*) val)[0], ((GLfloat*) val)[1],
+	((GLfloat*) val)[2]);
+	break;
+
+	case shdrvec4  :
+	glUniform4f(loc, ((GLfloat*) val)[0], ((GLfloat*) val)[1],
+	((GLfloat*) val)[2], ((GLfloat*) val)[3]);
+	break;
+
+	case shdrmat4x4:
+	glUniformMatrix4fv(loc, 1, false, (GLfloat*) val);
+	break;
 	}
 }
 
@@ -174,10 +181,12 @@ arcan_errc arcan_shader_activate(arcan_shader_id shid)
 			shid, cur->prg_container, cur->label);
 #endif
 
-/* NOTE: optimization opportunity; since we cache the data in each persistv,
- * only activate those that have changed since last push. */
-/* sweep the ofset table, for each ofset that has a set (nonnegative) ofset,
- * we use the index as a lookup for value and type */
+/*
+ * While we chould practically just update the uniforms that has
+ * actually changed since the last push as we keep a cache,
+ * the incentive is rather small (uniform- set on a bound shader
+ * is among the cheaper state changes possible).
+ */
 		for (unsigned i = 0; i < sizeof(ofstbl) / sizeof(ofstbl[0]); i++){
 			if (cur->locations[i] >= 0){
 				setv(cur->locations[i], typetbl[i], (char*)(&shdr_global.context)
@@ -360,11 +369,16 @@ int arcan_shader_envv(enum arcan_shader_envts slot, void* value, size_t size)
 	arcan_warning("[shader] global envv global update.\n");
 #endif
 
-	/* reflect change in current active shader */
+/*
+ * reflect change in current active shader,
+ * the others will be changed on activation
+ */
 	if (glloc != -1){
 		assert(size == sizetbl[ typetbl[slot] ]);
 		setv(glloc, typetbl[slot], value, symtbl[slot],
 			shdr_global.slots[ shdr_global.active_prg].label );
+		counttbl[slot]++;
+
 		return rv;
 	}
 

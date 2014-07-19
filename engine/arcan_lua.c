@@ -4930,12 +4930,6 @@ static int renderset(lua_State* ctx)
 	int scale         = luaL_checkint(ctx, 4);
 	int format        = luaL_optint(ctx, 5, RENDERFMT_COLOR);
 
-	if (!arcan_video_display.fbo_support){
-		arcan_warning("renderset(%d) FBO support is disabled,"
-			"	cannot setup rendertarget.\n");
-		return 0;
-	}
-
 	if (detach != RENDERTARGET_DETACH && detach != RENDERTARGET_NODETACH){
 		arcan_warning("renderset(%d) invalid arg 3, expected "
 			"RENDERTARGET_DETACH or RENDERTARGET_NODETACH\n", detach);
@@ -5270,12 +5264,6 @@ static int procset(lua_State* ctx)
 	int scale = luaL_checkint(ctx, 4);
 	int pollrate = luaL_checkint(ctx, 5);
 
-	if (!arcan_video_display.fbo_support){
-		arcan_warning("procset(%d) FBO support is disabled, "
-			"cannot setup proctarget.\n");
-		goto cleanup;
-	}
-
 	if (detach != RENDERTARGET_DETACH && detach != RENDERTARGET_NODETACH){
 		arcan_warning("procset(%d) invalid arg 3, expected"
 			"	RENDERTARGET_DETACH or RENDERTARGET_NODETACH\n", detach);
@@ -5397,12 +5385,6 @@ static int recordset(lua_State* ctx)
 		}
 
 		global_monitor = true;
-	}
-
-	if (!arcan_video_display.fbo_support){
-		arcan_warning("recordset(%d) FBO support is disabled, "
-			"cannot setup recordtarget.\n");
-		goto cleanup;
 	}
 
 	if (detach != RENDERTARGET_DETACH && detach != RENDERTARGET_NODETACH){

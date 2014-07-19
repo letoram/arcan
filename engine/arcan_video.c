@@ -1963,9 +1963,6 @@ arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did,
  */
 static bool alloc_fbo(struct rendertarget* dst)
 {
-	if (!arcan_video_display.fbo_support)
-		return false;
-
 	glGenFramebuffers(1, &dst->fbo);
 
 /* need both stencil and depth buffer, but we don't need the data from them */
@@ -2030,10 +2027,8 @@ static bool alloc_fbo(struct rendertarget* dst)
  * rendertarget and only call when / if something changes as
  * it's not certain that drivers won't stall the pipeline on this */
 	GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-
 	if (status != GL_FRAMEBUFFER_COMPLETE){
-		arcan_video_display.fbo_support = false;
-		arcan_warning("Error using rendertarget (FBO), feature disabled.\n");
+		arcan_warning("FBO support assumed broken, check drivers.\n");
 		return false;
 	}
 
@@ -2913,10 +2908,8 @@ static void drop_rtarget(arcan_vobject* vobj)
 			"remove rendertarget (%s)\n", vobj->tracetag);
 
 /* kill GPU resources */
-	if (arcan_video_display.fbo_support){
-		glDeleteFramebuffers(1, &dst->fbo);
-		glDeleteRenderbuffers(1,&dst->depth);
-	}
+	glDeleteFramebuffers(1,&dst->fbo);
+	glDeleteRenderbuffers(1,&dst->depth);
 
 	dst->alive = false;
 
@@ -4562,8 +4555,10 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 end3d:
 	current = tgt->first;
 	if (current && current->elem->order < 0 &&
-		arcan_video_display.order3d == ORDER3D_LAST)
+		arcan_video_display.order3d == ORDER3D_LAST){
+		arcan_shader_activate(arcan_video_display.defaultshdr);
 		current = arcan_refresh_3d(tgt->camtag, current, fract);
+	}
 }
 
 arcan_errc arcan_video_forceread(arcan_vobj_id sid, void** dptr, size_t* dsize)
@@ -4717,17 +4712,15 @@ void arcan_video_refresh_GL(float lerp)
 	arcan_video_display.dirty +=
 		arcan_shader_envv(FRACT_TIMESTAMP_F, &lerp, sizeof(float));
 
-	if (arcan_video_display.fbo_support){
-		for (size_t ind = 0; ind < current_context->n_rtargets; ind++){
-			struct rendertarget* tgt = &current_context->rtargets[ind];
+	for (size_t ind = 0; ind < current_context->n_rtargets; ind++){
+		struct rendertarget* tgt = &current_context->rtargets[ind];
 
-			glBindFramebuffer(GL_FRAMEBUFFER, tgt->fbo);
-			process_rendertarget(tgt, lerp);
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		glBindFramebuffer(GL_FRAMEBUFFER, tgt->fbo);
+		process_rendertarget(tgt, lerp);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-			for (size_t ind = 0; ind < current_context->n_rtargets; ind++)
-				process_readback(&current_context->rtargets[ind], lerp);
-		}
+		for (size_t ind = 0; ind < current_context->n_rtargets; ind++)
+			process_readback(&current_context->rtargets[ind], lerp);
 	}
 
 /*
