@@ -173,14 +173,11 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 
 	if (!glewIsSupported("GL_VERSION_2_1  GL_ARB_framebuffer_object")){
 		arcan_warning("arcan_video_init(), OpenGL context missing FBO support,"
-			"outdated drivers and/or graphics adapter detected.");
-
-		arcan_warning("arcan_video_init(), Continuing without FBOs enabled, "
-			"this renderpath is to be considered unsupported.");
-		arcan_video_display.fbo_support = false;
+			"outdated drivers and/or graphics adapter detected. FBO related "
+			"options will silently fail.");
 	}
-	else
-		arcan_video_display.pbo_support = arcan_video_display.fbo_support = true;
+
+	arcan_video_display.pbo_support = true;
 
 	arcan_video_display.width  = width;
 	arcan_video_display.height = height;
