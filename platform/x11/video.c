@@ -5,21 +5,6 @@
  * for licensing terms.
  */
 
-/*
- * PLATFORM DRIVER NOTICE:
- * This platform driver is incomplete in the sense that it lacks;
- *  - proper mouse/keyboard input handling
- *
- * The reason for this is that the platform was mainly provided to support
- * accelerated "non-visible" or (for GL3+) offscreen windows that shouldn't
- * manage input anyhow (LWA mode and Libretro3D support)
- *
- * Anyone interested in improving this, expose the x11 struct (non-static)
- * and add a x11/event.c input driver that processes the event loop, maps
- * as arcan events (frameserver/vnc* bits have some example code for converting
- * keysyms back and forth between X and arcan).
- */
-
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -55,13 +40,29 @@
 #include <X11/Xatom.h>
 #include <X11/Xutil.h>
 
-struct {
+static struct {
 	Display* xdisp;
 	Window xwnd;
 	XWindowAttributes xwa;
 	GLXContext ctx;
 	XVisualInfo* vi;
 } x11;
+
+Display* x11_get_display()
+{
+	return x11.xdisp;
+}
+
+Window* x11_get_window()
+{
+	return &x11.xwnd;
+}
+
+int x11_get_evmask()
+{
+	return ExposureMask | PointerMotionMask | KeyPressMask |
+		KeyReleaseMask | ButtonPressMask | ButtonReleaseMask;
+}
 
 static char* x11_synchopts[] = {
 	"default", "driver- specific GLX swap buffers",
@@ -75,7 +76,7 @@ static bool setup_xwnd(int w, int h, bool fullscreen)
 		return false;
 
 	XSetWindowAttributes xwndattr;
-	xwndattr.event_mask = ExposureMask | PointerMotionMask | KeyPressMask;
+	xwndattr.event_mask = x11_get_evmask();
 
 	Window root = DefaultRootWindow(x11.xdisp);
 	x11.xwnd = XCreateWindow(x11.xdisp, root, 0, 0, w, h, 0, CopyFromParent,
@@ -112,6 +113,9 @@ static bool setup_xwnd(int w, int h, bool fullscreen)
 }
 
 #ifdef WITH_OFFSCREEN
+/*
+ * Requires GL3 support so omitted for the time being.
+ */
 bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 	uint8_t bpp, bool fs, bool frames)
 {
@@ -228,7 +232,7 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 }
 #endif
 
-const char** PLATFORM_SYMBOL(_video_synchopts)()
+const char** PLATFORM_SYMBOL(_video_synchopts)(void)
 {
 	return (const char**) x11_synchopts;
 }
@@ -244,7 +248,10 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 	if (pre)
 		pre();
 
+#ifndef HEADLESS_NOARCAN
 	arcan_bench_register_cost( arcan_video_refresh(fract) );
+#endif
+
 /*
 	while (XPending(x11.xdisp)){
 		XEvent xev;

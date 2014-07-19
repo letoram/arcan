@@ -8,13 +8,18 @@
 /*
  * a lot of the filtering here is copied of platform/sdl/event.c,
  * as it is scheduled for deprecation, we've not bothered designing
- * an interface for the axis bits to be shared
+ * an interface for the axis bits to be shared. For future refactoring,
+ * the basic signalling processing, e.g. determining device orientation
+ * from 3-sensor + Kalman, user-configurable analog filters on noisy
+ * devices etc. should be generalized and put in a shared directory,
+ * then this file can be split into a version for X and a version for
+ * raw Linux.
  */
 
 /* toggleable options:
  * WITH_X11 - adds X11 support for keyboard and mouse,
- *            this will disable the use of /dev/input* for
- *            those kinds of devices
+ *            This will disable the use of /dev/input*.
+ *
  */
 
 #include <stdlib.h>
@@ -42,7 +47,8 @@
 #include <X11/Xatom.h>
 #include <X11/Xutil.h>
 
-extern Display* x11_display;
+#include "../frameserver/xsymconv.h"
+
 #endif
 
 #define DEVPREFIX "/dev/input/event"
@@ -371,12 +377,86 @@ setmouse:
 		upper_bound, deadzone, buffer_sz, kind);
 }
 
+#ifdef WITH_X11
+Display* x11_get_display();
+Window* x11_get_window();
+static Cursor null_cursor;
+
+void create_null_cursor()
+{
+	Pixmap cmask = XCreatePixmap(x11_get_display(), *x11_get_window(), 1, 1, 1);
+	XGCValues xgc = {
+		.function = GXclear
+	};
+	GC gc = XCreateGC(x11_get_display(), cmask, GCFunction, &xgc);
+	XFillRectangle(x11_get_display(), cmask, gc, 0, 0, 1, 1);
+	XColor ncol = {
+		.flags = 04
+	};
+	null_cursor = XCreatePixmapCursor(x11_get_display(),
+		cmask, cmask, &ncol, &ncol, 0, 0);
+	XFreePixmap(x11_get_display(), cmask);
+	XFreeGC(x11_get_display(), gc);
+}
+
+static void send_keyev(struct arcan_evctx* ctx, XKeyEvent key, bool state)
+{
+  char keybuf[4] = {0};
+  XLookupString(&key, keybuf, 3, NULL, NULL);
+
+	arcan_event ev = {
+		.category = EVENT_IO,
+		.kind = state ? EVENT_IO_KEYB_PRESS : EVENT_IO_KEYB_RELEASE,
+		.data.io.datatype = EVENT_IDATATYPE_TRANSLATED,
+		.data.io.devkind = EVENT_IDEVKIND_KEYBOARD,
+		.data.io.input.translated.active = state,
+		.data.io.input.translated.devid = key.keycode,
+		.data.io.input.translated.subid = keybuf[1],
+	};
+
+/*
+ * cheat here at the moment, need to track keysyms to separate mask
+ */
+	int mod = 0;
+	if (key.state & ShiftMask)
+		mod |= ARKMOD_LSHIFT;
+
+	if (key.state & ControlMask)
+		mod |= ARKMOD_LCTRL;
+
+	if (key.state & Mod1Mask)
+		mod |= ARKMOD_LALT;
+
+	if (key.state & Mod5Mask)
+		mod |= ARKMOD_RALT;
+
+	int ind = XLookupKeysym(&key, key.state);
+	ev.data.io.input.translated.keysym = symtbl_in[ind];
+	ev.data.io.input.translated.modifiers = mod;
+
+	arcan_event_enqueue(ctx, &ev);
+}
+
+static void send_buttonev(struct arcan_evctx* ctx, int button, bool state)
+{
+	arcan_event ev = {
+		.category = EVENT_IO,
+		.data.io.datatype = EVENT_IDATATYPE_DIGITAL,
+		.data.io.devkind = EVENT_IDEVKIND_MOUSE,
+		.data.io.input.digital.active = state,
+		.data.io.input.digital.devid = ARCAN_MOUSEIDBASE,
+		.data.io.input.digital.subid = button
+	};
+
+	arcan_event_enqueue(ctx, &ev);
+}
+
 void platform_event_process(struct arcan_evctx* ctx)
 {
-#ifdef WITH_X11
 	static bool mouse_init;
 	static int last_mx;
 	static int last_my;
+	Display* x11_display = x11_get_display();
 
 	while (x11_display && XPending(x11_display)){
 		XEvent xev;
@@ -397,17 +477,35 @@ void platform_event_process(struct arcan_evctx* ctx)
 				last_my = xev.xmotion.y;
 			}
 
-			printf("mouse: %d, %d\n", xev.xmotion.x, xev.xmotion.y);
+		break;
+
+		case ButtonPress:
+			send_buttonev(ctx, xev.xbutton.button, true);
+		break;
+
+		case ButtonRelease:
+			send_buttonev(ctx, xev.xbutton.button, false);
 		break;
 
 		case KeyPress:
+			send_keyev(ctx, xev.xkey, true );
+		break;
+
+		case KeyRelease:
+			send_keyev(ctx, xev.xkey, false );
 		break;
 		}
 	}
+}
+#else
+void platform_event_process(struct arcan_evctx* ctx)
+{
+
+}
+
 #endif
 
 /* poll all open FDs */
-}
 
 void platform_key_repeat(struct arcan_evctx* ctx, unsigned int rate)
 {
@@ -416,7 +514,8 @@ void platform_key_repeat(struct arcan_evctx* ctx, unsigned int rate)
 
 void arcan_event_rescan_idev(struct arcan_evctx* ctx)
 {
-/* might just use a discover thread and sync when polled */
+/* should be configured to use inotify,
+ * i.e. inotify_add_watch on the DEVPREFIX (IN_CREATE | IN_DELETE) */
 	char ibuf[sizeof(DEVPREFIX) + 4];
 	char name[256];
 
@@ -469,11 +568,28 @@ void platform_event_deinit(struct arcan_evctx* ctx)
 
 void platform_device_lock(int devind, bool state)
 {
+#ifdef WITH_X11
+	if (devind == ARCAN_MOUSEIDBASE){
+		if (state){
+			XGrabPointer(x11_get_display(), *x11_get_window(),
+				true, PointerMotionMask, GrabModeAsync, GrabModeAsync,
+				*x11_get_window(), null_cursor, CurrentTime
+			);
+		}
+		else
+			XUngrabPointer(x11_get_display(), CurrentTime);
+	}
+#endif
 	/* doesn't make sense outside some window systems */
 }
 
 void platform_event_init(arcan_evctx* ctx)
 {
+#ifdef WITH_X11
+	gen_symtbl();
+	create_null_cursor();
+#endif
+
 	arcan_event_analogfilter(-1, 0,
 		-32768, 32767, 0, 1, ARCAN_ANALOGFILTER_AVG);
 	arcan_event_analogfilter(-1, 1,
