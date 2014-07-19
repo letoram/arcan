@@ -12,7 +12,7 @@
  */
 
 /* We re-use X11/egl or other platforms with this little hack */
-#define PLATFORM_SUFFIX static lwa
+#define PLATFORM_SUFFIX lwa
 #define WITH_HEADLESS
 #include HEADLESS_PLATFORM
 
@@ -132,9 +132,14 @@ const char** platform_video_synchopts()
 	return (const char**) synchopts;
 }
 
+static void stub()
+{
+}
+
 void platform_video_synch(uint64_t tick_count, float fract,
 	video_synchevent pre, video_synchevent post)
 {
+	lwa_video_synch(tick_count, fract, pre, stub);
 /*
  * now our color attachment contains the final picture,
  * if we have access to inter-process texture sharing, we can just fling
@@ -143,8 +148,6 @@ void platform_video_synch(uint64_t tick_count, float fract,
 	glReadPixels(0, 0, shms.addr->w, shms.addr->h,
 		GL_RGBA, GL_UNSIGNED_BYTE, shms.vidp);
 
-	if (pre)
-		pre();
 /*
  * we should implement a mapping for TARGET_COMMAND_FRAMESKIP or so
  * and use to set virtual display timings. ioev[0] => mode, [1] => prewake,

@@ -30,6 +30,10 @@
 #include <pthread.h>
 #include <errno.h>
 
+#define HEADLESS_NOARCAN
+#define PLATFORM_SUFFIX retro
+#define WITH_HEADLESS
+
 #include "../shmif/arcan_shmif.h"
 
 #include "frameserver.h"
@@ -43,9 +47,6 @@
 
 #ifdef FRAMESERVER_LIBRETRO_3D
 
-#define PLATFORM_SUFFIX static retro
-#define WITH_HEADLESS
-#define HEADLESS_NOARCAN
 #include HEADLESS_PLATFORM
 
 #ifdef FRAMESERVER_LIBRETRO_3D_RETEXTURE
