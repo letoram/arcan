@@ -426,6 +426,19 @@ static void process_scene_normal(arcan_vobject_litem* cell, float lerp,
 	}
 }
 
+arcan_errc arcan_3d_projectbb(arcan_vobj_id modelid,
+	arcan_vobj_id camid, vector* dst){
+
+	arcan_vobject* cam = arcan_video_getobject(camid);
+	arcan_vobject* model = arcan_video_getobject(modelid);
+
+	if (!cam || !model || cam->feed.state.tag != ARCAN_TAG_3DCAMERA ||
+		model->feed.state.tag != ARCAN_TAG_3DOBJ)
+		return ARCAN_ERRC_UNACCEPTED_STATE;
+
+
+}
+
 /* Chained to the video-pass in arcan_video, stop at the
  * first non-negative order value */
 arcan_vobject_litem* arcan_refresh_3d(arcan_vobj_id camtag,
@@ -598,6 +611,12 @@ arcan_vobj_id arcan_3d_buildcube(float d, unsigned nmaps)
 	};
 	newmodel->geometry->txcos = arcan_alloc_fillmem(txcos, sizeof(txcos),
 		ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_SIMD);
+
+	vector bbmin = {.x = -d, .y = -d, .z = -d};
+	vector bbmax = {.x =  d, .y =  d, .z =  d};
+
+	newmodel->bbmin = bbmin;
+	newmodel->bbmax = bbmax;
 	newmodel->geometry->complete = true;
 	newmodel->flags.complete = true;
 
@@ -638,15 +657,20 @@ arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx,float maxz,
 
 	(*nextslot)->nmaps = nmaps;
 	newmodel->geometry = *nextslot;
-	build_hplane(minp, maxp, step, &newmodel->geometry->verts,
-		(unsigned int**)&newmodel->geometry->indices,
-		&newmodel->geometry->txcos, &newmodel->geometry->nverts,
-		&newmodel->geometry->nindices);
+	struct geometry* dst = newmodel->geometry;
 
-	newmodel->geometry->ntris = newmodel->geometry->nindices / 3;
+	build_hplane(minp, maxp, step, &dst->verts, (unsigned int**) dst->indices,
+		&dst->txcos, &dst->nverts, &dst->nindices);
+
+	dst->ntris = newmodel->geometry->nindices / 3;
 	arcan_video_allocframes(rv, 1, ARCAN_FRAMESET_SPLIT);
-	newmodel->geometry->indexformat = GL_UNSIGNED_INT;
-	newmodel->geometry->complete = true;
+	dst->indexformat = GL_UNSIGNED_INT;
+
+/* though we do know the bounding box and shouldn't need to calculate
+ * or iterate, plan is to possibly add transform / lookup functions
+ * during creation step, so this is a precaution */
+	minmax_verts(&newmodel->bbmin, &newmodel->bbmax, dst->verts, dst->nverts);
+	dst->complete = true;
 	newmodel->flags.complete = true;
 
 	return rv;

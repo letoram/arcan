@@ -4806,6 +4806,9 @@ arcan_errc arcan_video_screencoords(arcan_vobj_id id, vector* res)
 	if (!vobj)
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
+	if (vobj->feed.state.tag == ARCAN_TAG_3DOBJ)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+
 /* get object properties taking inheritance etc. into account,
  * this will automatically re-use any possible cache */
 	surface_properties dprops = empty_surface();
@@ -4817,7 +4820,7 @@ arcan_errc arcan_video_screencoords(arcan_vobj_id id, vector* res)
  * Offer a cheaper way out for the (common) situation where we
  * just have a screen-aligned quad and not a skeleton of 3d meshes.
  */
-	if (!vobj->rotate_state && vobj->feed.state.tag != ARCAN_TAG_3DOBJ){
+	if (!vobj->rotate_state){
 		float x1 = dprops.position.x - dprops.scale.x;
 	 	float x2 = dprops.position.x + dprops.scale.x;
 		float y1 = dprops.position.y - dprops.scale.y;
@@ -4830,8 +4833,9 @@ arcan_errc arcan_video_screencoords(arcan_vobj_id id, vector* res)
 		return ARCAN_OK;
 	}
 
-
-/* transform and rotate the bounding coordinates into screen space */
+/* transform and rotate the bounding coordinates into screen space,
+ * only the matrix is currently cached, this should really cover
+ * the screen projection as well. */
 	float _Alignas(16) omatr[16];
  	float _Alignas(16) imatr[16];
  	float _Alignas(16) dmatr[16];
@@ -4897,32 +4901,34 @@ static inline bool easypick(arcan_vobject* vobj, unsigned int x, unsigned int y)
 
 bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y)
 {
-	vector projv[4];
 	arcan_vobject* vobj = arcan_video_getobject(id);
+	if (!vobj)
+		return false;
 
-	if (ARCAN_OK == arcan_video_screencoords(id, projv)){
-		if (vobj->valid_cache && vobj->rotate_state == false)
+	if (1 || vobj->valid_cache && !vobj->rotate_state &&
+		vobj->feed.state.tag < ARCAN_TAG_3DOBJ)
 			return easypick(vobj, x, y);
 
-		if (vobj->rotate_state){
-			int t1[] =
-				{ projv[0].x, projv[0].y,
-				  projv[1].x, projv[1].y,
-				  projv[2].x, projv[2].y};
+	vector projv[4];
+	if (ARCAN_OK != arcan_video_screencoords(id, projv))
+		return false;
 
-			int t2[] =
-				{ projv[2].x, projv[2].y,
-					projv[3].x, projv[3].y,
-					projv[0].x, projv[0].y };
+	if (vobj->rotate_state){
+		int t1[] =
+			{ projv[0].x, projv[0].y,
+			  projv[1].x, projv[1].y,
+			  projv[2].x, projv[2].y};
 
-			return itri(x, y, t1) || itri(x, y, t2);
-		}
-		else
-			return (x >= projv[0].x && y >= projv[0].y) &&
-				(x <= projv[2].x && y <= projv[2].y);
+		int t2[] =
+			{ projv[2].x, projv[2].y,
+				projv[3].x, projv[3].y,
+				projv[0].x, projv[0].y };
+
+		return itri(x, y, t1) || itri(x, y, t2);
 	}
-
-	return false;
+	else
+		return (x >= projv[0].x && y >= projv[0].y) &&
+			(x <= projv[2].x && y <= projv[2].y);
 }
 
 /*
@@ -4958,8 +4964,10 @@ unsigned int arcan_video_rpick(arcan_vobj_id* dst,
 	while (current && base < count){
 		arcan_vobject* vobj = current->elem;
 
-		if (vobj->cellid && (vobj->mask & MASK_UNPICKABLE)== 0 && obj_visible(vobj)
-			&& arcan_video_hittest(vobj->cellid, x, y)){
+		if (vobj->cellid && (vobj->mask &
+			MASK_UNPICKABLE) == 0 && obj_visible(vobj)){
+
+			if (arcan_video_hittest(vobj->cellid, x, y))
 				dst[base++] = vobj->cellid;
 		}
 
