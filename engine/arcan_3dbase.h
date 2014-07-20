@@ -45,6 +45,16 @@ arcan_errc arcan_3d_meshshader(arcan_vobj_id dst,
 arcan_errc arcan_3d_addmesh(arcan_vobj_id dst,
 	data_source resource, unsigned nmaps);
 
+/*
+ * use the currently tagged camera,
+ * calculate the screen space coordinates of the model bb
+ * using the projection of 'cam' and store the results
+ * into the 4-element sized (each corner) dst.
+ *
+ */
+arcan_errc arcan_3d_projectbb(arcan_vobj_id model,
+	arcan_vobj_id cam, vector* dst);
+
 /* destructive transform,
  * apply the specified roll / pitch / yaw transform to all
  * the vertices of the model */
