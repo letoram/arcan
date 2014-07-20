@@ -112,6 +112,13 @@
 #endif
 
 /*
+ * defined in engine/arcan_main.c, rather than terminating directly
+ * we'll longjmp to this and hopefully the engine can switch scripts
+ * or take similar user-defined action.
+ */
+extern jmp_buf arcanmain_recover_state;
+
+/*
  * some operations, typically resize, move and rotate suffered a lot from
  * lua floats propagating, meaning that we'd either get subpixel positioning
  * and blurring text etc. as a consequence. For these functions, we now
@@ -119,7 +126,13 @@
  */
 typedef int acoord;
 
-#define arcan_fatal(...) { last_function(ctx); arcan_fatal( __VA_ARGS__); }
+/*
+ * arcan_fatal calls in this context are invalid Lua script invocations,
+ * these should only forward to arcan_fatal if there's no recovery script
+ * set.
+ */
+#define arcan_fatal(...) { lua_rectrigger( __VA_ARGS__); }
+
 /* this macro is placed in every arcan- specific function callable from the LUA
  * space. By default, it's empty, but can be used to map out stack contents
  * (above will only be LUA context pointer that can be used to devise the
@@ -129,7 +142,6 @@ typedef int acoord;
  * debug_level in lua_ctx_store.lastsrc and timing data can be gotten
  * from arcan_timemillis()
 	example: */
-
 #define LUA_TRACE(fsym)
 /*
  * #define LUA_TRACE(fsym) fprintf(stderr, "(%lld:%s)->%s\n", \
@@ -235,10 +247,30 @@ static struct {
 	char* prefix_buf;
 	size_t prefix_ofs;
 
+	lua_State* last_ctx;
 } lua_ctx_store = {0};
 
 extern char* _n_strdup(const char* instr, const char* alt);
 static inline const char* fsrvtos(enum ARCAN_SEGID ink);
+
+/*
+ * nil out whatever functions / tables the
+ * build- system defined that we should not have.
+ */
+static void luaL_nil_banned(struct arcan_luactx* ctx)
+{
+	char* work = strdup(LUA_DROPSTR);
+	char* cch = strtok(work, " ");
+
+	while (cch){
+		lua_pushnil(ctx);
+		lua_setglobal(ctx, cch);
+		cch = strtok(NULL, " ");
+	}
+
+	free(work);
+}
+
 
 static inline void colon_escape(char* instr)
 {
@@ -251,23 +283,29 @@ static inline void colon_escape(char* instr)
 
 static void dump_call_trace(lua_State* ctx)
 {
-#if LUA_VERSION_NUM == 501
-		lua_getfield(ctx, LUA_GLOBALSINDEX, "debug");
-		if (!lua_istable(ctx, -1))
-			lua_pop(ctx, 1);
+/*
+ * we can't trust debug.traceback to be present or in an intact state,
+ * the user script might try to hide something from us -- so reset
+ * the lua namespace then re-apply the restrictions.
+ */
+	luaL_openlibs(ctx);
+
+	lua_settop(ctx, -2);
+	lua_getfield(ctx, LUA_GLOBALSINDEX, "debug");
+	if (!lua_istable(ctx, -1))
+		lua_pop(ctx, 1);
+	else {
+		lua_getfield(ctx, -1, "traceback");
+		if (!lua_isfunction(ctx, -1))
+			lua_pop(ctx, 2);
 		else {
-			lua_getfield(ctx, -1, "traceback");
-			if (!lua_isfunction(ctx, -1))
-				lua_pop(ctx, 2);
-			else {
-				lua_pushvalue(ctx, 1);
-				lua_pushinteger(ctx, 2);
-				lua_call(ctx, 2, 1);
-				const char* str = lua_tostring(ctx, -1);
-				arcan_warning("\n%s\n", str);
-			}
+			lua_call(ctx, 0, 1);
+			const char* str = lua_tostring(ctx, -1);
+			arcan_warning("%s\n", str);
+		}
 	}
-#endif
+
+	luaL_nil_banned(ctx);
 }
 
 /* slightly more flexible argument management, just find the first callback */
@@ -298,20 +336,36 @@ static inline int find_lua_type(lua_State* ctx, int type, int ofs)
 	return 0;
 }
 
-static void last_function(lua_State* ctx)
+static void wraperr(struct arcan_luactx* ctx, int errc, const char* src);
+
+void lua_rectrigger(const char* msg, ...)
 {
-	lua_Debug ar;
-	if (lua_getstack(ctx, 1, &ar)){
-		lua_getinfo(ctx, "Snl", &ar);
-		if (ar.currentline > 1) {
-			arcan_warning("%s:%d: ", ar.short_src, ar.currentline);
-		}
-	}
+	va_list args;
+	va_start(args, msg);
+
+#ifndef ARCAN_LUA_NOCOLOR
+	lua_State* ctx = lua_ctx_store.last_ctx;
+	char msg_buf[256];
+	vsnprintf(msg_buf, sizeof(msg_buf), msg, args);
+
+	arcan_warning("\n\x1b[1mImproper API use from Lua script"
+		":\n\t\x1b[32m%s\x1b[39m\n", msg_buf);
 
 	dump_call_trace(ctx);
+
+	arcan_warning("\x1b[0m\n");
+#else
+
+	arcan_warning(msg, args);
+#endif
+
+/* we got redirected here from an arcan_fatal macro- based redirection
+ * so expand in order to get access to the actual call */
+	va_end(args);
+	arcan_warning("\nHanding over to recovery script "
+		"(or shutdown if none present).\n");
+	longjmp(arcanmain_recover_state, 2);
 }
-static void wraperr(struct arcan_luactx* ctx,
-	int errc, const char* src);
 
 void arcan_state_dump(const char* key, const char* msg, const char* src)
 {
@@ -546,25 +600,22 @@ static inline lua_Number vid_toluavid(arcan_vobj_id innum)
 static inline arcan_vobj_id luaL_checkvid(
 		lua_State* ctx, int num, arcan_vobject** dptr)
 {
-	arcan_vobj_id res = luavid_tovid( luaL_checknumber(ctx, num) );
+	arcan_vobj_id lnum = luaL_checknumber(ctx, num);
+	arcan_vobj_id res = luavid_tovid( lnum );
 	if (dptr){
 		*dptr = arcan_video_getobject(res);
-		if (!(*dptr)){
+		if (!(*dptr))
 			arcan_fatal("invalid VID requested (%"PRIxVOBJ")\n", res);
-		}
 	}
 
 #ifdef _DEBUG
-	arcan_vobject* vobj = arcan_video_getobject(luavid_tovid(res));
+	arcan_vobject* vobj = arcan_video_getobject(res);
+
 	if (vobj && vobj->flags.frozen)
 		abort();
 
-	if (res == ARCAN_EID){
-		arcan_warning("\ncall-trace:\n");
-		dump_call_trace(ctx);
-		dump_stack(ctx);
-		arcan_fatal("Bad VID requested (%"PRIxVOBJ")\n", res);
-	}
+	if (!vobj)
+		arcan_fatal("Bad VID requested (%"PRIxVOBJ")\n", lnum);
 #endif
 
 	return res;
@@ -1541,19 +1592,8 @@ static int deleteimage(lua_State* ctx)
 	 * which in the movie cause will trigger a full movie cleanup */
 	arcan_errc rv = arcan_video_deleteobject(id);
 
-	if (rv != ARCAN_OK){
-		if (lua_ctx_store.debug > 0){
-			arcan_warning("%s => deleteimage(%.0lf=>%d) -- Object could not"
-			" be deleted, invalid object specified.\n",luaL_lastcaller(ctx),srcid,id);
-		}
-		else{
-			dump_call_trace(ctx);
-			dump_stack(ctx);
-			arcan_fatal("Appl tried to delete non-existing object (%.0lf=>%d) from "
-			"(%s). Relaunch with debug flags (-g) to suppress.\n",
-			srcid, id, luaL_lastcaller(ctx));
-		}
-	}
+	if (rv != ARCAN_OK)
+		arcan_fatal("Appl tried to delete non-existing object (%.0lf=>%d)", srcid, id);
 
 	return 0;
 }
@@ -1596,18 +1636,7 @@ char* arcan_luaL_main(lua_State* ctx, const char* inp, bool file)
  * an appl is about to be loaded so here is a decent entrypoint */
 	const int suffix_lim = 34;
 
-/*
- * nil out whatever functions / tables the
- * build- system defined that we should not have.
- */
-	char* work = strdup(LUA_DROPSTR);
-	char* cch = strtok(work, " ");
-
-	while (cch){
-		lua_pushnil(ctx);
-		lua_setglobal(ctx, cch);
-		cch = strtok(NULL, " ");
-	}
+	luaL_nil_banned(ctx);
 
 	free(lua_ctx_store.prefix_buf);
 	lua_ctx_store.prefix_ofs = arcan_appl_id_len();
@@ -1654,8 +1683,6 @@ void arcan_luaL_adopt(arcan_vobj_id id, void* tag)
 
 	wraperr(ctx, lua_pcall(ctx, argc, 0, 0), "adopt");
 }
-
-extern jmp_buf arcanmain_recover_state;
 
 static int syscollapse(lua_State* ctx)
 {
@@ -3856,6 +3883,7 @@ lua_State* arcan_lua_alloc()
 		arcan_lua_pushglobalconsts(res);
 	}
 
+	lua_ctx_store.last_ctx = res;
 	return res;
 }
 
@@ -3990,9 +4018,14 @@ static void wraperr(lua_State* ctx, int errc, const char* src)
 		}
 	}
 
-	arcan_state_dump("crash", mesg, src);
-	arcan_warning("Script failure, %s from %s. \nHanding over to "
-		"recovery script (or shutdown if none present).\n", mesg, src);
+#ifdef ARCAN_LUA_NOCOLOR
+	arcan_warning("Lua Script failure, %s from %s.\n", mesg, src);
+#else
+	arcan_warning("\n\x1b[1mScript failure:\n \x1b[32m %s\n"
+		"\x1b[39mC-entry point: \x1b[32m %s \x1b[39m\x1b[0m.\n", mesg, src);
+#endif
+	arcan_warning("\nHanding over to recovery script "
+		"(or shutdown if none present).\n");
 
 	longjmp(arcanmain_recover_state, 2);
 }
