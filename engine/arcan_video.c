@@ -31,6 +31,7 @@
 #include <signal.h>
 #include <stddef.h>
 #include <math.h>
+#include <limits.h>
 #include <assert.h>
 #include <errno.h>
 #include <stdalign.h>
@@ -58,6 +59,7 @@
 #include "arcan_target_launcher.h"
 #include "arcan_shdrmgmt.h"
 #include "arcan_videoint.h"
+#include "arcan_3dbase.h"
 #include "arcan_img.h"
 
 #ifndef offsetof
@@ -72,7 +74,6 @@
 long long ARCAN_VIDEO_WORLDID = -1;
 static surface_properties empty_surface();
 static sem_handle asynchsynch;
-static long long lastlerp;
 
 /* these match arcan_vinterpolant enum */
 static arcan_interp_3d_function lut_interp_3d[] = {
@@ -127,7 +128,7 @@ unsigned vcontext_ind = 0;
 static bool detach_fromtarget(struct rendertarget* dst, arcan_vobject* src);
 static void attach_object(struct rendertarget* dst, arcan_vobject* src);
 static arcan_errc update_zv(arcan_vobject* vobj, unsigned short newzv);
-static void rebase_transform(struct surface_transform*, arcan_tickv);
+static void rebase_transform(struct surface_transform*, int64_t);
 static bool alloc_fbo(struct rendertarget* dst);
 static void process_rendertarget(struct rendertarget* tgt, float fract);
 static arcan_vobject* new_vobject(arcan_vobj_id* id,
@@ -461,7 +462,7 @@ unsigned arcan_video_nfreecontexts()
 		return CONTEXT_STACK_LIMIT - 1 - vcontext_ind;
 }
 
-static void rebase_transform(struct surface_transform* current, arcan_tickv ofs)
+static void rebase_transform(struct surface_transform* current, int64_t ofs)
 {
 	if (current->move.startt){
 		current->move.startt += ofs;
@@ -3220,71 +3221,75 @@ arcan_vobj_id arcan_video_findchild(arcan_vobj_id parentid, unsigned ofs)
 	return rv;
 }
 
-arcan_errc arcan_video_objectrotate(arcan_vobj_id id, float roll, float pitch,
-	float yaw, unsigned int tv)
+arcan_errc arcan_video_objectrotate(arcan_vobj_id id,
+	float ang, arcan_tickv time)
 {
-	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+	return arcan_video_objectrotate3d(id, ang, 0.0, 0.0, time);
+}
+
+arcan_errc arcan_video_objectrotate3d(arcan_vobj_id id,
+	float roll, float pitch, float yaw, arcan_tickv tv)
+{
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
-	if (vobj) {
-		rv = ARCAN_OK;
-		invalidate_cache(vobj);
+	if (!vobj)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
-		/* clear chains for rotate attribute
-		 * if time is set to override and be immediate */
-		if (tv == 0) {
-			swipe_chain(vobj->transform, offsetof(surface_transform, rotate),
-				sizeof(struct transf_rotate));
-			vobj->current.rotation.roll  = roll;
-			vobj->current.rotation.pitch = pitch;
-			vobj->current.rotation.yaw   = yaw;
-			vobj->current.rotation.quaternion = build_quat_taitbryan(roll,pitch,yaw);
-		}
-		else { /* find endpoint to attach at */
-			surface_orientation bv  = vobj->current.rotation;
-			surface_transform* base = vobj->transform;
-			surface_transform* last = base;
+	invalidate_cache(vobj);
 
-			/* figure out the starting angle */
-			while (base && base->rotate.startt) {
-				if (!base->next)
-					bv = base->rotate.endo;
+/* clear chains for rotate attribute previous rotate objects */
+	if (tv == 0) {
+		swipe_chain(vobj->transform, offsetof(surface_transform, rotate),
+			sizeof(struct transf_rotate));
+		vobj->current.rotation.roll  = roll;
+		vobj->current.rotation.pitch = pitch;
+		vobj->current.rotation.yaw   = yaw;
+		vobj->current.rotation.quaternion = build_quat_taitbryan(roll,pitch,yaw);
 
-				last = base;
-				base = base->next;
-			}
-
-			if (!base){
-				if (last)
-					base = last->next =
-						arcan_alloc_mem(sizeof(surface_transform), ARCAN_MEM_VSTRUCT,
-							ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
-				else
-					base = last = arcan_alloc_mem(sizeof(surface_transform),
-						ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
-			}
-
-			if (!vobj->transform)
-				vobj->transform = base;
-
-			base->rotate.startt = last->rotate.endt < arcan_video_display.c_ticks ?
-				arcan_video_display.c_ticks : last->rotate.endt;
-			base->rotate.endt   = base->rotate.startt + tv;
-			base->rotate.starto = bv;
-
-			base->rotate.endo.roll  = roll;
-			base->rotate.endo.pitch = pitch;
-			base->rotate.endo.yaw   = yaw;
-			base->rotate.endo.quaternion = build_quat_taitbryan(roll, pitch, yaw);
-			vobj->transfc++;
-
-			base->rotate.interp = (abs(bv.roll - roll) > 180.0 ||
-				abs(bv.pitch - pitch) > 180.0 || abs(bv.yaw - yaw) > 180.0) ?
-				nlerp_quat180 : nlerp_quat360;
-		}
+		return ARCAN_OK;
 	}
 
-	return rv;
+	surface_orientation bv  = vobj->current.rotation;
+	surface_transform* base = vobj->transform;
+	surface_transform* last = base;
+
+/* figure out the starting angle */
+	while (base && base->rotate.startt) {
+		if (!base->next)
+			bv = base->rotate.endo;
+
+		last = base;
+		base = base->next;
+	}
+
+	if (!base){
+		if (last)
+			base = last->next = arcan_alloc_mem(sizeof(surface_transform),
+							ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
+		else
+			base = last = arcan_alloc_mem(sizeof(surface_transform),
+				ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
+	}
+
+	if (!vobj->transform)
+		vobj->transform = base;
+
+	base->rotate.startt = last->rotate.endt < arcan_video_display.c_ticks ?
+		arcan_video_display.c_ticks : last->rotate.endt;
+	base->rotate.endt   = base->rotate.startt + tv;
+	base->rotate.starto = bv;
+
+	base->rotate.endo.roll  = roll;
+	base->rotate.endo.pitch = pitch;
+	base->rotate.endo.yaw   = yaw;
+	base->rotate.endo.quaternion = build_quat_taitbryan(roll, pitch, yaw);
+	vobj->transfc++;
+
+	base->rotate.interp = (abs(bv.roll - roll) > 180.0 ||
+		abs(bv.pitch - pitch) > 180.0 || abs(bv.yaw - yaw) > 180.0) ?
+		nlerp_quat180 : nlerp_quat360;
+
+	return ARCAN_OK;
 }
 
 arcan_errc arcan_video_origoshift(arcan_vobj_id id,
@@ -3637,7 +3642,7 @@ static int update_object(arcan_vobject* ci, unsigned long long stamp)
 			ci->transform->blend.endopa, fract
 		);
 
-		if (fract > 0.999) {
+		if (fract > 1.0-EPSILON) {
 			ci->current.opa = ci->transform->blend.endopa;
 
 			if (ci->flags.cycletransform){
@@ -3662,7 +3667,7 @@ static int update_object(arcan_vobject* ci, unsigned long long stamp)
 				ci->transform->move.endp, fract
 			);
 
-		if (fract > 0.999) {
+		if (fract > 1.0-EPSILON) {
 			ci->current.position = ci->transform->move.endp;
 
 			if (ci->flags.cycletransform){
@@ -3691,7 +3696,7 @@ static int update_object(arcan_vobject* ci, unsigned long long stamp)
 			ci->transform->scale.endd, fract
 		);
 
-		if (fract > 0.999) {
+		if (fract > 1.0-EPSILON) {
 			ci->current.scale = ci->transform->scale.endd;
 
 			if (ci->flags.cycletransform){
@@ -3716,10 +3721,10 @@ static int update_object(arcan_vobject* ci, unsigned long long stamp)
 			ci->transform->rotate.endt, stamp);
 
 /* close enough */
-		if (fract > 0.999) {
+		if (fract > 1.0-EPSILON) {
 			ci->current.rotation = ci->transform->rotate.endo;
 			if (ci->flags.cycletransform)
-				arcan_video_objectrotate(ci->cellid,
+				arcan_video_objectrotate3d(ci->cellid,
 					ci->transform->rotate.endo.roll,
 					ci->transform->rotate.endo.pitch,
 					ci->transform->rotate.endo.yaw,
@@ -3835,7 +3840,15 @@ unsigned arcan_video_tick(unsigned steps, unsigned* njobs)
 		arcan_video_display.dirty +=
 			tick_rendertarget(&current_context->stdoutp);
 
-		arcan_video_display.c_ticks++;
+/*
+ * we don't want c_ticks running too high (the tick is monotonic, but not
+ * continous) as lots of float operations are relying on this as well,
+ * this will cause transformations that are scheduled across the boundary
+ * to behave oddly until reset. A fix would be to rebase if that is a problem.
+ */
+		arcan_video_display.c_ticks =
+			(arcan_video_display.c_ticks + 1) % (INT32_MAX / 3);
+
 		steps = steps - 1;
 	} while (steps);
 
@@ -3934,16 +3947,6 @@ static void apply(arcan_vobject* vobj, surface_properties* dprops, float lerp,
 		if (!sprops)
 			return;
 	}
-
-/*	if (force || (vobj->mask & MASK_SCALE) > 0){
-		printf("%f, %f, %f => %f, %f, %f\n",
-		dprops->scale.x, dprops->scale.y,
-		dprops->scale.z,
-		sprops->scale.x, sprops->scale.y, sprops->scale.z);
-		dprops->scale.x *= sprops->scale.x;
-		dprops->scale.y *= sprops->scale.y;
-		dprops->scale.z *= sprops->scale.z;
-	} */
 
 /* translate to sprops */
 	if (force || (vobj->mask & MASK_POSITION) > 0)
@@ -4079,9 +4082,18 @@ static inline void build_modelview(float* dmatr,
 		memcpy(dmatr, tmatr, sizeof(float) * 16);
 }
 
+static inline float time_ratio(arcan_tickv start, arcan_tickv stop)
+{
+	return start > 0 ? (float)(arcan_video_display.c_ticks - start) /
+		(float)(stop - start) : 1.0;
+}
+
 static inline void setup_surf(struct rendertarget* dst,
 	surface_properties* prop, arcan_vobject* src)
 {
+	float _Alignas(16) dmatr[16];
+	float* matr = src->prop_matr;
+
 	if (src->feed.state.tag == ARCAN_TAG_ASYNCIMGLD)
 		return;
 
@@ -4092,15 +4104,26 @@ static inline void setup_surf(struct rendertarget* dst,
 		prop->position.x += prop->scale.x;
 		prop->position.y += prop->scale.y;
 
-		arcan_shader_envv(MODELVIEW_MATR, src->prop_matr, sizeof(float) * 16);
 	}
 	else {
-		float _Alignas(16) dmatr[16];
 		build_modelview(dmatr, dst->base, prop, src);
-		arcan_shader_envv(MODELVIEW_MATR, dmatr, sizeof(float) * 16);
+		matr = dmatr;
 	}
 
+	arcan_shader_envv(MODELVIEW_MATR, matr, sizeof(float) * 16);
 	arcan_shader_envv(OBJ_OPACITY, &prop->opa, sizeof(float));
+
+	if (src->transform){
+		struct surface_transform* trans = src->transform;
+		float ev = time_ratio(trans->move.startt, trans->move.endt);
+		arcan_shader_envv(TRANS_MOVE, &ev, sizeof(float));
+
+		ev = time_ratio(trans->rotate.startt, trans->rotate.endt);
+		arcan_shader_envv(TRANS_ROTATE, &ev, sizeof(float));
+
+		ev = time_ratio(trans->scale.startt, trans->scale.endt);
+		arcan_shader_envv(TRANS_SCALE, &ev, sizeof(float));
+	}
 }
 
 static inline void draw_colorsurf(struct rendertarget* dst,
@@ -4218,7 +4241,7 @@ void arcan_video_setblend(const surface_properties* dprops,
 {
 /* only blend if the object isn't entirely solid or
  * if the object has specific settings */
-	if ((dprops->opa > 0.999 && elem->blendmode == BLEND_NONE) ||
+	if ((dprops->opa > 1.0-EPSILON && elem->blendmode == BLEND_NONE) ||
 		elem->blendmode == BLEND_NONE )
 		glDisable(GL_BLEND);
 	else{
@@ -4603,11 +4626,11 @@ arcan_errc arcan_video_forceupdate(arcan_vobj_id vid)
 
 	FLAG_DIRTY();
 	glBindFramebuffer(GL_FRAMEBUFFER, tgt->fbo);
-		process_rendertarget(tgt, lastlerp);
+		process_rendertarget(tgt, arcan_video_display.c_lerp);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 	if (tgt->readback != 0){
-		process_readback(tgt, lastlerp);
+		process_readback(tgt, arcan_video_display.c_lerp);
 		poll_readback(tgt);
 	}
 
@@ -4707,7 +4730,7 @@ static inline void process_readback(struct rendertarget* tgt, float fract)
 
 void arcan_video_refresh_GL(float lerp)
 {
-	lastlerp = lerp;
+	arcan_video_display.c_lerp = lerp;
 
 	arcan_video_display.dirty +=
 		arcan_shader_envv(FRACT_TIMESTAMP_F, &lerp, sizeof(float));
@@ -4807,69 +4830,44 @@ arcan_errc arcan_video_screencoords(arcan_vobj_id id, vector* res)
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
 	if (vobj->feed.state.tag == ARCAN_TAG_3DOBJ)
-		return ARCAN_ERRC_NO_SUCH_OBJECT;
+		return ARCAN_ERRC_UNACCEPTED_STATE;
 
-/* get object properties taking inheritance etc. into account,
- * this will automatically re-use any possible cache */
-	surface_properties dprops = empty_surface();
-	arcan_resolve_vidprop(vobj, 0.0, &dprops);
-	dprops.scale.x *= vobj->origw * 0.5;
-	dprops.scale.y *= vobj->origh * 0.5;
-
-/*
- * Offer a cheaper way out for the (common) situation where we
- * just have a screen-aligned quad and not a skeleton of 3d meshes.
- */
-	if (!vobj->rotate_state){
-		float x1 = dprops.position.x - dprops.scale.x;
-	 	float x2 = dprops.position.x + dprops.scale.x;
-		float y1 = dprops.position.y - dprops.scale.y;
-		float y2 = dprops.position.y + dprops.scale.y;
-		res[0].z = res[1].z = res[2].z = res[3].z = 0.0;
-		res[0].x = x1; res[0].y = y1;
-		res[1].x = x2; res[1].y = y1;
-		res[2].x = x2; res[2].y = y2;
-		res[3].x = x1; res[3].y = y2;
-		return ARCAN_OK;
-	}
-
-/* transform and rotate the bounding coordinates into screen space,
- * only the matrix is currently cached, this should really cover
- * the screen projection as well. */
-	float _Alignas(16) omatr[16];
- 	float _Alignas(16) imatr[16];
- 	float _Alignas(16) dmatr[16];
-
-	int view[4] = {0, 0, arcan_video_display.width,
-		arcan_video_display.height};
+	surface_properties prop;
 
 	if (vobj->valid_cache)
-		memcpy(dmatr, vobj->prop_matr, sizeof(float) * 16);
+		prop = vobj->prop_cache;
 	else {
-		identity_matrix(imatr);
-		matr_quatf(dprops.rotation.quaternion, omatr);
-		translate_matrix(imatr, dprops.position.x + dprops.scale.x,
-			dprops.position.y + dprops.scale.y, 0.0);
-		multiply_matrix(dmatr, imatr, omatr);
+		prop = empty_surface();
+		arcan_resolve_vidprop(vobj, arcan_video_display.c_lerp, &prop);
 	}
 
-/* transform the four vertices of the quad to window */
-	project_matrix(-dprops.scale.x, -dprops.scale.y, 0.0, dmatr,
-	current_context->stdoutp.projection, view, &res[0].x,&res[0].y,&res[0].z);
+	float w = (float)vobj->origw * prop.scale.x;
+	float h = (float)vobj->origh * prop.scale.y;
 
-	project_matrix( dprops.scale.x, -dprops.scale.y, 0.0, dmatr,
-	current_context->stdoutp.projection, view, &res[1].x,&res[1].y,&res[1].z);
+	res[0].x = prop.position.x;
+	res[0].y = prop.position.y;
+	res[1].x = res[0].x + w;
+	res[1].y = res[0].y;
+	res[2].x = res[1].x;
+	res[2].y = res[1].y + h;
+	res[3].x = res[0].x;
+	res[3].y = res[2].y;
 
-	project_matrix( dprops.scale.x,  dprops.scale.y, 0.0, dmatr,
-	current_context->stdoutp.projection, view, &res[2].x,&res[2].y,&res[2].z);
+	if (abs(prop.rotation.roll) > EPSILON){
+		float ang = DEG2RAD(prop.rotation.roll);
+		float sinv = sinf(ang);
+		float cosv = cosf(ang);
 
-	project_matrix(-dprops.scale.x,  dprops.scale.y, 0.0, dmatr,
-	current_context->stdoutp.projection, view, &res[3].x,&res[3].y,&res[3].z);
+		float cpx = res[0].x + 0.5 * w;
+		float cpy = res[0].y + 0.5 * h;
 
-	res[0].y = arcan_video_display.height - res[0].y;
-	res[1].y = arcan_video_display.height - res[1].y;
-	res[2].y = arcan_video_display.height - res[2].y;
-	res[3].y = arcan_video_display.height - res[3].y;
+		for (size_t i = 0; i < 4; i++){
+			float rx = cosv * (res[i].x - cpx) - sinv * (res[i].y-cpy) + cpx;
+			float ry = sinv * (res[i].x - cpx) + cosv * (res[i].y-cpy) + cpy;
+			res[i].x = rx;
+			res[i].y = ry;
+		}
+	}
 
 	return ARCAN_OK;
 }
@@ -4891,27 +4889,18 @@ static inline bool itri(int x, int y, int t[6])
 	return (b1 == b2) && (b2 == b3);
 }
 
-static inline bool easypick(arcan_vobject* vobj, unsigned int x, unsigned int y)
-{
-	return (x>=vobj->prop_cache.position.x && y >= vobj->prop_cache.position.y&&
-		x <= (vobj->prop_cache.position.x+(vobj->origw*vobj->prop_cache.scale.x))&&
-		y <= (vobj->prop_cache.position.y+(vobj->origh*vobj->prop_cache.scale.y))
-		);
-}
-
 bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y)
 {
-	arcan_vobject* vobj = arcan_video_getobject(id);
-	if (!vobj)
-		return false;
-
-	if (1 || vobj->valid_cache && !vobj->rotate_state &&
-		vobj->feed.state.tag < ARCAN_TAG_3DOBJ)
-			return easypick(vobj, x, y);
-
 	vector projv[4];
-	if (ARCAN_OK != arcan_video_screencoords(id, projv))
+	arcan_vobject* vobj = arcan_video_getobject(id);
+
+	if (ARCAN_OK != arcan_video_screencoords(id, projv)){
+		if (vobj && vobj->feed.state.tag == ARCAN_TAG_3DOBJ){
+			return arcan_3d_obj_bb_intersect(
+				current_context->stdoutp.camtag, id, x, y);
+		}
 		return false;
+	}
 
 	if (vobj->rotate_state){
 		int t1[] =
@@ -4986,7 +4975,7 @@ unsigned arcan_video_pick(arcan_vobj_id* dst,
 	arcan_vobject_litem* current = current_context->stdoutp.first;
 	unsigned base = 0;
 
-	while (current && base < count) {
+	while (current && base < count){
 		arcan_vobject* vobj = current->elem;
 
 		if (vobj->cellid && !(vobj->mask & MASK_UNPICKABLE) &&
@@ -5005,8 +4994,6 @@ img_cons arcan_video_dimensions(uint16_t w, uint16_t h)
 	return res;
 }
 
-/* the actual storage dimensions,
- * as these might concern "% 2" texture requirement */
 img_cons arcan_video_storage_properties(arcan_vobj_id id)
 {
 	img_cons res = {.w = 0, .h = 0, .bpp = 0};

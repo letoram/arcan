@@ -22,12 +22,6 @@
 #ifndef _HAVE_ARCAN_MATH
 #define _HAVE_ARCAN_MATH
 
-/*
- * I know it's dumb to roll your own mathlib by now,
- * replace with something quick at your own leisure --
- * I use this as a refresher-course ;-)
- */
-
 #define EPSILON 0.000001f
 #define DEG2RAD(X) (X * M_PI / 180)
 
@@ -74,11 +68,17 @@ void arcan_math_init();
 void scale_matrix(float*, float, float, float);
 void translate_matrix(float*, float, float, float);
 void identity_matrix(float*);
-void multiply_matrix(float* restrict dst, float* restrict a, float* restrict b);
+void multiply_matrix(float* restrict dst,
+	const float* restrict a, const float* restrict b);
 quat quat_matrix(float* src);
 void matr_lookat(float* m, vector position, vector dstpos, vector up);
 void mult_matrix_vecf(const float* restrict inmatr,
 	const float* restrict, float* restrict outv);
+bool matr_invf(const float* restrict m, float* restrict out);
+int project_matrix(float objx, float objy, float objz, const float model[16],
+	const float projection[16], const int viewport[4], float*, float*, float*);
+vector unproject_matrix(float dev_x, float dev_y, float dev_z,
+		const float* restrict view, const float* restrict proj);
 
 /* Vectors */
 vector build_vect_polar(const float phi, const float theta);
@@ -91,6 +91,7 @@ vector mul_vector(vector a, vector b);
 vector add_vector(vector a, vector b);
 vector sub_vector(vector a, vector b);
 vector mul_vectorf(vector a, float f);
+vector taitbryan_forwardv(float roll, float pitch, float yaw);
 
 /* Quaternions */
 quat inv_quat(quat src);
@@ -102,6 +103,9 @@ quat div_quatf(quat a, float b);
 float* matr_quatf(quat a, float* dmatr);
 double* matr_quat(quat a, double* dmatr);
 vector angle_quat(quat a);
+quat add_quat(quat a, quat b);
+quat build_quat_taitbryan(float roll, float pitch, float yaw);
+quat quat_lookat(vector viewpos, vector dstpos);
 
 /* spherical interpolation between quaternions a and b with the weight of f.
  * 180/360 separation implies different interpolation paths */
@@ -124,22 +128,20 @@ vector interp_3d_expout(vector startv, vector endv, float fract);
 vector interp_3d_expin(vector startv, vector endv, float fract);
 vector interp_3d_expinout(vector startv, vector endv, float fract);
 
-quat add_quat(quat a, quat b);
-quat build_quat_taitbryan(float roll, float pitch, float yaw);
-quat quat_lookat(vector viewpos, vector dstpos);
-
-vector taitbryan_forwardv(float roll, float pitch, float yaw);
-
 void update_view(orientation* dst, float roll, float pitch, float yaw);
 
+/* camera / view functions */
 void build_projection_matrix(float* m, float near, float far,
 	float aspect, float fov);
 void build_orthographic_matrix(float* m, const float left, const float right,
 	const float bottom, const float top, const float near, const float far);
 
-int project_matrix(float objx, float objy, float objz, const float model[16],
-	const float projection[16], const int viewport[4], float*, float*, float*);
+bool ray_plane(vector* pos, vector* dir,
+	vector* plane_pos, vector* plane_normal, vector* intersect);
+bool ray_sphere(const vector* ray_pos, const vector* ray_dir,
+	const vector* sphere_pos, float sphere_rad, float* d1, float *d2);
 
+/* basic intersections */
 void update_frustum(float* projection,
 	float* modelview, float dstfrustum[6][4]);
 
@@ -155,4 +157,8 @@ enum cstate frustum_aabb(const float frustum[6][4],
 
 /* comp.graphics.algorithms DAQ, Randolph Franklin */
 int pinpoly(int, float*, float*, float, float);
+
+/* misc. utility */
+void dev_coord(float* out_x, float* out_y, float* out_z,
+	int x, int y, int w, int h, float near, float far);
 #endif

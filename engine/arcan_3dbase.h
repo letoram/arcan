@@ -27,13 +27,24 @@
 void arcan_3d_setdefaults();
 
 arcan_errc arcan_3d_camtag(arcan_vobj_id parent,
-	float* projection, bool front, bool back);
+	float near, float far, float ar, float fov, bool front, bool back);
 
 arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx,
 	float maxz, float y, float wdens, float ddens, unsigned nmaps);
-arcan_vobj_id arcan_3d_buildcube(float depth, unsigned nmaps);
+arcan_vobj_id arcan_3d_buildcube(float depth);
 
 arcan_errc arcan_3d_swizzlemodel(arcan_vobj_id model);
+
+void arcan_3d_viewray(arcan_vobj_id camtag,
+	int x, int y, float fract, vector* pos, vector* ang);
+
+/*
+ * using the current display settings, take a screen position and
+ * determine if, using the view specified by 'cam' a ray from the
+ * position would intersect the bounding area of obj
+ */
+bool arcan_3d_obj_bb_intersect(arcan_vobj_id cam,
+	arcan_vobj_id obj, int x, int y);
 
 /* empty model allocates and populates a container,
  * then add a hierarchy of meshes to the model */
@@ -44,16 +55,6 @@ arcan_errc arcan_3d_meshshader(arcan_vobj_id dst,
 	arcan_shader_id shid, unsigned slot);
 arcan_errc arcan_3d_addmesh(arcan_vobj_id dst,
 	data_source resource, unsigned nmaps);
-
-/*
- * use the currently tagged camera,
- * calculate the screen space coordinates of the model bb
- * using the projection of 'cam' and store the results
- * into the 4-element sized (each corner) dst.
- *
- */
-arcan_errc arcan_3d_projectbb(arcan_vobj_id model,
-	arcan_vobj_id cam, vector* dst);
 
 /* destructive transform,
  * apply the specified roll / pitch / yaw transform to all

@@ -57,7 +57,8 @@ void mult_matrix_vecf(const float* restrict matrix,
 		inv[3] * matrix[3*4+i];
 }
 
-void multiply_matrix(float* restrict dst, float* restrict a, float* restrict b)
+void multiply_matrix(float* restrict dst,
+	const float* restrict a, const float* restrict b)
 {
 	for (int i = 0; i < 16; i+= 4)
 		for (int j = 0; j < 4; j++)
@@ -177,8 +178,8 @@ int project_matrix(float objx, float objy, float objz,
 		   const int viewport[4],
 		   float *winx, float *winy, float *winz)
 {
-	float in[4];
-	float out[4];
+	_Alignas(16) float in[4];
+	_Alignas(16) float out[4];
 
 	in[0]=objx;
 	in[1]=objy;
@@ -308,13 +309,13 @@ vector mul_vector(vector a, vector b)
 vector norm_vector(vector invect){
 	vector empty = {.x = 0.0, .y = 0.0, .z = 0.0};
 	float len = len_vector(invect);
-	if (len < 0.0000001)
+	if (len < EPSILON)
 		return empty;
 
 	vector res = {
-		.x = invect.x * len,
-		.y = invect.y * len,
-		.z = invect.z * len
+		.x = invect.x / len,
+		.y = invect.y / len,
+		.z = invect.z / len
 	};
 
 	return res;
@@ -610,6 +611,157 @@ float* matr_quatf(quat a, float* dmatr)
 	return dmatr;
 }
 
+/*
+ * Plocked from MESA
+ */
+bool matr_invf(const float* restrict m, float* restrict out)
+{
+	float inv[16], det;
+	int i;
+
+	inv[0] =
+		m[5]  * m[10] * m[15] -
+ 		m[5]  * m[11] * m[14] -
+		m[9]  * m[6]  * m[15] +
+		m[9]  * m[7]  * m[14] +
+		m[13] * m[6]  * m[11] -
+		m[13] * m[7]  * m[10];
+
+	inv[4] =
+	 -m[4]  * m[10] * m[15] +
+		m[4]  * m[11] * m[14] +
+		m[8]  * m[6]  * m[15] -
+		m[8]  * m[7]  * m[14] -
+		m[12] * m[6]  * m[11] +
+		m[12] * m[7]  * m[10];
+
+	inv[8] =
+		m[4]  * m[9]  * m[15] -
+		m[4]  * m[11] * m[13] -
+		m[8]  * m[5]  * m[15] +
+		m[8]  * m[7]  * m[13] +
+		m[12] * m[5]  * m[11] -
+		m[12] * m[7]  * m[9];
+
+	inv[12] =
+		-m[4]  * m[9]  * m[14] +
+ 		 m[4]  * m[10] * m[13] +
+		 m[8]  * m[5]  * m[14] -
+		 m[8]  * m[6]  * m[13] -
+		 m[12] * m[5]  * m[10] +
+		 m[12] * m[6]  * m[9];
+
+	inv[1] =
+		-m[1] * m[10] * m[15] +
+		m[1]  * m[11] * m[14] +
+		m[9]  * m[2]  * m[15] -
+		m[9]  * m[3]  * m[14] -
+		m[13] * m[2]  * m[11] +
+		m[13] * m[3]  * m[10];
+
+	inv[5] =
+		m[0]  * m[10] * m[15] -
+		m[0]  * m[11] * m[14] -
+		m[8]  * m[2]  * m[15] +
+		m[8]  * m[3]  * m[14] +
+		m[12] * m[2]  * m[11] -
+		m[12] * m[3]  * m[10];
+
+	inv[9] =
+	 -m[0]  * m[9]  * m[15] +
+		m[0]  * m[11] * m[13] +
+		m[8]  * m[1]  * m[15] -
+		m[8]  * m[3]  * m[13] -
+		m[12] * m[1]  * m[11] +
+		m[12] * m[3]  * m[9];
+
+	inv[13] =
+		m[0]  * m[9] * m[14] -
+		m[0]  * m[10] * m[13] -
+		m[8]  * m[1] * m[14] +
+		m[8]  * m[2] * m[13] +
+		m[12] * m[1] * m[10] -
+		m[12] * m[2] * m[9];
+
+	inv[2] =
+		m[1]  * m[6] * m[15] -
+		m[1]  * m[7] * m[14] -
+		m[5]  * m[2] * m[15] +
+		m[5]  * m[3] * m[14] +
+		m[13] * m[2] * m[7] -
+		m[13] * m[3] * m[6];
+
+	inv[6] =
+	 -m[0]  * m[6] * m[15] +
+		m[0]  * m[7] * m[14] +
+	  m[4]  * m[2] * m[15] -
+		m[4]  * m[3] * m[14] -
+		m[12] * m[2] * m[7] +
+		m[12] * m[3] * m[6];
+
+	inv[10] =
+		m[0]  * m[5] * m[15] -
+		m[0]  * m[7] * m[13] -
+		m[4]  * m[1] * m[15] +
+		m[4]  * m[3] * m[13] +
+		m[12] * m[1] * m[7] -
+		m[12] * m[3] * m[5];
+
+	inv[14] =
+		-m[0] * m[5] * m[14] +
+		m[0]  * m[6] * m[13] +
+		m[4]  * m[1] * m[14] -
+		m[4]  * m[2] * m[13] -
+		m[12] * m[1] * m[6] +
+		m[12] * m[2] * m[5];
+
+	inv[3] =
+	 -m[1] * m[6] * m[11] +
+		m[1] * m[7] * m[10] +
+		m[5] * m[2] * m[11] -
+		m[5] * m[3] * m[10] -
+ 		m[9] * m[2] * m[7] +
+		m[9] * m[3] * m[6];
+
+	inv[7] =
+		m[0] * m[6] * m[11] -
+		m[0] * m[7] * m[10] -
+		m[4] * m[2] * m[11] +
+		m[4] * m[3] * m[10] +
+		m[8] * m[2] * m[7] -
+		m[8] * m[3] * m[6];
+
+	inv[11] =
+		-m[0] * m[5] * m[11] +
+		m[0] * m[7] * m[9] +
+		m[4] * m[1] * m[11] -
+		m[4] * m[3] * m[9] -
+		m[8] * m[1] * m[7] +
+		m[8] * m[3] * m[5];
+
+	inv[15] =
+		m[0] * m[5] * m[10] -
+		m[0] * m[6] * m[9] -
+		m[4] * m[1] * m[10] +
+		m[4] * m[2] * m[9] +
+		m[8] * m[1] * m[6] -
+		m[8] * m[2] * m[5];
+
+	det =
+		m[0] * inv[0] + m[1] * inv[4] +
+		m[2] * inv[8] + m[3] * inv[12];
+
+	if (det == 0)
+		return false;
+
+	det = 1.0 / det;
+
+	for (i = 0; i < 16; i++)
+		out[i] = inv[i] * det;
+
+	return true;
+}
+
 double* matr_quat(quat a, double* dmatr)
 {
 	if (dmatr){
@@ -658,7 +810,8 @@ void update_view(orientation* dst, float roll, float pitch, float yaw)
 
 vector taitbryan_forwardv(float roll, float pitch, float yaw)
 {
-	float dmatr[16];
+	_Alignas(16) float dmatr[16];
+
 	quat pitchq = build_quat(pitch, 1.0, 0.0, 0.0);
 	quat yawq   = build_quat(yaw,   0.0, 1.0, 0.0);
 
@@ -808,3 +961,77 @@ void arcan_math_init()
 {
 	default_quat = build_quat_taitbryan(0, 0, 0);
 }
+
+bool ray_plane(vector* pos, vector* dir,
+	vector* plane_pos, vector* plane_normal, vector* intersect)
+{
+	float den = dotp_vector(*plane_normal, *dir);
+	if (den > EPSILON){
+		vector diff = sub_vector(*pos, *plane_pos);
+		float tt = dotp_vector(diff, *plane_normal);
+		*intersect = add_vector(mul_vectorf(*dir, tt), *pos);
+		return tt >= 0;
+	}
+
+	return false;
+}
+
+bool ray_sphere(const vector* ray_pos, const vector* ray_dir,
+	const vector* sphere_pos, float sphere_rad, float* d1, float *d2)
+{
+	float den, b;
+	vector delta = sub_vector(*ray_pos, *sphere_pos);
+	b = -1.0 * dotp_vector(delta, *ray_dir);
+	den = b * b - dotp_vector(delta, delta) + sphere_rad * sphere_rad;
+	if (den < 0)
+		return false;
+
+	den = sqrtf(den);
+
+	*d1 = b - den;
+	*d2 = b + den;
+
+	if (*d2 < 0)
+		return false;
+
+	if (*d1 < 0)
+		*d1 = 0;
+
+	return true;
+}
+
+vector unproject_matrix(float dev_x, float dev_y, float dev_z,
+	const float* restrict view, const float* restrict proj)
+{
+/* combine modelview and projection, then invert */
+	_Alignas(16) float invm[16];
+	_Alignas(16) float vpm[16];
+	multiply_matrix(vpm, proj, view);
+	matr_invf(vpm, invm);
+
+/* x y z should be device coordinates (-1..1) */
+	_Alignas(16) float wndv[4] = {dev_x, dev_y, dev_z, 1.0};
+	_Alignas(16) float upv[4];
+/* transform device coordinates */
+
+	mult_matrix_vecf(invm, wndv, upv);
+
+	upv[3] = 1.0 / upv[3];
+
+	vector vs = {
+		.x = upv[0] * upv[3],
+		.y = upv[1] * upv[3],
+		.z = upv[2] * upv[3]
+	};
+
+	return vs;
+}
+
+void dev_coord(float* out_x, float* out_y, float* out_z,
+	int x, int y, int w, int h, float near, float far)
+{
+	*out_x = (2.0 * (float) x ) / (float) w - 1.0;
+	*out_y = 1.0 - (2.0 * (float) y ) / (float) h;
+	*out_z = (0.0 - near) / (far - near);
+}
+

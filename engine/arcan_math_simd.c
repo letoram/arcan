@@ -63,7 +63,7 @@ void mult_matrix_vecf(const float* ina,
 }
 
 void multiply_matrix(float* restrict dst,
-	float* restrict ina, float* restrict inb)
+	const float* restrict ina, const float* restrict inb)
 {
 #ifdef ARCAN_MATH_ALIGNED_SIMD
 	assert(((uintptr_t)dst % 16) == 0);

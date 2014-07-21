@@ -39,9 +39,14 @@ enum arcan_shader_envts{
 	TEXTURE_MATR    = 2,
 	OBJ_OPACITY     = 3,
 
+/* transformation completion */
+	TRANS_MOVE      = 4,
+	TRANS_ROTATE    = 5,
+	TRANS_SCALE     = 6,
+
 /* system values, don't change this order */
-	FRACT_TIMESTAMP_F = 4,
-	TIMESTAMP_D       = 5,
+	FRACT_TIMESTAMP_F = 7,
+	TIMESTAMP_D       = 8,
 };
 
 enum shader_vertex_attributes {
