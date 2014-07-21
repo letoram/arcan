@@ -285,7 +285,8 @@ struct arcan_video_display {
 
 	unsigned char bpp;
 	unsigned short width, height;
-	uint32_t c_ticks;
+	arcan_tickv c_ticks;
+	float c_lerp;
 
 	unsigned char msasamples;
 	float vsync_timing, vsync_stddev, vsync_variance;

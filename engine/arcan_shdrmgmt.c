@@ -27,6 +27,10 @@ struct shader_envts {
 	float texturemat[16];
 
 	float opacity;
+	float move;
+	float rotate;
+	float scale;
+
 /* system values, don't change this order */
 	float fract_timestamp;
 	arcan_tickv timestamp;
@@ -39,6 +43,9 @@ static int ofstbl[TBLSIZE] = {
 	offsetof(struct shader_envts, texturemat),
 
 	offsetof(struct shader_envts, opacity),
+	offsetof(struct shader_envts, move),
+	offsetof(struct shader_envts, rotate),
+	offsetof(struct shader_envts, scale),
 
 /* system values, don't change this order */
 	offsetof(struct shader_envts, fract_timestamp),
@@ -51,18 +58,16 @@ static enum shdrutype typetbl[TBLSIZE] = {
 	shdrmat4x4, /* texturem */
 
 	shdrfloat, /* obj_opacity */
+	shdrfloat, /* obj_move */
+	shdrfloat, /* obj_rotate */
+	shdrfloat, /* obj_scale */
 
 	shdrfloat, /* fract_timestamp */
 	shdrint /* timestamp */
 };
 
 static int counttbl[TBLSIZE] = {
-	0,
-	0,
-	0,
-	0,
-	0,
-	0
+	0, 0, 0, 0, 0, 0, 0, 0, 0
 };
 
 static char* symtbl[TBLSIZE] = {
@@ -70,6 +75,9 @@ static char* symtbl[TBLSIZE] = {
 	"projection",
 	"texturem",
 	"obj_opacity",
+	"trans_move",
+	"trans_scale",
+	"trans_rotate",
 	"fract_timestamp",
 	"timestamp"
 };
@@ -108,7 +116,6 @@ static int sizetbl[7] = {
 	sizeof(float) * 4,
 	sizeof(float) * 16
 };
-
 
 /* base is added as a controllable offset similarly to what is done
  * with video/audio IDs, i.e. in order to quickly shake out hard-coded

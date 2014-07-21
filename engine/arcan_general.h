@@ -87,7 +87,7 @@ typedef struct {
 #endif
 
 typedef int arcan_shader_id;
-typedef unsigned int arcan_tickv;
+typedef uint32_t arcan_tickv;
 
 enum arcan_errors {
 	ARCAN_OK                       =   0,

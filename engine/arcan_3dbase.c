@@ -57,8 +57,12 @@ enum camtag_facing
 };
 
 struct camtag_data {
+	_Alignas(16) float projection[16];
+	_Alignas(16) float mvm[16];
+	_Alignas(16) vector wpos;
+	float near;
+	float far;
 	enum camtag_facing facing;
-	float projection[16];
 };
 
 struct geometry {
@@ -92,6 +96,7 @@ typedef struct {
 /* AA-BB */
 	vector bbmin;
 	vector bbmax;
+	float radius;
 
 /* position, opacity etc. are inherited from parent */
 	struct {
@@ -115,6 +120,105 @@ typedef struct {
 
 	arcan_vobject* parent;
 } arcan_3dmodel;
+
+/*
+ * debug geometry primitives, assumes proper states,
+ * i.e. MODELVIEW_MATR in the right space,
+ * depth testing disabled,
+ * color shader activated
+ */
+static void draw_lbox(vector min, vector max)
+{
+	float verts[] = {
+		min.x, min.y, min.z, min.x, min.y, max.z,
+		min.x, min.y, min.z, min.x, max.y, min.z,
+		min.x, min.y, min.z, max.x, min.y, min.z,
+		min.x, max.y, min.z, max.x, max.y, min.z,
+		min.x, max.y, min.z, min.x, max.y, max.z,
+		min.x, max.y, max.z, min.x, min.y, max.z,
+		max.x, max.y, min.z, max.x, min.y, min.z,
+		max.x, max.y, min.z, max.x, max.y, max.z,
+		max.x, max.y, max.z, max.x, min.y, max.z,
+		max.x, min.y, max.z, min.x, min.y, max.z,
+		max.x, min.y, max.z, max.x, min.y, min.z,
+		max.x, max.y, max.z, min.x, max.y, max.z
+	};
+
+	glVertexAttribPointer(ATTRIBUTE_VERTEX, 3, GL_FLOAT, GL_FALSE, 0, verts);
+	glDrawArrays(GL_LINES, 0, sizeof(verts) / sizeof(verts[0]) / 3);
+}
+
+static void draw_line_2p(vector p1, vector p2)
+{
+	float verts[] = {
+		p1.x, p1.y, p1.z,
+		p2.x, p2.y, p2.z
+	};
+
+	glVertexAttribPointer(ATTRIBUTE_VERTEX, 3, GL_FLOAT, GL_FALSE, 0, verts);
+	glDrawArrays(GL_LINES, 0, 2);
+}
+
+static void draw_line(vector point, vector dir, float len)
+{
+	float verts[] = {
+		point.x, point.y, point.z,
+		point.x + dir.x * len, point.y + dir.y * len, point.z + dir.z * len
+	};
+
+	glVertexAttribPointer(ATTRIBUTE_VERTEX, 3, GL_FLOAT, GL_FALSE, 0, verts);
+	glDrawArrays(GL_LINES, 0, 2);
+}
+
+static void toggle_debugstates(float* modelview)
+{
+	if (modelview){
+		float white[3] = {1.0, 1.0, 1.0};
+		glDepthMask(GL_FALSE);
+		glDisable(GL_DEPTH_TEST);
+		glEnableVertexAttribArray(ATTRIBUTE_VERTEX);
+		arcan_shader_activate(arcan_video_display.defclrshdr);
+		arcan_shader_envv(MODELVIEW_MATR, modelview, sizeof(float) * 16);
+		arcan_shader_forceunif("obj_col", shdrvec3, (void*) white, false);
+	}
+	else{
+		arcan_shader_activate(arcan_video_display.defaultshdr);
+		glEnable(GL_DEPTH_TEST);
+		glDepthMask(GL_TRUE);
+		glDisableVertexAttribArray(ATTRIBUTE_VERTEX);
+	}
+}
+
+static void draw_debug(arcan_3dmodel* src,
+	surface_properties prop, float* modelview)
+{
+	float opa = 1.0;
+	float red[3] = {1.0, 0.0, 0.0};
+	float green[3] = {0.0, 1.0, 0.0};
+	float blue[3] = {0.0, 0.0, 1.0};
+
+	toggle_debugstates(modelview);
+
+	arcan_shader_envv(OBJ_OPACITY, &opa, sizeof(float));
+
+	draw_lbox(src->bbmin, src->bbmax);
+
+	vector cp = {.x = 0.0, .y = 0.0, .z = 0.0};
+	vector yp = {.x = 0.0, .y = 1.0, .z = 0.0};
+	vector xp = {.x = 1.0, .y = 0.0, .z = 0.0};
+	vector zp = {.x = 0.0, .y = 0.0, .z = 1.0};
+
+	arcan_shader_forceunif("obj_col", shdrvec3, (void*) red, false);
+	draw_line(cp, yp, 1.5 * (src->bbmax.y - src->bbmin.y));
+
+	arcan_shader_forceunif("obj_col", shdrvec3, (void*) green, false);
+	draw_line(cp, zp, 1.5 * (src->bbmax.y - src->bbmin.y));
+
+	arcan_shader_forceunif("obj_col", shdrvec3, (void*) blue, false);
+	draw_line(cp, xp, 1.5 * (src->bbmax.x - src->bbmin.x));
+
+	toggle_debugstates(NULL);
+}
 
 static void build_hplane(point min, point max, point step,
 						 float** verts, unsigned** indices, float** txcos,
@@ -166,7 +270,6 @@ static void build_hplane(point min, point max, point step,
 
 	*nindices = vofs;
 }
-
 
 static void freemodel(arcan_3dmodel* src)
 {
@@ -225,7 +328,6 @@ static void push_deferred(arcan_3dmodel* model)
 		model->deferred.orient = false;
 	}
 }
-
 
 /*
  * Render-loops, Pass control, Initialization
@@ -344,6 +446,9 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
 				glDisableVertexAttribArray(attribs[i]);
 
 step:
+		if (src->flags.debug_vis)
+			draw_debug(src, props, dmatr);
+
 		cframe += base->nmaps;
 		base = base->next;
 	}
@@ -436,7 +541,53 @@ arcan_errc arcan_3d_projectbb(arcan_vobj_id modelid,
 		model->feed.state.tag != ARCAN_TAG_3DOBJ)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
+	return ARCAN_OK;
+}
 
+void arcan_3d_viewray(arcan_vobj_id camtag,
+	int x, int y, float fract, vector* pos, vector* ang)
+{
+	float z;
+	arcan_vobject* camobj = arcan_video_getobject(camtag);
+	if(!camobj || camobj->feed.state.tag != ARCAN_TAG_3DCAMERA)
+		return;
+	struct camtag_data* camera = camobj->feed.state.ptr;
+
+	dev_coord(&pos->x, &pos->y, &z, x, y,
+		arcan_video_display.width, arcan_video_display.height,
+		camera->near, camera->far
+	);
+
+	vector p1 = unproject_matrix(pos->x, pos->y, 0.0,
+		camera->mvm, camera->projection);
+
+	vector p2 = unproject_matrix(pos->x, pos->y, 1.0,
+		camera->mvm, camera->projection);
+
+	p1.z = camera->wpos.z + camera->near;
+	p2.z = camera->wpos.z + camera->far;
+
+	*pos = p1;
+	*ang = norm_vector( sub_vector(p2, p1) );
+}
+
+bool arcan_3d_obj_bb_intersect(arcan_vobj_id cam,
+	arcan_vobj_id obj, int x, int y)
+{
+	arcan_vobject* model = arcan_video_getobject(obj);
+	if (!model || model->feed.state.tag != ARCAN_TAG_3DOBJ)
+		return false;
+
+	vector ray_pos;
+	vector ray_dir;
+
+	float rad = ((arcan_3dmodel*)model->feed.state.ptr)->radius;
+	arcan_3d_viewray(cam, x, y, arcan_video_display.c_lerp, &ray_pos, &ray_dir);
+
+	float d1, d2;
+
+	return ray_sphere(&ray_pos, &ray_dir,
+		&model->current.position, rad, &d1, &d2);
 }
 
 /* Chained to the video-pass in arcan_video, stop at the
@@ -478,7 +629,11 @@ arcan_vobject_litem* arcan_refresh_3d(arcan_vobj_id camtag,
 	if (obj3d->flags.infinite)
 		cell = process_scene_infinite(cell, fract, dmatr);
 
+	struct camtag_data* cdata = camobj->feed.state.ptr;
+	cdata->wpos = dprop.position;
 	translate_matrix(dmatr, dprop.position.x, dprop.position.y, dprop.position.z);
+	memcpy(cdata->mvm, dmatr, sizeof(float) * 16);
+
 	process_scene_normal(cell, fract, dmatr);
 
 	glDisable(GL_CULL_FACE);
@@ -548,7 +703,7 @@ arcan_errc arcan_3d_swizzlemodel(arcan_vobj_id dst)
 	return rv;
 }
 
-arcan_vobj_id arcan_3d_buildcube(float d, unsigned nmaps)
+arcan_vobj_id arcan_3d_buildcube(float d)
 {
 	vfunc_state state = {.tag = ARCAN_TAG_3DOBJ};
 	img_cons empty = {0};
@@ -567,39 +722,46 @@ arcan_vobj_id arcan_3d_buildcube(float d, unsigned nmaps)
 	newmodel->geometry = arcan_alloc_mem(sizeof(struct geometry), ARCAN_MEM_VTAG,
 		ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
 
-	newmodel->geometry->nmaps = nmaps;
+	newmodel->geometry->nmaps = 1;
 	newmodel->geometry->indexformat = GL_UNSIGNED_SHORT;
 	newmodel->geometry->complete = true;
 	newmodel->geometry->ntris = 2 * 6;
-	newmodel->geometry->nindices = 12 * 3;
 
 	float verts[] = {
-		-d, -d,  d,  d, -d,  d,
-		 d,  d,  d, -d,  d,  d,
-		-d, -d, -d, -d,  d, -d,
-		-d,  d, -d, -d,  d,  d,
-		 d,  d,  d,  d,  d, -d,
-		-d, -d, -d,  d, -d, -d,
-		 d, -d,  d, -d, -d,  d,
-		 d, -d, -d,  d,  d, -d,
-		 d,  d, -d,  d,  d,  d,
-     d,  d,  d,  d, -d,  d,
-    -d, -d, -d, -d, -d,  d,
-		-d,  d,  d, -d,  d, -d
+ 		 d, d, d,  -d,  d,  d,  -d, -d,  d,   d, -d,  d,
+	 	 d, d, d,   d, -d,  d,   d, -d, -d,   d,  d, -d,
+	 	 d, d, d,   d,  d, -d,  -d,  d, -d,  -d,  d,  d,
+		-d, d, d,  -d,  d, -d,  -d, -d, -d,  -d, -d,  d,
+	  -d,-d,-d,   d, -d, -d,   d, -d,  d,  -d, -d,  d,
+	   d,-d,-d,  -d, -d, -d,  -d,  d, -d,   d,  d, -d
 	};
 	newmodel->geometry->verts = arcan_alloc_fillmem(verts, sizeof(verts),
 		ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_SIMD);
+	newmodel->geometry->nverts = sizeof(verts) / sizeof(verts[0]) / 3;
+
+	float normals[] = {
+		0, 0, 1,  0, 0, 1,  0, 0, 1,  0, 0, 1,
+		1, 0, 0,  1, 0, 0,  1, 0, 0,  1, 0, 0,
+		0, 1, 0,  0, 1, 0,  0, 1, 0,  0, 1, 0,
+		-1, 0, 0,-1, 0, 0, -1, 0, 0, -1, 0, 0,
+		0,-1, 0,  0,-1, 0,  0,-1, 0,  0,-1, 0,
+		0, 0,-1,  0, 0,-1,  0, 0,-1,  0, 0,-1
+	};
+	newmodel->geometry->normals = arcan_alloc_fillmem(normals, sizeof(normals),
+		ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_SIMD);
 
 	short indices[] = {
-		 0,  1,  2,  0,  2,  3,
-		 4,  5,  6,  4,  6,  7,
-		 8,  9,  10, 8, 10, 11,
-		12, 13, 14, 12, 14, 15,
-		16, 17, 18, 16, 18, 19,
-		20, 21, 22, 20, 22, 23
+	 0, 1, 2,  2, 3, 0,
+	 4, 5, 6,  6, 7, 4,
+	 8, 9,10, 10,11, 8,
+	 12,13,14,14,15,12,
+	 16,17,18,18,19,16,
+	 20,21,22,22,23,20
 	};
 	newmodel->geometry->indices = arcan_alloc_fillmem(indices, sizeof(indices),
 		ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_SIMD);
+	newmodel->geometry->nverts = sizeof(verts) / sizeof(verts[0]) / 3;
+	newmodel->geometry->nindices = 36;
 
 	float txcos[] = {
 		0, 0, 1, 0, 1, 1, 0, 1,
@@ -615,6 +777,7 @@ arcan_vobj_id arcan_3d_buildcube(float d, unsigned nmaps)
 	vector bbmin = {.x = -d, .y = -d, .z = -d};
 	vector bbmax = {.x =  d, .y =  d, .z =  d};
 
+	newmodel->radius = d;
 	newmodel->bbmin = bbmin;
 	newmodel->bbmax = bbmax;
 	newmodel->geometry->complete = true;
@@ -1045,15 +1208,17 @@ arcan_errc arcan_3d_baseorient(arcan_vobj_id dst,
 }
 
 arcan_errc arcan_3d_camtag(arcan_vobj_id vid,
-	float projection[16], bool front, bool back)
+	float near, float far, float ar, float fov, bool front, bool back)
 {
 	arcan_vobject* vobj = arcan_video_getobject(vid);
-
 	vobj->owner->camtag = vobj->cellid;
-	struct camtag_data* camobj = arcan_alloc_mem(sizeof(struct camtag_data),
-		ARCAN_MEM_VTAG, 0, ARCAN_MEMALIGN_NATURAL);
 
-	memcpy(camobj->projection, projection, sizeof(float) * 16);
+	struct camtag_data* camobj = arcan_alloc_mem(
+		sizeof(struct camtag_data), ARCAN_MEM_VTAG, 0, ARCAN_MEMALIGN_SIMD);
+
+	camobj->near = near;
+	camobj->far = far;
+	build_projection_matrix(camobj->projection, near, far, ar, fov);
 
 /* we cull the inverse */
 	if (front && back)

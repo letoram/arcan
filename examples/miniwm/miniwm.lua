@@ -140,7 +140,9 @@ function miniwm()
 	local shid = build_shader(nil, bgshader, "background");
 	shader_uniform(shid, "display", "ff", PERSIST, VRESW, VRESH);
 	image_shader(background, shid);
-	freeze_image(background);
+	if (freeze_image) then
+		freeze_image(background);
+	end
 
 -- setup input handler for META + KEY WM specific actions
 	dispatchtbl["TAB"] = {cycle_active, "Cycle Active Program"};

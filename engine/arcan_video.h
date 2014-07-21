@@ -713,8 +713,10 @@ arcan_errc arcan_video_moveinterp(arcan_vobj_id id, enum arcan_vinterp);
 arcan_errc arcan_video_objectscale(arcan_vobj_id id, float wf, float hf,
 	float df, unsigned int time);
 arcan_errc arcan_video_scaleinterp(arcan_vobj_id id, enum arcan_vinterp);
-arcan_errc arcan_video_objectrotate(arcan_vobj_id id, float roll, float pitch,
-	float yaw, unsigned int time);
+arcan_errc arcan_video_objectrotate(arcan_vobj_id id, float ang, arcan_tickv time);
+arcan_errc arcan_video_objectrotate3d(arcan_vobj_id id,
+	float roll, float pitch, float yaw, arcan_tickv time);
+
 arcan_errc arcan_video_objectopacity(arcan_vobj_id id, float opa,
 	unsigned int time);
 arcan_errc arcan_video_blendinterp(arcan_vobj_id id, enum arcan_vinterp);

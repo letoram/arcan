@@ -896,7 +896,7 @@ static int rotateimage(lua_State* ctx)
 	int argtype = lua_type(ctx, 1);
 	if (argtype == LUA_TNUMBER){
 		arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
-		arcan_video_objectrotate(id, ang, 0.0, 0.0, time);
+		arcan_video_objectrotate(id, ang, time);
 	}
 	else if (argtype == LUA_TTABLE){
 		int nelems = lua_rawlen(ctx, 1);
@@ -904,7 +904,7 @@ static int rotateimage(lua_State* ctx)
 		for (size_t i = 0; i < nelems; i++){
 			lua_rawgeti(ctx, 1, i+1);
 			arcan_vobj_id id = luaL_checkvid(ctx, -1, NULL);
-			arcan_video_objectrotate(id, ang, 0.0, 0.0, time);
+			arcan_video_objectrotate(id, ang, time);
 			lua_pop(ctx, 1);
 		}
 	}
@@ -3064,9 +3064,7 @@ static int buildbox(lua_State* ctx)
 	LUA_TRACE("build_3dbox");
 
 	float depth = luaL_checknumber(ctx, 1);
-	unsigned nmaps = luaL_optnumber(ctx, 2, 1);
-
-	lua_pushvid(ctx, arcan_3d_buildcube(depth, nmaps));
+	lua_pushvid(ctx, arcan_3d_buildcube(depth));
 
 	return 1;
 }
@@ -3098,9 +3096,7 @@ static int camtag(lua_State* ctx)
 	bool front = luaL_optnumber(ctx, 6, true);
 	bool back  = luaL_optnumber(ctx, 7, false);
 
-	float projection[16];
-	build_projection_matrix(projection, nv, fv, ar, fov);
-	arcan_errc rv = arcan_3d_camtag(id, projection, front, back);
+	arcan_errc rv = arcan_3d_camtag(id, nv, fv, ar, fov, front, back);
 
 	lua_pushboolean(ctx, rv == ARCAN_OK);
 	return 1;
@@ -5935,10 +5931,10 @@ static int rotatemodel(lua_State* ctx)
 	surface_properties prop = arcan_video_current_properties(vid);
 
 	if (rotate_rel == CONST_ROTATE_RELATIVE)
-		arcan_video_objectrotate(vid, prop.rotation.roll + roll,
+		arcan_video_objectrotate3d(vid, prop.rotation.roll + roll,
 			prop.rotation.pitch + pitch, prop.rotation.yaw + yaw, dt);
 	else
-		arcan_video_objectrotate(vid, roll, pitch, yaw, dt);
+		arcan_video_objectrotate3d(vid, roll, pitch, yaw, dt);
 
 	return 0;
 }
