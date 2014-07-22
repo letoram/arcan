@@ -13,6 +13,11 @@
 
 /* We re-use X11/egl or other platforms with this little hack */
 #define PLATFORM_SUFFIX lwa
+
+#include <stdint.h>
+#include <stdbool.h>
+
+#include "../video_platform.h"
 #define WITH_HEADLESS
 #include HEADLESS_PLATFORM
 
@@ -25,8 +30,8 @@
 
 static char* synchopts[] = {
 	"parent", "display server controls synchronisation",
-	"pre-wake", "use the cost of previous frames as estimates, synch as late as possible.",
-	"adaptive", "skip a frame if it is likely that we'll overshoot a synch point.",
+	"pre-wake", "use the cost of and jitter from previous frames",
+	"adaptive", "skip a frame if syncpoint is at risk",
 	NULL
 };
 

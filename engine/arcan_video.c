@@ -1777,6 +1777,8 @@ void arcan_video_cursorpos(int newx, int newy, bool absolute)
 		arcan_video_display.cursor.x += newx;
 		arcan_video_display.cursor.y += newy;
 	}
+
+	FLAG_DIRTY();
 }
 
 void arcan_video_cursorsize(size_t w, size_t h)

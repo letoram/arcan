@@ -3,11 +3,11 @@ set (GL_PLATFORM_HEADER ${PLATFORM_PATH}/../${VIDEO_PLATFORM}/glheaders.h)
 
 add_definitions(-DPLATFORM_HEADER=\"${PLATFORM_PATH}/../platform.h\")
 set(ARCAN_DEFINITIONS ${ARCAN_DEFINITIONS} GL_HEADERS="${GL_PLATFORM_HEADER}")
-list(APPEND LWA_DEFINITIONS 
+list(APPEND LWA_DEFINITIONS
 	GL_HEADERS="${PLATFORM_PATH}/../darwin/glheaders.h"
 	HEADLESS_PLATFORM=\"${PLATFORM_PATH}/../${LWA_HEADLESS}\")
 
-add_definitions(-DLUA_51 -D_WITH_DPRINTF 
+add_definitions(-DLUA_51 -D_WITH_DPRINTF
 	-D__UNIX -D__APPLE__ -DARCAN_SHMIF_OVERCOMMIT)
 
 # map_file is the default and doesn't need to be set here
@@ -27,7 +27,7 @@ find_library(COREAUDIO NAMES CoreAudio)
 find_library(AUDIOTOOLBOX NAMES AudioToolbox)
 
 LIST(APPEND MAIN_LIBRARIES ${IOKIT} ${COREFOUNDATION})
-LIST(APPEND LWA_LIBRARIES ${COCOA} ${COREAUDIO} ${AUDIOTOOLBOX} ${AUDIOUNIT})  	
+LIST(APPEND LWA_LIBRARIES ${COCOA} ${COREAUDIO} ${AUDIOTOOLBOX} ${AUDIOUNIT})
 
 set (PLATFORM_SOURCES
 	${PLATFORM_PATH}/fmt_open.c
@@ -36,6 +36,7 @@ set (PLATFORM_SOURCES
 	${PLATFORM_PATH}/resource_io.c
 	${PLATFORM_PATH}/ilaunch.c
 	${PLATFORM_PATH}/strip_traverse.c
+	${PLATFORM_PATH}/namespace.c
 	${PLATFORM_PATH}/paths.c
 	${PLATFORM_PATH}/shm.c
 	${PLATFORM_PATH}/mem.c
@@ -89,13 +90,13 @@ set (
 	frameserver/frameserver.c
 )
 if (ENABLE_LIBRETRO AND ENABLE_LIBRETRO3D)
-		LIST(APPEND FSRV_LIBRETRO_SOURCES 
+		LIST(APPEND FSRV_LIBRETRO_SOURCES
 			${PLATFORM_PATH}/../darwin/SDLmain_fsrv.m)
-		LIST(APPEND FSRV_LIBRETRO_LIBRARIES 
-			${IOKIT} 
+		LIST(APPEND FSRV_LIBRETRO_LIBRARIES
+			${IOKIT}
 			${COREFOUNDATION}
 		)
-endif()	
+endif()
 include(${PLATFORM_PATH}/../CMakeLists.fsrv)
 
 if (ENABLE_LIBRETRO AND ENABLE_LIBRETRO3D)
@@ -127,7 +128,7 @@ if (${SDLIMAGE_FOUND})
 endif()
 
 set_property(TARGET arcan APPEND PROPERTY COMPILE_DEFINITIONS ${ARCAN_DEFINITIONS})
-	
+
 # Packaging and installation. build a DMG which installs to a default
 # Application folder, with resources, themes and frameworks included.
 #
@@ -142,7 +143,7 @@ set(frameworks_dir ${bundle_name}/Contents/Frameworks/)
 set(CMAKE_INSTALL_PREFIX ${bundle_name}/Contents/MacOS/)
 set(DATA_INSTALL_DIR ".")
 set(BIN_DST "../MacOS")
-set(THEME_DST "../Resources/themes")
+set(APPL_DST "../Resources/appl")
 set(RESOURCES_DST "../Resources/resources")
 
 #install(TARGETS arcan_hijack DESTINATION ${BIN_DST})
