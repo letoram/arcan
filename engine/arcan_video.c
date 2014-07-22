@@ -130,7 +130,7 @@ static void attach_object(struct rendertarget* dst, arcan_vobject* src);
 static arcan_errc update_zv(arcan_vobject* vobj, unsigned short newzv);
 static void rebase_transform(struct surface_transform*, int64_t);
 static bool alloc_fbo(struct rendertarget* dst);
-static void process_rendertarget(struct rendertarget* tgt, float fract);
+static size_t process_rendertarget(struct rendertarget* tgt, float fract);
 static arcan_vobject* new_vobject(arcan_vobj_id* id,
 struct arcan_video_context* dctx);
 static inline void build_modelview(float* dmatr,
@@ -1765,6 +1765,41 @@ arcan_errc arcan_video_framecyclemode(arcan_vobj_id id, signed mode)
 	}
 
 	return rv;
+}
+
+void arcan_video_cursorpos(int newx, int newy, bool absolute)
+{
+	if (absolute){
+		arcan_video_display.cursor.x = newx;
+		arcan_video_display.cursor.y = newy;
+	}
+	else {
+		arcan_video_display.cursor.x += newx;
+		arcan_video_display.cursor.y += newy;
+	}
+}
+
+void arcan_video_cursorsize(size_t w, size_t h)
+{
+	arcan_video_display.cursor.w = w;
+	arcan_video_display.cursor.h = h;
+}
+
+void arcan_video_cursorstore(arcan_vobj_id src)
+{
+	if (arcan_video_display.cursor.vstore){
+		drop_glres(arcan_video_display.cursor.vstore);
+		arcan_video_display.cursor.vstore = NULL;
+	}
+
+	arcan_vobject* vobj = arcan_video_getobject(src);
+	if (src == ARCAN_VIDEO_WORLDID || !vobj ||
+		vobj->vstore->txmapped != TXSTATE_TEX2D)
+		return;
+
+/* texture coordinates here will always be restricted to 0..1, 0..1 */
+	arcan_video_display.cursor.vstore = vobj->vstore;
+	vobj->vstore->refcount++;
 }
 
 arcan_errc arcan_video_shareglstore(arcan_vobj_id sid, arcan_vobj_id did)
@@ -4434,14 +4469,13 @@ static inline bool setup_shallow_texclip(arcan_vobject* elem,
 	return true;
 }
 
-static void process_rendertarget(struct rendertarget* tgt, float fract)
+static size_t process_rendertarget(struct rendertarget* tgt, float fract)
 {
 	arcan_vobject_litem* current = tgt->first;
 	int width, height;
 
-	if (arcan_video_display.dirty == 0 && tgt->transfc == 0){
-		return;
-	}
+	if (arcan_video_display.dirty == 0 && tgt->transfc == 0)
+		return 0;
 
 	if (tgt->color){
 		width = tgt->color->origw;
@@ -4460,11 +4494,14 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 	if (!tgt->noclear)
 		glClear(GL_COLOR_BUFFER_BIT);
 
+	size_t pc = 0;
+
 /* first, handle all 3d work
  * (which may require multiple passes etc.) */
 	if (!arcan_video_display.order3d == ORDER3D_FIRST &&
 		current && current->elem->order < 0){
 		current = arcan_refresh_3d(tgt->camtag, current, fract);
+		pc++;
 	}
 
 /* skip a possible 3d pipeline */
@@ -4568,6 +4605,7 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 
 		arcan_video_setblend(&dprops, elem);
 		draw_texsurf(tgt, dprops, elem, *dstcos);
+		pc++;
 
 	if (clipped)
 		glDisable(GL_STENCIL_TEST);
@@ -4582,7 +4620,11 @@ end3d:
 		arcan_video_display.order3d == ORDER3D_LAST){
 		arcan_shader_activate(arcan_video_display.defaultshdr);
 		current = arcan_refresh_3d(tgt->camtag, current, fract);
+		if (current != tgt->first)
+			pc++;
 	}
+
+	return pc;
 }
 
 arcan_errc arcan_video_forceread(arcan_vobj_id sid, void** dptr, size_t* dsize)
@@ -4795,12 +4837,32 @@ void arcan_video_refresh_GL(float lerp)
 	else
 		process_rendertarget(&current_context->stdoutp, lerp);
 
+/*
+ * Some room for optimization here --
+ * when cursor position is changed, draw the cursor again with different
+ * texture coordinates and the stdoutp FBO bound.
+ */
+	if (arcan_video_display.cursor.vstore){
+		int x1 = arcan_video_display.cursor.x;
+		int y1 = arcan_video_display.cursor.y;
+		int x2 = arcan_video_display.cursor.w + x1;
+		int y2 = arcan_video_display.cursor.h + y1;
+
+		glBindTexture(GL_TEXTURE_2D,
+			arcan_video_display.cursor.vstore->vinf.text.glid);
+
+		arcan_shader_activate(arcan_video_display.defaultshdr);
+		draw_vobj(x1, y1, x2, y2, arcan_video_display.default_txcos);
+
+		glBindTexture(GL_TEXTURE_2D, 0);
+	}
+
 	arcan_video_display.dirty = 0;
 }
 
 unsigned arcan_video_refresh(float tofs)
 {
-/* for less interactive / latency sensitive applications the delta > ..
+/* for less interactive / latency sensitive applications the delta >
  * with vsync on, the delta > .. could be removed */
 	long long int pre = arcan_timemillis();
 		arcan_video_refresh_GL(tofs);

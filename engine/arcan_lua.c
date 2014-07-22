@@ -1254,6 +1254,67 @@ static int sharestorage(lua_State* ctx)
 	return 1;
 }
 
+static int cursorstorage(lua_State* ctx)
+{
+	LUA_TRACE("cursor_setstorage");
+	arcan_vobj_id src = luaL_checkvid(ctx, 1, NULL);
+	arcan_video_cursorstore(src);
+	return 0;
+}
+
+static int cursormove(lua_State* ctx)
+{
+	LUA_TRACE("move_cursor");
+	lua_Number x = luaL_checknumber(ctx, 1);
+	lua_Number y = luaL_checknumber(ctx, 2);
+	bool clamp = luaL_optnumber(ctx, 3, 0) != 0;
+
+	if (clamp){
+		x = x > arcan_video_display.width ? arcan_video_display.width : x;
+		y = y > arcan_video_display.height ? arcan_video_display.height : y;
+		x = x < 0 ? 0 : x;
+		y = y < 0 ? 0 : y;
+	}
+
+	arcan_video_cursorpos(x, y, true);
+	return 0;
+}
+
+static int cursornudge(lua_State* ctx)
+{
+	LUA_TRACE("nudge_cursor");
+	lua_Number x = luaL_checknumber(ctx, 1) + arcan_video_display.cursor.x;
+	lua_Number y = luaL_checknumber(ctx, 2) + arcan_video_display.cursor.y;
+	bool clamp = luaL_optnumber(ctx, 3, 0) != 0;
+
+	if (clamp){
+		x = x > arcan_video_display.width ? arcan_video_display.width : x;
+		y = y > arcan_video_display.height ? arcan_video_display.height : y;
+		x = x < 0 ? 0 : x;
+		y = y < 0 ? 0 : y;
+	}
+
+	arcan_video_cursorpos(x, y, false);
+	return 0;
+}
+
+static int cursorposition(lua_State* ctx)
+{
+	LUA_TRACE("cursor_position");
+	lua_pushnumber(ctx, arcan_video_display.cursor.x);
+	lua_pushnumber(ctx, arcan_video_display.cursor.y);
+	return 2;
+}
+
+static int cursorsize(lua_State* ctx)
+{
+	LUA_TRACE("resize_cursor");
+	lua_Number w = luaL_checknumber(ctx, 1);
+	lua_Number h = luaL_checknumber(ctx, 2);
+	arcan_video_cursorsize(w, h);
+	return 0;
+}
+
 static int setshader(lua_State* ctx)
 {
 	LUA_TRACE("image_shader");
@@ -6882,6 +6943,11 @@ static const luaL_Reg imgfuns[] = {
 {"image_mask_clearall",      clearall           },
 {"image_shader",             setshader          },
 {"image_sharestorage",       sharestorage       },
+{"cursor_setstorage",        cursorstorage      },
+{"cursor_position",          cursorposition     },
+{"move_cursor",              cursormove         },
+{"nudge_cursor",             cursornudge        },
+{"resize_cursor",            cursorsize         },
 {"image_color",              imagecolor         },
 {"image_mipmap",             imagemipmap        },
 {"fill_surface",             fillsurface        },

@@ -262,6 +262,20 @@ struct arcan_video_display {
 	int dirty;
 	enum arcan_order3d order3d;
 
+/*
+ * track mouse-cursor as a separate entity that re-uses
+ * an image vstore, in order to have a default FBO that
+ * is rendered to and not cause excessive refreshes.
+ */
+	struct {
+		struct storage_info_t* vstore;
+		int x;
+		int y;
+		size_t w;
+		size_t h;
+		bool active;
+	} cursor;
+
 	unsigned default_vitemlim;
 
 	arcan_shader_id defaultshdr;
