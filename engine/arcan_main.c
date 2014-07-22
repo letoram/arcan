@@ -566,8 +566,12 @@ applswitch:
 
 	char* msg = arcan_luaL_main(settings.lua, inp, inp_file);
 	if (msg != NULL){
-		arcan_warning("main(), Error loading main script for (%s), "
-			"reason: %s\n", arcan_appl_id(), msg);
+#ifdef ARCAN_LUA_NOCOLOR
+		arcan_warning("\nParsing error in %s:\n%s\n", arcan_appl_id(), msg);
+#else
+		arcan_warning("\n\x1b[1mParsing error in (\x1b[33m%s\x1b[39m):\n"
+			"\x1b[35m%s\x1b[22m\x1b[39m\n\n", arcan_appl_id(), msg);
+#endif
 		goto error;
 	}
 	free(msg);
