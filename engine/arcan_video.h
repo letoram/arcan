@@ -735,6 +735,11 @@ arcan_errc arcan_video_shareglstore(arcan_vobj_id sid, arcan_vobj_id did);
 arcan_errc arcan_video_transformcycle(arcan_vobj_id, bool);
 arcan_errc arcan_video_zaptransform(arcan_vobj_id id);
 
+void arcan_video_cursorpos(int newx, int newy, bool absolute);
+void arcan_video_cursorsize(size_t w, size_t h);
+void arcan_video_cursorstore(arcan_vobj_id src);
+
+
 /* picking, collision detection */
 unsigned arcan_video_tick(unsigned steps, unsigned* njobs);
 bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y);

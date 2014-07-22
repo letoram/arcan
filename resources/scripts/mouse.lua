@@ -198,8 +198,9 @@ end
 -- filtering settings.
 -- cicon(string) : path to valid resource for cursor
 -- clayer(uint)  : which ordervalue for cursor to have
+-- pickdepth
 --
-function mouse_setup(cvid, clayer, pickdepth, cachepick, hidden)
+function mouse_setup(cvid, clayer, pickdepth, cachepick, hidden, opts)
 	mstate.cursor = cvid;
 	mstate.hidden = false;
 	mstate.x = math.floor(VRESW * 0.5);
@@ -219,6 +220,21 @@ function mouse_setup(cvid, clayer, pickdepth, cachepick, hidden)
 	else
 		mouse_pickfun = pick_items;
 	end
+
+	mouse_cursorupd(0, 0);
+end
+
+function mouse_setup_native(resimg, statetbl, opts)
+	local tmp = null_surface(1, 1);
+	cursor_setstorage(resimg);
+	delete_image(resimg);
+	mstate.cursor = tmp;
+	mstate.native = true;
+
+	mstate.x = math.floor(VRESW * 0.5);
+	mstate.y = math.floor(VRESH * 0.5);
+	mstate.pickdepth = 1;
+	mouse_pickfun = cached_pick;
 
 	mouse_cursorupd(0, 0);
 end
