@@ -525,13 +525,18 @@ applswitch:
  * namespace and scripts to run, then recoverexternal will cleanup
  * audio/video/event and invoke adopt() in the script
  */
-	bool adopt = false;
+	bool adopt = false, in_recover = false;
 	int jumpcode = setjmp(arcanmain_recover_state);
 
 	if (jumpcode == 1){
 		adopt = true;
 	}
 	else if (jumpcode == 2){
+		if (in_recover){
+			arcan_warning("Double-Failure (main appl + adopt appl), giving up.\n");
+			goto error;
+		}
+
 		if (!fallback){
 			arcan_warning("Lua VM instance failed and no fallback defined, giving up.\n");
 			goto error;
@@ -550,6 +555,7 @@ applswitch:
 			goto error;
 		}
 
+		in_recover = true;
 		adopt = true;
 	}
 
