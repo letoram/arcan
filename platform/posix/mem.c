@@ -22,7 +22,11 @@
 #ifdef MADV_DONTDUMP
 #define NO_DUMPFLAG MADV_DONTDUMP
 #else
+#ifndef MADV_NOCORE
+#define NO_DUMPFLAG 0
+#else
 #define	NO_DUMPFLAG MADV_NOCORE
+#endif
 #endif
 
 struct mempool_meta {

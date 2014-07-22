@@ -3,6 +3,10 @@ set (GL_PLATFORM_HEADER ${PLATFORM_PATH}/../${VIDEO_PLATFORM}/glheaders.h)
 
 add_definitions(-DGL_HEADERS="${GL_PLATFORM_HEADER}")
 
+add_definitions(-DPLATFORM_HEADER=\"${PLATFORM_PATH}/../platform.h\" -std=gnu11
+	-Wall -Wno-missing-braces -Wno-unused-function -DCLOCK_SOURCE_RAW -DLUA_51 -D__UNIX
+	-D_POSIX_C_SOURCE -D_GNU_SOURCE)
+
 message(" scanning for Linux specific libraries. ")
 FIND_PACKAGE(UDev REQUIRED)
 LIST(APPEND MAIN_LIBRARIES ${UDEV_LIBRARIES})
@@ -70,10 +74,6 @@ LIST(APPEND STDLIB
  dl
  rt)
 include(${PLATFORM_PATH}/../CMakeLists.fsrv)
-
-add_definitions(-DPLATFORM_HEADER=\"${PLATFORM_PATH}/../platform.h\" -std=gnu11
-	-Wall -Wno-missing-braces -Wno-unused-function -DCLOCK_SOURCE_RAW -DLUA_51 -D__UNIX
-	-D_POSIX_C_SOURCE -D_GNU_SOURCE)
 
 #
 # For LWA support, we default to a different video platform as all

@@ -1,4 +1,33 @@
 set (PLATFORM_PATH ${CMAKE_SOURCE_DIR}/platform/posix)
+set (GL_PLATFORM_HEADER ${PLATFORM_PATH}/../${VIDEO_PLATFORM}/glheaders.h)
+
+add_definitions(-DPLATFORM_HEADER=\"${PLATFORM_PATH}/../platform.h\")
+set(ARCAN_DEFINITIONS ${ARCAN_DEFINITIONS} GL_HEADERS="${GL_PLATFORM_HEADER}")
+list(APPEND LWA_DEFINITIONS 
+	GL_HEADERS="${PLATFORM_PATH}/../darwin/glheaders.h"
+	HEADLESS_PLATFORM=\"${PLATFORM_PATH}/../${LWA_HEADLESS}\")
+
+add_definitions(-DLUA_51 -D_WITH_DPRINTF 
+	-D__UNIX -D__APPLE__ -DARCAN_SHMIF_OVERCOMMIT)
+
+# map_file is the default and doesn't need to be set here
+set_property(SOURCE ${PLATFORM_PATH}/map_resource.c
+				PROPERTY COMPILE_FLAGS -DMAP_FILE=0)
+
+# note; for SDL only
+set_property(SOURCE ${CMAKE_SOURCE_DIR}/engine/arcan_main.c
+				PROPERTY COMPILE_FLAGS -Dmain=SDL_main)
+
+message(" scanning for Darwin specific libraries. ")
+find_library(IOKIT NAMES IOKit)
+find_library(COREFOUNDATION NAMES CoreFoundation)
+find_library(COCOA NAMES Cocoa)
+find_library(AUDIOUNIT NAMES AudioUnit)
+find_library(COREAUDIO NAMES CoreAudio)
+find_library(AUDIOTOOLBOX NAMES AudioToolbox)
+
+LIST(APPEND MAIN_LIBRARIES ${IOKIT} ${COREFOUNDATION})
+LIST(APPEND LWA_LIBRARIES ${COCOA} ${COREAUDIO} ${AUDIOTOOLBOX} ${AUDIOUNIT})  	
 
 set (PLATFORM_SOURCES
 	${PLATFORM_PATH}/fmt_open.c
@@ -8,107 +37,97 @@ set (PLATFORM_SOURCES
 	${PLATFORM_PATH}/ilaunch.c
 	${PLATFORM_PATH}/strip_traverse.c
 	${PLATFORM_PATH}/paths.c
-	${PLATFORM_PATH}/../darwin/sem.c
 	${PLATFORM_PATH}/shm.c
 	${PLATFORM_PATH}/mem.c
 	${PLATFORM_PATH}/base64.c
-	${PLATFORM_PATH}/../darwin/time.c
 	${PLATFORM_PATH}/warning.c
 	${PLATFORM_PATH}/frameserver.c
 	${PLATFORM_PATH}/fdpassing.c
-	${PLATFORM_PATH}/namespace.c
-	${CMAKE_SOURCE_DIR}/external/hidapi/hid_darwin.c
-	${CMAKE_SOURCE_DIR}/external/hidapi/hidapi.h
-)
-
-set (SDL_PLATFORM_SOURCES
-	${PLATFORM_PATH}/../sdl/event.c
-	${PLATFORM_PATH}/../sdl/video.c
-	${PLATFORM_PATH}/../darwin/SDLmain.m
+	${PLATFORM_PATH}/../darwin/sem.c
+	${PLATFORM_PATH}/../darwin/time.c
+	${CMAKE_EXTERNAL_SRCDIR}/hidapi/hid_darwin.c
+	${CMAKE_EXTERNAL_SRCDIR}/hidapi/hidapi.h
+	engine/arcan_target_launcher.c
 )
 
 set (FSRV_PLATFORM_SOURCES
-	${CMAKE_SOURCE_DIR}/frameserver/frameserver.c
-	${PLATFORM_PATH}/base64.c
 	${PLATFORM_PATH}/warning.c
 	${PLATFORM_PATH}/../darwin/time.c
+	${PLATFORM_PATH}/../darwin/sem.c
+	${PLATFORM_PATH}/shm.c
 	${PLATFORM_PATH}/base64.c
-	${PLATFORM_PATH}/sem.c
 	${PLATFORM_PATH}/mem.c
 	${PLATFORM_PATH}/fdpassing.c
-	${PLATFORM_PATH}/shm.c
+	${SHMIF_SOURCES}
 )
 
-# map_file is the default and doesn't need to be set here
-set_property(SOURCE ${PLATFORM_PATH}/map_resource.c
-				PROPERTY COMPILE_FLAGS -DMAP_FILE=0)
+set (LWA_PLATFORM_SOURCES
+	${PLATFORM_SOURCES}
+	${PLATFORM_PATH}/../arcan/video.c
+	${PLATFORM_PATH}/../darwin/SDLmain_fsrv.m
+)
 
-set_property(SOURCE ${CMAKE_SOURCE_DIR}/engine/arcan_main.c
-				PROPERTY COMPILE_FLAGS -Dmain=SDL_main)
+# we don't want these coming along in LWA_PLATFORM
+LIST(APPEND PLATFORM_SOURCES
+	${PLATFORM_PATH}/../${VIDEO_PLATFORM}/video.c
+	${PLATFORM_PATH}/../${INPUT_PLATFORM}/event.c
+	${PLATFORM_PATH}/../darwin/SDLmain.m
+)
 
-find_library(IOKIT NAMES IOKit)
-find_library(COREFOUNDATION NAMES CoreFoundation)
+SET(HIJACK_SOURCES
+	hijack/arcan_target_unix.c
+	hijack/arcan_target.c
+	${PLATFORM_PATH}/warning.c
+	${PLATFORM_PATH}/../darwin/sem.c
+	frameserver/ntsc/snes_ntsc.c
+ 	frameserver/resampler/resample.c
+)
 
-if (${ENABLE_LIBRETRO})
-if (${ENABLE_LIBRETRO3D})
-	list(APPEND FSRV_LIBRETRO_SOURCES
-		${PLATFORM_PATH}/../sdl/video_mini.c
-		${PLATFORM_PATH}/../darwin/SDLmain_fsrv.m)
-	list(APPEND FSRV_LIBRETRO_LIBRARIES
-		${SDL_LIBRARY}
-		${GLEW_LIBRARIES}
-		${OPENGL_gl_LIBRARY}
-	)
-endif(${ENABLE_LIBRETRO3D})
-endif(${ENABLE_LIBRETRO})
+set (
+	FSRV_SOURCES
+	${SHMIF_SOURCES}
+	frameserver/frameserver.c
+)
+if (ENABLE_LIBRETRO AND ENABLE_LIBRETRO3D)
+		LIST(APPEND FSRV_LIBRETRO_SOURCES 
+			${PLATFORM_PATH}/../darwin/SDLmain_fsrv.m)
+		LIST(APPEND FSRV_LIBRETRO_LIBRARIES 
+			${IOKIT} 
+			${COREFOUNDATION}
+		)
+endif()	
+include(${PLATFORM_PATH}/../CMakeLists.fsrv)
 
-include(${CMAKE_CURRENT_SOURCE_DIR}/platform/CMakeLists.fsrv)
-
-if (SPLIT_FRAMESERVER)
-	set_property(TARGET arcan_frameserver_libretro APPEND PROPERTY
-		COMPILE_DEFINITIONS ENABLE_FSRV_LIBRETRO main=SDL_main)
-else()
-	set_property(TARGET arcan_frameserver APPEND PROPERTY COMPILE_DEFINITIONS
-		${definitions} main=SDL_main)
+if (ENABLE_LIBRETRO AND ENABLE_LIBRETRO3D)
+	if (SPLIT_FRAMESERVER)
+		set_property(TARGET arcan_frameserver_libretro APPEND PROPERTY
+			COMPILE_DEFINITIONS ENABLE_FSRV_LIBRETRO main=SDL_main)
+	else()
+		set_property(TARGET arcan_frameserver APPEND PROPERTY COMPILE_DEFINITIONS
+			${definitions} main=SDL_main)
+	endif()
 endif()
 
-add_definitions(-DARCAN_SHMIF_OVERCOMMIT)
-
-add_definitions(-DPLATFORM_HEADER=\"${PLATFORM_PATH}/../platform.h\"
-	-DGL_HEADERS=\"${PLATFORM_PATH}/../sdl/glheaders.h\")
-
-add_definitions(-DLUA_51 -D_WITH_DPRINTF -D__UNIX -D__APPLE__)
-
-LIST(APPEND MAIN_LIBRARIES ${IOKIT} ${COREFOUNDATION})
-LIST(APPEND FSRV_LIBRARIES ${IOKIT} ${COREFOUNDATION})
-LIST(APPEND SOURCES
-	${CMAKE_SOURCE_DIR}/engine/arcan_target_launcher.c)
-
-add_executable( arcan ${SOURCES} ${PLATFORM_SOURCES} ${SDL_PLATFORM_SOURCES})
 
 if (ENABLE_LWA)
-	message("LWA support enabled, video backend (${VIDEO_PLATFORM})")
-
-	set_property(SOURCE ${PLATFORM_PATH}/../arcan/video.c
-		APPEND PROPERTY COMPILE_DEFINITIONS
-		SDL_PLATFORM
-		GL_HEADERS=\"${PLATFORM_PATH}/../sdl/glheaders.h\"
-	)
-
-	set(LWA_SOURCES
-		${PLATFORM_PATH}/../darwin/SDLmain_fsrv.m
-		${PLATFORM_PATH}/../arcan/video.c)
-
-	add_executable( arcan_lwa
+	message("LWA support enabled, video backend (Darwin, hardcoded)")
+	add_executable(arcan_lwa
 		${SOURCES}
-		${PLATFORM_SOURCES}
-		${LWA_SOURCES}
+		${LWA_PLATFORM_SOURCES}
 	)
-
-	set_property(TARGET arcan_lwa
-		APPEND PROPERTY COMPILE_DEFINITIONS SDL_PLATFORM)
+	set_property(TARGET arcan_lwa APPEND PROPERTY
+					COMPILE_DEFINITIONS ${LWA_DEFINITIONS})
 endif()
 
+# add_library(arcan_hijack SHARED ${HIJACK_SOURCES})
+
+add_executable( arcan ${SOURCES} ${PLATFORM_SOURCES} ${SDL_PLATFORM_SOURCES})
+if (${SDLIMAGE_FOUND})
+	LIST(APPEND ARCAN_DEFINITIONS SDLIMAGE)
+endif()
+
+set_property(TARGET arcan APPEND PROPERTY COMPILE_DEFINITIONS ${ARCAN_DEFINITIONS})
+	
 # Packaging and installation. build a DMG which installs to a default
 # Application folder, with resources, themes and frameworks included.
 #
@@ -133,6 +152,8 @@ install(FILES ${CMAKE_SOURCE_DIR}/utils/arcan_romman.rb
 	WORLD_READ WORLD_EXECUTE OWNER_WRITE OWNER_READ
 	OWNER_EXECUTE GROUP_READ GROUP_EXECUTE)
 
+install(FILES ${CMAKE_SOURCE_DIR}/doc/arcan.1
+	DESTINATION /usr/local/share/man/man1
+)
+
 SET(CPACK_GENERATOR ${CPACK_GENERATOR};Bundle)
-
-
