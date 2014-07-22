@@ -65,7 +65,13 @@ struct camtag_data {
 	enum camtag_facing facing;
 };
 
+enum geometry_type {
+	TRIMESH,
+	POINTCLOUD
+};
+
 struct geometry {
+	enum geometry_type type;
 	unsigned nmaps;
 	arcan_shader_id program;
 
@@ -101,7 +107,7 @@ typedef struct {
 /* position, opacity etc. are inherited from parent */
 	struct {
 /* debug geometry (position, normals, bounding box, ...) */
-		bool debug_vis;
+		bool debug;
 
 /* unless this flag is set AND there are no pending
  * load operations, some operations will be deferred. */
@@ -230,8 +236,8 @@ static void build_hplane(point min, point max, point step,
 		.z = max.z - min.z
 	};
 
-	unsigned nx = ceil(delta.x / step.x);
-	unsigned nz = ceil(delta.z / step.z);
+	size_t nx = ceil(delta.x / step.x);
+	size_t nz = ceil(delta.z / step.z);
 
 	*nverts = nx * nz;
 	*verts = arcan_alloc_mem(sizeof(float) * (*nverts) * 3,
@@ -240,9 +246,9 @@ static void build_hplane(point min, point max, point step,
 	*txcos = arcan_alloc_mem(sizeof(float) * (*nverts) * 2,
 		ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_PAGE);
 
-	unsigned vofs = 0, tofs = 0;
-	for (unsigned x = 0; x < nx; x++)
-		for (unsigned z = 0; z < nz; z++){
+	size_t vofs = 0, tofs = 0;
+	for (size_t x = 0; x < nx; x++)
+		for (size_t z = 0; z < nz; z++){
 			(*verts)[vofs++] = min.x + (float)x*step.x;
 			(*verts)[vofs++] = min.y;
 			(*verts)[vofs++] = min.z + (float)z*step.z;
@@ -255,8 +261,8 @@ static void build_hplane(point min, point max, point step,
 	*indices = arcan_alloc_mem(sizeof(unsigned) * (*nverts) * 3 * 2,
 			ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_PAGE);
 
-		for (unsigned x = 0; x < nx-1; x++)
-			for (unsigned z = 0; z < nz-1; z++){
+		for (size_t x = 0; x < nx-1; x++)
+			for (size_t z = 0; z < nz-1; z++){
 				(*indices)[vofs++] = GETVERT(x, z);
 				(*indices)[vofs++] = GETVERT(x, z+1);
 				(*indices)[vofs++] = GETVERT(x+1, z+1);
@@ -405,7 +411,7 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
  * multiple meshes share the same frameset */
 		bool blendstate    = false;
 
-		for (unsigned i = 0; i < GL_MAX_TEXTURE_UNITS && (i+cframe) <
+		for (size_t i = 0; i < GL_MAX_TEXTURE_UNITS && (i+cframe) <
 			vobj->frameset_meta.capacity && i < base->nmaps; i++){
 			arcan_vobject* frame = vobj->frameset[i+cframe];
 
@@ -434,19 +440,22 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
 			}
 		}
 
-/* Indexed, direct or VBO */
-		if (base->indices)
-			glDrawElements(GL_TRIANGLES, base->nindices,
-				base->indexformat, base->indices);
-		else
-			glDrawArrays(GL_TRIANGLES, 0, base->nverts);
+		if (base->type == TRIMESH){
+			if (base->indices)
+				glDrawElements(GL_TRIANGLES, base->nindices,
+					base->indexformat, base->indices);
+			else
+				glDrawArrays(GL_TRIANGLES, 0, base->nverts);
+		}
+		else if (base->type == POINTCLOUD)
+			glDrawArrays(GL_POINTS, 0, base->nverts);
 
-		for (int i = 0; i < sizeof(attribs) / sizeof(attribs[0]); i++)
+		for (size_t i = 0; i < sizeof(attribs) / sizeof(attribs[0]); i++)
 			if (attribs[i] != -1)
 				glDisableVertexAttribArray(attribs[i]);
 
 step:
-		if (src->flags.debug_vis)
+		if (src->flags.debug)
 			draw_debug(src, props, dmatr);
 
 		cframe += base->nmaps;
@@ -643,7 +652,7 @@ arcan_vobject_litem* arcan_refresh_3d(arcan_vobj_id camtag,
 static void minmax_verts(vector* minp, vector* maxp,
 	const float* verts, unsigned nverts)
 {
-	for (unsigned i = 0; i < nverts * 3; i += 3){
+	for (size_t i = 0; i < nverts * 3; i += 3){
 		vector a = {.x = verts[i], .y = verts[i+1], .z = verts[i+2]};
 		if (a.x < minp->x) minp->x = a.x;
 		if (a.y < minp->y) minp->y = a.y;
@@ -680,7 +689,7 @@ arcan_errc arcan_3d_swizzlemodel(arcan_vobj_id dst)
 	while (curr) {
 		if (curr->indices){
 			unsigned* indices = curr->indices;
-			for (unsigned i = 0; i <curr->nindices * 3; i+= 3){
+			for (size_t i = 0; i <curr->nindices * 3; i+= 3){
 				unsigned t1[3] = { indices[i], indices[i+1], indices[i+2] };
 				unsigned tmp = t1[0];
 				t1[0] = t1[2]; t1[2] = tmp;
@@ -688,7 +697,7 @@ arcan_errc arcan_3d_swizzlemodel(arcan_vobj_id dst)
 		} else {
 			float* verts = curr->verts;
 
-			for (unsigned i = 0; i < curr->nverts * 9; i+= 9){
+			for (size_t i = 0; i < curr->nverts * 9; i+= 9){
 				vector v1 = { .x = verts[i  ], .y = verts[i+1], .z = verts[i+2] };
 				vector v3 = { .x = verts[i+6], .y = verts[i+7], .z = verts[i+8] };
 				verts[i  ] = v3.x; verts[i+1] = v3.y; verts[i+2] = v3.z;
@@ -703,7 +712,69 @@ arcan_errc arcan_3d_swizzlemodel(arcan_vobj_id dst)
 	return rv;
 }
 
-arcan_vobj_id arcan_3d_buildcube(float d)
+arcan_vobj_id arcan_3d_pointcloud(size_t count)
+{
+	if (count == 0)
+		return ARCAN_EID;
+
+	vfunc_state state = {.tag = ARCAN_TAG_3DOBJ};
+	img_cons empty = {0};
+	arcan_vobj_id rv = arcan_video_addfobject(ffunc_3d, state, empty, 1);
+
+	if (rv == ARCAN_EID)
+		return ARCAN_EID;
+
+	arcan_3dmodel* newmodel = arcan_alloc_mem(sizeof(arcan_3dmodel),
+		ARCAN_MEM_VTAG, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
+	state.ptr = newmodel;
+	arcan_video_alterfeed(rv, ffunc_3d, state);
+	pthread_mutex_init(&newmodel->lock, NULL);
+
+	arcan_video_allocframes(rv, 1, ARCAN_FRAMESET_SPLIT);
+	newmodel->geometry = arcan_alloc_mem(sizeof(struct geometry), ARCAN_MEM_VTAG,
+		ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
+	newmodel->geometry->nverts = count;
+
+	newmodel->geometry->verts = arcan_alloc_mem(sizeof(float) * count * 3,
+		ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_PAGE);
+	newmodel->geometry->txcos = arcan_alloc_mem(sizeof(float) * count * 2,
+		ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_PAGE);
+
+	float step = 2.0 / sqrtf(count);
+
+	float cz = -1;
+	float cx = -1;
+	float* dbuf = newmodel->geometry->verts;
+	float* tbuf = newmodel->geometry->txcos;
+	while(count--){
+		cx = cx + step;
+		if (cx > 1){
+			cx = -1;
+			cz = cz + step;
+			}
+
+		*dbuf++ = cx;
+		*dbuf++ = 0.0;
+		*dbuf++ = cz;
+		*tbuf++ = (cx + 1.0) / 2.0;
+		*tbuf++ = (cz + 1.0) / 2.0;
+	}
+
+	newmodel->radius = 1.0;
+
+	vector bbmin = {-1, -1, -1};
+	vector bbmax = { 1,  1,  1};
+	newmodel->bbmin = bbmin;
+	newmodel->bbmax = bbmax;
+	newmodel->flags.complete = true;
+	newmodel->flags.debug = true;
+	newmodel->geometry->nmaps = 1;
+	newmodel->geometry->type = POINTCLOUD;
+
+	return rv;
+}
+
+arcan_vobj_id arcan_3d_buildbox(float w, float h, float d)
 {
 	vfunc_state state = {.tag = ARCAN_TAG_3DOBJ};
 	img_cons empty = {0};
@@ -714,26 +785,27 @@ arcan_vobj_id arcan_3d_buildcube(float d)
 
 /* wait with setting the full model until we know we have a fobject */
 	arcan_3dmodel* newmodel = arcan_alloc_mem(sizeof(arcan_3dmodel),
-		ARCAN_MEM_VTAG, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
+		ARCAN_MEM_VTAG, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 	state.ptr = (void*) newmodel;
 	arcan_video_alterfeed(rv, ffunc_3d, state);
 	pthread_mutex_init(&newmodel->lock, NULL);
 	arcan_video_allocframes(rv, 1, ARCAN_FRAMESET_SPLIT);
 	newmodel->geometry = arcan_alloc_mem(sizeof(struct geometry), ARCAN_MEM_VTAG,
-		ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
+		ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 
+	newmodel->geometry->type = TRIMESH;
 	newmodel->geometry->nmaps = 1;
 	newmodel->geometry->indexformat = GL_UNSIGNED_SHORT;
 	newmodel->geometry->complete = true;
 	newmodel->geometry->ntris = 2 * 6;
 
 	float verts[] = {
- 		 d, d, d,  -d,  d,  d,  -d, -d,  d,   d, -d,  d,
-	 	 d, d, d,   d, -d,  d,   d, -d, -d,   d,  d, -d,
-	 	 d, d, d,   d,  d, -d,  -d,  d, -d,  -d,  d,  d,
-		-d, d, d,  -d,  d, -d,  -d, -d, -d,  -d, -d,  d,
-	  -d,-d,-d,   d, -d, -d,   d, -d,  d,  -d, -d,  d,
-	   d,-d,-d,  -d, -d, -d,  -d,  d, -d,   d,  d, -d
+ 		 w, h, d,  -w,  h,  d,  -w, -h,  d,   w, -h,  d,
+	 	 w, h, d,   w, -h,  d,   w, -h, -d,   w,  h, -d,
+	 	 w, h, d,   w,  h, -d,  -w,  h, -d,  -w,  h,  d,
+		-w, h, d,  -w,  h, -d,  -w, -h, -d,  -w, -h,  d,
+	  -w,-h,-d,   w, -h, -d,   w, -h,  d,  -w, -h,  d,
+	   w,-h,-d,  -w, -h, -d,  -w,  h, -d,   w,  h, -d
 	};
 	newmodel->geometry->verts = arcan_alloc_fillmem(verts, sizeof(verts),
 		ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_SIMD);
@@ -774,8 +846,8 @@ arcan_vobj_id arcan_3d_buildcube(float d)
 	newmodel->geometry->txcos = arcan_alloc_fillmem(txcos, sizeof(txcos),
 		ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_SIMD);
 
-	vector bbmin = {.x = -d, .y = -d, .z = -d};
-	vector bbmax = {.x =  d, .y =  d, .z =  d};
+	vector bbmin = {.x = -w, .y = -h, .z = -d};
+	vector bbmax = {.x =  w, .y =  h, .z =  d};
 
 	newmodel->radius = d;
 	newmodel->bbmin = bbmin;
@@ -820,6 +892,8 @@ arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx,float maxz,
 
 	(*nextslot)->nmaps = nmaps;
 	newmodel->geometry = *nextslot;
+	newmodel->geometry->type = TRIMESH;
+
 	struct geometry* dst = newmodel->geometry;
 
 	build_hplane(minp, maxp, step, &dst->verts, (unsigned int**) dst->indices,
@@ -1030,6 +1104,8 @@ arcan_errc arcan_3d_addmesh(arcan_vobj_id dst,
 		ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 
 	(*nextslot)->nmaps = nmaps;
+	(*nextslot)->type = TRIMESH;
+
 	arg->geom = *nextslot;
 
 	pthread_mutex_lock(&model->lock);

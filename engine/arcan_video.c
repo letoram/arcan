@@ -1220,6 +1220,7 @@ arcan_errc arcan_video_attachobject(arcan_vobj_id id)
 /* make sure that there isn't already one attached */
 		detach_fromtarget(&current_context->stdoutp, src);
 		attach_object(&current_context->stdoutp, src);
+		FLAG_DIRTY();
 
 		rv = ARCAN_OK;
 	}

@@ -31,7 +31,7 @@ arcan_errc arcan_3d_camtag(arcan_vobj_id parent,
 
 arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx,
 	float maxz, float y, float wdens, float ddens, unsigned nmaps);
-arcan_vobj_id arcan_3d_buildcube(float depth);
+arcan_vobj_id arcan_3d_buildbox(float width, float height, float depth);
 
 arcan_errc arcan_3d_swizzlemodel(arcan_vobj_id model);
 
@@ -39,7 +39,21 @@ void arcan_3d_viewray(arcan_vobj_id camtag,
 	int x, int y, float fract, vector* pos, vector* ang);
 
 /*
- * using the current display settings, take a screen position and
+ * The point-cloud generated [count] number of vertices with texture
+ * coordinates distributed evenly within a centered horizontal plane.
+ *
+ * initial vertex positions will be distributed evenly in a
+ * horisontal 2D plane with Y set to 0.
+ *
+ * The principal way for distributing the vertices is to attach
+ * an image to a frameset slot (one will be allocated) and use that in a
+ * vertex shader that determines the actual position of
+ * each vertice.
+ */
+arcan_vobj_id arcan_3d_pointcloud(size_t count);
+
+/*
+ * Using the current display settings, take a screen position and
  * determine if, using the view specified by 'cam' a ray from the
  * position would intersect the bounding area of obj
  */

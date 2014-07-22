@@ -3063,8 +3063,21 @@ static int buildbox(lua_State* ctx)
 {
 	LUA_TRACE("build_3dbox");
 
-	float depth = luaL_checknumber(ctx, 1);
-	lua_pushvid(ctx, arcan_3d_buildcube(depth));
+	float width = luaL_checknumber(ctx, 1);
+	float height = luaL_checknumber(ctx, 2);
+	float depth = luaL_checknumber(ctx, 3);
+
+	lua_pushvid(ctx, arcan_3d_buildbox(width, height, depth));
+
+	return 1;
+}
+
+static int pointcloud(lua_State* ctx)
+{
+	LUA_TRACE("build_pointcloud");
+	float count = luaL_checknumber(ctx, 1);
+
+	lua_pushvid(ctx, arcan_3d_pointcloud(count));
 
 	return 1;
 }
@@ -6910,6 +6923,7 @@ static const luaL_Reg threedfuns[] = {
 #endif
 {"build_3dplane",    buildplane   },
 {"build_3dbox",      buildbox     },
+{"build_pointcloud", pointcloud   },
 {"scale_3dvertices", scale3dverts },
 {"swizzle_model",    swizzlemodel },
 {"mesh_shader",      setmeshshader},
