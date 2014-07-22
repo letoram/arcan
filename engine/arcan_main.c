@@ -104,8 +104,6 @@ static const struct option longopts[] = {
 	{ "sync-strat",   required_argument, NULL, 'W'},
 	{ "width",        required_argument, NULL, 'w'},
 	{ "height",       required_argument, NULL, 'h'},
-	{ "winx",         required_argument, NULL, 'x'},
-	{ "winy",         required_argument, NULL, 'y'},
 	{ "fullscreen",   no_argument,       NULL, 'f'},
 	{ "windowed",     no_argument,       NULL, 's'},
 	{ "debug",        no_argument,       NULL, 'g'},
@@ -128,11 +126,9 @@ static const struct option longopts[] = {
 
 static void usage()
 {
-printf("usage: arcan [-whxyfmWMOqsptbdgaS] applname [app specific arguments]\n"
+printf("usage: arcan [-whfmWMOqsptbdgaS] applname [app specific arguments]\n"
 "-w\t--width       \tdesired width (default: 640)\n"
 "-h\t--height      \tdesired height (default: 480)\n"
-"-x\t--winx        \tforce window x position (default: don't set)\n"
-"-y\t--winy        \tforce window y position (default: don't set)\n"
 "-f\t--fullscreen  \ttoggle fullscreen mode ON (default: off)\n"
 "-m\t--conservative\ttoggle conservative memory management (default: off)\n"
 "-W\t--sync-strat  \tspecify video synchronization strategy (see below)\n"
@@ -454,13 +450,6 @@ applswitch:
 	}
 
 	arcan_video_default_scalemode(scalemode);
-
-	if (winx != -1 || winy != -1){
-		char windbuf[64] = {0};
-		snprintf(windbuf, 63, "SDL_VIDEO_WINDOW_POS=%i,%i", winx >= 0 ?
-			winx : 0, winy >= 0 ? winy : 0);
-		putenv(strdup(windbuf));
-	}
 
 	if (windowed)
 		fullscreen = false;
