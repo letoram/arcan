@@ -4845,6 +4845,8 @@ void arcan_video_refresh_GL(float lerp)
  * texture coordinates and the stdoutp FBO bound.
  */
 	if (arcan_video_display.cursor.vstore){
+		float imatr[16];
+
 		int x1 = arcan_video_display.cursor.x;
 		int y1 = arcan_video_display.cursor.y;
 		int x2 = arcan_video_display.cursor.w + x1;
@@ -4853,7 +4855,9 @@ void arcan_video_refresh_GL(float lerp)
 		glBindTexture(GL_TEXTURE_2D,
 			arcan_video_display.cursor.vstore->vinf.text.glid);
 
+		identity_matrix(imatr);
 		arcan_shader_activate(arcan_video_display.defaultshdr);
+		arcan_shader_envv(MODELVIEW_MATR, imatr, sizeof(float) * 16);
 		draw_vobj(x1, y1, x2, y2, arcan_video_display.default_txcos);
 
 		glBindTexture(GL_TEXTURE_2D, 0);
