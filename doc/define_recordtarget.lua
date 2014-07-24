@@ -34,8 +34,7 @@
 -- @frameserver: port=listenport (for remoting)
 -- @frameserver: name=servername (for remoting)
 -- @frameserver: interface=if (for remoting)
--- @note: specifying WORLDID instead of a table of VIDs means that the
--- whole of the current active pipeline will be sampled instead.
+-- @note: although WORLDID is not a valid recipient as such, a trick is to define a null_surface, image_sharestorage WORLDID into the null_surface and that works as a valid attachment. Two caveats though is that the contents of null_surface will have its coordinate system flipped around Y (rotate null_surface 180 degrees) and neither the record destination nor the null surface should be visible, as that would add a feedback loop which quickly turns the result into an undefined value (typically black).
 -- @note: specifying a valid frameserver connected VID in the dstres slot
 -- will allocate a new output segment and attach to the pre-existing frameserver.
 -- @note: if dstres is empty, no file will be created or pushed. This is useful
@@ -65,7 +64,7 @@ function main()
 	image_transform_cycle(c, 1);
 
 	dst = alloc_surface(VRESW * 0.5, VRESH * 0.5);
-	
+
 	define_recordtarget(dst, "output.mkv", "vpreset=8:noaudio:fps=25", {a,c}, {},
 		RENDERTARGET_NODETACH, RENDERTARGET_SCALE, -4);
 #endif

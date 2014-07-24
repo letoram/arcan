@@ -2061,8 +2061,12 @@ static arcan_errc attach_readback(arcan_vobj_id src)
 arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did,
 	arcan_vobj_id src, bool detach)
 {
-	if (src == ARCAN_VIDEO_WORLDID)
-		return attach_readback(did);
+	if (src == ARCAN_VIDEO_WORLDID){
+		arcan_warning("arcan_video_attachtorendertarget(), WORLDID attach"
+			" not directly supported, use a null-surface with "
+			"shared storage instead.");
+		return ARCAN_ERRC_UNACCEPTED_STATE;
+	}
 
 	arcan_vobject* dstobj = arcan_video_getobject(did);
 	arcan_vobject* srcobj = arcan_video_getobject(src);
@@ -4933,9 +4937,6 @@ void arcan_video_refresh_GL(float lerp)
 	arcan_shader_envv(PROJECTION_MATR,
 		arcan_video_display.default_projection, sizeof(float)*16);
 	glBindTexture(GL_TEXTURE_2D, outp->vstore->vinf.text.glid);
-
-	int w = arcan_video_display.width >> 1;
-	int h = arcan_video_display.height >> 1;
 
 	draw_vobj(0, 0, arcan_video_display.width,
 		arcan_video_display.height, arcan_video_display.mirror_txcos);

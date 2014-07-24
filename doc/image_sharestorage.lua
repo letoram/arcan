@@ -6,6 +6,7 @@
 -- of the restrictions inherent to instance_image and similar functions.
 -- @note: texture coordinates are initially copied over but are otherwise
 -- managed separately in each object.
+-- @note: WORLDID is a valid src argument, (WORLDID as dst is undefined) but any surface that shares storage with WORLDID should not be part of a visible rendertarget.
 -- @note: video image post processing (scale, flips and filtermode) are bound
 -- to the texture store and not to any- single object.
 -- @note: non-textured objects (null, color, instances and persistant) cannot
