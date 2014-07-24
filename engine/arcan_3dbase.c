@@ -80,8 +80,8 @@ struct geometry {
 	float* txcos;
 	unsigned ntris;
 	unsigned nindices;
-	GLenum indexformat;
-	void* indices;
+
+	unsigned* indices;
 
 	volatile bool complete;
 
@@ -443,7 +443,7 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
 		if (base->type == TRIMESH){
 			if (base->indices)
 				glDrawElements(GL_TRIANGLES, base->nindices,
-					base->indexformat, base->indices);
+					GL_UNSIGNED_INT, base->indices);
 			else
 				glDrawArrays(GL_TRIANGLES, 0, base->nverts);
 		}
@@ -795,7 +795,6 @@ arcan_vobj_id arcan_3d_buildbox(float w, float h, float d)
 
 	newmodel->geometry->type = TRIMESH;
 	newmodel->geometry->nmaps = 1;
-	newmodel->geometry->indexformat = GL_UNSIGNED_SHORT;
 	newmodel->geometry->complete = true;
 	newmodel->geometry->ntris = 2 * 6;
 
@@ -896,12 +895,11 @@ arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx,float maxz,
 
 	struct geometry* dst = newmodel->geometry;
 
-	build_hplane(minp, maxp, step, &dst->verts, (unsigned int**) dst->indices,
+	build_hplane(minp, maxp, step, &dst->verts, &dst->indices,
 		&dst->txcos, &dst->nverts, &dst->nindices);
 
 	dst->ntris = newmodel->geometry->nindices / 3;
 	arcan_video_allocframes(rv, 1, ARCAN_FRAMESET_SPLIT);
-	dst->indexformat = GL_UNSIGNED_INT;
 
 /* though we do know the bounding box and shouldn't need to calculate
  * or iterate, plan is to possibly add transform / lookup functions
@@ -950,39 +948,13 @@ static void loadmesh(struct geometry* dst, CTMcontext* ctx)
 /* lots of memory to be saved, so worth the trouble */
 	if (indices){
 		dst->nindices = dst->ntris * 3;
-		if (dst->nindices < 256){
-			uint8_t* buf = arcan_alloc_mem(dst->nindices,
-				ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_PAGE);
+		uint32_t* buf = arcan_alloc_mem( dst->nindices * sizeof(GLuint),
+			ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_PAGE);
 
-			dst->indexformat = GL_UNSIGNED_BYTE;
+		for (unsigned i = 0; i < dst->nindices; i++)
+			buf[i] = indices[i];
 
-			for (unsigned i = 0; i < dst->nindices; i++)
-				buf[i] = indices[i];
-
-			dst->indices = buf;
-		}
-		else if (dst->nindices < 65536){
-			uint16_t* buf = arcan_alloc_mem(dst->nindices * sizeof(GLushort),
-				ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_PAGE);
-
-			dst->indexformat = GL_UNSIGNED_SHORT;
-
-			for (unsigned i = 0; i < dst->nindices; i++)
-				buf[i] = indices[i];
-
-			dst->indices = buf;
-		}
-		else{
-			uint32_t* buf = arcan_alloc_mem( dst->nindices * sizeof(GLuint),
-				ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_PAGE);
-
-				dst->indexformat = GL_UNSIGNED_INT;
-
-			for (unsigned i = 0; i < dst->nindices; i++)
-				buf[i] = indices[i];
-
-			dst->indices = buf;
-		}
+		dst->indices = buf;
 	}
 
 /* we require the model to be presplit on texture,
