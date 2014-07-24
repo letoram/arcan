@@ -137,6 +137,7 @@ static inline void build_modelview(float* dmatr,
 	float* imatr, surface_properties* prop, arcan_vobject* src);
 static inline void process_readback(struct rendertarget* tgt, float fract);
 static inline void poll_readback(struct rendertarget* tgt);
+static void draw_vobj(float x, float y,float x2, float y2, float* txcos);
 
 static inline void trace(const char* msg, ...)
 {
@@ -532,14 +533,68 @@ static void pop_transfer_persists(
 	}
 }
 
+static void draw_cursor(bool erase)
+{
+	float imatr[16];
+	float txmatr[8];
+
+	float* txcos;
+
+	int x1 = arcan_video_display.cursor.x;
+	int y1 = arcan_video_display.cursor.y;
+	int x2 = arcan_video_display.cursor.w + x1;
+	int y2 = arcan_video_display.cursor.h + y1;
+
+	if (erase){
+		if (!arcan_video_display.cursor.vstore)
+			return;
+
+		glBindTexture(GL_TEXTURE_2D,
+			arcan_video_display.cursor.vstore->vinf.text.glid);
+
+		float s1 = (float)x1 / arcan_video_display.width;
+		float s2 = (float)x2 / arcan_video_display.width;
+		float t1 = (float)y1 / arcan_video_display.height;
+		float t2 = (float)y2 / arcan_video_display.height;
+
+		txmatr[0] = s1;
+		txmatr[1] = t1;
+		txmatr[2] = s2;
+		txmatr[3] = t1;
+		txmatr[4] = s2;
+		txmatr[5] = t2;
+	 	txmatr[6] = s1;
+		txmatr[7] = t2;
+
+		txcos = txmatr;
+	}
+	else {
+		glBindTexture(GL_TEXTURE_2D,
+			arcan_video_display.cursor.vstore->vinf.text.glid);
+		txcos = arcan_video_display.default_txcos;
+	}
+
+	identity_matrix(imatr);
+
+	arcan_shader_activate(arcan_video_display.defaultshdr);
+		arcan_shader_envv(MODELVIEW_MATR, imatr, sizeof(float) * 16);
+
+	draw_vobj(x1, y1, x2, y2, txcos);
+	glBindTexture(GL_TEXTURE_2D, 0);
+}
+
 signed arcan_video_pushcontext()
 {
-	arcan_vobject empty_vobj = {.current = {
+	arcan_vobject empty_vobj = {
+		.current = {
 			.position = {0},
 			.opa = 1.0,
 			.scale = {.x = 1.0, .y = 1.0, .z = 1.0},
 			.rotation.quaternion = default_quat
-		}
+		},
+/* we transfer the vstore over as that will be used as a
+ * container for the main display FBO */
+		.vstore = current_context->world.vstore
 	};
 
 	if (vcontext_ind + 1 == CONTEXT_STACK_LIMIT)
@@ -987,6 +1042,23 @@ void generate_mirror_mapping(float* dst, float st, float tt)
 	dst[1] = tt;
 }
 
+static void populate_vstore(struct storage_info_t** vs)
+{
+	*vs = arcan_alloc_mem(
+		sizeof(struct storage_info_t),
+		ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO,
+		ARCAN_MEMALIGN_NATURAL
+	);
+
+	(*vs)->txmapped   = TXSTATE_TEX2D;
+	(*vs)->txu        = arcan_video_display.deftxs;
+	(*vs)->txv        = arcan_video_display.deftxt;
+	(*vs)->scale      = arcan_video_display.scalemode;
+	(*vs)->imageproc  = arcan_video_display.imageproc;
+	(*vs)->filtermode = arcan_video_display.filtermode;
+	(*vs)->refcount   = 1;
+}
+
 /*
  * arcan_video_newvobject is used in other parts (3d, renderfun, ...)
  * as well, but they wrap to this one as to not expose more of the
@@ -1007,20 +1079,8 @@ static arcan_vobject* new_vobject(arcan_vobj_id* id,
 	rv = dctx->vitems_pool + fid;
 	rv->current_frame = rv;
 	rv->order = 0;
+	populate_vstore(&rv->vstore);
 
-	rv->vstore = arcan_alloc_mem(
-		sizeof(struct storage_info_t),
-		ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO,
-		ARCAN_MEMALIGN_NATURAL
-	);
-
-	rv->vstore->txmapped   = TXSTATE_TEX2D;
-	rv->vstore->txu        = arcan_video_display.deftxs;
-	rv->vstore->txv        = arcan_video_display.deftxt;
-	rv->vstore->scale      = arcan_video_display.scalemode;
-	rv->vstore->imageproc  = arcan_video_display.imageproc;
-	rv->vstore->filtermode = arcan_video_display.filtermode;
-	rv->vstore->refcount   = 1;
 	rv->childslots = 0;
 	rv->children = NULL;
 
@@ -1536,6 +1596,43 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 
 	arcan_video_gldefault();
 
+/*
+ * Compile-time build option, if this argument is disabled,
+ * we won't allocate / setup a FBO in the WORLDID storage
+ * meaning that the rendering pipeline will draw directly on
+ * the back buffer.
+ */
+#ifndef ARCAN_VIDEO_NOWORLD_FBO
+	populate_vstore(&current_context->world.vstore);
+	struct storage_info_t* ds = current_context->world.vstore;
+	ds->w = arcan_video_display.width;
+	ds->h = arcan_video_display.height;
+	ds->vinf.text.s_raw = arcan_video_display.width *
+		arcan_video_display.height * GL_PIXEL_BPP;
+
+	ds->vinf.text.raw = arcan_alloc_mem(ds->vinf.text.s_raw,
+		ARCAN_MEM_VBUFFER,
+		ARCAN_MEM_BZERO,
+		ARCAN_MEMALIGN_PAGE
+	);
+
+	glGenTextures(1, &ds->vinf.text.glid);
+	push_globj(&current_context->world, false, false);
+
+	glGenFramebuffers(1, &arcan_video_display.main_fbo);
+	glBindFramebuffer(GL_FRAMEBUFFER, arcan_video_display.main_fbo);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+		GL_TEXTURE_2D, ds->vinf.text.glid, 0);
+
+	unsigned depth_stencil_id;
+	glGenRenderbuffers(1, &depth_stencil_id);
+	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, ds->w, ds->h);
+	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
+		GL_RENDERBUFFER, depth_stencil_id);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+#endif
+
 	return ARCAN_OK;
 }
 
@@ -1769,6 +1866,8 @@ arcan_errc arcan_video_framecyclemode(arcan_vobj_id id, signed mode)
 
 void arcan_video_cursorpos(int newx, int newy, bool absolute)
 {
+	draw_cursor(true);
+
 	if (absolute){
 		arcan_video_display.cursor.x = newx;
 		arcan_video_display.cursor.y = newy;
@@ -1783,12 +1882,16 @@ void arcan_video_cursorpos(int newx, int newy, bool absolute)
 
 void arcan_video_cursorsize(size_t w, size_t h)
 {
+	draw_cursor(true);
+
 	arcan_video_display.cursor.w = w;
 	arcan_video_display.cursor.h = h;
 }
 
 void arcan_video_cursorstore(arcan_vobj_id src)
 {
+	draw_cursor(true);
+
 	if (arcan_video_display.cursor.vstore){
 		drop_glres(arcan_video_display.cursor.vstore);
 		arcan_video_display.cursor.vstore = NULL;
@@ -4791,19 +4894,27 @@ void arcan_video_refresh_GL(float lerp)
 			process_readback(&current_context->rtargets[ind], lerp);
 	}
 
+	if (current_context->world.vstore)
+		glBindFramebuffer(GL_FRAMEBUFFER, arcan_video_display.main_fbo);
+
+	process_rendertarget(&current_context->stdoutp, lerp);
+
+	if (current_context->world.vstore){
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+		if (current_context->stdoutp.readback != 0 &&
+			!current_context->stdoutp.readreq)
+			process_readback(&current_context->stdoutp, lerp);
+	}
+
 /*
- * Readback / Draw management is slightly different from the current
- * countext standard output. If a recipient is set, we will draw into
- * that through an FBO, then re-use that texture on a full-screen
- * quad.
- * This allows us to share the recordtarget- approach for partial
- * recording etc. but also to work on platforms where we might not
- * have control over the final display (where we're expected to draw
- * into an FBO and let the window manager go on from there).
- */
-	if (current_context->stdoutp.color){
+ * Readbacks for WORLDID is a bit special, it is treated as a
+ * regular rendertarget, but with a source FBO set -- this means
+ * that we do a Renderbuffer->Renderbuffer copy then issue the readback
+ *
+ * if (current_context->stdoutp.color){
 		glBindFramebuffer(GL_FRAMEBUFFER, current_context->stdoutp.fbo);
-		memcpy(current_context->stdoutp.projection,
+		memcpy(current_context->stdoutp.projection,m
 			arcan_video_display.flipy_projection, sizeof(float) * 16);
 
 		process_rendertarget(&current_context->stdoutp, lerp);
@@ -4811,57 +4922,30 @@ void arcan_video_refresh_GL(float lerp)
 
 		memcpy(current_context->stdoutp.projection,
 			arcan_video_display.default_projection, sizeof(float) * 16);
+*/
 
-/*
- * If we have a color attachment (someone reading WORLDID), there's
- * no point doing an additional renderpass (little reason to define this
- * except for testing). This can even be used for some fullscreen effects.
- */
-#ifndef NO_ARCAN_VIDEO_STDOUT_FSQ
-		arcan_vobject* outp = current_context->stdoutp.color;
+	arcan_vobject* outp = &current_context->world;
+	float imatr[16];
+	identity_matrix(imatr);
 
-		arcan_shader_activate(outp->program);
-		arcan_shader_envv(MODELVIEW_MATR, outp->prop_matr, sizeof(float) * 16);
-		glBindTexture(GL_TEXTURE_2D, outp->current_frame->vstore->vinf.text.glid);
+	arcan_shader_activate(arcan_video_display.defaultshdr);
+	arcan_shader_envv(MODELVIEW_MATR, imatr, sizeof(float) * 16);
+	arcan_shader_envv(PROJECTION_MATR,
+		arcan_video_display.default_projection, sizeof(float)*16);
+	glBindTexture(GL_TEXTURE_2D, outp->vstore->vinf.text.glid);
 
-		int w = arcan_video_display.width >> 1;
-		int h = arcan_video_display.height >> 1;
+	int w = arcan_video_display.width >> 1;
+	int h = arcan_video_display.height >> 1;
 
-		draw_vobj(-w, -h, w, h, arcan_video_display.mirror_txcos);
-		glBindTexture(GL_TEXTURE_2D, 0);
-#else
-		process_rendertarget(&current_context->stdoutp, lerp);
-#endif
+	draw_vobj(0, 0, arcan_video_display.width,
+		arcan_video_display.height, arcan_video_display.mirror_txcos);
+	glBindTexture(GL_TEXTURE_2D, 0);
 
-		if (current_context->stdoutp.readback != 0)
-			process_readback(&current_context->stdoutp, lerp);
-	}
-	else
-		process_rendertarget(&current_context->stdoutp, lerp);
-
-/*
- * Some room for optimization here --
- * when cursor position is changed, draw the cursor again with different
- * texture coordinates and the stdoutp FBO bound.
- */
-	if (arcan_video_display.cursor.vstore){
-		float imatr[16];
-
-		int x1 = arcan_video_display.cursor.x;
-		int y1 = arcan_video_display.cursor.y;
-		int x2 = arcan_video_display.cursor.w + x1;
-		int y2 = arcan_video_display.cursor.h + y1;
-
-		glBindTexture(GL_TEXTURE_2D,
-			arcan_video_display.cursor.vstore->vinf.text.glid);
-
-		identity_matrix(imatr);
-		arcan_shader_activate(arcan_video_display.defaultshdr);
-		arcan_shader_envv(MODELVIEW_MATR, imatr, sizeof(float) * 16);
-		draw_vobj(x1, y1, x2, y2, arcan_video_display.default_txcos);
-
-		glBindTexture(GL_TEXTURE_2D, 0);
-	}
+/* cursor will always be erased on change,
+ * that means we can safely draw that even when the
+ * display as such isn't dirt. */
+	if (arcan_video_display.cursor.vstore)
+		draw_cursor(false);
 
 	arcan_video_display.dirty = 0;
 }
