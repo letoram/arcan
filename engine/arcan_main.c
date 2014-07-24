@@ -133,7 +133,7 @@ printf("usage: arcan [-whfmWMOqsptbdgaS] applname [app specific arguments]\n"
 "-m\t--conservative\ttoggle conservative memory management (default: off)\n"
 "-W\t--sync-strat  \tspecify video synchronization strategy (see below)\n"
 #ifndef _WIN32
-"-M\t--monitor     \tsplit open a debug arcan monitoring session\n"
+"-M\t--monitor     \tenable monitor session (arg: samplerate, ticks/sample)\n"
 "-O\t--monitor-out \tLOG:fname or applname\n"
 #endif
 "-q\t--timedump    \twait n ticks, dump snapshot to resources/logs/timedump\n"
@@ -315,7 +315,8 @@ int main(int argc, char* argv[])
 	case 'p' : override_resspaces(optarg); break;
 	case 'b' : fallback = strdup(optarg); break;
 #ifndef _WIN32
-	case 'M' : settings.monitor = abs( strtol(optarg, NULL, 10) ); break;
+	case 'M' : settings.monitor_counter = settings.monitor =
+		abs( strtol(optarg, NULL, 10) ); break;
 	case 'O' : monitor_arg = strdup( optarg ); break;
 #endif
 	case 't' : arcan_override_namespace(optarg, RESOURCE_APPL); break;
