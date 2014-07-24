@@ -47,9 +47,12 @@ local mstate = {
 
 local function mouse_cursorupd(x, y)
 	if (mstate.hidden and (x ~= 0 or y ~= 0)) then
-		instant_image_transform(mstate.cursor);
-		blend_image(mstate.cursor, 1.0, 10);
-		mstate.hidden = false;
+
+		if (mstate.native == nil) then
+			instant_image_transform(mstate.cursor);
+			blend_image(mstate.cursor, 1.0, 10);
+			mstate.hidden = false;
+		end
 
 	elseif (mstate.hidden) then
 		return 0, 0;
@@ -70,8 +73,12 @@ local function mouse_cursorupd(x, y)
 	mstate.y = mstate.y > VRESH and VRESH-1 or mstate.y;
 	mstate.hide_count = mstate.hide_base;
 
-	move_image(mstate.cursor, mstate.x + mstate.x_ofs,
-		mstate.y + mstate.y_ofs);
+	if (mstate.native) then
+		move_cursor(mstate.x, mstate.y);
+	else
+		move_image(mstate.cursor, mstate.x + mstate.x_ofs,
+			mstate.y + mstate.y_ofs);
+	end
 	return (mstate.x - lmx), (mstate.y - lmy);
 end
 
@@ -224,11 +231,11 @@ function mouse_setup(cvid, clayer, pickdepth, cachepick, hidden, opts)
 	mouse_cursorupd(0, 0);
 end
 
-function mouse_setup_native(resimg, statetbl, opts)
+function mouse_setup_native(resimg, opts)
 	local tmp = null_surface(1, 1);
 	cursor_setstorage(resimg);
 	delete_image(resimg);
-	mstate.cursor = tmp;
+	mstate.cursor_img = tmp;
 	mstate.native = true;
 
 	mstate.x = math.floor(VRESW * 0.5);
@@ -251,8 +258,13 @@ function mouse_absinput(x, y, state)
 end
 
 function mouse_xy()
-	local props = image_surface_resolve_properties(mstate.cursor);
-	return props.x, props.y;
+	if (mstate.native) then
+		local x, y = cursor_position();
+		return x, y;
+	else
+		local props = image_surface_resolve_properties(mstate.cursor);
+		return props.x, props.y;
+	end
 end
 
 local function mouse_drag(x, y)
@@ -523,13 +535,21 @@ function mouse_droplistener(tbl)
 end
 
 function mouse_hide()
-	instant_image_transform(mstate.cursor);
-	blend_image(mstate.cursor, 0.0, 20, INTERP_EXPOUT);
+	if (mstate.native) then
+		cursor_setstorage(WORLDID);
+	else
+		instant_image_transform(mstate.cursor);
+		blend_image(mstate.cursor, 0.0, 20, INTERP_EXPOUT);
+	end
 end
 
 function mouse_show()
-	instant_image_transform(mstate.cursor);
-	blend_image(mstate.cursor, 1.0, 20, INTERP_EXPOUT);
+	if (mstate.native) then
+		cursor_setstorage(mstate.cursor_vid);
+	else
+		instant_image_transform(mstate.cursor);
+		blend_image(mstate.cursor, 1.0, 20, INTERP_EXPOUT);
+	end
 end
 
 function mouse_tick(val)
@@ -539,7 +559,7 @@ function mouse_tick(val)
 
 	if (mstate.autohide and mstate.hidden == false) then
 		mstate.hide_count = mstate.hide_count - val;
-		if (mstate.hide_count <= 0) then
+		if (mstate.hide_count <= 0 and mstate.native == nil) then
 			mstate.hidden = true;
 			instant_image_transform(mstate.cursor);
 			mstate.hide_count = mstate.hide_base;
