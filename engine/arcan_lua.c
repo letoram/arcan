@@ -61,6 +61,7 @@
 #include <ctype.h>
 #include <setjmp.h>
 
+#include <poll.h>
 #include <string.h>
 #include <fcntl.h>
 #include <sys/types.h>
@@ -232,7 +233,10 @@ enum arcan_cb_source {
 };
 
 static struct {
-	FILE* rfile;
+	char in_buf[1024];
+	off_t in_ofs;
+	int in_file;
+
 	const char* lastsrc;
 
 	unsigned char debug;
@@ -494,25 +498,28 @@ static int rawresource(lua_State* ctx)
 
 	char* path = findresource(luaL_checkstring(ctx, 1), DEFAULT_USERMASK);
 
-	if (lua_ctx_store.rfile)
-		fclose(lua_ctx_store.rfile);
+	if (lua_ctx_store.in_file > 0){
+		close(lua_ctx_store.in_file);
+		lua_ctx_store.in_file = -1;
+		lua_ctx_store.in_ofs = 0;
+	}
+
+/* win32 etc. expose file descriptors to child if we have no other option */
+#ifndef O_CLOEXEC
+#define O_CLOEXEC 0
+#endif
 
 	if (!path){
 		char* fname = arcan_expand_resource(luaL_checkstring(ctx, 1), RESOURCE_APPL);
 		if (fname){
-			lua_ctx_store.rfile = fopen(fname, "w+");
+			lua_ctx_store.in_file = open(fname, O_CREAT | O_RDWR, O_CLOEXEC);
 			free(fname);
 		}
 	}
 	else
-		lua_ctx_store.rfile = fopen(path, "r");
+		lua_ctx_store.in_file = open(path, O_RDONLY | O_NONBLOCK, O_CLOEXEC);
 
-#ifndef _WIN32
-	if (lua_ctx_store.rfile)
-		fcntl(fileno(lua_ctx_store.rfile), F_SETFD, FD_CLOEXEC);
-#endif
-
-	lua_pushboolean(ctx, lua_ctx_store.rfile != NULL);
+	lua_pushboolean(ctx, lua_ctx_store.in_file > 0);
 	free(path);
 	return 1;
 }
@@ -531,19 +538,76 @@ static char* chop(char* str)
     return str;
 }
 
+static inline int push_resstr(lua_State* ctx, off_t ofs)
+{
+	size_t in_sz = sizeof(lua_ctx_store.in_buf)/
+		sizeof(lua_ctx_store.in_buf[0]);
+
+	lua_ctx_store.in_buf[ofs] = '\0';
+	char* chopptr = chop(lua_ctx_store.in_buf);
+	lua_pushstring(ctx, chopptr);
+
+	if (ofs >= in_sz - 1){
+		lua_ctx_store.in_ofs = 0;
+	}
+	else{
+		memmove(lua_ctx_store.in_buf,
+			lua_ctx_store.in_buf + ofs + 1,
+			in_sz - ofs
+		);
+		lua_ctx_store.in_ofs -= ofs + 1;
+	}
+
+	return 1;
+}
+
 static int readrawresource(lua_State* ctx)
 {
 	LUA_TRACE("read_rawresource");
+	bool non_blocking = luaL_optnumber(ctx, 1, 0) != 0;
+	size_t in_sz = sizeof(lua_ctx_store.in_buf)/sizeof(lua_ctx_store.in_buf[0]);
+	bool give_up = false;
 
-	if (lua_ctx_store.rfile){
-		char line[256];
-		if (fgets(line, sizeof(line), lua_ctx_store.rfile) != NULL){
-			lua_pushstring(ctx, chop( line ));
-			return 1;
-		}
+	if (lua_ctx_store.in_file <= 0)
+		return 0;
+
+/*
+ * if the buffer is full, just flush, ignore waiting for lines.
+ * if we get a linefeed, terminate there and push the chomped version.
+ */
+push:
+	if (in_sz - lua_ctx_store.in_ofs == 1)
+		return push_resstr(ctx, in_sz - 1);
+
+	for (size_t i = 0; i < lua_ctx_store.in_ofs; i++){
+		if (lua_ctx_store.in_buf[i] == '\n' || lua_ctx_store.in_buf[i] == '\0')
+			return push_resstr(ctx, i);
 	}
 
-	return 0;
+	if (give_up)
+		return 0;
+
+/* non-blocking, poll, if set, buffer, push else return. */
+	if (non_blocking){
+		struct pollfd pfd = {
+			.fd = lua_ctx_store.in_file,
+			.events = POLL_IN
+		};
+
+		if (1 != poll(&pfd, 1, 0))
+			return 0;
+	}
+
+	ssize_t nr = read(lua_ctx_store.in_file,
+		lua_ctx_store.in_buf + lua_ctx_store.in_ofs,
+		in_sz - lua_ctx_store.in_ofs - 1
+	);
+
+	if (nr > 0)
+		lua_ctx_store.in_ofs += nr;
+
+	give_up = true;
+	goto push;
 }
 
 void arcan_lua_setglobalstr(lua_State* ctx,
@@ -645,9 +709,10 @@ static int rawclose(lua_State* ctx)
 
 	bool res = false;
 
-	if (lua_ctx_store.rfile) {
-		res = fclose(lua_ctx_store.rfile);
-		lua_ctx_store.rfile = NULL;
+	if (lua_ctx_store.in_file) {
+		close(lua_ctx_store.in_file);
+		lua_ctx_store.in_file = -1;
+		lua_ctx_store.in_ofs = 0;
 	}
 
 	lua_pushboolean(ctx, res);
@@ -658,15 +723,25 @@ static int pushrawstr(lua_State* ctx)
 {
 	LUA_TRACE("write_rawresource");
 
-	bool res = false;
 	const char* mesg = luaL_checkstring(ctx, 1);
+	size_t ntw = strlen(mesg);
 
-	if (lua_ctx_store.rfile) {
-		size_t fs = fwrite(mesg, strlen(mesg), 1, lua_ctx_store.rfile);
-		res = fs == 1;
+	if (ntw && lua_ctx_store.in_file > 0){
+		size_t ofs = 0;
+
+		while (ntw) {
+			ssize_t nw = write(lua_ctx_store.in_file, mesg + ofs, ntw);
+			if (-1 != nw){
+				ofs += nw;
+				ntw -= nw;
+			}
+			else if (errno != EAGAIN && errno != EINTR)
+				break;
+		}
 	}
 
-	lua_pushboolean(ctx, res);
+	lua_pushboolean(ctx, ntw == 0);
+
 	return 1;
 }
 
