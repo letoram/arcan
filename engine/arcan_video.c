@@ -4268,6 +4268,11 @@ static inline void setup_surf(struct rendertarget* dst,
 
 		ev = time_ratio(trans->scale.startt, trans->scale.endt);
 		arcan_shader_envv(TRANS_SCALE, &ev, sizeof(float));
+	} else {
+		float ev = 1.0;
+		arcan_shader_envv(TRANS_MOVE, &ev, sizeof(float));
+		arcan_shader_envv(TRANS_ROTATE, &ev, sizeof(float));
+		arcan_shader_envv(TRANS_SCALE, &ev, sizeof(float));
 	}
 }
 
