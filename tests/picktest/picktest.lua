@@ -56,7 +56,7 @@ function picktest()
 
 	forward3d_model(camera, -10.0);
 
-	local cube_1 = build_3dbox(1, 1);
+	local cube_1 = build_3dbox(1, 1, 1);
 	show_image(cube_1);
 	move3d_model(cube_1, 1, -1, 0, 100);
 	rotate3d_model(cube_1, 320, 320, 320, 100);
