@@ -576,13 +576,13 @@ static int readrawresource(lua_State* ctx)
  * if we get a linefeed, terminate there and push the chomped version.
  */
 push:
-	if (in_sz - lua_ctx_store.in_ofs == 1)
-		return push_resstr(ctx, in_sz - 1);
-
 	for (size_t i = 0; i < lua_ctx_store.in_ofs; i++){
 		if (lua_ctx_store.in_buf[i] == '\n' || lua_ctx_store.in_buf[i] == '\0')
 			return push_resstr(ctx, i);
 	}
+
+	if (in_sz - lua_ctx_store.in_ofs == 1)
+		return push_resstr(ctx, in_sz - 1);
 
 	if (give_up)
 		return 0;
