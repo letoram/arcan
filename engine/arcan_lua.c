@@ -509,15 +509,17 @@ static int rawresource(lua_State* ctx)
 #define O_CLOEXEC 0
 #endif
 
+	int flags = S_IRUSR | S_IWUSR;
+
 	if (!path){
 		char* fname = arcan_expand_resource(luaL_checkstring(ctx, 1), RESOURCE_APPL);
 		if (fname){
-			lua_ctx_store.in_file = open(fname, O_CREAT | O_RDWR, O_CLOEXEC);
+			lua_ctx_store.in_file = open(fname, O_CREAT | O_RDWR, O_CLOEXEC | flags);
 			free(fname);
 		}
 	}
 	else
-		lua_ctx_store.in_file = open(path, O_RDONLY | O_NONBLOCK, O_CLOEXEC);
+		lua_ctx_store.in_file = open(path, O_NONBLOCK | O_RDWR, O_CLOEXEC | flags);
 
 	lua_pushboolean(ctx, lua_ctx_store.in_file > 0);
 	free(path);
