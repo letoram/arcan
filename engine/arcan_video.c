@@ -4771,6 +4771,11 @@ arcan_errc arcan_video_forceread(arcan_vobj_id sid, void** dptr, size_t* dsize)
 	return ARCAN_OK;
 }
 
+unsigned arcan_video_worldtex()
+{
+	return current_context->world.vstore->vinf.text.glid;
+}
+
 arcan_errc arcan_video_forceupdate(arcan_vobj_id vid)
 {
 	arcan_vobject* vobj = arcan_video_getobject(vid);

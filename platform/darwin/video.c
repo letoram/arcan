@@ -39,11 +39,12 @@
 
 #include <OpenGL/OpenGL.h>
 
-static CGLContextObj context;
+static char* x11_synchopts[] = {
+	"default", "driver- specific GL swap",
+	NULL
+};
 
-void PLATFORM_SYMBOL(_video_bufferswap)()
-{
-}
+static CGLContextObj context;
 
 bool PLATFORM_SYMBOL(_video_init)(uint16_t w, uint16_t h,
 	uint8_t bpp, bool fs, bool frames, const char* cap)
@@ -63,6 +64,13 @@ bool PLATFORM_SYMBOL(_video_init)(uint16_t w, uint16_t h,
   errorCode = CGLCreateContext( pix, NULL, &context );
 	CGLDestroyPixelFormat( pix );
   errorCode = CGLSetCurrentContext( context );
+
+/*
+ * no double buffering,
+ * we let the parent transfer process act as the limiting clock.
+ */
+	GLint si = 0;
+	CGLSetParameter(context, kCGLCPSwapInterval, &si);
 
 #ifndef HEADLESS_NOARCAN
 	arcan_video_display.pbo_support = true;
@@ -91,6 +99,32 @@ bool PLATFORM_SYMBOL(_video_init)(uint16_t w, uint16_t h,
 	glViewport(0, 0, w, h);
 
 	return true;
+}
+
+void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
+	video_synchevent pre, video_synchevent post)
+{
+	if (pre)
+		pre();
+
+#ifndef HEADLESS_NOARCAN
+	arcan_bench_register_cost( arcan_video_refresh(fract) );
+#endif
+
+	glFlush();
+
+	if (post)
+		post();
+}
+
+const char** PLATFORM_SYMBOL(_video_synchopts)(void)
+{
+	return (const char**) x11_synchopts;
+}
+
+void PLATFORM_SYMBOL(_video_setsynch)(const char* arg)
+{
+	arcan_warning("unhandled synchronization strategy (%s) ignored.\n", arg);
 }
 
 void PLATFORM_SYMBOL(_video_prepare_external) () {}

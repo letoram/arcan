@@ -150,9 +150,20 @@ void platform_video_synch(uint64_t tick_count, float fract,
  * if we have access to inter-process texture sharing, we can just fling
  * the FD, for now, readback into the shmpage
  */
+#ifndef ARCAN_VIDEO_NOWORLD_FBO
+	glBindTexture(GL_TEXTURE_2D, arcan_video_worldtex());
+
+/*
+ * note, this assumes the shared memory interface
+ * has been resized to the preset dimensions
+ * (or we're gonna overflow and die)
+ */
+	glGetTexImage(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, shms.vidp);
+	glBindTexture(GL_TEXTURE_2D, 0);
+#else
 	glReadPixels(0, 0, shms.addr->w, shms.addr->h,
 		GL_RGBA, GL_UNSIGNED_BYTE, shms.vidp);
-
+#endif
 /*
  * we should implement a mapping for TARGET_COMMAND_FRAMESKIP or so
  * and use to set virtual display timings. ioev[0] => mode, [1] => prewake,
