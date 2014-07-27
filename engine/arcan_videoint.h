@@ -361,12 +361,7 @@ void generate_basic_mapping(float* dst, float st, float tt);
 void generate_mirror_mapping(float* dst, float st, float tt);
 void arcan_video_joinasynch(arcan_vobject* img, bool emit, bool force);
 
-/*
- * To split between GLFX/EGL/SDL/etc. All relevant settings are predefined in
- * arcan_video_display, and these just implement the necessary foreplay
- */
-bool arcan_videodev_init();
-void arcan_videodev_deinit();
+unsigned arcan_video_worldtex();
 
 void arcan_3d_setdefaults();
 
