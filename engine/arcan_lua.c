@@ -5206,11 +5206,14 @@ static enum arcan_ffunc_rv proctarget(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 
 /*
  * The buffer that comes from proctarget is special (gpu driver
- * maps it into our address space, gdb and friends won't understand
- * it and, in addition, there are usage constraints that we can't
- * see here, so we maintain a shared scrapbuffer, preventing
- * script writes from breaking.
+ * maps it into our address space, gdb and friends won't understand.
+ * define this is you need the speed-up of one less copy at the
+ * expense of delaying mem issue detection.
  */
+#ifdef ARCAN_LUA_CALCTARGET_NOSCRAP
+	static void* scrapbuf = buf;
+
+#else
 	static void* scrapbuf;
 	static size_t scrapbuf_sz;
 
@@ -5240,6 +5243,7 @@ static enum arcan_ffunc_rv proctarget(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 	else {
 		memcpy(scrapbuf, buf, s_buf);
 	}
+#endif
 
 	struct proctarget_src* src = state.ptr;
 	lua_rawgeti(src->ctx, LUA_REGISTRYINDEX, src->cbfun);
