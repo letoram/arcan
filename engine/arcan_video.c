@@ -1626,9 +1626,11 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 
 	unsigned depth_stencil_id;
 	glGenRenderbuffers(1, &depth_stencil_id);
+	glBindRenderbuffer(GL_RENDERBUFFER, depth_stencil_id);
 	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, ds->w, ds->h);
 	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
 		GL_RENDERBUFFER, depth_stencil_id);
+
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 #endif
@@ -2021,41 +2023,6 @@ arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs,
 	}
 
 	return rv;
-}
-
-static arcan_errc attach_readback(arcan_vobj_id src)
-{
-	arcan_vobject* dstobj = arcan_video_getobject(src);
-	if (!dstobj)
-		return ARCAN_ERRC_NO_SUCH_OBJECT;
-
-	if (dstobj->vstore->w != arcan_video_screenw() ||
-		dstobj->vstore->h != arcan_video_screenh()){
-		return ARCAN_ERRC_BAD_ARGUMENT;
-	}
-
-/*
- * note; should have a different strategy for handling multiple
- * readbacks here, currently the video pipeline is replaced when
- * a stdoutp- color is defined and then we can use regular readbacks
- * that way, the other approach would be direct FBO-FBO transfers.
- */
-	if (current_context->stdoutp.color)
-		return ARCAN_ERRC_UNACCEPTED_STATE;
-
-	current_context->stdoutp.mode = RENDERTARGET_COLOR;
-	current_context->stdoutp.color = dstobj;
-
-	if (current_context->stdoutp.fbo == 0){
-		if (!alloc_fbo(&current_context->stdoutp)){
-			current_context->stdoutp.color = NULL;
-			return ARCAN_ERRC_UNACCEPTED_STATE;
-		}
-	}
-
-	dstobj->extrefc.attachments += 2;
-
-	return ARCAN_OK;
 }
 
 arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did,
@@ -4908,49 +4875,33 @@ void arcan_video_refresh_GL(float lerp)
 			process_readback(&current_context->rtargets[ind], lerp);
 	}
 
-	if (current_context->world.vstore)
-		glBindFramebuffer(GL_FRAMEBUFFER, arcan_video_display.main_fbo);
-
-	process_rendertarget(&current_context->stdoutp, lerp);
-
+/*
+ * might be a point to doing this rendertarget with flipy,
+ * then the readbacks for full-screen will be correct
+ */
 	if (current_context->world.vstore){
+		glBindFramebuffer(GL_FRAMEBUFFER, arcan_video_display.main_fbo);
+			process_rendertarget(&current_context->stdoutp, lerp);
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 		if (current_context->stdoutp.readback != 0 &&
 			!current_context->stdoutp.readreq)
 			process_readback(&current_context->stdoutp, lerp);
+
+		arcan_vobject* outp = &current_context->world;
+		float imatr[16];
+		identity_matrix(imatr);
+
+		arcan_shader_activate(arcan_video_display.defaultshdr);
+		arcan_shader_envv(MODELVIEW_MATR, imatr, sizeof(float) * 16);
+		glBindTexture(GL_TEXTURE_2D, outp->vstore->vinf.text.glid);
+
+		draw_vobj(0, 0, arcan_video_display.width,
+			arcan_video_display.height, arcan_video_display.mirror_txcos);
+		glBindTexture(GL_TEXTURE_2D, 0);
 	}
-
-/*
- * Readbacks for WORLDID is a bit special, it is treated as a
- * regular rendertarget, but with a source FBO set -- this means
- * that we do a Renderbuffer->Renderbuffer copy then issue the readback
- *
- * if (current_context->stdoutp.color){
-		glBindFramebuffer(GL_FRAMEBUFFER, current_context->stdoutp.fbo);
-		memcpy(current_context->stdoutp.projection,m
-			arcan_video_display.flipy_projection, sizeof(float) * 16);
-
+	else
 		process_rendertarget(&current_context->stdoutp, lerp);
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-		memcpy(current_context->stdoutp.projection,
-			arcan_video_display.default_projection, sizeof(float) * 16);
-*/
-
-	arcan_vobject* outp = &current_context->world;
-	float imatr[16];
-	identity_matrix(imatr);
-
-	arcan_shader_activate(arcan_video_display.defaultshdr);
-	arcan_shader_envv(MODELVIEW_MATR, imatr, sizeof(float) * 16);
-	arcan_shader_envv(PROJECTION_MATR,
-		arcan_video_display.default_projection, sizeof(float)*16);
-	glBindTexture(GL_TEXTURE_2D, outp->vstore->vinf.text.glid);
-
-	draw_vobj(0, 0, arcan_video_display.width,
-		arcan_video_display.height, arcan_video_display.mirror_txcos);
-	glBindTexture(GL_TEXTURE_2D, 0);
 
 /* cursor will always be erased on change,
  * that means we can safely draw that even when the

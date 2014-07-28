@@ -108,6 +108,15 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 	arcan_audio_stop(src->aid);
 	arcan_video_alterfeed(src->vid, NULL, emptys);
 
+	arcan_event sevent = {.category = EVENT_FRAMESERVER,
+		.kind = EVENT_FRAMESERVER_TERMINATED,
+		.data.frameserver.video = src->vid,
+		.data.frameserver.glsource = false,
+		.data.frameserver.audio = src->aid,
+		.data.frameserver.otag = src->tag
+	};
+	arcan_event_enqueue(arcan_event_defaultctx(), &sevent);
+
 	arcan_mem_free(src);
 	return ARCAN_OK;
 }
@@ -139,19 +148,12 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
 		(arcan_shmif_integrity_check(src->shm.ptr) == false ||
 		arcan_frameserver_validchild(src) == false)){
 
-		arcan_event sevent = {.category = EVENT_FRAMESERVER,
-		.kind = EVENT_FRAMESERVER_TERMINATED,
-		.data.frameserver.video = src->vid,
-		.data.frameserver.glsource = false,
-		.data.frameserver.audio = src->aid,
-		.data.frameserver.otag = src->tag
-		};
-
 /* force flush beforehand, in a saturated queue, data may still
  * get lost here */
 		arcan_event_queuetransfer(arcan_event_defaultctx(), &src->inqueue,
 			src->queue_mask, 0.5, src->vid);
-		arcan_event_enqueue(arcan_event_defaultctx(), &sevent);
+
+		arcan_frameserver_free(src);
 		return false;
 	}
 
