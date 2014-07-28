@@ -174,10 +174,27 @@ bool arcan_frameserver_validchild(arcan_frameserver* src){
 	if (!src || !src->flags.alive)
 		return false;
 
-/* this means that we have a child that we have no monitoring strategy
- * for currently (i.e. non-authorative) */
-	if (src->child == BROKEN_PROCESS_HANDLE)
+/*
+ * for non-auth connections, we have few good options of getting
+ * a non- race condition prone resource to check for connection
+ * status, so use the socket descriptor.
+ */
+	if (src->child == BROKEN_PROCESS_HANDLE){
+		if (src->sockout_fd > 0){
+			int mask = POLLERR | POLLHUP | POLLNVAL;
+
+			struct pollfd fds = {
+				.fd = src->sockout_fd,
+				.events = mask
+			};
+
+			if ((-1 == poll(&fds, 1, 0) &&
+				errno != EINTR) || (fds.revents & mask) > 0)
+				return false;
+		}
+
 		return true;
+	}
 
 /*
  * Note that on loop conditions, the pid can change,
@@ -218,6 +235,13 @@ arcan_errc arcan_frameserver_pushfd(arcan_frameserver* fsrv, int fd)
 	return ARCAN_ERRC_BAD_ARGUMENT;
 }
 
+/*
+ * Currently, the namedsocket approach for non-authoritative connections
+ * has the issue of exposing shared memory interface / semaphores
+ * to someone that would iterate the namespace with the same user
+ * credentials. This is slated to be re-worked when we separate the
+ * event queues from the shmpage.
+ */
 static bool shmalloc(arcan_frameserver* ctx,
 	bool namedsocket, const char* optkey)
 {
@@ -303,9 +327,9 @@ static bool shmalloc(arcan_frameserver* ctx,
 			memcpy(dst, optkey, optlen);
 		}
 
-/* this makes things not particularly thread safe, but we should not
- * be in a multithreaded context anyhow */
-
+/*
+ * if we happen to have a stale listener, unlink it.
+ */
 		unlink(addr.sun_path);
 		if (bind(fd, (struct sockaddr*) &addr, sizeof(addr)) != 0){
 			arcan_warning("posix/frameserver.c:shmalloc(), couldn't setup "
@@ -322,7 +346,7 @@ static bool shmalloc(arcan_frameserver* ctx,
 /* track output socket separately so we can unlink on exit,
  * other options (readlink on proc) or F_GETPATH are unportable
  * (and in the case of readlink .. /facepalm) */
-		ctx->source = strdup(addr.sun_path);
+		ctx->sockaddr = strdup(addr.sun_path);
 	}
 
 /* max videoframesize + DTS + structure + maxaudioframesize,
@@ -585,7 +609,8 @@ static enum arcan_ffunc_rv socketverify(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 		return FFUNC_RV_NOFRAME;
 
 	case FFUNC_DESTROY:
-		unlink(tgt->source);
+		if (tgt->sockaddr)
+			unlink(tgt->sockaddr);
 
 	default:
 		return FFUNC_RV_NOFRAME;
@@ -596,14 +621,35 @@ static enum arcan_ffunc_rv socketverify(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 send_key:
 	arcan_warning("platform/frameserver.c(), connection verified.\n");
 
-/* Note: we here assume that we can write without blocking, which is
- * usually the case. There might be a DoS opportunity here with a
- * connection that somehow gets our socket write to block/lock here,
- * if that's ever a real concern, switch to select and just drop connection
- * if we can't write enough. */
 	size_t ntw = snprintf(tgt->sockinbuf,
 		PP_SHMPAGE_SHMKEYLIM, "%s\n", tgt->shm.key);
-	write(tgt->sockout_fd, tgt->sockinbuf, ntw);
+
+	ssize_t rtc = 10;
+	off_t wofs = 0;
+
+/*
+ * small chance here that a malicious client could manipulate the
+ * descriptor in such a way as to block, retry a short while.
+ */
+	int flags = fcntl(tgt->sockout_fd, F_GETFL, 0);
+	fcntl(tgt->sockout_fd, F_SETFL, flags | O_NONBLOCK);
+	while (rtc && ntw){
+		ssize_t rc = write(tgt->sockout_fd, tgt->sockinbuf + wofs, ntw);
+		if (-1 == rc){
+			rtc = (errno == EAGAIN || errno ==
+				EWOULDBLOCK || errno == EINTR) ? rtc - 1 : 0;
+		}
+		else{
+			ntw -= rc;
+			wofs += rc;
+		}
+	}
+
+	if (rtc <= 0){
+		arcan_warning("platform/frameserver.c(), connection broken.\n");
+		arcan_frameserver_free(tgt);
+		return FFUNC_RV_NOFRAME;
+	}
 
 	arcan_video_alterfeed(tgt->vid,
 		arcan_frameserver_emptyframe, state);
