@@ -64,7 +64,7 @@ option(ENABLE_VIDENC "Build with FFMPEG video encoding support in frameserver" O
 option(ENABLE_VIDENCVNC "Build video encoder with VNC server support" ON)
 option(ENABLE_REMOTING "Build remoting frameserver (vnc, ...)" ON)
 if (NOT WIN32)
-	option(ENABLE_TERMINAL "Build terminal frameserver" ON)
+	option(ENABLE_TERMINAL "Build terminal frameserver" OFF)
 	option(SPLIT_FRAMESERVER "Split frameservers into separate binaries" ON)
 endif()
 
@@ -297,7 +297,7 @@ elseif (VIDEO_PLATFORM STREQUAL "sdl")
 	endif()
 
 else()
-	message(FATAL_ERROR "No video platform specified, use -DVIDEO_PLATFORM= (egl,x11 or sdl)")
+	message(FATAL_ERROR "No video platform specified, use -DVIDEO_PLATFORM= (egl,x11,x11-headless or sdl)")
 endif()
 
 # no other audio platforms supported currently
@@ -530,6 +530,7 @@ if (${ENABLE_VIDDEC})
 		external/fft/kiss_fft.c
 		external/fft/kiss_fftr.c
 	)
+
 	set(FSRV_DECODE_LIBRARIES
 		${LIBVLC_LIBRARY}
 	)
@@ -541,13 +542,26 @@ endif()
 
 if (${ENABLE_TERMINAL})
 	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}terminal ")
+	FIND_PACKAGE(TSM REQUIRED)
+
+	if (${LIBTSM_FOUND})
 	message("--> Adding terminal support.")
 	set(FSRV_TERMINAL_SOURCES
 		frameserver/arcterm.c
+		frameserver/shl/shl-pty.c
+		frameserver/shl/shl-ring.c
+		frameserver/graphing/net_graph.c
 	)
 	set(FSRV_TERMINAL_LIBRARIES
+		${LIBTSM_LIBRARIES}
 		util
 	)
+	list(APPEND INCLUDE_DIRS
+		${LIBTSM_INCLUDE_DIRS}
+	)
+	else()
+		message("libtsm not found, terminal disabled.")
+	endif()
 endif()
 
 if (${ENABLE_REMOTING})

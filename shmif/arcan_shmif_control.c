@@ -733,6 +733,8 @@ bool arg_lookup(struct arg_arr* arr, const char* val,
 	unsigned short ind, const char** found)
 {
 	int pos = 0;
+	if (!arr)
+		return false;
 
 	while (arr[pos].key != NULL){
 /* return only the 'ind'th match */
