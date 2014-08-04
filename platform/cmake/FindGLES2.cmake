@@ -1,3 +1,6 @@
+if (NOT BCM_ROOT)
+	set(BCM_ROOT "/opt/vc")
+endif()
 
 find_path(OPENGL_INCLUDE_DIR GL/gl.h
 	/usr/share/doc/NVIDIA_GLX-1.0/include
@@ -6,24 +9,27 @@ find_path(OPENGL_INCLUDE_DIR GL/gl.h
  	${_OPENGL_INCLUDE_PATH}
  )
 
-# 
+#
 # Broadcom (raspberry pi etc.) specific detection => hardcoded paths
 #
-if (EXISTS "/opt/vc/include/bcm_host.h")
-	message(STATUS "FindGLESv2: bcm_host detected, enabling raspberry pi / broadcom support")
-	set (${GLES2_INCLUDE_DIR} 
-		/opt/vc/include/interface/vcos/pthreads
-		/opt/vc/include
-		/opt/vc/include/interface/vmcs_host/linux
-		/opt/vc/include/GLES2
+if (EXISTS "${BCM_ROOT}/include/bcm_host.h")
+
+# should be replaced with a real probe for SSE/NEON/nothing
+	set (ENABLE_SIMD FALSE)
+
+	set (GLES2_INCLUDE_DIRS
+		${BCM_ROOT}/include/interface/vcos/pthreads
+		${BCM_ROOT}/include
+		${BCM_ROOT}/include/interface/vmcs_host/linux
+		${BCM_ROOT}/include/GLES2
 	)
 
 	set(GLES2_BCM_IMPLEMENTATION TRUE)
 
-	set (${GLES2_LIBRARIES}
-		/opt/vc/lib/libGLESv2.so
-		/opt/vc/lib/libbcm_host.so
-		/opt/vc/lib/libEGL.so
+	set (GLES2_LIBRARIES
+		${BCM_ROOT}/lib/opt/vc/lib/libGLESv2.so
+		${BCM_ROOT}/lib/opt/vc/lib/libbcm_host.so
+		${BCM_ROOT}/lib/opt/vc/lib/libEGL.so
 	)
 else()
 	find_library(GLES2_LIBRARIES NAMES GLESv2)
@@ -32,6 +38,6 @@ else()
 	)
 
 	include(FindPackageHandleStandardArgs)
-	FIND_PACKAGE_HANDLE_STANDARD_ARGS(OpenGL DEFAULT_MSG GLES2_LIBRARIES) 
+	FIND_PACKAGE_HANDLE_STANDARD_ARGS(OpenGL DEFAULT_MSG GLES2_LIBRARIES)
 endif ()
 
