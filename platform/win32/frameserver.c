@@ -30,6 +30,7 @@
 #include <sys/types.h>
 #include <signal.h>
 #include <errno.h>
+#include <unistd.h>
 
 #include <tchar.h>
 
@@ -39,13 +40,12 @@
 #include <SDL_types.h>
 
 #include <arcan_math.h>
+#include <arcan_shmif.h>
 #include <arcan_general.h>
 #include <arcan_event.h>
 #include <arcan_video.h>
 #include <arcan_audio.h>
-#include <arcan_framequeue.h>
 #include <arcan_frameserver_backend.h>
-#include <arcan_shmif.h>
 
 /*
  * refactor needs:
@@ -59,10 +59,13 @@ static BOOL SafeTerminateProcess(HANDLE hProcess, UINT* uExitCode);
 
 void arcan_frameserver_killchild(arcan_frameserver* src)
 {
+	if (!src || src->flags.subsegment || !src->child)
+		return;
+
 	UINT ec;
 
 	SafeTerminateProcess(src->child, &ec);
-	src->child_alive = false;
+	src->flags.alive = false;
 	src->child = NULL;
 }
 
@@ -119,17 +122,13 @@ static BOOL SafeTerminateProcess(HANDLE hProcess, UINT* uExitCode)
 
 bool arcan_frameserver_validchild(arcan_frameserver* src)
 {
-	if (src->child){
-		DWORD exitcode;
-		GetExitCodeProcess((HANDLE) src->child, &exitcode);
-		if (exitcode == STILL_ACTIVE); /* this was a triumph */
-		else {
-			src->child_alive = false;
-			return false;
-		}
-	}
+	if (!src || !src->flags.alive || !src->child)
+		return false;
 
-	return true;
+	DWORD exitcode;
+	GetExitCodeProcess((HANDLE) src->child, &exitcode);
+
+	return exitcode == STILL_ACTIVE;
 }
 
 void arcan_frameserver_dropshared(arcan_frameserver* src)
@@ -145,62 +144,68 @@ void arcan_frameserver_dropshared(arcan_frameserver* src)
 	CloseHandle(src->async);
 	CloseHandle(src->vsync);
 	CloseHandle(src->esync);
-	CloseHandle( src->shm.handle );
-	free(src->shm.key);
 
-		src->shm.ptr = NULL;
+	CloseHandle( src->shm.handle );
+	arcan_mem_free(src->shm.key);
+
+	src->shm.ptr = NULL;
 }
 
 arcan_errc arcan_frameserver_pushfd(arcan_frameserver* fsrv, int fd)
 {
-	arcan_errc rv = ARCAN_ERRC_BAD_ARGUMENT;
+	if (!fsrv)
+		return ARCAN_ERRC_BAD_ARGUMENT;
 
-	if (fsrv){
-		HANDLE dh, childh, fdh;
-		DWORD pid;
+	HANDLE dh, childh, fdh;
+	DWORD pid;
+	arcan_errc rv;
 
-		childh = OpenProcess(PROCESS_DUP_HANDLE, FALSE, fsrv->childp);
-		if (INVALID_HANDLE_VALUE == childh){
-			arcan_warning("arcan_frameserver(win32)::push_handle, "
-				"couldn't open child process (%ld)\n", GetLastError());
-			return rv;
-		}
-
-/* assume valid input fd, 64bit issues with this one? */
-		fdh = (HANDLE) _get_osfhandle(fd);
-
-		if (DuplicateHandle(GetCurrentProcess(), fdh, childh,
-			&dh, 0, FALSE, DUPLICATE_SAME_ACCESS)){
-			arcan_event ev = {
-				.category = EVENT_TARGET,
-				.kind = TARGET_COMMAND_FDTRANSFER
-			};
-
-			ev.data.target.fh = dh;
-			arcan_frameserver_pushevent( fsrv, &ev );
-			rv = ARCAN_OK;
-		}
-		else {
-			arcan_warning("arcan_frameserver(win32)::push_handle "
-				"failed (%ld)\n", GetLastError() );
-			rv = ARCAN_ERRC_BAD_ARGUMENT;
-		}
-
-/*removed: likely suspect for a Windows Exception in
- * zwClose and friends.	CloseHandle(fdh); */
-		_close(fd);
+	childh = OpenProcess(PROCESS_DUP_HANDLE, FALSE, fsrv->childp);
+	if (INVALID_HANDLE_VALUE == childh){
+		arcan_warning("arcan_frameserver(win32)::push_handle, "
+			"couldn't open child process (%ld)\n", GetLastError());
+		return ARCAN_ERRC_UNACCEPTED_STATE;
 	}
 
+/* assume valid input fd, 64bit issues with this one? */
+	fdh = (HANDLE) _get_osfhandle(fd);
+
+	if (DuplicateHandle(GetCurrentProcess(), fdh, childh,
+	&dh, 0, FALSE, DUPLICATE_SAME_ACCESS)){
+		arcan_event ev = {
+			.category = EVENT_TARGET,
+			.kind = TARGET_COMMAND_FDTRANSFER
+		};
+
+		ev.data.target.fh = dh;
+		arcan_frameserver_pushevent( fsrv, &ev );
+		rv = ARCAN_OK;
+	}
+	else {
+		arcan_warning("arcan_frameserver(win32)::push_handle "
+			"failed (%ld)\n", GetLastError() );
+			rv = ARCAN_ERRC_BAD_ARGUMENT;
+	}
+
+	_close(fd);
 	return rv;
 }
 
 arcan_frameserver* arcan_frameserver_listen_external(const char* key)
 {
+	arcan_warning("(win32) platform issue, listen_external() not implemented");
 	return NULL;
 }
 
-arcan_frameserver* arcan_frameserver_spawn_subsegment(arcan_frameserver* ctx, bool input)
+/*
+ * this could be implemented by (a) adding a WIN32- specific extension
+ * in shmif that takes the newseg- argument and packs the necessary
+ * handles as well, set the packing globals and just alloc.
+ */
+arcan_frameserver* arcan_frameserver_spawn_subsegment(
+	arcan_frameserver* ctx, bool input, int hintw, int hinth, int tag)
 {
+	arcan_warning("(win32) platform issue, spawn subsegment() not implemented");
 	return NULL;
 }
 
@@ -235,10 +240,24 @@ static struct arcan_shmif_page* setupshmipc(HANDLE* dfd)
 		return res;
 	}
 
-error:
 	arcan_warning("arcan_frameserver_spawn_server(), "
 		"could't allocate shared memory.\n");
 	return NULL;
+}
+
+bool arcan_frameserver_resize(shm_handle* src, int w, int h)
+{
+	w = abs(w);
+	h = abs(h);
+
+	size_t sz = arcan_shmif_getsize(w, h);
+	if (sz > ARCAN_SHMPAGE_MAX_SZ)
+		return false;
+
+/*
+ *  we always overcommit on windows
+ */
+	return true;
 }
 
 arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,

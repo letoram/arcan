@@ -61,7 +61,6 @@
 #include <ctype.h>
 #include <setjmp.h>
 
-#include <poll.h>
 #include <string.h>
 #include <fcntl.h>
 #include <sys/types.h>
@@ -75,6 +74,19 @@
 #include <lua.h>
 #include <lualib.h>
 #include <lauxlib.h>
+
+/*
+ * two portability changes that should be worked in:
+ * 1. setup a non-blocking I/O readline etc.
+ * 2. add a version of open_rawresource that incorporates
+ *    a lua_userdata wrapper around the non-blocking I/O
+ *    context
+ */
+#ifndef WIN32
+#include <poll.h>
+#else
+#define O_NONBLOCK 0
+#endif
 
 #ifdef LUA51_JIT
 #include <luajit.h>
@@ -589,6 +601,9 @@ push:
 	if (give_up)
 		return 0;
 
+#ifdef WIN32
+/* not implemented, see notes at the top around poll.h */
+#else
 /* non-blocking, poll, if set, buffer, push else return. */
 	if (non_blocking){
 		struct pollfd pfd = {
@@ -599,6 +614,7 @@ push:
 		if (1 != poll(&pfd, 1, 0))
 			return 0;
 	}
+#endif
 
 	ssize_t nr = read(lua_ctx_store.in_file,
 		lua_ctx_store.in_buf + lua_ctx_store.in_ofs,
@@ -3771,7 +3787,11 @@ static int rawsurface(lua_State* ctx)
 	return 1;
 }
 
-/* not intendend to be used as a low-frequency noise function (duh) */
+/*
+ * not intendend to be used as a low-frequency noise function
+ * will be fixed/refactored when the 3d-pipeline gets improved
+ * (perlin with controlled number of octaves etc.)
+ */
 static int randomsurface(lua_State* ctx)
 {
 	LUA_TRACE("random_surface");
@@ -3787,7 +3807,7 @@ static int randomsurface(lua_State* ctx)
 
 	for (size_t y = 0; y < cons.h; y++)
 		for (size_t x = 0; x < cons.w; x++){
-			unsigned char val = 20 + random() % 235;
+			unsigned char val = 20 + rand() % 235;
 			*cptr++ = RGBA(val, val, val, 0xff);
 		}
 

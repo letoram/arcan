@@ -271,8 +271,6 @@ int main(int argc, char* argv[])
 	int scalemode = ARCAN_VIMAGE_NOPOW2;
 	int width = 640;
 	int height = 480;
-	int winx = -1;
-	int winy = -1;
 
 /* only used when monitor mode is activated, where we want some
  * of the global paths etc. accessible, but not *all* of them */
@@ -303,8 +301,6 @@ int main(int argc, char* argv[])
 	case 'w' : width = strtol(optarg, NULL, 10); break;
 	case 'h' : height = strtol(optarg, NULL, 10); break;
 	case 'm' : conservative = true; break;
-	case 'x' : winx = strtol(optarg, NULL, 10); break;
-	case 'y' : winy = strtol(optarg, NULL, 10); break;
 	case 'f' : fullscreen = true; break;
 	case 's' : windowed = true; break;
 	case 'W' : platform_video_setsynch(optarg); break;

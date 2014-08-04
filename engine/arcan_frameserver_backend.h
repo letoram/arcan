@@ -115,6 +115,9 @@ typedef struct arcan_frameserver {
 	sem_handle vsync, async, esync;
 	file_handle sockout_fd;
 	process_handle child;
+#if _WIN32
+	DWORD childp;
+#endif
 
 /* used for connections negotiated via socket
  * (sockout_fd) */

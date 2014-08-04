@@ -29,9 +29,6 @@ static data_source* alloc_datasource()
 
 void arcan_release_resource(data_source* sptr)
 {
-	char playbuf[4096];
-	playbuf[4095] = '\0';
-
 	CloseHandle(sptr->fd);
 	sptr->fd = BADFD;
 

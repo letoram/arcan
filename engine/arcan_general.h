@@ -137,6 +137,7 @@ typedef struct {
 
 /*
  * Editing this table will require modifications in individual platform/path.c
+ * and possibly platform/appl.c 
  * The enum should fullfill the criteria (index = sqrt(enumv)),
  * exclusive(mask) = mask & (mask - 1) == 0
  */
@@ -211,7 +212,7 @@ bool arcan_verify_namespaces(bool report);
 void arcan_override_namespace(const char* path, enum arcan_namespaces);
 
 /*
- * implemented in <platform>/paths.c
+ * implemented in <platform>/appl.c
  * ensure a sane setup (all namespaces have mapped paths + proper permissions)
  * then locate / load / map /setup setup a new application with <appl_id>
  * can be called multiple times (will then unload previous <appl_id>
@@ -221,8 +222,8 @@ void arcan_override_namespace(const char* path, enum arcan_namespaces);
 bool arcan_verifyload_appl(const char* appl_id, const char** errc);
 
 /*
- * implemented in <platform>/paths.c
- * returns the strarting scripts of the specified appl,
+ * implemented in <platform>/appl.c
+ * returns the starting scripts of the specified appl,
  * along with ID tag and a cached strlen.
  */
 const char* arcan_appl_basesource(bool* file);
@@ -314,6 +315,20 @@ bool arcan_release_map(map_region region);
  */
 void arcan_warning(const char* msg, ...);
 void arcan_fatal(const char* msg, ...);
+
+/*
+ * implemented in <platform>/paths.c
+ * return true if the path key indicated by <fn> exists and
+ * is a directory, otherwise, false.
+ */
+bool arcan_isdir(const char* fn);
+
+/*
+ * implemented in <platform>/paths.c
+ * return true if the path key indicated by <fn> exists and
+ * is a file or special (e.g. FIFO), otherwise, false.  
+ */
+bool arcan_isdir(const char* fn);
 
 /*
  * implemented in <platform>/fmt_open.c

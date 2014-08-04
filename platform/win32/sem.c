@@ -21,7 +21,7 @@ int arcan_sem_unlink(sem_handle sem, char* key)
 	return CloseHandle(sem);
 }
 
-int arcan_sem_init(sem_handle* sem, int value)
+int arcan_sem_init(sem_handle* sem, unsigned value)
 {
 	*sem = CreateSemaphore(NULL, value, 65535, NULL);
 	return *sem != NULL ? 0 : -1;

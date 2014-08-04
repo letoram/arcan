@@ -1231,7 +1231,7 @@ arcan_errc arcan_3d_baseorient(arcan_vobj_id dst,
 
 /* 1. create the rotation matrix by mapping to a quaternion */
 	quat repr = build_quat_taitbryan(roll, pitch, yaw);
-	float matr[16];
+	_Alignas(16) float matr[16];
 	matr_quatf(repr, matr);
 
 /* 2. iterate all geometries connected to the model */
@@ -1240,8 +1240,8 @@ arcan_errc arcan_3d_baseorient(arcan_vobj_id dst,
 
 /* 3. sweep through all the vertexes in the model */
 		for (unsigned i = 0; i < geom->nverts * 3; i += 3){
-			float xyz[4] = {verts[i], verts[i+1], verts[i+2], 1.0};
-			float out[4];
+			_Alignas(16) float xyz[4] = {verts[i], verts[i+1], verts[i+2], 1.0};
+			_Alignas(16) float out[4];
 
 /* 4. transform the current vertex */
 			mult_matrix_vecf(matr, xyz, out);

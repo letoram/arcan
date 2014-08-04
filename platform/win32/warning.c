@@ -20,9 +20,6 @@ static bool winnolog;
 
 void arcan_warning(const char* msg, ...)
 {
-	char playbuf[4096];
-	playbuf[4095] = '\0';
-
 	if (winnolog)
 		return;
 
@@ -31,11 +28,14 @@ void arcan_warning(const char* msg, ...)
  * thus we can assume resource/theme
  * folder is r/w but nothing else ..
  */
-	if (!stdout_redirected && arcan_resourcepath != NULL){
-		snprintf(playbuf, sizeof(playbuf) - 1,
-			"%s/logs/arcan_warning.txt", arcan_resourcepath);
-	/* even if this fail, we will not try again */
-		winnolog = freopen(playbuf, "a", stdout) == NULL;
+	if (!stdout_redirected){
+		char* dst = arcan_expand_resource("arcan_warning.txt", RESOURCE_SYS_DEBUG);
+		if (dst){
+			winnolog = freopen(dst, "a", stdout) == NULL;
+			arcan_mem_free(dst);
+		}
+		else
+			winnolog = true;
 		stdout_redirected = true;
 	}
 
@@ -48,23 +48,24 @@ void arcan_warning(const char* msg, ...)
 
 void arcan_fatal(const char* msg, ...)
 {
-	char buf[4096];
-	buf[4095] = '\0';
-
-	if (!stderr_redirected && arcan_resourcepath != NULL){
-		snprintf(buf, 4095, "%s/logs/arcan_fatal.txt", arcan_resourcepath);
-		winnolog = freopen(buf, "a", stderr) == NULL;
-		stderr_redirected = true;
-	}
-
 	va_list args;
 	va_start(args, msg );
-	vsnprintf(buf, 4095, msg, args);
+	size_t len = vsnprintf(NULL, 0, msg, args);
 	va_end(args);
 
-	fprintf(stderr, "%s\n", buf);
-	fflush(stderr);
-	MessageBox(NULL, buf, NULL, MB_OK | MB_ICONERROR | MB_APPLMODAL );
+	char dbuf[len];
+	va_start(args, msg );
+	vsnprintf(dbuf, len, msg, args);
+	va_end(args);
+
+	char* dst = arcan_expand_resource("arcan_warning.txt", RESOURCE_SYS_DEBUG);
+	if (dst){
+		vfprintf(stderr, "%s\n", (char*)dbuf);
+		fflush(stderr);
+		arcan_mem_free(dst);
+	}
+
+	MessageBox(NULL, dbuf, NULL, MB_OK | MB_ICONERROR | MB_APPLMODAL );
 	exit(1);
 }
 

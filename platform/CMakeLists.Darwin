@@ -42,6 +42,7 @@ set (PLATFORM_SOURCES
 	${PLATFORM_PATH}/mem.c
 	${PLATFORM_PATH}/base64.c
 	${PLATFORM_PATH}/warning.c
+	${PLATFORM_PATH}/appl.c
 	${PLATFORM_PATH}/frameserver.c
 	${PLATFORM_PATH}/fdpassing.c
 	${PLATFORM_PATH}/../darwin/sem.c

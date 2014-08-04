@@ -20,16 +20,39 @@
 #include <pthread.h>
 
 #include "arcan_shmif.h"
+/*
+ * The windows implementation here is rather broken in several ways:
+ * 1. non-authoritative connections not accepted (and not planned)
+ * 2. multiple- segments failed due to the hackish way that 
+ *    semaphores and shared memory handles are passed
+ * 3. split- mode not implemented
+ * 
+ */
+#if _WIN32
+#define sleep(n) Sleep(1000 * n)
 
-/* This little function tries to get around all the insane problems
- * that occur with the fundamentally broken sem_timedwait with named
- * semaphores and a parent<->child circular dependency (like we have here).
+#define LOG(...) (fprintf(stderr, __VA_ARGS__))
+extern sem_handle async, vsync, esync;
+extern HANDLE parent;
+
+#else
+#include <signal.h>
+#include <sys/mman.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#endif
+
+/* 
+ * The guard-thread thing tries to get around all the insane edge conditions
+ * that exist when you have a partial parent<->child circular dependency
+ * with an untrusted child and a limited set of IPC primitives.
  *
  * Sleep a fixed amount of seconds, wake up and check if parent is alive.
  * If that's true, go back to sleep -- otherwise -- wake up, pop open
  * all semaphores set the disengage flag and go back to a longer sleep
  * that it shouldn't wake up from. Show this sleep be engaged anyhow,
- * shut down forcefully. */
+ * shut down forcefully. 
+ */
 
 struct shmif_hidden {
 	shmif_trigger_hook video_hook;
@@ -41,8 +64,9 @@ struct shmif_hidden {
 	bool output;
 
 	struct {
+		bool active;
 		sem_handle semset[3];
-		int parent;
+		process_handle parent;
 		volatile uintptr_t* dms;
 		pthread_mutex_t synch;
 	} guard;
@@ -70,17 +94,13 @@ static void spawn_guardthread(
 		pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
 		pthread_mutex_init(&hgs->guard.synch, NULL);
 
+		hgs->guard.active = true;
 		pthread_create(&pth, &pthattr, guard_thread, hgs);
+		pthread_detach(pth);
 	}
 }
 
 #if _WIN32
-
-#define sleep(n) Sleep(1000 * n)
-
-extern sem_handle async, vsync, esync;
-extern HANDLE parent;
-
 static inline bool parent_alive()
 {
 	return IsWindow(parent);
@@ -88,53 +108,31 @@ static inline bool parent_alive()
 
 /* force_unlink isn't used here as the semaphores are
  * passed as inherited handles */
-struct arcan_shmif_cont arcan_shmif_acquire(
-	const char* shmkey, int shmif_type, char force_unlink, char noguard)
+static void map_shared(const char* shmkey, 
+	char force_unlink, struct arcan_shmif_cont* res) 
 {
-	struct arcan_shmif_cont res = {0};
 	assert(shmkey);
-	assert(sizeof(res.priv) >= sizeof(struct guard_struct));
-
 	HANDLE shmh = (HANDLE) strtoul(shmkey, NULL, 10);
 
-	res.addr = (struct arcan_shmif_page*) MapViewOfFile(shmh,
+	res->addr = MapViewOfFile(shmh, 
 		FILE_MAP_ALL_ACCESS, 0, 0, ARCAN_SHMPAGE_MAX_SZ);
 
-	if ( res.addr == NULL ) {
+	res->asem = async;
+	res->vsem = vsync;
+	res->esem = esync;
+
+	if ( res->addr == NULL ) {
 		LOG("fatal: Couldn't map the allocated shared "
 			"memory buffer (%i) => error: %i\n", shmkey, GetLastError());
 		CloseHandle(shmh);
-		return res;
 	}
 
-	res.asem = async;
-	res.vsem = vsync;
-	res.esem = esync;
-
-	parent = res.addr->parent;
-
-	struct guard_struct gs = {
-		.dms = &res.addr->dms,
-		.semset = { async, vsync, esync }
-	};
-
-	if (!noguard)
-		spawn_guardthread(gs);
-
-	arcan_shmif_setevqs(&res, res.esem, &res.inev, &res.outev, false);
-	arcan_shmif_calcofs(res.addr, &res.vidp, &res.audp);
-
-	res.shmsize = res.addr->segment_size;
-
-/* signal that we're ready to receive */
-	if (type == SHMIF_OUTPUT){
-		arcan_sem_post(res.vsem);
-		((struct shmif_hidden*)res.priv)->output = true;
-	}
-
-	LOG("arcan_frameserver() -- shmpage configured and filled.\n");
-
-	return res;
+/*
+ * note: this works "poorly" for multiple segments,
+ * we should mimic the posix approach where we push a base-key,
+ * and then use that to lookup handles for shared memory and semaphores
+ */
+	parent = res->addr->parent;
 }
 
 /*
@@ -145,98 +143,64 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey)
 	return NULL;
 }
 
-#define LOG(...) (fprintf(stderr, __VA_ARGS__))
-#else
-#include <sys/mman.h>
-#include <sys/socket.h>
-#include <sys/un.h>
-
-static struct arcan_shmif_page* map_shm(size_t sz, int fd)
+#else 
+static void map_shared(const char* shmkey, char force_unlink,  
+	struct arcan_shmif_cont* dst)
 {
-	return (struct arcan_shmif_page*)
-		mmap(NULL, sz, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-}
-
-struct arcan_shmif_cont arcan_shmif_acquire(
-	const char* shmkey, int shmif_type, char force_unlink, char noguard)
-{
-	struct arcan_shmif_cont res = {.vidp = NULL};
+	assert(shmkey);
+	assert(strlen(shmkey) > 0);
 
 	int fd = -1;
-
 	fd = shm_open(shmkey, O_RDWR, 0700);
 
 	if (-1 == fd){
 		LOG("arcan_frameserver(getshm) -- couldn't open "
 			"keyfile (%s), reason: %s\n", shmkey, strerror(errno));
-		return res;
+		return; 
 	}
 
-	res.addr = map_shm(ARCAN_SHMPAGE_START_SZ, fd);
-	res.shmh = fd;
+	dst->addr = mmap(NULL, ARCAN_SHMPAGE_START_SZ, 
+		PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+	dst->shmh = fd;
 
 	if (force_unlink)
 		shm_unlink(shmkey);
 
-	if (res.addr == MAP_FAILED){
+	if (dst->addr == MAP_FAILED){
 		LOG("arcan_frameserver(getshm) -- couldn't map keyfile"
 			"	(%s), reason: %s\n", shmkey, strerror(errno));
-		return res;
+		dst->addr = NULL;
+		return;
 	}
 
 	LOG("arcan_frameserver(getshm) -- mapped to %" PRIxPTR
-		" \n", (uintptr_t) res.addr);
+		" \n", (uintptr_t) dst->addr);
 
 /* step 2, semaphore handles */
 	char* work = strdup(shmkey);
 	work[strlen(work) - 1] = 'v';
-	res.vsem = sem_open(work, 0);
+	dst->vsem = sem_open(work, 0);
 	if (force_unlink)
 		sem_unlink(work);
 
 	work[strlen(work) - 1] = 'a';
-	res.asem = sem_open(work, 0);
+	dst->asem = sem_open(work, 0);
 	if (force_unlink)
 		sem_unlink(work);
 
 	work[strlen(work) - 1] = 'e';
-	res.esem = sem_open(work, 0);
+	dst->esem = sem_open(work, 0);
 	if (force_unlink)
 		sem_unlink(work);
 	free(work);
 
-	if (res.asem == 0x0 ||
-		res.esem == 0x0 ||
-		res.vsem == 0x0 ){
+	if (dst->asem == 0x0 || dst->esem == 0x0 || dst->vsem == 0x0){
 		LOG("arcan_shmif_control(getshm) -- couldn't "
 			"map semaphores (basekey: %s), giving up.\n", shmkey);
-		free(res.addr);
-		res.addr = MAP_FAILED;
-		return res;
+		free(dst->addr);
+		dst->addr = NULL;
+		return;
 	}
-
-	struct shmif_hidden gs = {
-		.guard = {
-			.dms = &res.addr->dms,
-			.semset = { res.asem, res.vsem, res.esem },
-			.parent = res.addr->parent
-		}
-	};
-
-	spawn_guardthread(gs, &res, noguard);
-
-	arcan_shmif_setevqs(res.addr, res.esem, &res.inev, &res.outev, false);
-	arcan_shmif_calcofs(res.addr, &res.vidp, &res.audp);
-
-	res.shmsize = res.addr->segment_size;
-
-/* signal that we're ready to receive */
-	if (shmif_type == SHMIF_OUTPUT){
-		arcan_sem_post(res.vsem);
-		((struct shmif_hidden*)res.priv)->output = true;
-	}
-
-	return res;
 }
 
 char* arcan_shmif_connect(const char* connpath, const char* connkey)
@@ -356,7 +320,6 @@ end:
 	return res;
 }
 
-#include <signal.h>
 static inline bool parent_alive(struct shmif_hidden* gs)
 {
 /* based on the idea that init inherits an orphaned process,
@@ -365,12 +328,46 @@ static inline bool parent_alive(struct shmif_hidden* gs)
 }
 #endif
 
+struct arcan_shmif_cont arcan_shmif_acquire(
+	const char* shmkey, int shmif_type, char force_unlink, char noguard)
+{
+	struct arcan_shmif_cont res = {
+		.vidp = NULL
+	};
+
+/* populate res with addr, semaphores and synch descriptor */
+	map_shared(shmkey, force_unlink, &res);
+
+	struct shmif_hidden gs = {
+		.guard = {
+			.dms = (uintptr_t*) &res.addr->dms,
+			.semset = { res.asem, res.vsem, res.esem },
+			.parent = res.addr->parent
+		}
+	};
+
+	spawn_guardthread(gs, &res, noguard);
+
+	arcan_shmif_setevqs(res.addr, res.esem, &res.inev, &res.outev, false);
+	arcan_shmif_calcofs(res.addr, &res.vidp, &res.audp);
+
+	res.shmsize = res.addr->segment_size;
+
+/* signal that we're ready to receive */
+	if (shmif_type == SHMIF_OUTPUT){
+		arcan_sem_post(res.vsem);
+		((struct shmif_hidden*)res.priv)->output = true;
+	}
+
+	return res;
+}
+
 static void* guard_thread(void* gs)
 {
 	struct shmif_hidden* gstr = gs;
 	*(gstr->guard.dms) = true;
 
-	while (true){
+	while (gstr->guard.active){
 		if (!parent_alive(gstr)){
 			pthread_mutex_lock(&gstr->guard.synch);
 			*(gstr->guard.dms) = false;
@@ -391,6 +388,7 @@ static void* guard_thread(void* gs)
 		sleep(5);
 	}
 
+	free(gstr);
 	return NULL;
 }
 
@@ -430,7 +428,7 @@ void arcan_shmif_setevqs(struct arcan_shmif_page* dst,
 		inq->synch.init = true;
 		pthread_mutex_init(&inq->synch.lock, NULL);
 	}
-if (!inq->synch.init){
+	if (!outq->synch.init){
 		outq->synch.init = true;
 		pthread_mutex_init(&outq->synch.lock, NULL);
 	}
@@ -449,7 +447,6 @@ if (!inq->synch.init){
 	outq->eventbuf_sz = ARCAN_SHMPAGE_QUEUE_SZ;
 }
 
-#include <assert.h>
 void arcan_shmif_signal(struct arcan_shmif_cont* ctx, int mask)
 {
 	struct shmif_hidden* priv = ctx->priv;
@@ -517,11 +514,21 @@ void arcan_shmif_calcofs(struct arcan_shmif_page* shmp,
 
 void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 {
+	struct shmif_hidden* gstr = inctx->priv;
+
+/* guard thread will clean up on its own */
+	if (gstr->guard.active){
+		gstr->guard.active = false;
+	}
+/* no guard thread for this context */
+	else
+		free(inctx->priv);
+
 #if _WIN32
 #else
 	munmap(inctx->addr, ARCAN_SHMPAGE_MAX_SZ);
-	memset(inctx, '\0', sizeof(struct arcan_shmif_cont));
 #endif
+	memset(inctx, '\0', sizeof(struct arcan_shmif_cont));
 }
 
 size_t arcan_shmif_getsize(unsigned width, unsigned height)
@@ -567,9 +574,15 @@ bool arcan_shmif_resize(struct arcan_shmif_cont* arg,
 		if (gs)
 			pthread_mutex_lock(&gs->guard.synch);
 
+/* win32 is built with overcommit as we don't support dynamically
+ * resizing shared memory pages there */
+#if _WIN32	
+#else
 		munmap(arg->addr, arg->shmsize);
 		arg->shmsize = new_sz;
-		arg->addr = map_shm(arg->shmsize, arg->shmh);
+		arg->addr = mmap(NULL, arg->shmsize,  
+			PROT_READ | PROT_WRITE, MAP_SHARED, arg->shmh, 0);
+#endif
 		if (!arg->addr){
 			LOG("arcan_shmif_resize() failed on segment remapping.\n");
 			return false;
