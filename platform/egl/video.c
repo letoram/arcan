@@ -8,7 +8,6 @@
 /*
  * A lot of toggleable options in this one.
  * Important ones:
- *  WITH_X11      - adds X11 support to context setup
  *  WITH_BCM      - special setup needed for certain broadcom GPUs
  *  WITH_GLES3    - default is GLES2, preferably we want 3 for PBOs
  *  WITH_OGL3     - when the 'nux graphics mess gets cleaned up,
@@ -30,9 +29,6 @@
  * for having a default output FBO where our destination textures will reside.
  * This is relevant for the arcan-in-arcan case.
  */
-
-#define WITH_GBMKMS
-#define WITH_OGL3
 
 #include <stdio.h>
 #include <string.h>
@@ -67,72 +63,6 @@ static struct {
 	EGLConfig cfg;
 	EGLNativeWindowType wnd;
 } egl;
-
-#ifdef WITH_X11
-#include <X11/Xlib.h>
-#include <X11/Xatom.h>
-#include <X11/Xutil.h>
-
-#define EGL_NATIVE_DISPLAY x11.xdisp
-
-static struct {
-	Display* xdisp;
-	Window xwnd;
-	XWindowAttributes xwa;
-} x11;
-
-Display* x11_display = NULL;
-
-static bool setup_xwnd(int w, int h, bool fullscreen)
-{
-	x11.xdisp = XOpenDisplay(NULL);
-	if (!x11.xdisp)
-		return false;
-
-	x11_display = x11.xdisp;
-	XSetWindowAttributes xwndattr;
-	xwndattr.event_mask = ExposureMask | PointerMotionMask | KeyPressMask;
-
-	Window root = DefaultRootWindow(x11.xdisp);
-	x11.xwnd = XCreateWindow(x11.xdisp, root, 0, 0, w, h, 0, CopyFromParent,
-		InputOutput, CopyFromParent, CWEventMask, &xwndattr);
-
-	XSetWindowAttributes xattr;
-	xattr.override_redirect = False;
-  XChangeWindowAttributes (x11.xdisp, x11.xwnd, CWOverrideRedirect, &xattr);
-
-/*
- * We don't take care of input here, either we have an
- * input platform driver for x11 or we use a linux/bsd/...
- * specific one directly
- */
-	XWMHints hints;
-  hints.input = True;
-  hints.flags = InputHint;
-  XSetWMHints(x11.xdisp, x11.xwnd, &hints);
-
-  XMapWindow(x11.xdisp, x11.xwnd);
-  XStoreName(x11.xdisp, x11.xwnd, "Arcan");
-
-	if (fullscreen){
-		XEvent xev = {0};
- 		Atom wm_state = XInternAtom ( x11.xdisp, "_NET_WM_STATE", False );
-	  Atom fsa = XInternAtom ( x11.xdisp, "_NET_WM_STATE_FULLSCREEN", False );
-
-  	xev.type = ClientMessage;
-	  xev.xclient.window = x11.xwnd;
-  	xev.xclient.message_type = wm_state;
-  	xev.xclient.format = 32;
-	  xev.xclient.data.l[0] = 1;
-	  xev.xclient.data.l[1] = fsa;
-	  XSendEvent ( x11.xdisp, DefaultRootWindow( x11.xdisp ), False,
-			SubstructureNotifyMask, &xev );
-	}
-
-	egl.wnd = x11.xwnd;
-	return true;
-}
-#endif
 
 #ifdef WITH_GBMKMS
 

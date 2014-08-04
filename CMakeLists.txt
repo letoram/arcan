@@ -78,7 +78,7 @@ message("   -DENABLE_SIMD=[On|Off] : Enable SIMD optimized instructions")
 message("   -DENABLE_SIMD_ALIGNED=[Off|On] : |--> SIMD support assumes 16-byte alignment")
 message("")
 message("audio/video/input support:")
-message("   -DVIDEO_PLATFORM=[sdl|x11|x11-headless|egl] :  Set default video platform")
+message("   -DVIDEO_PLATFORM=[sdl|x11|x11-headless|egl|egl-gles2] :  Set default video platform")
 message("")
 message("optimization / core features:")
 message("   -DENABLE_LED=[On|Off] : Build with LED controller support in core")
@@ -187,7 +187,7 @@ endif (ENABLE_ASAN)
 # paths / locations
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake)
 set(OPENCTM_LIBRARY openctm)
-set (ARCAN_DEFINITIONS "")
+set(ARCAN_DEFINITIONS "")
 
 # OS Specific libraries / dependencies first
 if(WIN32)
@@ -253,18 +253,46 @@ if (VIDEO_PLATFORM STREQUAL "x11" OR VIDEO_PLATFORM STREQUAL "x11-headless")
 		SET(LWA_HEADLESS "x11/video.c")
 	endif()
 
+elseif(VIDEO_PLATFORM STREQUAL "egl-gles2")
+	set(INPUT_PLATFORM "stub")
+
+	FIND_PACKAGE(EGL REQUIRED)
+	FIND_PACKAGE(GLES2 REQUIRED)
+
+	if (GLES2_BCM_IMPLEMENTATION)
+		message("broadcom (BCM) GLES implementation found, set BCM_ROOT to bad dir to disable")
+		set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/platform/egl/video.c
+		APPEND PROPERTY COMPILE_DEFINITIONS RPI_BCM)
+	endif()
+
+	LIST(APPEND INCLUDE_DIRS
+		${GLES2_INCLUDE_DIRS}
+		${EGL_INCLUDE_DIRS}
+	)
+
+	LIST(APPEND MAIN_LIBRARIES
+		${GLES2_LIBRARIES}
+		${EGL_LIBRARIES}
+	)
+
+	message("dirs: ${INCLUDE_DIRS}")
+#in order for subdirectories gets mapped correctly
+	SET(VIDEO_PLATFORM "egl")
+
 elseif(VIDEO_PLATFORM STREQUAL "egl")
-	message("egl platform dated, fix then reenable.")
-#	set(INPUT_PLATFORM "stub")
-#	FIND_PACKAGE(EGL REQUIRED)
-#	FIND_PACKAGE(GLES2 REQUIRED)
-#	FIND_PACKAGE(GBMKMS REQUIRED)
-#	LIST(APPEND MAIN_LIBRARIES
-#		${EGL_LIBRARIES}
-#		${GLES2_LIBRARIES}
-#		${GBMKMS_LIBRARIES}
-#	)
-#	LIST(APPEND INCLUDE_DIRS ${GBMKMS_INCLUDE_DIRS})
+	set(INPUT_PLATFORM "stub")
+	FIND_PACKAGE(EGL REQUIRED)
+	FIND_PACKAGE(OpenGL REQUIRED)
+	FIND_PACKAGE(GBMKMS REQUIRED)
+	LIST(APPEND MAIN_LIBRARIES
+		${EGL_LIBRARIES}
+		${OPENGL_gl_LIBRARY}
+		${GLEW_LIBRARY}
+		${GBMKMS_LIBRARIES}
+	)
+	LIST(APPEND INCLUDE_DIRS
+		${GBMKMS_INCLUDE_DIRS}
+		)
 
 elseif (VIDEO_PLATFORM STREQUAL "sdl")
 	set(INPUT_PLATFORM "sdl")
