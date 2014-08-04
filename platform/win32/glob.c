@@ -15,50 +15,33 @@
 extern char* arcan_themename;
 extern char* arcan_themepath;
 
-unsigned arcan_glob(char* basename, int searchmask,
-	void (*cb)(char*, void*), void* tag){
-	HANDLE findh;
-	WIN32_FIND_DATA finddata;
-	char playbuf[4096];
-	playbuf[4095] = '\0';
-
+unsigned arcan_glob(char* basename, enum arcan_namespaces space,
+	void (*cb)(char*, void*), void* tag)
+{
 	unsigned count = 0;
-	char* basepath;
+	if (!basename || verify_traverse(basename) == NULL)
+		return 0;
 
-	if ((searchmask & ARCAN_RESOURCE_THEME) > 0){
-		snprintf(playbuf, sizeof(playbuf)-1, "%s/%s/%s",
-			arcan_themepath, arcan_themename, strip_traverse(basename));
+	for (int i = 1; i <= RESOURCE_SYS_ENDM; i <<= 1){
+		if ((space & i) == 0)
+			continue;
 
-		findh = FindFirstFile(playbuf, &finddata);
+		char* path = arcan_expand_resource(basename, i);
+		WIN32_FIND_DATA finddata;
+		HANDLE findh = FindFirstFile(path, &finddata);
 		if (findh != INVALID_HANDLE_VALUE)
 			do{
-				snprintf(playbuf, sizeof(playbuf)-1, "%s", finddata.cFileName);
-				if (strcmp(playbuf, ".") == 0 || strcmp(playbuf, "..") == 0)
+				if (!finddata.cFileName || strcmp(finddata.cFileName, "..") == 0 ||
+					strcmp(finddata.cFileName, ".") == 0)
 					continue;
 
-				cb(playbuf, tag);
+				cb(finddata.cFileName, tag);
+
 				count++;
 			} while (FindNextFile(findh, &finddata));
 
 		FindClose(findh);
-	}
-
-	if ((searchmask & ARCAN_RESOURCE_SHARED) > 0){
-		snprintf(playbuf, sizeof(playbuf)-1, "%s/%s", arcan_resourcepath,
-			strip_traverse(basename));
-
-		findh = FindFirstFile(playbuf, &finddata);
-		if (findh != INVALID_HANDLE_VALUE)
-		do{
-			snprintf(playbuf, sizeof(playbuf)-1, "%s", finddata.cFileName);
-			if (strcmp(playbuf, ".") == 0 || strcmp(playbuf, "..") == 0)
-					continue;
-
-			cb(playbuf, tag);
-			count++;
-		} while (FindNextFile(findh, &finddata));
-
-		FindClose(findh);
+		arcan_mem_free(path);
 	}
 
 	return count;

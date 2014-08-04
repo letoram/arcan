@@ -20,26 +20,28 @@
  */
 
 #include <stdlib.h>
-#include <stdio.h>
-#include <stdarg.h>
 #include <stdint.h>
 #include <stdbool.h>
-#include <unistd.h>
+#include <stdio.h>
+#include <libgen.h>
+#include <string.h>
+#include <math.h>
+#include <assert.h>
+#include <ctype.h>
 
-#include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #include <arcan_math.h>
 #include <arcan_general.h>
 
-char* arcan_themepath      = NULL;
-char* arcan_resourcepath   = NULL;
-char* arcan_themename      = "welcome";
-char* arcan_binpath        = NULL;
-char* arcan_libpath        = NULL;
-char* arcan_fontpath       = "fonts/";
+static bool appl_ready = false;
+static size_t appl_len = 0;
+static char* g_appl_id = "#app_not_initialized";
+static char* appl_script = NULL;
 
-static inline bool is_dir(const char* fn)
+bool arcan_isdir(const char* fn)
 {
 	struct stat buf;
 	bool rv = false;
@@ -53,7 +55,7 @@ static inline bool is_dir(const char* fn)
 	return rv;
 }
 
-static inline bool file_exists(const char* fn)
+bool arcan_isfile(const char* fn)
 {
 	struct stat buf;
 	bool rv = false;
@@ -67,131 +69,32 @@ static inline bool file_exists(const char* fn)
 	return rv;
 }
 
-char* arcan_find_resource(const char* label, int searchmask)
+void arcan_set_namespace_defaults()
 {
-	if (label == NULL)
-		return NULL;
+/* when CWD is correctly set to the installation path */
+	char* respath = "./resources";
+	size_t len = strlen(respath);
 
-	char playbuf[4096];
-	playbuf[4095] = '\0';
-
-	if (searchmask & ARCAN_RESOURCE_THEME) {
-		snprintf(playbuf, sizeof(playbuf) - 1, "%s/%s/%s", arcan_themepath,
-			arcan_themename, label);
-		strip_traverse(playbuf);
-
-		if (file_exists(playbuf))
-			return strdup(playbuf);
+/* typically inside build-directory */	
+	if (!arcan_isdir(respath)){
+		respath = "../resources";
 	}
 
-	if (searchmask & ARCAN_RESOURCE_SHARED) {
-		snprintf(playbuf, sizeof(playbuf) - 1, "%s/%s",
-			arcan_resourcepath, label);
-		strip_traverse(playbuf);
+	char debug_dir[ len + sizeof("/logs") ];
+	char state_dir[ len + sizeof("/savestates") ];
+	char font_dir[ len + sizeof("/fonts") ];
 
-		if (file_exists(playbuf))
-			return strdup(playbuf);
-	}
+	snprintf(debug_dir, sizeof(debug_dir), "%s/logs", respath);
+	snprintf(state_dir, sizeof(state_dir), "%s/savestates", respath);
+	snprintf(font_dir, sizeof(font_dir), "%s/fonts", respath);
 
-	return NULL;
+	arcan_override_namespace(respath, RESOURCE_APPL_SHARED);
+	arcan_override_namespace(debug_dir, RESOURCE_SYS_DEBUG);
+	arcan_override_namespace(state_dir, RESOURCE_APPL_STATE);
+	arcan_override_namespace(font_dir, RESOURCE_SYS_FONT);
+
+/* makes no sense on windows currently */
+	arcan_override_namespace("./", RESOURCE_SYS_BINS);
+	arcan_override_namespace("./", RESOURCE_SYS_LIBS);
 }
-
-bool check_theme(const char* theme)
-{
-	if (theme == NULL)
-		return false;
-	char playbuf[4096];
-	playbuf[4095] = '\0';
-
-	snprintf(playbuf, sizeof(playbuf) - 1, "%s/%s", arcan_themepath, theme);
-
-	if (!is_dir(playbuf)) {
-		arcan_warning("Warning: theme check failed, directory %s not found.\n",
-			playbuf);
-		return false;
-	}
-
-	snprintf(playbuf, sizeof(playbuf) - 1, "%s/%s/%s.lua", arcan_themepath,
-		theme, theme);
-	if (!file_exists(playbuf)) {
-		arcan_warning("Warning: theme check failed, script %s not found.\n",
-			playbuf);
-		return false;
-	}
-
-	return true;
-}
-
-char* arcan_expand_resource(const char* label, bool global)
-{
-	char playbuf[4096];
-	playbuf[4095] = '\0';
-
-	if (global) {
-		snprintf(playbuf, sizeof(playbuf) - 1, "%s/%s", arcan_resourcepath,
-			label);
-	}
-	else {
-		snprintf(playbuf, sizeof(playbuf) - 1, "%s/%s/%s", arcan_themepath,
-			arcan_themename, label);
-	}
-
-	return strdup( strip_traverse(playbuf) );
-}
-
-char* arcan_find_resource_path(const char* label, const char* path,
-	int searchmask)
-{
-	if (label == NULL)
-		return NULL;
-
-	char playbuf[4096];
-	playbuf[4095] = '\0';
-
-	if (searchmask & ARCAN_RESOURCE_THEME) {
-		snprintf(playbuf, sizeof(playbuf) - 1, "%s/%s/%s/%s", arcan_themepath,
-			arcan_themename, path, label);
-		strip_traverse(playbuf);
-
-		if (file_exists(playbuf))
-			return strdup(playbuf);
-	}
-
-	if (searchmask & ARCAN_RESOURCE_SHARED) {
-		snprintf(playbuf, sizeof(playbuf) - 1, "%s/%s/%s",
-			arcan_resourcepath, path, label);
-		strip_traverse(playbuf);
-
-		if (file_exists(playbuf))
-			return strdup(playbuf);
-
-	}
-
-	return NULL;
-}
-
-const char* internal_launch_support()
-{
-	return "PARTIAL SUPPORT";
-}
-
-bool arcan_setpaths()
-{
-/* could add a check of the users path cleanup
-(that turned out to be a worse mess than before)
- * with AppData etc. from Vista and friends */
-	if (!arcan_resourcepath)
-		arcan_resourcepath = strdup("./resources");
-
-	arcan_libpath = NULL;
-
-	if (!arcan_themepath)
-		arcan_themepath = strdup("./themes");
-
-	if (!arcan_binpath)
-		arcan_binpath = strdup("./arcan_frameserver");
-
-	return true;
-}
-
 

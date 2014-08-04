@@ -1,34 +1,48 @@
-set (LAUNCHER_PATH ${CMAKE_SOURCE_DIR}/utils/ArcanLauncher)
-set (DISTR_PATH ${CMAKE_SOURCE_DIR}/distr)
+add_definitions(-msse -mfpmath=sse -std=gnu11 -Wall -Wno-missing-braces
+	-Wno-unused-variable -Wno-unused-function -D_POSIX_C_SOURCE -D_GNU_SOURCE
+	-DARCAN_SHMIF_OVERCOMMIT)
 set (WIN32_PATH ${CMAKE_SOURCE_DIR}/platform/win32)
-
-add_definitions(-msse -mfpmath=sse)
+set (DISTR_PATH ${CMAKE_SOURCE_DIR}/distr)
 
 set (PLATFORM_SOURCES
-platform/posix/fmt_open.c
-${WIN32_PATH}/../stub/mem.c
-${WIN32_PATH}/sem.c
-${WIN32_PATH}/strip_traverse.c
-${WIN32_PATH}/shm.c
-${WIN32_PATH}/time.c
-${WIN32_PATH}/glob.c
-${WIN32_PATH}/paths.c
-${WIN32_PATH}/resource_io.c
-${WIN32_PATH}/warning.c
-${WIN32_PATH}/map_resource.c
-${WIN32_PATH}/frameserver.c
-${WIN32_PATH}/../posix/base64.c
-platform/sdl/event.c
-platform/sdl/video.c
+	platform/posix/fmt_open.c
+	${WIN32_PATH}/../stub/mem.c
+	${WIN32_PATH}/sem.c
+	${WIN32_PATH}/strip_traverse.c
+	${WIN32_PATH}/../posix/appl.c
+	${WIN32_PATH}/shm.c
+	${WIN32_PATH}/arcan_general.c
+	${WIN32_PATH}/time.c
+	${WIN32_PATH}/glob.c
+	${WIN32_PATH}/paths.c
+	${WIN32_PATH}/../posix/appl.c
+	${WIN32_PATH}/resource_io.c
+	${WIN32_PATH}/warning.c
+	${WIN32_PATH}/map_resource.c
+	${WIN32_PATH}/frameserver.c
+	${WIN32_PATH}/../posix/base64.c
+	${WIN32_PATH}/../posix/namespace.c
 )
 
 set (FSERV_PLATFORM_SOURCES
-${WIN32_PATH}/warning.c
-${WIN32_PATH}/time.c
-${WIN32_PATH}/../posix/base64.c
-${WIN32_PATH}/sem.c
-${WIN32_PATH}/shm.c
-${WIN32_PATH}/realpath.c
+	${WIN32_PATH}/warning.c
+	${WIN32_PATH}/time.c
+	${WIN32_PATH}/../posix/base64.c
+	${WIN32_PATH}/sem.c
+	${WIN32_PATH}/shm.c
+	${WIN32_PATH}/paths.c
+	${WIN32_PATH}/warning.c
+	${WIN32_PATH}/../stub/mem.c
+	${WIN32_PATH}/../posix/namespace.c
+	${WIN32_PATH}/strip_traverse.c
+	${WIN32_PATH}/realpath.c
+	${SHMIF_SOURCES}
+)
+
+# we don't want these coming along in LWA_PLATFORM
+LIST(APPEND PLATFORM_SOURCES
+	${WIN32_PATH}/../${VIDEO_PLATFORM}/video.c
+	${WIN32_PATH}/../${INPUT_PLATFORM}/event.c
 )
 
 if (${ENABLE_LIBRETRO})
@@ -48,13 +62,13 @@ add_definitions(-DPLATFORM_HEADER=\"${WIN32_PATH}/platform.h\"
 
 # the win32/ folder should be merged with the platform sources
 LIST(APPEND SOURCES
-${CMAKE_EXTERNAL_SRCDIR}/hidapi/hid_win32.c
-${CMAKE_EXTERNAL_SRCDIR}/hidapi/hidapi.h
-${WIN32_PATH}/arcan_target_launcher_win32.c
-${WIN32_PATH}/getopt_win32.c
-${WIN32_PATH}/getopt.h
-${WIN32_PATH}/sdl_win32_main.c
-${DISTR_PATH}/arcan_resource.obj
+	${CMAKE_EXTERNAL_SRCDIR}/hidapi/hid_win32.c
+	${CMAKE_EXTERNAL_SRCDIR}/hidapi/hidapi.h
+	${WIN32_PATH}/arcan_target_launcher_win32.c
+	${WIN32_PATH}/getopt_win32.c
+	${WIN32_PATH}/getopt.h
+	${WIN32_PATH}/sdl_win32_main.c
+	${DISTR_PATH}/arcan_resource.obj
 ${PLATFORM_SOURCES})
 
 LIST(APPEND FSRV_SOURCES
@@ -63,13 +77,13 @@ ${DISTR_PATH}/arcan_frameserver_resource.obj
 ${FSERV_PLATFORM_SOURCES})
 
 LIST(APPEND FSRV_LIBRARIES mingwex ws2_32 winmm pthread)
-LIST(APPEND MAIN_LIBRARIES iberty winmm setupapi mingw32)
+LIST(APPEND MAIN_LIBRARIES winmm setupapi mingw32)
 
 include(${WIN32_PATH}/../CMakeLists.fsrv)
 
 set(BIN_DST ".")
 set(RESOURCES_DST "./resources")
-set(THEME_DST "./themes")
+set(APPL_DST "./appl")
 set(TEST_DST "./tests")
 
 add_custom_command(
@@ -97,6 +111,9 @@ add_custom_target(arcan_romman.exe
 	${CMAKE_SOURCE_DIR}/resources/scripts/romman_base.rb
 )
 add_executable( arcan WIN32 ${SOURCES} )
+
+set (LAUNCHER_PATH ${CMAKE_SOURCE_DIR}/utils/ArcanLauncher)
+set (DISTR_PATH ${CMAKE_SOURCE_DIR}/distr)
 
 # ------------- Win32 Arcan Launcher Tool -----------
 include_external_msproject(ArcanLauncher

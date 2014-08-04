@@ -22,11 +22,11 @@
 
 #include <arcan_math.h>
 #include <arcan_general.h>
+#include "arcan_shmif.h"
 
 #include <arcan_event.h>
 #include <arcan_video.h>
 #include <arcan_audio.h>
-#include <arcan_framequeue.h>
 #include <arcan_frameserver_backend.h>
 #include <arcan_target_launcher.h>
 
@@ -98,12 +98,10 @@ int arcan_target_launch_external(const char* fname, char** argv)
 	return arcan_frametime() - start;
 }
 
-static arcan_errc again_feed(float gain, void* tag)
-{
-	return ARCAN_OK;
+const char* internal_launch_support(){
+	return "FULL_SUPPORT";
 }
 
-extern char* arcan_libpath;
 arcan_frameserver* arcan_target_launch_internal(
 	const char* fname, char* hijack, char** argv)
 {

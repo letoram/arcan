@@ -5,7 +5,10 @@
  * for licensing terms.
  */
 
-const char* strip_traverse(const char* input)
+/*
+ * currently don't care about this issue on windows.
+ */
+const char* verify_traverse(const char* input)
 {
 	return input;
 }

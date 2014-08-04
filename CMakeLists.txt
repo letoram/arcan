@@ -208,7 +208,8 @@ if(WIN32)
 	set(FREETYPE_LIBRARY ${WINDISTR}\\win32libs\\freetype6.dll)
 	set(PNG_LIBRARY ${WINLIB}\\libpng16.a)
 	set(ZLIB_LIBRARY ${WINDISTR}\\win32libs\\zlib1.dll)
-
+	set(LIBVLC_LIBRARY ${WINDISTR}\\win32libs\\libvlc.dll)
+	set(LIBVLC_INCLUDE_DIR ${WININC})
 	set(APR_LIBRARY ${WINLIB}\\libapr-1.a)
 	set(APR_INCLUDE_DIR ${WININC}\\apr)
 	set(SQLITE3_INCLUDE_DIR ${WININC})
@@ -218,6 +219,8 @@ if(WIN32)
 	set(GLEW_LIBRARY ${WINLIB}\\glew32s.lib)
 	set(ENABLE_LWA OFF)
 	set(OS_PLATFORM_NAME "Win32")
+	set(VIDEO_PLATFORM "sdl") # there's no other ported options here
+	set(VIDEO_PLATFORM "sdl") # there's no other ported options here
 endif()
 
 FIND_PACKAGE ( Freetype REQUIRED )

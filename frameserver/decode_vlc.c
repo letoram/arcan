@@ -8,6 +8,7 @@
 #include <pthread.h>
 #include <math.h>
 #include <fft/kiss_fftr.h>
+#include <fcntl.h>
 
 #include <vlc/vlc.h>
 #include <arcan_shmif.h>
@@ -322,8 +323,14 @@ static void process_inevq()
 
 		case TARGET_COMMAND_FDTRANSFER:
 		{
+#if _WIN32
+			libvlc_media_t* media = libvlc_media_new_fd(
+				decctx.vlc, _open_osfhandle(
+				(intptr_t)frameserver_readhandle(&ev), _O_APPEND));
+#else
 			libvlc_media_t* media = libvlc_media_new_fd(
 				decctx.vlc, frameserver_readhandle(&ev));
+#endif
 			libvlc_media_player_set_media(decctx.player, media);
 			libvlc_media_release(media);
 		}
@@ -435,7 +442,11 @@ void arcan_frameserver_decode_run(const char* resource, const char* keyfile)
 	libvlc_media_player_play(decctx.player);
 
 	while(decctx.shmcont.addr->dms)
+#if _WIN32
+		Sleep(1000);
+#else
 		sleep(1);
+#endif
 
  	libvlc_media_player_stop(decctx.player);
  	libvlc_media_player_release(decctx.player);
