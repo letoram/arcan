@@ -179,9 +179,3 @@ void arcan_set_namespace_defaults()
 		arcan_override_namespace(tmp, 1 << i);
 	}
 }
-
-size_t arcan_appl_id_len()
-{
-	return appl_len;
-}
-

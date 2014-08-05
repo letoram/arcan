@@ -463,42 +463,69 @@ static void kill_shader(GLuint* dprg, GLuint* vprg, GLuint* fprg){
 	*dprg = *vprg = *fprg = 0;
 }
 
+static bool build_shunit(GLint stage, const char* prg, GLuint* dprg)
+{
+	*dprg = glCreateShader(stage);
+	glShaderSource(*dprg, 1, &prg, NULL);
+	glCompileShader(*dprg);
+	GLint status = 0;
+	glGetShaderiv(*dprg, GL_COMPILE_STATUS, &status);
+	return status != GL_FALSE;
+}
+
+static void dump_shaderlog(const char* label, const char* stage, GLuint prg)
+{
+	char buf[1024];
+	int rlen;
+
+	glGetShaderInfoLog(prg, 1024, &rlen, buf);
+	if (rlen){
+		arcan_warning("Warning: Couldn't compile shader (%s:%s)\n\t message:%s\n",
+			label, stage, buf);
+	}
+}
+
 static bool build_shader(const char* label, GLuint* dprg,
 	GLuint* vprg, GLuint* fprg, const char* vprogram, const char* fprogram)
 {
-	char buf[256];
 	int rlen;
+	bool failed = false;
 
-	*vprg = glCreateShader(GL_VERTEX_SHADER);
-	*fprg = glCreateShader(GL_FRAGMENT_SHADER);
+#ifdef DEBUG
+	bool force = true;
+#else
+	bool force = false;
+#endif
 
-	glShaderSource(*vprg, 1, &vprogram, NULL);
-	glShaderSource(*fprg, 1, &fprogram, NULL);
+	if (( failed = !build_shunit(GL_VERTEX_SHADER, vprogram, vprg)) || force)
+		dump_shaderlog(label, "vertex", *vprg);
 
-	glCompileShader(*vprg);
-	glCompileShader(*fprg);
+	if (( failed |= !build_shunit(GL_FRAGMENT_SHADER, fprogram, fprg)) || force)
+		dump_shaderlog(label, "fragment", *fprg);
 
-	glGetShaderInfoLog(*vprg, 256, &rlen, buf);
-
-	if (rlen){
-		arcan_warning("Warning: Couldn't compile Shader vertex"
-			"	program(%s): %s\n", label, buf);
-		arcan_warning("Vertex Program: %s\n", vprogram);
-	}
-	glGetShaderInfoLog(*fprg, 256, &rlen, buf);
-
-	if (rlen){
-		arcan_warning("Warning: Couldn't compile Shader fragment "
-			"Program(%s): %s\n", label, buf);
-		arcan_warning("Fragment Program: %s\n", fprogram);
-	}
+/*
+ * driver issues make this validation step rather uncertain,
+ * another option would be to use a reference shader that
+ * should compile, resolve attributes and uniforms and if they
+ * map to the same location, we know something is broken and
+ * that it's not our fault.
+ */
 
 	*dprg = glCreateProgram();
 	glAttachShader(*dprg, *fprg);
 	glAttachShader(*dprg, *vprg);
 	glLinkProgram(*dprg);
 
-	return true;
+	int lstat = 0;
+	glGetProgramiv(*dprg, GL_LINK_STATUS, &lstat);
+
+	if (GL_FALSE == lstat){
+		printf("LINK STAGE FAILED\n");
+		failed = true;
+		dump_shaderlog(label, "link", *dprg);
+	}
+
+	return !failed;
 }
 
 const char* arcan_shader_symtype(enum arcan_shader_envts env)
