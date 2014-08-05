@@ -25,9 +25,8 @@
  * Each different device / Windowing type etc. need to have this defined:
  * EGL_NATIVE_DISPLAY
  *
- * Furthermore, for headless to work well, we also need support in arcan_video
- * for having a default output FBO where our destination textures will reside.
- * This is relevant for the arcan-in-arcan case.
+ * Should really split all the functions that are riddled with WITH_ defines
+ * into a dispatch table in the beginning to cut down on macro clutter.
  */
 
 #include <stdio.h>
@@ -40,6 +39,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <assert.h>
 
 #include GL_HEADERS
 
@@ -87,6 +87,16 @@ static struct {
 } gbmkms = {
 	.fd = -1
 };
+
+static char* egl_synchopts[] = {
+	"default", "driver default buffer swap",
+	NULL
+};
+
+enum {
+	DEFAULT,
+	ENDM
+}	synchopt;
 
 #define EGL_NATIVE_DISPLAY gbmkms.dev
 
@@ -194,11 +204,20 @@ static bool setup_gbmkms(uint16_t* w, uint16_t* h, bool switchres)
 #endif
 
 #ifdef WITH_BCM
+
+static char* egl_synchopts[] = {
+	"default", "driver default buffer swap",
+	NULL
+};
+
+enum {
+	DEFAULT,
+	ENDM
+}	synchopt;
+
 #include <bcm_host.h>
 static bool alloc_bcm_wnd(uint16_t* w, uint16_t* h)
 {
-	bcm_host_init();
-
 	DISPMANX_ELEMENT_HANDLE_T elem;
 	DISPMANX_DISPLAY_HANDLE_T disp;
 	DISPMANX_UPDATE_HANDLE_T upd;
@@ -264,50 +283,7 @@ static bool alloc_bcm_wnd(uint16_t* w, uint16_t* h)
 
 	return true;
 }
-
 #endif
-
-void PLATFORM_SYMBOL(_video_bufferswap) ()
-{
-#ifdef WITH_X11
-/* should be moved into its own
- * platform module (ofc.) here as a quickhack atm. */
-	while (XPending(x11.xdisp)){
-		XEvent xev;
-		XNextEvent(x11.xdisp, &xev);
-/*		if (xev.type == KeyPress)
-						exit(1);
-*/
-	}
-#endif
-	eglSwapBuffers(egl.disp, egl.surf);
-
-#ifdef WITH_GBMKMS
-	struct gbm_bo* bo = gbm_surface_lock_front_buffer(gbmkms.surf);
-
-	unsigned handle = gbm_bo_get_handle(bo).u32;
-	unsigned stride = gbm_bo_get_stride(bo);
-
-	if (-1 == drmModeAddFB(gbmkms.fd,
-		arcan_video_display.width, arcan_video_display.height,
-		24, 32, stride, handle, &gbmkms.fb_id))
-		arcan_fatal("platform/egl: couldn't obtain framebuffer handle\n");
-
-	int fl;
-	if (-1 ==
-		drmModePageFlip(gbmkms.fd, gbmkms.enc->crtc_id,
-			gbmkms.fb_id, DRM_MODE_PAGE_FLIP_EVENT, &fl))
-		arcan_fatal("platform/egl: waiting for flip failure\n");
-
-	int buf;
-	read(gbmkms.fd, &buf, 1);
-	gbm_surface_release_buffer(gbmkms.surf, bo);
-
-// gbm_surface_has_free_buffers(surf)
-/*	drmModeSetCrtc(fd, kms.encoder->crtc_id, kms.fb_id, 0, 0,
-		&kms.connector->connector_id, 1, &kms.mode);*/
-#endif
-}
 
 #ifndef EGL_NATIVE_DISPLAY
 #define EGL_NATIVE_DISPLAY EGL_DEFAULT_DISPLAY
@@ -315,7 +291,6 @@ void PLATFORM_SYMBOL(_video_bufferswap) ()
 
 #ifdef WITH_OGL3
 #ifdef WITH_HEADLESS
-
 bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 	uint8_t bpp, bool fs, bool frames, const char* title)
 {
@@ -341,13 +316,6 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 		EGL_BUFFER_SIZE, 32,
 		EGL_NONE
 	};
-
-#ifdef WITH_X11
-	if (!setup_xwnd(w, h, fs)){
-		arcan_warning("Couldn't setup Window (X11)\n");
-		return false;
-	}
-#endif
 
 #ifdef WITH_GBMKMS
 	if (!setup_gbmkms(&w, &h, fs)){
@@ -407,16 +375,10 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 {
 	EGLint ca[] = {
 		EGL_CONTEXT_CLIENT_VERSION,
-#if defined(WITH_GLES3)
-		3,
-		0,
-#else
-		2,
-		0,
-#endif
-		EGL_NONE
+		2, EGL_NONE
 	};
 
+/*
 	EGLint attrlst[] = {
 		EGL_RED_SIZE, 8,
 		EGL_GREEN_SIZE, 8,
@@ -429,18 +391,18 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 		EGL_OPENGL_ES2_BIT,
 		EGL_NONE
 	};
-
-	EGLint nc;
+*/
+	EGLint attrlst[] = {
+		EGL_RED_SIZE, 8,
+		EGL_GREEN_SIZE, 8,
+		EGL_BLUE_SIZE, 8,
+		EGL_ALPHA_SIZE, 8,
+		EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+		EGL_NONE
+	};
 
 #ifdef WITH_BCM
-	alloc_bcm_wnd(&w, &h);
-#endif
-
-#ifdef WITH_X11
-	if (!setup_xwnd(w, h, fs)){
-		arcan_warning("Couldn't setup Window (X11)\n");
-		return false;
-	}
+	bcm_host_init();
 #endif
 
 #ifdef WITH_GBMKMS
@@ -449,45 +411,47 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 	}
 #endif
 
-	eglBindAPI(EGL_OPENGL_ES_API);
-
-	egl.disp = eglGetDisplay((EGLNativeDisplayType) EGL_NATIVE_DISPLAY);
-#if defined(WITH_GLES3)
-	arcan_video_display.pbo_support = true;
-#else
-	arcan_video_display.pbo_support = false;
-#endif
-
+	egl.disp = eglGetDisplay(EGL_DEFAULT_DISPLAY);
 	if (egl.disp == EGL_NO_DISPLAY){
 		arcan_warning("Couldn't create display\n");
 		return false;
 	}
 
-	EGLint major, minor;
+#if defined(WITH_GLES3)
+	arcan_video_display.pbo_support = true;
+#else
+/* probe for PBO extensions before failing this path */
+	arcan_video_display.pbo_support = false;
+#endif
 
+	EGLint major, minor;
 	if (!eglInitialize(egl.disp, &major, &minor)){
-		arcan_warning("Couldn't initialize EGL\n");
+		arcan_warning("(egl) Couldn't initialize EGL\n");
 		return false;
 	}
 	else
 		arcan_warning("EGL Version %d.%d Found\n", major, minor);
 
-	if (!eglGetConfigs(egl.disp, NULL, 0, &nc)){
-		arcan_warning("No fitting configurations found\n");
+	EGLint ncfg;
+	if (EGL_FALSE == eglChooseConfig(egl.disp, attrlst, &egl.cfg, 1, &ncfg)){
+		arcan_warning("(cgl) couldn't activate/choose configuration\n");
 		return false;
 	}
 
-	if (!eglChooseConfig(egl.disp, attrlst, &egl.cfg, 1, &nc)){
-		arcan_warning("Couldn't activate config\n");
+	if (EGL_FALSE == eglBindAPI(EGL_OPENGL_ES_API)){
+		arcan_warning("(egl) couldn't bind API\n");
 		return false;
 	}
 
 	egl.ctx = eglCreateContext(egl.disp, egl.cfg, EGL_NO_CONTEXT, ca);
 	if (egl.ctx == EGL_NO_CONTEXT){
-		arcan_warning("Couldn't create EGL/GLES context, "
-			"requested version: %d.%d \n", ca[1], ca[2]);
+		arcan_warning("(egl) Couldn't create EGL/GLES context\n");
 		return false;
 	}
+
+#ifdef WITH_BCM
+	alloc_bcm_wnd(&w, &h);
+#endif
 
 	egl.surf = eglCreateWindowSurface(egl.disp, egl.cfg, egl.wnd, NULL);
 	if (egl.surf == EGL_NO_SURFACE){
@@ -507,6 +471,9 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
  * and do dirty regions that way. Not leveraged yet but should
  * definitely be a concern later on.
  */
+	#define check() assert(glGetError() == 0)
+	check();
+
 	arcan_warning("EGL context active (%d x %d)\n", w, h);
 	arcan_video_display.width = w;
 	arcan_video_display.height = h;
@@ -519,6 +486,67 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 }
 #endif
 
+void PLATFORM_SYMBOL(_video_setsynch)(const char* arg)
+{
+	int ind = 0;
+
+	while(egl_synchopts[ind]){
+		if (strcmp(egl_synchopts[ind], arg) == 0){
+			synchopt = (ind > 0 ? ind / 2 : ind);
+			arcan_warning("synchronisation strategy set to (%s)\n",
+				egl_synchopts[ind]);
+			break;
+		}
+
+		ind += 2;
+	}
+}
+
+void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
+	video_synchevent pre, video_synchevent post)
+{
+	if (pre)
+		pre();
+
+	arcan_bench_register_cost( arcan_video_refresh(fract) );
+
+	eglSwapBuffers(egl.disp, egl.surf);
+
+#ifdef WITH_GBMKMS
+	struct gbm_bo* bo = gbm_surface_lock_front_buffer(gbmkms.surf);
+
+	unsigned handle = gbm_bo_get_handle(bo).u32;
+	unsigned stride = gbm_bo_get_stride(bo);
+
+	if (-1 == drmModeAddFB(gbmkms.fd,
+		arcan_video_display.width, arcan_video_display.height,
+		24, 32, stride, handle, &gbmkms.fb_id))
+		arcan_fatal("platform/egl: couldn't obtain framebuffer handle\n");
+
+	int fl;
+	if (-1 ==
+		drmModePageFlip(gbmkms.fd, gbmkms.enc->crtc_id,
+			gbmkms.fb_id, DRM_MODE_PAGE_FLIP_EVENT, &fl))
+		arcan_fatal("platform/egl: waiting for flip failure\n");
+
+	int buf;
+	read(gbmkms.fd, &buf, 1);
+	gbm_surface_release_buffer(gbmkms.surf, bo);
+
+// gbm_surface_has_free_buffers(surf)
+/*	drmModeSetCrtc(fd, kms.encoder->crtc_id, kms.fb_id, 0, 0,
+		&kms.connector->connector_id, 1, &kms.mode);*/
+#endif
+
+	if (post)
+		post();
+}
+
+const char** PLATFORM_SYMBOL(_video_synchopts) ()
+{
+	return egl_synchopts;
+}
+
 void PLATFORM_SYMBOL(_video_prepare_external) () {}
 void PLATFORM_SYMBOL(_video_restore_external) () {}
 void PLATFORM_SYMBOL(_video_shutdown) ()
@@ -526,11 +554,6 @@ void PLATFORM_SYMBOL(_video_shutdown) ()
 	eglDestroyContext(egl.disp, egl.ctx);
 	eglDestroySurface(egl.disp, egl.surf);
   eglTerminate(egl.disp);
-
-#ifdef WITH_X11
-  XDestroyWindow(x11.xdisp, x11.xwnd);
-  XCloseDisplay(x11.xdisp);
-#endif
 }
 
 void PLATFORM_SYMBOL(_video_timing) (

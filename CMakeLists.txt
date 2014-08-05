@@ -33,6 +33,12 @@ set(SHARED_PERMISSIONS OWNER_WRITE OWNER_READ GROUP_WRITE GROUP_READ WORLD_READ)
 set(SHARED_PERMISSIONS_DIR OWNER_WRITE OWNER_READ GROUP_WRITE
 		GROUP_READ WORLD_EXECUTE WORLD_READ)
 
+if (WIN32)
+	set(VPLATFORM_STR "[ sdl ]")
+else()
+	set(VPLATFORM_STR "[ x11 | x11-headless | sdl | egl | egl-gles2 ]")
+endif()
+
 set( MAIN_LIBRARIES )
 
 #
@@ -78,7 +84,7 @@ message("   -DENABLE_SIMD=[On|Off] : Enable SIMD optimized instructions")
 message("   -DENABLE_SIMD_ALIGNED=[Off|On] : |--> SIMD support assumes 16-byte alignment")
 message("")
 message("audio/video/input support:")
-message("   -DVIDEO_PLATFORM=[sdl|x11|x11-headless|egl|egl-gles2] :  Set default video platform")
+message("   -DVIDEO_PLATFORM=${VPLATFORM_STR} : Set default video platform")
 message("")
 message("optimization / core features:")
 message("   -DENABLE_LED=[On|Off] : Build with LED controller support in core")
@@ -220,7 +226,6 @@ if(WIN32)
 	set(ENABLE_LWA OFF)
 	set(OS_PLATFORM_NAME "Win32")
 	set(VIDEO_PLATFORM "sdl") # there's no other ported options here
-	set(VIDEO_PLATFORM "sdl") # there's no other ported options here
 endif()
 
 FIND_PACKAGE ( Freetype REQUIRED )
@@ -261,8 +266,8 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-gles2")
 
 	if (GLES2_BCM_IMPLEMENTATION)
 		message("broadcom (BCM) GLES implementation found, set BCM_ROOT to bad dir to disable")
-		set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/platform/egl/video.c
-		APPEND PROPERTY COMPILE_DEFINITIONS RPI_BCM)
+		LIST(APPEND ARCAN_DEFINITIONS WITH_BCM)
+
 	endif()
 
 	LIST(APPEND INCLUDE_DIRS
@@ -275,7 +280,6 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-gles2")
 		${EGL_LIBRARIES}
 	)
 
-	message("dirs: ${INCLUDE_DIRS}")
 #in order for subdirectories gets mapped correctly
 	SET(VIDEO_PLATFORM "egl")
 
@@ -324,7 +328,7 @@ elseif (VIDEO_PLATFORM STREQUAL "sdl")
 	endif()
 
 else()
-	message(FATAL_ERROR "No video platform specified, use -DVIDEO_PLATFORM= (egl,x11,x11-headless or sdl)")
+				message(FATAL_ERROR "No video platform specified, use -DVIDEO_PLATFORM=${VPLATFORM_STR} e.g. -DVIDEO_PLATFORM=sdl")
 endif()
 
 # no other audio platforms supported currently

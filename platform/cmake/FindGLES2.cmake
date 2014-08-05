@@ -27,9 +27,9 @@ if (EXISTS "${BCM_ROOT}/include/bcm_host.h")
 	set(GLES2_BCM_IMPLEMENTATION TRUE)
 
 	set (GLES2_LIBRARIES
-		${BCM_ROOT}/lib/opt/vc/lib/libGLESv2.so
-		${BCM_ROOT}/lib/opt/vc/lib/libbcm_host.so
-		${BCM_ROOT}/lib/opt/vc/lib/libEGL.so
+		${BCM_ROOT}/lib/libGLESv2.so
+		${BCM_ROOT}/lib/libbcm_host.so
+		${BCM_ROOT}/lib/libEGL.so
 	)
 else()
 	find_library(GLES2_LIBRARIES NAMES GLESv2)
