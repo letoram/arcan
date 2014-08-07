@@ -50,7 +50,8 @@
  *
  * Then the contents of this header will split into a version that
  * corresponds to what the engine uses internally and what is accessible
- * in the shmif interface.
+ * in the shmif interface. Until then, frameservers built against the
+ * shared memory API are expected to recompile with the arcan version.
  */
 
 enum ARCAN_EVENT_CATEGORY {
@@ -65,9 +66,22 @@ enum ARCAN_EVENT_CATEGORY {
 	EVENT_NET         = 256
 };
 
-enum ARCAN_EVENT_SYSTEM {
-	EVENT_SYSTEM_EXIT = 0,
-	EVENT_SYSTEM_SWITCHAPPL
+/*
+ * Some meta- descriptors to propagate ONCE for non-authoritative
+ * connections, used as hinting to window manager script
+ */
+enum ARCAN_SEGID {
+	SEGID_LWA = 0, /* LIGHTWEIGHT ARCAN (arcan-in-arcan) */
+	SEGID_MEDIA, /* multimedia, non-interactive data source */
+	SEGID_NETWORK_SERVER, /* external connection, 1:many */
+	SEGID_NETWORK_CLIENT, /* external connection, 1:1 */
+	SEGID_SHELL, /* terminal, privilege level vary, low-speed interactivity */
+	SEGID_REMOTING, /* network client but A/V/latency sensitive */
+	SEGID_ENCODER, /* high-CPU, low-latency, wants access to engine data */
+	SEGID_GAME, /* high-interactivity, high A/V cost, low latency */
+	SEGID_APPLICATION, /* video updates typically reactive */
+	SEGID_BROWSER, /* network client, high-risk for malicious data */
+	SEGID_UNKNOWN
 };
 
 enum ARCAN_TARGET_COMMAND {
@@ -107,6 +121,21 @@ enum ARCAN_TARGET_COMMAND {
 	TARGET_COMMAND_PAUSE,
 	TARGET_COMMAND_UNPAUSE,
 
+/*
+ * hint for visible surface dimensions, careful
+ * to avoid feedback loops here where (user resizes) ->
+ * (resize_hint sent) -> (frameserver responds by resizing)
+ * -> (prompting a new resize hint etc.)
+ */
+	TARGET_COMMAND_DISPLAYHINT,
+
+/*
+ * used for sending/receiving larger data-blocks,
+ * used primarily in NET and in TERM
+ */
+	TARGET_COMMAND_BCHUNK_IN,
+	TARGET_COMMAND_BCHUNK_OUT,
+
 /* plug in device of a specific kind in a set port,
  * switch audio / video stream etc. */
 	TARGET_COMMAND_SETIODEV,
@@ -126,22 +155,31 @@ enum ARCAN_TARGET_COMMAND {
 
 /*
  * to indicate that there's a new segment to be allocated
- * ioev[0].iv carries
+ * ioev[0].iv carries request ID (if one has been provided)
  */
 	TARGET_COMMAND_NEWSEGMENT,
 
 /*
  * request for a state transfer or new segment failed,
- * ioev[0].iv carries request ID
+ * ioev[0].iv carries request ID (if one has been provided)
  */
 	TARGET_COMMAND_REQFAIL,
 
-/* specialized output hinting */
+/* specialized output hinting, deprecated */
 	TARGET_COMMAND_GRAPHMODE,
 	TARGET_COMMAND_VECTOR_LINEWIDTH,
 	TARGET_COMMAND_VECTOR_POINTSIZE,
 	TARGET_COMMAND_NTSCFILTER,
 	TARGET_COMMAND_NTSCFILTER_ARGS
+};
+
+enum ARCAN_TARGET_SKIPMODE {
+	TARGET_SKIP_AUTO     =  0, /* drop to keep sync */
+	TARGET_SKIP_NONE     = -1, /* never discard data */
+	TARGET_SKIP_REVERSE  = -2, /* play backward */
+	TARGET_SKIP_ROLLBACK = -3, /* apply input events to prev. state */
+	TARGET_SKIP_STEP     =  1, /* single stepping, advance with events */
+	TARGET_SKIP_FASTFWD  = 10  /* 10+, only return every nth frame */
 };
 
 enum ARCAN_EVENT_IO {
@@ -167,41 +205,87 @@ enum ARCAN_EVENT_IDATATYPE {
 	EVENT_IDATATYPE_TOUCH
 };
 
-enum ARCAN_EVENT_FRAMESERVER {
-	EVENT_FRAMESERVER_RESIZED,
-	EVENT_FRAMESERVER_TERMINATED,
-	EVENT_FRAMESERVER_DROPPEDFRAME,
-	EVENT_FRAMESERVER_DELIVEREDFRAME,
-	EVENT_FRAMESERVER_VIDEOSOURCE_FOUND,
-	EVENT_FRAMESERVER_VIDEOSOURCE_LOST,
-	EVENT_FRAMESERVER_AUDIOSOURCE_FOUND,
-	EVENT_FRAMESERVER_AUDIOSOURCE_LOST
-};
-
 enum ARCAN_EVENT_EXTERNAL {
+/*
+ * custom string message, used as some user- directed hint
+ */
 	EVENT_EXTERNAL_MESSAGE = 0,
+
+/*
+ * specify that there is a possible key=value argument
+ * that could be set.
+ */
 	EVENT_EXTERNAL_COREOPT,
+
+/*
+ * Dynamic data source identification string, similar to message
+ */
 	EVENT_EXTERNAL_IDENT,
+
+/*
+ * Hint that the previous I/O operation failed
+ */
 	EVENT_EXTERNAL_FAILURE,
+
+/*
+ * Debugging hints for video/timing information
+ */
 	EVENT_EXTERNAL_FRAMESTATUS,
+
+/*
+ * Decode playback discovered additional substreams that can be
+ * selected or switched to
+ */
 	EVENT_EXTERNAL_STREAMINFO,
+
+/*
+ * playback information regarding completion, current time,
+ * estimated length etc.
+ */
 	EVENT_EXTERNAL_STREAMSTATUS,
-	EVENT_EXTERNAL_PLAYBACKSTATUS,
+
+/*
+ * hint that serialization operations (STORE / RESTORE)
+ * are possible and how much buffer data / which transfer limits
+ * that apply.
+ */
 	EVENT_EXTERNAL_STATESIZE,
 	EVENT_EXTERNAL_RESOURCE,
+
+/*
+ * hint that any pending buffers on the audio device should
+ * be discarded. used primarily for A/V synchronization.
+ */
 	EVENT_EXTERNAL_FLUSHAUD,
+
+/*
+ * Request an additional shm-if connection to be allocated,
+ * only one segment is guaranteed per process. Tag with an
+ * ID for the parent to be able to accept- or reject properly.
+ */
 	EVENT_EXTERNAL_SEGREQ,
-	EVENT_EXTERNAL_DATASEQ,
+
+/*
+ * used to indicated that some external entity tries to provide
+ * input data (e.g. a vnc client connected to an encode frameserver)
+ */
 	EVENT_EXTERNAL_KEYINPUT,
 	EVENT_EXTERNAL_CURSORINPUT,
-	EVENT_EXTERNAL_CURSORHINT,
-	EVENT_EXTERNAL_REGISTER
-};
 
-enum ARCAN_EVENT_VIDEO {
-	EVENT_VIDEO_EXPIRE,
-	EVENT_VIDEO_ASYNCHIMAGE_LOADED,
-	EVENT_VIDEO_ASYNCHIMAGE_FAILED
+/*
+ * Hint how the cursor is to be rendered,
+ * if it's locally defined (client renders own),
+ * or a user-readable string suggesting which icon should be used.
+ */
+	EVENT_EXTERNAL_CURSORHINT,
+
+/*
+ * Hint to the running script what user-readable identifier this
+ * segment should be known as, and what archetype the window
+ * behaves like (multiple messages will only update identifier,
+ * switching archetype is not permitted.)
+ */
+	EVENT_EXTERNAL_REGISTER
 };
 
 enum ARCAN_EVENT_NET {
@@ -222,6 +306,17 @@ enum ARCAN_EVENT_NET {
 	EVENT_NET_STATEREQ
 };
 
+enum ARCAN_EVENT_VIDEO {
+	EVENT_VIDEO_EXPIRE,
+	EVENT_VIDEO_ASYNCHIMAGE_LOADED,
+	EVENT_VIDEO_ASYNCHIMAGE_FAILED
+};
+
+enum ARCAN_EVENT_SYSTEM {
+	EVENT_SYSTEM_EXIT = 0,
+	EVENT_SYSTEM_SWITCHAPPL
+};
+
 enum ARCAN_EVENT_AUDIO {
 	EVENT_AUDIO_PLAYBACK_FINISHED = 0,
 	EVENT_AUDIO_PLAYBACK_ABORTED,
@@ -232,13 +327,15 @@ enum ARCAN_EVENT_AUDIO {
 	EVENT_AUDIO_INVALID_OBJECT_REFERENCED
 };
 
-enum ARCAN_TARGET_SKIPMODE {
-	TARGET_SKIP_AUTO     =  0, /* drop to keep sync */
-	TARGET_SKIP_NONE     = -1, /* never discard data */
-	TARGET_SKIP_REVERSE  = -2, /* play backward */
-	TARGET_SKIP_ROLLBACK = -3, /* apply input events to prev. state */
-	TARGET_SKIP_STEP     =  1, /* single stepping, advance with events */
-	TARGET_SKIP_FASTFWD  = 10  /* 10+, only return every nth frame */
+enum ARCAN_EVENT_FRAMESERVER {
+	EVENT_FRAMESERVER_RESIZED,
+	EVENT_FRAMESERVER_TERMINATED,
+	EVENT_FRAMESERVER_DROPPEDFRAME,
+	EVENT_FRAMESERVER_DELIVEREDFRAME,
+	EVENT_FRAMESERVER_VIDEOSOURCE_FOUND,
+	EVENT_FRAMESERVER_VIDEOSOURCE_LOST,
+	EVENT_FRAMESERVER_AUDIOSOURCE_FOUND,
+	EVENT_FRAMESERVER_AUDIOSOURCE_LOST
 };
 
 enum ARCAN_ANALOGFILTER_KIND {
@@ -246,24 +343,6 @@ enum ARCAN_ANALOGFILTER_KIND {
 	ARCAN_ANALOGFILTER_PASS = 1,
 	ARCAN_ANALOGFILTER_AVG  = 2,
  	ARCAN_ANALOGFILTER_ALAST = 3
-};
-
-/*
- * Some meta- descriptors to propagate ONCE for non-authoritative
- * connections, used as hinting to window manager script
- */
-enum ARCAN_SEGID {
-	SEGID_LWA = 0,
-	SEGID_MEDIA,
-	SEGID_NETWORK_SERVER,
-	SEGID_NETWORK_CLIENT,
-	SEGID_SHELL,
-	SEGID_REMOTING,
-	SEGID_ENCODER,
-	SEGID_GAME,
-	SEGID_APPLICATION,
-	SEGID_BROWSER,
-	SEGID_UNKNOWN
 };
 
 typedef union arcan_ioevent_data {

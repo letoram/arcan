@@ -582,9 +582,11 @@ if (${ENABLE_TERMINAL})
 		frameserver/shl/shl-pty.c
 		frameserver/shl/shl-ring.c
 		frameserver/graphing/net_graph.c
+		engine/arcan_ttf.c
 	)
 	set(FSRV_TERMINAL_LIBRARIES
 		${LIBTSM_LIBRARIES}
+		${FREETYPE_LIBRARY}
 		util
 	)
 	list(APPEND INCLUDE_DIRS
