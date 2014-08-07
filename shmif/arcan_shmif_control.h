@@ -132,7 +132,11 @@ static const int ARCAN_SHMPAGE_RESAMPLER_QUALITY = 5;
  * input as that. It is suggested that other formats
  * and packing strategies (e.g. hardware YUV) still
  * pack in 4x8bit channels interleaved and then hint the
- * conversion in the shader used
+ * conversion in the shader used.
+ *
+ * For future cases when the API opens up a bit,
+ * additional color formats will be passed as GL buffer-references
+ * rather than full copies on the shmif.
  */
 static const int ARCAN_SHMPAGE_VCHANNELS = 4;
 static const int ARCAN_SHMPAGE_MAXW = PP_SHMPAGE_MAXW;
@@ -279,6 +283,12 @@ struct arcan_shmif_page {
  * polled repeatedly by the parent (or child for the case of an
  * encode frameserver) then the corresponding sem_handle is used
  * as a wake-up trigger.
+ *
+ * Note that underneath the surface, this are currently just checked
+ * and written to in a > non atomic way <. It's trivial to switch
+ * to atomic test and sets, but they are currently kept this way
+ * to control/check how "non-compliant" manipulation and race-conditions
+ * manifest.
  */
 	volatile uint8_t aready;
 	volatile uint8_t vready;

@@ -311,10 +311,13 @@ int main(int argc, char** argv)
 				getenv("ARCAN_CONNPATH"), getenv("ARCAN_CONNKEY")
 			);
 		}
-		else
-			LOG("no shared memory key could be acquired, "
-				"check socket at ARCAN_CONNKEY environment.\n");
-	} else {
+		else{
+			LOG("\t\x1b[1m No arcan-shmif connection, "
+				"check \x1b[32mARCAN_CONNPATH\x1b[39m environment.\x1b[0m\n\n");
+			return EXIT_FAILURE;
+		}
+	}
+	else {
 		keyfile = argv[2];
 		fsrvmode = argv[1];
 	}
@@ -329,7 +332,8 @@ int main(int argc, char** argv)
  * frameserver as launched from the parent
  */
 	if (getenv("ARCAN_FRAMESERVER_DEBUGSTALL")){
-		LOG("frameserver_debugstall, waiting 10s to continue. pid: %d\n",
+		fprintf(stdout, "\x1b[1m ARCAN_FRAMESERVER_DEBUGSTALL set, waiting 10s. \n"
+			"\tfor debugging/tracing, attach to pid: \x1b[32m%d\x1b[39m\x1b[0m\n",
 			(int) getpid());
 		sleep(10);
 	}

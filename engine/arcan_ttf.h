@@ -24,8 +24,11 @@
 	http://www.freetype.org/
 */
 
-/* This version has been modified to strip down most of the SDL specific code,
- * as well as rendering modes other than blended, so TTF_Surface* and SDL_color references have all been replaced. */
+/*
+ * This version has been modified to strip down most of the SDL specific code,
+ * as well as rendering modes other than blended, so TTF_Surface* and SDL_color
+ * references have all been replaced.
+ */
 
 #ifndef _SDL_TTF_H
 #define _SDL_TTF_H
@@ -120,7 +123,8 @@ int TTF_GlyphIsProvided(const TTF_Font *font, uint16_t ch);
   To understand what these metrics mean, here is a useful link:
   http://freetype.sourceforge.net/freetype2/docs/tutorial/step2.html
  */
-int TTF_GlyphMetrics(TTF_Font *font, uint16_t ch, int *minx, int *maxx, int *miny, int *maxy, int *advance);
+int TTF_GlyphMetrics(TTF_Font *font, uint16_t ch, int *minx,
+	int *maxx, int *miny, int *maxy, int *advance);
 
 /* Get the dimensions of a rendered string of text */
 int TTF_SizeText(TTF_Font *font, const char *text, int *w, int *h);

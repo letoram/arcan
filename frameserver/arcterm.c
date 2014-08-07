@@ -30,8 +30,13 @@
 #include <arcan_shmif.h>
 #include "frameserver.h"
 
-#ifndef ARCAN_TTF_SUPPORT
-	#include "graphing/net_graph.h"
+#define ARCAN_TTF_SUPPORT
+
+#include "graphing/net_graph.h"
+
+#ifdef ARCAN_TTF_SUPPORT
+#include "arcan_ttf.h"
+static TTF_Font* font;
 #endif
 
 static struct {
@@ -46,9 +51,7 @@ static struct {
 	int cols;
 	int cell_w, cell_h;
 	int screen_w, screen_h;
-#ifndef ARCAN_TTF_SUPPORT
 	struct graph_context* graphing;
-#endif
 
 	int last_fd;
 	struct arcan_shmif_cont arc_conn;
@@ -83,13 +86,11 @@ static void screen_size(int screenw, int screenh, int fontw, int fonth)
  * shl_pty_resize to propagate
  */
 
-#ifndef ARCAN_TTF_SUPPORT
 	if (term.graphing){
 		graphing_destroy(term.graphing);
 	}
 
 	term.graphing = graphing_new(px_w, px_h, (uint32_t*) term.arc_conn.vidp);
-#endif
 
 	term.screen_w = screenw;
 	term.screen_h = screenh;
@@ -97,51 +98,95 @@ static void screen_size(int screenw, int screenh, int fontw, int fonth)
 	term.cell_h = fonth;
 }
 
-#ifndef ARCAN_TTF_SUPPORT
+struct unpack_col {
+	union{
+		struct {
+			uint8_t r;
+			uint8_t g;
+			uint8_t b;
+			uint8_t a;
+		};
+
+		uint32_t rgba;
+	};
+};
+
 static int draw_cb(struct tsm_screen* screen, uint32_t id,
 	const uint32_t* ch, size_t len, unsigned width, unsigned x, unsigned y,
 	const struct tsm_screen_attr* attr, tsm_age_t age, void* data)
 {
-		uint8_t fgc[3], bgc[3];
-		uint8_t* dfg = fgc, (* dbg) = bgc;
+	uint8_t fgc[3], bgc[3];
+	uint8_t* dfg = fgc, (* dbg) = bgc;
+	int base_y = y * term.cell_h;
+	int base_x = x * term.cell_w;
 
-		if (attr->inverse){
-			dfg = bgc;
-			dbg = fgc;
-		}
+	if (attr->inverse){
+		dfg = bgc;
+		dbg = fgc;
+	}
 
-		dfg[0] = attr->fr;
-		dfg[1] = attr->fg;
-		dfg[2] = attr->fb;
-		dbg[0] = attr->br;
-		dbg[1] = attr->bg;
-		dbg[2] = attr->bb;
+	dfg[0] = attr->fr;
+	dfg[1] = attr->fg;
+	dfg[2] = attr->fb;
+	dbg[0] = attr->br;
+	dbg[1] = attr->bg;
+	dbg[2] = attr->bb;
 
-		draw_box(term.graphing, x * term.cell_w, y * term.cell_h,
-			term.cell_w, term.cell_h, RGBA(bgc[0], bgc[1], bgc[2], 0xff));
+	draw_box(term.graphing, base_x, base_y, term.cell_w + 1,
+		term.cell_h + 1, RGBA(bgc[0], bgc[1], bgc[2], 0xff));
 
-		uint8_t u8_ch[tsm_ucs4_get_width(*ch) + 1];
-		size_t nch = tsm_ucs4_to_utf8(*ch, (char*) u8_ch);
-		if (nch == 0)
-			return 0;
+	size_t u8_sz = tsm_ucs4_get_width(*ch) + 1;
+	uint8_t u8_ch[u8_sz];
+	size_t nch = tsm_ucs4_to_utf8(*ch, (char*) u8_ch);
 
+	if (nch == 0 || u8_ch[0] == 0)
+		return 0;
+
+	if (font == NULL){
 /* without proper ttf support, we just go with '?' for unknowns */
 		u8_ch[0] = u8_ch[0] <= 128 ? u8_ch[0] : '?';
 		u8_ch[1] = '\0';
 
-		draw_text(term.graphing, (const char*) u8_ch,
-			x * term.cell_w, y * term.cell_h,
+		draw_text(term.graphing, (const char*) u8_ch, base_x, base_y,
 			RGBA(fgc[0], fgc[1], fgc[2], 0xff)
 		);
+		return;
+	}
 
+/* interesting toggle, using typeface embedded images vs.
+ * non-bitmap for the same glyph */
+	u8_ch[u8_sz-1] = '\0';
+	TTF_Color fg = {.r = fgc[0], .g = fgc[1], .b = fgc[2]};
+	TTF_Surface* surf = TTF_RenderUTF8(font, (char*) u8_ch, fg);
+	if (!surf)
 		return 0;
-}
-#else
-/* use arcan_ttf or possible a UCS- font lib
- * include renderfon,
- * generate format string,
- */
+
+	size_t w = term.arc_conn.addr->w;
+	uint32_t* dst = (uint32_t*) term.arc_conn.vidp;
+
+/* alpha blending against background is the more tedious bits here */
+	for (int row = 0; row < surf->height; row++)
+		for (int col = 0; col < surf->width; col++){
+			uint8_t* bgra = (uint8_t*) &surf->data[ row * surf->stride + (col * 4) ];
+			float fact = (float)bgra[3] / 255.0;
+			float ifact = 1.0 - fact;
+			off_t ofs = (row + base_y) * w + col + base_x;
+
+			struct unpack_col incl;
+			incl.rgba = dst[ofs];
+			dst[ofs] = RGBA(
+				incl.r * ifact + fgc[0] * fact,
+				incl.g * ifact + fgc[1] * fact,
+				incl.b * ifact + fgc[2] * fact,
+				0xff
+			);
+		}
+
+	free(surf);
+
 #endif
+	return 0;
+}
 
 static void read_callback(struct shl_pty* pty,
 	void* data, char* u8, size_t len)
@@ -184,6 +229,12 @@ static void setup_shell()
 	exit(EXIT_FAILURE);
 }
 
+/*
+ * keyboard mapping is not correct,
+ * and we should have an (even more) detailed version that also
+ * carries 7-bit ascii
+ * mouse-mapping should go to a local cursor that hides on no motion
+ */
 static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 {
 /* map mouse motion + button to select, etc. */
@@ -244,6 +295,7 @@ static void targetev(arcan_event* tgtev)
 	break;
 
 	case TARGET_COMMAND_EXIT:
+		exit(EXIT_SUCCESS);
 	break;
 
 	default:
@@ -251,6 +303,13 @@ static void targetev(arcan_event* tgtev)
 	}
 }
 
+/*
+ * this is still a bit rough;
+ * 1. find a way to select on both client data,
+ *    parent events, with a periodic timeout
+ *
+ * 2. use timeout to implement cursor blink (if requested)
+ */
 static void main_loop()
 {
 	while(true){
@@ -268,6 +327,7 @@ static void main_loop()
 			break;
 
 			case EVENT_TARGET:
+				targetev(&ev);
 			break;
 
 			default:
@@ -290,6 +350,7 @@ void arcan_frameserver_terminal_run(const char* resource, const char* keyfile)
 {
 	struct arg_arr* args = arg_unpack(resource);
 	const char* val;
+	TTF_Init();
 
 	if (arg_lookup(args, "rows", 0, &val))
 		term.rows = strtoul(val, NULL, 10);
@@ -302,6 +363,26 @@ void arcan_frameserver_terminal_run(const char* resource, const char* keyfile)
 
 	if (arg_lookup(args, "cell_h", 0, &val))
 		term.cell_h = strtoul(val, NULL, 10);
+
+	if (arg_lookup(args, "font", 0, &val)){
+		font = TTF_OpenFont(val, term.cell_h);
+		if (!font)
+			LOG("font %s could not be opened, forcing built-in fallback\n");
+	}
+	else
+		LOG("no font argument specified, forcing built-in fallback.\n");
+
+	if (font && arg_lookup(args, "font_hint", 0, &val)){
+		if (strcmp(val, "light") == 0)
+			TTF_SetFontHinting(font, TTF_HINTING_LIGHT);
+		else if (strcmp(val, "mono") == 0){
+			TTF_SetFontHinting(font, TTF_HINTING_MONO);
+		else if (strcmp(val, "none") == 0)
+			TTF_SetFontHinting(font, TTF_HINTING_NONE);
+		else
+			LOG("unknown font hinting requested, "
+				"accepted values(light, mono, none)");
+	}
 
 	if (tsm_screen_new(&term.screen, tsm_log, 0) < 0){
 		LOG("fatal, couldn't setup tsm screen\n");
@@ -319,14 +400,13 @@ void arcan_frameserver_terminal_run(const char* resource, const char* keyfile)
 		LOG("fatal, couldn't map shared memory from (%s)\n", keyfile);
 	}
 
+	screen_size(term.rows, term.cols, term.cell_w, term.cell_h);
 	tsm_screen_set_max_sb(term.screen, 1000);
 
 	setlocale(LC_CTYPE, "");
 
 /* possible need to track this and run shl_pty_close */
 	signal(SIGHUP, SIG_IGN);
-
-	screen_size(term.rows, term.cols, 8, 8);
 
 	if ( (term.child = shl_pty_open(&term.pty,
 		read_callback, NULL /* term data */, 80, 25)) == 0){
