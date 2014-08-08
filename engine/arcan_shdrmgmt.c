@@ -488,7 +488,6 @@ static void dump_shaderlog(const char* label, const char* stage, GLuint prg)
 static bool build_shader(const char* label, GLuint* dprg,
 	GLuint* vprg, GLuint* fprg, const char* vprogram, const char* fprogram)
 {
-	int rlen;
 	bool failed = false;
 
 #ifdef DEBUG
