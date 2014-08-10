@@ -454,7 +454,6 @@ static inline void push_ioevent_sdl(arcan_ioevent event){
 				newev.button.type   = event.input.digital.active ?
 					SDL_MOUSEBUTTONDOWN : SDL_MOUSEBUTTONUP;
 				newev.button.button = event.input.digital.subid;
-				newev.button.which -= ARCAN_MOUSEIDBASE;
 				newev.button.x = global.mousestate.x;
 				newev.button.y = global.mousestate.y;
 
@@ -467,7 +466,6 @@ static inline void push_ioevent_sdl(arcan_ioevent event){
 				newev.jbutton.type   = event.input.digital.active ?
 					SDL_JOYBUTTONDOWN : SDL_JOYBUTTONUP;
 				newev.jbutton.button = event.input.digital.subid;
-				newev.button.which  -= ARCAN_JOYIDBASE;
 			}
 
 			forwardtbl.sdl_pushevent(&newev);
@@ -490,7 +488,7 @@ static inline void push_ioevent_sdl(arcan_ioevent event){
 			if (event.devkind == EVENT_IDEVKIND_MOUSE){
 					newev.motion = global.mousestate;
 
-					newev.motion.which = event.input.analog.devid - ARCAN_MOUSEIDBASE;
+					newev.motion.which = event.input.analog.devid;
 					newev.motion.state = global.mousebutton;
 					newev.motion.type = SDL_MOUSEMOTION;
 
@@ -509,7 +507,7 @@ static inline void push_ioevent_sdl(arcan_ioevent event){
 				forwardtbl.sdl_pushevent(&newev);
 			} else {
 				newev.jaxis.value = event.input.analog.axisval[0];
-				newev.jaxis.which = event.input.analog.devid - ARCAN_JOYIDBASE;
+				newev.jaxis.which = event.input.analog.devid;
 				newev.jaxis.axis = event.input.analog.subid;
 				newev.jaxis.type = SDL_JOYAXISMOTION;
 				forwardtbl.sdl_pushevent(&newev);

@@ -173,7 +173,7 @@ endif(CMAKE_BUILD_TYPE STREQUAL "Profile")
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
 	message("------------------*Debug Build*--------------------")
-	add_definitions(-g -D_DEBUG -fno-omit-frame-pointer)
+	add_definitions(-g -D_DEBUG -O0 -fno-omit-frame-pointer)
 endif (CMAKE_BUILD_TYPE STREQUAL "Debug")
 
 if (CMAKE_BUILD_TYPE STREQUAL "DebugTrace")
@@ -237,7 +237,10 @@ if (ENABLE_LIBRETRO3D AND NOT ENABLE_LWA)
 endif()
 
 if (VIDEO_PLATFORM STREQUAL "x11" OR VIDEO_PLATFORM STREQUAL "x11-headless")
-	set(INPUT_PLATFORM "linux")
+	if (NOT INPUT_PLATFORM)
+		set(INPUT_PLATFORM "x11")
+	endif()
+
 	add_definitions(-DWITH_X11)
 
 	if (VIDEO_PLATFORM STREQUAL "x11-headless")
@@ -259,7 +262,9 @@ if (VIDEO_PLATFORM STREQUAL "x11" OR VIDEO_PLATFORM STREQUAL "x11-headless")
 	endif()
 
 elseif(VIDEO_PLATFORM STREQUAL "egl-gles2")
-	set(INPUT_PLATFORM "stub")
+	if (NOT INPUT_PLATFORM)
+		set(INPUT_PLATFORM "linux")
+	endif()
 
 	FIND_PACKAGE(EGL REQUIRED)
 	FIND_PACKAGE(GLES2 REQUIRED)
@@ -284,7 +289,10 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-gles2")
 	SET(VIDEO_PLATFORM "egl")
 
 elseif(VIDEO_PLATFORM STREQUAL "egl")
-	set(INPUT_PLATFORM "stub")
+	if (NOT INPUT_PLATFORM)
+		set(INPUT_PLATFORM "linux")
+	endif()
+
 	FIND_PACKAGE(EGL REQUIRED)
 	FIND_PACKAGE(OpenGL REQUIRED)
 	FIND_PACKAGE(GBMKMS REQUIRED)
@@ -299,7 +307,10 @@ elseif(VIDEO_PLATFORM STREQUAL "egl")
 		)
 
 elseif (VIDEO_PLATFORM STREQUAL "sdl")
-	set(INPUT_PLATFORM "sdl")
+	if (NOT INPUT_PLATFORM)
+		set(INPUT_PLATFORM "sdl")
+	endif()
+
 	FIND_PACKAGE(SDL REQUIRED)
 	FIND_PACKAGE(SDL_image)
 	FIND_PACKAGE(OpenGL REQUIRED)

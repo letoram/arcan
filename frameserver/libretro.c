@@ -1096,7 +1096,7 @@ static void default_map(arcan_ioevent* ioev)
 				port].buttons[button] = ioev->input.translated.active;
 		}
 	}
-	else if (ioev->datatype == EVENT_IDEVKIND_GAMEDEV){
+	else if (ioev->devkind == EVENT_IDEVKIND_GAMEDEV){
 		int port_number = ioev->input.digital.devid % MAX_PORTS;
 		int button_number = ioev->input.digital.subid % MAX_BUTTONS;
 		int button = remaptbl[button_number];
@@ -1599,8 +1599,10 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		LOG("loading core (%s) with resource (%s)\n", libname ?
 			libname : "missing arg.", resname ? resname : "missing resarg.");
 
-	if (*libname == 0)
+	if (!libname || *libname == 0){
+		LOG("no core to load (ARCAN_ARG missing libname), giving up.\n");
 		return;
+	}
 
 	char logbuf[128] = {0};
 	size_t logbuf_sz = sizeof(logbuf);

@@ -34,10 +34,6 @@
 #ifndef _HAVE_ARCAN_SHMIF_EVENT
 #define _HAVE_ARCAN_SHMIF_EVENT
 
-#define ARCAN_JOYIDBASE 64
-#define ARCAN_HATBTNBASE 128
-#define ARCAN_MOUSEIDBASE 0
-
 /*
  * The types and structures used herein are "transitional" in the sense
  * that during the later hardening / cleanup phases, we'll move over to

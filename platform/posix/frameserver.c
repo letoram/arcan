@@ -206,7 +206,6 @@ bool arcan_frameserver_validchild(arcan_frameserver* src){
 	int ec = waitpid(src->child, &status, WNOHANG);
 
 	if (ec == src->child){
-		src->flags.alive = false;
 		errno = EINVAL;
 		return false;
 	}

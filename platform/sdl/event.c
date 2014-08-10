@@ -155,7 +155,7 @@ static inline void process_axismotion(arcan_evctx* ctx,
 			.data.io.datatype = EVENT_IDATATYPE_ANALOG,
 			.data.io.devkind  = EVENT_IDEVKIND_GAMEDEV,
 			.data.io.input.analog.gotrel = false,
-			.data.io.input.analog.devid = ARCAN_JOYIDBASE + ev->which,
+			.data.io.input.analog.devid = ev->which,
 			.data.io.input.analog.subid = ev->axis,
 			.data.io.input.analog.nvalues = 1,
 			.data.io.input.analog.axisval[0] = dstv
@@ -174,7 +174,7 @@ static inline void process_mousemotion(arcan_evctx* ctx,
 		.kind = EVENT_IO_AXIS_MOVE,
 		.data.io.datatype = EVENT_IDATATYPE_ANALOG,
 		.data.io.devkind  = EVENT_IDEVKIND_MOUSE,
-		.data.io.input.analog.devid  = ARCAN_MOUSEIDBASE,
+		.data.io.input.analog.devid  = 0,
 		.data.io.input.analog.gotrel = true,
 		.data.io.input.analog.nvalues = 2
 	};
@@ -237,7 +237,6 @@ arcan_errc arcan_event_analogstate(int devid, int axisid,
 		return true;
 	}
 
-	devid -= ARCAN_JOYIDBASE;
 	if (devid < 0 || devid >= iodev.n_joy)
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
@@ -304,7 +303,6 @@ void arcan_event_analogfilter(int devid,
 	if (devid == -1)
 		goto setmouse;
 
-	devid -= ARCAN_JOYIDBASE;
 	if (devid < 0 || devid >= iodev.n_joy)
 		return;
 
@@ -353,7 +351,7 @@ static inline void process_hatmotion(arcan_evctx* ctx, unsigned devid,
 		.kind = EVENT_IO_BUTTON_PRESS,
 		.data.io.datatype = EVENT_IDATATYPE_DIGITAL,
 		.data.io.devkind = EVENT_IDEVKIND_GAMEDEV,
-		.data.io.input.digital.devid = ARCAN_JOYIDBASE + devid,
+		.data.io.input.digital.devid = devid,
 		.data.io.input.digital.subid = 128 + (hatid * 4)
 	};
 
@@ -369,8 +367,7 @@ static inline void process_hatmotion(arcan_evctx* ctx, unsigned devid,
 
 		for (int i = 0; i < 4; i++){
 			if ( (oldtbl & hattbl[i]) != (value & hattbl[i]) ){
-				newevent.data.io.input.digital.subid  = ARCAN_HATBTNBASE +
-					(hatid * 4) + i;
+				newevent.data.io.input.digital.subid  = (hatid * 4) + i;
 				newevent.data.io.input.digital.active =
 					(value & hattbl[i]) > 0;
 				arcan_event_enqueue(ctx, &newevent);
@@ -386,7 +383,6 @@ const char* arcan_event_devlabel(int devid)
 	if (devid == -1)
 		return "mouse";
 
-	devid -= ARCAN_JOYIDBASE;
 	if (devid < 0 || devid >= iodev.n_joy)
 		return "no device";
 
@@ -406,8 +402,7 @@ void platform_event_process(arcan_evctx* ctx)
 			newevent.kind = EVENT_IO_BUTTON_PRESS;
 			newevent.data.io.datatype = EVENT_IDATATYPE_DIGITAL;
 			newevent.data.io.devkind  = EVENT_IDEVKIND_MOUSE;
-			newevent.data.io.input.digital.devid = ARCAN_MOUSEIDBASE +
-				event.motion.which;
+			newevent.data.io.input.digital.devid = event.motion.which;
 			newevent.data.io.input.digital.subid = event.button.button;
 			newevent.data.io.input.digital.active = true;
 			snprintf(newevent.label, sizeof(newevent.label) - 1, "mouse%i",
@@ -419,8 +414,7 @@ void platform_event_process(arcan_evctx* ctx)
 			newevent.kind = EVENT_IO_BUTTON_RELEASE;
 			newevent.data.io.datatype = EVENT_IDATATYPE_DIGITAL;
 			newevent.data.io.devkind  = EVENT_IDEVKIND_MOUSE;
-			newevent.data.io.input.digital.devid = ARCAN_MOUSEIDBASE +
-				event.motion.which;
+			newevent.data.io.input.digital.devid = event.motion.which;
 			newevent.data.io.input.digital.subid = event.button.button;
 			newevent.data.io.input.digital.active = false;
 			snprintf(newevent.label, sizeof(newevent.label) - 1, "mouse%i",
@@ -464,8 +458,7 @@ void platform_event_process(arcan_evctx* ctx)
 			newevent.kind = EVENT_IO_BUTTON_PRESS;
 			newevent.data.io.datatype = EVENT_IDATATYPE_DIGITAL;
 			newevent.data.io.devkind  = EVENT_IDEVKIND_GAMEDEV;
-			newevent.data.io.input.digital.devid = ARCAN_JOYIDBASE +
-				event.jbutton.which; /* no multimouse.. */
+			newevent.data.io.input.digital.devid = event.jbutton.which;
 			newevent.data.io.input.digital.subid = event.jbutton.button;
 			newevent.data.io.input.digital.active = true;
 			snprintf(newevent.label, sizeof(newevent.label)-1,
@@ -477,8 +470,7 @@ void platform_event_process(arcan_evctx* ctx)
 			newevent.kind = EVENT_IO_BUTTON_RELEASE;
 			newevent.data.io.datatype = EVENT_IDATATYPE_DIGITAL;
 			newevent.data.io.devkind  = EVENT_IDEVKIND_GAMEDEV;
-			newevent.data.io.input.digital.devid = ARCAN_JOYIDBASE +
-				event.jbutton.which; /* no multimouse.. */
+			newevent.data.io.input.digital.devid = event.jbutton.which;
 			newevent.data.io.input.digital.subid = event.jbutton.button;
 			newevent.data.io.input.digital.active = false;
 			snprintf(newevent.label, sizeof(newevent.label)-1, "joystick%i",

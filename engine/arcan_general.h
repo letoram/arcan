@@ -137,7 +137,7 @@ typedef struct {
 
 /*
  * Editing this table will require modifications in individual platform/path.c
- * and possibly platform/appl.c 
+ * and possibly platform/appl.c
  * The enum should fullfill the criteria (index = sqrt(enumv)),
  * exclusive(mask) = mask & (mask - 1) == 0
  */
@@ -165,22 +165,30 @@ enum arcan_namespaces {
 	RESOURCE_APPL_STATE = 8,
 
 /*
- * formatstring \f domain
+ * formatstring \f domain, separated in part due
+ * to the wickedness of font- file formats
  */
 	RESOURCE_SYS_FONT = 16,
 
 /*
- * frameserver binaries read/execute (write-protected)
+ * frameserver binaries read/execute (write-protected),
+ * possibly signature/verify on load/run as well,
+ * along with preemptive alloc+lock/wait on low system
+ * loads.
  */
 	RESOURCE_SYS_BINS = 32,
 
 /*
- * LD_PRELOAD only (write-protected)
+ * LD_PRELOAD only (write-protected), recommended use
+ * is to also have a database matching program configuration
+ * and associated set of libraries.
  */
 	RESOURCE_SYS_LIBS = 64,
 
 /*
- * frameserver log output, state dumps, write-only.
+ * frameserver log output, state dumps, write-only since
+ * read-backs from script would possibly be usable for
+ * obtaining previous semi-sensitive data.
  */
 	RESOURCE_SYS_DEBUG = 128,
 
@@ -326,7 +334,7 @@ bool arcan_isdir(const char* fn);
 /*
  * implemented in <platform>/paths.c
  * return true if the path key indicated by <fn> exists and
- * is a file or special (e.g. FIFO), otherwise, false.  
+ * is a file or special (e.g. FIFO), otherwise, false.
  */
 bool arcan_isdir(const char* fn);
 
@@ -413,6 +421,9 @@ enum arcan_memtypes {
  * Texture data, FBO storage, ...
  * Ranging from MEDIUM to HUGE (64k -> 16M)
  * should exploit the fact that many dimensions will be powers of 2.
+ * Overflow behaviors are typically "safe" in the sense that it will
+ * cause data corruption that will be highly visible but not overwrite
+ * structures important for control- flow.
  */
 	ARCAN_MEM_VBUFFER = 1,
 
@@ -450,7 +461,9 @@ enum arcan_memtypes {
 
 /*
  * Use for script interface bindings, thus may contain user-important
- * states, untrusted contents etc.
+ * states, untrusted contents etc. Additional measures against
+ * spraying based attacks should be, at the very least, a compile-time
+ * option.
  */
 	ARCAN_MEM_BINDING,
 
@@ -469,18 +482,49 @@ enum arcan_memtypes {
  * and exec is always non-writable (use alloc_fillmem).
  */
 enum arcan_memhint {
+/* initialize to a known zero-state for the allocation type */
 	ARCAN_MEM_BZERO = 1,
+
+/* indicate that this memory should not allocated / in-use at the point
+ * of the next invocation of arcan_mem_tick */
 	ARCAN_MEM_TEMPORARY = 2,
+
+/* indicate that this memory block should be marked as executable,
+ * only allowed for arcan_mem_binding */
 	ARCAN_MEM_EXEC = 4,
+
+/* indicate that failure to allocate (i.e. allocation returning
+ * NULL) is handled and should not generate a trap */
 	ARCAN_MEM_NONFATAL = 8,
+
+/* indicate that any writes to this block should trigger a trap,
+ * should only be used with arcan_alloc_fillmem */
 	ARCAN_MEM_READONLY = 16,
+
+/* indicate that this memory block will carry user sensitive data,
+ * (data from capture devices etc.) and should be replaced with a
+ * known pattern when de-allocated.
+ * key. */
 	ARCAN_MEM_SENSITIVE = 32,
-	ARCAN_MEM_LOCKACCESS = 64
+
+/*
+ * Implies (ARCAN_MEM_SENSITIVE) and indicates that this will be
+ * used for critical sensitive data and should only be accessible
+ * through explicit use with a runtime cookie and use higher-
+ * tier storage (i.e. trustzone) if possible.
+ */
+	ARCAN_MEM_LOCKACCESS = 33,
 };
 
 enum arcan_memalign {
+/* memory block should be aligned on a architecture natural boundary */
 	ARCAN_MEMALIGN_NATURAL,
+
+/* memory block should be allocated to an appropriate page size */
 	ARCAN_MEMALIGN_PAGE,
+
+/* memory block should be aligned to be used for vector/streaming
+ * instructions */
 	ARCAN_MEMALIGN_SIMD
 };
 
@@ -493,17 +537,40 @@ void* arcan_alloc_mem(size_t,
 	enum arcan_memalign);
 
 /*
- * called early on application startup,
- * before any arcan_alloc_mem calls,
- * used to setup pools, prepare random seeds etc.
+ * Should be called before any other use of arcan_mem/arcan_alloc
+ * functions. Initializes memory pools, XOR cookies etc.
  */
 void arcan_mem_init();
 
 /*
- * NULL is allowed (and ignored),
- * otherwise
+ * Grow or shrink a specific region with a specific number of bytes.
+ *
+ * Requires that (src) comes from a block previously allocated with
+ * arcan_mem_alloc and possibly resized with arcan_mem_grow/trunc.
+ *
+ * Requires that (nz) matches the last known size of (src) and verifies
+ * that against the known allocation, thus the abilitiy to track or
+ * calculate this value is a hidden state machine as an early detection
+ * mechanism for some memory corruption.
+ *
+ * Only hints suported are BZERO and NONFATAL.
+ *
+ * Not all allocation types are allowed to be resized, attempting to
+ * grow / shrink static-sized types is a terminal state transition.
+ *
+ * Non-matching nz/src are terminal state transitions. Failure to grow
+ * or truncate is also a terminal state state transition unless
+ * ARCAN_MEM_NONFATAL is specified.
  */
-void arcan_mem_free(void*);
+void* arcan_mem_grow(void* src, size_t nz, size_t nb, enum arcan_memhint);
+void* arcan_mem_trunc(void* src, size_t nz, size_t nb, enum arcan_memhint);
+
+/*
+ * NULL is allowed (and ignored), otherwise (src) must match
+ * a block of memory previously obtained through (arcan_alloc_mem,
+ * arcan_alloc_fillmem, arcan_mem_grow or arcan_mem_trunc).
+ */
+void arcan_mem_free(void* src);
 
 /*
  * For memory blocks allocated with ARCAN_MEM_LOCKACCESS,
