@@ -12,14 +12,7 @@
  * the basic signalling processing, e.g. determining device orientation
  * from 3-sensor + Kalman, user-configurable analog filters on noisy
  * devices etc. should be generalized and put in a shared directory,
- * then this file can be split into a version for X and a version for
- * raw Linux.
- */
-
-/* toggleable options:
- * WITH_X11 - adds X11 support for keyboard and mouse,
- *            This will disable the use of /dev/input*.
- *
+ * and re-used for other input platforms.
  */
 
 #include <stdlib.h>
@@ -31,6 +24,8 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <errno.h>
+#include <poll.h>
+#include <glob.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -41,17 +36,27 @@
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_event.h"
+#include "arcan_video.h"
+#include "arcan_videoint.h"
 
-#ifdef WITH_X11
-#include <X11/Xlib.h>
-#include <X11/Xatom.h>
-#include <X11/Xutil.h>
+#include <sys/inotify.h>
 
-#include "../frameserver/xsymconv.h"
-
+/*
+ * prever scanning device nodes as sysfs/procfs
+ * and friends should not be needed to be mounted/exposed.
+ */
+#ifndef NOTIFY_SCAN_DIR
+#define NOTIFY_SCAN_DIR "/dev/input"
 #endif
 
-#define DEVPREFIX "/dev/input/event"
+/*
+ * need a reasonable limit on the amount of allowed
+ * devices, should this become a problem -- whitelist
+ */
+#define MAX_DEVICES 256
+
+struct arcan_devnode;
+#include "device_db.h"
 
 struct axis_opts {
 /* none, avg, drop */
@@ -72,24 +77,24 @@ struct axis_opts {
 
 static struct {
 	bool active;
-	struct axis_opts mx, my, mx_r, my_r;
 
-	unsigned short n_devs;
+	size_t n_devs, sz_nodes;
+
+	unsigned short mouseid;
 	struct arcan_devnode* nodes;
+
+	struct pollfd* pollset;
 } iodev = {0};
 
-enum devnode_type {
-	DEVNODE_SENSOR,
-	DEVNODE_GAME,
-	DEVNODE_CURSOR,
-	DEVNODE_TOUCH
-};
-
 struct arcan_devnode {
-/* identification and control */
 	int handle;
+
+/* NULL&size terminated, with chain-block set of the previous
+ * one could not handle. This is to cover devices that could
+ * expose themselves as being aggregated KEY/DEV/etc. */
+	devnode_decode_cb handler;
+
 	char label[256];
-	unsigned long hashid;
 	unsigned short devnum;
 
 	enum devnode_type type;
@@ -105,7 +110,6 @@ struct arcan_devnode {
 		struct {
 			uint16_t mx;
 			uint16_t my;
-			unsigned short buttons;
 			struct axis_opts flt[2];
 		} cursor;
 		struct {
@@ -113,6 +117,28 @@ struct arcan_devnode {
 		} touch;
 	};
 };
+
+static int notify_fd;
+
+static struct arcan_devnode* lookup_devnode(int devid)
+{
+	if (devid < 0)
+		devid = iodev.mouseid;
+
+/* some other parts of the engine still sweep
+ * device IDs due to event/platform legacy,
+ * we split the devid namespace in two so that
+ * the devids we return are outside MAX_DEVICES */
+	if (devid < iodev.n_devs)
+		return &iodev.nodes[devid];
+
+	for (size_t i = 0; i < iodev.n_devs; i++){
+		if (iodev.nodes[i].devnum == devid)
+			return &iodev.nodes[i];
+	}
+
+	return NULL;
+}
 
 static inline bool process_axis(struct arcan_evctx* ctx,
 	struct axis_opts* daxis, int16_t samplev, int16_t* outv)
@@ -185,41 +211,6 @@ accept_sample:
 	return true;
 }
 
-static inline void process_mousemotion(struct arcan_evctx* ctx,
-	int16_t xv, int16_t xrel, int16_t yv, int16_t yrel)
-{
-	int16_t dstv, dstv_r;
-	arcan_event nev = {
-		.label = "MOUSE\0",
-		.category = EVENT_IO,
-		.kind = EVENT_IO_AXIS_MOVE,
-		.data.io.datatype = EVENT_IDATATYPE_ANALOG,
-		.data.io.devkind  = EVENT_IDEVKIND_MOUSE,
-		.data.io.input.analog.devid  = ARCAN_MOUSEIDBASE,
-		.data.io.input.analog.gotrel = true,
-		.data.io.input.analog.nvalues = 2
-	};
-
-	snprintf(nev.label,
-		sizeof(nev.label) - 1, "mouse");
-
-	if (process_axis(ctx, &iodev.mx, xv, &dstv) &&
-		process_axis(ctx, &iodev.mx_r, xrel, &dstv_r)){
-		nev.data.io.input.analog.subid = 0;
-		nev.data.io.input.analog.axisval[0] = dstv;
-		nev.data.io.input.analog.axisval[1] = dstv_r;
-		arcan_event_enqueue(ctx, &nev);
-	}
-
-	if (process_axis(ctx, &iodev.my, yv, &dstv) &&
-		process_axis(ctx, &iodev.my_r, yrel, &dstv_r)){
-		nev.data.io.input.analog.subid = 1;
-		nev.data.io.input.analog.axisval[0] = dstv;
-		nev.data.io.input.analog.axisval[1] = dstv_r;
-		arcan_event_enqueue(ctx, &nev);
-	}
-}
-
 static void set_analogstate(struct axis_opts* dst,
 	int lower_bound, int upper_bound, int deadzone,
 	int kernel_size, enum ARCAN_ANALOGFILTER_KIND mode)
@@ -232,111 +223,80 @@ static void set_analogstate(struct axis_opts* dst,
 	dst->kernel_ofs = 0;
 }
 
+static struct axis_opts* find_axis(int devid, int axisid)
+{
+	struct arcan_devnode* node = lookup_devnode(devid);
+	axisid = abs(axisid);
+
+	if (!node)
+		return NULL;
+
+	switch(node->type){
+	case DEVNODE_SENSOR:
+		return &node->sensor.data;
+	break;
+
+	case DEVNODE_GAME:
+		if (axisid < node->game.axes)
+			return &node->game.adata[axisid];
+	break;
+
+	case DEVNODE_MOUSE:
+		if (axisid == 0)
+			return &node->cursor.flt[0];
+		else if (axisid == 1)
+			return &node->cursor.flt[1];
+	break;
+
+	default:
+	break;
+	}
+
+	return NULL;
+}
+
 arcan_errc arcan_event_analogstate(int devid, int axisid,
 	int* lower_bound, int* upper_bound, int* deadzone,
 	int* kernel_size, enum ARCAN_ANALOGFILTER_KIND* mode)
 {
-/* special case, whatever device is permitted to
- * emit cursor events at the moment */
-	if (devid == -1){
-		if (axisid == 0){
-			*lower_bound = iodev.mx.lower;
-			*upper_bound = iodev.mx.upper;
-			*deadzone    = iodev.mx.deadzone;
-			*kernel_size = iodev.mx.kernel_sz;
-			*mode        = iodev.mx.mode;
-		}
-		else if (axisid == 1){
-			*lower_bound = iodev.my.lower;
-			*upper_bound = iodev.my.upper;
-			*deadzone    = iodev.my.deadzone;
-			*kernel_size = iodev.my.kernel_sz;
-			*mode        = iodev.my.mode;
-		}
-		else
-			return ARCAN_ERRC_BAD_RESOURCE;
+	struct axis_opts* axis = find_axis(devid, axisid);
 
-		return true;
+	if (!axis){
+		struct arcan_devnode* node = lookup_devnode(devid);
+		return node ? ARCAN_ERRC_BAD_RESOURCE : ARCAN_ERRC_NO_SUCH_OBJECT;
 	}
 
-	if (devid < 0 || devid >= iodev.n_devs)
-		return ARCAN_ERRC_NO_SUCH_OBJECT;
-
-	struct arcan_devnode* node = &iodev.nodes[devid];
-	switch(node->type){
-	case DEVNODE_SENSOR:
-		*mode = node->sensor.data.mode;
-		*lower_bound = node->sensor.data.lower;
-		*upper_bound = node->sensor.data.upper;
-		*deadzone = node->sensor.data.deadzone;
-		*kernel_size = node->sensor.data.kernel_sz;
-	break;
-
-	case DEVNODE_GAME:
-/*		if (axisid >= iodev.joys[devid].axis) */
-			return ARCAN_ERRC_BAD_RESOURCE;
-	break;
-
-	case DEVNODE_CURSOR:
-		if (axisid != 0 && axisid != 1)
-			return ARCAN_ERRC_NO_SUCH_OBJECT;
-
-		struct axis_opts* src = &node->cursor.flt[axisid];
-		*mode = src->mode;
-		*lower_bound = src->lower;
-		*upper_bound = src->upper;
-		*deadzone = src->deadzone;
-		*kernel_size = src->kernel_sz;
-	break;
-
-	case DEVNODE_TOUCH:
-		return ARCAN_ERRC_BAD_RESOURCE;
-	break;
-	}
+	*lower_bound = axis->lower;
+	*upper_bound = axis->upper;
+	*deadzone = axis->deadzone;
+	*kernel_size = axis->kernel_sz;
+	*mode = axis->mode;
 
 	return ARCAN_OK;
 }
 
 void arcan_event_analogall(bool enable, bool mouse)
 {
-	if (mouse){
-		if (enable){
-			iodev.mx.mode = iodev.mx.oldmode;
-			iodev.my.mode = iodev.my.oldmode;
-			iodev.mx_r.mode = iodev.mx_r.oldmode;
-			iodev.my_r.mode = iodev.my_r.oldmode;
-		} else {
-			iodev.mx.oldmode = iodev.mx.mode;
-			iodev.mx.mode = ARCAN_ANALOGFILTER_NONE;
-			iodev.my.oldmode = iodev.mx.mode;
-			iodev.my.mode = ARCAN_ANALOGFILTER_NONE;
-			iodev.mx_r.oldmode = iodev.mx.mode;
-			iodev.mx_r.mode = ARCAN_ANALOGFILTER_NONE;
-			iodev.my_r.oldmode = iodev.mx.mode;
-			iodev.my_r.mode = ARCAN_ANALOGFILTER_NONE;
-		}
-	}
+	struct arcan_devnode* node = lookup_devnode(iodev.mouseid);
+	if (!node)
+		return;
+
 /*
-	for (int i = 0; i < iodev.n_joy; i++)
-		for (int j = 0; j < iodev.joys[i].axis; j++)
-			if (enable){
-				if (iodev.joys[i].adata[j].oldmode == ARCAN_ANALOGFILTER_NONE)
-					iodev.joys[i].adata[j].mode = ARCAN_ANALOGFILTER_AVG;
-				else
-					iodev.joys[i].adata[j].mode = iodev.joys[i].adata[j].oldmode;
-			}
-			else {
-				iodev.joys[i].adata[j].oldmode = iodev.joys[i].adata[j].mode;
-				iodev.joys[i].adata[j].mode = ARCAN_ANALOGFILTER_NONE;
-			} */
+ * sweep all devices and all axes (or just mouseid)
+ * if (enable) then set whatever the previous mode was,
+ * else store current mode and set NONE
+ */
 }
 
 void arcan_event_analogfilter(int devid,
 	int axisid, int lower_bound, int upper_bound, int deadzone,
 	int buffer_sz, enum ARCAN_ANALOGFILTER_KIND kind)
 {
-	struct axis_opts opt;
-	int kernel_lim = sizeof(opt.flt_kernel) / sizeof(opt.flt_kernel[0]);
+	struct axis_opts* axis = find_axis(devid, axisid);
+	if (!axis)
+		return;
+
+	int kernel_lim = sizeof(axis->flt_kernel) / sizeof(axis->flt_kernel[0]);
 
 	if (buffer_sz > kernel_lim)
 		buffer_sz = kernel_lim;
@@ -344,209 +304,490 @@ void arcan_event_analogfilter(int devid,
 	if (buffer_sz <= 0)
 		buffer_sz = 1;
 
-	if (devid == -1)
-		goto setmouse;
-
-	devid -= ARCAN_JOYIDBASE;
-	if (devid < 0 || devid >= iodev.n_devs)
-		return;
-
-	if (axisid < 0 || axisid >= iodev.nodes[devid].game.axes)
-		return;
-
-	struct axis_opts* daxis = &iodev.nodes[devid].game.adata[axisid];
-
-	if (0){
-setmouse:
-		if (axisid == 0){
-			set_analogstate(&iodev.mx, lower_bound,
-				upper_bound, deadzone, buffer_sz, kind);
-			set_analogstate(&iodev.mx_r, lower_bound,
-				upper_bound, deadzone, buffer_sz, kind);
-		}
-		else if (axisid == 1){
-			set_analogstate(&iodev.my, lower_bound,
-				upper_bound, deadzone, buffer_sz, kind);
-			set_analogstate(&iodev.my_r, lower_bound,
-				upper_bound, deadzone, buffer_sz, kind);
-		}
-		return;
-	}
-
-	set_analogstate(daxis, lower_bound,
-		upper_bound, deadzone, buffer_sz, kind);
-}
-
-#ifdef WITH_X11
-Display* x11_get_display();
-Window* x11_get_window();
-static Cursor null_cursor;
-
-void create_null_cursor()
-{
-	Pixmap cmask = XCreatePixmap(x11_get_display(), *x11_get_window(), 1, 1, 1);
-	XGCValues xgc = {
-		.function = GXclear
-	};
-	GC gc = XCreateGC(x11_get_display(), cmask, GCFunction, &xgc);
-	XFillRectangle(x11_get_display(), cmask, gc, 0, 0, 1, 1);
-	XColor ncol = {
-		.flags = 04
-	};
-	null_cursor = XCreatePixmapCursor(x11_get_display(),
-		cmask, cmask, &ncol, &ncol, 0, 0);
-	XFreePixmap(x11_get_display(), cmask);
-	XFreeGC(x11_get_display(), gc);
-}
-
-static void send_keyev(struct arcan_evctx* ctx, XKeyEvent key, bool state)
-{
-  char keybuf[4] = {0};
-  XLookupString(&key, keybuf, 3, NULL, NULL);
-
-	arcan_event ev = {
-		.category = EVENT_IO,
-		.kind = state ? EVENT_IO_KEYB_PRESS : EVENT_IO_KEYB_RELEASE,
-		.data.io.datatype = EVENT_IDATATYPE_TRANSLATED,
-		.data.io.devkind = EVENT_IDEVKIND_KEYBOARD,
-		.data.io.input.translated.active = state,
-		.data.io.input.translated.devid = key.keycode,
-		.data.io.input.translated.subid = keybuf[1],
-	};
-
-/*
- * cheat here at the moment, need to track keysyms to separate mask
- */
-	int mod = 0;
-	if (key.state & ShiftMask)
-		mod |= ARKMOD_LSHIFT;
-
-	if (key.state & ControlMask)
-		mod |= ARKMOD_LCTRL;
-
-	if (key.state & Mod1Mask)
-		mod |= ARKMOD_LALT;
-
-	if (key.state & Mod5Mask)
-		mod |= ARKMOD_RALT;
-
-	int ind = XLookupKeysym(&key, key.state);
-	ev.data.io.input.translated.keysym = symtbl_in[ind];
-	ev.data.io.input.translated.modifiers = mod;
-
-	arcan_event_enqueue(ctx, &ev);
-}
-
-static void send_buttonev(struct arcan_evctx* ctx, int button, bool state)
-{
-	arcan_event ev = {
-		.category = EVENT_IO,
-		.data.io.datatype = EVENT_IDATATYPE_DIGITAL,
-		.data.io.devkind = EVENT_IDEVKIND_MOUSE,
-		.data.io.input.digital.active = state,
-		.data.io.input.digital.devid = ARCAN_MOUSEIDBASE,
-		.data.io.input.digital.subid = button
-	};
-
-	arcan_event_enqueue(ctx, &ev);
+	set_analogstate(axis,lower_bound, upper_bound, deadzone, buffer_sz, kind);
 }
 
 void platform_event_process(struct arcan_evctx* ctx)
 {
-	static bool mouse_init;
-	static int last_mx;
-	static int last_my;
-	Display* x11_display = x11_get_display();
+	bool more = false;
 
-	while (x11_display && XPending(x11_display)){
-		XEvent xev;
-		XNextEvent(x11_display, &xev);
-		switch(xev.type){
-		case MotionNotify:
-			if (!mouse_init){
-				last_mx = xev.xmotion.x;
-				last_my = xev.xmotion.y;
-				mouse_init = true;
-			} else {
-				process_mousemotion(ctx, xev.xmotion.x,
-					xev.xmotion.x - last_mx, xev.xmotion.y,
-					xev.xmotion.y - last_my
-				);
-
-				last_mx = xev.xmotion.x;
-				last_my = xev.xmotion.y;
+	if (notify_fd > 0){
+		struct inotify_event ebuf[ 64 ];
+		ssize_t nr = read(notify_fd, ebuf, sizeof(ebuf) );
+		if (-1 != nr)
+			for (size_t i = 0; i < nr / sizeof(struct inotify_event); i++){
+				if (ebuf[i].mask & IN_DELETE){
+/* FIXME: sweep existing devices for matching name,
+ * disconnect handle (but remain last known data) */
+				}
+				if (ebuf[i].mask & IN_CREATE){
+/* FIXME: sweep existing devices for matching name,
+ * try adopt_device or got_device. Seems that name field isn't
+ * always valid? */
+				}
 			}
 
-		break;
-
-		case ButtonPress:
-			send_buttonev(ctx, xev.xbutton.button, true);
-		break;
-
-		case ButtonRelease:
-			send_buttonev(ctx, xev.xbutton.button, false);
-		break;
-
-		case KeyPress:
-			send_keyev(ctx, xev.xkey, true );
-		break;
-
-		case KeyRelease:
-			send_keyev(ctx, xev.xkey, false );
-		break;
-		}
+		more = nr == sizeof(ebuf);
 	}
+
+	if (poll(iodev.pollset, iodev.n_devs, 0) > 0){
+		for (size_t i = 0; i < iodev.n_devs; i++)
+			if (iodev.pollset[i].revents & POLLIN)
+				iodev.nodes[i].handler(ctx, &iodev.nodes[i]);
+	}
+
+	if (more)
+		platform_event_process(ctx);
 }
-#else
-void platform_event_process(struct arcan_evctx* ctx)
-{
 
-}
-
-#endif
-
-/* poll all open FDs */
-
+/*
+ * poll all open FDs
+ */
 void platform_key_repeat(struct arcan_evctx* ctx, unsigned int rate)
 {
-/* ioctl for keyboard device */
+/* FIXME: map repeat information,
+ * this should be deprecated and moved to a script basis */
 }
+
+#define bit_longn(x) ( (x) / (sizeof(long)*8) )
+#define bit_ofs(x) ( (x) % (sizeof(long)*8) )
+#define bit_isset(ary, bit) (( ary[bit_longn(bit)] >> bit_ofs(bit)) & 1)
+#define bit_count(x) ( ((x) - 1 ) / (sizeof(long) * 8 ) + 1 )
+
+static size_t button_count(int fd, size_t bitn, bool* got_mouse, bool* got_joy)
+{
+	size_t count = 0;
+
+	unsigned long bits[ bit_count(KEY_MAX) ];
+
+	if (-1 == ioctl(fd, EVIOCGBIT(bitn, KEY_MAX), bits))
+		return false;
+
+	for (size_t i = 0; i < KEY_MAX; i++){
+		if (bit_isset(bits, i)){
+			count++;
+		}
+	}
+
+	*got_mouse = (bit_isset(bits, BTN_MOUSE) || bit_isset(bits, BTN_LEFT) ||
+		bit_isset(bits, BTN_RIGHT) || bit_isset(bits, BTN_MIDDLE));
+
+	*got_joy = (bit_isset(bits, BTN_JOYSTICK) || bit_isset(bits, BTN_GAMEPAD) ||
+		bit_isset(bits, BTN_WHEEL));
+
+	return count;
+}
+
+static bool check_mouse_axis(int fd, size_t bitn)
+{
+	unsigned long bits[ bit_count(KEY_MAX) ];
+	if (-1 == ioctl(fd, EVIOCGBIT(bitn, KEY_MAX), bits))
+		return false;
+
+/* uncertain if other (REL_Z, REL_RX,
+ * REL_RY, REL_RZ, REL_DIAL, REL_MISC) should be used
+ * as a failing criteria */
+	return bit_isset(bits, REL_X) && bit_isset(bits, REL_Y);
+}
+
+static void map_axes(int fd, size_t bitn, struct arcan_devnode* node)
+{
+	unsigned long bits[ bit_count(ABS_MAX) ];
+
+	if (-1 == ioctl(fd, EVIOCGBIT(bitn, ABS_MAX), bits))
+		return;
+
+	assert(node->type == DEVNODE_GAME);
+	if (node->game.adata)
+		return;
+
+	node->game.axes = 0;
+
+	for (size_t i = 0; i < ABS_MAX; i++){
+		if (bit_isset(bits, i))
+			node->game.axes++;
+	}
+
+	if (node->game.axes == 0)
+		return;
+
+	node->game.adata = malloc(sizeof(struct axis_opts) * node->game.axes);
+	size_t ac = 0;
+
+	for (size_t i = 0; i < ABS_MAX; i++)
+		if (bit_isset(bits, i)){
+			struct input_absinfo ainf;
+			struct axis_opts* ax = &node->game.adata[ac++];
+
+			memset(ax, '\0', sizeof(struct axis_opts));
+			ax->mode = ax->oldmode = ARCAN_ANALOGFILTER_AVG;
+			ax->lower = -32768;
+			ax->upper = 32767;
+
+			if (-1 == ioctl(fd, EVIOCGABS(i), &ainf))
+				continue;
+
+			ax->upper = ainf.maximum;
+			ax->lower = ainf.minimum;
+			assert(ainf.maximum != ainf.minimum && ainf.maximum > ainf.minimum);
+		}
+}
+
+static void got_device(int fd)
+{
+	struct arcan_devnode node = {
+		.handle = fd
+	};
+
+	if (iodev.n_devs >= MAX_DEVICES)
+		goto cleanup;
+
+	if (-1 == ioctl(fd, EVIOCGNAME(sizeof(node.label)), node.label))
+		goto cleanup;
+
+	struct input_id nodeid;
+	if (-1 == ioctl(fd, EVIOCGID, &nodeid))
+		goto cleanup;
+
+/* didn't find much on how unique eviocguniq actually was,
+ * nor common lengths or what not so just mix them in a buffer,
+ * hash and let unsigned overflow modulo take us down to 16bit */
+	char buf[12] = {0};
+	char bbuf[sizeof(buf)] = {0};
+
+/* some test devices here answered to the ioctl and returned
+ * full empty UNIQs, do something to lower the likelihood of
+ * collisions */
+	if (-1 == ioctl(fd, EVIOCGUNIQ(sizeof(buf)), buf) ||
+		memcmp(buf, bbuf, sizeof(buf)) == 0){
+		size_t len = strlen(node.label);
+
+		len = len >= sizeof(buf) ? sizeof(buf)-1 : len;
+		memcpy(buf, node.label, len);
+
+	 	buf[0] ^= nodeid.vendor >> 8;
+		buf[1] ^= nodeid.vendor;
+		buf[2] ^= nodeid.product >> 8;
+		buf[3] ^= nodeid.product;
+		buf[4] ^= nodeid.version >> 8;
+		buf[5] ^= nodeid.version;
+	}
+
+	unsigned long hash = 5381;
+	for (size_t i = 0; i < sizeof(buf); i++)
+		hash = ((hash << 5) + hash) + buf[i];
+
+	node.devnum = hash;
+	if (node.devnum < MAX_DEVICES)
+		node.devnum += MAX_DEVICES;
+
+/* figure out what kind of a device this is from the exposed
+ * capabilities, heuristic nonsense rather than an interface
+ * exposing what the driver already knows, fantastic.
+ *
+ * keyboards typically have longer key masks (and we can
+ * check for a few common ones) no REL/ABS (don't know
+ * if those built-in trackball ones expose as two devices
+ * or not these days), but also a ton of .. keys
+ */
+	struct evhandler eh = lookup_dev_handler(node.label);
+
+	/* we assume this by default since it covers a whole lot
+	 * of buttons / axes / calibration */
+	node.type = DEVNODE_GAME;
+
+	size_t btn_count = 0;
+
+	bool mouse_ax = false;
+	bool mouse_btn = false;
+	bool joystick_btn = false;
+
+	if (!eh.handler){
+		size_t bpl = sizeof(long) * 8;
+		size_t nbits = ((EV_MAX)-1) / bpl + 1;
+		long prop[ nbits ];
+
+		if (-1 == ioctl(fd, EVIOCGBIT(0, EV_MAX), &prop))
+			goto cleanup;
+
+		for (size_t bit = 0; bit < EV_MAX; bit++)
+			if ( 1ul & (prop[bit/bpl]) >> (bit & (bpl - 1)) )
+			switch(bit){
+			case EV_KEY:
+				btn_count = button_count(fd, bit, &mouse_btn, &joystick_btn);
+			break;
+
+			case EV_REL:
+				mouse_ax = check_mouse_axis(fd, bit);
+			break;
+
+			case EV_ABS:
+				map_axes(fd, bit, &node);
+			break;
+
+/* useless for the time being */
+			case EV_MSC:
+			break;
+			case EV_SYN:
+			break;
+			case EV_LED:
+			break;
+			case EV_SND:
+			break;
+			case EV_REP:
+			break;
+			case EV_PWR:
+			break;
+			case EV_FF:
+			case EV_FF_STATUS:
+			break;
+			}
+
+		if (mouse_ax && mouse_btn){
+			node.type = DEVNODE_MOUSE;
+			node.cursor.flt[0].mode = ARCAN_ANALOGFILTER_PASS;
+			node.cursor.flt[1].mode = ARCAN_ANALOGFILTER_PASS;
+
+			if (!iodev.mouseid)
+				iodev.mouseid = node.devnum;
+		}
+/* not particularly pretty and rather arbitrary */
+		else if (!mouse_btn && !joystick_btn && btn_count > 84)
+			node.type = DEVNODE_KEYBOARD;
+	}
+	else
+		node.type = eh.type;
+
+	node.handler = defhandlers[node.type];
+	iodev.n_devs++;
+
+/* grow / allocate the first time */
+	if (iodev.n_devs >= iodev.sz_nodes){
+		size_t new_sz = iodev.sz_nodes + 8;
+		char* buf = realloc(iodev.nodes,
+			sizeof(struct arcan_devnode) * new_sz);
+
+		iodev.nodes = (struct arcan_devnode*) buf;
+
+		if (!buf)
+			goto cleanup;
+
+		buf = realloc(iodev.pollset,
+			sizeof(struct pollfd) * new_sz);
+
+		if (!buf)
+			goto cleanup;
+
+		iodev.pollset = (struct pollfd*) buf;
+
+		iodev.sz_nodes = new_sz;
+	}
+
+	off_t ofs = iodev.n_devs - 1;
+
+	memset(&iodev.nodes[ofs], '\0', sizeof(struct arcan_devnode));
+	memset(&iodev.pollset[ofs], '\0', sizeof(struct pollfd));
+
+	iodev.pollset[ofs].fd = fd;
+	iodev.pollset[ofs].events = POLLIN;
+
+	iodev.nodes[iodev.n_devs-1] = node;
+	return;
+
+cleanup:
+	iodev.n_devs--;
+	close(fd);
+}
+
+#undef bit_isset
+#undef bit_ofs
+#undef bit_longn
+#undef bit_count
 
 void arcan_event_rescan_idev(struct arcan_evctx* ctx)
 {
-/* should be configured to use inotify,
- * i.e. inotify_add_watch on the DEVPREFIX (IN_CREATE | IN_DELETE) */
-	char ibuf[sizeof(DEVPREFIX) + 4];
-	char name[256];
+/* option is to add more namespaces here and have a
+ * unique got_device for each of them to handle specific
+ * APIs eg. old- style js0 (are they relevant anymore?) */
+	char* namespaces[] = {
+		"event",
+		NULL
+	};
 
-	int i = 0;
+/*
+ * FIXME: doesn't implement repeated calls to rescan yet
+ */
 
-/* aggressively open/lock devices */
-	do{
-		sprintf(ibuf, "%s%i", DEVPREFIX, i);
+	char** cns = namespaces;
 
-		int fd = open(ibuf, O_RDONLY);
-		if (-1 == fd){
-			if (errno == ENOENT)
-				break;
-			continue;
+	while(*cns){
+		char ibuf [strlen(*cns) + strlen(NOTIFY_SCAN_DIR) + sizeof("/*")];
+		glob_t res = {0};
+		snprintf(ibuf, sizeof(ibuf) / sizeof(ibuf[0]),
+			"%s/%s*", NOTIFY_SCAN_DIR, *cns);
+
+		if (glob(ibuf, 0, NULL, &res) == 0){
+			char** beg = res.gl_pathv;
+
+			while(*beg){
+				int fd = open(*beg, O_NONBLOCK | O_RDONLY | O_CLOEXEC);
+				if (-1 != fd)
+					got_device(fd);
+				beg++;
+			}
+
+			cns++;
 		}
-		ioctl(fd, EVIOCGNAME(sizeof(name)), name);
+	}
 
-		printf("found device( %s )\n", name);
-		ioctl(fd, EVIOCGPROP(sizeof(name)), name);
-		printf("prop: %s\n", name);
+}
 
-		close(fd);
-	} while (++i);
+static void defhandler_kbd(struct arcan_evctx* out,
+	struct arcan_devnode* node)
+{
+	struct input_event inev[64];
+	ssize_t evs = read(node->handle, &inev, sizeof(inev));
+	if (evs < 0 || evs < sizeof(struct input_event))
+		return;
 
-/* for joyst:
- * 0 devs? drop_joytbl() then exit
- * n devs? allocate new array of arcan_stick, set it to 0
- * open each device, store label and hash
- * copy all existing into the new array
- * if device doesn't exist, try to open and if success add
- * drop old table, set iodev.n_joy to scanres and iodev.joys to tbl */
+	arcan_event newev = {
+		.category = EVENT_IO,
+		.data.io = {
+			.datatype = EVENT_IDATATYPE_TRANSLATED,
+			.devkind = EVENT_IDEVKIND_KEYBOARD,
+			.input.translated = {
+				.devid = node->devnum
+			}
+		}
+	};
+
+	for (size_t i = 0; i < evs / sizeof(struct input_event); i++){
+		switch(inev[i].type){
+		case EV_KEY:
+		newev.data.io.input.translated.scancode = inev[i].code;
+		newev.data.io.input.translated.keysym = inev[i].code;
+		newev.kind = inev[i].value ? EVENT_IO_KEYB_PRESS : EVENT_IO_KEYB_RELEASE;
+
+/* FIXME: try and fill out more fields (subid, ...) */
+		arcan_event_enqueue(out, &newev);
+		break;
+
+		default:
+		break;
+		}
+
+	}
+}
+
+static void defhandler_game(struct arcan_evctx* out,
+	struct arcan_devnode* node)
+{
+	struct input_event inev[64];
+	ssize_t evs = read(node->handle, &inev, sizeof(inev));
+	if (evs < 0 || evs < sizeof(struct input_event))
+		return;
+
+/* FIXME: missing mapping to game device,
+ * should be very similar to mouse code below */
+}
+
+static inline short code_to_mouse(int code)
+{
+	return (code < BTN_MOUSE || code >= BTN_JOYSTICK) ?
+		-1 : (code - BTN_MOUSE + 1);
+}
+
+static void defhandler_mouse(struct arcan_evctx* ctx,
+	struct arcan_devnode* node)
+{
+	struct input_event inev[64];
+
+	ssize_t evs = read(node->handle, &inev, sizeof(inev));
+	if (evs < 0 || evs < sizeof(struct input_event))
+		return;
+
+	arcan_event newev = {
+		.category = EVENT_IO,
+		.label = "mouse",
+		.data.io = {
+			.devkind = EVENT_IDEVKIND_MOUSE,
+		}
+	};
+
+	short samplev;
+
+	for (size_t i = 0; i < evs / sizeof(struct input_event); i++){
+		switch(inev[i].type){
+		case EV_KEY:
+			samplev = code_to_mouse(inev[i].code);
+			if (samplev < 0)
+				continue;
+
+			newev.kind = EVENT_IO_BUTTON_PRESS;
+			newev.data.io.datatype = EVENT_IDATATYPE_DIGITAL;
+			newev.data.io.input.digital.active = inev[i].value;
+			newev.data.io.input.digital.subid = samplev;
+			newev.data.io.input.digital.devid = node->devnum;
+
+			arcan_event_enqueue(ctx, &newev);
+		break;
+		case EV_REL:
+			switch (inev[i].code){
+			case REL_X:
+				if (process_axis(ctx, &node->cursor.flt[0], inev[i].value, &samplev)){
+					samplev = inev[i].value;
+
+					node->cursor.mx = ((int)node->cursor.mx + samplev < 0) ?
+						0 : node->cursor.mx + samplev;
+					node->cursor.mx = node->cursor.mx > arcan_video_display.width ?
+						arcan_video_display.width : node->cursor.mx;
+
+					newev.kind = EVENT_IO_AXIS_MOVE;
+					newev.data.io.datatype = EVENT_IDATATYPE_ANALOG;
+					newev.data.io.input.analog.gotrel = true;
+					newev.data.io.input.analog.subid = 0;
+					newev.data.io.input.analog.devid = node->devnum;
+					newev.data.io.input.analog.axisval[0] = node->cursor.mx;
+					newev.data.io.input.analog.axisval[1] = samplev;
+					newev.data.io.input.analog.nvalues = 2;
+
+					arcan_event_enqueue(ctx, &newev);
+				}
+			break;
+			case REL_Y:
+				if (process_axis(ctx, &node->cursor.flt[1], inev[i].value, &samplev)){
+					node->cursor.my = ((int)node->cursor.my + samplev < 0) ?
+						0 : node->cursor.my + samplev;
+					node->cursor.my = node->cursor.my > arcan_video_display.width ?
+						arcan_video_display.width : node->cursor.my;
+
+					newev.kind = EVENT_IO_AXIS_MOVE;
+					newev.data.io.datatype = EVENT_IDATATYPE_ANALOG;
+					newev.data.io.input.analog.gotrel = true;
+					newev.data.io.input.analog.subid = 1;
+					newev.data.io.input.analog.devid = node->devnum;
+					newev.data.io.input.analog.axisval[0] = node->cursor.my;
+					newev.data.io.input.analog.axisval[1] = samplev;
+					newev.data.io.input.analog.nvalues = 2;
+
+					arcan_event_enqueue(ctx, &newev);
+				}
+			break;
+			default:
+			break;
+			}
+		break;
+		case EV_ABS:
+		break;
+		}
+	}
+}
+
+static void defhandler_null(struct arcan_evctx* out,
+	struct arcan_devnode* node)
+{
+	char nbuf[256];
+	read(node->handle, nbuf, sizeof(nbuf));
 }
 
 const char* arcan_event_devlabel(int devid)
@@ -563,54 +804,44 @@ const char* arcan_event_devlabel(int devid)
 
 void platform_event_deinit(struct arcan_evctx* ctx)
 {
-	/* keep joystick table around, just close handles */
+	/*
+	 * kill descriptors and pollset
+	 * keep source paths in order to rebuild (adopt style),
+	 * as the primary purpose for this call is to free- up
+	 * locks before switching to external control
+	 */
 }
 
 void platform_device_lock(int devind, bool state)
 {
-#ifdef WITH_X11
-	if (devind == ARCAN_MOUSEIDBASE){
-		if (state){
-			XGrabPointer(x11_get_display(), *x11_get_window(),
-				true, PointerMotionMask, GrabModeAsync, GrabModeAsync,
-				*x11_get_window(), null_cursor, CurrentTime
-			);
-		}
-		else
-			XUngrabPointer(x11_get_display(), CurrentTime);
-	}
-#endif
-	/* doesn't make sense outside some window systems */
+	struct arcan_devnode* node = lookup_devnode(devind);
+	if (!node || !node->handle)
+		return;
+
+	ioctl(node->handle, EVIOCGRAB, state? 1 : 0);
+
+/*
+ * doesn't make sense outside some window systems,
+ * might be useful to propagate further to device locking
+ * on systems that are less forgiving.
+ */
 }
 
 void platform_event_init(arcan_evctx* ctx)
 {
-#ifdef WITH_X11
-	gen_symtbl();
-	create_null_cursor();
-#endif
+	notify_fd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
 
-	arcan_event_analogfilter(-1, 0,
-		-32768, 32767, 0, 1, ARCAN_ANALOGFILTER_AVG);
-	arcan_event_analogfilter(-1, 1,
-		-32768, 32767, 0, 1, ARCAN_ANALOGFILTER_AVG);
+	if (-1 == notify_fd || inotify_add_watch(
+		notify_fd, NOTIFY_SCAN_DIR, IN_CREATE | IN_DELETE) == -1){
+		arcan_warning("inotify initialization failure (%s),"
+			"	device discovery disabled.", strerror(errno));
 
-	/*
-	 * for keyboard -- use stdin but with a bunch of modes set,
-	 * install signal handlers for ABURT, BUS, FPE, ILL, QUIT, etc.
-	 * have an atexit handler to definitely reset keyboard states
-	 *
-	 * toggle unicode parsing of input keyboards,
-	 * might possible patch _event to support longer (utf8 limit)
-	 * resulting characters for real non-latin input
-	 *
-	 * set default repeat rate
-	 */
+		if (notify_fd > 0){
+			close(notify_fd);
+			notify_fd = 0;
+		}
+	}
 
 	arcan_event_rescan_idev(ctx);
-
-	/* reset analog filter for mouse unless first init */
-	/* flush pending device events? */
-	/* rescan idev */
 }
 

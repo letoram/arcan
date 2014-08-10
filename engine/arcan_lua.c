@@ -526,12 +526,12 @@ static int rawresource(lua_State* ctx)
 	if (!path){
 		char* fname = arcan_expand_resource(luaL_checkstring(ctx, 1), RESOURCE_APPL);
 		if (fname){
-			lua_ctx_store.in_file = open(fname, O_CREAT | O_RDWR, O_CLOEXEC | flags);
+			lua_ctx_store.in_file = open(fname, O_CREAT | O_RDWR | O_CLOEXEC, flags);
 			free(fname);
 		}
 	}
 	else
-		lua_ctx_store.in_file = open(path, O_NONBLOCK | O_RDWR, O_CLOEXEC | flags);
+		lua_ctx_store.in_file = open(path, O_NONBLOCK | O_RDWR | O_CLOEXEC, flags);
 
 	lua_pushboolean(ctx, lua_ctx_store.in_file > 0);
 	free(path);
@@ -6325,7 +6325,7 @@ static int inputanalogquery(lua_State* ctx)
 {
 	LUA_TRACE("inputanalog_query");
 
-	int devid = ARCAN_JOYIDBASE, resind = 1;
+	int devid = 0, resind = 1;
 	int devnum = luaL_optnumber(ctx, 1, -1);
 	int axnum = luaL_optnumber(ctx, 2, 0);
 	int rescan = luaL_optnumber(ctx, 3, 0);
