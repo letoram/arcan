@@ -41,6 +41,8 @@
 
 #include <sys/inotify.h>
 
+#include "keycode_xlate.h"
+
 /*
  * prever scanning device nodes as sysfs/procfs
  * and friends should not be needed to be mounted/exposed.
@@ -664,8 +666,9 @@ static void defhandler_kbd(struct arcan_evctx* out,
 	for (size_t i = 0; i < evs / sizeof(struct input_event); i++){
 		switch(inev[i].type){
 		case EV_KEY:
+		printf("%d, %d\n", inev[i].code, lookup_keycode(inev[i].code));
 		newev.data.io.input.translated.scancode = inev[i].code;
-		newev.data.io.input.translated.keysym = inev[i].code;
+		newev.data.io.input.translated.keysym = lookup_keycode(inev[i].code);
 		newev.kind = inev[i].value ? EVENT_IO_KEYB_PRESS : EVENT_IO_KEYB_RELEASE;
 
 /* FIXME: try and fill out more fields (subid, ...) */
@@ -830,6 +833,7 @@ void platform_device_lock(int devind, bool state)
 void platform_event_init(arcan_evctx* ctx)
 {
 	notify_fd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
+	init_keyblut();
 
 	if (-1 == notify_fd || inotify_add_watch(
 		notify_fd, NOTIFY_SCAN_DIR, IN_CREATE | IN_DELETE) == -1){
