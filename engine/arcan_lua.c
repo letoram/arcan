@@ -526,12 +526,12 @@ static int rawresource(lua_State* ctx)
 	if (!path){
 		char* fname = arcan_expand_resource(luaL_checkstring(ctx, 1), RESOURCE_APPL);
 		if (fname){
-			lua_ctx_store.in_file = open(fname, O_CREAT | O_RDWR | O_CLOEXEC, flags);
+			lua_ctx_store.in_file = open(fname, O_CREAT | O_CLOEXEC, O_RDWR | flags);
 			free(fname);
 		}
 	}
 	else
-		lua_ctx_store.in_file = open(path, O_NONBLOCK | O_RDWR | O_CLOEXEC, flags);
+		lua_ctx_store.in_file = open(path, O_NONBLOCK | O_CLOEXEC, O_RDWR | flags);
 
 	lua_pushboolean(ctx, lua_ctx_store.in_file > 0);
 	free(path);
@@ -5414,7 +5414,7 @@ static int spawn_recfsrv(lua_State* ctx,
 
 /* it is currently allowed to "record over" an existing file without forcing
  * the caller to use zap_resource first, this should be REFACTORED. */
-		fd = open(fn, O_CREAT | O_RDWR, S_IRWXU);
+		fd = open(fn, O_CREAT, O_RDWR | S_IRWXU);
 		if (-1 == fd){
 			arcan_warning("couldn't create output (%s), "
 				"recorded data will be lost\n", fn);
