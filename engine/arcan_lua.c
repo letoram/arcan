@@ -2683,7 +2683,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				tblstr(ctx, "message", mcbuf, top);
 			break;
 			case EVENT_EXTERNAL_FRAMESTATUS:
-				tblstr(ctx, "kind", "frame", top);
+				tblstr(ctx, "kind", "framestatus", top);
 				tblnum(ctx, "frame",
 					ev->data.external.framestatus.framenumber, top);
 			break;
