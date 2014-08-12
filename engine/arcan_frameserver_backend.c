@@ -391,12 +391,8 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe(
 	else if (cmd == FFUNC_TICK){
 /* done differently since we don't care if the frameserver wants
  * to resize, that's its problem. */
-		if (!arcan_frameserver_control_chld(src)){
- 			vfunc_state cstate = *arcan_video_feedstate(src->vid);
-			arcan_video_alterfeed(src->vid,
-				arcan_frameserver_dummyframe, cstate);
-  		return FFUNC_RV_NOFRAME;
-    }
+		if (!arcan_frameserver_control_chld(src))
+   		return FFUNC_RV_NOFRAME;
 	}
 
 /*
