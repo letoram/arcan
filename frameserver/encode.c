@@ -401,7 +401,8 @@ void arcan_frameserver_stepframe()
 			first_audio = true;
 			recctx.starttime = arcan_timemillis();
 		}
-			goto end;
+
+		goto end;
 	}
 
 /* interleave audio / video */
@@ -444,33 +445,32 @@ static void encoder_atexit()
 
 		if (recctx.vcontext)
 			encode_video(true);
-
-/* write header is done in the encoder_presets fcontext setup,
- * being a bit sloppy with the cleanup and leaving it to the process exit */
-		if (recctx.fcontext){
-			av_write_trailer(recctx.fcontext);
-
-			if (recctx.astream){
-				LOG("(encode) closing audio stream\n");
-				avcodec_close(recctx.astream->codec);
-			}
-
-			if (recctx.vstream){
-				LOG("(encode) closing video stream\n");
-				avcodec_close(recctx.vstream->codec);
-			}
-
-			if (!(recctx.fcontext->oformat->flags & AVFMT_NOFILE)){
-				LOG("(encode) avio closing file\n");
-				avio_close(recctx.fcontext->pb);
-			}
-
-			avformat_free_context(recctx.fcontext);
-		}
-
-		LOG("(encode) atexit cleanup finished\n");
-		fflush(stderr);
 	}
+
+	av_write_trailer(recctx.fcontext);
+
+	if (recctx.astream){
+		LOG("(encode) closing audio stream\n");
+		avcodec_close(recctx.astream->codec);
+	}
+
+	if (recctx.vstream){
+		LOG("(encode) closing video stream\n");
+		avcodec_close(recctx.vstream->codec);
+	}
+
+/*
+ * good form says that we should do this, have received
+ * some crashes here though.
+ 	 if (!(recctx.fcontext->oformat->flags & AVFMT_NOFILE)){
+		avio_close(recctx.fcontext->pb);
+	}
+ */
+
+	avformat_free_context(recctx.fcontext);
+
+	LOG("(encode) atexit cleanup finished\n");
+	fflush(stderr);
 }
 
 static void log_callback(void* ptr, int level, const char* fmt, va_list vl)
@@ -884,7 +884,6 @@ void arcan_frameserver_encode_run(const char* resource,
 	bool firstframe = false;
 
 	recctx.lastfd = -1;
-	atexit(encoder_atexit);
 
 	while (true){
 /* fail here means there's something wrong with
@@ -922,7 +921,6 @@ void arcan_frameserver_encode_run(const char* resource,
 /* the atexit handler flushes stream buffers and finalizes output headers */
 			case TARGET_COMMAND_EXIT:
 				LOG("(encode) parent requested termination, quitting.\n");
-				exit(EXIT_SUCCESS);
 			break;
 
 			case TARGET_COMMAND_AUDDELAY:
@@ -946,7 +944,7 @@ void arcan_frameserver_encode_run(const char* resource,
 			break;
 			}
 		}
-
-		arcan_timesleep(1);
 	}
+
+	atexit(encoder_atexit);
 }
