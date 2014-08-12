@@ -150,7 +150,7 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 		draw_text(term.graphing, (const char*) u8_ch, base_x, base_y,
 			RGBA(fgc[0], fgc[1], fgc[2], 0xff)
 		);
-		return;
+		return 0;
 	}
 
 /* interesting toggle, using typeface embedded images vs.
@@ -184,7 +184,6 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 
 	free(surf);
 
-#endif
 	return 0;
 }
 
@@ -367,7 +366,7 @@ void arcan_frameserver_terminal_run(const char* resource, const char* keyfile)
 	if (arg_lookup(args, "font", 0, &val)){
 		font = TTF_OpenFont(val, term.cell_h);
 		if (!font)
-			LOG("font %s could not be opened, forcing built-in fallback\n");
+			LOG("font %s could not be opened, forcing built-in fallback\n", val);
 	}
 	else
 		LOG("no font argument specified, forcing built-in fallback.\n");
@@ -375,7 +374,7 @@ void arcan_frameserver_terminal_run(const char* resource, const char* keyfile)
 	if (font && arg_lookup(args, "font_hint", 0, &val)){
 		if (strcmp(val, "light") == 0)
 			TTF_SetFontHinting(font, TTF_HINTING_LIGHT);
-		else if (strcmp(val, "mono") == 0){
+		else if (strcmp(val, "mono") == 0)
 			TTF_SetFontHinting(font, TTF_HINTING_MONO);
 		else if (strcmp(val, "none") == 0)
 			TTF_SetFontHinting(font, TTF_HINTING_NONE);
