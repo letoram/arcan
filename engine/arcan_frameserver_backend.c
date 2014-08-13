@@ -619,8 +619,6 @@ arcan_errc arcan_frameserver_audioframe_direct(arcan_aobj* aobj,
 void arcan_frameserver_tick_control(arcan_frameserver* src)
 {
 	if (!arcan_frameserver_control_chld(src) || !src || !src->shm.ptr){
-		vfunc_state cstate = *arcan_video_feedstate(src->vid);
-		arcan_video_alterfeed(src->vid, arcan_frameserver_emptyframe, cstate);
 		return;
 	}
 
