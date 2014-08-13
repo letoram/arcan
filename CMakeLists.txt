@@ -35,6 +35,8 @@ set(SHARED_PERMISSIONS_DIR OWNER_WRITE OWNER_READ GROUP_WRITE
 
 if (WIN32)
 	set(VPLATFORM_STR "[ sdl ]")
+elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+	set(VPLATFORM_STR "[ sdl ]")
 else()
 	set(VPLATFORM_STR "[ x11 | x11-headless | sdl | egl | egl-gles2 ]")
 endif()
