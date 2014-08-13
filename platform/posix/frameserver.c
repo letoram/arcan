@@ -161,6 +161,19 @@ void arcan_frameserver_killchild(arcan_frameserver* src)
 	pthread_t pthr;
 	*pidptr = src->child;
 
+	static bool env_checked;
+	static bool no_nanny;
+
+	if (!env_checked)
+	{
+		env_checked = true;
+		if (getenv("ARCAN_DEBUG_NONANNY"))
+			no_nanny = true;
+	}
+
+	if (no_nanny)
+		return;
+
 	if (0 != pthread_create(&pthr, NULL, nanny_thread, (void*) pidptr)){
 		kill(src->child, SIGKILL);
 	}
