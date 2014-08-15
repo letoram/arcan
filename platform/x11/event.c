@@ -418,6 +418,7 @@ void platform_event_deinit(struct arcan_evctx* ctx)
 
 void platform_device_lock(int devind, bool state)
 {
+#ifndef WITH_HEADLESS_MAIN
 	if (devind == 0){
 		if (state){
 			XGrabPointer(x11_get_display(), *x11_get_window(),
@@ -428,6 +429,7 @@ void platform_device_lock(int devind, bool state)
 		else
 			XUngrabPointer(x11_get_display(), CurrentTime);
 	}
+#endif
 }
 
 void platform_event_init(arcan_evctx* ctx)

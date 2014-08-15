@@ -72,12 +72,7 @@ bool PLATFORM_SYMBOL(_video_init)(uint16_t w, uint16_t h,
 	GLint si = 0;
 	CGLSetParameter(context, kCGLCPSwapInterval, &si);
 
-#ifndef HEADLESS_NOARCAN
-	arcan_video_display.pbo_support = true;
-	arcan_video_display.width = w;
-	arcan_video_display.height = h;
-	arcan_video_display.bpp = bpp;
-#endif
+	bool gotpbo = false;
 
 	int err;
 	if ( (err = glewInit()) != GLEW_OK){
@@ -94,9 +89,17 @@ bool PLATFORM_SYMBOL(_video_init)(uint16_t w, uint16_t h,
 			"this renderpath is to be considered unsupported.");
 	}
 	else
-		arcan_video_display.pbo_support = true;
+		gotpbo = true;
+
+#ifndef HEADLESS_NOARCAN
+	arcan_video_display.pbo_support = true;
+	arcan_video_display.width = w;
+	arcan_video_display.height = h;
+	arcan_video_display.bpp = bpp;
+	arcan_video_display.pbo_support = true;
 
 	glViewport(0, 0, w, h);
+#endif
 
 	return true;
 }

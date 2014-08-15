@@ -47,6 +47,7 @@
 
 #ifdef FRAMESERVER_LIBRETRO_3D
 
+#include "../platform/video_platform.h"
 #include HEADLESS_PLATFORM
 
 #ifdef FRAMESERVER_LIBRETRO_3D_RETEXTURE
@@ -878,6 +879,12 @@ static bool libretro_setenv(unsigned cmd, void* data){
 		else
 			LOG("unsupported hw context requested.\n");
 	}
+	break;
+#else
+	case RETRO_ENVIRONMENT_SET_HW_RENDER | RETRO_ENVIRONMENT_EXPERIMENTAL:
+	case RETRO_ENVIRONMENT_SET_HW_RENDER:
+		LOG("trying to load a GL/3D enabled core, but "
+			"frameserver was built without 3D support.\n");
 	break;
 #endif
 

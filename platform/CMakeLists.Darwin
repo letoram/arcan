@@ -91,25 +91,15 @@ set (
 	frameserver/frameserver.c
 )
 if (ENABLE_LIBRETRO AND ENABLE_LIBRETRO3D)
-		LIST(APPEND FSRV_LIBRETRO_SOURCES
-			${PLATFORM_PATH}/../darwin/SDLmain_fsrv.m)
+		LIST(APPEND FSRV_LIBRETRO_DEFINITIONS
+			${LWA_DEFINITIONS})
+
 		LIST(APPEND FSRV_LIBRETRO_LIBRARIES
 			${IOKIT}
 			${COREFOUNDATION}
 		)
 endif()
 include(${PLATFORM_PATH}/../CMakeLists.fsrv)
-
-if (ENABLE_LIBRETRO AND ENABLE_LIBRETRO3D)
-	if (SPLIT_FRAMESERVER)
-		set_property(TARGET arcan_frameserver_libretro APPEND PROPERTY
-			COMPILE_DEFINITIONS ENABLE_FSRV_LIBRETRO main=SDL_main)
-	else()
-		set_property(TARGET arcan_frameserver APPEND PROPERTY COMPILE_DEFINITIONS
-			${definitions} main=SDL_main)
-	endif()
-endif()
-
 
 if (ENABLE_LWA)
 	message("LWA support enabled, video backend (Darwin, hardcoded)")
