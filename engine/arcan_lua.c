@@ -524,14 +524,14 @@ static int rawresource(lua_State* ctx)
 	int flags = S_IRUSR | S_IWUSR;
 
 	if (!path){
-		char* fname = arcan_expand_resource(luaL_checkstring(ctx, 1), RESOURCE_APPL);
+		char* fname = arcan_expand_resource(luaL_checkstring(ctx, 1),RESOURCE_APPL);
 		if (fname){
-			lua_ctx_store.in_file = open(fname, O_CREAT | O_CLOEXEC, O_RDWR | flags);
+			lua_ctx_store.in_file = open(fname, O_CREAT | O_CLOEXEC | O_RDWR, flags);
 			free(fname);
 		}
 	}
 	else
-		lua_ctx_store.in_file = open(path, O_NONBLOCK | O_CLOEXEC, O_RDWR | flags);
+		lua_ctx_store.in_file = open(path, O_NONBLOCK | O_CLOEXEC | O_RDWR, flags);
 
 	lua_pushboolean(ctx, lua_ctx_store.in_file > 0);
 	free(path);
@@ -4686,7 +4686,7 @@ static int targetrestore(lua_State* ctx)
 	char* fname = arcan_find_resource(snapkey, RESOURCE_APPL_STATE);
 	int fd = -1;
 	if (fname)
-		fd = open(fname, O_RDONLY, S_IRWXU);
+		fd = open(fname, O_RDONLY);
 	free(fname);
 
 	if (-1 == fd){
@@ -5414,7 +5414,7 @@ static int spawn_recfsrv(lua_State* ctx,
 
 /* it is currently allowed to "record over" an existing file without forcing
  * the caller to use zap_resource first, this should be REFACTORED. */
-		fd = open(fn, O_CREAT, O_RDWR | S_IRWXU);
+		fd = open(fn, O_CREAT | O_RDWR, S_IRWXU);
 		if (-1 == fd){
 			arcan_warning("couldn't create output (%s), "
 				"recorded data will be lost\n", fn);
@@ -5468,62 +5468,43 @@ static int procset(lua_State* ctx)
 	int scale = luaL_checkint(ctx, 4);
 	int pollrate = luaL_checkint(ctx, 5);
 
+	if (nvids <= 0)
+		arcan_fatal("define_calctarget(), no source VIDs specified, second "
+			" argument should be an indexed table with >= 1 valid VIDs.");
+
 	if (detach != RENDERTARGET_DETACH && detach != RENDERTARGET_NODETACH){
-		arcan_warning("procset(%d) invalid arg 3, expected"
+		arcan_warning("define_calctarget(%d) invalid arg 3, expected"
 			"	RENDERTARGET_DETACH or RENDERTARGET_NODETACH\n", detach);
 		goto cleanup;
 	}
 
 	if (scale != RENDERTARGET_SCALE && scale != RENDERTARGET_NOSCALE){
-		arcan_warning("procset(%d) invalid arg 4, "
+		arcan_warning("define_calctarget(%d) invalid arg 4, "
 			"expected RENDERTARGET_SCALE or RENDERTARGET_NOSCALE\n", scale);
 		goto cleanup;
 	}
 
 	if (pollrate == 0){
-		arcan_warning("procset(%d) invalid arg 5, expected "
+		arcan_warning("define_calctarget(%d) invalid arg 5, expected "
 			"n < 0 (every n frame) or n > 0 (every n tick)\n", pollrate);
 		goto cleanup;
 	}
 
-	if (nvids > 0){
-		bool rtsetup = false;
+	if (ARCAN_OK != (arcan_video_setuprendertarget(did, pollrate,
+					scale == RENDERTARGET_SCALE, RENDERTARGET_COLOR)))
+		arcan_fatal("define_calctarget() couldn't setup rendertarget");
 
-		for (size_t i = 0; i < nvids; i++){
-			lua_rawgeti(ctx, 2, i+1);
-			arcan_vobj_id setvid = luavid_tovid( lua_tointeger(ctx, -1) );
-			lua_pop(ctx, 1);
+	for (size_t i = 0; i < nvids; i++){
+		lua_rawgeti(ctx, 2, i+1);
+		arcan_vobj_id setvid = luavid_tovid( lua_tointeger(ctx, -1) );
+		lua_pop(ctx, 1);
 
-			if (setvid == ARCAN_VIDEO_WORLDID){
-				if (nvids != 1)
-					arcan_fatal("procset(), with WORLDID in recordset, "
-						"no other entries are allowed.\n");
+		if (setvid == ARCAN_VIDEO_WORLDID)
+				arcan_fatal("define_calctarget(), WORLDID is not a valid "
+					"data source, use null_surface with image_sharestorage.\n");
 
-				if (arcan_video_attachtorendertarget(did, setvid, false) != ARCAN_OK){
-					arcan_warning("procset() -- global capture failed, "
-						"setvid dimensions must match VRESW, VRESH\n");
-					return 0;
-				}
-
-/* since the worldid attach is a special case,
- * some rendertarget bound options need to be set manually */
-				arcan_video_alterreadback(ARCAN_VIDEO_WORLDID, pollrate);
-				break;
-			}
-			else {
-				if (!rtsetup)
-					rtsetup = (arcan_video_setuprendertarget(did, pollrate,
-						scale == RENDERTARGET_SCALE, RENDERTARGET_COLOR), true);
-
-				arcan_video_attachtorendertarget(did, setvid,
-					detach == RENDERTARGET_DETACH);
-			}
-		}
-	}
-	else{
-		arcan_warning("recordset(%d), empty source vid set -- "
-			"global capture unimplemented.\n");
-		goto cleanup;
+		arcan_video_attachtorendertarget(
+			did, setvid, detach == RENDERTARGET_DETACH);
 	}
 
 	struct proctarget_src* cbsrc = arcan_alloc_mem(sizeof(struct proctarget_src),
@@ -5551,7 +5532,16 @@ static int recordset(lua_State* ctx)
 {
 	LUA_TRACE("define_recordtarget");
 
-	arcan_vobj_id did = luaL_checkvid(ctx, 1, NULL);
+	arcan_vobject* dvobj;
+	arcan_vobj_id did = luaL_checkvid(ctx, 1, &dvobj);
+
+	if (dvobj->flags.clone)
+		arcan_fatal("define_recordtarget(), recordtarget "
+			"recipient cannot be a clone.");
+
+	if (dvobj->vstore->txmapped != TXSTATE_TEX2D)
+		arcan_fatal("define_recordtarget(), recordtarget "
+			"recipient must have a texture- based store.");
 
 	const char* resf = NULL;
 	char* argl = NULL;
@@ -5569,6 +5559,10 @@ static int recordset(lua_State* ctx)
 	int rc = 0;
 	int nvids = lua_rawlen(ctx, 4);
 
+	if (nvids <= 0)
+		arcan_fatal("define_recordtarget(), sources must "
+			"consist of a table with >= 1 valid vids.");
+
 	int detach = luaL_checkint(ctx, 6);
 	int scale = luaL_checkint(ctx, 7);
 	int pollrate = luaL_checkint(ctx, 8);
@@ -5578,6 +5572,7 @@ static int recordset(lua_State* ctx)
 
 	if (lua_type(ctx, 5) == LUA_TTABLE)
 		naids = lua_rawlen(ctx, 5);
+
 	else if (lua_type(ctx, 5) == LUA_TNUMBER){
 		naids = 1;
 		arcan_vobj_id did = luaL_checkvid(ctx, 5, NULL);
@@ -5609,45 +5604,24 @@ static int recordset(lua_State* ctx)
 		goto cleanup;
 	}
 
-	if (nvids > 0){
-		bool rtsetup = false;
-
-		for (size_t i = 0; i < nvids; i++){
-			lua_rawgeti(ctx, 4, i+1);
-			arcan_vobj_id setvid = luavid_tovid( lua_tointeger(ctx, -1) );
-			lua_pop(ctx, 1);
-
-			if (setvid == ARCAN_VIDEO_WORLDID){
-				if (nvids != 1)
-					arcan_fatal("recordset(), with WORLDID in recordset, "
-						"no other entries are allowed.\n");
-
-				if (arcan_video_attachtorendertarget(did, setvid, false) != ARCAN_OK){
-					arcan_warning("recordset() -- global capture failed, "
-						"setvid dimensions must match VRESW, VRESH\n");
-					return 0;
-				}
-
-/* since the worldid attach is a special case,
- * some rendertarget bound options need to be set manually */
-				arcan_video_alterreadback(ARCAN_VIDEO_WORLDID, pollrate);
-				break;
-			}
-			else {
-				if (!rtsetup)
-					rtsetup = (arcan_video_setuprendertarget(did, pollrate,
-						scale == RENDERTARGET_SCALE, RENDERTARGET_COLOR), true);
-
-				arcan_video_attachtorendertarget(did, setvid,
-					detach == RENDERTARGET_DETACH);
-			}
-
-		}
-	}
-	else{
-		arcan_warning("recordset(%d), empty source vid set -- "
-			"global capture unimplemented.\n");
+	if (ARCAN_OK != arcan_video_setuprendertarget(did, pollrate,
+		scale == RENDERTARGET_SCALE, RENDERTARGET_COLOR))
+	{
+		arcan_warning("define_recordtarget(), setup rendertarget failed.\n");
 		goto cleanup;
+	}
+
+	for (size_t i = 0; i < nvids; i++){
+		lua_rawgeti(ctx, 4, i+1);
+		arcan_vobj_id setvid = luavid_tovid( lua_tointeger(ctx, -1) );
+		lua_pop(ctx, 1);
+
+		if (setvid == ARCAN_VIDEO_WORLDID)
+			arcan_fatal("recordset(), using WORLDID as a direct source is "
+				"not permitted, create a null_surface and use image_sharestorage. ");
+
+		arcan_video_attachtorendertarget(did, setvid,
+			detach == RENDERTARGET_DETACH);
 	}
 
 	arcan_aobj_id* aidlocks = NULL;
