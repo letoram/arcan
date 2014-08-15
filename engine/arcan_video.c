@@ -4805,10 +4805,15 @@ static inline void poll_readback(struct rendertarget* tgt)
  */
 	if (src){
 		arcan_vobject* vobj = tgt->color;
-		vobj->feed.ffunc(FFUNC_READBACK, src,
-			vobj->vstore->w * vobj->vstore->h * vobj->vstore->bpp,
-			vobj->vstore->w,  vobj->vstore->h,  vobj->vstore->bpp, 0,
-			vobj->feed.state);
+
+		if (!vobj->feed.ffunc)
+			tgt->readback = 0;
+		else
+			vobj->feed.ffunc(FFUNC_READBACK, src,
+				vobj->vstore->w * vobj->vstore->h * vobj->vstore->bpp,
+				vobj->vstore->w,  vobj->vstore->h,  vobj->vstore->bpp, 0,
+				vobj->feed.state
+			);
 	}
 
 	glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
