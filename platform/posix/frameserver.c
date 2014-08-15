@@ -857,8 +857,11 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 		};
 
 		ctx->source = strdup(setup.args.builtin.resource);
-		ctx->vid = arcan_video_addfobject((arcan_vfunc_cb)
-			arcan_frameserver_emptyframe, state, cons, 0);
+
+		if (!ctx->vid)
+			ctx->vid = arcan_video_addfobject((arcan_vfunc_cb)
+				arcan_frameserver_emptyframe, state, cons, 0);
+
 		ctx->aid = ARCAN_EID;
 
 		ctx->sockout_fd  = sockp[0];
