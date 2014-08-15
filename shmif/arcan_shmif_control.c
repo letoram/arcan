@@ -23,10 +23,10 @@
 /*
  * The windows implementation here is rather broken in several ways:
  * 1. non-authoritative connections not accepted (and not planned)
- * 2. multiple- segments failed due to the hackish way that 
+ * 2. multiple- segments failed due to the hackish way that
  *    semaphores and shared memory handles are passed
  * 3. split- mode not implemented
- * 
+ *
  */
 #if _WIN32
 #define sleep(n) Sleep(1000 * n)
@@ -42,7 +42,7 @@ extern HANDLE parent;
 #include <sys/un.h>
 #endif
 
-/* 
+/*
  * The guard-thread thing tries to get around all the insane edge conditions
  * that exist when you have a partial parent<->child circular dependency
  * with an untrusted child and a limited set of IPC primitives.
@@ -51,7 +51,7 @@ extern HANDLE parent;
  * If that's true, go back to sleep -- otherwise -- wake up, pop open
  * all semaphores set the disengage flag and go back to a longer sleep
  * that it shouldn't wake up from. Show this sleep be engaged anyhow,
- * shut down forcefully. 
+ * shut down forcefully.
  */
 
 struct shmif_hidden {
@@ -108,13 +108,13 @@ static inline bool parent_alive()
 
 /* force_unlink isn't used here as the semaphores are
  * passed as inherited handles */
-static void map_shared(const char* shmkey, 
-	char force_unlink, struct arcan_shmif_cont* res) 
+static void map_shared(const char* shmkey,
+	char force_unlink, struct arcan_shmif_cont* res)
 {
 	assert(shmkey);
 	HANDLE shmh = (HANDLE) strtoul(shmkey, NULL, 10);
 
-	res->addr = MapViewOfFile(shmh, 
+	res->addr = MapViewOfFile(shmh,
 		FILE_MAP_ALL_ACCESS, 0, 0, ARCAN_SHMPAGE_MAX_SZ);
 
 	res->asem = async;
@@ -143,8 +143,8 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey)
 	return NULL;
 }
 
-#else 
-static void map_shared(const char* shmkey, char force_unlink,  
+#else
+static void map_shared(const char* shmkey, char force_unlink,
 	struct arcan_shmif_cont* dst)
 {
 	assert(shmkey);
@@ -156,10 +156,10 @@ static void map_shared(const char* shmkey, char force_unlink,
 	if (-1 == fd){
 		LOG("arcan_frameserver(getshm) -- couldn't open "
 			"keyfile (%s), reason: %s\n", shmkey, strerror(errno));
-		return; 
+		return;
 	}
 
-	dst->addr = mmap(NULL, ARCAN_SHMPAGE_START_SZ, 
+	dst->addr = mmap(NULL, ARCAN_SHMPAGE_START_SZ,
 		PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 	dst->shmh = fd;
 
@@ -472,9 +472,12 @@ void arcan_shmif_signal(struct arcan_shmif_cont* ctx, int mask)
 		arcan_sem_wait(ctx->asem);
 	}
 	else if (mask == (SHMIF_SIGVID | SHMIF_SIGAUD)){
-		ctx->addr->vready = ctx->addr->aready = true;
+		ctx->addr->vready = true;
+    if (ctx->addr->abufused > 0){
+			ctx->addr->aready = true;
+			arcan_sem_wait(ctx->asem);
+    }
 		arcan_sem_wait(ctx->vsem);
-		arcan_sem_wait(ctx->asem);
 	}
 	else {}
 }
@@ -576,11 +579,11 @@ bool arcan_shmif_resize(struct arcan_shmif_cont* arg,
 
 /* win32 is built with overcommit as we don't support dynamically
  * resizing shared memory pages there */
-#if _WIN32	
+#if _WIN32
 #else
 		munmap(arg->addr, arg->shmsize);
 		arg->shmsize = new_sz;
-		arg->addr = mmap(NULL, arg->shmsize,  
+		arg->addr = mmap(NULL, arg->shmsize,
 			PROT_READ | PROT_WRITE, MAP_SHARED, arg->shmh, 0);
 #endif
 		if (!arg->addr){
