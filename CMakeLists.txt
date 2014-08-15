@@ -261,6 +261,7 @@ if (VIDEO_PLATFORM STREQUAL "x11" OR VIDEO_PLATFORM STREQUAL "x11-headless")
 	if (ENABLE_LWA)
 		message(FATAL_ERROR "Enabling LWA (Arcan-in-Arcan) build using X11 HEADLESS")
 		SET(LWA_HEADLESS "x11/video.c")
+		SET(LWA_GLHEADER "x11/glheaders.h")
 	endif()
 
 elseif(VIDEO_PLATFORM STREQUAL "egl-gles2")
@@ -334,9 +335,11 @@ elseif (VIDEO_PLATFORM STREQUAL "sdl")
 		if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 			message("Enabling LWA (Arcan-in-Arcan) build using Darwin HEADLESS")
 			SET(LWA_HEADLESS "darwin/video.c")
+			SET(LWA_GLHEADER "darwin/glheaders.h")
 		else()
 			message("Enabling LWA (Arcan-in-Arcan) build using X11 HEADLESS")
 			SET(LWA_HEADLESS "x11/video.c")
+			SET(LWA_GLHEADER "x11/glheaders.h")
 		endif()
 	endif()
 
@@ -531,6 +534,7 @@ if (ENABLE_LIBRETRO)
 		set_property( SOURCE frameserver/libretro.c
 			APPEND PROPERTY COMPILE_DEFINITIONS
 				FRAMESERVER_LIBRETRO_3D
+				GL_HEADERS=\"${CMAKE_CURRENT_SOURCE_DIR}/platform/${LWA_GLHEADER}\"
 				HEADLESS_PLATFORM=\"${CMAKE_CURRENT_SOURCE_DIR}/platform/${LWA_HEADLESS}\"
 		)
 		LIST(APPEND FSRV_LIBRETRO_LIBRARIES ${LWA_LIBRARIES})
@@ -584,11 +588,11 @@ if (${ENABLE_VIDDEC})
 	)
 endif()
 
-if (${ENABLE_TERMINAL})
+if (ENABLE_TERMINAL)
 	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}terminal ")
 	FIND_PACKAGE(TSM REQUIRED)
 
-	if (${LIBTSM_FOUND})
+	if (LIBTSM_FOUND)
 	message("--> Adding terminal support.")
 	set(FSRV_TERMINAL_SOURCES
 		frameserver/arcterm.c

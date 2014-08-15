@@ -116,7 +116,7 @@ message("---- Building frameserver in SPLIT mode ----")
 
 		set_property(TARGET arcan_frameserver_libretro APPEND PROPERTY
 			COMPILE_DEFINITIONS ARCAN_SHMIF_THREADSAFE_QUEUE
-			${ARCAN_DEFINITIONS}
+			${FSRV_LIBRETRO_DEFINITIONS}
 			ENABLE_FSRV_LIBRETRO DEFAULT_FSRV_MODE=\"libretro\")
 
 		target_link_libraries(arcan_frameserver_libretro
