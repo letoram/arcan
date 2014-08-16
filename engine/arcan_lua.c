@@ -5176,8 +5176,91 @@ struct rn_userdata {
 	void* bufptr;
 	int width, height;
 	size_t nelem;
-	bool valid;
+
+	unsigned bins[1024];
+	bool valid, dirty;
 };
+
+static void procimage_buildhisto(struct rn_userdata* ud)
+{
+	av_pixel* img = ud->bufptr;
+	ud->dirty = false;
+
+	memset(ud->bins, '\0', 1024 * sizeof(unsigned));
+
+/* populate bins with frequency */
+	for (size_t row = 0; row < ud->height; row++)
+		for (size_t col = 0; col < ud->width; col++){
+			size_t ofs = row * ud->width + col;
+			uint8_t rgba[4];
+			RGBA_DECOMP(img[ofs], &rgba[0], &rgba[1], &rgba[2], &rgba[3]);
+
+			ud->bins[rgba[0]]++;
+			ud->bins[256 + rgba[1]]++;
+			ud->bins[512 + rgba[2]]++;
+			ud->bins[768 + rgba[3]]++;
+		}
+}
+
+static int procimage_lookup(lua_State* ctx)
+{
+	struct rn_userdata* ud = luaL_checkudata(ctx, 1, "calcImage");
+	if (ud->valid == false)
+		arcan_fatal("calcImage:frequency, calctarget object called "
+			"out of scope.\n");
+
+	size_t bin = luaL_checknumber(ctx, 2);
+	if (256 <= bin)
+		arcan_fatal("calcImage:frequency, invalid bin %d >= 256 specified.\n");
+
+	if (ud->dirty)
+		procimage_buildhisto(ud);
+
+	lua_pushnumber(ctx, ud->bins[bin +   0]);
+	lua_pushnumber(ctx, ud->bins[bin + 256]);
+	lua_pushnumber(ctx, ud->bins[bin + 512]);
+	lua_pushnumber(ctx, ud->bins[bin + 768]);
+
+	return 4;
+}
+
+static int procimage_histo(lua_State* ctx)
+{
+	struct rn_userdata* ud = luaL_checkudata(ctx, 1, "calcImage");
+	if (ud->valid == false)
+		arcan_fatal("calcImage:histogram_storage, "
+			"calctarget object called out of scope\n");
+
+	arcan_vobject* vobj;
+	arcan_vobj_id did = luaL_checkvid(ctx, 2, &vobj);
+
+	if (!vobj->vstore || vobj->vstore->txmapped == TXSTATE_OFF ||
+		!vobj->vstore->vinf.text.raw)
+		arcan_fatal("calcImage:histogram_storage, "
+			"destination vstore must have a valid textured backend.\n");
+
+	if (vobj->vstore->w < 256)
+		arcan_fatal("calcImage:histogram_storage, "
+			"destination vstore width need to be >=256.\n");
+
+	if (ud->dirty)
+		procimage_buildhisto(ud);
+
+/* normalize and superimpose into storage */
+	float norm = ud->width * ud->height;
+	av_pixel* base = (av_pixel*) vobj->vstore->vinf.text.raw;
+
+	for (size_t j = 0; j < 256; j++){
+		float r = (float)ud->bins[j+  0] / norm * 255.0;
+		float g = (float)ud->bins[j+256] / norm * 255.0;
+		float b = (float)ud->bins[j+512] / norm * 255.0;
+		float a = (float)ud->bins[j+768] / norm * 255.0;
+		base[j] = RGBA(r,g,b,a);
+	}
+/* forceupdate vobj storage */
+	push_globj(vobj, false, false);
+	return 0;
+}
 
 static int procimage_get(lua_State* ctx)
 {
@@ -5227,7 +5310,7 @@ static enum arcan_ffunc_rv proctarget(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 /*
  * The buffer that comes from proctarget is special (gpu driver
  * maps it into our address space, gdb and friends won't understand.
- * define this is you need the speed-up of one less copy at the
+ * define this if you need the speed-up of one less copy at the
  * expense of delaying mem issue detection.
  */
 #ifdef ARCAN_LUA_CALCTARGET_NOSCRAP
@@ -5278,6 +5361,7 @@ static enum arcan_ffunc_rv proctarget(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 	ud->height = height;
 	ud->nelem = width * height;
 	ud->valid = true;
+	ud->dirty = true;
 
 	lua_ctx_store.cb_source_kind = CB_SOURCE_IMAGE;
 
@@ -7160,6 +7244,10 @@ static const luaL_Reg netfuns[] = {
 	lua_setfield(ctx, -2, "__index");
 	lua_pushcfunction(ctx, procimage_get);
 	lua_setfield(ctx, -2, "get");
+	lua_pushcfunction(ctx, procimage_histo);
+	lua_setfield(ctx, -2, "histogram_impose");
+	lua_pushcfunction(ctx, procimage_lookup);
+	lua_setfield(ctx, -2, "frequency");
 	lua_pop(ctx, 1);
 
 	atexit(arcan_lua_cleanup);
