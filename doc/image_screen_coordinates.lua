@@ -1,5 +1,10 @@
 -- image_screen_coordinates
--- @short: Resolve the current transformation change for the object in question and return the coordinates of the four corners in screen space.
+-- @short: Lookup screen space coordinates for the specified object.
+-- @longdescr: This function resolves the screen space coordinates
+-- of the four corners of the specified vid, taking position,
+-- scale and rotation transform into account.
+-- @note: This does not include any vertex- stage transformations
+-- that may be applied by a non-standard shader.
 -- @inargs: vid
 -- @outargs: x1,y1,x2,y2,x3,y3,x4,y4
 -- @group: image
