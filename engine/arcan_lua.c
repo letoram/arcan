@@ -1408,6 +1408,39 @@ static int cursorsize(lua_State* ctx)
 	return 0;
 }
 
+static int imagestate(lua_State* ctx)
+{
+	LUA_TRACE("image_state");
+	arcan_vobj_id vid = luaL_checkvid(ctx, 1, NULL);
+
+	vfunc_state* state = arcan_video_feedstate(vid);
+	if (!state)
+		lua_pushstring(ctx, "static");
+	else
+		switch(state->tag){
+			case ARCAN_TAG_FRAMESERV:
+				lua_pushstring(ctx, "frameserver");
+			break;
+
+			case ARCAN_TAG_3DOBJ:
+				lua_pushstring(ctx, "3d object");
+			break;
+
+			case ARCAN_TAG_ASYNCIMGLD:
+				case ARCAN_TAG_ASYNCIMGRD:
+					lua_pushstring(ctx, "asynchronous state");
+			break;
+
+			case ARCAN_TAG_3DCAMERA:
+				lua_pushstring(ctx, "3d camera");
+
+			default:
+				lua_pushstring(ctx, "unknown");
+		}
+
+	return 1;
+}
+
 static int setshader(lua_State* ctx)
 {
 	LUA_TRACE("image_shader");
@@ -7108,6 +7141,7 @@ static const luaL_Reg imgfuns[] = {
 {"image_tracetag",           tracetag           },
 {"image_mask_clearall",      clearall           },
 {"image_shader",             setshader          },
+{"image_state",              imagestate         },
 {"image_sharestorage",       sharestorage       },
 {"cursor_setstorage",        cursorstorage      },
 {"cursor_position",          cursorposition     },
