@@ -10,16 +10,17 @@
 --
 -- The callback will be invoked with three arguments: image, width, height
 -- the following metamethods are valid on image:
--- get(x, y, [nchannels=3]) => r, g, b,
+-- get(x, y, [nchannels=3]) => r, g, b
 -- nchannels=1 => lum
--- histogram_storage(dstvid, [nchannels=1])
+-- histogram_storage(dstvid, [noreset])
 --  updated the textured storage of dstvid (must be allocated with
---  a dimension of >= 256*nch where nc is either 1,3 or 4.
--- frequency(bin) => r,g,b,a
+--  a width of >= 256. If noreset is !0, an update on a dirty histogram
+--  calculation will not reset the individual bins, thus values will accumulate.
+-- frequency(bin, [noreset]) => r,g,b,a
 --  return non-normalized, per / channel count for a specific bin (0..255)
 --
--- @note: The callback will be executed as part of the main loop, it is paramount that
--- the processing done is kept to a minimum.
+-- @note: The callback will be executed as part of the main loop,
+-- it is paramount that the processing done is kept to a minimum.
 -- @note: While WORLDID cannot be used directly, creating an indirect association
 -- through a null_surface and then image_sharestorage(WORLDID, null_surface) and
 -- using that as a source in vidary is entirely possible.
@@ -32,6 +33,7 @@
 -- in undefined contents in the offscreen target.
 -- @group: targetcontrol
 -- @cfunction: procset
+-- @examples: histoview
 -- @related: define_rendertarget, define_recordtarget, fill_surface
 function cbfun(source, w, h)
 	print(srcary:get(0, 0));
