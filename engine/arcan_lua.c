@@ -5181,12 +5181,13 @@ struct rn_userdata {
 	bool valid, dirty;
 };
 
-static void procimage_buildhisto(struct rn_userdata* ud)
+static void procimage_buildhisto(struct rn_userdata* ud, bool reset)
 {
 	av_pixel* img = ud->bufptr;
 	ud->dirty = false;
 
-	memset(ud->bins, '\0', 1024 * sizeof(unsigned));
+	if (reset)
+		memset(ud->bins, '\0', 1024 * sizeof(unsigned));
 
 /* populate bins with frequency */
 	for (size_t row = 0; row < ud->height; row++)
@@ -5205,7 +5206,8 @@ static void procimage_buildhisto(struct rn_userdata* ud)
 static int procimage_lookup(lua_State* ctx)
 {
 	struct rn_userdata* ud = luaL_checkudata(ctx, 1, "calcImage");
-	if (ud->valid == false)
+
+	if (ud->valid == false && ud->dirty)
 		arcan_fatal("calcImage:frequency, calctarget object called "
 			"out of scope.\n");
 
@@ -5213,8 +5215,10 @@ static int procimage_lookup(lua_State* ctx)
 	if (256 <= bin)
 		arcan_fatal("calcImage:frequency, invalid bin %d >= 256 specified.\n");
 
+	bool reset = luaL_optnumber(ctx, 3, 0) != 0;
+
 	if (ud->dirty)
-		procimage_buildhisto(ud);
+		procimage_buildhisto(ud, reset);
 
 	lua_pushnumber(ctx, ud->bins[bin +   0]);
 	lua_pushnumber(ctx, ud->bins[bin + 256]);
@@ -5227,7 +5231,9 @@ static int procimage_lookup(lua_State* ctx)
 static int procimage_histo(lua_State* ctx)
 {
 	struct rn_userdata* ud = luaL_checkudata(ctx, 1, "calcImage");
-	if (ud->valid == false)
+	bool reset = luaL_optnumber(ctx, 3, 0) != 0;
+
+	if (ud->valid == false && ud->dirty)
 		arcan_fatal("calcImage:histogram_storage, "
 			"calctarget object called out of scope\n");
 
@@ -5244,7 +5250,7 @@ static int procimage_histo(lua_State* ctx)
 			"destination vstore width need to be >=256.\n");
 
 	if (ud->dirty)
-		procimage_buildhisto(ud);
+		procimage_buildhisto(ud, reset);
 
 /* normalize and superimpose into storage */
 	float norm = ud->width * ud->height;
@@ -5353,6 +5359,7 @@ static enum arcan_ffunc_rv proctarget(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 
 	struct rn_userdata* ud = lua_newuserdata(src->ctx,
 		sizeof(struct rn_userdata));
+	memset(ud, '\0', sizeof(struct rn_userdata));
 	luaL_getmetatable(src->ctx, "calcImage");
 	lua_setmetatable(src->ctx, -2);
 
