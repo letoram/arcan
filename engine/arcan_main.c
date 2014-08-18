@@ -584,6 +584,7 @@ applswitch:
 
 	arcan_evctx* evctx = arcan_event_defaultctx();
 	bool done = false;
+	int exit_code = EXIT_SUCCESS;
 
 	while (!done) {
 /* pollfeed can actually populate event-loops, assuming we don't exceed a
@@ -604,8 +605,10 @@ applswitch:
 
 /* this event category is never propagated to the scripting engine itself */
 			case EVENT_SYSTEM:
-				if (ev.kind == EVENT_SYSTEM_EXIT)
+				if (ev.kind == EVENT_SYSTEM_EXIT){
+					exit_code = ev.data.system.errcode;
 					done = true;
+				}
 
 /* slated for deprecation */
 				else if (ev.kind == EVENT_SYSTEM_SWITCHAPPL){
@@ -635,7 +638,7 @@ applswitch:
 	arcan_hmd_shutdown();
 #endif
 	arcan_video_shutdown();
-	return EXIT_SUCCESS;
+	return exit_code;
 
 error:
 	return EXIT_FAILURE;

@@ -1,0 +1,13 @@
+This folder contains more complex, public domain,
+ examples of use, and is referenced both in the 
+doc/ documentation and on the wiki.
+
+Current examples:
+
+miniwm/ 
+minimalistic window manager supporting external
+connections and adopting crashed sessions.
+
+histoview/
+showing how calctargets can be used to dynamically
+generate histograms.

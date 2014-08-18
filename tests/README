@@ -1,0 +1,21 @@
+This folder contains miniature, hacked together, scripts
+used to assist in development or test some specific 
+engine features and are not to be considered proper
+"examples of use" (see the examples/ folder for that).
+
+It is currently being refactored into the following 
+substructure:
+
+api_coverage/ (WIP) scripts that use the C pre-processor 
+to extract examples and error cases from the documentation in 
+doc/*.lua 
+
+benchmark/ (WIP) specialized non-interactive cases that 
+attempt to quantify performance boundaries for various platforms.
+
+interactive/ quick hacks and experiments
+
+regression/ for non-trivial bugs reported and fixed, an example
+that provoced the issue pre-fix should be added to this folder
+along with the fix, in order to have a growing base of regression
+cases to run with any new release.
