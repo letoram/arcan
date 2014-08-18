@@ -94,10 +94,11 @@ struct arcan_devnode {
 /* NULL&size terminated, with chain-block set of the previous
  * one could not handle. This is to cover devices that could
  * expose themselves as being aggregated KEY/DEV/etc. */
-	devnode_decode_cb handler;
+	struct evhandler hnd;
 
 	char label[256];
 	unsigned short devnum;
+	size_t button_count;
 
 	enum devnode_type type;
 	union {
@@ -107,6 +108,7 @@ struct arcan_devnode {
 		struct {
 			unsigned short axes;
 			unsigned short buttons;
+			char hats[16];
 			struct axis_opts* adata;
 		} game;
 		struct {
@@ -121,6 +123,7 @@ struct arcan_devnode {
 };
 
 static int notify_fd;
+static void got_device(int fd);
 
 static struct arcan_devnode* lookup_devnode(int devid)
 {
@@ -140,6 +143,65 @@ static struct arcan_devnode* lookup_devnode(int devid)
 	}
 
 	return NULL;
+}
+
+static bool identify(int fd, char* label, size_t label_sz, unsigned short* dnum)
+{
+	if (-1 == ioctl(fd, EVIOCGNAME(label_sz), label))
+		return false;
+
+	struct input_id nodeid;
+
+	if (-1 == ioctl(fd, EVIOCGID, &nodeid))
+		return false;
+
+/* didn't find much on how unique eviocguniq actually was,
+ * nor common lengths or what not so just mix them in a buffer,
+ * hash and let unsigned overflow modulo take us down to 16bit */
+	size_t bpl = sizeof(long) * 8;
+	size_t nbits = ((EV_MAX)-1) / bpl + 1;
+
+	char buf[nbits * sizeof(long)];
+	char bbuf[sizeof(buf)];
+	memset(buf, '\0', sizeof(buf));
+	memset(bbuf, '\0', sizeof(bbuf));
+
+/* some test devices here answered to the ioctl and returned
+ * full empty UNIQs, do something to lower the likelihood of
+ * collisions */
+	unsigned long hash = 5381;
+
+	if (-1 == ioctl(fd, EVIOCGUNIQ(sizeof(buf)), buf) ||
+		memcmp(buf, bbuf, sizeof(buf)) == 0){
+
+		size_t llen = strlen(label);
+		for (size_t i = 0; i < llen; i++)
+			hash = ((hash << 5) + hash) + label[i];
+
+	 	buf[11] ^= nodeid.vendor >> 8;
+		buf[10] ^= nodeid.vendor;
+		buf[9] ^= nodeid.product >> 8;
+		buf[8] ^= nodeid.product;
+		buf[7] ^= nodeid.version >> 8;
+		buf[6] ^= nodeid.version;
+
+/* even this point has a few collisions, particularly
+ * some keyboards that don't respond to CGUNIQ and expose
+ * multiple- subdevices but with different button/axis count */
+		ioctl(fd, EVIOCGBIT(0, EV_MAX), &buf);
+	}
+
+	for (size_t i = 0; i < sizeof(buf); i++)
+		hash = ((hash << 5) + hash) + buf[i];
+
+/* 16-bit clamp is legacy in the scripting layer */
+	unsigned short devnum = hash;
+	if (devnum < MAX_DEVICES)
+		devnum++;
+
+	*dnum = devnum;
+
+	return true;
 }
 
 static inline bool process_axis(struct arcan_evctx* ctx,
@@ -222,10 +284,11 @@ static void set_analogstate(struct axis_opts* dst,
 	dst->deadzone = deadzone;
 	dst->kernel_sz = kernel_size;
 	dst->mode = mode;
+
 	dst->kernel_ofs = 0;
 }
 
-static struct axis_opts* find_axis(int devid, int axisid)
+static struct axis_opts* find_axis(int devid, unsigned axisid)
 {
 	struct arcan_devnode* node = lookup_devnode(devid);
 	axisid = abs(axisid);
@@ -309,6 +372,20 @@ void arcan_event_analogfilter(int devid,
 	set_analogstate(axis,lower_bound, upper_bound, deadzone, buffer_sz, kind);
 }
 
+static void discovered(const char* name, size_t name_len)
+{
+/* name might not be terminated */
+	char buf[name_len + 1];
+	memcpy(buf, name, name_len);
+	buf[name_len] = '\0';
+
+	int fd = fmt_open(0, O_NONBLOCK |
+		O_RDONLY | O_CLOEXEC, "%s/%s", NOTIFY_SCAN_DIR, name);
+
+	if (-1 != fd)
+		got_device(fd);
+}
+
 void platform_event_process(struct arcan_evctx* ctx)
 {
 	bool more = false;
@@ -318,24 +395,24 @@ void platform_event_process(struct arcan_evctx* ctx)
 		ssize_t nr = read(notify_fd, ebuf, sizeof(ebuf) );
 		if (-1 != nr)
 			for (size_t i = 0; i < nr / sizeof(struct inotify_event); i++){
-				if (ebuf[i].mask & IN_DELETE){
-/* FIXME: sweep existing devices for matching name,
- * disconnect handle (but remain last known data) */
-				}
-				if (ebuf[i].mask & IN_CREATE){
-/* FIXME: sweep existing devices for matching name,
- * try adopt_device or got_device. Seems that name field isn't
- * always valid? */
-				}
+				if ((ebuf[i].mask & IN_CREATE) &&
+					!(ebuf[i].mask & IN_ISDIR) && ebuf[i].len )
+					discovered(ebuf[i].name, ebuf[i].len);
 			}
 
 		more = nr == sizeof(ebuf);
 	}
 
+	char dump[256];
 	if (poll(iodev.pollset, iodev.n_devs, 0) > 0){
-		for (size_t i = 0; i < iodev.n_devs; i++)
-			if (iodev.pollset[i].revents & POLLIN)
-				iodev.nodes[i].handler(ctx, &iodev.nodes[i]);
+		for (size_t i = 0; i < iodev.n_devs; i++){
+			if (iodev.pollset[i].revents & POLLIN){
+				if (iodev.nodes[i].hnd.handler)
+					iodev.nodes[i].hnd.handler(ctx, &iodev.nodes[i]);
+				else /* silently flush */
+					read(iodev.nodes[i].handle, dump, 256);
+			}
+		}
 	}
 
 	if (more)
@@ -413,7 +490,10 @@ static void map_axes(int fd, size_t bitn, struct arcan_devnode* node)
 	if (node->game.axes == 0)
 		return;
 
-	node->game.adata = malloc(sizeof(struct axis_opts) * node->game.axes);
+	node->game.adata = arcan_alloc_mem(
+		sizeof(struct axis_opts) * node->game.axes,
+		ARCAN_MEM_BINDING, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
+
 	size_t ac = 0;
 
 	for (size_t i = 0; i < ABS_MAX; i++)
@@ -441,51 +521,15 @@ static void got_device(int fd)
 		.handle = fd
 	};
 
-	if (iodev.n_devs >= MAX_DEVICES)
-		goto cleanup;
-
-	if (-1 == ioctl(fd, EVIOCGNAME(sizeof(node.label)), node.label))
-		goto cleanup;
-
-	struct input_id nodeid;
-	if (-1 == ioctl(fd, EVIOCGID, &nodeid))
-		goto cleanup;
-
-/* didn't find much on how unique eviocguniq actually was,
- * nor common lengths or what not so just mix them in a buffer,
- * hash and let unsigned overflow modulo take us down to 16bit */
-	char buf[12] = {0};
-	char bbuf[sizeof(buf)] = {0};
-
-/* some test devices here answered to the ioctl and returned
- * full empty UNIQs, do something to lower the likelihood of
- * collisions */
-	if (-1 == ioctl(fd, EVIOCGUNIQ(sizeof(buf)), buf) ||
-		memcmp(buf, bbuf, sizeof(buf)) == 0){
-		size_t len = strlen(node.label);
-
-		len = len >= sizeof(buf) ? sizeof(buf)-1 : len;
-		memcpy(buf, node.label, len);
-
-	 	buf[0] ^= nodeid.vendor >> 8;
-		buf[1] ^= nodeid.vendor;
-		buf[2] ^= nodeid.product >> 8;
-		buf[3] ^= nodeid.product;
-		buf[4] ^= nodeid.version >> 8;
-		buf[5] ^= nodeid.version;
+	if (!identify(fd, node.label, sizeof(node.label), &node.devnum) ||
+		iodev.n_devs >= MAX_DEVICES){
+		close(fd);
+		return;
 	}
-
-	unsigned long hash = 5381;
-	for (size_t i = 0; i < sizeof(buf); i++)
-		hash = ((hash << 5) + hash) + buf[i];
-
-	node.devnum = hash;
-	if (node.devnum < MAX_DEVICES)
-		node.devnum += MAX_DEVICES;
 
 /* figure out what kind of a device this is from the exposed
  * capabilities, heuristic nonsense rather than an interface
- * exposing what the driver already knows, fantastic.
+ * exposing what the driver should know or decide, fantastic.
  *
  * keyboards typically have longer key masks (and we can
  * check for a few common ones) no REL/ABS (don't know
@@ -494,57 +538,59 @@ static void got_device(int fd)
  */
 	struct evhandler eh = lookup_dev_handler(node.label);
 
-	/* we assume this by default since it covers a whole lot
-	 * of buttons / axes / calibration */
+/* [eh] may contain overrides, but we still need to probe
+ * the driver state for axes etc. and allocate accordingly */
 	node.type = DEVNODE_GAME;
-
-	size_t btn_count = 0;
 
 	bool mouse_ax = false;
 	bool mouse_btn = false;
 	bool joystick_btn = false;
 
-	if (!eh.handler){
-		size_t bpl = sizeof(long) * 8;
-		size_t nbits = ((EV_MAX)-1) / bpl + 1;
-		long prop[ nbits ];
+/* scoping rules hack */
+	if (1){
+	size_t bpl = sizeof(long) * 8;
+	size_t nbits = ((EV_MAX)-1) / bpl + 1;
+	long prop[ nbits ];
 
-		if (-1 == ioctl(fd, EVIOCGBIT(0, EV_MAX), &prop))
-			goto cleanup;
+	if (-1 == ioctl(fd, EVIOCGBIT(0, EV_MAX), &prop)){
+		close(fd);
+		return;
+	}
 
-		for (size_t bit = 0; bit < EV_MAX; bit++)
-			if ( 1ul & (prop[bit/bpl]) >> (bit & (bpl - 1)) )
-			switch(bit){
-			case EV_KEY:
-				btn_count = button_count(fd, bit, &mouse_btn, &joystick_btn);
-			break;
+	for (size_t bit = 0; bit < EV_MAX; bit++)
+		if ( 1ul & (prop[bit/bpl]) >> (bit & (bpl - 1)) )
+		switch(bit){
+		case EV_KEY:
+			node.button_count = button_count(fd, bit, &mouse_btn, &joystick_btn);
+		break;
 
-			case EV_REL:
-				mouse_ax = check_mouse_axis(fd, bit);
-			break;
+		case EV_REL:
+			mouse_ax = check_mouse_axis(fd, bit);
+		break;
 
-			case EV_ABS:
-				map_axes(fd, bit, &node);
-			break;
+		case EV_ABS:
+			map_axes(fd, bit, &node);
+		break;
 
 /* useless for the time being */
-			case EV_MSC:
-			break;
-			case EV_SYN:
-			break;
-			case EV_LED:
-			break;
-			case EV_SND:
-			break;
-			case EV_REP:
-			break;
-			case EV_PWR:
-			break;
-			case EV_FF:
-			case EV_FF_STATUS:
-			break;
-			}
+		case EV_MSC:
+		break;
+		case EV_SYN:
+		break;
+		case EV_LED:
+		break;
+		case EV_SND:
+		break;
+		case EV_REP:
+		break;
+		case EV_PWR:
+		break;
+		case EV_FF:
+		case EV_FF_STATUS:
+		break;
+		}
 
+	if (!eh.handler){
 		if (mouse_ax && mouse_btn){
 			node.type = DEVNODE_MOUSE;
 			node.cursor.flt[0].mode = ARCAN_ANALOGFILTER_PASS;
@@ -554,16 +600,30 @@ static void got_device(int fd)
 				iodev.mouseid = node.devnum;
 		}
 /* not particularly pretty and rather arbitrary */
-		else if (!mouse_btn && !joystick_btn && btn_count > 84)
+		else if (!mouse_btn && !joystick_btn && node.button_count > 84)
 			node.type = DEVNODE_KEYBOARD;
+
+		node.hnd.handler = defhandlers[node.type];
 	}
 	else
-		node.type = eh.type;
+		node.hnd = eh;
 
-	node.handler = defhandlers[node.type];
+/* new or pre-existing? */
+	for (size_t i = 0; i < iodev.n_devs; i++){
+		if (iodev.nodes[i].devnum == node.devnum){
+			if (iodev.nodes[i].handle > 0)
+				close(iodev.nodes[i].handle);
+
+			iodev.nodes[i].handle = fd;
+			iodev.pollset[i].fd = fd;
+			iodev.pollset[i].events = POLLIN;
+
+			return;
+		}
+	}
+
+/* allocate add at end of pollset */
 	iodev.n_devs++;
-
-/* grow / allocate the first time */
 	if (iodev.n_devs >= iodev.sz_nodes){
 		size_t new_sz = iodev.sz_nodes + 8;
 		char* buf = realloc(iodev.nodes,
@@ -581,7 +641,6 @@ static void got_device(int fd)
 			goto cleanup;
 
 		iodev.pollset = (struct pollfd*) buf;
-
 		iodev.sz_nodes = new_sz;
 	}
 
@@ -592,10 +651,10 @@ static void got_device(int fd)
 
 	iodev.pollset[ofs].fd = fd;
 	iodev.pollset[ofs].events = POLLIN;
+	iodev.nodes[ofs] = node;
 
-	iodev.nodes[iodev.n_devs-1] = node;
 	return;
-
+	}
 cleanup:
 	iodev.n_devs--;
 	close(fd);
@@ -617,8 +676,13 @@ void arcan_event_rescan_idev(struct arcan_evctx* ctx)
 	};
 
 /*
- * FIXME: doesn't implement repeated calls to rescan yet
+ * rescan is not needed here as we have polling notification
  */
+	static bool init;
+	if (!init)
+		init = true;
+	else
+		return;
 
 	char** cns = namespaces;
 
@@ -633,8 +697,9 @@ void arcan_event_rescan_idev(struct arcan_evctx* ctx)
 
 			while(*beg){
 				int fd = open(*beg, O_NONBLOCK | O_RDONLY | O_CLOEXEC);
-				if (-1 != fd)
+				if (-1 != fd){
 					got_device(fd);
+				}
 				beg++;
 			}
 
@@ -644,11 +709,27 @@ void arcan_event_rescan_idev(struct arcan_evctx* ctx)
 
 }
 
+static void disconnect(struct arcan_devnode* node)
+{
+	for (size_t i = 0; i < iodev.n_devs; i++)
+		if (node->devnum == iodev.nodes[i].devnum){
+			close(node->handle);
+			node->handle = 0;
+			iodev.pollset[i].fd = 0;
+			iodev.pollset[i].events = 0;
+			break;
+		}
+}
+
 static void defhandler_kbd(struct arcan_evctx* out,
 	struct arcan_devnode* node)
 {
 	struct input_event inev[64];
 	ssize_t evs = read(node->handle, &inev, sizeof(inev));
+
+	if (-1 == evs)
+		return disconnect(node);
+
 	if (evs < 0 || evs < sizeof(struct input_event))
 		return;
 
@@ -666,7 +747,6 @@ static void defhandler_kbd(struct arcan_evctx* out,
 	for (size_t i = 0; i < evs / sizeof(struct input_event); i++){
 		switch(inev[i].type){
 		case EV_KEY:
-		printf("%d, %d\n", inev[i].code, lookup_keycode(inev[i].code));
 		newev.data.io.input.translated.scancode = inev[i].code;
 		newev.data.io.input.translated.keysym = lookup_keycode(inev[i].code);
 		newev.kind = inev[i].value ? EVENT_IO_KEYB_PRESS : EVENT_IO_KEYB_RELEASE;
@@ -682,16 +762,123 @@ static void defhandler_kbd(struct arcan_evctx* out,
 	}
 }
 
-static void defhandler_game(struct arcan_evctx* out,
+static void decode_hat(struct arcan_evctx* ctx,
+	struct arcan_devnode* node, int ind, int val)
+{
+	arcan_event newev = {
+		.category = EVENT_IO,
+		.label = "gamepad",
+		.data.io = {
+			.devkind = EVENT_IDEVKIND_GAMEDEV,
+			.datatype = EVENT_IDATATYPE_DIGITAL
+		}
+	};
+
+	ind *= 2;
+	const int base = 64;
+
+	newev.data.io.input.digital.devid = node->devnum;
+
+/* clamp */
+	if (val < 0)
+		val = -1;
+	else if (val > 0)
+		val = 1;
+	else {
+/* which of the two possibilities was released? */
+		newev.data.io.input.digital.active = false;
+
+		if (node->game.hats[ind] != 0){
+			newev.data.io.input.digital.subid = base + ind;
+			node->game.hats[ind] = 0;
+			arcan_event_enqueue(ctx, &newev);
+		}
+
+		if (node->game.hats[ind+1] != 0){
+			newev.data.io.input.digital.subid = base + ind + 1;
+			node->game.hats[ind+1] = 0;
+			arcan_event_enqueue(ctx, &newev);
+		}
+
+		return;
+	}
+
+	if (val > 0)
+		ind++;
+
+	node->game.hats[ind] = val;
+	newev.data.io.input.digital.active = true;
+	newev.data.io.input.digital.subid = base + ind;
+	arcan_event_enqueue(ctx, &newev);
+}
+
+static void defhandler_game(struct arcan_evctx* ctx,
 	struct arcan_devnode* node)
 {
 	struct input_event inev[64];
 	ssize_t evs = read(node->handle, &inev, sizeof(inev));
+
+	if (-1 == evs)
+		return disconnect(node);
+
 	if (evs < 0 || evs < sizeof(struct input_event))
 		return;
 
-/* FIXME: missing mapping to game device,
- * should be very similar to mouse code below */
+	arcan_event newev = {
+		.category = EVENT_IO,
+		.label = "gamepad",
+		.data.io = {
+			.devkind = EVENT_IDEVKIND_GAMEDEV
+		}
+	};
+
+	short samplev;
+
+	for (size_t i = 0; i < evs / sizeof(struct input_event); i++){
+		switch(inev[i].type){
+		case EV_KEY:
+			inev[i].code -= BTN_JOYSTICK;
+			if (node->hnd.button_mask && inev[i].code <= 64 &&
+				( (node->hnd.button_mask >> inev[i].code) & 1) )
+				continue;
+
+			newev.kind = EVENT_IO_BUTTON_PRESS;
+			newev.data.io.datatype = EVENT_IDATATYPE_DIGITAL;
+			newev.data.io.input.digital.active = inev[i].value;
+			newev.data.io.input.digital.subid = inev[i].code - BTN_JOYSTICK;
+			newev.data.io.input.digital.devid = node->devnum;
+			arcan_event_enqueue(ctx, &newev);
+		break;
+
+		case EV_ABS:
+			if (node->hnd.axis_mask && inev[i].code <= 64 &&
+				( (node->hnd.axis_mask >> inev[i].code) & 1) )
+				continue;
+
+			if (node->hnd.digital_hat &&
+				inev[i].code >= ABS_HAT0X && inev[i].code <= ABS_HAT3Y)
+				decode_hat(ctx, node, inev[i].code - ABS_HAT0X, inev[i].value);
+
+			else if (inev[i].code < node->game.axes &&
+				process_axis(ctx,
+				&node->game.adata[inev[i].code], inev[i].value, &samplev)){
+				newev.kind = EVENT_IO_AXIS_MOVE;
+				newev.data.io.datatype = EVENT_IDATATYPE_ANALOG;
+				newev.data.io.input.analog.gotrel = false;
+				newev.data.io.input.analog.subid = inev[i].code;
+				newev.data.io.input.analog.devid = node->devnum;
+				newev.data.io.input.analog.axisval[0] = samplev;
+				newev.data.io.input.analog.nvalues = 2;
+
+				arcan_event_enqueue(ctx, &newev);
+			}
+		break;
+
+		default:
+		break;
+		}
+	}
+
 }
 
 static inline short code_to_mouse(int code)
@@ -706,6 +893,9 @@ static void defhandler_mouse(struct arcan_evctx* ctx,
 	struct input_event inev[64];
 
 	ssize_t evs = read(node->handle, &inev, sizeof(inev));
+	if (-1 == evs)
+		return disconnect(node);
+
 	if (evs < 0 || evs < sizeof(struct input_event))
 		return;
 
@@ -790,7 +980,9 @@ static void defhandler_null(struct arcan_evctx* out,
 	struct arcan_devnode* node)
 {
 	char nbuf[256];
-	read(node->handle, nbuf, sizeof(nbuf));
+	ssize_t evs = read(node->handle, nbuf, sizeof(nbuf));
+	if (-1 == evs)
+		return disconnect(node);
 }
 
 const char* arcan_event_devlabel(int devid)
@@ -836,7 +1028,7 @@ void platform_event_init(arcan_evctx* ctx)
 	init_keyblut();
 
 	if (-1 == notify_fd || inotify_add_watch(
-		notify_fd, NOTIFY_SCAN_DIR, IN_CREATE | IN_DELETE) == -1){
+		notify_fd, NOTIFY_SCAN_DIR, IN_CREATE) == -1){
 		arcan_warning("inotify initialization failure (%s),"
 			"	device discovery disabled.", strerror(errno));
 
