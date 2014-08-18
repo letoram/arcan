@@ -4098,7 +4098,11 @@ static int shutdown(lua_State *ctx)
 {
 	LUA_TRACE("shutdown");
 
-	arcan_event ev = {.category = EVENT_SYSTEM, .kind = EVENT_SYSTEM_EXIT};
+	arcan_event ev = {
+		.category = EVENT_SYSTEM,
+		.kind = EVENT_SYSTEM_EXIT,
+		.data.system.errcode = luaL_optnumber(ctx, 2, EXIT_SUCCESS)
+	};
 	arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 
 	const char* str = luaL_optstring(ctx, 1, "");
@@ -5271,7 +5275,7 @@ static int procimage_histo(lua_State* ctx)
 			"calctarget object called out of scope\n");
 
 	arcan_vobject* vobj;
-	arcan_vobj_id did = luaL_checkvid(ctx, 2, &vobj);
+	luaL_checkvid(ctx, 2, &vobj);
 
 	if (!vobj->vstore || vobj->vstore->txmapped == TXSTATE_OFF ||
 		!vobj->vstore->vinf.text.raw)

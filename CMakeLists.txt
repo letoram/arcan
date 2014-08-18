@@ -259,7 +259,7 @@ if (VIDEO_PLATFORM STREQUAL "x11" OR VIDEO_PLATFORM STREQUAL "x11-headless")
 	LIST(APPEND LWA_LIBRARIES ${OPENGL_gl_LIBRARY} ${GLEW_LIBRARY} ${X11_LIBRARIES})
 
 	if (ENABLE_LWA)
-		message(FATAL_ERROR "Enabling LWA (Arcan-in-Arcan) build using X11 HEADLESS")
+		message("Enabling LWA (Arcan-in-Arcan) build using X11 HEADLESS")
 		SET(LWA_HEADLESS "x11/video.c")
 		SET(LWA_GLHEADER "x11/glheaders.h")
 	endif()
