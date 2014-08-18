@@ -252,16 +252,12 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 	arcan_bench_register_cost( arcan_video_refresh(fract) );
 #endif
 
-/*
-	while (XPending(x11.xdisp)){
-		XEvent xev;
-		XNextEvent(x11.xdisp, &xev);
-		if (xev.type == KeyPress)
-						exit(1);
-	}
-*/
-
+#ifdef WITH_HEADLESS
+	glFinish();
+#else
 	glXSwapBuffers(x11.xdisp, x11.xwnd);
+#endif
+
 	if (post)
 		post();
 }
