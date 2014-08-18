@@ -21,20 +21,30 @@ struct evhandler {
 	const char* name;
 	enum devnode_type type;
 	devnode_decode_cb handler;
-};
 
-static struct evhandler device_db[] = {
-	{
-	.name = NULL,
-	.type = DEVNODE_MISSING,
-	.handler = NULL
-	},
+/*
+ * (not used by all subtypes)
+ * if corresponding bit is set for axis_mask or button_mask vs.
+ * event-code, the event will be dropped
+ */
+	bool digital_hat;
+	uint64_t axis_mask;
+	uint64_t button_mask;
 };
 
 static void defhandler_kbd(struct arcan_evctx*, struct arcan_devnode*);
 static void defhandler_mouse(struct arcan_evctx*, struct arcan_devnode*);
 static void defhandler_game(struct arcan_evctx*, struct arcan_devnode*);
 static void defhandler_null(struct arcan_evctx*, struct arcan_devnode*);
+
+static struct evhandler device_db[] = {
+	{
+	.name = "Microsoft X-Box 360 pad",
+	.type = DEVNODE_GAME,
+	.handler = defhandler_game,
+	.digital_hat = true
+	}
+};
 
 static devnode_decode_cb defhandlers[] = {
 	defhandler_null,
@@ -47,13 +57,9 @@ static devnode_decode_cb defhandlers[] = {
 
 static struct evhandler lookup_dev_handler(const char* idstr)
 {
-	struct evhandler* cur = device_db;
-
-	size_t ind = 0;
-	while(cur[ind].name != NULL){
-		if (strcmp(idstr, cur[ind].name) == 0)
-			return cur[ind];
-		ind++;
+	for (size_t ind = 0; ind < sizeof(device_db)/sizeof(device_db[0]); ind++){
+		if (strcmp(idstr, device_db[ind].name) == 0)
+			return device_db[ind];
 	}
 
 #ifdef ARCAN_EVENT_WHITELIST
