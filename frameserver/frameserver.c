@@ -27,6 +27,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <assert.h>
+#include <dirent.h>
 
 #include <sys/types.h>
 #include <sys/mman.h>
@@ -270,6 +271,38 @@ static void dumpargs(int argc, char** argv)
 		getenv("ARCAN_CONKEY") ? getenv("ARCAN_CONNKEY") : "");
 }
 
+#ifdef _DEBUG
+void dump_links(const char* path)
+{
+	DIR* dp;
+	struct dirent64* dirp;
+
+	if ((dp = opendir(path)) == NULL)
+		return;
+
+	int fd = dirfd(dp);
+
+	while((dirp = readdir64(dp)) != NULL){
+		if (strcmp(dirp->d_name, ".") == 0)
+			continue;
+		else if (strcmp(dirp->d_name, "..") == 0)
+			continue;
+
+		char buf[256];
+		buf[255] = '\0';
+
+		ssize_t nr = readlinkat(fd, dirp->d_name, buf, sizeof(buf)-1);
+		if (-1 == nr)
+			continue;
+
+		buf[nr] = '\0';
+		fprintf(stdout, "\t%s\n", buf);
+	}
+
+	closedir(dp);
+}
+#endif
+
 #ifdef ARCAN_FRAMESERVER_SPLITMODE
 int main(int argc, char** argv)
 {
@@ -327,6 +360,29 @@ int main(int argc, char** argv)
 		return 1;
 	}
 
+#ifdef _DEBUG
+	DIR* dp;
+	struct dirent64* dirp;
+	if ((dp = opendir("/proc/self/fd")) != NULL){
+		size_t desc_count = 0;
+
+		while((dirp = readdir64(dp)) != NULL) {
+			if (strcmp(dirp->d_name, ".") != 0 && strcmp(dirp->d_name, "..") != 0)
+				desc_count++;
+		}
+		closedir(dp);
+
+/* stdin, stdout, stderr, [connection socket], any more
+ * and we should be suspicious about descriptor leakage */
+		if (desc_count > 5){
+			fprintf(stdout, "\x1b[1m suspicious amount (%zu)"
+				"of descriptors open, investigate.\n", desc_count);
+
+			dump_links("/proc/self/fd");
+		}
+	}
+#endif
+
 /*
  * set this env whenever you want to step through the
  * frameserver as launched from the parent
@@ -335,6 +391,8 @@ int main(int argc, char** argv)
 		fprintf(stdout, "\x1b[1m ARCAN_FRAMESERVER_DEBUGSTALL set, waiting 10s. \n"
 			"\tfor debugging/tracing, attach to pid: \x1b[32m%d\x1b[39m\x1b[0m\n",
 			(int) getpid());
+
+/* any nice tactic to launch a gdb that's already attached instead of the sleep? */
 		sleep(10);
 	}
 
