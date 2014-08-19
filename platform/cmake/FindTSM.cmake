@@ -1,6 +1,6 @@
 #Put here path to custom location
 #example: /home/user/vlc/include etc..
-find_path(LIBTSM_INCLUDE_DIR libtsm.h 
+find_path(LIBTSM_INCLUDE_DIR libtsm.h
 HINTS "$ENV{LIBTSM_INCLUDE_PATH}"
 PATHS
     "$ENV{LIB_DIR}/include"
@@ -10,8 +10,8 @@ PATHS
     c:/msys/local/include
 )
 
-find_library(LIBTSM_LIBRARIES NAMES libtsm
-	HINTS "$ENV{LIBTSM_LIBRARY_PATH}" 
+find_library(LIBTSM_LIBRARIES NAMES tsm
+	HINTS "$ENV{LIBTSM_LIBRARY_PATH}"
 PATHS
 	"$ENV{LIB_DIR}/lib"
 	"/usr/local/lib"

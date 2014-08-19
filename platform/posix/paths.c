@@ -53,7 +53,7 @@ bool arcan_isfile(const char* fn)
 static char* envvs[] = {
 	"ARCAN_APPLPATH",
 	"ARCAN_RESOURCEPATH",
-	"ARCAN_APPLPATH",
+	"ARCAN_APPLTEMPPATH",
 	"ARCAN_STATEPATH",
 	"ARCAN_FONTPATH",
 	"ARCAN_BINPATH",

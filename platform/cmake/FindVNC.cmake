@@ -12,7 +12,7 @@ PATHS
     #mingw
     c:/msys/local/include
 )
-find_path(LIBVNC_INCLUDE_DIR PATHS "${CMAKE_INCLUDE_PATH}/rfb" NAMES rfb.h 
+find_path(LIBVNC_INCLUDE_DIR PATHS "${CMAKE_INCLUDE_PATH}/rfb" NAMES rfb.h
 				HINTS ${PC_LIBVNC_INCLUDEDIR} ${PC_LIBVNC_INCLUDE_DIRS})
 
 #Put here path to custom location

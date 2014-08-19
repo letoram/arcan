@@ -657,7 +657,12 @@ if (${ENABLE_VIDENC})
 			message("   |--> VNC Server libraries found, enabling vnc support in encoder.")
 			set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}encode-vnc ")
 			list(APPEND INCLUDE_DIRS ${LIBVNC_INCLUDE_DIRS})
-			set_property(SOURCE frameserver/encode.c APPEND PROPERTY COMPILE_DEFINITIONS HAVE_VNCSERVER)
+			list(APPEND FSRV_ENCODE_SOURCES
+				frameserver/vncserver.h
+				frameserver/vncserver.c
+			)
+			set_property(SOURCE frameserver/encode.c APPEND PROPERTY
+				COMPILE_DEFINITIONS HAVE_VNCSERVER)
 		 	list(APPEND FSRV_ENCODE_LIBRARIES ${LIBVNC_LIBRARIES})
 		else()
 			message("   |--> VNC Server libraries not found, disabling vnc support.")

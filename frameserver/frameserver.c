@@ -271,7 +271,8 @@ static void dumpargs(int argc, char** argv)
 		getenv("ARCAN_CONKEY") ? getenv("ARCAN_CONNKEY") : "");
 }
 
-#ifdef _DEBUG
+#if defined(_DEBUG) && !defined(__APPLE__)
+
 void dump_links(const char* path)
 {
 	DIR* dp;
@@ -360,7 +361,7 @@ int main(int argc, char** argv)
 		return 1;
 	}
 
-#ifdef _DEBUG
+#if defined(_DEBUG) && !defined(__APPLE__)
 	DIR* dp;
 	struct dirent64* dirp;
 	if ((dp = opendir("/proc/self/fd")) != NULL){

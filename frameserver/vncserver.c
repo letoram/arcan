@@ -1,0 +1,193 @@
+/* Arcan-fe, scriptable front-end engine
+ *
+ * Arcan-fe is the legal property of its developers, please refer
+ * to the COPYRIGHT file distributed with this source distribution.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 3
+ * of the License, or (at your option) any later version.
+
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor,
+ * Boston, MA 02110-1301, USA.
+ *
+ */
+
+#include <stdlib.h>
+#include <stdio.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include <string.h>
+#include <assert.h>
+#include <rfb/rfb.h>
+
+#include <arcan_shmif.h>
+#include "vncserver.h"
+#include "xsymconv.h"
+
+static struct {
+	const char* pass;
+	pthread_mutex_t outsync;
+	rfbScreenInfoPtr server;
+	struct arcan_shmif_cont shmcont;
+} vncctx = {0};
+
+struct cl_track {
+	unsigned conn_id;
+};
+
+static void server_pointer (int buttonMask,int x,int y,rfbClientPtr cl)
+{
+	arcan_event outev = {
+		.category = EVENT_EXTERNAL,
+		.kind = EVENT_EXTERNAL_CURSORINPUT,
+		.data.external.cursor.id = ((struct cl_track*)cl->clientData)->conn_id,
+		.data.external.cursor.x = x,
+		.data.external.cursor.y = y
+	};
+
+	outev.data.external.cursor.buttons[0] = buttonMask & (1 << 1);
+	outev.data.external.cursor.buttons[1] = buttonMask & (1 << 2);
+	outev.data.external.cursor.buttons[2] = buttonMask & (1 << 3);
+	outev.data.external.cursor.buttons[3] = buttonMask & (1 << 4);
+	outev.data.external.cursor.buttons[4] = buttonMask & (1 << 5);
+
+	arcan_event_enqueue(&vncctx.shmcont.outev, &outev);
+}
+
+static void server_key(rfbBool down,rfbKeySym key,rfbClientPtr cl)
+{
+	arcan_event outev = {
+		.category = EVENT_EXTERNAL,
+		.kind = EVENT_EXTERNAL_KEYINPUT,
+		.data.external.key.id = ((struct cl_track*)cl->clientData)->conn_id,
+		.data.external.key.keysym = 0,
+		.data.external.key.active = down
+	};
+
+	if (key < 65536)
+		outev.data.external.key.keysym = symtbl_in[key];
+
+	arcan_event_enqueue(&vncctx.shmcont.outev, &outev);
+}
+
+static void server_dropclient(rfbClientPtr cl)
+{
+	assert(cl->clientData);
+	free(cl->clientData);
+	cl->clientData = NULL;
+}
+
+static enum rfbNewClientAction server_newclient(rfbClientPtr cl)
+{
+	struct cl_track* clt = malloc(sizeof(struct cl_track));
+	static int step_c;
+
+	memset(clt, '\0', sizeof(struct cl_track));
+	clt->conn_id = step_c++;
+	cl->clientData = clt;
+	cl->clientGoneHook = server_dropclient;
+
+	return RFB_CLIENT_ACCEPT;
+}
+
+static void vnc_serv_deltaupd()
+{
+/*
+ * FIXME: subdivide image into a dynamic set of tiles,
+ * maintain a backbuffer, compare each tile center (and shared corners)
+ * for changes, if change detected, scan outwards until match found.
+ * Mark each rect-region as modified.
+ *
+ * One possible representation for this is to use a display-sized 1byte grid,
+ * where you scan like a regular image, and the value represents the next
+ * coordinate distance. It's quicker but perhaps not as effective ..
+ */
+	rfbMarkRectAsModified(vncctx.server, 0, 0,
+		vncctx.shmcont.addr->w, vncctx.shmcont.addr->h);
+	arcan_shmif_signal(&vncctx.shmcont, SHMIF_SIGVID);
+}
+
+void vnc_serv_run(struct arg_arr* args, struct arcan_shmif_cont cont)
+{
+/* at this point, we really should drop ALL syscalls
+ * that aren't strict related to socket manipulation */
+	int port = 5900;
+	gen_symtbl();
+
+	vncctx.shmcont = cont;
+
+	const char* name = "Arcan VNC session";
+	const char* tmpstr;
+
+	arg_lookup(args, "name", 0, &name);
+	arg_lookup(args, "pass", 0, &vncctx.pass);
+
+	if (arg_lookup(args, "port", 0, &tmpstr)){
+		port = strtoul(tmpstr, NULL, 10);
+	}
+
+	int argc = 0;
+	char* argv[] = {NULL};
+
+	vncctx.server = rfbGetScreen(&argc, (char**) argv,
+		vncctx.shmcont.addr->w, vncctx.shmcont.addr->h, 8, 3, 4);
+
+/*
+ * other relevant members;
+ * width, height, (nevershared or alwaysshared) dontdisconnect,
+ * port, autoport, width should be %4==0,
+ * permitFileTransfer, maxFd, authPasswd, ...
+ */
+
+/*
+ * FIXME: missing password auth
+ */
+	vncctx.server->frameBuffer = (char*) vncctx.shmcont.vidp;
+	vncctx.server->desktopName = name;
+	vncctx.server->alwaysShared = TRUE;
+	vncctx.server->ptrAddEvent = server_pointer;
+	vncctx.server->newClientHook = server_newclient;
+	vncctx.server->kbdAddEvent = server_key;
+	vncctx.server->port = port;
+
+/*
+ * other hooks;
+ * server->getCursorPtr, setTranslateFunction, displayHook,
+ * displayFinishedHook, KeyboardLedStateHook, xvpHook, setXCutText
+ *
+ */
+
+	rfbInitServer(vncctx.server);
+	rfbRunEventLoop(vncctx.server, -1, TRUE);
+
+	arcan_event ev;
+	while (arcan_event_wait(&vncctx.shmcont.inev, &ev) != 0){
+		if (ev.category != EVENT_TARGET)
+			continue;
+
+		switch(ev.kind){
+		case TARGET_COMMAND_STEPFRAME:
+			vnc_serv_deltaupd();
+		break;
+
+		case TARGET_COMMAND_EXIT:
+			goto done;
+		break;
+
+		default:
+			LOG("unknown: %d\n", ev.kind);
+		}
+	}
+
+done:
+	return;
+}
+
