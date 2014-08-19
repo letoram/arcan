@@ -450,7 +450,8 @@ static void dump_stack(lua_State* ctx)
  * change for C<->LUA related transfer functions and just have
  * cached function pointers.
  */
-static bool grabapplfunction(lua_State* ctx, const char* funame, size_t funlen)
+static bool grabapplfunction(lua_State* ctx,
+	const char* funame, size_t funlen)
 {
 	if (funlen > 0){
 		strncpy(lua_ctx_store.prefix_buf +
@@ -493,7 +494,7 @@ static int zapresource(lua_State* ctx)
 {
 	LUA_TRACE("zap_resource");
 
-	char* path = findresource(luaL_checkstring(ctx, 1), DEFAULT_USERMASK);
+	char* path = findresource(luaL_checkstring(ctx, 1), RESOURCE_APPL_TEMP);
 
 	if (path && unlink(path) != -1)
 		lua_pushboolean(ctx, false);
@@ -4274,7 +4275,7 @@ static int resource(lua_State* ctx)
 	LUA_TRACE("resource()");
 
 	const char* label = luaL_checkstring(ctx, 1);
-	int mask = luaL_optinteger(ctx, 2, DEFAULT_USERMASK);
+	int mask = luaL_optinteger(ctx, 2, DEFAULT_USERMASK) & DEFAULT_USERMASK;
 	char* res = findresource(label, mask);
 	lua_pushstring(ctx, res);
 	free(res);
@@ -7358,6 +7359,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"CLOCK",     0               },
 {"THEME_RESOURCE",    RESOURCE_APPL}, /* DEPRECATE */
 {"APPL_RESOURCE",     RESOURCE_APPL},
+{"APPL_TEMP_RESOURCE",RESOURCE_APPL_TEMP },
 {"SHARED_RESOURCE",   RESOURCE_APPL_SHARED },
 {"ALL_RESOURCES",     DEFAULT_USERMASK },
 {"API_VERSION_MAJOR", 0},

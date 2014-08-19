@@ -252,7 +252,7 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 	arcan_bench_register_cost( arcan_video_refresh(fract) );
 #endif
 
-#ifdef WITH_HEADLESS
+#if defined(WITH_HEADLESS) || defined(WITH_HEADLESS_MAIN)
 	glFinish();
 #else
 	glXSwapBuffers(x11.xdisp, x11.xwnd);
