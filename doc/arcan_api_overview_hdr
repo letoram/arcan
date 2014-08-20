@@ -1,31 +1,34 @@
 .\" groff -man -Tascii arcan_api_overview.1
-.TH arcan_api_overview 1 "October 2013" arcan "Developer API Reference"
+.TH arcan_api_overview 1 "August 2014" arcan "Developer API Reference"
 .SH NAME
-Arcan \- Scripting Overview 
+Arcan \- Scripting Overview
 
 .SH SYNOPSIS
-There is little work involved in getting a script up and running in Arcan.
-Simply create a subdirectory in your themes directory (herein refered to as 
-themename) named according to what you want the theme to be called 
-[a-Z][a-Z,0-9] (the name needs to be a qualifying lua function name as well) 
-along with a similarly named themename.lua file inside.
-This lua file should, at the least, have one function defined with the 
-same name as the theme. The following sections list the entry points that 
-the engine will (optionally) look for when appropriate.
+There is little work involved in getting an application (short, appl)
+up and running in Arcan.
+Simply create a directory with a qualifying name matching
+([a-Z]1[a-Z,0-9]* along with a similarly named my_applname.lua file inside.
+The following section list the entry points that
+the engine will look for, when appropriate (replace xxx with the
+qualifying name of your appl).
+
+To speed things along, look at the wiki on arcan-fe.com and work
+through the exercises corresponding to the ability level that you
+want to achieve.
 
 .SH Entry Points
-.IP "\fBthemename()\fR" 
+.IP "\fBxxx()\fR"
 Invoked as soon as audio/video/event/database subsystems are active.
 
-.IP "\fBthemename_clock_pulse(tickstamp, pulsecount)\fR"
+.IP "\fBxxx_clock_pulse(tickstamp, pulsecount)\fR"
 Invoked every logical clock-pulse, or, depending on congestion at higher
 loads, less often but with a pulsecount field set to the corresponding
-number of ticks.
+number of ticks. When the load is normal, pulsecount will equal 1.
 
-.IP "\fBthemename_input(evtbl)\fR"
-Invoked every time a polled input device emitts an output, which varies
-with user activity and filter configuration. Evtbl contains a number
-of fields:
+.IP "\fBxxx_input(evtbl)\fR"
+Invoked every time an input device emits a valid output sample,
+this varies with user activity and filter configuration.
+Evtbl contains a number of fields:
 kind : touch
 devid, subid, pressure, size, x, y
 
@@ -38,14 +41,17 @@ number, keysym, modifiers, devid, subid, utf8, active, device, subdevice
 kind : digital, translated = false
 ource, devid, subid, active
 
-.IP "\fBthemename_frame_pulse()\fR"
-Invoked every video frame, this may occur at rather spurious intervals
-depending on engine configuration. Any computation in this entrypoint
-should be considered extremely costly.
+.IP "\fBxxx_preframe_pulse() xxx_frame_pulse()\fr"
+Invoked right before and after synchronized transfer of a video frame, this may
+occur at rather spurious intervals depending on engine configuration
+and active synchronization strategy. Any computation in this entrypoint
+should be considered costly and it is mainly provided for monitoring
+purpsoes.
 
-.IP "\fBthemename_shutdown()\fR"
-A shutdown() call will not immediately terminate but rather enqueue a
-shutdown command on the eventqueue to allow future subsystems to terminate
-in a clean manner. This entrypoint will be triggered as a final point
-before the arcan process will exit.
+.IP "\fBxxx_shutdown()\fR"
+This entrypoint will be triggered as a final state before the arcan
+process will exit. The most reasonable use for this entrypoint is
+terminating network connections with protocols that work better when
+clients are cooperating, but also for saving configuration through
+the database (e.g. store_key).
 

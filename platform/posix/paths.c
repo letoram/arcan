@@ -82,11 +82,11 @@ static char* libpath_unix()
 
 	if (arcan_isfile( getenv("ARCAN_HIJACK") ) )
 		libpath = strdup( getenv("ARCAN_HIJACK") );
-	else if (arcan_isfile( "./" LIBNAME ) )
+	else if (arcan_isfile( "./arcan_hijack.so"))
 		libpath = realpath( "./", NULL );
-	else if (arcan_isfile( "/usr/local/lib/" LIBNAME) )
+	else if (arcan_isfile( "/usr/local/lib/arcan_hijack.so") )
 		libpath = strdup( "/usr/local/lib/");
-	else if (arcan_isfile( "/usr/lib/" LIBNAME) )
+	else if (arcan_isfile( "/usr/lib/arcan_hijack.so") )
 		libpath = strdup( "/usr/lib/");
 
 	return libpath;
