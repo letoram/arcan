@@ -574,7 +574,6 @@ applswitch:
 		arcan_lua_pushargv(settings.lua, argv + optind + 1);
 
 	arcan_lua_callvoidfun(settings.lua, "", true);
-	arcan_lua_callvoidfun(settings.lua, "show", false);
 
 	if (adopt){
 		int saved, truncated;

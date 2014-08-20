@@ -525,7 +525,8 @@ static int rawresource(lua_State* ctx)
 	int flags = S_IRUSR | S_IWUSR;
 
 	if (!path){
-		char* fname = arcan_expand_resource(luaL_checkstring(ctx, 1),RESOURCE_APPL);
+		char* fname = arcan_expand_resource(
+			luaL_checkstring(ctx, 1), RESOURCE_APPL_TEMP);
 		if (fname){
 			lua_ctx_store.in_file = open(fname, O_CREAT | O_CLOEXEC | O_RDWR, flags);
 			free(fname);
@@ -1114,7 +1115,7 @@ static int scaleimage(lua_State* ctx)
 static int orderimage(lua_State* ctx)
 {
 	LUA_TRACE("order_image");
-	unsigned int zv = luaL_checknumber(ctx, 2);
+	unsigned int zv = abs(luaL_checknumber(ctx, 2));
 
 /* array of VIDs or single VID */
 	int argtype = lua_type(ctx, 1);
@@ -1615,7 +1616,7 @@ static int togglemask(lua_State* ctx)
 	LUA_TRACE("image_mask_toggle");
 
 	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
-	unsigned val = luaL_checknumber(ctx, 2);
+	unsigned val = abs(luaL_checknumber(ctx, 2));
 
 	if ( (val & !(MASK_ALL)) == 0){
 		enum arcan_transform_mask mask = arcan_video_getmask(id);
@@ -1673,7 +1674,7 @@ static int clearmask(lua_State* ctx)
 {
 	LUA_TRACE("image_mask_clear");
 	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
-	unsigned val = luaL_checknumber(ctx, 2);
+	unsigned val = abs(luaL_checknumber(ctx, 2));
 
 	if ( (val & !(MASK_ALL)) == 0){
 		enum arcan_transform_mask mask = arcan_video_getmask(id);
@@ -2500,10 +2501,6 @@ static char* streamtype(int num)
  * to store the actual event, but it wouldn't really help extraction. */
 void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 {
-	if (ev->category == EVENT_SYSTEM &&
-		grabapplfunction(ctx, "system", 6)){
-		lua_newtable(ctx);
-	}
 	if (ev->category == EVENT_IO && grabapplfunction(ctx, "input", 5)){
 		int top = funtable(ctx, ev->kind);
 
@@ -3627,9 +3624,9 @@ static int fillsurface(lua_State* ctx)
 	int desw = luaL_checknumber(ctx, 1);
 	int desh = luaL_checknumber(ctx, 2);
 
-	uint8_t r = luaL_checknumber(ctx, 3);
-	uint8_t g = luaL_checknumber(ctx, 4);
-	uint8_t b = luaL_checknumber(ctx, 5);
+	uint8_t r = abs(luaL_checknumber(ctx, 3));
+	uint8_t g = abs(luaL_checknumber(ctx, 4));
+	uint8_t b = abs(luaL_checknumber(ctx, 5));
 
 	cons.w = luaL_optnumber(ctx, 6, 8);
 	cons.h = luaL_optnumber(ctx, 7, 8);
@@ -3680,9 +3677,9 @@ static int imagecolor(lua_State* ctx)
 
 	arcan_vobject* vobj;
 	luaL_checkvid(ctx, 1, &vobj);
-	uint8_t cred = luaL_checknumber(ctx, 2);
-	uint8_t cgrn = luaL_checknumber(ctx, 3);
-	uint8_t cblu = luaL_checknumber(ctx, 4);
+	uint8_t cred = abs(luaL_checknumber(ctx, 2));
+	uint8_t cgrn = abs(luaL_checknumber(ctx, 3));
+	uint8_t cblu = abs(luaL_checknumber(ctx, 4));
 
 	if (!vobj || vobj->vstore->txmapped){
 		lua_pushboolean(ctx, false);
@@ -4909,10 +4906,8 @@ static int targetreset(lua_State* ctx)
 static char* lookup_hijack(int gameid)
 {
 	char* res = arcan_db_gametgthijack(dbhandle, gameid);
-
-/* revert to default if the database doesn't tell us anything */
-	if (!res && LIBNAME)
-		res = strdup(LIBNAME);
+	if (!res)
+		res = strdup("");
 
 	char* lookup = arcan_expand_resource(res, RESOURCE_SYS_LIBS);
 	arcan_mem_free(res);
@@ -5249,8 +5244,8 @@ static int procimage_lookup(lua_State* ctx)
 		arcan_fatal("calcImage:frequency, calctarget object called "
 			"out of scope.\n");
 
-	size_t bin = luaL_checknumber(ctx, 2);
-	if (256 <= bin)
+	ssize_t bin = luaL_checknumber(ctx, 2);
+	if (256 <= bin || 0 > bin)
 		arcan_fatal("calcImage:frequency, invalid bin %d >= 256 specified.\n");
 
 	bool reset = luaL_optnumber(ctx, 3, 0) != 0;
@@ -6106,7 +6101,7 @@ static int shader_uniform(lua_State* ctx)
 
 	float fbuf[16];
 
-	unsigned sid = luaL_checknumber(ctx, 1);
+	int sid = abs(luaL_checknumber(ctx, 1));
 	const char* label = luaL_checkstring(ctx, 2);
 	const char* fmtstr = luaL_checkstring(ctx, 3);
 	bool persist = luaL_checknumber(ctx, 4) != 0;
@@ -6199,7 +6194,7 @@ static int rotatemodel(lua_State* ctx)
 	double roll       = luaL_checknumber(ctx, 2);
 	double pitch      = luaL_checknumber(ctx, 3);
 	double yaw        = luaL_checknumber(ctx, 4);
-	unsigned int dt   = luaL_optnumber(ctx, 5, 0);
+	unsigned int dt   = abs(luaL_optnumber(ctx, 5, 0));
 	int rotate_rel    = luaL_optnumber(ctx, 6, CONST_ROTATE_ABSOLUTE);
 
 	if (rotate_rel != CONST_ROTATE_RELATIVE && rotate_rel !=CONST_ROTATE_ABSOLUTE)

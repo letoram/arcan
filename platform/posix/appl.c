@@ -102,6 +102,14 @@ bool arcan_verifyload_appl(const char* appl_id, const char** errc)
 		return false;
 	}
 
+	if (getenv("ARCAN_APPLTEMPPATH")){
+		arcan_override_namespace(getenv("ARCAN_APPLTEMPPATH"), RESOURCE_APPL_TEMP);
+		if (appl_ready)
+			arcan_warning("switching applications with an env- "
+				"appl_temp path override in place forces two "
+				"applications to share temporary namespace ");
+	}
+
 	arcan_override_namespace(subpath, RESOURCE_APPL);
 	free(subpath);
 
