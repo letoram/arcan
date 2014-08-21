@@ -138,7 +138,8 @@ bool arcan_verify_namespaces(bool report)
 /* 1. check namespace mapping for holes */
 	for (int i = 0; i < sizeof(
 		namespaces.paths) / sizeof(namespaces.paths[0]); i++){
-			if (namespaces.paths[i] == NULL && (i & RESOURCE_SYS_LIBS) == 0){
+			if (namespaces.paths[i] == NULL &&
+				(i & (int)log2(RESOURCE_SYS_LIBS)) == 0){
 				if (working && report){
 					arcan_warning("--- Broken Namespaces detected: ---\n");
 				}
