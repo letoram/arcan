@@ -60,7 +60,7 @@ char* arcan_find_resource(const char* label, enum arcan_namespaces space)
 	size_t label_len = strlen(label);
 
 	for (int i = 1, j = 0; i <= RESOURCE_SYS_ENDM; i <<= 1, j++){
-		if ((space & i) == 0)
+		if ((space & i) == 0 || !namespaces.paths[j])
 			continue;
 
 		char scratch[ namespaces.lenv[j] + label_len + 2 ];
@@ -79,11 +79,11 @@ char* arcan_find_resource(const char* label, enum arcan_namespaces space)
 char* arcan_expand_resource(const char* label, enum arcan_namespaces space)
 {
 	assert( space > 0 && (space & (space - 1) ) == 0 );
-
-	if (label == NULL || verify_traverse(label) == NULL)
-		return NULL;
-
 	int space_ind = log2(space);
+
+	if (label == NULL ||
+		verify_traverse(label) == NULL || !namespaces.paths[space_ind])
+		return NULL;
 
 	size_t len_1 = strlen(label);
 	size_t len_2 = namespaces.lenv[space_ind];
@@ -138,7 +138,7 @@ bool arcan_verify_namespaces(bool report)
 /* 1. check namespace mapping for holes */
 	for (int i = 0; i < sizeof(
 		namespaces.paths) / sizeof(namespaces.paths[0]); i++){
-			if (namespaces.paths[i] == NULL){
+			if (namespaces.paths[i] == NULL && (i & RESOURCE_SYS_LIBS) == 0){
 				if (working && report){
 					arcan_warning("--- Broken Namespaces detected: ---\n");
 				}
