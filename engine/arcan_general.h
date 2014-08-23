@@ -22,11 +22,6 @@
 #ifndef _HAVE_ARCAN_GENERAL
 #define _HAVE_ARCAN_GENERAL
 
-/* refactor needs:
- * (a) stop typedef:ing structs
- * (b) continue evacuating ifdefs that aren't DEBUG
- */
-
 #define PRIxVOBJ "lld"
 
 #include PLATFORM_HEADER

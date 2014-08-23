@@ -36,17 +36,18 @@
 
 #include GL_HEADERS
 
-#include "arcan_shmif.h"
 #include "arcan_math.h"
 #include "arcan_general.h"
+#include "arcan_shmif.h"
 #include "arcan_event.h"
 #include "arcan_video.h"
 #include "arcan_videoint.h"
 #include "arcan_audio.h"
 #include "arcan_audioint.h"
 #include "arcan_frameserver_backend.h"
-#include "arcan_shmif.h"
 #include "arcan_event.h"
+
+static uint64_t cookie;
 
 static inline void emit_deliveredframe(arcan_frameserver* src,
 	unsigned long long pts, unsigned long long framecount);
@@ -145,8 +146,8 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
  * with the structure to provoke a vulnerability, frameserver
  * dying or timing out, ... */
 	if ( src->flags.alive && src->shm.ptr &&
-		(arcan_shmif_integrity_check(src->shm.ptr) == false ||
-		arcan_frameserver_validchild(src) == false)){
+		src->shm.ptr->cookie == cookie &&
+		arcan_frameserver_validchild(src) == false){
 
 /* force flush beforehand, in a saturated queue, data may still
  * get lost here */
@@ -760,6 +761,9 @@ arcan_frameserver* arcan_frameserver_alloc()
 	arcan_frameserver* res = arcan_alloc_mem(sizeof(arcan_frameserver),
 		ARCAN_MEM_VTAG, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 
+	if (!cookie)
+		cookie = arcan_shmif_cookie();
+
 	res->flags.pbo = arcan_video_display.pbo_support;
 	res->watch_const = 0xdead;
 
@@ -868,6 +872,7 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 	struct arcan_shmif_page* shmpage = ctx->shm.ptr;
 	shmpage->w = setup.init_w;
 	shmpage->h = setup.init_h;
+	shmpage->cookie = cookie;
 
 	arcan_shmif_calcofs(shmpage, &(ctx->vidp), &(ctx->audp));
 }

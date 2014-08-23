@@ -36,4 +36,12 @@ bool arcan_pushhandle(file_handle in, int channel);
 
 bool arcan_isdir(const char* path);
 bool arcan_isfile(const char* path);
+
+/*
+ * implemented in <platform>/warning.c
+ * regular fprintf(stderr, style trace output logging.
+ * slated for REDESIGN/REFACTOR.
+ */
+void arcan_warning(const char* msg, ...);
+void arcan_fatal(const char* msg, ...);
 #endif

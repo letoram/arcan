@@ -94,6 +94,12 @@ int arcan_event_tryenqueue(struct arcan_evctx*,
 	const struct arcan_event* const);
 
 /*
+ * calculates a hash of the layout of the shmpage in order
+ * to detect subtle compiler mismatches etc.
+ */
+uint64_t arcan_shmif_cookie();
+
+/*
  * The following functions are simple lookup/unpack support functions
  * for argument strings usually passed on the command-line to a newly
  * spawned frameserver in a simple (utf-8) key=value\tkey=value type format.

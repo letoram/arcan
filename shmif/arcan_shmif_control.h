@@ -209,6 +209,13 @@ struct arcan_shmif_cont {
 	uint8_t* vidp;
 	uint8_t* audp;
 
+/*
+ * used in integrity_check, should never be != 0 and that
+ * would be indicative of poor / broken vidp/audp- dependant
+ * code.
+ */
+	int oflow_cookie;
+
 /* maintain a connection to the shared memory handle in order
  * to handle resizing (on platforms that support it, otherwise
  * define ARCAN_SHMIF_OVERCOMMIT which will only recalc pointers
@@ -218,7 +225,11 @@ struct arcan_shmif_cont {
 
 /*
  * handles are exposed in the struct rather than in (priv) but
- * manually manipulating them is not recommended.
+ * manually manipulating them is not recommended. When shmpage
+ * layout has been refactored into passing events through a
+ * socket, this interface will also be replaced with a descriptor-
+ * like signalling interface to get working multiplexation rather
+ * than polling.
  */
 	sem_handle vsem;
 	sem_handle asem;
@@ -226,6 +237,15 @@ struct arcan_shmif_cont {
 
 	struct arcan_evctx inev;
 	struct arcan_evctx outev;
+
+/*
+ * This cookie is a magical value calculated when a page
+ * is opened and resized and checked against in each verify_integrity
+ * call. It is primarily based on the compiler- perspective of the
+ * layout of the shmif_page structure. Deviation between this and
+ * the corresponding field in shmif_page is a terminal state transition.
+ */
+	uint64_t cookie;
 
 	void* user; /* tag provided to the user */
 	void* priv; /* used in _control for guard threads etc. */
@@ -245,18 +265,26 @@ struct arcan_shmif_page {
 	int8_t minor;
 
 /*
- * These queues carry the event blocks (~100b datastructures)
- * back and forth between parent and child. It is treated as a
- * one-producer, one-consumer ring-buffer.
+ * This is calculated on both ends and is a safe-guard against
+ * different compilers generating different padding / ofsets etc.
+ * in this structure. See also: cookie in shmcount.
+ */
+	uint64_t cookie;
+
+/*
+ * SLATED FOR REFACTOR
+ * should be moved to a FD based channel with a protobuf- managed
+ * (de-)serilization structure. The reason this is currently kept
+ * this way is to fixate the event- ontology after which we can
+ * move the shmif bits to a library format.
  */
 	struct {
 		struct arcan_event evqueue[ PP_QUEUE_SZ ];
 		uint32_t front, back;
 	} childdevq, parentevq;
 
-/* will be checked frequently, likely before transfers.
- * if the DMS is released, the parent (or child or both) will
- * drop the connection. */
+/* will be checked frequently, likely before transfers as it means
+ * that shmcontents etc. will be invalid */
 	volatile int8_t resized;
 
 /*
@@ -272,11 +300,6 @@ struct arcan_shmif_page {
 /* when released, it is assumed that the parent or child or both
  * has failed and everything should be dropped and terminated */
 	volatile uintptr_t dms;
-
-/* used as a hint to how disruptions (e.g. broken datastreams,
- * end of content in terms of video playback etc.) should be handled,
- * terminating or looping back to the initial state (if possible) */
-	uint8_t loop;
 
 /*
  * flipped whenever a buffer is ready to be synched,
@@ -453,16 +476,15 @@ size_t arcan_shmif_getsize(unsigned width, unsigned height);
  */
 struct arcan_shmif_cont* arcan_shmif_primary(enum arcan_shmif_type);
 void arcan_shmif_setprimary( enum arcan_shmif_type, struct arcan_shmif_cont*);
+
 /*
- * This is currently a "stub" (merely version check)
- * although it is suggested that both frameservers and parents
- * repeatedly invokes it as part of rendering / eventloops or
- * similar activity. The purpose is to (through checksums or
- * similar means) detect and self-destruct in the event of a corrupt
- * page (indication of a serious underlying problem) so that
- * proper debug-/tracing-/user- measures can be taken.
+ * This should be called periodically to prevent more subtle
+ * bugs from cascading and be caught at an earlier stage,
+ * it checks the shared memory context against a series of cookies
+ * and known guard values, returning [false] if not everything
+ * checks out.
  */
-bool arcan_shmif_integrity_check(struct arcan_shmif_page*);
+bool arcan_shmif_integrity_check(struct arcan_shmif_cont*);
 
 /*
  * Additional buffers can be allocated, and non-authoritative,
