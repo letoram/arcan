@@ -113,14 +113,6 @@ map_region arcan_map_resource(data_source*, bool wr);
 bool arcan_release_map(map_region region);
 
 /*
- * implemented in <platform>/warning.c
- * regular fprintf(stderr, style trace output logging.
- * slated for REDESIGN/REFACTOR.
- */
-void arcan_warning(const char* msg, ...);
-void arcan_fatal(const char* msg, ...);
-
-/*
  * implemented in <platform>/paths.c
  * return true if the path key indicated by <fn> exists and
  * is a directory, otherwise, false.

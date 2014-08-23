@@ -16,8 +16,7 @@
 #include <errno.h>
 #include <string.h>
 
-#include <arcan_math.h>
-#include <arcan_general.h>
+#include PLATFORM_HEADER
 
 /*
  * try to allocate a shared memory page and three semaphores (vid / aud / ev)

@@ -7,14 +7,11 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <assert.h>
-#include <sys/time.h>
 #include <time.h>
 #include <math.h>
 
 #include <stdint.h>
 #include <stdbool.h>
-#include <arcan_math.h>
-#include <arcan_general.h>
 
 long long int arcan_timemillis()
 {

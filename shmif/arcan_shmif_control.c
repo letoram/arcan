@@ -100,6 +100,21 @@ static void spawn_guardthread(
 	}
 }
 
+#ifndef offsetof
+#define offsetof(type, member) ((size_t)((char*)&(*(type*)0).member\
+ - (char*)&(*(type*)0)))
+#endif
+
+uint64_t arcan_shmif_cookie()
+{
+	uint64_t base = sizeof(struct arcan_event) + sizeof(struct arcan_shmif_page);
+	base += offsetof(struct arcan_shmif_page, cookie)  <<  8;
+  base += offsetof(struct arcan_shmif_page, resized) << 16;
+	base += offsetof(struct arcan_shmif_page, aready)  << 24;
+  base += offsetof(struct arcan_shmif_page, abufused)<< 32;
+	return base;
+}
+
 #if _WIN32
 static inline bool parent_alive()
 {
@@ -352,6 +367,7 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 	arcan_shmif_calcofs(res.addr, &res.vidp, &res.audp);
 
 	res.shmsize = res.addr->segment_size;
+	res.cookie = arcan_shmif_cookie();
 
 /* signal that we're ready to receive */
 	if (shmif_type == SHMIF_OUTPUT){
@@ -392,13 +408,27 @@ static void* guard_thread(void* gs)
 	return NULL;
 }
 
-bool arcan_shmif_integrity_check(struct arcan_shmif_page* shmp)
+bool arcan_shmif_integrity_check(struct arcan_shmif_cont* cont)
 {
+	struct arcan_shmif_page* shmp = cont->addr;
+	if (!cont)
+		return false;
+
 	if (shmp->major != ARCAN_VERSION_MAJOR ||
 		shmp->minor != ARCAN_VERSION_MINOR){
-		LOG("frameserver::shmif integrity check failed\n");
+		LOG("frameserver::shmif integrity check failed, version mismatch\n");
 		return false;
 	}
+
+	if (shmp->cookie != cont->cookie)
+	{
+		LOG("frameserver::shmif integrity check failed, non-matching cookies"
+			" this is a serious issue indicating either data-corruption or "
+			" compiler / interface version mismatch.\n");
+
+		return false;
+	}
+
 	return true;
 }
 
@@ -543,7 +573,7 @@ size_t arcan_shmif_getsize(unsigned width, unsigned height)
 bool arcan_shmif_resize(struct arcan_shmif_cont* arg,
 	unsigned width, unsigned height)
 {
-	if (!arg->addr || !arcan_shmif_integrity_check(arg->addr))
+	if (!arg->addr || !arcan_shmif_integrity_check(arg))
 		return false;
 
 	arg->addr->w = width;
@@ -606,20 +636,6 @@ bool arcan_shmif_resize(struct arcan_shmif_cont* arg,
 	return true;
 }
 
-static char* strrep(char* dst, char key, char repl)
-{
-	char* src = dst;
-
-	if (dst)
-		while (*dst){
-			if (*dst == key)
-				*dst = repl;
-			dst++;
-		}
-
-		return src;
-}
-
 shmif_trigger_hook arcan_shmif_signalhook(struct arcan_shmif_cont* cont,
 	enum arcan_shmif_sigmask mask, shmif_trigger_hook hook, void* data)
 {
@@ -660,110 +676,4 @@ void arcan_shmif_setprimary(enum arcan_shmif_type type,
 		primary.output = seg;
 }
 
-struct arg_arr* arg_unpack(const char* resource)
-{
-	int argc = 1;
-	const char* rsstr = resource;
 
-/* unless an empty string, we'll always have 1 */
-	if (!resource)
-		return NULL;
-
-/* figure out the number of additional arguments we have */
-	do{
-		if (rsstr[argc] == ':')
-			argc++;
-		rsstr++;
-	} while(*rsstr);
-
-/* prepare space */
-	struct arg_arr* argv = malloc( (argc+1) * sizeof(struct arg_arr) );
-	if (!argv)
-		return NULL;
-
-	int curarg = 0;
-	argv[argc].key = argv[argc].value = NULL;
-
-	char* base    = strdup(resource);
-	char* workstr = base;
-
-/* sweep for key=val:key:key style packed arguments,
- * since this is used in such a limited fashion (RFC 3986 at worst),
- * we use a replacement token rather than an escape one,
- * so \t becomes : post-process
- */
-	while (curarg < argc){
-		char* endp  = workstr;
-		argv[curarg].key = argv[curarg].value = NULL;
-
-		while (*endp && *endp != ':'){
-/* a==:=a=:a=dd= are disallowed */
-			if (*endp == '='){
-				if (!argv[curarg].key){
-					*endp = 0;
-					argv[curarg].key = strrep(strdup(workstr), '\t', ':');
-					argv[curarg].value = NULL;
-					workstr = endp + 1;
-				}
-				else{
-					free(argv);
-					argv = NULL;
-					goto cleanup;
-				}
-			}
-
-			endp++;
-		}
-
-		if (*endp == ':')
-			*endp = '\0';
-
-		if (argv[curarg].key)
-			argv[curarg].value = strrep(strdup( workstr ), '\t', ':');
-		else
-			argv[curarg].key = strrep(strdup( workstr ), '\t', ':');
-
-		workstr = (++endp);
-		curarg++;
-	}
-
-cleanup:
-	free(base);
-
-	return argv;
-}
-
-void arg_cleanup(struct arg_arr* arr)
-{
-	if (!arr)
-		return;
-
-	while (arr->key){
-		free(arr->key);
-		free(arr->value);
-		arr++;
-	}
-}
-
-bool arg_lookup(struct arg_arr* arr, const char* val,
-	unsigned short ind, const char** found)
-{
-	int pos = 0;
-	if (!arr)
-		return false;
-
-	while (arr[pos].key != NULL){
-/* return only the 'ind'th match */
-		if (strcmp(arr[pos].key, val) == 0)
-			if (ind-- == 0){
-				if (found)
-					*found = arr[pos].value;
-
-				return true;
-			}
-
-		pos++;
-	}
-
-	return false;
-}

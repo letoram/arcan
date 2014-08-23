@@ -81,5 +81,3 @@ file_handle arcan_fetchhandle(int sockin_fd)
 
 	return rv;
 }
-
-
