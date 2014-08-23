@@ -2371,14 +2371,13 @@ static int targetinput(lua_State* ctx)
 		if (intblbool(ctx, tblind, "translated")){
 			ev.data.io.datatype = EVENT_IDATATYPE_TRANSLATED;
 			ev.data.io.devkind  = EVENT_IDEVKIND_KEYBOARD;
+			ev.kind = EVENT_IO_KEYB;
 			ev.data.io.input.translated.active    = intblbool(ctx, tblind, "active");
 			ev.data.io.input.translated.scancode  = intblnum(ctx, tblind, "number");
 			ev.data.io.input.translated.keysym    = intblnum(ctx, tblind, "keysym");
 			ev.data.io.input.translated.modifiers = intblnum(ctx, tblind, "modifiers");
 			ev.data.io.input.translated.devid     = intblnum(ctx, tblind, "devid");
 			ev.data.io.input.translated.subid     = intblnum(ctx, tblind, "subid");
-			ev.kind = ev.data.io.input.translated.active ?
-				EVENT_IO_KEYB_PRESS : EVENT_IO_KEYB_RELEASE;
 		}
 		else {
 			const char* tblsrc = intblstr(ctx, tblind, "source");
@@ -2541,10 +2540,8 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			lua_rawset(ctx, top);
 		break;
 
-		case EVENT_IO_BUTTON_PRESS:
-		case EVENT_IO_BUTTON_RELEASE:
-		case EVENT_IO_KEYB_PRESS:
-		case EVENT_IO_KEYB_RELEASE:
+		case EVENT_IO_BUTTON:
+		case EVENT_IO_KEYB:
 			lua_pushstring(ctx, "digital");
 			lua_rawset(ctx, top);
 
@@ -2556,8 +2553,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				tblnum(ctx, "devid", ev->data.io.input.translated.devid, top);
 				tblnum(ctx, "subid", ev->data.io.input.translated.subid, top);
 				tblstr(ctx, "utf8", to_utf8(ev->data.io.input.translated.subid), top);
-				tblbool(ctx, "active", ev->kind == EVENT_IO_KEYB_PRESS
-					? true : false, top);
+				tblbool(ctx, "active", ev->data.io.input.translated.active, top);
 				tblstr(ctx, "device", "translated", top);
 				tblstr(ctx, "subdevice", "keyboard", top);
 			}
