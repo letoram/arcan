@@ -117,6 +117,12 @@ struct arcan_devnode {
 			struct axis_opts flt[2];
 		} cursor;
 		struct {
+			unsigned state;
+			bool numlock;
+			bool capslock;
+			bool scrolllock;
+		} keyboard;
+		struct {
 			bool incomplete;
 		} touch;
 	};
@@ -347,7 +353,7 @@ void arcan_event_analogall(bool enable, bool mouse)
 		return;
 
 /*
- * sweep all devices and all axes (or just mouseid)
+ * FIXME sweep all devices and all axes (or just mouseid)
  * if (enable) then set whatever the previous mode was,
  * else store current mode and set NONE
  */
@@ -424,8 +430,11 @@ void platform_event_process(struct arcan_evctx* ctx)
  */
 void platform_key_repeat(struct arcan_evctx* ctx, unsigned int rate)
 {
-/* FIXME: map repeat information,
- * this should be deprecated and moved to a script basis */
+	for (size_t i = 0; i < iodev.n_devs; i++)
+		if (iodev.nodes[i].type == DEVNODE_KEYBOARD){
+			int buf[2] = {REP_PERIOD, rate};
+			ioctl(iodev.nodes[i].handle, EVIOCGREP, buf);
+		}
 }
 
 #define bit_longn(x) ( (x) / (sizeof(long)*8) )
@@ -600,8 +609,11 @@ static void got_device(int fd)
 				iodev.mouseid = node.devnum;
 		}
 /* not particularly pretty and rather arbitrary */
-		else if (!mouse_btn && !joystick_btn && node.button_count > 84)
+		else if (!mouse_btn && !joystick_btn && node.button_count > 84){
 			node.type = DEVNODE_KEYBOARD;
+/* FIXME: query current LED states and set corresponding
+ * states in the devnode */
+		}
 
 		node.hnd.handler = defhandlers[node.type];
 	}
@@ -709,6 +721,33 @@ void arcan_event_rescan_idev(struct arcan_evctx* ctx)
 
 }
 
+static void update_state(int code, bool state, unsigned* statev)
+{
+	int modifier = 0;
+
+	switch (klut[code]){
+	case K_LSHIFT:
+		modifier = ARKMOD_LSHIFT;
+	break;
+	case K_RSHIFT:
+		modifier = ARKMOD_RSHIFT;
+	break;
+	case K_LCTRL:
+		modifier = ARKMOD_LCTRL;
+	break;
+	case K_RCTRL:
+		modifier = ARKMOD_RCTRL;
+	break;
+	default:
+		return;
+	}
+
+	if (state)
+		*statev |= (1 << modifier);
+	else
+		*statev &= ~(1 << modifier);
+}
+
 static void disconnect(struct arcan_devnode* node)
 {
 	for (size_t i = 0; i < iodev.n_devs; i++)
@@ -735,6 +774,7 @@ static void defhandler_kbd(struct arcan_evctx* out,
 
 	arcan_event newev = {
 		.category = EVENT_IO,
+		.kind = EVENT_IO_KEYB,
 		.data.io = {
 			.datatype = EVENT_IDATATYPE_TRANSLATED,
 			.devkind = EVENT_IDEVKIND_KEYBOARD,
@@ -749,10 +789,24 @@ static void defhandler_kbd(struct arcan_evctx* out,
 		case EV_KEY:
 		newev.data.io.input.translated.scancode = inev[i].code;
 		newev.data.io.input.translated.keysym = lookup_keycode(inev[i].code);
-		newev.kind = inev[i].value ? EVENT_IO_KEYB_PRESS : EVENT_IO_KEYB_RELEASE;
 
-/* FIXME: try and fill out more fields (subid, ...) */
-		arcan_event_enqueue(out, &newev);
+		update_state(inev[i].code, inev[i].value != 0, &node->keyboard.state);
+
+		newev.data.io.input.translated.modifiers = node->keyboard.state;
+		newev.data.io.input.translated.subid =
+			lookup_character(inev[i].code, node->keyboard.state);
+
+		if (inev[i].value == 2){
+			newev.data.io.input.translated.active = false;
+			arcan_event_enqueue(out, &newev);
+			newev.data.io.input.translated.active = true;
+			arcan_event_enqueue(out, &newev);
+		}
+		else{
+			newev.data.io.input.translated.active = inev[i].value != 0;
+			arcan_event_enqueue(out, &newev);
+		}
+
 		break;
 
 		default:
@@ -842,7 +896,7 @@ static void defhandler_game(struct arcan_evctx* ctx,
 				( (node->hnd.button_mask >> inev[i].code) & 1) )
 				continue;
 
-			newev.kind = EVENT_IO_BUTTON_PRESS;
+			newev.kind = EVENT_IO_BUTTON;
 			newev.data.io.datatype = EVENT_IDATATYPE_DIGITAL;
 			newev.data.io.input.digital.active = inev[i].value;
 			newev.data.io.input.digital.subid = inev[i].code - BTN_JOYSTICK;
@@ -916,7 +970,7 @@ static void defhandler_mouse(struct arcan_evctx* ctx,
 			if (samplev < 0)
 				continue;
 
-			newev.kind = EVENT_IO_BUTTON_PRESS;
+			newev.kind = EVENT_IO_BUTTON;
 			newev.data.io.datatype = EVENT_IDATATYPE_DIGITAL;
 			newev.data.io.input.digital.active = inev[i].value;
 			newev.data.io.input.digital.subid = samplev;

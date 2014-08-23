@@ -179,10 +179,8 @@ enum ARCAN_TARGET_SKIPMODE {
 };
 
 enum ARCAN_EVENT_IO {
-	EVENT_IO_BUTTON_PRESS,
-	EVENT_IO_BUTTON_RELEASE,
-	EVENT_IO_KEYB_PRESS,
-	EVENT_IO_KEYB_RELEASE,
+	EVENT_IO_BUTTON,
+	EVENT_IO_KEYB,
 	EVENT_IO_AXIS_MOVE,
 	EVENT_IO_TOUCH
 };
@@ -343,9 +341,9 @@ enum ARCAN_ANALOGFILTER_KIND {
 
 typedef union arcan_ioevent_data {
 	struct {
+		uint8_t active;
 		uint8_t devid;
 		uint8_t subid;
-		uint8_t active;
 	} digital;
 
 	struct {
@@ -369,7 +367,6 @@ typedef union arcan_ioevent_data {
 		uint8_t active;
 		uint8_t devid;
 		uint16_t subid;
-
 		uint16_t keysym;
 		uint16_t modifiers;
 		uint8_t scancode;

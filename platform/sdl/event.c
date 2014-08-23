@@ -348,7 +348,7 @@ static inline void process_hatmotion(arcan_evctx* ctx, unsigned devid,
 {
 	arcan_event newevent = {
 		.category = EVENT_IO,
-		.kind = EVENT_IO_BUTTON_PRESS,
+		.kind = EVENT_IO_BUTTON,
 		.data.io.datatype = EVENT_IDATATYPE_DIGITAL,
 		.data.io.devkind = EVENT_IDEVKIND_GAMEDEV,
 		.data.io.input.digital.devid = devid,
@@ -399,7 +399,7 @@ void platform_event_process(arcan_evctx* ctx)
 	while (SDL_PollEvent(&event)) {
 		switch (event.type) {
 		case SDL_MOUSEBUTTONDOWN:
-			newevent.kind = EVENT_IO_BUTTON_PRESS;
+			newevent.kind = EVENT_IO_BUTTON;
 			newevent.data.io.datatype = EVENT_IDATATYPE_DIGITAL;
 			newevent.data.io.devkind  = EVENT_IDEVKIND_MOUSE;
 			newevent.data.io.input.digital.devid = event.motion.which;
@@ -411,7 +411,7 @@ void platform_event_process(arcan_evctx* ctx)
 		break;
 
 		case SDL_MOUSEBUTTONUP:
-			newevent.kind = EVENT_IO_BUTTON_RELEASE;
+			newevent.kind = EVENT_IO_BUTTON;
 			newevent.data.io.datatype = EVENT_IDATATYPE_DIGITAL;
 			newevent.data.io.devkind  = EVENT_IDEVKIND_MOUSE;
 			newevent.data.io.input.digital.devid = event.motion.which;
@@ -431,7 +431,7 @@ void platform_event_process(arcan_evctx* ctx)
 		break;
 
 		case SDL_KEYDOWN:
-			newevent.kind  = EVENT_IO_KEYB_PRESS;
+			newevent.kind  = EVENT_IO_KEYB;
 			newevent.data.io.datatype = EVENT_IDATATYPE_TRANSLATED;
 			newevent.data.io.devkind  = EVENT_IDEVKIND_KEYBOARD;
 			newevent.data.io.input.translated.devid = event.key.which;
@@ -443,7 +443,7 @@ void platform_event_process(arcan_evctx* ctx)
 		break;
 
 		case SDL_KEYUP:
-			newevent.kind  = EVENT_IO_KEYB_RELEASE;
+			newevent.kind  = EVENT_IO_KEYB;
 			newevent.data.io.datatype = EVENT_IDATATYPE_TRANSLATED;
 			newevent.data.io.devkind  = EVENT_IDEVKIND_KEYBOARD;
 			newevent.data.io.input.translated.devid = event.key.which;
@@ -455,7 +455,7 @@ void platform_event_process(arcan_evctx* ctx)
 		break;
 
 		case SDL_JOYBUTTONDOWN:
-			newevent.kind = EVENT_IO_BUTTON_PRESS;
+			newevent.kind = EVENT_IO_BUTTON;
 			newevent.data.io.datatype = EVENT_IDATATYPE_DIGITAL;
 			newevent.data.io.devkind  = EVENT_IDEVKIND_GAMEDEV;
 			newevent.data.io.input.digital.devid = event.jbutton.which;
@@ -467,7 +467,7 @@ void platform_event_process(arcan_evctx* ctx)
 		break;
 
 		case SDL_JOYBUTTONUP:
-			newevent.kind = EVENT_IO_BUTTON_RELEASE;
+			newevent.kind = EVENT_IO_BUTTON;
 			newevent.data.io.datatype = EVENT_IDATATYPE_DIGITAL;
 			newevent.data.io.devkind  = EVENT_IDEVKIND_GAMEDEV;
 			newevent.data.io.input.digital.devid = event.jbutton.which;

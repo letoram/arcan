@@ -1,12 +1,11 @@
-/*
- * For legacy reasons we use SDLs scancode as internal
- * representation, so convert between whatever the linux
- * have for the moment and that.
- *
- * But as will all things text, it's a table of a table of a table
- * where at least one bit will mismatch every time.
- */
+#include <ctype.h>
 
+/*
+ * For legacy reasons we 've used SDLs keycodes as internal
+ * representation, so convert between linux keycodes to
+ * SDLs, forward the ones we don't know and leave the rest
+ * of the input management to the scripting layer.
+ */
 static uint16_t klut[512] = {0};
 
 enum {
@@ -146,65 +145,174 @@ enum {
 	K_AGAIN,
 };
 
+static char  alut[256] = {0};
+static char shlut[256] = {0};
+static char ltlut[256] = {0};
+
 static void init_keyblut()
 {
 klut[KEY_ESC] = K_ESCAPE;
+
 klut[KEY_1] = K_1;
+alut[KEY_1] = '1';
+shlut[KEY_1] = '!';
+
 klut[KEY_2] = K_2;
+alut[KEY_2] = '2';
+shlut[KEY_2] = '@';
+
 klut[KEY_3] = K_3;
+alut[KEY_3] = '3';
+shlut[KEY_3] = '#';
+
 klut[KEY_4] = K_4;
+alut[KEY_4] = '4';
+shlut[KEY_4] = '$';
+
 klut[KEY_5] = K_5;
+alut[KEY_5] = '5';
+shlut[KEY_5] = '%';
+
 klut[KEY_6] = K_6;
+alut[KEY_6] = '6';
+shlut[KEY_6] = '^';
+
 klut[KEY_7] = K_7;
+alut[KEY_7] = '7';
+shlut[KEY_7] = '&';
+
 klut[KEY_8] = K_8;
+alut[KEY_8] = '8';
+shlut[KEY_8] = '*';
+
 klut[KEY_9] = K_9;
+alut[KEY_9] = '9';
+shlut[KEY_9] = '(';
+
 klut[KEY_0] = K_0;
+alut[KEY_0] = '0';
+shlut[KEY_0] = ')';
+
 klut[KEY_MINUS] = K_MINUS;
+alut[KEY_MINUS] = '-';
+shlut[KEY_MINUS] = '_';
+
 klut[KEY_EQUAL] = K_EQUALS;
+alut[K_EQUALS] = '=';
+shlut[KEY_EQUAL] = '+';
+
+klut[KEY_GRAVE] = K_UNKNOWN;
+alut[KEY_GRAVE] = '~';
+shlut[KEY_GRAVE] = '`';
+
 klut[KEY_BACKSPACE] = K_BACKSPACE;
 klut[KEY_TAB] = K_TAB;
+alut[KEY_TAB] = '\t';
 klut[KEY_Q] = K_Q;
+alut[KEY_Q] = 'q';
 klut[KEY_W] = K_W;
+alut[KEY_W] = 'w';
 klut[KEY_E] = K_E;
+alut[KEY_E] = 'e';
 klut[KEY_R] = K_R;
+alut[KEY_R] = 'r';
 klut[KEY_T] = K_T;
+alut[KEY_T] = 't';
 klut[KEY_Y] = K_Y;
+alut[KEY_Y] = 'y';
 klut[KEY_U] = K_U;
+alut[KEY_U] = 'u';
 klut[KEY_I] = K_I;
+alut[KEY_I] = 'i';
 klut[KEY_O] = K_O;
+alut[KEY_O] = 'o';
 klut[KEY_P] = K_P;
+alut[KEY_P] = 'p';
+
 klut[KEY_LEFTBRACE] = K_KP_LEFTBRACE;
+alut[KEY_LEFTBRACE] = '[';
+shlut[KEY_LEFTBRACE] = '{';
+
 klut[KEY_RIGHTBRACE] = K_KP_RIGHTBRACE;
+alut[KEY_RIGHTBRACE] = ']';
+shlut[KEY_RIGHTBRACE] = '}';
+
+/* shouldn't we have | \ here? */
+
 klut[KEY_ENTER] = K_RETURN;
+alut[KEY_ENTER] = '\n';
+
 klut[KEY_LEFTCTRL] = K_LCTRL;
 klut[KEY_A] = K_A;
+alut[KEY_A] = 'a';
 klut[KEY_S] = K_S;
+alut[KEY_S] = 's';
 klut[KEY_D] = K_D;
+alut[KEY_D] = 'd';
 klut[KEY_F] = K_F;
+alut[KEY_F] = 'f';
 klut[KEY_G] = K_G;
+alut[KEY_G] = 'g';
 klut[KEY_H] = K_H;
+alut[KEY_H] = 'h';
 klut[KEY_J] = K_J;
+alut[KEY_J] = 'j';
 klut[KEY_K] = K_K;
+alut[KEY_K] = 'k';
 klut[KEY_L] = K_L;
+alut[KEY_L] = 'l';
+
+klut[KEY_BACKSLASH] = K_BACKSLASH;
+klut[KEY_BACKSLASH] = '\\';
+shlut[KEY_BACKSLASH] = '|';
+klut[KEY_102ND] = K_BACKSLASH;
+alut[KEY_102ND] = '\\';
+shlut[KEY_102ND] = '|';
+
 klut[KEY_SEMICOLON] = K_SEMICOLON;
+alut[KEY_SEMICOLON] = ';';
+shlut[KEY_SEMICOLON] = ':';
+
 klut[KEY_APOSTROPHE] = K_APOSTROPHE;
+alut[KEY_APOSTROPHE] = '\'';
+shlut[KEY_APOSTROPHE] = '"';
+
 klut[KEY_GRAVE] = K_GRAVE;
 klut[KEY_LEFTSHIFT] = K_LSHIFT;
-klut[KEY_BACKSLASH] = K_BACKSLASH;
+
 klut[KEY_Z] = K_Z;
+alut[KEY_Z] = 'z';
 klut[KEY_X] = K_X;
+alut[KEY_X] = 'x';
 klut[KEY_C] = K_C;
+alut[KEY_C] = 'c';
 klut[KEY_V] = K_V;
+alut[KEY_V] = 'v';
 klut[KEY_B] = K_B;
+alut[KEY_B] = 'b';
 klut[KEY_N] = K_N;
+alut[KEY_N] = 'n';
 klut[KEY_M] = K_M;
+alut[KEY_M] = 'm';
+
 klut[KEY_COMMA] = K_COMMA;
+alut[KEY_COMMA] = ',';
+shlut[KEY_COMMA] = '<';
+
 klut[KEY_DOT] = K_PERIOD;
+alut[KEY_DOT] = '.';
+shlut[KEY_DOT] = '>';
+
 klut[KEY_SLASH] = K_SLASH;
+alut[KEY_SLASH] = '-';
+shlut[KEY_SLASH] = '?';
+
 klut[KEY_RIGHTSHIFT] = K_RSHIFT;
 klut[KEY_KPASTERISK] = K_KP_MULTIPLY;
+alut[KEY_KPASTERISK] = '*';
 klut[KEY_LEFTALT] = K_LALT;
 klut[KEY_SPACE] = K_SPACE;
+alut[KEY_SPACE] = ' ';
 klut[KEY_CAPSLOCK] = K_CAPSLOCK;
 klut[KEY_F1] = K_F1;
 klut[KEY_F2] = K_F2;
@@ -219,18 +327,31 @@ klut[KEY_F10] = K_F10;
 klut[KEY_NUMLOCK] = K_NUMLOCKCLEAR;
 klut[KEY_SCROLLLOCK] = K_SCROLLLOCK;
 klut[KEY_KP7] = K_KP_7;
+alut[KEY_KP7] = '7';
 klut[KEY_KP8] = K_KP_8;
+alut[KEY_KP8] = '8';
 klut[KEY_KP9] = K_KP_9;
+alut[KEY_KP9] = '9';
 klut[KEY_KPMINUS] = K_KP_MINUS;
+alut[KEY_KPMINUS] = '-';
 klut[KEY_KP4] = K_KP_4;
+alut[KEY_KP4] = '4';
 klut[KEY_KP5] = K_KP_5;
+alut[KEY_KP5] = '5';
 klut[KEY_KP6] = K_KP_6;
+alut[KEY_KP6] = '6';
 klut[KEY_KPPLUS] = K_KP_PLUS;
+alut[KEY_KPPLUS] = '+';
 klut[KEY_KP1] = K_KP_1;
+alut[KEY_KP1] = '1';
 klut[KEY_KP2] = K_KP_2;
+alut[KEY_KP2] = '2';
 klut[KEY_KP3] = K_KP_3;
+alut[KEY_KP3] = '3';
 klut[KEY_KP0] = K_KP_0;
+alut[KEY_KP0] = '0';
 klut[KEY_KPDOT] = K_KP_PERIOD;
+alut[KEY_KPDOT] = '.';
 klut[KEY_ZENKAKUHANKAKU] = K_INTERNATIONAL1;
 klut[KEY_102ND] = K_LESS;
 klut[KEY_F11] = K_F11;
@@ -245,9 +366,11 @@ klut[KEY_KPJPCOMMA] = K_INTERNATIONAL9;
 klut[KEY_KPENTER] = K_KP_ENTER;
 klut[KEY_RIGHTCTRL] = K_RCTRL;
 klut[KEY_KPSLASH] = K_KP_DIVIDE;
+alut[KEY_KPSLASH] = '/';
 klut[KEY_SYSRQ] = K_SYSREQ;
 klut[KEY_RIGHTALT] = K_RALT;
 klut[KEY_LINEFEED] = K_KP_ENTER;
+alut[KEY_LINEFEED] = '\n';
 klut[KEY_HOME] = K_HOME;
 klut[KEY_UP] = K_UP;
 klut[KEY_PAGEUP] = K_PAGEUP;
@@ -374,7 +497,47 @@ klut[KEY_UNKNOWN] = K_UNKNOWN;
 }
 
 /*
- * from scancode to SDLs scancode to SDLs keycode ..
+ * currently just map to the common 7-bit ascii ones,
+ * might add a system to load other maps but the sentiment
+ * right now is that should be done on a lower level (table in kernel)
+ * and on a higher level (actual IME support script)
+ *
+ * There's likely a shift/bit-magic heavy way of doing this
+ * conversion, but feels like we have the datacache to spare,
+ * anyhow, this barely gives a working 7-bit ASCII model -- but
+ * as a fallback when scripted IMEs fail to deliver.
+ *
+ * The basic plan is still to have this low-level layout provide
+ * 7-bit ASCII us-style then let higher-level local etc.
+ * be left to the set of scripts that are running, but provide
+ * support scripts that implement detection etc.
+ *
+ */
+static uint32_t lookup_character(uint16_t code, uint16_t modifiers)
+{
+	if (code > sizeof(alut) / sizeof(alut[0]))
+		return 0;
+
+	if ((modifiers &
+		(ARKMOD_LSHIFT | ARKMOD_RSHIFT)) > 0 && shlut[code])
+		code = shlut[code];
+
+	else if ((modifiers & ARKMOD_CAPS) > 0){
+		if (code >= 'a' && code <= 'z')
+			code = toupper(code);
+	}
+
+	else if ((modifiers & (ARKMOD_LALT | ARKMOD_RALT)) > 0 && ltlut[code])
+		code = ltlut[code];
+
+	else
+		code = alut[code];
+
+	return code;
+}
+
+/*
+ * from linux keycode to SDLs keycode
  */
 static uint16_t lookup_keycode(uint16_t code)
 {
