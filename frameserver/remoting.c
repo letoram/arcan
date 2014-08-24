@@ -119,7 +119,7 @@ static bool client_connect(const char* host, int port)
 	vncctx.client->serverPort = port;
 
 /*
- Note, if these are set, Rfb will actually BOUNCE 
+ Note, if these are set, Rfb will actually BOUNCE
 	vncctx.client->destHost = strdup(host);
 	vncctx.client->destPort = port;
  */
@@ -233,6 +233,14 @@ void arcan_frameserver_remoting_run(const char* resource,
 	if (!client_connect(host, port)){
 		return;
 	}
+
+	arcan_event regev = {
+		.category = EVENT_EXTERNAL,
+		.kind = EVENT_EXTERNAL_REGISTER,
+		.data.external.registr.kind = SEGID_REMOTING,
+		.data.external.registr.title = "VNC Client",
+	};
+	arcan_event_enqueue(&vncctx.shmcont.outev, &regev);
 
 	vncctx.client->frameBuffer = vncctx.shmcont.vidp;
 	atexit( cleanup );

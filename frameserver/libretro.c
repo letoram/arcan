@@ -35,12 +35,13 @@
 #define WITH_HEADLESS
 
 #include "../shmif/arcan_shmif.h"
+#include "graphing/net_graph.h"
 
 #include "frameserver.h"
 #include "ntsc/snes_ntsc.h"
-#include "graphing/net_graph.h"
 #include "ievsched.h"
 #include "stateman.h"
+#include "sync_plot.h"
 #include "libretro.h"
 
 #include "resampler/speex_resampler.h"
@@ -112,6 +113,9 @@ typedef void(*pixconv_fun)(const void* data, uint32_t* outp,
 	unsigned width, unsigned height, size_t pitch, bool postfilter);
 
 struct libretro_ctx {
+	struct graph_context* graphing; /* overlaying text / information */
+	struct synch_graphing* sync_data; /* overlaying statistics */
+
 /* frame management */
 /* flag for rendering callbacks, should the frame be processed or not */
 	bool skipframe_a, skipframe_v;
@@ -143,10 +147,6 @@ struct libretro_ctx {
 
 /* statistics */
 	int rebasecount, frameskips, transfercost, framecost;
-	long long int frame_ringbuf[160];
-	long long int drop_ringbuf[40];
-	int xfer_ringbuf[PP_SHMPAGE_MAXW];
-	short int framebuf_ofs, dropbuf_ofs, xferbuf_ofs;
 	const char* colorspace;
 
 /* colour conversion / filtering */
@@ -158,7 +158,6 @@ struct libretro_ctx {
 
 /* SHM- API input /output */
 	struct arcan_shmif_cont shmcont;
-	struct graph_context* graphing;
 	int graphmode;
 	file_handle last_fd; /* state management */
 
@@ -250,6 +249,9 @@ static void resize_shmpage(int neww, int newh, bool first)
 /* graphing context just works on offsets into the page, need to reset */
 	if (retroctx.graphing != NULL)
 		graphing_destroy(retroctx.graphing);
+
+	if (retroctx.sync_data)
+		retroctx.sync_data->cont_switch(retroctx.sync_data, &retroctx.shmcont);
 
 	retroctx.graphing = graphing_new(neww,
 		newh, (uint32_t*) retroctx.shmcont.vidp);
@@ -1125,6 +1127,9 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 		return default_map(ioev);
 	}
 
+	if (!retroctx.dirty_input && retroctx.sync_data)
+		retroctx.sync_data->mark_input(retroctx.sync_data, arcan_timemillis());
+
 	retroctx.dirty_input = true;
 
 	signed value = ioev->datatype == EVENT_IDATATYPE_TRANSLATED ?
@@ -1196,7 +1201,12 @@ static inline void targetev(arcan_event* ev)
 		break;
 
 		case TARGET_COMMAND_GRAPHMODE:
+			if (retroctx.sync_data)
+				retroctx.sync_data->free(&retroctx.sync_data);
+
 			retroctx.graphmode = tgt->ioevs[0].iv;
+			if (retroctx.graphmode)
+				retroctx.sync_data = setup_synch_graph(&retroctx.shmcont, true);
 		break;
 
 		case TARGET_COMMAND_NTSCFILTER:
@@ -1385,10 +1395,10 @@ static inline bool retroctx_sync()
 
 /* more than a frame behind? just skip */
 	if ( retroctx.skipmode == TARGET_SKIP_AUTO && left < -retroctx.mspf ){
+		if (retroctx.sync_data)
+			retroctx.sync_data->mark_drop(retroctx.sync_data, timestamp);
 		retroctx.frameskips++;
-		retroctx.drop_ringbuf[retroctx.dropbuf_ofs] = timestamp;
-		retroctx.dropbuf_ofs = (retroctx.dropbuf_ofs + 1) %
-			(sizeof(retroctx.drop_ringbuf) / sizeof(retroctx.drop_ringbuf[0]));
+
 		return false;
 	}
 
@@ -1566,20 +1576,16 @@ static void setup_3dcore(struct retro_hw_render_callback* ctx)
 }
 #endif
 
-/* a big issue is that the libretro- modules are not guaranteed to act
- * in a nice library way, meaning that they (among other things) install
- * signal handlers, spawn threads, change working directory, work with
- * file-system etc. etc. There are a few ideas for how
- * this can be handled:
- * (1) use PIN to intercept all syscalls in the loaded library
- * (x86/x86-64 only though)
- * (2) using a small loader and PTRACE-TRACEME PTRACE_O_TRACESYSGOOD
- * then patch the syscalls so they redirect through a jumptable
- * trigger on installation of signal handlers etc.
- * (3) use FUSE as a means of intercepting file-system related syscalls
- * (4) LD_PRELOAD ourselves, replacing the usual batch of open/close/,...
- * wrappers
- */
+static void dump_help()
+{
+	LOG("ARCAN_ARG (environment variable, "
+		"key1=value:key2:key3=value), arguments:\n"
+		"   key   \t   value   \t   description\n"
+		"---------\t-----------\t-----------------\n"
+		" core    \t filename  \t relative path to libretro core (req)\n"
+		" info    \t           \t load core, print information and quit\n"
+		" resource\t filename  \t resource file to load with core\n");
+}
 
 /* map up a libretro compatible library resident at fullpath:game,
  * if resource is /info, no loading will occur but a dump of the capabilities
@@ -1602,14 +1608,16 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 
 	bool info_only = arg_lookup(args, "info", 0, NULL);
 
-	if (!info_only)
-		LOG("loading core (%s) with resource (%s)\n", libname ?
-			libname : "missing arg.", resname ? resname : "missing resarg.");
-
 	if (!libname || *libname == 0){
-		LOG("no core to load (ARCAN_ARG missing libname), giving up.\n");
+		LOG("error > No core specified.\n");
+		dump_help();
+
 		return;
 	}
+
+	if (!info_only)
+		LOG("Loading core (%s) with resource (%s)\n", libname ?
+			libname : "missing arg.", resname ? resname : "missing resarg.");
 
 	char logbuf[128] = {0};
 	size_t logbuf_sz = sizeof(logbuf);
@@ -1694,6 +1702,14 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 			libretro_requirefun("retro_set_input_poll"))(libretro_pollcb);
 		( (void(*)(retro_input_state_t))
 			libretro_requirefun("retro_set_input_state") )(libretro_inputstate);
+
+		arcan_event regev = {
+			.category = EVENT_EXTERNAL,
+			.kind = EVENT_EXTERNAL_REGISTER,
+			.data.external.registr.kind = SEGID_GAME,
+			.data.external.registr.title = "libretro"
+		};
+		arcan_event_enqueue(&retroctx.shmcont.outev, &regev);
 
 /* send some information on what core is actually loaded etc. */
 		arcan_event outev = {
@@ -1855,21 +1871,18 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 /* add jitter, jitterstep, framecost etc. are mostly just
  * used for debug graphing */
 			start = arcan_timemillis();
-			add_jitter(retroctx.jitterstep);
+				add_jitter(retroctx.jitterstep);
 				process_frames(1, false, false);
 			stop = arcan_timemillis();
+
 			retroctx.framecost = stop - start;
 
-/* finished frames and their alignment is what actually matters */
-			size_t stepsz = sizeof(retroctx.frame_ringbuf) /
-				sizeof(retroctx.frame_ringbuf)[0];
-			retroctx.frame_ringbuf[retroctx.framebuf_ofs] = start;
-			retroctx.framebuf_ofs = (retroctx.framebuf_ofs + 1) % stepsz;
+			if (retroctx.sync_data){
+				retroctx.sync_data->mark_start(retroctx.sync_data, start);
+				retroctx.sync_data->mark_stop(retroctx.sync_data, stop);
+			}
 
-			retroctx.frame_ringbuf[retroctx.framebuf_ofs] = stop;
-			retroctx.framebuf_ofs = (retroctx.framebuf_ofs + 1) % stepsz;
-
-/* some FE applications need a grasp of "where" we are frame-wise,
+/* Some FE applications need a grasp of "where" we are frame-wise,
  * particularly for single-stepping etc. */
 			outev.kind = EVENT_EXTERNAL_FRAMESTATUS;
 			outev.data.external.framestatus.framenumber++;
@@ -1893,7 +1906,6 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 
 /* the audp/vidp buffers have already been updated in the callbacks */
 			if (lastskip == false){
-
 /* possible to add a size lower limit here to maintain a larger
  * resampling buffer than synched to videoframe */
 				if (retroctx.audbuf_ofs){
@@ -1911,7 +1923,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 				}
 
 /* Possibly overlay as much tracking / debugging data we can muster */
-				if (retroctx.graphmode)
+				if (retroctx.sync_data)
 					push_stats();
 
 /* Frametransfer step */
@@ -1920,26 +1932,15 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 					arcan_shmif_signal(&retroctx.shmcont, SHMIF_SIGVID | SHMIF_SIGAUD);
 				stop = arcan_timemillis();
 
-/* statistics and guardbyte verification */
 				retroctx.transfercost = stop - start;
-				retroctx.xfer_ringbuf[ retroctx.xferbuf_ofs ] = retroctx.transfercost;
+				if (retroctx.sync_data)
+					retroctx.sync_data->mark_transfer(retroctx.sync_data,
+						stop, retroctx.transfercost);
 			}
-			else
-				retroctx.xfer_ringbuf[ retroctx.xferbuf_ofs ] = -1;
-
-			retroctx.xferbuf_ofs = (retroctx.xferbuf_ofs + 1) %
-				( sizeof(retroctx.xfer_ringbuf) / sizeof(retroctx.xfer_ringbuf[0]) );
 		}
 
 	}
 }
-
-/* ---- Long and tedious statistics output follows, nothing to see here ---- */
-#define STEPMSG(X) \
-	draw_box(retroctx.graphing, 0, yv, PXFONT_WIDTH * strlen(X),\
-		PXFONT_HEIGHT, 0xff000000);\
-	draw_text(retroctx.graphing, X, 0, yv, 0xffffffff);\
-	yv += PXFONT_HEIGHT + PXFONT_HEIGHT * 0.3;
 
 static void log_msg(char* msg, bool flush)
 {
@@ -1965,155 +1966,28 @@ static void log_msg(char* msg, bool flush)
 
 static void push_stats()
 {
-	char scratch[64];
-	int yv = 0;
-
-	snprintf(scratch, 64, "%s, %s", retroctx.sysinfo.library_name,
-		retroctx.sysinfo.library_version);
-	STEPMSG(scratch);
-	snprintf(scratch, 64, "%s", retroctx.colorspace);
-	STEPMSG(scratch);
-	snprintf(scratch, 64, "%f fps, %f Hz", (float)retroctx.avinfo.timing.fps,
-		(float)retroctx.avinfo.timing.sample_rate);
-	STEPMSG(scratch);
-	snprintf(scratch, 64, "%d mode, %d preaud, %d/%d jitter",
-		retroctx.skipmode, retroctx.preaudiogen, retroctx.jitterstep,
-		retroctx.jitterxfer);
-	STEPMSG(scratch);
-	snprintf(scratch, 64, "(A,V - A/V) %lld,%lld - %lld",
-		retroctx.aframecount, retroctx.vframecount,
-		retroctx.aframecount / retroctx.vframecount);
-	STEPMSG(scratch);
-
+	char scratch[512];
 	long long int timestamp = arcan_timemillis();
-	snprintf(scratch, 64, "Real (Hz): %f\n", 1000.0f * (float)
-		retroctx.aframecount / (float)(timestamp - retroctx.basetime));
-	STEPMSG(scratch);
 
-	snprintf(scratch, 64, "cost,wake,xfer: %d, %d, %d ms\n",
-		retroctx.framecost, retroctx.prewake, retroctx.transfercost);
-	STEPMSG(scratch);
+	snprintf(scratch, 512, "%s, %s\n"
+		"%s, %f fps, %f Hz\n"
+		"Mode: %d, Preaudio: %d\n Jitter: %d/%d\n"
+		"(A,V - A/V) %lld, %lld - %lld\n"
+		"Real (Hz): %f\n"
+		"cost,wake,xfer: %d, %d, %d ms \n",
+		(char*)retroctx.sysinfo.library_name,
+		(char*)retroctx.sysinfo.library_version,
+		(char*)retroctx.colorspace,
+		(float)retroctx.avinfo.timing.fps,
+		(float)retroctx.avinfo.timing.sample_rate,
+		retroctx.skipmode, retroctx.preaudiogen,
+		retroctx.jitterstep, retroctx.jitterxfer,
+		retroctx.aframecount, retroctx.vframecount,
+		retroctx.aframecount / retroctx.vframecount,
+		1000.0f * (float)retroctx.aframecount /
+			(float)(timestamp - retroctx.basetime),
+		retroctx.framecost, retroctx.prewake, retroctx.transfercost
+	);
 
-	if (retroctx.skipmode == TARGET_SKIP_AUTO){
-		STEPMSG("Frameskip: Auto");
-		snprintf(scratch, 64, "%d skipped", retroctx.frameskips);
-		STEPMSG(scratch);
-	}
-	else if (retroctx.skipmode == TARGET_SKIP_NONE){
-		STEPMSG("Frameskip: None");
-	}
-	else if (retroctx.skipmode <= TARGET_SKIP_ROLLBACK){
-		int n = retroctx.skipmode + TARGET_SKIP_ROLLBACK;
-		n = abs(n) + 1;
-		snprintf(scratch, 64, "Frameskip: Rollback (%d)\n", n);
-		STEPMSG(scratch);
-	}
-	else if (retroctx.skipmode >= TARGET_SKIP_STEP &&
-		retroctx.skipmode < TARGET_SKIP_FASTFWD){
-		snprintf(scratch, 64, "Frameskip: Step (%d)\n", retroctx.skipmode);
-		STEPMSG(scratch);
-	}
-	else if (retroctx.skipmode == TARGET_SKIP_FASTFWD){
-		snprintf(scratch, 64, "Frameskip: Fast-Fwd (%d)\n",
-			retroctx.skipmode - TARGET_SKIP_FASTFWD);
-		STEPMSG(scratch);
-	}
-/* color-coded frame timing / alignment, starting at the far right
- * with the next intended frame, horizontal resolution is 2 px / ms */
-
-	int dw = retroctx.shmcont.addr->w;
-	draw_box(retroctx.graphing, 0, yv, dw, PXFONT_HEIGHT * 2, 0xff000000);
-	draw_hline(retroctx.graphing, 0, yv + PXFONT_HEIGHT, dw, 0xff999999);
-
-/* first, ideal deadlines, now() is at the end of the X scale */
-	int stepc = 0;
-	double current = arcan_timemillis();
-	double minp    = current - dw;
-	double mspf    = retroctx.mspf;
-	double startp  = (double) current - modf(current, &mspf);
-
-	while ( startp - (stepc * retroctx.mspf) >= minp ){
-		draw_vline(retroctx.graphing, startp -
-			(stepc * retroctx.mspf) - minp, yv + PXFONT_HEIGHT - 1,
-				-(PXFONT_HEIGHT-1), 0xff00ff00);
-		stepc++;
-	}
-
-/* second, actual frames, plot against ideal, step back etc.
- * until we land outside range */
-	size_t cellsz = sizeof(retroctx.frame_ringbuf) /
-		sizeof(retroctx.frame_ringbuf[0]);
-
-#define STEPBACK(X) ( (X) > 0 ? (X) - 1 : cellsz - 1)
-
-	int ofs = STEPBACK(retroctx.framebuf_ofs);
-
-	while (true){
-		if (retroctx.frame_ringbuf[ofs] >= minp)
-			draw_vline(retroctx.graphing, current -
-				retroctx.frame_ringbuf[ofs], yv + PXFONT_HEIGHT + 1,
-				PXFONT_HEIGHT - 1, 0xff00ffff);
-		else
-			break;
-
-		ofs = STEPBACK(ofs);
-		if (retroctx.frame_ringbuf[ofs] >= minp)
-			draw_vline(retroctx.graphing, current -
-				retroctx.frame_ringbuf[ofs], yv + PXFONT_HEIGHT + 1,
-				PXFONT_HEIGHT - 1, 0xff00aaaa);
-		else
-			break;
-
-		ofs = STEPBACK(ofs);
-	}
-
-	cellsz = sizeof(retroctx.drop_ringbuf) / sizeof(retroctx.drop_ringbuf[0]);
-	ofs = STEPBACK(retroctx.dropbuf_ofs);
-
-	while (retroctx.drop_ringbuf[ofs] >= minp){
-		draw_vline(retroctx.graphing, current -
-			retroctx.drop_ringbuf[ofs], yv + PXFONT_HEIGHT + 1,
-				PXFONT_HEIGHT - 1, 0xff0000ff);
-		ofs = STEPBACK(ofs);
-	}
-
-/* lastly, the transfer costs, sweep twice,
- * first for Y scale then for drawing */
-	cellsz = sizeof(retroctx.xfer_ringbuf) / sizeof(retroctx.xfer_ringbuf[0]);
-	ofs = STEPBACK(retroctx.xferbuf_ofs);
-	int maxv = 0, count = 0;
-
-	while( count < retroctx.shmcont.addr->w ){
-		if (retroctx.xfer_ringbuf[ ofs ] > maxv)
-			maxv = retroctx.xfer_ringbuf[ ofs ];
-
-		count++;
-		ofs = STEPBACK(ofs);
-	}
-
-	if (maxv > 0){
-			yv += PXFONT_HEIGHT * 2;
-		float yscale = (float)(PXFONT_HEIGHT * 2) / (float) maxv;
-		ofs = STEPBACK(retroctx.xferbuf_ofs);
-		count = 0;
-		draw_box(retroctx.graphing, 0, yv, dw, PXFONT_HEIGHT * 2, 0xff000000);
-
-		while (count < dw){
-			int sample = retroctx.xfer_ringbuf[ofs];
-
-			if (sample > -1)
-				draw_vline(retroctx.graphing, dw - count - 1, yv +
-					(PXFONT_HEIGHT * 2), -1 * yscale * sample, 0xff00ff00);
-			else
-				draw_vline(retroctx.graphing, dw - count - 1, yv +
-					(PXFONT_HEIGHT * 2), -1 * PXFONT_HEIGHT * 2, 0xff0000ff);
-
-			ofs = STEPBACK(ofs);
-			count++;
-		}
-	}
-
+	retroctx.sync_data->update(retroctx.sync_data, retroctx.mspf, scratch);
 }
-
-#undef STEPBACK
-#undef STEPMSG

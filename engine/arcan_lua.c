@@ -2371,7 +2371,6 @@ static int targetinput(lua_State* ctx)
 		if (intblbool(ctx, tblind, "translated")){
 			ev.data.io.datatype = EVENT_IDATATYPE_TRANSLATED;
 			ev.data.io.devkind  = EVENT_IDEVKIND_KEYBOARD;
-			ev.kind = EVENT_IO_KEYB;
 			ev.data.io.input.translated.active    = intblbool(ctx, tblind, "active");
 			ev.data.io.input.translated.scancode  = intblnum(ctx, tblind, "number");
 			ev.data.io.input.translated.keysym    = intblnum(ctx, tblind, "keysym");
@@ -2541,7 +2540,6 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		break;
 
 		case EVENT_IO_BUTTON:
-		case EVENT_IO_KEYB:
 			lua_pushstring(ctx, "digital");
 			lua_rawset(ctx, top);
 
@@ -7573,6 +7571,7 @@ static inline const char* fsrvtos(enum ARCAN_SEGID ink)
 	case SEGID_APPLICATION: return "application";
 	case SEGID_BROWSER: return "browser";
 	case SEGID_ENCODER: return "encoder";
+	case SEGID_DEBUG: return "debug";
 	case SEGID_UNKNOWN: return "unknown";
 	}
 	return "";

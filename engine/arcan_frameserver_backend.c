@@ -872,7 +872,6 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 	struct arcan_shmif_page* shmpage = ctx->shm.ptr;
 	shmpage->w = setup.init_w;
 	shmpage->h = setup.init_h;
-	shmpage->cookie = cookie;
 
 	arcan_shmif_calcofs(shmpage, &(ctx->vidp), &(ctx->audp));
 }

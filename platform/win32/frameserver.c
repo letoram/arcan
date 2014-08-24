@@ -310,6 +310,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 	shmpage->dms = true;
 	shmpage->major = ARCAN_VERSION_MAJOR;
 	shmpage->minor = ARCAN_VERSION_MINOR;
+	shmpage->cookie = arcan_shmif_cookie();
 
 	arcan_frameserver_configure(ctx, setup);
 

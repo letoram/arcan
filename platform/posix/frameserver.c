@@ -390,6 +390,7 @@ fail:
 	shmpage->major = ARCAN_VERSION_MAJOR;
 	shmpage->minor = ARCAN_VERSION_MINOR;
 	shmpage->segment_size = shmsize;
+	shmpage->cookie = arcan_shmif_cookie();
 	ctx->shm.ptr = shmpage;
 	free(work);
 
@@ -694,8 +695,10 @@ static int8_t socketpoll(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 	switch (cmd){
 		case FFUNC_POLL:
 			if (!fd_avail(tgt->sockout_fd, &term)){
-				if (term)
+				if (term){
+					arcan_warning("poll on term\n");
 					arcan_frameserver_free(tgt);
+				}
 
 				return FFUNC_RV_NOFRAME;
 			}

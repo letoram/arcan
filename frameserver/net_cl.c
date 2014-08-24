@@ -331,6 +331,13 @@ void arcan_net_client_session(struct arg_arr* args, const char* shmkey)
 	arcan_shmif_setevqs(shmcont.addr, shmcont.esem,
 		&(clctx.inevq), &(clctx.outevq), false);
 
+	arcan_event regev = {
+		.category = EVENT_EXTERNAL,
+		.kind = EVENT_EXTERNAL_REGISTER,
+		.data.external.registr.kind = SEGID_NETWORK_CLIENT
+	};
+	arcan_event_enqueue(&clctx.outevq, &regev);
+
 	arg_lookup(args, "ident", 0, (const char**) &clctx.name);
 
 	const char* pubkey = NULL, (* privkey) = NULL;

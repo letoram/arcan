@@ -368,6 +368,13 @@ void arcan_frameserver_decode_run(const char* resource, const char* keyfile)
 
 	decctx.shmcont = arcan_shmif_acquire(keyfile, SHMIF_INPUT, true, false);
 
+	arcan_event regev = {
+		.category = EVENT_EXTERNAL,
+		.kind = EVENT_EXTERNAL_REGISTER,
+		.data.external.registr.kind = SEGID_MEDIA
+	};
+	arcan_event_enqueue(&decctx.shmcont.outev, &regev);
+
 /* decode external arguments, map the necessary ones to VLC */
 	const char* val;
 
