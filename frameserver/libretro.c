@@ -246,6 +246,18 @@ static void resize_shmpage(int neww, int newh, bool first)
 		exit(1);
 	}
 
+#ifdef FRAMESERVER_LIBRETRO_3D
+	if (retroctx.fbos[0].fbo){
+		struct fbo_cont* dfbo = &retroctx.fbos[0];
+
+		int shmw = retroctx.shmcont.addr->w;
+		int shmh = retroctx.shmcont.addr->h;
+
+		build_fbo(shmw, shmh, &dfbo->dw, &dfbo->dh, &dfbo->fbo,
+			retroctx.hwctx.depth ? &dfbo->depth : NULL, &dfbo->col);
+	}
+#endif
+
 /* graphing context just works on offsets into the page, need to reset */
 	if (retroctx.graphing != NULL)
 		graphing_destroy(retroctx.graphing);
