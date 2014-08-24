@@ -1623,7 +1623,8 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 	size_t logbuf_sz = sizeof(logbuf);
 
 	if (!info_only)
-		retroctx.shmcont = arcan_shmif_acquire(keyfile, SHMIF_INPUT, true, false);
+		retroctx.shmcont = arcan_shmif_acquire(keyfile,
+			SEGID_GAME, SHMIF_ACQUIRE_FATALFAIL);
 
 	struct arcan_shmif_page* shared = retroctx.shmcont.addr;
 
@@ -1702,14 +1703,6 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 			libretro_requirefun("retro_set_input_poll"))(libretro_pollcb);
 		( (void(*)(retro_input_state_t))
 			libretro_requirefun("retro_set_input_state") )(libretro_inputstate);
-
-		arcan_event regev = {
-			.category = EVENT_EXTERNAL,
-			.kind = EVENT_EXTERNAL_REGISTER,
-			.data.external.registr.kind = SEGID_GAME,
-			.data.external.registr.title = "libretro"
-		};
-		arcan_event_enqueue(&retroctx.shmcont.outev, &regev);
 
 /* send some information on what core is actually loaded etc. */
 		arcan_event outev = {

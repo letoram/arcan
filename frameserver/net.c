@@ -678,7 +678,8 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 	idcookie = rand();
 
 	struct arcan_shmif_cont shmcont =
-		arcan_shmif_acquire(shmkey, SHMIF_INPUT, true, false);
+		arcan_shmif_acquire(shmkey, SEGID_NETWORK_SERVER,
+			SHMIF_ACQUIRE_FATALFAIL);
 
 	if (!arcan_shmif_resize(&shmcont, gwidth, gheight))
 		return;

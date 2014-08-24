@@ -26,7 +26,7 @@ int main(int argc, char** argv)
 	}
 
 	struct arcan_shmif_cont ctx = arcan_shmif_acquire(
-		keyfile, SHMIF_INPUT, true, false);
+		keyfile, SEGID_APPLICATION, SEGID_ACQUIRE_FATALFAIL);
 
 	if (resource){
 		struct arg_arr* arr = arg_unpack(resource);
@@ -34,11 +34,6 @@ int main(int argc, char** argv)
  *  implement additional argument passing
  *  use arg_lookup(arr, sym, ind, dptr) => [true | false]
  */
-	}
-
-	if (!ctx.addr){
-		LOG("Couldn't acquire a valid shared memory segment, giving up.\n");
-		return EXIT_FAILURE;
 	}
 
 	arcan_event ev;

@@ -229,18 +229,11 @@ void arcan_frameserver_remoting_run(const char* resource,
 		port = strtoul(argtmp, NULL, 10);
 	}
 
-	vncctx.shmcont = arcan_shmif_acquire(keyfile, SHMIF_INPUT, true, false);
-	if (!client_connect(host, port)){
-		return;
-	}
+	vncctx.shmcont = arcan_shmif_acquire(keyfile,
+		SEGID_REMOTING, SHMIF_ACQUIRE_FATALFAIL);
 
-	arcan_event regev = {
-		.category = EVENT_EXTERNAL,
-		.kind = EVENT_EXTERNAL_REGISTER,
-		.data.external.registr.kind = SEGID_REMOTING,
-		.data.external.registr.title = "VNC Client",
-	};
-	arcan_event_enqueue(&vncctx.shmcont.outev, &regev);
+	if (!client_connect(host, port))
+		return;
 
 	vncctx.client->frameBuffer = vncctx.shmcont.vidp;
 	atexit( cleanup );

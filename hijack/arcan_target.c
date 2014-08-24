@@ -297,7 +297,7 @@ void ARCAN_target_init(){
 		global.shmkey = getenv("ARCAN_SHMKEY");
 
 	global.shared = arcan_shmif_acquire(global.shmkey,
-		SHMIF_INPUT, true, false);
+		SEGID_GAME, SHMIF_ACQUIRE_FATALFAIL);
 
 	if (!global.shared.addr){
 		fprintf(stderr, "arcan hijack: couldn't allocate "
