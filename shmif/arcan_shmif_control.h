@@ -373,25 +373,25 @@ struct arcan_shmif_page {
  * to be used
  */
 
-/*
- * This function is used by a frameserver to use some kind of
- * named shared memory reference string (typically provided by
- * as an argument on the command-line.
- *
- * The force-unlink flag is to set if whatever symbol in whatever
- * namespace the key resides in, should be unlinked after
- * allocation, to prevent other processes from mapping it as well
- * (this may be desirable for a monitoring / debugging tool though).
- *
- * If disable_guard is true, the guard-thread that unlocks
- * semaphores and the dmh switch, should the monitor pid die,
- * will not be launched and it's upp to the application to take
- * care of monitoring. It is also disabled for new frameserver
- * segments (all those allocated after the first).
- */
+enum SHMIF_FLAGS {
+/* by default, the connection IPC resources are unlinked, this
+ * may not always be desired (debugging, monitoring, ...) */
+	SHMIF_DONT_UNLINK = 1,
+
+/* a guard thread is usually allocated to monitor the status of
+ * the server, setting this flag explicitly prevents the creation of
+ * that thread */
+	SHMIF_DISABLE_GUARD = 2,
+
+/* failure to acquire a segment should be exit(EXIT_FAILURE); */
+	SHMIF_ACQUIRE_FATALFAIL = 4
+};
+
 struct arcan_shmif_cont arcan_shmif_acquire(
-	const char* shmkey, int shmif_type, char force_unlink,
-	char disable_guard);
+	const char* shmkey,    /* provided in ENV or from shmif_connect below */
+	enum ARCAN_SEGID type, /* archetype, defined in shmif_event.h */
+	enum SHMIF_FLAGS flags, ...
+);
 
 /*
  * This is used to make a non-authoritative connection using

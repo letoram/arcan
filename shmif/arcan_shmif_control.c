@@ -344,14 +344,24 @@ static inline bool parent_alive(struct shmif_hidden* gs)
 #endif
 
 struct arcan_shmif_cont arcan_shmif_acquire(
-	const char* shmkey, int shmif_type, char force_unlink, char noguard)
+	const char* shmkey,
+	enum ARCAN_SEGID type,
+	enum SHMIF_FLAGS flags, ...)
 {
 	struct arcan_shmif_cont res = {
 		.vidp = NULL
 	};
 
 /* populate res with addr, semaphores and synch descriptor */
-	map_shared(shmkey, force_unlink, &res);
+	map_shared(shmkey, !(flags & SHMIF_DONT_UNLINK), &res);
+	if (!res.addr){
+		LOG("(arcan_shmif) Couldn't acquire connection through (%s)\n", shmkey);
+
+		if (flags & SHMIF_ACQUIRE_FATALFAIL)
+			exit(EXIT_FAILURE);
+		else
+			return res;
+	}
 
 	struct shmif_hidden gs = {
 		.guard = {
@@ -361,7 +371,7 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 		}
 	};
 
-	spawn_guardthread(gs, &res, noguard);
+	spawn_guardthread(gs, &res, flags & SHMIF_DISABLE_GUARD);
 
 	arcan_shmif_setevqs(res.addr, res.esem, &res.inev, &res.outev, false);
 	arcan_shmif_calcofs(res.addr, &res.vidp, &res.audp);
@@ -369,11 +379,18 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 	res.shmsize = res.addr->segment_size;
 	res.cookie = arcan_shmif_cookie();
 
-/* signal that we're ready to receive */
-	if (shmif_type == SHMIF_OUTPUT){
+	if (type == SEGID_ENCODER){
 		arcan_sem_post(res.vsem);
 		((struct shmif_hidden*)res.priv)->output = true;
 	}
+
+	struct arcan_event ev = {
+		.category = EVENT_EXTERNAL,
+		.kind = EVENT_EXTERNAL_REGISTER,
+		.data.external.registr.kind = type
+	};
+
+	arcan_event_enqueue(&res.outev, &ev);
 
 	return res;
 }

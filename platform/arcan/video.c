@@ -66,7 +66,7 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 				"no connection key found, giving up. (see environment ARCAN_CONNPATH)\n");
 			return false;
 		}
-		shms = arcan_shmif_acquire(shmkey, SHMIF_INPUT, true, false);
+		shms = arcan_shmif_acquire(shmkey, SEGID_LWA, SHMIF_ACQUIRE_FATALFAIL);
 
 		if (shms.addr == NULL){
 			arcan_warning("couldn't connect to parent\n");
