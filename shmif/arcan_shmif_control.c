@@ -423,8 +423,9 @@ bool arcan_shmif_integrity_check(struct arcan_shmif_cont* cont)
 	if (shmp->cookie != cont->cookie)
 	{
 		LOG("frameserver::shmif integrity check failed, non-matching cookies"
-			" this is a serious issue indicating either data-corruption or "
-			" compiler / interface version mismatch.\n");
+			"(%llu) vs (%llu), this is a serious issue indicating either "
+			"data-corruption or compiler / interface version mismatch.\n",
+			(long long unsigned) shmp->cookie, (long long unsigned) cont->cookie);
 
 		return false;
 	}

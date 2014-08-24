@@ -1,13 +1,17 @@
 set (PLATFORM_PATH ${CMAKE_SOURCE_DIR}/platform/posix)
 set (GL_PLATFORM_HEADER ${PLATFORM_PATH}/../${VIDEO_PLATFORM}/glheaders.h)
 
-add_definitions(-DGL_HEADERS="${GL_PLATFORM_HEADER}")
+set (ARCAN_DEFINITIONS
+	${ARCAN_DEFINITIONS} "GL_HEADERS=\"${GL_PLATFORM_HEADER}\""
+)
 
 add_definitions(-DPLATFORM_HEADER=\"${PLATFORM_PATH}/../platform.h\" -std=gnu11
 	-Wall -Wno-missing-braces -Wno-unused-function -DCLOCK_SOURCE_RAW -DLUA_51 -D__UNIX
 	-D_POSIX_C_SOURCE -D_GNU_SOURCE)
 
 message(" scanning for Linux specific libraries. ")
+# note; investigate switching to libusb- backend to
+# get rid of the udev dependency
 FIND_PACKAGE(UDev REQUIRED)
 LIST(APPEND MAIN_LIBRARIES ${UDEV_LIBRARIES})
 
@@ -93,7 +97,10 @@ if (ENABLE_LWA)
 	)
 
 	set_property(TARGET arcan_lwa APPEND PROPERTY
-		COMPILE_DEFINITIONS HEADLESS_PLATFORM=\"${PLATFORM_PATH}/../${LWA_HEADLESS}\")
+		COMPILE_DEFINITIONS
+			HEADLESS_PLATFORM=\"${PLATFORM_PATH}/../${LWA_HEADLESS}\"
+			GL_HEADERS=\"${GL_PLATFORM_HEADER}\"
+	)
 endif()
 
 add_library(arcan_hijack SHARED ${HIJACK_SOURCES})

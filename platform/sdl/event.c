@@ -431,9 +431,9 @@ void platform_event_process(arcan_evctx* ctx)
 		break;
 
 		case SDL_KEYDOWN:
-			newevent.kind  = EVENT_IO_KEYB;
 			newevent.data.io.datatype = EVENT_IDATATYPE_TRANSLATED;
 			newevent.data.io.devkind  = EVENT_IDEVKIND_KEYBOARD;
+			newevent.data.io.input.translated.active = true;
 			newevent.data.io.input.translated.devid = event.key.which;
 			newevent.data.io.input.translated.keysym = event.key.keysym.sym;
 			newevent.data.io.input.translated.modifiers = event.key.keysym.mod;
@@ -443,9 +443,9 @@ void platform_event_process(arcan_evctx* ctx)
 		break;
 
 		case SDL_KEYUP:
-			newevent.kind  = EVENT_IO_KEYB;
 			newevent.data.io.datatype = EVENT_IDATATYPE_TRANSLATED;
 			newevent.data.io.devkind  = EVENT_IDEVKIND_KEYBOARD;
+			newevent.data.io.input.translated.active = false;
 			newevent.data.io.input.translated.devid = event.key.which;
 			newevent.data.io.input.translated.keysym = event.key.keysym.sym;
 			newevent.data.io.input.translated.modifiers = event.key.keysym.mod;

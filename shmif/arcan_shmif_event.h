@@ -68,15 +68,16 @@ enum ARCAN_EVENT_CATEGORY {
  */
 enum ARCAN_SEGID {
 	SEGID_LWA = 0, /* LIGHTWEIGHT ARCAN (arcan-in-arcan) */
-	SEGID_MEDIA, /* multimedia, non-interactive data source */
-	SEGID_NETWORK_SERVER, /* external connection, 1:many */
-	SEGID_NETWORK_CLIENT, /* external connection, 1:1 */
+	SEGID_NETWORK_SERVER = 1, /* external connection, 1:many */
+	SEGID_NETWORK_CLIENT = 2, /* external connection, 1:1 */
+	SEGID_MEDIA = 4, /* multimedia, non-interactive data source */
 	SEGID_SHELL, /* terminal, privilege level vary, low-speed interactivity */
 	SEGID_REMOTING, /* network client but A/V/latency sensitive */
 	SEGID_ENCODER, /* high-CPU, low-latency, wants access to engine data */
 	SEGID_GAME, /* high-interactivity, high A/V cost, low latency */
 	SEGID_APPLICATION, /* video updates typically reactive */
 	SEGID_BROWSER, /* network client, high-risk for malicious data */
+	SEGID_DEBUG,
 	SEGID_UNKNOWN
 };
 
@@ -180,7 +181,6 @@ enum ARCAN_TARGET_SKIPMODE {
 
 enum ARCAN_EVENT_IO {
 	EVENT_IO_BUTTON,
-	EVENT_IO_KEYB,
 	EVENT_IO_AXIS_MOVE,
 	EVENT_IO_TOUCH
 };

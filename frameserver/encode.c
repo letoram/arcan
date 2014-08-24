@@ -733,9 +733,16 @@ void arcan_frameserver_encode_run(const char* resource,
 		return;
 	}
 
-	/* setup shmpage etc.
+/* setup shmpage etc.
  * resolution etc. is already defined in the parent */
 	recctx.shmcont = arcan_shmif_acquire(keyfile, SHMIF_OUTPUT, true, false);
+
+	arcan_event regev = {
+		.category = EVENT_EXTERNAL,
+		.kind = EVENT_EXTERNAL_REGISTER,
+		.data.external.registr.kind = SEGID_ENCODE
+	};
+	arcan_event_enqueue(&vncctx.shmcont.outev, &regev);
 
 	const char* argval;
 	if (arg_lookup(args, "protocol", 0, &argval)){

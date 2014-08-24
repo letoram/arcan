@@ -518,6 +518,8 @@ if (ENABLE_LIBRETRO)
 	 frameserver/stateman.c
 	 frameserver/ievsched.c
 	 frameserver/ievsched.h
+	 frameserver/sync_plot.h
+	 frameserver/sync_plot.c
 #	 frameserver/retexture.h
 #	 frameserver/retexture.c
 	 frameserver/resampler/resample.c

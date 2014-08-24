@@ -3,6 +3,7 @@
  * A mix of Suckless-Terminal and libtsm- examples
  * wrapped in the arcan shared memory interface.
  */
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
