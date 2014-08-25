@@ -112,9 +112,10 @@ struct core_variable {
 typedef void(*pixconv_fun)(const void* data, uint32_t* outp,
 	unsigned width, unsigned height, size_t pitch, bool postfilter);
 
-struct libretro_ctx {
+static struct {
 	struct graph_context* graphing; /* overlaying text / information */
 	struct synch_graphing* sync_data; /* overlaying statistics */
+	int graph_pending;
 
 /* frame management */
 /* flag for rendering callbacks, should the frame be processed or not */
@@ -209,9 +210,9 @@ struct libretro_ctx {
 	bool (*serialize)(void*, size_t);
 	bool (*deserialize)(const void*, size_t);
 	void (*set_ioport)(unsigned, unsigned);
+} retroctx = {
+	.prewake = 4, .preaudiogen = 0
 };
-
-static struct libretro_ctx retroctx = {.prewake = 4, .preaudiogen = 0};
 
 /* render statistics unto *vidp, at the very end of this .c file */
 static void update_ntsc(int v1, int v2, int v3, int v4);
@@ -1035,6 +1036,22 @@ static inline int16_t libretro_inputmain(unsigned port, unsigned dev,
 	return 0;
 }
 
+static void enable_graphseg(int id, const char* key)
+{
+	struct arcan_shmif_cont cont =
+		arcan_shmif_acquire(key, SEGID_DEBUG, SHMIF_DISABLE_GUARD);
+
+	if (!cont.addr){
+		LOG("segment transfer failed in (%d:%s), investigate.\n", id, key );
+		return;
+	}
+
+	if (retroctx.sync_data)
+		retroctx.sync_data->free(&retroctx.sync_data);
+
+	retroctx.sync_data = setup_synch_graph(&retroctx.shmcont, false);
+}
+
 static int16_t libretro_inputstate(unsigned port, unsigned dev,
 	unsigned ind, unsigned id)
 {
@@ -1217,8 +1234,24 @@ static inline void targetev(arcan_event* ev)
 				retroctx.sync_data->free(&retroctx.sync_data);
 
 			retroctx.graphmode = tgt->ioevs[0].iv;
-			if (retroctx.graphmode)
-				retroctx.sync_data = setup_synch_graph(&retroctx.shmcont, true);
+			if (retroctx.graphmode){
+				if (retroctx.graph_pending){
+					LOG("debuggraph request while another still pending.\n");
+					return;
+				}
+
+				retroctx.graph_pending = random();
+				arcan_event outev = {
+					.kind = EVENT_EXTERNAL_SEGREQ,
+					.category = EVENT_EXTERNAL,
+					.data.external.noticereq.width = 640,
+					.data.external.noticereq.height = 240,
+					.data.external.noticereq.type = SEGID_DEBUG,
+					.data.external.noticereq.id = retroctx.graph_pending
+				};
+
+				arcan_event_enqueue(&retroctx.shmcont.outev, &outev);
+			}
 		break;
 
 		case TARGET_COMMAND_NTSCFILTER:
@@ -1249,6 +1282,17 @@ static inline void targetev(arcan_event* ev)
 			retroctx.jitterstep  = tgt->ioevs[3].iv;
 			retroctx.jitterxfer  = tgt->ioevs[4].iv;
 			reset_timing(true);
+		break;
+
+/*
+ * multiple possible receivers, e.g.
+ * retexture transfer page, debugwindow or secondary etc. screens
+ */
+		case TARGET_COMMAND_NEWSEGMENT:
+			if (retroctx.graph_pending ==	ev->data.target.ioevs[1].iv)
+				enable_graphseg(ev->data.target.ioevs[0].iv, ev->data.target.message);
+			close(retroctx.last_fd);
+			retroctx.last_fd = 0;
 		break;
 
 /* any event not being UNPAUSE is ignored, no frames are processed

@@ -80,7 +80,7 @@ BOOL PASCAL TransmitFile(SOCKET hs, HANDLE hf, DWORD nbtw, DWORD nbps,
  */
 static int idcookie = 0;
 
-struct {
+static struct {
 /* SHM-API interface */
 	struct arcan_shmif_cont shmcont;
 	apr_socket_t* evsock;

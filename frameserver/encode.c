@@ -51,7 +51,7 @@
 	extern char* dated_ffmpeg_refused_old_build[-1];
 #endif
 
-struct {
+static struct {
 /* IPC */
 	struct arcan_shmif_cont shmcont;
 	int lastfd;        /* sent from parent */
@@ -107,7 +107,7 @@ struct {
 
 /* for re-using this compilation unit from other frameservers */
 	bool extsynch;
-} recctx = {0};
+} recctx;
 
 struct cl_track {
 	unsigned conn_id;
