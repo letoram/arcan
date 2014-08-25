@@ -13,7 +13,8 @@ static bool err_catch_dispatch(struct conn_state* self, enum net_tags tag,
 	abort();
 }
 
-static bool err_catch_valid(struct conn_state* self, size_t len, char* buf, size_t* cons)
+static bool err_catch_valid(struct conn_state* self,
+	size_t len, char* buf, size_t* cons)
 {
 	LOG("(net-srv) -- invalid validator invoked, please report.\n");
 	abort();

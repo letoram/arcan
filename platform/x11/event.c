@@ -304,7 +304,7 @@ static void send_keyev(struct arcan_evctx* ctx, XKeyEvent key, bool state)
 
 	arcan_event ev = {
 		.category = EVENT_IO,
-		.kind = EVENT_IO_KEYB,
+		.kind = EVENT_IO_BUTTON,
 		.data.io.datatype = EVENT_IDATATYPE_TRANSLATED,
 		.data.io.devkind = EVENT_IDEVKIND_KEYBOARD,
 		.data.io.input.translated.active = state,

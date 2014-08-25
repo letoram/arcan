@@ -14,7 +14,7 @@
 #include <arcan_shmif.h>
 #include "frameserver.h"
 
-struct {
+static struct {
 	libvlc_instance_t* vlc;
 	libvlc_media_player_t* player;
 
@@ -24,7 +24,7 @@ struct {
 	kiss_fftr_cfg fft_state;
 
 	pthread_mutex_t rsync;
-} decctx = {0};
+} decctx;
 
 #define LOG(...) (fprintf(stderr, __VA_ARGS__))
 #define AUD_VIS_HRES 2048
