@@ -1908,7 +1908,7 @@ static int syssnap(lua_State* ctx)
 	LUA_TRACE("system_snapshot");
 
 	const char* instr = luaL_checkstring(ctx, 1);
-	char* fname = findresource(instr, RESOURCE_APPL);
+	char* fname = findresource(instr, RESOURCE_APPL_TEMP);
 
 	if (fname){
 		arcan_warning("system_statesnap(), "
@@ -1918,7 +1918,7 @@ static int syssnap(lua_State* ctx)
 		return 0;
 	}
 
-	fname = arcan_expand_resource(luaL_checkstring(ctx, 1), RESOURCE_APPL);
+	fname = arcan_expand_resource(luaL_checkstring(ctx, 1), RESOURCE_APPL_TEMP);
 	FILE* outf = fopen(fname, "w+");
 
 	if (outf){
@@ -1940,7 +1940,7 @@ static int dofile(lua_State* ctx)
 	const char* instr = luaL_checkstring(ctx, 1);
 	bool dieonfail = luaL_optnumber(ctx, 2, 1) != 0;
 
-	char* fname = findresource(instr, RESOURCE_APPL | RESOURCE_APPL_SHARED);
+	char* fname = findresource(instr, DEFAULT_USERMASK);
 	int res = 0;
 
 	if (fname){
@@ -3788,13 +3788,13 @@ static int rawsurface(lua_State* ctx)
 		}
 
 	if (dumpstr){
-		char* fname = arcan_find_resource(dumpstr, RESOURCE_APPL);
+		char* fname = arcan_find_resource(dumpstr, RESOURCE_APPL_TEMP);
 		if (fname){
 			arcan_warning("rawsurface() -- refusing to "
 				"overwrite existing file (%s)\n", fname);
 		}
 		else{
-			fname = arcan_expand_resource(dumpstr, RESOURCE_APPL);
+			fname = arcan_expand_resource(dumpstr, RESOURCE_APPL_TEMP);
 			FILE* fpek = fopen(fname, "wb");
 			if (!fpek)
 				arcan_warning("rawsurface() - - couldn't open (%s).\n", fname);
@@ -5525,7 +5525,7 @@ static int spawn_recfsrv(lua_State* ctx,
 		"container=stream") != NULL || strlen(resf) == 0)
 		fd = open(NULFILE, O_WRONLY);
 	else {
-		char* fn = arcan_expand_resource(resf, RESOURCE_APPL);
+		char* fn = arcan_expand_resource(resf, RESOURCE_APPL_TEMP);
 
 /* it is currently allowed to "record over" an existing file without forcing
  * the caller to use zap_resource first, this should be REFACTORED. */
@@ -6502,13 +6502,13 @@ static int screenshot(lua_State* ctx)
 		arcan_video_screenshot(&databuf, &bufs);
 
 	if (databuf){
-		char* fname = arcan_find_resource(resstr, RESOURCE_APPL);
+		char* fname = arcan_find_resource(resstr, RESOURCE_APPL_TEMP);
 		if (fname){
 			arcan_warning("screeenshot() -- refusing to overwrite existing file.\n");
 			goto cleanup;
 		}
 
-		fname = arcan_expand_resource(resstr, RESOURCE_APPL);
+		fname = arcan_expand_resource(resstr, RESOURCE_APPL_TEMP);
 		FILE* dst = fopen(fname, "wb");
 
 		if (dst)
