@@ -135,7 +135,7 @@ extern jmp_buf arcanmain_recover_state;
  * some operations, typically resize, move and rotate suffered a lot from
  * lua floats propagating, meaning that we'd either get subpixel positioning
  * and blurring text etc. as a consequence. For these functions, we now
- * force the type to whatever acoord is specified as (here, unsigned).
+ * force the type to whatever acoord is specified as (here, signed).
  */
 typedef int acoord;
 
@@ -286,7 +286,6 @@ static void luaL_nil_banned(struct arcan_luactx* ctx)
 
 	free(work);
 }
-
 
 static inline void colon_escape(char* instr)
 {
@@ -1050,20 +1049,20 @@ static int scaleimage2(lua_State* ctx)
 
 	if (time < 0) time = 0;
 
-	if (neww < 0.0001 && newh < 0.0001)
+	if (neww < EPSILON && newh < EPSILON)
 		return 0;
 
 	surface_properties prop = arcan_video_initial_properties(id);
-	if (prop.scale.x < 0.001 && prop.scale.y < 0.001) {
+	if (prop.scale.x < EPSILON && prop.scale.y < EPSILON){
 		lua_pushnumber(ctx, 0);
 		lua_pushnumber(ctx, 0);
 	}
 	else {
 		/* retain aspect ratio in scale */
-		if (neww < 0.0001 && newh > 0.0001)
+		if (neww < EPSILON && newh > EPSILON)
 			neww = newh * (prop.scale.x / prop.scale.y);
 		else
-			if (neww > 0.0001 && newh < 0.0001)
+			if (neww > EPSILON && newh < EPSILON)
 				newh = neww * (prop.scale.y / prop.scale.x);
 
 		neww = ceilf(neww);
@@ -1096,10 +1095,10 @@ static int scaleimage(lua_State* ctx)
 	surface_properties prop = arcan_video_initial_properties(id);
 
 	/* retain aspect ratio in scale */
-	if (desw < 0.0001 && desh > 0.0001)
+	if (desw < EPSILON && desh > EPSILON)
 		desw = desh * (prop.scale.x / prop.scale.y);
 	else
-		if (desw > 0.0001 && desh < 0.0001)
+		if (desw > EPSILON && desh < EPSILON)
 			desh = desw * (prop.scale.y / prop.scale.x);
 
 	arcan_video_objectscale(id, desw, desh, 1.0, time);
@@ -1208,7 +1207,7 @@ static int forceblend(lua_State* ctx)
 	LUA_TRACE("force_image_blend");
 
 	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
-	enum arcan_blendfunc mode = luaL_optnumber(ctx, 2, BLEND_FORCE);
+	enum arcan_blendfunc mode = abs(luaL_optnumber(ctx, 2, BLEND_FORCE));
 
 	if (mode == BLEND_FORCE || mode == BLEND_ADD ||
 		mode == BLEND_MULTIPLY || mode == BLEND_NONE || mode == BLEND_NORMAL)
@@ -1360,8 +1359,8 @@ static int cursorstorage(lua_State* ctx)
 static int cursormove(lua_State* ctx)
 {
 	LUA_TRACE("move_cursor");
-	lua_Number x = luaL_checknumber(ctx, 1);
-	lua_Number y = luaL_checknumber(ctx, 2);
+	acoord x = luaL_checknumber(ctx, 1);
+	acoord y = luaL_checknumber(ctx, 2);
 	bool clamp = luaL_optnumber(ctx, 3, 0) != 0;
 
 	if (clamp){
@@ -1378,8 +1377,8 @@ static int cursormove(lua_State* ctx)
 static int cursornudge(lua_State* ctx)
 {
 	LUA_TRACE("nudge_cursor");
-	lua_Number x = luaL_checknumber(ctx, 1) + arcan_video_display.cursor.x;
-	lua_Number y = luaL_checknumber(ctx, 2) + arcan_video_display.cursor.y;
+	acoord x = luaL_checknumber(ctx, 1) + arcan_video_display.cursor.x;
+	acoord y = luaL_checknumber(ctx, 2) + arcan_video_display.cursor.y;
 	bool clamp = luaL_optnumber(ctx, 3, 0) != 0;
 
 	if (clamp){
@@ -1404,8 +1403,8 @@ static int cursorposition(lua_State* ctx)
 static int cursorsize(lua_State* ctx)
 {
 	LUA_TRACE("resize_cursor");
-	lua_Number w = luaL_checknumber(ctx, 1);
-	lua_Number h = luaL_checknumber(ctx, 2);
+	acoord w = luaL_checknumber(ctx, 1);
+	acoord h = luaL_checknumber(ctx, 2);
 	arcan_video_cursorsize(w, h);
 	return 0;
 }
@@ -3157,7 +3156,7 @@ static int loadmesh(lua_State* ctx)
 	LUA_TRACE("add_3dmesh");
 
 	arcan_vobj_id did = luaL_checkvid(ctx, 1, NULL);
-	unsigned nmaps = luaL_optnumber(ctx, 3, 1);
+	unsigned nmaps = abs(luaL_optnumber(ctx, 3, 1));
 	char* path = findresource(luaL_checkstring(ctx, 2), DEFAULT_USERMASK);
 
 	if (path){
@@ -3231,7 +3230,7 @@ static int buildplane(lua_State* ctx)
 	float starty   = luaL_checknumber(ctx, 5);
 	float hdens    = luaL_checknumber(ctx, 6);
 	float ddens    = luaL_checknumber(ctx, 7);
-	unsigned nmaps = luaL_optnumber(ctx, 8, 1);
+	unsigned nmaps = abs(luaL_optnumber(ctx, 8, 1));
 
 	lua_pushvid(ctx, arcan_3d_buildplane(minx, mind, endx, endd, starty,
 		hdens, ddens, nmaps));
@@ -3622,8 +3621,8 @@ static int fillsurface(lua_State* ctx)
 	uint8_t g = abs(luaL_checknumber(ctx, 4));
 	uint8_t b = abs(luaL_checknumber(ctx, 5));
 
-	cons.w = luaL_optnumber(ctx, 6, 8);
-	cons.h = luaL_optnumber(ctx, 7, 8);
+	cons.w = abs(luaL_optnumber(ctx, 6, 8));
+	cons.h = abs(luaL_optnumber(ctx, 7, 8));
 
 	if (cons.w > 0 && cons.w <= MAX_SURFACEW &&
 		cons.h > 0 && cons.h <= MAX_SURFACEH){
@@ -3692,12 +3691,12 @@ static int colorsurface(lua_State* ctx)
 {
 	LUA_TRACE("color_surface");
 
-	int desw = luaL_checknumber(ctx, 1);
-	int desh = luaL_checknumber(ctx, 2);
-	int cred = luaL_checknumber(ctx, 3);
-	int cgrn = luaL_checknumber(ctx, 4);
-	int cblu = luaL_checknumber(ctx, 5);
-	int order = luaL_optnumber(ctx, 6, 1);
+	size_t desw = abs(luaL_checknumber(ctx, 1));
+	size_t desh = abs(luaL_checknumber(ctx, 2));
+	int cred = abs(luaL_checknumber(ctx, 3));
+	int cgrn = abs(luaL_checknumber(ctx, 4));
+	int cblu = abs(luaL_checknumber(ctx, 5));
+	int order = abs(luaL_optnumber(ctx, 6, 1));
 
 	lua_pushvid(ctx, arcan_video_solidcolor(desw, desh,
 		cred, cgrn, cblu, order));
@@ -3708,9 +3707,9 @@ static int nullsurface(lua_State* ctx)
 {
 	LUA_TRACE("null_surface");
 
-	int desw = luaL_checknumber(ctx, 1);
-	int desh = luaL_checknumber(ctx, 2);
-	int order = luaL_optnumber(ctx, 3, 1);
+	size_t desw = abs(luaL_checknumber(ctx, 1));
+	size_t desh = abs(luaL_checknumber(ctx, 2));
+	int order = abs(luaL_optnumber(ctx, 3, 1));
 
 	lua_pushvid(ctx, arcan_video_nullobject(desw, desh, order) );
 	return 1;
@@ -4527,7 +4526,7 @@ static int targetseek(lua_State* ctx)
 
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
 	float val         = luaL_checknumber(ctx, 2);
-	bool relative     = luaL_optnumber(ctx, 3, 1) == 1;
+	bool relative     = luaL_optnumber(ctx, 3, 1) != 0;
 
 	vfunc_state* state = arcan_video_feedstate(tgt);
 
@@ -5315,9 +5314,7 @@ static int procimage_get(lua_State* ctx)
 	uint8_t g = img[(y * ud->width + x) * GL_PIXEL_BPP + 1];
 	uint8_t b = img[(y * ud->width + x) * GL_PIXEL_BPP + 2];
 
-	int mono = luaL_optnumber(ctx, 4, 0);
-
-	if (mono){
+	if (luaL_optnumber(ctx, 4, 0) != 0){
 		lua_pushnumber(ctx, (float)(r + g + b) / 3.0);
 		return 1;
 	}	else {
@@ -6017,9 +6014,9 @@ static int forwardmodel(lua_State* ctx)
 	arcan_vobj_id vid = luaL_checkvid(ctx, 1, NULL);
 	float mag = luaL_checknumber(ctx, 2);
 	unsigned int dt = luaL_optint(ctx, 3, 0);
-	bool axismask_x = luaL_optnumber(ctx, 4, 0) == 1;
-	bool axismask_y = luaL_optnumber(ctx, 5, 0) == 1;
-	bool axismask_z = luaL_optnumber(ctx, 6, 0) == 1;
+	bool axismask_x = luaL_optnumber(ctx, 4, 0) != 0;
+	bool axismask_y = luaL_optnumber(ctx, 5, 0) != 0;
+	bool axismask_z = luaL_optnumber(ctx, 6, 0) != 0;
 
 	surface_properties prop = arcan_video_current_properties(vid);
 
@@ -6419,8 +6416,8 @@ static int inputanalogquery(lua_State* ctx)
 
 	int devid = 0, resind = 1;
 	int devnum = luaL_optnumber(ctx, 1, -1);
-	int axnum = luaL_optnumber(ctx, 2, 0);
-	int rescan = luaL_optnumber(ctx, 3, 0);
+	int axnum = abs(luaL_optnumber(ctx, 2, 0));
+	bool rescan = luaL_optnumber(ctx, 3, 0) != 0;
 
  	if (rescan)
 		arcan_event_rescan_idev(arcan_event_defaultctx());
