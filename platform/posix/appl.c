@@ -92,6 +92,9 @@ bool arcan_verifyload_appl(const char* appl_id, const char** errc)
 	}
 
 	char* subpath = arcan_expand_resource(appl_id, RESOURCE_APPL);
+	if (!subpath)
+		return false;
+
 	size_t s_ofs = strlen(subpath);
 	char wbuf[ s_ofs + sizeof("/.lua") + app_len + 1];
 

@@ -45,6 +45,9 @@ static void f_update(struct synch_graphing* ctx, float period, const char* msg)
 	if (priv->cont->addr->vready)
 		return;
 
+	draw_box(priv->graphing, 0, 0, priv->cont->addr->w,
+		priv->cont->addr->h, 0xffffffff);
+
 	while(cp){
 		stepmsg(priv->graphing, cp, yv);
 		cp = strtok_r(NULL, "\n", &ctxp);
