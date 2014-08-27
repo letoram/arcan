@@ -1046,10 +1046,18 @@ static void enable_graphseg(int id, const char* key)
 		return;
 	}
 
+	if (!arcan_shmif_resize(&cont, 640, 180)){
+		LOG("resize failed on debug graph context\n");
+		return;
+	}
+
+	struct arcan_shmif_cont* pcont = malloc(sizeof(struct arcan_shmif_cont));
+
 	if (retroctx.sync_data)
 		retroctx.sync_data->free(&retroctx.sync_data);
 
-	retroctx.sync_data = setup_synch_graph(&retroctx.shmcont, false);
+	*pcont = cont;
+	retroctx.sync_data = setup_synch_graph(pcont, false);
 }
 
 static int16_t libretro_inputstate(unsigned port, unsigned dev,
