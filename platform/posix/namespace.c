@@ -138,9 +138,8 @@ bool arcan_verify_namespaces(bool report)
 {
 	bool working = true;
 
-#ifdef _DEBUG
-	arcan_warning("--- Verifying Namespaces: ---\n");
-#endif
+	if (report)
+		arcan_warning("--- Verifying Namespaces: ---\n");
 
 /* 1. check namespace mapping for holes */
 	for (int i = 0; i < sizeof(
@@ -158,9 +157,8 @@ bool arcan_verify_namespaces(bool report)
 			arcan_warning("%s -- OK (%s)\n", lbls[i], namespaces.paths[i]);
 	}
 
-#ifdef _DEBUG
-	arcan_warning("--- Namespace Verification Completed ---\n");
-#endif
+	if (report)
+		arcan_warning("--- Namespace Verification Completed ---\n");
 
 /* 2. missing; check permissions for each mounted space,
  * i.e. we should be able to write to state,
