@@ -54,7 +54,10 @@ static char* envvs[] = {
 	"ARCAN_APPLPATH",
 	"ARCAN_RESOURCEPATH",
 	"ARCAN_APPLTEMPPATH",
-	"ARCAN_STATEPATH",
+	"ARCAN_STATEPATH", /* will be ignored */
+	"ARCAN_APPBASEPATH",
+	"ARCAN_APPSTOREPATH",
+	"ARCAN_STATEBASEPATH",
 	"ARCAN_FONTPATH",
 	"ARCAN_BINPATH",
 	"ARCAN_LIBPATH",
@@ -126,8 +129,7 @@ static char* unix_find(const char* fname)
 	return res;
 }
 
-static void soft_override_namespace(
-	const char* new, enum arcan_namespaces space)
+void soft_override_namespace(const char* new, enum arcan_namespaces space)
 {
 	char* tmp = arcan_expand_resource("", space);
 	if (!tmp)
@@ -144,40 +146,57 @@ static void soft_override_namespace(
 void arcan_set_namespace_defaults()
 {
 /*
- * use environment variables as overrides (then command-line args
- * can override those in turn)
+ * use environment variables as hard overrides
  */
 	for (int i = 0; i < sizeof( envvs ) / sizeof( envvs[0] ); i++){
 		const char* tmp = getenv(envvs[i]);
 		arcan_override_namespace(tmp, 1 << i);
 	}
 
+/*
+ * legacy mapping from the < 0.5 days
+ */
 	soft_override_namespace(binpath_unix(), RESOURCE_SYS_BINS);
 	soft_override_namespace(libpath_unix(), RESOURCE_SYS_LIBS);
 
 	char* respath = unix_find("resources");
+	char* tmp = NULL;
+
+	if (!respath)
+		respath = arcan_expand_resource("", RESOURCE_APPL_SHARED);
+
 	if (respath){
 		size_t len = strlen(respath);
 		char debug_dir[ len + sizeof("/logs") ];
-		char state_dir[ len + sizeof("/savestates") ];
 		char font_dir[ len + sizeof("/fonts") ];
 
 		snprintf(debug_dir, sizeof(debug_dir), "%s/logs", respath);
-		snprintf(state_dir, sizeof(state_dir), "%s/savestates", respath);
 		snprintf(font_dir, sizeof(font_dir), "%s/fonts", respath);
 
 		soft_override_namespace(respath, RESOURCE_APPL_SHARED);
 		soft_override_namespace(debug_dir, RESOURCE_SYS_DEBUG);
-		soft_override_namespace(state_dir, RESOURCE_APPL_STATE);
+		soft_override_namespace(respath, RESOURCE_APPL_STATE);
 		soft_override_namespace(font_dir, RESOURCE_SYS_FONT);
 	}
 
+	if (tmp)
+		arcan_mem_free(tmp);
+
 	char* scrpath = unix_find("appl");
 	if (!scrpath)
-		scrpath = unix_find("themes"); /* legacy */
+		scrpath = unix_find("themes");
 
 	if (scrpath){
-		soft_override_namespace(scrpath, RESOURCE_APPL);
-		soft_override_namespace(scrpath, RESOURCE_APPL_TEMP);
+		soft_override_namespace(scrpath, RESOURCE_SYS_APPLBASE);
+		soft_override_namespace(scrpath, RESOURCE_SYS_APPLSTORE);
+	}
+
+	tmp = arcan_expand_resource("", RESOURCE_SYS_APPLSTATE);
+	if (!tmp){
+		arcan_mem_free(tmp);
+		tmp = arcan_expand_resource("savestates", RESOURCE_APPL_SHARED);
+		if (tmp)
+			arcan_override_namespace(tmp, RESOURCE_SYS_APPLSTATE);
+		arcan_mem_free(tmp);
 	}
 }

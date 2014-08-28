@@ -24,14 +24,14 @@ These are dependent on the built-time configuration of the engine and are
 listed at the end of running arcan with the --help command-line argument.
 
 .IP "\fB-M, --monitor\fR \fIrate\fR"
-Enable monitoring mode, every \fIrate\fR ticks, save a snapshot of the scripting
- engine state to a monitoring target (see -O, --monitor-out).
+Enable monitoring mode, every \fIrate\fR ticks, save a snapshot of the 
+scripting engine state to a monitoring target (see -O, --monitor-out).
 
 .IP "\fB-O, --monitor-out \fItarget\fR"
 Defines the monitoring data recipient, used in combination with -M, --monitor.
-Either specify LOG:filename for a text-based recipient or a valid \fIappl\fR for
-launching two arcan sessions where the monitoring snapshots are forwarded to
-the other instance for analysis and visualization.
+Either specify LOG:filename for a text-based recipient or a valid 
+\fIappl\fR for launching two arcan sessions where the monitoring snapshots 
+are forwarded to the other instance for analysis and visualization.
 
 .IP "\fB-q, --timedump \fIticks\fR"
 After \fIticks\fR logical pulses, generate a snapshot similar to -M, --monitor
@@ -94,52 +94,71 @@ display resolution to match the specified canvas dimensions.
 
 .SH NAMESPACES
 There is a large assortment of namespaces that the engine will search for
-when a script requests access to- or the creation- of a resource. The two
-larger ones are \fBARCAN_APPLPATH\fR and \fBARCAN_RESOURCEPATH\fR. These
-can also be altered through the command-line arguments \fB-t\fR and \fB-p\fR.
+when a script requests access to- or the creation- of a resource. 
+The way these are set up will vary depending on command-line arguments,
+operating-system specific scans, if applname was specified as a 
+relative/absolute path and on a series of environment variables. 
 
-Scripts can manipulate (create, open, read, write) the files within
-the confines of the \fBAPPLPATH\fR. Traversal (../) outside this path will
-be filtered, but a user can explicitly map (symlink, bind-mounts or similar)
-other paths into this namespace and the engine will allow it.
+For a more detailed explanation on how this works from an appl perspective,
+please refer to the developer documentation.
+
+This setup is rather complex in order to account for a large range of 
+platforms and use-cases, with the most simple configuration being an 
+application base folder (controlled with the \fB-t\fR command-line switch)
+and a shared resource folder (Controlled with the \fB-p\fR switch).
+
+The most important namespaces are the APPLBASE and the RESOURCEPATH.
+ 
+Appls can manipulate (create, open, read, write) the files within
+the confines of the \fBAPPLBASE/APPNAME\fR. Traversal (../) outside 
+this path will be blocked, but a user can explicitly map 
+(symlink, bind-mounts or similar) other paths into this namespace 
+and the engine will allow it.
 
 Scripts gets read- access to resources within the \fBRESOURCEPATH\fR and
 can explicitly request to search either or both namespaces when opening
 a resource. By default, a namespace collision (the same resource existing
-in multiple namespaces) gives priority to \fBAPPLPATH\fR.
+in multiple namespaces) gives priority to \fBAPPLBASE/APPNAME\fR.
 
-Other namespaces are initially defined relative to the \fBRESOURCEPATH\fR,
-and to a few known system locations (e.g. /usr/bin) but can be overridden
-by setting the environment variables using the prefix
-ARCAN_ the name of the namespace and suffixed by PATH, e.g. ARCAN_BINPATH.
+The most fine-grained control can be obtained by setting a number of 
+environment variables:
 
-The currently supported namespaces and their uses are as follows:
+.IP "\fBARCAN_RESOURCEPATH\fR\"
+Shared resources, as described above.
 
-.IP "\fBSTATE\fR"
-Used for calls to snapshot_target, and similar functions and is intended
-for external target savestates. A savestate is treated as a binary blob
-that can be used to store and restore the current state of an external
-target.
+.IP "\fBARCAN_APPBASEPATH\fR\"
+This path is used to search for appls but may be ignored for absolute
+paths specified on the command-line. 
 
-.IP "\fBBIN\fR"
-Used when looking for \fBframeservers\fR (see the FRAMESERVERS section
-below for more detail), these are prefixed with arcan_frameserver and,
-depending on build configuration, _mode where mode represents the role
-and function of the specific frameserver.
+.IP "\fBARCAN_APPSTOREPATH\fR"
+The default setting is to allow the appl full access to its own folder,
+but this can be split into a separate store. This will then expand as 
+\fBARCAN_APPSTOREPATH/APPLNAME\fR.
 
-.IP "\fBLIB\fR"
-Used when looking for hijack libraries. These are libraries that are
-preloaded or otherwise injected into specific process in order to
-infiltrate/exfiltrate/manipulate data and flow of execution within the
-process. The most common use for this is to alter render/audio and input
-paths in non-compliant applications. These are used in conjunction with
-entries in the database.
+.IP "\fBARCAN_STATEBASEPATH\fR"
+The default setting is to map this to RESOURCEPATH/savestates and will
+then be shared between all appls (which holds true whenever STATEBASE
+is set to a subdirectory of RESOURCEPATH). 
 
-.IP "\fBFONT\fR"
-Set to RESOURCEPATH/fonts by default, but can be redirected to another
-shared font store.
+.IP "\fBARCAN_FONTPATH\fR"
+The default setting is to map this to RESOURCEPATH/fonts but can be 
+set to some other system font directory for more fine-grained control
+(as font-parsing is complex and can be a source of vulnerabilities). 
 
-.IP "\fBLOG\fR"
+.IP "\fBARCAN_BINPATH\fR"
+The default is to set this to /usr/bin/arcan_frameserver (or wherever
+the frameserver is installed, first searching ./ then /usr/local/bin
+then /usr/bin).
+
+.IP "\fBARCAN_LIBPATH\fR"
+(optional) Used when looking for hijack libraries. 
+These are libraries that are preloaded or otherwise injected into 
+specific process in order to infiltrate/exfiltrate/manipulate data 
+and flow of execution within the process. The most common use for 
+this is to alter render/audio and input paths in non-compliant 
+applications. These are used in conjunction with entries in the database.
+
+.IP "\fBARCAN_LOGPATH\fR"
 Set to RESOURCEPATH/logs by default (if it exists) and is used for storing
 debugging, profiling and similar development/troubleshooting related data.
 This includes state dumps which may contain sensitive data.
