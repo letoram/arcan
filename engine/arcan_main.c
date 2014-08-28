@@ -345,11 +345,11 @@ int main(int argc, char* argv[])
 			arcan_warning("loading fallback application failed (%s), giving up.\n",
 				err_msg);
 
-			return EXIT_FAILURE;
+			goto error;
 		}
 	}
 
-	if (!arcan_verify_namespaces(true))
+	if (!arcan_verify_namespaces(false))
 		goto error;
 
 #ifndef _WIN32
@@ -651,5 +651,13 @@ applswitch:
 	return exit_code;
 
 error:
+	if (debuglevel > 0){
+		arcan_warning("fatal: main loop failed, arguments: \n");
+		for (size_t i = 0; i < argc; i++)
+			arcan_warning("%s ", argv[i]);
+		arcan_warning("\n\n");
+		arcan_verify_namespaces(true);
+	}
+
 	return EXIT_FAILURE;
 }
