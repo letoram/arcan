@@ -172,6 +172,15 @@ bool arcan_verify_namespaces(bool report)
 	return working;
 }
 
+void arcan_softoverride_namespace(const char* new, enum arcan_namespaces space)
+{
+	char* tmp = arcan_expand_resource("", space);
+	if (!tmp)
+		arcan_override_namespace(new, space);
+	else
+		free(tmp);
+}
+
 void arcan_override_namespace(const char* path, enum arcan_namespaces space)
 {
 	if (path == NULL)

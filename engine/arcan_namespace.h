@@ -123,7 +123,7 @@ void arcan_override_namespace(const char* path, enum arcan_namespaces space);
  * replaces the slot specified by space with the new path [path]
  * if the slot is currently empty.
  */
-void soft_override_namespace(const char* newp, enum arcan_namespaces space);
+void arcan_softoverride_namespace(const char* newp, enum arcan_namespaces space);
 
 /*
  * implemented in <platform>/appl.c

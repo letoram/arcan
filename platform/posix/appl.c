@@ -56,12 +56,20 @@ bool arcan_verifyload_appl(const char* appl_id, const char** errc)
  */
 	if (appl_id[0] == '/' || appl_id[0] == '\\' || appl_id[0] == '.'){
 		char* work = strdup(base);
+		char* dir = strdup( dirname( work ) );
+		free(work);
+
+		work = strdup(base);
 		base = strdup( basename(work) );
 		free(work);
 
 		arcan_override_namespace(appl_id, RESOURCE_APPL);
 		arcan_override_namespace(appl_id, RESOURCE_APPL_TEMP);
 
+		arcan_softoverride_namespace(work, RESOURCE_SYS_APPLBASE);
+		arcan_softoverride_namespace(work, RESOURCE_SYS_APPLSTORE);
+
+		free(dir);
 		expand = false;
 	}
 
