@@ -22,7 +22,6 @@
 #include <arcan_math.h>
 #include <arcan_general.h>
 
-static bool appl_ready = false;
 static size_t appl_len = 0;
 static char* g_appl_id = "#app_not_initialized";
 static char* appl_script = NULL;
@@ -31,7 +30,7 @@ static char* appl_script = NULL;
  * This is also planned as an entry point for implementing the
  * APF mapping, possibly with the chainloader setting envvars
  * for how the namespace is made, and if not (.apf extension in appl_id)
- * setup the context and functions required to do data lookups
+ * setup the context and functions required to do data lookups.
  */
 bool arcan_verifyload_appl(const char* appl_id, const char** errc)
 {
@@ -46,80 +45,89 @@ bool arcan_verifyload_appl(const char* appl_id, const char** errc)
  * NOTE: here is the place to check for .apf extension,
  * and if found, take a separate route for setting up.
  */
+	char* base = strdup(appl_id);
+	bool expand = true;
 
-/* if we're switching apps, move back to the base directory,
- * then verifyload again */
-	if (appl_ready){
-		char* dir = arcan_expand_resource("", RESOURCE_APPL);
-		size_t len = strlen(dir);
-		if (dir[len] == '/')
-			dir[len] = '\0';
-
-		char* base = dirname(dir);
-		arcan_override_namespace(base, RESOURCE_APPL);
-		free(dir);
-
-		appl_ready = false;
-		return arcan_verifyload_appl(appl_id, errc);
-	}
-
-/* if the user specifies an absolute or relative path,
- * we override the default namespace setting */
-	if (appl_id[0] == '/' || appl_id[0] == '.' || strchr(appl_id, '/')){
-		char* work = strdup(appl_id);
-		char* dir = strdup( dirname(work) );
+/*
+ * absolute/relative path? don't define namespaces using SYS_*
+ * will maintain STATE namespace set by paths. Absolute paths
+ * should only be presented from a privileged state (command-line
+ * or in-engine, not Lua->engine).
+ */
+	if (appl_id[0] == '/' || appl_id[0] == '\\' || appl_id[0] == '.'){
+		char* work = strdup(base);
+		base = strdup( basename(work) );
 		free(work);
 
-		work = strdup(appl_id);
-		char* base = strdup( basename(work) );
-		free(work);
+		arcan_override_namespace(appl_id, RESOURCE_APPL);
+		arcan_override_namespace(appl_id, RESOURCE_APPL_TEMP);
 
-		arcan_override_namespace(dir, RESOURCE_APPL);
-		arcan_override_namespace(dir, RESOURCE_APPL_TEMP);
-		free(dir);
-
-		bool res = arcan_verifyload_appl(base, errc);
-		free(base);
-
-		return res;
+		expand = false;
 	}
 
-	for (int i = 0; i < app_len; i++){
-		if (!isalpha(appl_id[i]) && appl_id[i] != '_'){
+/*
+ * with path stripped, we can make sure to see that we have a proper name
+ */
+	app_len = strlen(base);
+	for (size_t i = 0; i < app_len; i++){
+		if (!isalpha(base[i]) && base[i] != '_'){
 			*errc = "invalid character in appl_id (only aZ_ allowed)\n";
 			return false;
 		}
 	}
 
-	char* subpath = arcan_expand_resource(appl_id, RESOURCE_APPL);
-	if (!subpath)
-		return false;
+	if (expand){
+		char* dir = arcan_expand_resource(base, RESOURCE_SYS_APPLBASE);
+		if (!dir){
+			*errc = "missing application base\n";
+			free(base);
+			return false;
+		}
+		arcan_override_namespace(dir, RESOURCE_APPL);
+		arcan_mem_free(dir);
 
-	size_t s_ofs = strlen(subpath);
-	char wbuf[ s_ofs + sizeof("/.lua") + app_len + 1];
+		dir = arcan_expand_resource(base, RESOURCE_SYS_APPLSTORE);
+		if (!dir){
+			*errc = "missing application temporary store\n";
+			free(base);
+			return false;
+		}
+		arcan_override_namespace(dir, RESOURCE_APPL_TEMP);
+		arcan_mem_free(dir);
+	}
 
-	snprintf(wbuf, sizeof(wbuf), "%s/%s.lua", subpath, appl_id);
-	if (!arcan_isfile(wbuf)){
+/* state- storage has specific rules so it is always checked for expansion,
+ * if STATE is a subpath of shared, we have global application state (i.e.
+ * multiple scripts can use the same state storage for virtual machines),
+ * otherwise we expand */
+	char* p_a = arcan_expand_resource("", RESOURCE_APPL_SHARED);
+	char* p_b = arcan_expand_resource("", RESOURCE_SYS_APPLSTATE);
+	if (!p_b)
+		arcan_override_namespace(p_a, RESOURCE_APPL_STATE);
+	else if (strncmp(p_a, p_b, strlen(p_a)) == 0){
+		arcan_override_namespace(p_b, RESOURCE_APPL_STATE);
+	}
+	else {
+		arcan_mem_free(p_b);
+		p_b = arcan_expand_resource(base, RESOURCE_SYS_APPLSTATE);
+		arcan_override_namespace(p_b, RESOURCE_APPL_STATE);
+	}
+	arcan_mem_free(p_a);
+	arcan_mem_free(p_b);
+
+	char wbuf[ app_len + sizeof(".lua")];
+	snprintf(wbuf, sizeof(wbuf), "%s.lua", base);
+
+	char* script_path = arcan_expand_resource(wbuf, RESOURCE_APPL);
+	if (!script_path || !arcan_isfile(script_path)){
 		*errc = "missing script matching appl_id (see appname/appname.lua)";
-		free(subpath);
+		arcan_mem_free(script_path);
 		return false;
 	}
 
-	if (getenv("ARCAN_APPLTEMPPATH")){
-		arcan_override_namespace(getenv("ARCAN_APPLTEMPPATH"), RESOURCE_APPL_TEMP);
-		if (appl_ready)
-			arcan_warning("switching applications with an env- "
-				"appl_temp path override in place forces two "
-				"applications to share temporary namespace ");
-	}
-
-	arcan_override_namespace(subpath, RESOURCE_APPL);
-	free(subpath);
-
-	g_appl_id = strdup(appl_id);
-	appl_ready = true;
+	g_appl_id = base;
 	appl_len = app_len;
-	appl_script = strdup(wbuf);
+	appl_script = script_path;
 
 	return true;
 }

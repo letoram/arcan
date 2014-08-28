@@ -29,15 +29,18 @@ static struct {
 			char* shared;
 			char* temp;
 			char* state;
+			char* appbase;
+			char* appstore;
+			char* statebase;
 			char* font;
 			char* bins;
 			char* libs;
 			char* debug;
 		};
-		char* paths[8];
+		char* paths[11];
 	};
 
-	int lenv[8];
+	int lenv[11];
 
 } namespaces = {0};
 
@@ -46,6 +49,9 @@ static const char* lbls[] = {
 	"application-shared",
 	"application-temporary",
 	"application-state",
+	"system-applbase",
+	"system-applstore",
+	"system-statebase",
 	"system-font",
 	"system-binaries",
 	"system-libraries(hijack)",
@@ -89,7 +95,8 @@ char* arcan_expand_resource(const char* label, enum arcan_namespaces space)
 	size_t len_2 = namespaces.lenv[space_ind];
 
 	if (len_1 == 0)
-		return strdup( namespaces.paths[space_ind] );
+		return namespaces.paths[space_ind] ?
+			strdup( namespaces.paths[space_ind] ) : NULL;
 
 	char cbuf[ len_1 + len_2 + 2 ];
 	memcpy(cbuf, namespaces.paths[space_ind], len_2);
@@ -138,26 +145,29 @@ bool arcan_verify_namespaces(bool report)
 /* 1. check namespace mapping for holes */
 	for (int i = 0; i < sizeof(
 		namespaces.paths) / sizeof(namespaces.paths[0]); i++){
-			if (namespaces.paths[i] == NULL &&
-				(i & (int)log2(RESOURCE_SYS_LIBS)) == 0){
-				if (working && report){
-					arcan_warning("--- Broken Namespaces detected: ---\n");
+			if (namespaces.paths[i] == NULL){
+				if (i != (int)log2(RESOURCE_SYS_LIBS)){
+					working = false;
+					if (report)
+						arcan_warning("%s -- broken\n", lbls[i]);
+					continue;
 				}
-				if (report)
-					arcan_warning("%s missing.\n", lbls[i]);
-				working = false;
-		}
-		else{
-#ifdef _DEBUG
-			arcan_warning("%s OK (%s)\n", lbls[i], namespaces.paths[i]);
-#endif
-		}
+			}
+
+		if (report)
+			arcan_warning("%s -- OK (%s)\n", lbls[i], namespaces.paths[i]);
 	}
 
 #ifdef _DEBUG
 	arcan_warning("--- Namespace Verification Completed ---\n");
 #endif
-/* 2. missing; check permissions for each mounted space */
+
+/* 2. missing; check permissions for each mounted space,
+ * i.e. we should be able to write to state,
+ * we should be able to write to appl temporary etc.
+ * also check disk space for possible warning conditions
+ * (these should likely also be emitted as system events)
+ */
 
 	return working;
 }

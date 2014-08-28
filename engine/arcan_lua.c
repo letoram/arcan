@@ -1886,8 +1886,14 @@ static int syscollapse(lua_State* ctx)
 			if (!isalnum(*work) && *work != '_')
 				arcan_fatal("system_collapse(), only aZ_ are permitted in names.\n");
 
+/* lua will free when we destroy the context */
+		switch_appl = strdup(switch_appl);
 		arcan_luaL_shutdown(ctx);
 		const char* errmsg;
+
+/* flush eventqueue to avoid danglers */
+		arcan_event_deinit(arcan_event_defaultctx());
+		arcan_event_init(arcan_event_defaultctx());
 
 		if (!arcan_verifyload_appl(switch_appl, &errmsg))
 			arcan_fatal("system_collapse(), "
@@ -1897,7 +1903,8 @@ static int syscollapse(lua_State* ctx)
 	}
 	else{
 		int saved, truncated;
-		arcan_video_recoverexternal(&saved, &truncated, arcan_luaL_adopt, ctx);
+		arcan_video_recoverexternal(true, &saved, &truncated,
+			arcan_luaL_adopt, ctx);
 	}
 
 	return 0;
@@ -4855,7 +4862,7 @@ static int targetsnapshot(lua_State* ctx)
 	}
 	arcan_frameserver* fsrv = state->ptr;
 
-	char* fname = arcan_find_resource(snapkey, RESOURCE_APPL_STATE);
+	char* fname = arcan_expand_resource(snapkey, RESOURCE_APPL_STATE);
 	int fd = -1;
 	if (fname)
 		fd = open(fname, O_CREAT | O_WRONLY | O_TRUNC, S_IRWXU);

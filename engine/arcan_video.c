@@ -628,20 +628,24 @@ signed arcan_video_pushcontext()
 	return arcan_video_nfreecontexts();
 }
 
-void arcan_video_recoverexternal(int* saved,
+void arcan_video_recoverexternal(bool pop, int* saved,
 	int* truncated, recovery_adoptfun adopt, void* tag)
 {
 	unsigned lastctxa, lastctxc;
 	size_t n_ext = 0;
+
+	*saved = 0;
+	*truncated = 0;
 
 /* pass, count contexts. */
 	for (size_t i = 0; i <= vcontext_ind; i++){
 		struct arcan_video_context* ctx = &vcontext_stack[i];
 
 		for (size_t j = 1; j < ctx->vitem_limit; j++)
-			if (ctx->vitems_pool[j].flags.in_use &&
-				ctx->vitems_pool[j].feed.state.tag == ARCAN_TAG_FRAMESERV)
+			if (ctx->vitems_pool[j].flags.in_use){
+				if (ctx->vitems_pool[j].feed.state.tag == ARCAN_TAG_FRAMESERV)
 					n_ext++;
+			}
 	}
 
 	struct {
@@ -699,16 +703,20 @@ void arcan_video_recoverexternal(int* saved,
 
 					s_ofs++;
 				}
+				else
+					(*truncated)++;
 			}
 	}
 
 /* pop them all, will also create a new fresh
  * context with at least enough space */
 clense:
-	lastctxc = arcan_video_popcontext();
+	if (pop){
+		lastctxc = arcan_video_popcontext();
 
-	while ( lastctxc != (lastctxa = arcan_video_popcontext()))
-		lastctxc = lastctxa;
+		while ( lastctxc != (lastctxa = arcan_video_popcontext()))
+			lastctxc = lastctxa;
+	}
 
 	if (n_ext == 0)
 		return;
@@ -728,6 +736,7 @@ clense:
 
 		arcan_video_attachobject(did);
 
+		(*saved)++;
 		if (adopt)
 			adopt(did, tag);
 	}

@@ -677,9 +677,12 @@ arcan_errc arcan_video_transformmask(arcan_vobj_id src,
  * CAVEAT: if the total number of frameservers in all contexts > the maximum
  * limit of objects in a context, the context will be truncated.
  * This would require a high number of concurrently running processes however.
+ *
+ * if pop is set, the adopt function will be called in a clean context
+ * (desired when collapsing current app, not desired when switching app)
  */
 typedef void (*recovery_adoptfun)(arcan_vobj_id new_ent, void*);
-void arcan_video_recoverexternal(int* saved,
+void arcan_video_recoverexternal(bool pop, int* saved,
 	int* truncated, recovery_adoptfun, void* tag);
 
 /*

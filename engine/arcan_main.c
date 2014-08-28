@@ -155,32 +155,21 @@ printf("usage: arcan [-whfmWMOqsptbdgaS] applname [app specific arguments]\n"
 	}
 }
 
-/*
- * recovery means that we shutdown and reset lua context,
- * but we try to transfer and adopt frameservers so that we can
- * have a fail-safe for user- critical programs.
- */
-bool switch_appl(const char* appname, bool recovery)
+bool switch_appl(const char* appname)
 {
-	if (!recovery){
-		arcan_video_shutdown();
-		arcan_audio_shutdown();
-		arcan_event_deinit(arcan_event_defaultctx());
-		arcan_db_close(dbhandle);
+	arcan_video_shutdown();
+	arcan_audio_shutdown();
+	arcan_event_deinit(arcan_event_defaultctx());
+	arcan_db_close(dbhandle);
 
-		const char* err_msg;
-		if (!arcan_verifyload_appl(appname, &err_msg)){
-			arcan_warning("(verifyload) in switch app "
-				"failed, reason: %s\n", err_msg);
-			return false;
-		}
-
-		return true;
+	const char* err_msg;
+	if (!arcan_verifyload_appl(appname, &err_msg)){
+		arcan_warning("(verifyload) in switch app "
+			"failed, reason: %s\n", err_msg);
+		return false;
 	}
-	else
-		arcan_warning("switch_appl(), recovery mode not yet implemented.\n");
 
-	return false;
+	return true;
 }
 
 /*
@@ -285,8 +274,6 @@ int main(int argc, char* argv[])
 	char* dbfname = NULL;
 	int ch;
 
-	arcan_set_namespace_defaults();
-
 	srand( time(0) );
 /* VIDs all have a randomized base to provoke crashes in poorly written scripts,
  * only -g will make their base and sequence repeatable */
@@ -308,14 +295,17 @@ int main(int argc, char* argv[])
 	case 'S' : nosound = true; break;
 	case 'q' : settings.timedump = strtol(optarg, NULL, 10); break;
 	case 'a' : arcan_video_display.msasamples = strtol(optarg, NULL, 10); break;
-	case 'p' : override_resspaces(optarg); break;
+	case 'p' : arcan_override_namespace(optarg, RESOURCE_APPL_SHARED); break;
 	case 'b' : fallback = strdup(optarg); break;
 #ifndef _WIN32
 	case 'M' : settings.monitor_counter = settings.monitor =
 		abs( strtol(optarg, NULL, 10) ); break;
 	case 'O' : monitor_arg = strdup( optarg ); break;
 #endif
-	case 't' : arcan_override_namespace(optarg, RESOURCE_APPL); break;
+	case 't' :
+		arcan_override_namespace(optarg, RESOURCE_SYS_APPLBASE);
+		arcan_override_namespace(optarg, RESOURCE_SYS_APPLSTORE);
+	break;
 	case 'g' :
 		debuglevel++;
 		srand(0xdeadbeef);
@@ -341,6 +331,9 @@ int main(int argc, char* argv[])
 		usage();
 		exit(EXIT_SUCCESS);
 	}
+
+/* probe system, load environment variables, ... */
+	arcan_set_namespace_defaults();
 
 	const char* err_msg;
 	if (!arcan_verifyload_appl(argv[optind], &err_msg)){
@@ -435,6 +428,17 @@ applswitch:
 		arcan_warning("Couldn't open database (requested: %s),"
 			"trying to create a new one.\n", dbfname);
 		FILE* fpek = fopen(dbfname, "w+");
+
+/* case of non-write:able dbpath */
+		if (!fpek){
+			arcan_mem_free(dbfname);
+			dbfname = arcan_expand_resource("arcandb.sqlite", RESOURCE_APPL_TEMP);
+			if (!dbfname)
+				goto error;
+
+			fpek = fopen(dbfname, "w+");
+		}
+
 		if (fpek){
 			fclose(fpek);
 			dbhandle = arcan_db_open(dbfname, arcan_appl_id());
@@ -515,6 +519,12 @@ applswitch:
 	int jumpcode = setjmp(arcanmain_recover_state);
 
 	if (jumpcode == 1){
+		arcan_db_close(dbhandle);
+
+		dbhandle = arcan_db_open(dbfname, arcan_appl_id());
+		if (!dbhandle)
+			goto error;
+
 		adopt = true;
 	}
 	else if (jumpcode == 2){
@@ -577,8 +587,9 @@ applswitch:
 
 	if (adopt){
 		int saved, truncated;
-		arcan_video_recoverexternal(&saved, &truncated,
+		arcan_video_recoverexternal(false, &saved, &truncated,
 			arcan_luaL_adopt, settings.lua);
+		arcan_warning("switching applications, %d adopted.\n", saved);
 	}
 
 	arcan_evctx* evctx = arcan_event_defaultctx();
@@ -612,7 +623,7 @@ applswitch:
 /* slated for deprecation */
 				else if (ev.kind == EVENT_SYSTEM_SWITCHAPPL){
 					arcan_luaL_shutdown(settings.lua);
-					if (switch_appl(ev.data.system.data.message, false))
+					if (switch_appl(ev.data.system.data.message))
 						goto applswitch;
 					else
 						goto error;

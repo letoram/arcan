@@ -36,13 +36,13 @@ enum arcan_namespaces {
 	RESOURCE_APPL = 1,
 
 /*
- * rawresource open,
- * generic resource load
+ * shared resources between all appls.
  */
 	RESOURCE_APPL_SHARED = 2,
 
 /*
- * like RESOURCE_APPL, but reset on exit / reload.
+ * like RESOURCE_APPL, but contents can potentially be
+ * reset on exit / reload.
  */
 	RESOURCE_APPL_TEMP = 4,
 
@@ -52,10 +52,22 @@ enum arcan_namespaces {
 	RESOURCE_APPL_STATE = 8,
 
 /*
+ * These three categories correspond to the previous
+ * ones, and act as a reference point to load new
+ * applications from when an explicit switch is
+ * required. Depending on developer preferences,
+ * these can potentially map to the same folder and
+ * should be defined/set/overridden in platform/paths.c
+ */
+	RESOURCE_SYS_APPLBASE = 16,
+	RESOURCE_SYS_APPLSTORE = 32,
+	RESOURCE_SYS_APPLSTATE = 64,
+
+/*
  * formatstring \f domain, separated in part due
  * to the wickedness of font- file formats
  */
-	RESOURCE_SYS_FONT = 16,
+	RESOURCE_SYS_FONT = 128,
 
 /*
  * frameserver binaries read/execute (write-protected),
@@ -63,26 +75,26 @@ enum arcan_namespaces {
  * along with preemptive alloc+lock/wait on low system
  * loads.
  */
-	RESOURCE_SYS_BINS = 32,
+	RESOURCE_SYS_BINS = 256,
 
 /*
  * LD_PRELOAD only (write-protected), recommended use
  * is to also have a database matching program configuration
  * and associated set of libraries.
  */
-	RESOURCE_SYS_LIBS = 64,
+	RESOURCE_SYS_LIBS = 512,
 
 /*
  * frameserver log output, state dumps, write-only since
  * read-backs from script would possibly be usable for
  * obtaining previous semi-sensitive data.
  */
-	RESOURCE_SYS_DEBUG = 128,
+	RESOURCE_SYS_DEBUG = 1024,
 
 /*
  * must be set to the vale of the last element
  */
-	RESOURCE_SYS_ENDM = 128
+	RESOURCE_SYS_ENDM = 1024
 };
 
 /*
@@ -101,10 +113,17 @@ void arcan_set_namespace_defaults();
 bool arcan_verify_namespaces(bool report);
 
 /*
- * implemented in <platform>/paths.c
- * performed after namespace_defaults
+ * implemented in <platform>/paths.c,
+ * replaces the slot specified by space with the new path [path]
  */
-void arcan_override_namespace(const char* path, enum arcan_namespaces);
+void arcan_override_namespace(const char* path, enum arcan_namespaces space);
+
+/*
+ * implemented in <platform>/paths.c,
+ * replaces the slot specified by space with the new path [path]
+ * if the slot is currently empty.
+ */
+void soft_override_namespace(const char* newp, enum arcan_namespaces space);
 
 /*
  * implemented in <platform>/appl.c
