@@ -129,15 +129,6 @@ static char* unix_find(const char* fname)
 	return res;
 }
 
-void soft_override_namespace(const char* new, enum arcan_namespaces space)
-{
-	char* tmp = arcan_expand_resource("", space);
-	if (!tmp)
-		arcan_override_namespace(new, space);
-	else
-		free(tmp);
-}
-
 /*
  * This is set-up to mimic the behavior of previous arcan
  * version as much as possible. For other, more controlled settings,
@@ -156,8 +147,8 @@ void arcan_set_namespace_defaults()
 /*
  * legacy mapping from the < 0.5 days
  */
-	soft_override_namespace(binpath_unix(), RESOURCE_SYS_BINS);
-	soft_override_namespace(libpath_unix(), RESOURCE_SYS_LIBS);
+	arcan_softoverride_namespace(binpath_unix(), RESOURCE_SYS_BINS);
+	arcan_softoverride_namespace(libpath_unix(), RESOURCE_SYS_LIBS);
 
 	char* respath = unix_find("resources");
 	char* tmp = NULL;
@@ -173,10 +164,10 @@ void arcan_set_namespace_defaults()
 		snprintf(debug_dir, sizeof(debug_dir), "%s/logs", respath);
 		snprintf(font_dir, sizeof(font_dir), "%s/fonts", respath);
 
-		soft_override_namespace(respath, RESOURCE_APPL_SHARED);
-		soft_override_namespace(debug_dir, RESOURCE_SYS_DEBUG);
-		soft_override_namespace(respath, RESOURCE_APPL_STATE);
-		soft_override_namespace(font_dir, RESOURCE_SYS_FONT);
+		arcan_softoverride_namespace(respath, RESOURCE_APPL_SHARED);
+		arcan_softoverride_namespace(debug_dir, RESOURCE_SYS_DEBUG);
+		arcan_softoverride_namespace(respath, RESOURCE_APPL_STATE);
+		arcan_softoverride_namespace(font_dir, RESOURCE_SYS_FONT);
 	}
 
 	if (tmp)
@@ -187,8 +178,8 @@ void arcan_set_namespace_defaults()
 		scrpath = unix_find("themes");
 
 	if (scrpath){
-		soft_override_namespace(scrpath, RESOURCE_SYS_APPLBASE);
-		soft_override_namespace(scrpath, RESOURCE_SYS_APPLSTORE);
+		arcan_softoverride_namespace(scrpath, RESOURCE_SYS_APPLBASE);
+		arcan_softoverride_namespace(scrpath, RESOURCE_SYS_APPLSTORE);
 	}
 
 	tmp = arcan_expand_resource("", RESOURCE_SYS_APPLSTATE);
