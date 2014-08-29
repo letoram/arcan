@@ -66,8 +66,8 @@ bool arcan_verifyload_appl(const char* appl_id, const char** errc)
 		arcan_override_namespace(appl_id, RESOURCE_APPL);
 		arcan_override_namespace(appl_id, RESOURCE_APPL_TEMP);
 
-		arcan_softoverride_namespace(work, RESOURCE_SYS_APPLBASE);
-		arcan_softoverride_namespace(work, RESOURCE_SYS_APPLSTORE);
+		arcan_softoverride_namespace(dir, RESOURCE_SYS_APPLBASE);
+		arcan_softoverride_namespace(dir, RESOURCE_SYS_APPLSTORE);
 
 		free(dir);
 		expand = false;

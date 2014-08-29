@@ -349,7 +349,7 @@ int main(int argc, char* argv[])
 		}
 	}
 
-	if (!arcan_verify_namespaces(false))
+	if (!arcan_verify_namespaces(debuglevel > 0))
 		goto error;
 
 #ifndef _WIN32

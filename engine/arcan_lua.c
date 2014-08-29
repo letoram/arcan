@@ -1888,16 +1888,24 @@ static int syscollapse(lua_State* ctx)
 
 /* lua will free when we destroy the context */
 		switch_appl = strdup(switch_appl);
-		arcan_luaL_shutdown(ctx);
 		const char* errmsg;
+		arcan_luaL_shutdown(ctx);
 
 /* flush eventqueue to avoid danglers */
 		arcan_event_deinit(arcan_event_defaultctx());
 		arcan_event_init(arcan_event_defaultctx());
 
-		if (!arcan_verifyload_appl(switch_appl, &errmsg))
+/* we no longer have a context, the Lua specific error reporter should
+ * not be used */
+#undef arcan_fatal
+		if (!arcan_verifyload_appl(switch_appl, &errmsg)){
+			if (lua_ctx_store.debug > 0)
+				arcan_verify_namespaces(true);
+
 			arcan_fatal("system_collapse(), "
 				"failed to load appl (%s), reason: %s\n", switch_appl, errmsg);
+		}
+#define arcan_fatal(...) { lua_rectrigger( __VA_ARGS__); }
 
 		longjmp(arcanmain_recover_state, 1);
 	}
