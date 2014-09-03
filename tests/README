@@ -13,7 +13,17 @@ doc/*.lua
 benchmark/ (WIP) specialized non-interactive cases that 
 attempt to quantify performance boundaries for various platforms.
 
-interactive/ quick hacks and experiments
+build/ (WIP) OS- specific "checkout, iterate platforms and build"
+
+security/ (WIP) planned for fuzzing- tools on known interfaces,
+particularly for frameserver->arcan events and in the sad cases
+where that occurs, CVE- reference + exploit. Issues that cover
+the border between scripting interface and main engine will
+be covered in api_coverage and regression.
+
+interactive/ quick hacks and experiments, particularly when
+developing a new- or refactoring an existing- interface or 
+when we still need manual interception.
 
 regression/ for non-trivial bugs reported and fixed, an example
 that provoced the issue pre-fix should be added to this folder

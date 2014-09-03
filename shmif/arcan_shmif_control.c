@@ -384,13 +384,15 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 		((struct shmif_hidden*)res.priv)->output = true;
 	}
 
-	struct arcan_event ev = {
-		.category = EVENT_EXTERNAL,
-		.kind = EVENT_EXTERNAL_REGISTER,
-		.data.external.registr.kind = type
-	};
+	if (0 != type) {
+		struct arcan_event ev = {
+			.category = EVENT_EXTERNAL,
+			.kind = EVENT_EXTERNAL_REGISTER,
+			.data.external.registr.kind = type
+		};
 
-	arcan_event_enqueue(&res.outev, &ev);
+		arcan_event_enqueue(&res.outev, &ev);
+	}
 
 	return res;
 }

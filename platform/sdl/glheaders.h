@@ -23,6 +23,17 @@
 #include <SDL_opengl.h>
 #include <SDL_byteorder.h>
 
+/*
+ * wrap to handle GLES3 vs GL2.1 differences
+ */
+
+#define ACCESS_FLAG_RW (GL_READ_WRITE )
+#define ACCESS_FLAG_W (GL_WRITE_ONLY )
+
+#define glMapBuffer_Wrap(target, access, len) (\
+	glMapBuffer(target, access) \
+)
+
 #include "../video_platform.h"
 
 #endif

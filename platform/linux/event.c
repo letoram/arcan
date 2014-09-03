@@ -774,7 +774,7 @@ static void defhandler_kbd(struct arcan_evctx* out,
 
 	arcan_event newev = {
 		.category = EVENT_IO,
-		.kind = EVENT_IO_KEYB,
+		.kind = EVENT_IO_BUTTON,
 		.data.io = {
 			.datatype = EVENT_IDATATYPE_TRANSLATED,
 			.devkind = EVENT_IDEVKIND_KEYBOARD,

@@ -15,6 +15,13 @@
 #include <glew.h>
 #include <glxew.h>
 
+#define ACCESS_FLAG_RW (GL_READ_WRITE )
+#define ACCESS_FLAG_W (GL_WRITE_ONLY )
+
+#define glMapBuffer_Wrap(target, access, len) (\
+	glMapBuffer(target, access)\
+	)
+
 #include "../video_platform.h"
 
 #endif

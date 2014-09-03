@@ -4802,8 +4802,11 @@ static inline void poll_readback(struct rendertarget* tgt)
 	if (!tgt->readreq || !arcan_video_display.pbo_support)
 		return;
 
+	arcan_vobject* vobj = tgt->color;
+	size_t ntr = vobj->vstore->w * vobj->vstore->h * vobj->vstore->bpp;
+
 	glBindBuffer(GL_PIXEL_PACK_BUFFER, tgt->pbo);
-	GLubyte* src = glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_WRITE);
+	GLubyte* src = glMapBuffer_Wrap(GL_PIXEL_PACK_BUFFER, ACCESS_FLAG_RW, ntr);
 
 /*
  * there are a bunch of driver bugs to watch out for here,
@@ -4813,13 +4816,10 @@ static inline void poll_readback(struct rendertarget* tgt)
  * and GL_READ_ONLY is a contract, not a hint!
  */
 	if (src){
-		arcan_vobject* vobj = tgt->color;
-
 		if (!vobj->feed.ffunc)
 			tgt->readback = 0;
 		else
-			vobj->feed.ffunc(FFUNC_READBACK, src,
-				vobj->vstore->w * vobj->vstore->h * vobj->vstore->bpp,
+			vobj->feed.ffunc(FFUNC_READBACK, src, ntr,
 				vobj->vstore->w,  vobj->vstore->h,  vobj->vstore->bpp, 0,
 				vobj->feed.state
 			);
