@@ -38,7 +38,7 @@ if (WIN32)
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 	set(VPLATFORM_STR "[ sdl ]")
 else()
-	set(VPLATFORM_STR "[ x11 | x11-headless | sdl | egl | egl-gles2 ]")
+	set(VPLATFORM_STR "[ x11 | x11-headless | sdl | egl-gles | egl-dri ]")
 endif()
 
 set( MAIN_LIBRARIES )
@@ -264,13 +264,14 @@ if (VIDEO_PLATFORM STREQUAL "x11" OR VIDEO_PLATFORM STREQUAL "x11-headless")
 		SET(LWA_GLHEADER "x11/glheaders.h")
 	endif()
 
-elseif(VIDEO_PLATFORM STREQUAL "egl-gles2")
+# legacy platform for weaker platforms RPI etc.
+elseif(VIDEO_PLATFORM STREQUAL "egl-gles")
 	if (NOT INPUT_PLATFORM)
 		set(INPUT_PLATFORM "linux")
 	endif()
 
 	FIND_PACKAGE(EGL REQUIRED)
-	FIND_PACKAGE(GLES2 REQUIRED)
+	FIND_PACKAGE(GLES3 REQUIRED)
 
 	if (GLES2_BCM_IMPLEMENTATION)
 		message("broadcom (BCM) GLES implementation found, set BCM_ROOT to bad dir to disable")
@@ -288,26 +289,27 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-gles2")
 		${EGL_LIBRARIES}
 	)
 
-#in order for subdirectories gets mapped correctly
-	SET(VIDEO_PLATFORM "egl")
-
-elseif(VIDEO_PLATFORM STREQUAL "egl")
+elseif(VIDEO_PLATFORM STREQUAL "egl-dri")
 	if (NOT INPUT_PLATFORM)
 		set(INPUT_PLATFORM "linux")
 	endif()
 
 	FIND_PACKAGE(EGL REQUIRED)
-	FIND_PACKAGE(OpenGL REQUIRED)
+# should use OGL3+ but some internal bug prohibits us atm, likely connected to glew.
+	FIND_PACKAGE(GLES3 REQUIRED)
+#	FIND_PACKAGE(OpenGL REQUIRED)
 	FIND_PACKAGE(GBMKMS REQUIRED)
+
 	LIST(APPEND MAIN_LIBRARIES
 		${EGL_LIBRARIES}
-		${OPENGL_gl_LIBRARY}
-		${GLEW_LIBRARY}
+		${GLES3_LIBRARIES}
+		#		${OPENGL_gl_LIBRARY}
 		${GBMKMS_LIBRARIES}
 	)
 	LIST(APPEND INCLUDE_DIRS
+		${GLES3_INCLUDE_DIRS}
 		${GBMKMS_INCLUDE_DIRS}
-		)
+	)
 
 elseif (VIDEO_PLATFORM STREQUAL "sdl")
 	if (NOT INPUT_PLATFORM)
@@ -520,8 +522,8 @@ if (ENABLE_LIBRETRO)
 	 frameserver/ievsched.h
 	 frameserver/sync_plot.h
 	 frameserver/sync_plot.c
-#	 frameserver/retexture.h
-#	 frameserver/retexture.c
+	 #	 frameserver/retexture.h
+	 #	 frameserver/retexture.c
 	 frameserver/resampler/resample.c
 	 frameserver/resampler/speex_resampler.h
 	 frameserver/ntsc/snes_ntsc.h
@@ -536,8 +538,14 @@ if (ENABLE_LIBRETRO)
 		set_property( SOURCE frameserver/libretro.c
 			APPEND PROPERTY COMPILE_DEFINITIONS
 				FRAMESERVER_LIBRETRO_3D
+#				FRAMESERVER_LIBRETRO_3D_RETEXTURE -- developer feature in test
 				GL_HEADERS=\"${CMAKE_CURRENT_SOURCE_DIR}/platform/${LWA_GLHEADER}\"
 				HEADLESS_PLATFORM=\"${CMAKE_CURRENT_SOURCE_DIR}/platform/${LWA_HEADLESS}\"
+		)
+
+		set_property( SOURCE frameserver/retexture.c
+			APPEND PROPERTY COMPILE_DEFINITIONS
+				GL_HEADERS=\"${CMAKE_CURRENT_SOURCE_DIR}/platform/${LWA_GLHEADER}\"
 		)
 		LIST(APPEND FSRV_LIBRETRO_LIBRARIES ${LWA_LIBRARIES})
 	endif()

@@ -208,7 +208,13 @@ static int push_buffer(arcan_frameserver* src, char* buf, unsigned int glid,
 
 	if (src->flags.pbo){
 		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, src->pbo);
-		void* ptr = glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
+
+		size_t map_sz = sh * sw * bpp;
+		(void)(map_sz); /* shut up, there's a reason it might not be used.. */
+
+		av_pixel* ptr = (av_pixel*) glMapBuffer_Wrap(
+			GL_PIXEL_UNPACK_BUFFER, ACCESS_FLAG_W, map_sz);
+
 		if (ptr){
 			if (src->flags.no_alpha_copy){
 				uint32_t* src = (uint32_t*) buf;
@@ -684,12 +690,13 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 		if (src->pbo)
 			glDeleteBuffers(1, &src->pbo);
 
+		size_t map_sz = store.w * store.h * store.bpp;
+
 		glGenBuffers(1, &src->pbo);
 		glBindBuffer(GL_PIXEL_PACK_BUFFER, src->pbo);
-		glBufferData(GL_PIXEL_PACK_BUFFER, store.w * store.h * store.bpp,
-				NULL, GL_STREAM_DRAW);
-		av_pixel* ptr = (av_pixel*) glMapBuffer(
-			GL_PIXEL_PACK_BUFFER, GL_WRITE_ONLY);
+		glBufferData(GL_PIXEL_PACK_BUFFER, map_sz, NULL, GL_STREAM_DRAW);
+
+		av_pixel* ptr = glMapBuffer_Wrap(GL_PIXEL_PACK_BUFFER, ACCESS_FLAG_W, map_sz);
 
 		for (int y = 0; y < store.h; y++)
 			for (int x = 0; x < store.w; x++)

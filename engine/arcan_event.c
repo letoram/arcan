@@ -237,6 +237,19 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 			arcan_frameserver* tgt;
 
 			switch(inev.kind){
+
+/* to protect against scripts that would happily try to just allocate/respond
+ * to what a the event says, clamp this here */
+				case EVENT_EXTERNAL_SEGREQ:
+					if (inev.data.external.noticereq.width > PP_SHMPAGE_MAXW)
+						inev.data.external.noticereq.width = PP_SHMPAGE_MAXW;
+
+					if (inev.data.external.noticereq.height > PP_SHMPAGE_MAXH)
+						inev.data.external.noticereq.height = PP_SHMPAGE_MAXH;
+				break;
+
+/* client may need more fine grained control for audio transfers when it
+ * comes to synchronized A/V playback */
 				case EVENT_EXTERNAL_FLUSHAUD:
 					if (arcan_video_feedstate(source)){
 						tgt = arcan_video_feedstate(source)->ptr;

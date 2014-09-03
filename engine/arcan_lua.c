@@ -1015,10 +1015,10 @@ static int resampleimage(lua_State* ctx)
 	arcan_vobj_id sid = luaL_checkvid(ctx, 1, &vobj);
 	arcan_shader_id shid = lua_type(ctx, 2) == LUA_TSTRING ?
 	arcan_shader_lookup(luaL_checkstring(ctx, 2)) : luaL_checknumber(ctx, 2);
-	int width = luaL_checknumber(ctx, 3);
-	int height = luaL_checknumber(ctx, 4);
+	size_t width = abs(luaL_checknumber(ctx, 3));
+	size_t height = abs(luaL_checknumber(ctx, 4));
 
-	if (width <= 0||width > MAX_SURFACEW || height <= 0||height > MAX_SURFACEH)
+	if (width == 0 || width > MAX_SURFACEW || height == 0|| height > MAX_SURFACEH)
 		arcan_fatal("resample_image(), illegal dimensions"
 			" requested (%d:%d x %d:%d)\n",
 			width, MAX_SURFACEW, height, MAX_SURFACEH
@@ -2775,6 +2775,8 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 
 			case EVENT_EXTERNAL_SEGREQ:
 				tblstr(ctx, "kind", "segment_request", top);
+				tblnum(ctx, "width", ev->data.external.noticereq.width, top);
+				tblnum(ctx, "height", ev->data.external.noticereq.height, top);
 				tblnum(ctx, "reqid", ev->data.external.noticereq.id, top);
 				tblnum(ctx, "type", ev->data.external.noticereq.type, top);
 			break;
