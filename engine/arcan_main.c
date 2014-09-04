@@ -349,8 +349,12 @@ int main(int argc, char* argv[])
 		}
 	}
 
-	if (!arcan_verify_namespaces(debuglevel > 0))
+	if (!arcan_verify_namespaces(false)){
+		if (debuglevel == 0)
+			arcan_warning("namespace verification failed, re-run with -g "
+				"for details.\n");
 		goto error;
+	}
 
 #ifndef _WIN32
 /* pipe to file, socket or launch script based on monitor output,
