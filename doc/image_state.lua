@@ -1,0 +1,10 @@
+-- image_state
+-- @short: Get a string representing the internal subtype of a video object.
+-- @inargs: vid
+-- @outargs: typestr
+-- @longdescr: This is primarily intended for debugging / troubleshooting
+-- purposes. Will output (frameserver, 3d object,
+-- asynchronous state, 3d camera, unknown)
+-- @group: image
+-- @cfunction: imagestate
+-- @related:
