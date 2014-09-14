@@ -1,0 +1,8 @@
+-- move_cursor
+-- @short: Set an absolute position for the mouse cursor.
+-- @inargs: x, y, *clamp*
+-- @longdescr: If clamp is set to a non-0 value (default, 0)
+-- x and y will be silently clamped to fit screen cordinates.
+-- @group: image
+-- @cfunction: cursormove
+-- @related:

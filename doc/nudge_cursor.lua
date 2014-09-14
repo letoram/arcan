@@ -1,0 +1,8 @@
+-- nudge_cursor
+-- @short: Move the mouse cursor relative to its current position.
+-- @inargs: d_x, d_y, *clamp*
+-- @longdescr: if *clamp* is set to a non-0 value (default: 0)
+-- the coordinates will be clamped to fit the screen.
+-- @group: image
+-- @cfunction: cursornudge
+-- @related:
