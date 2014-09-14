@@ -1,7 +1,9 @@
 -- move_image
 -- @short: Set new world-space coordinates for the specified video object.
--- @inargs: vid, newx, newy, *time*
+-- @inargs: vid, newx, newy, *time*, *interp*
 -- @longdescr: All move/scale/rotate transforms can be animated by specifying a relative deadline. These can be both queued and combined, letting the engine to interpolate (linearly by default) allowing for inexpensive yet smooth transitions and animations.
+-- Interp can be set to any of the constants (INTERP_LINEAR, INTERP_SINE, INTERP_EXPIN,
+-- INTERP_EXPOUT, INTERP_EXPINOUT).
 -- @group: image
 -- @cfunction: arcan_lua_moveimage
 -- @related: rotate_image, scale_image, nudge_image, resize_image

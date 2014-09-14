@@ -1,9 +1,11 @@
 -- nudge_image
 -- @short: Set new coordinates for the specified object based on current position.
--- @inargs: vid, newx, newy, *time*
+-- @inargs: vid, newx, newy, *time*, *interp*
 -- @longdescr: This is a convenience function that ultimately resolves to a
 -- move_image call internally. The difference is that the current image
 -- properties are resolved without a full resolve-call and the overhead that entails.
+-- Interp can be set to one of the constants (INTERP_LINEAR,
+-- INTERP_SINE, INTERP_EXPIN, INTERP_EXPOUT, INTERP_EXPINOUT).
 -- @group: image
 -- @cfunction: arcan_lua_nudgeimage
 -- @related: move_image
