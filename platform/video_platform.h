@@ -32,12 +32,4 @@ void platform_video_synch(uint64_t tick, float fract,
 	video_synchevent pre, video_synchevent post);
 
 void platform_video_shutdown();
-
-/*
- * [deprecated]
- * this function is slated for removal as the timing data should only
- * be relevant to the synchronization strategy (thus, the platform)
- */
-void platform_video_timing(float* vsync, float* stddev, float* variance);
-void platform_video_minimize();
 #endif

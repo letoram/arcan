@@ -304,7 +304,6 @@ struct arcan_video_display {
 	float c_lerp;
 
 	unsigned char msasamples;
-	float vsync_timing, vsync_stddev, vsync_variance;
 	char* txdump;
 };
 

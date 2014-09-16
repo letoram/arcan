@@ -7308,9 +7308,6 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 	struct { const char* key; int val; } consttbl[] = {
 {"VRESH", arcan_video_screenh()},
 {"VRESW", arcan_video_screenw()},
-{"VSYNCH_TIMING", arcan_video_display.vsync_timing},
-{"VSYNCH_STDDEV", arcan_video_display.vsync_stddev},
-{"VSYNCH_VARIANCE", arcan_video_display.vsync_variance},
 {"MAX_SURFACEW",   MAX_SURFACEW        },
 {"MAX_SURFACEH",   MAX_SURFACEH        },
 {"STACK_MAXCOUNT", CONTEXT_STACK_LIMIT },
