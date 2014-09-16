@@ -266,6 +266,48 @@ void arcan_video_default_imageprocmode(enum arcan_imageproc_mode mode)
 	arcan_video_display.imageproc = mode;
 }
 
+static void readback_texture(GLint glid,
+	unsigned width, unsigned height, void* dstbuf, size_t buf_sz)
+{
+#if defined(HAVE_GLES3) || defined(HAVE_GLES2)
+	static struct {
+		bool ready;
+		GLuint texid;
+		GLuint fboid;
+	} readback;
+
+/*
+ * static buffer that will be re-used, will always limit to display
+ * size in this rather horrible fallback (seriously, no glGetTexImage..)
+ */
+	if (!readback.ready){
+		glGenRenderbuffers(1, &readback.texid);
+		glBindRenderbuffer(GL_RENDERBUFFER, readback.texid);
+		glRenderbufferStorage(GL_RENDERBUFFER, GL_RGBA,
+			arcan_video_display.width, arcan_video_display.height);
+
+		glGenFramebuffers(1, &readback.fboid);
+		glBindFramebuffer(GL_FRAMEBUFFER, readback.fboid);
+		glFramebufferRenderbuffer(GL_FRAMEBUFFER,
+			GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, readback.texid);
+	}
+
+	glViewport(0, 0, width, height);
+	glReadPixels(0, 0, width, height, GL_RGBA, GL_RGBA, dstbuf);
+
+/*
+ * will not be called as direct part of renderloop, only explicit readbacks
+ * and for forceread calls, thus no need to switch state RenderbufferState
+ * or viewport
+ */
+
+#else
+	glBindTexture(GL_TEXTURE_2D, glid);
+	glGetTexImage(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, dstbuf);
+	glBindTexture(GL_TEXTURE_2D, 0);
+#endif
+}
+
 static struct rendertarget* find_rendertarget(arcan_vobject* vobj)
 {
 	for (size_t i = 0; i < current_context->n_rtargets && vobj; i++)
@@ -875,6 +917,9 @@ arcan_errc arcan_video_resampleobject(arcan_vobj_id vid,
 	if (!vobj)
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
+	if (vobj->vstore->txmapped != TXSTATE_TEX2D)
+		return ARCAN_ERRC_UNACCEPTED_STATE;
+
 /* allocate a temporary storage object,
  * a temporary transfer object,
  * and a temporary rendertarget */
@@ -928,13 +973,10 @@ arcan_errc arcan_video_resampleobject(arcan_vobj_id vid,
 	arcan_video_objectscale(vid, 1.0, 1.0, 1.0, 0);
 
 /* readback so we can survive push/pop and restore external */
-	if (!arcan_video_display.conservative){
-		struct storage_info_t* dstore = vobj->vstore;
-		glBindTexture(GL_TEXTURE_2D, dstore->vinf.text.glid);
-		glGetTexImage(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE,
-		dstore->vinf.text.raw);
-		glBindTexture(GL_TEXTURE_2D, 0);
-	}
+	struct storage_info_t* dstore = vobj->vstore;
+
+	readback_texture(dstore->vinf.text.glid, dstore->w, dstore->h,
+		dstore->vinf.text.raw, dstore->vinf.text.s_raw);
 
 	return ARCAN_OK;
 }
@@ -4710,7 +4752,7 @@ end3d:
 arcan_errc arcan_video_forceread(arcan_vobj_id sid, void** dptr, size_t* dsize)
 {
 /*
- * more involved tha one may think, the store doesn't have to be representative
+ * more involved than one may think, the store doesn't have to be representative
  * in case of rendertargets, and for streaming readbacks of those we already
  * have readback toggles etc. Thus this function is only for "one-off" reads
  * where a blocking behavior may be accepted, especially outside a main
@@ -4730,9 +4772,7 @@ arcan_errc arcan_video_forceread(arcan_vobj_id sid, void** dptr, size_t* dsize)
 	*dptr  = arcan_alloc_mem(*dsize, ARCAN_MEM_VBUFFER,
 		ARCAN_MEM_TEMPORARY | ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE);
 
-	glBindTexture(GL_TEXTURE_2D, dstore->vinf.text.glid);
-	glGetTexImage(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, *dptr);
-	glBindTexture(GL_TEXTURE_2D, 0);
+	readback_texture(dstore->vinf.text.glid, dstore->w, dstore->h, *dptr, *dsize);
 
 	return ARCAN_OK;
 }
@@ -4854,8 +4894,8 @@ static inline void process_readback(struct rendertarget* tgt, float fract)
 /* check if we should request new data */
 	if (req_rb){
 		glBindBuffer(GL_PIXEL_PACK_BUFFER, tgt->pbo);
-		glBindTexture(GL_TEXTURE_2D, tgt->color->vstore->vinf.text.glid);
-		glGetTexImage(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, 0);
+		struct storage_info_t* dstore = tgt->color->vstore;
+		readback_texture(dstore->vinf.text.glid, dstore->w, dstore->h, 0, 0);
 		glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 		tgt->readreq = true;
 	}

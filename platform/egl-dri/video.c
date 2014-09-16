@@ -96,6 +96,9 @@ static struct {
 	EGLContext context;
 	EGLDisplay display;
 	EGLSurface surface;
+
+	bool swap_damage;
+	bool swap_age;
 } egl;
 
 struct drm_fb {
@@ -120,6 +123,45 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 }
 
 #else
+
+static const char* egl_errstr()
+{
+	EGLint errc = eglGetError();
+	switch(errc){
+	case EGL_SUCCESS:
+		return "Success";
+	case EGL_NOT_INITIALIZED:
+		return "Not initialize for the specific display connection";
+	case EGL_BAD_ACCESS:
+		return "Cannot access the requested resource (wrong thread?)";
+	case EGL_BAD_ALLOC:
+		return "Couldn't allocate resources for the requested operation";
+	case EGL_BAD_ATTRIBUTE:
+		return "Unrecognized attribute or attribute value";
+	case EGL_BAD_CONTEXT:
+		return "Context argument does not name a valid context";
+	case EGL_BAD_CONFIG:
+		return "EGLConfig argument did not match a valid config";
+	case EGL_BAD_CURRENT_SURFACE:
+		return "Current surface refers to an invalid destination";
+	case EGL_BAD_DISPLAY:
+		return "The EGLDisplay argument does not match a valid display";
+	case EGL_BAD_SURFACE:
+		return "EGLSurface argument does not name a valid surface";
+	case EGL_BAD_MATCH:
+		return "Inconsistent arguments";
+	case EGL_BAD_PARAMETER:
+		return "Invalid parameter passed to function";
+	case EGL_BAD_NATIVE_PIXMAP:
+		return "NativePixmapType is invalid";
+	case EGL_BAD_NATIVE_WINDOW:
+		return "Native Window Type does not refer to a valid window";
+	case EGL_CONTEXT_LOST:
+		return "Power-management event has forced the context to drop";
+	default:
+		return "Uknown Error";
+	}
+}
 
 static int setup_drm(void)
 {
@@ -228,12 +270,12 @@ static int setup_gl(void)
 
 	static const EGLint attribs[] = {
 		EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
 		EGL_RED_SIZE, 1,
 		EGL_GREEN_SIZE, 1,
 		EGL_BLUE_SIZE, 1,
 		EGL_ALPHA_SIZE, 0,
 		EGL_DEPTH_SIZE, 1,
-		EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
 		EGL_NONE
 	};
 
@@ -243,13 +285,28 @@ static int setup_gl(void)
 		return -1;
 	}
 
-	if (!eglBindAPI(EGL_OPENGL_API)){
+	if (!eglBindAPI(EGL_OPENGL_ES_API)){
 		arcan_warning("egl-gbmkms() -- couldn't bind OpenGL API.\n");
 		return -1;
 	}
 
-	if (!eglChooseConfig(egl.display, attribs, &egl.config, 1, NULL)){
-		arcan_warning("egl-gbmkms() -- couldn't chose a configuration.\n");
+	GLint nc;
+	eglGetConfigs(egl.display, NULL, 0, &nc);
+	if (nc < 1){
+		arcan_warning(
+			"egl-gbmkms() -- no configurations found (%s).\n", egl_errstr());
+	}
+
+	EGLConfig* configs = malloc(sizeof(EGLConfig) * nc);
+	memset(configs, '\0', sizeof(EGLConfig) * nc);
+
+	GLint selv;
+	arcan_warning(
+		"egl-gbmkms() -- %d configurations found.\n", (int) nc);
+
+	if (!eglChooseConfig(egl.display, attribs, &egl.config, 1, &selv)){
+		arcan_warning(
+			"egl-gbmkms() -- couldn't chose a configuration (%s).\n", egl_errstr());
 		return -1;
 	}
 
@@ -427,14 +484,4 @@ void PLATFORM_SYMBOL(_video_restore_external) () {}
 void PLATFORM_SYMBOL(_video_shutdown) ()
 {
 }
-
-void PLATFORM_SYMBOL(_video_timing) (
-	float* vsync, float* stddev, float* variance)
-{
-	*vsync = 16.667;
-	*stddev = 0.01;
-	*variance = 0.01;
-}
-
-void PLATFORM_SYMBOL(_video_minimize) () {}
 

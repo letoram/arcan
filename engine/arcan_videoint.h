@@ -156,6 +156,17 @@ struct storage_info_t {
 	enum arcan_vfilter_mode   filtermode;
 };
 
+/*
+ * Overly bloated and thus a nasty cache influence,
+ * when optimization rounds come as part of 1.0 effort
+ * this should be trimmed down to 64-byte modulo and
+ * profiled extensively for cache behavior (flags => bitmask,
+ * re-order based on access patterns, quat/matrix- transformations
+ * should be moved to 3d objects, refcounts only for debug etc.
+ * There's a ton of possible optimizations here but only after
+ * the featureset is frozen and GL has been refactored to its
+ * respective platform* level.
+ */
 typedef struct arcan_vobject {
 /*
  * image-storage / reference,
