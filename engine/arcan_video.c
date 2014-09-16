@@ -1579,16 +1579,6 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 		return ARCAN_ERRC_BADVMODE;
 	}
 
-/*
- * this should be switched to passively maintain timing information to
- * be more reponsive to change etc. as the cost now is too high in terms
- * of startup times. If initial values can be estimated or probed however,
- * it should work as a starting point for other heuristics to be reasonably
- * stable.
- */
-	platform_video_timing(&arcan_video_display.vsync_timing,
-		&arcan_video_display.vsync_stddev, &arcan_video_display.vsync_variance);
-
 	arcan_video_display.conservative = conservative;
 	arcan_video_display.defaultshdr  = arcan_shader_build("DEFAULT",
 		NULL, defvprg, deffprg);
