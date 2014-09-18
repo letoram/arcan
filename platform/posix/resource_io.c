@@ -46,11 +46,10 @@ void arcan_release_resource(data_source* sptr)
  * not many recovery options but purposefully leak
  * the memory so that it can be found in core dumps etc. */
 		if (trycount && sptr->source){
-	    char playbuf[4096];
-  	  playbuf[4095] = '\0';
-
-			snprintf(playbuf, sizeof(playbuf) - 1, "broken_fd(%d:%s)",
-				sptr->fd, sptr->source);
+			const char fmt[] = "broken_fd(%.4d:%s)";
+	    char playbuf[sizeof(fmt) + 4 + strlen(sptr->source)];
+			snprintf(playbuf, sizeof(playbuf)/sizeof(playbuf[0]),
+				fmt, sptr->fd, sptr->source);
 
 			free( sptr->source );
 			sptr->source = strdup(playbuf);
@@ -76,18 +75,16 @@ void arcan_release_resource(data_source* sptr)
 data_source arcan_open_resource(const char* url)
 {
 	data_source res = {.fd = BADFD};
+	if (!url)
+		return res;
 
-	if (url){
-		res.fd = open(url, O_RDONLY);
-		if (res.fd != -1){
-			res.start  = 0;
-			res.source = strdup(url);
-			res.len    = 0; /* map resource can figure it out */
-			fcntl(res.fd, F_SETFD, FD_CLOEXEC);
-		}
+	res.fd = open(url, O_RDONLY);
+	if (res.fd != -1){
+		res.start  = 0;
+		res.source = strdup(url);
+		res.len    = 0; /* map resource can figure it out */
+		fcntl(res.fd, F_SETFD, FD_CLOEXEC);
 	}
-	else
-		res.fd = BADFD;
 
 	return res;
 }
