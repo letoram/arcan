@@ -2958,6 +2958,32 @@ static int imageparent(lua_State* ctx)
 	return 1;
 }
 
+static int videosynchronization(lua_State* ctx)
+{
+	LUA_TRACE("video_synchronization");
+	const char* newstrat = luaL_optstring(ctx, 1, NULL);
+
+	if (!newstrat){
+		const char** opts = platform_video_synchopts();
+		lua_newtable(ctx);
+		int top = lua_gettop(ctx);
+		size_t count = 0;
+
+		while(*opts){
+			lua_pushnumber(ctx, count++);
+			lua_pushstring(ctx, *opts);
+			lua_rawset(ctx, top);
+			count++;
+		}
+
+		return 1;
+	}
+	else
+		platform_video_setsynch(newstrat);
+
+	return 0;
+}
+
 static int validvid(lua_State* ctx)
 {
 	LUA_TRACE("valid_vid");
@@ -7257,6 +7283,7 @@ static const luaL_Reg vidsysfuns[] = {
 {"default_movie_queueopts_override", setqueueopts   },
 {"build_shader",                     buildshader    },
 {"valid_vid",                        validvid       },
+{"video_synchronization",            videosynch     },
 {"shader_uniform",                   shader_uniform },
 {"push_video_context",               pushcontext    },
 {"storepush_video_context",          pushcontext_ext},
