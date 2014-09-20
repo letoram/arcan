@@ -448,7 +448,7 @@ applswitch:
 			dbhandle = arcan_db_open(dbfname, arcan_appl_id());
 		}
 
-		if (dbhandle){
+		if (!dbhandle){
 			arcan_warning("Couldn't create database, giving up.\n");
 			goto error;
 		}
