@@ -565,6 +565,8 @@ if (ENABLE_NET)
 		frameserver/graphing/net_graph.c
 		frameserver/graphing/net_graph.h
 		frameserver/graphing/font_8x8.h
+		frameserver/graphing/rwstat.c
+		frameserver/graphing/rwstat.h
 		frameserver/net.h
 		frameserver/net.c
 		frameserver/net_cl.c

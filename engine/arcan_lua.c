@@ -2958,7 +2958,7 @@ static int imageparent(lua_State* ctx)
 	return 1;
 }
 
-static int videosynchronization(lua_State* ctx)
+static int videosynch(lua_State* ctx)
 {
 	LUA_TRACE("video_synchronization");
 	const char* newstrat = luaL_optstring(ctx, 1, NULL);
