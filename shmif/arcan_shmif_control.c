@@ -108,10 +108,10 @@ static void spawn_guardthread(
 uint64_t arcan_shmif_cookie()
 {
 	uint64_t base = sizeof(struct arcan_event) + sizeof(struct arcan_shmif_page);
-	base += offsetof(struct arcan_shmif_page, cookie)  <<  8;
-  base += offsetof(struct arcan_shmif_page, resized) << 16;
-	base += offsetof(struct arcan_shmif_page, aready)  << 24;
-  base += offsetof(struct arcan_shmif_page, abufused)<< 32;
+	base += (uint64_t)offsetof(struct arcan_shmif_page, cookie)  <<  8;
+  base += (uint64_t)offsetof(struct arcan_shmif_page, resized) << 16;
+	base += (uint64_t)offsetof(struct arcan_shmif_page, aready)  << 24;
+  base += (uint64_t)offsetof(struct arcan_shmif_page, abufused)<< 32;
 	return base;
 }
 
