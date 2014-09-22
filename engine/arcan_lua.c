@@ -4277,6 +4277,7 @@ struct globs{
 static void globcb(char* arg, void* tag)
 {
 	struct globs* bptr = (struct globs*) tag;
+
 	lua_pushnumber(bptr->ctx, bptr->index++);
 	lua_pushstring(bptr->ctx, arg);
 	lua_rawset(bptr->ctx, bptr->top);
@@ -4293,7 +4294,7 @@ static int globresource(lua_State* ctx)
 
 	char* label = (char*) luaL_checkstring(ctx, 1);
 	int mask = luaL_optinteger(
-		ctx, 2, DEFAULT_USERMASK) & DEFAULT_USERMASK;
+		ctx, 2, DEFAULT_USERMASK) & (DEFAULT_USERMASK | RESOURCE_SYS_APPLBASE);
 
 	lua_newtable(ctx);
 	bptr.top = lua_gettop(ctx);
@@ -7388,6 +7389,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"APPL_RESOURCE",     RESOURCE_APPL},
 {"APPL_TEMP_RESOURCE",RESOURCE_APPL_TEMP },
 {"SHARED_RESOURCE",   RESOURCE_APPL_SHARED },
+{"SYS_APPL_RESOURCE", RESOURCE_SYS_APPLBASE },
 {"ALL_RESOURCES",     DEFAULT_USERMASK },
 {"API_VERSION_MAJOR", 0},
 {"API_VERSION_MINOR", 8},
