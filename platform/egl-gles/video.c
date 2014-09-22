@@ -32,16 +32,6 @@
 #define EVAL(X,Y) MERGE(X,Y)
 #define PLATFORM_SYMBOL(fun) EVAL(EGL_SUFFIX, fun)
 
-static char* egl_synchopts[] = {
-	"default", "driver default buffer swap",
-	NULL
-};
-
-enum {
-	DEFAULT,
-	ENDM
-}	synchopt;
-
 static struct {
 	EGLDisplay disp;
 	EGLContext ctx;
@@ -51,6 +41,16 @@ static struct {
 } egl;
 
 #ifdef WITH_GBMKMS
+
+static char* egl_synchopts[] = {
+	"default", "driver default buffer swap",
+	NULL
+};
+
+enum {
+	DEFAULT,
+	ENDM
+}	synchopt;
 
 #include <gbm.h>
 #include <drm.h>
@@ -512,6 +512,7 @@ static void fliph(int fd, unsigned frame, unsigned sec,
 {
 }
 
+#ifdef WITH_GBMKMS
 static void synchronize()
 {
 	struct pollfd fds = {
@@ -555,6 +556,7 @@ static void synchronize()
 	if (gbm_surface_has_free_buffers(surf))
 		return;
 }
+#endif
 
 void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 	video_synchevent pre, video_synchevent post)

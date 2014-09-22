@@ -41,6 +41,8 @@
  * style renderers and accidentally also Mantle* and
  * similar feeble attempts at fragmenting the graphics space further).
  */
+	#define ACCESS_FLAG_RW 0
+	#define ACCESS_FLAG_W 0
 	#define GL_DEPTH_STENCIL_ATTACHMENT 0
 	#define GL_STREAM_READ 0
 	#define GL_DEPTH24_STENCIL8 0
@@ -51,7 +53,7 @@
 	#define GL_PIXEL_UNPACK_BUFFER 0
 	#define GL_MAX_TEXTURE_UNITS 8
 	#define glGetTexImage(A,B,C,D,E)
-	#define glMapBuffer(A,B) NULL
+	#define glMapBuffer_Wrap(t, a, l) NULL
 	#define glUnmapBuffer(A)
 #endif
 #endif
