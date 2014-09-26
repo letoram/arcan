@@ -10,9 +10,11 @@
 -- @note: If the resource exists, it will be opened in a read-only mode.
 -- @note: If the resource doesn't exist, it will be created and opened
 -- for writing (in themepath, shared resources are read-only).
+-- @note: This function is blocking, and should only be used where
+-- possible I/O stalls is desired.
 -- @group: resource
 -- @cfunction: arcan_lua_rawresource
--- @related: close_rawresource
+-- @related: close_rawresource, read_rawresource, zap_rawresource, open_nonblock
 function main()
 #ifdef MAIN
 	if (open_rawresource("test.txt")) then

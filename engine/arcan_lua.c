@@ -85,7 +85,11 @@
 #ifndef WIN32
 #include <poll.h>
 #else
-#define O_NONBLOCK 0
+#define O_NONBLOCK O_NDELAY
+#endif
+
+#ifndef O_CLOEXEC
+#define O_CLOEXEC 0
 #endif
 
 #ifdef LUA51_JIT
@@ -244,10 +248,14 @@ enum arcan_cb_source {
 	CB_SOURCE_IMAGE       = 2
 };
 
+struct nonblock_io {
+	char buf[4096];
+	off_t ofs;
+	int fd;
+};
+
 static struct {
-	char in_buf[1024];
-	off_t in_ofs;
-	int in_file;
+	struct nonblock_io rawres;
 
 	const char* lastsrc;
 
@@ -504,38 +512,66 @@ static int zapresource(lua_State* ctx)
 	return 1;
 }
 
+static int opennonblock(lua_State* ctx)
+{
+	LUA_TRACE("open_nonblock");
+
+	char* path = findresource(luaL_checkstring(ctx, 1), DEFAULT_USERMASK);
+
+	if (!path){
+		return 0;
+	}
+
+	int fd = open(path, O_NONBLOCK | O_CLOEXEC | O_RDONLY);
+	free(path);
+
+	if (fd <= 0)
+		return 0;
+
+	struct nonblock_io* conn = arcan_alloc_mem(sizeof(struct nonblock_io),
+			ARCAN_MEM_BINDING, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
+
+	conn->fd = fd;
+	uintptr_t* dp = lua_newuserdata(ctx, sizeof(uintptr_t));
+	*dp = (uintptr_t) conn;
+	luaL_getmetatable(ctx, "nonblockIO");
+	lua_setmetatable(ctx, -2);
+
+	return 1;
+}
+
+
+
 static int rawresource(lua_State* ctx)
 {
 	LUA_TRACE("open_rawresource");
 
-	char* path = findresource(luaL_checkstring(ctx, 1), DEFAULT_USERMASK);
+/* can't do more than this due to legacy */
+	if (lua_ctx_store.rawres.fd > 0){
+		arcan_warning("open_rawresource(), open requested while other resource "
+			"still open, use close_rawresource first.\n");
 
-	if (lua_ctx_store.in_file > 0){
-		close(lua_ctx_store.in_file);
-		lua_ctx_store.in_file = -1;
-		lua_ctx_store.in_ofs = 0;
+		close(lua_ctx_store.rawres.fd);
+		lua_ctx_store.rawres.fd = -1;
+		lua_ctx_store.rawres.ofs = 0;
 	}
 
-/* win32 etc. expose file descriptors to child if we have no other option */
-#ifndef O_CLOEXEC
-#define O_CLOEXEC 0
-#endif
-
-	int flags = S_IRUSR | S_IWUSR;
+	char* path = findresource(luaL_checkstring(ctx, 1), DEFAULT_USERMASK);
 
 	if (!path){
 		char* fname = arcan_expand_resource(
 			luaL_checkstring(ctx, 1), RESOURCE_APPL_TEMP);
+
 		if (fname){
-			lua_ctx_store.in_file = open(fname, O_CREAT | O_CLOEXEC | O_RDWR, flags);
+			lua_ctx_store.rawres.fd = open(fname,
+				O_CREAT | O_CLOEXEC | O_RDWR, S_IRUSR | S_IWUSR);
 			free(fname);
 		}
 	}
 	else
-		lua_ctx_store.in_file = open(path, O_NONBLOCK | O_CLOEXEC | O_RDWR, flags);
+		lua_ctx_store.rawres.fd = open(path, O_RDONLY | O_CLOEXEC);
 
-	lua_pushboolean(ctx, lua_ctx_store.in_file > 0);
-	free(path);
+	lua_pushboolean(ctx, lua_ctx_store.rawres.fd > 0);
 	return 1;
 }
 
@@ -553,80 +589,97 @@ static char* chop(char* str)
     return str;
 }
 
-static inline int push_resstr(lua_State* ctx, off_t ofs)
+static int push_resstr(lua_State* ctx, struct nonblock_io* ib, off_t ofs)
 {
-	size_t in_sz = sizeof(lua_ctx_store.in_buf)/
-		sizeof(lua_ctx_store.in_buf[0]);
+	size_t in_sz = sizeof(lua_ctx_store.rawres.buf )/
+		sizeof(lua_ctx_store.rawres.buf[0]);
 
-	lua_ctx_store.in_buf[ofs] = '\0';
-	char* chopptr = chop(lua_ctx_store.in_buf);
+/* push everything up to the current buffer point, by setting/resetting \0 */
+	char ch = ib->buf[ofs];
+	ib->buf[ofs] = '\0';
+	char* chopptr = chop(ib->buf);
+
 	lua_pushstring(ctx, chopptr);
+	ib->buf[ofs] = ch;
 
+/* slide or reset buffering */
 	if (ofs >= in_sz - 1){
-		lua_ctx_store.in_ofs = 0;
+		ib->ofs = 0;
 	}
 	else{
-		memmove(lua_ctx_store.in_buf,
-			lua_ctx_store.in_buf + ofs + 1,
-			in_sz - ofs
-		);
-		lua_ctx_store.in_ofs -= ofs + 1;
+		memmove(ib->buf, ib->buf + ib->ofs + 1, in_sz - ofs);
+		ib->ofs -= ofs + 1;
 	}
 
 	return 1;
 }
 
+static inline size_t bufcheck(lua_State* ctx, struct nonblock_io* ib)
+{
+	size_t in_sz = sizeof(lua_ctx_store.rawres.buf )/
+		sizeof(lua_ctx_store.rawres.buf[0]);
+
+	for (size_t i = 0; i < ib->ofs; i++){
+		if (ib->buf[i] == '\n' || ib->buf[i] == '\0')
+			return push_resstr(ctx, ib, i);
+	}
+
+	if (in_sz - ib->ofs == 1)
+		return push_resstr(ctx, ib, in_sz - 1);
+
+	return 0;
+}
+
+static int bufread(lua_State* ctx, struct nonblock_io* ib)
+{
+	size_t buf_sz = sizeof(ib->buf) / sizeof(ib->buf[0]);
+
+	if (!ib || ib->fd <= 0)
+		return 0;
+
+	size_t bufch = bufcheck(ctx, ib);
+	if (bufch)
+		return bufch;
+
+	ssize_t nr;
+	if ( (nr = read(ib->fd, ib->buf + ib->ofs, buf_sz - ib->ofs - 1)) > 0)
+		ib->ofs += nr;
+
+	return bufcheck(ctx, ib);
+}
+
+static int nbio_close(lua_State* ctx)
+{
+	LUA_TRACE("open_nonblock:close");
+	struct nonblock_io** ib = luaL_checkudata(ctx, 1, "nonblockIO");
+	if (*ib == NULL)
+		return 0;
+
+	close((*ib)->fd);
+	free(*ib);
+	*ib = NULL;
+
+	return 0;
+}
+
+static int nbio_read(lua_State* ctx)
+{
+	LUA_TRACE("open_nonblock:read");
+	struct nonblock_io** ib = luaL_checkudata(ctx, 1, "nonblockIO");
+	if (*ib == NULL)
+		return 0;
+
+	return bufread(ctx, *ib);
+}
+
 static int readrawresource(lua_State* ctx)
 {
 	LUA_TRACE("read_rawresource");
-	bool non_blocking = luaL_optnumber(ctx, 1, 0) != 0;
-	size_t in_sz = sizeof(lua_ctx_store.in_buf)/sizeof(lua_ctx_store.in_buf[0]);
-	bool give_up = false;
 
-	if (lua_ctx_store.in_file <= 0)
+	if (lua_ctx_store.rawres.fd <= 0)
 		return 0;
 
-/*
- * if the buffer is full, just flush, ignore waiting for lines.
- * if we get a linefeed, terminate there and push the chomped version.
- */
-push:
-	for (size_t i = 0; i < lua_ctx_store.in_ofs; i++){
-		if (lua_ctx_store.in_buf[i] == '\n' || lua_ctx_store.in_buf[i] == '\0')
-			return push_resstr(ctx, i);
-	}
-
-	if (in_sz - lua_ctx_store.in_ofs == 1)
-		return push_resstr(ctx, in_sz - 1);
-
-	if (give_up)
-		return 0;
-
-#ifdef WIN32
-/* not implemented, see notes at the top around poll.h */
-#else
-/* non-blocking, poll, if set, buffer, push else return. */
-	if (non_blocking){
-		struct pollfd pfd = {
-			.fd = lua_ctx_store.in_file,
-			.events = POLL_IN
-		};
-
-		if (1 != poll(&pfd, 1, 0))
-			return 0;
-	}
-#endif
-
-	ssize_t nr = read(lua_ctx_store.in_file,
-		lua_ctx_store.in_buf + lua_ctx_store.in_ofs,
-		in_sz - lua_ctx_store.in_ofs - 1
-	);
-
-	if (nr > 0)
-		lua_ctx_store.in_ofs += nr;
-
-	give_up = true;
-	goto push;
+	return bufread(ctx, &lua_ctx_store.rawres);
 }
 
 void arcan_lua_setglobalstr(lua_State* ctx,
@@ -728,10 +781,10 @@ static int rawclose(lua_State* ctx)
 
 	bool res = false;
 
-	if (lua_ctx_store.in_file) {
-		close(lua_ctx_store.in_file);
-		lua_ctx_store.in_file = -1;
-		lua_ctx_store.in_ofs = 0;
+	if (lua_ctx_store.rawres.fd > 0) {
+		close(lua_ctx_store.rawres.fd);
+		lua_ctx_store.rawres.fd = -1;
+		lua_ctx_store.rawres.ofs = 0;
 	}
 
 	lua_pushboolean(ctx, res);
@@ -745,11 +798,11 @@ static int pushrawstr(lua_State* ctx)
 	const char* mesg = luaL_checkstring(ctx, 1);
 	size_t ntw = strlen(mesg);
 
-	if (ntw && lua_ctx_store.in_file > 0){
+	if (ntw && lua_ctx_store.rawres.fd > 0){
 		size_t ofs = 0;
 
 		while (ntw) {
-			ssize_t nw = write(lua_ctx_store.in_file, mesg + ofs, ntw);
+			ssize_t nw = write(lua_ctx_store.rawres.fd, mesg + ofs, ntw);
 			if (-1 != nw){
 				ofs += nw;
 				ntw -= nw;
@@ -2507,10 +2560,13 @@ static char* streamtype(int num)
 	return "broken";
 }
 
-/* emit input() call based on a arcan_event,
- * uses a separate format and translation to make it easier
- * for the user to modify. Perhaps one field should have been used
- * to store the actual event, but it wouldn't really help extraction. */
+/*
+ * emit input() call based on a arcan_event, uses a separate format
+ * and translation to make it easier for the user to modify. This
+ * is a rather ugly and costly step in the whole chain,
+ * planned to switch into a more optimized less string- damaged
+ * approach around the hardening stage in the shmif- refactor.
+ */
 void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 {
 	if (ev->category == EVENT_IO && grabapplfunction(ctx, "input", 5)){
@@ -2723,8 +2779,10 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			break;
 			case EVENT_EXTERNAL_FRAMESTATUS:
 				tblstr(ctx, "kind", "framestatus", top);
-				tblnum(ctx, "frame",
-					ev->data.external.framestatus.framenumber, top);
+				tblnum(ctx, "frame", ev->data.external.framestatus.framenumber, top);
+				tblnum(ctx, "pts", ev->data.external.framestatus.pts, top);
+				tblnum(ctx, "acquired", ev->data.external.framestatus.acquired, top);
+				tblnum(ctx, "fhint", ev->data.external.framestatus.fhint, top);
 			break;
 
 			case EVENT_EXTERNAL_STREAMINFO:
@@ -7031,6 +7089,7 @@ static const luaL_Reg resfuns[] = {
 {"resource",          resource        },
 {"glob_resource",     globresource    },
 {"zap_resource",      zapresource     },
+{"open_nonblock",     opennonblock    },
 {"open_rawresource",  rawresource     },
 {"close_rawresource", rawclose        },
 {"write_rawresource", pushrawstr      },
@@ -7040,6 +7099,17 @@ static const luaL_Reg resfuns[] = {
 };
 #undef EXT_MAPTBL_RESOURCE
 	register_tbl(ctx, resfuns);
+
+	luaL_newmetatable(ctx, "nonblockIO");
+	lua_pushvalue(ctx, -1);
+	lua_setfield(ctx, -2, "__index");
+	lua_pushcfunction(ctx, nbio_read);
+	lua_setfield(ctx, -2, "read");
+	lua_pushcfunction(ctx, nbio_close);
+	lua_setfield(ctx, -2, "__gc");
+	lua_pushcfunction(ctx, nbio_close);
+	lua_setfield(ctx, -2, "close");
+	lua_pop(ctx, 1);
 
 #define EXT_MAPTBL_TARGETCONTROL
 static const luaL_Reg tgtfuns[] = {
