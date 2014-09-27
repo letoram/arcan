@@ -157,7 +157,7 @@ static const char* video_tracetag(arcan_vobject* src)
 /* a default more-or-less empty context */
 static struct arcan_video_context* current_context = vcontext_stack;
 
-static void drop_glres(struct storage_info_t* s)
+static void drop_vstore(struct storage_info_t* s)
 {
 	assert(s->refcount);
 	s->refcount--;
@@ -1008,7 +1008,7 @@ arcan_errc arcan_video_mipmapset(arcan_vobj_id vid, bool enable)
 	if (!newbuf)
 		return ARCAN_ERRC_OUT_OF_SPACE;
 
-	drop_glres(vobj->vstore);
+	drop_vstore(vobj->vstore);
 	vobj->flags.mipmap = enable;
 	vobj->vstore->vinf.text.raw = newbuf;
 	push_globj(vobj, false, vobj->flags.mipmap);
@@ -1493,53 +1493,6 @@ arcan_errc arcan_video_linkobjs(arcan_vobj_id srcid, arcan_vobj_id parentid,
 	return rv;
 }
 
-static void arcan_video_gldefault()
-{
-	glEnable(GL_SCISSOR_TEST);
-	glDisable(GL_DEPTH_TEST);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-#ifdef GL_MULTISAMPLE
-	if (arcan_video_display.msasamples)
-		glEnable(GL_MULTISAMPLE);
-#endif
-
-	glEnable(GL_BLEND);
-	glClearColor(0.0, 0.0, 0.0, 1.0f);
-
-/*
- * -- Removed as they were causing trouble with NVidia GPUs (white line outline
- * where triangles connect
- * glHint(GL_LINE_SMOOTH_HINT, GL_NICEST);
- * glHint(GL_POLYGON_SMOOTH_HINT, GL_NICEST);
- * glEnable(GL_LINE_SMOOTH);
- * glEnable(GL_POLYGON_SMOOTH);
-*/
-
-	build_orthographic_matrix(arcan_video_display.flipy_projection, 0,
-		arcan_video_display.width, 0, arcan_video_display.height, 0, 1);
-
-	build_orthographic_matrix(arcan_video_display.default_projection, 0,
-		arcan_video_display.width, arcan_video_display.height, 0, 0, 1);
-
-	memcpy(current_context->stdoutp.projection,
-		arcan_video_display.default_projection, sizeof(float) * 16);
-
-	identity_matrix(current_context->stdoutp.base);
-	glScissor(0, 0, arcan_video_display.width, arcan_video_display.height);
-	glFrontFace(GL_CW);
-	glCullFace(GL_BACK);
-
-	if (arcan_video_display.pbo_support){
-		glGenBuffers(1, &current_context->stdoutp.pbo);
-		glBindBuffer(GL_PIXEL_PACK_BUFFER, current_context->stdoutp.pbo);
-		glBufferData(GL_PIXEL_PACK_BUFFER,
-			arcan_video_display.width * arcan_video_display.height * GL_PIXEL_BPP,
-			NULL, GL_STREAM_READ);
-		glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
-	}
-}
-
 const char* defvprg =
 #ifdef GL_ES_VERSION_2_0
 "#version 100\n"
@@ -1635,21 +1588,83 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 		sizeof(struct arcan_vobject) * current_context->vitem_limit,
 		ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 
-	arcan_video_gldefault();
+	arcan_video_resize_canvas(
+		arcan_video_display.width, arcan_video_display.height);
+
+	FLAG_DIRTY();
+	return ARCAN_OK;
+}
+
+static void arcan_video_gldefault()
+{
+	glEnable(GL_SCISSOR_TEST);
+	glDisable(GL_DEPTH_TEST);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+#ifdef GL_MULTISAMPLE
+	if (arcan_video_display.msasamples)
+		glEnable(GL_MULTISAMPLE);
+#endif
+
+	glEnable(GL_BLEND);
+	glClearColor(0.0, 0.0, 0.0, 1.0f);
 
 /*
- * Compile-time build option, if this argument is disabled,
- * we won't allocate / setup a FBO in the WORLDID storage
- * meaning that the rendering pipeline will draw directly on
- * the back buffer.
- */
+ * -- Removed as they were causing trouble with NVidia GPUs (white line outline
+ * where triangles connect
+ * glHint(GL_LINE_SMOOTH_HINT, GL_NICEST);
+ * glHint(GL_POLYGON_SMOOTH_HINT, GL_NICEST);
+ * glEnable(GL_LINE_SMOOTH);
+ * glEnable(GL_POLYGON_SMOOTH);
+*/
+
+	build_orthographic_matrix(arcan_video_display.flipy_projection, 0,
+		arcan_video_display.width, 0, arcan_video_display.height, 0, 1);
+
+	build_orthographic_matrix(arcan_video_display.default_projection, 0,
+		arcan_video_display.width, arcan_video_display.height, 0, 0, 1);
+
+	memcpy(current_context->stdoutp.projection,
+		arcan_video_display.default_projection, sizeof(float) * 16);
+
+	identity_matrix(current_context->stdoutp.base);
+	glScissor(0, 0, arcan_video_display.width, arcan_video_display.height);
+	glFrontFace(GL_CW);
+	glCullFace(GL_BACK);
+
+	if (arcan_video_display.pbo_support){
+		glGenBuffers(1, &current_context->stdoutp.pbo);
+		glBindBuffer(GL_PIXEL_PACK_BUFFER, current_context->stdoutp.pbo);
+		glBufferData(GL_PIXEL_PACK_BUFFER,
+			arcan_video_display.width * arcan_video_display.height * GL_PIXEL_BPP,
+			NULL, GL_STREAM_READ);
+		glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+	}
+}
+
+arcan_errc arcan_video_resize_canvas(size_t neww, size_t newh)
+{
+	arcan_video_display.width = neww;
+	arcan_video_display.height = newh;
+
+	arcan_video_gldefault();
+
 #ifndef ARCAN_VIDEO_NOWORLD_FBO
-	populate_vstore(&current_context->world.vstore);
 	struct storage_info_t* ds = current_context->world.vstore;
+	if (ds){
+		glDeleteTextures(1, &ds->vinf.text.glid);
+		arcan_mem_free(ds->vinf.text.raw);
+		glDeleteFramebuffers(1, &arcan_video_display.main_fbo);
+		glDeleteRenderbuffers(1, &arcan_video_display.main_rb);
+	}
+	else{
+		populate_vstore(&current_context->world.vstore);
+		ds = current_context->world.vstore;
+	}
+
 	ds->w = arcan_video_display.width;
 	ds->h = arcan_video_display.height;
-	ds->vinf.text.s_raw = arcan_video_display.width *
-		arcan_video_display.height * GL_PIXEL_BPP;
+	ds->vinf.text.s_raw = neww * newh * GL_PIXEL_BPP;
 
 	ds->vinf.text.raw = arcan_alloc_mem(ds->vinf.text.s_raw,
 		ARCAN_MEM_VBUFFER,
@@ -1657,7 +1672,6 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 		ARCAN_MEMALIGN_PAGE
 	);
 
-	glGenTextures(1, &ds->vinf.text.glid);
 	push_globj(&current_context->world, false, false);
 
 	glGenFramebuffers(1, &arcan_video_display.main_fbo);
@@ -1665,15 +1679,13 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
 		GL_TEXTURE_2D, ds->vinf.text.glid, 0);
 
-	unsigned depth_stencil_id;
-	glGenRenderbuffers(1, &depth_stencil_id);
-	glBindRenderbuffer(GL_RENDERBUFFER, depth_stencil_id);
+	glGenRenderbuffers(1, &arcan_video_display.main_rb);
+	glBindRenderbuffer(GL_RENDERBUFFER, arcan_video_display.main_rb);
 	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, ds->w, ds->h);
 	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
-		GL_RENDERBUFFER, depth_stencil_id);
+		GL_RENDERBUFFER, arcan_video_display.main_rb);
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
 #endif
 
 	return ARCAN_OK;
@@ -1936,7 +1948,7 @@ void arcan_video_cursorstore(arcan_vobj_id src)
 	draw_cursor(true);
 
 	if (arcan_video_display.cursor.vstore){
-		drop_glres(arcan_video_display.cursor.vstore);
+		drop_vstore(arcan_video_display.cursor.vstore);
 		arcan_video_display.cursor.vstore = NULL;
 	}
 
@@ -1965,7 +1977,7 @@ arcan_errc arcan_video_shareglstore(arcan_vobj_id sid, arcan_vobj_id did)
 			dst->flags.clone)
 			return ARCAN_ERRC_UNACCEPTED_STATE;
 
-		drop_glres(dst->vstore);
+		drop_vstore(dst->vstore);
 
 		dst->vstore = src->vstore;
 		dst->vstore->refcount++;
@@ -2147,7 +2159,7 @@ static bool alloc_fbo(struct rendertarget* dst)
  * contain a depth texture */
 		int w = dst->color->vstore->w;
 		int h = dst->color->vstore->h;
-		drop_glres(dst->color->vstore);
+		drop_vstore(dst->color->vstore);
 
 		dst->color->vstore = arcan_alloc_mem(sizeof(struct storage_info_t),
 			ARCAN_MEM_VSTRUCT, 0, ARCAN_MEMALIGN_NATURAL);
@@ -3272,7 +3284,7 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 
 /* video storage, will take care of refcounting in case of
  * shared storage etc. */
-		drop_glres( vobj->vstore );
+		drop_vstore( vobj->vstore );
 		vobj->vstore = NULL;
 	}
 

@@ -516,9 +516,9 @@ typedef struct arcan_extevent {
  */
 		struct {
 			uint32_t framenumber;
-			uint8_t port;
-			uint8_t input_bitf[4];
-			int32_t axes_samples[8];
+			uint64_t pts;
+			uint64_t acquired;
+			float fhint;
 		} framestatus;
 	};
 } arcan_extevent;

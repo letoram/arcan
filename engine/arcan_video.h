@@ -627,6 +627,12 @@ arcan_errc arcan_video_pushasynch(arcan_vobj_id id);
 arcan_errc arcan_video_scaletxcos(arcan_vobj_id id, float sfs, float sft);
 
 /*
+ * resize the virtual canvas (on initialization, it is set to
+ * the same dimensions as the display.
+ */
+arcan_errc arcan_video_resize_canvas(size_t neww, size_t newh);
+
+/*
  * Create a new storage based on the one in used by [id] and resampled
  * using the shader specified with [prg]. Associate this new storage with
  * the [id] container.

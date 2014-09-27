@@ -1,4 +1,5 @@
 #ifndef HAVE_ARCAN_VIDEOPLATFORM
+#define HAVE_ARCAN_VIDEOPLATFORM
 /*
  * initialize the video platform to a display that matches the
  * specified dimensions. this interface is slated for redesign to
@@ -27,7 +28,7 @@ void platform_video_setsynch(const char* strat);
  * synchronization strategy that is currently active, and to run the related
  * benchmark costs trigger functions (bench_register_cost,bench_register_frame)
  */
-typedef void (*video_synchevent)();
+typedef void (*video_synchevent)(void);
 void platform_video_synch(uint64_t tick, float fract,
 	video_synchevent pre, video_synchevent post);
 
