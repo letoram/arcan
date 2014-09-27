@@ -326,7 +326,7 @@ int main(int argc, char* argv[])
 	}
 
 	if (optind >= argc){
-		arcan_warning("Couldn't start, missing 'appname' argument. \n"
+		arcan_warning("Couldn't start, missing 'applname' argument. \n"
 			"Consult the manpage (man arcan) for additional details\n");
 		usage();
 		exit(EXIT_SUCCESS);
@@ -338,21 +338,23 @@ int main(int argc, char* argv[])
 	const char* err_msg;
 	if (!arcan_verifyload_appl(argv[optind], &err_msg)){
 		arcan_warning("arcan_verifyload_appl(), "
-			"failed to load (%s), reason: %s. Trying fallback.\n",
+			"failed to load (%s), reason: %s.",
 			argv[optind], err_msg);
 
-		if (!arcan_verifyload_appl("welcome", &err_msg)){
-			arcan_warning("loading fallback application failed (%s), giving up.\n",
-				err_msg);
-
-			goto error;
+		if (fallback){
+			arcan_warning("trying to load fallback application (%s)\n", fallback);
+			if (!arcan_verifyload_appl(fallback, &err_msg)){
+				arcan_warning("fallback application failed to load (%s), giving up.\n",
+					err_msg);
+				goto error;
+			}
 		}
+		else
+			goto error;
 	}
 
 	if (!arcan_verify_namespaces(false)){
-		if (debuglevel == 0)
-			arcan_warning("namespace verification failed, re-run with -g "
-				"for details.\n");
+		arcan_warning("namespace verification failed, status:\n");
 		goto error;
 	}
 
@@ -538,7 +540,8 @@ applswitch:
 		}
 
 		if (!fallback){
-			arcan_warning("Lua VM instance failed and no fallback defined, giving up.\n");
+			arcan_warning("Lua VM instance failed and no "
+				"fallback defined, giving up.\n");
 			goto error;
 		}
 
@@ -551,7 +554,8 @@ applswitch:
 		}
 
 		if (!arcan_verify_namespaces(true)){
-			arcan_warning("namespace verification failed after loading (%s)\n", fallback);
+			arcan_warning("namespace verification failed "
+				" after loading (%s)\n", fallback);
 			goto error;
 		}
 
@@ -655,13 +659,14 @@ applswitch:
 	return exit_code;
 
 error:
-	if (debuglevel > 0){
+	if (debuglevel > 1){
 		arcan_warning("fatal: main loop failed, arguments: \n");
 		for (size_t i = 0; i < argc; i++)
 			arcan_warning("%s ", argv[i]);
 		arcan_warning("\n\n");
-		arcan_verify_namespaces(true);
 	}
+
+	arcan_verify_namespaces(true);
 
 	return EXIT_FAILURE;
 }
