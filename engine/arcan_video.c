@@ -1591,7 +1591,6 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	arcan_video_resize_canvas(
 		arcan_video_display.width, arcan_video_display.height);
 
-	FLAG_DIRTY();
 	return ARCAN_OK;
 }
 
@@ -1688,6 +1687,7 @@ arcan_errc arcan_video_resize_canvas(size_t neww, size_t newh)
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 #endif
 
+	FLAG_DIRTY();
 	return ARCAN_OK;
 }
 
@@ -5170,7 +5170,7 @@ img_cons arcan_video_storage_properties(arcan_vobj_id id)
 	img_cons res = {.w = 0, .h = 0, .bpp = 0};
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
-	if (vobj && id > 0) {
+	if (vobj && vobj->vstore) {
 		res.w = vobj->vstore->w;
 		res.h = vobj->vstore->h;
 		res.bpp = vobj->vstore->bpp;
