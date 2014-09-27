@@ -1,5 +1,5 @@
 -- open_nonblock
--- @short: Open a file in read-only mode for non-blocking reads.
+-- @short: Open a file in read-only mode for non-blocking text-input.
 -- @inargs: res
 -- @outargs: blocktbl
 -- @longdescr: Locate and open the resource indicated by *res* and

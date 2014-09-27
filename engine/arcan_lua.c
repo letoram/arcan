@@ -594,20 +594,14 @@ static int push_resstr(lua_State* ctx, struct nonblock_io* ib, off_t ofs)
 	size_t in_sz = sizeof(lua_ctx_store.rawres.buf )/
 		sizeof(lua_ctx_store.rawres.buf[0]);
 
-/* push everything up to the current buffer point, by setting/resetting \0 */
-	char ch = ib->buf[ofs];
-	ib->buf[ofs] = '\0';
-	char* chopptr = chop(ib->buf);
-
-	lua_pushstring(ctx, chopptr);
-	ib->buf[ofs] = ch;
+	lua_pushlstring(ctx, ib->buf, ofs);
 
 /* slide or reset buffering */
 	if (ofs >= in_sz - 1){
 		ib->ofs = 0;
 	}
 	else{
-		memmove(ib->buf, ib->buf + ib->ofs + 1, in_sz - ofs);
+		memmove(ib->buf, ib->buf + ofs + 1, ib->ofs - ofs - 1);
 		ib->ofs -= ofs + 1;
 	}
 
@@ -620,7 +614,7 @@ static inline size_t bufcheck(lua_State* ctx, struct nonblock_io* ib)
 		sizeof(lua_ctx_store.rawres.buf[0]);
 
 	for (size_t i = 0; i < ib->ofs; i++){
-		if (ib->buf[i] == '\n' || ib->buf[i] == '\0')
+		if (ib->buf[i] == '\n')
 			return push_resstr(ctx, ib, i);
 	}
 
@@ -1414,7 +1408,7 @@ static int cursormove(lua_State* ctx)
 	LUA_TRACE("move_cursor");
 	acoord x = luaL_checknumber(ctx, 1);
 	acoord y = luaL_checknumber(ctx, 2);
-	bool clamp = luaL_optnumber(ctx, 3, 0) != 0;
+	bool clamp = luaL_optnumber(ctx, 3, 0) == 0;
 
 	if (clamp){
 		x = x > arcan_video_display.width ? arcan_video_display.width : x;
@@ -1432,7 +1426,7 @@ static int cursornudge(lua_State* ctx)
 	LUA_TRACE("nudge_cursor");
 	acoord x = luaL_checknumber(ctx, 1) + arcan_video_display.cursor.x;
 	acoord y = luaL_checknumber(ctx, 2) + arcan_video_display.cursor.y;
-	bool clamp = luaL_optnumber(ctx, 3, 0) != 0;
+	bool clamp = luaL_optnumber(ctx, 3, 0) == 0;
 
 	if (clamp){
 		x = x > arcan_video_display.width ? arcan_video_display.width : x;
@@ -4929,8 +4923,11 @@ static int targetstepframe(lua_State* ctx)
 	LUA_TRACE("stepframe_target");
 
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
+
+
 	int nframes = luaL_checknumber(ctx, 2);
-	if (nframes == 0) return 0;
+	if (nframes == 0)
+		return 0;
 
 	arcan_event ev = {
 			.category = EVENT_TARGET,
