@@ -1,14 +1,15 @@
 -- stepframe_target
--- @short: Request that the target process generate a new video frame.
--- @inargs: targetid, n_frames
--- @longdescr: Some targets either require, or can be set to require,
--- a frame-clock that hints when a new video-frame should be emitted.
--- One such example is the networking frameserver that does not regenerate
--- or redraw the traffic graphs unless explicitly instructed to do so.
--- Other frameservers, e.g. decode, operate continuously and have its
--- output throttled through other means.
--- @note: *n_frames* argument of 0 is currently a no-op, this semantic
--- may be subject to change.
+-- @short: Request that the target generate / consume a video frame.
+-- @inargs: targetid, *n_frames*
+-- @longdescr: Some external targets either require, or can be set to
+-- require, a frame-pulse that hints when it should emit, consume
+-- or ignore one or several video frames, especially for non-realtime tasks.
+-- This is handled as events passed on the event-queue, in order to wake
+-- processes that idle or sleep when no event has been received.
+-- @note: n_frames (default:1) should be set to 0 > n > INT_MAX.
+-- @note: stepframe can also be used on record and calctargets if
+-- the readback counter is set to READBACK_MANUAL.
 -- @group: targetcontrol
+-- @related: define_calctarget, define_recordtarget
 -- @cfunction: arcan_lua_targetstepframe
 

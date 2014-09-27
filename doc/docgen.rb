@@ -40,7 +40,7 @@ end
 
 def extract_example(lines, defs)
 	iobj = IO.popen(
-		"cpp -pipe -fno-rtti -fno-builtin -fno-common #{defs}", 
+		"cpp -pipe -fno-builtin -fno-common #{defs}", 
 		File::RDWR
 	)
 	iobj.print(lines)

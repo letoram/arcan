@@ -14,13 +14,16 @@
 -- clipping can occur. The samplerate dictates how often the rendertarget
 -- should be read-back into *dstvid*, with negative numbers meaning
 -- *abs(samplerate)* video frames between each sample, and positive numbers
--- meaning *samplerate* ticks between each sample. *encodeargs* are passed
--- directly in a key=value:key form to the frameserver. See the
--- manpage for *arcan_frameserver_encode* for arguments and their interpretation.
+-- meaning *samplerate* ticks between each sample. If samplerate is set to the
+-- special constant READBACK_MANUAL, readbacks will only be performed when forced
+-- through stepframe_target calls. *encodeargs* are passed
+-- directly in a key=value:key form to the frameserver.
+--
+-- See the manpage for *arcan_frameserver_encode* for arguments and their interpretation.
 -- Lastly, *callback* works as an optional trigger for feedback from the
 -- frameserver (use target_verbose to toggle frametransfer status updates).
 -- @group: targetcontrol
--- @note: although WORLDID is not a valid recipient as such, a trick is to define a null_surface, image_sharestorage WORLDID into the null_surface and that works as a valid attachment. Two caveats though is that the contents of null_surface will have its coordinate system flipped around Y (rotate null_surface 180 degrees) and neither the record destination nor the null surface should be visible, as that would add a feedback loop which quickly turns the result into an undefined value (typically black).
+-- @note: although WORLDID is not a valid recipient as such, a trick is to define a null_surface, image_sharestorage WORLDID into the null_surface and that works as a valid attachment. Two caveats though is that the contents of null_surface will have its coordinate system flipped around Y and neither the record destination nor the null surface should be visible, as that would add a feedback loop which quickly turns the result into an undefined value (typically black).
 -- @note: specifying a valid frameserver connected VID in the dstres slot
 -- will allocate a new output segment and attach to the pre-existing frameserver.
 -- @note: if dstres is empty, no file will be created or pushed.

@@ -29,4 +29,5 @@
 -- @group: system
 -- @cfunction: syscollapse
 -- @related:
--- @exampletheme: tests/failover tests/failadopt
+-- @exampleappl: tests/interactive/failover tests/interactive/failadopt
+
