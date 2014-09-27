@@ -3627,6 +3627,47 @@ static int v3dorder(lua_State* ctx)
 	return 0;
 }
 
+static int videocanvasrsz(lua_State* ctx)
+{
+	LUA_TRACE("resize_video_canvas");
+
+	size_t w = abs(luaL_checknumber(ctx, 1));
+	size_t h = abs(luaL_checknumber(ctx, 2));
+
+/* note that this actually creates a texture in WORLDID that
+ * is larger than the other permitted max surface dimensions,
+ * this may need to be restricted ( create -> share storage etc. ) */
+
+	if (ARCAN_OK == arcan_video_resize_canvas(w, h)){
+		arcan_lua_setglobalint(ctx, "VRESW", w);
+		arcan_lua_setglobalint(ctx, "VRESH", h);
+	}
+
+	return 0;
+}
+
+static int videodisplay(lua_State* ctx)
+{
+	LUA_TRACE("video_displaymodes");
+	arcan_warning("video_displaymodes is still a stub,"
+		"the function will be used to get a list of available "
+		"display configurations (resolution, depth, ...) "
+		"or to set a specific one for a specific display ");
+
+	return 0;
+}
+
+static int videomapping(lua_State* ctx)
+{
+	LUA_TRACE("map_video_display");
+	arcan_warning("video_map_display is still a stub,"
+		"the function will be used to associate a rendertarget "
+		"or a video object as the primary recipient of a display.");
+
+	return 0;
+}
+
+
 static int mousegrab(lua_State* ctx)
 {
 	LUA_TRACE("toggle_mouse_grab");
@@ -7346,6 +7387,9 @@ static const luaL_Reg vidsysfuns[] = {
 {"switch_default_texmode",           settexmode     },
 {"switch_default_imageproc",         setimageproc   },
 {"switch_default_texfilter",         settexfilter   },
+{"resize_video_canvas",              videocanvasrsz },
+{"video_displaymodes",               videodisplay   },
+{"map_video_display",                videomapping   },
 {"video_3dorder",                    v3dorder       },
 {"default_movie_queueopts",          getqueueopts   },
 {"default_movie_queueopts_override", setqueueopts   },

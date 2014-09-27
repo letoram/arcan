@@ -270,7 +270,7 @@ struct arcan_video_display {
 	bool suspended, fullscreen, conservative;
 	bool pbo_support;
 
-	unsigned int main_fbo;
+	unsigned int main_fbo, main_rb;
 	int dirty;
 	enum arcan_order3d order3d;
 
