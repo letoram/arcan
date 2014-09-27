@@ -8,3 +8,16 @@
 -- @group: image
 -- @cfunction: imagestate
 -- @related:
+
+function main()
+#ifdef MAIN
+	local img = load_image("test.png");
+	print(image_state(img));
+#endif
+
+#ifdef MAIN_2
+	local cam = null_surface(32, 32);
+	camtag_model(cam);
+	print(image_state(img));
+#endif
+end

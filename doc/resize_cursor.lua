@@ -4,3 +4,5 @@
 -- @group: image
 -- @cfunction: cursorsize
 -- @related:
+-- @flags:
+

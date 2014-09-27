@@ -21,3 +21,5 @@
 -- @group: network
 -- @cfunction: net_discover
 -- @related: net_open
+-- @flags: experimental
+

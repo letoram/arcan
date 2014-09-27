@@ -6,7 +6,9 @@
 -- of VIDs passed in the indexed table *vidary*. The output of processing this pipeline
 -- will be stored in *dstvid* and issue a readback at *samplerate*. A positive samplerate
 -- will retrieve a sample every 'n' logical ticks, a negative samplerate will retrieve a
--- sample every abs(n) rendered frames.
+-- sample every abs(n) rendered frames. If samplerate is set to the special constant
+-- READBACK_MANUAL, the stepframe_target function has to be invoked for each time
+-- a readback should be issued.
 --
 -- The callback will be invoked with three arguments: image, width, height
 -- the following metamethods are valid on image:

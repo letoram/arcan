@@ -8,3 +8,5 @@
 -- @group: 3d
 -- @cfunction: pointcloud
 -- @related:
+-- @flags:
+

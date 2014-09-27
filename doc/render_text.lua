@@ -20,6 +20,6 @@
 -- @tblent: Pfname,w,h embedd image, scale to w*h
 -- @group: image
 -- @cfunction: arcan_lua_buildstr
--- @exampletheme: fonttest
+-- @exampleappl: tests/interactive/fonttest
 -- @related: text_dimensions
 
