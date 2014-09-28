@@ -1359,7 +1359,7 @@ static int loadasample(lua_State* ctx)
 
 static int pauseaudio(lua_State* ctx)
 {
-	LUA_TRACE("pause_audio");
+	LUA_DEPRECATE("pause_audio");
 
 	arcan_aobj_id id = luaL_checkaid(ctx, 1);
 	arcan_audio_pause(id);
@@ -1411,8 +1411,8 @@ static int cursormove(lua_State* ctx)
 	bool clamp = luaL_optnumber(ctx, 3, 0) == 0;
 
 	if (clamp){
-		x = x > arcan_video_display.width ? arcan_video_display.width : x;
-		y = y > arcan_video_display.height ? arcan_video_display.height : y;
+		x = x > arcan_video_display.canvasw ? arcan_video_display.canvasw : x;
+		y = y > arcan_video_display.canvash ? arcan_video_display.canvash : y;
 		x = x < 0 ? 0 : x;
 		y = y < 0 ? 0 : y;
 	}
@@ -1429,13 +1429,13 @@ static int cursornudge(lua_State* ctx)
 	bool clamp = luaL_optnumber(ctx, 3, 0) == 0;
 
 	if (clamp){
-		x = x > arcan_video_display.width ? arcan_video_display.width : x;
-		y = y > arcan_video_display.height ? arcan_video_display.height : y;
+		x = x > arcan_video_display.canvasw ? arcan_video_display.canvasw : x;
+		y = y > arcan_video_display.canvash ? arcan_video_display.canvash : y;
 		x = x < 0 ? 0 : x;
 		y = y < 0 ? 0 : y;
 	}
 
-	arcan_video_cursorpos(x, y, false);
+	arcan_video_cursorpos(x, y, true);
 	return 0;
 }
 
@@ -3371,8 +3371,8 @@ static int camtag(lua_State* ctx)
 	LUA_TRACE("camtag_model");
 
 	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
-	float w = arcan_video_display.width;
-	float h = arcan_video_display.height;
+	float w = arcan_video_display.canvasw;
+	float h = arcan_video_display.canvash;
 	float ar = w / h > 1.0 ? w / h : h / w;
 
 	float nv  = luaL_optnumber(ctx, 2, 0.1);
@@ -3407,8 +3407,8 @@ static int camtaghmd(lua_State* ctx)
 	float etsd = 0.0640;
 	float fov = 90.0;
 
-	float w = arcan_video_display.width;
-	float h = arcan_video_display.height;
+	float w = arcan_video_display.canvasw;
+	float h = arcan_video_display.canvash;
 	float ar = 2.0 * w / h;
 
 	build_projection_matrix(projection, nv, fv, ar, fov);
@@ -5944,7 +5944,7 @@ static int recordgain(lua_State* ctx)
 
 static int borderscan(lua_State* ctx)
 {
-	LUA_TRACE("image_borderscan");
+	LUA_DEPRECATE("image_borderscan");
 	int x1, y1, x2, y2;
 	x1 = y1 = 0;
 	x2 = arcan_video_screenw();
@@ -6622,8 +6622,8 @@ static int screenshot(lua_State* ctx)
 
 	void* databuf = NULL;
 	size_t bufs;
-	int dw = arcan_video_display.width;
-	int dh = arcan_video_display.height;
+	int dw = arcan_video_display.canvasw;
+	int dh = arcan_video_display.canvash;
 
 	const char* const resstr = luaL_checkstring(ctx, 1);
 	arcan_vobj_id sid = ARCAN_EID;

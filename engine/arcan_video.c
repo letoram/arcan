@@ -103,7 +103,9 @@ struct arcan_video_display arcan_video_display = {
 	.default_vitemlim = 1024,
 	.imageproc = IMAGEPROC_NORMAL,
 	.mipmap = ARCAN_VIDEO_DEFAULT_MIPMAP_STATE,
-	.dirty = 0
+	.dirty = 0,
+	.cursor.w = 24,
+	.cursor.h = 16
 };
 
 struct arcan_video_context vcontext_stack[CONTEXT_STACK_LIMIT] = {
@@ -130,7 +132,7 @@ static void attach_object(struct rendertarget* dst, arcan_vobject* src);
 static arcan_errc update_zv(arcan_vobject* vobj, unsigned short newzv);
 static void rebase_transform(struct surface_transform*, int64_t);
 static bool alloc_fbo(struct rendertarget* dst);
-static size_t process_rendertarget(struct rendertarget* tgt, float fract);
+static size_t process_rendertarget(struct rendertarget*, float, bool);
 static arcan_vobject* new_vobject(arcan_vobj_id* id,
 struct arcan_video_context* dctx);
 static inline void build_modelview(float* dmatr,
@@ -284,7 +286,7 @@ static void readback_texture(GLint glid,
 		glGenRenderbuffers(1, &readback.texid);
 		glBindRenderbuffer(GL_RENDERBUFFER, readback.texid);
 		glRenderbufferStorage(GL_RENDERBUFFER, GL_RGBA,
-			arcan_video_display.width, arcan_video_display.height);
+			arcan_video_display.canvasw, arcan_video_display.canvash);
 
 		glGenFramebuffers(1, &readback.fboid);
 		glBindFramebuffer(GL_FRAMEBUFFER, readback.fboid);
@@ -584,8 +586,8 @@ static void draw_cursor(bool erase)
 
 	int x1 = arcan_video_display.cursor.x;
 	int y1 = arcan_video_display.cursor.y;
-	int x2 = arcan_video_display.cursor.w + x1;
-	int y2 = arcan_video_display.cursor.h + y1;
+	int x2 = x1 + arcan_video_display.cursor.w;
+	int y2 = y1 + arcan_video_display.cursor.h;
 
 	if (erase){
 		if (!arcan_video_display.cursor.vstore)
@@ -594,10 +596,10 @@ static void draw_cursor(bool erase)
 		glBindTexture(GL_TEXTURE_2D,
 			arcan_video_display.cursor.vstore->vinf.text.glid);
 
-		float s1 = (float)x1 / arcan_video_display.width;
-		float s2 = (float)x2 / arcan_video_display.width;
-		float t1 = (float)y1 / arcan_video_display.height;
-		float t2 = (float)y2 / arcan_video_display.height;
+		float s1 = (float)x1 / arcan_video_display.canvasw;
+		float s2 = (float)x2 / arcan_video_display.canvasw;
+		float t1 = (float)y1 / arcan_video_display.canvash;
+		float t2 = (float)y2 / arcan_video_display.canvash;
 
 		txmatr[0] = s1;
 		txmatr[1] = t1;
@@ -619,7 +621,7 @@ static void draw_cursor(bool erase)
 	identity_matrix(imatr);
 
 	arcan_shader_activate(arcan_video_display.defaultshdr);
-		arcan_shader_envv(MODELVIEW_MATR, imatr, sizeof(float) * 16);
+	arcan_shader_envv(MODELVIEW_MATR, imatr, sizeof(float) * 16);
 
 	draw_vobj(x1, y1, x2, y2, txcos);
 	glBindTexture(GL_TEXTURE_2D, 0);
@@ -805,8 +807,8 @@ unsigned arcan_video_extpopcontext(arcan_vobj_id* dst)
 	int rv = arcan_video_popcontext();
 
 	if (ss){
-		int w = arcan_video_display.width;
-		int h = arcan_video_display.height;
+		int w = arcan_video_display.canvasw;
+		int h = arcan_video_display.canvash;
 
 		img_cons cons = {.w = w, .h = h, .bpp = GL_PIXEL_BPP};
 		*dst = arcan_video_rawobject((uint8_t*)dstbuf, dsz, cons, w, h, 1);
@@ -838,8 +840,8 @@ signed arcan_video_extpushcontext(arcan_vobj_id* dst)
 	int rv = arcan_video_pushcontext();
 
 	if (ss){
-		int w = arcan_video_display.width;
-		int h = arcan_video_display.height;
+		int w = arcan_video_display.canvasw;
+		int h = arcan_video_display.canvash;
 
 		img_cons cons = {.w = w, .h = h, .bpp = GL_PIXEL_BPP};
 		*dst = arcan_video_rawobject((uint8_t*)dstbuf, dsz, cons, w, h, 1);
@@ -1553,6 +1555,43 @@ const char* defcfprg =
 "   gl_FragColor = vec4(obj_col.rgb, obj_opacity);\n"
 "}\n";
 
+static void arcan_video_gldefault()
+{
+	glEnable(GL_SCISSOR_TEST);
+	glDisable(GL_DEPTH_TEST);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+#ifdef GL_MULTISAMPLE
+	if (arcan_video_display.msasamples)
+		glEnable(GL_MULTISAMPLE);
+#endif
+
+	glEnable(GL_BLEND);
+	glClearColor(0.0, 0.0, 0.0, 1.0f);
+
+/*
+ * -- Removed as they were causing trouble with NVidia GPUs (white line outline
+ * where triangles connect
+ * glHint(GL_LINE_SMOOTH_HINT, GL_NICEST);
+ * glHint(GL_POLYGON_SMOOTH_HINT, GL_NICEST);
+ * glEnable(GL_LINE_SMOOTH);
+ * glEnable(GL_POLYGON_SMOOTH);
+*/
+
+	identity_matrix(current_context->stdoutp.base);
+	glFrontFace(GL_CW);
+	glCullFace(GL_BACK);
+
+	if (arcan_video_display.pbo_support){
+		glGenBuffers(1, &current_context->stdoutp.pbo);
+		glBindBuffer(GL_PIXEL_PACK_BUFFER, current_context->stdoutp.pbo);
+		glBufferData(GL_PIXEL_PACK_BUFFER,
+			arcan_video_display.width * arcan_video_display.height * GL_PIXEL_BPP,
+			NULL, GL_STREAM_READ);
+		glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+	}
+}
+
 arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	bool fs, bool frames, bool conservative, const char* caption)
 {
@@ -1591,62 +1630,21 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	arcan_video_resize_canvas(
 		arcan_video_display.width, arcan_video_display.height);
 
-	return ARCAN_OK;
-}
-
-static void arcan_video_gldefault()
-{
-	glEnable(GL_SCISSOR_TEST);
-	glDisable(GL_DEPTH_TEST);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-#ifdef GL_MULTISAMPLE
-	if (arcan_video_display.msasamples)
-		glEnable(GL_MULTISAMPLE);
-#endif
-
-	glEnable(GL_BLEND);
-	glClearColor(0.0, 0.0, 0.0, 1.0f);
-
+	arcan_video_gldefault();
 /*
- * -- Removed as they were causing trouble with NVidia GPUs (white line outline
- * where triangles connect
- * glHint(GL_LINE_SMOOTH_HINT, GL_NICEST);
- * glHint(GL_POLYGON_SMOOTH_HINT, GL_NICEST);
- * glEnable(GL_LINE_SMOOTH);
- * glEnable(GL_POLYGON_SMOOTH);
-*/
-
-	build_orthographic_matrix(arcan_video_display.flipy_projection, 0,
-		arcan_video_display.width, 0, arcan_video_display.height, 0, 1);
-
-	build_orthographic_matrix(arcan_video_display.default_projection, 0,
-		arcan_video_display.width, arcan_video_display.height, 0, 0, 1);
-
-	memcpy(current_context->stdoutp.projection,
-		arcan_video_display.default_projection, sizeof(float) * 16);
-
-	identity_matrix(current_context->stdoutp.base);
-	glScissor(0, 0, arcan_video_display.width, arcan_video_display.height);
-	glFrontFace(GL_CW);
-	glCullFace(GL_BACK);
-
-	if (arcan_video_display.pbo_support){
-		glGenBuffers(1, &current_context->stdoutp.pbo);
-		glBindBuffer(GL_PIXEL_PACK_BUFFER, current_context->stdoutp.pbo);
-		glBufferData(GL_PIXEL_PACK_BUFFER,
-			arcan_video_display.width * arcan_video_display.height * GL_PIXEL_BPP,
-			NULL, GL_STREAM_READ);
-		glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
-	}
+ * By default, expected video output display matches canvas 1:1,
+ * canvas can be explicitly resized and these two matrices will still
+ * make the output correct. For multiple- dynamic monitor configurations,
+ * things get hairy; it is then the video platform that is expected to
+ * map rendertargets / videoobjects to output displays.
+ */
+	return ARCAN_OK;
 }
 
 arcan_errc arcan_video_resize_canvas(size_t neww, size_t newh)
 {
-	arcan_video_display.width = neww;
-	arcan_video_display.height = newh;
-
-	arcan_video_gldefault();
+	arcan_video_display.canvasw = neww;
+	arcan_video_display.canvash = newh;
 
 #ifndef ARCAN_VIDEO_NOWORLD_FBO
 	struct storage_info_t* ds = current_context->world.vstore;
@@ -1655,14 +1653,16 @@ arcan_errc arcan_video_resize_canvas(size_t neww, size_t newh)
 		arcan_mem_free(ds->vinf.text.raw);
 		glDeleteFramebuffers(1, &arcan_video_display.main_fbo);
 		glDeleteRenderbuffers(1, &arcan_video_display.main_rb);
+		if (arcan_video_display.pbo_support)
+			glDeleteBuffers(1, &current_context->stdoutp.pbo);
 	}
 	else{
 		populate_vstore(&current_context->world.vstore);
 		ds = current_context->world.vstore;
 	}
 
-	ds->w = arcan_video_display.width;
-	ds->h = arcan_video_display.height;
+	ds->w = neww;
+	ds->h = newh;
 	ds->vinf.text.s_raw = neww * newh * GL_PIXEL_BPP;
 
 	ds->vinf.text.raw = arcan_alloc_mem(ds->vinf.text.s_raw,
@@ -1686,6 +1686,15 @@ arcan_errc arcan_video_resize_canvas(size_t neww, size_t newh)
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 #endif
+
+	build_orthographic_matrix(arcan_video_display.window_projection, 0,
+		arcan_video_display.width, arcan_video_display.height, 0, 0, 1);
+
+	build_orthographic_matrix(arcan_video_display.default_projection, 0,
+		arcan_video_display.canvasw, arcan_video_display.canvash, 0, 0, 1);
+
+	memcpy(current_context->stdoutp.projection,
+		arcan_video_display.default_projection, sizeof(float) * 16);
 
 	FLAG_DIRTY();
 	return ARCAN_OK;
@@ -2279,8 +2288,8 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did,
 		identity_matrix(dst->base);
 
 		if (scale){
-			float xs = ((float)vobj->vstore->w / (float)arcan_video_display.width);
-			float ys = ((float)vobj->vstore->h / (float)arcan_video_display.height);
+			float xs = ((float)vobj->vstore->w / (float)arcan_video_display.canvasw);
+			float ys = ((float)vobj->vstore->h / (float)arcan_video_display.canvash);
 
 /* since we may likely have a differently sized FBO, scale it */
 			scale_matrix(dst->base, xs, ys, 1.0);
@@ -4603,27 +4612,23 @@ static inline bool setup_shallow_texclip(arcan_vobject* elem,
 	return true;
 }
 
-static size_t process_rendertarget(struct rendertarget* tgt, float fract)
+static size_t process_rendertarget(
+	struct rendertarget* tgt, float fract, bool scissor)
 {
 	arcan_vobject_litem* current = tgt->first;
-	int width, height;
 
 	if (arcan_video_display.dirty == 0 && tgt->transfc == 0)
 		return 0;
 
 	if (tgt->color){
-		width = tgt->color->origw;
-		height = tgt->color->origh;
+		glScissor(0, 0, tgt->color->origw, tgt->color->origh);
+		glViewport(0, 0, tgt->color->origw, tgt->color->origh);
 	}
-	else{
-		width = arcan_video_display.width;
-		height = arcan_video_display.height;
+/* drawing to display, only when FBO support is disabled */
+	else if (scissor){
+		glScissor(0, 0, arcan_video_display.width, arcan_video_display.width);
+		glViewport(0, 0, arcan_video_display.width, arcan_video_display.height);
 	}
-
-/* since the rendertargets may vary in size etc.
- * we setup the viewport/scissoring here */
-	glScissor(0, 0, width, height);
-	glViewport(0, 0, width, height);
 
 	if (!tgt->noclear)
 		glClear(GL_COLOR_BUFFER_BIT);
@@ -4806,7 +4811,7 @@ arcan_errc arcan_video_forceupdate(arcan_vobj_id vid)
 
 	FLAG_DIRTY();
 	glBindFramebuffer(GL_FRAMEBUFFER, tgt->fbo);
-		process_rendertarget(tgt, arcan_video_display.c_lerp);
+		process_rendertarget(tgt, arcan_video_display.c_lerp, true);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 	if (tgt->readback != 0){
@@ -4819,8 +4824,8 @@ arcan_errc arcan_video_forceupdate(arcan_vobj_id vid)
 
 arcan_errc arcan_video_screenshot(void** dptr, size_t* dsize)
 {
-	*dsize = sizeof(char) * arcan_video_display.width *
-		arcan_video_display.height * GL_PIXEL_BPP;
+	*dsize = sizeof(char) * arcan_video_display.canvasw *
+		arcan_video_display.canvash * GL_PIXEL_BPP;
 
 	*dptr = arcan_alloc_mem(*dsize, ARCAN_MEM_VBUFFER,
 		ARCAN_MEM_TEMPORARY | ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE);
@@ -4832,8 +4837,8 @@ arcan_errc arcan_video_screenshot(void** dptr, size_t* dsize)
 
 	glReadBuffer(GL_FRONT);
 
-	glReadPixels(0, 0, arcan_video_display.width,
-		arcan_video_display.height, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, *dptr);
+	glReadPixels(0, 0, arcan_video_display.canvasw,
+		arcan_video_display.canvash, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, *dptr);
 
 	return ARCAN_OK;
 }
@@ -4924,7 +4929,7 @@ void arcan_video_refresh_GL(float lerp)
 		struct rendertarget* tgt = &current_context->rtargets[ind];
 
 		glBindFramebuffer(GL_FRAMEBUFFER, tgt->fbo);
-		process_rendertarget(tgt, lerp);
+		process_rendertarget(tgt, lerp, true);
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 		for (size_t ind = 0; ind < current_context->n_rtargets; ind++)
@@ -4936,8 +4941,11 @@ void arcan_video_refresh_GL(float lerp)
  * then the readbacks for full-screen will be correct
  */
 	if (current_context->world.vstore){
+		glScissor(0, 0, arcan_video_display.canvasw, arcan_video_display.canvasw);
+		glViewport(0, 0, arcan_video_display.canvasw, arcan_video_display.canvash);
+
 		glBindFramebuffer(GL_FRAMEBUFFER, arcan_video_display.main_fbo);
-			process_rendertarget(&current_context->stdoutp, lerp);
+			process_rendertarget(&current_context->stdoutp, lerp, false);
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 		if (current_context->stdoutp.readback != 0 &&
@@ -4952,12 +4960,16 @@ void arcan_video_refresh_GL(float lerp)
 		arcan_shader_envv(MODELVIEW_MATR, imatr, sizeof(float) * 16);
 		glBindTexture(GL_TEXTURE_2D, outp->vstore->vinf.text.glid);
 
+/* should be moved to platform layer */
+	glViewport(0, 0, arcan_video_display.width, arcan_video_display.height);
+	arcan_shader_envv(PROJECTION_MATR,
+		arcan_video_display.window_projection, sizeof(float)*16);
 		draw_vobj(0, 0, arcan_video_display.width,
 			arcan_video_display.height, arcan_video_display.mirror_txcos);
 		glBindTexture(GL_TEXTURE_2D, 0);
 	}
 	else
-		process_rendertarget(&current_context->stdoutp, lerp);
+		process_rendertarget(&current_context->stdoutp, lerp, true);
 
 /* cursor will always be erased on change,
  * that means we can safely draw that even when the

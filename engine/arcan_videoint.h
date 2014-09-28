@@ -294,7 +294,7 @@ struct arcan_video_display {
 	arcan_shader_id defclrshdr;
 
 	float default_projection[16];
-	float flipy_projection[16];
+	float window_projection[16];
 
 	float default_txcos[8];
 	float mirror_txcos[8];
@@ -311,6 +311,8 @@ struct arcan_video_display {
 
 	unsigned char bpp;
 	unsigned short width, height;
+	unsigned short canvasw, canvash;
+
 	arcan_tickv c_ticks;
 	float c_lerp;
 
