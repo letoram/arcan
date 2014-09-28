@@ -4963,20 +4963,43 @@ static int targetstepframe(lua_State* ctx)
 {
 	LUA_TRACE("stepframe_target");
 
-	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
+	arcan_vobject* vobj;
+	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, &vobj);
+	vfunc_state* state = arcan_video_feedstate(tgt);
+	struct rendertarget* rtgt = find_rendertarget(vobj);
 
+	bool qev = true;
 
-	int nframes = luaL_checknumber(ctx, 2);
-	if (nframes == 0)
+/*
+ * Recordtargets are a special case as they have both
+ * a frameserver feedstate and the output of a rendertarget.
+ * The actual stepframe event will be set by the ffunc handler
+ * (arcan_frameserver_backend.c)
+ */
+
+	if (state->tag != ARCAN_TAG_FRAMESERV || rtgt)
+		qev = false;
+
+	int nframes = luaL_optnumber(ctx, 2, 1);
+	if (nframes <= 0)
 		return 0;
 
-	arcan_event ev = {
+	if (rtgt && !rtgt->readreq && arcan_video_display.pbo_support){
+		glBindBuffer(GL_PIXEL_PACK_BUFFER, rtgt->pbo);
+		struct storage_info_t* dstore = rtgt->color->vstore;
+		readback_texture(dstore->vinf.text.glid, dstore->w, dstore->h, 0, 0);
+		glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+		rtgt->readreq = true;
+	}
+
+	if (qev){
+		arcan_event ev = {
 			.category = EVENT_TARGET,
 			.kind = TARGET_COMMAND_STEPFRAME
-	};
-	ev.data.target.ioevs[0].iv = nframes;
-
-	tgtevent(tgt, ev);
+		};
+		ev.data.target.ioevs[0].iv = nframes;
+		tgtevent(tgt, ev);
+	}
 
 	return 0;
 }

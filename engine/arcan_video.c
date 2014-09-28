@@ -268,7 +268,7 @@ void arcan_video_default_imageprocmode(enum arcan_imageproc_mode mode)
 	arcan_video_display.imageproc = mode;
 }
 
-static void readback_texture(GLint glid,
+void readback_texture(GLint glid,
 	unsigned width, unsigned height, void* dstbuf, size_t buf_sz)
 {
 #if defined(HAVE_GLES3) || defined(HAVE_GLES2)
@@ -310,7 +310,7 @@ static void readback_texture(GLint glid,
 #endif
 }
 
-static struct rendertarget* find_rendertarget(arcan_vobject* vobj)
+struct rendertarget* find_rendertarget(arcan_vobject* vobj)
 {
 	for (size_t i = 0; i < current_context->n_rtargets && vobj; i++)
 		if (current_context->rtargets[i].color == vobj)

@@ -7,8 +7,8 @@
 -- This is handled as events passed on the event-queue, in order to wake
 -- processes that idle or sleep when no event has been received.
 -- @note: n_frames (default:1) should be set to 0 > n > INT_MAX.
--- @note: stepframe can also be used on record and calctargets if
--- the readback counter is set to READBACK_MANUAL.
+-- @note: stepframe can also be used on record and calctargets and will
+-- then force a readback.
 -- @group: targetcontrol
 -- @related: define_calctarget, define_recordtarget
 -- @cfunction: arcan_lua_targetstepframe
