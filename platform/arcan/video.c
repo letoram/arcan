@@ -197,6 +197,11 @@ void arcan_event_analogfilter(int devid,
 {
 }
 
+const char* platform_video_capstr()
+{
+	return "Video Platform (Arcan - in - Arcan)\n";
+}
+
 const char* arcan_event_devlabel(int devid)
 {
 	return "no device";

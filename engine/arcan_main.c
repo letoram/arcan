@@ -374,7 +374,8 @@ int main(int argc, char* argv[])
 		if (strncmp(monitor_arg, "LOG:", 4) == 0){
 			settings.mon_outf = fopen(&monitor_arg[4], "w+");
 			if (NULL == settings.mon_outf)
-				arcan_fatal("couldn't open log output (%s) for writing\n", monitor_arg[4]);
+				arcan_fatal("couldn't open log output (%s) for writing\n",
+					monitor_arg[4]);
 			fcntl(fileno(settings.mon_outf), F_SETFD, FD_CLOEXEC);
 		}
 		else {
