@@ -8,7 +8,7 @@
  *
  * 3. work with both GLESv3 and OpenGL2+
  *
- * 4. controlling pty - changes, how to behave?
+ * 4. controlling pty - changes, how to behave (perhaps more of a linux/input)?
  *
  * 5. external launch
  *
@@ -67,6 +67,7 @@ static char* egl_synchopts[] = {
  * default + heuristic -> drop frame if we're lagging behind
  * triple buffered -> poor idea, shouldn't be used
  * pre-vsync align, tear if we are out of options
+ * most interesting, racing the beam (single-buffer)
  * simulate-n-Hz display
  */
 	NULL
@@ -83,10 +84,17 @@ static struct {
 	struct gbm_surface* surface;
 } gbm;
 
+#ifndef CONNECTOR_LIMIT
+#define CONNECTOR_LIMIT 8
+#endif
+
 static struct {
 	int fd;
-	uint32_t crtc_id;
-	uint32_t connector_id;
+	uint32_t crtc_id[CONNECTOR_LIMIT];
+	uint32_t connector_id[CONNECTOR_LIMIT];
+
+/* track in order to restore on shutdown */
+	drmModeCrtcPtr old_crtc[CONNECTOR_LIMIT];
 
 	drmModeModeInfo* mode;
 	drmModeRes* res;
@@ -124,6 +132,277 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 }
 
 #else
+
+static void drm_mode_tos(FILE* dst, unsigned val)
+{
+	if ( (val & DRM_MODE_TYPE_BUILTIN) > 0){
+		fprintf(dst, "/builtin");
+		val &= ~DRM_MODE_TYPE_BUILTIN;
+	}
+
+	if ( (val & DRM_MODE_TYPE_CLOCK_C) > 0){
+		fprintf(dst, "/clock");
+		val &= ~DRM_MODE_TYPE_CLOCK_C;
+	}
+
+	if ( (val & DRM_MODE_TYPE_CRTC_C) > 0){
+		fprintf(dst, "/crtc");
+		val &= ~DRM_MODE_TYPE_CRTC_C;
+	}
+
+	if ( (val & DRM_MODE_TYPE_PREFERRED) > 0){
+		fprintf(dst, "/preferred");
+		val &= ~DRM_MODE_TYPE_PREFERRED;
+	}
+
+	if ( (val & DRM_MODE_TYPE_DEFAULT) > 0){
+		fprintf(dst, "/default");
+		val &= ~DRM_MODE_TYPE_DEFAULT;
+	}
+
+	if ( (val & DRM_MODE_TYPE_USERDEF) > 0){
+		fprintf(dst, "/userdef");
+		val &= ~DRM_MODE_TYPE_USERDEF;
+	}
+
+	if ( (val & DRM_MODE_TYPE_DRIVER) > 0){
+		fprintf(dst, "/driver");
+		val &= ~DRM_MODE_TYPE_DRIVER;
+	}
+
+	if ( val > 0 )
+		fprintf(dst, "/unknown(%d)", (int)val);
+}
+
+static void drm_mode_flag(FILE* dst, unsigned val)
+{
+	if ( (val & DRM_MODE_FLAG_PHSYNC) > 0 ){
+		fprintf(dst, "/phsync");
+		val &= ~DRM_MODE_FLAG_PHSYNC;
+	}
+
+	if ( (val & DRM_MODE_FLAG_NHSYNC) > 0 ){
+		fprintf(dst, "/nhsync");
+		val &= ~DRM_MODE_FLAG_NHSYNC;
+	}
+
+	if ( (val & DRM_MODE_FLAG_PVSYNC) > 0 ){
+		fprintf(dst, "/pvsync");
+		val &= ~DRM_MODE_FLAG_PVSYNC;
+	}
+
+	if ( (val & DRM_MODE_FLAG_NVSYNC) > 0 ){
+		fprintf(dst, "/nvsync");
+		val &= ~DRM_MODE_FLAG_NVSYNC;
+	}
+
+	if ( (val & DRM_MODE_FLAG_INTERLACE) > 0 ){
+		fprintf(dst, "/interlace");
+		val &= ~DRM_MODE_FLAG_INTERLACE;
+	}
+
+	if ( (val & DRM_MODE_FLAG_DBLSCAN) > 0 ){
+		fprintf(dst, "/dblscan");
+		val &= ~DRM_MODE_FLAG_DBLSCAN;
+	}
+
+	if ( (val & DRM_MODE_FLAG_CSYNC) > 0 ){
+		fprintf(dst, "/csync");
+		val &= ~DRM_MODE_FLAG_CSYNC;
+	}
+
+	if ( (val & DRM_MODE_FLAG_PCSYNC) > 0 ){
+		fprintf(dst, "/pcsync");
+		val &= ~DRM_MODE_FLAG_PCSYNC;
+	}
+
+	if ( (val & DRM_MODE_FLAG_NCSYNC) > 0 ){
+		fprintf(dst, "/ncsync");
+		val &= ~DRM_MODE_FLAG_NCSYNC;
+	}
+
+	if ( (val & DRM_MODE_FLAG_HSKEW) > 0 ){
+		fprintf(dst, "/hskew");
+		val &= ~DRM_MODE_FLAG_HSKEW;
+	}
+
+	if ( (val & DRM_MODE_FLAG_BCAST) > 0 ){
+		fprintf(dst, "/bcast");
+		val &= ~DRM_MODE_FLAG_BCAST;
+	}
+
+	if ( (val & DRM_MODE_FLAG_PIXMUX) > 0 ){
+		fprintf(dst, "/pixmux");
+		val &= ~DRM_MODE_FLAG_PIXMUX;
+	}
+
+	if ( (val & DRM_MODE_FLAG_DBLCLK) > 0 ){
+		fprintf(dst, "/dblclk");
+		val &= ~DRM_MODE_FLAG_DBLCLK;
+	}
+
+	if ( (val & DRM_MODE_FLAG_CLKDIV2) > 0 ){
+		fprintf(dst, "/clkdiv2");
+		val &= ~DRM_MODE_FLAG_CLKDIV2;
+	}
+
+	if ( (val & DRM_MODE_FLAG_3D_MASK) > 0 ){
+		fprintf(dst, "/3dmask");
+		val &= ~DRM_MODE_FLAG_3D_MASK;
+	}
+
+	if ( (val & DRM_MODE_FLAG_3D_NONE) > 0 ){
+		fprintf(dst, "/3dnone");
+		val &= ~DRM_MODE_FLAG_3D_NONE;
+	}
+
+	if ( (val & DRM_MODE_FLAG_3D_FRAME_PACKING) > 0 ){
+		fprintf(dst, "/3dframep");
+		val &= ~DRM_MODE_FLAG_3D_FRAME_PACKING;
+	}
+
+	if ( (val & DRM_MODE_FLAG_3D_FIELD_ALTERNATIVE) > 0 ){
+		fprintf(dst, "/3dfield_alt");
+		val &= ~DRM_MODE_FLAG_3D_FIELD_ALTERNATIVE;
+	}
+
+	if ( (val & DRM_MODE_FLAG_3D_LINE_ALTERNATIVE) > 0 ){
+		fprintf(dst, "/3dline_alt");
+		val &= ~DRM_MODE_FLAG_3D_LINE_ALTERNATIVE;
+	}
+
+	if ( (val & DRM_MODE_FLAG_3D_SIDE_BY_SIDE_FULL) > 0 ){
+		fprintf(dst, "/3dsbs");
+		val &= ~DRM_MODE_FLAG_3D_SIDE_BY_SIDE_FULL;
+	}
+
+	if ( (val & DRM_MODE_FLAG_3D_L_DEPTH) > 0 ){
+		fprintf(dst, "/3dldepth");
+		val &= ~DRM_MODE_FLAG_3D_L_DEPTH;
+	}
+
+	if ( (val & DRM_MODE_FLAG_3D_L_DEPTH_GFX_GFX_DEPTH) > 0 ){
+		fprintf(dst, "/3dldepth_gfx2_depth");
+		val &= ~DRM_MODE_FLAG_3D_L_DEPTH_GFX_GFX_DEPTH;
+	}
+
+	if ( (val & DRM_MODE_FLAG_3D_TOP_AND_BOTTOM) > 0 ){
+		fprintf(dst, "/3dt&b");
+		val &= ~DRM_MODE_FLAG_3D_TOP_AND_BOTTOM;
+	}
+
+	if ( (val & DRM_MODE_FLAG_3D_SIDE_BY_SIDE_HALF) > 0 ){
+		fprintf(dst, "/3dsbs-h");
+		val &= ~DRM_MODE_FLAG_3D_SIDE_BY_SIDE_HALF;
+	}
+
+	if (val > 0){
+		fprintf(dst, "/unknown(%d)", (int) val);
+	}
+}
+
+static void drm_mode_scale(FILE* fpek, int val)
+{
+	switch (val){
+	case DRM_MODE_SCALE_FULLSCREEN:
+		fprintf(fpek, "fullscreen");
+	break;
+
+	case DRM_MODE_SCALE_ASPECT:
+		fprintf(fpek, "fit aspect");
+	break;
+
+	default:
+		fprintf(fpek, "unknown");
+	}
+}
+
+static void drm_mode_encoder(FILE* fpek, int val)
+{
+	switch(val){
+	case DRM_MODE_ENCODER_NONE:
+		fputs("none", fpek);
+	break;
+	case DRM_MODE_ENCODER_DAC:
+		fputs("dac", fpek);
+	break;
+	case DRM_MODE_ENCODER_TMDS:
+		fputs("tmds", fpek);
+	break;
+	case DRM_MODE_ENCODER_LVDS:
+		fputs("lvds", fpek);
+	break;
+	case DRM_MODE_ENCODER_TVDAC:
+		fputs("tvdac", fpek);
+	break;
+	default:
+		fputs("unknown", fpek);
+	}
+}
+
+static void drm_mode_connector(FILE* fpek, int val)
+{
+	switch(val){
+	case DRM_MODE_CONNECTOR_Unknown:
+		fprintf(fpek, "unknown");
+	break;
+
+	case DRM_MODE_CONNECTOR_VGA:
+		fprintf(fpek, "vga");
+	break;
+
+	case DRM_MODE_CONNECTOR_DVII:
+		fprintf(fpek, "dvii");
+	break;
+
+	case DRM_MODE_CONNECTOR_DVID:
+		fprintf(fpek, "dvid");
+	break;
+
+	case DRM_MODE_CONNECTOR_DVIA:
+		fprintf(fpek, "dvia");
+	break;
+
+	case DRM_MODE_CONNECTOR_Composite:
+		fprintf(fpek, "composite");
+	break;
+
+	case DRM_MODE_CONNECTOR_SVIDEO:
+		fprintf(fpek, "s-video");
+	break;
+
+	case DRM_MODE_CONNECTOR_Component:
+		fprintf(fpek, "component");
+	break;
+
+	case DRM_MODE_CONNECTOR_9PinDIN:
+		fprintf(fpek, "9-pin din");
+	break;
+
+	case DRM_MODE_CONNECTOR_DisplayPort:
+		fprintf(fpek, "displayPort");
+	break;
+
+	case DRM_MODE_CONNECTOR_HDMIA:
+		fprintf(fpek, "hdmi-a");
+	break;
+
+	case DRM_MODE_CONNECTOR_HDMIB:
+		fprintf(fpek, "hdmi-b");
+	break;
+
+	case DRM_MODE_CONNECTOR_TV:
+		fprintf(fpek, "tv");
+	break;
+
+	case DRM_MODE_CONNECTOR_eDP:
+		fprintf(fpek, "eDP");
+	break;
+
+	default:
+		fprintf(fpek, "unknown");
+	}
+}
 
 static const char* egl_errstr()
 {
@@ -164,15 +443,61 @@ static const char* egl_errstr()
 	}
 }
 
+/* should be passed on to font rendering */
+static const char* subpixel_type(int val)
+{
+	switch(val){
+	case DRM_MODE_SUBPIXEL_UNKNOWN:
+		return "unknown";
+
+	case DRM_MODE_SUBPIXEL_HORIZONTAL_RGB:
+		return "horiz- RGB";
+
+	case DRM_MODE_SUBPIXEL_HORIZONTAL_BGR:
+		return "horiz- BGR";
+
+	case DRM_MODE_SUBPIXEL_VERTICAL_RGB:
+		return "vert- RGB";
+
+	case DRM_MODE_SUBPIXEL_VERTICAL_BGR:
+		return "vert- BGR";
+
+	default:
+		return "unsupported";
+	}
+}
+
 static void dump_connectors(FILE* dst, drmModeRes* res)
 {
-	fprintf(dst, "FIXME: iterate connectors and dump state for each\n");
+	fprintf(dst, "DRM Dump: \n\tConnectors: %d\n", res->count_connectors);
+	for (size_t i = 0; i < res->count_connectors; i++){
+		drmModeConnector* conn = drmModeGetConnector(drm.fd, res->connectors[i]);
+		if (!conn)
+			continue;
 
+		fprintf(dst, "\t(%d), id:(%d), encoder:(%d), type: ",
+			(int) i, conn->connector_id, conn->encoder_id);
+		drm_mode_connector(dst, conn->connector_type);
+		fprintf(dst, " phy(%d * %d), hinting: %s\n",
+			(int)conn->mmWidth, (int)conn->mmHeight, subpixel_type(conn->subpixel));
+
+		for (size_t j = 0; j < conn->count_modes; j++){
+			fprintf(dst, "\t\t Mode (%d:%s): clock@%d, refresh@%d\n\t\tflags : ",
+				(int)j, conn->modes[j].name,
+				conn->modes[j].clock, conn->modes[j].vrefresh
+			);
+			drm_mode_flag(dst, conn->modes[j].flags);
+			fprintf(dst, " type : ");
+			drm_mode_tos(dst, conn->modes[j].type);
+		}
+
+		fprintf(dst, "\n\n");
+		drmModeFreeConnector(conn);
+	}
 }
 
 static int setup_drm(void)
 {
-	drmModeRes* resources;
 	int i, area;
 
 	const char* device = getenv("ARCAN_VIDEO_DEVICE");
@@ -186,15 +511,16 @@ static int setup_drm(void)
 		return -1;
 	}
 
-	resources = drmModeGetResources(drm.fd);
-	if (!resources) {
+	drm.res = drmModeGetResources(drm.fd);
+	if (!drm.res) {
 		arcan_warning("drmModeGetResources failed: %s\n", strerror(errno));
 		return -1;
 	}
 
-/* find a connected connector: */
-	for (i = 0; i < resources->count_connectors; i++){
-		kms.connector = drmModeGetConnector(drm.fd, resources->connectors[i]);
+/* grab the first available connector, this can be
+ * changed / altered dynamically by the calling script later */
+	for (i = 0; i < drm.res->count_connectors; i++){
+		kms.connector = drmModeGetConnector(drm.fd, drm.res->connectors[i]);
 		if (kms.connector->connection == DRM_MODE_CONNECTED)
 			break;
 
@@ -213,10 +539,6 @@ static int setup_drm(void)
 		return -1;
 	}
 
-/*
- * should let display configuration determine which one we
- * actually selects...
- */
 	for (i = 0, area = 0; i < kms.connector->count_modes; i++) {
 		drmModeModeInfo *current_mode = &kms.connector->modes[i];
 		int current_area = current_mode->hdisplay * current_mode->vdisplay;
@@ -231,8 +553,8 @@ static int setup_drm(void)
 		return -1;
 	}
 
-	for (i = 0; i < resources->count_encoders; i++) {
-		kms.encoder = drmModeGetEncoder(drm.fd, resources->encoders[i]);
+	for (i = 0; i < drm.res->count_encoders; i++) {
+		kms.encoder = drmModeGetEncoder(drm.fd, drm.res->encoders[i]);
 		if (kms.encoder->encoder_id == kms.connector->encoder_id)
 			break;
 		drmModeFreeEncoder(kms.encoder);
@@ -244,8 +566,9 @@ static int setup_drm(void)
 		return -1;
 	}
 
-	drm.crtc_id = kms.encoder->crtc_id;
-	drm.connector_id = kms.connector->connector_id;
+	drm.old_crtc[0] = drmModeGetCrtc(drm.fd, kms.encoder->crtc_id);
+	drm.crtc_id[0] = kms.encoder->crtc_id;
+	drm.connector_id[0] = kms.connector->connector_id;
 
 	return 0;
 }
@@ -347,12 +670,41 @@ static int setup_gl(void)
 static void fb_cleanup(struct gbm_bo *bo, void *data)
 {
 	struct drm_fb *fb = data;
-	/* struct gbm_device *gbm = */ gbm_bo_get_device(bo);
-
 	if (fb->fb_id)
 		drmModeRmFB(drm.fd, fb->fb_id);
-
 	free(fb);
+
+	struct gbm_device* gbmd = gbm_bo_get_device(bo);
+	eglDestroyContext(egl.display, egl.context);
+	eglDestroySurface(egl.display, egl.surface);
+	eglTerminate(egl.display);
+
+	if (gbm.surface)
+		gbm_surface_destroy(gbm.surface);
+
+	if (gbmd)
+		gbm_device_destroy(gbmd);
+
+	if (kms.encoder)
+		drmModeFreeEncoder(kms.encoder);
+
+	if (kms.connector)
+		drmModeFreeConnector(kms.connector);
+
+	for (size_t i = 0; i < CONNECTOR_LIMIT; i++)
+		if (!drm.old_crtc[i])
+			continue;
+		else{
+			drmModeSetCrtc(drm.fd, drm.old_crtc[i]->crtc_id,
+				drm.old_crtc[i]->buffer_id, drm.old_crtc[i]->x,
+				drm.old_crtc[i]->y, &drm.connector_id[i], 1,
+				&drm.old_crtc[i]->mode);
+			drmModeFreeCrtc(drm.old_crtc[i]);
+		}
+
+	close(drm.fd);
+	memset(&drm, '\0', sizeof(drm));
+/* do we need to do drmModeFreeResources? */
 }
 
 static struct drm_fb* next_framebuffer(struct gbm_bo* bo)
@@ -443,8 +795,8 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 		gbm.bo = gbm_surface_lock_front_buffer(gbm.surface);
 		fb = next_framebuffer(gbm.bo);
 
-		drmModeSetCrtc(drm.fd, drm.crtc_id, fb->fb_id, 0, 0,
-			&drm.connector_id, 1, drm.mode);
+		drmModeSetCrtc(drm.fd, drm.crtc_id[0], fb->fb_id, 0, 0,
+			&drm.connector_id[0], 1, drm.mode);
 	}
 
 	arcan_bench_register_cost( arcan_video_refresh(fract) );
@@ -454,7 +806,7 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 	fb = next_framebuffer(new_buf);
 
 	int waiting_for_flip = 1;
-	int ret = drmModePageFlip(drm.fd, drm.crtc_id, fb->fb_id,
+	int ret = drmModePageFlip(drm.fd, drm.crtc_id[0], fb->fb_id,
 		DRM_MODE_PAGE_FLIP_EVENT, &waiting_for_flip);
 
 	if (ret)
