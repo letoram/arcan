@@ -32,5 +32,12 @@ typedef void (*video_synchevent)(void);
 void platform_video_synch(uint64_t tick, float fract,
 	video_synchevent pre, video_synchevent post);
 
+/*
+ * string that can be used to identify the underlying video platform,
+ * i.e. driver version, GL string etc. Primarily intended for debug- data
+ * collection.
+ */
+const char* platform_video_capstr();
+
 void platform_video_shutdown();
 #endif

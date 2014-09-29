@@ -40,147 +40,6 @@ static struct {
 	EGLNativeWindowType wnd;
 } egl;
 
-#ifdef WITH_GBMKMS
-
-static char* egl_synchopts[] = {
-	"default", "driver default buffer swap",
-	NULL
-};
-
-enum {
-	DEFAULT,
-	ENDM
-}	synchopt;
-
-#include <gbm.h>
-#include <drm.h>
-#include <xf86drm.h>
-#include <xf86drmMode.h>
-
-static struct {
-	drmModeConnector* conn;
-	drmModeEncoder* enc;
-	drmModeModeInfo mode;
-	drmModeCrtcPtr old_settings;
-
-	struct gbm_surface* surf;
-	struct gbm_device* dev;
-
-	int fd;
-
-	uint32_t fb_id;
-
-} gbmkms = {
-	.fd = -1
-};
-
-#define EGL_NATIVE_DISPLAY gbmkms.dev
-
-/*
- * atexit handler, restore initial mode settings for output device,
- * also used for platform_prepare_external
- */
-static void restore_gbmkms()
-{
-	if (!gbmkms.conn)
-		return;
-
-	drmModeSetCrtc(gbmkms.fd, gbmkms.old_settings->crtc_id,
-		gbmkms.old_settings->buffer_id, gbmkms.old_settings->x,
-		gbmkms.old_settings->y,
-		&gbmkms.conn->connector_id, 1, &gbmkms.old_settings->mode
-	);
-
-	drmModeFreeCrtc(gbmkms.old_settings);
-
-/* NOTE: drmModeRmFB, eglMakeCurrent, eglDestroyContext, eglTerminate */
-}
-
-static bool setup_gbmkms(uint16_t* w, uint16_t* h, bool switchres)
-{
-/* we don't got a command-line argument interface in place to set this up
- * in any other way (and don't want to go the .cfg route) */
-	const char* dev = getenv("ARCAN_OUTPUT_DEVICE");
-	if (!dev)
-		dev = "/dev/dri/card0";
-
-	gbmkms.fd = open(dev, O_RDWR);
-	if (-1 == gbmkms.fd){
-		arcan_warning("platform/egl: "
-			"couldn't open display device node (%s), giving up.\n", dev);
-		return false;
-	}
-
-	gbmkms.dev = gbm_create_device(gbmkms.fd);
-	if (!gbmkms.dev){
-		close(gbmkms.fd);
-		arcan_warning("platform/egl: "
-			"couldn't create GBM device connection, giving up.\n");
-		return false;
-	}
-
-/* enumerate connectors among resources, find the first one that's connected */
-	drmModeRes* reslist = drmModeGetResources(gbmkms.fd);
-	for (int conn_ind = 0; conn_ind < reslist->count_connectors; conn_ind++){
-		gbmkms.conn = drmModeGetConnector(gbmkms.fd, reslist->connectors[conn_ind]);
-		if (!gbmkms.conn)
-			continue;
-
-		if (gbmkms.conn->connection == DRM_MODE_CONNECTED && gbmkms.conn->count_modes > 0)
-			break;
-
-		drmModeFreeConnector(gbmkms.conn);
-		gbmkms.conn = NULL;
-	}
-
-	if (!gbmkms.conn){
-		arcan_warning("platform/egl: "
-			"no active connector found, cannot setup display.\n");
-		close(gbmkms.fd);
-/* any gdb_destroy_device(fd)? */
-		return false;
-	}
-
-/* then find the first encoder that fits the selected connector */
-	for (int enc_ind = 0; enc_ind < reslist->count_encoders; enc_ind++){
-		gbmkms.enc = drmModeGetEncoder(gbmkms.fd, reslist->encoders[enc_ind]);
-		if (!gbmkms.enc)
-			continue;
-
-		if (gbmkms.enc->encoder_id == gbmkms.conn->encoder_id)
-			break;
-
-		drmModeFreeEncoder(gbmkms.enc);
-		gbmkms.enc = NULL;
-	}
-
-	if (!gbmkms.enc){
-		arcan_warning("platform/egl: "
-			"no suitable encoder found, cannot setup display.\n");
-		close(gbmkms.fd);
-		gbmkms.fd = -1;
-		drmModeFreeConnector(gbmkms.conn);
-		gbmkms.conn = NULL;
-		return false;
-	}
-
-/* assumption: first display-mode is the most "suitable",
- * extending this would be sweeping for the user-preferred one */
-	*w = gbmkms.conn->modes[0].hdisplay;
-	*h = gbmkms.conn->modes[0].vdisplay;
-
-	gbmkms.surf = gbm_surface_create(gbmkms.dev, *w, *h,
-		GBM_BO_FORMAT_XRGB8888, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
-	gbmkms.old_settings = drmModeGetCrtc(gbmkms.fd, gbmkms.enc->crtc_id);
-	atexit(restore_gbmkms);
-
-	egl.wnd = (EGLNativeWindowType) gbmkms.surf;
-
-	return true;
-}
-
-#endif
-
 #ifdef WITH_BCM
 
 static char* egl_synchopts[] = {
@@ -296,12 +155,6 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 		EGL_STENCIL_SIZE, 1,
 		EGL_NONE
 	};
-
-#ifdef WITH_GBMKMS
-	if (!setup_gbmkms(&w, &h, fs)){
-		return false;
-	}
-#endif
 
 	GLint major, minor;
 	egl.disp = eglGetDisplay((EGLNativeDisplayType) EGL_NATIVE_DISPLAY);
@@ -504,59 +357,36 @@ void PLATFORM_SYMBOL(_video_setsynch)(const char* arg)
 	}
 }
 
-/*
- * might map this to pre-existing statistics
- */
-static void fliph(int fd, unsigned frame, unsigned sec,
-	unsigned usec, void* udata)
+const char* platform_video_capstr()
 {
-}
+	static char* capstr;
 
-#ifdef WITH_GBMKMS
-static void synchronize()
-{
-	struct pollfd fds = {
-		.fd = gbmkms.fd,
-		.events = POLLIN | POLLERR | POLLHUP
-	};
+	if (!capstr){
+		const char* vendor = (const char*) glGetString(GL_VENDOR);
+		const char* render = (const char*) glGetString(GL_RENDERER);
+		const char* version = (const char*) glGetString(GL_VERSION);
+		const char* shading = (const char*)glGetString(GL_SHADING_LANGUAGE_VERSION);
+		const char* exts = (const char*) glGetString(GL_EXTENSIONS);
 
-	drmEventContext drm = {
-		.version = DRM_EVENT_CONTEXT_VERSION,
-		.page_flip_handler = fliph
-	};
+		size_t interim_sz = 64 * 1024;
+		char* interim = malloc(interim_sz);
+		size_t nw = snprintf(interim, interim_sz, "Video Platform (SDL)\n"
+			"Vendor: %s\nRenderer: %s\nGL Version: %s\n"
+			"GLSL Version: %s\n\n Extensions Supported: \n%s\n\n",
+			vendor, render, version, shading, exts
+		) + 1;
 
-	struct gbm_bo* bo = gbm_surface_lock_front_buffer(gbmkms.surf);
-
-	int fl;
-	if (-1 ==
-		drmModePageFlip(gbmkms.fd, gbmkms.enc->crtc_id,
-			gbmkms.fb_id, DRM_MODE_PAGE_FLIP_EVENT, &fl))
-		arcan_fatal("platform/egl: waiting for flip failure\n");
-
-	int buf;
-	read(gbmkms.fd, &buf, 1);
-	gbm_surface_release_buffer(gbmkms.surf, bo);
-
-
-/* when we have a better global synch- system for
- * multiplexing additional FDs (frameservers, ...)
- * we can register this descriptor here in-stead
- */
-	while (egl.pending){
-		fds.revents = 0;
-		if (-1 == poll(&fds, 1, -1) || (fds.revents & (POLLHUP | POLLERR))
-			return;
-
-		drmHandleEvent(gbmkms.fd, &drm);
+		if (nw < (interim_sz >> 1)){
+			capstr = malloc(nw);
+			memcpy(capstr, interim, nw);
+			free(interim);
+		}
+		else
+			capstr = interim;
 	}
 
-	gbm_surface_release_buffer(gbmkms.surf, gbmkms.bo);
-
-/* depending on strategy and buffer allocation, we can possibly release */
-	if (gbm_surface_has_free_buffers(surf))
-		return;
+	return capstr;
 }
-#endif
 
 void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 	video_synchevent pre, video_synchevent post)
@@ -569,11 +399,6 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 /* render to current back buffer, in normal "externally managed"
  * buffered EGL, this also determines swapping / buffer behavior */
 	eglSwapBuffers(egl.disp, egl.surf);
-
-#ifdef WITH_GBMKMS
-/* might be something queued already, wait for that one */
-	synchronize();
-#endif
 
 	if (post)
 		post();
@@ -591,14 +416,6 @@ void PLATFORM_SYMBOL(_video_shutdown) ()
 	eglDestroyContext(egl.disp, egl.ctx);
 	eglDestroySurface(egl.disp, egl.surf);
   eglTerminate(egl.disp);
-}
-
-void PLATFORM_SYMBOL(_video_timing) (
-	float* vsync, float* stddev, float* variance)
-{
-	*vsync = 16.667;
-	*stddev = 0.01;
-	*variance = 0.01;
 }
 
 void PLATFORM_SYMBOL(_video_minimize) () {}

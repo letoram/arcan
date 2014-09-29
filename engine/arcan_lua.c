@@ -7127,6 +7127,19 @@ int turretcmd(lua_State* ctx)
 }
 */
 
+int getidentstr(lua_State* ctx)
+{
+	LUA_TRACE("system_identstr");
+
+/*
+ * possibly add more data-sources here, key is that they provide
+ * a
+ */
+	lua_pushstring(ctx, platform_video_capstr());
+
+	return 1;
+}
+
 arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 {
 	if (!ctx)
@@ -7378,6 +7391,7 @@ static const luaL_Reg sysfuns[] = {
 {"benchmark_enable",    togglebench      },
 {"benchmark_timestamp", timestamp        },
 {"benchmark_data",      getbenchvals     },
+{"system_identstr",     getidentstr      },
 #ifdef _DEBUG
 {"freeze_image",        freezeimage      },
 #endif
@@ -7709,6 +7723,13 @@ static inline char* lut_kind(arcan_vobject* src)
 		return "dead";
 }
 
+/*
+ * Note: currently, all the dump_ functions are used primarily as
+ * debugging tools. They are parser- safe in the sense that strings
+ * are escaped with Luas rather atrocious [[ [[= [[=== etc.
+ *
+ * If that is a concern, add an escape routine for all [[%s]] patterns.
+ */
 static inline void dump_props(FILE* dst, surface_properties props)
 {
 	fprintf_float(dst, "props.position = {", props.position.x, ", ");

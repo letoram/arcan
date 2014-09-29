@@ -49,6 +49,11 @@ void PLATFORM_SYMBOL(_video_minimize) ()
 	SDL_WM_IconifyWindow();
 }
 
+const char* PLATFORM_SYMBOL(_video_capstr) ()
+{
+	return "sdl/headless";
+}
+
 void PLATFORM_SYMBOL(_video_prepare_external) ()
 {
 }

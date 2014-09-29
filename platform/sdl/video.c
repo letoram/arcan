@@ -100,11 +100,36 @@ void platform_video_setsynch(const char* arg)
 	}
 }
 
-void platform_video_timing(float* o_sync, float* o_stddev, float* o_variance)
+const char* platform_video_capstr()
 {
-	*o_sync = 0;
-	*o_stddev = 0;
-	*o_variance = 0;
+	static char* capstr;
+
+	if (!capstr){
+		const char* vendor = (const char*) glGetString(GL_VENDOR);
+		const char* render = (const char*) glGetString(GL_RENDERER);
+		const char* version = (const char*) glGetString(GL_VERSION);
+		const char* shading = (const char*)glGetString(GL_SHADING_LANGUAGE_VERSION);
+		const char* exts = (const char*) glGetString(GL_EXTENSIONS);
+
+		size_t interim_sz = 64 * 1024;
+		char* interim = malloc(interim_sz);
+		size_t nw = snprintf(interim, interim_sz, "Video Platform (SDL)\n"
+			"Vendor: %s\nRenderer: %s\nGL Version: %s\n"
+			"GLSL Version: %s\n\n Extensions Supported: \n%s\n\n",
+			vendor, render, version, shading, exts
+		) + 1;
+
+/* because waste is a thief.. */
+		if (nw < (interim_sz >> 1)){
+			capstr = malloc(nw);
+			memcpy(capstr, interim, nw);
+			free(interim);
+		}
+		else
+			capstr = interim;
+	}
+
+	return capstr;
 }
 
 bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,

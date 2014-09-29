@@ -88,7 +88,8 @@ static struct {
 	uint32_t crtc_id;
 	uint32_t connector_id;
 
-	drmModeModeInfo *mode;
+	drmModeModeInfo* mode;
+	drmModeRes* res;
 } drm;
 
 static struct {
@@ -102,13 +103,13 @@ static struct {
 } egl;
 
 struct drm_fb {
-	struct gbm_bo *bo;
+	struct gbm_bo* bo;
 	uint32_t fb_id;
 };
 
 struct {
-   drmModeConnector *connector;
-   drmModeEncoder *encoder;
+   drmModeConnector* connector;
+   drmModeEncoder* encoder;
    drmModeModeInfo mode;
    uint32_t fb_id;
 } kms;
@@ -163,9 +164,15 @@ static const char* egl_errstr()
 	}
 }
 
+static void dump_connectors(FILE* dst, drmModeRes* res)
+{
+	fprintf(dst, "FIXME: iterate connectors and dump state for each\n");
+
+}
+
 static int setup_drm(void)
 {
-	drmModeRes *resources;
+	drmModeRes* resources;
 	int i, area;
 
 	const char* device = getenv("ARCAN_VIDEO_DEVICE");
@@ -429,7 +436,7 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 
 /* first frame setup */
 	if (!gbm.bo){
-		glClearColor(0.5, 0.5, 0.5, 1.0);
+		glClearColor(0, 0, 0, 1.0);
 		glClear(GL_COLOR_BUFFER_BIT);
 		eglSwapBuffers(egl.display, egl.surface);
 
@@ -474,6 +481,57 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 		post();
 }
 
+const char* platform_video_capstr()
+{
+	static char* capstr;
+	static size_t capstr_sz;
+
+	static char* compstr;
+
+	if (!capstr){
+		const char* vendor = (const char*) glGetString(GL_VENDOR);
+		const char* render = (const char*) glGetString(GL_RENDERER);
+		const char* version = (const char*) glGetString(GL_VERSION);
+		const char* shading = (const char*)glGetString(GL_SHADING_LANGUAGE_VERSION);
+		const char* exts = (const char*) glGetString(GL_EXTENSIONS);
+
+		size_t interim_sz = 64 * 1024;
+		char* interim = malloc(interim_sz);
+		size_t nw = snprintf(interim, interim_sz, "Video Platform (EGL-DRI)\n"
+			"Vendor: %s\nRenderer: %s\nGL Version: %s\n"
+			"GLSL Version: %s\n\n Extensions Supported: \n%s\n\n",
+			vendor, render, version, shading, exts
+		) + 1;
+
+		if (nw < (interim_sz >> 1)){
+			capstr = malloc(nw);
+			memcpy(capstr, interim, nw);
+			free(interim);
+		}
+		else
+			capstr = interim;
+
+		capstr_sz = nw;
+	}
+
+	if (compstr)
+		free(compstr);
+
+	char* buf;
+	size_t buf_sz;
+	FILE* stream = open_memstream(&buf, &buf_sz);
+	dump_connectors(stream, drm.res);
+	fclose(stream);
+
+	compstr = malloc(capstr_sz + buf_sz + 1);
+	memcpy(compstr, buf, buf_sz);
+	memcpy(compstr+buf_sz, capstr, capstr_sz);
+	compstr[capstr_sz + buf_sz] = '\0';
+	free(buf);
+
+	return compstr;
+}
+
 const char** PLATFORM_SYMBOL(_video_synchopts) ()
 {
 	return (const char**) egl_synchopts;
@@ -483,5 +541,5 @@ void PLATFORM_SYMBOL(_video_prepare_external) () {}
 void PLATFORM_SYMBOL(_video_restore_external) () {}
 void PLATFORM_SYMBOL(_video_shutdown) ()
 {
+	fb_cleanup(gbm.bo, gbm_bo_get_user_data(gbm.bo));
 }
-
