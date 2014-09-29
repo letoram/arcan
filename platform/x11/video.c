@@ -249,7 +249,7 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 		pre();
 
 #ifndef HEADLESS_NOARCAN
-	arcan_bench_register_cost( arcan_video_refresh(fract) );
+	arcan_bench_register_cost( arcan_video_refresh(fract, true) );
 #endif
 
 #if defined(WITH_HEADLESS) || defined(WITH_HEADLESS_MAIN)

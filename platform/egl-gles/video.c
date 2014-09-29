@@ -40,8 +40,6 @@ static struct {
 	EGLNativeWindowType wnd;
 } egl;
 
-#ifdef WITH_BCM
-
 static char* egl_synchopts[] = {
 	"default", "driver default buffer swap",
 	NULL
@@ -51,6 +49,8 @@ enum {
 	DEFAULT,
 	ENDM
 }	synchopt;
+
+#ifdef WITH_BCM
 
 #include <bcm_host.h>
 static bool alloc_bcm_wnd(uint16_t* w, uint16_t* h)
@@ -394,7 +394,7 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 	if (pre)
 		pre();
 
-	arcan_bench_register_cost( arcan_video_refresh(fract) );
+	arcan_bench_register_cost( arcan_video_refresh(fract, true) );
 
 /* render to current back buffer, in normal "externally managed"
  * buffered EGL, this also determines swapping / buffer behavior */
