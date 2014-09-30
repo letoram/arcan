@@ -1,10 +1,19 @@
 #ifndef HAVE_ARCAN_VIDEOPLATFORM
 #define HAVE_ARCAN_VIDEOPLATFORM
 /*
- * initialize the video platform to a display that matches the
+ * Initialize the video platform to a display that matches the
  * specified dimensions. this interface is slated for redesign to
  * cover more adaptive configurations (probing displays, etc.)
+ *
+ * width / height to 0 will force whatever the platform layer decides
+ * the main display would like.
+ *
+ * (frames / fs are hints to where we are running as a window
+ * in another display server, and whether we should request to
+ * fake fullscreen or not.)
  */
+typedef long long arcan_vobj_id;
+
 bool platform_video_init(uint16_t w, uint16_t h,
 	uint8_t bpp, bool fs, bool frames, const char* caption);
 
@@ -38,6 +47,40 @@ void platform_video_synch(uint64_t tick, float fract,
  * collection.
  */
 const char* platform_video_capstr();
+
+typedef uint32_t platform_display_id;
+typedef uint32_t platform_mode_id;
+
+struct monitor_modes {
+	platform_mode_id id;
+	uint16_t width;
+	uint16_t height;
+	uint8_t refresh;
+	uint8_t depth;
+};
+
+/*
+ * get list of available display IDs, these can then be queried for
+ * currently available modes (which is subject to change based on
+ * what connectors a user inserts / removes.
+ */
+platform_display_id* platform_video_query_displays(size_t* count);
+struct monitor_modes* platform_video_query_modes(platform_display_id,
+	size_t* count);
+
+bool platform_video_set_mode(platform_display_id, platform_mode_id mode_id);
+
+/*
+ * map a video object to the output display,
+ * if id is set to ARCAN_VIDEO_BADID, that display output is disabled
+ * by whatever means possible (black+dealloc, sleep display etc.)
+ * if id is set to ARCAN_VIDEO_WORLDID, the primary rendertarget will
+ * be used.
+ *
+ * The object referenced by ID is not allowed to have a ffunc associated
+ * with it, this in order for the platform to be notified when it is removed.
+ */
+bool platform_video_map_display(arcan_vobj_id id, platform_display_id disp);
 
 void platform_video_shutdown();
 #endif

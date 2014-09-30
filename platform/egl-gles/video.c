@@ -260,6 +260,10 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 		EGL_NONE
 	};
 
+/*
+ * for headless EGL, look for EGL_KHR_surfaceless_context
+ */
+
 #ifdef WITH_BCM
 	bcm_host_init();
 #endif

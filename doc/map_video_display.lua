@@ -8,6 +8,9 @@
 -- each output. Note that vid can be any video object with a valid,
 -- textured, backing store (including rendertargets, WORLDID or a
 -- null_surface that subsamples a region of WORLDID).
+-- @note: vid referencing an object with a feed- function
+-- (recordtarget, frameserver, calctarget etc.) is a
+-- terminal state transition
 -- @group: vidsys
 -- @cfunction: videomapping
 -- @related:

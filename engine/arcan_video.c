@@ -577,7 +577,23 @@ static void pop_transfer_persists(
 	}
 }
 
-static void draw_cursor(bool erase)
+void arcan_vint_drawrt(arcan_vobject* outp, int x, int y, int w, int h)
+{
+	float imatr[16];
+	identity_matrix(imatr);
+
+	arcan_shader_activate(arcan_video_display.defaultshdr);
+	arcan_shader_envv(MODELVIEW_MATR, imatr, sizeof(float) * 16);
+	glBindTexture(GL_TEXTURE_2D, outp->vstore->vinf.text.glid);
+
+	glViewport(0, 0, arcan_video_display.width, arcan_video_display.height);
+		arcan_shader_envv(PROJECTION_MATR,
+			arcan_video_display.window_projection, sizeof(float)*16);
+	draw_vobj(0, 0, x + w, y + h, arcan_video_display.mirror_txcos);
+	glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+void arcan_vint_drawcursor(bool erase)
 {
 	float imatr[16];
 	float txmatr[8];
@@ -1930,7 +1946,7 @@ arcan_errc arcan_video_framecyclemode(arcan_vobj_id id, signed mode)
 
 void arcan_video_cursorpos(int newx, int newy, bool absolute)
 {
-	draw_cursor(true);
+	arcan_vint_drawcursor(true);
 
 	if (absolute){
 		arcan_video_display.cursor.x = newx;
@@ -1946,7 +1962,7 @@ void arcan_video_cursorpos(int newx, int newy, bool absolute)
 
 void arcan_video_cursorsize(size_t w, size_t h)
 {
-	draw_cursor(true);
+	arcan_vint_drawcursor(true);
 
 	arcan_video_display.cursor.w = w;
 	arcan_video_display.cursor.h = h;
@@ -1954,7 +1970,7 @@ void arcan_video_cursorsize(size_t w, size_t h)
 
 void arcan_video_cursorstore(arcan_vobj_id src)
 {
-	draw_cursor(true);
+	arcan_vint_drawcursor(true);
 
 	if (arcan_video_display.cursor.vstore){
 		drop_vstore(arcan_video_display.cursor.vstore);
@@ -4954,22 +4970,9 @@ void arcan_video_refresh_GL(float lerp, bool draw)
 			!current_context->stdoutp.readreq)
 			process_readback(&current_context->stdoutp, lerp);
 
-		if (draw){
-			arcan_vobject* outp = &current_context->world;
-			float imatr[16];
-			identity_matrix(imatr);
-
-			arcan_shader_activate(arcan_video_display.defaultshdr);
-			arcan_shader_envv(MODELVIEW_MATR, imatr, sizeof(float) * 16);
-			glBindTexture(GL_TEXTURE_2D, outp->vstore->vinf.text.glid);
-
-			glViewport(0, 0, arcan_video_display.width, arcan_video_display.height);
-			arcan_shader_envv(PROJECTION_MATR,
-				arcan_video_display.window_projection, sizeof(float)*16);
-			draw_vobj(0, 0, arcan_video_display.width,
-				arcan_video_display.height, arcan_video_display.mirror_txcos);
-			glBindTexture(GL_TEXTURE_2D, 0);
-		}
+		if (draw)
+			arcan_vint_drawrt(&current_context->world, 0, 0,
+				arcan_video_display.width, arcan_video_display.height);
 	}
 	else if (draw)
 		process_rendertarget(&current_context->stdoutp, lerp, true);
@@ -4978,7 +4981,7 @@ void arcan_video_refresh_GL(float lerp, bool draw)
  * that means we can safely draw that even when the
  * display as such isn't dirty. */
 	if (arcan_video_display.cursor.vstore && draw)
-		draw_cursor(false);
+		arcan_vint_drawcursor(false);
 
 	arcan_video_display.dirty = 0;
 }

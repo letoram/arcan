@@ -100,6 +100,37 @@ void platform_video_setsynch(const char* arg)
 	}
 }
 
+platform_display_id* platform_video_query_displays(size_t* count)
+{
+	static platform_display_id id = 0;
+	*count = 1;
+	return &id;
+}
+
+bool platform_video_set_mode(platform_display_id disp, platform_mode_id mode)
+{
+	return disp == 0 && mode == 0;
+}
+
+struct monitor_modes* platform_video_query_modes(
+	platform_display_id id, size_t* count)
+{
+	static struct monitor_modes mode = {};
+
+	mode.width  = arcan_video_display.width;
+	mode.height = arcan_video_display.height;
+	mode.depth  = GL_PIXEL_BPP * 8;
+	mode.refresh = 60; /* should be queried */
+
+	*count = 1;
+	return &mode;
+}
+
+bool platform_video_map_display(arcan_vobj_id id, platform_display_id disp)
+{
+	return false; /* no multidisplay /redirectable output support */
+}
+
 const char* platform_video_capstr()
 {
 	static char* capstr;
@@ -119,7 +150,6 @@ const char* platform_video_capstr()
 			vendor, render, version, shading, exts
 		) + 1;
 
-/* because waste is a thief.. */
 		if (nw < (interim_sz >> 1)){
 			capstr = malloc(nw);
 			memcpy(capstr, interim, nw);

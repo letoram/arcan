@@ -112,66 +112,6 @@ static bool setup_xwnd(int w, int h, bool fullscreen)
 	return true;
 }
 
-#ifdef WITH_OFFSCREEN
-/*
- * Requires GL3 support so omitted for the time being.
- */
-bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
-	uint8_t bpp, bool fs, bool frames)
-{
-/*
-	static int visual_attribs[] = {
-               None
- 	};
-	int context_attribs[] = {
- 		GLX_CONTEXT_MAJOR_VERSION_ARB, 3,
-		GLX_CONTEXT_MINOR_VERSION_ARB, 0,
-		None
-	};
-
-	Display* dpy = XOpenDisplay(0);
-  	int fbcount = 0;
-		GLXFBConfig* fbc = NULL;
-		GLXContext ctx;
-		GLXPbuffer pbuf;
-
-	if ( ! (dpy = XOpenDisplay(0)) ){
-		return false;
-	}
-
-	if ( !(fbc = glXChooseFBConfig(dpy, DefaultScreen(dpy), visual_attribs, &fbcount) ) )
-  	return false;
-
-	glXCreateContextAttribsARB = (glXCreateContextAttribsARBProc)
-		glXGetProcAddressARB( (const GLubyte *) "glXCreateContextAttribsARB");
-
-	glXMakeContextCurrentARB = (glXMakeContextCurrentARBProc)
-		glXGetProcAddressARB( (const GLubyte *) "glXMakeContextCurrent");
-
-	if ( !(glXCreateContextAttribsARB && glXMakeContextCurrentARB) ){
- 		fprintf(stderr, "missing support for GLX_ARB_create_context\n");
-   	XFree(fbc);
-   	exit(1);
-	}
-
-	if ( !( ctx = glXCreateContextAttribsARB(dpy, fbc[0], 0, True, context_attribs)) ){
-		fprintf(stderr, "Failed to create opengl context\n");
-		XFree(fbc);
-		exit(1);
-	}
-
-	int pbuffer_attribs[] = {
-		GLX_PBUFFER_WIDTH, w,
-		GLX_PBUFFER_HEIGHT, h,
-		None
-	};
-	pbuf = glXCreatePbuffer(dpy, fbc[0], pbuffer_attribs);
-	XFree(fcb);
-	XSync(dpy, false);
-*/
-}
-
-#else
 bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 	uint8_t bpp, bool fs, bool frames, const char* caption)
 {
@@ -230,7 +170,70 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 
 	return true;
 }
-#endif
+
+bool PLATFORM_SYMBOL(_video_set_mode)(
+	platform_display_id disp, platform_mode_id mode)
+{
+	return disp == 0 && mode == 0;
+}
+
+bool PLATFORM_SYMBOL(_video_map_display)(
+	arcan_vobj_id id, platform_display_id disp)
+{
+	return false; /* no multidisplay /redirectable output support */
+}
+
+struct monitor_modes* PLATFORM_SYMBOL(_video_query_modes)(
+	platform_display_id id, size_t* count)
+{
+	static struct monitor_modes mode = {};
+
+	mode.width  = arcan_video_display.width;
+	mode.height = arcan_video_display.height;
+	mode.depth  = GL_PIXEL_BPP * 8;
+	mode.refresh = 60; /* should be queried */
+
+	*count = 1;
+	return &mode;
+}
+
+const char* PLATFORM_SYMBOL(_video_capstr)()
+{
+	static char* buf;
+	static size_t buf_sz;
+
+	if (buf){
+		free(buf);
+		buf = NULL;
+	}
+
+	FILE* stream = open_memstream(&buf, &buf_sz);
+	if (!stream)
+		return "platform/x11 capstr(), couldn't create memstream";
+
+	const char* vendor  = (const char*) glGetString(GL_VENDOR);
+	const char* render  = (const char*) glGetString(GL_RENDERER);
+	const char* version = (const char*) glGetString(GL_VERSION);
+	const char* shading = (const char*) glGetString(GL_SHADING_LANGUAGE_VERSION);
+	const char* exts    = (const char*) glGetString(GL_EXTENSIONS);
+
+	fprintf(stream, "Video Platform (EGL-X11)\n"
+		"Vendor: %s\nRenderer: %s\nGL Version: %s\n"
+		"GLSL Version: %s\n\n Extensions Supported: \n%s\n\n",
+		vendor, render, version, shading, exts
+	);
+
+	fclose(stream);
+
+	return buf;
+}
+
+platform_display_id* PLATFORM_SYMBOL(_video_query_displays)(size_t* count)
+{
+	static platform_display_id id = 0;
+	*count = 1;
+	return &id;
+}
 
 const char** PLATFORM_SYMBOL(_video_synchopts)(void)
 {
@@ -271,14 +274,6 @@ void PLATFORM_SYMBOL(_video_shutdown) ()
 	glXDestroyContext(x11.xdisp, x11.ctx);
   XDestroyWindow(x11.xdisp, x11.xwnd);
   XCloseDisplay(x11.xdisp);
-}
-
-void PLATFORM_SYMBOL(_video_timing) (
-	float* vsync, float* stddev, float* variance)
-{
-	*vsync = 16.667;
-	*stddev = 0.01;
-	*variance = 0.01;
 }
 
 void PLATFORM_SYMBOL(_video_minimize) () {}
