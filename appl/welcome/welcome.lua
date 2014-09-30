@@ -93,6 +93,7 @@ function welcome()
 	show_image(datawindow);
 	show_image(argwindow);
 
+	print( system_identstr() );
 end
 
 function welcome_input( inputtbl )

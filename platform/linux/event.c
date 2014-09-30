@@ -30,6 +30,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+
 #include <linux/input.h>
 
 #include "arcan_shmif.h"
@@ -38,10 +39,14 @@
 #include "arcan_event.h"
 #include "arcan_video.h"
 #include "arcan_videoint.h"
+#include "keycode_xlate.h"
+
+#include <linux/vt.h>
+#include <linux/major.h>
+#include <linux/kd.h>
 
 #include <sys/inotify.h>
 
-#include "keycode_xlate.h"
 
 /*
  * prever scanning device nodes as sysfs/procfs
@@ -1051,8 +1056,14 @@ const char* arcan_event_devlabel(int devid)
 		"no identifier" : iodev.nodes[devid].label;
 }
 
+static int linux_platform_kmode;
 void platform_event_deinit(struct arcan_evctx* ctx)
 {
+#ifdef KDSKBMUTE
+			ioctl(STDIN_FILENO, KDGSKBMUTE, 0) &&
+#endif
+			ioctl(STDIN_FILENO, KDGKBMODE, linux_platform_kmode);
+
 	/*
 	 * kill descriptors and pollset
 	 * keep source paths in order to rebuild (adopt style),
@@ -1080,6 +1091,20 @@ void platform_event_init(arcan_evctx* ctx)
 {
 	notify_fd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
 	init_keyblut();
+
+/*
+ * if (ioctl(STDIN_FILENO, KDGKBMODE, &linux_platform_kmode) ){
+		arcan_warning("(linux-platform) couldn't get keyboard mode\n");
+	}
+	else
+		if (
+#ifdef KDSKBMUTE
+ioctl(STDIN_FILENO, KDGSKBMUTE, 1) &&
+#endif
+			ioctl(STDIN_FILENO, KDSKBMODE, K_OFF)){
+		arcan_warning("(linux-platform) couldn't mute keyboard\n");
+	}
+  */
 
 	if (-1 == notify_fd || inotify_add_watch(
 		notify_fd, NOTIFY_SCAN_DIR, IN_CREATE) == -1){

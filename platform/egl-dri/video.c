@@ -799,7 +799,7 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 			&drm.connector_id[0], 1, drm.mode);
 	}
 
-	arcan_bench_register_cost( arcan_video_refresh(fract) );
+	arcan_bench_register_cost( arcan_video_refresh(fract, true) );
 	eglSwapBuffers(egl.display, egl.surface);
 
 	struct gbm_bo* new_buf = gbm_surface_lock_front_buffer(gbm.surface);

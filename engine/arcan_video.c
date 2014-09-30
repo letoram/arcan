@@ -802,7 +802,7 @@ unsigned arcan_video_extpopcontext(arcan_vobj_id* dst)
 	size_t dsz;
 
 	FLAG_DIRTY();
-	arcan_video_refresh(0.0);
+	arcan_video_refresh(0.0, false);
 	bool ss = arcan_video_screenshot((void*)&dstbuf, &dsz) == ARCAN_OK;
 	int rv = arcan_video_popcontext();
 
@@ -835,7 +835,7 @@ signed arcan_video_extpushcontext(arcan_vobj_id* dst)
 	size_t dsz;
 
 	FLAG_DIRTY();
-	arcan_video_refresh(0.0);
+	arcan_video_refresh(0.0, false);
 	bool ss = arcan_video_screenshot(&dstbuf, &dsz) == ARCAN_OK;
 	int rv = arcan_video_pushcontext();
 
@@ -4626,12 +4626,14 @@ static size_t process_rendertarget(
 	}
 /* drawing to display, only when FBO support is disabled */
 	else if (scissor){
-		glScissor(0, 0, arcan_video_display.width, arcan_video_display.width);
+		glScissor(0, 0, arcan_video_display.width, arcan_video_display.height);
 		glViewport(0, 0, arcan_video_display.width, arcan_video_display.height);
 	}
 
 	if (!tgt->noclear)
 		glClear(GL_COLOR_BUFFER_BIT);
+	else
+		arcan_warning("skipped clearing\n");
 
 	size_t pc = 0;
 
@@ -4918,7 +4920,7 @@ static inline void process_readback(struct rendertarget* tgt, float fract)
 	}
 }
 
-void arcan_video_refresh_GL(float lerp)
+void arcan_video_refresh_GL(float lerp, bool draw)
 {
 	arcan_video_display.c_lerp = lerp;
 
@@ -4941,7 +4943,7 @@ void arcan_video_refresh_GL(float lerp)
  * then the readbacks for full-screen will be correct
  */
 	if (current_context->world.vstore){
-		glScissor(0, 0, arcan_video_display.canvasw, arcan_video_display.canvasw);
+		glScissor(0, 0, arcan_video_display.canvasw, arcan_video_display.canvash);
 		glViewport(0, 0, arcan_video_display.canvasw, arcan_video_display.canvash);
 
 		glBindFramebuffer(GL_FRAMEBUFFER, arcan_video_display.main_fbo);
@@ -4952,40 +4954,41 @@ void arcan_video_refresh_GL(float lerp)
 			!current_context->stdoutp.readreq)
 			process_readback(&current_context->stdoutp, lerp);
 
-		arcan_vobject* outp = &current_context->world;
-		float imatr[16];
-		identity_matrix(imatr);
+		if (draw){
+			arcan_vobject* outp = &current_context->world;
+			float imatr[16];
+			identity_matrix(imatr);
 
-		arcan_shader_activate(arcan_video_display.defaultshdr);
-		arcan_shader_envv(MODELVIEW_MATR, imatr, sizeof(float) * 16);
-		glBindTexture(GL_TEXTURE_2D, outp->vstore->vinf.text.glid);
+			arcan_shader_activate(arcan_video_display.defaultshdr);
+			arcan_shader_envv(MODELVIEW_MATR, imatr, sizeof(float) * 16);
+			glBindTexture(GL_TEXTURE_2D, outp->vstore->vinf.text.glid);
 
-/* should be moved to platform layer */
-	glViewport(0, 0, arcan_video_display.width, arcan_video_display.height);
-	arcan_shader_envv(PROJECTION_MATR,
-		arcan_video_display.window_projection, sizeof(float)*16);
-		draw_vobj(0, 0, arcan_video_display.width,
-			arcan_video_display.height, arcan_video_display.mirror_txcos);
-		glBindTexture(GL_TEXTURE_2D, 0);
+			glViewport(0, 0, arcan_video_display.width, arcan_video_display.height);
+			arcan_shader_envv(PROJECTION_MATR,
+				arcan_video_display.window_projection, sizeof(float)*16);
+			draw_vobj(0, 0, arcan_video_display.width,
+				arcan_video_display.height, arcan_video_display.mirror_txcos);
+			glBindTexture(GL_TEXTURE_2D, 0);
+		}
 	}
-	else
+	else if (draw)
 		process_rendertarget(&current_context->stdoutp, lerp, true);
 
 /* cursor will always be erased on change,
  * that means we can safely draw that even when the
- * display as such isn't dirt. */
-	if (arcan_video_display.cursor.vstore)
+ * display as such isn't dirty. */
+	if (arcan_video_display.cursor.vstore && draw)
 		draw_cursor(false);
 
 	arcan_video_display.dirty = 0;
 }
 
-unsigned arcan_video_refresh(float tofs)
+unsigned arcan_video_refresh(float tofs, bool nodraw)
 {
 /* for less interactive / latency sensitive applications the delta >
  * with vsync on, the delta > .. could be removed */
 	long long int pre = arcan_timemillis();
-		arcan_video_refresh_GL(tofs);
+		arcan_video_refresh_GL(tofs, nodraw);
 	long long int post = arcan_timemillis();
 
 	return post - pre;

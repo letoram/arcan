@@ -72,7 +72,7 @@ void platform_video_synch(uint64_t tick_count, float fract,
 	if (pre)
 		pre();
 
-	arcan_bench_register_cost( arcan_video_refresh(fract) );
+	arcan_bench_register_cost( arcan_video_refresh(fract, true) );
 
 	SDL_GL_SwapBuffers();
 
