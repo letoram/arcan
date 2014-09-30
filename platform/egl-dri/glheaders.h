@@ -4,6 +4,7 @@
 #include "../video_platform.h"
 
 #include <EGL/egl.h>
+#include <EGL/eglext.h>
 
 #ifdef WITH_OGL3
 

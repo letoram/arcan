@@ -48,6 +48,11 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 {
 	static bool first_init = true;
 
+	if (width == 0 || height == 0){
+		width = 640;
+		height = 480;
+	}
+
 	if (first_init){
 		const char* connkey = getenv("ARCAN_CONNPATH");
 		const char* shmkey = NULL;
@@ -71,6 +76,17 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 		if (shms.addr == NULL){
 			arcan_warning("couldn't connect to parent\n");
 			return false;
+		}
+
+		const char* argstr = getenv("ARCAN_ARG");
+		struct arg_arr* args = argstr ? arg_unpack(argstr) : NULL;
+
+		if (argstr){
+			const char* val;
+			if (arg_lookup(args, "width", 0, &val))
+				width = strtoul(val, NULL, 10);
+			if (arg_lookup(args, "height", 0, &val))
+				height = strtoul(val, NULL, 10);
 		}
 
 		shms.addr->glsource = true;

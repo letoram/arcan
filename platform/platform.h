@@ -8,6 +8,8 @@
 #ifndef HAVE_PLATFORM_HEADER
 #define HAVE_PLATFORM_HEADER
 
+#include "video_platform.h"
+
 #define BADFD -1
 #include <pthread.h>
 #include <semaphore.h>
@@ -25,7 +27,6 @@ int arcan_sem_init(sem_handle*, unsigned value);
 int arcan_sem_destroy(sem_handle);
 
 typedef int8_t arcan_errc;
-typedef long long arcan_vobj_id;
 typedef int arcan_aobj_id;
 
 long long int arcan_timemillis();

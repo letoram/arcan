@@ -8,17 +8,11 @@
  *
  * 3. work with both GLESv3 and OpenGL2+
  *
- * 4. controlling pty - changes, how to behave (perhaps more of a linux/input)?
- *
  * 5. external launch
  *
  * 6. implement synchronization options and synchronization switching
  *
  * 7. hotplug events
- *
- * 8. graphics debugging string for the inevitable "my XXX doesn't work"
- *
- * 9. reset on shutdown
  */
 #include <stdio.h>
 #include <string.h>
@@ -101,6 +95,12 @@ static struct {
 } drm;
 
 static struct {
+	arcan_vobj_id source;
+	unsigned display_slot;
+
+} displays[CONNECTOR_LIMIT];
+
+static struct {
 	EGLConfig config;
 	EGLContext context;
 	EGLDisplay display;
@@ -129,9 +129,51 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 	uint8_t bpp, bool fs, bool frames, const char* title)
 {
 	arcan_fatal("not yet supported");
+/* look into render-nodes support,
+ * we can check for /dev/dri/renderD and just connect / draw
+ * to them.
+ * alternatively, we have to open device_name,
+ * and use drm
+ * should probably just move into its own video_headless.c
+ * and be done with it */
 }
 
 #else
+
+bool PLATFORM_SYMBOL(_video_set_mode)(
+	platform_display_id disp, platform_mode_id mode)
+{
+	return disp == 0 && mode == 0;
+}
+
+bool PLATFORM_SYMBOL(_video_map_display)(
+	arcan_vobj_id id, platform_display_id disp)
+{
+/* add ffunc to the correct display */
+
+	return false; /* no multidisplay /redirectable output support */
+}
+
+struct monitor_modes* PLATFORM_SYMBOL(_video_query_modes)(
+	platform_display_id id, size_t* count)
+{
+	static struct monitor_modes mode = {};
+
+	mode.width  = arcan_video_display.width;
+	mode.height = arcan_video_display.height;
+	mode.depth  = GL_PIXEL_BPP * 8;
+	mode.refresh = 60; /* should be queried */
+
+	*count = 1;
+	return &mode;
+}
+
+platform_display_id* PLATFORM_SYMBOL(_video_query_displays)(size_t* count)
+{
+	static platform_display_id id = 0;
+	*count = 1;
+	return &id;
+}
 
 static void drm_mode_tos(FILE* dst, unsigned val)
 {
@@ -835,53 +877,35 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 
 const char* platform_video_capstr()
 {
-	static char* capstr;
-	static size_t capstr_sz;
+	static char* buf;
+	static size_t buf_sz;
 
-	static char* compstr;
-
-	if (!capstr){
-		const char* vendor = (const char*) glGetString(GL_VENDOR);
-		const char* render = (const char*) glGetString(GL_RENDERER);
-		const char* version = (const char*) glGetString(GL_VERSION);
-		const char* shading = (const char*)glGetString(GL_SHADING_LANGUAGE_VERSION);
-		const char* exts = (const char*) glGetString(GL_EXTENSIONS);
-
-		size_t interim_sz = 64 * 1024;
-		char* interim = malloc(interim_sz);
-		size_t nw = snprintf(interim, interim_sz, "Video Platform (EGL-DRI)\n"
-			"Vendor: %s\nRenderer: %s\nGL Version: %s\n"
-			"GLSL Version: %s\n\n Extensions Supported: \n%s\n\n",
-			vendor, render, version, shading, exts
-		) + 1;
-
-		if (nw < (interim_sz >> 1)){
-			capstr = malloc(nw);
-			memcpy(capstr, interim, nw);
-			free(interim);
-		}
-		else
-			capstr = interim;
-
-		capstr_sz = nw;
+	if (buf){
+		free(buf);
+		buf = NULL;
 	}
 
-	if (compstr)
-		free(compstr);
-
-	char* buf;
-	size_t buf_sz;
 	FILE* stream = open_memstream(&buf, &buf_sz);
+	if (!stream)
+		return "platform/egl-dri capstr(), couldn't create memstream\n";
+
+	const char* vendor = (const char*) glGetString(GL_VENDOR);
+	const char* render = (const char*) glGetString(GL_RENDERER);
+	const char* version = (const char*) glGetString(GL_VERSION);
+	const char* shading = (const char*)glGetString(GL_SHADING_LANGUAGE_VERSION);
+	const char* exts = (const char*) glGetString(GL_EXTENSIONS);
+	const char* eglexts = (const char*)eglQueryString(egl.display,EGL_EXTENSIONS);
+
+	fprintf(stream, "Video Platform (EGL-DRI)\n"
+			"Vendor: %s\nRenderer: %s\nGL Version: %s\n"
+			"GLSL Version: %s\n\n Extensions Supported: \n%s\n\n"
+			"EGL Extensions supported: \n%s\n\n",
+			vendor, render, version, shading, exts, eglexts);
+
 	dump_connectors(stream, drm.res);
 	fclose(stream);
 
-	compstr = malloc(capstr_sz + buf_sz + 1);
-	memcpy(compstr, buf, buf_sz);
-	memcpy(compstr+buf_sz, capstr, capstr_sz);
-	compstr[capstr_sz + buf_sz] = '\0';
-	free(buf);
-
-	return compstr;
+	return buf;
 }
 
 const char** PLATFORM_SYMBOL(_video_synchopts) ()

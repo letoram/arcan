@@ -89,8 +89,7 @@ static void* segthread(void* arg)
 static void mapseg(int evfd, const char* key)
 {
 	struct arcan_shmif_cont shms = arcan_shmif_acquire(
-		key, SHMIF_INPUT, true, true
-	);
+		key, SEGID_GAME, SHMIF_ACQUIRE_FATALFAIL);
 
 	struct seginf* newseg = malloc(sizeof(struct seginf));
 
@@ -112,7 +111,7 @@ void arcan_frameserver_avfeed_run(const char* resource, const char* keyfile)
 {
 /*	struct arg_arr* args = arg_unpack(resource); */
 	struct arcan_shmif_cont shms = arcan_shmif_acquire(
-		keyfile, SHMIF_INPUT, true, false);
+		keyfile, SEGID_GAME, SHMIF_ACQUIRE_FATALFAIL);
 
 	struct arcan_evctx inevq, outevq;
 	struct arcan_event ev;

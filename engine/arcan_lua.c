@@ -55,6 +55,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <unistd.h>
+#include <stddef.h>
 #include <signal.h>
 #include <errno.h>
 #include <pthread.h>
@@ -68,8 +69,6 @@
 #include <math.h>
 
 #include <assert.h>
-
-#include GL_HEADERS
 
 #include <lua.h>
 #include <lualib.h>
@@ -112,6 +111,8 @@
 #include "arcan_frameserver_backend.h"
 #include "arcan_shmif.h"
 #include "arcan_target_launcher.h"
+
+#include GL_HEADERS
 
 #define arcan_luactx lua_State
 #include "arcan_lua.h"
@@ -3649,20 +3650,82 @@ static int videocanvasrsz(lua_State* ctx)
 static int videodisplay(lua_State* ctx)
 {
 	LUA_TRACE("video_displaymodes");
-	arcan_warning("video_displaymodes is still a stub,"
-		"the function will be used to get a list of available "
-		"display configurations (resolution, depth, ...) "
-		"or to set a specific one for a specific display ");
 
-	return 0;
+	if (lua_gettop(ctx) > 0){
+		platform_display_id id = luaL_checknumber(ctx, 1);
+		platform_mode_id mode = luaL_checknumber(ctx, 2);
+		lua_pushboolean(ctx, platform_video_set_mode(id, mode));
+		return 1;
+	}
+
+	size_t count;
+	platform_display_id* disps = platform_video_query_displays(&count);
+
+	lua_newtable(ctx);
+	int dtop = lua_gettop(ctx);
+
+	for (size_t i = 0; i < count; i++){
+		size_t mcount;
+		struct monitor_modes* modes = platform_video_query_modes(disps[i], &mcount);
+
+		for (size_t j = 0; j < mcount; j++){
+			lua_pushnumber(ctx, i + 1);
+			lua_newtable(ctx);
+			int jtop = lua_gettop(ctx);
+
+			lua_pushstring(ctx, "cardid");
+			lua_pushnumber(ctx, 0);
+			lua_rawset(ctx, jtop);
+
+			lua_pushstring(ctx, "displayid");
+			lua_pushnumber(ctx, disps[i]);
+			lua_rawset(ctx, jtop);
+
+			lua_pushstring(ctx, "moderef");
+			lua_pushnumber(ctx, modes[j].id);
+			lua_rawset(ctx, jtop);
+
+			lua_pushstring(ctx, "width");
+			lua_pushnumber(ctx, modes[j].width);
+			lua_rawset(ctx, jtop);
+
+			lua_pushstring(ctx, "height");
+			lua_pushnumber(ctx, modes[j].height);
+			lua_rawset(ctx, jtop);
+
+			lua_pushstring(ctx, "refresh");
+			lua_pushnumber(ctx, modes[j].refresh);
+			lua_rawset(ctx, jtop);
+
+			lua_pushstring(ctx, "depth");
+			lua_pushnumber(ctx, modes[j].depth);
+			lua_rawset(ctx, jtop);
+
+			lua_rawset(ctx, dtop);
+		}
+	}
+
+	return 1;
 }
 
 static int videomapping(lua_State* ctx)
 {
 	LUA_TRACE("map_video_display");
-	arcan_warning("video_map_display is still a stub,"
-		"the function will be used to associate a rendertarget "
-		"or a video object as the primary recipient of a display.");
+
+	arcan_vobj_id vid = luavid_tovid( luaL_checknumber(ctx, 1) );
+	platform_display_id id = luaL_checknumber(ctx, 2);
+
+	if (vid != ARCAN_VIDEO_WORLDID && vid != ARCAN_EID){
+		arcan_vobject* vobj = arcan_video_getobject(vid);
+		if (!vobj)
+			arcan_fatal("map_video_display(), invalid vid "
+				"requested %"PRIxVOBJ" \n", vid);
+		if (vobj->feed.ffunc)
+			arcan_fatal("map_video_display(), display-mapped vobj "
+				"cannot be connected to a dynamic handler");
+	}
+
+	lua_pushboolean(ctx, platform_video_map_display(id, vid));
 
 	return 0;
 }

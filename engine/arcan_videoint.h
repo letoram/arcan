@@ -17,6 +17,11 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,USA
  */
 
+/*
+ * Structures and functions primarily intended for low-level components,
+ * i.e. platform drivers and (in rare circumstances) -script system mapping.
+ */
+
 #ifndef _HAVE_ARCAN_VIDEOINT
 #define _HAVE_ARCAN_VIDEOINT
 
@@ -375,6 +380,9 @@ void arcan_video_joinasynch(arcan_vobject* img, bool emit, bool force);
 struct rendertarget* find_rendertarget(arcan_vobject* vobj);
 void readback_texture(int glid,
 	unsigned width, unsigned height, void* dstbuf, size_t buf_sz);
+
+void arcan_vint_drawrt(arcan_vobject*, int x, int y, int w, int h);
+void arcan_vint_drawcursor(bool erase);
 
 unsigned arcan_video_worldtex();
 
