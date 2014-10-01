@@ -1379,6 +1379,7 @@ static int buildshader(lua_State* ctx)
 	const char* label = luaL_checkstring(ctx, 3);
 
 	arcan_shader_id rv = arcan_shader_build(label, NULL, vprog, fprog);
+
 	lua_pushnumber(ctx, rv);
 	return 1;
 }
@@ -1389,6 +1390,7 @@ static int sharestorage(lua_State* ctx)
 
 	arcan_vobj_id src = luaL_checkvid(ctx, 1, NULL);
 	arcan_vobj_id dst = luaL_checkvid(ctx, 2, NULL);
+
 
 	arcan_errc rv = arcan_video_shareglstore(src, dst);
 	lua_pushboolean(ctx, rv == ARCAN_OK);
@@ -7638,6 +7640,15 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 	for (size_t i = 0; i < sizeof(consttbl) / sizeof(consttbl[0]); i++)
 		arcan_lua_setglobalint(ctx, consttbl[i].key, consttbl[i].val);
 
+#if defined(GL_ES_VERSION_2_0)
+#if defined(GL_ES_VERSION_3_0)
+	arcan_lua_setglobalstr(ctx, "GL_VERSION", "GLES3");
+#else
+	arcan_lua_setglobalstr(ctx, "GL_VERSION", "GLES2");
+#endif
+#else
+	arcan_lua_setglobalstr(ctx, "GL_VERSION", "GL21");
+#endif
 	arcan_lua_setglobalstr(ctx, "FRAMESERVER_MODES", FRAMESERVER_MODESTRING );
 	arcan_lua_setglobalstr(ctx, "THEMENAME", "deprecated, use APPLID" );
 	arcan_lua_setglobalstr(ctx, "APPLID", arcan_appl_id());

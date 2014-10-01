@@ -171,6 +171,7 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 	return true;
 }
 
+#ifndef HEADLESS_NOARCAN
 bool PLATFORM_SYMBOL(_video_set_mode)(
 	platform_display_id disp, platform_mode_id mode)
 {
@@ -196,6 +197,7 @@ struct monitor_modes* PLATFORM_SYMBOL(_video_query_modes)(
 	*count = 1;
 	return &mode;
 }
+#endif
 
 const char* PLATFORM_SYMBOL(_video_capstr)()
 {

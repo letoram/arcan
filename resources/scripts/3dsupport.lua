@@ -9,6 +9,29 @@
 
 local support3d = {};
 
+local build_override = build_shader;
+
+function build_shader(vertex, fragment, label)
+	if (GL_VERSION == "GLES2" or GL_VERSION == "GLES3") then
+		local prefix = "";
+
+		if (string.find(fragment, "#version") == nil) then
+			prefix = "#version 100\n";
+		end
+
+		if (string.find(fragment, "precision mediump float") == nil
+			and string.find(fragment, "precision highp float") == nil
+			and string.find(fragment, "precision lowp float") == nil) then
+			prefix = prefix .. "precision mediump float;\n";
+		end
+
+		fragment = prefix .. fragment;
+		print("new fragment:\n\n", fragment);
+	end
+
+	return build_override(vertex, fragment, label);
+end
+
 -- default version 120 if none is found in shader
 SHADER_FORCE_VERSION = true
 

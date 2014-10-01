@@ -464,15 +464,16 @@ static void libretro_vidcb(const void* data, unsigned width,
 
 /* method one, just read color attachment, when this is working,
  * switch to PBO transfers and possible Flip-Flop FBOs */
+#ifndef GL_NO_GETTEXIMAGE
   glBindTexture(GL_TEXTURE_2D, retroctx.fbos[retroctx.fbo_ind].col);
 	glGetTexImage(GL_TEXTURE_2D, 0,
 		GL_RGBA, GL_UNSIGNED_BYTE, retroctx.shmcont.vidp);
 	glBindTexture(GL_TEXTURE_2D, 0);
-
+#else
 /* method two, pixels of buffer out */
-/*  glBindFramebuffer(GL_READ_FRAMEBUFFER, retroctx.fbo_id);
-  glReadPixels(0, 0, outw, outh,
-  GL_RGBA, GL_UNSIGNED_BYTE, retroctx.vidp); */
+	glBindFramebuffer(GL_READ_FRAMEBUFFER, retroctx.fbos[retroctx.fbo_ind].col);
+		glReadPixels(0, 0, outw, outh,
+			GL_RGBA, GL_UNSIGNED_BYTE, retroctx.shmcont.vidp);
 
 /*	uint64_t sum = 0;
 		for (int i = 0; i < (outw * outh); i++)
@@ -482,6 +483,7 @@ static void libretro_vidcb(const void* data, unsigned width,
 
 /*		for (int i = 0; i < (outw * outh) / 4; i++)
  *			((uint32_t*)retroctx.vidp)[i] = 0xff00ffff; */
+#endif
 		return;
 	}
 #endif

@@ -31,18 +31,11 @@ function welcome()
 	contact@arcan-fe.com - E-mail contact\n\r
 	\ffonts/default.ttf,14\b\n\nDetected settings:\!b\n\r]];
 
-	gamelst = list_games( {} );
-
-	if (gamelst == nil) then
-		gamelst = {};
-	end
-
 	if (LIBPATH == nil) then
 		LIBPATH = "not found";
 	end
 
 	local st = {welcomestr, [[\ffonts/default.ttf,12]]};
-	table.insert(st, string.format("# Games:\\t\\t%d", #gamelst));
 	table.insert(st, string.format("Resolution:\\t\\t%d x %d", VRESW, VRESH));
 	table.insert(st, string.format("Clock:\\t\\t%d Hz", CLOCKRATE));
 	table.insert(st, string.format("Themepath:\\t\\t%s", string.gsub(THEMEPATH, "\\", "\\\\")));
@@ -50,32 +43,29 @@ function welcome()
 	table.insert(st, string.format("Libpath:\\t\\t%s", string.gsub(LIBPATH, "\\", "\\\\")));
 	table.insert(st, string.format("Binpath:\\t\\t%s", string.gsub(BINPATH, "\\", "\\\\")));
 	table.insert(st, string.format("Internal:\\t\\t%s", tostring(INTERNALMODE)));
+	table.insert(st, string.format("GL Version:\\t\\t%s", GL_VERSION));
 
 	datawindow = render_text(table.concat(st, "\\n\\r"));
 	argwindow = render_text(
 [[\n\r\ffonts/default.ttf,14\t\bCommand-Line Arguments:\!b
 \n\r\ffonts/default.ttf,12
--w res  \t(default: 640)\n\r
--h res  \t(default: 480)\n\r
--x winx \tforce window x position\n\r
--y winy \tforce window y position\n\r
--f      \tswitch display to fullscreen\n\r
--m      \ttoggle conservative memory mode\n\r
--M rate \tsplit open a debug session\n\r
--O src  \tmonitor theme or LOG:fname\n\r
--s      \ttoggle borderless window mode\n\r
--p path \tset resourcepath\n\r
--t path \tset themepath\n\r
--o fsrv \tforce frameserver\n\r
--l lib  \tforce internal launch hijacklib\n\r
--d db   \tset database\n\r
--g      \tincrease debuglevel by one\n\r
--a nms  \tmultisampling\n\r
--v vs   \tdisable VSYNC\n\r
--V      \tdisable waiting between frames\n\r
--F      \tvsync prewake (range, 0..1)\n\r
--S      \tsilence audio output\n\r
-]] );
+-w\t--width       \tdesired width (default: 640)\n\r
+-h\t--height      \tdesired height (default: 480)\n\r
+-f\t--fullscreen  \ttoggle fullscreen mode ON (default: off)\n\r
+-m\t--conservative\ttoggle conservative memory management (default: off)\n\r
+-W\t--sync-strat  \tspecify video synchronization strategy (see below)\n\r
+-M\t--monitor     \tenable monitor session (arg: samplerate, ticks/sample)\n\r
+-O\t--monitor-out \tLOG:fname or applname\n\r
+-q\t--timedump    \twait n ticks, dump snapshot to resources/logs/timedump\n\r
+-s\t--windowed    \ttoggle borderless window mode\n\r
+-p\t--rpath       \tchange default searchpath for shared resources\n\r
+-t\t--applpath    \tchange default searchpath for applications\n\r
+-b\t--fallback    \tset a recovery/fallback application if appname crashes\n\r
+-d\t--database    \tsqlite database (default: arcandb.sqlite)\n\r
+-g\t--debug       \ttoggle debug output (events, coredumps, etc.)\n\r
+-a\t--multisamples\tset number of multisamples (default 4, disable 0)\n\r
+-S\t--nosound     \tdisable audio output\n\n
+]]);
 
 	move_image(datawindow, VRESW - image_surface_properties(argwindow).width, 38);
 	move_image(argwindow, 10, 38);

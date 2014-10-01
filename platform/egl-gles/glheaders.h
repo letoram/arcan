@@ -29,9 +29,13 @@
 #ifdef WITH_GLES3
 	#include <GLES3/gl3.h>
 	#include <GLES3/gl3ext.h>
+
+#define GL_NO_GETTEXIMAGE
+
 #else
 	#include <GLES2/gl2.h>
 	#include <GLES2/gl2ext.h>
+#define GL_NO_GETTEXIMAGE
 
 /*
  * A lot of the engine was made with these available, but

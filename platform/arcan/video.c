@@ -16,6 +16,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <unistd.h>
 
 #include "../video_platform.h"
 #define WITH_HEADLESS
@@ -41,7 +42,20 @@ static enum {
 	ADAPTIVE
 } syncopt;
 
+static struct monitor_modes mmodes[] = {
+	{
+		.id = 0,
+		.width = 640,
+		.height = 480,
+		.refresh = 60,
+		.depth = GL_PIXEL_BPP_BIT
+	},
+};
+
 static struct arcan_shmif_cont shms;
+static struct {
+	unsigned refresh;
+} synch_vals;
 
 bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	bool fs, bool frames, const char* title)
@@ -129,11 +143,6 @@ void platform_video_restore_external()
 	lwa_video_restore_external();
 }
 
-void platform_video_timing(float* os, float* std, float* ov)
-{
-	lwa_video_timing(os, std, ov);
-}
-
 void platform_video_setsynch(const char* arg)
 {
 	int ind = 0;
@@ -153,8 +162,55 @@ const char** platform_video_synchopts()
 	return (const char**) synchopts;
 }
 
+static struct monitor_modes* get_platform_mode(platform_mode_id mode)
+{
+	for (size_t i = 0; i < sizeof(mmodes)/sizeof(mmodes[0]); i++){
+		if (mmodes[i].id == mode)
+			return &mmodes[i];
+	}
+
+	return NULL;
+}
+
+bool platform_video_set_mode(platform_display_id disp, platform_mode_id newmode)
+{
+	struct monitor_modes* mode = get_platform_mode(newmode);
+	if (!mode)
+		return false;
+
+	if (arcan_shmif_resize(&shms, mode->width, mode->height))
+	{
+		arcan_video_display.width = mode->width;
+		arcan_video_display.height = mode->height;
+		synch_vals.refresh = mode->refresh;
+		return true;
+	}
+
+	return false;
+}
+
+bool platform_video_map_display(arcan_vobj_id id, platform_display_id disp)
+{
+	return false;
+}
+
 static void stub()
 {
+}
+
+struct monitor_modes* platform_video_query_modes(
+	platform_display_id id, size_t* count)
+{
+	*count = sizeof(mmodes) / sizeof(mmodes[0]);
+
+	return mmodes;
+}
+
+platform_display_id* platform_video_query_displays(size_t* count)
+{
+	static platform_display_id id;
+	*count = 1;
+	return &id;
 }
 
 void platform_video_synch(uint64_t tick_count, float fract,
@@ -166,13 +222,15 @@ void platform_video_synch(uint64_t tick_count, float fract,
  * if we have access to inter-process texture sharing, we can just fling
  * the FD, for now, readback into the shmpage
  */
-#ifndef ARCAN_VIDEO_NOWORLD_FBO
+#if !defined(ARCAN_VIDEO_NOWORLD_FBO) && \
+	!defined(HAVE_GLES2) && !defined(HAVE_GLES3)
 	glBindTexture(GL_TEXTURE_2D, arcan_video_worldtex());
 
 /*
  * note, this assumes the shared memory interface
  * has been resized to the preset dimensions
- * (or we're gonna overflow and die)
+ * (or we're gonna overflow and die), should also check if we have the
+ * option to transfer some kind of buffer ID.
  */
 	glGetTexImage(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, shms.vidp);
 	glBindTexture(GL_TEXTURE_2D, 0);

@@ -1512,7 +1512,7 @@ arcan_errc arcan_video_linkobjs(arcan_vobj_id srcid, arcan_vobj_id parentid,
 }
 
 const char* defvprg =
-#ifdef GL_ES_VERSION_2_0
+#if defined(GL_ES_VERSION_2_0) || defined(GL_ES_VERSION_3_0)
 "#version 100\n"
 #else
 "#version 120\n"
@@ -1529,7 +1529,7 @@ const char* defvprg =
 "}";
 
 const char* deffprg =
-#ifdef GL_ES_VERSION_2_0
+#if defined (GL_ES_VERSION_2_0) || defined(GL_ES_VERSION_3_0)
 "#version 100\n"
 "precision mediump float;\n"
 #else
@@ -1545,7 +1545,7 @@ const char* deffprg =
 "}";
 
 const char* defcvprg =
-#ifdef GL_ES_VERSION_2_0
+#if defined (GL_ES_VERSION_2_0) || defined(GL_ES_VERSION_3_0)
 "#version 100\n"
 #else
 "#version 120\n"
@@ -1558,7 +1558,7 @@ const char* defcvprg =
 "}";
 
 const char* defcfprg =
-#ifdef GL_ES_VERSION_2_0
+#if defined (GL_ES_VERSION_2_0) || defined(GL_ES_VERSION_3_0)
 "#version 100\n"
 "precision mediump float;\n"
 #else
