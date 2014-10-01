@@ -1059,10 +1059,12 @@ const char* arcan_event_devlabel(int devid)
 static int linux_platform_kmode;
 void platform_event_deinit(struct arcan_evctx* ctx)
 {
-#ifdef KDSKBMUTE
+/*
+ * #ifdef KDSKBMUTE
 			ioctl(STDIN_FILENO, KDGSKBMUTE, 0) &&
 #endif
 			ioctl(STDIN_FILENO, KDGKBMODE, linux_platform_kmode);
+*/
 
 	/*
 	 * kill descriptors and pollset

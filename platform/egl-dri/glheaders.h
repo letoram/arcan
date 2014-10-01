@@ -25,6 +25,11 @@
 	)
 
 #else
+#ifndef HAVE_GLES3
+#define HAVE_GLES3
+#endif
+
+	#define GL_NO_GETTEXIMAGE
 
 	#define GL_MAX_TEXTURE_UNITS 8
 	#define GL_CLAMP GL_CLAMP_TO_EDGE

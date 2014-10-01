@@ -1,18 +1,21 @@
 /*
- * Long todo for this platform module:
- * 1. HEADLESS mode with EGLImage/EGLSurface transfer
+ * Todo for this platform module:
  *
- * 2. handle all odd monitor configurations and desires,
- *    which one to synchronize to, fullscreen, mirroring,
- *    layout, orientation (rotation), similar events
+ * 1. HEADLESS mode using render-nodes and EGLImage or dma-buf transfer
  *
- * 3. work with both GLESv3 and OpenGL2+
+ * 2. Multiple- monitor configurations
+ *    -> mode switches (with resizing the underlying framebuffers)
+ *    -> dynamic vobj -> output mapping
  *
- * 5. external launch
+ * 3. Operate using both GLESv3 and OpenGL2.1+
  *
- * 6. implement synchronization options and synchronization switching
+ * 4. Support for External Launch / Building, Restoring Contexts
  *
- * 7. hotplug events
+ * 5. Display Hotplug Events
+ *
+ * 6. Advanced Synchronization options (swap-interval, synch directly
+ *    to front buffer, swap-with-tear, pre-render then wake / move
+ *    cursor just before etc.)
  */
 #include <stdio.h>
 #include <string.h>
@@ -47,13 +50,13 @@
 #include "arcan_video.h"
 #include "arcan_videoint.h"
 
-#ifndef EGL_SUFFIX
-#define EGL_SUFFIX platform
+#ifndef PLATFORM_SUFFIX
+#define PLATFORM_SUFFIX platform
 #endif
 
 #define MERGE(X,Y) X ## Y
 #define EVAL(X,Y) MERGE(X,Y)
-#define PLATFORM_SYMBOL(fun) EVAL(EGL_SUFFIX, fun)
+#define PLATFORM_SYMBOL(fun) EVAL(PLATFORM_SUFFIX, fun)
 
 static char* egl_synchopts[] = {
 	"default", "double buffered, display controls refresh",
@@ -136,6 +139,27 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
  * and use drm
  * should probably just move into its own video_headless.c
  * and be done with it */
+	return false;
+}
+
+void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
+	video_synchevent pre, video_synchevent post)
+{
+	if (pre)
+		pre();
+
+#ifndef HEADLESS_NOARCAN
+	arcan_bench_register_cost( arcan_video_refresh(fract, true) );
+#endif
+
+	glFlush();
+
+	if (post)
+		post();
+}
+
+void PLATFORM_SYMBOL(_video_shutdown) ()
+{
 }
 
 #else
@@ -797,23 +821,6 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 
 	return true;
 }
-#endif
-
-void PLATFORM_SYMBOL(_video_setsynch)(const char* arg)
-{
-	int ind = 0;
-
-	while(egl_synchopts[ind]){
-		if (strcmp(egl_synchopts[ind], arg) == 0){
-			synchopt = (ind > 0 ? ind / 2 : ind);
-			arcan_warning("synchronisation strategy set to (%s)\n",
-				egl_synchopts[ind]);
-			break;
-		}
-
-		ind += 2;
-	}
-}
 
 void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 	video_synchevent pre, video_synchevent post)
@@ -875,7 +882,30 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 		post();
 }
 
-const char* platform_video_capstr()
+void PLATFORM_SYMBOL(_video_shutdown) ()
+{
+	fb_cleanup(gbm.bo, gbm_bo_get_user_data(gbm.bo));
+}
+
+#endif
+
+void PLATFORM_SYMBOL(_video_setsynch)(const char* arg)
+{
+	int ind = 0;
+
+	while(egl_synchopts[ind]){
+		if (strcmp(egl_synchopts[ind], arg) == 0){
+			synchopt = (ind > 0 ? ind / 2 : ind);
+			arcan_warning("synchronisation strategy set to (%s)\n",
+				egl_synchopts[ind]);
+			break;
+		}
+
+		ind += 2;
+	}
+}
+
+const char* PLATFORM_SYMBOL(_video_capstr)()
 {
 	static char* buf;
 	static size_t buf_sz;
@@ -902,7 +932,10 @@ const char* platform_video_capstr()
 			"EGL Extensions supported: \n%s\n\n",
 			vendor, render, version, shading, exts, eglexts);
 
+#ifndef WITH_HEADLESS
 	dump_connectors(stream, drm.res);
+#endif
+
 	fclose(stream);
 
 	return buf;
@@ -915,7 +948,4 @@ const char** PLATFORM_SYMBOL(_video_synchopts) ()
 
 void PLATFORM_SYMBOL(_video_prepare_external) () {}
 void PLATFORM_SYMBOL(_video_restore_external) () {}
-void PLATFORM_SYMBOL(_video_shutdown) ()
-{
-	fb_cleanup(gbm.bo, gbm_bo_get_user_data(gbm.bo));
-}
+

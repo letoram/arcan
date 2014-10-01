@@ -314,6 +314,13 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-dri")
 		${GBMKMS_INCLUDE_DIRS}
 	)
 
+	if (ENABLE_LWA)
+		message("Enabling LWA (Arcan-in-Arcan build) using EGL-DRI HEADLESS")
+		SET(LWA_HEADLESS "egl-dri/video.c")
+		SET(LWA_GLHEADER "egl-dri/glheaders.h")
+		LIST(APPEND LWA_LIBRARIES ${GLES3_LIBRARIES} ${EGL_LIBRARIES} ${GBMKMS_LIBRARIES})
+	endif()
+
 elseif (VIDEO_PLATFORM STREQUAL "sdl")
 	if (NOT INPUT_PLATFORM)
 		set(INPUT_PLATFORM "sdl")

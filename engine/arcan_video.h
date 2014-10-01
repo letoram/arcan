@@ -87,6 +87,7 @@ static inline void RGBA_DECOMP(av_pixel val, uint8_t* r,
 
 #ifndef GL_PIXEL_BPP
 #define GL_PIXEL_BPP 4
+#define GL_PIXEL_BPP_BIT 32
 #endif
 
 /*
