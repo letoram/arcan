@@ -137,7 +137,7 @@ void PLATFORM_SYMBOL(_video_shutdown) ()
 {
 }
 
-const char* PLATFORM_SYMBOL(platform_video_capstr)
+const char* PLATFORM_SYMBOL(platform_video_capstr)(void)
 {
 	static char* capstr;
 
