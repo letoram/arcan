@@ -127,7 +127,6 @@ typedef struct {
 	char costofs;
 } arcan_benchdata;
 
-
 /*
  * slated to be moved to a utility library for
  * cryptography / data-passing primitives

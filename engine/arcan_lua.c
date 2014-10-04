@@ -4244,12 +4244,52 @@ static int filtergames(lua_State* ctx)
 	return rv;
 }
 
+char* filter_text(char* in, size_t* out_sz)
+{
+/* 1. a-Z, 0-9 + whitespace */
+	char* work = in;
+	while(*work){
+		if (!(isalnum(*work) || isspace(*work) || *work == ',' || *work == '.'))
+			*work = ' ';
+		work++;
+	}
+
+/* 2. strip leading */
+	char* start = in;
+
+	while(*start && isspace(*start))
+		start++;
+
+	*out_sz = strlen(start);
+
+	if (*out_sz == 0)
+		return start;
+
+/* 3. strip trailing */
+	work = start + *out_sz;
+	while( (*work == '\0' || isspace(*work)) && *out_sz)
+		work--, (*out_sz)--;
+
+	if (*work != '\0')
+		*(work+1) = '\0';
+
+	return start;
+}
+
 static int warning(lua_State* ctx)
 {
+	size_t len;
 	char* msg = (char*) luaL_checkstring(ctx, 1);
+	msg = filter_text(msg, &len);
 
-	if (strlen(msg) > 0)
-		arcan_warning("(%s) %s\n", arcan_appl_id(), msg);
+	if (len == 0)
+		return 0;
+
+#ifdef ARCAN_LUA_NOCOLOR
+	arcan_warning("(%s) %s\n", arcan_appl_id(), msg);
+#else
+	arcan_warning("\n\x1b[1m(%s)\x1b[32m %s\x1b[0m\n", arcan_appl_id(), msg);
+#endif
 
 	return 0;
 }
@@ -4297,8 +4337,9 @@ static int shutdown(lua_State *ctx)
 	};
 	arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 
-	const char* str = luaL_optstring(ctx, 1, "");
-	if (strlen(str) > 0)
+	size_t tlen;
+	const char* str = filter_text((char*)luaL_optstring(ctx, 1, ""), &tlen);
+	if (tlen > 0)
 		arcan_warning("%s\n", str);
 
 	return 0;
@@ -4395,6 +4436,10 @@ static void wraperr(lua_State* ctx, int errc, const char* src)
 		return;
 
 	const char* mesg = luaL_optstring(ctx, 1, "unknown");
+/*
+ * currently unused, pending refactor of arcan_warning
+	int severity = luaL_optnumber(ctx, 2, 0);
+ */
 
 	if (lua_ctx_store.debug){
 		arcan_warning("Warning: wraperr((), %s, from %s\n", mesg, src);
@@ -6081,6 +6126,8 @@ static int togglebench(lua_State* ctx)
 		benchdata.bench_enabled = lua_toboolean(ctx, 1);
 	else
 		benchdata.bench_enabled = !benchdata.bench_enabled;
+
+	arcan_video_display.ignore_dirty = benchdata.bench_enabled;
 
 /* always reset on data change */
 	memset(benchdata.ticktime, '\0', sizeof(benchdata.ticktime));

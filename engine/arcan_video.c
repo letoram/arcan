@@ -4633,7 +4633,8 @@ static size_t process_rendertarget(
 {
 	arcan_vobject_litem* current = tgt->first;
 
-	if (arcan_video_display.dirty == 0 && tgt->transfc == 0)
+	if (arcan_video_display.ignore_dirty == false &&
+			arcan_video_display.dirty == 0 && tgt->transfc == 0)
 		return 0;
 
 	if (tgt->color){

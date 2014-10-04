@@ -7,10 +7,15 @@
 -- frameservers and other pending-data related tasks time to clean-up.
 -- @note: by default, the exit code corresponds to system EXIT_SUCCESS,
 -- but can be set to a custom value through *optcode*.
+-- @note: optmsg is filtered to only accept [a-Z,.0-9] and whitespace.
 -- @group: system
 -- @cfunction: arcan_lua_shutdown
 function main()
 #ifdef MAIN
-	shutdown();
+	return shutdown();
+#endif
+
+#ifdef MAIN_2
+	return shutdown("giving up", -1);
 #endif
 end
