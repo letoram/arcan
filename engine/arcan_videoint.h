@@ -277,6 +277,7 @@ struct arcan_video_display {
 
 	unsigned int main_fbo, main_rb;
 	int dirty;
+	bool ignore_dirty;
 	enum arcan_order3d order3d;
 
 /*
