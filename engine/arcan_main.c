@@ -107,6 +107,7 @@ static const struct option longopts[] = {
 	{ "fullscreen",   no_argument,       NULL, 'f'},
 	{ "windowed",     no_argument,       NULL, 's'},
 	{ "debug",        no_argument,       NULL, 'g'},
+	{ "binpath",      required_argument, NULL, 'B'},
 	{ "rpath",        required_argument, NULL, 'p'},
 	{ "applpath" ,    required_argument, NULL, 't'},
 	{ "conservative", no_argument,       NULL, 'm'},
@@ -126,7 +127,7 @@ static const struct option longopts[] = {
 
 static void usage()
 {
-printf("usage: arcan [-whfmWMOqsptbdgaS] applname [app specific arguments]\n"
+printf("usage: arcan [-whfmWMOqspBtbdgaS] applname [app specific arguments]\n"
 "-w\t--width       \tdesired width (default: 640)\n"
 "-h\t--height      \tdesired height (default: 480)\n"
 "-f\t--fullscreen  \ttoggle fullscreen mode ON (default: off)\n"
@@ -139,6 +140,7 @@ printf("usage: arcan [-whfmWMOqsptbdgaS] applname [app specific arguments]\n"
 "-q\t--timedump    \twait n ticks, dump snapshot to resources/logs/timedump\n"
 "-s\t--windowed    \ttoggle borderless window mode\n"
 "-p\t--rpath       \tchange default searchpath for shared resources\n"
+"-B\t--binpath     \tchange default searchpath for arcan_frameserver*\n"
 "-t\t--applpath    \tchange default searchpath for applications\n"
 "-b\t--fallback    \tset a recovery/fallback application if appname crashes\n"
 "-d\t--database    \tsqlite database (default: arcandb.sqlite)\n"
@@ -279,7 +281,7 @@ int main(int argc, char* argv[])
  * only -g will make their base and sequence repeatable */
 
 	while ((ch = getopt_long(argc, argv,
-		"w:h:mx:y:fsW:d:Sq:a:p:b:M:O:t:g1:2:", longopts, NULL)) >= 0){
+		"w:h:mx:y:fsW:d:Sq:a:p:b:B:M:O:t:g1:2:", longopts, NULL)) >= 0){
 	switch (ch) {
 	case '?' :
 		usage();
@@ -305,6 +307,9 @@ int main(int argc, char* argv[])
 	case 't' :
 		arcan_override_namespace(optarg, RESOURCE_SYS_APPLBASE);
 		arcan_override_namespace(optarg, RESOURCE_SYS_APPLSTORE);
+	break;
+	case 'B' :
+		arcan_override_namespace(optarg, RESOURCE_SYS_BINS);
 	break;
 	case 'g' :
 		debuglevel++;
