@@ -59,6 +59,7 @@ typedef struct arcan_aobj {
 
 /* openAL Buffering */
 	unsigned char n_streambuf;
+	arcan_tickv last_used;
 	unsigned streambuf[ARCAN_ASTREAMBUF_LIMIT];
 	bool streambufmask[ARCAN_ASTREAMBUF_LIMIT];
 	short used;
