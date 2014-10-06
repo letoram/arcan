@@ -1,5 +1,5 @@
 -- zap_resource
--- @short: Unlink a file in the themepath.
+-- @short: Unlink a file in the applpath.
 -- @inargs: resstr
 -- @outargs: boolres
 -- @group: resource

@@ -7,6 +7,6 @@
 -- video object will be setup.
 -- @group: image
 -- @cfunction: arcan_lua_strsize
--- @exampletheme: fonttest
+-- @exampleappl: tests/interactive/fonttest
 -- @related: render_text
 

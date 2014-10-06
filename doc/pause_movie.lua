@@ -5,5 +5,5 @@
 -- in a paused state will have no effect.
 -- @group: targetcontrol
 -- @cfunction: arcan_lua_pausemovie
--- @example: video_playback
+-- @exampleappl: tests/interactive/movietest
 

@@ -19,7 +19,7 @@
 -- the libretro frameserver and hijack to support frame- aligned input even
 -- when skipping or other forms of frame manipulation is performed locally.
 -- @note: instead of preparing these tables manually, it's easier to just
--- inplace modify those you get from themename_input
+-- inplace modify those you get from applname_input
 -- @note: arguments are flexible, table argument will be used as input table,
 -- number argument will be used as frameserver vid reference.
 -- @group: targetcontrol

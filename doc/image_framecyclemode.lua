@@ -9,7 +9,7 @@
 -- frameserver connections) and means to step every n times the feed function
 -- provides an update.
 -- @note: If you want the behavior of stepping each rendered frame, do this
--- manually by implementing the themename_frame_pulse and calling image_activeframe
+-- manually by implementing the applname_frame_pulse and calling image_activeframe
 -- rather than relying on a framecyclemode.
 -- @group: image
 -- @cfunction: arcan_lua_framesetcycle

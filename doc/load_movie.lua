@@ -10,12 +10,11 @@
 -- @note: for details on optarg, see the man page for arcan_frameserver_decode
 -- @group: targetcontrol
 -- @cfunction: arcan_lua_loadmovie
--- @related: play_movie, launch_avfeed
+-- @related: launch_avfeed
 function main()
 #ifdef MAIN
 	vid = load_movie("test.avi", function(source, status)
 		print(status.kind);
-		play_movie(source);
 	end);
 	show_image(vid);
 	resize_image(vid, VRESW, VRESH);
