@@ -1,0 +1,17 @@
+The benchmark applications in this folder all follows the 
+same pattern, see fillrate/fillrate.lua for an example.
+
+They build on the scripts/benchmark.lua support script
+that works by collecting display timing data for a number
+of frames, doing a test if the framerate is above a 
+cutoff-point, and if so, increases the load.
+
+the load- function is defined by each single tests and 
+the default output (report) is to standard output 
+in a CSV format e.g.
+
+count:min:max:avg:stddev
+
+Together with the feedgnuplot util, the logcomp script
+in utils can be used to plot and compare testcases between
+different runs.
