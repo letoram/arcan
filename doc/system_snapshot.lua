@@ -2,7 +2,7 @@
 -- @short: Create a debugging snapshot
 -- @inargs: outres
 -- @note: refuses to overwrite outres if it exists
--- (only theme- destination accepted).
+-- (only appl- destination accepted).
 -- @note: the format used is the same as used for
 -- crash reports and serialization in monitoring mode.
 -- @group: system
