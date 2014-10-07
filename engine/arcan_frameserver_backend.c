@@ -609,8 +609,7 @@ arcan_errc arcan_frameserver_audioframe_direct(arcan_aobj* aobj,
 	arcan_errc rv = ARCAN_ERRC_NOTREADY;
 	arcan_frameserver* src = (arcan_frameserver*) tag;
 
-/* buffer == 0, shutting down */
-	if (buffer > 0 && src->audb && src->ofs_audb > ARCAN_ASTREAMBUF_LLIMIT){
+	if (buffer != -1 && src->audb && src->ofs_audb > ARCAN_ASTREAMBUF_LLIMIT){
 /* this function will make sure all monitors etc. gets their chance */
 			arcan_audio_buffer(aobj, buffer, src->audb, src->ofs_audb,
 				src->desc.channels, src->desc.samplerate, tag);

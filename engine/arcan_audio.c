@@ -61,7 +61,7 @@ typedef struct {
 } arcan_acontext;
 
 static bool _wrap_alError(arcan_aobj*, char*);
-static int find_bufferind(arcan_aobj* cur, unsigned bufnum);
+static ssize_t find_bufferind(arcan_aobj* cur, unsigned bufnum);
 
 #ifndef CONST_MAX_ASAMPLESZ
 #define CONST_MAX_ASAMPLESZ 1048756
@@ -578,7 +578,7 @@ arcan_errc arcan_audio_stop(arcan_aobj_id id)
 	if (dobj) {
 /* callback with empty buffers means that we want to clean up */
 		if (dobj->feed)
-			dobj->feed(dobj, id, 0, dobj->tag);
+			dobj->feed(dobj, id, -1, dobj->tag);
 
 		_wrap_alError(dobj, "audio_stop(stop)");
 		arcan_audio_free(id);
@@ -650,7 +650,7 @@ arcan_errc arcan_audio_setgain(arcan_aobj_id id, float gain, uint16_t time)
 	return rv;
 }
 
-static int find_bufferind(arcan_aobj* cur, unsigned bufnum){
+static ssize_t find_bufferind(arcan_aobj* cur, unsigned bufnum){
 	for (size_t i = 0; i < cur->n_streambuf; i++){
 		if (cur->streambuf[i] == bufnum)
 			return i;
@@ -659,7 +659,7 @@ static int find_bufferind(arcan_aobj* cur, unsigned bufnum){
 	return -1;
 }
 
-static int find_freebufferind(arcan_aobj* cur, bool tag){
+static ssize_t find_freebufferind(arcan_aobj* cur, bool tag){
 	for (size_t i = 0; i < cur->n_streambuf; i++){
 		if (cur->streambufmask[i] == false){
 			if (tag){
@@ -674,7 +674,7 @@ static int find_freebufferind(arcan_aobj* cur, bool tag){
 	return -1;
 }
 
-void arcan_audio_buffer(arcan_aobj* aobj, ALuint buffer, void* audbuf,
+void arcan_audio_buffer(arcan_aobj* aobj, ssize_t buffer, void* audbuf,
 	size_t abufs, unsigned int channels, unsigned int samplerate, void* tag)
 {
 /*
@@ -698,10 +698,15 @@ void arcan_audio_buffer(arcan_aobj* aobj, ALuint buffer, void* audbuf,
 	if (aobj->alid == AL_NONE){
 		alGenSources(1, &aobj->alid);
 		alGenBuffers(aobj->n_streambuf, aobj->streambuf);
+
+		alSourceQueueBuffers(aobj->alid, 1, &aobj->streambuf[0]);
+		aobj->streambufmask[0] = true;
+		aobj->used++;
+		alSourcePlay(aobj->alid);
+
 	_wrap_alError(NULL, "audio_feed(genBuffers)");
 	}
-
-	if (aobj->gproxy == false & aobj->alid == AL_NONE){
+	else if (aobj->gproxy == false){
 		aobj->last_used = current_acontext->atick_counter;
 		alBufferData(buffer, channels == 2 ? AL_FORMAT_STEREO16 :
 			AL_FORMAT_MONO16, audbuf, abufs, samplerate);
@@ -722,6 +727,12 @@ static void arcan_astream_refill(arcan_aobj* current)
 	};
 	ALenum state = 0;
 	ALint processed = 0;
+
+	if (current->alid == AL_NONE && current->feed){
+		current->feed(current, current->alid, 0, current->tag);
+		return;
+	}
+
 /* stopped or not, the process is the same,
  * dequeue and requeue as many buffers as possible */
 	alGetSourcei(current->alid, AL_SOURCE_STATE, &state);
@@ -729,10 +740,15 @@ static void arcan_astream_refill(arcan_aobj* current)
 /* make sure to replace each one that finished with the next one */
 
 	for (size_t i = 0; i < processed; i++){
-		unsigned buffer = 0, bufferind;
+		unsigned buffer = 1;
 		alSourceUnqueueBuffers(current->alid, 1, &buffer);
-		bufferind = find_bufferind(current, buffer);
-		assert(bufferind != -1);
+		ssize_t bufferind = find_bufferind(current, buffer);
+		if (-1 == bufferind){
+			arcan_warning("(audio) unqueue returned unknown buffer, "
+				"processed (%d)\n", (int) bufferind);
+			continue;
+		}
+
 		current->streambufmask[bufferind] = false;
 
 		_wrap_alError(current, "audio_refill(refill:dequeue)");
@@ -851,40 +867,42 @@ char** arcan_audio_capturelist()
  * then it's up to the monitoring function of the recording
  * frameserver to do the mixing */
 static arcan_errc capturefeed(arcan_aobj* aobj, arcan_aobj_id id,
-	unsigned buffer, void* tag)
+	ssize_t buffer, void* tag)
 {
-	arcan_errc rv = ARCAN_ERRC_NOTREADY;
-	if (buffer > 0){
+	if (buffer < 0)
+		return ARCAN_ERRC_NOTREADY;
+
 /* though a single capture buffer is shared, we don't want it allocated
  * statically as some AL implementations behaved incorrectly and overflowed
  * into other members making it more difficult to track down than necessary */
-		static int16_t* capturebuf;
+	static int16_t* capturebuf;
 
-		if (!capturebuf)
-			capturebuf = arcan_alloc_mem(1024 * 4, ARCAN_MEM_ABUFFER,
-				ARCAN_MEM_SENSITIVE, ARCAN_MEMALIGN_PAGE);
+	if (!capturebuf)
+		capturebuf = arcan_alloc_mem(1024 * 4, ARCAN_MEM_ABUFFER,
+			ARCAN_MEM_SENSITIVE, ARCAN_MEMALIGN_PAGE);
 
-		ALCint sample;
-		ALCdevice* dev = (ALCdevice*) tag;
+	ALCint sample;
+	ALCdevice* dev = (ALCdevice*) tag;
 
-		alcGetIntegerv(dev, ALC_CAPTURE_SAMPLES, (ALCsizei)sizeof(ALint), &sample);
-		sample = sample > 1024 ? 1024 : sample;
+	alcGetIntegerv(dev, ALC_CAPTURE_SAMPLES, (ALCsizei)sizeof(ALint), &sample);
+	sample = sample > 1024 ? 1024 : sample;
 
-		if (sample > 0){
-			alcCaptureSamples(dev, (ALCvoid *)capturebuf, sample);
+	if (sample <= 0)
+		return ARCAN_ERRC_NOTREADY;
 
-			if (aobj->monitor)
-				aobj->monitor(aobj->id, (uint8_t*) capturebuf, sample << 2,
-					ARCAN_SHMPAGE_ACHANNELS, ARCAN_SHMPAGE_SAMPLERATE, aobj->monitortag);
+	alcCaptureSamples(dev, (ALCvoid *)capturebuf, sample);
 
-			if (current_acontext->globalhook)
-				current_acontext->globalhook(aobj->id, (uint8_t*) capturebuf,
-					sample << 2, ARCAN_SHMPAGE_ACHANNELS, ARCAN_SHMPAGE_SAMPLERATE,
-					current_acontext->global_hooktag);
-		}
-	}
+	if (aobj->monitor)
+		aobj->monitor(aobj->id, (uint8_t*) capturebuf, sample << 2,
+			ARCAN_SHMPAGE_ACHANNELS, ARCAN_SHMPAGE_SAMPLERATE, aobj->monitortag);
 
-	return rv;
+	if (current_acontext->globalhook)
+		current_acontext->globalhook(aobj->id, (uint8_t*) capturebuf,
+			sample << 2, ARCAN_SHMPAGE_ACHANNELS, ARCAN_SHMPAGE_SAMPLERATE,
+			current_acontext->global_hooktag
+		);
+
+	return ARCAN_OK;
 }
 
 arcan_aobj_id arcan_audio_capturefeed(const char* dev)
@@ -910,7 +928,7 @@ arcan_aobj_id arcan_audio_capturefeed(const char* dev)
 		return dstobj->id;
 	}
 	else{
-		arcan_warning("could get audio lock\n");
+		arcan_warning("arcan_audio_capturefeed() - could get audio lock\n");
 		if (capture){
 			alcCaptureStop(capture);
 			alcCaptureCloseDevice(capture);
@@ -931,11 +949,12 @@ void arcan_audio_refresh()
 	arcan_aobj* current = current_acontext->first;
 
 	while(current){
-		if (current->alid && (current->kind == AOBJ_STREAM ||
+		if (
+			current->kind == AOBJ_STREAM      ||
 			current->kind == AOBJ_FRAMESTREAM ||
-			current->kind == AOBJ_CAPTUREFEED)){
+			current->kind == AOBJ_CAPTUREFEED
+		)
 			arcan_astream_refill(current);
-		}
 
 		_wrap_alError(current, "audio_refresh()");
 		current = current->next;
@@ -1029,7 +1048,7 @@ void arcan_audio_purge(arcan_aobj_id* ids, size_t nids)
 		if (!match){
 			(*previous) = next;
 			if (current->feed)
-				current->feed(current, current->id, 0, current->tag);
+				current->feed(current, current->id, -1, current->tag);
 
 			_wrap_alError(current, "audio_stop(stop)");
 
