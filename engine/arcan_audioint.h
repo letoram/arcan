@@ -74,7 +74,7 @@ typedef struct arcan_aobj {
 } arcan_aobj;
 
 /* just a wrapper around alBufferData that takes monitors into account */
-void arcan_audio_buffer(arcan_aobj*, unsigned, void*,
+void arcan_audio_buffer(arcan_aobj*, ssize_t, void*,
 	size_t, unsigned, unsigned, void*);
 
 #endif
