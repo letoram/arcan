@@ -74,17 +74,13 @@
 #include <lualib.h>
 #include <lauxlib.h>
 
-/*
- * two portability changes that should be worked in:
- * 1. setup a non-blocking I/O readline etc.
- * 2. add a version of open_rawresource that incorporates
- *    a lua_userdata wrapper around the non-blocking I/O
- *    context
- */
 #ifndef WIN32
 #include <poll.h>
 #else
-#define O_NONBLOCK O_NDELAY
+/* windows doesn't support non-blocking file I/O as such
+ * (no surprise there) ignore for now and get some workaround
+ * going. */
+#define O_NONBLOCK 0
 #endif
 
 #ifndef O_CLOEXEC
@@ -4249,7 +4245,8 @@ char* filter_text(char* in, size_t* out_sz)
 /* 1. a-Z, 0-9 + whitespace */
 	char* work = in;
 	while(*work){
-		if (!(isalnum(*work) || isspace(*work) || *work == ',' || *work == '.'))
+		if (!(isalnum(*work) || isspace(*work) ||
+			*work == ',' || *work == '.' || *work == '(' || *work == ')'))
 			*work = ' ';
 		work++;
 	}
@@ -4326,7 +4323,8 @@ void arcan_lua_mapfunctions(lua_State* ctx, int debuglevel)
 	arcan_lua_pushglobalconsts(ctx);
 }
 
-static int shutdown(lua_State *ctx)
+/* alua_ namespace due to winsock pollution */
+static int alua_shutdown(lua_State *ctx)
 {
 	LUA_TRACE("shutdown");
 
@@ -4415,7 +4413,7 @@ static void panic(lua_State* ctx)
 
 	if (!lua_ctx_store.cb_source_kind == CB_SOURCE_NONE){
 		char vidbuf[64] = {0};
-		snprintf(vidbuf, 63, "script error in callback for VID (%lld)",
+		snprintf(vidbuf, 63, "script error in callback for VID (%"PRIxVOBJ")",
 			lua_ctx_store.lua_vidbase + lua_ctx_store.cb_source_tag);
 		wraperr(ctx, -1, vidbuf);
 	} else
@@ -7491,7 +7489,7 @@ static const luaL_Reg threedfuns[] = {
 
 #define EXT_MAPTBL_SYSTEM
 static const luaL_Reg sysfuns[] = {
-{"shutdown",            shutdown         },
+{"shutdown",            alua_shutdown    },
 {"switch_appl",         switchappl       },
 {"warning",             warning          },
 {"system_load",         dofile           },

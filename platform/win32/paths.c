@@ -75,7 +75,7 @@ void arcan_set_namespace_defaults()
 	char* respath = "./resources";
 	size_t len = strlen(respath);
 
-/* typically inside build-directory */	
+/* typically inside build-directory */
 	if (!arcan_isdir(respath)){
 		respath = "../resources";
 	}
@@ -89,8 +89,9 @@ void arcan_set_namespace_defaults()
 	snprintf(font_dir, sizeof(font_dir), "%s/fonts", respath);
 
 	arcan_override_namespace(respath, RESOURCE_APPL_SHARED);
+	arcan_override_namespace(state_dir, RESOURCE_SYS_APPLSTATE);
+
 	arcan_override_namespace(debug_dir, RESOURCE_SYS_DEBUG);
-	arcan_override_namespace(state_dir, RESOURCE_APPL_STATE);
 	arcan_override_namespace(font_dir, RESOURCE_SYS_FONT);
 
 /* makes no sense on windows currently */

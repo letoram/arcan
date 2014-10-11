@@ -1250,7 +1250,7 @@ static inline void targetev(arcan_event* ev)
 					return;
 				}
 
-				retroctx.graph_pending = random();
+				retroctx.graph_pending = rand();
 				arcan_event outev = {
 					.kind = EVENT_EXTERNAL_SEGREQ,
 					.category = EVENT_EXTERNAL,

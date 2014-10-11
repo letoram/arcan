@@ -36,6 +36,7 @@ set (FSERV_PLATFORM_SOURCES
 	${WIN32_PATH}/../posix/namespace.c
 	${WIN32_PATH}/strip_traverse.c
 	${WIN32_PATH}/realpath.c
+	${WIN32_PATH}/strtok_r.c
 	${SHMIF_SOURCES}
 )
 

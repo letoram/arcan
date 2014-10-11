@@ -23,7 +23,7 @@
 #undef far
 
 /* OS specific definitions */
-/* 
+/*
  * some missing defines that doesn't seem to be included in the
  * headers of mingw but still exported in the linked libraries,
  */
@@ -66,6 +66,9 @@ bool arcan_pushhandle(file_handle in, int channel);
 
 bool arcan_isdir(const char* path);
 bool arcan_isfile(const char* path);
+
+void arcan_warning(const char* msg, ...);
+void arcan_fatal(const char* msg, ...);
 
 int setenv(const char* name, const char* value, int overwrite);
 #endif
