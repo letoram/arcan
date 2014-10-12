@@ -119,7 +119,7 @@ struct cl_track {
 static void flush_audbuf()
 {
 	size_t ntc = recctx.shmcont.addr->abufused;
-	uint8_t* dataptr = recctx.shmcont.audp;
+	uint8_t* dataptr = (uint8_t*) recctx.shmcont.audp;
 
 	if (!recctx.acontext){
 		recctx.shmcont.addr->abufused = 0;
@@ -339,7 +339,7 @@ forceencode:
 
 static int encode_video(bool flush)
 {
-	uint8_t* srcpl[4] = {recctx.shmcont.vidp, NULL, NULL, NULL};
+	uint8_t* srcpl[4] = {(uint8_t*)recctx.shmcont.vidp, NULL, NULL, NULL};
 	int srcstr[4] = {0, 0, 0, 0};
 	srcstr[0] = recctx.vcontext->width * recctx.bpp;
 
@@ -522,7 +522,7 @@ static bool setup_ffmpeg_encode(struct arg_arr* args, int desw, int desh)
 	static bool initialized = false;
 
 	if (desw % 2 != 0 || desh % 2 != 0){
-		LOG("(encode) source image format (%dx%d) must be evenly"
+		LOG("(encode) source image format (%zu * %zu) must be evenly"
 		"	divisible by 2.\n", shared->w, shared->h);
 
 		return false;
@@ -686,42 +686,6 @@ static bool setup_ffmpeg_encode(struct arg_arr* args, int desw, int desh)
 		arcan_shmif_signal(&recctx.shmcont, SHMIF_SIGVID);
 
 	return true;
-}
-
-/*
- * This version does not really use the shmpage API but is intended
- * as a logging / side-call for the other frameservers to quickly
- * get an internal recording / logging feature going
- */
-int arcan_frameserver_encode_intrun(const char* resstr,
-	uint8_t* vidp, int w, int h, int bpp, int pixfmt,
-	uint8_t* audp, uint32_t** aud_sz)
-{
-	/* inargs packas upp,
-	 * fejka in data i recctx
-	 * öppna upp utresurs som fd (recctx.lastfd)
-	 */
-
-	recctx.ccontext   = sws_getContext(w, h, PIX_FMT_RGBA,
-		w, h, PIX_FMT_YUV420P, SWS_FAST_BILINEAR, NULL, NULL, NULL);
-
-	recctx.shmcont.vidp = vidp;
-	recctx.shmcont.audp = audp;
-
-	char* output_fname = "default.mkv";
-	recctx.lastfd = open(output_fname, O_CREAT | O_RDWR, 0700);
-	if (recctx.lastfd == -1)
-		return -1;
-
-	struct arcan_shmif_page* fakepage =
-		malloc(sizeof(struct arcan_shmif_page));
-
-	memset(fakepage, '\0', sizeof(struct arcan_shmif_page));
-	*aud_sz = &fakepage->abufused;
-
-	recctx.starttime = arcan_timemillis();
-	recctx.extsynch = true;
-	return 1;
 }
 
 void arcan_frameserver_encode_run(const char* resource,

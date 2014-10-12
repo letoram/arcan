@@ -50,7 +50,7 @@ static rfbBool client_resize(struct _rfbClient* client)
 		return false;
 	}
 
-	client->frameBuffer = vncctx.shmcont.vidp;
+	client->frameBuffer = (uint8_t*) vncctx.shmcont.vidp;
 	SetFormatAndEncodings(client);
 	return true;
 }
@@ -235,7 +235,7 @@ void arcan_frameserver_remoting_run(const char* resource,
 	if (!client_connect(host, port))
 		return;
 
-	vncctx.client->frameBuffer = vncctx.shmcont.vidp;
+	vncctx.client->frameBuffer = (uint8_t*) vncctx.shmcont.vidp;
 	atexit( cleanup );
 
 	while (true){

@@ -8,39 +8,23 @@
 
 int main(int argc, char** argv)
 {
-	char* resource = getenv("ARCAN_ARG");
-	char* keyfile = NULL;
-
-	if (getenv("ARCAN_CONNPATH")){
-		keyfile = arcan_shmif_connect(
-			getenv("ARCAN_CONNPATH"), getenv("ARCAN_CONNKEY"));
-	}
-	else {
-		LOG("No arcan-shmif connection, check ARCAN_CONNPATH environment.\n\n");
-		return EXIT_FAILURE;
-	}
-
-	if (!keyfile){
-		LOG("No valid connection key found, giving up.\n");
-		return EXIT_FAILURE;
-	}
-
-	struct arcan_shmif_cont ctx = arcan_shmif_acquire(
-		keyfile, SEGID_APPLICATION, SEGID_ACQUIRE_FATALFAIL);
-
-	if (resource){
-		struct arg_arr* arr = arg_unpack(resource);
-/*
- *  implement additional argument passing
- *  use arg_lookup(arr, sym, ind, dptr) => [true | false]
- */
-	}
+	struct arg_arr* aarr;
+	struct arcan_shmif_cont cont = arcan_shmif_open(
+		SEGID_APPLICATION, SHMIF_ACQUIRE_FATALFAIL, &aarr);
 
 	arcan_event ev;
-
 	bool running = true;
 
-	while (running && arcan_event_wait(&ctx, &ev)){
+	arcan_shmif_resize(&cont, 320, 200);
+
+/* fill with red and transfer */
+	for (size_t row = 0; row < cont.addr->h; row++)
+		for (size_t col = 0; col < cont.addr->w; col++)
+			cont.vidp[ row * cont.addr->w + col ] = RGBA(255, 0, 0, 255);
+
+	arcan_shmif_signal(&cont, SHMIF_SIGVID);
+
+	while (running && arcan_event_wait(&cont.inev, &ev)){
 		if (ev.category == EVENT_TARGET)
 		switch (ev.kind){
 		case TARGET_COMMAND_EXIT:
@@ -49,7 +33,6 @@ int main(int argc, char** argv)
 		}
 	}
 
-cleanup:
 	return EXIT_SUCCESS;
 }
 

@@ -74,7 +74,7 @@ static void generate_frame()
 	static int smplc;
 	static double vptsc = 0;
 
-	int16_t* basep = (int16_t*) decctx.shmcont.audp;
+	int16_t* basep = decctx.shmcont.audp;
 	int counter = decctx.shmcont.addr->abufused;
 
 	while (counter){
@@ -96,7 +96,7 @@ static void generate_frame()
 		if (smplc == smpl_wndw){
 			smplc = 0;
 
-			uint8_t* base = decctx.shmcont.vidp;
+			uint32_t* base = decctx.shmcont.vidp;
 			kiss_fftr(kfft, fsmplbuf, foutsmplbuf);
 
 /* store FFT output in dB scale */
@@ -114,23 +114,25 @@ static void generate_frame()
 					high = fsmplbuf[j];
 			}
 
-/* wasting a level just to get POT as the interface doesn't
- * support a 1D texture format */
+/*
+ * This should be re-worked to pack in base256 with an
+ * unpack shader to get decent precision in the output vis,
+ * and generalized to a support function that we can
+ * associate with any data-channel and new context
+ */
+
 			for (int j=0; j<smpl_wndw / 2; j++){
-				*base++ = 0;
-				*base++ = 0;
-				*base++ = 0;
-				*base++ = 0xff;
+				*base++ = RGBA(0, 0, 0, 0xff);
 			}
 
-/* pack in output image, smooth two audio samples */
-			for (int j=0; j < smpl_wndw / 2; j++){
-				*base++ = (1.0f + ((smplbuf[j * 2] +
-					smplbuf[j * 2 + 1]) / 2.0)) / 2.0 * 255.0;
-				*base++ = (fsmplbuf[j] / high) * 255.0;
-				*base++ = 0x00;
-				*base++ = 0xff;
-			}
+			for (int j=0; j < smpl_wndw / 2; j++)
+				*base++ = RGBA(
+					((1.0f + ((smplbuf[j * 2] +
+						smplbuf[j * 2 + 1]) / 2.0)) / 2.0 * 255.0),
+					((fsmplbuf[j] / high) * 255.0),
+					0x00,
+					0xff
+				);
 
 			decctx.shmcont.addr->vpts = vptsc;
 			arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGVID);
