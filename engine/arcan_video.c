@@ -814,7 +814,7 @@ clense:
  */
 unsigned arcan_video_extpopcontext(arcan_vobj_id* dst)
 {
-	char* dstbuf;
+	av_pixel* dstbuf;
 	size_t dsz;
 
 	FLAG_DIRTY();
@@ -827,7 +827,7 @@ unsigned arcan_video_extpopcontext(arcan_vobj_id* dst)
 		int h = arcan_video_display.canvash;
 
 		img_cons cons = {.w = w, .h = h, .bpp = GL_PIXEL_BPP};
-		*dst = arcan_video_rawobject((uint8_t*)dstbuf, dsz, cons, w, h, 1);
+		*dst = arcan_video_rawobject(dstbuf, cons, w, h, 1);
 
 		if (*dst == ARCAN_EID){
 			arcan_mem_free(dstbuf);
@@ -847,7 +847,7 @@ unsigned arcan_video_extpopcontext(arcan_vobj_id* dst)
 
 signed arcan_video_extpushcontext(arcan_vobj_id* dst)
 {
-	void* dstbuf;
+	av_pixel* dstbuf;
 	size_t dsz;
 
 	FLAG_DIRTY();
@@ -860,7 +860,7 @@ signed arcan_video_extpushcontext(arcan_vobj_id* dst)
 		int h = arcan_video_display.canvash;
 
 		img_cons cons = {.w = w, .h = h, .bpp = GL_PIXEL_BPP};
-		*dst = arcan_video_rawobject((uint8_t*)dstbuf, dsz, cons, w, h, 1);
+		*dst = arcan_video_rawobject(dstbuf, cons, w, h, 1);
 
 		if (*dst == ARCAN_EID)
 			arcan_mem_free(dstbuf);
@@ -942,7 +942,7 @@ arcan_errc arcan_video_resampleobject(arcan_vobj_id vid,
  * a temporary transfer object,
  * and a temporary rendertarget */
 	size_t new_sz = neww * newh * GL_PIXEL_BPP;
-	uint8_t* dstbuf = arcan_alloc_mem(new_sz,
+	av_pixel* dstbuf = arcan_alloc_mem(new_sz,
 		ARCAN_MEM_VBUFFER, ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE);
 
 	if (!dstbuf)
@@ -960,8 +960,7 @@ arcan_errc arcan_video_resampleobject(arcan_vobj_id vid,
 	arcan_video_setprogram(xfer, shid);
 
 	img_cons cons = {.w = neww, .h = newh, .bpp = GL_PIXEL_BPP};
-	arcan_vobj_id dst = arcan_video_rawobject(
-		dstbuf, new_sz, cons, neww, newh, 1);
+	arcan_vobj_id dst = arcan_video_rawobject(dstbuf, cons, neww, newh, 1);
 
 	if (dst == ARCAN_EID){
 		arcan_video_deleteobject(xfer);
@@ -1747,7 +1746,7 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
 	arcan_sem_wait(asynchsynch);
 	arcan_errc rv = ARCAN_ERRC_BAD_RESOURCE;
 
-	char* imgbuf = NULL;
+	av_pixel* imgbuf = NULL;
 	int inw, inh;
 
 /* try- open */
@@ -1767,8 +1766,8 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
 	}
 
 	struct arcan_img_meta meta = {0};
-	rv = arcan_img_decode(fname, inmem.ptr, inmem.sz, &imgbuf, &inw, &inh,
-	&meta, dst->vstore->imageproc == IMAGEPROC_FLIPH, malloc);
+	rv = arcan_img_decode(fname, inmem.ptr, inmem.sz, (char**)&imgbuf, &inw, &inh,
+		&meta, dst->vstore->imageproc == IMAGEPROC_FLIPH, malloc);
 
 	arcan_release_map(inmem);
 	arcan_release_resource(&inres);
@@ -1812,7 +1811,7 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
 			dstframe->vinf.text.raw   = arcan_alloc_mem(dstframe->vinf.text.s_raw,
 				ARCAN_MEM_VBUFFER, 0, ARCAN_MEMALIGN_PAGE);
 
-			stretchblit(imgbuf, inw, inh, (uint32_t*) dstframe->vinf.text.raw,
+			stretchblit((char*)imgbuf, inw, inh, (uint32_t*) dstframe->vinf.text.raw,
 				neww, newh, dst->vstore->imageproc == IMAGEPROC_FLIPH);
 			arcan_mem_free(imgbuf);
 		}
@@ -1825,19 +1824,19 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
 				dstframe->vinf.text.raw = arcan_alloc_mem(dstframe->vinf.text.s_raw,
 					ARCAN_MEM_VBUFFER, 0, ARCAN_MEMALIGN_PAGE);
 
-				stretchblit(imgbuf, inw, inh, (uint32_t*) dstframe->vinf.text.raw,
+				stretchblit((char*)imgbuf, inw, inh, (uint32_t*)dstframe->vinf.text.raw,
 					neww, newh, dst->vstore->imageproc == IMAGEPROC_FLIPH);
 				arcan_mem_free(imgbuf);
 			}
 			else {
 				dstframe->vinf.text.s_raw = neww * newh * GL_PIXEL_BPP;
-				dstframe->vinf.text.raw = (uint8_t*) imgbuf;
+				dstframe->vinf.text.raw = imgbuf;
 			}
 		}
 		else {
 			neww = inw;
 			newh = inh;
-			dstframe->vinf.text.raw   = (uint8_t*) imgbuf;
+			dstframe->vinf.text.raw = imgbuf;
 			dstframe->vinf.text.s_raw = inw * inh * GL_PIXEL_BPP;
 		}
 
@@ -2068,13 +2067,13 @@ arcan_vobj_id arcan_video_nullobject(float origw,
 	return rv;
 }
 
-arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs,
+arcan_vobj_id arcan_video_rawobject(av_pixel* buf,
 	img_cons cons, float origw, float origh, unsigned short zv)
 {
 	arcan_vobj_id rv = ARCAN_EID;
+	size_t bufs = cons.w * cons.h * cons.bpp;
 
-	if (buf && bufs == (cons.w * cons.h * cons.bpp)
-		&& cons.bpp == GL_PIXEL_BPP) {
+	if (buf && cons.bpp == GL_PIXEL_BPP){
 		arcan_vobject* newvobj = arcan_video_newvobject(&rv);
 
 		if (!newvobj)
@@ -2086,7 +2085,7 @@ arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs,
 		ds->h   = cons.h;
 		ds->bpp = cons.bpp;
 		ds->vinf.text.s_raw = bufs;
-		ds->vinf.text.raw   = buf;
+		ds->vinf.text.raw = buf;
 		ds->txmapped = TXSTATE_TEX2D;
 		ds->filtermode = arcan_video_display.filtermode;
 
@@ -3293,7 +3292,7 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 /* full- object specific clean-up */
 	if (vobj->flags.clone == false){
 		if (vobj->feed.ffunc){
-			vobj->feed.ffunc(FFUNC_DESTROY, 0, 0, 0, 0, 0, 0, vobj->feed.state);
+			vobj->feed.ffunc(FFUNC_DESTROY, 0, 0, 0, 0, 0, vobj->feed.state);
 
 			vobj->feed.state.ptr = NULL;
 			vobj->feed.ffunc = NULL;
@@ -3976,13 +3975,13 @@ static int tick_rendertarget(struct rendertarget* tgt)
 			update_object(elem, arcan_video_display.c_ticks);
 
 		if (elem->feed.ffunc)
-			elem->feed.ffunc(FFUNC_TICK, 0, 0, 0, 0, 0, 0, elem->feed.state);
+			elem->feed.ffunc(FFUNC_TICK, 0, 0, 0, 0, 0, elem->feed.state);
 
 /* special case for "unreachables", e.g. detached frameset cells */
 		for (size_t i = 0; i < elem->frameset_meta.capacity; i++){
 			arcan_vobject* cell = elem->frameset[i];
 			if (cell->owner == NULL && cell->feed.ffunc){
-				cell->feed.ffunc(FFUNC_TICK, 0, 0, 0, 0, 0, 0, cell->feed.state);
+				cell->feed.ffunc(FFUNC_TICK, 0, 0, 0, 0, 0, cell->feed.state);
 			}
 		}
 
@@ -4355,7 +4354,7 @@ static void ffunc_process(arcan_vobject* dst, int cookie)
 	dst->feed.pcookie = cookie;
 
 	if (dst->feed.ffunc(
-		FFUNC_POLL, 0, 0, 0, 0, 0, 0, dst->feed.state) == FFUNC_RV_GOTFRAME) {
+		FFUNC_POLL, 0, 0, 0, 0, 0, dst->feed.state) == FFUNC_RV_GOTFRAME) {
 		FLAG_DIRTY();
 		arcan_vobject* cframe = dst->current_frame;
 
@@ -4373,9 +4372,10 @@ static void ffunc_process(arcan_vobject* dst, int cookie)
 
 	enum arcan_ffunc_rv funcres = dst->feed.ffunc(FFUNC_RENDER,
 		cframe->vstore->vinf.text.raw, cframe->vstore->vinf.text.s_raw,
-		cframe->vstore->w, cframe->vstore->h, cframe->vstore->bpp,
+		cframe->vstore->w, cframe->vstore->h,
 		cframe->vstore->vinf.text.glid,
-		dst->feed.state);
+		dst->feed.state
+	);
 
 /*
  * special "hack" for situations where the ffunc can do the
@@ -4786,7 +4786,8 @@ end3d:
 	return pc;
 }
 
-arcan_errc arcan_video_forceread(arcan_vobj_id sid, void** dptr, size_t* dsize)
+arcan_errc arcan_video_forceread(arcan_vobj_id sid,
+	av_pixel** dptr, size_t* dsize)
 {
 /*
  * more involved than one may think, the store doesn't have to be representative
@@ -4842,7 +4843,7 @@ arcan_errc arcan_video_forceupdate(arcan_vobj_id vid)
 	return ARCAN_OK;
 }
 
-arcan_errc arcan_video_screenshot(void** dptr, size_t* dsize)
+arcan_errc arcan_video_screenshot(av_pixel** dptr, size_t* dsize)
 {
 	*dsize = sizeof(char) * arcan_video_display.canvasw *
 		arcan_video_display.canvash * GL_PIXEL_BPP;
@@ -4873,7 +4874,7 @@ static inline void poll_readback(struct rendertarget* tgt)
 	size_t ntr = vobj->vstore->w * vobj->vstore->h * vobj->vstore->bpp;
 
 	glBindBuffer(GL_PIXEL_PACK_BUFFER, tgt->pbo);
-	GLubyte* src = glMapBuffer_Wrap(GL_PIXEL_PACK_BUFFER, ACCESS_FLAG_RW, ntr);
+	av_pixel* src = glMapBuffer_Wrap(GL_PIXEL_PACK_BUFFER, ACCESS_FLAG_RW, ntr);
 
 /*
  * there are a bunch of driver bugs to watch out for here,
@@ -4887,9 +4888,7 @@ static inline void poll_readback(struct rendertarget* tgt)
 			tgt->readback = 0;
 		else
 			vobj->feed.ffunc(FFUNC_READBACK, src, ntr,
-				vobj->vstore->w,  vobj->vstore->h,  vobj->vstore->bpp, 0,
-				vobj->feed.state
-			);
+			vobj->vstore->w, vobj->vstore->h, 0, vobj->feed.state);
 	}
 
 	glUnmapBuffer(GL_PIXEL_PACK_BUFFER);

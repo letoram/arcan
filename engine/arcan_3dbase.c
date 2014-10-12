@@ -464,8 +464,8 @@ step:
 }
 
 static enum arcan_ffunc_rv ffunc_3d(
-	enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf,
-	uint16_t width, uint16_t height, uint8_t bpp, unsigned mode,vfunc_state state)
+	enum arcan_ffunc_cmd cmd, av_pixel* buf, size_t s_buf,
+	uint16_t width, uint16_t height, unsigned mode, vfunc_state state)
 {
 	if (state.tag == ARCAN_TAG_3DOBJ && state.ptr){
 		switch (cmd){

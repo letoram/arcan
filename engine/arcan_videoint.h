@@ -143,7 +143,7 @@ struct storage_info_t {
 		struct {
 			unsigned  glid; /* GLUint should always be unsigned int */
 			uint32_t s_raw;
-			uint8_t*   raw;
+			av_pixel*  raw;
 			char*   source;
 		} text;
 		struct {

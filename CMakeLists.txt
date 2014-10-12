@@ -511,6 +511,13 @@ set (
  platform/video_platform.h
 )
 
+set (ARCANDB_SOURCES
+	engine/arcan_dbtool.c
+	engine/arcan_db.c
+	platform/posix/warning.c
+	platform/stub/mem.c
+)
+
 set (SHMIF_SOURCES
   shmif/arcan_shmif.h
 	shmif/arcan_shmif_interop.h
@@ -796,8 +803,20 @@ else()
 endif()
 
 message("\n---- Stage 3, Linking / Packaging ----")
+add_executable( arcan_db ${ARCANDB_SOURCES} )
+target_link_libraries( arcan_db ${STDLIB} ${SQLITE3_LIBRARIES} )
 target_link_libraries( arcan ${STDLIB} ${MAIN_LIBRARIES} ${ARCANMAIN_LIBRARIES} )
 target_link_libraries( arcan_frameserver ${STDLIB} ${FSRV_LIBRARIES} )
+
+#
+# The database tool is a CLI for the engine/arcan_db with additional
+# code not part of the main arcan binaries (to make it somewhat harder
+# for a misbehaving script to add / introduce new configs / targets
+# and execute them.
+#
+
+set_property(TARGET arcan_db APPEND PROPERTY
+				COMPILE_DEFINITIONS ARCAN_DB_STANDALONE )
 
 #
 # For LWA we need some kind of sound backend. In a sandbox,

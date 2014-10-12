@@ -567,9 +567,9 @@ static bool memcmp_nodep(const void* s1, const void* s2, size_t n)
 	return !(diffv != 0);
 }
 
-static enum arcan_ffunc_rv socketverify(enum arcan_ffunc_cmd cmd, uint8_t* buf,
-	uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned mode,
-	vfunc_state state)
+static enum arcan_ffunc_rv socketverify(enum arcan_ffunc_cmd cmd,
+	av_pixel* buf, size_t s_buf, uint16_t width, uint16_t height,
+	unsigned mode, vfunc_state state)
 {
 	arcan_frameserver* tgt = state.ptr;
 	char ch = '\n';
@@ -676,8 +676,8 @@ send_key:
 	return FFUNC_RV_NOFRAME;
 }
 
-static int8_t socketpoll(enum arcan_ffunc_cmd cmd, uint8_t* buf,
-	uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned mode,
+static int8_t socketpoll(enum arcan_ffunc_cmd cmd, av_pixel* buf,
+	size_t s_buf, uint16_t width, uint16_t height, unsigned mode,
 	vfunc_state state)
 {
 	arcan_frameserver* tgt = state.ptr;
@@ -723,7 +723,7 @@ static int8_t socketpoll(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 				tgt->sockaddr = NULL;
 			}
 
-			return socketverify(cmd, buf, s_buf, width, height, bpp, mode, state);
+			return socketverify(cmd, buf, s_buf, width, height, mode, state);
 		break;
 
 /* socket is closed in frameserver_destroy */
