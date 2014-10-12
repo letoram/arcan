@@ -74,6 +74,8 @@ enum ARCAN_SEGID {
 	SEGID_SHELL, /* terminal, privilege level vary, low-speed interactivity */
 	SEGID_REMOTING, /* network client but A/V/latency sensitive */
 	SEGID_ENCODER, /* high-CPU, low-latency, wants access to engine data */
+	SEGID_SENSOR, /* sampled continuous update */
+	SEGID_INPUTDEVICE, /* event/user-interaction driven */
 	SEGID_GAME, /* high-interactivity, high A/V cost, low latency */
 	SEGID_APPLICATION, /* video updates typically reactive */
 	SEGID_BROWSER, /* network client, high-risk for malicious data */

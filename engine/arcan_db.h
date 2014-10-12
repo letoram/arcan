@@ -21,142 +21,160 @@
 
 #ifndef _HAVE_ARCAN_DB
 
-/*
- * This part is rather rigid and specialized to work with.
- * Future revisions will generalize this to contain
- * [a. verified and accepted appls]
- * [b. native, legacy programs and respective hijack libraries]
- * [c. encrypted keystore]
- *
- * appl. key-value store will be split into separate databases
- */
 struct arcan_dbh;
-typedef struct arcan_dbh arcan_dbh;
 
-typedef struct {
-	int gameid;
-	int targetid;
-	int year;
-	int input;
-	int n_players;
-	int n_buttons;
-	long launch_counter;
-	char* title;
-	char* genre;
-	char* subgenre;
-	char* setname;
-	char* manufacturer;
-	char* targetname;
-	char* system;
-} arcan_db_game;
+enum DB_BFORMAT {
+	BFRM_ELF = 0x00,   /* regular executable          */
+	BFRM_LWA = 0x01,   /* lightweight_arcan loader    */
+	BFRM_RETRO = 0x02  /* frameserver_libretro loader */
 
-union resdata {
-	char** strarr;
-	arcan_db_game** gamearr;
+/* add more here to force interpreters and arguments */
 };
 
-typedef struct {
+/*
+ * There are numerous key-value type stores in use here,
+ * DVT_APPL / TARGET / CONFIG is for script/user defined data
+ * the ENV / ARGV / LIBV groups are for generating the execution environment
+ */
+enum DB_KVTARGET {
+	DVT_APPL        = 0,
+	DVT_TARGET      = 1,
+	DVT_TARGET_ENV  = 2,
+	DVT_TARGET_LIBV = 3,
+	DVT_CONFIG      = 10,
+	DVT_CONFIG_ENV  = 11,
+	DVT_ENDM = 5
+};
+
+typedef long arcan_targetid;
+typedef long arcan_configid;
+
+static const int BAD_TARGET = -1;
+static const int BAD_CONFIG = -1;
+
+struct arcan_dbres {
 	char kind;
 	unsigned int count;
 	unsigned int limit;
-	union resdata data;
-} arcan_dbh_res;
 
-enum ARCAN_DB_INPUTMASK {
-	JOY4WAY = 1,
-	JOY8WAY = 2,
-	DIAL = 4,
-	DOUBLEJOY8WAY = 8,
-	PADDLE = 16,
-	STICK = 32,
-	LIGHTGUN = 64,
-	VJOY2WAY = 128
+	char** strarr;
 };
 
-/* unless specified, caller is responsible for cleanup for returned strings / db res structs */
+/* Opens database and performs a sanity check,
+ * Creates an entry for applname unless one already exists,
+ * returns null IF fname can't be opened/read OR sanity check fails.
+ */
+struct arcan_dbh* arcan_db_open(const char* fname, const char* applname);
 
-/* Opens database and performs sanity check,
- * if applname is not null, make sure there is a table for the specified appl
- * returns null IF fname can't be opened/read OR sanity check fails */
-arcan_dbh* arcan_db_open(const char* fname, const char* applname);
-void arcan_db_close(arcan_dbh*);
+/*
+ * Synchronize and flush possibly pending queries,
+ * then free resources and reset the handle.
+ * *dbh will be set to NULL.
+ */
+void arcan_db_close(struct arcan_dbh**);
 
-/* populate a filtered list of results,
- * year (< 0 for all)
- * input (<= 0 for all, otherwise mask using ARCAN_DB_INPUTMASK)
- * n_players (<= 0 for all)
- * n_buttons (<= 0 for all)
- * title (null or string for match, prepend with asterisk for wildcard match)
- * genre (null or string for match, prepend with asterisk for wildcard match)
- * subgenre (null or string for match, prepend with asterisk for wildcard match)
- * manufacturer (null or string for match) */
-arcan_dbh_res arcan_db_games(arcan_dbh*,
-	const int year,
-	const int input,
-	const int n_players,
-	const int n_buttons,
-	const char* title,
-	const char* genre,
-	const char* subgenre,
-	const char* target,
-	const char* system,
-	const char* manufacturer,
-	const long long offset,
-	const long long limit
+/*
+ * Define this to add database features that should
+ * only be present in a standalone application
+ * (as the running arcan session should NOT be able to
+ * add new targets/configurations by itself)
+ */
+#ifdef ARCAN_DB_STANDALONE
+/*
+ * delete everything associated with a specific target or config,
+ * including specific K/V store.
+ */
+bool arcan_db_droptarget(struct arcan_dbh* dbh, arcan_targetid);
+
+/*
+ * there will always be a 'default' config ID associated with any
+ * target that can only be removed with the target itself.
+ */
+bool arcan_db_dropconfig(struct arcan_dbh* dbh, arcan_configid);
+
+arcan_targetid arcan_db_addtarget(struct arcan_dbh* dbh,
+	const char* identifier, /* unique, string identifier of the target */
+	const char* exec,       /* executable identifier */
+	const char* argv,       /* argument string that will be attached */
+	enum DB_BFORMAT bfmt    /* defines how execution should be set up */
+	);
+
+arcan_configid arcan_db_addconfig(struct arcan_dbh* dbh,
+	arcan_targetid,	const char* identifier, const char* argv);
+#endif
+
+/*
+ * Append launch-status to the log.
+ */
+void arcan_db_launch_status(struct arcan_dbh*, int configid, bool failed);
+
+/*
+ * Lookup target based on string name.
+ * If set, the default configuration and lookup status will also be returned
+ */
+arcan_targetid arcan_db_targetid(struct arcan_dbh*,
+	const char* targetname, arcan_configid*);
+
+arcan_configid arcan_db_configid(struct arcan_dbh*,
+	arcan_targetid targetname, const char* configname);
+
+/*
+ * Generate the execution environment for a configuration identifier.
+ * (returns exec-str, and a dbres for environment, arguments)
+ */
+char* arcan_db_targetexec(struct arcan_dbh*,
+	arcan_configid configid,
+	struct arcan_dbres* argv, struct arcan_dbres* env
 );
-arcan_dbh_res arcan_db_gamebyid(arcan_dbh* dbh, int gameid);
 
-/* log a database entry for a failed launch,
- * assist in maintaing game-db / config */
-void arcan_db_failed_launch(arcan_dbh*, int);
+/*
+ * Retrieve a list of available targets
+ */
+struct arcan_dbres arcan_db_targets(struct arcan_dbh*);
 
-/* manipulate the launch_counter property of a game */
-long arcan_db_launch_counter(arcan_dbh*, const char* title);
-bool arcan_db_launch_counter_increment(arcan_dbh* dbhandle, int gameid);
-bool arcan_db_clear_launch_counter(arcan_dbh*);
+/*
+ * Retrieve a list of available configurations
+ */
+struct arcan_dbres arcan_db_configs(struct arcan_dbh*, arcan_targetid);
 
-/* find games that match the specified one,
- * if gameid is specified (> 0), this will be used to search,
- * otherwise title is used */
-arcan_dbh_res arcan_db_game_siblings(arcan_dbh*,
-	const char* title, const int gameid);
+union arcan_dbtrans_id {
+	arcan_configid cid;
+	arcan_targetid tid;
+	const char* applname;
+};
 
-/* populate a list of viable targets (with games associated) */
-arcan_dbh_res arcan_db_targets(arcan_dbh*);
+void arcan_db_begin_transaction(struct arcan_dbh*, enum DB_KVTARGET,
+	union arcan_dbtrans_id);
+void arcan_db_add_kvpair(struct arcan_dbh*, const char* key, const char* val);
+void arcan_db_end_transaction(struct arcan_dbh*);
 
-bool arcan_db_targetdata (arcan_dbh*, int targetid, char** targetname, char** targetexec);
-char* arcan_db_targetexec (arcan_dbh*, char* targetname);
+char* arcan_db_getvalue(struct arcan_dbh*,
+	enum DB_KVTARGET, int64_t id, const char* key);
 
-/* Figure out the actual hijack-lib that would be needed to launch gameid
- * Added primarily to support a range of hijack libs for specialized targets */
-char* arcan_db_targethijack(arcan_dbh*, char* targetname);
-char* arcan_db_gametgthijack(arcan_dbh* dbh, int gameid);
+/*
+ * Returns true or false depending on if the requested targetid
+ * exists or not.
+ */
+bool arcan_db_verifytarget(struct arcan_dbh* dbh, arcan_targetid);
 
-/* populate a list of genres / subgenres */
-arcan_dbh_res arcan_db_genres(arcan_dbh*, bool sub);
+/*
+ * Synchronously store/retrieve a key-value pair,
+ * set to empty value to delete.
+ */
+bool arcan_db_appl_kv(struct arcan_dbh* dbh, const char* appl,
+	const char* key, const char* value);
 
-/* Query a game entry, prepare execution strings (null-terminated)
- * in an exec() friendly format.
- * taking into account target, target_options and game-specific options.
- * this array needs to be cleaned up (iterate until NULL, free everything then free baseptr).
- *
- * returns null if no match for game is found */
+/*
+ * Retrieve the current value stored with key
+ * caller is expected to mem_free string, can return NULL.
+ */
+char* arcan_db_appl_val(struct arcan_dbh* dbh,
+	const char* appl, const char* key);
 
-/* the special argument [romset] inserts the romset name,
- * arguments will be inserted in the order (game specific) -> (game generic),
- * if romset hasn't been set at the end, it will be forcibly attached. */
-arcan_dbh_res arcan_db_launch_options(arcan_dbh* dbh, int gameid, bool internal);
-
-long int arcan_db_gameid(arcan_dbh* dbh, const char* title, arcan_errc* status);
-
-/* specialized case, assumes the keys pushed doesn't exist, and needs to be terminated with an empty call */
-bool arcan_db_kv(arcan_dbh* dbh, const char* key, const char* value);
-
-/* these two are fairly rigid, calls can take hundres of ms to complete due to synchronous transfers */
-bool arcan_db_appl_kv(arcan_dbh* dbh, const char* appl, const char* key, const char* value);
-char* arcan_db_appl_val(arcan_dbh* dbh, const char* appl, const char* key);
-
-/* cleanup for any function that returns a arcan_dbh_res type */
-bool arcan_db_free_res(arcan_dbh* dbh, arcan_dbh_res res);
+/*
+ * Any function that returns an struct arcan_dbres should be explicitly
+ * freed by calling this function.
+ */
+void arcan_db_free_res(struct arcan_dbh* dbh, struct arcan_dbres res);
 
 #endif

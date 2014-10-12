@@ -237,7 +237,7 @@ static const int RENDERFMT_FULL  = RENDERTARGET_COLOR_DEPTH_STENCIL;
 static const int POSTFILTER_NTSC = 100;
 static const int POSTFILTER_OFF  = 10;
 
-extern arcan_dbh* dbhandle;
+extern struct arcan_dbh* dbhandle;
 
 enum arcan_cb_source {
 	CB_SOURCE_NONE        = 0,
@@ -397,7 +397,7 @@ void arcan_state_dump(const char* key, const char* msg, const char* src)
 		return;
 	}
 
-	const char* date_ptn = "%m%d_%H%M%S";
+	const char date_ptn[] = "%m%d_%H%M%S";
 	char date_str[ sizeof(date_ptn) * 2 ];
 	strftime(date_str, sizeof(date_str), date_ptn, ltime);
 
@@ -1375,7 +1375,6 @@ static int buildshader(lua_State* ctx)
 	const char* label = luaL_checkstring(ctx, 3);
 
 	arcan_shader_id rv = arcan_shader_build(label, NULL, vprog, fprog);
-
 	lua_pushnumber(ctx, rv);
 	return 1;
 }
@@ -1386,7 +1385,6 @@ static int sharestorage(lua_State* ctx)
 
 	arcan_vobj_id src = luaL_checkvid(ctx, 1, NULL);
 	arcan_vobj_id dst = luaL_checkvid(ctx, 2, NULL);
-
 
 	arcan_errc rv = arcan_video_shareglstore(src, dst);
 	lua_pushboolean(ctx, rv == ARCAN_OK);
@@ -3510,20 +3508,24 @@ static int storekey(lua_State* ctx)
 {
 	LUA_TRACE("store_key");
 
+
 	if (lua_type(ctx, 1) == LUA_TTABLE){
+		union arcan_dbtrans_id tid;
+		tid.applname = arcan_appl_id();
+
 		lua_pushnil(ctx);
+		arcan_db_begin_transaction(dbhandle, DVT_APPL, tid);
 
 		while (lua_next(ctx, 1) != 0){
 			const char* key = lua_tostring(ctx, -2);
 			const char* val = lua_tostring(ctx, -1);
-			arcan_db_kv(dbhandle, key, val);
+			arcan_db_add_kvpair(dbhandle, key, val);
 			lua_pop(ctx, 1);
 		}
 
-/* end transaction */
-		arcan_db_kv(dbhandle, NULL, NULL);
-
-	} else {
+		arcan_db_end_transaction(dbhandle);
+	}
+	else {
 		const char* key = luaL_checkstring(ctx, 1);
 		const char* name = luaL_checkstring(ctx, 2);
 		arcan_db_appl_kv(dbhandle, arcan_appl_id(), key, name);
@@ -3549,45 +3551,15 @@ static int getkey(lua_State* ctx)
 	return 1;
 }
 
-static int gamefamily(lua_State* ctx)
-{
-	LUA_TRACE("game_family");
-
-	const int gameid = luaL_checkinteger(ctx, 1);
-	arcan_dbh_res res = arcan_db_game_siblings(dbhandle, NULL, gameid);
-	int rv = 0;
-
-	if (res.kind == 0 && res.data.strarr) {
-		char** curr = res.data.strarr;
-		unsigned int count = 1; /* 1 indexing, seriously LUA ... */
-
-		curr = res.data.strarr;
-
-		lua_newtable(ctx);
-		int top = lua_gettop(ctx);
-
-		while (*curr) {
-			lua_pushnumber(ctx, count++);
-			lua_pushstring(ctx, *curr++);
-			lua_rawset(ctx, top);
-		}
-
-		rv = 1;
-		arcan_db_free_res(dbhandle, res);
-	}
-
-	return rv;
-}
-
-static int push_stringres(lua_State* ctx, arcan_dbh_res res)
+static int push_stringres(lua_State* ctx, struct arcan_dbres res)
 {
 	int rv = 0;
 
-	if (res.kind == 0 && res.data.strarr) {
-		char** curr = res.data.strarr;
+	if (res.kind == 0 && res.strarr) {
+		char** curr = res.strarr;
 		unsigned int count = 1; /* 1 indexing, seriously LUA ... */
 
-		curr = res.data.strarr;
+		curr = res.strarr;
 
 		lua_newtable(ctx);
 		int top = lua_gettop(ctx);
@@ -3728,7 +3700,6 @@ static int videomapping(lua_State* ctx)
 	return 0;
 }
 
-
 static int mousegrab(lua_State* ctx)
 {
 	LUA_TRACE("toggle_mouse_grab");
@@ -3753,23 +3724,7 @@ static int gettargets(lua_State* ctx)
 
 	int rv = 0;
 
-	arcan_dbh_res res = arcan_db_targets(dbhandle);
-	rv += push_stringres(ctx, res);
-	arcan_db_free_res(dbhandle, res);
-
-	return rv;
-}
-
-static int getgenres(lua_State* ctx)
-{
-	LUA_TRACE("game_genres");
-
-	int rv = 0;
-	arcan_dbh_res res = arcan_db_genres(dbhandle, false);
-	rv = push_stringres(ctx, res);
-	arcan_db_free_res(dbhandle, res);
-
-	res = arcan_db_genres(dbhandle, true);
+	struct arcan_dbres res = arcan_db_targets(dbhandle);
 	rv += push_stringres(ctx, res);
 	arcan_db_free_res(dbhandle, res);
 
@@ -3789,17 +3744,16 @@ static int allocsurface(lua_State* ctx)
 			"surface dimensions. Compile time restriction (%d,%d)\n",
 			cons.w, cons.h, MAX_SURFACEW, MAX_SURFACEH);
 
-	uint8_t* buf = arcan_alloc_mem(cons.w * cons.h * GL_PIXEL_BPP,
+	av_pixel* buf = arcan_alloc_mem(cons.w * cons.h * GL_PIXEL_BPP,
 		ARCAN_MEM_VBUFFER, 0, ARCAN_MEMALIGN_PAGE);
 
-	uint32_t* cptr = (uint32_t*) buf;
+	av_pixel* cptr = buf;
 
 	for (size_t y = 0; y < cons.h; y++)
 		for (size_t x = 0; x < cons.w; x++)
 			*cptr = RGBA(0, 0, 0, 0xff);
 
-	arcan_vobj_id id = arcan_video_rawobject(
-		buf, cons.w * cons.h * GL_PIXEL_BPP, cons, cons.w, cons.h, 0);
+	arcan_vobj_id id = arcan_video_rawobject(buf, cons, cons.w, cons.h, 0);
 
 	lua_pushvid(ctx, id);
 
@@ -3824,20 +3778,19 @@ static int fillsurface(lua_State* ctx)
 	if (cons.w > 0 && cons.w <= MAX_SURFACEW &&
 		cons.h > 0 && cons.h <= MAX_SURFACEH){
 
-		uint8_t* buf = arcan_alloc_mem(cons.w * cons.h * GL_PIXEL_BPP,
+		av_pixel* buf = arcan_alloc_mem(cons.w * cons.h * GL_PIXEL_BPP,
 			ARCAN_MEM_VBUFFER, 0, ARCAN_MEMALIGN_PAGE);
 
 		if (!buf)
 			goto error;
 
-		uint32_t* cptr = (uint32_t*) buf;
+		av_pixel* cptr = (av_pixel*) buf;
 
 		for (size_t y = 0; y < cons.h; y++)
 			for (size_t x = 0; x < cons.w; x++)
 				*cptr++ = RGBA(r, g, b, 0xff);
 
-		arcan_vobj_id id = arcan_video_rawobject(buf,
-			cons.w * cons.h * GL_PIXEL_BPP, cons, desw, desh, 0);
+		arcan_vobj_id id = arcan_video_rawobject(buf, cons, desw, desh, 0);
 
 		lua_pushvid(ctx, id);
 		return 1;
@@ -3943,10 +3896,10 @@ static int rawsurface(lua_State* ctx)
 			desw, desh, MAX_SURFACEW, MAX_SURFACEH
 		);
 
-	uint8_t* buf = arcan_alloc_mem(desw * desh * GL_PIXEL_BPP,
+	av_pixel* buf = arcan_alloc_mem(desw * desh * GL_PIXEL_BPP,
 		ARCAN_MEM_VBUFFER, 0, ARCAN_MEMALIGN_PAGE);
 
-	uint32_t* cptr = (uint32_t*) buf;
+	av_pixel* cptr = (av_pixel*) buf;
 
 	for (size_t y = 0; y < cons.h; y++)
 		for (size_t x = 0; x < cons.w; x++){
@@ -4001,8 +3954,7 @@ static int rawsurface(lua_State* ctx)
 		arcan_mem_free(fname);
 	}
 
-	arcan_vobj_id id = arcan_video_rawobject(buf,
-		cons.w * cons.h * GL_PIXEL_BPP, cons, desw, desh, 0);
+	arcan_vobj_id id = arcan_video_rawobject(buf, cons, desw, desh, 0);
 
 	lua_pushvid(ctx, id);
 	return 1;
@@ -4021,10 +3973,10 @@ static int randomsurface(lua_State* ctx)
 	int desh = abs( luaL_checknumber(ctx, 2) );
 	img_cons cons = {.w = desw, .h = desh, .bpp = GL_PIXEL_BPP};
 
-	uint32_t* cptr = arcan_alloc_mem(desw * desh * GL_PIXEL_BPP,
+	av_pixel* cptr = arcan_alloc_mem(desw * desh * GL_PIXEL_BPP,
 		ARCAN_MEM_VBUFFER, 0, ARCAN_MEMALIGN_PAGE);
 
-	uint8_t* buf = (uint8_t*) cptr;
+	av_pixel* buf = (av_pixel*) cptr;
 
 	for (size_t y = 0; y < cons.h; y++)
 		for (size_t x = 0; x < cons.w; x++){
@@ -4032,212 +3984,11 @@ static int randomsurface(lua_State* ctx)
 			*cptr++ = RGBA(val, val, val, 0xff);
 		}
 
-	arcan_vobj_id id = arcan_video_rawobject(buf, desw * desh * 4, cons,
-		desw, desh, 0);
+	arcan_vobj_id id = arcan_video_rawobject(buf, cons, desw, desh, 0);
 	arcan_video_objectfilter(id, ARCAN_VFILTER_NONE);
 	lua_pushvid(ctx, id);
 
 	return 1;
-}
-
-static int getcmdline(lua_State* ctx)
-{
-	LUA_TRACE("game_cmdline");
-
-	int gameid = 0;
-	arcan_errc status = ARCAN_OK;
-
-	if (lua_isstring(ctx, 1)){
-		gameid = arcan_db_gameid(dbhandle, luaL_checkstring(ctx, 1), &status);
-	}
-	else
-		gameid = luaL_checknumber(ctx, 1);
-
-	if (status != ARCAN_OK)
-		return 0;
-
-	int internal = luaL_optnumber(ctx, 2, 1);
-
-	arcan_dbh_res res = arcan_db_launch_options(dbhandle, gameid, internal == 0);
-	int rv = push_stringres(ctx, res);
-
-	arcan_db_free_res(dbhandle, res);
-	return rv;
-}
-
-
-static void pushgame(lua_State* ctx, arcan_db_game* curr)
-{
-	int top = lua_gettop(ctx);
-
-	lua_pushstring(ctx, "gameid");
-	lua_pushnumber(ctx, curr->gameid);
-	lua_rawset(ctx, top);
-	lua_pushstring(ctx, "targetid");
-	lua_pushnumber(ctx, curr->targetid);
-	lua_rawset(ctx, top);
-	lua_pushstring(ctx, "title");
-	lua_pushstring(ctx, curr->title);
-	lua_rawset(ctx, top);
-	lua_pushstring(ctx, "genre");
-	lua_pushstring(ctx, curr->genre);
-	lua_rawset(ctx, top);
-	lua_pushstring(ctx, "subgenre");
-	lua_pushstring(ctx, curr->subgenre);
-	lua_rawset(ctx, top);
-	lua_pushstring(ctx, "setname");
-	lua_pushstring(ctx, curr->setname);
-	lua_rawset(ctx, top);
-	lua_pushstring(ctx, "buttons");
-	lua_pushnumber(ctx, curr->n_buttons);
-	lua_rawset(ctx, top);
-	lua_pushstring(ctx, "manufacturer");
-	lua_pushstring(ctx, curr->manufacturer);
-	lua_rawset(ctx, top);
-	lua_pushstring(ctx, "players");
-	lua_pushnumber(ctx, curr->n_players);
-	lua_rawset(ctx, top);
-	lua_pushstring(ctx, "input");
-	lua_pushnumber(ctx, curr->input);
-	lua_rawset(ctx, top);
-	lua_pushstring(ctx, "year");
-	lua_pushnumber(ctx, curr->year);
-	lua_rawset(ctx, top);
-	lua_pushstring(ctx, "target");
-	lua_pushstring(ctx, curr->targetname);
-	lua_rawset(ctx, top);
-	lua_pushstring(ctx, "launch_counter");
-	lua_pushnumber(ctx, curr->launch_counter);
-	lua_rawset(ctx, top);
-	lua_pushstring(ctx, "system");
-	lua_pushstring(ctx, curr->system);
-	lua_rawset(ctx, top);
-}
-
-/* sort-order (asc or desc),
- * year
- * n_players
- * n_buttons
- * genre
- * subgenre
- * manufacturer */
-static int filtergames(lua_State* ctx)
-{
-	LUA_TRACE("list_games");
-
-	int year = -1;
-	int n_players = -1;
-	int n_buttons = -1;
-	int input = 0;
-	char* title = NULL;
-	char* genre = NULL;
-	char* subgenre = NULL;
-	char* target = NULL;
-	char* manufacturer = NULL;
-	char* system = NULL;
-
-	int rv = 0;
-	int limit = 0;
-	int offset = 0;
-
-/* reason for all this is that lua_tostring MAY return NULL,
- * and if it doesn't, the string can be subject to garbage collection after POP,
- * thus need a working copy */
-	luaL_checktype(ctx, 1, LUA_TTABLE);
-
-/* populate all arguments */
-	lua_pushstring(ctx, "year");
-	lua_gettable(ctx, -2);
-	year = lua_tonumber(ctx, -1);
-	lua_pop(ctx, 1);
-
-	lua_pushstring(ctx, "limit");
-	lua_gettable(ctx, -2);
-	limit = lua_tonumber(ctx, -1);
-	lua_pop(ctx, 1);
-
-	lua_pushstring(ctx, "offset");
-	lua_gettable(ctx, -2);
-	offset= lua_tonumber(ctx, -1);
-	lua_pop(ctx, 1);
-
-	lua_pushstring(ctx, "input");
-	lua_gettable(ctx, -2);
-	input = lua_tonumber(ctx, -1);
-	lua_pop(ctx, 1);
-
-	lua_pushstring(ctx, "players");
-	lua_gettable(ctx, -2);
-	n_players = lua_tonumber(ctx, -1);
-	lua_pop(ctx, 1);
-
-	lua_pushstring(ctx, "buttons");
-	lua_gettable(ctx, -2);
-	n_buttons = lua_tonumber(ctx, -1);
-	lua_pop(ctx, 1);
-
-	lua_pushstring(ctx, "title");
-	lua_gettable(ctx, -2);
-	title = _n_strdup(lua_tostring(ctx, -1), NULL);
-	lua_pop(ctx, 1);
-
-	lua_pushstring(ctx, "genre");
-	lua_gettable(ctx, -2);
-	genre = _n_strdup(lua_tostring(ctx, -1), NULL);
-	lua_pop(ctx, 1);
-
-	lua_pushstring(ctx, "subgenre");
-	lua_gettable(ctx, -2);
-	subgenre = _n_strdup(lua_tostring(ctx, -1), NULL);
-	lua_pop(ctx, 1);
-
-	lua_pushstring(ctx, "target");
-	lua_gettable(ctx, -2);
-	target = _n_strdup(lua_tostring(ctx, -1), NULL);
-	lua_pop(ctx, 1);
-
-	lua_pushstring(ctx, "system");
-	lua_gettable(ctx, -2);
-	system = _n_strdup(lua_tostring(ctx, -1), NULL);
-	lua_pop(ctx, 1);
-
-	lua_pushstring(ctx, "manufacturer");
-	lua_gettable(ctx, -2);
-	manufacturer = _n_strdup(lua_tostring(ctx, -1), NULL);
-	lua_pop(ctx, 1);
-
-	arcan_dbh_res dbr = arcan_db_games(dbhandle, year, input, n_players,n_buttons,
-		title, genre, subgenre, target, system, manufacturer, offset, limit);
-	free(genre);
-	free(subgenre);
-	free(title);
-	free(target);
-	free(system);
-	free(manufacturer);
-
-	if (dbr.kind == 1 && dbr.count > 0) {
-		arcan_db_game** curr = dbr.data.gamearr;
-		int count = 1;
-
-		rv = 1;
-	/* table of tables .. wtb ruby yield */
-		lua_newtable(ctx);
-		int rtop = lua_gettop(ctx);
-
-		while (*curr) {
-			lua_pushnumber(ctx, count++);
-			lua_newtable(ctx);
-			pushgame(ctx, *curr);
-			lua_rawset(ctx, rtop);
-			curr++;
-		}
-	}
-	else {
-		wraperr(ctx,0,"filtergames(), requires argument table");
-	}
-
-	arcan_db_free_res(dbhandle, dbr);
-	return rv;
 }
 
 char* filter_text(char* in, size_t* out_sz)
@@ -4355,56 +4106,6 @@ static int switchappl(lua_State *ctx)
 	arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 
 	return 0;
-}
-
-static int getgame(lua_State* ctx)
-{
-	LUA_TRACE("game_info");
-
-	int rv = 0;
-
-	if (lua_type(ctx, 1) == LUA_TSTRING){
-		const char* game = luaL_checkstring(ctx, 1);
-
-		arcan_dbh_res dbr = arcan_db_games(dbhandle,
- /* year, input, players, buttons */
-			0, 0, 0, 0,
-/*title, genre, subgenre, target, system, manufacturer */
-			game, NULL, NULL, NULL, NULL, NULL,
-			0, 0); /* offset, limit */
-
-		if (dbr.kind == 1 && dbr.count > 0 &&
-			dbr.data.gamearr &&(*dbr.data.gamearr)){
-			arcan_db_game** curr = dbr.data.gamearr;
-/* table of tables .. missing ruby style yield just about now.. */
-			lua_newtable(ctx);
-			int rtop = lua_gettop(ctx);
-			int count = 1;
-
-			while (*curr) {
-				lua_pushnumber(ctx, count++);
-				lua_newtable(ctx);
-				pushgame(ctx, *curr);
-				lua_rawset(ctx, rtop);
-				curr++;
-			}
-
-			rv = 1;
-			arcan_db_free_res(dbhandle, dbr);
-		}
-	}
-	else {
-		arcan_dbh_res dbr = arcan_db_gamebyid(dbhandle, luaL_checkint(ctx, 1));
-		if (dbr.kind == 1 && dbr.count > 0 &&
-			dbr.data.gamearr &&(*dbr.data.gamearr)){
-			lua_newtable(ctx);
-			pushgame(ctx, dbr.data.gamearr[0]);
-			rv = 1;
-			arcan_db_free_res(dbhandle, dbr);
-		}
-	}
-
-	return rv;
 }
 
 static void panic(lua_State* ctx)
@@ -4577,62 +4278,6 @@ static bool use_loader(char* fname)
 /* there are prettier ways to do this . . . */
 	return ((strcasecmp(ext, ".so") == 0) || (strcasecmp(ext, ".dylib") == 0) ||
 		(strcasecmp(ext, ".dll") == 0)) ? true : false;
-}
-
-/*
- * slated for DEPRECATION
- */
-static int targetlaunch_capabilities(lua_State* ctx)
-{
-	LUA_DEPRECATE("launch_target_capabilities");
-
-	char* targetname = strdup( luaL_checkstring(ctx, 1) );
-
-	char* targetexec = arcan_db_targetexec(dbhandle, targetname);
-	char* resourcestr = targetexec ? arcan_find_resource_path(
-		targetexec, "targets", RESOURCE_APPL_SHARED) : NULL;
-
-	unsigned rv = 0;
-
-	if (resourcestr){
-		lua_newtable(ctx);
-		int top = lua_gettop(ctx);
-
-/* currently, this means frameserver / libretro interface
- * so these capabilities are hard-coded rather than queried */
-		if (use_loader(resourcestr)){
-			tblbool(ctx, "external_launch", false, top);
-			tblbool(ctx, "internal_launch", true, top);
-			tblbool(ctx, "snapshot", true, top);
-			tblbool(ctx, "rewind", false, top);
-			tblbool(ctx, "suspend", false, top);
-			tblbool(ctx, "reset", true, top);
-			tblbool(ctx, "dynamic_input", true, top);
-			tblnum(ctx, "ports", 4, top);
-		}
-	 	else {
-/* the plan is to extend the internal launch support with a probe
- * (sortof prepared for in the build-system) to check how the target is linked,
- *  which dependencies it has etc. */
-			tblbool(ctx, "external_launch", true, top);
-			tblbool(ctx, "internal_launch", true, top);
-
-			tblbool(ctx, "dynamic input", false, top);
-			tblbool(ctx, "reset", false, top);
-			tblbool(ctx, "snapshot", false, top);
-			tblbool(ctx, "rewind", false, top);
-			tblbool(ctx, "suspend", false, top);
-			tblnum(ctx, "ports", 0, top);
-		}
-
-		rv = 1;
-	}
-
-	free(targetname);
-	free(targetexec);
-	free(resourcestr);
-
-	return rv;
 }
 
 static inline bool tgtevent(arcan_vobj_id dst, arcan_event ev)
@@ -5167,18 +4812,6 @@ static int targetreset(lua_State* ctx)
 	return 0;
 }
 
-static char* lookup_hijack(int gameid)
-{
-	char* res = arcan_db_gametgthijack(dbhandle, gameid);
-	if (!res)
-		res = strdup("");
-
-	char* lookup = arcan_expand_resource(res, RESOURCE_SYS_LIBS);
-	arcan_mem_free(res);
-
-	return lookup;
-}
-
 static int targetalloc(lua_State* ctx)
 {
 	LUA_TRACE("target_alloc");
@@ -5248,132 +4881,39 @@ static int targetlaunch(lua_State* ctx)
 {
 	LUA_TRACE("launch_target");
 
-	int gameid = luaL_checknumber(ctx, 1);
-	arcan_errc status = ARCAN_OK;
+	unsigned configid = luaL_checknumber(ctx, 1);
 
-	if (status != ARCAN_OK)
-		return 0;
+/*
+ * first int, config -- second launch_mode,
+ * first string targetarg,
+ * first funptr callback
+ */
 
-	int internal = luaL_checkint(ctx, 2) == 1;
+/*
+ * get env, argv, append target args (colonescape)
+ * from database
+ */
+
+	lua_pushnumber(ctx, configid);
+	return 1;
+/*
 	intptr_t ref = (intptr_t) 0;
-	int rv = 0;
 
-	if (lua_isfunction(ctx, 3) && !lua_iscfunction(ctx, 3)){
-		lua_pushvalue(ctx, 3);
-		ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
-	}
+	arcan_frameserver* intarget = arcan_frameserver_alloc();
+	intarget->tag = ref;
 
-	const char* argstr = luaL_optstring(ctx, 4, NULL);
+	struct frameserver_envp args = {
+		.use_builtin = true,
+		.args.builtin.resource = metastr,
+		.args.builtin.mode = "libretro"
+	};
 
-/* see if we know what the game is */
-	arcan_dbh_res cmdline = arcan_db_launch_options(dbhandle, gameid, internal);
-	if (cmdline.kind == 0){
-		char* resourcestr = arcan_find_resource_path(
-			cmdline.data.strarr[0], "targets", RESOURCE_APPL_SHARED);
-
-		if (!resourcestr)
-			goto cleanup;
-
-		if (lua_ctx_store.debug > 0){
-			char** argbase = cmdline.data.strarr;
-				while(*argbase)
-					arcan_warning("\t%s\n", *argbase++);
-		}
-
-		char** argbase = cmdline.data.strarr;
-		while(*argbase)
-			colon_escape(*argbase++);
-
-		if (internal && resourcestr)
- /* for lib / frameserver targets, we assume that
-	* the argumentlist is just [romsetfull] */
-			if (use_loader(resourcestr)){
-				char* metastr = resourcestr;
-				if ( cmdline.data.strarr[0] && cmdline.data.strarr[1] ){
-
-/* launch_options adds exec path first, we already know that one */
-					size_t arglim = strlen(resourcestr) + sizeof("core=") +
-						strlen(cmdline.data.strarr[1]) + sizeof("resource=") +
-						strlen(argstr ? argstr : "")  + 1;
-
-/* escape resource, unpack in frameserver fixes it */
-					colon_escape(resourcestr);
-					metastr = arcan_alloc_mem(arglim, ARCAN_MEM_STRINGBUF,
-						ARCAN_MEM_TEMPORARY, ARCAN_MEMALIGN_NATURAL);
-
-					snprintf(metastr, arglim, "core=%s:resource=%s%s%s",
-						resourcestr, cmdline.data.strarr[1], argstr ? ":" : "",
-						argstr ? argstr : "");
-				}
-
-				arcan_frameserver* intarget = arcan_frameserver_alloc();
-				intarget->tag = ref;
-
-				struct frameserver_envp args = {
-					.use_builtin = true,
-					.args.builtin.resource = metastr,
-					.args.builtin.mode = "libretro"
-				};
-
-				if (arcan_frameserver_spawn_server(intarget, args) == ARCAN_OK){
-					arcan_video_objectopacity(intarget->vid, 0.0, 0);
-					lua_pushvid(ctx, intarget->vid);
-					lua_pushaid(ctx, intarget->aid);
-					arcan_db_launch_counter_increment(dbhandle, gameid);
-				}
-				else {
-					lua_pushvid(ctx, ARCAN_EID);
-					lua_pushaid(ctx, ARCAN_EID);
-					free(intarget);
-				}
-
-				if (metastr != resourcestr)
-					free(metastr);
-
-				rv = 2;
-			}
-			else {
-				char* hijacktgt = lookup_hijack( gameid );
-
-				arcan_frameserver* intarget = arcan_target_launch_internal( resourcestr,
-					lookup_hijack( gameid ), cmdline.data.strarr );
-
-				free(hijacktgt);
-				if (intarget){
-					intarget->tag = ref;
-					lua_pushvid(ctx, intarget->vid);
-					lua_pushaid(ctx, intarget->aid);
-					arcan_db_launch_counter_increment(dbhandle, gameid);
-					rv = 2;
-				} else {
-					arcan_db_failed_launch(dbhandle, gameid);
-				}
-			}
-		else {
-			unsigned long elapsed = arcan_target_launch_external(
-				resourcestr, cmdline.data.strarr);
-
-			if (elapsed / 1000 < 3){
-				char** argvp = cmdline.data.strarr;
-				arcan_db_failed_launch(dbhandle, gameid);
-				arcan_warning("Script Warning: launch_external(), "
-					"possibly broken target/game combination. %s\n\tArguments:",*argvp++);
-				while(*argvp){
-					arcan_warning("%s \n", *argvp++);
-				}
-			} else
-				arcan_db_launch_counter_increment(dbhandle, gameid);
-		}
-
-		free(resourcestr);
-	}
-	else
-		arcan_warning("targetlaunch(%i, %i) failed, "
-			"no match in database.\n", gameid, internal);
-
-cleanup:
-	arcan_db_free_res(dbhandle, cmdline);
-	return rv;
+	if (arcan_frameserver_spawn_server(intarget, args) == ARCAN_OK){
+		arcan_video_objectopacity(intarget->vid, 0.0, 0);
+		lua_pushvid(ctx, intarget->vid);
+		lua_pushaid(ctx, intarget->aid);
+		arcan_db_launch_Status(dbhandle, configid, false);
+	*/
 }
 
 static int rendertargetforce(lua_State* ctx)
@@ -5596,8 +5136,8 @@ static int procimage_get(lua_State* ctx)
 	}
 }
 
-static enum arcan_ffunc_rv proctarget(enum arcan_ffunc_cmd cmd, uint8_t* buf,
-	uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp,
+static enum arcan_ffunc_rv proctarget(enum arcan_ffunc_cmd cmd,
+	av_pixel* buf, size_t buf_sz, uint16_t width, uint16_t height,
 	unsigned mode, vfunc_state state)
 {
 	if (cmd == FFUNC_DESTROY){
@@ -5621,13 +5161,13 @@ static enum arcan_ffunc_rv proctarget(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 	static void* scrapbuf;
 	static size_t scrapbuf_sz;
 
-	if (!scrapbuf || scrapbuf_sz < s_buf){
+	if (!scrapbuf || scrapbuf_sz < buf_sz){
 		arcan_mem_free(scrapbuf);
-		scrapbuf = arcan_alloc_mem(s_buf, ARCAN_MEM_BINDING,
+		scrapbuf = arcan_alloc_mem(buf_sz, ARCAN_MEM_BINDING,
 			0, ARCAN_MEMALIGN_PAGE);
 
 		if (scrapbuf)
-			scrapbuf_sz = s_buf;
+			scrapbuf_sz = buf_sz;
 		else
 			return 0;
 	}
@@ -5645,7 +5185,7 @@ static enum arcan_ffunc_rv proctarget(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 			outbuf[i] = inbuf[i];
 	}
 	else {
-		memcpy(scrapbuf, buf, s_buf);
+		memcpy(scrapbuf, buf, buf_sz);
 	}
 #endif
 
@@ -6753,7 +6293,7 @@ static int screenshot(lua_State* ctx)
 {
 	LUA_TRACE("save_screenshot");
 
-	void* databuf = NULL;
+	av_pixel* databuf = NULL;
 	size_t bufs;
 	int dw = arcan_video_display.canvasw;
 	int dh = arcan_video_display.canvash;
@@ -6785,7 +6325,7 @@ static int screenshot(lua_State* ctx)
 		FILE* dst = fopen(fname, "wb");
 
 		if (dst)
-			arcan_rgba32_pngfile(dst, databuf, dw, dh, flip);
+			arcan_rgba32_pngfile(dst, (void*) databuf, dw, dh, flip);
 		else
 			arcan_warning("screenshot() -- couldn't save to (%s).\n", fname);
 
@@ -7299,7 +6839,6 @@ static const luaL_Reg resfuns[] = {
 static const luaL_Reg tgtfuns[] = {
 {"launch_target",              targetlaunch             },
 {"target_alloc",               targetalloc              },
-{"launch_target_capabilities", targetlaunch_capabilities},
 {"target_input",               targetinput              },
 {"input_target",               targetinput              },
 {"suspend_target",             targetsuspend            },
@@ -7345,12 +6884,7 @@ static const luaL_Reg tgtfuns[] = {
 static const luaL_Reg dbfuns[] = {
 {"store_key",    storekey   },
 {"get_key",      getkey     },
-{"game_cmdline", getcmdline },
-{"list_games",   filtergames},
 {"list_targets", gettargets },
-{"game_info",    getgame    },
-{"game_family",  gamefamily },
-{"game_genres",  getgenres  },
 {NULL, NULL}
 };
 #undef EXT_MAPTBL_DATABASE
@@ -7886,6 +7420,8 @@ static inline const char* fsrvtos(enum ARCAN_SEGID ink)
 	case SEGID_APPLICATION: return "application";
 	case SEGID_BROWSER: return "browser";
 	case SEGID_ENCODER: return "encoder";
+	case SEGID_SENSOR: return "sensor";
+	case SEGID_INPUTDEVICE: return "inputdevice";
 	case SEGID_DEBUG: return "debug";
 	case SEGID_UNKNOWN: return "unknown";
 	}
