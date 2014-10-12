@@ -127,43 +127,6 @@ struct {
 
 static const char device_name[] = "/dev/dri/card0";
 
-#ifdef WITH_HEADLESS
-bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
-	uint8_t bpp, bool fs, bool frames, const char* title)
-{
-	arcan_fatal("not yet supported");
-/* look into render-nodes support,
- * we can check for /dev/dri/renderD and just connect / draw
- * to them.
- * alternatively, we have to open device_name,
- * and use drm
- * should probably just move into its own video_headless.c
- * and be done with it */
-	return false;
-}
-
-void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
-	video_synchevent pre, video_synchevent post)
-{
-	if (pre)
-		pre();
-
-#ifndef HEADLESS_NOARCAN
-	arcan_bench_register_cost( arcan_video_refresh(fract, true) );
-#endif
-
-	glFlush();
-
-	if (post)
-		post();
-}
-
-void PLATFORM_SYMBOL(_video_shutdown) ()
-{
-}
-
-#else
-
 bool PLATFORM_SYMBOL(_video_set_mode)(
 	platform_display_id disp, platform_mode_id mode)
 {
@@ -470,45 +433,6 @@ static void drm_mode_connector(FILE* fpek, int val)
 	}
 }
 
-static const char* egl_errstr()
-{
-	EGLint errc = eglGetError();
-	switch(errc){
-	case EGL_SUCCESS:
-		return "Success";
-	case EGL_NOT_INITIALIZED:
-		return "Not initialize for the specific display connection";
-	case EGL_BAD_ACCESS:
-		return "Cannot access the requested resource (wrong thread?)";
-	case EGL_BAD_ALLOC:
-		return "Couldn't allocate resources for the requested operation";
-	case EGL_BAD_ATTRIBUTE:
-		return "Unrecognized attribute or attribute value";
-	case EGL_BAD_CONTEXT:
-		return "Context argument does not name a valid context";
-	case EGL_BAD_CONFIG:
-		return "EGLConfig argument did not match a valid config";
-	case EGL_BAD_CURRENT_SURFACE:
-		return "Current surface refers to an invalid destination";
-	case EGL_BAD_DISPLAY:
-		return "The EGLDisplay argument does not match a valid display";
-	case EGL_BAD_SURFACE:
-		return "EGLSurface argument does not name a valid surface";
-	case EGL_BAD_MATCH:
-		return "Inconsistent arguments";
-	case EGL_BAD_PARAMETER:
-		return "Invalid parameter passed to function";
-	case EGL_BAD_NATIVE_PIXMAP:
-		return "NativePixmapType is invalid";
-	case EGL_BAD_NATIVE_WINDOW:
-		return "Native Window Type does not refer to a valid window";
-	case EGL_CONTEXT_LOST:
-		return "Power-management event has forced the context to drop";
-	default:
-		return "Uknown Error";
-	}
-}
-
 /* should be passed on to font rendering */
 static const char* subpixel_type(int val)
 {
@@ -573,13 +497,14 @@ static int setup_drm(void)
 	drm.fd = open(device, O_RDWR);
 
 	if (drm.fd < 0) {
-		arcan_warning("egl-gbmkms(), could not open drm device\n");
+		arcan_warning("egl-dri(), could not open drm device\n");
 		return -1;
 	}
 
 	drm.res = drmModeGetResources(drm.fd);
 	if (!drm.res) {
-		arcan_warning("drmModeGetResources failed: %s\n", strerror(errno));
+		arcan_warning("egl-dri(), drmModeGetResources "
+			"failed: %s\n", strerror(errno));
 		return -1;
 	}
 
@@ -601,7 +526,7 @@ static int setup_drm(void)
  * Still need to handle hotplug / geometry changes though
  */
 	if (!kms.connector){
-		arcan_warning("egl-gbmkms(), no connected output.\n");
+		arcan_warning("egl-dri(), no connected output.\n");
 		return -1;
 	}
 
@@ -615,7 +540,7 @@ static int setup_drm(void)
 	}
 
 	if (!drm.mode) {
-		arcan_warning("egl-gbmkms(), could not find a suitable display mode.\n");
+		arcan_warning("egl-dri(), could not find a suitable display mode.\n");
 		return -1;
 	}
 
@@ -628,7 +553,7 @@ static int setup_drm(void)
 	}
 
 	if (!kms.encoder) {
-		arcan_warning("egl-gbmkms() - could not find a working encoder.\n");
+		arcan_warning("egl-dri() - could not find a working encoder.\n");
 		return -1;
 	}
 
@@ -650,7 +575,7 @@ static int setup_gbm(void)
 	);
 
 	if (!gbm.surface) {
-		arcan_warning("egl-gbmkms(), failed to create gbm surface\n");
+		arcan_warning("egl-dri(), failed to create gbm surface\n");
 		return -1;
 	}
 
@@ -677,12 +602,12 @@ static int setup_gl(void)
 
 	egl.display = eglGetDisplay(gbm.dev);
 	if (!eglInitialize(egl.display, NULL, NULL)){
-		arcan_warning("egl-gbmkms() -- failed to initialize EGL.\n");
+		arcan_warning("egl-dri() -- failed to initialize EGL.\n");
 		return -1;
 	}
 
 	if (!eglBindAPI(EGL_OPENGL_ES_API)){
-		arcan_warning("egl-gbmkms() -- couldn't bind OpenGL API.\n");
+		arcan_warning("egl-dri() -- couldn't bind OpenGL API.\n");
 		return -1;
 	}
 
@@ -690,7 +615,7 @@ static int setup_gl(void)
 	eglGetConfigs(egl.display, NULL, 0, &nc);
 	if (nc < 1){
 		arcan_warning(
-			"egl-gbmkms() -- no configurations found (%s).\n", egl_errstr());
+			"egl-dri() -- no configurations found (%s).\n", egl_errstr());
 	}
 
 	EGLConfig* configs = malloc(sizeof(EGLConfig) * nc);
@@ -698,18 +623,18 @@ static int setup_gl(void)
 
 	GLint selv;
 	arcan_warning(
-		"egl-gbmkms() -- %d configurations found.\n", (int) nc);
+		"egl-dri() -- %d configurations found.\n", (int) nc);
 
 	if (!eglChooseConfig(egl.display, attribs, &egl.config, 1, &selv)){
 		arcan_warning(
-			"egl-gbmkms() -- couldn't chose a configuration (%s).\n", egl_errstr());
+			"egl-dri() -- couldn't chose a configuration (%s).\n", egl_errstr());
 		return -1;
 	}
 
 	egl.context = eglCreateContext(egl.display, egl.config,
 			EGL_NO_CONTEXT, context_attribs);
 	if (egl.context == NULL) {
-		arcan_warning("egl-gbmkms() -- couldn't create a context.\n");
+		arcan_warning("egl-dri() -- couldn't create a context.\n");
 		return -1;
 	}
 
@@ -717,7 +642,7 @@ static int setup_gl(void)
 		egl.config, gbm.surface, NULL);
 
 	if (egl.surface == EGL_NO_SURFACE) {
-		arcan_warning("egl-gbmkms() -- couldn't create a window surface.\n");
+		arcan_warning("egl-dri() -- couldn't create a window surface.\n");
 		return -1;
 	}
 
@@ -792,7 +717,7 @@ static struct drm_fb* next_framebuffer(struct gbm_bo* bo)
 
 	ret = drmModeAddFB(drm.fd, width, height, 24, 32, stride, handle, &fb->fb_id);
 	if (ret) {
-		arcan_warning("egl-gbmkms() : couldn't add framebuffer\n", strerror(errno));
+		arcan_warning("egl-dri() : couldn't add framebuffer\n", strerror(errno));
 		free(fb);
 		return NULL;
 	}
@@ -818,6 +743,7 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 /* clear the color buffer */
 	glClearColor(0.0, 0.0, 0.0, 1.0);
 	glClear(GL_COLOR_BUFFER_BIT);
+	PLATFORM_SYMBOL(_video_synch)(0, 0, NULL, NULL);
 
 	return true;
 }
@@ -869,7 +795,7 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 
 		if (-1 == poll(&fds, 1, -1) || (fds.revents & (POLLHUP | POLLERR))){
 			arcan_fatal(
-				"platform/egl-gbmkms() - poll on device failed, investigate.\n");
+				"platform/egl-dri() - poll on device failed, investigate.\n");
 		}
 
 		drmHandleEvent(drm.fd, &evctx);
@@ -886,8 +812,6 @@ void PLATFORM_SYMBOL(_video_shutdown) ()
 {
 	fb_cleanup(gbm.bo, gbm_bo_get_user_data(gbm.bo));
 }
-
-#endif
 
 void PLATFORM_SYMBOL(_video_setsynch)(const char* arg)
 {
