@@ -743,7 +743,6 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 /* clear the color buffer */
 	glClearColor(0.0, 0.0, 0.0, 1.0);
 	glClear(GL_COLOR_BUFFER_BIT);
-	PLATFORM_SYMBOL(_video_synch)(0, 0, NULL, NULL);
 
 	return true;
 }

@@ -1654,6 +1654,7 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
  * things get hairy; it is then the video platform that is expected to
  * map rendertargets / videoobjects to output displays.
  */
+	FLAG_DIRTY();
 	return ARCAN_OK;
 }
 
