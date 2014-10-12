@@ -361,7 +361,7 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-dri")
 
 	if (ENABLE_LWA)
 		message("Enabling LWA (Arcan-in-Arcan build) using EGL-DRI HEADLESS")
-		SET(LWA_HEADLESS "egl-dri/video.c")
+		SET(LWA_HEADLESS "egl-dri/video_rnode.c")
 		SET(LWA_GLHEADER "egl-dri/glheaders.h")
 		LIST(APPEND LWA_LIBRARIES ${GLES3_LIBRARIES} ${EGL_LIBRARIES} ${GBMKMS_LIBRARIES})
 	endif()
