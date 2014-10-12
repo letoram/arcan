@@ -40,8 +40,9 @@
  * shared memory- based communication between the arcan parent
  * and each "frameserver". Some parts of this interface is
  * likely to be changed/expanded in the near future, and is
- * not to be treated as a communication protocol between
- * processes of different trust-domains/compiler/abi/... origin.
+ * NOT to be treated as a communication protocol between
+ * processes of different trust-domains/compiler/abi/... origin,
+ * we can/might/should use Wayland for that.
  *
  * The primary use here is for frequent, synchronized transfer
  * of video frames along with related control events.
@@ -99,7 +100,8 @@ static const int ARCAN_SHMPAGE_QUEUE_SZ = PP_QUEUE_SZ;
  * Default audio storage / transfer characteristics
  * The gist of it is to keep this interface trivial "for basic sound"
  * now and prepare an (optional) "advanced toggle" later with
- * the whole surround sound in floating point at high sample-rates.
+ * the whole surround sound in floating point at high sample-rates
+ * thing.
  */
 static const int ARCAN_SHMPAGE_MAXAUDIO_FRAME = 192000;
 static const int ARCAN_SHMPAGE_SAMPLERATE = 44100;
@@ -206,8 +208,8 @@ struct arcan_shmif_cont {
 
 /* offset- pointers into addr, can change between calls to
  * shmif_ functions so aliasing is not recommended */
-	uint8_t* vidp;
-	uint8_t* audp;
+	uint32_t* vidp;
+	int16_t* audp;
 
 /*
  * used in integrity_check, should never be != 0 and that
@@ -321,7 +323,7 @@ struct arcan_shmif_page {
  * agreed upon dimensions (i.e. change w,h and set the resized flag to !0)
  * the parent will simply ignore the data presented.
  */
-	uint16_t w, h;
+	size_t w, h;
 
 /*
  * this flag is set if the row-order is inverted (i.e. Y starts at
@@ -387,11 +389,17 @@ enum SHMIF_FLAGS {
 	SHMIF_ACQUIRE_FATALFAIL = 4
 };
 
-struct arcan_shmif_cont arcan_shmif_acquire(
-	const char* shmkey,    /* provided in ENV or from shmif_connect below */
-	enum ARCAN_SEGID type, /* archetype, defined in shmif_event.h */
-	enum SHMIF_FLAGS flags, ...
-);
+/*
+ * Convenience wrapper function of checking environment variables
+ * for packed arguments, connection path / key etc.
+ *
+ * Will also clean-up / reset related environments
+ * to prevent propagation.
+ *
+ * If no arguments could be unpacked, *arg_arr will be set to NULL.
+ */
+struct arcan_shmif_cont arcan_shmif_open(
+	enum ARCAN_SEGID type, enum SHMIF_FLAGS flags, struct arg_arr**);
 
 /*
  * This is used to make a non-authoritative connection using
@@ -405,6 +413,16 @@ struct arcan_shmif_cont arcan_shmif_acquire(
  * suitable for shmkey.
  */
 char* arcan_shmif_connect(const char* connpath, const char* connkey);
+
+/*
+ * Using a identification string (implementation defined connection
+ * mechanism)
+ */
+struct arcan_shmif_cont arcan_shmif_acquire(
+	const char* shmkey,    /* provided in ENV or from shmif_connect below */
+	enum ARCAN_SEGID type, /* archetype, defined in shmif_event.h */
+	enum SHMIF_FLAGS flags, ...
+);
 
 /*
  * There can be one "post-flag, pre-semaphore" hook that will occur
@@ -422,7 +440,7 @@ shmif_trigger_hook arcan_shmif_signalhook(struct arcan_shmif_cont*,
  * (planar, packed, RGBA) and audio (limited by abufsize constant).
  */
 void arcan_shmif_calcofs(struct arcan_shmif_page*,
-	uint8_t** dstvidptr, uint8_t** dstaudptr);
+	uint32_t** dstvidptr, int16_t** dstaudptr);
 
 /*
  * Using the specified shmpage state, synchronization semaphore handle,

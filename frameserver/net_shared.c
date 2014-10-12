@@ -191,12 +191,6 @@ void net_newseg(struct conn_state* conn, int kind, char* key)
 
 	cont->ofs = 0;
 	cont->lim = shms->addr->w * shms->addr->h * ARCAN_SHMPAGE_VCHANNELS;
-
-	arcan_shmif_calcofs(shms->addr,
-		(uint8_t**) &cont->vidp, (uint8_t**) &cont->audp);
-
-	arcan_shmif_setevqs(shms->addr, shms->esem,
-		&cont->inevq, &cont->outevq, false);
 	return;
 
 fail:

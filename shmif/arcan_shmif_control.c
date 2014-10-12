@@ -10,6 +10,7 @@
 #include <stdarg.h>
 #include <assert.h>
 #include <string.h>
+#include <stdarg.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -533,7 +534,7 @@ void arcan_shmif_signal(struct arcan_shmif_cont* ctx, int mask)
 }
 
 void arcan_shmif_forceofs(struct arcan_shmif_page* shmp,
-	uint8_t** dstvidptr, uint8_t** dstaudptr, unsigned width,
+	uint32_t** dstvidptr, int16_t** dstaudptr, unsigned width,
 	unsigned height, unsigned bpp)
 {
 	uint8_t* base = (uint8_t*) shmp;
@@ -550,16 +551,18 @@ void arcan_shmif_forceofs(struct arcan_shmif_page* shmp,
 		audaddr += memalign - ( (uintptr_t) audaddr % memalign);
 
 	if (audaddr < base || vidaddr < base){
-		*dstvidptr = *dstaudptr = NULL;
+		*dstvidptr = NULL;
+		*dstaudptr = NULL;
 	}
+/* we guarantee the alignment, hence the cast */
 	else {
-		*dstvidptr = (uint8_t*) vidaddr;
-		*dstaudptr = (uint8_t*) audaddr;
+		*dstvidptr = (uint32_t*) vidaddr;
+		*dstaudptr = (int16_t*) audaddr;
 	}
 }
 
 void arcan_shmif_calcofs(struct arcan_shmif_page* shmp,
-	uint8_t** dstvidptr, uint8_t** dstaudptr)
+	uint32_t** dstvidptr, int16_t** dstaudptr)
 {
 	arcan_shmif_forceofs(shmp, dstvidptr, dstaudptr,
 		shmp->w, shmp->h, ARCAN_SHMPAGE_VCHANNELS);
@@ -816,4 +819,41 @@ bool arg_lookup(struct arg_arr* arr, const char* val,
 	}
 
 	return false;
+}
+
+struct arcan_shmif_cont arcan_shmif_open(
+	enum ARCAN_SEGID type, enum SHMIF_FLAGS flags, struct arg_arr** outarg)
+{
+	struct arcan_shmif_cont ret = {0};
+
+	char* resource = getenv("ARCAN_ARG");
+	char* keyfile = NULL;
+
+	if (getenv("ARCAN_CONNPATH")){
+		keyfile = arcan_shmif_connect(
+			getenv("ARCAN_CONNPATH"), getenv("ARCAN_CONNKEY"));
+	}
+	else {
+		LOG("No arcan-shmif connection, check ARCAN_CONNPATH environment.\n\n");
+		goto fail;
+
+	}
+
+	if (!keyfile){
+		LOG("No valid connection key found, giving up.\n");
+		goto fail;
+	}
+
+	ret = arcan_shmif_acquire(keyfile, type, flags);
+	if (resource)
+		*outarg = arg_unpack(resource);
+	else
+		*outarg = NULL;
+
+	return ret;
+
+fail:
+	if (flags & SHMIF_ACQUIRE_FATALFAIL)
+		exit(EXIT_FAILURE);
+	return ret;
 }

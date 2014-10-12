@@ -160,7 +160,8 @@ typedef struct arcan_frameserver {
 	char title[64];
 
 /* precalc offsets into mapped shmpage, calculated at resize */
-	uint8_t* vidp, (* audp);
+	uint32_t* vidp;
+	int16_t* audp;
 
 /* temporary buffer for aligning queue/dequeue events in audio */
 	size_t sz_audb;
