@@ -7702,6 +7702,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 	arcan_lua_setglobalstr(ctx, "BINPATH", "deprecated");
 	arcan_lua_setglobalstr(ctx, "LIBPATH", "deprecated");
 	arcan_lua_setglobalstr(ctx, "INTERNALMODE", internal_launch_support());
+	arcan_lua_setglobalstr(ctx, "API_ENGINE_BUILD", ARCAN_BUILDVERSION);
 }
 
 /*

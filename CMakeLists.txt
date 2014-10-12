@@ -23,11 +23,57 @@ include(ExternalProject)
 include(CheckIncludeFiles)
 
 set(CMAKE_EXTERNAL_SRCDIR ${CMAKE_CURRENT_SOURCE_DIR}/external)
+set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake)
+
 cmake_minimum_required(VERSION 2.8.0 FATAL_ERROR)
+
+# static base version, manually mantained
 set(MAJOR_VERSION 0 )
 set(MINOR_VERSION 5 )
 set(PATCH_LEVEL 0 )
 set(VERSION ${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_LEVEL})
+
+# generate an identifiable buildtag for tracking purposes
+if (NOT DEFINED ENGINE_BUILDTAG)
+	find_package(Git)
+	if (GIT_FOUND)
+		execute_process(COMMAND ${GIT_EXECUTABLE} describe --always
+			WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+			RESULT_VARIABLE EXIT_CODE
+			OUTPUT_VARIABLE GIT_VERSION
+		)
+		if (NOT ${EXIT_CODE} EQUAL 0)
+			message(FATAL_ERROR "Extracting build tag using git failed, -DENGINE_BUILDTAG=mytag manually")
+		endif()
+
+		string(STRIP ${GIT_VERSION} GIT_VERSION)
+
+		execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --abbrev-ref HEAD
+			WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+			RESULT_VARIABLE EXIT_CODE
+			OUTPUT_VARIABLE GIT_BRANCH
+		)
+		if (NOT ${EXIT_CODE} EQUAL 0)
+			message(FATAL_ERROR "Extracting build tag using git failed, -DENGINE_BUILDTAG=mytag manually")
+		endif()
+
+		string(STRIP ${GIT_BRANCH} GIT_BRANCH)
+
+		set(ENGINE_BUILDTAG arcan-git-${GIT_BRANCH}-${GIT_VERSION})
+	else()
+		message(FATAL_ERROR "ENGINE_BUILDTAG not found and no git checkout detected, -DENGINE_BUILDTAG=mytag manually")
+	endif()
+endif()
+message(${ENGINE_BUILDTAG})
+
+if (NOT DEFINED ENGINE_BUILDTAG)
+	include(GetGitRevisionDescription)
+	git_describe(ENGINE_BUILDTAG)
+	if (${ENGINE_BUILDTAG} MATCHES "NOTFOUND")
+	endif()
+
+	message(${ENGINE_BUILDTAG})
+endif()
 
 set(SHARED_PERMISSIONS OWNER_WRITE OWNER_READ GROUP_WRITE GROUP_READ WORLD_READ)
 set(SHARED_PERMISSIONS_DIR OWNER_WRITE OWNER_READ GROUP_WRITE
@@ -193,7 +239,6 @@ endif (ENABLE_ASAN)
 
 # --- Step 1, Dependencies / find package flags
 # paths / locations
-set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake)
 set(OPENCTM_LIBRARY openctm)
 set(ARCAN_DEFINITIONS "")
 
@@ -711,7 +756,7 @@ endif (LUA51_JIT)
 
 set_property(SOURCE engine/arcan_lua.c engine/arcan_main.c APPEND PROPERTY
 	COMPILE_DEFINITIONS FRAMESERVER_MODESTRING=\"${FRAMESERVER_MODESTRING}\"
-	LUA_DROPSTR=\"${LUA_DROPSTR}\")
+	LUA_DROPSTR=\"${LUA_DROPSTR}\" ARCAN_BUILDVERSION=\"${ENGINE_BUILDTAG}\")
 
 set (SHMIF_SOURCES
   shmif/arcan_shmif.h

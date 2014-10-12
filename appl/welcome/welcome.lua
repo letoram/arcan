@@ -44,6 +44,7 @@ function welcome()
 	table.insert(st, string.format("Binpath:\\t\\t%s", string.gsub(BINPATH, "\\", "\\\\")));
 	table.insert(st, string.format("Internal:\\t\\t%s", tostring(INTERNALMODE)));
 	table.insert(st, string.format("GL Version:\\t\\t%s", GL_VERSION));
+	table.insert(st, string.format("Build:\\t\\t%s", API_ENGINE_BUILD));
 
 	datawindow = render_text(table.concat(st, "\\n\\r"));
 	argwindow = render_text(
@@ -83,7 +84,6 @@ function welcome()
 	show_image(datawindow);
 	show_image(argwindow);
 
-	print( system_identstr() );
 end
 
 function welcome_input( inputtbl )
