@@ -26,6 +26,7 @@
 #include <sqlite3.h>
 #include <assert.h>
 #include <string.h>
+#include <inttypes.h>
 
 #include <sys/types.h>
 #include <unistd.h>
@@ -44,18 +45,30 @@ static bool db_init = false;
 	"tgtid INTEGER PRIMARY KEY,"\
 	"name STRING UNIQUE NOT NULL,"\
 	"executable TEXT NOT NULL,"\
-	"argv STRING NOT NULL,"\
+	"uid INTEGER DEFAULT -1,"\
+	"gid INTEGER DEFAULT -1,"\
 	"bfmt INTEGER NOT NULL"\
 	")"
+
+#define DDL_TGT_ARGV "CREATE TABLE target_argv ("\
+	"argnum INTEGER PRIMARY KEY,"\
+	"arg STRING NOT NULL,"\
+	"target INTEGER NOT NULL,"\
+	"FOREIGN KEY (target) REFERENCES target(tgtid) ON DELETE CASCADE )"
 
 #define DDL_CONFIG "CREATE TABLE config ("\
 	"cfgid INTEGER PRIMARY KEY,"\
 	"name STRING UNIQUE NOT NULL,"\
 	"passed_counter INTEGER,"\
 	"failed_counter INTEGER,"\
-	"argv STRING,"\
 	"target INTEGER NOT NULL,"\
 	"FOREIGN KEY (target) REFERENCES target(tgtid) ON DELETE CASCADE )"
+
+#define DDL_CFG_ARGV "CREATE TABLE config_argv ("\
+	"argnum INTEGER PRIMARY KEY,"\
+	"arg STRING NOT NULL,"\
+	"config INTEGER NOT NULL,"\
+	"FOREIGN KEY (config) REFERENCES config(cfgid) ON DELETE CASCADE )"
 
 #define DDL_TGT_KV "CREATE TABLE target_kv ("\
 	"key STRING UNIQUE NOT NULL,"\
@@ -87,17 +100,15 @@ static bool db_init = false;
 	"FOREIGN KEY (target) REFERENCES target(tgtid) ON DELETE CASCADE )"
 
 static const char* ddls[] = {
-	DDL_TARGET, DDL_CONFIG,
-	DDL_TGT_KV, DDL_CFG_KV,
-	DDL_TGT_ENV, DDL_CFG_ENV,
+	DDL_TARGET,   DDL_CONFIG,
+	DDL_TGT_ARGV, DDL_CFG_ARGV,
+	DDL_TGT_KV,   DDL_CFG_KV,
+	DDL_TGT_ENV,  DDL_CFG_ENV,
  	DDL_TGT_LIBS
 };
 
-/*
- * 0: kv
- * 1: env
- * 2: lib
- */
+#define DI_INSARG_TARGET "INSERT INTO target_argv(target, arg) VALUES(?, ?);"
+#define DI_INSARG_CONFIG "INSERT INTO config_argv(config, arg) VALUES(?, ?);"
 
 #define DI_INSKV_TARGET "INSERT OR REPLACE INTO "\
 	"target_kv(key, val, target) VALUES(?, ?, ?);"
@@ -145,6 +156,10 @@ static struct arcan_dbres db_string_query(struct arcan_dbh* dbh,
 			ARCAN_MEM_STRINGBUF, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 		res.limit = 8;
 	}
+	else
+		res = *opt;
+
+	bool added = false;
 
 /* we stop one step short of full capacity before
  * resizing to have both a valid count and a NULL terminated array */
@@ -166,7 +181,6 @@ static struct arcan_dbres db_string_query(struct arcan_dbh* dbh,
 		}
 	}
 
-	res.strarr[res.count] = NULL;
 	return res;
 }
 
@@ -289,14 +303,12 @@ bool arcan_db_dropconfig(struct arcan_dbh* dbh, arcan_configid id)
 }
 
 arcan_targetid arcan_db_addtarget(struct arcan_dbh* dbh,
-	const char* identifier,
-	const char* exec,
-	const char* argv,
-	enum DB_BFORMAT bfmt)
+	const char* identifier, const char* exec,
+	const char* argv[], size_t sz, enum DB_BFORMAT bfmt)
 {
 	static const char ddl[] = "INSERT OR REPLACE INTO "
-		"	target(tgtid, name, executable, argv, bfmt) VALUES "
-		"((select tgtid FROM target where name = ?), ?, ?, ?, ?)";
+		"	target(tgtid, name, executable, bfmt) VALUES "
+		"((select tgtid FROM target where name = ?), ?, ?, ?)";
 
 	sqlite3_stmt* stmt;
 	int rc = sqlite3_prepare_v2(dbh->dbh, ddl, sizeof(ddl)-1, &stmt, NULL);
@@ -304,39 +316,83 @@ arcan_targetid arcan_db_addtarget(struct arcan_dbh* dbh,
 	sqlite3_bind_text(stmt, 1, identifier, -1, SQLITE_STATIC);
 	sqlite3_bind_text(stmt, 2, identifier, -1, SQLITE_STATIC);
 	sqlite3_bind_text(stmt, 3, exec, -1, SQLITE_STATIC);
-	sqlite3_bind_text(stmt, 4, argv, -1, SQLITE_STATIC);
-	sqlite3_bind_int(stmt, 5, bfmt);
+	sqlite3_bind_int(stmt, 4, bfmt);
 
 	rc = sqlite3_step(stmt);
 	sqlite3_finalize(stmt);
 
-	return sqlite3_last_insert_rowid(dbh->dbh);
+	arcan_targetid newid = sqlite3_last_insert_rowid(dbh->dbh);
+
+/* delete previous arguments */
+	static const char drop_argv[] = "DELETE FROM target_argv WHERE target = ?;";
+	rc = sqlite3_prepare_v2(dbh->dbh, drop_argv,
+		sizeof(drop_argv) - 1, &stmt, NULL);
+	sqlite3_bind_int(stmt, 1, newid);
+	sqlite3_step(stmt);
+	sqlite3_finalize(stmt);
+
+/* add new ones */
+	if (0 == sz)
+		return newid;
+
+	static const char add_argv[] = DI_INSARG_TARGET;
+	for (size_t i = 0; i < sz; i++){
+		sqlite3_prepare_v2(dbh->dbh, add_argv, sizeof(add_argv) - 1, &stmt, NULL);
+		sqlite3_bind_int(stmt, 1, newid);
+		sqlite3_bind_text(stmt, 2, argv[i], -1, SQLITE_STATIC);
+		sqlite3_step(stmt);
+		sqlite3_finalize(stmt);
+	}
+
+	return newid;
 }
 
 arcan_configid arcan_db_addconfig(struct arcan_dbh* dbh,
-	arcan_targetid id,	const char* identifier, const char* argv)
+	arcan_targetid id,	const char* identifier, const char* argv[], size_t sz)
 {
 	if (!arcan_db_verifytarget(dbh, id))
 		return BAD_CONFIG;
 
 	static const char ddl[] = "INSERT OR REPLACE INTO config(cfgid, name, "
-		"argv, passed_counter, failed_counter, target) VALUES "
-		"((select cfgid FROM config where name = ?), ?, ?, ?, ?, ?)";
+		"passed_counter, failed_counter, target) VALUES "
+		"((select cfgid FROM config where name = ?), ?, ?, ?, ?)";
 
 	sqlite3_stmt* stmt;
 	int rc = sqlite3_prepare_v2(dbh->dbh, ddl, sizeof(ddl)-1, &stmt, NULL);
 
 	sqlite3_bind_text(stmt, 1, identifier, -1, SQLITE_STATIC);
 	sqlite3_bind_text(stmt, 2, identifier, -1, SQLITE_STATIC);
-	sqlite3_bind_text(stmt, 3, argv, -1, SQLITE_STATIC);
+	sqlite3_bind_int(stmt, 3, 0);
 	sqlite3_bind_int(stmt, 4, 0);
-	sqlite3_bind_int(stmt, 5, 0);
-	sqlite3_bind_int(stmt, 6, id);
+	sqlite3_bind_int(stmt, 5, id);
 
 	rc = sqlite3_step(stmt);
 	sqlite3_finalize(stmt);
 
-	return sqlite3_last_insert_rowid(dbh->dbh);
+	arcan_configid newid = sqlite3_last_insert_rowid(dbh->dbh);
+
+/* delete previous arguments */
+	static const char drop_argv[] = "DELETE FROM config_argv WHERE config = ?;";
+	rc = sqlite3_prepare_v2(dbh->dbh, drop_argv,
+		sizeof(drop_argv) - 1, &stmt, NULL);
+	sqlite3_bind_int(stmt, 1, newid);
+	sqlite3_step(stmt);
+	sqlite3_finalize(stmt);
+
+/* add new ones */
+	if (0 == sz)
+		return newid;
+
+	static const char add_argv[] = DI_INSARG_CONFIG;
+	for (size_t i = 0; i < sz; i++){
+		sqlite3_prepare_v2(dbh->dbh, add_argv, sizeof(add_argv) - 1, &stmt, NULL);
+		sqlite3_bind_int(stmt, 1, newid);
+		sqlite3_bind_text(stmt, 2, argv[i], -1, SQLITE_STATIC);
+		sqlite3_step(stmt);
+		sqlite3_finalize(stmt);
+	}
+
+	return newid;
 }
 
 #endif
@@ -379,7 +435,11 @@ arcan_targetid arcan_db_cfgtarget(struct arcan_dbh* dbh, arcan_configid cfg)
 	sqlite3_stmt* stmt;
 	int rc = sqlite3_prepare_v2(dbh->dbh, dql, sizeof(dql)-1, &stmt, NULL);
 	sqlite3_bind_int(stmt, 1, cfg);
-	arcan_targetid tid = sqlite3_column_int64(stmt, 0);
+	arcan_targetid tid = BAD_TARGET;
+
+	if (SQLITE_ROW == sqlite3_step(stmt))
+		tid = sqlite3_column_int64(stmt, 0);
+
 	sqlite3_finalize(stmt);
 	return tid;
 }
@@ -421,34 +481,43 @@ char* arcan_db_targetexec(struct arcan_dbh* dbh,
 	if (tid == BAD_TARGET)
 		return NULL;
 
-	static const char dql[] = "SELECT executable || \" \" || argv "
-		" || \" \" || (SELECT argv FROM config WHERE cfgid = ?) FROM target "
-		"WHERE tgtid = (SELECT tgtid FROM config WHERE cfgid = ?);";
-
-	char* res = NULL;
-
 	sqlite3_stmt* stmt;
+	static const char dql[] = "SELECT executable FROM target WHERE tgtid = ?;";
 	int rc = sqlite3_prepare_v2(dbh->dbh, dql, sizeof(dql) - 1, &stmt, NULL);
-	sqlite3_bind_int(stmt, 1, configid);
-	sqlite3_bind_int(stmt, 2, configid);
+	sqlite3_bind_int(stmt, 1, tid);
 
-	if (SQLITE_OK == rc && sqlite3_step(stmt) == SQLITE_ROW){
-		const char* execstr = (const char*) sqlite3_column_text(stmt, 0);
-
-		if (!execstr)
-			return NULL;
-
-		res = strdup(execstr);
+	char* execstr = NULL;
+	if (sqlite3_step(stmt) == SQLITE_ROW){
+		execstr = (char*) sqlite3_column_text(stmt, 0);
 	}
+
+	if (execstr)
+		execstr = strdup(execstr);
+
 	sqlite3_finalize(stmt);
 
-	static const char envq[] = "SELECT key || \"=\" val FROM target_env WHERE "
-		"target = (SELECT target FROM config WHERE cfgid = ?);";
-	rc = sqlite3_prepare_v2(dbh->dbh, envq, sizeof(envq) - 1, &stmt, NULL);
+	static const char dql_tgt_argv[] = "SELECT arg FROM target_argv WHERE "
+		"target = ? ORDER BY argnum ASC;";
+	rc = sqlite3_prepare_v2(dbh->dbh, dql_tgt_argv,
+		sizeof(dql_tgt_argv)-1, &stmt, NULL);
+	sqlite3_bind_int(stmt, 1, tid);
+	*argv = db_string_query(dbh, stmt, NULL);
+
+	static const char dql_cfg_argv[] = "SELECT arg FROM config_argv WHERE "
+		"config = ? ORDER BY argnum ASC;";
+	rc = sqlite3_prepare_v2(dbh->dbh, dql_tgt_argv,
+		sizeof(dql_tgt_argv)-1, &stmt, NULL);
 	sqlite3_bind_int(stmt, 1, configid);
+	*argv = db_string_query(dbh, stmt, argv);
 
 	*env = db_string_query(dbh, stmt, NULL);
-	return res;
+
+/*
+ * platform- specific launch function gets the job of expanding
+ * meta strings (e.g. [APPLPATH]/), preloading / injecting libraries etc.
+ */
+
+	return execstr;
 }
 
 struct arcan_dbres arcan_db_configs(
