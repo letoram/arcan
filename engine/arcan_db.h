@@ -145,13 +145,37 @@ union arcan_dbtrans_id {
 	const char* applname;
 };
 
+/*
+ * Storage operations on a key- store are marked as transactions,
+ * i.e. begin_transaction to specify the type then repeatedly call add_kvpair
+ * and finalize with end_transaction. While inside a transaction, the
+ * only valid db operation is add_kvpair and end_transaction.
+ */
 void arcan_db_begin_transaction(struct arcan_dbh*, enum DB_KVTARGET,
 	union arcan_dbtrans_id);
 void arcan_db_add_kvpair(struct arcan_dbh*, const char* key, const char* val);
 void arcan_db_end_transaction(struct arcan_dbh*);
 
+/*
+ * Retrieve a value from the specified keystore (id will be ignored
+ * if it's an appl- specific keystore that is requested)
+ */
 char* arcan_db_getvalue(struct arcan_dbh*,
 	enum DB_KVTARGET, int64_t id, const char* key);
+
+/*
+ * dump all kv pairs as key=value for a specific
+ * target or configuration
+ */
+struct arcan_dbres arcan_db_getkeys(struct arcan_dbh*,
+	enum DB_KVTARGET, int64_t id);
+
+/*
+ * return a list of id:value strings for configurations or targets
+ * that match pattern.
+ */
+struct arcan_dbres arcan_db_matchkey(struct arcan_dbh*, enum DB_KVTARGET,
+	const char* pattern);
 
 /*
  * Returns true or false depending on if the requested targetid
