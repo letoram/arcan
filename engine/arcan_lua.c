@@ -3570,7 +3570,6 @@ static int getkey(lua_State* ctx)
 
 	return 1;
 
-error:
 	lua_pushnil(ctx);
 	return 1;
 }

@@ -106,9 +106,9 @@ arcan_configid arcan_db_addconfig(struct arcan_dbh* dbh,
 #endif
 
 /*
- * Append launch-status to the log.
+ * Append launch-status (pass, true or fail false) to the log.
  */
-void arcan_db_launch_status(struct arcan_dbh*, int configid, bool failed);
+void arcan_db_launch_status(struct arcan_dbh*, arcan_configid, bool);
 
 /*
  * Lookup target based on string name.
@@ -168,7 +168,7 @@ char* arcan_db_getvalue(struct arcan_dbh*,
  * target or configuration
  */
 struct arcan_dbres arcan_db_getkeys(struct arcan_dbh*,
-	enum DB_KVTARGET, int64_t id);
+	enum DB_KVTARGET, union arcan_dbtrans_id);
 
 /*
  * return a list of id:value strings for configurations or targets
