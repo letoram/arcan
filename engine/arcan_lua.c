@@ -3508,7 +3508,6 @@ static int storekey(lua_State* ctx)
 {
 	LUA_TRACE("store_key");
 
-
 	if (lua_type(ctx, 1) == LUA_TTABLE){
 		union arcan_dbtrans_id tid;
 		tid.applname = arcan_appl_id();
@@ -3539,6 +3538,26 @@ static int getkey(lua_State* ctx)
 	LUA_TRACE("get_key");
 
 	const char* key = luaL_checkstring(ctx, 1);
+	const char* opt_target = luaL_optstring(ctx, 2, NULL);
+
+	if (opt_target){
+		arcan_targetid tid = arcan_db_targetid(dbhandle, opt_target, NULL);
+
+		const char* opt_config = luaL_optstring(ctx, 3, NULL);
+		if (opt_config){
+			arcan_configid cid = arcan_db_configid(dbhandle, tid, opt_config);
+			char* val = arcan_db_getvalue(dbhandle, DVT_CONFIG, cid, key);
+			if (val)
+				lua_pushstring(ctx, val);
+			else
+				lua_pushnil(ctx);
+			free(val);
+		}
+		else{
+			arcan_db_getvalue(dbhandle, DVT_TARGET, tid, key);
+		}
+	}
+	else {
 	char* val = arcan_db_appl_val(dbhandle, arcan_appl_id(), key);
 
 	if (val) {
@@ -3547,7 +3566,12 @@ static int getkey(lua_State* ctx)
 	}
 	else
 		lua_pushnil(ctx);
+	}
 
+	return 1;
+
+error:
+	lua_pushnil(ctx);
 	return 1;
 }
 
@@ -3725,6 +3749,21 @@ static int gettargets(lua_State* ctx)
 	int rv = 0;
 
 	struct arcan_dbres res = arcan_db_targets(dbhandle);
+	rv += push_stringres(ctx, res);
+	arcan_db_free_res(dbhandle, res);
+
+	return rv;
+}
+
+static int getconfigs(lua_State* ctx)
+{
+	LUA_TRACE("target_configurations");
+	const char* target = luaL_checkstring(ctx, 1);
+	int rv = 0;
+
+	struct arcan_dbres res = arcan_db_configs(dbhandle,
+		arcan_db_targetid(dbhandle, target, NULL));
+
 	rv += push_stringres(ctx, res);
 	arcan_db_free_res(dbhandle, res);
 
@@ -6885,6 +6924,7 @@ static const luaL_Reg dbfuns[] = {
 {"store_key",    storekey   },
 {"get_key",      getkey     },
 {"list_targets", gettargets },
+{"target_configurations", getconfigs },
 {NULL, NULL}
 };
 #undef EXT_MAPTBL_DATABASE

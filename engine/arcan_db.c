@@ -586,19 +586,16 @@ char* arcan_db_getvalue(struct arcan_dbh* dbh,
 /* must match enum */
 	assert(DVT_ENDM == 5);
 
-	static char* queries[] = {
-		NULL, /* special treatment for appl */
-		"SELECT val FROM target_kv "
-			"WHERE key = ? AND target = ? AND kind = 1 LIMIT 1;",
-		"SELECT val FROM config_kv "
-			"WHERE key = ? AND config = ? AND kind = 1 LIMIT 1;",
-		"SELECT val FROM target_kv "
-			"WHERE key = ? AND target = ? AND kind = 3 LIMIT 1;",
-		"SELECT val FROM target_kv "
-			"WHERE key = ? AND target = ? AND KIND = 4 LIMIT 1;",
-		"SELECT val FROM config_kv "
-			"WHERE key = ? AND target = ? AND KIND = 5 LIMIT 1;"
+	const char* queries[] = {
+		"SELECT val FROM target_kv WHERE key = ? AND tgtid = ? LIMIT 1;",
+		"SELECT val FROM config_kv WHERE key = ? AND cfgid = ? LIMIT 1;"
 	};
+
+	const char* qry = NULL;
+	if (tgt >= DVT_TARGET && tgt < DVT_CONFIG)
+		qry = queries[0];
+	else
+		qry = queries[1];
 
 /* assume they all are the same length */
 	static size_t qry_sz;
