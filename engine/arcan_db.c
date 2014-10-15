@@ -159,8 +159,6 @@ static struct arcan_dbres db_string_query(struct arcan_dbh* dbh,
 	else
 		res = *opt;
 
-	bool added = false;
-
 /* we stop one step short of full capacity before
  * resizing to have both a valid count and a NULL terminated array */
 	while (sqlite3_step(stmt) == SQLITE_ROW){
@@ -419,7 +417,7 @@ arcan_targetid arcan_db_targetid(struct arcan_dbh* dbh,
 	static const char dql[] = "SELECT tgtid FROM target WHERE name = ?;";
 	sqlite3_stmt* stmt;
 
-	int rc = sqlite3_prepare_v2(dbh->dbh, dql, sizeof(dql)-1, &stmt, NULL);
+	sqlite3_prepare_v2(dbh->dbh, dql, sizeof(dql)-1, &stmt, NULL);
 	sqlite3_bind_text(stmt, 1, identifier, -1, SQLITE_STATIC);
 
 	if (SQLITE_ROW == sqlite3_step(stmt))
@@ -433,7 +431,7 @@ arcan_targetid arcan_db_cfgtarget(struct arcan_dbh* dbh, arcan_configid cfg)
 {
 	static const char dql[] = "SELECT target FROM config WHERE cfgid = ?;";
 	sqlite3_stmt* stmt;
-	int rc = sqlite3_prepare_v2(dbh->dbh, dql, sizeof(dql)-1, &stmt, NULL);
+	sqlite3_prepare_v2(dbh->dbh, dql, sizeof(dql)-1, &stmt, NULL);
 	sqlite3_bind_int(stmt, 1, cfg);
 	arcan_targetid tid = BAD_TARGET;
 
@@ -452,7 +450,7 @@ arcan_configid arcan_db_configid(struct arcan_dbh* dbh,
 	sqlite3_stmt* stmt;
 	arcan_configid cid = BAD_CONFIG;
 
-	int rc = sqlite3_prepare_v2(dbh->dbh, dql, sizeof(dql)-1, &stmt, NULL);
+	sqlite3_prepare_v2(dbh->dbh, dql, sizeof(dql)-1, &stmt, NULL);
 	sqlite3_bind_text(stmt, 1, config, strlen(config), SQLITE_STATIC);
 	sqlite3_bind_int(stmt, 2, target);
 
@@ -467,7 +465,7 @@ struct arcan_dbres arcan_db_targets(struct arcan_dbh* dbh)
 {
 	static const char dql[] = "SELECT name FROM target;";
 	sqlite3_stmt* stmt;
-	int rc = sqlite3_prepare_v2(dbh->dbh, dql, sizeof(dql)-1, &stmt, NULL);
+	sqlite3_prepare_v2(dbh->dbh, dql, sizeof(dql)-1, &stmt, NULL);
 
 	return db_string_query(dbh, stmt, NULL);
 }
@@ -505,8 +503,8 @@ char* arcan_db_targetexec(struct arcan_dbh* dbh,
 
 	static const char dql_cfg_argv[] = "SELECT arg FROM config_argv WHERE "
 		"config = ? ORDER BY argnum ASC;";
-	rc = sqlite3_prepare_v2(dbh->dbh, dql_tgt_argv,
-		sizeof(dql_tgt_argv)-1, &stmt, NULL);
+	rc = sqlite3_prepare_v2(dbh->dbh, dql_cfg_argv,
+		sizeof(dql_cfg_argv)-1, &stmt, NULL);
 	sqlite3_bind_int(stmt, 1, configid);
 	*argv = db_string_query(dbh, stmt, argv);
 
@@ -520,14 +518,17 @@ char* arcan_db_targetexec(struct arcan_dbh* dbh,
 	return execstr;
 }
 
-struct arcan_dbres arcan_db_configs(
-	struct arcan_dbh* dbh, arcan_targetid tgt)
+void arcan_db_launch_status(struct arcan_dbh* dbh, arcan_configid cid, bool s)
 {
-	struct arcan_dbres res = {0};
+	arcan_warning("STUB!");
+}
+
+struct arcan_dbres arcan_db_configs(struct arcan_dbh* dbh, arcan_targetid tid)
+{
 	static const char dql[] = "SELECT name FROM config WHERE target = ?;";
 	sqlite3_stmt* stmt;
-	int rc = sqlite3_prepare_v2(dbh->dbh, dql, sizeof(dql)-1, &stmt, NULL);
-	sqlite3_bind_int(stmt, 1, tgt);
+	sqlite3_prepare_v2(dbh->dbh, dql, sizeof(dql)-1, &stmt, NULL);
+	sqlite3_bind_int(stmt, 1, tid);
 
 	return db_string_query(dbh, stmt, NULL);
 }
@@ -576,7 +577,53 @@ void arcan_db_begin_transaction(struct arcan_dbh* dbh,
 
 	dbh->trid = id;
 	dbh->ttype = kvt;
-/* STUB */
+}
+
+struct arcan_dbres arcan_db_getkeys(struct arcan_dbh* dbh,
+	enum DB_KVTARGET tgt, union arcan_dbtrans_id id)
+{
+#define GET_KV_TGT "SELECT key || '=' || value FROM target WHERE tgtid = ?;"
+	static const char* const queries[] = {
+		GET_KV_TGT,
+		"SELECT key || '=' || value FROM config WHERE cfgid = ?"
+	};
+
+	const char* qry = NULL;
+	if (tgt >= DVT_TARGET && tgt < DVT_CONFIG)
+		qry = queries[0];
+	else
+		qry = queries[1];
+
+	sqlite3_stmt * stmt;
+	sqlite3_prepare_v2(dbh->dbh, queries[tgt], sizeof(GET_KV_TGT)-1, &stmt, NULL);
+	sqlite3_bind_int(stmt, 1, tgt>=DVT_TARGET && tgt<DVT_CONFIG ? id.tid:id.cid);
+
+#undef GET_KV_TGT
+	return db_string_query(dbh, stmt, NULL);
+}
+
+struct arcan_dbres arcan_db_matchkey(struct arcan_dbh* dbh,
+	enum DB_KVTARGET tgt, const char* pattern)
+{
+#define MATCH_KEY_TGT "SELECT tgtid ||':'|| value"\
+	" FROM target_kv WHERE key LIKE ?;"
+
+	static const char* const queries[] = {
+		MATCH_KEY_TGT,
+		"SELECT cfgid || ':' || value FROM config_kv WHERE key LIKE ?;"
+	};
+
+	const char* qry = NULL;
+	if (tgt >= DVT_TARGET && tgt < DVT_CONFIG)
+		qry = queries[0];
+	else
+		qry = queries[1];
+
+	sqlite3_stmt* stmt;
+	sqlite3_prepare_v2(dbh->dbh, qry, sizeof(MATCH_KEY_TGT)-1, &stmt, NULL);
+	sqlite3_bind_text(stmt, 1, pattern, -1, SQLITE_TRANSIENT);
+
+	return db_string_query(dbh, stmt, NULL);
 }
 
 char* arcan_db_getvalue(struct arcan_dbh* dbh,
@@ -586,7 +633,7 @@ char* arcan_db_getvalue(struct arcan_dbh* dbh,
 /* must match enum */
 	assert(DVT_ENDM == 5);
 
-	const char* queries[] = {
+	static const char* queries[] = {
 		"SELECT val FROM target_kv WHERE key = ? AND tgtid = ? LIMIT 1;",
 		"SELECT val FROM config_kv WHERE key = ? AND cfgid = ? LIMIT 1;"
 	};

@@ -76,7 +76,6 @@ static int add_target(struct arcan_dbh* dst, int argc, char** argv)
 
 	return EXIT_SUCCESS;
 
-error:
 	printf("couldn't set target, expected targetname, path and optional "
 		"binary format (accepted: ELF, LWA, RETRO)\n");
 	return EXIT_FAILURE;
@@ -407,8 +406,6 @@ struct {
 
 int main(int argc, char* argv[])
 {
-	char* dbfname = NULL;
-
 	if (argc < 3){
 		usage();
 		return EXIT_FAILURE;
