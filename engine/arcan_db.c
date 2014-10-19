@@ -541,8 +541,26 @@ char* arcan_db_targetexec(struct arcan_dbh* dbh,
 	sqlite3_bind_int(stmt, 1, configid);
 	*argv = db_string_query(dbh, stmt, argv, 0);
 
+	static const char dql_tgt_env[] = "SELCT key || '=' || val "
+		"FROM target_env WHERE target = ?";
+	sqlite3_prepare_v2(dbh->dbh, dql_tgt_env,
+		sizeof(dql_tgt_env)-1, &stmt, NULL);
+	sqlite3_bind_int(stmt, 1, tid);
 	*env = db_string_query(dbh, stmt, NULL, 0);
-	memset(libs, '\0', sizeof(struct arcan_strarr));
+
+	static const char dql_cfg_env[] = "SELECT key || '=' || val "
+		"FROM config_env WHERE config = ?";
+	sqlite3_prepare_v2(dbh->dbh, dql_cfg_env,
+		sizeof(dql_cfg_env)-1, &stmt, NULL);
+	sqlite3_bind_int(stmt, 1, tid);
+	db_string_query(dbh, stmt, env, 0);
+
+	static const char dql_tgt_lib[] = "SELECT libname FROM target_libs WHERE "
+		"target = ?;";
+	sqlite3_prepare_v2(dbh->dbh, dql_tgt_lib,
+		sizeof(dql_tgt_lib)-1, &stmt, NULL);
+	sqlite3_bind_int(stmt, 1, tid);
+	*libs = db_string_query(dbh, stmt, NULL, 0);
 
 	return execstr;
 }
