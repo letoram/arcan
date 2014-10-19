@@ -7,6 +7,10 @@
 #include <arcan_math.h>
 #include <arcan_general.h>
 
+#ifndef REALLOC_STEP
+#define REALLOC_STEP 16
+#endif
+
 void* arcan_alloc_mem(size_t nb,
 	enum arcan_memtypes type, enum arcan_memhint hint, enum arcan_memalign align)
 {
@@ -19,6 +23,35 @@ void* arcan_alloc_mem(size_t nb,
 		memset(buf, '\0', nb);
 
 	return buf;
+}
+
+void arcan_mem_growarr(struct arcan_strarr* res)
+{
+/* _alloc functions lacks a grow at the moment,
+ * after that this should ofc. be replaced. */
+	char** newbuf = arcan_alloc_mem(
+		(res->limit + REALLOC_STEP) * sizeof(char*),
+		ARCAN_MEM_STRINGBUF, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL
+	);
+
+	memcpy(newbuf, res->data, res->limit * sizeof(char*));
+	arcan_mem_free(res->data);
+	res->data= newbuf;
+	res->limit += REALLOC_STEP;
+}
+
+void arcan_mem_freearr(struct arcan_strarr* res)
+{
+	if (!res || !res->data)
+		return;
+
+	char** cptr = res->data;
+	while (cptr && *cptr)
+		arcan_mem_free(*cptr++);
+
+	arcan_mem_free(res->data);
+
+	memset(res, '\0', sizeof(struct arcan_strarr));
 }
 
 /*

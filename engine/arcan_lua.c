@@ -3552,15 +3552,15 @@ static int storekey(lua_State* ctx)
 	return 0;
 }
 
-static int push_stringres(lua_State* ctx, struct arcan_dbres* res)
+static int push_stringres(lua_State* ctx, struct arcan_strarr* res)
 {
 	int rv = 0;
 
-	if (res->kind == 0 && res->strarr) {
-		char** curr = res->strarr;
+	if (res->data) {
+		char** curr = res->data;
 		unsigned int count = 1; /* 1 indexing, seriously LUA ... */
 
-		curr = res->strarr;
+		curr = res->data;
 
 		lua_newtable(ctx);
 		int top = lua_gettop(ctx);
@@ -3586,7 +3586,7 @@ static int matchkeys(lua_State* ctx)
 		arcan_fatal("match keys(%d) invalid domain specified, "
 			"domain must be KEY_TARGET or KEY_CONFIG\n");
 
-	struct arcan_dbres res = arcan_db_matchkey(dbhandle, domain, pattern);
+	struct arcan_strarr res = arcan_db_matchkey(dbhandle, domain, pattern);
 	int rv = push_stringres(ctx, &res);
 	arcan_db_free_res(&res);
 
@@ -3788,9 +3788,9 @@ static int gettargets(lua_State* ctx)
 
 	int rv = 0;
 
-	struct arcan_dbres res = arcan_db_targets(dbhandle);
+	struct arcan_strarr res = arcan_db_targets(dbhandle);
 	rv += push_stringres(ctx, &res);
-	arcan_db_free_res(&res);
+	arcan_mem_freearr(&res);
 
 	return rv;
 }
@@ -3801,11 +3801,11 @@ static int getconfigs(lua_State* ctx)
 	const char* target = luaL_checkstring(ctx, 1);
 	int rv = 0;
 
-	struct arcan_dbres res = arcan_db_configs(dbhandle,
+	struct arcan_strarr res = arcan_db_configs(dbhandle,
 		arcan_db_targetid(dbhandle, target, NULL));
 
 	rv += push_stringres(ctx, &res);
-	arcan_db_free_res(&res);
+	arcan_mem_freearr(&res);
 
 	return rv;
 }
@@ -4977,7 +4977,7 @@ static int targetlaunch(lua_State* ctx)
 
 	uintptr_t ref = find_lua_callback(ctx);
 
-	struct arcan_dbres argv, env, libs = {0};
+	struct arcan_strarr argv, env, libs = {0};
 	enum DB_BFORMAT bfmt;
 	argv = env = libs;
 
@@ -5032,9 +5032,9 @@ static int targetlaunch(lua_State* ctx)
 	}
 
 cleanup:
-	arcan_db_free_res(&argv);
-	arcan_db_free_res(&env);
-	arcan_db_free_res(&libs);
+	arcan_mem_freearr(&argv);
+	arcan_mem_freearr(&env);
+	arcan_mem_freearr(&libs);
 	return rc;
 }
 

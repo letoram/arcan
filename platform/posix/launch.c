@@ -1,22 +1,35 @@
-/* Arcan-fe, scriptable front-end engine
- *
- * Arcan-fe is the legal property of its developers, please refer
- * to the COPYRIGHT file distributed with this source distribution.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 3
- * of the License, or (at your option) any later version.
+/*
+ Arcan-FE Platform, process setup/launch
 
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ Copyright (c) Björn Ståhl 2014,
+ All rights reserved.
 
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- *
+ Redistribution and use in source and binary forms,
+ with or without modification, are permitted provided that the
+ following conditions are met:
+
+ 1. Redistributions of source code must retain the above copyright notice,
+ this list of conditions and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright notice,
+ this list of conditions and the following disclaimer in the documentation
+ and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its contributors
+ may be used to endorse or promote products derived from this software without
+ specific prior written permission.
+
+ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+ THE POSSIBILITY OF SUCH DAMAGE
  */
 
 #include <stdlib.h>
@@ -25,6 +38,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <signal.h>
+#include <string.h>
 #include <poll.h>
 #include <limits.h>
 #include <sys/wait.h>
@@ -39,18 +53,49 @@
 #include <assert.h>
 #include <errno.h>
 
-#include "arcan_shmif.h"
+#include PLATFORM_HEADER
+
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_video.h"
-#include "arcan_audio.h"
-#include "arcan_event.h"
-#include "arcan_frameserver_backend.h"
-#include "arcan_shmif.h"
 #include "arcan_db.h"
+#include "arcan_audio.h"
+#include "arcan_shmif.h"
+#include "arcan_frameserver_backend.h"
 
-/*
-int arcan_target_launch_external(const char* fname, char** argv)
+static char* get_hijack(char** libs)
+{
+	char* hijack = NULL;
+	size_t lib_sz = 0;
+
+/* concatenate and build library string */
+	char** work = libs;
+	while(work && *work){
+		lib_sz += strlen(*work) + 1;
+		work++;
+	}
+
+	if (lib_sz > 0){
+		hijack = malloc(lib_sz + 1);
+		char* ofs = hijack;
+
+		work = libs;
+		while (*work){
+			size_t len = strlen(*work);
+			memcpy(ofs, *work, len);
+			ofs[len] = ':'; /* ' ' or ':', afaik : works on more platforms */
+			ofs += len + 1;
+			work++;
+		}
+
+		ofs[-1] = '\0';
+	}
+
+	return hijack;
+}
+
+int arcan_target_launch_external(const char* fname,
+	char** argv, char** envv, char** libs)
 {
 	if (arcan_video_prepare_external() == false){
 		arcan_warning("Warning, arcan_target_launch_external(), "
@@ -77,33 +122,14 @@ int arcan_target_launch_external(const char* fname, char** argv)
 		_exit(1);
 	}
 }
-*/
 
-/*
- * note for debugging internal launch (particularly the hijack lib)
- * (linux only)
- * gdb, break just before the fork
- * set follow-fork-mode child, add a breakpoint to the yet
- * unresolved hijack_init symbol and move on.
- * for other platforms, patch the hijacklib loader to set an infinite
- * while loop on a volatile flag, break the process and manually
- * change the memory of the flag
- */
-
-/*
 arcan_frameserver* arcan_target_launch_internal(const char* fname,
-	char* hijack, char** argv)
+	char** argv, char** envv, char** libs)
 {
-	if (hijack == NULL){
-		arcan_warning("Warning: arcan_target_launch_internal() "
-			"called without a proper hijack lib.\n");
-		return NULL;
-	}
-
 	arcan_frameserver* res = arcan_frameserver_alloc();
 
 	char shmsize[ 39 ] = {0};
-
+/*
 	char* envv[10] = {
 			"LD_PRELOAD", hijack,
 			"DYLD_INSERT_LIBRARIES", hijack,
@@ -111,7 +137,7 @@ arcan_frameserver* arcan_target_launch_internal(const char* fname,
 			"ARCAN_SHMSIZE", "",
 			NULL, NULL
 	};
-
+*/
 	struct frameserver_envp args = {
 		.use_builtin = false,
 		.args.external.fname = (char*) fname,
@@ -129,4 +155,3 @@ arcan_frameserver* arcan_target_launch_internal(const char* fname,
 
 	return res;
 }
-*/

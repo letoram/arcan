@@ -1,5 +1,5 @@
 /*
- Arcan FE - Database Interfce
+ Arcan FE - Database Interface
 
  Copyright (c) Björn Ståhl 2014,
  All rights reserved.
@@ -155,33 +155,17 @@ struct arcan_dbh {
 	sqlite3_stmt* transaction;
 };
 
-/* fatalfail so will always either shut down or work */
-static void grow_dbres(struct arcan_dbres* res)
-{
-/* _alloc functions lacks a grow at the moment,
- * after that this should ofc. be replaced. */
-	char** newbuf = arcan_alloc_mem(
-		(res->limit + REALLOC_STEP) * sizeof(char*),
-		ARCAN_MEM_STRINGBUF, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL
-	);
-
-	memcpy(newbuf, res->strarr, res->limit * sizeof(char*));
-	arcan_mem_free(res->strarr);
-	res->strarr = newbuf;
-	res->limit += REALLOC_STEP;
-}
-
 /*
  * any query that just returns a list of strings,
  * pack into a dbres (or append to an existing one)
  */
-static struct arcan_dbres db_string_query(struct arcan_dbh* dbh,
-	sqlite3_stmt* stmt, struct arcan_dbres* opt)
+static struct arcan_strarr db_string_query(struct arcan_dbh* dbh,
+	sqlite3_stmt* stmt, struct arcan_strarr* opt)
 {
-	struct arcan_dbres res = {.kind = 0};
+	struct arcan_strarr res = {.data = NULL};
 
 	if (!opt) {
-		res.strarr = arcan_alloc_mem(sizeof(char**) * 8,
+		res.data = arcan_alloc_mem(sizeof(char**) * 8,
 			ARCAN_MEM_STRINGBUF, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 		res.limit = 8;
 	}
@@ -192,10 +176,10 @@ static struct arcan_dbres db_string_query(struct arcan_dbh* dbh,
  * resizing to have both a valid count and a NULL terminated array */
 	while (sqlite3_step(stmt) == SQLITE_ROW){
 		if (res.count+1 >= res.limit)
-			grow_dbres(&res);
+			arcan_mem_growarr(&res);
 
 		const char* arg = (const char*) sqlite3_column_text(stmt, 0);
-		res.strarr[res.count++] = (arg ? strdup(arg) : NULL);
+		res.data[res.count++] = (arg ? strdup(arg) : NULL);
 	}
 
 	return res;
@@ -445,7 +429,7 @@ arcan_targetid arcan_db_targetid(struct arcan_dbh* dbh,
 	return rid;
 }
 
-struct arcan_dbres arcan_db_config_argv(struct arcan_dbh* dbh,arcan_configid id)
+struct arcan_strarr arcan_db_config_argv(struct arcan_dbh* dbh,arcan_configid id)
 {
 	static const char dql[] = "SELECT arg FROM config_argv WHERE "
 		"config = ? ORDER BY argnum ASC;";
@@ -456,7 +440,7 @@ struct arcan_dbres arcan_db_config_argv(struct arcan_dbh* dbh,arcan_configid id)
 	return db_string_query(dbh, stmt, NULL);
 }
 
-struct arcan_dbres arcan_db_target_argv(struct arcan_dbh* dbh,arcan_targetid id)
+struct arcan_strarr arcan_db_target_argv(struct arcan_dbh* dbh,arcan_targetid id)
 {
 	static const char dql[] = "SELECT arg FROM target_argv WHERE "
 		"target = ? ORDER BY argnum ASC;";
@@ -501,7 +485,7 @@ arcan_configid arcan_db_configid(struct arcan_dbh* dbh,
 	return cid;
 }
 
-struct arcan_dbres arcan_db_targets(struct arcan_dbh* dbh)
+struct arcan_strarr arcan_db_targets(struct arcan_dbh* dbh)
 {
 	static const char dql[] = "SELECT name FROM target;";
 	sqlite3_stmt* stmt;
@@ -512,7 +496,7 @@ struct arcan_dbres arcan_db_targets(struct arcan_dbh* dbh)
 
 char* arcan_db_targetexec(struct arcan_dbh* dbh,
 	arcan_configid configid, enum DB_BFORMAT* bfmt,
-	struct arcan_dbres* argv, struct arcan_dbres* env, struct arcan_dbres* libs)
+	struct arcan_strarr* argv, struct arcan_strarr* env, struct arcan_strarr* libs)
 {
 	arcan_targetid tid = arcan_db_cfgtarget(dbh, configid);
 	if (tid == BAD_TARGET)
@@ -550,7 +534,7 @@ char* arcan_db_targetexec(struct arcan_dbh* dbh,
 	*argv = db_string_query(dbh, stmt, argv);
 
 	*env = db_string_query(dbh, stmt, NULL);
-	memset(libs, '\0', sizeof(struct arcan_dbres));
+	memset(libs, '\0', sizeof(struct arcan_strarr));
 
 	return execstr;
 }
@@ -560,7 +544,7 @@ void arcan_db_launch_status(struct arcan_dbh* dbh, arcan_configid cid, bool s)
 	arcan_warning("STUB!");
 }
 
-struct arcan_dbres arcan_db_configs(struct arcan_dbh* dbh, arcan_targetid tid)
+struct arcan_strarr arcan_db_configs(struct arcan_dbh* dbh, arcan_targetid tid)
 {
 	static const char dql[] = "SELECT name FROM config WHERE target = ?;";
 	sqlite3_stmt* stmt;
@@ -616,7 +600,7 @@ void arcan_db_begin_transaction(struct arcan_dbh* dbh,
 	dbh->ttype = kvt;
 }
 
-struct arcan_dbres arcan_db_getkeys(struct arcan_dbh* dbh,
+struct arcan_strarr arcan_db_getkeys(struct arcan_dbh* dbh,
 	enum DB_KVTARGET tgt, union arcan_dbtrans_id id)
 {
 #define GET_KV_TGT "SELECT key || '=' || val FROM target_kv WHERE target = ?;"
@@ -639,7 +623,7 @@ struct arcan_dbres arcan_db_getkeys(struct arcan_dbh* dbh,
 	return db_string_query(dbh, stmt, NULL);
 }
 
-struct arcan_dbres arcan_db_matchkey(struct arcan_dbh* dbh,
+struct arcan_strarr arcan_db_matchkey(struct arcan_dbh* dbh,
 	enum DB_KVTARGET tgt, const char* pattern)
 {
 #define MATCH_KEY_TGT "SELECT tgtid ||':'|| value"\
@@ -812,24 +796,6 @@ char* arcan_db_appl_val(struct arcan_dbh* dbh,
 	sqlite3_finalize(stmt);
 
 	return rv;
-}
-
-void arcan_db_free_res(struct arcan_dbres* res)
-{
-	if (!res || res->kind == -1)
-		return;
-
-	if (res->kind == 0) {
-		char** cptr = (char**) res->strarr;
-		while (cptr && *cptr)
-			arcan_mem_free(*cptr++);
-
-		arcan_mem_free(res->strarr);
-	}
-	else;
-
-	memset(res, '\0', sizeof(struct arcan_dbres));
-	res->kind = -1;
 }
 
 static void setup_ddl(struct arcan_dbh* dbh)
