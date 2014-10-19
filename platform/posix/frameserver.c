@@ -35,7 +35,7 @@
 #include <arcan_event.h>
 #include <arcan_video.h>
 #include <arcan_audio.h>
-#include <arcan_frameserver_backend.h>
+#include <arcan_frameserver.h>
 
 #define INCR(X, C) ( ( (X) = ( (X) + 1) % (C)) )
 

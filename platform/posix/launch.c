@@ -61,7 +61,7 @@
 #include "arcan_db.h"
 #include "arcan_audio.h"
 #include "arcan_shmif.h"
-#include "arcan_frameserver_backend.h"
+#include "arcan_frameserver.h"
 
 static char* get_hijack(char** libs)
 {

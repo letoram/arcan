@@ -104,7 +104,7 @@
 #include "arcan_audio.h"
 #include "arcan_event.h"
 #include "arcan_db.h"
-#include "arcan_frameserver_backend.h"
+#include "arcan_frameserver.h"
 #include "arcan_shmif.h"
 
 #include GL_HEADERS
