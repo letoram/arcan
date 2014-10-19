@@ -160,7 +160,7 @@ struct arcan_dbh {
  * pack into a dbres (or append to an existing one)
  */
 static struct arcan_strarr db_string_query(struct arcan_dbh* dbh,
-	sqlite3_stmt* stmt, struct arcan_strarr* opt)
+	sqlite3_stmt* stmt, struct arcan_strarr* opt, off_t ofs)
 {
 	struct arcan_strarr res = {.data = NULL};
 
@@ -168,6 +168,7 @@ static struct arcan_strarr db_string_query(struct arcan_dbh* dbh,
 		res.data = arcan_alloc_mem(sizeof(char**) * 8,
 			ARCAN_MEM_STRINGBUF, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 		res.limit = 8;
+		res.count = ofs;
 	}
 	else
 		res = *opt;
@@ -437,7 +438,7 @@ struct arcan_strarr arcan_db_config_argv(struct arcan_dbh* dbh,arcan_configid id
 	sqlite3_prepare_v2(dbh->dbh, dql, sizeof(dql)-1, &stmt, NULL);
 	sqlite3_bind_int(stmt, 1, id);
 
-	return db_string_query(dbh, stmt, NULL);
+	return db_string_query(dbh, stmt, NULL, 0);
 }
 
 struct arcan_strarr arcan_db_target_argv(struct arcan_dbh* dbh,arcan_targetid id)
@@ -448,7 +449,7 @@ struct arcan_strarr arcan_db_target_argv(struct arcan_dbh* dbh,arcan_targetid id
 	sqlite3_prepare_v2(dbh->dbh, dql, sizeof(dql)-1, &stmt, NULL);
 	sqlite3_bind_int(stmt, 1, id);
 
-	return db_string_query(dbh, stmt, NULL);
+	return db_string_query(dbh, stmt, NULL, 0);
 }
 
 arcan_targetid arcan_db_cfgtarget(struct arcan_dbh* dbh, arcan_configid cfg)
@@ -491,12 +492,13 @@ struct arcan_strarr arcan_db_targets(struct arcan_dbh* dbh)
 	sqlite3_stmt* stmt;
 	sqlite3_prepare_v2(dbh->dbh, dql, sizeof(dql)-1, &stmt, NULL);
 
-	return db_string_query(dbh, stmt, NULL);
+	return db_string_query(dbh, stmt, NULL, 0);
 }
 
 char* arcan_db_targetexec(struct arcan_dbh* dbh,
 	arcan_configid configid, enum DB_BFORMAT* bfmt,
-	struct arcan_strarr* argv, struct arcan_strarr* env, struct arcan_strarr* libs)
+	struct arcan_strarr* argv, struct arcan_strarr* env,
+	struct arcan_strarr* libs)
 {
 	arcan_targetid tid = arcan_db_cfgtarget(dbh, configid);
 	if (tid == BAD_TARGET)
@@ -524,16 +526,22 @@ char* arcan_db_targetexec(struct arcan_dbh* dbh,
 	rc = sqlite3_prepare_v2(dbh->dbh, dql_tgt_argv,
 		sizeof(dql_tgt_argv)-1, &stmt, NULL);
 	sqlite3_bind_int(stmt, 1, tid);
-	*argv = db_string_query(dbh, stmt, NULL);
+
+#ifdef WIN32
+	*argv = db_string_query(dbh, stmt, NULL, 0);
+#else
+	*argv = db_string_query(dbh, stmt, NULL, 1);
+	argv->data[0] = strdup(execstr ? execstr : "");
+#endif
 
 	static const char dql_cfg_argv[] = "SELECT arg FROM config_argv WHERE "
 		"config = ? ORDER BY argnum ASC;";
 	rc = sqlite3_prepare_v2(dbh->dbh, dql_cfg_argv,
 		sizeof(dql_cfg_argv)-1, &stmt, NULL);
 	sqlite3_bind_int(stmt, 1, configid);
-	*argv = db_string_query(dbh, stmt, argv);
+	*argv = db_string_query(dbh, stmt, argv, 0);
 
-	*env = db_string_query(dbh, stmt, NULL);
+	*env = db_string_query(dbh, stmt, NULL, 0);
 	memset(libs, '\0', sizeof(struct arcan_strarr));
 
 	return execstr;
@@ -551,7 +559,7 @@ struct arcan_strarr arcan_db_configs(struct arcan_dbh* dbh, arcan_targetid tid)
 	sqlite3_prepare_v2(dbh->dbh, dql, sizeof(dql)-1, &stmt, NULL);
 	sqlite3_bind_int(stmt, 1, tid);
 
-	return db_string_query(dbh, stmt, NULL);
+	return db_string_query(dbh, stmt, NULL, 0);
 }
 
 void arcan_db_begin_transaction(struct arcan_dbh* dbh,
@@ -620,7 +628,7 @@ struct arcan_strarr arcan_db_getkeys(struct arcan_dbh* dbh,
 	sqlite3_bind_int(stmt, 1, tgt>=DVT_TARGET && tgt<DVT_CONFIG ? id.tid:id.cid);
 
 #undef GET_KV_TGT
-	return db_string_query(dbh, stmt, NULL);
+	return db_string_query(dbh, stmt, NULL, 0);
 }
 
 struct arcan_strarr arcan_db_matchkey(struct arcan_dbh* dbh,
@@ -644,7 +652,7 @@ struct arcan_strarr arcan_db_matchkey(struct arcan_dbh* dbh,
 	sqlite3_prepare_v2(dbh->dbh, qry, sizeof(MATCH_KEY_TGT)-1, &stmt, NULL);
 	sqlite3_bind_text(stmt, 1, pattern, -1, SQLITE_TRANSIENT);
 
-	return db_string_query(dbh, stmt, NULL);
+	return db_string_query(dbh, stmt, NULL, 0);
 }
 
 char* arcan_db_getvalue(struct arcan_dbh* dbh,

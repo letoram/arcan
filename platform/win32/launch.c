@@ -30,7 +30,8 @@
 #include "arcan_frameserver_backend.h"
 
 int arcan_target_launch_external(const char* fname,
-	char** argv, char** envv, char** libs)
+	struct arcan_strarr* argv, struct arcan_strarr* envv,
+	struct arcan_strarr* libs)
 {
 	PROCESS_INFORMATION pi;
 	STARTUPINFO si = {0};
@@ -43,11 +44,9 @@ int arcan_target_launch_external(const char* fname,
 		return -1;
 	}
 
-	argv++; /* skip the first fname, UNIX convention and all that */
-
 	arcan_video_prepare_external();
 
-	char** base = argv;
+	char** base = argv->data;
 	size_t total = strlen(fname) + 1;
 	while (base && *base) {
 		size_t res = strlen(*base++);
@@ -62,7 +61,7 @@ int arcan_target_launch_external(const char* fname,
 
 	char* cmdline;
 	cmdline = (char*) calloc(total + 2, sizeof(char));
-	base = argv;
+	base = argv->data;
 	sprintf(cmdline, "%s ", fname);
 
 	while (base && *base) {

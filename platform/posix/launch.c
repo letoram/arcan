@@ -95,7 +95,8 @@ static char* get_hijack(char** libs)
 }
 
 int arcan_target_launch_external(const char* fname,
-	char** argv, char** envv, char** libs)
+	struct arcan_strarr* argv, struct arcan_strarr* envv,
+	struct arcan_strarr* libs)
 {
 	if (arcan_video_prepare_external() == false){
 		arcan_warning("Warning, arcan_target_launch_external(), "
@@ -118,13 +119,14 @@ int arcan_target_launch_external(const char* fname,
 		return arcan_timemillis() - ticks;
 	}
 	else {
-		execv(fname, argv);
+		execv(fname, argv->data);
 		_exit(1);
 	}
 }
 
 arcan_frameserver* arcan_target_launch_internal(const char* fname,
-	char** argv, char** envv, char** libs)
+	struct arcan_strarr* argv, struct arcan_strarr* envv,
+	struct arcan_strarr* libs)
 {
 	arcan_frameserver* res = arcan_frameserver_alloc();
 
@@ -141,8 +143,8 @@ arcan_frameserver* arcan_target_launch_internal(const char* fname,
 	struct frameserver_envp args = {
 		.use_builtin = false,
 		.args.external.fname = (char*) fname,
-		.args.external.envv = envv,
-		.args.external.argv = argv
+		.args.external.envv = envv->data,
+		.args.external.argv = argv->data
 	};
 
 	snprintf(shmsize, 38, "%ui", (unsigned int) ARCAN_SHMPAGE_MAX_SZ);
