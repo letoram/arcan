@@ -35,16 +35,21 @@ struct arcan_vobject_litem;
 struct arcan_vobject;
 
 struct rendertarget {
+/* think of base as identity matrix, sometimes with added scale */
+	_Alignas(16) float base[16];
+	_Alignas(16) float projection[16];
+
+/* color representes the attached vid,
+ * first is the pipeline (subset of context vid pool) */
+	struct arcan_vobject* color;
+	struct arcan_vobject_litem* first;
+
 /* depth and stencil are combined as stencil_index
  * formats have poor driver support */
 	unsigned fbo, depth;
 
 /* only used / allocated if readback != 0 */
 	unsigned pbo;
-
-/* think of base as identity matrix, sometimes with added scale */
-	_Alignas(16) float base[16];
-	_Alignas(16) float projection[16];
 
 /* readback == 0, no readback. Otherwise, a readback is requested
  * every abs(readback) frames. if readback is negative,
@@ -72,11 +77,6 @@ struct rendertarget {
  * which affects the 3d pipe. This is defaulted to BADID until
  * a vobj is explicitly camtaged */
 	arcan_vobj_id camtag;
-
-/* color representes the attached vid,
- * first is the pipeline (subset of context vid pool) */
-	struct arcan_vobject* color;
-	struct arcan_vobject_litem* first;
 };
 
 struct transf_move{

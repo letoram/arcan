@@ -106,7 +106,6 @@
 #include "arcan_db.h"
 #include "arcan_frameserver_backend.h"
 #include "arcan_shmif.h"
-#include "arcan_target_launcher.h"
 
 #include GL_HEADERS
 
@@ -3504,6 +3503,17 @@ static int copyimageprop(lua_State* ctx)
 	return 0;
 }
 
+static bool validate_key(const char* key)
+{
+	while(*key){
+		if (!isalnum(*key) && *key != '_')
+			return false;
+		key++;
+	}
+
+	return true;
+}
+
 static int storekey(lua_State* ctx)
 {
 	LUA_TRACE("store_key");
@@ -3515,10 +3525,19 @@ static int storekey(lua_State* ctx)
 		lua_pushnil(ctx);
 		arcan_db_begin_transaction(dbhandle, DVT_APPL, tid);
 
+		size_t counter = 0;
 		while (lua_next(ctx, 1) != 0){
+			counter++;
 			const char* key = lua_tostring(ctx, -2);
-			const char* val = lua_tostring(ctx, -1);
-			arcan_db_add_kvpair(dbhandle, key, val);
+			if (!validate_key(key)){
+				arcan_warning("store_key, key[%d] rejected "
+					"(restricted to [a-Z0-9_])\n", counter);
+			}
+			else {
+				const char* val = lua_tostring(ctx, -1);
+				arcan_db_add_kvpair(dbhandle, key, val);
+			}
+
 			lua_pop(ctx, 1);
 		}
 
@@ -3533,11 +3552,58 @@ static int storekey(lua_State* ctx)
 	return 0;
 }
 
+static int push_stringres(lua_State* ctx, struct arcan_dbres* res)
+{
+	int rv = 0;
+
+	if (res->kind == 0 && res->strarr) {
+		char** curr = res->strarr;
+		unsigned int count = 1; /* 1 indexing, seriously LUA ... */
+
+		curr = res->strarr;
+
+		lua_newtable(ctx);
+		int top = lua_gettop(ctx);
+
+		while (*curr) {
+			lua_pushnumber(ctx, count++);
+			lua_pushstring(ctx, *curr++);
+			lua_rawset(ctx, top);
+		}
+
+		rv = 1;
+	}
+
+	return rv;
+}
+
+static int matchkeys(lua_State* ctx)
+{
+	const char* pattern = luaL_checkstring(ctx, 1);
+	int domain = luaL_checknumber(ctx, 2);
+
+	if (domain != DVT_TARGET && domain != DVT_CONFIG)
+		arcan_fatal("match keys(%d) invalid domain specified, "
+			"domain must be KEY_TARGET or KEY_CONFIG\n");
+
+	struct arcan_dbres res = arcan_db_matchkey(dbhandle, domain, pattern);
+	int rv = push_stringres(ctx, &res);
+	arcan_db_free_res(&res);
+
+	return rv;
+}
+
 static int getkey(lua_State* ctx)
 {
 	LUA_TRACE("get_key");
 
 	const char* key = luaL_checkstring(ctx, 1);
+	if (!validate_key(key)){
+		arcan_warning("invalid key specified (restricted to [a-Z0-9_])\n");
+		lua_pushnil(ctx);
+		return 1;
+	}
+
 	const char* opt_target = luaL_optstring(ctx, 2, NULL);
 
 	if (opt_target){
@@ -3572,31 +3638,6 @@ static int getkey(lua_State* ctx)
 
 	lua_pushnil(ctx);
 	return 1;
-}
-
-static int push_stringres(lua_State* ctx, struct arcan_dbres res)
-{
-	int rv = 0;
-
-	if (res.kind == 0 && res.strarr) {
-		char** curr = res.strarr;
-		unsigned int count = 1; /* 1 indexing, seriously LUA ... */
-
-		curr = res.strarr;
-
-		lua_newtable(ctx);
-		int top = lua_gettop(ctx);
-
-		while (*curr) {
-			lua_pushnumber(ctx, count++);
-			lua_pushstring(ctx, *curr++);
-			lua_rawset(ctx, top);
-		}
-
-		rv = 1;
-	}
-
-	return rv;
 }
 
 static int kbdrepeat(lua_State* ctx)
@@ -3748,8 +3789,8 @@ static int gettargets(lua_State* ctx)
 	int rv = 0;
 
 	struct arcan_dbres res = arcan_db_targets(dbhandle);
-	rv += push_stringres(ctx, res);
-	arcan_db_free_res(dbhandle, res);
+	rv += push_stringres(ctx, &res);
+	arcan_db_free_res(&res);
 
 	return rv;
 }
@@ -3763,8 +3804,8 @@ static int getconfigs(lua_State* ctx)
 	struct arcan_dbres res = arcan_db_configs(dbhandle,
 		arcan_db_targetid(dbhandle, target, NULL));
 
-	rv += push_stringres(ctx, res);
-	arcan_db_free_res(dbhandle, res);
+	rv += push_stringres(ctx, &res);
+	arcan_db_free_res(&res);
 
 	return rv;
 }
@@ -4918,40 +4959,83 @@ static int targetalloc(lua_State* ctx)
 static int targetlaunch(lua_State* ctx)
 {
 	LUA_TRACE("launch_target");
+	arcan_configid cid = BAD_CONFIG;
+	size_t rc = 0;
+	int lmode;
 
-	unsigned configid = luaL_checknumber(ctx, 1);
+	if (lua_type(ctx, 1) == LUA_TSTRING){
+		cid = arcan_db_configid(dbhandle, arcan_db_targetid(dbhandle,
+			luaL_checkstring(ctx, 1), NULL), luaL_checkstring(ctx, 2));
+		lmode = luaL_checknumber(ctx, 3);
+	}
+	else
+		lmode = luaL_checknumber(ctx, 2);
 
-/*
- * first int, config -- second launch_mode,
- * first string targetarg,
- * first funptr callback
- */
+	if (lmode != 0 && lmode != 1)
+		arcan_fatal("launch_target(), invalid mode -- expected LAUNCH_INTERNAL "
+			" or LAUNCH_EXTERNAL ");
 
-/*
- * get env, argv, append target args (colonescape)
- * from database
- */
+	uintptr_t ref = find_lua_callback(ctx);
 
-	lua_pushnumber(ctx, configid);
-	return 1;
-/*
-	intptr_t ref = (intptr_t) 0;
+	struct arcan_dbres argv, env, libs = {0};
+	enum DB_BFORMAT bfmt;
+	argv = env = libs;
 
-	arcan_frameserver* intarget = arcan_frameserver_alloc();
-	intarget->tag = ref;
+	const char* exec = arcan_db_targetexec(dbhandle, cid,
+		&bfmt, &argv, &env, &libs);
+
+	if (!exec){
+		arcan_warning("launch_target(), failed -- invalid configuration");
+		return 0;
+	}
 
 	struct frameserver_envp args = {
 		.use_builtin = true,
-		.args.builtin.resource = metastr,
+		.args.builtin.resource = "",
 		.args.builtin.mode = "libretro"
 	};
+
+	switch (bfmt){
+	case BFRM_ELF:
+
+	break;
+
+	case BFRM_LWA:
+	break;
+
+	case BFRM_RETRO:
+		if (lmode != 1){
+			arcan_warning("launch_target(), configuration specified libretro format"
+				" which is only possible in internal- mode.");
+			goto cleanup;
+		}
+	break;
+
+	default:
+		arcan_fatal("launch_target(), database inconsistency, unknown "
+			"binary format encountered.\n");
+	}
+
+	arcan_frameserver* intarget = arcan_frameserver_alloc();
+	intarget->tag = ref;
 
 	if (arcan_frameserver_spawn_server(intarget, args) == ARCAN_OK){
 		arcan_video_objectopacity(intarget->vid, 0.0, 0);
 		lua_pushvid(ctx, intarget->vid);
 		lua_pushaid(ctx, intarget->aid);
-		arcan_db_launch_Status(dbhandle, configid, false);
-	*/
+		arcan_db_launch_status(dbhandle, cid, true);
+		rc = 2;
+	}
+	else{
+		arcan_db_launch_status(dbhandle, cid, false);
+		arcan_warning("launch_target(), couldn't spawn frameserver.\n");
+	}
+
+cleanup:
+	arcan_db_free_res(&argv);
+	arcan_db_free_res(&env);
+	arcan_db_free_res(&libs);
+	return rc;
 }
 
 static int rendertargetforce(lua_State* ctx)
@@ -7167,91 +7251,93 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 	struct { const char* key; int val; } consttbl[] = {
 {"VRESH", arcan_video_screenh()},
 {"VRESW", arcan_video_screenw()},
-{"MAX_SURFACEW",   MAX_SURFACEW        },
-{"MAX_SURFACEH",   MAX_SURFACEH        },
-{"STACK_MAXCOUNT", CONTEXT_STACK_LIMIT },
-{"FRAMESET_SPLIT",        ARCAN_FRAMESET_SPLIT       },
+{"MAX_SURFACEW", MAX_SURFACEW},
+{"MAX_SURFACEH", MAX_SURFACEH},
+{"STACK_MAXCOUNT", CONTEXT_STACK_LIMIT},
+{"FRAMESET_SPLIT", ARCAN_FRAMESET_SPLIT},
 {"FRAMESET_MULTITEXTURE", ARCAN_FRAMESET_MULTITEXTURE},
-{"FRAMESET_NODETACH",     FRAMESET_NODETACH          },
-{"FRAMESET_DETACH",       FRAMESET_DETACH            },
-{"FRAMESERVER_INPUT",     CONST_FRAMESERVER_INPUT    },
-{"FRAMESERVER_OUTPUT",    CONST_FRAMESERVER_OUTPUT   },
-{"BLEND_NONE",     BLEND_NONE    },
-{"BLEND_ADD",      BLEND_ADD     },
+{"FRAMESET_NODETACH", FRAMESET_NODETACH},
+{"FRAMESET_DETACH", FRAMESET_DETACH},
+{"FRAMESERVER_INPUT", CONST_FRAMESERVER_INPUT},
+{"FRAMESERVER_OUTPUT", CONST_FRAMESERVER_OUTPUT},
+{"BLEND_NONE", BLEND_NONE},
+{"BLEND_ADD", BLEND_ADD},
 {"BLEND_MULTIPLY", BLEND_MULTIPLY},
-{"BLEND_NORMAL",   BLEND_NORMAL  },
+{"BLEND_NORMAL", BLEND_NORMAL},
 {"FRAMESERVER_LOOP", 0},
 {"FRAMESERVER_NOLOOP", 1},
 {"TARGET_SYNCHRONOUS", TARGET_FLAG_SYNCHRONOUS},
 {"TARGET_NOALPHA", TARGET_FLAG_NO_ALPHA_UPLOAD},
 {"TARGET_VERBOSE", TARGET_FLAG_VERBOSE},
-{"RENDERTARGET_NOSCALE",  RENDERTARGET_NOSCALE },
-{"RENDERTARGET_SCALE",    RENDERTARGET_SCALE   },
+{"RENDERTARGET_NOSCALE", RENDERTARGET_NOSCALE},
+{"RENDERTARGET_SCALE", RENDERTARGET_SCALE},
 {"RENDERTARGET_NODETACH", RENDERTARGET_NODETACH},
-{"RENDERTARGET_DETACH",   RENDERTARGET_DETACH  },
-{"RENDERTARGET_COLOR", RENDERFMT_COLOR },
-{"RENDERTARGET_DEPTH", RENDERFMT_DEPTH },
-{"RENDERTARGET_FULL", RENDERFMT_FULL },
+{"RENDERTARGET_DETACH", RENDERTARGET_DETACH},
+{"RENDERTARGET_COLOR", RENDERFMT_COLOR},
+{"RENDERTARGET_DEPTH", RENDERFMT_DEPTH},
+{"RENDERTARGET_FULL", RENDERFMT_FULL},
 {"ROTATE_RELATIVE", CONST_ROTATE_RELATIVE},
 {"ROTATE_ABSOLUTE", CONST_ROTATE_ABSOLUTE},
-{"TEX_REPEAT",       ARCAN_VTEX_REPEAT      },
-{"TEX_CLAMP",        ARCAN_VTEX_CLAMP       },
-{"FILTER_NONE",      ARCAN_VFILTER_NONE     },
-{"FILTER_LINEAR",    ARCAN_VFILTER_LINEAR   },
-{"FILTER_BILINEAR",  ARCAN_VFILTER_BILINEAR },
+{"TEX_REPEAT", ARCAN_VTEX_REPEAT},
+{"TEX_CLAMP", ARCAN_VTEX_CLAMP},
+{"FILTER_NONE", ARCAN_VFILTER_NONE},
+{"FILTER_LINEAR", ARCAN_VFILTER_LINEAR},
+{"FILTER_BILINEAR", ARCAN_VFILTER_BILINEAR},
 {"FILTER_TRILINEAR", ARCAN_VFILTER_TRILINEAR},
-{"INTERP_LINEAR",    ARCAN_VINTER_LINEAR    },
-{"INTERP_SINE",      ARCAN_VINTER_SINE      },
-{"INTERP_EXPIN",     ARCAN_VINTER_EXPIN     },
-{"INTERP_EXPOUT",    ARCAN_VINTER_EXPOUT    },
-{"INTERP_EXPINOUT",  ARCAN_VINTER_EXPINOUT  },
-{"SCALE_NOPOW2",     ARCAN_VIMAGE_NOPOW2},
-{"SCALE_POW2",       ARCAN_VIMAGE_SCALEPOW2},
+{"INTERP_LINEAR", ARCAN_VINTER_LINEAR},
+{"INTERP_SINE", ARCAN_VINTER_SINE},
+{"INTERP_EXPIN", ARCAN_VINTER_EXPIN},
+{"INTERP_EXPOUT", ARCAN_VINTER_EXPOUT},
+{"INTERP_EXPINOUT", ARCAN_VINTER_EXPINOUT},
+{"SCALE_NOPOW2", ARCAN_VIMAGE_NOPOW2},
+{"SCALE_POW2", ARCAN_VIMAGE_SCALEPOW2},
 {"IMAGEPROC_NORMAL", IMAGEPROC_NORMAL},
-{"IMAGEPROC_FLIPH",  IMAGEPROC_FLIPH },
+{"IMAGEPROC_FLIPH", IMAGEPROC_FLIPH },
 {"WORLDID", ARCAN_VIDEO_WORLDID},
 {"CLIP_ON", ARCAN_CLIP_ON},
 {"CLIP_OFF", ARCAN_CLIP_OFF},
 {"CLIP_SHALLOW", ARCAN_CLIP_SHALLOW},
-{"BADID",   ARCAN_EID         },
+{"BADID", ARCAN_EID},
 {"CLOCKRATE", ARCAN_TIMER_TICK},
-{"CLOCK",     0               },
-{"THEME_RESOURCE",    RESOURCE_APPL}, /* DEPRECATE */
-{"APPL_RESOURCE",     RESOURCE_APPL},
-{"APPL_TEMP_RESOURCE",RESOURCE_APPL_TEMP },
-{"SHARED_RESOURCE",   RESOURCE_APPL_SHARED },
-{"SYS_APPL_RESOURCE", RESOURCE_SYS_APPLBASE },
-{"ALL_RESOURCES",     DEFAULT_USERMASK },
+{"CLOCK", 0},
+{"THEME_RESOURCE", RESOURCE_APPL}, /* DEPRECATE */
+{"APPL_RESOURCE", RESOURCE_APPL},
+{"APPL_TEMP_RESOURCE",RESOURCE_APPL_TEMP},
+{"SHARED_RESOURCE", RESOURCE_APPL_SHARED},
+{"SYS_APPL_RESOURCE", RESOURCE_SYS_APPLBASE},
+{"ALL_RESOURCES", DEFAULT_USERMASK},
 {"API_VERSION_MAJOR", 0},
 {"API_VERSION_MINOR", 8},
-{"LAUNCH_EXTERNAL",   0},
-{"LAUNCH_INTERNAL",   1},
-{"MASK_LIVING",      MASK_LIVING     },
+{"LAUNCH_EXTERNAL", 0},
+{"LAUNCH_INTERNAL", 1},
+{"MASK_LIVING", MASK_LIVING},
 {"MASK_ORIENTATION", MASK_ORIENTATION},
-{"MASK_OPACITY",     MASK_OPACITY    },
-{"MASK_POSITION",    MASK_POSITION   },
-{"MASK_SCALE",       MASK_SCALE      },
-{"MASK_UNPICKABLE",  MASK_UNPICKABLE },
-{"MASK_FRAMESET",    MASK_FRAMESET   },
-{"MASK_MAPPING",     MASK_MAPPING    },
-{"ORDER_FIRST",      ORDER3D_FIRST   },
-{"ORDER_NONE",       ORDER3D_NONE    },
-{"ORDER_LAST",       ORDER3D_LAST    },
-{"ORDER_SKIP",       ORDER3D_NONE    },
-{"MOUSE_GRABON",       MOUSE_GRAB_ON      },
-{"MOUSE_GRABOFF",      MOUSE_GRAB_OFF     },
-{"POSTFILTER_NTSC",    POSTFILTER_NTSC    },
-{"POSTFILTER_OFF",     POSTFILTER_OFF     },
+{"MASK_OPACITY", MASK_OPACITY},
+{"MASK_POSITION", MASK_POSITION},
+{"MASK_SCALE", MASK_SCALE},
+{"MASK_UNPICKABLE", MASK_UNPICKABLE},
+{"MASK_FRAMESET", MASK_FRAMESET},
+{"MASK_MAPPING", MASK_MAPPING},
+{"ORDER_FIRST", ORDER3D_FIRST},
+{"ORDER_NONE", ORDER3D_NONE},
+{"ORDER_LAST", ORDER3D_LAST},
+{"ORDER_SKIP", ORDER3D_NONE},
+{"MOUSE_GRABON", MOUSE_GRAB_ON},
+{"MOUSE_GRABOFF", MOUSE_GRAB_OFF},
+{"POSTFILTER_NTSC", POSTFILTER_NTSC},
+{"POSTFILTER_OFF", POSTFILTER_OFF},
 #ifdef ARCAN_LED
-{"LEDCONTROLLERS",     arcan_led_controllers()},
+{"LEDCONTROLLERS", arcan_led_controllers()},
 #else
-{"LEDCONTROLLERS",     0},
+{"LEDCONTROLLERS", 0},
 #endif
-{"NOW",           0},
-{"NOPERSIST",     0},
-{"PERSIST",       1},
+{"KEY_CONFIG", DVT_CONFIG},
+{"KEY_TARGET", DVT_TARGET},
+{"NOW", 0},
+{"NOPERSIST", 0},
+{"PERSIST", 1},
 {"NET_BROADCAST", 0},
-{"DEBUGLEVEL",    lua_ctx_store.debug}
+{"DEBUGLEVEL", lua_ctx_store.debug}
 };
 #undef EXT_CONSTTBL_GLOBINT
 
@@ -7274,7 +7360,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 	arcan_lua_setglobalstr(ctx, "THEMEPATH", "deprecated");
 	arcan_lua_setglobalstr(ctx, "BINPATH", "deprecated");
 	arcan_lua_setglobalstr(ctx, "LIBPATH", "deprecated");
-	arcan_lua_setglobalstr(ctx, "INTERNALMODE", internal_launch_support());
+	arcan_lua_setglobalstr(ctx, "INTERNALMODE", "deprecated");
 	arcan_lua_setglobalstr(ctx, "API_ENGINE_BUILD", ARCAN_BUILDVERSION);
 }
 

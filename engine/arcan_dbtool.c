@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <ctype.h>
 
 #include <string.h>
 #include <assert.h>
@@ -48,11 +49,22 @@ printf("usage: arcan_db dbfile command args\n\n"
 	"  dump_target    \tname\n"
 	"  dump_config    \ttargetname configname\n"
 	"  dump_appl      \tapplname\n"
-	"  dump_exec      \ttargetname configname\n\n"
+	"  dump_exec      \ttargetname configname\n"
+	"Accepted keys are restricted to the set [a-Z0-9_]\n\n"
 	"alternative (scripted) usage: arcan_db dbfile -\n"
- 	"    above commands are supplied using STDIN and linefeed as separator\n"
-	"    empty line terminates execution."
+ 	"above commands are supplied using STDIN and linefeed as separator\n"
+	"empty line terminates execution.\n"
 	);
+}
+
+static bool validate_key(const char* key)
+{
+	while(*key){
+		if (!isalnum(*key) && *key++ != '_')
+			return false;
+	}
+
+	return true;
 }
 
 static int add_target(struct arcan_dbh* dst, int argc, char** argv)
@@ -60,7 +72,9 @@ static int add_target(struct arcan_dbh* dst, int argc, char** argv)
 	int type = BFRM_ELF;
 
 	if (argc < 2){
-		printf("unexpected numbver of arguments, (%d) vs at least 2.\n", argc);
+		printf("add_target(name executable argv) unexpected "
+			"number of arguments, (%d) vs 2+.\n", argc);
+
 		return EXIT_FAILURE;
 	}
 
@@ -84,7 +98,9 @@ static int add_target(struct arcan_dbh* dst, int argc, char** argv)
 static int drop_target(struct arcan_dbh* dst, int argc, char** argv)
 {
 	if (argc != 1){
-		printf("drop_target, unexpected number of arguments (%d vs 1)\n", argc);
+		printf("drop_target(target) unexpected number of "
+			"arguments (%d vs 1)\n", argc);
+
 		return EXIT_FAILURE;
 	}
 
@@ -101,7 +117,9 @@ static int drop_target(struct arcan_dbh* dst, int argc, char** argv)
 static int drop_config(struct arcan_dbh* dst, int argc, char** argv)
 {
 	if (argc != 2){
-		printf("drop_config, unexpected number of arguments (%d vs 2)\n", argc);
+		printf("drop_config(target, config) unexpected number of "
+			"arguments (%d vs 2)\n", argc);
+
 		return EXIT_FAILURE;
 	}
 
@@ -146,6 +164,11 @@ static int add_target_kv(struct arcan_dbh* dst, int argc, char** argv)
 		return EXIT_FAILURE;
 	}
 
+	if (!validate_key(argv[1])){
+		printf("invalid key specified (restricted to [a-Z0-9_])\n");
+		return EXIT_FAILURE;
+	}
+
 	id.tid = arcan_db_targetid(dst, argv[0], NULL);
 
 	if (id.tid == BAD_TARGET){
@@ -178,7 +201,7 @@ static int add_target_env(struct arcan_dbh* dst, int argc, char** argv)
 
 static int add_target_libv(struct arcan_dbh* dst, int argc, char** argv)
 {
-if (argc != 3){
+	if (argc != 3){
 		printf("add_target_lib (target, domain/order, soname) "
 			"invalid number of arguments, %d vs 3", argc);
 
@@ -221,6 +244,12 @@ static int add_config_kv(struct arcan_dbh* dst, int argc, char** argv)
 	if (argc != 4){
 		printf("add_config_kv(target, config, key, value) invalid number"
 			" of arguments (%d vs 4).\n", argc);
+		return EXIT_FAILURE;
+	}
+
+	if (!validate_key(argv[2])){
+		printf("invalid key specified (restricted to [a-Z0-9_])\n");
+		return EXIT_FAILURE;
 	}
 
 	id.cid = arcan_db_configid(dst, arcan_db_targetid(
@@ -233,7 +262,7 @@ static int add_config_env(struct arcan_dbh* dst, int argc, char** argv)
 {
 	union arcan_dbtrans_id id;
 	if (argc != 4){
-		printf("add_config_env(target, config, key, value) invalid number"
+		printf("add_config_env(target config key value) invalid number"
 			"of arguments (%d vs 4).\n", argc);
 		return EXIT_FAILURE;
 	}
@@ -244,9 +273,86 @@ static int add_config_env(struct arcan_dbh* dst, int argc, char** argv)
 	return set_kv(dst, DVT_CONFIG_ENV, id, argv[2], argv[3]);
 }
 
+static int dump_target(struct arcan_dbh* dbh, int argc, char** argv)
+{
+	if (argc != 1){
+		printf("dump_target(target), invalid number "
+			"of arguments (%d vs 1).\n", argc);
+
+		return EXIT_FAILURE;
+	}
+
+	union arcan_dbtrans_id id;
+	id.tid = arcan_db_targetid(dbh, argv[0], NULL);
+
+	struct arcan_dbres res = arcan_db_configs(dbh, id.tid);
+	assert(res.kind == 0);
+
+	if (!res.strarr){
+		printf("dump_targets(), no valid list returned.\n");
+		return EXIT_FAILURE;
+	}
+
+	printf("target (%s)\nconfigurations:\n", argv[0]);
+	char** curr = res.strarr;
+	while(*curr)
+		printf("\t%s\n", *curr++);
+	arcan_db_free_res(&res);
+
+	printf("\narguments: \n\t");
+	res = arcan_db_target_argv(dbh, id.tid);
+	curr = res.strarr;
+	while(*curr)
+		printf("%s ", *curr++);
+	arcan_db_free_res(&res);
+
+	printf("\n\nkvpairs:\n");
+	res = arcan_db_getkeys(dbh, DVT_TARGET, id);
+	curr = res.strarr;
+	while(*curr)
+		printf("\t%s\n", *curr++);
+	arcan_db_free_res(&res);
+	printf("\n");
+
+	return EXIT_SUCCESS;
+}
+
+
 static int dump_config(struct arcan_dbh* dst, int argc, char** argv)
 {
-	printf("stub\n");
+	if (argc != 2){
+		printf("dump_config(target, config) invalid number "
+			"of arguments (%d vs 2).\n", argc);
+		return EXIT_FAILURE;
+	}
+
+	union arcan_dbtrans_id tgt, cfg;
+	tgt.tid = arcan_db_targetid(dst, argv[0], NULL);
+	cfg.cid = arcan_db_configid(dst, tgt.tid, argv[1]);
+
+	struct arcan_dbres res = arcan_db_config_argv(dst, tgt.cid);
+	assert(res.kind == 0);
+
+	if (!res.strarr){
+		printf("dump_targets(), no valid list returned.\n");
+		return EXIT_FAILURE;
+	}
+
+	printf("target (%s) config (%s)\narguments:\n\t", argv[0], argv[1]);
+
+	char** curr = res.strarr;
+	while(*curr)
+		printf("%s \n", *curr++);
+	arcan_db_free_res(&res);
+
+	printf("\n\nkvpairs:\n");
+	res = arcan_db_getkeys(dst, DVT_CONFIG, cfg);
+	curr = res.strarr;
+	while(*curr)
+		printf("\t%s\n", *curr++);
+	arcan_db_free_res(&res);
+	printf("\n");
+
 	return EXIT_SUCCESS;
 }
 
@@ -254,6 +360,7 @@ static int dump_exec(struct arcan_dbh* dst, int argc, char** argv)
 {
 	struct arcan_dbres env = {0};
 	struct arcan_dbres outargv = {0};
+	struct arcan_dbres libs = {0};
 
 	if (argc <= 0 || argc > 2){
 		printf("dump_exec(target, [config]) invalid number"
@@ -264,7 +371,8 @@ static int dump_exec(struct arcan_dbh* dst, int argc, char** argv)
 	arcan_configid cfgid = arcan_db_configid(dst, arcan_db_targetid(
 		dst, argv[0], NULL), argc == 1 ? "default" : argv[1]);
 
-	char* execstr = arcan_db_targetexec(dst, cfgid, &outargv, &env);
+	enum DB_BFORMAT bfmt;
+	char* execstr = arcan_db_targetexec(dst, cfgid, &bfmt, &outargv, &env, &libs);
 	if (!execstr){
 		printf("couldn't generate execution string\n");
 		return EXIT_FAILURE;
@@ -304,30 +412,7 @@ static int dump_targets(struct arcan_dbh* dst, int argc, char** argv)
 	char** curr = res.strarr;
 	while(*curr)
 		printf("%s\n", *curr++);
-
-	return EXIT_SUCCESS;
-}
-
-static int dump_target(struct arcan_dbh* dst, int argc, char** argv)
-{
-	if (argc != 1){
-		printf("dump_target(), missing target name argument\n");
-		return EXIT_FAILURE;
-	}
-
-	arcan_targetid tid = arcan_db_targetid(dst, argv[0], NULL);
-
-	struct arcan_dbres res = arcan_db_configs(dst, tid);
-	assert(res.kind == 0);
-
-	if (!res.strarr){
-		printf("dump_targets(), no valid list returned.\n");
-		return EXIT_FAILURE;
-	}
-
-	char** curr = res.strarr;
-	while(*curr)
-		printf("%s\n", *curr++);
+	arcan_db_free_res(&res);
 
 	return EXIT_SUCCESS;
 }

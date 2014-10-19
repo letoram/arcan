@@ -1,23 +1,36 @@
-/* Arcan-fe, scriptable front-end engine
- *
- * Arcan-fe is the legal property of its developers, please refer
- * to the COPYRIGHT file distributed with this source distribution.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 3
- * of the License, or (at your option) any later version.
+/*
+ Arcan FE - Database Interfce
 
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ Copyright (c) Björn Ståhl 2014,
+ All rights reserved.
 
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- *
- */
+ Redistribution and use in source and binary forms,
+ with or without modification, are permitted provided that the
+ following conditions are met:
+
+ 1. Redistributions of source code must retain the above copyright notice,
+ this list of conditions and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright notice,
+ this list of conditions and the following disclaimer in the documentation
+ and/or other materials provided with the distribution.
+
+ 3. Neither the name of the copyright holder nor the names of its contributors
+ may be used to endorse or promote products derived from this software without
+ specific prior written permission.
+
+ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+ THE POSSIBILITY OF SUCH DAMAGE
+*/
 
 #include <stdlib.h>
 #include <stdint.h>
@@ -45,8 +58,8 @@ static bool db_init = false;
 	"tgtid INTEGER PRIMARY KEY,"\
 	"name STRING UNIQUE NOT NULL,"\
 	"executable TEXT NOT NULL,"\
-	"uid INTEGER DEFAULT -1,"\
-	"gid INTEGER DEFAULT -1,"\
+	"user_id STRING DEFAULT NULL,"\
+	"user_group STRING DEFAULT NULL,"\
 	"bfmt INTEGER NOT NULL"\
 	")"
 
@@ -142,6 +155,22 @@ struct arcan_dbh {
 	sqlite3_stmt* transaction;
 };
 
+/* fatalfail so will always either shut down or work */
+static void grow_dbres(struct arcan_dbres* res)
+{
+/* _alloc functions lacks a grow at the moment,
+ * after that this should ofc. be replaced. */
+	char** newbuf = arcan_alloc_mem(
+		(res->limit + REALLOC_STEP) * sizeof(char*),
+		ARCAN_MEM_STRINGBUF, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL
+	);
+
+	memcpy(newbuf, res->strarr, res->limit * sizeof(char*));
+	arcan_mem_free(res->strarr);
+	res->strarr = newbuf;
+	res->limit += REALLOC_STEP;
+}
+
 /*
  * any query that just returns a list of strings,
  * pack into a dbres (or append to an existing one)
@@ -162,21 +191,11 @@ static struct arcan_dbres db_string_query(struct arcan_dbh* dbh,
 /* we stop one step short of full capacity before
  * resizing to have both a valid count and a NULL terminated array */
 	while (sqlite3_step(stmt) == SQLITE_ROW){
+		if (res.count+1 >= res.limit)
+			grow_dbres(&res);
+
 		const char* arg = (const char*) sqlite3_column_text(stmt, 0);
 		res.strarr[res.count++] = (arg ? strdup(arg) : NULL);
-
-		if (res.count == res.limit-1){
-			char** newbuf = arcan_alloc_mem(
-				(res.limit + REALLOC_STEP) * sizeof(char*),
-				ARCAN_MEM_STRINGBUF, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL
-			);
-
-/* grow by REALLOC_STEP */
-			memcpy(newbuf, res.strarr, res.limit * sizeof(char*));
-			arcan_mem_free(res.strarr);
-			res.strarr = newbuf;
-			res.limit += REALLOC_STEP;
-		}
 	}
 
 	return res;
@@ -209,7 +228,8 @@ static int db_num_query(struct arcan_dbh* dbh, const char* qry, bool* status)
 /*
  * query that is just silently assumed to work
  */
-static inline void db_void_query(struct arcan_dbh* dbh, const char* qry)
+static inline void db_void_query(struct arcan_dbh* dbh,
+	const char* qry, bool suppr_err)
 {
 	sqlite3_stmt* stmt = NULL;
 	if (!qry || !dbh)
@@ -220,11 +240,9 @@ static inline void db_void_query(struct arcan_dbh* dbh, const char* qry)
 		rc = sqlite3_step(stmt);
 	}
 
-	if (rc != SQLITE_OK && rc != SQLITE_DONE){
-/*
- * arcan_warning("db_void_query(failed) on %s -- reason: %d(%s)\n",
- *		qry, rc, sqlite3_errmsg(dbh->dbh));
- */
+	if (rc != SQLITE_OK && rc != SQLITE_DONE && !suppr_err){
+		arcan_warning("db_void_query(failed) on %s -- reason: %d(%s)\n",
+			qry, rc, sqlite3_errmsg(dbh->dbh));
 	}
 
 	sqlite3_finalize(stmt);
@@ -269,7 +287,7 @@ static void create_appl_group(struct arcan_dbh* dbh, const char* applname)
 	char wbuf[ sizeof(ddl) + strlen(applname) ];
 	snprintf(wbuf, sizeof(wbuf)/sizeof(wbuf[0]), ddl, applname);
 
-	db_void_query(dbh, wbuf);
+	db_void_query(dbh, wbuf, true);
 }
 
 #ifdef ARCAN_DB_STANDALONE
@@ -427,6 +445,28 @@ arcan_targetid arcan_db_targetid(struct arcan_dbh* dbh,
 	return rid;
 }
 
+struct arcan_dbres arcan_db_config_argv(struct arcan_dbh* dbh,arcan_configid id)
+{
+	static const char dql[] = "SELECT arg FROM config_argv WHERE "
+		"config = ? ORDER BY argnum ASC;";
+ 	sqlite3_stmt* stmt;
+	sqlite3_prepare_v2(dbh->dbh, dql, sizeof(dql)-1, &stmt, NULL);
+	sqlite3_bind_int(stmt, 1, id);
+
+	return db_string_query(dbh, stmt, NULL);
+}
+
+struct arcan_dbres arcan_db_target_argv(struct arcan_dbh* dbh,arcan_targetid id)
+{
+	static const char dql[] = "SELECT arg FROM target_argv WHERE "
+		"target = ? ORDER BY argnum ASC;";
+ 	sqlite3_stmt* stmt;
+	sqlite3_prepare_v2(dbh->dbh, dql, sizeof(dql)-1, &stmt, NULL);
+	sqlite3_bind_int(stmt, 1, id);
+
+	return db_string_query(dbh, stmt, NULL);
+}
+
 arcan_targetid arcan_db_cfgtarget(struct arcan_dbh* dbh, arcan_configid cfg)
 {
 	static const char dql[] = "SELECT target FROM config WHERE cfgid = ?;";
@@ -471,22 +511,23 @@ struct arcan_dbres arcan_db_targets(struct arcan_dbh* dbh)
 }
 
 char* arcan_db_targetexec(struct arcan_dbh* dbh,
-	arcan_configid configid,
-	struct arcan_dbres* argv,
-	struct arcan_dbres* env)
+	arcan_configid configid, enum DB_BFORMAT* bfmt,
+	struct arcan_dbres* argv, struct arcan_dbres* env, struct arcan_dbres* libs)
 {
 	arcan_targetid tid = arcan_db_cfgtarget(dbh, configid);
 	if (tid == BAD_TARGET)
 		return NULL;
 
 	sqlite3_stmt* stmt;
-	static const char dql[] = "SELECT executable FROM target WHERE tgtid = ?;";
+	static const char dql[] = "SELECT executable, bfmt "
+		"FROM target WHERE tgtid = ?;";
+
 	int rc = sqlite3_prepare_v2(dbh->dbh, dql, sizeof(dql) - 1, &stmt, NULL);
 	sqlite3_bind_int(stmt, 1, tid);
 
 	char* execstr = NULL;
 	if (sqlite3_step(stmt) == SQLITE_ROW){
-		execstr = (char*) sqlite3_column_text(stmt, 0);
+		execstr = (char*) sqlite3_column_text(stmt, 1);
 	}
 
 	if (execstr)
@@ -509,11 +550,7 @@ char* arcan_db_targetexec(struct arcan_dbh* dbh,
 	*argv = db_string_query(dbh, stmt, argv);
 
 	*env = db_string_query(dbh, stmt, NULL);
-
-/*
- * platform- specific launch function gets the job of expanding
- * meta strings (e.g. [APPLPATH]/), preloading / injecting libraries etc.
- */
+	memset(libs, '\0', sizeof(struct arcan_dbres));
 
 	return execstr;
 }
@@ -582,10 +619,10 @@ void arcan_db_begin_transaction(struct arcan_dbh* dbh,
 struct arcan_dbres arcan_db_getkeys(struct arcan_dbh* dbh,
 	enum DB_KVTARGET tgt, union arcan_dbtrans_id id)
 {
-#define GET_KV_TGT "SELECT key || '=' || value FROM target WHERE tgtid = ?;"
+#define GET_KV_TGT "SELECT key || '=' || val FROM target_kv WHERE target = ?;"
 	static const char* const queries[] = {
 		GET_KV_TGT,
-		"SELECT key || '=' || value FROM config WHERE cfgid = ?"
+		"SELECT key || '=' || val FROM config_kv WHERE config = ?"
 	};
 
 	const char* qry = NULL;
@@ -595,7 +632,7 @@ struct arcan_dbres arcan_db_getkeys(struct arcan_dbh* dbh,
 		qry = queries[1];
 
 	sqlite3_stmt * stmt;
-	sqlite3_prepare_v2(dbh->dbh, queries[tgt], sizeof(GET_KV_TGT)-1, &stmt, NULL);
+	sqlite3_prepare_v2(dbh->dbh, qry, sizeof(GET_KV_TGT)-1, &stmt, NULL);
 	sqlite3_bind_int(stmt, 1, tgt>=DVT_TARGET && tgt<DVT_CONFIG ? id.tid:id.cid);
 
 #undef GET_KV_TGT
@@ -777,21 +814,22 @@ char* arcan_db_appl_val(struct arcan_dbh* dbh,
 	return rv;
 }
 
-void arcan_db_free_res(struct arcan_dbh* dbh, struct arcan_dbres res)
+void arcan_db_free_res(struct arcan_dbres* res)
 {
-	if (!dbh || res.kind == -1)
+	if (!res || res->kind == -1)
 		return;
 
-	if (res.kind == 0) {
-		char** cptr = (char**) res.strarr;
+	if (res->kind == 0) {
+		char** cptr = (char**) res->strarr;
 		while (cptr && *cptr)
 			arcan_mem_free(*cptr++);
 
-		arcan_mem_free(res.strarr);
+		arcan_mem_free(res->strarr);
 	}
 	else;
 
-	res.kind = -1;
+	memset(res, '\0', sizeof(struct arcan_dbres));
+	res->kind = -1;
 }
 
 static void setup_ddl(struct arcan_dbh* dbh)
@@ -800,7 +838,7 @@ static void setup_ddl(struct arcan_dbh* dbh)
 	arcan_db_appl_kv(dbh, "arcan", "dbversion", "3");
 
 	for (size_t i = 0; i < sizeof(ddls)/sizeof(ddls[0]); i++)
-		db_void_query(dbh, ddls[i]);
+		db_void_query(dbh, ddls[i], false);
 }
 
 /* to detect old databases and upgrade if possible */
@@ -847,7 +885,6 @@ void arcan_db_close(struct arcan_dbh** ctx)
 struct arcan_dbh* arcan_db_open(const char* fname, const char* applname)
 {
 	sqlite3* dbh;
-	int rc = 0;
 
 	if (!fname)
 		return NULL;
@@ -865,12 +902,11 @@ struct arcan_dbh* arcan_db_open(const char* fname, const char* applname)
 	if (!applname)
 		applname = "_default";
 
-	if ((rc = sqlite3_open_v2(fname, &dbh, SQLITE_OPEN_READWRITE, NULL))
-		== SQLITE_OK){
-			struct arcan_dbh* res = arcan_alloc_mem(
-				sizeof(struct arcan_dbh), ARCAN_MEM_EXTSTRUCT,
-				ARCAN_MEM_SENSITIVE | ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE
-			);
+	if (sqlite3_open_v2(fname, &dbh, SQLITE_OPEN_READWRITE, NULL) == SQLITE_OK){
+		struct arcan_dbh* res = arcan_alloc_mem(
+			sizeof(struct arcan_dbh), ARCAN_MEM_EXTSTRUCT,
+			ARCAN_MEM_SENSITIVE | ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE
+		);
 
 		res->dbh = dbh;
 		assert(dbh);
@@ -884,8 +920,8 @@ struct arcan_dbh* arcan_db_open(const char* fname, const char* applname)
 		res->applname = strdup(applname);
 		create_appl_group(res, res->applname);
 
-		db_void_query(res, "PRAGMA foreign_keys=ON;");
-		db_void_query(res, "PRAGMA synchronous=OFF;");
+		db_void_query(res, "PRAGMA foreign_keys=ON;", false);
+		db_void_query(res, "PRAGMA synchronous=OFF;", false);
 
 		return res;
 	}

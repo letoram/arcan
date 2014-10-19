@@ -27,9 +27,9 @@ ${PLATFORM_PATH}/warning.c
 ${PLATFORM_PATH}/frameserver.c
 ${PLATFORM_PATH}/fdpassing.c
 ${PLATFORM_PATH}/namespace.c
+${PLATFORM_PATH}/launch.c
 ${CMAKE_EXTERNAL_SRCDIR}/hidapi/hid_bsd.c
 ${CMAKE_EXTERNAL_SRCDIR}/hidapi/hidapi.h
-engine/arcan_target_launcher.c
 )
 
 set (FSRV_PLATFORM_SOURCES
