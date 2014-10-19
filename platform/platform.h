@@ -43,9 +43,13 @@ long long int arcan_timemillis();
  * This will shut down as much engine- locked resources as possible
  * while still possible to revert to the state- pre exection
  */
+struct arcan_strarr;
 int arcan_target_launch_external(
-	const char* fname, char** argv, char** envv, char** libs);
-
+	const char* fname,
+	struct arcan_strarr* argv,
+	struct arcan_strarr* env,
+	struct arcan_strarr* libs
+);
 /*
  * Launch the specified program and bind its resources and control
  * to the returned frameserver instance (NULL if spawn was not
@@ -53,7 +57,11 @@ int arcan_target_launch_external(
  */
 struct arcan_frameserver;
 struct arcan_frameserver* arcan_target_launch_internal(
-	const char* fname, char** argv, char** env, char** libs);
+	const char* fname,
+	struct arcan_strarr* argv,
+	struct arcan_strarr* env,
+	struct arcan_strarr* libs
+);
 
 void arcan_timesleep(unsigned long);
 file_handle arcan_fetchhandle(int insock);
