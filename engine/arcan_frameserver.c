@@ -44,7 +44,7 @@
 #include "arcan_videoint.h"
 #include "arcan_audio.h"
 #include "arcan_audioint.h"
-#include "arcan_frameserver_backend.h"
+#include "arcan_frameserver.h"
 #include "arcan_event.h"
 
 static uint64_t cookie;

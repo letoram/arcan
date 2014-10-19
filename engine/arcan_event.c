@@ -45,7 +45,7 @@
 #include "arcan_shmif.h"
 #include "arcan_event.h"
 
-#include "arcan_frameserver_backend.h"
+#include "arcan_frameserver.h"
 
 static int64_t arcan_last_frametime = 0;
 static int64_t arcan_tickofset = 0;

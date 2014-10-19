@@ -500,8 +500,8 @@ set (
  engine/arcan_general.h
  engine/arcan_db.h
  engine/arcan_shdrmgmt.h
- engine/arcan_frameserver_backend.h
- engine/arcan_frameserver_backend.c
+ engine/arcan_frameserver.h
+ engine/arcan_frameserver.c
  shmif/arcan_shmif.h
  shmif/arcan_shmif_interop.h
  shmif/arcan_shmif_control.c
