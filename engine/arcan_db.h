@@ -1,5 +1,5 @@
 /*
- Arcan Database Interfce
+ Arcan Database Interface
 
  Copyright (c) Björn Ståhl 2014,
  All rights reserved.
@@ -64,14 +64,6 @@ typedef long arcan_configid;
 
 static const int BAD_TARGET = -1;
 static const int BAD_CONFIG = -1;
-
-struct arcan_dbres {
-	char kind;
-	unsigned int count;
-	unsigned int limit;
-
-	char** strarr;
-};
 
 /* Opens database and performs a sanity check,
  * Creates an entry for applname unless one already exists,
@@ -145,27 +137,27 @@ arcan_configid arcan_db_configid(struct arcan_dbh*,
 char* arcan_db_targetexec(struct arcan_dbh*,
 	arcan_configid configid,
 	enum DB_BFORMAT* bfmt,
-	struct arcan_dbres* argv,
-	struct arcan_dbres* env,
-	struct arcan_dbres* libs
+	struct arcan_strarr* argv,
+	struct arcan_strarr* env,
+	struct arcan_strarr* libs
 );
 
 /*
  * Provided primarily for debugging / tool reasons, this data
  * comes implied with the _exec functions
  */
-struct arcan_dbres arcan_db_target_argv(struct arcan_dbh*, arcan_targetid);
-struct arcan_dbres arcan_db_config_argv(struct arcan_dbh*, arcan_configid);
+struct arcan_strarr arcan_db_target_argv(struct arcan_dbh*, arcan_targetid);
+struct arcan_strarr arcan_db_config_argv(struct arcan_dbh*, arcan_configid);
 
 /*
  * Retrieve a list of available targets
  */
-struct arcan_dbres arcan_db_targets(struct arcan_dbh*);
+struct arcan_strarr arcan_db_targets(struct arcan_dbh*);
 
 /*
  * Retrieve a list of available configurations
  */
-struct arcan_dbres arcan_db_configs(struct arcan_dbh*, arcan_targetid);
+struct arcan_strarr arcan_db_configs(struct arcan_dbh*, arcan_targetid);
 
 union arcan_dbtrans_id {
 	arcan_configid cid;
@@ -195,14 +187,14 @@ char* arcan_db_getvalue(struct arcan_dbh*,
  * dump all kv pairs as key=value for a specific
  * target or configuration
  */
-struct arcan_dbres arcan_db_getkeys(struct arcan_dbh*,
+struct arcan_strarr arcan_db_getkeys(struct arcan_dbh*,
 	enum DB_KVTARGET, union arcan_dbtrans_id);
 
 /*
  * return a list of id:value strings for configurations or targets
  * that match pattern.
  */
-struct arcan_dbres arcan_db_matchkey(struct arcan_dbh*, enum DB_KVTARGET,
+struct arcan_strarr arcan_db_matchkey(struct arcan_dbh*, enum DB_KVTARGET,
 	const char* pattern);
 
 /*
@@ -226,9 +218,9 @@ char* arcan_db_appl_val(struct arcan_dbh* dbh,
 	const char* appl, const char* key);
 
 /*
- * Any function that returns an struct arcan_dbres should be explicitly
+ * Any function that returns an struct arcan_strarr should be explicitly
  * freed by calling this function.
  */
-void arcan_db_free_res(struct arcan_dbres* res);
+void arcan_db_free_res(struct arcan_strarr* res);
 
 #endif
