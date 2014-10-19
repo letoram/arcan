@@ -63,23 +63,29 @@
 #include "arcan_shmif.h"
 #include "arcan_frameserver.h"
 
-static char* get_hijack(char** libs)
+static char* add_interpose(struct arcan_strarr* libs, struct arcan_strarr* envv)
 {
-	char* hijack = NULL;
+	char* interp = NULL;
 	size_t lib_sz = 0;
+#ifdef DARWIN
+	char basestr[] = "DYLD_INSERT_LIBRARIES=";
+#else
+	char basestr[] = "LD_PRELOAD=";
+#endif
 
 /* concatenate and build library string */
-	char** work = libs;
+	char** work = libs->data;
 	while(work && *work){
 		lib_sz += strlen(*work) + 1;
 		work++;
 	}
 
 	if (lib_sz > 0){
-		hijack = malloc(lib_sz + 1);
-		char* ofs = hijack;
+		interp = malloc(lib_sz + sizeof(basestr));
+		memcpy(interp, basestr, sizeof(basestr));
+		char* ofs = interp + sizeof(basestr)-1;
 
-		work = libs;
+		work = libs->data;
 		while (*work){
 			size_t len = strlen(*work);
 			memcpy(ofs, *work, len);
@@ -91,7 +97,12 @@ static char* get_hijack(char** libs)
 		ofs[-1] = '\0';
 	}
 
-	return hijack;
+	if (envv->limit - envv->count < 2)
+		arcan_mem_growarr(envv);
+
+	envv->data[envv->count++] = interp;
+
+	return interp;
 }
 
 int arcan_target_launch_external(const char* fname,
@@ -107,6 +118,8 @@ int arcan_target_launch_external(const char* fname,
 	pid_t child = fork();
 	unsigned long ticks = arcan_timemillis();
 
+	add_interpose(libs, envv);
+
 	if (child) {
 		int stat_loc;
 
@@ -119,7 +132,8 @@ int arcan_target_launch_external(const char* fname,
 		return arcan_timemillis() - ticks;
 	}
 	else {
-		execv(fname, argv->data);
+/* GNU extension warning */
+		execvpe(fname, argv->data, envv->data);
 		_exit(1);
 	}
 }
@@ -129,25 +143,14 @@ arcan_frameserver* arcan_target_launch_internal(const char* fname,
 	struct arcan_strarr* libs)
 {
 	arcan_frameserver* res = arcan_frameserver_alloc();
+	add_interpose(libs, envv);
 
-	char shmsize[ 39 ] = {0};
-/*
-	char* envv[10] = {
-			"LD_PRELOAD", hijack,
-			"DYLD_INSERT_LIBRARIES", hijack,
-			"ARCAN_SHMKEY", "",
-			"ARCAN_SHMSIZE", "",
-			NULL, NULL
-	};
-*/
 	struct frameserver_envp args = {
 		.use_builtin = false,
 		.args.external.fname = (char*) fname,
 		.args.external.envv = envv->data,
 		.args.external.argv = argv->data
 	};
-
-	snprintf(shmsize, 38, "%ui", (unsigned int) ARCAN_SHMPAGE_MAX_SZ);
 
 	if (
 		arcan_frameserver_spawn_server(res, args) != ARCAN_OK) {
