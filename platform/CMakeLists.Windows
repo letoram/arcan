@@ -6,20 +6,20 @@ set (DISTR_PATH ${CMAKE_SOURCE_DIR}/distr)
 
 set (PLATFORM_SOURCES
 	platform/posix/fmt_open.c
-	${WIN32_PATH}/../stub/mem.c
 	${WIN32_PATH}/sem.c
 	${WIN32_PATH}/strip_traverse.c
-	${WIN32_PATH}/../posix/appl.c
 	${WIN32_PATH}/shm.c
 	${WIN32_PATH}/arcan_general.c
 	${WIN32_PATH}/time.c
 	${WIN32_PATH}/glob.c
 	${WIN32_PATH}/paths.c
-	${WIN32_PATH}/../posix/appl.c
 	${WIN32_PATH}/resource_io.c
 	${WIN32_PATH}/warning.c
 	${WIN32_PATH}/map_resource.c
 	${WIN32_PATH}/frameserver.c
+	${WIN32_PATH}/launch.c
+	${WIN32_PATH}/../stub/mem.c
+	${WIN32_PATH}/../posix/appl.c
 	${WIN32_PATH}/../posix/base64.c
 	${WIN32_PATH}/../posix/namespace.c
 )
@@ -27,16 +27,16 @@ set (PLATFORM_SOURCES
 set (FSERV_PLATFORM_SOURCES
 	${WIN32_PATH}/warning.c
 	${WIN32_PATH}/time.c
-	${WIN32_PATH}/../posix/base64.c
 	${WIN32_PATH}/sem.c
 	${WIN32_PATH}/shm.c
 	${WIN32_PATH}/paths.c
 	${WIN32_PATH}/warning.c
-	${WIN32_PATH}/../stub/mem.c
-	${WIN32_PATH}/../posix/namespace.c
 	${WIN32_PATH}/strip_traverse.c
 	${WIN32_PATH}/realpath.c
 	${WIN32_PATH}/strtok_r.c
+	${WIN32_PATH}/../stub/mem.c
+	${WIN32_PATH}/../posix/namespace.c
+	${WIN32_PATH}/../posix/base64.c
 	${SHMIF_SOURCES}
 )
 
@@ -65,7 +65,6 @@ add_definitions(-DPLATFORM_HEADER=\"${WIN32_PATH}/platform.h\"
 LIST(APPEND SOURCES
 	${CMAKE_EXTERNAL_SRCDIR}/hidapi/hid_win32.c
 	${CMAKE_EXTERNAL_SRCDIR}/hidapi/hidapi.h
-	${WIN32_PATH}/arcan_target_launcher_win32.c
 	${WIN32_PATH}/getopt_win32.c
 	${WIN32_PATH}/getopt.h
 	${WIN32_PATH}/sdl_win32_main.c

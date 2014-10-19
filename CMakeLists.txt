@@ -493,7 +493,6 @@ set (
  engine/arcan_3dbase.h
  engine/arcan_video.h
  engine/arcan_audio.h
- engine/arcan_target_launcher.h
  engine/arcan_led.c
  engine/arcan_hmd.c
  engine/arcan_hmd.h

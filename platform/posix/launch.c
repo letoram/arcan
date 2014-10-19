@@ -47,9 +47,9 @@
 #include "arcan_event.h"
 #include "arcan_frameserver_backend.h"
 #include "arcan_shmif.h"
-#include "arcan_target_launcher.h"
 #include "arcan_db.h"
 
+/*
 int arcan_target_launch_external(const char* fname, char** argv)
 {
 	if (arcan_video_prepare_external() == false){
@@ -77,6 +77,7 @@ int arcan_target_launch_external(const char* fname, char** argv)
 		_exit(1);
 	}
 }
+*/
 
 /*
  * note for debugging internal launch (particularly the hijack lib)
@@ -89,6 +90,7 @@ int arcan_target_launch_external(const char* fname, char** argv)
  * change the memory of the flag
  */
 
+/*
 arcan_frameserver* arcan_target_launch_internal(const char* fname,
 	char* hijack, char** argv)
 {
@@ -127,3 +129,4 @@ arcan_frameserver* arcan_target_launch_internal(const char* fname,
 
 	return res;
 }
+*/
