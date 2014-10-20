@@ -54,7 +54,7 @@ printf("usage: arcan_db dbfile command args\n\n"
 	"  add_target     \tname executable argv\n"
 	"  add_target_kv  \ttarget name key value\n"
 	"  add_target_env \ttarget name key value\n"
-	"  set_target_libs\ttarget name libstr\n"
+	"  add_target_lib \ttarget name libstr\n"
 	"  add_config     \ttarget name argv\n"
 	"  add_config_kv  \ttarget config name key val\n"
 	"  add_config_env \ttarget config name key val\n"
@@ -85,7 +85,7 @@ static bool validate_key(const char* key)
 
 static int add_target(struct arcan_dbh* dst, int argc, char** argv)
 {
-	int type = BFRM_ELF;
+	int type = BFRM_BIN;
 
 	if (argc < 2){
 		printf("add_target(name executable argv) unexpected "
@@ -175,7 +175,7 @@ static int add_target_kv(struct arcan_dbh* dst, int argc, char** argv)
 	union arcan_dbtrans_id id;
 	if (argc != 3){
 		printf("add_target_kv(target, key, val) "
-			"invalid number of arguments, %d vs 3", argc);
+			"invalid number of arguments, %d vs 3\n", argc);
 
 		return EXIT_FAILURE;
 	}
@@ -217,9 +217,9 @@ static int add_target_env(struct arcan_dbh* dst, int argc, char** argv)
 
 static int add_target_libv(struct arcan_dbh* dst, int argc, char** argv)
 {
-	if (argc != 3){
-		printf("add_target_lib (target, domain/order, soname) "
-			"invalid number of arguments, %d vs 3", argc);
+	if (argc != 2){
+		printf("add_target_lib (target, soname) "
+			"invalid number of arguments, %d vs 2", argc);
 
 		return EXIT_FAILURE;
 	}
@@ -232,7 +232,7 @@ static int add_target_libv(struct arcan_dbh* dst, int argc, char** argv)
 		return EXIT_FAILURE;
 	}
 
-	return set_kv(dst, DVT_TARGET_LIBV, id, argv[1], argv[2]);
+	return set_kv(dst, DVT_TARGET_LIBV, id, argv[1], "");
 }
 
 static int add_config(struct arcan_dbh* dst, int argc, char** argv)
@@ -494,6 +494,11 @@ struct {
 	{
 		.key = "add_target_env",
 		.fun = add_target_env
+	},
+
+	{
+		.key = "add_target_lib",
+		.fun = add_target_libv
 	},
 
 	{

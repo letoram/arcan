@@ -69,6 +69,7 @@ static char* alloc_cat(char* a, char* b)
 	size_t a_sz = strlen(a);
 	size_t b_sz = strlen(b);
 	char* newstr = malloc(a_sz + b_sz + 1);
+	newstr[a_sz + b_sz] = '\0';
 	memcpy(newstr, a, a_sz);
 	memcpy(newstr + a_sz, b, b_sz);
 	return newstr;
@@ -76,13 +77,16 @@ static char* alloc_cat(char* a, char* b)
 
 static char* rep_str(char* instr)
 {
-	char* beg = strchr(instr, 0x1b);
+	char* beg = strchr(instr, '[');
 	if (!beg)
 		return instr;
 
-	char* end = strchr(beg+1, 0x1b);
+	char* end = strchr(beg+1, ']');
 
 	for (size_t i = 0; i < sizeof(envvs)/sizeof(envvs[0]); i++){
+		if (end)
+			*end = '\0';
+
 		if (strcmp(envvs[i], beg+1) != 0)
 			continue;
 

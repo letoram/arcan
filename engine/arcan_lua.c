@@ -4992,7 +4992,8 @@ static int targetlaunch(lua_State* ctx)
 	arcan_frameserver* intarget = NULL;
 
 	switch (bfmt){
-	case BFRM_ELF:
+	case BFRM_BIN:
+	case BFRM_SHELL:
 		intarget = arcan_target_launch_internal(exec, &argv, &env, &libs);
 	break;
 

@@ -145,11 +145,14 @@ arcan_frameserver* arcan_target_launch_internal(const char* fname,
 	arcan_frameserver* res = arcan_frameserver_alloc();
 	add_interpose(libs, envv);
 
+	argv->data = arcan_expand_namespaces(argv->data);
+	envv->data = arcan_expand_namespaces(envv->data);
+
 	struct frameserver_envp args = {
 		.use_builtin = false,
 		.args.external.fname = (char*) fname,
-		.args.external.envv = envv->data,
-		.args.external.argv = argv->data
+		.args.external.envv = envv,
+		.args.external.argv = argv
 	};
 
 	if (

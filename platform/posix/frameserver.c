@@ -913,25 +913,20 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 				argv[0], setup.args.builtin.mode,
 				setup.args.builtin.resource, strerror(errno));
 			exit(1);
-		} else {
+		}
+		else {
 /* hijack lib */
 			char shmsize_s[32];
 			snprintf(shmsize_s, 32, "%zu", ctx->shm.shmsize);
 
-			char** envv = setup.args.external.envv;
+			char** envv = setup.args.external.envv->data;
+			while(*envv)
+				putenv(*(envv++));
 
-			while (envv && *envv){
-				if (strcmp(envv[0], "ARCAN_SHMKEY") == 0)
-					setenv("ARCAN_SHMKEY", ctx->shm.key, 1);
-				else if (strcmp(envv[0], "ARCAN_SHMSIZE") == 0)
-					setenv("ARCAN_SHMSIZE", shmsize_s, 1);
-				else
-					setenv(envv[0], envv[1], 1);
+			setenv("ARCAN_SHMKEY", ctx->shm.key, 1);
+			setenv("ARCAN_SHMSIZE", shmsize_s, 1);
 
-				envv += 2;
-			}
-
-			execv(setup.args.external.fname, setup.args.external.argv);
+			execv(setup.args.external.fname, setup.args.external.argv->data);
 			exit(1);
 		}
 	}

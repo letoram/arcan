@@ -48,10 +48,6 @@
 #include "arcan_general.h"
 #include "arcan_db.h"
 
-#ifndef REALLOC_STEP
-#define REALLOC_STEP 32
-#endif
-
 static bool db_init = false;
 
 #define DDL_TARGET "CREATE TABLE target ("\
@@ -108,7 +104,9 @@ static bool db_init = false;
 	"FOREIGN KEY (config) REFERENCES target(tgtid) ON DELETE CASCADE )"
 
 #define DDL_TGT_LIBS "CREATE TABLE target_libs ("\
+	"libnum INTEGER PRIMARY KEY,"\
 	"libname STRING UNIQUE NOT NULL,"\
+	"libnote STRING UNIQUE NOT NULL,"\
 	"target INT NOT NULL,"\
 	"FOREIGN KEY (target) REFERENCES target(tgtid) ON DELETE CASCADE )"
 
@@ -136,7 +134,7 @@ static const char* ddls[] = {
 	"target_env(key, val, target) VALUES(?, ?, ?);"
 
 #define DI_INSKV_TARGET_LIBV "INSERT OR REPLACE INTO "\
-	"target_libs(key, val, target) VALUES(?, ?, ?);"
+	"target_libs(libname, libnote, target) VALUES(?, ?, ?);"
 
 struct arcan_dbh {
 	sqlite3* dbh;
@@ -513,7 +511,8 @@ char* arcan_db_targetexec(struct arcan_dbh* dbh,
 
 	char* execstr = NULL;
 	if (sqlite3_step(stmt) == SQLITE_ROW){
-		execstr = (char*) sqlite3_column_text(stmt, 1);
+		execstr = (char*) sqlite3_column_text(stmt, 0);
+		*bfmt = (int) sqlite3_column_int64(stmt, 1);
 	}
 
 	if (execstr)
@@ -541,7 +540,7 @@ char* arcan_db_targetexec(struct arcan_dbh* dbh,
 	sqlite3_bind_int(stmt, 1, configid);
 	*argv = db_string_query(dbh, stmt, argv, 0);
 
-	static const char dql_tgt_env[] = "SELCT key || '=' || val "
+	static const char dql_tgt_env[] = "SELECT key || '=' || val "
 		"FROM target_env WHERE target = ?";
 	sqlite3_prepare_v2(dbh->dbh, dql_tgt_env,
 		sizeof(dql_tgt_env)-1, &stmt, NULL);
@@ -567,7 +566,18 @@ char* arcan_db_targetexec(struct arcan_dbh* dbh,
 
 void arcan_db_launch_status(struct arcan_dbh* dbh, arcan_configid cid, bool s)
 {
-	arcan_warning("STUB!");
+	static const char dql_ok[] = "UPDATE passed_counter SET "
+		"passed_counter = passed_counter + 1 WHERE config = ?;";
+
+	static const char dql_fail[] = "UPDATE failed_counter SET "
+		"failed_counter = failed_counter + 1 WHERE config = ?;";
+
+	sqlite3_stmt* stmt;
+	sqlite3_prepare_v2(dbh->dbh,
+		(s ? dql_ok : dql_fail), sizeof(dql_ok)-1, &stmt, NULL);
+	sqlite3_bind_int(stmt, 1, cid);
+	sqlite3_step(stmt);
+	sqlite3_finalize(stmt);
 }
 
 struct arcan_strarr arcan_db_configs(struct arcan_dbh* dbh, arcan_targetid tid)
@@ -782,12 +792,6 @@ bool arcan_db_appl_kv(struct arcan_dbh* dbh, const char* applname,
 	sqlite3_bind_text(stmt, 2, value, -1, SQLITE_TRANSIENT);
 
 	rv = sqlite3_step(stmt) == SQLITE_DONE;
-/*
- * if (!rv)
-		arcan_warning("add kv failed %s reason: (%s)\n",
-		upd_buf,  sqlite3_errmsg(dbh->dbh));
- */
-
 	sqlite3_finalize(stmt);
 
 	return rv;
