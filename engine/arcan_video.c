@@ -4952,8 +4952,7 @@ void arcan_video_refresh_GL(float lerp, bool draw)
 		process_rendertarget(tgt, lerp, true);
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-		for (size_t ind = 0; ind < current_context->n_rtargets; ind++)
-			process_readback(&current_context->rtargets[ind], lerp);
+		process_readback(&current_context->rtargets[ind], lerp);
 	}
 
 /*
