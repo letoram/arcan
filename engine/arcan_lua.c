@@ -4989,18 +4989,16 @@ static int targetlaunch(lua_State* ctx)
 		return 0;
 	}
 
-	struct frameserver_envp args = {
-		.use_builtin = true,
-		.args.builtin.resource = "",
-		.args.builtin.mode = "libretro"
-	};
+	arcan_frameserver* intarget = NULL;
 
 	switch (bfmt){
 	case BFRM_ELF:
-
+		intarget = arcan_target_launch_internal(exec, &argv, &env, &libs);
 	break;
 
 	case BFRM_LWA:
+/* FIXME lookup arcan_lwa binary, and feed that as the executable,
+ * this will be more prominent when we have a package format going */
 	break;
 
 	case BFRM_RETRO:
@@ -5009,6 +5007,19 @@ static int targetlaunch(lua_State* ctx)
 				" which is only possible in internal- mode.");
 			goto cleanup;
 		}
+
+		intarget = arcan_frameserver_alloc();
+		intarget->tag = ref;
+		struct frameserver_envp args = {
+			.use_builtin = true,
+			.args.builtin.resource = "",
+			.args.builtin.mode = "libretro"
+		};
+
+		if (arcan_frameserver_spawn_server(intarget, args) != ARCAN_OK){
+			arcan_frameserver_free(intarget);
+			intarget = NULL;
+		}
 	break;
 
 	default:
@@ -5016,20 +5027,15 @@ static int targetlaunch(lua_State* ctx)
 			"binary format encountered.\n");
 	}
 
-	arcan_frameserver* intarget = arcan_frameserver_alloc();
-	intarget->tag = ref;
-
-	if (arcan_frameserver_spawn_server(intarget, args) == ARCAN_OK){
+	if (intarget){
 		arcan_video_objectopacity(intarget->vid, 0.0, 0);
 		lua_pushvid(ctx, intarget->vid);
 		lua_pushaid(ctx, intarget->aid);
 		arcan_db_launch_status(dbhandle, cid, true);
 		rc = 2;
 	}
-	else{
+	else
 		arcan_db_launch_status(dbhandle, cid, false);
-		arcan_warning("launch_target(), couldn't spawn frameserver.\n");
-	}
 
 cleanup:
 	arcan_mem_freearr(&argv);
