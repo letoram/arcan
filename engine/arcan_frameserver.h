@@ -188,11 +188,9 @@ struct frameserver_envp {
 		} builtin;
 
 		struct {
-			char* fname; /* program to execute */
-/* key with ARCAN_SHMKEY, ARCAN_SHMSIZE will have
- * its value replaced, key=val, NULL terminated */
-			char** argv;
-			char** envv;
+			char* fname;
+			struct arcan_strarr* argv;
+			struct arcan_strarr* envv;
 		} external;
 
 	} args;
