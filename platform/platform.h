@@ -31,6 +31,38 @@ typedef int arcan_aobj_id;
 
 long long int arcan_timemillis();
 
+/*
+ * Both these functions expect [argv / envv] to be modifiable
+ * and their internal contents dynamically allocated (hence
+ * will possible replace / free existing ones due to platform
+ * specific expansion rules
+ */
+
+/*
+ * Execute and wait- for completion for the specified target.
+ * This will shut down as much engine- locked resources as possible
+ * while still possible to revert to the state- pre exection
+ */
+struct arcan_strarr;
+int arcan_target_launch_external(
+	const char* fname,
+	struct arcan_strarr* argv,
+	struct arcan_strarr* env,
+	struct arcan_strarr* libs
+);
+/*
+ * Launch the specified program and bind its resources and control
+ * to the returned frameserver instance (NULL if spawn was not
+ * possible for some reason, e.g. missing binaries).
+ */
+struct arcan_frameserver;
+struct arcan_frameserver* arcan_target_launch_internal(
+	const char* fname,
+	struct arcan_strarr* argv,
+	struct arcan_strarr* env,
+	struct arcan_strarr* libs
+);
+
 void arcan_timesleep(unsigned long);
 file_handle arcan_fetchhandle(int insock);
 bool arcan_pushhandle(file_handle in, int channel);

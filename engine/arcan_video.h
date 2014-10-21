@@ -292,14 +292,14 @@ enum arcan_ffunc_rv {
 };
 
 typedef enum arcan_ffunc_rv(*arcan_vfunc_cb)(
-	enum arcan_ffunc_cmd cmd, uint8_t* buf,
-	uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp,
+	enum arcan_ffunc_cmd cmd, av_pixel* buf,
+	size_t buf_sz, uint16_t width, uint16_t height,
 	unsigned int mode, vfunc_state state
 );
 
 /*
  * Perform basic rendering library setup and forward
- * requests to platform layer. Note that width/height/bpp are hints
+ * requests to platform layer. Note that width/height are hints
  * and something of a legacy. Some platform implementations use
  * environment variables or build time flags for additional setup.
  *
@@ -337,7 +337,7 @@ bool arcan_video_prepare_external();
 void arcan_video_restore_external();
 
 /*
- * Perform a render-pass (update rendertargets)
+ * Perform a render-pass, set synch to true if we should block
  * Fragment is in the 0..999 range and specifies how far we are
  * towards the next logical tick. This is used to calculate interpolations
  * for transformation chains to get smoother animation even when running
@@ -370,7 +370,7 @@ void arcan_video_default_texmode(enum arcan_vtex_mode s,
 	enum arcan_vtex_mode t);
 void arcan_video_default_texfilter(enum arcan_vfilter_mode);
 void arcan_video_default_imageprocmode(enum arcan_imageproc_mode);
-arcan_errc arcan_video_screenshot(void** dptr, size_t* dsize);
+arcan_errc arcan_video_screenshot(av_pixel** dptr, size_t* dsize);
 
 /*
  * Request a fullscreen/window toggle if working / implemented,
@@ -480,7 +480,7 @@ arcan_vobj_id arcan_video_solidcolor(float origw, float origh,
  * no color space conversion is currently performed and the use
  * of this function should be avoided, if possible.
  */
-arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs,
+arcan_vobj_id arcan_video_rawobject(av_pixel* buf,
 	img_cons constraints, float origw, float origh, unsigned short zv);
 
 /*
@@ -727,7 +727,7 @@ arcan_errc arcan_video_screencoords(arcan_vobj_id, vector*);
 surface_properties arcan_video_properties_at(
 	arcan_vobj_id id, uint32_t ticks);
 img_cons arcan_video_dimensions(uint16_t w, uint16_t h);
-arcan_errc arcan_video_forceread(arcan_vobj_id sid, void** dptr, size_t* dstsz);
+arcan_errc arcan_video_forceread(arcan_vobj_id sid, av_pixel** dptr, size_t* dstsz);
 
 /* Transformation chain actions */
 arcan_errc arcan_video_objectmove(arcan_vobj_id id, float newx, float newy,

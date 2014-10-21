@@ -21,7 +21,6 @@ set (PLATFORM_SOURCES
 	${PLATFORM_PATH}/glob.c
 	${PLATFORM_PATH}/map_resource.c
 	${PLATFORM_PATH}/resource_io.c
-	${PLATFORM_PATH}/ilaunch.c
 	${PLATFORM_PATH}/strip_traverse.c
 	${PLATFORM_PATH}/paths.c
 	${PLATFORM_PATH}/appl.c
@@ -33,9 +32,9 @@ set (PLATFORM_SOURCES
 	${PLATFORM_PATH}/frameserver.c
 	${PLATFORM_PATH}/fdpassing.c
 	${PLATFORM_PATH}/namespace.c
+	${PLATFORM_PATH}/launch.c
 	${CMAKE_EXTERNAL_SRCDIR}/hidapi/hid_linux.c
 	${CMAKE_EXTERNAL_SRCDIR}/hidapi/hidapi.h
- 	engine/arcan_target_launcher.c
 )
 
 set (FSRV_PLATFORM_SOURCES

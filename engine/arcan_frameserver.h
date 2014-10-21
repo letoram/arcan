@@ -188,11 +188,9 @@ struct frameserver_envp {
 		} builtin;
 
 		struct {
-			char* fname; /* program to execute */
-/* key with ARCAN_SHMKEY, ARCAN_SHMSIZE will have
- * its value replaced, key=val, NULL terminated */
-			char** argv;
-			char** envv;
+			char* fname;
+			struct arcan_strarr* argv;
+			struct arcan_strarr* envv;
 		} external;
 
 	} args;
@@ -267,8 +265,8 @@ ssize_t arcan_frameserver_shmvidaudcb(int fd, void* dst, size_t ntr);
 /* used for streaming data to the frameserver,
  * audio / video interleaved in one synch */
 enum arcan_ffunc_rv arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd,
-	uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height,
-	uint8_t bpp, unsigned int mode, vfunc_state state);
+	av_pixel* buf, size_t s_buf, uint16_t width, uint16_t height,
+ 	unsigned int mode, vfunc_state state);
 
 /* used as monitor hook for frameserver audio feeds */
 void arcan_frameserver_avfeedmon(arcan_aobj_id src, uint8_t* buf,
@@ -281,12 +279,12 @@ void arcan_frameserver_update_mixweight(arcan_frameserver* dst,
 
 /* return a callback function for retrieving appropriate video-feeds */
 enum arcan_ffunc_rv arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd,
-	uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height,
-	uint8_t bpp, unsigned int mode, vfunc_state state);
+	av_pixel* buf, size_t s_buf, uint16_t width, uint16_t height,
+	unsigned int mode, vfunc_state state);
 
 enum arcan_ffunc_rv arcan_frameserver_emptyframe(enum arcan_ffunc_cmd cmd,
-	uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height,
-	uint8_t bpp, unsigned int mode, vfunc_state state);
+	av_pixel* buf, size_t s_buf, uint16_t width, uint16_t height,
+	unsigned int mode, vfunc_state state);
 
 /* return a callback function for retrieving appropriate audio-feeds */
 arcan_errc arcan_frameserver_audioframe(struct
@@ -301,8 +299,8 @@ arcan_errc arcan_frameserver_flush(arcan_frameserver* fsrv);
  * ignores PTS/DTS and doesn't use the framequeue */
 enum arcan_ffunc_rv arcan_frameserver_videoframe_direct(
 	enum arcan_ffunc_cmd cmd,
-	uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height,
-	uint8_t bpp, unsigned int mode, vfunc_state state);
+	av_pixel* buf, size_t s_buf, uint16_t width, uint16_t height,
+	unsigned int mode, vfunc_state state);
 
 arcan_errc arcan_frameserver_audioframe_direct(struct arcan_aobj* aobj,
 	arcan_aobj_id id, unsigned buffer, void* tag);

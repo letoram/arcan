@@ -64,6 +64,71 @@ static char* envvs[] = {
 	"ARCAN_LOGPATH"
 };
 
+static char* alloc_cat(char* a, char* b)
+{
+	size_t a_sz = strlen(a);
+	size_t b_sz = strlen(b);
+	char* newstr = malloc(a_sz + b_sz + 1);
+	newstr[a_sz + b_sz] = '\0';
+	memcpy(newstr, a, a_sz);
+	memcpy(newstr + a_sz, b, b_sz);
+	return newstr;
+}
+
+static char* rep_str(char* instr)
+{
+	char* beg = strchr(instr, '[');
+	if (!beg)
+		return instr;
+
+	char* end = strchr(beg+1, ']');
+
+	for (size_t i = 0; i < sizeof(envvs)/sizeof(envvs[0]); i++){
+		if (end)
+			*end = '\0';
+
+		if (strcmp(envvs[i], beg+1) != 0)
+			continue;
+
+		char* exp = arcan_expand_resource("", 1 << i);
+
+		if (!exp)
+			goto fail;
+
+		if (!end){
+			*beg = '\0';
+			char* newstr = alloc_cat(instr, exp);
+			free(instr);
+			return newstr;
+		}
+		else{
+			*beg = '\0';
+			*end = '\0';
+			char* newstr = alloc_cat(instr, exp);
+			free(instr);
+			char* resstr = alloc_cat(newstr, end+1);
+			free(newstr);
+			return rep_str(resstr);
+		}
+	}
+
+fail:
+	arcan_warning("expand failed, no match for supplied string (%s)\n", beg+1);
+	return instr;
+}
+
+char** arcan_expand_namespaces(char** inargs)
+{
+	char** work = inargs;
+
+	while(*work){
+		*work = rep_str(*work);
+		work++;
+	}
+
+	return inargs;
+}
+
 static char* binpath_unix()
 {
 	char* binpath = NULL;

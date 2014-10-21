@@ -104,9 +104,8 @@
 #include "arcan_audio.h"
 #include "arcan_event.h"
 #include "arcan_db.h"
-#include "arcan_frameserver_backend.h"
+#include "arcan_frameserver.h"
 #include "arcan_shmif.h"
-#include "arcan_target_launcher.h"
 
 #include GL_HEADERS
 
@@ -237,7 +236,7 @@ static const int RENDERFMT_FULL  = RENDERTARGET_COLOR_DEPTH_STENCIL;
 static const int POSTFILTER_NTSC = 100;
 static const int POSTFILTER_OFF  = 10;
 
-extern arcan_dbh* dbhandle;
+extern struct arcan_dbh* dbhandle;
 
 enum arcan_cb_source {
 	CB_SOURCE_NONE        = 0,
@@ -397,7 +396,7 @@ void arcan_state_dump(const char* key, const char* msg, const char* src)
 		return;
 	}
 
-	const char* date_ptn = "%m%d_%H%M%S";
+	const char date_ptn[] = "%m%d_%H%M%S";
 	char date_str[ sizeof(date_ptn) * 2 ];
 	strftime(date_str, sizeof(date_str), date_ptn, ltime);
 
@@ -1375,7 +1374,6 @@ static int buildshader(lua_State* ctx)
 	const char* label = luaL_checkstring(ctx, 3);
 
 	arcan_shader_id rv = arcan_shader_build(label, NULL, vprog, fprog);
-
 	lua_pushnumber(ctx, rv);
 	return 1;
 }
@@ -1386,7 +1384,6 @@ static int sharestorage(lua_State* ctx)
 
 	arcan_vobj_id src = luaL_checkvid(ctx, 1, NULL);
 	arcan_vobj_id dst = luaL_checkvid(ctx, 2, NULL);
-
 
 	arcan_errc rv = arcan_video_shareglstore(src, dst);
 	lua_pushboolean(ctx, rv == ARCAN_OK);
@@ -3506,24 +3503,47 @@ static int copyimageprop(lua_State* ctx)
 	return 0;
 }
 
+static bool validate_key(const char* key)
+{
+	while(*key){
+		if (!isalnum(*key) && *key != '_')
+			return false;
+		key++;
+	}
+
+	return true;
+}
+
 static int storekey(lua_State* ctx)
 {
 	LUA_TRACE("store_key");
 
 	if (lua_type(ctx, 1) == LUA_TTABLE){
-		lua_pushnil(ctx);
+		union arcan_dbtrans_id tid;
+		tid.applname = arcan_appl_id();
 
+		lua_pushnil(ctx);
+		arcan_db_begin_transaction(dbhandle, DVT_APPL, tid);
+
+		size_t counter = 0;
 		while (lua_next(ctx, 1) != 0){
+			counter++;
 			const char* key = lua_tostring(ctx, -2);
-			const char* val = lua_tostring(ctx, -1);
-			arcan_db_kv(dbhandle, key, val);
+			if (!validate_key(key)){
+				arcan_warning("store_key, key[%d] rejected "
+					"(restricted to [a-Z0-9_])\n", counter);
+			}
+			else {
+				const char* val = lua_tostring(ctx, -1);
+				arcan_db_add_kvpair(dbhandle, key, val);
+			}
+
 			lua_pop(ctx, 1);
 		}
 
-/* end transaction */
-		arcan_db_kv(dbhandle, NULL, NULL);
-
-	} else {
+		arcan_db_end_transaction(dbhandle);
+	}
+	else {
 		const char* key = luaL_checkstring(ctx, 1);
 		const char* name = luaL_checkstring(ctx, 2);
 		arcan_db_appl_kv(dbhandle, arcan_appl_id(), key, name);
@@ -3532,11 +3552,78 @@ static int storekey(lua_State* ctx)
 	return 0;
 }
 
+static int push_stringres(lua_State* ctx, struct arcan_strarr* res)
+{
+	int rv = 0;
+
+	if (res->data) {
+		char** curr = res->data;
+		unsigned int count = 1; /* 1 indexing, seriously LUA ... */
+
+		curr = res->data;
+
+		lua_newtable(ctx);
+		int top = lua_gettop(ctx);
+
+		while (*curr) {
+			lua_pushnumber(ctx, count++);
+			lua_pushstring(ctx, *curr++);
+			lua_rawset(ctx, top);
+		}
+
+		rv = 1;
+	}
+
+	return rv;
+}
+
+static int matchkeys(lua_State* ctx)
+{
+	const char* pattern = luaL_checkstring(ctx, 1);
+	int domain = luaL_checknumber(ctx, 2);
+
+	if (domain != DVT_TARGET && domain != DVT_CONFIG)
+		arcan_fatal("match keys(%d) invalid domain specified, "
+			"domain must be KEY_TARGET or KEY_CONFIG\n");
+
+	struct arcan_strarr res = arcan_db_matchkey(dbhandle, domain, pattern);
+	int rv = push_stringres(ctx, &res);
+	arcan_db_free_res(&res);
+
+	return rv;
+}
+
 static int getkey(lua_State* ctx)
 {
 	LUA_TRACE("get_key");
 
 	const char* key = luaL_checkstring(ctx, 1);
+	if (!validate_key(key)){
+		arcan_warning("invalid key specified (restricted to [a-Z0-9_])\n");
+		lua_pushnil(ctx);
+		return 1;
+	}
+
+	const char* opt_target = luaL_optstring(ctx, 2, NULL);
+
+	if (opt_target){
+		arcan_targetid tid = arcan_db_targetid(dbhandle, opt_target, NULL);
+
+		const char* opt_config = luaL_optstring(ctx, 3, NULL);
+		if (opt_config){
+			arcan_configid cid = arcan_db_configid(dbhandle, tid, opt_config);
+			char* val = arcan_db_getvalue(dbhandle, DVT_CONFIG, cid, key);
+			if (val)
+				lua_pushstring(ctx, val);
+			else
+				lua_pushnil(ctx);
+			free(val);
+		}
+		else{
+			arcan_db_getvalue(dbhandle, DVT_TARGET, tid, key);
+		}
+	}
+	else {
 	char* val = arcan_db_appl_val(dbhandle, arcan_appl_id(), key);
 
 	if (val) {
@@ -3545,63 +3632,12 @@ static int getkey(lua_State* ctx)
 	}
 	else
 		lua_pushnil(ctx);
+	}
 
 	return 1;
-}
 
-static int gamefamily(lua_State* ctx)
-{
-	LUA_TRACE("game_family");
-
-	const int gameid = luaL_checkinteger(ctx, 1);
-	arcan_dbh_res res = arcan_db_game_siblings(dbhandle, NULL, gameid);
-	int rv = 0;
-
-	if (res.kind == 0 && res.data.strarr) {
-		char** curr = res.data.strarr;
-		unsigned int count = 1; /* 1 indexing, seriously LUA ... */
-
-		curr = res.data.strarr;
-
-		lua_newtable(ctx);
-		int top = lua_gettop(ctx);
-
-		while (*curr) {
-			lua_pushnumber(ctx, count++);
-			lua_pushstring(ctx, *curr++);
-			lua_rawset(ctx, top);
-		}
-
-		rv = 1;
-		arcan_db_free_res(dbhandle, res);
-	}
-
-	return rv;
-}
-
-static int push_stringres(lua_State* ctx, arcan_dbh_res res)
-{
-	int rv = 0;
-
-	if (res.kind == 0 && res.data.strarr) {
-		char** curr = res.data.strarr;
-		unsigned int count = 1; /* 1 indexing, seriously LUA ... */
-
-		curr = res.data.strarr;
-
-		lua_newtable(ctx);
-		int top = lua_gettop(ctx);
-
-		while (*curr) {
-			lua_pushnumber(ctx, count++);
-			lua_pushstring(ctx, *curr++);
-			lua_rawset(ctx, top);
-		}
-
-		rv = 1;
-	}
-
-	return rv;
+	lua_pushnil(ctx);
+	return 1;
 }
 
 static int kbdrepeat(lua_State* ctx)
@@ -3728,7 +3764,6 @@ static int videomapping(lua_State* ctx)
 	return 0;
 }
 
-
 static int mousegrab(lua_State* ctx)
 {
 	LUA_TRACE("toggle_mouse_grab");
@@ -3753,25 +3788,24 @@ static int gettargets(lua_State* ctx)
 
 	int rv = 0;
 
-	arcan_dbh_res res = arcan_db_targets(dbhandle);
-	rv += push_stringres(ctx, res);
-	arcan_db_free_res(dbhandle, res);
+	struct arcan_strarr res = arcan_db_targets(dbhandle);
+	rv += push_stringres(ctx, &res);
+	arcan_mem_freearr(&res);
 
 	return rv;
 }
 
-static int getgenres(lua_State* ctx)
+static int getconfigs(lua_State* ctx)
 {
-	LUA_TRACE("game_genres");
-
+	LUA_TRACE("target_configurations");
+	const char* target = luaL_checkstring(ctx, 1);
 	int rv = 0;
-	arcan_dbh_res res = arcan_db_genres(dbhandle, false);
-	rv = push_stringres(ctx, res);
-	arcan_db_free_res(dbhandle, res);
 
-	res = arcan_db_genres(dbhandle, true);
-	rv += push_stringres(ctx, res);
-	arcan_db_free_res(dbhandle, res);
+	struct arcan_strarr res = arcan_db_configs(dbhandle,
+		arcan_db_targetid(dbhandle, target, NULL));
+
+	rv += push_stringres(ctx, &res);
+	arcan_mem_freearr(&res);
 
 	return rv;
 }
@@ -3789,17 +3823,16 @@ static int allocsurface(lua_State* ctx)
 			"surface dimensions. Compile time restriction (%d,%d)\n",
 			cons.w, cons.h, MAX_SURFACEW, MAX_SURFACEH);
 
-	uint8_t* buf = arcan_alloc_mem(cons.w * cons.h * GL_PIXEL_BPP,
+	av_pixel* buf = arcan_alloc_mem(cons.w * cons.h * GL_PIXEL_BPP,
 		ARCAN_MEM_VBUFFER, 0, ARCAN_MEMALIGN_PAGE);
 
-	uint32_t* cptr = (uint32_t*) buf;
+	av_pixel* cptr = buf;
 
 	for (size_t y = 0; y < cons.h; y++)
 		for (size_t x = 0; x < cons.w; x++)
 			*cptr = RGBA(0, 0, 0, 0xff);
 
-	arcan_vobj_id id = arcan_video_rawobject(
-		buf, cons.w * cons.h * GL_PIXEL_BPP, cons, cons.w, cons.h, 0);
+	arcan_vobj_id id = arcan_video_rawobject(buf, cons, cons.w, cons.h, 0);
 
 	lua_pushvid(ctx, id);
 
@@ -3824,20 +3857,19 @@ static int fillsurface(lua_State* ctx)
 	if (cons.w > 0 && cons.w <= MAX_SURFACEW &&
 		cons.h > 0 && cons.h <= MAX_SURFACEH){
 
-		uint8_t* buf = arcan_alloc_mem(cons.w * cons.h * GL_PIXEL_BPP,
+		av_pixel* buf = arcan_alloc_mem(cons.w * cons.h * GL_PIXEL_BPP,
 			ARCAN_MEM_VBUFFER, 0, ARCAN_MEMALIGN_PAGE);
 
 		if (!buf)
 			goto error;
 
-		uint32_t* cptr = (uint32_t*) buf;
+		av_pixel* cptr = (av_pixel*) buf;
 
 		for (size_t y = 0; y < cons.h; y++)
 			for (size_t x = 0; x < cons.w; x++)
 				*cptr++ = RGBA(r, g, b, 0xff);
 
-		arcan_vobj_id id = arcan_video_rawobject(buf,
-			cons.w * cons.h * GL_PIXEL_BPP, cons, desw, desh, 0);
+		arcan_vobj_id id = arcan_video_rawobject(buf, cons, desw, desh, 0);
 
 		lua_pushvid(ctx, id);
 		return 1;
@@ -3943,10 +3975,10 @@ static int rawsurface(lua_State* ctx)
 			desw, desh, MAX_SURFACEW, MAX_SURFACEH
 		);
 
-	uint8_t* buf = arcan_alloc_mem(desw * desh * GL_PIXEL_BPP,
+	av_pixel* buf = arcan_alloc_mem(desw * desh * GL_PIXEL_BPP,
 		ARCAN_MEM_VBUFFER, 0, ARCAN_MEMALIGN_PAGE);
 
-	uint32_t* cptr = (uint32_t*) buf;
+	av_pixel* cptr = (av_pixel*) buf;
 
 	for (size_t y = 0; y < cons.h; y++)
 		for (size_t x = 0; x < cons.w; x++){
@@ -4001,8 +4033,7 @@ static int rawsurface(lua_State* ctx)
 		arcan_mem_free(fname);
 	}
 
-	arcan_vobj_id id = arcan_video_rawobject(buf,
-		cons.w * cons.h * GL_PIXEL_BPP, cons, desw, desh, 0);
+	arcan_vobj_id id = arcan_video_rawobject(buf, cons, desw, desh, 0);
 
 	lua_pushvid(ctx, id);
 	return 1;
@@ -4021,10 +4052,10 @@ static int randomsurface(lua_State* ctx)
 	int desh = abs( luaL_checknumber(ctx, 2) );
 	img_cons cons = {.w = desw, .h = desh, .bpp = GL_PIXEL_BPP};
 
-	uint32_t* cptr = arcan_alloc_mem(desw * desh * GL_PIXEL_BPP,
+	av_pixel* cptr = arcan_alloc_mem(desw * desh * GL_PIXEL_BPP,
 		ARCAN_MEM_VBUFFER, 0, ARCAN_MEMALIGN_PAGE);
 
-	uint8_t* buf = (uint8_t*) cptr;
+	av_pixel* buf = (av_pixel*) cptr;
 
 	for (size_t y = 0; y < cons.h; y++)
 		for (size_t x = 0; x < cons.w; x++){
@@ -4032,212 +4063,11 @@ static int randomsurface(lua_State* ctx)
 			*cptr++ = RGBA(val, val, val, 0xff);
 		}
 
-	arcan_vobj_id id = arcan_video_rawobject(buf, desw * desh * 4, cons,
-		desw, desh, 0);
+	arcan_vobj_id id = arcan_video_rawobject(buf, cons, desw, desh, 0);
 	arcan_video_objectfilter(id, ARCAN_VFILTER_NONE);
 	lua_pushvid(ctx, id);
 
 	return 1;
-}
-
-static int getcmdline(lua_State* ctx)
-{
-	LUA_TRACE("game_cmdline");
-
-	int gameid = 0;
-	arcan_errc status = ARCAN_OK;
-
-	if (lua_isstring(ctx, 1)){
-		gameid = arcan_db_gameid(dbhandle, luaL_checkstring(ctx, 1), &status);
-	}
-	else
-		gameid = luaL_checknumber(ctx, 1);
-
-	if (status != ARCAN_OK)
-		return 0;
-
-	int internal = luaL_optnumber(ctx, 2, 1);
-
-	arcan_dbh_res res = arcan_db_launch_options(dbhandle, gameid, internal == 0);
-	int rv = push_stringres(ctx, res);
-
-	arcan_db_free_res(dbhandle, res);
-	return rv;
-}
-
-
-static void pushgame(lua_State* ctx, arcan_db_game* curr)
-{
-	int top = lua_gettop(ctx);
-
-	lua_pushstring(ctx, "gameid");
-	lua_pushnumber(ctx, curr->gameid);
-	lua_rawset(ctx, top);
-	lua_pushstring(ctx, "targetid");
-	lua_pushnumber(ctx, curr->targetid);
-	lua_rawset(ctx, top);
-	lua_pushstring(ctx, "title");
-	lua_pushstring(ctx, curr->title);
-	lua_rawset(ctx, top);
-	lua_pushstring(ctx, "genre");
-	lua_pushstring(ctx, curr->genre);
-	lua_rawset(ctx, top);
-	lua_pushstring(ctx, "subgenre");
-	lua_pushstring(ctx, curr->subgenre);
-	lua_rawset(ctx, top);
-	lua_pushstring(ctx, "setname");
-	lua_pushstring(ctx, curr->setname);
-	lua_rawset(ctx, top);
-	lua_pushstring(ctx, "buttons");
-	lua_pushnumber(ctx, curr->n_buttons);
-	lua_rawset(ctx, top);
-	lua_pushstring(ctx, "manufacturer");
-	lua_pushstring(ctx, curr->manufacturer);
-	lua_rawset(ctx, top);
-	lua_pushstring(ctx, "players");
-	lua_pushnumber(ctx, curr->n_players);
-	lua_rawset(ctx, top);
-	lua_pushstring(ctx, "input");
-	lua_pushnumber(ctx, curr->input);
-	lua_rawset(ctx, top);
-	lua_pushstring(ctx, "year");
-	lua_pushnumber(ctx, curr->year);
-	lua_rawset(ctx, top);
-	lua_pushstring(ctx, "target");
-	lua_pushstring(ctx, curr->targetname);
-	lua_rawset(ctx, top);
-	lua_pushstring(ctx, "launch_counter");
-	lua_pushnumber(ctx, curr->launch_counter);
-	lua_rawset(ctx, top);
-	lua_pushstring(ctx, "system");
-	lua_pushstring(ctx, curr->system);
-	lua_rawset(ctx, top);
-}
-
-/* sort-order (asc or desc),
- * year
- * n_players
- * n_buttons
- * genre
- * subgenre
- * manufacturer */
-static int filtergames(lua_State* ctx)
-{
-	LUA_TRACE("list_games");
-
-	int year = -1;
-	int n_players = -1;
-	int n_buttons = -1;
-	int input = 0;
-	char* title = NULL;
-	char* genre = NULL;
-	char* subgenre = NULL;
-	char* target = NULL;
-	char* manufacturer = NULL;
-	char* system = NULL;
-
-	int rv = 0;
-	int limit = 0;
-	int offset = 0;
-
-/* reason for all this is that lua_tostring MAY return NULL,
- * and if it doesn't, the string can be subject to garbage collection after POP,
- * thus need a working copy */
-	luaL_checktype(ctx, 1, LUA_TTABLE);
-
-/* populate all arguments */
-	lua_pushstring(ctx, "year");
-	lua_gettable(ctx, -2);
-	year = lua_tonumber(ctx, -1);
-	lua_pop(ctx, 1);
-
-	lua_pushstring(ctx, "limit");
-	lua_gettable(ctx, -2);
-	limit = lua_tonumber(ctx, -1);
-	lua_pop(ctx, 1);
-
-	lua_pushstring(ctx, "offset");
-	lua_gettable(ctx, -2);
-	offset= lua_tonumber(ctx, -1);
-	lua_pop(ctx, 1);
-
-	lua_pushstring(ctx, "input");
-	lua_gettable(ctx, -2);
-	input = lua_tonumber(ctx, -1);
-	lua_pop(ctx, 1);
-
-	lua_pushstring(ctx, "players");
-	lua_gettable(ctx, -2);
-	n_players = lua_tonumber(ctx, -1);
-	lua_pop(ctx, 1);
-
-	lua_pushstring(ctx, "buttons");
-	lua_gettable(ctx, -2);
-	n_buttons = lua_tonumber(ctx, -1);
-	lua_pop(ctx, 1);
-
-	lua_pushstring(ctx, "title");
-	lua_gettable(ctx, -2);
-	title = _n_strdup(lua_tostring(ctx, -1), NULL);
-	lua_pop(ctx, 1);
-
-	lua_pushstring(ctx, "genre");
-	lua_gettable(ctx, -2);
-	genre = _n_strdup(lua_tostring(ctx, -1), NULL);
-	lua_pop(ctx, 1);
-
-	lua_pushstring(ctx, "subgenre");
-	lua_gettable(ctx, -2);
-	subgenre = _n_strdup(lua_tostring(ctx, -1), NULL);
-	lua_pop(ctx, 1);
-
-	lua_pushstring(ctx, "target");
-	lua_gettable(ctx, -2);
-	target = _n_strdup(lua_tostring(ctx, -1), NULL);
-	lua_pop(ctx, 1);
-
-	lua_pushstring(ctx, "system");
-	lua_gettable(ctx, -2);
-	system = _n_strdup(lua_tostring(ctx, -1), NULL);
-	lua_pop(ctx, 1);
-
-	lua_pushstring(ctx, "manufacturer");
-	lua_gettable(ctx, -2);
-	manufacturer = _n_strdup(lua_tostring(ctx, -1), NULL);
-	lua_pop(ctx, 1);
-
-	arcan_dbh_res dbr = arcan_db_games(dbhandle, year, input, n_players,n_buttons,
-		title, genre, subgenre, target, system, manufacturer, offset, limit);
-	free(genre);
-	free(subgenre);
-	free(title);
-	free(target);
-	free(system);
-	free(manufacturer);
-
-	if (dbr.kind == 1 && dbr.count > 0) {
-		arcan_db_game** curr = dbr.data.gamearr;
-		int count = 1;
-
-		rv = 1;
-	/* table of tables .. wtb ruby yield */
-		lua_newtable(ctx);
-		int rtop = lua_gettop(ctx);
-
-		while (*curr) {
-			lua_pushnumber(ctx, count++);
-			lua_newtable(ctx);
-			pushgame(ctx, *curr);
-			lua_rawset(ctx, rtop);
-			curr++;
-		}
-	}
-	else {
-		wraperr(ctx,0,"filtergames(), requires argument table");
-	}
-
-	arcan_db_free_res(dbhandle, dbr);
-	return rv;
 }
 
 char* filter_text(char* in, size_t* out_sz)
@@ -4355,56 +4185,6 @@ static int switchappl(lua_State *ctx)
 	arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 
 	return 0;
-}
-
-static int getgame(lua_State* ctx)
-{
-	LUA_TRACE("game_info");
-
-	int rv = 0;
-
-	if (lua_type(ctx, 1) == LUA_TSTRING){
-		const char* game = luaL_checkstring(ctx, 1);
-
-		arcan_dbh_res dbr = arcan_db_games(dbhandle,
- /* year, input, players, buttons */
-			0, 0, 0, 0,
-/*title, genre, subgenre, target, system, manufacturer */
-			game, NULL, NULL, NULL, NULL, NULL,
-			0, 0); /* offset, limit */
-
-		if (dbr.kind == 1 && dbr.count > 0 &&
-			dbr.data.gamearr &&(*dbr.data.gamearr)){
-			arcan_db_game** curr = dbr.data.gamearr;
-/* table of tables .. missing ruby style yield just about now.. */
-			lua_newtable(ctx);
-			int rtop = lua_gettop(ctx);
-			int count = 1;
-
-			while (*curr) {
-				lua_pushnumber(ctx, count++);
-				lua_newtable(ctx);
-				pushgame(ctx, *curr);
-				lua_rawset(ctx, rtop);
-				curr++;
-			}
-
-			rv = 1;
-			arcan_db_free_res(dbhandle, dbr);
-		}
-	}
-	else {
-		arcan_dbh_res dbr = arcan_db_gamebyid(dbhandle, luaL_checkint(ctx, 1));
-		if (dbr.kind == 1 && dbr.count > 0 &&
-			dbr.data.gamearr &&(*dbr.data.gamearr)){
-			lua_newtable(ctx);
-			pushgame(ctx, dbr.data.gamearr[0]);
-			rv = 1;
-			arcan_db_free_res(dbhandle, dbr);
-		}
-	}
-
-	return rv;
 }
 
 static void panic(lua_State* ctx)
@@ -4577,62 +4357,6 @@ static bool use_loader(char* fname)
 /* there are prettier ways to do this . . . */
 	return ((strcasecmp(ext, ".so") == 0) || (strcasecmp(ext, ".dylib") == 0) ||
 		(strcasecmp(ext, ".dll") == 0)) ? true : false;
-}
-
-/*
- * slated for DEPRECATION
- */
-static int targetlaunch_capabilities(lua_State* ctx)
-{
-	LUA_DEPRECATE("launch_target_capabilities");
-
-	char* targetname = strdup( luaL_checkstring(ctx, 1) );
-
-	char* targetexec = arcan_db_targetexec(dbhandle, targetname);
-	char* resourcestr = targetexec ? arcan_find_resource_path(
-		targetexec, "targets", RESOURCE_APPL_SHARED) : NULL;
-
-	unsigned rv = 0;
-
-	if (resourcestr){
-		lua_newtable(ctx);
-		int top = lua_gettop(ctx);
-
-/* currently, this means frameserver / libretro interface
- * so these capabilities are hard-coded rather than queried */
-		if (use_loader(resourcestr)){
-			tblbool(ctx, "external_launch", false, top);
-			tblbool(ctx, "internal_launch", true, top);
-			tblbool(ctx, "snapshot", true, top);
-			tblbool(ctx, "rewind", false, top);
-			tblbool(ctx, "suspend", false, top);
-			tblbool(ctx, "reset", true, top);
-			tblbool(ctx, "dynamic_input", true, top);
-			tblnum(ctx, "ports", 4, top);
-		}
-	 	else {
-/* the plan is to extend the internal launch support with a probe
- * (sortof prepared for in the build-system) to check how the target is linked,
- *  which dependencies it has etc. */
-			tblbool(ctx, "external_launch", true, top);
-			tblbool(ctx, "internal_launch", true, top);
-
-			tblbool(ctx, "dynamic input", false, top);
-			tblbool(ctx, "reset", false, top);
-			tblbool(ctx, "snapshot", false, top);
-			tblbool(ctx, "rewind", false, top);
-			tblbool(ctx, "suspend", false, top);
-			tblnum(ctx, "ports", 0, top);
-		}
-
-		rv = 1;
-	}
-
-	free(targetname);
-	free(targetexec);
-	free(resourcestr);
-
-	return rv;
 }
 
 static inline bool tgtevent(arcan_vobj_id dst, arcan_event ev)
@@ -5167,18 +4891,6 @@ static int targetreset(lua_State* ctx)
 	return 0;
 }
 
-static char* lookup_hijack(int gameid)
-{
-	char* res = arcan_db_gametgthijack(dbhandle, gameid);
-	if (!res)
-		res = strdup("");
-
-	char* lookup = arcan_expand_resource(res, RESOURCE_SYS_LIBS);
-	arcan_mem_free(res);
-
-	return lookup;
-}
-
 static int targetalloc(lua_State* ctx)
 {
 	LUA_TRACE("target_alloc");
@@ -5247,133 +4959,90 @@ static int targetalloc(lua_State* ctx)
 static int targetlaunch(lua_State* ctx)
 {
 	LUA_TRACE("launch_target");
+	arcan_configid cid = BAD_CONFIG;
+	size_t rc = 0;
+	int lmode;
 
-	int gameid = luaL_checknumber(ctx, 1);
-	arcan_errc status = ARCAN_OK;
-
-	if (status != ARCAN_OK)
-		return 0;
-
-	int internal = luaL_checkint(ctx, 2) == 1;
-	intptr_t ref = (intptr_t) 0;
-	int rv = 0;
-
-	if (lua_isfunction(ctx, 3) && !lua_iscfunction(ctx, 3)){
-		lua_pushvalue(ctx, 3);
-		ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
-	}
-
-	const char* argstr = luaL_optstring(ctx, 4, NULL);
-
-/* see if we know what the game is */
-	arcan_dbh_res cmdline = arcan_db_launch_options(dbhandle, gameid, internal);
-	if (cmdline.kind == 0){
-		char* resourcestr = arcan_find_resource_path(
-			cmdline.data.strarr[0], "targets", RESOURCE_APPL_SHARED);
-
-		if (!resourcestr)
-			goto cleanup;
-
-		if (lua_ctx_store.debug > 0){
-			char** argbase = cmdline.data.strarr;
-				while(*argbase)
-					arcan_warning("\t%s\n", *argbase++);
-		}
-
-		char** argbase = cmdline.data.strarr;
-		while(*argbase)
-			colon_escape(*argbase++);
-
-		if (internal && resourcestr)
- /* for lib / frameserver targets, we assume that
-	* the argumentlist is just [romsetfull] */
-			if (use_loader(resourcestr)){
-				char* metastr = resourcestr;
-				if ( cmdline.data.strarr[0] && cmdline.data.strarr[1] ){
-
-/* launch_options adds exec path first, we already know that one */
-					size_t arglim = strlen(resourcestr) + sizeof("core=") +
-						strlen(cmdline.data.strarr[1]) + sizeof("resource=") +
-						strlen(argstr ? argstr : "")  + 1;
-
-/* escape resource, unpack in frameserver fixes it */
-					colon_escape(resourcestr);
-					metastr = arcan_alloc_mem(arglim, ARCAN_MEM_STRINGBUF,
-						ARCAN_MEM_TEMPORARY, ARCAN_MEMALIGN_NATURAL);
-
-					snprintf(metastr, arglim, "core=%s:resource=%s%s%s",
-						resourcestr, cmdline.data.strarr[1], argstr ? ":" : "",
-						argstr ? argstr : "");
-				}
-
-				arcan_frameserver* intarget = arcan_frameserver_alloc();
-				intarget->tag = ref;
-
-				struct frameserver_envp args = {
-					.use_builtin = true,
-					.args.builtin.resource = metastr,
-					.args.builtin.mode = "libretro"
-				};
-
-				if (arcan_frameserver_spawn_server(intarget, args) == ARCAN_OK){
-					arcan_video_objectopacity(intarget->vid, 0.0, 0);
-					lua_pushvid(ctx, intarget->vid);
-					lua_pushaid(ctx, intarget->aid);
-					arcan_db_launch_counter_increment(dbhandle, gameid);
-				}
-				else {
-					lua_pushvid(ctx, ARCAN_EID);
-					lua_pushaid(ctx, ARCAN_EID);
-					free(intarget);
-				}
-
-				if (metastr != resourcestr)
-					free(metastr);
-
-				rv = 2;
-			}
-			else {
-				char* hijacktgt = lookup_hijack( gameid );
-
-				arcan_frameserver* intarget = arcan_target_launch_internal( resourcestr,
-					lookup_hijack( gameid ), cmdline.data.strarr );
-
-				free(hijacktgt);
-				if (intarget){
-					intarget->tag = ref;
-					lua_pushvid(ctx, intarget->vid);
-					lua_pushaid(ctx, intarget->aid);
-					arcan_db_launch_counter_increment(dbhandle, gameid);
-					rv = 2;
-				} else {
-					arcan_db_failed_launch(dbhandle, gameid);
-				}
-			}
-		else {
-			unsigned long elapsed = arcan_target_launch_external(
-				resourcestr, cmdline.data.strarr);
-
-			if (elapsed / 1000 < 3){
-				char** argvp = cmdline.data.strarr;
-				arcan_db_failed_launch(dbhandle, gameid);
-				arcan_warning("Script Warning: launch_external(), "
-					"possibly broken target/game combination. %s\n\tArguments:",*argvp++);
-				while(*argvp){
-					arcan_warning("%s \n", *argvp++);
-				}
-			} else
-				arcan_db_launch_counter_increment(dbhandle, gameid);
-		}
-
-		free(resourcestr);
+	if (lua_type(ctx, 1) == LUA_TSTRING){
+		cid = arcan_db_configid(dbhandle, arcan_db_targetid(dbhandle,
+			luaL_checkstring(ctx, 1), NULL), luaL_checkstring(ctx, 2));
+		lmode = luaL_checknumber(ctx, 3);
 	}
 	else
-		arcan_warning("targetlaunch(%i, %i) failed, "
-			"no match in database.\n", gameid, internal);
+		lmode = luaL_checknumber(ctx, 2);
+
+	if (lmode != 0 && lmode != 1)
+		arcan_fatal("launch_target(), invalid mode -- expected LAUNCH_INTERNAL "
+			" or LAUNCH_EXTERNAL ");
+
+	uintptr_t ref = find_lua_callback(ctx);
+
+	struct arcan_strarr argv, env, libs = {0};
+	enum DB_BFORMAT bfmt;
+	argv = env = libs;
+
+	const char* exec = arcan_db_targetexec(dbhandle, cid,
+		&bfmt, &argv, &env, &libs);
+
+	if (!exec){
+		arcan_warning("launch_target(), failed -- invalid configuration");
+		return 0;
+	}
+
+	arcan_frameserver* intarget = NULL;
+
+	switch (bfmt){
+	case BFRM_BIN:
+	case BFRM_SHELL:
+		intarget = arcan_target_launch_internal(exec, &argv, &env, &libs);
+	break;
+
+	case BFRM_LWA:
+/* FIXME lookup arcan_lwa binary, and feed that as the executable,
+ * this will be more prominent when we have a package format going */
+	break;
+
+	case BFRM_RETRO:
+		if (lmode != 1){
+			arcan_warning("launch_target(), configuration specified libretro format"
+				" which is only possible in internal- mode.");
+			goto cleanup;
+		}
+
+		intarget = arcan_frameserver_alloc();
+		intarget->tag = ref;
+		struct frameserver_envp args = {
+			.use_builtin = true,
+			.args.builtin.resource = "",
+			.args.builtin.mode = "libretro"
+		};
+
+		if (arcan_frameserver_spawn_server(intarget, args) != ARCAN_OK){
+			arcan_frameserver_free(intarget);
+			intarget = NULL;
+		}
+	break;
+
+	default:
+		arcan_fatal("launch_target(), database inconsistency, unknown "
+			"binary format encountered.\n");
+	}
+
+	if (intarget){
+		arcan_video_objectopacity(intarget->vid, 0.0, 0);
+		lua_pushvid(ctx, intarget->vid);
+		lua_pushaid(ctx, intarget->aid);
+		arcan_db_launch_status(dbhandle, cid, true);
+		rc = 2;
+	}
+	else
+		arcan_db_launch_status(dbhandle, cid, false);
 
 cleanup:
-	arcan_db_free_res(dbhandle, cmdline);
-	return rv;
+	arcan_mem_freearr(&argv);
+	arcan_mem_freearr(&env);
+	arcan_mem_freearr(&libs);
+	return rc;
 }
 
 static int rendertargetforce(lua_State* ctx)
@@ -5596,8 +5265,8 @@ static int procimage_get(lua_State* ctx)
 	}
 }
 
-static enum arcan_ffunc_rv proctarget(enum arcan_ffunc_cmd cmd, uint8_t* buf,
-	uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp,
+static enum arcan_ffunc_rv proctarget(enum arcan_ffunc_cmd cmd,
+	av_pixel* buf, size_t buf_sz, uint16_t width, uint16_t height,
 	unsigned mode, vfunc_state state)
 {
 	if (cmd == FFUNC_DESTROY){
@@ -5621,13 +5290,13 @@ static enum arcan_ffunc_rv proctarget(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 	static void* scrapbuf;
 	static size_t scrapbuf_sz;
 
-	if (!scrapbuf || scrapbuf_sz < s_buf){
+	if (!scrapbuf || scrapbuf_sz < buf_sz){
 		arcan_mem_free(scrapbuf);
-		scrapbuf = arcan_alloc_mem(s_buf, ARCAN_MEM_BINDING,
+		scrapbuf = arcan_alloc_mem(buf_sz, ARCAN_MEM_BINDING,
 			0, ARCAN_MEMALIGN_PAGE);
 
 		if (scrapbuf)
-			scrapbuf_sz = s_buf;
+			scrapbuf_sz = buf_sz;
 		else
 			return 0;
 	}
@@ -5645,7 +5314,7 @@ static enum arcan_ffunc_rv proctarget(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 			outbuf[i] = inbuf[i];
 	}
 	else {
-		memcpy(scrapbuf, buf, s_buf);
+		memcpy(scrapbuf, buf, buf_sz);
 	}
 #endif
 
@@ -6753,7 +6422,7 @@ static int screenshot(lua_State* ctx)
 {
 	LUA_TRACE("save_screenshot");
 
-	void* databuf = NULL;
+	av_pixel* databuf = NULL;
 	size_t bufs;
 	int dw = arcan_video_display.canvasw;
 	int dh = arcan_video_display.canvash;
@@ -6785,7 +6454,7 @@ static int screenshot(lua_State* ctx)
 		FILE* dst = fopen(fname, "wb");
 
 		if (dst)
-			arcan_rgba32_pngfile(dst, databuf, dw, dh, flip);
+			arcan_rgba32_pngfile(dst, (void*) databuf, dw, dh, flip);
 		else
 			arcan_warning("screenshot() -- couldn't save to (%s).\n", fname);
 
@@ -7299,7 +6968,6 @@ static const luaL_Reg resfuns[] = {
 static const luaL_Reg tgtfuns[] = {
 {"launch_target",              targetlaunch             },
 {"target_alloc",               targetalloc              },
-{"launch_target_capabilities", targetlaunch_capabilities},
 {"target_input",               targetinput              },
 {"input_target",               targetinput              },
 {"suspend_target",             targetsuspend            },
@@ -7345,12 +7013,8 @@ static const luaL_Reg tgtfuns[] = {
 static const luaL_Reg dbfuns[] = {
 {"store_key",    storekey   },
 {"get_key",      getkey     },
-{"game_cmdline", getcmdline },
-{"list_games",   filtergames},
 {"list_targets", gettargets },
-{"game_info",    getgame    },
-{"game_family",  gamefamily },
-{"game_genres",  getgenres  },
+{"target_configurations", getconfigs },
 {NULL, NULL}
 };
 #undef EXT_MAPTBL_DATABASE
@@ -7594,91 +7258,93 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 	struct { const char* key; int val; } consttbl[] = {
 {"VRESH", arcan_video_screenh()},
 {"VRESW", arcan_video_screenw()},
-{"MAX_SURFACEW",   MAX_SURFACEW        },
-{"MAX_SURFACEH",   MAX_SURFACEH        },
-{"STACK_MAXCOUNT", CONTEXT_STACK_LIMIT },
-{"FRAMESET_SPLIT",        ARCAN_FRAMESET_SPLIT       },
+{"MAX_SURFACEW", MAX_SURFACEW},
+{"MAX_SURFACEH", MAX_SURFACEH},
+{"STACK_MAXCOUNT", CONTEXT_STACK_LIMIT},
+{"FRAMESET_SPLIT", ARCAN_FRAMESET_SPLIT},
 {"FRAMESET_MULTITEXTURE", ARCAN_FRAMESET_MULTITEXTURE},
-{"FRAMESET_NODETACH",     FRAMESET_NODETACH          },
-{"FRAMESET_DETACH",       FRAMESET_DETACH            },
-{"FRAMESERVER_INPUT",     CONST_FRAMESERVER_INPUT    },
-{"FRAMESERVER_OUTPUT",    CONST_FRAMESERVER_OUTPUT   },
-{"BLEND_NONE",     BLEND_NONE    },
-{"BLEND_ADD",      BLEND_ADD     },
+{"FRAMESET_NODETACH", FRAMESET_NODETACH},
+{"FRAMESET_DETACH", FRAMESET_DETACH},
+{"FRAMESERVER_INPUT", CONST_FRAMESERVER_INPUT},
+{"FRAMESERVER_OUTPUT", CONST_FRAMESERVER_OUTPUT},
+{"BLEND_NONE", BLEND_NONE},
+{"BLEND_ADD", BLEND_ADD},
 {"BLEND_MULTIPLY", BLEND_MULTIPLY},
-{"BLEND_NORMAL",   BLEND_NORMAL  },
+{"BLEND_NORMAL", BLEND_NORMAL},
 {"FRAMESERVER_LOOP", 0},
 {"FRAMESERVER_NOLOOP", 1},
 {"TARGET_SYNCHRONOUS", TARGET_FLAG_SYNCHRONOUS},
 {"TARGET_NOALPHA", TARGET_FLAG_NO_ALPHA_UPLOAD},
 {"TARGET_VERBOSE", TARGET_FLAG_VERBOSE},
-{"RENDERTARGET_NOSCALE",  RENDERTARGET_NOSCALE },
-{"RENDERTARGET_SCALE",    RENDERTARGET_SCALE   },
+{"RENDERTARGET_NOSCALE", RENDERTARGET_NOSCALE},
+{"RENDERTARGET_SCALE", RENDERTARGET_SCALE},
 {"RENDERTARGET_NODETACH", RENDERTARGET_NODETACH},
-{"RENDERTARGET_DETACH",   RENDERTARGET_DETACH  },
-{"RENDERTARGET_COLOR", RENDERFMT_COLOR },
-{"RENDERTARGET_DEPTH", RENDERFMT_DEPTH },
-{"RENDERTARGET_FULL", RENDERFMT_FULL },
+{"RENDERTARGET_DETACH", RENDERTARGET_DETACH},
+{"RENDERTARGET_COLOR", RENDERFMT_COLOR},
+{"RENDERTARGET_DEPTH", RENDERFMT_DEPTH},
+{"RENDERTARGET_FULL", RENDERFMT_FULL},
 {"ROTATE_RELATIVE", CONST_ROTATE_RELATIVE},
 {"ROTATE_ABSOLUTE", CONST_ROTATE_ABSOLUTE},
-{"TEX_REPEAT",       ARCAN_VTEX_REPEAT      },
-{"TEX_CLAMP",        ARCAN_VTEX_CLAMP       },
-{"FILTER_NONE",      ARCAN_VFILTER_NONE     },
-{"FILTER_LINEAR",    ARCAN_VFILTER_LINEAR   },
-{"FILTER_BILINEAR",  ARCAN_VFILTER_BILINEAR },
+{"TEX_REPEAT", ARCAN_VTEX_REPEAT},
+{"TEX_CLAMP", ARCAN_VTEX_CLAMP},
+{"FILTER_NONE", ARCAN_VFILTER_NONE},
+{"FILTER_LINEAR", ARCAN_VFILTER_LINEAR},
+{"FILTER_BILINEAR", ARCAN_VFILTER_BILINEAR},
 {"FILTER_TRILINEAR", ARCAN_VFILTER_TRILINEAR},
-{"INTERP_LINEAR",    ARCAN_VINTER_LINEAR    },
-{"INTERP_SINE",      ARCAN_VINTER_SINE      },
-{"INTERP_EXPIN",     ARCAN_VINTER_EXPIN     },
-{"INTERP_EXPOUT",    ARCAN_VINTER_EXPOUT    },
-{"INTERP_EXPINOUT",  ARCAN_VINTER_EXPINOUT  },
-{"SCALE_NOPOW2",     ARCAN_VIMAGE_NOPOW2},
-{"SCALE_POW2",       ARCAN_VIMAGE_SCALEPOW2},
+{"INTERP_LINEAR", ARCAN_VINTER_LINEAR},
+{"INTERP_SINE", ARCAN_VINTER_SINE},
+{"INTERP_EXPIN", ARCAN_VINTER_EXPIN},
+{"INTERP_EXPOUT", ARCAN_VINTER_EXPOUT},
+{"INTERP_EXPINOUT", ARCAN_VINTER_EXPINOUT},
+{"SCALE_NOPOW2", ARCAN_VIMAGE_NOPOW2},
+{"SCALE_POW2", ARCAN_VIMAGE_SCALEPOW2},
 {"IMAGEPROC_NORMAL", IMAGEPROC_NORMAL},
-{"IMAGEPROC_FLIPH",  IMAGEPROC_FLIPH },
+{"IMAGEPROC_FLIPH", IMAGEPROC_FLIPH },
 {"WORLDID", ARCAN_VIDEO_WORLDID},
 {"CLIP_ON", ARCAN_CLIP_ON},
 {"CLIP_OFF", ARCAN_CLIP_OFF},
 {"CLIP_SHALLOW", ARCAN_CLIP_SHALLOW},
-{"BADID",   ARCAN_EID         },
+{"BADID", ARCAN_EID},
 {"CLOCKRATE", ARCAN_TIMER_TICK},
-{"CLOCK",     0               },
-{"THEME_RESOURCE",    RESOURCE_APPL}, /* DEPRECATE */
-{"APPL_RESOURCE",     RESOURCE_APPL},
-{"APPL_TEMP_RESOURCE",RESOURCE_APPL_TEMP },
-{"SHARED_RESOURCE",   RESOURCE_APPL_SHARED },
-{"SYS_APPL_RESOURCE", RESOURCE_SYS_APPLBASE },
-{"ALL_RESOURCES",     DEFAULT_USERMASK },
+{"CLOCK", 0},
+{"THEME_RESOURCE", RESOURCE_APPL}, /* DEPRECATE */
+{"APPL_RESOURCE", RESOURCE_APPL},
+{"APPL_TEMP_RESOURCE",RESOURCE_APPL_TEMP},
+{"SHARED_RESOURCE", RESOURCE_APPL_SHARED},
+{"SYS_APPL_RESOURCE", RESOURCE_SYS_APPLBASE},
+{"ALL_RESOURCES", DEFAULT_USERMASK},
 {"API_VERSION_MAJOR", 0},
 {"API_VERSION_MINOR", 8},
-{"LAUNCH_EXTERNAL",   0},
-{"LAUNCH_INTERNAL",   1},
-{"MASK_LIVING",      MASK_LIVING     },
+{"LAUNCH_EXTERNAL", 0},
+{"LAUNCH_INTERNAL", 1},
+{"MASK_LIVING", MASK_LIVING},
 {"MASK_ORIENTATION", MASK_ORIENTATION},
-{"MASK_OPACITY",     MASK_OPACITY    },
-{"MASK_POSITION",    MASK_POSITION   },
-{"MASK_SCALE",       MASK_SCALE      },
-{"MASK_UNPICKABLE",  MASK_UNPICKABLE },
-{"MASK_FRAMESET",    MASK_FRAMESET   },
-{"MASK_MAPPING",     MASK_MAPPING    },
-{"ORDER_FIRST",      ORDER3D_FIRST   },
-{"ORDER_NONE",       ORDER3D_NONE    },
-{"ORDER_LAST",       ORDER3D_LAST    },
-{"ORDER_SKIP",       ORDER3D_NONE    },
-{"MOUSE_GRABON",       MOUSE_GRAB_ON      },
-{"MOUSE_GRABOFF",      MOUSE_GRAB_OFF     },
-{"POSTFILTER_NTSC",    POSTFILTER_NTSC    },
-{"POSTFILTER_OFF",     POSTFILTER_OFF     },
+{"MASK_OPACITY", MASK_OPACITY},
+{"MASK_POSITION", MASK_POSITION},
+{"MASK_SCALE", MASK_SCALE},
+{"MASK_UNPICKABLE", MASK_UNPICKABLE},
+{"MASK_FRAMESET", MASK_FRAMESET},
+{"MASK_MAPPING", MASK_MAPPING},
+{"ORDER_FIRST", ORDER3D_FIRST},
+{"ORDER_NONE", ORDER3D_NONE},
+{"ORDER_LAST", ORDER3D_LAST},
+{"ORDER_SKIP", ORDER3D_NONE},
+{"MOUSE_GRABON", MOUSE_GRAB_ON},
+{"MOUSE_GRABOFF", MOUSE_GRAB_OFF},
+{"POSTFILTER_NTSC", POSTFILTER_NTSC},
+{"POSTFILTER_OFF", POSTFILTER_OFF},
 #ifdef ARCAN_LED
-{"LEDCONTROLLERS",     arcan_led_controllers()},
+{"LEDCONTROLLERS", arcan_led_controllers()},
 #else
-{"LEDCONTROLLERS",     0},
+{"LEDCONTROLLERS", 0},
 #endif
-{"NOW",           0},
-{"NOPERSIST",     0},
-{"PERSIST",       1},
+{"KEY_CONFIG", DVT_CONFIG},
+{"KEY_TARGET", DVT_TARGET},
+{"NOW", 0},
+{"NOPERSIST", 0},
+{"PERSIST", 1},
 {"NET_BROADCAST", 0},
-{"DEBUGLEVEL",    lua_ctx_store.debug}
+{"DEBUGLEVEL", lua_ctx_store.debug}
 };
 #undef EXT_CONSTTBL_GLOBINT
 
@@ -7701,7 +7367,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 	arcan_lua_setglobalstr(ctx, "THEMEPATH", "deprecated");
 	arcan_lua_setglobalstr(ctx, "BINPATH", "deprecated");
 	arcan_lua_setglobalstr(ctx, "LIBPATH", "deprecated");
-	arcan_lua_setglobalstr(ctx, "INTERNALMODE", internal_launch_support());
+	arcan_lua_setglobalstr(ctx, "INTERNALMODE", "deprecated");
 	arcan_lua_setglobalstr(ctx, "API_ENGINE_BUILD", ARCAN_BUILDVERSION);
 }
 
@@ -7815,6 +7481,35 @@ static inline void fprintf_float(FILE* dst,
 		fprintf(dst, "%s%d.%d%s", pre, (int)intp, abs(fractp), post);
 }
 
+static void addquoted (lua_State *L, luaL_Buffer *b, int arg) {
+  size_t l;
+  const char *s = luaL_checklstring(L, arg, &l);
+  luaL_addchar(b, '"');
+  while (l--) {
+    switch (*s) {
+      case '"': case '\\': case '\n': {
+        luaL_addchar(b, '\\');
+        luaL_addchar(b, *s);
+        break;
+      }
+      case '\r': {
+        luaL_addlstring(b, "\\r", 2);
+        break;
+      }
+      case '\0': {
+        luaL_addlstring(b, "\\000", 4);
+        break;
+      }
+      default: {
+        luaL_addchar(b, *s);
+        break;
+      }
+    }
+    s++;
+  }
+  luaL_addchar(b, '"');
+}
+
 static inline char* lut_txmode(int txmode)
 {
 	switch (txmode){
@@ -7886,20 +7581,54 @@ static inline const char* fsrvtos(enum ARCAN_SEGID ink)
 	case SEGID_APPLICATION: return "application";
 	case SEGID_BROWSER: return "browser";
 	case SEGID_ENCODER: return "encoder";
+	case SEGID_SENSOR: return "sensor";
+	case SEGID_INPUTDEVICE: return "inputdevice";
 	case SEGID_DEBUG: return "debug";
 	case SEGID_UNKNOWN: return "unknown";
 	}
 	return "";
 }
 
+/*
+ * just derived from lstrlib.c, their string.format(%q)
+ */
+static void fput_luasafe_str(FILE* dst, const char* str)
+{
+	fputc('"', dst);
+	while(*str){
+		switch (*str){
+		case '"':
+		case '\\':
+		case '\n':
+			fputc('\\', dst);
+			fputc(*str, dst);
+		break;
+
+		case '\r':
+			fputs("\\r", dst);
+		break;
+
+		case '\0':
+			fputs("\\000", dst);
+		break;
+
+		default:
+			fputc(*str, dst);
+		}
+		str++;
+	}
+
+	fputc('"', dst);
+}
+
 static inline void dump_vstate(FILE* dst, arcan_vobject* vobj)
 {
-	if (vobj->feed.state.ptr &&
-		vobj->feed.state.tag == ARCAN_TAG_FRAMESERV){
-		arcan_frameserver* fsrv = vobj->feed.state.ptr;
-		fprintf(dst,
+	if (!vobj->feed.state.ptr || vobj->feed.state.tag != ARCAN_TAG_FRAMESERV)
+		return;
+
+	arcan_frameserver* fsrv = vobj->feed.state.ptr;
+fprintf(dst,
 "vobj.fsrv = {\
-\tsource = [[%s]],\
 \tlastpts = %lld,\
 \tsocksig = %d,\
 \tpbo = %d,\
@@ -7909,9 +7638,7 @@ static inline void dump_vstate(FILE* dst, arcan_vobject* vobj)
 \tinevq_sz = %d,\
 \tinevq_used = %d,\
 \toutevq_sz = %d,\
-\toutevq_used = %d,\
-\tkind = [[%s]]};\n",
-	fsrv->source ? fsrv->source : "NULL",
+\toutevq_used = %d,",
 	(long long) fsrv->lastpts,
 	(int) fsrv->flags.socksig,
 	(int) fsrv->flags.pbo,
@@ -7921,15 +7648,23 @@ static inline void dump_vstate(FILE* dst, arcan_vobject* vobj)
 	(int) fsrv->inqueue.eventbuf_sz,
 	qused(&fsrv->inqueue),
 	(int) fsrv->outqueue.eventbuf_sz,
-	qused(&fsrv->outqueue),
-	fsrvtos(fsrv->segid));
-	}
+	qused(&fsrv->outqueue));
+
+	fprintf(dst, "\tsource = ");
+	fput_luasafe_str(dst, fsrv->source ? fsrv->source : "NULL");
+	fprintf(dst, ",\n\tkind = ");
+	fput_luasafe_str(dst, fsrvtos(fsrv->segid));
+	fprintf(dst, "};\n");
 }
 
 static inline void dump_vobject(FILE* dst, arcan_vobject* src)
 {
 	char* mask = maskstr(src->mask);
 
+/*
+ * note that most strings á glstore_*, scale* etc. are safe
+ * in the sense that they are not user-supplied in any way.
+ */
 	fprintf(dst,
 "vobj = {\n\
 \torigw = %d,\n\
@@ -7966,7 +7701,6 @@ static inline void dump_vobject(FILE* dst, arcan_vobject* src)
 \tmask = [[%s]],\n\
 \tframeset = {},\n\
 \tkind = [[%s]],\n\
-\ttracetag = [[%s]],\n\
 ",
 (int) src->origw,
 (int) src->origh,
@@ -8001,8 +7735,11 @@ lut_clipmode(src->flags.cliptoparent),
 lut_filtermode(src->vstore->filtermode),
 vobj_flags(src),
 mask,
-lut_kind(src),
-src->tracetag ? src->tracetag : "no tag");
+lut_kind(src));
+
+	fprintf(dst, "tracetag = ");
+	fput_luasafe_str(dst, src->tracetag ? src->tracetag : "no tag");
+	fputs(",\n", dst);
 
 	fprintf_float(dst, "origoofs = {", src->origo_ofs.x, ", ");
 	fprintf_float(dst, "", src->origo_ofs.y, ", ");
@@ -8061,7 +7798,6 @@ local inf = math.huge;\n\
 local vobj = {};\n\
 local props = {};\n\
 local restbl = {\n\
-\tmessage = [[%s]],\n\
 \tdisplay = {\n\
 \t\twidth = %d,\n\
 \t\theight = %d,\n\
@@ -8075,11 +7811,14 @@ local restbl = {\n\
 \t};\n\
 \tvcontexts = {};\
 };\n\
-", tag ? tag : "",
-	disp->width, disp->height, disp->conservative ? 1 : 0,
+", disp->width, disp->height, disp->conservative ? 1 : 0,
 	(int)disp->msasamples, (long long int)disp->c_ticks,
 	(int)disp->default_vitemlim,
 	(int)disp->imageproc, (int)disp->scalemode, (int)disp->filtermode);
+
+	fprintf(dst, "restbl.message = ");
+	fput_luasafe_str(dst, tag ? tag : "");
+	fprintf(dst, ";\n");
 
 	int cctx = vcontext_ind;
 	while (cctx >= 0){
