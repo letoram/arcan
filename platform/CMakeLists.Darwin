@@ -49,9 +49,9 @@ set (PLATFORM_SOURCES
 	${PLATFORM_PATH}/fdpassing.c
 	${PLATFORM_PATH}/../darwin/sem.c
 	${PLATFORM_PATH}/../darwin/time.c
+	${PLATFORM_PATH}/launch.c
 	${CMAKE_EXTERNAL_SRCDIR}/hidapi/hid_darwin.c
 	${CMAKE_EXTERNAL_SRCDIR}/hidapi/hidapi.h
-	engine/arcan_target_launcher.c
 )
 
 set (FSRV_PLATFORM_SOURCES

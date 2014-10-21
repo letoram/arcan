@@ -205,6 +205,15 @@ void arcan_mem_init();
 void* arcan_mem_grow(void* src, size_t nz, size_t nb, enum arcan_memhint);
 void* arcan_mem_trunc(void* src, size_t nz, size_t nb, enum arcan_memhint);
 
+struct arcan_strarr {
+	size_t count;
+	size_t limit;
+	char** data;
+};
+
+void arcan_mem_growarr(struct arcan_strarr*);
+void arcan_mem_freearr(struct arcan_strarr*);
+
 /*
  * NULL is allowed (and ignored), otherwise (src) must match
  * a block of memory previously obtained through (arcan_alloc_mem,

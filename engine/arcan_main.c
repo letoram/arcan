@@ -56,7 +56,7 @@
 #include "arcan_event.h"
 #include "arcan_audio.h"
 #include "arcan_video.h"
-#include "arcan_frameserver_backend.h"
+#include "arcan_frameserver.h"
 #include "arcan_lua.h"
 #include "../platform/video_platform.h"
 
@@ -85,7 +85,7 @@ struct {
 
 bool stderr_redirected = false;
 bool stdout_redirected = false;
-arcan_dbh* dbhandle;
+struct arcan_dbh* dbhandle;
 
 /*
  * The arcanmain recover state is used either at the volition of the
@@ -162,7 +162,7 @@ bool switch_appl(const char* appname)
 	arcan_video_shutdown();
 	arcan_audio_shutdown();
 	arcan_event_deinit(arcan_event_defaultctx());
-	arcan_db_close(dbhandle);
+	arcan_db_close(&dbhandle);
 
 	const char* err_msg;
 	if (!arcan_verifyload_appl(appname, &err_msg)){
@@ -531,7 +531,7 @@ applswitch:
 	int jumpcode = setjmp(arcanmain_recover_state);
 
 	if (jumpcode == 1){
-		arcan_db_close(dbhandle);
+		arcan_db_close(&dbhandle);
 
 		dbhandle = arcan_db_open(dbfname, arcan_appl_id());
 		if (!dbhandle)

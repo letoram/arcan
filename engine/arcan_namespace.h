@@ -1,31 +1,46 @@
-/* Arcan-fe, scriptable front-end engine
- *
- * Arcan-fe is the legal property of its developers, please refer
- * to the COPYRIGHT file distributed with this source distribution.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 3
- * of the License, or (at your option) any later version.
+/*
+ Arcan FE - Namespace resolution / expansions
 
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ Copyright (c) Björn Ståhl 2014,
+ All rights reserved.
 
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- *
- */
+ Redistribution and use in source and binary forms,
+ with or without modification, are permitted provided that the
+ following conditions are met:
+
+ 1. Redistributions of source code must retain the above copyright notice,
+ this list of conditions and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright notice,
+ this list of conditions and the following disclaimer in the documentation
+ and/or other materials provided with the distribution.
+
+ 3. Neither the name of the copyright holder nor the names of its contributors
+ may be used to endorse or promote products derived from this software without
+ specific prior written permission.
+
+ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+ THE POSSIBILITY OF SUCH DAMAGE
+*/
 
 #ifndef _HAVE_ARCAN_NAMESPACE
 #define _HAVE_ARCAN_NAMESPACE
 
 /*
- * Editing this table will require modifications in individual platform/path.c
- * and possibly platform/appl.c
- * The enum should fullfill the criteria (index = sqrt(enumv)),
+ * Editing this table will require modifications in individual
+ * platform/path.c, platform/namespace.c and platform/appl.c.
+ *
+ * The enum should fullfill the criteria:
+ * (index = sqrt(enumv)),
  * exclusive(mask) = mask & (mask - 1) == 0
  */
 enum arcan_namespaces {
@@ -98,6 +113,24 @@ enum arcan_namespaces {
 };
 
 /*
+ * implemented in <platform>/paths.c,
+ * takes the NULL terminated array of dynamically allocated strings
+ * and expands namespaces according to the following rules:
+ * \x1bNAMESPACE_IDENTIER\x1b|0
+ *
+ * \x1b without a namespace identifier will be treated as a warning
+ * and will not expand (with the side effect of not permitting escape
+ * codes in filenames).
+ *
+ * Namespace identifiers are platform dependent (typically match
+ * environment variables used to redirect specific namespaces).
+ *
+ * Primary use for this is launch.c for treating argv/envv/libs
+ * that come from the database.
+ */
+char** arcan_expand_namespaces(char** inargs);
+
+/*
  * implemented in <platform>/paths.c
  * search for a suitable arcan setup through configuration files,
  * environment variables, etc.
@@ -105,7 +138,7 @@ enum arcan_namespaces {
 void arcan_set_namespace_defaults();
 
 /*
- * implemented in <platform>/paths.c
+ * implemented in <platform>/namespace.c
  * enumerate the available namespaces, return true if all are set.
  * if there are missing namespaces and report is set, arcan_warning
  * will be used to notify which ones are broken.
@@ -113,13 +146,13 @@ void arcan_set_namespace_defaults();
 bool arcan_verify_namespaces(bool report);
 
 /*
- * implemented in <platform>/paths.c,
+ * implemented in <platform>/namespace.c,
  * replaces the slot specified by space with the new path [path]
  */
 void arcan_override_namespace(const char* path, enum arcan_namespaces space);
 
 /*
- * implemented in <platform>/paths.c,
+ * implemented in <platform>/namespace.c,
  * replaces the slot specified by space with the new path [path]
  * if the slot is currently empty.
  */
@@ -143,11 +176,5 @@ bool arcan_verifyload_appl(const char* appl_id, const char** errc);
 const char* arcan_appl_basesource(bool* file);
 const char* arcan_appl_id();
 size_t arcan_appl_id_len();
-
-/*
- * slated for DEPRECATION
- * DATED interface
- */
-const char* internal_launch_support();
 
 #endif

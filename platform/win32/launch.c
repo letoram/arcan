@@ -20,17 +20,18 @@
 #include <assert.h>
 #include <errno.h>
 
-#include <arcan_math.h>
-#include <arcan_general.h>
+#include "arcan_math.h"
+#include "arcan_general.h"
 #include "arcan_shmif.h"
 
-#include <arcan_event.h>
-#include <arcan_video.h>
-#include <arcan_audio.h>
-#include <arcan_frameserver_backend.h>
-#include <arcan_target_launcher.h>
+#include "arcan_event.h"
+#include "arcan_video.h"
+#include "arcan_audio.h"
+#include "arcan_frameserver_backend.h"
 
-int arcan_target_launch_external(const char* fname, char** argv)
+int arcan_target_launch_external(const char* fname,
+	struct arcan_strarr* argv, struct arcan_strarr* envv,
+	struct arcan_strarr* libs)
 {
 	PROCESS_INFORMATION pi;
 	STARTUPINFO si = {0};
@@ -43,11 +44,9 @@ int arcan_target_launch_external(const char* fname, char** argv)
 		return -1;
 	}
 
-	argv++; /* skip the first fname, UNIX convention and all that */
-
 	arcan_video_prepare_external();
 
-	char** base = argv;
+	char** base = argv->data;
 	size_t total = strlen(fname) + 1;
 	while (base && *base) {
 		size_t res = strlen(*base++);
@@ -62,7 +61,7 @@ int arcan_target_launch_external(const char* fname, char** argv)
 
 	char* cmdline;
 	cmdline = (char*) calloc(total + 2, sizeof(char));
-	base = argv;
+	base = argv->data;
 	sprintf(cmdline, "%s ", fname);
 
 	while (base && *base) {
@@ -98,12 +97,8 @@ int arcan_target_launch_external(const char* fname, char** argv)
 	return arcan_frametime() - start;
 }
 
-const char* internal_launch_support(){
-	return "FULL_SUPPORT";
-}
-
 arcan_frameserver* arcan_target_launch_internal(
-	const char* fname, char* hijack, char** argv)
+	const char* fname, char** argv, char** envv, char** libs)
 {
 	return NULL;
 }

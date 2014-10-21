@@ -493,7 +493,6 @@ set (
  engine/arcan_3dbase.h
  engine/arcan_video.h
  engine/arcan_audio.h
- engine/arcan_target_launcher.h
  engine/arcan_led.c
  engine/arcan_hmd.c
  engine/arcan_hmd.h
@@ -501,14 +500,21 @@ set (
  engine/arcan_general.h
  engine/arcan_db.h
  engine/arcan_shdrmgmt.h
- engine/arcan_frameserver_backend.h
- engine/arcan_frameserver_backend.c
+ engine/arcan_frameserver.h
+ engine/arcan_frameserver.c
  shmif/arcan_shmif.h
  shmif/arcan_shmif_interop.h
  shmif/arcan_shmif_control.c
  shmif/arcan_shmif_control.h
  shmif/arcan_shmif_event.h
  platform/video_platform.h
+)
+
+set (ARCANDB_SOURCES
+	engine/arcan_dbtool.c
+	engine/arcan_db.c
+	platform/posix/warning.c
+	platform/stub/mem.c
 )
 
 set (SHMIF_SOURCES
@@ -796,8 +802,20 @@ else()
 endif()
 
 message("\n---- Stage 3, Linking / Packaging ----")
+add_executable( arcan_db ${ARCANDB_SOURCES} )
+target_link_libraries( arcan_db ${STDLIB} ${SQLITE3_LIBRARIES} )
 target_link_libraries( arcan ${STDLIB} ${MAIN_LIBRARIES} ${ARCANMAIN_LIBRARIES} )
 target_link_libraries( arcan_frameserver ${STDLIB} ${FSRV_LIBRARIES} )
+
+#
+# The database tool is a CLI for the engine/arcan_db with additional
+# code not part of the main arcan binaries (to make it somewhat harder
+# for a misbehaving script to add / introduce new configs / targets
+# and execute them.
+#
+
+set_property(TARGET arcan_db APPEND PROPERTY
+				COMPILE_DEFINITIONS ARCAN_DB_STANDALONE )
 
 #
 # For LWA we need some kind of sound backend. In a sandbox,

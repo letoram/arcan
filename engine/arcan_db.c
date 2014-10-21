@@ -1,23 +1,36 @@
-/* Arcan-fe, scriptable front-end engine
- *
- * Arcan-fe is the legal property of its developers, please refer
- * to the COPYRIGHT file distributed with this source distribution.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 3
- * of the License, or (at your option) any later version.
+/*
+ Arcan FE - Database Interface
 
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ Copyright (c) Björn Ståhl 2014,
+ All rights reserved.
 
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- *
- */
+ Redistribution and use in source and binary forms,
+ with or without modification, are permitted provided that the
+ following conditions are met:
+
+ 1. Redistributions of source code must retain the above copyright notice,
+ this list of conditions and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright notice,
+ this list of conditions and the following disclaimer in the documentation
+ and/or other materials provided with the distribution.
+
+ 3. Neither the name of the copyright holder nor the names of its contributors
+ may be used to endorse or promote products derived from this software without
+ specific prior written permission.
+
+ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+ THE POSSIBILITY OF SUCH DAMAGE
+*/
 
 #include <stdlib.h>
 #include <stdint.h>
@@ -26,6 +39,7 @@
 #include <sqlite3.h>
 #include <assert.h>
 #include <string.h>
+#include <inttypes.h>
 
 #include <sys/types.h>
 #include <unistd.h>
@@ -34,13 +48,93 @@
 #include "arcan_general.h"
 #include "arcan_db.h"
 
-#ifndef REALLOC_STEP
-#define REALLOC_STEP 1024
-#endif
-
 static bool db_init = false;
-static char wbuf[4096] = {0};
-static int wbufsize = 4094;
+
+#define DDL_TARGET "CREATE TABLE target ("\
+	"tgtid INTEGER PRIMARY KEY,"\
+	"name STRING UNIQUE NOT NULL,"\
+	"executable TEXT NOT NULL,"\
+	"user_id STRING DEFAULT NULL,"\
+	"user_group STRING DEFAULT NULL,"\
+	"bfmt INTEGER NOT NULL"\
+	")"
+
+#define DDL_TGT_ARGV "CREATE TABLE target_argv ("\
+	"argnum INTEGER PRIMARY KEY,"\
+	"arg STRING NOT NULL,"\
+	"target INTEGER NOT NULL,"\
+	"FOREIGN KEY (target) REFERENCES target(tgtid) ON DELETE CASCADE )"
+
+#define DDL_CONFIG "CREATE TABLE config ("\
+	"cfgid INTEGER PRIMARY KEY,"\
+	"name STRING UNIQUE NOT NULL,"\
+	"passed_counter INTEGER,"\
+	"failed_counter INTEGER,"\
+	"target INTEGER NOT NULL,"\
+	"FOREIGN KEY (target) REFERENCES target(tgtid) ON DELETE CASCADE )"
+
+#define DDL_CFG_ARGV "CREATE TABLE config_argv ("\
+	"argnum INTEGER PRIMARY KEY,"\
+	"arg STRING NOT NULL,"\
+	"config INTEGER NOT NULL,"\
+	"FOREIGN KEY (config) REFERENCES config(cfgid) ON DELETE CASCADE )"
+
+#define DDL_TGT_KV "CREATE TABLE target_kv ("\
+	"key STRING UNIQUE NOT NULL,"\
+	"val STRING NOT NULL,"\
+	"target INT NOT NULL,"\
+	"FOREIGN KEY (target) REFERENCES target(tgtid) ON DELETE CASCADE )"
+
+#define DDL_CFG_KV "CREATE TABLE config_kv ("\
+	"key STRING UNIQUE NOT NULL,"\
+	"val STRING NOT NULL,"\
+	"config INT NOT NULL,"\
+	"FOREIGN KEY (config) REFERENCES config(cfgid) ON DELETE CASCADE )"
+
+#define DDL_TGT_ENV "CREATE TABLE target_env ("\
+	"key STRING UNIQUE NOT NULL,"\
+	"val STRING NOT NULL,"\
+	"target INT NOT NULL,"\
+	"FOREIGN KEY (target) REFERENCES target(tgtid) ON DELETE CASCADE )"
+
+#define DDL_CFG_ENV "CREATE TABLE config_env ("\
+	"key STRING UNIQUE NOT NULL,"\
+	"val STRING NOT NULL,"\
+	"config INT NOT NULL,"\
+	"FOREIGN KEY (config) REFERENCES target(tgtid) ON DELETE CASCADE )"
+
+#define DDL_TGT_LIBS "CREATE TABLE target_libs ("\
+	"libnum INTEGER PRIMARY KEY,"\
+	"libname STRING UNIQUE NOT NULL,"\
+	"libnote STRING UNIQUE NOT NULL,"\
+	"target INT NOT NULL,"\
+	"FOREIGN KEY (target) REFERENCES target(tgtid) ON DELETE CASCADE )"
+
+static const char* ddls[] = {
+	DDL_TARGET,   DDL_CONFIG,
+	DDL_TGT_ARGV, DDL_CFG_ARGV,
+	DDL_TGT_KV,   DDL_CFG_KV,
+	DDL_TGT_ENV,  DDL_CFG_ENV,
+ 	DDL_TGT_LIBS
+};
+
+#define DI_INSARG_TARGET "INSERT INTO target_argv(target, arg) VALUES(?, ?);"
+#define DI_INSARG_CONFIG "INSERT INTO config_argv(config, arg) VALUES(?, ?);"
+
+#define DI_INSKV_TARGET "INSERT OR REPLACE INTO "\
+	"target_kv(key, val, target) VALUES(?, ?, ?);"
+
+#define DI_INSKV_CONFIG "INSERT OR REPLACE INTO "\
+	"config_kv(key, val, config) VALUES(?, ?, ?);"
+
+#define DI_INSKV_CONFIG_ENV "INSERT OR REPLACE INTO "\
+	"config_env(key, val, config) VALUES(?, ?, ?);"
+
+#define DI_INSKV_TARGET_ENV "INSERT OR REPLACE INTO "\
+	"target_env(key, val, target) VALUES(?, ?, ?);"
+
+#define DI_INSKV_TARGET_LIBV "INSERT OR REPLACE INTO "\
+	"target_libs(libname, libnote, target) VALUES(?, ?, ?);"
 
 struct arcan_dbh {
 	sqlite3* dbh;
@@ -48,59 +142,52 @@ struct arcan_dbh {
 /* cached appl name used for the DBHandle, although
  * some special functions may use a different one, none outside _db.c should */
 	char* applname;
-	sqlite3_stmt* update_kv;
-	sqlite3_stmt* insert_kv;
-	bool intrans;
+	char* akv_update;
+	char* akv_get;
+
+	size_t akv_upd_sz;
+	size_t akv_get_sz;
+
+	enum DB_KVTARGET ttype;
+	union arcan_dbtrans_id trid;
+	sqlite3_stmt* transaction;
 };
 
-char* _n_strdup(const char* instr, const char* alt)
+/*
+ * any query that just returns a list of strings,
+ * pack into a dbres (or append to an existing one)
+ */
+static struct arcan_strarr db_string_query(struct arcan_dbh* dbh,
+	sqlite3_stmt* stmt, struct arcan_strarr* opt, off_t ofs)
 {
-	if (instr)
-		return strdup((char*) instr);
-
-	if (alt)
-		return strdup((char*) alt);
-
-	return NULL;
-}
-
-/* any query that just returns a bunch of string rows,
- * build a dbh_res struct out of it */
-static arcan_dbh_res db_string_query(arcan_dbh* dbh,
-	sqlite3_stmt* stmt, arcan_dbh_res* opt)
-{
-	arcan_dbh_res res = {.kind = 0};
+	struct arcan_strarr res = {.data = NULL};
 
 	if (!opt) {
-		res.data.strarr = arcan_alloc_mem(sizeof(char**) * 8,
+		res.data = arcan_alloc_mem(sizeof(char**) * 8,
 			ARCAN_MEM_STRINGBUF, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 		res.limit = 8;
+		res.count = ofs;
 	}
+	else
+		res = *opt;
 
-	while (sqlite3_step(stmt) == SQLITE_ROW) {
+/* we stop one step short of full capacity before
+ * resizing to have both a valid count and a NULL terminated array */
+	while (sqlite3_step(stmt) == SQLITE_ROW){
+		if (res.count+1 >= res.limit)
+			arcan_mem_growarr(&res);
+
 		const char* arg = (const char*) sqlite3_column_text(stmt, 0);
-		res.data.strarr[res.count++] = _n_strdup(arg, NULL);
-
-		if (res.count == res.limit) {
-			char** newbuf = arcan_alloc_mem(
-				(res.limit + REALLOC_STEP) * sizeof(char*),
-				ARCAN_MEM_STRINGBUF, ARCAN_MEM_TEMPORARY, ARCAN_MEMALIGN_NATURAL
-			);
-
-/* grow by REALLOC_STEP */
-			memcpy(newbuf, res.data.strarr, res.limit * sizeof(char*));
-			arcan_mem_free(res.data.strarr);
-			res.data.strarr = newbuf;
-			res.limit += REALLOC_STEP;
-		}
+		res.data[res.count++] = (arg ? strdup(arg) : NULL);
 	}
-
-	res.data.strarr[res.count] = NULL;
 
 	return res;
 }
 
-static int db_num_query(arcan_dbh* dbh, const char* qry, bool* status)
+/*
+ * any query where we're just interested in an integer value
+ */
+static int db_num_query(struct arcan_dbh* dbh, const char* qry, bool* status)
 {
 	sqlite3_stmt* stmt = NULL;
 	if (status) *status = false;
@@ -121,7 +208,11 @@ static int db_num_query(arcan_dbh* dbh, const char* qry, bool* status)
 	return count;
 }
 
-static void db_void_query(arcan_dbh* dbh, const char* qry)
+/*
+ * query that is just silently assumed to work
+ */
+static inline void db_void_query(struct arcan_dbh* dbh,
+	const char* qry, bool suppr_err)
 {
 	sqlite3_stmt* stmt = NULL;
 	if (!qry || !dbh)
@@ -132,8 +223,9 @@ static void db_void_query(arcan_dbh* dbh, const char* qry)
 		rc = sqlite3_step(stmt);
 	}
 
-	if (rc != SQLITE_OK && rc != SQLITE_DONE){
-		arcan_warning("db_void_query(failed) on %s -- reason: %d\n", qry, rc);
+	if (rc != SQLITE_OK && rc != SQLITE_DONE && !suppr_err){
+		arcan_warning("db_void_query(failed) on %s -- reason: %d(%s)\n",
+			qry, rc, sqlite3_errmsg(dbh->dbh));
 	}
 
 	sqlite3_finalize(stmt);
@@ -144,853 +236,609 @@ static void sqliteexit()
 	sqlite3_shutdown();
 }
 
-static void freegame(arcan_db_game* game)
+/*
+ * will be called every time the database is opened,
+ * so we expect this to fail silently when the group already exists
+ */
+static void create_appl_group(struct arcan_dbh* dbh, const char* applname)
 {
-	if (!game)
-		return;
+	const char ddl[] = "CREATE TABLE appl_%s "
+		"(key TEXT UNIQUE, val TEXT NOT NULL);";
 
-	arcan_mem_free(game->title);
-	arcan_mem_free(game->genre);
-	arcan_mem_free(game->subgenre);
-	arcan_mem_free(game->setname);
-	arcan_mem_free(game->targetname);
-	arcan_mem_free(game->system);
+	const char kv_ddl[] = "INSERT OR REPLACE INTO "
+		" appl_%s(key, val) VALUES(?, ?);";
+
+	const char kv_get[] = "SELECT val FROM appl_%s WHERE key = ?;";
+
+	if (dbh->akv_update)
+		arcan_mem_free(dbh->akv_update);
+
+/* cache key insert into app specific table */
+	assert(sizeof(kv_get) < sizeof(kv_ddl));
+	size_t ddl_sz = strlen(applname) + sizeof(kv_ddl);
+	dbh->akv_update = arcan_alloc_mem(
+		ddl_sz, ARCAN_MEM_STRINGBUF, 0, ARCAN_MEMALIGN_NATURAL);
+	dbh->akv_upd_sz = snprintf(dbh->akv_update, ddl_sz, kv_ddl, applname);
+
+/* cache key retrieve into app specific table */
+	ddl_sz = strlen(applname) + sizeof(kv_get);
+	dbh->akv_get = arcan_alloc_mem(
+		ddl_sz, ARCAN_MEM_STRINGBUF, 0, ARCAN_MEMALIGN_NATURAL);
+	dbh->akv_get_sz = snprintf(dbh->akv_get, ddl_sz, kv_get, applname);
+
+/* create the actual table */
+	char wbuf[ sizeof(ddl) + strlen(applname) ];
+	snprintf(wbuf, sizeof(wbuf)/sizeof(wbuf[0]), ddl, applname);
+
+	db_void_query(dbh, wbuf, true);
 }
 
-static void create_appl_group(arcan_dbh* dbh, const char* applname)
+#ifdef ARCAN_DB_STANDALONE
+bool arcan_db_droptarget(struct arcan_dbh* dbh, arcan_targetid id)
 {
+/* should suffice from ON DELETE CASCADE relationship */
+	static const char qry[]  = "DELETE FROM target WHERE tgtid = ?;";
+
+	sqlite3_stmt* stmt;
+	sqlite3_prepare_v2(dbh->dbh, qry, sizeof(qry)-1, &stmt, NULL);
+	sqlite3_bind_int(stmt, 1, id);
+	sqlite3_step(stmt);
+	sqlite3_finalize(stmt);
+
+	return true;
+}
+
+bool arcan_db_dropconfig(struct arcan_dbh* dbh, arcan_configid id)
+{
+	static const char qry[] = "DELETE FROM config WHERE cfgid = ?;";
+
+	sqlite3_stmt* stmt;
+	sqlite3_prepare_v2(dbh->dbh, qry, sizeof(qry)-1, &stmt, NULL);
+	sqlite3_bind_int(stmt, 1, id);
+	sqlite3_step(stmt);
+	sqlite3_finalize(stmt);
+
+	return true;
+}
+
+arcan_targetid arcan_db_addtarget(struct arcan_dbh* dbh,
+	const char* identifier, const char* exec,
+	const char* argv[], size_t sz, enum DB_BFORMAT bfmt)
+{
+	static const char ddl[] = "INSERT OR REPLACE INTO "
+		"	target(tgtid, name, executable, bfmt) VALUES "
+		"((select tgtid FROM target where name = ?), ?, ?, ?)";
+
+	sqlite3_stmt* stmt;
+	int rc = sqlite3_prepare_v2(dbh->dbh, ddl, sizeof(ddl)-1, &stmt, NULL);
+
+	sqlite3_bind_text(stmt, 1, identifier, -1, SQLITE_STATIC);
+	sqlite3_bind_text(stmt, 2, identifier, -1, SQLITE_STATIC);
+	sqlite3_bind_text(stmt, 3, exec, -1, SQLITE_STATIC);
+	sqlite3_bind_int(stmt, 4, bfmt);
+
+	rc = sqlite3_step(stmt);
+	sqlite3_finalize(stmt);
+
+	arcan_targetid newid = sqlite3_last_insert_rowid(dbh->dbh);
+
+/* delete previous arguments */
+	static const char drop_argv[] = "DELETE FROM target_argv WHERE target = ?;";
+	rc = sqlite3_prepare_v2(dbh->dbh, drop_argv,
+		sizeof(drop_argv) - 1, &stmt, NULL);
+	sqlite3_bind_int(stmt, 1, newid);
+	sqlite3_step(stmt);
+	sqlite3_finalize(stmt);
+
+/* add new ones */
+	if (0 == sz)
+		return newid;
+
+	static const char add_argv[] = DI_INSARG_TARGET;
+	for (size_t i = 0; i < sz; i++){
+		sqlite3_prepare_v2(dbh->dbh, add_argv, sizeof(add_argv) - 1, &stmt, NULL);
+		sqlite3_bind_int(stmt, 1, newid);
+		sqlite3_bind_text(stmt, 2, argv[i], -1, SQLITE_STATIC);
+		sqlite3_step(stmt);
+		sqlite3_finalize(stmt);
+	}
+
+	return newid;
+}
+
+arcan_configid arcan_db_addconfig(struct arcan_dbh* dbh,
+	arcan_targetid id,	const char* identifier, const char* argv[], size_t sz)
+{
+	if (!arcan_db_verifytarget(dbh, id))
+		return BAD_CONFIG;
+
+	static const char ddl[] = "INSERT OR REPLACE INTO config(cfgid, name, "
+		"passed_counter, failed_counter, target) VALUES "
+		"((select cfgid FROM config where name = ?), ?, ?, ?, ?)";
+
+	sqlite3_stmt* stmt;
+	int rc = sqlite3_prepare_v2(dbh->dbh, ddl, sizeof(ddl)-1, &stmt, NULL);
+
+	sqlite3_bind_text(stmt, 1, identifier, -1, SQLITE_STATIC);
+	sqlite3_bind_text(stmt, 2, identifier, -1, SQLITE_STATIC);
+	sqlite3_bind_int(stmt, 3, 0);
+	sqlite3_bind_int(stmt, 4, 0);
+	sqlite3_bind_int(stmt, 5, id);
+
+	rc = sqlite3_step(stmt);
+	sqlite3_finalize(stmt);
+
+	arcan_configid newid = sqlite3_last_insert_rowid(dbh->dbh);
+
+/* delete previous arguments */
+	static const char drop_argv[] = "DELETE FROM config_argv WHERE config = ?;";
+	rc = sqlite3_prepare_v2(dbh->dbh, drop_argv,
+		sizeof(drop_argv) - 1, &stmt, NULL);
+	sqlite3_bind_int(stmt, 1, newid);
+	sqlite3_step(stmt);
+	sqlite3_finalize(stmt);
+
+/* add new ones */
+	if (0 == sz)
+		return newid;
+
+	static const char add_argv[] = DI_INSARG_CONFIG;
+	for (size_t i = 0; i < sz; i++){
+		sqlite3_prepare_v2(dbh->dbh, add_argv, sizeof(add_argv) - 1, &stmt, NULL);
+		sqlite3_bind_int(stmt, 1, newid);
+		sqlite3_bind_text(stmt, 2, argv[i], -1, SQLITE_STATIC);
+		sqlite3_step(stmt);
+		sqlite3_finalize(stmt);
+	}
+
+	return newid;
+}
+
+#endif
+
+bool arcan_db_verifytarget(struct arcan_dbh* dbh, arcan_targetid id)
+{
+	static const char ddl[] = "SELECT COUNT(*) FROM target WHERE tgtid = ?;";
+
 	sqlite3_stmt* stmt = NULL;
-	int nw = snprintf(wbuf, wbufsize, "CREATE TABLE appl_%s "
-		"(key TEXT UNIQUE, value TEXT NOT NULL);", applname);
-	sqlite3_prepare_v2(dbh->dbh, wbuf, nw, &stmt, NULL);
+	if (SQLITE_OK == sqlite3_prepare_v2(
+		dbh->dbh, ddl, sizeof(ddl)-1, &stmt, NULL)){
+		sqlite3_bind_int(stmt, 1, id);
+		sqlite3_step(stmt);
+		return 1 == sqlite3_column_int(stmt, 0);
+	}
+
+	return false;
+}
+
+arcan_targetid arcan_db_targetid(struct arcan_dbh* dbh,
+	const char* identifier, arcan_configid* defid)
+{
+	arcan_targetid rid = BAD_TARGET;
+	static const char dql[] = "SELECT tgtid FROM target WHERE name = ?;";
+	sqlite3_stmt* stmt;
+
+	sqlite3_prepare_v2(dbh->dbh, dql, sizeof(dql)-1, &stmt, NULL);
+	sqlite3_bind_text(stmt, 1, identifier, -1, SQLITE_STATIC);
+
+	if (SQLITE_ROW == sqlite3_step(stmt))
+		rid = sqlite3_column_int64(stmt, 0);
+
+	sqlite3_finalize(stmt);
+	return rid;
+}
+
+struct arcan_strarr arcan_db_config_argv(struct arcan_dbh* dbh,arcan_configid id)
+{
+	static const char dql[] = "SELECT arg FROM config_argv WHERE "
+		"config = ? ORDER BY argnum ASC;";
+ 	sqlite3_stmt* stmt;
+	sqlite3_prepare_v2(dbh->dbh, dql, sizeof(dql)-1, &stmt, NULL);
+	sqlite3_bind_int(stmt, 1, id);
+
+	return db_string_query(dbh, stmt, NULL, 0);
+}
+
+struct arcan_strarr arcan_db_target_argv(struct arcan_dbh* dbh,arcan_targetid id)
+{
+	static const char dql[] = "SELECT arg FROM target_argv WHERE "
+		"target = ? ORDER BY argnum ASC;";
+ 	sqlite3_stmt* stmt;
+	sqlite3_prepare_v2(dbh->dbh, dql, sizeof(dql)-1, &stmt, NULL);
+	sqlite3_bind_int(stmt, 1, id);
+
+	return db_string_query(dbh, stmt, NULL, 0);
+}
+
+arcan_targetid arcan_db_cfgtarget(struct arcan_dbh* dbh, arcan_configid cfg)
+{
+	static const char dql[] = "SELECT target FROM config WHERE cfgid = ?;";
+	sqlite3_stmt* stmt;
+	sqlite3_prepare_v2(dbh->dbh, dql, sizeof(dql)-1, &stmt, NULL);
+	sqlite3_bind_int(stmt, 1, cfg);
+	arcan_targetid tid = BAD_TARGET;
+
+	if (SQLITE_ROW == sqlite3_step(stmt))
+		tid = sqlite3_column_int64(stmt, 0);
+
+	sqlite3_finalize(stmt);
+	return tid;
+}
+
+arcan_configid arcan_db_configid(struct arcan_dbh* dbh,
+	arcan_targetid target, const char* config)
+{
+	static const char dql[] = "SELECT cfgid FROM config"
+		"	WHERE name = ? AND target = ?;";
+	sqlite3_stmt* stmt;
+	arcan_configid cid = BAD_CONFIG;
+
+	sqlite3_prepare_v2(dbh->dbh, dql, sizeof(dql)-1, &stmt, NULL);
+	sqlite3_bind_text(stmt, 1, config, strlen(config), SQLITE_STATIC);
+	sqlite3_bind_int(stmt, 2, target);
+
+	if (SQLITE_ROW == sqlite3_step(stmt))
+		cid = sqlite3_column_int64(stmt, 0);
+
+	sqlite3_finalize(stmt);
+	return cid;
+}
+
+struct arcan_strarr arcan_db_targets(struct arcan_dbh* dbh)
+{
+	static const char dql[] = "SELECT name FROM target;";
+	sqlite3_stmt* stmt;
+	sqlite3_prepare_v2(dbh->dbh, dql, sizeof(dql)-1, &stmt, NULL);
+
+	return db_string_query(dbh, stmt, NULL, 0);
+}
+
+char* arcan_db_targetexec(struct arcan_dbh* dbh,
+	arcan_configid configid, enum DB_BFORMAT* bfmt,
+	struct arcan_strarr* argv, struct arcan_strarr* env,
+	struct arcan_strarr* libs)
+{
+	arcan_targetid tid = arcan_db_cfgtarget(dbh, configid);
+	if (tid == BAD_TARGET)
+		return NULL;
+
+	sqlite3_stmt* stmt;
+	static const char dql[] = "SELECT executable, bfmt "
+		"FROM target WHERE tgtid = ?;";
+
+	int rc = sqlite3_prepare_v2(dbh->dbh, dql, sizeof(dql) - 1, &stmt, NULL);
+	sqlite3_bind_int(stmt, 1, tid);
+
+	char* execstr = NULL;
+	if (sqlite3_step(stmt) == SQLITE_ROW){
+		execstr = (char*) sqlite3_column_text(stmt, 0);
+		*bfmt = (int) sqlite3_column_int64(stmt, 1);
+	}
+
+	if (execstr)
+		execstr = strdup(execstr);
+
+	sqlite3_finalize(stmt);
+
+	static const char dql_tgt_argv[] = "SELECT arg FROM target_argv WHERE "
+		"target = ? ORDER BY argnum ASC;";
+	rc = sqlite3_prepare_v2(dbh->dbh, dql_tgt_argv,
+		sizeof(dql_tgt_argv)-1, &stmt, NULL);
+	sqlite3_bind_int(stmt, 1, tid);
+
+#ifdef WIN32
+	*argv = db_string_query(dbh, stmt, NULL, 0);
+#else
+	*argv = db_string_query(dbh, stmt, NULL, 1);
+	argv->data[0] = strdup(execstr ? execstr : "");
+#endif
+
+	static const char dql_cfg_argv[] = "SELECT arg FROM config_argv WHERE "
+		"config = ? ORDER BY argnum ASC;";
+	rc = sqlite3_prepare_v2(dbh->dbh, dql_cfg_argv,
+		sizeof(dql_cfg_argv)-1, &stmt, NULL);
+	sqlite3_bind_int(stmt, 1, configid);
+	*argv = db_string_query(dbh, stmt, argv, 0);
+
+	static const char dql_tgt_env[] = "SELECT key || '=' || val "
+		"FROM target_env WHERE target = ?";
+	sqlite3_prepare_v2(dbh->dbh, dql_tgt_env,
+		sizeof(dql_tgt_env)-1, &stmt, NULL);
+	sqlite3_bind_int(stmt, 1, tid);
+	*env = db_string_query(dbh, stmt, NULL, 0);
+
+	static const char dql_cfg_env[] = "SELECT key || '=' || val "
+		"FROM config_env WHERE config = ?";
+	sqlite3_prepare_v2(dbh->dbh, dql_cfg_env,
+		sizeof(dql_cfg_env)-1, &stmt, NULL);
+	sqlite3_bind_int(stmt, 1, tid);
+	db_string_query(dbh, stmt, env, 0);
+
+	static const char dql_tgt_lib[] = "SELECT libname FROM target_libs WHERE "
+		"target = ?;";
+	sqlite3_prepare_v2(dbh->dbh, dql_tgt_lib,
+		sizeof(dql_tgt_lib)-1, &stmt, NULL);
+	sqlite3_bind_int(stmt, 1, tid);
+	*libs = db_string_query(dbh, stmt, NULL, 0);
+
+	return execstr;
+}
+
+void arcan_db_launch_status(struct arcan_dbh* dbh, arcan_configid cid, bool s)
+{
+	static const char dql_ok[] = "UPDATE passed_counter SET "
+		"passed_counter = passed_counter + 1 WHERE config = ?;";
+
+	static const char dql_fail[] = "UPDATE failed_counter SET "
+		"failed_counter = failed_counter + 1 WHERE config = ?;";
+
+	sqlite3_stmt* stmt;
+	sqlite3_prepare_v2(dbh->dbh,
+		(s ? dql_ok : dql_fail), sizeof(dql_ok)-1, &stmt, NULL);
+	sqlite3_bind_int(stmt, 1, cid);
 	sqlite3_step(stmt);
 	sqlite3_finalize(stmt);
 }
 
-arcan_dbh_res arcan_db_targets(arcan_dbh* dbh)
+struct arcan_strarr arcan_db_configs(struct arcan_dbh* dbh, arcan_targetid tid)
 {
-	const char* baseqry1 = "SELECT DISTINCT a.name FROM target a, "
-		"game b WHERE a.targetid = b.target;";
-	sqlite3_stmt* stmt = NULL;
+	static const char dql[] = "SELECT name FROM config WHERE target = ?;";
+	sqlite3_stmt* stmt;
+	sqlite3_prepare_v2(dbh->dbh, dql, sizeof(dql)-1, &stmt, NULL);
+	sqlite3_bind_int(stmt, 1, tid);
 
-	sqlite3_prepare_v2(dbh->dbh, baseqry1, strlen(baseqry1), &stmt, NULL);
-	arcan_dbh_res res = db_string_query(dbh, stmt, NULL);
-	sqlite3_finalize(stmt);
-
-	return res;
+	return db_string_query(dbh, stmt, NULL, 0);
 }
 
-char* arcan_db_targetexec(arcan_dbh* dbh, char* targetname)
+void arcan_db_begin_transaction(struct arcan_dbh* dbh,
+	enum DB_KVTARGET kvt, union arcan_dbtrans_id id)
 {
-	char* rv = NULL;
-	if (!targetname)
-		return NULL;
+	if (dbh->transaction)
+		arcan_fatal("arcan_db_appl_kv() called during a pending transaction\n");
 
-	const char* baseqry1 = "SELECT executable FROM target WHERE name=? LIMIT 1;";
-	sqlite3_stmt* stmt = NULL;
+	sqlite3_exec(dbh->dbh, "BEGIN;", NULL, NULL, NULL);
 
-	sqlite3_prepare_v2(dbh->dbh, baseqry1, strlen(baseqry1), &stmt, NULL);
-	sqlite3_bind_text(stmt, 1, targetname, -1, SQLITE_TRANSIENT);
+	switch (kvt){
+	case DVT_APPL:
+		sqlite3_prepare_v2(dbh->dbh, dbh->akv_update,
+			dbh->akv_upd_sz, &dbh->transaction, NULL);
+	break;
 
-	while (sqlite3_step(stmt) == SQLITE_ROW){
-		rv = _n_strdup((const char*) sqlite3_column_text(stmt, 0), NULL);
+	case DVT_TARGET:
+		sqlite3_prepare_v2(dbh->dbh, DI_INSKV_TARGET,
+			strlen(DI_INSKV_TARGET)+1, &dbh->transaction, NULL);
+	break;
+
+	case DVT_CONFIG:
+		sqlite3_prepare_v2(dbh->dbh, DI_INSKV_CONFIG,
+			strlen(DI_INSKV_CONFIG)+1, &dbh->transaction, NULL);
+	break;
+
+	case DVT_CONFIG_ENV:
+		sqlite3_prepare_v2(dbh->dbh, DI_INSKV_CONFIG_ENV,
+			strlen(DI_INSKV_TARGET_ENV)+1, &dbh->transaction, NULL);
+	break;
+
+	case DVT_TARGET_ENV:
+		sqlite3_prepare_v2(dbh->dbh, DI_INSKV_TARGET_ENV,
+			strlen(DI_INSKV_TARGET_ENV)+1, &dbh->transaction, NULL);
+	break;
+
+	case DVT_TARGET_LIBV:
+		sqlite3_prepare_v2(dbh->dbh, DI_INSKV_TARGET_LIBV,
+			strlen(DI_INSKV_TARGET_LIBV)+1, &dbh->transaction, NULL);
+	break;
+	case DVT_ENDM:
+	break;
 	}
 
-	sqlite3_finalize(stmt);
-	return rv;
+	dbh->trid = id;
+	dbh->ttype = kvt;
 }
 
-char* arcan_db_gametgthijack(arcan_dbh* dbh, int gameid)
+struct arcan_strarr arcan_db_getkeys(struct arcan_dbh* dbh,
+	enum DB_KVTARGET tgt, union arcan_dbtrans_id id)
 {
-	char* rv = NULL;
-	sqlite3_stmt* stmt = NULL;
-	const char* baseqry1 = "SELECT hijack FROM target WHERE targetid = "
-		"(SELECT target FROM game WHERE gameid=? LIMIT 1);";
+#define GET_KV_TGT "SELECT key || '=' || val FROM target_kv WHERE target = ?;"
+	static const char* const queries[] = {
+		GET_KV_TGT,
+		"SELECT key || '=' || val FROM config_kv WHERE config = ?"
+	};
 
-	sqlite3_prepare_v2(dbh->dbh, baseqry1, strlen(baseqry1), &stmt, NULL);
-	sqlite3_bind_int(stmt, 1, gameid);
-
-	while (sqlite3_step(stmt) == SQLITE_ROW){
-		rv = _n_strdup((const char*) sqlite3_column_text(stmt, 0), NULL);
-	}
-
-	sqlite3_finalize(stmt);
-	return rv;
-}
-
-char* arcan_db_targethijack(arcan_dbh* dbh, char* targetname)
-{
-	char* rv = NULL;
-	if (!targetname)
-		return NULL;
-
-	const char* baseqry1 = "SELECT hijack FROM target WHERE name=? LIMIT 1;";
-	sqlite3_stmt* stmt = NULL;
-
-	sqlite3_prepare_v2(dbh->dbh, baseqry1, strlen(baseqry1), &stmt, NULL);
-	sqlite3_bind_text(stmt, 1, targetname, -1, SQLITE_TRANSIENT);
-
-	while (sqlite3_step(stmt) == SQLITE_ROW){
-		rv = _n_strdup((const char*) sqlite3_column_text(stmt, 0), NULL);
-	}
-
-	sqlite3_finalize(stmt);
-	return rv;
-}
-
-bool arcan_db_targetdata(arcan_dbh* dbh, int targetid,
-	char** targetname, char** targetexec)
-{
-	bool rv = false;
-	const char* baseqry1 = "SELECT name, executable, hijack FROM"
-		"	target WHERE targetid=? LIMIT 1;";
-	sqlite3_stmt* stmt = NULL;
-
-	sqlite3_prepare_v2(dbh->dbh, baseqry1, strlen(baseqry1), &stmt, NULL);
-	sqlite3_bind_int(stmt, 1, targetid);
-
-	while(sqlite3_step(stmt) == SQLITE_ROW){
-		if (targetname)
-			*targetname = _n_strdup((const char*) sqlite3_column_text(stmt, 0), NULL);
-
-		if (targetexec)
-			*targetexec = _n_strdup((const char*) sqlite3_column_text(stmt, 1), NULL);
-
-		rv = true;
-	}
-	sqlite3_finalize(stmt);
-
-	return rv;
-}
-
-long int arcan_db_gameid(arcan_dbh* dbh, const char* title, arcan_errc* status)
-{
-	const char* baseqry1 = "SELECT gameid FROM game WHERE title=? LIMIT 1;";
-	long int rv = -1;
-	if (status)
-		*status = ARCAN_ERRC_NO_SUCH_OBJECT;
-
-	sqlite3_stmt* stmt = NULL;
-
-	sqlite3_prepare_v2(dbh->dbh, baseqry1, strlen(baseqry1), &stmt, NULL);
-	sqlite3_bind_text(stmt, 1, title, -1, SQLITE_TRANSIENT);
-
-	while (sqlite3_step(stmt) == SQLITE_ROW){
-		rv = sqlite3_column_int(stmt, 0);
-		if (status)
-			*status = ARCAN_OK;
-	}
-
-	sqlite3_finalize(stmt);
-	return rv;
-}
-
-arcan_dbh_res arcan_db_genres(arcan_dbh* dbh, bool sub)
-{
-	const char* baseqry1 = "SELECT DISTINCT genre FROM game;";
-	const char* baseqry2 = "SELECT DISTINCT subgenre FROM game;";
-
-	sqlite3_stmt* stmt = NULL;
-	if (sub)
-		sqlite3_prepare_v2(dbh->dbh, baseqry2, strlen(baseqry2), &stmt, NULL);
+	const char* qry = NULL;
+	if (tgt >= DVT_TARGET && tgt < DVT_CONFIG)
+		qry = queries[0];
 	else
-		sqlite3_prepare_v2(dbh->dbh, baseqry1, strlen(baseqry1), &stmt, NULL);
+		qry = queries[1];
 
-	arcan_dbh_res res = db_string_query(dbh, stmt, NULL);
-	sqlite3_finalize(stmt);
+	sqlite3_stmt * stmt;
+	sqlite3_prepare_v2(dbh->dbh, qry, sizeof(GET_KV_TGT)-1, &stmt, NULL);
+	sqlite3_bind_int(stmt, 1, tgt>=DVT_TARGET && tgt<DVT_CONFIG ? id.tid:id.cid);
 
-	return res;
+#undef GET_KV_TGT
+	return db_string_query(dbh, stmt, NULL, 0);
 }
 
-void arcan_db_failed_launch(arcan_dbh* dbh, int gameid)
+struct arcan_strarr arcan_db_matchkey(struct arcan_dbh* dbh,
+	enum DB_KVTARGET tgt, const char* pattern)
 {
-	sqlite3_stmt* stmt = NULL;
+#define MATCH_KEY_TGT "SELECT tgtid ||':'|| value"\
+	" FROM target_kv WHERE key LIKE ?;"
 
-	const char* insertqry = "INSERT into broken (gameid) VALUES ?;";
-	sqlite3_prepare_v2(dbh->dbh, insertqry, strlen(insertqry), &stmt, NULL);
-	sqlite3_bind_int(stmt, 1, gameid);
+	static const char* const queries[] = {
+		MATCH_KEY_TGT,
+		"SELECT cfgid || ':' || value FROM config_kv WHERE key LIKE ?;"
+	};
 
-	sqlite3_finalize(stmt);
-}
-
-arcan_dbh_res arcan_db_game_siblings(arcan_dbh* dbh,
-                                     const char* title,
-                                     const int gameid)
-{
-	arcan_dbh_res res = {.kind = -1};
-
-	sqlite3_stmt* stmt = NULL;
-	const char* baseqry1 = "SELECT a.title FROM game a, game_relations b "
-		"WHERE b.series = (SELECT series FROM game_relations WHERE "
-		"gameid = ?) AND a.gameid = b.gameid;";
-
-	const char* baseqry2 = "SELECT a.title FROM game a, game_relations b "
-		"WHERE b.series = (SELECT series FROM game_relations WHERE gameid = ("
-		"SELECT gameid FROM game WHERE title=?)) AND a.gameid = b.gameid";
-
-	if (title) {
-		sqlite3_prepare_v2(dbh->dbh, baseqry2, strlen(baseqry2), &stmt, NULL);
-		sqlite3_bind_text(stmt, 1, title, -1, SQLITE_TRANSIENT);
-	}
+	const char* qry = NULL;
+	if (tgt >= DVT_TARGET && tgt < DVT_CONFIG)
+		qry = queries[0];
 	else
-		if (gameid > 0) {
-			sqlite3_prepare_v2(dbh->dbh, baseqry1, strlen(baseqry1), &stmt, NULL);
-			sqlite3_bind_int(stmt, 1, gameid);
-		}
-		else
-			return res;
-
-	res.kind = 0;
-	res = db_string_query(dbh, stmt, NULL);
-	sqlite3_finalize(stmt);
-
-	return res;
-}
-
-static size_t nstrlen(const char* n){
-	return n == NULL ? 0 : strlen(n);
-}
-
-static void extract_gameinfo(sqlite3_stmt* stmt, arcan_db_game* row, int ofs)
-{
-/* fill the game structure */
-	const char* col = sqlite3_column_name(stmt, ofs);
-	if (strcmp(col, "gameid") == 0)
-		row->gameid = sqlite3_column_int(stmt, ofs);
-	else if (strcmp(col, "title") == 0)
-		row->title = _n_strdup((const char*)
-			sqlite3_column_text(stmt, ofs), NULL);
-	else if (strcmp(col, "setname") == 0)
-		row->setname = _n_strdup((const char*)
-			sqlite3_column_text(stmt, ofs), NULL);
-	else if (strcmp(col, "players") == 0)
-		row->n_players = sqlite3_column_int(stmt, ofs);
-	else if (strcmp(col, "buttons") == 0)
-		row->n_buttons = sqlite3_column_int(stmt, ofs);
-	else if (strcmp(col, "ctrlmask") == 0)
-		row->input = sqlite3_column_int(stmt, ofs);
-	else if (strcmp(col, "genre") == 0)
-		row->genre = _n_strdup((const char*)
-			sqlite3_column_text(stmt, ofs), NULL);
-	else if (strcmp(col, "system") == 0)
-		row->system = _n_strdup((const char*)
-			sqlite3_column_text(stmt, ofs), NULL);
-	else if (strcmp(col, "subgenre") == 0)
-		row->subgenre = _n_strdup((const char*)
-			sqlite3_column_text(stmt, ofs), NULL);
-	else if (strcmp(col, "year") == 0)
-		row->year = sqlite3_column_int(stmt, ofs);
-	else if (strcmp(col, "manufacturer") == 0)
-		row->manufacturer = _n_strdup((const char*)
-			sqlite3_column_text(stmt, ofs), NULL);
-	else if (strcmp(col, "targetid") == 0)
-		row->targetid = sqlite3_column_int(stmt, ofs);
-	else if (strcmp(col, "launch_counter") == 0)
-		row->launch_counter = sqlite3_column_int(stmt, ofs);
-	else if (strcmp(col, "target") == 0)
-		row->targetname = _n_strdup((const char*)
-			sqlite3_column_text(stmt, ofs), NULL);
-	else
-		arcan_warning("Warning: arcan_db_games(), "
-			"unexpected column value %s\n", col);
-}
-
-arcan_dbh_res arcan_db_gamebyid(arcan_dbh* dbh, int gameid)
-{
-	const char* baseqry1 = "SELECT a.gameid AS \"gameid\", "
-		"a.title AS \"title\", "
-		"a.setname AS \"setname\", "
-		"a.players AS \"players\", "
-		"a.buttons AS \"buttons\", "
-		"a.ctrlmask AS \"ctrlmask\", "
-		"a.genre AS \"genre\", "
-		"a.subgenre AS \"subgenre\", "
-		"a.system AS \"system\", "
-		"a.year AS \"year\", "
-		"a.manufacturer AS \"manufacturer\", "
-		"a.target AS \"targetid\", "
-		"a.launch_counter AS \"launch_counter\", "
-		"b.name AS \"target\" FROM game a, target b "
-		"WHERE a.gameid=? AND b.targetid=a.target;";
-
-	arcan_dbh_res res = {.kind = -1};
-	sqlite3_stmt* stmt = NULL;
-	sqlite3_prepare_v2(dbh->dbh, baseqry1, strlen(baseqry1), &stmt, NULL);
-	sqlite3_bind_int(stmt, 1, gameid);
-
-	if (sqlite3_step(stmt) == SQLITE_ROW){
-		res.kind = 1;
-		res.count = 1;
-		res.data.gamearr = arcan_alloc_mem(sizeof(arcan_db_game*) * 2,
-			ARCAN_MEM_STRINGBUF, ARCAN_MEM_TEMPORARY, ARCAN_MEMALIGN_NATURAL);
-
-		res.data.gamearr[0] = arcan_alloc_mem(sizeof(arcan_db_game),
-			ARCAN_MEM_STRINGBUF, ARCAN_MEM_TEMPORARY | ARCAN_MEM_BZERO,
-			ARCAN_MEMALIGN_NATURAL);
-
-		int ncols = sqlite3_column_count(stmt);
-		int ofs = 0;
-		do
-			extract_gameinfo(stmt, res.data.gamearr[0], ofs);
-		while(++ofs < ncols);
-
-		res.data.gamearr[1] = NULL;
-	}
-	sqlite3_finalize(stmt);
-
-	return res;
-}
-
-
-/* dynamically build a SQL query that
- * as an afterthought, the limit / offset clauses should've been part of the dbh.
- * the the upper/lower limit (as there might be thousands of entries here) '*/
-arcan_dbh_res arcan_db_games(arcan_dbh* dbh,
-		const int year,
-		const int input,
-		const int n_players,
-		const int n_buttons,
-		const char* title,
-		const char* genre,
-		const char* subgenre,
-		const char* target,
-		const char* system,
-		const char* manufacturer,
-		long long int offset,
-		long long int limit
-	)
-{
-	arcan_dbh_res res = {.kind = -1};
-	int wbufs = sizeof(wbuf) - 2;
-
-	sqlite3_stmt* stmt = NULL;
-	bool patch_strings = title || genre || subgenre ||
-		target || system || manufacturer;
-
-	if (!dbh)
-		return res;
-
-	if ( (nstrlen(title) + nstrlen(genre) + nstrlen(subgenre) +
-		nstrlen(target) + nstrlen(system)) + 1024 > wbufs ){
-		arcan_warning("arcan_db_games() unacceptably long filter"
-			"	arguments specified, ignored.\n");
-			return res;
-	}
-
-/* useful tautologies are useful */
-	const char* baseqry1 = "SELECT a.gameid AS \"gameid\", "
-		"a.title AS \"title\", "
-		"a.setname AS \"setname\", "
-		"a.players AS \"players\", "
-		"a.buttons AS \"buttons\", "
-		"a.ctrlmask AS \"ctrlmask\", "
-		"a.genre AS \"genre\", "
-		"a.subgenre AS \"subgenre\", "
-		"a.system AS \"system\", "
-		"a.year AS \"year\", "
-		"a.manufacturer AS \"manufacturer\", "
-		"a.target AS \"targetid\", "
-		"a.launch_counter AS \"launch_counter\", "
-		"b.name AS \"target\" FROM game a, target b WHERE a.target = b.targetid";
-
-	char* work = wbuf;
-	int nw = snprintf(wbuf, wbufs, "%s", baseqry1);
-	wbufs -= nw;
-	work += nw;
-
-	if (year > 0) {
-		nw = snprintf(work, wbufs, " AND a.year=%i", year);
-		if (-1 == nw)
-			return res;
-
-		wbufs -= nw;
-		work += nw;
-	}
-
-	/* input is implemented as a filter on the result here */
-
-	if (n_players > 0) {
-		nw = snprintf(work, wbufs, " AND a.players=%i", n_players);
-		if (-1 == nw)
-			return res;
-
-		wbufs -= nw;
-		work += nw;
-	}
-
-	if (n_buttons > 0) {
-		nw = snprintf(work, wbufs, " AND a.buttons=%i", n_buttons);
-		if (-1 == nw)
-			return res;
-
-		wbufs -= nw;
-		work += nw;
-	}
-
-	if (title) {
-		nw = strchr(title, '%') ? snprintf(work, wbufs, " AND a.title LIKE ?")
-			: snprintf(work, wbufs, " AND a.title=?");
-		if (-1 == nw)
-			return res;
-
-		wbufs -= nw;
-		work += nw;
-	}
-
-	if (genre) {
-		nw = strchr(genre, '%') ? snprintf(work, wbufs, " AND a.genre LIKE ?")
-			: snprintf(work, wbufs, " AND a.genre=?");
-		if (-1 == nw)
-			return res;
-
-		wbufs -= nw;
-		work += nw;
-	}
-
-	if (subgenre) {
-		nw = strchr(subgenre, '%') ? snprintf(work, wbufs, " AND a.subgenre LIKE ?")
-			: snprintf(work, wbufs, " AND a.subgenre=?");
-		if (-1 == nw)
-			return res;
-
-		wbufs -= nw;
-		work += nw;
-	}
-
-	if (system) {
-		nw = strchr(system, '%') ? snprintf(work, wbufs, " AND a.system LIKE ?")
-			: snprintf(work, wbufs, " AND a.system=?");
-		if (-1 == nw)
-			return res;
-
-		wbufs -= nw;
-		work += nw;
-	}
-
-	if (target) {
-		nw = strchr(target, '%') ? snprintf(work, wbufs, " AND b.name LIKE ?")
-			: snprintf(work, wbufs, " AND b.name=?");
-		if (-1 == nw)
-			return res;
-
-		wbufs -= nw;
-		work += nw;
-	}
-
-	if (manufacturer) {
-		nw = strchr(manufacturer, '%') ? snprintf(work, wbufs,
-			" AND a.manufacturer LIKE ?") :
-			snprintf(work, wbufs, " AND a.manufacturer=?");
-		if (-1 == nw)
-			return res;
-
-		wbufs -= nw;
-		work += nw;
-	}
-
-/* prevent SQLite from returning 0 results */
-	if (limit == 0)
-		limit = -1;
-
-	nw = snprintf(work, wbufs, " LIMIT %lli, %lli", offset, limit);
-	wbufs -= nw;
-	work += nw;
-
-	work[0] = ';';
-	work[1] = 0;
-
-	int code = sqlite3_prepare_v2(dbh->dbh, wbuf, strlen(wbuf), &stmt, NULL);
-	int count = 0, alimit = 8;
-	res.kind = 1;
-	res.data.gamearr = arcan_alloc_mem(sizeof(arcan_db_game*) * 8,
-		ARCAN_MEM_STRINGBUF, ARCAN_MEM_TEMPORARY | ARCAN_MEM_BZERO,
-		ARCAN_MEMALIGN_NATURAL);
-
-	/* as any combination of the above strings are useful,
-	 * we need to employ a trick or two to bind the correct data,
-	 * since the bind_text requres t he statement, we cannot combine
-	 * with the if-chain above */
-	if (patch_strings) {
-		int ofs = 1;
-		if (title)
-			sqlite3_bind_text(stmt, ofs++, title, -1, SQLITE_TRANSIENT);
-		if (genre)
-			sqlite3_bind_text(stmt, ofs++, genre, -1, SQLITE_TRANSIENT);
-		if (subgenre)
-			sqlite3_bind_text(stmt, ofs++, subgenre, -1, SQLITE_TRANSIENT);
-		if (system)
-			sqlite3_bind_text(stmt, ofs++, system, -1, SQLITE_TRANSIENT);
-		if (target)
-			sqlite3_bind_text(stmt, ofs++, target, -1, SQLITE_TRANSIENT);
-		if (manufacturer)
-			sqlite3_bind_text(stmt, ofs++, manufacturer, -1, SQLITE_TRANSIENT);
-	}
-	/* Iterate rows of the result set,
-	 * allocate cells in blocks of 8,
-	 * ctrlinput filter is applied AFTER data from a row has been retrieved */
-	while ((code = sqlite3_step(stmt)) == SQLITE_ROW) {
-		int ncols = sqlite3_column_count(stmt);
-		int ofs = 0;
-
-		arcan_db_game* row = arcan_alloc_mem(sizeof(arcan_db_game),
-			ARCAN_MEM_STRINGBUF, ARCAN_MEM_TEMPORARY | ARCAN_MEM_BZERO,
-			ARCAN_MEMALIGN_NATURAL);
-
-		do
-			extract_gameinfo(stmt, row, ofs);
-		while (++ofs < ncols);
-
-		if (input > 0 && (row->input & input) == 0) {
-			/* continue if result doesn't match mask */
-			freegame(row);
-			arcan_mem_free(row);
-			continue;
-		}
-
-		res.data.gamearr[count++] = row;
-
-		if (count == alimit-1) {
-			arcan_db_game** newarr = arcan_alloc_mem((alimit + REALLOC_STEP) *
-				sizeof(arcan_db_game*), ARCAN_MEM_STRINGBUF, ARCAN_MEM_TEMPORARY,
-				ARCAN_MEMALIGN_NATURAL);
-
-/* grow by REALLOC_STEP */
-			memcpy(newarr, res.data.gamearr, alimit * sizeof(arcan_db_game*));
-			arcan_mem_free(res.data.gamearr);
-			res.data.gamearr = newarr;
-			alimit += REALLOC_STEP;
-		}
-	}
-
-	if (res.data.gamearr != NULL)
-		res.data.gamearr[count] = 0;
-	res.count = count;
-	res.limit = alimit;
-	sqlite3_finalize(stmt);
-
-	return res;
-}
-
-long int arcan_db_launch_counter(arcan_dbh* dbh, const char* title)
-{
-	long rv = -1;
-
-	if (dbh && title && strlen(title) > 0){
-		sqlite3_stmt* stmt = NULL;
-		int nw = snprintf(wbuf, wbufsize, "SELECT launch_counter FROM"
-			"	game WHERE title=?");
-		sqlite3_prepare_v2(dbh->dbh, wbuf, nw, &stmt, NULL);
-		sqlite3_bind_text(stmt, 1, title, -1, SQLITE_TRANSIENT);
-
-		while (sqlite3_step(stmt) == SQLITE_ROW)
-			rv = sqlite3_column_int(stmt, 0);
-
-		sqlite3_finalize(stmt);
-	}
-
-	return rv;
-}
-
-bool arcan_db_launch_counter_increment(arcan_dbh* dbh, int gameid)
-{
-	bool rv = false;
-
-	if (dbh != NULL){
-		sqlite3_stmt* stmt = NULL;
-		int nw = snprintf(wbuf, wbufsize, "UPDATE game SET launch_counter ="
-			"	launch_counter + 1 WHERE gameid=?");
-		sqlite3_prepare_v2(dbh->dbh, wbuf, nw, &stmt, NULL);
-		sqlite3_bind_int(stmt, 1, gameid);
-		rv = sqlite3_step(stmt) == SQLITE_DONE;
-		sqlite3_finalize(stmt);
-	}
-
-	return rv;
-}
-
-bool arcan_db_clear_launch_counter(arcan_dbh* dbh)
-{
-	bool rv = false;
-
-	if (dbh){
-		sqlite3_stmt* stmt = NULL;
-		int nw = snprintf(wbuf, wbufsize, "UPDATE game SET launch_counter = 0;");
-		sqlite3_prepare_v2(dbh->dbh, wbuf, nw, &stmt, NULL);
-		rv = sqlite3_step(stmt) == SQLITE_DONE;
-		sqlite3_finalize(stmt);
-	}
-
-	return rv;
-}
-
-bool arcan_db_kv(arcan_dbh* dbh, const char* key, const char* value)
-{
-	if (!dbh)
-		return false;
-
-/* empty key terminates transaction status */
-	if (!key && dbh->intrans){
-		char* err = NULL;
-		sqlite3_exec(dbh->dbh, "COMMIT;", NULL, NULL, &err);
-		if (err){
-			arcan_warning("arcan_db_kv() -- couldn't "
-				"finalize transaction (%s).\n", err);
-			sqlite3_free(err);
-		}
-		else
-			dbh->intrans = false;
-
-		return true;
-	}
-
-	if (!key || !value)
-		return false;
-
-/* firsrt time, create dbh unique prepared statements */
-	if (!dbh->update_kv){
-		int nw;
-		nw = snprintf(wbuf, wbufsize,
-			"UPDATE appl %s SET value=? WHERE key=?;",	dbh->applname);
-		sqlite3_prepare_v2(dbh->dbh, wbuf, nw, &dbh->update_kv, NULL);
-		nw = snprintf(wbuf, wbufsize, "INSERT INTO appl_%s(key, value) "
-			"VALUES(?, ?);", dbh->applname);
-		sqlite3_prepare_v2(dbh->dbh, wbuf, nw, &dbh->insert_kv, NULL);
-	}
+		qry = queries[1];
 
 	sqlite3_stmt* stmt;
+	sqlite3_prepare_v2(dbh->dbh, qry, sizeof(MATCH_KEY_TGT)-1, &stmt, NULL);
+	sqlite3_bind_text(stmt, 1, pattern, -1, SQLITE_TRANSIENT);
 
-/*
- * usage pattern is that the caller should set false on the last entry
- * to false and the rest to true if there will be a series of KVs to set,
- * because of the synchronous nature of sqlite3 transactions
- */
-	if (!dbh->intrans){
-		char* err = NULL;
-		sqlite3_exec(dbh->dbh, "BEGIN;", NULL, NULL, &err);
-		if (err){
-			arcan_warning("arcan_db_kv() -- couldn't begin transaction (%s).\n", err);
-		}
-		else
-			dbh->intrans = true;
-	}
-
-/* insert or update based on if the value already exists */
-	stmt = dbh->insert_kv;
-	sqlite3_bind_text(stmt, 1, key,   -1, SQLITE_TRANSIENT);
-	sqlite3_bind_text(stmt, 2, value, -1, SQLITE_TRANSIENT);
-
-	int errc;
-	if ( (errc = sqlite3_step(stmt) ) == SQLITE_DONE){
-		sqlite3_reset(stmt);
-		return true;
-	}
-	else{
-		arcan_warning("arcan_db_kv(%s, %s), intrans: %d => %d\n",
-			key, value, dbh->intrans, errc);
-		return false;
-	}
+	return db_string_query(dbh, stmt, NULL, 0);
 }
 
-bool arcan_db_appl_kv(arcan_dbh* dbh, const char* applname,
+char* arcan_db_getvalue(struct arcan_dbh* dbh,
+	enum DB_KVTARGET tgt, int64_t id, const char* key)
+{
+	char* res = NULL;
+/* must match enum */
+	assert(DVT_ENDM == 5);
+
+	static const char* queries[] = {
+		"SELECT val FROM target_kv WHERE key = ? AND tgtid = ? LIMIT 1;",
+		"SELECT val FROM config_kv WHERE key = ? AND cfgid = ? LIMIT 1;"
+	};
+
+	const char* qry = NULL;
+	if (tgt >= DVT_TARGET && tgt < DVT_CONFIG)
+		qry = queries[0];
+	else
+		qry = queries[1];
+
+/* assume they all are the same length */
+	static size_t qry_sz;
+	if (qry_sz == 0)
+		qry_sz = strlen(queries[1]);
+
+	sqlite3_stmt* stmt = NULL;
+
+	if (tgt == DVT_APPL){
+		sqlite3_prepare_v2(dbh->dbh, dbh->akv_get, dbh->akv_get_sz, &stmt, NULL);
+	}
+ 	else {
+		sqlite3_prepare_v2(dbh->dbh, queries[tgt], qry_sz, &stmt, NULL);
+		sqlite3_bind_text(stmt, 1, key, -1, SQLITE_STATIC);
+		sqlite3_bind_int(stmt, 2, id);
+	}
+
+	if (SQLITE_ROW == sqlite3_step(stmt)){
+		const char* row = (const char*) sqlite3_column_text(stmt, 0);
+		if (row)
+			res = strdup(row);
+	}
+
+	sqlite3_finalize(stmt);
+	return res;
+}
+
+void arcan_db_add_kvpair(struct arcan_dbh* dbh,
+	const char* key, const char* val)
+{
+	if (!dbh->transaction)
+		arcan_fatal("arcan_db_add_kvpair() "
+			"called without any open transaction.");
+
+	sqlite3_bind_text(dbh->transaction, 1, key, -1, SQLITE_TRANSIENT);
+	sqlite3_bind_text(dbh->transaction, 2, val, -1, SQLITE_TRANSIENT);
+
+	switch (dbh->ttype){
+	case DVT_APPL:
+	case DVT_ENDM:
+	break;
+
+	case DVT_TARGET:
+	case DVT_TARGET_ENV:
+	case DVT_TARGET_LIBV:
+		sqlite3_bind_int(dbh->transaction, 3, dbh->trid.tid);
+	break;
+
+	case DVT_CONFIG:
+	case DVT_CONFIG_ENV:
+		sqlite3_bind_int(dbh->transaction, 3, dbh->trid.cid);
+	break;
+	}
+
+	sqlite3_step(dbh->transaction);
+}
+
+void arcan_db_end_transaction(struct arcan_dbh* dbh)
+{
+	if (!dbh->transaction)
+		arcan_fatal("arcan_db_end_transaction() "
+			"called without any open transaction.");
+
+	sqlite3_finalize(dbh->transaction);
+	sqlite3_exec(dbh->dbh, "COMMIT;", NULL, NULL, NULL);
+	dbh->transaction = NULL;
+}
+
+bool arcan_db_appl_kv(struct arcan_dbh* dbh, const char* applname,
 	const char* key, const char* value)
 {
 	bool rv = false;
-	int nw;
+
+	if (dbh->transaction)
+		arcan_fatal("arcan_db_appl_kv() called during a pending transaction\n");
 
 	if (!dbh || !key || !value)
 		return rv;
 
-	char* okey = arcan_db_appl_val(dbh, applname, key);
-	sqlite3_stmt* stmt = NULL;
+	const char ddl_insert[] = "INSERT OR REPLACE "
+		"INTO appl_%s(key, val) VALUES(?, ?);";
 
-	if (okey) {
-		nw = snprintf(wbuf, wbufsize,
-			"UPDATE appl_%s SET value=? WHERE key=?;", applname);
-		sqlite3_prepare_v2(dbh->dbh, wbuf, nw, &stmt, NULL);
-		sqlite3_bind_text(stmt, 2, key,   -1, SQLITE_TRANSIENT);
-		sqlite3_bind_text(stmt, 1, value, -1, SQLITE_TRANSIENT);
-		arcan_mem_free(okey);
-	}
-	else {
-		nw = snprintf(wbuf, wbufsize,
-			"INSERT INTO appl_%s(key, value) VALUES(?, ?);", applname);
-		sqlite3_prepare_v2(dbh->dbh, wbuf, nw, &stmt, NULL);
-		sqlite3_bind_text(stmt, 1, key,   -1, SQLITE_TRANSIENT);
-		sqlite3_bind_text(stmt, 2, value, -1, SQLITE_TRANSIENT);
-	}
+	size_t upd_sz = sizeof(ddl_insert) + strlen(applname);
+	char upd_buf[ upd_sz ];
+	ssize_t nw = snprintf(upd_buf, upd_sz, ddl_insert, applname);
+
+	sqlite3_stmt* stmt = NULL;
+	sqlite3_prepare_v2(dbh->dbh, upd_buf, nw, &stmt, NULL);
+	sqlite3_bind_text(stmt, 1, key,   -1, SQLITE_TRANSIENT);
+	sqlite3_bind_text(stmt, 2, value, -1, SQLITE_TRANSIENT);
 
 	rv = sqlite3_step(stmt) == SQLITE_DONE;
-
 	sqlite3_finalize(stmt);
 
 	return rv;
 }
 
-char* arcan_db_appl_val(arcan_dbh* dbh, const char* applname, const char* key)
+char* arcan_db_appl_val(struct arcan_dbh* dbh,
+	const char* applname, const char* key)
 {
-	char* rv;
-
 	if (!dbh || !key)
 		return NULL;
-	sqlite3_stmt* stmt = NULL;
 
-	int nw = snprintf(wbuf, wbufsize,
-		"SELECT value FROM appl_%s WHERE key = ?;", applname);
-	sqlite3_prepare_v2(dbh->dbh, wbuf, nw, &stmt, NULL);
+	const char qry[] = "SELECT val FROM appl_%s WHERE key = ?;";
+
+	size_t wbuf_sz = strlen(applname) + sizeof(qry);
+	char wbuf[ wbuf_sz ];
+	snprintf(wbuf, wbuf_sz, qry, applname);
+
+	sqlite3_stmt* stmt = NULL;
+	sqlite3_prepare_v2(dbh->dbh, wbuf, wbuf_sz, &stmt, NULL);
 	sqlite3_bind_text(stmt, 1, (char*) key, -1, SQLITE_TRANSIENT);
-	if (sqlite3_step(stmt) == SQLITE_ROW)
-		rv = _n_strdup((const char*) sqlite3_column_text(stmt, 0), NULL);
-	else
-		rv = 0;
+
+	char* rv = NULL;
+	int rc = sqlite3_step(stmt);
+
+	if (rc == SQLITE_ROW){
+		const unsigned char* rowt;
+
+		if ( (rowt = sqlite3_column_text(stmt, 0)) != NULL)
+			rv = strdup((const char*) rowt);
+	}
 
 	sqlite3_finalize(stmt);
+
 	return rv;
 }
 
-arcan_dbh_res arcan_db_launch_options(arcan_dbh* dbh, int gameid, bool internal)
-{
-	arcan_dbh_res res = {.kind = 0};
-	res.data.strarr = arcan_alloc_mem(sizeof(char*) * 8,
-		ARCAN_MEM_STRINGBUF,
-		ARCAN_MEM_TEMPORARY | ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL
-	);
-
-	unsigned int count = 0, limit = 8;
-	sqlite3_stmt* stmt = NULL;
-
-	unsigned int targetid = -1;
-	char* romset = NULL, (* targetname) = NULL;
-
-	const char* launchqry1 = "SELECT a.targetid, b.gameid, a.executable,b.setname"
-		"	FROM target a, game b WHERE b.gameid=? AND b.target = a.targetid;";
-	const char* launchqry2 = "SELECT argument FROM target_arguments WHERE"
-		"	target = ? AND (mode = ? OR mode = 0) AND game = ? ORDER BY id ASC;";
-	const char* argcount = "SELECT Count(*) FROM target_arguments "
-		"WHERE (mode = ? OR mode = 0) AND game = ?;";
-
-/* query 1, figure out which program to launch based on the requested game */
-	int code = sqlite3_prepare_v2(dbh->dbh,
-		launchqry1, strlen(launchqry1), &stmt, NULL);
-
-	sqlite3_bind_int(stmt, 1, gameid);
-	if ((code = sqlite3_step(stmt)) == SQLITE_ROW) {
-		targetid = sqlite3_column_int(stmt, 0);
-		gameid = sqlite3_column_int(stmt, 1);
-		res.data.strarr[count++] = _n_strdup((const char*)
-			sqlite3_column_text(stmt, 2), "");
-		romset = _n_strdup((const char*) sqlite3_column_text(stmt, 3), NULL);
-	}
-	sqlite3_finalize(stmt);
-
-	if (targetid != -1)
-		if (!arcan_db_targetdata(dbh, targetid, &targetname, NULL))
-			targetname = strdup("");
-
-/* query 2, check if there are any game- specific
- * arguments that override the target defaults */
-	int arggameid = 0;
-
-	code = sqlite3_prepare_v2(dbh->dbh, argcount, strlen(argcount), &stmt, NULL);
-	sqlite3_bind_int(stmt, 1, internal ? 1 : 2);
-	sqlite3_bind_int(stmt, 2, gameid);
-	if (sqlite3_step(stmt) == SQLITE_ROW)
-		if (sqlite3_column_int(stmt, 0) > 0)
-			arggameid = gameid;
-	sqlite3_finalize(stmt);
-
-/* query 3, build a list of command-line arguments
- * for the specific game / target combination */
-	code = sqlite3_prepare_v2(dbh->dbh, launchqry2,
-		strlen(launchqry2), &stmt, NULL);
-	sqlite3_bind_int(stmt, 1, targetid);
-	sqlite3_bind_int(stmt, 2, internal ? 1 : 2);
-	sqlite3_bind_int(stmt, 3, arggameid);
-
-/* since we don't know how many are in the result set
- * (without running another query), allocate slots in batches of 8,
- * free and fail if realloc isn't possible */
-	while (sqlite3_step(stmt) == SQLITE_ROW) {
-		const char* arg = (const char*) sqlite3_column_text(stmt, 0);
-		if (strcmp((char*)arg, "[romset]") == 0) {
-			res.data.strarr[count++] = _n_strdup(romset, "");
-			arcan_mem_free(romset);
-			romset = NULL;
-		}
-		else if ( strcmp(arg, "[romsetfull]") == 0){
-			snprintf(wbuf, wbufsize, "/games/%s/%s", targetname, romset);
-			res.data.strarr[count++] =
-				arcan_expand_resource(wbuf, RESOURCE_APPL_SHARED);
-
-			arcan_mem_free(romset);
-			romset = NULL;
-		}
-		else if ( (strlen(arg) >= 10) && strncmp(arg, "[gamepath]", 10) == 0){
-			snprintf(wbuf, wbufsize, "/games%s", arg + 10);
-			res.data.strarr[count++] =
-				arcan_expand_resource(wbuf, RESOURCE_APPL_SHARED);
-		}
-		else if ( (strlen(arg) >= 11) && strncmp(arg, "[applpath]", 11) == 0){
-			snprintf(wbuf, wbufsize, "/%s", arg + 11);
-			res.data.strarr[count++] = arcan_expand_resource(wbuf, RESOURCE_APPL);
-		}
-		else
-			res.data.strarr[count++] = _n_strdup(arg, NULL);
-
-/* need to always have two spaces left, one for NULL terminator,
- * one for (possible) romset */
-		if (count == limit-1) {
-			char** newarr = arcan_alloc_mem((limit + REALLOC_STEP) * sizeof(char*),
-				ARCAN_MEM_STRINGBUF, ARCAN_MEM_TEMPORARY, ARCAN_MEMALIGN_NATURAL);
-
-/* grow by REALLOC_STEP */
-			memcpy(newarr, res.data.strarr, limit * sizeof(char*));
-			arcan_mem_free(res.data.strarr);
-			res.data.strarr = newarr;
-			limit += REALLOC_STEP;
-		}
-	}
-
-	res.data.strarr[count] = NULL;
-	res.count = count;
-	res.limit = limit;
-
-/* just used to construct [romsetfull] */
-	arcan_mem_free(targetname);
-	return res;
-}
-
-bool arcan_db_free_res(arcan_dbh* dbh, arcan_dbh_res res)
-{
-	if (!dbh || res.kind == -1)
-		return false;
-
-	if (res.kind == 0) {
-		char** cptr = (char**) res.data.strarr;
-		while (cptr && *cptr)
-			arcan_mem_free(*cptr++);
-
-		arcan_mem_free(res.data.strarr);
-	}
-	else
-		if (res.kind == 1) {
-			arcan_db_game** cptr = res.data.gamearr;
-			while (cptr && *cptr)
-				freegame(*cptr++);
-
-		}
-
-	res.kind = -1;
-	return true;
-}
-
-static void setup_ddl(arcan_dbh* dbh)
+static void setup_ddl(struct arcan_dbh* dbh)
 {
 	create_appl_group(dbh, "arcan");
-	arcan_db_appl_kv(dbh, "arcan", "dbversion", "2");
+	arcan_db_appl_kv(dbh, "arcan", "dbversion", "3");
+
+	for (size_t i = 0; i < sizeof(ddls)/sizeof(ddls[0]); i++)
+		db_void_query(dbh, ddls[i], false);
 }
 
 /* to detect old databases and upgrade if possible */
-static bool dbh_integrity_check(arcan_dbh* dbh){
+static bool dbh_integrity_check(struct arcan_dbh* dbh){
 	int tablecount = db_num_query(dbh, "SELECT Count(*) "
 		"FROM sqlite_master WHERE type='table';", NULL);
 
@@ -1010,6 +858,7 @@ static bool dbh_integrity_check(arcan_dbh* dbh){
 	switch (vnum){
 		case 0:
 		case 1:
+		case 2:
 			arcan_warning("Using old / deprecated database format,please rebuild.\n");
 			return false;
 	}
@@ -1017,19 +866,21 @@ static bool dbh_integrity_check(arcan_dbh* dbh){
 	return true;
 }
 
-void arcan_db_close(arcan_dbh* ctx)
+void arcan_db_close(struct arcan_dbh** ctx)
 {
 	if (!ctx)
 		return;
 
-	sqlite3_close(ctx->dbh);
-	arcan_mem_free(ctx);
+	sqlite3_close((*ctx)->dbh);
+	arcan_mem_free((*ctx)->akv_update);
+	arcan_mem_free((*ctx)->akv_get);
+	arcan_mem_free(*ctx);
+	*ctx = NULL;
 }
 
-arcan_dbh* arcan_db_open(const char* fname, const char* applname)
+struct arcan_dbh* arcan_db_open(const char* fname, const char* applname)
 {
 	sqlite3* dbh;
-	int rc = 0;
 
 	if (!fname)
 		return NULL;
@@ -1047,12 +898,11 @@ arcan_dbh* arcan_db_open(const char* fname, const char* applname)
 	if (!applname)
 		applname = "_default";
 
-	if ((rc = sqlite3_open_v2(fname, &dbh, SQLITE_OPEN_READWRITE, NULL))
-		== SQLITE_OK){
-			arcan_dbh* res = arcan_alloc_mem(
-				sizeof(arcan_dbh), ARCAN_MEM_EXTSTRUCT,
-				ARCAN_MEM_SENSITIVE | ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE
-			);
+	if (sqlite3_open_v2(fname, &dbh, SQLITE_OPEN_READWRITE, NULL) == SQLITE_OK){
+		struct arcan_dbh* res = arcan_alloc_mem(
+			sizeof(struct arcan_dbh), ARCAN_MEM_EXTSTRUCT,
+			ARCAN_MEM_SENSITIVE | ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE
+		);
 
 		res->dbh = dbh;
 		assert(dbh);
@@ -1064,18 +914,11 @@ arcan_dbh* arcan_db_open(const char* fname, const char* applname)
 		}
 
 		res->applname = strdup(applname);
-		const char* sqqry = "SELECT Count(*) FROM ";
-		snprintf(wbuf, wbufsize, "%s%s", sqqry, "target");
-		int tc = db_num_query(res, wbuf, NULL);
-
-		snprintf(wbuf, wbufsize, "%s%s", sqqry, "game");
-		int gc = db_num_query(res, wbuf, NULL);
 		create_appl_group(res, res->applname);
 
-		db_void_query(res, "PRAGMA synchronous=OFF;");
+		db_void_query(res, "PRAGMA foreign_keys=ON;", false);
+		db_void_query(res, "PRAGMA synchronous=OFF;", false);
 
-		arcan_warning("Notice: arcan_db_open(), # targets: "
-			"%i, # games: %i\n", tc, gc);
 		return res;
 	}
 	else

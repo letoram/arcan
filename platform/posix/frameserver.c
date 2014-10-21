@@ -35,7 +35,7 @@
 #include <arcan_event.h>
 #include <arcan_video.h>
 #include <arcan_audio.h>
-#include <arcan_frameserver_backend.h>
+#include <arcan_frameserver.h>
 
 #define INCR(X, C) ( ( (X) = ( (X) + 1) % (C)) )
 
@@ -567,9 +567,9 @@ static bool memcmp_nodep(const void* s1, const void* s2, size_t n)
 	return !(diffv != 0);
 }
 
-static enum arcan_ffunc_rv socketverify(enum arcan_ffunc_cmd cmd, uint8_t* buf,
-	uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned mode,
-	vfunc_state state)
+static enum arcan_ffunc_rv socketverify(enum arcan_ffunc_cmd cmd,
+	av_pixel* buf, size_t s_buf, uint16_t width, uint16_t height,
+	unsigned mode, vfunc_state state)
 {
 	arcan_frameserver* tgt = state.ptr;
 	char ch = '\n';
@@ -676,8 +676,8 @@ send_key:
 	return FFUNC_RV_NOFRAME;
 }
 
-static int8_t socketpoll(enum arcan_ffunc_cmd cmd, uint8_t* buf,
-	uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned mode,
+static int8_t socketpoll(enum arcan_ffunc_cmd cmd, av_pixel* buf,
+	size_t s_buf, uint16_t width, uint16_t height, unsigned mode,
 	vfunc_state state)
 {
 	arcan_frameserver* tgt = state.ptr;
@@ -723,7 +723,7 @@ static int8_t socketpoll(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 				tgt->sockaddr = NULL;
 			}
 
-			return socketverify(cmd, buf, s_buf, width, height, bpp, mode, state);
+			return socketverify(cmd, buf, s_buf, width, height, mode, state);
 		break;
 
 /* socket is closed in frameserver_destroy */
@@ -913,25 +913,20 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 				argv[0], setup.args.builtin.mode,
 				setup.args.builtin.resource, strerror(errno));
 			exit(1);
-		} else {
+		}
+		else {
 /* hijack lib */
 			char shmsize_s[32];
 			snprintf(shmsize_s, 32, "%zu", ctx->shm.shmsize);
 
-			char** envv = setup.args.external.envv;
+			char** envv = setup.args.external.envv->data;
+			while(*envv)
+				putenv(*(envv++));
 
-			while (envv && *envv){
-				if (strcmp(envv[0], "ARCAN_SHMKEY") == 0)
-					setenv("ARCAN_SHMKEY", ctx->shm.key, 1);
-				else if (strcmp(envv[0], "ARCAN_SHMSIZE") == 0)
-					setenv("ARCAN_SHMSIZE", shmsize_s, 1);
-				else
-					setenv(envv[0], envv[1], 1);
+			setenv("ARCAN_SHMKEY", ctx->shm.key, 1);
+			setenv("ARCAN_SHMSIZE", shmsize_s, 1);
 
-				envv += 2;
-			}
-
-			execv(setup.args.external.fname, setup.args.external.argv);
+			execv(setup.args.external.fname, setup.args.external.argv->data);
 			exit(1);
 		}
 	}

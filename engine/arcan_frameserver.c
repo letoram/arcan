@@ -44,7 +44,7 @@
 #include "arcan_videoint.h"
 #include "arcan_audio.h"
 #include "arcan_audioint.h"
-#include "arcan_frameserver_backend.h"
+#include "arcan_frameserver.h"
 #include "arcan_event.h"
 
 static uint64_t cookie;
@@ -268,8 +268,8 @@ enum arcan_ffunc_rv arcan_frameserver_dummyframe(
 }
 
 enum arcan_ffunc_rv arcan_frameserver_emptyframe(
-	enum arcan_ffunc_cmd cmd, uint8_t* buf,
-	uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp,
+	enum arcan_ffunc_cmd cmd, av_pixel* buf,
+	size_t s_buf, uint16_t width, uint16_t height,
 	unsigned mode, vfunc_state state)
 {
 	arcan_frameserver* tgt = state.ptr;
@@ -325,8 +325,8 @@ static void check_audb(arcan_frameserver* tgt, struct arcan_shmif_page* shmpage)
 }
 
 enum arcan_ffunc_rv arcan_frameserver_videoframe_direct(
-	enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf,
-	uint16_t width, uint16_t height, uint8_t bpp,
+	enum arcan_ffunc_cmd cmd, av_pixel* buf, size_t s_buf,
+	uint16_t width, uint16_t height,
 	unsigned int mode, vfunc_state state)
 {
 	int8_t rv = 0;
@@ -384,8 +384,8 @@ enum arcan_ffunc_rv arcan_frameserver_videoframe_direct(
 }
 
 enum arcan_ffunc_rv arcan_frameserver_avfeedframe(
-	enum arcan_ffunc_cmd cmd, uint8_t* buf,
-	uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp,
+	enum arcan_ffunc_cmd cmd, av_pixel* buf,
+	size_t s_buf, uint16_t width, uint16_t height,
 	unsigned mode, vfunc_state state)
 {
 	assert(state.ptr);
