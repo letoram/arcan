@@ -7481,6 +7481,35 @@ static inline void fprintf_float(FILE* dst,
 		fprintf(dst, "%s%d.%d%s", pre, (int)intp, abs(fractp), post);
 }
 
+static void addquoted (lua_State *L, luaL_Buffer *b, int arg) {
+  size_t l;
+  const char *s = luaL_checklstring(L, arg, &l);
+  luaL_addchar(b, '"');
+  while (l--) {
+    switch (*s) {
+      case '"': case '\\': case '\n': {
+        luaL_addchar(b, '\\');
+        luaL_addchar(b, *s);
+        break;
+      }
+      case '\r': {
+        luaL_addlstring(b, "\\r", 2);
+        break;
+      }
+      case '\0': {
+        luaL_addlstring(b, "\\000", 4);
+        break;
+      }
+      default: {
+        luaL_addchar(b, *s);
+        break;
+      }
+    }
+    s++;
+  }
+  luaL_addchar(b, '"');
+}
+
 static inline char* lut_txmode(int txmode)
 {
 	switch (txmode){
@@ -7560,14 +7589,46 @@ static inline const char* fsrvtos(enum ARCAN_SEGID ink)
 	return "";
 }
 
+/*
+ * just derived from lstrlib.c, their string.format(%q)
+ */
+static void fput_luasafe_str(FILE* dst, const char* str)
+{
+	fputc('"', dst);
+	while(*str){
+		switch (*str){
+		case '"':
+		case '\\':
+		case '\n':
+			fputc('\\', dst);
+			fputc(*str, dst);
+		break;
+
+		case '\r':
+			fputs("\\r", dst);
+		break;
+
+		case '\0':
+			fputs("\\000", dst);
+		break;
+
+		default:
+			fputc(*str, dst);
+		}
+		str++;
+	}
+
+	fputc('"', dst);
+}
+
 static inline void dump_vstate(FILE* dst, arcan_vobject* vobj)
 {
-	if (vobj->feed.state.ptr &&
-		vobj->feed.state.tag == ARCAN_TAG_FRAMESERV){
-		arcan_frameserver* fsrv = vobj->feed.state.ptr;
-		fprintf(dst,
+	if (!vobj->feed.state.ptr || vobj->feed.state.tag != ARCAN_TAG_FRAMESERV)
+		return;
+
+	arcan_frameserver* fsrv = vobj->feed.state.ptr;
+fprintf(dst,
 "vobj.fsrv = {\
-\tsource = [[%s]],\
 \tlastpts = %lld,\
 \tsocksig = %d,\
 \tpbo = %d,\
@@ -7577,9 +7638,7 @@ static inline void dump_vstate(FILE* dst, arcan_vobject* vobj)
 \tinevq_sz = %d,\
 \tinevq_used = %d,\
 \toutevq_sz = %d,\
-\toutevq_used = %d,\
-\tkind = [[%s]]};\n",
-	fsrv->source ? fsrv->source : "NULL",
+\toutevq_used = %d,",
 	(long long) fsrv->lastpts,
 	(int) fsrv->flags.socksig,
 	(int) fsrv->flags.pbo,
@@ -7589,15 +7648,23 @@ static inline void dump_vstate(FILE* dst, arcan_vobject* vobj)
 	(int) fsrv->inqueue.eventbuf_sz,
 	qused(&fsrv->inqueue),
 	(int) fsrv->outqueue.eventbuf_sz,
-	qused(&fsrv->outqueue),
-	fsrvtos(fsrv->segid));
-	}
+	qused(&fsrv->outqueue));
+
+	fprintf(dst, "\tsource = ");
+	fput_luasafe_str(dst, fsrv->source ? fsrv->source : "NULL");
+	fprintf(dst, ",\n\tkind = ");
+	fput_luasafe_str(dst, fsrvtos(fsrv->segid));
+	fprintf(dst, "};\n");
 }
 
 static inline void dump_vobject(FILE* dst, arcan_vobject* src)
 {
 	char* mask = maskstr(src->mask);
 
+/*
+ * note that most strings á glstore_*, scale* etc. are safe
+ * in the sense that they are not user-supplied in any way.
+ */
 	fprintf(dst,
 "vobj = {\n\
 \torigw = %d,\n\
@@ -7634,7 +7701,6 @@ static inline void dump_vobject(FILE* dst, arcan_vobject* src)
 \tmask = [[%s]],\n\
 \tframeset = {},\n\
 \tkind = [[%s]],\n\
-\ttracetag = [[%s]],\n\
 ",
 (int) src->origw,
 (int) src->origh,
@@ -7669,8 +7735,11 @@ lut_clipmode(src->flags.cliptoparent),
 lut_filtermode(src->vstore->filtermode),
 vobj_flags(src),
 mask,
-lut_kind(src),
-src->tracetag ? src->tracetag : "no tag");
+lut_kind(src));
+
+	fprintf(dst, "tracetag = ");
+	fput_luasafe_str(dst, src->tracetag ? src->tracetag : "no tag");
+	fputs(",\n", dst);
 
 	fprintf_float(dst, "origoofs = {", src->origo_ofs.x, ", ");
 	fprintf_float(dst, "", src->origo_ofs.y, ", ");
@@ -7729,7 +7798,6 @@ local inf = math.huge;\n\
 local vobj = {};\n\
 local props = {};\n\
 local restbl = {\n\
-\tmessage = [[%s]],\n\
 \tdisplay = {\n\
 \t\twidth = %d,\n\
 \t\theight = %d,\n\
@@ -7743,11 +7811,14 @@ local restbl = {\n\
 \t};\n\
 \tvcontexts = {};\
 };\n\
-", tag ? tag : "",
-	disp->width, disp->height, disp->conservative ? 1 : 0,
+", disp->width, disp->height, disp->conservative ? 1 : 0,
 	(int)disp->msasamples, (long long int)disp->c_ticks,
 	(int)disp->default_vitemlim,
 	(int)disp->imageproc, (int)disp->scalemode, (int)disp->filtermode);
+
+	fprintf(dst, "restbl.message = ");
+	fput_luasafe_str(dst, tag ? tag : "");
+	fprintf(dst, ";\n");
 
 	int cctx = vcontext_ind;
 	while (cctx >= 0){
