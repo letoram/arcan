@@ -175,9 +175,9 @@ end
 # markers, extract the lua symbol, c symbol etc. and 
 # push to the function pointer in cfun
 #
-def cscan(cfun)
+def cscan(cfun, cfile)
 	in_grp = false
-	File.open("../engine/arcan_lua.c").each_line{|line|
+	File.open(cfile).each_line{|line|
 	if (not in_grp and line =~ /\#define\sEXT_MAPTBL_(\w+)/)
 		in_grp = $1
 	elsif (in_grp)
@@ -315,7 +315,10 @@ rescue => er
 end
 
 if (ARGV[0] == "scan")
-	cscan(:add_function)
+	cf = ENV["ARCAN_SOURCE_DIR"] ? "#{ENV["ARCAN_SOURCE_DIR"]}/engine/arcan_lua.c" :
+		"../src/engine/arcan_lua.c"
+
+	cscan(:add_function, cf)
 
 elsif (ARGV[0] == "lookup")
 	DocReader.Open("#{ARGV[1]}.lua")		
@@ -339,7 +342,10 @@ elsif (ARGV[0] == "mangen")
 	inf.each_line{|line| outf << line}
 
 # populate $grptbl with the contents of the lua.c file	
-	cscan(:scangroups)
+	cf = ENV["ARCAN_SOURCE_DIR"] ? "#{ENV["ARCAN_SOURCE_DIR"]}/engine/arcan_lua.c" :
+		"../src/engine/arcan_lua.c"
+
+	cscan(:scangroups, cf)
 
 # add the functions of each group to a section in the
 # overview file
