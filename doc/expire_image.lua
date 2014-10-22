@@ -5,8 +5,7 @@
 -- be deleted but when (often in conjunction with how the transformation
 -- chain is currently running) without tracking time in other means. This
 -- function allows you to specify how many ticks the image has left to live.
--- @note: for negative or 0 timetolive, this function act as delete_image
--- @note: subsequent calls to this function for the same vid will reset
+-- @note: for n : 0 <= n < 1, n will be forced to one tick.
 -- the timer to the new value.
 -- @group: image
 -- @cfunction: arcan_lua_setlife
