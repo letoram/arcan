@@ -36,7 +36,7 @@ set (PLATFORM_SOURCES
 	${PLATFORM_PATH}/glob.c
 	${PLATFORM_PATH}/map_resource.c
 	${PLATFORM_PATH}/resource_io.c
-	${PLATFORM_PATH}/ilaunch.c
+	${PLATFORM_PATH}/launch.c
 	${PLATFORM_PATH}/strip_traverse.c
 	${PLATFORM_PATH}/namespace.c
 	${PLATFORM_PATH}/paths.c
