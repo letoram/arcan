@@ -10,10 +10,6 @@ add_definitions(-DPLATFORM_HEADER=\"${PLATFORM_PATH}/../platform.h\" -std=gnu11
 	-D_POSIX_C_SOURCE -D_GNU_SOURCE)
 
 message(" scanning for Linux specific libraries. ")
-# note; investigate switching to libusb- backend to
-# get rid of the udev dependency
-FIND_PACKAGE(UDev REQUIRED)
-LIST(APPEND MAIN_LIBRARIES ${UDEV_LIBRARIES})
 
 set (PLATFORM_SOURCES
 	${PLATFORM_PATH}/mem.c
@@ -33,9 +29,22 @@ set (PLATFORM_SOURCES
 	${PLATFORM_PATH}/fdpassing.c
 	${PLATFORM_PATH}/namespace.c
 	${PLATFORM_PATH}/launch.c
-	${CMAKE_EXTERNAL_SRCDIR}/hidapi/hid_linux.c
-	${CMAKE_EXTERNAL_SRCDIR}/hidapi/hidapi.h
 )
+
+#
+# Either investigate more OS native approaches to get LED
+# controller access, or find a hid- api that doesn't
+# require UDev
+#
+if (ENABLE_LED)
+	FIND_PACKAGE(UDev REQUIRED)
+
+	LIST(APPEND MAIN_LIBRARIES ${UDEV_LIBRARIES})
+	LIST(APPEND PLATFORM_SOURCES
+		${CMAKE_EXTERNAL_SRCDIR}/hidapi/hid_linux.c
+		${CMAKE_EXTERNAL_SRCDIR}/hidapi/hidapi.h
+	)
+endif()
 
 set (FSRV_PLATFORM_SOURCES
 	${PLATFORM_PATH}/warning.c

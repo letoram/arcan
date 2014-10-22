@@ -3384,53 +3384,6 @@ static int camtag(lua_State* ctx)
 	return 1;
 }
 
-#ifdef ARCAN_HMD
-static int camtaghmd(lua_State* ctx)
-{
-	LUA_TRACE("camtaghmd_model");
-
-	arcan_vobj_id lid = luaL_checkvid(ctx, 1, NULL);
-	arcan_vobj_id rid = luaL_checkvid(ctx, 2, NULL);
-
-	float nv = luaL_checknumber(ctx, 3);
-	float fv  = luaL_checknumber(ctx, 4);
-	float ipd = luaL_checknumber(ctx, 5);
-
-	bool front = luaL_optnumber(ctx, 6, true);
-	bool back  = luaL_optnumber(ctx, 7, false);
-
-	float projection[16] = {0};
-	float etsd = 0.0640;
-	float fov = 90.0;
-
-	float w = arcan_video_display.canvasw;
-	float h = arcan_video_display.canvash;
-	float ar = 2.0 * w / h;
-
-	build_projection_matrix(projection, nv, fv, ar, fov);
-
-/*
- * retrieve values from HMD,
- * hscreen (m), vscreen (m), vscreencenter(x, y)
- * eyetoscreendist (m), ipd, hres, vres
- */
-
-	bool rv = arcan_3d_camtag(lid, projection, front, back) == ARCAN_OK &&
-		arcan_3d_camtag(rid, projection, front, back) == ARCAN_OK;
-
-	lua_pushboolean(ctx, rv == ARCAN_OK);
-
-	lua_pushnumber(ctx, 1.0);
-	lua_pushnumber(ctx, 0.22);
-	lua_pushnumber(ctx, 0.24);
-	lua_pushnumber(ctx, 0);
-	lua_pushnumber(ctx, ipd);
-	lua_pushnumber(ctx, etsd);
-
-	return 7;
-}
-#endif
-
 static int getimageprop(lua_State* ctx)
 {
 	LUA_TRACE("image_surface_properties");
@@ -7137,9 +7090,6 @@ static const luaL_Reg threedfuns[] = {
 {"forward3d_model",  forwardmodel },
 {"strafe3d_model",   strafemodel  },
 {"camtag_model",     camtag       },
-#ifdef ARCAN_HMD
-{"camtaghmd_model",  camtaghmd    },
-#endif
 {"build_3dplane",    buildplane   },
 {"build_3dbox",      buildbox     },
 {"build_pointcloud", pointcloud   },
