@@ -133,7 +133,7 @@ int arcan_target_launch_external(const char* fname,
 	}
 	else {
 /* GNU extension warning */
-		execvpe(fname, argv->data, envv->data);
+		execve(fname, argv->data, envv->data);
 		_exit(1);
 	}
 }
