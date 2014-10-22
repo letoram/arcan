@@ -1,3 +1,0 @@
-[submodule "external/openal-soft"]
-	path = external/openal-soft
-	url = git://repo.or.cz/openal-soft.git

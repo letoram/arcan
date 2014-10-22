@@ -1,31 +1,10 @@
-# Arcan-fe, scriptable front-end engine
-#
-# Arcan-fe is the legal property of its developers, please refer
-# to the COPYRIGHT file distributed with this source distribution.
-#
-# This program is free software; you can redistribute it and/or
-# modify it under the terms of the GNU General Public License
-# as published by the Free Software Foundation; either version 2
-# of the License, or (at your option) any later version.
-
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,USA.
-#
-# --- Project metadata
 PROJECT( arcan )
 include(ExternalProject)
 include(CheckIncludeFiles)
+cmake_minimum_required(VERSION 2.8.0 FATAL_ERROR)
 
 set(CMAKE_EXTERNAL_SRCDIR ${CMAKE_CURRENT_SOURCE_DIR}/external)
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake)
-
-cmake_minimum_required(VERSION 2.8.0 FATAL_ERROR)
 
 # static base version, manually mantained
 set(MAJOR_VERSION 0 )
@@ -81,8 +60,10 @@ set(SHARED_PERMISSIONS_DIR OWNER_WRITE OWNER_READ GROUP_WRITE
 
 if (WIN32)
 	set(VPLATFORM_STR "[ sdl ]")
+	set(VIDEO_PLATFORM "sdl")
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 	set(VPLATFORM_STR "[ sdl ]")
+	set(VIDEO_PLATFORM "sdl")
 else()
 	set(VPLATFORM_STR "[ x11 | x11-headless | sdl | egl-gles | egl-dri ]")
 endif()
@@ -103,8 +84,8 @@ endif()
 option(ENABLE_ASAN "Build with Address-Sanitizer, (gcc >= 4.8, clang >= 3.1)" OFF)
 option(ENABLE_LUAJIT "Use the luajit-5.1 VM (if found)" ON)
 option(ENABLE_SIMD "Build with SIMD vector instruction set support" ON)
-option(ENABLE_LED "Build with LED controller support in core" ON)
-option(ENABLE_HMD "Build with Head-Mounted Display support in core" OFF)
+option(ENABLE_LED "Build with LED controller support in core" OFF)
+option(ENABLE_LTO "Build with Link-Time Optimization enabled" OFF)
 if (NOT WIN32)
 	option(MUSL_LIBC "Use the MUSL libc implementation (incomplete)" OFF)
 	option(ENABLE_LWA "Build a lightweight arcan (arcan_lwa) with nested platform" OFF)
@@ -129,6 +110,7 @@ message("Cmake options:")
 message("   -DCMAKE_BUILD_TYPE=[Debug|Release|Profile|DebugTrace]")
 message("   -DENABLE_ASAN=[Off|On] : Build with Address Sanitizer enabled")
 message("   -DENABLE_SIMD=[On|Off] : Enable SIMD optimized instructions")
+message("   -DENABLE_LTO=[Off|On] : Build with Link-Time Optimizations")
 message("   -DENABLE_SIMD_ALIGNED=[Off|On] : |--> SIMD support assumes 16-byte alignment")
 message("")
 message("audio/video/input support:")
@@ -136,7 +118,6 @@ message("   -DVIDEO_PLATFORM=${VPLATFORM_STR} : Set default video platform")
 message("")
 message("optimization / core features:")
 message("   -DENABLE_LED=[On|Off] : Build with LED controller support in core")
-message("   -DENABLE_HMD=[On|Off] : Build with Head-Mounted Display support in core")
 message("   -DENABLE_LWA=[Off|On] : Build lightweight additional arcan client")
 message("   -DENABLE_LUAJIT=[On|Off] : link with luajit51 (if found)")
 message("   -DMUSL_LIBC=[Off|On] build and link with MUSL Libc (incomplete)")
@@ -236,6 +217,10 @@ if (ENABLE_ASAN)
 		set(CMAKE_C_FLAGS "-fsanitize=address ${CMAKE_C_FLAGS}")
 	endif()
 endif (ENABLE_ASAN)
+
+if (ENABLE_LTO)
+	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -flto")
+endif()
 
 # --- Step 1, Dependencies / find package flags
 # paths / locations
@@ -409,10 +394,6 @@ set(AUDIO_PLATFORM "openal")
 FIND_PACKAGE( OpenAL REQUIRED )
 
 message("\n---- Stage 1: library dependencies and configuration ----")
-# modified version of the 51 package that checks for the lua51_jit option
-FIND_PACKAGE ( BZip2 REQUIRED )
-FIND_PACKAGE ( ZLIB REQUIRED )
-
 if (NOT SQLITE_AMALGAMATE)
 FIND_PACKAGE ( SQLITE3 REQUIRED )
 endif(NOT SQLITE_AMALGAMATE)
@@ -448,9 +429,6 @@ LIST (APPEND
 	${OPENCTM_LIBRARY}
 	${FREETYPE_LIBRARY}
 	${LUA_LIBRARIES}
-	${BZIP2_LIBRARIES}
-	${ZLIB_LIBRARY}
-	${ASSERT_LIBRARY}
 	${SQLITE3_LIBRARIES}
 	${PNG_LIBRARIES}
 )
@@ -493,10 +471,6 @@ set (
  engine/arcan_3dbase.h
  engine/arcan_video.h
  engine/arcan_audio.h
- engine/arcan_led.c
- engine/arcan_hmd.c
- engine/arcan_hmd.h
- engine/arcan_led.h
  engine/arcan_general.h
  engine/arcan_db.h
  engine/arcan_shdrmgmt.h
@@ -560,15 +534,6 @@ if (ENABLE_LED)
 	)
 	add_definitions(-DARCAN_LED)
 endif()
-
-if (ENABLE_HMD)
-	message("--> Adding HMD device support.")
-	list(APPEND ${SOURCES}
-		arcan_hmd.c
-		arcan_hmd.h
-	)
-	add_definitions(-DARCAN_HMD)
-endif(ENABLE_HMD)
 
 # Enable / Disable individual frameserver features
 if (ENABLE_LIBRETRO)
@@ -707,9 +672,11 @@ if (${ENABLE_REMOTING})
 endif()
 
 if (${ENABLE_VIDENC})
-	FIND_PACKAGE ( FFMPEG REQUIRED)
+	FIND_PACKAGE (FFMPEG REQUIRED)
 
 	message("--> Adding video encoding (ffmpeg) support.")
+	FIND_PACKAGE(BZip2 REQUIRED)
+
 	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}encode ")
 	set(FSRV_ENCODE_LIBRARIES
 		${FFMPEG_LIBRARIES}

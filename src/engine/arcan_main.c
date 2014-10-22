@@ -64,10 +64,6 @@
 #include "arcan_led.h"
 #endif
 
-#ifdef ARCAN_HMD
-#include "arcan_hmd.h"
-#endif
-
 #include "arcan_db.h"
 #include "arcan_videoint.h"
 
@@ -489,10 +485,6 @@ applswitch:
 	arcan_led_init();
 #endif
 
-#ifdef ARCAN_HMD
-	arcan_hmd_setup();
-#endif
-
 /*
  * libretro has the quirk of requiring a scratch "system" directory,
  * until I/O syscall intercepting through fuse has been acquired,
@@ -613,9 +605,6 @@ applswitch:
 	while (!done) {
 /* pollfeed can actually populate event-loops, assuming we don't exceed a
  * compile- time threshold */
-#ifdef ARCAN_HMD
-		arcan_hmd_update();
-#endif
 		arcan_video_pollfeed();
 		arcan_audio_refresh();
 
@@ -657,9 +646,6 @@ applswitch:
 	arcan_lua_callvoidfun(settings.lua, "shutdown", false);
 #ifdef ARCAN_LED
 	arcan_led_shutdown();
-#endif
-#ifdef ARCAN_HMD
-	arcan_hmd_shutdown();
 #endif
 	arcan_video_shutdown();
 	return exit_code;
