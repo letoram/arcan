@@ -1836,9 +1836,9 @@ static int setlife(lua_State* ctx)
 	int ttl = luaL_checkint(ctx, 2);
 
 	if (ttl <= 0)
-			return deleteimage(ctx);
-	else
-		arcan_video_setlife(id, ttl);
+		ttl = 1;
+
+	arcan_video_setlife(id, ttl);
 
 	return 0;
 }
