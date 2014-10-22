@@ -106,9 +106,9 @@ local function listview_destroy(self)
 	resize_image(self.border, 1, 1, self.animspeed, INTERP_EXPOUT);
 	resize_image(self.window, 1, 1, self.animspeed, INTERP_EXPOUT);
 
-	expire_image(self.anchor, self.animspeed);
 	blend_image(self.window, 0.0, self.animspeed);
 	blend_image(self.border, 0.0, self.animspeed);
+	expire_image(self.anchor, self.animspeed);
 
 	if (valid_vid(self.cursorvid)) then
 		blend_image(self.cursorvid, 0.0, self.animspeed);
@@ -180,8 +180,8 @@ local function listview_move_cursor(self, step, relative, mouse_src)
 -- cursor behavior changed (r431 and beyond),
 -- now it leaves a quickly fading trail rather than moving around ..
 	if (valid_vid(self.cursorvid)) then
-		expire_image(self.cursorvid, self.animspeed);
 		blend_image(self.cursorvid, 0.0, self.animspeed);
+		expire_image(self.cursorvid, self.animspeed);
 		self.cursorvid = nil;
 	end
 
@@ -245,10 +245,8 @@ function listview_show(self, order)
 
 	image_inherit_order(self.border, true);
 	image_inherit_order(self.window, true);
-	image_inherit_order(self.cursor, true);
 
 	order_image(self.window, 1);
-	order_image(self.cursor, 1);
 
 	show_image(self.anchor);
 	blend_image(self.window, self.dialog_window.a);
@@ -256,7 +254,6 @@ function listview_show(self, order)
 
 	move_image(self.window, self.borderw * 0.5, self.borderw * 0.5);
 
--- "bounce" expand-contract amination
 	self:move_cursor(0, true, false);
 	self:push_to_front(order);
 end

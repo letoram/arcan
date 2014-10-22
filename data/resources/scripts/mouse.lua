@@ -235,9 +235,10 @@ function mouse_setup_native(resimg, opts)
 	local tmp = null_surface(1, 1);
 	local props = image_surface_properties(resimg);
 
+	image_sharestorage(resimg, tmp);
 	cursor_setstorage(resimg);
 	delete_image(resimg);
-	mstate.cursor_img = tmp;
+	mstate.cursor_vid = tmp;
 	mstate.native = true;
 
 	mstate.x = math.floor(VRESW * 0.5);
