@@ -1,11 +1,10 @@
 --
--- This app is a minimal window manager that
--- is primarily to show off the adopt feature
--- and act as a short example to work from.
+-- This app is a minimal window manager
 --
-
--- button tracking for mouse buttons
-mouse_states = {false, false, false, false, false};
+-- It demonstrates native mouse cursor,
+-- keybindings, switching active windows,
+-- and non-authoritative connections
+--
 
 -- used for global keybindings
 dispatchtbl = {};
@@ -35,41 +34,6 @@ accepted_types["game"] = true;
 accepted_types["application"] = true;
 accepted_types["browser"] = true;
 accepted_types["encoder"] = true;
-
---
--- inigo quilez (iq, 2013 @shadertoy.com, CC-BY-NC 3.0)
--- simple animated background shader to make the default less boring
---
-bgshader = [[
-uniform vec2 display;
-uniform int timestamp;
-
-void main()
-{
-	float time = float(timestamp) / 125.0;
-
-	vec2 q = 0.6 * (2.0 * gl_FragCoord.xy - display.xy) /
-		min(display.x, display.y);
-
-	float a = atan(q.x, q.y);
-	float r = length(q);
-	float s = 0.5 + 0.5 * sin(3.0 * a + time);
-	float g = sin(1.57 + 3.0 * a + time);
-	float d = 0.15 + 0.3 * sqrt(s) + 0.15 * g * g;
-	float h = r / d;
-	float f = 1.0 - smoothstep(0.95, 1.0, h);
-
-	h *=  1.0 - 0.5 * (1.0 - h) * smoothstep(0.95 + 0.05 * h,
-		1.0, sin(3.0 * a + time));
-
-	vec3 bcol = vec3(0.9 + 0.1 * q.y, 1.0, 0.9 - 0.1 * q.y);
-	bcol *= 1.0 - 0.5 * r;
-	h = 0.1 + h;
-	vec3 col = mix(bcol, 1.2 * vec3(0.6 * h, 0.2 + 0.5 * h, 0.0), f);
-
-	gl_FragColor = vec4(col.r, col.g, col.b, 1.0);
-}
-]];
 
 --
 -- used to indicate that the associated process has died
@@ -129,20 +93,21 @@ function miniwm()
 	symtable = system_load("scripts/symtable.lua")();
 
 -- ugly green box as mouse cursor
-	cursor = color_surface(8, 8, 0, 255, 0);
-	mouse_setup(cursor, 255, 1, true);
-	mouse_hide();
+	cursor = fill_surface(16, 16, 0, 255, 0, 16, 16);
+	mouse_setup_native(cursor, {});
 
--- create the animated background
-	background = null_surface(VRESW, VRESH, 0, 0, 0);
+-- pick a background image if one is handy, otherwise just an ugly single color
+	if (resource("background.png")) then
+		background = load_image("background.png");
+		resize_image(background, VRESW, VRESH);
+	end
+
+	if (not valid_vid(background)) then
+		background = color_surface(VRESW, VRESH, 32, 64, 32);
+	end
+
 	show_image(background);
 	image_tracetag(background, "background");
-	local shid = build_shader(nil, bgshader, "background");
-	shader_uniform(shid, "display", "ff", PERSIST, VRESW, VRESH);
-	image_shader(background, shid);
-	if (freeze_image) then
-		freeze_image(background);
-	end
 
 -- setup input handler for META + KEY WM specific actions
 	dispatchtbl["TAB"] = {cycle_active, "Cycle Active Program"};
@@ -219,18 +184,15 @@ function miniwm_input(iotbl)
 
 	if (active_popup) then
 		if (iotbl.kind == "digital") then
-
 -- button clicks also updates the state table for mouse input
-		if (iotbl.source == "mouse" and
-			iotbl.subid <= #mouse_states and iotbl.subid > 0) then
-				mouse_states[iotbl.subid] = iotbl.active;
-			mouse_input(0, 0, mouse_states);
-		end
+			if (iotbl.source == "mouse") then
+				mouse_button_input(iotbl.subid, iotbl.active);
+			end
 
-		popup_keyinput(symtable[iotbl.keysym], iotbl.active);
+			popup_keyinput(symtable[iotbl.keysym], iotbl.active);
 		else
-			mouse_input(iotbl.subid == 0 and iotbl.samples[2] or 0,
-				iotbl.subid == 1 and iotbl.samples[2] or 0, mouse_states);
+			mouse_motion(iotbl.subid == 0 and iotbl.samples[2] or 0,
+				iotbl.subid == 1 and iotbl.samples[2] or 0);
 		end
 
 	elseif (active_window) then
@@ -345,16 +307,34 @@ function default_cb(source, status)
 	end
 end
 
+function popup_config(targetname)
+	local cfgs = target_configurations(targetname);
+	print("popup ", targetname, #cfgs);
+
+	local lptr = {};
+	for i,v in ipairs(cfgs) do
+		lptr[v] = function()
+			register_window(
+				launch_target(targetname, v, LAUNCH_INTERNAL, default_cb)
+			);
+		end
+	end
+	set_popup(cfgs, lptr, {});
+end
+
 function global_popup()
 	local list = {};
 	local fptr = {};
 	local fmts = {};
 
-	for i=1,#windows do
-		table.insert(list, windows[i].name);
-		fptr[windows[i].name] = function()
-			activate_window(windows[i]);
-		end;
+	table.insert(list, "List Targets");
+	fptr["List Targets"] = function()
+		local lst = list_targets();
+		local lstptr = {};
+		for i,v in ipairs(lst) do
+			lstptr[v] = function() popup_config(lst[i]); end
+		end
+		set_popup(lst, lstptr, {});
 	end
 
 	table.insert(list, "Dump State");
@@ -366,6 +346,13 @@ function global_popup()
 
 	table.insert(list, "Quit");
 	fptr["Quit"] = shutdown;
+
+	for i=1,#windows do
+		table.insert(list, windows[i].name);
+		fptr[windows[i].name] = function()
+			activate_window(windows[i]);
+		end;
+	end
 
 	set_popup(list, fptr, fmts);
 end
@@ -393,9 +380,6 @@ function set_popup(list, funptr, fmts)
 
 -- reposition mouse cursor and show
 	mouse_addlistener(active_popup.mhandler, {"click", "rclick", "motion"});
-	mouse_state().x = props.x;
-	mouse_state().y = props.y;
-	mouse_input(0, 0, mouse_states);
 	mouse_show();
 end
 
