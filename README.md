@@ -2,13 +2,13 @@ Arcan
 =====
 
 Arcan is a powerful development framework for creating virtually anything between
-user interfaces for specialized embedded applications and games all the way to
- full-blown desktop environments.
+user interfaces for specialized embedded applications all the way to
+ full-blown standalone desktop environments.
 
 At its heart lies a robust and portable multimedia engine, with a well-tested
 and well-documented interface, programmable in Lua. At every step of the way,
 the underlying development emphasizes security, performance and debuggability
-guidede by a principle of least surprise in terms of API design.
+guided by a principle of least surprise in terms of API design.
 
 Among the more uncommon features we find:
 
@@ -25,8 +25,8 @@ Among the more uncommon features we find:
    re-uses most of the same codebase and API, but uses arcan for input
    and output.
 
- * Built-in monitoring and crash-dump analysis. The engine can periodically
-   serialize vital internal state to a Lua script ("crash dump") or to another
+ * Built-in monitoring and crash-dump analysis. The engine can serialize vital 
+   internal state to a Lua script ("crash dump") or to another
    version of itself periodically ("monitoring") to allow external filters and
    tools to be written quickly in order to track down bugs or suspicious
    activity.
@@ -39,35 +39,42 @@ Among the more uncommon features we find:
 
  * Fine-grained sharing -- Advanced tasks that are notably difficult in some
    environments, e.g. recording / streaming controlled subsets of audio and
-   video data sources (including 'desktop sharing')
+   video data sources (including 'desktop sharing') requires little more than
+   a handful of lines of code to get going.
 
 The primary development platforms are FreeBSD and Linux, but releases are
 actively tested on both Windows and Mac OS X. While it works under various
 display and input subsystems e.g. SDL, X etc. a primary goal is for the
-framework applications to run natively.
+framework applications to run with as few layers of ''abstraction'' in the
+way as possible.
 
 Getting Started
 =====
-The rest of this readme is directed towards developers, as an end- user,
+The rest of this readme is directed towards developers. As an end- user,
 you would probably do best to look/wait/encourage the development of-
-applications that uses this project as its backend. For developers,
-the first step is, of course, getting the engine running (see building, below).
+applications that uses this project as a backend, or at the very least,
+wait until it is available as a package in your favorite distribution.
+For developers, the first step is, of course, getting the engine 
+running (see building, below).
 
 After that is done, there is a set of challenges and exercises in the wiki
 to help you get a feel for the API, navigating documentation and so on.
 
-Building
+Compiling
 =====
 There are a lot of build options for fine-grained control over your arcan
 build. In this section we will just provide the bare essentials for a build
 on linux, BSD or OSX (windows can cheat with using the prebuilt installer
-binaries). For starters, the easiest approach is to do the following:
+binaries) and you can check out the relevant sections in the wiki for more
+detailed documentation. For starters, the easiest approach is to do the following:
 
      git clone https://github.com/letoram/arcan.git
      cd arcan
      mkdir build
      cd build
-     cmake -DCMAKE_BUILD_TYPE="Debug" -DENABLE_LWA=OFF -DVIDEO_PLATFORM=sdl -DENABLE_NET=OFF -DENABLE_VIDDEC=OFF -DENABLE_VIDENC=OFF -DENABLE_VIDENCVNC=OFF -DENABLE_REMOTING=OFF ../src
+     cmake -DCMAKE_BUILD_TYPE="Debug" -DENABLE_LWA=OFF 
+         -DVIDEO_PLATFORM=sdl -DENABLE_NET=OFF -DENABLE_VIDDEC=OFF 
+         -DENABLE_VIDENC=OFF -DENABLE_VIDENCVNC=OFF -DENABLE_REMOTING=OFF ../src
      make -j 12
 
 The required dependencies for this build is cmake for compilation, and then
@@ -80,9 +87,9 @@ You can then test the build with:
      ./arcan -p ../../data/resources/ ../../data/welcome
 
 Which tells us to use shared resources from the ../../data/resources directory,
-and launch an applcation that resides as ../../data/appl/welcome.
+and launch an application that resides as ../../data/appl/welcome.
 
-and the interactive tests in ../../test/interactive
+Other quick and dirty applications to test are those in ../../test/interactive.
 
 Database
 =====
@@ -108,7 +115,8 @@ An arcan application should now be able to:
 
 or
 
-        vid = launch_target("example_app", "more_args", LAUNCH_INTERNAL, callback_function);
+        vid = launch_target("example_app", 
+            "more_args", LAUNCH_INTERNAL, callback_function);
 
 The first example would have the engine minimize and release as much
 resources as possible (while still being able to resume at a later point),
