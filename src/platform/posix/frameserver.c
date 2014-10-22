@@ -887,11 +887,16 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 		setenv("ARCAN_ARG", setup.args.builtin.resource, 1);
 
 /*
- * frameservers that are semi-trusted currently get an
- * environment variable to help search for appl-relative resources
+ * Semi-trusteed frameservers are allowed
+ * some namespace mapping access.
  */
 		setenv( "ARCAN_APPLPATH", arcan_expand_resource("", RESOURCE_APPL), 1);
-
+		setenv( "ARCAN_APPLTEMPPATH",
+			arcan_expand_resource("", RESOURCE_APPL_TEMP), 1);
+		setenv( "ARCAN_STATEPATH",
+			arcan_expand_resource("", RESOURCE_APPL_STATE), 1);
+		setenv( "ARCAN_RESOURCEPATH",
+			arcan_expand_resource("", RESOURCE_APPL_SHARED), 1);
 /*
  * we need to mask this signal as when debugging parent process,
  * GDB pushes SIGINT to children, killing them and changing

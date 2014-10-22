@@ -233,6 +233,8 @@ end
 
 function mouse_setup_native(resimg, opts)
 	local tmp = null_surface(1, 1);
+	local props = image_surface_properties(resimg);
+
 	cursor_setstorage(resimg);
 	delete_image(resimg);
 	mstate.cursor_img = tmp;
@@ -242,6 +244,8 @@ function mouse_setup_native(resimg, opts)
 	mstate.y = math.floor(VRESH * 0.5);
 	mstate.pickdepth = 1;
 	mouse_pickfun = cached_pick;
+
+	resize_cursor(props.width, props.height);
 
 	mouse_cursorupd(0, 0);
 end
@@ -382,6 +386,28 @@ local function lmbhandler(hists, press)
 	end
 end
 
+--
+-- we kept mouse_input that supported both motion and
+-- button update at once for backwards compatibility.
+--
+function mouse_button_input(ind, active)
+	if (ind < 1 or ind > 3) then
+		return;
+	end
+
+	local hists = mouse_pickfun(mstate.x, mstate.y, mstate.pickdepth, 1);
+
+	if (ind == 1 and active ~= mstate.btns[1]) then
+		lmbhandler(hists, mstate.btns[1]);
+	end
+
+	if (ind == 3 and active ~= mstate.btns[3]) then
+		rmbhandler(hists, mstate.btns[3]);
+		end
+
+	mstate.btns[ind] = active;
+end
+
 function mouse_input(x, y, state)
 	if (x == nil or y == nil) then
 		print(debug.traceback());
@@ -442,28 +468,30 @@ function mouse_input(x, y, state)
 		end
 	end
 
+	if (mstate.drag) then
+		mouse_drag(x, y);
+	end
+
+	if (mstate.predrag) then
+			mstate.predrag.count = mstate.predrag.count -
+				(math.abs(x) + math.abs(y));
+
+		if (mstate.predrag.count <= 0) then
+			mstate.drag = mstate.predrag;
+			mstate.predrag = nil;
+		end
+	end
+
+	if (state == nil) then
+		return;
+	end
+
 -- change in left mouse-button state?
 	if (state[1] ~= mstate.btns[1]) then
 		lmbhandler(hists, state[1]);
 
 	elseif (state[3] ~= mstate.btns[3]) then
 		rmbhandler(hists, state[3]);
-	else
--- otherwise we have motion, if we havn't exceeded predrag threshold,
--- start with that
-		if (mstate.predrag) then
-				mstate.predrag.count = mstate.predrag.count -
-					(math.abs(x) + math.abs(y));
-
-			if (mstate.predrag.count <= 0) then
-				mstate.drag = mstate.predrag;
-				mstate.predrag = nil;
-			end
-		end
-
-		if (mstate.drag) then
-			mouse_drag(x, y);
-		end
 	end
 
 -- remember the button states for next time
@@ -471,6 +499,8 @@ function mouse_input(x, y, state)
 	mstate.btns[2] = state[2];
 	mstate.btns[3] = state[3];
 end
+
+mouse_motion = mouse_input;
 
 --
 -- triggers callbacks in tbl when desired events are triggered.
