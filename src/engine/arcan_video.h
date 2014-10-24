@@ -176,6 +176,20 @@ enum rendertarget_mode {
 };
 
 /*
+ * When linking coordinate systems with a parent, we can specify
+ * anchor point here which cuts down on the amount of dynamic
+ * recalculations needed for common UI operations.
+ */
+enum parent_anchor {
+	ANCHORP_UL = 0,
+	ANCHORP_UR,
+	ANCHORP_LL,
+	ANCHORP_LR,
+	ANCHORP_C,
+	ANCHORP_ENDM
+};
+
+/*
  * Each VOBJect can have additional data associated with it.
  */
 enum arcan_vobj_tags {
@@ -646,7 +660,7 @@ arcan_errc arcan_video_resampleobject(arcan_vobj_id id,
 
 /* Object hierarchy related functions */
 arcan_errc arcan_video_linkobjs(arcan_vobj_id src, arcan_vobj_id parent,
-	enum arcan_transform_mask mask);
+	enum arcan_transform_mask mask, enum parent_anchor);
 arcan_vobj_id arcan_video_findparent(arcan_vobj_id id);
 arcan_vobj_id arcan_video_findchild(arcan_vobj_id parentid, unsigned ofs);
 arcan_errc arcan_video_changefilter(arcan_vobj_id id,
