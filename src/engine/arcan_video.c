@@ -1441,7 +1441,7 @@ arcan_errc arcan_video_transformmask(arcan_vobj_id id,
 }
 
 arcan_errc arcan_video_linkobjs(arcan_vobj_id srcid, arcan_vobj_id parentid,
-	enum arcan_transform_mask mask)
+	enum arcan_transform_mask mask, enum parent_anchor anchorp)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* src = arcan_video_getobject(srcid);
@@ -1501,6 +1501,7 @@ arcan_errc arcan_video_linkobjs(arcan_vobj_id srcid, arcan_vobj_id parentid,
 		swipe_chain(src->transform, offsetof(surface_transform, rotate),
 			sizeof(struct transf_rotate));
 
+		src->p_anchor = anchorp;
 		src->transfc = 0;
 		src->mask = mask;
 		FLAG_DIRTY();
@@ -4090,8 +4091,8 @@ bool arcan_video_visible(arcan_vobj_id id)
 
 /* take sprops, apply them to the coordinates in vobj with proper
  * masking (or force to ignore mask), store the results in dprops */
-static void apply(arcan_vobject* vobj, surface_properties* dprops, float lerp,
-	surface_properties* sprops, bool force)
+static void apply(arcan_vobject* vobj, surface_properties* dprops,
+	surface_properties* sprops, float lerp, bool force)
 {
 	*dprops = vobj->current;
 
@@ -4180,10 +4181,30 @@ void arcan_resolve_vidprop(arcan_vobject* vobj, float lerp,
 	else if (vobj->parent && vobj->parent != &current_context->world){
 		surface_properties dprop = empty_surface();
 		arcan_resolve_vidprop(vobj->parent, lerp, &dprop);
-		apply(vobj, props, lerp, &dprop, false);
+		apply(vobj, props, &dprop, lerp, false);
+		switch(vobj->p_anchor){
+		case ANCHORP_UR:
+			props->position.x += vobj->parent->origw * vobj->parent->current.scale.x;
+		break;
+		case ANCHORP_LR:
+			props->position.y += vobj->parent->origh * vobj->parent->current.scale.y;
+			props->position.x += vobj->parent->origw * vobj->parent->current.scale.x;
+		break;
+		case ANCHORP_LL:
+			props->position.y += vobj->parent->origh * vobj->parent->current.scale.y;
+		break;
+		case ANCHORP_C:
+			props->position.y += (vobj->parent->origh *
+				vobj->parent->current.scale.y) / 2.0;
+			props->position.x += (vobj->parent->origw *
+				vobj->parent->current.scale.x) / 2.0;
+		case ANCHORP_UL:
+		default:
+		break;
+		}
 	}
 	else
-		apply(vobj, props, lerp, &current_context->world.current, true);
+		apply(vobj, props, &current_context->world.current, lerp, true);
 
 	arcan_vobject* current = vobj;
 	bool can_cache = true;

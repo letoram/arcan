@@ -1,11 +1,14 @@
 -- link_image
 -- @short: Bind the state-space of one video object to that of another.
--- @inargs: src, newparent
+-- @inargs: src, newparent, *anchor*
 -- @longdescr: Full video objects (not instances and other restricted types)
 -- can have their properties be dependent of the state of another. This function
 -- associates *src* with *newparent*, which by default means that opacity, position
 -- orientation becomes relative. The exact properties can be tuned with the _mask class
--- of functions.
+-- of functions. If anchor is specified to any of the values:
+-- ANCHOR_UR, ANCHOR_LL, ANCHOR_LR, ANCHOR_C
+-- the position relative to a parent will be based on a different
+-- (non rotated) anchor of the parent (default is upper-left corner, UL).
 -- @group: image
 -- @cfunction: arcan_lua_linkimage
 function main()

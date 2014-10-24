@@ -245,6 +245,7 @@ typedef struct arcan_vobject {
 
 /* management mappings */
 	struct arcan_vobject* parent;
+	enum parent_anchor p_anchor;
 	struct arcan_vobject** children;
 	unsigned childslots;
 

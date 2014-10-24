@@ -3180,11 +3180,15 @@ static int linkimage(lua_State* ctx)
 	LUA_TRACE("link_image");
 	arcan_vobj_id sid = luaL_checkvid(ctx, 1, NULL);
 	arcan_vobj_id did = luaL_checkvid(ctx, 2, NULL);
+	int ap = luaL_optnumber(ctx, 3, ANCHORP_UL);
+
+	if (ap > ANCHORP_ENDM)
+		arcan_fatal("link_image() -- invalid anchor point specified (%d)\n", ap);
 
 	enum arcan_transform_mask smask = arcan_video_getmask(sid);
 	smask |= MASK_LIVING;
 
-	arcan_errc rv = arcan_video_linkobjs(sid, did, smask);
+	arcan_errc rv = arcan_video_linkobjs(sid, did, smask, ap);
 	lua_pushboolean(ctx, rv == ARCAN_OK);
 
 	return 1;
@@ -7221,6 +7225,11 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"BLEND_ADD", BLEND_ADD},
 {"BLEND_MULTIPLY", BLEND_MULTIPLY},
 {"BLEND_NORMAL", BLEND_NORMAL},
+{"ANCHOR_UL", ANCHORP_UL},
+{"ANCHOR_UR", ANCHORP_UR},
+{"ANCHOR_LL", ANCHORP_LL},
+{"ANCHOR_LR", ANCHORP_LR},
+{"ANCHOR_C", ANCHORP_C},
 {"FRAMESERVER_LOOP", 0},
 {"FRAMESERVER_NOLOOP", 1},
 {"TARGET_SYNCHRONOUS", TARGET_FLAG_SYNCHRONOUS},
