@@ -975,9 +975,10 @@ static int resettransform(lua_State* ctx)
 {
 	LUA_TRACE("reset_image_transform");
 	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
-	arcan_video_zaptransform(id);
-
-	return 0;
+	float num = 0;
+	arcan_video_zaptransform(id, &num);
+	lua_pushnumber(ctx, num);
+	return 1;
 }
 
 static int instanttransform(lua_State* ctx)

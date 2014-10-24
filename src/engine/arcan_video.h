@@ -770,7 +770,7 @@ arcan_errc arcan_video_copytransform(arcan_vobj_id sid, arcan_vobj_id did);
 arcan_errc arcan_video_copyprops(arcan_vobj_id sid, arcan_vobj_id did);
 arcan_errc arcan_video_shareglstore(arcan_vobj_id sid, arcan_vobj_id did);
 arcan_errc arcan_video_transformcycle(arcan_vobj_id, bool);
-arcan_errc arcan_video_zaptransform(arcan_vobj_id id);
+arcan_errc arcan_video_zaptransform(arcan_vobj_id id, float*);
 
 void arcan_video_cursorpos(int newx, int newy, bool absolute);
 void arcan_video_cursorsize(size_t w, size_t h);

@@ -1,12 +1,16 @@
 -- reset_image_transform
 -- @short: Drop all ongoing transformations.
 -- @inargs: vid
+-- @outargs: tnum
 -- @longdescr: At times there may be queued events that should be
 -- cancelled out due to unforeseen changes, this is especially typical
 -- when transformations are initated as part as some input event handler,
 -- like pushing a button to move a cursor indicating a selected item. To
 -- prevent these from stacking up, reset_image_transformation can first
 -- be called to make sure that the transformation queue is empty.
+-- Returns the number of dropped transactions, and fractional part
+-- represents the completion rate relative to the longest transformation
+-- in the first slot.
 -- @note: this will not revert the object back to a previous state,
 -- but rather stop at whatever part of the chain was currently being processed.
 -- @group: image

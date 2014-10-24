@@ -2891,7 +2891,7 @@ arcan_errc arcan_video_setlife(arcan_vobj_id id, unsigned lifetime)
 	return rv;
 }
 
-arcan_errc arcan_video_zaptransform(arcan_vobj_id id)
+arcan_errc arcan_video_zaptransform(arcan_vobj_id id, float* dropped)
 {
 	arcan_vobject* vobj = arcan_video_getobject(id);
 	if (!vobj)
@@ -2899,11 +2899,32 @@ arcan_errc arcan_video_zaptransform(arcan_vobj_id id)
 
 	surface_transform* current = vobj->transform;
 
+	float count = 0;
+	float ct = arcan_video_display.c_ticks;
+
+	if (!current){
+		float max = current->move.endt;
+		if (current->scale.endt > max)
+			max = current->scale.endt;
+		if (current->rotate.endt > max)
+			max = current->rotate.endt;
+		if (current->blend.endt > max)
+			max = current->blend.endt;
+
+		max /= ct;
+		count += max;
+	}
+
 	while (current) {
 		surface_transform* next = current->next;
+
 		arcan_mem_free(current);
 		current = next;
+		count++;
 	}
+
+	if (dropped)
+		*dropped = count;
 
 	vobj->transform = NULL;
 	vobj->transfc = 0;
@@ -3032,28 +3053,26 @@ arcan_errc arcan_video_copytransform(arcan_vobj_id sid, arcan_vobj_id did)
 	src = arcan_video_getobject(sid);
 	dst = arcan_video_getobject(did);
 
+	if (!src || !dst || src == dst)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+
 /* remove what's happening in destination, move
  * pointers from source to dest and done. */
-	if (src && dst && src != dst){
+	memcpy(&dst->current, &src->current, sizeof(surface_properties));
 
-		memcpy(&dst->current, &src->current, sizeof(surface_properties));
+	arcan_video_zaptransform(did, NULL);
+	dst->transform = dup_chain(src->transform);
+	update_zv(dst, src->order);
 
-		arcan_video_zaptransform(did);
-		dst->transform = dup_chain(src->transform);
-		update_zv(dst, src->order);
-
-		invalidate_cache(dst);
+	invalidate_cache(dst);
 
 /* in order to NOT break resizefeed etc. this copy actually
  * requires a modification of the transformation
  * chain, as scale is relative origw? */
-		dst->origw = src->origw;
-		dst->origh = src->origh;
+	dst->origw = src->origw;
+	dst->origh = src->origh;
 
-		rv = ARCAN_OK;
-	}
-
-	return rv;
+	return ARCAN_OK;
 }
 
 arcan_errc arcan_video_transfertransform(arcan_vobj_id sid, arcan_vobj_id did)
@@ -3062,7 +3081,7 @@ arcan_errc arcan_video_transfertransform(arcan_vobj_id sid, arcan_vobj_id did)
 
 	if (rv == ARCAN_OK){
 		arcan_vobject* src = arcan_video_getobject(sid);
-		arcan_video_zaptransform(sid);
+		arcan_video_zaptransform(sid, NULL);
 		src->transform = NULL;
 	}
 
@@ -3286,7 +3305,7 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 	current_context->nalive--;
 
 /* time to drop all associated resources */
-	arcan_video_zaptransform(id);
+	arcan_video_zaptransform(id, NULL);
 	arcan_mem_free(vobj->txcos);
 
 /* full- object specific clean-up */
