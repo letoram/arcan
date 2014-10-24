@@ -31,6 +31,10 @@
 
 #define FLAG_DIRTY() (arcan_video_display.dirty++);
 
+#define FL_SET(obj_ptr, fl) ((obj_ptr)->flags |= fl)
+#define FL_CLEAR(obj_ptr, fl) ((obj_ptr)->flags &= ~fl)
+#define FL_TEST(obj_ptr, fl) (((obj_ptr)->flags & fl) > 0)
+
 struct arcan_vobject_litem;
 struct arcan_vobject;
 
@@ -77,6 +81,17 @@ struct rendertarget {
  * which affects the 3d pipe. This is defaulted to BADID until
  * a vobj is explicitly camtaged */
 	arcan_vobj_id camtag;
+};
+
+enum vobj_flags {
+	FL_INUSE  = 1,
+	FL_CLONE  = 2,
+	FL_NASYNC = 4,
+	FL_TCYCLE = 8,
+	FL_ROTOFS = 16,
+	FL_ORDOFS = 32,
+	FL_MIPMAP = 64,
+	FL_PRSIST = 128
 };
 
 struct transf_move{
@@ -165,23 +180,25 @@ struct storage_info_t {
  * Overly bloated and thus a nasty cache influence,
  * when optimization rounds come as part of 1.0 effort
  * this should be trimmed down to 64-byte modulo and
- * profiled extensively for cache behavior (flags => bitmask,
- * re-order based on access patterns, quat/matrix- transformations
+ * profiled extensively for cache behavior,
+ * re-order based on access patterns, full quat/matrix- transforms
  * should be moved to 3d objects, refcounts only for debug etc.
  * There's a ton of possible optimizations here but only after
  * the featureset is frozen and GL has been refactored to its
  * respective platform* level.
  */
 typedef struct arcan_vobject {
+	enum vobj_flags flags;
+
+	struct arcan_vobject* current_frame;
+	uint16_t origw, origh;
+
 /*
  * image-storage / reference,
  * current_frame is set to default_frame, but could well reference
  * another object (frameset)
  */
-	struct arcan_vobject* current_frame;
-	uint16_t origw, origh;
-
-	struct arcan_vobject** frameset;
+struct arcan_vobject** frameset;
 	struct {
 		unsigned short capacity;        /* only allowed to grow                   */
 		signed short mode;              /* cycling, > 0 per tick, < 0 per frame   */
@@ -203,25 +220,6 @@ typedef struct arcan_vobject {
 	float* txcos;
 	enum arcan_blendfunc blendmode;
 
-	struct {
-		bool in_use;         /* must be set for any operation other than allocate */
-		bool clone;          /* limited features, inherits from another obj       */
-		char cliptoparent;   /* only draw to the parent object surface area       */
-		bool asynchdisable;  /* don't run any asynchronous loading operations     */
-		bool cycletransform; /* when a transform is finished, attach it to the end*/
-		bool origoofs;       /* use world-space coordinate as center for rotation */
-		bool orderofs;       /* ofset is relative parent                          */
-		bool mipmap;         /* is the object in a mipmap- enabled state?         */
-#ifdef _DEBUG
-		bool frozen;         /* tag for debugging */
-#endif
-/* with this flag set, the object will be maintained in every "higher" context
- * position, and only deleted if pop:ed off without existing in a lower layer.
- * They can't be rendertargets, nor be instanced or linked (anything that would
- * allow for dangling references) primary use is for frameserver connections */
-		bool persist;
-	} flags;
-
 /* position */
 	signed int order;
 	surface_properties current;
@@ -230,6 +228,7 @@ typedef struct arcan_vobject {
 	surface_transform* transform;
 	int transfc;
 	enum arcan_transform_mask mask;
+	enum arcan_clipmode clip;
 
 /* transform caching,
  * the invalidated flag will be active as long as there are running
@@ -246,11 +245,16 @@ typedef struct arcan_vobject {
 /* management mappings */
 	struct arcan_vobject* parent;
 	enum parent_anchor p_anchor;
+
 	struct arcan_vobject** children;
 	unsigned childslots;
 
 	struct rendertarget* owner;
 	arcan_vobj_id cellid;
+
+#ifdef _DEBUG
+	bool frozen;
+#endif
 
 /* for integrity checks, a destructive operation on a
  * !0 reference count is a terminal state */
