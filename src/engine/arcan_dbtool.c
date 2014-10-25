@@ -68,8 +68,8 @@ printf("usage: arcan_db dbfile command args\n\n"
 	"  dump_exec      \ttargetname configname\n"
 	"Accepted keys are restricted to the set [a-Z0-9_]\n\n"
 	"alternative (scripted) usage: arcan_db dbfile -\n"
- 	"above commands are supplied using STDIN and linefeed as separator\n"
-	"empty line terminates execution.\n"
+ 	"above commands are supplied using STDIN, tab as arg separator, linefeed \n"
+	"as command submit. Close stdin to terminate execution.\n"
 	);
 }
 
@@ -333,7 +333,6 @@ static int dump_target(struct arcan_dbh* dbh, int argc, char** argv)
 	return EXIT_SUCCESS;
 }
 
-
 static int dump_config(struct arcan_dbh* dst, int argc, char** argv)
 {
 	if (argc != 2){
@@ -507,6 +506,35 @@ struct {
 	}
 };
 
+static char* grow(char* inp, size_t* outsz)
+{
+	*outsz += 64;
+	char* res = realloc(inp, *outsz);
+	if (!res)
+		*outsz -= 64;
+	return res;
+}
+
+static inline void process_line(char* in, struct arcan_dbh* dbh)
+{
+	char* argv[64] = {0};
+	int argc = 0;
+
+	char* work = strtok(in, "\t");
+	while (work && argc < 63){
+    argv[argc++] = work;
+    work = strtok(NULL, "\t");
+  }
+
+	for (size_t i=0; i < sizeof(dispatch) / sizeof(dispatch[0]); i++)
+		if (strcmp(dispatch[i].key, argv[0]) == 0){
+			if (EXIT_SUCCESS == dispatch[i].fun(dbh, argc-1, &argv[1]))
+				fprintf(stderr, "OK\n");
+			else
+				fprintf(stderr, "FAIL\n");
+		}
+}
+
 int main(int argc, char* argv[])
 {
 	if (argc < 3){
@@ -525,6 +553,44 @@ int main(int argc, char* argv[])
 			arcan_warning("couldn't create database (%s).\n", argv[1]);
 			return EXIT_FAILURE;
 		}
+	}
+
+	if (strcmp(argv[2], "-") == 0){
+		char* inbuf = NULL;
+		size_t bufsz = 0, bufofs = 0;
+		inbuf = grow(inbuf, &bufsz);
+
+		while(!feof(stdin)){
+			int ch = fgetc(stdin);
+
+			if (bufofs == bufsz - 1)
+				if (!grow(inbuf, &bufsz)){
+					fprintf(stderr, "couldn't grow input buffer\n");
+					return EXIT_FAILURE;
+				}
+
+			if (-1 == ch)
+				continue;
+
+			if ('\n' == ch || '\0' == ch){
+				process_line(inbuf, dbhandle);
+				bufofs = 0;
+			}
+			else
+				inbuf[bufofs++] = ch;
+		}
+
+		if (bufofs == bufsz)
+			if (!grow(inbuf, &bufsz))
+				return EXIT_FAILURE;
+
+		if (bufofs > 0){
+			inbuf[bufofs] = '\0';
+			process_line(inbuf, dbhandle);
+		}
+		free(inbuf);
+
+		return EXIT_SUCCESS;
 	}
 
 	for (size_t i=0; i < sizeof(dispatch) / sizeof(dispatch[0]); i++)
