@@ -424,7 +424,7 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
 			if (frame->feed.state.tag == ARCAN_TAG_ASYNCIMGRD)
 				arcan_video_joinasynch(frame, true, false);
 
-			if (frame->flags.clone)
+			if (FL_TEST(frame, FL_CLONE))
 				frame = frame->parent;
 
 /* only allocate set a sampler if there's a map and a
@@ -496,7 +496,7 @@ static arcan_vobject_litem* process_scene_infinite(
 
 	while (current){
 		arcan_vobject* cvo = current->elem;
-		arcan_vobject* dvo = cvo->flags.clone ? cvo->parent : cvo;
+		arcan_vobject* dvo = FL_TEST(cvo, FL_CLONE) ? cvo->parent : cvo;
 
 		arcan_3dmodel* obj3d = dvo->feed.state.ptr;
 
@@ -530,7 +530,7 @@ static void process_scene_normal(arcan_vobject_litem* cell, float lerp,
 
 /* use parent if we have an instance.. */
 		surface_properties dprops;
-		arcan_vobject* dvo = cvo->flags.clone ? cvo->parent : cvo;
+		arcan_vobject* dvo = FL_TEST(cvo, FL_CLONE) ? cvo->parent : cvo;
 
 		arcan_resolve_vidprop(cvo, lerp, &dprops);
 		rendermodel(dvo, dvo->feed.state.ptr, dvo->program,

@@ -3191,7 +3191,6 @@ static int linkimage(lua_State* ctx)
 
 	arcan_errc rv = arcan_video_linkobjs(sid, did, smask, ap);
 	lua_pushboolean(ctx, rv == ARCAN_OK);
-
 	return 1;
 }
 
@@ -5548,7 +5547,7 @@ static int recordset(lua_State* ctx)
 	arcan_vobject* dvobj;
 	arcan_vobj_id did = luaL_checkvid(ctx, 1, &dvobj);
 
-	if (dvobj->flags.clone)
+	if (FL_TEST(dvobj, FL_CLONE))
 		arcan_fatal("define_recordtarget(), recordtarget "
 			"recipient cannot be a clone.");
 
@@ -7340,21 +7339,23 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
  */
 static const char* const vobj_flags(arcan_vobject* src)
 {
-	static char fbuf[64];
+	static char fbuf[sizeof("persist clone clip noasynch "
+		"cycletransform rothier_origo order ")];
+
 	fbuf[0] = '\0';
-	if (src->flags.persist)
+	if (FL_TEST(src, FL_PRSIST))
 		strcat(fbuf, "persist ");
-	if (src->flags.clone)
+	if (FL_TEST(src, FL_CLONE))
 		strcat(fbuf, "clone ");
-	if (src->flags.cliptoparent)
+	if (src->clip != ARCAN_CLIP_OFF)
 		strcat(fbuf, "clip ");
-	if (src->flags.asynchdisable)
+	if (FL_TEST(src, FL_NASYNC))
 		strcat(fbuf, "noasynch ");
-	if (src->flags.cycletransform)
+	if (FL_TEST(src, FL_TCYCLE))
 		strcat(fbuf, "cycletransform ");
-	if (src->flags.origoofs)
-		strcat(fbuf, "origo ");
-	if (src->flags.orderofs)
+	if (FL_TEST(src, FL_ROTOFS))
+		strcat(fbuf, "rothier_origo ");
+	if (FL_TEST(src, FL_ORDOFS))
 		strcat(fbuf, "order ");
 	return fbuf;
 }
@@ -7691,7 +7692,7 @@ arcan_shader_lookuptag(src->program),
 lut_scale(src->vstore->scale),
 lut_imageproc(src->vstore->imageproc),
 lut_blendmode(src->blendmode),
-lut_clipmode(src->flags.cliptoparent),
+lut_clipmode(src->clip),
 lut_filtermode(src->vstore->filtermode),
 vobj_flags(src),
 mask,
@@ -7802,7 +7803,7 @@ ctx.tickstamp = %lld;\n",
 );
 
 		for (size_t i = 0; i < ctx->vitem_limit; i++){
-			if (ctx->vitems_pool[i].flags.in_use == false)
+			if (FL_TEST(&(ctx->vitems_pool[i]), FL_INUSE))
 				continue;
 
 			dump_vobject(dst, ctx->vitems_pool + i);
