@@ -33,7 +33,7 @@
 
 #define FL_SET(obj_ptr, fl) ((obj_ptr)->flags |= fl)
 #define FL_CLEAR(obj_ptr, fl) ((obj_ptr)->flags &= ~fl)
-#define FL_TEST(obj_ptr, fl) (((obj_ptr)->flags & fl) > 0)
+#define FL_TEST(obj_ptr, fl) (( ((obj_ptr)->flags) & (fl)) > 0)
 
 struct arcan_vobject_litem;
 struct arcan_vobject;
@@ -91,7 +91,10 @@ enum vobj_flags {
 	FL_ROTOFS = 16,
 	FL_ORDOFS = 32,
 	FL_MIPMAP = 64,
-	FL_PRSIST = 128
+	FL_PRSIST = 128,
+#ifdef _DEBUG
+	FL_FROZEN = 256
+#endif
 };
 
 struct transf_move{

@@ -737,7 +737,7 @@ static inline arcan_vobj_id luaL_checkvid(
 #ifdef _DEBUG
 	arcan_vobject* vobj = arcan_video_getobject(res);
 
-	if (vobj && vobj->flags.frozen)
+	if (vobj && FL_TEST(vobj, FL_FROZEN))
 		abort();
 
 	if (!vobj)
@@ -814,7 +814,7 @@ static int freezeimage(lua_State* ctx)
 
 	arcan_vobject* vobj;
 	luaL_checkvid(ctx, 1, &vobj);
-	vobj->flags.frozen = true;
+	FL_SET(vobj, FL_FROZEN);
 	return 0;
 }
 #endif
@@ -3114,12 +3114,20 @@ static int activeframe(lua_State* ctx)
 static int origoofs(lua_State* ctx)
 {
 	LUA_TRACE("image_origo_offset");
-	arcan_vobj_id sid = luaL_checkvid(ctx, 1, NULL);
+	arcan_vobject* vobj;
+	arcan_vobj_id sid = luaL_checkvid(ctx, 1, &vobj);
 	float xv = luaL_checknumber(ctx, 2);
 	float yv = luaL_checknumber(ctx, 3);
 	float zv = luaL_optnumber(ctx, 4, 0.0);
+	int inher = luaL_optnumber(ctx, 5, 0);
+	luaL_checkvid(ctx, 1, &vobj);
 
 	arcan_video_origoshift(sid, xv, yv, zv);
+
+	if (inher != 0)
+		FL_SET(vobj, FL_ROTOFS);
+	else
+		FL_CLEAR(vobj, FL_ROTOFS);
 
 	return 0;
 }

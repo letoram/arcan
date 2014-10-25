@@ -4256,6 +4256,23 @@ static inline void draw_vobj(float x, float y,float x2, float y2, float* txcos)
 	}
 }
 
+static void calc_cp_area(arcan_vobject* vobj, point* ul, point* lr)
+{
+	surface_properties cur;
+	arcan_resolve_vidprop(vobj, 0.0, &cur);
+
+	ul->x = cur.position.x < ul->x ? cur.position.x : ul->x;
+	ul->y = cur.position.y < ul->y ? cur.position.y : ul->y;
+
+	float t1 = (cur.position.x + cur.scale.x * vobj->origw);
+	float t2 = (cur.position.y + cur.scale.y * vobj->origh);
+	lr->x = cur.position.x > t1 ? cur.position.x : t1;
+	lr->y = cur.position.y > t2 ? cur.position.y : t2;
+
+	if (vobj->parent && vobj->parent != &current_context->world)
+		calc_cp_area(vobj->parent, ul, lr);
+}
+
 static inline void build_modelview(float* dmatr,
 	float* imatr, surface_properties* prop, arcan_vobject* src)
 {
@@ -4279,8 +4296,6 @@ static inline void build_modelview(float* dmatr,
 		matr_quatf(norm_quat (prop->rotation.quaternion), omatr);
 
 	point oofs = src->origo_ofs;
-
-/* if flag is set, calculate src circumference */
 
 /* rotate around user-defined point rather than own center */
 	if (oofs.x > EPSILON || oofs.y > EPSILON){
