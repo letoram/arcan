@@ -1,76 +1,101 @@
 -- launch_target
 -- @short: Setup and launch an external program.
--- @inargs: gameid, mode, *handler*, *argstr*
--- @outargs: *vid*
--- @longdescr: This function first resolves properties (execution environment),
--- and, depending on if mode is set to LAUNCH_EXTERNAL or LAUNCH_INTERNAL:
--- (EXTERNAL) deallocate as much resources as possible by saving the current
--- context (push to the context stack), disables audio/video/event subsystems, etc.
--- executes the target and waits for it to finish.
--- (INTERNAL) setup a shared memory- based interface and map that as a frameserver
--- that feeds a video object. Launch the specified target (either as a semi-trusted
--- frameserver process or as a hijacked process), poll for changes / updates and feed the
--- *handler* (source, statustbl) callback function on notable changes in state.
--- See notes below for details on statustbl contents.
--- *argstr* is a regular k1=v1:k2:k3=v3 kind of argument string, used primarily
--- for libretro cores when prefixed with core_
--- @note: Possible statustbl.kind values; "resized", "ident", "message", "failure",
--- "terminated", "frame", "state_size", "resource_status", "unknown".
--- @note: for kind == "resized", width, height
--- @note: for kind == "frame", frame
--- @note: for kind == "message", message
--- @note: for kind == "ident", message
--- @note: for kind == "failure", message
--- @note: for kind == "state_size", state_size
--- @note: for kind == "unknown", unknown
--- @note: for kind == "resource_status", "message"
+-- @inargs: target, *configuration*, mode, *handler*, *argstr*
+-- @outargs: *vid or rcode*
+-- @longdescr: Launch Target uses the database to build an execution environment
+-- for the specific tuple (target, configuration). The mode can be set to either
+-- LAUNCH_EXTERNAL or LAUNCH_INTERNAL.
+--
+-- if (LAUNCH_EXTERNAL) is set, arcan will minimize its execution and resource
+-- footprint and wait for the specified program to finish executing. The return
+-- code of the program will be returned as the function return. This call is
+-- blocking and is intended for suspend/resume and similar situations.
+--
+-- if (LAUNCH_INTERNAL) is set, arcan will set up a frameserver container,
+-- launch the configuration and continue executing. The callback specified
+-- with *handler* will be used to receive events connected with the new
+-- frameserver, and the returned *vid* handle can be used to control and
+-- communicate with the frameserver. The notes section below covers events
+-- realted to this callback.
+--
+-- Depending on the binary format of the specified configuration, an additional
+-- *argstr* may be forwarded as the ARCAN_ARG environment variable and follows
+-- the standard key1=value:boolkey:key3=value etc.
+--
+-- If the target:configuration tuple does not exist (if configuration is
+-- not specified, it will be forced to 'default') or the configuration
+-- does not support the requested mode, BADID will be returned.
+--
+-- @note: Possible statustbl.kind values: "resized", "ident", "coreopt",
+-- "message", "failure", "framestatus", "streaminfo", "streamstatus",
+-- "cursor_input", "key_input", "segment_request", "state_size",
+-- "resource_status", "registered", "unknown"
+--
+-- @note: "resized" {width, height} the underlying storage
+-- has changed dimensions.
+--
+-- @note: "message" {message} - text alert (user hint)
+--
+-- @note: "framestatus" {frame,pts,acquired,fhint} - metadata about the last
+-- delivered frame.
+--
+-- @note: "terminated" - the underlying process has died, no new data or events
+-- will be received.
+--
+-- @note: "streaminfo" {lang, streamid, type} - supports switching between
+-- multiple datasources.
+--
+-- @note: "coreopt" {argument} - describe supported key/value configuration
+-- for the child.
+--
+-- @note: "failure" {message} - some internal operation has failed, non-terminal
+-- error indication.
+--
+-- @note: "cursor_input" {id, x, y, button_n} - hint that there is a local
+-- visible cursor at the specific position (local coordinate system)
+--
+-- @note: "key_input" {id, keysym, active} - frameserver would like to
+-- provide input (typically for VNC and similar remoting services).
+--
+-- @note: "segment_request" {kind, width, height, cookie, type} -
+-- frameserver would like an additional segment to work with, see target_alloc
+--
+-- @note: "resource_status" {message} - status update in regards to some
+-- resource related operation (snapshot save/restore etc.) UI hint only.
+--
+-- @note: "registered", {kind, title} - notice that the underlying engine
+-- has completed negotiating with the frameserver.
+--
 -- @group: targetcontrol
 -- @alias: target_launch
 -- @cfunction: arcan_lua_targetlaunch
 function main()
+	local tgts = list_targets();
+	if (#tgts == 0) then
+		return shutdown("no targets found, check database", -1);
+	end
+
 #ifdef MAIN
-	a = list_games({});
-	if (a == nil or #a == 0) then
-		warning("empty database, giving up.");
-		shutdown();
-	end
-
-	for i=1,#a do
-		if (launch_target_capabilities(a[i].target).external_launch) then
-			launch_target(a[i], LAUNCH_EXTERNAL);
-		end
-	end
-
-	warning("no launchable target found.");
-	shutdown();
+	return shutdown(string.format("%s returned %d\n", tgts[1],
+		launch_target(tgts[1], LAUNCH_EXTERNAL)));
 #endif
 
 #ifdef MAIN2
-	a = list_games({});
-	if (a == nil or #a == 0) then
-		warning("empty database, giving up.");
-		shutdown();
-	end
-
-	local cbh = function(source, status)
-		if (status.kind == "resized") then
-			resize_image(source, status.width, status.height);
-		else
-			print(status.kind);
+	local img = launch_target(tgts[1], LAUNCH_INTERNAL,
+		function(src, stat)
+			print(src, stat);
 		end
+	);
+	if (valid_vid(img)) then
+		show_image(img);
+	else
+		return shutdown(string.format("internal launch of %s failed.\n",
+			tgts[1]), -1);
 	end
+#endif
 
-	for i=1,#a do
-		if (launch_target_capabilities(a[i].target).internal_launch) then
-			vid = launch_target(a[i], LAUNCH_INTERNAL, cbh);
-			show_image(vid);
-		end
-	end
-
-	if (vid == nil) then
-		warning("no launchable target found.");
-		shutdown();
-	end
+#ifdef ERROR1
+	launch_target("noexist", -1, launch_target);
 #endif
 end
 
