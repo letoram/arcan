@@ -4041,9 +4041,30 @@ char* filter_text(char* in, size_t* out_sz)
 /* 1. a-Z, 0-9 + whitespace */
 	char* work = in;
 	while(*work){
-		if (!(isalnum(*work) || isspace(*work) ||
-			*work == ',' || *work == '.' || *work == '(' || *work == ')'))
-			*work = ' ';
+		if (isalnum(*work) || isspace(*work))
+			goto step;
+
+		else switch (*work){
+		case ',':
+		case '.':
+		case '!':
+		case '/':
+		case '\n':
+		case '\t':
+		case ';':
+		case ':':
+		case '(':
+		case '\'':
+		case '<':
+		case '>':
+		case ')':
+		break;
+
+		default:
+		*work = ' ';
+		break;
+		}
+step:
 		work++;
 	}
 
