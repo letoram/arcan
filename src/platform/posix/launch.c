@@ -105,9 +105,9 @@ static char* add_interpose(struct arcan_strarr* libs, struct arcan_strarr* envv)
 	return interp;
 }
 
-int arcan_target_launch_external(const char* fname,
+unsigned long arcan_target_launch_external(const char* fname,
 	struct arcan_strarr* argv, struct arcan_strarr* envv,
-	struct arcan_strarr* libs)
+	struct arcan_strarr* libs, int* exitc)
 {
 	if (arcan_video_prepare_external() == false){
 		arcan_warning("Warning, arcan_target_launch_external(), "
@@ -116,26 +116,31 @@ int arcan_target_launch_external(const char* fname,
 	}
 
 	pid_t child = fork();
-	unsigned long ticks = arcan_timemillis();
 
-	add_interpose(libs, envv);
-
-	if (child) {
+	if (child > 0) {
 		int stat_loc;
+		waitpid(child, &stat_loc, 0);
 
-			while (-1 == waitpid(child, &stat_loc, 0)){
-				if (errno != EINVAL)
-					break;
-			}
+		if (WIFEXITED(stat_loc)){
+			*exitc = WEXITSTATUS(stat_loc);
+		}
+		else
+			*exitc = EXIT_FAILURE;
+
 		arcan_video_restore_external();
 
+		unsigned long ticks = arcan_timemillis();
 		return arcan_timemillis() - ticks;
 	}
 	else {
 /* GNU extension warning */
+		add_interpose(libs, envv);
 		execve(fname, argv->data, envv->data);
 		_exit(1);
 	}
+
+	*exitc = EXIT_FAILURE;
+	return 0;
 }
 
 arcan_frameserver* arcan_target_launch_internal(const char* fname,

@@ -41,14 +41,18 @@ long long int arcan_timemillis();
 /*
  * Execute and wait- for completion for the specified target.
  * This will shut down as much engine- locked resources as possible
- * while still possible to revert to the state- pre exection
+ * while still possible to revert to the state- pre exection.
+ *
+ * It returns the time spent waiting (in milliseconds) and
+ * the return-code/exit-status in exitc.
  */
 struct arcan_strarr;
-int arcan_target_launch_external(
+unsigned long arcan_target_launch_external(
 	const char* fname,
 	struct arcan_strarr* argv,
 	struct arcan_strarr* env,
-	struct arcan_strarr* libs
+	struct arcan_strarr* libs,
+	int* exitc
 );
 /*
  * Launch the specified program and bind its resources and control

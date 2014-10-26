@@ -4976,6 +4976,23 @@ static int targetlaunch(lua_State* ctx)
 		return 0;
 	}
 
+/* external launch */
+	if (lmode == 0){
+		if (bfmt != BFRM_BIN && bfmt != BFRM_SHELL && bfmt != BFRM_LWA){
+			arcan_warning("launch_target(), failed -- binary format not suitable "
+				" for external launch.");
+			goto cleanup;
+		}
+
+		int retc = EXIT_FAILURE;
+		unsigned long tv = arcan_target_launch_external(
+			exec, &argv, &env, &libs, &retc);
+		lua_pushnumber(ctx, retc);
+		lua_pushnumber(ctx, tv);
+		rc = 2;
+		goto cleanup;
+	}
+
 	arcan_frameserver* intarget = NULL;
 
 	switch (bfmt){

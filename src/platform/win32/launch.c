@@ -29,14 +29,14 @@
 #include "arcan_audio.h"
 #include "arcan_frameserver_backend.h"
 
-int arcan_target_launch_external(const char* fname,
+unsigned long arcan_target_launch_external(const char* fname,
 	struct arcan_strarr* argv, struct arcan_strarr* envv,
-	struct arcan_strarr* libs)
+	struct arcan_strarr* libs, int* exitc)
 {
 	PROCESS_INFORMATION pi;
 	STARTUPINFO si = {0};
 	DWORD exitcode;
-	unsigned long int start = arcan_frametime();
+	unsigned long start = arcan_frametime();
 	if (fname == NULL || argv == NULL) {
 		arcan_warning("arcan_target_launch_external(win32) :"
 			" invalid arguments to launch\n\t (empty fname or empty argv)"
@@ -94,6 +94,7 @@ int arcan_target_launch_external(const char* fname,
 	ShowWindow(wmi.window, SW_SHOW);
 	arcan_video_restore_external();
 
+	*exitc = exitcode;
 	return arcan_frametime() - start;
 }
 

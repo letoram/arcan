@@ -1,15 +1,16 @@
 -- launch_target
 -- @short: Setup and launch an external program.
 -- @inargs: target, *configuration*, mode, *handler*, *argstr*
--- @outargs: *vid or rcode*
+-- @outargs: *vid* or *rcode, timev*
 -- @longdescr: Launch Target uses the database to build an execution environment
 -- for the specific tuple (target, configuration). The mode can be set to either
 -- LAUNCH_EXTERNAL or LAUNCH_INTERNAL.
 --
 -- if (LAUNCH_EXTERNAL) is set, arcan will minimize its execution and resource
 -- footprint and wait for the specified program to finish executing. The return
--- code of the program will be returned as the function return. This call is
--- blocking and is intended for suspend/resume and similar situations.
+-- code of the program will be returned as the function return along with the
+-- elapsed time in milliseconds. This call is blocking and is intended
+-- for suspend/resume and similar situations.
 --
 -- if (LAUNCH_INTERNAL) is set, arcan will set up a frameserver container,
 -- launch the configuration and continue executing. The callback specified
