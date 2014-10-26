@@ -44,50 +44,16 @@
  * variants (RGBA, ARGB, BGRA, ...) based on the GPU drivers at hand and
  * define macros accordingly.
  */
-#ifndef VIDEO_PIXEL_TYPE
-#define VIDEO_PIXEL_TYPE uint32_t
-#endif
-
-typedef VIDEO_PIXEL_TYPE av_pixel;
-
-#ifndef RGBA
-#define RGBA(r, g, b, a)( ((uint32_t)(a) << 24) | ((uint32_t) (b) << 16) |\
-((uint32_t) (g) << 8) | ((uint32_t) (r)) )
-#endif
-
-#ifndef RGBA_DECOMP
-static inline void RGBA_DECOMP(av_pixel val, uint8_t* r,
-	uint8_t* g, uint8_t* b, uint8_t* a)
-{
-	*r = val & 0x000000ff;
-	*g = (val & 0x0000ff00) >> 8;
-	*b = (val & 0x00ff0000) >> 16;
-	*a = (val & 0xff000000) >> 24;
-}
-#endif
-
 /*
  * Used for frameserver<->video where the A channel of the input should
  * be ignored when uploading.
  */
-#define RGBA_FULLALPHA_REPACK(inv)(	RGBA( ((inv) & 0x000000ff), \
-(((inv) & 0x0000ff00) >> 8), (((inv) & 0x00ff0000) >> 16), 0xff) )
-
 #ifndef CONTEXT_STACK_LIMIT
 #define CONTEXT_STACK_LIMIT 8
 #endif
 
 #ifndef VITEM_CONTEXT_LIMIT
 #define VITEM_CONTEXT_LIMIT 65536
-#endif
-
-#ifndef GL_PIXEL_FORMAT
-#define GL_PIXEL_FORMAT GL_RGBA
-#endif
-
-#ifndef GL_PIXEL_BPP
-#define GL_PIXEL_BPP 4
-#define GL_PIXEL_BPP_BIT 32
 #endif
 
 /*

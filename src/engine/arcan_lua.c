@@ -5217,7 +5217,7 @@ static int procimage_histo(lua_State* ctx)
 		base[j] = RGBA(r,g,b,a);
 	}
 /* forceupdate vobj storage */
-	push_globj(vobj, false, false);
+	argp_update_vstore(vobj->vstore, true, false);
 	return 0;
 }
 
