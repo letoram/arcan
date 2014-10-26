@@ -51,7 +51,7 @@ static void usage()
 {
 printf("usage: arcan_db dbfile command args\n\n"
 	"Available data creation / manipulation commands: \n"
-	"  add_target     \tname executable argv\n"
+	"  add_target     \tname executable bfrm argv\n"
 	"  add_target_kv  \ttarget name key value\n"
 	"  add_target_env \ttarget name key value\n"
 	"  add_target_lib \ttarget name libstr\n"
@@ -85,17 +85,30 @@ static bool validate_key(const char* key)
 
 static int add_target(struct arcan_dbh* dst, int argc, char** argv)
 {
-	int type = BFRM_BIN;
+	enum DB_BFORMAT bfmt;
 
-	if (argc < 2){
-		printf("add_target(name executable argv) unexpected "
-			"number of arguments, (%d) vs 2+.\n", argc);
+	if (argc < 3){
+		printf("add_target(name executable bfmt argv) unexpected "
+			"number of arguments, (%d) vs 3+.\n", argc);
+
+		return EXIT_FAILURE;
+	}
+
+	if (strcmp(argv[2], "BIN") == 0)
+		bfmt = BFRM_BIN;
+	else if (strcmp(argv[2], "LWA") == 0)
+		bfmt = BFRM_LWA;
+	else if (strcmp(argv[2], "RETRO") == 0)
+		bfmt = BFRM_RETRO;
+	else {
+		printf("add_target(name executable bfmt argv) unknown bfmt specified, "
+			" accepted (BIN, LWA, RETRO).\n");
 
 		return EXIT_FAILURE;
 	}
 
 	arcan_targetid tid = arcan_db_addtarget(
-		dst, argv[0], argv[1], (const char**) &argv[2], argc - 2, type);
+		dst, argv[0], argv[1], (const char**) &argv[3], argc - 3, bfmt);
 
 	if (tid == BAD_TARGET){
 		printf("couldn't add target (%s)\n", argv[0]);
@@ -106,8 +119,9 @@ static int add_target(struct arcan_dbh* dst, int argc, char** argv)
 
 	return EXIT_SUCCESS;
 
-	printf("couldn't set target, expected targetname, path and optional "
-		"binary format (accepted: ELF, LWA, RETRO)\n");
+	printf("couldn't set target, expected targetname, path, binary format "
+		"(accepted: BIN, LWA, RETRO) and argument list\n");
+
 	return EXIT_FAILURE;
 }
 
