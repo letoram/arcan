@@ -287,6 +287,7 @@ if (VIDEO_PLATFORM STREQUAL "x11" OR VIDEO_PLATFORM STREQUAL "x11-headless")
 	LIST(APPEND INCLUDE_DIRS ${GLEW_INCLUDE_DIRS} ${X11_INCLUDE_DIRS})
 	LIST(APPEND MAIN_LIBRARIES ${OPENGL_gl_LIBRARY} ${GLEW_LIBRARY} ${X11_LIBRARIES})
 	LIST(APPEND LWA_LIBRARIES ${OPENGL_gl_LIBRARY} ${GLEW_LIBRARY} ${X11_LIBRARIES})
+	LIST(APPEND SOURCES platform/agp/gl21.c platform/agp/glshared.c)
 
 	if (ENABLE_LWA)
 		message("Enabling LWA (Arcan-in-Arcan) build using X11 HEADLESS")
@@ -311,6 +312,7 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-gles")
 
 	endif()
 
+	LIST(APPEND SOURCES platform/agp/gl21.c platform/agp/glshared.c)
 	LIST(APPEND INCLUDE_DIRS
 		${GLES2_INCLUDE_DIRS}
 		${EGL_INCLUDE_DIRS}
@@ -332,6 +334,7 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-dri")
 #	FIND_PACKAGE(OpenGL REQUIRED)
 	FIND_PACKAGE(GBMKMS REQUIRED)
 	SET(ARCAN_DEFINITIONS "${ARCAN_DEFINITIONS} HAVE_GLES3")
+	LIST(APPEND SOURCES platform/agp/gl21.c platform/agp/glshared.c)
 
 	LIST(APPEND MAIN_LIBRARIES
 		${EGL_LIBRARIES}
@@ -355,6 +358,11 @@ elseif (VIDEO_PLATFORM STREQUAL "sdl")
 	if (NOT INPUT_PLATFORM)
 		set(INPUT_PLATFORM "sdl")
 	endif()
+
+	LIST(APPEND SOURCES
+		platform/agp/gl21.c
+		platform/agp/glshared.c
+	)
 
 	FIND_PACKAGE(SDL REQUIRED)
 	FIND_PACKAGE(SDL_image)
@@ -450,7 +458,7 @@ LIST (APPEND
 add_subdirectory( external/openctm )
 
 # --- Step 2, source files
-set (
+list (APPEND
  SOURCES
  engine/arcan_event.c
  engine/arcan_lua.c

@@ -178,85 +178,6 @@ static void drop_vstore(struct storage_info_t* s)
 	}
 }
 
-void push_globj(arcan_vobject* dst, bool noupload, bool mipmap)
-{
-	struct storage_info_t* s = dst->vstore;
-	if (s->txmapped == TXSTATE_OFF)
-		return;
-
-	FLAG_DIRTY();
-
-	if (noupload)
-		glBindTexture(GL_TEXTURE_2D, s->vinf.text.glid);
-	else{
-		glGenTextures(1, &s->vinf.text.glid);
-
-/* for the launch_resume and resize states, were we'd push a new
- * update	but have multiple references */
-		if (s->refcount == 0)
-			s->refcount = 1;
-
-		glBindTexture(GL_TEXTURE_2D, s->vinf.text.glid);
-	}
-
-	assert(dst->vstore->txu != 0);
-
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, s->txu);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, s->txv);
-
-/*
- * Mipmapping still misses the option to manually define mipmap levels
- */
-	if (!noupload){
-#ifndef GL_GENERATE_MIPMAP
-		if (mipmap)
-			glGenerateMipmap(GL_TEXTURE_2D);
-#else
-			glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, mipmap);
-#endif
-	}
-
-	switch (s->filtermode){
-	case ARCAN_VFILTER_NONE:
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	break;
-
-	case ARCAN_VFILTER_LINEAR:
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	break;
-
-	case ARCAN_VFILTER_BILINEAR:
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	break;
-
-	case ARCAN_VFILTER_TRILINEAR:
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
-			GL_LINEAR_MIPMAP_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	break;
-	}
-
-	if (!noupload){
-		if (s->txmapped == TXSTATE_DEPTH)
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, s->w, s->h, 0,
-				GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE, 0);
-		else
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, s->w, s->h,
-				0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, s->vinf.text.raw);
-	}
-
-	if (arcan_video_display.conservative){
-		arcan_mem_free(s->vinf.text.raw);
-		s->vinf.text.raw = NULL;
-		s->vinf.text.s_raw = 0;
-	}
-
-	glBindTexture(GL_TEXTURE_2D, 0);
-}
-
 void arcan_video_default_texfilter(enum arcan_vfilter_mode mode)
 {
 	arcan_video_display.filtermode = mode;
@@ -490,7 +411,8 @@ static void reallocate_gl_context(struct arcan_video_context* context)
 			}
 			else
 				if (current->vstore->txmapped != TXSTATE_OFF)
-					push_globj(current, false, FL_TEST(current, FL_MIPMAP));
+					argp_update_vstore(current->vstore,
+						true, FL_TEST(current, FL_MIPMAP));
 
 			arcan_frameserver* movie = current->feed.state.ptr;
 			if (current->feed.state.tag == ARCAN_TAG_FRAMESERV && movie){
@@ -1036,7 +958,7 @@ arcan_errc arcan_video_mipmapset(arcan_vobj_id vid, bool enable)
 	else
 		FL_CLEAR(vobj, FL_MIPMAP);
 	vobj->vstore->vinf.text.raw = newbuf;
-	push_globj(vobj, false, FL_TEST(vobj, FL_MIPMAP));
+	argp_update_vstore(vobj->vstore, true, FL_TEST(vobj, FL_MIPMAP));
 
 	return ARCAN_OK;
 }
@@ -1694,7 +1616,7 @@ arcan_errc arcan_video_resize_canvas(size_t neww, size_t newh)
 		ARCAN_MEMALIGN_PAGE
 	);
 
-	push_globj(&current_context->world, false, false);
+	argp_update_vstore(current_context->world.vstore, true, false);
 
 	glGenFramebuffers(1, &arcan_video_display.main_fbo);
 	glBindFramebuffer(GL_FRAMEBUFFER, arcan_video_display.main_fbo);
@@ -1856,7 +1778,7 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
 
 push_comp:
 		if (!asynchsrc && dst->vstore->txmapped != TXSTATE_OFF)
-			push_globj(dst, false, FL_TEST(dst, FL_MIPMAP));
+			argp_update_vstore(dst->vstore, true, FL_TEST(dst, FL_MIPMAP));
 	}
 
 	arcan_sem_post(asynchsynch);
@@ -2101,7 +2023,7 @@ arcan_vobj_id arcan_video_rawobject(av_pixel* buf,
 
 	glGenTextures(1, &ds->vinf.text.glid);
 
-	push_globj(newvobj, false, FL_TEST(newvobj, FL_MIPMAP));
+	argp_update_vstore(newvobj->vstore, true, FL_TEST(newvobj, FL_MIPMAP));
 	arcan_video_attachobject(rv);
 
 	return rv;
@@ -2204,7 +2126,7 @@ static bool alloc_fbo(struct rendertarget* dst)
 		store->h = h;
 
 /* generate ID etc. special path for TXSTATE_DEPTH */
-		push_globj(dst->color, false, false);
+		argp_update_vstore(store, true, false);
 
 		glDrawBuffer(GL_NONE);
 		glReadBuffer(GL_NONE);
@@ -2475,7 +2397,7 @@ void arcan_video_joinasynch(arcan_vobject* img, bool emit, bool force)
 		loadev.kind = EVENT_VIDEO_ASYNCHIMAGE_FAILED;
 	}
 
-	push_globj(img, false, false);
+	argp_update_vstore(img->vstore, true, false);
 
 	if (emit)
 		arcan_event_enqueue(arcan_event_defaultctx(), &loadev);
@@ -2632,7 +2554,7 @@ arcan_vobj_id arcan_video_setupfeed(arcan_vfunc_cb ffunc,
 		ARCAN_MEM_VBUFFER, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
 
 	newvobj->feed.ffunc = ffunc;
-	push_globj(newvobj, false, false);
+	argp_update_vstore(newvobj->vstore, true, false);
 
 	return rv;
 }
@@ -2680,7 +2602,7 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons store,
 	glDeleteTextures(1, &vobj->vstore->vinf.text.glid);
 	vobj->vstore->vinf.text.glid = 0;
 
-	push_globj(vobj, false, FL_TEST(vobj, FL_MIPMAP));
+	argp_update_vstore(vobj->vstore, true, FL_TEST(vobj, FL_MIPMAP));
 
 	return ARCAN_OK;
 }
@@ -2968,7 +2890,7 @@ arcan_errc arcan_video_objecttexmode(arcan_vobj_id id,
 			GL_REPEAT : GL_CLAMP_TO_EDGE;
 		src->vstore->txv = modet == ARCAN_VTEX_REPEAT ?
 			GL_REPEAT : GL_CLAMP_TO_EDGE;
-		push_globj(src, true, FL_TEST(src, FL_MIPMAP));
+		argp_update_vstore(src->vstore, false, FL_TEST(src, FL_MIPMAP));
 	}
 
 	return rv;
@@ -2983,7 +2905,7 @@ arcan_errc arcan_video_objectfilter(arcan_vobj_id id,
 /* fake an upload with disabled filteroptions */
 	if (src){
 		src->vstore->filtermode = mode;
-		push_globj(src, true, FL_TEST(src, FL_MIPMAP));
+		argp_update_vstore(src->vstore, false, FL_TEST(src, FL_MIPMAP));
 	}
 
 	return rv;
@@ -3035,12 +2957,7 @@ arcan_errc arcan_video_copyprops ( arcan_vobj_id sid, arcan_vobj_id did )
 
 arcan_errc arcan_video_copytransform(arcan_vobj_id sid, arcan_vobj_id did)
 {
-	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
-
 	arcan_vobject* src, (* dst);
-
-	if (sid == did)
-		rv = ARCAN_ERRC_BAD_ARGUMENT;
 
 	src = arcan_video_getobject(sid);
 	dst = arcan_video_getobject(did);
@@ -5536,7 +5453,7 @@ arcan_vobj_id arcan_video_renderstring(const char* message,
 		ARCAN_MEM_VSTRUCT, 0, ARCAN_MEMALIGN_SIMD);
 	ds->vinf.text.source = strdup(message);
 
-	push_globj(vobj, false, false);
+	argp_update_vstore(vobj->vstore, true, false);
 
 /*
  * POT but not all used,
