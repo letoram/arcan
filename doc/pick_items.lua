@@ -13,6 +13,8 @@
 -- @note: by default, all VIDs are eligible for picking, this
 -- behavior can be controlled with image_mask_set(vid, MASK_UNPICKABLE)
 -- this mask value is not inherited.
+-- @note: this function do not currently take clipping into consideration,
+-- optional support for clipped picking is, however, planned.
 -- @note: the cost for calling pick_items vary with the complexity
 -- of the object in the scene, and increase noticeably with the
 -- progression (2D- object) -> (x,y rotated 2D object) -> (x,y,z

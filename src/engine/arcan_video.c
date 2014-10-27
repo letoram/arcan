@@ -4599,8 +4599,6 @@ static size_t process_rendertarget(
 
 	if (!tgt->noclear)
 		glClear(GL_COLOR_BUFFER_BIT);
-	else
-		arcan_warning("skipped clearing\n");
 
 	size_t pc = 0;
 
