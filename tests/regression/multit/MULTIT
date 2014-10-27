@@ -1,0 +1,14 @@
+the multit regression test checks the following multitexture features:
+
+2. tick based framestep
+   -- this need to be aborted earlier than the loop due to certain
+      timing conditions leading to the problem of the engine managing
+      one or a few framesteps more before the engine finally terminates.
+
+2. manually selecting frameset active image
+3. multitexturing sampled by shader
+
+and covers the bug described by #87 on github.
+
+the multitexturing uses not covered are multitexturing 3d models
+and round-robin storage.

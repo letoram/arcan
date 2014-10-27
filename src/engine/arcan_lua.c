@@ -3108,7 +3108,6 @@ static int activeframe(lua_State* ctx)
 	unsigned num = luaL_checkint(ctx, 2);
 
 	arcan_video_setactiveframe(sid, num);
-
 	return 0;
 }
 
