@@ -119,6 +119,8 @@ local function bench_destr(tbl)
 end
 
 function benchmark_setup( arguments )
+	system_context_size(65535);
+	pop_video_context();
 	if (arguments == nil) then
 		return;
 	end
