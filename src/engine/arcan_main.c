@@ -621,6 +621,7 @@ applswitch:
 				if (ev.kind == EVENT_SYSTEM_EXIT){
 					exit_code = ev.data.system.errcode;
 					done = true;
+					goto out;
 				}
 
 /* slated for deprecation */
@@ -643,6 +644,7 @@ applswitch:
 		platform_video_synch(settings.tick_count, frag, preframe, postframe);
 	}
 
+out:
 	arcan_lua_callvoidfun(settings.lua, "shutdown", false);
 #ifdef ARCAN_LED
 	arcan_led_shutdown();

@@ -361,6 +361,8 @@ static inline void step_active_frame(arcan_vobject* vobj)
 	vobj->frameset_meta.current = (vobj->frameset_meta.current + 1) %
 		vobj->frameset_meta.capacity;
 	vobj->current_frame = vobj->frameset[ vobj->frameset_meta.current ];
+
+	FLAG_DIRTY();
 }
 
 /*
@@ -2277,6 +2279,7 @@ arcan_errc arcan_video_setactiveframe(arcan_vobj_id dst, unsigned fid)
 		dstvobj->frameset_meta.capacity ? fid : 0;
 	dstvobj->current_frame = dstvobj->frameset[dstvobj->frameset_meta.current];
 
+	FLAG_DIRTY();
 	return ARCAN_OK;
 }
 
@@ -3910,7 +3913,7 @@ static int tick_rendertarget(struct rendertarget* tgt)
 		}
 
 /* mode > 0, cycle every 'n' ticks */
-		if (elem->frameset_meta.mode > 0){
+		if (elem->frameset_meta.mode != 0){
 			elem->frameset_meta.counter--;
 			if (elem->frameset_meta.counter == 0){
 				elem->frameset_meta.counter = abs( elem->frameset_meta.mode );
@@ -4465,25 +4468,11 @@ static inline void populate_stencil(struct rendertarget* tgt,
 
 static inline void bind_multitexture(arcan_vobject* elem)
 {
-	int j =
-		GL_MAX_TEXTURE_UNITS < elem->frameset_meta.capacity ?
-		GL_MAX_TEXTURE_UNITS : elem->frameset_meta.capacity;
+	struct storage_info_t* elems[ elem->frameset_meta.capacity ];
+	for (size_t i = 0; i < elem->frameset_meta.capacity; i++)
+		elems[i] = elem->frameset[ i ]->vstore;
 
-	for(int i = 0; i < j; i++){
-		char unifbuf[16];
-		unifbuf[15] = '\0';
-
-		int frameind = ((elem->frameset_meta.current - i) % j + j)  % j;
-
-		glActiveTexture(GL_TEXTURE0 + i);
-		glBindTexture(GL_TEXTURE_2D,
-			elem->frameset[ frameind ]->vstore->vinf.text.glid);
-
-		snprintf(unifbuf, 15, "map_tu%d", i);
-		arcan_shader_forceunif(unifbuf, shdrint, &i, false);
-	}
-
-	glActiveTexture(GL_TEXTURE0);
+	argp_activate_vstore_multi(elems, elem->frameset_meta.capacity);
 }
 
 static inline void clone_copy_attr(arcan_vobject* elem)
@@ -4716,11 +4705,9 @@ static size_t process_rendertarget(
 
 		if (elem->frameset_meta.capacity > 0 &&
 			elem->frameset_meta.framemode == ARCAN_FRAMESET_MULTITEXTURE)
-/* we don't unbind these unless necessary */
 			bind_multitexture(elem);
 		else
-			glBindTexture(GL_TEXTURE_2D,
-				elem->current_frame->vstore->vinf.text.glid);
+			argp_activate_vstore(elem->current_frame->vstore);
 
 		arcan_video_setblend(&dprops, elem);
 		draw_texsurf(tgt, dprops, elem, *dstcos);
