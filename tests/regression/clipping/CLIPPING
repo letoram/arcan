@@ -1,0 +1,9 @@
+This tests the number of driver issues we've had with
+various clipping methods, with the exception of performance.
+For that, see the test in benchmark.
+
+1. Two objects, one clipped shallow to the other.
+2. Two objects, one clipped shallow with rotate against the parent.
+3. Two objects, one clipped shallow with both rotated.
+4. Three objects, a -> b [clip disable] -> c
+5. Three objects, all clipped in hierarchy, rotated.
