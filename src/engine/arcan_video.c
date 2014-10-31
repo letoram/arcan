@@ -467,6 +467,7 @@ void arcan_vint_drawrt(arcan_vobject* outp, int x, int y, int w, int h)
 	arcan_shader_envv(PROJECTION_MATR,
 		arcan_video_display.window_projection, sizeof(float)*16);
 
+	agp_blendstate(BLEND_NONE);
 	agp_draw_vobj(0, 0, x + w, y + h,
 		arcan_video_display.mirror_txcos, NULL);
 
@@ -4205,30 +4206,6 @@ void arcan_video_pollfeed(){
 	poll_list(current_context->stdoutp.first, vcookie);
 }
 
-void arcan_video_setblend(const surface_properties* dprops,
-	const arcan_vobject* elem)
-{
-/* only blend if the object isn't entirely solid or
- * if the object has specific settings */
-	if ((dprops->opa > 1.0-EPSILON && elem->blendmode == BLEND_NONE) ||
-		elem->blendmode == BLEND_NONE )
-		glDisable(GL_BLEND);
-	else{
-		glEnable(GL_BLEND);
-		switch (elem->blendmode){
-		case BLEND_FORCE:
-		case BLEND_NORMAL: glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-		break;
-		case BLEND_MULTIPLY: glBlendFunc(GL_DST_COLOR, GL_ONE_MINUS_SRC_ALPHA);
-		break;
-		case BLEND_ADD: glBlendFunc(GL_ONE, GL_ONE);
-		break;
-		default:
-			arcan_warning("unknown blend-mode specified(%d)\n", elem->blendmode);
-		}
-	}
-}
-
 static inline void populate_stencil(struct rendertarget* tgt,
 	arcan_vobject* celem, float fract)
 {
@@ -4502,12 +4479,13 @@ static size_t process_rendertarget(
 		else
 			agp_activate_vstore(elem->current_frame->vstore);
 
-		arcan_video_setblend(&dprops, elem);
+		agp_blendstate(dprops.opa < 1.0-EPSILON ?
+					elem->blendmode : BLEND_NONE);
 		draw_texsurf(tgt, dprops, elem, *dstcos);
 		pc++;
 
 	if (clipped)
-		glDisable(GL_STENCIL_TEST);
+		agp_disable_stencil();
 
 		current = current->next;
 	}

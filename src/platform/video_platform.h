@@ -51,6 +51,19 @@ static inline void RGBA_DECOMP(av_pixel val, uint8_t* r,
 #endif
 
 /*
+ * For objects that are not opaque or invisible, a blending function
+ * can be specified. These functions regulate how overlapping objects
+ * should be mixed.
+ */
+enum arcan_blendfunc {
+	BLEND_NONE,
+	BLEND_NORMAL,
+	BLEND_FORCE,
+	BLEND_ADD,
+	BLEND_MULTIPLY
+};
+
+/*
  * end of internal representation specific data.
  */
 typedef long long arcan_vobj_id;
@@ -258,11 +271,18 @@ void agp_activate_stencil();
 void agp_disable_stencil();
 
 /*
+ * Switch the currently active blending mode, i.e. how
+ * new objects shall be drawn in respects to the current
+ * color output.
+ */
+void agp_blendstate(enum arcan_blendfunc);
+
+/*
  * Bind uniforms and draw using the currently active vstore.
  * Txcos, Ident and Model can be NULL and then defaults will be used.
  */
 void agp_draw_vobj(float x1, float y1, float x2, float y2,
-	float* txcos, float* model);
+	float* txcos, float*);
 
 /*
  * Get a copy of the current display output and save

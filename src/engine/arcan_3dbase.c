@@ -434,8 +434,8 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
 			glBindTexture(GL_TEXTURE_2D, frame->vstore->vinf.text.glid);
 
 			if (blendstate == false){
-				surface_properties dprops = {.opa = vobj->current.opa};
-				arcan_video_setblend(&dprops, frame);
+				agp_blendstate(vobj->current.opa < 1.0-EPSILON ?
+					vobj->blendmode : BLEND_NONE);
 				blendstate = true;
 			}
 		}

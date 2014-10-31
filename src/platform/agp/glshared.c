@@ -184,6 +184,36 @@ static float ident[] =
   0.0, 0.0, 1.0, 0.0,
   0.0, 0.0, 0.0, 1.0};
 
+
+void agp_blendstate(enum arcan_blendfunc mode)
+{
+	if (mode == BLEND_NONE){
+		glDisable(GL_BLEND);
+		return;
+	}
+
+	glEnable(GL_BLEND);
+
+	switch (mode){
+	case BLEND_NONE: /* -dumb compiler- */
+	case BLEND_FORCE:
+	case BLEND_NORMAL:
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	break;
+
+	case BLEND_MULTIPLY:
+		glBlendFunc(GL_DST_COLOR, GL_ONE_MINUS_SRC_ALPHA);
+	break;
+
+	case BLEND_ADD:
+		glBlendFunc(GL_ONE, GL_ONE);
+	break;
+
+	default:
+	break;
+	}
+}
+
 void agp_draw_vobj(float x1, float y1, float x2, float y2,
 	float* txcos, float* model)
 {
@@ -233,7 +263,7 @@ void agp_deactivate_vstore(struct storage_info_t* s)
 void agp_save_output(size_t w, size_t h, av_pixel* dst, size_t dsz)
 {
 	glReadBuffer(GL_FRONT);
-	assert(w * h * GL_PIXEL_FORMAT == dsz);
+	assert(w * h * GL_PIXEL_BPP == dsz);
 
 	glReadPixels(0, 0, w, h, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, dst);
 }

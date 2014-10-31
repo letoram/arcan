@@ -194,19 +194,6 @@ enum arcan_transform_mask {
 	MASK_ALL         = 255
 };
 
-/*
- * For objects that are not opaque or invisible, a blending function
- * can be specified. These functions regulate how overlapping objects
- * should be mixed.
- */
-enum arcan_blendfunc {
-	BLEND_NONE,
-	BLEND_NORMAL,
-	BLEND_FORCE,
-	BLEND_ADD,
-	BLEND_MULTIPLY
-};
-
 typedef float (*arcan_interp_1d_function)(
 	float startv, float stopv, float fract);
 

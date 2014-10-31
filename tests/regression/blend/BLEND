@@ -1,0 +1,4 @@
+blend mode checks the different possible blending modes,
+i.e. FORCE, DISABLE, MULTIPLY, ADD, ...
+by drawing a large solid colored background image,
+then squares on top of that at 0.5 opacity.
