@@ -29,7 +29,13 @@
 #define RENDERTARGET_LIMIT 64
 #endif
 
-#define FLAG_DIRTY() (arcan_video_display.dirty++);
+/*
+ *  Indicate that the video pipeline is in such a state that
+ *  it should be redrawn. X should be NULL or a vobj reference
+ *  (to permit partial redraws in the future if we need to save
+ *  bandwidth).
+ */
+#define FLAG_DIRTY(X) (arcan_video_display.dirty++);
 
 #define FL_SET(obj_ptr, fl) ((obj_ptr)->flags |= fl)
 #define FL_CLEAR(obj_ptr, fl) ((obj_ptr)->flags &= ~fl)
@@ -159,7 +165,8 @@ struct storage_info_t {
 
 	union {
 		struct {
-			unsigned  glid; /* GLUint should always be unsigned int */
+			unsigned glid;
+			unsigned tid;
 			uint32_t s_raw;
 			av_pixel*  raw;
 			char*   source;
@@ -303,9 +310,6 @@ struct arcan_video_display {
 	} cursor;
 
 	unsigned default_vitemlim;
-
-	arcan_shader_id defaultshdr;
-	arcan_shader_id defclrshdr;
 
 	float default_projection[16];
 	float window_projection[16];

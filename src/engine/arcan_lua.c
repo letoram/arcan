@@ -1367,8 +1367,8 @@ static int buildshader(lua_State* ctx)
 {
 	LUA_TRACE("build_shader");
 
-	extern char* deffprg;
-	extern char* defvprg;
+	const char* defvprg, (* deffprg);
+	agp_shader_source(BASIC_2D, &defvprg, &deffprg);
 
 	const char* vprog = luaL_optstring(ctx, 1, defvprg);
 	const char* fprog = luaL_optstring(ctx, 2, deffprg);
@@ -4802,11 +4802,8 @@ static int targetstepframe(lua_State* ctx)
 	if (nframes <= 0)
 		return 0;
 
-	if (rtgt && !rtgt->readreq && arcan_video_display.pbo_support){
-		glBindBuffer(GL_PIXEL_PACK_BUFFER, rtgt->pbo);
-		struct storage_info_t* dstore = rtgt->color->vstore;
-		readback_texture(dstore->vinf.text.glid, dstore->w, dstore->h, 0, 0);
-		glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+	if (rtgt && !rtgt->readreq ){
+		agp_request_readback(rtgt->color->vstore);
 		rtgt->readreq = true;
 	}
 
@@ -5233,7 +5230,7 @@ static int procimage_histo(lua_State* ctx)
 		base[j] = RGBA(r,g,b,a);
 	}
 /* forceupdate vobj storage */
-	argp_update_vstore(vobj->vstore, true, false);
+	agp_update_vstore(vobj->vstore, true, false);
 	return 0;
 }
 
@@ -5539,12 +5536,6 @@ static int procset(lua_State* ctx)
 	if (scale != RENDERTARGET_SCALE && scale != RENDERTARGET_NOSCALE){
 		arcan_warning("define_calctarget(%d) invalid arg 4, "
 			"expected RENDERTARGET_SCALE or RENDERTARGET_NOSCALE\n", scale);
-		goto cleanup;
-	}
-
-	if (pollrate == 0){
-		arcan_warning("define_calctarget(%d) invalid arg 5, expected "
-			"n < 0 (every n frame) or n > 0 (every n tick)\n", pollrate);
 		goto cleanup;
 	}
 
@@ -7288,6 +7279,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"RENDERTARGET_COLOR", RENDERFMT_COLOR},
 {"RENDERTARGET_DEPTH", RENDERFMT_DEPTH},
 {"RENDERTARGET_FULL", RENDERFMT_FULL},
+{"READBACK_MANUAL", 0},
 {"ROTATE_RELATIVE", CONST_ROTATE_RELATIVE},
 {"ROTATE_ABSOLUTE", CONST_ROTATE_ABSOLUTE},
 {"TEX_REPEAT", ARCAN_VTEX_REPEAT},
@@ -7356,17 +7348,10 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 	for (size_t i = 0; i < sizeof(consttbl) / sizeof(consttbl[0]); i++)
 		arcan_lua_setglobalint(ctx, consttbl[i].key, consttbl[i].val);
 
-#if defined(GL_ES_VERSION_2_0)
-#if defined(GL_ES_VERSION_3_0)
-	arcan_lua_setglobalstr(ctx, "GL_VERSION", "GLES3");
-#else
-	arcan_lua_setglobalstr(ctx, "GL_VERSION", "GLES2");
-#endif
-#else
-	arcan_lua_setglobalstr(ctx, "GL_VERSION", "GL21");
-#endif
-	arcan_lua_setglobalstr(ctx, "FRAMESERVER_MODES", FRAMESERVER_MODESTRING );
-	arcan_lua_setglobalstr(ctx, "THEMENAME", "deprecated, use APPLID" );
+	arcan_lua_setglobalstr(ctx, "GL_VERSION", agp_backend_ident());
+	arcan_lua_setglobalstr(ctx, "SHADER_LANGUAGE", agp_shader_language());
+	arcan_lua_setglobalstr(ctx, "FRAMESERVER_MODES", FRAMESERVER_MODESTRING);
+	arcan_lua_setglobalstr(ctx, "THEMENAME", "deprecated, use APPLID");
 	arcan_lua_setglobalstr(ctx, "APPLID", arcan_appl_id());
 	arcan_lua_setglobalstr(ctx, "RESOURCEPATH", "deprecated");
 	arcan_lua_setglobalstr(ctx, "THEMEPATH", "deprecated");

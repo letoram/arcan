@@ -175,7 +175,6 @@ arcan_errc arcan_shader_activate(arcan_shader_id shid)
 {
 	if (!arcan_shader_valid(shid))
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
-
 	shid -= shdr_global.base;
 
  	if (shid != shdr_global.active_prg){

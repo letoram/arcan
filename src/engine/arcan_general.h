@@ -75,7 +75,6 @@ typedef struct {
 
 #endif
 
-typedef int arcan_shader_id;
 typedef uint32_t arcan_tickv;
 
 enum arcan_error {

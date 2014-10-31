@@ -1,0 +1,3 @@
+This test covers manual readback into a png
+from a rendertarget composed of two time-
+modulated shaders (one clock mod 2, one clock + 1 mod 2) 

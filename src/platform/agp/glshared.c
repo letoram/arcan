@@ -15,7 +15,44 @@
 #include "arcan_videoint.h"
 #include "arcan_shdrmgmt.h"
 
-void argp_activate_vstore_multi(struct storage_info_t** backing, size_t n)
+void agp_init()
+{
+	glEnable(GL_SCISSOR_TEST);
+	glDisable(GL_DEPTH_TEST);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glFrontFace(GL_CW);
+	glCullFace(GL_BACK);
+
+#ifdef GL_MULTISAMPLE
+	if (arcan_video_display.msasamples)
+		glEnable(GL_MULTISAMPLE);
+#endif
+
+	glEnable(GL_BLEND);
+	glClearColor(0.0, 0.0, 0.0, 1.0f);
+
+/*
+	if (arcan_video_display.pbo_support){
+		glGenBuffers(1, &current_context->stdoutp.pbo);
+		glBindBuffer(GL_PIXEL_PACK_BUFFER, current_context->stdoutp.pbo);
+		glBufferData(GL_PIXEL_PACK_BUFFER,
+			arcan_video_display.width * arcan_video_display.height * GL_PIXEL_BPP,
+			NULL, GL_STREAM_READ);
+		glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+	}
+*/
+
+/*
+ * -- Removed as they were causing trouble with NVidia GPUs (white line outline
+ * where triangles connect
+ * glHint(GL_LINE_SMOOTH_HINT, GL_NICEST);
+ * glHint(GL_POLYGON_SMOOTH_HINT, GL_NICEST);
+ * glEnable(GL_LINE_SMOOTH);
+ * glEnable(GL_POLYGON_SMOOTH);
+*/
+}
+
+void agp_activate_vstore_multi(struct storage_info_t** backing, size_t n)
 {
 	char buf[] = "map_tu99";
 
@@ -37,7 +74,7 @@ void argp_activate_vstore_multi(struct storage_info_t** backing, size_t n)
 	glActiveTexture(GL_TEXTURE0);
 }
 
-void argp_update_vstore(struct storage_info_t* s, bool copy, bool mipmap)
+void agp_update_vstore(struct storage_info_t* s, bool copy, bool mipmap)
 {
 	if (s->txmapped == TXSTATE_OFF)
 		return;
@@ -115,35 +152,89 @@ void argp_update_vstore(struct storage_info_t* s, bool copy, bool mipmap)
 	glBindTexture(GL_TEXTURE_2D, 0);
 }
 
-void argp_activate_vstore(struct storage_info_t* s)
+void agp_prepare_stencil()
+{
+/* toggle stenciling, reset into zero, draw parent bounding area to
+ * stencil only,redraw parent into stencil, draw new object
+ * then disable stencil. */
+	glEnable(GL_STENCIL_TEST);
+	glDisable(GL_BLEND);
+	glClearStencil(0);
+	glClear(GL_STENCIL_BUFFER_BIT);
+	glColorMask(0, 0, 0, 0);
+	glStencilFunc(GL_ALWAYS, 1, 1);
+	glStencilOp(GL_REPLACE, GL_REPLACE, GL_REPLACE);
+}
+
+void agp_activate_stencil()
+{
+	glColorMask(1, 1, 1, 1);
+	glStencilFunc(GL_EQUAL, 1, 1);
+	glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+}
+
+void agp_disable_stencil()
+{
+	glDisable(GL_STENCIL_TEST);
+}
+
+static float ident[] =
+ {1.0, 0.0, 0.0, 0.0,
+  0.0, 1.0, 0.0, 0.0,
+  0.0, 0.0, 1.0, 0.0,
+  0.0, 0.0, 0.0, 1.0};
+
+void agp_draw_vobj(float x1, float y1, float x2, float y2,
+	float* txcos, float* model)
+{
+	GLfloat verts[] = {
+		x1, y1,
+		x2, y1,
+		x2, y2,
+	 	x1, y2
+	};
+	bool settex = false;
+
+	arcan_shader_envv(MODELVIEW_MATR, model?model:ident, sizeof(float) * 16);
+/* projection, scissor is set when activating rendertarget */
+
+	GLint attrindv = arcan_shader_vattribute_loc(ATTRIBUTE_VERTEX);
+	GLint attrindt = arcan_shader_vattribute_loc(ATTRIBUTE_TEXCORD);
+
+	if (attrindv != -1){
+		glEnableVertexAttribArray(attrindv);
+		glVertexAttribPointer(attrindv, 2, GL_FLOAT, GL_FALSE, 0, verts);
+
+		if (txcos && attrindt != -1){
+			settex = true;
+			glEnableVertexAttribArray(attrindt);
+			glVertexAttribPointer(attrindt, 2, GL_FLOAT, GL_FALSE, 0, txcos);
+		}
+
+		glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+
+		if (settex)
+			glDisableVertexAttribArray(attrindt);
+
+		glDisableVertexAttribArray(attrindv);
+	}
+}
+
+void agp_activate_vstore(struct storage_info_t* s)
 {
 	glBindTexture(GL_TEXTURE_2D, s->vinf.text.glid);
 }
 
-void argp_deactivate_vstore(struct storage_info_t* s)
+void agp_deactivate_vstore(struct storage_info_t* s)
 {
 	glBindTexture(GL_TEXTURE_2D, 0);
 }
 
-void argp_drop_vstore(struct storage_info_t* s)
+void agp_save_output(size_t w, size_t h, av_pixel* dst, size_t dsz)
 {
-	if (!s)
-		return;
+	glReadBuffer(GL_FRONT);
+	assert(w * h * GL_PIXEL_FORMAT == dsz);
 
-	assert(s->refcount);
-	s->refcount--;
-
-	if (s->refcount == 0){
-		if (s->txmapped != TXSTATE_OFF && s->vinf.text.glid){
-			glDeleteTextures(1, &s->vinf.text.glid);
-			s->vinf.text.glid = 0;
-
-			if (s->vinf.text.raw){
-				arcan_mem_free(s->vinf.text.raw);
-				s->vinf.text.raw = NULL;
-			}
-		}
-
-		arcan_mem_free(s);
-	}
+	glReadPixels(0, 0, w, h, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, dst);
 }
+

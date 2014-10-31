@@ -183,12 +183,12 @@ static void toggle_debugstates(float* modelview)
 		glDepthMask(GL_FALSE);
 		glDisable(GL_DEPTH_TEST);
 		glEnableVertexAttribArray(ATTRIBUTE_VERTEX);
-		arcan_shader_activate(arcan_video_display.defclrshdr);
+		arcan_shader_activate(agp_default_shader(COLOR_2D));
 		arcan_shader_envv(MODELVIEW_MATR, modelview, sizeof(float) * 16);
 		arcan_shader_forceunif("obj_col", shdrvec3, (void*) white, false);
 	}
 	else{
-		arcan_shader_activate(arcan_video_display.defaultshdr);
+		arcan_shader_activate(agp_default_shader(COLOR_2D));
 		glEnable(GL_DEPTH_TEST);
 		glDepthMask(GL_TRUE);
 		glDisableVertexAttribArray(ATTRIBUTE_VERTEX);

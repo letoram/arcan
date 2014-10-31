@@ -14,7 +14,7 @@
 -- the following metamethods are valid on image:
 -- get(x, y, [nchannels=3]) => r, g, b
 -- nchannels=1 => lum
--- histogram_storage(dstvid, [noreset])
+-- histogram_impose(dstvid, [noreset])
 --  updated the textured storage of dstvid (must be allocated with
 --  a width of >= 256. If noreset is !0, an update on a dirty histogram
 --  calculation will not reset the individual bins, thus values will accumulate.
