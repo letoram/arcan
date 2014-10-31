@@ -7,7 +7,7 @@
 -- INTERP_SINE, INTERP_EXPIN, INTERP_EXPOUT, INTERP_EXPINOUT).
 -- @note: VIDs with an opacity other than 0.0 (hidden) and 1.0 (opaque, visible) will be blended.
 -- @note: Values outside the allowed range will be clamped.
--- @note: The blend behavior is dictated by the default global blendfunc value (src_alpha, 1-src_alpha) and can be overridden with image_force_blend(mode)
+-- @note: The blend behavior is dictated by the default global blendfunc value (src_alpha, 1-src_alpha) and can be overridden with force_image_blend(mode)
 -- @group: image
 -- @related: image_force_blend
 -- @cfunction: arcan_lua_imageopacity
