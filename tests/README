@@ -1,31 +1,35 @@
 This folder contains miniature, hacked together, scripts
-used to assist in development or test some specific 
+used to assist in development or test some specific
 engine features and are not to be considered proper
 "examples of use" (see the examples/ folder for that).
 
-It is currently being refactored into the following 
+It is currently being refactored into the following
 substructure:
 
-api_coverage/ (WIP) scripts that use the C pre-processor 
-to extract examples and error cases from the documentation in 
-doc/*.lua 
+api_coverage/ (WIP) scripts that use the C pre-processor
+to extract examples and error cases from the documentation in
+doc/*.lua
 
-benchmark/ (WIP) specialized non-interactive cases that 
+benchmark/ specialized non-interactive cases that
 attempt to quantify performance boundaries for various platforms.
+These primarily use the benchmark support script which uses
+a stepping function and an evaluation function. For each step,
+a certain number of frames are processed. If timing values are
+above a set lower threshold, the stepping function is increased
+and the timing data is logged.
 
 build/ (WIP) OS- specific "checkout, iterate platforms and build"
 
 security/ (WIP) planned for fuzzing- tools on known interfaces,
-particularly for frameserver->arcan events and in the sad cases
-where that occurs, CVE- reference + exploit. Issues that cover
-the border between scripting interface and main engine will
-be covered in api_coverage and regression.
+particularly for frameserver->arcan events and in possible future
+sad cases: CVE- reference + exploit PoC. Will also have specialized
+build options for getting access to functions that eases exploit
+development (which, in turn, eases evaluation of countermeasures).
 
 interactive/ quick hacks and experiments, particularly when
-developing a new- or refactoring an existing- interface or 
-when we still need manual interception.
+developing a new- or refactoring an existing- interface or
+when we still need manual input.
 
-regression/ for non-trivial bugs reported and fixed, an example
-that provoced the issue pre-fix should be added to this folder
-along with the fix, in order to have a growing base of regression
-cases to run with any new release.
+regression/ for non-trivial bugs reported and fixed, and as a prelude
+to specific engine refactoring (flag all related APIs, make sure there
+are tests that cover the intended changes).

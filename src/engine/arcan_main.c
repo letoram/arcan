@@ -118,12 +118,13 @@ static const struct option longopts[] = {
 	{ "monitor",      required_argument, NULL, 'M'},
 	{ "monitor-out",  required_argument, NULL, 'O'},
 	{ "monitor-in",   required_argument, NULL, 'I'},
+	{ "version",      no_argument,       NULL, 'V'},
 	{ NULL,           no_argument,       NULL,  0 }
 };
 
 static void usage()
 {
-printf("usage: arcan [-whfmWMOqspBtbdgaS] applname [app specific arguments]\n"
+printf("usage: arcan [-whfmWMOqspBtbdgaSV] applname [app specific arguments]\n"
 "-w\t--width       \tdesired width (default: 640)\n"
 "-h\t--height      \tdesired height (default: 480)\n"
 "-f\t--fullscreen  \ttoggle fullscreen mode ON (default: off)\n"
@@ -142,7 +143,8 @@ printf("usage: arcan [-whfmWMOqspBtbdgaS] applname [app specific arguments]\n"
 "-d\t--database    \tsqlite database (default: arcandb.sqlite)\n"
 "-g\t--debug       \ttoggle debug output (events, coredumps, etc.)\n"
 "-a\t--multisamples\tset number of multisamples (default 4, disable 0)\n"
-"-S\t--nosound     \tdisable audio output\n\n");
+"-S\t--nosound     \tdisable audio output\n"
+"-V\t--version     \tdisplay a version string then exit\n\n");
 
 	const char** cur = platform_video_synchopts();
 	printf("Video platform synchronization options (-W strat):\n");
@@ -277,7 +279,7 @@ int main(int argc, char* argv[])
  * only -g will make their base and sequence repeatable */
 
 	while ((ch = getopt_long(argc, argv,
-		"w:h:mx:y:fsW:d:Sq:a:p:b:B:M:O:t:g1:2:", longopts, NULL)) >= 0){
+		"w:h:mx:y:fsW:d:Sq:a:p:b:B:M:O:t:g1:2:V", longopts, NULL)) >= 0){
 	switch (ch) {
 	case '?' :
 		usage();
@@ -295,6 +297,9 @@ int main(int argc, char* argv[])
 	case 'a' : arcan_video_display.msasamples = strtol(optarg, NULL, 10); break;
 	case 'p' : arcan_override_namespace(optarg, RESOURCE_APPL_SHARED); break;
 	case 'b' : fallback = strdup(optarg); break;
+	case 'V' : fprintf(stdout, "%s\n", ARCAN_BUILDVERSION);
+						 exit(EXIT_SUCCESS);
+						 break;
 #ifndef _WIN32
 	case 'M' : settings.monitor_counter = settings.monitor =
 		abs( strtol(optarg, NULL, 10) ); break;

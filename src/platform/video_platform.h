@@ -1,24 +1,27 @@
 #ifndef HAVE_ARCAN_VIDEOPLATFORM
 #define HAVE_ARCAN_VIDEOPLATFORM
+
 /*
- * Initialize the video platform to a display that matches the
- * specified dimensions. this interface is slated for redesign to
- * cover more adaptive configurations (probing displays, etc.)
- *
- * width / height to 0 will force whatever the platform layer decides
- * the main display would like.
- *
- * (frames / fs are hints to where we are running as a window
- * in another display server, and whether we should request to
- * fake fullscreen or not.)
+ * This platform layer is an attempt to decouple the _video.c
+ * _3dbase.c and _shdrmgmt.c parts of the engine from OpenGL.
  */
 
+/*
+ * We only work with / support one internal pixel representation
+ * which should be defined at build time to correspond to whatever
+ * the underlying hardware supports optimally.
+ */
 #ifndef VIDEO_PIXEL_TYPE
 #define VIDEO_PIXEL_TYPE uint32_t
 #endif
 
 typedef VIDEO_PIXEL_TYPE av_pixel;
 
+/*
+ * To change the internal representation, define this macros in
+ * some other header that is forcibly included or redefine through
+ * the build-system.
+ */
 #ifndef RGBA
 #define RGBA(r, g, b, a)( ((uint32_t)(a) << 24) | ((uint32_t) (b) << 16) |\
 ((uint32_t) (g) << 8) | ((uint32_t) (r)) )
@@ -40,15 +43,23 @@ typedef VIDEO_PIXEL_TYPE av_pixel;
 static inline void RGBA_DECOMP(av_pixel val, uint8_t* r,
 	uint8_t* g, uint8_t* b, uint8_t* a)
 {
-	*r = val & 0x000000ff;
-	*g = (val & 0x0000ff00) >> 8;
+	*r = (val & 0x000000ff);
+	*g = (val & 0x0000ff00) >>  8;
 	*b = (val & 0x00ff0000) >> 16;
 	*a = (val & 0xff000000) >> 24;
 }
 #endif
 
+/*
+ * end of internal representation specific data.
+ */
 typedef long long arcan_vobj_id;
 
+/*
+ * Setup the video layer to some undetermined default.
+ * The w/h/bpp/fs/frames/caption arguments are currently here
+ * due to legacy, the plan is to later rely on
+ */
 bool platform_video_init(uint16_t w, uint16_t h,
 	uint8_t bpp, bool fs, bool frames, const char* caption);
 
@@ -121,7 +132,7 @@ void platform_video_shutdown();
 
 /*
  * The following function abstracts the graphics operations that
- * arcan_video.c relies on, implementations can be found in platform/agp.
+ * arcan_video.c relies on, implementations can be found in platform/agp_.
  *
  * This is currently a refactor-in-progress to fix some long standing
  * issues with GL<->GLES incompatibilty and inefficies that come from
@@ -133,45 +144,130 @@ void platform_video_shutdown();
  * Some underlying implementations need to allocate handles / contexts
  * etc. as an extension to what platform_video_init has already done.
  */
-void argp_init();
+void agp_init();
 struct storage_info_t;
+typedef long int arcan_shader_id;
+
+/*
+ * Retrieve the default shader for a specific purpose,
+ * BASIC_2D => single textured, alpha in obj_opacity
+ * COLOR_2D => not textured, color channel in uniforms
+ */
+enum SHADER_TYPES {
+	BASIC_2D = 0,
+	COLOR_2D,
+	SHADER_TYPE_ENDM
+};
+arcan_shader_id agp_default_shader(enum SHADER_TYPES);
+void agp_shader_source(enum SHADER_TYPES, const char**, const char**);
+
+/*
+ * Identification string for the shader language supported,
+ * this is platform dependent and need to be exposed to higher
+ * layers as there is no one-shot portable solution for this.
+ * Expect to need a path for 'NONE', 'GLSL120' and 'GLSL100'
+ */
+const char* agp_shader_language();
+
+/*
+ * Identification string for the underlying graphics API as
+ * such, typical ones would be 'GLES3', 'OPENGL21', and 'SOFTWARE'.
+ */
+const char* agp_backend_ident();
 
 /*
  * Set as currently active sampling buffer for other drawing commands
  */
-void argp_activate_vstore(struct storage_info_t* backing);
+void agp_activate_vstore(struct storage_info_t* backing);
 
 /*
  * Explicitly deactivate vstore, after this state of the specified backing
  * store can be consideired undefined.
  */
-void argp_deactivate_vstore(struct storage_info_t* backing);
+void agp_deactivate_vstore(struct storage_info_t* backing);
 
 /*
  * Deallocate all resources associated with a backing store.
  * This function is internally reference counted as there can be a
  * 1:* between a vobject and a backing store.
  */
-void argp_drop_vstore(struct storage_info_t* backing);
+void agp_drop_vstore(struct storage_info_t* backing);
 
 /*
  * Map multiple backing store devices sequentially across
  * available texture units.
  */
-void argp_activate_vstore_multi(struct storage_info_t** backing, size_t n);
+void agp_activate_vstore_multi(struct storage_info_t** backing, size_t n);
 
 /*
  * Synchronize a populated backing store with the underlying
  * graphics layer
  */
-void argp_update_vstore(struct storage_info_t*, bool copy, bool mipmap);
+void agp_update_vstore(struct storage_info_t*, bool copy, bool mipmap);
 
 /*
  * Allocate id and upload / store raw buffer into vstore
  */
-void argp_buffer_tostore(struct storage_info_t* dst,
+void agp_buffer_tostore(struct storage_info_t* dst,
 	av_pixel* buf, size_t buf_sz, size_t w, size_t h,
 	size_t origw, size_t origh, unsigned short zv
 );
 
+/*
+ * Synchronize the current backing store on-host buffer
+ * (i.e. dstore->vinf.text.raw)
+ */
+void agp_readback_synchronous(struct storage_info_t* dst);
+
+struct asynch_readback_meta {
+	av_pixel* ptr;
+	size_t buf_sz;
+	size_t w;
+	size_t h;
+	size_t stride;
+
+	void (*release)(void* tag);
+	void* tag;
+};
+
+/*
+ * Check if a pending readback request has been completed.
+ * If so, meta.ptr will be !NULL. In that case, the caller
+ * is expected to invoke meta.release with tag as argument.
+ */
+struct asynch_readback_meta agp_poll_readback(struct storage_info_t*);
+
+/*
+ * Initiate a new asynchronous readback, if one is already
+ * pending, this is a no-operation.
+ */
+void agp_request_readback(struct storage_info_t*);
+
+/*
+ * For clipping and similar operations where we want to
+ * prepare a mask ("stencil") buffer, this sequency of operations
+ * is used:
+ * agp_prepare_stencil()  -- reset lingering state
+ * agp_draw_stencil(...)  -- multiple calls to populate
+ * agp_activate_stencil() -- other drawcalls should honor this mask
+ * agp_disable_stencil()  -- normal operations
+ */
+void agp_prepare_stencil();
+void agp_draw_stencil(float x1, float y1, float x2, float y2);
+void agp_activate_stencil();
+void agp_disable_stencil();
+
+/*
+ * Bind uniforms and draw using the currently active vstore.
+ * Txcos, Ident and Model can be NULL and then defaults will be used.
+ */
+void agp_draw_vobj(float x1, float y1, float x2, float y2,
+	float* txcos, float* model);
+
+/*
+ * Get a copy of the current display output and save
+ * into the supplied buffer, scale / convert color format
+ * if necessary.
+ */
+void agp_save_output(size_t w, size_t h, av_pixel* dst, size_t dsz);
 #endif

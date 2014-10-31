@@ -138,7 +138,6 @@ static inline void build_modelview(float* dmatr,
 	float* imatr, surface_properties* prop, arcan_vobject* src);
 static inline void process_readback(struct rendertarget* tgt, float fract);
 static inline void poll_readback(struct rendertarget* tgt);
-static void draw_vobj(float x, float y,float x2, float y2, float* txcos);
 
 static inline void trace(const char* msg, ...)
 {
@@ -165,8 +164,7 @@ static void drop_vstore(struct storage_info_t* s)
 
 	if (s->refcount == 0){
 		if (s->txmapped != TXSTATE_OFF && s->vinf.text.glid){
-			glDeleteTextures(1, &s->vinf.text.glid);
-			s->vinf.text.glid = 0;
+			agp_drop_vstore(s);
 
 			if (s->vinf.text.raw){
 				arcan_mem_free(s->vinf.text.raw);
@@ -186,48 +184,6 @@ void arcan_video_default_texfilter(enum arcan_vfilter_mode mode)
 void arcan_video_default_imageprocmode(enum arcan_imageproc_mode mode)
 {
 	arcan_video_display.imageproc = mode;
-}
-
-void readback_texture(GLint glid,
-	unsigned width, unsigned height, void* dstbuf, size_t buf_sz)
-{
-#if defined(HAVE_GLES3) || defined(HAVE_GLES2)
-	static struct {
-		bool ready;
-		GLuint texid;
-		GLuint fboid;
-	} readback;
-
-/*
- * static buffer that will be re-used, will always limit to display
- * size in this rather horrible fallback (seriously, no glGetTexImage..)
- */
-	if (!readback.ready){
-		glGenRenderbuffers(1, &readback.texid);
-		glBindRenderbuffer(GL_RENDERBUFFER, readback.texid);
-		glRenderbufferStorage(GL_RENDERBUFFER, GL_RGBA,
-			arcan_video_display.canvasw, arcan_video_display.canvash);
-
-		glGenFramebuffers(1, &readback.fboid);
-		glBindFramebuffer(GL_FRAMEBUFFER, readback.fboid);
-		glFramebufferRenderbuffer(GL_FRAMEBUFFER,
-			GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, readback.texid);
-	}
-
-	glViewport(0, 0, width, height);
-	glReadPixels(0, 0, width, height, GL_RGBA, GL_RGBA, dstbuf);
-
-/*
- * will not be called as direct part of renderloop, only explicit readbacks
- * and for forceread calls, thus no need to switch state RenderbufferState
- * or viewport
- */
-
-#else
-	glBindTexture(GL_TEXTURE_2D, glid);
-	glGetTexImage(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, dstbuf);
-	glBindTexture(GL_TEXTURE_2D, 0);
-#endif
 }
 
 struct rendertarget* find_rendertarget(arcan_vobject* vobj)
@@ -284,7 +240,7 @@ static void addchild(arcan_vobject* parent, arcan_vobject* child)
  */
 static void invalidate_cache(arcan_vobject* vobj)
 {
-	FLAG_DIRTY();
+	FLAG_DIRTY(vobj);
 
 	if (!vobj->valid_cache)
 		return;
@@ -362,7 +318,7 @@ static inline void step_active_frame(arcan_vobject* vobj)
 		vobj->frameset_meta.capacity;
 	vobj->current_frame = vobj->frameset[ vobj->frameset_meta.current ];
 
-	FLAG_DIRTY();
+	FLAG_DIRTY(vobj);
 }
 
 /*
@@ -413,7 +369,7 @@ static void reallocate_gl_context(struct arcan_video_context* context)
 			}
 			else
 				if (current->vstore->txmapped != TXSTATE_OFF)
-					argp_update_vstore(current->vstore,
+					agp_update_vstore(current->vstore,
 						true, FL_TEST(current, FL_MIPMAP));
 
 			arcan_frameserver* movie = current->feed.state.ptr;
@@ -504,26 +460,23 @@ static void pop_transfer_persists(
 
 void arcan_vint_drawrt(arcan_vobject* outp, int x, int y, int w, int h)
 {
-	float imatr[16];
-	identity_matrix(imatr);
-
-	arcan_shader_activate(arcan_video_display.defaultshdr);
-	arcan_shader_envv(MODELVIEW_MATR, imatr, sizeof(float) * 16);
-	glBindTexture(GL_TEXTURE_2D, outp->vstore->vinf.text.glid);
+	arcan_shader_activate(agp_default_shader(BASIC_2D));
 
 	glViewport(0, 0, arcan_video_display.width, arcan_video_display.height);
-		arcan_shader_envv(PROJECTION_MATR,
-			arcan_video_display.window_projection, sizeof(float)*16);
-	draw_vobj(0, 0, x + w, y + h, arcan_video_display.mirror_txcos);
-	glBindTexture(GL_TEXTURE_2D, 0);
+	agp_activate_vstore(outp->vstore);
+	arcan_shader_envv(PROJECTION_MATR,
+		arcan_video_display.window_projection, sizeof(float)*16);
+
+	agp_draw_vobj(0, 0, x + w, y + h,
+		arcan_video_display.mirror_txcos, NULL);
+
+	agp_deactivate_vstore(outp->vstore);
 }
 
 void arcan_vint_drawcursor(bool erase)
 {
-	float imatr[16];
 	float txmatr[8];
-
-	float* txcos;
+	float* txcos = arcan_video_display.default_txcos;
 
 	int x1 = arcan_video_display.cursor.x;
 	int y1 = arcan_video_display.cursor.y;
@@ -533,9 +486,6 @@ void arcan_vint_drawcursor(bool erase)
 	if (erase){
 		if (!arcan_video_display.cursor.vstore)
 			return;
-
-		glBindTexture(GL_TEXTURE_2D,
-			arcan_video_display.cursor.vstore->vinf.text.glid);
 
 		float s1 = (float)x1 / arcan_video_display.canvasw;
 		float s2 = (float)x2 / arcan_video_display.canvasw;
@@ -553,19 +503,12 @@ void arcan_vint_drawcursor(bool erase)
 
 		txcos = txmatr;
 	}
-	else {
-		glBindTexture(GL_TEXTURE_2D,
-			arcan_video_display.cursor.vstore->vinf.text.glid);
-		txcos = arcan_video_display.default_txcos;
-	}
 
-	identity_matrix(imatr);
-
-	arcan_shader_activate(arcan_video_display.defaultshdr);
-	arcan_shader_envv(MODELVIEW_MATR, imatr, sizeof(float) * 16);
-
-	draw_vobj(x1, y1, x2, y2, txcos);
-	glBindTexture(GL_TEXTURE_2D, 0);
+	agp_activate_vstore(erase ? current_context->world.vstore :
+		arcan_video_display.cursor.vstore);
+	arcan_shader_activate(agp_default_shader(BASIC_2D));
+	agp_draw_vobj(x1, y1, x2, y2, txcos, NULL);
+	agp_deactivate_vstore(arcan_video_display.cursor.vstore);
 }
 
 signed arcan_video_pushcontext()
@@ -608,7 +551,7 @@ signed arcan_video_pushcontext()
 /* propagate persistent flagged objects upwards */
 	push_transfer_persists(
 		&vcontext_stack[ vcontext_ind - 1], current_context);
-	FLAG_DIRTY();
+	FLAG_DIRTY(NULL);
 
 	return arcan_video_nfreecontexts();
 }
@@ -742,7 +685,7 @@ unsigned arcan_video_extpopcontext(arcan_vobj_id* dst)
 	av_pixel* dstbuf;
 	size_t dsz;
 
-	FLAG_DIRTY();
+	FLAG_DIRTY(NULL);
 	arcan_video_refresh(0.0, false);
 	bool ss = arcan_video_screenshot((void*)&dstbuf, &dsz) == ARCAN_OK;
 	int rv = arcan_video_popcontext();
@@ -775,7 +718,7 @@ signed arcan_video_extpushcontext(arcan_vobj_id* dst)
 	av_pixel* dstbuf;
 	size_t dsz;
 
-	FLAG_DIRTY();
+	FLAG_DIRTY(NULL);
 	arcan_video_refresh(0.0, false);
 	bool ss = arcan_video_screenshot(&dstbuf, &dsz) == ARCAN_OK;
 	int rv = arcan_video_pushcontext();
@@ -817,7 +760,7 @@ unsigned arcan_video_popcontext()
 	}
 
 	reallocate_gl_context(current_context);
-	FLAG_DIRTY();
+	FLAG_DIRTY(NULL);
 
 	return (CONTEXT_STACK_LIMIT - 1) - vcontext_ind;
 }
@@ -920,9 +863,7 @@ arcan_errc arcan_video_resampleobject(arcan_vobj_id vid,
 
 /* readback so we can survive push/pop and restore external */
 	struct storage_info_t* dstore = vobj->vstore;
-
-	readback_texture(dstore->vinf.text.glid, dstore->w, dstore->h,
-		dstore->vinf.text.raw, dstore->vinf.text.s_raw);
+	agp_readback_synchronous(dstore);
 
 	return ARCAN_OK;
 }
@@ -960,7 +901,7 @@ arcan_errc arcan_video_mipmapset(arcan_vobj_id vid, bool enable)
 	else
 		FL_CLEAR(vobj, FL_MIPMAP);
 	vobj->vstore->vinf.text.raw = newbuf;
-	argp_update_vstore(vobj->vstore, true, FL_TEST(vobj, FL_MIPMAP));
+	agp_update_vstore(vobj->vstore, true, FL_TEST(vobj, FL_MIPMAP));
 
 	return ARCAN_OK;
 }
@@ -1068,7 +1009,6 @@ static arcan_vobject* new_vobject(arcan_vobj_id* id,
 	struct arcan_video_context* dctx)
 {
 	arcan_vobject* rv = NULL;
-	FLAG_DIRTY();
 
 	bool status;
 	arcan_vobj_id fid = arcan_video_allocid(&status, dctx);
@@ -1202,7 +1142,7 @@ static bool detach_fromtarget(struct rendertarget* dst, arcan_vobject* src)
 		src->cellid, video_tracetag(src), src->extrefc.attachments);
 	}
 
-	FLAG_DIRTY();
+	FLAG_DIRTY(NULL);
 	return true;
 }
 
@@ -1255,7 +1195,7 @@ static void attach_object(struct rendertarget* dst, arcan_vobject* src)
 		}
 	}
 
-	FLAG_DIRTY();
+	FLAG_DIRTY(src);
 	if (dst->color){
 		src->extrefc.attachments++;
 		dst->color->extrefc.attachments++;
@@ -1280,7 +1220,7 @@ arcan_errc arcan_video_attachobject(arcan_vobj_id id)
 /* make sure that there isn't already one attached */
 		detach_fromtarget(&current_context->stdoutp, src);
 		attach_object(&current_context->stdoutp, src);
-		FLAG_DIRTY();
+		FLAG_DIRTY(src);
 
 		rv = ARCAN_OK;
 	}
@@ -1436,106 +1376,9 @@ arcan_errc arcan_video_linkobjs(arcan_vobj_id srcid, arcan_vobj_id parentid,
 	src->p_anchor = anchorp;
 	src->transfc = 0;
 	src->mask = mask;
-	FLAG_DIRTY();
+	FLAG_DIRTY(NULL);
 
 	return ARCAN_OK;
-}
-
-const char* defvprg =
-#if defined(GL_ES_VERSION_2_0) || defined(GL_ES_VERSION_3_0)
-"#version 100\n"
-#else
-"#version 120\n"
-#endif
-"uniform mat4 modelview;\n"
-"uniform mat4 projection;\n"
-
-"attribute vec2 texcoord;\n"
-"varying vec2 texco;\n"
-"attribute vec4 vertex;\n"
-"void main(){\n"
-"	gl_Position = (projection * modelview) * vertex;\n"
-"   texco = texcoord;\n"
-"}";
-
-const char* deffprg =
-#if defined (GL_ES_VERSION_2_0) || defined(GL_ES_VERSION_3_0)
-"#version 100\n"
-"precision mediump float;\n"
-#else
-"#version 120\n"
-#endif
-"uniform sampler2D map_diffuse;\n"
-"varying vec2 texco;\n"
-"uniform float obj_opacity;\n"
-"void main(){\n"
-"   vec4 col = texture2D(map_diffuse, texco);\n"
-"   col.a = col.a * obj_opacity;\n"
-"	gl_FragColor = col;\n"
-"}";
-
-const char* defcvprg =
-#if defined (GL_ES_VERSION_2_0) || defined(GL_ES_VERSION_3_0)
-"#version 100\n"
-#else
-"#version 120\n"
-#endif
-"uniform mat4 modelview;\n"
-"uniform mat4 projection;\n"
-"attribute vec4 vertex;\n"
-"void main(){\n"
-" gl_Position = (projection * modelview) * vertex;\n"
-"}";
-
-const char* defcfprg =
-#if defined (GL_ES_VERSION_2_0) || defined(GL_ES_VERSION_3_0)
-"#version 100\n"
-"precision mediump float;\n"
-#else
-"#version 120\n"
-#endif
-"varying vec2 texco;\n"
-"uniform vec3 obj_col;\n"
-"uniform float obj_opacity;\n"
-"void main(){\n"
-"   gl_FragColor = vec4(obj_col.rgb, obj_opacity);\n"
-"}\n";
-
-static void arcan_video_gldefault()
-{
-	glEnable(GL_SCISSOR_TEST);
-	glDisable(GL_DEPTH_TEST);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-#ifdef GL_MULTISAMPLE
-	if (arcan_video_display.msasamples)
-		glEnable(GL_MULTISAMPLE);
-#endif
-
-	glEnable(GL_BLEND);
-	glClearColor(0.0, 0.0, 0.0, 1.0f);
-
-/*
- * -- Removed as they were causing trouble with NVidia GPUs (white line outline
- * where triangles connect
- * glHint(GL_LINE_SMOOTH_HINT, GL_NICEST);
- * glHint(GL_POLYGON_SMOOTH_HINT, GL_NICEST);
- * glEnable(GL_LINE_SMOOTH);
- * glEnable(GL_POLYGON_SMOOTH);
-*/
-
-	identity_matrix(current_context->stdoutp.base);
-	glFrontFace(GL_CW);
-	glCullFace(GL_BACK);
-
-	if (arcan_video_display.pbo_support){
-		glGenBuffers(1, &current_context->stdoutp.pbo);
-		glBindBuffer(GL_PIXEL_PACK_BUFFER, current_context->stdoutp.pbo);
-		glBufferData(GL_PIXEL_PACK_BUFFER,
-			arcan_video_display.width * arcan_video_display.height * GL_PIXEL_BPP,
-			NULL, GL_STREAM_READ);
-		glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
-	}
 }
 
 arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
@@ -1559,11 +1402,9 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 		return ARCAN_ERRC_BADVMODE;
 	}
 
+	agp_init();
+
 	arcan_video_display.conservative = conservative;
-	arcan_video_display.defaultshdr  = arcan_shader_build("DEFAULT",
-		NULL, defvprg, deffprg);
-	arcan_video_display.defclrshdr   = arcan_shader_build("DEFAULT_COLOR",
-		NULL, defcvprg, defcfprg);
 
 	TTF_Init();
 	current_context->world.current.scale.x = 1.0;
@@ -1576,7 +1417,7 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	arcan_video_resize_canvas(
 		arcan_video_display.width, arcan_video_display.height);
 
-	arcan_video_gldefault();
+	identity_matrix(current_context->stdoutp.base);
 /*
  * By default, expected video output display matches canvas 1:1,
  * canvas can be explicitly resized and these two matrices will still
@@ -1584,7 +1425,7 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
  * things get hairy; it is then the video platform that is expected to
  * map rendertargets / videoobjects to output displays.
  */
-	FLAG_DIRTY();
+	FLAG_DIRTY(NULL);
 	return ARCAN_OK;
 }
 
@@ -1618,7 +1459,7 @@ arcan_errc arcan_video_resize_canvas(size_t neww, size_t newh)
 		ARCAN_MEMALIGN_PAGE
 	);
 
-	argp_update_vstore(current_context->world.vstore, true, false);
+	agp_update_vstore(current_context->world.vstore, true, false);
 
 	glGenFramebuffers(1, &arcan_video_display.main_fbo);
 	glBindFramebuffer(GL_FRAMEBUFFER, arcan_video_display.main_fbo);
@@ -1643,7 +1484,7 @@ arcan_errc arcan_video_resize_canvas(size_t neww, size_t newh)
 	memcpy(current_context->stdoutp.projection,
 		arcan_video_display.default_projection, sizeof(float) * 16);
 
-	FLAG_DIRTY();
+	FLAG_DIRTY(NULL);
 	return ARCAN_OK;
 }
 
@@ -1780,7 +1621,7 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
 
 push_comp:
 		if (!asynchsrc && dst->vstore->txmapped != TXSTATE_OFF)
-			argp_update_vstore(dst->vstore, true, FL_TEST(dst, FL_MIPMAP));
+			agp_update_vstore(dst->vstore, true, FL_TEST(dst, FL_MIPMAP));
 	}
 
 	arcan_sem_post(asynchsynch);
@@ -1888,7 +1729,11 @@ void arcan_video_cursorpos(int newx, int newy, bool absolute)
 		arcan_video_display.cursor.y += newy;
 	}
 
-	FLAG_DIRTY();
+/* Note, this dirty flag should not be needed
+ * in itself but currently there seems to be
+ * issues with the cursor redraw handling that
+ * should be looked into */
+	FLAG_DIRTY(NULL);
 }
 
 void arcan_video_cursorsize(size_t w, size_t h)
@@ -1953,7 +1798,7 @@ arcan_errc arcan_video_shareglstore(arcan_vobj_id sid, arcan_vobj_id did)
 		dst->txcos = NULL;
 	}
 
-	FLAG_DIRTY();
+	FLAG_DIRTY(dst);
 	return ARCAN_OK;
 }
 
@@ -1974,7 +1819,7 @@ arcan_vobj_id arcan_video_solidcolor(float origw, float origh,
 	newvobj->vstore->vinf.col.r = (float)r / 255.0f;
 	newvobj->vstore->vinf.col.g = (float)g / 255.0f;
 	newvobj->vstore->vinf.col.b = (float)b / 255.0f;
-	newvobj->program = arcan_video_display.defclrshdr;
+	newvobj->program = agp_default_shader(COLOR_2D);
 	arcan_video_attachobject(rv);
 
 	return rv;
@@ -2025,7 +1870,7 @@ arcan_vobj_id arcan_video_rawobject(av_pixel* buf,
 
 	glGenTextures(1, &ds->vinf.text.glid);
 
-	argp_update_vstore(newvobj->vstore, true, FL_TEST(newvobj, FL_MIPMAP));
+	agp_update_vstore(newvobj->vstore, true, FL_TEST(newvobj, FL_MIPMAP));
 	arcan_video_attachobject(rv);
 
 	return rv;
@@ -2128,7 +1973,7 @@ static bool alloc_fbo(struct rendertarget* dst)
 		store->h = h;
 
 /* generate ID etc. special path for TXSTATE_DEPTH */
-		argp_update_vstore(store, true, false);
+		agp_update_vstore(store, true, false);
 
 		glDrawBuffer(GL_NONE);
 		glReadBuffer(GL_NONE);
@@ -2237,21 +2082,9 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did,
 
 		alloc_fbo(dst);
 
-/* allocate a readback buffer with the PBO */
 		if (readback != 0){
 			dst->readback     = readback;
 			dst->readcnt      = abs(readback);
-
-			if (arcan_video_display.pbo_support){
-				glGenBuffers(1, &dst->pbo);
-				glBindBuffer(GL_PIXEL_PACK_BUFFER, dst->pbo);
-				glBufferData(GL_PIXEL_PACK_BUFFER,
-					vobj->vstore->w*vobj->vstore->h *
-					vobj->vstore->bpp, NULL, GL_STREAM_READ);
-				glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
-			}
-			else
-				arcan_warning("PBO readback missing, alternate support fixme.\n");
 		}
 
 		rv = ARCAN_OK;
@@ -2279,7 +2112,7 @@ arcan_errc arcan_video_setactiveframe(arcan_vobj_id dst, unsigned fid)
 		dstvobj->frameset_meta.capacity ? fid : 0;
 	dstvobj->current_frame = dstvobj->frameset[dstvobj->frameset_meta.current];
 
-	FLAG_DIRTY();
+	FLAG_DIRTY(dstvobj);
 	return ARCAN_OK;
 }
 
@@ -2400,7 +2233,7 @@ void arcan_video_joinasynch(arcan_vobject* img, bool emit, bool force)
 		loadev.kind = EVENT_VIDEO_ASYNCHIMAGE_FAILED;
 	}
 
-	argp_update_vstore(img->vstore, true, false);
+	agp_update_vstore(img->vstore, true, false);
 
 	if (emit)
 		arcan_event_enqueue(arcan_event_defaultctx(), &loadev);
@@ -2557,7 +2390,7 @@ arcan_vobj_id arcan_video_setupfeed(arcan_vfunc_cb ffunc,
 		ARCAN_MEM_VBUFFER, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
 
 	newvobj->feed.ffunc = ffunc;
-	argp_update_vstore(newvobj->vstore, true, false);
+	agp_update_vstore(newvobj->vstore, true, false);
 
 	return rv;
 }
@@ -2605,7 +2438,7 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons store,
 	glDeleteTextures(1, &vobj->vstore->vinf.text.glid);
 	vobj->vstore->vinf.text.glid = 0;
 
-	argp_update_vstore(vobj->vstore, true, FL_TEST(vobj, FL_MIPMAP));
+	agp_update_vstore(vobj->vstore, true, FL_TEST(vobj, FL_MIPMAP));
 
 	return ARCAN_OK;
 }
@@ -2687,7 +2520,7 @@ arcan_errc arcan_video_scaletxcos(arcan_vobj_id id, float sfs, float sft)
 		vobj->txcos[6] *= sfs;
 		vobj->txcos[7] *= sft;
 
-		FLAG_DIRTY();
+		FLAG_DIRTY(vobj);
 		rv = ARCAN_OK;
 	}
 
@@ -2702,6 +2535,7 @@ arcan_errc arcan_video_forceblend(arcan_vobj_id id, enum arcan_blendfunc mode)
 
 	if (vobj && id > 0) {
 		vobj->blendmode = mode;
+		FLAG_DIRTY(vobj);
 		rv = ARCAN_OK;
 	}
 
@@ -2846,6 +2680,7 @@ arcan_errc arcan_video_zaptransform(arcan_vobj_id id, float* dropped)
 	vobj->transform = NULL;
 	vobj->transfc = 0;
 
+	FLAG_DIRTY(vobj);
 	return ARCAN_OK;
 }
 
@@ -2893,7 +2728,8 @@ arcan_errc arcan_video_objecttexmode(arcan_vobj_id id,
 			GL_REPEAT : GL_CLAMP_TO_EDGE;
 		src->vstore->txv = modet == ARCAN_VTEX_REPEAT ?
 			GL_REPEAT : GL_CLAMP_TO_EDGE;
-		argp_update_vstore(src->vstore, false, FL_TEST(src, FL_MIPMAP));
+		agp_update_vstore(src->vstore, false, FL_TEST(src, FL_MIPMAP));
+		FLAG_DIRTY(src);
 	}
 
 	return rv;
@@ -2908,7 +2744,7 @@ arcan_errc arcan_video_objectfilter(arcan_vobj_id id,
 /* fake an upload with disabled filteroptions */
 	if (src){
 		src->vstore->filtermode = mode;
-		argp_update_vstore(src->vstore, false, FL_TEST(src, FL_MIPMAP));
+		agp_update_vstore(src->vstore, false, FL_TEST(src, FL_MIPMAP));
 	}
 
 	return rv;
@@ -3688,7 +3524,7 @@ static void compact_transformation(arcan_vobject* base,
 
 	surface_transform* last = NULL;
 	surface_transform* work = base->transform;
-	/* copy the next transformation */
+/* copy the next transformation */
 
 	while (work && work->next) {
 		assert(work != work->next);
@@ -3697,11 +3533,11 @@ static void compact_transformation(arcan_vobject* base,
 		work = work->next;
 	}
 
-	/* reset the last one */
+/* reset the last one */
 	memset((char*) work + ofs, 0, count);
 	base->transfc--;
 
-	/* if it is now empty, free and delink */
+/* if it is now empty, free and delink */
 	if (!(work->blend.startt | work->scale.startt |
 		work->move.startt | work->rotate.startt )){
 		arcan_mem_free(work);
@@ -3718,7 +3554,7 @@ arcan_errc arcan_video_setprogram(arcan_vobj_id id, arcan_shader_id shid)
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 
 	if (vobj && arcan_shader_valid(shid)) {
-		FLAG_DIRTY();
+		FLAG_DIRTY(vobj);
 		vobj->program = shid;
 		rv = ARCAN_OK;
 	}
@@ -4008,7 +3844,7 @@ bool arcan_video_visible(arcan_vobj_id id)
 	arcan_vobject* vobj= arcan_video_getobject(id);
 
 	if (vobj && id > 0)
-		return vobj->current.opa > 0.001;
+		return vobj->current.opa > EPSILON;
 
 	return rv;
 }
@@ -4149,33 +3985,6 @@ void arcan_resolve_vidprop(arcan_vobject* vobj, float lerp,
  	else;
 }
 
-static inline void draw_vobj(float x, float y,float x2, float y2, float* txcos)
-{
-	GLfloat verts[] = { x,y, x2,y, x2,y2, x,y2 };
-	bool settex = false;
-
-	GLint attrindv = arcan_shader_vattribute_loc(ATTRIBUTE_VERTEX);
-	GLint attrindt = arcan_shader_vattribute_loc(ATTRIBUTE_TEXCORD);
-
-	if (attrindv != -1){
-		glEnableVertexAttribArray(attrindv);
-		glVertexAttribPointer(attrindv, 2, GL_FLOAT, GL_FALSE, 0, verts);
-
-		if (txcos && attrindt != -1){
-			settex = true;
-			glEnableVertexAttribArray(attrindt);
-			glVertexAttribPointer(attrindt, 2, GL_FLOAT, GL_FALSE, 0, txcos);
-		}
-
-		glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-
-		if (settex)
-			glDisableVertexAttribArray(attrindt);
-
-		glDisableVertexAttribArray(attrindv);
-	}
-}
-
 static void calc_cp_area(arcan_vobject* vobj, point* ul, point* lr)
 {
 	surface_properties cur;
@@ -4242,10 +4051,9 @@ static inline float time_ratio(arcan_tickv start, arcan_tickv stop)
 }
 
 static inline void setup_surf(struct rendertarget* dst,
-	surface_properties* prop, arcan_vobject* src)
+	surface_properties* prop, arcan_vobject* src, float** mv)
 {
-	float _Alignas(16) dmatr[16];
-	float* matr = src->prop_matr;
+	static float _Alignas(16) dmatr[16];
 
 	if (src->feed.state.tag == ARCAN_TAG_ASYNCIMGLD)
 		return;
@@ -4256,14 +4064,13 @@ static inline void setup_surf(struct rendertarget* dst,
 		prop->scale.y *= src->origh * 0.5f;
 		prop->position.x += prop->scale.x;
 		prop->position.y += prop->scale.y;
-
+		*mv = src->prop_matr;
 	}
 	else {
 		build_modelview(dmatr, dst->base, prop, src);
-		matr = dmatr;
+		*mv = dmatr;
 	}
 
-	arcan_shader_envv(MODELVIEW_MATR, matr, sizeof(float) * 16);
 	arcan_shader_envv(OBJ_OPACITY, &prop->opa, sizeof(float));
 
 	if (src->transform){
@@ -4288,19 +4095,22 @@ static inline void draw_colorsurf(struct rendertarget* dst,
 	surface_properties prop, arcan_vobject* src, float r, float g, float b)
 {
 	float cval[3] = {r, g, b};
+	float* mvm;
 
-	setup_surf(dst, &prop, src);
+	setup_surf(dst, &prop, src, &mvm);
 	arcan_shader_forceunif("obj_col", shdrvec3, (void*) &cval, false);
-	draw_vobj(-prop.scale.x, -prop.scale.y, prop.scale.x,
-		prop.scale.y, NULL);
+	agp_draw_vobj(-prop.scale.x,
+		-prop.scale.y, prop.scale.x,
+		prop.scale.y, NULL, mvm);
 }
 
 static inline void draw_texsurf(struct rendertarget* dst,
 	surface_properties prop, arcan_vobject* src, float* txcos)
 {
-	setup_surf(dst, &prop, src);
-	draw_vobj(-prop.scale.x, -prop.scale.y, prop.scale.x,
-		prop.scale.y, txcos);
+	float* mvm;
+	setup_surf(dst, &prop, src, &mvm);
+	agp_draw_vobj(-prop.scale.x, -prop.scale.y, prop.scale.x,
+		prop.scale.y, txcos, mvm);
 }
 
 static void ffunc_process(arcan_vobject* dst, int cookie)
@@ -4318,7 +4128,7 @@ static void ffunc_process(arcan_vobject* dst, int cookie)
 
 	if (dst->feed.ffunc(
 		FFUNC_POLL, 0, 0, 0, 0, 0, dst->feed.state) == FFUNC_RV_GOTFRAME) {
-		FLAG_DIRTY();
+		FLAG_DIRTY(dst);
 		arcan_vobject* cframe = dst->current_frame;
 
 /* cycle active frame */
@@ -4422,21 +4232,8 @@ void arcan_video_setblend(const surface_properties* dprops,
 static inline void populate_stencil(struct rendertarget* tgt,
 	arcan_vobject* celem, float fract)
 {
-/* toggle stenciling, reset into zero, draw parent bounding area to
- * stencil only,redraw parent into stencil, draw new object
- * then disable stencil. */
-	glEnable(GL_STENCIL_TEST);
-	glDisable(GL_BLEND);
-
-	glClearStencil(0);
-	glClear(GL_STENCIL_BUFFER_BIT);
-	glColorMask(0, 0, 0, 0);
-	glStencilFunc(GL_ALWAYS, 1, 1);
-	glStencilOp(GL_REPLACE, GL_REPLACE, GL_REPLACE);
-
-/* switch to default color shader as we don't want any fancy
- * vertex processing or texturing interfering with clipping */
-	arcan_shader_activate(arcan_video_display.defclrshdr);
+	agp_prepare_stencil();
+	arcan_shader_activate(agp_default_shader(COLOR_2D));
 
 	if (celem->clip == ARCAN_CLIP_SHALLOW){
 		surface_properties pprops = empty_surface();
@@ -4461,9 +4258,7 @@ static inline void populate_stencil(struct rendertarget* tgt,
 			celem = celem->parent;
 		}
 
-	glColorMask(1, 1, 1, 1);
-	glStencilFunc(GL_EQUAL, 1, 1);
-	glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+	agp_activate_stencil();
 }
 
 static inline void bind_multitexture(arcan_vobject* elem)
@@ -4472,7 +4267,7 @@ static inline void bind_multitexture(arcan_vobject* elem)
 	for (size_t i = 0; i < elem->frameset_meta.capacity; i++)
 		elems[i] = elem->frameset[ i ]->vstore;
 
-	argp_activate_vstore_multi(elems, elem->frameset_meta.capacity);
+	agp_activate_vstore_multi(elems, elem->frameset_meta.capacity);
 }
 
 static inline void clone_copy_attr(arcan_vobject* elem)
@@ -4620,7 +4415,7 @@ static size_t process_rendertarget(
 /* make sure we're in a decent state for 2D */
 	glDisable(GL_DEPTH_TEST);
 
-	arcan_shader_activate(arcan_video_display.defaultshdr);
+	arcan_shader_activate(agp_default_shader(BASIC_2D));
 	arcan_shader_envv(PROJECTION_MATR, tgt->projection, sizeof(float)*16);
 
 	while (current && current->elem->order >= 0){
@@ -4689,14 +4484,14 @@ static size_t process_rendertarget(
 			}
 
 			if (clipped)
-				glDisable(GL_STENCIL_TEST);
+				agp_disable_stencil();
 
 			current = current->next;
 			continue;
 		}
 
 		arcan_shader_activate( elem->program > 0 ?
-			elem->program : arcan_video_display.defaultshdr );
+			elem->program : agp_default_shader(BASIC_2D) );
 
 /* depending on frameset- mode, we may need to split
  * the frameset up into multitexturing */
@@ -4705,7 +4500,7 @@ static size_t process_rendertarget(
 			elem->frameset_meta.framemode == ARCAN_FRAMESET_MULTITEXTURE)
 			bind_multitexture(elem);
 		else
-			argp_activate_vstore(elem->current_frame->vstore);
+			agp_activate_vstore(elem->current_frame->vstore);
 
 		arcan_video_setblend(&dprops, elem);
 		draw_texsurf(tgt, dprops, elem, *dstcos);
@@ -4722,7 +4517,7 @@ end3d:
 	current = tgt->first;
 	if (current && current->elem->order < 0 &&
 		arcan_video_display.order3d == ORDER3D_LAST){
-		arcan_shader_activate(arcan_video_display.defaultshdr);
+		arcan_shader_activate(agp_default_shader(BASIC_2D));
 		current = arcan_refresh_3d(tgt->camtag, current, fract);
 		if (current != tgt->first)
 			pc++;
@@ -4755,8 +4550,13 @@ arcan_errc arcan_video_forceread(arcan_vobj_id sid,
 	*dptr  = arcan_alloc_mem(*dsize, ARCAN_MEM_VBUFFER,
 		ARCAN_MEM_TEMPORARY | ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE);
 
-	readback_texture(dstore->vinf.text.glid, dstore->w, dstore->h, *dptr, *dsize);
+	agp_readback_synchronous(dstore);
+	if (dptr && dstore->vinf.text.raw){
+		memcpy(*dptr, dstore->vinf.text.raw, *dsize);
+		return ARCAN_OK;
+	}
 
+	arcan_mem_free(*dptr);
 	return ARCAN_OK;
 }
 
@@ -4775,7 +4575,7 @@ arcan_errc arcan_video_forceupdate(arcan_vobj_id vid)
 	if (!tgt)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
-	FLAG_DIRTY();
+	FLAG_DIRTY(vobj);
 	glBindFramebuffer(GL_FRAMEBUFFER, tgt->fbo);
 		process_rendertarget(tgt, arcan_video_display.c_lerp, true);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -4801,10 +4601,8 @@ arcan_errc arcan_video_screenshot(av_pixel** dptr, size_t* dsize)
 		return ARCAN_ERRC_OUT_OF_SPACE;
 	}
 
-	glReadBuffer(GL_FRONT);
-
-	glReadPixels(0, 0, arcan_video_display.canvasw,
-		arcan_video_display.canvash, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, *dptr);
+	agp_save_output(arcan_video_display.canvasw,
+		arcan_video_display.canvash, *dptr, *dsize);
 
 	return ARCAN_OK;
 }
@@ -4812,74 +4610,57 @@ arcan_errc arcan_video_screenshot(av_pixel** dptr, size_t* dsize)
 /* check outstanding readbacks, map and feed onwards */
 static inline void poll_readback(struct rendertarget* tgt)
 {
-	if (!tgt->readreq || !arcan_video_display.pbo_support)
+	if (!tgt->readreq)
 		return;
 
 	arcan_vobject* vobj = tgt->color;
-	size_t ntr = vobj->vstore->w * vobj->vstore->h * vobj->vstore->bpp;
+	struct asynch_readback_meta rbb = agp_poll_readback(vobj->vstore);
 
-	glBindBuffer(GL_PIXEL_PACK_BUFFER, tgt->pbo);
-	av_pixel* src = glMapBuffer_Wrap(GL_PIXEL_PACK_BUFFER, ACCESS_FLAG_RW, ntr);
+	if (rbb.ptr == NULL)
+		return;
 
-/*
- * there are a bunch of driver bugs to watch out for here,
- * the way we're using it should be mostly "safe" but historically
- * speaking, there's been very race-condition prone cache
- * coherency issues for the last cache line or so,
- * and GL_READ_ONLY is a contract, not a hint!
- */
-	if (src){
-		if (!vobj->feed.ffunc)
-			tgt->readback = 0;
-		else
-			vobj->feed.ffunc(FFUNC_READBACK, src, ntr,
-			vobj->vstore->w, vobj->vstore->h, 0, vobj->feed.state);
+	if (!vobj->feed.ffunc)
+		tgt->readback = 0;
+	else{
+		vobj->feed.ffunc(FFUNC_READBACK, rbb.ptr,
+			rbb.w * rbb.h * GL_PIXEL_BPP, rbb.w, rbb.h, 0, vobj->feed.state);
 	}
 
-	glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
-	glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
-
+	rbb.release(rbb.tag);
 	tgt->readreq = false;
 }
 
 /* should we issue a new readback? */
 static inline void process_readback(struct rendertarget* tgt, float fract)
 {
-	if (!arcan_video_display.pbo_support)
+	if (tgt->readreq || tgt->readback == 0)
 		return;
 
-	bool req_rb = false;
-
-/* check if there's data ready to be copied,
- * this doesn't work for STENCIL or DEPTH */
-
-/* resolution is "by frame" */
+/* resolution is "by tick" */
 	if (tgt->readback < 0){
 		tgt->readcnt--;
 		if (tgt->readcnt <= 0){
-			req_rb = true;
 			tgt->readcnt = abs(tgt->readback);
+			goto request;
 		}
+		else
+			return;
 	}
 
-/* resolution is "by ms", approximately */
+/* resolution is "by other clock", approximately */
 	else if (tgt->readback > 0){
 		long long stamp = round( ((double)arcan_video_display.c_ticks + fract) *
 			(double)ARCAN_TIMER_TICK );
 		if (stamp - tgt->readcnt > tgt->readback){
-			req_rb = true;
 			tgt->readcnt = stamp;
 		}
+		else
+			return;
 	}
 
-/* check if we should request new data */
-	if (req_rb){
-		glBindBuffer(GL_PIXEL_PACK_BUFFER, tgt->pbo);
-		struct storage_info_t* dstore = tgt->color->vstore;
-		readback_texture(dstore->vinf.text.glid, dstore->w, dstore->h, 0, 0);
-		glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
-		tgt->readreq = true;
-	}
+request:
+	agp_request_readback(tgt->color->vstore);
+	tgt->readreq = true;
 }
 
 void arcan_video_refresh_GL(float lerp, bool draw)
@@ -5359,7 +5140,6 @@ void arcan_video_restore_external()
 {
 	platform_video_restore_external();
 	arcan_event_init( arcan_event_defaultctx() );
-	arcan_video_gldefault();
 	arcan_shader_rebuild_all();
 	arcan_video_popcontext();
 }
@@ -5438,7 +5218,7 @@ arcan_vobj_id arcan_video_renderstring(const char* message,
 		ARCAN_MEM_VSTRUCT, 0, ARCAN_MEMALIGN_SIMD);
 	ds->vinf.text.source = strdup(message);
 
-	argp_update_vstore(vobj->vstore, true, false);
+	agp_update_vstore(vobj->vstore, true, false);
 
 /*
  * POT but not all used,

@@ -1,0 +1,6 @@
+This tests the resample/scaler path
+(which in turn creates an intermediate FBO and 
+a temporary object with the source image, renders
+the image at the new resolution with a shader
+that in this case dampens g/b channels and 
+readbacks / saves the result).

@@ -1,0 +1,7 @@
+This test synthesizes a 2D gradient through
+a shader (s/t mapped to a color channel) mapped to 
+an object inside a calctarget, when the framecallback
+arrives, calculate the s, t, st vectors.
+
+this covers rendertarget -> manually triggered asynchronous
+readback -> lua-callback
