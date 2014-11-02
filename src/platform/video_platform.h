@@ -200,6 +200,23 @@ void agp_activate_vstore(struct storage_info_t* backing);
 void agp_deactivate_vstore(struct storage_info_t* backing);
 
 /*
+ * Drop the underlying ID mapping with a pending call to update_vstore,
+ * though the application manually managed reallocation
+ */
+void agp_null_vstore(struct storage_info_t* backing);
+
+/*
+ * Setup an empty vstore backing with the specified dimensions
+ */
+void agp_empty_vstore(struct storage_info_t* backing, size_t w, size_t h);
+
+/*
+ * Rebuild an existing vstore to handle a change in data source
+ * dimensions without sharestorage- like operations breaking
+ */
+void agp_resize_vstore(struct storage_info_t* backing, size_t w, size_t h);
+
+/*
  * Deallocate all resources associated with a backing store.
  * This function is internally reference counted as there can be a
  * 1:* between a vobject and a backing store.
@@ -216,7 +233,7 @@ void agp_activate_vstore_multi(struct storage_info_t** backing, size_t n);
  * Synchronize a populated backing store with the underlying
  * graphics layer
  */
-void agp_update_vstore(struct storage_info_t*, bool copy, bool mipmap);
+void agp_update_vstore(struct storage_info_t*, bool copy);
 
 /*
  * Allocate id and upload / store raw buffer into vstore
@@ -225,6 +242,12 @@ void agp_buffer_tostore(struct storage_info_t* dst,
 	av_pixel* buf, size_t buf_sz, size_t w, size_t h,
 	size_t origw, size_t origh, unsigned short zv
 );
+
+enum pipeline_mode {
+	PIPELINE_2D,
+	PIPELINE_3D
+};
+void agp_pipeline_hint(enum pipeline_mode);
 
 /*
  * Synchronize the current backing store on-host buffer
@@ -283,6 +306,48 @@ void agp_blendstate(enum arcan_blendfunc);
  */
 void agp_draw_vobj(float x1, float y1, float x2, float y2,
 	float* txcos, float*);
+
+/*
+ * Destination format for rendertargets. Note that we do not currently
+ * suport floating point targets and that for some platforms,
+ * COLOR_DEPTH will map to COLOR_DEPTH_STENCIL.
+ */
+enum rendertarget_mode {
+	RENDERTARGET_DEPTH = 0,
+	RENDERTARGET_COLOR = 1,
+	RENDERTARGET_COLOR_DEPTH = 2,
+	RENDERTARGET_COLOR_DEPTH_STENCIL = 3
+};
+
+/*
+ * Attach a backing store using the specified video object
+ * as recipient with the possible attachments specified in mode.
+ * This requires that the backing store video_object has been set
+ * as the color member of the rendertarget.
+ */
+struct rendertarget;
+void agp_setup_rendertarget(struct rendertarget*,
+	enum rendertarget_mode mode);
+
+/*
+ * Drop and rebuild the current backing store, along with
+ * possible transfer objects etc. with the >0 dimensions
+ * specified by neww / newh.
+ */
+void agp_resize_rendertarget(struct rendertarget*, size_t neww, size_t newh);
+
+/*
+ * Switch the currently active rendertarget to the one specified.
+ * If set to null, rendertarget based rendering will be disabled.
+ */
+void agp_activate_rendertarget(struct rendertarget*);
+
+void agp_drop_rendertarget(struct rendertarget*);
+
+/*
+ * reset the currently bound rendertarget output buffer
+ */
+void agp_rendertarget_clear();
 
 /*
  * Get a copy of the current display output and save

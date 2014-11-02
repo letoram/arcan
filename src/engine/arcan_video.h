@@ -100,10 +100,11 @@ enum arcan_clipmode {
  * by creative use of sharestorage and rendertargets with force update.
  */
 enum arcan_vfilter_mode {
-	ARCAN_VFILTER_NONE,
+	ARCAN_VFILTER_NONE = 0,
 	ARCAN_VFILTER_LINEAR,
 	ARCAN_VFILTER_BILINEAR,
-	ARCAN_VFILTER_TRILINEAR
+	ARCAN_VFILTER_TRILINEAR,
+	ARCAN_VFILTER_MIPMAP = 128
 };
 
 /*
@@ -127,18 +128,6 @@ enum arcan_vinterp {
 enum arcan_vimage_mode {
 	ARCAN_VIMAGE_NOPOW2    = 0,
 	ARCAN_VIMAGE_SCALEPOW2 = 1
-};
-
-/*
- * Destination format for rendertargets. Note that we do not currently
- * suport floating point targets and that for some platforms,
- * COLOR_DEPTH will map to COLOR_DEPTH_STENCIL.
- */
-enum rendertarget_mode {
-	RENDERTARGET_DEPTH = 0,
-	RENDERTARGET_COLOR = 1,
-	RENDERTARGET_COLOR_DEPTH = 2,
-	RENDERTARGET_COLOR_DEPTH_STENCIL = 3
 };
 
 /*

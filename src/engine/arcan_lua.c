@@ -4802,9 +4802,9 @@ static int targetstepframe(lua_State* ctx)
 	if (nframes <= 0)
 		return 0;
 
-	if (rtgt && !rtgt->readreq ){
+	if (rtgt && !FL_TEST(rtgt, TGTFL_READING) ){
 		agp_request_readback(rtgt->color->vstore);
-		rtgt->readreq = true;
+		FL_SET(rtgt, TGTFL_READING);
 	}
 
 	if (qev){
@@ -5230,7 +5230,7 @@ static int procimage_histo(lua_State* ctx)
 		base[j] = RGBA(r,g,b,a);
 	}
 /* forceupdate vobj storage */
-	agp_update_vstore(vobj->vstore, true, false);
+	agp_update_vstore(vobj->vstore, true);
 	return 0;
 }
 
@@ -7393,11 +7393,13 @@ static const char* const vobj_flags(arcan_vobject* src)
 
 static inline char* lut_filtermode(enum arcan_vfilter_mode mode)
 {
+	mode = mode & (~ARCAN_VFILTER_MIPMAP);
 	switch(mode){
 	case ARCAN_VFILTER_NONE     : return "none";
 	case ARCAN_VFILTER_LINEAR   : return "linear";
 	case ARCAN_VFILTER_BILINEAR : return "bilinear";
 	case ARCAN_VFILTER_TRILINEAR: return "trilinear";
+	case ARCAN_VFILTER_MIPMAP:break;
 	}
 	return "[missing filter]";
 }
@@ -7739,7 +7741,7 @@ lut_kind(src));
 
 	if (src->vstore->txmapped){
 		fprintf(dst, "vobj.glstore_glid = %d;\n\
-vobj.glstore_refc = %d;\n", src->vstore->vinf.text.glid,
+vobj.glstore_refc = %zu;\n", src->vstore->vinf.text.glid,
 			src->vstore->refcount);
 	} else {
 		fprintf_float(dst, "vobj.glstore_col = {", src->vstore->vinf.col.r, ", ");

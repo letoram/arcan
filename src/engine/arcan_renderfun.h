@@ -55,8 +55,8 @@
 void* arcan_renderfun_renderfmtstr(const char* message,
 	int8_t line_spacing, int8_t tab_spacing, unsigned int* tabs, bool pot,
 	unsigned int* n_lines, unsigned int** lineheights,
-	unsigned short* dw, unsigned short * dh, uint32_t* d_sz,
-	int* maxw, int* maxh);
+	size_t* dw, size_t* dh, uint32_t* d_sz,
+	size_t* maxw, size_t* maxh);
 
 /*
  * Shouldn't need to be called outside debugging /troubleshooting purposes.
@@ -70,7 +70,7 @@ void arcan_renderfun_reset_fontcache();
  * row-order.
  */
 int arcan_renderfun_stretchblit(char* src, int inw, int inh,
-	uint32_t* dst, int dstw, int dsth, int flipy);
+	uint32_t* dst, size_t dstw, size_t dsth, int flipy);
 
 /*
  * Similar to arcan_renderfun_renderfmtstr, but doesn't write / blit the output,
