@@ -695,7 +695,8 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 		glBindBuffer(GL_PIXEL_PACK_BUFFER, src->pbo);
 		glBufferData(GL_PIXEL_PACK_BUFFER, map_sz, NULL, GL_STREAM_DRAW);
 
-		av_pixel* ptr = glMapBuffer_Wrap(GL_PIXEL_PACK_BUFFER, ACCESS_FLAG_W, map_sz);
+		av_pixel* ptr = glMapBuffer_Wrap(
+			GL_PIXEL_PACK_BUFFER, ACCESS_FLAG_W, map_sz);
 
 		for (int y = 0; y < store.h; y++)
 			for (int x = 0; x < store.w; x++)
@@ -770,7 +771,7 @@ arcan_frameserver* arcan_frameserver_alloc()
 	if (!cookie)
 		cookie = arcan_shmif_cookie();
 
-	res->flags.pbo = arcan_video_display.pbo_support;
+	res->flags.pbo = true;
 	res->watch_const = 0xdead;
 
 	res->playstate = ARCAN_PLAYING;

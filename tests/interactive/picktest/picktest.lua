@@ -66,7 +66,7 @@ function picktest()
 
 	local shid = load_shader("shaders/dir_light.vShader", "shaders/dir_light.fShader", "light", {});
 
-	local cube_2 = build_3dbox(1, 1);
+	local cube_2 = build_3dbox(1, 1, 1);
 	show_image(cube_2);
 	move3d_model(cube_2, -1, -1, 0, 100);
 	rotate3d_model(cube_2, 0, 320, 0, 100);
