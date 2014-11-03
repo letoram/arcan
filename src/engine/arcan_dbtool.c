@@ -100,6 +100,8 @@ static int add_target(struct arcan_dbh* dst, int argc, char** argv)
 		bfmt = BFRM_LWA;
 	else if (strcmp(argv[2], "RETRO") == 0)
 		bfmt = BFRM_RETRO;
+	else if (strcmp(argv[2], "EXTERN") == 0)
+		bfmt = BFRM_EXTERN;
 	else {
 		printf("add_target(name executable bfmt argv) unknown bfmt specified, "
 			" accepted (BIN, LWA, RETRO).\n");
