@@ -4974,7 +4974,7 @@ static int targetlaunch(lua_State* ctx)
 
 /* external launch */
 	if (lmode == 0){
-		if (bfmt != BFRM_BIN && bfmt != BFRM_SHELL && bfmt != BFRM_LWA){
+		if (bfmt != BFRM_EXTERN){
 			arcan_warning("launch_target(), failed -- binary format not suitable "
 				" for external launch.");
 			goto cleanup;
@@ -4999,7 +4999,9 @@ static int targetlaunch(lua_State* ctx)
 
 	case BFRM_LWA:
 /* FIXME lookup arcan_lwa binary, and feed that as the executable,
- * this will be more prominent when we have a package format going */
+ * this will be more prominent when we have a package format going.
+ * There's also the problem of namespacing, but that could probably
+ * be fixed just using the env- */
 	break;
 
 	case BFRM_RETRO:
