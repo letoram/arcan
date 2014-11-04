@@ -650,8 +650,6 @@ static int setup_gl(void)
 
 	arcan_video_display.width = drm.mode->hdisplay;
 	arcan_video_display.height = drm.mode->vdisplay;
-	arcan_video_display.bpp = 4;
-	arcan_video_display.pbo_support = true;
 
 	glViewport(0, 0, arcan_video_display.width, arcan_video_display.height);
 

@@ -160,10 +160,8 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 	XSync(x11.xdisp, False);
 
 #ifndef HEADLESS_NOARCAN
-	arcan_video_display.pbo_support = true;
 	arcan_video_display.width = w;
 	arcan_video_display.height = h;
-	arcan_video_display.bpp = bpp;
 #endif
 
 	glViewport(0, 0, w, h);

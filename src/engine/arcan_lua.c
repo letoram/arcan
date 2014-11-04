@@ -7625,7 +7625,6 @@ fprintf(dst,
 "vobj.fsrv = {\
 \tlastpts = %lld,\
 \tsocksig = %d,\
-\tpbo = %d,\
 \taudbuf_sz = %d,\
 \taudbuf_used = %d,\
 \tchild_alive = %d,\
@@ -7635,7 +7634,6 @@ fprintf(dst,
 \toutevq_used = %d,",
 	(long long) fsrv->lastpts,
 	(int) fsrv->flags.socksig,
-	(int) fsrv->flags.pbo,
 	(int) fsrv->sz_audb,
 	(int) fsrv->ofs_audb,
 	(int) fsrv->flags.alive,

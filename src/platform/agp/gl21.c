@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <string.h>
 #include <stdbool.h>
 #include <assert.h>
 
@@ -94,6 +95,14 @@ void agp_shader_source(enum SHADER_TYPES type,
 	}
 }
 
+/*
+ *	glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, sw, sh,
+			GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, 0);
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+ *
+ */
+
 const char* agp_shader_language()
 {
 	return "GLSL120";
@@ -123,18 +132,35 @@ void agp_drop_vstore(struct storage_info_t* s)
 	glDeleteTextures(1, &s->vinf.text.glid);
 	s->vinf.text.glid = 0;
 
-	if (GL_NONE != s->vinf.text.tid){
-		glDeleteBuffers(1, &s->vinf.text.tid);
-	}
+	if (GL_NONE != s->vinf.text.rid)
+		glDeleteBuffers(1, &s->vinf.text.rid);
+
+	if (GL_NONE != s->vinf.text.wid)
+		glDeleteBuffers(1, &s->vinf.text.wid);
 
 	memset(s, '\0', sizeof(struct storage_info_t));
+}
+
+struct stream_meta agp_stream_prepare(struct storage_info_t* s,
+		struct stream_meta meta, enum stream_type type)
+{
+	struct stream_meta mout = {0};
+	return mout;
+}
+
+void agp_stream_commit(struct storage_info_t* s)
+{
+	/*
+	 * FIXME: for handle-less streaming, do nothing
+	 * other than unbind if we're not in direct mode
+	 */
 }
 
 static void pbo_alloc(struct storage_info_t* store)
 {
 	GLuint pboid;
 	glGenBuffers(1, &pboid);
-	store->vinf.text.tid = pboid;
+	store->vinf.text.rid = pboid;
 
 	glBindBuffer(GL_PIXEL_PACK_BUFFER, pboid);
 	glBufferData(GL_PIXEL_PACK_BUFFER,
@@ -151,16 +177,23 @@ static void default_release(void* tag)
 	glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 }
 
+void agp_resize_vstore(struct storage_info_t* s, size_t w, size_t h)
+{
+	/* FIXME: drop and allocate a new backing store,
+	 * run the upload on this one and then refresh any pbo handles
+	 */
+}
+
 void agp_request_readback(struct storage_info_t* store)
 {
 	if (!store || store->txmapped != TXSTATE_TEX2D)
 		return;
 
-	if (!store->vinf.text.tid)
+	if (!store->vinf.text.rid)
 		pbo_alloc(store);
 
 	glBindTexture(GL_TEXTURE_2D, store->vinf.text.glid);
-	glBindBuffer(GL_PIXEL_PACK_BUFFER, store->vinf.text.tid);
+	glBindBuffer(GL_PIXEL_PACK_BUFFER, store->vinf.text.rid);
 		glGetTexImage(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT,
 			GL_UNSIGNED_BYTE, NULL);
 	glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
@@ -174,10 +207,10 @@ struct asynch_readback_meta agp_poll_readback(struct storage_info_t* store)
 	};
 
 	if (!store || store->txmapped != TXSTATE_TEX2D ||
-		store->vinf.text.tid == GL_NONE)
+		store->vinf.text.rid == GL_NONE)
 		return res;
 
-	glBindBuffer(GL_PIXEL_PACK_BUFFER, store->vinf.text.tid);
+	glBindBuffer(GL_PIXEL_PACK_BUFFER, store->vinf.text.rid);
 
 	res.w = store->w;
 	res.h = store->h;
