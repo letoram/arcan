@@ -308,6 +308,7 @@ static inline void step_active_frame(arcan_vobject* vobj)
 	vobj->frameset_meta.current = (vobj->frameset_meta.current + 1) %
 		vobj->frameset_meta.capacity;
 	vobj->current_frame = vobj->frameset[ vobj->frameset_meta.current ];
+	vobj->owner->transfc++;
 
 	FLAG_DIRTY(vobj);
 }
@@ -493,10 +494,13 @@ void arcan_vint_drawcursor(bool erase)
 
 		txcos = txmatr;
 
+		agp_blendstate(BLEND_NONE);
 		agp_activate_vstore(current_context->world.vstore);
 	}
-	else
+	else{
 		agp_activate_vstore(arcan_video_display.cursor.vstore);
+		agp_blendstate(BLEND_FORCE);
+	}
 
 	arcan_shader_activate(agp_default_shader(BASIC_2D));
 	agp_draw_vobj(x1, y1, x2, y2, txcos, NULL);
@@ -1363,7 +1367,6 @@ arcan_errc arcan_video_linkobjs(arcan_vobj_id srcid, arcan_vobj_id parentid,
 		sizeof(struct transf_rotate));
 
 	src->p_anchor = anchorp;
-	src->transfc = 0;
 	src->mask = mask;
 	FLAG_DIRTY(NULL);
 
@@ -1423,15 +1426,18 @@ arcan_errc arcan_video_resize_canvas(size_t neww, size_t newh)
 	arcan_video_display.canvasw = neww;
 	arcan_video_display.canvash = newh;
 
-	populate_vstore(&current_context->world.vstore);
-	current_context->world.vstore->filtermode &= ~ARCAN_VFILTER_MIPMAP;
-	agp_empty_vstore(current_context->world.vstore, neww, newh);
-	current_context->stdoutp.color = &current_context->world;
+	if (!current_context->world.vstore){
+		populate_vstore(&current_context->world.vstore);
+		current_context->world.vstore->filtermode &= ~ARCAN_VFILTER_MIPMAP;
+		agp_empty_vstore(current_context->world.vstore, neww, newh);
+		current_context->stdoutp.color = &current_context->world;
+		agp_setup_rendertarget(&current_context->stdoutp,
+			RENDERTARGET_COLOR_DEPTH_STENCIL);
+	}
+	else
+		agp_resize_rendertarget(&current_context->stdoutp, neww, newh);
 
-	agp_setup_rendertarget(&current_context->stdoutp,
-		RENDERTARGET_COLOR_DEPTH_STENCIL);
-
-	build_orthographic_matrix(arcan_video_display.window_projection, 0,
+		build_orthographic_matrix(arcan_video_display.window_projection, 0,
 		arcan_video_display.width, arcan_video_display.height, 0, 0, 1);
 
 	build_orthographic_matrix(arcan_video_display.default_projection, 0,
@@ -1789,7 +1795,7 @@ arcan_vobj_id arcan_video_nullobject(float origw,
 	arcan_vobj_id rv =  arcan_video_solidcolor(origw, origh, 0, 0, 0, zv);
 
 	if (rv != ARCAN_EID){
-		arcan_vobject* vobj   = arcan_video_getobject(rv);
+		arcan_vobject* vobj = arcan_video_getobject(rv);
 		vobj->program = 0;
 		arcan_video_attachobject(rv);
 	}
@@ -2278,8 +2284,7 @@ arcan_vobj_id arcan_video_setupfeed(arcan_vfunc_cb ffunc,
 
 /* some targets like to change size dynamically (thanks for that),
  * thus, drop the allocated buffers, generate new one and tweak txcos */
-arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons store,
-	img_cons display)
+arcan_errc arcan_video_resizefeed(arcan_vobj_id id, size_t w, size_t h)
 {
 	arcan_vobject* vobj = arcan_video_getobject(id);
 	if (!vobj)
@@ -2292,30 +2297,19 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons store,
 		vobj->feed.state.tag == ARCAN_TAG_ASYNCIMGRD)
 		arcan_video_pushasynch(id);
 
-	float fx = (float)vobj->origw / (float)display.w;
-	float fy = (float)vobj->origh / (float)display.h;
+/* rescale transformation chain */
+	float fx = (float)vobj->origw / (float)w;
+	float fy = (float)vobj->origh / (float)h;
 
-	vobj->origw = display.w;
-	vobj->origh = display.h;
-
+/* "initial" base dimensions, important when dimensions
+ * change for objects that have a shared storage elsewhere
+ * but where scale differs. */
+	vobj->origw = w;
+	vobj->origh = h;
 	rescale_origwh(vobj, fx, fy);
 
-	vobj->vstore->w = vobj->vstore->scale == ARCAN_VIMAGE_NOPOW2 ?
-		store.w : nexthigher(store.w);
-
-	vobj->vstore->h = vobj->vstore->scale == ARCAN_VIMAGE_NOPOW2 ?
-		store.h : nexthigher(store.h);
-
-	vobj->vstore->vinf.text.s_raw = vobj->vstore->w * vobj->vstore->h *
-		GL_PIXEL_BPP;
-
-	arcan_mem_free(vobj->vstore->vinf.text.raw);
-	vobj->vstore->vinf.text.raw =
-		arcan_alloc_mem(vobj->vstore->vinf.text.s_raw,
-			ARCAN_MEM_VBUFFER, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
-
-	agp_null_vstore(vobj->vstore);
-	agp_update_vstore(vobj->vstore, true);
+	vobj->vstore->vinf.text.s_raw = w * h * GL_PIXEL_BPP;
+	agp_resize_vstore(vobj->vstore, w, h);
 
 	return ARCAN_OK;
 }
@@ -2555,7 +2549,6 @@ arcan_errc arcan_video_zaptransform(arcan_vobj_id id, float* dropped)
 		*dropped = count;
 
 	vobj->transform = NULL;
-	vobj->transfc = 0;
 
 	FLAG_DIRTY(vobj);
 	return ARCAN_OK;
@@ -2589,7 +2582,6 @@ arcan_errc arcan_video_instanttransform(arcan_vobj_id id){
 	}
 
 	vobj->transform = NULL;
-	vobj->transfc = 0;
 	invalidate_cache(vobj);
 	return ARCAN_OK;
 }
@@ -3098,7 +3090,7 @@ arcan_errc arcan_video_objectrotate3d(arcan_vobj_id id,
 	base->rotate.endo.pitch = pitch;
 	base->rotate.endo.yaw   = yaw;
 	base->rotate.endo.quaternion = build_quat_taitbryan(roll, pitch, yaw);
-	vobj->transfc++;
+	vobj->owner->transfc++;
 
 	base->rotate.interp = (abs(bv.roll - roll) > 180.0 ||
 		abs(bv.pitch - pitch) > 180.0 || abs(bv.yaw - yaw) > 180.0) ?
@@ -3169,12 +3161,12 @@ arcan_errc arcan_video_objectopacity(arcan_vobj_id id,
 			if (!vobj->transform)
 				vobj->transform = base;
 
-			vobj->transfc++;
+			vobj->owner->transfc++;
 			base->blend.startt = last->blend.endt < arcan_video_display.c_ticks ?
 				arcan_video_display.c_ticks : last->blend.endt;
 			base->blend.endt = base->blend.startt + tv;
 			base->blend.startopa = bv;
-			base->blend.endopa = opa + 0.0000000001;
+			base->blend.endopa = opa + EPSILON;
 			base->blend.interp = ARCAN_VINTER_LINEAR;
 		}
 	}
@@ -3306,7 +3298,7 @@ arcan_errc arcan_video_objectmove(arcan_vobj_id id, float newx,
 			base->move.interp = ARCAN_VINTER_LINEAR;
 			base->move.startp = bwp;
 			base->move.endp   = newp;
-			vobj->transfc++;
+			vobj->owner->transfc++;
 		}
 	}
 
@@ -3370,7 +3362,7 @@ arcan_errc arcan_video_objectscale(arcan_vobj_id id, float wf,
 			base->scale.endd.x = wf;
 			base->scale.endd.y = hf;
 			base->scale.endd.z = df;
-			vobj->transfc++;
+			vobj->owner->transfc++;
 		}
 	}
 
@@ -3396,7 +3388,6 @@ static void compact_transformation(arcan_vobject* base,
 
 /* reset the last one */
 	memset((char*) work + ofs, 0, count);
-	base->transfc--;
 
 /* if it is now empty, free and delink */
 	if (!(work->blend.startt | work->scale.startt |
@@ -3584,18 +3575,17 @@ static void expire_object(arcan_vobject* obj){
  * update / rescale / redraw / flip) returns msecs elapsed */
 static int tick_rendertarget(struct rendertarget* tgt)
 {
-	size_t transfc = 0;
+	tgt->transfc = 0;
 
 	arcan_vobject_litem* current = tgt->first;
 
 	while (current){
 		arcan_vobject* elem = current->elem;
-		transfc += elem->transfc;
 
 		arcan_video_joinasynch(elem, true, false);
 
 		if (elem->last_updated != arcan_video_display.c_ticks)
-			update_object(elem, arcan_video_display.c_ticks);
+			tgt->transfc += update_object(elem, arcan_video_display.c_ticks);
 
 		if (elem->feed.ffunc)
 			elem->feed.ffunc(FFUNC_TICK, 0, 0, 0, 0, 0, elem->feed.state);
@@ -3614,7 +3604,6 @@ static int tick_rendertarget(struct rendertarget* tgt)
 			if (elem->frameset_meta.counter == 0){
 				elem->frameset_meta.counter = abs( elem->frameset_meta.mode );
 				step_active_frame(elem);
-				transfc++;
 			}
 		}
 
@@ -3624,7 +3613,7 @@ static int tick_rendertarget(struct rendertarget* tgt)
 		current = current->next;
 	}
 
-	return transfc;
+	return tgt->transfc;
 }
 
 unsigned arcan_video_tick(unsigned steps, unsigned* njobs)
@@ -3634,7 +3623,6 @@ unsigned arcan_video_tick(unsigned steps, unsigned* njobs)
 
 	unsigned now = arcan_frametime();
 	uint32_t tsd = arcan_video_display.c_ticks;
-	arcan_video_display.dirty = 0;
 
 #ifdef SHADER_TIME_PERIOD
 	tsd = tsd % SHADER_TIME_PERIOD;
@@ -4210,11 +4198,11 @@ static size_t process_rendertarget(
 	struct rendertarget* tgt, float fract)
 {
 	arcan_vobject_litem* current = tgt->first;
-/*
+
 	if (arcan_video_display.ignore_dirty == false &&
 			arcan_video_display.dirty == 0 && tgt->transfc == 0)
 		return 0;
-*/
+
 	if (!FL_TEST(tgt, TGTFL_NOCLEAR))
 		agp_rendertarget_clear();
 
@@ -4325,9 +4313,13 @@ static size_t process_rendertarget(
 		else
 			agp_activate_vstore(elem->current_frame->vstore);
 
-		agp_blendstate(dprops.opa < 1.0-EPSILON ?
-					elem->blendmode : (
-			elem->blendmode != BLEND_FORCE ? BLEND_NONE : BLEND_FORCE));
+		if (dprops.opa < 1.0 - EPSILON)
+			agp_blendstate(elem->blendmode);
+		else
+			if (elem->blendmode == BLEND_FORCE)
+				agp_blendstate(elem->blendmode);
+			else
+				agp_blendstate(BLEND_NORMAL);
 
 		draw_texsurf(tgt, dprops, elem, *dstcos);
 		pc++;
@@ -4500,13 +4492,12 @@ void arcan_video_refresh_GL(float fract, bool draw)
 		struct rendertarget* tgt = &current_context->rtargets[ind];
 
 		agp_activate_rendertarget(tgt);
-		arcan_video_display.dirty += process_rendertarget(tgt, fract);
+		process_rendertarget(tgt, fract);
 		process_readback(&current_context->rtargets[ind], fract);
 	}
 
 	agp_activate_rendertarget(&current_context->stdoutp);
-	arcan_video_display.dirty += process_rendertarget(
-		&current_context->stdoutp, fract);
+	process_rendertarget(&current_context->stdoutp, fract);
 	process_readback(&current_context->stdoutp, fract);
 
 	if (draw){
@@ -4517,6 +4508,8 @@ void arcan_video_refresh_GL(float fract, bool draw)
 		arcan_vint_drawcursor(true);
 		arcan_vint_drawcursor(false);
 	}
+
+	arcan_video_display.dirty = 0;
 }
 
 unsigned arcan_video_refresh(float tofs, bool nodraw)

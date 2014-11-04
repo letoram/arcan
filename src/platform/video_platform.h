@@ -230,6 +230,35 @@ void agp_drop_vstore(struct storage_info_t* backing);
 void agp_activate_vstore_multi(struct storage_info_t** backing, size_t n);
 
 /*
+ * Prepare the specified backing store for streaming texture
+ * uploads. The semantics is determined by the stream_type and meta:
+ */
+enum stream_type {
+	STREAM_RAW,  /* buf will be NULL, call returns NULL (fail) or a pointer to
+								*	a buffer to populate manually and then commit */
+
+	STREAM_RAW_DIRECT, /* buf will be an av_pixel buffer that matches the
+											*	backing store dimensions */
+
+	STREAM_HANDLE, /* with buf 0, return a handle that can be passed to
+									*	a child or different context that needs to render onwards.
+									*	with buf !0, treat it as a handle that can be used by
+									*	the graphics layer to access an external data source */
+};
+
+struct stream_meta {
+	union{
+		av_pixel* buf;
+		uintptr_t handle;
+	};
+};
+
+struct stream_meta agp_stream_prepare(struct storage_info_t*,
+		struct stream_meta, enum stream_type);
+
+void agp_stream_commit(struct storage_info_t*);
+
+/*
  * Synchronize a populated backing store with the underlying
  * graphics layer
  */

@@ -544,8 +544,7 @@ void arcan_video_pollfeed();
  * Note that the operation is rather expensive as it involves
  * deallocating current backing stores and replacing them with new ones.
  */
-arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons store,
-	img_cons display);
+arcan_errc arcan_video_resizefeed(arcan_vobj_id id, size_t w, size_t h);
 
 /*
  * arcan_video_loadimageasynch and arcan_video_loadimage

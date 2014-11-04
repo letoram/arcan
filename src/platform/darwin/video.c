@@ -72,8 +72,6 @@ bool PLATFORM_SYMBOL(_video_init)(uint16_t w, uint16_t h,
 	GLint si = 0;
 	CGLSetParameter(context, kCGLCPSwapInterval, &si);
 
-	bool gotpbo = false;
-
 	int err;
 	if ( (err = glewInit()) != GLEW_OK){
 		arcan_fatal("arcan_video_init(), Couldn't initialize GLew: %s\n",
@@ -88,15 +86,10 @@ bool PLATFORM_SYMBOL(_video_init)(uint16_t w, uint16_t h,
 		arcan_warning("arcan_video_init(), Continuing without FBOs enabled, "
 			"this renderpath is to be considered unsupported.");
 	}
-	else
-		gotpbo = true;
 
 #ifndef HEADLESS_NOARCAN
-	arcan_video_display.pbo_support = true;
 	arcan_video_display.width = w;
 	arcan_video_display.height = h;
-	arcan_video_display.bpp = bpp;
-	arcan_video_display.pbo_support = true;
 
 	glViewport(0, 0, w, h);
 #endif

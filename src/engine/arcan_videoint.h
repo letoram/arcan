@@ -158,7 +158,7 @@ struct storage_info_t {
 	union {
 		struct {
 			unsigned glid;
-			unsigned tid;
+			unsigned rid, wid;
 			uint32_t s_raw;
 			av_pixel*  raw;
 			char*   source;
@@ -225,7 +225,6 @@ struct arcan_vobject** frameset;
 	point origo_ofs;
 
 	surface_transform* transform;
-	int transfc;
 	enum arcan_transform_mask mask;
 	enum arcan_clipmode clip;
 

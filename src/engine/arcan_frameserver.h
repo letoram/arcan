@@ -126,9 +126,6 @@ typedef struct arcan_frameserver {
 	off_t sockrofs;
 	char* sockaddr;
 
-/* transfer */
-	unsigned pbo;
-
 	struct {
 		bool socksig;
 		bool alive;
