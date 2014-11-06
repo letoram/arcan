@@ -129,6 +129,7 @@ void arcan_frameserver_dropshared(arcan_frameserver* src)
 	sem_unlink(work);
 	free(work);
 
+	src->shm.ptr = NULL;
 	arcan_mem_free(src->shm.key);
 }
 

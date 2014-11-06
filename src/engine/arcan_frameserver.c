@@ -64,22 +64,25 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
 	if (shmpage){
-		arcan_event exev = {
-			.category = EVENT_TARGET,
-		.	kind = TARGET_COMMAND_EXIT
-		};
-		arcan_frameserver_pushevent(src, &exev);
+		if (arcan_frameserver_enter(src)){
+			arcan_event exev = {
+				.category = EVENT_TARGET,
+			.kind = TARGET_COMMAND_EXIT
+			};
+			arcan_frameserver_pushevent(src, &exev);
 
-		shmpage->dms = false;
-		shmpage->vready = false;
-		shmpage->aready = false;
-		arcan_sem_post( src->vsync );
-		arcan_sem_post( src->async );
+			shmpage->dms = false;
+			shmpage->vready = false;
+			shmpage->aready = false;
+			arcan_sem_post( src->vsync );
+			arcan_sem_post( src->async );
+		}
 
 		arcan_frameserver_dropshared(src);
 		src->shm.ptr = NULL;
-	}
 
+		arcan_frameserver_leave();
+	}
 
 	arcan_frameserver_killchild(src);
 
@@ -156,8 +159,11 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
 }
 
 arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst,
-	arcan_event* ev){
+	arcan_event* ev)
+{
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+	if (!arcan_frameserver_enter(dst))
+		return rv;
 
 /*
  * NOTE: when arcan_event_serialize(*buffer) is implemented,
@@ -165,7 +171,7 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst,
  * transferred over the socket(!)
  * The problem with the current approach is that we have no
  * decent mechanism active for waking a child that's simultaneously
- * polling and need to respond quickly to enqueued events,
+ * polling and need to respond quickly to enqueued events
  */
 	if (dst && ev){
 		rv = dst->flags.alive && dst->shm.ptr ?
@@ -184,6 +190,8 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst,
 		}
 #endif
 	}
+
+	arcan_frameserver_leave();
 	return rv;
 }
 
@@ -295,6 +303,9 @@ enum arcan_ffunc_rv arcan_frameserver_videoframe_direct(
 	arcan_frameserver* tgt = state.ptr;
 	struct arcan_shmif_page* shmpage = tgt->shm.ptr;
 
+	if (!shmpage || !arcan_frameserver_enter(tgt))
+		return FFUNC_RV_NOFRAME;
+
 	switch (cmd){
 	case FFUNC_READBACK:
 	break;
@@ -336,6 +347,7 @@ enum arcan_ffunc_rv arcan_frameserver_videoframe_direct(
 		break;
   }
 
+	arcan_frameserver_leave();
 	return rv;
 }
 
@@ -348,14 +360,19 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe(
 	assert(state.tag == ARCAN_TAG_FRAMESERV);
 	arcan_frameserver* src = (arcan_frameserver*) state.ptr;
 
+	if (!arcan_frameserver_enter(src))
+		return FFUNC_RV_NOFRAME;
+
 	if (cmd == FFUNC_DESTROY)
 		arcan_frameserver_free(state.ptr);
 
 	else if (cmd == FFUNC_TICK){
 /* done differently since we don't care if the frameserver wants
  * to resize, that's its problem. */
-		if (!arcan_frameserver_control_chld(src))
+		if (!arcan_frameserver_control_chld(src)){
+			arcan_frameserver_leave();
    		return FFUNC_RV_NOFRAME;
+		}
 	}
 
 /*
@@ -398,7 +415,7 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe(
 	else
 			;
 
-/* not really used */
+	arcan_frameserver_leave();
 	return 0;
 }
 
@@ -580,9 +597,9 @@ arcan_errc arcan_frameserver_audioframe_direct(arcan_aobj* aobj,
 
 void arcan_frameserver_tick_control(arcan_frameserver* src)
 {
-	if (!arcan_frameserver_control_chld(src) || !src || !src->shm.ptr){
-		return;
-	}
+	if (!arcan_frameserver_enter(src) ||
+		!arcan_frameserver_control_chld(src) || !src || !src->shm.ptr)
+		goto leave;
 
 /* only allow the two categories below, and only let the
  * internal event queue be filled to half in order to not
@@ -591,7 +608,7 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 		src->queue_mask, 0.5, src->vid);
 
 	if (!src->shm.ptr->resized)
-		return;
+		goto leave;
 
 	size_t neww = src->shm.ptr->w;
   size_t newh = src->shm.ptr->h;
@@ -600,7 +617,7 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
  		arcan_warning("client requested illegal resize (%d, %d) -- killing.\n",
 			neww, newh);
 		arcan_frameserver_free(src);
-		return;
+		goto leave;
 	}
 
 /*
@@ -648,6 +665,9 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 
 /* acknowledge the resize */
 	shmpage->resized = false;
+
+leave:
+	arcan_frameserver_leave();
 }
 
 arcan_errc arcan_frameserver_pause(arcan_frameserver* src)

@@ -26,6 +26,7 @@ set (PLATFORM_SOURCES
 	${PLATFORM_PATH}/time.c
 	${PLATFORM_PATH}/warning.c
 	${PLATFORM_PATH}/frameserver.c
+	${PLATFORM_PATH}/fsrv_guard.c
 	${PLATFORM_PATH}/fdpassing.c
 	${PLATFORM_PATH}/namespace.c
 	${PLATFORM_PATH}/launch.c

@@ -17,6 +17,7 @@ set (PLATFORM_SOURCES
 	${WIN32_PATH}/warning.c
 	${WIN32_PATH}/map_resource.c
 	${WIN32_PATH}/frameserver.c
+	${WIN32_PATH}/../stub/fsrv_guard.c
 	${WIN32_PATH}/launch.c
 	${WIN32_PATH}/../stub/mem.c
 	${WIN32_PATH}/../posix/appl.c
