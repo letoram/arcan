@@ -20,6 +20,14 @@ and the timing data is logged.
 
 build/ (WIP) OS- specific "checkout, iterate platforms and build"
 
+frameservers/ supporting frameservers that need to be built
+in order to act as data-sources for some benchmarks and tests
+that requires it.
+
+The connection key for the corresponding test should be the same
+as the category the test is in (i.e. benchmark, regression, ...)
+or by having a database target/configuration that match.
+
 security/ (WIP) planned for fuzzing- tools on known interfaces,
 particularly for frameserver->arcan events and in possible future
 sad cases: CVE- reference + exploit PoC. Will also have specialized
