@@ -204,6 +204,8 @@ static void push_buffer(arcan_frameserver* src,
 			av_pixel px = *buf++;
 			*wbuf++ = RGBA_FULLALPHA_REPACK(px);
 		}
+
+		agp_stream_release(store);
 	}
 	else{
 		stream.buf = buf;

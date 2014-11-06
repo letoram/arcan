@@ -95,14 +95,6 @@ void agp_shader_source(enum SHADER_TYPES type,
 	}
 }
 
-/*
- *	glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
-		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, sw, sh,
-			GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, 0);
-		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
- *
- */
-
 const char* agp_shader_language()
 {
 	return "GLSL120";
@@ -141,22 +133,93 @@ void agp_drop_vstore(struct storage_info_t* s)
 	memset(s, '\0', sizeof(struct storage_info_t));
 }
 
+static void pbo_stream(struct storage_info_t* s, av_pixel* buf)
+{
+	agp_activate_vstore(s);
+	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, s->vinf.text.wid);
+	size_t ntc = s->w * s->h;
+
+	av_pixel* ptr = (av_pixel*) glMapBuffer(GL_PIXEL_UNPACK_BUFFER,
+			GL_WRITE_ONLY);
+
+	if (!ptr)
+		return;
+
+/* note, explicitly replace with a simd unaligned version */
+ 	if ( ((uintptr_t)ptr % 16) == 0 && ((uintptr_t)buf % 16) == 0	)
+		memcpy(ptr, buf, ntc * GL_PIXEL_BPP);
+	else
+		for (size_t i = 0; i < ntc; i++)
+			*ptr++ = *buf++;
+
+	glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, s->w, s->h,
+			GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, 0);
+
+	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+	agp_deactivate_vstore(s);
+}
+
+static inline void setup_unpack_pbo(struct storage_info_t* s, void* buf)
+{
+	agp_activate_vstore(s);
+	glGenBuffers(1, &s->vinf.text.wid);
+	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, s->vinf.text.wid);
+		glBufferData(GL_PIXEL_UNPACK_BUFFER,
+			s->w * s->h * GL_PIXEL_BPP, buf, GL_STREAM_DRAW);
+	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+	agp_deactivate_vstore(s);
+}
+
 struct stream_meta agp_stream_prepare(struct storage_info_t* s,
 		struct stream_meta meta, enum stream_type type)
 {
 	struct stream_meta mout = {0};
+
+	switch (type){
+	case STREAM_RAW:
+		if (!s->vinf.text.wid)
+			setup_unpack_pbo(s, NULL);
+
+		if (!s->vinf.text.raw){
+			s->vinf.text.s_raw = s->w * s->h * GL_PIXEL_BPP;
+			s->vinf.text.raw = arcan_alloc_mem(s->vinf.text.s_raw,
+				ARCAN_MEM_VBUFFER, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
+		}
+		mout.buf = s->vinf.text.raw;
+	break;
+
+	case STREAM_RAW_DIRECT:
+		if (!s->vinf.text.wid){
+			setup_unpack_pbo(s, meta.buf);
+		}
+		else
+			pbo_stream(s, meta.buf);
+	break;
+
+	case STREAM_HANDLE:
+	case STREAM_HANDLE_DIRECT:
+		arcan_warning("stream handle received for frameserver "
+				"but the video_platform do not support immediate "
+				"buffer sharing.");
+	break;
+	}
+
 	return mout;
+}
+
+void agp_stream_release(struct storage_info_t* s)
+{
+	pbo_stream(s, s->vinf.text.raw);
+	glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, GL_NONE);
 }
 
 void agp_stream_commit(struct storage_info_t* s)
 {
-	/*
-	 * FIXME: for handle-less streaming, do nothing
-	 * other than unbind if we're not in direct mode
-	 */
 }
 
-static void pbo_alloc(struct storage_info_t* store)
+static void pbo_alloc_read(struct storage_info_t* store)
 {
 	GLuint pboid;
 	glGenBuffers(1, &pboid);
@@ -166,6 +229,18 @@ static void pbo_alloc(struct storage_info_t* store)
 	glBufferData(GL_PIXEL_PACK_BUFFER,
 		store->w * store->h * store->bpp, NULL, GL_STREAM_READ);
 	glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+}
+
+static void pbo_alloc_write(struct storage_info_t* store)
+{
+	GLuint pboid;
+	glGenBuffers(1, &pboid);
+	store->vinf.text.wid = pboid;
+
+	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pboid);
+	glBufferData(GL_PIXEL_UNPACK_BUFFER,
+		store->w * store->h * store->bpp, NULL, GL_STREAM_READ);
+	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 }
 
 static void default_release(void* tag)
@@ -179,9 +254,31 @@ static void default_release(void* tag)
 
 void agp_resize_vstore(struct storage_info_t* s, size_t w, size_t h)
 {
-	/* FIXME: drop and allocate a new backing store,
-	 * run the upload on this one and then refresh any pbo handles
-	 */
+	s->w = w;
+	s->h = h;
+	s->bpp = GL_PIXEL_BPP;
+
+	if (s->vinf.text.raw){
+		arcan_mem_free(s->vinf.text.raw);
+		s->vinf.text.s_raw = w * h * s->bpp;
+		s->vinf.text.raw = arcan_alloc_mem(s->vinf.text.s_raw,
+			ARCAN_MEM_VBUFFER, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
+	}
+
+/* Note: should we handle the fact where we have a pre-existing
+ * raw and scale into the new size? Limited uses.. */
+
+	if (s->vinf.text.wid){
+		glDeleteBuffers(1, &s->vinf.text.wid);
+		pbo_alloc_write(s);
+	}
+
+	if (s->vinf.text.rid){
+		glDeleteBuffers(1, &s->vinf.text.rid);
+		pbo_alloc_read(s);
+	}
+
+	agp_update_vstore(s, true);
 }
 
 void agp_request_readback(struct storage_info_t* store)
@@ -190,7 +287,7 @@ void agp_request_readback(struct storage_info_t* store)
 		return;
 
 	if (!store->vinf.text.rid)
-		pbo_alloc(store);
+		pbo_alloc_read(store);
 
 	glBindTexture(GL_TEXTURE_2D, store->vinf.text.glid);
 	glBindBuffer(GL_PIXEL_PACK_BUFFER, store->vinf.text.rid);
@@ -215,7 +312,7 @@ struct asynch_readback_meta agp_poll_readback(struct storage_info_t* store)
 	res.w = store->w;
 	res.h = store->h;
 	res.tag = (void*) 0xdeadbeef;
-	res.ptr = (av_pixel*) glMapBuffer(GL_PIXEL_PACK_BUFFER, ACCESS_FLAG_RW);
+	res.ptr = (av_pixel*) glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_WRITE);
 
 	return res;
 }

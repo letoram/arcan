@@ -244,6 +244,7 @@ enum stream_type {
 									*	a child or different context that needs to render onwards.
 									*	with buf !0, treat it as a handle that can be used by
 									*	the graphics layer to access an external data source */
+	STREAM_HANDLE_DIRECT
 };
 
 struct stream_meta {
@@ -253,11 +254,19 @@ struct stream_meta {
 	};
 };
 
+/*
+ * flow: [prepare(RAW, HANDLE)] -> populate returned buffer / handle ->
+ * release -> commit.
+ *
+ * [prepare(RAW_DIRECT, HANDLE_DIRECT)] -> commit.
+ *
+ * other agp calls are permitted between release -> commit or
+ * direct-prepare -> commit but NOT for prepare(non-direct) -> release.
+ */
 struct stream_meta agp_stream_prepare(struct storage_info_t*,
 		struct stream_meta, enum stream_type);
-
 void agp_stream_commit(struct storage_info_t*);
-
+void agp_stream_release(struct storage_info_t*);
 /*
  * Synchronize a populated backing store with the underlying
  * graphics layer
