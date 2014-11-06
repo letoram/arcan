@@ -1,0 +1,12 @@
+Each test in this folder (arcan will be invoked with
+ -t tests/regression as primary argument and an
+ APPL_TEMP set to a temporary folder) is expected to
+ be a fully qualified arcan appl with a manually verified
+ and correct screenshot (even for tests with a non-visual 
+ result, the image also acts as an identifier of sorts).
+
+A correct run is identified by:
+ a. an exit code of EXIT_SUCCESS ( call return shutdown() )
+ b. A screenshot file with a name that match the first argument 
+    (arguments[1]) provided, which will be randomized. This 
+    image should approximately match the verified screenshot.
