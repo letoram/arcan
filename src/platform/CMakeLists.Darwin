@@ -46,6 +46,7 @@ set (PLATFORM_SOURCES
 	${PLATFORM_PATH}/warning.c
 	${PLATFORM_PATH}/appl.c
 	${PLATFORM_PATH}/frameserver.c
+	${PLATFORM_PATH}/../stub/fsrv_guard.c
 	${PLATFORM_PATH}/fdpassing.c
 	${PLATFORM_PATH}/../darwin/sem.c
 	${PLATFORM_PATH}/../darwin/time.c
