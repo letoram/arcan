@@ -196,11 +196,13 @@ void agp_pipeline_hint(enum pipeline_mode mode)
 {
 	switch (mode){
 		case PIPELINE_2D:
+			glDisable(GL_CULL_FACE);
 			glDisable(GL_DEPTH_TEST);
 		break;
 
 		case PIPELINE_3D:
 			glEnable(GL_DEPTH_TEST);
+			glClear(GL_DEPTH_BUFFER_BIT);
 		break;
 	}
 }
@@ -462,6 +464,78 @@ void agp_draw_vobj(float x1, float y1, float x2, float y2,
 
 		glDisableVertexAttribArray(attrindv);
 	}
+}
+
+static void toggle_debugstates(float* modelview)
+{
+	if (modelview){
+		float white[3] = {1.0, 1.0, 1.0};
+		glDepthMask(GL_FALSE);
+		glDisable(GL_DEPTH_TEST);
+		glEnableVertexAttribArray(ATTRIBUTE_VERTEX);
+		arcan_shader_activate(agp_default_shader(COLOR_2D));
+		arcan_shader_envv(MODELVIEW_MATR, modelview, sizeof(float) * 16);
+		arcan_shader_forceunif("obj_col", shdrvec3, (void*) white, false);
+	}
+	else{
+		arcan_shader_activate(agp_default_shader(COLOR_2D));
+		glEnable(GL_DEPTH_TEST);
+		glDepthMask(GL_TRUE);
+		glDisableVertexAttribArray(ATTRIBUTE_VERTEX);
+	}
+}
+
+void agp_submit_mesh(struct mesh_storage_t* base, enum agp_mesh_flags fl)
+{
+/* make sure the current program actually uses the attributes from the mesh */
+	int attribs[3] = {
+		arcan_shader_vattribute_loc(ATTRIBUTE_VERTEX),
+		arcan_shader_vattribute_loc(ATTRIBUTE_NORMAL),
+		arcan_shader_vattribute_loc(ATTRIBUTE_TEXCORD)
+	};
+
+	if (attribs[0] == -1)
+		return;
+	else {
+		glEnableVertexAttribArray(attribs[0]);
+		glVertexAttribPointer(attribs[0], 3, GL_FLOAT, GL_FALSE, 0, base->verts);
+	}
+
+	if (attribs[1] != -1 && base->normals){
+		glEnableVertexAttribArray(attribs[1]);
+		glVertexAttribPointer(attribs[1], 3, GL_FLOAT, GL_FALSE,0, base->normals);
+	}
+	else
+		attribs[1] = -1;
+
+	if (attribs[2] != -1 && base->txcos){
+		glEnableVertexAttribArray(attribs[2]);
+		glVertexAttribPointer(attribs[2], 2, GL_FLOAT, GL_FALSE, 0, base->txcos);
+	}
+	else
+		attribs[2] = -1;
+
+		if (base->type == AGP_MESH_TRISOUP){
+			if (base->indices)
+				glDrawElements(GL_TRIANGLES, base->n_indices,
+					GL_UNSIGNED_INT, base->indices);
+			else
+				glDrawArrays(GL_TRIANGLES, 0, base->n_vertices);
+		}
+		else if (base->type == AGP_MESH_POINTCLOUD)
+			glDrawArrays(GL_POINTS, 0, base->n_vertices);
+
+		for (size_t i = 0; i < sizeof(attribs) / sizeof(attribs[0]); i++)
+			if (attribs[i] != -1)
+				glDisableVertexAttribArray(attribs[i]);
+}
+
+/*
+ * mark that the contents of the mesh has changed dynamically
+ * and that possible GPU- side cache might need to be updated.
+ */
+void agp_invalidate_mesh(struct mesh_storage_t* bs)
+{
 }
 
 void agp_activate_vstore(struct storage_info_t* s)

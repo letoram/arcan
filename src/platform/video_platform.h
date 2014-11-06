@@ -387,6 +387,51 @@ void agp_drop_rendertarget(struct rendertarget*);
  */
 void agp_rendertarget_clear();
 
+enum agp_mesh_type {
+	AGP_MESH_TRISOUP,
+	AGP_MESH_POINTCLOUD
+};
+
+struct mesh_storage_t
+{
+	float* verts;
+	float* txcos;
+	float* normals;
+	unsigned* indices;
+
+	size_t n_vertices;
+	size_t n_elements;
+	size_t n_indices;
+	size_t n_triangles;
+
+	enum agp_mesh_type type;
+
+/* opaque field used to store additional implementation
+ * defined tags, e.g. VBO backing index etc. */
+	uintptr_t opaque;
+};
+
+/*
+ * submit the specified mesh for rendering,
+ * which parts of the mesh that will actually be transmitted and mapped depends
+ * on the active shader (which is probed through shader_vattribute_loc
+ */
+enum agp_mesh_flags {
+	MESH_FACING_FRONT   = 1,
+	MESH_FACING_BACK    = 2,
+	MESH_FACING_BOTH    = 3,
+	MESH_FACING_NODEPTH = 4,
+	MESH_DEBUG_GEOMETRY = 8
+};
+
+void agp_submit_mesh(struct mesh_storage_t*, enum agp_mesh_flags);
+
+/*
+ * mark that the contents of the mesh has changed dynamically
+ * and that possible GPU- side cache might need to be updated.
+ */
+void agp_invalidate_mesh(struct mesh_storage_t*);
+
 /*
  * Get a copy of the current display output and save
  * into the supplied buffer, scale / convert color format

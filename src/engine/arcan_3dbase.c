@@ -32,12 +32,6 @@
 
 #include <openctm/openctm.h>
 
-#include GL_HEADERS
-
-#ifndef GL_MAX_TEXTURE_UNITS
-#define GL_MAX_TEXTURE_UNITS 8
-#endif
-
 #include "arcan_shmif.h"
 #include "arcan_math.h"
 #include "arcan_general.h"
@@ -49,44 +43,22 @@
 
 extern struct arcan_video_display arcan_video_display;
 
-enum camtag_facing
-{
-	FRONT = GL_FRONT,
-	BACK  = GL_BACK,
-	BOTH  = GL_NONE
-};
-
 struct camtag_data {
 	_Alignas(16) float projection[16];
 	_Alignas(16) float mvm[16];
 	_Alignas(16) vector wpos;
 	float near;
 	float far;
-	enum camtag_facing facing;
-};
-
-enum geometry_type {
-	TRIMESH,
-	POINTCLOUD
+	enum agp_mesh_flags flags;
 };
 
 struct geometry {
-	enum geometry_type type;
 	unsigned nmaps;
 	arcan_shader_id program;
 
-	unsigned nverts;
-	float* verts;
-	float* txcos;
-	unsigned ntris;
-	unsigned nindices;
-
-	unsigned* indices;
+	struct mesh_storage_t store;
 
 	volatile bool complete;
-
-/* nnormals == nverts */
-	float* normals;
 
 	pthread_t worker;
 	struct geometry* next;
@@ -127,108 +99,9 @@ typedef struct {
 	arcan_vobject* parent;
 } arcan_3dmodel;
 
-/*
- * debug geometry primitives, assumes proper states,
- * i.e. MODELVIEW_MATR in the right space,
- * depth testing disabled,
- * color shader activated
- */
-static void draw_lbox(vector min, vector max)
-{
-	float verts[] = {
-		min.x, min.y, min.z, min.x, min.y, max.z,
-		min.x, min.y, min.z, min.x, max.y, min.z,
-		min.x, min.y, min.z, max.x, min.y, min.z,
-		min.x, max.y, min.z, max.x, max.y, min.z,
-		min.x, max.y, min.z, min.x, max.y, max.z,
-		min.x, max.y, max.z, min.x, min.y, max.z,
-		max.x, max.y, min.z, max.x, min.y, min.z,
-		max.x, max.y, min.z, max.x, max.y, max.z,
-		max.x, max.y, max.z, max.x, min.y, max.z,
-		max.x, min.y, max.z, min.x, min.y, max.z,
-		max.x, min.y, max.z, max.x, min.y, min.z,
-		max.x, max.y, max.z, min.x, max.y, max.z
-	};
-
-	glVertexAttribPointer(ATTRIBUTE_VERTEX, 3, GL_FLOAT, GL_FALSE, 0, verts);
-	glDrawArrays(GL_LINES, 0, sizeof(verts) / sizeof(verts[0]) / 3);
-}
-
-static void draw_line_2p(vector p1, vector p2)
-{
-	float verts[] = {
-		p1.x, p1.y, p1.z,
-		p2.x, p2.y, p2.z
-	};
-
-	glVertexAttribPointer(ATTRIBUTE_VERTEX, 3, GL_FLOAT, GL_FALSE, 0, verts);
-	glDrawArrays(GL_LINES, 0, 2);
-}
-
-static void draw_line(vector point, vector dir, float len)
-{
-	float verts[] = {
-		point.x, point.y, point.z,
-		point.x + dir.x * len, point.y + dir.y * len, point.z + dir.z * len
-	};
-
-	glVertexAttribPointer(ATTRIBUTE_VERTEX, 3, GL_FLOAT, GL_FALSE, 0, verts);
-	glDrawArrays(GL_LINES, 0, 2);
-}
-
-static void toggle_debugstates(float* modelview)
-{
-	if (modelview){
-		float white[3] = {1.0, 1.0, 1.0};
-		glDepthMask(GL_FALSE);
-		glDisable(GL_DEPTH_TEST);
-		glEnableVertexAttribArray(ATTRIBUTE_VERTEX);
-		arcan_shader_activate(agp_default_shader(COLOR_2D));
-		arcan_shader_envv(MODELVIEW_MATR, modelview, sizeof(float) * 16);
-		arcan_shader_forceunif("obj_col", shdrvec3, (void*) white, false);
-	}
-	else{
-		arcan_shader_activate(agp_default_shader(COLOR_2D));
-		glEnable(GL_DEPTH_TEST);
-		glDepthMask(GL_TRUE);
-		glDisableVertexAttribArray(ATTRIBUTE_VERTEX);
-	}
-}
-
-static void draw_debug(arcan_3dmodel* src,
-	surface_properties prop, float* modelview)
-{
-	float opa = 1.0;
-	float red[3] = {1.0, 0.0, 0.0};
-	float green[3] = {0.0, 1.0, 0.0};
-	float blue[3] = {0.0, 0.0, 1.0};
-
-	toggle_debugstates(modelview);
-
-	arcan_shader_envv(OBJ_OPACITY, &opa, sizeof(float));
-
-	draw_lbox(src->bbmin, src->bbmax);
-
-	vector cp = {.x = 0.0, .y = 0.0, .z = 0.0};
-	vector yp = {.x = 0.0, .y = 1.0, .z = 0.0};
-	vector xp = {.x = 1.0, .y = 0.0, .z = 0.0};
-	vector zp = {.x = 0.0, .y = 0.0, .z = 1.0};
-
-	arcan_shader_forceunif("obj_col", shdrvec3, (void*) red, false);
-	draw_line(cp, yp, 1.5 * (src->bbmax.y - src->bbmin.y));
-
-	arcan_shader_forceunif("obj_col", shdrvec3, (void*) green, false);
-	draw_line(cp, zp, 1.5 * (src->bbmax.y - src->bbmin.y));
-
-	arcan_shader_forceunif("obj_col", shdrvec3, (void*) blue, false);
-	draw_line(cp, xp, 1.5 * (src->bbmax.x - src->bbmin.x));
-
-	toggle_debugstates(NULL);
-}
-
 static void build_hplane(point min, point max, point step,
 						 float** verts, unsigned** indices, float** txcos,
-						 unsigned* nverts, unsigned* nindices)
+						 size_t* nverts, size_t* nindices)
 {
 	point delta = {
 		.x = max.x - min.x,
@@ -293,10 +166,10 @@ static void freemodel(arcan_3dmodel* src)
 	geom = src->geometry;
 
 	while(geom){
-		arcan_mem_free(geom->indices);
-		arcan_mem_free(geom->verts);
-		arcan_mem_free(geom->normals);
-		arcan_mem_free(geom->txcos);
+		arcan_mem_free(geom->store.indices);
+		arcan_mem_free(geom->store.verts);
+		arcan_mem_free(geom->store.normals);
+		arcan_mem_free(geom->store.txcos);
 		struct geometry* last = geom;
 		geom = geom->next;
 		last->next = (struct geometry*) 0xdead;
@@ -339,7 +212,8 @@ static void push_deferred(arcan_3dmodel* model)
  * Render-loops, Pass control, Initialization
  */
 static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
-	arcan_shader_id baseprog, surface_properties props, float* modelview)
+	arcan_shader_id baseprog, surface_properties props, float* modelview,
+	enum agp_mesh_flags flags)
 {
 	assert(vobj);
 
@@ -366,98 +240,28 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
 	struct geometry* base = src->geometry;
 
 	while (base){
-			if (base->program > 0){
-				arcan_shader_activate(base->program);
-			}
-			else{
-				arcan_shader_activate(baseprog);
-			}
+		arcan_shader_activate(base->program > 0 ? base->program : baseprog);
 
-/* make sure the current program actually uses the attributes from the mesh */
-		int attribs[3] = {
-			arcan_shader_vattribute_loc(ATTRIBUTE_VERTEX),
-			arcan_shader_vattribute_loc(ATTRIBUTE_NORMAL),
-			arcan_shader_vattribute_loc(ATTRIBUTE_TEXCORD)
-		};
+/* note, only add complete images to vstore?
+	 else arcan_video_joinasynch(frame, true, false);
+ * */
+		if (base->nmaps > 1){
+			struct storage_info_t* elems[ base->nmaps ];
+			for (size_t i = cframe; i < cframe+base->nmaps; i++)
+				elems[i] = vobj->frameset[ i ]->vstore;
 
-		if (attribs[0] == -1)
-			goto step;
-		else {
-			glEnableVertexAttribArray(attribs[0]);
-			glVertexAttribPointer(attribs[0], 3, GL_FLOAT, GL_FALSE, 0, base->verts);
+			agp_activate_vstore_multi(elems, base->nmaps);
 		}
+		else if (base->nmaps == 1)
+			agp_activate_vstore(vobj->frameset[cframe]->vstore);
 
-		if (attribs[1] != -1 && base->normals){
-			glEnableVertexAttribArray(attribs[1]);
-			glVertexAttribPointer(attribs[1], 3, GL_FLOAT, GL_FALSE,0, base->normals);
-		}
-		else
-			attribs[1] = -1;
+		agp_submit_mesh(&base->store, flags);
 
-		if (attribs[2] != -1 && base->txcos){
-			glEnableVertexAttribArray(attribs[2]);
-			glVertexAttribPointer(attribs[2], 2, GL_FLOAT, GL_FALSE, 0, base->txcos);
-		}
-		else
-			attribs[2] = -1;
-
-/* It's up to arcan_shdrmgmt to determine if this will actually involve
- * a program switch or not, blend states etc. are dictated by the images
- * used as texture, and with the frameset_multitexture approach,
- * the first one in the set */
-
-/* Map up all texture-units required,
- * if there are corresponding frames and capacity in the parent vobj,
- * multiple meshes share the same frameset */
-		bool blendstate    = false;
-
-		for (size_t i = 0; i < GL_MAX_TEXTURE_UNITS && (i+cframe) <
-			vobj->frameset_meta.capacity && i < base->nmaps; i++){
-			arcan_vobject* frame = vobj->frameset[i+cframe];
-
-			if (!frame)
-				goto step;
-
-			if (frame->feed.state.tag == ARCAN_TAG_ASYNCIMGLD)
-				goto step;
-
-			if (frame->feed.state.tag == ARCAN_TAG_ASYNCIMGRD)
-				arcan_video_joinasynch(frame, true, false);
-
-			if (FL_TEST(frame, FL_CLONE))
-				frame = frame->parent;
-
-/* only allocate set a sampler if there's a map and a
- * corresponding map- slot in the shader */
-			glActiveTexture(GL_TEXTURE0 + i);
-			glEnable(GL_TEXTURE_2D);
-			glBindTexture(GL_TEXTURE_2D, frame->vstore->vinf.text.glid);
-
-			if (blendstate == false){
-				agp_blendstate(vobj->current.opa < 1.0-EPSILON ?
-					vobj->blendmode : BLEND_NONE);
-				blendstate = true;
-			}
-		}
-
-		if (base->type == TRIMESH){
-			if (base->indices)
-				glDrawElements(GL_TRIANGLES, base->nindices,
-					GL_UNSIGNED_INT, base->indices);
-			else
-				glDrawArrays(GL_TRIANGLES, 0, base->nverts);
-		}
-		else if (base->type == POINTCLOUD)
-			glDrawArrays(GL_POINTS, 0, base->nverts);
-
-		for (size_t i = 0; i < sizeof(attribs) / sizeof(attribs[0]); i++)
-			if (attribs[i] != -1)
-				glDisableVertexAttribArray(attribs[i]);
-
-step:
-		if (src->flags.debug)
-			draw_debug(src, props, dmatr);
-
+/*
+ * note, what happens to clones and multitexture?
+ * we should also add blendstate as a property of a mesh
+ * rather than the whole model (or?).
+ */
 		cframe += base->nmaps;
 		base = base->next;
 	}
@@ -487,12 +291,10 @@ static enum arcan_ffunc_rv ffunc_3d(
 /* normal scene process, except stops after no objects with infinite
  * flag (skybox, skygeometry etc.) */
 static arcan_vobject_litem* process_scene_infinite(
-	arcan_vobject_litem* cell, float lerp, float* modelview)
+	arcan_vobject_litem* cell, float lerp, float* modelview,
+	enum agp_mesh_flags flags)
 {
 	arcan_vobject_litem* current = cell;
-
-	glDisable(GL_DEPTH_TEST);
-	glDepthMask(GL_FALSE);
 
 	while (current){
 		arcan_vobject* cvo = current->elem;
@@ -504,8 +306,10 @@ static arcan_vobject_litem* process_scene_infinite(
 			break;
 
 		surface_properties dprops;
+
 		arcan_resolve_vidprop(cvo, lerp, &dprops);
-		rendermodel(dvo, obj3d, dvo->program, dprops, modelview);
+		rendermodel(dvo, obj3d, dvo->program,
+				dprops, modelview, flags & MESH_FACING_NODEPTH);
 
 		current = current->next;
 	}
@@ -513,12 +317,9 @@ static arcan_vobject_litem* process_scene_infinite(
 	return current;
 }
 
-static void process_scene_normal(arcan_vobject_litem* cell, float lerp,
-	float* modelview)
+static void process_scene_normal(arcan_vobject_litem* cell,
+	float lerp, float* modelview, enum agp_mesh_flags flags)
 {
-	glEnable(GL_DEPTH_TEST);
-	glDepthMask(GL_TRUE);
-
 	arcan_vobject_litem* current = cell;
 	while (current){
 		arcan_vobject* cvo = current->elem;
@@ -534,7 +335,7 @@ static void process_scene_normal(arcan_vobject_litem* cell, float lerp,
 
 		arcan_resolve_vidprop(cvo, lerp, &dprops);
 		rendermodel(dvo, dvo->feed.state.ptr, dvo->program,
-			dprops, modelview);
+			dprops, modelview, flags);
 
 		current = current->next;
 	}
@@ -606,9 +407,10 @@ arcan_vobject_litem* arcan_refresh_3d(arcan_vobj_id camtag,
 {
 	arcan_vobject* camobj = arcan_video_getobject(camtag);
 
-	glClear(GL_DEPTH_BUFFER_BIT);
 	if (!camobj || camobj->feed.state.tag != ARCAN_TAG_3DCAMERA)
 		return cell;
+
+	agp_pipeline_hint(PIPELINE_3D);
 
 	struct camtag_data* camera = camobj->feed.state.ptr;
 	float _Alignas(16) matr[16];
@@ -627,25 +429,16 @@ arcan_vobject_litem* arcan_refresh_3d(arcan_vobj_id camtag,
 
 	arcan_3dmodel* obj3d = cell->elem->feed.state.ptr;
 
-	glEnable(GL_CULL_FACE);
-	switch (camera->facing)
-	{
-	case FRONT: glCullFace(GL_BACK); break;
-	case BACK:  glCullFace(GL_FRONT); break;
-	case BOTH:  glDisable(GL_CULL_FACE);
-	}
-
 	if (obj3d->flags.infinite)
-		cell = process_scene_infinite(cell, fract, dmatr);
+		cell = process_scene_infinite(cell, fract, dmatr, camera->flags);
 
 	struct camtag_data* cdata = camobj->feed.state.ptr;
 	cdata->wpos = dprop.position;
 	translate_matrix(dmatr, dprop.position.x, dprop.position.y, dprop.position.z);
 	memcpy(cdata->mvm, dmatr, sizeof(float) * 16);
 
-	process_scene_normal(cell, fract, dmatr);
+	process_scene_normal(cell, fract, dmatr, camera->flags);
 
-	glDisable(GL_CULL_FACE);
 	return cell;
 }
 
@@ -687,17 +480,17 @@ arcan_errc arcan_3d_swizzlemodel(arcan_vobj_id dst)
 
 	struct geometry* curr = model->geometry;
 	while (curr) {
-		if (curr->indices){
-			unsigned* indices = curr->indices;
-			for (size_t i = 0; i <curr->nindices * 3; i+= 3){
+		if (curr->store.indices){
+			unsigned* indices = curr->store.indices;
+			for (size_t i = 0; i <curr->store.n_indices * 3; i+= 3){
 				unsigned t1[3] = { indices[i], indices[i+1], indices[i+2] };
 				unsigned tmp = t1[0];
 				t1[0] = t1[2]; t1[2] = tmp;
 			}
 		} else {
-			float* verts = curr->verts;
+			float* verts = curr->store.verts;
 
-			for (size_t i = 0; i < curr->nverts * 9; i+= 9){
+			for (size_t i = 0; i < curr->store.n_vertices * 9; i+= 9){
 				vector v1 = { .x = verts[i  ], .y = verts[i+1], .z = verts[i+2] };
 				vector v3 = { .x = verts[i+6], .y = verts[i+7], .z = verts[i+8] };
 				verts[i  ] = v3.x; verts[i+1] = v3.y; verts[i+2] = v3.z;
@@ -733,19 +526,19 @@ arcan_vobj_id arcan_3d_pointcloud(size_t count)
 	arcan_video_allocframes(rv, 1, ARCAN_FRAMESET_SPLIT);
 	newmodel->geometry = arcan_alloc_mem(sizeof(struct geometry), ARCAN_MEM_VTAG,
 		ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
-	newmodel->geometry->nverts = count;
+	newmodel->geometry->store.n_vertices = count;
 
-	newmodel->geometry->verts = arcan_alloc_mem(sizeof(float) * count * 3,
+	newmodel->geometry->store.verts = arcan_alloc_mem(sizeof(float) * count * 3,
 		ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_PAGE);
-	newmodel->geometry->txcos = arcan_alloc_mem(sizeof(float) * count * 2,
+	newmodel->geometry->store.txcos = arcan_alloc_mem(sizeof(float) * count * 2,
 		ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_PAGE);
 
 	float step = 2.0 / sqrtf(count);
 
 	float cz = -1;
 	float cx = -1;
-	float* dbuf = newmodel->geometry->verts;
-	float* tbuf = newmodel->geometry->txcos;
+	float* dbuf = newmodel->geometry->store.verts;
+	float* tbuf = newmodel->geometry->store.txcos;
 	while(count--){
 		cx = cx + step;
 		if (cx > 1){
@@ -769,7 +562,7 @@ arcan_vobj_id arcan_3d_pointcloud(size_t count)
 	newmodel->flags.complete = true;
 	newmodel->flags.debug = true;
 	newmodel->geometry->nmaps = 1;
-	newmodel->geometry->type = POINTCLOUD;
+	newmodel->geometry->store.type = AGP_MESH_POINTCLOUD;
 
 	return rv;
 }
@@ -793,10 +586,10 @@ arcan_vobj_id arcan_3d_buildbox(float w, float h, float d)
 	newmodel->geometry = arcan_alloc_mem(sizeof(struct geometry), ARCAN_MEM_VTAG,
 		ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 
-	newmodel->geometry->type = TRIMESH;
+	newmodel->geometry->store.type = AGP_MESH_TRISOUP;
 	newmodel->geometry->nmaps = 1;
 	newmodel->geometry->complete = true;
-	newmodel->geometry->ntris = 2 * 6;
+	newmodel->geometry->store.n_triangles = 2 * 6;
 
 	float verts[] = {
  		 w, h, d,  -w,  h,  d,  -w, -h,  d,   w, -h,  d,
@@ -806,9 +599,9 @@ arcan_vobj_id arcan_3d_buildbox(float w, float h, float d)
 	  -w,-h,-d,   w, -h, -d,   w, -h,  d,  -w, -h,  d,
 	   w,-h,-d,  -w, -h, -d,  -w,  h, -d,   w,  h, -d
 	};
-	newmodel->geometry->verts = arcan_alloc_fillmem(verts, sizeof(verts),
+	newmodel->geometry->store.verts = arcan_alloc_fillmem(verts, sizeof(verts),
 		ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_SIMD);
-	newmodel->geometry->nverts = sizeof(verts) / sizeof(verts[0]) / 3;
+	newmodel->geometry->store.n_vertices = sizeof(verts) / sizeof(verts[0]) / 3;
 
 	float normals[] = {
 		0, 0, 1,  0, 0, 1,  0, 0, 1,  0, 0, 1,
@@ -818,8 +611,8 @@ arcan_vobj_id arcan_3d_buildbox(float w, float h, float d)
 		0,-1, 0,  0,-1, 0,  0,-1, 0,  0,-1, 0,
 		0, 0,-1,  0, 0,-1,  0, 0,-1,  0, 0,-1
 	};
-	newmodel->geometry->normals = arcan_alloc_fillmem(normals, sizeof(normals),
-		ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_SIMD);
+	newmodel->geometry->store.normals = arcan_alloc_fillmem(
+		normals, sizeof(normals), ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_SIMD);
 
 	short indices[] = {
 	 0, 1, 2,  2, 3, 0,
@@ -829,10 +622,10 @@ arcan_vobj_id arcan_3d_buildbox(float w, float h, float d)
 	 16,17,18,18,19,16,
 	 20,21,22,22,23,20
 	};
-	newmodel->geometry->indices = arcan_alloc_fillmem(indices, sizeof(indices),
-		ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_SIMD);
-	newmodel->geometry->nverts = sizeof(verts) / sizeof(verts[0]) / 3;
-	newmodel->geometry->nindices = 36;
+	newmodel->geometry->store.indices = arcan_alloc_fillmem(
+		indices, sizeof(indices), ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_SIMD);
+	newmodel->geometry->store.n_vertices = sizeof(verts) / sizeof(verts[0]) / 3;
+	newmodel->geometry->store.n_indices = 36;
 
 	float txcos[] = {
 		0, 0, 1, 0, 1, 1, 0, 1,
@@ -842,7 +635,7 @@ arcan_vobj_id arcan_3d_buildbox(float w, float h, float d)
 		0, 0, 1, 0, 1, 1, 0, 1,
 		0, 0, 1, 0, 1, 1, 0, 1
 	};
-	newmodel->geometry->txcos = arcan_alloc_fillmem(txcos, sizeof(txcos),
+	newmodel->geometry->store.txcos = arcan_alloc_fillmem(txcos, sizeof(txcos),
 		ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_SIMD);
 
 	vector bbmin = {.x = -w, .y = -h, .z = -d};
@@ -891,20 +684,21 @@ arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx,float maxz,
 
 	(*nextslot)->nmaps = nmaps;
 	newmodel->geometry = *nextslot;
-	newmodel->geometry->type = TRIMESH;
+	newmodel->geometry->store.type = AGP_MESH_TRISOUP;
 
 	struct geometry* dst = newmodel->geometry;
 
-	build_hplane(minp, maxp, step, &dst->verts, &dst->indices,
-		&dst->txcos, &dst->nverts, &dst->nindices);
+	build_hplane(minp, maxp, step, &dst->store.verts, &dst->store.indices,
+		&dst->store.txcos, &dst->store.n_vertices, &dst->store.n_indices);
 
-	dst->ntris = newmodel->geometry->nindices / 3;
+	dst->store.n_triangles = newmodel->geometry->store.n_indices / 3;
 	arcan_video_allocframes(rv, 1, ARCAN_FRAMESET_SPLIT);
 
 /* though we do know the bounding box and shouldn't need to calculate
  * or iterate, plan is to possibly add transform / lookup functions
  * during creation step, so this is a precaution */
-	minmax_verts(&newmodel->bbmin, &newmodel->bbmax, dst->verts, dst->nverts);
+	minmax_verts(&newmodel->bbmin, &newmodel->bbmax,
+			dst->store.verts, dst->store.n_vertices);
 	dst->complete = true;
 	newmodel->flags.complete = true;
 
@@ -928,10 +722,10 @@ static void invert_txcos(float* buf, unsigned bufs){
 static void loadmesh(struct geometry* dst, CTMcontext* ctx)
 {
 /* figure out dimensions */
-	dst->nverts = ctmGetInteger(ctx, CTM_VERTEX_COUNT);
-	dst->ntris  = ctmGetInteger(ctx, CTM_TRIANGLE_COUNT);
+	dst->store.n_vertices = ctmGetInteger(ctx, CTM_VERTEX_COUNT);
+	dst->store.n_triangles = ctmGetInteger(ctx, CTM_TRIANGLE_COUNT);
 	unsigned uvmaps = ctmGetInteger(ctx, CTM_UV_MAP_COUNT);
-	unsigned vrtsize = dst->nverts * 3 * sizeof(float);
+	unsigned vrtsize = dst->store.n_vertices * 3 * sizeof(float);
 
 	const CTMfloat* verts   = ctmGetFloatArray(ctx, CTM_VERTICES);
 	const CTMfloat* normals = ctmGetFloatArray(ctx, CTM_NORMALS);
@@ -939,30 +733,30 @@ static void loadmesh(struct geometry* dst, CTMcontext* ctx)
 
 /* copy and repack */
 	if (normals)
-		dst->normals = arcan_alloc_fillmem(normals, vrtsize,
+		dst->store.normals = arcan_alloc_fillmem(normals, vrtsize,
 		ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_PAGE);
 
-	dst->verts = arcan_alloc_fillmem(verts, vrtsize,
+	dst->store.verts = arcan_alloc_fillmem(verts, vrtsize,
 		ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_PAGE);
 
 /* lots of memory to be saved, so worth the trouble */
 	if (indices){
-		dst->nindices = dst->ntris * 3;
-		uint32_t* buf = arcan_alloc_mem( dst->nindices * sizeof(GLuint),
+		dst->store.n_indices = dst->store.n_triangles * 3;
+		uint32_t* buf = arcan_alloc_mem( dst->store.n_indices * sizeof(unsigned),
 			ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_PAGE);
 
-		for (unsigned i = 0; i < dst->nindices; i++)
+		for (unsigned i = 0; i < dst->store.n_indices; i++)
 			buf[i] = indices[i];
 
-		dst->indices = buf;
+		dst->store.indices = buf;
 	}
 
 /* we require the model to be presplit on texture,
  * so n maps but 1 set of txcos */
 	if (uvmaps > 0){
         dst->nmaps = 1;
-		unsigned txsize = sizeof(float) * 2 * dst->nverts;
-		dst->txcos = arcan_alloc_fillmem(ctmGetFloatArray(ctx, CTM_UV_MAP_1),
+		unsigned txsize = sizeof(float) * 2 * dst->store.n_vertices;
+		dst->store.txcos = arcan_alloc_fillmem(ctmGetFloatArray(ctx, CTM_UV_MAP_1),
 			txsize, ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_PAGE);
 	}
 }
@@ -1076,7 +870,7 @@ arcan_errc arcan_3d_addmesh(arcan_vobj_id dst,
 		ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 
 	(*nextslot)->nmaps = nmaps;
-	(*nextslot)->type = TRIMESH;
+	(*nextslot)->store.type = AGP_MESH_TRISOUP;
 
 	arg->geom = *nextslot;
 
@@ -1111,7 +905,8 @@ arcan_errc arcan_3d_scalevertices(arcan_vobj_id vid)
 	struct geometry* geom = dst->geometry;
 
 	while (geom){
-		minmax_verts(&dst->bbmin, &dst->bbmax, geom->verts, geom->nverts);
+		minmax_verts(&dst->bbmin, &dst->bbmax,
+				geom->store.verts, geom->store.n_vertices);
 		geom = geom->next;
 	}
 
@@ -1141,10 +936,10 @@ arcan_errc arcan_3d_scalevertices(arcan_vobj_id vid)
 	dst->bbmax.z += tz; dst->bbmin.z += tz;
 
 	while(geom){
-		for (unsigned i = 0; i < geom->nverts * 3; i += 3){
-			geom->verts[i]   = tx + geom->verts[i]   * sf;
-			geom->verts[i+1] = ty + geom->verts[i+1] * sf;
-			geom->verts[i+2] = tz + geom->verts[i+2] * sf;
+		for (unsigned i = 0; i < geom->store.n_vertices * 3; i += 3){
+			geom->store.verts[i]   = tx + geom->store.verts[i]   * sf;
+			geom->store.verts[i+1] = ty + geom->store.verts[i+1] * sf;
+			geom->store.verts[i+2] = tz + geom->store.verts[i+2] * sf;
 		}
 
 		geom = geom->next;
@@ -1236,10 +1031,10 @@ arcan_errc arcan_3d_baseorient(arcan_vobj_id dst,
 
 /* 2. iterate all geometries connected to the model */
 	while (geom){
-		float* verts = geom->verts;
+		float* verts = geom->store.verts;
 
 /* 3. sweep through all the vertexes in the model */
-		for (unsigned i = 0; i < geom->nverts * 3; i += 3){
+		for (unsigned i = 0; i < geom->store.n_vertices * 3; i += 3){
 			_Alignas(16) float xyz[4] = {verts[i], verts[i+1], verts[i+2], 1.0};
 			_Alignas(16) float out[4];
 
@@ -1270,11 +1065,11 @@ arcan_errc arcan_3d_camtag(arcan_vobj_id vid,
 
 /* we cull the inverse */
 	if (front && back)
-		camobj->facing = BOTH;
+		camobj->flags = MESH_FACING_BOTH;
 	else if (front)
-		camobj->facing = FRONT;
+		camobj->flags = MESH_FACING_FRONT;
 	else
-		camobj->facing = BACK;
+		camobj->flags = MESH_FACING_BACK;
 
 	vobj->feed.state.ptr = camobj;
 	vobj->feed.state.tag = ARCAN_TAG_3DCAMERA;
