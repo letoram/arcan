@@ -23,8 +23,8 @@ def scangrp(inf)
 			res[group] << line[3..-1].strip;
 		end
 	end
-	
-	return res, line	
+
+	return res, line
 
 rescue => er
 	STDERR.print("parsing error, #{er} while processing " \
@@ -40,13 +40,13 @@ end
 
 def extract_example(lines, defs)
 	iobj = IO.popen(
-		"cpp -pipe -fno-builtin -fno-common #{defs}", 
+		"cpp -pipe -fno-builtin -fno-common #{defs}",
 		File::RDWR
 	)
 	iobj.print(lines)
 	iobj.close_write
 	iobj.each_line{|a|
-		if (a[0] == "#" or a.strip == "") 
+		if (a[0] == "#" or a.strip == "")
 			next
 		end
 
@@ -57,7 +57,7 @@ end
 
 #
 # Missing;
-# alias, flags (placeholder, , examples and testcases
+# alias, flags
 #
 class DocReader
 	def initialize
@@ -69,7 +69,7 @@ class DocReader
 		@cfunction = ""
 		@related = []
 		@note = []
-		@examples = [] 
+		@examples = []
 		@main_tests = []
 		@error_tests = []
 	end
@@ -84,13 +84,13 @@ class DocReader
 			return
 		end
 
-		a.readline # skip first line (just the function name)
 		res = DocReader.new
+		res.name = a.readline[3..-1].strip
 		groups, line = scangrp(a)
 		groups.each_pair{|a, v|
 			if res.respond_to? a.to_sym
 				res.send("#{a}=".to_sym, v);
-			end	
+			end
 		}
 
 		while (line.strip! == "")
@@ -104,26 +104,26 @@ class DocReader
 		lines.insert(0, line)
 		remainder = lines.join("\n")
 
-		main = "" 
-		extract_example(remainder, "-DMAIN"){|line| main << line} 
+		main = ""
+		extract_example(remainder, "-DMAIN"){|line| main << line}
 		res.examples << main
 
-		res	
+		res
 	rescue EOFError
 		res
-	rescue => er 
+	rescue => er
 					p er
 					p er.backtrace
-		nil	
+		nil
 	end
 
 	def note=(v)
 		@note << v
 	end
 
-	attr_accessor :short, :inargs, :outargs, 
-		:longdescr, :group, :cfunction, :related, 
-		:examples, :main_tests, :error_tests
+	attr_accessor :short, :inargs, :outargs,
+		:longdescr, :group, :cfunction, :related,
+		:examples, :main_tests, :error_tests, :name
 
 	attr_reader :note
 
@@ -134,7 +134,7 @@ def find_empty()
 	Dir["*.lua"].each{|a|
 		if ( DocReader.Open(a).incomplete? ) then
 			yield a
-		end	
+		end
 	}
 
 	nil
@@ -143,12 +143,12 @@ end
 def add_function(groupname, symname, cname)
 	fn = "#{symname}.lua"
 	if (File.exists?(fn))
-# 
+#
 # should checksum C source function, compare to
 # whatever is stored in the .lua file header
-# and alter the user if the function has changed 
+# and alter the user if the function has changed
 # (i.e. documentation might need to be updated)
-	# 
+	#
 		else
 			STDOUT.print("--- new function found: #{symname}\n")
 			outf = File.new(fn, IO::CREAT | IO::RDWR)
@@ -171,8 +171,8 @@ end\n") end
 end
 
 #
-# Parse the C binding file. look for our preprocessor 
-# markers, extract the lua symbol, c symbol etc. and 
+# Parse the C binding file. look for our preprocessor
+# markers, extract the lua symbol, c symbol etc. and
 # push to the function pointer in cfun
 #
 def cscan(cfun, cfile)
@@ -204,7 +204,7 @@ end
 def troffdescr(descr)
 	a = descr.join("\n")
 	a.gsub!(/\./, ".\n.R")
-  a.gsub!(/\*(\w+)\*/, "\\fI \\1 \\fR") 
+  a.gsub!(/\*(\w+)\*/, "\\fI \\1 \\fR")
 	a.gsub!("  ", " ")
 	a.strip!
 	a[0..-3]
@@ -227,7 +227,7 @@ end
 # .BR highlight
 # something
 # .SH NOTES
-# .IP seqn. 
+# .IP seqn.
 # descr
 # .SH EXAMPLE
 # if present
@@ -242,7 +242,7 @@ def funtoman(fname)
 	outm = File.new("mantmp/#{fname}.3", IO::CREAT | IO::RDWR)
 	outm << ".\\\" groff -man -Tascii #{fname}.3\n"
 	outm << ".TH \"#{fname}\" 3 \"#{Time.now.strftime(
-		"%B %Y")}\" #{inf.group[0]} \"Arcan LUA API\"\n"
+		"%B %Y")}\" #{inf.group[0]} \"Arcan Lua API\"\n"
 	outm << ".SH NAME\n"
 	outm << ".B #{fname} \ - \n#{inf.short.join(" ")}\n"
 	outm << ".SH SYNOPSIS\n"
@@ -256,7 +256,7 @@ def funtoman(fname)
 	outm << ".br\n.B #{fname}\n"
 	outm << "("
 
-	if (inf.inargs.size > 0) 
+	if (inf.inargs.size > 0)
 		tbl = inf.inargs[0].split(/\,/)
 		tbl.each_with_index{|a, b|
 			if (a =~ /\*/)
@@ -314,22 +314,89 @@ rescue => er
 		er.backtrace.join("\n")})\n")
 end
 
-if (ARGV[0] == "scan")
-	cf = ENV["ARCAN_SOURCE_DIR"] ? "#{ENV["ARCAN_SOURCE_DIR"]}/engine/arcan_lua.c" :
+case (ARGV[0])
+when "scan" then
+	cf = ENV["ARCAN_SOURCE_DIR"] ?
+		"#{ENV["ARCAN_SOURCE_DIR"]}/engine/arcan_lua.c" :
 		"../src/engine/arcan_lua.c"
 
 	cscan(:add_function, cf)
 
-elsif (ARGV[0] == "lookup")
-	DocReader.Open("#{ARGV[1]}.lua")		
+when "vimgen" then
 
-elsif (ARGV[0] == "missing")
+	kwlist = []
+
+# could do something more with this, i.e. maintain group/category relations
+	Dir["*.lua"].each{|a|
+		a = DocReader.Open(a)
+		kwlist << a.name
+	}
+
+	fname = ARGV[1]
+	if fname == nil then
+		Dir["/usr/share/vim/vim*"].each{|a|
+			next unless Dir.exists?(a)
+			if File.exists?("#{a}/syntax/lua.vim") then
+				fname = "#{a}/syntax/lua.vim"
+				break
+			end
+		}
+	end
+
+	if (fname == nil) then
+		STDOUT.print("Couldn't find lua.vim, please specify on the command-line")
+		exit(1)
+	end
+
+	lines = File.open(fname).readlines
+	File.delete("arcan-lua.vim")
+	outf = File.new("arcan-lua.vim", IO::CREAT | IO::RDWR)
+
+	last_ch = "b"
+	lines[1..-5].each{|a|
+		if (a =~ /let\s(\w+):current_syntax/) then
+			last_ch = $1
+			next
+		end
+		outf.print(a)
+	}
+
+	kwlist.each{|a|
+		next if (a.chop.length == 0)
+		outf.print("syn keyword luaFunc #{a}\n")
+	}
+	outf.print("let #{last_ch}:current_syntax = \"arcan_lua\"\n")
+
+	lines[-4..-1].each{|a| outf.print(a) }
+
+when "testgen" then
+	Dir["*.lua"].each{|a|
+		lines = []
+
+		File.open(a).each_line{|line|
+			next if (line[0] == "-" and line[1] == "-")
+			lines << line
+		}
+
+		do
+		outp = []
+		extract_example(lines.join("\n"), "-DMAIN"){|b|
+			outp << b
+		}
+		if (outp.size > 2) then
+		end
+
+		while outp.size > 2
+
+		exit
+	}
+
+when "missing" then
 	find_empty(){|a|
 		STDOUT.print("#{a} is incomplete.\n")
 	}
 
-elsif (ARGV[0] == "mangen")
-# add preamble / header to the overview file,
+when "mangen" then
 	inf = File.open("arcan_api_overview_hdr")
 
 	if (Dir.exists?("mantmp"))
@@ -341,7 +408,7 @@ elsif (ARGV[0] == "mangen")
 	outf = File.new("mantmp/arcan_api_overview.1", IO::CREAT | IO::RDWR)
 	inf.each_line{|line| outf << line}
 
-# populate $grptbl with the contents of the lua.c file	
+# populate $grptbl with the contents of the lua.c file
 	cf = ENV["ARCAN_SOURCE_DIR"] ? "#{ENV["ARCAN_SOURCE_DIR"]}/engine/arcan_lua.c" :
 		"../src/engine/arcan_lua.c"
 
@@ -374,6 +441,9 @@ else
 	STDOUT.print("Usage: ruby docgen.rb command\nscan:\n\
 scrape arcan_lua.c and generate stubs for missing corresponding .lua\n\n\
 mangen:\n sweep each .lua file and generate corresponding manpages.\n\n\
-lookup function_name:\n generate a quick-reference \n\n\
+vimgen:\n generate a syntax highlight .vim file that takes the default\n\
+vim lua syntax file and adds the engine functions as new built-in functions.\n\
+testgen:\n extract MAIN, MAIN2, ... and ERROR1, ERROR2 etc. from each file\n\
+and add as individual tests in the test_ok\ test_fail\ subdirectories\n\
 missing:\n scan all .lua files and list those that are incomplete.\n")
 end
