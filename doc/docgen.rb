@@ -349,7 +349,7 @@ when "vimgen" then
 	end
 
 	lines = File.open(fname).readlines
-	File.delete("arcan-lua.vim")
+	File.delete("arcan-lua.vim") if File.exist?("arcan-lua.vim")
 	outf = File.new("arcan-lua.vim", IO::CREAT | IO::RDWR)
 
 	last_ch = "b"
@@ -378,7 +378,6 @@ when "testgen" then
 			lines << line
 		}
 
-		do
 		outp = []
 		extract_example(lines.join("\n"), "-DMAIN"){|b|
 			outp << b
@@ -386,11 +385,8 @@ when "testgen" then
 		if (outp.size > 2) then
 		end
 
-		while outp.size > 2
-
 		exit
 	}
-
 when "missing" then
 	find_empty(){|a|
 		STDOUT.print("#{a} is incomplete.\n")

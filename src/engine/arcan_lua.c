@@ -107,8 +107,6 @@
 #include "arcan_frameserver.h"
 #include "arcan_shmif.h"
 
-#include GL_HEADERS
-
 #define arcan_luactx lua_State
 #include "arcan_lua.h"
 
@@ -3053,6 +3051,13 @@ static int imagechildren(lua_State* ctx)
 {
 	LUA_TRACE("image_children");
 	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
+	arcan_vobj_id cid = luavid_tovid(luaL_checknumber(ctx, 2));
+
+	if (cid != ARCAN_EID){
+		lua_pushboolean(ctx, arcan_video_isdescendant(id, cid, -1));
+		return 1;
+	}
+
 	arcan_vobj_id child;
 	unsigned ofs = 0, count = 1;
 
@@ -7507,9 +7512,9 @@ static void addquoted (lua_State *L, luaL_Buffer *b, int arg) {
 static inline char* lut_txmode(int txmode)
 {
 	switch (txmode){
-	case GL_REPEAT:
+	case ARCAN_VTEX_REPEAT:
 		return "repeat";
-	case GL_CLAMP_TO_EDGE:
+	case ARCAN_VTEX_CLAMP:
 		return "clamp(edge)";
 	default:
 		return "unknown(broken)";
@@ -7575,6 +7580,7 @@ static inline const char* fsrvtos(enum ARCAN_SEGID ink)
 	case SEGID_APPLICATION: return "application";
 	case SEGID_BROWSER: return "browser";
 	case SEGID_ENCODER: return "encoder";
+	case SEGID_TITLEBAR: return "titlebar";
 	case SEGID_SENSOR: return "sensor";
 	case SEGID_INPUTDEVICE: return "inputdevice";
 	case SEGID_DEBUG: return "debug";

@@ -5,7 +5,10 @@
 #include <stdbool.h>
 #include <assert.h>
 
-#include GL_HEADERS
+#ifdef __APPLE__
+#include <OpenGL/gl.h>
+#include <OpenGL/glext.h>
+#endif
 
 #include "../video_platform.h"
 #include "../platform.h"

@@ -3028,6 +3028,33 @@ arcan_vobj_id arcan_video_findchild(arcan_vobj_id parentid, unsigned ofs)
 	return rv;
 }
 
+static bool recsweep(arcan_vobject* base, arcan_vobject* match, int limit)
+{
+	if (base == NULL || (limit != -1 && limit-- <= 0))
+		return false;
+
+	if (base == match)
+		return true;
+
+	for (size_t i = 0; i < base->childslots; i++)
+		if (recsweep(base->children[i], match, limit))
+			return true;
+
+	return false;
+}
+
+bool arcan_video_isdescendant(arcan_vobj_id vid,
+	arcan_vobj_id parent, int limit)
+{
+	arcan_vobject* base = arcan_video_getobject(parent);
+	arcan_vobject* match = arcan_video_getobject(vid);
+
+	if (base== NULL || match == NULL)
+		return false;
+
+	return recsweep(base, match, limit);
+}
+
 arcan_errc arcan_video_objectrotate(arcan_vobj_id id,
 	float ang, arcan_tickv time)
 {

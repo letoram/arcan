@@ -10,7 +10,8 @@
 #include <stdbool.h>
 #include <math.h>
 
-#include "glheaders.h"
+#include <SDL.h>
+#include <SDL_OpenGL.h>
 
 #include "arcan_math.h"
 #include "arcan_general.h"
@@ -221,17 +222,6 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 /* need to be called AFTER we have a valid GL context,
  * else we get the "No GL version" */
 	int err;
-	if ( (err = glewInit()) != GLEW_OK){
-		arcan_fatal("arcan_video_init(), Couldn't initialize GLew: %s\n",
-			glewGetErrorString(err));
-		return false;
-	}
-
-	if (!glewIsSupported("GL_VERSION_2_1  GL_ARB_framebuffer_object")){
-		arcan_warning("arcan_video_init(), OpenGL context missing FBO support,"
-			"outdated drivers and/or graphics adapter detected. FBO related "
-			"options will silently fail.");
-	}
 
 	arcan_video_display.width  = width;
 	arcan_video_display.height = height;

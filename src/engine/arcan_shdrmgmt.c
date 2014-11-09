@@ -6,7 +6,10 @@
 #include <string.h>
 #include <stddef.h>
 
-#include GL_HEADERS
+#ifdef __APPLE__
+#include <OpenGL/gl.h>
+#include <OpenGL/glext.h>
+#endif
 
 #include <sys/stat.h>
 
