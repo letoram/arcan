@@ -604,6 +604,15 @@ arcan_errc arcan_video_linkobjs(arcan_vobj_id src, arcan_vobj_id parent,
 	enum arcan_transform_mask mask, enum parent_anchor);
 arcan_vobj_id arcan_video_findparent(arcan_vobj_id id);
 arcan_vobj_id arcan_video_findchild(arcan_vobj_id parentid, unsigned ofs);
+
+/*
+ * Recursively resolves if [vid] is linked to any of parents near
+ * or distant children. Set [limit] to -1 to search the entire tree,
+ * otherwise a [limit] of >0 will limit the search depth.
+ */
+bool arcan_video_isdescendant(arcan_vobj_id vid,
+	arcan_vobj_id parent, int limit);
+
 arcan_errc arcan_video_changefilter(arcan_vobj_id id,
 	enum arcan_vfilter_mode);
 arcan_errc arcan_video_persistobject(arcan_vobj_id id);
