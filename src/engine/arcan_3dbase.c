@@ -36,7 +36,6 @@
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_event.h"
-#include "arcan_shdrmgmt.h"
 #include "arcan_video.h"
 #include "arcan_videoint.h"
 #include "arcan_3dbase.h"

@@ -591,7 +591,8 @@ static int setup_gl(void)
 
 	static const EGLint attribs[] = {
 		EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
-		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+/*		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT, */
+		EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
 		EGL_RED_SIZE, 1,
 		EGL_GREEN_SIZE, 1,
 		EGL_BLUE_SIZE, 1,
@@ -606,7 +607,8 @@ static int setup_gl(void)
 		return -1;
 	}
 
-	if (!eglBindAPI(EGL_OPENGL_ES_API)){
+/*	if (!eglBindAPI(EGL_OPENGL_ES_API)){*/
+	if (!eglBindAPI(EGL_OPENGL_API)){
 		arcan_warning("egl-dri() -- couldn't bind OpenGL API.\n");
 		return -1;
 	}
@@ -730,6 +732,11 @@ static void page_flip_handler(int fd, unsigned int frame,
 {
 	int *waiting_for_flip = data;
 	*waiting_for_flip = 0;
+}
+
+void* PLATFORM_SYMBOL(_video_gfxsym)(const char* sym)
+{
+	return eglGetProcAddress(sym);
 }
 
 bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
