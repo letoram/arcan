@@ -55,7 +55,6 @@
 #include "arcan_audio.h"
 #include "arcan_event.h"
 #include "arcan_frameserver.h"
-#include "arcan_shdrmgmt.h"
 #include "arcan_renderfun.h"
 #include "arcan_videoint.h"
 #include "arcan_3dbase.h"

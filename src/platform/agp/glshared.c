@@ -5,10 +5,7 @@
 #include <assert.h>
 #include <string.h>
 
-#ifdef __APPLE__
-#include <OpenGL/gl.h>
-#include <OpenGL/glext.h>
-#endif
+#include "glfun.h"
 
 #include "../video_platform.h"
 #include "../platform.h"
@@ -18,7 +15,6 @@
 #include "arcan_video.h"
 #include "arcan_mem.h"
 #include "arcan_videoint.h"
-#include "arcan_shdrmgmt.h"
 
 struct rendertarget_store
 {
@@ -138,8 +134,12 @@ void agp_setup_rendertarget(struct rendertarget* dst, enum rendertarget_mode m)
 	alloc_fbo(dst->store);
 }
 
+extern void agp_gl_ext_init();
+
 void agp_init()
 {
+	agp_gl_ext_init();
+
 	glEnable(GL_SCISSOR_TEST);
 	glDisable(GL_DEPTH_TEST);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);

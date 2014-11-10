@@ -5,10 +5,7 @@
 #include <stdbool.h>
 #include <assert.h>
 
-#ifdef __APPLE__
-#include <OpenGL/gl.h>
-#include <OpenGL/glext.h>
-#endif
+#include "glfun.h"
 
 #include "../video_platform.h"
 #include "../platform.h"
@@ -17,7 +14,6 @@
 #include "arcan_general.h"
 #include "arcan_video.h"
 #include "arcan_videoint.h"
-#include "arcan_shdrmgmt.h"
 
 static const char* defvprg =
 "#version 120\n"

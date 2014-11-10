@@ -112,6 +112,11 @@ static bool setup_xwnd(int w, int h, bool fullscreen)
 	return true;
 }
 
+void* PLATFORM_SYMBOL(_video_gfxsym)(const char* sym)
+{
+	return glXGetProcAddress((const GLubyte*) sym);
+}
+
 bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 	uint8_t bpp, bool fs, bool frames, const char* caption)
 {

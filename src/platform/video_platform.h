@@ -3,7 +3,7 @@
 
 /*
  * This platform layer is an attempt to decouple the _video.c
- * _3dbase.c and _shdrmgmt.c parts of the engine from OpenGL.
+ * and _3dbase.c parts of the engine from OpenGL.
  */
 
 /*
@@ -64,6 +64,45 @@ enum arcan_blendfunc {
 };
 
 /*
+ * Internal shader type tracking
+ */
+enum shdrutype {
+	shdrbool   = 0,
+	shdrint    = 1,
+	shdrfloat  = 2,
+	shdrvec2   = 3,
+	shdrvec3   = 4,
+	shdrvec4   = 5,
+	shdrmat4x4 = 6
+};
+
+/* Built-in shader properties, these are
+ * order dependant, check shdrmgmt.c */
+enum arcan_shader_envts{
+/* packed matrices */
+	MODELVIEW_MATR  = 0,
+	PROJECTION_MATR = 1,
+	TEXTURE_MATR    = 2,
+	OBJ_OPACITY     = 3,
+
+/* transformation completion */
+	TRANS_MOVE      = 4,
+	TRANS_ROTATE    = 5,
+	TRANS_SCALE     = 6,
+
+	FRACT_TIMESTAMP_F = 7,
+	TIMESTAMP_D       = 8,
+};
+
+/* Built in Shader Vertex Attributes */
+enum shader_vertex_attributes {
+	ATTRIBUTE_VERTEX,
+	ATTRIBUTE_NORMAL,
+	ATTRIBUTE_COLOR,
+	ATTRIBUTE_TEXCORD
+};
+
+/*
  * end of internal representation specific data.
  */
 typedef long long arcan_vobj_id;
@@ -84,6 +123,14 @@ bool platform_video_init(uint16_t w, uint16_t h,
  *  NULL};
  */
 const char** platform_video_synchopts();
+
+/*
+ * The AGP layer may need to dynamically map symbols against
+ * whatever graphics library is in play but the video layer is
+ * typically the one capable of determining how
+ * such functions should be found.
+ */
+void* platform_video_gfxsym(const char* sym);
 
 /*
  * switch active synchronization strategy (if possible), strat must be
@@ -155,9 +202,11 @@ void platform_video_shutdown();
 
 /*
  * Some underlying implementations need to allocate handles / contexts
- * etc. as an extension to what platform_video_init has already done.
+ * etc. as an extension to what platform_video_init has already done,
+ * typically the initial state-machine setup needed by gl.
  */
 void agp_init();
+
 struct storage_info_t;
 typedef long int arcan_shader_id;
 
@@ -438,4 +487,87 @@ void agp_invalidate_mesh(struct mesh_storage_t*);
  * if necessary.
  */
 void agp_save_output(size_t w, size_t h, av_pixel* dst, size_t dsz);
+
+/* delete, forget and flush all allocated shaders */
+void arcan_shader_flush();
+
+/*
+ * Drop possible underlying handles, a call chain of
+ * unload_all and rebuild_all should yield no visible
+ * changes to the rest of the engine.
+ */
+void arcan_shader_unload_all();
+
+/*
+ * Will be called on possible external launch transitions
+ * where we might have lost underlying context data.
+ */
+void arcan_shader_rebuild_all();
+
+/*
+ * Set the current transformation / processing rules (i.e. shader)
+ * This will be called on new objects and may effectively be a no-o
+ * if the same one is already active.
+ */
+int arcan_shader_activate(arcan_shader_id shid);
+
+/*
+ * Take transformation rules in source-code form (platform specific
+ * a agp_shader_language) and build for the specified processing
+ * stages.
+ */
+arcan_shader_id arcan_shader_build(const char* tag, const char* geom,
+	const char* vert, const char* frag);
+
+/*
+ * Drop the specified shader and mark as re-usable (destroy on
+ * invalid ID should return false here). States local to shid
+ * should be considered undefined after this.
+ */
+bool arcan_shader_destroy(arcan_shader_id shid);
+
+/*
+ * Name- based shader lookup (typically to match string representations
+ * from higher-level languages without tracking numerical IDs).
+ */
+arcan_shader_id arcan_shader_lookup(const char* tag);
+const char* arcan_shader_lookuptag(arcan_shader_id id);
+
+/*
+ * Get a local copy of the source stored in *vert, *frag based
+ * on the specified ID.
+ */
+bool arcan_shader_lookupprgs(arcan_shader_id id,
+	const char** vert, const char** frag);
+bool arcan_shader_valid(arcan_shader_id);
+
+/*
+ * Get the vertex- attribute location for a specific vertex attribute
+ * (as some integral reference or -1 on non-existing in the currently
+ * bound program).
+ */
+int arcan_shader_vattribute_loc(enum shader_vertex_attributes attr);
+
+/*
+ * Update the specified built-in environment variable with a slot,
+ * value and size matching the tables above, should return -1 if
+ * no such- slot exists or is not available in the currently bound
+ * program.
+ */
+int arcan_shader_envv(enum arcan_shader_envts slot, void* value, size_t size);
+
+/*
+ * Get a string representation for the specific environment slot,
+ * this is primarily for debugging / tracing purposes.
+ */
+const char* arcan_shader_symtype(enum arcan_shader_envts env);
+
+/*
+ * This is used for possibly custom uniforms, with persist set
+ * to false we hint that it can be updated regularly and do not
+ * have to survive a context-drop/rebuild.
+ */
+void arcan_shader_forceunif(const char* label,
+	enum shdrutype type, void* value, bool persist);
+
 #endif

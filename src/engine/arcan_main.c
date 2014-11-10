@@ -475,6 +475,8 @@ applswitch:
 			"try other windowing options (-f, -w, ...)\n");
 	}
 
+	agp_init();
+
 	errno = 0;
 /* grab audio, (possible to live without) */
 	if (ARCAN_OK != arcan_audio_setup(nosound))
