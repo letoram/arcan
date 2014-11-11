@@ -269,7 +269,7 @@ SET (GL21_SOURCES
 )
 
 if (ENABLE_LIBRETRO3D AND NOT ENABLE_LWA)
-	message("Libretro3D requires LWA build but non- were specified, disabling.")
+	message("Libretro3D requires LWA build but none- was specified, disabling.")
 	set(ENABLE_LIBRETRO3D OFF)
 endif()
 
@@ -297,7 +297,6 @@ if (VIDEO_PLATFORM STREQUAL "x11" OR VIDEO_PLATFORM STREQUAL "x11-headless")
 	if (ENABLE_LWA)
 		message("Enabling LWA (Arcan-in-Arcan) build using X11 HEADLESS")
 		SET(LWA_HEADLESS "x11/video.c")
-		SET(LWA_GLHEADER "x11/glheaders.h")
 	endif()
 
 # legacy platform for weaker platforms RPI etc.
@@ -355,8 +354,8 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-dri")
 	if (ENABLE_LWA)
 		message("Enabling LWA (Arcan-in-Arcan build) using EGL-DRI HEADLESS")
 		SET(LWA_HEADLESS "egl-dri/video_rnode.c")
-		SET(LWA_GLHEADER "egl-dri/glheaders.h")
-		LIST(APPEND LWA_LIBRARIES ${GLES3_LIBRARIES} ${EGL_LIBRARIES} ${GBMKMS_LIBRARIES})
+		LIST(APPEND LWA_LIBRARIES ${OPENGL_gl_LIBRARY}
+			${EGL_LIBRARIES} ${GBMKMS_LIBRARIES})
 	endif()
 
 elseif (VIDEO_PLATFORM STREQUAL "sdl")
@@ -387,11 +386,9 @@ elseif (VIDEO_PLATFORM STREQUAL "sdl")
 		if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 			message("Enabling LWA (Arcan-in-Arcan) build using Darwin HEADLESS")
 			SET(LWA_HEADLESS "darwin/video.c")
-			SET(LWA_GLHEADER "darwin/glheaders.h")
 		else()
 			message("Enabling LWA (Arcan-in-Arcan) build using X11 HEADLESS")
 			SET(LWA_HEADLESS "x11/video.c")
-			SET(LWA_GLHEADER "x11/glheaders.h")
 		endif()
 	endif()
 
@@ -576,10 +573,6 @@ if (ENABLE_LIBRETRO)
 				HEADLESS_PLATFORM=\"${CMAKE_CURRENT_SOURCE_DIR}/platform/${LWA_HEADLESS}\"
 		)
 
-		set_property( SOURCE frameserver/retexture.c
-			APPEND PROPERTY COMPILE_DEFINITIONS
-				GL_HEADERS=\"${CMAKE_CURRENT_SOURCE_DIR}/platform/${LWA_GLHEADER}\"
-		)
 		LIST(APPEND FSRV_LIBRETRO_LIBRARIES ${LWA_LIBRARIES})
 	endif()
 endif()

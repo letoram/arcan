@@ -143,6 +143,11 @@ void platform_video_restore_external()
 	lwa_video_restore_external();
 }
 
+void* platform_video_gfxsym(const char* sym)
+{
+	return lwa_video_gfxsym(sym);
+}
+
 void platform_video_setsynch(const char* arg)
 {
 	int ind = 0;

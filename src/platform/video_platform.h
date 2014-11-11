@@ -207,7 +207,28 @@ void platform_video_shutdown();
  */
 void agp_init();
 
-struct storage_info_t;
+struct storage_info_t {
+	size_t refcount;
+
+	union {
+		struct {
+			unsigned glid;
+			unsigned rid, wid;
+			uint32_t s_raw;
+			av_pixel*  raw;
+			char*   source;
+		} text;
+		struct {
+			float r;
+			float g;
+			float b;
+		} col;
+	} vinf;
+
+	size_t w, h;
+	uint8_t bpp, txmapped,
+		txu, txv, scale, imageproc, filtermode;
+};
 typedef long int arcan_shader_id;
 
 /*
@@ -414,7 +435,17 @@ enum rendertarget_mode {
  */
 struct rendertarget;
 void agp_setup_rendertarget(struct rendertarget*,
-	enum rendertarget_mode mode);
+	struct storage_info_t*, enum rendertarget_mode mode);
+
+#ifdef AGP_ENABLE_UNPURE
+/*
+ * Break the opaqueness somewhat by exposing underlying handles,
+ * primarily for frameservers that explicitly need to use GL
+ * and where we want to re-use the underlying code.
+ */
+void agp_rendertarget_ids(struct rendertarget*, uintptr_t* tgt,
+	uintptr_t* col, uintptr_t* depth);
+#endif
 
 /*
  * Drop and rebuild the current backing store, along with
@@ -428,7 +459,6 @@ void agp_resize_rendertarget(struct rendertarget*, size_t neww, size_t newh);
  * If set to null, rendertarget based rendering will be disabled.
  */
 void agp_activate_rendertarget(struct rendertarget*);
-
 void agp_drop_rendertarget(struct rendertarget*);
 
 /*
