@@ -120,7 +120,8 @@ void agp_empty_vstore(struct storage_info_t* vs, size_t w, size_t h)
 	vs->vinf.text.s_raw = 0;
 }
 
-void agp_setup_rendertarget(struct rendertarget* dst, enum rendertarget_mode m)
+void agp_setup_rendertarget(struct rendertarget* dst,
+	struct storage_info_t* vstore, enum rendertarget_mode m)
 {
 	if (dst->store){
 		arcan_mem_free(dst->store);
@@ -128,7 +129,8 @@ void agp_setup_rendertarget(struct rendertarget* dst, enum rendertarget_mode m)
 
 	dst->store = arcan_alloc_mem(sizeof(struct rendertarget_store),
 		ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
-	dst->store->store = dst->color->vstore;
+
+	dst->store->store = vstore;
 	dst->store->mode = m;
 
 	alloc_fbo(dst->store);

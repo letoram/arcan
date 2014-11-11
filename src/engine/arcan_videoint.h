@@ -152,29 +152,6 @@ enum txstate {
 	TXSTATE_DEPTH = 2
 };
 
-struct storage_info_t {
-	size_t refcount;
-
-	union {
-		struct {
-			unsigned glid;
-			unsigned rid, wid;
-			uint32_t s_raw;
-			av_pixel*  raw;
-			char*   source;
-		} text;
-		struct {
-			float r;
-			float g;
-			float b;
-		} col;
-	} vinf;
-
-	size_t w, h;
-	uint8_t bpp, txmapped,
-		txu, txv, scale, imageproc, filtermode;
-};
-
 /*
  * Overly bloated and thus a nasty cache influence,
  * when optimization rounds come as part of 1.0 effort

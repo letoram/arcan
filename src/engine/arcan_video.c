@@ -1431,7 +1431,9 @@ arcan_errc arcan_video_resize_canvas(size_t neww, size_t newh)
 		agp_empty_vstore(current_context->world.vstore, neww, newh);
 		current_context->stdoutp.color = &current_context->world;
 		agp_setup_rendertarget(&current_context->stdoutp,
-			RENDERTARGET_COLOR_DEPTH_STENCIL);
+			current_context->world.vstore,
+			RENDERTARGET_COLOR_DEPTH_STENCIL
+		);
 	}
 	else
 		agp_resize_rendertarget(&current_context->stdoutp, neww, newh);
@@ -1947,7 +1949,7 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did,
 		dst->color    = vobj;
 		dst->camtag   = ARCAN_EID;
 		dst->readback = readback;
-		agp_setup_rendertarget(dst, format);
+		agp_setup_rendertarget(dst, vobj->vstore, format);
 
 		vobj->extrefc.attachments++;
 		trace("(setuprendertarget), (%d:%s) defined as rendertarget."
