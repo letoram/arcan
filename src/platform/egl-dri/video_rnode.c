@@ -185,6 +185,8 @@ bool PLATFORM_SYMBOL(_video_init)(uint16_t w, uint16_t h,
  * platform.
  */
 
+	eglMakeCurrent(rnode.display, NULL, NULL, rnode.context);
+
 	return true;
 }
 
@@ -195,7 +197,7 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 		pre();
 
 #ifndef HEADLESS_NOARCAN
-	arcan_bench_register_cost( arcan_video_refresh(fract, true) );
+	arcan_bench_register_cost( arcan_video_refresh(fract, false) );
 #endif
 
 	glFlush();

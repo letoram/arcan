@@ -19,6 +19,7 @@
 #include <unistd.h>
 
 #include "../video_platform.h"
+
 #define WITH_HEADLESS
 #include HEADLESS_PLATFORM
 
@@ -222,27 +223,12 @@ void platform_video_synch(uint64_t tick_count, float fract,
 	video_synchevent pre, video_synchevent post)
 {
 	lwa_video_synch(tick_count, fract, pre, stub);
-/*
- * now our color attachment contains the final picture,
- * if we have access to inter-process texture sharing, we can just fling
- * the FD, for now, readback into the shmpage
- */
-#if !defined(ARCAN_VIDEO_NOWORLD_FBO) && \
-	!defined(HAVE_GLES2) && !defined(HAVE_GLES3)
-	glBindTexture(GL_TEXTURE_2D, arcan_video_worldtex());
 
-/*
- * note, this assumes the shared memory interface
- * has been resized to the preset dimensions
- * (or we're gonna overflow and die), should also check if we have the
- * option to transfer some kind of buffer ID.
- */
-	glGetTexImage(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, shms.vidp);
-	glBindTexture(GL_TEXTURE_2D, 0);
-#else
-	glReadPixels(0, 0, shms.addr->w, shms.addr->h,
-		GL_RGBA, GL_UNSIGNED_BYTE, shms.vidp);
-#endif
+	struct storage_info_t store = *arcan_video_world();
+
+	store.vinf.text.raw = shms.vidp;
+	agp_readback_synchronous(&store);
+
 /*
  * we should implement a mapping for TARGET_COMMAND_FRAMESKIP or so
  * and use to set virtual display timings. ioev[0] => mode, [1] => prewake,
