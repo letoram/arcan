@@ -1056,7 +1056,7 @@ const char* arcan_event_devlabel(int devid)
 		"no identifier" : iodev.nodes[devid].label;
 }
 
-static int linux_platform_kmode;
+/* static int linux_platform_kmode; */
 void platform_event_deinit(struct arcan_evctx* ctx)
 {
 /*

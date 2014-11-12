@@ -4406,9 +4406,9 @@ arcan_errc arcan_video_forceread(arcan_vobj_id sid,
 	return ARCAN_OK;
 }
 
-unsigned arcan_video_worldtex()
+struct storage_info_t* arcan_video_world()
 {
-	return current_context->world.vstore->vinf.text.glid;
+	return current_context->stdoutp.color->vstore;
 }
 
 arcan_errc arcan_video_forceupdate(arcan_vobj_id vid)

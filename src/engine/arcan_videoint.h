@@ -355,7 +355,7 @@ struct rendertarget* find_rendertarget(arcan_vobject* vobj);
 void arcan_vint_drawrt(arcan_vobject*, int x, int y, int w, int h);
 void arcan_vint_drawcursor(bool erase);
 
-unsigned arcan_video_worldtex();
+struct storage_info_t* arcan_video_world();
 
 void arcan_3d_setdefaults();
 
