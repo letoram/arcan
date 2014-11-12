@@ -348,6 +348,13 @@ when "vimgen" then
 		exit(1)
 	end
 
+	consts = []
+	if (File.exists?("constdump/consts.list"))
+		File.open("constdump/consts.list").each_line{|a|
+			consts << a.chop
+		}
+	end
+
 	lines = File.open(fname).readlines
 	File.delete("arcan-lua.vim") if File.exist?("arcan-lua.vim")
 	outf = File.new("arcan-lua.vim", IO::CREAT | IO::RDWR)
@@ -365,6 +372,11 @@ when "vimgen" then
 		next if (a.chop.length == 0)
 		outf.print("syn keyword luaFunc #{a}\n")
 	}
+
+	consts.each{|a|
+		outf.print("syn keyword luaConstant #{a}\n")
+	}
+
 	outf.print("let #{last_ch}:current_syntax = \"arcan_lua\"\n")
 
 	lines[-4..-1].each{|a| outf.print(a) }
