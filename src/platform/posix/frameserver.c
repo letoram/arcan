@@ -129,6 +129,7 @@ void arcan_frameserver_dropshared(arcan_frameserver* src)
 	sem_unlink(work);
 	free(work);
 
+	src->shm.ptr = NULL;
 	arcan_mem_free(src->shm.key);
 }
 
@@ -458,7 +459,6 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
  	newseg->desc = vinfo;
 	newseg->source = ctx->source ? strdup(ctx->source) : NULL;
 	newseg->vid = newvid;
-	newseg->flags.pbo = ctx->flags.pbo;
 	newseg->flags.subsegment = true;
 
 /* Transfer the new event socket, along with

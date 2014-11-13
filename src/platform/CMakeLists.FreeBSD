@@ -20,6 +20,7 @@ ${PLATFORM_PATH}/paths.c
 ${PLATFORM_PATH}/base64.c
 ${PLATFORM_PATH}/sem.c
 ${PLATFORM_PATH}/shm.c
+${PLATFORM_PATH}/fsrv_guard.c
 ${PLATFORM_PATH}/time.c
 ${PLATFORM_PATH}/base64.c
 ${PLATFORM_PATH}/appl.c

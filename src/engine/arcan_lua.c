@@ -99,15 +99,12 @@
 #include "arcan_general.h"
 #include "arcan_video.h"
 #include "arcan_videoint.h"
-#include "arcan_shdrmgmt.h"
 #include "arcan_3dbase.h"
 #include "arcan_audio.h"
 #include "arcan_event.h"
 #include "arcan_db.h"
 #include "arcan_frameserver.h"
 #include "arcan_shmif.h"
-
-#include GL_HEADERS
 
 #define arcan_luactx lua_State
 #include "arcan_lua.h"
@@ -3053,6 +3050,13 @@ static int imagechildren(lua_State* ctx)
 {
 	LUA_TRACE("image_children");
 	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
+	arcan_vobj_id cid = luavid_tovid(luaL_optnumber(ctx, 2, ARCAN_EID));
+
+	if (cid != ARCAN_EID){
+		lua_pushboolean(ctx, arcan_video_isdescendant(id, cid, -1));
+		return 1;
+	}
+
 	arcan_vobj_id child;
 	unsigned ofs = 0, count = 1;
 
@@ -4802,9 +4806,9 @@ static int targetstepframe(lua_State* ctx)
 	if (nframes <= 0)
 		return 0;
 
-	if (rtgt && !rtgt->readreq ){
+	if (rtgt && !FL_TEST(rtgt, TGTFL_READING) ){
 		agp_request_readback(rtgt->color->vstore);
-		rtgt->readreq = true;
+		FL_SET(rtgt, TGTFL_READING);
 	}
 
 	if (qev){
@@ -5232,7 +5236,7 @@ static int procimage_histo(lua_State* ctx)
 		base[j] = RGBA(r,g,b,a);
 	}
 /* forceupdate vobj storage */
-	agp_update_vstore(vobj->vstore, true, false);
+	agp_update_vstore(vobj->vstore, true);
 	return 0;
 }
 
@@ -7395,11 +7399,13 @@ static const char* const vobj_flags(arcan_vobject* src)
 
 static inline char* lut_filtermode(enum arcan_vfilter_mode mode)
 {
+	mode = mode & (~ARCAN_VFILTER_MIPMAP);
 	switch(mode){
 	case ARCAN_VFILTER_NONE     : return "none";
 	case ARCAN_VFILTER_LINEAR   : return "linear";
 	case ARCAN_VFILTER_BILINEAR : return "bilinear";
 	case ARCAN_VFILTER_TRILINEAR: return "trilinear";
+	case ARCAN_VFILTER_MIPMAP:break;
 	}
 	return "[missing filter]";
 }
@@ -7507,9 +7513,9 @@ static void addquoted (lua_State *L, luaL_Buffer *b, int arg) {
 static inline char* lut_txmode(int txmode)
 {
 	switch (txmode){
-	case GL_REPEAT:
+	case ARCAN_VTEX_REPEAT:
 		return "repeat";
-	case GL_CLAMP_TO_EDGE:
+	case ARCAN_VTEX_CLAMP:
 		return "clamp(edge)";
 	default:
 		return "unknown(broken)";
@@ -7575,6 +7581,7 @@ static inline const char* fsrvtos(enum ARCAN_SEGID ink)
 	case SEGID_APPLICATION: return "application";
 	case SEGID_BROWSER: return "browser";
 	case SEGID_ENCODER: return "encoder";
+	case SEGID_TITLEBAR: return "titlebar";
 	case SEGID_SENSOR: return "sensor";
 	case SEGID_INPUTDEVICE: return "inputdevice";
 	case SEGID_DEBUG: return "debug";
@@ -7625,7 +7632,6 @@ fprintf(dst,
 "vobj.fsrv = {\
 \tlastpts = %lld,\
 \tsocksig = %d,\
-\tpbo = %d,\
 \taudbuf_sz = %d,\
 \taudbuf_used = %d,\
 \tchild_alive = %d,\
@@ -7635,7 +7641,6 @@ fprintf(dst,
 \toutevq_used = %d,",
 	(long long) fsrv->lastpts,
 	(int) fsrv->flags.socksig,
-	(int) fsrv->flags.pbo,
 	(int) fsrv->sz_audb,
 	(int) fsrv->ofs_audb,
 	(int) fsrv->flags.alive,
@@ -7741,7 +7746,7 @@ lut_kind(src));
 
 	if (src->vstore->txmapped){
 		fprintf(dst, "vobj.glstore_glid = %d;\n\
-vobj.glstore_refc = %d;\n", src->vstore->vinf.text.glid,
+vobj.glstore_refc = %zu;\n", src->vstore->vinf.text.glid,
 			src->vstore->refcount);
 	} else {
 		fprintf_float(dst, "vobj.glstore_col = {", src->vstore->vinf.col.r, ", ");

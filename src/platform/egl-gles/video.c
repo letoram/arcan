@@ -208,10 +208,8 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 	}
 #endif
 
-	arcan_video_display.pbo_support = true;
 	arcan_video_display.width = w;
 	arcan_video_display.height = h;
-	arcan_video_display.bpp = bpp;
 
 	drmModeSetCrtc(gbmkms.fd, gbmkms.enc->crtc_id, gbmkms.fb_id, 0, 0,
 		&gbmkms.conn->connector_id, 1, &gbmkms.mode);
@@ -273,13 +271,6 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 		arcan_warning("Couldn't create display\n");
 		return false;
 	}
-
-#if defined(WITH_GLES3)
-	arcan_video_display.pbo_support = true;
-#else
-/* probe for PBO extensions before failing this path */
-	arcan_video_display.pbo_support = false;
-#endif
 
 	EGLint major, minor;
 	if (!eglInitialize(egl.disp, &major, &minor)){

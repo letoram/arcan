@@ -3,8 +3,9 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <assert.h>
+#include <string.h>
 
-#include GL_HEADERS
+#include "glfun.h"
 
 #include "../video_platform.h"
 #include "../platform.h"
@@ -12,11 +13,135 @@
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_video.h"
+#include "arcan_mem.h"
 #include "arcan_videoint.h"
-#include "arcan_shdrmgmt.h"
+
+struct rendertarget_store
+{
+	GLuint fbo;
+	GLuint depth;
+	GLuint color;
+
+	enum rendertarget_mode mode;
+	struct storage_info_t* store;
+};
+
+static bool alloc_fbo(struct rendertarget_store* dst)
+{
+	glGenFramebuffers(1, &dst->fbo);
+
+/* need both stencil and depth buffer, but we don't need the data from them */
+	glBindFramebuffer(GL_FRAMEBUFFER, dst->fbo);
+
+	if (dst->mode > RENDERTARGET_DEPTH)
+	{
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+			GL_TEXTURE_2D, dst->store->vinf.text.glid, 0);
+
+/* need a Z buffer in the offscreen rendering but don't want
+ * bo store it, so setup a renderbuffer */
+		if (dst->mode > RENDERTARGET_COLOR) {
+			glGenRenderbuffers(1, &dst->depth);
+
+/* could use GL_DEPTH_COMPONENT only if we'd know that there
+ * wouldn't be any clipping in the active rendertarget */
+			glBindRenderbuffer(GL_RENDERBUFFER, dst->depth);
+			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8,
+				dst->store->w, dst->store->h);
+
+			glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
+				GL_RENDERBUFFER, dst->depth);
+		}
+	}
+	else {
+/* DEPTH buffer only (shadowmapping, ...) convert the storage to
+ * contain a depth texture */
+		size_t w = dst->store->w;
+		size_t h = dst->store->h;
+
+		agp_drop_vstore(dst->store);
+
+		dst->store = arcan_alloc_mem(sizeof(struct storage_info_t),
+			ARCAN_MEM_VSTRUCT, 0, ARCAN_MEMALIGN_NATURAL);
+
+		struct storage_info_t* store = dst->store;
+
+		memset(store, '\0', sizeof(struct storage_info_t));
+
+		store->txmapped   = TXSTATE_DEPTH;
+		store->txu        = ARCAN_VTEX_CLAMP;
+		store->txv        = ARCAN_VTEX_CLAMP;
+		store->scale      = ARCAN_VIMAGE_NOPOW2;
+		store->imageproc  = IMAGEPROC_NORMAL;
+		store->filtermode = ARCAN_VFILTER_NONE;
+		store->refcount   = 1;
+		store->w = w;
+		store->h = h;
+
+/* generate ID etc. special path for TXSTATE_DEPTH */
+		agp_update_vstore(store, true);
+
+		glDrawBuffer(GL_NONE);
+		glReadBuffer(GL_NONE);
+
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+			GL_TEXTURE_2D, store->vinf.text.glid, 0);
+	}
+
+/* basic error handling / status checking
+ * may be possible that we should cache this in the
+ * rendertarget and only call when / if something changes as
+ * it's not certain that drivers won't stall the pipeline on this */
+	GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+	if (status != GL_FRAMEBUFFER_COMPLETE){
+		arcan_warning("FBO support assumed broken, check drivers.\n");
+		return false;
+	}
+
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	return true;
+}
+
+void agp_empty_vstore(struct storage_info_t* vs, size_t w, size_t h)
+{
+	size_t sz = w * h * GL_PIXEL_BPP;
+	vs->vinf.text.s_raw = sz;
+	vs->vinf.text.raw = arcan_alloc_mem(
+		vs->vinf.text.s_raw,
+		ARCAN_MEM_VBUFFER, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE
+	);
+	vs->w = w;
+	vs->h = h;
+
+	agp_update_vstore(vs, true);
+
+	arcan_mem_free(vs->vinf.text.raw);
+	vs->vinf.text.raw = 0;
+	vs->vinf.text.s_raw = 0;
+}
+
+void agp_setup_rendertarget(struct rendertarget* dst,
+	struct storage_info_t* vstore, enum rendertarget_mode m)
+{
+	if (dst->store){
+		arcan_mem_free(dst->store);
+	}
+
+	dst->store = arcan_alloc_mem(sizeof(struct rendertarget_store),
+		ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
+
+	dst->store->store = vstore;
+	dst->store->mode = m;
+
+	alloc_fbo(dst->store);
+}
+
+extern void agp_gl_ext_init();
 
 void agp_init()
 {
+	agp_gl_ext_init();
+
 	glEnable(GL_SCISSOR_TEST);
 	glDisable(GL_DEPTH_TEST);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -32,17 +157,6 @@ void agp_init()
 	glClearColor(0.0, 0.0, 0.0, 1.0f);
 
 /*
-	if (arcan_video_display.pbo_support){
-		glGenBuffers(1, &current_context->stdoutp.pbo);
-		glBindBuffer(GL_PIXEL_PACK_BUFFER, current_context->stdoutp.pbo);
-		glBufferData(GL_PIXEL_PACK_BUFFER,
-			arcan_video_display.width * arcan_video_display.height * GL_PIXEL_BPP,
-			NULL, GL_STREAM_READ);
-		glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
-	}
-*/
-
-/*
  * -- Removed as they were causing trouble with NVidia GPUs (white line outline
  * where triangles connect
  * glHint(GL_LINE_SMOOTH_HINT, GL_NICEST);
@@ -50,6 +164,113 @@ void agp_init()
  * glEnable(GL_LINE_SMOOTH);
  * glEnable(GL_POLYGON_SMOOTH);
 */
+}
+
+void agp_drop_rendertarget(struct rendertarget* tgt)
+{
+	glDeleteFramebuffers(1,&tgt->store->fbo);
+	glDeleteRenderbuffers(1,&tgt->store->depth);
+	tgt->store->fbo = GL_NONE;
+	tgt->store->depth = GL_NONE;
+}
+
+void agp_activate_rendertarget(struct rendertarget* tgt)
+{
+	size_t w, h;
+
+	if (!tgt){
+		w = arcan_video_display.canvasw;
+		h = arcan_video_display.canvash;
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	}
+	else {
+		w = tgt->store->store->w;
+		h = tgt->store->store->h;
+		glBindFramebuffer(GL_FRAMEBUFFER, tgt->store->fbo);
+	}
+
+	glScissor(0, 0, w, h);
+	glViewport(0, 0, w, h);
+}
+
+void agp_rendertarget_clear()
+{
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+}
+
+void agp_pipeline_hint(enum pipeline_mode mode)
+{
+	switch (mode){
+		case PIPELINE_2D:
+			glDisable(GL_CULL_FACE);
+			glDisable(GL_DEPTH_TEST);
+		break;
+
+		case PIPELINE_3D:
+			glEnable(GL_DEPTH_TEST);
+			glClear(GL_DEPTH_BUFFER_BIT);
+		break;
+	}
+}
+
+void agp_null_vstore(struct storage_info_t* store)
+{
+	if (!store ||
+		store->txmapped != TXSTATE_TEX2D || store->vinf.text.glid == GL_NONE)
+		return;
+
+	glDeleteTextures(1, &store->vinf.text.glid);
+	store->vinf.text.glid = 0;
+}
+
+void agp_resize_rendertarget(struct rendertarget* tgt, size_t neww,
+	size_t newh)
+{
+	if (tgt->color){
+/* need to de-allocate */
+	}
+
+/* struct storage_info_t* ds = tgt->color->vstore;
+
+ * current_context->world.vstore;
+	if (ds){
+		glDeleteTextures(1, &ds->vinf.text.glid);
+		arcan_mem_free(ds->vinf.text.raw);
+		glDeleteFramebuffers(1, &arcan_video_display.main_fbo);
+		glDeleteRenderbuffers(1, &arcan_video_display.main_rb);
+		if (arcan_video_display.pbo_support)
+			glDeleteBuffers(1, &current_context->stdoutp.pbo);
+	}
+	else{
+		populate_vstore(&current_context->world.vstore);
+		ds = current_context->world.vstore;
+	}
+
+	ds->w = neww;
+	ds->h = newh;
+	ds->vinf.text.s_raw = neww * newh * GL_PIXEL_BPP;
+
+	ds->vinf.text.raw = arcan_alloc_mem(ds->vinf.text.s_raw,
+		ARCAN_MEM_VBUFFER,
+		ARCAN_MEM_BZERO,
+		ARCAN_MEMALIGN_PAGE
+	);
+
+	agp_update_vstore(current_context->world.vstore, true, false);
+
+	glGenFramebuffers(1, &arcan_video_display.main_fbo);
+	glBindFramebuffer(GL_FRAMEBUFFER, arcan_video_display.main_fbo);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+		GL_TEXTURE_2D, ds->vinf.text.glid, 0);
+
+	glGenRenderbuffers(1, &arcan_video_display.main_rb);
+	glBindRenderbuffer(GL_RENDERBUFFER, arcan_video_display.main_rb);
+	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, ds->w, ds->h);
+	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
+		GL_RENDERBUFFER, arcan_video_display.main_rb);
+
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	*/
 }
 
 void agp_activate_vstore_multi(struct storage_info_t** backing, size_t n)
@@ -74,7 +295,7 @@ void agp_activate_vstore_multi(struct storage_info_t** backing, size_t n)
 	glActiveTexture(GL_TEXTURE0);
 }
 
-void agp_update_vstore(struct storage_info_t* s, bool copy, bool mipmap)
+void agp_update_vstore(struct storage_info_t* s, bool copy)
 {
 	if (s->txmapped == TXSTATE_OFF)
 		return;
@@ -94,10 +315,11 @@ void agp_update_vstore(struct storage_info_t* s, bool copy, bool mipmap)
 		glBindTexture(GL_TEXTURE_2D, s->vinf.text.glid);
 	}
 
-	assert(s->txu != 0);
-
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, s->txu);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, s->txv);
+
+	int filtermode = s->filtermode & (~ARCAN_VFILTER_MIPMAP);
+	bool mipmap = s->filtermode & ARCAN_VFILTER_MIPMAP;
 
 /*
  * Mipmapping still misses the option to manually define mipmap levels
@@ -111,7 +333,7 @@ void agp_update_vstore(struct storage_info_t* s, bool copy, bool mipmap)
 #endif
 	}
 
-	switch (s->filtermode){
+	switch (filtermode){
 	case ARCAN_VFILTER_NONE:
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -248,6 +470,78 @@ void agp_draw_vobj(float x1, float y1, float x2, float y2,
 
 		glDisableVertexAttribArray(attrindv);
 	}
+}
+
+static void toggle_debugstates(float* modelview)
+{
+	if (modelview){
+		float white[3] = {1.0, 1.0, 1.0};
+		glDepthMask(GL_FALSE);
+		glDisable(GL_DEPTH_TEST);
+		glEnableVertexAttribArray(ATTRIBUTE_VERTEX);
+		arcan_shader_activate(agp_default_shader(COLOR_2D));
+		arcan_shader_envv(MODELVIEW_MATR, modelview, sizeof(float) * 16);
+		arcan_shader_forceunif("obj_col", shdrvec3, (void*) white, false);
+	}
+	else{
+		arcan_shader_activate(agp_default_shader(COLOR_2D));
+		glEnable(GL_DEPTH_TEST);
+		glDepthMask(GL_TRUE);
+		glDisableVertexAttribArray(ATTRIBUTE_VERTEX);
+	}
+}
+
+void agp_submit_mesh(struct mesh_storage_t* base, enum agp_mesh_flags fl)
+{
+/* make sure the current program actually uses the attributes from the mesh */
+	int attribs[3] = {
+		arcan_shader_vattribute_loc(ATTRIBUTE_VERTEX),
+		arcan_shader_vattribute_loc(ATTRIBUTE_NORMAL),
+		arcan_shader_vattribute_loc(ATTRIBUTE_TEXCORD)
+	};
+
+	if (attribs[0] == -1)
+		return;
+	else {
+		glEnableVertexAttribArray(attribs[0]);
+		glVertexAttribPointer(attribs[0], 3, GL_FLOAT, GL_FALSE, 0, base->verts);
+	}
+
+	if (attribs[1] != -1 && base->normals){
+		glEnableVertexAttribArray(attribs[1]);
+		glVertexAttribPointer(attribs[1], 3, GL_FLOAT, GL_FALSE,0, base->normals);
+	}
+	else
+		attribs[1] = -1;
+
+	if (attribs[2] != -1 && base->txcos){
+		glEnableVertexAttribArray(attribs[2]);
+		glVertexAttribPointer(attribs[2], 2, GL_FLOAT, GL_FALSE, 0, base->txcos);
+	}
+	else
+		attribs[2] = -1;
+
+		if (base->type == AGP_MESH_TRISOUP){
+			if (base->indices)
+				glDrawElements(GL_TRIANGLES, base->n_indices,
+					GL_UNSIGNED_INT, base->indices);
+			else
+				glDrawArrays(GL_TRIANGLES, 0, base->n_vertices);
+		}
+		else if (base->type == AGP_MESH_POINTCLOUD)
+			glDrawArrays(GL_POINTS, 0, base->n_vertices);
+
+		for (size_t i = 0; i < sizeof(attribs) / sizeof(attribs[0]); i++)
+			if (attribs[i] != -1)
+				glDisableVertexAttribArray(attribs[i]);
+}
+
+/*
+ * mark that the contents of the mesh has changed dynamically
+ * and that possible GPU- side cache might need to be updated.
+ */
+void agp_invalidate_mesh(struct mesh_storage_t* bs)
+{
 }
 
 void agp_activate_vstore(struct storage_info_t* s)

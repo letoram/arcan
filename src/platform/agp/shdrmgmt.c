@@ -6,14 +6,11 @@
 #include <string.h>
 #include <stddef.h>
 
-#include GL_HEADERS
-
-#include <sys/stat.h>
+#include "glfun.h"
 
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_video.h"
-#include "arcan_shdrmgmt.h"
 #include "arcan_videoint.h"
 
 #define TBLSIZE (1 + TIMESTAMP_D - MODELVIEW_MATR)
@@ -171,7 +168,7 @@ static void setv(GLint loc, enum shdrutype kind, void* val,
 	}
 }
 
-arcan_errc arcan_shader_activate(arcan_shader_id shid)
+int arcan_shader_activate(arcan_shader_id shid)
 {
 	if (!arcan_shader_valid(shid))
 		return ARCAN_ERRC_NO_SUCH_OBJECT;

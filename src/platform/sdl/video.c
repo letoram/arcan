@@ -10,7 +10,8 @@
 #include <stdbool.h>
 #include <math.h>
 
-#include "glheaders.h"
+#include <SDL.h>
+#include <SDL_opengl.h>
 
 #include "arcan_math.h"
 #include "arcan_general.h"
@@ -20,6 +21,7 @@
 #include "arcan_event.h"
 
 static SDL_Surface* screen;
+static int sdlarg;
 
 static char* synchopts[] = {
 	"dynamic", "herustic driven balancing latency, performance and utilization",
@@ -58,7 +60,12 @@ void platform_video_restore_external()
 	screen = SDL_SetVideoMode(arcan_video_display.width,
 		arcan_video_display.height,
 		arcan_video_display.bpp,
-		arcan_video_display.sdlarg);
+		sdlarg);
+}
+
+void* platform_video_gfxsym(const char* sym)
+{
+	return SDL_GL_GetProcAddress(sym);
 }
 
 void platform_video_minimize()
@@ -201,9 +208,9 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	SDL_WM_SetCaption(caption, "Arcan");
 
 	arcan_video_display.fullscreen = fs;
-	arcan_video_display.sdlarg = (fs ? SDL_FULLSCREEN : 0) |
+	sdlarg = (fs ? SDL_FULLSCREEN : 0) |
 		SDL_OPENGL | (frames ? SDL_NOFRAME : 0);
-	screen = SDL_SetVideoMode(width, height, bpp, arcan_video_display.sdlarg);
+	screen = SDL_SetVideoMode(width, height, bpp, sdlarg);
 
 	if (arcan_video_display.msasamples && !screen){
 		arcan_warning("arcan_video_init(), Couldn't open OpenGL display,"
@@ -211,7 +218,7 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0);
 		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 0);
 		arcan_video_display.msasamples = 0;
-		screen = SDL_SetVideoMode(width, height, bpp, arcan_video_display.sdlarg);
+		screen = SDL_SetVideoMode(width, height, bpp, sdlarg);
 	}
 
 	if (!screen)
@@ -219,21 +226,6 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 
 /* need to be called AFTER we have a valid GL context,
  * else we get the "No GL version" */
-	int err;
-	if ( (err = glewInit()) != GLEW_OK){
-		arcan_fatal("arcan_video_init(), Couldn't initialize GLew: %s\n",
-			glewGetErrorString(err));
-		return false;
-	}
-
-	if (!glewIsSupported("GL_VERSION_2_1  GL_ARB_framebuffer_object")){
-		arcan_warning("arcan_video_init(), OpenGL context missing FBO support,"
-			"outdated drivers and/or graphics adapter detected. FBO related "
-			"options will silently fail.");
-	}
-
-	arcan_video_display.pbo_support = true;
-
 	arcan_video_display.width  = width;
 	arcan_video_display.height = height;
 	arcan_video_display.bpp    = bpp;

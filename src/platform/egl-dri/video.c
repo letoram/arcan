@@ -35,6 +35,9 @@
 
 #include <drm.h>
 
+#include <EGL/egl.h>
+#include <EGL/eglext.h>
+
 /*
  * Any way to evict the xf86 dependency, in the dream scenario
  * where we can get away without having the thing installed AT ALL?
@@ -43,12 +46,12 @@
 #include <xf86drmMode.h>
 #include <gbm.h>
 
-#include GL_HEADERS
-
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_video.h"
 #include "arcan_videoint.h"
+
+#include "../agp/glfun.h"
 
 #ifndef PLATFORM_SUFFIX
 #define PLATFORM_SUFFIX platform
@@ -97,11 +100,13 @@ static struct {
 	drmModeRes* res;
 } drm;
 
-static struct {
+/*
+ * static struct {
 	arcan_vobj_id source;
 	unsigned display_slot;
 
 } displays[CONNECTOR_LIMIT];
+*/
 
 static struct {
 	EGLConfig config;
@@ -126,6 +131,45 @@ struct {
 } kms;
 
 static const char device_name[] = "/dev/dri/card0";
+
+static const char* egl_errstr()
+{
+	EGLint errc = eglGetError();
+	switch(errc){
+	case EGL_SUCCESS:
+		return "Success";
+	case EGL_NOT_INITIALIZED:
+		return "Not initialize for the specific display connection";
+	case EGL_BAD_ACCESS:
+		return "Cannot access the requested resource (wrong thread?)";
+	case EGL_BAD_ALLOC:
+		return "Couldn't allocate resources for the requested operation";
+	case EGL_BAD_ATTRIBUTE:
+		return "Unrecognized attribute or attribute value";
+	case EGL_BAD_CONTEXT:
+		return "Context argument does not name a valid context";
+	case EGL_BAD_CONFIG:
+		return "EGLConfig argument did not match a valid config";
+	case EGL_BAD_CURRENT_SURFACE:
+		return "Current surface refers to an invalid destination";
+	case EGL_BAD_DISPLAY:
+		return "The EGLDisplay argument does not match a valid display";
+	case EGL_BAD_SURFACE:
+		return "EGLSurface argument does not name a valid surface";
+	case EGL_BAD_MATCH:
+		return "Inconsistent arguments";
+	case EGL_BAD_PARAMETER:
+		return "Invalid parameter passed to function";
+	case EGL_BAD_NATIVE_PIXMAP:
+		return "NativePixmapType is invalid";
+	case EGL_BAD_NATIVE_WINDOW:
+		return "Native Window Type does not refer to a valid window";
+	case EGL_CONTEXT_LOST:
+		return "Power-management event has forced the context to drop";
+	default:
+		return "Uknown Error";
+	}
+}
 
 bool PLATFORM_SYMBOL(_video_set_mode)(
 	platform_display_id disp, platform_mode_id mode)
@@ -591,7 +635,8 @@ static int setup_gl(void)
 
 	static const EGLint attribs[] = {
 		EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
-		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+/*		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT, */
+		EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
 		EGL_RED_SIZE, 1,
 		EGL_GREEN_SIZE, 1,
 		EGL_BLUE_SIZE, 1,
@@ -600,18 +645,19 @@ static int setup_gl(void)
 		EGL_NONE
 	};
 
-	egl.display = eglGetDisplay(gbm.dev);
+	egl.display = eglGetDisplay((void*)gbm.dev);
 	if (!eglInitialize(egl.display, NULL, NULL)){
 		arcan_warning("egl-dri() -- failed to initialize EGL.\n");
 		return -1;
 	}
 
-	if (!eglBindAPI(EGL_OPENGL_ES_API)){
+/*	if (!eglBindAPI(EGL_OPENGL_ES_API)){*/
+	if (!eglBindAPI(EGL_OPENGL_API)){
 		arcan_warning("egl-dri() -- couldn't bind OpenGL API.\n");
 		return -1;
 	}
 
-	GLint nc;
+	EGLint nc;
 	eglGetConfigs(egl.display, NULL, 0, &nc);
 	if (nc < 1){
 		arcan_warning(
@@ -621,7 +667,7 @@ static int setup_gl(void)
 	EGLConfig* configs = malloc(sizeof(EGLConfig) * nc);
 	memset(configs, '\0', sizeof(EGLConfig) * nc);
 
-	GLint selv;
+	EGLint selv;
 	arcan_warning(
 		"egl-dri() -- %d configurations found.\n", (int) nc);
 
@@ -639,7 +685,7 @@ static int setup_gl(void)
 	}
 
 	egl.surface = eglCreateWindowSurface(egl.display,
-		egl.config, gbm.surface, NULL);
+		egl.config, (uintptr_t)gbm.surface, NULL);
 
 	if (egl.surface == EGL_NO_SURFACE) {
 		arcan_warning("egl-dri() -- couldn't create a window surface.\n");
@@ -650,10 +696,6 @@ static int setup_gl(void)
 
 	arcan_video_display.width = drm.mode->hdisplay;
 	arcan_video_display.height = drm.mode->vdisplay;
-	arcan_video_display.bpp = 4;
-	arcan_video_display.pbo_support = true;
-
-	glViewport(0, 0, arcan_video_display.width, arcan_video_display.height);
 
 	return 0;
 }
@@ -734,15 +776,18 @@ static void page_flip_handler(int fd, unsigned int frame,
 	*waiting_for_flip = 0;
 }
 
+void* PLATFORM_SYMBOL(_video_gfxsym)(const char* sym)
+{
+	return eglGetProcAddress(sym);
+}
+
 bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 	uint8_t bpp, bool fs, bool frames, const char* title)
 {
 	if (0 != setup_drm() || 0 != setup_gbm() || 0 != setup_gl())
 		return false;
 
-/* clear the color buffer */
-	glClearColor(0.0, 0.0, 0.0, 1.0);
-	glClear(GL_COLOR_BUFFER_BIT);
+	agp_init();
 
 	return true;
 }
@@ -762,8 +807,7 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 
 /* first frame setup */
 	if (!gbm.bo){
-		glClearColor(0, 0, 0, 1.0);
-		glClear(GL_COLOR_BUFFER_BIT);
+		agp_rendertarget_clear();
 		eglSwapBuffers(egl.display, egl.surface);
 
 		gbm.bo = gbm_surface_lock_front_buffer(gbm.surface);

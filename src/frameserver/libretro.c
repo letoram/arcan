@@ -48,6 +48,8 @@
 
 #ifdef FRAMESERVER_LIBRETRO_3D
 
+#include "../platform/agp/glfun.h"
+
 #include "../platform/video_platform.h"
 #include HEADLESS_PLATFORM
 
@@ -461,30 +463,12 @@ static void libretro_vidcb(const void* data, unsigned width,
 
 #ifdef FRAMESERVER_LIBRETRO_3D
 	if (data == RETRO_HW_FRAME_BUFFER_VALID){
-
 /* method one, just read color attachment, when this is working,
  * switch to PBO transfers and possible Flip-Flop FBOs */
-#ifndef GL_NO_GETTEXIMAGE
-  glBindTexture(GL_TEXTURE_2D, retroctx.fbos[retroctx.fbo_ind].col);
-	glGetTexImage(GL_TEXTURE_2D, 0,
-		GL_RGBA, GL_UNSIGNED_BYTE, retroctx.shmcont.vidp);
-	glBindTexture(GL_TEXTURE_2D, 0);
-#else
-/* method two, pixels of buffer out */
-	glBindFramebuffer(GL_READ_FRAMEBUFFER, retroctx.fbos[retroctx.fbo_ind].col);
-		glReadPixels(0, 0, outw, outh,
+  	glBindTexture(GL_TEXTURE_2D, retroctx.fbos[retroctx.fbo_ind].col);
+		glGetTexImage(GL_TEXTURE_2D, 0,
 			GL_RGBA, GL_UNSIGNED_BYTE, retroctx.shmcont.vidp);
-
-/*	uint64_t sum = 0;
-		for (int i = 0; i < (outw * outh); i++)
-			sum += ((uint32_t*)retroctx.vidp)[i];
-		LOG("sum: %lld\n", sum);
-*/
-
-/*		for (int i = 0; i < (outw * outh) / 4; i++)
- *			((uint32_t*)retroctx.vidp)[i] = 0xff00ffff; */
-#endif
-		return;
+		glBindTexture(GL_TEXTURE_2D, 0);
 	}
 #endif
 

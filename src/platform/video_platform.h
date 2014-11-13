@@ -3,7 +3,7 @@
 
 /*
  * This platform layer is an attempt to decouple the _video.c
- * _3dbase.c and _shdrmgmt.c parts of the engine from OpenGL.
+ * and _3dbase.c parts of the engine from OpenGL.
  */
 
 /*
@@ -64,6 +64,45 @@ enum arcan_blendfunc {
 };
 
 /*
+ * Internal shader type tracking
+ */
+enum shdrutype {
+	shdrbool   = 0,
+	shdrint    = 1,
+	shdrfloat  = 2,
+	shdrvec2   = 3,
+	shdrvec3   = 4,
+	shdrvec4   = 5,
+	shdrmat4x4 = 6
+};
+
+/* Built-in shader properties, these are
+ * order dependant, check shdrmgmt.c */
+enum arcan_shader_envts{
+/* packed matrices */
+	MODELVIEW_MATR  = 0,
+	PROJECTION_MATR = 1,
+	TEXTURE_MATR    = 2,
+	OBJ_OPACITY     = 3,
+
+/* transformation completion */
+	TRANS_MOVE      = 4,
+	TRANS_ROTATE    = 5,
+	TRANS_SCALE     = 6,
+
+	FRACT_TIMESTAMP_F = 7,
+	TIMESTAMP_D       = 8,
+};
+
+/* Built in Shader Vertex Attributes */
+enum shader_vertex_attributes {
+	ATTRIBUTE_VERTEX,
+	ATTRIBUTE_NORMAL,
+	ATTRIBUTE_COLOR,
+	ATTRIBUTE_TEXCORD
+};
+
+/*
  * end of internal representation specific data.
  */
 typedef long long arcan_vobj_id;
@@ -84,6 +123,14 @@ bool platform_video_init(uint16_t w, uint16_t h,
  *  NULL};
  */
 const char** platform_video_synchopts();
+
+/*
+ * The AGP layer may need to dynamically map symbols against
+ * whatever graphics library is in play but the video layer is
+ * typically the one capable of determining how
+ * such functions should be found.
+ */
+void* platform_video_gfxsym(const char* sym);
 
 /*
  * switch active synchronization strategy (if possible), strat must be
@@ -155,10 +202,33 @@ void platform_video_shutdown();
 
 /*
  * Some underlying implementations need to allocate handles / contexts
- * etc. as an extension to what platform_video_init has already done.
+ * etc. as an extension to what platform_video_init has already done,
+ * typically the initial state-machine setup needed by gl.
  */
 void agp_init();
-struct storage_info_t;
+
+struct storage_info_t {
+	size_t refcount;
+
+	union {
+		struct {
+			unsigned glid;
+			unsigned rid, wid;
+			uint32_t s_raw;
+			av_pixel*  raw;
+			char*   source;
+		} text;
+		struct {
+			float r;
+			float g;
+			float b;
+		} col;
+	} vinf;
+
+	size_t w, h;
+	uint8_t bpp, txmapped,
+		txu, txv, scale, imageproc, filtermode;
+};
 typedef long int arcan_shader_id;
 
 /*
@@ -200,6 +270,23 @@ void agp_activate_vstore(struct storage_info_t* backing);
 void agp_deactivate_vstore(struct storage_info_t* backing);
 
 /*
+ * Drop the underlying ID mapping with a pending call to update_vstore,
+ * though the application manually managed reallocation
+ */
+void agp_null_vstore(struct storage_info_t* backing);
+
+/*
+ * Setup an empty vstore backing with the specified dimensions
+ */
+void agp_empty_vstore(struct storage_info_t* backing, size_t w, size_t h);
+
+/*
+ * Rebuild an existing vstore to handle a change in data source
+ * dimensions without sharestorage- like operations breaking
+ */
+void agp_resize_vstore(struct storage_info_t* backing, size_t w, size_t h);
+
+/*
  * Deallocate all resources associated with a backing store.
  * This function is internally reference counted as there can be a
  * 1:* between a vobject and a backing store.
@@ -213,10 +300,48 @@ void agp_drop_vstore(struct storage_info_t* backing);
 void agp_activate_vstore_multi(struct storage_info_t** backing, size_t n);
 
 /*
+ * Prepare the specified backing store for streaming texture
+ * uploads. The semantics is determined by the stream_type and meta:
+ */
+enum stream_type {
+	STREAM_RAW,  /* buf will be NULL, call returns NULL (fail) or a pointer to
+								*	a buffer to populate manually and then commit */
+
+	STREAM_RAW_DIRECT, /* buf will be an av_pixel buffer that matches the
+											*	backing store dimensions */
+
+	STREAM_HANDLE, /* with buf 0, return a handle that can be passed to
+									*	a child or different context that needs to render onwards.
+									*	with buf !0, treat it as a handle that can be used by
+									*	the graphics layer to access an external data source */
+	STREAM_HANDLE_DIRECT
+};
+
+struct stream_meta {
+	union{
+		av_pixel* buf;
+		uintptr_t handle;
+	};
+};
+
+/*
+ * flow: [prepare(RAW, HANDLE)] -> populate returned buffer / handle ->
+ * release -> commit.
+ *
+ * [prepare(RAW_DIRECT, HANDLE_DIRECT)] -> commit.
+ *
+ * other agp calls are permitted between release -> commit or
+ * direct-prepare -> commit but NOT for prepare(non-direct) -> release.
+ */
+struct stream_meta agp_stream_prepare(struct storage_info_t*,
+		struct stream_meta, enum stream_type);
+void agp_stream_commit(struct storage_info_t*);
+void agp_stream_release(struct storage_info_t*);
+/*
  * Synchronize a populated backing store with the underlying
  * graphics layer
  */
-void agp_update_vstore(struct storage_info_t*, bool copy, bool mipmap);
+void agp_update_vstore(struct storage_info_t*, bool copy);
 
 /*
  * Allocate id and upload / store raw buffer into vstore
@@ -225,6 +350,12 @@ void agp_buffer_tostore(struct storage_info_t* dst,
 	av_pixel* buf, size_t buf_sz, size_t w, size_t h,
 	size_t origw, size_t origh, unsigned short zv
 );
+
+enum pipeline_mode {
+	PIPELINE_2D,
+	PIPELINE_3D
+};
+void agp_pipeline_hint(enum pipeline_mode);
 
 /*
  * Synchronize the current backing store on-host buffer
@@ -285,9 +416,188 @@ void agp_draw_vobj(float x1, float y1, float x2, float y2,
 	float* txcos, float*);
 
 /*
+ * Destination format for rendertargets. Note that we do not currently
+ * suport floating point targets and that for some platforms,
+ * COLOR_DEPTH will map to COLOR_DEPTH_STENCIL.
+ */
+enum rendertarget_mode {
+	RENDERTARGET_DEPTH = 0,
+	RENDERTARGET_COLOR = 1,
+	RENDERTARGET_COLOR_DEPTH = 2,
+	RENDERTARGET_COLOR_DEPTH_STENCIL = 3
+};
+
+/*
+ * Attach a backing store using the specified video object
+ * as recipient with the possible attachments specified in mode.
+ * This requires that the backing store video_object has been set
+ * as the color member of the rendertarget.
+ */
+struct rendertarget;
+void agp_setup_rendertarget(struct rendertarget*,
+	struct storage_info_t*, enum rendertarget_mode mode);
+
+#ifdef AGP_ENABLE_UNPURE
+/*
+ * Break the opaqueness somewhat by exposing underlying handles,
+ * primarily for frameservers that explicitly need to use GL
+ * and where we want to re-use the underlying code.
+ */
+void agp_rendertarget_ids(struct rendertarget*, uintptr_t* tgt,
+	uintptr_t* col, uintptr_t* depth);
+#endif
+
+/*
+ * Drop and rebuild the current backing store, along with
+ * possible transfer objects etc. with the >0 dimensions
+ * specified by neww / newh.
+ */
+void agp_resize_rendertarget(struct rendertarget*, size_t neww, size_t newh);
+
+/*
+ * Switch the currently active rendertarget to the one specified.
+ * If set to null, rendertarget based rendering will be disabled.
+ */
+void agp_activate_rendertarget(struct rendertarget*);
+void agp_drop_rendertarget(struct rendertarget*);
+
+/*
+ * reset the currently bound rendertarget output buffer
+ */
+void agp_rendertarget_clear();
+
+enum agp_mesh_type {
+	AGP_MESH_TRISOUP,
+	AGP_MESH_POINTCLOUD
+};
+
+struct mesh_storage_t
+{
+	float* verts;
+	float* txcos;
+	float* normals;
+	unsigned* indices;
+
+	size_t n_vertices;
+	size_t n_elements;
+	size_t n_indices;
+	size_t n_triangles;
+
+	enum agp_mesh_type type;
+
+/* opaque field used to store additional implementation
+ * defined tags, e.g. VBO backing index etc. */
+	uintptr_t opaque;
+};
+
+/*
+ * submit the specified mesh for rendering,
+ * which parts of the mesh that will actually be transmitted and mapped depends
+ * on the active shader (which is probed through shader_vattribute_loc
+ */
+enum agp_mesh_flags {
+	MESH_FACING_FRONT   = 1,
+	MESH_FACING_BACK    = 2,
+	MESH_FACING_BOTH    = 3,
+	MESH_FACING_NODEPTH = 4,
+	MESH_DEBUG_GEOMETRY = 8
+};
+
+void agp_submit_mesh(struct mesh_storage_t*, enum agp_mesh_flags);
+
+/*
+ * mark that the contents of the mesh has changed dynamically
+ * and that possible GPU- side cache might need to be updated.
+ */
+void agp_invalidate_mesh(struct mesh_storage_t*);
+
+/*
  * Get a copy of the current display output and save
  * into the supplied buffer, scale / convert color format
  * if necessary.
  */
 void agp_save_output(size_t w, size_t h, av_pixel* dst, size_t dsz);
+
+/* delete, forget and flush all allocated shaders */
+void arcan_shader_flush();
+
+/*
+ * Drop possible underlying handles, a call chain of
+ * unload_all and rebuild_all should yield no visible
+ * changes to the rest of the engine.
+ */
+void arcan_shader_unload_all();
+
+/*
+ * Will be called on possible external launch transitions
+ * where we might have lost underlying context data.
+ */
+void arcan_shader_rebuild_all();
+
+/*
+ * Set the current transformation / processing rules (i.e. shader)
+ * This will be called on new objects and may effectively be a no-o
+ * if the same one is already active.
+ */
+int arcan_shader_activate(arcan_shader_id shid);
+
+/*
+ * Take transformation rules in source-code form (platform specific
+ * a agp_shader_language) and build for the specified processing
+ * stages.
+ */
+arcan_shader_id arcan_shader_build(const char* tag, const char* geom,
+	const char* vert, const char* frag);
+
+/*
+ * Drop the specified shader and mark as re-usable (destroy on
+ * invalid ID should return false here). States local to shid
+ * should be considered undefined after this.
+ */
+bool arcan_shader_destroy(arcan_shader_id shid);
+
+/*
+ * Name- based shader lookup (typically to match string representations
+ * from higher-level languages without tracking numerical IDs).
+ */
+arcan_shader_id arcan_shader_lookup(const char* tag);
+const char* arcan_shader_lookuptag(arcan_shader_id id);
+
+/*
+ * Get a local copy of the source stored in *vert, *frag based
+ * on the specified ID.
+ */
+bool arcan_shader_lookupprgs(arcan_shader_id id,
+	const char** vert, const char** frag);
+bool arcan_shader_valid(arcan_shader_id);
+
+/*
+ * Get the vertex- attribute location for a specific vertex attribute
+ * (as some integral reference or -1 on non-existing in the currently
+ * bound program).
+ */
+int arcan_shader_vattribute_loc(enum shader_vertex_attributes attr);
+
+/*
+ * Update the specified built-in environment variable with a slot,
+ * value and size matching the tables above, should return -1 if
+ * no such- slot exists or is not available in the currently bound
+ * program.
+ */
+int arcan_shader_envv(enum arcan_shader_envts slot, void* value, size_t size);
+
+/*
+ * Get a string representation for the specific environment slot,
+ * this is primarily for debugging / tracing purposes.
+ */
+const char* arcan_shader_symtype(enum arcan_shader_envts env);
+
+/*
+ * This is used for possibly custom uniforms, with persist set
+ * to false we hint that it can be updated regularly and do not
+ * have to survive a context-drop/rebuild.
+ */
+void arcan_shader_forceunif(const char* label,
+	enum shdrutype type, void* value, bool persist);
+
 #endif

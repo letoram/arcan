@@ -1,0 +1,13 @@
+The SHMPUNCHER test checks one of the primary 
+issues with sharing memory across privilege borders,
+i.e. that ftruncate is a possible way to induce 
+a crash in the parent process.
+
+The mitigation in the parent process uses the fact
+that the frameserver- polling is single threaded and
+tags the frameserver connection on entry and untags
+on exit for each poll.
+
+If we receive SIGBUS, this tag is checked and then
+we know which frameserver connection to destroy and
+log a security violation in.

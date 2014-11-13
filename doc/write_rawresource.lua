@@ -1,4 +1,4 @@
---- read_rawresource
+--- write_rawresource
 -- @short: Write a line from the globally shared raw resource handle.
 -- @outargs: line
 -- @note: Each "line" is constrained to a maximum of 256 characters.

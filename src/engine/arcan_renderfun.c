@@ -39,6 +39,7 @@
 #include "arcan_video.h"
 #include "arcan_videoint.h"
 #include "arcan_ttf.h"
+#include "arcan_renderfun.h"
 #include "arcan_img.h"
 
 struct text_format {
@@ -218,7 +219,8 @@ TTF_Surface* text_loadimage(const char* const infn, img_cons cons)
 
 		if ((cons.w != 0 && cons.h != 0) && (inw != cons.w || inh != cons.h)){
 			uint32_t* scalebuf = malloc(cons.w * cons.h * GL_PIXEL_BPP);
-			stretchblit(imgbuf, inw, inh, scalebuf, cons.w, cons.h, false);
+			arcan_renderfun_stretchblit(
+				imgbuf, inw, inh, scalebuf, cons.w, cons.h, false);
 			free(imgbuf);
 			res->width  = cons.w;
 			res->height = cons.h;
@@ -753,11 +755,11 @@ static inline void copy_rect(TTF_Surface* surf, uint32_t* dst,
 			&wrk[row * surf->width], surf->width * 4);
 }
 
-void* renderfun_renderfmtstr(const char* message,
+void* arcan_renderfun_renderfmtstr(const char* message,
 	int8_t line_spacing, int8_t tab_spacing, unsigned int* tabs, bool pot,
 	unsigned int* n_lines, unsigned int** lineheights,
-	unsigned short* dw, unsigned short * dh, uint32_t* d_sz,
-	int* maxw, int* maxh)
+	size_t* dw, size_t* dh, uint32_t* d_sz,
+	size_t* maxw, size_t* maxh)
 {
 	if (!message)
 		return NULL;
@@ -924,8 +926,8 @@ typedef struct tColorY {
 	uint8_t y;
 } tColorY;
 
-int stretchblit(char* src, int inw, int inh,
-	uint32_t* dst, int dstw, int dsth, int flipy)
+int arcan_renderfun_stretchblit(char* src, int inw, int inh,
+	uint32_t* dst, size_t dstw, size_t dsth, int flipy)
 {
 	int x, y, sx, sy, ssx, ssy, *sax, *say, *csax, *csay, *salast;
 	int csx, csy, ex, ey, cx, cy, sstep, sstepx, sstepy;
