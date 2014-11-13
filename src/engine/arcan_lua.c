@@ -3050,7 +3050,7 @@ static int imagechildren(lua_State* ctx)
 {
 	LUA_TRACE("image_children");
 	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
-	arcan_vobj_id cid = luavid_tovid(luaL_checknumber(ctx, 2));
+	arcan_vobj_id cid = luavid_tovid(luaL_optnumber(ctx, 2, ARCAN_EID));
 
 	if (cid != ARCAN_EID){
 		lua_pushboolean(ctx, arcan_video_isdescendant(id, cid, -1));
