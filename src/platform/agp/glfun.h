@@ -8,12 +8,13 @@
  */
 
 #ifdef __APPLE__
+
+/* we already have a reasonably sane GL environment here */
 #include <OpenGL/gl.h>
 #include <OpenGL/glext.h>
 #else
 #include <GL/gl.h>
 #include <GL/glext.h>
-#endif
 
 #ifndef MAP_PREFIX
 #define MAP_PREFIX extern
@@ -91,3 +92,4 @@ MAP_PREFIX glDepthMask;
 MAP_PREFIX glDrawElements;
 MAP_PREFIX glReadPixels;
 */
+#endif
