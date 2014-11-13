@@ -12,6 +12,7 @@
 
 void agp_gl_ext_init()
 {
+#ifndef __APPLE__
 glDeleteBuffers = MAP("glDeleteBuffers");
 glUnmapBuffer = MAP("glUnmapBuffer");
 glGenBuffers = MAP("glGenBuffers");
@@ -54,4 +55,5 @@ glMapBuffer = MAP("glMapBuffer");
 glGetAttribLocation = MAP("glGetAttribLocation");
 glDeleteProgram = MAP("glDeleteProgram");
 glCreateShader = MAP("glCreateShader");
+#endif
 }

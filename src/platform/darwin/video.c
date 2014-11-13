@@ -22,8 +22,6 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
-#include GL_HEADERS
-
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_video.h"
@@ -38,6 +36,7 @@
 #define PLATFORM_SYMBOL(fun) EVAL(PLATFORM_SUFFIX, fun)
 
 #include <OpenGL/OpenGL.h>
+#include <OpenGL/GL.h>
 
 static char* x11_synchopts[] = {
 	"default", "driver- specific GL swap",
@@ -72,26 +71,9 @@ bool PLATFORM_SYMBOL(_video_init)(uint16_t w, uint16_t h,
 	GLint si = 0;
 	CGLSetParameter(context, kCGLCPSwapInterval, &si);
 
-	int err;
-	if ( (err = glewInit()) != GLEW_OK){
-		arcan_fatal("arcan_video_init(), Couldn't initialize GLew: %s\n",
-			glewGetErrorString(err));
-		return false;
-	}
-
-	if (!glewIsSupported("GL_VERSION_2_1  GL_ARB_framebuffer_object")){
-		arcan_warning("arcan_video_init(), OpenGL context missing FBO support,"
-			"outdated drivers and/or graphics adapter detected.");
-
-		arcan_warning("arcan_video_init(), Continuing without FBOs enabled, "
-			"this renderpath is to be considered unsupported.");
-	}
-
 #ifndef HEADLESS_NOARCAN
 	arcan_video_display.width = w;
 	arcan_video_display.height = h;
-
-	glViewport(0, 0, w, h);
 #endif
 
 	return true;
@@ -130,7 +112,12 @@ void PLATFORM_SYMBOL(_video_shutdown) ()
 {
 }
 
-const char* PLATFORM_SYMBOL(platform_video_capstr)(void)
+void* PLATFORM_SYMBOL(_video_gfxsym)(const char* sym)
+{
+	return NULL;
+}
+
+const char* PLATFORM_SYMBOL(_video_capstr)(void)
 {
 	static char* capstr;
 
