@@ -100,10 +100,11 @@ enum arcan_clipmode {
  * by creative use of sharestorage and rendertargets with force update.
  */
 enum arcan_vfilter_mode {
-	ARCAN_VFILTER_NONE,
+	ARCAN_VFILTER_NONE = 0,
 	ARCAN_VFILTER_LINEAR,
 	ARCAN_VFILTER_BILINEAR,
-	ARCAN_VFILTER_TRILINEAR
+	ARCAN_VFILTER_TRILINEAR,
+	ARCAN_VFILTER_MIPMAP = 128
 };
 
 /*
@@ -127,18 +128,6 @@ enum arcan_vinterp {
 enum arcan_vimage_mode {
 	ARCAN_VIMAGE_NOPOW2    = 0,
 	ARCAN_VIMAGE_SCALEPOW2 = 1
-};
-
-/*
- * Destination format for rendertargets. Note that we do not currently
- * suport floating point targets and that for some platforms,
- * COLOR_DEPTH will map to COLOR_DEPTH_STENCIL.
- */
-enum rendertarget_mode {
-	RENDERTARGET_DEPTH = 0,
-	RENDERTARGET_COLOR = 1,
-	RENDERTARGET_COLOR_DEPTH = 2,
-	RENDERTARGET_COLOR_DEPTH_STENCIL = 3
 };
 
 /*
@@ -555,8 +544,7 @@ void arcan_video_pollfeed();
  * Note that the operation is rather expensive as it involves
  * deallocating current backing stores and replacing them with new ones.
  */
-arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons store,
-	img_cons display);
+arcan_errc arcan_video_resizefeed(arcan_vobj_id id, size_t w, size_t h);
 
 /*
  * arcan_video_loadimageasynch and arcan_video_loadimage
@@ -616,6 +604,15 @@ arcan_errc arcan_video_linkobjs(arcan_vobj_id src, arcan_vobj_id parent,
 	enum arcan_transform_mask mask, enum parent_anchor);
 arcan_vobj_id arcan_video_findparent(arcan_vobj_id id);
 arcan_vobj_id arcan_video_findchild(arcan_vobj_id parentid, unsigned ofs);
+
+/*
+ * Recursively resolves if [vid] is linked to any of parents near
+ * or distant children. Set [limit] to -1 to search the entire tree,
+ * otherwise a [limit] of >0 will limit the search depth.
+ */
+bool arcan_video_isdescendant(arcan_vobj_id vid,
+	arcan_vobj_id parent, int limit);
+
 arcan_errc arcan_video_changefilter(arcan_vobj_id id,
 	enum arcan_vfilter_mode);
 arcan_errc arcan_video_persistobject(arcan_vobj_id id);

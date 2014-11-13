@@ -94,8 +94,9 @@ static void mapseg(int evfd, const char* key)
 	struct seginf* newseg = malloc(sizeof(struct seginf));
 
 	pthread_t thr;
-	arcan_shmif_calcofs(shms.addr, (uint8_t**) &newseg->vidp,
-		(uint8_t**) &newseg->audp);
+	arcan_shmif_calcofs(shms.addr, (uint32_t**)&newseg->vidp,
+		(int16_t**) &newseg->audp);
+
 	newseg->shms = shms;
 	arcan_shmif_setevqs(shms.addr, shms.esem,
 		&newseg->inevq, &newseg->outevq, false);
@@ -124,9 +125,9 @@ void arcan_frameserver_avfeed_run(const char* resource, const char* keyfile)
 	}
 
 	uint32_t* vidp;
-	uint16_t* audp;
+	int16_t* audp;
 
-	arcan_shmif_calcofs(shms.addr, (uint8_t**) &vidp, (uint8_t**) &audp);
+	arcan_shmif_calcofs(shms.addr, &vidp, &audp);
 	update_frame(vidp, &shms, 0xffffffff);
 
 /*

@@ -11,7 +11,10 @@
 #include <sys/stat.h>
 #include <errno.h>
 
-#include GL_HEADERS
+#include <EGL/egl.h>
+#include <EGL/eglext.h>
+
+#include "../agp/glfun.h"
 
 #include "arcan_math.h"
 #include "arcan_general.h"
@@ -28,6 +31,45 @@
 #define MERGE(X,Y) X ## Y
 #define EVAL(X,Y) MERGE(X,Y)
 #define PLATFORM_SYMBOL(fun) EVAL(PLATFORM_SUFFIX, fun)
+
+static const char* egl_errstr()
+{
+	EGLint errc = eglGetError();
+	switch(errc){
+	case EGL_SUCCESS:
+		return "Success";
+	case EGL_NOT_INITIALIZED:
+		return "Not initialize for the specific display connection";
+	case EGL_BAD_ACCESS:
+		return "Cannot access the requested resource (wrong thread?)";
+	case EGL_BAD_ALLOC:
+		return "Couldn't allocate resources for the requested operation";
+	case EGL_BAD_ATTRIBUTE:
+		return "Unrecognized attribute or attribute value";
+	case EGL_BAD_CONTEXT:
+		return "Context argument does not name a valid context";
+	case EGL_BAD_CONFIG:
+		return "EGLConfig argument did not match a valid config";
+	case EGL_BAD_CURRENT_SURFACE:
+		return "Current surface refers to an invalid destination";
+	case EGL_BAD_DISPLAY:
+		return "The EGLDisplay argument does not match a valid display";
+	case EGL_BAD_SURFACE:
+		return "EGLSurface argument does not name a valid surface";
+	case EGL_BAD_MATCH:
+		return "Inconsistent arguments";
+	case EGL_BAD_PARAMETER:
+		return "Invalid parameter passed to function";
+	case EGL_BAD_NATIVE_PIXMAP:
+		return "NativePixmapType is invalid";
+	case EGL_BAD_NATIVE_WINDOW:
+		return "Native Window Type does not refer to a valid window";
+	case EGL_CONTEXT_LOST:
+		return "Power-management event has forced the context to drop";
+	default:
+		return "Uknown Error";
+	}
+}
 
 static struct {
 	int fd;
@@ -47,6 +89,11 @@ static struct {
 #ifdef ARCAN_VIDEO_NOWORLD_FBO
 int egl_rnode_worldfbo_required[-1];
 #endif
+
+void* PLATFORM_SYMBOL(_video_gfxsym)(const char* sym)
+{
+	return eglGetProcAddress(sym);
+}
 
 bool PLATFORM_SYMBOL(_video_init)(uint16_t w, uint16_t h,
 	uint8_t bpp, bool fs, bool frames, const char* title)
@@ -73,13 +120,18 @@ bool PLATFORM_SYMBOL(_video_init)(uint16_t w, uint16_t h,
 	if (0 == h)
 		h = 480;
 
+#ifndef HEADLESS_NOARCAN
+	arcan_video_display.width = 640;
+	arcan_video_display.height = 480;
+#endif
+
 	rnode.display = eglGetDisplay(rnode.dev);
 	if (!eglInitialize(rnode.display, NULL, NULL)){
 		arcan_warning("egl-rnode() -- failed to initialize EGL display\n");
 		return false;
 	}
 
-	if (!eglBindAPI(EGL_OPENGL_ES_API)){
+	if (!eglBindAPI(EGL_OPENGL_API)){
 		arcan_warning("egl-rnode() -- couldn't bind GLES API\n");
 		return false;
 	}
@@ -91,7 +143,7 @@ bool PLATFORM_SYMBOL(_video_init)(uint16_t w, uint16_t h,
 
 	static const EGLint attribs[] = {
 		EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
-		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+		EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
 		EGL_RED_SIZE, 1,
 		EGL_GREEN_SIZE, 1,
 		EGL_BLUE_SIZE, 1,
@@ -133,6 +185,8 @@ bool PLATFORM_SYMBOL(_video_init)(uint16_t w, uint16_t h,
  * platform.
  */
 
+	eglMakeCurrent(rnode.display, NULL, NULL, rnode.context);
+
 	return true;
 }
 
@@ -143,7 +197,7 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 		pre();
 
 #ifndef HEADLESS_NOARCAN
-	arcan_bench_register_cost( arcan_video_refresh(fract, true) );
+	arcan_bench_register_cost( arcan_video_refresh(fract, false) );
 #endif
 
 	glFlush();
@@ -194,5 +248,4 @@ bool PLATFORM_SYMBOL(_video_map_display)(
 
 	return false; /* no multidisplay /redirectable output support */
 }
-
 

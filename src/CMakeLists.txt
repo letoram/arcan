@@ -260,8 +260,16 @@ endif()
 FIND_PACKAGE ( Freetype REQUIRED )
 FIND_PACKAGE ( PNG REQUIRED )
 
+SET (GL21_SOURCES
+	platform/agp/gl21.c
+	platform/agp/glshared.c
+	platform/agp/glfun.h
+	platform/agp/shdrmgmt.c
+	platform/agp/glinit.c
+)
+
 if (ENABLE_LIBRETRO3D AND NOT ENABLE_LWA)
-	message("Libretro3D requires LWA build but non- were specified, disabling.")
+	message("Libretro3D requires LWA build but none- was specified, disabling.")
 	set(ENABLE_LIBRETRO3D OFF)
 endif()
 
@@ -284,12 +292,11 @@ if (VIDEO_PLATFORM STREQUAL "x11" OR VIDEO_PLATFORM STREQUAL "x11-headless")
 	LIST(APPEND INCLUDE_DIRS ${GLEW_INCLUDE_DIRS} ${X11_INCLUDE_DIRS})
 	LIST(APPEND MAIN_LIBRARIES ${OPENGL_gl_LIBRARY} ${GLEW_LIBRARY} ${X11_LIBRARIES})
 	LIST(APPEND LWA_LIBRARIES ${OPENGL_gl_LIBRARY} ${GLEW_LIBRARY} ${X11_LIBRARIES})
-	LIST(APPEND SOURCES platform/agp/gl21.c platform/agp/glshared.c)
+	LIST(APPEND SOURCES ${GL21_SOURCES})
 
 	if (ENABLE_LWA)
 		message("Enabling LWA (Arcan-in-Arcan) build using X11 HEADLESS")
 		SET(LWA_HEADLESS "x11/video.c")
-		SET(LWA_GLHEADER "x11/glheaders.h")
 	endif()
 
 # legacy platform for weaker platforms RPI etc.
@@ -309,7 +316,7 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-gles")
 
 	endif()
 
-	LIST(APPEND SOURCES platform/agp/gl21.c platform/agp/glshared.c)
+	LIST(APPEND SOURCES ${GL21_SOURCES})
 	LIST(APPEND INCLUDE_DIRS
 		${GLES2_INCLUDE_DIRS}
 		${EGL_INCLUDE_DIRS}
@@ -327,28 +334,28 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-dri")
 
 	FIND_PACKAGE(EGL REQUIRED)
 # should use OGL3+ but some internal bug prohibits us atm, likely connected to glew.
-	FIND_PACKAGE(GLES3 REQUIRED)
-#	FIND_PACKAGE(OpenGL REQUIRED)
+#	FIND_PACKAGE(GLES3 REQUIRED)
+	FIND_PACKAGE(OpenGL REQUIRED)
 	FIND_PACKAGE(GBMKMS REQUIRED)
 	SET(ARCAN_DEFINITIONS "${ARCAN_DEFINITIONS} HAVE_GLES3")
-	LIST(APPEND SOURCES platform/agp/gl21.c platform/agp/glshared.c)
+	LIST(APPEND SOURCES ${GL21_SOURCES})
 
 	LIST(APPEND MAIN_LIBRARIES
 		${EGL_LIBRARIES}
-		${GLES3_LIBRARIES}
-		#		${OPENGL_gl_LIBRARY}
+#		${GLES3_LIBRARIES}
+		${OPENGL_gl_LIBRARY}
 		${GBMKMS_LIBRARIES}
 	)
 	LIST(APPEND INCLUDE_DIRS
-		${GLES3_INCLUDE_DIRS}
+#		${GLES3_INCLUDE_DIRS}
 		${GBMKMS_INCLUDE_DIRS}
 	)
 
 	if (ENABLE_LWA)
 		message("Enabling LWA (Arcan-in-Arcan build) using EGL-DRI HEADLESS")
 		SET(LWA_HEADLESS "egl-dri/video_rnode.c")
-		SET(LWA_GLHEADER "egl-dri/glheaders.h")
-		LIST(APPEND LWA_LIBRARIES ${GLES3_LIBRARIES} ${EGL_LIBRARIES} ${GBMKMS_LIBRARIES})
+		LIST(APPEND LWA_LIBRARIES ${OPENGL_gl_LIBRARY}
+			${EGL_LIBRARIES} ${GBMKMS_LIBRARIES})
 	endif()
 
 elseif (VIDEO_PLATFORM STREQUAL "sdl")
@@ -356,10 +363,7 @@ elseif (VIDEO_PLATFORM STREQUAL "sdl")
 		set(INPUT_PLATFORM "sdl")
 	endif()
 
-	LIST(APPEND SOURCES
-		platform/agp/gl21.c
-		platform/agp/glshared.c
-	)
+	LIST(APPEND SOURCES ${GL21_SOURCES})
 
 	FIND_PACKAGE(SDL REQUIRED)
 	FIND_PACKAGE(SDL_image)
@@ -382,11 +386,9 @@ elseif (VIDEO_PLATFORM STREQUAL "sdl")
 		if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 			message("Enabling LWA (Arcan-in-Arcan) build using Darwin HEADLESS")
 			SET(LWA_HEADLESS "darwin/video.c")
-			SET(LWA_GLHEADER "darwin/glheaders.h")
 		else()
 			message("Enabling LWA (Arcan-in-Arcan) build using X11 HEADLESS")
 			SET(LWA_HEADLESS "x11/video.c")
-			SET(LWA_GLHEADER "x11/glheaders.h")
 		endif()
 	endif()
 
@@ -463,7 +465,6 @@ list (APPEND
  engine/arcan_db.c
  engine/arcan_video.c
  engine/arcan_renderfun.c
- engine/arcan_shdrmgmt.c
  engine/arcan_3dbase.c
  engine/arcan_math.c
  engine/arcan_audio.c
@@ -478,7 +479,6 @@ list (APPEND
  engine/arcan_audio.h
  engine/arcan_general.h
  engine/arcan_db.h
- engine/arcan_shdrmgmt.h
  engine/arcan_frameserver.h
  engine/arcan_frameserver.c
  shmif/arcan_shmif.h
@@ -570,14 +570,9 @@ if (ENABLE_LIBRETRO)
 			APPEND PROPERTY COMPILE_DEFINITIONS
 				FRAMESERVER_LIBRETRO_3D
 #				FRAMESERVER_LIBRETRO_3D_RETEXTURE -- developer feature in test
-				GL_HEADERS=\"${CMAKE_CURRENT_SOURCE_DIR}/platform/${LWA_GLHEADER}\"
 				HEADLESS_PLATFORM=\"${CMAKE_CURRENT_SOURCE_DIR}/platform/${LWA_HEADLESS}\"
 		)
 
-		set_property( SOURCE frameserver/retexture.c
-			APPEND PROPERTY COMPILE_DEFINITIONS
-				GL_HEADERS=\"${CMAKE_CURRENT_SOURCE_DIR}/platform/${LWA_GLHEADER}\"
-		)
 		LIST(APPEND FSRV_LIBRETRO_LIBRARIES ${LWA_LIBRARIES})
 	endif()
 endif()

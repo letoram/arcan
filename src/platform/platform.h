@@ -54,6 +54,7 @@ unsigned long arcan_target_launch_external(
 	struct arcan_strarr* libs,
 	int* exitc
 );
+
 /*
  * Launch the specified program and bind its resources and control
  * to the returned frameserver instance (NULL if spawn was not
@@ -66,6 +67,15 @@ struct arcan_frameserver* arcan_target_launch_internal(
 	struct arcan_strarr* env,
 	struct arcan_strarr* libs
 );
+
+/*
+ * Due to our explicit single-threaded polling access
+ * to shared-memory based frameserver connections, we need
+ * to explicitly track in order to recover from possible
+ * DoS in truncate-on-fd situations.
+ */
+int arcan_frameserver_enter(struct arcan_frameserver*);
+void arcan_frameserver_leave();
 
 void arcan_timesleep(unsigned long);
 file_handle arcan_fetchhandle(int insock);

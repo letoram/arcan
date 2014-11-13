@@ -44,6 +44,12 @@
 struct arcan_vobject_litem;
 struct arcan_vobject;
 
+enum rtgt_flags {
+	TGTFL_READING = 1,
+	TGTFL_ALIVE   = 2,
+	TGTFL_NOCLEAR = 4
+};
+
 struct rendertarget {
 /* think of base as identity matrix, sometimes with added scale */
 	_Alignas(16) float base[16];
@@ -54,12 +60,9 @@ struct rendertarget {
 	struct arcan_vobject* color;
 	struct arcan_vobject_litem* first;
 
-/* depth and stencil are combined as stencil_index
- * formats have poor driver support */
-	unsigned fbo, depth;
+	struct rendertarget_store* store;
 
-/* only used / allocated if readback != 0 */
-	unsigned pbo;
+	enum rtgt_flags flags;
 
 /* readback == 0, no readback. Otherwise, a readback is requested
  * every abs(readback) frames. if readback is negative,
@@ -67,21 +70,12 @@ struct rendertarget {
 	int readback;
 	long long readcnt;
 
-/* flagged after a PBO readback has been issued,
- * cleared when buffer have been mapped */
-	bool readreq;
-
-/* tracked to allow partial pool re-use */
-	bool alive;
-
-/* set this to true if it is certain that the rendertarget
- * shouldn't be cleared on every drawpass */
-	bool noclear;
-
-	enum rendertarget_mode mode;
-
-/* updated on each renderpass, > 0 means that we need to update */
-	int transfc;
+/*
+ * number of running transformation, pending transformations +
+ * active frameservers is a decent measurement for the complexity of
+ * a rendertarget
+ */
+	size_t transfc;
 
 /* each rendertarget can have one possible camera attached to it
  * which affects the 3d pipe. This is defaulted to BADID until
@@ -96,10 +90,9 @@ enum vobj_flags {
 	FL_TCYCLE = 8,
 	FL_ROTOFS = 16,
 	FL_ORDOFS = 32,
-	FL_MIPMAP = 64,
-	FL_PRSIST = 128,
+	FL_PRSIST = 64,
 #ifdef _DEBUG
-	FL_FROZEN = 256
+	FL_FROZEN = 128
 #endif
 };
 
@@ -159,33 +152,6 @@ enum txstate {
 	TXSTATE_DEPTH = 2
 };
 
-struct storage_info_t {
-	unsigned refcount;
-	enum txstate txmapped;
-
-	union {
-		struct {
-			unsigned glid;
-			unsigned tid;
-			uint32_t s_raw;
-			av_pixel*  raw;
-			char*   source;
-		} text;
-		struct {
-			float r;
-			float g;
-			float b;
-		} col;
-	} vinf;
-
-	unsigned short w, h, bpp;
-	unsigned txu, txv;
-
-	enum arcan_vimage_mode    scale;
-	enum arcan_imageproc_mode imageproc;
-	enum arcan_vfilter_mode   filtermode;
-};
-
 /*
  * Overly bloated and thus a nasty cache influence,
  * when optimization rounds come as part of 1.0 effort
@@ -236,7 +202,6 @@ struct arcan_vobject** frameset;
 	point origo_ofs;
 
 	surface_transform* transform;
-	int transfc;
 	enum arcan_transform_mask mask;
 	enum arcan_clipmode clip;
 
@@ -288,9 +253,7 @@ typedef struct arcan_vobject_litem arcan_vobject_litem;
 
 struct arcan_video_display {
 	bool suspended, fullscreen, conservative;
-	bool pbo_support;
 
-	unsigned int main_fbo, main_rb;
 	int dirty;
 	bool ignore_dirty;
 	enum arcan_order3d order3d;
@@ -324,8 +287,6 @@ struct arcan_video_display {
 
 	unsigned deftxs, deftxt;
 	bool mipmap;
-
-	uint32_t sdlarg;
 
 	unsigned char bpp;
 	unsigned short width, height;
@@ -386,18 +347,15 @@ void arcan_debug_tracetag_dump();
 #endif
 
 struct arcan_img_meta;
-void push_globj(arcan_vobject*, bool noupload, bool mipmap);
 void generate_basic_mapping(float* dst, float st, float tt);
 void generate_mirror_mapping(float* dst, float st, float tt);
 void arcan_video_joinasynch(arcan_vobject* img, bool emit, bool force);
 struct rendertarget* find_rendertarget(arcan_vobject* vobj);
-void readback_texture(int glid,
-	unsigned width, unsigned height, void* dstbuf, size_t buf_sz);
 
 void arcan_vint_drawrt(arcan_vobject*, int x, int y, int w, int h);
 void arcan_vint_drawcursor(bool erase);
 
-unsigned arcan_video_worldtex();
+struct storage_info_t* arcan_video_world();
 
 void arcan_3d_setdefaults();
 
@@ -406,13 +364,4 @@ void arcan_3d_setdefaults();
 unsigned arcan_video_pushglids(struct storage_info_t* glstor,unsigned ofs);
 arcan_vobject_litem* arcan_refresh_3d(arcan_vobj_id camtag,
 	arcan_vobject_litem* cell, float frag);
-
-void* renderfun_renderfmtstr(const char* message,
-	int8_t line_spacing, int8_t tab_spacing, unsigned int* tabs, bool pot,
-	unsigned int* n_lines, unsigned int** lineheights,
-	unsigned short* dw, unsigned short* dh,
-	uint32_t* d_sz, int* maxw, int* maxh);
-
-int stretchblit(char* src, int srcw, int srch,
-	uint32_t* dst, int dstw, int dsth, int flipy);
 #endif

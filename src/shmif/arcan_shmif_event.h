@@ -75,6 +75,7 @@ enum ARCAN_SEGID {
 	SEGID_REMOTING, /* network client but A/V/latency sensitive */
 	SEGID_ENCODER, /* high-CPU, low-latency, wants access to engine data */
 	SEGID_SENSOR, /* sampled continuous update */
+	SEGID_TITLEBAR, /* some clients may want to try and draw decoration */
 	SEGID_INPUTDEVICE, /* event/user-interaction driven */
 	SEGID_GAME, /* high-interactivity, high A/V cost, low latency */
 	SEGID_APPLICATION, /* video updates typically reactive */

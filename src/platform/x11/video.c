@@ -16,12 +16,12 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
-#include GL_HEADERS
-
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_video.h"
 #include "arcan_videoint.h"
+
+#include "../agp/glfun.h"
 
 /*
  * These macro tweaks is so that we can include the .c file from
@@ -39,6 +39,7 @@
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
 #include <X11/Xutil.h>
+#include <GL/glx.h>
 
 static struct {
 	Display* xdisp;
@@ -112,6 +113,11 @@ static bool setup_xwnd(int w, int h, bool fullscreen)
 	return true;
 }
 
+void* PLATFORM_SYMBOL(_video_gfxsym)(const char* sym)
+{
+	return glXGetProcAddress((const GLubyte*) sym);
+}
+
 bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 	uint8_t bpp, bool fs, bool frames, const char* caption)
 {
@@ -133,7 +139,6 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 		None
 	};
 
-	int err;
 	x11.vi = glXChooseVisual(x11.xdisp, DefaultScreen(x11.xdisp), alist);
 	if (!x11.vi){
 		arcan_warning("(x11) Couldn't find a suitable visual\n");
@@ -151,22 +156,12 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 		return false;
 	}
 
-	if ( (err = glewInit()) != GLEW_OK){
-		arcan_warning("arcan_video_init(), Couldn't initialize GLew: %s\n",
-			glewGetErrorString(err));
-		return false;
-	}
-
 	XSync(x11.xdisp, False);
 
 #ifndef HEADLESS_NOARCAN
-	arcan_video_display.pbo_support = true;
 	arcan_video_display.width = w;
 	arcan_video_display.height = h;
-	arcan_video_display.bpp = bpp;
 #endif
-
-	glViewport(0, 0, w, h);
 
 	return true;
 }
