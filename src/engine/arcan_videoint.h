@@ -265,8 +265,8 @@ struct arcan_video_display {
  */
 	struct {
 		struct storage_info_t* vstore;
-		int x;
-		int y;
+		int x, ox;
+		int y, oy;
 		size_t w;
 		size_t h;
 		bool active;
@@ -326,6 +326,18 @@ extern struct arcan_video_context vcontext_stack[];
 extern unsigned vcontext_ind;
 extern struct arcan_video_display arcan_video_display;
 
+/*
+ * Perform a render-pass, set synch to true if we should block
+ * Fragment is in the 0..999 range and specifies how far we are
+ * towards the next logical tick. This is used to calculate interpolations
+ * for transformation chains to get smoother animation even when running
+ * with a slow logic clock.
+ *
+ * This will only populate the underlying vstores, mapping to the
+ * output display is made by the platform_video_sync function.
+ */
+unsigned arcan_vint_refresh(float fragment, size_t* ndirty);
+
 int arcan_debug_pumpglwarnings(const char* src);
 void arcan_resolve_vidprop(arcan_vobject* vobj,
 	float lerp, surface_properties* props);
@@ -352,10 +364,10 @@ void generate_mirror_mapping(float* dst, float st, float tt);
 void arcan_video_joinasynch(arcan_vobject* img, bool emit, bool force);
 struct rendertarget* find_rendertarget(arcan_vobject* vobj);
 
-void arcan_vint_drawrt(arcan_vobject*, int x, int y, int w, int h);
+void arcan_vint_drawrt(struct storage_info_t*, int x, int y, int w, int h);
+struct storage_info_t* arcan_vint_world();
 void arcan_vint_drawcursor(bool erase);
 
-struct storage_info_t* arcan_video_world();
 
 void arcan_3d_setdefaults();
 

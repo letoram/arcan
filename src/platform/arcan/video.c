@@ -224,7 +224,7 @@ void platform_video_synch(uint64_t tick_count, float fract,
 {
 	lwa_video_synch(tick_count, fract, pre, stub);
 
-	struct storage_info_t store = *arcan_video_world();
+	struct storage_info_t store = *arcan_vint_world();
 
 	store.vinf.text.raw = shms.vidp;
 	agp_readback_synchronous(&store);

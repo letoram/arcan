@@ -45,7 +45,7 @@ void main()
 {
 	vec4 col = texture2D(map_diffuse, texco);
 	float intens = (col.r + col.g + col.b) / 3.0;
-	gl_FragColor = vec4(intens, intens, intens, 1.0);
+	gl_FragColor = vec4(intens, intens, intens, 0.5);
 }
 ]];
 

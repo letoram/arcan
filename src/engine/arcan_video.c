@@ -448,11 +448,11 @@ static void pop_transfer_persists(
 	}
 }
 
-void arcan_vint_drawrt(arcan_vobject* outp, int x, int y, int w, int h)
+void arcan_vint_drawrt(struct storage_info_t* vs, int x, int y, int w, int h)
 {
 	arcan_shader_activate(agp_default_shader(BASIC_2D));
 
-	agp_activate_vstore(outp->vstore);
+	agp_activate_vstore(vs);
 	arcan_shader_envv(PROJECTION_MATR,
 		arcan_video_display.window_projection, sizeof(float)*16);
 
@@ -460,7 +460,7 @@ void arcan_vint_drawrt(arcan_vobject* outp, int x, int y, int w, int h)
 	agp_draw_vobj(0, 0, x + w, y + h,
 		arcan_video_display.mirror_txcos, NULL);
 
-	agp_deactivate_vstore(outp->vstore);
+	agp_deactivate_vstore(vs);
 }
 
 void arcan_vint_drawcursor(bool erase)
@@ -471,16 +471,24 @@ void arcan_vint_drawcursor(bool erase)
 	float txmatr[8];
 	float* txcos = arcan_video_display.default_txcos;
 
-	int x1 = arcan_video_display.cursor.x;
-	int y1 = arcan_video_display.cursor.y;
+/*
+ * flip internal cursor position to last drawn cursor position
+ */
+	if (!erase){
+		arcan_video_display.cursor.ox = arcan_video_display.cursor.x;
+		arcan_video_display.cursor.oy = arcan_video_display.cursor.y;
+	}
+
+	int x1 = arcan_video_display.cursor.ox;
+	int y1 = arcan_video_display.cursor.oy;
 	int x2 = x1 + arcan_video_display.cursor.w;
 	int y2 = y1 + arcan_video_display.cursor.h;
 
 	if (erase){
 		float s1 = (float)x1 / arcan_video_display.canvasw;
 		float s2 = (float)x2 / arcan_video_display.canvasw;
-		float t1 = (float)y1 / arcan_video_display.canvash;
-		float t2 = (float)y2 / arcan_video_display.canvash;
+		float t1 = 1.0 - ((float)y1 / arcan_video_display.canvash);
+		float t2 = 1.0 - ((float)y2 / arcan_video_display.canvash);
 
 		txmatr[0] = s1;
 		txmatr[1] = t1;
@@ -493,17 +501,19 @@ void arcan_vint_drawcursor(bool erase)
 
 		txcos = txmatr;
 
-		agp_blendstate(BLEND_NONE);
 		agp_activate_vstore(current_context->world.vstore);
 	}
 	else{
 		agp_activate_vstore(arcan_video_display.cursor.vstore);
-		agp_blendstate(BLEND_FORCE);
 	}
 
+	float opa = 1.0;
 	arcan_shader_activate(agp_default_shader(BASIC_2D));
+	arcan_shader_envv(OBJ_OPACITY, &opa, sizeof(float));
 	agp_draw_vobj(x1, y1, x2, y2, txcos, NULL);
-	agp_deactivate_vstore(arcan_video_display.cursor.vstore);
+
+	agp_deactivate_vstore( erase ? current_context->world.vstore :
+		arcan_video_display.cursor.vstore);
 }
 
 signed arcan_video_pushcontext()
@@ -682,7 +692,9 @@ unsigned arcan_video_extpopcontext(arcan_vobj_id* dst)
 	size_t dsz;
 
 	FLAG_DIRTY(NULL);
-	arcan_video_refresh(0.0, false);
+
+	arcan_vint_refresh(0.0, &dsz);
+
 	bool ss = arcan_video_screenshot((void*)&dstbuf, &dsz) == ARCAN_OK;
 	int rv = arcan_video_popcontext();
 
@@ -715,7 +727,7 @@ signed arcan_video_extpushcontext(arcan_vobj_id* dst)
 	size_t dsz;
 
 	FLAG_DIRTY(NULL);
-	arcan_video_refresh(0.0, false);
+	arcan_vint_refresh(0.0, &dsz);
 	bool ss = arcan_video_screenshot(&dstbuf, &dsz) == ARCAN_OK;
 	int rv = arcan_video_pushcontext();
 
@@ -1683,8 +1695,6 @@ arcan_errc arcan_video_framecyclemode(arcan_vobj_id id, signed mode)
 
 void arcan_video_cursorpos(int newx, int newy, bool absolute)
 {
-	arcan_vint_drawcursor(true);
-
 	if (absolute){
 		arcan_video_display.cursor.x = newx;
 		arcan_video_display.cursor.y = newy;
@@ -1693,26 +1703,16 @@ void arcan_video_cursorpos(int newx, int newy, bool absolute)
 		arcan_video_display.cursor.x += newx;
 		arcan_video_display.cursor.y += newy;
 	}
-
-/* Note, this dirty flag should not be needed
- * in itself but currently there seems to be
- * issues with the cursor redraw handling that
- * should be looked into */
-	FLAG_DIRTY(NULL);
 }
 
 void arcan_video_cursorsize(size_t w, size_t h)
 {
-	arcan_vint_drawcursor(true);
-
 	arcan_video_display.cursor.w = w;
 	arcan_video_display.cursor.h = h;
 }
 
 void arcan_video_cursorstore(arcan_vobj_id src)
 {
-	arcan_vint_drawcursor(true);
-
 	if (arcan_video_display.cursor.vstore){
 		drop_vstore(arcan_video_display.cursor.vstore);
 		arcan_video_display.cursor.vstore = NULL;
@@ -4406,7 +4406,7 @@ arcan_errc arcan_video_forceread(arcan_vobj_id sid,
 	return ARCAN_OK;
 }
 
-struct storage_info_t* arcan_video_world()
+struct storage_info_t* arcan_vint_world()
 {
 	return current_context->stdoutp.color->vstore;
 }
@@ -4509,45 +4509,40 @@ request:
 	FL_SET(tgt, TGTFL_READING);
 }
 
-void arcan_video_refresh_GL(float fract, bool draw)
+unsigned arcan_vint_refresh(float fract, size_t* ndirty)
 {
+	long long int pre = arcan_timemillis();
+	size_t transfc = 0;
+
 	arcan_video_display.c_lerp = fract;
 
+/*
+ * active shaders with a timed uniform subscription
+ * count towards dirty state.
+ */
 	arcan_video_display.dirty +=
 		arcan_shader_envv(FRACT_TIMESTAMP_F, &fract, sizeof(float));
 
+/* rendertargets may be composed on world- output, begin there */
 	for (size_t ind = 0; ind < current_context->n_rtargets; ind++){
 		struct rendertarget* tgt = &current_context->rtargets[ind];
 
 		agp_activate_rendertarget(tgt);
 		process_rendertarget(tgt, fract);
 		process_readback(&current_context->rtargets[ind], fract);
+
+		transfc += tgt->transfc;
 	}
 
 	agp_activate_rendertarget(&current_context->stdoutp);
 	process_rendertarget(&current_context->stdoutp, fract);
 	process_readback(&current_context->stdoutp, fract);
+	transfc += current_context->stdoutp.transfc;
 
-	if (draw){
-		agp_activate_rendertarget(NULL);
-		arcan_vint_drawrt(&current_context->world, 0, 0,
-			arcan_video_display.width, arcan_video_display.height);
+	*ndirty = arcan_video_display.dirty;
+	arcan_video_display.dirty = transfc;
 
-		arcan_vint_drawcursor(true);
-		arcan_vint_drawcursor(false);
-	}
-
-	arcan_video_display.dirty = 0;
-}
-
-unsigned arcan_video_refresh(float tofs, bool nodraw)
-{
-/* for less interactive / latency sensitive applications the delta >
- * with vsync on, the delta > .. could be removed */
-	long long int pre = arcan_timemillis();
-		arcan_video_refresh_GL(tofs, nodraw);
 	long long int post = arcan_timemillis();
-
 	return post - pre;
 }
 

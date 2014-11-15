@@ -73,6 +73,11 @@ arcan_shader_id agp_default_shader(enum SHADER_TYPES type)
 	return shids[type];
 }
 
+const char* agp_ident()
+{
+	return "OPENGL21";
+}
+
 void agp_shader_source(enum SHADER_TYPES type,
 	const char** vert, const char** frag)
 {
