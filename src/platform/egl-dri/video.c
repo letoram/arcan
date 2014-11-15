@@ -807,8 +807,18 @@ void* PLATFORM_SYMBOL(_video_gfxsym)(const char* sym)
  * world- agp storage contains the data we need,
  * time to map / redraw / synch
  */
-static void update_scanouts()
+static void update_scanouts(size_t n_changed)
 {
+	agp_activate_rendertarget(NULL);
+
+	if (n_changed > 0){
+		arcan_vint_drawrt(arcan_vint_world(), 0, 0,
+			arcan_video_display.width, arcan_video_display.height
+		);
+	}
+
+	arcan_vint_drawcursor(true);
+	arcan_vint_drawcursor(false);
 }
 
 bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
@@ -847,8 +857,9 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 			&drm.connector_id[0], 1, drm.mode);
 	}
 
-	arcan_bench_register_cost( arcan_vint_refresh(fract) );
-	update_scanouts();
+	size_t nd;
+	arcan_bench_register_cost( arcan_vint_refresh(fract, &nd) );
+	update_scanouts(nd);
 	eglSwapBuffers(egl.display, egl.surface);
 
 	struct gbm_bo* new_buf = gbm_surface_lock_front_buffer(gbm.surface);
@@ -930,9 +941,7 @@ const char* PLATFORM_SYMBOL(_video_capstr)()
 			"EGL Extensions supported: \n%s\n\n",
 			vendor, render, version, shading, exts, eglexts);
 
-#ifndef WITH_HEADLESS
 	dump_connectors(stream, drm.res);
-#endif
 
 	fclose(stream);
 
