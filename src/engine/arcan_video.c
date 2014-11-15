@@ -5051,4 +5051,3 @@ arcan_vobj_id arcan_video_renderstring(const char* message,
 
 	return rv;
 }
-

@@ -251,6 +251,17 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 	size_t dsz;
 #ifndef HEADLESS_NOARCAN
 	arcan_bench_register_cost( arcan_vint_refresh(fract, &dsz) );
+
+	agp_activate_rendertarget(NULL);
+
+	if (dsz > 0){
+		arcan_vint_drawrt(arcan_vint_world(), 0, 0,
+			arcan_video_display.width, arcan_video_display.height
+		);
+	}
+
+	arcan_vint_drawcursor(true);
+	arcan_vint_drawcursor(false);
 #endif
 
 #if defined(WITH_HEADLESS) || defined(WITH_HEADLESS_MAIN)

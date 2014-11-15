@@ -197,7 +197,8 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 		pre();
 
 #ifndef HEADLESS_NOARCAN
-	arcan_bench_register_cost( arcan_vint_refresh(fract) );
+	size_t nupd;
+	arcan_bench_register_cost( arcan_vint_refresh(fract, &nupd) );
 #endif
 
 	glFlush();
