@@ -503,6 +503,12 @@ enum agp_mesh_flags {
 	MESH_DEBUG_GEOMETRY = 8
 };
 
+/*
+ * Some video platforms need to have a more intimate connection
+ * with the agp implementation, i.e. distinguish between GLES and OPENGL etc.
+ */
+const char* agp_ident();
+
 void agp_submit_mesh(struct mesh_storage_t*, enum agp_mesh_flags);
 
 /*

@@ -1,19 +1,15 @@
 /*
  * Todo for this platform module:
  *
- * 1. HEADLESS mode using render-nodes and EGLImage or dma-buf transfer
- *
- * 2. Multiple- monitor configurations
+ * 1. Multiple- monitor configurations
  *    -> mode switches (with resizing the underlying framebuffers)
  *    -> dynamic vobj -> output mapping
  *
- * 3. Operate using both GLESv3 and OpenGL2.1+
+ * 2. Display Hotplug Events
  *
- * 4. Support for External Launch / Building, Restoring Contexts
+ * 3. Support for External Launch / Building, Restoring Contexts
  *
- * 5. Display Hotplug Events
- *
- * 6. Advanced Synchronization options (swap-interval, synch directly
+ * 4. Advanced Synchronization options (swap-interval, synch directly
  *    to front buffer, swap-with-tear, pre-render then wake / move
  *    cursor just before etc.)
  */
@@ -633,10 +629,13 @@ static int setup_gl(void)
 		EGL_NONE
 	};
 
-	static const EGLint attribs[] = {
+	const char* ident = agp_ident();
+
+	EGLint apiv;
+
+	static EGLint attribs[] = {
 		EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
-/*		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT, */
-		EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
+		EGL_RENDERABLE_TYPE, 0,
 		EGL_RED_SIZE, 1,
 		EGL_GREEN_SIZE, 1,
 		EGL_BLUE_SIZE, 1,
@@ -645,15 +644,38 @@ static int setup_gl(void)
 		EGL_NONE
 	};
 
+	size_t i = 0;
+	if (strcmp(ident, "OPENGL21") == 0){
+		apiv = EGL_OPENGL_API;
+		for (size_t i = 0; attribs[i] != EGL_RENDERABLE_TYPE; i++);
+		attribs[i+1] = EGL_OPENGL_BIT;
+	}
+	else if (strcmp(ident, "GLES3") == 0){
+		apiv = EGL_OPENGL_API;
+		for (size_t i = 0; attribs[i] != EGL_RENDERABLE_TYPE; i++);
+#ifndef EGL_OPENGL_ES2_BIT
+			arcan_warning("EGL implementation do not support GLESv2, "
+				"yet AGP platform requires it, use a different AGP platform.\n");
+			return -1;
+#endif
+
+#ifndef EGL_OPENGL_ES3_BIT
+#define EGL_OPENGL_ES3_BIT EGL_OPENGL_ES2_BIT
+#endif
+		attribs[i+1] = EGL_OPENGL_ES2_BIT;
+		apiv = EGL_OPENGL_ES_API;
+	}
+	else
+		return -1;
+
 	egl.display = eglGetDisplay((void*)gbm.dev);
 	if (!eglInitialize(egl.display, NULL, NULL)){
 		arcan_warning("egl-dri() -- failed to initialize EGL.\n");
 		return -1;
 	}
 
-/*	if (!eglBindAPI(EGL_OPENGL_ES_API)){*/
-	if (!eglBindAPI(EGL_OPENGL_API)){
-		arcan_warning("egl-dri() -- couldn't bind OpenGL API.\n");
+	if (!eglBindAPI(apiv)){
+		arcan_warning("egl-dri() -- couldn't bind GL API.\n");
 		return -1;
 	}
 
@@ -781,6 +803,14 @@ void* PLATFORM_SYMBOL(_video_gfxsym)(const char* sym)
 	return eglGetProcAddress(sym);
 }
 
+/*
+ * world- agp storage contains the data we need,
+ * time to map / redraw / synch
+ */
+static void update_scanouts()
+{
+}
+
 bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 	uint8_t bpp, bool fs, bool frames, const char* title)
 {
@@ -817,7 +847,8 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 			&drm.connector_id[0], 1, drm.mode);
 	}
 
-	arcan_bench_register_cost( arcan_video_refresh(fract, true) );
+	arcan_bench_register_cost( arcan_vint_refresh(fract) );
+	update_scanouts();
 	eglSwapBuffers(egl.display, egl.surface);
 
 	struct gbm_bo* new_buf = gbm_surface_lock_front_buffer(gbm.surface);

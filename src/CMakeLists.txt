@@ -64,7 +64,7 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 else()
 	set(VPLATFORM_STR "[ x11 | x11-headless | sdl | egl-gles | egl-dri ]")
 endif()
-
+set(AGPPLATFORM_STR "[ opengl-2.1 ]")
 set( MAIN_LIBRARIES )
 
 #
@@ -111,7 +111,8 @@ message("   -DENABLE_LTO=[Off|On] : Build with Link-Time Optimizations")
 message("   -DENABLE_SIMD_ALIGNED=[Off|On] : |--> SIMD support assumes 16-byte alignment")
 message("")
 message("audio/video/input support:")
-message("   -DVIDEO_PLATFORM=${VPLATFORM_STR} : Set default video platform")
+message("   -DVIDEO_PLATFORM=${VPLATFORM_STR} : Set video/display platform")
+message("   -DAGP_PLATFORM=${AGPPLATFORM_STR} : Set video/rendering platform")
 message("")
 message("optimization / core features:")
 message("   -DENABLE_LED=[On|Off] : Build with LED controller support in core")
@@ -260,13 +261,23 @@ endif()
 FIND_PACKAGE ( Freetype REQUIRED )
 FIND_PACKAGE ( PNG REQUIRED )
 
-SET (GL21_SOURCES
-	platform/agp/gl21.c
-	platform/agp/glshared.c
-	platform/agp/glfun.h
-	platform/agp/shdrmgmt.c
-	platform/agp/glinit.c
-)
+if (NOT AGP_PLATFORM)
+	SET(AGP_PLATFORM "gl21")
+endif()
+
+if (AGP_PLATFORM STREQUAL "gl21")
+	SET (AGP_SOURCES
+		platform/agp/gl21.c
+		platform/agp/glshared.c
+		platform/agp/glfun.h
+		platform/agp/shdrmgmt.c
+		platform/agp/glinit.c
+	)
+else()
+	message(FATAL_ERROR "Unknown AGP platform specified, #{AGP_PLATFORM}")
+endif()
+
+set(PLATFORM_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/platform)
 
 if (ENABLE_LIBRETRO3D AND NOT ENABLE_LWA)
 	message("Libretro3D requires LWA build but none- was specified, disabling.")
@@ -292,11 +303,11 @@ if (VIDEO_PLATFORM STREQUAL "x11" OR VIDEO_PLATFORM STREQUAL "x11-headless")
 	LIST(APPEND INCLUDE_DIRS ${GLEW_INCLUDE_DIRS} ${X11_INCLUDE_DIRS})
 	LIST(APPEND MAIN_LIBRARIES ${OPENGL_gl_LIBRARY} ${GLEW_LIBRARY} ${X11_LIBRARIES})
 	LIST(APPEND LWA_LIBRARIES ${OPENGL_gl_LIBRARY} ${GLEW_LIBRARY} ${X11_LIBRARIES})
-	LIST(APPEND SOURCES ${GL21_SOURCES})
+	LIST(APPEND SOURCES ${AGP_SOURCES})
 
 	if (ENABLE_LWA)
 		message("Enabling LWA (Arcan-in-Arcan) build using X11 HEADLESS")
-		SET(LWA_HEADLESS "x11/video.c")
+		SET(LWA_HEADLESS ${PLATFORM_ROOT}/x11/video.c)
 	endif()
 
 # legacy platform for weaker platforms RPI etc.
@@ -316,7 +327,7 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-gles")
 
 	endif()
 
-	LIST(APPEND SOURCES ${GL21_SOURCES})
+	LIST(APPEND SOURCES ${AGP_SOURCES})
 	LIST(APPEND INCLUDE_DIRS
 		${GLES2_INCLUDE_DIRS}
 		${EGL_INCLUDE_DIRS}
@@ -338,7 +349,7 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-dri")
 	FIND_PACKAGE(OpenGL REQUIRED)
 	FIND_PACKAGE(GBMKMS REQUIRED)
 	SET(ARCAN_DEFINITIONS "${ARCAN_DEFINITIONS} HAVE_GLES3")
-	LIST(APPEND SOURCES ${GL21_SOURCES})
+	LIST(APPEND SOURCES ${AGP_SOURCES})
 
 	LIST(APPEND MAIN_LIBRARIES
 		${EGL_LIBRARIES}
@@ -353,7 +364,7 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-dri")
 
 	if (ENABLE_LWA)
 		message("Enabling LWA (Arcan-in-Arcan build) using EGL-DRI HEADLESS")
-		SET(LWA_HEADLESS "egl-dri/video_rnode.c")
+		SET(LWA_HEADLESS ${PLATFORM_ROOT}/egl-dri/video_rnode.c)
 		LIST(APPEND LWA_LIBRARIES ${OPENGL_gl_LIBRARY}
 			${EGL_LIBRARIES} ${GBMKMS_LIBRARIES})
 	endif()
@@ -363,7 +374,7 @@ elseif (VIDEO_PLATFORM STREQUAL "sdl")
 		set(INPUT_PLATFORM "sdl")
 	endif()
 
-	LIST(APPEND SOURCES ${GL21_SOURCES})
+	LIST(APPEND SOURCES ${AGP_SOURCES})
 
 	FIND_PACKAGE(SDL REQUIRED)
 	FIND_PACKAGE(SDL_image)
@@ -385,15 +396,15 @@ elseif (VIDEO_PLATFORM STREQUAL "sdl")
 		LIST(APPEND LWA_LIBRARIES ${GLEW_LIBRARY} ${X11_LIBRARIES} ${OPENGL_LIBRARIES})
 		if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 			message("Enabling LWA (Arcan-in-Arcan) build using Darwin HEADLESS")
-			SET(LWA_HEADLESS "darwin/video.c")
+			SET(LWA_HEADLESS ${PLATFORM_ROOT}/darwin/video.c)
 		else()
 			message("Enabling LWA (Arcan-in-Arcan) build using X11 HEADLESS")
-			SET(LWA_HEADLESS "x11/video.c")
+			SET(LWA_HEADLESS ${PLATFORM_ROOT}/x11/video.c)
 		endif()
 	endif()
 
 else()
-				message(FATAL_ERROR "No video platform specified, use -DVIDEO_PLATFORM=${VPLATFORM_STR} e.g. -DVIDEO_PLATFORM=sdl")
+	message(FATAL_ERROR "No video platform specified, use -DVIDEO_PLATFORM=${VPLATFORM_STR} e.g. -DVIDEO_PLATFORM=sdl")
 endif()
 
 # no other audio platforms supported currently
@@ -570,8 +581,7 @@ if (ENABLE_LIBRETRO)
 			APPEND PROPERTY COMPILE_DEFINITIONS
 				FRAMESERVER_LIBRETRO_3D
 #				FRAMESERVER_LIBRETRO_3D_RETEXTURE -- developer feature in test
-				HEADLESS_PLATFORM=\"${CMAKE_CURRENT_SOURCE_DIR}/platform/${LWA_HEADLESS}\"
-		)
+				HEADLESS_PLATFORM=\"${LWA_HEADLESS}\")
 
 		LIST(APPEND FSRV_LIBRETRO_LIBRARIES ${LWA_LIBRARIES})
 	endif()
@@ -727,7 +737,7 @@ if (LUA51_JIT)
 					COMPILE_DEFINITIONS LUA51_JIT)
 endif (LUA51_JIT)
 
-set(ENGINE_BUILDTAG ${ENGINE_BUILDTAG}-${VIDEO_PLATFORM}-${AUDIO_PLATFORM}-${INPUT_PLATFORM})
+set(ENGINE_BUILDTAG ${ENGINE_BUILDTAG}-${VIDEO_PLATFORM}-${AGP_PLATFORM}-${AUDIO_PLATFORM}-${INPUT_PLATFORM})
 
 set_property(SOURCE engine/arcan_lua.c engine/arcan_main.c APPEND PROPERTY
 	COMPILE_DEFINITIONS FRAMESERVER_MODESTRING=\"${FRAMESERVER_MODESTRING}\"

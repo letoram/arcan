@@ -255,11 +255,10 @@ end
 -- Some devices just give absolute movements, convert
 -- these to relative before moving on
 --
-function mouse_absinput(x, y, state)
-	mouse_input(
-		mstate.x - x,
-		mstate.y - y
-	);
+function mouse_absinput(x, y)
+	mstate.x = x;
+	mstate.y = y;
+	mouse_input(mstate.x, mstate.y, nil, true);
 end
 
 function mouse_xy()
@@ -409,12 +408,18 @@ function mouse_button_input(ind, active)
 	mstate.btns[ind] = active;
 end
 
-function mouse_input(x, y, state)
+function mouse_input(x, y, state, noinp)
 	if (x == nil or y == nil) then
 		print(debug.traceback());
 	end
 
-	x, y = mouse_cursorupd(x, y);
+	if (noinp) then
+		x, y = mouse_cursorupd(x, y);
+	else
+		x = mstate.x;
+		y = mstate.y;
+	end
+
 	mstate.hover_count = 0;
 
 	if (x == nil or y == nil) then

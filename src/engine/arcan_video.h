@@ -293,19 +293,6 @@ bool arcan_video_prepare_external();
 void arcan_video_restore_external();
 
 /*
- * Perform a render-pass, set synch to true if we should block
- * Fragment is in the 0..999 range and specifies how far we are
- * towards the next logical tick. This is used to calculate interpolations
- * for transformation chains to get smoother animation even when running
- * with a slow logic clock.
- *
- * If draw is set to false, the main rendertarget won't be drawn to
- * the output display, this is useful in some video platforms that need
- * more control over output (e.g. multi-monitor support)
- */
-unsigned arcan_video_refresh(float fragment, bool nodraw);
-
-/*
  * Specify if the 3D pipeline should be processed and if so,
  * if it should happen before or after the 2D pipeline has been processed.
  */
