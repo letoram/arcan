@@ -19,7 +19,7 @@ local mstate = {
 -- tables of event_handlers to check for match when
 	handlers = mouse_handlers,
 	eventtrace = false,
-	btns = {false, false, false}, -- always LMB, MMB, RMB
+	btns = {false, false, false, false, false},
 	cur_over = {},
 	hover_track = {},
 	autohide = false,
@@ -175,7 +175,7 @@ function mouse_destroy()
 	mouse_handlers.rclick = {};
 	mstate.handlers = mouse_handlers;
 	mstate.eventtrace = false;
-	mstate.btns = {false, false, false};
+	mstate.btns = {false, false, false, false, false};
 	mstate.cur_over = {};
 	mstate.hover_track = {};
 	mstate.autohide = false;
@@ -256,9 +256,21 @@ end
 -- these to relative before moving on
 --
 function mouse_absinput(x, y)
+
+	mstate.rel_x = x - mstate.x;
+	mstate.rel_y = y - mstate.y;
+
 	mstate.x = x;
 	mstate.y = y;
-	mouse_input(mstate.x, mstate.y, nil, true);
+
+	if (mstate.native) then
+		move_cursor(mstate.x, mstate.y);
+	else
+		move_image(mstate.cursor, mstate.x + mstate.x_ofs,
+			mstate.y + mstate.y_ofs);
+	end
+
+	mouse_input(x, y, nil, true);
 end
 
 function mouse_xy()
@@ -398,12 +410,12 @@ function mouse_button_input(ind, active)
 	local hists = mouse_pickfun(mstate.x, mstate.y, mstate.pickdepth, 1);
 
 	if (ind == 1 and active ~= mstate.btns[1]) then
-		lmbhandler(hists, mstate.btns[1]);
+		lmbhandler(hists, active);
 	end
 
 	if (ind == 3 and active ~= mstate.btns[3]) then
-		rmbhandler(hists, mstate.btns[3]);
-		end
+		rmbhandler(hists, active);
+	end
 
 	mstate.btns[ind] = active;
 end
@@ -413,11 +425,11 @@ function mouse_input(x, y, state, noinp)
 		print(debug.traceback());
 	end
 
-	if (noinp) then
+	if (noinp == nil or noinp == false) then
 		x, y = mouse_cursorupd(x, y);
 	else
-		x = mstate.x;
-		y = mstate.y;
+		x = mstate.rel_x;
+		y = mstate.rel_y;
 	end
 
 	mstate.hover_count = 0;
