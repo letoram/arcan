@@ -21,6 +21,7 @@
 #include <math.h>
 #include <unistd.h>
 #include <errno.h>
+#include <signal.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -127,6 +128,15 @@ struct {
 } kms;
 
 static const char device_name[] = "/dev/dri/card0";
+static char* last_err = "unknown";
+static size_t err_sz = 0;
+#define SET_SEGV_MSG(X) last_err = (X); err_sz = sizeof(X);
+
+void sigsegv_errmsg(int sign)
+{
+	write(STDOUT_FILENO, last_err, err_sz);
+	_exit(EXIT_FAILURE);
+}
 
 static const char* egl_errstr()
 {
@@ -530,6 +540,8 @@ static int setup_drm(void)
 {
 	int i, area;
 
+	SET_SEGV_MSG("libdrm(), open device failed (check permissions) "
+		" or use ARCAN_VIDEO_DEVICE environment.\n");
 	const char* device = getenv("ARCAN_VIDEO_DEVICE");
 	if (!device)
 		device = device_name;
@@ -537,10 +549,11 @@ static int setup_drm(void)
 	drm.fd = open(device, O_RDWR);
 
 	if (drm.fd < 0) {
-		arcan_warning("egl-dri(), could not open drm device\n");
+		arcan_warning("egl-dri(), could not open drm device.\n");
 		return -1;
 	}
 
+	SET_SEGV_MSG("libdrm(), getting resources on device failed.\n");
 	drm.res = drmModeGetResources(drm.fd);
 	if (!drm.res) {
 		arcan_warning("egl-dri(), drmModeGetResources "
@@ -550,6 +563,7 @@ static int setup_drm(void)
 
 /* grab the first available connector, this can be
  * changed / altered dynamically by the calling script later */
+	SET_SEGV_MSG("libdrm(), enumerating connectors on device failed.\n");
 	for (i = 0; i < drm.res->count_connectors; i++){
 		kms.connector = drmModeGetConnector(drm.fd, drm.res->connectors[i]);
 		if (kms.connector->connection == DRM_MODE_CONNECTED)
@@ -570,6 +584,7 @@ static int setup_drm(void)
 		return -1;
 	}
 
+	SET_SEGV_MSG("libdrm(), enumerating connector/modes failed.\n");
 	for (i = 0, area = 0; i < kms.connector->count_modes; i++) {
 		drmModeModeInfo *current_mode = &kms.connector->modes[i];
 		int current_area = current_mode->hdisplay * current_mode->vdisplay;
@@ -584,6 +599,7 @@ static int setup_drm(void)
 		return -1;
 	}
 
+	SET_SEGV_MSG("libdrm(), setting matching encoder failed.\n");
 	for (i = 0; i < drm.res->count_encoders; i++) {
 		kms.encoder = drmModeGetEncoder(drm.fd, drm.res->encoders[i]);
 		if (kms.encoder->encoder_id == kms.connector->encoder_id)
@@ -606,8 +622,10 @@ static int setup_drm(void)
 
 static int setup_gbm(void)
 {
+	SET_SEGV_MSG("libgbm(), create device failed catastrophically.\n");
 	gbm.dev = gbm_create_device(drm.fd);
 
+	SET_SEGV_MSG("libgbm(), creating scanout buffer failed catastrophically.\n");
 	gbm.surface = gbm_surface_create(gbm.dev,
 		drm.mode->hdisplay, drm.mode->vdisplay,
 		GBM_FORMAT_XRGB8888,
@@ -668,6 +686,7 @@ static int setup_gl(void)
 	else
 		return -1;
 
+	SET_SEGV_MSG("EGL-dri(), getting the display failed\n");
 	egl.display = eglGetDisplay((void*)gbm.dev);
 	if (!eglInitialize(egl.display, NULL, NULL)){
 		arcan_warning("egl-dri() -- failed to initialize EGL.\n");
@@ -824,12 +843,28 @@ static void update_scanouts(size_t n_changed)
 bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 	uint8_t bpp, bool fs, bool frames, const char* title)
 {
-	if (0 != setup_drm() || 0 != setup_gbm() || 0 != setup_gl())
-		return false;
+	bool rv = false;
+	struct sigaction old_sh;
+	struct sigaction err_sh = {
+		.sa_handler = sigsegv_errmsg
+	};
 
-	agp_init();
+/*
+ * temporarily override segmentation fault handler here
+ * because it has happened in libdrm for a number of
+ * "user-managable" settings (i.e. drm locked to X, wrong
+ * permissions etc.)
+ */
+	sigaction(SIGSEGV, &err_sh, &old_sh);
 
-	return true;
+	if (setup_drm() == 0 && setup_gbm() == 0 && setup_gl() == 0){
+		agp_init();
+		rv = true;
+	}
+
+	sigaction(SIGSEGV, &old_sh, NULL);
+
+	return rv;
 }
 
 void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
