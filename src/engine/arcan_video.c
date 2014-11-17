@@ -3950,6 +3950,16 @@ static inline void setup_surf(struct rendertarget* dst,
 
 	arcan_shader_envv(OBJ_OPACITY, &prop->opa, sizeof(float));
 
+	float sz_i[2] = {src->origw, src->origh};
+	arcan_shader_envv(SIZE_INPUT, sz_i, sizeof(float)*2);
+
+	float sz_o[2] = {prop->scale.x * src->origw,
+		prop->scale.y * prop->scale.z};
+	arcan_shader_envv(SIZE_OUTPUT, sz_o, sizeof(float)*2);
+
+	float sz_s[2] = {src->vstore->w, src->vstore->h};
+	arcan_shader_envv(SIZE_STORAGE, sz_s, sizeof(float)*2);
+
 	if (src->transform){
 		struct surface_transform* trans = src->transform;
 		float ev = time_ratio(trans->move.startt, trans->move.endt);
@@ -3960,7 +3970,8 @@ static inline void setup_surf(struct rendertarget* dst,
 
 		ev = time_ratio(trans->scale.startt, trans->scale.endt);
 		arcan_shader_envv(TRANS_SCALE, &ev, sizeof(float));
-	} else {
+	}
+	else {
 		float ev = 1.0;
 		arcan_shader_envv(TRANS_MOVE, &ev, sizeof(float));
 		arcan_shader_envv(TRANS_ROTATE, &ev, sizeof(float));
