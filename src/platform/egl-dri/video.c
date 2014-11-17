@@ -665,12 +665,13 @@ static int setup_gl(void)
 	size_t i = 0;
 	if (strcmp(ident, "OPENGL21") == 0){
 		apiv = EGL_OPENGL_API;
-		for (size_t i = 0; attribs[i] != EGL_RENDERABLE_TYPE; i++);
+		for (i = 0; attribs[i] != EGL_RENDERABLE_TYPE; i++);
 		attribs[i+1] = EGL_OPENGL_BIT;
 	}
-	else if (strcmp(ident, "GLES3") == 0){
+	else if (strcmp(ident, "GLES3") == 0 ||
+		strcmp(ident, "GLES2") == 0){
 		apiv = EGL_OPENGL_API;
-		for (size_t i = 0; attribs[i] != EGL_RENDERABLE_TYPE; i++);
+		for (i = 0; attribs[i] != EGL_RENDERABLE_TYPE; i++);
 #ifndef EGL_OPENGL_ES2_BIT
 			arcan_warning("EGL implementation do not support GLESv2, "
 				"yet AGP platform requires it, use a different AGP platform.\n");
@@ -680,7 +681,7 @@ static int setup_gl(void)
 #ifndef EGL_OPENGL_ES3_BIT
 #define EGL_OPENGL_ES3_BIT EGL_OPENGL_ES2_BIT
 #endif
-		attribs[i+1] = EGL_OPENGL_ES2_BIT;
+		attribs[i+1] = EGL_OPENGL_ES3_BIT;
 		apiv = EGL_OPENGL_ES_API;
 	}
 	else
@@ -830,13 +831,14 @@ static void update_scanouts(size_t n_changed)
 {
 	agp_activate_rendertarget(NULL);
 
-	if (n_changed > 0){
-		arcan_vint_drawrt(arcan_vint_world(), 0, 0,
-			arcan_video_display.width, arcan_video_display.height
-		);
-	}
+/*
+ * DRI oddity, if nothing has actually changed (n_changed == 0)
+ * and a drawRt call is not invoked, I'll get a crash in eglSwapBuffers(?!)
+ */
+	arcan_vint_drawrt(arcan_vint_world(), 0, 0,
+		arcan_video_display.width, arcan_video_display.height
+	);
 
-	arcan_vint_drawcursor(true);
 	arcan_vint_drawcursor(false);
 }
 
@@ -894,6 +896,7 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 
 	size_t nd;
 	arcan_bench_register_cost( arcan_vint_refresh(fract, &nd) );
+
 	update_scanouts(nd);
 	eglSwapBuffers(egl.display, egl.surface);
 

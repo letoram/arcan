@@ -104,11 +104,6 @@ const char* agp_shader_language()
 	return "GLSL120";
 }
 
-const char* agp_backend_ident()
-{
-	return "OPENGL21";
-}
-
 void agp_readback_synchronous(struct storage_info_t* dst)
 {
 	if (!dst->txmapped == TXSTATE_TEX2D || !dst->vinf.text.raw)
@@ -199,6 +194,13 @@ struct stream_meta agp_stream_prepare(struct storage_info_t* s,
 		}
 		else
 			pbo_stream(s, meta.buf);
+	break;
+
+	case STREAM_RAW_DIRECT_SYNCHRONOUS:
+		agp_activate_vstore(s);
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, s->w, s->h,
+			GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, meta.buf);
+		agp_deactivate_vstore(s);
 	break;
 
 	case STREAM_HANDLE:
