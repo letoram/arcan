@@ -292,6 +292,10 @@ void platform_event_process(arcan_evctx* ctx)
 			arcan_warning("platform(arcan): fdtransfer not implemented\n");
 		break;
 
+		case TARGET_COMMAND_NEWSEGMENT:
+			arcan_warning("multi-window received\n");
+		break;
+
 /*
  * Should only do something if we've set the SKIPMODE to single stepping
  */

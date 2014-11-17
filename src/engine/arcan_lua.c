@@ -7354,7 +7354,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 	for (size_t i = 0; i < sizeof(consttbl) / sizeof(consttbl[0]); i++)
 		arcan_lua_setglobalint(ctx, consttbl[i].key, consttbl[i].val);
 
-	arcan_lua_setglobalstr(ctx, "GL_VERSION", agp_backend_ident());
+	arcan_lua_setglobalstr(ctx, "GL_VERSION", agp_ident());
 	arcan_lua_setglobalstr(ctx, "SHADER_LANGUAGE", agp_shader_language());
 	arcan_lua_setglobalstr(ctx, "FRAMESERVER_MODES", FRAMESERVER_MODESTRING);
 	arcan_lua_setglobalstr(ctx, "THEMENAME", "deprecated, use APPLID");

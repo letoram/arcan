@@ -64,7 +64,7 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 else()
 	set(VPLATFORM_STR "[ x11 | x11-headless | sdl | egl-gles | egl-dri ]")
 endif()
-set(AGPPLATFORM_STR "[ opengl-2.1 ]")
+set(AGPPLATFORM_STR "[ gl21 | gles2 | gles3 ]")
 set( MAIN_LIBRARIES )
 
 #
@@ -108,6 +108,8 @@ message("   -DCMAKE_BUILD_TYPE=[Debug|Release|Profile|DebugTrace]")
 message("   -DENABLE_ASAN=[Off|On] : Build with Address Sanitizer enabled")
 message("   -DENABLE_SIMD=[On|Off] : Enable SIMD optimized instructions")
 message("   -DENABLE_LTO=[Off|On] : Build with Link-Time Optimizations")
+# message("    -DENABLE_PBO=[Appl-path] : Profile-based Optimization prepass with appl")
+# message("                               as optimization profile.")
 message("   -DENABLE_SIMD_ALIGNED=[Off|On] : |--> SIMD support assumes 16-byte alignment")
 message("")
 message("audio/video/input support:")
@@ -265,14 +267,46 @@ if (NOT AGP_PLATFORM)
 	SET(AGP_PLATFORM "gl21")
 endif()
 
+SET (AGP_GL_SHARED
+	platform/agp/glshared.c
+	platform/agp/glfun.h
+	platform/agp/shdrmgmt.c
+	platform/agp/glinit.c
+)
+
 if (AGP_PLATFORM STREQUAL "gl21")
-	SET (AGP_SOURCES
-		platform/agp/gl21.c
-		platform/agp/glshared.c
-		platform/agp/glfun.h
-		platform/agp/shdrmgmt.c
-		platform/agp/glinit.c
+	FIND_PACKAGE(OpenGL REQUIRED)
+	SET (AGP_LIBRARIES
+		${OPENGL_gl_LIBRARY}
 	)
+
+	SET (AGP_SOURCES
+		${AGP_GL_SHARED}
+		platform/agp/gl21.c
+	)
+
+elseif (AGP_PLATFORM STREQUAL "gles2")
+	FIND_PACKAGE(GLES2 REQUIRED)
+	SET(AGP_LIBRARIES
+		${GLES2_LIBRARIES}
+	)
+		SET (AGP_SOURCES
+		${AGP_GL_SHARED}
+		platform/agp/gles.c
+	)
+
+elseif (AGP_PLATFORM STREQUAL "gles3")
+	FIND_PACKAGE(GLES3 REQUIRED)
+	SET(AGP_LIBRARIES
+		${GLES3_LIBRARIES}
+	)
+	SET (AGP_SOURCES
+		${AGP_GL_SHARED}
+		platform/agp/gles.c
+	)
+	set_property(SOURCE platform/agp/gles.c
+		APPEND PROPERTY COMPILE_DEFINITIONS GLES3)
+
 else()
 	message(FATAL_ERROR "Unknown AGP platform specified, #{AGP_PLATFORM}")
 endif()
@@ -317,9 +351,6 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-gles")
 	endif()
 
 	FIND_PACKAGE(EGL REQUIRED)
-	FIND_PACKAGE(GLES2 REQUIRED)
-
-	SET(ARCAN_DEFINITIONS "${ARCAN_DEFINITIONS} HAVE_GLES2")
 
 	if (GLES2_BCM_IMPLEMENTATION)
 		message("broadcom (BCM) GLES implementation found, set BCM_ROOT to bad dir to disable")
@@ -344,21 +375,16 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-dri")
 	endif()
 
 	FIND_PACKAGE(EGL REQUIRED)
-# should use OGL3+ but some internal bug prohibits us atm, likely connected to glew.
-#	FIND_PACKAGE(GLES3 REQUIRED)
-	FIND_PACKAGE(OpenGL REQUIRED)
 	FIND_PACKAGE(GBMKMS REQUIRED)
 	SET(ARCAN_DEFINITIONS "${ARCAN_DEFINITIONS} HAVE_GLES3")
 	LIST(APPEND SOURCES ${AGP_SOURCES})
 
 	LIST(APPEND MAIN_LIBRARIES
 		${EGL_LIBRARIES}
-#		${GLES3_LIBRARIES}
-		${OPENGL_gl_LIBRARY}
+		${AGP_LIBRARIES}
 		${GBMKMS_LIBRARIES}
 	)
 	LIST(APPEND INCLUDE_DIRS
-#		${GLES3_INCLUDE_DIRS}
 		${GBMKMS_INCLUDE_DIRS}
 	)
 

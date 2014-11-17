@@ -110,7 +110,8 @@ typedef long long arcan_vobj_id;
 /*
  * Setup the video layer to some undetermined default.
  * The w/h/bpp/fs/frames/caption arguments are currently here
- * due to legacy, the plan is to later rely on
+ * due to legacy, in the future we simply probe reasonable
+ * values and then let the display/window mechanisms take over.
  */
 bool platform_video_init(uint16_t w, uint16_t h,
 	uint8_t bpp, bool fs, bool frames, const char* caption);
@@ -309,6 +310,9 @@ enum stream_type {
 
 	STREAM_RAW_DIRECT, /* buf will be an av_pixel buffer that matches the
 											*	backing store dimensions */
+
+	STREAM_RAW_DIRECT_SYNCHRONOUS, /* similar to direct but we will block
+                                    until the transfer is complete */
 
 	STREAM_HANDLE, /* with buf 0, return a handle that can be passed to
 									*	a child or different context that needs to render onwards.
