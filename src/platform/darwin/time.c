@@ -15,12 +15,9 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include <arcan_math.h>
-#include <arcan_general.h>
 
 long long int arcan_timemillis()
 {
-	struct timeval tv;
 	uint64_t time = mach_absolute_time();
 	static double sf;
 
@@ -30,7 +27,6 @@ long long int arcan_timemillis()
 		if (ret == 0)
 			sf = (double)info.numer / (double)info.denom;
 		else{
-			arcan_warning("arcan_timemillis() couldn't get mach scalefactor.\n");
 			sf = 1.0;
 		}
 	}
