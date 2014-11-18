@@ -90,8 +90,13 @@ enum arcan_shader_envts{
 	TRANS_ROTATE    = 5,
 	TRANS_SCALE     = 6,
 
-	FRACT_TIMESTAMP_F = 7,
-	TIMESTAMP_D       = 8,
+/* object storage / rendering properties */
+	SIZE_INPUT  = 7,
+	SIZE_OUTPUT = 8,
+  SIZE_STORAGE= 9,
+
+	FRACT_TIMESTAMP_F = 10,
+	TIMESTAMP_D       = 11,
 };
 
 /* Built in Shader Vertex Attributes */

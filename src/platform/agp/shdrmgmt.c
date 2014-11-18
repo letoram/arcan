@@ -28,6 +28,10 @@ struct shader_envts {
 	float rotate;
 	float scale;
 
+	float sz_input[2];
+	float sz_output[2];
+	float sz_storage[2];
+
 /* system values, don't change this order */
 	float fract_timestamp;
 	arcan_tickv timestamp;
@@ -44,6 +48,10 @@ static int ofstbl[TBLSIZE] = {
 	offsetof(struct shader_envts, rotate),
 	offsetof(struct shader_envts, scale),
 
+	offsetof(struct shader_envts, sz_input),
+	offsetof(struct shader_envts, sz_output),
+	offsetof(struct shader_envts, sz_storage),
+
 /* system values, don't change this order */
 	offsetof(struct shader_envts, fract_timestamp),
 	offsetof(struct shader_envts, timestamp)
@@ -59,12 +67,16 @@ static enum shdrutype typetbl[TBLSIZE] = {
 	shdrfloat, /* obj_rotate */
 	shdrfloat, /* obj_scale */
 
+	shdrvec2, /* obj_input_sz */
+	shdrvec2, /* obj_output_sz */
+	shdrvec2, /* obj_storage_sz */
+
 	shdrfloat, /* fract_timestamp */
 	shdrint /* timestamp */
 };
 
 static int counttbl[TBLSIZE] = {
-	0, 0, 0, 0, 0, 0, 0, 0, 0
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
 
 static char* symtbl[TBLSIZE] = {
@@ -75,6 +87,9 @@ static char* symtbl[TBLSIZE] = {
 	"trans_move",
 	"trans_scale",
 	"trans_rotate",
+	"obj_input_sz",
+	"obj_output_sz",
+	"obj_storage_sz",
 	"fract_timestamp",
 	"timestamp"
 };
