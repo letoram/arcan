@@ -114,6 +114,12 @@ void agp_shader_source(enum SHADER_TYPES type,
 	}
 }
 
+void agp_env_help(FILE* out)
+{
+/* write agp specific tuning here,
+ * use ARCAN_AGP_ as symbol prefix */
+}
+
 void glDrawBuffer(GLint mode)
 {
 }

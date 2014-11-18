@@ -43,20 +43,13 @@
 #include <arcan_shmif.h>
 #include "frameserver.h"
 
-void arcan_frameserver_decode_run(
-	const char* resource, const char* keyfile);
-void arcan_frameserver_libretro_run(
-	const char* resource, const char* keyfile);
-void arcan_frameserver_encode_run(
-	const char* resource, const char* keyfile);
-void arcan_frameserver_net_run(
-	const char* resource, const char* keyfile);
-void arcan_frameserver_avfeed_run(
-	const char* resource, const char* keyfile);
-void arcan_frameserver_terminal_run(
-	const char* resource, const char* keyfile);
-void arcan_frameserver_remoting_run(
-	const char* resource, const char* keyfile);
+int arcan_frameserver_decode_run(struct arcan_shmif_cont*, struct arg_arr*);
+int arcan_frameserver_encode_run(struct arcan_shmif_cont*, struct arg_arr*);
+int arcan_frameserver_remoting_run(struct arcan_shmif_cont*, struct arg_arr*);
+int arcan_frameserver_libretro_run(struct arcan_shmif_cont*, struct arg_arr*);
+int arcan_frameserver_terminal_run(struct arcan_shmif_cont*, struct arg_arr*);
+int arcan_frameserver_net_client_run(struct arcan_shmif_cont*, struct arg_arr*);
+int arcan_frameserver_net_server_run(struct arcan_shmif_cont*, struct arg_arr*);
 
 /*
  * arcan_general functions assumes these are valid for searchpaths etc.
@@ -160,21 +153,6 @@ bool frameserver_dumprawfile_handle(const void* const data, size_t sz_data,
 	return rv;
 }
 
-/* inev is part of the argument in order for Win32 and others that can
- * pass handles in a less hackish way to do so by reusing symbols and
- * cutting down on defines */
-int frameserver_readhandle(arcan_event* inev)
-{
-	static int sockin_fd = -1;
-	if (sockin_fd == -1){
-		char* sockin = getenv("ARCAN_SOCKIN_FD");
-		if (sockin)
-			sockin_fd = strtoul(sockin, NULL, 10);
-	}
-
-	return arcan_fetchhandle(sockin_fd);
-}
-
 /* set currently active library for loading symbols */
 static void* lastlib, (* globallib);
 
@@ -208,6 +186,7 @@ static void close_logdev()
 	fflush(stderr);
 }
 
+#ifndef ARCAN_FRAMESERVER_SPLITMODE
 static void toggle_logdev(const char* prefix)
 {
 	const char* const logdir = getenv("ARCAN_FRAMESERVER_LOGDIR");
@@ -234,13 +213,13 @@ static void toggle_logdev(const char* prefix)
 
 	atexit(close_logdev);
 }
+#endif
 
 /*
  * Splitmode warrant some explaining,
  * in the mode we use the frameserver binary as a chainloader;
  * we select a different binary (our own name + _mode and
- * just pass the environment onwards. We also get the benefit
- * of testing the main process resolve against double forking.
+ * just pass the environment onwards.
  *
  * This is done to limit the effect of some libraries having unreasonable
  * (possible even non-ASLRable) requirements, doing multi-threading,
@@ -253,14 +232,13 @@ static void toggle_logdev(const char* prefix)
  * the unused subsystems won't be #defined in.
  *
  * The intent is also to implement sandboxing setup and loading here,
- * one part as a package format (FAP) with FUSE + chroot,
+ * one part as a package format with FUSE + chroot,
  * another using local sandboxing options (seccomp and capsicum)
  */
 static void dumpargs(int argc, char** argv)
 {
 	printf("invalid number of arguments (%d):\n", argc);
  	printf("[1 mode] : %s\n", argc > 1 && argv[1] ? argv[1] : "");
-	printf("[2 key] : %s\n", argc > 2 && argv[2] ? argv[2] : "");
 	printf("environment (ARCAN_ARG) : %s\n",
 		getenv("ARCAN_ARG") ? getenv("ARCAN_ARG") : "");
 	printf("environment (ARCAN_SOCKIN_FD) : %s\n",
@@ -307,60 +285,63 @@ void dump_links(const char* path)
 #ifdef ARCAN_FRAMESERVER_SPLITMODE
 int main(int argc, char** argv)
 {
-	if (argc != 3){
+	if (2 != argc){
 		dumpargs(argc, argv);
-		return 1;
+		return EXIT_FAILURE;
 	}
-
-/* seriously doing this to work around compiler warnings, ./facepalm */
-	toggle_logdev(NULL);
 
 	char* fsrvmode = argv[1];
-	if (strcmp(fsrvmode, "net-cl") == 0 || strcmp(fsrvmode, "net-srv") == 0){
-		fsrvmode = "net";
-	}
 
-	size_t newbin = strlen(argv[0]) + strlen(fsrvmode) + 2;
- 	char* newarg = malloc(newbin);
-	snprintf(newarg, newbin, "%s_%s", argv[0], fsrvmode);
+	size_t bin_sz = strlen(argv[0]) + strlen(fsrvmode) + 2;
+	char newarg[ bin_sz ];
+	snprintf(newarg, bin_sz, "%s_%s", argv[0], fsrvmode);
 
+/*
+ * the sweet-spot for adding in privilege/uid/gid swapping and
+ * setting up mode- specific sandboxing, package format mount
+ * etc.
+ */
+
+/* we no longer need the mode argument */
+	argv[1] = NULL;
 	argv[0] = newarg;
-	return execv(newarg, argv);
+	execv(newarg, argv);
+
+	return EXIT_FAILURE;
 }
 
 #else
+
+typedef int (*mode_fun)(struct arcan_shmif_cont*, struct arg_arr*);
+
+int launch_mode(const char* modestr,
+	mode_fun fptr, enum ARCAN_SEGID id, char* altarg)
+{
+	toggle_logdev(modestr);
+	struct arg_arr* arg;
+	struct arcan_shmif_cont con = arcan_shmif_open(id,
+		SHMIF_ACQUIRE_FATALFAIL, &arg);
+
+	if (!arg && altarg)
+		arg = arg_unpack(altarg);
+
+	return fptr(&con, arg);
+}
+
 int main(int argc, char** argv)
 {
-	char* resource = getenv("ARCAN_ARG");
-	char* keyfile  = NULL;
-	char* fsrvmode = NULL;
-
-	if (argc != 3){
 #ifdef DEFAULT_FSRV_MODE
-		fsrvmode = DEFAULT_FSRV_MODE;
+	char* fsrvmode = DEFAULT_FSRV_MODE;
+	char* argstr = argc > 1 ? argv[1] : NULL; /* optional */
+#else
+/* non-split mode arguments require [mode + opt-arg ] */
+	char* fsrvmode = argv[1];
+	char* argstr = argc > 2 ? argv[2] : NULL;
 #endif
 
-		if ( getenv("ARCAN_CONNPATH")){
-			keyfile = arcan_shmif_connect(
-				getenv("ARCAN_CONNPATH"), getenv("ARCAN_CONNKEY")
-			);
-		}
-		else{
-			LOG("\t\x1b[1m No arcan-shmif connection, "
-				"check \x1b[32mARCAN_CONNPATH\x1b[39m environment.\x1b[0m\n\n");
-			return EXIT_FAILURE;
-		}
-	}
-	else {
-		keyfile = argv[2];
-		fsrvmode = argv[1];
-	}
-
-	if (!keyfile || !fsrvmode){
-		dumpargs(argc, argv);
-		return 1;
-	}
-
+/*
+ * Monitor for descriptor leaks from parent
+ */
 #if defined(_DEBUG) && !defined(__APPLE__)
 	DIR* dp;
 	struct dirent64* dirp;
@@ -376,8 +357,8 @@ int main(int argc, char** argv)
 /* stdin, stdout, stderr, [connection socket], any more
  * and we should be suspicious about descriptor leakage */
 		if (desc_count > 5){
-			fprintf(stdout, "\x1b[1m suspicious amount (%zu)"
-				"of descriptors open, investigate.\n", desc_count);
+			fprintf(stdout, "\x1b[1msuspicious amount (%zu)"
+				"of descriptors open, investigate.\x1b[0m\n", desc_count);
 
 			dump_links("/proc/self/fd");
 		}
@@ -389,12 +370,24 @@ int main(int argc, char** argv)
  * frameserver as launched from the parent
  */
 	if (getenv("ARCAN_FRAMESERVER_DEBUGSTALL")){
-		fprintf(stdout, "\x1b[1m ARCAN_FRAMESERVER_DEBUGSTALL set, waiting 10s. \n"
-			"\tfor debugging/tracing, attach to pid: \x1b[32m%d\x1b[39m\x1b[0m\n",
-			(int) getpid());
+		int sleeplen = strtoul(getenv("ARCAN_FRAMESERVER_DEBUGSTALL"), NULL, 10);
 
-/* any nice tactic to launch a gdb that's already attached instead of the sleep? */
-		sleep(10);
+		if (0 <= sleeplen){
+			fprintf(stdout, "\x1b[1mARCAN_FRAMESERVER_DEBUGSTALL,\x1b[0m "
+				"spin-waiting for debugger.\n \tAttach to pid: "
+				"\x1b[32m%d\x1b[39m\x1b[0m and break out of loop"
+				" (set loop = 0)\n", getpid()
+			);
+
+			volatile int loop = 1;
+			while(loop == 1);
+		}
+		else{
+			fprintf(stdout,"\x1b[1mARCAN_FRAMESERVER_DEBUGSTALL set, waiting %d s.\n"
+				"\tfor debugging/tracing, attach to pid: \x1b[32m%d\x1b[39m\x1b[0m\n",
+				sleeplen, (int) getpid());
+			sleep(sleeplen);
+		}
 	}
 
 /*
@@ -402,66 +395,96 @@ int main(int argc, char** argv)
  * a global define, FRAMESERVER_MODESTRING includes a space
  * separated list of enabled frameserver archetypes.
  */
-#ifdef ENABLE_FSRV_NET
-	if (strcmp(fsrvmode, "net-cl") == 0 || strcmp(fsrvmode, "net-srv") == 0){
-		toggle_logdev("net");
-		arcan_frameserver_net_run(resource, keyfile);
-		return 0;
-	}
-#endif
-
 #ifdef ENABLE_FSRV_DECODE
 	if (strcmp(fsrvmode, "decode") == 0){
-		toggle_logdev("dec");
-		arcan_frameserver_decode_run(resource, keyfile);
-		return 0;
+		return launch_mode("decode", arcan_frameserver_decode_run,
+			SEGID_MEDIA, argstr);
 	}
 #endif
 
 #ifdef ENABLE_FSRV_TERMINAL
 	if (strcmp(fsrvmode, "terminal") == 0){
-		toggle_logdev("term");
-		arcan_frameserver_terminal_run(resource, keyfile);
-		return 0;
+		return launch_mode("terminal", arcan_frameserver_terminal_run,
+			SEGID_SHELL, argstr);
 	}
 #endif
 
 #ifdef ENABLE_FSRV_ENCODE
 	if (strcmp(fsrvmode, "record") == 0){
-		toggle_logdev("rec");
-		arcan_frameserver_encode_run(resource, keyfile);
-		return 0;
+		return launch_mode("record", arcan_frameserver_encode_run,
+			SEGID_ENCODER, argstr);
 	}
 #endif
 
 #ifdef ENABLE_FSRV_REMOTING
 	if (strcmp(fsrvmode, "remoting") == 0){
-		toggle_logdev("remoting");
-		arcan_frameserver_remoting_run(resource, keyfile);
-		return 0;
+		return launch_mode("remoting", arcan_frameserver_remoting_run,
+			SEGID_REMOTING, argstr);
 	}
 #endif
 
 #ifdef ENABLE_FSRV_LIBRETRO
 	if (strcmp(fsrvmode, "libretro") == 0){
-		toggle_logdev("retro");
-		extern void arcan_frameserver_libretro_run(
-			const char* resource, const char* shmkey);
-		arcan_frameserver_libretro_run(resource, keyfile);
-		return 0;
+		return launch_mode("libretro", arcan_frameserver_libretro_run,
+			SEGID_REMOTING, argstr);
 	}
 #endif
 
 #ifdef ENABLE_FSRV_AVFEED
 	if (strcmp(fsrvmode, "avfeed") == 0){
-		toggle_logdev("avfeed");
-		arcan_frameserver_avfeed_run(resource, keyfile);
-		return 0;
+		return launch_mode("avfeed", arcan_frameserver_avfeed_run,
+			SEGID_MEDIA, argstr);
 	}
 #endif
 
+/*
+ * NET- is a bit special in that it encompasses multiple submodes
+ * and may need to support multiple more (p2p-node etc.)
+ * which may need different IDs, so we do a preliminary arg-unpack
+ * in beforehand.
+ */
+#ifdef ENABLE_FSRV_NET
+	if (strcmp(fsrvmode, "net") == 0){
+		struct arg_arr* tmp = arg_unpack(getenv("ARCAN_ARG"));
+		const char* rk;
+
+		if (!tmp)
+			tmp = arg_unpack(argstr);
+
+		enum ARCAN_SEGID id;
+		mode_fun fptr;
+		const char* modestr = NULL;
+
+		if (tmp && arg_lookup(tmp, "mode", 0, &rk)){
+			if (strcmp(rk, "client") == 0){
+				id = SEGID_NETWORK_CLIENT;
+				fptr = arcan_frameserver_net_client_run;
+				modestr = "client";
+			}
+			else if (strcmp(rk, "server") == 0){
+				id = SEGID_NETWORK_SERVER;
+				fptr = arcan_frameserver_net_server_run;
+				modestr = "server";
+			}
+			else
+				fprintf(stdout, "frameserver_net, invalid mode (%s).\n", rk);
+		}
+			arg_cleanup(tmp); /* will invalidate all aliases from _lookup */
+
+		if (!modestr){
+			fprintf(stdout, "frameserver_net requires a mode=val argument.\n"
+				"\tval : client, server");
+			return EXIT_FAILURE;
+		}
+
+		return launch_mode(modestr, fptr, id, argstr);
+	}
+#endif
+
+
 	printf("frameserver launch failed, unsupported mode (%s)\n", fsrvmode);
 	dumpargs(argc, argv);
-	return 0;
+
+	return EXIT_FAILURE;
 }
 #endif

@@ -70,10 +70,24 @@ static char* egl_synchopts[] = {
 	NULL
 };
 
+static char* egl_envopts[] = {
+	"ARCAN_VIDEO_DEVICE=/dev/dri/card0", "specifiy primary device",
+	"ARCAN_VIDEO_DRM_NOMASTER", "set to disable drmMaster management",
+	NULL
+};
+
 enum {
 	DEFAULT,
 	ENDM
 }	synchopt;
+
+/*
+ static struct {
+	bool master;
+} dri_opts = {
+	.master = true,
+};
+ */
 
 static struct {
 	struct gbm_bo* bo;
@@ -97,12 +111,11 @@ static struct {
 	drmModeRes* res;
 } drm;
 
-/*
- * static struct {
-	arcan_vobj_id source;
-	unsigned display_slot;
-
-} displays[CONNECTOR_LIMIT];
+/*struct display {
+	struct arcan_shmif_cont conn;
+	bool mapped;
+	struct storage_info_t* vstore;
+} disp[MAX_DISPLAYS];
 */
 
 static struct {
@@ -127,6 +140,11 @@ struct {
    uint32_t fb_id;
 } kms;
 
+/*
+ * There's probably some sysfs- specific approach
+ * but rather keep that outside and use the environment
+ * variable to specify.
+ */
 static const char device_name[] = "/dev/dri/card0";
 static char* last_err = "unknown";
 static size_t err_sz = 0;
@@ -184,17 +202,23 @@ bool PLATFORM_SYMBOL(_video_set_mode)(
 }
 
 bool PLATFORM_SYMBOL(_video_map_display)(
-	arcan_vobj_id id, platform_display_id disp)
+	arcan_vobj_id id, platform_display_id disp, enum blitting_hint hint)
 {
 /* add ffunc to the correct display */
 
 	return false; /* no multidisplay /redirectable output support */
 }
 
-struct monitor_modes* PLATFORM_SYMBOL(_video_query_modes)(
+bool PLATFORM_SYMBOL(_video_specify_mode)(platform_display_id id,
+	platform_mode_id mode_id, struct monitor_mode mode)
+{
+	return false;
+}
+
+struct monitor_mode* PLATFORM_SYMBOL(_video_query_modes)(
 	platform_display_id id, size_t* count)
 {
-	static struct monitor_modes mode = {};
+	static struct monitor_mode mode = {};
 
 	mode.width  = arcan_video_display.width;
 	mode.height = arcan_video_display.height;
@@ -552,6 +576,8 @@ static int setup_drm(void)
 		arcan_warning("egl-dri(), could not open drm device.\n");
 		return -1;
 	}
+
+	drmSetMaster(drm.fd);
 
 	SET_SEGV_MSG("libdrm(), getting resources on device failed.\n");
 	drm.res = drmModeGetResources(drm.fd);
@@ -989,6 +1015,11 @@ const char* PLATFORM_SYMBOL(_video_capstr)()
 const char** PLATFORM_SYMBOL(_video_synchopts) ()
 {
 	return (const char**) egl_synchopts;
+}
+
+const char** PLATFORM_SYMBOL(_video_envopts)()
+{
+	return (const char**) egl_envopts;
 }
 
 void PLATFORM_SYMBOL(_video_prepare_external) () {}

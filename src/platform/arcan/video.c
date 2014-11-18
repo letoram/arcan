@@ -17,6 +17,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <unistd.h>
+#include <stdio.h>
 
 #include "../video_platform.h"
 
@@ -37,13 +38,17 @@ static char* synchopts[] = {
 	NULL
 };
 
+static char* input_envopts[] = {
+	NULL
+};
+
 static enum {
 	PARENT = 0,
 	PREWAKE,
 	ADAPTIVE
 } syncopt;
 
-static struct monitor_modes mmodes[] = {
+static struct monitor_mode mmodes[] = {
 	{
 		.id = 0,
 		.width = 640,
@@ -53,7 +58,16 @@ static struct monitor_modes mmodes[] = {
 	},
 };
 
-static struct arcan_shmif_cont shms;
+#define MAX_DISPLAYS 8
+
+struct display {
+	struct arcan_shmif_cont conn;
+	bool mapped;
+	struct storage_info_t* vstore;
+} disp[MAX_DISPLAYS];
+
+static struct arg_arr* shmarg;
+
 static struct {
 	unsigned refresh;
 } synch_vals;
@@ -69,51 +83,25 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	}
 
 	if (first_init){
-		const char* connkey = getenv("ARCAN_CONNPATH");
-		const char* shmkey = NULL;
-		if (connkey){
-			shmkey = arcan_shmif_connect(connkey, getenv("ARCAN_CONNKEY"));
-			if (!shmkey)
-				arcan_warning("Couldn't connect through (%s), "
-					"trying ARCAN_SHMKEY env.\n", connkey);
-		}
-
-		if (!shmkey)
-			shmkey = getenv("ARCAN_SHMKEY");
-
-		if (!shmkey){
-			arcan_warning("platform/arcan/video.c:platform_video_init(): "
-				"no connection key found, giving up. (see environment ARCAN_CONNPATH)\n");
-			return false;
-		}
-		shms = arcan_shmif_acquire(shmkey, SEGID_LWA, SHMIF_ACQUIRE_FATALFAIL);
-
-		if (shms.addr == NULL){
+		disp[0].conn = arcan_shmif_open(SEGID_LWA, 0, &shmarg);
+		if (disp[0].conn.addr == NULL){
 			arcan_warning("couldn't connect to parent\n");
 			return false;
 		}
 
-		const char* argstr = getenv("ARCAN_ARG");
-		struct arg_arr* args = argstr ? arg_unpack(argstr) : NULL;
-
-		if (argstr){
-			const char* val;
-			if (arg_lookup(args, "width", 0, &val))
-				width = strtoul(val, NULL, 10);
-			if (arg_lookup(args, "height", 0, &val))
-				height = strtoul(val, NULL, 10);
-		}
-
-		shms.addr->glsource = true;
-		if (!arcan_shmif_resize( &shms, width, height )){
+		if (!arcan_shmif_resize( &disp[0].conn, width, height )){
 			arcan_warning("couldn't set shm dimensions (%d, %d)\n", width, height);
 			return false;
 		}
 
+/* disp[0] always start out mapped / enabled and we'll use the
+ * current world unless overridden */
+		disp[0].mapped = true;
+
 		first_init = false;
 	}
 	else {
-		if (!arcan_shmif_resize( &shms, width, height )){
+		if (!arcan_shmif_resize( &disp[0].conn, width, height )){
 			arcan_warning("couldn't set shm dimensions (%d, %d)\n", width, height);
 			return false;
 		}
@@ -122,7 +110,7 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 /*
  * currently, we actually never de-init this
  */
-	arcan_shmif_setprimary(SHMIF_INPUT, &shms);
+	arcan_shmif_setprimary(SHMIF_INPUT, &disp[0].conn);
 	return lwa_video_init(width, height, bpp, fs, frames, title);
 }
 
@@ -168,7 +156,48 @@ const char** platform_video_synchopts()
 	return (const char**) synchopts;
 }
 
-static struct monitor_modes* get_platform_mode(platform_mode_id mode)
+static const char* arcan_envopts[] = {
+	"ARCAN_LWA_GPUBUF_PASS", "Pass GPU buffers rather than issue readbacks",
+	NULL
+};
+
+const char** platform_video_envopts()
+{
+	static const char** cache;
+	static bool env_init;
+
+	if (!env_init){
+		const char** buf = lwa_video_envopts();
+		const char** wrk = buf;
+		ssize_t count = sizeof(arcan_envopts)/sizeof(arcan_envopts[0]);
+
+		while (*wrk++)
+			count++;
+
+		cache = malloc(sizeof(char*) * count);
+		cache[count] = NULL;
+		wrk = buf;
+
+		count = 0;
+		while(*wrk)
+			cache[count++] = *wrk++;
+
+		wrk = arcan_envopts;
+		while(*wrk)
+			cache[count++] = *wrk++;
+
+		env_init = true;
+	}
+
+	return cache;
+}
+
+const char** platform_input_envopts()
+{
+	return (const char**) input_envopts;
+}
+
+static struct monitor_mode* get_platform_mode(platform_mode_id mode)
 {
 	for (size_t i = 0; i < sizeof(mmodes)/sizeof(mmodes[0]); i++){
 		if (mmodes[i].id == mode)
@@ -178,14 +207,23 @@ static struct monitor_modes* get_platform_mode(platform_mode_id mode)
 	return NULL;
 }
 
-bool platform_video_set_mode(platform_display_id disp, platform_mode_id newmode)
+bool platform_video_specify_mode(platform_display_id id,
+	platform_mode_id mode_id, struct monitor_mode mode)
 {
-	struct monitor_modes* mode = get_platform_mode(newmode);
+	return lwa_video_specify_mode(id, mode_id, mode);
+}
+
+bool platform_video_set_mode(platform_display_id id, platform_mode_id newmode)
+{
+	struct monitor_mode* mode = get_platform_mode(newmode);
+
 	if (!mode)
 		return false;
 
-	if (arcan_shmif_resize(&shms, mode->width, mode->height))
-	{
+	if (!(id < MAX_DISPLAYS && disp[id].conn.addr))
+		return false;
+
+	if (arcan_shmif_resize(&disp[0].conn, mode->width, mode->height)){
 		arcan_video_display.width = mode->width;
 		arcan_video_display.height = mode->height;
 		synch_vals.refresh = mode->refresh;
@@ -195,16 +233,70 @@ bool platform_video_set_mode(platform_display_id disp, platform_mode_id newmode)
 	return false;
 }
 
-bool platform_video_map_display(arcan_vobj_id id, platform_display_id disp)
+static bool check_store(platform_display_id id)
 {
-	return false;
+	if (disp[id].vstore->w != disp[id].conn.addr->w ||
+		disp[id].vstore->h != disp[id].conn.addr->h){
+
+		if (!arcan_shmif_resize(&disp[id].conn,
+				disp[id].vstore->w, disp[id].vstore->h)){
+			arcan_warning("platform_video_map_display(), attempt to switch "
+				"display output mode to match backing store failed.\n");
+			return false;
+		}
+	}
+	return true;
 }
 
-static void stub()
+bool platform_video_map_display(arcan_vobj_id vid, platform_display_id id,
+	enum blitting_hint hint)
 {
+	if (id > MAX_DISPLAYS)
+		return false;
+
+	if (disp[id].vstore){
+		arcan_vint_drop_vstore(disp[id].vstore);
+		disp[id].vstore = NULL;
+	}
+
+	disp[id].mapped = false;
+
+	if (id == ARCAN_VIDEO_WORLDID)
+		disp[id].vstore = disp[0].vstore;
+	else if (id == ARCAN_EID)
+		return true;
+	else{
+		arcan_vobject* vobj = arcan_video_getobject(vid);
+		if (vobj == NULL){
+			arcan_warning("platform_video_map_display(), attempted to map a "
+				"non-existing video object");
+			return false;
+		}
+
+		if (vobj->vstore->txmapped != TXSTATE_TEX2D){
+			arcan_warning("platform_video_map_display(), attempted to map a "
+				"video object with an invalid backing store");
+			return false;
+		}
+
+		disp[id].vstore = vobj->vstore;
+		vobj->vstore->refcount++;
+	}
+
+/*
+ * enforce display size constraint, this wouldn't be necessary
+ * when doing a buffer passing operation
+ */
+	if (!check_store(id))
+		return false;
+
+	disp[id].vstore->refcount++;
+	disp[id].mapped = true;
+
+	return true;
 }
 
-struct monitor_modes* platform_video_query_modes(
+struct monitor_mode* platform_video_query_modes(
 	platform_display_id id, size_t* count)
 {
 	*count = sizeof(mmodes) / sizeof(mmodes[0]);
@@ -219,22 +311,85 @@ platform_display_id* platform_video_query_displays(size_t* count)
 	return &id;
 }
 
+/*
+ * we use a deferred stub here to avoid having the headless platform
+ * sync function generate bad statistics due to our two-stage synch
+ * process
+ */
+static void stub()
+{
+}
+
 void platform_video_synch(uint64_t tick_count, float fract,
 	video_synchevent pre, video_synchevent post)
 {
 	lwa_video_synch(tick_count, fract, pre, stub);
 
-	struct storage_info_t store = *arcan_vint_world();
+	static int64_t last_frametime;
+	if (0 == last_frametime)
+		last_frametime = arcan_timemillis();
 
-	store.vinf.text.raw = shms.vidp;
+/*
+ * Other options, schedule all readbacks asynchronously first pass
+ * and then do a synch- pass after.
+ *
+ * Evaluate when we can compare performance against sharing
+ * gpu- specific handles
+ */
+	struct storage_info_t store = *arcan_vint_world();
+	store.vinf.text.raw = disp[0].conn.vidp;
+
 	agp_readback_synchronous(&store);
+	arcan_shmif_signal(&disp[0].conn, SHMIF_SIGVID | SHMIF_SIGBLK_ONCE);
+
+	for (size_t i = 1; i < MAX_DISPLAYS; i++){
+		if (!disp[i].mapped)
+			continue;
+
+/* for worldid, we use the fact that we already have a readback in disp[0] */
+		if (!disp[i].vstore){
+			disp[i].vstore = arcan_vint_world();
+
+			if (!check_store(i))
+				continue;
+
+			memcpy(disp[i].conn.vidp, disp[0].conn.vidp,
+				disp[i].vstore->vinf.text.s_raw);
+			disp[i].vstore = NULL;
+		}
+		else{
+			check_store(i);
+			store = *(disp[i].vstore);
+			store.vinf.text.raw = disp[i].conn.vidp;
+			agp_readback_synchronous(&store);
+		}
+
+/*
+ * sweep each active display and push the related mapping
+ * but don't block, we'll implement our own time-keeping
+ */
+		arcan_shmif_signal(&disp[i].conn, SHMIF_SIGVID | SHMIF_SIGBLK_ONCE);
+	}
+
+/*
+ * This should be switched to the synch. strat option when
+ * we have a shared implementation for some of the regular
+ * timing / statistics analysis functions needed, keep a dynamic
+ * refresh limited in the 50-70 area.
+ */
+	int64_t current_time = arcan_timemillis();
+	int dt = current_time - last_frametime - 12;
+
+	if (dt > 0 && dt < 4)
+		arcan_timesleep(dt);
+
+	last_frametime = current_time;
 
 /*
  * we should implement a mapping for TARGET_COMMAND_FRAMESKIP or so
  * and use to set virtual display timings. ioev[0] => mode, [1] => prewake,
  * [2] => preaudio, 3/4 for desired jitter (testing / simulation)
  */
-	arcan_shmif_signal(&shms, SHMIF_SIGVID);
 
 	if (post)
 		post();
@@ -245,18 +400,18 @@ void platform_video_synch(uint64_t tick_count, float fract,
  * is broken out of the platform layer, we can re-use that to have
  * local filtering untop of the one the engine is doing.
  */
-arcan_errc arcan_event_analogstate(int devid, int axisid,
+arcan_errc platform_event_analogstate(int devid, int axisid,
 	int* lower_bound, int* upper_bound, int* deadzone,
 	int* kernel_size, enum ARCAN_ANALOGFILTER_KIND* mode)
 {
 	return ARCAN_ERRC_UNACCEPTED_STATE;
 }
 
-void arcan_event_analogall(bool enable, bool mouse)
+void platform_event_analogall(bool enable, bool mouse)
 {
 }
 
-void arcan_event_analogfilter(int devid,
+void platform_event_analogfilter(int devid,
 	int axisid, int lower_bound, int upper_bound, int deadzone,
 	int buffer_sz, enum ARCAN_ANALOGFILTER_KIND kind)
 {
@@ -267,68 +422,155 @@ const char* platform_video_capstr()
 	return "Video Platform (Arcan - in - Arcan)\n";
 }
 
-const char* arcan_event_devlabel(int devid)
+const char* platform_event_devlabel(int devid)
 {
 	return "no device";
 }
 
-void platform_event_process(arcan_evctx* ctx)
+/*
+ * Ignoring mapping the segment will mean that it will eventually timeout,
+ * either long (seconds+) or short (empty outevq and frames but no
+ * response).
+ */
+static void map_window(struct arcan_shmif_cont* seg, arcan_evctx* ctx,
+	int kind, const char* key)
 {
+	if (kind == SEGID_ENCODER){
+		arcan_warning("(FIXME) SEGID_ENCODER type not yet supported.\n");
+		return;
+	}
+
+	struct display* base = NULL;
+	size_t i = 0;
+
+	for (; i < MAX_DISPLAYS; i++)
+		if (disp[i].conn.addr == NULL){
+			base = disp + i;
+			break;
+		}
+
+	if (base == NULL){
+		arcan_warning("Hard-coded display-limit reached (%d), "
+			"ignoring new segment.\n", (int)MAX_DISPLAYS);
+		return;
+	}
+
+	base->conn = arcan_shmif_acquire(key, SEGID_LWA, SHMIF_DISABLE_GUARD);
+	arcan_event ev = {
+		.kind = EVENT_VIDEO_DISPLAY_ADDED,
+		.category = EVENT_VIDEO,
+		.data.video.source = i
+	};
+
+	arcan_event_enqueue(ctx, &ev);
+}
+
+/*
+ * return true if the segment has expired
+ */
+static bool event_process_disp(arcan_evctx* ctx, struct display* d)
+{
+	if (!d->conn.addr)
+		return true;
+
 	arcan_event ev;
 
-/*
- * Most events can just be added to the local queue,
- * but we want to handle some of the target commands separately
- * (with a special path to LUA and a different hook)
- */
-	while (1 == arcan_event_poll(&shms.inev, &ev))
+	while (1 == arcan_event_poll(&d->conn.inev, &ev))
 		if (ev.category == EVENT_TARGET)
 		switch(ev.kind){
+
 /*
- * Should write a way to serialize the state of the entire engine,
- * both as a quality indicator, a way to do live desktop migrations
+ * Currently, FD-transfer has no defined behavior for arcan LWA, one
+ * possibility -- is to use it to serialize lua contexts when we have
+ * lua-lanes, so that we can define computation in the parent, push it to
+ * this context and let it evaluate with access to graphics etc.
  */
 		case TARGET_COMMAND_FDTRANSFER:
-			arcan_warning("platform(arcan): fdtransfer not implemented\n");
-		break;
-
-		case TARGET_COMMAND_NEWSEGMENT:
-			arcan_warning("multi-window received\n");
 		break;
 
 /*
- * Should only do something if we've set the SKIPMODE to single stepping
+ * We use subsegments forced from the parent- side as an analog for
+ * hotplug displays, giving developers a testbed for a rather hard
+ * feature and at the same time get to evaluate the API.
+ */
+		case TARGET_COMMAND_NEWSEGMENT:
+			map_window(&d->conn, ctx, ev.data.target.ioevs[0].iv,
+				ev.data.target.message);
+		break;
+
+/*
+ * Depends on active synchronization strategy of course.
  */
 		case TARGET_COMMAND_STEPFRAME:
 		break;
 
-/*
- * We might have loading threads still going etc.
- */
 		case TARGET_COMMAND_PAUSE:
 		case TARGET_COMMAND_UNPAUSE:
 		break;
 
 /*
- * Could be used with the switch-theme functionality
+ * Could be used with the switch appl- feature.
  */
 		case TARGET_COMMAND_RESET:
 		break;
 
+/*
+ * The nodes have already been unlinked, so all cleanup
+ * can be made when the process dies.
+ */
 		case TARGET_COMMAND_EXIT:
-			ev.category = EVENT_SYSTEM;
-			ev.kind = EVENT_SYSTEM_EXIT;
-			arcan_event_enqueue(ctx, &ev);
+			if (d == &disp[0]){
+				ev.category = EVENT_SYSTEM;
+				ev.kind = EVENT_SYSTEM_EXIT;
+				arcan_event_enqueue(ctx, &ev);
+			}
+/* Need to explicitly drop single segment */
+			else {
+				arcan_event ev = {
+					.kind = EVENT_VIDEO_DISPLAY_REMOVED,
+					.category = EVENT_VIDEO,
+					.data.video.source = d - &disp[MAX_DISPLAYS-1]
+				};
+				arcan_event_enqueue(ctx, &ev);
+				free(d->conn.user);
+				arcan_shmif_drop(&d->conn);
+				if (d->vstore)
+					arcan_vint_drop_vstore(d->vstore);
 
-/* unlock no matter what so parent can't lock us out */
-			arcan_sem_post(shms.vsem);
+				memset(d, '\0', sizeof(struct display));
+			}
+			return true; /* it's not safe here */
 		break;
 		}
 		else
 			arcan_event_enqueue(ctx, &ev);
+
+	return false;
 }
 
-void arcan_event_rescan_idev(arcan_evctx* ctx)
+void platform_input_help()
+{
+}
+
+void platform_event_keyrepeat(arcan_evctx* ctx, unsigned rate)
+{
+/* in principle, we could use the tick, implied in _process,
+ * track the latest input event that corresponded to a translated
+ * keyboard device (track per devid) and emit that every oh so often */
+}
+
+void platform_event_process(arcan_evctx* ctx)
+{
+/*
+ * Most events can just be added to the local queue,
+ * but we want to handle some of the target commands separately
+ * (with a special path to LUA and a different hook)
+ */
+	for (size_t i = 0; i < MAX_DISPLAYS; i++)
+		event_process_disp(ctx, &disp[i]);
+}
+
+void platform_event_rescan_idev(arcan_evctx* ctx)
 {
 }
 

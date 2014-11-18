@@ -444,7 +444,8 @@ function mouse_input(x, y, state, noinp)
 
 		if (dx + dy > mstate.hover_thresh) then
 			for i,v in ipairs(mstate.hover_track) do
-				if (v.state:hover(v.vid, mstate.x, mstate.y, false)) then
+				if (v.state.hover and
+					v.state:hover(v.vid, mstate.x, mstate.y, false)) then
 					break;
 				end
 			end

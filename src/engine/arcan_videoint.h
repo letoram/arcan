@@ -345,6 +345,13 @@ void arcan_resolve_vidprop(arcan_vobject* vobj,
 arcan_vobject* arcan_video_getobject(arcan_vobj_id id);
 arcan_vobject* arcan_video_newvobject(arcan_vobj_id* id);
 
+/*
+ * agp_drop_vstore does not explicitly manage reference
+ * counting etc. that is up to the video layer,
+ * and should rarely be used directly
+ */
+void arcan_vint_drop_vstore(struct storage_info_t* s);
+
 arcan_errc arcan_video_attachobject(arcan_vobj_id id);
 arcan_errc arcan_video_deleteobject(arcan_vobj_id id);
 

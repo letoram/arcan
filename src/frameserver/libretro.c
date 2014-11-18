@@ -818,12 +818,10 @@ static bool libretro_setenv(unsigned cmd, void* data){
 		retroctx.optdirty = false;
 	break;
 
-/* unsure how we'll handle this when privsep is working,
- * possibly through chroot to garbage dir */
 	case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY:
 		sysdir = getenv("ARCAN_SYSTEMPATH");
 		if (!sysdir){
-			sysdir = "./resources/games/system";
+			sysdir = "./";
 		}
 
 /* some cores (mednafen-psx, ..) currently breaks on relative paths,
@@ -1219,7 +1217,7 @@ static inline void targetev(arcan_event* ev)
  * Win32 has a handle attribute that directly is set as the latest active FD,
  * for UNIX, we read it from the socket connection we have */
 		case TARGET_COMMAND_FDTRANSFER:
-			retroctx.last_fd = frameserver_readhandle( ev );
+			retroctx.last_fd = arcan_fetchhandle(retroctx.shmcont.dpipe);
 			LOG("descriptor transferred, %d\n", retroctx.last_fd);
 		break;
 
@@ -1640,14 +1638,15 @@ static void dump_help()
 /* map up a libretro compatible library resident at fullpath:game,
  * if resource is /info, no loading will occur but a dump of the capabilities
  * of the core will be sent to stdout. */
-void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
+void arcan_frameserver_libretro_run(
+	struct arcan_shmif_cont* cont, struct arg_arr* args)
 {
-	retroctx.converter   = (pixconv_fun) libretro_rgb1555_rgba;
-	retroctx.inargs      = arg_unpack(resource);
-	struct arg_arr* args = retroctx.inargs;
+	retroctx.converter = (pixconv_fun) libretro_rgb1555_rgba;
+	retroctx.inargs = args;
+	retroctx.shmcont = *cont;
 
-	const char* libname  = NULL;
-	const char* resname  = NULL;
+	const char* libname = NULL;
+	const char* resname = NULL;
 	const char* val;
 
 	if (arg_lookup(args, "core", 0, &val))
@@ -1656,7 +1655,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 	if (arg_lookup(args, "resource", 0, &val))
 		resname = strdup(val);
 
-	bool info_only = arg_lookup(args, "info", 0, NULL);
+	bool info_only = arg_lookup(args, "info", 0, NULL) || cont->addr == NULL;
 
 	if (!libname || *libname == 0){
 		LOG("error > No core specified.\n");
@@ -1672,25 +1671,11 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 	char logbuf[128] = {0};
 	size_t logbuf_sz = sizeof(logbuf);
 
-	if (!info_only)
-		retroctx.shmcont = arcan_shmif_acquire(keyfile,
-			SEGID_GAME, SHMIF_ACQUIRE_FATALFAIL);
+	resize_shmpage(320, 240, true);
 
-	struct arcan_shmif_page* shared = retroctx.shmcont.addr;
-
-	if (!shared){
-		if (!info_only){
-			LOG("fatal, couldn't map shared memory from (%s)\n", keyfile);
-			return;
-		}
-	}
- 	else {
-		resize_shmpage(320, 240, true);
-
-		if (snprintf(logbuf, logbuf_sz, "loading(%s)", libname) >= logbuf_sz)
-			logbuf[logbuf_sz-1] = '\0';
-		log_msg(logbuf, true);
-	}
+	if (snprintf(logbuf, logbuf_sz, "loading(%s)", libname) >= logbuf_sz)
+		logbuf[logbuf_sz-1] = '\0';
+	log_msg(logbuf, true);
 
 /* map up functions and test version */
 	if (!frameserver_loadlib(libname)){

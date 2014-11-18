@@ -68,21 +68,18 @@ struct arcan_frameserver* arcan_target_launch_internal(
 	struct arcan_strarr* libs
 );
 
-/*
- * Due to our explicit single-threaded polling access
- * to shared-memory based frameserver connections, we need
- * to explicitly track in order to recover from possible
- * DoS in truncate-on-fd situations.
- */
-int arcan_frameserver_enter(struct arcan_frameserver*);
-void arcan_frameserver_leave();
-
 void arcan_timesleep(unsigned long);
 file_handle arcan_fetchhandle(int insock);
 bool arcan_pushhandle(file_handle in, int channel);
 
-bool arcan_isdir(const char* path);
-bool arcan_isfile(const char* path);
+bool arcan_isfile(const char*);
+bool arcan_isdir(const char*);
+
+/*
+ * get a NULL terminated list of input- platform
+ * specific environment options
+ */
+const char** platform_input_envopts();
 
 /*
  * implemented in <platform>/warning.c
@@ -91,4 +88,71 @@ bool arcan_isfile(const char* path);
  */
 void arcan_warning(const char* msg, ...);
 void arcan_fatal(const char* msg, ...);
+
+enum ARCAN_ANALOGFILTER_KIND {
+	ARCAN_ANALOGFILTER_NONE = 0,
+	ARCAN_ANALOGFILTER_PASS = 1,
+	ARCAN_ANALOGFILTER_AVG  = 2,
+ 	ARCAN_ANALOGFILTER_ALAST = 3
+};
+
+/*
+ * Update/get the active filter setting for the specific
+ * devid / axis (-1 for all) lower_bound / upper_bound sets the
+ * [lower < n < upper] where only n values are passed into the filter core
+ * (and later on, possibly as events)
+ *
+ * Buffer_sz is treated as a hint of how many samples in should be considered
+ * before emitting a sample out.
+ *
+ * The implementation is left to the respective platform/input code to handle.
+ */
+void platform_event_analogfilter(int devid,
+	int axisid, int lower_bound, int upper_bound, int deadzone,
+	int buffer_sz, enum ARCAN_ANALOGFILTER_KIND kind);
+
+arcan_errc platform_event_analogstate(int devid, int axisid,
+	int* lower_bound, int* upper_bound, int* deadzone,
+	int* kernel_size, enum ARCAN_ANALOGFILTER_KIND* mode);
+
+/* look for new joystick / analog devices */
+struct arcan_evctx;
+
+/*
+ * poll / flush all incoming platform input event into
+ * specified context.
+ */
+void platform_event_process(struct arcan_evctx* ctx);
+
+/*
+ * slated for refactor deprecation when we have a better
+ * shared synch/polling section for hotplug- kind of
+ * events.
+ */
+void platform_event_rescan_idev(struct arcan_evctx* ctx);
+
+void platform_event_keyrepeat(struct arcan_evctx*, unsigned rate);
+
+const char* platform_event_devlabel(int devid);
+
+/*
+ * Quick-helper to toggle all analog device samples on / off
+ * If mouse is set the action will also be toggled on mouse x / y
+ * This will keep track of the old state, but repeating the same
+ * toggle will flush state memory. All devices (except mouse) start
+ * in off mode.
+ */
+void platform_event_analogall(bool enable, bool mouse);
+
+/*
+ * Set A/D mappings, when the specific dev/axis enter or exit
+ * the set interval, a digital press/release event with the
+ * set subid will be emitted. This is intended for analog sticks/buttons,
+ * not touch- class displays that need a more refined classification/
+ * remapping system.
+ *
+ * The implementation is left to the respective platform/input code to handle.
+ */
+void platform_event_analoginterval(int devid, int axisid,
+	int enter, int exit, int subid);
 #endif

@@ -131,6 +131,13 @@ bool platform_video_init(uint16_t w, uint16_t h,
 const char** platform_video_synchopts();
 
 /*
+ * get a (NULL terminated) array of environment options that can be
+ * set during the command line, this is primarily used to populate
+ * command-line help.
+ */
+const char** platform_video_envopts();
+
+/*
  * The AGP layer may need to dynamically map symbols against
  * whatever graphics library is in play but the video layer is
  * typically the one capable of determining how
@@ -163,24 +170,54 @@ const char* platform_video_capstr();
 typedef uint32_t platform_display_id;
 typedef uint32_t platform_mode_id;
 
-struct monitor_modes {
+struct monitor_mode {
 	platform_mode_id id;
-	uint16_t width;
-	uint16_t height;
-	uint8_t refresh;
+
+/* scanout resolution */
+	size_t width;
+	size_t height;
+
+/* in millimeters */
+	size_t phy_width;
+	size_t phy_height;
+
+/* esetimated output color depth */
 	uint8_t depth;
+
+/* estimated display vertical refresh, can be 0
+ * to indicate a dynamic or unknown rate --
+ * primarily a hint to the synchronization strategy */
+	uint8_t refresh;
+
+/* Description regarding subpixel orientation,
+ * e.g. hRGB or vGRB etc. */
+	const char* subpixel;
+
+/* There should only be one primary mode per display */
+	bool primary;
+
+/* If the display supports user- specified mode configurations via
+ * the _specify_mode option, this will be true */
+	bool dynamic;
 };
 
 /*
- * get list of available display IDs, these can then be queried for
+ * Get list of available display IDs, these can then be queried for
  * currently available modes (which is subject to change based on
  * what connectors a user inserts / removes.
  */
 platform_display_id* platform_video_query_displays(size_t* count);
-struct monitor_modes* platform_video_query_modes(platform_display_id,
+struct monitor_mode* platform_video_query_modes(platform_display_id,
 	size_t* count);
 
 bool platform_video_set_mode(platform_display_id, platform_mode_id mode_id);
+
+/*
+ * Update and activate the specific (dynamic) mode with new mode options,
+ * fails if the display does not support dynamic mapping.
+ */
+bool platform_video_specify_mode(platform_display_id,
+	platform_mode_id mode_id, struct monitor_mode mode);
 
 /*
  * map a video object to the output display,
@@ -192,7 +229,17 @@ bool platform_video_set_mode(platform_display_id, platform_mode_id mode_id);
  * The object referenced by ID is not allowed to have a ffunc associated
  * with it, this in order for the platform to be notified when it is removed.
  */
-bool platform_video_map_display(arcan_vobj_id id, platform_display_id disp);
+enum blitting_hint {
+	HINT_NONE,
+	HINT_FIT,
+	HINT_CROP,
+	HINT_ROTATE_CW_90,
+	HINT_ROTATE_CCW_90,
+	HINT_ENDM
+};
+
+bool platform_video_map_display(arcan_vobj_id id,
+	platform_display_id disp, enum blitting_hint);
 
 void platform_video_shutdown();
 
@@ -249,6 +296,11 @@ enum SHADER_TYPES {
 };
 arcan_shader_id agp_default_shader(enum SHADER_TYPES);
 void agp_shader_source(enum SHADER_TYPES, const char**, const char**);
+
+/*
+ * return a NULL terminated list of supported environment variables
+ */
+const char** agp_envopts();
 
 /*
  * Identification string for the shader language supported,

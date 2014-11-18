@@ -23,15 +23,15 @@ int main(int argc, char** argv)
 
 	uint8_t step_r = 0;
 	uint8_t step_g = 0;
-	uint8_t step_b = 0;
+	uint8_t step_b = 255;
 
 	while(running){
 	for (size_t row = 0; row < cont.addr->h; row++)
 		for (size_t col = 0; col < cont.addr->w; col++)
 			cont.vidp[ row * cont.addr->w + col ] = RGBA(step_r, step_g, step_b, 0xff);
-			step_b++;
-			step_g += step_b == 255;
-			step_r += step_r == 255;
+			step_r++;
+			step_g += step_r == 255;
+			step_b += step_g == 255;
 
 		arcan_shmif_signal(&cont, SHMIF_SIGVID);
 

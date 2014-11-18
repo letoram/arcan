@@ -43,6 +43,15 @@ const char* arcan_event_devlabel(int devid)
 	return NULL;
 }
 
+static char* envopts[] = {
+	NULL
+};
+
+const char** platform_input_envopts()
+{
+	return (const char**) envopts;
+}
+
 void platform_event_deinit(arcan_evctx* ctx)
 {
 }

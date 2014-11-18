@@ -627,7 +627,7 @@ if (ENABLE_NET)
 		frameserver/graphing/rwstat.c
 		frameserver/graphing/rwstat.h
 		frameserver/net.h
-		frameserver/net.c
+		frameserver/net_srv.c
 		frameserver/net_cl.c
 		frameserver/net_shared.h
 		frameserver/net_shared.c
@@ -889,27 +889,27 @@ endif()
 #
 install(TARGETS arcan_frameserver ${FSRV_TARGETS} DESTINATION ${BIN_DST})
 install(TARGETS arcan DESTINATION ${BIN_DST})
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/appl/
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/../data/appl/
 	DESTINATION ${APPL_DST}
 	DIRECTORY_PERMISSIONS ${SHARED_PERMISSONS_DIR}
 	FILE_PERMISSIONS ${SHARED_PERMISSIONS}
 	PATTERN ".gitignore" EXCLUDE)
 
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/examples/
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/../examples/
 	DESTINATION ${APPL_DST}
 	DIRECTORY_PERMISSIONS ${SHARED_PERMISSIONS_DIR}
 	FILE_PERMISSIONS ${SHARED_PERMISSIONS}
 	PATTERN ".gitignore" EXCLUDE)
 
 if (TEST_DST)
-	install(DIRECTORY ${CMAKE_SOURCE_DIR}/tests/
+	install(DIRECTORY ${CMAKE_SOURCE_DIR}/../tests/
 		DESTINATION ${TEST_DST}
 		DIRECTORY_PERMISSIONS ${SHARED_PERMISSIONS_DIR}
 		FILE_PERMISSIONS ${SHARED_PERMISSIONS}
 		PATTERN ".gitignore" EXCLUDE)
 endif (TEST_DST)
 
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/resources/
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/../data/resources/
 				DESTINATION ${RESOURCES_DST}
 				DIRECTORY_PERMISSIONS ${SHARED_PERMISSONS_DIR}
 				FILE_PERMISSIONS ${SHARED_PERMISSIONS}

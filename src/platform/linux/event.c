@@ -47,6 +47,10 @@
 
 #include <sys/inotify.h>
 
+static const char* envopts[] = {
+	"ARCAN_INPUT_MUTETTY", "Define to disable local tty echo",
+	NULL
+};
 
 /*
  * prever scanning device nodes as sysfs/procfs
@@ -331,7 +335,7 @@ static struct axis_opts* find_axis(int devid, unsigned axisid)
 	return NULL;
 }
 
-arcan_errc arcan_event_analogstate(int devid, int axisid,
+arcan_errc platform_event_analogstate(int devid, int axisid,
 	int* lower_bound, int* upper_bound, int* deadzone,
 	int* kernel_size, enum ARCAN_ANALOGFILTER_KIND* mode)
 {
@@ -351,7 +355,7 @@ arcan_errc arcan_event_analogstate(int devid, int axisid,
 	return ARCAN_OK;
 }
 
-void arcan_event_analogall(bool enable, bool mouse)
+void platform_event_analogall(bool enable, bool mouse)
 {
 	struct arcan_devnode* node = lookup_devnode(iodev.mouseid);
 	if (!node)
@@ -364,7 +368,7 @@ void arcan_event_analogall(bool enable, bool mouse)
  */
 }
 
-void arcan_event_analogfilter(int devid,
+void platform_event_analogfilter(int devid,
 	int axisid, int lower_bound, int upper_bound, int deadzone,
 	int buffer_sz, enum ARCAN_ANALOGFILTER_KIND kind)
 {
@@ -433,7 +437,7 @@ void platform_event_process(struct arcan_evctx* ctx)
 /*
  * poll all open FDs
  */
-void platform_key_repeat(struct arcan_evctx* ctx, unsigned int rate)
+void platform_event_keyrepeat(struct arcan_evctx* ctx, unsigned int rate)
 {
 	for (size_t i = 0; i < iodev.n_devs; i++)
 		if (iodev.nodes[i].type == DEVNODE_KEYBOARD){
@@ -682,7 +686,7 @@ cleanup:
 #undef bit_longn
 #undef bit_count
 
-void arcan_event_rescan_idev(struct arcan_evctx* ctx)
+void platform_event_rescan_idev(struct arcan_evctx* ctx)
 {
 /* option is to add more namespaces here and have a
  * unique got_device for each of them to handle specific
@@ -1044,7 +1048,7 @@ static void defhandler_null(struct arcan_evctx* out,
 		return disconnect(node);
 }
 
-const char* arcan_event_devlabel(int devid)
+const char* platform_event_devlabel(int devid)
 {
 	if (devid == -1)
 		return "mouse";
@@ -1056,15 +1060,18 @@ const char* arcan_event_devlabel(int devid)
 		"no identifier" : iodev.nodes[devid].label;
 }
 
-/* static int linux_platform_kmode; */
+/* ajax @ xorg-dev ml, [PATCH] linux: Prefer ioctl(KDSKBMUTE), ... */
+#ifndef KDSKBMUTE
+#define KDSKBMUTE 0x4B51
+#endif
+
+ static int linux_platform_kmode;
 void platform_event_deinit(struct arcan_evctx* ctx)
 {
-/*
- * #ifdef KDSKBMUTE
-			ioctl(STDIN_FILENO, KDGSKBMUTE, 0) &&
-#endif
-			ioctl(STDIN_FILENO, KDGKBMODE, linux_platform_kmode);
-*/
+	if (getenv("ARCAN_INPUT_MUTETTY")){
+		ioctl(STDIN_FILENO, KDSKBMUTE, 0);
+		ioctl(STDIN_FILENO, KDSKBMODE, &linux_platform_kmode);
+	}
 
 	/*
 	 * kill descriptors and pollset
@@ -1089,24 +1096,21 @@ void platform_device_lock(int devind, bool state)
  */
 }
 
+const char** platform_input_envopts()
+{
+	return (const char**) envopts;
+}
+
 void platform_event_init(arcan_evctx* ctx)
 {
 	notify_fd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
 	init_keyblut();
 
-/*
- * if (ioctl(STDIN_FILENO, KDGKBMODE, &linux_platform_kmode) ){
-		arcan_warning("(linux-platform) couldn't get keyboard mode\n");
+	if (getenv("ARCAN_INPUT_MUTETTY")){
+		ioctl(STDIN_FILENO, KDGKBMODE, &linux_platform_kmode);
+		ioctl(STDIN_FILENO, KDSKBMUTE, 1);
+		ioctl(STDIN_FILENO, KDSKBMODE, K_OFF);
 	}
-	else
-		if (
-#ifdef KDSKBMUTE
-ioctl(STDIN_FILENO, KDGSKBMUTE, 1) &&
-#endif
-			ioctl(STDIN_FILENO, KDSKBMODE, K_OFF)){
-		arcan_warning("(linux-platform) couldn't mute keyboard\n");
-	}
-  */
 
 	if (-1 == notify_fd || inotify_add_watch(
 		notify_fd, NOTIFY_SCAN_DIR, IN_CREATE) == -1){
@@ -1119,6 +1123,6 @@ ioctl(STDIN_FILENO, KDGSKBMUTE, 1) &&
 		}
 	}
 
-	arcan_event_rescan_idev(ctx);
+	platform_event_rescan_idev(ctx);
 }
 

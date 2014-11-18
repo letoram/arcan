@@ -837,7 +837,7 @@ static int loadimage(lua_State* ctx)
 
 static int loadimageasynch(lua_State* ctx)
 {
-	LUA_TRACE("load_image");
+	LUA_TRACE("load_image_asynch");
 
 	arcan_vobj_id id = ARCAN_EID;
 	intptr_t ref = 0;
@@ -2426,12 +2426,12 @@ static int targetinput(lua_State* ctx)
 		if (intblbool(ctx, tblind, "translated")){
 			ev.data.io.datatype = EVENT_IDATATYPE_TRANSLATED;
 			ev.data.io.devkind  = EVENT_IDEVKIND_KEYBOARD;
-			ev.data.io.input.translated.active    = intblbool(ctx, tblind, "active");
-			ev.data.io.input.translated.scancode  = intblnum(ctx, tblind, "number");
-			ev.data.io.input.translated.keysym    = intblnum(ctx, tblind, "keysym");
-			ev.data.io.input.translated.modifiers = intblnum(ctx, tblind, "modifiers");
-			ev.data.io.input.translated.devid     = intblnum(ctx, tblind, "devid");
-			ev.data.io.input.translated.subid     = intblnum(ctx, tblind, "subid");
+			ev.data.io.input.translated.active = intblbool(ctx, tblind, "active");
+			ev.data.io.input.translated.scancode = intblnum(ctx, tblind, "number");
+			ev.data.io.input.translated.keysym = intblnum(ctx, tblind, "keysym");
+			ev.data.io.input.translated.modifiers = intblnum(ctx, tblind,"modifiers");
+			ev.data.io.input.translated.devid = intblnum(ctx, tblind, "devid");
+			ev.data.io.input.translated.subid = intblnum(ctx, tblind, "subid");
 		}
 		else {
 			const char* tblsrc = intblstr(ctx, tblind, "source");
@@ -2549,11 +2549,104 @@ static char* streamtype(int num)
 }
 
 /*
+ * assumes there's a table at the current top of the stack,
+ * grab all the display modes available for a specific display
+ * and add it to that table. Used by event handler for dynamic
+ * display events and for video_displaymodes.
+ */
+static void push_displaymodes(lua_State* ctx, platform_display_id id)
+{
+	int dtop = lua_gettop(ctx);
+	size_t mcount;
+	struct monitor_mode* modes = platform_video_query_modes(id, &mcount);
+
+	for (size_t j = 0; j < mcount; j++){
+		lua_pushnumber(ctx, j + 1); /* index in previously existing table */
+		lua_newtable(ctx);
+
+		int jtop = lua_gettop(ctx);
+
+		lua_pushstring(ctx, "cardid");
+		lua_pushnumber(ctx, 0);
+		lua_rawset(ctx, jtop);
+
+		lua_pushstring(ctx, "displayid");
+		lua_pushnumber(ctx, id);
+		lua_rawset(ctx, jtop);
+
+		lua_pushstring(ctx, "phy_width_mm");
+		lua_pushnumber(ctx, modes[j].phy_width);
+		lua_rawset(ctx, jtop);
+
+		lua_pushstring(ctx, "phy_height_mm");
+		lua_pushnumber(ctx, modes[j].phy_height);
+		lua_rawset(ctx, jtop);
+
+		lua_pushstring(ctx, "subpixel_layout");
+		lua_pushstring(ctx, modes[j].subpixel ? modes[j].subpixel : "unknown");
+
+		lua_pushstring(ctx, "dynamic");
+		lua_pushboolean(ctx, modes[j].dynamic);
+		lua_rawset(ctx, jtop);
+
+		lua_pushstring(ctx, "primary");
+		lua_pushboolean(ctx, modes[j].primary);
+		lua_rawset(ctx, jtop);
+
+		lua_pushstring(ctx, "moderef");
+		lua_pushnumber(ctx, modes[j].id);
+		lua_rawset(ctx, jtop);
+
+		lua_pushstring(ctx, "width");
+		lua_pushnumber(ctx, modes[j].width);
+		lua_rawset(ctx, jtop);
+
+		lua_pushstring(ctx, "height");
+		lua_pushnumber(ctx, modes[j].height);
+		lua_rawset(ctx, jtop);
+
+		lua_pushstring(ctx, "refresh");
+		lua_pushnumber(ctx, modes[j].refresh);
+		lua_rawset(ctx, jtop);
+
+		lua_pushstring(ctx, "depth");
+		lua_pushnumber(ctx, modes[j].depth);
+		lua_rawset(ctx, jtop);
+
+		lua_rawset(ctx, dtop); /* add to previously existing table */
+	}
+}
+
+static void display_added(lua_State* ctx, platform_display_id id)
+{
+	if (!grabapplfunction(ctx, "display_state", sizeof("display_state")-1))
+		return;
+
+	lua_pushstring(ctx, "added");
+
+	lua_newtable(ctx);
+	push_displaymodes(ctx, id);
+
+	wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: display state");
+}
+
+static void display_removed(lua_State* ctx, platform_display_id id)
+{
+	if (!grabapplfunction(ctx, "display_state", sizeof("display_state")-1))
+		return;
+
+	lua_pushstring(ctx, "removed");
+
+	lua_pushnumber(ctx, id);
+	wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: display state");
+}
+
+/*
  * emit input() call based on a arcan_event, uses a separate format
  * and translation to make it easier for the user to modify. This
  * is a rather ugly and costly step in the whole chain,
  * planned to switch into a more optimized less string- damaged
- * approach around the hardening stage in the shmif- refactor.
+ * approach around the hardening stage.
  */
 void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 {
@@ -2929,6 +3022,16 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		lua_ctx_store.cb_source_kind = CB_SOURCE_NONE;
 	}
 	else if (ev->category == EVENT_VIDEO){
+
+		if (ev->kind == EVENT_VIDEO_DISPLAY_ADDED){
+			display_added(ctx, ev->data.video.source);
+			return;
+		}
+		else if (ev->kind == EVENT_VIDEO_DISPLAY_REMOVED){
+			display_removed(ctx, ev->data.video.source);
+			return;
+		}
+
 		intptr_t dst_cb = 0;
 		arcan_vobject* srcobj;
 		const char* evmsg = "video_event";
@@ -2942,7 +3045,10 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		int top = lua_gettop(ctx);
 
 		switch (ev->kind) {
-		case EVENT_VIDEO_EXPIRE : break;
+		case EVENT_VIDEO_EXPIRE :
+/* not even likely that these get forwarded here */
+		break;
+
 		case EVENT_VIDEO_ASYNCHIMAGE_LOADED:
 			evmsg = "video_event(asynchimg_loaded)";
 			tblstr(ctx, "kind", "loaded", top);
@@ -3614,7 +3720,7 @@ static int kbdrepeat(lua_State* ctx)
 	LUA_TRACE("kbd_repeat");
 
 	unsigned rrate = luaL_checknumber(ctx, 1);
-	arcan_event_keyrepeat(arcan_event_defaultctx(), rrate);
+	platform_event_keyrepeat(arcan_event_defaultctx(), rrate);
 	return 0;
 }
 
@@ -3664,48 +3770,13 @@ static int videodisplay(lua_State* ctx)
 	size_t count;
 	platform_display_id* disps = platform_video_query_displays(&count);
 
-	lua_newtable(ctx);
-	int dtop = lua_gettop(ctx);
-
 	for (size_t i = 0; i < count; i++){
-		size_t mcount;
-		struct monitor_modes* modes = platform_video_query_modes(disps[i], &mcount);
+		int top = lua_gettop(ctx);
 
-		for (size_t j = 0; j < mcount; j++){
-			lua_pushnumber(ctx, i + 1);
-			lua_newtable(ctx);
-			int jtop = lua_gettop(ctx);
-
-			lua_pushstring(ctx, "cardid");
-			lua_pushnumber(ctx, 0);
-			lua_rawset(ctx, jtop);
-
-			lua_pushstring(ctx, "displayid");
-			lua_pushnumber(ctx, disps[i]);
-			lua_rawset(ctx, jtop);
-
-			lua_pushstring(ctx, "moderef");
-			lua_pushnumber(ctx, modes[j].id);
-			lua_rawset(ctx, jtop);
-
-			lua_pushstring(ctx, "width");
-			lua_pushnumber(ctx, modes[j].width);
-			lua_rawset(ctx, jtop);
-
-			lua_pushstring(ctx, "height");
-			lua_pushnumber(ctx, modes[j].height);
-			lua_rawset(ctx, jtop);
-
-			lua_pushstring(ctx, "refresh");
-			lua_pushnumber(ctx, modes[j].refresh);
-			lua_rawset(ctx, jtop);
-
-			lua_pushstring(ctx, "depth");
-			lua_pushnumber(ctx, modes[j].depth);
-			lua_rawset(ctx, jtop);
-
-			lua_rawset(ctx, dtop);
-		}
+		lua_pushnumber(ctx, i);
+		lua_newtable(ctx);
+		push_displaymodes(ctx, disps[i]);
+		lua_rawset(ctx, top);
 	}
 
 	return 1;
@@ -3717,18 +3788,27 @@ static int videomapping(lua_State* ctx)
 
 	arcan_vobj_id vid = luavid_tovid( luaL_checknumber(ctx, 1) );
 	platform_display_id id = luaL_checknumber(ctx, 2);
+	enum blitting_hint hint = luaL_optnumber(ctx, 3, HINT_NONE);
+
+	if (hint < HINT_NONE || hint >= HINT_ENDM){
+		arcan_fatal("map_video_display(), invalid blitting "
+			"hint specified (%d)\n", (int) hint);
+	}
 
 	if (vid != ARCAN_VIDEO_WORLDID && vid != ARCAN_EID){
 		arcan_vobject* vobj = arcan_video_getobject(vid);
 		if (!vobj)
 			arcan_fatal("map_video_display(), invalid vid "
 				"requested %"PRIxVOBJ" \n", vid);
-		if (vobj->feed.ffunc)
-			arcan_fatal("map_video_display(), display-mapped vobj "
-				"cannot be connected to a dynamic handler");
+
+		if (vobj->vstore->txmapped != TXSTATE_TEX2D){
+			arcan_warning("map_video_display(), associated "
+				"video object has an invalid backing store (font, color, ...)\n");
+			return 0;
+		}
 	}
 
-	lua_pushboolean(ctx, platform_video_map_display(id, vid));
+	lua_pushboolean(ctx, platform_video_map_display(vid, id, hint));
 
 	return 0;
 }
@@ -6291,7 +6371,7 @@ static int inputfilteranalog(lua_State* ctx)
 	else
 		arcan_warning("inputfilteranalog(), unsupported mode (%s)\n", smode);
 
-	arcan_event_analogfilter(joyid, axisid,
+	platform_event_analogfilter(joyid, axisid,
 		lb, ub, deadzone, buffer_sz, mode);
 
 	return 0;
@@ -6321,16 +6401,16 @@ static int singlequery(lua_State* ctx, int devid, int axid)
 	int lbound, ubound, dz, ksz;
 	enum ARCAN_ANALOGFILTER_KIND mode;
 
-	arcan_errc errc = arcan_event_analogstate(devid, axid,
+	arcan_errc errc = platform_event_analogstate(devid, axid,
 		&lbound, &ubound, &dz, &ksz, &mode);
 
 	if (errc != ARCAN_OK){
-		const char* lbl = arcan_event_devlabel(devid);
+		const char* lbl = platform_event_devlabel(devid);
 
 		if (lbl != NULL){
 			lua_newtable(ctx);
 			int ttop = lua_gettop(ctx);
-			tblstr(ctx, "label", arcan_event_devlabel(devid), ttop);
+			tblstr(ctx, "label", platform_event_devlabel(devid), ttop);
 			tblnum(ctx, "devid", devid, ttop);
 			return 1;
 		}
@@ -6342,7 +6422,7 @@ static int singlequery(lua_State* ctx, int devid, int axid)
 	int ttop = lua_gettop(ctx);
 	tblnum(ctx, "devid", devid, ttop);
 	tblnum(ctx, "subid", axid, ttop);
-	tblstr(ctx, "label", arcan_event_devlabel(devid), ttop);
+	tblstr(ctx, "label", platform_event_devlabel(devid), ttop);
 	tblnum(ctx, "upper_bound", ubound, ttop);
 	tblnum(ctx, "lower_bound", lbound, ttop);
 	tblnum(ctx, "deadzone", dz, ttop);
@@ -6362,7 +6442,7 @@ static int inputanalogquery(lua_State* ctx)
 	bool rescan = luaL_optnumber(ctx, 3, 0) != 0;
 
  	if (rescan)
-		arcan_event_rescan_idev(arcan_event_defaultctx());
+		platform_event_rescan_idev(arcan_event_defaultctx());
 
 	if (devnum != -1)
 		return singlequery(ctx, devnum, axnum);
@@ -6377,7 +6457,7 @@ static int inputanalogquery(lua_State* ctx)
 			int lbound, ubound, dz, ksz;
 			enum ARCAN_ANALOGFILTER_KIND mode;
 
-			errc = arcan_event_analogstate(devid, axid,
+			errc = platform_event_analogstate(devid, axid,
 				&lbound, &ubound, &dz, &ksz, &mode);
 
 			if (errc != ARCAN_OK)
@@ -6390,7 +6470,7 @@ static int inputanalogquery(lua_State* ctx)
 
 			tblnum(ctx, "devid", devid, ttop);
 			tblnum(ctx, "subid", axid, ttop);
-			tblstr(ctx, "label", arcan_event_devlabel(devid), ttop);
+			tblstr(ctx, "label", platform_event_devlabel(devid), ttop);
 			tblnum(ctx, "upper_bound", ubound, ttop);
 			tblnum(ctx, "lower_bound", lbound, ttop);
 			tblnum(ctx, "deadzone", dz, ttop);
@@ -6414,7 +6494,7 @@ static int inputanalogtoggle(lua_State* ctx)
 	bool val = lua_tonumber(ctx, 1) != 0;
 	bool mouse = luaL_optnumber(ctx, 2, 0) != 0;
 
-	arcan_event_analogall(val, mouse);
+	platform_event_analogall(val, mouse);
 	return 0;
 }
 
@@ -7320,6 +7400,11 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"API_VERSION_MINOR", 8},
 {"LAUNCH_EXTERNAL", 0},
 {"LAUNCH_INTERNAL", 1},
+{"HINT_NONE", HINT_NONE},
+{"HINT_FIT", HINT_FIT},
+{"HINT_CROP", HINT_CROP},
+{"HINT_ROTATE_CW_90", HINT_ROTATE_CW_90},
+{"HINT_ROTATE_CCW_90", HINT_ROTATE_CCW_90},
 {"MASK_LIVING", MASK_LIVING},
 {"MASK_ORIENTATION", MASK_ORIENTATION},
 {"MASK_OPACITY", MASK_OPACITY},
@@ -7841,7 +7926,7 @@ ctx.tickstamp = %lld;\n",
 );
 
 		for (size_t i = 0; i < ctx->vitem_limit; i++){
-			if (FL_TEST(&(ctx->vitems_pool[i]), FL_INUSE))
+			if (!FL_TEST(&(ctx->vitems_pool[i]), FL_INUSE))
 				continue;
 
 			dump_vobject(dst, ctx->vitems_pool + i);

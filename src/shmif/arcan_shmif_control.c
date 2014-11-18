@@ -23,11 +23,10 @@
 #include "arcan_shmif.h"
 /*
  * The windows implementation here is rather broken in several ways:
- * 1. non-authoritative connections not accepted (and not planned)
+ * 1. non-authoritative connections not accepted
  * 2. multiple- segments failed due to the hackish way that
  *    semaphores and shared memory handles are passed
  * 3. split- mode not implemented
- *
  */
 #if _WIN32
 #define sleep(n) Sleep(1000 * n)
@@ -51,7 +50,7 @@ extern HANDLE parent;
  * Sleep a fixed amount of seconds, wake up and check if parent is alive.
  * If that's true, go back to sleep -- otherwise -- wake up, pop open
  * all semaphores set the disengage flag and go back to a longer sleep
- * that it shouldn't wake up from. Show this sleep be engaged anyhow,
+ * that it shouldn't wake up from. Should this sleep be engaged anyhow,
  * shut down forcefully.
  */
 
@@ -152,7 +151,7 @@ static void map_shared(const char* shmkey,
 }
 
 /*
- * No implementation on windows currently (or planned)
+ * No implementation on windows currently
  */
 char* arcan_shmif_connect(const char* connpath, const char* connkey)
 {
@@ -219,7 +218,8 @@ static void map_shared(const char* shmkey, char force_unlink,
 	}
 }
 
-char* arcan_shmif_connect(const char* connpath, const char* connkey)
+char* arcan_shmif_connect(const char* connpath, const char* connkey,
+	file_handle* conn_ch)
 {
 	if (!connpath){
 		LOG("arcan_shmif_connect(), missing connpath, giving up.\n");
@@ -325,11 +325,11 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey)
 	while(wbuf[ofs++] != '\n' && ofs < PP_SHMPAGE_SHMKEYLIM);
 	wbuf[ofs-1] = '\0';
 
-/* 4. omitted, just return a copy of the key and let someone else
+/* 4. omitted, just return a copy of the key and let someoneddelse
  * perform the arcan_shmif_acquire call. Just set the env. */
 	res = strdup(wbuf);
-	snprintf(wbuf, PP_SHMPAGE_SHMKEYLIM, "%d", sock);
-	setenv("ARCAN_SOCKIN_FD", wbuf, true);
+
+	*conn_ch = sock;
 
 end:
 	free(workbuf);
@@ -501,11 +501,13 @@ void arcan_shmif_setevqs(struct arcan_shmif_page* dst,
 void arcan_shmif_signal(struct arcan_shmif_cont* ctx, int mask)
 {
 	struct shmif_hidden* priv = ctx->priv;
+	if (!ctx->addr->dms)
+		return;
 
-	if (mask == SHMIF_SIGVID && priv->video_hook)
+	if ( (mask & SHMIF_SIGVID) && priv->video_hook)
 		mask = priv->video_hook(ctx);
 
-	if (mask == SHMIF_SIGAUD && priv->audio_hook)
+	if ( (mask & SHMIF_SIGAUD) && priv->audio_hook)
 		mask = priv->audio_hook(ctx);
 
 	if (priv->output){
@@ -514,15 +516,15 @@ void arcan_shmif_signal(struct arcan_shmif_cont* ctx, int mask)
 		return;
 	}
 
-	if (mask == SHMIF_SIGVID){
+	if ( (mask & SHMIF_SIGVID) && !(mask & SHMIF_SIGAUD)){
 		ctx->addr->vready = true;
 		arcan_sem_wait(ctx->vsem);
 	}
-	else if (mask == SHMIF_SIGAUD){
+	else if ( (mask & SHMIF_SIGAUD) && !(mask & SHMIF_SIGVID)){
 		ctx->addr->aready = true;
 		arcan_sem_wait(ctx->asem);
 	}
-	else if (mask == (SHMIF_SIGVID | SHMIF_SIGAUD)){
+	else if (mask & (SHMIF_SIGVID | SHMIF_SIGAUD)){
 		ctx->addr->vready = true;
     if (ctx->addr->abufused > 0){
 			ctx->addr->aready = true;
@@ -530,7 +532,8 @@ void arcan_shmif_signal(struct arcan_shmif_cont* ctx, int mask)
     }
 		arcan_sem_wait(ctx->vsem);
 	}
-	else {}
+	else
+		;
 }
 
 void arcan_shmif_forceofs(struct arcan_shmif_page* shmp,
@@ -825,18 +828,22 @@ struct arcan_shmif_cont arcan_shmif_open(
 	enum ARCAN_SEGID type, enum SHMIF_FLAGS flags, struct arg_arr** outarg)
 {
 	struct arcan_shmif_cont ret = {0};
+	file_handle dpipe;
 
 	char* resource = getenv("ARCAN_ARG");
 	char* keyfile = NULL;
 
-	if (getenv("ARCAN_CONNPATH")){
+	if (getenv("ARCAN_SHMKEY") && getenv("ARCAN_SOCKIN_FD")){
+		keyfile = getenv("ARCAN_SHMKEY");
+		dpipe = (int) strtol(getenv("ARCAN_SOCKIN_FD"), NULL, 10);
+	}
+	else if (getenv("ARCAN_CONNPATH")){
 		keyfile = arcan_shmif_connect(
-			getenv("ARCAN_CONNPATH"), getenv("ARCAN_CONNKEY"));
+			getenv("ARCAN_CONNPATH"), getenv("ARCAN_CONNKEY"), &dpipe);
 	}
 	else {
 		LOG("No arcan-shmif connection, check ARCAN_CONNPATH environment.\n\n");
 		goto fail;
-
 	}
 
 	if (!keyfile){
@@ -850,6 +857,7 @@ struct arcan_shmif_cont arcan_shmif_open(
 	else
 		*outarg = NULL;
 
+	ret.dpipe = dpipe;
 	return ret;
 
 fail:

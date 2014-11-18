@@ -688,19 +688,16 @@ static bool setup_ffmpeg_encode(struct arg_arr* args, int desw, int desh)
 	return true;
 }
 
-void arcan_frameserver_encode_run(const char* resource,
-	const char* keyfile)
+int arcan_frameserver_encode_run(
+	struct arcan_shmif_cont* cont,
+	struct arg_arr* args)
 {
-	struct arg_arr* args = arg_unpack(resource);
 	if (!args){
-		LOG("(encode) Couldn't parse arguments: \"%s\"\n", resource);
-		return;
+		LOG("(encode) Couldn't parse argstr (see ARCAN_ARG env)\n");
+		return EXIT_FAILURE;
 	}
 
-/* setup shmpage etc.
- * resolution etc. is already defined in the parent */
-	recctx.shmcont = arcan_shmif_acquire(keyfile, SEGID_ENCODER,
-		SHMIF_ACQUIRE_FATALFAIL);
+	recctx.shmcont = *cont;
 
 	const char* argval;
 	if (arg_lookup(args, "protocol", 0, &argval)){
@@ -708,12 +705,12 @@ void arcan_frameserver_encode_run(const char* resource,
 #ifdef HAVE_VNCSERVER
 		if (strcmp(argval, "vnc") == 0){
 			vnc_serv_run(args, recctx.shmcont);
-			return;
+			return EXIT_SUCCESS;
 		}
 #endif
 
 		LOG("unsupported encoding protocol (%s) specified, giving up.\n", argval);
-		return;
+		return EXIT_FAILURE;
 	}
 
 	bool firstframe = false;
@@ -738,12 +735,13 @@ void arcan_frameserver_encode_run(const char* resource,
 /* is this actually safe on 64-bit win? */
 					(intptr_t) frameserver_readhandle(&ev), _O_APPEND );
 #else
-				recctx.lastfd = frameserver_readhandle(&ev);
+				recctx.lastfd = arcan_fetchhandle(recctx.shmcont.dpipe);
 #endif
 				LOG("received file-descriptor, setting up encoder.\n");
+				atexit(encoder_atexit);
 				if (!setup_ffmpeg_encode(args, recctx.shmcont.addr->w,
 					recctx.shmcont.addr->h))
-					return;
+					return EXIT_FAILURE;
 				else{
 					recctx.ccontext   = sws_getContext(
 						recctx.shmcont.addr->w, recctx.shmcont.addr->h, PIX_FMT_RGBA,
@@ -775,11 +773,11 @@ void arcan_frameserver_encode_run(const char* resource,
 			break;
 
 			case TARGET_COMMAND_STORE:
-				return;
+				return EXIT_SUCCESS;
 			break;
 			}
 		}
 	}
 
-	atexit(encoder_atexit);
+	return EXIT_SUCCESS;
 }

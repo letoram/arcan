@@ -1,6 +1,6 @@
 -- video_displaymodes
 -- @short: Retrieve (or set) platform-specific output display options.
--- @inargs: *moderef*
+-- @inargs: *moderef*, *overw*, *overh*
 -- @outargs: modelist
 -- @longdescr: Some video platforms allow the user to dynamically change
 -- how output is being mapped. This is necessary for multiple- display
@@ -9,8 +9,9 @@
 -- a list of modes (tables). Using a moderef field from such a table
 -- as the *moderef* argument will request that the video platform
 -- reconfigure device output to comply.
--- @note: possible modelist table members are: (width, height, depth,
--- refresh, moderef, cardid, displayid)
+-- @note: possible modelist table members are: cardid, displayid,
+-- phy_width_mm, phy_height_mm, subpixel_layout, dynamic, primary,
+-- moderef, width, height, refresh, depth
 -- @group: vidsys
 -- @cfunction: videodisplay
 -- @related:

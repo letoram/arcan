@@ -43,12 +43,6 @@ function focus_window(wnd)
 	blend_image(wnd.canvas, 1.0);
 end
 
-function add_subwindow(vid)
-	local vid = target_alloc(vid, default_wh);
-	wm:add_window(vid, {});
-
-end
-
 --
 -- a new connection has been initiated, add it to
 -- running composition surface
@@ -56,11 +50,34 @@ end
 local fsrv_lut = {};
 function register_window(source)
 	local wnd = wm:add_window(source, {});
+	wnd:set_border(1);
 	wnd.input = function(wnd, tbl)
 		target_input(wnd.canvas, tbl);
 	end
-	wnd.dblclick = add_subwindow(wnd.canvas);
+	wnd.dblclick = add_subwindow;
 	fsrv_lut[source] = wnd;
+	print("registered:", source);
+end
+
+function add_subwindow(pwnd)
+	local vid = target_alloc(pwnd.canvas, default_wh);
+	show_image(vid);
+	local wnd = wm:add_window(vid, {
+		parent = pwnd -- flag means that this window will disappear if parent does
+	});
+
+-- highlight that this is different from the normal windows
+	wnd:set_border(1, {0, 255, 0, 255});
+
+-- map the input to the parent instead (this is really)
+	wnd.input = function(wnd, tbl)
+		target_input(pwnd.canvas, tbl);
+	end
+
+	fsrv_lut[vid] = wnd;
+
+	zap_resource("dump.state");
+	system_snapshot("dump.state");
 end
 
 function destroy_window(source)
@@ -71,6 +88,7 @@ end
 
 function default_wh(source, status)
 	if (status.kind == "resized") then
+		print("resource on:", source, status.width, status.height);
 		fsrv_lut[source]:resize(status.width, status.height);
 	else
 		print("unhandled event:", status.kind);
@@ -78,7 +96,9 @@ function default_wh(source, status)
 end
 
 function new_connection(source, status)
-	target_alloc(connection_path, new_connection);
+	local vid,aid = target_alloc(connection_path, new_connection);
+	show_image(vid);
+
 	register_window(source);
 	target_updatehandler(source, default_wh);
 	default_wh(source, status);
@@ -114,7 +134,8 @@ function mdispwm_input(iotbl)
 			surf = color_surface(128, 128, math.random(128)+127,
 				math.random(128)+127, math.random(128)+127);
 
-			wm:add_window(surf, {});
+			local wnd = wm:add_window(surf, {});
+			wnd:set_border(1);
 
 -- delete the selected window
 		elseif (symtable[ iotbl.keysym ] == "DELETE" and

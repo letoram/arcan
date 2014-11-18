@@ -32,6 +32,7 @@ extern double round(double x);
 FILE* fdopen(int, const char*);
 int strcasecmp(const char*, const char*);
 int random(void);
+int setenv(const char* name, const char* value, int overwrite);
 
 typedef int pipe_handle;
 typedef HANDLE file_handle;
@@ -64,11 +65,9 @@ void arcan_timesleep(unsigned long);
 file_handle arcan_fetchhandle(int insock);
 bool arcan_pushhandle(file_handle in, int channel);
 
-bool arcan_isdir(const char* path);
-bool arcan_isfile(const char* path);
-
 void arcan_warning(const char* msg, ...);
 void arcan_fatal(const char* msg, ...);
 
-int setenv(const char* name, const char* value, int overwrite);
+void platform_input_help(FILE* dst);
+
 #endif

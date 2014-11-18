@@ -274,12 +274,6 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 
 }
 
-extern void platform_key_repeat(arcan_evctx* ctx, unsigned rate);
-void arcan_event_keyrepeat(arcan_evctx* ctx, unsigned rate)
-{
-	platform_key_repeat(ctx, rate);
-}
-
 int64_t arcan_frametime()
 {
 	return arcan_last_frametime - arcan_tickofset;
@@ -287,7 +281,6 @@ int64_t arcan_frametime()
 
 /* the main usage case is simply to alternate between process and poll
  * after a scene has been setup */
-extern void platform_event_process(arcan_evctx* ctx);
 float arcan_event_process(arcan_evctx* ctx, arcan_tick_cb cb)
 {
 	static const int rebase_timer_threshold = ARCAN_TIMER_TICK * 1000;

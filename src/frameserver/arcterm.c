@@ -1,9 +1,3 @@
-/*
- * Arcan Terminal
- * A mix of Suckless-Terminal and libtsm- examples
- * wrapped in the arcan shared memory interface.
- */
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -346,9 +340,10 @@ static void main_loop()
 	}
 }
 
-void arcan_frameserver_terminal_run(const char* resource, const char* keyfile)
+int arcan_frameserver_terminal_run(
+	struct arcan_shmif_cont* con,
+	struct arg_arr* args)
 {
-	struct arg_arr* args = arg_unpack(resource);
 	const char* val;
 	TTF_Init();
 
@@ -386,16 +381,16 @@ void arcan_frameserver_terminal_run(const char* resource, const char* keyfile)
 
 	if (tsm_screen_new(&term.screen, tsm_log, 0) < 0){
 		LOG("fatal, couldn't setup tsm screen\n");
-		return;
+		return EXIT_FAILURE;
 	}
 
 	if (tsm_vte_new(&term.vte, term.screen, write_callback,
 		NULL /* write_cb_data */, tsm_log, NULL /* tsm_log_data */) < 0){
 		LOG("fatal, couldn't setup vte\n");
-		return;
+		return EXIT_FAILURE;
 	}
 
-	term.arc_conn = arcan_shmif_acquire(keyfile, SHMIF_INPUT, true, false);
+	term.arc_conn = *con;
 	if (!term.arc_conn.addr){
 		LOG("fatal, couldn't map shared memory from (%s)\n", keyfile);
 	}
@@ -416,7 +411,7 @@ void arcan_frameserver_terminal_run(const char* resource, const char* keyfile)
 
 	if (term.child < 0){
 		LOG("couldn't spawn child terminal.\n");
-		return;
+		return EXIT_FAILURE;
 	}
 
 	arcan_event outev = {
@@ -428,4 +423,5 @@ void arcan_frameserver_terminal_run(const char* resource, const char* keyfile)
 
 	arcan_event_enqueue(&term.arc_conn.outev, &outev);
 	main_loop();
+	return EXIT_SUCCESS;
 }

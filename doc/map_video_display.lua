@@ -1,6 +1,6 @@
 -- map_video_display
 -- @short: Specify virtual displays to physical displays mapping.
--- @inargs: vid, dispid
+-- @inargs: vid, dispid, *blithint*
 -- @outargs: success_bool
 -- @longdescr: video_displaymodes provides a list of devices, outputs
 -- and modes. This function provides the option to specify which
@@ -8,9 +8,17 @@
 -- each output. Note that vid can be any video object with a valid,
 -- textured, backing store (including rendertargets, WORLDID or a
 -- null_surface that subsamples a region of WORLDID).
--- @note: vid referencing an object with a feed- function
+-- Blithint can be any of (HINT_NONE, HINT_FIT, HINT_CROP, HINT_ROTATE_CW_90,
+-- HINT_ROTATE_CCW_90, HINT_YFLIP).
+-- @note: Vid referencing an object with a feed- function
 -- (recordtarget, frameserver, calctarget etc.) is a
 -- terminal state transition
+-- @note: Using this on arcan_lwa is a special case primarily intended
+-- to test / debug display hotplugging and specific rendering effects
+-- e.g. shaders, texture coordinates or blithint will not apply and
+-- have to be performed manually through rendertargets. This mode will
+-- also resize possible subsegments (which corresponds to displays)
+-- to fit the dimensions of the backing store.
 -- @group: vidsys
 -- @cfunction: videomapping
 -- @related:

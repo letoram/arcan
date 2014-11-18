@@ -80,8 +80,7 @@ LIST(APPEND PLATFORM_SOURCES
 SET(HIJACK_SOURCES
 	hijack/arcan_target_unix.c
 	hijack/arcan_target.c
-	${PLATFORM_PATH}/warning.c
-	${PLATFORM_PATH}/../darwin/sem.c
+	${SHMIF_SOURCES}
 	frameserver/ntsc/snes_ntsc.c
  	frameserver/resampler/resample.c
 )

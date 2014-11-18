@@ -99,6 +99,20 @@ void agp_shader_source(enum SHADER_TYPES type,
 	}
 }
 
+const char** agp_envopts()
+{
+	static const char* env[] = {
+		NULL
+	};
+	return env;
+}
+
+void agp_env_help(FILE* dst)
+{
+/* write agp specific tuning here,
+ * use ARCAN_AGP_ as symbol prefix */
+}
+
 const char* agp_shader_language()
 {
 	return "GLSL120";
@@ -185,6 +199,7 @@ struct stream_meta agp_stream_prepare(struct storage_info_t* s,
 			s->vinf.text.raw = arcan_alloc_mem(s->vinf.text.s_raw,
 				ARCAN_MEM_VBUFFER, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
 		}
+
 		mout.buf = s->vinf.text.raw;
 	break;
 

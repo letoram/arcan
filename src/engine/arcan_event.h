@@ -31,9 +31,6 @@ struct arcan_evctx;
 typedef void (*arcan_tick_cb)(int count);
 float arcan_event_process(struct arcan_evctx*, arcan_tick_cb);
 
-/* force a keyboard repeat- rate */
-void arcan_event_keyrepeat(struct arcan_evctx*, unsigned rate);
-
 struct arcan_evctx* arcan_event_defaultctx();
 
 /*
@@ -84,51 +81,6 @@ void arcan_event_purge();
 
 void arcan_event_init(struct arcan_evctx* dstcontext);
 void arcan_event_deinit(struct arcan_evctx*);
-
-/*
- * Update/get the active filter setting for the specific
- * devid / axis (-1 for all) lower_bound / upper_bound sets the
- * [lower < n < upper] where only n values are passed into the filter core
- * (and later on, possibly as events)
- *
- * Buffer_sz is treated as a hint of how many samples in should be considered
- * before emitting a sample out.
- *
- * The implementation is left to the respective platform/input code to handle.
- */
-void arcan_event_analogfilter(int devid,
-	int axisid, int lower_bound, int upper_bound, int deadzone,
-	int buffer_sz, enum ARCAN_ANALOGFILTER_KIND kind);
-
-arcan_errc arcan_event_analogstate(int devid, int axisid,
-	int* lower_bound, int* upper_bound, int* deadzone,
-	int* kernel_size, enum ARCAN_ANALOGFILTER_KIND* mode);
-
-/* look for new joystick / analog devices */
-void arcan_event_rescan_idev(struct arcan_evctx* ctx);
-
-const char* arcan_event_devlabel(int devid);
-
-/*
- * Quick-helper to toggle all analog device samples on / off
- * If mouse is set the action will also be toggled on mouse x / y
- * This will keep track of the old state, but repeating the same
- * toggle will flush state memory. All devices (except mouse) start
- * in off mode.
- */
-void arcan_event_analogall(bool enable, bool mouse);
-
-/*
- * Set A/D mappings, when the specific dev/axis enter or exit
- * the set interval, a digital press/release event with the
- * set subid will be emitted. This is intended for analog sticks/buttons,
- * not touch- class displays that need a more refined classification/
- * remapping system.
- *
- * The implementation is left to the respective platform/input code to handle.
- */
-void arcan_event_analoginterval(int devid, int axisid,
-	int enter, int exit, int subid);
 
 #endif
 

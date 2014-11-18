@@ -32,6 +32,16 @@
 #define EVAL(X,Y) MERGE(X,Y)
 #define PLATFORM_SYMBOL(fun) EVAL(PLATFORM_SUFFIX, fun)
 
+static char* rnode_envopts[] = {
+	"ARCAN_VIDEO_NODE=/dev/dri/renderD128", "specify render-node",
+	"ARCAN_VIDEO_FDPASS", "set to use in-GPU buffer transfers to parent",
+	"EGL_LOG_LEVEL=debug|info|warning|fatal", "Mesa/EGL debug aid",
+	"EGL_SOFTWARE", "Force software rendering if possible",
+	"GALLIUM_HUD", "Gallium driver performance overlay",
+	"GALLIUM_LOG_FILE", "Gallium driver status output",
+	NULL
+};
+
 static const char* egl_errstr()
 {
 	EGLint errc = eglGetError();
@@ -217,10 +227,10 @@ bool PLATFORM_SYMBOL(_video_set_mode)(
 	return disp == 0 && mode == 0;
 }
 
-struct monitor_modes* PLATFORM_SYMBOL(_video_query_modes)(
+struct monitor_mode* PLATFORM_SYMBOL(_video_query_modes)(
 	platform_display_id id, size_t* count)
 {
-	static struct monitor_modes mode = {};
+	static struct monitor_mode mode = {};
 
 #ifndef HEADLESS_NOARCAN
 	mode.width  = arcan_video_display.width;
@@ -234,6 +244,11 @@ struct monitor_modes* PLATFORM_SYMBOL(_video_query_modes)(
 	return &mode;
 }
 
+const char** PLATFORM_SYMBOL(_video_envopts)()
+{
+	return (const char**) rnode_envopts;
+}
+
 void PLATFORM_SYMBOL(_video_prepare_external)()
 {
 }
@@ -242,8 +257,14 @@ void PLATFORM_SYMBOL(_video_restore_external)()
 {
 }
 
+bool PLATFORM_SYMBOL(_video_specify_mode)(platform_display_id id,
+	platform_mode_id mode_id, struct monitor_mode mode)
+{
+	return false;
+}
+
 bool PLATFORM_SYMBOL(_video_map_display)(
-	arcan_vobj_id id, platform_display_id disp)
+	arcan_vobj_id id, platform_display_id disp, enum blitting_hint hint)
 {
 /* add ffunc to the correct display */
 
