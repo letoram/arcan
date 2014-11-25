@@ -287,26 +287,11 @@ SDL_GrabMode ARCAN_SDL_WM_GrabInput(SDL_GrabMode mode)
 	return requested_mode;
 }
 
-void ARCAN_target_init(){
-	if (getenv("ARCAN_CONNPATH")){
-		global.shmkey = arcan_shmif_connect(
-			getenv("ARCAN_CONNPATH"), getenv("ARCAN_CONNKEY"));
-	}
+void ARCAN_target_init()
+{
+	struct arg_arr* args;
+	global.shared = arcan_shmif_open(SEGID_GAME, SHMIF_ACQUIRE_FATALFAIL, &args);
 
-	if (!global.shmkey)
-		global.shmkey = getenv("ARCAN_SHMKEY");
-
-	global.shared = arcan_shmif_acquire(global.shmkey,
-		SEGID_GAME, SHMIF_ACQUIRE_FATALFAIL);
-
-	if (!global.shared.addr){
-		fprintf(stderr, "arcan hijack: couldn't allocate "
-			"shared memory, terminating.\n");
-		exit(1);
-	}
-
-/* set this env whenever you want to step through the
- * frameserver as launched from the parent */
 	if (getenv("ARCAN_FRAMESERVER_DEBUGSTALL")){
 		fprintf(stderr, "frameserver_debugstall, waiting 10s"
 			"	to continue. pid: %d\n", (int) getpid());

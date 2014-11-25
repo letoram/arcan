@@ -68,8 +68,7 @@ LIST(APPEND PLATFORM_SOURCES
 SET(HIJACK_SOURCES
 	hijack/arcan_target_unix.c
 	hijack/arcan_target.c
-	${PLATFORM_PATH}/warning.c
-	${PLATFORM_PATH}/sem.c
+	${SHMIF_SOURCES}
 	frameserver/ntsc/snes_ntsc.c
  	frameserver/resampler/resample.c
 )
@@ -141,14 +140,22 @@ if (ENABLE_32BITHIJACK)
 	install(TARGETS arcan_hijack32 DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
 endif (ENABLE_32BITHIJACK)
 
-install(FILES ${CMAKE_SOURCE_DIR}/utils/arcan_romman.rb DESTINATION ${BIN_DST}
-	PERMISSIONS
-		WORLD_READ WORLD_EXECUTE
-		OWNER_WRITE OWNER_READ OWNER_EXECUTE
-		GROUP_READ GROUP_EXECUTE
-)
+# install(FILES ${CMAKE_SOURCE_DIR}/utils/arcan_romman.rb DESTINATION ${BIN_DST}
+# 	PERMISSIONS
+#		WORLD_READ WORLD_EXECUTE
+#		OWNER_WRITE OWNER_READ OWNER_EXECUTE
+#		GROUP_READ GROUP_EXECUTE
+#)
 
-install(FILES ${CMAKE_SOURCE_DIR}/doc/arcan.1
+#
+# can we add a separate install targument for dev-man?
+# or better yet, add to /usr/share/doc/arcan/man and hint at
+# setting an alias to get the manpage support.
+#
+# same with vim highlights
+#
+
+install(FILES ${CMAKE_SOURCE_DIR}/../doc/arcan.1
 	DESTINATION /usr/local/share/man/man1
 )
 

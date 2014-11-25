@@ -217,7 +217,8 @@ static void push_buffer(arcan_frameserver* src,
 	}
 	else{
 		stream.buf = buf;
-		agp_stream_prepare(store, stream, STREAM_RAW_DIRECT);
+		agp_stream_prepare(store, stream, src->flags.explicit ?
+			STREAM_RAW_DIRECT_SYNCHRONOUS : STREAM_RAW_DIRECT);
 	}
 
 	agp_stream_commit(store);
@@ -240,14 +241,19 @@ enum arcan_ffunc_rv arcan_frameserver_emptyframe(
 	unsigned mode, vfunc_state state)
 {
 	arcan_frameserver* tgt = state.ptr;
+	if (!tgt || state.tag != ARCAN_TAG_FRAMESERV
+	 || !arcan_frameserver_enter(tgt))
+		return FFUNC_RV_NOFRAME;
 
-	if (state.tag == ARCAN_TAG_FRAMESERV && state.ptr)
 	switch (cmd){
 		case FFUNC_POLL:
+
 			if (tgt->shm.ptr->resized){
 				arcan_frameserver_tick_control(tgt);
-        if (tgt->shm.ptr && tgt->shm.ptr->vready)
+        if (tgt->shm.ptr && tgt->shm.ptr->vready){
+					arcan_frameserver_leave();
         	return FFUNC_RV_GOTFRAME;
+				}
 			}
 
 		case FFUNC_TICK:
@@ -262,6 +268,7 @@ enum arcan_ffunc_rv arcan_frameserver_emptyframe(
 			break;
 	}
 
+	arcan_frameserver_leave();
 	return FFUNC_RV_NOFRAME;
 }
 
@@ -318,8 +325,7 @@ enum arcan_ffunc_rv arcan_frameserver_videoframe_direct(
 
 		check_audb(tgt, shmpage);
 
-		return tgt->playstate == ARCAN_PLAYING && shmpage->vready
-				&& (tgt->ofs_audb < 2 * ARCAN_ASTREAMBUF_LLIMIT);
+		rv = (tgt->playstate == ARCAN_PLAYING && shmpage->vready);
 	break;
 
 	case FFUNC_TICK:
@@ -584,6 +590,7 @@ arcan_errc arcan_frameserver_audioframe_direct(arcan_aobj* aobj,
 
 	if (buffer != -1 && src->audb && src->ofs_audb > ARCAN_ASTREAMBUF_LLIMIT){
 /* this function will make sure all monitors etc. gets their chance */
+			printf("arcan_audio_buffer\n");
 			arcan_audio_buffer(aobj, buffer, src->audb, src->ofs_audb,
 				src->desc.channels, src->desc.samplerate, tag);
 
@@ -731,8 +738,9 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 /* "libretro" (or rather, interactive mode) treats a single pair of
  * videoframe+audiobuffer each transfer, minimising latency is key. */
 		if (strcmp(setup.args.builtin.mode, "libretro") == 0){
-			ctx->aid      = arcan_audio_feed((arcan_afunc_cb)
-												arcan_frameserver_audioframe_direct, ctx, &errc);
+			ctx->aid = arcan_audio_feed((arcan_afunc_cb)
+				arcan_frameserver_audioframe_direct, ctx, &errc);
+
 			ctx->segid    = SEGID_GAME;
 			ctx->sz_audb  = 1024 * 64;
 			ctx->flags.socksig = false;

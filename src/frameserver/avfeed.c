@@ -108,11 +108,11 @@ static void mapseg(int evfd, const char* key)
  * Quick skeleton to map up a audio/video/input
  * source to an arcan frameserver along with some helpers.
  */
-void arcan_frameserver_avfeed_run(const char* resource, const char* keyfile)
+int arcan_frameserver_avfeed_run(
+	struct arcan_shmif_cont* con,
+	struct arg_arr* args)
 {
-/*	struct arg_arr* args = arg_unpack(resource); */
-	struct arcan_shmif_cont shms = arcan_shmif_acquire(
-		keyfile, SEGID_GAME, SHMIF_ACQUIRE_FATALFAIL);
+	struct arcan_shmif_cont shms = *con;
 
 	struct arcan_evctx inevq, outevq;
 	struct arcan_event ev;
@@ -153,7 +153,7 @@ void arcan_frameserver_avfeed_run(const char* resource, const char* keyfile)
 			}
 			if (ev.kind == TARGET_COMMAND_EXIT){
 				printf("parent requested termination, leaving.\n");
-				break;
+				return EXIT_SUCCESS;
 			}
 			else {
 				static int red;
@@ -166,4 +166,5 @@ void arcan_frameserver_avfeed_run(const char* resource, const char* keyfile)
  */
 		}
 	}
+	return EXIT_FAILURE;
 }

@@ -9,6 +9,9 @@
  * PLATFORM DRIVER NOTICE:
  * This platform driver is incomplete in the sense that it was only set
  * up in order to allow for headless LWA/hijack/retro3d.
+ *
+ * Note that we can probably get decent working buffer passing without
+ * readbacks here using IOSurface, see the serverOpenGLView.m
  */
 
 #include <stdio.h>
@@ -38,8 +41,12 @@
 #include <OpenGL/OpenGL.h>
 #include <OpenGL/GL.h>
 
-static char* x11_synchopts[] = {
+static char* darwin_synchopts[] = {
 	"default", "driver- specific GL swap",
+	NULL
+};
+
+static char* darwin_envopts[] = {
 	NULL
 };
 
@@ -107,9 +114,20 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 		post();
 }
 
+bool PLATFORM_SYMBOL(_video_specify_mode)(platform_display_id id,
+	platform_mode_id mode_id, struct monitor_mode mode)
+{
+	return false;
+}
+
 const char** PLATFORM_SYMBOL(_video_synchopts)(void)
 {
-	return (const char**) x11_synchopts;
+	return (const char**) darwin_synchopts;
+}
+
+const char** PLATFORM_SYMBOL(_video_envopts)(void)
+{
+	return (const char**) darwin_envopts;
 }
 
 void PLATFORM_SYMBOL(_video_setsynch)(const char* arg)

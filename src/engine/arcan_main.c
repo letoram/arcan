@@ -124,9 +124,10 @@ static const struct option longopts[] = {
 
 static void usage()
 {
-printf("usage: arcan [-whfmWMOqspBtbdgaSV] applname [app specific arguments]\n"
-"-w\t--width       \tdesired width (default: 640)\n"
-"-h\t--height      \tdesired height (default: 480)\n"
+printf("Usage: arcan [-whfmWMOqspBtbdgaSV] applname "
+	"[appl specific arguments]\n\n"
+"-w\t--width       \tdesired initial canvas width (default: 640, auto: 0)\n"
+"-h\t--height      \tdesired initial canvas height (default: 480, auto: 0)\n"
 "-f\t--fullscreen  \ttoggle fullscreen mode ON (default: off)\n"
 "-m\t--conservative\ttoggle conservative memory management (default: off)\n"
 "-W\t--sync-strat  \tspecify video synchronization strategy (see below)\n"
@@ -151,7 +152,41 @@ printf("usage: arcan [-whfmWMOqspBtbdgaSV] applname [app specific arguments]\n"
 	while(*cur){
 		const char* a = *cur++;
 		const char* b = *cur++;
-		printf("%s - %s\n", a, b);
+		printf("\t%s - %s\n", a, b);
+	}
+	printf("\n");
+
+	cur = platform_video_envopts();
+	if (*cur){
+	printf("Video platform environment variables:\n");
+	while(*cur){
+		const char* a = *cur++;
+		const char* b = *cur++;
+		printf("\t%s - %s\n", a, b);
+	}
+	printf("\n");
+	}
+
+	if (*cur){
+	cur = agp_envopts();
+	printf("AGP environment variables:\n");
+	while(*cur){
+		const char* a = *cur++;
+		const char* b = *cur++;
+		printf("\t%s - %s\n", a, b);
+	}
+	printf("\n");
+	}
+
+	if (*cur){
+	printf("Input platform environment variables:\n");
+	cur = platform_input_envopts();
+	while(*cur){
+		const char* a = *cur++;
+		const char* b = *cur++;
+		printf("\t%s - %s\n", a, b);
+	}
+	printf("\n");
 	}
 }
 

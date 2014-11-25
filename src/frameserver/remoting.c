@@ -207,17 +207,21 @@ static void map_cl_input(arcan_ioevent* ioev)
 }
 
 
-void arcan_frameserver_remoting_run(const char* resource,
-	const char* keyfile)
+int arcan_frameserver_remoting_run(
+	struct arcan_shmif_cont* con, struct arg_arr* args)
 {
-	struct arg_arr* args = arg_unpack(resource);
 	const char* host;
 	vncctx.pass = "";
+	if (!args){
+		LOG("avfeed_vnc(), missing arguments (check ARCAN_ARG env).\n");
+		return EXIT_FAILURE;
+	}
+
 	arg_lookup(args, "password", 0, (const char**) &vncctx.pass);
 
 	if (!arg_lookup(args, "host", 0, &host)){
 		LOG("avfeed_vnc(), no host specified (host=addr:port or host=listen)\n");
-		return;
+		return EXIT_FAILURE;
 	}
 
 	gen_symtbl();
@@ -229,11 +233,10 @@ void arcan_frameserver_remoting_run(const char* resource,
 		port = strtoul(argtmp, NULL, 10);
 	}
 
-	vncctx.shmcont = arcan_shmif_acquire(keyfile,
-		SEGID_REMOTING, SHMIF_ACQUIRE_FATALFAIL);
+	vncctx.shmcont = *con;
 
 	if (!client_connect(host, port))
-		return;
+		return EXIT_FAILURE;
 
 	vncctx.client->frameBuffer = (uint8_t*) vncctx.shmcont.vidp;
 	atexit( cleanup );
@@ -289,7 +292,7 @@ void arcan_frameserver_remoting_run(const char* resource,
 				break;
 
 				case TARGET_COMMAND_EXIT:
-					return;
+					return EXIT_SUCCESS;
 
 				case TARGET_COMMAND_RESET:
 					cl_unstick();
@@ -307,4 +310,6 @@ void arcan_frameserver_remoting_run(const char* resource,
  * use SendKeyEvent for that, need translation table
  */
 	}
+
+	return EXIT_SUCCESS;
 }

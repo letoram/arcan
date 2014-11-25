@@ -336,9 +336,9 @@ arcan_errc arcan_audio_setup(bool nosound)
 		current_acontext->al_active = true;
 		rv = ARCAN_OK;
 
-		/* just give a slightly random base so that
+		/* just give a slightly "random" base so that
 		 * user scripts don't get locked into hard-coded ids .. */
-		current_acontext->lastid = rand() % 2000;
+		current_acontext->lastid = rand() % 32768;
 	}
 
 	return rv;
@@ -466,6 +466,8 @@ arcan_aobj_id arcan_audio_feed(arcan_afunc_cb feed, void* tag, arcan_errc* errc)
 		return ARCAN_EID;
 	}
 
+/* the id will be allocated when we first get data as there
+ * is a limit to how many streaming / mixed sources we can support */
 	aobj->alid = AL_NONE;
 	aobj->streaming = true;
 	aobj->tag = tag;

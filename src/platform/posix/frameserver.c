@@ -420,8 +420,8 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	if (!newseg)
 		return NULL;
 
-	hintw = hintw < 0 || hintw > ARCAN_SHMPAGE_MAXW ? 32 : hintw;
-	hinth = hinth < 0 || hinth > ARCAN_SHMPAGE_MAXH ? 32 : hinth;
+	hintw = hintw <= 0 || hintw > ARCAN_SHMPAGE_MAXW ? 32 : hintw;
+	hinth = hinth <= 0 || hinth > ARCAN_SHMPAGE_MAXH ? 32 : hinth;
 
 	img_cons cons = {.w = hintw , .h = hinth, .bpp = ARCAN_SHMPAGE_VCHANNELS};
 	vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = newseg};
@@ -897,6 +897,8 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 			arcan_expand_resource("", RESOURCE_APPL_STATE), 1);
 		setenv( "ARCAN_RESOURCEPATH",
 			arcan_expand_resource("", RESOURCE_APPL_SHARED), 1);
+		setenv("ARCAN_SHMKEY", ctx->shm.key, 1);
+
 /*
  * we need to mask this signal as when debugging parent process,
  * GDB pushes SIGINT to children, killing them and changing
@@ -905,10 +907,9 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 		signal(SIGINT, SIG_IGN);
 
 		if (setup.use_builtin){
-			char* argv[4] = {
+			char* argv[] = {
 				arcan_expand_resource("", RESOURCE_SYS_BINS),
 				strdup(setup.args.builtin.mode),
-				ctx->shm.key,
 				NULL
 			};
 
@@ -919,17 +920,11 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 				setup.args.builtin.resource, strerror(errno));
 			exit(1);
 		}
+/* non-frameserver executions (hijack libs, ...) */
 		else {
-/* hijack lib */
-			char shmsize_s[32];
-			snprintf(shmsize_s, 32, "%zu", ctx->shm.shmsize);
-
 			char** envv = setup.args.external.envv->data;
 			while(*envv)
 				putenv(*(envv++));
-
-			setenv("ARCAN_SHMKEY", ctx->shm.key, 1);
-			setenv("ARCAN_SHMSIZE", shmsize_s, 1);
 
 			execv(setup.args.external.fname, setup.args.external.argv->data);
 			exit(1);

@@ -155,7 +155,7 @@ static const char* video_tracetag(arcan_vobject* src)
 /* a default more-or-less empty context */
 static struct arcan_video_context* current_context = vcontext_stack;
 
-static void drop_vstore(struct storage_info_t* s)
+void arcan_vint_drop_vstore(struct storage_info_t* s)
 {
 	assert(s->refcount);
 	s->refcount--;
@@ -895,7 +895,7 @@ arcan_errc arcan_video_mipmapset(arcan_vobj_id vid, bool enable)
 	if (!newbuf)
 		return ARCAN_ERRC_OUT_OF_SPACE;
 
-	drop_vstore(vobj->vstore);
+	arcan_vint_drop_vstore(vobj->vstore);
 	if (enable)
 		vobj->vstore->filtermode |= ARCAN_VFILTER_MIPMAP;
 	else
@@ -1714,7 +1714,7 @@ void arcan_video_cursorsize(size_t w, size_t h)
 void arcan_video_cursorstore(arcan_vobj_id src)
 {
 	if (arcan_video_display.cursor.vstore){
-		drop_vstore(arcan_video_display.cursor.vstore);
+		arcan_vint_drop_vstore(arcan_video_display.cursor.vstore);
 		arcan_video_display.cursor.vstore = NULL;
 	}
 
@@ -1743,7 +1743,7 @@ arcan_errc arcan_video_shareglstore(arcan_vobj_id sid, arcan_vobj_id did)
 	)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
-	drop_vstore(dst->vstore);
+	arcan_vint_drop_vstore(dst->vstore);
 
 	dst->vstore = src->vstore;
 	dst->vstore->refcount++;
@@ -2927,7 +2927,7 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 
 /* video storage, will take care of refcounting in case of
  * shared storage etc. */
-		drop_vstore( vobj->vstore );
+		arcan_vint_drop_vstore( vobj->vstore );
 		vobj->vstore = NULL;
 	}
 
@@ -3953,8 +3953,7 @@ static inline void setup_surf(struct rendertarget* dst,
 	float sz_i[2] = {src->origw, src->origh};
 	arcan_shader_envv(SIZE_INPUT, sz_i, sizeof(float)*2);
 
-	float sz_o[2] = {prop->scale.x * src->origw,
-		prop->scale.y * prop->scale.z};
+	float sz_o[2] = {prop->scale.x, prop->scale.y};
 	arcan_shader_envv(SIZE_OUTPUT, sz_o, sizeof(float)*2);
 
 	float sz_s[2] = {src->vstore->w, src->vstore->h};

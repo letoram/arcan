@@ -195,8 +195,14 @@ enum arcan_shmif_type {
 };
 
 enum arcan_shmif_sigmask {
+/* can combine transfers */
 	SHMIF_SIGVID = 1,
-	SHMIF_SIGAUD = 2
+	SHMIF_SIGAUD = 2,
+
+/* blocking vs. accepting data corruption (partial) trade-off          */
+  SHMIF_SIGBLK_FORCE = 0, /* wait for synchronous releasefrom parent   */
+	SHMIF_SIGBLK_NONE  = 4, /* never wait, always overwrite              */
+	SHMIF_SIGBLK_ONCE  = 8  /* non-blocking unless already frame pending */
 };
 
 /*
@@ -216,7 +222,7 @@ struct arcan_shmif_cont {
  * would be indicative of poor / broken vidp/audp- dependant
  * code.
  */
-	int oflow_cookie;
+	int16_t oflow_cookie;
 
 /* maintain a connection to the shared memory handle in order
  * to handle resizing (on platforms that support it, otherwise
@@ -224,6 +230,14 @@ struct arcan_shmif_cont {
  * on resize */
 	intptr_t shmh;
 	size_t shmsize;
+
+/*
+ * Used on some platforms as a control channel for transferring
+ * descriptors. This may refer to the initial socket connection
+ * (for external connections) or to a pre-existing descriptor
+ * (authorative) with the number conveyed in the environment.
+ */
+	file_handle dpipe;
 
 /*
  * handles are exposed in the struct rather than in (priv) but
@@ -406,13 +420,12 @@ struct arcan_shmif_cont arcan_shmif_open(
  * a domain- socket as a connection point (as specified by the
  * connpath and optional connkey).
  *
- * The environment variable ARCAN_SOCKIN_FD will possibly be altered by
- * calling this function.
- *
  * Will return NULL or a user-managed string with a key
- * suitable for shmkey.
+ * suitable for shmkey, along with a file descriptor to the
+ * connected socket in *conn_ch
  */
-char* arcan_shmif_connect(const char* connpath, const char* connkey);
+char* arcan_shmif_connect(const char* connpath,
+	const char* connkey, file_handle* conn_ch);
 
 /*
  * Using a identification string (implementation defined connection
@@ -429,7 +442,7 @@ struct arcan_shmif_cont arcan_shmif_acquire(
  * before triggering a sigmask and can be used to synch audio to video
  * or video to audio during transfers.
  * 'mask' argument defines the signal mask slot (A xor B only, A or B is
- * undefined behavior). The
+ * undefined behavior).
  */
 shmif_trigger_hook arcan_shmif_signalhook(struct arcan_shmif_cont*,
 	enum arcan_shmif_sigmask mask, shmif_trigger_hook, void* data);
@@ -464,9 +477,13 @@ void arcan_shmif_setevqs(struct arcan_shmif_page*,
  * This function is not thread-safe -- While a resize is pending,
  * none of the other operations (drop, signal, en/de- queue) are safe.
  * If events are managed on a separate thread, these should be treated
- * in mutual exclusion with the size operation. Furthermore, if this
- * thread is blocking on _sem_wait.
+ * in mutual exclusion with the size operation.
  *
+ * There are four possible outcomes here:
+ * a. resize fails, dimensions exceed hard-coded limits.
+ * b. resize succeeds, vidp/audp are re-aligned.
+ * c. resize succeeds, the segment is truncated to a new size.
+ * d. resize succeeds, we switch to a new shared memory connection.
  */
 bool arcan_shmif_resize(struct arcan_shmif_cont*,
 	unsigned width, unsigned height);

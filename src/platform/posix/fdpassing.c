@@ -3,6 +3,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <stdint.h>
 #include "../platform.h"
 

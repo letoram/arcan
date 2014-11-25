@@ -11,6 +11,7 @@
 -- are handled internally (see event_queuetransfer in engine/arcan_event.c).
 -- @group: targetcontrol
 -- @cfunction: targethandler
+-- @alias: image_updatehandler
 -- @related:
 function main()
 #ifdef MAIN

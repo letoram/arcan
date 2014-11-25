@@ -151,7 +151,10 @@ char* net_unpack_discover(char* inb, bool req, char** pk,
 char* net_pack_discover(bool req,
 	char* key, char* name, char* cookie, char* host, int port, size_t* d_sz);
 
-void arcan_net_client_session(struct arg_arr* args, const char* shmkey);
+int arcan_net_client_session(
+	struct arcan_shmif_cont* con,
+	struct arg_arr* args
+);
 
 apr_socket_t* net_prepare_socket(const char* host, apr_sockaddr_t*
 	althost, int* sport, bool tcp, apr_pool_t* mempool);

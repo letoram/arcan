@@ -30,20 +30,22 @@
  *
  * There are multiple modes which the networking code can be used,
  * for the server side, there is a public "gatekeeper" that listens for
- * requests on UDP and responds with a possible public-key, ident and dstip:port
- * for the connection.
+ * requests on UDP and responds with a possible public-key, ident and
+ * dstip:port for the connection.
  *
  * If the request supplied a non-empty public key, the response will be
  * encrypted using this key and provide a nonce of its own (or 0 when we
  * do not need / want a connection between the gatekeeper and the server,
  * then the nonce has to be registered in the client connection tracking
- * structure), which will be used as the base for a counter on the control session.
+ * structure), which will be used as the base for a counter on the control
+ * session.
  *
  * If the client accepts the public key (verification happens elsewhere,
- * on an offline channel, through communicating a fingerprint, etc.) it connects
- * to the server. This connection is encrypted, not authenticated. The server
- * should not rely on the client IP to maintain this connection, it will be a
- * configurable feature to use TOR or similar local proxy for this session.
+ * on an offline channel, through communicating a fingerprint, etc.) it
+ * connects to the server. This connection is encrypted, not authenticated.
+ * The server should not rely on the client IP to maintain this connection,
+ * it will be a configurable feature to use TOR or similar local proxy for
+ * this session.
  *
  * By default, there's no explicit connection between the gatekeeper and the
  * other server, though without knowledge of the server public key it might be
@@ -55,8 +57,8 @@
  * a session_key update will be sent (this can be re-keyed arbitrarily).
  *
  * A normal connection is only allowed to pass small control messages between
- * each-other. An authenticated session is allowed to do block based state transfers
- * and to initiate streaming sessions.
+ * each-other. An authenticated session is allowed to do block based state
+ * transfers and to initiate streaming sessions.
  */
 
 #include "net_shared.h"
@@ -265,7 +267,7 @@ static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 				break;
 
 				case TARGET_COMMAND_FDTRANSFER:
-					srvctx.tmphandle = frameserver_readhandle(&ev);
+					srvctx.tmphandle = arcan_fetchhandle(srvctx.shmcont.dpipe);
 				break;
 
 /*
@@ -625,26 +627,12 @@ retry:
 	return;
 }
 
-void arcan_frameserver_net_run(const char* resource, const char* shmkey)
+int arcan_frameserver_net_server_run(
+	struct arcan_shmif_cont* con,
+	struct arg_arr* args)
 {
 	int gwidth = 256;
 	int gheight = 256;
-
-	struct arg_arr* args = arg_unpack(resource);
-
-	if (!args || !shmkey)
-		goto cleanup;
-
-/*
- * Client Connection
- */
-	const char* rk;
-	if (arg_lookup(args, "mode", 0, &rk) && strcmp("client", rk) == 0){
-		char* dsthost = NULL;
-		arg_lookup(args, "host", 0, (const char**) &dsthost);
-		arcan_net_client_session(args, shmkey);
-		return;
-	}
 
 	apr_initialize();
 	apr_pool_create(&srvctx.mempool, NULL);
@@ -652,19 +640,11 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 /* for win32, we transfer the first one in the HANDLE of the shmpage */
 #ifdef _WIN32
 #else
-	if (getenv("ARCAN_SOCKIN_FD")){
-		int sockin_fd;
-		sockin_fd = strtol( getenv("ARCAN_SOCKIN_FD"), NULL, 10 );
-
-		if (apr_os_sock_put(&srvctx.evsock, &sockin_fd,
-			srvctx.mempool) != APR_SUCCESS){
-			LOG("(net) -- Couldn't convert FD socket to APR, giving up.\n");
-			return;
-		}
-	}
-	else {
-		LOG("(net) -- No event socket found, giving up.\n");
-		goto cleanup;
+	int sockin_fd = con->dpipe;
+	if (apr_os_sock_put(&srvctx.evsock, &sockin_fd,
+		srvctx.mempool) != APR_SUCCESS){
+		LOG("(net) -- Couldn't convert FD socket to APR, giving up.\n");
+		return EXIT_FAILURE;
 	}
 #endif
 
@@ -677,12 +657,10 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 
 	idcookie = rand();
 
-	struct arcan_shmif_cont shmcont =
-		arcan_shmif_acquire(shmkey, SEGID_NETWORK_SERVER,
-			SHMIF_ACQUIRE_FATALFAIL);
+	struct arcan_shmif_cont shmcont = *con;
 
 	if (!arcan_shmif_resize(&shmcont, gwidth, gheight))
-		return;
+		return EXIT_FAILURE;
 
 	arcan_shmif_setevqs(shmcont.addr, shmcont.esem,
 		&(srvctx.inevq), &(srvctx.outevq), false);
@@ -709,8 +687,6 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 		limv = DEFAULT_CONNECTION_CAP;
 
 	server_session(listenhost, identstr, limv);
-
-cleanup:
-	arg_cleanup(args);
+	return EXIT_SUCCESS;
 }
 

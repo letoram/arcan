@@ -30,6 +30,10 @@ static char* synchopts[] = {
 	NULL
 };
 
+static char* envopts[] = {
+	NULL
+};
+
 static enum {
 	DYNAMIC = 0,
 	VSYNC = 1,
@@ -84,10 +88,19 @@ void platform_video_synch(uint64_t tick_count, float fract,
 
 	agp_activate_rendertarget(NULL);
 
-	if (nd > 0){
+/*
+ * Need this trick as the underlying platform will
+ * continue swapping between back and front buffer currently
+ * When the event- layer synchronization has been reworked,
+ * this hack should be revisited.
+ */
+	static bool ld;
+
+	if (nd > 0 || !ld){
 		arcan_vint_drawrt(arcan_vint_world(), 0, 0,
 			arcan_video_display.width, arcan_video_display.height
 		);
+		ld = nd == 0;
 	}
 
 	arcan_vint_drawcursor(true);
@@ -102,6 +115,11 @@ void platform_video_synch(uint64_t tick_count, float fract,
 const char** platform_video_synchopts()
 {
 	return (const char**) synchopts;
+}
+
+const char** platform_video_envopts()
+{
+	return (const char**) envopts;
 }
 
 void platform_video_setsynch(const char* arg)
@@ -131,10 +149,10 @@ bool platform_video_set_mode(platform_display_id disp, platform_mode_id mode)
 	return disp == 0 && mode == 0;
 }
 
-struct monitor_modes* platform_video_query_modes(
+struct monitor_mode* platform_video_query_modes(
 	platform_display_id id, size_t* count)
 {
-	static struct monitor_modes mode = {};
+	static struct monitor_mode mode = {};
 
 	mode.width  = arcan_video_display.width;
 	mode.height = arcan_video_display.height;
@@ -145,9 +163,16 @@ struct monitor_modes* platform_video_query_modes(
 	return &mode;
 }
 
-bool platform_video_map_display(arcan_vobj_id id, platform_display_id disp)
+bool platform_video_map_display(arcan_vobj_id id, platform_display_id disp,
+	enum blitting_hint hint)
 {
 	return false; /* no multidisplay /redirectable output support */
+}
+
+bool platform_video_display_id(platform_display_id id,
+	platform_mode_id mode_id, struct monitor_mode mode)
+{
+	return false;
 }
 
 const char* platform_video_capstr()

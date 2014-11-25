@@ -36,6 +36,10 @@
 
 #include "../frameserver/xsymconv.h"
 
+static const char* envopts[] = {
+	NULL
+};
+
 struct axis_opts {
 /* none, avg, drop */
 	enum ARCAN_ANALOGFILTER_KIND mode;
@@ -176,7 +180,7 @@ static void set_analogstate(struct axis_opts* dst,
 	dst->kernel_ofs = 0;
 }
 
-arcan_errc arcan_event_analogstate(int devid, int axisid,
+arcan_errc platform_event_analogstate(int devid, int axisid,
 	int* lower_bound, int* upper_bound, int* deadzone,
 	int* kernel_size, enum ARCAN_ANALOGFILTER_KIND* mode)
 {
@@ -206,7 +210,7 @@ arcan_errc arcan_event_analogstate(int devid, int axisid,
 	return ARCAN_ERRC_NO_SUCH_OBJECT;
 }
 
-void arcan_event_analogall(bool enable, bool mouse)
+void platform_event_analogall(bool enable, bool mouse)
 {
 	if (mouse){
 		if (enable){
@@ -240,7 +244,7 @@ void arcan_event_analogall(bool enable, bool mouse)
 			} */
 }
 
-void arcan_event_analogfilter(int devid,
+void platform_event_analogfilter(int devid,
 	int axisid, int lower_bound, int upper_bound, int deadzone,
 	int buffer_sz, enum ARCAN_ANALOGFILTER_KIND kind)
 {
@@ -396,21 +400,31 @@ void platform_event_process(struct arcan_evctx* ctx)
 	}
 }
 
+const char** platform_input_envopts()
+{
+	return (const char**) envopts;
+}
+
 void platform_key_repeat(struct arcan_evctx* ctx, unsigned int rate)
 {
 }
 
-void arcan_event_rescan_idev(struct arcan_evctx* ctx)
+void platform_event_rescan_idev(struct arcan_evctx* ctx)
 {
 }
 
-const char* arcan_event_devlabel(int devid)
+const char* platform_event_devlabel(int devid)
 {
 	if (devid == -1)
 		return "mouse";
 
 	return "no device";
 }
+
+void platform_event_keyrepeat(arcan_evctx* ctx, unsigned rate)
+{
+}
+
 
 void platform_event_deinit(struct arcan_evctx* ctx)
 {
@@ -437,10 +451,10 @@ void platform_event_init(arcan_evctx* ctx)
 	gen_symtbl();
 	create_null_cursor();
 
-	arcan_event_analogfilter(-1, 0,
+	platform_event_analogfilter(-1, 0,
 		-32768, 32767, 0, 1, ARCAN_ANALOGFILTER_AVG);
-	arcan_event_analogfilter(-1, 1,
+	platform_event_analogfilter(-1, 1,
 		-32768, 32767, 0, 1, ARCAN_ANALOGFILTER_AVG);
 
-	arcan_event_rescan_idev(ctx);
+	platform_event_rescan_idev(ctx);
 }

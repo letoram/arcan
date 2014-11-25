@@ -331,7 +331,7 @@ static void process_inevq()
 				(intptr_t)frameserver_readhandle(&ev), _O_APPEND));
 #else
 			libvlc_media_t* media = libvlc_media_new_fd(
-				decctx.vlc, frameserver_readhandle(&ev));
+				decctx.vlc, arcan_fetchhandle(decctx.shmcont.dpipe));
 #endif
 			libvlc_media_player_set_media(decctx.player, media);
 			libvlc_media_release(media);
@@ -357,19 +357,19 @@ static void process_inevq()
 
 }
 
-void arcan_frameserver_decode_run(const char* resource, const char* keyfile)
+int arcan_frameserver_decode_run(
+	struct arcan_shmif_cont* cont,
+	struct arg_arr* args)
 {
 	libvlc_media_t* media = NULL;
 
 /* connect to display server */
-	struct arg_arr* args = arg_unpack(resource);
 	if (!args){
-		LOG("Error decoding arguments, giving up.\n");
-		return;
+		LOG("Error decoding arguments (see ARCAN_ARG env), giving up.\n");
+		return EXIT_FAILURE;
 	}
 
-	decctx.shmcont = arcan_shmif_acquire(keyfile, SEGID_MEDIA,
-		SHMIF_ACQUIRE_FATALFAIL);
+	decctx.shmcont = *cont;
 
 /* decode external arguments, map the necessary ones to VLC */
 	const char* val;
@@ -377,7 +377,7 @@ void arcan_frameserver_decode_run(const char* resource, const char* keyfile)
 	decctx.vlc = libvlc_new(0, NULL);
   if (decctx.vlc == NULL){
   	LOG("Couldn't initialize VLC session, giving up.\n");
-    return;
+    return EXIT_FAILURE;
   }
 
 /* special about stream devices is that we can specify external resources (e.g.
@@ -385,8 +385,8 @@ void arcan_frameserver_decode_run(const char* resource, const char* keyfile)
 	if (arg_lookup(args, "stream", 0, &val)){
 		media = libvlc_media_new_location(decctx.vlc, val);
 		libvlc_set_user_agent(decctx.vlc,
-			"Arcan Frameserver Decode",
-			"GoogleBot/1.0");
+			"MrSmith",
+			"GoogleBot/1.0"); /* ;-) */
 	}
 /* for capture devices, we should be able to launch in a probe / detect
  * mode that propagates available ones upwards, otherwise we have the
@@ -417,7 +417,7 @@ void arcan_frameserver_decode_run(const char* resource, const char* keyfile)
 
 	if (!media){
 		LOG("couldn't open any media source, giving up.\n");
-		 return;
+		 return EXIT_FAILURE;
 	}
 
 	pthread_mutex_init(&decctx.rsync, NULL);
@@ -454,4 +454,5 @@ void arcan_frameserver_decode_run(const char* resource, const char* keyfile)
  	libvlc_media_player_stop(decctx.player);
  	libvlc_media_player_release(decctx.player);
 	libvlc_release(decctx.vlc);
+	return EXIT_SUCCESS;
 }

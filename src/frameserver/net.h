@@ -60,6 +60,4 @@
 #define DEFAULT_OUTBUF_SATCAP 0.5
 #endif
 
-void arcan_frameserver_net_run(const char* resource, const char* shmkey);
-
 #endif

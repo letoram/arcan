@@ -8,16 +8,76 @@
 -- management but also for created controlled
 -- nested surfaces for recording, remote desktop etc.
 --
-
---
 -- missing:
--- adding borders,
 -- adding bars,
 -- resizing (+ specialized, i.e. maximized, ...)
 --
 -- => to_rendertarget
 --    (setup a render or recordtarget)
 --
+
+--
+-- indexed by border type and width
+--
+local border_shaders = {
+};
+
+local default_width = 1;
+
+--
+-- support different border shaders to allow i.e.
+-- blurred or textured etc.
+--
+
+local shader_types = {};
+if (SHADER_LANGUAGE == "GLSL120") then
+	shader_types["default"] = [[
+	uniform sampler2D map_diffuse;
+	uniform float border;
+	uniform float obj_opacity;
+	uniform vec2 obj_output_sz;
+
+	varying vec2 texco;
+
+	void main()
+	{
+		vec3 col = texture2D(map_diffuse, texco).rgb;
+		float margin_s = border / obj_output_sz.x;
+		float margin_t = border / obj_output_sz.y;
+
+		if ( texco.s <= 1.0 - margin_s && texco.s >= margin_s &&
+			texco.t <= 1.0 - margin_t && texco.t >= margin_t )
+			discard;
+
+		gl_FragColor = vec4(col.r, col.g, col.b, 1.0);
+	]];
+else
+-- note, no support for GLES yet
+end
+
+local function get_border_shader(width, subtype)
+	if (subtype == nil) then
+		subtype = "default";
+	end
+
+	if (shader_types[subtype] == nil) then
+		warning("composition_surface.lua::get_border_shader()" ..
+			"invalid_subtype: " .. subtype);
+		return border_shaders[default][default_width];
+	end
+
+	if (border_shaders[subtype][width] ~= nil) then
+		return border_shaders[subtype][width];
+	end
+
+	border_shaders[subtype][width] = build_shader(nil,
+		shader_types[subtype], "border_shader_" .. tostring(width));
+
+	shader_uniform(border_shaders[subtype][width],
+		"border", "f", PERSIST, width);
+
+	return border_shaders[subtype][width];
+end
 
 local function compsurf_find(ctx)
 	for k,v in ipairs(ctx.windows) do
@@ -117,8 +177,15 @@ end
 
 local function compsurf_wnd_resize(wnd, neww, newh)
 	resize_image(wnd.canvas, neww, newh);
+
 	wnd.width = neww;
 	wnd.height = newh;
+
+	if (wnd.border) then
+		resize_image(wnd.border, wnd.width + wnd.borderw * 2,
+			wnd.height + wnd.borderw * 2);
+	end
+
 	compsurf_wnd_repos(wnd);
 end
 
@@ -163,6 +230,40 @@ end
 local function compsurf_wnd_hover(wnd)
 end
 
+--
+-- return or create a bar with desired thickness
+--
+local function compsurf_wnd_bar(wnd, dir, thickness)
+end
+
+--
+-- enable (width > 0) / disable border with optional color ([4])
+--
+local function compsurf_wnd_border(wnd, width, col)
+	if (col == nil) then
+		col = {255, 255, 255, 255};
+	end
+
+	if (valid_vid(wnd.border)) then
+		delete_image(wnd.border);
+	end
+
+	if (width <= 0) then
+		wnd.border = nil;
+		wnd.borderw = 0;
+		return;
+	end
+
+	wnd.border = fill_surface(2, 2, col[1], col[2], col[3]);
+	wnd.borderw = width;
+
+	image_shader(wnd.border, get_border_shader(width));
+	resize_image(wnd.border, wnd.width + width * 2, wnd.height + width * 2);
+	move_image(wnd.border, -1 * width, -1 * width);
+	show_image(wnd.border);
+	link_image(wnd.border, wnd.canvas);
+end
+
 local wseq = 1;
 
 local function compsurf_add_window(ctx, surf, opts)
@@ -173,6 +274,9 @@ local function compsurf_add_window(ctx, surf, opts)
 		select = compsurf_wnd_select,
 		destroy = compsurf_wnd_destroy,
 		resize = compsurf_wnd_resize,
+
+		set_bar = compsurf_wnd_bar,
+		set_border = compsurf_wnd_border,
 
 -- account for additional "tacked-on" surfaces (border, bars, ...)
 		pad_left = 0,
@@ -209,7 +313,7 @@ local function compsurf_add_window(ctx, surf, opts)
 
 	link_image(wnd.canvas, ctx.canvas);
 	image_inherit_order(wnd.canvas, true);
-
+	resize_image(wnd.canvas, wnd.width, wnd.height);
 	show_image(wnd.canvas);
 
 	mouse_addlistener(wnd, {"click", "drag",
@@ -219,6 +323,7 @@ local function compsurf_add_window(ctx, surf, opts)
 
 	wseq = wseq + 1;
 	wnd:select();
+
 	return wnd;
 end
 
@@ -237,6 +342,11 @@ function compsurf_create(width, height, opts)
 		deselorder = opts.selorder ~= nil and opts.deselorder or 1,
 		find_window = compsurf_find,
 		add_window = compsurf_add_window,
+
+-- explicitly hint what state the cursor should be in
+		cursor_normal = function() end,
+		cursor_resize = function() end,
+		cursor_move = function() end,
 
 -- listen to major state changes
 		handlers = {
@@ -257,4 +367,19 @@ function compsurf_create(width, height, opts)
 	show_image(restbl.canvas);
 	seq = seq + 1;
 	return restbl;
+end
+
+--
+-- precompile the default shader types and
+-- hope that the driver is "competent" enough to cache
+--
+if (defw == nil) then
+	defw = 2;
+end
+
+default_width = defw;
+
+for k, v in pairs(shader_types) do
+	border_shaders[k] = {};
+	get_border_shader(default_width, k);
 end

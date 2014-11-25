@@ -333,4 +333,14 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 	struct frameserver_envp setup);
 
 arcan_errc arcan_frameserver_free(arcan_frameserver*);
+
+/*
+ * Due to our explicit single-threaded polling access
+ * to shared-memory based frameserver connections, we need
+ * to explicitly track in order to recover from possible
+ * DoS in truncate-on-fd situations.
+ */
+int arcan_frameserver_enter(struct arcan_frameserver*);
+void arcan_frameserver_leave();
+
 #endif

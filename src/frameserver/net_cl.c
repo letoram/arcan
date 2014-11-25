@@ -179,7 +179,7 @@ static bool client_inevq_process(apr_socket_t* outconn)
  * new transfer (fsrv<->fsrv) requested
  */
 			case TARGET_COMMAND_FDTRANSFER:
-				clctx.tmphandle = frameserver_readhandle(&ev);
+				clctx.tmphandle = arcan_fetchhandle(clctx.shmcont.dpipe);
 			break;
 
 			case TARGET_COMMAND_STORE:
@@ -315,17 +315,17 @@ done:
 	return retv;
 }
 
-void arcan_net_client_session(struct arg_arr* args, const char* shmkey)
+int arcan_frameserver_net_client_run(
+	struct arcan_shmif_cont* con, struct arg_arr* args)
 {
 	const char* host = NULL;
 	arg_lookup(args, "host", 0, &host);
 
-	struct arcan_shmif_cont shmcont =
-		arcan_shmif_acquire(shmkey,SEGID_NETWORK_CLIENT, SHMIF_ACQUIRE_FATALFAIL);
+	struct arcan_shmif_cont shmcont = *con;
 
 	if (!shmcont.addr){
 		LOG("(net-cl) couldn't setup shared memory connection\n");
-		return;
+		return EXIT_FAILURE;
 	}
 
 	arcan_shmif_setevqs(shmcont.addr, shmcont.esem,
@@ -355,13 +355,13 @@ void arcan_net_client_session(struct arg_arr* args, const char* shmkey)
 
 	if (host && strcmp(host, ":discovery") == 0){
 		host_discover(host, reqkey, true, &hoststr, &outport, &hostkey);
-		return;
+		return EXIT_SUCCESS;
 	}
 
 	if (!host_discover(host, reqkey,
 		false, &hoststr, &outport, &hostkey)){
 		LOG("(net) -- couldn't find any Arcan- compatible server.\n");
-		return;
+		return EXIT_FAILURE;
 	}
 
 /* "normal" connection finally */
@@ -384,7 +384,7 @@ void arcan_net_client_session(struct arg_arr* args, const char* shmkey)
 		};
 		snprintf(ev.data.network.host.addr, 40, "%s", hoststr);
 		arcan_event_enqueue(&clctx.outevq, &ev);
-		return;
+		return EXIT_SUCCESS;
 	}
 
 /* connection completed */
@@ -404,19 +404,12 @@ void arcan_net_client_session(struct arg_arr* args, const char* shmkey)
  */
 #ifdef _WIN32
 #else
-	if (getenv("ARCAN_SOCKIN_FD")){
-		int sockin_fd;
-		sockin_fd = strtol( getenv("ARCAN_SOCKIN_FD"), NULL, 10 );
+	int sockin_fd = con->dpipe;
 
-		if (apr_os_sock_put(
-			&clctx.evsock, &sockin_fd, clctx.mempool) != APR_SUCCESS){
-			LOG("(net) -- Couldn't convert FD socket to APR, giving up.\n");
-			return;
-		}
-	}
-	else {
-		LOG("(net) -- No event socket found, giving up.\n");
-		return;
+	if (apr_os_sock_put(
+		&clctx.evsock, &sockin_fd, clctx.mempool) != APR_SUCCESS){
+		LOG("(net) -- Couldn't convert FD socket to APR, giving up.\n");
+		return EXIT_FAILURE;
 	}
 #endif
 
@@ -447,7 +440,7 @@ void arcan_net_client_session(struct arg_arr* args, const char* shmkey)
 
 	if (apr_pollset_create(&clctx.pollset, 1, clctx.mempool, 0) != APR_SUCCESS){
 		LOG("(net) -- couldn't allocate pollset. Giving up.\n");
-		return;
+		return EXIT_FAILURE;
 	}
 
 #ifndef _WIN32
@@ -531,7 +524,7 @@ void arcan_net_client_session(struct arg_arr* args, const char* shmkey)
 
 giveup:
     LOG("(net-cl) -- shutting down client session.\n");
-	return;
+	return EXIT_SUCCESS;
 }
 
 

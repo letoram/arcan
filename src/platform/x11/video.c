@@ -70,6 +70,10 @@ static char* x11_synchopts[] = {
 	NULL
 };
 
+static char* x11_envopts[] = {
+	NULL
+};
+
 static bool setup_xwnd(int w, int h, bool fullscreen)
 {
 	x11.xdisp = XOpenDisplay(NULL);
@@ -173,16 +177,22 @@ bool PLATFORM_SYMBOL(_video_set_mode)(
 	return disp == 0 && mode == 0;
 }
 
+bool PLATFORM_SYMBOL(_video_specify_mode)(platform_display_id id,
+	platform_mode_id mode_id, struct monitor_mode mode)
+{
+	return false;
+}
+
 bool PLATFORM_SYMBOL(_video_map_display)(
-	arcan_vobj_id id, platform_display_id disp)
+	arcan_vobj_id id, platform_display_id disp, enum blitting_hint hint)
 {
 	return false; /* no multidisplay /redirectable output support */
 }
 
-struct monitor_modes* PLATFORM_SYMBOL(_video_query_modes)(
+struct monitor_mode* PLATFORM_SYMBOL(_video_query_modes)(
 	platform_display_id id, size_t* count)
 {
-	static struct monitor_modes mode = {};
+	static struct monitor_mode mode = {};
 
 	mode.width  = arcan_video_display.width;
 	mode.height = arcan_video_display.height;
@@ -237,6 +247,11 @@ const char** PLATFORM_SYMBOL(_video_synchopts)(void)
 	return (const char**) x11_synchopts;
 }
 
+const char** PLATFORM_SYMBOL(_video_envopts)(void)
+{
+	return (const char**) x11_envopts;
+}
+
 void PLATFORM_SYMBOL(_video_setsynch)(const char* arg)
 {
 	arcan_warning("unhandled synchronization strategy (%s) ignored.\n", arg);
@@ -248,8 +263,8 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 	if (pre)
 		pre();
 
-	size_t dsz;
 #ifndef HEADLESS_NOARCAN
+	size_t dsz;
 	arcan_bench_register_cost( arcan_vint_refresh(fract, &dsz) );
 
 	agp_activate_rendertarget(NULL);
