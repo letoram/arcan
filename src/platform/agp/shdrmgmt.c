@@ -403,7 +403,7 @@ int arcan_shader_envv(enum arcan_shader_envts slot, void* value, size_t size)
 	return rv;
 }
 
-GLint arcan_shader_vattribute_loc(enum shader_vertex_attributes attr)
+int arcan_shader_vattribute_loc(enum shader_vertex_attributes attr)
 {
 	return shdr_global.slots[ shdr_global.active_prg ].attributes[ attr ];
 }
