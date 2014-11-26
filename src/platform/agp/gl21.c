@@ -107,12 +107,6 @@ const char** agp_envopts()
 	return env;
 }
 
-void agp_env_help(FILE* dst)
-{
-/* write agp specific tuning here,
- * use ARCAN_AGP_ as symbol prefix */
-}
-
 const char* agp_shader_language()
 {
 	return "GLSL120";

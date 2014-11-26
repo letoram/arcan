@@ -64,7 +64,7 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 else()
 	set(VPLATFORM_STR "[ x11 | x11-headless | sdl | egl-gles | egl-dri ]")
 endif()
-set(AGPPLATFORM_STR "[ gl21 | gles2 | gles3 ]")
+set(AGPPLATFORM_STR "[ gl21 | gles2 | gles3 | stub ]")
 set( MAIN_LIBRARIES )
 
 #
@@ -274,7 +274,12 @@ SET (AGP_GL_SHARED
 	platform/agp/glinit.c
 )
 
-if (AGP_PLATFORM STREQUAL "gl21")
+if (AGP_PLATFORM STREQUAL "stub")
+	set(AGP_SOURCES
+		platform/agp/stub.c
+	)
+
+elseif (AGP_PLATFORM STREQUAL "gl21")
 	FIND_PACKAGE(OpenGL REQUIRED)
 	SET (AGP_LIBRARIES
 		${OPENGL_gl_LIBRARY}

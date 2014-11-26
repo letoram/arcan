@@ -121,7 +121,7 @@ int arcan_frameserver_avfeed_run(
 
 	if (!arcan_shmif_resize(&shms, 320, 200)){
 		LOG("arcan_frameserver(decode) shmpage setup, resize failed\n");
-		return;
+		return EXIT_FAILURE;
 	}
 
 	uint32_t* vidp;
@@ -143,7 +143,7 @@ int arcan_frameserver_avfeed_run(
 		while (1 == arcan_event_wait(&inevq, &ev)){
 			if (ev.category == EVENT_TARGET){
 				if (ev.kind == TARGET_COMMAND_FDTRANSFER){
-					lastfd = frameserver_readhandle(&ev);
+					lastfd = arcan_fetchhandle(shms.dpipe);
 					printf("got handle (for new event transfer)\n");
 				}
 			}

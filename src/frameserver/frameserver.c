@@ -43,14 +43,6 @@
 #include <arcan_shmif.h>
 #include "frameserver.h"
 
-int arcan_frameserver_decode_run(struct arcan_shmif_cont*, struct arg_arr*);
-int arcan_frameserver_encode_run(struct arcan_shmif_cont*, struct arg_arr*);
-int arcan_frameserver_remoting_run(struct arcan_shmif_cont*, struct arg_arr*);
-int arcan_frameserver_libretro_run(struct arcan_shmif_cont*, struct arg_arr*);
-int arcan_frameserver_terminal_run(struct arcan_shmif_cont*, struct arg_arr*);
-int arcan_frameserver_net_client_run(struct arcan_shmif_cont*, struct arg_arr*);
-int arcan_frameserver_net_server_run(struct arcan_shmif_cont*, struct arg_arr*);
-
 /*
  * arcan_general functions assumes these are valid for searchpaths etc.
  * since we want to use some of those functions, we need a linkerhack or two.
