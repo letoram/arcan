@@ -143,8 +143,6 @@ typedef int acoord;
  */
 #define arcan_fatal(...) { lua_rectrigger( __VA_ARGS__); }
 
-#define LUA_TRACE_COVERAGE
-
 /*
  * Each function that crosses the LUA->C barrier has a LUA_TRACE
  * macro reference first to allow quick build-time interception.

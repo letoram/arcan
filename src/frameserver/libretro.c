@@ -1638,7 +1638,7 @@ static void dump_help()
 /* map up a libretro compatible library resident at fullpath:game,
  * if resource is /info, no loading will occur but a dump of the capabilities
  * of the core will be sent to stdout. */
-void arcan_frameserver_libretro_run(
+int arcan_frameserver_libretro_run(
 	struct arcan_shmif_cont* cont, struct arg_arr* args)
 {
 	retroctx.converter = (pixconv_fun) libretro_rgb1555_rgba;
@@ -1661,7 +1661,7 @@ void arcan_frameserver_libretro_run(
 		LOG("error > No core specified.\n");
 		dump_help();
 
-		return;
+		return EXIT_FAILURE;
 	}
 
 	if (!info_only)
@@ -1702,7 +1702,7 @@ void arcan_frameserver_libretro_run(
 				"version:%s\nextensions:%s\n/arcan_frameserver(info)",
 				retroctx.sysinfo.library_name, retroctx.sysinfo.library_version,
 				retroctx.sysinfo.valid_extensions);
-			return;
+			return EXIT_FAILURE;
 		}
 
 		LOG("libretro(%s), version %s loaded. Accepted extensions: %s\n",
@@ -1770,7 +1770,7 @@ void arcan_frameserver_libretro_run(
 			retroctx.gameinfo.data = frameserver_getrawfile(resname, &bufsize);
 			if (bufsize == -1){
 				LOG("core(%s), couldn't map data, giving up.\n", resname);
-				return;
+				return EXIT_FAILURE;
 			}
 		}
 
@@ -1787,7 +1787,7 @@ void arcan_frameserver_libretro_run(
 		if ( retroctx.load_game( &retroctx.gameinfo ) == false ){
 			snprintf((char*)outev.data.external.message, msgsz, "failed");
 			arcan_event_enqueue(&retroctx.shmcont.outev, &outev);
-			return;
+			return EXIT_FAILURE;
 		}
 
 		snprintf((char*)outev.data.external.message, msgsz, "loaded");
@@ -1968,6 +1968,8 @@ void arcan_frameserver_libretro_run(
 		}
 
 	}
+
+	return EXIT_SUCCESS;
 }
 
 static void log_msg(char* msg, bool flush)

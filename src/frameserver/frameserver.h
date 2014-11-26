@@ -22,7 +22,17 @@
 #ifndef _HAVE_ARCAN_FRAMESERVER
 #define _HAVE_ARCAN_FRAMESERVER
 
-struct arcan_event;
+/*
+ * possible archetype slots
+ */
+int arcan_frameserver_decode_run(struct arcan_shmif_cont*, struct arg_arr*);
+int arcan_frameserver_encode_run(struct arcan_shmif_cont*, struct arg_arr*);
+int arcan_frameserver_remoting_run(struct arcan_shmif_cont*, struct arg_arr*);
+int arcan_frameserver_libretro_run(struct arcan_shmif_cont*, struct arg_arr*);
+int arcan_frameserver_terminal_run(struct arcan_shmif_cont*, struct arg_arr*);
+int arcan_frameserver_avfeed_run(struct arcan_shmif_cont*, struct arg_arr*);
+int arcan_frameserver_net_client_run(struct arcan_shmif_cont*, struct arg_arr*);
+int arcan_frameserver_net_server_run(struct arcan_shmif_cont*, struct arg_arr*);
 
 #define LOG(...) (fprintf(stderr, __VA_ARGS__))
 /* resolve 'resource', open and try to store it in one buffer,
