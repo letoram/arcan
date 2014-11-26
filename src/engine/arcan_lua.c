@@ -143,20 +143,27 @@ typedef int acoord;
  */
 #define arcan_fatal(...) { lua_rectrigger( __VA_ARGS__); }
 
-/* this macro is placed in every arcan- specific function callable from the LUA
- * space. By default, it's empty, but can be used to map out stack contents
- * (above will only be LUA context pointer that can be used to devise the
- * calling function, or to output "reasonably" cheap profiling (entry
- * will be either a frameserver/image/etc. callback or the few (_event,
- * _clock_pulse, _frame_pulse etc.) entry-point can be found (with >= 1
- * debug_level in lua_ctx_store.lastsrc and timing data can be gotten
- * from arcan_timemillis()
-	example: */
-#define LUA_TRACE(fsym)
+#define LUA_TRACE_COVERAGE
+
 /*
- * #define LUA_TRACE(fsym) fprintf(stderr, "(%lld:%s)->%s\n", \
-		arcan_timemillis(), lua_ctx_store.lastsrc, fsym);
+ * Each function that crosses the LUA->C barrier has a LUA_TRACE
+ * macro reference first to allow quick build-time interception.
  */
+#ifdef LUA_TRACE_STDERR
+#define LUA_TRACE(fsym) fprintf(stderr, "(%lld:%s)->%s\n", \
+	arcan_timemillis(), lua_ctx_store.lastsrc, fsym);
+
+/*
+ * This trace function scans the stack and writes the information about
+ * calls to a CSV file (arcan.trace): function;timestamp;type;type
+ * the primary purpose for this is to run through the suite of benchmark
+ */
+#elif defined(LUA_TRACE_COVERAGE)
+#define LUA_TRACE(fsym) trace_coverage(fsym, ctx);
+
+#else
+#define LUA_TRACE(fsym)
+#endif
 
 #define LUA_DEPRECATE(fsym) \
 	arcan_warning("%s, DEPRECATED, discontinue "\
@@ -352,6 +359,54 @@ static inline int find_lua_type(lua_State* ctx, int type, int ofs)
 	return 0;
 }
 
+static void trace_coverage(const char* fsym, lua_State* ctx)
+{
+	static FILE* outf;
+	static bool init;
+
+retry:
+	if (!outf && init)
+		return;
+
+	if (!outf){
+		init = true;
+		char* fname = arcan_expand_resource(
+			"arcan.coverage", RESOURCE_SYS_DEBUG);
+
+		if (!fname)
+			return;
+
+		outf = fopen(fname, "w+");
+		arcan_mem_free(fname);
+		goto retry;
+	}
+
+	fprintf(outf, "%lld;%s;", arcan_timemillis(), fsym);
+
+	int top = lua_gettop(ctx);
+	for (size_t i = 1; i <= top; i++) {
+		int t = lua_type(ctx, i);
+		switch (t) {
+		case LUA_TBOOLEAN:
+			fputs("bool;", outf);
+		break;
+		case LUA_TSTRING:
+			fputs("str;", outf);
+		break;
+		case LUA_TNUMBER:
+			fputs("num;", outf);
+		break;
+		case LUA_TFUNCTION:
+			fputs("fptr;", outf);
+		default:
+			fputs("unt;", outf);
+		break;
+		}
+	}
+
+	fputc('\n', outf);
+}
+
 static void wraperr(struct arcan_luactx* ctx, int errc, const char* src);
 
 void lua_rectrigger(const char* msg, ...)
@@ -501,7 +556,7 @@ static int zapresource(lua_State* ctx)
 	else
 		lua_pushboolean(ctx, true);
 
-	free(path);
+	arcan_mem_free(path);
 	return 1;
 }
 
@@ -516,7 +571,7 @@ static int opennonblock(lua_State* ctx)
 	}
 
 	int fd = open(path, O_NONBLOCK | O_CLOEXEC | O_RDONLY);
-	free(path);
+	arcan_mem_free(path);
 
 	if (fd <= 0)
 		return 0;
@@ -558,11 +613,13 @@ static int rawresource(lua_State* ctx)
 		if (fname){
 			lua_ctx_store.rawres.fd = open(fname,
 				O_CREAT | O_CLOEXEC | O_RDWR, S_IRUSR | S_IWUSR);
-			free(fname);
+			arcan_mem_free(fname);
 		}
 	}
-	else
+	else{
 		lua_ctx_store.rawres.fd = open(path, O_RDONLY | O_CLOEXEC);
+		arcan_mem_free(path);
+	}
 
 	lua_pushboolean(ctx, lua_ctx_store.rawres.fd > 0);
 	return 1;
@@ -827,10 +884,11 @@ static int loadimage(lua_State* ctx)
 	unsigned desw = luaL_optint(ctx, 3, 0);
 	unsigned desh = luaL_optint(ctx, 4, 0);
 
-	if (path)
+	if (path){
 		id = arcan_video_loadimage(path, arcan_video_dimensions(desw, desh), prio);
+		arcan_mem_free(path);
+	}
 
-	free(path);
 	lua_pushvid(ctx, id);
 	return 1;
 }
@@ -852,7 +910,7 @@ static int loadimageasynch(lua_State* ctx)
 	if (path && strlen(path) > 0){
 		id = arcan_video_loadimageasynch(path, arcan_video_dimensions(0, 0), ref);
 	}
-	free(path);
+	arcan_mem_free(path);
 
 	lua_pushvid(ctx, id);
 	return 1;
@@ -1346,7 +1404,7 @@ static int loadasample(lua_State* ctx)
 	char* resource = findresource(rname, DEFAULT_USERMASK);
 	float gain = luaL_optnumber(ctx, 2, 1.0);
 	arcan_aobj_id sid = arcan_audio_load_sample(resource, gain, NULL);
-	free(resource);
+	arcan_mem_free(resource);
 	lua_pushaid(ctx, sid);
 	return 1;
 }
@@ -1969,7 +2027,7 @@ static int syssnap(lua_State* ctx)
 	if (fname){
 		arcan_warning("system_statesnap(), "
 		"refuses to overwrite existing file (%s));\n", fname);
-		free(fname);
+		arcan_mem_free(fname);
 
 		return 0;
 	}
@@ -2009,7 +2067,7 @@ static int dofile(lua_State* ctx)
 	else
 		arcan_fatal("Invalid script specified for system_load(%s)\n", instr);
 
-	free(fname);
+	arcan_mem_free(fname);
 	return res;
 }
 
@@ -2203,12 +2261,12 @@ static int loadmovie(lua_State* ctx)
 		aid = mvctx->aid;
 	}
  	else
-		free(mvctx);
+		arcan_mem_free(mvctx);
 
 	lua_pushvid(ctx, vid);
 	lua_pushaid(ctx, aid);
 
-	free(fname);
+	arcan_mem_free(fname);
 
 	return 2;
 }
@@ -3381,9 +3439,10 @@ static int loadmesh(lua_State* ctx)
 						"Couldn't add mesh to (%d)\n", path, did);
 				arcan_release_resource(&indata);
 			}
+
+		arcan_mem_free(path);
 	}
 
-	free(path);
 	return 0;
 }
 
@@ -4363,7 +4422,7 @@ static int resource(lua_State* ctx)
 	int mask = luaL_optinteger(ctx, 2, DEFAULT_USERMASK) & DEFAULT_USERMASK;
 	char* res = findresource(label, mask);
 	lua_pushstring(ctx, res);
-	free(res);
+	arcan_mem_free(res);
 	return 1;
 }
 
