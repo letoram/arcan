@@ -124,7 +124,7 @@ static const struct option longopts[] = {
 
 static void usage()
 {
-printf("Usage: arcan [-whfmWMOqspBtbdgaSV] applname "
+printf("Usage: arcan [-whfmWMOqspBtHbdgaSV] applname "
 	"[appl specific arguments]\n\n"
 "-w\t--width       \tdesired initial canvas width (default: 640, auto: 0)\n"
 "-h\t--height      \tdesired initial canvas height (default: 480, auto: 0)\n"
@@ -140,6 +140,7 @@ printf("Usage: arcan [-whfmWMOqspBtbdgaSV] applname "
 "-p\t--rpath       \tchange default searchpath for shared resources\n"
 "-B\t--binpath     \tchange default searchpath for arcan_frameserver*\n"
 "-t\t--applpath    \tchange default searchpath for applications\n"
+"-H\t--hookscript  \trun a post-appl() script from (SHARED namespace)\n"
 "-b\t--fallback    \tset a recovery/fallback application if appname crashes\n"
 "-d\t--database    \tsqlite database (default: arcandb.sqlite)\n"
 "-g\t--debug       \ttoggle debug output (events, coredumps, etc.)\n"
@@ -305,7 +306,7 @@ int main(int argc, char* argv[])
  * adopt our external connections
  */
 	char* fallback = NULL;
-
+	char* hookscript = NULL;
 	char* dbfname = NULL;
 	int ch;
 
@@ -314,7 +315,7 @@ int main(int argc, char* argv[])
  * only -g will make their base and sequence repeatable */
 
 	while ((ch = getopt_long(argc, argv,
-		"w:h:mx:y:fsW:d:Sq:a:p:b:B:M:O:t:g1:2:V", longopts, NULL)) >= 0){
+		"w:h:mx:y:fsW:d:Sq:a:p:b:B:M:O:t:H:g1:2:V", longopts, NULL)) >= 0){
 	switch (ch) {
 	case '?' :
 		usage();
@@ -335,6 +336,7 @@ int main(int argc, char* argv[])
 	case 'V' : fprintf(stdout, "%s\n", ARCAN_BUILDVERSION);
 						 exit(EXIT_SUCCESS);
 						 break;
+	case 'H' : hookscript = strdup( optarg ); break;
 #ifndef _WIN32
 	case 'M' : settings.monitor_counter = settings.monitor =
 		abs( strtol(optarg, NULL, 10) ); break;
@@ -551,6 +553,27 @@ applswitch:
 		setenv("ARCAN_FRAMESERVER_LOGDIR", lpath, 1);
 	}
 
+	if (hookscript){
+		char* tmphook = arcan_expand_resource(hookscript, RESOURCE_APPL_SHARED);
+		free(hookscript);
+		hookscript = NULL;
+
+		if (tmphook){
+			data_source src = arcan_open_resource(tmphook);
+			if (src.fd != BADFD){
+				map_region reg = arcan_map_resource(&src, false);
+
+				if (reg.ptr){
+					hookscript = strdup(reg.ptr);
+					arcan_release_map(reg);
+				}
+
+				arcan_release_resource(&src);
+			}
+
+			free(tmphook);
+		}
+	}
 #ifndef _WIN32
 	system_page_size = sysconf(_SC_PAGE_SIZE);
 #endif
@@ -633,6 +656,9 @@ applswitch:
 
 	arcan_lua_callvoidfun(settings.lua, "", true);
 
+	if (hookscript)
+		arcan_luaL_dostring(settings.lua, hookscript);
+
 	if (adopt){
 		int saved, truncated;
 		arcan_video_recoverexternal(false, &saved, &truncated,
@@ -687,6 +713,7 @@ applswitch:
 	}
 
 out:
+	free(hookscript);
 	arcan_lua_callvoidfun(settings.lua, "shutdown", false);
 #ifdef ARCAN_LED
 	arcan_led_shutdown();
