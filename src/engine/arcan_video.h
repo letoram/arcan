@@ -183,6 +183,11 @@ enum arcan_transform_mask {
 	MASK_ALL         = 255
 };
 
+#ifndef MASK_MOTION
+#define MASK_TRANSFORMS (MASK_POSITION | MASK_SCALE\
+ | MASK_OPACITY | MASK_ORIENTATION)
+#endif
+
 typedef float (*arcan_interp_1d_function)(
 	float startv, float stopv, float fract);
 
@@ -708,6 +713,17 @@ arcan_errc arcan_video_copyprops(arcan_vobj_id sid, arcan_vobj_id did);
 arcan_errc arcan_video_shareglstore(arcan_vobj_id sid, arcan_vobj_id did);
 arcan_errc arcan_video_transformcycle(arcan_vobj_id, bool);
 arcan_errc arcan_video_zaptransform(arcan_vobj_id id, float*);
+
+/*
+ * Associate a tag with the specified transform, and a mask of
+ * valid transforms (only BLEND, ROTATE, SCALE, POSITION allowed).
+ *
+ * The tag will be associated with the last element of each specified
+ * slot, and the event will fire wehn that transform is dropped from
+ * the front.
+ */
+arcan_errc arcan_video_tagtransform(arcan_vobj_id id,
+	intptr_t tag, enum arcan_transform_mask mask);
 
 void arcan_video_cursorpos(int newx, int newy, bool absolute);
 void arcan_video_cursorsize(size_t w, size_t h);

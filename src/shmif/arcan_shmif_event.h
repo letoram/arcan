@@ -383,8 +383,15 @@ typedef struct {
 
 typedef struct {
 	int64_t source;
-	int16_t width;
-	int16_t height;
+
+	union {
+		struct {
+			int16_t width;
+			int16_t height;
+		};
+		int slot;
+	};
+
 	intptr_t data;
 } arcan_vevent;
 

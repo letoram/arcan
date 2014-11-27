@@ -113,6 +113,7 @@ static const struct option longopts[] = {
 	{ "timedump",     required_argument, NULL, 'q'},
 	{ "multisamples", required_argument, NULL, 'a'},
 	{ "nosound",      no_argument,       NULL, 'S'},
+	{ "hook",         required_argument, NULL, 'H'},
 	{ "stdout",       required_argument, NULL, '1'},
 	{ "stderr",       required_argument, NULL, '2'},
 	{ "monitor",      required_argument, NULL, 'M'},
@@ -140,7 +141,7 @@ printf("Usage: arcan [-whfmWMOqspBtHbdgaSV] applname "
 "-p\t--rpath       \tchange default searchpath for shared resources\n"
 "-B\t--binpath     \tchange default searchpath for arcan_frameserver*\n"
 "-t\t--applpath    \tchange default searchpath for applications\n"
-"-H\t--hookscript  \trun a post-appl() script from (SHARED namespace)\n"
+"-H\t--hook        \trun a post-appl() script from (SHARED namespace)\n"
 "-b\t--fallback    \tset a recovery/fallback application if appname crashes\n"
 "-d\t--database    \tsqlite database (default: arcandb.sqlite)\n"
 "-g\t--debug       \ttoggle debug output (events, coredumps, etc.)\n"

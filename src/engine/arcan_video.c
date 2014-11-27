@@ -2555,6 +2555,61 @@ arcan_errc arcan_video_zaptransform(arcan_vobj_id id, float* dropped)
 	return ARCAN_OK;
 }
 
+arcan_errc arcan_video_tagtransform(arcan_vobj_id id,
+	intptr_t tag, enum arcan_transform_mask mask)
+{
+	arcan_vobject* vobj = arcan_video_getobject(id);
+
+	if (!vobj)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+
+	if (!vobj->transform)
+		return ARCAN_ERRC_UNACCEPTED_STATE;
+
+	if ((mask & ~MASK_TRANSFORMS) > 0)
+		return ARCAN_ERRC_BAD_ARGUMENT;
+
+	surface_transform* current = vobj->transform;
+
+	while(current && mask > 0){
+		if ((mask & MASK_POSITION) > 0){
+			if (current->move.startt &&
+			(!current->next || !current->next->move.startt)){
+				mask &= ~MASK_POSITION;
+				current->move.tag = tag;
+			}
+		}
+
+		if ((mask & MASK_SCALE) > 0){
+			if (current->scale.startt &&
+			(!current->next || !current->next->scale.startt)){
+				mask &= ~MASK_SCALE;
+				current->scale.tag = tag;
+			}
+		}
+
+		if ((mask & MASK_ORIENTATION) > 0){
+			if (current->rotate.startt &&
+			(!current->next || !current->next->rotate.startt)){
+				mask &= ~MASK_ORIENTATION;
+				current->rotate.tag = tag;
+			}
+		}
+
+		if ((mask & MASK_OPACITY) > 0){
+			if (current->blend.startt &&
+			(!current->next || !current->next->blend.startt)){
+				mask &= ~MASK_OPACITY;
+				current->blend.tag = tag;
+			}
+		}
+
+		current = current->next;
+	}
+
+	return ARCAN_OK;
+}
+
 arcan_errc arcan_video_instanttransform(arcan_vobj_id id){
 	arcan_vobject* vobj = arcan_video_getobject(id);
 	if (!vobj)
@@ -3397,6 +3452,20 @@ arcan_errc arcan_video_objectscale(arcan_vobj_id id, float wf,
 	return rv;
 }
 
+static void emit_transform_event(arcan_vobj_id src,
+	enum arcan_transform_mask slot, intptr_t tag)
+{
+	arcan_event tagev = {
+		.category = EVENT_VIDEO,
+		.kind = EVENT_VIDEO_CHAIN_OVER,
+		.data.video.data = tag,
+		.data.video.source = src,
+		.data.video.slot = slot
+	};
+
+	arcan_event_enqueue(arcan_event_defaultctx(), &tagev);
+}
+
 /* called whenever a cell in update has a time that reaches 0 */
 static void compact_transformation(arcan_vobject* base,
 	unsigned int ofs, unsigned int count)
@@ -3420,6 +3489,7 @@ static void compact_transformation(arcan_vobject* base,
 /* if it is now empty, free and delink */
 	if (!(work->blend.startt | work->scale.startt |
 		work->move.startt | work->rotate.startt )){
+
 		arcan_mem_free(work);
 		if (last)
 			last->next = NULL;
@@ -3485,6 +3555,10 @@ static int update_object(arcan_vobject* ci, unsigned long long stamp)
 					arcan_video_blendinterp(ci->cellid, ci->transform->blend.interp);
 			}
 
+			if (ci->transform->blend.tag)
+				emit_transform_event(ci->cellid,
+					MASK_OPACITY, ci->transform->blend.tag);
+
 			compact_transformation(ci,
 				offsetof(surface_transform, blend),
 				sizeof(struct transf_blend));
@@ -3514,6 +3588,10 @@ static int update_object(arcan_vobject* ci, unsigned long long stamp)
 					arcan_video_moveinterp(ci->cellid, ci->transform->move.interp);
 			}
 
+			if (ci->transform->move.tag)
+				emit_transform_event(ci->cellid,
+					MASK_POSITION, ci->transform->move.tag);
+
 			compact_transformation(ci,
 				offsetof(surface_transform, move),
 				sizeof(struct transf_move));
@@ -3542,6 +3620,9 @@ static int update_object(arcan_vobject* ci, unsigned long long stamp)
 					arcan_video_scaleinterp(ci->cellid, ci->transform->scale.interp);
 			}
 
+			if (ci->transform->scale.tag)
+				emit_transform_event(ci->cellid, MASK_SCALE, ci->transform->scale.tag);
+
 			compact_transformation(ci,
 				offsetof(surface_transform, scale),
 				sizeof(struct transf_scale));
@@ -3562,6 +3643,10 @@ static int update_object(arcan_vobject* ci, unsigned long long stamp)
 					ci->transform->rotate.endo.pitch,
 					ci->transform->rotate.endo.yaw,
 					ci->transform->rotate.endt - ci->transform->rotate.startt);
+
+			if (ci->transform->rotate.tag)
+				emit_transform_event(ci->cellid,
+					MASK_ORIENTATION, ci->transform->rotate.tag);
 
 			compact_transformation(ci,
 				offsetof(surface_transform, rotate),
