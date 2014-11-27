@@ -243,7 +243,8 @@ extern struct arcan_dbh* dbhandle;
 enum arcan_cb_source {
 	CB_SOURCE_NONE        = 0,
 	CB_SOURCE_FRAMESERVER = 1,
-	CB_SOURCE_IMAGE       = 2
+	CB_SOURCE_IMAGE       = 2,
+	CB_SOURCE_TRANSFORM   = 3
 };
 
 struct nonblock_io {
@@ -1614,6 +1615,25 @@ static int imagestate(lua_State* ctx)
 		}
 
 	return 1;
+}
+
+static int tagtransform(lua_State* ctx)
+{
+	LUA_TRACE("tag_image_transform");
+
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
+	enum arcan_transform_mask mask = luaL_checknumber(ctx, 2);
+
+	if (mask & ~MASK_TRANSFORMS){
+		arcan_warning("tag_image_transform(), unknown mask- bits filtered.\n");
+		mask &= MASK_TRANSFORMS;
+	}
+
+	intptr_t ref = find_lua_callback(ctx);
+
+	arcan_video_tagtransform(id, ref, mask);
+
+	return 0;
 }
 
 static int setshader(lua_State* ctx)
@@ -3180,6 +3200,15 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		switch (ev->kind) {
 		case EVENT_VIDEO_EXPIRE :
 /* not even likely that these get forwarded here */
+		break;
+
+		case EVENT_VIDEO_CHAIN_OVER:
+			evmsg = "video_event(chain_tag reached)";
+			dst_cb = (intptr_t) ev->data.video.data;
+			if (dst_cb){
+				evmsg = "video_event(chain_tag reached, callback";
+				lua_ctx_store.cb_source_kind = CB_SOURCE_TRANSFORM;
+			}
 		break;
 
 		case EVENT_VIDEO_ASYNCHIMAGE_LOADED:
@@ -7304,6 +7333,7 @@ static const luaL_Reg imgfuns[] = {
 {"expire_image",             setlife            },
 {"reset_image_transform",    resettransform     },
 {"instant_image_transform",  instanttransform   },
+{"tag_image_transform",      tagtransform       },
 {"image_transform_cycle",    cycletransform     },
 {"copy_image_transform",     copytransform      },
 {"transfer_image_transform", transfertransform  },

@@ -100,24 +100,28 @@ struct transf_move{
 	unsigned char interp;
 	arcan_tickv startt, endt;
 	point startp, endp;
+	intptr_t tag;
 };
 
 struct transf_scale{
 	unsigned char interp;
 	arcan_tickv startt, endt;
 	scalefactor startd, endd;
+	intptr_t tag;
 };
 
 struct transf_blend{
 	unsigned char interp;
 	arcan_tickv startt, endt;
 	float startopa, endopa;
+	intptr_t tag;
 };
 
 struct transf_rotate{
 	arcan_interp_4d_function interp;
 	arcan_tickv startt, endt;
 	surface_orientation starto, endo;
+	intptr_t tag;
 };
 
 /*
