@@ -257,6 +257,7 @@ static struct {
 
 	const char* lastsrc;
 
+	bool in_panic;
 	unsigned char debug;
 	unsigned lua_vidbase;
 	unsigned char grab;
@@ -388,6 +389,21 @@ retry:
 		case LUA_TBOOLEAN:
 			fputs("bool;", outf);
 		break;
+		case LUA_TNIL:
+			fputs("nil;", outf);
+		break;
+		case LUA_TLIGHTUSERDATA:
+			fputs("lightud;", outf);
+		break;
+		case LUA_TTABLE:
+			fputs("table;", outf);
+		break;
+		case LUA_TUSERDATA:
+			fputs("ud;", outf);
+		break;
+		case LUA_TTHREAD:
+			fputs("thread;", outf);
+		break;
 		case LUA_TSTRING:
 			fputs("str;", outf);
 		break;
@@ -396,6 +412,7 @@ retry:
 		break;
 		case LUA_TFUNCTION:
 			fputs("fptr;", outf);
+		break;
 		default:
 			fputs("unt;", outf);
 		break;
@@ -562,13 +579,33 @@ static int opennonblock(lua_State* ctx)
 {
 	LUA_TRACE("open_nonblock");
 
-	char* path = findresource(luaL_checkstring(ctx, 1), DEFAULT_USERMASK);
+	const char* metatable = NULL;
+	bool wrmode = luaL_optnumber(ctx, 2, 0) != 0;
+	char* path;
+	int fd;
 
-	if (!path){
-		return 0;
+	if (wrmode){
+		metatable = "nonblockIOw";
+		path = findresource(luaL_checkstring(ctx, 1), RESOURCE_APPL_TEMP);
+		if (path || !(path = arcan_expand_resource(
+				luaL_checkstring(ctx, 1), RESOURCE_APPL_TEMP))){
+			arcan_warning("open_nonblock(), refusing to open "
+				"existing file for writing\n");
+			arcan_mem_free(path);
+			return 0;
+		}
+
+		fd = open(path, O_NONBLOCK | O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+	}
+	else{
+		path = findresource(luaL_checkstring(ctx, 1), DEFAULT_USERMASK);
+		if (!path)
+			return 0;
+
+		metatable = "nonblockIOr";
+		fd = open(path, O_NONBLOCK | O_CLOEXEC | O_RDONLY);
 	}
 
-	int fd = open(path, O_NONBLOCK | O_CLOEXEC | O_RDONLY);
 	arcan_mem_free(path);
 
 	if (fd <= 0)
@@ -578,15 +615,15 @@ static int opennonblock(lua_State* ctx)
 			ARCAN_MEM_BINDING, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 
 	conn->fd = fd;
+
 	uintptr_t* dp = lua_newuserdata(ctx, sizeof(uintptr_t));
 	*dp = (uintptr_t) conn;
-	luaL_getmetatable(ctx, "nonblockIO");
+
+	luaL_getmetatable(ctx, metatable);
 	lua_setmetatable(ctx, -2);
 
 	return 1;
 }
-
-
 
 static int rawresource(lua_State* ctx)
 {
@@ -690,10 +727,10 @@ static int bufread(lua_State* ctx, struct nonblock_io* ib)
 	return bufcheck(ctx, ib);
 }
 
-static int nbio_close(lua_State* ctx)
+static int nbio_closer(lua_State* ctx)
 {
 	LUA_TRACE("open_nonblock:close");
-	struct nonblock_io** ib = luaL_checkudata(ctx, 1, "nonblockIO");
+	struct nonblock_io** ib = luaL_checkudata(ctx, 1, "nonblockIOr");
 	if (*ib == NULL)
 		return 0;
 
@@ -704,10 +741,50 @@ static int nbio_close(lua_State* ctx)
 	return 0;
 }
 
+static int nbio_closew(lua_State* ctx)
+{
+	LUA_TRACE("open_nonblock:close_write");
+	struct nonblock_io** ib = luaL_checkudata(ctx, 1, "nonblockIOw");
+	if (*ib == NULL)
+		return 0;
+
+	close((*ib)->fd);
+	free(*ib);
+	*ib = NULL;
+
+	return 0;
+}
+
+static int nbio_write(lua_State* ctx)
+{
+	LUA_TRACE("open_nonblock:write");
+	struct nonblock_io** iw = luaL_checkudata(ctx, 1, "nonblockIOw");
+	const char* buf = luaL_checkstring(ctx, 2);
+
+	size_t len = strlen(buf);
+	off_t of = 0;
+
+	while (len - of){
+		size_t nw = write((*iw)->fd, buf + of, len - of);
+		if (-1 == nw){
+			if (errno == EAGAIN || errno == EINTR)
+				continue;
+			else
+				break;
+		}
+		else
+			of += nw;
+	}
+
+	lua_pushnumber(ctx, of);
+
+	return 1;
+}
+
 static int nbio_read(lua_State* ctx)
 {
 	LUA_TRACE("open_nonblock:read");
-	struct nonblock_io** ib = luaL_checkudata(ctx, 1, "nonblockIO");
+	struct nonblock_io** ib = luaL_checkudata(ctx, 1, "nonblockIOr");
 	if (*ib == NULL)
 		return 0;
 
@@ -4323,8 +4400,10 @@ static void panic(lua_State* ctx)
 		snprintf(vidbuf, 63, "script error in callback for VID (%"PRIxVOBJ")",
 			lua_ctx_store.lua_vidbase + lua_ctx_store.cb_source_tag);
 		wraperr(ctx, -1, vidbuf);
-	} else
+	} else{
+		lua_ctx_store.in_panic = true;
 		wraperr(ctx, -1, "(panic)");
+	}
 
 	arcan_warning("LUA VM is in a panic state, "
 		"recovery handover might be impossible.\n");
@@ -4340,7 +4419,8 @@ static void wraperr(lua_State* ctx, int errc, const char* src)
 	if (errc == 0)
 		return;
 
-	const char* mesg = luaL_optstring(ctx, 1, "unknown");
+	const char* mesg = lua_ctx_store.in_panic ? "Lua VM state broken, panic" :
+		luaL_optstring(ctx, 1, "unknown");
 /*
  * currently unused, pending refactor of arcan_warning
 	int severity = luaL_optnumber(ctx, 2, 0);
@@ -4977,7 +5057,7 @@ static int targetsnapshot(lua_State* ctx)
 	char* fname = arcan_expand_resource(snapkey, RESOURCE_APPL_STATE);
 	int fd = -1;
 	if (fname)
-		fd = open(fname, O_CREAT | O_WRONLY | O_TRUNC, S_IRWXU);
+		fd = open(fname, O_CREAT | O_WRONLY | O_TRUNC, S_IRUSR | S_IWUSR);
 	arcan_mem_free(fname);
 
 	if (-1 == fd){
@@ -7090,15 +7170,26 @@ static const luaL_Reg resfuns[] = {
 #undef EXT_MAPTBL_RESOURCE
 	register_tbl(ctx, resfuns);
 
-	luaL_newmetatable(ctx, "nonblockIO");
+	luaL_newmetatable(ctx, "nonblockIOr");
 	lua_pushvalue(ctx, -1);
 	lua_setfield(ctx, -2, "__index");
 	lua_pushcfunction(ctx, nbio_read);
 	lua_setfield(ctx, -2, "read");
-	lua_pushcfunction(ctx, nbio_close);
+	lua_pushcfunction(ctx, nbio_closer);
 	lua_setfield(ctx, -2, "__gc");
-	lua_pushcfunction(ctx, nbio_close);
+	lua_pushcfunction(ctx, nbio_closer);
 	lua_setfield(ctx, -2, "close");
+	lua_pop(ctx, 1);
+
+	luaL_newmetatable(ctx, "nonblockIOw");
+	lua_pushvalue(ctx, -1);
+	lua_setfield(ctx, -2, "__index");
+	lua_pushcfunction(ctx, nbio_write);
+	lua_setfield(ctx, -2, "write");
+	lua_pushcfunction(ctx, nbio_closew);
+	lua_setfield(ctx, -2, "close");
+	lua_pushcfunction(ctx, nbio_closew);
+	lua_setfield(ctx, -2, "_gc");
 	lua_pop(ctx, 1);
 
 #define EXT_MAPTBL_TARGETCONTROL
