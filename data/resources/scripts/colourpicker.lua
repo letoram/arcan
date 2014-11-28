@@ -1,3 +1,7 @@
+--
+-- No Copyright Claimed, Public Domain
+--
+
 -- Simple Colourpicker
 --
 -- colorpicker_new => table
@@ -5,7 +9,8 @@
 -- Table Methods
 -- show()
 -- destroy()
--- input(label), label :- MENU_UP, MENU_LEFT, MENU_RIGHT, MENU_DOWN, MENU_SELECT, returns {r,g,b] triplet on completion
+-- input(label), label :- MENU_UP, MENU_LEFT, MENU_RIGHT, MENU_DOWN,
+-- MENU_SELECT, returns {r,g,b] triplet on completion
 --
 -- Table Members
 -- anchor (item positions)

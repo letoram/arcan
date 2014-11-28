@@ -1,8 +1,7 @@
-/* Arcan-fe (OS/device platform), scriptable front-end engine
- *
- * Arcan-fe is the legal property of its developers, please refer
- * to the platform/LICENSE file distributed with this source distribution
- * for licensing terms.
+/*
+ * Copyright 2014, Björn Ståhl
+ * License: 3-Clause BSD, see COPYING file in arcan source repository.
+ * Reference: http://arcan-fe.com
  */
 
 #include <stdlib.h>

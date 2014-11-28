@@ -1,10 +1,3 @@
-/* Arcan-fe (OS/device platform), scriptable front-end engine
- *
- * Arcan-fe is the legal property of its developers, please refer
- * to the platform/LICENSE file distributed with this source distribution
- * for licensing terms.
- */
-
 #ifndef _HAVE_PLATFORM
 #define _HAVE_PLATFORM
 

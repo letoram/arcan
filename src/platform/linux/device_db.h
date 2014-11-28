@@ -1,4 +1,10 @@
 /*
+ * Copyright 2014, Björn Ståhl
+ * License: 3-Clause BSD, see COPYING file in arcan source repository.
+ * Reference: http://arcan-fe.com
+ */
+
+/*
  * patch this to add a static, device specific, decoder
  * which can also be used to either forcibly disable
  * devices we handle poorly or that misbehave or only

@@ -1,17 +1,9 @@
-/* Arcan-fe (OS/device platform), scriptable front-end endinge
- *
- * Arcan-fe is the legal property of its developers, please refer to
- * the platform/LICENSE file distributed with this source distribution
- * for licensing terms.
- */
-
 /*
- * This implements using arcan-in-arcan, nested execution as part of
- * the hybrid mode (see engine design docs). We'll set up a GL
- * context, map to that the shared memory, do readbacks etc.
+ * Copyright 2014, Björn Ståhl
+ * License: 3-Clause BSD, see COPYING file in arcan source repository.
+ * Reference: http://arcan-fe.com
  */
 
-/* We re-use X11/egl or other platforms with this little hack */
 #define PLATFORM_SUFFIX lwa
 
 #include <stdint.h>

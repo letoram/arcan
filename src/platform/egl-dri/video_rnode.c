@@ -1,3 +1,9 @@
+/*
+ * Copyright 2014, Björn Ståhl
+ * License: 3-Clause BSD, see COPYING file in arcan source repository.
+ * Reference: http://arcan-fe.com
+ */
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -11,6 +17,7 @@
 #include <sys/stat.h>
 #include <errno.h>
 
+#define EGL_EGLEXT_PROTOTYPES
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 
@@ -88,6 +95,7 @@ static struct {
 	EGLContext context;
 	EGLDisplay display;
 	EGLSurface surface;
+	EGLImageKHR output;
 
 	struct gbm_device* dev;
 
@@ -103,6 +111,26 @@ int egl_rnode_worldfbo_required[-1];
 void* PLATFORM_SYMBOL(_video_gfxsym)(const char* sym)
 {
 	return eglGetProcAddress(sym);
+}
+
+int PLATFORM_SYMBOL(_output_handle)()
+{
+	struct storage_info_t* ws = arcan_vint_world();
+	intptr_t descr = ws->vinf.text.glid;
+
+	rnode.output = eglCreateImageKHR(rnode.display,
+		rnode.context, EGL_GL_TEXTURE_2D_KHR, (EGLClientBuffer)(descr), NULL);
+
+	EGLint name, handle, stride;
+	int fd = -1;
+
+	if (eglExportDRMImageMESA(rnode.display, rnode.output,
+		&name, &handle, &stride)){
+		drmPrimeHandleToFD(rnode.fd, handle, DRM_CLOEXEC, &fd);
+		printf("exported %d\n", fd);
+	}
+
+	return fd;
 }
 
 bool PLATFORM_SYMBOL(_video_init)(uint16_t w, uint16_t h,

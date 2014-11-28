@@ -1,4 +1,10 @@
 /*
+ * Copyright 2014, Björn Ståhl
+ * License: 3-Clause BSD, see COPYING file in arcan source repository.
+ * Reference: http://arcan-fe.com
+ */
+
+/*
  * This file should define the generic types (and possibly header files)
  * needed for building / porting to a different platform.
  *

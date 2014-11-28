@@ -1,4 +1,7 @@
--- Arcan helperscript, listview.
+--
+-- No Copyright Claimed, Public Domain
+--
+
 --
 -- Usage:
 ----------

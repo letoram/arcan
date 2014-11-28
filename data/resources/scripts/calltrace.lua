@@ -1,3 +1,7 @@
+--
+-- No Copyright Claimed, Public Domain
+--
+
 -- Creates two global functions: a function that traces function calls
 -- and returns, and another function to turn it off.
 --

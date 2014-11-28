@@ -1,4 +1,8 @@
 --
+-- No Copyright Claimed, Public Domain
+--
+
+--
 -- Collection of support functions and shaders
 -- This is mostly temporary hacks, awaiting the 3D- revamp of 0.3
 --

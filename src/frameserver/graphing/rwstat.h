@@ -1,4 +1,10 @@
 /*
+ * Copyright 2014, Björn Ståhl
+ * License: 3-Clause BSD, see COPYING file in arcan source repository.
+ * Reference: http://arcan-fe.com
+ */
+
+/*
  * RW-Stat, packing transfer statistics into an Arcan-shmif buffer
  * for unpacking/rendering by an appl- side shader.
  *

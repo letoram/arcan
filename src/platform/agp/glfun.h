@@ -1,4 +1,8 @@
 /*
+ * No copyright claimed, Public Domain
+ */
+
+/*
  * Cherry- picked OpenGL functions used by glshared/gl21 and possible
  * other GL- related functions. It should be populated by the corresponding
  * gl%w*%d%d.c file.

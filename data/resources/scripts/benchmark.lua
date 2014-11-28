@@ -1,4 +1,8 @@
 --
+-- No Copyright Claimed, Public Domain
+--
+
+--
 -- Simple Benchmark Support Script
 --
 -- Run benchmark_setup( argstr ) for a shared interface for setting
