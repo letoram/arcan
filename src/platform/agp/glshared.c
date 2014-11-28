@@ -179,8 +179,8 @@ void agp_activate_rendertarget(struct rendertarget* tgt)
 	size_t w, h;
 
 	if (!tgt){
-		w = arcan_video_display.canvasw;
-		h = arcan_video_display.canvash;
+		w = arcan_video_display.width;
+		h = arcan_video_display.height;
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	}
 	else {
@@ -226,51 +226,28 @@ void agp_null_vstore(struct storage_info_t* store)
 void agp_resize_rendertarget(struct rendertarget* tgt, size_t neww,
 	size_t newh)
 {
-	if (tgt->color){
-/* need to de-allocate */
+	if (!tgt || !tgt->store){
+		arcan_warning("attempted resize on broken rendertarget\n");
+		return;
 	}
 
-/* struct storage_info_t* ds = tgt->color->vstore;
+/* same dimensions, no need to resize */
+	if (tgt->store->store->w == neww && tgt->store->store->h == newh)
+		return;
 
- * current_context->world.vstore;
-	if (ds){
-		glDeleteTextures(1, &ds->vinf.text.glid);
-		arcan_mem_free(ds->vinf.text.raw);
-		glDeleteFramebuffers(1, &arcan_video_display.main_fbo);
-		glDeleteRenderbuffers(1, &arcan_video_display.main_rb);
-		if (arcan_video_display.pbo_support)
-			glDeleteBuffers(1, &current_context->stdoutp.pbo);
-	}
-	else{
-		populate_vstore(&current_context->world.vstore);
-		ds = current_context->world.vstore;
-	}
+	struct storage_info_t* os = tgt->store->store;
+	enum rendertarget_mode mode = tgt->store->mode;
 
-	ds->w = neww;
-	ds->h = newh;
-	ds->vinf.text.s_raw = neww * newh * GL_PIXEL_BPP;
+/* we inplace- modify, want the refcounter intact */
+	agp_null_vstore(os);
+	arcan_mem_free(os->vinf.text.raw);
+	os->vinf.text.raw = NULL;
+	os->vinf.text.s_raw = 0;
+	agp_empty_vstore(os, neww, newh);
 
-	ds->vinf.text.raw = arcan_alloc_mem(ds->vinf.text.s_raw,
-		ARCAN_MEM_VBUFFER,
-		ARCAN_MEM_BZERO,
-		ARCAN_MEMALIGN_PAGE
-	);
-
-	agp_update_vstore(current_context->world.vstore, true, false);
-
-	glGenFramebuffers(1, &arcan_video_display.main_fbo);
-	glBindFramebuffer(GL_FRAMEBUFFER, arcan_video_display.main_fbo);
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-		GL_TEXTURE_2D, ds->vinf.text.glid, 0);
-
-	glGenRenderbuffers(1, &arcan_video_display.main_rb);
-	glBindRenderbuffer(GL_RENDERBUFFER, arcan_video_display.main_rb);
-	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, ds->w, ds->h);
-	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
-		GL_RENDERBUFFER, arcan_video_display.main_rb);
-
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	*/
+/* drop old FBO IDs etc. */
+	agp_drop_rendertarget(tgt);
+	agp_setup_rendertarget(tgt, os, mode);
 }
 
 void agp_activate_vstore_multi(struct storage_info_t** backing, size_t n)
