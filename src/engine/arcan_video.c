@@ -450,9 +450,12 @@ static void pop_transfer_persists(
 
 void arcan_vint_drawrt(struct storage_info_t* vs, int x, int y, int w, int h)
 {
+	_Alignas(16) float imatr[16];
+	identity_matrix(imatr);
 	arcan_shader_activate(agp_default_shader(BASIC_2D));
 
 	agp_activate_vstore(vs);
+	arcan_shader_envv(MODELVIEW_MATR, imatr, sizeof(float)*16);
 	arcan_shader_envv(PROJECTION_MATR,
 		arcan_video_display.window_projection, sizeof(float)*16);
 
@@ -1450,7 +1453,7 @@ arcan_errc arcan_video_resize_canvas(size_t neww, size_t newh)
 	else
 		agp_resize_rendertarget(&current_context->stdoutp, neww, newh);
 
-		build_orthographic_matrix(arcan_video_display.window_projection, 0,
+	build_orthographic_matrix(arcan_video_display.window_projection, 0,
 		arcan_video_display.width, arcan_video_display.height, 0, 0, 1);
 
 	build_orthographic_matrix(arcan_video_display.default_projection, 0,
@@ -1460,6 +1463,8 @@ arcan_errc arcan_video_resize_canvas(size_t neww, size_t newh)
 		arcan_video_display.default_projection, sizeof(float) * 16);
 
 	FLAG_DIRTY(NULL);
+	arcan_video_forceupdate(ARCAN_VIDEO_WORLDID);
+
 	return ARCAN_OK;
 }
 
