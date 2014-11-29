@@ -1523,9 +1523,11 @@ static int cursormove(lua_State* ctx)
 	acoord y = luaL_checknumber(ctx, 2);
 	bool clamp = luaL_optnumber(ctx, 3, 0) == 0;
 
+	struct monitor_mode mmode = platform_video_dimensions();
+
 	if (clamp){
-		x = x > arcan_video_display.canvasw ? arcan_video_display.canvasw : x;
-		y = y > arcan_video_display.canvash ? arcan_video_display.canvash : y;
+		x = x > mmode.width ? mmode.width : x;
+		y = y > mmode.height ? mmode.height : y;
 		x = x < 0 ? 0 : x;
 		y = y < 0 ? 0 : y;
 	}
@@ -1541,9 +1543,11 @@ static int cursornudge(lua_State* ctx)
 	acoord y = luaL_checknumber(ctx, 2) + arcan_video_display.cursor.y;
 	bool clamp = luaL_optnumber(ctx, 3, 0) == 0;
 
+struct monitor_mode mmode = platform_video_dimensions();
+
 	if (clamp){
-		x = x > arcan_video_display.canvasw ? arcan_video_display.canvasw : x;
-		y = y > arcan_video_display.canvash ? arcan_video_display.canvash : y;
+		x = x > mmode.width ? mmode.width : x;
+		y = y > mmode.height ? mmode.height : y;
 		x = x < 0 ? 0 : x;
 		y = y < 0 ? 0 : y;
 	}
@@ -3637,8 +3641,11 @@ static int camtag(lua_State* ctx)
 	LUA_TRACE("camtag_model");
 
 	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
-	float w = arcan_video_display.canvasw;
-	float h = arcan_video_display.canvash;
+
+	struct monitor_mode mode = platform_video_dimensions();
+	float w = mode.width;
+	float h = mode.height;
+
 	float ar = w / h > 1.0 ? w / h : h / w;
 
 	float nv  = luaL_optnumber(ctx, 2, 0.1);
@@ -5978,8 +5985,10 @@ static int borderscan(lua_State* ctx)
 	LUA_DEPRECATE("image_borderscan");
 	int x1, y1, x2, y2;
 	x1 = y1 = 0;
-	x2 = arcan_video_screenw();
-	y2 = arcan_video_screenh();
+
+	struct monitor_mode mode = platform_video_dimensions();
+	x2 = mode.phy_width;
+	y2 = mode.phy_height;
 
 	arcan_vobject* vobj;
 	luaL_checkvid(ctx, 1, &vobj);
@@ -6655,8 +6664,10 @@ static int screenshot(lua_State* ctx)
 
 	av_pixel* databuf = NULL;
 	size_t bufs;
-	int dw = arcan_video_display.canvasw;
-	int dh = arcan_video_display.canvash;
+
+	struct monitor_mode mode = platform_video_dimensions();
+	int dw = mode.width;
+	int dh = mode.height;
 
 	const char* const resstr = luaL_checkstring(ctx, 1);
 	arcan_vobj_id sid = ARCAN_EID;
@@ -7494,10 +7505,12 @@ static const luaL_Reg netfuns[] = {
 }
 
 void arcan_lua_pushglobalconsts(lua_State* ctx){
+	struct monitor_mode mode = platform_video_dimensions();
+
 #define EXT_CONSTTBL_GLOBINT
 	struct { const char* key; int val; } consttbl[] = {
-{"VRESH", arcan_video_screenh()},
-{"VRESW", arcan_video_screenw()},
+{"VRESW", mode.width},
+{"VRESH", mode.height},
 {"MAX_SURFACEW", MAX_SURFACEW},
 {"MAX_SURFACEH", MAX_SURFACEH},
 {"STACK_MAXCOUNT", CONTEXT_STACK_LIMIT},
@@ -8039,6 +8052,8 @@ void arcan_lua_statesnap(FILE* dst, const char* tag, bool delim)
  * missing event-queues
  */
 	struct arcan_video_display* disp = &arcan_video_display;
+	struct monitor_mode mmode = platform_video_dimensions();
+
 fprintf(dst, " do \n\
 local nan = 0/0;\n\
 local inf = math.huge;\n\
@@ -8058,7 +8073,7 @@ local restbl = {\n\
 \t};\n\
 \tvcontexts = {};\
 };\n\
-", disp->width, disp->height, disp->conservative ? 1 : 0,
+", (int)mmode.width, (int)mmode.height, disp->conservative ? 1 : 0,
 	(int)disp->msasamples, (long long int)disp->c_ticks,
 	(int)disp->default_vitemlim,
 	(int)disp->imageproc, (int)disp->scalemode, (int)disp->filtermode);

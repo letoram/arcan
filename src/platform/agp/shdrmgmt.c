@@ -19,6 +19,11 @@
 #include "arcan_video.h"
 #include "arcan_videoint.h"
 
+#ifdef HEADLESS_NOARCAN
+#undef FLAG_DIRTY
+#define FLAG_DIRTY()
+#endif
+
 #define TBLSIZE (1 + TIMESTAMP_D - MODELVIEW_MATR)
 
 /* all current global shader settings,

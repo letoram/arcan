@@ -46,6 +46,8 @@ static struct {
 	XWindowAttributes xwa;
 	GLXContext ctx;
 	XVisualInfo* vi;
+	size_t mdispw, mdisph;
+	size_t canvasw, canvash;
 } x11;
 
 Display* x11_get_display()
@@ -116,6 +118,17 @@ static bool setup_xwnd(int w, int h, bool fullscreen)
 	return true;
 }
 
+struct monitor_mode PLATFORM_SYMBOL(_video_dimensions)()
+{
+	struct monitor_mode res = {
+		.width = x11.canvasw,
+		.height = x11.canvash,
+		.phy_width = x11.mdispw,
+		.phy_height = x11.mdisph
+	};
+	return res;
+}
+
 void* PLATFORM_SYMBOL(_video_gfxsym)(const char* sym)
 {
 	return glXGetProcAddress((const GLubyte*) sym);
@@ -161,10 +174,8 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 
 	XSync(x11.xdisp, False);
 
-#ifndef HEADLESS_NOARCAN
-	arcan_video_display.width = w;
-	arcan_video_display.height = h;
-#endif
+	x11.mdispw = x11.canvasw = w;
+	x11.mdisph = x11.canvash = h;
 
 	return true;
 }
@@ -193,8 +204,8 @@ struct monitor_mode* PLATFORM_SYMBOL(_video_query_modes)(
 {
 	static struct monitor_mode mode = {};
 
-	mode.width  = arcan_video_display.width;
-	mode.height = arcan_video_display.height;
+	mode.width  = x11.mdispw;
+	mode.height = x11.mdisph;
 	mode.depth  = GL_PIXEL_BPP * 8;
 	mode.refresh = 60; /* should be queried */
 
@@ -268,11 +279,8 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 
 	agp_activate_rendertarget(NULL);
 
-	if (dsz > 0){
-		arcan_vint_drawrt(arcan_vint_world(), 0, 0,
-			arcan_video_display.width, arcan_video_display.height
-		);
-	}
+	if (dsz > 0)
+		arcan_vint_drawrt(arcan_vint_world(), 0, 0, x11.mdispw, x11.mdisph);
 
 	arcan_vint_drawcursor(true);
 	arcan_vint_drawcursor(false);

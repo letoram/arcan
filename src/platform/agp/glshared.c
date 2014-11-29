@@ -22,6 +22,11 @@
 #include "arcan_mem.h"
 #include "arcan_videoint.h"
 
+#ifdef HEADLESS_NOARCAN
+#undef FLAG_DIRTY
+#define FLAG_DIRTY()
+#endif
+
 struct rendertarget_store
 {
 	GLuint fbo;
@@ -154,7 +159,7 @@ void agp_init()
 	glFrontFace(GL_CW);
 	glCullFace(GL_BACK);
 
-#ifdef GL_MULTISAMPLE
+#if defined(GL_MULTISAMPLE) && !defined(HEADLESS_NOARCAN)
 	if (arcan_video_display.msasamples)
 		glEnable(GL_MULTISAMPLE);
 #endif
@@ -183,10 +188,11 @@ void agp_drop_rendertarget(struct rendertarget* tgt)
 void agp_activate_rendertarget(struct rendertarget* tgt)
 {
 	size_t w, h;
+	struct monitor_mode mode = platform_video_dimensions();
 
 	if (!tgt){
-		w = arcan_video_display.width;
-		h = arcan_video_display.height;
+		w = mode.width;
+		h = mode.height;
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	}
 	else {
@@ -348,11 +354,13 @@ void agp_update_vstore(struct storage_info_t* s, bool copy)
 				0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, s->vinf.text.raw);
 	}
 
+#ifndef HEADLESS_NOARCAN
 	if (arcan_video_display.conservative){
 		arcan_mem_free(s->vinf.text.raw);
 		s->vinf.text.raw = NULL;
 		s->vinf.text.s_raw = 0;
 	}
+#endif
 
 	glBindTexture(GL_TEXTURE_2D, 0);
 }

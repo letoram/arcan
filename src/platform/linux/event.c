@@ -994,8 +994,6 @@ static void defhandler_mouse(struct arcan_evctx* ctx,
 
 					node->cursor.mx = ((int)node->cursor.mx + samplev < 0) ?
 						0 : node->cursor.mx + samplev;
-					node->cursor.mx = node->cursor.mx > arcan_video_display.width ?
-						arcan_video_display.width : node->cursor.mx;
 
 					newev.kind = EVENT_IO_AXIS_MOVE;
 					newev.data.io.datatype = EVENT_IDATATYPE_ANALOG;
@@ -1013,8 +1011,6 @@ static void defhandler_mouse(struct arcan_evctx* ctx,
 				if (process_axis(ctx, &node->cursor.flt[1], inev[i].value, &samplev)){
 					node->cursor.my = ((int)node->cursor.my + samplev < 0) ?
 						0 : node->cursor.my + samplev;
-					node->cursor.my = node->cursor.my > arcan_video_display.width ?
-						arcan_video_display.width : node->cursor.my;
 
 					newev.kind = EVENT_IO_AXIS_MOVE;
 					newev.data.io.datatype = EVENT_IDATATYPE_ANALOG;

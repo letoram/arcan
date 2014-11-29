@@ -97,7 +97,6 @@ static const struct option longopts[] = {
 	{ "database",     required_argument, NULL, 'd'},
 	{ "scalemode",    required_argument, NULL, 'r'},
 	{ "timedump",     required_argument, NULL, 'q'},
-	{ "multisamples", required_argument, NULL, 'a'},
 	{ "nosound",      no_argument,       NULL, 'S'},
 	{ "hook",         required_argument, NULL, 'H'},
 	{ "stdout",       required_argument, NULL, '1'},
@@ -131,7 +130,6 @@ printf("Usage: arcan [-whfmWMOqspBtHbdgaSV] applname "
 "-b\t--fallback    \tset a recovery/fallback application if appname crashes\n"
 "-d\t--database    \tsqlite database (default: arcandb.sqlite)\n"
 "-g\t--debug       \ttoggle debug output (events, coredumps, etc.)\n"
-"-a\t--multisamples\tset number of multisamples (default 4, disable 0)\n"
 "-S\t--nosound     \tdisable audio output\n"
 "-V\t--version     \tdisplay a version string then exit\n\n");
 
@@ -317,7 +315,6 @@ int main(int argc, char* argv[])
 	case 'd' : dbfname = strdup(optarg); break;
 	case 'S' : nosound = true; break;
 	case 'q' : settings.timedump = strtol(optarg, NULL, 10); break;
-	case 'a' : arcan_video_display.msasamples = strtol(optarg, NULL, 10); break;
 	case 'p' : arcan_override_namespace(optarg, RESOURCE_APPL_SHARED); break;
 	case 'b' : fallback = strdup(optarg); break;
 	case 'V' : fprintf(stdout, "%s\n", ARCAN_BUILDVERSION);

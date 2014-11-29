@@ -279,10 +279,6 @@ struct arcan_video_display {
 	unsigned deftxs, deftxt;
 	bool mipmap;
 
-	unsigned char bpp;
-	unsigned short width, height;
-	unsigned short canvasw, canvash;
-
 	arcan_tickv c_ticks;
 	float c_lerp;
 
@@ -356,6 +352,8 @@ void arcan_video_setblend(const surface_properties* dprops,
 void arcan_debug_tracetag_dump();
 #endif
 
+struct storage_info_t* arcan_vint_world();
+
 struct arcan_img_meta;
 void generate_basic_mapping(float* dst, float st, float tt);
 void generate_mirror_mapping(float* dst, float st, float tt);
@@ -363,9 +361,7 @@ void arcan_video_joinasynch(arcan_vobject* img, bool emit, bool force);
 struct rendertarget* find_rendertarget(arcan_vobject* vobj);
 
 void arcan_vint_drawrt(struct storage_info_t*, int x, int y, int w, int h);
-struct storage_info_t* arcan_vint_world();
 void arcan_vint_drawcursor(bool erase);
-
 
 void arcan_3d_setdefaults();
 

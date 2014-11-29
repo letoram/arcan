@@ -56,7 +56,6 @@ set (FSRV_PLATFORM_SOURCES
 set (LWA_PLATFORM_SOURCES
 	${PLATFORM_SOURCES}
 	${PLATFORM_PATH}/../arcan/video.c
-	${PLATFORM_PATH}/../agp/glinit.c
 )
 
 # we don't want these coming along in LWA_PLATFORM

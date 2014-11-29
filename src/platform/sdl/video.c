@@ -19,8 +19,13 @@
 #include "arcan_shmif.h"
 #include "arcan_event.h"
 
-static SDL_Surface* screen;
-static int sdlarg;
+static struct {
+	SDL_Surface* screen;
+	int sdlarg;
+	size_t mdispw, mdisph;
+	size_t canvasw, canvash;
+} sdl;
+
 
 static char* synchopts[] = {
 	"dynamic", "herustic driven balancing latency, performance and utilization",
@@ -30,6 +35,7 @@ static char* synchopts[] = {
 };
 
 static char* envopts[] = {
+	"ARCAN_VIDEO_MULTISAMPLES=1", "attempt to enable multisampling",
 	NULL
 };
 
@@ -44,13 +50,13 @@ void platform_video_shutdown()
 {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	SDL_GL_SwapBuffers();
-	SDL_FreeSurface(screen);
+	SDL_FreeSurface(sdl.screen);
 	SDL_QuitSubSystem(SDL_INIT_VIDEO);
 }
 
 void platform_video_prepare_external()
 {
-	SDL_FreeSurface(screen);
+	SDL_FreeSurface(sdl.screen);
 	if (arcan_video_display.fullscreen)
 		SDL_QuitSubSystem(SDL_INIT_VIDEO);
 }
@@ -60,10 +66,8 @@ void platform_video_restore_external()
 	if (arcan_video_display.fullscreen)
 		SDL_Init(SDL_INIT_VIDEO | SDL_INIT_NOPARACHUTE);
 
-	screen = SDL_SetVideoMode(arcan_video_display.width,
-		arcan_video_display.height,
-		arcan_video_display.bpp,
-		sdlarg);
+	sdl.screen = SDL_SetVideoMode(
+		sdl.mdispw, sdl.mdisph, GL_PIXEL_BPP, sdl.sdlarg);
 }
 
 void* platform_video_gfxsym(const char* sym)
@@ -96,9 +100,7 @@ void platform_video_synch(uint64_t tick_count, float fract,
 	static bool ld;
 
 	if (nd > 0 || !ld){
-		arcan_vint_drawrt(arcan_vint_world(), 0, 0,
-			arcan_video_display.width, arcan_video_display.height
-		);
+		arcan_vint_drawrt(arcan_vint_world(), 0, 0, sdl.mdispw, sdl.mdisph);
 		ld = nd == 0;
 	}
 
@@ -153,13 +155,24 @@ struct monitor_mode* platform_video_query_modes(
 {
 	static struct monitor_mode mode = {};
 
-	mode.width  = arcan_video_display.width;
-	mode.height = arcan_video_display.height;
+	mode.width  = sdl.mdispw;
+	mode.height = sdl.mdisph;
 	mode.depth  = GL_PIXEL_BPP * 8;
 	mode.refresh = 60; /* should be queried */
 
 	*count = 1;
 	return &mode;
+}
+
+struct monitor_mode platform_video_dimensions()
+{
+	struct monitor_mode res = {
+		.width = sdl.canvasw,
+		.height = sdl.canvash,
+		.phy_width = sdl.mdispw,
+		.phy_height = sdl.mdisph
+	};
+	return res;
 }
 
 bool platform_video_map_display(arcan_vobj_id id, platform_display_id disp,
@@ -234,39 +247,41 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 1);
 	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);
 
-	if (arcan_video_display.msasamples > 0){
+	int msasamples = 0;
+
+	const char* msenv;
+	if ( (msenv = getenv("ARCAN_VIDEO_MULTISAMPLES")) ){
+		msasamples = (int) strtol(msenv, NULL, 10);
+	}
+
+	if (msasamples > 0){
 		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
-		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES,
-		arcan_video_display.msasamples);
+		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, msasamples);
 	}
 
 	snprintf(caption, 63, "%s", capt);
 	SDL_WM_SetCaption(caption, "Arcan");
 
 	arcan_video_display.fullscreen = fs;
-	sdlarg = (fs ? SDL_FULLSCREEN : 0) |
+	sdl.sdlarg = (fs ? SDL_FULLSCREEN : 0) |
 		SDL_OPENGL | (frames ? SDL_NOFRAME : 0);
-	screen = SDL_SetVideoMode(width, height, bpp, sdlarg);
+	sdl.screen = SDL_SetVideoMode(width, height, bpp, sdl.sdlarg);
 
-	if (arcan_video_display.msasamples && !screen){
+	if (msasamples && !sdl.screen){
 		arcan_warning("arcan_video_init(), Couldn't open OpenGL display,"
 			"attempting without MSAA\n");
+		setenv("ARCAN_VIDEO_MULTISAMPLES", "0", 1);
 		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0);
 		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 0);
-		arcan_video_display.msasamples = 0;
-		screen = SDL_SetVideoMode(width, height, bpp, sdlarg);
+		sdl.screen = SDL_SetVideoMode(width, height, bpp, sdl.sdlarg);
 	}
 
-	if (!screen)
+	if (!sdl.screen)
 		return false;
 
-/* need to be called AFTER we have a valid GL context,
- * else we get the "No GL version" */
-	arcan_video_display.width  = width;
-	arcan_video_display.height = height;
-	arcan_video_display.bpp    = bpp;
+	sdl.canvasw = sdl.mdispw = width;
+	sdl.canvash = sdl.mdisph = height;
 	glViewport(0, 0, width, height);
-
 	return true;
 }
 

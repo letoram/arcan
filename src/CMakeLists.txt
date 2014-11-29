@@ -62,7 +62,7 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 	set(VPLATFORM_STR "[ sdl ]")
 	set(VIDEO_PLATFORM "sdl")
 else()
-	set(VPLATFORM_STR "[ x11 | x11-headless | sdl | egl-gles | egl-dri ]")
+	set(VPLATFORM_STR "[ x11 | x11-headless | sdl | egl-gles | egl-dri | egl-nvidia ]")
 endif()
 set(AGPPLATFORM_STR "[ gl21 | gles2 | gles3 | stub ]")
 set( MAIN_LIBRARIES )
@@ -339,7 +339,6 @@ if (VIDEO_PLATFORM STREQUAL "x11" OR VIDEO_PLATFORM STREQUAL "x11-headless")
 	LIST(APPEND INCLUDE_DIRS ${X11_INCLUDE_DIRS})
 	LIST(APPEND MAIN_LIBRARIES ${OPENGL_gl_LIBRARY} ${X11_LIBRARIES})
 	LIST(APPEND LWA_LIBRARIES ${OPENGL_gl_LIBRARY} ${X11_LIBRARIES})
-	LIST(APPEND SOURCES ${AGP_SOURCES})
 
 	if (ENABLE_LWA)
 		message("Enabling LWA (Arcan-in-Arcan) build using X11 HEADLESS")
@@ -360,7 +359,6 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-gles")
 
 	endif()
 
-	LIST(APPEND SOURCES ${AGP_SOURCES})
 	LIST(APPEND INCLUDE_DIRS
 		${GLES2_INCLUDE_DIRS}
 		${EGL_INCLUDE_DIRS}
@@ -371,6 +369,23 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-gles")
 		${EGL_LIBRARIES}
 	)
 
+elseif(VIDEO_PLATFORM STREQUAL "egl-nvidia")
+	if (NOT INPUT_PLATFORM)
+		set(INPUT_PLATFORM "linux")
+	endif()
+
+	FIND_PACKAGE(EGL REQUIRED)
+# need a way to check nvidia driver version so that we maintain that
+# dependency statically
+	LIST(APPEND MAIN_LIBRARIES
+		${EGL_LIBRARIES}
+		${AGP_LIBRARIES}
+	)
+	if (ENABLE_LWA)
+		message("Enabling LWA (Arcan-in-Arcan build) using NVIDIA Linux headless")
+		SET(LWA_HEADLESS ${PLATFORM_ROOT}/egl-nvidia/video.c)
+		LIST(APPEND LWA_LIBRARIES ${AGP_LIBRARIES} ${EGL_LIBRARIES})
+	endif()
 elseif(VIDEO_PLATFORM STREQUAL "egl-dri")
 	if (NOT INPUT_PLATFORM)
 		set(INPUT_PLATFORM "linux")
@@ -378,8 +393,6 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-dri")
 
 	FIND_PACKAGE(EGL REQUIRED)
 	FIND_PACKAGE(GBMKMS REQUIRED)
-	SET(ARCAN_DEFINITIONS "${ARCAN_DEFINITIONS} HAVE_GLES3")
-	LIST(APPEND SOURCES ${AGP_SOURCES})
 
 	LIST(APPEND MAIN_LIBRARIES
 		${EGL_LIBRARIES}
@@ -393,7 +406,7 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-dri")
 	if (ENABLE_LWA)
 		message("Enabling LWA (Arcan-in-Arcan build) using EGL-DRI HEADLESS")
 		SET(LWA_HEADLESS ${PLATFORM_ROOT}/egl-dri/video_rnode.c)
-		LIST(APPEND LWA_LIBRARIES ${OPENGL_gl_LIBRARY}
+		LIST(APPEND LWA_LIBRARIES ${AGP_LIBRARIES}
 			${EGL_LIBRARIES} ${GBMKMS_LIBRARIES})
 	endif()
 
@@ -402,7 +415,6 @@ elseif (VIDEO_PLATFORM STREQUAL "sdl")
 		set(INPUT_PLATFORM "sdl")
 	endif()
 
-	LIST(APPEND SOURCES ${AGP_SOURCES})
 
 	FIND_PACKAGE(SDL REQUIRED)
 	FIND_PACKAGE(SDL_image)
@@ -525,6 +537,7 @@ list (APPEND
  shmif/arcan_shmif_control.h
  shmif/arcan_shmif_event.h
  platform/video_platform.h
+ ${AGP_SOURCES}
 )
 
 set (ARCANDB_SOURCES
@@ -609,7 +622,8 @@ if (ENABLE_LIBRETRO)
 				FRAMESERVER_LIBRETRO_3D
 #				FRAMESERVER_LIBRETRO_3D_RETEXTURE -- developer feature in test
 				HEADLESS_PLATFORM=\"${LWA_HEADLESS}\")
-
+		LIST(APPEND FSRV_LIBRETRO_DEFINITIONS HEADLESS_NOARCAN)
+		LIST(APPEND FSRV_LIBRETRO_SOURCES ${AGP_SOURCES})
 		LIST(APPEND FSRV_LIBRETRO_LIBRARIES ${LWA_LIBRARIES})
 	endif()
 endif()
