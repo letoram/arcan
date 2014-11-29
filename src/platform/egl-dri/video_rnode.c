@@ -11,6 +11,7 @@
 #include <math.h>
 #include <unistd.h>
 #include <drm.h>
+#include <xf86drm.h>
 #include <gbm.h>
 #include <fcntl.h>
 #include <sys/types.h>
@@ -97,6 +98,9 @@ static struct {
 	EGLSurface surface;
 	EGLImageKHR output;
 
+	size_t mdispw, mdisph;
+	size_t canvasw, canvash;
+
 	struct gbm_device* dev;
 
 } rnode;
@@ -113,8 +117,21 @@ void* PLATFORM_SYMBOL(_video_gfxsym)(const char* sym)
 	return eglGetProcAddress(sym);
 }
 
+struct monitor_mode PLATFORM_SYMBOL(_video_dimensions)()
+{
+	struct monitor_mode res = {
+		.width = rnode.canvasw,
+		.height = rnode.canvash,
+		.phy_width = rnode.mdispw,
+		.phy_height = rnode.mdisph
+	};
+	return res;
+}
+
 int PLATFORM_SYMBOL(_output_handle)()
 {
+	int fd = -1;
+#ifndef HEADLESS_NOARCAN
 	struct storage_info_t* ws = arcan_vint_world();
 	intptr_t descr = ws->vinf.text.glid;
 
@@ -122,14 +139,13 @@ int PLATFORM_SYMBOL(_output_handle)()
 		rnode.context, EGL_GL_TEXTURE_2D_KHR, (EGLClientBuffer)(descr), NULL);
 
 	EGLint name, handle, stride;
-	int fd = -1;
 
 	if (eglExportDRMImageMESA(rnode.display, rnode.output,
 		&name, &handle, &stride)){
 		drmPrimeHandleToFD(rnode.fd, handle, DRM_CLOEXEC, &fd);
 		printf("exported %d\n", fd);
 	}
-
+#endif
 	return fd;
 }
 
@@ -158,10 +174,8 @@ bool PLATFORM_SYMBOL(_video_init)(uint16_t w, uint16_t h,
 	if (0 == h)
 		h = 480;
 
-#ifndef HEADLESS_NOARCAN
-	arcan_video_display.width = 640;
-	arcan_video_display.height = 480;
-#endif
+	rnode.mdispw = rnode.canvasw = 640;
+	rnode.mdisph = rnode.canvash = 480;
 
 	rnode.display = eglGetDisplay(rnode.dev);
 	if (!eglInitialize(rnode.display, NULL, NULL)){
@@ -260,15 +274,11 @@ struct monitor_mode* PLATFORM_SYMBOL(_video_query_modes)(
 {
 	static struct monitor_mode mode = {};
 
-#ifndef HEADLESS_NOARCAN
-	mode.width  = arcan_video_display.width;
-	mode.height = arcan_video_display.height;
+	mode.width  = rnode.canvasw;
+	mode.height = rnode.canvash;
 	mode.depth  = GL_PIXEL_BPP * 8;
 	mode.refresh = 60; /* should be queried */
 	*count = 1;
-#else
-	*count = 0;
-#endif
 	return &mode;
 }
 

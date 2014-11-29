@@ -49,6 +49,11 @@ static char* darwin_envopts[] = {
 	NULL
 };
 
+static struct {
+	size_t mdispw, mdisph;
+	size_t canvasw, canvash;
+} darwin;
+
 static CGLContextObj context;
 
 bool PLATFORM_SYMBOL(_video_init)(uint16_t w, uint16_t h,
@@ -77,10 +82,8 @@ bool PLATFORM_SYMBOL(_video_init)(uint16_t w, uint16_t h,
 	GLint si = 0;
 	CGLSetParameter(context, kCGLCPSwapInterval, &si);
 
-#ifndef HEADLESS_NOARCAN
-	arcan_video_display.width = w;
-	arcan_video_display.height = h;
-#endif
+	darwin.mdispw = darwin.canvasw = w;
+	darwin.mdisph = darwin.canvash = h;
 
 	return true;
 }

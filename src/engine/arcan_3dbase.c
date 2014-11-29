@@ -346,11 +346,10 @@ void arcan_3d_viewray(arcan_vobj_id camtag,
 	if(!camobj || camobj->feed.state.tag != ARCAN_TAG_3DCAMERA)
 		return;
 	struct camtag_data* camera = camobj->feed.state.ptr;
+	struct monitor_mode mode = platform_video_dimensions();
 
-	dev_coord(&pos->x, &pos->y, &z, x, y,
-		arcan_video_display.width, arcan_video_display.height,
-		camera->near, camera->far
-	);
+	dev_coord(&pos->x, &pos->y, &z,
+		x, y, mode.width, mode.height, camera->near, camera->far);
 
 	vector p1 = unproject_matrix(pos->x, pos->y, 0.0,
 		camera->mvm, camera->projection);

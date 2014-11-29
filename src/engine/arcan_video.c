@@ -76,7 +76,7 @@ static arcan_interp_1d_function lut_interp_1d[] = {
 };
 
 struct arcan_video_display arcan_video_display = {
-	.bpp = 0, .width = 0, .height = 0, .conservative = false,
+	.conservative = false,
 	.deftxs = ARCAN_VTEX_CLAMP, ARCAN_VTEX_CLAMP,
 	.scalemode = ARCAN_VIMAGE_NOPOW2,
 	.filtermode = ARCAN_VFILTER_BILINEAR,
@@ -472,11 +472,13 @@ void arcan_vint_drawcursor(bool erase)
 	int x2 = x1 + arcan_video_display.cursor.w;
 	int y2 = y1 + arcan_video_display.cursor.h;
 
+	struct monitor_mode mode;
+
 	if (erase){
-		float s1 = (float)x1 / arcan_video_display.canvasw;
-		float s2 = (float)x2 / arcan_video_display.canvasw;
-		float t1 = 1.0 - ((float)y1 / arcan_video_display.canvash);
-		float t2 = 1.0 - ((float)y2 / arcan_video_display.canvash);
+		float s1 = (float)x1 / mode.width;
+		float s2 = (float)x2 / mode.height;
+		float t1 = 1.0 - ((float)y1 / mode.width);
+		float t2 = 1.0 - ((float)y2 / mode.height);
 
 		txmatr[0] = s1;
 		txmatr[1] = t1;
@@ -687,8 +689,9 @@ unsigned arcan_video_extpopcontext(arcan_vobj_id* dst)
 	int rv = arcan_video_popcontext();
 
 	if (ss){
-		int w = arcan_video_display.canvasw;
-		int h = arcan_video_display.canvash;
+		struct monitor_mode mode = platform_video_dimensions();
+		int w = mode.width;
+		int h = mode.height;
 
 		img_cons cons = {.w = w, .h = h, .bpp = GL_PIXEL_BPP};
 		*dst = arcan_video_rawobject(dstbuf, cons, w, h, 1);
@@ -720,8 +723,9 @@ signed arcan_video_extpushcontext(arcan_vobj_id* dst)
 	int rv = arcan_video_pushcontext();
 
 	if (ss){
-		int w = arcan_video_display.canvasw;
-		int h = arcan_video_display.canvash;
+		struct monitor_mode mode = platform_video_dimensions();
+		int w = mode.width;
+		int h = mode.height;
 
 		img_cons cons = {.w = w, .h = h, .bpp = GL_PIXEL_BPP};
 		*dst = arcan_video_rawobject(dstbuf, cons, w, h, 1);
@@ -1405,8 +1409,8 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 		sizeof(struct arcan_vobject) * current_context->vitem_limit,
 		ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 
-	arcan_video_resize_canvas(
-		arcan_video_display.width, arcan_video_display.height);
+	struct monitor_mode mode = platform_video_dimensions();
+	arcan_video_resize_canvas(mode.width, mode.height);
 
 	identity_matrix(current_context->stdoutp.base);
 /*
@@ -1422,8 +1426,8 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 
 arcan_errc arcan_video_resize_canvas(size_t neww, size_t newh)
 {
-	arcan_video_display.canvasw = neww;
-	arcan_video_display.canvash = newh;
+	agp_resize_rendertarget(NULL, neww, newh);
+	struct monitor_mode mode = platform_video_dimensions();
 
 	if (!current_context->world.vstore){
 		populate_vstore(&current_context->world.vstore);
@@ -1439,10 +1443,10 @@ arcan_errc arcan_video_resize_canvas(size_t neww, size_t newh)
 		agp_resize_rendertarget(&current_context->stdoutp, neww, newh);
 
 	build_orthographic_matrix(arcan_video_display.window_projection, 0,
-		arcan_video_display.width, arcan_video_display.height, 0, 0, 1);
+		mode.phy_width, mode.phy_height, 0, 0, 1);
 
 	build_orthographic_matrix(arcan_video_display.default_projection, 0,
-		arcan_video_display.canvasw, arcan_video_display.canvash, 0, 0, 1);
+		mode.width, mode.height, 0, 0, 1);
 
 	memcpy(current_context->stdoutp.projection,
 		arcan_video_display.default_projection, sizeof(float) * 16);
@@ -1451,16 +1455,6 @@ arcan_errc arcan_video_resize_canvas(size_t neww, size_t newh)
 	arcan_video_forceupdate(ARCAN_VIDEO_WORLDID);
 
 	return ARCAN_OK;
-}
-
-uint16_t arcan_video_screenw()
-{
-	return arcan_video_display.width;
-}
-
-uint16_t arcan_video_screenh()
-{
-	return arcan_video_display.height;
 }
 
 static uint16_t nexthigher(uint16_t k)
@@ -1952,9 +1946,10 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did,
 			vobj->origh, 0, 1);
 		identity_matrix(dst->base);
 
+		struct monitor_mode mode = platform_video_dimensions();
 		if (scale){
-			float xs = ((float)vobj->vstore->w / (float)arcan_video_display.canvasw);
-			float ys = ((float)vobj->vstore->h / (float)arcan_video_display.canvash);
+			float xs = (float)vobj->vstore->w / (float)mode.width;
+			float ys = (float)vobj->vstore->h / (float)mode.height;
 
 /* since we may likely have a differently sized FBO, scale it */
 			scale_matrix(dst->base, xs, ys, 1.0);
@@ -4521,8 +4516,8 @@ arcan_errc arcan_video_forceupdate(arcan_vobj_id vid)
 
 arcan_errc arcan_video_screenshot(av_pixel** dptr, size_t* dsize)
 {
-	*dsize = sizeof(char) * arcan_video_display.canvasw *
-		arcan_video_display.canvash * GL_PIXEL_BPP;
+	struct monitor_mode mode = platform_video_dimensions();
+	*dsize = sizeof(char) * mode.width * mode.height * GL_PIXEL_BPP;
 
 	*dptr = arcan_alloc_mem(*dsize, ARCAN_MEM_VBUFFER,
 		ARCAN_MEM_TEMPORARY | ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE);
@@ -4532,8 +4527,7 @@ arcan_errc arcan_video_screenshot(av_pixel** dptr, size_t* dsize)
 		return ARCAN_ERRC_OUT_OF_SPACE;
 	}
 
-	agp_save_output(arcan_video_display.canvasw,
-		arcan_video_display.canvash, *dptr, *dsize);
+	agp_save_output(mode.width, mode.height, *dptr, *dsize);
 
 	return ARCAN_OK;
 }

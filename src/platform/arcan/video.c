@@ -60,10 +60,6 @@ struct display {
 
 static struct arg_arr* shmarg;
 
-static struct {
-	unsigned refresh;
-} synch_vals;
-
 bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	bool fs, bool frames, const char* title)
 {
@@ -205,6 +201,17 @@ bool platform_video_specify_mode(platform_display_id id,
 	return lwa_video_specify_mode(id, mode_id, mode);
 }
 
+struct monitor_mode platform_video_dimensions()
+{
+	struct monitor_mode mode = {
+		.width = disp[0].conn.addr->w,
+		.height = disp[0].conn.addr->h,
+		.phy_width = disp[0].conn.addr->w,
+		.phy_height = disp[0].conn.addr->h
+	};
+	return mode;
+}
+
 bool platform_video_set_mode(platform_display_id id, platform_mode_id newmode)
 {
 	struct monitor_mode* mode = get_platform_mode(newmode);
@@ -215,12 +222,7 @@ bool platform_video_set_mode(platform_display_id id, platform_mode_id newmode)
 	if (!(id < MAX_DISPLAYS && disp[id].conn.addr))
 		return false;
 
-	if (arcan_shmif_resize(&disp[0].conn, mode->width, mode->height)){
-		arcan_video_display.width = mode->width;
-		arcan_video_display.height = mode->height;
-		synch_vals.refresh = mode->refresh;
-		return true;
-	}
+	return arcan_shmif_resize(&disp[0].conn, mode->width, mode->height);
 
 	return false;
 }

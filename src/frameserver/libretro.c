@@ -16,10 +16,6 @@
 #include <pthread.h>
 #include <errno.h>
 
-#define HEADLESS_NOARCAN
-#define PLATFORM_SUFFIX retro
-#define WITH_HEADLESS
-
 #include "../shmif/arcan_shmif.h"
 #include "graphing/net_graph.h"
 
@@ -35,8 +31,8 @@
 #ifdef FRAMESERVER_LIBRETRO_3D
 
 #include "../platform/agp/glfun.h"
-
 #include "../platform/video_platform.h"
+
 #include HEADLESS_PLATFORM
 
 #ifdef FRAMESERVER_LIBRETRO_3D_RETEXTURE
@@ -211,20 +207,9 @@ static void log_msg(char* msg, bool flush);
 static void setup_3dcore(struct retro_hw_render_callback*);
 #endif
 
-static retro_proc_address_t libretro_requirefun(const char* sym)
+retro_proc_address_t libretro_requirefun(const char* sym)
 {
-	void* res = frameserver_requirefun(sym, true);
-
-	if (!res)
-		res = frameserver_requirefun(sym, false);
-
-	if (!res)
-	{
-		LOG("missing library or symbol (%s) during lookup.\n", sym);
-		exit(1);
-	}
-
-	return (retro_proc_address_t) res;
+	return platform_video_gfxsym(sym);
 }
 
 static void resize_shmpage(int neww, int newh, bool first)
@@ -1571,7 +1556,7 @@ static void setup_3dcore(struct retro_hw_render_callback* ctx)
 /* we just want a dummy window with a valid openGL context
  * bound and then set up a FBO with the proper dimensions,
  * when things are working, just use a 2x2 window and minimize */
-	if (!retro_video_init(2, 2, 32, false, true, "libretro")){
+	if (!platform_video_init(640, 480, 32, false, true, "libretro")){
 		LOG("Couldn't setup OpenGL context\n");
 		exit(1);
 	}

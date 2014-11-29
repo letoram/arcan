@@ -130,6 +130,9 @@ static struct {
 	EGLDisplay display;
 	EGLSurface surface;
 
+	size_t mdispw, mdisph;
+	size_t canvasw, canvash;
+
 	bool swap_damage;
 	bool swap_age;
 } egl;
@@ -226,8 +229,8 @@ struct monitor_mode* PLATFORM_SYMBOL(_video_query_modes)(
 {
 	static struct monitor_mode mode = {};
 
-	mode.width  = arcan_video_display.width;
-	mode.height = arcan_video_display.height;
+	mode.width  = egl.mdispw;
+	mode.height = egl.mdisph;
 	mode.depth  = GL_PIXEL_BPP * 8;
 	mode.refresh = 60; /* should be queried */
 
@@ -768,8 +771,10 @@ static int setup_gl(void)
 
 	eglMakeCurrent(egl.display, egl.surface, egl.surface, egl.context);
 
-	arcan_video_display.width = drm.mode->hdisplay;
-	arcan_video_display.height = drm.mode->vdisplay;
+	egl.mdispw = drm.mode->hdisplay;
+	egl.mdisph = drm.mode->vdisplay;
+	egl.canvasw = egl.mdispw;
+	egl.canvash = egl.mdisph;
 
 	return 0;
 }
@@ -850,6 +855,17 @@ static void page_flip_handler(int fd, unsigned int frame,
 	*waiting_for_flip = 0;
 }
 
+struct monitor_mode PLATFORM_SYMBOL(_video_dimensions)()
+{
+	struct monitor_mode res = {
+		.width = egl.canvasw,
+		.height = egl.canvash,
+		.phy_width = egl.mdispw,
+		.phy_height = egl.mdisph
+	};
+	return res;
+}
+
 void* PLATFORM_SYMBOL(_video_gfxsym)(const char* sym)
 {
 	return eglGetProcAddress(sym);
@@ -867,9 +883,7 @@ static void update_scanouts(size_t n_changed)
  * DRI oddity, if nothing has actually changed (n_changed == 0)
  * and a drawRt call is not invoked, I'll get a crash in eglSwapBuffers(?!)
  */
-	arcan_vint_drawrt(arcan_vint_world(), 0, 0,
-		arcan_video_display.width, arcan_video_display.height
-	);
+	arcan_vint_drawrt(arcan_vint_world(), 0, 0, egl.mdispw, egl.mdisph);
 
 	arcan_vint_drawcursor(false);
 }

@@ -312,15 +312,6 @@ arcan_errc arcan_video_screenshot(av_pixel** dptr, size_t* dsize);
 void arcan_video_fullscreen();
 
 /*
- * Accessors for the current rendering dimensions, these do not
- * necessarily correlate to the actual device dimensions. They
- * rather define the coordinate- and dimensioning system we're working
- * within.
- */
-uint16_t arcan_video_screenw();
-uint16_t arcan_video_screenh();
-
-/*
  * Get the currently highest Z value (rendering order) for the
  * currently active context. This imposes a linear search through
  * the entire context, O(n) where n is context size.

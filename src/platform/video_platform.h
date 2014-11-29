@@ -208,6 +208,13 @@ struct monitor_mode {
 };
 
 /*
+ * Retrieve default rendertarget dimensions,
+ * virtual canvas is set in width/height,
+ * output buffer is set in phy_width/phy_height
+ */
+struct monitor_mode platform_video_dimensions();
+
+/*
  * Get list of available display IDs, these can then be queried for
  * currently available modes (which is subject to change based on
  * what connectors a user inserts / removes.
@@ -503,6 +510,12 @@ enum rendertarget_mode {
 struct rendertarget;
 void agp_setup_rendertarget(struct rendertarget*,
 	struct storage_info_t*, enum rendertarget_mode mode);
+
+/*
+ * If set to a valid rendertarget, update the default slot.
+ * Also returns the currently default rendertarget.
+ */
+struct rendertarget* agp_default_rendertarget(struct rendertarget*);
 
 #ifdef AGP_ENABLE_UNPURE
 /*
