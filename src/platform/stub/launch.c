@@ -1,3 +1,7 @@
+/*
+ * No copyright claimed, Public Domain
+ */
+
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>

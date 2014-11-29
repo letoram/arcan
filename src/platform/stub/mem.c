@@ -1,3 +1,7 @@
+/*
+ * No copyright claimed, Public Domain
+ */
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>

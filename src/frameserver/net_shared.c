@@ -1,3 +1,11 @@
+/*
+ * Arcan Networking Shared
+ * Copyright 2014, Björn Ståhl
+ * License: 3-Clause BSD, see COPYING file in arcan source repository.
+ * Reference: http://arcan-fe.com
+ * Depends: LibAPR (Apache2)
+ */
+
 #include "net_shared.h"
 #include "frameserver.h"
 #include "net.h"

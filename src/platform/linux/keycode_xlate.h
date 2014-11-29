@@ -1,3 +1,7 @@
+/*
+ * No copyright claimed, Public Domain
+ */
+
 #include <ctype.h>
 
 /*

@@ -1,3 +1,11 @@
+/*
+ * Decode Reference Frameserver Archetype
+ * Copyright 2014, Björn Ståhl
+ * License: 3-Clause BSD, see COPYING file in arcan source repository.
+ * Reference: http://arcan-fe.com
+ * Depends: LibVLC (LGPL)
+ */
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdbool.h>

@@ -1,3 +1,7 @@
+--
+-- No Copyright claimed, Public Domain
+--
+
 -- Keyconf.lua
 ----------------------------------------------------------
 -- includable by any theme

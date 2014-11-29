@@ -1,4 +1,10 @@
 --
+-- Copyright 2014, Björn Ståhl
+-- License: 3-Clause BSD.
+-- Reference: http://arcan-fe.com
+--
+
+--
 -- Mouse- gesture / collision triggers
 --
 local mouse_handlers = {

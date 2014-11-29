@@ -1,3 +1,11 @@
+/*
+ * Arcan Remoting reference Frameserver
+ * Copyright 2014, Björn Ståhl
+ * License: 3-Clause BSD, see COPYING file in arcan source repository.
+ * Reference: http://arcan-fe.com
+ * Depends: libvncserver (GPLv2)
+ */
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>

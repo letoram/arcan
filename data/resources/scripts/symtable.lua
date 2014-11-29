@@ -1,3 +1,7 @@
+--
+-- No Copyright Claimed, Public Domain
+--
+
 -- Directly conversion of the SDL_keysym.h
 
 local symtable = {};

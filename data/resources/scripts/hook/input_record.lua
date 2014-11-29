@@ -1,4 +1,8 @@
 --
+-- No Copyright Claimed, Public Domain
+--
+
+--
 -- This hook-script creates a hook for the regular
 -- _input function and records input tables along
 -- with their respective clock time.

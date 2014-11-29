@@ -1,4 +1,8 @@
 --
+-- No Copyright Claimed, Public Domain
+--
+
+--
 -- This hook-script overrides user-provided input
 -- with that of a preset recording.
 --

@@ -1,4 +1,8 @@
 /*
+ * No copyright claimed, Public Domain
+ */
+
+/*
  * Used within the arcan_target.c / arcan_target_platform.c
  * parts of the hijack library.
  *

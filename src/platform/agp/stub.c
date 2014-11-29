@@ -1,16 +1,7 @@
 /*
- * Stub the agp platform in order to benchmark other
- * parts of the pipeline. This obviously produces
- * invalid results for cases that are dependent on
- * the actual graphics processing (calctargets etc.)
- *
- * It also acts as a 'failure' stub in the sense that
- * it exercises the data paths where operations are guaranteed
- * to "fail"
- *
- * Finally, it can also be used as a quick template for
- * developing a different agp backend than the ones
- * previously available.
+ * Copyright 2014, Björn Ståhl
+ * License: 3-Clause BSD, see COPYING file in arcan source repository.
+ * Reference: http://arcan-fe.com
  */
 
 #include <stdlib.h>

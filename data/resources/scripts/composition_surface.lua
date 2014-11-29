@@ -1,4 +1,10 @@
 --
+-- Copyright 2014, Björn Ståhl
+-- License: 3-Clause BSD.
+-- Reference: http://arcan-fe.com
+--
+
+--
 -- Composition Surface
 --
 -- Utility script / interface for managing windows
