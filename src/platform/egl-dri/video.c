@@ -760,7 +760,6 @@ static int setup_gl(void)
 	}
 	else if (strcmp(ident, "GLES3") == 0 ||
 		strcmp(ident, "GLES2") == 0){
-		apiv = EGL_OPENGL_API;
 		for (i = 0; attribs[i] != EGL_RENDERABLE_TYPE; i++);
 #ifndef EGL_OPENGL_ES2_BIT
 			arcan_warning("EGL implementation do not support GLESv2, "

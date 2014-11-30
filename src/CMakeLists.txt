@@ -352,11 +352,13 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-gles")
 	endif()
 
 	FIND_PACKAGE(EGL REQUIRED)
+	FIND_PACKAGE(GLES2 REQUIRED)
 
 	if (GLES2_BCM_IMPLEMENTATION)
 		message("broadcom (BCM) GLES implementation found, set BCM_ROOT to bad dir to disable")
 		LIST(APPEND ARCAN_DEFINITIONS WITH_BCM)
-
+		set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/platform/egl-gles/video.c
+			APPEND PROPERTY COMPILE_FLAGS -fgnu89-inline)
 	endif()
 
 	LIST(APPEND INCLUDE_DIRS
@@ -497,11 +499,11 @@ LIST (APPEND
 	${PNG_INCLUDE_DIR}
 	${FREETYPE_INCLUDE_DIRS}
 	${SQLITE3_INCLUDE_DIR}
-	"frameserver"
-	"frameserver/ntsc"
-	"external"
-	"shmif"
-	"engine"
+	${CMAKE_CURRENT_SOURCE_DIR}/frameserver
+	${CMAKE_CURRENT_SOURCE_DIR}/frameserver/ntsc
+	${CMAKE_CURRENT_SOURCE_DIR}/external
+	${CMAKE_CURRENT_SOURCE_DIR}/shmif
+	${CMAKE_CURRENT_SOURCE_DIR}/engine
 )
 
 add_subdirectory( external/openctm )
@@ -793,6 +795,7 @@ set (SHMIF_SOURCES
 	shmif/arcan_shmif_event.h
 )
 
+message(" include directories: ${INCLUDE_DIRS}")
 include_directories(${INCLUDE_DIRS})
 
 message("\n---- Stage 1 configuration: ----")
