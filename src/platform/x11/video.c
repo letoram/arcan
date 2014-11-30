@@ -262,9 +262,21 @@ const char** PLATFORM_SYMBOL(_video_envopts)(void)
 	return (const char**) x11_envopts;
 }
 
+int64_t PLATFORM_SYMBOL(_output_handle)(struct storage_info_t* store,
+	enum status_handle* status)
+{
+	return -1;
+}
+
 void PLATFORM_SYMBOL(_video_setsynch)(const char* arg)
 {
 	arcan_warning("unhandled synchronization strategy (%s) ignored.\n", arg);
+}
+
+bool PLATFORM_SYMBOL(_video_map_handle)(
+	struct storage_info_t* dst, int64_t handle)
+{
+	return false;
 }
 
 void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,

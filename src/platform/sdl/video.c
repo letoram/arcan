@@ -138,6 +138,11 @@ void platform_video_setsynch(const char* arg)
 	}
 }
 
+bool platform_video_map_handle(struct storage_info_t* dst, int64_t handle)
+{
+	return false;
+}
+
 platform_display_id* platform_video_query_displays(size_t* count)
 {
 	static platform_display_id id = 0;
