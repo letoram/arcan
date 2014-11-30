@@ -14,7 +14,10 @@
 #include <fcntl.h>
 #include <assert.h>
 
-#include GL_HEADERS
+
+#include <EGL/egl.h>
+#include <EGL/eglext.h>
+#include <GLES2/gl2.h>
 
 #include "arcan_math.h"
 #include "arcan_general.h"
@@ -35,7 +38,13 @@ static struct {
 	EGLSurface surf;
 	EGLConfig cfg;
 	EGLNativeWindowType wnd;
+
+	size_t canvasw, canvash, mdispw, mdisph;
 } egl;
+
+static char* egl_envopts[] = {
+	NULL
+};
 
 static char* egl_synchopts[] = {
 	"default", "driver default buffer swap",
@@ -46,6 +55,17 @@ enum {
 	DEFAULT,
 	ENDM
 }	synchopt;
+
+struct monitor_mode PLATFORM_SYMBOL(_video_dimensions)()
+{
+	struct monitor_mode res = {
+		.width = egl.canvasw,
+		.height = egl.canvash,
+		.phy_width = egl.mdispw,
+		.phy_height = egl.mdisph
+	};
+	return res;
+}
 
 #ifdef WITH_BCM
 
@@ -123,121 +143,24 @@ static bool alloc_bcm_wnd(uint16_t* w, uint16_t* h)
 #define EGL_NATIVE_DISPLAY EGL_DEFAULT_DISPLAY
 #endif
 
-#ifdef WITH_OGL3
-#ifdef WITH_HEADLESS
-bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
-	uint8_t bpp, bool fs, bool frames, const char* title)
+bool PLATFORM_SYMBOL(_video_set_mode)(
+	platform_display_id disp, platform_mode_id mode)
 {
-	arcan_fatal("not yet supported");
+	return disp == 0 && mode == 0;
 }
 
-#else
-bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
-	uint8_t bpp, bool fs, bool frames, const char* title)
+bool PLATFORM_SYMBOL(_video_map_display)(
+	arcan_vobj_id id, platform_display_id disp, enum blitting_hint hint)
 {
-	EGLint ca[] = {
-		EGL_CONTEXT_CLIENT_VERSION,
-		2, EGL_NONE
-	};
-
-	const EGLint attrlst[] =
-	{
-		EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
-		EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
-		EGL_RED_SIZE, 1,
-		EGL_GREEN_SIZE, 1,
-		EGL_BLUE_SIZE, 1,
-		EGL_ALPHA_SIZE, 0,
-		EGL_DEPTH_SIZE, 1,
-		EGL_STENCIL_SIZE, 1,
-		EGL_NONE
-	};
-
-	GLint major, minor;
-	egl.disp = eglGetDisplay((EGLNativeDisplayType) EGL_NATIVE_DISPLAY);
-
-	if (!eglInitialize(egl.disp, &major, &minor)){
-		arcan_warning("Couldn't initialize EGL\n");
-		return false;
-	}
-
-	if (!eglBindAPI(EGL_OPENGL_API)){
-		arcan_warning("Couldn't bind EGL/OpenGL API, "
-			"likely that driver does not support the EGL/OGL combination."
-			"check driver/GL libraries or try a different platform (e.g. GLES2+)\n");
-		return false;
-	}
-
-	GLint nc;
-	if (!eglGetConfigs(egl.disp, NULL, 0, &nc)){
-		arcan_warning("No configurations found\n");
-		return false;
-	}
-
-	if (!eglChooseConfig(egl.disp, attrlst, &egl.cfg, 1, &nc)){
-		arcan_warning("Couldn't activate/find a useful configuration\n");
-		return false;
-	}
-
-	egl.ctx = eglCreateContext(egl.disp, egl.cfg, EGL_NO_CONTEXT, ca);
-	if (egl.ctx == EGL_NO_CONTEXT){
-		arcan_warning("(egl) Couldn't create EGL/GLES context\n");
-		return false;
-	}
-
-	egl.surf = eglCreateWindowSurface(egl.disp, egl.cfg, egl.wnd, NULL);
-	if (egl.surf == EGL_NO_SURFACE){
-		arcan_warning("Couldn't create window\n");
-		return false;
-	}
-
-	if (!eglMakeCurrent(egl.disp, egl.surf, egl.surf, egl.ctx)){
-		arcan_warning("Couldn't activate context\n");
-		return false;
-	}
-
-#ifdef WITH_GLEW
-	int err;
-	if ( (err = glewInit()) != GLEW_OK){
-		platform_video_shutdown();
-		arcan_warning("Couldn't initialize GLEW\n");
-		return false;
-	}
-#endif
-
-	arcan_video_display.width = w;
-	arcan_video_display.height = h;
-
-	drmModeSetCrtc(gbmkms.fd, gbmkms.enc->crtc_id, gbmkms.fb_id, 0, 0,
-		&gbmkms.conn->connector_id, 1, &gbmkms.mode);
-
-	struct gbm_bo* gbm_surface_lock_front_buffer(egl.surf);
-
-/* allocate back buffer, call an additional time for
- * triple buffering */
-	unsigned handle = gbm_bo_get_handle(bo).u32;
-	unsigned stride = gbm_bo_get_stride(bo);
-
-	if (-1 == drmModeAddFB(gbmkms.fd,
-		arcan_video_display.width, arcan_video_display.height,
-		24, 32, stride, handle, &gbmkms.fb_id))
-		arcan_fatal("platform/egl: couldn't obtain framebuffer handle\n");
-
-	gbm_surface_release_buffer(gbmkms.surf, bo);
-
-	glViewport(0, 0, w, h);
-
-	glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
-
-	glClear(GL_COLOR_BUFFER_BIT);
-	eglSwapInterval(egl.disp, 1);
-	eglSwapBuffers(egl.disp, egl.surf);
-
-	return true;
+	return false;
 }
-#endif
 
-#else
+bool PLATFORM_SYMBOL(_video_specify_mode)(platform_display_id id,
+	platform_mode_id mode_id, struct monitor_mode mode)
+{
+	return false;
+}
+
 bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 	uint8_t bpp, bool fs, bool frames, const char* caption)
 {
@@ -268,6 +191,13 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 		arcan_warning("Couldn't create display\n");
 		return false;
 	}
+
+#ifdef EGL_OPENGL_ES3_BIT
+	if (strcmp(agp_ident(), "GLES3") == 0)
+		eglBindAPI(EGL_OPENGL_ES3_BIT);
+	else
+#endif
+		eglBindAPI(EGL_OPENGL_ES2_BIT);
 
 	EGLint major, minor;
 	if (!eglInitialize(egl.disp, &major, &minor)){
@@ -308,30 +238,21 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 		arcan_warning("Couldn't activate context\n");
 		return false;
 	}
+	assert(glGetError() == 0);
 
 	eglSwapBuffers(egl.disp, egl.surf);
 
-/*
- * Interestingly enough, EGL swap allows dirty rect updates with
- * eglSwapBuffersREegionNOK. In animations, we can, each update,
- * take the full boundary volume or better yet, go quadtree
- * and do dirty regions that way. Not leveraged yet but should
- * definitely be a concern later on.
- */
-	#define check() assert(glGetError() == 0)
-	check();
+	egl.canvasw = w;
+	egl.canvash = h;
+	egl.mdispw = w;
+	egl.mdisph = h;
 
-	arcan_warning("EGL context active (%d x %d)\n", w, h);
-	arcan_video_display.width = w;
-	arcan_video_display.height = h;
-	arcan_video_display.bpp = bpp;
 	glViewport(0, 0, w, h);
-
 	eglSwapInterval(egl.disp, 1);
 
+	agp_init();
 	return true;
 }
-#endif
 
 void PLATFORM_SYMBOL(_video_setsynch)(const char* arg)
 {
@@ -347,6 +268,43 @@ void PLATFORM_SYMBOL(_video_setsynch)(const char* arg)
 
 		ind += 2;
 	}
+}
+
+struct monitor_mode* PLATFORM_SYMBOL(_video_query_modes)(
+	platform_display_id id, size_t* count)
+{
+	static struct monitor_mode mode = {};
+
+	mode.width  = egl.mdispw;
+	mode.height = egl.mdisph;
+	mode.depth  = GL_PIXEL_BPP * 8;
+	mode.refresh = 60; /* should be queried */
+
+	*count = 1;
+	return &mode;
+}
+
+platform_display_id* PLATFORM_SYMBOL(_video_query_displays)(size_t* count)
+{
+	static platform_display_id id = 0;
+	*count = 1;
+	return &id;
+}
+
+const char** PLATFORM_SYMBOL(_video_envopts)()
+{
+	return (const char**) egl_envopts;
+}
+
+void* PLATFORM_SYMBOL(_video_gfxsym)(const char* sym)
+{
+	return eglGetProcAddress(sym);
+}
+
+bool PLATFORM_SYMBOL(_video_map_handle)(
+	struct storage_info_t* dst, int64_t handle)
+{
+	return false;
 }
 
 const char* platform_video_capstr()
@@ -386,7 +344,8 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 	if (pre)
 		pre();
 
-	arcan_bench_register_cost( arcan_video_refresh(fract, true) );
+	size_t nd;
+	arcan_bench_register_cost( arcan_vint_refresh(fract, &nd) );
 
 /* render to current back buffer, in normal "externally managed"
  * buffered EGL, this also determines swapping / buffer behavior */

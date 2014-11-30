@@ -25,6 +25,15 @@
 #else
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
+
+void glReadBuffer(GLenum mode)
+{
+}
+
+void glWriteBuffer(GLenum mode)
+{
+}
+
 #endif
 
 static const char* defvprg =
@@ -89,6 +98,14 @@ arcan_shader_id agp_default_shader(enum SHADER_TYPES type)
 	return shids[type];
 }
 
+const char** agp_envopts()
+{
+	static const char* env[] = {
+		NULL
+	};
+	return env;
+}
+
 const char* agp_shader_language()
 {
 	return "GLSL100";
@@ -96,7 +113,11 @@ const char* agp_shader_language()
 
 const char* agp_ident()
 {
+#ifdef GLES3
+	return "GLES3";
+#else
 	return "GLES2";
+#endif
 }
 
 void agp_shader_source(enum SHADER_TYPES type,
