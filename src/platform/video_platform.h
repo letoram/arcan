@@ -105,6 +105,43 @@ enum arcan_shader_envts{
 	TIMESTAMP_D       = 11,
 };
 
+struct storage_info_t {
+	size_t refcount;
+
+	union {
+		struct {
+/* ID number connecting to AGP */
+			unsigned glid;
+
+/* used for PBO transfers */
+			unsigned rid, wid;
+
+/* intermediate storage for reconstructing lost context */
+			uint32_t s_raw;
+			av_pixel*  raw;
+
+/* re- construction string should we be conservative and free raw */
+			char*   source;
+
+/* used if we have an external buffered backing store
+ * (implies s_raw / raw / source are useless) */
+			int format;
+			size_t stride;
+
+		} text;
+
+		struct {
+			float r;
+			float g;
+			float b;
+		} col;
+	} vinf;
+
+	size_t w, h;
+	uint8_t bpp, txmapped,
+		txu, txv, scale, imageproc, filtermode;
+};
+
 /* Built in Shader Vertex Attributes */
 enum shader_vertex_attributes {
 	ATTRIBUTE_VERTEX,
@@ -156,6 +193,30 @@ void* platform_video_gfxsym(const char* sym);
  * a valid result from platform_video_synchopts and can change dynamically.
  */
 void platform_video_setsynch(const char* strat);
+
+/*
+ * attempt to generate a handle that can be passed to an external
+ * process, this is primarily used by arcan-in-arcan and frameservers
+ * that need to send a buffer onwards.
+ *
+ * status outputs:
+ */
+enum status_handle {
+	ERROR_UNSUPPORTED = -1, /* platform cannot handle buffer transfers */
+  ERROR_BADSTORE = -2, /* store is not in a suitable format */
+  READY_REUSE = 0, /* previous handle still valid */
+  READY_TRANSFER = 1, /* new- handle to be transferred */
+  READY_TRANSFERRED = 2 /* transfered using side-channel */
+};
+
+int64_t platform_video_output_handle(
+	struct storage_info_t* store, enum status_handle* status);
+
+/*
+ * take the received handle and associate it
+ * with the specified backing store.
+ */
+bool platform_video_map_handle(struct storage_info_t*, int64_t inh);
 
 /*
  * triggers the actual rendering and is responsible for applying whatever
@@ -273,28 +334,6 @@ void platform_video_shutdown();
  */
 void agp_init();
 
-struct storage_info_t {
-	size_t refcount;
-
-	union {
-		struct {
-			unsigned glid;
-			unsigned rid, wid;
-			uint32_t s_raw;
-			av_pixel*  raw;
-			char*   source;
-		} text;
-		struct {
-			float r;
-			float g;
-			float b;
-		} col;
-	} vinf;
-
-	size_t w, h;
-	uint8_t bpp, txmapped,
-		txu, txv, scale, imageproc, filtermode;
-};
 typedef long int arcan_shader_id;
 
 /*
@@ -384,17 +423,16 @@ enum stream_type {
 	STREAM_RAW_DIRECT_SYNCHRONOUS, /* similar to direct but we will block
                                     until the transfer is complete */
 
-	STREAM_HANDLE, /* with buf 0, return a handle that can be passed to
+	STREAM_HANDLE  /* with buf 0, return a handle that can be passed to
 									*	a child or different context that needs to render onwards.
 									*	with buf !0, treat it as a handle that can be used by
 									*	the graphics layer to access an external data source */
-	STREAM_HANDLE_DIRECT
 };
 
 struct stream_meta {
 	union{
 		av_pixel* buf;
-		uintptr_t handle;
+		int64_t handle;
 	};
 };
 

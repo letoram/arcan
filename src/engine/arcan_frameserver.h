@@ -138,12 +138,16 @@ typedef struct arcan_frameserver {
 	unsigned vfcount;
 
 	enum ARCAN_SEGID segid;
-	bool hijacked;
 	char title[64];
 
 /* precalc offsets into mapped shmpage, calculated at resize */
 	uint32_t* vidp;
 	int16_t* audp;
+	struct {
+		int handle;
+		size_t stride;
+		int format;
+	} vstream;
 
 /* temporary buffer for aligning queue/dequeue events in audio */
 	size_t sz_audb;

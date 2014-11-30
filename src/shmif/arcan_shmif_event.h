@@ -80,92 +80,134 @@ enum ARCAN_SEGID {
 	SEGID_GAME, /* high-interactivity, high A/V cost, low latency */
 	SEGID_APPLICATION, /* video updates typically reactive */
 	SEGID_BROWSER, /* network client, high-risk for malicious data */
+	SEGID_ICON, /* minimized- status indicator */
 	SEGID_DEBUG,
 	SEGID_UNKNOWN
 };
 
+/*
+ * These are commands that map from parent to child.
+ */
 enum ARCAN_TARGET_COMMAND {
-/* notify that the child will be shut down / killed,
- * this happens in three steps (1) dms is released,
- * (2) exit is enqueued, (3) sigterm is sent. */
+/* shutdown sequence:
+ * 0. dms is released,
+ * 1. _EXIT enqueued,
+ * 2. semaphores explicitly unlocked
+ * 3. parent spawns a monitor thread, kills unless exited after
+ *    a set amount of time (for authoritative connections).
+ */
 	TARGET_COMMAND_EXIT,
 
-/* notify that there is a file descriptor to be retrieved and
- * set as the input/output fd for other command events, additional
- * ievs define destionation slot (net-srv), mode (state, res, ...)
- * and size */
-	TARGET_COMMAND_FDTRANSFER,
-
-/* libretro/hijack: hinting event for frameskip modes
- * (auto, process every n frames, singlestep) */
+/*
+ * Hints regarding how the underlying client should treat
+ * rendering and video synchronization.
+ */
 	TARGET_COMMAND_FRAMESKIP,
 	TARGET_COMMAND_STEPFRAME,
 
-/* libretro: set new value for previously notified key,
- * for on-load options, use commandline arguments */
+/*
+ * Set a specific key-value pair. These have been registered
+ * in beforehand through EVENT_EXTERNAL_COREOPT.
+ */
 	TARGET_COMMAND_COREOPT,
 
-/* libretro: store to last FDTRANSFER FD
- * net-cl: read from FD, package and send to srv */
-	TARGET_COMMAND_STORE,
+/*
+ * This event is a setup for other ones, it merely indicates
+ * that the active input descriptor slot for this segment
+ * should be retrieved from the OOB data-channel (typically
+ * a socket) and stored for later.
+ *
+ * Used as a prelude to:
+ * 	STORE, RESTORE, NEWSEGMENT, BCHUNK_IN, BCHUNK_OUT
+ */
+	TARGET_COMMAND_FDTRANSFER,
 
-/* libretro: restore from last FD */
+/*
+ * Use the last received descriptor and (de-)serialize internal
+ * application state to it. It should be in such a format
+ * that state can be restored and possibly transfered between
+ * instances of the same program.
+ */
+	TARGET_COMMAND_STORE,
 	TARGET_COMMAND_RESTORE,
 
-/* libretro/hijack: hinting event for reseting state
- * to the first known initial steady one */
-	TARGET_COMMAND_RESET,
-
-/* hinting event for attempting to block the entire
- * process until unpause is triggered */
-	TARGET_COMMAND_PAUSE,
-	TARGET_COMMAND_UNPAUSE,
-
 /*
- * hint for visible surface dimensions, careful
- * to avoid feedback loops here where (user resizes) ->
- * (resize_hint sent) -> (frameserver responds by resizing)
- * -> (prompting a new resize hint etc.)
- */
-	TARGET_COMMAND_DISPLAYHINT,
-
-/*
- * used for sending/receiving larger data-blocks,
- * used primarily in NET and in TERM
+ * Similar to store/store, but used to indicate that the data
+ * source and binary protocol carried within is implementation-
+ * defined.
  */
 	TARGET_COMMAND_BCHUNK_IN,
 	TARGET_COMMAND_BCHUNK_OUT,
 
-/* plug in device of a specific kind in a set port,
- * switch audio / video stream etc. */
-	TARGET_COMMAND_SETIODEV,
+/*
+ * Revert to a safe / known / default state.
+ */
+	TARGET_COMMAND_RESET,
 
-/* used when audio playback is in the frameserver
- * (so hijacked targets) */
-	TARGET_COMMAND_ATTENUATE,
+/*
+ * Suspend operations, only _EXIT and _UNPAUSE should be valid
+ * events in this state. Indicates that the server does not
+ * want the client to consume any system- resources.
+ */
+	TARGET_COMMAND_PAUSE,
+	TARGET_COMMAND_UNPAUSE,
 
-/* used for libretro to seek back in state (if that feature
- * is activated) and for decode frameserver to seek relative
- * or absolute in the current streams */
+/*
+ * for all connections that have a perception of time that
+ * can be manipulated, this is used to request rollback or
+ * fast-forward between states
+ */
 	TARGET_COMMAND_SEEKTIME,
 
-/* for audio / video synchronization in video decode/encode
- * (ioevs[0] -> samples per channel) */
+/*
+ * A hint in regards to the currently displayed dimensions.
+ * It is up to the program running on the server to decide
+ * how much internal resolution that it is recommended for
+ * the client to use. When the visible image resolution
+ * deviates a lot from the internal resolution of the client,
+ * this event can appear as a friendly suggestion to resize.
+ */
+	TARGET_COMMAND_DISPLAYHINT,
+
+/*
+ * Hint input/device mapping (device-type, input-port),
+ * primarily used for gaming / legacy applications and
+ * will be reconsidered.
+ */
+	TARGET_COMMAND_SETIODEV,
+
+/*
+ * Used when audio playback is controlled by the frameserver,
+ * e.g. clients that do not use the shmif to playback audio
+ */
+	TARGET_COMMAND_ATTENUATE,
+
+/*
+ * This indicates that A/V synch is not quite right and
+ * the client, if possible, should try to adjust internal
+ * buffering.
+ */
 	TARGET_COMMAND_AUDDELAY,
 
 /*
- * to indicate that there's a new segment to be allocated
- * ioev[0].iv carries request ID (if one has been provided)
+ * Comes either as a positive response to a EXTERNAL_SEQREQ,
+ * and then ioev[0].iv carries the client- provided request
+ * cookie -- or as an explicit request from the parent that
+ * a new window of a certain type should be created (used
+ * for image- transfers, debug windows, ...)
  */
 	TARGET_COMMAND_NEWSEGMENT,
 
 /*
- * request for a state transfer or new segment failed,
- * ioev[0].iv carries request ID (if one has been provided)
+ * The running application in the server explicitly prohibited
+ * the client from getting access to new segments due to UX
+ * restrictions or resource limitations.
  */
 	TARGET_COMMAND_REQFAIL,
 
-/* specialized output hinting, deprecated */
+/*
+ * Specialized output hinting, considered deprecated
+ */
 	TARGET_COMMAND_GRAPHMODE,
 	TARGET_COMMAND_VECTOR_LINEWIDTH,
 	TARGET_COMMAND_VECTOR_POINTSIZE,
@@ -202,6 +244,9 @@ enum ARCAN_EVENT_IDATATYPE {
 	EVENT_IDATATYPE_TOUCH
 };
 
+/*
+ * These events map from a connected client to an arcan server.
+ */
 enum ARCAN_EVENT_EXTERNAL {
 /*
  * custom string message, used as some user- directed hint
@@ -221,8 +266,20 @@ enum ARCAN_EVENT_EXTERNAL {
 
 /*
  * Hint that the previous I/O operation failed
+ * (for FDTRANSFER related operations).
  */
 	EVENT_EXTERNAL_FAILURE,
+
+/*
+ * Similar to FDTRANSFER in that the server is expected to take
+ * responsibility for a descriptor on the pipe that should be
+ * used for rendering instead of the .vidp buffer. This is for
+ * accelerated transfers when using an AGP platform and GPU
+ * setup that supports such sharing.
+ *
+ * This is managed by arcan_shmif_control.
+ */
+	EVENT_EXTERNAL_BUFFERSTREAM,
 
 /*
  * Debugging hints for video/timing information
@@ -231,7 +288,7 @@ enum ARCAN_EVENT_EXTERNAL {
 
 /*
  * Decode playback discovered additional substreams that can be
- * selected or switched to
+ * selected or switched between
  */
 	EVENT_EXTERNAL_STREAMINFO,
 
@@ -270,9 +327,9 @@ enum ARCAN_EVENT_EXTERNAL {
 	EVENT_EXTERNAL_CURSORINPUT,
 
 /*
- * Hint how the cursor is to be rendered,
- * if it's locally defined (client renders own),
- * or a user-readable string suggesting which icon should be used.
+ * Hint how the cursor is to be rendered; i.e. if it's locally defined
+ * or a user-readable string suggesting what kind of cursor image
+ * that could be used.
  */
 	EVENT_EXTERNAL_CURSORHINT,
 
@@ -303,6 +360,13 @@ enum ARCAN_EVENT_NET {
 	EVENT_NET_STATEREQ
 };
 
+/*
+ * These are actually not connected to the shmif at all,
+ * and will be moved to the engine where they belong when
+ * the event- management is refactored into an actual
+ * protocol. [ Then we can keep the above enums shared,
+ * and move everything below this point into the _event.h ]
+ */
 enum ARCAN_EVENT_VIDEO {
 	EVENT_VIDEO_EXPIRE,
 	EVENT_VIDEO_CHAIN_OVER,
@@ -482,6 +546,12 @@ typedef struct arcan_extevent {
 			int keysym;
 			uint8_t active;
 		} key;
+
+		struct{
+/* platform specific content needed for some platforms to map a buffer */
+			size_t pitch;
+			int format;
+		} bstream;
 
 		struct {
 			uint8_t message[3]; /* 3 character country code */

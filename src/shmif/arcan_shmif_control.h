@@ -348,16 +348,6 @@ struct arcan_shmif_page {
 	uint8_t glsource;
 
 /*
- * this is currently unused and reserved for future cases when we have
- * an agreed upon handle for sharing textures across processes, which
- * would allow for scenarios like (frameserver allocates GL context,
- * creates a texture and attaches as FBO color output, after rendering,
- * switches the buffer, sets the value here and flags the vready toggle)
- * which would remove the last direct buffer copy needed for video.
- */
-	uint64_t glhandle;
-
-/*
  * some data-sources (e.g. video-playback) may take advantage
  * of buffering in the parent process and keep presentation/timing/queue
  * management there. In those cases, a relative ms timestamp
@@ -498,6 +488,13 @@ void arcan_shmif_drop(struct arcan_shmif_cont*);
  * a transfer, this may block indefinitely
  */
 void arcan_shmif_signal(struct arcan_shmif_cont*, int mask);
+
+/*
+ * Signal a video transfer that is based on buffer sharing
+ * rather than on data in the shmpage
+ */
+void arcan_shmif_signalhandle(struct arcan_shmif_cont*, int mask,
+	int handle, size_t stride, int format, ...);
 
 /*
  * Support function to calculate the size of a shared memory
