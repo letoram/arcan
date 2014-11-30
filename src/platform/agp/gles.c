@@ -239,9 +239,7 @@ struct stream_meta agp_stream_prepare(struct storage_info_t* s,
 		agp_deactivate_vstore(s);
 
 	case STREAM_HANDLE:
-	case STREAM_HANDLE_DIRECT:
-		arcan_warning("stream handle received for frameserver "
-			"but the video_platform do not support immediate buffer sharing.");
+		platform_video_map_handle(s, meta.handle); /* see notes in gl21.c */
 	break;
 	}
 

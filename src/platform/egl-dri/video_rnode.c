@@ -11,6 +11,7 @@
 #include <math.h>
 #include <unistd.h>
 #include <drm.h>
+#include <drm_fourcc.h>
 #include <xf86drm.h>
 #include <gbm.h>
 #include <fcntl.h>
@@ -128,12 +129,11 @@ struct monitor_mode PLATFORM_SYMBOL(_video_dimensions)()
 	return res;
 }
 
-int PLATFORM_SYMBOL(_output_handle)()
+int64_t PLATFORM_SYMBOL(_output_handle)(
+	struct storage_info_t* store, enum status_handle* status)
 {
-	int fd = -1;
-#ifndef HEADLESS_NOARCAN
-	struct storage_info_t* ws = arcan_vint_world();
-	intptr_t descr = ws->vinf.text.glid;
+	int32_t fd = -1;
+	intptr_t descr = store->vinf.text.glid;
 
 	rnode.output = eglCreateImageKHR(rnode.display,
 		rnode.context, EGL_GL_TEXTURE_2D_KHR, (EGLClientBuffer)(descr), NULL);
@@ -143,18 +143,33 @@ int PLATFORM_SYMBOL(_output_handle)()
 	if (eglExportDRMImageMESA(rnode.display, rnode.output,
 		&name, &handle, &stride)){
 		drmPrimeHandleToFD(rnode.fd, handle, DRM_CLOEXEC, &fd);
-		printf("exported %d\n", fd);
 	}
-#endif
+
+/* how is this allocation managed, should the handle be destroyed
+ * or is it collected with the fd? */
+	store->vinf.text.stride = stride;
+	store->vinf.text.format = DRM_FORMAT_XRGB8888;
+
 	return fd;
+}
+
+bool PLATFORM_SYMBOL(_video_map_handle)(
+	struct storage_info_t* store, int64_t handle)
+{
+	return false;
 }
 
 bool PLATFORM_SYMBOL(_video_init)(uint16_t w, uint16_t h,
 	uint8_t bpp, bool fs, bool frames, const char* title)
 {
 	const char* device = getenv("ARCAN_VIDEO_NODE");
+
+/* can be set by shmif_open/connect if the display-server wants us
+ * to explicitly use a certain node */
 	if (!device){
-		arcan_fatal("fixme: glob for common node paths, else fail on no nodes");
+		device = getenv("ARCAN_SHMIF_PNODE");
+		if (!device)
+			device = "/dev/dri/renderD128";
 	}
 
 	rnode.fd = open(device, O_RDWR);

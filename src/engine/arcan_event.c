@@ -202,6 +202,9 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 		|| (srcqueue && !srcqueue->back))
 		return;
 
+	arcan_frameserver* tgt = arcan_video_feedstate(source) ?
+		arcan_video_feedstate(source)->ptr : NULL;
+
 	saturation = (saturation > 1.0 ? 1.0 : saturation < 0.5 ? 0.5 : saturation);
 
 	while ( srcqueue->front && *srcqueue->front != *srcqueue->back &&
@@ -219,8 +222,6 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 			continue;
 
 		if (inev.category == EVENT_EXTERNAL){
-			arcan_frameserver* tgt;
-
 			switch(inev.kind){
 
 /* to protect against scripts that would happily try to just allocate/respond
@@ -233,15 +234,25 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 						inev.data.external.noticereq.height = PP_SHMPAGE_MAXH;
 				break;
 
+#ifndef _WIN32
+				case EVENT_EXTERNAL_BUFFERSTREAM:
+/* this assumes that we are in non-blocking state and that a single
+ * CSMG on a socket is sufficient for a non-blocking recvmsg */
+					if (tgt->vstream.handle)
+						close(tgt->vstream.handle);
+
+					tgt->vstream.handle = arcan_fetchhandle(tgt->sockout_fd);
+					tgt->vstream.stride = inev.data.external.bstream.pitch;
+					tgt->vstream.format = inev.data.external.bstream.format;
+				break;
+#endif
+
 /* client may need more fine grained control for audio transfers when it
  * comes to synchronized A/V playback */
 				case EVENT_EXTERNAL_FLUSHAUD:
-					if (arcan_video_feedstate(source)){
-						tgt = arcan_video_feedstate(source)->ptr;
-						if (tgt)
-							arcan_frameserver_flush(tgt);
-						continue;
-					}
+					if (tgt)
+						arcan_frameserver_flush(tgt);
+					continue;
 				break;
 
 				default:

@@ -37,6 +37,7 @@
 #include <assert.h>
 
 #include <drm.h>
+#include <drm_fourcc.h>
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
@@ -64,6 +65,9 @@
 #define EVAL(X,Y) MERGE(X,Y)
 #define PLATFORM_SYMBOL(fun) EVAL(PLATFORM_SUFFIX, fun)
 
+static PFNEGLCREATEIMAGEKHRPROC eglCreateImageKHR;
+static PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES;
+
 static char* egl_synchopts[] = {
 	"default", "double buffered, display controls refresh",
 /*
@@ -79,6 +83,7 @@ static char* egl_synchopts[] = {
 static char* egl_envopts[] = {
 	"ARCAN_VIDEO_DEVICE=/dev/dri/card0", "specifiy primary device",
 	"ARCAN_VIDEO_DRM_NOMASTER", "set to disable drmMaster management",
+	"ARCAN_VIDEO_DRM_NOBUFFER", "set to disable IPC buffer passing",
 	NULL
 };
 
@@ -86,14 +91,6 @@ enum {
 	DEFAULT,
 	ENDM
 }	synchopt;
-
-/*
- static struct {
-	bool master;
-} dri_opts = {
-	.master = true,
-};
- */
 
 static struct {
 	struct gbm_bo* bo;
@@ -222,6 +219,17 @@ bool PLATFORM_SYMBOL(_video_specify_mode)(platform_display_id id,
 	platform_mode_id mode_id, struct monitor_mode mode)
 {
 	return false;
+}
+
+bool map_extensions()
+{
+	eglCreateImageKHR = (PFNEGLCREATEIMAGEKHRPROC)
+	eglGetProcAddress("eglCreateImageKHR");
+
+	glEGLImageTargetTexture2DOES = (PFNGLEGLIMAGETARGETTEXTURE2DOESPROC)
+		eglGetProcAddress("glEGLImageTargetTexture2DOES");
+
+	return true;
 }
 
 struct monitor_mode* PLATFORM_SYMBOL(_video_query_modes)(
@@ -675,6 +683,53 @@ static int setup_gbm(void)
 	return 0;
 }
 
+bool PLATFORM_SYMBOL(_video_map_handle)(
+	struct storage_info_t* dst, int64_t handle)
+{
+	EGLint attrs[] = {
+		EGL_DMA_BUF_PLANE0_FD_EXT,
+		handle,
+		EGL_DMA_BUF_PLANE0_PITCH_EXT,
+		dst->vinf.text.stride,
+		EGL_DMA_BUF_PLANE0_OFFSET_EXT,
+		0,
+		EGL_WIDTH,
+		dst->w,
+		EGL_HEIGHT,
+		dst->h,
+		EGL_LINUX_DRM_FOURCC_EXT,
+		dst->vinf.text.format,
+		EGL_NONE
+	};
+
+	if (!eglCreateImageKHR || !glEGLImageTargetTexture2DOES)
+		return false;
+
+/*
+ * Security notice: stride and format comes from an untrusted
+ * data source, it has not been verified if MESA- implementation
+ * of eglCreateImageKHR etc. treats this as trusted in respect
+ * to the buffer or not, otherwise this is a possibly source
+ * for crashes etc.
+ */
+
+	EGLImageKHR img = eglCreateImageKHR(egl.display, EGL_NO_CONTEXT,
+		EGL_LINUX_DMA_BUF_EXT, (EGLClientBuffer)NULL, attrs);
+
+	if (img == EGL_NO_IMAGE_KHR){
+		arcan_warning("could not import EGL buffer\n");
+		return false;
+	}
+
+/* other option ?
+ * EGLImage -> gbm_bo -> glTexture2D with EGL_NATIVE_PIXMAP_KHR */
+	agp_activate_vstore(dst);
+	glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, img);
+	agp_deactivate_vstore(dst);
+
+	return true;
+}
+
 static int setup_gl(void)
 {
 	static const EGLint context_attribs[] = {
@@ -775,6 +830,9 @@ static int setup_gl(void)
 	egl.mdisph = drm.mode->vdisplay;
 	egl.canvasw = egl.mdispw;
 	egl.canvash = egl.mdisph;
+
+/* for direct buffer passing */
+	map_extensions();
 
 	return 0;
 }

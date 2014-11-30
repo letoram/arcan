@@ -305,6 +305,11 @@ platform_display_id* platform_video_query_displays(size_t* count)
 	return &id;
 }
 
+bool platform_video_map_handle(struct storage_info_t* store, int64_t handle)
+{
+	return lwa_video_map_handle(store, handle);
+}
+
 /*
  * we use a deferred stub here to avoid having the headless platform
  * sync function generate bad statistics due to our two-stage synch
@@ -312,6 +317,52 @@ platform_display_id* platform_video_query_displays(size_t* count)
  */
 static void stub()
 {
+}
+
+static void synch_hpassing(struct storage_info_t* vs,
+	int handle, enum status_handle status)
+{
+	arcan_shmif_signalhandle(&disp[0].conn, SHMIF_SIGVID | SHMIF_SIGBLK_ONCE,
+		handle, vs->vinf.text.stride, vs->vinf.text.format);
+	arcan_shmif_signal(&disp[0].conn, SHMIF_SIGVID | SHMIF_SIGBLK_ONCE);
+/* we likely need to kill the EGLImage as well? */
+	close(handle);
+}
+
+static void synch_copy(struct storage_info_t* vs)
+{
+	struct storage_info_t store = *vs;
+	store.vinf.text.raw = disp[0].conn.vidp;
+
+	agp_readback_synchronous(&store);
+	arcan_shmif_signal(&disp[0].conn, SHMIF_SIGVID | SHMIF_SIGBLK_ONCE);
+
+	for (size_t i = 1; i < MAX_DISPLAYS; i++){
+		if (!disp[i].mapped)
+			continue;
+
+/* re-use world readback, make a temporary copy to re-use check_store */
+		if (!disp[i].vstore){
+			disp[i].vstore = &store;
+			check_store(i);
+
+			memcpy(disp[i].conn.vidp, disp[0].conn.vidp,
+				disp[i].vstore->vinf.text.s_raw);
+
+			disp[i].vstore = NULL;
+
+			if (!check_store(i))
+				continue;
+		}
+		else {
+			check_store(i);
+			store = *(disp[i].vstore);
+			store.vinf.text.raw = disp[i].conn.vidp;
+			agp_readback_synchronous(&store);
+		}
+
+		arcan_shmif_signal(&disp[i].conn, SHMIF_SIGVID | SHMIF_SIGBLK_ONCE);
+	}
 }
 
 void platform_video_synch(uint64_t tick_count, float fract,
@@ -330,39 +381,16 @@ void platform_video_synch(uint64_t tick_count, float fract,
  * Evaluate when we can compare performance against sharing
  * gpu- specific handles
  */
-	struct storage_info_t store = *arcan_vint_world();
-	store.vinf.text.raw = disp[0].conn.vidp;
 
-	agp_readback_synchronous(&store);
-	arcan_shmif_signal(&disp[0].conn, SHMIF_SIGVID | SHMIF_SIGBLK_ONCE);
+	struct storage_info_t* vs = arcan_vint_world();
+	enum status_handle status;
 
-	for (size_t i = 1; i < MAX_DISPLAYS; i++){
-		if (!disp[i].mapped)
-			continue;
+	int handle = lwa_output_handle(vs, &status);
 
-/* for worldid, we use the fact that we already have a readback in disp[0] */
-		if (!disp[i].vstore){
-			disp[i].vstore = arcan_vint_world();
-
-			if (!check_store(i))
-				continue;
-
-			memcpy(disp[i].conn.vidp, disp[0].conn.vidp,
-				disp[i].vstore->vinf.text.s_raw);
-			disp[i].vstore = NULL;
-		}
-		else{
-			check_store(i);
-			store = *(disp[i].vstore);
-			store.vinf.text.raw = disp[i].conn.vidp;
-			agp_readback_synchronous(&store);
-		}
-
-/*
- * sweep each active display and push the related mapping
- * but don't block, we'll implement our own time-keeping
- */
-		arcan_shmif_signal(&disp[i].conn, SHMIF_SIGVID | SHMIF_SIGBLK_ONCE);
+	if (status < 0)
+		synch_copy(vs);
+	else{
+		synch_hpassing(vs, handle, status);
 	}
 
 /*

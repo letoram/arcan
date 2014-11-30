@@ -219,10 +219,12 @@ struct stream_meta agp_stream_prepare(struct storage_info_t* s,
 	break;
 
 	case STREAM_HANDLE:
-	case STREAM_HANDLE_DIRECT:
-		arcan_warning("stream handle received for frameserver "
-				"but the video_platform do not support immediate "
-				"buffer sharing.");
+/* if platform_video_map_handle fails here, prepare an
+ * empty vstore and attempt again, if that succeeds it
+ * means that we had to go through a RTT indirection,
+ * if that fails we should convey back to the client that
+ * we can't accept this kind of transfer */
+		platform_video_map_handle(s, meta.handle);
 	break;
 	}
 

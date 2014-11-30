@@ -7837,6 +7837,7 @@ static inline const char* fsrvtos(enum ARCAN_SEGID ink)
 	case SEGID_NETWORK_SERVER: return "network-server";
 	case SEGID_NETWORK_CLIENT: return "network-client";
 	case SEGID_SHELL: return "shell";
+	case SEGID_ICON: return "icon";
 	case SEGID_REMOTING: return "remoting";
 	case SEGID_GAME: return "game";
 	case SEGID_APPLICATION: return "application";

@@ -504,12 +504,36 @@ void arcan_shmif_setevqs(struct arcan_shmif_page* dst,
 	outq->eventbuf_sz = ARCAN_SHMPAGE_QUEUE_SZ;
 }
 
+void arcan_shmif_signalhandle(struct arcan_shmif_cont* ctx, int mask,
+	int handle, size_t stride, int format, ...)
+{
+	if (!arcan_pushhandle(handle, ctx->dpipe))
+		return;
+
+	struct arcan_event ev = {
+		.category = EVENT_EXTERNAL,
+		.kind = EVENT_EXTERNAL_BUFFERSTREAM,
+		.data.external.bstream.pitch = stride,
+		.data.external.bstream.format = format
+	};
+	arcan_event_enqueue(&ctx->outev, &ev);
+	arcan_shmif_signal(ctx, mask);
+}
+
 void arcan_shmif_signal(struct arcan_shmif_cont* ctx, int mask)
 {
 	struct shmif_hidden* priv = ctx->priv;
 	if (!ctx->addr->dms)
 		return;
 
+/*
+ * possible misuse point (need to verify in kernel source for this)
+ * who OWNS this descriptor after a push when it comes to descriptor
+ * limits etc.? The misuse here would be a number of pushes that
+ * are not aligned with a corresponding event. The parent can
+ * detect this by attempting to read from the socket and if it gets
+ * one without a pending event, alert + KILL.
+ */
 	if ( (mask & SHMIF_SIGVID) && priv->video_hook)
 		mask = priv->video_hook(ctx);
 

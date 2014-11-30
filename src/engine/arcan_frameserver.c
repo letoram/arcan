@@ -188,6 +188,23 @@ static void push_buffer(arcan_frameserver* src,
 	size_t w = store->w;
 	size_t h = store->h;
 
+/*
+ * currently many situations not handled;
+ * parent- allocated explicit buffers
+ * parent- rejecting accelerated buffers (incompatible formats),
+ * activating shmif fallback
+ *  - wasted shmif space on vidp that won't be used
+ */
+	if (src->vstream.handle){
+		stream.handle = src->vstream.handle;
+		store->vinf.text.stride = src->vstream.stride;
+		store->vinf.text.format = src->vstream.format;
+		agp_stream_prepare(store, stream, STREAM_HANDLE);
+		agp_stream_commit(store);
+		return;
+	}
+
+/* no-alpha flag was rather dumb, should've been done shader-wise */
 	if (src->flags.no_alpha_copy){
 		av_pixel* wbuf = agp_stream_prepare(store, stream, STREAM_RAW).buf;
 		if (!wbuf)
@@ -782,7 +799,6 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 	else{
 		ctx->aid = arcan_audio_feed((arcan_afunc_cb)
 			arcan_frameserver_audioframe_direct, ctx, &errc);
-		ctx->hijacked = true;
 		ctx->segid = SEGID_UNKNOWN;
 		ctx->queue_mask = EVENT_EXTERNAL;
 
