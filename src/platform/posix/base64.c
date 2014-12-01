@@ -72,9 +72,9 @@ uint8_t* arcan_base64_encode(
 	off_t ofs = 0;
 	size_t pad = ((mlen & 1 ) << 1) + ((mlen & 2) >> 1);
 
-	*outl = 4 * inl;
+	*outl = (inl * 4) / 3 + pad + 2;
 
-	uint8_t* res = arcan_alloc_mem(*outl + 1,
+	uint8_t* res = arcan_alloc_mem(*outl,
 		ARCAN_MEM_STRINGBUF, hint, ARCAN_MEMALIGN_NATURAL);
 
 	uint8_t* wrk = res;
