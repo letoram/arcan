@@ -795,7 +795,6 @@ set (SHMIF_SOURCES
 	shmif/arcan_shmif_event.h
 )
 
-message(" include directories: ${INCLUDE_DIRS}")
 include_directories(${INCLUDE_DIRS})
 
 message("\n---- Stage 1 configuration: ----")

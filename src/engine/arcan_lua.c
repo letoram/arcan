@@ -1999,6 +1999,28 @@ static int systemcontextsize(lua_State* ctx)
 	return 0;
 }
 
+static int alua_doresolve(lua_State* ctx, const char* inp)
+{
+	data_source source = arcan_open_resource(inp);
+	if (source.fd == BADFD)
+		return -1;
+
+	map_region map = arcan_map_resource(&source, false);
+	if (!map.ptr){
+		arcan_release_resource(&source);
+		return -1;
+	}
+
+	int rv = luaL_loadbuffer(ctx, map.ptr, map.sz, "inp");
+	if (0 == rv)
+		rv = lua_pcall(ctx, 0, LUA_MULTRET, 0);
+
+	arcan_release_map(map);
+	arcan_release_resource(&source);
+
+	return rv;
+}
+
 char* arcan_luaL_main(lua_State* ctx, const char* inp, bool file)
 {
 /* since we prefix scriptname to functions that we look-up,
@@ -2016,8 +2038,7 @@ char* arcan_luaL_main(lua_State* ctx, const char* inp, bool file)
 	);
 	memcpy(lua_ctx_store.prefix_buf, arcan_appl_id(), lua_ctx_store.prefix_ofs);
 
-	int code = (file ? luaL_dofile(ctx, inp) : luaL_dostring(ctx, inp));
-	if (code == 1){
+	if ( 1 == (file ? alua_doresolve(ctx, inp) : luaL_dofile(ctx, inp)) ){
 		const char* msg = lua_tostring(ctx, -1);
 		if (msg)
 			return strdup(msg);
@@ -7148,17 +7169,51 @@ int turretcmd(lua_State* ctx)
 }
 */
 
-int getidentstr(lua_State* ctx)
+static int getidentstr(lua_State* ctx)
 {
 	LUA_TRACE("system_identstr");
 
-/*
- * possibly add more data-sources here, key is that they provide
- * a
- */
 	lua_pushstring(ctx, platform_video_capstr());
 
 	return 1;
+}
+
+static int base64_encode(lua_State* ctx)
+{
+	size_t dsz, dsz2;
+	const uint8_t* instr = (const uint8_t*) luaL_checklstring(ctx, 1, &dsz);
+	char* outstr = (char*) arcan_base64_encode(instr, dsz, &dsz2, 0);
+
+	lua_pushlstring(ctx, outstr, dsz2);
+	arcan_mem_free(outstr);
+
+	return 1;
+}
+
+static int base64_decode(lua_State* ctx)
+{
+	size_t dsz;
+	const uint8_t* instr = (const uint8_t*) luaL_checkstring(ctx, 1);
+	char* outstr = (char*) arcan_base64_decode(instr, &dsz, 0);
+	lua_pushlstring(ctx, outstr, dsz);
+	arcan_mem_free(outstr);
+
+	return 1;
+}
+
+static void extend_baseapi(lua_State* ctx)
+{
+	lua_newtable(ctx);
+
+	lua_pushstring(ctx, "to_base64");
+	lua_pushcfunction(ctx, base64_encode);
+	lua_rawset(ctx, 1);
+
+	lua_pushstring(ctx, "from_base64");
+	lua_pushcfunction(ctx, base64_decode);
+	lua_rawset(ctx, 1);
+
+	lua_setglobal(ctx, "util");
 }
 
 arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
@@ -7499,6 +7554,8 @@ static const luaL_Reg netfuns[] = {
 	lua_pushcfunction(ctx, procimage_lookup);
 	lua_setfield(ctx, -2, "frequency");
 	lua_pop(ctx, 1);
+
+	extend_baseapi(ctx);
 
 	atexit(arcan_lua_cleanup);
 	return ARCAN_OK;
