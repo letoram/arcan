@@ -78,8 +78,9 @@ enum vobj_flags {
 	FL_ROTOFS = 16,
 	FL_ORDOFS = 32,
 	FL_PRSIST = 64,
+	FL_FULL3D = 128, /* switch to a quaternion- based orientation scheme */
 #ifdef _DEBUG
-	FL_FROZEN = 128
+	FL_FROZEN = 256
 #endif
 };
 
@@ -144,28 +145,42 @@ enum txstate {
 };
 
 /*
- * Overly bloated and thus a nasty cache influence,
- * when optimization rounds come as part of 1.0 effort
- * this should be trimmed down to 64-byte modulo and
- * profiled extensively for cache behavior,
- * re-order based on access patterns, full quat/matrix- transforms
- * should be moved to 3d objects, refcounts only for debug etc.
- * There's a ton of possible optimizations here but only after
- * the featureset is frozen and GL has been refactored to its
- * respective platform* level.
+ * Contents of this structure has grown from horrible to terrible over time.
+ * It is due for a long overhaul as soon as regression and benchmark coverage
+ * is up to a sufficient standard.
+ *
+ * List of planned changes:
+ *  - rotate + modelview matrix -> default 2D approach keep the 3D parts on
+ *                                 3dbase.c extensions rather than this thing.
+ *                                 (will have huge impact)
+ *
+ *  - pack all flags -> in total, we have somewhere around 20-30 possible
+ *                      flags and masks, these should be packed into one
+ *                      uint32
+ *
+ *  - indirect fptr -> protect the structure somewhat and have a static
+ *                     table of possible ffuncs with the ffunc being a
+ *                     range checked offset in that one.
+ *
+ *  - reference counters -> only enabled and present in debug mode
+ *
+ *  - framesets -> pointer to extended struct, use vstores instead of other
+ *                 vobjects severly reduce fptr overhead.
+ *
+ *  - smaller types -> a lot of members use way to large integer ranges
+ *
+ *  - prefetch vobj->next and vobj
+ *
+ *  - use external re-order tool to cut down on padding
+ *
+ *  - null- terminate children
  */
 typedef struct arcan_vobject {
-	enum vobj_flags flags;
-
 	struct arcan_vobject* current_frame;
-	uint16_t origw, origh;
+	struct arcan_vobject* parent;
+	struct arcan_vobject** children;
 
-/*
- * image-storage / reference,
- * current_frame is set to default_frame, but could well reference
- * another object (frameset)
- */
-struct arcan_vobject** frameset;
+	struct arcan_vobject** frameset;
 	struct {
 		unsigned short capacity;        /* only allowed to grow                   */
 		signed short mode;              /* cycling, > 0 per tick, < 0 per frame   */
@@ -175,6 +190,10 @@ struct arcan_vobject** frameset;
 	} frameset_meta;
 
 	struct storage_info_t* vstore;
+
+	enum vobj_flags flags;
+	uint16_t origw, origh;
+
 	arcan_shader_id program;
 
 	struct {
@@ -209,10 +228,8 @@ struct arcan_vobject** frameset;
 	long lifetime;
 
 /* management mappings */
-	struct arcan_vobject* parent;
 	enum parent_anchor p_anchor;
 
-	struct arcan_vobject** children;
 	unsigned childslots;
 
 	struct rendertarget* owner;

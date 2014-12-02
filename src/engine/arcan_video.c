@@ -2347,8 +2347,10 @@ arcan_vobj_id arcan_video_addfobject(arcan_vfunc_cb feed, vfunc_state state,
 		vobj->order = abs(zv);
 		vobj->feed.state = state;
 
-		if (state.tag == ARCAN_TAG_3DOBJ)
+		if (state.tag == ARCAN_TAG_3DOBJ){
+			FL_SET(vobj, FL_FULL3D);
 			vobj->order *= -1;
+		}
 
 		arcan_video_attachobject(rv);
 	}
