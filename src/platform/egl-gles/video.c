@@ -342,11 +342,17 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 	size_t nd;
 	arcan_bench_register_cost( arcan_vint_refresh(fract, &nd) );
 
-	arcan_vint_drawrt(arcan_vint_world(), 0, 0, egl.mdispw, egl.mdisph);
+	static bool ld;
+
+	agp_activate_rendertarget(NULL);
+	if (nd > 0 || !ld){
+		arcan_vint_drawrt(arcan_vint_world(), 0, 0, egl.mdispw, egl.mdisph);
+		ld = nd == 0;
+	}
+
+	arcan_vint_drawcursor(true);
 	arcan_vint_drawcursor(false);
 
-/* render to current back buffer, in normal "externally managed"
- * buffered EGL, this also determines swapping / buffer behavior */
 	eglSwapBuffers(egl.disp, egl.surf);
 
 	if (post)

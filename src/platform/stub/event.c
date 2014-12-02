@@ -13,18 +13,18 @@
 #include "arcan_general.h"
 #include "arcan_event.h"
 
-arcan_errc arcan_event_analogstate(int devid, int axisid,
+arcan_errc platform_event_analogstate(int devid, int axisid,
 	int* lower_bound, int* upper_bound, int* deadzone,
 	int* kernel_size, enum ARCAN_ANALOGFILTER_KIND* mode)
 {
     return ARCAN_OK;
 }
 
-void arcan_event_analogall(bool enable, bool mouse)
+void platform_event_analogall(bool enable, bool mouse)
 {
 }
 
-void arcan_event_analogfilter(int devid,
+void platform_event_analogfilter(int devid,
 	int axisid, int lower_bound, int upper_bound, int deadzone,
 	int buffer_sz, enum ARCAN_ANALOGFILTER_KIND kind)
 {
@@ -34,15 +34,15 @@ void platform_event_process(arcan_evctx* ctx)
 {
 }
 
-void platform_key_repeat(arcan_evctx* ctx, unsigned int rate)
+void platform_event_keyrepeat(arcan_evctx* ctx, unsigned int rate)
 {
 }
 
-void arcan_event_rescan_idev(arcan_evctx* ctx)
+void platform_event_rescan_idev(arcan_evctx* ctx)
 {
 }
 
-const char* arcan_event_devlabel(int devid)
+const char* platform_event_devlabel(int devid)
 {
 	return NULL;
 }

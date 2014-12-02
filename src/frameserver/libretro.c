@@ -209,7 +209,7 @@ static void setup_3dcore(struct retro_hw_render_callback*);
 
 retro_proc_address_t libretro_requirefun(const char* sym)
 {
-	return platform_video_gfxsym(sym);
+	return frameserver_requirefun(NULL, sym);
 }
 
 static void resize_shmpage(int neww, int newh, bool first)
