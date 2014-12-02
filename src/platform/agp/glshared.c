@@ -111,10 +111,12 @@ static bool alloc_fbo(struct rendertarget_store* dst)
 			arcan_warning("\t Incomplete Attachment\n");
 		break;
 
+#ifdef GL_FRAMEBUFFER_INCOMPLETE_DIMENSIONS
 		case GL_FRAMEBUFFER_INCOMPLETE_DIMENSIONS:
 			arcan_warning("\t Not all attached buffers have "
 				"the same dimensions.\n");
 		break;
+#endif
 
 		case GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT:
 			arcan_warning("\t One or several FBO attachment points are missing.\n");
