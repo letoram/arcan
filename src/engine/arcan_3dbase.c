@@ -1057,5 +1057,7 @@ arcan_errc arcan_3d_camtag(arcan_vobj_id vid,
 	vobj->feed.state.ptr = camobj;
 	vobj->feed.state.tag = ARCAN_TAG_3DCAMERA;
 
+	FL_SET(vobj, FL_FULL3D);
+
 	return ARCAN_OK;
 }
