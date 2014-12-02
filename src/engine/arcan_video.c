@@ -4615,6 +4615,7 @@ unsigned arcan_vint_refresh(float fract, size_t* ndirty)
 	}
 
 	agp_activate_rendertarget(&current_context->stdoutp);
+
 	process_rendertarget(&current_context->stdoutp, fract);
 	process_readback(&current_context->stdoutp, fract);
 	transfc += current_context->stdoutp.transfc;

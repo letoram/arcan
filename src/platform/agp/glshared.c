@@ -37,7 +37,7 @@ struct rendertarget_store
 	struct storage_info_t* store;
 };
 
-static bool alloc_fbo(struct rendertarget_store* dst)
+static bool alloc_fbo(struct rendertarget_store* dst, bool retry)
 {
 	glGenFramebuffers(1, &dst->fbo);
 
@@ -56,12 +56,14 @@ static bool alloc_fbo(struct rendertarget_store* dst)
 
 /* could use GL_DEPTH_COMPONENT only if we'd know that there
  * wouldn't be any clipping in the active rendertarget */
-			glBindRenderbuffer(GL_RENDERBUFFER, dst->depth);
-			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8,
-				dst->store->w, dst->store->h);
+			if (!retry){
+				glBindRenderbuffer(GL_RENDERBUFFER, dst->depth);
+				glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8,
+					dst->store->w, dst->store->h);
 
-			glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
-				GL_RENDERBUFFER, dst->depth);
+				glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
+					GL_RENDERBUFFER, dst->depth);
+			}
 		}
 	}
 	else {
@@ -108,7 +110,15 @@ static bool alloc_fbo(struct rendertarget_store* dst)
 		arcan_warning("FBO support broken, couldn't create basic FBO:\n");
 		switch(status){
 		case GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT:
-			arcan_warning("\t Incomplete Attachment\n");
+			if (!retry){
+				arcan_warning("\t Incomplete Attachment, attempting "
+					"simple framebuffer, this will likely break 3D and complex"
+					"clipping operations.\n");
+				return alloc_fbo(dst, true);
+			}
+			else
+				arcan_warning("\t Simple attachement broke as well "
+					"likely driver issue.\n");
 		break;
 
 #ifdef GL_FRAMEBUFFER_INCOMPLETE_DIMENSIONS
@@ -127,6 +137,12 @@ static bool alloc_fbo(struct rendertarget_store* dst)
 		break;
 		}
 
+		if (dst->fbo != GL_NONE)
+			glDeleteFramebuffers(1,&dst->fbo);
+		if (dst->depth != GL_NONE)
+			glDeleteRenderbuffers(1,&dst->depth);
+
+		dst->fbo = dst->depth = GL_NONE;
 		return false;
 	}
 
@@ -165,7 +181,7 @@ void agp_setup_rendertarget(struct rendertarget* dst,
 	dst->store->store = vstore;
 	dst->store->mode = m;
 
-	alloc_fbo(dst->store);
+	alloc_fbo(dst->store, false);
 }
 
 extern void agp_gl_ext_init();
