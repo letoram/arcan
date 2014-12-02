@@ -105,7 +105,26 @@ static bool alloc_fbo(struct rendertarget_store* dst)
  * it's not certain that drivers won't stall the pipeline on this */
 	GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
 	if (status != GL_FRAMEBUFFER_COMPLETE){
-		arcan_warning("FBO support assumed broken, check drivers.\n");
+		arcan_warning("FBO support broken, couldn't create basic FBO:\n");
+		switch(status){
+		case GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT:
+			arcan_warning("\t Incomplete Attachment\n");
+		break;
+
+		case GL_FRAMEBUFFER_INCOMPLETE_DIMENSIONS:
+			arcan_warning("\t Not all attached buffers have "
+				"the same dimensions.\n");
+		break;
+
+		case GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT:
+			arcan_warning("\t One or several FBO attachment points are missing.\n");
+		break;
+
+		case GL_FRAMEBUFFER_UNSUPPORTED:
+			arcan_warning("\t Request formats combination unsupported.\n");
+		break;
+		}
+
 		return false;
 	}
 

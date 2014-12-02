@@ -1426,7 +1426,6 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 
 arcan_errc arcan_video_resize_canvas(size_t neww, size_t newh)
 {
-	agp_resize_rendertarget(NULL, neww, newh);
 	struct monitor_mode mode = platform_video_dimensions();
 
 	if (!current_context->world.vstore){

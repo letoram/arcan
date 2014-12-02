@@ -213,11 +213,6 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 		return false;
 	}
 
-	if (EGL_FALSE == eglBindAPI(EGL_OPENGL_ES_API)){
-		arcan_warning("(egl) couldn't bind API\n");
-		return false;
-	}
-
 	egl.ctx = eglCreateContext(egl.disp, egl.cfg, EGL_NO_CONTEXT, ca);
 	if (egl.ctx == EGL_NO_CONTEXT){
 		arcan_warning("(egl) Couldn't create EGL/GLES context\n");
@@ -346,6 +341,9 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 
 	size_t nd;
 	arcan_bench_register_cost( arcan_vint_refresh(fract, &nd) );
+
+	arcan_vint_drawrt(arcan_vint_world(), 0, 0, egl.mdispw, egl.mdisph);
+	arcan_vint_drawcursor(false);
 
 /* render to current back buffer, in normal "externally managed"
  * buffered EGL, this also determines swapping / buffer behavior */
