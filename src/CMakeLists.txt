@@ -290,6 +290,7 @@ elseif (AGP_PLATFORM STREQUAL "gl21")
 
 elseif (AGP_PLATFORM STREQUAL "gles2")
 	FIND_PACKAGE(GLES2 REQUIRED)
+	add_definitions(-DGLES2)
 	SET(AGP_LIBRARIES
 		${GLES2_LIBRARIES}
 	)
@@ -300,6 +301,7 @@ elseif (AGP_PLATFORM STREQUAL "gles2")
 
 elseif (AGP_PLATFORM STREQUAL "gles3")
 	FIND_PACKAGE(GLES3 REQUIRED)
+	add_definitions(-DGLES3)
 	SET(AGP_LIBRARIES
 		${GLES3_LIBRARIES}
 	)
@@ -352,7 +354,6 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-gles")
 	endif()
 
 	FIND_PACKAGE(EGL REQUIRED)
-	FIND_PACKAGE(GLES2 REQUIRED)
 
 	if (GLES2_BCM_IMPLEMENTATION)
 		message("broadcom (BCM) GLES implementation found, set BCM_ROOT to bad dir to disable")
@@ -367,7 +368,7 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-gles")
 	)
 
 	LIST(APPEND MAIN_LIBRARIES
-		${GLES2_LIBRARIES}
+		${AGP_LIBRARIES}
 		${EGL_LIBRARIES}
 	)
 

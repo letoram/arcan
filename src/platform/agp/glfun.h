@@ -20,6 +20,13 @@
 #ifdef GLES2
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
+#define GL_DEPTH24_STENCIL8 GL_DEPTH24_STENCIL8_OES
+#ifndef GL_DEPTH_STENCIL_ATTACHMENT
+#define GL_DEPTH_STENCIL_ATTACHMENT GL_STENCIL_ATTACHMENT
+#endif
+
+static void glDrawBuffer(){}
+static void glReadBuffer(){}
 
 #elif GLES3
 #include <GLES3/gl3.h>
