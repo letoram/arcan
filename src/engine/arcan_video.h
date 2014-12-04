@@ -585,11 +585,45 @@ arcan_errc arcan_video_changefilter(arcan_vobj_id id,
 	enum arcan_vfilter_mode);
 arcan_errc arcan_video_persistobject(arcan_vobj_id id);
 
-arcan_errc arcan_video_allocframes(arcan_vobj_id id, uint8_t capacity,
-	enum arcan_framemode mode);
-arcan_vobj_id arcan_video_setasframe(arcan_vobj_id dst, arcan_vobj_id src,
-	unsigned fid, bool detach, arcan_errc* errc);
+/*
+ * Framesets are special storage containers inside an object that can
+ * have references to other vstores (textured). They are primarily used
+ * for four purposes:
+ * 1. multitexturing,
+ * 2. container for individual textures 3d objects with multiple meshes
+ * 3. animation (framestepping)
+ * 4. round-robin store for streaming data sources
+ *
+ * Use allocframes to associate a frameset with a vobject (which will
+ * remain until the object dies, the size of the store can only ever grow).
+ *
+ * mode can be one of FRAMESET_MULTITEXTURE or FRAMESET_SPLIT.
+ */
+arcan_errc arcan_video_allocframes(arcan_vobj_id id,
+	uint8_t capacity, enum arcan_framemode mode);
+
+/* setasframe shares the textured backing store associated with [src] with
+ * the specified frameset slot [fid] in the object pointed to by [dst].
+ * This operation will fail if [src] backing store is not textured,
+ * if there's no frameset specified in [dst] or if [fid] exceeds the number
+ * of slots in the frameset.
+ */
+arcan_errc arcan_video_setasframe(arcan_vobj_id dst,
+	arcan_vobj_id src, size_t fid);
+
+/*
+ * Manually switch the active frame used when rendering [dst] to a specific
+ * slot.
+ */
 arcan_errc arcan_video_setactiveframe(arcan_vobj_id dst, unsigned fid);
+
+/*
+ * Specify automatic management of active frameset frame. If [mode] is
+ * 0, automatic management is disabled. If [mode] is set to a number,
+ * the frame will be cycled every abs(num) LOGICAL frames (tick).
+ * If an object with a feed-function (e.g. a frameserver) is cycled, the
+ * mode is associated with every DELIVERED frame.
+ */
 arcan_errc arcan_video_framecyclemode(arcan_vobj_id id, signed mode);
 
 /* Rendertarget- operations */

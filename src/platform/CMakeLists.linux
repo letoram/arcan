@@ -79,8 +79,8 @@ set (
 
 LIST(APPEND FSRV_SOURCES frameserver/frameserver.c)
 LIST(APPEND STDLIB
- dl
- rt)
+ rt
+ dl)
 include(${PLATFORM_ROOT}/CMakeLists.fsrv)
 
 #
@@ -109,9 +109,9 @@ set_property(TARGET arcan_hijack APPEND PROPERTY
 	COMPILE_DEFINITIONS ENABLE_X11HIJACK ENABLE_WINE_HIJACK)
 
 target_link_libraries(arcan_hijack
-	${STDLIB}
 	${SDL_LIBRARY}
 	${OPENGL_gl_LIBRARY}
+	${STDLIB}
 )
 set(BIN_DST ${CMAKE_INSTALL_PREFIX}/bin)
 set(APPL_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/appl)

@@ -40,7 +40,7 @@ unsigned arcan_glob(char* basename, enum arcan_namespaces space,
 				break;
 
 			if (strcmp(path, globslots[i]) == 0){
-				arcan_mem_free(path);
+//				arcan_mem_free(path);
 				match = true;
 			}
 		}

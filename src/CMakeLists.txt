@@ -772,7 +772,6 @@ endif()
 if (SQLITE_AMALGAMATE)
 	message("--> Embedding the SQLite Amalgamation.")
 	list(APPEND SOURCES external/sqlite3/sqlite3.c)
-	list(APPEND MAIN_LIBRARIES dl)
 endif (SQLITE_AMALGAMATE)
 
 if (LUA51_JIT)
@@ -825,10 +824,14 @@ else()
 endif()
 
 message("\n---- Stage 3, Linking / Packaging ----")
+
+# GCC *** requiring dl to be the last argument to avoid dlclose in some
+# edge-cases? just take them out behind the shed and pull the trigger.
+
 add_executable( arcan_db ${ARCANDB_SOURCES} )
-target_link_libraries( arcan_db ${STDLIB} ${SQLITE3_LIBRARIES} )
-target_link_libraries( arcan ${STDLIB} ${MAIN_LIBRARIES} ${ARCANMAIN_LIBRARIES} )
-target_link_libraries( arcan_frameserver ${STDLIB} ${FSRV_LIBRARIES} )
+target_link_libraries( arcan_db ${SQLITE3_LIBRARIES} ${STDLIB})
+target_link_libraries( arcan ${MAIN_LIBRARIES} ${ARCANMAIN_LIBRARIES} ${STDLIB})
+target_link_libraries( arcan_frameserver ${FSRV_LIBRARIES} ${STDLIB})
 
 #
 # The database tool is a CLI for the engine/arcan_db with additional

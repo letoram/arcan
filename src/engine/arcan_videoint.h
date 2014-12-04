@@ -144,6 +144,15 @@ enum txstate {
 	TXSTATE_DEPTH = 2
 };
 
+struct vobject_frameset {
+	struct storage_info_t** frames;
+	size_t n_frames; /* number of slots in frames */
+	size_t index; /* current frame */
+	int ctr; /* ticks- left counter */
+	int mctr; /* counter- limits */
+	enum arcan_framemode mode; /* how frameset should be applied */
+};
+
 /*
  * Contents of this structure has grown from horrible to terrible over time.
  * It is due for a long overhaul as soon as regression and benchmark coverage
@@ -176,18 +185,18 @@ enum txstate {
  *  - null- terminate children
  */
 typedef struct arcan_vobject {
-	struct arcan_vobject* current_frame;
 	struct arcan_vobject* parent;
 	struct arcan_vobject** children;
 
-	struct arcan_vobject** frameset;
+	union {
+	struct vobject_frameset* frameset;
+
 	struct {
-		unsigned short capacity;        /* only allowed to grow                   */
-		signed short mode;              /* cycling, > 0 per tick, < 0 per frame   */
-		unsigned short counter;         /* keeps track on steps left until cycle  */
-		unsigned short current;         /* current frame, might be "dst"          */
-		enum arcan_framemode framemode; /* multitexture or just active frame      */
-	} frameset_meta;
+		char active;
+		size_t index;
+	} cl_frameset;
+
+	};
 
 	struct storage_info_t* vstore;
 
@@ -242,7 +251,6 @@ typedef struct arcan_vobject {
 /* for integrity checks, a destructive operation on a
  * !0 reference count is a terminal state */
 	struct {
-		signed framesets;
 		signed instances;
 		signed attachments;
 		signed links;
