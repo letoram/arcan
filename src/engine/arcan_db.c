@@ -778,6 +778,7 @@ char* arcan_db_appl_val(struct arcan_dbh* dbh,
 	size_t wbuf_sz = strlen(applname) + sizeof(qry);
 	char wbuf[ wbuf_sz ];
 	snprintf(wbuf, wbuf_sz, qry, applname);
+	memset(wbuf, '\0', wbuf_sz);
 
 	sqlite3_stmt* stmt = NULL;
 	sqlite3_prepare_v2(dbh->dbh, wbuf, wbuf_sz, &stmt, NULL);

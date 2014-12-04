@@ -222,22 +222,35 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
 	arcan_shader_envv(OBJ_OPACITY, &props.opa, sizeof(float));
 
 	struct geometry* base = src->geometry;
+	size_t ind = (vobj->frameset ? vobj->frameset->index : 0);
 
 	while (base){
 		arcan_shader_activate(base->program > 0 ? base->program : baseprog);
 
-/* note, only add complete images to vstore?
-	 else arcan_video_joinasynch(frame, true, false);
- * */
-		if (base->nmaps > 1){
+		if (!vobj->frameset)
+			agp_activate_vstore(vobj->vstore);
+		else {
 			struct storage_info_t* elems[ base->nmaps ];
-			for (size_t i = cframe; i < cframe+base->nmaps; i++)
-				elems[i] = vobj->frameset[ i ]->vstore;
+			size_t sz;
+			struct storage_info_t** frames;
 
+			if (FL_TEST(vobj, FL_CLONE)){
+				frames = vobj->parent->frameset->frames;
+				sz = vobj->parent->frameset->n_frames;
+			}
+			else {
+				frames = vobj->frameset->frames;
+				sz = vobj->frameset->n_frames;
+			}
+
+			size_t count = 0;
+			while(count < base->nmaps){
+				elems[count] = frames[ind];
+				count++;
+				ind = (ind + 1) % sz;
+			}
 			agp_activate_vstore_multi(elems, base->nmaps);
 		}
-		else if (base->nmaps == 1)
-			agp_activate_vstore(vobj->frameset[cframe]->vstore);
 
 		agp_submit_mesh(&base->store, flags);
 

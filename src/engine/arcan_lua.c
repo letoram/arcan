@@ -3451,19 +3451,12 @@ static int imageasframe(lua_State* ctx)
 		arcan_fatal("set_image_as_frame() -- invalid 4th argument"
 			"	(should be FRAMESET_DETACH or FRAMESET_NODETACH)\n");
 
-	arcan_errc errc;
-	arcan_vobj_id vid = arcan_video_setasframe(sid, did, num,
-		detach == FRAMESET_DETACH, &errc);
-
-	if (errc == ARCAN_OK)
-		lua_pushvid(ctx, vid != sid ? vid : ARCAN_EID);
-	else{
-		arcan_warning("imageasframe(%d) failed, couldn't set (%d)"
-			"	in slot (%d)\n", sid, did, num);
-		lua_pushvid(ctx, ARCAN_EID);
+	if (ARCAN_OK != arcan_video_setasframe(sid, did, num)){
+		arcan_warning("set_image_as_frame(), couldn't set "
+			"(%d) in slot (%d) of (%d)\n", (int)did, (int)num, (int)sid);
 	}
 
-	return 1;
+	return 0;
 }
 
 static int linkimage(lua_State* ctx)
@@ -7996,12 +7989,13 @@ static inline void dump_vobject(FILE* dst, arcan_vobject* src)
 \tframeset_capacity = %d,\n\
 \tframeset_mode = [[%s]],\n\
 \tframeset_counter = %d,\n\
-\tframeset_current = %d,\n\
-\textrefc_framesets = %d,\n\
-\textrefc_instances = %d,\n\
+\tframeset_current = %d,\n"
+#ifdef _DEBUG
+"\textrefc_instances = %d,\n\
 \textrefc_attachments = %d,\n\
-\textrefc_links = %d,\n\
-\tstorage_source = [[%s]],\n\
+\textrefc_links = %d,\n"
+#endif
+"\tstorage_source = [[%s]],\n\
 \tstorage_size = %d,\n\
 \tglstore_w = %d,\n\
 \tglstore_h = %d,\n\
@@ -8028,14 +8022,15 @@ static inline void dump_vobject(FILE* dst, arcan_vobject* src)
 (int) src->cellid,
 (int) src->valid_cache,
 (int) src->rotate_state,
-(int) src->frameset_meta.capacity,
-lut_framemode(src->frameset_meta.mode),
-(int) src->frameset_meta.counter,
-(int) src->frameset_meta.current,
-(int) src->extrefc.framesets,
+(int) (src->frameset ? src->frameset->n_frames : -1),
+src->frameset ? lut_framemode(src->frameset->mode) : "",
+(int) (src->frameset ? src->frameset->mctr : -1),
+(int) (src->frameset ? src->frameset->ctr : -1),
+#ifdef _DEBUG
 (int) src->extrefc.instances,
 (int) src->extrefc.attachments,
 (int) src->extrefc.links,
+#endif
 (src->vstore->txmapped && src->vstore->vinf.text.source) ?
 	src->vstore->vinf.text.source : "unknown",
 (int) src->vstore->vinf.text.s_raw,
@@ -8073,10 +8068,11 @@ vobj.glstore_refc = %zu;\n", src->vstore->vinf.text.glid,
 		fprintf_float(dst, "", src->vstore->vinf.col.b, "};\n");
 	}
 
-	for (size_t i = 0; i < src->frameset_meta.capacity; i++)
+	if (!FL_TEST(src, FL_CLONE) && src->frameset)
+	for (size_t i = 0; i < src->frameset->ctr; i++)
 	{
-		fprintf(dst, "vobj.frameset[%zu] = %"PRIxVOBJ";\n", i + 1,
-			src->frameset[i] ? src->frameset[i]->cellid : ARCAN_EID);
+		fprintf(dst, "vobj.frameset[%zu] = %d\n", i + 1,
+			src->frameset->frames[i]->vinf.text.glid);
 	}
 
 	if (src->children){

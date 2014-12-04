@@ -317,6 +317,8 @@ enum arcan_ffunc_rv arcan_frameserver_videoframe_direct(
 		return FFUNC_RV_NOFRAME;
 
 	switch (cmd){
+/* silent compiler, this should not happen for a target with a
+ * frameserver feeding it */
 	case FFUNC_READBACK:
 	break;
 
@@ -326,23 +328,33 @@ enum arcan_ffunc_rv arcan_frameserver_videoframe_direct(
 			shmpage = tgt->shm.ptr;
 		}
 
+/* use this opportunity to make sure that we treat audio as well */
 		check_audb(tgt, shmpage);
 
-		rv = (tgt->playstate == ARCAN_PLAYING && shmpage->vready);
+/* caller uses this hint to determine if a transfer should be
+ * initiated or not */
+		rv = (tgt->playstate == ARCAN_PLAYING && shmpage->vready) ?
+			FFUNC_RV_GOTFRAME : FFUNC_RV_NOFRAME;
 	break;
 
 	case FFUNC_TICK:
 		arcan_frameserver_tick_control( tgt );
 	break;
 
-	case FFUNC_DESTROY: arcan_frameserver_free( tgt ); break;
+	case FFUNC_DESTROY:
+		arcan_frameserver_free( tgt );
+	break;
 
 	case FFUNC_RENDER:
-		arcan_event_queuetransfer(arcan_event_defaultctx(), &tgt->inqueue,
-			tgt->queue_mask, 0.5, tgt->vid);
+		arcan_event_queuetransfer(arcan_event_defaultctx(),
+			&tgt->inqueue, tgt->queue_mask, 0.5, tgt->vid);
 
-		push_buffer(tgt, tgt->vidp, arcan_video_getobject(tgt->vid)->vstore);
+		struct arcan_vobject* vobj = arcan_video_getobject(tgt->vid);
+		struct storage_info_t* dst_store = vobj->frameset ?
+			vobj->frameset->frames[vobj->frameset->index] : vobj->vstore;
+		push_buffer(tgt, tgt->vidp, dst_store);
 
+/* for some connections, we want additional statistics */
 		if (tgt->desc.callback_framestate)
 			emit_deliveredframe(tgt, shmpage->vpts, tgt->desc.framecount++);
 

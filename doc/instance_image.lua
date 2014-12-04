@@ -12,7 +12,8 @@
 -- @note: Clones cannot be persisted.
 -- @note: Clones of a frameserver won't contribute to tick / render requests.
 -- @note: Clones cannot be linked to another object.
--- @note: Clones cannot be part of- or have- a frameset,
+-- @note: Clones can have a separate frameset state (active index) but not
+-- a separate frameset, it will only inherit the one of its parent.
 -- use null objects and share storage for that.
 -- @note: Calling instance_image using a clone as parentvid,
 -- will force a lookup of the clone's parent, which in turn will be instanced.
