@@ -478,11 +478,13 @@ arcan_errc arcan_audio_rebuild(arcan_aobj_id id)
 
 		int n;
 		while(alGetSourcei(aobj->alid, AL_BUFFERS_PROCESSED, &n), n > 0){
-			unsigned buffer = 0, bufferind;
+			unsigned buffer = 0;
 			alSourceUnqueueBuffers(aobj->alid, 1, &buffer);
-			bufferind = find_bufferind(aobj, buffer);
-			aobj->streambufmask[bufferind] = false;
-			aobj->used--;
+			int bufferind = find_bufferind(aobj, buffer);
+			if (bufferind >= 0){
+				aobj->streambufmask[bufferind] = false;
+				aobj->used--;
+			}
 		}
 
 		alDeleteSources(1, &aobj->alid);
@@ -772,6 +774,9 @@ static void arcan_astream_refill(arcan_aobj* current)
 		for (size_t i = current->used; i < sizeof(current->streambuf) /
 			sizeof(current->streambuf[0]); i++){
 			int ind = find_freebufferind(current, false);
+			if (-1 == ind)
+				break;
+
 			arcan_errc rv = current->feed(current, current->alid,
 				current->streambuf[ind], current->tag);
 

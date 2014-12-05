@@ -567,8 +567,10 @@ set (SHMIF_SOURCES
 set_property(SOURCE platform/posix/fdpassing.c
 	APPEND PROPERTY COMPILE_FLAGS -w )
 
-if (ENABLE_SIMD)
+FIND_PACKAGE(SSE)
+if (ENABLE_SIMD AND SSE_FOUND)
 	message("--> Enabling SIMD")
+
 	set_property(SOURCE engine/arcan_math.c
 		APPEND PROPERTY COMPILE_DEFINITIONS ARCAN_MATH_SIMD)
 	list(APPEND SOURCES engine/arcan_math_simd.c)
@@ -809,7 +811,7 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
 
 elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 	message("\n---- Stage 2, Linux specific configuration ----")
-	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/CMakeLists.linux)
+	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/CMakeLists.Linux)
 
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 	message("\n---- Stage 2, Windows specific configuration ----")
@@ -847,7 +849,7 @@ set_property(TARGET arcan_db APPEND PROPERTY
 # For LWA we need some kind of sound backend. In a sandbox,
 # LWA is not (by default) supposed to get access to any audio device outside
 # the shared memory interface. Therefore we build a patched version of
-# openal, that's linked statcally with only a shmif- based backend
+# openal, that's linked statically with only a shmif- based backend
 #
 # Current build-system setup forces main arcan and lwa_ version to largely share
 # the same platform build, which means that the terrible dependency-tree

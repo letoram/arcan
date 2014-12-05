@@ -110,7 +110,7 @@ set_property(TARGET arcan_hijack APPEND PROPERTY
 
 target_link_libraries(arcan_hijack
 	${SDL_LIBRARY}
-	${OPENGL_gl_LIBRARY}
+	${AGP_LIBRARIES}
 	${STDLIB}
 )
 set(BIN_DST ${CMAKE_INSTALL_PREFIX}/bin)
