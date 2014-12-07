@@ -16,6 +16,7 @@
 #include <pthread.h>
 #include <errno.h>
 
+#define AGP_ENABLE_UNPURE 1
 #include "../shmif/arcan_shmif.h"
 #include "graphing/net_graph.h"
 
@@ -29,24 +30,12 @@
 #include "resampler/speex_resampler.h"
 
 #ifdef FRAMESERVER_LIBRETRO_3D
-
-#include "../platform/agp/glfun.h"
-#include "../platform/video_platform.h"
-
-#include HEADLESS_PLATFORM
-
 #ifdef FRAMESERVER_LIBRETRO_3D_RETEXTURE
 #include "retexture.h"
 #endif
-#include "../platform/platform.h"
-
-static void build_fbo(int neww, int newh, int* dw, int* dh,
-	GLuint* dfbo, GLuint* ddepth, GLuint* dcol);
-
-struct fbo_cont {
-	GLuint fbo, col, depth;
-	int dw, dh;
-};
+#include "video_platform.h"
+#include "platform.h"
+#include HEADLESS_PLATFORM
 #endif
 
 #ifndef MAX_PORTS
@@ -178,8 +167,9 @@ static struct {
 
 #ifdef FRAMESERVER_LIBRETRO_3D
 	struct retro_hw_render_callback hwctx;
-	struct fbo_cont fbos[1];
-	int fbo_ind;
+	struct agp_rendertarget* rtgt;
+	int last_handle;
+	struct storage_info_t vstore;
 #endif
 
 /* parent uses an event->push model for input, libretro uses a poll one, so
@@ -209,7 +199,7 @@ static void setup_3dcore(struct retro_hw_render_callback*);
 
 retro_proc_address_t libretro_requirefun(const char* sym)
 {
-	return frameserver_requirefun(NULL, sym);
+	return frameserver_requirefun(sym, NULL);
 }
 
 static void resize_shmpage(int neww, int newh, bool first)
@@ -221,14 +211,9 @@ static void resize_shmpage(int neww, int newh, bool first)
 	}
 
 #ifdef FRAMESERVER_LIBRETRO_3D
-	if (retroctx.fbos[0].fbo){
-		struct fbo_cont* dfbo = &retroctx.fbos[0];
-
-		int shmw = retroctx.shmcont.addr->w;
-		int shmh = retroctx.shmcont.addr->h;
-
-		build_fbo(shmw, shmh, &dfbo->dw, &dfbo->dh, &dfbo->fbo,
-			retroctx.hwctx.depth ? &dfbo->depth : NULL, &dfbo->col);
+	if (retroctx.rtgt){
+		agp_resize_rendertarget(retroctx.rtgt, neww, newh);
+		retroctx.hwctx.context_reset();
 	}
 #endif
 
@@ -436,11 +421,25 @@ static void libretro_vidcb(const void* data, unsigned width,
 	if (data == RETRO_HW_FRAME_BUFFER_VALID){
 /* method one, just read color attachment, when this is working,
  * switch to PBO transfers and possible Flip-Flop FBOs */
-  	glBindTexture(GL_TEXTURE_2D, retroctx.fbos[retroctx.fbo_ind].col);
-		glGetTexImage(GL_TEXTURE_2D, 0,
-			GL_RGBA, GL_UNSIGNED_BYTE, retroctx.shmcont.vidp);
-		glBindTexture(GL_TEXTURE_2D, 0);
+		struct storage_info_t store = retroctx.vstore;
+		store.vinf.text.raw = retroctx.shmcont.vidp;
+
+		static bool hpassing_disabled;
+		if (!hpassing_disabled){
+			enum status_handle status;
+			retroctx.last_handle = platform_output_handle(&retroctx.vstore, &status);
+
+			if (status < 0){
+				printf("disabled handle passing\n");
+				hpassing_disabled = true;
+				retroctx.last_handle = -1;
+			}
+		}
+
+		if (!hpassing_disabled)
+			agp_readback_synchronous(&store);
 	}
+	else
 #endif
 
 /* lastly, convert / blit, this will possibly clip */
@@ -897,7 +896,7 @@ static inline int16_t libretro_inputmain(unsigned port, unsigned dev,
 		return 0;
 	}
 
-	if (port > MAX_PORTS){
+	if (port >= MAX_PORTS){
 		if (port_warning == false)
 			LOG("core requested unknown port (%u:%u:%u), ignored.\n", dev, ind, id);
 
@@ -1454,87 +1453,19 @@ static inline void add_jitter(int num)
  */
 #ifdef FRAMESERVER_LIBRETRO_3D
 
-/* need to reset on resize */
-static void build_fbo(int neww, int newh, int* dw, int* dh,
-	GLuint* dfbo, GLuint* ddepth, GLuint* dcol)
-{
-
-/* re-use or allocate? */
-	if (*dfbo != 0){
-		glDeleteTextures(1, dcol);
-		if (ddepth)
-			glDeleteRenderbuffers(1, ddepth);
-	} else {
-		glGenFramebuffers(1, dfbo);
-	}
-
-	*dw = neww;
-	*dh = newh;
-
-/* setup color attachment texture, reset the values to something
- * visible for troubleshooting */
-	char* mem = malloc(neww * newh * 4);
-	memset(mem, 0xff, neww * newh * 4);
-
-	glGenTextures(1, dcol);
-	glBindTexture(GL_TEXTURE_2D, *dcol);
-
-#ifdef FRAMSESERVER_LIBRETRO_3D_RETEXTURE
-	arcan_retexture_disable();
-#endif
-
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, neww, newh, 0,
-		GL_RGBA, GL_UNSIGNED_BYTE, mem);
-	glBindTexture(GL_TEXTURE_2D, 0);
-
-#ifdef FRAMSESERVER_LIBRETRO_3D_RETEXTURE
-	arcan_retexture_enable();
-#endif
-
-	free(mem);
-
-/* won't read this one back but emulation might still need it */
-	if (ddepth){
-		glGenRenderbuffers(1, ddepth);
-		glBindRenderbuffer(GL_RENDERBUFFER, *ddepth);
-			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT16, neww, newh);
-		glBindRenderbuffer(GL_RENDERBUFFER, 0);
-	}
-
-	glBindFramebuffer(GL_FRAMEBUFFER, *dfbo);
-		glFramebufferTexture2D(GL_FRAMEBUFFER,
-			GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, *dcol, 0);
-
-	if (ddepth)
-		glFramebufferRenderbuffer(GL_FRAMEBUFFER,
-			GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, *ddepth);
-
-	GLuint status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-	if (GL_FRAMEBUFFER_COMPLETE != status)
-		LOG("couldn't setup framebuffer.\n");
-	else
-		LOG("FBO (%d x %d) created.\n", neww, newh);
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-	retroctx.hwctx.context_reset();
-}
-
 static uintptr_t get_framebuffer()
 {
-	struct fbo_cont* dfbo = &retroctx.fbos[retroctx.fbo_ind];
+	uintptr_t tgt, col, depth;
 
-	int shmw = retroctx.shmcont.addr->w;
-	int shmh = retroctx.shmcont.addr->h;
+	if (!retroctx.rtgt){
+		agp_empty_vstore(&retroctx.vstore,
+			retroctx.shmcont.addr->w, retroctx.shmcont.addr->h);
+		retroctx.rtgt = agp_setup_rendertarget(
+			&retroctx.vstore, RENDERTARGET_COLOR_DEPTH_STENCIL);
+	}
 
-	if (dfbo->fbo == 0 || shmw != dfbo->dw || shmh != dfbo->dh)
-		build_fbo(shmw, shmh, &dfbo->dw, &dfbo->dh, &dfbo->fbo,
-			retroctx.hwctx.depth ? &dfbo->depth : NULL, &dfbo->col);
-
-	return (uintptr_t) dfbo->fbo;
+	agp_rendertarget_ids(retroctx.rtgt, &tgt, &col, &depth);
+	return tgt;
 }
 
 /*
@@ -1561,6 +1492,8 @@ static void setup_3dcore(struct retro_hw_render_callback* ctx)
 		exit(1);
 	}
 
+	agp_init();
+
 #ifdef FRAMSESERVER_LIBRETRO_3D_RETEXTURE
 	arcan_retexture_init(NULL, false);
 
@@ -1580,7 +1513,7 @@ static void setup_3dcore(struct retro_hw_render_callback* ctx)
 #endif
 
 	ctx->get_current_framebuffer = get_framebuffer;
-	ctx->get_proc_address = (retro_hw_get_proc_address_t) intercept_procaddr;
+	ctx->get_proc_address = (retro_hw_get_proc_address_t) platform_video_gfxsym;
 
 	if (ctx->bottom_left_origin)
 		retroctx.shmcont.addr->glsource = true;
@@ -1794,13 +1727,6 @@ int arcan_frameserver_libretro_run(
 		retroctx.audbuf = malloc(retroctx.audbuf_sz);
 		memset(retroctx.audbuf, 0, retroctx.audbuf_sz);
 
-/* [ do first resize based on something more subtle ]
- * NOTE; what we want to do is set some kind of start window
- * and put loading progress etc. there,
- * now the graphing context and initial size doesn't match the allocated FBO etc.
- * max_width and max_height can try and overflow and get clamped and broken.
- */
-
 /* since we're guaranteed to get at least one input callback each run(),
  * call, we multiplex parent event processing as well */
 		outev.data.external.framestatus.framenumber = 0;
@@ -1928,7 +1854,8 @@ int arcan_frameserver_libretro_run(
 /* Frametransfer step */
 				start = arcan_timemillis();
 					add_jitter(retroctx.jitterxfer);
-					arcan_shmif_signal(&retroctx.shmcont, SHMIF_SIGVID | SHMIF_SIGAUD);
+					arcan_shmif_signal(&retroctx.shmcont,
+						SHMIF_SIGVID | SHMIF_SIGAUD | SHMIF_SIGBLK_ONCE);
 				stop = arcan_timemillis();
 
 				retroctx.transfercost = stop - start;

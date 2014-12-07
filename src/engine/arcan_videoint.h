@@ -47,7 +47,7 @@ struct rendertarget {
 	struct arcan_vobject* color;
 	struct arcan_vobject_litem* first;
 
-	struct rendertarget_store* store;
+	struct agp_rendertarget* art;
 
 	enum rtgt_flags flags;
 
@@ -127,23 +127,6 @@ typedef struct surface_transform {
 	struct surface_transform* next;
 } surface_transform;
 
-/*
- * refcount is usually defaulted to 1 or ignored,
- * otherwise it indicates that the storage is
- * shared between multiple vobjects (sprite-sheets,
- * binpacked font pages etc.)
- *
- * we separate single color (program is bound
- * and quad is sent and a vec3 col uniform is expected,
- * but no texture is bound)
- */
-
-enum txstate {
-	TXSTATE_OFF   = 0,
-	TXSTATE_TEX2D = 1,
-	TXSTATE_DEPTH = 2
-};
-
 struct vobject_frameset {
 	struct storage_info_t** frames;
 	size_t n_frames; /* number of slots in frames */
@@ -177,6 +160,8 @@ struct vobject_frameset {
  *                 vobjects severly reduce fptr overhead.
  *
  *  - smaller types -> a lot of members use way to large integer ranges
+ *
+ *  - rendertargets -> dynamically grow, pack / re-arrange on creation
  *
  *  - prefetch vobj->next and vobj
  *

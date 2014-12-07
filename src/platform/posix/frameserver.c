@@ -551,7 +551,7 @@ static bool memcmp_nodep(const void* s1, const void* s2, size_t n)
 	const uint8_t* p1 = s1;
 	const uint8_t* p2 = s2;
 
-	uint8_t diffv = 0;
+	volatile uint8_t diffv = 0;
 
 	while (n--){
 		diffv |= *p1++ ^ *p2++;
@@ -589,7 +589,9 @@ static enum arcan_ffunc_rv socketverify(enum arcan_ffunc_cmd cmd,
 			return FFUNC_RV_NOFRAME;
 		}
 
-		read(tgt->sockout_fd, &ch, 1);
+		if (-1 == read(tgt->sockout_fd, &ch, 1))
+			return FFUNC_RV_NOFRAME;
+
 		if (ch == '\n'){
 /* 0- pad to max length */
 			memset(tgt->sockinbuf + tgt->sockrofs, '\0',
@@ -602,6 +604,7 @@ static enum arcan_ffunc_rv socketverify(enum arcan_ffunc_cmd cmd,
 			arcan_warning("platform/frameserver.c(), key verification failed on %"
 				PRIxVOBJ", received: %s\n", tgt->vid, tgt->sockinbuf);
 			arcan_frameserver_free(tgt);
+			return FFUNC_RV_NOFRAME;
 		}
 		else
 			tgt->sockinbuf[tgt->sockrofs++] = ch;
@@ -688,10 +691,8 @@ static int8_t socketpoll(enum arcan_ffunc_cmd cmd, av_pixel* buf,
 	switch (cmd){
 		case FFUNC_POLL:
 			if (!fd_avail(tgt->sockout_fd, &term)){
-				if (term){
-					arcan_warning("poll on term\n");
+				if (term)
 					arcan_frameserver_free(tgt);
-				}
 
 				return FFUNC_RV_NOFRAME;
 			}
