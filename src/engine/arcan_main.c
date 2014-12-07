@@ -164,9 +164,9 @@ printf("Usage: arcan [-whfmWMOqspBtHbdgaSV] applname "
 	printf("\n");
 	}
 
+	cur = platform_input_envopts();
 	if (*cur){
 	printf("Input platform environment variables:\n");
-	cur = platform_input_envopts();
 	while(*cur){
 		const char* a = *cur++;
 		const char* b = *cur++;
