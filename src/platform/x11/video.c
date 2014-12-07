@@ -137,7 +137,7 @@ void* PLATFORM_SYMBOL(_video_gfxsym)(const char* sym)
 bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 	uint8_t bpp, bool fs, bool frames, const char* caption)
 {
-#if defined(WITH_HEADLESS) || defined(WITH_HEADLESS_MAIN)
+#if defined(WITH_HEADLESS) || defined (HEADLESS_NOARCAN)
 	x11.xdisp = XOpenDisplay(NULL);
 	x11.xwnd = DefaultRootWindow(x11.xdisp);
 #else
@@ -265,6 +265,7 @@ const char** PLATFORM_SYMBOL(_video_envopts)(void)
 int64_t PLATFORM_SYMBOL(_output_handle)(struct storage_info_t* store,
 	enum status_handle* status)
 {
+	*status = ERROR_UNSUPPORTED;
 	return -1;
 }
 
@@ -298,7 +299,7 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 	arcan_vint_drawcursor(false);
 #endif
 
-#if defined(WITH_HEADLESS) || defined(WITH_HEADLESS_MAIN)
+#if defined(WITH_HEADLESS) || defined(HEADLESS_NOARCAN)
 	glFinish();
 #else
 	glXSwapBuffers(x11.xdisp, x11.xwnd);

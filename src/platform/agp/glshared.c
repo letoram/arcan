@@ -28,7 +28,7 @@
 #define FLAG_DIRTY()
 #endif
 
-struct rendertarget_store
+struct agp_rendertarget
 {
 	GLuint fbo;
 	GLuint depth;
@@ -38,7 +38,7 @@ struct rendertarget_store
 	struct storage_info_t* store;
 };
 
-static bool alloc_fbo(struct rendertarget_store* dst, bool retry)
+static bool alloc_fbo(struct agp_rendertarget* dst, bool retry)
 {
 	glGenFramebuffers(1, &dst->fbo);
 
@@ -161,6 +161,7 @@ void agp_empty_vstore(struct storage_info_t* vs, size_t w, size_t h)
 	);
 	vs->w = w;
 	vs->h = h;
+	vs->txmapped = TXSTATE_TEX2D;
 
 	agp_update_vstore(vs, true);
 
@@ -169,20 +170,17 @@ void agp_empty_vstore(struct storage_info_t* vs, size_t w, size_t h)
 	vs->vinf.text.s_raw = 0;
 }
 
-void agp_setup_rendertarget(struct rendertarget* dst,
-	struct storage_info_t* vstore, enum rendertarget_mode m)
+struct agp_rendertarget* agp_setup_rendertarget(struct storage_info_t* vstore,
+	enum rendertarget_mode m)
 {
-	if (dst->store){
-		arcan_mem_free(dst->store);
-	}
-
-	dst->store = arcan_alloc_mem(sizeof(struct rendertarget_store),
+	struct agp_rendertarget* r = arcan_alloc_mem(sizeof(struct agp_rendertarget),
 		ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 
-	dst->store->store = vstore;
-	dst->store->mode = m;
+	r->store = vstore;
+	r->mode = m;
 
-	alloc_fbo(dst->store, false);
+	alloc_fbo(r, false);
+	return r;
 }
 
 extern void agp_gl_ext_init();
@@ -215,15 +213,19 @@ void agp_init()
 */
 }
 
-void agp_drop_rendertarget(struct rendertarget* tgt)
+void agp_drop_rendertarget(struct agp_rendertarget* tgt)
 {
-	glDeleteFramebuffers(1,&tgt->store->fbo);
-	glDeleteRenderbuffers(1,&tgt->store->depth);
-	tgt->store->fbo = GL_NONE;
-	tgt->store->depth = GL_NONE;
+	if (!tgt)
+		return;
+
+	glDeleteFramebuffers(1,&tgt->fbo);
+	glDeleteRenderbuffers(1,&tgt->depth);
+	tgt->fbo = GL_NONE;
+	tgt->depth = GL_NONE;
+	arcan_mem_free(tgt);
 }
 
-void agp_activate_rendertarget(struct rendertarget* tgt)
+void agp_activate_rendertarget(struct agp_rendertarget* tgt)
 {
 	size_t w, h;
 	struct monitor_mode mode = platform_video_dimensions();
@@ -234,9 +236,9 @@ void agp_activate_rendertarget(struct rendertarget* tgt)
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	}
 	else {
-		w = tgt->store->store->w;
-		h = tgt->store->store->h;
-		glBindFramebuffer(GL_FRAMEBUFFER, tgt->store->fbo);
+		w = tgt->store->w;
+		h = tgt->store->h;
+		glBindFramebuffer(GL_FRAMEBUFFER, tgt->fbo);
 	}
 
 	glScissor(0, 0, w, h);
@@ -273,8 +275,8 @@ void agp_null_vstore(struct storage_info_t* store)
 	store->vinf.text.glid = 0;
 }
 
-void agp_resize_rendertarget(struct rendertarget* tgt, size_t neww,
-	size_t newh)
+void agp_resize_rendertarget(
+	struct agp_rendertarget* tgt, size_t neww, size_t newh)
 {
 	if (!tgt || !tgt->store){
 		arcan_warning("attempted resize on broken rendertarget\n");
@@ -282,11 +284,10 @@ void agp_resize_rendertarget(struct rendertarget* tgt, size_t neww,
 	}
 
 /* same dimensions, no need to resize */
-	if (tgt->store->store->w == neww && tgt->store->store->h == newh)
+	if (tgt->store->w == neww && tgt->store->h == newh)
 		return;
 
-	struct storage_info_t* os = tgt->store->store;
-	enum rendertarget_mode mode = tgt->store->mode;
+	struct storage_info_t* os = tgt->store;
 
 /* we inplace- modify, want the refcounter intact */
 	agp_null_vstore(os);
@@ -295,9 +296,11 @@ void agp_resize_rendertarget(struct rendertarget* tgt, size_t neww,
 	os->vinf.text.s_raw = 0;
 	agp_empty_vstore(os, neww, newh);
 
-/* drop old FBO IDs etc. */
-	agp_drop_rendertarget(tgt);
-	agp_setup_rendertarget(tgt, os, mode);
+	glDeleteFramebuffers(1,&tgt->fbo);
+	glDeleteRenderbuffers(1,&tgt->depth);
+	tgt->fbo = GL_NONE;
+	tgt->depth = GL_NONE;
+	alloc_fbo(tgt, tgt->mode);
 }
 
 void agp_activate_vstore_multi(struct storage_info_t** backing, size_t n)
@@ -518,6 +521,14 @@ static void toggle_debugstates(float* modelview)
 		glDepthMask(GL_TRUE);
 		glDisableVertexAttribArray(ATTRIBUTE_VERTEX);
 	}
+}
+
+void agp_rendertarget_ids(struct agp_rendertarget* rtgt, uintptr_t* tgt,
+	uintptr_t* col, uintptr_t* depth)
+{
+	*tgt = rtgt->fbo;
+	*col = rtgt->color;
+	*depth = rtgt->depth;
 }
 
 void agp_submit_mesh(struct mesh_storage_t* base, enum agp_mesh_flags fl)

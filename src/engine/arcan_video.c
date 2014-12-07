@@ -1380,13 +1380,13 @@ arcan_errc arcan_video_resize_canvas(size_t neww, size_t newh)
 		current_context->world.vstore->filtermode &= ~ARCAN_VFILTER_MIPMAP;
 		agp_empty_vstore(current_context->world.vstore, neww, newh);
 		current_context->stdoutp.color = &current_context->world;
-		agp_setup_rendertarget(&current_context->stdoutp,
+		current_context->stdoutp.art = agp_setup_rendertarget(
 			current_context->world.vstore,
 			RENDERTARGET_COLOR_DEPTH_STENCIL
 		);
 	}
 	else
-		agp_resize_rendertarget(&current_context->stdoutp, neww, newh);
+		agp_resize_rendertarget(current_context->stdoutp.art, neww, newh);
 
 	build_orthographic_matrix(arcan_video_display.window_projection, 0,
 		mode.phy_width, mode.phy_height, 0, 0, 1);
@@ -1865,7 +1865,7 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did,
 		dst->color    = vobj;
 		dst->camtag   = ARCAN_EID;
 		dst->readback = readback;
-		agp_setup_rendertarget(dst, vobj->vstore, format);
+		dst->art = agp_setup_rendertarget(vobj->vstore, format);
 
 		vobj->extrefc.attachments++;
 		trace("(setuprendertarget), (%d:%s) defined as rendertarget."
@@ -2672,7 +2672,8 @@ static void drop_rtarget(arcan_vobject* vobj)
 			"remove rendertarget (%s)\n", vobj->tracetag);
 
 /* kill GPU resources */
-	agp_drop_rendertarget(dst);
+	agp_drop_rendertarget(dst->art);
+	dst->art = NULL;
 
 /* create a temporary copy of all the elements in the rendertarget */
 	arcan_vobject_litem* current = dst->first;
@@ -3987,7 +3988,9 @@ static inline void draw_colorsurf(struct rendertarget* dst,
 	surface_properties prop, arcan_vobject* src, float r, float g, float b)
 {
 	float cval[3] = {r, g, b};
-	float* mvm;
+/* having to do = NULL here to avoid warnings is a prime example where
+ * gcc is just terrible */
+	float* mvm = NULL;
 
 	setup_surf(dst, &prop, src, &mvm);
 	arcan_shader_forceunif("obj_col", shdrvec3, (void*) &cval, false);
@@ -3999,7 +4002,7 @@ static inline void draw_colorsurf(struct rendertarget* dst,
 static inline void draw_texsurf(struct rendertarget* dst,
 	surface_properties prop, arcan_vobject* src, float* txcos)
 {
-	float* mvm;
+	float* mvm = NULL;
 	setup_surf(dst, &prop, src, &mvm);
 	agp_draw_vobj(-prop.scale.x, -prop.scale.y, prop.scale.x,
 		prop.scale.y, txcos, mvm);
@@ -4424,7 +4427,7 @@ arcan_errc arcan_video_forceupdate(arcan_vobj_id vid)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
 	FLAG_DIRTY(vobj);
-	agp_activate_rendertarget(tgt);
+	agp_activate_rendertarget(tgt->art);
 	process_rendertarget(tgt, arcan_video_display.c_lerp);
 	agp_activate_rendertarget(NULL);
 
@@ -4528,14 +4531,14 @@ unsigned arcan_vint_refresh(float fract, size_t* ndirty)
 	for (size_t ind = 0; ind < current_context->n_rtargets; ind++){
 		struct rendertarget* tgt = &current_context->rtargets[ind];
 
-		agp_activate_rendertarget(tgt);
+		agp_activate_rendertarget(tgt->art);
 		process_rendertarget(tgt, fract);
 		process_readback(&current_context->rtargets[ind], fract);
 
 		transfc += tgt->transfc;
 	}
 
-	agp_activate_rendertarget(&current_context->stdoutp);
+	agp_activate_rendertarget(current_context->stdoutp.art);
 
 	process_rendertarget(&current_context->stdoutp, fract);
 	process_readback(&current_context->stdoutp, fract);

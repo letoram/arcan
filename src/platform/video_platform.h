@@ -105,6 +105,15 @@ enum arcan_shader_envts{
 	TIMESTAMP_D       = 11,
 };
 
+/*
+ * union specifier
+ */
+enum txstate {
+	TXSTATE_OFF   = 0,
+	TXSTATE_TEX2D = 1,
+	TXSTATE_DEPTH = 2
+};
+
 struct storage_info_t {
 	size_t refcount;
 
@@ -398,8 +407,9 @@ void agp_resize_vstore(struct storage_info_t* backing, size_t w, size_t h);
 
 /*
  * Deallocate all resources associated with a backing store.
- * This function is internally reference counted as there can be a
- * 1:* between a vobject and a backing store.
+ * Note that this function DO NOT respect the reference counter field,
+ * that is the responsibility of the caller. (engine uses vint_* for
+ * this purpose).
  */
 void agp_drop_vstore(struct storage_info_t* backing);
 
@@ -540,20 +550,15 @@ enum rendertarget_mode {
 };
 
 /*
- * Attach a backing store using the specified video object
- * as recipient with the possible attachments specified in mode.
- * This requires that the backing store video_object has been set
- * as the color member of the rendertarget.
+ * opaque structure for clustering other video operations,
+ * setup_rendertarget allocates and associates a rendertarget
+ * with the specified texture backing store (that also
+ * defines dimensions etc.) with the preferred use hinted in
+ * mode.
  */
-struct rendertarget;
-void agp_setup_rendertarget(struct rendertarget*,
-	struct storage_info_t*, enum rendertarget_mode mode);
-
-/*
- * If set to a valid rendertarget, update the default slot.
- * Also returns the currently default rendertarget.
- */
-struct rendertarget* agp_default_rendertarget(struct rendertarget*);
+struct agp_rendertarget;
+struct agp_rendertarget* agp_setup_rendertarget(struct storage_info_t*,
+	enum rendertarget_mode mode);
 
 #ifdef AGP_ENABLE_UNPURE
 /*
@@ -561,7 +566,7 @@ struct rendertarget* agp_default_rendertarget(struct rendertarget*);
  * primarily for frameservers that explicitly need to use GL
  * and where we want to re-use the underlying code.
  */
-void agp_rendertarget_ids(struct rendertarget*, uintptr_t* tgt,
+void agp_rendertarget_ids(struct agp_rendertarget*, uintptr_t* tgt,
 	uintptr_t* col, uintptr_t* depth);
 #endif
 
@@ -570,14 +575,15 @@ void agp_rendertarget_ids(struct rendertarget*, uintptr_t* tgt,
  * possible transfer objects etc. with the >0 dimensions
  * specified by neww / newh.
  */
-void agp_resize_rendertarget(struct rendertarget*, size_t neww, size_t newh);
+void agp_resize_rendertarget(struct agp_rendertarget*,
+	size_t neww, size_t newh);
 
 /*
  * Switch the currently active rendertarget to the one specified.
  * If set to null, rendertarget based rendering will be disabled.
  */
-void agp_activate_rendertarget(struct rendertarget*);
-void agp_drop_rendertarget(struct rendertarget*);
+void agp_activate_rendertarget(struct agp_rendertarget*);
+void agp_drop_rendertarget(struct agp_rendertarget*);
 
 /*
  * reset the currently bound rendertarget output buffer

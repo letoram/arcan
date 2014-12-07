@@ -80,6 +80,13 @@ void platform_video_minimize()
 	SDL_WM_IconifyWindow();
 }
 
+int64_t platform_video_output_handle(struct storage_info_t* store,
+	enum status_handle* status)
+{
+	*status = ERROR_UNSUPPORTED;
+	return -1;
+}
+
 void platform_video_synch(uint64_t tick_count, float fract,
 	video_synchevent pre, video_synchevent post)
 {
