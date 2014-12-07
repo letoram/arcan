@@ -10,6 +10,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <assert.h>
+#include <unistd.h>
 
 #include "glfun.h"
 

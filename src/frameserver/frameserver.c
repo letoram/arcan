@@ -226,7 +226,7 @@ static void dumpargs(int argc, char** argv)
 		getenv("ARCAN_CONKEY") ? getenv("ARCAN_CONNKEY") : "");
 }
 
-#if defined(_DEBUG) && !defined(__APPLE__)
+#if defined(_DEBUG) && !defined(__APPLE__) && !defined(__FreeBSD__)
 
 void dump_links(const char* path)
 {
@@ -319,7 +319,7 @@ int main(int argc, char** argv)
 /*
  * Monitor for descriptor leaks from parent
  */
-#if defined(_DEBUG) && !defined(__APPLE__)
+#if defined(_DEBUG) && !defined(__APPLE__) && !defined(__FreeBSD__)
 	DIR* dp;
 	struct dirent64* dirp;
 	if ((dp = opendir("/proc/self/fd")) != NULL){
