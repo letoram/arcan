@@ -1,47 +1,45 @@
-set (PLATFORM_PATH ${CMAKE_SOURCE_DIR}/platform/posix)
-set (GL_PLATFORM_HEADER ${PLATFORM_PATH}/../${VIDEO_PLATFORM}/glheaders.h)
+set (PLATFORM_PATH ${PLATFORM_ROOT}/posix)
 
-set (ARCAN_DEFINITIONS
-	${ARCAN_DEFINITIONS} "GL_HEADERS=\"${GL_PLATFORM_HEADER}\""
-)
+add_definitions(-DPLATFORM_HEADER=\"${PLATFORM_PATH}/../platform.h\" -std=c11
+ -Wall -Wno-missing-braces -Wno-unused-function
+	-DLUA_51 -D_WITH_DPRINTF -D__UNIX -DLIBUSB_BSD)
+
 message(" scanning for FreeBSD specific libraries. ")
 find_library(ICONV NAMES iconv REQUIRED)
 LIST(APPEND MAIN_LIBRARIES ${ICONV})
 
 set (PLATFORM_SOURCES
-${PLATFORM_PATH}/mem.c
-${PLATFORM_PATH}/fmt_open.c
-${PLATFORM_PATH}/glob.c
-${PLATFORM_PATH}/map_resource.c
-${PLATFORM_PATH}/resource_io.c
-${PLATFORM_PATH}/ilaunch.c
-${PLATFORM_PATH}/strip_traverse.c
-${PLATFORM_PATH}/paths.c
-${PLATFORM_PATH}/base64.c
-${PLATFORM_PATH}/sem.c
-${PLATFORM_PATH}/shm.c
-${PLATFORM_PATH}/fsrv_guard.c
-${PLATFORM_PATH}/time.c
-${PLATFORM_PATH}/base64.c
-${PLATFORM_PATH}/appl.c
-${PLATFORM_PATH}/warning.c
-${PLATFORM_PATH}/frameserver.c
-${PLATFORM_PATH}/fdpassing.c
-${PLATFORM_PATH}/namespace.c
-${PLATFORM_PATH}/launch.c
-${CMAKE_EXTERNAL_SRCDIR}/hidapi/hid_bsd.c
-${CMAKE_EXTERNAL_SRCDIR}/hidapi/hidapi.h
+	${PLATFORM_PATH}/mem.c
+	${PLATFORM_PATH}/fmt_open.c
+	${PLATFORM_PATH}/glob.c
+	${PLATFORM_PATH}/map_resource.c
+	${PLATFORM_PATH}/resource_io.c
+	${PLATFORM_PATH}/strip_traverse.c
+	${PLATFORM_PATH}/paths.c
+	${PLATFORM_PATH}/base64.c
+	${PLATFORM_PATH}/sem.c
+	${PLATFORM_PATH}/shm.c
+	${PLATFORM_PATH}/fsrv_guard.c
+	${PLATFORM_PATH}/time.c
+	${PLATFORM_PATH}/appl.c
+	${PLATFORM_PATH}/warning.c
+	${PLATFORM_PATH}/frameserver.c
+	${PLATFORM_PATH}/fdpassing.c
+	${PLATFORM_PATH}/namespace.c
+	${PLATFORM_PATH}/launch.c
+	${CMAKE_EXTERNAL_SRCDIR}/hidapi/hid_bsd.c
+	${CMAKE_EXTERNAL_SRCDIR}/hidapi/hidapi.h
 )
 
 set (FSRV_PLATFORM_SOURCES
-${PLATFORM_PATH}/warning.c
-${PLATFORM_PATH}/time.c
-${PLATFORM_PATH}/sem.c
-${PLATFORM_PATH}/shm.c
-${PLATFORM_PATH}/base64.c
-${PLATFORM_PATH}/mem.c
-${PLATFORM_PATH}/fdpassing.c
-${SHMIF_SOURCES}
+	${PLATFORM_PATH}/warning.c
+	${PLATFORM_PATH}/time.c
+	${PLATFORM_PATH}/sem.c
+	${PLATFORM_PATH}/shm.c
+	${PLATFORM_PATH}/base64.c
+	${PLATFORM_PATH}/mem.c
+	${PLATFORM_PATH}/fdpassing.c
+	${SHMIF_SOURCES}
 )
 
 set (LWA_PLATFORM_SOURCES
@@ -51,15 +49,14 @@ set (LWA_PLATFORM_SOURCES
 
 # we don't want these coming along in LWA_PLATFORM
 LIST(APPEND PLATFORM_SOURCES
-	${PLATFORM_PATH}/../${VIDEO_PLATFORM}/video.c
-	${PLATFORM_PATH}/../${INPUT_PLATFORM}/event.c
+	${PLATFORM_ROOT}/${VIDEO_PLATFORM}/video.c
+	${PLATFORM_ROOT}/${INPUT_PLATFORM}/event.c
 )
 
 SET(HIJACK_SOURCES
 	hijack/arcan_target_unix.c
 	hijack/arcan_target.c
-	${PLATFORM_PATH}/warning.c
-	${PLATFORM_PATH}/sem.c
+	${SHMIF_SOURCES}
 	frameserver/ntsc/snes_ntsc.c
  	frameserver/resampler/resample.c
 )
@@ -76,9 +73,6 @@ LIST(APPEND STDLIB
 LIST(APPEND MAIN_LIBRARIES usb)
 
 include(${PLATFORM_PATH}/../CMakeLists.fsrv)
-
-add_definitions(-DPLATFORM_HEADER=\"${PLATFORM_PATH}/../platform.h\" -std=gnu11
- -Wall -Wno-missing-braces -Wno-unused-function -DLUA_51 -D_WITH_DPRINTF -D__UNIX -DLIBUSB_BSD)
 
 #
 # For LWA support, we default to a different video platform as all
@@ -111,7 +105,7 @@ set_property(TARGET arcan_hijack APPEND PROPERTY
 target_link_libraries(arcan_hijack
 	${STDLIB}
 	${SDL_LIBRARY}
-	${OPENGL_gl_LIBRARY}
+	${AGP_LIBRARIES}
 )
 
 set(BIN_DST ${CMAKE_INSTALL_PREFIX}/bin)
@@ -121,18 +115,7 @@ set(RESOURCES_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/resources)
 add_executable( arcan ${SOURCES} ${PLATFORM_SOURCES} )
 set_property(TARGET arcan APPEND PROPERTY COMPILE_DEFINITIONS ${ARCAN_DEFINITIONS})
 
-if (${SDLIMAGE_FOUND})
-	set_property(TARGET arcan APPEND PROPERTY COMPILE_DEFINITIONS SDLIMAGE)
-endif()
-
 install(TARGETS arcan_hijack DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
-
-install(FILES ${CMAKE_SOURCE_DIR}/utils/arcan_romman.rb DESTINATION ${BIN_DST}
-	PERMISSIONS
-		WORLD_READ WORLD_EXECUTE
-		OWNER_WRITE OWNER_READ OWNER_EXECUTE
-		GROUP_READ GROUP_EXECUTE
-)
 
 install(FILES ${CMAKE_SOURCE_DIR}/doc/arcan.1
 	DESTINATION /usr/local/share/man/man1

@@ -114,9 +114,6 @@ endif()
 # add_library(arcan_hijack SHARED ${HIJACK_SOURCES})
 
 add_executable( arcan ${SOURCES} ${PLATFORM_SOURCES} ${SDL_PLATFORM_SOURCES})
-if (${SDLIMAGE_FOUND})
-	LIST(APPEND ARCAN_DEFINITIONS SDLIMAGE)
-endif()
 
 set_property(TARGET arcan APPEND PROPERTY COMPILE_DEFINITIONS ${ARCAN_DEFINITIONS})
 
@@ -138,12 +135,6 @@ set(APPL_DST "../Resources/appl")
 set(RESOURCES_DST "../Resources/resources")
 
 #install(TARGETS arcan_hijack DESTINATION ${BIN_DST})
-install(FILES ${CMAKE_SOURCE_DIR}/utils/arcan_romman.rb
-	DESTINATION ${BIN_DST}
-	PERMISSIONS
-	WORLD_READ WORLD_EXECUTE OWNER_WRITE OWNER_READ
-	OWNER_EXECUTE GROUP_READ GROUP_EXECUTE)
-
 install(FILES ${CMAKE_SOURCE_DIR}/doc/arcan.1
 	DESTINATION /usr/local/share/man/man1
 )

@@ -1,18 +1,28 @@
 #!/usr/bin/ruby
 require 'fileutils'
+require 'pathname'
+
+def find_bin(name)
+	if File.exists?("/usr/local/bin/#{name}")
+		return "/usr/local/bin/#{name}"
+	elsif File.exists?("/usr/bin/#{name}")
+		return "/usr/bin/#{name}"
+	end
+		nil
+end
 
 #
 # override these environments to fit the current device
 #
 $GITMIRROR = ENV["ARCAN_GIT"] ? ENV["ARCAN_GIT"] :
 	"https://github.com/letoram/arcan.git"
-$GITAPP = ENV["GIT_BIN"] ? ENV["GIT_BIN"] : "/usr/bin/git"
-$CMAKEAPP = ENV["CMAKE_BIN"] ? ENV["CMAKE_BIN"] : "/usr/bin/cmake"
+$GITAPP = ENV["GIT_BIN"] ? ENV["GIT_BIN"] : find_bin("git")
+$CMAKEAPP = ENV["CMAKE_BIN"] ? ENV["CMAKE_BIN"] : find_bin("cmake")
 
 $ARCANDIR = ENV["ARCAN_SOURCE"] ? ENV["ARCAN_SOURCE"] : "#{ENV["HOME"]}/.atemp"
 unless Dir.exist?($ARCANDIR)
 	STDOUT.print("Target arcan directory (#{$ARCANDIR}) missing, "\
-		"cloning from (#{GITMIRROR})\n")
+		"cloning from (#{$GITMIRROR})\n")
 
 	system("#{$GITAPP} clone #{$GITMIRROR} #{$ARCANDIR} > /dev/null")
 end
@@ -46,7 +56,10 @@ Dir.mkdir("#{$ARCANDIR}/reports")
 # An issue for now is the manual management of X vs. not-X,
 # Nvidia vs. mesaGL environment
 #
-compilers = ["gcc", "clang"]
+compilers = []
+compilers << find_bin("gcc") if find_bin("gcc")
+compilers << find_bin("clang") if find_bin("clang")
+
 platforms = ["sdl", "x11", "x11-headless", "egl-gles"]
 
 # for benchmarking, we're only concerned about release builds,
@@ -60,20 +73,20 @@ Dir["#{dp}*"].each{|a|
 }
 benchmark_platforms = ["sdl"]
 benchmark_configurations = ["Release"]
-benchmark_compilers = ["gcc"]
+benchmark_compilers = compilers
 benchmark_flags = ["-DENABLE_LTO=OFF -DENABLE_SIMD_ALIGNED=ON"]
 
 # for build tests, we are just concerned about whether the
 # build completed or not, along with count of warnings and errors
 build_platforms = platforms
 build_configurations = ["Debug", "Release"]
-build_compilers = ["gcc", "clang"]
+build_compilers = compilers
 build_flags = [""]
 
 # for regression cases we're primarily interested in the execution
 # output of various sanitizers, verification can be done with imagemagick
 regression_configurations = ["Debug"]
-regression_compilers = ["clang"]
+regression_compilers = compilers[0]
 regression_platforms = platforms;
 regression_flags = [
 	"-DENABLE_ASAN=ON -DASAN_TYPE=address",
@@ -167,10 +180,10 @@ class ATest
 #generate a build and save the main arcan binary as bin
 	def add_conf(group, name, constr, binargs, bin)
 		FileUtils.rm_r("#{@dir}/build") if Dir.exists?("#{@dir}/build")
-		FileUtils.rm_r("#{@dir}/build") if Dir.exists?("#{@repdir}/#{group}")
+		FileUtils.rm_r("#{@repdir}/#{group}") if Dir.exists?("#{@repdir}/#{group}")
 
 		Dir.mkdir("#{@repdir}/#{group}")
-		Dir.mkdir("#{@repdir}/build")
+		Dir.mkdir("#{@dir}/build")
 
 		if system("#{$CMAKEAPP} -B\"#{@dir}/build\" -H\"#{@dir}/src\" #{constr} "\
 			">#{@repdir}/#{name}.config.out 2> "\
@@ -238,7 +251,8 @@ def gen_variants(platforms, types, compilers, flagset)
 			types.each{|type|
 				flagset.each{|flags|
 
-			confs << ["#{var}-#{comp}-#{type}", "#{var}",
+				compbase = Pathname.new(comp).basename.to_s
+			confs << ["#{var}-#{compbase}-#{type}", "#{var}",
 	"-DCMAKE_BUILD_TYPE=#{type} -DCMAKE_C_COMPILER=#{comp} "\
 	"-DVIDEO_PLATFORM=#{var} -DAVFEED_SOURCES=frameserver/avfeed.c #{flags}"]
 
