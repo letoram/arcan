@@ -349,7 +349,7 @@ int main(int argc, char** argv)
 	if (getenv("ARCAN_FRAMESERVER_DEBUGSTALL")){
 		int sleeplen = strtoul(getenv("ARCAN_FRAMESERVER_DEBUGSTALL"), NULL, 10);
 
-		if (0 <= sleeplen){
+		if (sleeplen <= 0){
 			fprintf(stdout, "\x1b[1mARCAN_FRAMESERVER_DEBUGSTALL,\x1b[0m "
 				"spin-waiting for debugger.\n \tAttach to pid: "
 				"\x1b[32m%d\x1b[39m\x1b[0m and break out of loop"
