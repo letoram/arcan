@@ -22,7 +22,6 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-#include <linux/input.h>
 
 #include "arcan_shmif.h"
 #include "arcan_math.h"

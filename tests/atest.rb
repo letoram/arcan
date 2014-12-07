@@ -193,9 +193,10 @@ class ATest
 		end
 		STDOUT.print("#{name} configured\n")
 
-		if system("make -C #{@dir}/build -j12 >#{@repdir}/build/#{name}.out" \
-			" 2> #{@repdir}/build/#{name}.err") != true
-			STDOUT.print("#{name} couldn't be compiled\n")
+		sstr = "make -C #{@dir}/build -j12 >#{@repdir}/build/#{name}.out" \
+			" 2> #{@repdir}/build/#{name}.err"
+		if system(sstr) != true
+			STDOUT.print("#{name} couldn't be compiled:\n\t#{sstr}\n")
 			return false
 		end
 
