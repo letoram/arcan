@@ -165,8 +165,12 @@ printf("Usage: arcan [-whfmWMOqspBtHbdgaSV] applname "
 	}
 
 	cur = platform_input_envopts();
-	if (*cur){
 	printf("Input platform environment variables:\n");
+	printf("\tARCAN_EVENT_RECORD=file - record input-layer events to file\n");
+	printf("\tARCAN_EVENT_REPLAY=file - playback previous input recording\n");
+	printf("\tARCAN_EVENT_SHUTDOWN=keysym:modifiers "
+		"- press to inject shutdown event\n");
+	if (*cur){
 	while(*cur){
 		const char* a = *cur++;
 		const char* b = *cur++;

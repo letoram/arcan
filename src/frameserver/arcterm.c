@@ -4,6 +4,23 @@
  * Reference: http://arcan-fe.com
  */
 
+/*
+ * This is still a rather crude terminal emulator, owing most of its
+ * actual work to libtsm -- there are quite a few interesting paths
+ * to explore here when sandboxing etc. are in place, in particular.
+ *
+ *   - virtualized /dev/ tree with implementations for /dev/dsp,
+ *     /dev/mixer etc. and other device nodes we might want plugged
+ *     or unplugged.
+ *
+ *   - "honey-pot" style proc, sysfs etc.
+ *
+ *   - mapping / remapping existing file-descriptors in situ
+ *
+ *  and some more cosmetic things like less "resize- noise" terminal
+ *  resize (period hint and rescale in between pulses) and "drag-n-drop"
+ *  style font switching.
+ */
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -55,7 +72,7 @@ static struct {
 	struct graph_context* graphing;
 
 	int last_fd;
-	struct arcan_shmif_cont arc_conn;
+	struct arcan_shmif_cont acon;
 } term = {
 	.cell_w = 8,
 	.cell_h = 8,
@@ -76,7 +93,7 @@ static void screen_size(int screenw, int screenh, int fontw, int fonth)
 	int px_w = screenw * fontw;
 	int px_h = screenh * fonth;
 
-	if (!arcan_shmif_resize(&term.arc_conn, px_w, px_h)){
+	if (!arcan_shmif_resize(&term.acon, px_w, px_h)){
 		LOG("arcan_shmif_resize(), couldn't set"
 			"	requested dimensions (%d, %d)\n", px_w, px_h);
 		exit(EXIT_FAILURE);
@@ -91,7 +108,7 @@ static void screen_size(int screenw, int screenh, int fontw, int fonth)
 		graphing_destroy(term.graphing);
 	}
 
-	term.graphing = graphing_new(px_w, px_h, (uint32_t*) term.arc_conn.vidp);
+	term.graphing = graphing_new(px_w, px_h, (uint32_t*) term.acon.vidp);
 
 	term.screen_w = screenw;
 	term.screen_h = screenh;
@@ -162,8 +179,8 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 	if (!surf)
 		return 0;
 
-	size_t w = term.arc_conn.addr->w;
-	uint32_t* dst = (uint32_t*) term.arc_conn.vidp;
+	size_t w = term.acon.addr->w;
+	uint32_t* dst = (uint32_t*) term.acon.vidp;
 
 /* alpha blending against background is the more tedious bits here */
 	for (int row = 0; row < surf->height; row++)
@@ -266,18 +283,18 @@ static void targetev(arcan_event* tgtev)
 
 	switch (tgtev->kind){
 	case TARGET_COMMAND_FDTRANSFER:
-		term.last_fd = frameserver_readhandle(tgtev);
+		term.last_fd = arcan_fetchhandle(term.acon.dpipe);
 	break;
 
 /* switch palette? */
 	case TARGET_COMMAND_GRAPHMODE:
 	break;
 
-/* sigsuspend */
+/* sigsuspend to group */
 	case TARGET_COMMAND_PAUSE:
 	break;
 
-/* sigresume */
+/* sigresume to session */
 	case TARGET_COMMAND_UNPAUSE:
 	break;
 
@@ -285,14 +302,29 @@ static void targetev(arcan_event* tgtev)
 		tsm_vte_reset(term.vte);
 	break;
 
-/* dump raw to child out, just read/iterate until EOF
- * and map through tsm_vte_input */
-	case TARGET_COMMAND_STORE:
+	case TARGET_COMMAND_BCHUNK_IN:
+/* map last-fd to stdin for the active terminal */
 	break;
 
-/* redirect raw to parent */
-	case TARGET_COMMAND_RESTORE:
+	case TARGET_COMMAND_BCHUNK_OUT:
+/* map last-fd to stdout for the active terminal */
 	break;
+
+	case TARGET_COMMAND_DISPLAYHINT:
+	break;
+
+	case TARGET_COMMAND_STORE:
+/* need a serialization format for current active terminal
+ * environment, grab that, pack here and then unpack on restore */
+	break;
+
+	case TARGET_COMMAND_RESTORE:
+/* unpack environment from state and then inject into active shell */
+	break;
+
+	case TARGET_COMMAND_SETIODEV:
+
+ 	break;
 
 	case TARGET_COMMAND_EXIT:
 		exit(EXIT_SUCCESS);
@@ -301,6 +333,20 @@ static void targetev(arcan_event* tgtev)
 	default:
 	break;
 	}
+}
+
+static void dump_help()
+{
+	fprintf(stdout, "ARCAN_ARG (environment variable, "
+		"key=value:key2:key3=value, arguments:\n"
+		"  key      \t  value   \t  description\n"
+		"-----------\t----------\t-------------\n"
+    " rows      \t  n_rows  \t set initial terminal height in rows\n"
+    " cols 	    \t  n_cols  \t set initial terminal width in columns\n"
+    " cell_w    \t  px_w    \t set cell width in pixels\n"
+    " cell_h    \t  px_h    \t set cell height in pixels\n"
+    " font      \t  fname   \t set default terminal font (TTF)\n"
+		" font_hint \t  hintv   \t light, mono or none\n");
 }
 
 /*
@@ -320,7 +366,7 @@ static void main_loop()
 			printf("pty dispatch fail\n");
 		}
 
-		while (arcan_event_poll(&term.arc_conn.inev, &ev) == 1){
+		while (arcan_event_poll(&term.acon.inev, &ev) == 1){
 			switch (ev.category){
 			case EVENT_IO:
 				ioev_ctxtbl(&(ev.data.io), ev.label);
@@ -342,16 +388,18 @@ static void main_loop()
 		}
 
 		tsm_screen_draw(term.screen, draw_cb, NULL /* draw_cb_data */);
-		arcan_shmif_signal(&term.arc_conn, SHMIF_SIGVID);
+		arcan_shmif_signal(&term.acon, SHMIF_SIGVID);
 	}
 }
 
 int arcan_frameserver_terminal_run(
-	struct arcan_shmif_cont* con,
-	struct arg_arr* args)
+	struct arcan_shmif_cont* con, struct arg_arr* args)
 {
 	const char* val;
 	TTF_Init();
+
+	if (arg_lookup(args, "help", 0, &val))
+		dump_help();
 
 	if (arg_lookup(args, "rows", 0, &val))
 		term.rows = strtoul(val, NULL, 10);
@@ -396,10 +444,7 @@ int arcan_frameserver_terminal_run(
 		return EXIT_FAILURE;
 	}
 
-	term.arc_conn = *con;
-	if (!term.arc_conn.addr){
-		LOG("fatal, couldn't map shared memory from (%s)\n", keyfile);
-	}
+	term.acon = *con;
 
 	screen_size(term.rows, term.cols, term.cell_w, term.cell_h);
 	tsm_screen_set_max_sb(term.screen, 1000);
@@ -427,7 +472,7 @@ int arcan_frameserver_terminal_run(
 		.data.external.registr.kind = SEGID_SHELL
 	};
 
-	arcan_event_enqueue(&term.arc_conn.outev, &outev);
+	arcan_event_enqueue(&term.acon.outev, &outev);
 	main_loop();
 	return EXIT_SUCCESS;
 }

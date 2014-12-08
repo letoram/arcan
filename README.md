@@ -25,7 +25,7 @@ Among the more uncommon features we find:
    re-uses most of the same codebase and API, but uses arcan for input
    and output.
 
- * Built-in monitoring and crash-dump analysis. The engine can serialize vital 
+ * Built-in monitoring and crash-dump analysis. The engine can serialize vital
    internal state to a Lua script ("crash dump") or to another
    version of itself periodically ("monitoring") to allow external filters and
    tools to be written quickly in order to track down bugs or suspicious
@@ -54,7 +54,7 @@ The rest of this readme is directed towards developers. As an end- user,
 you would probably do best to look/wait/encourage the development of-
 applications that uses this project as a backend, or at the very least,
 wait until it is available as a package in your favorite distribution.
-For developers, the first step is, of course, getting the engine 
+For developers, the first step is, of course, getting the engine
 running (see building, below).
 
 After that is done, there is a set of challenges and exercises in the wiki
@@ -72,8 +72,8 @@ detailed documentation. For starters, the easiest approach is to do the followin
      cd arcan
      mkdir build
      cd build
-     cmake -DCMAKE_BUILD_TYPE="Debug" -DENABLE_LWA=OFF 
-         -DVIDEO_PLATFORM=sdl -DENABLE_NET=OFF -DENABLE_VIDDEC=OFF 
+     cmake -DCMAKE_BUILD_TYPE="Debug" -DENABLE_LWA=OFF
+         -DVIDEO_PLATFORM=sdl -DENABLE_NET=OFF -DENABLE_VIDDEC=OFF
          -DENABLE_VIDENC=OFF -DENABLE_VIDENCVNC=OFF -DENABLE_REMOTING=OFF ../src
      make -j 12
 
@@ -115,7 +115,7 @@ An arcan application should now be able to:
 
 or
 
-        vid = launch_target("example_app", 
+        vid = launch_target("example_app",
             "more_args", LAUNCH_INTERNAL, callback_function);
 
 The first example would have the engine minimize and release as much
@@ -131,9 +131,12 @@ Filesystem Layout
 The git-tree has the following structure:
 
     data/ -- files used for default packaging and installation (icons, etc.)
+
     doc/*.lua -- specially formatted script files (1:1 between Lua API
                  functions and .lua file in this folder) that is used
-                 by doc/mangen.rb to generate manpages, test cases etc.
+                 by doc/mangen.rb to generate manpages, test cases,
+                 editor syntax highlighting etc.
+
     doc/*.1   -- manpages for the binaries
     doc/*.pdf -- presentation slides (updated yearly)
     examples/ -- miniature projects that showcase some specific
@@ -143,7 +146,7 @@ The git-tree has the following structure:
         engine/ -- main engine code-base
         external/ -- external dependencies that may be built in-source
         frameserver/ -- individual frameservers and support functions
-        hijack/ -- interpose libraries for different data sources
+        hijack/ -- interpositioning libraries for different data sources
         platform/ -- os/audio/video/etc. interfacing
         shmif/ -- engine<->frameserver IPC
 

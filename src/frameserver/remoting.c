@@ -181,10 +181,6 @@ static void map_cl_input(arcan_ioevent* ioev)
 		if (kv == 0)
 			kv = ioev->input.translated.subid;
 
-		printf("kv: %d, in: %d, mod: %d\n",
-			ioev->input.translated.keysym, kv,
-			ioev->input.translated.modifiers);
-
 		SendKeyEvent(vncctx.client, kv, ioev->input.translated.active);
 	}
 	else if (ioev->datatype == EVENT_IDATATYPE_DIGITAL){
