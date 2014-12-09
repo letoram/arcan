@@ -444,6 +444,7 @@ struct stream_meta {
 		av_pixel* buf;
 		int64_t handle;
 	};
+	bool state;
 };
 
 /*

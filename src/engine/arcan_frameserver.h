@@ -138,24 +138,36 @@ typedef struct arcan_frameserver {
 	unsigned vfcount;
 
 	enum ARCAN_SEGID segid;
-	char title[64];
 
-/* precalc offsets into mapped shmpage, calculated at resize */
-	uint32_t* vidp;
-	int16_t* audp;
+/* attempts at using lower level handle-passing and sharing
+ * mechanisms, metadata comes from events due to design constraints
+ * imposed by some platform low-level details, dead marks that
+ * we have tried to share, received broken buffers and expect
+ * fallback behavior */
 	struct {
+		bool dead;
 		int handle;
 		size_t stride;
 		int format;
 	} vstream;
+
+/* usual hack, similar to load_asynchimage */
+	intptr_t tag;
 
 /* temporary buffer for aligning queue/dequeue events in audio */
 	size_t sz_audb;
 	off_t ofs_audb, ofs_audp;
 	uint8_t* audb;
 
-/* usual hack, similar to load_asynchimage */
-	intptr_t tag;
+	char title[64];
+
+/* precalc offsets into mapped shmpage, calculated at resize */
+	uint32_t* vidp;
+	int16_t* audp;
+
+/* above pointers are all placed so that if they overflow
+ * they should hit this canary -- use for watchpoint in debugging
+ * integrity- check for release */
 	uint16_t watch_const;
 } arcan_frameserver;
 

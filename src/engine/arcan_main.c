@@ -500,6 +500,13 @@ applswitch:
 			"try other windowing options (-f, -w, ...)\n");
 	}
 
+/* defined in warning.c for arcan_fatal, we avoid the use of an
+ * atexit() as this can be routed through abort() or similar
+ * functions but some video platforms are extremely volatile
+ * if we don't initiate a shutdown (egl-dri for one) */
+	extern void(*arcan_fatal_hook)(void);
+	arcan_fatal_hook = arcan_video_shutdown;
+
 	agp_init();
 
 	errno = 0;
@@ -516,18 +523,6 @@ applswitch:
 #ifdef ARCAN_LED
 	arcan_led_init();
 #endif
-
-/*
- * libretro has the quirk of requiring a scratch "system" directory,
- * until I/O syscall intercepting through fuse has been acquired,
- * we'll have to stick with this side-channel (if retro-fsrv is built)
- */
-	if (strstr(FRAMESERVER_MODESTRING, "libretro") &&
-		getenv("ARCAN_SYSTEMPATH") == NULL){
-		char* spath = arcan_expand_resource("games/system", RESOURCE_APPL_SHARED);
-		arcan_warning("Setting libretro system dir to (%s)\n", spath);
-		setenv("ARCAN_SYSTEMPATH", spath, 1);
-	}
 
 /*
  * system integration note here, this could essentially provide
@@ -707,6 +702,8 @@ out:
 	arcan_led_shutdown();
 #endif
 	arcan_video_shutdown();
+	arcan_event_deinit(arcan_event_defaultctx());
+
 	return exit_code;
 
 error:
@@ -717,6 +714,11 @@ error:
 		arcan_warning("\n\n");
 	}
 
+	arcan_video_shutdown();
+	arcan_event_deinit(arcan_event_defaultctx());
+
+/* for cases where we have a broken namespace, also dump
+ * the current namespace state as that might help troubleshoot */
 	arcan_verify_namespaces(true);
 
 	return EXIT_FAILURE;

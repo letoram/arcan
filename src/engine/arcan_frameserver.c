@@ -195,12 +195,26 @@ static void push_buffer(arcan_frameserver* src,
  * activating shmif fallback
  *  - wasted shmif space on vidp that won't be used
  */
-	if (src->vstream.handle){
+	if (src->vstream.handle && !src->vstream.dead){
 		stream.handle = src->vstream.handle;
 		store->vinf.text.stride = src->vstream.stride;
 		store->vinf.text.format = src->vstream.format;
-		agp_stream_prepare(store, stream, STREAM_HANDLE);
-		agp_stream_commit(store);
+		stream = agp_stream_prepare(store, stream, STREAM_HANDLE);
+
+/* buffer passing failed, mark that as an unsupported mode for
+ * some reason, log and send back to client to revert to shared
+ * memory and extra copies */
+		if (!stream.state){
+			arcan_event ev = {
+				.category = EVENT_TARGET,
+				.kind = TARGET_COMMAND_BUFFER_FAIL
+			};
+			arcan_event_enqueue(&src->outqueue, &ev);
+			src->vstream.dead = true;
+		}
+		else
+			agp_stream_commit(store);
+
 		return;
 	}
 
@@ -220,7 +234,7 @@ static void push_buffer(arcan_frameserver* src,
 	}
 	else{
 		stream.buf = buf;
-		agp_stream_prepare(store, stream, src->flags.explicit ?
+		stream = agp_stream_prepare(store, stream, src->flags.explicit ?
 			STREAM_RAW_DIRECT_SYNCHRONOUS : STREAM_RAW_DIRECT);
 	}
 

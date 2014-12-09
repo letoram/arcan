@@ -164,6 +164,7 @@ static struct {
 	unsigned rollback_front;
 	char* rollback_state;
 	size_t state_sz;
+	char* syspath;
 
 #ifdef FRAMESERVER_LIBRETRO_3D
 	struct retro_hw_render_callback hwctx;
@@ -430,10 +431,13 @@ static void libretro_vidcb(const void* data, unsigned width,
 			retroctx.last_handle = platform_output_handle(&retroctx.vstore, &status);
 
 			if (status < 0){
-				printf("disabled handle passing\n");
+				LOG("3d(), couldn't get output handle -- direct handle passing "
+					"disabled.\n");
 				hpassing_disabled = true;
 				retroctx.last_handle = -1;
 			}
+
+			return;
 		}
 
 		if (!hpassing_disabled)
@@ -722,7 +726,6 @@ static struct retro_log_callback log_cb = {
 };
 
 static bool libretro_setenv(unsigned cmd, void* data){
-	char* sysdir;
 	bool rv = true;
 
 	if (!retroctx.shmcont.addr)
@@ -789,22 +792,9 @@ static bool libretro_setenv(unsigned cmd, void* data){
 	break;
 
 	case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY:
-		sysdir = getenv("ARCAN_SYSTEMPATH");
-		if (!sysdir){
-			sysdir = "./";
-		}
-
-/* some cores (mednafen-psx, ..) currently breaks on relative paths,
- * so resolve to absolute one for the time being */
-#ifdef _WIN32
-		sysdir = _fullpath(NULL, sysdir, MAX_PATH);
-#else
-		sysdir = realpath(sysdir, NULL);
-#endif
-
-		LOG("system directory set to (%s).\n", sysdir);
-		*((const char**) data) = sysdir;
-		rv = sysdir != NULL;
+		*((const char**) data) = retroctx.syspath;
+		rv = retroctx.syspath != NULL;
+		LOG("system directory set to (%s).\n", retroctx.syspath);
 	break;
 
 	case RETRO_ENVIRONMENT_SET_FRAME_TIME_CALLBACK:
@@ -1530,12 +1520,13 @@ static void setup_3dcore(struct retro_hw_render_callback* ctx)
 
 static void dump_help()
 {
-	LOG("ARCAN_ARG (environment variable, "
+	fprintf(stdout, "ARCAN_ARG (environment variable, "
 		"key1=value:key2:key3=value), arguments:\n"
 		"   key   \t   value   \t   description\n"
 		"---------\t-----------\t-----------------\n"
 		" core    \t filename  \t relative path to libretro core (req)\n"
 		" info    \t           \t load core, print information and quit\n"
+		" syspath \t path      \t set core system path\n"
 		" resource\t filename  \t resource file to load with core\n");
 }
 
@@ -1558,6 +1549,18 @@ int arcan_frameserver_libretro_run(
 
 	if (arg_lookup(args, "resource", 0, &val))
 		resname = strdup(val);
+
+	const char* spath = "./";
+	if (arg_lookup(args, "syspath", 0, &val))
+		spath = val;
+
+/* some cores (mednafen-psx, ..) currently breaks on relative paths,
+ * so resolve to absolute one for the time being */
+#ifdef _WIN32
+		retroctx.syspath = _fullpath(NULL, spath, MAX_PATH);
+#else
+		retroctx.syspath = realpath(spath, NULL);
+#endif
 
 	bool info_only = arg_lookup(args, "info", 0, NULL) || cont->addr == NULL;
 
@@ -1854,8 +1857,23 @@ int arcan_frameserver_libretro_run(
 /* Frametransfer step */
 				start = arcan_timemillis();
 					add_jitter(retroctx.jitterxfer);
-					arcan_shmif_signal(&retroctx.shmcont,
-						SHMIF_SIGVID | SHMIF_SIGAUD | SHMIF_SIGBLK_ONCE);
+#ifdef FRAMESERVER_LIBRETRO_3D
+					if (-1 != retroctx.last_handle){
+						arcan_shmif_signalhandle(&retroctx.shmcont,
+							SHMIF_SIGVID | SHMIF_SIGAUD | SHMIF_SIGBLK_ONCE,
+							retroctx.last_handle,
+							retroctx.vstore.vinf.text.stride,
+							retroctx.vstore.vinf.text.format
+						);
+						close(retroctx.last_handle);
+						retroctx.last_handle = -1;
+					}
+					else
+#endif
+{
+						arcan_shmif_signal(&retroctx.shmcont,
+							SHMIF_SIGVID | SHMIF_SIGAUD | SHMIF_SIGBLK_ONCE);
+}
 				stop = arcan_timemillis();
 
 				retroctx.transfercost = stop - start;

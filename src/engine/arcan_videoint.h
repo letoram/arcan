@@ -253,7 +253,7 @@ struct arcan_vobject_litem {
 typedef struct arcan_vobject_litem arcan_vobject_litem;
 
 struct arcan_video_display {
-	bool suspended, fullscreen, conservative;
+	bool suspended, fullscreen, conservative, in_video;
 
 	int dirty;
 	bool ignore_dirty;

@@ -137,6 +137,7 @@ struct arcan_devnode {
 };
 
 static int notify_fd;
+static bool mute_tty = false;
 static void got_device(int fd);
 
 static struct arcan_devnode* lookup_devnode(int devid)
@@ -1060,12 +1061,11 @@ const char* platform_event_devlabel(int devid)
 #define KDSKBMUTE 0x4B51
 #endif
 
- static int linux_platform_kmode;
 void platform_event_deinit(struct arcan_evctx* ctx)
 {
-	if (getenv("ARCAN_INPUT_MUTETTY")){
+	if (mute_tty){
 		ioctl(STDIN_FILENO, KDSKBMUTE, 0);
-		ioctl(STDIN_FILENO, KDSKBMODE, &linux_platform_kmode);
+		mute_tty = false;
 	}
 
 	/*
@@ -1102,9 +1102,9 @@ void platform_event_init(arcan_evctx* ctx)
 	init_keyblut();
 
 	if (getenv("ARCAN_INPUT_MUTETTY")){
-		ioctl(STDIN_FILENO, KDGKBMODE, &linux_platform_kmode);
 		ioctl(STDIN_FILENO, KDSKBMUTE, 1);
-		ioctl(STDIN_FILENO, KDSKBMODE, K_OFF);
+		ioctl(STDIN_FILENO, KDSKBMODE, 1);
+		mute_tty = true;
 	}
 
 	if (-1 == notify_fd || inotify_add_watch(
