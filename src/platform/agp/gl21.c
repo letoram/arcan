@@ -188,7 +188,8 @@ static inline void setup_unpack_pbo(struct storage_info_t* s, void* buf)
 struct stream_meta agp_stream_prepare(struct storage_info_t* s,
 		struct stream_meta meta, enum stream_type type)
 {
-	struct stream_meta mout = {0};
+	struct stream_meta res = meta;
+	res.state = true;
 
 	switch (type){
 	case STREAM_RAW:
@@ -201,7 +202,8 @@ struct stream_meta agp_stream_prepare(struct storage_info_t* s,
 				ARCAN_MEM_VBUFFER, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
 		}
 
-		mout.buf = s->vinf.text.raw;
+		res.buf = s->vinf.text.raw;
+		res.state = res.buf != NULL;
 	break;
 
 	case STREAM_RAW_DIRECT:
@@ -224,12 +226,12 @@ struct stream_meta agp_stream_prepare(struct storage_info_t* s,
  * empty vstore and attempt again, if that succeeds it
  * means that we had to go through a RTT indirection,
  * if that fails we should convey back to the client that
- * we can't accept this kind of transfer */
-		platform_video_map_handle(s, meta.handle);
+  we can't accept this kind of transfer */
+		res.state = platform_video_map_handle(s, meta.handle);
 	break;
 	}
 
-	return mout;
+	return res;
 }
 
 void agp_stream_release(struct storage_info_t* s)

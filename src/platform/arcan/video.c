@@ -324,7 +324,6 @@ static void synch_hpassing(struct storage_info_t* vs,
 {
 	arcan_shmif_signalhandle(&disp[0].conn, SHMIF_SIGVID | SHMIF_SIGBLK_ONCE,
 		handle, vs->vinf.text.stride, vs->vinf.text.format);
-	arcan_shmif_signal(&disp[0].conn, SHMIF_SIGVID | SHMIF_SIGBLK_ONCE);
 /* we likely need to kill the EGLImage as well? */
 	close(handle);
 }

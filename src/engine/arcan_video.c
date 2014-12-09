@@ -1346,6 +1346,7 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 
 	agp_init();
 
+	arcan_video_display.in_video = true;
 	arcan_video_display.conservative = conservative;
 
 	TTF_Init();
@@ -4974,6 +4975,11 @@ extern void platform_video_shutdown();
 void arcan_video_shutdown()
 {
 	unsigned lastctxa, lastctxc = arcan_video_popcontext();
+
+	if (arcan_video_display.in_video == false)
+		return;
+
+	arcan_video_display.in_video = false;
 
 /* this will effectively make sure that all external launchers,
  * frameservers etc. gets killed off */

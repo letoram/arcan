@@ -63,25 +63,31 @@ enum ARCAN_EVENT_CATEGORY {
 };
 
 /*
- * Some meta- descriptors to propagate ONCE for non-authoritative
- * connections, used as hinting to window manager script
+ * Primarily hinting to the running appl, but can also dictate
+ * scheduling groups, priority in terms of resource exhaustion,
+ * sandboxing scheme and similar limitations (e.g. TITLEBAR /
+ * CURSOR should not update 1080p60Hz)
  */
 enum ARCAN_SEGID {
 	SEGID_LWA = 0, /* LIGHTWEIGHT ARCAN (arcan-in-arcan) */
-	SEGID_NETWORK_SERVER = 1, /* external connection, 1:many */
-	SEGID_NETWORK_CLIENT = 2, /* external connection, 1:1 */
-	SEGID_MEDIA = 4, /* multimedia, non-interactive data source */
-	SEGID_SHELL, /* terminal, privilege level vary, low-speed interactivity */
+	SEGID_NETWORK_SERVER, /* external connection, 1:many */
+	SEGID_NETWORK_CLIENT, /* external connection, 1:1 */
+	SEGID_MEDIA, /* multimedia, non-interactive data source */
+	SEGID_TERMINAL, /* terminal, privilege level vary, low-speed interactivity */
 	SEGID_REMOTING, /* network client but A/V/latency sensitive */
 	SEGID_ENCODER, /* high-CPU, low-latency, wants access to engine data */
 	SEGID_SENSOR, /* sampled continuous update */
 	SEGID_TITLEBAR, /* some clients may want to try and draw decoration */
+	SEGID_CURSOR, /* active cursor, competes with cursorhint event */
 	SEGID_INPUTDEVICE, /* event/user-interaction driven */
-	SEGID_GAME, /* high-interactivity, high A/V cost, low latency */
-	SEGID_APPLICATION, /* video updates typically reactive */
+	SEGID_GAME, /* high-interactivity, high A/V cost, low latency requirements */
+	SEGID_APPLICATION, /* video updates typically reactive to input */
 	SEGID_BROWSER, /* network client, high-risk for malicious data */
+	SEGID_VM, /* virtual-machine, high resource consumption, high risk */
+	SEGID_HMD_L, /* head-mounted display, left eye view (otherwise _GAME) */
+  SEGID_HMD_R, /* head-mounted display, right eye view (otherwise _GAME) */
 	SEGID_ICON, /* minimized- status indicator */
-	SEGID_DEBUG,
+	SEGID_DEBUG, /* can always be terminated, may hold extraneous information */
 	SEGID_UNKNOWN
 };
 
@@ -204,6 +210,14 @@ enum ARCAN_TARGET_COMMAND {
  * restrictions or resource limitations.
  */
 	TARGET_COMMAND_REQFAIL,
+
+/*
+ * There is a whole slew of reasons why a buffer handled provided
+ * could not be used. This event is returned when such a case has
+ * been detected in order to try and provide a gracefull fallback
+ * in such cases.
+ */
+	TARGET_COMMAND_BUFFER_FAIL,
 
 /*
  * Specialized output hinting, considered deprecated

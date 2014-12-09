@@ -241,7 +241,9 @@ void agp_resize_vstore(struct storage_info_t* s, size_t w, size_t h)
 struct stream_meta agp_stream_prepare(struct storage_info_t* s,
 		struct stream_meta meta, enum stream_type type)
 {
-	struct stream_meta mout = {0};
+	struct stream_meta mout = meta;
+	mout.state = true;
+
 	switch(type){
 	case STREAM_RAW:
 		if (!s->vinf.text.raw){
@@ -250,6 +252,7 @@ struct stream_meta agp_stream_prepare(struct storage_info_t* s,
 				ARCAN_MEM_VBUFFER, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
 		}
 		mout.buf = s->vinf.text.raw;
+		mout.state = mout.buf != NULL;
 	break;
 
 	case STREAM_RAW_DIRECT:
@@ -260,7 +263,8 @@ struct stream_meta agp_stream_prepare(struct storage_info_t* s,
 		agp_deactivate_vstore(s);
 
 	case STREAM_HANDLE:
-		platform_video_map_handle(s, meta.handle); /* see notes in gl21.c */
+		mout.state = platform_video_map_handle(
+			s, meta.handle); /* see notes in gl21.c */
 	break;
 	}
 
