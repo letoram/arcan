@@ -433,7 +433,7 @@ static void pack_rec_event(const struct arcan_event* const outev)
 	}
 }
 
-static void inject_scheduled()
+static void inject_scheduled(arcan_evctx* ctx)
 {
 	if (!playback_in.ptr)
 		return;
@@ -444,7 +444,7 @@ static void inject_scheduled()
 step:
 	if (tickv != -1){
 		if (tickv <= arcan_frametime()){
-			arcan_event_enqueue(&default_evctx, &next_ev);
+			arcan_event_enqueue(ctx, &next_ev);
 			tickv = -1;
 		}
 		else
