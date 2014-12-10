@@ -461,10 +461,6 @@ void arcan_shader_forceunif(const char* label, enum shdrutype type,
 
 	if (loc >= 0){
 		setv(loc, type, value, label, slot->label);
-#ifdef DEBUG
-		arcan_warning("arcan_shader_forceunif(): setting uniform %s in"
-			"	shader: %s\n", label, shdr_global.slots[shdr_global.active_prg].label);
-#endif
 	}
 #ifdef DEBUG
 	else
