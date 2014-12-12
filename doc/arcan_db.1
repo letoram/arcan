@@ -46,13 +46,13 @@ command should be used for such purposes.
 
 Add a library for interpositioning, 'hijack'. These are libraries used
 to replace specific function calls in the subject. The specific mechanism
-for accomplishing this is implementation defined, but the defaults are 
-likely to use regular LD_PRELOAD or (on windows).
+for accomplishing this is implementation defined.
 
 .IP "\fBadd_config\fR \fItargetname\fR \fIconfigname\fR \fIargv\fR"
 
-Add configuration to the specific target. The arguments specified in
-\fIargv\fR are similar to add_target but will always be appended after
+Create or update \fIconfigname\fR in the specific target. 
+The arguments specified in \fIargv\fR are similar to 
+those used in \fIadd_target\fR but will always be appended after
 the arguments associated with the target.
 
 .IP "\fBadd_config_kv\fR \fItargetname\fR \fIconfigname\fR \fIargv\fR"
@@ -72,12 +72,12 @@ library and key/value pairs.
 
 .SH SCRIPTING MODE
 To assist when using this program as a database interface for a script,
-a single dash can be specified instead of the command. Then the program
-will process line- separated input from STDIN where each element is separated
-with a tab character. The command format is otherwise the same as regular
-usage. In addition, the program will output 'OK' or 'FAIL' to stderr in
-response to each command (while stdout will contained the more detailed
-error description). 
+a single dash can be specified instead of the command. In that case, the 
+program will process line- separated input from STDIN where each 
+element is separated with a tab character. The command format is 
+otherwise the same as regular usage. In addition, the program 
+will output 'OK' or 'FAIL' to stderr in response to each command 
+(while stdout will contained the more detailed error description). 
 
 .SH NOTES
 There is also a number of dump_ commands that are listed if you run the
