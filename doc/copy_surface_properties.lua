@@ -9,7 +9,7 @@
 -- @note: Using the same object for src and for dst is prohibited.
 -- @group: image
 -- @related: copy_image_transform
--- @cfunction: arcan_lua_copyimageprop
+-- @cfunction: copyimageprop
 -- @flags:
 function main()
 #ifdef MAIN
@@ -25,7 +25,7 @@ function main()
 	move_image(a, 0, 0);
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	a = fill_surface(32, 32, 255, 0, 0);
 	copy_surface_properties(a, a);
 #endif

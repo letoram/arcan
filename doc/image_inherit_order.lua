@@ -7,7 +7,7 @@
 -- @note: For long hierarchies, this is a notably expensive operation as changes to order
 -- imples a detach/attach operation and is implemented recursively.
 -- @group: image
--- @cfunction: arcan_lua_orderinherit
+-- @cfunction: orderinherit
 -- @flags:
 function main()
 #ifdef MAIN
@@ -21,7 +21,7 @@ function main()
 	show_image({a, b});
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 
 #endif
 end

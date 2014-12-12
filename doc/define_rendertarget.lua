@@ -4,7 +4,7 @@
 -- @outargs:
 -- @longdescr: This function creates a separate rendering pipeline populated with the set of VIDs passed as the table *vidary*. *detacharg* can be set to either RENDERTARGET_DETACH or RENDERTARGET_NODETACH and controls if the VIDs in *vidary* should be disconnected from the standard output pipeline or not. Lastly *scalearg* can be set to either RENDERTARGET_SCALE or RENDERTARGET_NOSCALE which comes into play when the standard output dimensions (VRESW, VRESH) are different from the VID that will be renderered to. With RENDERTARGET_SCALE set, the pipeline transform will be changed to scale all objects to fit, otherwise clipping may be applied.
 -- @group: targetcontrol
--- @cfunction: arcan_lua_renderset
+-- @cfunction: renderset
 -- @note: There is a delay of at least one frame from creation up until the dstvid storage is updated. Rendertarget_forceupdate can be used to perform an additional rendering pass for the specific target alone. This is mostly useful for functions that rely on rendertarget readback, e.g. save_screenshot
 -- @related: define_recordtarget, fill_surface
 -- @flags:

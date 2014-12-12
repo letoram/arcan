@@ -11,7 +11,7 @@
 -- to even out or otherwise analyze samples to generate a lower frequency of
 -- calls to the LUA layer.
 -- @group: iodev
--- @cfunction: arcan_lua_inputfilteranalog
+-- @cfunction: inputfilteranalog
 -- @flags: incomplete
 function main()
 #ifdef MAIN

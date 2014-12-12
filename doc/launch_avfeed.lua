@@ -16,6 +16,6 @@ function main()
 #ifdef MAIN
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 #endif
 end

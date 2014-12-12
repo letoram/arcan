@@ -5,6 +5,6 @@
 -- negative amounts corresponds to "the left" from the perspective of the object,
 -- and positive amounts corresponds to the right" from the perspective of the object.
 -- @group: 3d
--- @cfunction: arcan_lua_strafemodel
+-- @cfunction: strafemodel
 -- @related: move3d_model
 

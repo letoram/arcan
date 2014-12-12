@@ -10,7 +10,7 @@
 -- screenshot function into a temporary buffer which is then used as input to
 -- rawobject.
 -- @group: vidsys
--- @cfunction: arcan_lua_popcontext_ext
+-- @cfunction: popcontext_ext
 -- @related: pop_video_context, push_video_context, storepush_video_context
 function main()
 #ifdef MAIN

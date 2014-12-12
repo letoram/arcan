@@ -3,7 +3,7 @@
 -- @inargs: id, red, green, blue
 -- @outargs: true or false
 -- @group: image
--- @cfunction: arcan_lua_imagecolor
+-- @cfunction: imagecolor
 -- @related:
 function main()
 #ifdef MAIN
@@ -12,7 +12,7 @@ function main()
 	image_color(a, 0, 255, 0);
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	image_color(BADID);
 #endif
 end

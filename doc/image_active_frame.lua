@@ -4,7 +4,7 @@
 -- @outargs:
 -- @longdescr:
 -- @group: image
--- @cfunction: arcan_lua_activeframe
+-- @cfunction: activeframe
 -- @note: if the frameset index exceeds the capacity of the frameset in question,
 -- whatever is in the first index (0) will be replaced.
 -- @note: the behavior when mixing objects with different storage types (textured,

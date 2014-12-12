@@ -9,6 +9,6 @@
 -- to the target frameserver or hijack sessions and blocks the process to
 -- whatever extent is possible.
 -- @group: targetcontrol
--- @cfunction: arcan_lua_targetresume
+-- @cfunction: targetresume
 -- @related: resume_movie
 

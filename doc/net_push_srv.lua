@@ -6,6 +6,6 @@
 -- @note: By default, domain is 0 (broadcast). Other possible domains are specific connection ID
 -- and specifal groups based on connection state (net_authenticate).
 -- @group: network
--- @cfunction: arcan_lua_net_pushsrv
+-- @cfunction: net_pushsrv
 -- @flags: experimental
 

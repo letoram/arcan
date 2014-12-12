@@ -4,7 +4,7 @@
 -- @outargs: aid
 -- @group: audio
 -- @note: only 1,2ch (8,16) RIFF/WAV PCM, (44100, 22050 or 11025) samples supported.
--- @cfunction: arcan_lua_loadasample
+-- @cfunction: loadasample
 -- @related: play_audio
 function main()
 #ifdef MAIN

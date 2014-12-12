@@ -25,7 +25,7 @@
 -- uses a non-rectangular representation (e.g. custom defined 2D
 -- surface or transformed with a vertex shader.
 -- @group: image
--- @cfunction: arcan_lua_pick
+-- @cfunction: pick
 -- @flags:
 function main()
 #ifdef MAIN

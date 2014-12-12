@@ -11,7 +11,7 @@
 -- manually by implementing the applname_frame_pulse and calling
 -- image_activeframe rather than relying on a framecyclemode.
 -- @group: image
--- @cfunction: arcan_lua_framesetcycle
+-- @cfunction: framesetcycle
 -- @related: image_framesetsize, image_activeframe, set_image_as_frame
 function main()
 #ifdef MAIN

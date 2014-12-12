@@ -10,7 +10,7 @@
 -- @note: attempts at setting the image to a value larger than the number
 -- of available slots will be ignored with a warning.
 -- @group: image
--- @cfunction: arcan_lua_imageasframe
+-- @cfunction: imageasframe
 -- @related: image_framesetsize, image_framecyclemode, image_active_frame,
 -- image_sharestorage
 function main()

@@ -11,7 +11,7 @@
 -- @note: the wildcard '%' symbol can be used here.
 -- @note: the table is manily populated in (arcan_lua.c:void pushgame())
 -- @group: database
--- @cfunction: arcan_lua_getgame
+-- @cfunction: getgame
 -- @flags:
 function main()
 #ifdef MAIN

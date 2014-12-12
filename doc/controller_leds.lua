@@ -3,7 +3,7 @@
 -- @inargs: ctrlind
 -- @outargs: nleds
 -- @group: iodev
--- @cfunction: arcan_lua_n_leds
+-- @cfunction: n_leds
 -- @flags:
 function main()
 #ifdef MAIN

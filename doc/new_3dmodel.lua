@@ -6,7 +6,7 @@
 -- @note: By default, individual meshes doesn't have a full state akin to a complete VID and the only attribute that can really be assigned (at quite some cost) to individual meshes are the active shader.
 -- @note: Order of traversed 3D objects depend on the active camera and may not necessarily follow the regular order_image class of functions.
 -- @group: 3d
--- @cfunction: arcan_lua_buildmodel
+-- @cfunction: buildmodel
 -- @related: add_3dmesh
 function main()
 #ifdef MAIN

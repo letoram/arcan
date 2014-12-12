@@ -53,7 +53,7 @@ function main()
 	show_image(dstvid);
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	define_calctarget(WORLDID, {srcvid}, RENDERTARGET_DETACH,
 	RENDERTARGET_SCALE, 10, cbfun);
 #endif

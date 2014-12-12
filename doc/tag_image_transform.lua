@@ -48,7 +48,7 @@ function main()
 	end);
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	tag_image_transform(BADID, 0, tag_image_transform);
 #endif
 

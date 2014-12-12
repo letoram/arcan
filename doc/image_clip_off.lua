@@ -5,10 +5,10 @@
 -- @longdescr:
 -- @group: image
 -- @note:
--- @cfunction: arcan_lua_clipoff
+-- @cfunction: clipoff
 -- @related: image_clip_on
 function main()
-#ifdef ERROR1
+#ifdef ERROR
 	image_clip_off(BADID);
 #endif
 end

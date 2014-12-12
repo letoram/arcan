@@ -9,7 +9,7 @@
 -- and if no blend mode is specified, BLEND_FORCE will be assumed.
 -- @note: blendmode
 -- @group: image
--- @cfunction: arcan_lua_forceblend
+-- @cfunction: forceblend
 -- @flags:
 function main()
 #ifdef MAIN
@@ -18,7 +18,7 @@ function main()
 	force_image_blend(a, BLEND_ADD);
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	force_image_blend(BADID, BLEND_NORMAL);
 #endif
 

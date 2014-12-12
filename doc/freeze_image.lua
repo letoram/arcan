@@ -6,7 +6,7 @@
 -- state. This function tags the object as frozen, and next time the object is accessed
 -- across the VM barrier, execution is terminated and a dump is generated (logs/).
 -- @group: system
--- @cfunction: arcan_lua_freezeimage
+-- @cfunction: freezeimage
 -- @note: debug_only
 function main()
 #ifdef MAIN

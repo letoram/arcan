@@ -17,7 +17,7 @@
 -- @note: SYS_APPL_RESOURCE is special and relates to the list of application
 -- targets that can be used as argument to system_collapse.
 -- @group: resource
--- @cfunction: arcan_lua_globresource
+-- @cfunction: globresource
 -- @related: resource, system_collapse
 -- @flags:
 function main()
@@ -28,14 +28,14 @@ function main()
 	end
 #endif
 
-#ifdef MAIN_2
+#ifdef MAIN2
 	local tbl = glob_resource("*", SYS_APPL_RESOURCE);
 	for i,v in ipairs(tbl) do
 		print(v);
 	end
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	local tbl = glob_resource(0);
 	if (type(tbl) ~= "table") then
 		abort();

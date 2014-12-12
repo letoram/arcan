@@ -15,7 +15,7 @@
 -- a stable state for the current context (e.g. push/pop_video_context) or by explicitly calling
 -- image_pushasynch.
 -- @group: image
--- @cfunction: arcan_lua_loadimageasynch
+-- @cfunction: loadimageasynch
 -- @related: image_pushasynch load_image
 function main()
 #ifdef MAIN
@@ -30,7 +30,7 @@ function main()
 	show_image(vid);
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	vid = load_image_asynch("demoimg.png", load_image_asynch);
 #endif
 

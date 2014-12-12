@@ -10,7 +10,7 @@
 -- vertex shader stage, but such changes do not affect other engine
 -- features (like picking and other forms of collision detection).
 -- @group: image
--- @cfunction: arcan_lua_scaleimage2
+-- @cfunction: scaleimage2
 -- @related: scale_image
 function main()
 #ifdef MAIN

@@ -7,6 +7,6 @@
 -- process associated with targetvid that assumes the target will suspend, but it is
 -- not strictly enforced.
 -- @group: targetcontrol
--- @cfunction: arcan_lua_targetsuspend
+-- @cfunction: targetsuspend
 -- @related: resume_target
 

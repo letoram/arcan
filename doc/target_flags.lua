@@ -32,7 +32,7 @@ function main()
 	target_flag(a, TARGET_NOALPHA);
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	a = null_surface(64, 64);
 	target_flag(a, FLAG_SYNCHRONOUS);
 #endif

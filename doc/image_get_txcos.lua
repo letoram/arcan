@@ -6,7 +6,7 @@
 -- its coordinate in 0,0,1,1 space. In some circumstances, however, it may be
 -- different or you may want to change parts.
 -- @group: image
--- @cfunction: arcan_lua_gettxcos
+-- @cfunction: gettxcos
 -- @related: image_set_txcos, image_set_txcos_default
 function main()
 #ifdef MAIN

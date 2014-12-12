@@ -7,7 +7,7 @@
 -- @group: 3d
 -- once for any model.
 -- @related: orient3d_model, move3d_model
--- @cfunction: arcan_lua_rotatemodel
+-- @cfunction: rotatemodel
 function main()
 #ifdef MAIN
 	camera = null_surface(4, 4, 0, 0, 0);

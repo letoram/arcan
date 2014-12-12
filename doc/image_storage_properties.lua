@@ -7,7 +7,7 @@
 -- to the internal storage format of the object, as this may be padded to fit a POT restriction,
 -- meaning that width and height needs to have a valid power of two value.
 -- @group: image
--- @cfunction: arcan_lua_getimagestorageprop
+-- @cfunction: getimagestorageprop
 -- @related: image_surface_properties, image_surface_initial_properties,
 -- image_surface_resolve_properties
 function main()

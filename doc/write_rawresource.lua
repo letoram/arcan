@@ -7,7 +7,7 @@
 -- fallback for logging and code/configuration generation in a purposely
 -- limited fashion. Furthermore, it is synchronously blocking.
 -- @group: resource
--- @cfunction: arcan_lua_writerawresource
+-- @cfunction: writerawresource
 -- @related: open_rawresource, read_rawresource, close_rawresource
 function main()
 #ifdef MAIN

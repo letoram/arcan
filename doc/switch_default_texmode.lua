@@ -4,5 +4,5 @@
 -- @longdescr: If *optvid* isn't set, the global default value for newly allocated textures will be switched.
 -- @note: Accepted values for mode_(s,t) are VTEX_REPEAT, VTEX_CLAMP
 -- @group: vidsys
--- @cfunction: arcan_lua_settexmode
+-- @cfunction: settexmode
 

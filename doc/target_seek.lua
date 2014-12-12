@@ -11,5 +11,5 @@
 -- state tracking and delta-states for rewinding gameplay.
 -- @note: A relative seek of 0 ms will still impose a buffer flush.
 -- @group: targetcontrol
--- @cfunction: arcan_lua_targetseek
+-- @cfunction: targetseek
 

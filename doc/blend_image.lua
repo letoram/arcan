@@ -10,7 +10,7 @@
 -- @note: The blend behavior is dictated by the default global blendfunc value (src_alpha, 1-src_alpha) and can be overridden with force_image_blend(mode)
 -- @group: image
 -- @related: image_force_blend
--- @cfunction: arcan_lua_imageopacity
+-- @cfunction: imageopacity
 -- @alias: show_image, hide_image
 -- @flags:
 function main()
@@ -22,7 +22,7 @@ function main()
 	blend_image(b, 0.5, 100);
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	blend_image(b, -0.5, -100);
 #endif
 

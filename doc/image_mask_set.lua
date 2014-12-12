@@ -2,7 +2,7 @@
 -- @short: Set a status flag on the specified object
 -- @inargs: vid, maskval
 -- @group: image
--- @cfunction: arcan_lua_setmask
+-- @cfunction: setmask
 -- @note: an invalid maskval is considered a terminal state transition.
 -- @related: image_mask_toggle, image_mask_clear, image_mask_clearall
 -- @reference: image_mask
@@ -17,7 +17,7 @@ function main()
 	image_mask_set(b, MASK_ORIENTATION);
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	image_mask_set(WORLDID, math.random(1000));
 #endif
 end

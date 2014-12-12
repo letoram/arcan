@@ -69,7 +69,7 @@
 --
 -- @group: targetcontrol
 -- @alias: target_launch
--- @cfunction: arcan_lua_targetlaunch
+-- @cfunction: targetlaunch
 function main()
 	local tgts = list_targets();
 	if (#tgts == 0) then
@@ -95,7 +95,7 @@ function main()
 	end
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	launch_target("noexist", -1, launch_target);
 #endif
 end

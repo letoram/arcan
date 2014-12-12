@@ -11,7 +11,7 @@
 -- the mapping generate will be flipped along the Y axis to compensate
 -- for the arcan coordinate system having origo in the upper left corner
 -- whileas OpenGL uses the lower left.
--- @cfunction: arcan_lua_settxcos_default
+-- @cfunction: settxcos_default
 -- @related: image_set_txcos, image_get_txcos
 function main()
 #ifdef MAIN

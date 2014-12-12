@@ -18,7 +18,7 @@
 -- value, i.e. <= 0 is a terminal state transition.
 -- @related: null_surface, raw_surface, color_surface
 -- @group: image
--- @cfunction: arcan_lua_fillsurface
+-- @cfunction: fillsurface
 -- @flags:
 function main()
 #ifdef MAIN
@@ -31,7 +31,7 @@ function main()
 	a = fill_surface(32, 32, 0.45, 0, 0);
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	a = fill_surface(-1, 32, 255, 0, 0);
 #endif
 

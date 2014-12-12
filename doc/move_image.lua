@@ -5,7 +5,7 @@
 -- Interp can be set to any of the constants (INTERP_LINEAR, INTERP_SINE, INTERP_EXPIN,
 -- INTERP_EXPOUT, INTERP_EXPINOUT).
 -- @group: image
--- @cfunction: arcan_lua_moveimage
+-- @cfunction: moveimage
 -- @related: rotate_image, scale_image, nudge_image, resize_image
 function main()
 #ifdef MAIN

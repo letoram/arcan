@@ -6,7 +6,7 @@
 -- default blendmode is disabled). This function accepts either single VIDs
 -- or a group of VIDs packed in a n-indexed table.
 -- @group: image
--- @cfunction: arcan_lua_showimage
+-- @cfunction: showimage
 -- @alias: blend_image, hide_image
 function main()
 	a = fill_surface(128, 128, 255, 0, 0);
@@ -14,7 +14,7 @@ function main()
 	show_image({a,b}, 100);
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	show_image(a, 0.5, 100);
 #endif
 end

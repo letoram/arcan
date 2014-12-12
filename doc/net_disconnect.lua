@@ -6,5 +6,5 @@
 -- disconnect one or several clients. The special IDs (0, 1..level) targets
 -- all connection or all connections with a certain level of authentication.
 -- @group: network
--- @cfunction: arcan_lua_net_disconnect
+-- @cfunction: net_disconnect
 -- @related: net_accept, net_authenticate

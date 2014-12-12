@@ -10,6 +10,6 @@
 -- @note: vid must be connected to a frameserver.
 -- @note: accepted mode values are POSTFILTER_NTSC, POSTFILTER_OFF
 -- @group: targetcontrol
--- @cfunction: arcan_lua_targetpostfilter
+-- @cfunction: targetpostfilter
 -- @related: target_linewidth, target_pointsize, target_postfilter_args
 

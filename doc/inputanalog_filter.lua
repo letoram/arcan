@@ -3,6 +3,6 @@
 -- @inargs: joyid, axisid, deadzone, lower, upper, buffer, modestr
 -- @note: accepted modestr values are "drop, pass, average or latest".
 -- @group: iodev
--- @cfunction: arcan_lua_inputfilteranalog
+-- @cfunction: inputfilteranalog
 -- @related: inputanalog_query, inputanalog_toggle
 

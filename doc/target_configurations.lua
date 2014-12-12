@@ -18,7 +18,7 @@ function main()
 	end
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	list_configurations(list_targets());
 #endif
 end

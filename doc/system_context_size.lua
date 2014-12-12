@@ -12,7 +12,7 @@
 -- is a terminal state transition, as a means of allowing early resource leak detection
 -- and as a means of encouraging use of the context- stack to keep resource usage low.
 -- @group: system
--- @cfunction: arcan_lua_systemcontextsize
+-- @cfunction: systemcontextsize
 -- @flags:
 function main()
 #ifdef MAIN
@@ -30,7 +30,7 @@ function main()
 	warning("current: " .. a);
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	system_context_size(-10);
 #endif
 

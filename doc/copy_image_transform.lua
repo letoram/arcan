@@ -8,7 +8,7 @@
 -- @note: src and dst cannot be the same VID.
 -- @note: Transformations are stored relative of the source objects coordinate space and, with the exception of scale, won't be translated.
 -- @group: image
--- @cfunction: arcan_lua_copytransform
+-- @cfunction: copytransform
 -- @related: copy_surface_properties
 -- @flags:
 function main()
@@ -24,7 +24,7 @@ function main()
 	instant_image_transform(a);
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	a = fill_surface(32, 32, 0, 255, 0);
 	copy_image_transform(a, a);
 #endif

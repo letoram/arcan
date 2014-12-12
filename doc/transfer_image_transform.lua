@@ -6,7 +6,7 @@
 -- copy_image_transform) from *srcvid* to *dstvid* and then
 -- reseting the source transform.
 -- @group: image
--- @cfunction: arcan_lua_transfertransform
+-- @cfunction: transfertransform
 -- @related: copy_image_transform, reset_image_transform
 function main()
 #ifdef MAIN

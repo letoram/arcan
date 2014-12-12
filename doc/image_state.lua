@@ -15,7 +15,7 @@ function main()
 	print(image_state(img));
 #endif
 
-#ifdef MAIN_2
+#ifdef MAIN2
 	local cam = null_surface(32, 32);
 	camtag_model(cam);
 	print(image_state(img));

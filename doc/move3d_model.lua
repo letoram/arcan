@@ -5,7 +5,7 @@
 -- 2D counterparts, but takes an additional z coordinate. These could, in fact, be used
 -- on normal 2D objects to achieve other effects as well.
 -- @group: 3d
--- @cfunction: arcan_lua_movemodel
+-- @cfunction: movemodel
 -- @related: move3d_model, rotate3d_model, scale3d_model
 function main()
 #ifdef MAIN

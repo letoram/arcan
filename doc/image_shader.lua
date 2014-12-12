@@ -8,7 +8,7 @@
 -- the routine will first resolve it by looking for a previously compiled
 -- shader with a name that matches the argument. If no match is found,
 -- the shader state will forcibly be reset to DEFAULT.
--- @cfunction: arcan_lua_setshader
+-- @cfunction: setshader
 -- @flags:
 function main()
 #ifdef MAIN

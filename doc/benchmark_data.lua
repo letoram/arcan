@@ -2,6 +2,6 @@
 -- @short: Retrieve gathered benchmarking values.
 -- @outargs: nticks, tickcosttbl, framecount, frametimetbl, costcount, framecosttbl
 -- @group: system
--- @cfunction: arcan_lua_getbenchvals
+-- @cfunction: getbenchvals
 -- @related: benchmark_enable, benchmark_timestamp
 

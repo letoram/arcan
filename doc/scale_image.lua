@@ -8,7 +8,7 @@
 -- Interp can be set to one of the constants (INTERP_LINEAR,
 -- INTERP_SINE, INTERP_EXPIN, INTERP_EXPOUT, INTERP_EXPINOUT).
 -- @group: image
--- @cfunction: arcan_lua_scaleimage
+-- @cfunction: scaleimage
 -- @related: resize_image
 function main()
 #ifdef MAIN

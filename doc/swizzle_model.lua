@@ -8,6 +8,6 @@
 -- that the current camtagged object is using.
 -- @note: This applies to all meshes CURRENTLY associated with the model.
 -- @group: 3d
--- @cfunction: arcan_lua_swizzlemodel
+-- @cfunction: swizzlemodel
 -- @related: scale_3dvertices
 

@@ -4,7 +4,7 @@
 -- @outargs: string or nil
 -- @longdescr:
 -- @group: database
--- @cfunction: arcan_lua_getkey
+-- @cfunction: getkey
 -- @related: store_key
 -- @flags:
 function main()

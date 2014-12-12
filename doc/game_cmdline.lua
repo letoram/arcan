@@ -8,7 +8,7 @@
 -- assumes internal-launch arguments.
 -- @group: database
 -- @related: list_games, list_targets, game_info, game_family, game_genres
--- @cfunction: arcan_lua_getcmdline
+-- @cfunction: getcmdline
 -- @flags:
 function main()
 	#ifdef MAIN
@@ -20,7 +20,7 @@ function main()
 		end
 	#endif
 
-	#ifdef ERROR1
+	#ifdef ERROR
 		a = game_cmdline(nil);
 	#endif
 end

@@ -4,5 +4,5 @@
 -- @outargs: vid
 -- @longdescr:
 -- @group: network
--- @cfunction: arcan_lua_net_open
+-- @cfunction: net_open
 -- @flags: experimental

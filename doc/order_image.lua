@@ -12,7 +12,7 @@
 -- @note: Order can also be relative to the world- order of the resolved parent,
 -- see image_inherit_order.
 -- @group: image
--- @cfunction: arcan_lua_orderimage
+-- @cfunction: orderimage
 -- @related: image_inherit_order, max_current_image_order
 function main()
 #ifdef MAIN
@@ -24,7 +24,7 @@ function main()
 	order_image(a, 2);
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	a = color_surface(32, 32, 255, 0, 0);
 	order_image(a, -1);
 #endif

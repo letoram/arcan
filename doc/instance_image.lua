@@ -21,7 +21,7 @@
 -- that nothing which will incurr a costly gl state flush will be allowed (so rendering
 -- order, shader, etc. will all be linked to the parent).
 -- @group: image
--- @cfunction: arcan_lua_instanceimage
+-- @cfunction: instanceimage
 function main()
 #ifdef MAIN
 	a = fill_surface(32, 32, 255, 0, 0);

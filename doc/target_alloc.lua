@@ -44,7 +44,7 @@ function main()
 	end
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	local a = fill_surface(32, 32, 255, 0, 0, 0);
 	target_alloc(a, function(source, status)
 	end);

@@ -4,7 +4,7 @@
 -- @outargs: TBD
 -- @longdescr: Incomplete, Placeholder symbol.
 -- @group: 3d
--- @cfunction: arcan_lua_buildbox
+-- @cfunction: buildbox
 -- @related: build_3dplane
 -- @flags: placeholder
 

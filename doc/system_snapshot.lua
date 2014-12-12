@@ -6,7 +6,7 @@
 -- @note: the format used is the same as used for
 -- crash reports and serialization in monitoring mode.
 -- @group: system
--- @cfunction: arcan_lua_syssnap
+-- @cfunction: syssnap
 function main()
 #ifdef MAIN
 	a = fill_surface(32, 32, 255, 255, 0);

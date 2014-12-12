@@ -6,7 +6,7 @@
 -- snapshot, rewind, suspend, reset, dynamic_input, ports.
 -- @related: target_launch
 -- @group: targetcontrol
--- @cfunction: arcan_lua_targetlaunch_capabilities
+-- @cfunction: targetlaunch_capabilities
 function main()
 #ifdef MAIN
 	a = list_targets();

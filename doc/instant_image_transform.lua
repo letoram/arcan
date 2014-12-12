@@ -2,7 +2,7 @@
 -- @short: Immediately perform all pending transformations.
 -- @inargs: vid
 -- @group: image
--- @cfunction: arcan_lua_instanttransform
+-- @cfunction: instanttransform
 -- @related: copy_image_transform,
 -- image_transform_cycle, reset_image_transform, transfer_image_transform
 function main()

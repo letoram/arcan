@@ -74,7 +74,7 @@ function main()
 	map_video_display(second, next_a);
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	map_video_display("random", WORLDID);
 #endif
 end

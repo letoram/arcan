@@ -3,7 +3,7 @@
 -- @inargs: resstr
 -- @outargs: boolres
 -- @group: resource
--- @cfunction: arcan_lua_zapresource
+-- @cfunction: zapresource
 -- @flags:
 function main()
 #ifdef MAIN
@@ -15,7 +15,7 @@ function main()
 	end
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	zap_rawresource("/../../../../../../usr/bin/arcan");
 #endif
 

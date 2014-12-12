@@ -8,7 +8,7 @@
 -- textured backing store, that will be read-back instead of the front buffer.
 -- @inargs: dstres, *flip*, *srcid*
 -- @group: resource
--- @cfunction: arcan_lua_screenshot
+-- @cfunction: screenshot
 function main()
 #ifdef MAIN
 	show_image(fill_surface(64, 64, 255, 0, 0));

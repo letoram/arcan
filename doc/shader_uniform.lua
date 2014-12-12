@@ -13,7 +13,7 @@
 -- is set to NOPERSIST, the uniform values are expected to be updated
 -- on a regular basis.
 -- @group: vidsys
--- @cfunction: arcan_lua_shader_uniform
+-- @cfunction: shader_uniform
 function main()
 #ifdef MAIN
 	local shid = build_shader(nil, [[ uniform float vec3 col;

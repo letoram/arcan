@@ -7,7 +7,7 @@
 -- present in release builds, will be added to other debug outputs
 -- (samples in monitoring mode, or when a debuglevel > 0 is set).
 -- @group: debug
--- @cfunction: arcan_lua_tracetag
+-- @cfunction: tracetag
 -- @flags: debugbuild
 function main()
 #ifdef MAIN

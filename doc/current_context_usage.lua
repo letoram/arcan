@@ -9,7 +9,7 @@
 -- used from total.
 --
 -- @group: vidsys
--- @cfunction: arcan_lua_contextusage
+-- @cfunction: contextusage
 -- @flags:
 function main()
 #ifdef MAIN

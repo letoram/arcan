@@ -4,6 +4,6 @@
 -- @outargs:
 -- @longdescr:
 -- @group: network
--- @cfunction: arcan_lua_net_refresh
+-- @cfunction: net_refresh
 -- @flags: experimental
 

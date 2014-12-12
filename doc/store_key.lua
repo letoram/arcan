@@ -7,7 +7,7 @@
 -- the underlying database engine may wrap each store_key invocation
 -- in a transaction.
 -- @group: database
--- @cfunction: arcan_lua_storekey
+-- @cfunction: storekey
 -- @related: get_key
 function main()
 #ifdef MAIN

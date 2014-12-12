@@ -3,6 +3,6 @@
 -- @inargs: vid, group, *v1*, *v2*, *v3*
 -- @note: The nots for target_postfilter applies here also.
 -- @group: targetcontrol
--- @cfunction: arcan_lua_targetpostfilterargs
+-- @cfunction: targetpostfilterargs
 -- @related: target_postfilter
 

@@ -22,7 +22,7 @@
 -- obj_output_sz (vec2, current w/h), obj_storage_sz (vec2, texture
 -- storage w/h).
 -- @group: vidsys
--- @cfunction: arcan_lua_buildshader
+-- @cfunction: buildshader
 -- @flags:
 vshader = [[uniform mat4 modelview;
 uniform mat4 projection;
@@ -55,7 +55,7 @@ function main()
 	build_shader(vshader, fshader, "default");
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	build_shader(nil, nil, nil);
 #endif
 

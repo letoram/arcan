@@ -13,7 +13,7 @@
 -- bu used as src.
 -- @note: persistent objects and instances cannot be used as dst.
 -- @group: image
--- @cfunction: arcan_lua_sharestorage
+-- @cfunction: sharestorage
 -- @related: instance_image, null_surface
 function main()
 #ifdef MAIN
@@ -27,7 +27,7 @@ function main()
 	image_sharestorage(a, b);
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	image_sharestorage(b, a);
 #endif
 

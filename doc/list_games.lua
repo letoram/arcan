@@ -10,7 +10,7 @@
 -- set of filtering terms. % character can be used to mark wildchars. Return value
 -- is a numbe-indexed table of gametable entries.
 -- @group: database
--- @cfunction: arcan_lua_filtergames
+-- @cfunction: filtergames
 -- @related:
 function main()
 #ifdef MAIN

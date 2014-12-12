@@ -5,7 +5,7 @@
 -- regular push/pop context functions with the addition that the new context
 -- will contain an object with a screenshot of the previous context in its storage.
 -- @group: vidsys
--- @cfunction: arcan_lua_pushcontext_ext
+-- @cfunction: pushcontext_ext
 -- @related: storepop_video_context, push_video_context, pop_video_context
 function main()
 #ifdef MAIN
