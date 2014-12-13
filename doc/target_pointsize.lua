@@ -5,6 +5,6 @@
 -- @longdescr: This is a corner case with few uses outside
 -- very specific targets (libretro cores and hijacking some games).
 -- @group: targetcontrol
--- @cfunction: arcan_lua_targetpointsize
+-- @cfunction: targetpointsize
 -- @related: target_linewidth
 

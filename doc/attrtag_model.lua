@@ -6,6 +6,6 @@
 -- (use the model as infinite geometry, common cases are skyboxes/skydomes/skyplanes,
 -- silhouettes in the horizon etc.).
 -- @group: 3d
--- @cfunction: arcan_lua_attrtag
+-- @cfunction: attrtag
 -- @related:
 

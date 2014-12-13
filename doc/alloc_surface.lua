@@ -17,7 +17,7 @@ function main()
 	show_image(vid); -- shouldn't yield anything
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	fill_surface(-1, -1);
 #endif
 

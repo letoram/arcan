@@ -11,7 +11,7 @@
 -- video lags behind audio. Calling play_audio on the aid with a frameserver
 -- connection, or similar, should have the internal buffer flushed.
 -- @group: audio
--- @cfunction: arcan_lua_playaudio
+-- @cfunction: playaudio
 -- @related: pause_audio, delete_audio, load_asample, audio_gain
 function main()
 #ifdef MAIN
@@ -19,7 +19,7 @@ function main()
 	play_audio(aid, 0.5);
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	play_audio(fill_surface(32, 32, 0, 0, 0), 0.5);
 #endif
 end

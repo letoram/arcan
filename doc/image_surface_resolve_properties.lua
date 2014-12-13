@@ -11,7 +11,7 @@
 -- @note: this function has a highly variable cost since the rendering
 -- pipeline normallys caches both resolved properties and resulting
 -- transformation matrices, if possible.
--- @cfunction: arcan_lua_getimageresolveprop
+-- @cfunction: getimageresolveprop
 -- @related: image_surface_initial_properties, image_surface_properties,
 -- image_surface_storage_properties
 -- @flags:

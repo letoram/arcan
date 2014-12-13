@@ -6,9 +6,9 @@
 -- you define an origo translation through the use of image_origo_offset.
 -- @longdescr:
 -- @group: image
--- @cfunction: arcan_lua_rotateimage
+-- @cfunction: rotateimage
 -- @inargs: vid, newx, newy, *time*
--- @cfunction: arcan_lua_moveimage
+-- @cfunction: moveimage
 -- @related: image_origo_shift
 function main()
 #ifdef MAIN

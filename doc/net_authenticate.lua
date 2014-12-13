@@ -12,4 +12,4 @@
 -- @note: the exact semantics of each authentication level is not yet established.
 -- @note: setting connid to 0 is a terminal state transition.
 -- @group: network
--- @cfunction: arcan_lua_net_authenticate
+-- @cfunction: net_authenticate

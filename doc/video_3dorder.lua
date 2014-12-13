@@ -10,5 +10,5 @@
 -- ORDER_LAST, complete 2d operations before 3d operations.
 -- @note: the order option currently applies globally and not on a per rendertarget basis.
 -- @group: vidsys
--- @cfunction: arcan_lua_3dorder
+-- @cfunction: 3dorder
 

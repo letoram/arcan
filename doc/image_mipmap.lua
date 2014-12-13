@@ -42,7 +42,7 @@ function main()
 	image_mipmap(icon, true);
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	image_mipmap(WORLDID, "potatoe");
 #endif
 end

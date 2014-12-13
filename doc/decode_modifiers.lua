@@ -4,7 +4,7 @@
 -- @outargs: modtbl
 -- @longdescr: The input table that is called in input
 -- @group: system
--- @cfunction: arcan_lua_decodemod
+-- @cfunction: decodemod
 -- @flags:
 function main()
 #ifdef MAIN

@@ -9,7 +9,7 @@
 -- and then projects using the currently active output projection and finally
 -- performs a point-in-polygon test for the two triangles. This is performed even for
 -- simpler cases (e.g. non-hierarchical translations etc.).
--- @cfunction: arcan_lua_hittest
+-- @cfunction: hittest
 -- @related: pick_items
 function main()
 #ifdef MAIN

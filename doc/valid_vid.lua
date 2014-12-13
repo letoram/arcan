@@ -3,7 +3,7 @@
 -- @inargs: *vid*
 -- @outargs: validbool
 -- @group: vidsys
--- @cfunction: arcan_lua_validvid
+-- @cfunction: validvid
 -- @flags:
 function main()
 #ifdef MAIN

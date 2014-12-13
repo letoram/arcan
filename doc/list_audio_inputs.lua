@@ -2,7 +2,7 @@
 -- @short: Retrieve a list of available audio input devices.
 -- @outargs: ainptbl
 -- @group: audio
--- @cfunction: arcan_lua_capturelist
+-- @cfunction: capturelist
 -- @related: capture_audio
 function main()
 #ifdef MAIN

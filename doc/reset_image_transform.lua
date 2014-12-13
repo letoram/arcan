@@ -14,7 +14,7 @@
 -- @note: this will not revert the object back to a previous state,
 -- but rather stop at whatever part of the chain was currently being processed.
 -- @group: image
--- @cfunction: arcan_lua_resettransform
+-- @cfunction: resettransform
 -- @related: instant_image_transform
 function main()
 #ifdef MAIN

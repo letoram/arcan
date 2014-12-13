@@ -11,7 +11,7 @@
 -- @note: referencing a table that has less than desw * desh * bpp elements
 -- is a terminal state.
 -- @group: image
--- @cfunction: arcan_lua_rawsurface
+-- @cfunction: rawsurface
 function main()
 #ifdef MAIN
 	local rtbl = {};

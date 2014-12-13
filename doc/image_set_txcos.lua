@@ -6,7 +6,7 @@
 -- coordinates are skewed. This can be achieved either in the vertex shader
 -- stage or by statically overriding the default.
 -- @group: image
--- @cfunction: arcan_lua_settxcos
+-- @cfunction: settxcos
 -- @related: image_get_txcos, image_set_txcos_default, image_scale_txcos
 function main()
 #ifdef MAIN

@@ -24,7 +24,10 @@ unless Dir.exist?($ARCANDIR)
 	STDOUT.print("Target arcan directory (#{$ARCANDIR}) missing, "\
 		"cloning from (#{$GITMIRROR})\n")
 
-	system("#{$GITAPP} clone #{$GITMIRROR} #{$ARCANDIR} > /dev/null")
+	system("#{$GITAPP} clone \"#{$GITMIRROR}\" \"#{$ARCANDIR}\" > /dev/null")
+else
+	STDOUT.print("Pulling updates to (#{$ARCANDIR})\n")
+	system("#{$GITAPP} pull \"#{ARCANDIR}\" > /dev/null")
 end
 
 tests = {

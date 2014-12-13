@@ -12,7 +12,7 @@
 -- without workarounds.
 -- dependencies
 -- @group: image
--- @cfunction: arcan_lua_nullsurface
+-- @cfunction: nullsurface
 -- @related: fill_surface, image_sharestorage
 function main()
 #ifdef MAIN
@@ -24,11 +24,11 @@ function main()
 	blend_image(a, 1.0, 100);
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	a = null_surface();
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	a = null_surface(-1, -1);
 #endif
 end

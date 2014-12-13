@@ -7,6 +7,6 @@
 -- using this function. Argument order is agnostic (type determines argument)
 -- and it is also aliased as target_input.
 -- @group: targetcontrol
--- @cfunction: arcan_lua_targetinput
+-- @cfunction: targetinput
 -- @related: target_input
 

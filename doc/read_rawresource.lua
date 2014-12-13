@@ -4,7 +4,7 @@
 -- @note: Each "line" is constrained to a maximum of 256 characters.
 -- @note: Leading and trailing whitespace is removed.
 -- @group: resource
--- @cfunction: arcan_lua_readrawresource
+-- @cfunction: readrawresource
 -- @related: open_rawresource, write_rawresource, close_rawresource
 function main()
 #ifdef MAIN

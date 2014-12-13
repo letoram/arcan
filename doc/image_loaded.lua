@@ -7,7 +7,7 @@
 -- asynchronous load, and returns true (1) if the image has loaded and decoded successfully
 -- or 0 if it is still in the process of being loaded.
 -- @group: image
--- @cfunction: arcan_lua_imageloaded
+-- @cfunction: imageloaded
 -- @related: load_image_asynch, image_pushasynch
 -- @flags:
 function main()

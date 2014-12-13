@@ -11,7 +11,7 @@
 -- this function has a severe impact on the ability to cache previous
 -- states and can thus be very expensive.
 -- @group: image
--- @cfunction: arcan_lua_cycletransform
+-- @cfunction: cycletransform
 function main()
 #ifdef MAIN
 	a = fill_surface(32, 32, 255, 0, 0);

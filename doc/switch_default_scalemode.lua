@@ -7,5 +7,5 @@
 -- dimensions that isn't an even power-of-two, SCALE_POW2 will manually
 -- rescale them to fit, at a fairly high CPU cost on-load.
 -- @group: vidsys
--- @cfunction: arcan_lua_setscalemode
+-- @cfunction: setscalemode
 

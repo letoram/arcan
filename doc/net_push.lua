@@ -4,5 +4,5 @@
 -- @outargs:
 -- @longdescr:
 -- @group: network
--- @cfunction: arcan_lua_net_pushcl
+-- @cfunction: net_pushcl
 -- @flags: experimental

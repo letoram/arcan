@@ -39,7 +39,7 @@ void main()
 	show_image(img);
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	resample_image(img, shid, -64, -64);
 #endif
 

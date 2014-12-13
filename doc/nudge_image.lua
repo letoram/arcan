@@ -7,7 +7,7 @@
 -- Interp can be set to one of the constants (INTERP_LINEAR,
 -- INTERP_SINE, INTERP_EXPIN, INTERP_EXPOUT, INTERP_EXPINOUT).
 -- @group: image
--- @cfunction: arcan_lua_nudgeimage
+-- @cfunction: nudgeimage
 -- @related: move_image
 function main()
 	a = fill_surface(32, 32, 255, 0, 0);
@@ -18,7 +18,7 @@ function main()
 	nudge_image(a, 10, -10, 100);
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	nudge_image(BADID, 0, 0, 100);
 #endif
 

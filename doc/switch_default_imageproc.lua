@@ -6,7 +6,7 @@
 -- where the image will be flipped over the x-axis (so y- row order will be
 -- inverted).
 -- @group: vidsys
--- @cfunction: arcan_lua_setimageproc
+-- @cfunction: setimageproc
 -- @flags:
 function main()
 #ifdef MAIN
@@ -19,7 +19,7 @@ function main()
 	move_image(b, b.width, b.height);
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	switch_default_imageproc("test1");
 #endif
 

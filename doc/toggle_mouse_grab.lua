@@ -9,7 +9,7 @@
 -- @note: always provide escape options for the user to disable grab in order to
 -- allow poor desktop environments to recover in the event of a live-lock.
 -- @group: iodev
--- @cfunction: arcan_lua_mousegrab
+-- @cfunction: mousegrab
 function main()
 #ifdef MAIN
 	print( tostring( toggle_mouse_grab() ) );
@@ -18,7 +18,7 @@ function main()
 	print( tostring( toggle_mouse_grab(MOUSE_GRABOFF) ) );
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	toggle_mouse_grab(100);
 #endif
 end

@@ -9,7 +9,7 @@
 -- @note: resstr can also be device:, capture: and stream: arguments.
 -- @note: for details on optarg, see the man page for arcan_frameserver_decode
 -- @group: targetcontrol
--- @cfunction: arcan_lua_loadmovie
+-- @cfunction: loadmovie
 -- @related: launch_avfeed
 function main()
 #ifdef MAIN

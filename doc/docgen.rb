@@ -399,7 +399,7 @@ when "testgen" then
 
 		exit
 	}
-when "missing" then
+when "verify" then
 	find_empty(){|a|
 		STDOUT.print("#{a} is incomplete.\n")
 	}

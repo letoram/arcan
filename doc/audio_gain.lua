@@ -10,7 +10,7 @@
 -- @note: For the cases where the engine is responsible for pushing the audio to the target device, even a gain of 0.0 will generate data due to some buffering restrictions with underlying APIs.
 -- @note: There's a logarithmic distribution applied internally to better mimic the linear appearance used in other sound interfaces.
 -- @group: audio
--- @cfunction: arcan_lua_gain
+-- @cfunction: gain
 -- @flags:
 function main()
 	local asrc = load_asample("sample.wav");
@@ -19,7 +19,7 @@ function main()
 	audio_gain(asrc, 0.0, 100);
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	audio_gain(asrc, -1.0, -1);
 #endif
 

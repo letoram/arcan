@@ -5,6 +5,6 @@
 -- specified model. This is a harmful transform and may unnecessarily reduce
 -- precision if called repeatedly. For temporary transformtions, see scale3d_model.
 -- @group: 3d
--- @cfunction: arcan_lua_scale3dverts
+-- @cfunction: scale3dverts
 -- @related: scale3d_model
 

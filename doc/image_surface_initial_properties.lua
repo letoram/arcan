@@ -6,7 +6,7 @@
 -- after an object was created and the initial state of the object. This function retrieves
 -- the values associated with this initial state and returns it as a property table.
 -- @group: image
--- @cfunction: arcan_lua_getimageinitprop
+-- @cfunction: getimageinitprop
 -- @related: image_surface_resolve_propreties, image_surface_properties
 function main()
 #ifdef MAIN

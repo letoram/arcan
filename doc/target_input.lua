@@ -23,5 +23,5 @@
 -- @note: arguments are flexible, table argument will be used as input table,
 -- number argument will be used as frameserver vid reference.
 -- @group: targetcontrol
--- @cfunction: arcan_lua_targetinput
+-- @cfunction: targetinput
 

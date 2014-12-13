@@ -6,7 +6,7 @@
 -- (images linked TO vid) or recursively scans and tests if vid is related to
 -- *searchvid* (when provided).
 -- @group: image
--- @cfunction: arcan_lua_imagechildren
+-- @cfunction: imagechildren
 -- @related: image_parent
 function main()
 #ifdef MAIN
@@ -36,7 +36,7 @@ function main()
 	print(positive, negative);
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	image_childen(BADID);
 #endif
 end

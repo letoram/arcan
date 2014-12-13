@@ -4,7 +4,7 @@
 -- @outargs: parentvid
 -- @group: image
 -- @related: image_children, link_image, valid_vid
--- @cfunction: arcan_lua_imageparent
+-- @cfunction: imageparent
 function main()
 #ifdef MAIN
 	a = fill_surface(32, 32, 255, 0, 0);
@@ -17,7 +17,7 @@ function main()
 	print(image_tracetag(image_parent(a)));
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	print(image_parent(BADID));
 #endif
 

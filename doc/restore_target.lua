@@ -5,5 +5,5 @@
 -- @longdescr: targets that support the snapshot capability can
 -- have its state saved and restored at the request of the caller.
 -- @group: targetcontrol
--- @cfunction: arcan_lua_targetrestore
+-- @cfunction: targetrestore
 

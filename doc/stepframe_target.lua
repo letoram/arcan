@@ -11,5 +11,5 @@
 -- then force a readback.
 -- @group: targetcontrol
 -- @related: define_calctarget, define_recordtarget
--- @cfunction: arcan_lua_targetstepframe
+-- @cfunction: targetstepframe
 

@@ -19,7 +19,7 @@
 -- mode(avg), average the kernel_size buffer
 -- mode(latest), only emit when buffer full, and keep only most recent value
 -- @group: iodev
--- @cfunction: arcan_lua_inputanalogquery
+-- @cfunction: inputanalogquery
 -- @related:
 function main()
 #ifdef MAIN
@@ -36,7 +36,7 @@ function main()
 
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	inputanalog_query("ind");
 #endif
 end

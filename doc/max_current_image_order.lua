@@ -2,7 +2,7 @@
 -- @short: Find the highest ordervalue in use in the current context.
 -- @outargs: orderval
 -- @group: image
--- @cfunction: arcan_lua_maxorderimage
+-- @cfunction: maxorderimage
 -- @related: order_image, image_inherit_order
 function main()
 #ifdef MAIN

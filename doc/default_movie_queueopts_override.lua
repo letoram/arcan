@@ -4,6 +4,6 @@
 -- @note: This is an expensive and unpredictable option and, with future
 -- buffering improvements in decode frameserver, should be used sparringly.
 -- @group: vidsys
--- @cfunction: arcan_lua_setqueueopts
+-- @cfunction: setqueueopts
 -- @related: default_movie_queueopts
 

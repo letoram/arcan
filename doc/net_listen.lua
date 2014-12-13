@@ -6,6 +6,6 @@
 -- argument will be used as an event trigger for conveying all client related events.
 -- For the contents of such triggers, see the notes.
 -- @group: network
--- @cfunction: arcan_lua_net_listen
+-- @cfunction: net_listen
 -- @flags: experimental
 

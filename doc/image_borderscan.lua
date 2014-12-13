@@ -6,6 +6,6 @@
 -- are stored in local memory already (with the engine not launched in conservative mode).
 -- @note: On failure, X2,Y2 will match VRESW, VRESH
 -- @group: image
--- @cfunction: arcan_lua_borderscan
+-- @cfunction: borderscan
 -- @flags: deprecated
 

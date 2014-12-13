@@ -19,5 +19,5 @@
 -- but decode and hijack libraries will be updated to include support.
 -- hijack and decode will also
 -- @group: targetcontrol
--- @cfunction: arcan_lua_targetskipmodecfg
+-- @cfunction: targetskipmodecfg
 

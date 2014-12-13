@@ -6,7 +6,7 @@
 -- non-textured shader with the color values shader-accessible as a vec3 obj_col uniform.
 -- @note: No texture units will be mapped for these objects.
 -- @group: image
--- @cfunction: arcan_lua_colorsurface
+-- @cfunction: colorsurface
 -- @related:
 function main()
 #ifdef MAIN

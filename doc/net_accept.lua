@@ -8,5 +8,5 @@
 -- change the client state to active by calling net_accept or terminate it with net_disconnect.
 -- @group: network
 -- @note: specifying 0 is an invalid domain and a terminal state transition.
--- @cfunction: arcan_lua_net_accept
+-- @cfunction: net_accept
 -- @related: net_authenticate, net_disconnect

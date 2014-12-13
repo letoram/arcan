@@ -5,7 +5,7 @@
 -- @longdescr: Some objects, and especially those linked to frameservers, may need to survive otherwise aggressive operations e.g. push_video_context. This function attempts to promote the referenced object to such a state. This ability comes with several restrictions however. In practice, objects that are linked, are clones, has a frameset or in other ways maintain horizontal references (within the same context) are prohibited from being flagged as persistant.
 -- @group: image
 -- @related: push_video_context, pop_video_context
--- @cfunction: arcan_lua_imagepersist
+-- @cfunction: imagepersist
 function main()
 	a = fill_surface(32, 32, 255, 0, 0);
 	b = fill_surface(32, 32, 0, 255, 0);
@@ -16,7 +16,7 @@ function main()
 	push_video_context();
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	persist_image(a);
 	push_video_context();
 	delete_image(a);

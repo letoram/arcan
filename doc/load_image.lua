@@ -16,7 +16,7 @@
 -- @note: supported file formats vary with platform and engine build, only
 -- ones that are guaranteed to work are PNG and JPEG.
 -- @group: image
--- @cfunction: arcan_lua_loadimage
+-- @cfunction: loadimage
 -- @related: load_image_asynch
 -- @flags:
 function main()
@@ -28,7 +28,7 @@ function main()
 	show_image(vid);
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	vid = load_image();
 #endif
 

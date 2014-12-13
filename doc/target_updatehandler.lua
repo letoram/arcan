@@ -23,7 +23,7 @@ function main()
 	end);
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	a = launch_avfeed("", "avfeed", function() end);
 	target_updatehandler(a, target_updatehandler);
 #endif

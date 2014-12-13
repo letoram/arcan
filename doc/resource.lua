@@ -8,7 +8,7 @@
 -- all domains are scanned, and then resolves the resolved path to
 -- the resolved object, or nil.
 -- @group: resource
--- @cfunction: arcan_lua_resource
+-- @cfunction: resource
 function main()
 #ifdef MAIN
 	print( resource("test.png") );

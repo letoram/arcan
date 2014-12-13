@@ -6,7 +6,7 @@
 -- This function is used to enable (rrate > 0) or disable (rrate == 0) emitting
 -- "push/release" input events for keyboard devices.
 -- @group: iodev
--- @cfunction: arcan_lua_kbdrepeat
+-- @cfunction: kbdrepeat
 -- @planned: The long-term plan for this part of the input system is
 -- to be able to specify a repeat-rate on a device:(optional subid) bases
 -- for all digital data-sources, not just the active keyboard.

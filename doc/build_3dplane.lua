@@ -6,7 +6,7 @@
 -- @note: As the case with the other functions in the 3D group, refer to 'modeldemo' for a more comprehensive example.
 -- @note: Members of the 3D group are not as tightly governed as other groups are and should be disabled in a security- and resource- conscious build.
 -- @group: 3d
--- @cfunction: arcan_lua_buildplane
+-- @cfunction: buildplane
 -- @flags:
 function main()
 #ifdef MAIN

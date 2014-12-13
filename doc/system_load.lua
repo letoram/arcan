@@ -6,14 +6,14 @@
 -- not a terminal state transition.
 -- @note: Trying to load a non-existing script is a terminal state transition.
 -- @group: system
--- @cfunction: arcan_lua_dofile
+-- @cfunction: dofile
 function main()
 #ifdef MAIN
 	system_load("test.lua")();
 	system_load("test_bad.lua", 0);
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	system_load("missing")();
 #endif
 end

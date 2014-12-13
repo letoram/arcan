@@ -2,7 +2,7 @@
 -- @short: Revert basic texture coordinates to the default, then apply two scale factors.
 -- @inargs: vid, fact_s, fact_t
 -- @group: image
--- @cfunction: arcan_lua_scaletxcos
+-- @cfunction: scaletxcos
 -- @related: image_set_txcos, image_get_txcos, image_set_txcos_default
 function main()
 #ifdef MAIN

@@ -9,7 +9,7 @@
 -- particularly useful for graphics purposes in contrast to more controllable
 -- ones (e.g. Perlin Noise), future revisions to this function will include
 -- a specifiable noise function and parameters.
--- @cfunction: arcan_lua_randomsurface
+-- @cfunction: randomsurface
 function main()
 #ifdef MAIN
 	a = random_surface(256, 256);

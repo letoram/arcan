@@ -4,6 +4,6 @@
 -- @outargs: dista, distb, distc, distd, interpupd, eyetoscr
 -- @longdescr: Setup stereoscopic projection matrices conforming to a head-mounted display.
 -- @group: 3d
--- @cfunction: arcan_lua_camtaghmd
+-- @cfunction: camtaghmd
 -- @related: camtag_model
 

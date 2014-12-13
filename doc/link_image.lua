@@ -10,7 +10,7 @@
 -- the position relative to a parent will be based on a different
 -- (non rotated) anchor of the parent (default is upper-left corner, UL).
 -- @group: image
--- @cfunction: arcan_lua_linkimage
+-- @cfunction: linkimage
 function main()
 #ifdef MAIN
 	a = fill_surface(64, 64, 255, 0, 0);

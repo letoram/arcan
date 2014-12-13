@@ -5,7 +5,7 @@
 -- deleting all video subsystem related resources currently bound to the active context.
 -- @note: poping the outmost context is similar to deleting all allocated vids.
 -- @group: vidsys
--- @cfunction: arcan_lua_popcontext
+-- @cfunction: popcontext
 -- @related: system_context_size, current_context_usage, push_video_context
 function main()
 #ifdef MAIN

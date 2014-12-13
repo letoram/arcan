@@ -10,7 +10,7 @@
 -- can impose a loss of precision, it is not recommended that this is used more than
 -- once for any model.
 -- @related: rotate3d_model
--- @cfunction: arcan_lua_orientmodel
+-- @cfunction: orientmodel
 function main()
 #ifdef MAIN
 	camera = null_surface(4, 4, 0, 0, 0);

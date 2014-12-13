@@ -9,7 +9,7 @@
 -- corrupt a UTF-8 string or not. state values:
 -- 0 = 7bit character, 1 = start of char, 2 = middle of char.
 -- @group: system
--- @cfunction: arcan_lua_utf8kind
+-- @cfunction: utf8kind
 function main()
 #ifdef MAIN
 	a = "åäö";

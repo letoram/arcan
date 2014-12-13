@@ -6,5 +6,5 @@
 -- be emptied before the switch takes place as to prevent data-loss in frameservers.
 -- @deprecated: As of version 0.5, use system_collapse instead.
 -- @group: system
--- @cfunction: arcan_lua_switchtheme
+-- @cfunction: switchtheme
 

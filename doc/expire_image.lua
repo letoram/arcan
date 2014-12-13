@@ -8,7 +8,7 @@
 -- @note: for n : 0 <= n < 1, n will be forced to one tick.
 -- the timer to the new value.
 -- @group: image
--- @cfunction: arcan_lua_setlife
+-- @cfunction: setlife
 -- @related: delete_image
 function main()
 #ifdef MAIN
@@ -16,7 +16,7 @@ function main()
 	expire_image(a, 100);
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	expire_image(WORLDID, 10);
 #endif
 

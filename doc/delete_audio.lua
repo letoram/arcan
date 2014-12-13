@@ -5,7 +5,7 @@
 -- @note: This is undefined for frameserver audio sources as
 -- frameserver lifecycle management is tied to the video id
 -- @group: audio
--- @cfunction: arcan_lua_dropaudio
+-- @cfunction: dropaudio
 -- @related: play_audio, pause_audio, audio_gain
 function main()
 #ifdef MAIN
@@ -14,7 +14,7 @@ function main()
 	audio_gain(a, 0.0);
 	audio_gain(a, 1.0, 20);
 #endif
-#ifdef ERROR1
+#ifdef ERROR
 	a = load_movie("test.avi", FRAMESERVER_NOLOOP, function(source, stat)
 		if (stat.kind == "resized") then
 			delete_audio(stat.source_audio);

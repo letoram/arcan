@@ -12,7 +12,7 @@
 -- operation to complete first.
 -- @group: image
 -- @related: expire_image
--- @cfunction: arcan_lua_deleteimage
+-- @cfunction: deleteimage
 -- @flags:
 function main()
 #ifdef MAIN
@@ -20,7 +20,7 @@ function main()
 	delete_image(valid);
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	delete_image(WORLDID);
 #endif
 

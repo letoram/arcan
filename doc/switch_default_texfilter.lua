@@ -9,7 +9,7 @@
 -- @note: any value to filtermode outside the accepted values is a terminal
 -- state transition.
 -- @group: vidsys
--- @cfunction: arcan_lua_settexfilter
+-- @cfunction: settexfilter
 function main()
 #ifdef MAIN
 	switch_default_texfilter(FILTER_NONE);
@@ -25,7 +25,7 @@ function main()
 	move_image(b, 0, props.height);
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	switch_default_texfilter("none");
 #endif
 

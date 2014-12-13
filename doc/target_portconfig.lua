@@ -3,6 +3,6 @@
 -- @inargs: vid, port, kind
 -- @note: This is specific to the libretro frameserver.
 -- @group: targetcontrol
--- @cfunction: arcan_lua_targetportcfg
+-- @cfunction: targetportcfg
 -- @flags:
 

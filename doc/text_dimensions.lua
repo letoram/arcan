@@ -6,7 +6,7 @@
 -- that, although intermediate allocations are still needed, no output
 -- video object will be setup.
 -- @group: image
--- @cfunction: arcan_lua_strsize
+-- @cfunction: strsize
 -- @exampleappl: tests/interactive/fonttest
 -- @related: render_text
 

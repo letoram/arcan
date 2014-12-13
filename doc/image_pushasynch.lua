@@ -4,7 +4,7 @@
 -- @note: Since the exact point where an asynch image is transformed to an image type isn't known in advance, this operation is allowed, but doesn't perform any internal state changes for arguments other than VIDs in an asynchronous loading state.
 -- @group: image
 -- @related: load_image_asynch, load_image
--- @cfunction: arcan_lua_pushasynch
+-- @cfunction: pushasynch
 function main()
 #ifdef MAIN
 	b = load_image_asynch("test_big.png");

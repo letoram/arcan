@@ -13,7 +13,7 @@
 -- behavior for that pass, allowing for off-screen 3D rendering for effects
 -- such as shadows.
 -- @group: 3d
--- @cfunction: arcan_lua_camtag
+-- @cfunction: camtag
 -- @related: video_3dorder
 -- @flags:
 

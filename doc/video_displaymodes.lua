@@ -34,7 +34,7 @@ function main()
 	print("modes switched\n");
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	video_displaymodes("no sirree!");
 #endif
 end

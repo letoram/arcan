@@ -5,7 +5,7 @@
 -- @longdescr: Load and decompress a mesh from the specified resource (CTM format) and attach to the model in question. The optional (default 1) nmaps argument specifies how many frameset objects that should be consumed and spent on the different texture units (additional specular, normal etc. maps).
 -- @group: 3d
 -- @note: Nmaps is hard- limited to 8, matching the minimum of texture units according to the GLES2.0 standard.
--- @cfunction: arcan_lua_loadmesh
+-- @cfunction: loadmesh
 -- @related: new_3dmodel
 -- @note: The example below is somewhat limited, refer to 'modeldemo' for a more comprehensive example.
 function main()
@@ -15,7 +15,7 @@ function main()
 	show_image(vid);
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	vid = fill_surface(32, 32, 255, 0, 0, 0);
 	add_3dmesh(vid, "testmesh1.ctm");
 #endif

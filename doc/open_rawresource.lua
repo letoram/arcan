@@ -13,7 +13,7 @@
 -- @note: This function is blocking, and should only be used where
 -- possible I/O stalls is desired.
 -- @group: resource
--- @cfunction: arcan_lua_rawresource
+-- @cfunction: rawresource
 -- @related: close_rawresource, read_rawresource, zap_rawresource, open_nonblock
 function main()
 #ifdef MAIN
@@ -24,7 +24,7 @@ function main()
 	end
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	if (open_rawresource("../../../../../../../etc/passwd")) then
 		print("danger will robinson!");
 	end

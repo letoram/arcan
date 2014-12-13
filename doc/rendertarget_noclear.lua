@@ -23,7 +23,7 @@ function main()
 	move_image(a, 128, 128, 10);
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	rendertarget_noclear(BADID, "potatoe");
 #endif
 end

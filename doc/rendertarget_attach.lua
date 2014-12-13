@@ -10,6 +10,6 @@
 -- @note: A rendertarget cannot be attached to itself.
 -- @note: Persistant objects cannot be part of other rendertargets.
 -- @group: targetcontrol
--- @cfunction: arcan_lua_renderattach
+-- @cfunction: renderattach
 -- @related: define_rendertarget, define_recordtarget
 

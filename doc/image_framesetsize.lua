@@ -30,7 +30,7 @@
 -- @note: providing unreasonable (0 < n < 256, outside n) values to
 -- count are treated as a terminal state.
 -- @related: set_image_as_frame, image_framesetsize, image_framecyclemode, image_active_frame
--- @cfunction: arcan_lua_framesetalloc
+-- @cfunction: framesetalloc
 function main()
 #ifdef MAIN
 	a = fill_surface(32, 32, 255, 0, 0);

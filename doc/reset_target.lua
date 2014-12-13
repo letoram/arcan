@@ -6,5 +6,5 @@
 -- to an initial safe-state (which may or may not exist depending on
 -- the target).
 -- @group: targetcontrol
--- @cfunction: arcan_lua_targetreset
+-- @cfunction: targetreset
 

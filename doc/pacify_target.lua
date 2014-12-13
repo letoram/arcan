@@ -22,7 +22,7 @@ function main()
 	end);
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	a = null_surface(64, 64);
 	pacify_target(a);
 #endif

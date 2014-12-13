@@ -7,7 +7,7 @@
 -- opacity and order).
 -- @note: The values retrieved are expressed in local (object) coordinate space.
 -- @group: image
--- @cfunction: arcan_lua_getimageprop
+-- @cfunction: getimageprop
 -- @related: image_surface_initial_properties, image_surface_resolve_properties,
 -- image_surface_storage_properties
 function main()

@@ -4,7 +4,7 @@
 -- @group: image
 -- @note: Some mask values are ignored for certain object types,
 -- e.g. MASK_LIVING for cloned objects.
--- @cfunction: arcan_lua_clearall
+-- @cfunction: clearall
 -- @related: image_mask_clear, image_mask_set, image_mask_toggle
 -- @reference: image_mask
 function main()
@@ -17,7 +17,7 @@ function main()
 	delete_image(a);
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	image_mask_clearall(WORLDID);
 #endif
 

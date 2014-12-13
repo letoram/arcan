@@ -10,7 +10,7 @@
 -- clipping disabled. With CLIP_SHALLOW, the region of the parent will be used
 -- for clipping regardless of other states.
 -- @group: image
--- @cfunction: arcan_lua_clipon
+-- @cfunction: clipon
 -- @related: image_clip_off
 function main()
 #ifdef MAIN
@@ -21,7 +21,7 @@ function main()
 	show_image({a,b});
 	image_clip_on(b, CLIP_SHALLOW);
 #endif
-#ifdef ERROR1
+#ifdef ERROR
 	image_clip_on(BADID);
 #endif
 end

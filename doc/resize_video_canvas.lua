@@ -38,7 +38,7 @@ function main()
 	resize_video_canvas(VRESW * 4, VRESH * 4);
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	resize_video_canvas(1024 * 1024 * 1024, 0);
 #endif
 

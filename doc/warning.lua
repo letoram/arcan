@@ -7,13 +7,13 @@
 -- @note: Only [a-Z,.0-9] and whitespace characters will be
 -- passed to the output log, other characters will be
 -- replaced with a whitespace.
--- @cfunction: arcan_lua_warning
+-- @cfunction: warning
 function main()
 #ifdef MAIN
 	warning("warning test");
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	warning(nil);
 #endif
 end

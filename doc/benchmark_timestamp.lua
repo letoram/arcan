@@ -5,5 +5,5 @@
 -- for most other purposes, you would be better off relying on the clock_pulse and CLOCK
 -- mechanism.
 -- @group: system
--- @cfunction: arcan_lua_timestamp
+-- @cfunction: timestamp
 

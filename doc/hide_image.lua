@@ -6,7 +6,7 @@ function main()
 	hide_image(WORLDID);
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	hide_image(-1);
 #endif
 end

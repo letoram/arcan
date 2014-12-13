@@ -27,7 +27,7 @@
 -- @note: specifying a valid frameserver connected VID in the dstres slot
 -- will allocate a new output segment and attach to the pre-existing frameserver.
 -- @note: if dstres is empty, no file will be created or pushed.
--- @cfunction: arcan_lua_recordset
+-- @cfunction: recordset
 -- @related: define_rendertarget
 -- @flags:
 function main()
@@ -72,7 +72,7 @@ function main()
 
 #endif
 
-#ifdef ERROR1
+#ifdef ERROR
 	define_recordtarget(nil, "output.mkv", "vpreset=8:noaudio:fps=25", {}, {},
 		RENDERTARGET_NODETACH, RENDERTARGET_SCALE, -4);
 #endif
