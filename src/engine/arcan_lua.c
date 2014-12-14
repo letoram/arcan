@@ -7893,6 +7893,7 @@ static inline const char* fsrvtos(enum ARCAN_SEGID ink)
 	case SEGID_GAME: return "game";
 	case SEGID_HMD_L: return "hmd-l";
 	case SEGID_HMD_R: return "hmd-r";
+	case SEGID_HMD_SBS: return "hmd-sbs-lr";
 	case SEGID_VM: return "vm";
 	case SEGID_APPLICATION: return "application";
 	case SEGID_BROWSER: return "browser";
