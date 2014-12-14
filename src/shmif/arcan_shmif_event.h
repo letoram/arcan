@@ -84,6 +84,7 @@ enum ARCAN_SEGID {
 	SEGID_APPLICATION, /* video updates typically reactive to input */
 	SEGID_BROWSER, /* network client, high-risk for malicious data */
 	SEGID_VM, /* virtual-machine, high resource consumption, high risk */
+	SEGID_HMD_SBS, /* head-mounter display, even split left/ right */
 	SEGID_HMD_L, /* head-mounted display, left eye view (otherwise _GAME) */
   SEGID_HMD_R, /* head-mounted display, right eye view (otherwise _GAME) */
 	SEGID_ICON, /* minimized- status indicator */
@@ -214,8 +215,8 @@ enum ARCAN_TARGET_COMMAND {
 /*
  * There is a whole slew of reasons why a buffer handled provided
  * could not be used. This event is returned when such a case has
- * been detected in order to try and provide a gracefull fallback
- * in such cases.
+ * been detected in order to try and provide a graceful fallback
+ * to regular shm- copying.
  */
 	TARGET_COMMAND_BUFFER_FAIL,
 

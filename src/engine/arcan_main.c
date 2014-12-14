@@ -507,8 +507,6 @@ applswitch:
 	extern void(*arcan_fatal_hook)(void);
 	arcan_fatal_hook = arcan_video_shutdown;
 
-	agp_init();
-
 	errno = 0;
 /* grab audio, (possible to live without) */
 	if (ARCAN_OK != arcan_audio_setup(nosound))

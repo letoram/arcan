@@ -12,12 +12,21 @@
  *    -> dynamic vobj -> output mapping
  *
  * 2. Display Hotplug Events
+ *    [ Note update: we seem again to be forced to consider the
+ *      whole udev/.. mess, have the display scan be user- invoked
+ *      for now and look into the design of a better device-detection+
+ *      shared synchronization platform rather than have a custom one
+ *      in each sub-platform. ]
  *
  * 3. Support for External Launch / Building, Restoring Contexts
+ *    note the test cases in _prepare
  *
- * 4. Advanced Synchronization options (swap-interval, synch directly
+ * 4. DPMS management? native cursor?
+ *
+ * 5. Advanced Synchronization options (swap-interval, synch directly
  *    to front buffer, swap-with-tear, pre-render then wake / move
- *    cursor just before etc.)
+ *    cursor just before etc.), discard when we miss deadline,
+ *    DRM_VBLANK_RELATIVE, DRM_VBLANK_SECONDARY?
  */
 #include <stdio.h>
 #include <string.h>
@@ -61,22 +70,17 @@
 #define PLATFORM_SUFFIX platform
 #endif
 
-#define MERGE(X,Y) X ## Y
-#define EVAL(X,Y) MERGE(X,Y)
-#define PLATFORM_SYMBOL(fun) EVAL(PLATFORM_SUFFIX, fun)
-
+/*
+ * extensions needed for buffer passing
+ */
 static PFNEGLCREATEIMAGEKHRPROC eglCreateImageKHR;
 static PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES;
 
+/*
+ * real heuristics scheduled for 0.5.1
+ */
 static char* egl_synchopts[] = {
 	"default", "double buffered, display controls refresh",
-/*
- * default + heuristic -> drop frame if we're lagging behind
- * triple buffered -> poor idea, shouldn't be used
- * pre-vsync align, tear if we are out of options
- * most interesting, racing the beam (single-buffer)
- * simulate-n-Hz display
- */
 	NULL
 };
 
@@ -84,6 +88,7 @@ static char* egl_envopts[] = {
 	"ARCAN_VIDEO_DEVICE=/dev/dri/card0", "specifiy primary device",
 	"ARCAN_VIDEO_DRM_NOMASTER", "set to disable drmMaster management",
 	"ARCAN_VIDEO_DRM_NOBUFFER", "set to disable IPC buffer passing",
+	"ARCAN_VIDEO_WAIT_CONNECTOR", "loop until an active connector is found",
 	NULL
 };
 
@@ -92,62 +97,113 @@ enum {
 	ENDM
 }	synchopt;
 
-static struct {
-	struct gbm_bo* bo;
-	struct gbm_device* dev;
-	struct gbm_surface* surface;
-} gbm;
-
-#ifndef CONNECTOR_LIMIT
-#define CONNECTOR_LIMIT 8
-#endif
-
-static struct {
+/*
+ * Each open output device, can be shared between displays
+ */
+struct dev_node {
 	int fd;
-	uint32_t crtc_id[CONNECTOR_LIMIT];
-	uint32_t connector_id[CONNECTOR_LIMIT];
+	int refc;
+	struct gbm_device* gbm;
 
-/* track in order to restore on shutdown */
-	drmModeCrtcPtr old_crtc[CONNECTOR_LIMIT];
-
-	drmModeModeInfo* mode;
-	drmModeRes* res;
-} drm;
-
-/*struct display {
-	struct arcan_shmif_cont conn;
-	bool mapped;
-	struct storage_info_t* vstore;
-} disp[MAX_DISPLAYS];
-*/
-
-static struct {
 	EGLConfig config;
 	EGLContext context;
 	EGLDisplay display;
-	EGLSurface surface;
+};
 
-	size_t mdispw, mdisph;
-	size_t canvasw, canvash;
+/*
+ * Multiple- device nodes (i.e. cards) is currently untested
+ * and thus only partially implemented due to lack of hardware
+ */
+static struct dev_node nodes[1];
 
-	bool swap_damage;
-	bool swap_age;
-} egl;
+/*
+ * aggregation struct that represent one triple
+ * of display, card, bindings
+ */
+struct dispout {
+/* connect drm, gbm and EGLs idea of a device */
+	struct dev_node* device;
 
-struct drm_fb {
-	struct gbm_bo* bo;
-	uint32_t fb_id;
+/* 1 buffer for 1 device for 1 display */
+	struct {
+		int in_flip;
+		EGLSurface esurf;
+		struct gbm_bo* bo;
+		struct gbm_bo* old_bo;
+		uint32_t fbid;
+		struct gbm_surface* surface;
+	} buffer;
+
+	struct {
+		bool ready;
+		drmModeConnector* con;
+		uint32_t con_id;
+		drmModeEncoder* enc;
+		drmModeModeInfoPtr mode;
+		drmModeCrtcPtr old_crtc;
+	} display;
+
+/* v-store mapping, with texture blitting options
+ * and possibly mapping hint */
+	struct storage_info_t* vstore;
+	size_t dispw, disph;
+	bool alive;
 };
 
 struct {
-   drmModeConnector* connector;
-   drmModeEncoder* encoder;
-   drmModeModeInfo mode;
-   uint32_t fb_id;
-} kms;
+	size_t canvasw, canvash;
+} egl_dri;
 
 /*
- * There's probably some sysfs- specific approach
+ * primary functions for doing video- platform to egl/dri mapping,
+ * returns NULL if no display could be mapped to the device
+ */
+#ifndef MAX_DISPLAYS
+#define MAX_DISPLAYS 8
+#endif
+static struct dispout displays[MAX_DISPLAYS];
+static struct dispout* allocate_display(struct dev_node* node)
+{
+	for (size_t i = 0; i < sizeof(displays)/sizeof(displays[0]); i++)
+		if (displays[i].alive == false){
+			displays[i].device = node;
+			node->refc++;
+			displays[i].alive = true;
+			return &displays[i];
+		}
+
+	return NULL;
+}
+
+/*
+ * get device indexed, this is used as an iterator
+ */
+static struct dispout* get_display(size_t index)
+{
+	for (size_t i = 0; i < MAX_DISPLAYS; i++){
+		if (displays[i].alive){
+			if (index == 0)
+				return &displays[i];
+			else
+				index--;
+		}
+	}
+
+	return NULL;
+}
+
+/*
+ * free, dealloc, possibly re-index displays
+ */
+static void disable_display(struct dispout*);
+
+/*
+ * assumes that the video pipeline is in a state to safely
+ * blit, will take the mapped objects and schedule buffer transfer
+ */
+static void update_display(struct dispout*);
+
+/* There's probably some sysfs- specific approach
  * but rather keep that outside and use the environment
  * variable to specify.
  */
@@ -201,13 +257,12 @@ static const char* egl_errstr()
 	}
 }
 
-bool PLATFORM_SYMBOL(_video_set_mode)(
-	platform_display_id disp, platform_mode_id mode)
+bool platform_video_set_mode(platform_display_id disp, platform_mode_id mode)
 {
 	return disp == 0 && mode == 0;
 }
 
-bool PLATFORM_SYMBOL(_video_map_display)(
+bool platform_video_map_display(
 	arcan_vobj_id id, platform_display_id disp, enum blitting_hint hint)
 {
 /* add ffunc to the correct display */
@@ -215,13 +270,13 @@ bool PLATFORM_SYMBOL(_video_map_display)(
 	return false; /* no multidisplay /redirectable output support */
 }
 
-bool PLATFORM_SYMBOL(_video_specify_mode)(platform_display_id id,
+bool platform_video_specify_mode(platform_display_id id,
 	platform_mode_id mode_id, struct monitor_mode mode)
 {
 	return false;
 }
 
-bool map_extensions()
+static bool map_extensions()
 {
 	eglCreateImageKHR = (PFNEGLCREATEIMAGEKHRPROC)
 	eglGetProcAddress("eglCreateImageKHR");
@@ -232,21 +287,28 @@ bool map_extensions()
 	return true;
 }
 
-struct monitor_mode* PLATFORM_SYMBOL(_video_query_modes)(
+struct monitor_mode* platform_video_query_modes(
 	platform_display_id id, size_t* count)
 {
 	static struct monitor_mode mode = {};
 
-	mode.width  = egl.mdispw;
+/*
+  mode.width  = egl.mdispw;
 	mode.height = egl.mdisph;
 	mode.depth  = GL_PIXEL_BPP * 8;
-	mode.refresh = 60; /* should be queried */
+	mode.refresh = 60;
+*/
 
 	*count = 1;
 	return &mode;
 }
 
-platform_display_id* PLATFORM_SYMBOL(_video_query_displays)(size_t* count)
+/*
+ * The cost for this function is rather unsavory,
+ * nouveau testing has shown somewhere around ~110+ ms stalls
+ * for one re-scan
+ */
+platform_display_id* platform_video_query_displays(size_t* count)
 {
 	static platform_display_id id = 0;
 	*count = 1;
@@ -548,19 +610,45 @@ static const char* subpixel_type(int val)
 	}
 }
 
-static void dump_connectors(FILE* dst, drmModeRes* res)
+static const char* connection_type(int conn)
 {
+	switch(conn){
+	case DRM_MODE_CONNECTED:
+		return "connected";
+
+	case DRM_MODE_DISCONNECTED:
+		return "not connected";
+
+	case DRM_MODE_UNKNOWNCONNECTION:
+		return "unknown";
+
+	default:
+		return "undefined";
+	}
+}
+
+static void dump_connectors(FILE* dst, struct dev_node* node)
+{
+	drmModeRes* res = drmModeGetResources(node->fd);
+	if (!res){
+		fprintf(dst, "DRM dump, couldn't acquire resource list\n");
+		return;
+	}
+
 	fprintf(dst, "DRM Dump: \n\tConnectors: %d\n", res->count_connectors);
 	for (size_t i = 0; i < res->count_connectors; i++){
-		drmModeConnector* conn = drmModeGetConnector(drm.fd, res->connectors[i]);
+		drmModeConnector* conn = drmModeGetConnector(
+			node->fd, res->connectors[i]);
 		if (!conn)
 			continue;
 
 		fprintf(dst, "\t(%d), id:(%d), encoder:(%d), type: ",
 			(int) i, conn->connector_id, conn->encoder_id);
 		drm_mode_connector(dst, conn->connector_type);
-		fprintf(dst, " phy(%d * %d), hinting: %s\n",
-			(int)conn->mmWidth, (int)conn->mmHeight, subpixel_type(conn->subpixel));
+		fprintf(dst, " phy(%d * %d), mode: %s, hinting: %s\n",
+			(int)conn->mmWidth, (int)conn->mmHeight,
+			connection_type(conn->connection),
+			subpixel_type(conn->subpixel));
 
 		for (size_t j = 0; j < conn->count_modes; j++){
 			fprintf(dst, "\t\t Mode (%d:%s): clock@%d, refresh@%d\n\t\tflags : ",
@@ -575,163 +663,33 @@ static void dump_connectors(FILE* dst, drmModeRes* res)
 		fprintf(dst, "\n\n");
 		drmModeFreeConnector(conn);
 	}
+
+	drmModeFreeResources(res);
 }
 
-static int setup_drm(void)
+static int setup_node(struct dev_node* node, const char* path)
 {
-	int i, area;
-
 	SET_SEGV_MSG("libdrm(), open device failed (check permissions) "
 		" or use ARCAN_VIDEO_DEVICE environment.\n");
-	const char* device = getenv("ARCAN_VIDEO_DEVICE");
-	if (!device)
-		device = device_name;
 
-	drm.fd = open(device, O_RDWR);
+	memset(node, '\0', sizeof(struct dev_node));
+	node->fd = open(path, O_RDWR);
 
-	if (drm.fd < 0) {
-		arcan_warning("egl-dri(), could not open drm device.\n");
+	if (-1 == node->fd){
+		arcan_warning("egl-dri(), open device failed on %s\n", path);
 		return -1;
 	}
 
-	drmSetMaster(drm.fd);
-
-	SET_SEGV_MSG("libdrm(), getting resources on device failed.\n");
-	drm.res = drmModeGetResources(drm.fd);
-	if (!drm.res) {
-		arcan_warning("egl-dri(), drmModeGetResources "
-			"failed: %s\n", strerror(errno));
-		return -1;
-	}
-
-/* grab the first available connector, this can be
- * changed / altered dynamically by the calling script later */
-	SET_SEGV_MSG("libdrm(), enumerating connectors on device failed.\n");
-	for (i = 0; i < drm.res->count_connectors; i++){
-		kms.connector = drmModeGetConnector(drm.fd, drm.res->connectors[i]);
-		if (kms.connector->connection == DRM_MODE_CONNECTED)
-			break;
-
-		drmModeFreeConnector(kms.connector);
-		kms.connector = NULL;
-	}
-
-/*
- * If a connector could not be found during initialization,
- * give up and let the outside world setup the connection.
- *
- * Still need to handle hotplug / geometry changes though
- */
-	if (!kms.connector){
-		arcan_warning("egl-dri(), no connected output.\n");
-		return -1;
-	}
-
-	SET_SEGV_MSG("libdrm(), enumerating connector/modes failed.\n");
-	for (i = 0, area = 0; i < kms.connector->count_modes; i++) {
-		drmModeModeInfo *current_mode = &kms.connector->modes[i];
-		int current_area = current_mode->hdisplay * current_mode->vdisplay;
-		if (current_area > area) {
-			drm.mode = current_mode;
-			area = current_area;
-		}
-	}
-
-	if (!drm.mode) {
-		arcan_warning("egl-dri(), could not find a suitable display mode.\n");
-		return -1;
-	}
-
-	SET_SEGV_MSG("libdrm(), setting matching encoder failed.\n");
-	for (i = 0; i < drm.res->count_encoders; i++) {
-		kms.encoder = drmModeGetEncoder(drm.fd, drm.res->encoders[i]);
-		if (kms.encoder->encoder_id == kms.connector->encoder_id)
-			break;
-		drmModeFreeEncoder(kms.encoder);
-		kms.encoder = NULL;
-	}
-
-	if (!kms.encoder) {
-		arcan_warning("egl-dri() - could not find a working encoder.\n");
-		return -1;
-	}
-
-	drm.old_crtc[0] = drmModeGetCrtc(drm.fd, kms.encoder->crtc_id);
-	drm.crtc_id[0] = kms.encoder->crtc_id;
-	drm.connector_id[0] = kms.connector->connector_id;
-
-	return 0;
-}
-
-static int setup_gbm(void)
-{
 	SET_SEGV_MSG("libgbm(), create device failed catastrophically.\n");
-	gbm.dev = gbm_create_device(drm.fd);
+	node->gbm = gbm_create_device(node->fd);
 
-	SET_SEGV_MSG("libgbm(), creating scanout buffer failed catastrophically.\n");
-	gbm.surface = gbm_surface_create(gbm.dev,
-		drm.mode->hdisplay, drm.mode->vdisplay,
-		GBM_FORMAT_XRGB8888,
-		GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING
-	);
-
-	if (!gbm.surface) {
-		arcan_warning("egl-dri(), failed to create gbm surface\n");
+	if (!node->gbm){
+		arcan_warning("egl-dri(), couldn't create gbm device on node.\n");
+		close(node->fd);
+		node->fd = 0;
 		return -1;
 	}
 
-	return 0;
-}
-
-bool PLATFORM_SYMBOL(_video_map_handle)(
-	struct storage_info_t* dst, int64_t handle)
-{
-	EGLint attrs[] = {
-		EGL_DMA_BUF_PLANE0_FD_EXT,
-		handle,
-		EGL_DMA_BUF_PLANE0_PITCH_EXT,
-		dst->vinf.text.stride,
-		EGL_DMA_BUF_PLANE0_OFFSET_EXT,
-		0,
-		EGL_WIDTH,
-		dst->w,
-		EGL_HEIGHT,
-		dst->h,
-		EGL_LINUX_DRM_FOURCC_EXT,
-		dst->vinf.text.format,
-		EGL_NONE
-	};
-
-	if (!eglCreateImageKHR || !glEGLImageTargetTexture2DOES)
-		return false;
-
-/*
- * Security notice: stride and format comes from an untrusted
- * data source, it has not been verified if MESA- implementation
- * of eglCreateImageKHR etc. treats this as trusted in respect
- * to the buffer or not, otherwise this is a possibly source
- * for crashes etc.
- */
-
-	EGLImageKHR img = eglCreateImageKHR(egl.display, EGL_NO_CONTEXT,
-		EGL_LINUX_DMA_BUF_EXT, (EGLClientBuffer)NULL, attrs);
-
-	if (img == EGL_NO_IMAGE_KHR){
-		arcan_warning("could not import EGL buffer\n");
-		return false;
-	}
-
-/* other option ?
- * EGLImage -> gbm_bo -> glTexture2D with EGL_NATIVE_PIXMAP_KHR */
-	agp_activate_vstore(dst);
-	glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, img);
-	agp_deactivate_vstore(dst);
-
-	return true;
-}
-
-static int setup_gl(void)
-{
 	static const EGLint context_attribs[] = {
 		EGL_CONTEXT_CLIENT_VERSION, 2,
 		EGL_NONE
@@ -777,22 +735,34 @@ static int setup_gl(void)
 		return -1;
 
 	SET_SEGV_MSG("EGL-dri(), getting the display failed\n");
-	egl.display = eglGetDisplay((void*)gbm.dev);
-	if (!eglInitialize(egl.display, NULL, NULL)){
+/*
+ * first part of GL setup, we create the display,
+ * config and device as they seem to be on a per-GPU basis
+ */
+
+	node->display = eglGetDisplay((void*)(node->gbm));
+	if (!eglInitialize(node->display, NULL, NULL)){
 		arcan_warning("egl-dri() -- failed to initialize EGL.\n");
-		return -1;
+		goto reset_node;
 	}
 
+/*
+ * make sure the API we've selected match the AGP platform
+ */
 	if (!eglBindAPI(apiv)){
 		arcan_warning("egl-dri() -- couldn't bind GL API.\n");
-		return -1;
+		goto reset_node;
 	}
 
+/*
+ * grab and activate config
+ */
 	EGLint nc;
-	eglGetConfigs(egl.display, NULL, 0, &nc);
+	eglGetConfigs(node->display, NULL, 0, &nc);
 	if (nc < 1){
 		arcan_warning(
 			"egl-dri() -- no configurations found (%s).\n", egl_errstr());
+		goto reset_node;
 	}
 
 	EGLConfig* configs = malloc(sizeof(EGLConfig) * nc);
@@ -802,150 +772,292 @@ static int setup_gl(void)
 	arcan_warning(
 		"egl-dri() -- %d configurations found.\n", (int) nc);
 
-	if (!eglChooseConfig(egl.display, attribs, &egl.config, 1, &selv)){
+	if (!eglChooseConfig(node->display, attribs, &node->config, 1, &selv)){
 		arcan_warning(
 			"egl-dri() -- couldn't chose a configuration (%s).\n", egl_errstr());
+		free(configs);
+		goto reset_node;
 		return -1;
 	}
 
-	egl.context = eglCreateContext(egl.display, egl.config,
+/*
+ * finally create a context to match, the last part of egl
+ * setup, comes when more of the stack is up and running
+ */
+	node->context = eglCreateContext(node->display, node->config,
 			EGL_NO_CONTEXT, context_attribs);
-	if (egl.context == NULL) {
+	if (node->context == NULL) {
 		arcan_warning("egl-dri() -- couldn't create a context.\n");
+		goto reset_node;
+	}
+
+	return 0;
+
+reset_node:
+	close(node->fd);
+	node->fd = 0;
+	gbm_device_destroy(node->gbm);
+	node->gbm = NULL;
+
+	return -1;
+}
+
+static int setup_kms(struct dispout* d, size_t w, size_t h)
+{
+	drmModeRes* res;
+
+/*
+ * grab the first available connector, this can be
+ * changed / altered dynamically by the calling script later
+ */
+	SET_SEGV_MSG("egl-dri(), enumerating connectors on device failed.\n");
+
+retry:
+ 	res = drmModeGetResources(d->device->fd);
+	if (!res){
+		arcan_warning("egl-dri(), drmModeGetResources failed on %d\n",
+			(int)d->device->fd);
+
 		return -1;
 	}
 
-	egl.surface = eglCreateWindowSurface(egl.display,
-		egl.config, (uintptr_t)gbm.surface, NULL);
+	for (int i = 0; i < res->count_connectors; i++){
+		d->display.con = drmModeGetConnector(d->device->fd, res->connectors[i]);
 
-	if (egl.surface == EGL_NO_SURFACE) {
-		arcan_warning("egl-dri() -- couldn't create a window surface.\n");
+		if (d->display.con->connection == DRM_MODE_CONNECTED)
+			break;
+
+		drmModeFreeConnector(d->display.con);
+		d->display.con = NULL;
+	}
+
+/*
+ * No connect in place, set a retry- timer or give up
+ */
+	if (!d->display.con){
+		drmModeFreeResources(res);
+
+		if (getenv("ARCAN_VIDEO_WAIT_CONNECTOR")){
+			arcan_warning("egl-dri(), no connected display found"
+				" retrying in 5s.\n");
+			sleep(5);
+			goto retry;
+		}
+
+		arcan_warning("egl-dri(), no connected displays.\n");
+		return -1;
+	}
+	d->display.con_id = d->display.con->connector_id;
+	SET_SEGV_MSG("egl-dri(), enumerating connector/modes failed.\n");
+
+/*
+ * If dimensions are specified, find the closest match
+ */
+	if (w != 0 && h != 0)
+	for (ssize_t i = 0, area = w*h; i < d->display.con->count_modes; i++){
+		drmModeModeInfo* cm = &d->display.con->modes[i];
+		ssize_t dist = (cm->hdisplay - w) * (cm->vdisplay - h);
+		if (dist > 0 && dist < area){
+			d->display.mode = cm;
+			d->dispw = cm->hdisplay;
+			d->disph = cm->vdisplay;
+			area = dist;
+		}
+	}
+/*
+ * If no dimensions are specified, grab largest one
+ */
+	else
+	for (size_t i = 0, area = 0; i < d->display.con->count_modes; i++){
+		drmModeModeInfo* cm = &d->display.con->modes[i];
+		int current_area = cm->hdisplay * cm->vdisplay;
+		if (current_area > area){
+			d->display.mode = cm;
+			d->dispw = cm->hdisplay;
+			d->disph = cm->vdisplay;
+			area = current_area;
+		}
+	}
+
+	if (!d->display.mode) {
+		arcan_warning("egl-dri(), could not find a suitable display mode.\n");
+		drmModeFreeConnector(d->display.con);
+		d->display.con = NULL;
+		drmModeFreeResources(res);
 		return -1;
 	}
 
-	eglMakeCurrent(egl.display, egl.surface, egl.surface, egl.context);
+/*
+ * Find first encoder matching connector
+ */
+	SET_SEGV_MSG("libdrm(), setting matching encoder failed.\n");
+	for (int i = 0; i < res->count_encoders; i++){
+		d->display.enc = drmModeGetEncoder(d->device->fd, res->encoders[i]);
 
-	egl.mdispw = drm.mode->hdisplay;
-	egl.mdisph = drm.mode->vdisplay;
-	egl.canvasw = egl.mdispw;
-	egl.canvash = egl.mdisph;
+		if (!d->display.enc)
+			continue;
 
-/* for direct buffer passing */
-	map_extensions();
+		if (d->display.enc->encoder_id == d->display.con->encoder_id)
+			break;
+
+		drmModeFreeEncoder(d->display.enc);
+		d->display.enc = NULL;
+	}
+
+	if (!d->display.enc){
+		arcan_warning("egl-dri() - could not find a working encoder.\n");
+		drmModeFreeConnector(d->display.con);
+		d->display.con = NULL;
+		drmModeFreeResources(res);
+		return -1;
+	}
+
+	d->display.old_crtc = drmModeGetCrtc(
+		d->device->fd, d->display.enc->crtc_id);
 
 	return 0;
 }
 
-static void fb_cleanup(struct gbm_bo *bo, void *data)
+bool platform_video_map_handle(
+	struct storage_info_t* dst, int64_t handle)
 {
-	struct drm_fb *fb = data;
-	if (fb->fb_id)
-		drmModeRmFB(drm.fd, fb->fb_id);
-	free(fb);
+	EGLint attrs[] = {
+		EGL_DMA_BUF_PLANE0_FD_EXT,
+		handle,
+		EGL_DMA_BUF_PLANE0_PITCH_EXT,
+		dst->vinf.text.stride,
+		EGL_DMA_BUF_PLANE0_OFFSET_EXT,
+		0,
+		EGL_WIDTH,
+		dst->w,
+		EGL_HEIGHT,
+		dst->h,
+		EGL_LINUX_DRM_FOURCC_EXT,
+		dst->vinf.text.format,
+		EGL_NONE
+	};
 
-	struct gbm_device* gbmd = gbm_bo_get_device(bo);
-	eglDestroyContext(egl.display, egl.context);
-	eglDestroySurface(egl.display, egl.surface);
-	eglTerminate(egl.display);
+	if (!eglCreateImageKHR || !glEGLImageTargetTexture2DOES)
+		return false;
 
-	if (gbm.surface)
-		gbm_surface_destroy(gbm.surface);
+/*
+ * Security notice: stride and format comes from an untrusted
+ * data source, it has not been verified if MESA- implementation
+ * of eglCreateImageKHR etc. treats this as trusted in respect
+ * to the buffer or not, otherwise this is a possibly source
+ * for crashes etc. and I see no good way for verifying the
+ * buffer. The whole procedure is rather baffling, why can't
+ * I as DRM master use the preexisting notification interfaces to be
+ * signalled of buffers and metadata, and enumerate which ones
+ * have been allocated and by whom, but instead rely on yet another
+ * layer of IPC primitives.
+ */
 
-	if (gbmd)
-		gbm_device_destroy(gbmd);
+/*
+ * in addition, we actually need to know which render-node this
+ * little bugger comes from, this approach is flawed for multi-gpu
+ */
+	EGLImageKHR img = eglCreateImageKHR(
+		get_display(0)->device->display, EGL_NO_CONTEXT,
+		EGL_LINUX_DMA_BUF_EXT, (EGLClientBuffer)NULL, attrs);
 
-	if (kms.encoder)
-		drmModeFreeEncoder(kms.encoder);
-
-	if (kms.connector)
-		drmModeFreeConnector(kms.connector);
-
-	for (size_t i = 0; i < CONNECTOR_LIMIT; i++)
-		if (!drm.old_crtc[i])
-			continue;
-		else{
-			drmModeSetCrtc(drm.fd, drm.old_crtc[i]->crtc_id,
-				drm.old_crtc[i]->buffer_id, drm.old_crtc[i]->x,
-				drm.old_crtc[i]->y, &drm.connector_id[i], 1,
-				&drm.old_crtc[i]->mode);
-			drmModeFreeCrtc(drm.old_crtc[i]);
-		}
-
-	close(drm.fd);
-	memset(&drm, '\0', sizeof(drm));
-/* do we need to do drmModeFreeResources? */
-}
-
-static struct drm_fb* next_framebuffer(struct gbm_bo* bo)
-{
-	struct drm_fb* fb = gbm_bo_get_user_data(bo);
-	uint32_t width, height, stride, handle;
-	int ret;
-
-	if (fb)
-		return fb;
-
-	fb = calloc(1, sizeof *fb);
-	fb->bo = bo;
-
-	handle = gbm_bo_get_handle(bo).u32;
-	width = gbm_bo_get_width(bo);
-	height = gbm_bo_get_height(bo);
-	stride = gbm_bo_get_stride(bo);
-
-	ret = drmModeAddFB(drm.fd, width, height, 24, 32, stride, handle, &fb->fb_id);
-	if (ret) {
-		arcan_warning("egl-dri() : couldn't add framebuffer\n", strerror(errno));
-		free(fb);
-		return NULL;
+	if (img == EGL_NO_IMAGE_KHR){
+		arcan_warning("could not import EGL buffer\n");
+		return false;
 	}
 
-	gbm_bo_set_user_data(bo, fb, fb_cleanup);
+/* other option ?
+ * EGLImage -> gbm_bo -> glTexture2D with EGL_NATIVE_PIXMAP_KHR */
+	agp_activate_vstore(dst);
+	glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, img);
+	agp_deactivate_vstore(dst);
 
-	return fb;
+	return true;
 }
 
-static void page_flip_handler(int fd, unsigned int frame,
-		  unsigned int sec, unsigned int usec, void *data)
+static int setup_buffers(struct dispout* d)
 {
-	int *waiting_for_flip = data;
-	*waiting_for_flip = 0;
+	SET_SEGV_MSG("libgbm(), creating scanout buffer"
+		" failed catastrophically.\n")
+	d->buffer.surface = gbm_surface_create(d->device->gbm,
+		d->display.mode->hdisplay, d->display.mode->vdisplay,
+		GBM_FORMAT_XRGB8888,
+		GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING
+	);
+
+	d->buffer.esurf = eglCreateWindowSurface(d->device->display,
+		d->device->config, (uintptr_t)d->buffer.surface, NULL);
+
+	if (d->buffer.esurf == EGL_NO_SURFACE) {
+		arcan_warning("egl-dri() -- couldn't create a window surface.\n");
+		return -1;
+	}
+
+	eglMakeCurrent(d->device->display, d->buffer.esurf,
+		d->buffer.esurf, d->device->context);
+
+	return 0;
 }
 
-struct monitor_mode PLATFORM_SYMBOL(_video_dimensions)()
+static void disable_display(struct dispout* d)
+{
+/*
+ * we can only really allocate this on shutdown,
+ * or have a different approach to allocating on multiple displays
+ */
+	d->device->refc -= 1;
+
+	if (d->buffer.in_flip){
+		arcan_warning("Attempting to destroy display during flip\n");
+		return;
+	}
+
+	eglDestroySurface(d->device->display, d->buffer.esurf);
+
+	if (d->buffer.fbid)
+		drmModeRmFB(d->device->fd, d->buffer.fbid);
+
+	gbm_surface_destroy(d->buffer.surface);
+	drmModeFreeEncoder(d->display.enc);
+	drmModeFreeConnector(d->display.con);
+
+	if (0 > drmModeSetCrtc(d->device->fd,
+		d->display.old_crtc->crtc_id,
+		d->display.old_crtc->buffer_id,
+		d->display.old_crtc->x,
+		d->display.old_crtc->y,
+		&d->display.con_id, 1,
+		&d->display.old_crtc->mode
+	)){
+		arcan_warning("Error setting old CRTC on %d\n",
+		d->display.con_id);
+	}
+
+	drmModeFreeCrtc(d->display.old_crtc);
+
+/*
+ * drop vstore mapping as well?
+ */
+	d->alive = false;
+}
+
+struct monitor_mode platform_video_dimensions()
 {
 	struct monitor_mode res = {
-		.width = egl.canvasw,
-		.height = egl.canvash,
-		.phy_width = egl.mdispw,
-		.phy_height = egl.mdisph
+		.width = egl_dri.canvasw,
+		.height = egl_dri.canvash,
+		.phy_width = get_display(0)->display.mode->hdisplay,
+		.phy_height = get_display(0)->display.mode->vdisplay
 	};
 	return res;
 }
 
-void* PLATFORM_SYMBOL(_video_gfxsym)(const char* sym)
+void* platform_video_gfxsym(const char* sym)
 {
 	return eglGetProcAddress(sym);
 }
 
-/*
- * world- agp storage contains the data we need,
- * time to map / redraw / synch
- */
-static void update_scanouts(size_t n_changed)
-{
-	agp_activate_rendertarget(NULL);
-
-/*
- * DRI oddity, if nothing has actually changed (n_changed == 0)
- * and a drawRt call is not invoked, I'll get a crash in eglSwapBuffers(?!)
- */
-	arcan_vint_drawrt(arcan_vint_world(), 0, 0, egl.mdispw, egl.mdisph);
-
-	arcan_vint_drawcursor(false);
-}
-
-bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
+bool platform_video_init(uint16_t w, uint16_t h,
 	uint8_t bpp, bool fs, bool frames, const char* title)
 {
 	bool rv = false;
@@ -962,84 +1074,139 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
  */
 	sigaction(SIGSEGV, &err_sh, &old_sh);
 
-	if (setup_drm() == 0 && setup_gbm() == 0 && setup_gl() == 0){
-		agp_init();
-		rv = true;
+	const char* device = getenv("ARCAN_VIDEO_DEVICE") ?
+		getenv("ARCAN_VIDEO_DEVICE") : device_name;
+
+	if (setup_node(&nodes[0], device) != 0)
+		goto cleanup;
+
+	drmSetMaster(nodes[0].fd);
+
+	map_extensions();
+
+/*
+ * if w, h are set it acts as a hint to the resolution that
+ * we will request. Default drawing hint is stretch to display
+ * anyhow.
+ */
+	struct dispout* d = allocate_display(&nodes[0]);
+
+	if (setup_kms(d, w, h) != 0){
+		disable_display(d);
+		goto cleanup;
 	}
 
+	if (setup_buffers(d) != 0){
+		disable_display(d);
+		goto cleanup;
+	}
+
+	if (w == 0 || h == 0){
+		egl_dri.canvasw = d->display.mode->hdisplay;
+		egl_dri.canvash = d->display.mode->vdisplay;
+	}
+	else {
+		egl_dri.canvasw = w;
+		egl_dri.canvash = h;
+	}
+
+	dump_connectors(stdout, &nodes[0]);
+	rv = true;
+
+cleanup:
 	sigaction(SIGSEGV, &old_sh, NULL);
 
 	return rv;
 }
 
-void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
+static void page_flip_handler(int fd, unsigned int frame,
+	unsigned int sec, unsigned int usec, void* data)
+{
+	int* flipfl = data;
+	*flipfl = 0;
+}
+
+void platform_video_synch(uint64_t tick_count, float fract,
 	video_synchevent pre, video_synchevent post)
 {
 	if (pre)
 		pre();
+
+	size_t nd;
+	arcan_bench_register_cost( arcan_vint_refresh(fract, &nd) );
+
+/* blit targets to individual outputs and schedule flips */
+	struct dispout* d;
+	int i = 0;
+	while ( (d = get_display(i++)) ){
+		update_display(d);
+	}
+
+/* syncronization strategy dependant, for the first round
+ * we just wait until all are flipped */
 
 	drmEventContext evctx = {
 			.version = DRM_EVENT_CONTEXT_VERSION,
 			.page_flip_handler = page_flip_handler,
 	};
 
-	struct drm_fb* fb;
-
-/* first frame setup */
-	if (!gbm.bo){
-		agp_rendertarget_clear();
-		eglSwapBuffers(egl.display, egl.surface);
-
-		gbm.bo = gbm_surface_lock_front_buffer(gbm.surface);
-		fb = next_framebuffer(gbm.bo);
-
-		drmModeSetCrtc(drm.fd, drm.crtc_id[0], fb->fb_id, 0, 0,
-			&drm.connector_id[0], 1, drm.mode);
-	}
-
-	size_t nd;
-	arcan_bench_register_cost( arcan_vint_refresh(fract, &nd) );
-
-	update_scanouts(nd);
-	eglSwapBuffers(egl.display, egl.surface);
-
-	struct gbm_bo* new_buf = gbm_surface_lock_front_buffer(gbm.surface);
-	fb = next_framebuffer(new_buf);
-
-	int waiting_for_flip = 1;
-	int ret = drmModePageFlip(drm.fd, drm.crtc_id[0], fb->fb_id,
-		DRM_MODE_PAGE_FLIP_EVENT, &waiting_for_flip);
-
-	if (ret)
-		arcan_fatal("couldn't queue page flip (%s).\n", strerror(errno));
-
-	while (waiting_for_flip){
+	int pending;
+	do{
+/* for multiple cards, extend this pollset */
 		struct pollfd fds = {
-			.fd = drm.fd,
+			.fd = nodes[0].fd,
 			.events = POLLIN | POLLERR | POLLHUP
 		};
 
-		if (-1 == poll(&fds, 1, -1) || (fds.revents & (POLLHUP | POLLERR))){
-			arcan_fatal(
-				"platform/egl-dri() - poll on device failed, investigate.\n");
+		if (-1 == poll(&fds, 1, -1) || (fds.revents & (POLLHUP | POLLERR)))
+			arcan_fatal("platform/egl-dri() - poll on device failed.\n");
+
+/*
+ * one would think this would be a decent interface to check for hotplug
+ * events but alas, it seems to be no serious approach to this other than
+ * relying on sysfs? <insert explicit lyrics here>, what's with this
+ * interface and vulgar side-channels?
+ */
+		drmHandleEvent(nodes[0].fd, &evctx);
+
+		pending = 0;
+		int i = 0;
+		while((d = get_display(i++))){
+			if (!d->buffer.in_flip && d->buffer.old_bo){
+				gbm_surface_release_buffer(d->buffer.surface, d->buffer.old_bo);
+				d->buffer.old_bo = NULL;
+			}
+			pending |= d->buffer.in_flip;
 		}
-
-		drmHandleEvent(drm.fd, &evctx);
 	}
-
-	gbm_surface_release_buffer(gbm.surface, gbm.bo);
-	gbm.bo = new_buf;
+	while (pending != 0);
 
 	if (post)
 		post();
 }
 
-void PLATFORM_SYMBOL(_video_shutdown) ()
+void platform_video_shutdown()
 {
-	fb_cleanup(gbm.bo, gbm_bo_get_user_data(gbm.bo));
+	int i = 0;
+	struct dispout* d;
+
+	while((d = get_display(i++)))
+		disable_display(d);
+
+	for (size_t i = 0; i < sizeof(nodes)/sizeof(nodes[0]); i++){
+		if (0 >= nodes[i].fd)
+			continue;
+
+		eglDestroyContext(nodes[i].display, nodes[i].context);
+		gbm_device_destroy(nodes[i].gbm);
+		close(nodes[i].fd);
+		nodes[i].fd = -1;
+	}
+
+	eglTerminate(nodes[i].display);
 }
 
-void PLATFORM_SYMBOL(_video_setsynch)(const char* arg)
+void platform_video_setsynch(const char* arg)
 {
 	int ind = 0;
 
@@ -1055,7 +1222,7 @@ void PLATFORM_SYMBOL(_video_setsynch)(const char* arg)
 	}
 }
 
-const char* PLATFORM_SYMBOL(_video_capstr)()
+const char* platform_video_capstr()
 {
 	static char* buf;
 	static size_t buf_sz;
@@ -1074,31 +1241,133 @@ const char* PLATFORM_SYMBOL(_video_capstr)()
 	const char* version = (const char*) glGetString(GL_VERSION);
 	const char* shading = (const char*)glGetString(GL_SHADING_LANGUAGE_VERSION);
 	const char* exts = (const char*) glGetString(GL_EXTENSIONS);
-	const char* eglexts = (const char*)eglQueryString(egl.display,EGL_EXTENSIONS);
 
+	const char* eglexts = "";
+
+	if (get_display(0)){
+		eglexts = (const char*)eglQueryString(
+		get_display(0)->device->display, EGL_EXTENSIONS);
+
+		dump_connectors(stream, get_display(0)->device);
+	}
 	fprintf(stream, "Video Platform (EGL-DRI)\n"
 			"Vendor: %s\nRenderer: %s\nGL Version: %s\n"
 			"GLSL Version: %s\n\n Extensions Supported: \n%s\n\n"
 			"EGL Extensions supported: \n%s\n\n",
 			vendor, render, version, shading, exts, eglexts);
 
-	dump_connectors(stream, drm.res);
-
 	fclose(stream);
 
 	return buf;
 }
 
-const char** PLATFORM_SYMBOL(_video_synchopts) ()
+const char** platform_video_synchopts()
 {
 	return (const char**) egl_synchopts;
 }
 
-const char** PLATFORM_SYMBOL(_video_envopts)()
+const char** platform_video_envopts()
 {
 	return (const char**) egl_envopts;
 }
 
-void PLATFORM_SYMBOL(_video_prepare_external) () {}
-void PLATFORM_SYMBOL(_video_restore_external) () {}
+void platform_video_prepare_external()
+{
+/* sweep all displays and save a list of their
+ * relevant configuration states (connector ID, etc.)
+ * then drop them --
+ *
+ * if we're in DRM master mode, temporarily release it
+ */
+}
 
+
+static void fb_cleanup(struct gbm_bo* bo, void* data)
+{
+	struct dispout* d = data;
+	disable_display(d);
+}
+
+static void step_fb(struct dispout* d, struct gbm_bo* bo)
+{
+	if (gbm_bo_get_user_data(bo))
+		return;
+
+	uint32_t handle = gbm_bo_get_handle(bo).u32;
+	uint32_t width  = gbm_bo_get_width(bo);
+	uint32_t height = gbm_bo_get_height(bo);
+	uint32_t stride = gbm_bo_get_stride(bo);
+
+	if (drmModeAddFB(d->device->fd, width, height, 24, GL_PIXEL_BPP * 8,
+		stride, handle, &d->buffer.fbid)){
+		arcan_warning("rgl-dri(), couldn't add framebuffer (%s)\n",
+			strerror(errno));
+		return;
+	}
+
+	gbm_bo_set_user_data(bo, d, fb_cleanup);
+}
+
+static void update_display(struct dispout* d)
+{
+		agp_activate_rendertarget(NULL);
+/*
+ * drawing hints, mapping etc. should be taken into account here,
+ * there's quite possible drm flags to set scale here
+ */
+	eglMakeCurrent(d->device->display, d->buffer.esurf,
+		d->buffer.esurf, d->device->context);
+
+	if (!d->buffer.bo){
+		eglSwapBuffers(d->device->display, d->buffer.esurf);
+		d->buffer.bo = gbm_surface_lock_front_buffer(d->buffer.surface);
+		step_fb(d, d->buffer.bo);
+
+/* should possibly be less aggressive with failing to set CRTC for
+ * devices that are not the primary one */
+		int rv = drmModeSetCrtc(d->device->fd, d->display.enc->crtc_id,
+			d->buffer.fbid, 0, 0, &d->display.con_id, 1, d->display.mode);
+
+		if (rv < 0){
+			arcan_warning("error setting Crtc for %d:%d(con:%d, buf:%d)\n",
+				d->device->fd, d->display.enc->crtc_id, d->display.con_id,
+				d->buffer.fbid
+			);
+		}
+	}
+
+	arcan_vint_drawrt(arcan_vint_world(), 0, 0, d->dispw, d->disph);
+	arcan_vint_drawcursor(false);
+	eglSwapBuffers(d->device->display, d->buffer.esurf);
+
+	d->buffer.bo = gbm_surface_lock_front_buffer(d->buffer.surface);
+	step_fb(d, d->buffer.bo);
+	d->buffer.old_bo = d->buffer.bo;
+
+	d->buffer.in_flip = 1;
+
+	if (drmModePageFlip(d->device->fd, d->display.enc->crtc_id,
+		d->buffer.fbid, DRM_MODE_PAGE_FLIP_EVENT, &d->buffer.in_flip)){
+		arcan_fatal("couldn't queue page flip (%s).\n", strerror(errno));
+	}
+
+/*
+ * we can't make the decision to poll and wait for flip etc. here yet,
+ * as the synchronization might involve multiple displays
+ */
+}
+
+void platform_video_restore_external()
+{
+/* this one is for the sadists --
+ * AGP is responsible for saving
+ * all the GL related buffers (which might be difficult
+ * with EGLStreams or MESA handles), reading back
+ * into RAM buffers etc.
+ *
+ * the real issue is handling all the possible
+ * things that can have changed between prepare and
+ * restore - cards disappearing (!), connectors being
+ * switched around etc. and storming these events upwards
+ */
+}
