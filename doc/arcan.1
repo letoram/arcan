@@ -18,10 +18,32 @@ surveillance, up to and including desktop compositors and window managers.
 .IP "\fB-h, --help\fR"
 Show a brief summary of commands and usage.
 
+.IP "\fB-w, --width\fR \fIpixels\fR"
+Set the desired active canvas width. Setting this value to zero will let
+the display driver chose based on connected displays. This can be overridden 
+by the running appl.
+
+.IP "\fB-h, --height\fR \fIpixels\fR"
+Set the desired active canvas height. Setting this value to zero will let
+the display driver chose based on connected displays. This can be overridden
+by the running appl.
+
+.IP "\fB-f, --fullscreen\fR"
+Fullscreen switch, the display driver will attempt to force the connected
+display resolution to match the specified canvas dimensions.
+
+.IP "\fB-m, --conservative\fR"
+Toggle conservative memory management profile. The engine will store just
+enough metadata to be able to reconstruct static data sources (e.g. most
+textures, fonts etc.) should the display context need to be rebuilt.
+Note that the behaviors of this option may vary radically depending on
+video platform. Verify and Validate heavily when using conservative mode.
+
 .IP "\fB-W, --sync-strat\fR \fIstrategy\fR"
-Specify the synchronization strategy that the display driver should use.
-These are dependent on the built-time configuration of the engine and are
-listed at the end of running arcan with the --help command-line argument.
+Specify the synchronization strategy that the display driver should use
+initially. These are dependent on the built-time configuration of 
+the engine and are listed at the end of running arcan with 
+the --help command-line argument.
 
 .IP "\fB-M, --monitor\fR \fIrate\fR"
 Enable monitoring mode, every \fIrate\fR ticks, save a snapshot of the 
@@ -37,18 +59,24 @@ are forwarded to the other instance for analysis and visualization.
 After \fIticks\fR logical pulses, generate a snapshot similar to -M, --monitor
 and store in LOGPATH namespace as \fItimedump\fR. This is triggered only once.
 
-.IP "\fB-m, --conservative\fR"
-Toggle conservative memory management profile. The engine will store just
-enough metadata to be able to reconstruct static data sources (e.g. most
-textures, fonts etc.) should the display context need to be rebuilt.
-
 .IP "\fB-p, --rpath \fIpath\fR"
 Change default searchpath for shared resources, see the \fInamespaces\fR
 section below for additional details.
 
+.IP "\fB-B, --binpath \fIpath\fR"
+Specify the full path to the desired frameserver (e.g. /usr/bin/arcan_frameserver).
+
 .IP "\fB-t, --applpath \fIpath\fR"
 Change default searchpath for applications, see the \fInamespaces\fR
 section below for additional details.
+
+.IP "\fB-H, --hook\fR" \fIscript\fR"
+Specify a post-init (after running applname()) hook script that will be
+loaded and executed. The script is expected to be specified relative to
+the RESOURCEPATH namespace (APPL_SHARED) and is primarily intended for
+debugging / testing / measurements. The execution of these scripts is
+rather sensitive and troublesome to debug. Look in resources/scripts/hook
+for examples. 
 
 .IP "\fB-b, --fallback \fIapplname\fR"
 If the running application crashes due to scripting error or from misuse
@@ -59,18 +87,15 @@ transferred to \fIapplname\fR.
 Specify a different database for use when launching external targets and
 as a key/value store for the running application.
 
-.IP "\fB-H, --hook\fR" \fIscript\fR"
-Specify a post-init (after running applname()) hook script that will be
-loaded and executed. The script is expected to be specified relative to
-the RESOURCEPATH namespace (APPL_SHARED) and is primarily intended for
-debugging / testing / measurements. The execution of these scripts is
-rather sensitive and troublesome to debug. Look in resources/scripts/hook
-for examples. 
-
 .IP "\fB-g, --debug\fR"
 Increases debuglevel, more troubleshooting data will be sent to the standard
 error and standard output nodes. The active debuglevel is also exposed to
 scripts. This can be added multiple times for additional effect.
+
+.IP "\fB-V, --version\fR"
+Print a version string to stdout and then terminate. This version string
+can be used to identify the build, including audio, video, input
+platforms and source code repository checkout id.
 
 .IP "\fB Unstable Arguments\fR"
 These are slated to be replaced with a more flexible display configuration
@@ -84,21 +109,14 @@ Disable (silence) audio output.
 .IP "\fB-s, --windowed\fR"
 Set borderless, windowed display mode.
 
-.IP "\fB-w, --width\fR \fIpixels\fR"
-Set the desired active canvas width. Setting this value to zero will let
-the display driver chose based on connected displays.
-
-.IP "\fB-h, --height\fR \fIpixels\fR"
-Set the desired active canvas height. Setting this value to zero will let
-the display driver chose based on connected displays.
-
 .IP "\fB-a, --multisamples\fR \fIsamples\fR"
 Enable multisampling (MSAA), default: 4 samples. If MSAA setup fails,
 the engine will silently revert to regular sampling.
 
-.IP "\fB-f, --fullscreen\fR"
-Fullscreen switch, the display driver will attempt to force the connected
-display resolution to match the specified canvas dimensions.
+There is also a range of possible environment variables for tuning options
+related to the various input platforms. These are printed when you start
+arcan with the --help argument and vary depending on how the engine was
+compiled.
 
 .SH NAMESPACES
 There is a large assortment of namespaces that the engine will search for
@@ -108,7 +126,7 @@ operating-system specific scans, if applname was specified as a
 relative/absolute path and on a series of environment variables. 
 
 For a more detailed explanation on how this works from an appl perspective,
-please refer to the developer documentation.
+please refer to the developer documentation on the wiki.
 
 This setup is rather complex in order to account for a large range of 
 platforms and use-cases, with the most simple configuration being an 
@@ -223,7 +241,7 @@ a (BSD licensed) shared memory interface which provides IPC primitives e.g.
 event queues and dynamically resizeable buffers for audio and video transfers.
 
 There are two ways frameservers can be activated, authoritative and
-non-authoritative (or external).
+non-authoritative (also referred to as \fIexternal\fR).
 
 Authoritative frameservers are spawned by the main arcan process and has
 access handles etc. already mapped into the process at launch. These are
@@ -274,7 +292,7 @@ https://arcan-fe.com
 .SH SEE-ALSO
 .IX Header "SEE ALSO"
 \&\fIarcan_api_overview\fR\|(1) \&\fIarcan_lwa\fR\|(1) \&\fIarcan_frameserver\fR\|(1)
-\&\fIarcan_frameserver_libretro\fR\|(1) \&\fIarcan_frameserver_decode\fR\|(1)
+\&\fIarcan_db\fR\|(1) \&\fIarcan_frameserver_libretro\fR\|(1) \&\fIarcan_frameserver_decode\fR\|(1)
 \&\fIarcan_frameserver_encode\fR\|(1) \&\fIarcan_frameserver_remoting\fR\|(1)
 \&\fIarcan_frameserver_net\fR\|(1) \&\fIarcan_frameserver_terminal\fR\|(1)
 
