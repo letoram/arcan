@@ -188,7 +188,7 @@ bool PLATFORM_SYMBOL(_video_set_mode)(
 }
 
 bool PLATFORM_SYMBOL(_video_specify_mode)(platform_display_id id,
-	platform_mode_id mode_id, struct monitor_mode mode)
+	struct monitor_mode mode)
 {
 	return false;
 }
@@ -245,11 +245,8 @@ const char* PLATFORM_SYMBOL(_video_capstr)()
 	return buf;
 }
 
-platform_display_id* PLATFORM_SYMBOL(_video_query_displays)(size_t* count)
+void PLATFORM_SYMBOL(_video_query_displays)()
 {
-	static platform_display_id id = 0;
-	*count = 1;
-	return &id;
 }
 
 const char** PLATFORM_SYMBOL(_video_synchopts)(void)

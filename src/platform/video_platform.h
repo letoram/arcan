@@ -285,22 +285,31 @@ struct monitor_mode {
 struct monitor_mode platform_video_dimensions();
 
 /*
- * Get list of available display IDs, these can then be queried for
- * currently available modes (which is subject to change based on
- * what connectors a user inserts / removes.
+ * Queue a rescan of output displays, this can be
+ * asynchronous and any results are pushed as events.
  */
-platform_display_id* platform_video_query_displays(size_t* count);
-struct monitor_mode* platform_video_query_modes(platform_display_id,
-	size_t* count);
-
-bool platform_video_set_mode(platform_display_id, platform_mode_id mode_id);
+void platform_video_query_displays();
 
 /*
- * Update and activate the specific (dynamic) mode with new mode options,
- * fails if the display does not support dynamic mapping.
+ * query list of available modes for a single display
  */
-bool platform_video_specify_mode(platform_display_id,
-	platform_mode_id mode_id, struct monitor_mode mode);
+struct monitor_mode* platform_video_query_modes(
+	platform_display_id, size_t* count);
+
+/*
+ * switch mode on the display to a previously queried
+ * one from platform_video_queery_modes
+ */
+bool platform_video_set_mode(
+	platform_display_id, platform_mode_id mode_id);
+
+/*
+ * Update and activate the specific (dynamic) mode with desired mode
+ * dimensions and possibly refresh, this fails if the display do not
+ * support dynamic mapping.
+ */
+bool platform_video_specify_mode(
+	platform_display_id, struct monitor_mode mode);
 
 /*
  * map a video object to the output display,

@@ -196,9 +196,13 @@ static struct monitor_mode* get_platform_mode(platform_mode_id mode)
 }
 
 bool platform_video_specify_mode(platform_display_id id,
-	platform_mode_id mode_id, struct monitor_mode mode)
+	struct monitor_mode mode)
 {
-	return lwa_video_specify_mode(id, mode_id, mode);
+	if (!(id < MAX_DISPLAYS && disp[id].conn.addr))
+		return false;
+
+	return arcan_shmif_resize(&disp[id].conn,
+		mode.width, mode.height);
 }
 
 struct monitor_mode platform_video_dimensions()
@@ -222,7 +226,7 @@ bool platform_video_set_mode(platform_display_id id, platform_mode_id newmode)
 	if (!(id < MAX_DISPLAYS && disp[id].conn.addr))
 		return false;
 
-	return arcan_shmif_resize(&disp[0].conn, mode->width, mode->height);
+	return arcan_shmif_resize(&disp[id].conn, mode->width, mode->height);
 
 	return false;
 }
@@ -298,11 +302,8 @@ struct monitor_mode* platform_video_query_modes(
 	return mmodes;
 }
 
-platform_display_id* platform_video_query_displays(size_t* count)
+void platform_video_query_displays()
 {
-	static platform_display_id id;
-	*count = 1;
-	return &id;
 }
 
 bool platform_video_map_handle(struct storage_info_t* store, int64_t handle)

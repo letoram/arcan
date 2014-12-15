@@ -116,6 +116,10 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 		post();
 }
 
+void PLATFORM_SYMBOL(_video_query_modes)()
+{
+}
+
 bool PLATFORM_SYMBOL(_video_map_handle)(
 	struct storage_info_t* dst, int64_t handle)
 {
@@ -129,7 +133,7 @@ int64_t PLATFORM_SYMBOL(_output_handle)(
 }
 
 bool PLATFORM_SYMBOL(_video_specify_mode)(platform_display_id id,
-	platform_mode_id mode_id, struct monitor_mode mode)
+	struct monitor_mode mode)
 {
 	return false;
 }

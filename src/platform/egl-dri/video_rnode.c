@@ -311,7 +311,7 @@ void PLATFORM_SYMBOL(_video_restore_external)()
 }
 
 bool PLATFORM_SYMBOL(_video_specify_mode)(platform_display_id id,
-	platform_mode_id mode_id, struct monitor_mode mode)
+	struct monitor_mode mode)
 {
 	return false;
 }

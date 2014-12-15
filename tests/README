@@ -3,12 +3,13 @@ used to assist in development or test some specific
 engine features and are not to be considered proper
 "examples of use" (see the examples/ folder for that).
 
+While most test can be invoked manually, the atest.rb script
+is intended to be used for batching / report generation and 
+similar testing pursuits. Refer to the testing- and documentation
+side on the wiki for more detail.
+
 It is currently being refactored into the following
 substructure:
-
-api_coverage/ (WIP) scripts that use the C pre-processor
-to extract examples and error cases from the documentation in
-doc/*.lua
 
 benchmark/ specialized non-interactive cases that
 attempt to quantify performance boundaries for various platforms.
@@ -17,8 +18,6 @@ a stepping function and an evaluation function. For each step,
 a certain number of frames are processed. If timing values are
 above a set lower threshold, the stepping function is increased
 and the timing data is logged.
-
-build/ (WIP) OS- specific "checkout, iterate platforms and build"
 
 frameservers/ supporting frameservers that need to be built
 in order to act as data-sources for some benchmarks and tests
