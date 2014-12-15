@@ -81,7 +81,6 @@ function mdispcl_display_state(state, arg)
 end
 
 function mdispcl_input(iotbl)
-	print(symtable[iotbl.keysym]);
 	if (iotbl.translated and iotbl.active and
 		dispatch[symtable[iotbl.keysym]]) then
 		dispatch[symtable[iotbl.keysym]]();

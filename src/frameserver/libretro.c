@@ -1527,7 +1527,9 @@ static void dump_help()
 		" core    \t filename  \t relative path to libretro core (req)\n"
 		" info    \t           \t load core, print information and quit\n"
 		" syspath \t path      \t set core system path\n"
-		" resource\t filename  \t resource file to load with core\n");
+		" resource\t filename  \t resource file to load with core\n"
+		"---------\t-----------\t-----------------\n"
+	);
 }
 
 /* map up a libretro compatible library resident at fullpath:game,
@@ -1536,6 +1538,11 @@ static void dump_help()
 int arcan_frameserver_libretro_run(
 	struct arcan_shmif_cont* cont, struct arg_arr* args)
 {
+	if (!cont || !args){
+		dump_help();
+		return EXIT_FAILURE;
+	}
+
 	retroctx.converter = (pixconv_fun) libretro_rgb1555_rgba;
 	retroctx.inargs = args;
 	retroctx.shmcont = *cont;
