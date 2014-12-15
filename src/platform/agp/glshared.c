@@ -589,7 +589,7 @@ void agp_activate_vstore(struct storage_info_t* s)
 	glBindTexture(GL_TEXTURE_2D, s->vinf.text.glid);
 }
 
-void agp_deactivate_vstore(struct storage_info_t* s)
+void agp_deactivate_vstore()
 {
 	glBindTexture(GL_TEXTURE_2D, 0);
 }

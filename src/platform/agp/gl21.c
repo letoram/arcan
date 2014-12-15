@@ -171,7 +171,7 @@ static void pbo_stream(struct storage_info_t* s, av_pixel* buf)
 			GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, 0);
 
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
-	agp_deactivate_vstore(s);
+	agp_deactivate_vstore();
 }
 
 static inline void setup_unpack_pbo(struct storage_info_t* s, void* buf)
@@ -182,7 +182,7 @@ static inline void setup_unpack_pbo(struct storage_info_t* s, void* buf)
 		glBufferData(GL_PIXEL_UNPACK_BUFFER,
 			s->w * s->h * GL_PIXEL_BPP, buf, GL_STREAM_DRAW);
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
-	agp_deactivate_vstore(s);
+	agp_deactivate_vstore();
 }
 
 struct stream_meta agp_stream_prepare(struct storage_info_t* s,
@@ -218,7 +218,7 @@ struct stream_meta agp_stream_prepare(struct storage_info_t* s,
 		agp_activate_vstore(s);
 		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, s->w, s->h,
 			GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, meta.buf);
-		agp_deactivate_vstore(s);
+		agp_deactivate_vstore();
 	break;
 
 	case STREAM_HANDLE:

@@ -375,9 +375,6 @@ void arcan_vint_drawcursor(bool erase);
 
 void arcan_3d_setdefaults();
 
-/* sweep the glstor and bind the corresponding
- * texture units (unless we hit the limit that is) */
-unsigned arcan_video_pushglids(struct storage_info_t* glstor,unsigned ofs);
 arcan_vobject_litem* arcan_refresh_3d(arcan_vobj_id camtag,
 	arcan_vobject_litem* cell, float frag);
 #endif
