@@ -2011,7 +2011,7 @@ static int alua_doresolve(lua_State* ctx, const char* inp)
 		return -1;
 	}
 
-	int rv = luaL_loadbuffer(ctx, map.ptr, map.sz, "inp");
+	int rv = luaL_loadbuffer(ctx, map.ptr, map.sz, inp);
 	if (0 == rv)
 		rv = lua_pcall(ctx, 0, LUA_MULTRET, 0);
 
@@ -2038,7 +2038,7 @@ char* arcan_luaL_main(lua_State* ctx, const char* inp, bool file)
 	);
 	memcpy(lua_ctx_store.prefix_buf, arcan_appl_id(), lua_ctx_store.prefix_ofs);
 
-	if ( 1 == (file ? alua_doresolve(ctx, inp) : luaL_dofile(ctx, inp)) ){
+	if ( (file ? alua_doresolve(ctx, inp) != 0 : luaL_dofile(ctx, inp)) == 1){
 		const char* msg = lua_tostring(ctx, -1);
 		if (msg)
 			return strdup(msg);
