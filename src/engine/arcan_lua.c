@@ -2722,6 +2722,8 @@ static void push_displaymodes(lua_State* ctx, platform_display_id id)
 	int dtop = lua_gettop(ctx);
 	size_t mcount;
 	struct monitor_mode* modes = platform_video_query_modes(id, &mcount);
+	if (!modes)
+		return;
 
 	for (size_t j = 0; j < mcount; j++){
 		lua_pushnumber(ctx, j + 1); /* index in previously existing table */
@@ -2747,6 +2749,7 @@ static void push_displaymodes(lua_State* ctx, platform_display_id id)
 
 		lua_pushstring(ctx, "subpixel_layout");
 		lua_pushstring(ctx, modes[j].subpixel ? modes[j].subpixel : "unknown");
+		lua_rawset(ctx, jtop);
 
 		lua_pushstring(ctx, "dynamic");
 		lua_pushboolean(ctx, modes[j].dynamic);
@@ -2756,7 +2759,7 @@ static void push_displaymodes(lua_State* ctx, platform_display_id id)
 		lua_pushboolean(ctx, modes[j].primary);
 		lua_rawset(ctx, jtop);
 
-		lua_pushstring(ctx, "moderef");
+		lua_pushstring(ctx, "modeid");
 		lua_pushnumber(ctx, modes[j].id);
 		lua_rawset(ctx, jtop);
 
@@ -3928,27 +3931,44 @@ static int videocanvasrsz(lua_State* ctx)
 static int videodisplay(lua_State* ctx)
 {
 	LUA_TRACE("video_displaymodes");
+	platform_display_id id;
 
-	if (lua_gettop(ctx) > 0){
-		platform_display_id id = luaL_checknumber(ctx, 1);
+	switch(lua_gettop(ctx)){
+	case 0: /* rescan */
+		platform_video_query_displays();
+	break;
+
+	case 1: /* probe modes */
+		id = luaL_checknumber(ctx, 1);
+		lua_newtable(ctx);
+		push_displaymodes(ctx, id);
+		return 1;
+	break;
+
+	case 2: /* specify hardcoded mode */
+		id = luaL_checknumber(ctx, 1);
 		platform_mode_id mode = luaL_checknumber(ctx, 2);
 		lua_pushboolean(ctx, platform_video_set_mode(id, mode));
 		return 1;
+	break;
+
+	case 3: /* specify custom mode */
+		id = luaL_checknumber(ctx, 1);
+		size_t w = luaL_checknumber(ctx, 2);
+		size_t h = luaL_checknumber(ctx, 3);
+		struct monitor_mode mmode = {
+			.width = w,
+			.height = h
+		};
+		lua_pushboolean(ctx, platform_video_specify_mode(id, mmode));
+		return 1;
+
+	default:
+		arcan_fatal("video_displaymodes(), invalid number of aguments (%d)\n",
+			lua_gettop(ctx));
 	}
 
-	size_t count;
-	platform_display_id* disps = platform_video_query_displays(&count);
-
-	for (size_t i = 0; i < count; i++){
-		int top = lua_gettop(ctx);
-
-		lua_pushnumber(ctx, i);
-		lua_newtable(ctx);
-		push_displaymodes(ctx, disps[i]);
-		lua_rawset(ctx, top);
-	}
-
-	return 1;
+	return 0;
 }
 
 static int videomapping(lua_State* ctx)

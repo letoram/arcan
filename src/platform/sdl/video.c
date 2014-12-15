@@ -150,11 +150,14 @@ bool platform_video_map_handle(struct storage_info_t* dst, int64_t handle)
 	return false;
 }
 
-platform_display_id* platform_video_query_displays(size_t* count)
+void platform_video_query_displays()
 {
-	static platform_display_id id = 0;
-	*count = 1;
-	return &id;
+}
+
+bool platform_video_specify_mode(platform_display_id disp,
+	struct monitor_mode mode)
+{
+	return false;
 }
 
 bool platform_video_set_mode(platform_display_id disp, platform_mode_id mode)
