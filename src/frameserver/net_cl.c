@@ -302,9 +302,29 @@ done:
 	return retv;
 }
 
+static void dump_help()
+{
+	fprintf(stdout, "Environment variables: \nARCAN_CONNPATH=path_to_server\n"
+	  "ARCAN_ARG=packed_args (key1=value:key2:key3=value)\n\n"
+		"Accepted packed_args:\n"
+		"   key   \t   value   \t   description\n"
+		"---------\t-----------\t-----------------\n"
+		" host    \t url       \t connect to specified host \n"
+		" ident   \t name      \t set your (human readable) identity \n"
+		" pubkey  \t pubk      \t use the specified base64 25519 public key\n"
+		" privkey \t privk     \t use the specified base64 25519 private key\n"
+    " reqkey  \t pubk      \t only accept a host with a specific public key\n"
+		"---------\t-----------\t-----------------\n");
+}
+
 int arcan_frameserver_net_client_run(
 	struct arcan_shmif_cont* con, struct arg_arr* args)
 {
+	if (!con){
+		dump_help();
+		return EXIT_FAILURE;
+	}
+
 	const char* host = NULL;
 	arg_lookup(args, "host", 0, &host);
 

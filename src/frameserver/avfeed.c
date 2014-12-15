@@ -74,6 +74,13 @@ static void mapseg(int evfd, const char* key)
 	pthread_create(&thr, NULL, segthread, newseg);
 }
 
+static void dump_help()
+{
+	fprintf(stdout, "the avfeed- frameserver is primarily intended"
+		" for testing and prototyping purposes and is not particularly"
+		" useful on its own.\n");
+}
+
 /*
  * Quick skeleton to map up a audio/video/input
  * source to an arcan frameserver along with some helpers.
@@ -83,6 +90,10 @@ int arcan_frameserver_avfeed_run(
 	struct arg_arr* args)
 {
 	struct arcan_shmif_cont shms = *con;
+	if (!con){
+		dump_help();
+		return EXIT_FAILURE;
+	}
 
 	struct arcan_evctx inevq, outevq;
 	struct arcan_event ev;

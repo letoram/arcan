@@ -614,10 +614,30 @@ retry:
 	return;
 }
 
+static void dump_help()
+{
+	fprintf(stdout, "Environment variables: \nARCAN_CONNPATH=path_to_server\n"
+	  "ARCAN_ARG=packed_args (key1=value:key2:key3=value)\n\n"
+		"Accepted packed_args:\n"
+		"   key   \t   value   \t   description\n"
+		"---------\t-----------\t-----------------\n"
+		" host    \t name      \t bind and listen on specific host\n"
+		" port    \t number    \t listen on the specified port\n"
+		" limit   \t n_conn    \t limit number of allowed connections\n"
+		" ident   \t name      \t use this human-readable identity\n"
+		"---------\t-----------\t----------------\n"
+	);
+}
+
 int arcan_frameserver_net_server_run(
 	struct arcan_shmif_cont* con,
 	struct arg_arr* args)
 {
+	if (!con){
+		dump_help();
+		return EXIT_FAILURE;
+	}
+
 	int gwidth = 256;
 	int gheight = 256;
 

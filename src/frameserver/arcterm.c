@@ -335,20 +335,6 @@ static void targetev(arcan_event* tgtev)
 	}
 }
 
-static void dump_help()
-{
-	fprintf(stdout, "ARCAN_ARG (environment variable, "
-		"key=value:key2:key3=value, arguments:\n"
-		"  key      \t  value   \t  description\n"
-		"-----------\t----------\t-------------\n"
-    " rows      \t  n_rows  \t set initial terminal height in rows\n"
-    " cols 	    \t  n_cols  \t set initial terminal width in columns\n"
-    " cell_w    \t  px_w    \t set cell width in pixels\n"
-    " cell_h    \t  px_h    \t set cell height in pixels\n"
-    " font      \t  fname   \t set default terminal font (TTF)\n"
-		" font_hint \t  hintv   \t light, mono or none\n");
-}
-
 /*
  * this is still a bit rough;
  * 1. find a way to select on both client data,
@@ -392,14 +378,33 @@ static void main_loop()
 	}
 }
 
+static void dump_help()
+{
+	fprintf(stdout, "Environment variables: \nARCAN_CONNPATH=path_to_server\n"
+	  "ARCAN_ARG=packed_args (key1=value:key2:key3=value)\n\n"
+		"Accepted packed_args:\n"
+		"    key    \t   value   \t   description\n"
+		"-----------\t-----------\t-----------------\n"
+		" rows      \t n_rows \t specify initial number of terminal rows \n"
+	  " cols      \t n_cols \t specify initial number of terminal columns \n"
+		" cell_w    \t px_w \t specify individual cell width in pixels \n"
+		" cell_h    \t px_h \t specify individual cell height in pixels \n"
+		" font      \t ttf-file \t render using font specified by ttf-file \n"
+		" font_hint \t hintval \t hint to font renderer (light, mono or none) \n"
+		"---------\t-----------\t----------------\n"
+	);
+}
+
 int arcan_frameserver_terminal_run(
 	struct arcan_shmif_cont* con, struct arg_arr* args)
 {
 	const char* val;
 	TTF_Init();
 
-	if (arg_lookup(args, "help", 0, &val))
+	if (!con || !args || arg_lookup(args, "help", 0, &val)){
 		dump_help();
+		return EXIT_FAILURE;
+	}
 
 	if (arg_lookup(args, "rows", 0, &val))
 		term.rows = strtoul(val, NULL, 10);
@@ -465,14 +470,6 @@ int arcan_frameserver_terminal_run(
 		return EXIT_FAILURE;
 	}
 
-	arcan_event outev = {
-		.kind = EVENT_EXTERNAL_REGISTER,
-		.category = EVENT_EXTERNAL,
-		.data.external.registr.title = "ArcTerm",
-		.data.external.registr.kind = SEGID_SHELL
-	};
-
-	arcan_event_enqueue(&term.acon.outev, &outev);
 	main_loop();
 	return EXIT_SUCCESS;
 }

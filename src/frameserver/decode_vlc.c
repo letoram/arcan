@@ -297,6 +297,23 @@ static libvlc_media_t* find_capture_device(
 	return media;
 }
 
+static void dump_help()
+{
+	fprintf(stdout, "Environment variables: \nARCAN_CONNPATH=path_to_server\n"
+	  "ARCAN_ARG=packed_args (key1=value:key2:key3=value)\n\n"
+		"Accepted packed_args:\n"
+		"   key   \t   value   \t   description\n"
+		"---------\t-----------\t-----------------\n"
+		" file    \t path      \t try to open file path for playback \n"
+		" stream  \t url       \t attempt to open URL for streaming input \n"
+		" capture \t devind    \t try to open a capture device\n"
+		" fps     \t rate      \t force a specific framerate\n"
+		" width   \t outw      \t scale output to a specific width\n"
+		" height  \t outh      \t scale output to a specific height\n"
+		"---------\t-----------\t----------------\n"
+	);
+}
+
 static void seek_relative(int seconds)
 {
 	int64_t time_v = libvlc_media_player_get_time(decctx.player);
@@ -370,6 +387,11 @@ int arcan_frameserver_decode_run(
 	struct arg_arr* args)
 {
 	libvlc_media_t* media = NULL;
+
+	if (!cont){
+		dump_help();
+		return EXIT_FAILURE;
+	}
 
 /* connect to display server */
 	if (!args){

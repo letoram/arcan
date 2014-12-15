@@ -674,12 +674,19 @@ static bool setup_ffmpeg_encode(struct arg_arr* args, int desw, int desh)
 	return true;
 }
 
+static void dump_help()
+{
+	fprintf(stdout, "Encode - frameserver is not currently supported "
+		" in non-authorative mode, this frameserver will be spawned on "
+		" demained by the main arcan process.\n");
+}
+
 int arcan_frameserver_encode_run(
 	struct arcan_shmif_cont* cont,
 	struct arg_arr* args)
 {
-	if (!args){
-		LOG("(encode) Couldn't parse argstr (see ARCAN_ARG env)\n");
+	if (!args || !cont){
+		dump_help();
 		return EXIT_FAILURE;
 	}
 

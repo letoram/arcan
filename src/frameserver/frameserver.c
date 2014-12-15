@@ -296,13 +296,12 @@ int launch_mode(const char* modestr,
 {
 	toggle_logdev(modestr);
 	struct arg_arr* arg;
-	struct arcan_shmif_cont con = arcan_shmif_open(id,
-		SHMIF_ACQUIRE_FATALFAIL, &arg);
+	struct arcan_shmif_cont con = arcan_shmif_open(id, 0, &arg);
 
 	if (!arg && altarg)
 		arg = arg_unpack(altarg);
 
-	return fptr(&con, arg);
+	return fptr(con.addr ? &con : NULL, arg);
 }
 
 int main(int argc, char** argv)
@@ -382,7 +381,7 @@ int main(int argc, char** argv)
 #ifdef ENABLE_FSRV_TERMINAL
 	if (strcmp(fsrvmode, "terminal") == 0){
 		return launch_mode("terminal", arcan_frameserver_terminal_run,
-			SEGID_SHELL, argstr);
+			SEGID_TERMINAL, argstr);
 	}
 #endif
 
@@ -443,21 +442,23 @@ int main(int argc, char** argv)
 				fptr = arcan_frameserver_net_server_run;
 				modestr = "server";
 			}
-			else
-				fprintf(stdout, "frameserver_net, invalid mode (%s).\n", rk);
+			else{
+				fprintf(stdout, "frameserver_net, invalid ARCAN_ARG env:\n"
+					"must have mode=modev set to client or server.\n");
+				return EXIT_FAILURE;
+			}
 		}
 			arg_cleanup(tmp); /* will invalidate all aliases from _lookup */
 
 		if (!modestr){
-			fprintf(stdout, "frameserver_net requires a mode=val argument.\n"
-				"\tval : client, server");
+			fprintf(stdout, "frameserver_net, invalid ARCAN_ARG env:\n"
+				"must have mode=modev set to client or server.\n");
 			return EXIT_FAILURE;
 		}
 
 		return launch_mode(modestr, fptr, id, argstr);
 	}
 #endif
-
 
 	printf("frameserver launch failed, unsupported mode (%s)\n", fsrvmode);
 	dumpargs(argc, argv);
