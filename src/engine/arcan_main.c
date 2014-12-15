@@ -635,7 +635,9 @@ applswitch:
 	if (argc > optind)
 		arcan_lua_pushargv(settings.lua, argv + optind + 1);
 
-	arcan_lua_callvoidfun(settings.lua, "", true);
+	if (!arcan_lua_callvoidfun(settings.lua, "", false))
+		arcan_fatal("couldn't load appl, missing %s function\n", arcan_appl_id() ?
+			arcan_appl_id() : "");
 
 	if (hookscript)
 		arcan_luaL_dostring(settings.lua, hookscript);

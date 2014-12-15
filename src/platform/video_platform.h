@@ -395,7 +395,7 @@ void agp_activate_vstore(struct storage_info_t* backing);
  * Explicitly deactivate vstore, after this state of the specified backing
  * store can be consideired undefined.
  */
-void agp_deactivate_vstore(struct storage_info_t* backing);
+void agp_deactivate_vstore();
 
 /*
  * Drop the underlying ID mapping with a pending call to update_vstore,

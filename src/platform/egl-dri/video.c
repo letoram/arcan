@@ -22,7 +22,8 @@
  *    I have no hardware and testing rig for this, but the heavy lifting
  *    should be left up to the egl implementation or so, maybe we need
  *    to track locality in vstore and do a whole prime-buffer etc. transfer
- *    or mirror the vstore on both devices.
+ *    or mirror the vstore on both devices. Hunt for node[0] references
+ *    as those have to be fixed.
  *
  * 3. Support for External Launch / Building, Restoring Contexts
  *    note the test cases mentioned in _prepare
@@ -143,7 +144,6 @@ struct dispout {
 		int in_flip;
 		EGLSurface esurf;
 		struct gbm_bo* bo;
-		struct gbm_bo* old_bo;
 		uint32_t fbid;
 		struct gbm_surface* surface;
 	} buffer;
@@ -159,15 +159,16 @@ struct dispout {
 
 /* v-store mapping, with texture blitting options
  * and possibly mapping hint */
-	struct storage_info_t* vstore;
+	arcan_vobj_id vid;
 	size_t dispw, disph;
-		_Alignas(16) float projection[16];
-		_Alignas(16) float txcos[8];
+	_Alignas(16) float projection[16];
+	_Alignas(16) float txcos[8];
 
 	bool alive, in_cleanup;
 };
 
-struct {
+static struct {
+	struct dispout* last_display;
 	size_t canvasw, canvash;
 } egl_dri;
 
@@ -179,6 +180,7 @@ struct {
 #define MAX_DISPLAYS 8
 #endif
 static struct dispout displays[MAX_DISPLAYS];
+size_t const disp_sz = sizeof(displays) / sizeof(displays[0]);
 static struct dispout* allocate_display(struct dev_node* node)
 {
 	for (size_t i = 0; i < sizeof(displays)/sizeof(displays[0]); i++)
@@ -278,6 +280,7 @@ static int setup_buffers(struct dispout* d)
 {
 	SET_SEGV_MSG("libgbm(), creating scanout buffer"
 		" failed catastrophically.\n")
+
 	d->buffer.surface = gbm_surface_create(d->device->gbm,
 		d->display.mode->hdisplay, d->display.mode->vdisplay,
 		GBM_FORMAT_XRGB8888,
@@ -310,10 +313,6 @@ bool platform_video_set_mode(platform_display_id disp, platform_mode_id mode)
 /*
  * reset scanout buffers to match new crtc mode
  */
-	if (d->buffer.old_bo){
-		gbm_surface_release_buffer(d->buffer.surface, d->buffer.old_bo);
-		d->buffer.old_bo = NULL;
-	}
 	if (d->buffer.bo){
 		gbm_surface_release_buffer(d->buffer.surface, d->buffer.bo);
 		d->buffer.bo = NULL;
@@ -846,13 +845,8 @@ reset_node:
 
 static int setup_kms(struct dispout* d, int conn_id, size_t w, size_t h)
 {
-	drmModeRes* res;
-
-/*
- * grab the first available connector, this can be
- * changed / altered dynamically by the calling script later
- */
 	SET_SEGV_MSG("egl-dri(), enumerating connectors on device failed.\n");
+	drmModeRes* res;
 
 retry:
  	res = drmModeGetResources(d->device->fd);
@@ -865,11 +859,6 @@ retry:
 
 	for (int i = 0; i < res->count_connectors; i++){
 		d->display.con = drmModeGetConnector(d->device->fd, res->connectors[i]);
-
-		if (d->display.con->connection == DRM_MODE_CONNECTED){
-			printf("connected display, id: %d vs %d\n",
-				d->display.con->connector_id, conn_id);
-		}
 
 		if (d->display.con->connection == DRM_MODE_CONNECTED &&
 			(conn_id == -1 || conn_id == d->display.con->connector_id))
@@ -1012,7 +1001,7 @@ bool platform_video_map_handle(
  * of eglCreateImageKHR etc. treats this as trusted in respect
  * to the buffer or not, otherwise this is a possibly source
  * for crashes etc. and I see no good way for verifying the
- * buffer. The whole procedure is rather baffling, why can't
+ * buffer manually. The whole procedure is rather baffling, why can't
  * I as DRM master use the preexisting notification interfaces to be
  * signalled of buffers and metadata, and enumerate which ones
  * have been allocated and by whom, but instead rely on yet another
@@ -1046,7 +1035,6 @@ bool platform_video_map_handle(
 struct monitor_mode* platform_video_query_modes(
 	platform_display_id id, size_t* count)
 {
-	size_t disp_sz = sizeof(displays) / sizeof(displays[0]);
 	bool free_conn = false;
 
 	drmModeConnector* conn;
@@ -1185,6 +1173,10 @@ static void disable_display(struct dispout* d)
  * we can only really allocate this on shutdown,
  * or have a different approach to allocating on multiple displays
  */
+	if (!d->alive){
+		arcan_warning("egl-dri(), attempting to destroy inactive display\n");
+		return;
+	}
 	d->device->refc -= 1;
 
 	if (d->buffer.in_flip){
@@ -1194,13 +1186,19 @@ static void disable_display(struct dispout* d)
 
 	d->in_cleanup = true;
 	eglDestroySurface(d->device->display, d->buffer.esurf);
+	d->buffer.esurf = NULL;
 
 	if (d->buffer.fbid)
 		drmModeRmFB(d->device->fd, d->buffer.fbid);
+	d->buffer.fbid = 0;
 
 	gbm_surface_destroy(d->buffer.surface);
+	d->buffer.surface = NULL;
+
 	drmModeFreeEncoder(d->display.enc);
 	drmModeFreeConnector(d->display.con);
+	d->display.enc = NULL;
+	d->display.con = NULL;
 
 	if (0 > drmModeSetCrtc(d->device->fd,
 		d->display.old_crtc->crtc_id,
@@ -1215,10 +1213,12 @@ static void disable_display(struct dispout* d)
 	}
 
 	drmModeFreeCrtc(d->display.old_crtc);
+	d->display.old_crtc = NULL;
 
 /*
  * drop vstore mapping as well?
  */
+	d->device = NULL;
 	d->alive = false;
 	d->in_cleanup = false;
 }
@@ -1227,10 +1227,23 @@ struct monitor_mode platform_video_dimensions()
 {
 	struct monitor_mode res = {
 		.width = egl_dri.canvasw,
-		.height = egl_dri.canvash,
-		.phy_width = get_display(0)->display.mode->hdisplay,
-		.phy_height = get_display(0)->display.mode->vdisplay
+		.height = egl_dri.canvash
 	};
+
+/*
+ * this is done to work around how gl- agp
+ * handles scissoring as there's no version of platform_video_dimensiosn
+ * that worked for the display out, and we want this module free of
+ * AGP calls so it can work for regular framebuffers and a pixman agp
+ */
+	if (egl_dri.last_display){
+		res.width = egl_dri.last_display->display.mode->hdisplay;
+		res.height = egl_dri.last_display->display.mode->vdisplay;
+	}
+
+	res.phy_width = egl_dri.canvasw;
+	res.phy_height = egl_dri.canvash;
+
 	return res;
 }
 
@@ -1283,15 +1296,13 @@ bool platform_video_init(uint16_t w, uint16_t h,
 		goto cleanup;
 	}
 
-	if (w == 0 || h == 0){
-		egl_dri.canvasw = d->display.mode->hdisplay;
-		egl_dri.canvash = d->display.mode->vdisplay;
-	}
-	else {
-		egl_dri.canvasw = w;
-		egl_dri.canvash = h;
-	}
+/*
+ * requested canvas does not always match display
+ */
+	egl_dri.canvasw = d->display.mode->hdisplay;
+	egl_dri.canvash = d->display.mode->vdisplay;
 
+	d->vid = ARCAN_VIDEO_WORLDID;
 	dump_connectors(stdout, &nodes[0]);
 	rv = true;
 
@@ -1304,8 +1315,10 @@ cleanup:
 static void page_flip_handler(int fd, unsigned int frame,
 	unsigned int sec, unsigned int usec, void* data)
 {
-	int* flipfl = data;
-	*flipfl = 0;
+	struct dispout* d = data;
+	assert(d->buffer.in_flip == 1);
+	d->buffer.in_flip = 0;
+	gbm_surface_release_buffer(d->buffer.surface, d->buffer.bo);
 }
 
 void platform_video_synch(uint64_t tick_count, float fract,
@@ -1316,13 +1329,18 @@ void platform_video_synch(uint64_t tick_count, float fract,
 
 	size_t nd;
 	arcan_bench_register_cost( arcan_vint_refresh(fract, &nd) );
+/* currently we always blit, with a different synchronization,
+ * we can avoid updating when there has been no changes (nd == 0) */
 
 /* blit targets to individual outputs and schedule flips */
 	struct dispout* d;
 	int i = 0;
-	while ( (d = get_display(i++)) ){
+
+	arcan_shader_activate(agp_default_shader(BASIC_2D));
+	agp_blendstate(BLEND_NONE);
+
+	while ( (d = get_display(i++)) )
 		update_display(d);
-	}
 
 /* syncronization strategy dependant, for the first round
  * we just wait until all are flipped */
@@ -1354,10 +1372,6 @@ void platform_video_synch(uint64_t tick_count, float fract,
 		pending = 0;
 		int i = 0;
 		while((d = get_display(i++))){
-			if (!d->buffer.in_flip && d->buffer.old_bo){
-				gbm_surface_release_buffer(d->buffer.surface, d->buffer.old_bo);
-				d->buffer.old_bo = NULL;
-			}
 			pending |= d->buffer.in_flip;
 		}
 	}
@@ -1461,46 +1475,67 @@ void platform_video_prepare_external()
  */
 }
 
+static bool map_connector(int fd, int conid, arcan_vobj_id src)
+{
+	for (size_t i = 0; i < disp_sz; i++)
+		if (displays[i].device &&
+			fd == displays[i].device->fd &&
+			conid == displays[i].display.con->connector_id){
+			arcan_warning("egl-dri(map_connector) - connector already in use\n");
+			return false;
+		}
+
+	struct dispout* out = allocate_display(&nodes[0]);
+
+	if (setup_kms(out, conid, 0, 0) != 0){
+		arcan_warning("egl-dri(map_connector) - couldn't setup connector\n");
+		disable_display(out);
+		return false;
+	}
+
+	if (setup_buffers(out) != 0){
+		arcan_warning("egl-dri(map_connector) - couldn't setup rendering"
+			" buffers for new connector\n");
+		disable_display(out);
+		return false;
+	}
+
+	return true;
+}
+
 bool platform_video_map_display(
 	arcan_vobj_id id, platform_display_id disp, enum blitting_hint hint)
 {
-/* add ffunc to the correct display */
-	arcan_vobject* vobj = arcan_video_getobject(id);
-
 /* if disp > max number of active displays,
  * it is actually a device:connector reference */
 
-	size_t disp_sz = sizeof(displays) / sizeof(displays[0]);
-	if (disp >= disp_sz){
-		struct dispout* out = allocate_display(&nodes[0]);
-
-		if (setup_kms(out, disp - disp_sz, 0, 0) != 0){
-			arcan_warning("couldn't setup connector\n");
-			disable_display(out);
-			return false;
-		}
-
-		if (setup_buffers(out) != 0){
-			arcan_warning("couldn't setup rendering buffers for new connector\n");
-			disable_display(out);
-			return false;
-		}
-
-		return true;
-	}
+	if (disp >= disp_sz)
+		return map_connector(nodes[0].fd, disp-disp_sz, id);
 
 	struct dispout* out = get_display(disp);
 
 	if (!out)
 		return false;
 
-/* unmap display */
-	if (!vobj)
-		disable_display(out);
-	else {
-		arcan_warning("FIXME: map new vstore and texture set\n");
+	arcan_vobject* vobj = arcan_video_getobject(id);
+	if (vobj && vobj->vstore->txmapped != TXSTATE_TEX2D){
+		arcan_warning("platform_video_map_display(), attempted to map a "
+			"video object with an invalid backing store");
+		return false;
 	}
 
+/*
+ * note that we can't use unmap display here, some drivers behave..
+ * aggressively towards creating/releasing a single Crtc repeatedly
+ * with others active.
+ */
+
+/*
+ * BADID displays won't be rendered but remain allocated, question
+ * is should we power-save the display or return the original
+ * Crtc until we need it again? Both have valid points..
+ */
+	out->vid = id;
 	return true;
 }
 
@@ -1516,9 +1551,6 @@ static void fb_cleanup(struct gbm_bo* bo, void* data)
 
 static void step_fb(struct dispout* d, struct gbm_bo* bo)
 {
-	if (gbm_bo_get_user_data(bo))
-		return;
-
 	uint32_t handle = gbm_bo_get_handle(bo).u32;
 	uint32_t width  = gbm_bo_get_width(bo);
 	uint32_t height = gbm_bo_get_height(bo);
@@ -1532,31 +1564,54 @@ static void step_fb(struct dispout* d, struct gbm_bo* bo)
 	}
 
 	gbm_bo_set_user_data(bo, d, fb_cleanup);
+	d->buffer.bo = bo;
 }
 
 static void draw_display(struct dispout* d)
 {
-	_Alignas(16) float imatr[16];
-	identity_matrix(imatr);
+	float* txcos = arcan_video_display.default_txcos;
+	arcan_vobject* vobj = arcan_video_getobject(d->vid);
 
-	arcan_shader_activate(agp_default_shader(BASIC_2D));
-	agp_activate_vstore(arcan_vint_world());
+	if (d->vid == ARCAN_VIDEO_WORLDID){
+		agp_activate_vstore(arcan_vint_world());
+		txcos = arcan_video_display.mirror_txcos;
+	}
+	else if (!vobj) {
+		agp_rendertarget_clear();
+		return;
+	}
+	else {
+		agp_activate_vstore(vobj->vstore);
+		txcos = vobj->txcos ? vobj->txcos : arcan_video_display.default_txcos;
+	}
 
-	agp_blendstate(BLEND_NONE);
-
-	arcan_shader_envv(MODELVIEW_MATR, imatr, sizeof(float)*16);
 	arcan_shader_envv(PROJECTION_MATR, d->projection, sizeof(float)*16);
+	agp_draw_vobj(0, 0, d->display.mode->hdisplay,
+		d->display.mode->vdisplay, txcos, NULL);
 
-	agp_draw_vobj(0, 0, d->dispw,
-		d->disph, arcan_video_display.mirror_txcos, NULL);
+/*
+ * another rough corner case, if we have a store that is not
+ * world ID but shared with different texture coordinates
+ * (to extend display), we need to draw the cursor .. but
+ * if the texture coordinates indicate that we only draw a
+ * subset, we need to check if the cursor is actually inside
+ * that area... Seems more and more that accelerated cursors
+ * add to more state explosion than they are worth ..
+ */
+	if (vobj->vstore == arcan_vint_world()){
+		arcan_vint_drawcursor(false);
+	}
 
-	arcan_vint_drawcursor(false);
-	agp_deactivate_vstore(arcan_vint_world());
+	agp_deactivate_vstore();
 }
 
 static void update_display(struct dispout* d)
 {
+/* render-target may set scissors etc. based on the display
+ * when using the NULL rendertarget */
+	egl_dri.last_display = d;
 	agp_activate_rendertarget(NULL);
+
 /*
  * drawing hints, mapping etc. should be taken into account here,
  * there's quite possible drm flags to set scale here
@@ -1564,15 +1619,20 @@ static void update_display(struct dispout* d)
 	eglMakeCurrent(d->device->display, d->buffer.esurf,
 		d->buffer.esurf, d->device->context);
 
-	if (!d->buffer.bo){
-		eglSwapBuffers(d->device->display, d->buffer.esurf);
-		d->buffer.bo = gbm_surface_lock_front_buffer(d->buffer.surface);
-		step_fb(d, d->buffer.bo);
+	draw_display(d);
+	eglSwapBuffers(d->device->display, d->buffer.esurf);
 
-/* should possibly be less aggressive with failing to set CRTC for
- * devices that are not the primary one */
+	struct gbm_bo* bo = gbm_surface_lock_front_buffer(d->buffer.surface);
+
+/* allocate buffer object now that we have data on
+ * the front buffer properties, we'll flip later */
+	if (!d->buffer.bo){
+		step_fb(d, bo);
 		int rv = drmModeSetCrtc(d->device->fd, d->display.enc->crtc_id,
 			d->buffer.fbid, 0, 0, &d->display.con_id, 1, d->display.mode);
+
+/*		drmModeConnectorSetProperty(d->device->fd, d->display.enc->crtc_id,
+			DRM_MODE_SCALE_FULLSCREEN, 1); */
 
 		build_orthographic_matrix(d->projection, 0,
 			d->display.mode->hdisplay,
@@ -1587,23 +1647,12 @@ static void update_display(struct dispout* d)
 		}
 	}
 
-/*
- * we ignore the regular drawrt here to provide a
- * different projection for each screen
- */
-	draw_display(d);
-	eglSwapBuffers(d->device->display, d->buffer.esurf);
-
-	d->buffer.bo = gbm_surface_lock_front_buffer(d->buffer.surface);
-	step_fb(d, d->buffer.bo);
-	d->buffer.old_bo = d->buffer.bo;
-
-	d->buffer.in_flip = 1;
-
 	if (drmModePageFlip(d->device->fd, d->display.enc->crtc_id,
-		d->buffer.fbid, DRM_MODE_PAGE_FLIP_EVENT, &d->buffer.in_flip)){
+		d->buffer.fbid, DRM_MODE_PAGE_FLIP_EVENT, d)){
 		arcan_fatal("couldn't queue page flip (%s).\n", strerror(errno));
 	}
+
+	d->buffer.in_flip = 1;
 
 /*
  * we can't make the decision to poll and wait for flip etc. here yet,

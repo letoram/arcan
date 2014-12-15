@@ -260,7 +260,7 @@ struct stream_meta agp_stream_prepare(struct storage_info_t* s,
 		agp_activate_vstore(s);
 		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, s->w, s->h,
 			GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, meta.buf);
-		agp_deactivate_vstore(s);
+		agp_deactivate_vstore();
 
 	case STREAM_HANDLE:
 		mout.state = platform_video_map_handle(

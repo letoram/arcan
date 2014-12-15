@@ -179,7 +179,7 @@ void agp_activate_vstore(struct storage_info_t* s)
 {
 }
 
-void agp_deactivate_vstore(struct storage_info_t* s)
+void agp_deactivate_vstore()
 {
 }
 

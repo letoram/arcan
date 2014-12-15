@@ -449,7 +449,7 @@ void arcan_vint_drawrt(struct storage_info_t* vs, int x, int y, int w, int h)
 	agp_draw_vobj(0, 0, x + w, y + h,
 		arcan_video_display.mirror_txcos, NULL);
 
-	agp_deactivate_vstore(vs);
+	agp_deactivate_vstore();
 }
 
 void arcan_vint_drawcursor(bool erase)
@@ -503,8 +503,7 @@ void arcan_vint_drawcursor(bool erase)
 	arcan_shader_envv(OBJ_OPACITY, &opa, sizeof(float));
 	agp_draw_vobj(x1, y1, x2, y2, txcos, NULL);
 
-	agp_deactivate_vstore( erase ? current_context->world.vstore :
-		arcan_video_display.cursor.vstore);
+	agp_deactivate_vstore();
 }
 
 signed arcan_video_pushcontext()
