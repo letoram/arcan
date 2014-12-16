@@ -27,7 +27,7 @@ unless Dir.exist?($ARCANDIR)
 	system("#{$GITAPP} clone \"#{$GITMIRROR}\" \"#{$ARCANDIR}\" > /dev/null")
 else
 	STDOUT.print("Pulling updates to (#{$ARCANDIR})\n")
-	system("#{$GITAPP} pull \"#{ARCANDIR}\" > /dev/null")
+	system("#{$GITAPP} pull \"#{$ARCANDIR}\" > /dev/null")
 end
 
 tests = {
@@ -60,10 +60,19 @@ Dir.mkdir("#{$ARCANDIR}/reports")
 # Nvidia vs. mesaGL environment
 #
 compilers = []
-compilers << find_bin("gcc") if find_bin("gcc")
-compilers << find_bin("clang") if find_bin("clang")
+platforms = []
 
-platforms = ["sdl", "x11", "x11-headless", "egl-gles"]
+if (RUBY_PLATFORM =~ /darwin/)
+	compilers << find_bin("clang")
+	platforms << "sdl"
+else
+# more autodetect heuristic needed here, e.g. version
+# header presence etc. A special path for BCM is also
+# needed
+	compilers << find_bin("gcc") if find_bin("gcc")
+	compilers << find_bin("clang") if find_bin("clang")
+	platforms += ["sdl", "x11", "x11-headless", "egl-gles"]
+end
 
 # for benchmarking, we're only concerned about release builds,
 # should a case cause a crash it should be reduced and replicated
@@ -74,7 +83,7 @@ Dir["#{dp}*"].each{|a|
 	path = a[dp.size..-1]
 	benchmark_cases << path if Dir.exists?(a)
 }
-benchmark_platforms = ["sdl"]
+benchmark_platforms = platforms
 benchmark_configurations = ["Release"]
 benchmark_compilers = compilers
 benchmark_flags = ["-DENABLE_LTO=OFF -DENABLE_SIMD_ALIGNED=ON"]
@@ -137,6 +146,8 @@ class ATest
 # binary and store the debug- information
 #
 	def crash_check(dstbase)
+# this is not sufficient on OSX (using /cores),
+# for linux we have to parse proc..
 		if (File.exists?("core"))
 			File.rename("core", "#{dstbase}_core")
 		end
@@ -187,6 +198,7 @@ class ATest
 
 		Dir.mkdir("#{@repdir}/#{group}")
 		Dir.mkdir("#{@dir}/build")
+		Dir.mkdir("#{@repdir}/build") unless Dir.exists?("#{@repdir}/build")
 
 		if system("#{$CMAKEAPP} -B\"#{@dir}/build\" -H\"#{@dir}/src\" #{constr} "\
 			">#{@repdir}/#{name}.config.out 2> "\
