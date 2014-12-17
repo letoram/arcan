@@ -834,9 +834,9 @@ message("\n---- Stage 3, Linking / Packaging ----")
 # edge-cases? just take them out behind the shed and pull the trigger.
 
 add_executable( arcan_db ${ARCANDB_SOURCES} )
-target_link_libraries( arcan_db ${SQLITE3_LIBRARIES} ${STDLIB})
-target_link_libraries( arcan ${MAIN_LIBRARIES} ${ARCANMAIN_LIBRARIES} ${STDLIB})
-target_link_libraries( arcan_frameserver ${FSRV_LIBRARIES} ${STDLIB})
+target_link_libraries( arcan_db ${STDLIB} ${SQLITE3_LIBRARIES})
+target_link_libraries( arcan ${STDLIB} ${MAIN_LIBRARIES} ${ARCANMAIN_LIBRARIES})
+target_link_libraries( arcan_frameserver ${STDLIB} ${FSRV_LIBRARIES})
 
 #
 # The database tool is a CLI for the engine/arcan_db with additional
@@ -898,7 +898,7 @@ if (ENABLE_LWA)
 	)
 
 	set_property(TARGET arcan_lwa APPEND PROPERTY
-		COMPILE_DEFINITIONS ARCAN_LWA)
+		COMPILE_DEFINITIONS ARCAN_LWA WITH_HEADLESS_MAIN)
 
 	add_dependencies( arcan_lwa openal_soft )
 	target_link_libraries( arcan_lwa ${STDLIB} ${MAIN_LIBRARIES} ${LWA_LIBRARIES}
