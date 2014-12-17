@@ -495,7 +495,7 @@ static bool build_shunit(GLint stage, const char* prg, GLuint* dprg)
 static void dump_shaderlog(const char* label, const char* stage, GLuint prg)
 {
 	char buf[1024];
-	int rlen;
+	int rlen = -1;
 
 	glGetShaderInfoLog(prg, 1024, &rlen, buf);
 	if (rlen){
