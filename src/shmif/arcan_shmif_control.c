@@ -615,7 +615,7 @@ void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 
 #if _WIN32
 #else
-	munmap(inctx->addr, ARCAN_SHMPAGE_MAX_SZ);
+	munmap(inctx->addr, inctx->shmsize);
 #endif
 	memset(inctx, '\0', sizeof(struct arcan_shmif_cont));
 }
