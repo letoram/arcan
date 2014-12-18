@@ -1,4 +1,5 @@
 #!/usr/bin/ruby
+require 'fileutils'
 
 def scangrp(inf)
 	line = "";
@@ -39,6 +40,7 @@ class String
 end
 
 def extract_example(lines, defs)
+	res = []
 	iobj = IO.popen(
 		"cpp -pipe -fno-builtin -fno-common #{defs}",
 		File::RDWR
@@ -49,10 +51,39 @@ def extract_example(lines, defs)
 		if (a[0] == "#" or a.strip == "")
 			next
 		end
-
-		yield a
+		res << a
 	}
 	iobj.close_read
+	res
+end
+
+def extract_examples(name, inlines)
+	res_ok = []
+	res_fail = []
+
+	base_sz = extract_example(inlines, "").size
+
+	10.times{|a|
+		suff = a == 0 ? "" : (a + 1).to_s
+		lines = extract_example(inlines, "-DMAIN#{suff} -Dmain=#{name}#{a}")
+		if (lines.size == base_sz)
+			break
+		else
+			res_ok << lines.join("\n")
+		end
+	}
+
+	10.times{|a|
+		suff = a == 0 ? "" : (a + 1).to_s
+		lines = extract_example(inlines, "-DERROR#{suff} -Dmain=#{name}#{a}")
+		if (lines.size == base_sz)
+			break
+		else
+			res_fail << lines.join("\n")
+		end
+	}
+
+	return res_ok, res_fail
 end
 
 #
@@ -69,7 +100,7 @@ class DocReader
 		@cfunction = ""
 		@related = []
 		@note = []
-		@examples = []
+		@examples = [ [], [] ]
 		@main_tests = []
 		@error_tests = []
 	end
@@ -105,8 +136,9 @@ class DocReader
 		remainder = lines.join("\n")
 
 		main = ""
-		extract_example(remainder, "-DMAIN"){|line| main << line}
-		res.examples << main
+		ok, err = extract_examples(res.name, remainder)
+		res.examples[ 0 ] = ok
+		res.examples[ 1 ] = err
 
 		res
 	rescue EOFError
@@ -143,16 +175,17 @@ end
 def add_function(groupname, symname, cname)
 	fn = "#{symname}.lua"
 	if (File.exists?(fn))
+		true
 #
 # should checksum C source function, compare to
 # whatever is stored in the .lua file header
 # and alter the user if the function has changed
 # (i.e. documentation might need to be updated)
 	#
-		else
-			STDOUT.print("--- new function found: #{symname}\n")
-			outf = File.new(fn, IO::CREAT | IO::RDWR)
-			outf.print("-- #{symname}\n\
+	else
+		STDOUT.print("--- new function found: #{symname}\n")
+		outf = File.new(fn, IO::CREAT | IO::RDWR)
+		outf.print("-- #{symname}\n\
 -- @short: \n\
 -- @inargs: \n\
 -- @outargs: \n\
@@ -167,7 +200,8 @@ function main()
 
 \#ifdef ERROR1
 \#endif
-end\n") end
+end\n")
+	end
 end
 
 #
@@ -236,7 +270,6 @@ end
 
 def funtoman(fname)
 	cgroup = nil
-	inexample = false
 
 	inf = DocReader.Open("#{fname}.lua")
 	outm = File.new("mantmp/#{fname}.3", IO::CREAT | IO::RDWR)
@@ -295,11 +328,17 @@ def funtoman(fname)
 		}
 	end
 
-	if (inf.examples.size > 0)
+	inf.examples[0].each{|a|
 		outm << ".SH EXAMPLE\n.nf \n\n"
-		outm << inf.examples[0]
+		outm << a
 		outm << "\n.fi\n"
-	end
+	}
+
+	inf.examples[1].each{|a|
+		outm << ".SH MISUSE\n.nf \n\n"
+		outm << a
+		outm << "\n.fi\n"
+	}
 
 	if (inf.related.size > 0)
 		outm << ".SH SEE ALSO:\n"
@@ -353,6 +392,9 @@ when "vimgen" then
 		File.open("constdump/consts.list").each_line{|a|
 			consts << a.chop
 		}
+	else
+		STDOUT.print("No constdump/consts.list found, constants ignored.\n\
+run arcan with constdump folder to generate.\n")
 	end
 
 	lines = File.open(fname).readlines
@@ -382,22 +424,45 @@ when "vimgen" then
 	lines[-4..-1].each{|a| outf.print(a) }
 
 when "testgen" then
+	if ARGV[1] == nil or Dir.exist?(ARGV[1]) == false
+		STDOUT.print("output directory wrong or omitted\n")
+		exit(1)
+	end
+
+	dir = ARGV[1]
+	FileUtils.rm_r("#{dir}/test_ok") if Dir.exists?("#{dir}/test_ok")
+	FileUtils.rm_r("#{dir}/test_fail") if Dir.exists?("#{dir}/test_fail")
+	Dir.mkdir("#{dir}/test_ok")
+	Dir.mkdir("#{dir}/test_fail")
+
 	Dir["*.lua"].each{|a|
-		lines = []
-
-		File.open(a).each_line{|line|
-			next if (line[0] == "-" and line[1] == "-")
-			lines << line
-		}
-
-		outp = []
-		extract_example(lines.join("\n"), "-DMAIN"){|b|
-			outp << b
-		}
-		if (outp.size > 2) then
+		doc = DocReader.Open(a)
+		STDOUT.print("#{a}:")
+		if (doc.examples[0].size > 0)
+			STDOUT.print("#{doc.examples[0].size} OK:")
+			doc.examples[0].size.times{|c|
+				Dir.mkdir("#{dir}/test_ok/#{doc.name}#{c}")
+				outf = File.new("#{dir}/test_ok/#{doc.name}#{c}/#{doc.name}#{c}.lua",
+												IO::CREAT | IO::RDWR)
+				outf.print(doc.examples[0][c])
+				outf.close
+			}
+		else
+			STDOUT.print("no OK cases:")
 		end
 
-		exit
+		if (doc.examples[1].size > 0)
+			STDOUT.print("#{doc.examples[1].size} FAIL\n")
+			doc.examples[1].size.times{|c|
+				Dir.mkdir("#{dir}/test_fail/#{doc.name}#{c}")
+				outf = File.new("#{dir}/test_fail/#{doc.name}#{c}/#{doc.name}#{c}.lua",
+												IO::CREAT | IO::RDWR)
+				outf.print(doc.examples[0][c])
+				outf.close
+			}
+		else
+			STDOUT.print("no FAIL cases\n")
+		end
 	}
 when "verify" then
 	find_empty(){|a|
@@ -451,7 +516,8 @@ scrape arcan_lua.c and generate stubs for missing corresponding .lua\n\n\
 mangen:\n sweep each .lua file and generate corresponding manpages.\n\n\
 vimgen:\n generate a syntax highlight .vim file that takes the default\n\
 vim lua syntax file and adds the engine functions as new built-in functions.\n\
-testgen:\n extract MAIN, MAIN2, ... and ERROR1, ERROR2 etc. from each file\n\
-and add as individual tests in the test_ok\ test_fail\ subdirectories\n\
+testgen testout:\n extract MAIN, MAIN2, ... and ERROR1, ERROR2 etc. \
+from each file\n\ and add as individual tests in the \n\
+manout/test_ok\ manout/test_fail\ subdirectories\n\
 missing:\n scan all .lua files and list those that are incomplete.\n")
 end

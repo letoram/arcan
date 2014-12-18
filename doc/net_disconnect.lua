@@ -7,4 +7,5 @@
 -- all connection or all connections with a certain level of authentication.
 -- @group: network
 -- @cfunction: net_disconnect
+-- @flags: experimental
 -- @related: net_accept, net_authenticate
