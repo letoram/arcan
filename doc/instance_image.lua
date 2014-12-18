@@ -16,10 +16,11 @@
 -- a separate frameset, it will only inherit the one of its parent.
 -- use null objects and share storage for that.
 -- @note: Calling instance_image using a clone as parentvid,
--- will force a lookup of the clone's parent, which in turn will be instanced.
--- @note: Currently, clones can have individual shaders etc. it is planned, however,
--- that nothing which will incurr a costly gl state flush will be allowed (so rendering
--- order, shader, etc. will all be linked to the parent).
+-- will force a lookup of the parent to the clone, which in
+-- turn will be instanced.
+-- @note: The gains from using instance_image in constrast to using
+-- null_surfaces and image_sharestorage are rather minimal, especially
+-- when compared to the restrictions in play.
 -- @group: image
 -- @cfunction: instanceimage
 function main()

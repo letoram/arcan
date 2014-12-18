@@ -11,7 +11,7 @@
 -- no arguments, the underlying video platform will be requested to
 -- do a rescan of devices and connectors. This can stall graphics for
 -- noticable (100ms+) periods of time for some systems, but is necessary
--- where we don't have working hotplug support. It is also an asynchronous
+-- where we do not have working hotplug support. It is also an asynchronous
 -- process and any results will be propagated as _display_state events.
 --
 -- Calling this function with a display index will return a table of

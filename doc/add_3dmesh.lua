@@ -2,12 +2,16 @@
 -- @short: Load a mesh and attach to a model.
 -- @inargs: dstmodel, resource, *nmaps
 -- @outargs:
--- @longdescr: Load and decompress a mesh from the specified resource (CTM format) and attach to the model in question. The optional (default 1) nmaps argument specifies how many frameset objects that should be consumed and spent on the different texture units (additional specular, normal etc. maps).
+-- @longdescr: Load and decompress a mesh from the specified
+-- resource (CTM format) and attach to the model in question.
+-- The optional (default 1) nmaps argument specifies how many
+-- frameset objects that should be consumed and spent on the
+-- different texture units (additional specular, normal maps).
 -- @group: 3d
--- @note: Nmaps is hard- limited to 8, matching the minimum of texture units according to the GLES2.0 standard.
+-- @note: Nmaps is hard- limited to 8, matching the minimum
+-- of texture units according to the GLES2.0 standard.
 -- @cfunction: loadmesh
 -- @related: new_3dmodel
--- @note: The example below is somewhat limited, refer to 'modeldemo' for a more comprehensive example.
 function main()
 #ifdef MAIN
 	vid = new_3dmodel();

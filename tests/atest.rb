@@ -137,7 +137,6 @@ class ATest
 # EXIT_FAILURE. Make note of coredumps.
 #
 	def doctest()
-		STDOUT.print("doctest incomplete")
 	end
 
 #
