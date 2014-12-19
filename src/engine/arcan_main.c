@@ -322,8 +322,8 @@ int main(int argc, char* argv[])
 	case 'p' : arcan_override_namespace(optarg, RESOURCE_APPL_SHARED); break;
 	case 'b' : fallback = strdup(optarg); break;
 	case 'V' : fprintf(stdout, "%s\n", ARCAN_BUILDVERSION);
-						 exit(EXIT_SUCCESS);
-						 break;
+		exit(EXIT_SUCCESS);
+	break;
 	case 'H' : hookscript = strdup( optarg ); break;
 #ifndef _WIN32
 	case 'M' : settings.monitor_counter = settings.monitor =
@@ -675,7 +675,7 @@ applswitch:
 					goto out;
 				}
 
-/* slated for deprecation */
+/* slated for deprecation in favor of collapsing to .. */
 				else if (ev.kind == EVENT_SYSTEM_SWITCHAPPL){
 					arcan_luaL_shutdown(settings.lua);
 					if (switch_appl(ev.data.system.data.message))
