@@ -2921,6 +2921,54 @@ static void display_removed(lua_State* ctx, platform_display_id id)
 	LUA_ETRACE("_display_state (remove)", NULL);
 }
 
+static inline bool tgtevent(arcan_vobj_id dst, arcan_event ev)
+{
+	vfunc_state* state = arcan_video_feedstate(dst);
+
+	if (state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr){
+		arcan_frameserver* fsrv = (arcan_frameserver*) state->ptr;
+		arcan_frameserver_pushevent( fsrv, &ev );
+		return true;
+	}
+
+	return false;
+}
+
+/*
+ * the segment request is treated a little different,
+ * we maintain a global state
+ */
+static struct arcan_extevent* last_segreq;
+static void emit_segreq(lua_State* ctx, struct arcan_extevent* ev)
+{
+	last_segreq = ev;
+	int top = lua_gettop(ctx);
+
+	tblstr(ctx, "kind", "segment_request", top);
+	tblnum(ctx, "width", ev->noticereq.width, top);
+	tblnum(ctx, "height", ev->noticereq.height, top);
+	tblnum(ctx, "reqid", ev->noticereq.id, top);
+	tblnum(ctx, "type", ev->noticereq.type, top);
+
+	lua_ctx_store.cb_source_tag = ev->source;
+	lua_ctx_store.cb_source_kind = CB_SOURCE_FRAMESERVER;
+	wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event_external");
+	lua_ctx_store.cb_source_kind = CB_SOURCE_NONE;
+
+/* call into callback, if we have been consumed,
+ * do nothing, otherwise issue a reject */
+	if (last_segreq != NULL){
+		arcan_event rev = {
+			.category = EVENT_TARGET,
+			.kind = TARGET_COMMAND_REQFAIL
+		};
+
+		tgtevent(ev->source, rev);
+	}
+
+	last_segreq = NULL;
+}
+
 /*
  * emit input() call based on a arcan_event, uses a separate format
  * and translation to make it easier for the user to modify. This
@@ -3192,12 +3240,9 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				tblbool(ctx, "active", ev->data.external.key.active, top);
 			break;
 
+/* special semantics for segreq */
 			case EVENT_EXTERNAL_SEGREQ:
-				tblstr(ctx, "kind", "segment_request", top);
-				tblnum(ctx, "width", ev->data.external.noticereq.width, top);
-				tblnum(ctx, "height", ev->data.external.noticereq.height, top);
-				tblnum(ctx, "reqid", ev->data.external.noticereq.id, top);
-				tblnum(ctx, "type", ev->data.external.noticereq.type, top);
+				return emit_segreq(ctx, &ev->data.external);
 			break;
 
 			case EVENT_EXTERNAL_STATESIZE:
@@ -4800,29 +4845,6 @@ static int setqueueopts(lua_State* ctx)
 	return 0;
 }
 
-static bool use_loader(char* fname)
-{
-	char* ext = strrchr( fname, '.' );
-	if (!ext) return false;
-
-/* there are prettier ways to do this . . . */
-	return ((strcasecmp(ext, ".so") == 0) || (strcasecmp(ext, ".dylib") == 0) ||
-		(strcasecmp(ext, ".dll") == 0)) ? true : false;
-}
-
-static inline bool tgtevent(arcan_vobj_id dst, arcan_event ev)
-{
-	vfunc_state* state = arcan_video_feedstate(dst);
-
-	if (state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr){
-		arcan_frameserver* fsrv = (arcan_frameserver*) state->ptr;
-		arcan_frameserver_pushevent( fsrv, &ev );
-		return true;
-	}
-
-	return false;
-}
-
 static int targethandler(lua_State* ctx)
 {
 	LUA_TRACE("target_updatehandler");
@@ -4863,23 +4885,6 @@ static int targetpacify(lua_State* ctx)
 	vobj->feed.state.tag = ARCAN_TAG_IMAGE;
 
 	LUA_ETRACE("pacify_target", NULL);
-	return 0;
-}
-
-static int targetreject(lua_State* ctx)
-{
-	LUA_TRACE("target_reject");
-	arcan_event ev = {
-		.category = EVENT_TARGET,
-		.kind = TARGET_COMMAND_REQFAIL
-	};
-
-	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
-	ev.data.target.ioevs[0].iv = luaL_checkinteger(ctx, 2);
-
-	tgtevent(tgt, ev);
-
-	LUA_ETRACE("target_reject", NULL);
 	return 0;
 }
 
@@ -5364,6 +5369,30 @@ static int targetreset(lua_State* ctx)
 
 	LUA_ETRACE("reset_target", NULL);
 	return 0;
+}
+
+static int targetaccept(lua_State* ctx)
+{
+	LUA_TRACE("accept_target");
+
+	if (!last_segreq)
+		arcan_fatal("accept_target(), only permitted inside a segment_request.\n");
+
+	vfunc_state* state = arcan_video_feedstate(last_segreq->source);
+	arcan_frameserver* newref = arcan_frameserver_spawn_subsegment(
+		(arcan_frameserver*) state->ptr, true,
+		last_segreq->noticereq.width,
+		last_segreq->noticereq.height,
+		last_segreq->noticereq.id
+	);
+
+	last_segreq = NULL;
+
+	lua_pushvid(ctx, newref->vid);
+	lua_pushvid(ctx, newref->aid);
+
+	LUA_ETRACE("accept_target", NULL);
+	return 2;
 }
 
 static int targetalloc(lua_State* ctx)
@@ -7589,6 +7618,13 @@ static const luaL_Reg tgtfuns[] = {
 {"input_target",               targetinput              },
 {"suspend_target",             targetsuspend            },
 {"resume_target",              targetresume             },
+{"accept_target",              targetaccept             },
+{"pacify_target",              targetpacify             },
+{"stepframe_target",           targetstepframe          },
+{"snapshot_target",            targetsnapshot           },
+{"restore_target",             targetrestore            },
+{"bond_target",                targetbond               },
+{"reset_target",               targetreset              },
 {"target_portconfig",          targetportcfg            },
 {"target_framemode",           targetskipmodecfg        },
 {"target_verbose",             targetverbose            },
@@ -7601,14 +7637,7 @@ static const luaL_Reg tgtfuns[] = {
 {"target_postfilter_args",     targetpostfilterargs     },
 {"target_seek",                targetseek               },
 {"target_coreopt",             targetcoreopt            },
-{"target_reject",              targetreject             },
 {"target_updatehandler",       targethandler            },
-{"pacify_target",              targetpacify             },
-{"stepframe_target",           targetstepframe          },
-{"snapshot_target",            targetsnapshot           },
-{"restore_target",             targetrestore            },
-{"bond_target",                targetbond               },
-{"reset_target",               targetreset              },
 {"define_rendertarget",        renderset                },
 {"define_recordtarget",        recordset                },
 {"define_calctarget",          procset                  },

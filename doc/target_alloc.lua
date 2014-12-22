@@ -7,9 +7,6 @@
 -- setup by a user through the related functions (net_open, load_movie, ...)
 -- and that they are either input (provides data to arcan) or output
 -- (receive datastreams from arcan for purposes such as recording).
--- Frameservers can explicitly request new segments by issuing SEQREQ events
--- (will yield events with kind: segment_request in the Lua side callback)
--- but it is up to the running script to honor that request or not.
 -- target_alloc is then used to attach additional input segments
 -- to a pre-existing frameserver connection (by specifying the vid of said
 -- frameserver). When communicating these segments, it is also possible to
@@ -31,9 +28,11 @@
 -- restrict the number of allowed connections to avoid running out of resources
 -- and to monitor for suspicious activities e.g. a high amount of connections
 -- or connection attempts in a short timeframe etc.
+-- @note: for honoring explicit requests from a frameserver, use
+-- the accept_target function.
 -- @group: targetcontrol
 -- @cfunction: targetalloc
--- @related: define_recordtarget, target_reject
+-- @related: define_recordtarget, accept_target
 function main()
 #ifdef MAIN
 	local chain_call = function()

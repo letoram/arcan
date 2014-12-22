@@ -98,20 +98,7 @@ void platform_video_synch(uint64_t tick_count, float fract,
 
 	agp_activate_rendertarget(NULL);
 
-/*
- * Need this trick as the underlying platform will
- * continue swapping between back and front buffer currently
- * When the event- layer synchronization has been reworked,
- * this hack should be revisited.
- */
-	static bool ld;
-
-	if (nd > 0 || !ld){
-		arcan_vint_drawrt(arcan_vint_world(), 0, 0, sdl.mdispw, sdl.mdisph);
-		ld = nd == 0;
-	}
-
-	arcan_vint_drawcursor(true);
+	arcan_vint_drawrt(arcan_vint_world(), 0, 0, sdl.mdispw, sdl.mdisph);
 	arcan_vint_drawcursor(false);
 
 	SDL_GL_SwapBuffers();
