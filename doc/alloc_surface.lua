@@ -14,7 +14,7 @@ function main()
 	local vid = fill_surface(640, 480);
 	assert(vid ~= BADID)
 	print("allocated: ", vid, 640, 480);
-	show_image(vid); -- shouldn't yield anything
+	show_image(vid);
 #endif
 
 #ifdef ERROR

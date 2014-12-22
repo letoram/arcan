@@ -9,3 +9,9 @@
 -- @cfunction: net_disconnect
 -- @flags: experimental
 -- @related: net_accept, net_authenticate
+function main()
+#ifdef MAIN
+#endif
+#ifdef ERROR
+#endif
+end
