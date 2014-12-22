@@ -477,8 +477,8 @@ void arcan_vint_drawcursor(bool erase)
 
 	if (erase){
 		float s1 = (float)x1 / mode.width;
-		float s2 = (float)x2 / mode.height;
-		float t1 = 1.0 - ((float)y1 / mode.width);
+		float s2 = (float)x2 / mode.width;
+		float t1 = 1.0 - ((float)y1 / mode.height);
 		float t2 = 1.0 - ((float)y2 / mode.height);
 
 		txmatr[0] = s1;
@@ -4401,13 +4401,11 @@ arcan_errc arcan_video_forceread(arcan_vobj_id sid,
 	*dptr  = arcan_alloc_mem(*dsize, ARCAN_MEM_VBUFFER,
 		ARCAN_MEM_TEMPORARY | ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE);
 
+	av_pixel* temp = dstore->vinf.text.raw;
+	dstore->vinf.text.raw = *dptr;
 	agp_readback_synchronous(dstore);
-	if (dptr && dstore->vinf.text.raw){
-		memcpy(*dptr, dstore->vinf.text.raw, *dsize);
-		return ARCAN_OK;
-	}
+	dstore->vinf.text.raw = temp;
 
-	arcan_mem_free(*dptr);
 	return ARCAN_OK;
 }
 
