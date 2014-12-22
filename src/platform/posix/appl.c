@@ -71,8 +71,8 @@ bool arcan_verifyload_appl(const char* appl_id, const char** errc)
  */
 	app_len = strlen(base);
 	for (size_t i = 0; i < app_len; i++){
-		if (!isalpha(base[i]) && base[i] != '_'){
-			*errc = "invalid character in appl_id (only aZ_ allowed)\n";
+		if (!isalnum(base[i]) && base[i] != '_'){
+			*errc = "invalid character in appl_id (only a..Z _ 0..9 allowed)\n";
 			return false;
 		}
 	}

@@ -435,11 +435,15 @@ when "testgen" then
 	Dir.mkdir("#{dir}/test_ok")
 	Dir.mkdir("#{dir}/test_fail")
 
+	ok_count = 0
+	fail_count = 0
+	missing_ok = []
+	missing_fail = []
+
 	Dir["*.lua"].each{|a|
 		doc = DocReader.Open(a)
-		STDOUT.print("#{a}:")
 		if (doc.examples[0].size > 0)
-			STDOUT.print("#{doc.examples[0].size} OK:")
+			ok_count += doc.examples[0].size
 			doc.examples[0].size.times{|c|
 				Dir.mkdir("#{dir}/test_ok/#{doc.name}#{c}")
 				outf = File.new("#{dir}/test_ok/#{doc.name}#{c}/#{doc.name}#{c}.lua",
@@ -448,11 +452,11 @@ when "testgen" then
 				outf.close
 			}
 		else
-			STDOUT.print("no OK cases:")
+			missing_ok << a
 		end
 
 		if (doc.examples[1].size > 0)
-			STDOUT.print("#{doc.examples[1].size} FAIL\n")
+			fail_count += doc.examples[1].size
 			doc.examples[1].size.times{|c|
 				Dir.mkdir("#{dir}/test_fail/#{doc.name}#{c}")
 				outf = File.new("#{dir}/test_fail/#{doc.name}#{c}/#{doc.name}#{c}.lua",
@@ -461,9 +465,14 @@ when "testgen" then
 				outf.close
 			}
 		else
-			STDOUT.print("no FAIL cases\n")
+			missing_fail << a
 		end
 	}
+
+	STDOUT.print("OK:#{ok_count},FAIL:#{fail_count}\n\
+Missing OK:#{missing_ok.join(",")}\n\
+Missing Fail:#{missing_fail.join(",")}\n")
+
 when "verify" then
 	find_empty(){|a|
 		STDOUT.print("#{a} is incomplete.\n")
@@ -516,8 +525,8 @@ scrape arcan_lua.c and generate stubs for missing corresponding .lua\n\n\
 mangen:\n sweep each .lua file and generate corresponding manpages.\n\n\
 vimgen:\n generate a syntax highlight .vim file that takes the default\n\
 vim lua syntax file and adds the engine functions as new built-in functions.\n\
-testgen testout:\n extract MAIN, MAIN2, ... and ERROR1, ERROR2 etc. \
+\ntestgen testout:\n extract MAIN, MAIN2, ... and ERROR1, ERROR2 etc. \
 from each file\n\ and add as individual tests in the \n\
-manout/test_ok\ manout/test_fail\ subdirectories\n\
+manout/test_ok\ manout/test_fail\ subdirectories\n\n\
 missing:\n scan all .lua files and list those that are incomplete.\n")
 end
