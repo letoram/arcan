@@ -511,11 +511,6 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 		newseg->flags.socksig = true;
 	}
 
-/*
- * NOTE: experiment with deferring this step as new segments likely
- * won't need / use audio, "Mute" shmif- sessions should also be
- * permitted to cut down on shm memory use
- */
 	newseg->sz_audb = ARCAN_SHMPAGE_AUDIOBUF_SZ;
 	newseg->ofs_audb = 0;
 	newseg->audb = malloc(ctx->sz_audb);
@@ -526,7 +521,7 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	newseg->inqueue.synch.killswitch = (void*) newseg;
 	newseg->outqueue.synch.killswitch = (void*) newseg;
 
-	arcan_event_enqueue(&ctx->outqueue, &keyev);
+	arcan_frameserver_pushevent(ctx, &keyev);
 	return newseg;
 }
 
