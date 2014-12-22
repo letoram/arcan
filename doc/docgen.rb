@@ -424,29 +424,31 @@ run arcan with constdump folder to generate.\n")
 	lines[-4..-1].each{|a| outf.print(a) }
 
 when "testgen" then
-	if ARGV[1] == nil or Dir.exist?(ARGV[1]) == false
-		STDOUT.print("output directory wrong or omitted\n")
+	if ARGV[1] == nil or Dir.exist?(ARGV[1]) == false or
+		ARGV[2] == nil or Dir.exist?(ARGV[2]) == false
+		STDOUT.print("input or output directory wrong or omitted\n")
 		exit(1)
 	end
 
-	dir = ARGV[1]
-	FileUtils.rm_r("#{dir}/test_ok") if Dir.exists?("#{dir}/test_ok")
-	FileUtils.rm_r("#{dir}/test_fail") if Dir.exists?("#{dir}/test_fail")
-	Dir.mkdir("#{dir}/test_ok")
-	Dir.mkdir("#{dir}/test_fail")
+	indir = ARGV[1]
+	outdir = ARGV[2]
+	FileUtils.rm_r("#{outdir}/test_ok") if Dir.exists?("#{outdir}/test_ok")
+	FileUtils.rm_r("#{outdir}/test_fail") if Dir.exists?("#{outdir}/test_fail")
+	Dir.mkdir("#{outdir}/test_ok")
+	Dir.mkdir("#{outdir}/test_fail")
 
 	ok_count = 0
 	fail_count = 0
 	missing_ok = []
 	missing_fail = []
 
-	Dir["*.lua"].each{|a|
+	Dir["#{indir}/*.lua"].each{|a|
 		doc = DocReader.Open(a)
 		if (doc.examples[0].size > 0)
 			ok_count += doc.examples[0].size
 			doc.examples[0].size.times{|c|
-				Dir.mkdir("#{dir}/test_ok/#{doc.name}#{c}")
-				outf = File.new("#{dir}/test_ok/#{doc.name}#{c}/#{doc.name}#{c}.lua",
+				Dir.mkdir("#{outdir}/test_ok/#{doc.name}#{c}")
+				outf = File.new("#{outdir}/test_ok/#{doc.name}#{c}/#{doc.name}#{c}.lua",
 												IO::CREAT | IO::RDWR)
 				outf.print(doc.examples[0][c])
 				outf.close
@@ -458,9 +460,11 @@ when "testgen" then
 		if (doc.examples[1].size > 0)
 			fail_count += doc.examples[1].size
 			doc.examples[1].size.times{|c|
-				Dir.mkdir("#{dir}/test_fail/#{doc.name}#{c}")
-				outf = File.new("#{dir}/test_fail/#{doc.name}#{c}/#{doc.name}#{c}.lua",
-												IO::CREAT | IO::RDWR)
+				Dir.mkdir("#{outdir}/test_fail/#{doc.name}#{c}")
+				outf = File.new(
+					"#{outdir}/test_fail/#{doc.name}#{c}/#{doc.name}#{c}.lua",
+					IO::CREAT | IO::RDWR
+				)
 				outf.print(doc.examples[0][c])
 				outf.close
 			}
@@ -525,8 +529,8 @@ scrape arcan_lua.c and generate stubs for missing corresponding .lua\n\n\
 mangen:\n sweep each .lua file and generate corresponding manpages.\n\n\
 vimgen:\n generate a syntax highlight .vim file that takes the default\n\
 vim lua syntax file and adds the engine functions as new built-in functions.\n\
-\ntestgen testout:\n extract MAIN, MAIN2, ... and ERROR1, ERROR2 etc. \
-from each file\n\ and add as individual tests in the \n\
-manout/test_ok\ manout/test_fail\ subdirectories\n\n\
+\ntestgen indir outdir:\n extract MAIN, MAIN2, ... and ERROR1, ERROR2 etc. \
+from each lua file in indir\n\ and add as individual tests in the \n\
+outdir/test_ok\ outdir/test_fail\ subdirectories\n\n\
 missing:\n scan all .lua files and list those that are incomplete.\n")
 end
