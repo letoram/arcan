@@ -106,6 +106,11 @@
 	(RESOURCE_APPL | RESOURCE_APPL_SHARED | RESOURCE_APPL_TEMP)
 #endif
 
+#ifndef CAREFUL_USERMASK
+#define CAREFUL_USERMASK \
+	(RESOURCE_APPL | RESOURCE_APPL_SHARED)
+#endif
+
 /*
  * defined in engine/arcan_main.c, rather than terminating directly
  * we'll longjmp to this and hopefully the engine can switch scripts
@@ -2352,7 +2357,7 @@ static int dofile(lua_State* ctx)
 	const char* instr = luaL_checkstring(ctx, 1);
 	bool dieonfail = luaL_optnumber(ctx, 2, 1) != 0;
 
-	char* fname = findresource(instr, DEFAULT_USERMASK);
+	char* fname = findresource(instr, CAREFUL_USERMASK);
 	int res = 0;
 
 	if (fname){
