@@ -4344,11 +4344,13 @@ static size_t process_rendertarget(
 			else
 				agp_blendstate(BLEND_NORMAL);
 
-		if (elem->vstore->txmapped == TXSTATE_OFF)
+		if (elem->vstore->txmapped == TXSTATE_OFF && elem->program != 0)
 			draw_colorsurf(tgt, dprops, elem, elem->vstore->vinf.col.r,
 				elem->vstore->vinf.col.g, elem->vstore->vinf.col.b);
-		else
+		else if (elem->vstore->txmapped == TXSTATE_TEX2D)
 			draw_texsurf(tgt, dprops, elem, *dstcos);
+		else
+			;
 		pc++;
 
 	if (clipped)
