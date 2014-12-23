@@ -1694,13 +1694,18 @@ arcan_vobj_id arcan_video_solidcolor(float origw, float origh,
 	if (!newvobj)
 		return rv;
 
-	newvobj->origw = origw;
-	newvobj->origh = origh;
 	newvobj->vstore->txmapped = TXSTATE_OFF;
 	newvobj->vstore->vinf.col.r = (float)r / 255.0f;
 	newvobj->vstore->vinf.col.g = (float)g / 255.0f;
 	newvobj->vstore->vinf.col.b = (float)b / 255.0f;
+
 	newvobj->program = agp_default_shader(COLOR_2D);
+
+	newvobj->origw = origw;
+	newvobj->origh = origh;
+	newvobj->order = zv;
+	newvobj->blendmode = BLEND_NORMAL;
+
 	arcan_video_attachobject(rv);
 
 	return rv;
@@ -4311,21 +4316,6 @@ static size_t process_rendertarget(
 			populate_stencil(tgt, elem, fract);
 		}
 
-/* if the object is not txmapped (or null, in that case give up) */
-		if (elem->vstore->txmapped == TXSTATE_OFF){
-			if (elem->program != 0){
-				arcan_shader_activate(elem->program);
-				draw_colorsurf(tgt, dprops, elem, elem->vstore->vinf.col.r,
-					elem->vstore->vinf.col.g, elem->vstore->vinf.col.b);
-			}
-
-			if (clipped)
-				agp_disable_stencil();
-
-			current = current->next;
-			continue;
-		}
-
 		arcan_shader_activate( elem->program > 0 ?
 			elem->program : agp_default_shader(BASIC_2D) );
 
@@ -4354,7 +4344,11 @@ static size_t process_rendertarget(
 			else
 				agp_blendstate(BLEND_NORMAL);
 
-		draw_texsurf(tgt, dprops, elem, *dstcos);
+		if (elem->vstore->txmapped == TXSTATE_OFF)
+			draw_colorsurf(tgt, dprops, elem, elem->vstore->vinf.col.r,
+				elem->vstore->vinf.col.g, elem->vstore->vinf.col.b);
+		else
+			draw_texsurf(tgt, dprops, elem, *dstcos);
 		pc++;
 
 	if (clipped)
