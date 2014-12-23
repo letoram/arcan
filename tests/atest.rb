@@ -27,7 +27,10 @@ unless Dir.exist?($ARCANDIR)
 	system("#{$GITAPP} clone \"#{$GITMIRROR}\" \"#{$ARCANDIR}\" > /dev/null")
 else
 	STDOUT.print("Pulling updates to (#{$ARCANDIR})\n")
-	system("#{$GITAPP} pull \"#{$ARCANDIR}\" > /dev/null")
+	cur = Dir.pwd
+	Dir.chdir($ARCANDIR)
+	system("#{$GITAPP} pull> /dev/null")
+	Dir.chdir(cur)
 end
 
 tests = {
@@ -137,6 +140,37 @@ class ATest
 # EXIT_FAILURE. Make note of coredumps.
 #
 	def doctest()
+		STDOUT.print("doctest, generating test cases\n")
+		FileUtils.rm_r("#{@bindir}/doc") if Dir.exists?("#{@bindir}/doc")
+		FileUtils.rm_r("#{@repdir}/doc") if Dir.exists?("#{@repdir}/doc")
+
+		Dir.mkdir("#{@repdir}/doc")
+		Dir.mkdir("#{@bindir}/doc")
+
+		system("/usr/bin/ruby \"#{@dir}/doc/docgen.rb\" testgen \"#{@dir}/doc\"\
+ \"#{@bindir}/doc\" > #{@repdir}/doc/docgen")
+
+		STDOUT.print("running OK cases")
+			list = []
+
+			Dir["#{@bindir}/doc/test_ok/*"].each{|a|
+				next unless (Dir.exist?(a) and a != "." and a != "..")
+				list << a
+			}
+
+# should only be one though
+			output_brief = File.open("#{@repdir}/doc/test_ok_fail", "w+")
+			@configurations.each{|cfg|
+				list.each{|test|
+					line = "#{cfg.bin} -B \"#{cfg.bin}_frameserver\" \
+-p \"#{@dir}/doc/res\" #{cfg.args} -H okhook.lua \"#{test}\""
+					p line
+					testout = IO.popen(line).readlines
+					if ($?.success? == false)
+						output_brief.print("#{test} failed:\n#{testout.join("\n\t")}\n")
+					end
+				}
+			}
 	end
 
 #
@@ -333,8 +367,8 @@ end
 
 STDOUT.print("Step four - doc- examples\n")
 if tests["doc"]
-vars = gen_variants("doc", doc_compilers,
-  debug_configurations, doc_compilers, doc_compilers, doc_flags)
+vars = gen_variants(doc_platforms, doc_configurations, doc_compilers, doc_flags)
+test.add_conf("doc", vars[0][0], vars[0][2], "", vars[0][0])
 test.doctest
 test.drop_configurations
 else
