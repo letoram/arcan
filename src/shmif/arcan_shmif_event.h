@@ -53,13 +53,12 @@
 enum ARCAN_EVENT_CATEGORY {
 	EVENT_SYSTEM      = 1,
 	EVENT_IO          = 2,
-	EVENT_TIMER       = 4,
-	EVENT_VIDEO       = 8,
-	EVENT_AUDIO       = 16,
-	EVENT_TARGET      = 32,
-	EVENT_FRAMESERVER = 64,
-	EVENT_EXTERNAL    = 128,
-	EVENT_NET         = 256
+	EVENT_VIDEO       = 4,
+	EVENT_AUDIO       = 8,
+	EVENT_TARGET      = 16,
+	EVENT_FRAMESERVER = 32,
+	EVENT_EXTERNAL    = 64,
+	EVENT_NET         = 128
 };
 
 /*
@@ -510,10 +509,6 @@ typedef struct arcan_sevent {
 	} data;
 } arcan_sevent;
 
-typedef struct arcan_tevent {
-	long long int pulse_count;
-} arcan_tevent;
-
 typedef struct arcan_netevent{
 	int64_t source;
 	unsigned connid;
@@ -619,7 +614,6 @@ typedef union event_data {
 	arcan_vevent    video;
 	arcan_aevent    audio;
 	arcan_sevent    system;
-	arcan_tevent    timer;
 	arcan_tgtevent  target;
 	arcan_fsrvevent frameserver;
 	arcan_extevent  external;
@@ -630,7 +624,7 @@ typedef union event_data {
 
 typedef struct arcan_event {
 	unsigned kind;
-	unsigned tickstamp;
+	unsigned long timestamp;
 
 	char label[16];
 	unsigned short category;

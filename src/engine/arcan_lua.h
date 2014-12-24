@@ -17,9 +17,10 @@ struct arcan_luactx* arcan_lua_alloc();
 void arcan_lua_mapfunctions(
 	struct arcan_luactx* dst, int debuglevel);
 
-char* arcan_luaL_main(struct arcan_luactx*, const char* input, bool file_in);
-void arcan_luaL_dostring(struct arcan_luactx*, const char* sbuf);
-void arcan_luaL_shutdown(struct arcan_luactx*);
+char* arcan_lua_main(struct arcan_luactx*, const char* input, bool file_in);
+void arcan_lua_dostring(struct arcan_luactx*, const char* sbuf);
+void arcan_lua_shutdown(struct arcan_luactx*);
+void arcan_lua_tick(struct arcan_luactx*, size_t, size_t);
 
 /* add a set of wrapper functions exposing arcan_video and friends
  * to the Lua state, debugfuncs corresponds to desired debug level / behavior */
@@ -53,7 +54,7 @@ void arcan_lua_statesnap(FILE* dst, const char* tag, bool delim);
  * (tag) will contain the active lua context, will be invoked once
  * for every frameserver that needs to be adopted by the new context.
  */
-void arcan_luaL_adopt(arcan_vobj_id id, void* tag);
+void arcan_lua_adopt(arcan_vobj_id id, void* tag);
 
 /* nonblock/read from (dst) filestream until an #ENDBLOCK\n tag is encountered,
  * parse this and push it into the struct arcan_luactx as the first
