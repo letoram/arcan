@@ -610,7 +610,7 @@ arcan_vobj_id arcan_3d_buildbox(float w, float h, float d)
 	newmodel->geometry->store.normals = arcan_alloc_fillmem(
 		normals, sizeof(normals), ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_SIMD);
 
-	short indices[] = {
+	unsigned int indices[] = {
 	 0, 1, 2,  2, 3, 0,
 	 4, 5, 6,  6, 7, 4,
 	 8, 9,10, 10,11, 8,
