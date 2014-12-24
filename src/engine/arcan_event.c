@@ -201,7 +201,7 @@ int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src)
 	}
 
 	ctx->eventbuf[*ctx->back] = *src;
-	ctx->eventbuf[*ctx->back].tickstamp = ctx->c_ticks;
+	ctx->eventbuf[*ctx->back].timestamp = arcan_frametime();
 	*ctx->back = (*ctx->back + 1) % ctx->eventbuf_sz;
 
 /*
@@ -469,45 +469,33 @@ int64_t arcan_frametime()
 	return arcan_last_frametime - arcan_tickofset;
 }
 
-/* the main usage case is simply to alternate between process and poll
- * after a scene has been setup */
 float arcan_event_process(arcan_evctx* ctx, arcan_tick_cb cb)
 {
 	static const int rebase_timer_threshold = ARCAN_TIMER_TICK * 1000;
 
-	arcan_last_frametime = arcan_timemillis();
 	unsigned delta  = arcan_last_frametime - ctx->c_ticks;
+	arcan_last_frametime = arcan_timemillis();
 
 /*
- * compensate for a massive stall, non-monotonic clock
- * or first time initialization
+ * compensate for a massive stall, non-monotonic clock or first time
+ * initialization as forwarding the clock would cascade to stronger
+ * visual artifacts
  */
 	if (ctx->c_ticks == 0 || delta == 0 || delta > rebase_timer_threshold){
 		ctx->c_ticks = arcan_last_frametime;
-		delta = 1;
+		delta = ARCAN_TIMER_TICK;
 	}
 
 	unsigned nticks = delta / ARCAN_TIMER_TICK;
 	float fragment = ((float)(delta % ARCAN_TIMER_TICK) + 0.0001) /
 		(float) ARCAN_TIMER_TICK;
 
-	if (nticks){
-		arcan_event newevent = {.category = EVENT_TIMER,
-			.kind = 0,
-			.data.timer.pulse_count = nticks
-		};
-
-		ctx->c_ticks += nticks * ARCAN_TIMER_TICK;
-		arcan_event_enqueue(ctx, &newevent);
-	}
-
-	cb(nticks);
-
 	inject_scheduled(ctx);
 	platform_event_process(ctx);
 
-	arcan_bench_register_tick(nticks);
+	cb(nticks);
 
+	arcan_bench_register_tick(nticks);
 	return fragment;
 }
 

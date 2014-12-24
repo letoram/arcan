@@ -86,7 +86,7 @@ function zordervidlim(load)
 end
 
 function instancing_test()
-	local newid = fill_surface(64, 64, 0, 255, 0);
+	local newid = color_surface(64, 64, 0, 255, 0);
 	move_image(newid, 0.5*VRESW - 32, 0.5*VRESH - 32, 0);
 	show_image(newid);
 	order_image(newid, 255);

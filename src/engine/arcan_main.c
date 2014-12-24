@@ -239,11 +239,18 @@ static void postframe()
 
 static void on_clock_pulse(int nticks)
 {
+	settings.tick_count += nticks;
+
 /* priority is always in maintaining logical clock and event processing */
 	unsigned njobs;
 
+/* start with lua as it is likely to incur changes
+ * to what is supposed to be drawn */
+	arcan_lua_tick(settings.lua, nticks, settings.tick_count);
+
 	arcan_video_tick(nticks, &njobs);
 	arcan_audio_tick(nticks);
+	arcan_mem_tick();
 
 	if (settings.monitor && !settings.in_monitor){
 		if (--settings.monitor_counter == 0){
@@ -267,8 +274,10 @@ static void on_clock_pulse(int nticks)
 		if (settings.in_monitor)
 			arcan_lua_stategrab(settings.lua, "sample", settings.mon_infd);
 #endif
+}
 
-	settings.tick_count += nticks;
+static void flush_events()
+{
 }
 
 int main(int argc, char* argv[])
@@ -590,7 +599,7 @@ applswitch:
 		}
 
 		const char* errmsg;
-		arcan_luaL_shutdown(settings.lua);
+		arcan_lua_shutdown(settings.lua);
 		if (!arcan_verifyload_appl(fallback, &errmsg)){
 			arcan_warning("Lua VM error fallback, failure loading (%s), reason: %s\n",
 				fallback, errmsg);
@@ -618,7 +627,7 @@ applswitch:
 		goto error;
 	}
 
-	char* msg = arcan_luaL_main(settings.lua, inp, inp_file);
+	char* msg = arcan_lua_main(settings.lua, inp, inp_file);
 	if (msg != NULL){
 #ifdef ARCAN_LUA_NOCOLOR
 		arcan_warning("\nParsing error in %s:\n%s\n", arcan_appl_id(), msg);
@@ -640,26 +649,26 @@ applswitch:
 			arcan_appl_id() : "");
 
 	if (hookscript)
-		arcan_luaL_dostring(settings.lua, hookscript);
+		arcan_lua_dostring(settings.lua, hookscript);
 
 	if (adopt){
 		int saved, truncated;
 		arcan_video_recoverexternal(false, &saved, &truncated,
-			arcan_luaL_adopt, settings.lua);
+			arcan_lua_adopt, settings.lua);
 		arcan_warning("switching applications, %d adopted.\n", saved);
 	}
 
 	arcan_evctx* evctx = arcan_event_defaultctx();
 	bool done = false;
 	int exit_code = EXIT_SUCCESS;
+	arcan_event ev;
 
 	while (!done) {
-/* pollfeed can actually populate event-loops, assuming we don't exceed a
- * compile- time threshold */
+/* these can populate event queue, but only to a certain limit */
 		arcan_video_pollfeed();
 		arcan_audio_refresh();
 
-		arcan_event ev;
+		float frag = arcan_event_process(evctx, on_clock_pulse);
 		while (1 == arcan_event_poll(evctx, &ev)){
 			switch (ev.category){
 			case EVENT_VIDEO:
@@ -677,7 +686,7 @@ applswitch:
 
 /* slated for deprecation in favor of collapsing to .. */
 				else if (ev.kind == EVENT_SYSTEM_SWITCHAPPL){
-					arcan_luaL_shutdown(settings.lua);
+					arcan_lua_shutdown(settings.lua);
 					if (switch_appl(ev.data.system.data.message))
 						goto applswitch;
 					else
@@ -691,7 +700,6 @@ applswitch:
 			arcan_lua_pushevent(settings.lua, &ev);
 		}
 
-		float frag = arcan_event_process(evctx, on_clock_pulse);
 		platform_video_synch(settings.tick_count, frag, preframe, postframe);
 	}
 

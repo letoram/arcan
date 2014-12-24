@@ -608,11 +608,22 @@ static int alua_doresolve(lua_State* ctx, const char* inp)
 	return rv;
 }
 
-char* arcan_luaL_main(lua_State* ctx, const char* inp, bool file)
+void arcan_lua_tick(lua_State* ctx, size_t nticks, size_t global)
+{
+	arcan_lua_setglobalint(ctx, "CLOCK", global);
+
+	if (grabapplfunction(ctx, "clock_pulse", 11)) {
+		lua_pushnumber(ctx, global);
+		lua_pushnumber(ctx, nticks);
+		wraperr(ctx, lua_pcall(ctx, 2, 0, 0),"event loop: clock pulse");
+	}
+}
+
+char* arcan_lua_main(lua_State* ctx, const char* inp, bool file)
 {
 /* since we prefix scriptname to functions that we look-up,
  * we need a buffer to expand into with as few read/writes/allocs
- * as possible, arcan_luaL_dofile is only ever invoked when
+ * as possible, arcan_lua_dofile is only ever invoked when
  * an appl is about to be loaded so here is a decent entrypoint */
 	const int suffix_lim = 34;
 
@@ -634,7 +645,7 @@ char* arcan_luaL_main(lua_State* ctx, const char* inp, bool file)
 	return NULL;
 }
 
-void arcan_luaL_adopt(arcan_vobj_id id, void* tag)
+void arcan_lua_adopt(arcan_vobj_id id, void* tag)
 {
 	lua_State* ctx = tag;
 	arcan_vobject* vobj = arcan_video_getobject(id);
@@ -2286,7 +2297,7 @@ static int syscollapse(lua_State* ctx)
 /* lua will free when we destroy the context */
 		switch_appl = strdup(switch_appl);
 		const char* errmsg;
-		arcan_luaL_shutdown(ctx);
+		arcan_lua_shutdown(ctx);
 
 /* flush eventqueue to avoid danglers */
 		arcan_event_deinit(arcan_event_defaultctx());
@@ -2310,7 +2321,7 @@ static int syscollapse(lua_State* ctx)
 	else{
 		int saved, truncated;
 		arcan_video_recoverexternal(true, &saved, &truncated,
-			arcan_luaL_adopt, ctx);
+			arcan_lua_adopt, ctx);
 	}
 
 	LUA_ETRACE("system_collapse", NULL);
@@ -3053,15 +3064,6 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		}
 
 		wraperr(ctx, lua_pcall(ctx, 1, 0, 0), "push event( input )");
-	}
-	else if (ev->category == EVENT_TIMER){
-		arcan_lua_setglobalint(ctx, "CLOCK", ev->tickstamp);
-
-		if (grabapplfunction(ctx, "clock_pulse", 11)) {
-			lua_pushnumber(ctx, ev->tickstamp);
-			lua_pushnumber(ctx, ev->data.timer.pulse_count);
-			wraperr(ctx, lua_pcall(ctx, 2, 0, 0),"event loop: clock pulse");
-		}
 	}
 	else if (ev->category == EVENT_NET){
 		if (arcan_video_findparent(ev->data.external.source) == ARCAN_EID)
@@ -4607,12 +4609,12 @@ static int warning(lua_State* ctx)
 	return 0;
 }
 
-void arcan_luaL_shutdown(lua_State* ctx)
+void arcan_lua_shutdown(lua_State* ctx)
 {
 	lua_close(ctx);
 }
 
-void arcan_luaL_dostring(lua_State* ctx, const char* code)
+void arcan_lua_dostring(lua_State* ctx, const char* code)
 {
     (void)luaL_dostring(ctx, code);
 }
