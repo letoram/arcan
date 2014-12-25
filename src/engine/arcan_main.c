@@ -456,6 +456,9 @@ int main(int argc, char* argv[])
 
 		fullscreen = false;
 	}
+#else
+	if (!stdout_redirected){
+	}
 #endif
 
 /* also used as restart point for switching appls */
@@ -638,6 +641,9 @@ applswitch:
 		goto error;
 	}
 	free(msg);
+	FILE* con = fopen("CON", "w");
+	freopen("CON", "w", stdout);
+	freopen("CON", "w", stderr);
 
 /* entry point follows the name of the appl,
  * hand over execution and begin event loop */

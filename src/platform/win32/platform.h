@@ -23,7 +23,6 @@
 extern char* strdup(const char*);
 extern double round(double x);
 FILE* fdopen(int, const char*);
-int strcasecmp(const char*, const char*);
 int random(void);
 int setenv(const char* name, const char* value, int overwrite);
 

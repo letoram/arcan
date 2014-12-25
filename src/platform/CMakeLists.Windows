@@ -2,7 +2,7 @@ add_definitions(-msse -mfpmath=sse -std=gnu11 -Wall -Wno-missing-braces
 	-Wno-unused-variable -Wno-unused-function -D_POSIX_C_SOURCE -D_GNU_SOURCE
 	-DARCAN_SHMIF_OVERCOMMIT)
 set (WIN32_PATH ${CMAKE_SOURCE_DIR}/platform/win32)
-set (DISTR_PATH ${CMAKE_SOURCE_DIR}/distr)
+set (DISTR_PATH ${WINDISTR}/../)
 
 set (PLATFORM_SOURCES
 	platform/posix/fmt_open.c
