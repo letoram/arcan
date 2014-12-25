@@ -229,30 +229,52 @@ set(ARCAN_DEFINITIONS "")
 
 # OS Specific libraries / dependencies first
 if(WIN32)
-	set(WINLIB ${CMAKE_CURRENT_SOURCE_DIR}/platform/win32/lib)
-	set(WININC ${CMAKE_CURRENT_SOURCE_DIR}/platform/win32/include)
-	set(WINDISTR ${CMAKE_CURRENT_SOURCE_DIR}/../data/distr)
+	if (NOT WINDISTR)
+		set(WINDISTR ${CMAKE_CURRENT_SOURCE_DIR}/../data/distr/win32libs)
+		message("(windows) setting DLL search path to ${WINDISTR}")
+	endif()
+
+	set(WININC ${WINDISTR}/include)
+	message("(windows) include search path ${WINDISTR}/include")
+
 	set(CMAKE_INCLUDE_PATH ${WININC} /usr/local/include)
 	set(CMAKE_LIBRARY_PATH ${WINLIB} /usr/local/lib)
 
+# includes
 	set(SDL_INCLUDE_DIR ${WININC}\\SDL)
-
 	set(ZLIB_INCLUDE_DIR ${WININC})
 	set(BZIP2_INCLUDE_DIR ${WININC})
-	set(OPENAL_LIBRARY ${WINLIB}\\OpenAL32.lib)
 	set(OPENAL_INCLUDE_DIR ${WININC}\\AL)
-	set(PNG_PNG_INCLUDE_DIR ${WININC})
-
-	set(FREETYPE_LIBRARY ${WINDISTR}\\win32libs\\freetype6.dll)
-	set(PNG_LIBRARY ${WINLIB}\\libpng16.a)
-	set(ZLIB_LIBRARY ${WINDISTR}\\win32libs\\zlib1.dll)
-	set(LIBVLC_LIBRARY ${WINDISTR}\\win32libs\\libvlc.dll)
+	set(FREETYPE_INCLUDE_DIRS ${WININC})
 	set(LIBVLC_INCLUDE_DIR ${WININC})
-	set(APR_LIBRARY ${WINLIB}\\libapr-1.a)
 	set(APR_INCLUDE_DIR ${WININC}\\apr)
 	set(SQLITE3_INCLUDE_DIR ${WININC})
-	set(SQLITE3_LIBRARY_RELEASE ${WINDISTR}\\win32libs\\sqlite3.dll)
 	set(SDLIMAGE_INCLUDE_DIR ${WININC}\\SDL)
+	set(GLEW_INCLUDE_DIR ${WININC})
+
+# dynamic linkage
+	set(SQLITE3_LIBRARY_RELEASE ${WINDISTR}/sqlite3.dll)
+	set(BZIP2_LIBRARIES ${WINDISTR}/libbz2.a)
+	set(OPENAL_LIBRARY ${WINDISTR}/OpenAL32.lib)
+	set(FREETYPE_LIBRARY ${WINDISTR}/freetype6.dll)
+	set(ZLIB_LIBRARY ${WINDISTR}/zlib1.dll)
+	set(LIBVLC_LIBRARY ${WINDISTR}/libvlc.dll)
+	set(SDL_LIBRARY ${WINDISTR}/SDL.dll)
+	set(FFMPEG_LIBRARIES
+		${WINDISTR}/avcodec-55.dll
+		${WINDISTR}/avdevice-55.dll
+		${WINDISTR}/avfilter-4.dll
+		${WINDISTR}/avformat-55.dll
+		${WINDISTR}/avutil-52.dll
+		${WINDISTR}/swscale-2.dll
+		${WINDISTR}/swresample-0.dll
+	)
+
+# static linkage
+	set(APR_LIBRARY ${WINDISTR}/libapr-1.a)
+	set(PNG_LIBRARY /usr/local/lib/libpng16.a)
+	set(GLEW_LIBRARY ${WINDISTR}/glew32s.lib)
+
 	set(ENABLE_LWA OFF)
 	set(OS_PLATFORM_NAME "Win32")
 	set(VIDEO_PLATFORM "sdl") # there's no other ported options here

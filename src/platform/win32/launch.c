@@ -33,7 +33,7 @@
 #include "arcan_event.h"
 #include "arcan_video.h"
 #include "arcan_audio.h"
-#include "arcan_frameserver_backend.h"
+#include "arcan_frameserver.h"
 
 unsigned long arcan_target_launch_external(const char* fname,
 	struct arcan_strarr* argv, struct arcan_strarr* envv,
