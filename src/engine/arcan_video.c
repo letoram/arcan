@@ -253,7 +253,8 @@ static void dropchild(arcan_vobject* parent, arcan_vobject* child)
 /* scan through each cell in use, and either deallocate / wrap with deleteobject
  * or pause frameserver connections and (conservative) delete resources that can
  * be recreated later on. */
-static void deallocate_gl_context(struct arcan_video_context* context, bool del)
+static void deallocate_gl_context(struct arcan_video_context* context,
+	bool del, struct storage_info_t* safe_store)
 {
 /* index (0) is always worldid */
 	for (size_t i = 1; i < context->vitem_limit; i++) {
@@ -271,8 +272,9 @@ static void deallocate_gl_context(struct arcan_video_context* context, bool del)
 			if (del)
 				arcan_video_deleteobject(i);
 
-/* only non-persistant objects will have their GL objects removed immediately */
-			else if (!FL_TEST(current, FL_PRSIST))
+/* only non-persistant objects will have their GL objects removed immediately
+ * but not for the cases where we share store with the world */
+			else if (!FL_TEST(current, FL_PRSIST) && current->vstore != safe_store)
 				agp_null_vstore(current->vstore);
 		}
 	}
@@ -324,14 +326,15 @@ static void reallocate_gl_context(struct arcan_video_context* context)
 			if (FL_TEST(current, FL_PRSIST))
 				continue;
 
-			if (FL_TEST(current, FL_CLONE))
-				continue;
-
 /* since there may be queued transforms in an already pushed context,
  * we maintain the timing and reset them to match the changes that
  * has already occurred */
-			if (ctrans && cticks > context->last_tickstamp)
+			if (ctrans && cticks > context->last_tickstamp){
 				rebase_transform(ctrans, cticks - context->last_tickstamp);
+			}
+
+			if (FL_TEST(current, FL_CLONE))
+				continue;
 
 /* for conservative memory management mode we need to reallocate
  * static resources. getimage will strdup the source so to avoid leaking,
@@ -391,7 +394,7 @@ static void push_transfer_persists(
 		arcan_vobject* srcobj = &src->vitems_pool[i];
 		arcan_vobject* dstobj = &dst->vitems_pool[i];
 
-		if (!FL_TEST(srcobj, FL_INUSE | FL_PRSIST))
+		if (!FL_TEST(srcobj, FL_INUSE) || !FL_TEST(srcobj, FL_PRSIST))
 			continue;
 
 		detach_fromtarget(&src->stdoutp, srcobj);
@@ -416,10 +419,7 @@ static void pop_transfer_persists(
 		arcan_vobject* srcobj = &src->vitems_pool[i];
 		arcan_vobject* dstobj = &dst->vitems_pool[i];
 
-		if (!
-			(FL_TEST(srcobj, FL_INUSE | FL_PRSIST) &&
-			 FL_TEST(dstobj, FL_INUSE | FL_PRSIST))
-		)
+		if (!FL_TEST(srcobj, FL_INUSE) || !FL_TEST(srcobj, FL_PRSIST))
 			continue;
 
 		arcan_vobject* parent = dstobj->parent;
@@ -528,11 +528,12 @@ signed arcan_video_pushcontext()
 /* copy everything then manually reset some fields to defaults */
 	memcpy(&vcontext_stack[ ++vcontext_ind ], current_context,
 		sizeof(struct arcan_video_context));
-	deallocate_gl_context(current_context, false);
+	deallocate_gl_context(current_context, false, empty_vobj.vstore);
 
 	current_context = &vcontext_stack[ vcontext_ind ];
 	current_context->stdoutp.first = NULL;
 	current_context->vitem_ofs = 1;
+	current_context->nalive = 0;
 
 	current_context->world = empty_vobj;
 	current_context->stdoutp.color = &current_context->world;
@@ -752,7 +753,7 @@ unsigned arcan_video_popcontext()
 		pop_transfer_persists(
 			current_context, &vcontext_stack[vcontext_ind-1]);
 
-	deallocate_gl_context(current_context, true);
+	deallocate_gl_context(current_context, true, current_context->world.vstore);
 
 	if (vcontext_ind > 0){
 		vcontext_ind--;
@@ -4980,7 +4981,7 @@ void arcan_video_shutdown()
 		lastctxc = lastctxa;
 
 	arcan_shader_flush();
-	deallocate_gl_context(current_context, true);
+	deallocate_gl_context(current_context, true, NULL);
 	arcan_video_reset_fontcache();
 	agp_rendertarget_clear(NULL);
 
