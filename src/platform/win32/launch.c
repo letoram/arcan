@@ -104,8 +104,9 @@ unsigned long arcan_target_launch_external(const char* fname,
 	return arcan_frametime() - start;
 }
 
-arcan_frameserver* arcan_target_launch_internal(
-	const char* fname, char** argv, char** envv, char** libs)
+arcan_frameserver* arcan_target_launch_internal(const char* fname,
+	struct arcan_strarr* argv, struct arcan_strarr* envv,
+	struct arcan_strarr* libs)
 {
 	return NULL;
 }

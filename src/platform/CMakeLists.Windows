@@ -51,16 +51,12 @@ if (${ENABLE_LIBRETRO})
 if (${ENABLE_LIBRETRO3D})
 	list(APPEND FSRV_SOURCES platform/sdl/video_mini.c)
 	list(APPEND FSRV_LIBRARIES ${SDL_LIBRARY})
-	list(APPEND FSRV_LIBRARIES ${GLEW_LIBRARIES})
-	list(APPEND FSRV_LIBRARIES ${OPENGL_gl_LIBRARY})
+	list(APPEND FSRV_LIBRARIES ${AGP_LIBRARIES})
 endif(${ENABLE_LIBRETRO3D})
 endif(${ENABLE_LIBRETRO})
 
 add_definitions(-DPLATFORM_HEADER=\"${WIN32_PATH}/platform.h\"
-	-DGL_HEADERS=\"${WIN32_PATH}/../sdl/glheaders.h\"
-	-Wno-missing-braces
-	-DLUA_51 -D__WINDOWS -DPOOR_GL_SUPPORT -static
-)
+	-Wno-missing-braces -DLUA_51 -D__WINDOWS -static)
 
 # the win32/ folder should be merged with the platform sources
 LIST(APPEND SOURCES

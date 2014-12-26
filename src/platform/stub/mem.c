@@ -30,6 +30,10 @@ void* arcan_alloc_mem(size_t nb,
 	return buf;
 }
 
+void arcan_mem_tick()
+{
+}
+
 void arcan_mem_growarr(struct arcan_strarr* res)
 {
 /* _alloc functions lacks a grow at the moment,

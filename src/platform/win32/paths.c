@@ -21,6 +21,20 @@
 #include <arcan_math.h>
 #include <arcan_general.h>
 
+static char* envvs[] = {
+	"ARCAN_APPLPATH",
+	"ARCAN_RESOURCEPATH",
+	"ARCAN_APPLTEMPPATH",
+	"ARCAN_STATEPATH", /* will be ignored */
+	"ARCAN_APPLBASEPATH",
+	"ARCAN_APPLSTOREPATH",
+	"ARCAN_STATEBASEPATH",
+	"ARCAN_FONTPATH",
+	"ARCAN_BINPATH",
+	"ARCAN_LIBPATH",
+	"ARCAN_LOGPATH"
+};
+
 static bool appl_ready = false;
 static size_t appl_len = 0;
 static char* g_appl_id = "#app_not_initialized";
@@ -73,14 +87,11 @@ void arcan_set_namespace_defaults()
 	snprintf(state_dir, sizeof(state_dir), "%s/savestates", respath);
 	snprintf(font_dir, sizeof(font_dir), "%s/fonts", respath);
 
-	arcan_override_namespace(respath, RESOURCE_APPL_SHARED);
-	arcan_override_namespace(state_dir, RESOURCE_SYS_APPLSTATE);
-
-	arcan_override_namespace(debug_dir, RESOURCE_SYS_DEBUG);
-	arcan_override_namespace(font_dir, RESOURCE_SYS_FONT);
-
-/* makes no sense on windows currently */
-	arcan_override_namespace("./", RESOURCE_SYS_BINS);
-	arcan_override_namespace("./", RESOURCE_SYS_LIBS);
+	arcan_softoverride_namespace(respath, RESOURCE_APPL_SHARED);
+	arcan_softoverride_namespace(state_dir, RESOURCE_SYS_APPLSTATE);
+	arcan_softoverride_namespace(debug_dir, RESOURCE_SYS_DEBUG);
+	arcan_softoverride_namespace(font_dir, RESOURCE_SYS_FONT);
+	arcan_softoverride_namespace("./", RESOURCE_SYS_BINS);
+	arcan_softoverride_namespace("./", RESOURCE_SYS_LIBS);
 }
 
