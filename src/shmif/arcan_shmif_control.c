@@ -159,7 +159,8 @@ static void map_shared(const char* shmkey,
 /*
  * No implementation on windows currently
  */
-char* arcan_shmif_connect(const char* connpath, const char* connkey)
+char* arcan_shmif_connect(const char* connpath, const char* connkey,
+	file_handle* conn_ch)
 {
 	return NULL;
 }
@@ -504,6 +505,13 @@ void arcan_shmif_setevqs(struct arcan_shmif_page* dst,
 	outq->eventbuf_sz = ARCAN_SHMPAGE_QUEUE_SZ;
 }
 
+#if _WIN32
+void arcan_shmif_signalhandle(struct arcan_shmif_cont* ctx, int mask,
+	int handle, size_t stride, int format, ...)
+{
+}
+
+#else
 void arcan_shmif_signalhandle(struct arcan_shmif_cont* ctx, int mask,
 	int handle, size_t stride, int format, ...)
 {
@@ -519,6 +527,7 @@ void arcan_shmif_signalhandle(struct arcan_shmif_cont* ctx, int mask,
 	arcan_event_enqueue(&ctx->outev, &ev);
 	arcan_shmif_signal(ctx, mask);
 }
+#endif
 
 void arcan_shmif_signal(struct arcan_shmif_cont* ctx, int mask)
 {

@@ -15,7 +15,7 @@
 #include "glfun.h"
 
 #include "../video_platform.h"
-#include "../platform.h"
+#include PLATFORM_HEADER
 
 #include "arcan_math.h"
 #include "arcan_general.h"

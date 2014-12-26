@@ -16,6 +16,8 @@ extern bool stdout_redirected;
 
 static bool winnolog;
 
+void (*arcan_fatal_hook)(void) = NULL;
+
 void arcan_warning(const char* msg, ...)
 {
 	if (winnolog)
@@ -64,6 +66,9 @@ void arcan_fatal(const char* msg, ...)
 	}
 
 	MessageBox(NULL, dbuf, NULL, MB_OK | MB_ICONERROR | MB_APPLMODAL );
+	if (arcan_fatal_hook)
+		arcan_fatal_hook();
+
 	exit(1);
 }
 
