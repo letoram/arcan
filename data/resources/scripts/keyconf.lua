@@ -721,7 +721,7 @@ function keyconf_create(menugroup, playergroup, keyname)
 		ignore_modifiers = false,
 		keyfile = keyname,
 		input_playersel = keyconf_inp_playersel,
-		cooldown = 200, -- default is 25ms/tick, 200 * 25 = minimum 500ms between each key
+		cooldown = 20, -- 500ms
 		analog_samplelimit = 200,
 		time_lastkey = CLOCK,
 		active_group = 0,
