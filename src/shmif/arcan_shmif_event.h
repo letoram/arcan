@@ -86,6 +86,7 @@ enum ARCAN_SEGID {
 	SEGID_HMD_SBS, /* head-mounter display, even split left/ right */
 	SEGID_HMD_L, /* head-mounted display, left eye view (otherwise _GAME) */
   SEGID_HMD_R, /* head-mounted display, right eye view (otherwise _GAME) */
+	SEGID_POPUP, /* pulldown menus, popup windows, ... */
 	SEGID_ICON, /* minimized- status indicator */
 	SEGID_DEBUG, /* can always be terminated, may hold extraneous information */
 	SEGID_UNKNOWN
@@ -579,6 +580,8 @@ typedef struct arcan_extevent {
 			uint8_t type;
 			uint16_t width;
 			uint16_t height;
+			off_t xofs;
+			off_t yofs;
 		} noticereq;
 
 		struct {
@@ -594,12 +597,6 @@ typedef struct arcan_extevent {
 			uint32_t frameno;  /* simple counter */
 		} streamstat;
 
-/*
- * emitted as a verification / debugging /
- * synchronization primitive,
- * EVENT_EXTERNAL_NOTICE_FRAMESTATUS, emitted once for each
- * port actually sampled
- */
 		struct {
 			uint32_t framenumber;
 			uint64_t pts;

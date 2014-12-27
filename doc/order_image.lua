@@ -1,16 +1,20 @@
 -- order_image
 -- @short: Alter the drawing order of the specified image.
 -- @inargs: vid or tblvid, newzv
--- @longdescr: The internal rendering pipeline treats images in a linear fashion
--- and each rendering context is maintained as a list sorted on the current order value.
--- This will detach the object from the main pipeline and then reattach at the new position.
--- @note: This only applies to the active owner of an image, for images attached to
--- multiple rendertarget, such changes won't take place until you forcibly attach/detach
+-- @longdescr: Every object has an order property that determines
+-- when it should be drawn in respect to other ones. This value
+-- can be changed by calling the order_image function on a video
+-- object or a table of video objects. The newzv should be within
+-- the range 0 <= n < 65535 and will be clamped. The execption to
+-- this is objects that are linked to others and have their order
+-- being relative to its parent, where negative values are permitted
+-- but will be resolved to a value within the specified range.
+-- @note: This only applies to the active owner of an
+-- image, for images attached to multiple rendertarget,
+-- such changes won't take place until you forcibly attach/detach
 -- for each specified rendertarget.
--- @note: newzv is internally capped to 65535
--- @note: newzv cannot be lower than 0
--- @note: Order can also be relative to the world- order of the resolved parent,
--- see image_inherit_order.
+-- @note: Order can also be relative to the world- order
+-- of the resolved parent, see image_inherit_order.
 -- @group: image
 -- @cfunction: orderimage
 -- @related: image_inherit_order, max_current_image_order

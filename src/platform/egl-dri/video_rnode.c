@@ -143,7 +143,10 @@ int64_t PLATFORM_SYMBOL(_output_handle)(
 	if (eglExportDRMImageMESA(rnode.display, rnode.output,
 		&name, &handle, &stride)){
 		drmPrimeHandleToFD(rnode.fd, handle, DRM_CLOEXEC, &fd);
+		*status = READY_TRANSFER;
 	}
+	else
+		*status = ERROR_UNSUPPORTED;
 
 /* how is this allocation managed, should the handle be destroyed
  * or is it collected with the fd? */

@@ -32,7 +32,6 @@ struct agp_rendertarget
 {
 	GLuint fbo;
 	GLuint depth;
-	GLuint color;
 
 	enum rendertarget_mode mode;
 	struct storage_info_t* store;
@@ -527,7 +526,7 @@ void agp_rendertarget_ids(struct agp_rendertarget* rtgt, uintptr_t* tgt,
 	uintptr_t* col, uintptr_t* depth)
 {
 	*tgt = rtgt->fbo;
-	*col = rtgt->color;
+	*col = rtgt->store->vinf.text.glid;
 	*depth = rtgt->depth;
 }
 

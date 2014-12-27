@@ -17,7 +17,9 @@
 #include <assert.h>
 #include <signal.h>
 
-/* fixed limit of allowed events in queue before old gets overwritten */
+/* fixed limit of allowed events in queue before we need to
+ * do something more aggressive (flush queue or start dropping
+ * or even blacklisting noisy input device) */
 #ifndef ARCAN_EVENT_QUEUE_LIM
 #define ARCAN_EVENT_QUEUE_LIM 500
 #endif
@@ -133,6 +135,28 @@ int arcan_event_poll(arcan_evctx* ctx, struct arcan_event* dst)
 	}
 
 	return 1;
+}
+
+
+void arcan_event_repl(struct arcan_evctx* ctx, enum ARCAN_EVENT_CATEGORY cat,
+	size_t r_ofs, size_t r_b, void* cmpbuf, size_t w_ofs, size_t w_b, void* w_buf)
+{
+	if (!ctx->local)
+		return;
+
+	LOCK();
+
+	unsigned front = *ctx->front;
+
+	while (front != *ctx->back){
+		printf("%d, %d\n", front, *ctx->back);
+		if (ctx->eventbuf[front].category == cat &&
+			memcmp( (char*)(&ctx->eventbuf[front]) + r_ofs, cmpbuf, r_b) == 0)
+				memcpy( (char*)(&ctx->eventbuf[front]) + w_ofs, w_buf, w_b );
+		front = (front + 1) % ctx->eventbuf_sz;
+	}
+
+	UNLOCK();
 }
 
 void arcan_event_maskall(arcan_evctx* ctx)

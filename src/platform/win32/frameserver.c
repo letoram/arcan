@@ -43,7 +43,7 @@ static BOOL SafeTerminateProcess(HANDLE hProcess, UINT* uExitCode);
 
 void arcan_frameserver_killchild(arcan_frameserver* src)
 {
-	if (!src || src->flags.subsegment || !src->child)
+	if (!src || src->parent != ARCAN_EID || !src->child)
 		return;
 
 	UINT ec;

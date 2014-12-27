@@ -20,9 +20,6 @@
 #include <zlib.h>
 #include <png.h>
 
-#ifdef TJPEG
-#endif
-
 #ifdef SDLIMAGE
 #include <SDL_image.h>
 #endif
@@ -33,7 +30,6 @@ struct png_readstr
 	off_t inbuf_ofs;
 	size_t inbuf_sz;
 };
-
 
 #ifdef _SDL_IMAGE_H
 /* copy RGBA src row by row with optional "flip",

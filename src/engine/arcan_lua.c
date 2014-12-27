@@ -1503,7 +1503,7 @@ static int scaleimage(lua_State* ctx)
 static int orderimage(lua_State* ctx)
 {
 	LUA_TRACE("order_image");
-	unsigned int zv = abs(luaL_checknumber(ctx, 2));
+	int zv = luaL_checknumber(ctx, 2);
 
 /* array of VIDs or single VID */
 	int argtype = lua_type(ctx, 1);
@@ -2960,6 +2960,8 @@ static void emit_segreq(lua_State* ctx, struct arcan_extevent* ev)
 	tblnum(ctx, "height", ev->noticereq.height, top);
 	tblnum(ctx, "reqid", ev->noticereq.id, top);
 	tblnum(ctx, "type", ev->noticereq.type, top);
+	tblnum(ctx, "xofs", ev->noticereq.xofs, top);
+	tblnum(ctx, "yofs", ev->noticereq.yofs, top);
 
 	lua_ctx_store.cb_source_tag = ev->source;
 	lua_ctx_store.cb_source_kind = CB_SOURCE_FRAMESERVER;
@@ -3292,9 +3294,10 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		intptr_t dst_cb = 0;
 
 /*
- * drop frameserver events for which the queue object has died,
- * VID reuse won't actually be a problem unless the user ehrm, allocates/deletes
- * full 32-bit (-context_size) in one go
+ * Drop frameserver events for which the queue object has died,
+ * VID reuse won't actually be a problem unless the script
+ * allocates/deletes full 32-bit (-context_size) in one go which
+ * is not possible from the context size restriction.
  */
 		if (arcan_video_findparent(ev->data.frameserver.video) == ARCAN_EID)
 			return;
@@ -4851,7 +4854,7 @@ static int targethandler(lua_State* ctx)
 {
 	LUA_TRACE("target_updatehandler");
 	arcan_vobject* vobj;
-	luaL_checkvid(ctx, 1, &vobj);
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, &vobj);
 
 	intptr_t ref = find_lua_callback(ctx);
 
@@ -4861,6 +4864,25 @@ static int targethandler(lua_State* ctx)
 
 	arcan_frameserver* fsrv = vobj->feed.state.ptr;
 	fsrv->tag = ref;
+
+#ifndef offsetof
+#define offsetof(type, member) ((size_t)((char*)&(*(type*)0).member\
+ - (char*)&(*(type*)0)))
+#endif
+
+	arcan_event dummy;
+
+	assert(sizeof(dummy.data.frameserver.otag) == sizeof(ref));
+
+/* for the already pending events referring to the specific frameserver,
+ * rewrite the otag to match that of the new function */
+	arcan_event_repl(arcan_event_defaultctx(), EVENT_FRAMESERVER,
+		offsetof(arcan_event, data.frameserver.video),
+		sizeof(arcan_vobj_id), &id,
+		offsetof(arcan_event, data.frameserver.otag),
+		sizeof(dummy.data.frameserver.otag),
+		&ref
+	);
 
 	LUA_ETRACE("target_updatehandler", NULL);
 	return 0;
@@ -4951,6 +4973,24 @@ static int targetcoreopt(lua_State* ctx)
 
 	LUA_ETRACE("target_coreopt", NULL);
 	return 0;
+}
+
+static int targetparent(lua_State* ctx)
+{
+	LUA_TRACE("target_parent");
+	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
+	vfunc_state* state = arcan_video_feedstate(tgt);
+
+	if (!(state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr)){
+		lua_pushvid(ctx, ARCAN_EID);
+	}
+	else {
+		arcan_frameserver* fsrv = (arcan_frameserver*) state->ptr;
+		lua_pushvid(ctx, fsrv->parent);
+	}
+
+	LUA_ETRACE("target_parent", NULL);
+	return 1;
 }
 
 static int targetseek(lua_State* ctx)
@@ -5382,12 +5422,11 @@ static int targetaccept(lua_State* ctx)
 
 	vfunc_state* state = arcan_video_feedstate(last_segreq->source);
 	arcan_frameserver* newref = arcan_frameserver_spawn_subsegment(
-		(arcan_frameserver*) state->ptr, true,
+		(arcan_frameserver*) state->ptr, false,
 		last_segreq->noticereq.width,
 		last_segreq->noticereq.height,
 		last_segreq->noticereq.id
 	);
-
 	last_segreq = NULL;
 
 	lua_pushvid(ctx, newref->vid);
@@ -5448,7 +5487,7 @@ static int targetalloc(lua_State* ctx)
 
 		if (state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr)
 			newref = arcan_frameserver_spawn_subsegment(
-				(arcan_frameserver*) state->ptr, true, 0, 0, tag);
+				(arcan_frameserver*) state->ptr, false, 0, 0, tag);
 		else
 			arcan_fatal("target_alloc() specified source ID doesn't "
 				"contain a frameserver\n.");
@@ -5911,7 +5950,7 @@ static int spawn_recsubseg(lua_State* ctx,
 	}
 
 	arcan_frameserver* rv =
-		arcan_frameserver_spawn_subsegment(fsrv, false, 0, 0, 0);
+		arcan_frameserver_spawn_subsegment(fsrv, true, 0, 0, 0);
 
 	if(rv){
 		vfunc_state fftag = {
@@ -7203,7 +7242,7 @@ static inline arcan_frameserver* luaL_checknet(lua_State* ctx,
 		arcan_fatal("%s -- Frameserver connected to VID is not in client mode "
 			"(net_open vs net_listen)\n", prefix);
 
-	if (fsrv->flags.subsegment)
+	if (fsrv->parent != ARCAN_EID)
 		arcan_fatal("%s -- Subsegment argument target not allowed\n", prefix);
 
 	*dvobj = vobj;
@@ -7322,7 +7361,7 @@ static int net_pushsrv(lua_State* ctx)
 		arcan_fatal("net_pushsrv() -- bad arg1, VID "
 			"is not a frameserver.\n");
 
-	if (fsrv->flags.subsegment)
+	if (fsrv->parent != ARCAN_EID)
 		arcan_fatal("net_pushsrv() -- cannot push VID to a subsegment.\n");
 
 	if (!fsrv->segid == SEGID_NETWORK_CLIENT)
@@ -7638,6 +7677,7 @@ static const luaL_Reg tgtfuns[] = {
 {"target_graphmode",           targetgraph              },
 {"target_postfilter_args",     targetpostfilterargs     },
 {"target_seek",                targetseek               },
+{"target_parent",              targetparent             },
 {"target_coreopt",             targetcoreopt            },
 {"target_updatehandler",       targethandler            },
 {"define_rendertarget",        renderset                },
@@ -8207,6 +8247,7 @@ static inline const char* fsrvtos(enum ARCAN_SEGID ink)
 	case SEGID_NETWORK_CLIENT: return "network-client";
 	case SEGID_CURSOR: return "cursor";
 	case SEGID_TERMINAL: return "shell";
+	case SEGID_POPUP: return "popup";
 	case SEGID_ICON: return "icon";
 	case SEGID_REMOTING: return "remoting";
 	case SEGID_GAME: return "game";

@@ -680,7 +680,7 @@ arcan_errc arcan_video_objecttexmode(arcan_vobj_id id,
 	enum arcan_vtex_mode modes, enum arcan_vtex_mode modet);
 arcan_errc arcan_video_objectfilter(arcan_vobj_id id,
 	enum arcan_vfilter_mode filter);
-arcan_errc arcan_video_setzv(arcan_vobj_id id,unsigned short newzv);
+arcan_errc arcan_video_setzv(arcan_vobj_id id, int newzv);
 
 /* Object state retrieval */
 unsigned short arcan_video_getzv(arcan_vobj_id id);

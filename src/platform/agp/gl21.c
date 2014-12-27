@@ -207,11 +207,10 @@ struct stream_meta agp_stream_prepare(struct storage_info_t* s,
 	break;
 
 	case STREAM_RAW_DIRECT:
-		if (!s->vinf.text.wid){
+		if (!s->vinf.text.wid)
 			setup_unpack_pbo(s, meta.buf);
-		}
-		else
-			pbo_stream(s, meta.buf);
+
+		pbo_stream(s, meta.buf);
 	break;
 
 	case STREAM_RAW_DIRECT_SYNCHRONOUS:
