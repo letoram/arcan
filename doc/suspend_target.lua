@@ -1,11 +1,13 @@
 -- suspend_target
--- @short: Request that the target suspend execution, awaiting a resume or terminate call.
--- @inargs: targetvid
--- @longdescr: There are two principal pause/resume mechanisms that overlap slightly.
--- the _movie class that guarantee that the audio/video playback sampling will be paused
--- in the main engine. The other is suspend/resume target that queues an event in the
--- process associated with targetvid that assumes the target will suspend, but it is
--- not strictly enforced.
+-- @short: Request that the target suspend execution,
+-- awaiting a resume or terminate call.
+-- @inargs: targetvid, *noblock_fsrv*
+-- @longdescr:
+-- Suspend target blocks data retrieval from the specific frameserver.
+-- By default, it is performed in both the frameserver polling layer
+-- on the arcan side, and as an event received by the frameserver.
+-- If *noblock_fsrv* is set to something ther than 0, only the hinting
+-- event is sent.
 -- @group: targetcontrol
 -- @cfunction: targetsuspend
 -- @related: resume_target
