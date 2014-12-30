@@ -2392,6 +2392,8 @@ static int targetsuspend(lua_State* ctx)
 	LUA_TRACE("suspend_target");
 
 	arcan_vobj_id vid = luaL_checkvid(ctx, 1, NULL);
+	bool rsusp = luaL_optnumber(ctx, 2, 0) != 0;
+
 	vfunc_state* state = arcan_video_feedstate(vid);
 
 	if (!state || state->tag != ARCAN_TAG_FRAMESERV || !state->ptr){
@@ -2407,7 +2409,10 @@ static int targetsuspend(lua_State* ctx)
 		.category = EVENT_TARGET
 	};
 
-	arcan_frameserver_pause(fsrv);
+
+	if (!rsusp)
+		arcan_frameserver_pause(fsrv);
+
 	arcan_frameserver_pushevent(fsrv, &ev);
 	LUA_ETRACE("suspend_target", NULL);
 	return 0;
