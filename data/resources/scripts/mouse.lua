@@ -40,7 +40,7 @@ local mstate = {
 	drag_delta   = 8,  -- wiggle-room for drag
 	hover_ticks  = 30, -- time of inactive cursor before hover is triggered
 	hover_thresh = 12, -- pixels movement before hover is released
-	click_timeout= 6;  -- maximum number of ticks before a press-release pair isn't a tick
+	click_timeout= 8;  -- maximum number of ticks before a press-release pair isn't a tick
 	click_cnt    = 0,
 	counter      = 0,
 	hover_count  = 0,
@@ -352,7 +352,7 @@ local function lmbhandler(hists, press)
 		end
 
 		if (mstate.eventtrace) then
-			warning("left click");
+			warning(string.format("left click: %s", table.concat(hists, ",")));
 		end
 
 		if (mstate.drag) then -- already dragging, check if dropped
@@ -426,6 +426,21 @@ function mouse_button_input(ind, active)
 	mstate.btns[ind] = active;
 end
 
+local function mbh(hists, state)
+-- change in left mouse-button state?
+	if (state[1] ~= mstate.btns[1]) then
+		lmbhandler(hists, state[1]);
+
+	elseif (state[3] ~= mstate.btns[3]) then
+		rmbhandler(hists, state[3]);
+	end
+
+-- remember the button states for next time
+	mstate.btns[1] = state[1];
+	mstate.btns[2] = state[2];
+	mstate.btns[3] = state[3];
+end
+
 function mouse_input(x, y, state, noinp)
 	if (x == nil or y == nil) then
 		print(debug.traceback());
@@ -466,6 +481,12 @@ function mouse_input(x, y, state, noinp)
 -- note that over/out do not filter drag/drop targets, that's up to the owner
 	local hists = mouse_pickfun(mstate.x, mstate.y, mstate.pickdepth, 1);
 
+	if (mstate.drag) then
+		mouse_drag(x, y);
+		mbh(hists, state);
+		return;
+	end
+
 	for i=1,#hists do
 		if (linear_find(mstate.cur_over, hists[i]) == nil) then
 			table.insert(mstate.cur_over, hists[i]);
@@ -493,10 +514,6 @@ function mouse_input(x, y, state, noinp)
 		end
 	end
 
-	if (mstate.drag) then
-		mouse_drag(x, y);
-	end
-
 	if (mstate.predrag) then
 			mstate.predrag.count = mstate.predrag.count -
 				(math.abs(x) + math.abs(y));
@@ -511,18 +528,7 @@ function mouse_input(x, y, state, noinp)
 		return;
 	end
 
--- change in left mouse-button state?
-	if (state[1] ~= mstate.btns[1]) then
-		lmbhandler(hists, state[1]);
-
-	elseif (state[3] ~= mstate.btns[3]) then
-		rmbhandler(hists, state[3]);
-	end
-
--- remember the button states for next time
-	mstate.btns[1] = state[1];
-	mstate.btns[2] = state[2];
-	mstate.btns[3] = state[3];
+	mbh(hists, state);
 end
 
 mouse_motion = mouse_input;

@@ -128,7 +128,7 @@ void arcan_frameserver_dropshared(arcan_frameserver* src)
 
 void arcan_frameserver_killchild(arcan_frameserver* src)
 {
-	if (!src || src->flags.subsegment)
+	if (!src || src->parent != ARCAN_EID)
 		return;
 
 /*
@@ -399,7 +399,7 @@ fail:
  * looks for an ident on the socket.
  */
 arcan_frameserver* arcan_frameserver_spawn_subsegment(
-	arcan_frameserver* ctx, bool input, int hintw, int hinth, int tag)
+	arcan_frameserver* ctx, bool record, int hintw, int hinth, int tag)
 {
 	if (!ctx || ctx->flags.alive == false)
 		return NULL;
@@ -424,7 +424,7 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 		.bpp = GL_PIXEL_BPP
 	};
 	arcan_vobj_id newvid = arcan_video_addfobject((arcan_vfunc_cb)
-		arcan_frameserver_emptyframe, state, cons, 0);
+		arcan_frameserver_videoframe_direct, state, cons, 0);
 
 	if (newvid == ARCAN_EID){
 		arcan_frameserver_free(newseg);
@@ -445,14 +445,14 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
  * to video.
  */
 	arcan_errc errc;
-	if (!input)
+	if (!record)
 		newseg->aid = arcan_audio_feed((arcan_afunc_cb)
 			arcan_frameserver_audioframe_direct, ctx, &errc);
 
  	newseg->desc = vinfo;
 	newseg->source = ctx->source ? strdup(ctx->source) : NULL;
 	newseg->vid = newvid;
-	newseg->flags.subsegment = true;
+	newseg->parent = ctx->vid;
 
 /* Transfer the new event socket, along with
  * the base-key that will be used to find shmetc.
@@ -474,7 +474,7 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	arcan_event keyev = {
 		.category = EVENT_TARGET,
 		.kind = TARGET_COMMAND_NEWSEGMENT,
-		.data.target.ioevs[0].iv = input ? 1 : 0,
+		.data.target.ioevs[0].iv = record ? 1 : 0,
 		.data.target.ioevs[1].iv = tag
 	};
 
@@ -500,11 +500,9 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
  * Memory- constraints and future refactoring plans means that
  * AVFEED/INTERACTIVE are the only supported subtypes
  */
-	if (input){
+	if (record){
 		newseg->segid = SEGID_ENCODER;
 		newseg->flags.socksig = true;
-		keyev.data.target.ioevs[0].iv = 1;
-		keyev.data.target.ioevs[1].iv = tag;
 	}
 	else {
 		newseg->segid = SEGID_UNKNOWN;

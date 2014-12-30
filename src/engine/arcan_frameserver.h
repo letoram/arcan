@@ -116,7 +116,6 @@ typedef struct arcan_frameserver {
 		bool alive;
 		bool pbo;
 		bool explicit;
-		bool subsegment;
 		bool no_alpha_copy;
 	} flags;
 
@@ -124,6 +123,7 @@ typedef struct arcan_frameserver {
 	arcan_aobj_id* alocks;
 	arcan_aobj_id aid;
 	arcan_vobj_id vid;
+	arcan_vobj_id parent;
 
 	struct {
 		unsigned n_aids;

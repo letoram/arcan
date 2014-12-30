@@ -112,7 +112,7 @@ unsigned vcontext_ind = 0;
  */
 static bool detach_fromtarget(struct rendertarget* dst, arcan_vobject* src);
 static void attach_object(struct rendertarget* dst, arcan_vobject* src);
-static arcan_errc update_zv(arcan_vobject* vobj, unsigned short newzv);
+static arcan_errc update_zv(arcan_vobject* vobj, int newzv);
 static void rebase_transform(struct surface_transform*, int64_t);
 static size_t process_rendertarget(struct rendertarget*, float);
 static arcan_vobject* new_vobject(arcan_vobj_id* id,
@@ -492,9 +492,11 @@ void arcan_vint_drawcursor(bool erase)
 
 		txcos = txmatr;
 
+		agp_blendstate(BLEND_NONE);
 		agp_activate_vstore(current_context->world.vstore);
 	}
 	else{
+		agp_blendstate(BLEND_FORCE);
 		agp_activate_vstore(arcan_video_display.cursor.vstore);
 	}
 
@@ -2316,13 +2318,15 @@ unsigned short arcan_video_getzv(arcan_vobj_id id)
 }
 
 /* no parent resolve performed */
-static arcan_errc update_zv(arcan_vobject* vobj, unsigned short newzv)
+static arcan_errc update_zv(arcan_vobject* vobj, int newzv)
 {
-
 	struct rendertarget* owner = vobj->owner;
 
 	if (!owner)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
+
+	newzv = newzv < 0 ? 0 : newzv;
+	newzv = newzv > 65535 ? 65535 : newzv;
 
 /*
  * attach also works like an insertion sort where
@@ -2333,9 +2337,11 @@ static arcan_errc update_zv(arcan_vobject* vobj, unsigned short newzv)
  */
 	int oldv = vobj->order;
 	detach_fromtarget(owner, vobj);
-		vobj->order = newzv;
-		if (vobj->feed.state.tag == ARCAN_TAG_3DOBJ)
-			vobj->order *= -1;
+	vobj->order = newzv;
+
+	if (vobj->feed.state.tag == ARCAN_TAG_3DOBJ)
+		vobj->order *= -1;
+
 	attach_object(owner, vobj);
 
 /*
@@ -2354,7 +2360,7 @@ static arcan_errc update_zv(arcan_vobject* vobj, unsigned short newzv)
 
 /* change zval (see arcan_video_addobject) for a particular object.
  * return value is an error code */
-arcan_errc arcan_video_setzv(arcan_vobj_id id, unsigned short newzv)
+arcan_errc arcan_video_setzv(arcan_vobj_id id, int newzv)
 {
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
@@ -2363,13 +2369,8 @@ arcan_errc arcan_video_setzv(arcan_vobj_id id, unsigned short newzv)
 
 /* calculate order relative to parent if that's toggled
  * clip to 16bit US and ignore if the parent is a 3dobj */
-	if (FL_TEST(vobj, FL_ORDOFS)){
-		if (vobj->parent->order < 0)
-			return ARCAN_ERRC_UNACCEPTED_STATE;
-
-		int newv = newzv + vobj->parent->order;
-		newzv = newv > 65535 ? 65535 : newv;
-	}
+	if (FL_TEST(vobj, FL_ORDOFS))
+		newzv = newzv + vobj->parent->order;
 
 /*
  * Then propagate to any child that might've inherited

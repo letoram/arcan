@@ -42,19 +42,18 @@ void arcan_event_setmask(struct arcan_evctx*, unsigned mask);
 int64_t arcan_frametime();
 
 /*
- * special case, due to the event driven approach of LUA invocation,
- * we can get situations where we have a queue of events related to
- * a certain vid/aid, after the user has explicitly asked for it to be deleted.
+ * Lock and sweep the event queue to alter all events in category
+ * where memcmp((ev+r_ofs), cmpbuf, r_b) match and then write
+ * w_b from buf to ev+w_ofs.
  *
- * This means the user either has to check for this condition by tracking
- * the object (possibly dangling references etc.)
- * or that we sweep the queue and erase the tracks of the object in question.
- *
- * the default behaviour is to not erase unprocessed events that are made
- * irrelevant due to a deleted object.
+ * This is used to manually patch or rewrite events that need
+ * to be invalidated after that they have been enqueued, primarily
+ * for EVENT_FRAMESERVER_*
  */
-void arcan_event_erase_vobj(struct arcan_evctx* ctx,
-	enum ARCAN_EVENT_CATEGORY category, arcan_vobj_id source);
+void arcan_event_repl(struct arcan_evctx* ctx, enum ARCAN_EVENT_CATEGORY cat,
+	size_t r_ofs, size_t r_b, void* cmpbuf,
+	size_t w_ofs, size_t w_b, void* w_buf
+);
 
 /*
  * used as part of trying to salvage external connections while

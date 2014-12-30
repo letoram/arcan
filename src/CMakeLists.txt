@@ -449,6 +449,7 @@ elseif (VIDEO_PLATFORM STREQUAL "sdl")
 	if (${SDLIMAGE_FOUND})
 		message("--> SDL_Image found, adding")
 		list(APPEND ARCANMAIN_LIBRARIES ${SDLIMAGE_LIBRARY})
+		list(APPEND LWA_LIBRARIES ${SDLIMAGE_LIBRARY} ${SDL_LIBRARY})
 		list(APPEND INCLUDE_DIRS ${SDLIMAGE_INCLUDE_DIR})
 		set_property(SOURCE engine/arcan_img.c
 			APPEND PROPERTY COMPILE_DEFINITIONS SDLIMAGE)
@@ -462,6 +463,10 @@ elseif (VIDEO_PLATFORM STREQUAL "sdl")
 		if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 			message("Enabling LWA (Arcan-in-Arcan) build using Darwin HEADLESS")
 			SET(LWA_HEADLESS ${PLATFORM_ROOT}/darwin/video.c)
+			set_property(SOURCE ${PLATFORM_ROOT}/arcan/video.c APPEND PROPERTY
+				OBJECT_DEPENDS ${PLATFORM_ROOT}/darwin/video.c)
+			set_property(SOURCE frameserver/libretro.c APPEND PROPERTY
+				OBJECT_DEPENDS ${PLATFORM_ROOT}/darwin/video.c)
 		else()
 			message("Enabling LWA (Arcan-in-Arcan) build using X11 HEADLESS")
 			SET(LWA_HEADLESS ${PLATFORM_ROOT}/x11/video.c)

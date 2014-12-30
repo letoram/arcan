@@ -23,6 +23,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <dlfcn.h>
 
 #include "arcan_math.h"
 #include "arcan_general.h"
@@ -100,13 +101,8 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 
 	agp_activate_rendertarget(NULL);
 
-	if (nd > 0){
-		arcan_vint_drawrt(arcan_vint_world(), 0, 0,
-			arcan_video_display.width, arcan_video_display.height
-		);
-	}
-
-	arcan_vint_drawcursor(true);
+	arcan_vint_drawrt(arcan_vint_world(), 0, 0,
+		darwin.mdispw, darwin.mdisph);
 	arcan_vint_drawcursor(false);
 #endif
 
@@ -116,8 +112,29 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 		post();
 }
 
-void PLATFORM_SYMBOL(_video_query_modes)()
+struct monitor_mode* PLATFORM_SYMBOL(_video_query_modes)(
+	platform_display_id id, size_t* count)
 {
+	static struct monitor_mode mode = {};
+
+	mode.width  = darwin.canvasw;
+	mode.height = darwin.canvash;
+	mode.depth  = GL_PIXEL_BPP * 8;
+	mode.refresh = 60; /* should be queried */
+	*count = 1;
+
+	return &mode;
+}
+
+struct monitor_mode PLATFORM_SYMBOL(_video_dimensions)()
+{
+	struct monitor_mode res = {
+		.width = darwin.canvasw,
+		.height = darwin.canvash,
+		.phy_width = darwin.mdispw,
+		.phy_height = darwin.mdisph
+	};
+	return res;
 }
 
 bool PLATFORM_SYMBOL(_video_map_handle)(
@@ -129,6 +146,7 @@ bool PLATFORM_SYMBOL(_video_map_handle)(
 int64_t PLATFORM_SYMBOL(_output_handle)(
 	struct storage_info_t* store, enum status_handle* status)
 {
+	*status = ERROR_UNSUPPORTED;
 	return -1;
 }
 
@@ -162,7 +180,12 @@ void PLATFORM_SYMBOL(_video_shutdown) ()
 
 void* PLATFORM_SYMBOL(_video_gfxsym)(const char* sym)
 {
-	return NULL;
+	static void* dlh = NULL;
+  if (NULL == dlh)
+    dlh = dlopen("/System/Library/Frameworks/"
+			"OpenGL.framework/Versions/Current/OpenGL", RTLD_LAZY);
+
+  return dlh ? dlsym(dlh, sym) : NULL;
 }
 
 const char* PLATFORM_SYMBOL(_video_capstr)(void)

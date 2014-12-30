@@ -200,7 +200,8 @@ static void setup_3dcore(struct retro_hw_render_callback*);
 
 retro_proc_address_t libretro_requirefun(const char* sym)
 {
-	return frameserver_requirefun(sym, NULL);
+	retro_proc_address_t rfun = frameserver_requirefun(sym, NULL);
+	return rfun;
 }
 
 static void resize_shmpage(int neww, int newh, bool first)
@@ -439,9 +440,10 @@ static void libretro_vidcb(const void* data, unsigned width,
 
 			return;
 		}
-
-		if (!hpassing_disabled)
+		else{
+			agp_activate_rendertarget(NULL);
 			agp_readback_synchronous(&store);
+		}
 	}
 	else
 #endif

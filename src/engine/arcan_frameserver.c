@@ -619,7 +619,6 @@ arcan_errc arcan_frameserver_audioframe_direct(arcan_aobj* aobj,
 
 	if (buffer != -1 && src->audb && src->ofs_audb > ARCAN_ASTREAMBUF_LLIMIT){
 /* this function will make sure all monitors etc. gets their chance */
-			printf("arcan_audio_buffer\n");
 			arcan_audio_buffer(aobj, buffer, src->audb, src->ofs_audb,
 				src->desc.channels, src->desc.samplerate, tag);
 
@@ -749,6 +748,7 @@ arcan_frameserver* arcan_frameserver_alloc()
 
 	res->playstate = ARCAN_PLAYING;
 	res->flags.alive = true;
+	res->parent = ARCAN_EID;
 
 /* shm- related settings are deferred as this is called previous to mapping
  * (spawn_subsegment / spawn_server) so setting up the eventqueues with
