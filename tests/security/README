@@ -1,0 +1,43 @@
+Tests in this directory are of a manual/interactive nature and
+should be executed under supervision. In the sad event of CVE-
+qualifying vulnerabilities (which we commit to at the point of
+version 0.9) reproducing / PoC should be added to this directory,
+prefixed with cve_ and be evaluated before every new version.
+
+The facilities planned to help with security testing and auditing
+comes in three flavors, the first one is a specialized engine build 
+that only runs one app called insecure, that gets access to a set of
+new methods:
+
+Make sure that stack canaries etc. do their job.
+stack_overflow(buffertype, bytestr)
+
+Don't overflow the canary but overwrite a pointer to a buffer
+that will read from a user-defined descriptor.
+stack_overflow_writeptr(n_bytes, descriptor)
+
+vobj_write(ofs, bytestr)
+
+Explicitly create a vobj that retains its allocated ID 
+(thus eligible for calling with any normal function)
+use_after_free(vid)
+
+For spraying ROP gadgets etc. will jump to a randomized address
+where n_bytes are user-defines (1..8), if high- or low is set
+the overwrite will either be on on the high or low bytes of the
+address.
+wild_jump(n_bytes, array)
+
+The second planned set works across the shared memory interface,
+by a. fuzzing appl (which in itself only breaks higher->lower 
+privilege "separations") that checks a connected client for
+ defenses against a bad server spamming certain events 
+and b. a bad client trying to make changes in the running application.
+
+The third planned set uses the networking frameserver to test for
+instability when it comes to an authenticated client that misbehaves
+(i.e. find specific application issues), a programmable plaintext
+way of trying to decrypt communication between two authenticated 
+sessions, a daemon that performs man in the middle attacks on the 
+initial key-exchange and an application that replays A/V + text
+communication vs. traffic analysis.

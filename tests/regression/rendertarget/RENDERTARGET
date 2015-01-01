@@ -1,0 +1,10 @@
+This regression test works with some of the basic FBO-
+related (internally speaking, rendertarget) paths.
+
+We cover:
+1. normal rendertarget
+2. scaled rendertarget
+3. canvas resize (default world rendertarget)
+4. rendertarget noclear
+5. dynamic attach to rendertarget
+
