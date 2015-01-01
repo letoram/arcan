@@ -1,8 +1,4 @@
-/*
- * Copyright 2014, Björn Ståhl
- * License: 3-Clause BSD, see COPYING file in arcan source repository.
- * Reference: http://arcan-fe.com
- */
+/* public domain, no copyright claimed. */
 
 #include <stdlib.h>
 #include <stdint.h>

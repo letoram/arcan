@@ -1,3 +1,9 @@
+/*
+ * Copyright 2014-2015, Björn Ståhl
+ * License: 3-Clause BSD, see COPYING file in arcan source repository.
+ * Reference: http://arcan-fe.com
+ */
+
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -32,11 +38,11 @@ char* arcan_findshmkey(int* dfd, bool semalloc){
 		pb_ofs = strlen(playbuf) - 1;
 		fd = shm_open(playbuf, O_CREAT | O_RDWR | O_EXCL, 0700);
 
-	/*
-	 * with EEXIST, we happened to have a name collision,
-	 * it is unlikely, but may happen. for the others however,
-	 * there is something else going on and there's no point retrying
-	 */
+/*
+ * with EEXIST, we happened to have a name collision,
+ * it is unlikely, but may happen. for the others however,
+ * there is something else going on and there's no point retrying
+ */
 		if (-1 == fd && errno != EEXIST){
 			arcan_warning("arcan_findshmkey(), allocating "
 				"shared memory, reason: %d\n", errno);
@@ -71,7 +77,7 @@ char* arcan_findshmkey(int* dfd, bool semalloc){
 				sem_unlink(playbuf);
 			}
 
-		/* semaphores couldn't be created, retry */
+/* semaphores couldn't be created, retry */
 			shm_unlink(playbuf);
 			fd = -1;
 

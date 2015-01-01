@@ -1,5 +1,7 @@
 /*
- * Dated, slated for refactor before being returned to a working state
+ * Copyright 2014-2015, Björn Ståhl
+ * License: 3-Clause BSD, see COPYING file in arcan source repository.
+ * Reference: http://arcan-fe.com
  */
 
 #include <stdio.h>

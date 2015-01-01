@@ -1,8 +1,14 @@
 /*
+ * Copyright 2014-2015, Björn Ståhl
+ * License: 3-Clause BSD, see COPYING file in arcan source repository.
+ * Reference: http://arcan-fe.com
+ */
+
+/*
  * For POSIX We want a slightly different behavior from realpath et. al,
  * in that symlinks/bindmounts should be accepted, we don't protect against
- * things e.g. themes/a/symlink_to_themes/../aha but just want to discover
- * obvious breaks outside from themes or resources.
+ * things e.g. appl/a/symlink_to_appl/../aha but just want to discover
+ * obvious breaks outside from appl or resources.
  *
  *
  * we do this just by sweeping the string, calculate the current "level"

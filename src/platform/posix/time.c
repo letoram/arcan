@@ -1,3 +1,5 @@
+/* public domain, no copyright claimed */
+
 #include <stdlib.h>
 #include <errno.h>
 #include <assert.h>

@@ -1,3 +1,15 @@
+/*
+ * Copyright 2014-2015, Björn Ståhl
+ * License: 3-Clause BSD, see COPYING file in arcan source repository.
+ * Reference: http://arcan-fe.com
+ */
+
+/*
+ * This is mostly a stub implementation still, serious attempts
+ * at getting a strong and efficient implementation is slated for
+ * 0.8-0.9.
+ */
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>

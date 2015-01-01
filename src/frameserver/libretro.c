@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2014, Björn Ståhl
+ * Copyright 2012-2015, Björn Ståhl
  * License: GPLv2, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */

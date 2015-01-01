@@ -1,8 +1,13 @@
 /*
  * Arcan Hijack/Frameserver State Manager (incomplete)
- * Copyright 2014, Björn Ståhl
+ * Copyright 2014-2015, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
+ */
+
+/*
+ * Still just a stub, nothing to see here. The plan is to add
+ * per-session state tracking and use that to enable rewinding.
  */
 
 #include <stdlib.h>

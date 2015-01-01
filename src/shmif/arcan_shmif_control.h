@@ -1,7 +1,7 @@
 /*
  Arcan Shared Memory Interface
 
- Copyright (c) 2014, Bjorn Stahl
+ Copyright (c) 2014-2015, Bjorn Stahl
  All rights reserved.
 
  Redistribution and use in source and binary forms,
