@@ -872,7 +872,7 @@ cleanup:
 
 /*
  * Stripped down version of SDL rotozoomer, only RGBA<->RGBA upscale
- *
+ * this should -- really -- be replaced with something.. clean.
  */
 
 /*
@@ -923,12 +923,12 @@ int arcan_renderfun_stretchblit(char* src, int inw, int inh,
 
 	int spixelgap, spixelw, spixelh, dgap, t1, t2;
 
-	if ((sax = arcan_alloc_mem((dstw + 1) * sizeof(uint32_t),
+	if ((sax = arcan_alloc_mem((dstw + 1) * sizeof(uint32_t) * 2,
 		ARCAN_MEM_VBUFFER, ARCAN_MEM_NONFATAL | ARCAN_MEM_TEMPORARY,
 		ARCAN_MEMALIGN_PAGE)) == NULL)
 		return -1;
 
-	if ((say = arcan_alloc_mem((dstw + 1) * sizeof(uint32_t),
+	if ((say = arcan_alloc_mem((dstw + 1) * sizeof(uint32_t) * 2,
 		ARCAN_MEM_VBUFFER, ARCAN_MEM_NONFATAL | ARCAN_MEM_TEMPORARY,
 		ARCAN_MEMALIGN_PAGE)) == NULL){
 		arcan_mem_free(say);

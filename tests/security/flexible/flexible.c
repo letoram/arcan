@@ -17,8 +17,8 @@ int main(int argc, char** argv)
 	uint8_t b = 0;
 
 	while(1){
-		size_t neww = rand() % PP_SHMPAGE_MAXW;
-		size_t newh = rand() % PP_SHMPAGE_MAXH;
+		size_t neww = 32 + (rand() % PP_SHMPAGE_MAXW);
+		size_t newh = 32 + (rand() % PP_SHMPAGE_MAXH);
 
 		if (!arcan_shmif_resize(&cont, neww, newh)){
 			fprintf(stderr, "Resize (%zu * %zu) failed, giving up.\n", neww, newh);
@@ -30,7 +30,7 @@ int main(int argc, char** argv)
 		b = ~b;
 
 		arcan_event ev;
-		while (arcan_event_poll(&cont, &ev) == 1){}
+		while (arcan_event_poll(&cont.inev, &ev) == 1){}
 
 		for (size_t row = 0; row < cont.addr->h; row++)
 			for (size_t col = 0; col < cont.addr->w; col++)

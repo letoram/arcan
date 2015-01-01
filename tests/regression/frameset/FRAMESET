@@ -1,0 +1,13 @@
+This test runs through the basic options for a frameset,
+except for normal multitexturing as that is
+already covered.
+
+1. Animated object (one per frame)
+3. Animated clone
+4. Animated clone with different speed.
+
+The advanced ones:
+ round robin with history
+ 3d-model
+
+are covered by other tests.

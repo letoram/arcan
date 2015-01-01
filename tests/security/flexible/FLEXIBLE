@@ -1,0 +1,15 @@
+The FLEXIBLE test checks for race-conditions related
+to the resize operation, particulary in odd cases where
+we might attempt to flip-flop PBOs with varying sizes
+or starve other frameservers.
+
+There is no built-in protection mechanism for excessive
+resizes at the moment, the principle place for a check/kill
+would be in the event-handler in the active script
+(i.e. a global resize limit and a local resize/tick limit).
+
+A compromise would be to have a template/wrapper handler
+script that implements such a limit and let the security
+concious developer take care of it there -- or possibly better,
+have a priority/resource limit scheme for a frameserver
+and then implement it in the engine. 

@@ -4938,6 +4938,32 @@ static int targetportcfg(lua_State* ctx)
 	return 0;
 }
 
+static int targetdisphint(lua_State* ctx)
+{
+	LUA_TRACE("target_disphint");
+
+	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
+
+	int width = luaL_checknumber(ctx, 2);
+	int height = luaL_checknumber(ctx, 3);
+
+	if (width < 0 || height < 0)
+		arcan_fatal("target_disphint(), non-negative display "
+			"are not allowed");
+
+	arcan_event ev = {
+		.category = EVENT_TARGET,
+		.kind     = TARGET_COMMAND_DISPLAYHINT,
+		.data.target.ioevs[0].iv = width,
+		.data.target.ioevs[1].iv = height
+	};
+
+	tgtevent(tgt, ev);
+
+	LUA_ETRACE("target_disphint", NULL);
+	return 0;
+}
+
 static int targetgraph(lua_State* ctx)
 {
 	LUA_TRACE("target_graphmode");
@@ -7680,6 +7706,7 @@ static const luaL_Reg tgtfuns[] = {
 {"target_linewidth",           targetlinewidth          },
 {"target_postfilter",          targetpostfilter         },
 {"target_graphmode",           targetgraph              },
+{"target_displayhint",         targetdisphint           },
 {"target_postfilter_args",     targetpostfilterargs     },
 {"target_seek",                targetseek               },
 {"target_parent",              targetparent             },
