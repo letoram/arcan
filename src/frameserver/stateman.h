@@ -1,4 +1,12 @@
 /*
+ * Binary Blob State Manager
+ *
+ * Copyright 2014-2015, Björn Ståhl
+ * License: 3-Clause BSD, see COPYING file in arcan source repository.
+ * Reference: http://arcan-fe.com
+ */
+
+/*
  * Setup state- tracking,
  * state_sz defines block size
  * limit sets upper memory bounds in frames (limit( < 0)) or bytes

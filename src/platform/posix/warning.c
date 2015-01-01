@@ -1,3 +1,5 @@
+/* public domain, no copyright claimed */
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>

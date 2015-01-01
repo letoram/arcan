@@ -1,5 +1,5 @@
 /*
- * Copyright 2014, Björn Ståhl
+ * Copyright 2014-2015, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -47,7 +47,11 @@ const int video_channels   = DST_VIDEOCHAN;
 FILE* logdev;
 
 /*
- * arcan_shmif_acquire actually uses these
+ * arcan_shmif_acquire actually uses these,
+ * we should switch mechanism for initial setup (envvars?)
+ * and abstract it in the shmif rather than this horrid mess,
+ * then retire this implementation in favor of the normal
+ * frameserver.c
  */
 HWND parent = 0;
 sem_handle async, vsync, esync;

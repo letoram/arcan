@@ -1,3 +1,11 @@
+/*
+ *
+ * Quick and dirty synchronization data overlay
+ * Copyright 2014-2015, Björn Ståhl
+ * License: 3-Clause BSD, see COPYING file in arcan source repository.
+ * Reference: http://arcan-fe.com
+ */
+
 #ifndef _HAVE_SYNC_PLOT
 #define _HAVE_SYNC_PLOT
 

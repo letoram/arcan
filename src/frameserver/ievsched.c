@@ -1,8 +1,12 @@
 /*
  * Input-Event scheduler (stub still, nothing to see here)
- * Copyright 2014, Björn Ståhl
+ * Copyright 2014-2015, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
+ */
+
+/*
+ * Currently just a nonsense- stub, nothing real to see here yet.
  */
 
 #include <math.h>
@@ -20,7 +24,6 @@
 
 #include "ievsched.h"
 
-/* just insertion sorted doubly linked list */
 struct ptsent {
 	arcan_ioevent data;
 	unsigned long pts;
