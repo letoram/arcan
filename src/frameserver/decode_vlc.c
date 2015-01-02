@@ -179,8 +179,8 @@ static void audio_play(void *data,
 static void audio_flush()
 {
 	arcan_event ev = {
-		.kind = EVENT_EXTERNAL_FLUSHAUD,
-		.category = EVENT_EXTERNAL
+		.category = EVENT_EXTERNAL,
+		.ext.kind = EVENT_EXTERNAL_FLUSHAUD,
 	};
 
 	arcan_event_enqueue(&decctx.shmcont.outev, &ev);
@@ -221,8 +221,8 @@ static void push_streamstatus()
 
 	struct arcan_event status = {
 		.category = EVENT_EXTERNAL,
-		.kind = EVENT_EXTERNAL_STREAMSTATUS,
-		.data.external.streamstat.frameno = c++
+		.ext.kind = EVENT_EXTERNAL_STREAMSTATUS,
+		.ext.streamstat.frameno = c++
 	};
 
 	int64_t dura =  libvlc_media_player_get_length(decctx.player) / 1000;
@@ -231,10 +231,10 @@ static void push_streamstatus()
 	int dm = (dura % 3600) / 60;
 	int ds = (dura % 60);
 
-	size_t strlim = sizeof(status.data.external.streamstat.timelim) /
-		sizeof(status.data.external.streamstat.timelim[0]);
+	size_t strlim = sizeof(status.ext.streamstat.timelim) /
+		sizeof(status.ext.streamstat.timelim[0]);
 
-	snprintf((char*)status.data.external.streamstat.timelim, strlim-1,
+	snprintf((char*)status.ext.streamstat.timelim, strlim-1,
 		"%d:%02d:%02d", dh, dm, ds);
 
 	int64_t duras = libvlc_media_player_get_time(decctx.player) / 1000;
@@ -242,10 +242,9 @@ static void push_streamstatus()
 	dh = duras / 3600;
 	dm = (duras % 3600) / 60;
 
-	status.data.external.streamstat.completion =
-		( (float) duras / (float) dura );
+	status.ext.streamstat.completion = ( (float) duras / (float) dura );
 
-	snprintf((char*)status.data.external.streamstat.timestr, strlim,
+	snprintf((char*)status.ext.streamstat.timestr, strlim,
 		"%d:%02d:%02d", dh, dm, ds);
 
 	arcan_event_enqueue(&decctx.shmcont.outev, &status);
@@ -327,10 +326,10 @@ static void process_inevq()
 	arcan_event ev;
 
 	while (arcan_event_poll(&decctx.shmcont.inev, &ev) > 0){
-		arcan_tgtevent* tgt = &ev.data.target;
+		arcan_tgtevent* tgt = &ev.tgt;
 
 		if (ev.category == EVENT_TARGET)
-		switch(ev.kind){
+		switch(tgt->kind){
 		case TARGET_COMMAND_GRAPHMODE:
 /* switch audio /video visualization, RGBA-pack YUV420 hinting,
  * set_deinterlace */
@@ -376,7 +375,7 @@ static void process_inevq()
 		break;
 
 		default:
-			LOG("unhandled target event received (%d:%d)\n", ev.kind, ev.category);
+			LOG("unhandled target event received (%d:%d)\n", tgt->kind, ev.category);
 		}
 	}
 

@@ -783,8 +783,8 @@ static void defhandler_kbd(struct arcan_evctx* out,
 
 	arcan_event newev = {
 		.category = EVENT_IO,
-		.kind = EVENT_IO_BUTTON,
-		.data.io = {
+		.io = {
+			.kind = EVENT_IO_BUTTON,
 			.datatype = EVENT_IDATATYPE_TRANSLATED,
 			.devkind = EVENT_IDEVKIND_KEYBOARD,
 			.input.translated = {
@@ -796,23 +796,23 @@ static void defhandler_kbd(struct arcan_evctx* out,
 	for (size_t i = 0; i < evs / sizeof(struct input_event); i++){
 		switch(inev[i].type){
 		case EV_KEY:
-		newev.data.io.input.translated.scancode = inev[i].code;
-		newev.data.io.input.translated.keysym = lookup_keycode(inev[i].code);
+		newev.io.input.translated.scancode = inev[i].code;
+		newev.io.input.translated.keysym = lookup_keycode(inev[i].code);
 
 		update_state(inev[i].code, inev[i].value != 0, &node->keyboard.state);
 
-		newev.data.io.input.translated.modifiers = node->keyboard.state;
-		newev.data.io.input.translated.subid =
+		newev.io.input.translated.modifiers = node->keyboard.state;
+		newev.io.input.translated.subid =
 			lookup_character(inev[i].code, node->keyboard.state);
 
 		if (inev[i].value == 2){
-			newev.data.io.input.translated.active = false;
+			newev.io.input.translated.active = false;
 			arcan_event_enqueue(out, &newev);
-			newev.data.io.input.translated.active = true;
+			newev.io.input.translated.active = true;
 			arcan_event_enqueue(out, &newev);
 		}
 		else{
-			newev.data.io.input.translated.active = inev[i].value != 0;
+			newev.io.input.translated.active = inev[i].value != 0;
 			arcan_event_enqueue(out, &newev);
 		}
 
@@ -831,7 +831,8 @@ static void decode_hat(struct arcan_evctx* ctx,
 	arcan_event newev = {
 		.category = EVENT_IO,
 		.label = "gamepad",
-		.data.io = {
+		.io = {
+			.kind = EVENT_IO_BUTTON,
 			.devkind = EVENT_IDEVKIND_GAMEDEV,
 			.datatype = EVENT_IDATATYPE_DIGITAL
 		}
@@ -840,7 +841,7 @@ static void decode_hat(struct arcan_evctx* ctx,
 	ind *= 2;
 	const int base = 64;
 
-	newev.data.io.input.digital.devid = node->devnum;
+	newev.io.input.digital.devid = node->devnum;
 
 /* clamp */
 	if (val < 0)
@@ -849,16 +850,16 @@ static void decode_hat(struct arcan_evctx* ctx,
 		val = 1;
 	else {
 /* which of the two possibilities was released? */
-		newev.data.io.input.digital.active = false;
+		newev.io.input.digital.active = false;
 
 		if (node->game.hats[ind] != 0){
-			newev.data.io.input.digital.subid = base + ind;
+			newev.io.input.digital.subid = base + ind;
 			node->game.hats[ind] = 0;
 			arcan_event_enqueue(ctx, &newev);
 		}
 
 		if (node->game.hats[ind+1] != 0){
-			newev.data.io.input.digital.subid = base + ind + 1;
+			newev.io.input.digital.subid = base + ind + 1;
 			node->game.hats[ind+1] = 0;
 			arcan_event_enqueue(ctx, &newev);
 		}
@@ -870,8 +871,8 @@ static void decode_hat(struct arcan_evctx* ctx,
 		ind++;
 
 	node->game.hats[ind] = val;
-	newev.data.io.input.digital.active = true;
-	newev.data.io.input.digital.subid = base + ind;
+	newev.io.input.digital.active = true;
+	newev.io.input.digital.subid = base + ind;
 	arcan_event_enqueue(ctx, &newev);
 }
 
@@ -890,7 +891,7 @@ static void defhandler_game(struct arcan_evctx* ctx,
 	arcan_event newev = {
 		.category = EVENT_IO,
 		.label = "gamepad",
-		.data.io = {
+		.io = {
 			.devkind = EVENT_IDEVKIND_GAMEDEV
 		}
 	};
@@ -905,11 +906,11 @@ static void defhandler_game(struct arcan_evctx* ctx,
 				( (node->hnd.button_mask >> inev[i].code) & 1) )
 				continue;
 
-			newev.kind = EVENT_IO_BUTTON;
-			newev.data.io.datatype = EVENT_IDATATYPE_DIGITAL;
-			newev.data.io.input.digital.active = inev[i].value;
-			newev.data.io.input.digital.subid = inev[i].code - BTN_JOYSTICK;
-			newev.data.io.input.digital.devid = node->devnum;
+			newev.io.kind = EVENT_IO_BUTTON;
+			newev.io.datatype = EVENT_IDATATYPE_DIGITAL;
+			newev.io.input.digital.active = inev[i].value;
+			newev.io.input.digital.subid = inev[i].code - BTN_JOYSTICK;
+			newev.io.input.digital.devid = node->devnum;
 			arcan_event_enqueue(ctx, &newev);
 		break;
 
@@ -925,13 +926,13 @@ static void defhandler_game(struct arcan_evctx* ctx,
 			else if (inev[i].code < node->game.axes &&
 				process_axis(ctx,
 				&node->game.adata[inev[i].code], inev[i].value, &samplev)){
-				newev.kind = EVENT_IO_AXIS_MOVE;
-				newev.data.io.datatype = EVENT_IDATATYPE_ANALOG;
-				newev.data.io.input.analog.gotrel = false;
-				newev.data.io.input.analog.subid = inev[i].code;
-				newev.data.io.input.analog.devid = node->devnum;
-				newev.data.io.input.analog.axisval[0] = samplev;
-				newev.data.io.input.analog.nvalues = 2;
+				newev.io.kind = EVENT_IO_AXIS_MOVE;
+				newev.io.datatype = EVENT_IDATATYPE_ANALOG;
+				newev.io.input.analog.gotrel = false;
+				newev.io.input.analog.subid = inev[i].code;
+				newev.io.input.analog.devid = node->devnum;
+				newev.io.input.analog.axisval[0] = samplev;
+				newev.io.input.analog.nvalues = 2;
 
 				arcan_event_enqueue(ctx, &newev);
 			}
@@ -965,7 +966,7 @@ static void defhandler_mouse(struct arcan_evctx* ctx,
 	arcan_event newev = {
 		.category = EVENT_IO,
 		.label = "mouse",
-		.data.io = {
+		.io = {
 			.devkind = EVENT_IDEVKIND_MOUSE,
 		}
 	};
@@ -979,11 +980,11 @@ static void defhandler_mouse(struct arcan_evctx* ctx,
 			if (samplev < 0)
 				continue;
 
-			newev.kind = EVENT_IO_BUTTON;
-			newev.data.io.datatype = EVENT_IDATATYPE_DIGITAL;
-			newev.data.io.input.digital.active = inev[i].value;
-			newev.data.io.input.digital.subid = samplev;
-			newev.data.io.input.digital.devid = node->devnum;
+			newev.io.kind = EVENT_IO_BUTTON;
+			newev.io.datatype = EVENT_IDATATYPE_DIGITAL;
+			newev.io.input.digital.active = inev[i].value;
+			newev.io.input.digital.subid = samplev;
+			newev.io.input.digital.devid = node->devnum;
 
 			arcan_event_enqueue(ctx, &newev);
 		break;
@@ -996,14 +997,14 @@ static void defhandler_mouse(struct arcan_evctx* ctx,
 					node->cursor.mx = ((int)node->cursor.mx + samplev < 0) ?
 						0 : node->cursor.mx + samplev;
 
-					newev.kind = EVENT_IO_AXIS_MOVE;
-					newev.data.io.datatype = EVENT_IDATATYPE_ANALOG;
-					newev.data.io.input.analog.gotrel = true;
-					newev.data.io.input.analog.subid = 0;
-					newev.data.io.input.analog.devid = node->devnum;
-					newev.data.io.input.analog.axisval[0] = node->cursor.mx;
-					newev.data.io.input.analog.axisval[1] = samplev;
-					newev.data.io.input.analog.nvalues = 2;
+					newev.io.kind = EVENT_IO_AXIS_MOVE;
+					newev.io.datatype = EVENT_IDATATYPE_ANALOG;
+					newev.io.input.analog.gotrel = true;
+					newev.io.input.analog.subid = 0;
+					newev.io.input.analog.devid = node->devnum;
+					newev.io.input.analog.axisval[0] = node->cursor.mx;
+					newev.io.input.analog.axisval[1] = samplev;
+					newev.io.input.analog.nvalues = 2;
 
 					arcan_event_enqueue(ctx, &newev);
 				}
@@ -1013,14 +1014,14 @@ static void defhandler_mouse(struct arcan_evctx* ctx,
 					node->cursor.my = ((int)node->cursor.my + samplev < 0) ?
 						0 : node->cursor.my + samplev;
 
-					newev.kind = EVENT_IO_AXIS_MOVE;
-					newev.data.io.datatype = EVENT_IDATATYPE_ANALOG;
-					newev.data.io.input.analog.gotrel = true;
-					newev.data.io.input.analog.subid = 1;
-					newev.data.io.input.analog.devid = node->devnum;
-					newev.data.io.input.analog.axisval[0] = node->cursor.my;
-					newev.data.io.input.analog.axisval[1] = samplev;
-					newev.data.io.input.analog.nvalues = 2;
+					newev.io.kind = EVENT_IO_AXIS_MOVE;
+					newev.io.datatype = EVENT_IDATATYPE_ANALOG;
+					newev.io.input.analog.gotrel = true;
+					newev.io.input.analog.subid = 1;
+					newev.io.input.analog.devid = node->devnum;
+					newev.io.input.analog.axisval[0] = node->cursor.my;
+					newev.io.input.analog.axisval[1] = samplev;
+					newev.io.input.analog.nvalues = 2;
 
 					arcan_event_enqueue(ctx, &newev);
 				}

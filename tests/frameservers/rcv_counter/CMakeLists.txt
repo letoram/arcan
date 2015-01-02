@@ -8,7 +8,20 @@ cmake_minimum_required(VERSION 2.8.0 FATAL_ERROR)
 # compiler and layout compliance.
 #
 if (NOT ARCAN_SOURCE_DIR)
-				message(FATAL_ERROR "ARCAN_SOURCE_DIR is not set, use -DARCAN_SOURCE_DIR=")
+	get_filename_component(ASD_SEARCH ${CMAKE_CURRENT_SOURCE_DIR} ABSOLUTE)
+	set(ASD_LAST "/")
+
+	while(NOT ${ASD_LAST} STREQUAL ${ASD_SEARCH} AND NOT ARCAN_SOURCE_DIR)
+		set(ASD_LAST ${ASD_SEARCH})
+		get_filename_component(ASD_SEARCH ${ASD_SEARCH} DIRECTORY)
+		if (IS_DIRECTORY ${ASD_SEARCH}/src)
+			set(ARCAN_SOURCE_DIR ${ASD_SEARCH}/src)
+		endif()
+	endwhile()
+
+	if (NOT ARCAN_SOURCE_DIR)
+		message(FATAL_ERROR "ARCAN_SOURCE_DIR is not set, use -DARCAN_SOURCE_DIR=")
+	endif()
 endif()
 
 add_definitions(

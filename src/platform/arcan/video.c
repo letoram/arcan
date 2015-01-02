@@ -480,9 +480,9 @@ static void map_window(struct arcan_shmif_cont* seg, arcan_evctx* ctx,
 
 	base->conn = arcan_shmif_acquire(key, SEGID_LWA, SHMIF_DISABLE_GUARD);
 	arcan_event ev = {
-		.kind = EVENT_VIDEO_DISPLAY_ADDED,
 		.category = EVENT_VIDEO,
-		.data.video.source = i
+		.vid.kind = EVENT_VIDEO_DISPLAY_ADDED,
+		.vid.source = i
 	};
 
 	arcan_event_enqueue(ctx, &ev);
@@ -500,7 +500,7 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
 
 	while (1 == arcan_event_poll(&d->conn.inev, &ev))
 		if (ev.category == EVENT_TARGET)
-		switch(ev.kind){
+		switch(ev.tgt.kind){
 
 /*
  * Currently, FD-transfer has no defined behavior for arcan LWA, one
@@ -517,8 +517,7 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
  * feature and at the same time get to evaluate the API.
  */
 		case TARGET_COMMAND_NEWSEGMENT:
-			map_window(&d->conn, ctx, ev.data.target.ioevs[0].iv,
-				ev.data.target.message);
+			map_window(&d->conn, ctx, ev.tgt.ioevs[0].iv, ev.tgt.message);
 		break;
 
 /*
@@ -544,15 +543,15 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
 		case TARGET_COMMAND_EXIT:
 			if (d == &disp[0]){
 				ev.category = EVENT_SYSTEM;
-				ev.kind = EVENT_SYSTEM_EXIT;
+				ev.sys.kind = EVENT_SYSTEM_EXIT;
 				arcan_event_enqueue(ctx, &ev);
 			}
 /* Need to explicitly drop single segment */
 			else {
 				arcan_event ev = {
-					.kind = EVENT_VIDEO_DISPLAY_REMOVED,
 					.category = EVENT_VIDEO,
-					.data.video.source = d - &disp[MAX_DISPLAYS-1]
+					.vid.kind = EVENT_VIDEO_DISPLAY_REMOVED,
+					.vid.source = d - &disp[MAX_DISPLAYS-1]
 				};
 				arcan_event_enqueue(ctx, &ev);
 				free(d->conn.user);
@@ -563,6 +562,9 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
 				memset(d, '\0', sizeof(struct display));
 			}
 			return true; /* it's not safe here */
+		break;
+
+		default:
 		break;
 		}
 		else

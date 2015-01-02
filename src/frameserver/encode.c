@@ -718,7 +718,7 @@ int arcan_frameserver_encode_run(
 			break;
 
 		if (ev.category == EVENT_TARGET){
-			switch (ev.kind){
+			switch (ev.tgt.kind){
 /* nothing happens until the first FDtransfer, and consequtive ones should
  * really only be "useful" in streaming situations, and perhaps not even there,
  * so consider that scenario untested */
@@ -751,9 +751,9 @@ int arcan_frameserver_encode_run(
 
 			case TARGET_COMMAND_AUDDELAY:
 				LOG("(encode) adjust audio buffering, %d milliseconds.\n",
-					ev.data.target.ioevs[0].iv);
+					ev.tgt.ioevs[0].iv);
 				recctx.silence_samples += (double)
-					(ARCAN_SHMPAGE_SAMPLERATE / 1000.0) * ev.data.target.ioevs[0].iv;
+					(ARCAN_SHMPAGE_SAMPLERATE / 1000.0) * ev.tgt.ioevs[0].iv;
 			break;
 
 			case TARGET_COMMAND_STEPFRAME:
@@ -766,8 +766,8 @@ int arcan_frameserver_encode_run(
 			break;
 
 			case TARGET_COMMAND_STORE:
+			default:
 				return EXIT_SUCCESS;
-			break;
 			}
 		}
 	}

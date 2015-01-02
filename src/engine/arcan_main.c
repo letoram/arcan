@@ -675,28 +675,29 @@ applswitch:
 		while (1 == arcan_event_poll(evctx, &ev)){
 			switch (ev.category){
 			case EVENT_VIDEO:
-				if (ev.kind == EVENT_VIDEO_EXPIRE)
-					arcan_video_deleteobject(ev.data.video.source);
+				if (ev.vid.kind == EVENT_VIDEO_EXPIRE)
+					arcan_video_deleteobject(ev.vid.source);
 			break;
 
 /* this event category is never propagated to the scripting engine itself */
 			case EVENT_SYSTEM:
-				if (ev.kind == EVENT_SYSTEM_EXIT){
-					exit_code = ev.data.system.errcode;
+				if (ev.sys.kind == EVENT_SYSTEM_EXIT){
+					exit_code = ev.sys.errcode;
 					done = true;
 					goto out;
 				}
 
 /* slated for deprecation in favor of collapsing to .. */
-				else if (ev.kind == EVENT_SYSTEM_SWITCHAPPL){
+				else if (ev.sys.kind == EVENT_SYSTEM_SWITCHAPPL){
 					arcan_lua_shutdown(settings.lua);
-					if (switch_appl(ev.data.system.data.message))
+					if (switch_appl(ev.sys.message))
 						goto applswitch;
 					else
 						goto error;
 				}
 				else
 					continue;
+			default:
 			break;
 			}
 

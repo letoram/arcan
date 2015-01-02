@@ -234,7 +234,7 @@ arcan_errc arcan_frameserver_pushfd(arcan_frameserver* fsrv, int fd)
 	if (arcan_pushhandle(fd, fsrv->sockout_fd)){
 		arcan_event ev = {
 			.category = EVENT_TARGET,
-			.kind = TARGET_COMMAND_FDTRANSFER
+			.tgt.kind = TARGET_COMMAND_FDTRANSFER
 		};
 
 		arcan_frameserver_pushevent( fsrv, &ev );
@@ -479,17 +479,19 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 
 	arcan_event keyev = {
 		.category = EVENT_TARGET,
-		.kind = TARGET_COMMAND_NEWSEGMENT,
-		.data.target.ioevs[0].iv = record ? 1 : 0,
-		.data.target.ioevs[1].iv = tag
+		.tgt.kind = TARGET_COMMAND_NEWSEGMENT,
+		.tgt.ioevs[0].iv = record ? 1 : 0,
+		.tgt.ioevs[1].iv = tag
 	};
 
-	snprintf(keyev.data.target.message,
-		sizeof(keyev.data.target.message) / sizeof(keyev.data.target.message[1]),
-		"%s", newseg->shm.key);
+	snprintf(keyev.tgt.message,
+		sizeof(keyev.tgt.message) / sizeof(keyev.tgt.message[1]),
+		"%s", newseg->shm.key
+	);
 
 /*
- * We monitor the same PID (but on frameserver_free,
+ * We monitor the same PID as parent, but for cases where we don't monitor
+ * parent (non-auth) we switch to using the socket as indicator.
  */
 	newseg->launchedtime = arcan_timemillis();
 	newseg->child = ctx->child;

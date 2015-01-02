@@ -83,8 +83,7 @@ static ssize_t queueout_data(struct conn_state* conn)
 static bool client_inevq_process(apr_socket_t* outconn)
 {
 	arcan_event ev;
-	uint16_t msgsz = sizeof(ev.data.network.message) /
-		sizeof(ev.data.network.message[0]);
+	uint16_t msgsz = sizeof(ev.net.message) / sizeof(ev.net.message[0]);
 
 /* since we flush the entire eventqueue at once, it means that multiple
  * messages may possible be interleaved in one push (up to the 64k buffer)
@@ -96,36 +95,29 @@ static bool client_inevq_process(apr_socket_t* outconn)
  * and are only ever tucked on at the end */
 	while ( 1 == arcan_event_poll(&clctx.inevq, &ev) )
 		if (ev.category == EVENT_NET){
-			switch (ev.kind){
+			switch (ev.net.kind){
 			case EVENT_NET_INPUTEVENT:
 				LOG("(net-cl) inputevent unfinished, implement "
 					"event_pack()/unpack(), ignored\n");
 			break;
 
-/* we can only pass the public key on the command-line,
- * not the private one.
-			case EVENT_NET_KEYUPDATE:
-
-			break;
-*/
-
 			case EVENT_NET_CUSTOMMSG:
 				if (clctx.conn.connstate < CONN_CONNECTED)
 					break;
 
-				if (strlen(ev.data.network.message) + 1 < msgsz)
-					msgsz = strlen(ev.data.network.message) + 1;
+				if (strlen(ev.net.message) + 1 < msgsz)
+					msgsz = strlen(ev.net.message) + 1;
 
-				return clctx.conn.pack(&clctx.conn,
-					TAG_NETMSG, msgsz, ev.data.network.message);
+				return clctx.conn.pack(&clctx.conn, TAG_NETMSG, msgsz, ev.net.message);
 			break;
 
 			case EVENT_NET_GRAPHREFRESH:
+			default:
 			break;
 			}
 		}
 		else if (ev.category == EVENT_TARGET){
-			switch (ev.kind){
+			switch (ev.tgt.kind){
 			case TARGET_COMMAND_EXIT:
 				return false;
 			break;
@@ -137,11 +129,10 @@ static bool client_inevq_process(apr_socket_t* outconn)
  * accept: switch to STATEXFER mode
  */
 			case TARGET_COMMAND_NEWSEGMENT:
-				net_newseg(&clctx.conn,	ev.data.target.ioevs[0].iv,
-					ev.data.target.message);
+				net_newseg(&clctx.conn,	ev.tgt.ioevs[0].iv, ev.tgt.message);
 
 /* output type? assume transfer request */
-				if (ev.data.target.ioevs[0].iv == 0){
+				if (ev.tgt.ioevs[0].iv == 0){
 					char outbuf[4] = {
 						clctx.conn.state_out.ctx.addr->w,
 						clctx.conn.state_out.ctx.addr->w >> 8,
@@ -249,7 +240,7 @@ static bool host_discover(const char* reqhost,
 retry_partial:
 /* flush and check for exit */
 		while (1 == arcan_event_poll(&clctx.outevq, &dev))
-			if (dev.category == EVENT_TARGET && dev.kind == TARGET_COMMAND_EXIT)
+			if (dev.category == EVENT_TARGET && dev.tgt.kind == TARGET_COMMAND_EXIT)
 				return NULL;
 
 		ntr = NET_HEADER_SIZE;
@@ -279,11 +270,11 @@ retry_partial:
 		if (passive){
 			arcan_event ev = {
 				.category = EVENT_NET,
-				.kind = EVENT_NET_DISCOVERED
+				.net.kind = EVENT_NET_DISCOVERED
 			};
-			strncpy(ev.data.network.host.addr, *outhost, NET_ADDR_SIZE);
-			strncpy(ev.data.network.host.key, *pkey, NET_KEY_SIZE);
-			strncpy(ev.data.network.host.key, name, NET_NAME_SIZE);
+			strncpy(ev.net.host.addr, *outhost, NET_ADDR_SIZE);
+			strncpy(ev.net.host.key, *pkey, NET_KEY_SIZE);
+			strncpy(ev.net.host.key, name, NET_NAME_SIZE);
 
 			arcan_event_enqueue(&clctx.outevq, &ev);
 		}
@@ -386,10 +377,10 @@ int arcan_frameserver_net_client_run(
 
 	if (rc != APR_SUCCESS){
 		arcan_event ev = {
-						.category = EVENT_NET,
-					 	.kind = EVENT_NET_NORESPONSE
+			.category = EVENT_NET,
+			.net.kind = EVENT_NET_NORESPONSE
 		};
-		snprintf(ev.data.network.host.addr, 40, "%s", hoststr);
+		snprintf(ev.net.host.addr, 40, "%s", hoststr);
 		arcan_event_enqueue(&clctx.outevq, &ev);
 		return EXIT_SUCCESS;
 	}
@@ -397,10 +388,10 @@ int arcan_frameserver_net_client_run(
 /* connection completed */
 	arcan_event ev = {
 		.category = EVENT_NET,
-		.kind = EVENT_NET_CONNECTED
+		.net.kind = EVENT_NET_CONNECTED
  	};
 
-	snprintf(ev.data.network.host.addr, 40, "%s", hoststr);
+	snprintf(ev.net.host.addr, 40, "%s", hoststr);
 	arcan_event_enqueue(&clctx.outevq, &ev);
 
 /*
@@ -500,7 +491,7 @@ int arcan_frameserver_net_client_run(
 			if (ret_pfd[i].client_data == &sock){
 				static arcan_event ev = {
 					.category = EVENT_NET,
-					.kind = EVENT_NET_DISCONNECTED
+					.net.kind = EVENT_NET_DISCONNECTED
 				};
 
 				if (ret_pfd[i].rtnevents & (APR_POLLHUP | APR_POLLERR | APR_POLLNVAL)){

@@ -37,9 +37,11 @@ int main(int argc, char** argv)
 
 		while (arcan_event_poll(&cont.inev, &ev) == 1){
 			if (ev.category == EVENT_TARGET)
-			switch (ev.kind){
+			switch (ev.tgt.kind){
 			case TARGET_COMMAND_EXIT:
 				running = false;
+			break;
+			default:
 			break;
 			}
 		}

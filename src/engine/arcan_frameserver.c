@@ -53,7 +53,7 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 		if (arcan_frameserver_enter(src)){
 			arcan_event exev = {
 				.category = EVENT_TARGET,
-			.kind = TARGET_COMMAND_EXIT
+				.tgt.kind = TARGET_COMMAND_EXIT
 			};
 			arcan_frameserver_pushevent(src, &exev);
 
@@ -92,12 +92,13 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 	arcan_audio_stop(src->aid);
 	arcan_video_alterfeed(src->vid, NULL, emptys);
 
-	arcan_event sevent = {.category = EVENT_FRAMESERVER,
-		.kind = EVENT_FRAMESERVER_TERMINATED,
-		.data.frameserver.video = src->vid,
-		.data.frameserver.glsource = false,
-		.data.frameserver.audio = src->aid,
-		.data.frameserver.otag = src->tag
+	arcan_event sevent = {
+		.category = EVENT_FSRV,
+		.fsrv.kind = EVENT_FSRV_TERMINATED,
+		.fsrv.video = src->vid,
+		.fsrv.glsource = false,
+		.fsrv.audio = src->aid,
+		.fsrv.otag = src->tag
 	};
 	arcan_event_enqueue(arcan_event_defaultctx(), &sevent);
 
@@ -171,8 +172,11 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst,
 #endif
 
 		if (dst->flags.socksig){
+			printf("signal\n");
 			int sn = 0;
-			send(dst->sockout_fd, &sn, sizeof(int), MSG_DONTWAIT);
+			if (-1 == send(dst->sockout_fd, &sn, sizeof(int), MSG_DONTWAIT)){
+				printf("send failed : %s\n", strerror(errno));
+			}
 		}
 #endif
 	}
@@ -207,7 +211,7 @@ static void push_buffer(arcan_frameserver* src,
 		if (!stream.state){
 			arcan_event ev = {
 				.category = EVENT_TARGET,
-				.kind = TARGET_COMMAND_BUFFER_FAIL
+				.tgt.kind = TARGET_COMMAND_BUFFER_FAIL
 			};
 			arcan_event_enqueue(&src->outqueue, &ev);
 			src->vstream.dead = true;
@@ -432,9 +436,9 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe(
  * encode in the target framerate, it is up to the frameserver
  * to determine when to drop and when to double frames */
 			arcan_event ev  = {
-				.kind = TARGET_COMMAND_STEPFRAME,
+				.tgt.kind = TARGET_COMMAND_STEPFRAME,
 				.category = EVENT_TARGET,
-				.data.target.ioevs[0] = src->vfcount++
+				.tgt.ioevs[0] = src->vfcount++
 			};
 
 			arcan_event_enqueue(&src->outqueue, &ev);
@@ -583,13 +587,13 @@ static inline void emit_deliveredframe(arcan_frameserver* src,
 	unsigned long long pts, unsigned long long framecount)
 {
 	arcan_event deliv = {
-		.category = EVENT_FRAMESERVER,
-		.kind = EVENT_FRAMESERVER_DELIVEREDFRAME,
-		.data.frameserver.pts = pts,
-		.data.frameserver.counter = framecount,
-		.data.frameserver.otag = src->tag,
-		.data.frameserver.audio = src->aid,
-		.data.frameserver.video = src->vid
+		.category = EVENT_FSRV,
+		.fsrv.kind = EVENT_FSRV_DELIVEREDFRAME,
+		.fsrv.pts = pts,
+		.fsrv.counter = framecount,
+		.fsrv.otag = src->tag,
+		.fsrv.audio = src->aid,
+		.fsrv.video = src->vid
 	};
 
 	arcan_event_enqueue(arcan_event_defaultctx(), &deliv);
@@ -599,13 +603,13 @@ static inline void emit_droppedframe(arcan_frameserver* src,
 	unsigned long long pts, unsigned long long dropcount)
 {
 	arcan_event deliv = {
-		.category = EVENT_FRAMESERVER,
-		.kind = EVENT_FRAMESERVER_DROPPEDFRAME,
-		.data.frameserver.pts = pts,
-		.data.frameserver.counter = dropcount,
-		.data.frameserver.otag = src->tag,
-		.data.frameserver.audio = src->aid,
-		.data.frameserver.video = src->vid
+		.category = EVENT_FSRV,
+		.fsrv.kind = EVENT_FSRV_DROPPEDFRAME,
+		.fsrv.pts = pts,
+		.fsrv.counter = dropcount,
+		.fsrv.otag = src->tag,
+		.fsrv.audio = src->aid,
+		.fsrv.video = src->vid
 	};
 
 	arcan_event_enqueue(arcan_event_defaultctx(), &deliv);
@@ -686,14 +690,14 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 	arcan_video_alterfeed(src->vid, arcan_frameserver_videoframe_direct, cstate);
 
 	arcan_event rezev = {
-		.category = EVENT_FRAMESERVER,
-		.kind = EVENT_FRAMESERVER_RESIZED,
-		.data.frameserver.width = neww,
-		.data.frameserver.height = newh,
-		.data.frameserver.video = src->vid,
-		.data.frameserver.audio = src->aid,
-		.data.frameserver.otag = src->tag,
-		.data.frameserver.glsource = shmpage->glsource
+		.category = EVENT_FSRV,
+		.fsrv.kind = EVENT_FSRV_RESIZED,
+		.fsrv.width = neww,
+		.fsrv.height = newh,
+		.fsrv.video = src->vid,
+		.fsrv.audio = src->aid,
+		.fsrv.otag = src->tag,
+		.fsrv.glsource = shmpage->glsource
 	};
 
 	arcan_event_enqueue(arcan_event_defaultctx(), &rezev);

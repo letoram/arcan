@@ -202,7 +202,10 @@ static void server_pack_data(struct conn_state* active_cons,
 
 static void client_socket_close(struct conn_state* state)
 {
-	arcan_event rv = {.kind = EVENT_NET_DISCONNECTED, .category = EVENT_NET};
+	arcan_event rv = {
+		.category = EVENT_NET,
+		.net.kind = EVENT_NET_DISCONNECTED,
+	};
 	GRAPH_EVENT("close socket on (%d)\n", state->slot);
 
 	net_setup_cell( state, &srvctx.outevq, srvctx.pollset );
@@ -212,12 +215,11 @@ static void client_socket_close(struct conn_state* state)
 static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 {
 	arcan_event ev;
-	uint16_t msgsz = sizeof(ev.data.network.message) /
-		sizeof(ev.data.network.message[0]);
+	uint16_t msgsz = sizeof(ev.net.message) / sizeof(ev.net.message[0]);
 
 	while ( arcan_event_poll(&srvctx.inevq, &ev) == 1 )
 		if (ev.category == EVENT_NET){
-			switch (ev.kind){
+			switch (ev.net.kind){
 			case EVENT_NET_INPUTEVENT:
 				LOG("(net-srv) inputevent unfinished, implement "
 					"event_pack()/unpack(), ignored\n");
@@ -226,28 +228,28 @@ static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 /* don't confuse this one with EVENT_NET_DISCONNECTED, which is a
  * notification rather than a command */
 			case EVENT_NET_DISCONNECT:
-				disconnect(active_cons, nconns, ev.data.network.connid);
+				disconnect(active_cons, nconns, ev.net.connid);
 			break;
 
 			case EVENT_NET_AUTHENTICATE:
-				authenticate(active_cons, nconns, ev.data.network.connid);
+				authenticate(active_cons, nconns, ev.net.connid);
 			break;
 
 			case EVENT_NET_GRAPHREFRESH:
 			break;
 
 			case EVENT_NET_CUSTOMMSG:
-				GRAPH_EVENT("Parent pushed message (%s)\n", ev.data.network.message);
-				server_pack_data(active_cons, nconns, ev.data.network.connid,
-					TAG_NETMSG, msgsz, ev.data.network.message);
+				GRAPH_EVENT("Parent pushed message (%s)\n", ev.net.message);
+				server_pack_data(active_cons, nconns, ev.net.connid,
+					TAG_NETMSG, msgsz, ev.net.message);
 			break;
 
 			default:
-				LOG("(net-srv) unhandled network event, %d\n", ev.kind);
+				LOG("(net-srv) unhandled network event, %d\n", ev.net.kind);
 			}
 		}
 		else if (ev.category == EVENT_TARGET){
-			switch (ev.kind){
+			switch (ev.tgt.kind){
 				case TARGET_COMMAND_EXIT:
 					LOG("(net-srv) parent requested termination, giving up.\n");
 					return false;
@@ -268,10 +270,9 @@ static bool server_process_inevq(struct conn_state* active_cons, int nconns)
  *            it was that was accepted ( or rejected )
  */
 				case TARGET_COMMAND_NEWSEGMENT:
-					LOG("new segment arrived, id %d\n", ev.data.target.ioevs[1].iv);
+					LOG("new segment arrived, id %d\n", ev.tgt.ioevs[1].iv);
 					net_newseg(lookup_connection(active_cons, nconns,
-						ev.data.target.ioevs[1].iv), ev.data.target.ioevs[0].iv,
-						ev.data.target.message);
+						ev.tgt.ioevs[1].iv), ev.tgt.ioevs[0].iv, ev.tgt.message);
 					close(srvctx.tmphandle);
 				 srvctx.tmphandle	= 0;
 				break;
@@ -299,7 +300,7 @@ static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 				break;
 
 				default:
-					LOG("(net-srv) unhandled target event: %d\n", ev.kind);
+					LOG("(net-srv) unhandled target event: %d\n", ev.tgt.kind);
 			}
 		}
 		else;
@@ -354,14 +355,14 @@ static void server_accept_connection(int limit, apr_socket_t* ear_sock,
 
 	apr_socket_addr_get(&addr, APR_REMOTE, newsock);
 	arcan_event outev = {
-		.kind = EVENT_NET_CONNECTED,
 		.category = EVENT_NET,
-		.data.network.connid = active_cons[j].slot
+		.net.kind = EVENT_NET_CONNECTED,
+		.net.connid = active_cons[j].slot
 	};
 
-	size_t out_sz = sizeof(outev.data.network.host.addr) /
-		sizeof(outev.data.network.host.addr[0]);
-	apr_sockaddr_ip_getbuf(outev.data.network.host.addr, out_sz, addr);
+	size_t out_sz = sizeof(outev.net.host.addr) /
+		sizeof(outev.net.host.addr[0]);
+	apr_sockaddr_ip_getbuf(outev.net.host.addr, out_sz, addr);
 
 	arcan_event_enqueue(&srvctx.outevq, &outev);
 }
@@ -544,8 +545,8 @@ retry:
 			if (cb == ear_sock){
 				if ((evs & APR_POLLHUP) > 0 || (evs & APR_POLLERR) > 0){
 					arcan_event errc = {
-									.kind = EVENT_NET_BROKEN,
-									.category = EVENT_NET
+						.category = EVENT_NET,
+						.net.kind = EVENT_NET_BROKEN
 					};
 
 					arcan_event_enqueue(&srvctx.outevq, &errc);
