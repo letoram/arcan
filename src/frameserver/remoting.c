@@ -263,8 +263,8 @@ int arcan_frameserver_remoting_run(
 		if (-1 == rc){
 			arcan_event outev = {
 				.category = EVENT_EXTERNAL,
-				.kind = EVENT_EXTERNAL_FAILURE,
-				.data.external.message = "(01) server connection broken"
+				.ext.kind = EVENT_EXTERNAL_FAILURE,
+				.ext.message = "(01) server connection broken"
 			};
 
 			arcan_event_enqueue(&vncctx.shmcont.outev, &outev);
@@ -275,8 +275,8 @@ int arcan_frameserver_remoting_run(
 			if (!HandleRFBServerMessage(vncctx.client)){
 				arcan_event outev = {
 					.category = EVENT_EXTERNAL,
-					.kind = EVENT_EXTERNAL_FAILURE,
-					.data.external.message = "(02) couldn't parse server message"
+					.ext.kind = EVENT_EXTERNAL_FAILURE,
+					.ext.message = "(02) couldn't parse server message"
 				};
 
 				arcan_event_enqueue(&vncctx.shmcont.outev, &outev);
@@ -302,7 +302,7 @@ int arcan_frameserver_remoting_run(
 		arcan_event inev;
 		while (arcan_event_poll(&vncctx.shmcont.inev, &inev) == 1){
 			if (inev.category == EVENT_TARGET)
-				switch(inev.kind){
+				switch(inev.tgt.kind){
 				case TARGET_COMMAND_STEPFRAME:
 					SendFramebufferUpdateRequest(vncctx.client, 0, 0,
 						vncctx.shmcont.addr->w, vncctx.shmcont.addr->h, FALSE);
@@ -316,12 +316,12 @@ int arcan_frameserver_remoting_run(
 				break;
 
 				default:
-					LOG("unhandled target event (%d)\n", inev.kind);
+					LOG("unhandled target event (%d)\n", inev.tgt.kind);
 				}
 			else if (inev.category == EVENT_IO)
-				map_cl_input(&inev.data.io);
+				map_cl_input(&inev.io);
 			else
-				LOG("unhandled event (%d:%d)\n", inev.kind, inev.category);
+				LOG("unhandled event (%d:%d)\n", inev.tgt.kind, inev.category);
 		}
 /* map input for mouse motion, keyboard, exit etc.
  * use SendKeyEvent for that, need translation table

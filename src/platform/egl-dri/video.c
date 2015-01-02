@@ -1142,9 +1142,9 @@ void platform_video_query_displays()
 				continue;
 
 			arcan_event ev = {
-				.kind = EVENT_VIDEO_DISPLAY_ADDED,
 				.category = EVENT_VIDEO,
-				.data.video.source = sizeof(displays) / sizeof(displays[0]) +
+				.vid.kind = EVENT_VIDEO_DISPLAY_ADDED,
+				.vid.source = sizeof(displays) / sizeof(displays[0]) +
 					con->connector_id
 			};
 			arcan_event_enqueue(arcan_event_defaultctx(), &ev);
@@ -1153,9 +1153,9 @@ void platform_video_query_displays()
 			if (d){
 				disable_display(d);
 				arcan_event ev = {
-					.kind = EVENT_VIDEO_DISPLAY_REMOVED,
 					.category = EVENT_VIDEO,
-					.data.video.source = id
+					.vid.kind = EVENT_VIDEO_DISPLAY_REMOVED,
+					.vid.source = id
 				};
 				arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 			}

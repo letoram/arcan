@@ -138,12 +138,12 @@ static inline void process_mousemotion(struct arcan_evctx* ctx,
 	arcan_event nev = {
 		.label = "MOUSE\0",
 		.category = EVENT_IO,
-		.kind = EVENT_IO_AXIS_MOVE,
-		.data.io.datatype = EVENT_IDATATYPE_ANALOG,
-		.data.io.devkind  = EVENT_IDEVKIND_MOUSE,
-		.data.io.input.analog.devid  = 0,
-		.data.io.input.analog.gotrel = true,
-		.data.io.input.analog.nvalues = 2
+		.io.kind = EVENT_IO_AXIS_MOVE,
+		.io.datatype = EVENT_IDATATYPE_ANALOG,
+		.io.devkind  = EVENT_IDEVKIND_MOUSE,
+		.io.input.analog.devid  = 0,
+		.io.input.analog.gotrel = true,
+		.io.input.analog.nvalues = 2
 	};
 
 	snprintf(nev.label,
@@ -151,17 +151,17 @@ static inline void process_mousemotion(struct arcan_evctx* ctx,
 
 	if (process_axis(ctx, &iodev.mx, xv, &dstv) &&
 		process_axis(ctx, &iodev.mx_r, xrel, &dstv_r)){
-		nev.data.io.input.analog.subid = 0;
-		nev.data.io.input.analog.axisval[0] = dstv;
-		nev.data.io.input.analog.axisval[1] = dstv_r;
+		nev.io.input.analog.subid = 0;
+		nev.io.input.analog.axisval[0] = dstv;
+		nev.io.input.analog.axisval[1] = dstv_r;
 		arcan_event_enqueue(ctx, &nev);
 	}
 
 	if (process_axis(ctx, &iodev.my, yv, &dstv) &&
 		process_axis(ctx, &iodev.my_r, yrel, &dstv_r)){
-		nev.data.io.input.analog.subid = 1;
-		nev.data.io.input.analog.axisval[0] = dstv;
-		nev.data.io.input.analog.axisval[1] = dstv_r;
+		nev.io.input.analog.subid = 1;
+		nev.io.input.analog.axisval[0] = dstv;
+		nev.io.input.analog.axisval[1] = dstv_r;
 		arcan_event_enqueue(ctx, &nev);
 	}
 }
@@ -306,12 +306,12 @@ static void send_keyev(struct arcan_evctx* ctx, XKeyEvent key, bool state)
 
 	arcan_event ev = {
 		.category = EVENT_IO,
-		.kind = EVENT_IO_BUTTON,
-		.data.io.datatype = EVENT_IDATATYPE_TRANSLATED,
-		.data.io.devkind = EVENT_IDEVKIND_KEYBOARD,
-		.data.io.input.translated.active = state,
-		.data.io.input.translated.devid = key.keycode,
-		.data.io.input.translated.subid = keybuf[1],
+		.io.kind = EVENT_IO_BUTTON,
+		.io.datatype = EVENT_IDATATYPE_TRANSLATED,
+		.io.devkind = EVENT_IDEVKIND_KEYBOARD,
+		.io.input.translated.active = state,
+		.io.input.translated.devid = key.keycode,
+		.io.input.translated.subid = keybuf[1],
 	};
 
 /*
@@ -331,8 +331,8 @@ static void send_keyev(struct arcan_evctx* ctx, XKeyEvent key, bool state)
 		mod |= ARKMOD_RALT;
 
 	int ind = XLookupKeysym(&key, key.state);
-	ev.data.io.input.translated.keysym = symtbl_in[ind];
-	ev.data.io.input.translated.modifiers = mod;
+	ev.io.input.translated.keysym = symtbl_in[ind];
+	ev.io.input.translated.modifiers = mod;
 
 	arcan_event_enqueue(ctx, &ev);
 }
@@ -341,11 +341,11 @@ static void send_buttonev(struct arcan_evctx* ctx, int button, bool state)
 {
 	arcan_event ev = {
 		.category = EVENT_IO,
-		.data.io.datatype = EVENT_IDATATYPE_DIGITAL,
-		.data.io.devkind = EVENT_IDEVKIND_MOUSE,
-		.data.io.input.digital.active = state,
-		.data.io.input.digital.devid = 0,
-		.data.io.input.digital.subid = button
+		.io.datatype = EVENT_IDATATYPE_DIGITAL,
+		.io.devkind = EVENT_IDEVKIND_MOUSE,
+		.io.input.digital.active = state,
+		.io.input.digital.devid = 0,
+		.io.input.digital.subid = button
 	};
 
 	arcan_event_enqueue(ctx, &ev);

@@ -147,12 +147,15 @@ void arcan_event_repl(struct arcan_evctx* ctx, enum ARCAN_EVENT_CATEGORY cat,
 	LOCK();
 
 	unsigned front = *ctx->front;
+	printf("repl: %d, %d\n", front, *ctx->back);
 
 	while (front != *ctx->back){
-		printf("%d, %d\n", front, *ctx->back);
 		if (ctx->eventbuf[front].category == cat &&
-			memcmp( (char*)(&ctx->eventbuf[front]) + r_ofs, cmpbuf, r_b) == 0)
+			memcmp( (char*)(&ctx->eventbuf[front]) + r_ofs, cmpbuf, r_b) == 0){
+				printf("one overwritten\n");
 				memcpy( (char*)(&ctx->eventbuf[front]) + w_ofs, w_buf, w_b );
+		}
+
 		front = (front + 1) % ctx->eventbuf_sz;
 	}
 
@@ -202,16 +205,16 @@ int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src)
 
 	if (panic_keysym != -1 && panic_keymod != -1 &&
 		src->category == EVENT_IO &&
-		src->kind == EVENT_IO_BUTTON &&
-		src->data.io.devkind == EVENT_IDEVKIND_KEYBOARD &&
-		src->data.io.input.translated.modifiers == panic_keymod &&
-		src->data.io.input.translated.keysym == panic_keysym
+		src->io.kind == EVENT_IO_BUTTON &&
+		src->io.devkind == EVENT_IDEVKIND_KEYBOARD &&
+		src->io.input.translated.modifiers == panic_keymod &&
+		src->io.input.translated.keysym == panic_keysym
 	){
 
 		arcan_event ev = {
 			.category = EVENT_SYSTEM,
-			.kind = EVENT_SYSTEM_EXIT,
-			.data.system.errcode = EXIT_SUCCESS
+			.sys.kind = EVENT_SYSTEM_EXIT,
+			.sys.errcode = EXIT_SUCCESS
 		};
 
 		return arcan_event_enqueue(ctx, &ev);
@@ -278,16 +281,16 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 			continue;
 
 		if (inev.category == EVENT_EXTERNAL){
-			switch(inev.kind){
+			switch(inev.ext.kind){
 
 /* to protect against scripts that would happily try to just allocate/respond
  * to what a the event says, clamp this here */
 				case EVENT_EXTERNAL_SEGREQ:
-					if (inev.data.external.noticereq.width > PP_SHMPAGE_MAXW)
-						inev.data.external.noticereq.width = PP_SHMPAGE_MAXW;
+					if (inev.ext.noticereq.width > PP_SHMPAGE_MAXW)
+						inev.ext.noticereq.width = PP_SHMPAGE_MAXW;
 
-					if (inev.data.external.noticereq.height > PP_SHMPAGE_MAXH)
-						inev.data.external.noticereq.height = PP_SHMPAGE_MAXH;
+					if (inev.ext.noticereq.height > PP_SHMPAGE_MAXH)
+						inev.ext.noticereq.height = PP_SHMPAGE_MAXH;
 				break;
 
 #ifndef _WIN32
@@ -298,8 +301,8 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 						close(tgt->vstream.handle);
 
 					tgt->vstream.handle = arcan_fetchhandle(tgt->sockout_fd);
-					tgt->vstream.stride = inev.data.external.bstream.pitch;
-					tgt->vstream.format = inev.data.external.bstream.format;
+					tgt->vstream.stride = inev.ext.bstream.pitch;
+					tgt->vstream.format = inev.ext.bstream.format;
 				break;
 #endif
 
@@ -319,11 +322,11 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 				default:
 				break;
 			}
-			inev.data.external.source = source;
+			inev.ext.source = source;
 		}
 
 		else if (inev.category == EVENT_NET){
-			inev.data.network.source = source;
+			inev.net.source = source;
 		}
 
 		arcan_event_enqueue(dstqueue, &inev);
@@ -344,44 +347,44 @@ static long unpack_rec_event(char* bytep, size_t sz, arcan_event* tv,
 	*tickv = buf[0];
 
 	tv->category = EVENT_IO;
-	tv->kind = buf[1];
+	tv->io.kind = buf[1];
 
 	switch (buf[1]){
 	case EVENT_IO_TOUCH:
-		tv->data.io.input.touch.devid = buf[2];
-		tv->data.io.input.touch.subid = buf[3];
-		tv->data.io.input.touch.pressure = buf[4];
-		tv->data.io.input.touch.size = buf[5];
-		tv->data.io.input.touch.x = buf[6];
-		tv->data.io.input.touch.y = buf[7];
+		tv->io.input.touch.devid = buf[2];
+		tv->io.input.touch.subid = buf[3];
+		tv->io.input.touch.pressure = buf[4];
+		tv->io.input.touch.size = buf[5];
+		tv->io.input.touch.x = buf[6];
+		tv->io.input.touch.y = buf[7];
 	break;
 	case EVENT_IO_AXIS_MOVE:
-		tv->data.io.input.analog.devid = buf[2];
-		tv->data.io.input.analog.subid = buf[3];
-		tv->data.io.input.analog.gotrel = buf[4];
+		tv->io.input.analog.devid = buf[2];
+		tv->io.input.analog.subid = buf[3];
+		tv->io.input.analog.gotrel = buf[4];
 		if (buf[5] < sizeof(buf) / sizeof(buf[0]) - 6){
 		for (size_t i = 0; i < buf[5]; i++)
-			tv->data.io.input.analog.axisval[i] = buf[6+i];
-			tv->data.io.input.analog.nvalues = buf[5];
+			tv->io.input.analog.axisval[i] = buf[6+i];
+			tv->io.input.analog.nvalues = buf[5];
 		}
 		else
 			buf[5] = 0;
 	break;
 	case EVENT_IO_BUTTON:
 		if (buf[4] == EVENT_IDEVKIND_KEYBOARD){
-			tv->data.io.input.translated.devid = buf[2];
-			tv->data.io.input.translated.subid = buf[3];
-			tv->data.io.devkind = EVENT_IDEVKIND_KEYBOARD;
-			tv->data.io.input.translated.active = buf[5];
-			tv->data.io.input.translated.scancode = buf[6];
-			tv->data.io.input.translated.keysym = buf[7];
-			tv->data.io.input.translated.modifiers = buf[8];
+			tv->io.input.translated.devid = buf[2];
+			tv->io.input.translated.subid = buf[3];
+			tv->io.devkind = EVENT_IDEVKIND_KEYBOARD;
+			tv->io.input.translated.active = buf[5];
+			tv->io.input.translated.scancode = buf[6];
+			tv->io.input.translated.keysym = buf[7];
+			tv->io.input.translated.modifiers = buf[8];
 		}
 		else if (buf[4] == EVENT_IDEVKIND_MOUSE||buf[4] == EVENT_IDEVKIND_GAMEDEV){
-			tv->data.io.devkind = buf[4];
-			tv->data.io.input.digital.devid = buf[2];
-			tv->data.io.input.digital.subid = buf[3];
-			tv->data.io.input.digital.active = buf[5];
+			tv->io.devkind = buf[4];
+			tv->io.input.digital.devid = buf[2];
+			tv->io.input.digital.subid = buf[3];
+			tv->io.input.digital.active = buf[5];
 		}
 		else
 			return -1;
@@ -408,43 +411,43 @@ static void pack_rec_event(const struct arcan_event* const outev)
 	int32_t ioarr[11] = {0};
 	ioarr[0] = arcan_frametime();
 	size_t nmemb = sizeof(ioarr) / sizeof(ioarr[0]);
-	ioarr[1] = outev->kind;
+	ioarr[1] = outev->io.kind;
 
-	switch(outev->kind){
+	switch(outev->io.kind){
 	case EVENT_IO_TOUCH:
-		ioarr[2] = outev->data.io.input.touch.devid;
-		ioarr[3] = outev->data.io.input.touch.subid;
-		ioarr[4] = outev->data.io.input.touch.pressure;
-		ioarr[5] = outev->data.io.input.touch.size;
-		ioarr[6] = outev->data.io.input.touch.x;
-		ioarr[7] = outev->data.io.input.touch.y;
+		ioarr[2] = outev->io.input.touch.devid;
+		ioarr[3] = outev->io.input.touch.subid;
+		ioarr[4] = outev->io.input.touch.pressure;
+		ioarr[5] = outev->io.input.touch.size;
+		ioarr[6] = outev->io.input.touch.x;
+		ioarr[7] = outev->io.input.touch.y;
 	break;
 	case EVENT_IO_AXIS_MOVE:
-		ioarr[2] = outev->data.io.input.analog.devid;
-		ioarr[3] = outev->data.io.input.analog.subid;
-		ioarr[4] = outev->data.io.input.analog.gotrel;
+		ioarr[2] = outev->io.input.analog.devid;
+		ioarr[3] = outev->io.input.analog.subid;
+		ioarr[4] = outev->io.input.analog.gotrel;
 		for (size_t i = 0; i < nmemb - 6 &&
-			i < outev->data.io.input.analog.nvalues; i++){
-			ioarr[5+i] = outev->data.io.input.analog.axisval[i];
+			i < outev->io.input.analog.nvalues; i++){
+			ioarr[5+i] = outev->io.input.analog.axisval[i];
 			ioarr[5]++;
 		}
 	break;
 	case EVENT_IO_BUTTON:
-		if (outev->data.io.devkind == EVENT_IDEVKIND_KEYBOARD){
-			ioarr[2] = outev->data.io.input.translated.devid;
-			ioarr[3] = outev->data.io.input.translated.subid;
-			ioarr[4] = outev->data.io.devkind;
-			ioarr[5] = outev->data.io.input.translated.active;
-			ioarr[6] = outev->data.io.input.translated.scancode;
-			ioarr[7] = outev->data.io.input.translated.keysym;
-			ioarr[8] = outev->data.io.input.translated.modifiers;
+		if (outev->io.devkind == EVENT_IDEVKIND_KEYBOARD){
+			ioarr[2] = outev->io.input.translated.devid;
+			ioarr[3] = outev->io.input.translated.subid;
+			ioarr[4] = outev->io.devkind;
+			ioarr[5] = outev->io.input.translated.active;
+			ioarr[6] = outev->io.input.translated.scancode;
+			ioarr[7] = outev->io.input.translated.keysym;
+			ioarr[8] = outev->io.input.translated.modifiers;
 		}
-		else if (outev->data.io.devkind == EVENT_IDEVKIND_MOUSE ||
-			outev->data.io.devkind == EVENT_IDEVKIND_GAMEDEV){
-			ioarr[2] = outev->data.io.input.digital.devid;
-			ioarr[3] = outev->data.io.input.digital.subid;
-			ioarr[4] = outev->data.io.devkind;
-			ioarr[5] = outev->data.io.input.digital.active;
+		else if (outev->io.devkind == EVENT_IDEVKIND_MOUSE ||
+			outev->io.devkind == EVENT_IDEVKIND_GAMEDEV){
+			ioarr[2] = outev->io.input.digital.devid;
+			ioarr[3] = outev->io.input.digital.subid;
+			ioarr[4] = outev->io.devkind;
+			ioarr[5] = outev->io.input.digital.active;
 		}
 		else
 			return;

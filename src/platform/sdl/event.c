@@ -159,15 +159,15 @@ static inline void process_axismotion(arcan_evctx* ctx,
 
 	if (process_axis(ctx, daxis, ev->value, &dstv)){
 		arcan_event newevent = {
-			.kind = EVENT_IO_AXIS_MOVE,
+			.io.kind = EVENT_IO_AXIS_MOVE,
 			.category = EVENT_IO,
-			.data.io.datatype = EVENT_IDATATYPE_ANALOG,
-			.data.io.devkind  = EVENT_IDEVKIND_GAMEDEV,
-			.data.io.input.analog.gotrel = false,
-			.data.io.input.analog.devid = ev->which,
-			.data.io.input.analog.subid = ev->axis,
-			.data.io.input.analog.nvalues = 1,
-			.data.io.input.analog.axisval[0] = dstv
+			.io.datatype = EVENT_IDATATYPE_ANALOG,
+			.io.devkind  = EVENT_IDEVKIND_GAMEDEV,
+			.io.input.analog.gotrel = false,
+			.io.input.analog.devid = ev->which,
+			.io.input.analog.subid = ev->axis,
+			.io.input.analog.nvalues = 1,
+			.io.input.analog.axisval[0] = dstv
 		};
 		arcan_event_enqueue(ctx, &newevent);
 	}
@@ -180,12 +180,12 @@ static inline void process_mousemotion(arcan_evctx* ctx,
 	arcan_event nev = {
 		.label = "MOUSE\0",
 		.category = EVENT_IO,
-		.kind = EVENT_IO_AXIS_MOVE,
-		.data.io.datatype = EVENT_IDATATYPE_ANALOG,
-		.data.io.devkind  = EVENT_IDEVKIND_MOUSE,
-		.data.io.input.analog.devid  = 0,
-		.data.io.input.analog.gotrel = true,
-		.data.io.input.analog.nvalues = 2
+		.io.kind = EVENT_IO_AXIS_MOVE,
+		.io.datatype = EVENT_IDATATYPE_ANALOG,
+		.io.devkind  = EVENT_IDEVKIND_MOUSE,
+		.io.input.analog.devid  = 0,
+		.io.input.analog.gotrel = true,
+		.io.input.analog.nvalues = 2
 	};
 
 	snprintf(nev.label,
@@ -193,17 +193,17 @@ static inline void process_mousemotion(arcan_evctx* ctx,
 
 	if (process_axis(ctx, &iodev.mx, ev->x, &dstv) &&
 		process_axis(ctx, &iodev.mx_r, ev->xrel, &dstv_r)){
-		nev.data.io.input.analog.subid = 0;
-		nev.data.io.input.analog.axisval[0] = dstv;
-		nev.data.io.input.analog.axisval[1] = dstv_r;
+		nev.io.input.analog.subid = 0;
+		nev.io.input.analog.axisval[0] = dstv;
+		nev.io.input.analog.axisval[1] = dstv_r;
 		arcan_event_enqueue(ctx, &nev);
 	}
 
 	if (process_axis(ctx, &iodev.my, ev->y, &dstv) &&
 		process_axis(ctx, &iodev.my_r, ev->yrel, &dstv_r)){
-		nev.data.io.input.analog.subid = 1;
-		nev.data.io.input.analog.axisval[0] = dstv;
-		nev.data.io.input.analog.axisval[1] = dstv_r;
+		nev.io.input.analog.subid = 1;
+		nev.io.input.analog.axisval[0] = dstv;
+		nev.io.input.analog.axisval[1] = dstv_r;
 		arcan_event_enqueue(ctx, &nev);
 	}
 }
@@ -357,11 +357,11 @@ static inline void process_hatmotion(arcan_evctx* ctx, unsigned devid,
 {
 	arcan_event newevent = {
 		.category = EVENT_IO,
-		.kind = EVENT_IO_BUTTON,
-		.data.io.datatype = EVENT_IDATATYPE_DIGITAL,
-		.data.io.devkind = EVENT_IDEVKIND_GAMEDEV,
-		.data.io.input.digital.devid = devid,
-		.data.io.input.digital.subid = 128 + (hatid * 4)
+		.io.kind = EVENT_IO_BUTTON,
+		.io.datatype = EVENT_IDATATYPE_DIGITAL,
+		.io.devkind = EVENT_IDEVKIND_GAMEDEV,
+		.io.input.digital.devid = devid,
+		.io.input.digital.subid = 128 + (hatid * 4)
 	};
 
 	static unsigned hattbl[4] = {SDL_HAT_UP, SDL_HAT_DOWN,
@@ -376,8 +376,8 @@ static inline void process_hatmotion(arcan_evctx* ctx, unsigned devid,
 
 		for (int i = 0; i < 4; i++){
 			if ( (oldtbl & hattbl[i]) != (value & hattbl[i]) ){
-				newevent.data.io.input.digital.subid  = (hatid * 4) + i;
-				newevent.data.io.input.digital.active =
+				newevent.io.input.digital.subid  = (hatid * 4) + i;
+				newevent.io.input.digital.active =
 					(value & hattbl[i]) > 0;
 				arcan_event_enqueue(ctx, &newevent);
 			}
@@ -408,24 +408,24 @@ void platform_event_process(arcan_evctx* ctx)
 	while (SDL_PollEvent(&event)) {
 		switch (event.type) {
 		case SDL_MOUSEBUTTONDOWN:
-			newevent.kind = EVENT_IO_BUTTON;
-			newevent.data.io.datatype = EVENT_IDATATYPE_DIGITAL;
-			newevent.data.io.devkind  = EVENT_IDEVKIND_MOUSE;
-			newevent.data.io.input.digital.devid = event.motion.which;
-			newevent.data.io.input.digital.subid = event.button.button;
-			newevent.data.io.input.digital.active = true;
+			newevent.io.kind = EVENT_IO_BUTTON;
+			newevent.io.datatype = EVENT_IDATATYPE_DIGITAL;
+			newevent.io.devkind  = EVENT_IDEVKIND_MOUSE;
+			newevent.io.input.digital.devid = event.motion.which;
+			newevent.io.input.digital.subid = event.button.button;
+			newevent.io.input.digital.active = true;
 			snprintf(newevent.label, sizeof(newevent.label) - 1, "mouse%i",
 				event.motion.which);
 			arcan_event_enqueue(ctx, &newevent);
 		break;
 
 		case SDL_MOUSEBUTTONUP:
-			newevent.kind = EVENT_IO_BUTTON;
-			newevent.data.io.datatype = EVENT_IDATATYPE_DIGITAL;
-			newevent.data.io.devkind  = EVENT_IDEVKIND_MOUSE;
-			newevent.data.io.input.digital.devid = event.motion.which;
-			newevent.data.io.input.digital.subid = event.button.button;
-			newevent.data.io.input.digital.active = false;
+			newevent.io.kind = EVENT_IO_BUTTON;
+			newevent.io.datatype = EVENT_IDATATYPE_DIGITAL;
+			newevent.io.devkind  = EVENT_IDEVKIND_MOUSE;
+			newevent.io.input.digital.devid = event.motion.which;
+			newevent.io.input.digital.subid = event.button.button;
+			newevent.io.input.digital.active = false;
 			snprintf(newevent.label, sizeof(newevent.label) - 1, "mouse%i",
 				event.motion.which);
 			arcan_event_enqueue(ctx, &newevent);
@@ -440,48 +440,48 @@ void platform_event_process(arcan_evctx* ctx)
 		break;
 
 		case SDL_KEYDOWN:
-			newevent.data.io.datatype = EVENT_IDATATYPE_TRANSLATED;
-			newevent.data.io.devkind  = EVENT_IDEVKIND_KEYBOARD;
-			newevent.data.io.input.translated.active = true;
-			newevent.data.io.input.translated.devid = event.key.which;
-			newevent.data.io.input.translated.keysym = event.key.keysym.sym;
-			newevent.data.io.input.translated.modifiers = event.key.keysym.mod;
-			newevent.data.io.input.translated.scancode = event.key.keysym.scancode;
-			newevent.data.io.input.translated.subid = event.key.keysym.unicode;
+			newevent.io.datatype = EVENT_IDATATYPE_TRANSLATED;
+			newevent.io.devkind  = EVENT_IDEVKIND_KEYBOARD;
+			newevent.io.input.translated.active = true;
+			newevent.io.input.translated.devid = event.key.which;
+			newevent.io.input.translated.keysym = event.key.keysym.sym;
+			newevent.io.input.translated.modifiers = event.key.keysym.mod;
+			newevent.io.input.translated.scancode = event.key.keysym.scancode;
+			newevent.io.input.translated.subid = event.key.keysym.unicode;
 			arcan_event_enqueue(ctx, &newevent);
 		break;
 
 		case SDL_KEYUP:
-			newevent.data.io.datatype = EVENT_IDATATYPE_TRANSLATED;
-			newevent.data.io.devkind  = EVENT_IDEVKIND_KEYBOARD;
-			newevent.data.io.input.translated.active = false;
-			newevent.data.io.input.translated.devid = event.key.which;
-			newevent.data.io.input.translated.keysym = event.key.keysym.sym;
-			newevent.data.io.input.translated.modifiers = event.key.keysym.mod;
-			newevent.data.io.input.translated.scancode = event.key.keysym.scancode;
-			newevent.data.io.input.translated.subid = event.key.keysym.unicode;
+			newevent.io.datatype = EVENT_IDATATYPE_TRANSLATED;
+			newevent.io.devkind  = EVENT_IDEVKIND_KEYBOARD;
+			newevent.io.input.translated.active = false;
+			newevent.io.input.translated.devid = event.key.which;
+			newevent.io.input.translated.keysym = event.key.keysym.sym;
+			newevent.io.input.translated.modifiers = event.key.keysym.mod;
+			newevent.io.input.translated.scancode = event.key.keysym.scancode;
+			newevent.io.input.translated.subid = event.key.keysym.unicode;
 			arcan_event_enqueue(ctx, &newevent);
 		break;
 
 		case SDL_JOYBUTTONDOWN:
-			newevent.kind = EVENT_IO_BUTTON;
-			newevent.data.io.datatype = EVENT_IDATATYPE_DIGITAL;
-			newevent.data.io.devkind  = EVENT_IDEVKIND_GAMEDEV;
-			newevent.data.io.input.digital.devid = event.jbutton.which;
-			newevent.data.io.input.digital.subid = event.jbutton.button;
-			newevent.data.io.input.digital.active = true;
+			newevent.io.kind = EVENT_IO_BUTTON;
+			newevent.io.datatype = EVENT_IDATATYPE_DIGITAL;
+			newevent.io.devkind  = EVENT_IDEVKIND_GAMEDEV;
+			newevent.io.input.digital.devid = event.jbutton.which;
+			newevent.io.input.digital.subid = event.jbutton.button;
+			newevent.io.input.digital.active = true;
 			snprintf(newevent.label, sizeof(newevent.label)-1,
 				"joystick%i", event.jbutton.which);
 			arcan_event_enqueue(ctx, &newevent);
 		break;
 
 		case SDL_JOYBUTTONUP:
-			newevent.kind = EVENT_IO_BUTTON;
-			newevent.data.io.datatype = EVENT_IDATATYPE_DIGITAL;
-			newevent.data.io.devkind  = EVENT_IDEVKIND_GAMEDEV;
-			newevent.data.io.input.digital.devid = event.jbutton.which;
-			newevent.data.io.input.digital.subid = event.jbutton.button;
-			newevent.data.io.input.digital.active = false;
+			newevent.io.kind = EVENT_IO_BUTTON;
+			newevent.io.datatype = EVENT_IDATATYPE_DIGITAL;
+			newevent.io.devkind  = EVENT_IDEVKIND_GAMEDEV;
+			newevent.io.input.digital.devid = event.jbutton.which;
+			newevent.io.input.digital.subid = event.jbutton.button;
+			newevent.io.input.digital.active = false;
 			snprintf(newevent.label, sizeof(newevent.label)-1, "joystick%i",
 				event.jbutton.which);
 			arcan_event_enqueue(ctx, &newevent);
@@ -500,14 +500,14 @@ void platform_event_process(arcan_evctx* ctx)
  * track of a scale factor to the grid size (window size) specified
  * during launch) */
 		case SDL_ACTIVEEVENT:
-//newevent.kind = (MOUSEFOCUS, INPUTFOCUS, APPACTIVE(0 = icon, 1 = restored)
+//newevent.io.kind = (MOUSEFOCUS, INPUTFOCUS, APPACTIVE(0 = icon, 1 = restored)
 //if (event->active.state & SDL_APPINPUTFOCUS){
 //	SDL_SetModState(KMOD_NONE);
 		break;
 
 		case SDL_QUIT:
 			newevent.category = EVENT_SYSTEM;
-			newevent.kind = EVENT_SYSTEM_EXIT;
+			newevent.io.kind = EVENT_SYSTEM_EXIT;
 			arcan_event_enqueue(ctx, &newevent);
 		break;
 

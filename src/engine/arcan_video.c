@@ -1983,14 +1983,14 @@ void arcan_video_joinasynch(arcan_vobject* img, bool emit, bool force)
 
 	arcan_event loadev = {
 		.category = EVENT_VIDEO,
-		.data.video.data = args->tag,
-		.data.video.source = args->dstid
+		.vid.data = args->tag,
+		.vid.source = args->dstid
 	};
 
 	if (args->rc == ARCAN_OK){
-		loadev.kind = EVENT_VIDEO_ASYNCHIMAGE_LOADED;
-		loadev.data.video.width = img->origw;
-		loadev.data.video.height = img->origh;
+		loadev.vid.kind = EVENT_VIDEO_ASYNCHIMAGE_LOADED;
+		loadev.vid.width = img->origw;
+		loadev.vid.height = img->origh;
 	}
 /* copy broken placeholder instead */
 	else {
@@ -2005,9 +2005,9 @@ void arcan_video_joinasynch(arcan_vobject* img, bool emit, bool force)
 		img->vstore->vinf.text.source = strdup(args->fname);
 		img->vstore->filtermode = ARCAN_VFILTER_NONE;
 
-		loadev.data.video.width = 32;
-		loadev.data.video.height = 32;
-		loadev.kind = EVENT_VIDEO_ASYNCHIMAGE_FAILED;
+		loadev.vid.width = 32;
+		loadev.vid.height = 32;
+		loadev.vid.kind = EVENT_VIDEO_ASYNCHIMAGE_FAILED;
 	}
 
 	agp_update_vstore(img->vstore, true);
@@ -3329,10 +3329,10 @@ static void emit_transform_event(arcan_vobj_id src,
 {
 	arcan_event tagev = {
 		.category = EVENT_VIDEO,
-		.kind = EVENT_VIDEO_CHAIN_OVER,
-		.data.video.data = tag,
-		.data.video.source = src,
-		.data.video.slot = slot
+		.vid.kind = EVENT_VIDEO_CHAIN_OVER,
+		.vid.data = tag,
+		.vid.source = src,
+		.vid.slot = slot
 	};
 
 	arcan_event_enqueue(arcan_event_defaultctx(), &tagev);
@@ -3540,10 +3540,10 @@ static void expire_object(arcan_vobject* obj){
 	{
 		arcan_event dobjev = {
 		.category = EVENT_VIDEO,
-		.kind = EVENT_VIDEO_EXPIRE
+		.vid.kind = EVENT_VIDEO_EXPIRE
 		};
 
-		dobjev.data.video.source = obj->cellid;
+		dobjev.vid.source = obj->cellid;
 
 #ifdef _DEBUG
 		if (obj->tracetag){

@@ -308,10 +308,10 @@ bool net_hl_decode(struct conn_state* self,
 			}
 			else {
 				arcan_event outev = {
-					.kind = EVENT_EXTERNAL_SEGREQ,
 					.category = EVENT_EXTERNAL,
-					.data.external.noticereq.width = desw,
-					.data.external.noticereq.height = desh
+					.ext.kind = EVENT_EXTERNAL_SEGREQ,
+					.ext.noticereq.width = desw,
+					.ext.noticereq.height = desh
 				};
 
 				arcan_event_enqueue(self->outevq, &outev);
@@ -513,10 +513,9 @@ bool net_dispatch_tlv(struct conn_state* self, enum net_tags tag,
 
 	switch(tag){
 	case TAG_NETMSG:
-		newev.kind = EVENT_NET_CUSTOMMSG;
-		snprintf(newev.data.network.message,
-			sizeof(newev.data.network.message) /
-			sizeof(newev.data.network.message[0]), "%s", value);
+		newev.net.kind = EVENT_NET_CUSTOMMSG;
+		snprintf(newev.net.message,
+			sizeof(newev.net.message) / sizeof(newev.net.message[0]), "%s", value);
 		arcan_event_enqueue(self->outevq, &newev);
 	break;
 

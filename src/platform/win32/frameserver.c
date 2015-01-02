@@ -158,10 +158,10 @@ arcan_errc arcan_frameserver_pushfd(arcan_frameserver* fsrv, int fd)
 	&dh, 0, FALSE, DUPLICATE_SAME_ACCESS)){
 		arcan_event ev = {
 			.category = EVENT_TARGET,
-			.kind = TARGET_COMMAND_FDTRANSFER
+			.tgt.kind = TARGET_COMMAND_FDTRANSFER
 		};
 
-		ev.data.target.fh = dh;
+		ev.tgt.fh = dh;
 		arcan_frameserver_pushevent( fsrv, &ev );
 		rv = ARCAN_OK;
 	}

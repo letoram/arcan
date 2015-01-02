@@ -281,7 +281,7 @@ static void targetev(arcan_event* tgtev)
 {
 /*	arcan_tgtevent* ev = &tgtev->data.target; */
 
-	switch (tgtev->kind){
+	switch (tgtev->tgt.kind){
 	case TARGET_COMMAND_FDTRANSFER:
 		term.last_fd = arcan_fetchhandle(term.acon.dpipe);
 	break;
@@ -355,7 +355,7 @@ static void main_loop()
 		while (arcan_event_poll(&term.acon.inev, &ev) == 1){
 			switch (ev.category){
 			case EVENT_IO:
-				ioev_ctxtbl(&(ev.data.io), ev.label);
+				ioev_ctxtbl(&(ev.io), ev.label);
 			break;
 
 			case EVENT_TARGET:

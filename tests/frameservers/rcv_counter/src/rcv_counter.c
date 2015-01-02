@@ -51,13 +51,11 @@ int main(int argc, char** argv)
 	while(running){
 		while (arcan_event_wait(&cont.inev, &ev)){
 			if (ev.category == EVENT_TARGET)
-			switch (ev.kind){
-			case TARGET_COMMAND_STEPFRAME:
-
-			break;
-
+			switch (ev.tgt.kind){
 			case TARGET_COMMAND_EXIT:
 				running = false;
+			break;
+			default:
 			break;
 			}
 		}

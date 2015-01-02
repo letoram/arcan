@@ -44,7 +44,7 @@ static void* segthread(void* arg)
 		while(1 == arcan_event_wait(&seg->inevq, &ev)){
 			printf("got event\n");
 			if (ev.category == EVENT_TARGET &&
-				ev.kind == TARGET_COMMAND_EXIT){
+				ev.tgt.kind == TARGET_COMMAND_EXIT){
 				printf("parent requested termination\n");
 				update_frame(seg->vidp, &seg->shms, 0xffffff00);
 				return NULL;
@@ -115,7 +115,7 @@ int arcan_frameserver_avfeed_run(
  * request a new segment
  */
 	ev.category = EVENT_EXTERNAL;
-	ev.kind = EVENT_EXTERNAL_SEGREQ;
+	ev.ext.kind = EVENT_EXTERNAL_SEGREQ;
 	arcan_event_enqueue(&outevq, &ev);
 
 	int lastfd;
@@ -123,16 +123,16 @@ int arcan_frameserver_avfeed_run(
 	while(1){
 		while (1 == arcan_event_wait(&inevq, &ev)){
 			if (ev.category == EVENT_TARGET){
-				if (ev.kind == TARGET_COMMAND_FDTRANSFER){
+				if (ev.tgt.kind == TARGET_COMMAND_FDTRANSFER){
 					lastfd = arcan_fetchhandle(shms.dpipe);
 					printf("got handle (for new event transfer)\n");
 				}
 			}
-			if (ev.kind == TARGET_COMMAND_NEWSEGMENT){
-				printf("new segment ready, key: %s\n", ev.data.target.message);
-				mapseg(lastfd, ev.data.target.message);
+			if (ev.tgt.kind == TARGET_COMMAND_NEWSEGMENT){
+				printf("new segment ready, key: %s\n", ev.tgt.message);
+				mapseg(lastfd, ev.tgt.message);
 			}
-			if (ev.kind == TARGET_COMMAND_EXIT){
+			if (ev.tgt.kind == TARGET_COMMAND_EXIT){
 				printf("parent requested termination, leaving.\n");
 				return EXIT_SUCCESS;
 			}

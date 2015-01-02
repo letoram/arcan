@@ -612,11 +612,10 @@ static void update_varset( struct retro_variable* data )
 	int count = 0;
 	arcan_event outev = {
 		.category = EVENT_EXTERNAL,
-		.kind = EVENT_EXTERNAL_COREOPT
+		.ext.kind = EVENT_EXTERNAL_COREOPT
 	};
 
-	size_t msgsz = sizeof(outev.data.external.message) /
-		sizeof(outev.data.external.message[0]);
+	size_t msgsz = sizeof(outev.ext.message) / sizeof(outev.ext.message[0]);
 
 /* reset current varset */
 	if (retroctx.varset){
@@ -674,12 +673,12 @@ static void update_varset( struct retro_variable* data )
 		while(*workend && *workend == ' ') workend++;
 
 /* key */
-			snprintf((char*)outev.data.external.message, msgsz-1,
+			snprintf((char*)outev.ext.message, msgsz-1,
 				"%d:key:%s", count, data[count].key);
 			arcan_event_enqueue(&retroctx.shmcont.outev, &outev);
 
 /* description */
-			snprintf((char*)outev.data.external.message, msgsz-1,
+			snprintf((char*)outev.ext.message, msgsz-1,
 				"%d:descr:%s", count, workbeg);
 			arcan_event_enqueue(&retroctx.shmcont.outev, &outev);
 
@@ -696,7 +695,7 @@ startarg:
 				if (!gotval && (gotval = true))
 					retroctx.varset[count].value = strdup(workbeg);
 
-				snprintf((char*)outev.data.external.message, msgsz-1,
+				snprintf((char*)outev.ext.message, msgsz-1,
 					"%d:arg:%s", count, workbeg);
 				arcan_event_enqueue(&retroctx.shmcont.outev, &outev);
 
@@ -705,7 +704,7 @@ startarg:
 
 			const char* curv = lookup_varset(data[count].key);
 			if (curv){
-				snprintf((char*)outev.data.external.message, msgsz-1,
+				snprintf((char*)outev.ext.message, msgsz-1,
 				"%d:curv:%s", count, curv);
 				arcan_event_enqueue(&retroctx.shmcont.outev, &outev);
 			}
@@ -1169,8 +1168,8 @@ static void toggle_ntscfilter(int toggle)
 
 static inline void targetev(arcan_event* ev)
 {
-	arcan_tgtevent* tgt = &ev->data.target;
-	switch (ev->kind){
+	arcan_tgtevent* tgt = &ev->tgt;
+	switch (tgt->kind){
 		case TARGET_COMMAND_RESET:
 			retroctx.reset();
 		break;
@@ -1196,12 +1195,12 @@ static inline void targetev(arcan_event* ev)
 
 				retroctx.graph_pending = rand();
 				arcan_event outev = {
-					.kind = EVENT_EXTERNAL_SEGREQ,
 					.category = EVENT_EXTERNAL,
-					.data.external.noticereq.width = 640,
-					.data.external.noticereq.height = 240,
-					.data.external.noticereq.type = SEGID_DEBUG,
-					.data.external.noticereq.id = retroctx.graph_pending
+					.ext.kind = EVENT_EXTERNAL_SEGREQ,
+					.ext.noticereq.width = 640,
+					.ext.noticereq.height = 240,
+					.ext.noticereq.type = SEGID_DEBUG,
+					.ext.noticereq.id = retroctx.graph_pending
 				};
 
 				arcan_event_enqueue(&retroctx.shmcont.outev, &outev);
@@ -1243,8 +1242,9 @@ static inline void targetev(arcan_event* ev)
  * retexture transfer page, debugwindow or secondary etc. screens
  */
 		case TARGET_COMMAND_NEWSEGMENT:
-			if (retroctx.graph_pending ==	ev->data.target.ioevs[1].iv)
-				enable_graphseg(ev->data.target.ioevs[0].iv, ev->data.target.message);
+			if (retroctx.graph_pending ==	tgt->ioevs[1].iv)
+				enable_graphseg(tgt->ioevs[0].iv, tgt->message);
+
 			close(retroctx.last_fd);
 			retroctx.last_fd = 0;
 		break;
@@ -1344,7 +1344,7 @@ static inline void targetev(arcan_event* ev)
 		break;
 
 		default:
-			LOG("unknown target event (%d), ignored.\n", ev->kind);
+			LOG("unknown target event (%d), ignored.\n", tgt->kind);
 	}
 }
 
@@ -1358,11 +1358,13 @@ static inline void flush_eventq(){
 		while ( arcan_event_poll(&retroctx.shmcont.inev, &ev) == 1 ){
 			switch (ev.category){
 				case EVENT_IO:
-					ioev_ctxtbl(&(ev.data.io), ev.label);
+					ioev_ctxtbl(&(ev.io), ev.label);
 				break;
 
 				case EVENT_TARGET:
 					targetev(&ev);
+
+				default:
 				break;
 			}
 		}
@@ -1658,12 +1660,11 @@ int arcan_frameserver_libretro_run(
 /* send some information on what core is actually loaded etc. */
 		arcan_event outev = {
 			.category = EVENT_EXTERNAL,
-			.kind = EVENT_EXTERNAL_IDENT
+			.ext.kind = EVENT_EXTERNAL_IDENT
 		};
 
-		size_t msgsz = sizeof(outev.data.external.message) /
-			sizeof(outev.data.external.message[0]);
-		snprintf((char*)outev.data.external.message, msgsz-1, "%s %s",
+		size_t msgsz = sizeof(outev.ext.message) / sizeof(outev.ext.message[0]);
+		snprintf((char*)outev.ext.message, msgsz-1, "%s %s",
 			retroctx.sysinfo.library_name, retroctx.sysinfo.library_version);
 		arcan_event_enqueue(&retroctx.shmcont.outev, &outev);
 
@@ -1693,20 +1694,20 @@ int arcan_frameserver_libretro_run(
 		retroctx.gameinfo.size = bufsize;
 
 /* load the game, and if that fails, give up */
-		outev.kind = EVENT_EXTERNAL_RESOURCE;
-		snprintf((char*)outev.data.external.message, msgsz, "loading");
+		outev.ext.kind = EVENT_EXTERNAL_RESOURCE;
+		snprintf((char*)outev.ext.message, msgsz, "loading");
 		arcan_event_enqueue(&retroctx.shmcont.outev, &outev);
 		if (snprintf(logbuf, logbuf_sz, "loading game...") >= logbuf_sz)
 			logbuf[logbuf_sz - 1] = '\0';
 		log_msg(logbuf, true);
 
 		if ( retroctx.load_game( &retroctx.gameinfo ) == false ){
-			snprintf((char*)outev.data.external.message, msgsz, "failed");
+			snprintf((char*)outev.ext.message, msgsz, "failed");
 			arcan_event_enqueue(&retroctx.shmcont.outev, &outev);
 			return EXIT_FAILURE;
 		}
 
-		snprintf((char*)outev.data.external.message, msgsz, "loaded");
+		snprintf((char*)outev.ext.message, msgsz, "loaded");
 		arcan_event_enqueue(&retroctx.shmcont.outev, &outev);
 
 		( (void(*)(struct retro_system_av_info*))
@@ -1741,7 +1742,7 @@ int arcan_frameserver_libretro_run(
 
 /* since we're guaranteed to get at least one input callback each run(),
  * call, we multiplex parent event processing as well */
-		outev.data.external.framestatus.framenumber = 0;
+		outev.ext.framestatus.framenumber = 0;
 /* some cores die on this kind of reset, retroctx.reset() e.g. NXengine */
 
 /* basetime is used as epoch for all other timing calculations */
@@ -1767,9 +1768,9 @@ int arcan_frameserver_libretro_run(
  * savestate might possibly be, the frontend need to know this in order
  * to determine strategy for netplay and for enabling / disabling savestates */
 		retroctx.state_sz = retroctx.serialize_size();
-		outev.kind = EVENT_EXTERNAL_STATESIZE;
 		outev.category = EVENT_EXTERNAL;
-		outev.data.external.state_sz = retroctx.state_sz;
+		outev.ext.kind = EVENT_EXTERNAL_STATESIZE;
+		outev.ext.state_sz = retroctx.state_sz;
 		arcan_event_enqueue(&retroctx.shmcont.outev, &outev);
 
 		if (retroctx.state_sz > 0)
@@ -1821,8 +1822,8 @@ int arcan_frameserver_libretro_run(
 
 /* Some FE applications need a grasp of "where" we are frame-wise,
  * particularly for single-stepping etc. */
-			outev.kind = EVENT_EXTERNAL_FRAMESTATUS;
-			outev.data.external.framestatus.framenumber++;
+			outev.ext.kind = EVENT_EXTERNAL_FRAMESTATUS;
+			outev.ext.framestatus.framenumber++;
 			arcan_event_enqueue(&retroctx.shmcont.outev, &outev);
 
 #ifdef _DEBUG

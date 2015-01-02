@@ -534,7 +534,8 @@ void process_targetevent(unsigned kind, arcan_tgtevent* ev)
 		break;
 
 		case TARGET_COMMAND_NTSCFILTER_ARGS:
-			setup_ntsc(ev->ioevs[0].iv, ev->ioevs[1].fv, ev->ioevs[2].fv, ev->ioevs[3].fv);
+			setup_ntsc(ev->ioevs[0].iv,
+				ev->ioevs[1].fv, ev->ioevs[2].fv, ev->ioevs[3].fv);
 
 		break;
 	}
@@ -551,14 +552,15 @@ int ARCAN_SDL_PollEvent(SDL_Event* inev)
 		switch (ev.category){
 		case EVENT_IO:
 			if (global.gotsdl)
-				push_ioevent_sdl(ev.data.io);
+				push_ioevent_sdl(ev.io);
 #ifdef ENABLE_X11_HIJACK
 			else
-				push_ioevent_x11(ev.data.io);
+				push_ioevent_x11(ev.io);
 #endif
 		break;
 		case EVENT_TARGET:
-			process_targetevent(ev.kind, &ev.data.target);
+			process_targetevent(ev.tgt.kind, &ev.tgt);
+		default:
 		break;
 		}
 	}

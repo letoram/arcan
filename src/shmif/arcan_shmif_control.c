@@ -395,10 +395,11 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 	if (0 != type) {
 		struct arcan_event ev = {
 			.category = EVENT_EXTERNAL,
-			.kind = EVENT_EXTERNAL_REGISTER,
-			.data.external.registr.kind = type
+			.ext.kind = EVENT_EXTERNAL_REGISTER,
+			.ext.registr.kind = type
 		};
 
+		printf("sending registration event: %d\n", ev.ext.registr.kind);
 		arcan_event_enqueue(&res.outev, &ev);
 	}
 
@@ -520,9 +521,9 @@ void arcan_shmif_signalhandle(struct arcan_shmif_cont* ctx, int mask,
 
 	struct arcan_event ev = {
 		.category = EVENT_EXTERNAL,
-		.kind = EVENT_EXTERNAL_BUFFERSTREAM,
-		.data.external.bstream.pitch = stride,
-		.data.external.bstream.format = format
+		.ext.kind = EVENT_EXTERNAL_BUFFERSTREAM,
+		.ext.bstream.pitch = stride,
+		.ext.bstream.format = format
 	};
 	arcan_event_enqueue(&ctx->outev, &ev);
 	arcan_shmif_signal(ctx, mask);

@@ -2405,10 +2405,9 @@ static int targetsuspend(lua_State* ctx)
 	arcan_frameserver* fsrv = state->ptr;
 
 	arcan_event ev = {
-		.kind = TARGET_COMMAND_PAUSE,
-		.category = EVENT_TARGET
+		.category = EVENT_TARGET,
+		.tgt.kind = TARGET_COMMAND_PAUSE
 	};
-
 
 	if (!rsusp)
 		arcan_frameserver_pause(fsrv);
@@ -2432,8 +2431,8 @@ static int targetresume(lua_State* ctx)
 	}
 
 	arcan_event ev = {
-		.kind = TARGET_COMMAND_UNPAUSE,
-		.category = EVENT_TARGET
+		.category = EVENT_TARGET,
+		.tgt.kind = TARGET_COMMAND_UNPAUSE
 	};
 
 	arcan_frameserver_resume(fsrv);
@@ -2739,7 +2738,7 @@ static int targetinput(lua_State* ctx)
 {
 	LUA_TRACE("target_input/input_target");
 
-	arcan_event ev = {.kind = 0, .category = EVENT_IO };
+	arcan_event ev = {.io.kind = 0, .category = EVENT_IO };
 	int vidind, tblind;
 
 /* swizzle if necessary */
@@ -2777,50 +2776,50 @@ static int targetinput(lua_State* ctx)
 		*dst = '\0';
 	}
 
-	ev.data.io.pts = intblnum(ctx, tblind, "pts");
+	ev.io.pts = intblnum(ctx, tblind, "pts");
 
 	if ( strcmp( kindlbl, "analog") == 0 ){
 		const char* srcstr = intblstr(ctx, tblind, "source");
 
-		ev.kind = EVENT_IO_AXIS_MOVE;
-		ev.data.io.datatype = EVENT_IDATATYPE_ANALOG;
-		ev.data.io.devkind = srcstr && strcmp( srcstr, "mouse") == 0 ?
+		ev.io.kind = EVENT_IO_AXIS_MOVE;
+		ev.io.datatype = EVENT_IDATATYPE_ANALOG;
+		ev.io.devkind = srcstr && strcmp( srcstr, "mouse") == 0 ?
 			EVENT_IDEVKIND_MOUSE : EVENT_IDEVKIND_GAMEDEV;
-		ev.data.io.input.analog.devid  = intblnum(ctx, tblind, "devid");
-		ev.data.io.input.analog.subid  = intblnum(ctx, tblind, "subid");
-		ev.data.io.input.analog.gotrel = ev.data.io.devkind == EVENT_IDEVKIND_MOUSE;
+		ev.io.input.analog.devid  = intblnum(ctx, tblind, "devid");
+		ev.io.input.analog.subid  = intblnum(ctx, tblind, "subid");
+		ev.io.input.analog.gotrel = ev.io.devkind == EVENT_IDEVKIND_MOUSE;
 
 	/*  sweep the samples subtable, add as many as present (or possible) */
 		lua_getfield(ctx, tblind, "samples");
 		size_t naxiss = lua_rawlen(ctx, -1);
 		for (size_t i = 0; i < naxiss &&
-			i < sizeof(ev.data.io.input.analog.axisval) /
-				sizeof(ev.data.io.input.analog.axisval[0]); i++){
+			i < sizeof(ev.io.input.analog.axisval) /
+				sizeof(ev.io.input.analog.axisval[0]); i++){
 			lua_rawgeti(ctx, -1, i+1);
-			ev.data.io.input.analog.axisval[i] = lua_tointeger(ctx, -1);
+			ev.io.input.analog.axisval[i] = lua_tointeger(ctx, -1);
 			lua_pop(ctx, 1);
 		}
-		ev.data.io.input.analog.nvalues = naxiss;
+		ev.io.input.analog.nvalues = naxiss;
 	}
 	else if (strcmp(kindlbl, "digital") == 0){
 		if (intblbool(ctx, tblind, "translated")){
-			ev.data.io.datatype = EVENT_IDATATYPE_TRANSLATED;
-			ev.data.io.devkind  = EVENT_IDEVKIND_KEYBOARD;
-			ev.data.io.input.translated.active = intblbool(ctx, tblind, "active");
-			ev.data.io.input.translated.scancode = intblnum(ctx, tblind, "number");
-			ev.data.io.input.translated.keysym = intblnum(ctx, tblind, "keysym");
-			ev.data.io.input.translated.modifiers = intblnum(ctx, tblind,"modifiers");
-			ev.data.io.input.translated.devid = intblnum(ctx, tblind, "devid");
-			ev.data.io.input.translated.subid = intblnum(ctx, tblind, "subid");
+			ev.io.datatype = EVENT_IDATATYPE_TRANSLATED;
+			ev.io.devkind  = EVENT_IDEVKIND_KEYBOARD;
+			ev.io.input.translated.active = intblbool(ctx, tblind, "active");
+			ev.io.input.translated.scancode = intblnum(ctx, tblind, "number");
+			ev.io.input.translated.keysym = intblnum(ctx, tblind, "keysym");
+			ev.io.input.translated.modifiers = intblnum(ctx, tblind,"modifiers");
+			ev.io.input.translated.devid = intblnum(ctx, tblind, "devid");
+			ev.io.input.translated.subid = intblnum(ctx, tblind, "subid");
 		}
 		else {
 			const char* tblsrc = intblstr(ctx, tblind, "source");
-			ev.data.io.devkind = tblsrc && strcmp(tblsrc, "mouse") == 0 ?
+			ev.io.devkind = tblsrc && strcmp(tblsrc, "mouse") == 0 ?
 				EVENT_IDEVKIND_MOUSE : EVENT_IDEVKIND_GAMEDEV;
-			ev.data.io.datatype = EVENT_IDATATYPE_DIGITAL;
-			ev.data.io.input.digital.active= intblbool(ctx, tblind, "active");
-			ev.data.io.input.digital.devid = intblnum(ctx, tblind, "devid");
-			ev.data.io.input.digital.subid = intblnum(ctx, tblind, "subid");
+			ev.io.datatype = EVENT_IDATATYPE_DIGITAL;
+			ev.io.input.digital.active= intblbool(ctx, tblind, "active");
+			ev.io.input.digital.devid = intblnum(ctx, tblind, "devid");
+			ev.io.input.digital.subid = intblnum(ctx, tblind, "subid");
 		}
 	}
 	else {
@@ -2978,7 +2977,7 @@ static void emit_segreq(lua_State* ctx, struct arcan_extevent* ev)
 	if (last_segreq != NULL){
 		arcan_event rev = {
 			.category = EVENT_TARGET,
-			.kind = TARGET_COMMAND_REQFAIL
+			.tgt.kind = TARGET_COMMAND_REQFAIL
 		};
 
 		tgtevent(ev->source, rev);
@@ -2997,40 +2996,40 @@ static void emit_segreq(lua_State* ctx, struct arcan_extevent* ev)
 void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 {
 	if (ev->category == EVENT_IO && grabapplfunction(ctx, "input", 5)){
-		int top = funtable(ctx, ev->kind);
+		int top = funtable(ctx, ev->io.kind);
 
 		lua_pushstring(ctx, "kind");
 
-		switch (ev->kind) {
+		switch (ev->io.kind) {
 		case EVENT_IO_TOUCH:
 			lua_pushstring(ctx, "touch");
 			lua_rawset(ctx, top);
 
-			tblnum(ctx, "devid",    ev->data.io.input.touch.devid,    top);
-			tblnum(ctx, "subid",    ev->data.io.input.touch.subid,    top);
-			tblnum(ctx, "pressure", ev->data.io.input.touch.pressure, top);
-			tblnum(ctx, "size",     ev->data.io.input.touch.size,     top);
-			tblnum(ctx, "x",        ev->data.io.input.touch.x,        top);
-			tblnum(ctx, "y",        ev->data.io.input.touch.y,        top);
+			tblnum(ctx, "devid",    ev->io.input.touch.devid,    top);
+			tblnum(ctx, "subid",    ev->io.input.touch.subid,    top);
+			tblnum(ctx, "pressure", ev->io.input.touch.pressure, top);
+			tblnum(ctx, "size",     ev->io.input.touch.size,     top);
+			tblnum(ctx, "x",        ev->io.input.touch.x,        top);
+			tblnum(ctx, "y",        ev->io.input.touch.y,        top);
 		break;
 
 		case EVENT_IO_AXIS_MOVE:
 			lua_pushstring(ctx, "analog");
 			lua_rawset(ctx, top);
 
-			tblstr(ctx, "source", ev->data.io.devkind ==
+			tblstr(ctx, "source", ev->io.devkind ==
 				EVENT_IDEVKIND_MOUSE ? "mouse" : "joystick", top);
-			tblnum(ctx, "devid", ev->data.io.input.analog.devid, top);
-			tblnum(ctx, "subid", ev->data.io.input.analog.subid, top);
+			tblnum(ctx, "devid", ev->io.input.analog.devid, top);
+			tblnum(ctx, "subid", ev->io.input.analog.subid, top);
 			tblbool(ctx, "active", true, top);
-			tblbool(ctx, "relative", ev->data.io.input.analog.gotrel,top);
+			tblbool(ctx, "relative", ev->io.input.analog.gotrel,top);
 
 			lua_pushstring(ctx, "samples");
 			lua_newtable(ctx);
 				int top2 = lua_gettop(ctx);
-				for (size_t i = 0; i < ev->data.io.input.analog.nvalues; i++) {
+				for (size_t i = 0; i < ev->io.input.analog.nvalues; i++) {
 					lua_pushnumber(ctx, i + 1);
-					lua_pushnumber(ctx, ev->data.io.input.analog.axisval[i]);
+					lua_pushnumber(ctx, ev->io.input.analog.axisval[i]);
 					lua_rawset(ctx, top2);
 				}
 			lua_rawset(ctx, top);
@@ -3040,26 +3039,26 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			lua_pushstring(ctx, "digital");
 			lua_rawset(ctx, top);
 
-			if (ev->data.io.devkind == EVENT_IDEVKIND_KEYBOARD) {
+			if (ev->io.devkind == EVENT_IDEVKIND_KEYBOARD) {
 				tblbool(ctx, "translated", true, top);
-				tblnum(ctx, "number", ev->data.io.input.translated.scancode, top);
-				tblnum(ctx, "keysym", ev->data.io.input.translated.keysym, top);
-				tblnum(ctx, "modifiers", ev->data.io.input.translated.modifiers, top);
-				tblnum(ctx, "devid", ev->data.io.input.translated.devid, top);
-				tblnum(ctx, "subid", ev->data.io.input.translated.subid, top);
-				tblstr(ctx, "utf8", to_utf8(ev->data.io.input.translated.subid), top);
-				tblbool(ctx, "active", ev->data.io.input.translated.active, top);
+				tblnum(ctx, "number", ev->io.input.translated.scancode, top);
+				tblnum(ctx, "keysym", ev->io.input.translated.keysym, top);
+				tblnum(ctx, "modifiers", ev->io.input.translated.modifiers, top);
+				tblnum(ctx, "devid", ev->io.input.translated.devid, top);
+				tblnum(ctx, "subid", ev->io.input.translated.subid, top);
+				tblstr(ctx, "utf8", to_utf8(ev->io.input.translated.subid), top);
+				tblbool(ctx, "active", ev->io.input.translated.active, top);
 				tblstr(ctx, "device", "translated", top);
 				tblstr(ctx, "subdevice", "keyboard", top);
 			}
-			else if (ev->data.io.devkind == EVENT_IDEVKIND_MOUSE ||
-				ev->data.io.devkind == EVENT_IDEVKIND_GAMEDEV) {
-				tblstr(ctx, "source", ev->data.io.devkind == EVENT_IDEVKIND_MOUSE ?
+			else if (ev->io.devkind == EVENT_IDEVKIND_MOUSE ||
+				ev->io.devkind == EVENT_IDEVKIND_GAMEDEV) {
+				tblstr(ctx, "source", ev->io.devkind == EVENT_IDEVKIND_MOUSE ?
 					"mouse" : "joystick", top);
 				tblbool(ctx, "translated", false, top);
-				tblnum(ctx, "devid", ev->data.io.input.digital.devid, top);
-				tblnum(ctx, "subid", ev->data.io.input.digital.subid, top);
- 				tblbool(ctx, "active", ev->data.io.input.digital.active, top);
+				tblnum(ctx, "devid", ev->io.input.digital.devid, top);
+				tblnum(ctx, "subid", ev->io.input.digital.subid, top);
+ 				tblbool(ctx, "active", ev->io.input.digital.active, top);
 			}
 			else;
 		break;
@@ -3067,59 +3066,60 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		default:
 			lua_pushstring(ctx, "unknown");
 			lua_rawset(ctx, top);
-			arcan_warning("Engine -> Script: ignoring IO event: %i\n",ev->kind);
+			arcan_warning("Engine -> Script: "
+				"ignoring IO event: %i\n",ev->io.kind);
 		}
 
 		wraperr(ctx, lua_pcall(ctx, 1, 0, 0), "push event( input )");
 	}
 	else if (ev->category == EVENT_NET){
-		if (arcan_video_findparent(ev->data.external.source) == ARCAN_EID)
+		if (arcan_video_findparent(ev->ext.source) == ARCAN_EID)
 			return;
 
-		arcan_vobject* vobj = arcan_video_getobject(ev->data.network.source);
+		arcan_vobject* vobj = arcan_video_getobject(ev->net.source);
 		arcan_frameserver* fsrv = vobj ? vobj->feed.state.ptr : NULL;
 
 		if (fsrv && fsrv->tag){
 			intptr_t dst_cb = fsrv->tag;
 			lua_rawgeti(ctx, LUA_REGISTRYINDEX, dst_cb);
-			lua_pushvid(ctx, ev->data.network.source);
+			lua_pushvid(ctx, ev->net.source);
 
 			lua_newtable(ctx);
 			int top = lua_gettop(ctx);
 
-			switch (ev->kind){
+			switch (ev->net.kind){
 				case EVENT_NET_CONNECTED:
 					tblstr(ctx, "kind", "connected", top);
-					tblnum(ctx, "id", ev->data.network.connid, top);
-					tblstr(ctx, "host", ev->data.network.host.addr, top);
+					tblnum(ctx, "id", ev->net.connid, top);
+					tblstr(ctx, "host", ev->net.host.addr, top);
 				break;
 
 				case EVENT_NET_DISCONNECTED:
 					tblstr(ctx, "kind", "disconnected", top);
-					tblnum(ctx, "id", ev->data.network.connid, top);
-					tblstr(ctx, "host", ev->data.network.host.addr, top);
+					tblnum(ctx, "id", ev->net.connid, top);
+					tblstr(ctx, "host", ev->net.host.addr, top);
 				break;
 
 				case EVENT_NET_NORESPONSE:
 					tblstr(ctx, "kind", "noresponse", top);
-					tblstr(ctx, "host", ev->data.network.host.addr, top);
+					tblstr(ctx, "host", ev->net.host.addr, top);
 				break;
 
 				case EVENT_NET_CUSTOMMSG:
 					tblstr(ctx, "kind", "message", top);
-					ev->data.network.message[ sizeof(ev->data.network.message) - 1] = 0;
-					tblstr(ctx, "message", ev->data.network.message, top);
-					tblnum(ctx, "id", ev->data.network.connid, top);
+					ev->net.message[ sizeof(ev->net.message) - 1] = 0;
+					tblstr(ctx, "message", ev->net.message, top);
+					tblnum(ctx, "id", ev->net.connid, top);
 				break;
 
 				case EVENT_NET_DISCOVERED:
 				tblstr(ctx, "kind", "discovered", top);
-				tblstr(ctx, "address", ev->data.network.host.addr, top);
-				tblstr(ctx, "ident", ev->data.network.host.ident, top);
+				tblstr(ctx, "address", ev->net.host.addr, top);
+				tblstr(ctx, "ident", ev->net.host.ident, top);
 				size_t outl;
 				uint8_t* strkey = arcan_base64_encode(
-					(const uint8_t*) ev->data.network.host.key,
-					sizeof(ev->data.network.host.key) / sizeof(ev->data.network.host.key[0]),
+					(const uint8_t*) ev->net.host.key,
+					sizeof(ev->net.host.key) / sizeof(ev->net.host.key[0]),
 					&outl, ARCAN_MEM_SENSITIVE | ARCAN_MEM_NONFATAL);
 				if (strkey){
 					tblstr(ctx, "key", (const char*) strkey, top);
@@ -3132,10 +3132,10 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				break;
 
 				default:
-					arcan_warning("pushevent( net_unknown %d )\n", ev->kind);
+					arcan_warning("pushevent( net_unknown %d )\n", ev->net.kind);
 			}
 
-			lua_ctx_store.cb_source_tag  = ev->data.external.source;
+			lua_ctx_store.cb_source_tag  = ev->ext.source;
 			lua_ctx_store.cb_source_kind = CB_SOURCE_FRAMESERVER;
 			wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event_net");
 
@@ -3145,13 +3145,13 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 	}
 	else if (ev->category == EVENT_EXTERNAL){
 		char mcbuf[65];
-		if (arcan_video_findparent(ev->data.external.source) == ARCAN_EID)
+		if (arcan_video_findparent(ev->ext.source) == ARCAN_EID)
 			return;
 
 		int reset = lua_gettop(ctx);
 
 /* need to jump through a few hoops to get hold of the possible callback */
-		arcan_vobject* vobj = arcan_video_getobject(ev->data.external.source);
+		arcan_vobject* vobj = arcan_video_getobject(ev->ext.source);
 
 /* edge case, dangling event with frameserver
  * that died during initialization but wasn't pruned from the eventqueue */
@@ -3162,121 +3162,121 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		if (fsrv->tag){
 			intptr_t dst_cb = fsrv->tag;
 			lua_rawgeti(ctx, LUA_REGISTRYINDEX, dst_cb);
-			lua_pushvid(ctx, ev->data.external.source);
+			lua_pushvid(ctx, ev->ext.source);
 
 			lua_newtable(ctx);
 			int top = lua_gettop(ctx);
-			switch (ev->kind){
+			switch (ev->ext.kind){
 			case EVENT_EXTERNAL_IDENT:
 				tblstr(ctx, "kind", "ident", top);
-				slimpush(mcbuf, sizeof(ev->data.external.message) /
-					sizeof(ev->data.external.message[0]),
-					(char*)ev->data.external.message);
+				slimpush(mcbuf, sizeof(ev->ext.message) /
+					sizeof(ev->ext.message[0]),
+					(char*)ev->ext.message);
 				tblstr(ctx, "message", mcbuf, top);
 			break;
 			case EVENT_EXTERNAL_COREOPT:
 				tblstr(ctx, "kind", "coreopt", top);
-				slimpush(mcbuf, sizeof(ev->data.external.message) /
-					sizeof(ev->data.external.message[0]),
-					(char*)ev->data.external.message);
+				slimpush(mcbuf, sizeof(ev->ext.message) /
+					sizeof(ev->ext.message[0]),
+					(char*)ev->ext.message);
 				tblstr(ctx, "argument", mcbuf, top);
 			break;
 			case EVENT_EXTERNAL_MESSAGE:
-				slimpush(mcbuf, sizeof(ev->data.external.message) /
-					sizeof(ev->data.external.message[0]),
-					(char*)ev->data.external.message);
+				slimpush(mcbuf, sizeof(ev->ext.message) /
+					sizeof(ev->ext.message[0]),
+					(char*)ev->ext.message);
 				tblstr(ctx, "kind", "message", top);
 				tblstr(ctx, "message", mcbuf, top);
 			break;
 			case EVENT_EXTERNAL_FAILURE:
 				tblstr(ctx, "kind", "failure", top);
-				slimpush(mcbuf, sizeof(ev->data.external.message) /
-					sizeof(ev->data.external.message[0]),
-					(char*)ev->data.external.message);
+				slimpush(mcbuf, sizeof(ev->ext.message) /
+					sizeof(ev->ext.message[0]),
+					(char*)ev->ext.message);
 				tblstr(ctx, "message", mcbuf, top);
 			break;
 			case EVENT_EXTERNAL_FRAMESTATUS:
 				tblstr(ctx, "kind", "framestatus", top);
-				tblnum(ctx, "frame", ev->data.external.framestatus.framenumber, top);
-				tblnum(ctx, "pts", ev->data.external.framestatus.pts, top);
-				tblnum(ctx, "acquired", ev->data.external.framestatus.acquired, top);
-				tblnum(ctx, "fhint", ev->data.external.framestatus.fhint, top);
+				tblnum(ctx, "frame", ev->ext.framestatus.framenumber, top);
+				tblnum(ctx, "pts", ev->ext.framestatus.pts, top);
+				tblnum(ctx, "acquired", ev->ext.framestatus.acquired, top);
+				tblnum(ctx, "fhint", ev->ext.framestatus.fhint, top);
 			break;
 
 			case EVENT_EXTERNAL_STREAMINFO:
-				slimpush(mcbuf, sizeof(ev->data.external.streaminf.message) /
-					sizeof(ev->data.external.streamstat.timestr[0]),
-					(char*)ev->data.external.streamstat.timestr);
+				slimpush(mcbuf, sizeof(ev->ext.streaminf.message) /
+					sizeof(ev->ext.streamstat.timestr[0]),
+					(char*)ev->ext.streamstat.timestr);
 				tblstr(ctx, "kind", "streaminfo", top);
 				tblstr(ctx, "lang", mcbuf, top);
-				tblnum(ctx, "streamid", ev->data.external.streaminf.streamid, top);
+				tblnum(ctx, "streamid", ev->ext.streaminf.streamid, top);
 				tblstr(ctx, "type",
-					streamtype(ev->data.external.streaminf.datakind),top);
+					streamtype(ev->ext.streaminf.datakind),top);
 			break;
 
 			case EVENT_EXTERNAL_STREAMSTATUS:
 				tblstr(ctx, "kind", "streamstatus", top);
-					slimpush(mcbuf, sizeof(ev->data.external.streamstat.timestr) /
-					sizeof(ev->data.external.streamstat.timestr[0]),
-					(char*)ev->data.external.streamstat.timestr);
+					slimpush(mcbuf, sizeof(ev->ext.streamstat.timestr) /
+					sizeof(ev->ext.streamstat.timestr[0]),
+					(char*)ev->ext.streamstat.timestr);
 				tblstr(ctx, "ctime", mcbuf, top);
-				slimpush(mcbuf, sizeof(ev->data.external.streamstat.timelim) /
-					sizeof(ev->data.external.streamstat.timelim[0]),
-					(char*)ev->data.external.streamstat.timelim);
+				slimpush(mcbuf, sizeof(ev->ext.streamstat.timelim) /
+					sizeof(ev->ext.streamstat.timelim[0]),
+					(char*)ev->ext.streamstat.timelim);
 				tblstr(ctx, "endtime", mcbuf, top);
-				tblnum(ctx,"completion",ev->data.external.streamstat.completion,top);
-				tblnum(ctx, "frameno", ev->data.external.streamstat.frameno, top);
+				tblnum(ctx,"completion",ev->ext.streamstat.completion,top);
+				tblnum(ctx, "frameno", ev->ext.streamstat.frameno, top);
 				tblnum(ctx,"streaming",
-					ev->data.external.streamstat.streaming!=0,top);
+					ev->ext.streamstat.streaming!=0,top);
 			break;
 
 			case EVENT_EXTERNAL_CURSORINPUT:
 				tblstr(ctx, "kind", "cursor_input", top);
-				tblnum(ctx, "id", ev->data.external.cursor.id, top);
-				tblnum(ctx, "x", ev->data.external.cursor.x, top);
-				tblnum(ctx, "y", ev->data.external.cursor.y, top);
-				tblbool(ctx, "button_1", ev->data.external.cursor.buttons[0], top);
-				tblbool(ctx, "button_2", ev->data.external.cursor.buttons[1], top);
-				tblbool(ctx, "button_3", ev->data.external.cursor.buttons[2], top);
-				tblbool(ctx, "button_4", ev->data.external.cursor.buttons[3], top);
-				tblbool(ctx, "button_5", ev->data.external.cursor.buttons[4], top);
+				tblnum(ctx, "id", ev->ext.cursor.id, top);
+				tblnum(ctx, "x", ev->ext.cursor.x, top);
+				tblnum(ctx, "y", ev->ext.cursor.y, top);
+				tblbool(ctx, "button_1", ev->ext.cursor.buttons[0], top);
+				tblbool(ctx, "button_2", ev->ext.cursor.buttons[1], top);
+				tblbool(ctx, "button_3", ev->ext.cursor.buttons[2], top);
+				tblbool(ctx, "button_4", ev->ext.cursor.buttons[3], top);
+				tblbool(ctx, "button_5", ev->ext.cursor.buttons[4], top);
 			break;
 
 			case EVENT_EXTERNAL_KEYINPUT:
 				tblstr(ctx, "kind", "key_input", top);
-				tblnum(ctx, "id", ev->data.external.cursor.id, top);
-				tblnum(ctx, "keysym", ev->data.external.key.keysym, top);
-				tblbool(ctx, "active", ev->data.external.key.active, top);
+				tblnum(ctx, "id", ev->ext.cursor.id, top);
+				tblnum(ctx, "keysym", ev->ext.key.keysym, top);
+				tblbool(ctx, "active", ev->ext.key.active, top);
 			break;
 
 /* special semantics for segreq */
 			case EVENT_EXTERNAL_SEGREQ:
-				return emit_segreq(ctx, &ev->data.external);
+				return emit_segreq(ctx, &ev->ext);
 			break;
 
 			case EVENT_EXTERNAL_STATESIZE:
 				tblstr(ctx, "kind", "state_size", top);
-				tblnum(ctx, "state_size", ev->data.external.state_sz, top);
+				tblnum(ctx, "state_size", ev->ext.state_sz, top);
 			break;
 			case EVENT_EXTERNAL_RESOURCE:
 				tblstr(ctx, "kind", "resource_status", top);
-				tblstr(ctx, "message", (char*)ev->data.external.message, top);
+				tblstr(ctx, "message", (char*)ev->ext.message, top);
 			break;
 			case EVENT_EXTERNAL_REGISTER:
 				if (fsrv->segid != SEGID_UNKNOWN &&
-					ev->data.external.registr.kind != fsrv->segid){
+					ev->ext.registr.kind != fsrv->segid){
 					arcan_warning("client attempted to change registry ID/type (%d:%d)"
 						"this behavior is not permitted and was ignored.\n", fsrv->segid,
-						ev->data.external.registr.kind);
+						ev->ext.registr.kind);
 					lua_settop(ctx, reset);
 					return;
 				}
 				else {
 					tblstr(ctx, "kind", "registered", top);
-					tblstr(ctx, "segkind", fsrvtos(ev->data.external.registr.kind), top);
-					slimpush(mcbuf, sizeof(ev->data.external.registr.title) /
-						sizeof(ev->data.external.registr.title[0]),
-						(char*)ev->data.external.registr.title);
+					tblstr(ctx, "segkind", fsrvtos(ev->ext.registr.kind), top);
+					slimpush(mcbuf, sizeof(ev->ext.registr.title) /
+						sizeof(ev->ext.registr.title[0]),
+						(char*)ev->ext.registr.title);
 					snprintf(fsrv->title,
 						sizeof(fsrv->title) / sizeof(fsrv->title[0]), "%s", mcbuf);
 					tblstr(ctx, "title", mcbuf, top);
@@ -3285,17 +3285,17 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			break;
 			 default:
 				tblstr(ctx, "kind", "unknown", top);
-				tblnum(ctx, "kind_num", ev->kind, top);
+				tblnum(ctx, "kind_num", ev->ext.kind, top);
 			}
 
-			lua_ctx_store.cb_source_tag  = ev->data.external.source;
+			lua_ctx_store.cb_source_tag  = ev->ext.source;
 			lua_ctx_store.cb_source_kind = CB_SOURCE_FRAMESERVER;
 			wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event_external");
 
 			lua_ctx_store.cb_source_kind = CB_SOURCE_NONE;
 		}
 	}
-	else if (ev->category == EVENT_FRAMESERVER){
+	else if (ev->category == EVENT_FSRV){
 		intptr_t dst_cb = 0;
 
 /*
@@ -3304,7 +3304,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
  * allocates/deletes full 32-bit (-context_size) in one go which
  * is not possible from the context size restriction.
  */
-		if (arcan_video_findparent(ev->data.frameserver.video) == ARCAN_EID)
+		if (arcan_video_findparent(ev->fsrv.video) == ARCAN_EID)
 			return;
 
 /*
@@ -3312,44 +3312,44 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
  */
 		lua_pushnumber(ctx, 0);
 
-		lua_pushvid(ctx, ev->data.frameserver.video);
+		lua_pushvid(ctx, ev->fsrv.video);
 		lua_newtable(ctx);
 		int top = lua_gettop(ctx);
 
-		tblnum(ctx, "source_audio", ev->data.frameserver.audio, top);
+		tblnum(ctx, "source_audio", ev->fsrv.audio, top);
 
-		dst_cb = ev->data.frameserver.otag;
+		dst_cb = ev->fsrv.otag;
 		if (0 == dst_cb){
 			lua_settop(ctx, 0);
 			return;
 		}
 
-		switch(ev->kind){
-			case EVENT_FRAMESERVER_TERMINATED :
+		switch(ev->fsrv.kind){
+			case EVENT_FSRV_TERMINATED :
 				tblstr(ctx, "kind", "terminated", top);
 			break;
 
-			case EVENT_FRAMESERVER_DELIVEREDFRAME :
+			case EVENT_FSRV_DELIVEREDFRAME :
 				tblstr(ctx, "kind", "frame", top);
-				tblnum(ctx, "pts", ev->data.frameserver.pts, top);
-				tblnum(ctx, "number", ev->data.frameserver.counter, top);
+				tblnum(ctx, "pts", ev->fsrv.pts, top);
+				tblnum(ctx, "number", ev->fsrv.counter, top);
 			break;
 
-			case EVENT_FRAMESERVER_DROPPEDFRAME :
+			case EVENT_FSRV_DROPPEDFRAME :
 				tblstr(ctx, "kind", "dropped_frame", top);
-				tblnum(ctx, "pts", ev->data.frameserver.pts, top);
-				tblnum(ctx, "number", ev->data.frameserver.counter, top);
+				tblnum(ctx, "pts", ev->fsrv.pts, top);
+				tblnum(ctx, "number", ev->fsrv.counter, top);
 			break;
 
-			case EVENT_FRAMESERVER_RESIZED :
+			case EVENT_FSRV_RESIZED :
 				tblstr(ctx, "kind", "resized", top);
-				tblnum(ctx, "width", ev->data.frameserver.width, top);
-				tblnum(ctx, "height", ev->data.frameserver.height, top);
-				tblnum(ctx, "mirrored", ev->data.frameserver.glsource, top);
+				tblnum(ctx, "width", ev->fsrv.width, top);
+				tblnum(ctx, "height", ev->fsrv.height, top);
+				tblnum(ctx, "mirrored", ev->fsrv.glsource, top);
 			break;
 		}
 
-		lua_ctx_store.cb_source_tag = ev->data.frameserver.video;
+		lua_ctx_store.cb_source_tag = ev->fsrv.video;
 		lua_ctx_store.cb_source_kind = CB_SOURCE_FRAMESERVER;
 		lua_rawgeti(ctx, LUA_REGISTRYINDEX, dst_cb);
 		lua_replace(ctx, 1);
@@ -3358,12 +3358,12 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 	}
 	else if (ev->category == EVENT_VIDEO){
 
-		if (ev->kind == EVENT_VIDEO_DISPLAY_ADDED){
-			display_added(ctx, ev->data.video.source);
+		if (ev->vid.kind == EVENT_VIDEO_DISPLAY_ADDED){
+			display_added(ctx, ev->vid.source);
 			return;
 		}
-		else if (ev->kind == EVENT_VIDEO_DISPLAY_REMOVED){
-			display_removed(ctx, ev->data.video.source);
+		else if (ev->vid.kind == EVENT_VIDEO_DISPLAY_REMOVED){
+			display_removed(ctx, ev->vid.source);
 			return;
 		}
 
@@ -3375,18 +3375,18 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 /* add placeholder, if we find an asynch recipient */
 		lua_pushnumber(ctx, 0);
 
-		lua_pushvid(ctx, ev->data.video.source);
+		lua_pushvid(ctx, ev->vid.source);
 		lua_newtable(ctx);
 		int top = lua_gettop(ctx);
 
-		switch (ev->kind) {
+		switch (ev->vid.kind) {
 		case EVENT_VIDEO_EXPIRE :
 /* not even likely that these get forwarded here */
 		break;
 
 		case EVENT_VIDEO_CHAIN_OVER:
 			evmsg = "video_event(chain_tag reached)";
-			dst_cb = (intptr_t) ev->data.video.data;
+			dst_cb = (intptr_t) ev->vid.data;
 			if (dst_cb){
 				evmsg = "video_event(chain_tag reached, callback";
 				lua_ctx_store.cb_source_kind = CB_SOURCE_TRANSFORM;
@@ -3396,9 +3396,9 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		case EVENT_VIDEO_ASYNCHIMAGE_LOADED:
 			evmsg = "video_event(asynchimg_loaded)";
 			tblstr(ctx, "kind", "loaded", top);
-			tblnum(ctx, "width", ev->data.video.width, top);
-			tblnum(ctx, "height", ev->data.video.height, top);
-			dst_cb = (intptr_t) ev->data.video.data;
+			tblnum(ctx, "width", ev->vid.width, top);
+			tblnum(ctx, "height", ev->vid.height, top);
+			dst_cb = (intptr_t) ev->vid.data;
 
 			if (dst_cb){
 				evmsg = "video_event(asynchimg_loaded), callback";
@@ -3407,14 +3407,14 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		break;
 
 		case EVENT_VIDEO_ASYNCHIMAGE_FAILED:
-			srcobj = arcan_video_getobject(ev->data.video.source);
+			srcobj = arcan_video_getobject(ev->vid.source);
 			evmsg = "video_event(asynchimg_load_fail), callback";
 			tblstr(ctx, "kind", "load_failed", top);
 			tblstr(ctx, "resource", srcobj && srcobj->vstore->vinf.text.source ?
 				srcobj->vstore->vinf.text.source : "unknown", top);
-			tblnum(ctx, "width", ev->data.video.width, top);
-			tblnum(ctx, "height", ev->data.video.height, top);
-			dst_cb = (intptr_t) ev->data.video.data;
+			tblnum(ctx, "width", ev->vid.width, top);
+			tblnum(ctx, "height", ev->vid.height, top);
+			dst_cb = (intptr_t) ev->vid.data;
 
 			if (dst_cb){
 				evmsg = "video_event(asynchimg_load_fail), callback";
@@ -3424,11 +3424,11 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 
 		default:
 			arcan_warning("Engine -> Script Warning: arcan_lua_pushevent(),"
-			"	unknown video event (%i)\n", ev->kind);
+			"	unknown video event (%i)\n", ev->vid.kind);
 		}
 
 		if (lua_ctx_store.cb_source_kind != CB_SOURCE_NONE){
-			lua_ctx_store.cb_source_tag = ev->data.video.source;
+			lua_ctx_store.cb_source_tag = ev->vid.source;
 			lua_rawgeti(ctx, LUA_REGISTRYINDEX, dst_cb);
 			lua_replace(ctx, 1);
 			gotfun = true;
@@ -4656,8 +4656,8 @@ static int alua_shutdown(lua_State *ctx)
 
 	arcan_event ev = {
 		.category = EVENT_SYSTEM,
-		.kind = EVENT_SYSTEM_EXIT,
-		.data.system.errcode = luaL_optnumber(ctx, 2, EXIT_SUCCESS)
+		.sys.kind = EVENT_SYSTEM_EXIT,
+		.sys.errcode = luaL_optnumber(ctx, 2, EXIT_SUCCESS)
 	};
 	arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 
@@ -4674,11 +4674,14 @@ static int switchappl(lua_State *ctx)
 {
 	LUA_DEPRECATE("switch_appl (use system_collapse instead)");
 
-	arcan_event ev = {.category = EVENT_SYSTEM, .kind = EVENT_SYSTEM_SWITCHAPPL};
+	arcan_event ev = {
+		.category = EVENT_SYSTEM,
+		.sys.kind = EVENT_SYSTEM_SWITCHAPPL
+	};
 	const char* newappl = luaL_optstring(ctx, 1, arcan_appl_id());
 
-	snprintf(ev.data.system.data.message, sizeof(ev.data.system.data.message)
-		/ sizeof(ev.data.system.data.message[0]), "%s", newappl);
+	snprintf(ev.sys.message, sizeof(ev.sys.message)
+		/ sizeof(ev.sys.message[0]), "%s", newappl);
 	arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 
 	return 0;
@@ -4877,15 +4880,15 @@ static int targethandler(lua_State* ctx)
 
 	arcan_event dummy;
 
-	assert(sizeof(dummy.data.frameserver.otag) == sizeof(ref));
+	assert(sizeof(dummy.fsrv.otag) == sizeof(ref));
 
 /* for the already pending events referring to the specific frameserver,
  * rewrite the otag to match that of the new function */
-	arcan_event_repl(arcan_event_defaultctx(), EVENT_FRAMESERVER,
-		offsetof(arcan_event, data.frameserver.video),
+	arcan_event_repl(arcan_event_defaultctx(), EVENT_FSRV,
+		offsetof(arcan_event, fsrv.video),
 		sizeof(arcan_vobj_id), &id,
-		offsetof(arcan_event, data.frameserver.otag),
-		sizeof(dummy.data.frameserver.otag),
+		offsetof(arcan_event, fsrv.otag),
+		sizeof(dummy.fsrv.otag),
 		&ref
 	);
 
@@ -4927,10 +4930,11 @@ static int targetportcfg(lua_State* ctx)
 
 	arcan_event ev = {
 		.category = EVENT_TARGET,
-		.kind = TARGET_COMMAND_SETIODEV};
+		.tgt.kind = TARGET_COMMAND_SETIODEV
+	};
 
-	ev.data.target.ioevs[0].iv = tgtport;
-	ev.data.target.ioevs[1].iv = tgtkind;
+	ev.tgt.ioevs[0].iv = tgtport;
+	ev.tgt.ioevs[1].iv = tgtkind;
 
 	tgtevent(tgt, ev);
 
@@ -4953,9 +4957,9 @@ static int targetdisphint(lua_State* ctx)
 
 	arcan_event ev = {
 		.category = EVENT_TARGET,
-		.kind     = TARGET_COMMAND_DISPLAYHINT,
-		.data.target.ioevs[0].iv = width,
-		.data.target.ioevs[1].iv = height
+		.tgt.kind = TARGET_COMMAND_DISPLAYHINT,
+		.tgt.ioevs[0].iv = width,
+		.tgt.ioevs[1].iv = height
 	};
 
 	tgtevent(tgt, ev);
@@ -4973,8 +4977,8 @@ static int targetgraph(lua_State* ctx)
 
 	arcan_event ev = {
 		.category = EVENT_TARGET,
-		.kind     = TARGET_COMMAND_GRAPHMODE,
-		.data.target.ioevs[0].iv = ioval
+		.tgt.kind = TARGET_COMMAND_GRAPHMODE,
+		.tgt.ioevs[0].iv = ioval
 	};
 
 	tgtevent(tgt, ev);
@@ -4990,16 +4994,16 @@ static int targetcoreopt(lua_State* ctx)
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
 	arcan_event ev = {
 		.category = EVENT_TARGET,
-		.kind = TARGET_COMMAND_COREOPT
+		.tgt.kind = TARGET_COMMAND_COREOPT
 	};
 
-	size_t msgsz = sizeof(ev.data.target.message) /
-		sizeof(ev.data.target.message[0]);
+	size_t msgsz = sizeof(ev.tgt.message) /
+		sizeof(ev.tgt.message[0]);
 
-	ev.data.target.code = luaL_checknumber(ctx, 2);
+	ev.tgt.code = luaL_checknumber(ctx, 2);
 	const char* msg = luaL_checkstring(ctx, 3);
 
-	strncpy(ev.data.target.message, msg, msgsz - 1);
+	strncpy(ev.tgt.message, msg, msgsz - 1);
 	tgtevent(tgt, ev);
 
 	LUA_ETRACE("target_coreopt", NULL);
@@ -5043,13 +5047,13 @@ static int targetseek(lua_State* ctx)
 
 	arcan_event ev = {
 		.category = EVENT_TARGET,
-		.kind = TARGET_COMMAND_SEEKTIME
+		.tgt.kind = TARGET_COMMAND_SEEKTIME
 	};
 
 	if (relative)
-		ev.data.target.ioevs[1].iv = (int32_t) val;
+		ev.tgt.ioevs[1].iv = (int32_t) val;
 	else
-		ev.data.target.ioevs[0].fv = val;
+		ev.tgt.ioevs[0].fv = val;
 
 	tgtevent(tgt, ev);
 
@@ -5142,14 +5146,14 @@ static int targetskipmodecfg(lua_State* ctx)
 
 	arcan_event ev = {
 		.category = EVENT_TARGET,
-		.kind = TARGET_COMMAND_FRAMESKIP
+		.tgt.kind = TARGET_COMMAND_FRAMESKIP
 	};
 
-	ev.data.target.ioevs[0].iv = skipval;
-	ev.data.target.ioevs[1].iv = skiparg;
-	ev.data.target.ioevs[2].iv = preaud;
-	ev.data.target.ioevs[3].iv = skipdbg1;
-	ev.data.target.ioevs[4].iv = skipdbg2;
+	ev.tgt.ioevs[0].iv = skipval;
+	ev.tgt.ioevs[1].iv = skiparg;
+	ev.tgt.ioevs[2].iv = preaud;
+	ev.tgt.ioevs[3].iv = skipdbg1;
+	ev.tgt.ioevs[4].iv = skipdbg2;
 
 	tgtevent(tgt, ev);
 
@@ -5189,12 +5193,12 @@ static int targetbond(lua_State* ctx)
 		ARCAN_OK == arcan_frameserver_pushfd(fsrv_b, pair[0])){
 		arcan_event ev = {
 			.category = EVENT_TARGET,
-			.kind = TARGET_COMMAND_STORE
+			.tgt.kind = TARGET_COMMAND_STORE
 		};
 
 		arcan_frameserver_pushevent(fsrv_a, &ev);
 
-		ev.kind = TARGET_COMMAND_RESTORE;
+		ev.tgt.kind = TARGET_COMMAND_RESTORE;
 		arcan_frameserver_pushevent(fsrv_b, &ev);
 	}
 
@@ -5240,7 +5244,7 @@ static int targetrestore(lua_State* ctx)
 	if ( ARCAN_OK == arcan_frameserver_pushfd( fsrv, fd ) ){
 		arcan_event ev = {
 			.category = EVENT_TARGET,
-			.kind = TARGET_COMMAND_RESTORE
+			.tgt.kind = TARGET_COMMAND_RESTORE
 		};
 
 		arcan_frameserver_pushevent( fsrv, &ev );
@@ -5262,8 +5266,8 @@ static int targetlinewidth(lua_State* ctx)
 	float lsz = luaL_checknumber(ctx, 2);
 	arcan_event ev = {
 			.category = EVENT_TARGET,
-			.kind = TARGET_COMMAND_VECTOR_LINEWIDTH,
-			.data.target.ioevs[0].fv = lsz
+			.tgt.kind = TARGET_COMMAND_VECTOR_LINEWIDTH,
+			.tgt.ioevs[0].fv = lsz
 	};
 
 	tgtevent(tgt, ev);
@@ -5280,8 +5284,8 @@ static int targetpointsize(lua_State* ctx)
 	float psz = luaL_checknumber(ctx, 2);
 	arcan_event ev = {
 			.category = EVENT_TARGET,
-			.kind = TARGET_COMMAND_VECTOR_POINTSIZE,
-			.data.target.ioevs[0].fv = psz
+			.tgt.kind = TARGET_COMMAND_VECTOR_POINTSIZE,
+			.tgt.ioevs[0].fv = psz
 	};
 
 	tgtevent(tgt, ev);
@@ -5302,11 +5306,11 @@ static int targetpostfilter(lua_State* ctx)
 			"unknown filter (%d) specified.\n", filtertype);
 	else {
 		arcan_event ev = {
-			.category    = EVENT_TARGET,
-			.kind        = TARGET_COMMAND_NTSCFILTER
+			.category = EVENT_TARGET,
+			.tgt.kind = TARGET_COMMAND_NTSCFILTER
 		};
 
-		ev.data.target.ioevs[0].iv = filtertype == POSTFILTER_NTSC;
+		ev.tgt.ioevs[0].iv = filtertype == POSTFILTER_NTSC;
 		tgtevent(tgt, ev);
 	}
 
@@ -5325,14 +5329,14 @@ static int targetpostfilterargs(lua_State* ctx)
 	float v3  = luaL_optnumber(ctx, 5, 0.0);
 
 	arcan_event ev = {
-		.category    = EVENT_TARGET,
-		.kind        = TARGET_COMMAND_NTSCFILTER_ARGS
+		.category = EVENT_TARGET,
+		.tgt.kind = TARGET_COMMAND_NTSCFILTER_ARGS
 	};
 
-	ev.data.target.ioevs[0].iv = group;
-	ev.data.target.ioevs[1].fv = v1;
-	ev.data.target.ioevs[2].fv = v2;
-	ev.data.target.ioevs[3].fv = v3;
+	ev.tgt.ioevs[0].iv = group;
+	ev.tgt.ioevs[1].fv = v1;
+	ev.tgt.ioevs[2].fv = v2;
+	ev.tgt.ioevs[3].fv = v3;
 
 	tgtevent(tgt, ev);
 
@@ -5375,9 +5379,9 @@ static int targetstepframe(lua_State* ctx)
 	if (qev){
 		arcan_event ev = {
 			.category = EVENT_TARGET,
-			.kind = TARGET_COMMAND_STEPFRAME
+			.tgt.kind = TARGET_COMMAND_STEPFRAME
 		};
-		ev.data.target.ioevs[0].iv = nframes;
+		ev.tgt.ioevs[0].iv = nframes;
 		tgtevent(tgt, ev);
 	}
 
@@ -5415,7 +5419,7 @@ static int targetsnapshot(lua_State* ctx)
 	if (ARCAN_OK == arcan_frameserver_pushfd(fsrv, fd)){
 		arcan_event ev = {
 			.category = EVENT_TARGET,
-			.kind = TARGET_COMMAND_STORE
+			.tgt.kind = TARGET_COMMAND_STORE
 		};
 
 		arcan_frameserver_pushevent(fsrv, &ev);
@@ -5434,7 +5438,7 @@ static int targetreset(lua_State* ctx)
 
 	arcan_vobj_id vid = luaL_checkvid(ctx, 1, NULL);
 	arcan_event ev = {
-		.kind = TARGET_COMMAND_RESET,
+		.tgt.kind = TARGET_COMMAND_RESET,
 		.category = EVENT_TARGET
 	};
 
@@ -7295,12 +7299,12 @@ static int net_pushcl(lua_State* ctx)
 
 	switch(t){
 		case LUA_TSTRING:
-			outev.kind = EVENT_NET_CUSTOMMSG;
+			outev.net.kind = EVENT_NET_CUSTOMMSG;
 
 			const char* msg = luaL_checkstring(ctx, 2);
-			size_t out_sz = sizeof(outev.data.network.message) /
-				sizeof(outev.data.network.message[0]);
-			snprintf(outev.data.network.message, out_sz, "%s", msg);
+			size_t out_sz = sizeof(outev.net.message) /
+				sizeof(outev.net.message[0]);
+			snprintf(outev.net.message, out_sz, "%s", msg);
 		break;
 
 		case LUA_TNUMBER:
@@ -7345,7 +7349,7 @@ static int net_pushcl(lua_State* ctx)
 			srv->shm.ptr->vready = true;
 			arcan_sem_post(srv->vsync);
 
-			outev.kind = TARGET_COMMAND_STEPFRAME;
+			outev.tgt.kind = TARGET_COMMAND_STEPFRAME;
 			arcan_frameserver_pushevent(srv, &outev);
 			lua_pushvid(ctx, srv->vid);
 			srv->tag = ref;
@@ -7385,7 +7389,7 @@ static int net_pushsrv(lua_State* ctx)
 	int domain = luaL_optnumber(ctx, 3, 0);
 
 /* arg2 can be (string) => NETMSG, (event) => just push */
-	arcan_event outev = {.category = EVENT_NET, .data.network.connid = domain};
+	arcan_event outev = {.category = EVENT_NET, .net.connid = domain};
 	arcan_frameserver* fsrv = vobj->feed.state.ptr;
 
 	if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV || !fsrv)
@@ -7400,14 +7404,14 @@ static int net_pushsrv(lua_State* ctx)
 			" is not in client mode (net_open).\n");
 
 /* we clean this as to not expose stack trash */
-	size_t out_sz = sizeof(outev.data.network.message) /
-		sizeof(outev.data.network.message[0]);
+	size_t out_sz = sizeof(outev.net.message) /
+		sizeof(outev.net.message[0]);
 
 	if (lua_isstring(ctx, 2)){
-		outev.kind = EVENT_NET_CUSTOMMSG;
+		outev.net.kind = EVENT_NET_CUSTOMMSG;
 
 		const char* msg = luaL_checkstring(ctx, 2);
-		snprintf(outev.data.network.message, out_sz, "%s", msg);
+		snprintf(outev.net.message, out_sz, "%s", msg);
 		arcan_frameserver_pushevent(fsrv, &outev);
 	}
 	else
@@ -7432,7 +7436,7 @@ static int net_accept(lua_State* ctx)
 		arcan_fatal("net_accept(vid, connid) -- NET_BROADCAST is not "
 			"allowed for accept call\n");
 
-	arcan_event outev = {.category = EVENT_NET, .data.network.connid = domain};
+	arcan_event outev = {.category = EVENT_NET, .net.connid = domain};
 	arcan_frameserver_pushevent(fsrv, &outev);
 
 	LUA_ETRACE("net_accept", NULL);
@@ -7451,8 +7455,8 @@ static int net_disconnect(lua_State* ctx)
 
 	arcan_event outev = {
 		.category = EVENT_NET,
-	 	.kind = EVENT_NET_DISCONNECT,
-	 	.data.network.connid = domain
+	 	.net.kind = EVENT_NET_DISCONNECT,
+	 	.net.connid = domain
 	};
 
 	arcan_frameserver_pushevent(fsrv, &outev);
@@ -7476,8 +7480,8 @@ static int net_authenticate(lua_State* ctx)
 
 	arcan_event outev = {
 		.category = EVENT_NET,
-	 	.kind = EVENT_NET_AUTHENTICATE,
-	 	.data.network.connid = domain
+	 	.net.kind = EVENT_NET_AUTHENTICATE,
+	 	.net.connid = domain
 	};
 	arcan_frameserver_pushevent(fsrv, &outev);
 
@@ -7496,7 +7500,10 @@ static int net_refresh(lua_State* ctx)
 
 	arcan_vobject* vobj;
 	luaL_checkvid(ctx, 1, &vobj);
-	arcan_event outev = {.category = EVENT_NET, .kind = EVENT_NET_GRAPHREFRESH};
+	arcan_event outev = {
+		.category = EVENT_NET,
+		.net.kind = EVENT_NET_GRAPHREFRESH
+	};
 
 	arcan_frameserver* fsrv = vobj->feed.state.ptr;
 

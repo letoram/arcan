@@ -56,7 +56,7 @@ enum ARCAN_EVENT_CATEGORY {
 	EVENT_VIDEO       = 4,
 	EVENT_AUDIO       = 8,
 	EVENT_TARGET      = 16,
-	EVENT_FRAMESERVER = 32,
+	EVENT_FSRV        = 32,
 	EVENT_EXTERNAL    = 64,
 	EVENT_NET         = 128
 };
@@ -103,7 +103,7 @@ enum ARCAN_TARGET_COMMAND {
  * 3. parent spawns a monitor thread, kills unless exited after
  *    a set amount of time (for authoritative connections).
  */
-	TARGET_COMMAND_EXIT,
+	TARGET_COMMAND_EXIT = 1,
 
 /*
  * Hints regarding how the underlying client should treat
@@ -406,15 +406,11 @@ enum ARCAN_EVENT_AUDIO {
 	EVENT_AUDIO_INVALID_OBJECT_REFERENCED
 };
 
-enum ARCAN_EVENT_FRAMESERVER {
-	EVENT_FRAMESERVER_RESIZED,
-	EVENT_FRAMESERVER_TERMINATED,
-	EVENT_FRAMESERVER_DROPPEDFRAME,
-	EVENT_FRAMESERVER_DELIVEREDFRAME,
-	EVENT_FRAMESERVER_VIDEOSOURCE_FOUND,
-	EVENT_FRAMESERVER_VIDEOSOURCE_LOST,
-	EVENT_FRAMESERVER_AUDIOSOURCE_FOUND,
-	EVENT_FRAMESERVER_AUDIOSOURCE_LOST
+enum ARCAN_EVENT_FSRV {
+	EVENT_FSRV_RESIZED,
+	EVENT_FSRV_TERMINATED,
+	EVENT_FSRV_DROPPEDFRAME,
+	EVENT_FSRV_DELIVEREDFRAME
 };
 
 typedef union arcan_ioevent_data {
@@ -453,6 +449,8 @@ typedef union arcan_ioevent_data {
 } arcan_ioevent_data;
 
 typedef struct {
+	enum ARCAN_EVENT_IO kind;
+
 	enum ARCAN_EVENT_IDEVKIND devkind;
 	enum ARCAN_EVENT_IDATATYPE datatype;
 
@@ -461,6 +459,8 @@ typedef struct {
 } arcan_ioevent;
 
 typedef struct {
+	enum ARCAN_EVENT_VIDEO kind;
+
 	int64_t source;
 
 	union {
@@ -475,6 +475,8 @@ typedef struct {
 } arcan_vevent;
 
 typedef struct {
+	enum ARCAN_EVENT_FSRV kind;
+
 	int64_t video;
 	int32_t audio;
 
@@ -491,11 +493,15 @@ typedef struct {
 } arcan_fsrvevent;
 
 typedef struct {
+	enum ARCAN_EVENT_AUDIO kind;
+
 	int32_t source;
 	void* data;
 } arcan_aevent;
 
 typedef struct arcan_sevent {
+	enum ARCAN_EVENT_SYSTEM kind;
+
 	int errcode; /* copy of errno if possible */
 	union {
 		struct {
@@ -507,10 +513,12 @@ typedef struct arcan_sevent {
 			char* dyneval_msg;
 		} mesg;
 		char message[64];
-	} data;
+	};
 } arcan_sevent;
 
 typedef struct arcan_netevent{
+	enum ARCAN_EVENT_NET kind;
+
 	int64_t source;
 	unsigned connid;
 
@@ -527,6 +535,7 @@ typedef struct arcan_netevent{
 } arcan_netevent;
 
 typedef struct arcan_tgtevent {
+	enum ARCAN_TARGET_COMMAND kind;
 	union {
 		int32_t iv;
 		float fv;
@@ -540,6 +549,7 @@ typedef struct arcan_tgtevent {
 } arcan_tgtevent;
 
 typedef struct arcan_extevent {
+	enum ARCAN_EVENT_EXTERNAL kind;
 	int64_t source;
 
 	union {
@@ -607,26 +617,25 @@ typedef struct arcan_extevent {
 } arcan_extevent;
 
 typedef union event_data {
-	arcan_ioevent   io;
-	arcan_vevent    video;
-	arcan_aevent    audio;
-	arcan_sevent    system;
-	arcan_tgtevent  target;
-	arcan_fsrvevent frameserver;
-	arcan_extevent  external;
-	arcan_netevent  network;
 
 	void* other;
 } event_data;
 
 typedef struct arcan_event {
-	unsigned kind;
+	enum ARCAN_EVENT_CATEGORY category;
 	unsigned long timestamp;
-
 	char label[16];
-	unsigned short category;
 
-	event_data data;
+	union {
+		arcan_ioevent io;
+		arcan_vevent vid;
+		arcan_aevent aud;
+		arcan_sevent sys;
+		arcan_tgtevent tgt;
+		arcan_fsrvevent fsrv;
+		arcan_extevent ext;
+		arcan_netevent net;
+	};
 } arcan_event;
 
 /* matches those that libraries such as SDL uses */

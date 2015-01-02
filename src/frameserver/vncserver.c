@@ -34,17 +34,17 @@ static void server_pointer (int buttonMask,int x,int y,rfbClientPtr cl)
 {
 	arcan_event outev = {
 		.category = EVENT_EXTERNAL,
-		.kind = EVENT_EXTERNAL_CURSORINPUT,
-		.data.external.cursor.id = ((struct cl_track*)cl->clientData)->conn_id,
-		.data.external.cursor.x = x,
-		.data.external.cursor.y = y
+		.ext.kind = EVENT_EXTERNAL_CURSORINPUT,
+		.ext.cursor.id = ((struct cl_track*)cl->clientData)->conn_id,
+		.ext.cursor.x = x,
+		.ext.cursor.y = y
 	};
 
-	outev.data.external.cursor.buttons[0] = buttonMask & (1 << 1);
-	outev.data.external.cursor.buttons[1] = buttonMask & (1 << 2);
-	outev.data.external.cursor.buttons[2] = buttonMask & (1 << 3);
-	outev.data.external.cursor.buttons[3] = buttonMask & (1 << 4);
-	outev.data.external.cursor.buttons[4] = buttonMask & (1 << 5);
+	outev.ext.cursor.buttons[0] = buttonMask & (1 << 1);
+	outev.ext.cursor.buttons[1] = buttonMask & (1 << 2);
+	outev.ext.cursor.buttons[2] = buttonMask & (1 << 3);
+	outev.ext.cursor.buttons[3] = buttonMask & (1 << 4);
+	outev.ext.cursor.buttons[4] = buttonMask & (1 << 5);
 
 	arcan_event_enqueue(&vncctx.shmcont.outev, &outev);
 }
@@ -53,14 +53,14 @@ static void server_key(rfbBool down,rfbKeySym key,rfbClientPtr cl)
 {
 	arcan_event outev = {
 		.category = EVENT_EXTERNAL,
-		.kind = EVENT_EXTERNAL_KEYINPUT,
-		.data.external.key.id = ((struct cl_track*)cl->clientData)->conn_id,
-		.data.external.key.keysym = 0,
-		.data.external.key.active = down
+		.ext.kind = EVENT_EXTERNAL_KEYINPUT,
+		.ext.key.id = ((struct cl_track*)cl->clientData)->conn_id,
+		.ext.key.keysym = 0,
+		.ext.key.active = down
 	};
 
 	if (key < 65536)
-		outev.data.external.key.keysym = symtbl_in[key];
+		outev.ext.key.keysym = symtbl_in[key];
 
 	arcan_event_enqueue(&vncctx.shmcont.outev, &outev);
 }
@@ -160,7 +160,7 @@ void vnc_serv_run(struct arg_arr* args, struct arcan_shmif_cont cont)
 		if (ev.category != EVENT_TARGET)
 			continue;
 
-		switch(ev.kind){
+		switch(ev.tgt.kind){
 		case TARGET_COMMAND_STEPFRAME:
 			vnc_serv_deltaupd();
 		break;
@@ -170,7 +170,7 @@ void vnc_serv_run(struct arg_arr* args, struct arcan_shmif_cont cont)
 		break;
 
 		default:
-			LOG("unknown: %d\n", ev.kind);
+			LOG("unknown: %d\n", ev.tgt.kind);
 		}
 	}
 
