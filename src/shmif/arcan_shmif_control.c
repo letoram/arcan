@@ -506,9 +506,6 @@ void arcan_shmif_setevqs(struct arcan_shmif_page* dst,
 	outq->front = &dst->parentevq.front;
 	outq->back  = &dst->parentevq.back;
 	outq->eventbuf_sz = ARCAN_SHMPAGE_QUEUE_SZ;
-
-	printf("mapped, %d:%d + %d:%d\n", *inq->front, *inq->back,
-		*outq->front, *outq->back);
 }
 
 #if _WIN32
