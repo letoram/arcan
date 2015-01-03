@@ -99,6 +99,11 @@
 #endif
 
 /*
+ * tradeoff (extra branch + loss in precision vs. assymetry and UB)
+ */
+#define abs( x ) ( abs( (x) == INT_MIN ? ((x)+1) : x ) )
+
+/*
  * namespaces permitted to be searched for regular resource lookups
  */
 #ifndef DEFAULT_USERMASK

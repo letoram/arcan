@@ -143,8 +143,6 @@ void agp_drop_vstore(struct storage_info_t* s)
 
 	if (GL_NONE != s->vinf.text.wid)
 		glDeleteBuffers(1, &s->vinf.text.wid);
-
-	memset(s, '\0', sizeof(struct storage_info_t));
 }
 
 static void pbo_stream(struct storage_info_t* s, av_pixel* buf)
