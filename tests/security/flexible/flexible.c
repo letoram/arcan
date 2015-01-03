@@ -30,7 +30,7 @@ int main(int argc, char** argv)
 		b = ~b;
 
 		arcan_event ev;
-		while (arcan_event_poll(&cont.inev, &ev) == 1){}
+		while (arcan_shmif_poll(&cont.inev, &ev) == 1){}
 
 		for (size_t row = 0; row < cont.addr->h; row++)
 			for (size_t col = 0; col < cont.addr->w; col++)

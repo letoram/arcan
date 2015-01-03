@@ -21,6 +21,7 @@
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_video.h"
+#include "arcan_event.h"
 #include "arcan_videoint.h"
 
 static char* synchopts[] = {
@@ -485,7 +486,7 @@ static void map_window(struct arcan_shmif_cont* seg, arcan_evctx* ctx,
 		.vid.source = i
 	};
 
-	arcan_event_enqueue(ctx, &ev);
+	arcan_shmif_enqueue(&base->conn, &ev);
 }
 
 /*
@@ -498,7 +499,7 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
 
 	arcan_event ev;
 
-	while (1 == arcan_event_poll(&d->conn.inev, &ev))
+	while (1 == arcan_shmif_poll(&d->conn, &ev))
 		if (ev.category == EVENT_TARGET)
 		switch(ev.tgt.kind){
 

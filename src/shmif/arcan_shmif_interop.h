@@ -56,10 +56,9 @@
  * along with semaphore handling prototypes and timing functions.
  * See the default platform/platform.h header for examples.
  */
-#include PLATFORM_HEADER
 
+struct arcan_shmif_cont;
 struct arcan_event;
-struct arcan_evctx;
 
 /*
  * For porting the shmpage interface, these functions need to be
@@ -71,8 +70,8 @@ struct arcan_evctx;
  * or without (poll) blocking execution.
  * returns non-zero on success.
  */
-int arcan_event_poll(struct arcan_evctx*, struct arcan_event* dst);
-int arcan_event_wait(struct arcan_evctx*, struct arcan_event* dst);
+int arcan_shmif_poll(struct arcan_shmif_cont*, struct arcan_event* dst);
+int arcan_shmif_wait(struct arcan_shmif_cont*, struct arcan_event* dst);
 
 /*
  * Try and enqueue the element to the queue. If the context is
@@ -84,13 +83,13 @@ int arcan_event_wait(struct arcan_evctx*, struct arcan_event* dst);
  * events (e.g. frame numbers, net ping-pongs etc.)
  *
  * These methods are thread-safe if and only if
- * ARCAN_SHMIF_THREADSAFE_QUEUE
- * has been defined at build-time.
+ * ARCAN_SHMIF_THREADSAFE_QUEUE has been defined at build-time and
+ * not during a pending resize operation.
  */
-int arcan_event_enqueue(struct arcan_evctx*,
+int arcan_shmif_enqueue(struct arcan_shmif_cont*,
 	const struct arcan_event* const);
 
-int arcan_event_tryenqueue(struct arcan_evctx*,
+int arcan_shmif_tryenqueue(struct arcan_shmif_cont*,
 	const struct arcan_event* const);
 
 /*

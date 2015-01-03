@@ -5019,7 +5019,7 @@ arcan_vobj_id arcan_video_renderstring(const char* message,
 		arcan_fatal("Fatal: arcan_video_renderstring(), "
 			"couldn't allocate video object. Out of Memory or out of IDs "
 			"in current context. There is likely a resource leak in the "
-			"scripts of the current theme.\n");
+			"scripts of the current appl.\n");
 	}
 
 	size_t maxw, maxh;

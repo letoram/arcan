@@ -3,6 +3,25 @@
  * Copyright 2014-2015, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
+ * Notes:
+ *
+ * This frameserver is currently experimental and should not
+ * be considered for any serious use, it is expected to be moved to
+ * a more stable state in 0.6.
+ *
+ * Changes required:
+ *  - evict APR, make OS specific platform functions instead (windows
+ *    case is particularly annoying)
+ *  - add back NaCL support for encryption, arg_arr + event-queue for
+ *    key transfer
+ *  - add padding / clocked mode where we reserve and consume a fixed
+ *    bandwidth, padd with null
+ *  - proper IPv6 support
+ *
+ * Possible changes:
+ *  - Whole- or partial TOR support (doing discovery + key negotiation
+ *    in tor, regular communication using 'common' ports over normal
+ *    net)
  */
 
 #include <stdlib.h>
@@ -82,19 +101,16 @@ enum connection_state {
 };
 
 struct conn_segcont {
+		struct arcan_shmif_cont shmcont;
+
 		int fd;
 		size_t ofs, lim;
 
 		enum xfer_state state;
-
-		struct arcan_shmif_cont ctx;
-		uint8_t* vidp;
-		uint16_t* audp;
-		arcan_evctx inevq, outevq;
 };
 
 struct conn_state {
-	arcan_evctx* outevq;
+ struct arcan_shmif_cont* shmcont;
 	apr_socket_t* inout;
 	apr_pollset_t* pollset;
 	apr_pollfd_t poll_state;
@@ -166,8 +182,8 @@ int arcan_net_client_session(
 apr_socket_t* net_prepare_socket(const char* host, apr_sockaddr_t*
 	althost, int* sport, bool tcp, apr_pool_t* mempool);
 
-void net_setup_cell(struct conn_state* conn,
-	arcan_evctx* evq, apr_pollset_t* pollset);
+void net_setup_cell(struct conn_state*,
+	struct arcan_shmif_cont*, apr_pollset_t* pollset);
 
 bool net_validator_tlv(struct conn_state*, size_t, char*, size_t* );
 bool net_dispatch_tlv(struct conn_state*, enum net_tags, size_t, char*);

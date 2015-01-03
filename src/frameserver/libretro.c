@@ -675,12 +675,12 @@ static void update_varset( struct retro_variable* data )
 /* key */
 			snprintf((char*)outev.ext.message, msgsz-1,
 				"%d:key:%s", count, data[count].key);
-			arcan_event_enqueue(&retroctx.shmcont.outev, &outev);
+			arcan_shmif_enqueue(&retroctx.shmcont, &outev);
 
 /* description */
 			snprintf((char*)outev.ext.message, msgsz-1,
 				"%d:descr:%s", count, workbeg);
-			arcan_event_enqueue(&retroctx.shmcont.outev, &outev);
+			arcan_shmif_enqueue(&retroctx.shmcont, &outev);
 
 /* each option */
 startarg:
@@ -697,7 +697,7 @@ startarg:
 
 				snprintf((char*)outev.ext.message, msgsz-1,
 					"%d:arg:%s", count, workbeg);
-				arcan_event_enqueue(&retroctx.shmcont.outev, &outev);
+				arcan_shmif_enqueue(&retroctx.shmcont, &outev);
 
 				goto startarg;
 			}
@@ -706,7 +706,7 @@ startarg:
 			if (curv){
 				snprintf((char*)outev.ext.message, msgsz-1,
 				"%d:curv:%s", count, curv);
-				arcan_event_enqueue(&retroctx.shmcont.outev, &outev);
+				arcan_shmif_enqueue(&retroctx.shmcont, &outev);
 			}
 
 step:
@@ -1203,7 +1203,7 @@ static inline void targetev(arcan_event* ev)
 					.ext.noticereq.id = retroctx.graph_pending
 				};
 
-				arcan_event_enqueue(&retroctx.shmcont.outev, &outev);
+				arcan_shmif_enqueue(&retroctx.shmcont, &outev);
 			}
 		break;
 
@@ -1355,7 +1355,7 @@ static inline void flush_eventq(){
 	 arcan_event ev;
 
 	 do
-		while ( arcan_event_poll(&retroctx.shmcont.inev, &ev) == 1 ){
+		while ( arcan_shmif_poll(&retroctx.shmcont, &ev) == 1 ){
 			switch (ev.category){
 				case EVENT_IO:
 					ioev_ctxtbl(&(ev.io), ev.label);
@@ -1666,7 +1666,7 @@ int arcan_frameserver_libretro_run(
 		size_t msgsz = sizeof(outev.ext.message) / sizeof(outev.ext.message[0]);
 		snprintf((char*)outev.ext.message, msgsz-1, "%s %s",
 			retroctx.sysinfo.library_name, retroctx.sysinfo.library_version);
-		arcan_event_enqueue(&retroctx.shmcont.outev, &outev);
+		arcan_shmif_enqueue(&retroctx.shmcont, &outev);
 
 		if (snprintf(logbuf, logbuf_sz, "(core: %s)",
 			retroctx.sysinfo.library_name) >= logbuf_sz)
@@ -1696,19 +1696,19 @@ int arcan_frameserver_libretro_run(
 /* load the game, and if that fails, give up */
 		outev.ext.kind = EVENT_EXTERNAL_RESOURCE;
 		snprintf((char*)outev.ext.message, msgsz, "loading");
-		arcan_event_enqueue(&retroctx.shmcont.outev, &outev);
+		arcan_shmif_enqueue(&retroctx.shmcont, &outev);
 		if (snprintf(logbuf, logbuf_sz, "loading game...") >= logbuf_sz)
 			logbuf[logbuf_sz - 1] = '\0';
 		log_msg(logbuf, true);
 
 		if ( retroctx.load_game( &retroctx.gameinfo ) == false ){
 			snprintf((char*)outev.ext.message, msgsz, "failed");
-			arcan_event_enqueue(&retroctx.shmcont.outev, &outev);
+			arcan_shmif_enqueue(&retroctx.shmcont, &outev);
 			return EXIT_FAILURE;
 		}
 
 		snprintf((char*)outev.ext.message, msgsz, "loaded");
-		arcan_event_enqueue(&retroctx.shmcont.outev, &outev);
+		arcan_shmif_enqueue(&retroctx.shmcont, &outev);
 
 		( (void(*)(struct retro_system_av_info*))
 			libretro_requirefun("retro_get_system_av_info"))(&retroctx.avinfo);
@@ -1771,7 +1771,7 @@ int arcan_frameserver_libretro_run(
 		outev.category = EVENT_EXTERNAL;
 		outev.ext.kind = EVENT_EXTERNAL_STATESIZE;
 		outev.ext.state_sz = retroctx.state_sz;
-		arcan_event_enqueue(&retroctx.shmcont.outev, &outev);
+		arcan_shmif_enqueue(&retroctx.shmcont, &outev);
 
 		if (retroctx.state_sz > 0)
 			retroctx.rollback_state = malloc(retroctx.state_sz);
@@ -1824,7 +1824,7 @@ int arcan_frameserver_libretro_run(
  * particularly for single-stepping etc. */
 			outev.ext.kind = EVENT_EXTERNAL_FRAMESTATUS;
 			outev.ext.framestatus.framenumber++;
-			arcan_event_enqueue(&retroctx.shmcont.outev, &outev);
+			arcan_shmif_enqueue(&retroctx.shmcont, &outev);
 
 #ifdef _DEBUG
 			if (testcounter != 1){

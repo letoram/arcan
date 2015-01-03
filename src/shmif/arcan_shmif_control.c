@@ -118,6 +118,9 @@ uint64_t arcan_shmif_cookie()
   base += (uint64_t)offsetof(struct arcan_shmif_page, resized) << 16;
 	base += (uint64_t)offsetof(struct arcan_shmif_page, aready)  << 24;
   base += (uint64_t)offsetof(struct arcan_shmif_page, abufused)<< 32;
+	base += (uint64_t)offsetof(struct arcan_shmif_page, childevq.front) << 40;
+	base += (uint64_t)offsetof(struct arcan_shmif_page, childevq.back) << 48;
+	base += (uint64_t)offsetof(struct arcan_shmif_page, parentevq.front) << 56;
 	return base;
 }
 
@@ -399,8 +402,7 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 			.ext.registr.kind = type
 		};
 
-		printf("sending registration event: %d\n", ev.ext.registr.kind);
-		arcan_event_enqueue(&res.outev, &ev);
+		arcan_shmif_enqueue(&res, &ev);
 	}
 
 	return res;
@@ -494,9 +496,9 @@ void arcan_shmif_setevqs(struct arcan_shmif_page* dst,
 #endif
 
 	inq->local = false;
-	inq->eventbuf = dst->childdevq.evqueue;
-	inq->front = &dst->childdevq.front;
-	inq->back  = &dst->childdevq.back;
+	inq->eventbuf = dst->childevq.evqueue;
+	inq->front = &dst->childevq.front;
+	inq->back  = &dst->childevq.back;
 	inq->eventbuf_sz = ARCAN_SHMPAGE_QUEUE_SZ;
 
 	outq->local =false;
@@ -504,6 +506,9 @@ void arcan_shmif_setevqs(struct arcan_shmif_page* dst,
 	outq->front = &dst->parentevq.front;
 	outq->back  = &dst->parentevq.back;
 	outq->eventbuf_sz = ARCAN_SHMPAGE_QUEUE_SZ;
+
+	printf("mapped, %d:%d + %d:%d\n", *inq->front, *inq->back,
+		*outq->front, *outq->back);
 }
 
 #if _WIN32
@@ -525,7 +530,7 @@ void arcan_shmif_signalhandle(struct arcan_shmif_cont* ctx, int mask,
 		.ext.bstream.pitch = stride,
 		.ext.bstream.format = format
 	};
-	arcan_event_enqueue(&ctx->outev, &ev);
+	arcan_shmif_enqueue(ctx, &ev);
 	arcan_shmif_signal(ctx, mask);
 }
 #endif

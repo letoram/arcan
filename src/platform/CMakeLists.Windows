@@ -8,7 +8,6 @@ set (PLATFORM_SOURCES
 	platform/posix/fmt_open.c
 	${WIN32_PATH}/sem.c
 	${WIN32_PATH}/strip_traverse.c
-	${WIN32_PATH}/shm.c
 	${WIN32_PATH}/arcan_general.c
 	${WIN32_PATH}/time.c
 	${WIN32_PATH}/glob.c
@@ -29,7 +28,6 @@ set (FSERV_PLATFORM_SOURCES
 	${WIN32_PATH}/warning.c
 	${WIN32_PATH}/time.c
 	${WIN32_PATH}/sem.c
-	${WIN32_PATH}/shm.c
 	${WIN32_PATH}/paths.c
 	${WIN32_PATH}/warning.c
 	${WIN32_PATH}/strip_traverse.c

@@ -297,7 +297,7 @@ struct arcan_shmif_page {
 	struct {
 		struct arcan_event evqueue[ PP_QUEUE_SZ ];
 		uint32_t front, back;
-	} childdevq, parentevq;
+	} childevq, parentevq;
 
 /* will be checked frequently, likely before transfers as it means
  * that shmcontents etc. will be invalid */

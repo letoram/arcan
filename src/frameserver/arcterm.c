@@ -352,7 +352,7 @@ static void main_loop()
 			printf("pty dispatch fail\n");
 		}
 
-		while (arcan_event_poll(&term.acon.inev, &ev) == 1){
+		while (arcan_shmif_poll(&term.acon, &ev) == 1){
 			switch (ev.category){
 			case EVENT_IO:
 				ioev_ctxtbl(&(ev.io), ev.label);

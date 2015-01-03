@@ -32,8 +32,6 @@ static struct {
 
 	apr_socket_t* evsock;
 	uint8_t* vidp, (* audp);
-	struct arcan_evctx inevq;
-	struct arcan_evctx outevq;
 
 	apr_pool_t* mempool;
 	apr_pollset_t* pollset;
@@ -67,12 +65,12 @@ static ssize_t queueout_data(struct conn_state* conn)
 
 		if (ntc == 0){
 			if (!conn->pack(&clctx.conn, TAG_STATE_EOB,
-				0, (char*) conn->state_out.vidp))
+				0, (char*) conn->state_out.shmcont.vidp))
 				return -1;
 		}
 
 		if (!conn->pack(&clctx.conn, TAG_STATE_DATABLOCK,
-			ntc, (char*) conn->state_out.vidp + conn->state_out.ofs))
+			ntc, (char*) conn->state_out.shmcont.vidp + conn->state_out.ofs))
 			return -1;
 	}
 
@@ -93,7 +91,7 @@ static bool client_inevq_process(apr_socket_t* outconn)
  * The real issue is buffer overruns though, which currently means that data
  * gets lost (for custommsg) or truncated State transfers won't ever overflow
  * and are only ever tucked on at the end */
-	while ( 1 == arcan_event_poll(&clctx.inevq, &ev) )
+	while ( 1 == arcan_shmif_poll(&clctx.shmcont, &ev) )
 		if (ev.category == EVENT_NET){
 			switch (ev.net.kind){
 			case EVENT_NET_INPUTEVENT:
@@ -134,10 +132,10 @@ static bool client_inevq_process(apr_socket_t* outconn)
 /* output type? assume transfer request */
 				if (ev.tgt.ioevs[0].iv == 0){
 					char outbuf[4] = {
-						clctx.conn.state_out.ctx.addr->w,
-						clctx.conn.state_out.ctx.addr->w >> 8,
-						clctx.conn.state_out.ctx.addr->h,
-						clctx.conn.state_out.ctx.addr->h >> 8
+						clctx.conn.state_out.shmcont.addr->w,
+						clctx.conn.state_out.shmcont.addr->w >> 8,
+						clctx.conn.state_out.shmcont.addr->h,
+						clctx.conn.state_out.shmcont.addr->h >> 8
 					};
 					clctx.conn.state_out.state = STATE_IMG;
 					return (clctx.conn.pack(
@@ -239,7 +237,7 @@ static bool host_discover(const char* reqhost,
 
 retry_partial:
 /* flush and check for exit */
-		while (1 == arcan_event_poll(&clctx.outevq, &dev))
+		while (1 == arcan_shmif_poll(&clctx.shmcont, &dev))
 			if (dev.category == EVENT_TARGET && dev.tgt.kind == TARGET_COMMAND_EXIT)
 				return NULL;
 
@@ -276,7 +274,7 @@ retry_partial:
 			strncpy(ev.net.host.key, *pkey, NET_KEY_SIZE);
 			strncpy(ev.net.host.key, name, NET_NAME_SIZE);
 
-			arcan_event_enqueue(&clctx.outevq, &ev);
+			arcan_shmif_enqueue(&clctx.shmcont, &ev);
 		}
 		else if (optkey == NULL ||
 			strcmp(optkey, *pkey) == 0 || strcmp(name, optkey) == 0){
@@ -325,9 +323,6 @@ int arcan_frameserver_net_client_run(
 		LOG("(net-cl) couldn't setup shared memory connection\n");
 		return EXIT_FAILURE;
 	}
-
-	arcan_shmif_setevqs(shmcont.addr, shmcont.esem,
-		&(clctx.inevq), &(clctx.outevq), false);
 
 	arg_lookup(args, "ident", 0, (const char**) &clctx.name);
 
@@ -381,7 +376,7 @@ int arcan_frameserver_net_client_run(
 			.net.kind = EVENT_NET_NORESPONSE
 		};
 		snprintf(ev.net.host.addr, 40, "%s", hoststr);
-		arcan_event_enqueue(&clctx.outevq, &ev);
+		arcan_shmif_enqueue(&clctx.shmcont, &ev);
 		return EXIT_SUCCESS;
 	}
 
@@ -392,7 +387,7 @@ int arcan_frameserver_net_client_run(
  	};
 
 	snprintf(ev.net.host.addr, 40, "%s", hoststr);
-	arcan_event_enqueue(&clctx.outevq, &ev);
+	arcan_shmif_enqueue(&clctx.shmcont, &ev);
 
 /*
  * setup a pollset for incoming / outgoing and for event notification,
@@ -448,7 +443,7 @@ int arcan_frameserver_net_client_run(
 
 /* setup client connection context, this rather awkward structure
  * is to be able to re-use a lot of the server-side code */
-	net_setup_cell(&clctx.conn, &clctx.outevq, clctx.pollset);
+	net_setup_cell(&clctx.conn, &clctx.shmcont, clctx.pollset);
 	clctx.conn.inout = sock;
 	clctx.conn.decode = net_hl_decode;
 	clctx.conn.pack = net_pack_basic;
@@ -504,7 +499,7 @@ int arcan_frameserver_net_client_run(
 				if (clctx.conn.buffer(&clctx.conn))
 					continue;
 
-				arcan_event_enqueue(&clctx.outevq, &ev);
+				arcan_shmif_enqueue(&clctx.shmcont, &ev);
 				apr_socket_close(clctx.conn.inout);
 				goto giveup;
 			}

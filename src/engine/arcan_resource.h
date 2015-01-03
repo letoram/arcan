@@ -51,22 +51,6 @@ char* arcan_find_resource_path(
 const char* verify_traverse(const char* in);
 
 /*
- * implemented in <platform>/shm.c
- * locate allocate a named shared memory block
- * <semalloc> if set, also allocate named semaphores
- * returns shm_handle in dhd (where applicable) and dynamically allocated <key>
- * (example_m + optional example_v, example_a, example_e for semaphores).
- */
-char* arcan_findshmkey(int* dhd, bool semalloc);
-
-/*
- * implemented in <platform>/shm.c
- * drop resources associated with <srckey> where <srckey> is a value
- * returned from a previous call to <arcan_findshmkey>.
- */
-void arcan_dropshmkey(char* srckey);
-
-/*
  * implemented in <platform>/resource_io.c
  * take a <name> resoulved from arcan_find_*, arcan_resolve_*,
  * open / lock / reserve <name> and store relevant metadata in data_source.

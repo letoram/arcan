@@ -247,30 +247,87 @@ arcan_errc arcan_frameserver_pushfd(arcan_frameserver* fsrv, int fd)
 	return ARCAN_ERRC_BAD_ARGUMENT;
 }
 
+static bool findshmkey(arcan_frameserver* ctx, int* dfd){
+	pid_t selfpid = getpid();
+	int retrycount = 10;
+	size_t pb_ofs = 0;
+
+	const char pattern[] = "/arcan_%i_%im";
+	char playbuf[sizeof(pattern) + 8];
+
+	while (1){
+/* not a security mechanism */
+		snprintf(playbuf, sizeof(playbuf), pattern, selfpid % 1000, rand() % 1000);
+
+		pb_ofs = strlen(playbuf) - 1;
+		*dfd = shm_open(playbuf, O_CREAT | O_RDWR | O_EXCL, 0700);
+
 /*
- * Currently, the namedsocket approach for non-authoritative connections
- * has the issue of exposing shared memory interface / semaphores
- * to someone that would iterate the namespace with the same user
- * credentials. This is slated to be re-worked when we separate the
- * event queues from the shmpage.
+ * with EEXIST, we happened to have a name collision,
+ * it is unlikely, but may happen. for the others however,
+ * there is something else going on and there's no point retrying
  */
+		if (-1 == *dfd && errno != EEXIST){
+			arcan_warning("arcan_findshmkey(), allocating "
+				"shared memory, reason: %d\n", errno);
+			return false;
+		}
+
+		else if (-1 == *dfd){
+			if (retrycount-- == 0){
+				arcan_warning("arcan_findshmkey(), allocating named "
+				"semaphores failed, reason: %d, aborting.\n", errno);
+				return false;
+			}
+		}
+
+		playbuf[pb_ofs] = 'v';
+		ctx->vsync = sem_open(playbuf, O_CREAT | O_EXCL, 0700, 0);
+
+		if (SEM_FAILED == ctx->vsync){
+			playbuf[pb_ofs] = 'm'; shm_unlink(playbuf);
+			close(*dfd);
+			continue;
+		}
+
+		playbuf[pb_ofs] = 'a';
+		ctx->async = sem_open(playbuf, O_CREAT | O_EXCL, 0700, 0);
+
+		if (SEM_FAILED == ctx->async){
+			playbuf[pb_ofs] = 'v'; sem_unlink(playbuf); sem_close(ctx->vsync);
+			playbuf[pb_ofs] = 'm'; shm_unlink(playbuf);
+			close(*dfd);
+			continue;
+		}
+
+		playbuf[pb_ofs] = 'e';
+		ctx->esync = sem_open(playbuf, O_CREAT | O_EXCL, 0700, 1);
+		if (SEM_FAILED == ctx->esync){
+			playbuf[pb_ofs] = 'a'; sem_unlink(playbuf); sem_close(ctx->async);
+			playbuf[pb_ofs] = 'v'; sem_unlink(playbuf); sem_close(ctx->vsync);
+			playbuf[pb_ofs] = 'm'; shm_unlink(playbuf);
+			close(*dfd);
+			continue;
+		}
+
+		break;
+	}
+
+	playbuf[pb_ofs] = 'm';
+	ctx->shm.key = strdup(playbuf);
+	return true;
+}
+
 static bool shmalloc(arcan_frameserver* ctx,
 	bool namedsocket, const char* optkey)
 {
-	size_t shmsize = ARCAN_SHMPAGE_START_SZ;
+	ctx->shm.shmsize = ARCAN_SHMPAGE_START_SZ;
 	struct arcan_shmif_page* shmpage;
 	int shmfd = 0;
 
-	ctx->shm.key = arcan_findshmkey(&shmfd, true);
-	ctx->shm.shmsize = shmsize;
+	if (!findshmkey(ctx, &shmfd))
+		return false;
 
-	char* work = strdup(ctx->shm.key);
-	work[strlen(work) - 1] = 'v';
-	ctx->vsync = sem_open(work, 0);
-	work[strlen(work) - 1] = 'a';
-	ctx->async = sem_open(work, 0);
-	work[strlen(work) - 1] = 'e';
-	ctx->esync = sem_open(work, 0);
 
 	if (namedsocket){
 		size_t optlen;
@@ -363,36 +420,34 @@ static bool shmalloc(arcan_frameserver* ctx,
 
 /* max videoframesize + DTS + structure + maxaudioframesize,
 * start with max, then truncate down to whatever is actually used */
-	int rc = ftruncate(shmfd, shmsize);
+	int rc = ftruncate(shmfd, ctx->shm.shmsize);
 	if (-1 == rc){
 		arcan_warning("arcan_frameserver_spawn_server(unix) -- allocating"
-		"	(%d) shared memory failed (%d).\n", shmsize, errno);
-		return false;
+		"	(%d) shared memory failed (%d).\n", ctx->shm.shmsize, errno);
+		goto fail;
 	}
 
 	ctx->shm.handle = shmfd;
 	shmpage = (void*) mmap(
-		NULL, shmsize, PROT_READ | PROT_WRITE, MAP_SHARED, shmfd, 0);
+		NULL, ctx->shm.shmsize, PROT_READ | PROT_WRITE, MAP_SHARED, shmfd, 0);
 
 	if (MAP_FAILED == shmpage){
 		arcan_warning("arcan_frameserver_spawn_server(unix) -- couldn't "
 			"allocate shmpage\n");
 
 fail:
-		arcan_frameserver_dropsemaphores_keyed(work);
-		free(work);
+		arcan_frameserver_dropsemaphores_keyed(ctx->shm.key);
 		return false;
 	}
 
-	memset(shmpage, '\0', shmsize);
+	memset(shmpage, '\0', ctx->shm.shmsize);
  	shmpage->dms = true;
 	shmpage->parent = getpid();
 	shmpage->major = ARCAN_VERSION_MAJOR;
 	shmpage->minor = ARCAN_VERSION_MINOR;
-	shmpage->segment_size = shmsize;
+	shmpage->segment_size = ctx->shm.shmsize;
 	shmpage->cookie = arcan_shmif_cookie();
 	ctx->shm.ptr = shmpage;
-	free(work);
 
 	return true;
 }

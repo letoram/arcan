@@ -183,7 +183,7 @@ static void audio_flush()
 		.ext.kind = EVENT_EXTERNAL_FLUSHAUD,
 	};
 
-	arcan_event_enqueue(&decctx.shmcont.outev, &ev);
+	arcan_shmif_enqueue(&decctx.shmcont, &ev);
 }
 
 static void audio_drain()
@@ -247,7 +247,7 @@ static void push_streamstatus()
 	snprintf((char*)status.ext.streamstat.timestr, strlim,
 		"%d:%02d:%02d", dh, dm, ds);
 
-	arcan_event_enqueue(&decctx.shmcont.outev, &status);
+	arcan_shmif_enqueue(&decctx.shmcont, &status);
 }
 
 static void player_event(const struct libvlc_event_t* event, void* ud)
@@ -325,7 +325,7 @@ static void process_inevq()
 {
 	arcan_event ev;
 
-	while (arcan_event_poll(&decctx.shmcont.inev, &ev) > 0){
+	while (arcan_shmif_poll(&decctx.shmcont, &ev) > 0){
 		arcan_tgtevent* tgt = &ev.tgt;
 
 		if (ev.category == EVENT_TARGET)

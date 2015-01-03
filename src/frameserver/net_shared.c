@@ -139,7 +139,7 @@ sock_failure:
 }
 
 void net_setup_cell(struct conn_state* conn,
-	arcan_evctx* evq, apr_pollset_t* pollset)
+	struct arcan_shmif_cont* cont, apr_pollset_t* pollset)
 {
 	conn->inout     = NULL;
 	conn->dispatch  = err_catch_dispatch;
@@ -150,7 +150,6 @@ void net_setup_cell(struct conn_state* conn,
 	conn->buffer    = err_catch_buffer;
 	conn->pack      = err_catch_pack;
 	conn->pollset   = pollset;
-	conn->outevq    = evq;
 	conn->buf_sz    = DEFAULT_INBUF_SZ;
 	conn->outbuf_sz = DEFAULT_OUTBUF_SZ;
 	conn->buf_ofs   = 0;
@@ -192,13 +191,12 @@ void net_newseg(struct conn_state* conn, int kind, char* key)
 			goto fail;
 	}
 
-	cont->ctx = arcan_shmif_acquire(key, kind == SEGMENT_TRANSFER ?
+	cont->shmcont = arcan_shmif_acquire(key, kind == SEGMENT_TRANSFER ?
 		SEGID_ENCODER : SEGID_MEDIA, SHMIF_DISABLE_GUARD);
 
-	struct arcan_shmif_cont* shms = &cont->ctx;
-
 	cont->ofs = 0;
-	cont->lim = shms->addr->w * shms->addr->h * ARCAN_SHMPAGE_VCHANNELS;
+	cont->lim = cont->shmcont.addr->w *
+		cont->shmcont.addr->h * ARCAN_SHMPAGE_VCHANNELS;
 	return;
 
 fail:
@@ -261,9 +259,8 @@ slide:
 
 static void flushvid(struct conn_state* self)
 {
-	self->state_in.ctx.addr->vready = true;
-	arcan_shmif_signal(&self->state_in.ctx, SHMIF_SIGVID);
-	arcan_shmif_drop(&self->state_in.ctx);
+	arcan_shmif_signal(self->shmcont, SHMIF_SIGVID);
+	arcan_shmif_drop(self->shmcont);
 	self->state_in.state = STATE_NONE;
 	self->state_in.ofs = 0;
 	self->state_in.lim = 0;
@@ -296,9 +293,8 @@ bool net_hl_decode(struct conn_state* self,
 			int desw = (int16_t)val[0] | (int16_t)val[1] << 8;
 			int desh = (int16_t)val[2] | (int16_t)val[3] << 8;
 
-			printf("got request for image, %d x %d\n", desw, desh);
-			if (self->state_in.ctx.addr){
-				if (!arcan_shmif_resize(&self->state_in.ctx, desw, desh)){
+			if (self->state_in.shmcont.addr){
+				if (!arcan_shmif_resize(&self->state_in.shmcont, desw, desh)){
 					LOG("incoming data segment outside allowed dimensions (%d x %d)"
 						", terminating.\n", desw, desh);
 					return false;
@@ -314,7 +310,7 @@ bool net_hl_decode(struct conn_state* self,
 					.ext.noticereq.height = desh
 				};
 
-				arcan_event_enqueue(self->outevq, &outev);
+				arcan_shmif_enqueue(self->shmcont, &outev);
 				self->blocked = true;
 /* need to process the eventqueue here as there may be
  * packets pending */
@@ -353,7 +349,7 @@ bool net_hl_decode(struct conn_state* self,
 		else if (self->state_in.state == STATE_IMG){
 			ssize_t ub = self->state_in.lim - self->state_in.ofs;
 			size_t ntw = ub > len ? len : ub;
-		 	memcpy(self->state_in.vidp + self->state_in.ofs, val, ntw);
+		 	memcpy(self->state_in.shmcont.vidp + self->state_in.ofs, val, ntw);
 			self->state_in.ofs += ntw;
 			if (self->state_in.ofs == self->state_in.lim)
 				flushvid(self);
@@ -516,7 +512,7 @@ bool net_dispatch_tlv(struct conn_state* self, enum net_tags tag,
 		newev.net.kind = EVENT_NET_CUSTOMMSG;
 		snprintf(newev.net.message,
 			sizeof(newev.net.message) / sizeof(newev.net.message[0]), "%s", value);
-		arcan_event_enqueue(self->outevq, &newev);
+		arcan_shmif_enqueue(self->shmcont, &newev);
 	break;
 
 	case TAG_NETINPUT:

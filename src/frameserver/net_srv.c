@@ -74,8 +74,6 @@ static struct {
 	struct arcan_shmif_cont shmcont;
 	apr_socket_t* evsock;
 	uint8_t* vidp, (* audp);
-	struct arcan_evctx inevq;
-	struct arcan_evctx outevq;
 
 /* for future time-synchronization (ping/pongs interleaved
  * with regular messages, compare drift with timestamps to
@@ -114,7 +112,7 @@ static struct conn_state* init_conn_states(int limit)
 	memset(active_cons, '\0', sizeof(struct conn_state) * limit);
 
 	for (int i = 0; i < limit; i++){
-		net_setup_cell( &active_cons[i], &srvctx.outevq, srvctx.pollset );
+		net_setup_cell( &active_cons[i], &srvctx.shmcont, srvctx.pollset );
 		active_cons->slot = i ^ idcookie;
 	}
 
@@ -156,7 +154,7 @@ static void disconnect(struct conn_state* active_cons, int nconns, int slot)
 				GRAPH_EVENT("Mass Disconnect (%i:%i)\n", i, active_cons[i].slot);
 				apr_socket_close(active_cons[i].inout);
 				apr_pollset_remove(srvctx.pollset, &active_cons[i].poll_state);
-				net_setup_cell( &active_cons[i], &srvctx.outevq, srvctx.pollset );
+				net_setup_cell( &active_cons[i], &srvctx.shmcont, srvctx.pollset );
 			}
 	}
 	else {
@@ -166,7 +164,7 @@ static void disconnect(struct conn_state* active_cons, int nconns, int slot)
 			GRAPH_EVENT("Disconnecting %d\n", slot);
 			apr_socket_close(target_con->inout);
 			apr_pollset_remove(srvctx.pollset, &target_con->poll_state);
-			net_setup_cell( target_con, &srvctx.outevq, srvctx.pollset );
+			net_setup_cell( target_con, &srvctx.shmcont, srvctx.pollset );
 		}
 		else
 			LOG("Attempt to disconnect bad or already disconnected slot (%d)\n", slot);
@@ -208,8 +206,8 @@ static void client_socket_close(struct conn_state* state)
 	};
 	GRAPH_EVENT("close socket on (%d)\n", state->slot);
 
-	net_setup_cell( state, &srvctx.outevq, srvctx.pollset );
-	arcan_event_enqueue(&srvctx.outevq, &rv);
+	net_setup_cell( state, &srvctx.shmcont, srvctx.pollset );
+	arcan_shmif_enqueue(&srvctx.shmcont, &rv);
 }
 
 static bool server_process_inevq(struct conn_state* active_cons, int nconns)
@@ -217,7 +215,7 @@ static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 	arcan_event ev;
 	uint16_t msgsz = sizeof(ev.net.message) / sizeof(ev.net.message[0]);
 
-	while ( arcan_event_poll(&srvctx.inevq, &ev) == 1 )
+	while ( arcan_shmif_poll(&srvctx.shmcont, &ev) == 1 )
 		if (ev.category == EVENT_NET){
 			switch (ev.net.kind){
 			case EVENT_NET_INPUTEVENT:
@@ -364,7 +362,7 @@ static void server_accept_connection(int limit, apr_socket_t* ear_sock,
 		sizeof(outev.net.host.addr[0]);
 	apr_sockaddr_ip_getbuf(outev.net.host.addr, out_sz, addr);
 
-	arcan_event_enqueue(&srvctx.outevq, &outev);
+	arcan_shmif_enqueue(&srvctx.shmcont, &outev);
 }
 
 static char* get_redir(char* pk, char* n,
@@ -549,7 +547,7 @@ retry:
 						.net.kind = EVENT_NET_BROKEN
 					};
 
-					arcan_event_enqueue(&srvctx.outevq, &errc);
+					arcan_shmif_enqueue(&srvctx.shmcont, &errc);
 					LOG("(net-srv) -- error on listening interface "
 						"during poll, giving up.\n");
 					return;
@@ -669,9 +667,6 @@ int arcan_frameserver_net_server_run(
 
 	if (!arcan_shmif_resize(&shmcont, gwidth, gheight))
 		return EXIT_FAILURE;
-
-	arcan_shmif_setevqs(shmcont.addr, shmcont.esem,
-		&(srvctx.inevq), &(srvctx.outevq), false);
 
 	char* listenhost = NULL;
 	char* limstr = NULL;
