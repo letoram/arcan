@@ -13,7 +13,9 @@
 #include <sys/types.h>
 #include <assert.h>
 
+#include "arcan_shmif.h"
 #include "net_graph.h"
+
 #include <arcan_math.h>
 #include <arcan_general.h>
 /*
@@ -82,16 +84,16 @@ struct event_bucket {
 struct graph_context {
 /* graphing storage */
 	int width, height;
-	uint32_t* vidp;
+	shmif_pixel* vidp;
 
 	struct {
-		uint32_t bg;
-		uint32_t border;
-		uint32_t grid;
-		uint32_t gridalign;
-		uint32_t data;
-		uint32_t alert;
-		uint32_t notice;
+		shmif_pixel bg;
+		shmif_pixel border;
+		shmif_pixel grid;
+		shmif_pixel gridalign;
+		shmif_pixel data;
+		shmif_pixel alert;
+		shmif_pixel notice;
 	} colors;
 
 /* data storage */
@@ -104,17 +106,17 @@ struct graph_context {
 };
 
 void blend_hline(struct graph_context* ctx, int x, int y,
-	int width, uint32_t col, float fact)
+	int width, shmif_pixel col, float fact)
 {
 }
 
 void blend_vline(struct graph_context* ctx, int x, int y,
-	int width, uint32_t col, float fact)
+	int width, shmif_pixel col, float fact)
 {
 }
 
 void draw_hline(struct graph_context* ctx, int x, int y,
-	int width, uint32_t col)
+	int width, shmif_pixel col)
 {
 	width = abs(width);
 
@@ -125,14 +127,14 @@ void draw_hline(struct graph_context* ctx, int x, int y,
 	if (x + width > ctx->width)
 		width = ctx->width - x;
 
-	uint32_t* buf = &ctx->vidp[y * ctx->width + x];
+	shmif_pixel* buf = &ctx->vidp[y * ctx->width + x];
 
 	while (--width > 0)
 		*(buf++) = col;
 }
 
 void draw_vline(struct graph_context* ctx, int x, int y,
-	int height, uint32_t col)
+	int height, shmif_pixel col)
 {
 	int dir;
 	int length = abs(height);
@@ -151,7 +153,7 @@ void draw_vline(struct graph_context* ctx, int x, int y,
 			length = ctx->height - y - 1;
 	}
 
-	uint32_t* buf = &ctx->vidp[y * ctx->width + x];
+	shmif_pixel* buf = &ctx->vidp[y * ctx->width + x];
 	int step = dir * ctx->width;
 
 	while (--length > 0){
@@ -160,7 +162,7 @@ void draw_vline(struct graph_context* ctx, int x, int y,
 	}
 }
 
-void clear_tocol(struct graph_context* ctx, uint32_t col)
+void clear_tocol(struct graph_context* ctx, shmif_pixel col)
 {
 	int ntc = ctx->width * ctx->height;
 	for (int i = 0; i < ntc; i++)
@@ -168,7 +170,7 @@ void clear_tocol(struct graph_context* ctx, uint32_t col)
 }
 
 bool draw_box(struct graph_context* ctx, int x, int y,
-	int width, int height, uint32_t col)
+	int width, int height, shmif_pixel col)
 {
 	if (x >= ctx->width || y >= ctx->height || x < 0 || y < 0)
 		return false;
@@ -187,7 +189,7 @@ bool draw_box(struct graph_context* ctx, int x, int y,
 }
 
 void draw_square(struct graph_context* ctx, int x, int y,
-	int side, uint32_t col)
+	int side, shmif_pixel col)
 {
 	side = abs(side);
 
@@ -218,7 +220,7 @@ void text_dimensions(struct graph_context* ctx, const char* msg,
 
 /* use the included 8x8 bitmap font to draw simple 7-bit ASCII messages */
 bool draw_text(struct graph_context* ctx, const char* msg,
-	int x, int y, uint32_t txcol)
+	int x, int y, shmif_pixel txcol)
 {
 	if (y + pxfont_height >= ctx->height)
 		return false;
@@ -258,7 +260,7 @@ static void draw_bucket(struct graph_context* ctx, struct event_bucket* src,
 	case PLOT_XY_POINT:
 		while (i != src->buf_front){
 			int xv = 0, yv = 0;
-			uint32_t col = 0;
+			shmif_pixel col = RGBA(0x00, 0x00, 0x00, 0xff);
 			draw_square(ctx, xv, yv, 4, col);
 			i = (i + 1) % src->ringbuf_sz;
 		}
@@ -336,7 +338,7 @@ bool graph_refresh(struct graph_context* ctx)
 
 /* setup basic context (history buffer etc.)
  * along with colours etc. to some defaults. */
-struct graph_context* graphing_new(int width, int height, uint32_t* vidp)
+struct graph_context* graphing_new(int width, int height, shmif_pixel* vidp)
 {
 	if (width * height == 0)
 		return NULL;

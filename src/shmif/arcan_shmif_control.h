@@ -128,18 +128,24 @@ static const int ARCAN_SHMPAGE_RESAMPLER_QUALITY = 5;
 #endif
 
 /*
- * This is somewhat of a formatting hint; for now,
- * only RGBA32 buffers are actually used (and the streaming
- * texture uploads in the main process will treat the
- * input as that. It is suggested that other formats
- * and packing strategies (e.g. hardware YUV) still
- * pack in 4x8bit channels interleaved and then hint the
- * conversion in the shader used.
- *
- * For future cases when the API opens up a bit,
- * additional color formats will be passed as GL buffer-references
- * rather than full copies on the shmif.
+ * This works similarly to the video_platform in arcan,
+ * we commit statically to one native format (which should map
+ * that of the running arcan build), and shared memory buffer transfers
+ * are expected to follow this format, possibly by just using the macro
+ * and type indirection below -- other buffer formats should be passed
+ * with some accelerated mechanism (typically prime dma buffers).
  */
+#ifndef VIDEO_PIXEL_TYPE
+#define VIDEO_PIXEL_TYPE uint32_t
+#endif
+
+typedef VIDEO_PIXEL_TYPE shmif_pixel;
+
+#ifndef RGBA
+#define RGBA(r, g, b, a)( ((uint32_t)(a) << 24) | ((uint32_t) (b) << 16) |\
+((uint32_t) (g) << 8) | ((uint32_t) (r)) )
+#endif
+
 static const int ARCAN_SHMPAGE_VCHANNELS = 4;
 static const int ARCAN_SHMPAGE_MAXW = PP_SHMPAGE_MAXW;
 static const int ARCAN_SHMPAGE_MAXH = PP_SHMPAGE_MAXH;
@@ -151,13 +157,6 @@ static const int ARCAN_SHMPAGE_MAXH = PP_SHMPAGE_MAXH;
  * legacy from ffmpeg.
  */
 static const int ARCAN_SHMPAGE_AUDIOBUF_SZ = 288000;
-
-#ifndef RGBA
-#define RGBA(r, g, b, a)( ((uint32_t)(a) << 24) | ((uint32_t) (b) << 16) |\
-((uint32_t) (g) << 8) | ((uint32_t) (r)) )
-#endif
-
-static const int ARCAN_SHMPAGE_VIDEOBUF_SZ = 8294400;
 
 #ifndef PP_SHMPAGE_MAXSZ
 #define PP_SHMPAGE_MAXSZ 48294400
@@ -214,7 +213,7 @@ struct arcan_shmif_cont {
 
 /* offset- pointers into addr, can change between calls to
  * shmif_ functions so aliasing is not recommended */
-	uint32_t* vidp;
+	shmif_pixel* vidp;
 	int16_t* audp;
 
 /*

@@ -2249,7 +2249,7 @@ arcan_vobj_id arcan_video_addfobject(arcan_vfunc_cb feed, vfunc_state state,
 	if ((rv = arcan_video_setupfeed(feed, constraints, feed_ntus,
 		constraints.bpp)) > 0) {
 		arcan_vobject* vobj = arcan_video_getobject(rv);
-		vobj->order = abs(zv);
+		vobj->order = zv;
 		vobj->feed.state = state;
 
 		if (state.tag == ARCAN_TAG_3DOBJ){
@@ -3047,8 +3047,8 @@ arcan_errc arcan_video_objectrotate3d(arcan_vobj_id id,
 	base->rotate.endo.quaternion = build_quat_taitbryan(roll, pitch, yaw);
 	vobj->owner->transfc++;
 
-	base->rotate.interp = (abs(bv.roll - roll) > 180.0 ||
-		abs(bv.pitch - pitch) > 180.0 || abs(bv.yaw - yaw) > 180.0) ?
+	base->rotate.interp = (fabsf(bv.roll - roll) > 180.0 ||
+		fabsf(bv.pitch - pitch) > 180.0 || fabsf(bv.yaw - yaw) > 180.0) ?
 		nlerp_quat180 : nlerp_quat360;
 
 	return ARCAN_OK;
@@ -3905,9 +3905,9 @@ static inline void build_modelview(float* dmatr,
 	prop->position.y += prop->scale.y;
 
 	src->rotate_state =
-		abs(prop->rotation.roll)  > EPSILON ||
-		abs(prop->rotation.pitch) > EPSILON ||
-		abs(prop->rotation.yaw)   > EPSILON;
+		fabsf(prop->rotation.roll)  > EPSILON ||
+		fabsf(prop->rotation.pitch) > EPSILON ||
+		fabsf(prop->rotation.yaw)   > EPSILON;
 
 	memcpy(tmatr, imatr, sizeof(float) * 16);
 
@@ -4590,7 +4590,7 @@ arcan_errc arcan_video_screencoords(arcan_vobj_id id, vector* res)
 	res[3].x = res[0].x;
 	res[3].y = res[2].y;
 
-	if (abs(prop.rotation.roll) > EPSILON){
+	if (fabsf(prop.rotation.roll) > EPSILON){
 		float ang = DEG2RAD(prop.rotation.roll);
 		float sinv = sinf(ang);
 		float cosv = cosf(ang);
