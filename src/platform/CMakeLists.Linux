@@ -16,7 +16,6 @@ set (PLATFORM_SOURCES
 	${PLATFORM_PATH}/paths.c
 	${PLATFORM_PATH}/appl.c
 	${PLATFORM_PATH}/sem.c
-	${PLATFORM_PATH}/shm.c
 	${PLATFORM_PATH}/base64.c
 	${PLATFORM_PATH}/time.c
 	${PLATFORM_PATH}/warning.c
@@ -46,7 +45,6 @@ set (FSRV_PLATFORM_SOURCES
 	${PLATFORM_PATH}/warning.c
 	${PLATFORM_PATH}/time.c
 	${PLATFORM_PATH}/sem.c
-	${PLATFORM_PATH}/shm.c
 	${PLATFORM_PATH}/base64.c
 	${PLATFORM_PATH}/mem.c
 	${PLATFORM_PATH}/fdpassing.c
@@ -55,6 +53,7 @@ set (FSRV_PLATFORM_SOURCES
 
 set (LWA_PLATFORM_SOURCES
 	${PLATFORM_SOURCES}
+	${SHMIF_SOURCES}
 	${PLATFORM_PATH}/../arcan/video.c
 )
 

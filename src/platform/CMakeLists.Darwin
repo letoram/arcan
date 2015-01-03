@@ -38,7 +38,6 @@ set (PLATFORM_SOURCES
 	${PLATFORM_PATH}/strip_traverse.c
 	${PLATFORM_PATH}/namespace.c
 	${PLATFORM_PATH}/paths.c
-	${PLATFORM_PATH}/shm.c
 	${PLATFORM_PATH}/mem.c
 	${PLATFORM_PATH}/base64.c
 	${PLATFORM_PATH}/warning.c
@@ -57,7 +56,6 @@ set (FSRV_PLATFORM_SOURCES
 	${PLATFORM_PATH}/warning.c
 	${PLATFORM_PATH}/../darwin/time.c
 	${PLATFORM_PATH}/../darwin/sem.c
-	${PLATFORM_PATH}/shm.c
 	${PLATFORM_PATH}/base64.c
 	${PLATFORM_PATH}/mem.c
 	${PLATFORM_PATH}/fdpassing.c
@@ -65,6 +63,7 @@ set (FSRV_PLATFORM_SOURCES
 )
 
 set (LWA_PLATFORM_SOURCES
+	${SHMIF_SOURCES}
 	${PLATFORM_SOURCES}
 	${PLATFORM_PATH}/../arcan/video.c
 	${PLATFORM_PATH}/../darwin/SDLmain_fsrv.m

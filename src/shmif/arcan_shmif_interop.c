@@ -11,8 +11,14 @@
 #include <stdbool.h>
 #include <assert.h>
 #include <string.h>
+#include <errno.h>
 
 #include "arcan_shmif.h"
+
+#ifndef WIN32
+#include <sys/types.h>
+#include <sys/socket.h>
+#endif
 
 /*
  * This implementation is a first refactor step to separate
@@ -29,9 +35,11 @@
  * vulnerability.
  */
 
-int arcan_event_poll(struct arcan_evctx* ctx, struct arcan_event* dst)
+int arcan_shmif_poll(struct arcan_shmif_cont* c, struct arcan_event* dst)
 {
 	assert(dst);
+	assert(c);
+	struct arcan_evctx* ctx = &c->inev;
 
 #ifdef ARCAN_SHMIF_THREADSAFE_QUEUE
 	pthread_mutex_lock(&ctx->synch.lock);
@@ -54,30 +62,46 @@ int arcan_event_poll(struct arcan_evctx* ctx, struct arcan_event* dst)
 	return 1;
 }
 
-int arcan_event_wait(struct arcan_evctx* ctx, struct arcan_event* dst)
+int arcan_shmif_wait(struct arcan_shmif_cont* c, struct arcan_event* dst)
 {
+	assert(c);
 	assert(dst);
+	struct arcan_evctx* ctx = &c->inev;
 	volatile int* ks = (volatile int*) ctx->synch.killswitch;
 
 #ifdef ARCAN_SHMIF_THREADSAFE_QUEUE
 	pthread_mutex_lock(&ctx->synch.lock);
 #endif
 
+/*
+ * this is currently wrong(memory coherency..) and should be re-written
+ * using proper C11 atomics had we had decent mechanics for it. Doing
+ * this correctly costs more than what it is currently worth, particularly
+ * due to the pending update in event serialization.
+ */
+
 	while (*ctx->front == *ctx->back && *ks){
+#ifdef _WIN32
 		arcan_sem_wait(ctx->synch.handle);
+#else
+		arcan_sem_trywait(ctx->synch.handle);
+		int num = 0;
+		recv(c->dpipe, &num, sizeof(int), 0);
+#endif
 	}
 
 #ifdef ARCAN_SHMIF_THREADSAFE_QUEUE
 	pthread_mutex_unlock(&ctx->synch.lock);
 #endif
 
-	return arcan_event_poll(ctx, dst);
+	return arcan_shmif_poll(c, dst);
 }
 
-int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src)
+int arcan_shmif_enqueue(struct arcan_shmif_cont* c,
+	const struct arcan_event* const src)
 {
-	assert(ctx);
-/* child version doesn't use any masking */
+	assert(c);
+	struct arcan_evctx* ctx = &c->outev;
 
 #ifdef ARCAN_SHMIF_THREADSAFE_QUEUE
 	pthread_mutex_lock(&ctx->synch.lock);
@@ -98,8 +122,12 @@ int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src)
 	return 1;
 }
 
-int arcan_event_tryenqueue(arcan_evctx* ctx, const arcan_event* const src)
+int arcan_shmif_tryenqueue(
+	struct arcan_shmif_cont* c, const arcan_event* const src)
 {
+	assert(c);
+	struct arcan_evctx* ctx = &c->outev;
+
 #ifdef ARCAN_SHMIF_THREADSAFE_QUEUE
 	pthread_mutex_lock(&ctx->synch.lock);
 #endif
@@ -116,6 +144,6 @@ int arcan_event_tryenqueue(arcan_evctx* ctx, const arcan_event* const src)
 	pthread_mutex_unlock(&ctx->synch.lock);
 #endif
 
-	return arcan_event_enqueue(ctx, src);
+	return arcan_shmif_enqueue(c, src);
 }
 

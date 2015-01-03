@@ -30,6 +30,26 @@ void arcan_event_queuetransfer(
 	struct arcan_evctx* dstqueue, struct arcan_evctx* srcqueue,
 	enum ARCAN_EVENT_CATEGORY allowed, float saturation, arcan_vobj_id source);
 
+int arcan_event_poll(struct arcan_evctx*, struct arcan_event* dst);
+int arcan_event_wait(struct arcan_evctx*, struct arcan_event* dst);
+
+/*
+ * Try and enqueue the element to the queue. If the context is
+ * set to lossless, enqueue may block, sleep (or spinlock).
+ *
+ * returns the number of FREE slots left on success or a negative
+ * value on failure. The purpose of the try- approach is to let
+ * the user distinguish between necessary and merely "helpful"
+ * events (e.g. frame numbers, net ping-pongs etc.)
+ *
+ * These methods are thread-safe if and only if
+ * ARCAN_SHMIF_THREADSAFE_QUEUE has been defined at build-time and
+ * not during a pending resize operation.
+ */
+int arcan_event_enqueue(struct arcan_evctx*, const struct arcan_event* const);
+int arcan_event_tryenqueue(struct arcan_evctx*,const struct arcan_event* const);
+
+
 /* ignore-all on enqueue */
 void arcan_event_maskall(struct arcan_evctx*);
 

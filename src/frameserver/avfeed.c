@@ -12,19 +12,18 @@
 #include <arcan_shmif.h>
 #include "frameserver.h"
 
-static void update_frame(uint32_t* cptr,
-	struct arcan_shmif_cont* shms, uint32_t val)
+static void update_frame(struct arcan_shmif_cont* shms, uint32_t val)
 {
+	uint32_t* cptr = shms->vidp;
+
 	int np = shms->addr->w * shms->addr->h;
 	for (int i = 0; i < np; i++)
 		*cptr++ = val;
 
-	printf("update: %d\n", val);
 	arcan_shmif_signal(shms, SHMIF_SIGVID);
 }
 
 struct seginf {
-	struct arcan_evctx inevq, outevq;
 	struct arcan_event ev;
 	struct arcan_shmif_cont shms;
 	uint32_t* vidp;
@@ -41,15 +40,15 @@ static void* segthread(void* arg)
 	while(seg->shms.addr->dms){
 		arcan_event ev;
 		printf("waiting for events\n");
-		while(1 == arcan_event_wait(&seg->inevq, &ev)){
+		while(1 == arcan_shmif_wait(&seg->shms, &ev)){
 			printf("got event\n");
 			if (ev.category == EVENT_TARGET &&
 				ev.tgt.kind == TARGET_COMMAND_EXIT){
 				printf("parent requested termination\n");
-				update_frame(seg->vidp, &seg->shms, 0xffffff00);
+				update_frame(&seg->shms, 0xffffff00);
 				return NULL;
 			}
-			update_frame(seg->vidp, &seg->shms, 0xff000000 | (green++ << 8));
+			update_frame(&seg->shms, 0xff000000 | (green++ << 8));
 		}
 	}
 
@@ -58,19 +57,11 @@ static void* segthread(void* arg)
 
 static void mapseg(int evfd, const char* key)
 {
-	struct arcan_shmif_cont shms = arcan_shmif_acquire(
+	struct seginf* newseg = malloc(sizeof(struct seginf));
+	newseg->shms = arcan_shmif_acquire(
 		key, SEGID_GAME, SHMIF_ACQUIRE_FATALFAIL);
 
-	struct seginf* newseg = malloc(sizeof(struct seginf));
-
 	pthread_t thr;
-	arcan_shmif_calcofs(shms.addr, (uint32_t**)&newseg->vidp,
-		(int16_t**) &newseg->audp);
-
-	newseg->shms = shms;
-	arcan_shmif_setevqs(shms.addr, shms.esem,
-		&newseg->inevq, &newseg->outevq, false);
-
 	pthread_create(&thr, NULL, segthread, newseg);
 }
 
@@ -95,33 +86,27 @@ int arcan_frameserver_avfeed_run(
 		return EXIT_FAILURE;
 	}
 
-	struct arcan_evctx inevq, outevq;
-	struct arcan_event ev;
-
-	arcan_shmif_setevqs(shms.addr, shms.esem, &inevq, &outevq, false);
-
 	if (!arcan_shmif_resize(&shms, 320, 200)){
 		LOG("arcan_frameserver(decode) shmpage setup, resize failed\n");
 		return EXIT_FAILURE;
 	}
 
-	uint32_t* vidp;
-	int16_t* audp;
-
-	arcan_shmif_calcofs(shms.addr, &vidp, &audp);
-	update_frame(vidp, &shms, 0xffffffff);
+	update_frame(&shms, 0xffffffff);
 
 /*
  * request a new segment
  */
-	ev.category = EVENT_EXTERNAL;
-	ev.ext.kind = EVENT_EXTERNAL_SEGREQ;
-	arcan_event_enqueue(&outevq, &ev);
+	arcan_event ev = {
+		.category = EVENT_EXTERNAL,
+		.ext.kind = EVENT_EXTERNAL_SEGREQ
+	};
+
+	arcan_shmif_enqueue(&shms, &ev);
 
 	int lastfd;
 
 	while(1){
-		while (1 == arcan_event_wait(&inevq, &ev)){
+		while (1 == arcan_shmif_wait(&shms, &ev)){
 			if (ev.category == EVENT_TARGET){
 				if (ev.tgt.kind == TARGET_COMMAND_FDTRANSFER){
 					lastfd = arcan_fetchhandle(shms.dpipe);
@@ -138,7 +123,7 @@ int arcan_frameserver_avfeed_run(
 			}
 			else {
 				static int red;
-				update_frame(vidp, &shms, 0xff000000 | red++);
+				update_frame(&shms, 0xff000000 | red++);
 			}
 /*
  *	event dispatch loop, look at shmpage interop,

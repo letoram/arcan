@@ -90,9 +90,8 @@ static void wake_semsleeper(arcan_evctx* ctx)
 /* if it can't be locked, it's likely that the other process
  * is sleeping, waiting for signal, so just do that,
  * else leave it at 0 */
-	if (-1 == arcan_sem_trywait(ctx->synch.handle)){
+	if (-1 == arcan_sem_trywait(ctx->synch.handle))
 		arcan_sem_post(ctx->synch.handle);
-	}
 	else
 		;
 }
@@ -147,12 +146,10 @@ void arcan_event_repl(struct arcan_evctx* ctx, enum ARCAN_EVENT_CATEGORY cat,
 	LOCK();
 
 	unsigned front = *ctx->front;
-	printf("repl: %d, %d\n", front, *ctx->back);
 
 	while (front != *ctx->back){
 		if (ctx->eventbuf[front].category == cat &&
 			memcmp( (char*)(&ctx->eventbuf[front]) + r_ofs, cmpbuf, r_b) == 0){
-				printf("one overwritten\n");
 				memcpy( (char*)(&ctx->eventbuf[front]) + w_ofs, w_buf, w_b );
 		}
 
@@ -253,6 +250,14 @@ int rv = *(dq->front) > *(dq->back) ? dq->eventbuf_sz -
 *(dq->front) + *(dq->back) : *(dq->back) - *(dq->front);
 return rv;
 }
+
+#ifndef ARCAN_LWA
+int arcan_shmif_enqueue(struct arcan_shmif_cont* ctx,
+	const struct arcan_event* const ev)
+{
+	return arcan_event_enqueue(&ctx->outev, ev);
+}
+#endif
 
 void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 	enum ARCAN_EVENT_CATEGORY allowed, float saturation, arcan_vobj_id source)

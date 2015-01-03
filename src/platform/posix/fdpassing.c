@@ -40,7 +40,7 @@ bool arcan_pushhandle(file_handle source, int channel)
 	int* dptr = (int*) CMSG_DATA(cmsg);
 	*dptr = source;
 
-	return sendmsg(channel, &msg, 0) >= 0;
+	return sendmsg(channel, &msg, MSG_DONTWAIT | MSG_NOSIGNAL) >= 0;
 }
 
 file_handle arcan_fetchhandle(int sockin_fd)
@@ -78,7 +78,7 @@ file_handle arcan_fetchhandle(int sockin_fd)
 		int* dfd = (int*) CMSG_DATA(cmsg);
 		*dfd = -1;
 
-		if (recvmsg(sockin_fd, &msg, 0) >= 0)
+		if (recvmsg(sockin_fd, &msg, MSG_DONTWAIT | MSG_NOSIGNAL) >= 0)
 			rv = msgbuf.fd[0];
 	}
 

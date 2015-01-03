@@ -46,7 +46,7 @@ static void server_pointer (int buttonMask,int x,int y,rfbClientPtr cl)
 	outev.ext.cursor.buttons[3] = buttonMask & (1 << 4);
 	outev.ext.cursor.buttons[4] = buttonMask & (1 << 5);
 
-	arcan_event_enqueue(&vncctx.shmcont.outev, &outev);
+	arcan_shmif_enqueue(&vncctx.shmcont, &outev);
 }
 
 static void server_key(rfbBool down,rfbKeySym key,rfbClientPtr cl)
@@ -62,7 +62,7 @@ static void server_key(rfbBool down,rfbKeySym key,rfbClientPtr cl)
 	if (key < 65536)
 		outev.ext.key.keysym = symtbl_in[key];
 
-	arcan_event_enqueue(&vncctx.shmcont.outev, &outev);
+	arcan_shmif_enqueue(&vncctx.shmcont, &outev);
 }
 
 static void server_dropclient(rfbClientPtr cl)
@@ -156,7 +156,7 @@ void vnc_serv_run(struct arg_arr* args, struct arcan_shmif_cont cont)
 	rfbRunEventLoop(vncctx.server, -1, TRUE);
 
 	arcan_event ev;
-	while (arcan_event_wait(&vncctx.shmcont.inev, &ev) != 0){
+	while (arcan_shmif_wait(&vncctx.shmcont, &ev) != 0){
 		if (ev.category != EVENT_TARGET)
 			continue;
 

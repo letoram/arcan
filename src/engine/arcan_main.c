@@ -405,7 +405,6 @@ int main(int argc, char* argv[])
  * pushed through the sample() function in the LUA space */
 	if (settings.in_monitor){
 		settings.mon_infd = strtol( getenv("ARCAN_MONITOR_FD"), NULL, 10);
-	 	signal(SIGPIPE, SIG_IGN);
 	}
 	else if (settings.monitor > 0){
 		extern arcan_benchdata benchdata;

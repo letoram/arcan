@@ -18,6 +18,7 @@ elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 	add_definitions( -DLUA_USE_LINUX )
 	set (LIBRARIES
 		m
+		dl
 	)
 elseif (${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 	set (LIBRARIES

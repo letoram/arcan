@@ -881,10 +881,6 @@ set_property(TARGET arcan_db APPEND PROPERTY
 # the shared memory interface. Therefore we build a patched version of
 # openal, that's linked statically with only a shmif- based backend
 #
-# Current build-system setup forces main arcan and lwa_ version to largely share
-# the same platform build, which means that the terrible dependency-tree
-# from the SDL- etc. build remain.
-#
 if (ENABLE_LWA)
 	SET (ALPATCHES
 		${CMAKE_CURRENT_SOURCE_DIR}/external/patches/openal/0001-adding-arcan-shmif-support.patch

@@ -714,7 +714,7 @@ int arcan_frameserver_encode_run(
 /* fail here means there's something wrong with
  * frameserver - main app connection */
 		arcan_event ev;
-		if (0 == arcan_event_wait(&recctx.shmcont.inev, &ev))
+		if (0 == arcan_shmif_wait(&recctx.shmcont, &ev))
 			break;
 
 		if (ev.category == EVENT_TARGET){

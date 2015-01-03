@@ -24,7 +24,7 @@ int main(int argc, char** argv)
 
 	arcan_shmif_signal(&cont, SHMIF_SIGVID);
 
-	while (running && arcan_event_wait(&cont.inev, &ev)){
+	while (running && arcan_shmif_wait(&cont, &ev)){
 		if (ev.category == EVENT_TARGET)
 		switch (ev.tgt.kind){
 		case TARGET_COMMAND_EXIT:

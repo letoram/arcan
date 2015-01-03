@@ -267,7 +267,7 @@ int arcan_frameserver_remoting_run(
 				.ext.message = "(01) server connection broken"
 			};
 
-			arcan_event_enqueue(&vncctx.shmcont.outev, &outev);
+			arcan_shmif_enqueue(&vncctx.shmcont, &outev);
 			break;
 		}
 
@@ -279,7 +279,7 @@ int arcan_frameserver_remoting_run(
 					.ext.message = "(02) couldn't parse server message"
 				};
 
-				arcan_event_enqueue(&vncctx.shmcont.outev, &outev);
+				arcan_shmif_enqueue(&vncctx.shmcont, &outev);
 				break;
 			}
 
@@ -300,7 +300,7 @@ int arcan_frameserver_remoting_run(
 		}
 
 		arcan_event inev;
-		while (arcan_event_poll(&vncctx.shmcont.inev, &inev) == 1){
+		while (arcan_shmif_poll(&vncctx.shmcont, &inev) == 1){
 			if (inev.category == EVENT_TARGET)
 				switch(inev.tgt.kind){
 				case TARGET_COMMAND_STEPFRAME:

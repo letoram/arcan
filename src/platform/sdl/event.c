@@ -507,7 +507,7 @@ void platform_event_process(arcan_evctx* ctx)
 
 		case SDL_QUIT:
 			newevent.category = EVENT_SYSTEM;
-			newevent.io.kind = EVENT_SYSTEM_EXIT;
+			newevent.sys.kind = EVENT_SYSTEM_EXIT;
 			arcan_event_enqueue(ctx, &newevent);
 		break;
 
