@@ -26,43 +26,19 @@ static char* tag_resleak = "resource_leak";
 
 void arcan_release_resource(data_source* sptr)
 {
-/* relying on a working close() is bad form,
- * unfortunately recovery options are few
- * this could be a race instead, however main
- * app shouldn't be multithreaded. */
-	if (-1 != sptr->fd){
-		int trycount = 10;
-		while (trycount--){
-			if (close(sptr->fd) == 0)
-				break;
-		}
+	if (-1 != sptr->fd)
+/* trying to recover other issues are futile and race-prone */
+		while (-1 == close(sptr->fd) && errno == EINTR);
 
 /* don't want this one free:d */
-		if ( sptr->source == tag_resleak )
-			sptr->source = NULL;
+	if ( sptr->source == tag_resleak )
+		sptr->source = NULL;
 
-/* something broken with the file-descriptor,
- * not many recovery options but purposefully leak
- * the memory so that it can be found in core dumps etc. */
-		if (trycount && sptr->source){
-			const char fmt[] = "broken_fd(%.4d:%s)";
-	    char playbuf[sizeof(fmt) + 4 + strlen(sptr->source)];
-			snprintf(playbuf, sizeof(playbuf)/sizeof(playbuf[0]),
-				fmt, sptr->fd, sptr->source);
-
-			free( sptr->source );
-			sptr->source = strdup(playbuf);
-			return;
-		}
-		else {
-/* make the released memory distinguishable from a broken
- * descriptor from a memory analysis perspective */
-			free( sptr->source );
-			sptr->fd     = -1;
-			sptr->start  = -1;
-			sptr->len    = -1;
-		}
-	}
+	free(sptr->source);
+	sptr->source = NULL;
+	sptr->fd = -1;
+	sptr->start = -1;
+	sptr->len = -1;
 }
 
 /*

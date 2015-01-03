@@ -200,6 +200,8 @@ static char* unix_find(const char* fname)
  */
 void arcan_set_namespace_defaults()
 {
+	char* tmp = NULL;
+
 /*
  * use environment variables as hard overrides
  */
@@ -211,11 +213,13 @@ void arcan_set_namespace_defaults()
 /*
  * legacy mapping from the < 0.5 days
  */
-	arcan_softoverride_namespace(binpath_unix(), RESOURCE_SYS_BINS);
-	arcan_softoverride_namespace(libpath_unix(), RESOURCE_SYS_LIBS);
+
+	arcan_softoverride_namespace(tmp = binpath_unix(), RESOURCE_SYS_BINS);
+	free(tmp);
+	arcan_softoverride_namespace(tmp = libpath_unix(), RESOURCE_SYS_LIBS);
+	free(tmp);
 
 	char* respath = unix_find("resources");
-	char* tmp = NULL;
 
 	if (!respath)
 		respath = arcan_expand_resource("", RESOURCE_APPL_SHARED);
@@ -232,10 +236,8 @@ void arcan_set_namespace_defaults()
 		arcan_softoverride_namespace(debug_dir, RESOURCE_SYS_DEBUG);
 		arcan_softoverride_namespace(respath, RESOURCE_APPL_STATE);
 		arcan_softoverride_namespace(font_dir, RESOURCE_SYS_FONT);
+		arcan_mem_free(respath);
 	}
-
-	if (tmp)
-		arcan_mem_free(tmp);
 
 	char* scrpath = unix_find("appl");
 	if (!scrpath)
@@ -244,14 +246,14 @@ void arcan_set_namespace_defaults()
 	if (scrpath){
 		arcan_softoverride_namespace(scrpath, RESOURCE_SYS_APPLBASE);
 		arcan_softoverride_namespace(scrpath, RESOURCE_SYS_APPLSTORE);
+		arcan_mem_free(scrpath);
 	}
 
 	tmp = arcan_expand_resource("", RESOURCE_SYS_APPLSTATE);
 	if (!tmp){
-		arcan_mem_free(tmp);
 		tmp = arcan_expand_resource("savestates", RESOURCE_APPL_SHARED);
 		if (tmp)
 			arcan_override_namespace(tmp, RESOURCE_SYS_APPLSTATE);
-		arcan_mem_free(tmp);
 	}
+	arcan_mem_free(tmp);
 }

@@ -154,6 +154,9 @@ void arcan_vint_drop_vstore(struct storage_info_t* s)
 				s->vinf.text.raw = NULL;
 			}
 
+			if (s->vinf.text.source)
+				arcan_mem_free(s->vinf.text.source);
+
 			memset(s, '\0', sizeof(struct storage_info_t));
 		}
 
