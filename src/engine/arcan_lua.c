@@ -1399,8 +1399,8 @@ static int resampleimage(lua_State* ctx)
 	arcan_vobj_id sid = luaL_checkvid(ctx, 1, &vobj);
 	arcan_shader_id shid = lua_type(ctx, 2) == LUA_TSTRING ?
 	arcan_shader_lookup(luaL_checkstring(ctx, 2)) : luaL_checknumber(ctx, 2);
-	size_t width = abs(luaL_checknumber(ctx, 3));
-	size_t height = abs(luaL_checknumber(ctx, 4));
+	size_t width = abs((int)luaL_checknumber(ctx, 3));
+	size_t height = abs((int)luaL_checknumber(ctx, 4));
 
 	if (width == 0 || width > MAX_SURFACEW || height == 0|| height > MAX_SURFACEH)
 		arcan_fatal("resample_image(), illegal dimensions"
@@ -1602,7 +1602,7 @@ static int forceblend(lua_State* ctx)
 	LUA_TRACE("force_image_blend");
 
 	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
-	enum arcan_blendfunc mode = abs(luaL_optnumber(ctx, 2, BLEND_FORCE));
+	enum arcan_blendfunc mode = abs((int)luaL_optnumber(ctx, 2, BLEND_FORCE));
 
 	if (mode == BLEND_FORCE || mode == BLEND_ADD ||
 		mode == BLEND_MULTIPLY || mode == BLEND_NONE || mode == BLEND_NORMAL)
@@ -1909,7 +1909,7 @@ static int setmeshshader(lua_State* ctx)
 
 	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 	arcan_shader_id shid = luaL_checknumber(ctx, 2);
-	int slot = abs ( luaL_checknumber(ctx, 3) );
+	int slot = abs ((int)luaL_checknumber(ctx, 3) );
 
 	arcan_3d_meshshader(id, shid, slot);
 
@@ -2065,7 +2065,7 @@ static int togglemask(lua_State* ctx)
 	LUA_TRACE("image_mask_toggle");
 
 	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
-	unsigned val = abs(luaL_checknumber(ctx, 2));
+	int val = abs((int)luaL_checknumber(ctx, 2));
 
 	if ( (val & !(MASK_ALL)) == 0){
 		enum arcan_transform_mask mask = arcan_video_getmask(id);
@@ -2123,7 +2123,7 @@ static int clearmask(lua_State* ctx)
 {
 	LUA_TRACE("image_mask_clear");
 	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
-	unsigned val = abs(luaL_checknumber(ctx, 2));
+	int val = abs((int)luaL_checknumber(ctx, 2));
 
 	if ( (val & !(MASK_ALL)) == 0){
 		enum arcan_transform_mask mask = arcan_video_getmask(id);
@@ -3730,7 +3730,7 @@ static int loadmesh(lua_State* ctx)
 	LUA_TRACE("add_3dmesh");
 
 	arcan_vobj_id did = luaL_checkvid(ctx, 1, NULL);
-	unsigned nmaps = abs(luaL_optnumber(ctx, 3, 1));
+	int nmaps = abs((int)luaL_optnumber(ctx, 3, 1));
 	char* path = findresource(luaL_checkstring(ctx, 2), DEFAULT_USERMASK);
 
 	if (path){
@@ -3802,14 +3802,14 @@ static int buildplane(lua_State* ctx)
 {
 	LUA_TRACE("build_3dplane");
 
-	float minx     = luaL_checknumber(ctx, 1);
-	float mind     = luaL_checknumber(ctx, 2);
-	float endx     = luaL_checknumber(ctx, 3);
-	float endd     = luaL_checknumber(ctx, 4);
-	float starty   = luaL_checknumber(ctx, 5);
-	float hdens    = luaL_checknumber(ctx, 6);
-	float ddens    = luaL_checknumber(ctx, 7);
-	unsigned nmaps = abs(luaL_optnumber(ctx, 8, 1));
+	float minx = luaL_checknumber(ctx, 1);
+	float mind = luaL_checknumber(ctx, 2);
+	float endx = luaL_checknumber(ctx, 3);
+	float endd = luaL_checknumber(ctx, 4);
+	float starty = luaL_checknumber(ctx, 5);
+	float hdens = luaL_checknumber(ctx, 6);
+	float ddens = luaL_checknumber(ctx, 7);
+	int nmaps = abs((int)luaL_optnumber(ctx, 8, 1));
 
 	lua_pushvid(ctx, arcan_3d_buildplane(minx, mind, endx, endd, starty,
 		hdens, ddens, nmaps));
@@ -4127,8 +4127,8 @@ static int videocanvasrsz(lua_State* ctx)
 {
 	LUA_TRACE("resize_video_canvas");
 
-	size_t w = abs(luaL_checknumber(ctx, 1));
-	size_t h = abs(luaL_checknumber(ctx, 2));
+	size_t w = abs((int)luaL_checknumber(ctx, 1));
+	size_t h = abs((int)luaL_checknumber(ctx, 2));
 
 /* note that this actually creates a texture in WORLDID that
  * is larger than the other permitted max surface dimensions,
@@ -4306,12 +4306,12 @@ static int fillsurface(lua_State* ctx)
 	int desw = luaL_checknumber(ctx, 1);
 	int desh = luaL_checknumber(ctx, 2);
 
-	uint8_t r = abs(luaL_checknumber(ctx, 3));
-	uint8_t g = abs(luaL_checknumber(ctx, 4));
-	uint8_t b = abs(luaL_checknumber(ctx, 5));
+	uint8_t r = abs((int)luaL_checknumber(ctx, 3));
+	uint8_t g = abs((int)luaL_checknumber(ctx, 4));
+	uint8_t b = abs((int)luaL_checknumber(ctx, 5));
 
-	cons.w = abs(luaL_optnumber(ctx, 6, 8));
-	cons.h = abs(luaL_optnumber(ctx, 7, 8));
+	cons.w = abs((int)luaL_optnumber(ctx, 6, 8));
+	cons.h = abs((int)luaL_optnumber(ctx, 7, 8));
 
 	if (cons.w > 0 && cons.w <= MAX_SURFACEW &&
 		cons.h > 0 && cons.h <= MAX_SURFACEH){
@@ -4361,9 +4361,9 @@ static int imagecolor(lua_State* ctx)
 
 	arcan_vobject* vobj;
 	luaL_checkvid(ctx, 1, &vobj);
-	uint8_t cred = abs(luaL_checknumber(ctx, 2));
-	uint8_t cgrn = abs(luaL_checknumber(ctx, 3));
-	uint8_t cblu = abs(luaL_checknumber(ctx, 4));
+	uint8_t cred = abs((int)luaL_checknumber(ctx, 2));
+	uint8_t cgrn = abs((int)luaL_checknumber(ctx, 3));
+	uint8_t cblu = abs((int)luaL_checknumber(ctx, 4));
 
 	if (!vobj || vobj->vstore->txmapped){
 		lua_pushboolean(ctx, false);
@@ -4384,12 +4384,12 @@ static int colorsurface(lua_State* ctx)
 {
 	LUA_TRACE("color_surface");
 
-	size_t desw = abs(luaL_checknumber(ctx, 1));
-	size_t desh = abs(luaL_checknumber(ctx, 2));
-	int cred = abs(luaL_checknumber(ctx, 3));
-	int cgrn = abs(luaL_checknumber(ctx, 4));
-	int cblu = abs(luaL_checknumber(ctx, 5));
-	int order = abs(luaL_optnumber(ctx, 6, 1));
+	size_t desw = abs((int)luaL_checknumber(ctx, 1));
+	size_t desh = abs((int)luaL_checknumber(ctx, 2));
+	uint8_t cred = abs((int)luaL_checknumber(ctx, 3));
+	uint8_t cgrn = abs((int)luaL_checknumber(ctx, 4));
+	uint8_t cblu = abs((int)luaL_checknumber(ctx, 5));
+	int order = abs((int)luaL_optnumber(ctx, 6, 1));
 
 	lua_pushvid(ctx, arcan_video_solidcolor(desw, desh,
 		cred, cgrn, cblu, order));
@@ -4402,9 +4402,9 @@ static int nullsurface(lua_State* ctx)
 {
 	LUA_TRACE("null_surface");
 
-	size_t desw = abs(luaL_checknumber(ctx, 1));
-	size_t desh = abs(luaL_checknumber(ctx, 2));
-	int order = abs(luaL_optnumber(ctx, 3, 1));
+	size_t desw = abs((int)luaL_checknumber(ctx, 1));
+	size_t desh = abs((int)luaL_checknumber(ctx, 2));
+	int order = abs((int)luaL_optnumber(ctx, 3, 1));
 
 	lua_pushvid(ctx, arcan_video_nullobject(desw, desh, order) );
 
@@ -4517,8 +4517,8 @@ static int randomsurface(lua_State* ctx)
 {
 	LUA_TRACE("random_surface");
 
-	int desw = abs( luaL_checknumber(ctx, 1) );
-	int desh = abs( luaL_checknumber(ctx, 2) );
+	size_t desw = abs((int)luaL_checknumber(ctx, 1));
+	size_t desh = abs((int)luaL_checknumber(ctx, 2));
 	img_cons cons = {.w = desw, .h = desh, .bpp = GL_PIXEL_BPP};
 
 	av_pixel* cptr = arcan_alloc_mem(desw * desh * GL_PIXEL_BPP,
@@ -6670,7 +6670,7 @@ static int shader_uniform(lua_State* ctx)
 
 	float fbuf[16];
 
-	int sid = abs(luaL_checknumber(ctx, 1));
+	int sid = abs((int)luaL_checknumber(ctx, 1));
 	const char* label = luaL_checkstring(ctx, 2);
 	const char* fmtstr = luaL_checkstring(ctx, 3);
 	bool persist = luaL_checknumber(ctx, 4) != 0;
@@ -6766,7 +6766,7 @@ static int rotatemodel(lua_State* ctx)
 	double roll       = luaL_checknumber(ctx, 2);
 	double pitch      = luaL_checknumber(ctx, 3);
 	double yaw        = luaL_checknumber(ctx, 4);
-	unsigned int dt   = abs(luaL_optnumber(ctx, 5, 0));
+	unsigned int dt   = abs((int)luaL_optnumber(ctx, 5, 0));
 	int rotate_rel    = luaL_optnumber(ctx, 6, CONST_ROTATE_ABSOLUTE);
 
 	if (rotate_rel != CONST_ROTATE_RELATIVE && rotate_rel !=CONST_ROTATE_ABSOLUTE)
@@ -7005,7 +7005,7 @@ static int inputanalogquery(lua_State* ctx)
 
 	int devid = 0, resind = 1;
 	int devnum = luaL_optnumber(ctx, 1, -1);
-	int axnum = abs(luaL_optnumber(ctx, 2, 0));
+	int axnum = abs((int)luaL_optnumber(ctx, 2, 0));
 	bool rescan = luaL_optnumber(ctx, 3, 0) != 0;
 
  	if (rescan)
@@ -7399,7 +7399,7 @@ static int net_pushsrv(lua_State* ctx)
 	if (fsrv->parent != ARCAN_EID)
 		arcan_fatal("net_pushsrv() -- cannot push VID to a subsegment.\n");
 
-	if (!fsrv->segid == SEGID_NETWORK_CLIENT)
+	if (!(fsrv->segid == SEGID_NETWORK_CLIENT))
 		arcan_fatal("net_pushsrv() -- bad arg1, specified frameserver"
 			" is not in client mode (net_open).\n");
 
@@ -8216,7 +8216,7 @@ static inline void fprintf_float(FILE* dst,
 	else if (isinf(in))
 		fprintf(dst, "%sinf%s", pre, post);
 	else
-		fprintf(dst, "%s%d.%d%s", pre, (int)intp, abs(fractp), post);
+		fprintf(dst, "%s%d.%d%s", pre, (int)intp, abs((int)fractp), post);
 }
 
 static inline char* lut_txmode(int txmode)

@@ -813,10 +813,13 @@ void* arcan_renderfun_renderfmtstr(const char* message,
 		*d_sz = *dw * *dh * GL_PIXEL_BPP;
 
 		raw = arcan_alloc_mem(*d_sz, ARCAN_MEM_VBUFFER,
-			ARCAN_MEM_BZERO | ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE);
+			ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE);
 
 		if (!raw)
 			goto cleanup;
+
+/* reset easy here as MEM_BZERO actually sets a full alpha channel */
+		memset(raw, '\0', *d_sz);
 
 		cnode = root;
 		curw = 0;

@@ -82,7 +82,7 @@ struct core_variable {
 	bool updated;
 };
 
-typedef void(*pixconv_fun)(const void* data, uint32_t* outp,
+typedef void(*pixconv_fun)(const void* data, shmif_pixel* outp,
 	unsigned width, unsigned height, size_t pitch, bool postfilter);
 
 static struct {
@@ -226,8 +226,7 @@ static void resize_shmpage(int neww, int newh, bool first)
 	if (retroctx.sync_data)
 		retroctx.sync_data->cont_switch(retroctx.sync_data, &retroctx.shmcont);
 
-	retroctx.graphing = graphing_new(neww,
-		newh, (uint32_t*) retroctx.shmcont.vidp);
+	retroctx.graphing = graphing_new(neww, newh, retroctx.shmcont.vidp);
 
 /* will be reallocated if needed and not set so just free and unset */
 	if (retroctx.ntsc_imb){
@@ -267,7 +266,7 @@ static void process_frames(int nframes, bool overrv, bool overra)
 								(((uint8_t)(g) >> 2) << 5) | ((uint8_t)(b) >> 3))
 
 static void push_ntsc(unsigned width, unsigned height,
-	const uint16_t* ntsc_imb, uint32_t* outp)
+	const uint16_t* ntsc_imb, shmif_pixel* outp)
 {
 	size_t linew = SNES_NTSC_OUT_WIDTH(width) * 4;
 
@@ -276,9 +275,12 @@ static void push_ntsc(unsigned width, unsigned height,
 	snes_ntsc_blit(retroctx.ntscctx, ntsc_imb, width, 0,
 		width, height, outp, linew * 2);
 
+/* this might be a possible test-case for running two shmif
+ * connections and let the compositor do interlacing management */
+	assert(ARCAN_SHMPAGE_VCHANNELS == 4);
 	for (int row = 1; row < height * 2; row += 2)
-		memcpy(&retroctx.shmcont.vidp[row * linew],
-			&retroctx.shmcont.vidp[(row-1) * linew], linew);
+		memcpy(& ((char*) retroctx.shmcont.vidp)[row * linew],
+			&((char*) retroctx.shmcont.vidp)[(row-1) * linew], linew);
 }
 
 /* better distribution for conversion (white is white ..) */
@@ -294,7 +296,7 @@ static const uint8_t rgb565_lut6[] = {
 194, 198, 202, 206, 210, 215, 219, 223, 227, 231, 235, 239, 243, 247, 251, 255
 };
 
-static void libretro_rgb565_rgba(const uint16_t* data, uint32_t* outp,
+static void libretro_rgb565_rgba(const uint16_t* data, shmif_pixel* outp,
 	unsigned width, unsigned height, size_t pitch)
 {
 	uint16_t* interm = retroctx.ntsc_imb;
@@ -311,7 +313,7 @@ static void libretro_rgb565_rgba(const uint16_t* data, uint32_t* outp,
 			if (retroctx.ntscconv)
 				*interm++ = RGB565(r, g, b);
 			else
-				*outp++ = 0xff << 24 | b << 16 | g << 8 | r;
+				*outp++ = RGBA(r, g, b, 0xff);
 		}
 		data += pitch >> 1;
 	}
@@ -336,7 +338,7 @@ static void libretro_xrgb888_rgba(const uint32_t* data, uint32_t* outp,
 			if (retroctx.ntscconv)
 				*interm++ = RGB565(quad[2], quad[1], quad[0]);
 			else
-				*outp++ = 0xff << 24 | quad[0] << 16 | quad[1] << 8 | quad[2];
+				*outp++ = RGBA(quad[0] << 16, quad[1] << 8, quad[2], 0xff);
 		}
 
 		data += pitch >> 2;
@@ -365,7 +367,7 @@ static void libretro_rgb1555_rgba(const uint16_t* data, uint32_t* outp,
 			if (postfilter)
 				*interm++ = RGB565(r, g, b);
 			else
-				*outp++ = (0xff) << 24 | b << 16 | g << 8 | r;
+				*outp++ = RGBA(r, g, b, 0xff);
 		}
 
 		data += pitch >> 1;
@@ -389,7 +391,7 @@ static void libretro_vidcb(const void* data, unsigned width,
 
 /* width / height can be changed without notice, so we have to be ready
  * for the fact that the cost of conversion can suddenly move outside the
- * allowed boundaries, then NTSC is ignored (or if we have 3d/hw source */
+ * allowed boundaries, then NTSC is ignored (or if we have 3d/hw source) */
 	unsigned outw = width;
 	unsigned outh = height;
 	bool ntscconv = retroctx.ntscconv && data != RETRO_HW_FRAME_BUFFER_VALID;
@@ -450,7 +452,7 @@ static void libretro_vidcb(const void* data, unsigned width,
 
 /* lastly, convert / blit, this will possibly clip */
 	if (retroctx.converter)
-		retroctx.converter(data, (void*) retroctx.shmcont.vidp, width,
+		retroctx.converter(data, retroctx.shmcont.vidp, width,
 			height, pitch, ntscconv);
 }
 
@@ -719,7 +721,6 @@ step:
 
 static void libretro_log(enum retro_log_level level, const char* fmt, ...)
 {
-
 }
 
 static struct retro_log_callback log_cb = {

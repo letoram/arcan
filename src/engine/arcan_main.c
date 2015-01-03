@@ -336,7 +336,7 @@ int main(int argc, char* argv[])
 	case 'H' : hookscript = strdup( optarg ); break;
 #ifndef _WIN32
 	case 'M' : settings.monitor_counter = settings.monitor =
-		abs( strtol(optarg, NULL, 10) ); break;
+		abs( (int)strtol(optarg, NULL, 10) ); break;
 	case 'O' : monitor_arg = strdup( optarg ); break;
 #endif
 	case 't' :

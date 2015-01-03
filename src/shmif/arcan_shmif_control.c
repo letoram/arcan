@@ -594,7 +594,7 @@ void arcan_shmif_forceofs(struct arcan_shmif_page* shmp,
 	if ( (uintptr_t)vidaddr % memalign != 0)
 		vidaddr += memalign - ( (uintptr_t)vidaddr % memalign);
 
-	audaddr = vidaddr + abs(width * height * bpp);
+	audaddr = vidaddr + width * height * bpp;
 	if ( (uintptr_t) audaddr % memalign != 0)
 		audaddr += memalign - ( (uintptr_t) audaddr % memalign);
 

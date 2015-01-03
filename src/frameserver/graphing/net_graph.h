@@ -26,7 +26,7 @@ enum graphing_mode {
  * etc. is left as an exercise for whatever frontend is using these.
  * If the resolution etc. should be changed, then a new context will need
  * to be allocated */
-struct graph_context* graphing_new(int width, int height, uint32_t* vidp);
+struct graph_context* graphing_new(int width, int height, shmif_pixel* vidp);
 void graphing_destroy(struct graph_context*);
 void graphing_switch_mode(struct graph_context*, enum graphing_mode);
 
@@ -75,38 +75,38 @@ void graph_log_conn_error(struct graph_context*,
  * will return false if the primitive couldn't fit inside
  * the current context dimensions */
 
-void clear_tocol(struct graph_context* ctx, uint32_t col);
+void clear_tocol(struct graph_context* ctx, shmif_pixel col);
 
 void draw_hline(struct graph_context* ctx, int x, int y,
-	int width, uint32_t col);
+	int width, shmif_pixel col);
 
 void draw_vline(struct graph_context* ctx, int x, int y,
-	int height,uint32_t col);
+	int height, shmif_pixel col);
 
 void  draw_aaline(struct graph_context* ctx, int x, int y,
-	int width, uint32_t col);
+	int width, shmif_pixel col);
 
 void  draw_square(struct graph_context* ctx, int x, int y,
-	int side,  uint32_t col);
+	int side, shmif_pixel col);
 
 bool draw_box(struct graph_context* ctx, int x, int y,
-	int width, int height, uint32_t col);
+	int width, int height, shmif_pixel col);
 
 void blend_square(struct graph_context* ctx, int x, int y,
-	int side,  uint32_t col, float fact);
+	int side, shmif_pixel col, float fact);
 
 void blend_vline(struct graph_context* ctx, int x, int y,
-	int width, uint32_t col, float fact);
+	int width, shmif_pixel col, float fact);
 
 void blend_hline(struct graph_context* ctx, int x, int y,
-	int width, uint32_t col, float fact);
+	int width, shmif_pixel col, float fact);
 
 bool draw_text(struct graph_context* ctx, const char* msg,
-	int x, int y, uint32_t col);
+	int x, int y, shmif_pixel col);
 
 void text_dimensions(struct graph_context* ctx, const char* msg,
 	int* dw, int* dh);
 
 void blend_text(struct graph_context* ctx, const char* msg,
-	int x, int y, uint32_t col, float fact);
+	int x, int y, shmif_pixel col, float fact);
 #endif
