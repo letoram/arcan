@@ -543,6 +543,7 @@ applswitch:
 	if (getenv("ARCAN_FRAMESERVER_LOGDIR") == NULL){
 		char* lpath = arcan_expand_resource("", RESOURCE_SYS_DEBUG);
 		setenv("ARCAN_FRAMESERVER_LOGDIR", lpath, 1);
+		arcan_mem_free(lpath);
 	}
 
 	if (hookscript){
@@ -714,6 +715,9 @@ out:
 #endif
 	arcan_video_shutdown();
 	arcan_event_deinit(arcan_event_defaultctx());
+	arcan_mem_free(dbfname);
+	if (dbhandle)
+		arcan_db_close(&dbhandle);
 
 	return exit_code;
 
@@ -725,6 +729,7 @@ error:
 		arcan_warning("\n\n");
 	}
 
+	arcan_mem_free(dbfname);
 	arcan_video_shutdown();
 	arcan_event_deinit(arcan_event_defaultctx());
 

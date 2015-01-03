@@ -41,13 +41,14 @@ unsigned arcan_glob(char* basename, enum arcan_namespaces space,
 		char* path = arcan_expand_resource(basename, i);
 		bool match = false;
 
-		for (size_t i = 0; i < ofs; i++){
-			if (globslots[ i ] == NULL)
+		for (size_t j = 0; j < ofs; j++){
+			if (globslots[ j ] == NULL)
 				break;
 
-			if (strcmp(path, globslots[i]) == 0){
-//				arcan_mem_free(path);
+			if (strcmp(path, globslots[j]) == 0){
+				arcan_mem_free(path);
 				match = true;
+				break;
 			}
 		}
 
