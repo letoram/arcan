@@ -2905,6 +2905,7 @@ arcan_errc arcan_video_override_mapping(arcan_vobj_id id, float* newmapping)
 			sizeof(float) * 8, ARCAN_MEM_VSTRUCT, 0, ARCAN_MEMALIGN_SIMD);
 
 		rv = ARCAN_OK;
+		FLAG_DIRTY(vobj);
 	}
 
 	return rv;
