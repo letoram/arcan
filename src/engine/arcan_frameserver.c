@@ -83,13 +83,13 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 	}
 
 	vfunc_state emptys = {0};
+	arcan_audio_stop(src->aid);
 	arcan_mem_free(src->audb);
 
 #ifndef _WIN32
 	close(src->sockout_fd);
 #endif
 
-	arcan_audio_stop(src->aid);
 	arcan_video_alterfeed(src->vid, NULL, emptys);
 
 	arcan_event sevent = {
