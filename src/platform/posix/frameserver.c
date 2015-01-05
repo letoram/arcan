@@ -528,7 +528,11 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	else {
 		fcntl(sockp[0], F_SETFD, FD_CLOEXEC);
     fcntl(sockp[1], F_SETFD, FD_CLOEXEC);
-  	newseg->sockout_fd = sockp[0];
+#ifdef __APPLE__
+		setsockopt(sockp[0], SOL_SOCKET, SO_NOSIGPIPE, NULL, 0);
+		setsockopt(sockp[1], SOL_SOCKET, SO_NOSIGPIPE, NULL, 0);
+#endif
+		newseg->sockout_fd = sockp[0];
 		arcan_frameserver_pushfd(ctx, sockp[1]);
 	}
 
@@ -893,6 +897,11 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 		arcan_warning("arcan_frameserver_spawn_server(unix) -- couldn't "
 			"get socket pair\n");
 	}
+
+#ifdef __APPLE__
+	setsockopt(sockp[0], SOL_SOCKET, SO_NOSIGPIPE, NULL, 0);
+	setsockopt(sockp[1], SOL_SOCKET, SO_NOSIGPIPE, NULL, 0);
+#endif
 
 	pid_t child = fork();
 	if (child) {
