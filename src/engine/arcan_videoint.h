@@ -188,7 +188,7 @@ typedef struct arcan_vobject {
 	enum vobj_flags flags;
 	uint16_t origw, origh;
 
-	arcan_shader_id program;
+	agp_shader_id program;
 
 	struct {
 		arcan_vfunc_cb ffunc;

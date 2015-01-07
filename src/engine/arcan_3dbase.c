@@ -38,7 +38,7 @@ struct camtag_data {
 
 struct geometry {
 	unsigned nmaps;
-	arcan_shader_id program;
+	agp_shader_id program;
 
 	struct mesh_storage_t store;
 
@@ -53,7 +53,6 @@ typedef struct {
 	int work_count;
 
 	struct geometry* geometry;
-	arcan_shader_id program;
 
 /* AA-BB */
 	vector bbmin;
@@ -196,7 +195,7 @@ static void push_deferred(arcan_3dmodel* model)
  * Render-loops, Pass control, Initialization
  */
 static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
-	arcan_shader_id baseprog, surface_properties props, float* modelview,
+	agp_shader_id baseprog, surface_properties props, float* modelview,
 	enum agp_mesh_flags flags)
 {
 	assert(vobj);
@@ -218,14 +217,14 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
 	matr_quatf(props.rotation.quaternion, omatr);
 
 	multiply_matrix(dmatr, wmvm, omatr);
-	arcan_shader_envv(MODELVIEW_MATR, dmatr, sizeof(float) * 16);
-	arcan_shader_envv(OBJ_OPACITY, &props.opa, sizeof(float));
+	agp_shader_envv(MODELVIEW_MATR, dmatr, sizeof(float) * 16);
+	agp_shader_envv(OBJ_OPACITY, &props.opa, sizeof(float));
 
 	struct geometry* base = src->geometry;
 	size_t ind = (vobj->frameset ? vobj->frameset->index : 0);
 
 	while (base){
-		arcan_shader_activate(base->program > 0 ? base->program : baseprog);
+		agp_shader_activate(base->program > 0 ? base->program : baseprog);
 
 		if (!vobj->frameset)
 			agp_activate_vstore(vobj->vstore);
@@ -268,7 +267,9 @@ static enum arcan_ffunc_rv ffunc_3d(
 	enum arcan_ffunc_cmd cmd, av_pixel* buf, size_t s_buf,
 	uint16_t width, uint16_t height, unsigned mode, vfunc_state state)
 {
-	if (state.tag == ARCAN_TAG_3DOBJ && state.ptr){
+	if ( (state.tag == ARCAN_TAG_3DOBJ ||
+		state.tag == ARCAN_TAG_3DCAMERA) && state.ptr){
+
 		switch (cmd){
 		case FFUNC_TICK:
 		break;
@@ -416,7 +417,8 @@ arcan_vobject_litem* arcan_refresh_3d(arcan_vobj_id camtag,
 	surface_properties dprop;
 	arcan_resolve_vidprop(camobj, fract, &dprop);
 
-	arcan_shader_envv(PROJECTION_MATR, camera->projection, sizeof(float) * 16);
+	agp_shader_activate(agp_default_shader(BASIC_3D));
+	agp_shader_envv(PROJECTION_MATR, camera->projection, sizeof(float) * 16);
 
 	identity_matrix(matr);
 	scale_matrix(matr, dprop.scale.x, dprop.scale.y, dprop.scale.z);
@@ -519,7 +521,6 @@ arcan_vobj_id arcan_3d_pointcloud(size_t count)
 	arcan_video_alterfeed(rv, ffunc_3d, state);
 	pthread_mutex_init(&newmodel->lock, NULL);
 
-	arcan_video_allocframes(rv, 1, ARCAN_FRAMESET_SPLIT);
 	newmodel->geometry = arcan_alloc_mem(sizeof(struct geometry), ARCAN_MEM_VTAG,
 		ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 	newmodel->geometry->store.n_vertices = count;
@@ -529,12 +530,14 @@ arcan_vobj_id arcan_3d_pointcloud(size_t count)
 	newmodel->geometry->store.txcos = arcan_alloc_mem(sizeof(float) * count * 2,
 		ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_PAGE);
 
-	float step = 2.0 / sqrtf(count);
+	float step = 2.0f / sqrtf(count);
 
 	float cz = -1;
 	float cx = -1;
 	float* dbuf = newmodel->geometry->store.verts;
 	float* tbuf = newmodel->geometry->store.txcos;
+
+/* evenly distribute texture coordinates, randomly distribute vertices */
 	while(count--){
 		cx = cx + step;
 		if (cx > 1){
@@ -542,9 +545,13 @@ arcan_vobj_id arcan_3d_pointcloud(size_t count)
 			cz = cz + step;
 			}
 
-		*dbuf++ = cx;
-		*dbuf++ = 0.0;
-		*dbuf++ = cz;
+		float x = 1.0 - (float)rand()/(float)(RAND_MAX/2.0);
+		float y = 1.0 - (float)rand()/(float)(RAND_MAX/2.0);
+		float z = 1.0 - (float)rand()/(float)(RAND_MAX/2.0);
+
+		*dbuf++ = x;
+		*dbuf++ = y;
+		*dbuf++ = z;
 		*tbuf++ = (cx + 1.0) / 2.0;
 		*tbuf++ = (cz + 1.0) / 2.0;
 	}
@@ -758,7 +765,7 @@ static void loadmesh(struct geometry* dst, CTMcontext* ctx)
 }
 
 arcan_errc arcan_3d_meshshader(arcan_vobj_id dst,
-	arcan_shader_id shid, unsigned slot)
+	agp_shader_id shid, unsigned slot)
 {
 	arcan_vobject* vobj = arcan_video_getobject(dst);
 
@@ -1050,6 +1057,10 @@ arcan_errc arcan_3d_camtag(arcan_vobj_id vid,
 	float near, float far, float ar, float fov, bool front, bool back)
 {
 	arcan_vobject* vobj = arcan_video_getobject(vid);
+
+	if (vobj->feed.state.ptr)
+		return ARCAN_ERRC_UNACCEPTED_STATE;
+
 	vobj->owner->camtag = vobj->cellid;
 
 	struct camtag_data* camobj = arcan_alloc_mem(
@@ -1067,8 +1078,8 @@ arcan_errc arcan_3d_camtag(arcan_vobj_id vid,
 	else
 		camobj->flags = MESH_FACING_BACK;
 
-	vobj->feed.state.ptr = camobj;
-	vobj->feed.state.tag = ARCAN_TAG_3DCAMERA;
+	vfunc_state state = {.tag = ARCAN_TAG_3DCAMERA, .ptr = camobj};
+	arcan_video_alterfeed(vid, ffunc_3d, state);
 
 	FL_SET(vobj, FL_FULL3D);
 

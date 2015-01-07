@@ -22,8 +22,17 @@
 #include <arcan_general.h>
 
 static size_t appl_len = 0;
-static char* g_appl_id = "#app_not_initialized";
+static char* g_appl_id = "#appl not initialized";
 static char* appl_script = NULL;
+
+/*
+ * run as atexit() after a valid id has been set
+ * to "avoid" a leak of a few bytes
+ */
+static void drop_appl()
+{
+	free(g_appl_id);
+}
 
 /*
  * This is also planned as an entry point for implementing the
@@ -59,6 +68,7 @@ bool arcan_verifyload_appl(const char* appl_id, const char** errc)
 		free(work);
 
 		work = strdup(base);
+		free(base);
 		base = strdup( basename(work) );
 		free(work);
 
@@ -132,10 +142,14 @@ bool arcan_verifyload_appl(const char* appl_id, const char** errc)
 		return false;
 	}
 
+	if (strcmp(g_appl_id, "#appl not initialized") != 0)
+		arcan_mem_free(g_appl_id);
+
 	g_appl_id = base;
 	appl_len = app_len;
 	appl_script = script_path;
 
+	atexit(drop_appl);
 	return true;
 }
 

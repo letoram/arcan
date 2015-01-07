@@ -84,7 +84,7 @@ enum shdrutype {
 
 /* Built-in shader properties, these are
  * order dependant, check shdrmgmt.c */
-enum arcan_shader_envts{
+enum agp_shader_envts{
 /* packed matrices */
 	MODELVIEW_MATR  = 0,
 	PROJECTION_MATR = 1,
@@ -352,7 +352,7 @@ void platform_video_shutdown();
  */
 void agp_init();
 
-typedef long int arcan_shader_id;
+typedef long int agp_shader_id;
 
 /*
  * Retrieve the default shader for a specific purpose,
@@ -362,9 +362,10 @@ typedef long int arcan_shader_id;
 enum SHADER_TYPES {
 	BASIC_2D = 0,
 	COLOR_2D,
+	BASIC_3D,
 	SHADER_TYPE_ENDM
 };
-arcan_shader_id agp_default_shader(enum SHADER_TYPES);
+agp_shader_id agp_default_shader(enum SHADER_TYPES);
 void agp_shader_source(enum SHADER_TYPES, const char**, const char**);
 
 /*
@@ -382,7 +383,9 @@ const char* agp_shader_language();
 
 /*
  * Identification string for the underlying graphics API as
- * such, typical ones would be 'GLES3', 'OPENGL21', and 'SOFTWARE'.
+ * such, typical ones would be 'GLES3' and 'OPENGL21'. For pixman
+ * revisions, we'll likely add special 'common effects that can
+ * efficiently be implemented in software' for low-power optimizations.
  */
 const char* agp_backend_ident();
 
@@ -659,34 +662,34 @@ void agp_invalidate_mesh(struct mesh_storage_t*);
 void agp_save_output(size_t w, size_t h, av_pixel* dst, size_t dsz);
 
 /* delete, forget and flush all allocated shaders */
-void arcan_shader_flush();
+void agp_shader_flush();
 
 /*
  * Drop possible underlying handles, a call chain of
  * unload_all and rebuild_all should yield no visible
  * changes to the rest of the engine.
  */
-void arcan_shader_unload_all();
+void agp_shader_unload_all();
 
 /*
  * Will be called on possible external launch transitions
  * where we might have lost underlying context data.
  */
-void arcan_shader_rebuild_all();
+void agp_shader_rebuild_all();
 
 /*
  * Set the current transformation / processing rules (i.e. shader)
  * This will be called on new objects and may effectively be a no-o
  * if the same one is already active.
  */
-int arcan_shader_activate(arcan_shader_id shid);
+int agp_shader_activate(agp_shader_id shid);
 
 /*
  * Take transformation rules in source-code form (platform specific
  * a agp_shader_language) and build for the specified processing
  * stages.
  */
-arcan_shader_id arcan_shader_build(const char* tag, const char* geom,
+agp_shader_id agp_shader_build(const char* tag, const char* geom,
 	const char* vert, const char* frag);
 
 /*
@@ -694,29 +697,29 @@ arcan_shader_id arcan_shader_build(const char* tag, const char* geom,
  * invalid ID should return false here). States local to shid
  * should be considered undefined after this.
  */
-bool arcan_shader_destroy(arcan_shader_id shid);
+bool agp_shader_destroy(agp_shader_id shid);
 
 /*
  * Name- based shader lookup (typically to match string representations
  * from higher-level languages without tracking numerical IDs).
  */
-arcan_shader_id arcan_shader_lookup(const char* tag);
-const char* arcan_shader_lookuptag(arcan_shader_id id);
+agp_shader_id agp_shader_lookup(const char* tag);
+const char* agp_shader_lookuptag(agp_shader_id id);
 
 /*
  * Get a local copy of the source stored in *vert, *frag based
  * on the specified ID.
  */
-bool arcan_shader_lookupprgs(arcan_shader_id id,
+bool agp_shader_lookupprgs(agp_shader_id id,
 	const char** vert, const char** frag);
-bool arcan_shader_valid(arcan_shader_id);
+bool agp_shader_valid(agp_shader_id);
 
 /*
  * Get the vertex- attribute location for a specific vertex attribute
  * (as some integral reference or -1 on non-existing in the currently
  * bound program).
  */
-int arcan_shader_vattribute_loc(enum shader_vertex_attributes attr);
+int agp_shader_vattribute_loc(enum shader_vertex_attributes attr);
 
 /*
  * Update the specified built-in environment variable with a slot,
@@ -724,20 +727,20 @@ int arcan_shader_vattribute_loc(enum shader_vertex_attributes attr);
  * no such- slot exists or is not available in the currently bound
  * program.
  */
-int arcan_shader_envv(enum arcan_shader_envts slot, void* value, size_t size);
+int agp_shader_envv(enum agp_shader_envts slot, void* value, size_t size);
 
 /*
  * Get a string representation for the specific environment slot,
  * this is primarily for debugging / tracing purposes.
  */
-const char* arcan_shader_symtype(enum arcan_shader_envts env);
+const char* agp_shader_symtype(enum agp_shader_envts env);
 
 /*
  * This is used for possibly custom uniforms, with persist set
  * to false we hint that it can be updated regularly and do not
  * have to survive a context-drop/rebuild.
  */
-void arcan_shader_forceunif(const char* label,
+void agp_shader_forceunif(const char* label,
 	enum shdrutype type, void* value, bool persist);
 
 #endif

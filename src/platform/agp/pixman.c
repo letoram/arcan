@@ -41,7 +41,7 @@ static struct {
  * Since we don't have a pixel shader language in that sense,
  * pre-package effects as a simple language.
  */
-arcan_shader_id agp_default_shader(enum SHADER_TYPES type)
+agp_shader_id agp_default_shader(enum SHADER_TYPES type)
 {
 	return 1;
 }
@@ -60,12 +60,12 @@ const char* agp_shader_language()
  * currently, some vobj data is conveyed in the _env that we
  * need to track in our global state
  */
-int arcan_shader_envv(enum arcan_shader_envts slot, void* value, size_t size)
+int agp_shader_envv(enum arcan_shader_envts slot, void* value, size_t size)
 {
 	return 1;
 }
 
-arcan_shader_id arcan_shader_lookup(const char* tag)
+agp_shader_id arcan_shader_lookup(const char* tag)
 {
 	return 1;
 }
@@ -232,12 +232,12 @@ void agp_save_output(size_t w, size_t h, av_pixel* dst, size_t dsz)
 {
 }
 
-int arcan_shader_activate(arcan_shader_id shid)
+int agp_shader_activate(arcan_shader_id shid)
 {
 	return shid == 1;
 }
 
-const char* arcan_shader_lookuptag(arcan_shader_id id)
+const char* agp_shader_lookuptag(arcan_shader_id id)
 {
 	if (id != 1)
 		return NULL;
@@ -245,7 +245,7 @@ const char* arcan_shader_lookuptag(arcan_shader_id id)
 	return "tag";
 }
 
-bool arcan_shader_lookupprgs(arcan_shader_id id,
+bool agp_shader_lookupprgs(arcan_shader_id id,
 	const char** vert, const char** frag)
 {
 	if (id != 1)
@@ -257,18 +257,18 @@ bool arcan_shader_lookupprgs(arcan_shader_id id,
 	return true;
 }
 
-bool arcan_shader_valid(arcan_shader_id id)
+bool agp_shader_valid(arcan_shader_id id)
 {
 	return 1 == id;
 }
 
-arcan_shader_id arcan_shader_build(const char* tag, const char* geom,
+agp_shader_id arcan_shader_build(const char* tag, const char* geom,
 	const char* vert, const char* frag)
 {
 	return (vert && frag && tag && geom) ? 1 : 0;
 }
 
-void arcan_shader_forceunif(const char* label,
+void agp_shader_forceunif(const char* label,
 	enum shdrutype type, void* val, bool persist)
 {
 }
@@ -289,16 +289,16 @@ static char* symtbl[TBLSIZE] = {
 	"timestamp"
 };
 
-const char* arcan_shader_symtype(enum arcan_shader_envts env)
+const char* agp_shader_symtype(enum arcan_shader_envts env)
 {
 	return symtbl[env];
 }
 
-void arcan_shader_flush()
+void agp_shader_flush()
 {
 }
 
-void arcan_shader_rebuild_all()
+void agp_shader_rebuild_all()
 {
 }
 

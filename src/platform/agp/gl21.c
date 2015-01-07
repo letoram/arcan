@@ -64,16 +64,18 @@ const char * defcvprg =
 " gl_Position = (projection * modelview) * vertex;\n"
 "}";
 
-arcan_shader_id agp_default_shader(enum SHADER_TYPES type)
+agp_shader_id agp_default_shader(enum SHADER_TYPES type)
 {
-	static arcan_shader_id shids[SHADER_TYPE_ENDM];
+	static agp_shader_id shids[SHADER_TYPE_ENDM];
 	static bool defshdr_build;
 
 	assert(type < SHADER_TYPE_ENDM);
 
 	if (!defshdr_build){
-		shids[0] = arcan_shader_build("DEFAULT", NULL, defvprg, deffprg);
-		shids[1] = arcan_shader_build("DEFAULT_COLOR", NULL, defcvprg, defcfprg);
+		shids[BASIC_2D] = agp_shader_build("DEFAULT", NULL, defvprg, deffprg);
+		shids[COLOR_2D] = agp_shader_build(
+			"DEFAULT_COLOR", NULL, defcvprg, defcfprg);
+		shids[BASIC_3D] = shids[BASIC_2D];
 		defshdr_build = true;
 	}
 
@@ -90,6 +92,7 @@ void agp_shader_source(enum SHADER_TYPES type,
 {
 	switch(type){
 		case BASIC_2D:
+			case BASIC_3D:
 			*vert = defvprg;
 			*frag = deffprg;
 		break;

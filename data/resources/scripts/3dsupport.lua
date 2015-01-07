@@ -30,7 +30,6 @@ function build_shader(vertex, fragment, label)
 		end
 
 		fragment = prefix .. fragment;
-		print("new fragment:\n\n", fragment);
 	end
 
 	return build_override(vertex, fragment, label);
