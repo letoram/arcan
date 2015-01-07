@@ -318,7 +318,7 @@ void agp_activate_vstore_multi(struct storage_info_t** backing, size_t n)
 			buf[6] = '0' + i;
 			buf[7] = '\0';
 		}
-		arcan_shader_forceunif(buf, shdrint, &i, false);
+		agp_shader_forceunif(buf, shdrint, &i, false);
 	}
 
 	glActiveTexture(GL_TEXTURE0);
@@ -478,11 +478,11 @@ void agp_draw_vobj(float x1, float y1, float x2, float y2,
 	};
 	bool settex = false;
 
-	arcan_shader_envv(MODELVIEW_MATR, model?model:ident, sizeof(float) * 16);
+	agp_shader_envv(MODELVIEW_MATR, model?model:ident, sizeof(float) * 16);
 /* projection, scissor is set when activating rendertarget */
 
-	GLint attrindv = arcan_shader_vattribute_loc(ATTRIBUTE_VERTEX);
-	GLint attrindt = arcan_shader_vattribute_loc(ATTRIBUTE_TEXCORD);
+	GLint attrindv = agp_shader_vattribute_loc(ATTRIBUTE_VERTEX);
+	GLint attrindt = agp_shader_vattribute_loc(ATTRIBUTE_TEXCORD);
 
 	if (attrindv != -1){
 		glEnableVertexAttribArray(attrindv);
@@ -510,12 +510,12 @@ static void toggle_debugstates(float* modelview)
 		glDepthMask(GL_FALSE);
 		glDisable(GL_DEPTH_TEST);
 		glEnableVertexAttribArray(ATTRIBUTE_VERTEX);
-		arcan_shader_activate(agp_default_shader(COLOR_2D));
-		arcan_shader_envv(MODELVIEW_MATR, modelview, sizeof(float) * 16);
-		arcan_shader_forceunif("obj_col", shdrvec3, (void*) white, false);
+		agp_shader_activate(agp_default_shader(COLOR_2D));
+		agp_shader_envv(MODELVIEW_MATR, modelview, sizeof(float) * 16);
+		agp_shader_forceunif("obj_col", shdrvec3, (void*) white, false);
 	}
 	else{
-		arcan_shader_activate(agp_default_shader(COLOR_2D));
+		agp_shader_activate(agp_default_shader(COLOR_2D));
 		glEnable(GL_DEPTH_TEST);
 		glDepthMask(GL_TRUE);
 		glDisableVertexAttribArray(ATTRIBUTE_VERTEX);
@@ -534,9 +534,9 @@ void agp_submit_mesh(struct mesh_storage_t* base, enum agp_mesh_flags fl)
 {
 /* make sure the current program actually uses the attributes from the mesh */
 	int attribs[3] = {
-		arcan_shader_vattribute_loc(ATTRIBUTE_VERTEX),
-		arcan_shader_vattribute_loc(ATTRIBUTE_NORMAL),
-		arcan_shader_vattribute_loc(ATTRIBUTE_TEXCORD)
+		agp_shader_vattribute_loc(ATTRIBUTE_VERTEX),
+		agp_shader_vattribute_loc(ATTRIBUTE_NORMAL),
+		agp_shader_vattribute_loc(ATTRIBUTE_TEXCORD)
 	};
 
 	if (attribs[0] == -1)

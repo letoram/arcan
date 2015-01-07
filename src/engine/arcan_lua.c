@@ -1092,7 +1092,7 @@ static inline arcan_vobj_id luaL_checkvid(
 		abort();
 
 	if (!vobj)
-		arcan_fatal("Bad VID requested (%"PRIxVOBJ")\n", lnum);
+		arcan_fatal("Bad VID requested (%"PRIxVOBJ") at index (%d)\n", lnum, num);
 #endif
 
 	return res;
@@ -1402,8 +1402,8 @@ static int resampleimage(lua_State* ctx)
 	LUA_TRACE("resample_image");
 	arcan_vobject* vobj;
 	arcan_vobj_id sid = luaL_checkvid(ctx, 1, &vobj);
-	arcan_shader_id shid = lua_type(ctx, 2) == LUA_TSTRING ?
-	arcan_shader_lookup(luaL_checkstring(ctx, 2)) : luaL_checknumber(ctx, 2);
+	agp_shader_id shid = lua_type(ctx, 2) == LUA_TSTRING ?
+	agp_shader_lookup(luaL_checkstring(ctx, 2)) : luaL_checknumber(ctx, 2);
 	size_t width = abs((int)luaL_checknumber(ctx, 3));
 	size_t height = abs((int)luaL_checknumber(ctx, 4));
 
@@ -1739,7 +1739,7 @@ static int buildshader(lua_State* ctx)
 	const char* fprog = luaL_optstring(ctx, 2, deffprg);
 	const char* label = luaL_checkstring(ctx, 3);
 
-	arcan_shader_id rv = arcan_shader_build(label, NULL, vprog, fprog);
+	agp_shader_id rv = agp_shader_build(label, NULL, vprog, fprog);
 	lua_pushnumber(ctx, rv);
 
 	LUA_ETRACE("build_shader", NULL);
@@ -1891,11 +1891,11 @@ static int setshader(lua_State* ctx)
 
 	arcan_vobject* vobj;
 	arcan_vobj_id id = luaL_checkvid(ctx, 1, &vobj);
-	arcan_shader_id oldshid = vobj->program;
+	agp_shader_id oldshid = vobj->program;
 
 	if (lua_gettop(ctx) > 1){
-		arcan_shader_id shid = lua_type(ctx, 2) == LUA_TSTRING ?
-			arcan_shader_lookup(luaL_checkstring(ctx, 2)) : luaL_checknumber(ctx, 2);
+		agp_shader_id shid = lua_type(ctx, 2) == LUA_TSTRING ?
+			agp_shader_lookup(luaL_checkstring(ctx, 2)) : luaL_checknumber(ctx, 2);
 
 		if (ARCAN_OK != arcan_video_setprogram(id, shid))
 			arcan_warning("arcan_video_setprogram(%d, %d) -- couldn't set shader,"
@@ -1913,7 +1913,7 @@ static int setmeshshader(lua_State* ctx)
 	LUA_TRACE("mesh_shader");
 
 	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
-	arcan_shader_id shid = luaL_checknumber(ctx, 2);
+	agp_shader_id shid = luaL_checknumber(ctx, 2);
 	int slot = abs ((int)luaL_checknumber(ctx, 3) );
 
 	arcan_3d_meshshader(id, shid, slot);
@@ -6680,7 +6680,7 @@ static int shader_uniform(lua_State* ctx)
 	const char* fmtstr = luaL_checkstring(ctx, 3);
 	bool persist = luaL_checknumber(ctx, 4) != 0;
 
-	if (arcan_shader_activate(sid) != ARCAN_OK){
+	if (agp_shader_activate(sid) != ARCAN_OK){
 		arcan_warning("shader_uniform(), shader (%d) failed"
 			"	to activate.\n", sid);
 
@@ -6697,10 +6697,10 @@ static int shader_uniform(lua_State* ctx)
 
 	if (fmtstr[0] == 'b'){
 		int fmt = luaL_checknumber(ctx, 5) != 0;
-		arcan_shader_forceunif(label, shdrbool, &fmt, persist);
+		agp_shader_forceunif(label, shdrbool, &fmt, persist);
 	} else if (fmtstr[0] == 'i'){
 		int fmt = luaL_checknumber(ctx, 5);
-		arcan_shader_forceunif(label, shdrint, &fmt, persist);
+		agp_shader_forceunif(label, shdrint, &fmt, persist);
 	} else {
 		unsigned i = 0;
 		while(fmtstr[i] == 'f') i++;
@@ -6708,20 +6708,20 @@ static int shader_uniform(lua_State* ctx)
 			switch(i){
 				case 1:
 					fbuf[0] = luaL_checknumber(ctx, 5);
-					arcan_shader_forceunif(label, shdrfloat, fbuf, persist);
+					agp_shader_forceunif(label, shdrfloat, fbuf, persist);
 				break;
 
 				case 2:
 					fbuf[0] = luaL_checknumber(ctx, 5);
 					fbuf[1] = luaL_checknumber(ctx, 6);
-					arcan_shader_forceunif(label, shdrvec2, fbuf, persist);
+					agp_shader_forceunif(label, shdrvec2, fbuf, persist);
 				break;
 
 				case 3:
 					fbuf[0] = luaL_checknumber(ctx, 5);
 					fbuf[1] = luaL_checknumber(ctx, 6);
 					fbuf[2] = luaL_checknumber(ctx, 7);
-					arcan_shader_forceunif(label, shdrvec3, fbuf, persist);
+					agp_shader_forceunif(label, shdrvec3, fbuf, persist);
 				break;
 
 				case 4:
@@ -6729,14 +6729,14 @@ static int shader_uniform(lua_State* ctx)
 					fbuf[1] = luaL_checknumber(ctx, 6);
 					fbuf[2] = luaL_checknumber(ctx, 7);
 					fbuf[3] = luaL_checknumber(ctx, 8);
-					arcan_shader_forceunif(label, shdrvec4, fbuf, persist);
+					agp_shader_forceunif(label, shdrvec4, fbuf, persist);
 				break;
 
 				case 16:
 						while(i--)
 							fbuf[i] = luaL_checknumber(ctx, 5 + i);
 
-						arcan_shader_forceunif(label, shdrmat4x4, fbuf, persist);
+						agp_shader_forceunif(label, shdrmat4x4, fbuf, persist);
 
 				break;
 				default:
@@ -8449,7 +8449,7 @@ src->frameset ? lut_framemode(src->frameset->mode) : "",
 (int) src->program,
 lut_txmode(src->vstore->txu),
 lut_txmode(src->vstore->txv),
-arcan_shader_lookuptag(src->program),
+agp_shader_lookuptag(src->program),
 lut_scale(src->vstore->scale),
 lut_imageproc(src->vstore->imageproc),
 lut_blendmode(src->blendmode),

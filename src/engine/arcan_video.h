@@ -565,7 +565,7 @@ arcan_errc arcan_video_resize_canvas(size_t neww, size_t newh);
  * the [id] container.
  */
 arcan_errc arcan_video_resampleobject(arcan_vobj_id id,
-	int neww, int newh, arcan_shader_id prg);
+	int neww, int newh, agp_shader_id prg);
 
 /* Object hierarchy related functions */
 arcan_errc arcan_video_linkobjs(arcan_vobj_id src, arcan_vobj_id parent,
@@ -714,7 +714,7 @@ arcan_errc arcan_video_origoshift(arcan_vobj_id id, float sx,
 arcan_errc arcan_video_inheritorder(arcan_vobj_id id, bool val);
 arcan_errc arcan_video_override_mapping(arcan_vobj_id id, float* dst);
 arcan_errc arcan_video_retrieve_mapping(arcan_vobj_id id, float* dst);
-arcan_errc arcan_video_setprogram(arcan_vobj_id id, arcan_shader_id shid);
+arcan_errc arcan_video_setprogram(arcan_vobj_id id, agp_shader_id shid);
 arcan_errc arcan_video_instanttransform(arcan_vobj_id id);
 arcan_errc arcan_video_transfertransform(arcan_vobj_id sid,
 	arcan_vobj_id did);

@@ -834,6 +834,7 @@ static bool dbh_integrity_check(struct arcan_dbh* dbh){
 			return false;
 	}
 
+	arcan_mem_free(valstr);
 	return true;
 }
 
@@ -843,6 +844,7 @@ void arcan_db_close(struct arcan_dbh** ctx)
 		return;
 
 	sqlite3_close((*ctx)->dbh);
+	arcan_mem_free((*ctx)->applname);
 	arcan_mem_free((*ctx)->akv_update);
 	arcan_mem_free((*ctx)->akv_get);
 	arcan_mem_free(*ctx);

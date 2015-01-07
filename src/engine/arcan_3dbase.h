@@ -51,7 +51,7 @@ arcan_vobj_id arcan_3d_emptymodel();
 arcan_errc arcan_3d_finalizemodel(arcan_vobj_id);
 arcan_errc arcan_3d_infinitemodel(arcan_vobj_id, bool);
 arcan_errc arcan_3d_meshshader(arcan_vobj_id dst,
-	arcan_shader_id shid, unsigned slot);
+	agp_shader_id shid, unsigned slot);
 arcan_errc arcan_3d_addmesh(arcan_vobj_id dst,
 	data_source resource, unsigned nmaps);
 

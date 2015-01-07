@@ -443,11 +443,11 @@ void arcan_vint_drawrt(struct storage_info_t* vs, int x, int y, int w, int h)
 {
 	_Alignas(16) float imatr[16];
 	identity_matrix(imatr);
-	arcan_shader_activate(agp_default_shader(BASIC_2D));
+	agp_shader_activate(agp_default_shader(BASIC_2D));
 
 	agp_activate_vstore(vs);
-	arcan_shader_envv(MODELVIEW_MATR, imatr, sizeof(float)*16);
-	arcan_shader_envv(PROJECTION_MATR,
+	agp_shader_envv(MODELVIEW_MATR, imatr, sizeof(float)*16);
+	agp_shader_envv(PROJECTION_MATR,
 		arcan_video_display.window_projection, sizeof(float)*16);
 
 	agp_blendstate(BLEND_NONE);
@@ -506,8 +506,8 @@ void arcan_vint_drawcursor(bool erase)
 	}
 
 	float opa = 1.0;
-	arcan_shader_activate(agp_default_shader(BASIC_2D));
-	arcan_shader_envv(OBJ_OPACITY, &opa, sizeof(float));
+	agp_shader_activate(agp_default_shader(BASIC_2D));
+	agp_shader_envv(OBJ_OPACITY, &opa, sizeof(float));
 	agp_draw_vobj(x1, y1, x2, y2, txcos, NULL);
 
 	agp_deactivate_vstore();
@@ -805,7 +805,7 @@ arcan_vobj_id arcan_video_allocid(bool* status, struct arcan_video_context* ctx)
 }
 
 arcan_errc arcan_video_resampleobject(arcan_vobj_id vid,
-	int neww, int newh, arcan_shader_id shid)
+	int neww, int newh, agp_shader_id shid)
 {
 	arcan_vobject* vobj = arcan_video_getobject(vid);
 	if (!vobj)
@@ -3376,12 +3376,12 @@ static void compact_transformation(arcan_vobject* base,
 	}
 }
 
-arcan_errc arcan_video_setprogram(arcan_vobj_id id, arcan_shader_id shid)
+arcan_errc arcan_video_setprogram(arcan_vobj_id id, agp_shader_id shid)
 {
 	arcan_vobject* vobj = arcan_video_getobject(id);
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 
-	if (vobj && arcan_shader_valid(shid)) {
+	if (vobj && agp_shader_valid(shid)) {
 		FLAG_DIRTY(vobj);
 		vobj->program = shid;
 		rv = ARCAN_OK;
@@ -3616,7 +3616,7 @@ unsigned arcan_video_tick(unsigned steps, unsigned* njobs)
 			update_object(&current_context->world, arcan_video_display.c_ticks);
 
 		arcan_video_display.dirty +=
-			arcan_shader_envv(TIMESTAMP_D, &tsd, sizeof(uint32_t));
+			agp_shader_envv(TIMESTAMP_D, &tsd, sizeof(uint32_t));
 
 		for (size_t i = 0; i < current_context->n_rtargets; i++)
 			arcan_video_display.dirty +=
@@ -3967,33 +3967,33 @@ static inline void setup_surf(struct rendertarget* dst,
 		*mv = dmatr;
 	}
 
-	arcan_shader_envv(OBJ_OPACITY, &prop->opa, sizeof(float));
+	agp_shader_envv(OBJ_OPACITY, &prop->opa, sizeof(float));
 
 	float sz_i[2] = {src->origw, src->origh};
-	arcan_shader_envv(SIZE_INPUT, sz_i, sizeof(float)*2);
+	agp_shader_envv(SIZE_INPUT, sz_i, sizeof(float)*2);
 
 	float sz_o[2] = {prop->scale.x, prop->scale.y};
-	arcan_shader_envv(SIZE_OUTPUT, sz_o, sizeof(float)*2);
+	agp_shader_envv(SIZE_OUTPUT, sz_o, sizeof(float)*2);
 
 	float sz_s[2] = {src->vstore->w, src->vstore->h};
-	arcan_shader_envv(SIZE_STORAGE, sz_s, sizeof(float)*2);
+	agp_shader_envv(SIZE_STORAGE, sz_s, sizeof(float)*2);
 
 	if (src->transform){
 		struct surface_transform* trans = src->transform;
 		float ev = time_ratio(trans->move.startt, trans->move.endt);
-		arcan_shader_envv(TRANS_MOVE, &ev, sizeof(float));
+		agp_shader_envv(TRANS_MOVE, &ev, sizeof(float));
 
 		ev = time_ratio(trans->rotate.startt, trans->rotate.endt);
-		arcan_shader_envv(TRANS_ROTATE, &ev, sizeof(float));
+		agp_shader_envv(TRANS_ROTATE, &ev, sizeof(float));
 
 		ev = time_ratio(trans->scale.startt, trans->scale.endt);
-		arcan_shader_envv(TRANS_SCALE, &ev, sizeof(float));
+		agp_shader_envv(TRANS_SCALE, &ev, sizeof(float));
 	}
 	else {
 		float ev = 1.0;
-		arcan_shader_envv(TRANS_MOVE, &ev, sizeof(float));
-		arcan_shader_envv(TRANS_ROTATE, &ev, sizeof(float));
-		arcan_shader_envv(TRANS_SCALE, &ev, sizeof(float));
+		agp_shader_envv(TRANS_MOVE, &ev, sizeof(float));
+		agp_shader_envv(TRANS_ROTATE, &ev, sizeof(float));
+		agp_shader_envv(TRANS_SCALE, &ev, sizeof(float));
 	}
 }
 
@@ -4006,7 +4006,7 @@ static inline void draw_colorsurf(struct rendertarget* dst,
 	float* mvm = NULL;
 
 	setup_surf(dst, &prop, src, &mvm);
-	arcan_shader_forceunif("obj_col", shdrvec3, (void*) &cval, false);
+	agp_shader_forceunif("obj_col", shdrvec3, (void*) &cval, false);
 	agp_draw_vobj(-prop.scale.x,
 		-prop.scale.y, prop.scale.x,
 		prop.scale.y, NULL, mvm);
@@ -4096,7 +4096,7 @@ static inline void populate_stencil(struct rendertarget* tgt,
 	arcan_vobject* celem, float fract)
 {
 	agp_prepare_stencil();
-	arcan_shader_activate(agp_default_shader(COLOR_2D));
+	agp_shader_activate(agp_default_shader(COLOR_2D));
 
 	if (celem->clip == ARCAN_CLIP_SHALLOW){
 		surface_properties pprops = empty_surface();
@@ -4270,8 +4270,8 @@ static size_t process_rendertarget(
 /* make sure we're in a decent state for 2D */
 	agp_pipeline_hint(PIPELINE_2D);
 
-	arcan_shader_activate(agp_default_shader(BASIC_2D));
-	arcan_shader_envv(PROJECTION_MATR, tgt->projection, sizeof(float)*16);
+	agp_shader_activate(agp_default_shader(BASIC_2D));
+	agp_shader_envv(PROJECTION_MATR, tgt->projection, sizeof(float)*16);
 
 	while (current && current->elem->order >= 0){
 		arcan_vobject* elem = current->elem;
@@ -4324,7 +4324,7 @@ static size_t process_rendertarget(
 			populate_stencil(tgt, elem, fract);
 		}
 
-		arcan_shader_activate( elem->program > 0 ?
+		agp_shader_activate( elem->program > 0 ?
 			elem->program : agp_default_shader(BASIC_2D) );
 
 /* depending on frameset- mode, we may need to split
@@ -4372,7 +4372,7 @@ end3d:
 	current = tgt->first;
 	if (current && current->elem->order < 0 &&
 		arcan_video_display.order3d == ORDER3D_LAST){
-		arcan_shader_activate(agp_default_shader(BASIC_2D));
+		agp_shader_activate(agp_default_shader(BASIC_2D));
 		current = arcan_refresh_3d(tgt->camtag, current, fract);
 		if (current != tgt->first)
 			pc++;
@@ -4527,7 +4527,7 @@ unsigned arcan_vint_refresh(float fract, size_t* ndirty)
  * count towards dirty state.
  */
 	arcan_video_display.dirty +=
-		arcan_shader_envv(FRACT_TIMESTAMP_F, &fract, sizeof(float));
+		agp_shader_envv(FRACT_TIMESTAMP_F, &fract, sizeof(float));
 
 /* rendertargets may be composed on world- output, begin there */
 	for (size_t ind = 0; ind < current_context->n_rtargets; ind++){
@@ -4968,7 +4968,7 @@ void arcan_video_restore_external()
 {
 	platform_video_restore_external();
 	arcan_event_init( arcan_event_defaultctx() );
-	arcan_shader_rebuild_all();
+	agp_shader_rebuild_all();
 	arcan_video_popcontext();
 }
 
@@ -4987,7 +4987,7 @@ void arcan_video_shutdown()
 	while ( lastctxc != (lastctxa = arcan_video_popcontext()) )
 		lastctxc = lastctxa;
 
-	arcan_shader_flush();
+	agp_shader_flush();
 	deallocate_gl_context(current_context, true, NULL);
 	arcan_video_reset_fontcache();
 	agp_rendertarget_clear(NULL);
