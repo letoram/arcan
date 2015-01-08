@@ -594,7 +594,9 @@ set (SHMIF_SOURCES
 # FSRV_SOURCES will be composed of the subgroups
 # We do this because f*** GNU C extensions. Seriously.
 set_property(SOURCE platform/posix/fdpassing.c
-	APPEND PROPERTY COMPILE_FLAGS -w )
+	APPEND PROPERTY COMPILE_FLAGS -w)
+set_property(SOURCE platform/posix/fdpassing.c
+	APPEND PROPERTY COMPILE_DEFINITIONS NONBLOCK_RECV)
 
 FIND_PACKAGE(SSE)
 if (ENABLE_SIMD AND SSE_FOUND)
