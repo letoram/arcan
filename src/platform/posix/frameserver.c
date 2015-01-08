@@ -533,7 +533,9 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 		setsockopt(sockp[1], SOL_SOCKET, SO_NOSIGPIPE, NULL, 0);
 #endif
 		newseg->sockout_fd = sockp[0];
+		errno = 0;
 		arcan_frameserver_pushfd(ctx, sockp[1]);
+		close(sockp[1]);
 	}
 
 	arcan_event keyev = {
