@@ -269,6 +269,11 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey,
 
 /* 1. treat connpath as socket and connect */
 	int sock = socket(AF_UNIX, SOCK_STREAM, 0);
+
+#ifdef __APPLE__
+	setsockopt(sock, SOL_SOCKET, SO_NOSIGPIPE, NULL, 0);
+#endif
+
 	struct sockaddr_un dst = {
 		.sun_family = AF_UNIX
 	};

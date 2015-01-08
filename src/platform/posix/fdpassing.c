@@ -9,6 +9,11 @@
 #include <stdint.h>
 #include "../platform.h"
 
+/* yet another sigh for Mac OSX */
+#ifndef MSG_NOSIGNAL
+#define MSG_NOSIGNAL 0
+#endif
+
 bool arcan_pushhandle(file_handle source, int channel)
 {
 	char empty = '!';

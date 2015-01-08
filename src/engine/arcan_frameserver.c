@@ -171,6 +171,10 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst,
 #define MSG_DONTWAIT 0
 #endif
 
+#ifndef MSG_NOSIGNAL
+#define MSG_NOSIGNAL 0
+#endif
+
 		int sn = 0;
 		if (-1 == send(dst->sockout_fd, &sn, sizeof(int),
 			MSG_DONTWAIT | MSG_NOSIGNAL) && errno == EPIPE)
