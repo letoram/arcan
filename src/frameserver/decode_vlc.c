@@ -168,7 +168,7 @@ static void audio_play(void *data,
 
 	pthread_mutex_lock(&decctx.rsync);
 	memcpy(decctx.shmcont.audp + decctx.shmcont.addr->abufused, samples, nb);
-		decctx.shmcont.addr->abufused += nb;
+	decctx.shmcont.addr->abufused += nb;
 	pthread_mutex_unlock(&decctx.rsync);
 
 	if (decctx.fft_audio){
@@ -204,7 +204,7 @@ static void* video_lock(void* ctx, void** planes)
 
 static void video_display(void* ctx, void* picture)
 {
-	if (decctx.shmcont.addr->abufused > 0)
+	if (decctx.shmcont.addr->abufused)
 		arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGAUD | SHMIF_SIGVID);
 	else
 		arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGVID);
@@ -347,7 +347,8 @@ static void process_inevq()
  * */
 		break;
 
-		case TARGET_COMMAND_FDTRANSFER:
+/*
+ * case TARGET_COMMAND_FDTRANSFER:
 		{
 #if _WIN32
 			libvlc_media_t* media = libvlc_media_new_fd(
@@ -355,12 +356,13 @@ static void process_inevq()
 				(intptr_t)frameserver_readhandle(&ev), _O_APPEND));
 #else
 			libvlc_media_t* media = libvlc_media_new_fd(
-				decctx.vlc, arcan_fetchhandle(decctx.shmcont.dpipe));
+				decctx.vlc, dup(ev.tgt.ioevs[0].iv));
 #endif
 			libvlc_media_player_set_media(decctx.player, media);
 			libvlc_media_release(media);
 		}
 		break;
+ */
 
 		case TARGET_COMMAND_EXIT:
 			decctx.shmcont.addr->dms = false;
@@ -387,14 +389,8 @@ int arcan_frameserver_decode_run(
 {
 	libvlc_media_t* media = NULL;
 
-	if (!cont){
+	if (!cont || !args){
 		dump_help();
-		return EXIT_FAILURE;
-	}
-
-/* connect to display server */
-	if (!args){
-		LOG("Error decoding arguments (see ARCAN_ARG env), giving up.\n");
 		return EXIT_FAILURE;
 	}
 

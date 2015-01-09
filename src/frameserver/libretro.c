@@ -133,7 +133,6 @@ static struct {
 /* SHM- API input /output */
 	struct arcan_shmif_cont shmcont;
 	int graphmode;
-	file_handle last_fd; /* state management */
 
 /* internal resampling */
 	int16_t* audbuf;
@@ -338,7 +337,7 @@ static void libretro_xrgb888_rgba(const uint32_t* data, uint32_t* outp,
 			if (retroctx.ntscconv)
 				*interm++ = RGB565(quad[2], quad[1], quad[0]);
 			else
-				*outp++ = RGBA(quad[0] << 16, quad[1] << 8, quad[2], 0xff);
+				*outp++ = RGBA(quad[2], quad[1], quad[0], 0xff);
 		}
 
 		data += pitch >> 2;
@@ -985,7 +984,8 @@ static inline int16_t libretro_inputmain(unsigned port, unsigned dev,
 static void enable_graphseg(int id, const char* key)
 {
 	struct arcan_shmif_cont cont =
-		arcan_shmif_acquire(key, SEGID_DEBUG, SHMIF_DISABLE_GUARD);
+		arcan_shmif_acquire(&retroctx.shmcont,
+			key, SEGID_DEBUG, SHMIF_DISABLE_GUARD);
 
 	if (!cont.addr){
 		LOG("segment transfer failed in (%d:%s), investigate.\n", id, key );
@@ -1175,14 +1175,6 @@ static inline void targetev(arcan_event* ev)
 			retroctx.reset();
 		break;
 
-/* FD transfer has different behavior on Win32 vs UNIX,
- * Win32 has a handle attribute that directly is set as the latest active FD,
- * for UNIX, we read it from the socket connection we have */
-		case TARGET_COMMAND_FDTRANSFER:
-			retroctx.last_fd = arcan_fetchhandle(retroctx.shmcont.dpipe);
-			LOG("descriptor transferred, %d\n", retroctx.last_fd);
-		break;
-
 		case TARGET_COMMAND_GRAPHMODE:
 			if (retroctx.sync_data)
 				retroctx.sync_data->free(&retroctx.sync_data);
@@ -1245,9 +1237,6 @@ static inline void targetev(arcan_event* ev)
 		case TARGET_COMMAND_NEWSEGMENT:
 			if (retroctx.graph_pending ==	tgt->ioevs[1].iv)
 				enable_graphseg(tgt->ioevs[0].iv, tgt->message);
-
-			close(retroctx.last_fd);
-			retroctx.last_fd = 0;
 		break;
 
 /* any event not being UNPAUSE is ignored, no frames are processed
@@ -1286,62 +1275,57 @@ static inline void targetev(arcan_event* ev)
 
 /* store / rewind operate on the last FD set through FDtransfer */
 		case TARGET_COMMAND_STORE:
-			if (BADID != retroctx.last_fd){
-				size_t dstsize = retroctx.serialize_size();
-				void* buf;
-				if (dstsize && ( buf = malloc( dstsize ) )){
+		{
+			size_t dstsize = retroctx.serialize_size();
+			void* buf;
+			if (dstsize && ( buf = malloc( dstsize ) )){
 
-					if ( retroctx.serialize(buf, dstsize) ){
-						frameserver_dumprawfile_handle( buf, dstsize,
-							retroctx.last_fd, true );
-						retroctx.last_fd = BADID;
-					} else
-						LOG("serialization failed.\n");
+				if ( retroctx.serialize(buf, dstsize) ){
+					frameserver_dumprawfile_handle( buf, dstsize,
+						ev->tgt.ioevs[0].iv, true );
+				} else
+					LOG("serialization failed.\n");
 
-					free(buf);
-				}
-			}
-			else
-				LOG("snapshot store requested without	any viable target.\n");
-		break;
-
-		case TARGET_COMMAND_RESTORE:
-			if (BADID != retroctx.last_fd){
-				ssize_t dstsize = retroctx.serialize_size();
-				size_t ntc = dstsize;
-				void* buf;
-
-			if (dstsize && (buf = malloc(dstsize))){
-				char* dst = buf;
-				while (ntc){
-					ssize_t nr = read(retroctx.last_fd, dst, ntc);
-					if (nr == -1){
-						if (errno != EINTR && errno != EAGAIN)
-							break;
-						else
-							continue;
-					}
-
-					dst += nr;
-					ntc -= nr;
-				}
-
-				if (ntc == 0){
-					retroctx.deserialize( buf, dstsize );
-					reset_timing(true);
-				}
-				else
-					LOG("failed restoring from snapshot (%s)\n", strerror(errno));
-
-				close(retroctx.last_fd);
-				retroctx.last_fd = BADID;
 				free(buf);
 			}
 			else
-				LOG("restore requested but core does not support savestates\n");
+				LOG("snapshot store requested without	any viable target.\n");
+		}
+		break;
+
+		case TARGET_COMMAND_RESTORE:
+		{
+			ssize_t dstsize = retroctx.serialize_size();
+			size_t ntc = dstsize;
+			void* buf;
+
+		if (dstsize && (buf = malloc(dstsize))){
+			char* dst = buf;
+			while (ntc){
+				ssize_t nr = read(ev->tgt.ioevs[0].iv, dst, ntc);
+				if (nr == -1){
+					if (errno != EINTR && errno != EAGAIN)
+						break;
+					else
+						continue;
+				}
+
+				dst += nr;
+				ntc -= nr;
+			}
+
+			if (ntc == 0){
+				retroctx.deserialize( buf, dstsize );
+				reset_timing(true);
+			}
+			else
+				LOG("failed restoring from snapshot (%s)\n", strerror(errno));
+
+			free(buf);
 		}
 		else
-			LOG("snapshot restore requested without any viable target\n");
+			LOG("restore requested but core does not support savestates\n");
+		}
 		break;
 
 		default:
@@ -1717,7 +1701,6 @@ int arcan_frameserver_libretro_run(
 /* setup frameserver, synchronization etc. */
 		assert(retroctx.avinfo.timing.fps > 1);
 		assert(retroctx.avinfo.timing.sample_rate > 1);
-		retroctx.last_fd = BADID;
 		retroctx.mspf = ( 1000.0 * (1.0 / retroctx.avinfo.timing.fps) );
 
 		retroctx.ntscconv  = false;

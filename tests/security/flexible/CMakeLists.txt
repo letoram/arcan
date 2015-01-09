@@ -48,7 +48,6 @@ SET(SHMIF_SOURCES
 	${ARCAN_SOURCE_DIR}/platform/posix/warning.c
 	${ARCAN_SOURCE_DIR}/platform/posix/time.c
 	${ARCAN_SOURCE_DIR}/platform/posix/sem.c
-	${ARCAN_SOURCE_DIR}/platform/posix/shm.c
 	${ARCAN_SOURCE_DIR}/platform/posix/fdpassing.c
 	${ARCAN_SOURCE_DIR}/shmif/arcan_shmif_control.c
 	${ARCAN_SOURCE_DIR}/shmif/arcan_shmif_interop.c

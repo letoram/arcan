@@ -294,7 +294,9 @@ typedef int (*mode_fun)(struct arcan_shmif_cont*, struct arg_arr*);
 int launch_mode(const char* modestr,
 	mode_fun fptr, enum ARCAN_SEGID id, char* altarg)
 {
-	toggle_logdev(modestr);
+	if (!getenv("ARCAN_FRAMESERVER_DEBUGSTALL"))
+		toggle_logdev(modestr);
+
 	struct arg_arr* arg;
 	struct arcan_shmif_cont con = arcan_shmif_open(id, 0, &arg);
 

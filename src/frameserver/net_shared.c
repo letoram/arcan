@@ -191,7 +191,8 @@ void net_newseg(struct conn_state* conn, int kind, char* key)
 			goto fail;
 	}
 
-	cont->shmcont = arcan_shmif_acquire(key, kind == SEGMENT_TRANSFER ?
+	cont->shmcont = arcan_shmif_acquire(conn->shmcont,
+		key, kind == SEGMENT_TRANSFER ?
 		SEGID_ENCODER : SEGID_MEDIA, SHMIF_DISABLE_GUARD);
 
 	cont->ofs = 0;

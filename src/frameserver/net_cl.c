@@ -154,16 +154,10 @@ static bool client_inevq_process(apr_socket_t* outconn)
 /*
  * new transfer (fsrv<->fsrv) requested
  */
-			case TARGET_COMMAND_FDTRANSFER:
-				clctx.tmphandle = arcan_fetchhandle(clctx.shmcont.dpipe);
-			break;
-
 			case TARGET_COMMAND_STORE:
-				clctx.tmphandle = 0;
 			break;
 
 			case TARGET_COMMAND_RESTORE:
-				clctx.tmphandle = 0;
 			break;
 
 			case TARGET_COMMAND_STEPFRAME:
@@ -397,7 +391,7 @@ int arcan_frameserver_net_client_run(
  */
 #ifdef _WIN32
 #else
-	int sockin_fd = con->dpipe;
+	int sockin_fd = con->epipe;
 
 	if (apr_os_sock_put(
 		&clctx.evsock, &sockin_fd, clctx.mempool) != APR_SUCCESS){

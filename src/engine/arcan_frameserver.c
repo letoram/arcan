@@ -86,9 +86,10 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 	arcan_audio_stop(src->aid);
 	arcan_mem_free(src->audb);
 
-#ifndef _WIN32
-	close(src->sockout_fd);
-#endif
+	if (BADFD != src->dpipe){
+		close(src->dpipe);
+		src->dpipe = BADFD;
+	}
 
 	arcan_video_alterfeed(src->vid, NULL, emptys);
 
@@ -175,10 +176,9 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst,
 #define MSG_NOSIGNAL 0
 #endif
 
-		int sn = 0;
-		if (-1 == send(dst->sockout_fd, &sn, sizeof(int),
-			MSG_DONTWAIT | MSG_NOSIGNAL) && errno == EPIPE)
-			; /* we will poll in _validchild and that will catch this event */
+/* this has the effect of a ping message, when we have moved event
+ * passing to the socket, the data will be mixed in here */
+	arcan_pushhandle(-1, dst->dpipe);
 #endif
 	}
 
@@ -750,6 +750,8 @@ arcan_frameserver* arcan_frameserver_alloc()
 		cookie = arcan_shmif_cookie();
 
 	res->watch_const = 0xdead;
+
+	res->dpipe = BADFD;
 
 	res->playstate = ARCAN_PLAYING;
 	res->flags.alive = true;

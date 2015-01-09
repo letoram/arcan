@@ -251,13 +251,15 @@ int rv = *(dq->front) > *(dq->back) ? dq->eventbuf_sz -
 return rv;
 }
 
-#ifndef ARCAN_LWA
+/*
+ * #ifndef ARCAN_LWA
 int arcan_shmif_enqueue(struct arcan_shmif_cont* ctx,
 	const struct arcan_event* const ev)
 {
 	return arcan_event_enqueue(&ctx->outev, ev);
 }
 #endif
+ */
 
 void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 	enum ARCAN_EVENT_CATEGORY allowed, float saturation, arcan_vobj_id source)
@@ -280,7 +282,8 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 
 /*
  * update / translate to make sure the corresponding frameserver<->lua mapping
- * can be found and tracked, there are also a few events that can be handled here
+ * can be found and tracked, there are also a few events that should be handled
+ * here rather than propagated (bufferstream for instance).
  */
 		if ((inev.category & allowed) == 0 )
 			continue;
@@ -305,7 +308,7 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 					if (tgt->vstream.handle)
 						close(tgt->vstream.handle);
 
-					tgt->vstream.handle = arcan_fetchhandle(tgt->sockout_fd);
+					tgt->vstream.handle = arcan_fetchhandle(tgt->dpipe, false);
 					tgt->vstream.stride = inev.ext.bstream.pitch;
 					tgt->vstream.format = inev.ext.bstream.format;
 				break;

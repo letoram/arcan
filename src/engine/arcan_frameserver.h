@@ -8,24 +8,6 @@
 #define _HAVE_ARCAN_FRAMESERVER
 
 /*
- * Missing;
- *  The resource mapping between main engine and frameservers is
- *  1:1, 1 shmpage segment (associated with one vid,aid pair) etc.
- *
- *  There is a need for children to be able to request new video
- *  blocks and for the running script to accept / reject that,
- *  which essentially becomes a new allocation function.
- *
- *  This means that we also need to refcount such blocks, to
- *  account for the possibility of the child to flag it as a "won't use"
- *  and for the parent to indicate that the associated VID has been removed.
- *
- *  There is also a need to specify "special" storage classes,
- *  in particular sharing GL/GLES textures rather than having
- *  to go the readback approach.
- */
-
-/*
  * The following functions are implemented in the platform layer;
  * arcan_frameserver_validchild,
  * arcan_frameserver_killchild,
@@ -98,7 +80,9 @@ typedef struct arcan_frameserver {
 /* OS- specific, defined in general.h */
 	shm_handle shm;
 	sem_handle vsync, async, esync;
-	file_handle sockout_fd;
+
+	file_handle dpipe;
+
 	process_handle child;
 #if _WIN32
 	DWORD childp;
@@ -223,7 +207,7 @@ arcan_errc arcan_frameserver_resume(arcan_frameserver*);
  * connected, wrong type, OS can't handle transfer or the FD can't be
  * transferred (e.g. stdin) fd will always be closed in this function.
  */
-arcan_errc arcan_frameserver_pushfd(arcan_frameserver*, int fd);
+arcan_errc arcan_frameserver_pushfd(arcan_frameserver*, arcan_event*, int fd);
 
 /*
  * allocate a new frameserver segment, bind it to the same process

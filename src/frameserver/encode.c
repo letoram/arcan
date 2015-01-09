@@ -722,13 +722,13 @@ int arcan_frameserver_encode_run(
 /* nothing happens until the first FDtransfer, and consequtive ones should
  * really only be "useful" in streaming situations, and perhaps not even there,
  * so consider that scenario untested */
-			case TARGET_COMMAND_FDTRANSFER:
+			case TARGET_COMMAND_STORE:
 #ifdef _WIN32
 				recctx.lastfd = _open_osfhandle(
 /* is this actually safe on 64-bit win? */
 					(intptr_t) frameserver_readhandle(&ev), _O_APPEND );
 #else
-				recctx.lastfd = arcan_fetchhandle(recctx.shmcont.dpipe);
+				recctx.lastfd = dup(ev.tgt.ioevs[0].iv);
 #endif
 				LOG("received file-descriptor, setting up encoder.\n");
 				atexit(encoder_atexit);
@@ -765,7 +765,6 @@ int arcan_frameserver_encode_run(
 				arcan_frameserver_stepframe();
 			break;
 
-			case TARGET_COMMAND_STORE:
 			default:
 				return EXIT_SUCCESS;
 			}

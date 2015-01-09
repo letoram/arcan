@@ -398,6 +398,9 @@ int main(int argc, char* argv[])
 		goto error;
 	}
 
+	if (debuglevel > 1)
+		arcan_verify_namespaces(true);
+
 #ifndef _WIN32
 /* pipe to file, socket or launch script based on monitor output,
  * format will be LUA tables with the exception of each cell ending with

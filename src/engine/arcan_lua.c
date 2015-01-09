@@ -733,7 +733,7 @@ static int opennonblock(lua_State* ctx)
 
 	arcan_mem_free(path);
 
-	if (fd <= 0){
+	if (fd < 0){
 		LUA_ETRACE("open_nonblock", "couldn't open file");
 		return 0;
 	}
@@ -925,7 +925,7 @@ static int bufread(lua_State* ctx, struct nonblock_io* ib)
 {
 	size_t buf_sz = sizeof(ib->buf) / sizeof(ib->buf[0]);
 
-	if (!ib || ib->fd <= 0)
+	if (!ib || ib->fd < 0)
 		return 0;
 
 	size_t bufch = bufcheck(ctx, ib);
@@ -1013,7 +1013,7 @@ static int readrawresource(lua_State* ctx)
 {
 	LUA_TRACE("read_rawresource");
 
-	if (lua_ctx_store.rawres.fd <= 0){
+	if (lua_ctx_store.rawres.fd < 0){
 		LUA_ETRACE("read_rawresource", "no open file");
 		return 0;
 	}
@@ -5186,7 +5186,8 @@ static int targetbond(lua_State* ctx)
 #ifndef WIN32
 	int pair[2];
 	if (pipe(pair) == -1){
-		arcan_warning("bond_target(), pipe pair failed. Reason: %s\n", strerror(errno));
+		arcan_warning("bond_target(), pipe pair failed."
+			" Reason: %s\n", strerror(errno));
 		LUA_ETRACE("bond_target", "pipe failed");
 		return -1;
 	}
@@ -5194,18 +5195,12 @@ static int targetbond(lua_State* ctx)
 	arcan_frameserver* fsrv_a = vobj_a->feed.state.ptr;
 	arcan_frameserver* fsrv_b = vobj_b->feed.state.ptr;
 
-	if (ARCAN_OK == arcan_frameserver_pushfd(fsrv_a, pair[1]) &&
-		ARCAN_OK == arcan_frameserver_pushfd(fsrv_b, pair[0])){
-		arcan_event ev = {
-			.category = EVENT_TARGET,
-			.tgt.kind = TARGET_COMMAND_STORE
-		};
+	arcan_event ev = {.category = EVENT_TARGET, .tgt.kind = TARGET_COMMAND_STORE};
 
-		arcan_frameserver_pushevent(fsrv_a, &ev);
+	arcan_frameserver_pushfd(fsrv_a, &ev, pair[0]);
 
-		ev.tgt.kind = TARGET_COMMAND_RESTORE;
-		arcan_frameserver_pushevent(fsrv_b, &ev);
-	}
+	ev.tgt.kind = TARGET_COMMAND_RESTORE;
+	arcan_frameserver_pushfd(fsrv_b, &ev, pair[1]);
 
 	close(pair[0]);
 	close(pair[1]);
@@ -5245,18 +5240,12 @@ static int targetrestore(lua_State* ctx)
 		return 1;
 	}
 
+	arcan_event ev = {
+		.category = EVENT_TARGET,
+		.tgt.kind = TARGET_COMMAND_RESTORE
+	};
 	arcan_frameserver* fsrv = (arcan_frameserver*) state->ptr;
-	if ( ARCAN_OK == arcan_frameserver_pushfd( fsrv, fd ) ){
-		arcan_event ev = {
-			.category = EVENT_TARGET,
-			.tgt.kind = TARGET_COMMAND_RESTORE
-		};
-
-		arcan_frameserver_pushevent( fsrv, &ev );
-		lua_pushboolean(ctx, true);
-	}
-	else
-		lua_pushboolean(ctx, false);
+	lua_pushboolean(ctx, ARCAN_OK == arcan_frameserver_pushfd(fsrv, &ev, fd));
 	close(fd);
 
 	LUA_ETRACE("restore_target", NULL);
@@ -5421,17 +5410,10 @@ static int targetsnapshot(lua_State* ctx)
 		return 1;
 	}
 
-	if (ARCAN_OK == arcan_frameserver_pushfd(fsrv, fd)){
-		arcan_event ev = {
-			.category = EVENT_TARGET,
-			.tgt.kind = TARGET_COMMAND_STORE
-		};
-
-		arcan_frameserver_pushevent(fsrv, &ev);
-		lua_pushboolean(ctx, true);
-	}
-	else
-		lua_pushboolean(ctx, false);
+	arcan_event ev = {
+		.category = EVENT_TARGET, .tgt.kind = TARGET_COMMAND_STORE
+	};
+	lua_pushboolean(ctx, arcan_frameserver_pushfd(fsrv, &ev, fd));
 
 	LUA_ETRACE("snapshot_target", NULL);
 	return 1;
@@ -6107,7 +6089,10 @@ static int spawn_recfsrv(lua_State* ctx,
 	}
 
 	if (fd){
-		arcan_frameserver_pushfd( mvctx, fd );
+		arcan_event ev = {
+			.category = EVENT_TARGET, .tgt.kind = TARGET_COMMAND_STORE
+		};
+		lua_pushboolean(ctx, arcan_frameserver_pushfd(mvctx, &ev, fd));
 		close(fd);
 	}
 
