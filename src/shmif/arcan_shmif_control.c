@@ -596,7 +596,6 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 	res.cookie = arcan_shmif_cookie();
 
 	if (type == SEGID_ENCODER){
-		arcan_sem_post(res.vsem);
 		((struct shmif_hidden*)res.priv)->output = true;
 	}
 
@@ -756,12 +755,6 @@ void arcan_shmif_signal(struct arcan_shmif_cont* ctx, int mask)
 
 	if ( (mask & SHMIF_SIGAUD) && priv->audio_hook)
 		mask = priv->audio_hook(ctx);
-
-	if (priv->output){
-		ctx->addr->vready = ctx->addr->aready = false;
-		arcan_sem_post(ctx->vsem);
-		return;
-	}
 
 	if ( (mask & SHMIF_SIGVID) && !(mask & SHMIF_SIGAUD)){
 		ctx->addr->vready = true;

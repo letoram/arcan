@@ -404,7 +404,7 @@ int main(int argc, char** argv)
 #ifdef ENABLE_FSRV_LIBRETRO
 	if (strcmp(fsrvmode, "libretro") == 0){
 		return launch_mode("libretro", arcan_frameserver_libretro_run,
-			SEGID_REMOTING, argstr);
+			SEGID_GAME, argstr);
 	}
 #endif
 

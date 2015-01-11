@@ -92,7 +92,6 @@ static struct {
 	unsigned long aframe_ptscnt;
 
 /* for re-using this compilation unit from other frameservers */
-	bool extsynch;
 } recctx;
 
 struct cl_track {
@@ -439,11 +438,8 @@ void arcan_frameserver_stepframe()
 	else
 		while (encode_video(false) > 0);
 
-/* acknowledge that a frame has been consumed,
- * then return to polling events */
 end:
-	if (!recctx.extsynch)
-		arcan_shmif_signal(&recctx.shmcont, SHMIF_SIGVID);
+	recctx.shmcont.addr->vready = false;
 }
 
 static void encoder_atexit()
@@ -667,10 +663,6 @@ static bool setup_ffmpeg_encode(struct arg_arr* args, int desw, int desh)
 			recctx.silence_samples = presilence;
 	}
 
-/* signal that we are ready to receive video frames */
-	if (!recctx.extsynch)
-		arcan_shmif_signal(&recctx.shmcont, SHMIF_SIGVID);
-
 	return true;
 }
 
@@ -747,6 +739,7 @@ int arcan_frameserver_encode_run(
 /* the atexit handler flushes stream buffers and finalizes output headers */
 			case TARGET_COMMAND_EXIT:
 				LOG("(encode) parent requested termination, quitting.\n");
+				return EXIT_SUCCESS;
 			break;
 
 			case TARGET_COMMAND_AUDDELAY:
@@ -762,6 +755,8 @@ int arcan_frameserver_encode_run(
 					recctx.starttime = arcan_timemillis();
 				}
 
+				while(!recctx.shmcont.addr->vready){
+				}
 				arcan_frameserver_stepframe();
 			break;
 
