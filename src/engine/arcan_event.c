@@ -339,7 +339,6 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 
 		arcan_event_enqueue(dstqueue, &inev);
 	}
-
 }
 
 static long unpack_rec_event(char* bytep, size_t sz, arcan_event* tv,

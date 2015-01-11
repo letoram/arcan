@@ -407,12 +407,15 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe(
 		arcan_frameserver_free(state.ptr);
 
 	else if (cmd == FFUNC_TICK){
-/* done differently since we don't care if the frameserver wants
- * to resize, that's its problem. */
+/* done differently since we don't care if the frameserver
+ * wants to resize segments used for recording */
 		if (!arcan_frameserver_control_chld(src)){
 			arcan_frameserver_leave();
    		return FFUNC_RV_NOFRAME;
 		}
+
+		arcan_event_queuetransfer(arcan_event_defaultctx(), &src->inqueue,
+			src->queue_mask, 0.5, src->vid);
 	}
 
 /*
@@ -424,8 +427,7 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe(
  * Audio will keep on buffering until overflow,
  */
 	else if (cmd == FFUNC_READBACK){
-		if ( (src->flags.explicit && arcan_sem_wait(src->vsync) == 0) ||
-			(!src->flags.explicit && arcan_sem_trywait(src->vsync) == 0)){
+		if (!src->shm.ptr->vready){
 			memcpy(src->vidp, buf, s_buf);
 			if (src->ofs_audb){
 					memcpy(src->audp, src->audb, src->ofs_audb);
@@ -433,16 +435,19 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe(
 					src->ofs_audb = 0;
 			}
 
-/* it is possible that we deliver more videoframes than we can legitimately
- * encode in the target framerate, it is up to the frameserver
- * to determine when to drop and when to double frames */
+/*
+ * it is possible that we deliver more videoframes than we can legitimately
+ * encode in the target framerate, it is up to the frameserver to determine
+ * when to drop and when to double frames
+ */
 			arcan_event ev  = {
 				.tgt.kind = TARGET_COMMAND_STEPFRAME,
 				.category = EVENT_TARGET,
 				.tgt.ioevs[0] = src->vfcount++
 			};
 
-			arcan_event_enqueue(&src->outqueue, &ev);
+			src->shm.ptr->vready = true;
+			arcan_frameserver_pushevent(src, &ev);
 
 			if (src->desc.callback_framestate)
 				emit_deliveredframe(src, 0, src->desc.framecount++);
@@ -637,13 +642,14 @@ arcan_errc arcan_frameserver_audioframe_direct(arcan_aobj* aobj,
 
 void arcan_frameserver_tick_control(arcan_frameserver* src)
 {
-	if (!arcan_frameserver_enter(src) ||
-		!arcan_frameserver_control_chld(src) || !src || !src->shm.ptr)
+	if (!arcan_frameserver_control_chld(src) || !src || !src->shm.ptr)
 		goto leave;
 
-/* only allow the two categories below, and only let the
- * internal event queue be filled to half in order to not
- * have a crazy frameserver starve the main process */
+/*
+ * Only allow the two categories below, and only let the internal event
+ * queue be filled to half in order to not have a crazy frameserver starve
+ * the main process.
+ */
 	arcan_event_queuetransfer(arcan_event_defaultctx(), &src->inqueue,
 		src->queue_mask, 0.5, src->vid);
 
