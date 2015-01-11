@@ -119,21 +119,9 @@ enum ARCAN_TARGET_COMMAND {
 	TARGET_COMMAND_COREOPT,
 
 /*
- * This event is a setup for other ones, it merely indicates
- * that the active input descriptor slot for this segment
- * should be retrieved from the OOB data-channel (typically
- * a socket) and stored for later.
- *
- * Used as a prelude to:
- * 	STORE, RESTORE, NEWSEGMENT, BCHUNK_IN, BCHUNK_OUT
- */
-	TARGET_COMMAND_FDTRANSFER,
-
-/*
- * Use the last received descriptor and (de-)serialize internal
- * application state to it. It should be in such a format
- * that state can be restored and possibly transfered between
- * instances of the same program.
+ * Comes with a single descriptor in ioevs[0].iv that should
+ * be dup()ed before next shmif_ call or used immediately
+ * for (user-defined) binary store/restore.
  */
 	TARGET_COMMAND_STORE,
 	TARGET_COMMAND_RESTORE,
@@ -202,6 +190,10 @@ enum ARCAN_TARGET_COMMAND {
  * cookie -- or as an explicit request from the parent that
  * a new window of a certain type should be created (used
  * for image- transfers, debug windows, ...)
+ *
+ * To access this segment, call arcan_shmif_acquire with a
+ * NULL key. This can only be called once for each NEWSEGMENT
+ * event and the user accepts responsibility for the segment.
  */
 	TARGET_COMMAND_NEWSEGMENT,
 

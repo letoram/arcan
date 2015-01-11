@@ -479,7 +479,7 @@ static void map_window(struct arcan_shmif_cont* seg, arcan_evctx* ctx,
 		return;
 	}
 
-	base->conn = arcan_shmif_acquire(key, SEGID_LWA, SHMIF_DISABLE_GUARD);
+	base->conn = arcan_shmif_acquire(seg, key, SEGID_LWA, SHMIF_DISABLE_GUARD);
 	arcan_event ev = {
 		.category = EVENT_VIDEO,
 		.vid.kind = EVENT_VIDEO_DISPLAY_ADDED,
@@ -502,15 +502,6 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
 	while (1 == arcan_shmif_poll(&d->conn, &ev))
 		if (ev.category == EVENT_TARGET)
 		switch(ev.tgt.kind){
-
-/*
- * Currently, FD-transfer has no defined behavior for arcan LWA, one
- * possibility -- is to use it to serialize lua contexts when we have
- * lua-lanes, so that we can define computation in the parent, push it to
- * this context and let it evaluate with access to graphics etc.
- */
-		case TARGET_COMMAND_FDTRANSFER:
-		break;
 
 /*
  * We use subsegments forced from the parent- side as an analog for

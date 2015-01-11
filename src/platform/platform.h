@@ -75,8 +75,8 @@ struct arcan_frameserver* arcan_target_launch_internal(
 );
 
 void arcan_timesleep(unsigned long);
-file_handle arcan_fetchhandle(int insock);
-bool arcan_pushhandle(file_handle in, int channel);
+file_handle arcan_fetchhandle(int insock, bool block);
+bool arcan_pushhandle(int fd, int channel);
 
 bool arcan_isfile(const char*);
 bool arcan_isdir(const char*);

@@ -204,6 +204,8 @@ enum arcan_shmif_sigmask {
 	SHMIF_SIGBLK_ONCE  = 8  /* non-blocking unless already frame pending */
 };
 
+struct shmif_hidden;
+
 /*
  * Tracking context for a frameserver connection,
  * will only be used "locally" with references
@@ -215,6 +217,13 @@ struct arcan_shmif_cont {
  * shmif_ functions so aliasing is not recommended */
 	shmif_pixel* vidp;
 	int16_t* audp;
+
+/*
+ * should only be used for expert I/O multiplexation,
+ * when multiple handles need to be scanned and the
+ * developer taking action based on which ones are available.
+ */
+	file_handle epipe;
 
 /*
  * used in integrity_check, should never be != 0 and that
@@ -229,14 +238,6 @@ struct arcan_shmif_cont {
  * on resize */
 	intptr_t shmh;
 	size_t shmsize;
-
-/*
- * Used on some platforms as a control channel for transferring
- * descriptors. This may refer to the initial socket connection
- * (for external connections) or to a pre-existing descriptor
- * (authorative) with the number conveyed in the environment.
- */
-	file_handle dpipe;
 
 /*
  * handles are exposed in the struct rather than in (priv) but
@@ -263,7 +264,7 @@ struct arcan_shmif_cont {
 	uint64_t cookie;
 
 	void* user; /* tag provided to the user */
-	void* priv; /* used in _control for guard threads etc. */
+	struct shmif_hidden* priv; /* used in _control for guard threads etc. */
 };
 
 typedef enum arcan_shmif_sigmask(
@@ -421,6 +422,7 @@ char* arcan_shmif_connect(const char* connpath,
  * mechanism)
  */
 struct arcan_shmif_cont arcan_shmif_acquire(
+	struct arcan_shmif_cont* parent, /* should only be NULL internally */
 	const char* shmkey,    /* provided in ENV or from shmif_connect below */
 	enum ARCAN_SEGID type, /* archetype, defined in shmif_event.h */
 	enum SHMIF_FLAGS flags, ...

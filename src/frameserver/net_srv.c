@@ -83,10 +83,6 @@ static struct {
 	apr_pool_t* mempool;
 	apr_pollset_t* pollset;
 
-/* intermediate storage (1:1 statechange vs. event msg),
- * this can be transferred to a connection */
-	file_handle tmphandle;
-
 	unsigned n_conn;
 
 	int inport;
@@ -253,27 +249,11 @@ static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 					return false;
 				break;
 
-				case TARGET_COMMAND_FDTRANSFER:
-					srvctx.tmphandle = arcan_fetchhandle(srvctx.shmcont.dpipe);
-				break;
-
-/*
- * ioevs[0] : 1, output (arcan -> frameserver) segment,
- *            implies parents wants to transfer to us.
- *            If we have a pending transfer already,
- *            send a protocol error.
- *
- * ioevs[1] : tag, if we've submitted a request for a new segment,
- *            this tag will help us pin-point which client connection
- *            it was that was accepted ( or rejected )
- */
-				case TARGET_COMMAND_NEWSEGMENT:
-					LOG("new segment arrived, id %d\n", ev.tgt.ioevs[1].iv);
-					net_newseg(lookup_connection(active_cons, nconns,
-						ev.tgt.ioevs[1].iv), ev.tgt.ioevs[0].iv, ev.tgt.message);
-					close(srvctx.tmphandle);
-				 srvctx.tmphandle	= 0;
-				break;
+			case TARGET_COMMAND_NEWSEGMENT:
+				LOG("new segment arrived, id %d\n", ev.tgt.ioevs[1].iv);
+				net_newseg(lookup_connection(active_cons, nconns,
+					ev.tgt.ioevs[1].iv), ev.tgt.ioevs[0].iv, ev.tgt.message);
+			break;
 
 /*
  * parent signalling that the previously mapped segment can be used
@@ -288,13 +268,9 @@ static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 				break;
 
 				case TARGET_COMMAND_STORE:
-/* lookup connection, set state_in or out "fd" member, then add
- * support to populate on loop */
-					srvctx.tmphandle = 0;
 				break;
 
 				case TARGET_COMMAND_RESTORE:
-					srvctx.tmphandle = 0;
 				break;
 
 				default:
@@ -646,7 +622,7 @@ int arcan_frameserver_net_server_run(
 /* for win32, we transfer the first one in the HANDLE of the shmpage */
 #ifdef _WIN32
 #else
-	int sockin_fd = con->dpipe;
+	int sockin_fd = con->epipe;
 	if (apr_os_sock_put(&srvctx.evsock, &sockin_fd,
 		srvctx.mempool) != APR_SUCCESS){
 		LOG("(net) -- Couldn't convert FD socket to APR, giving up.\n");

@@ -69,6 +69,21 @@ struct shmif_hidden {
 
 	bool output;
 
+/*
+ * as we currently don't serialize both events and descriptors
+ * across the socket, we need to track and align the two
+ */
+	struct {
+		bool gotev, consumed;
+		arcan_event ev;
+		file_handle fd;
+	} pev;
+
+	struct {
+		int epipe;
+		char key[256];
+	} pseg;
+
 	struct {
 		bool active;
 		sem_handle semset[3];
@@ -122,6 +137,161 @@ uint64_t arcan_shmif_cookie()
 	base += (uint64_t)offsetof(struct arcan_shmif_page, childevq.back) << 48;
 	base += (uint64_t)offsetof(struct arcan_shmif_page, parentevq.front) << 56;
 	return base;
+}
+
+/*
+ * Is populated and called whenever we get a descriptor or a
+ * descriptor related event. Populates *dst and returns 1 if
+ * we have a matching pair.
+ */
+static void fd_event(struct arcan_shmif_cont* c, struct arcan_event* dst)
+{
+	if (dst->category == EVENT_TARGET &&
+		dst->tgt.kind == TARGET_COMMAND_NEWSEGMENT){
+		c->priv->pseg.epipe = c->priv->pev.fd;
+		c->priv->pev.fd = BADFD;
+		memcpy(c->priv->pseg.key, dst->tgt.message, sizeof(dst->tgt.message));
+	}
+	else{
+		dst->tgt.ioevs[0].iv = c->priv->pev.fd;
+	}
+	c->priv->pev.consumed = true;
+}
+
+static void consume(struct arcan_shmif_cont* c, bool newseg)
+{
+	if (c->priv->pev.consumed){
+		if (!newseg)
+			close(c->priv->pev.fd);
+
+		c->priv->pev.fd = BADFD;
+		c->priv->pev.gotev = false;
+		c->priv->pev.consumed = false;
+	}
+}
+
+int process_events(struct arcan_shmif_cont* c,
+	struct arcan_event* dst, bool blocking)
+{
+	assert(dst);
+	assert(c);
+	int rv = 0;
+	struct arcan_evctx* ctx = &c->inev;
+	volatile int* ks = (volatile int*) ctx->synch.killswitch;
+
+#ifdef ARCAN_SHMIF_THREADSAFE_QUEUE
+	pthread_mutex_lock(&ctx->synch.lock);
+#endif
+
+/* clean up any pending descriptors, ... */
+	consume(c, false);
+
+checkfd:
+/* got a descriptor dependent event, descriptor is on its way */
+	do {
+		if (-1 == c->priv->pev.fd){
+			c->priv->pev.fd = arcan_fetchhandle(c->epipe, blocking);
+		}
+
+		if (c->priv->pev.gotev){
+			if (c->priv->pev.fd > 0){
+				fd_event(c, dst);
+				rv = 1;
+			}
+			goto done;
+		}
+	} while (c->priv->pev.gotev && *ks);
+
+/* event ready, if it is descriptor dependent - wait for that one */
+	if (*ctx->front != *ctx->back){
+		*dst = ctx->eventbuf[ *ctx->front ];
+		*ctx->front = (*ctx->front + 1) % ctx->eventbuf_sz;
+
+/* descriptor dependent events need to be flagged and tracked */
+		if (dst->category == EVENT_TARGET)
+			switch (dst->tgt.kind){
+			case TARGET_COMMAND_STORE:
+			case TARGET_COMMAND_RESTORE:
+			case TARGET_COMMAND_BCHUNK_IN:
+			case TARGET_COMMAND_BCHUNK_OUT:
+			case TARGET_COMMAND_NEWSEGMENT:
+				c->priv->pev.gotev = true;
+				goto checkfd;
+			default:
+			break;
+			}
+
+		rv = 1;
+	}
+	else if (blocking && *ks)
+		goto checkfd;
+
+done:
+#ifdef ARCAN_SHMIF_THREADSAFE_QUEUE
+	pthread_mutex_unlock(&ctx->synch.lock);
+#endif
+
+	return *ks ? rv : -1;
+}
+
+int arcan_shmif_poll(struct arcan_shmif_cont* c, struct arcan_event* dst)
+{
+	return process_events(c, dst, false);
+}
+
+int arcan_shmif_wait(struct arcan_shmif_cont* c, struct arcan_event* dst)
+{
+	return process_events(c, dst, true);
+}
+
+int arcan_shmif_enqueue(struct arcan_shmif_cont* c,
+	const struct arcan_event* const src)
+{
+	assert(c);
+	struct arcan_evctx* ctx = &c->outev;
+
+#ifdef ARCAN_SHMIF_THREADSAFE_QUEUE
+	pthread_mutex_lock(&ctx->synch.lock);
+#endif
+
+	while ( ((*ctx->back + 1) % ctx->eventbuf_sz) == *ctx->front){
+		LOG("arcan_event_enqueue(), going to sleep, eventqueue full\n");
+		arcan_sem_wait(ctx->synch.handle);
+	}
+
+	ctx->eventbuf[*ctx->back] = *src;
+	*ctx->back = (*ctx->back + 1) % ctx->eventbuf_sz;
+
+#ifdef ARCAN_SHMIF_THREADSAFE_QUEUE
+	pthread_mutex_unlock(&ctx->synch.lock);
+#endif
+
+	return 1;
+}
+
+int arcan_shmif_tryenqueue(
+	struct arcan_shmif_cont* c, const arcan_event* const src)
+{
+	assert(c);
+	struct arcan_evctx* ctx = &c->outev;
+
+#ifdef ARCAN_SHMIF_THREADSAFE_QUEUE
+	pthread_mutex_lock(&ctx->synch.lock);
+#endif
+
+	if (((*ctx->front + 1) % ctx->eventbuf_sz) == *ctx->back){
+#ifdef ARCAN_SHMIF_THREADSAFE_QUEUE
+	pthread_mutex_unlock(&ctx->synch.lock);
+#endif
+
+		return 0;
+	}
+
+#ifdef ARCAN_SHMIF_THREADSAFE_QUEUE
+	pthread_mutex_unlock(&ctx->synch.lock);
+#endif
+
+	return arcan_shmif_enqueue(c, src);
 }
 
 #if _WIN32
@@ -360,6 +530,7 @@ static inline bool parent_alive(struct shmif_hidden* gs)
 #endif
 
 struct arcan_shmif_cont arcan_shmif_acquire(
+	struct arcan_shmif_cont* parent,
 	const char* shmkey,
 	enum ARCAN_SEGID type,
 	enum SHMIF_FLAGS flags, ...)
@@ -368,8 +539,25 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 		.vidp = NULL
 	};
 
-/* populate res with addr, semaphores and synch descriptor */
-	map_shared(shmkey, !(flags & SHMIF_DONT_UNLINK), &res);
+	if (!shmkey && (!parent || !parent->priv))
+		return res;
+
+	bool privps = false;
+
+/* different path based on an acquire from a NEWSEGMENT event or if it
+ * comes from a _connect (via _open) call */
+	if (!shmkey){
+		struct shmif_hidden* gs = parent->priv;
+		map_shared(gs->pseg.key, !(flags & SHMIF_DONT_UNLINK), &res);
+		if (!res.addr){
+			close(gs->pseg.epipe);
+			gs->pseg.epipe = BADFD;
+		}
+		privps = true; /* can't set d/e fields yet */
+	}
+	else
+		map_shared(shmkey, !(flags & SHMIF_DONT_UNLINK), &res);
+
 	if (!res.addr){
 		LOG("(arcan_shmif) Couldn't acquire connection through (%s)\n", shmkey);
 
@@ -384,10 +572,22 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 			.dms = (uintptr_t*) &res.addr->dms,
 			.semset = { res.asem, res.vsem, res.esem },
 			.parent = res.addr->parent
-		}
+		},
+		.pev = {.fd = BADFD},
+		.pseg = {.epipe = BADFD},
 	};
 
+/* will also set up and popuplate -> priv */
 	spawn_guardthread(gs, &res, flags & SHMIF_DISABLE_GUARD);
+
+	if (privps){
+		struct shmif_hidden* pp = parent->priv;
+
+		res.epipe = pp->pseg.epipe;
+		pp->pseg.epipe = BADFD;
+		memset(pp->pseg.key, '\0', sizeof(pp->pseg.key));
+		consume(parent, true);
+	}
 
 	arcan_shmif_setevqs(res.addr, res.esem, &res.inev, &res.outev, false);
 	arcan_shmif_calcofs(res.addr, &res.vidp, &res.audp);
@@ -523,7 +723,7 @@ void arcan_shmif_signalhandle(struct arcan_shmif_cont* ctx, int mask,
 void arcan_shmif_signalhandle(struct arcan_shmif_cont* ctx, int mask,
 	int handle, size_t stride, int format, ...)
 {
-	if (!arcan_pushhandle(handle, ctx->dpipe))
+	if (!arcan_pushhandle(handle, ctx->epipe))
 		return;
 
 	struct arcan_event ev = {
@@ -621,6 +821,8 @@ void arcan_shmif_calcofs(struct arcan_shmif_page* shmp,
 void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 {
 	struct shmif_hidden* gstr = inctx->priv;
+
+	close(inctx->epipe);
 
 /* guard thread will clean up on its own */
 	if (gstr->guard.active){
@@ -889,22 +1091,26 @@ struct arcan_shmif_cont arcan_shmif_open(
 			getenv("ARCAN_CONNPATH"), getenv("ARCAN_CONNKEY"), &dpipe);
 	}
 	else {
-		LOG("No arcan-shmif connection, check ARCAN_CONNPATH environment.\n\n");
+		LOG("shmif_open() - No arcan-shmif connection, "
+			"check ARCAN_CONNPATH environment.\n\n");
 		goto fail;
 	}
 
 	if (!keyfile){
-		LOG("No valid connection key found, giving up.\n");
+		LOG("shmif_open() - No valid connection key found, giving up.\n");
 		goto fail;
 	}
 
-	ret = arcan_shmif_acquire(keyfile, type, flags);
+	ret = arcan_shmif_acquire(NULL, keyfile, type, flags);
 	if (resource)
 		*outarg = arg_unpack(resource);
 	else
 		*outarg = NULL;
 
-	ret.dpipe = dpipe;
+	ret.epipe = dpipe;
+	if (-1 == ret.epipe)
+		LOG("shmif_open() - Could not retrieve event- pipe from parent.\n");
+
 	return ret;
 
 fail:
