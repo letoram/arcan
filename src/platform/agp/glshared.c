@@ -567,8 +567,11 @@ void agp_submit_mesh(struct mesh_storage_t* base, enum agp_mesh_flags fl)
 			else
 				glDrawArrays(GL_TRIANGLES, 0, base->n_vertices);
 		}
-		else if (base->type == AGP_MESH_POINTCLOUD)
+		else if (base->type == AGP_MESH_POINTCLOUD){
+			glEnable(GL_VERTEX_PROGRAM_POINT_SIZE);
 			glDrawArrays(GL_POINTS, 0, base->n_vertices);
+			glDisable(GL_VERTEX_PROGRAM_POINT_SIZE);
+		}
 
 		for (size_t i = 0; i < sizeof(attribs) / sizeof(attribs[0]); i++)
 			if (attribs[i] != -1)
