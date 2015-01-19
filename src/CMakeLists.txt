@@ -340,6 +340,10 @@ endif()
 
 set(PLATFORM_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/platform)
 
+if (GLOBAL_CFLAGS)
+	add_definitions(${GLOBAL_CFLAGS})
+endif()
+
 if (ENABLE_LIBRETRO3D AND NOT ENABLE_LWA)
 	message("Libretro3D requires LWA build but none- was specified, disabling.")
 	set(ENABLE_LIBRETRO3D OFF)

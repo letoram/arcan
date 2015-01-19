@@ -1336,7 +1336,7 @@ void platform_video_synch(uint64_t tick_count, float fract,
 	struct dispout* d;
 	int i = 0;
 
-	arcan_shader_activate(agp_default_shader(BASIC_2D));
+	agp_shader_activate(agp_default_shader(BASIC_2D));
 	agp_blendstate(BLEND_NONE);
 
 	while ( (d = get_display(i++)) )
@@ -1585,7 +1585,7 @@ static void draw_display(struct dispout* d)
 		txcos = vobj->txcos ? vobj->txcos : arcan_video_display.default_txcos;
 	}
 
-	arcan_shader_envv(PROJECTION_MATR, d->projection, sizeof(float)*16);
+	agp_shader_envv(PROJECTION_MATR, d->projection, sizeof(float)*16);
 	agp_draw_vobj(0, 0, d->display.mode->hdisplay,
 		d->display.mode->vdisplay, txcos, NULL);
 
