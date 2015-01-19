@@ -832,10 +832,8 @@ static inline void tblbool(lua_State* ctx, char* k, bool v, int top){
 	lua_rawset(ctx, top);
 }
 
-static void slimpush(char* dst, char ulim, char* inmsg)
+static inline void slimpush(char* dst, char ulim, char* inmsg)
 {
-	ulim--;
-
 	while (*inmsg && ulim--)
 		*dst++ = *inmsg++;
 
@@ -3209,9 +3207,9 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			break;
 
 			case EVENT_EXTERNAL_STREAMINFO:
-				slimpush(mcbuf, sizeof(ev->ext.streaminf.message) /
-					sizeof(ev->ext.streamstat.timestr[0]),
-					(char*)ev->ext.streamstat.timestr);
+				slimpush(mcbuf, sizeof(ev->ext.streaminf.langid) /
+					sizeof(ev->ext.streaminf.langid[0]),
+					(char*)ev->ext.streaminf.langid);
 				tblstr(ctx, "kind", "streaminfo", top);
 				tblstr(ctx, "lang", mcbuf, top);
 				tblnum(ctx, "streamid", ev->ext.streaminf.streamid, top);
