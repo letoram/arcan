@@ -5761,7 +5761,7 @@ static void procimage_buildhisto(struct rn_userdata* ud, bool reset)
 			uint8_t rgba[4];
 			RGBA_DECOMP(img[ofs], &rgba[0], &rgba[1], &rgba[2], &rgba[3]);
 
-			ud->bins[rgba[0]]++;
+			ud->bins[  0 + rgba[0]]++;
 			ud->bins[256 + rgba[1]]++;
 			ud->bins[512 + rgba[2]]++;
 			ud->bins[768 + rgba[3]]++;
@@ -5821,14 +5821,21 @@ static int procimage_histo(lua_State* ctx)
 		procimage_buildhisto(ud, reset);
 
 /* normalize and superimpose into storage */
-	float norm = ud->width * ud->height;
+	float n[4] = {1, 1, 1, 1};
+
 	av_pixel* base = (av_pixel*) vobj->vstore->vinf.text.raw;
+	for (size_t j = 0; j < 256; j++){
+		n[0] = ud->bins[j +  0] > n[0] ? ud->bins[j +  0] : n[0];
+		n[1] = ud->bins[j +256] > n[1] ? ud->bins[j +256] : n[1];
+		n[2] = ud->bins[j +512] > n[2] ? ud->bins[j +512] : n[2];
+		n[3] = ud->bins[j +768] > n[3] ? ud->bins[j +768] : n[3];
+	}
 
 	for (size_t j = 0; j < 256; j++){
-		float r = (float)ud->bins[j+  0] / norm * 255.0;
-		float g = (float)ud->bins[j+256] / norm * 255.0;
-		float b = (float)ud->bins[j+512] / norm * 255.0;
-		float a = (float)ud->bins[j+768] / norm * 255.0;
+		float r = (float)ud->bins[j+  0] / n[0] * 255.0;
+		float g = (float)ud->bins[j+256] / n[1] * 255.0;
+		float b = (float)ud->bins[j+512] / n[2] * 255.0;
+		float a = (float)ud->bins[j+768] / n[3] * 255.0;
 		base[j] = RGBA(r,g,b,a);
 	}
 /* forceupdate vobj storage */
