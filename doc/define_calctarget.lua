@@ -19,7 +19,7 @@
 --  a width of >= 256. If noreset is !0, an update on a dirty histogram
 --  calculation will not reset the individual bins, thus values will accumulate.
 -- frequency(bin, [noreset]) => r,g,b,a
---  return non-normalized, per / channel count for a specific bin (0..255)
+--  return normalized, per / channel count for a specific bin (0..255)
 --
 -- @note: The callback will be executed as part of the main loop,
 -- it is paramount that the processing done is kept to a minimum.
