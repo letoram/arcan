@@ -659,15 +659,19 @@ arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx,float maxz,
 	arcan_vobj_id rv = ARCAN_EID;
 	img_cons empty = {0};
 
-	rv = arcan_video_addfobject(ffunc_3d, state, empty, 1);
+/* fail on unsolvable dimension constraints */
+	if ( (maxx < minx || wdens <= 0 || wdens >= maxx - minx) ||
+		(maxz < minz || ddens <= 0 || ddens >= maxz - minz) )
+		return ARCAN_ERRC_BAD_ARGUMENT;
 
+	rv = arcan_video_addfobject(ffunc_3d, state, empty, 1);
 	arcan_3dmodel* newmodel = NULL;
 
 	if (rv == ARCAN_EID)
 		return rv;
 
-	point minp = {.x = minx, .y = y, .z = minz};
-	point maxp = {.x = maxx, .y = y, .z = maxz};
+	point minp = {.x = minx,  .y = y, .z = minz};
+	point maxp = {.x = maxx,  .y = y, .z = maxz};
 	point step = {.x = wdens, .y = 0, .z = ddens};
 
 	newmodel = arcan_alloc_mem(sizeof(arcan_3dmodel), ARCAN_MEM_VTAG,
