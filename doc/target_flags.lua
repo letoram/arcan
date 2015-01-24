@@ -7,6 +7,9 @@
 -- information and control.
 -- Optional *toggle* argument is by default set to on, to turn off a
 -- specific flag, set *toggle* to 0.
+-- @note: flag, TARGET_VSTORE_SYNCH makes sure that there is a local
+-- copy of the buffer that is also uploaded to the GPU. This saves a
+-- readback in cases where direct access to pixel values are needed.
 -- @note: flag, TARGET_SYNCHRONOUS blocks CPU<->GPU transfers until
 -- the transfer has been marked as completed. This will stall the
 -- rendering pipeline and possibly incur a heavy performance impact.

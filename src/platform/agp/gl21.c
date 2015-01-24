@@ -148,7 +148,7 @@ void agp_drop_vstore(struct storage_info_t* s)
 		glDeleteBuffers(1, &s->vinf.text.wid);
 }
 
-static void pbo_stream(struct storage_info_t* s, av_pixel* buf)
+static void pbo_stream(struct storage_info_t* s, av_pixel* buf, bool synch)
 {
 	agp_activate_vstore(s);
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, s->vinf.text.wid);
@@ -160,12 +160,25 @@ static void pbo_stream(struct storage_info_t* s, av_pixel* buf)
 	if (!ptr)
 		return;
 
+	av_pixel* obuf = buf;
+
 /* note, explicitly replace with a simd unaligned version */
  	if ( ((uintptr_t)ptr % 16) == 0 && ((uintptr_t)buf % 16) == 0	)
 		memcpy(ptr, buf, ntc * GL_PIXEL_BPP);
 	else
 		for (size_t i = 0; i < ntc; i++)
 			*ptr++ = *buf++;
+
+	if (synch){
+		buf = obuf;
+		ptr = s->vinf.text.raw;
+
+ 		if ( ((uintptr_t)ptr % 16) == 0 && ((uintptr_t)buf % 16) == 0	)
+			memcpy(ptr, buf, ntc * GL_PIXEL_BPP);
+		else
+			for (size_t i = 0; i < ntc; i++)
+				*ptr++ = *buf++;
+	}
 
 	glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
 	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, s->w, s->h,
@@ -186,32 +199,46 @@ static inline void setup_unpack_pbo(struct storage_info_t* s, void* buf)
 	agp_deactivate_vstore();
 }
 
+static void alloc_buffer(struct storage_info_t* s)
+{
+	if (s->vinf.text.s_raw != s->w * s->h * GL_PIXEL_BPP){
+		arcan_mem_free(s->vinf.text.raw);
+		s->vinf.text.raw = NULL;
+	}
+
+	if (!s->vinf.text.raw){
+		s->vinf.text.s_raw = s->w * s->h * GL_PIXEL_BPP;
+		s->vinf.text.raw = arcan_alloc_mem(s->vinf.text.s_raw,
+			ARCAN_MEM_VBUFFER, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
+	}
+}
+
 struct stream_meta agp_stream_prepare(struct storage_info_t* s,
 		struct stream_meta meta, enum stream_type type)
 {
 	struct stream_meta res = meta;
 	res.state = true;
+	res.type = type;
 
 	switch (type){
 	case STREAM_RAW:
 		if (!s->vinf.text.wid)
 			setup_unpack_pbo(s, NULL);
 
-		if (!s->vinf.text.raw){
-			s->vinf.text.s_raw = s->w * s->h * GL_PIXEL_BPP;
-			s->vinf.text.raw = arcan_alloc_mem(s->vinf.text.s_raw,
-				ARCAN_MEM_VBUFFER, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
-		}
+		alloc_buffer(s);
 
 		res.buf = s->vinf.text.raw;
 		res.state = res.buf != NULL;
 	break;
 
+	case STREAM_RAW_DIRECT_COPY:
+		alloc_buffer(s);
+
 	case STREAM_RAW_DIRECT:
 		if (!s->vinf.text.wid)
 			setup_unpack_pbo(s, meta.buf);
 
-		pbo_stream(s, meta.buf);
+		pbo_stream(s, meta.buf, type == STREAM_RAW_DIRECT_COPY);
 	break;
 
 	case STREAM_RAW_DIRECT_SYNCHRONOUS:
@@ -234,14 +261,14 @@ struct stream_meta agp_stream_prepare(struct storage_info_t* s,
 	return res;
 }
 
-void agp_stream_release(struct storage_info_t* s)
+void agp_stream_release(struct storage_info_t* s, struct stream_meta meta)
 {
-	pbo_stream(s, s->vinf.text.raw);
+	pbo_stream(s, s->vinf.text.raw, false);
 	glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, GL_NONE);
 }
 
-void agp_stream_commit(struct storage_info_t* s)
+void agp_stream_commit(struct storage_info_t* s, struct stream_meta meta)
 {
 }
 

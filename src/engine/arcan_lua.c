@@ -22,7 +22,7 @@
  *   Worse still, true / false vs. nil use is terribly inconsistent,
  *   and some functions where the desire had been to force a boolean type
  *   integer options were temporarily used and now we have scripts in the
- *   wild relying in the behavior.
+ *   wild relying on the behavior.
  *
  * - Double, strings and decimal points; some build-time dependencies pull
  *   in other dependencies where some have the audacity to change radix
@@ -334,7 +334,7 @@ static inline intptr_t find_lua_callback(lua_State* ctx)
 	int nargs = lua_gettop(ctx);
 
 	for (size_t i = 1; i <= nargs; i++)
-		if (lua_isfunction(ctx, i)){
+		if (lua_isfunction(ctx, i) && !lua_iscfunction(ctx, i)){
 			lua_pushvalue(ctx, i);
 			return luaL_ref(ctx, LUA_REGISTRYINDEX);
 		}
@@ -5066,8 +5066,10 @@ static int targetseek(lua_State* ctx)
 
 enum target_flags {
 	TARGET_FLAG_SYNCHRONOUS = 0,
-	TARGET_FLAG_NO_ALPHA_UPLOAD = 1,
-	TARGET_FLAG_VERBOSE = 2
+	TARGET_FLAG_NO_ALPHA_UPLOAD,
+	TARGET_FLAG_VERBOSE,
+	TARGET_FLAG_VSTORE_SYNCH,
+	TARGET_FLAG_ENDM
 };
 
 static void updateflag(arcan_vobj_id vid, enum target_flags flag, bool toggle)
@@ -5091,8 +5093,15 @@ static void updateflag(arcan_vobj_id vid, enum target_flags flag, bool toggle)
 		fsrv->desc.callback_framestate = toggle;
 	break;
 
+	case TARGET_FLAG_VSTORE_SYNCH:
+		fsrv->flags.local_copy = toggle;
+	break;
+
 	case TARGET_FLAG_NO_ALPHA_UPLOAD:
 		fsrv->flags.no_alpha_copy = toggle;
+	break;
+
+	case TARGET_FLAG_ENDM:
 	break;
 	}
 
@@ -5103,7 +5112,7 @@ static int targetflags(lua_State* ctx)
 	LUA_TRACE("target_flags");
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
 	enum target_flags flag = luaL_checknumber(ctx, 2);
-	if (flag < TARGET_FLAG_SYNCHRONOUS || flag > TARGET_FLAG_VERBOSE)
+	if (flag < TARGET_FLAG_SYNCHRONOUS || flag >= TARGET_FLAG_ENDM)
 		arcan_fatal("target_flags() unknown flag value (%d)\n", flag);
  	bool toggle = luaL_optnumber(ctx, 3, 1) != 0;
 	updateflag(tgt, flag, toggle);
@@ -5738,7 +5747,7 @@ struct proctarget_src {
 };
 
 struct rn_userdata {
-	void* bufptr;
+	av_pixel* bufptr;
 	int width, height;
 	size_t nelem;
 
@@ -5861,10 +5870,9 @@ static int procimage_get(lua_State* ctx)
 			ud->width, ud->height, x, y);
 	}
 
-	uint8_t* img = ud->bufptr;
-	uint8_t r = img[(y * ud->width + x) * GL_PIXEL_BPP + 0];
-	uint8_t g = img[(y * ud->width + x) * GL_PIXEL_BPP + 1];
-	uint8_t b = img[(y * ud->width + x) * GL_PIXEL_BPP + 2];
+	av_pixel* img = ud->bufptr;
+	uint8_t r,g,b,a;
+	RGBA_DECOMP(img[y * ud->width + x], &r, &g, &b, &a);
 
 	if (luaL_optnumber(ctx, 4, 0) != 0){
 		lua_pushnumber(ctx, (float)(r + g + b) / 3.0);
@@ -5962,6 +5970,54 @@ static enum arcan_ffunc_rv proctarget(enum arcan_ffunc_cmd cmd,
 	ud->valid = false;
 
 	return 0;
+}
+
+static int imagestorage(lua_State* ctx)
+{
+	LUA_TRACE("image_access_storage");
+
+	arcan_vobject* vobj;
+	luaL_checkvid(ctx, 1, &vobj);
+
+	if (vobj->vstore->txmapped != TXSTATE_TEX2D)
+		arcan_fatal("image_access_storage(), referenced object "
+			"must have a textured backing store.");
+
+	if (!vobj->vstore->vinf.text.raw){
+		lua_pushboolean(ctx, false);
+		return 1;
+	}
+
+	if (lua_isfunction(ctx, 2) && !lua_iscfunction(ctx, 2))
+		lua_pushvalue(ctx, 2);
+	else
+		arcan_fatal("image_access_storage(), must specify a valid "
+			"lua function as second argument.");
+
+/*
+ * reuse the calctarget_ approach so that we don't have to
+ * create the convenience and statistics functions and context
+ * again.
+ */
+	struct rn_userdata* ud = lua_newuserdata(ctx, sizeof(struct rn_userdata));
+	memset(ud, '\0', sizeof(struct rn_userdata));
+	ud->bufptr = vobj->vstore->vinf.text.raw;
+	ud->width = vobj->vstore->w;
+	ud->height = vobj->vstore->h;
+	ud->nelem = ud->width * ud->height;
+	ud->valid = true;
+	ud->dirty = true;
+	luaL_getmetatable(ctx, "calcImage");
+	lua_setmetatable(ctx, -2);
+
+	lua_pushnumber(ctx, ud->width);
+	lua_pushnumber(ctx, ud->height);
+
+	wraperr(ctx, lua_pcall(ctx, 3, 0, 0), "proctarget_cb");
+
+	lua_pushboolean(ctx, true);
+	LUA_ETRACE("image_access_storage", NULL);
+	return 1;
 }
 
 static int spawn_recsubseg(lua_State* ctx,
@@ -7819,6 +7875,7 @@ static const luaL_Reg imgfuns[] = {
 {"image_mask_clearall",      clearall           },
 {"image_shader",             setshader          },
 {"image_state",              imagestate         },
+{"image_access_storage",     imagestorage       },
 {"image_sharestorage",       sharestorage       },
 {"cursor_setstorage",        cursorstorage      },
 {"cursor_position",          cursorposition     },
@@ -8005,6 +8062,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"FRAMESERVER_NOLOOP", 1},
 {"TARGET_SYNCHRONOUS", TARGET_FLAG_SYNCHRONOUS},
 {"TARGET_NOALPHA", TARGET_FLAG_NO_ALPHA_UPLOAD},
+{"TARGET_VSTORE_SYNCH", TARGET_FLAG_VSTORE_SYNCH},
 {"TARGET_VERBOSE", TARGET_FLAG_VERBOSE},
 {"RENDERTARGET_NOSCALE", RENDERTARGET_NOSCALE},
 {"RENDERTARGET_SCALE", RENDERTARGET_SCALE},
@@ -8342,7 +8400,6 @@ static inline void dump_vstate(FILE* dst, arcan_vobject* vobj)
 fprintf(dst,
 "vobj.fsrv = {\
 \tlastpts = %lld,\
-\tsocksig = %d,\
 \taudbuf_sz = %d,\
 \taudbuf_used = %d,\
 \tchild_alive = %d,\
@@ -8351,7 +8408,6 @@ fprintf(dst,
 \toutevq_sz = %d,\
 \toutevq_used = %d,",
 	(long long) fsrv->lastpts,
-	(int) fsrv->flags.socksig,
 	(int) fsrv->sz_audb,
 	(int) fsrv->ofs_audb,
 	(int) fsrv->flags.alive,

@@ -32,7 +32,7 @@ void verify_step(struct arcan_shmif_cont* cont)
 				exit(EXIT_FAILURE);
 			}
 
-	arcan_shmif_signal(cont, SHMIF_SIGVID);
+	cont->addr->vready = false;
 }
 
 #ifdef ENABLE_FSRV_AVFEED
@@ -52,6 +52,9 @@ int main(int argc, char** argv)
 		while (arcan_shmif_wait(&cont, &ev)){
 			if (ev.category == EVENT_TARGET)
 			switch (ev.tgt.kind){
+			case TARGET_COMMAND_STEPFRAME:
+				verify_step(&cont);
+			break;
 			case TARGET_COMMAND_EXIT:
 				running = false;
 			break;
