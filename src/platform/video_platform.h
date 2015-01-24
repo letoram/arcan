@@ -436,19 +436,28 @@ void agp_activate_vstore_multi(struct storage_info_t** backing, size_t n);
  * uploads. The semantics is determined by the stream_type and meta:
  */
 enum stream_type {
-	STREAM_RAW,  /* buf will be NULL, call returns NULL (fail) or a pointer to
-								*	a buffer to populate manually and then commit */
+/* buf will be NULL, call returns NULL (fail) or a pointer to
+*	a buffer to populate manually and then commit */
+	STREAM_RAW,
 
-	STREAM_RAW_DIRECT, /* buf will be an av_pixel buffer that matches the
-											*	backing store dimensions */
+/* buf will be an av_pixel buffer that matches the
+ * backing store dimensions */
+	STREAM_RAW_DIRECT,
 
-	STREAM_RAW_DIRECT_SYNCHRONOUS, /* similar to direct but we will block
-                                    until the transfer is complete */
+/* similar to direct but guarantee that the vstore
+ * retains a local copy */
+	STREAM_RAW_DIRECT_COPY,
 
-	STREAM_HANDLE  /* with buf 0, return a handle that can be passed to
-									*	a child or different context that needs to render onwards.
-									*	with buf !0, treat it as a handle that can be used by
-									*	the graphics layer to access an external data source */
+/* similar to DIRECT but will block until the transfer is complete */
+	STREAM_RAW_DIRECT_SYNCHRONOUS,
+
+/*
+ * with buf 0, return a handle that can be passed to
+ * a child or different context that needs to render onwards.
+ * with buf !0, treat it as a handle that can be used by
+ * the graphics layer to access an external data source
+ */
+	STREAM_HANDLE
 };
 
 struct stream_meta {
@@ -456,6 +465,7 @@ struct stream_meta {
 		av_pixel* buf;
 		int64_t handle;
 	};
+	enum stream_type type;
 	bool state;
 };
 
@@ -470,8 +480,8 @@ struct stream_meta {
  */
 struct stream_meta agp_stream_prepare(struct storage_info_t*,
 		struct stream_meta, enum stream_type);
-void agp_stream_commit(struct storage_info_t*);
-void agp_stream_release(struct storage_info_t*);
+void agp_stream_commit(struct storage_info_t*, struct stream_meta);
+void agp_stream_release(struct storage_info_t*, struct stream_meta);
 /*
  * Synchronize a populated backing store with the underlying
  * graphics layer

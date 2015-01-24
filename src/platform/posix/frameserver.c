@@ -563,7 +563,6 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	newseg->launchedtime = arcan_timemillis();
 	newseg->child = ctx->child;
 	newseg->flags.alive = true;
-	newseg->flags.socksig = true;
 
 /* NOTE: should we allow some segments to map events with other masks,
  * or should this be a separate command with a heavy warning? i.e.
@@ -830,7 +829,6 @@ arcan_frameserver* arcan_frameserver_listen_external(const char* key)
  * defaults for an external connection is similar to that of avfeed/libretro
  */
 	res->segid = SEGID_UNKNOWN;
-	res->flags.socksig = false;
 	res->launchedtime = arcan_timemillis();
 	res->child = BROKEN_PROCESS_HANDLE;
 	img_cons cons = {.w = 32, .h = 32, .bpp = 4};

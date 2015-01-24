@@ -96,10 +96,10 @@ typedef struct arcan_frameserver {
 	char* sockaddr;
 
 	struct {
-		bool socksig;
 		bool alive;
 		bool pbo;
 		bool explicit;
+		bool local_copy;
 		bool no_alpha_copy;
 	} flags;
 

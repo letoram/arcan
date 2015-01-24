@@ -218,16 +218,18 @@ static void push_buffer(arcan_frameserver* src,
 			src->vstream.dead = true;
 		}
 		else
-			agp_stream_commit(store);
+			agp_stream_commit(store, stream);
 
 		return;
 	}
 
 /* no-alpha flag was rather dumb, should've been done shader-wise */
 	if (src->flags.no_alpha_copy){
-		av_pixel* wbuf = agp_stream_prepare(store, stream, STREAM_RAW).buf;
-		if (!wbuf)
+		stream = agp_stream_prepare(store, stream, STREAM_RAW);
+		if (!stream.buf)
 			return;
+
+		av_pixel* wbuf = stream.buf;
 
 		size_t np = w * h;
 		for (size_t i = 0; i < np; i++){
@@ -235,15 +237,16 @@ static void push_buffer(arcan_frameserver* src,
 			*wbuf++ = RGBA_FULLALPHA_REPACK(px);
 		}
 
-		agp_stream_release(store);
+		agp_stream_release(store, stream);
 	}
 	else{
 		stream.buf = buf;
 		stream = agp_stream_prepare(store, stream, src->flags.explicit ?
-			STREAM_RAW_DIRECT_SYNCHRONOUS : STREAM_RAW_DIRECT);
+			STREAM_RAW_DIRECT_SYNCHRONOUS : (
+				src->flags.local_copy ? STREAM_RAW_DIRECT_COPY : STREAM_RAW_DIRECT));
 	}
 
-	agp_stream_commit(store);
+	agp_stream_commit(store, stream);
 }
 
 enum arcan_ffunc_rv arcan_frameserver_dummyframe(
@@ -785,7 +788,6 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 
 			ctx->segid    = SEGID_GAME;
 			ctx->sz_audb  = 1024 * 64;
-			ctx->flags.socksig = false;
 			ctx->ofs_audb = 0;
 			ctx->segid = SEGID_GAME;
 			ctx->audb     = arcan_alloc_mem(ctx->sz_audb,
@@ -797,12 +799,10 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
  * different signalling mechanism for flushing events */
 		else if (strcmp(setup.args.builtin.mode, "net-cl") == 0){
 			ctx->segid = SEGID_NETWORK_CLIENT;
-			ctx->flags.socksig = true;
 			ctx->queue_mask = EVENT_EXTERNAL | EVENT_NET;
 		}
 		else if (strcmp(setup.args.builtin.mode, "net-srv") == 0){
 			ctx->segid = SEGID_NETWORK_SERVER;
-			ctx->flags.socksig = true;
 			ctx->queue_mask = EVENT_EXTERNAL | EVENT_NET;
 		}
 
@@ -821,7 +821,6 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 		}
 		else {
 			ctx->segid = SEGID_MEDIA;
-			ctx->flags.socksig = true;
 			ctx->aid = arcan_audio_feed(
 			(arcan_afunc_cb) arcan_frameserver_audioframe_direct, ctx, &errc);
 			ctx->sz_audb  = 1024 * 64;
