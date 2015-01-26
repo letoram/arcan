@@ -146,8 +146,8 @@ bool PLATFORM_SYMBOL(_video_map_display)(
 	return false; /* no multidisplay /redirectable output support */
 }
 
-bool PLATFORM_SYMBOL(_video_specify_mode)(platform_display_id id,
-	platform_mode_id mode_id, struct monitor_mode mode)
+bool PLATFORM_SYMBOL(_video_specify_mode)(
+	platform_display_id disp, struct monitor_mode mode)
 {
 	return false;
 }
@@ -169,11 +169,21 @@ struct monitor_mode* PLATFORM_SYMBOL(_video_query_modes)(
 	return &mode;
 }
 
-platform_display_id* PLATFORM_SYMBOL(_video_query_displays)(size_t* count)
+void PLATFORM_SYMBOL(_video_query_displays)()
 {
-	static platform_display_id id = 0;
-	*count = 1;
-	return &id;
+}
+
+int64_t platform_output_handle(
+	struct storage_info_t* store, enum status_handle* status)
+{
+	*status = ERROR_UNSUPPORTED;
+	return -1;
+}
+
+bool PLATFORM_SYMBOL(_video_map_handle)(
+	struct storage_info_t* dst, int64_t handle)
+{
+	return false;
 }
 
 #define MAP(X, Y) if ((Y = platform_video_gfxsym(X)) == NULL)\

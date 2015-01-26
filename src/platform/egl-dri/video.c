@@ -58,8 +58,9 @@
 #include <fcntl.h>
 #include <assert.h>
 
-#include <drm.h>
-#include <drm_fourcc.h>
+#include <libdrm/drm.h>
+#include <libdrm/drm_mode.h>
+#include <libdrm/drm_fourcc.h>
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
@@ -152,9 +153,9 @@ struct dispout {
 		bool ready;
 		drmModeConnector* con;
 		uint32_t con_id;
-		drmModeEncoder* enc;
 		drmModeModeInfoPtr mode;
 		drmModeCrtcPtr old_crtc;
+		int crtc;
 	} display;
 
 /* v-store mapping, with texture blitting options
@@ -209,6 +210,24 @@ static struct dispout* get_display(size_t index)
 	}
 
 	return NULL;
+}
+
+static void dpms_set(struct dispout* d, int level)
+{
+	drmModePropertyPtr prop;
+	for (size_t i = 0; i < d->display.con->count_props; i++){
+		prop = drmModeGetProperty(d->device->fd, d->display.con->props[i]);
+		if (!prop)
+			continue;
+
+		if (strcmp(prop->name, "DPMS") == 0){
+			drmModeConnectorSetProperty(d->device->fd,
+				d->display.con->connector_id, prop->prop_id, level);
+			i = d->display.con->count_props;
+		}
+
+		drmModeFreeProperty(prop);
+	}
 }
 
 /*
@@ -903,18 +922,14 @@ retry:
 		}
 	}
 /*
- * If no dimensions are specified, grab largest one
+ * If no dimensions are specified, grab the first one.
+ * (according to drm documentation, that should be the most 'fitting')
  */
-	else
-	for (size_t i = 0, area = 0; i < d->display.con->count_modes; i++){
-		drmModeModeInfo* cm = &d->display.con->modes[i];
-		int current_area = cm->hdisplay * cm->vdisplay;
-		if (current_area > area){
-			d->display.mode = cm;
-			d->dispw = cm->hdisplay;
-			d->disph = cm->vdisplay;
-			area = current_area;
-		}
+	else if (d->display.con->count_modes >= 1){
+		drmModeModeInfo* cm = &d->display.con->modes[0];
+		d->display.mode = cm;
+		d->dispw = cm->hdisplay;
+		d->disph = cm->vdisplay;
 	}
 
 	if (!d->display.mode) {
@@ -926,48 +941,40 @@ retry:
 	}
 
 /*
- * Find first encoder matching connector
+ * find encoder and use that to grab CRTC
  */
 	SET_SEGV_MSG("libdrm(), setting matching encoder failed.\n");
-	for (int i = 0; i < res->count_encoders; i++){
-		d->display.enc = drmModeGetEncoder(d->device->fd, res->encoders[i]);
+	bool crtc_found = false;
 
-		if (!d->display.enc)
+	for (int i = 0; i < res->count_encoders; i++){
+		drmModeEncoder* enc = drmModeGetEncoder(d->device->fd, res->encoders[i]);
+		if (!enc)
 			continue;
 
-		if (d->display.enc->encoder_id == d->display.con->encoder_id)
-			break;
+		for (int j = 0; j < res->count_crtcs; j++){
+			if (!(enc->possible_crtcs & (1 << j)))
+				continue;
 
-		drmModeFreeEncoder(d->display.enc);
-		d->display.enc = NULL;
+			d->display.crtc = res->crtcs[j];
+			d->display.old_crtc = drmModeGetCrtc(d->device->fd, enc->crtc_id);
+			arcan_warning("new crtc %d, old: %d\n",
+				d->display.crtc, d->display.old_crtc);
+			i = res->count_encoders;
+			crtc_found = true;
+			break;
+		}
 	}
 
-	if (!d->display.enc){
-		arcan_warning("egl-dri() - could not find a working encoder.\n");
+	if (!crtc_found){
+		arcan_warning("egl-dri() - could not find a working encoder/crtc.\n");
 		drmModeFreeConnector(d->display.con);
 		d->display.con = NULL;
 		drmModeFreeResources(res);
 		return -1;
 	}
 
-	d->display.old_crtc = drmModeGetCrtc(
-		d->device->fd, d->display.enc->crtc_id);
-
-/* Primary display setup, notify about other ones */
-	for (int i = 0; i < res->count_connectors; i++){
-		drmModeConnector* con = drmModeGetConnector(
-			d->device->fd, res->connectors[i]);
-
-		if (con->connection == DRM_MODE_CONNECTED &&
-			con->connector_id != d->display.con->connector_id){
-		}
-
-		if (d->display.con->connection == DRM_MODE_CONNECTED)
-			break;
-
-		drmModeFreeConnector(d->display.con);
-		d->display.con = NULL;
-	}
+/* Primary display setup, notify about other ones (?) */
+	dpms_set(d, DRM_MODE_DPMS_ON);
 
 	drmModeFreeResources(res);
 	return 0;
@@ -1195,9 +1202,7 @@ static void disable_display(struct dispout* d)
 	gbm_surface_destroy(d->buffer.surface);
 	d->buffer.surface = NULL;
 
-	drmModeFreeEncoder(d->display.enc);
 	drmModeFreeConnector(d->display.con);
-	d->display.enc = NULL;
 	d->display.con = NULL;
 
 	if (0 > drmModeSetCrtc(d->device->fd,
@@ -1275,7 +1280,8 @@ bool platform_video_init(uint16_t w, uint16_t h,
 	if (setup_node(&nodes[0], device) != 0)
 		goto cleanup;
 
-	drmSetMaster(nodes[0].fd);
+	if (!getenv("ARCAN_VIDEO_DRM_NOMASTER"))
+		drmSetMaster(nodes[0].fd);
 
 	map_extensions();
 
@@ -1628,7 +1634,7 @@ static void update_display(struct dispout* d)
  * the front buffer properties, we'll flip later */
 	if (!d->buffer.bo){
 		step_fb(d, bo);
-		int rv = drmModeSetCrtc(d->device->fd, d->display.enc->crtc_id,
+		int rv = drmModeSetCrtc(d->device->fd, d->display.crtc,
 			d->buffer.fbid, 0, 0, &d->display.con_id, 1, d->display.mode);
 
 /*		drmModeConnectorSetProperty(d->device->fd, d->display.enc->crtc_id,
@@ -1640,14 +1646,14 @@ static void update_display(struct dispout* d)
 		);
 
 		if (rv < 0){
-			arcan_warning("error setting Crtc for %d:%d(con:%d, buf:%d)\n",
-				d->device->fd, d->display.enc->crtc_id, d->display.con_id,
+			arcan_warning("error (%d) setting Crtc for %d:%d(con:%d, buf:%d)\n",
+				errno, d->device->fd, d->display.crtc, d->display.con_id,
 				d->buffer.fbid
 			);
 		}
 	}
 
-	if (drmModePageFlip(d->device->fd, d->display.enc->crtc_id,
+	if (drmModePageFlip(d->device->fd, d->display.crtc,
 		d->buffer.fbid, DRM_MODE_PAGE_FLIP_EVENT, d)){
 		arcan_fatal("couldn't queue page flip (%s).\n", strerror(errno));
 	}

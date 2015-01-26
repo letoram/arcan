@@ -170,7 +170,7 @@ bool PLATFORM_SYMBOL(_video_init)(uint16_t w, uint16_t h,
 /* can be set by shmif_open/connect if the display-server wants us
  * to explicitly use a certain node */
 	if (!device){
-		device = getenv("ARCAN_SHMIF_PNODE");
+		device = getenv("ARCAN_SHMIF_NODE");
 		if (!device)
 			device = "/dev/dri/renderD128";
 	}
