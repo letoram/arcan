@@ -10,7 +10,7 @@
 function main()
 #ifdef MAIN
 	local test = store_key("test", "result");
-	local value = load_key("test");
+	local value = key_key("test");
 	if (value == "result") then
 		print("OK");
 	end

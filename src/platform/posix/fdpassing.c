@@ -89,7 +89,8 @@ file_handle arcan_fetchhandle(int sockin_fd, bool block)
 	*dfd = -1;
 
 	if (-1 == recvmsg(sockin_fd, &msg,
-		(!block ? MSG_DONTWAIT : 0)| MSG_NOSIGNAL));
+		(!block ? MSG_DONTWAIT : 0)| MSG_NOSIGNAL))
+		;
 
 	int nd = msgbuf.fd[0];
 
