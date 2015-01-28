@@ -180,12 +180,6 @@ int64_t platform_output_handle(
 	return -1;
 }
 
-bool PLATFORM_SYMBOL(_video_map_handle)(
-	struct storage_info_t* dst, int64_t handle)
-{
-	return false;
-}
-
 #define MAP(X, Y) if ((Y = platform_video_gfxsym(X)) == NULL)\
 arcan_warning("couldn't find extension (%s)\n", X);
 
@@ -426,6 +420,12 @@ void PLATFORM_SYMBOL(_video_setsynch)(const char* arg)
 
 		ind += 2;
 	}
+}
+
+bool PLATFORM_SYMBOL(_video_map_handle)(
+	struct storage_info_t* store, int64_t handle)
+{
+	return false;
 }
 
 const char* PLATFORM_SYMBOL(_video_capstr)()

@@ -542,6 +542,18 @@ static bool build_shader(const char* label, GLuint* dprg,
 		failed = true;
 		dump_shaderlog(label, "link", *dprg);
 	}
+	else {
+		glUseProgram(*dprg);
+		int loc = glGetUniformLocation(*dprg, "map_tu0");
+		GLint val = 0;
+
+		if (loc >= 0)
+			glUniform1i(loc, val);
+
+		loc = glGetUniformLocation(*dprg, "map_diffuse");
+		if (loc >= 0)
+			glUniform1i(loc, val);
+	}
 
 	return !failed;
 }
