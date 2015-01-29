@@ -451,6 +451,15 @@ void lua_rectrigger(const char* msg, ...)
 	longjmp(arcanmain_recover_state, 2);
 }
 
+#ifdef _DEBUG
+static void frozen_warning(lua_State* ctx, arcan_vobject* vobj)
+{
+	arcan_warning("access of frozen object (%s):\n",
+		vobj->tracetag? vobj->tracetag : "untagged");
+	dump_call_trace(ctx);
+}
+#endif
+
 static inline arcan_vobj_id luaL_checkaid(lua_State* ctx, int num)
 {
 	return luaL_checknumber(ctx, num);
@@ -1087,7 +1096,7 @@ static inline arcan_vobj_id luaL_checkvid(
 	arcan_vobject* vobj = arcan_video_getobject(res);
 
 	if (vobj && FL_TEST(vobj, FL_FROZEN))
-		abort();
+		frozen_warning(ctx, vobj);
 
 	if (!vobj)
 		arcan_fatal("Bad VID requested (%"PRIxVOBJ") at index (%d)\n", lnum, num);
