@@ -6,7 +6,9 @@
 -- or ignore one or several video frames, especially for non-realtime tasks.
 -- This is handled as events passed on the event-queue, in order to wake
 -- processes that idle or sleep when no event has been received.
--- @note: n_frames (default:1) should be set to 0 > n > INT_MAX.
+-- @note: n_frames (default:1) is a hint, relative to the current position
+-- and the actual behavior is implementation defined in the target frameserver
+-- or internal object.
 -- @note: stepframe can also be used on record and calctargets and will
 -- then force a readback.
 -- @group: targetcontrol

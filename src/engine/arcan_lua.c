@@ -5376,10 +5376,6 @@ static int targetstepframe(lua_State* ctx)
 		qev = false;
 
 	int nframes = luaL_optnumber(ctx, 2, 1);
-	if (nframes <= 0){
-		LUA_ETRACE("stepframe_target", "invalid step value");
-		return 0;
-	}
 
 	if (rtgt && !FL_TEST(rtgt, TGTFL_READING) ){
 		agp_request_readback(rtgt->color->vstore);
