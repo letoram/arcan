@@ -1561,47 +1561,6 @@ static void rescale_origwh(arcan_vobject* dst, float fx, float fy)
 	}
 }
 
-arcan_errc arcan_video_allocframes(arcan_vobj_id id, unsigned char capacity,
-	enum arcan_framemode mode)
-{
-	arcan_vobject* target = arcan_video_getobject(id);
-	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
-
-	if (!target || capacity == 0)
-		return rv;
-
-/* similar restrictions as with sharestore */
-	if (target->vstore->txmapped != TXSTATE_TEX2D)
-		return ARCAN_ERRC_UNACCEPTED_STATE;
-
-	if (FL_TEST(target, FL_CLONE) || FL_TEST(target, FL_PRSIST))
-		return ARCAN_ERRC_CLONE_NOT_PERMITTED;
-
-/* only permit framesets to grow */
-	if (target->frameset){
-		if (target->frameset->n_frames > capacity)
-			return ARCAN_ERRC_UNACCEPTED_STATE;
-	}
-	else
-		target->frameset = arcan_alloc_mem(sizeof(struct vobject_frameset),
-			ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
-
-	target->frameset->n_frames = capacity;
-	target->frameset->frames = arcan_alloc_mem(
-			sizeof(struct storage_info_t) * capacity,
-			ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL
-	);
-
-	for (size_t i = 0; i < capacity; i++){
-		target->frameset->frames[i] = target->vstore;
-		target->vstore->refcount++;
-	}
-
-	target->frameset->mode = mode;
-
-	return ARCAN_OK;
-}
-
 arcan_errc arcan_video_framecyclemode(arcan_vobj_id id, int mode)
 {
 	arcan_vobject* vobj = arcan_video_getobject(id);
@@ -2750,6 +2709,22 @@ static void drop_rtarget(arcan_vobject* vobj)
 	arcan_mem_free(pool);
 }
 
+static void drop_frameset(arcan_vobject* vobj)
+{
+	if (vobj->frameset){
+		if (!FL_TEST(vobj, FL_CLONE)){
+			for (size_t i = 0; i < vobj->frameset->n_frames; i++)
+				arcan_vint_drop_vstore(vobj->frameset->frames[i]);
+
+			arcan_mem_free(vobj->frameset->frames);
+			vobj->frameset->frames = NULL;
+		}
+
+		arcan_mem_free(vobj->frameset);
+		vobj->frameset = NULL;
+	}
+}
+
 /* by far, the most involved and dangerous function in this .o,
  * hence the many safe-guards checks and tracing output,
  * the simplest of objects (just an image or whatnot) should have
@@ -2797,19 +2772,7 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 /* vobj might be a rendertarget itself, so detach all its
  * possible members, free FBO/PBO resources etc. */
 	drop_rtarget(vobj);
-
-	if (vobj->frameset){
-		if (!FL_TEST(vobj, FL_CLONE)){
-			for (size_t i = 0; i < vobj->frameset->n_frames; i++)
-				arcan_vint_drop_vstore(vobj->frameset->frames[i]);
-
-			arcan_mem_free(vobj->frameset->frames);
-			vobj->frameset->frames = NULL;
-		}
-
-		arcan_mem_free(vobj->frameset);
-		vobj->frameset = NULL;
-	}
+	drop_frameset(vobj);
 
 /* populate a pool of cascade deletions, none of this applies to
  * instances as they can only really be part of a rendertarget,
@@ -3056,6 +3019,53 @@ arcan_errc arcan_video_objectrotate3d(arcan_vobj_id id,
 	base->rotate.interp = (fabsf(bv.roll - roll) > 180.0 ||
 		fabsf(bv.pitch - pitch) > 180.0 || fabsf(bv.yaw - yaw) > 180.0) ?
 		nlerp_quat180 : nlerp_quat360;
+
+	return ARCAN_OK;
+}
+
+arcan_errc arcan_video_allocframes(arcan_vobj_id id, unsigned char capacity,
+	enum arcan_framemode mode)
+{
+	arcan_vobject* target = arcan_video_getobject(id);
+	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+
+	if (!target)
+		return rv;
+
+/* similar restrictions as with sharestore */
+	if (target->vstore->txmapped != TXSTATE_TEX2D)
+		return ARCAN_ERRC_UNACCEPTED_STATE;
+
+	if (FL_TEST(target, FL_CLONE) || FL_TEST(target, FL_PRSIST))
+		return ARCAN_ERRC_CLONE_NOT_PERMITTED;
+
+/* special case, de-allocate */
+	if (capacity <= 1){
+		drop_frameset(target);
+		return ARCAN_OK;
+	}
+
+/* only permit framesets to grow */
+	if (target->frameset){
+		if (target->frameset->n_frames > capacity)
+			return ARCAN_ERRC_UNACCEPTED_STATE;
+	}
+	else
+		target->frameset = arcan_alloc_mem(sizeof(struct vobject_frameset),
+			ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
+
+	target->frameset->n_frames = capacity;
+	target->frameset->frames = arcan_alloc_mem(
+			sizeof(struct storage_info_t) * capacity,
+			ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL
+	);
+
+	for (size_t i = 0; i < capacity; i++){
+		target->frameset->frames[i] = target->vstore;
+		target->vstore->refcount++;
+	}
+
+	target->frameset->mode = mode;
 
 	return ARCAN_OK;
 }
