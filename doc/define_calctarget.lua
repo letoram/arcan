@@ -2,35 +2,39 @@
 -- @short: Create an offscreen rendering pipeline with a readback to a callback function.
 -- @inargs: dstvid, vidary, detacharg, scalearg, samplerate, callback
 -- @outargs:
--- @longdescr: This function creates a separate rendering pipeline populated with the set
--- of VIDs passed in the indexed table *vidary*. The output of processing this pipeline
--- will be stored in *dstvid* and issue a readback at *samplerate*. A positive samplerate
--- will retrieve a sample every 'n' logical ticks, a negative samplerate will retrieve a
--- sample every abs(n) rendered frames. If samplerate is set to the special constant
--- READBACK_MANUAL, the stepframe_target function has to be invoked for each time
--- a readback should be issued.
+-- @longdescr: This function creates a separate rendering pipeline populated
+-- with the set of VIDs passed in the indexed table *vidary*. The output of
+-- processing this pipeline will be stored in *dstvid* and issue a readback
+-- at *samplerate*. A positive samplerate will retrieve a sample every 'n'
+-- logical ticks, a negative samplerate will retrieve a sample every abs(n)
+-- rendered frames. If samplerate is set to the special constant
+-- READBACK_MANUAL, the stepframe_target function has to be invoked for each
+-- time a readback should be issued.
 --
 -- The callback will be invoked with three arguments: image, width, height
 -- the following metamethods are valid on image:
 -- get(x, y, [nchannels=3]) => r, g, b
 -- nchannels=1 => lum
--- histogram_impose(dstvid, [noreset])
+-- histogram_impose(dstvid, [mode=HISTOGRAM_SPLIT])
 --  updated the textured storage of dstvid (must be allocated with
---  a width of >= 256. If noreset is !0, an update on a dirty histogram
---  calculation will not reset the individual bins, thus values will accumulate.
--- frequency(bin, [noreset]) => r,g,b,a
+--  a width of >= 256.
+-- frequency(bin, [mode=HISTOGRAM_SPLIT]) => r,g,b,a
 --  return normalized, per / channel count for a specific bin (0..255)
+-- The mode argument for *histogram_impose* and *frequency* can be any of:
+-- HISTOGRAM_SPLIT (treat R, G, B, A channels as separate)
+-- HISTOGRAM_MERGE (treat R, G, B, A as packed and merge into one bin)
+-- HISTOGRAM_MERGE_NOALPHA (treat R, G, B as packed and ignore A)
 --
 -- @note: The callback will be executed as part of the main loop,
 -- it is paramount that the processing done is kept to a minimum.
--- @note: While WORLDID cannot be used directly, creating an indirect association
--- through a null_surface and then image_sharestorage(WORLDID, null_surface) and
--- using that as a source in vidary is entirely possible.
--- @note: setting RENDERTARGET_DETACH as detacharg means that the object will no-longer
--- be associated with the main rendering pipeline.
--- @note: setting RENDERTARGET_SCALE will calculate a transform to maintain relative
--- size and positioning to the main pipeline, even if the storage *dstvid* has different
--- dimensions.
+-- @note: While WORLDID cannot be used directly, creating an indirect
+-- association through a null_surface and then image_sharestorage(WORLDID,
+-- null_surface) and using that as a source in vidary is entirely possible.
+-- @note: setting RENDERTARGET_DETACH as detacharg means that the object will
+-- no-longer be associated with the main rendering pipeline.
+-- @note: setting RENDERTARGET_SCALE will calculate a transform to maintain
+-- relative size and positioning to the main pipeline, even if the storage
+-- *dstvid* has different dimensions.
 -- @note: Using the same object for *dstvid* and as member of *vidary* results
 -- in undefined contents in the offscreen target.
 -- @group: targetcontrol

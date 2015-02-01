@@ -165,7 +165,6 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst,
 		rv = dst->flags.alive && dst->shm.ptr ?
 			(arcan_event_enqueue(&dst->outqueue, ev), ARCAN_OK) :
 			ARCAN_ERRC_UNACCEPTED_STATE;
-
 #ifndef _WIN32
 
 #ifndef MSG_DONTWAIT

@@ -420,6 +420,33 @@ retry:
 	fputc('\n', outf);
 }
 
+/*
+ * version of luaL_checknumber that accepts true/false as numbers
+ */
+static lua_Number luaL_checkbnumber(lua_State* L, int narg)
+{
+	lua_Number d = lua_tonumber(L, narg);
+  if (d == 0 && !lua_isnumber(L, narg)){
+		if (!lua_isboolean(L, narg))
+			luaL_typerror(L, narg, "number or boolean");
+		else
+			d = lua_toboolean(L, narg);
+	}
+	return d;
+}
+
+static lua_Number luaL_optbnumber(lua_State* L, int narg, lua_Number opt)
+{
+	lua_Number d = lua_tonumber(L, narg);
+	if (d == 0 && !lua_isnumber(L, narg)){
+		if (!lua_isboolean(L, narg))
+			d = opt;
+		else
+			d = lua_toboolean(L, narg);
+	}
+	return d;
+}
+
 static void wraperr(struct arcan_luactx* ctx, int errc, const char* src);
 
 void lua_rectrigger(const char* msg, ...)
@@ -710,7 +737,7 @@ static int opennonblock(lua_State* ctx)
 	LUA_TRACE("open_nonblock");
 
 	const char* metatable = NULL;
-	bool wrmode = luaL_optnumber(ctx, 2, 0) != 0;
+	bool wrmode = luaL_optbnumber(ctx, 2, 0);
 	char* path;
 	int fd;
 
@@ -1345,7 +1372,7 @@ static int cycletransform(lua_State* ctx)
 {
 	LUA_TRACE("image_transform_cycle");
 	arcan_vobj_id sid = luaL_checkvid(ctx, 1, NULL);
-	bool flag = luaL_checknumber(ctx, 2) != 0;
+	bool flag = luaL_checkbnumber(ctx, 2);
 
 	arcan_video_transformcycle(sid, flag);
 	LUA_ETRACE("image_transform_cycle", NULL);
@@ -1781,7 +1808,7 @@ static int cursormove(lua_State* ctx)
 	LUA_TRACE("move_cursor");
 	acoord x = luaL_checknumber(ctx, 1);
 	acoord y = luaL_checknumber(ctx, 2);
-	bool clamp = luaL_optnumber(ctx, 3, 0) == 0;
+	bool clamp = luaL_optbnumber(ctx, 3, 0);
 
 	struct monitor_mode mmode = platform_video_dimensions();
 
@@ -1802,7 +1829,7 @@ static int cursornudge(lua_State* ctx)
 	LUA_TRACE("nudge_cursor");
 	acoord x = luaL_checknumber(ctx, 1) + arcan_video_display.cursor.x;
 	acoord y = luaL_checknumber(ctx, 2) + arcan_video_display.cursor.y;
-	bool clamp = luaL_optnumber(ctx, 3, 0) == 0;
+	bool clamp = luaL_optbnumber(ctx, 3, 0);
 
 	struct monitor_mode mmode = platform_video_dimensions();
 
@@ -2001,7 +2028,7 @@ static int settxcos_default(lua_State* ctx)
 
 	arcan_vobject* dst;
 	luaL_checkvid(ctx, 1, &dst);
-	bool mirror = luaL_optinteger(ctx, 2, 0) != 0;
+	bool mirror = luaL_optbnumber(ctx, 2, 0);
 
 	if (!dst->txcos)
 		dst->txcos = arcan_alloc_mem(sizeof(float)*8,
@@ -2200,7 +2227,7 @@ static int pick(lua_State* ctx)
 
 	int x = luaL_checkint(ctx, 1);
 	int y = luaL_checkint(ctx, 2);
-	bool reverse = luaL_optint(ctx, 4, 0) != 0;
+	bool reverse = luaL_optbnumber(ctx, 4, 0);
 	unsigned int limit = luaL_optint(ctx, 3, 8);
 
 	static arcan_vobj_id pickbuf[1024];
@@ -2378,7 +2405,7 @@ static int dofile(lua_State* ctx)
 	LUA_TRACE("system_load");
 
 	const char* instr = luaL_checkstring(ctx, 1);
-	bool dieonfail = luaL_optnumber(ctx, 2, 1) != 0;
+	bool dieonfail = luaL_optbnumber(ctx, 2, 1);
 
 	char* fname = findresource(instr, CAREFUL_USERMASK);
 	int res = 0;
@@ -2404,7 +2431,7 @@ static int targetsuspend(lua_State* ctx)
 	LUA_TRACE("suspend_target");
 
 	arcan_vobj_id vid = luaL_checkvid(ctx, 1, NULL);
-	bool rsusp = luaL_optnumber(ctx, 2, 0) != 0;
+	bool rsusp = luaL_optbnumber(ctx, 2, 0);
 
 	vfunc_state* state = arcan_video_feedstate(vid);
 
@@ -3883,8 +3910,8 @@ static int camtag(lua_State* ctx)
 	float fv  = luaL_optnumber(ctx, 3, 100.0);
 	float fov = luaL_optnumber(ctx, 4, 45.0);
 	ar = luaL_optnumber(ctx, 5, ar);
-	bool front = luaL_optnumber(ctx, 6, true);
-	bool back  = luaL_optnumber(ctx, 7, false);
+	bool front = luaL_optbnumber(ctx, 6, true);
+	bool back  = luaL_optbnumber(ctx, 7, false);
 
 	arcan_errc rv = arcan_3d_camtag(id, nv, fv, ar, fov, front, back);
 
@@ -4361,7 +4388,7 @@ static int imagemipmap(lua_State* ctx)
 {
 	LUA_TRACE("image_mipmap");
 	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
-	bool state = lua_toboolean(ctx, 1);
+	bool state = luaL_checkbnumber(ctx, 1);
 	arcan_video_mipmapset(id, state);
 	LUA_ETRACE("image_mipmap", NULL);
 	return 0;
@@ -5066,7 +5093,6 @@ static int targetseek(lua_State* ctx)
 		ev.tgt.ioevs[1].iv = (int32_t) val;
 	else
 		ev.tgt.ioevs[0].fv = val;
-
 	tgtevent(tgt, ev);
 
 	LUA_ETRACE("target_seek", NULL);
@@ -5123,7 +5149,7 @@ static int targetflags(lua_State* ctx)
 	enum target_flags flag = luaL_checknumber(ctx, 2);
 	if (flag < TARGET_FLAG_SYNCHRONOUS || flag >= TARGET_FLAG_ENDM)
 		arcan_fatal("target_flags() unknown flag value (%d)\n", flag);
- 	bool toggle = luaL_optnumber(ctx, 3, 1) != 0;
+ 	bool toggle = luaL_optbnumber(ctx, 3, 1);
 	updateflag(tgt, flag, toggle);
 	LUA_ETRACE("target_flags", NULL);
 	return 0;
@@ -5133,7 +5159,7 @@ static int targetsynchronous(lua_State* ctx)
 {
 	LUA_TRACE("target_synchronous");
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
- 	bool toggle = luaL_optnumber(ctx, 3, 1) == 1;
+ 	bool toggle = luaL_optbnumber(ctx, 3, 1);
 	updateflag(tgt, TARGET_FLAG_SYNCHRONOUS, toggle);
 	LUA_ETRACE("target_synchronous", NULL);
 	return 0;
@@ -5143,7 +5169,7 @@ static int targetverbose(lua_State* ctx)
 {
 	LUA_TRACE("target_verbose");
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
- 	bool toggle = luaL_optnumber(ctx, 3, 1) == 1;
+ 	bool toggle = luaL_optbnumber(ctx, 3, 1);
 	updateflag(tgt, TARGET_FLAG_VERBOSE, toggle);
 	LUA_ETRACE("target_verbose", NULL);
 	return 0;
@@ -5665,7 +5691,7 @@ static int rendernoclear(lua_State* ctx)
 {
 	LUA_TRACE("rendertarget_noclear");
 	arcan_vobj_id did = luaL_checkvid(ctx, 1, NULL);
-	bool clearfl = lua_toboolean(ctx, 2);
+	bool clearfl = luaL_checkbnumber(ctx, 2);
 
 	lua_pushboolean(ctx,
 		arcan_video_rendertarget_setnoclear(did, clearfl) == ARCAN_OK);
@@ -5741,14 +5767,16 @@ static int renderset(lua_State* ctx)
 	return 0;
 }
 
-enum colorspace {
-	PROC_RGBA = 0,
-	PROC_MONO8 = 1
-};
-
 struct proctarget_src {
 	lua_State* ctx;
 	uintptr_t cbfun;
+};
+
+enum hgram_pack {
+	HIST_DIRTY = 0,
+	HIST_SPLIT = 1,
+	HIST_MERGE,
+	HIST_MERGE_NOALPHA
 };
 
 struct rn_userdata {
@@ -5757,16 +5785,41 @@ struct rn_userdata {
 	size_t nelem;
 
 	unsigned bins[1024];
-	bool valid, dirty;
+	bool valid;
+	enum hgram_pack packing;
 };
 
-static void procimage_buildhisto(struct rn_userdata* ud, bool reset)
+static void packing_lut(enum hgram_pack mode, int* dst)
+{
+	int otbl_separate[4] = {0, 256, 512, 768};
+	int otbl_mergeall[4] = {0,   0,   0,   0};
+	int otbl_mergergb[4] = {0,   0,   0, 768};
+	int* otbl;
+
+/* pick offsets based on desired packing mode */
+	switch (mode){
+	case HIST_DIRTY:
+	case HIST_SPLIT: otbl = otbl_separate; break;
+	case HIST_MERGE: otbl = otbl_mergeall; break;
+	case HIST_MERGE_NOALPHA: otbl = otbl_mergergb; break;
+	}
+
+	memcpy(dst, otbl, sizeof(int) * 4);
+}
+
+static void procimage_buildhisto(struct rn_userdata* ud,
+	enum hgram_pack pack, float* n)
 {
 	av_pixel* img = ud->bufptr;
-	ud->dirty = false;
+	memset(ud->bins, '\0', sizeof(ud->bins));
 
-	if (reset)
-		memset(ud->bins, '\0', 1024 * sizeof(unsigned));
+	int otbl[4];
+	packing_lut(pack, otbl);
+
+	if (ud->packing == pack)
+		goto norm_values;
+
+	ud->packing = pack;
 
 /* populate bins with frequency */
 	for (size_t row = 0; row < ud->height; row++)
@@ -5774,12 +5827,21 @@ static void procimage_buildhisto(struct rn_userdata* ud, bool reset)
 			size_t ofs = row * ud->width + col;
 			uint8_t rgba[4];
 			RGBA_DECOMP(img[ofs], &rgba[0], &rgba[1], &rgba[2], &rgba[3]);
-
-			ud->bins[  0 + rgba[0]]++;
-			ud->bins[256 + rgba[1]]++;
-			ud->bins[512 + rgba[2]]++;
-			ud->bins[768 + rgba[3]]++;
+			ud->bins[otbl[0] + rgba[0]]++;
+			ud->bins[otbl[1] + rgba[1]]++;
+			ud->bins[otbl[2] + rgba[2]]++;
+			ud->bins[otbl[3] + rgba[3]]++;
 		}
+
+/* update limits for each bin, might be used to normalize */
+norm_values:
+	if (n)
+	for (size_t i = 0; i <256; i++){
+		n[0] = n[0] < ud->bins[otbl[0] + i] ? ud->bins[otbl[0] + i] : n[0];
+		n[1] = n[1] < ud->bins[otbl[1] + i] ? ud->bins[otbl[1] + i] : n[1];
+		n[2] = n[2] < ud->bins[otbl[2] + i] ? ud->bins[otbl[2] + i] : n[2];
+		n[3] = n[3] < ud->bins[otbl[3] + i] ? ud->bins[otbl[3] + i] : n[3];
+	}
 }
 
 static int procimage_lookup(lua_State* ctx)
@@ -5787,23 +5849,24 @@ static int procimage_lookup(lua_State* ctx)
 	LUA_TRACE("procimage:frequency");
 	struct rn_userdata* ud = luaL_checkudata(ctx, 1, "calcImage");
 
-	if (ud->valid == false && ud->dirty)
+	ssize_t bin = luaL_checknumber(ctx, 2);
+	if (bin < 0 || bin >= 256)
+		arcan_fatal("calcImage:frequency, invalid bin %d specified (0..255).\n");
+
+	enum hgram_pack pack = luaL_optnumber(ctx, 3, HIST_SPLIT);
+
+/* we can permit out of scope if we have a valid cached packing scheme */
+	if (ud->valid == false && ud->packing != pack)
 		arcan_fatal("calcImage:frequency, calctarget object called "
 			"out of scope.\n");
 
-	ssize_t bin = luaL_checknumber(ctx, 2);
-	if (256 <= bin || 0 > bin)
-		arcan_fatal("calcImage:frequency, invalid bin %d >= 256 specified.\n");
-
-	bool reset = luaL_optnumber(ctx, 3, 0) != 0;
-
-	if (ud->dirty)
-		procimage_buildhisto(ud, reset);
-
-	lua_pushnumber(ctx, ud->bins[bin +   0]);
-	lua_pushnumber(ctx, ud->bins[bin + 256]);
-	lua_pushnumber(ctx, ud->bins[bin + 512]);
-	lua_pushnumber(ctx, ud->bins[bin + 768]);
+	procimage_buildhisto(ud, pack, NULL);
+	int ofs[4];
+	packing_lut(pack, ofs);
+	lua_pushnumber(ctx, ud->bins[ofs[0]]);
+	lua_pushnumber(ctx, ud->bins[ofs[1]]);
+	lua_pushnumber(ctx, ud->bins[ofs[2]]);
+	lua_pushnumber(ctx, ud->bins[ofs[3]]);
 
 	LUA_ETRACE("procimage:frequency", NULL);
 	return 4;
@@ -5813,9 +5876,8 @@ static int procimage_histo(lua_State* ctx)
 {
 	LUA_TRACE("procimage:histogram_impose");
 	struct rn_userdata* ud = luaL_checkudata(ctx, 1, "calcImage");
-	bool reset = luaL_optnumber(ctx, 3, 0) != 0;
 
-	if (ud->valid == false && ud->dirty)
+	if (ud->valid == false)
 		arcan_fatal("calcImage:histogram_impose, "
 			"calctarget object called out of scope\n");
 
@@ -5831,28 +5893,42 @@ static int procimage_histo(lua_State* ctx)
 		arcan_fatal("calcImage:histogram_impose, "
 			"destination vstore width need to be >=256.\n");
 
-	if (ud->dirty)
-		procimage_buildhisto(ud, reset);
-
-/* normalize and superimpose into storage */
-	float n[4] = {1, 1, 1, 1};
-
+/* generate frequency tables, pack, normalize and impose */
+	int packing = luaL_optnumber(ctx, 3, HIST_MERGE);
 	av_pixel* base = (av_pixel*) vobj->vstore->vinf.text.raw;
-	for (size_t j = 0; j < 256; j++){
-		n[0] = ud->bins[j +  0] > n[0] ? ud->bins[j +  0] : n[0];
-		n[1] = ud->bins[j +256] > n[1] ? ud->bins[j +256] : n[1];
-		n[2] = ud->bins[j +512] > n[2] ? ud->bins[j +512] : n[2];
-		n[3] = ud->bins[j +768] > n[3] ? ud->bins[j +768] : n[3];
+	int lut[4];
+	float n[4] = {1, 1, 1, 1};
+	packing_lut(packing, lut);
+
+	if (luaL_optbnumber(ctx, 4, true) != 0)
+		procimage_buildhisto(ud, packing, n);
+	else {
+		procimage_buildhisto(ud, packing, NULL);
+		n[0] = n[1] = n[2] = n[3] = ud->width * ud->height;
 	}
 
-	for (size_t j = 0; j < 256; j++){
-		float r = (float)ud->bins[j+  0] / n[0] * 255.0;
-		float g = (float)ud->bins[j+256] / n[1] * 255.0;
-		float b = (float)ud->bins[j+512] / n[2] * 255.0;
-		float a = (float)ud->bins[j+768] / n[3] * 255.0;
-		base[j] = RGBA(r,g,b,a);
+	switch (packing){
+	case HIST_SPLIT:
+		for (size_t j = 0; j < 256; j++){
+			float r = (float)ud->bins[j + lut[0]] / n[0] * 255.0;
+			float g = (float)ud->bins[j + lut[1]] / n[1] * 255.0;
+			float b = (float)ud->bins[j + lut[2]] / n[2] * 255.0;
+			float a = (float)ud->bins[j + lut[3]] / n[3] * 255.0;
+			base[j] = RGBA(r,g,b,a);
+		}
+	break;
+	case HIST_MERGE:
+	case HIST_MERGE_NOALPHA:
+		for (size_t j = 0; j < 256; j++){
+			uint8_t val = (float)ud->bins[j] / n[0] * 255.0;
+			base[j] = RGBA(val, val, val, 0xff);
+		}
+	break;
+	default:
+		arcan_fatal("calcImage:histogram_impose, unknown packing mode. "
+			"Allowed: HISTOGRAM_(SPLIT, MERGE, MERGE_NOALPHA)\n");
 	}
-/* forceupdate vobj storage */
+
 	agp_update_vstore(vobj->vstore, true);
 
 	LUA_ETRACE("procimage:histogram_impose", NULL);
@@ -5879,17 +5955,25 @@ static int procimage_get(lua_State* ctx)
 	uint8_t r,g,b,a;
 	RGBA_DECOMP(img[y * ud->width + x], &r, &g, &b, &a);
 
-	if (luaL_optnumber(ctx, 4, 0) != 0){
-		lua_pushnumber(ctx, (float)(r + g + b) / 3.0);
-		LUA_ETRACE("procimage:get", NULL);
-		return 1;
-	}	else {
+	int nch = luaL_optnumber(ctx, 4, 1);
+	if (nch <= 0 || nch > 4)
+		arcan_fatal("calcImage:get, invalid number of channels, "
+			"requested: %d, valid(1..4)\n", nch);
+
+	if (nch >= 1)
 		lua_pushnumber(ctx, r);
+
+	if (nch >= 2)
 		lua_pushnumber(ctx, g);
+
+	if (nch >= 3)
 		lua_pushnumber(ctx, b);
-		LUA_ETRACE("procimage:get", NULL);
-		return 3;
-	}
+
+	if (nch >= 4)
+		lua_pushnumber(ctx, a);
+
+	LUA_ETRACE("procimage:get", NULL);
+	return nch;
 }
 
 static enum arcan_ffunc_rv proctarget(enum arcan_ffunc_cmd cmd,
@@ -5959,7 +6043,7 @@ static enum arcan_ffunc_rv proctarget(enum arcan_ffunc_cmd cmd,
 	ud->height = height;
 	ud->nelem = width * height;
 	ud->valid = true;
-	ud->dirty = true;
+	ud->packing = HIST_DIRTY;
 
 	lua_ctx_store.cb_source_kind = CB_SOURCE_IMAGE;
 
@@ -6011,7 +6095,7 @@ static int imagestorage(lua_State* ctx)
 	ud->height = vobj->vstore->h;
 	ud->nelem = ud->width * ud->height;
 	ud->valid = true;
-	ud->dirty = true;
+	ud->packing = HIST_DIRTY;
 	luaL_getmetatable(ctx, "calcImage");
 	lua_setmetatable(ctx, -2);
 
@@ -6641,9 +6725,9 @@ static int forwardmodel(lua_State* ctx)
 	arcan_vobj_id vid = luaL_checkvid(ctx, 1, NULL);
 	float mag = luaL_checknumber(ctx, 2);
 	unsigned int dt = luaL_optint(ctx, 3, 0);
-	bool axismask_x = luaL_optnumber(ctx, 4, 0) != 0;
-	bool axismask_y = luaL_optnumber(ctx, 5, 0) != 0;
-	bool axismask_z = luaL_optnumber(ctx, 6, 0) != 0;
+	bool axismask_x = luaL_optbnumber(ctx, 4, 0);
+	bool axismask_y = luaL_optbnumber(ctx, 5, 0);
+	bool axismask_z = luaL_optbnumber(ctx, 6, 0);
 
 	surface_properties prop = arcan_video_current_properties(vid);
 
@@ -6729,7 +6813,7 @@ static int shader_uniform(lua_State* ctx)
 	int sid = abs((int)luaL_checknumber(ctx, 1));
 	const char* label = luaL_checkstring(ctx, 2);
 	const char* fmtstr = luaL_checkstring(ctx, 3);
-	bool persist = luaL_checknumber(ctx, 4) != 0;
+	bool persist = luaL_checkbnumber(ctx, 4);
 
 	if (agp_shader_activate(sid) != ARCAN_OK){
 		arcan_warning("shader_uniform(), shader (%d) failed"
@@ -7062,7 +7146,7 @@ static int inputanalogquery(lua_State* ctx)
 	int devid = 0, resind = 1;
 	int devnum = luaL_optnumber(ctx, 1, -1);
 	int axnum = abs((int)luaL_optnumber(ctx, 2, 0));
-	bool rescan = luaL_optnumber(ctx, 3, 0) != 0;
+	bool rescan = luaL_optbnumber(ctx, 3, 0);
 
  	if (rescan)
 		platform_event_rescan_idev(arcan_event_defaultctx());
@@ -7118,8 +7202,8 @@ static int inputanalogtoggle(lua_State* ctx)
 {
 	LUA_TRACE("inputanalog_toggle");
 
-	bool val = lua_tonumber(ctx, 1) != 0;
-	bool mouse = luaL_optnumber(ctx, 2, 0) != 0;
+	bool val = luaL_checkbnumber(ctx, 1);
+	bool mouse = luaL_optbnumber(ctx, 2, 0);
 
 	platform_event_analogall(val, mouse);
 
@@ -7141,7 +7225,7 @@ static int screenshot(lua_State* ctx)
 	const char* const resstr = luaL_checkstring(ctx, 1);
 	arcan_vobj_id sid = ARCAN_EID;
 
-	bool flip = luaL_optnumber(ctx, 2, 0) != 0;
+	bool flip = luaL_optbnumber(ctx, 2, 0);
 
 	if (luaL_optnumber(ctx, 3, ARCAN_EID) != ARCAN_EID){
 		sid = luaL_checkvid(ctx, 3, NULL);
@@ -8109,6 +8193,9 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"ALL_RESOURCES", DEFAULT_USERMASK},
 {"API_VERSION_MAJOR", 0},
 {"API_VERSION_MINOR", 8},
+{"HISTOGRAM_SPLIT", HIST_SPLIT},
+{"HISTOGRAM_MERGE", HIST_MERGE},
+{"HISTOGRAM_MERGE_NOALPHA", HIST_MERGE_NOALPHA},
 {"LAUNCH_EXTERNAL", 0},
 {"LAUNCH_INTERNAL", 1},
 {"HINT_NONE", HINT_NONE},
