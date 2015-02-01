@@ -56,5 +56,5 @@ function histoview()
 end
 
 function readback(tbl, w, h)
-	tbl:histogram_impose(histogram);
+	tbl:histogram_impose(histogram, HISTOGRAM_SPLIT, false);
 end
