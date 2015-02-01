@@ -103,7 +103,6 @@ static const struct option longopts[] = {
 	{ "stderr",       required_argument, NULL, '2'},
 	{ "monitor",      required_argument, NULL, 'M'},
 	{ "monitor-out",  required_argument, NULL, 'O'},
-	{ "monitor-in",   required_argument, NULL, 'I'},
 	{ "version",      no_argument,       NULL, 'V'},
 	{ NULL,           no_argument,       NULL,  0 }
 };
@@ -123,8 +122,12 @@ printf("Usage: arcan [-whfmWMOqspBtHbdgaSV] applname "
 #endif
 "-q\t--timedump    \twait n ticks, dump snapshot to resources/logs/timedump\n"
 "-s\t--windowed    \ttoggle borderless window mode\n"
-"-p\t--rpath       \tchange default searchpath for shared resources\n"
+#ifdef DISABLE_FRAMESERVERS
+"-B\t--binpath   \tno-op, frameserver support was disabled compile-time\n"
+#else
 "-B\t--binpath     \tchange default searchpath for arcan_frameserver*\n"
+#endif
+"-p\t--rpath       \tchange default searchpath for shared resources\n"
 "-t\t--applpath    \tchange default searchpath for applications\n"
 "-H\t--hook        \trun a post-appl() script from (SHARED namespace)\n"
 "-b\t--fallback    \tset a recovery/fallback application if appname crashes\n"
@@ -374,6 +377,9 @@ int main(int argc, char* argv[])
 
 /* probe system, load environment variables, ... */
 	arcan_set_namespace_defaults();
+#ifdef DISABLE_FRAMESERVERS
+	arcan_override_namespace("", RESOURCE_SYS_BINS);
+#endif
 
 	const char* err_msg;
 	if (!arcan_verifyload_appl(argv[optind], &err_msg)){

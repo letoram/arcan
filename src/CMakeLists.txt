@@ -127,6 +127,7 @@ message("frameserver features:")
 if (NOT WIN32)
 message("   -DSPLIT_FRAMESERVER=[Off|On] : Build frameserver in split-chain loading")
 message("                                  mode (each role gets a separate binary")
+endif()
 message("   -DENABLE_NET=[On|Off] : Build networking frameserver (using APR)")
 message("   -DENABLE_VIDDEC=[On|Off] : Build video decoding frameserver (using LibVLC)")
 message("   -DENABLE_REMOTING=[On|Off] : Build remoting frameserver (using vncserver)")
@@ -134,7 +135,7 @@ message("   -DENABLE_VIDENC=[On|Off] : Build video encoding frameserver (using f
 message("   -DENABLE_VIDENCVNC=[On|Off] :       |-> Add VNC server support")
 message("   -DENABLE_LIBRETRO=[On|Off] : Build libretro frameserver")
 message("   -DENABLE_LIBRETRO3D=[On|Off] : |--> Enable 3D support")
-endif()
+message(" or disable frameserver support, -DDISABLE_FRAMESERVERS=ON")
 message("")
 
 set (FRAMESERVER_MODESTRING "")
@@ -507,6 +508,17 @@ if (NOT LUA_LIBRARIES)
 	set (LUA_LIBRARIES lua51 )
 endif (NOT LUA_LIBRARIES)
 
+if (DISABLE_FRAMESERVERS)
+	add_definitions(-DDISABLE_FRAMESERVERS)
+	set (ENABLE_NET OFF)
+	set (ENABLE_VIDDEC OFF)
+	set (ENABLE_REMOTING OFF)
+	set (ENABLE_VIDENC OFF)
+	set (ENABLE_VIDENCVNC OFF)
+	set (ENABLE_LIBRETRO OFF)
+	set (ENABLE_LIBRETRO3D OFF)
+endif()
+
 #
 # We split MAIN_LIBRARIES into ARCANMAIN_LIBRARIES and MAIN_LIBRARIES
 # as some customisations would conflict with building the LWA version.
@@ -700,7 +712,7 @@ if (AVFEED_SOURCES)
 	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}avfeed ")
 endif()
 
-if (${ENABLE_VIDDEC})
+if (ENABLE_VIDDEC)
 	FIND_PACKAGE( VLC )
 	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}decode ")
 	set(FSRV_DECODE_SOURCES
@@ -869,7 +881,10 @@ message("\n---- Stage 3, Linking / Packaging ----")
 add_executable( arcan_db ${ARCANDB_SOURCES} )
 target_link_libraries( arcan_db ${STDLIB} ${SQLITE3_LIBRARIES})
 target_link_libraries( arcan ${STDLIB} ${MAIN_LIBRARIES} ${ARCANMAIN_LIBRARIES})
+
+if (NOT DISABLE_FRAMESERVERS)
 target_link_libraries( arcan_frameserver ${STDLIB} ${FSRV_LIBRARIES})
+endif()
 
 #
 # The database tool is a CLI for the engine/arcan_db with additional
@@ -942,7 +957,10 @@ endif()
 # not at end of struct (for Linux/CMSG) else we'd be c11.
 # C11 requirement is for _Alignas and _Atomic
 #
+if (NOT DISABLE_FRAMESERVERS)
 install(TARGETS arcan_frameserver ${FSRV_TARGETS} DESTINATION ${BIN_DST})
+endif()
+
 install(TARGETS arcan DESTINATION ${BIN_DST})
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/../data/appl/
 	DESTINATION ${APPL_DST}

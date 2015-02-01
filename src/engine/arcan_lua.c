@@ -213,6 +213,19 @@ typedef int acoord;
 #define CONST_FRAMESERVER_OUTPUT 42
 #endif
 
+/*
+ * disable support for all builtin frameservers
+ * which removes most (launch_target and target_alloc remain)
+ * ways of spawning external processes.
+ */
+static int fsrv_ok =
+#ifdef DISABLE_FRAMESERVERS
+0
+#else
+1
+#endif
+;
+
 /* we map the constants here so that poor or confused
  * debuggers also have a chance to give us symbol resolution */
 static const int MOUSE_GRAB_ON  = 20;
@@ -2282,7 +2295,7 @@ static int deleteimage(lua_State* ctx)
 	arcan_errc rv = arcan_video_deleteobject(id);
 
 	if (rv != ARCAN_OK)
-		arcan_fatal("Appl tried to delete non-existing object (%.0lf=>%d)", srcid, id);
+		arcan_fatal("Tried to delete non-existing object (%.0lf=>%d)", srcid, id);
 
 	LUA_ETRACE("delete_image", NULL);
 	return 0;
@@ -2530,7 +2543,7 @@ static int setupavstream(lua_State* ctx)
 		.args.builtin.resource = argstr
 	};
 
-	if ( arcan_frameserver_spawn_server(mvctx, args) == ARCAN_OK )
+	if ( fsrv_ok && arcan_frameserver_spawn_server(mvctx, args) == ARCAN_OK )
 	{
 		mvctx->tag = ref;
 
@@ -2616,7 +2629,7 @@ static int loadmovie(lua_State* ctx)
 	arcan_vobj_id vid = ARCAN_EID;
 	arcan_aobj_id aid = ARCAN_EID;
 
-	if ( arcan_frameserver_spawn_server(mvctx, args) == ARCAN_OK )
+	if ( fsrv_ok && arcan_frameserver_spawn_server(mvctx, args) == ARCAN_OK )
 	{
 		mvctx->tag = ref;
 		arcan_video_objectopacity(mvctx->vid, 0.0, 0);
@@ -5645,7 +5658,7 @@ static int targetlaunch(lua_State* ctx)
 			.args.builtin.mode = "libretro"
 		};
 
-		if (arcan_frameserver_spawn_server(intarget, args) != ARCAN_OK){
+		if (!fsrv_ok||arcan_frameserver_spawn_server(intarget, args) != ARCAN_OK){
 			arcan_frameserver_free(intarget);
 			intarget = NULL;
 		}
@@ -6198,7 +6211,7 @@ static int spawn_recfsrv(lua_State* ctx,
 	};
 	arcan_video_alterfeed(did, arcan_frameserver_avfeedframe, fftag);
 
-	if ( arcan_frameserver_spawn_server(mvctx, args) != ARCAN_OK ){
+	if (!fsrv_ok||arcan_frameserver_spawn_server(mvctx, args) != ARCAN_OK ){
 		free(mvctx);
 		return 0;
 	}
@@ -7293,7 +7306,7 @@ static bool lua_launch_fsrv(lua_State* ctx,
 	arcan_frameserver* intarget = arcan_frameserver_alloc();
 	intarget->tag = callback;
 
-	if (arcan_frameserver_spawn_server(intarget, *args) == ARCAN_OK){
+	if (fsrv_ok && arcan_frameserver_spawn_server(intarget, *args) == ARCAN_OK){
 		lua_pushvid(ctx, intarget->vid);
 		return true;
 	}
