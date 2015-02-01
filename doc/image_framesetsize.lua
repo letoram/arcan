@@ -20,14 +20,16 @@
 -- where a single mesh can consume multiple frameset slots.
 -- @group: image
 -- @note: Once initialized with a frameset, the size of the frameset can
--- only increase during the life-cycle of the object.
+-- only increase during the life-cycle of the object with the special case
+-- of setting a frameset to 1 which will drop and reset the object to only
+-- have one active frame.
 -- @note: The initial state of frameset slots for *vid* is that all reference
 -- the default vstore for the object.
 -- @note: A persistant object cannot have a frameset, associating a frameset
 -- with an objects disqualifies the object to be marked as persistant.
 -- @note: frameset support only applies to objects with a normal, textured
 -- backing store.
--- @note: providing unreasonable (0 < n < 256, outside n) values to
+-- @note: providing unreasonable (1 < n < 256, outside n) values to
 -- count are treated as a terminal state.
 -- @related: set_image_as_frame, image_framesetsize, image_framecyclemode, image_active_frame
 -- @cfunction: framesetalloc
