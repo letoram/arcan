@@ -255,5 +255,6 @@ void arcan_set_namespace_defaults()
 		if (tmp)
 			arcan_override_namespace(tmp, RESOURCE_SYS_APPLSTATE);
 	}
+
 	arcan_mem_free(tmp);
 }

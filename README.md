@@ -26,10 +26,9 @@ Among the more uncommon features we find:
    and output.
 
  * Built-in monitoring and crash-dump analysis. The engine can serialize vital
-   internal state to a Lua script ("crash dump") or to another
-   version of itself periodically ("monitoring") to allow external filters and
-   tools to be written quickly in order to track down bugs or suspicious
-   activity.
+   internal state to a Lua script ("crash dump") or to another version of itself
+   periodically ("monitoring") to allow external filters and tools to be written
+   quickly in order to track down bugs or suspicious activity.
 
  * Fallbacks -- Should the running application fail due to a programming error,
    (which can, of course, happen to any moderately complicated application),
@@ -66,25 +65,38 @@ There are a lot of build options for fine-grained control over your arcan
 build. In this section we will just provide the bare essentials for a build
 on linux, BSD or OSX (windows can cheat with using the prebuilt installer
 binaries) and you can check out the relevant sections in the wiki for more
-detailed documentation. For starters, the easiest approach is to do the following:
+detailed documentation. For starters, the easiest approach is to do the
+following:
 
      git clone https://github.com/letoram/arcan.git
      cd arcan
      mkdir build
      cd build
-     cmake -DCMAKE_BUILD_TYPE="Debug" -DENABLE_LWA=OFF
-         -DVIDEO_PLATFORM=sdl -DENABLE_NET=OFF -DENABLE_VIDDEC=OFF
-         -DENABLE_VIDENC=OFF -DENABLE_VIDENCVNC=OFF -DENABLE_REMOTING=OFF ../src
+     cmake -DCMAKE_BUILD_TYPE="Debug" -DVIDEO_PLATFORM=sdl
+      -DENABLE_LWA=OFF -DDISABLE_FRAMESERVERS=ON ../src
      make -j 12
 
 The required dependencies for this build is cmake for compilation, and then
-libsdl1.2, openal, opengl, glew and freetype. Enabling other features
-introduces additional dependencies (apr for NET, libvlc for VIDDEC,
-ffmpeg for VIDENC, vnc for VIDENCVNC and REMOTING).
+libsdl1.2, openal, opengl and freetype.
+
+Two important things about this build, the first is that frameserver support is
+disabled entirely. Frameservers are separate programs that connect to the main
+arcan process and cooperatively reacts to input and provides audio/video data.
+They have specialized support in the Lua scripting API and are instrumental in
+features e.g. networking, video decoding, video recording etc. Most builds will
+want to leave them in, but each frameserver adds its own set of non-trivial
+dependencies and are therefore excluded in this example.
+
+LWA support is also disabled in the build configuration above. LWA stands for
+lightweight arcan and provides a specialized build (arcan\_lwa) that uses the
+arcan shared memory interface as an audio/video/input platform, allowing one
+instance of arcan to act as a display server for others. It is a somewhat more
+complex build in that it pulls down adn builds a specialized/patched version
+of openAL.
 
 You can then test the build with:
 
-     ./arcan -p ../../data/resources/ ../../data/welcome
+     ./arcan -p ../../data/resources/ ../../data/appl/welcome
 
 Which tells us to use shared resources from the ../../data/resources directory,
 and launch an application that resides as ../../data/appl/welcome.

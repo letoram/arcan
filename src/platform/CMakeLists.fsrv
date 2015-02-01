@@ -5,6 +5,7 @@
 set(FSRV_TARGETS
 	arcan_frameserver)
 
+if (NOT DISABLE_FRAMESERVERS)
 if (SPLIT_FRAMESERVER)
 message("---- Building frameserver in SPLIT mode ----")
 
@@ -195,4 +196,4 @@ message("---- Building Frameserver in COMBINED mode ----")
 	set_property(TARGET arcan_frameserver APPEND PROPERTY
 		COMPILE_DEFINITIONS ${definitions})
 endif(SPLIT_FRAMESERVER)
-
+endif(NOT DISABLE_FRAMESERVERS)
