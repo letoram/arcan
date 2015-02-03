@@ -549,7 +549,7 @@ typedef struct arcan_extevent {
 		int32_t state_sz;
 
 		struct {
-			uint8_t id;
+			uint32_t id;
 			uint32_t x, y;
 			uint8_t buttons[5];
 		} cursor;
