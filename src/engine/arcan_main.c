@@ -382,6 +382,7 @@ int main(int argc, char* argv[])
 #endif
 
 	const char* err_msg;
+
 	if (!arcan_verifyload_appl(argv[optind], &err_msg)){
 		arcan_warning("arcan_verifyload_appl(), "
 			"failed to load (%s), reason: %s.",
@@ -618,11 +619,8 @@ applswitch:
 			goto error;
 		}
 
-		if (!arcan_verify_namespaces(true)){
-			arcan_warning("namespace verification failed "
-				" after loading (%s)\n", fallback);
+		if (!arcan_verify_namespaces(false))
 			goto error;
-		}
 
 		in_recover = true;
 		adopt = true;
