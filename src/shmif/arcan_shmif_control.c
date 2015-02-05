@@ -441,7 +441,8 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey,
 	int sock = socket(AF_UNIX, SOCK_STREAM, 0);
 
 #ifdef __APPLE__
-	setsockopt(sock, SOL_SOCKET, SO_NOSIGPIPE, NULL, 0);
+	int val = 1;
+	setsockopt(sock, SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(int));
 #endif
 
 	struct sockaddr_un dst = {
@@ -584,6 +585,11 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 		struct shmif_hidden* pp = parent->priv;
 
 		res.epipe = pp->pseg.epipe;
+#ifdef __APPLE__
+		int val = 1;
+		setsockopt(res.epipe, SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(int));
+#endif
+
 		pp->pseg.epipe = BADFD;
 		memset(pp->pseg.key, '\0', sizeof(pp->pseg.key));
 		consume(parent, true);

@@ -339,7 +339,8 @@ static bool sockpair_alloc(int* dst, size_t n, bool cloexec)
 			if (cloexec)
 				fcntl(dst[i], F_SETFD, FD_CLOEXEC);
 #ifdef __APPLE__
-			setsockopt(dst[i], SOL_SOCKET, SO_NOSIGPIPE, NULL, 0);
+ 			int val = 1;
+			setsockopt(dst[i], SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(int));
 #endif
 		}
 	}
@@ -378,7 +379,6 @@ static bool shmalloc(arcan_frameserver* ctx,
 			goto fail;
 		}
 		fcntl(fd, F_SETFD, FD_CLOEXEC);
-
 		memset(&addr, '\0', sizeof(addr));
 		addr.sun_family = AF_UNIX;
 		char* dst = (char*) &addr.sun_path;
@@ -439,6 +439,10 @@ static bool shmalloc(arcan_frameserver* ctx,
 		fchmod(fd, ARCAN_SHM_UMASK);
 		listen(fd, 1);
 		ctx->dpipe = fd;
+#ifdef __APPLE__
+		int val = 1;
+		setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(int));
+#endif
 
 /* track output socket separately so we can unlink on exit,
  * other options (readlink on proc) or F_GETPATH are unportable
@@ -938,6 +942,11 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 				arcan_frameserver_emptyframe, state, cons, 0);
 
 		ctx->aid = ARCAN_EID;
+
+#ifdef __APPLE__
+		int val = 1;
+		setsockopt(sockp[0], SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(int));
+#endif
 
 		ctx->dpipe = sockp[0];
 		ctx->child = child;
