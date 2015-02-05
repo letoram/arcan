@@ -50,6 +50,11 @@ bool arcan_pushhandle(file_handle source, int channel)
 		*dptr = source;
 	}
 
+#ifdef __APPLE__
+int set = 1;
+setsockopt(channel, SOL_SOCKET, SO_NOSIGPIPE, (void *)&set, sizeof(int));
+
+#endif
 	int rv = sendmsg(channel, &msg, MSG_DONTWAIT | MSG_NOSIGNAL);
 	return rv >= 0;
 }
