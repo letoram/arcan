@@ -28,6 +28,10 @@
 #define FLAG_DIRTY()
 #endif
 
+#ifndef GL_VERTEX_PROGRAM_POINT_SIZE
+#define GL_VERTEX_PROGRAM_POINT_SIZE GL_NONE
+#endif
+
 struct agp_rendertarget
 {
 	GLuint fbo;

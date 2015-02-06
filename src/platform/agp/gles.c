@@ -241,6 +241,20 @@ void agp_resize_vstore(struct storage_info_t* s, size_t w, size_t h)
 	agp_update_vstore(s, true);
 }
 
+static void alloc_buffer(struct storage_info_t* s)
+{
+	if (s->vinf.text.s_raw != s->w * s->h * GL_PIXEL_BPP){
+		arcan_mem_free(s->vinf.text.raw);
+		s->vinf.text.raw = NULL;
+	}
+
+	if (!s->vinf.text.raw){
+		s->vinf.text.s_raw = s->w * s->h * GL_PIXEL_BPP;
+		s->vinf.text.raw = arcan_alloc_mem(s->vinf.text.s_raw,
+			ARCAN_MEM_VBUFFER, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
+	}
+}
+
 struct stream_meta agp_stream_prepare(struct storage_info_t* s,
 		struct stream_meta meta, enum stream_type type)
 {
@@ -249,14 +263,13 @@ struct stream_meta agp_stream_prepare(struct storage_info_t* s,
 
 	switch(type){
 	case STREAM_RAW:
-		if (!s->vinf.text.raw){
-			s->vinf.text.s_raw = s->w * s->h * GL_PIXEL_BPP;
-			s->vinf.text.raw = arcan_alloc_mem(s->vinf.text.s_raw,
-				ARCAN_MEM_VBUFFER, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
-		}
+		alloc_buffer(s);
 		mout.buf = s->vinf.text.raw;
 		mout.state = mout.buf != NULL;
 	break;
+
+	case STREAM_RAW_DIRECT_COPY:
+		alloc_buffer(s);
 
 	case STREAM_RAW_DIRECT:
 	case STREAM_RAW_DIRECT_SYNCHRONOUS:
@@ -274,11 +287,11 @@ struct stream_meta agp_stream_prepare(struct storage_info_t* s,
 	return mout;
 }
 
-void agp_stream_release(struct storage_info_t* s)
+void agp_stream_release(struct storage_info_t* s, struct stream_meta meta)
 {
 }
 
-void agp_stream_commit(struct storage_info_t* s)
+void agp_stream_commit(struct storage_info_t* s, struct stream_meta meta)
 {
 	agp_activate_vstore(s);
 		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, s->w, s->h,
