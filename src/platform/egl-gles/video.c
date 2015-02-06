@@ -16,7 +16,6 @@
 #include <fcntl.h>
 #include <assert.h>
 
-
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include <GLES2/gl2.h>
@@ -158,7 +157,7 @@ bool PLATFORM_SYMBOL(_video_map_display)(
 }
 
 bool PLATFORM_SYMBOL(_video_specify_mode)(platform_display_id id,
-	platform_mode_id mode_id, struct monitor_mode mode)
+	struct monitor_mode mode)
 {
 	return false;
 }
@@ -281,11 +280,8 @@ struct monitor_mode* PLATFORM_SYMBOL(_video_query_modes)(
 	return &mode;
 }
 
-platform_display_id* PLATFORM_SYMBOL(_video_query_displays)(size_t* count)
+void PLATFORM_SYMBOL(_video_query_displays)()
 {
-	static platform_display_id id = 0;
-	*count = 1;
-	return &id;
 }
 
 const char** PLATFORM_SYMBOL(_video_envopts)()
