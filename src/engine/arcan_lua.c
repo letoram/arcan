@@ -4843,7 +4843,7 @@ static int globresource(lua_State* ctx)
 
 static int resource(lua_State* ctx)
 {
-	LUA_TRACE("resource()");
+	LUA_TRACE("resource");
 
 	const char* label = luaL_checkstring(ctx, 1);
 	int mask = luaL_optinteger(ctx, 2, DEFAULT_USERMASK) & DEFAULT_USERMASK;
@@ -4851,7 +4851,7 @@ static int resource(lua_State* ctx)
 	lua_pushstring(ctx, res);
 	arcan_mem_free(res);
 
-	LUA_ETRACE("resource()", NULL);
+	LUA_ETRACE("resource", NULL);
 	return 1;
 }
 
