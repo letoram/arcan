@@ -6025,6 +6025,7 @@ static enum arcan_ffunc_rv proctarget(enum arcan_ffunc_cmd cmd,
 			return 0;
 	}
 
+	printf("proctarget, got data\n");
 /*
  * Monitor these calls closely, experienced wild crashes here
  * in the past.
@@ -7224,6 +7225,62 @@ static int inputanalogtoggle(lua_State* ctx)
 	return 0;
 }
 
+enum outfmt_screenshot {
+	OUTFMT_PNG,
+	OUTFMT_PNG_FLIP,
+	OUTFMT_RAW8,
+	OUTFMT_RAW24,
+	OUTFMT_RAW32
+};
+
+static void dump_raw(FILE* dst, av_pixel* buf,
+	int w, int h, enum outfmt_screenshot fmt)
+{
+	size_t sf = 0;
+
+	switch(fmt){
+		case OUTFMT_RAW8: sf = 1; break;
+		case OUTFMT_RAW24: sf = 3; break;
+		case OUTFMT_RAW32: sf = 4; break;
+
+/* won't happen */
+	default:
+	break;
+	}
+
+	uint8_t* interim = arcan_alloc_mem(w * h * sf, ARCAN_MEM_VBUFFER,
+		ARCAN_MEM_TEMPORARY | ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_NATURAL);
+	uint8_t* work = interim;
+
+	if (!interim)
+		return;
+
+	for (int y = h-1; y >= 0; y--)
+		for (int x = 0; x < w; x++){
+			uint8_t rgba[4];
+			RGBA_DECOMP(buf[y * w + x], &rgba[0], &rgba[1], &rgba[2], &rgba[3]);
+			switch (fmt){
+				case OUTFMT_RAW8:
+					*work++ = (int)(rgba[0] + rgba[1] + rgba[2]) / 3;
+				break;
+				case OUTFMT_RAW24:
+					*work++ = rgba[0];
+					*work++ = rgba[1];
+					*work++ = rgba[2];
+				break;
+				case OUTFMT_RAW32:
+					memcpy(work, rgba, 4);
+					work += 4;
+				break;
+				default:
+				break;
+			}
+		}
+
+	fwrite(interim, w * h * sf, 1, dst);
+	arcan_mem_free(interim);
+}
+
 static int screenshot(lua_State* ctx)
 {
 	LUA_TRACE("save_screenshot");
@@ -7238,7 +7295,7 @@ static int screenshot(lua_State* ctx)
 	const char* const resstr = luaL_checkstring(ctx, 1);
 	arcan_vobj_id sid = ARCAN_EID;
 
-	bool flip = luaL_optbnumber(ctx, 2, 0);
+	enum outfmt_screenshot fmt = luaL_optnumber(ctx, 2, OUTFMT_PNG);
 
 	if (luaL_optnumber(ctx, 3, ARCAN_EID) != ARCAN_EID){
 		sid = luaL_checkvid(ctx, 3, NULL);
@@ -7251,27 +7308,47 @@ static int screenshot(lua_State* ctx)
 	else
 		arcan_video_screenshot(&databuf, &bufs);
 
-	if (databuf){
-		char* fname = arcan_find_resource(resstr, RESOURCE_APPL_TEMP);
-		if (fname){
-			arcan_warning("screeenshot() -- refusing to overwrite existing file.\n");
-			goto cleanup;
+	if (!databuf){
+		arcan_warning("save_screenshot() -- insufficient free memory.\n");
+		LUA_ETRACE("save_screenshot", NULL);
+		return 0;
+	}
+
+	char* fname = arcan_find_resource(resstr, RESOURCE_APPL_TEMP);
+	if (fname){
+		arcan_warning("save_screeenshot() -- refusing to "
+			"overwrite existing file.\n");
+		goto cleanup;
+	}
+
+	fname = arcan_expand_resource(resstr, RESOURCE_APPL_TEMP);
+	FILE* dst = fopen(fname, "wb");
+
+	if (dst)
+		switch(fmt){
+		case OUTFMT_PNG:
+			arcan_rgba32_pngfile(dst, (void*) databuf, dw, dh, false);
+		break;
+
+		case OUTFMT_PNG_FLIP:
+			arcan_rgba32_pngfile(dst, (void*) databuf, dw, dh, true);
+		break;
+
+/* flip is assumed in the raw formats */
+		case OUTFMT_RAW8:
+		case OUTFMT_RAW24:
+		case OUTFMT_RAW32:
+			dump_raw(dst, databuf, dw, dh, fmt);
+		break;
+		default:
+			arcan_fatal("save_screenshot(), invalid/uknown format: %d\n", fmt);
 		}
-
-		fname = arcan_expand_resource(resstr, RESOURCE_APPL_TEMP);
-		FILE* dst = fopen(fname, "wb");
-
-		if (dst)
-			arcan_rgba32_pngfile(dst, (void*) databuf, dw, dh, flip);
-		else
-			arcan_warning("screenshot() -- couldn't save to (%s).\n", fname);
+	else
+		arcan_warning("save_screenshot() -- couldn't save to (%s).\n", fname);
 
 cleanup:
 		arcan_mem_free(fname);
 		arcan_mem_free(databuf);
-	}
-	else
-		arcan_warning("screenshot() -- insufficient free memory.\n");
 
 	LUA_ETRACE("save_screenshot", NULL);
 	return 0;
@@ -8224,6 +8301,10 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"MASK_UNPICKABLE", MASK_UNPICKABLE},
 {"MASK_FRAMESET", MASK_FRAMESET},
 {"MASK_MAPPING", MASK_MAPPING},
+{"FORMAT_PNG", OUTFMT_PNG},
+{"FORMAT_RAW8", OUTFMT_RAW8},
+{"FORMAT_RAW24", OUTFMT_RAW24},
+{"FORMAT_RAW32", OUTFMT_RAW32},
 {"ORDER_FIRST", ORDER3D_FIRST},
 {"ORDER_NONE", ORDER3D_NONE},
 {"ORDER_LAST", ORDER3D_LAST},

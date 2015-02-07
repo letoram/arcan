@@ -1,12 +1,12 @@
 -- save_screenshot
 -- @short: Store a copy of the current display to a file.
--- @longdescr: This function takes the last front buffer rendered,
--- reads back and stores into dstres as a 32bit- RGB PNG.
--- If flip is set to any integer other than 0, the final image will be flipped
--- around the Y axis.
--- If a srcid is specified and that id is associated with a
--- textured backing store, that will be read-back instead of the front buffer.
--- @inargs: dstres, *flip*, *srcid*
+-- @inargs: dstres, *fmt*, *srcid*
+-- @longdescr: This function creates a file of the latest drawn
+-- output on the primary display or of the contents of a specific
+-- VID of specified in *srcid*.
+-- The format setting is by default FORMAT_PNG but can also be
+-- FORMAT_PNG_FLIP, FORMAT_RAW8, FORMAT_RAW24 or FORMAT_RAW32 though
+-- the RAW formats are primarily for advanced use and debugging purposes.
 -- @group: resource
 -- @cfunction: screenshot
 function main()
