@@ -6025,7 +6025,6 @@ static enum arcan_ffunc_rv proctarget(enum arcan_ffunc_cmd cmd,
 			return 0;
 	}
 
-	printf("proctarget, got data\n");
 /*
  * Monitor these calls closely, experienced wild crashes here
  * in the past.
