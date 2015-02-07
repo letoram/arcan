@@ -1,9 +1,16 @@
 -- benchmark_timestamp
--- @short: Return the current monotonic wall time (milliseconds precision).
+-- @short: Timestamp function
+-- @inargs: *stratum*
 -- @outargs: timev
--- @note: As the namespace suggests, this is primarily intended for benchmarking,
--- for most other purposes, you would be better off relying on the clock_pulse and CLOCK
--- mechanism.
+-- @longdescr: Retrieve a timestamp value. The optional *stratum* argument
+-- specifies what kind of timekeeping source should be used, where the
+-- default value will be some kind of monotonic clock in millisecond
+-- resolution and stratum 1 is set as system time in seconds since epoch
+-- (1970-01-01).
+-- @note: As the name implies, this is primarily intended for benchmarking
+-- purposes. Real-world timekeeping cases should be avoided if possible as
+-- the API does not contain sufficient functions for handling the usecases
+-- that appear when dealing with locales, adjustments etc.
 -- @group: system
 -- @cfunction: timestamp
 

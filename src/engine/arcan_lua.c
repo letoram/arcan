@@ -6635,7 +6635,20 @@ static int timestamp(lua_State* ctx)
 {
 	LUA_TRACE("benchmark_timestamp");
 
-	lua_pushnumber(ctx, arcan_timemillis());
+	int stratum = luaL_optnumber(ctx, 1, 0);
+	switch (stratum){
+	case 0:
+		lua_pushnumber(ctx, arcan_timemillis());
+	break;
+
+	case 1:
+		lua_pushnumber(ctx, time(NULL));
+	break;
+
+	default:
+		arcan_fatal("benchmark_timestamp(), unknown stratum (%d)\n", stratum);
+	break;
+	}
 
 	LUA_ETRACE("benchmark_timestamp", NULL);
 	return 1;
