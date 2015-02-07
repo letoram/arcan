@@ -43,6 +43,9 @@ static void vcodec_defaults(struct codec_ent* dst, unsigned width,
 	pframe->linesize[1] = width / 2;
 	pframe->linesize[2] = width / 2;
 	pframe->pts = 0;
+	pframe->width = width;
+	pframe->height = height;
+	pframe->format = PIX_FMT_YUV420P;
 
 	dst->storage.video.pframe = pframe;
 }
