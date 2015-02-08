@@ -20,6 +20,7 @@
 #include <libavcodec/avcodec.h>
 #include <libavcodec/version.h>
 #include <libavutil/opt.h>
+#include <libavutil/imgutils.h>
 #include <libavformat/avformat.h>
 #include <libswscale/swscale.h>
 #include <libswresample/swresample.h>
@@ -325,8 +326,7 @@ forceencode:
 static int encode_video(bool flush)
 {
 	uint8_t* srcpl[4] = {(uint8_t*)recctx.shmcont.vidp, NULL, NULL, NULL};
-	int srcstr[4] = {0, 0, 0, 0};
-	srcstr[0] = recctx.vcontext->width * recctx.bpp;
+	int srcstr[4] = {recctx.shmcont.addr->w * recctx.bpp};
 
 /* the main problem here is that the source material may encompass many
  * framerates, in fact, even be variable (!) the samplerate we're running
@@ -343,8 +343,12 @@ static int encode_video(bool flush)
 	frametime -= next_frame;
 	int fc = frametime > 0 ? floor(frametime / mspf) : 0;
 
+	shmif_pixel* p = recctx.shmcont.vidp;
+	for (size_t i = 0; i < recctx.shmcont.addr->w * recctx.shmcont.addr->h; i++)
+		*p++ = RGBA(0x00, 0x00, 0x00, 0xff);
+
 	sws_scale(recctx.ccontext, (const uint8_t* const*) srcpl, srcstr, 0,
-		recctx.vcontext->height, recctx.pframe->data, recctx.pframe->linesize);
+		recctx.shmcont.addr->h, recctx.pframe->data, recctx.pframe->linesize);
 
 	AVCodecContext* ctx = recctx.vcontext;
 	AVPacket pkt = {0};

@@ -6203,6 +6203,8 @@ static int spawn_recfsrv(lua_State* ctx,
 		.init_h = dobj->vstore->h
 	};
 
+	mvctx->shm.shmsize = arcan_shmif_getsize(args.init_w, args.init_h);
+
 /* we use a special feed function meant to flush audiobuffer +
  * a single video frame for encoding */
 	vfunc_state fftag = {
