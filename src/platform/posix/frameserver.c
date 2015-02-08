@@ -351,7 +351,9 @@ static bool sockpair_alloc(int* dst, size_t n, bool cloexec)
 static bool shmalloc(arcan_frameserver* ctx,
 	bool namedsocket, const char* optkey)
 {
-	ctx->shm.shmsize = ARCAN_SHMPAGE_START_SZ;
+	if (0 == ctx->shm.shmsize)
+		ctx->shm.shmsize = ARCAN_SHMPAGE_START_SZ;
+
 	struct arcan_shmif_page* shmpage;
 	int shmfd = 0;
 
@@ -497,7 +499,12 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	if (!ctx || ctx->flags.alive == false)
 		return NULL;
 
+	hintw = hintw <= 0 || hintw > ARCAN_SHMPAGE_MAXW ? 32 : hintw;
+	hinth = hinth <= 0 || hinth > ARCAN_SHMPAGE_MAXH ? 32 : hinth;
+
 	arcan_frameserver* newseg = arcan_frameserver_alloc();
+	ctx->shm.shmsize = arcan_shmif_getsize(hintw, hinth);
+
 	if (!shmalloc(newseg, false, NULL)){
 		arcan_frameserver_free(newseg);
 		return NULL;
@@ -505,9 +512,6 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 
 	if (!newseg)
 		return NULL;
-
-	hintw = hintw <= 0 || hintw > ARCAN_SHMPAGE_MAXW ? 32 : hintw;
-	hinth = hinth <= 0 || hinth > ARCAN_SHMPAGE_MAXH ? 32 : hinth;
 
 	img_cons cons = {.w = hintw , .h = hinth, .bpp = ARCAN_SHMPAGE_VCHANNELS};
 	vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = newseg};
@@ -822,6 +826,7 @@ static int8_t socketpoll(enum arcan_ffunc_cmd cmd, av_pixel* buf,
 
 arcan_frameserver* arcan_frameserver_listen_external(const char* key)
 {
+/* shm will start with default size */
 	arcan_frameserver* res = arcan_frameserver_alloc();
 	if (!shmalloc(res, true, key)){
 		arcan_warning("arcan_frameserver_listen_external(), shared memory"
@@ -864,7 +869,9 @@ bool arcan_frameserver_resize(shm_handle* src, int w, int h)
 	if (sz > ARCAN_SHMPAGE_MAX_SZ)
 		return false;
 
-/* Don't resize unless the gain is ~20% */
+/* Don't resize unless the gain is ~20%, the routines does support
+ * shrinking the size of the segment, something to consider in memory
+ * constrained environments */
 	if (sz < src->shmsize && sz > (float)src->shmsize * 0.8)
 		return true;
 

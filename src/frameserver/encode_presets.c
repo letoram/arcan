@@ -7,6 +7,7 @@
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavformat/avio.h>
+#include <libavutil/imgutils.h>
 
 #include <sys/stat.h>
 #include <assert.h>
@@ -25,7 +26,6 @@ static void vcodec_defaults(struct codec_ent* dst, unsigned width,
 	unsigned height, float fps, unsigned vbr)
 {
 	AVCodecContext* ctx   = dst->storage.video.context;
-	size_t base_sz = width * height;
 
 	ctx->width     = width;
 	ctx->height    = height;
@@ -36,16 +36,11 @@ static void vcodec_defaults(struct codec_ent* dst, unsigned width,
 	ctx->time_base.num = 1;
 
 	AVFrame* pframe = av_frame_alloc();
-	pframe->data[0] = av_malloc( (base_sz * 3) / 2);
-	pframe->data[1] = pframe->data[0] + base_sz;
-	pframe->data[2] = pframe->data[1] + base_sz / 4;
-	pframe->linesize[0] = width;
-	pframe->linesize[1] = width / 2;
-	pframe->linesize[2] = width / 2;
-	pframe->pts = 0;
 	pframe->width = width;
 	pframe->height = height;
-	pframe->format = PIX_FMT_YUV420P;
+	pframe->format = ctx->pix_fmt;
+	av_image_alloc(pframe->data, pframe->linesize,
+		width, height, ctx->pix_fmt, 32);
 
 	dst->storage.video.pframe = pframe;
 }

@@ -282,6 +282,7 @@ int main(int argc, char** argv)
 /* we no longer need the mode argument */
 	argv[1] = NULL;
 	argv[0] = newarg;
+
 	execv(newarg, argv);
 
 	return EXIT_FAILURE;

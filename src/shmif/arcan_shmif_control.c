@@ -361,11 +361,23 @@ static void map_shared(const char* shmkey, char force_unlink,
 	if (force_unlink)
 		shm_unlink(shmkey);
 
-	if (dst->addr == MAP_FAILED){
+	if (MAP_FAILED == dst->addr){
+map_fail:
 		LOG("arcan_frameserver(getshm) -- couldn't map keyfile"
 			"	(%s), reason: %s\n", shmkey, strerror(errno));
 		dst->addr = NULL;
 		return;
+	}
+
+	/* parent suggested that we work with a different
+   * size from the start, need to remap */
+	if (dst->addr->segment_size != ARCAN_SHMPAGE_START_SZ){
+		LOG("arcan_frameserver(getshm) -- different initial size, remapping.\n");
+		size_t sz = dst->addr->segment_size;
+		munmap(dst->addr, ARCAN_SHMPAGE_START_SZ);
+		dst->addr = mmap(NULL, sz, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+		if (MAP_FAILED == dst->addr)
+			goto map_fail;
 	}
 
 	LOG("arcan_frameserver(getshm) -- mapped to %" PRIxPTR
