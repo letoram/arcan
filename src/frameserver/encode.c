@@ -343,10 +343,6 @@ static int encode_video(bool flush)
 	frametime -= next_frame;
 	int fc = frametime > 0 ? floor(frametime / mspf) : 0;
 
-	shmif_pixel* p = recctx.shmcont.vidp;
-	for (size_t i = 0; i < recctx.shmcont.addr->w * recctx.shmcont.addr->h; i++)
-		*p++ = RGBA(0x00, 0x00, 0x00, 0xff);
-
 	sws_scale(recctx.ccontext, (const uint8_t* const*) srcpl, srcstr, 0,
 		recctx.shmcont.addr->h, recctx.pframe->data, recctx.pframe->linesize);
 

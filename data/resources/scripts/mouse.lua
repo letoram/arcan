@@ -36,7 +36,7 @@ local mstate = {
 -- mouse event is triggered
 	accel_x      = 1,
 	accel_y      = 1,
-	dblclickstep = 6,  -- maximum number of ticks between clicks for dblclick
+	dblclickstep = 12,  -- maximum number of ticks between clicks for dblclick
 	drag_delta   = 8,  -- wiggle-room for drag
 	hover_ticks  = 30, -- time of inactive cursor before hover is triggered
 	hover_thresh = 12, -- pixels movement before hover is released
@@ -134,6 +134,12 @@ local function linear_ifind(table, val)
 end
 
 local function linear_find_vid(table, vid, state)
+-- we filter here as some scans (over, out, ...) may query state
+-- for objects that no longer exists
+	if (not valid_vid(vid)) then
+		return;
+	end
+
 	for a,b in pairs(table) do
 		if (b:own(vid, state)) then
 			return b;
@@ -171,11 +177,10 @@ end
 function mouse_destroy()
 	mouse_handlers = {};
 	mouse_handlers.click = {};
-	mouse_handlers.cver  = {};
-	mouse_handlers.cut   = {};
   mouse_handlers.drag  = {};
 	mouse_handlers.drop  = {};
 	mouse_handlers.over = {};
+	mouse_handlers.out = {};
 	mouse_handlers.motion = {};
 	mouse_handlers.dblclick = {};
 	mouse_handlers.rclick = {};
@@ -209,11 +214,13 @@ end
 --
 -- Load / Prepare cursor, read default acceleration and
 -- filtering settings.
--- cicon(string) : path to valid resource for cursor
--- clayer(uint)  : which ordervalue for cursor to have
--- pickdepth
+-- cvid : video id of image to use as cursor (will take control of id)
+-- clayer : which ordervalue for cursor to have
+-- pickdepth : how many vids beneath cvid should be concidered?
+-- cachepick : avoid unecessary
+-- hidden : start in hidden state or not
 --
-function mouse_setup(cvid, clayer, pickdepth, cachepick, hidden, opts)
+function mouse_setup(cvid, clayer, pickdepth, cachepick, hidden)
 	mstate.cursor = cvid;
 	mstate.hidden = false;
 	mstate.x = math.floor(VRESW * 0.5);
@@ -237,7 +244,7 @@ function mouse_setup(cvid, clayer, pickdepth, cachepick, hidden, opts)
 	mouse_cursorupd(0, 0);
 end
 
-function mouse_setup_native(resimg, opts)
+function mouse_setup_native(resimg)
 	local tmp = null_surface(1, 1);
 	local props = image_surface_properties(resimg);
 
@@ -442,10 +449,6 @@ local function mbh(hists, state)
 end
 
 function mouse_input(x, y, state, noinp)
-	if (x == nil or y == nil) then
-		print(debug.traceback());
-	end
-
 	if (noinp == nil or noinp == false) then
 		x, y = mouse_cursorupd(x, y);
 	else
@@ -454,10 +457,6 @@ function mouse_input(x, y, state, noinp)
 	end
 
 	mstate.hover_count = 0;
-
-	if (x == nil or y == nil) then
-		print(debug.traceback());
-	end
 
 	if (#mstate.hover_track > 0) then
 		local dx = math.abs(mstate.hover_x - mstate.x);
@@ -483,7 +482,9 @@ function mouse_input(x, y, state, noinp)
 
 	if (mstate.drag) then
 		mouse_drag(x, y);
-		mbh(hists, state);
+		if (state ~= nil) then
+			mbh(hists, state);
+		end
 		return;
 	end
 
@@ -492,7 +493,7 @@ function mouse_input(x, y, state, noinp)
 			table.insert(mstate.cur_over, hists[i]);
 			local res = linear_find_vid(mstate.handlers.over, hists[i], "over");
 			if (res) then
-					res:over(hists[i], mstate.x, mstate.y);
+				res:over(hists[i], mstate.x, mstate.y);
 			end
 		end
 	end
@@ -557,14 +558,13 @@ function mouse_addlistener(tbl, events)
 
 	for ind, val in ipairs(events) do
 		if (mstate.handlers[val] ~= nil and
-			linear_find(mstate.handlers[val], tbl) == nil) then
+			linear_find(mstate.handlers[val], tbl) == nil and tbl[val] ~= nil) then
 			insert_unique(mstate.handlers[val], tbl);
-		else
+		elseif (tbl[val] ~= nil) then
 			warning("mouse_addlistener(), unknown event function: "
 				.. val ..".\n");
 		end
 	end
-
 end
 
 function mouse_dumphandlers()

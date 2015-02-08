@@ -567,39 +567,45 @@ void arcan_db_begin_transaction(struct arcan_dbh* dbh,
 		arcan_fatal("arcan_db_appl_kv() called during a pending transaction\n");
 
 	sqlite3_exec(dbh->dbh, "BEGIN;", NULL, NULL, NULL);
+	int code = SQLITE_OK;
 
 	switch (kvt){
 	case DVT_APPL:
-		sqlite3_prepare_v2(dbh->dbh, dbh->akv_update,
+		code = sqlite3_prepare_v2(dbh->dbh, dbh->akv_update,
 			dbh->akv_upd_sz, &dbh->transaction, NULL);
 	break;
 
 	case DVT_TARGET:
-		sqlite3_prepare_v2(dbh->dbh, DI_INSKV_TARGET,
+		code = sqlite3_prepare_v2(dbh->dbh, DI_INSKV_TARGET,
 			strlen(DI_INSKV_TARGET)+1, &dbh->transaction, NULL);
 	break;
 
 	case DVT_CONFIG:
-		sqlite3_prepare_v2(dbh->dbh, DI_INSKV_CONFIG,
+		code = sqlite3_prepare_v2(dbh->dbh, DI_INSKV_CONFIG,
 			strlen(DI_INSKV_CONFIG)+1, &dbh->transaction, NULL);
 	break;
 
 	case DVT_CONFIG_ENV:
-		sqlite3_prepare_v2(dbh->dbh, DI_INSKV_CONFIG_ENV,
+		code = sqlite3_prepare_v2(dbh->dbh, DI_INSKV_CONFIG_ENV,
 			strlen(DI_INSKV_TARGET_ENV)+1, &dbh->transaction, NULL);
 	break;
 
 	case DVT_TARGET_ENV:
-		sqlite3_prepare_v2(dbh->dbh, DI_INSKV_TARGET_ENV,
+		code = sqlite3_prepare_v2(dbh->dbh, DI_INSKV_TARGET_ENV,
 			strlen(DI_INSKV_TARGET_ENV)+1, &dbh->transaction, NULL);
 	break;
 
 	case DVT_TARGET_LIBV:
-		sqlite3_prepare_v2(dbh->dbh, DI_INSKV_TARGET_LIBV,
+		code = sqlite3_prepare_v2(dbh->dbh, DI_INSKV_TARGET_LIBV,
 			strlen(DI_INSKV_TARGET_LIBV)+1, &dbh->transaction, NULL);
 	break;
 	case DVT_ENDM:
 	break;
+	}
+
+	if (code != SQLITE_OK){
+		arcan_warning("arcan_db_begin_transaction(), failed: %s\n",
+			sqlite3_errmsg(dbh->dbh));
 	}
 
 	dbh->trid = id;
@@ -724,7 +730,14 @@ void arcan_db_add_kvpair(struct arcan_dbh* dbh,
 	break;
 	}
 
-	sqlite3_step(dbh->transaction);
+	int rc = sqlite3_step(dbh->transaction);
+	if (SQLITE_DONE != rc)
+		arcan_warning("arcan_db_addkvpair(%s=%s), %d failed: %s\n",
+			key, val, rc, sqlite3_errmsg(dbh->dbh));
+	else {
+		sqlite3_clear_bindings(dbh->transaction);
+		sqlite3_reset(dbh->transaction);
+	}
 }
 
 void arcan_db_end_transaction(struct arcan_dbh* dbh)
@@ -734,7 +747,11 @@ void arcan_db_end_transaction(struct arcan_dbh* dbh)
 			"called without any open transaction.");
 
 	sqlite3_finalize(dbh->transaction);
-	sqlite3_exec(dbh->dbh, "COMMIT;", NULL, NULL, NULL);
+	if (SQLITE_OK != sqlite3_exec(dbh->dbh, "COMMIT;", NULL, NULL, NULL)){
+		arcan_warning("arcan_db_end_transaction(), failed: %s\n",
+			sqlite3_errmsg(dbh->dbh));
+	}
+
 	dbh->transaction = NULL;
 }
 
