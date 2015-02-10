@@ -6425,12 +6425,6 @@ static int recordset(lua_State* ctx)
 		goto cleanup;
 	}
 
-	if (pollrate == 0){
-		arcan_warning("recordset(%d) invalid arg 8, expected "
-			"n < 0 (every n frame) or n > 0 (every n tick)\n", pollrate);
-		goto cleanup;
-	}
-
 	if (ARCAN_OK != arcan_video_setuprendertarget(did, pollrate,
 		scale == RENDERTARGET_SCALE, RENDERTARGET_COLOR))
 	{
