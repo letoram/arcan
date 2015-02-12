@@ -175,6 +175,9 @@ int process_events(struct arcan_shmif_cont* c,
 {
 	assert(dst);
 	assert(c);
+	if (!c->addr || !c->addr->dms)
+		return 0;
+
 	int rv = 0;
 	struct arcan_evctx* ctx = &c->inev;
 	volatile int* ks = (volatile int*) ctx->synch.killswitch;
@@ -248,6 +251,9 @@ int arcan_shmif_enqueue(struct arcan_shmif_cont* c,
 	const struct arcan_event* const src)
 {
 	assert(c);
+	if (!c->addr || !c->addr->dms)
+		return 0;
+
 	struct arcan_evctx* ctx = &c->outev;
 
 #ifdef ARCAN_SHMIF_THREADSAFE_QUEUE
@@ -273,6 +279,9 @@ int arcan_shmif_tryenqueue(
 	struct arcan_shmif_cont* c, const arcan_event* const src)
 {
 	assert(c);
+	if (!c->addr || !c->addr->dms)
+		return 0;
+
 	struct arcan_evctx* ctx = &c->outev;
 
 #ifdef ARCAN_SHMIF_THREADSAFE_QUEUE
