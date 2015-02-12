@@ -390,7 +390,10 @@ enum SHMIF_FLAGS {
 	SHMIF_DISABLE_GUARD = 2,
 
 /* failure to acquire a segment should be exit(EXIT_FAILURE); */
-	SHMIF_ACQUIRE_FATALFAIL = 4
+	SHMIF_ACQUIRE_FATALFAIL = 4,
+
+/* if FATALFAIL, do we have a custom function? should be first argument */
+	SHMIF_FATALFAIL_FUNC = 8
 };
 
 /*

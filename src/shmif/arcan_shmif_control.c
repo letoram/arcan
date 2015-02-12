@@ -13,7 +13,6 @@
 #include <time.h>
 #include <limits.h>
 #include <math.h>
-#include <stdarg.h>
 #include <assert.h>
 #include <string.h>
 #include <stdarg.h>
@@ -90,6 +89,7 @@ struct shmif_hidden {
 		process_handle parent;
 		volatile uintptr_t* dms;
 		pthread_mutex_t synch;
+		void (*exitf)(int val);
 	} guard;
 };
 
@@ -589,11 +589,21 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 			return res;
 	}
 
+	void (*exitf)(int) = exit;
+	if (flags & SHMIF_FATALFAIL_FUNC){
+		va_list funarg;
+
+		va_start(funarg, flags);
+			exitf = va_arg(funarg, void(*)(int));
+		va_end(funarg);
+	}
+
 	struct shmif_hidden gs = {
 		.guard = {
 			.dms = (uintptr_t*) &res.addr->dms,
 			.semset = { res.asem, res.vsem, res.esem },
-			.parent = res.addr->parent
+			.parent = res.addr->parent,
+			.exitf = exitf
 		},
 		.pev = {.fd = BADFD},
 		.pseg = {.epipe = BADFD},
@@ -659,12 +669,15 @@ static void* guard_thread(void* gs)
 			LOG("frameserver::guard_thread -- couldn't shut"
 				"	down gracefully, exiting.\n");
 
-			exit(EXIT_FAILURE);
+			if (gstr->guard.exitf)
+				gstr->guard.exitf(EXIT_FAILURE);
+			goto done;
 		}
 
 		sleep(5);
 	}
 
+done:
 	free(gstr);
 	return NULL;
 }
