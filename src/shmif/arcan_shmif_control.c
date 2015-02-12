@@ -840,6 +840,12 @@ void arcan_shmif_calcofs(struct arcan_shmif_page* shmp,
 
 void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 {
+	if (!inctx || !inctx->priv)
+		return;
+
+	if (inctx->addr)
+		inctx->addr->dms = false;
+
 	struct shmif_hidden* gstr = inctx->priv;
 
 	close(inctx->epipe);
