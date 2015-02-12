@@ -644,7 +644,8 @@ arcan_errc arcan_frameserver_audioframe_direct(arcan_aobj* aobj,
 
 void arcan_frameserver_tick_control(arcan_frameserver* src)
 {
-	if (!arcan_frameserver_control_chld(src) || !src || !src->shm.ptr)
+	if (!arcan_frameserver_control_chld(src) ||
+		!src || !src->shm.ptr || !src->shm.ptr->dms)
 		goto leave;
 
 /*
