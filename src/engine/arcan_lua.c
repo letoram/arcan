@@ -638,7 +638,12 @@ static inline const char* intblstr(lua_State* ctx, int ind, const char* field){
 	return lua_tostring(ctx, -1);
 }
 
-static inline int intblnum(lua_State* ctx, int ind, const char* field){
+static inline float intblfloat(lua_State* ctx, int ind, const char* field){
+	lua_getfield(ctx, ind, field);
+	return lua_tonumber(ctx, -1);
+}
+
+static inline int intblint(lua_State* ctx, int ind, const char* field){
 	lua_getfield(ctx, ind, field);
 	return lua_tointeger(ctx, -1);
 }
@@ -2846,7 +2851,7 @@ static int targetinput(lua_State* ctx)
 		*dst = '\0';
 	}
 
-	ev.io.pts = intblnum(ctx, tblind, "pts");
+	ev.io.pts = intblint(ctx, tblind, "pts");
 
 	if ( strcmp( kindlbl, "analog") == 0 ){
 		const char* srcstr = intblstr(ctx, tblind, "source");
@@ -2855,8 +2860,8 @@ static int targetinput(lua_State* ctx)
 		ev.io.datatype = EVENT_IDATATYPE_ANALOG;
 		ev.io.devkind = srcstr && strcmp( srcstr, "mouse") == 0 ?
 			EVENT_IDEVKIND_MOUSE : EVENT_IDEVKIND_GAMEDEV;
-		ev.io.input.analog.devid  = intblnum(ctx, tblind, "devid");
-		ev.io.input.analog.subid  = intblnum(ctx, tblind, "subid");
+		ev.io.input.analog.devid  = intblint(ctx, tblind, "devid");
+		ev.io.input.analog.subid  = intblint(ctx, tblind, "subid");
 		ev.io.input.analog.gotrel = ev.io.devkind == EVENT_IDEVKIND_MOUSE;
 
 	/*  sweep the samples subtable, add as many as present (or possible) */
@@ -2871,16 +2876,26 @@ static int targetinput(lua_State* ctx)
 		}
 		ev.io.input.analog.nvalues = naxiss;
 	}
+	else if (strcmp(kindlbl, "touch") == 0){
+		ev.io.datatype = EVENT_IDATATYPE_TOUCH;
+		ev.io.devkind = EVENT_IDEVKIND_TOUCHDISP;
+		ev.io.input.touch.devid = intblint(ctx, tblind, "devid");
+		ev.io.input.touch.subid = intblint(ctx, tblind, "subid");
+		ev.io.input.touch.x = intblint(ctx, tblind, "x");
+		ev.io.input.touch.y = intblint(ctx, tblind, "y");
+		ev.io.input.touch.pressure = intblfloat(ctx, tblind, "pressure");
+		ev.io.input.touch.size = intblfloat(ctx, tblind, "size");
+	}
 	else if (strcmp(kindlbl, "digital") == 0){
 		if (intblbool(ctx, tblind, "translated")){
 			ev.io.datatype = EVENT_IDATATYPE_TRANSLATED;
 			ev.io.devkind  = EVENT_IDEVKIND_KEYBOARD;
 			ev.io.input.translated.active = intblbool(ctx, tblind, "active");
-			ev.io.input.translated.scancode = intblnum(ctx, tblind, "number");
-			ev.io.input.translated.keysym = intblnum(ctx, tblind, "keysym");
-			ev.io.input.translated.modifiers = intblnum(ctx, tblind,"modifiers");
-			ev.io.input.translated.devid = intblnum(ctx, tblind, "devid");
-			ev.io.input.translated.subid = intblnum(ctx, tblind, "subid");
+			ev.io.input.translated.scancode = intblint(ctx, tblind, "number");
+			ev.io.input.translated.keysym = intblint(ctx, tblind, "keysym");
+			ev.io.input.translated.modifiers = intblint(ctx, tblind,"modifiers");
+			ev.io.input.translated.devid = intblint(ctx, tblind, "devid");
+			ev.io.input.translated.subid = intblint(ctx, tblind, "subid");
 		}
 		else {
 			const char* tblsrc = intblstr(ctx, tblind, "source");
@@ -2888,8 +2903,8 @@ static int targetinput(lua_State* ctx)
 				EVENT_IDEVKIND_MOUSE : EVENT_IDEVKIND_GAMEDEV;
 			ev.io.datatype = EVENT_IDATATYPE_DIGITAL;
 			ev.io.input.digital.active= intblbool(ctx, tblind, "active");
-			ev.io.input.digital.devid = intblnum(ctx, tblind, "devid");
-			ev.io.input.digital.subid = intblnum(ctx, tblind, "subid");
+			ev.io.input.digital.devid = intblint(ctx, tblind, "devid");
+			ev.io.input.digital.subid = intblint(ctx, tblind, "subid");
 		}
 	}
 	else {
