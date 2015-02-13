@@ -1126,8 +1126,11 @@ struct arcan_shmif_cont arcan_shmif_open(
 		dpipe = (int) strtol(getenv("ARCAN_SOCKIN_FD"), NULL, 10);
 	}
 	else if (getenv("ARCAN_CONNPATH")){
-		keyfile = arcan_shmif_connect(
-			getenv("ARCAN_CONNPATH"), getenv("ARCAN_CONNKEY"), &dpipe);
+		do {
+			keyfile = arcan_shmif_connect(
+				getenv("ARCAN_CONNPATH"), getenv("ARCAN_CONNKEY"), &dpipe);
+		} while (keyfile == NULL &&
+			(flags & SHMIF_CONNECT_LOOP) > 0 && (sleep(1), 1));
 	}
 	else {
 		LOG("shmif_open() - No arcan-shmif connection, "

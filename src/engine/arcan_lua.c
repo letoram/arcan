@@ -369,6 +369,31 @@ static inline int find_lua_type(lua_State* ctx, int type, int ofs)
 	return 0;
 }
 
+static const char* luaL_lastcaller(lua_State* ctx)
+{
+	static char msg[1024];
+	msg[1023] = '\0';
+
+	lua_Debug dbg;
+  lua_getstack(ctx, 1, &dbg);
+	lua_getinfo(ctx, "nlS" ,&dbg);
+	snprintf(msg, 1023, "%s:%d", dbg.short_src, dbg.currentline);
+
+	return msg;
+}
+
+static void trace_allocation(lua_State* ctx, const char* sym, arcan_vobj_id id)
+{
+	if (lua_ctx_store.debug > 2)
+#ifndef ARCAN_LUA_NOCOLOR
+		arcan_warning("\x1b[1m %s: alloc(%s) => %"PRIxVOBJ")\x1b[39m\x1b[0m\n",
+			luaL_lastcaller(ctx), sym, id + lua_ctx_store.lua_vidbase);
+#else
+		arcan_warning("%s: alloc(%s) => %"PRIxVOBJ")\n",
+			luaL_lastcaller(ctx), sym, id + lua_ctx_store.lua_vidbase);
+#endif
+}
+
 static void trace_coverage(const char* fsym, lua_State* ctx)
 {
 	static FILE* outf;
@@ -1083,19 +1108,6 @@ void arcan_lua_setglobalint(lua_State* ctx, const char* key, int val)
 	lua_setglobal(ctx, key);
 }
 
-static const char* luaL_lastcaller(lua_State* ctx)
-{
-	static char msg[1024];
-	msg[1023] = '\0';
-
-	lua_Debug dbg;
-  lua_getstack(ctx, 1, &dbg);
-	lua_getinfo(ctx, "nlS" ,&dbg);
-	snprintf(msg, 1023, "%s:%d", dbg.short_src, dbg.currentline);
-
-	return msg;
-}
-
 static inline arcan_aobj_id luaaid_toaid(lua_Number innum)
 {
 	return (arcan_aobj_id) innum;
@@ -1218,6 +1230,7 @@ static int loadimage(lua_State* ctx)
 	}
 
 	lua_pushvid(ctx, id);
+	trace_allocation(ctx, "load_image", id);
 	LUA_ETRACE("load_image", NULL);
 	return 1;
 }
@@ -1242,6 +1255,7 @@ static int loadimageasynch(lua_State* ctx)
 	arcan_mem_free(path);
 
 	lua_pushvid(ctx, id);
+	trace_allocation(ctx, "load_image_asynch", id);
 	LUA_ETRACE("load_image_asynch", NULL);
 	return 1;
 }
@@ -1353,6 +1367,7 @@ static int instanceimage(lua_State* ctx)
 		arcan_video_transformmask(newid, lmask);
 
 		lua_pushvid(ctx, newid);
+		trace_allocation(ctx, "instance_image", id);
 		LUA_ETRACE("instance_image", NULL);
 		return 1;
 	}
@@ -2004,6 +2019,7 @@ static int rendertext(lua_State* ctx)
 		&nlines, &lineheights);
 
 	lua_pushvid(ctx, id);
+	trace_allocation(ctx, "render_text", id);
 
 	lua_newtable(ctx);
 	int top = lua_gettop(ctx);
@@ -2549,6 +2565,7 @@ static int setupavstream(lua_State* ctx)
 
 		arcan_video_objectopacity(mvctx->vid, 0.0, 0);
 		lua_pushvid(ctx, mvctx->vid);
+		trace_allocation(ctx, "launch_avfeed", mvctx->vid);
 		lua_pushaid(ctx, mvctx->aid);
 	}
 	else {
@@ -2641,6 +2658,7 @@ static int loadmovie(lua_State* ctx)
 
 	lua_pushvid(ctx, vid);
 	lua_pushaid(ctx, aid);
+	trace_allocation(ctx, "load_movie", mvctx->vid);
 
 	arcan_mem_free(fname);
 
@@ -3831,6 +3849,7 @@ static int buildmodel(lua_State* ctx)
 		arcan_video_objectopacity(id, 0, 0);
 
 	lua_pushvid(ctx, id);
+	trace_allocation(ctx, "new_3dmodel", id);
 	LUA_ETRACE("new_3dmodel", NULL);
 	return 1;
 }
@@ -3863,8 +3882,11 @@ static int buildplane(lua_State* ctx)
 	float ddens = luaL_checknumber(ctx, 7);
 	int nmaps = abs((int)luaL_optnumber(ctx, 8, 1));
 
-	lua_pushvid(ctx, arcan_3d_buildplane(minx, mind, endx, endd, starty,
-		hdens, ddens, nmaps));
+	arcan_vobj_id id = arcan_3d_buildplane(minx, mind,
+		endx, endd, starty, hdens, ddens, nmaps);
+
+	lua_pushvid(ctx, id);
+	trace_allocation(ctx, "build_3dplane", id);
 
 	LUA_ETRACE("build_3dplane", NULL);
 	return 1;
@@ -3878,7 +3900,9 @@ static int buildbox(lua_State* ctx)
 	float height = luaL_checknumber(ctx, 2);
 	float depth = luaL_checknumber(ctx, 3);
 
-	lua_pushvid(ctx, arcan_3d_buildbox(width, height, depth));
+	arcan_vobj_id id = arcan_3d_buildbox(width, height, depth);
+	lua_pushvid(ctx, id);
+	trace_allocation(ctx, "build_3dbox", id);
 
 	LUA_ETRACE("build_3dbox", NULL);
 	return 1;
@@ -3889,7 +3913,9 @@ static int pointcloud(lua_State* ctx)
 	LUA_TRACE("build_pointcloud");
 	float count = luaL_checknumber(ctx, 1);
 
-	lua_pushvid(ctx, arcan_3d_pointcloud(count));
+	arcan_vobj_id id = arcan_3d_pointcloud(count);
+	lua_pushvid(ctx, id);
+ 	trace_allocation(ctx, "build_pointcloud", id);
 
 	LUA_ETRACE("build_pointcloud", NULL);
 	return 1;
@@ -4345,6 +4371,7 @@ static int allocsurface(lua_State* ctx)
 	arcan_vobj_id id = arcan_video_rawobject(buf, cons, cons.w, cons.h, 0);
 
 	lua_pushvid(ctx, id);
+ 	trace_allocation(ctx, "alloc_surface", id);
 
 	LUA_ETRACE("alloc_surface", NULL);
 	return 1;
@@ -4383,6 +4410,7 @@ static int fillsurface(lua_State* ctx)
 		arcan_vobj_id id = arcan_video_rawobject(buf, cons, desw, desh, 0);
 
 		lua_pushvid(ctx, id);
+		trace_allocation(ctx, "fill_surface", id);
 		LUA_ETRACE("fill_surface", NULL);
 		return 1;
 	}
@@ -4443,8 +4471,10 @@ static int colorsurface(lua_State* ctx)
 	uint8_t cblu = abs((int)luaL_checknumber(ctx, 5));
 	int order = abs((int)luaL_optnumber(ctx, 6, 1));
 
-	lua_pushvid(ctx, arcan_video_solidcolor(desw, desh,
-		cred, cgrn, cblu, order));
+	arcan_vobj_id id = arcan_video_solidcolor(
+		desw, desh, cred, cgrn, cblu, order);
+	lua_pushvid(ctx, id);
+	trace_allocation(ctx, "color_surface", id);
 
 	LUA_ETRACE("color_surface", NULL);
 	return 1;
@@ -4458,7 +4488,10 @@ static int nullsurface(lua_State* ctx)
 	size_t desh = abs((int)luaL_checknumber(ctx, 2));
 	int order = abs((int)luaL_optnumber(ctx, 3, 1));
 
-	lua_pushvid(ctx, arcan_video_nullobject(desw, desh, order) );
+	arcan_vobj_id id = arcan_video_nullobject(desw, desh, order);
+	lua_pushvid(ctx, id);
+
+	trace_allocation(ctx, "null_surface", id);
 
 	LUA_ETRACE("null_surface", NULL);
 	return 1;
@@ -4556,6 +4589,7 @@ static int rawsurface(lua_State* ctx)
 	arcan_vobj_id id = arcan_video_rawobject(buf, cons, desw, desh, 0);
 
 	lua_pushvid(ctx, id);
+	trace_allocation(ctx, "raw_surface", id);
 	LUA_ETRACE("raw_surface", NULL);
 	return 1;
 }
@@ -4587,6 +4621,7 @@ static int randomsurface(lua_State* ctx)
 	arcan_vobj_id id = arcan_video_rawobject(buf, cons, desw, desh, 0);
 	arcan_video_objectfilter(id, ARCAN_VFILTER_NONE);
 	lua_pushvid(ctx, id);
+	trace_allocation(ctx, "random", id);
 
 	LUA_ETRACE("random_surface", NULL);
 	return 1;
@@ -5504,6 +5539,7 @@ static int targetaccept(lua_State* ctx)
 
 	lua_pushvid(ctx, newref->vid);
 	lua_pushvid(ctx, newref->aid);
+	trace_allocation(ctx, "subseg", newref->vid);
 
 	LUA_ETRACE("accept_target", NULL);
 	return 2;
@@ -5572,6 +5608,7 @@ static int targetalloc(lua_State* ctx)
 
 	lua_pushvid(ctx, newref->vid);
 	lua_pushaid(ctx, newref->aid);
+	trace_allocation(ctx, "target", newref->vid);
 
 	LUA_ETRACE("target_alloc", NULL);
 	return 2;
@@ -5673,6 +5710,7 @@ static int targetlaunch(lua_State* ctx)
 		arcan_video_objectopacity(intarget->vid, 0.0, 0);
 		lua_pushvid(ctx, intarget->vid);
 		lua_pushaid(ctx, intarget->aid);
+		trace_allocation(ctx, "launch", intarget->vid);
 		arcan_db_launch_status(dbhandle, cid, true);
 		rc = 2;
 	}
@@ -6168,6 +6206,7 @@ static int spawn_recsubseg(lua_State* ctx,
 			arcan_frameserver_avfeed_mixer(rv, naids, aidlocks);
 
 		lua_pushvid(ctx, rv->vid);
+		trace_allocation(ctx, "record", rv->vid);
 		return 1;
 	}
 
@@ -7393,6 +7432,7 @@ static bool lua_launch_fsrv(lua_State* ctx,
 
 	if (fsrv_ok && arcan_frameserver_spawn_server(intarget, *args) == ARCAN_OK){
 		lua_pushvid(ctx, intarget->vid);
+		trace_allocation(ctx, "net", intarget->vid);
 		return true;
 	}
 	else {
@@ -7590,6 +7630,7 @@ static int net_pushcl(lua_State* ctx)
 			outev.tgt.kind = TARGET_COMMAND_STEPFRAME;
 			arcan_frameserver_pushevent(srv, &outev);
 			lua_pushvid(ctx, srv->vid);
+			trace_allocation(ctx, "net_sub", srv->vid);
 			srv->tag = ref;
 
 /* copy state into dvobj, then send event
