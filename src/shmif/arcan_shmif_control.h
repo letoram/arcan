@@ -393,7 +393,10 @@ enum SHMIF_FLAGS {
 	SHMIF_ACQUIRE_FATALFAIL = 4,
 
 /* if FATALFAIL, do we have a custom function? should be first argument */
-	SHMIF_FATALFAIL_FUNC = 8
+	SHMIF_FATALFAIL_FUNC = 8,
+
+/* set to sleep- try spin until a connection is established */
+	SHMIF_CONNECT_LOOP = 16
 };
 
 /*

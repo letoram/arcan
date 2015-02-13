@@ -4027,6 +4027,7 @@ static inline void draw_texsurf(struct rendertarget* dst,
 {
 	float* mvm = NULL;
 	setup_surf(dst, &prop, src, &mvm);
+
 	agp_draw_vobj(-prop.scale.x, -prop.scale.y, prop.scale.x,
 		prop.scale.y, txcos, mvm);
 }
