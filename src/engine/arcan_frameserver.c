@@ -83,6 +83,7 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 	}
 
 	vfunc_state emptys = {0};
+	printf("stopped audio\n");
 	arcan_audio_stop(src->aid);
 	arcan_mem_free(src->audb);
 
@@ -156,13 +157,10 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst,
 /*
  * NOTE: when arcan_event_serialize(*buffer) is implemented,
  * the queue should be stripped from the shmpage entirely and only
- * transferred over the socket(!)
- * The problem with the current approach is that we have no
- * decent mechanism active for waking a child that's simultaneously
- * polling and need to respond quickly to enqueued events
+ * transferred over the socket and not just the signalling
  */
 	if (dst && ev){
-		rv = dst->flags.alive && dst->shm.ptr ?
+		rv = dst->flags.alive && (dst->shm.ptr && dst->shm.ptr->dms) ?
 			(arcan_event_enqueue(&dst->outqueue, ev), ARCAN_OK) :
 			ARCAN_ERRC_UNACCEPTED_STATE;
 #ifndef _WIN32
