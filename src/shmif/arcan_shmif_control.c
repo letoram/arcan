@@ -175,7 +175,7 @@ int process_events(struct arcan_shmif_cont* c,
 {
 	assert(dst);
 	assert(c);
-	if (!c->addr || !c->addr->dms)
+	if (!c->addr)
 		return 0;
 
 	int rv = 0;
@@ -226,6 +226,8 @@ checkfd:
 
 		rv = 1;
 	}
+	else if (c->addr->dms == 0)
+		return -1;
 	else if (blocking && *ks)
 		goto checkfd;
 
