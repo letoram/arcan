@@ -82,20 +82,6 @@ arcan_evctx* arcan_event_defaultctx(){
 	return &default_evctx;
 }
 
-static void wake_semsleeper(arcan_evctx* ctx)
-{
-	if (ctx->local)
-		return;
-
-/* if it can't be locked, it's likely that the other process
- * is sleeping, waiting for signal, so just do that,
- * else leave it at 0 */
-	if (-1 == arcan_sem_trywait(ctx->synch.handle))
-		arcan_sem_post(ctx->synch.handle);
-	else
-		;
-}
-
 /*
  * If the shmpage integrity is somehow compromised,
  * if semaphore use is out of order etc.
@@ -123,7 +109,6 @@ int arcan_event_poll(arcan_evctx* ctx, struct arcan_event* dst)
 		else {
 			*dst = ctx->eventbuf[ *(ctx->front) ];
 			*(ctx->front) = (*(ctx->front) + 1) % ARCAN_SHMPAGE_QUEUE_SZ;
-			wake_semsleeper(ctx);
 		}
 	}
 	else {
@@ -224,8 +209,8 @@ int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src)
 		}
 	}
 
-	ctx->eventbuf[*ctx->back] = *src;
-	ctx->eventbuf[*ctx->back].timestamp = arcan_frametime();
+	ctx->eventbuf[(*ctx->back) % ctx->eventbuf_sz] = *src;
+	ctx->eventbuf[(*ctx->back) % ctx->eventbuf_sz].timestamp = arcan_frametime();
 	*ctx->back = (*ctx->back + 1) % ctx->eventbuf_sz;
 
 /*
@@ -238,8 +223,6 @@ int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src)
 	if (ctx->local){
 		UNLOCK();
 	}
-	else
-		wake_semsleeper(ctx);
 
 	return 1;
 }
@@ -251,22 +234,14 @@ int rv = *(dq->front) > *(dq->back) ? dq->eventbuf_sz -
 return rv;
 }
 
-/*
- * #ifndef ARCAN_LWA
-int arcan_shmif_enqueue(struct arcan_shmif_cont* ctx,
-	const struct arcan_event* const ev)
-{
-	return arcan_event_enqueue(&ctx->outev, ev);
-}
-#endif
- */
-
 void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 	enum ARCAN_EVENT_CATEGORY allowed, float saturation, arcan_vobj_id source)
 {
 	if (!srcqueue || !dstqueue || (srcqueue && !srcqueue->front)
 		|| (srcqueue && !srcqueue->back))
 		return;
+
+	bool wake = false;
 
 	arcan_frameserver* tgt = arcan_video_feedstate(source) ?
 		arcan_video_feedstate(source)->ptr : NULL;
@@ -337,8 +312,12 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 			inev.net.source = source;
 		}
 
+		wake = true;
 		arcan_event_enqueue(dstqueue, &inev);
 	}
+
+	if (wake)
+		arcan_sem_post(srcqueue->synch.handle);
 }
 
 static long unpack_rec_event(char* bytep, size_t sz, arcan_event* tv,

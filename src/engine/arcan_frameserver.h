@@ -77,8 +77,6 @@ typedef struct arcan_frameserver {
 /* original resource, needed for reloading */
 	char* source;
 
-/* OS- specific, defined in general.h */
-	shm_handle shm;
 	sem_handle vsync, async, esync;
 
 	file_handle dpipe;
@@ -148,6 +146,7 @@ typedef struct arcan_frameserver {
 /* precalc offsets into mapped shmpage, calculated at resize */
 	uint32_t* vidp;
 	int16_t* audp;
+	shm_handle shm;
 
 /* above pointers are all placed so that if they overflow
  * they should hit this canary -- use for watchpoint in debugging

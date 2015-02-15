@@ -14,6 +14,7 @@
 #include <sys/types.h>
 #include <assert.h>
 #include <limits.h>
+#include <inttypes.h>
 #include <pthread.h>
 
 #include <al.h>
