@@ -348,8 +348,10 @@ void agp_update_vstore(struct storage_info_t* s, bool copy)
 		glBindTexture(GL_TEXTURE_2D, s->vinf.text.glid);
 	}
 
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, s->txu);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, s->txv);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, s->txu == ARCAN_VTEX_REPEAT ?
+		GL_REPEAT : GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, s->txv == ARCAN_VTEX_REPEAT ?
+		GL_REPEAT : GL_CLAMP_TO_EDGE);
 
 	int filtermode = s->filtermode & (~ARCAN_VFILTER_MIPMAP);
 	bool mipmap = s->filtermode & ARCAN_VFILTER_MIPMAP;
