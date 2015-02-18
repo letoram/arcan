@@ -47,7 +47,7 @@ static struct monitor_mode mmodes[] = {
 		.width = 640,
 		.height = 480,
 		.refresh = 60,
-		.depth = GL_PIXEL_BPP_BIT,
+		.depth = sizeof(av_pixel) * 8,
 		.dynamic = true
 	},
 };

@@ -518,7 +518,7 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	arcan_frameserver_meta vinfo = {
 		.width = hintw,
 		.height = hinth,
-		.bpp = GL_PIXEL_BPP
+		.bpp = sizeof(av_pixel)
 	};
 	arcan_vobj_id newvid = arcan_video_addfobject((arcan_vfunc_cb)
 		arcan_frameserver_videoframe_direct, state, cons, 0);

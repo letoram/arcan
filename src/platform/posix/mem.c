@@ -222,7 +222,7 @@ void* arcan_alloc_mem(size_t nb,
 	if (hint & ARCAN_MEM_BZERO){
 		if (type == ARCAN_MEM_VBUFFER){
 			av_pixel* buf = (av_pixel*) rptr;
-			for (size_t i = 0; i < nb; i += GL_PIXEL_BPP)
+			for (size_t i = 0; i < nb; i += sizeof(av_pixel))
 				*buf++ = RGBA(0, 0, 0, 255);
 		}
 		else

@@ -162,7 +162,7 @@ struct monitor_mode* PLATFORM_SYMBOL(_video_query_modes)(
 	mode.height = egl.canvash;
 #endif
 
-	mode.depth  = GL_PIXEL_BPP * 8;
+	mode.depth  = sizeof(av_pixel) * 8;
 	mode.refresh = 60; /* should be queried */
 
 	*count = 1;

@@ -201,10 +201,10 @@ TTF_Surface* text_loadimage(const char* const infn, img_cons cons)
 
 	if (imgbuf && rv == ARCAN_OK){
 		TTF_Surface* res = malloc(sizeof(TTF_Surface));
-		res->bpp    = GL_PIXEL_BPP;
+		res->bpp    = sizeof(av_pixel);
 
 		if ((cons.w != 0 && cons.h != 0) && (inw != cons.w || inh != cons.h)){
-			uint32_t* scalebuf = malloc(cons.w * cons.h * GL_PIXEL_BPP);
+			uint32_t* scalebuf = malloc(cons.w * cons.h * sizeof(av_pixel));
 			arcan_renderfun_stretchblit(
 				imgbuf, inw, inh, scalebuf, cons.w, cons.h, false);
 			free(imgbuf);
@@ -217,7 +217,7 @@ TTF_Surface* text_loadimage(const char* const infn, img_cons cons)
 			res->data   = imgbuf;
 		}
 
-		res->stride = res->width * GL_PIXEL_BPP;
+		res->stride = res->width * sizeof(av_pixel);
 		return res;
 	}
 
@@ -810,7 +810,7 @@ void* arcan_renderfun_renderfmtstr(const char* message,
 		*dw = pot ? nexthigher(*maxw) : *maxw;
 		*dh = pot ? nexthigher(*maxh) : *maxh;
 
-		*d_sz = *dw * *dh * GL_PIXEL_BPP;
+		*d_sz = *dw * *dh * sizeof(av_pixel);
 
 		raw = arcan_alloc_mem(*d_sz, ARCAN_MEM_VBUFFER,
 			ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE);
