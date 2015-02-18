@@ -19,20 +19,6 @@
  * can return ARCAN_ERRC_UNACCEPTED_STATE.
  */
 
-/*
- * The following macros are defined in order to compile-time define
- * different native/forced data format. It is currently unwise to edit
- * these as some parts of the codebase slated for refactoring still
- * assumes it is working with RGBA8888.
- *
- * Furthermore, there should be a build-time step that probes different
- * variants (RGBA, ARGB, BGRA, ...) based on the GPU drivers at hand and
- * define macros accordingly.
- */
-/*
- * Used for frameserver<->video where the A channel of the input should
- * be ignored when uploading.
- */
 #ifndef CONTEXT_STACK_LIMIT
 #define CONTEXT_STACK_LIMIT 8
 #endif
@@ -693,7 +679,8 @@ arcan_errc arcan_video_screencoords(arcan_vobj_id, vector*);
 surface_properties arcan_video_properties_at(
 	arcan_vobj_id id, uint32_t ticks);
 img_cons arcan_video_dimensions(uint16_t w, uint16_t h);
-arcan_errc arcan_video_forceread(arcan_vobj_id sid, av_pixel** dptr, size_t* dstsz);
+arcan_errc arcan_video_forceread(arcan_vobj_id sid,
+	bool local, av_pixel** dptr, size_t* dstsz);
 
 /* Transformation chain actions */
 arcan_errc arcan_video_objectmove(arcan_vobj_id id, float newx, float newy,
