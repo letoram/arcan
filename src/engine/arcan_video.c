@@ -4392,7 +4392,7 @@ end3d:
 	return pc;
 }
 
-arcan_errc arcan_video_forceread(arcan_vobj_id sid,
+arcan_errc arcan_video_forceread(arcan_vobj_id sid, bool local,
 	av_pixel** dptr, size_t* dsize)
 {
 /*
@@ -4416,10 +4416,15 @@ arcan_errc arcan_video_forceread(arcan_vobj_id sid,
 	*dptr  = arcan_alloc_mem(*dsize, ARCAN_MEM_VBUFFER,
 		ARCAN_MEM_TEMPORARY | ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE);
 
-	av_pixel* temp = dstore->vinf.text.raw;
-	dstore->vinf.text.raw = *dptr;
-	agp_readback_synchronous(dstore);
-	dstore->vinf.text.raw = temp;
+	if (local && dstore->vinf.text.raw && dstore->vinf.text.s_raw > 0){
+		memcpy(dptr, dstore->vinf.text.raw, *dsize);
+	}
+	else {
+		av_pixel* temp = dstore->vinf.text.raw;
+		dstore->vinf.text.raw = *dptr;
+		agp_readback_synchronous(dstore);
+		dstore->vinf.text.raw = temp;
+	}
 
 	return ARCAN_OK;
 }

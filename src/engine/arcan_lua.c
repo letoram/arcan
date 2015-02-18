@@ -7358,10 +7358,11 @@ static int screenshot(lua_State* ctx)
 	arcan_vobj_id sid = ARCAN_EID;
 
 	enum outfmt_screenshot fmt = luaL_optnumber(ctx, 2, OUTFMT_PNG);
+	bool local = luaL_optbnumber(ctx, 4, false);
 
 	if (luaL_optnumber(ctx, 3, ARCAN_EID) != ARCAN_EID){
 		sid = luaL_checkvid(ctx, 3, NULL);
-			arcan_video_forceread(sid, &databuf, &bufs);
+		arcan_video_forceread(sid, local, &databuf, &bufs);
 
 		img_cons com = arcan_video_storage_properties(sid);
 		dw = com.w;
