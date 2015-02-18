@@ -83,7 +83,6 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 	}
 
 	vfunc_state emptys = {0};
-	printf("stopped audio\n");
 	arcan_audio_stop(src->aid);
 	arcan_mem_free(src->audb);
 
