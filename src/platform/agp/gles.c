@@ -229,7 +229,7 @@ void agp_resize_vstore(struct storage_info_t* s, size_t w, size_t h)
 {
 	s->w = w;
 	s->h = h;
-	s->bpp = GL_PIXEL_BPP;
+	s->bpp = sizeof(av_pixel);
 
 	if (s->vinf.text.raw){
 		arcan_mem_free(s->vinf.text.raw);
@@ -243,13 +243,13 @@ void agp_resize_vstore(struct storage_info_t* s, size_t w, size_t h)
 
 static void alloc_buffer(struct storage_info_t* s)
 {
-	if (s->vinf.text.s_raw != s->w * s->h * GL_PIXEL_BPP){
+	if (s->vinf.text.s_raw != s->w * s->h * sizeof(av_pixel)){
 		arcan_mem_free(s->vinf.text.raw);
 		s->vinf.text.raw = NULL;
 	}
 
 	if (!s->vinf.text.raw){
-		s->vinf.text.s_raw = s->w * s->h * GL_PIXEL_BPP;
+		s->vinf.text.s_raw = s->w * s->h * sizeof(av_pixel);
 		s->vinf.text.raw = arcan_alloc_mem(s->vinf.text.s_raw,
 			ARCAN_MEM_VBUFFER, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
 	}

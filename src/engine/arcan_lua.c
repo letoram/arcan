@@ -4367,14 +4367,14 @@ static int allocsurface(lua_State* ctx)
 	img_cons cons = {};
 	cons.w = luaL_checknumber(ctx, 1);
 	cons.h = luaL_checknumber(ctx, 2);
-	cons.bpp = GL_PIXEL_BPP;
+	cons.bpp = sizeof(av_pixel);
 
 	if (cons.w > MAX_SURFACEW || cons.h > MAX_SURFACEH)
 		arcan_fatal("alloc_surface(%d, %d) failed, unacceptable "
 			"surface dimensions. Compile time restriction (%d,%d)\n",
 			cons.w, cons.h, MAX_SURFACEW, MAX_SURFACEH);
 
-	av_pixel* buf = arcan_alloc_mem(cons.w * cons.h * GL_PIXEL_BPP,
+	av_pixel* buf = arcan_alloc_mem(cons.w * cons.h * sizeof(av_pixel),
 		ARCAN_MEM_VBUFFER, 0, ARCAN_MEMALIGN_PAGE);
 
 	av_pixel* cptr = buf;
@@ -4410,7 +4410,7 @@ static int fillsurface(lua_State* ctx)
 	if (cons.w > 0 && cons.w <= MAX_SURFACEW &&
 		cons.h > 0 && cons.h <= MAX_SURFACEH){
 
-		av_pixel* buf = arcan_alloc_mem(cons.w * cons.h * GL_PIXEL_BPP,
+		av_pixel* buf = arcan_alloc_mem(cons.w * cons.h * sizeof(av_pixel),
 			ARCAN_MEM_VBUFFER, 0, ARCAN_MEMALIGN_PAGE);
 
 		if (!buf)
@@ -4526,7 +4526,7 @@ static int rawsurface(lua_State* ctx)
 		arcan_fatal("rawsurface(), invalid source channel count (%d)"
 			"	accepted values: 1, 2, 4\n", bpp);
 
-	img_cons cons = {.w = desw, .h = desh, .bpp = GL_PIXEL_BPP};
+	img_cons cons = {.w = desw, .h = desh, .bpp = sizeof(av_pixel)};
 
 	luaL_checktype(ctx, 4, LUA_TTABLE);
 	int nsamples = lua_rawlen(ctx, 4);
@@ -4543,7 +4543,7 @@ static int rawsurface(lua_State* ctx)
 			desw, desh, MAX_SURFACEW, MAX_SURFACEH
 		);
 
-	av_pixel* buf = arcan_alloc_mem(desw * desh * GL_PIXEL_BPP,
+	av_pixel* buf = arcan_alloc_mem(desw * desh * sizeof(av_pixel),
 		ARCAN_MEM_VBUFFER, 0, ARCAN_MEMALIGN_PAGE);
 
 	av_pixel* cptr = (av_pixel*) buf;
@@ -4620,9 +4620,9 @@ static int randomsurface(lua_State* ctx)
 
 	size_t desw = abs((int)luaL_checknumber(ctx, 1));
 	size_t desh = abs((int)luaL_checknumber(ctx, 2));
-	img_cons cons = {.w = desw, .h = desh, .bpp = GL_PIXEL_BPP};
+	img_cons cons = {.w = desw, .h = desh, .bpp = sizeof(av_pixel)};
 
-	av_pixel* cptr = arcan_alloc_mem(desw * desh * GL_PIXEL_BPP,
+	av_pixel* cptr = arcan_alloc_mem(desw * desh * sizeof(av_pixel),
 		ARCAN_MEM_VBUFFER, 0, ARCAN_MEMALIGN_PAGE);
 
 	av_pixel* buf = (av_pixel*) cptr;

@@ -1091,7 +1091,7 @@ struct monitor_mode* platform_video_query_modes(
  * phy_height, dpi > dpmm
  * decode flags into mode as well
  */
-		mcache[i].depth = GL_PIXEL_BPP * 8;
+		mcache[i].depth = sizeof(av_pixel) * 8;
 	}
 
 	if (free_conn){
@@ -1562,7 +1562,7 @@ static void step_fb(struct dispout* d, struct gbm_bo* bo)
 	uint32_t height = gbm_bo_get_height(bo);
 	uint32_t stride = gbm_bo_get_stride(bo);
 
-	if (drmModeAddFB(d->device->fd, width, height, 24, GL_PIXEL_BPP * 8,
+	if (drmModeAddFB(d->device->fd, width, height, 24, sizeof(av_pixel) * 8,
 		stride, handle, &d->buffer.fbid)){
 		arcan_warning("rgl-dri(), couldn't add framebuffer (%s)\n",
 			strerror(errno));

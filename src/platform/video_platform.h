@@ -37,11 +37,6 @@ typedef VIDEO_PIXEL_TYPE av_pixel;
 #define GL_PIXEL_FORMAT GL_RGBA
 #endif
 
-#ifndef GL_PIXEL_BPP
-#define GL_PIXEL_BPP 4
-#define GL_PIXEL_BPP_BIT 32
-#endif
-
 #define RGBA_FULLALPHA_REPACK(inv)(	RGBA( ((inv) & 0x000000ff), \
 (((inv) & 0x0000ff00) >> 8), (((inv) & 0x00ff0000) >> 16), 0xff) )
 

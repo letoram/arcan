@@ -156,7 +156,7 @@ static bool alloc_fbo(struct agp_rendertarget* dst, bool retry)
 
 void agp_empty_vstore(struct storage_info_t* vs, size_t w, size_t h)
 {
-	size_t sz = w * h * GL_PIXEL_BPP;
+	size_t sz = w * h * sizeof(av_pixel);
 	vs->vinf.text.s_raw = sz;
 	vs->vinf.text.raw = arcan_alloc_mem(
 		vs->vinf.text.s_raw,
@@ -603,7 +603,7 @@ void agp_deactivate_vstore()
 void agp_save_output(size_t w, size_t h, av_pixel* dst, size_t dsz)
 {
 	glReadBuffer(GL_FRONT);
-	assert(w * h * GL_PIXEL_BPP == dsz);
+	assert(w * h * sizeof(av_pixel) == dsz);
 
 	glReadPixels(0, 0, w, h, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, dst);
 }

@@ -164,7 +164,7 @@ static void pbo_stream(struct storage_info_t* s, av_pixel* buf, bool synch)
 
 /* note, explicitly replace with a simd unaligned version */
  	if ( ((uintptr_t)ptr % 16) == 0 && ((uintptr_t)buf % 16) == 0	)
-		memcpy(ptr, buf, ntc * GL_PIXEL_BPP);
+		memcpy(ptr, buf, ntc * sizeof(av_pixel));
 	else
 		for (size_t i = 0; i < ntc; i++)
 			*ptr++ = *buf++;
@@ -174,7 +174,7 @@ static void pbo_stream(struct storage_info_t* s, av_pixel* buf, bool synch)
 		ptr = s->vinf.text.raw;
 
  		if ( ((uintptr_t)ptr % 16) == 0 && ((uintptr_t)buf % 16) == 0	)
-			memcpy(ptr, buf, ntc * GL_PIXEL_BPP);
+			memcpy(ptr, buf, ntc * sizeof(av_pixel));
 		else
 			for (size_t i = 0; i < ntc; i++)
 				*ptr++ = *buf++;
@@ -194,20 +194,20 @@ static inline void setup_unpack_pbo(struct storage_info_t* s, void* buf)
 	glGenBuffers(1, &s->vinf.text.wid);
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, s->vinf.text.wid);
 		glBufferData(GL_PIXEL_UNPACK_BUFFER,
-			s->w * s->h * GL_PIXEL_BPP, buf, GL_STREAM_DRAW);
+			s->w * s->h * sizeof(av_pixel) , buf, GL_STREAM_DRAW);
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 	agp_deactivate_vstore();
 }
 
 static void alloc_buffer(struct storage_info_t* s)
 {
-	if (s->vinf.text.s_raw != s->w * s->h * GL_PIXEL_BPP){
+	if (s->vinf.text.s_raw != s->w * s->h * sizeof(av_pixel)){
 		arcan_mem_free(s->vinf.text.raw);
 		s->vinf.text.raw = NULL;
 	}
 
 	if (!s->vinf.text.raw){
-		s->vinf.text.s_raw = s->w * s->h * GL_PIXEL_BPP;
+		s->vinf.text.s_raw = s->w * s->h * sizeof(av_pixel);
 		s->vinf.text.raw = arcan_alloc_mem(s->vinf.text.s_raw,
 			ARCAN_MEM_VBUFFER, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
 	}
@@ -309,7 +309,7 @@ void agp_resize_vstore(struct storage_info_t* s, size_t w, size_t h)
 {
 	s->w = w;
 	s->h = h;
-	s->bpp = GL_PIXEL_BPP;
+	s->bpp = sizeof(av_pixel);
 
 	if (s->vinf.text.raw){
 		arcan_mem_free(s->vinf.text.raw);

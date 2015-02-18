@@ -701,7 +701,7 @@ unsigned arcan_video_extpopcontext(arcan_vobj_id* dst)
 		int w = mode.width;
 		int h = mode.height;
 
-		img_cons cons = {.w = w, .h = h, .bpp = GL_PIXEL_BPP};
+		img_cons cons = {.w = w, .h = h, .bpp = sizeof(av_pixel)};
 		*dst = arcan_video_rawobject(dstbuf, cons, w, h, 1);
 
 		if (*dst == ARCAN_EID){
@@ -735,7 +735,7 @@ signed arcan_video_extpushcontext(arcan_vobj_id* dst)
 		int w = mode.width;
 		int h = mode.height;
 
-		img_cons cons = {.w = w, .h = h, .bpp = GL_PIXEL_BPP};
+		img_cons cons = {.w = w, .h = h, .bpp = sizeof(av_pixel)};
 		*dst = arcan_video_rawobject(dstbuf, cons, w, h, 1);
 
 		if (*dst == ARCAN_EID)
@@ -817,7 +817,7 @@ arcan_errc arcan_video_resampleobject(arcan_vobj_id vid,
 /* allocate a temporary storage object,
  * a temporary transfer object,
  * and a temporary rendertarget */
-	size_t new_sz = neww * newh * GL_PIXEL_BPP;
+	size_t new_sz = neww * newh * sizeof(av_pixel);
 	av_pixel* dstbuf = arcan_alloc_mem(new_sz,
 		ARCAN_MEM_VBUFFER, ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE);
 
@@ -835,7 +835,7 @@ arcan_errc arcan_video_resampleobject(arcan_vobj_id vid,
 	arcan_video_objectopacity(xfer, 1.0, 0);
 	arcan_video_setprogram(xfer, shid);
 
-	img_cons cons = {.w = neww, .h = newh, .bpp = GL_PIXEL_BPP};
+	img_cons cons = {.w = neww, .h = newh, .bpp = sizeof(av_pixel)};
 	arcan_vobj_id dst = arcan_video_rawobject(dstbuf, cons, neww, newh, 1);
 
 	if (dst == ARCAN_EID){
@@ -1492,7 +1492,7 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
 			dst->origw = forced.w;
 			dst->origh = forced.h;
 
-			dstframe->vinf.text.s_raw = neww * newh * GL_PIXEL_BPP;
+			dstframe->vinf.text.s_raw = neww * newh * sizeof(av_pixel);
 			dstframe->vinf.text.raw   = arcan_alloc_mem(dstframe->vinf.text.s_raw,
 				ARCAN_MEM_VBUFFER, 0, ARCAN_MEMALIGN_PAGE);
 
@@ -1506,7 +1506,7 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
 			newh = nexthigher(newh);
 
 			if (neww != inw || newh != inh){
-				dstframe->vinf.text.s_raw = neww * newh * GL_PIXEL_BPP;
+				dstframe->vinf.text.s_raw = neww * newh * sizeof(av_pixel);
 				dstframe->vinf.text.raw = arcan_alloc_mem(dstframe->vinf.text.s_raw,
 					ARCAN_MEM_VBUFFER, 0, ARCAN_MEMALIGN_PAGE);
 
@@ -1516,7 +1516,7 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
 				arcan_mem_free(imgbuf);
 			}
 			else {
-				dstframe->vinf.text.s_raw = neww * newh * GL_PIXEL_BPP;
+				dstframe->vinf.text.s_raw = neww * newh * sizeof(av_pixel);
 				dstframe->vinf.text.raw = imgbuf;
 			}
 		}
@@ -1524,7 +1524,7 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
 			neww = inw;
 			newh = inh;
 			dstframe->vinf.text.raw = imgbuf;
-			dstframe->vinf.text.s_raw = inw * inh * GL_PIXEL_BPP;
+			dstframe->vinf.text.s_raw = inw * inh * sizeof(av_pixel);
 		}
 
 		dst->vstore->w = neww;
@@ -1698,7 +1698,7 @@ arcan_vobj_id arcan_video_rawobject(av_pixel* buf,
 	arcan_vobj_id rv = ARCAN_EID;
 	size_t bufs = cons.w * cons.h * cons.bpp;
 
-	if (cons.bpp != GL_PIXEL_BPP)
+	if (cons.bpp != sizeof(av_pixel))
 		return ARCAN_EID;
 
 	arcan_vobject* newvobj = arcan_video_newvobject(&rv);
@@ -1960,7 +1960,7 @@ void arcan_video_joinasynch(arcan_vobject* img, bool emit, bool force)
 	else {
 		img->origw = 32;
 		img->origh = 32;
-		img->vstore->vinf.text.s_raw = 32 * 32 * GL_PIXEL_BPP;
+		img->vstore->vinf.text.s_raw = 32 * 32 * sizeof(av_pixel);
 		img->vstore->vinf.text.raw = arcan_alloc_mem(img->vstore->vinf.text.s_raw,
 			ARCAN_MEM_VBUFFER, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
 
@@ -2105,7 +2105,7 @@ arcan_vobj_id arcan_video_setupfeed(arcan_vfunc_cb ffunc,
 /* preset */
 	newvobj->origw = constraints.w;
 	newvobj->origh = constraints.h;
-	newvobj->vstore->bpp = ncpt == 0 ? GL_PIXEL_BPP : ncpt;
+	newvobj->vstore->bpp = ncpt == 0 ? sizeof(av_pixel) : ncpt;
 	newvobj->vstore->filtermode &= ~ARCAN_VFILTER_MIPMAP;
 
 	if (newvobj->vstore->scale == ARCAN_VIMAGE_NOPOW2){
@@ -2162,7 +2162,7 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, size_t w, size_t h)
 	vobj->origh = h;
 	rescale_origwh(vobj, fx, fy);
 
-	vobj->vstore->vinf.text.s_raw = w * h * GL_PIXEL_BPP;
+	vobj->vstore->vinf.text.s_raw = w * h * sizeof(av_pixel);
 	agp_resize_vstore(vobj->vstore, w, h);
 
 	return ARCAN_OK;
@@ -4412,7 +4412,7 @@ arcan_errc arcan_video_forceread(arcan_vobj_id sid,
 	if (dstore->txmapped != TXSTATE_TEX2D)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
-	*dsize = GL_PIXEL_BPP * dstore->w * dstore->h;
+	*dsize = sizeof(av_pixel) * dstore->w * dstore->h;
 	*dptr  = arcan_alloc_mem(*dsize, ARCAN_MEM_VBUFFER,
 		ARCAN_MEM_TEMPORARY | ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE);
 
@@ -4455,7 +4455,7 @@ arcan_errc arcan_video_forceupdate(arcan_vobj_id vid)
 arcan_errc arcan_video_screenshot(av_pixel** dptr, size_t* dsize)
 {
 	struct monitor_mode mode = platform_video_dimensions();
-	*dsize = sizeof(char) * mode.width * mode.height * GL_PIXEL_BPP;
+	*dsize = sizeof(char) * mode.width * mode.height * sizeof(av_pixel);
 
 	*dptr = arcan_alloc_mem(*dsize, ARCAN_MEM_VBUFFER,
 		ARCAN_MEM_TEMPORARY | ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE);
@@ -4486,7 +4486,7 @@ static inline void poll_readback(struct rendertarget* tgt)
 		tgt->readback = 0;
 	else{
 		vobj->feed.ffunc(FFUNC_READBACK, rbb.ptr,
-			rbb.w * rbb.h * GL_PIXEL_BPP, rbb.w, rbb.h, 0, vobj->feed.state);
+			rbb.w * rbb.h * sizeof(av_pixel), rbb.w, rbb.h, 0, vobj->feed.state);
 	}
 
 	rbb.release(rbb.tag);

@@ -120,7 +120,7 @@ struct monitor_modes* platform_video_query_modes(
 
 	mode.width  = arcan_video_display.width;
 	mode.height = arcan_video_display.height;
-	mode.depth  = GL_PIXEL_BPP * 8;
+	mode.depth  = sizeof(av_pixel) * 8;
 	mode.refresh = 60; /* should be queried */
 
 	*count = 1;

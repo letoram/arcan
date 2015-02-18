@@ -67,7 +67,7 @@ void platform_video_restore_external()
 		SDL_Init(SDL_INIT_VIDEO | SDL_INIT_NOPARACHUTE);
 
 	sdl.screen = SDL_SetVideoMode(
-		sdl.mdispw, sdl.mdisph, GL_PIXEL_BPP, sdl.sdlarg);
+		sdl.mdispw, sdl.mdisph, sizeof(av_pixel), sdl.sdlarg);
 }
 
 void* platform_video_gfxsym(const char* sym)
@@ -159,7 +159,7 @@ struct monitor_mode* platform_video_query_modes(
 
 	mode.width  = sdl.mdispw;
 	mode.height = sdl.mdisph;
-	mode.depth  = GL_PIXEL_BPP * 8;
+	mode.depth  = sizeof(av_pixel) * 8;
 	mode.refresh = 60; /* should be queried */
 
 	*count = 1;
