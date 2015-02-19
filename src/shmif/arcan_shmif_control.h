@@ -97,11 +97,12 @@
 static const int ARCAN_SHMPAGE_QUEUE_SZ = PP_QUEUE_SZ;
 
 /*
- * Default audio storage / transfer characteristics
- * The gist of it is to keep this interface trivial "for basic sound"
- * now and prepare an (optional) "advanced toggle" later with
- * the whole surround sound in floating point at high sample-rates
- * thing.
+ * Default audio storage / transfer characteristics.
+ * The gist of it is to keep this interface trivial
+ * "for basic sound" now and prepare an (optional)
+ * "advanced toggle" later with the whole surround
+ * sound in floating point at high sample-rates
+ * thing, which is likely to come in the 0.6/0.7 timeframe.
  */
 static const int ARCAN_SHMPAGE_MAXAUDIO_FRAME = 192000;
 static const int ARCAN_SHMPAGE_SAMPLERATE = 44100;
@@ -130,10 +131,11 @@ static const int ARCAN_SHMPAGE_RESAMPLER_QUALITY = 5;
 /*
  * This works similarly to the video_platform in arcan,
  * we commit statically to one native format (which should map
- * that of the running arcan build), and shared memory buffer transfers
- * are expected to follow this format, possibly by just using the macro
- * and type indirection below -- other buffer formats should be passed
- * with some accelerated mechanism (typically prime dma buffers).
+ * to that of the running arcan build), and shared memory
+ * buffer transfers are expected to follow this format,
+ * possibly by just using the macro and type indirection below
+ * -- other buffer formats should be passed with some accelerated
+ *  mechanism (typically prime dma buffers) e.g. shmif_sighandle.
  */
 #ifndef VIDEO_PIXEL_TYPE
 #define VIDEO_PIXEL_TYPE uint32_t
@@ -154,7 +156,9 @@ static const int ARCAN_SHMPAGE_MAXH = PP_SHMPAGE_MAXH;
  * The final shmpage size will be a function of the constants
  * above, along with a few extra bytes to make room for the
  * header structure (audioframe * 3 / shmpage_achannels),
- * legacy from ffmpeg.
+ * This is a legacy from when this interface was just used
+ * to interface with ffmpeg, it would be unwise to rely
+ * on this approach ;-)
  */
 static const int ARCAN_SHMPAGE_AUDIOBUF_SZ = 288000;
 

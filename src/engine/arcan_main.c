@@ -333,7 +333,8 @@ int main(int argc, char* argv[])
 	case 'q' : settings.timedump = strtol(optarg, NULL, 10); break;
 	case 'p' : arcan_override_namespace(optarg, RESOURCE_APPL_SHARED); break;
 	case 'b' : fallback = strdup(optarg); break;
-	case 'V' : fprintf(stdout, "%s\n", ARCAN_BUILDVERSION);
+	case 'V' : fprintf(stdout, "%s\n%llx\n", ARCAN_BUILDVERSION,
+		arcan_shmif_cookie());
 		exit(EXIT_SUCCESS);
 	break;
 	case 'H' : hookscript = strdup( optarg ); break;
