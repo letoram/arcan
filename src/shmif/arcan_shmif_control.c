@@ -208,6 +208,7 @@ checkfd:
 /* event ready, if it is descriptor dependent - wait for that one */
 	if (*ctx->front != *ctx->back){
 		*dst = ctx->eventbuf[ *ctx->front ];
+		memset(&ctx->eventbuf[ *ctx->front ], '\0', sizeof(arcan_event));
 		*ctx->front = (*ctx->front + 1) % ctx->eventbuf_sz;
 
 /* descriptor dependent events need to be flagged and tracked */

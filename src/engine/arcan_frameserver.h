@@ -39,6 +39,9 @@ typedef struct {
 	uint16_t height;
 	uint16_t bpp;
 
+/* primarily for feedcopy */
+	uint32_t synch_ts;
+
 /* audio */
 	unsigned samplerate;
 	uint8_t channels;

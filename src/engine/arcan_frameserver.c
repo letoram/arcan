@@ -150,19 +150,17 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
 arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst,
 	arcan_event* ev)
 {
-	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
-	if (!arcan_frameserver_enter(dst))
-		return rv;
+	if (!dst || !ev)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
-/*
- * NOTE: when arcan_event_serialize(*buffer) is implemented,
- * the queue should be stripped from the shmpage entirely and only
- * transferred over the socket and not just the signalling
- */
-	if (dst && ev){
-		rv = dst->flags.alive && (dst->shm.ptr && dst->shm.ptr->dms) ?
-			(arcan_event_enqueue(&dst->outqueue, ev), ARCAN_OK) :
-			ARCAN_ERRC_UNACCEPTED_STATE;
+	if (!arcan_frameserver_enter(dst))
+		return ARCAN_ERRC_UNACCEPTED_STATE;
+
+	printf("send %d event, %d\n", ev->category, ev->tgt.kind);
+
+	arcan_errc rv = dst->flags.alive && (dst->shm.ptr && dst->shm.ptr->dms) ?
+		(arcan_event_enqueue(&dst->outqueue, ev), ARCAN_OK) :
+		ARCAN_ERRC_UNACCEPTED_STATE;
 #ifndef _WIN32
 
 #ifndef MSG_DONTWAIT
@@ -177,7 +175,6 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst,
  * passing to the socket, the data will be mixed in here */
 	arcan_pushhandle(-1, dst->dpipe);
 #endif
-	}
 
 	arcan_frameserver_leave();
 	return rv;
@@ -422,13 +419,28 @@ enum arcan_ffunc_rv arcan_frameserver_feedcopy(
 /* need to track when this thing is dirty as well so we
  * only feed when we actually have data */
 		if (!src->shm.ptr->vready){
+			arcan_vobject* me = arcan_video_getobject(src->vid);
+			if (me->vstore->last_ts == src->desc.last_ts)
+				goto leave;
 
+			arcan_event ev  = {
+				.tgt.kind = TARGET_COMMAND_STEPFRAME,
+				.category = EVENT_TARGET,
+				.tgt.ioevs[0] = src->vfcount++
+			};
+
+			memcpy(src->vidp,
+				me->vstore->vinf.text.raw, me->vstore->vinf.text.s_raw);
+
+			src->shm.ptr->vready = true;
+			arcan_frameserver_pushevent(src, &ev);
 		}
 
 		arcan_event_queuetransfer(arcan_event_defaultctx(), &src->inqueue,
 			src->queue_mask, 0.5, src->vid);
 	}
 
+leave:
 	arcan_frameserver_leave();
 	return 0;
 }
