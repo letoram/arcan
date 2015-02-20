@@ -6409,6 +6409,55 @@ cleanup:
 	return 0;
 }
 
+static int feedtarget(lua_State* ctx)
+{
+	LUA_TRACE("define_feedtarget");
+	arcan_vobject* dobj, (* sobj);
+	arcan_vobj_id did = luaL_checkvid(ctx, 1, &dobj);
+	arcan_vobj_id sid = luaL_checkvid(ctx, 2, &sobj);
+
+	if (FL_TEST(dobj, FL_CLONE) || FL_TEST(sobj, FL_CLONE))
+		arcan_fatal("define_feedtarget(), feedtarget "
+			"recipient cannot be a clone.");
+
+	vfunc_state* state = arcan_video_feedstate(did);
+	if (state->tag != ARCAN_TAG_FRAMESERV)
+		arcan_fatal("define_feedtarget(), feedtarget "
+			"recipient must be a frameserver");
+/*
+ * trick here is to set up as a "normal" recordtarget,
+ * but where we simply sample one object and use the offline vstore --
+ * essentially for when we want to forward the unaltered input of
+ * one frameserver as a subsegment to another
+ */
+	arcan_frameserver* rv =
+		arcan_frameserver_spawn_subsegment(
+			(arcan_frameserver*)state->ptr, true,
+			sobj->vstore->w, sobj->vstore->h, 0
+		);
+
+	if (!rv){
+		LUA_ETRACE("define_feedtarget", "no subsegment");
+		lua_pushvid(ctx, ARCAN_EID);
+		return 1;
+	}
+
+	vfunc_state fftag = {
+		.tag = ARCAN_TAG_FRAMESERV,
+		.ptr = rv
+	};
+
+/* shmpage prepared, force dimensions based on source object */
+	arcan_video_shareglstore(sid, rv->vid);
+	arcan_video_alterfeed(did, arcan_frameserver_feedcopy, fftag);
+
+	rv->tag = find_lua_callback(ctx);
+
+	LUA_ETRACE("define_feedtarget", NULL);
+	lua_pushvid(ctx, rv->vid);
+	return 1;
+}
+
 static int recordset(lua_State* ctx)
 {
 	LUA_TRACE("define_recordtarget");
@@ -8017,6 +8066,7 @@ static const luaL_Reg tgtfuns[] = {
 {"define_rendertarget",        renderset                },
 {"define_recordtarget",        recordset                },
 {"define_calctarget",          procset                  },
+{"define_feedtarget",          feedtarget               },
 {"rendertarget_forceupdate",   rendertargetforce        },
 {"recordtarget_gain",          recordgain               },
 {"rendertarget_attach",        renderattach             },

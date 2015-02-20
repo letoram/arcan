@@ -30,6 +30,7 @@
 #include "arcan_audioint.h"
 #include "arcan_frameserver.h"
 #include "arcan_event.h"
+#include "arcan_img.h"
 
 static uint64_t cookie;
 
@@ -388,6 +389,48 @@ enum arcan_ffunc_rv arcan_frameserver_videoframe_direct(
 
 	arcan_frameserver_leave();
 	return rv;
+}
+
+/*
+ * a little bit special, the vstore is already assumed to
+ * contain the state that we want to forward, and there's
+ * no audio mixing or similar going on, so just copy.
+ */
+enum arcan_ffunc_rv arcan_frameserver_feedcopy(
+	enum arcan_ffunc_cmd cmd, av_pixel* buf,
+	size_t s_buf, uint16_t width, uint16_t height,
+	unsigned mode, vfunc_state state)
+{
+	assert(state.ptr);
+	assert(state.tag == ARCAN_TAG_FRAMESERV);
+	arcan_frameserver* src = (arcan_frameserver*) state.ptr;
+
+	if (!arcan_frameserver_enter(src))
+		return FFUNC_RV_NOFRAME;
+
+	if (cmd == FFUNC_DESTROY)
+		arcan_frameserver_free(state.ptr);
+
+	else if (cmd == FFUNC_TICK){
+/* done differently since we don't care if the frameserver
+ * wants to resize segments used for recording */
+		if (!arcan_frameserver_control_chld(src)){
+			arcan_frameserver_leave();
+   		return FFUNC_RV_NOFRAME;
+		}
+
+/* need to track when this thing is dirty as well so we
+ * only feed when we actually have data */
+		if (!src->shm.ptr->vready){
+
+		}
+
+		arcan_event_queuetransfer(arcan_event_defaultctx(), &src->inqueue,
+			src->queue_mask, 0.5, src->vid);
+	}
+
+	arcan_frameserver_leave();
+	return 0;
 }
 
 enum arcan_ffunc_rv arcan_frameserver_avfeedframe(
