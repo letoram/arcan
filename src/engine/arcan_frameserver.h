@@ -249,6 +249,10 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd,
 	av_pixel* buf, size_t s_buf, uint16_t width, uint16_t height,
  	unsigned int mode, vfunc_state state);
 
+enum arcan_ffunc_rv arcan_frameserver_feedcopy(enum arcan_ffunc_cmd cmd,
+	av_pixel* buf, size_t s_buf, uint16_t width, uint16_t height,
+	unsigned int mode, vfunc_state state);
+
 /* used as monitor hook for frameserver audio feeds */
 void arcan_frameserver_avfeedmon(arcan_aobj_id src, uint8_t* buf,
 	size_t buf_sz, unsigned channels, unsigned frequency, void* tag);
