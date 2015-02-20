@@ -130,6 +130,7 @@ void agp_readback_synchronous(struct storage_info_t* dst)
 	glBindTexture(GL_TEXTURE_2D, dst->vinf.text.glid);
 	glGetTexImage(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT,
 		GL_UNSIGNED_BYTE, dst->vinf.text.raw);
+	dst->update_ts = arcan_timemillis();
 	glBindTexture(GL_TEXTURE_2D, 0);
 }
 
