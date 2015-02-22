@@ -173,6 +173,7 @@ static void pbo_stream(struct storage_info_t* s, av_pixel* buf, bool synch)
 	if (synch){
 		buf = obuf;
 		ptr = s->vinf.text.raw;
+		s->update_ts = arcan_timemillis();
 
  		if ( ((uintptr_t)ptr % 16) == 0 && ((uintptr_t)buf % 16) == 0	)
 			memcpy(ptr, buf, ntc * sizeof(av_pixel));

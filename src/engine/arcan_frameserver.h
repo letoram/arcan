@@ -147,7 +147,7 @@ typedef struct arcan_frameserver {
 	char title[64];
 
 /* precalc offsets into mapped shmpage, calculated at resize */
-	uint32_t* vidp;
+	shmif_pixel* vidp;
 	int16_t* audp;
 	shm_handle shm;
 
