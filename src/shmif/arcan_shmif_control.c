@@ -47,6 +47,77 @@ extern HANDLE parent;
 #include <sys/un.h>
 #endif
 
+static const char* tgt_cmd_xlt[] = {
+	"UNDEFINED",
+	"EXIT",
+	"FRAMESKIP",
+	"STEPFRAME",
+	"COREOPT",
+	"STORE",
+	"RESTORE",
+	"BCHUNK_IN",
+	"BCHINK_OUT",
+	"RESET",
+	"PAUSE",
+	"UNPAUSE",
+	"SEEKTIME",
+	"DISPLAYHINT",
+	"SETIODEV",
+	"ATTENUATE",
+	"AUDDELAY",
+	"NEWSEGMENT",
+	"REQFAIL",
+	"BUFFER_FAIL",
+	"GRAPHMODE",
+	"VECTOR_LINEWIDTH",
+	"VECTOR_POINTSIZE",
+	"NTSCFILTER",
+	"NTSCFILTER_ARGS"
+};
+
+static const char* cat_xlt[] = {
+	"SYSTEM",
+	"IO",
+	"VIDEO",
+	"AUDIO",
+	"TARGET",
+	"FSRV",
+	"EXT",
+	"NET"
+};
+
+const char* arcan_shmif_eventstr(arcan_event* aev, char* dbuf, size_t dsz)
+{
+	static char evbuf[256];
+	char* work;
+	if (dbuf){
+		work = dbuf;
+	}
+	else{
+		work = evbuf;
+		dsz = sizeof(evbuf);
+	}
+
+	int cat_ind = log2(aev->category);
+
+	if (cat_ind < 1 || cat_ind > sizeof(cat_xlt) / sizeof(cat_xlt[0]))
+		return NULL;
+
+	const char* evstr;
+	switch(aev->category){
+	case EVENT_TARGET:
+		evstr = aev->tgt.kind > sizeof(tgt_cmd_xlt)/sizeof(tgt_cmd_xlt[0])
+			? "overflow/broken" : tgt_cmd_xlt[aev->tgt.kind];
+	break;
+	default:
+		evstr = "UNKNOWN";
+	}
+
+	snprintf(work, dsz, "%s:%s", cat_xlt[cat_ind], evstr);
+
+	return work;
+}
+
 /*
  * The guard-thread thing tries to get around all the insane edge conditions
  * that exist when you have a partial parent<->child circular dependency

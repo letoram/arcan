@@ -6417,7 +6417,7 @@ static int feedtarget(lua_State* ctx)
 	arcan_vobj_id sid = luaL_checkvid(ctx, 2, &sobj);
 
 	if (FL_TEST(dobj, FL_CLONE) || FL_TEST(sobj, FL_CLONE))
-		arcan_fatal("define_feedtarget(), feedtarget "
+		arcan_fatal("define_feedtarget(), feedtarget provider or "
 			"recipient cannot be a clone.");
 
 	vfunc_state* state = arcan_video_feedstate(did);
@@ -6449,7 +6449,7 @@ static int feedtarget(lua_State* ctx)
 
 /* shmpage prepared, force dimensions based on source object */
 	arcan_video_shareglstore(sid, rv->vid);
-	arcan_video_alterfeed(did, arcan_frameserver_feedcopy, fftag);
+	arcan_video_alterfeed(rv->vid, arcan_frameserver_feedcopy, fftag);
 
 	rv->tag = find_lua_callback(ctx);
 

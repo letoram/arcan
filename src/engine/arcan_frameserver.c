@@ -156,7 +156,10 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst,
 	if (!arcan_frameserver_enter(dst))
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
-	printf("send %d event, %d\n", ev->category, ev->tgt.kind);
+/*
+ * printf("-> target(%d):%s\n", (int)dst->vid,
+		arcan_shmif_eventstr(ev, NULL, 0));
+ */
 
 	arcan_errc rv = dst->flags.alive && (dst->shm.ptr && dst->shm.ptr->dms) ?
 		(arcan_event_enqueue(&dst->outqueue, ev), ARCAN_OK) :
@@ -408,7 +411,7 @@ enum arcan_ffunc_rv arcan_frameserver_feedcopy(
 	if (cmd == FFUNC_DESTROY)
 		arcan_frameserver_free(state.ptr);
 
-	else if (cmd == FFUNC_TICK){
+	else if (cmd == FFUNC_POLL){
 /* done differently since we don't care if the frameserver
  * wants to resize segments used for recording */
 		if (!arcan_frameserver_control_chld(src)){
@@ -416,12 +419,18 @@ enum arcan_ffunc_rv arcan_frameserver_feedcopy(
    		return FFUNC_RV_NOFRAME;
 		}
 
-/* need to track when this thing is dirty as well so we
- * only feed when we actually have data */
+/* only push an update when the target is ready and the
+ * monitored source has updated its backing store */
 		if (!src->shm.ptr->vready){
 			arcan_vobject* me = arcan_video_getobject(src->vid);
-			if (me->vstore->last_ts == src->desc.last_ts)
+			if (me->vstore->update_ts == src->desc.synch_ts)
 				goto leave;
+			src->desc.synch_ts = me->vstore->update_ts;
+
+			if (src->shm.ptr->w!=me->vstore->w || src->shm.ptr->h!=me->vstore->h){
+				arcan_frameserver_free(state.ptr);
+				goto leave;
+			}
 
 			arcan_event ev  = {
 				.tgt.kind = TARGET_COMMAND_STEPFRAME,
@@ -442,7 +451,7 @@ enum arcan_ffunc_rv arcan_frameserver_feedcopy(
 
 leave:
 	arcan_frameserver_leave();
-	return 0;
+	return FFUNC_RV_NOFRAME;
 }
 
 enum arcan_ffunc_rv arcan_frameserver_avfeedframe(

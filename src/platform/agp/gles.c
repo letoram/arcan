@@ -268,8 +268,18 @@ struct stream_meta agp_stream_prepare(struct storage_info_t* s,
 		mout.state = mout.buf != NULL;
 	break;
 
-	case STREAM_RAW_DIRECT_COPY:
+	case STREAM_RAW_DIRECT_COPY:{
 		alloc_buffer(s);
+		size_t ntc = s->w * s->h;
+		void* ptr = s->vinf.text.raw, (* buf) = meta.buf;
+		s->update_ts = arcan_timemillis();
+
+		if ( ((uintptr_t)ptr % 16) == 0 && ((uintptr_t)buf % 16) == 0	)
+			memcpy(ptr, buf, ntc * sizeof(av_pixel));
+		else
+			for (size_t i = 0; i < ntc; i++)
+				*ptr++ = *buf++;
+	}
 
 	case STREAM_RAW_DIRECT:
 	case STREAM_RAW_DIRECT_SYNCHRONOUS:
