@@ -30,6 +30,7 @@
 #include "arcan_audioint.h"
 #include "arcan_frameserver.h"
 #include "arcan_event.h"
+#include "arcan_img.h"
 
 static uint64_t cookie;
 
@@ -149,19 +150,20 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
 arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst,
 	arcan_event* ev)
 {
-	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+	if (!dst || !ev)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+
 	if (!arcan_frameserver_enter(dst))
-		return rv;
+		return ARCAN_ERRC_UNACCEPTED_STATE;
 
 /*
- * NOTE: when arcan_event_serialize(*buffer) is implemented,
- * the queue should be stripped from the shmpage entirely and only
- * transferred over the socket and not just the signalling
+ * printf("-> target(%d):%s\n", (int)dst->vid,
+		arcan_shmif_eventstr(ev, NULL, 0));
  */
-	if (dst && ev){
-		rv = dst->flags.alive && (dst->shm.ptr && dst->shm.ptr->dms) ?
-			(arcan_event_enqueue(&dst->outqueue, ev), ARCAN_OK) :
-			ARCAN_ERRC_UNACCEPTED_STATE;
+
+	arcan_errc rv = dst->flags.alive && (dst->shm.ptr && dst->shm.ptr->dms) ?
+		(arcan_event_enqueue(&dst->outqueue, ev), ARCAN_OK) :
+		ARCAN_ERRC_UNACCEPTED_STATE;
 #ifndef _WIN32
 
 #ifndef MSG_DONTWAIT
@@ -176,7 +178,6 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst,
  * passing to the socket, the data will be mixed in here */
 	arcan_pushhandle(-1, dst->dpipe);
 #endif
-	}
 
 	arcan_frameserver_leave();
 	return rv;
@@ -388,6 +389,69 @@ enum arcan_ffunc_rv arcan_frameserver_videoframe_direct(
 
 	arcan_frameserver_leave();
 	return rv;
+}
+
+/*
+ * a little bit special, the vstore is already assumed to
+ * contain the state that we want to forward, and there's
+ * no audio mixing or similar going on, so just copy.
+ */
+enum arcan_ffunc_rv arcan_frameserver_feedcopy(
+	enum arcan_ffunc_cmd cmd, av_pixel* buf,
+	size_t s_buf, uint16_t width, uint16_t height,
+	unsigned mode, vfunc_state state)
+{
+	assert(state.ptr);
+	assert(state.tag == ARCAN_TAG_FRAMESERV);
+	arcan_frameserver* src = (arcan_frameserver*) state.ptr;
+
+	if (!arcan_frameserver_enter(src))
+		return FFUNC_RV_NOFRAME;
+
+	if (cmd == FFUNC_DESTROY)
+		arcan_frameserver_free(state.ptr);
+
+	else if (cmd == FFUNC_POLL){
+/* done differently since we don't care if the frameserver
+ * wants to resize segments used for recording */
+		if (!arcan_frameserver_control_chld(src)){
+			arcan_frameserver_leave();
+   		return FFUNC_RV_NOFRAME;
+		}
+
+/* only push an update when the target is ready and the
+ * monitored source has updated its backing store */
+		if (!src->shm.ptr->vready){
+			arcan_vobject* me = arcan_video_getobject(src->vid);
+			if (me->vstore->update_ts == src->desc.synch_ts)
+				goto leave;
+			src->desc.synch_ts = me->vstore->update_ts;
+
+			if (src->shm.ptr->w!=me->vstore->w || src->shm.ptr->h!=me->vstore->h){
+				arcan_frameserver_free(state.ptr);
+				goto leave;
+			}
+
+			arcan_event ev  = {
+				.tgt.kind = TARGET_COMMAND_STEPFRAME,
+				.category = EVENT_TARGET,
+				.tgt.ioevs[0] = src->vfcount++
+			};
+
+			memcpy(src->vidp,
+				me->vstore->vinf.text.raw, me->vstore->vinf.text.s_raw);
+
+			src->shm.ptr->vready = true;
+			arcan_frameserver_pushevent(src, &ev);
+		}
+
+		arcan_event_queuetransfer(arcan_event_defaultctx(), &src->inqueue,
+			src->queue_mask, 0.5, src->vid);
+	}
+
+leave:
+	arcan_frameserver_leave();
+	return FFUNC_RV_NOFRAME;
 }
 
 enum arcan_ffunc_rv arcan_frameserver_avfeedframe(

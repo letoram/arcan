@@ -93,6 +93,14 @@ int arcan_shmif_tryenqueue(struct arcan_shmif_cont*,
 	const struct arcan_event* const);
 
 /*
+ * Provide a text representation useful for logging, tracing
+ * and debugging purposes. If dbuf is NULL, a static buffer
+ * will be used (so for threadsafety, provide your own).
+ */
+const char* arcan_shmif_eventstr(
+	struct arcan_event* aev, char* dbuf, size_t dsz);
+
+/*
  * calculates a hash of the layout of the shmpage in order
  * to detect subtle compiler mismatches etc.
  */

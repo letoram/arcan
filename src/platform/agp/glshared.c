@@ -392,6 +392,7 @@ void agp_update_vstore(struct storage_info_t* s, bool copy)
 	}
 
 	if (copy){
+		s->update_ts = arcan_timemillis();
 		if (s->txmapped == TXSTATE_DEPTH)
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, s->w, s->h, 0,
 				GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE, 0);
