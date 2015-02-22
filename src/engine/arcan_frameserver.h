@@ -39,6 +39,9 @@ typedef struct {
 	uint16_t height;
 	uint16_t bpp;
 
+/* primarily for feedcopy */
+	uint32_t synch_ts;
+
 /* audio */
 	unsigned samplerate;
 	uint8_t channels;
@@ -144,7 +147,7 @@ typedef struct arcan_frameserver {
 	char title[64];
 
 /* precalc offsets into mapped shmpage, calculated at resize */
-	uint32_t* vidp;
+	shmif_pixel* vidp;
 	int16_t* audp;
 	shm_handle shm;
 
@@ -248,6 +251,10 @@ ssize_t arcan_frameserver_shmvidaudcb(int fd, void* dst, size_t ntr);
 enum arcan_ffunc_rv arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd,
 	av_pixel* buf, size_t s_buf, uint16_t width, uint16_t height,
  	unsigned int mode, vfunc_state state);
+
+enum arcan_ffunc_rv arcan_frameserver_feedcopy(enum arcan_ffunc_cmd cmd,
+	av_pixel* buf, size_t s_buf, uint16_t width, uint16_t height,
+	unsigned int mode, vfunc_state state);
 
 /* used as monitor hook for frameserver audio feeds */
 void arcan_frameserver_avfeedmon(arcan_aobj_id src, uint8_t* buf,

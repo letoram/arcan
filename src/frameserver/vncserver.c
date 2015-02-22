@@ -45,6 +45,8 @@ static void server_pointer (int buttonMask,int x,int y,rfbClientPtr cl)
 	outev.ext.cursor.buttons[2] = buttonMask & (1 << 3);
 	outev.ext.cursor.buttons[3] = buttonMask & (1 << 4);
 	outev.ext.cursor.buttons[4] = buttonMask & (1 << 5);
+
+	arcan_shmif_enqueue(&vncctx.shmcont, &outev);
 }
 
 static void server_key(rfbBool down,rfbKeySym key,rfbClientPtr cl)
@@ -59,6 +61,8 @@ static void server_key(rfbBool down,rfbKeySym key,rfbClientPtr cl)
 
 	if (key < 65536)
 		outev.ext.key.keysym = symtbl_in[key];
+
+	arcan_shmif_enqueue(&vncctx.shmcont, &outev);
 }
 
 static void server_dropclient(rfbClientPtr cl)

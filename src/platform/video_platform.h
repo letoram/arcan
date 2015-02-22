@@ -111,6 +111,7 @@ enum txstate {
 
 struct storage_info_t {
 	size_t refcount;
+	uint32_t update_ts;
 
 	union {
 		struct {
