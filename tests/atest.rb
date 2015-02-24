@@ -40,7 +40,14 @@ tests = {
 	"regression" => false
 }
 
+$QUICKFAIL = false
+
 ARGV.each{|a|
+	if (a == "--quickfail") then
+		$QUICKFAIL = true
+		next
+	end
+
 	if tests[a] != nil then
 		tests[a] = true
 	end
@@ -96,7 +103,7 @@ benchmark_flags = ["-DENABLE_LTO=OFF -DENABLE_SIMD_ALIGNED=ON"]
 build_platforms = platforms
 build_configurations = ["Debug", "Release"]
 build_compilers = compilers
-build_flags = [""]
+build_flags = ["-DENABLE_LWA=ON"]
 
 # for regression cases we're primarily interested in the execution
 # output of various sanitizers, verification can be done with imagemagick
@@ -234,15 +241,15 @@ class ATest
 		Dir.mkdir("#{@repdir}/build") unless Dir.exists?("#{@repdir}/build")
 
 		if system("#{$CMAKEAPP} -B\"#{@dir}/build\" -H\"#{@dir}/src\" #{constr} "\
-			">#{@repdir}/#{name}.config.out 2> "\
+			"1> #{@repdir}/#{name}.config.out 2> "\
 			"#{@repdir}/#{name}.config.err") != true
 			STDOUT.print("#{name} couldn't be generated\n")
 			return false
 		end
 		STDOUT.print("#{name} configured\n")
 
-		sstr = "make -C #{@dir}/build -j12 >#{@repdir}/build/#{name}.out" \
-			" 2> #{@repdir}/build/#{name}.err"
+		sstr = "make -C #{@dir}/build -j12 1> #{@repdir}/#{name}.build.out" \
+			" 2> #{@repdir}/#{name}.build.err"
 		if system(sstr) != true
 			STDOUT.print("#{name} couldn't be compiled:\n\t#{sstr}\n")
 			return false
@@ -324,6 +331,9 @@ vars.each{|var|
 		ok_variants << "build:#{var[0]}"
 	else
 		failed_variants << "build:#{var[0]}"
+		if ($QUICKFAIL) then
+			exit
+		end
 	end
 }
 test.drop_configurations
