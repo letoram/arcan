@@ -55,11 +55,11 @@ static void* segthread(void* arg)
 	return NULL;
 }
 
-static void mapseg(int evfd, const char* key)
+static void mapseg(struct arcan_shmif_cont* parent)
 {
 	struct seginf* newseg = malloc(sizeof(struct seginf));
-	newseg->shms = arcan_shmif_acquire(
-		key, SEGID_GAME, SHMIF_ACQUIRE_FATALFAIL);
+	newseg->shms = arcan_shmif_acquire(parent, NULL,
+		SEGID_GAME, SHMIF_DISABLE_GUARD);
 
 	pthread_t thr;
 	pthread_create(&thr, NULL, segthread, newseg);
@@ -103,21 +103,12 @@ int arcan_frameserver_avfeed_run(
 
 	arcan_shmif_enqueue(&shms, &ev);
 
-	int lastfd;
-
 	while(1){
 		while (1 == arcan_shmif_wait(&shms, &ev)){
 			if (ev.category == EVENT_TARGET){
-				if (ev.tgt.kind == TARGET_COMMAND_FDTRANSFER){
-					lastfd = arcan_fetchhandle(shms.dpipe);
-					printf("got handle (for new event transfer)\n");
-				}
-			}
-			if (ev.tgt.kind == TARGET_COMMAND_NEWSEGMENT){
-				printf("new segment ready, key: %s\n", ev.tgt.message);
-				mapseg(lastfd, ev.tgt.message);
-			}
-			if (ev.tgt.kind == TARGET_COMMAND_EXIT){
+			if (ev.tgt.kind == TARGET_COMMAND_NEWSEGMENT)
+				mapseg(&shms);
+			else if (ev.tgt.kind == TARGET_COMMAND_EXIT){
 				printf("parent requested termination, leaving.\n");
 				return EXIT_SUCCESS;
 			}
@@ -125,6 +116,7 @@ int arcan_frameserver_avfeed_run(
 				static int red;
 				update_frame(&shms, 0xff000000 | red++);
 			}
+		}
 /*
  *	event dispatch loop, look at shmpage interop,
  *	valid categories here should (at least)
