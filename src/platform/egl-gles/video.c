@@ -25,13 +25,13 @@
 #include "arcan_video.h"
 #include "arcan_videoint.h"
 
-#ifndef EGL_SUFFIX
-#define EGL_SUFFIX platform
+#ifndef PLATFORM_SUFFIX
+#define PLATFORM_SUFFIX platform
 #endif
 
 #define MERGE(X,Y) X ## Y
 #define EVAL(X,Y) MERGE(X,Y)
-#define PLATFORM_SYMBOL(fun) EVAL(EGL_SUFFIX, fun)
+#define PLATFORM_SYMBOL(fun) EVAL(PLATFORM_SUFFIX, fun)
 
 static struct {
 	EGLDisplay disp;
@@ -300,7 +300,7 @@ bool PLATFORM_SYMBOL(_video_map_handle)(
 	return false;
 }
 
-const char* platform_video_capstr()
+const char* PLATFORM_SYMBOL(_video_capstr)()
 {
 	static char* capstr;
 
@@ -343,6 +343,7 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 	if (pre)
 		pre();
 
+#ifndef HEADLESS_NOARCAN
 	size_t nd;
 	arcan_bench_register_cost( arcan_vint_refresh(fract, &nd) );
 
@@ -356,6 +357,7 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 
 	arcan_vint_drawcursor(true);
 	arcan_vint_drawcursor(false);
+#endif
 
 	eglSwapBuffers(egl.disp, egl.surf);
 

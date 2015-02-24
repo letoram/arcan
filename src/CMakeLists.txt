@@ -381,6 +381,12 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-gles")
 
 	FIND_PACKAGE(EGL REQUIRED)
 
+	if (ENABLE_LWA)
+		message("Enabling LWA (Arcan-in-Arcan) build using X11 HEADLESS")
+		SET(LWA_HEADLESS ${PLATFORM_ROOT}/egl-gles/video.c)
+		LIST(APPEND LWA_LIBRARIES ${AGP_LIBRARIES} ${EGL_LIBRARIES})
+	endif()
+
 	if (GLES2_BCM_IMPLEMENTATION)
 		message("broadcom (BCM) GLES implementation found, set BCM_ROOT to bad dir to disable")
 		LIST(APPEND ARCAN_DEFINITIONS WITH_BCM)
