@@ -331,6 +331,12 @@ const char* platform_video_capstr()
 	return capstr;
 }
 
+int64_t PLATFORM_SYMBOL(_output_handle)(
+	struct storage_info_t* store, enum status_handle* status)
+{
+	return -1;
+}
+
 void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 	video_synchevent pre, video_synchevent post)
 {
