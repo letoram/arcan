@@ -32,6 +32,17 @@
 #include "arcan_event.h"
 #include "arcan_img.h"
 
+/*
+ * implementation defined for out-of-order execution
+ * and reordering protection
+ */
+#ifndef FORCE_SYNCH
+	#define FORCE_SYNCH() {\
+		asm volatile("": : :"memory");\
+		__sync_synchronize();\
+	}
+#endif
+
 static uint64_t cookie;
 
 static inline void emit_deliveredframe(arcan_frameserver* src,
@@ -720,8 +731,9 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 	if (!src->shm.ptr->resized)
 		goto leave;
 
+	FORCE_SYNCH();
 	size_t neww = src->shm.ptr->w;
-  size_t newh = src->shm.ptr->h;
+	size_t newh = src->shm.ptr->h;
 
 	if (!arcan_frameserver_resize(&src->shm, neww, newh)){
  		arcan_warning("client requested illegal resize (%d, %d) -- killing.\n",

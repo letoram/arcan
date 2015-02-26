@@ -42,6 +42,13 @@ typedef struct queue_cell queue_cell;
 static arcan_event eventbuf[ARCAN_EVENT_QUEUE_LIM];
 static unsigned eventfront = 0, eventback = 0;
 
+#ifndef FORCE_SYNCH
+	#define FORCE_SYNCH() {\
+		asm volatile("": : :"memory");\
+		__sync_synchronize();\
+	}
+#endif
+
 /* set through environment variable to ensure we can shut down
  * cleanly based on a certain keybinding */
 static int panic_keysym = -1, panic_keymod = -1;
@@ -107,6 +114,7 @@ int arcan_event_poll(arcan_evctx* ctx, struct arcan_event* dst)
 		if ( *(ctx->front) > ARCAN_SHMPAGE_QUEUE_SZ )
 			pull_killswitch(ctx);
 		else {
+			FORCE_SYNCH();
 			*dst = ctx->eventbuf[ *(ctx->front) ];
 			*(ctx->front) = (*(ctx->front) + 1) % ARCAN_SHMPAGE_QUEUE_SZ;
 		}
