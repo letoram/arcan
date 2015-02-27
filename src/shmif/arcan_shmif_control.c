@@ -47,6 +47,17 @@ extern HANDLE parent;
 #include <sys/un.h>
 #endif
 
+/*
+ * implementation defined for out-of-order execution
+ * and reordering protection
+ */
+#ifndef FORCE_SYNCH
+	#define FORCE_SYNCH() {\
+		asm volatile("": : :"memory");\
+		__sync_synchronize();\
+	}
+#endif
+
 static const char* tgt_cmd_xlt[] = {
 	"UNDEFINED",
 	"EXIT",
@@ -340,6 +351,7 @@ int arcan_shmif_enqueue(struct arcan_shmif_cont* c,
 	}
 
 	ctx->eventbuf[*ctx->back] = *src;
+	FORCE_SYNCH();
 	*ctx->back = (*ctx->back + 1) % ctx->eventbuf_sz;
 
 #ifdef ARCAN_SHMIF_THREADSAFE_QUEUE
@@ -871,14 +883,17 @@ void arcan_shmif_signal(struct arcan_shmif_cont* ctx, int mask)
 		mask = priv->audio_hook(ctx);
 
 	if ( (mask & SHMIF_SIGVID) && !(mask & SHMIF_SIGAUD)){
+		FORCE_SYNCH();
 		ctx->addr->vready = true;
 		arcan_sem_wait(ctx->vsem);
 	}
 	else if ( (mask & SHMIF_SIGAUD) && !(mask & SHMIF_SIGVID)){
+		FORCE_SYNCH();
 		ctx->addr->aready = true;
 		arcan_sem_wait(ctx->asem);
 	}
 	else if (mask & (SHMIF_SIGVID | SHMIF_SIGAUD)){
+		FORCE_SYNCH();
 		ctx->addr->vready = true;
     if (ctx->addr->abufused > 0){
 			ctx->addr->aready = true;
@@ -969,6 +984,7 @@ bool arcan_shmif_resize(struct arcan_shmif_cont* arg,
 
 	arg->addr->w = width;
 	arg->addr->h = height;
+	FORCE_SYNCH();
 	arg->addr->resized = true;
 
 	LOG("request resize to (%d:%d) approx ~%zu bytes (currently: %zu).\n",
