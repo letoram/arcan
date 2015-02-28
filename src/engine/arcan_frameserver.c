@@ -115,6 +115,9 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 	};
 	arcan_event_enqueue(arcan_event_defaultctx(), &sevent);
 
+/* we don't reset state here for once as the
+ * data might be useful in core dumps */
+	src->watch_const = 0xdead;
 	arcan_mem_free(src);
 	return ARCAN_OK;
 }
@@ -280,7 +283,6 @@ enum arcan_ffunc_rv arcan_frameserver_emptyframe(
 
 	switch (cmd){
 		case FFUNC_POLL:
-
 			if (tgt->shm.ptr->resized){
 				arcan_frameserver_tick_control(tgt);
         if (tgt->shm.ptr && tgt->shm.ptr->vready){
@@ -831,7 +833,7 @@ arcan_frameserver* arcan_frameserver_alloc()
 	if (!cookie)
 		cookie = arcan_shmif_cookie();
 
-	res->watch_const = 0xdead;
+	res->watch_const = 0xfeed;
 
 	res->dpipe = BADFD;
 
