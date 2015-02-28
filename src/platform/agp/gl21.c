@@ -312,16 +312,20 @@ void agp_resize_vstore(struct storage_info_t* s, size_t w, size_t h)
 	s->w = w;
 	s->h = h;
 	s->bpp = sizeof(av_pixel);
+	size_t new_sz = w * h * s->bpp;
 
-	if (s->vinf.text.raw){
+/* some cases the vstore can have been "secretly" resized to
+ * the new dimensions, common case is resize in a frameserver that
+ * uses shm- transfer */
+	if (s->vinf.text.raw && s->vinf.text.s_raw != new_sz){
 		arcan_mem_free(s->vinf.text.raw);
 		s->vinf.text.s_raw = w * h * s->bpp;
-		s->vinf.text.raw = arcan_alloc_mem(s->vinf.text.s_raw,
-			ARCAN_MEM_VBUFFER, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
+		s->vinf.text.raw = NULL;
 	}
 
-/* Note: should we handle the fact where we have a pre-existing
- * raw and scale into the new size? Limited uses.. */
+	if (s->vinf.text.raw == NULL)
+		s->vinf.text.raw = arcan_alloc_mem(s->vinf.text.s_raw,
+			ARCAN_MEM_VBUFFER, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
 
 	if (s->vinf.text.wid){
 		glDeleteBuffers(1, &s->vinf.text.wid);

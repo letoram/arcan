@@ -201,8 +201,22 @@ static void push_buffer(arcan_frameserver* src,
 	av_pixel* buf, struct storage_info_t* store)
 {
 	struct stream_meta stream = {.buf = NULL};
-	size_t w = store->w;
-	size_t h = store->h;
+
+	if (src->desc.width != store->w || src->desc.height != store->h){
+		arcan_video_resizefeed(src->vid, src->desc.width, src->desc.height);
+		arcan_event rezev = {
+			.category = EVENT_FSRV,
+			.fsrv.kind = EVENT_FSRV_RESIZED,
+			.fsrv.width = src->desc.width,
+			.fsrv.height = src->desc.height,
+			.fsrv.video = src->vid,
+			.fsrv.audio = src->aid,
+			.fsrv.otag = src->tag,
+			.fsrv.glsource = src->shm.ptr->glsource
+		};
+
+		arcan_event_enqueue(arcan_event_defaultctx(), &rezev);
+	}
 
 /*
  * currently many situations not handled;
@@ -242,7 +256,7 @@ static void push_buffer(arcan_frameserver* src,
 
 		av_pixel* wbuf = stream.buf;
 
-		size_t np = w * h;
+		size_t np = store->w * store->h;
 		for (size_t i = 0; i < np; i++){
 			av_pixel px = *buf++;
 			*wbuf++ = RGBA_FULLALPHA_REPACK(px);
@@ -737,7 +751,13 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 	size_t neww = src->shm.ptr->w;
 	size_t newh = src->shm.ptr->h;
 
-	if (!arcan_frameserver_resize(&src->shm, neww, newh)){
+	if (src->desc.width == neww && src->desc.height == newh){
+		arcan_warning("frameserver_tick_control(), source requested "
+			"resize to current dimensions.\n");
+		goto leave;
+	}
+
+	if (!arcan_frameserver_resize(src, neww, newh)){
  		arcan_warning("client requested illegal resize (%d, %d) -- killing.\n",
 			neww, newh);
 		arcan_frameserver_free(src);
@@ -765,27 +785,14 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 	src->desc.channels = ARCAN_SHMPAGE_ACHANNELS;
 
 /*
- * resizefeed will also resize the underlying vstore
+ * though the frameserver backing is resized, the actual
+ * resize event won't propagate until the frameserver has provided
+ * data (push buffer)
  */
-	arcan_video_resizefeed(src->vid, neww, newh);
-
 	arcan_event_clearmask(arcan_event_defaultctx());
 	arcan_shmif_calcofs(shmpage, &(src->vidp), &(src->audp));
 
 	arcan_video_alterfeed(src->vid, arcan_frameserver_videoframe_direct, cstate);
-
-	arcan_event rezev = {
-		.category = EVENT_FSRV,
-		.fsrv.kind = EVENT_FSRV_RESIZED,
-		.fsrv.width = neww,
-		.fsrv.height = newh,
-		.fsrv.video = src->vid,
-		.fsrv.audio = src->aid,
-		.fsrv.otag = src->tag,
-		.fsrv.glsource = shmpage->glsource
-	};
-
-	arcan_event_enqueue(arcan_event_defaultctx(), &rezev);
 
 /* acknowledge the resize */
 	shmpage->resized = false;

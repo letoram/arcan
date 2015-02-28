@@ -860,8 +860,9 @@ arcan_frameserver* arcan_frameserver_listen_external(const char* key)
 	return res;
 }
 
-bool arcan_frameserver_resize(shm_handle* src, int w, int h)
+bool arcan_frameserver_resize(struct arcan_frameserver* s, int w, int h)
 {
+	shm_handle* src = &s->shm;
 	w = abs(w);
 	h = abs(h);
 
@@ -873,11 +874,11 @@ bool arcan_frameserver_resize(shm_handle* src, int w, int h)
  * shrinking the size of the segment, something to consider in memory
  * constrained environments */
 	if (sz < src->shmsize && sz > (float)src->shmsize * 0.8)
-		return true;
+		goto done;
 
 /* Cheap option out when we can't ftruncate to new sizes */
 #ifdef ARCAN_SHMIF_OVERCOMMIT
-	return true;
+	goto done;
 #endif
 
 	char* tmpbuf = arcan_alloc_mem(sizeof(struct arcan_shmif_page),
@@ -910,6 +911,10 @@ bool arcan_frameserver_resize(shm_handle* src, int w, int h)
   memcpy(src->ptr, tmpbuf, sizeof(struct arcan_shmif_page));
   src->ptr->segment_size = sz;
 	arcan_mem_free(tmpbuf);
+
+done:
+	s->desc.width = w;
+	s->desc.height = h;
 	return true;
 }
 
