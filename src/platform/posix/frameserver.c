@@ -503,15 +503,15 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	hinth = hinth <= 0 || hinth > ARCAN_SHMPAGE_MAXH ? 32 : hinth;
 
 	arcan_frameserver* newseg = arcan_frameserver_alloc();
-	ctx->shm.shmsize = arcan_shmif_getsize(hintw, hinth);
+	if (!newseg)
+		return NULL;
+
+	newseg->shm.shmsize = arcan_shmif_getsize(hintw, hinth);
 
 	if (!shmalloc(newseg, false, NULL)){
 		arcan_frameserver_free(newseg);
 		return NULL;
 	}
-
-	if (!newseg)
-		return NULL;
 
 	img_cons cons = {.w = hintw , .h = hinth, .bpp = ARCAN_SHMPAGE_VCHANNELS};
 	vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = newseg};
@@ -900,6 +900,7 @@ bool arcan_frameserver_resize(shm_handle* src, int w, int h)
 	}
 
 	src->ptr = mmap(NULL, sz, PROT_READ|PROT_WRITE, MAP_SHARED, src->handle, 0);
+
   if (MAP_FAILED == src->ptr){
   	src->ptr = NULL;
 		arcan_warning("frameserver_resize() failed, reason: %s\n", strerror(errno));
