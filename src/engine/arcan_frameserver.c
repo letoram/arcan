@@ -401,6 +401,7 @@ enum arcan_ffunc_rv arcan_frameserver_videoframe_direct(
 		struct storage_info_t* dst_store = vobj->frameset ?
 			vobj->frameset->frames[vobj->frameset->index] : vobj->vstore;
 		push_buffer(tgt, tgt->vidp, dst_store);
+		dst_store->vinf.text.vpts = shmpage->vpts;
 
 /* for some connections, we want additional statistics */
 		if (tgt->desc.callback_framestate)
@@ -469,8 +470,9 @@ enum arcan_ffunc_rv arcan_frameserver_feedcopy(
 
 			memcpy(src->vidp,
 				me->vstore->vinf.text.raw, me->vstore->vinf.text.s_raw);
-
+			src->shm.ptr->vpts = me->vstore->vinf.text.vpts;
 			src->shm.ptr->vready = true;
+			FORCE_SYNCH();
 			arcan_frameserver_pushevent(src, &ev);
 		}
 

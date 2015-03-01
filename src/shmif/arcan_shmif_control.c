@@ -48,6 +48,26 @@ extern HANDLE parent;
 #endif
 
 /*
+ * a bit clunky, but some scenarios that we want debug-builds
+ * but without the debug logging spam for external projects,
+ * and others where we want to redefine the logging macro
+ * for shmif- only.
+ */
+#ifdef _DEBUG
+#ifdef _DEBUG_NOLOG
+#define DLOG(...)
+#endif
+
+#ifndef DLOG
+#define DLOG(...) LOG(__VA_ARGS__)
+#endif
+#else
+#ifndef DLOG
+#define DLOG(...)
+#endif
+#endif
+
+/*
  * implementation defined for out-of-order execution
  * and reordering protection
  */
@@ -346,7 +366,7 @@ int arcan_shmif_enqueue(struct arcan_shmif_cont* c,
 #endif
 
 	while ( ((*ctx->back + 1) % ctx->eventbuf_sz) == *ctx->front){
-		LOG("arcan_event_enqueue(), going to sleep, eventqueue full\n");
+		DLOG("arcan_event_enqueue(), going to sleep, eventqueue full\n");
 		arcan_sem_wait(ctx->synch.handle);
 	}
 
@@ -467,7 +487,7 @@ map_fail:
 	/* parent suggested that we work with a different
    * size from the start, need to remap */
 	if (dst->addr->segment_size != ARCAN_SHMPAGE_START_SZ){
-		LOG("arcan_frameserver(getshm) -- different initial size, remapping.\n");
+		DLOG("arcan_frameserver(getshm) -- different initial size, remapping.\n");
 		size_t sz = dst->addr->segment_size;
 		munmap(dst->addr, ARCAN_SHMPAGE_START_SZ);
 		dst->addr = mmap(NULL, sz, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
@@ -475,7 +495,7 @@ map_fail:
 			goto map_fail;
 	}
 
-	LOG("arcan_frameserver(getshm) -- mapped to %" PRIxPTR
+	DLOG("arcan_frameserver(getshm) -- mapped to %" PRIxPTR
 		" \n", (uintptr_t) dst->addr);
 
 /* step 2, semaphore handles */
@@ -509,7 +529,7 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey,
 	file_handle* conn_ch)
 {
 	if (!connpath){
-		LOG("arcan_shmif_connect(), missing connpath, giving up.\n");
+		DLOG("arcan_shmif_connect(), missing connpath, giving up.\n");
 		return NULL;
 	}
 
@@ -557,14 +577,14 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey,
 	};
 
 	if (-1 == sock){
-		LOG("arcan_shmif_connect(), "
+		DLOG("arcan_shmif_connect(), "
 			"couldn't allocate socket, reason: %s\n", strerror(errno));
 		goto end;
 	}
 
 	size_t lim = sizeof(dst.sun_path) / sizeof(dst.sun_path[0]);
 	if (lim < conn_sz){
-		LOG("arcan_shmif_connect(), "
+		DLOG("arcan_shmif_connect(), "
 			"specified connection path exceeds limits (%zu)\n", lim);
 		goto end;
 	}
@@ -572,7 +592,7 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey,
 
 /* connection or not, unlink the connection path */
 	if (connect(sock, (struct sockaddr*) &dst, sizeof(struct sockaddr_un)) < 0){
-		LOG("arcan_shmif_connect(%s), "
+		DLOG("arcan_shmif_connect(%s), "
 			"couldn't connect to server, reason: %s.\n",
 			dst.sun_path, strerror(errno)
 		);
@@ -587,7 +607,7 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey,
 	if (connkey){
 		ssize_t nw = snprintf(wbuf, PP_SHMPAGE_SHMKEYLIM, "%s\n", connkey);
 		if (nw >= PP_SHMPAGE_SHMKEYLIM){
-			LOG("arcan_shmif_connect(%s), "
+			DLOG("arcan_shmif_connect(%s), "
 				"ident string (%s) exceeds limit (%d).\n",
 				workbuf, connkey, PP_SHMPAGE_SHMKEYLIM
 			);
@@ -596,7 +616,7 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey,
 		}
 
 		if (write(sock, wbuf, nw) < nw){
-			LOG("arcan_shmif_connect(%s), "
+			DLOG("arcan_shmif_connect(%s), "
 				"error sending connection string, reason: %s\n",
 				workbuf, strerror(errno)
 			);
@@ -609,7 +629,7 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey,
 	size_t ofs = 0;
 	do {
 		if (-1 == read(sock, wbuf + ofs, 1)){
-			LOG("arcan_shmif_connect(%s), "
+			DLOG("arcan_shmif_connect(%s), "
 				"invalid response received during shmpage negotiation.\n", workbuf);
 			close(sock);
 			goto end;
@@ -752,7 +772,7 @@ static void* guard_thread(void* gs)
 
 			pthread_mutex_unlock(&gstr->guard.synch);
 			sleep(5);
-			LOG("frameserver::guard_thread -- couldn't shut"
+			DLOG("frameserver::guard_thread -- couldn't shut"
 				"	down gracefully, exiting.\n");
 
 			if (gstr->guard.exitf)
@@ -987,7 +1007,7 @@ bool arcan_shmif_resize(struct arcan_shmif_cont* arg,
 	FORCE_SYNCH();
 	arg->addr->resized = true;
 
-	LOG("request resize to (%d:%d) approx ~%zu bytes (currently: %zu).\n",
+	DLOG("request resize to (%d:%d) approx ~%zu bytes (currently: %zu).\n",
 		width, height, arcan_shmif_getsize(width, height), arg->shmsize);
 
 /*
@@ -999,7 +1019,7 @@ bool arcan_shmif_resize(struct arcan_shmif_cont* arg,
 		;
 
 	if (!arg->addr->dms){
-		LOG("dead man switch pulled during resize, giving up.\n");
+		DLOG("dead man switch pulled during resize, giving up.\n");
 		return false;
 	}
 
@@ -1024,7 +1044,7 @@ bool arcan_shmif_resize(struct arcan_shmif_cont* arg,
 			PROT_READ | PROT_WRITE, MAP_SHARED, arg->shmh, 0);
 #endif
 		if (!arg->addr){
-			LOG("arcan_shmif_resize() failed on segment remapping.\n");
+			DLOG("arcan_shmif_resize() failed on segment remapping.\n");
 			return false;
 		}
 
@@ -1244,7 +1264,7 @@ struct arcan_shmif_cont arcan_shmif_open(
 
 	ret.epipe = dpipe;
 	if (-1 == ret.epipe)
-		LOG("shmif_open() - Could not retrieve event- pipe from parent.\n");
+		DLOG("shmif_open() - Could not retrieve event- pipe from parent.\n");
 
 	return ret;
 
