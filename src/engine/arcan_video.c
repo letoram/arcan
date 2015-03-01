@@ -2162,7 +2162,6 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, size_t w, size_t h)
 	vobj->origh = h;
 	rescale_origwh(vobj, fx, fy);
 
-	vobj->vstore->vinf.text.s_raw = w * h * sizeof(av_pixel);
 	agp_resize_vstore(vobj->vstore, w, h);
 
 	return ARCAN_OK;

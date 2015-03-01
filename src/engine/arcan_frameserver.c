@@ -372,6 +372,8 @@ enum arcan_ffunc_rv arcan_frameserver_videoframe_direct(
 		if (shmpage->resized){
 			arcan_frameserver_tick_control(tgt);
 			shmpage = tgt->shm.ptr;
+		if (!shmpage)
+			return FFUNC_RV_NOFRAME;
 		}
 
 /* use this opportunity to make sure that we treat audio as well */
