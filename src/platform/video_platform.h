@@ -125,6 +125,9 @@ struct storage_info_t {
 			uint32_t s_raw;
 			av_pixel*  raw;
 
+/* may need to propagate vpts state */
+			uint64_t vpts;
+
 /* re- construction string should we be conservative and free raw */
 			char*   source;
 
