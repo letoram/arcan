@@ -989,8 +989,12 @@ void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 
 size_t arcan_shmif_getsize(unsigned width, unsigned height)
 {
+#ifdef ARCAN_SHMIF_OVERCOMMIT
+	return PP_SHMPAGE_MAXSZ;
+#else
 	return width * height * ARCAN_SHMPAGE_VCHANNELS +
 		sizeof(struct arcan_shmif_page) + ARCAN_SHMPAGE_AUDIOBUF_SZ;
+#endif
 }
 
 bool arcan_shmif_resize(struct arcan_shmif_cont* arg,
