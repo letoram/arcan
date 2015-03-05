@@ -1,6 +1,6 @@
 -- build_pointcloud
 -- @short: Create a 3D object that is comprised of a cloud of points.
--- @inargs: pointcount
+-- @inargs: pointcount, *nmaps*
 -- @outargs: vid
 -- @longdescr: Evenly distribute *pointcount* points in a bounding
 -- volume from -1,-1,-1 to 1,1,1. This is primarily intended to be

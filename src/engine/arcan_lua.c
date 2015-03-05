@@ -3914,8 +3914,9 @@ static int buildbox(lua_State* ctx)
 	float width = luaL_checknumber(ctx, 1);
 	float height = luaL_checknumber(ctx, 2);
 	float depth = luaL_checknumber(ctx, 3);
+	int nmaps = abs((int)luaL_optnumber(ctx, 4, 1));
 
-	arcan_vobj_id id = arcan_3d_buildbox(width, height, depth);
+	arcan_vobj_id id = arcan_3d_buildbox(width, height, depth, nmaps);
 	lua_pushvid(ctx, id);
 	trace_allocation(ctx, "build_3dbox", id);
 
@@ -3927,8 +3928,9 @@ static int pointcloud(lua_State* ctx)
 {
 	LUA_TRACE("build_pointcloud");
 	float count = luaL_checknumber(ctx, 1);
+	int nmaps = abs((int)luaL_optnumber(ctx, 2, 1));
 
-	arcan_vobj_id id = arcan_3d_pointcloud(count);
+	arcan_vobj_id id = arcan_3d_pointcloud(count, nmaps);
 	lua_pushvid(ctx, id);
  	trace_allocation(ctx, "build_pointcloud", id);
 

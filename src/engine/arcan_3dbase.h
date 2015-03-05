@@ -13,10 +13,10 @@ void arcan_3d_setdefaults();
 
 arcan_errc arcan_3d_camtag(arcan_vobj_id parent,
 	float near, float far, float ar, float fov, bool front, bool back);
-
 arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx,
-	float maxz, float y, float wdens, float ddens, unsigned nmaps);
-arcan_vobj_id arcan_3d_buildbox(float width, float height, float depth);
+	float maxz, float y, float wdens, float ddens, size_t nmaps);
+arcan_vobj_id arcan_3d_buildbox(float width, float height,
+	float depth, size_t nmaps);
 
 arcan_errc arcan_3d_swizzlemodel(arcan_vobj_id model);
 
@@ -35,7 +35,7 @@ void arcan_3d_viewray(arcan_vobj_id camtag,
  * vertex shader that determines the actual position of
  * each vertice.
  */
-arcan_vobj_id arcan_3d_pointcloud(size_t count);
+arcan_vobj_id arcan_3d_pointcloud(size_t count, size_t nmaps);
 
 /*
  * Using the current display settings, take a screen position and
