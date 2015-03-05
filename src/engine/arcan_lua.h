@@ -7,6 +7,9 @@
 #ifndef _HAVE_ARCAN_LUA
 #define _HAVE_ARCAN_LUA
 
+#define LUAAPI_VERSION_MAJOR 0
+#define LUAAPI_VERSION_MINOR 9
+
 /* arcan_luactx* is just an intermediary alias for lua_State */
 struct arcan_luactx;
 
