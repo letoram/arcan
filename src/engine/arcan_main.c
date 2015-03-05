@@ -334,8 +334,10 @@ int main(int argc, char* argv[])
 	case 'q' : settings.timedump = strtol(optarg, NULL, 10); break;
 	case 'p' : arcan_override_namespace(optarg, RESOURCE_APPL_SHARED); break;
 	case 'b' : fallback = strdup(optarg); break;
-	case 'V' : fprintf(stdout, "%s\n%" PRIu64" \n", ARCAN_BUILDVERSION,
-		arcan_shmif_cookie());
+	case 'V' : fprintf(stdout, "%s\nshmif-%" PRIu64"\nluaapi-%d:%d\n",
+		ARCAN_BUILDVERSION, arcan_shmif_cookie(), LUAAPI_VERSION_MAJOR,
+		LUAAPI_VERSION_MINOR
+		);
 		exit(EXIT_SUCCESS);
 	break;
 	case 'H' : hookscript = strdup( optarg ); break;

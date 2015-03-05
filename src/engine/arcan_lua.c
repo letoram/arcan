@@ -3715,15 +3715,23 @@ static int imageasframe(lua_State* ctx)
 	arcan_vobj_id sid = luaL_checkvid(ctx, 1, NULL);
 	arcan_vobj_id did = luaL_checkvid(ctx, 2, NULL);
 	unsigned num = luaL_checkint(ctx, 3);
-	unsigned detach = luaL_optint(ctx, 4, FRAMESET_NODETACH);
 
-	if (detach != FRAMESET_DETACH && detach != FRAMESET_NODETACH)
-		arcan_fatal("set_image_as_frame() -- invalid 4th argument"
-			"	(should be FRAMESET_DETACH or FRAMESET_NODETACH)\n");
-
-	if (ARCAN_OK != arcan_video_setasframe(sid, did, num)){
-		arcan_warning("set_image_as_frame(), couldn't set "
-			"(%d) in slot (%d) of (%d)\n", (int)did, (int)num, (int)sid);
+	arcan_errc code = arcan_video_setasframe(sid, did, num);
+	if (code != ARCAN_OK){
+		switch(code){
+		case ARCAN_ERRC_UNACCEPTED_STATE:
+			arcan_warning("set_image_as_frame(%"PRIxVOBJ":%"PRIxVOBJ") failed, "
+				"source not connected to textured backing store.\n", sid, did);
+		break;
+		case ARCAN_ERRC_NO_SUCH_OBJECT:
+		break;
+		case ARCAN_ERRC_BAD_ARGUMENT:
+			arcan_warning("set_image_as_frame(%"PRIxVOBJ":%"PRIxVOBJ") failed, "
+				"dest doesn't have enough frames or is a clone.\n", sid, did);
+		break;
+		default:
+		arcan_fatal("set_image_as_frame() failed, unknown code: %d\n", (int)code);
+		}
 	}
 
 	LUA_ETRACE("set_image_as_frame", NULL);
@@ -8398,8 +8406,8 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"SHARED_RESOURCE", RESOURCE_APPL_SHARED},
 {"SYS_APPL_RESOURCE", RESOURCE_SYS_APPLBASE},
 {"ALL_RESOURCES", DEFAULT_USERMASK},
-{"API_VERSION_MAJOR", 0},
-{"API_VERSION_MINOR", 8},
+{"API_VERSION_MAJOR", LUAAPI_VERSION_MAJOR},
+{"API_VERSION_MINOR", LUAAPI_VERSION_MINOR},
 {"HISTOGRAM_SPLIT", HIST_SPLIT},
 {"HISTOGRAM_MERGE", HIST_MERGE},
 {"HISTOGRAM_MERGE_NOALPHA", HIST_MERGE_NOALPHA},
