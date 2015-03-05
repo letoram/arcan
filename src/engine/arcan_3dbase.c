@@ -37,7 +37,7 @@ struct camtag_data {
 };
 
 struct geometry {
-	unsigned nmaps;
+	size_t nmaps;
 	agp_shader_id program;
 
 	struct mesh_storage_t store;
@@ -222,6 +222,8 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
 
 	struct geometry* base = src->geometry;
 	size_t ind = (vobj->frameset ? vobj->frameset->index : 0);
+
+	agp_blendstate(vobj->blendmode);
 
 	while (base){
 		agp_shader_activate(base->program > 0 ? base->program : baseprog);
@@ -503,7 +505,7 @@ arcan_errc arcan_3d_swizzlemodel(arcan_vobj_id dst)
 	return rv;
 }
 
-arcan_vobj_id arcan_3d_pointcloud(size_t count)
+arcan_vobj_id arcan_3d_pointcloud(size_t count, size_t nmaps)
 {
 	if (count == 0)
 		return ARCAN_EID;
@@ -524,7 +526,7 @@ arcan_vobj_id arcan_3d_pointcloud(size_t count)
 	newmodel->geometry = arcan_alloc_mem(sizeof(struct geometry), ARCAN_MEM_VTAG,
 		ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 	newmodel->geometry->store.n_vertices = count;
-
+	newmodel->geometry->nmaps = nmaps;
 	newmodel->geometry->store.verts = arcan_alloc_mem(sizeof(float) * count * 3,
 		ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_PAGE);
 	newmodel->geometry->store.txcos = arcan_alloc_mem(sizeof(float) * count * 2,
@@ -564,13 +566,13 @@ arcan_vobj_id arcan_3d_pointcloud(size_t count)
 	newmodel->bbmax = bbmax;
 	newmodel->flags.complete = true;
 	newmodel->flags.debug = true;
-	newmodel->geometry->nmaps = 1;
+	newmodel->geometry->nmaps = nmaps;
 	newmodel->geometry->store.type = AGP_MESH_POINTCLOUD;
 
 	return rv;
 }
 
-arcan_vobj_id arcan_3d_buildbox(float w, float h, float d)
+arcan_vobj_id arcan_3d_buildbox(float w, float h, float d, size_t nmaps)
 {
 	vfunc_state state = {.tag = ARCAN_TAG_3DOBJ};
 	img_cons empty = {0};
@@ -590,7 +592,7 @@ arcan_vobj_id arcan_3d_buildbox(float w, float h, float d)
 		ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 
 	newmodel->geometry->store.type = AGP_MESH_TRISOUP;
-	newmodel->geometry->nmaps = 1;
+	newmodel->geometry->nmaps = nmaps;
 	newmodel->geometry->complete = true;
 	newmodel->geometry->store.n_triangles = 2 * 6;
 
@@ -654,7 +656,7 @@ arcan_vobj_id arcan_3d_buildbox(float w, float h, float d)
 }
 
 arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx,float maxz,
-	float y, float wdens, float ddens, unsigned nmaps){
+	float y, float wdens, float ddens, size_t nmaps){
 	vfunc_state state = {.tag = ARCAN_TAG_3DOBJ};
 	arcan_vobj_id rv = ARCAN_EID;
 	img_cons empty = {0};
@@ -761,7 +763,7 @@ static void loadmesh(struct geometry* dst, CTMcontext* ctx)
 /* we require the model to be presplit on texture,
  * so n maps but 1 set of txcos */
 	if (uvmaps > 0){
-        dst->nmaps = 1;
+		dst->nmaps = 1;
 		unsigned txsize = sizeof(float) * 2 * dst->store.n_vertices;
 		dst->store.txcos = arcan_alloc_fillmem(ctmGetFloatArray(ctx, CTM_UV_MAP_1),
 			txsize, ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_PAGE);
