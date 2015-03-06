@@ -21,6 +21,15 @@
 #endif
 
 /*
+ * if we are more than this number of ticks behind (massive stall from
+ * system clock adjustment, sleep / suspend problems etc.) then fast-forward
+ * and process one tick.
+ */
+#ifndef ARCAN_TICK_THRESHOLD
+#define ARCAN_TICK_THRESHOLD 100
+#endif
+
+/*
  * The engine interpolates animations between timesteps (timer_tick clock),
  * but only if n ms have progressed since the last rendered frame,
  * where n is defined as (INTERP_MINSTEP * ARCAN_TIMER_TICK) but
