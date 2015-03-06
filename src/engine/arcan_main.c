@@ -244,7 +244,6 @@ static void postframe()
 static void on_clock_pulse(int nticks)
 {
 	settings.tick_count += nticks;
-
 /* priority is always in maintaining logical clock and event processing */
 	unsigned njobs;
 

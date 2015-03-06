@@ -34,13 +34,11 @@
 
 #include "arcan_frameserver.h"
 
-static int64_t arcan_last_frametime = 0;
-static int64_t arcan_tickofset = 0;
-
 typedef struct queue_cell queue_cell;
 
 static arcan_event eventbuf[ARCAN_EVENT_QUEUE_LIM];
 static unsigned eventfront = 0, eventback = 0;
+static int64_t epoch;
 
 #ifndef FORCE_SYNCH
 	#define FORCE_SYNCH() {\
@@ -487,37 +485,37 @@ step:
 
 int64_t arcan_frametime()
 {
-	return arcan_last_frametime - arcan_tickofset;
+	int64_t now = arcan_timemillis();
+	if (now < epoch)
+		epoch = now - (epoch - now);
+
+	return now - epoch;
 }
 
 float arcan_event_process(arcan_evctx* ctx, arcan_tick_cb cb)
 {
-	static const int rebase_timer_threshold = ARCAN_TIMER_TICK * 1000;
+	int64_t base = ctx->c_ticks * ARCAN_TIMER_TICK;
+	int64_t delta = arcan_frametime() - base;
 
-	unsigned delta  = arcan_last_frametime - ctx->c_ticks;
-	arcan_last_frametime = arcan_timemillis();
+	if (delta > ARCAN_TIMER_TICK){
+		inject_scheduled(ctx);
+		platform_event_process(ctx);
 
-/*
- * compensate for a massive stall, non-monotonic clock or first time
- * initialization as forwarding the clock would cascade to stronger
- * visual artifacts
- */
-	if (ctx->c_ticks == 0 || delta == 0 || delta > rebase_timer_threshold){
-		ctx->c_ticks = arcan_last_frametime;
-		delta = ARCAN_TIMER_TICK;
+		int nticks = delta / ARCAN_TIMER_TICK;
+		if (nticks > ARCAN_TICK_THRESHOLD){
+			epoch += (nticks - 1) * ARCAN_TIMER_TICK;
+			nticks = 1;
+		}
+
+		cb(nticks);
+		ctx->c_ticks += nticks;
+
+		arcan_bench_register_tick(nticks);
+		cb(nticks);
+		return arcan_event_process(ctx, cb);
 	}
 
-	unsigned nticks = delta / ARCAN_TIMER_TICK;
-	float fragment = ((float)(delta % ARCAN_TIMER_TICK) + 0.0001) /
-		(float) ARCAN_TIMER_TICK;
-
-	inject_scheduled(ctx);
-	platform_event_process(ctx);
-
-	cb(nticks);
-
-	arcan_bench_register_tick(nticks);
-	return fragment;
+	return (float)delta / (float)ARCAN_TIMER_TICK;
 }
 
 arcan_benchdata benchdata = {0};
@@ -663,7 +661,7 @@ void arcan_event_init(arcan_evctx* ctx)
 #endif
 
 	platform_event_init(ctx);
- 	arcan_tickofset = arcan_timemillis();
+	epoch = arcan_timemillis();
 }
 
 extern void platform_device_lock(int lockdev, bool lockstate);

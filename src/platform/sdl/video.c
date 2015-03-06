@@ -26,7 +26,6 @@ static struct {
 	size_t canvasw, canvash;
 } sdl;
 
-
 static char* synchopts[] = {
 	"dynamic", "herustic driven balancing latency, performance and utilization",
 	"vsync", "let display vsync dictate speed",
@@ -96,12 +95,25 @@ void platform_video_synch(uint64_t tick_count, float fract,
 	size_t nd;
 	arcan_bench_register_cost( arcan_vint_refresh(fract, &nd) );
 
+	uint64_t start = arcan_timemillis();
 	agp_activate_rendertarget(NULL);
 
 	arcan_vint_drawrt(arcan_vint_world(), 0, 0, sdl.mdispw, sdl.mdisph);
 	arcan_vint_drawcursor(false);
 
+	static int max_swapt;
+
 	SDL_GL_SwapBuffers();
+	uint64_t stop = arcan_timemillis();
+
+	if (stop - start > max_swapt)
+		max_swapt = stop - start;
+
+/* just compensates for layers ignoring VSYNC and choking CPU,
+ * this platform is on life- support so more interesting synch
+ * schemes will be used in eglkms etc. */
+	if (synchopt == DYNAMIC && max_swapt < 8.0)
+		arcan_timesleep(8);
 
 	if (post)
 		post();
@@ -286,5 +298,3 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	glViewport(0, 0, width, height);
 	return true;
 }
-
-

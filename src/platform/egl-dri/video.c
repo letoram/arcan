@@ -1277,6 +1277,7 @@ bool platform_video_init(uint16_t w, uint16_t h,
 	const char* device = getenv("ARCAN_VIDEO_DEVICE") ?
 		getenv("ARCAN_VIDEO_DEVICE") : device_name;
 
+	printf("device: %s\n", device);
 	if (setup_node(&nodes[0], device) != 0)
 		goto cleanup;
 
