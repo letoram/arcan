@@ -23,13 +23,18 @@
 -- @note: Each call that allows a non-authoritative connection is only valid
 -- once, if a connection fail to verify OR a connection is completed,
 -- the connection point will be removed.
+-- @note: The connection key is limited to 30 characters from the set [a-Z,_0-9]
+-- and the actual search path / mechanism is implementation defined.
 -- @note: The first example below will continuously listen for new connections
--- under the 'nonauth' connection path. In a real-world setting, be sure to
+-- under the 'nonauth' key. In a real-world setting, be sure to
 -- restrict the number of allowed connections to avoid running out of resources
 -- and to monitor for suspicious activities e.g. a high amount of connections
 -- or connection attempts in a short timeframe etc.
--- @note: for honoring explicit requests from a frameserver, use
--- the accept_target function.
+-- @note: The connection point is consumed (closed, unlinked) when the
+-- first verified connection goes through. To re-use the connection point,
+-- invoke target_alloc again with the same key from within the callback handler.
+-- @note: for honoring explicit requests from a frameserver regarding new
+-- subsegments the accept_target function.
 -- @group: targetcontrol
 -- @cfunction: targetalloc
 -- @related: define_recordtarget, accept_target
@@ -38,7 +43,9 @@ function main()
 	local chain_call = function()
 		target_alloc("nonauth", function(source, status)
 			print(source, status.kind);
-			chain_call();
+			if (status.kind == "connected") then
+				chain_call();
+			end
 		end);
 	end
 #endif

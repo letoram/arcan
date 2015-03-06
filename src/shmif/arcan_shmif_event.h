@@ -399,6 +399,7 @@ enum ARCAN_EVENT_AUDIO {
 };
 
 enum ARCAN_EVENT_FSRV {
+	EVENT_FSRV_EXTCONN,
 	EVENT_FSRV_RESIZED,
 	EVENT_FSRV_TERMINATED,
 	EVENT_FSRV_DROPPEDFRAME,
@@ -469,18 +470,23 @@ typedef struct {
 typedef struct {
 	enum ARCAN_EVENT_FSRV kind;
 
+	union {
+		struct {
+			int32_t audio;
+			size_t width, height;
+			size_t c_abuffer, c_vbuffer;
+			size_t l_abuffer, l_vbuffer;
+			int8_t glsource;
+			uint64_t pts;
+			uint64_t counter;
+		};
+		struct {
+			char ident[32];
+			int descriptor;
+		};
+	};
+
 	int64_t video;
-	int32_t audio;
-
-	int width, height;
-
-	unsigned c_abuffer, c_vbuffer;
-	unsigned l_abuffer, l_vbuffer;
-
-	int8_t glsource;
-	uint64_t pts;
-	uint64_t counter;
-
 	intptr_t otag;
 } arcan_fsrvevent;
 

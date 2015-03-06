@@ -172,8 +172,10 @@ void arcan_frameserver_killchild(arcan_frameserver* src)
 	if (!env_checked)
 	{
 		env_checked = true;
-		if (getenv("ARCAN_DEBUG_NONANNY"))
+		if (getenv("ARCAN_DEBUG_NONANNY")){
+			unsetenv("ARCAN_DEBUG_NONANNY");
 			no_nanny = true;
+		}
 	}
 
 	if (no_nanny)
@@ -348,8 +350,129 @@ static bool sockpair_alloc(int* dst, size_t n, bool cloexec)
 	return res;
 }
 
+/*
+ * even if we have a preset listening socket,
+ * we run through the routine to generate unlink- target
+ * etc. still
+ */
+static bool setup_socket(arcan_frameserver* ctx, int shmfd,
+	const char* optkey, int optdesc)
+{
+	size_t optlen;
+	struct sockaddr_un addr;
+	size_t lim = sizeof(addr.sun_path) / sizeof(addr.sun_path[0]) - 1;
+	size_t pref_sz = sizeof(ARCAN_SHM_PREFIX) - 1;
+
+	if (optkey == NULL || (optlen = strlen(optkey)) == 0 ||
+		pref_sz + optlen > lim){
+		arcan_warning("posix/frameserver.c:shmalloc(), named socket "
+			"connected requested but with empty/missing/oversized key. cannot "
+			"setup frameserver connectionpoint.\n");
+		return false;
+	}
+
+	int fd = optdesc;
+	if (-1 == optdesc){
+		fd = socket(AF_UNIX, SOCK_STREAM, 0);
+		if (fd == -1){
+			arcan_warning("posix/frameserver.c:shmalloc(), could allocate socket "
+				"for listening, check permissions and descriptor ulimit.\n");
+			return false;
+		}
+	fcntl(fd, F_SETFD, FD_CLOEXEC);
+	}
+
+	memset(&addr, '\0', sizeof(addr));
+	addr.sun_family = AF_UNIX;
+	char* dst = (char*) &addr.sun_path;
+
+#ifdef __linux
+	if (ARCAN_SHM_PREFIX[0] == '\0'){
+		memcpy(dst, ARCAN_SHM_PREFIX, pref_sz);
+		dst += sizeof(ARCAN_SHM_PREFIX) - 1;
+		memcpy(dst, optkey, optlen);
+	}
+	else
+#endif
+		if (ARCAN_SHM_PREFIX[0] != '/'){
+		char* auxp = getenv("HOME");
+		if (!auxp){
+			arcan_warning("posix/frameserver.c:shmalloc(), compile-time "
+				"prefix set to home but HOME environment missing, cannot "
+				"setup frameserver connectionpoint.\n");
+			close(fd);
+			return false;
+		}
+
+		size_t envlen = strlen(auxp);
+		if (envlen + optlen + pref_sz > lim){
+			arcan_warning("posix/frameserver.c:shmalloc(), applying built-in "
+				"prefix and resolving username exceeds socket path limit.\n");
+			close(fd);
+			return false;
+		}
+
+		memcpy(dst, auxp, envlen);
+		dst += envlen;
+		*dst++ = '/';
+		memcpy(dst, ARCAN_SHM_PREFIX, pref_sz);
+		dst += pref_sz;
+		memcpy(dst, optkey, optlen);
+	}
+/* use prefix in its full form */
+	else {
+		memcpy(dst, ARCAN_SHM_PREFIX, pref_sz);
+		dst += pref_sz;
+		memcpy(dst, optkey, optlen);
+	}
+
+	if (-1 == optdesc){
+/*
+ * if we happen to have a stale listener, unlink it but only if it
+ * has been used as a domain-socket in beforehand (so in the worst
+ * case, some lets a user set this path and it is maliciously used
+ * to unlink files.
+ */
+		if (addr.sun_path[0] == '\0')
+			unlink(addr.sun_path);
+		else{
+			struct stat buf;
+			int rv = stat(addr.sun_path, &buf);
+			if ( (-1 == rv && errno != ENOENT)||(0 == rv && !S_ISSOCK(buf.st_mode))){
+				close(fd);
+				return false;
+			}
+			else if (0 == rv)
+				unlink(addr.sun_path);
+		}
+
+		if (bind(fd, (struct sockaddr*) &addr, sizeof(addr)) != 0){
+			arcan_warning("posix/frameserver.c:shmalloc(), couldn't setup "
+				"domain socket for frameserver connectionpoint, check "
+				"path permissions (%s), reason:%s\n",addr.sun_path,strerror(errno));
+			close(fd);
+			return false;
+		}
+
+		fchmod(fd, ARCAN_SHM_UMASK);
+		listen(fd, 1);
+#ifdef __APPLE__
+		int val = 1;
+		setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(int));
+#endif
+	}
+
+	ctx->dpipe = fd;
+/* track output socket separately so we can unlink on exit,
+ * other options (readlink on proc) or F_GETPATH are unportable
+ * (and in the case of readlink .. /facepalm) */
+	ctx->sockaddr = strdup(addr.sun_path);
+	ctx->sockkey = strdup(optkey);
+	return true;
+}
+
 static bool shmalloc(arcan_frameserver* ctx,
-	bool namedsocket, const char* optkey)
+	bool namedsocket, const char* optkey, int optdesc)
 {
 	if (0 == ctx->shm.shmsize)
 		ctx->shm.shmsize = ARCAN_SHMPAGE_START_SZ;
@@ -360,97 +483,9 @@ static bool shmalloc(arcan_frameserver* ctx,
 	if (!findshmkey(ctx, &shmfd))
 		return false;
 
-	if (namedsocket){
-		size_t optlen;
-		struct sockaddr_un addr;
-		size_t lim = sizeof(addr.sun_path) / sizeof(addr.sun_path[0]) - 1;
-		size_t pref_sz = sizeof(ARCAN_SHM_PREFIX) - 1;
-
-		if (optkey == NULL || (optlen = strlen(optkey)) == 0 ||
-			pref_sz + optlen > lim){
-			arcan_warning("posix/frameserver.c:shmalloc(), named socket "
-				"connected requested but with empty/missing/oversized key. cannot "
-				"setup frameserver connectionpoint.\n");
-			goto fail;
-		}
-
-		int fd = socket(AF_UNIX, SOCK_STREAM, 0);
-		if (fd == -1){
-			arcan_warning("posix/frameserver.c:shmalloc(), could allocate socket "
-				"for listening, check permissions and descriptor ulimit.\n");
-			goto fail;
-		}
-		fcntl(fd, F_SETFD, FD_CLOEXEC);
-		memset(&addr, '\0', sizeof(addr));
-		addr.sun_family = AF_UNIX;
-		char* dst = (char*) &addr.sun_path;
-
-#ifdef __linux
-		if (ARCAN_SHM_PREFIX[0] == '\0')
-		{
-			memcpy(dst, ARCAN_SHM_PREFIX, pref_sz);
-			dst += sizeof(ARCAN_SHM_PREFIX) - 1;
-			memcpy(dst, optkey, optlen);
-		}
-		else
-#endif
-		if (ARCAN_SHM_PREFIX[0] != '/'){
-			char* auxp = getenv("HOME");
-			if (!auxp){
-				arcan_warning("posix/frameserver.c:shmalloc(), compile-time "
-					"prefix set to home but HOME environment missing, cannot "
-					"setup frameserver connectionpoint.\n");
-				close(fd);
-				goto fail;
-			}
-
-			size_t envlen = strlen(auxp);
-			if (envlen + optlen + pref_sz > lim){
-				arcan_warning("posix/frameserver.c:shmalloc(), applying built-in "
-					"prefix and resolving username exceeds socket path limit.\n");
-				close(fd);
-				goto fail;
-			}
-
-			memcpy(dst, auxp, envlen);
-			dst += envlen;
-			*dst++ = '/';
-			memcpy(dst, ARCAN_SHM_PREFIX, pref_sz);
-			dst += pref_sz;
-			memcpy(dst, optkey, optlen);
-		}
-/* use prefix in its full form */
-		else {
-			memcpy(dst, ARCAN_SHM_PREFIX, pref_sz);
-			dst += pref_sz;
-			memcpy(dst, optkey, optlen);
-		}
-
-/*
- * if we happen to have a stale listener, unlink it.
- */
-		unlink(addr.sun_path);
-		if (bind(fd, (struct sockaddr*) &addr, sizeof(addr)) != 0){
-			arcan_warning("posix/frameserver.c:shmalloc(), couldn't setup "
-				"domain socket for frameserver connectionpoint, check "
-				"path permissions (%s), reason:%s\n",addr.sun_path,strerror(errno));
-			close(fd);
-			goto fail;
-		}
-
-		fchmod(fd, ARCAN_SHM_UMASK);
-		listen(fd, 1);
-		ctx->dpipe = fd;
-#ifdef __APPLE__
-		int val = 1;
-		setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(int));
-#endif
-
-/* track output socket separately so we can unlink on exit,
- * other options (readlink on proc) or F_GETPATH are unportable
- * (and in the case of readlink .. /facepalm) */
-		ctx->sockaddr = strdup(addr.sun_path);
-	}
+	if (namedsocket)
+		if (!setup_socket(ctx, shmfd, optkey, optdesc))
+		goto fail;
 
 /* max videoframesize + DTS + structure + maxaudioframesize,
 * start with max, then truncate down to whatever is actually used */
@@ -508,7 +543,7 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 
 	newseg->shm.shmsize = arcan_shmif_getsize(hintw, hinth);
 
-	if (!shmalloc(newseg, false, NULL)){
+	if (!shmalloc(newseg, false, NULL, -1)){
 		arcan_frameserver_free(newseg);
 		return NULL;
 	}
@@ -655,6 +690,7 @@ static enum arcan_ffunc_rv socketverify(enum arcan_ffunc_cmd cmd,
 	arcan_frameserver* tgt = state.ptr;
 	char ch = '\n';
 	bool term;
+	size_t ntw;
 
 /*
  * We want this code-path exercised no matter what,
@@ -701,7 +737,6 @@ static enum arcan_ffunc_rv socketverify(enum arcan_ffunc_cmd cmd,
 			arcan_warning("platform/frameserver.c(), socket "
 				"verify failed on %"PRIxVOBJ", terminating.\n", tgt->vid);
 			arcan_frameserver_free(tgt);
-/* will terminate the frameserver session */
 		}
 		return FFUNC_RV_NOFRAME;
 
@@ -716,9 +751,7 @@ static enum arcan_ffunc_rv socketverify(enum arcan_ffunc_cmd cmd,
 
 /* switch to resize polling default handler */
 send_key:
-	arcan_warning("platform/frameserver.c(), connection verified.\n");
-
-	size_t ntw = snprintf(tgt->sockinbuf,
+	ntw = snprintf(tgt->sockinbuf,
 		PP_SHMPAGE_SHMKEYLIM, "%s\n", tgt->shm.key);
 
 	ssize_t rtc = 10;
@@ -743,7 +776,6 @@ send_key:
 	}
 
 	if (rtc <= 0){
-		arcan_warning("platform/frameserver.c(), connection broken.\n");
 		arcan_frameserver_free(tgt);
 		return FFUNC_RV_NOFRAME;
 	}
@@ -788,11 +820,22 @@ static int8_t socketpoll(enum arcan_ffunc_cmd cmd, av_pixel* buf,
 			if (-1 == insock)
 				return FFUNC_RV_NOFRAME;
 
-			close(tgt->dpipe);
-			tgt->dpipe = insock;
-
 			arcan_video_alterfeed(tgt->vid, socketverify, state);
 
+/* hand over responsibility for the dpipe to the event layer */
+			arcan_event adopt = {
+				.category = EVENT_FSRV,
+				.fsrv.kind = EVENT_FSRV_EXTCONN,
+				.fsrv.descriptor = tgt->dpipe,
+				.fsrv.otag = tgt->tag,
+				.fsrv.video = tgt->vid
+			};
+			tgt->dpipe = insock;
+
+			snprintf(adopt.fsrv.ident, sizeof(adopt.fsrv.ident)/
+				sizeof(adopt.fsrv.ident[0]), "%s", tgt->sockkey);
+
+			arcan_event_enqueue(arcan_event_defaultctx(), &adopt);
 /*
  * note: we could have a flag here to re-use the address,
  * but then we'd need to spawn a new ffunc object with corresponding
@@ -801,6 +844,7 @@ static int8_t socketpoll(enum arcan_ffunc_cmd cmd, av_pixel* buf,
 			if (tgt->sockaddr){
 				unlink(tgt->sockaddr);
 				free(tgt->sockaddr);
+				free(tgt->sockkey);
 				tgt->sockaddr = NULL;
 			}
 
@@ -811,6 +855,7 @@ static int8_t socketpoll(enum arcan_ffunc_cmd cmd, av_pixel* buf,
 		case FFUNC_DESTROY:
 			if (tgt->sockaddr){
 				close(tgt->dpipe);
+				free(tgt->sockkey);
 				unlink(tgt->sockaddr);
 				free(tgt->sockaddr);
 				tgt->sockaddr = NULL;
@@ -824,18 +869,18 @@ static int8_t socketpoll(enum arcan_ffunc_cmd cmd, av_pixel* buf,
 	return FFUNC_RV_NOFRAME;
 }
 
-arcan_frameserver* arcan_frameserver_listen_external(const char* key)
+arcan_frameserver* arcan_frameserver_listen_external(const char* key, int fd)
 {
-/* shm will start with default size */
 	arcan_frameserver* res = arcan_frameserver_alloc();
-	if (!shmalloc(res, true, key)){
+	if (!shmalloc(res, true, key, fd)){
 		arcan_warning("arcan_frameserver_listen_external(), shared memory"
 			" setup failed\n");
 		return NULL;
 	}
 
 /*
- * defaults for an external connection is similar to that of avfeed/libretro
+ * start with a default / empty fobject
+ * (so all image_ operations still work)
  */
 	res->segid = SEGID_UNKNOWN;
 	res->launchedtime = arcan_timemillis();
@@ -931,7 +976,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 	}
 
-	shmalloc(ctx, false, NULL);
+	shmalloc(ctx, false, NULL, -1);
 
 	ctx->launchedtime = arcan_frametime();
 	pid_t child = fork();
