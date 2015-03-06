@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2015, Björn Ståhl
+ * Copyright 2003-2015, Björn Ståhl
  * License: GPLv2+, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -144,7 +144,7 @@ typedef int acoord;
  */
 #ifdef LUA_TRACE_STDERR
 #define LUA_TRACE(fsym) fprintf(stderr, "(%lld:%s)->%s\n", \
-	arcan_timemillis(), lua_ctx_store.lastsrc, fsym);
+	arcan_timemillis(), luactx.lastsrc, fsym);
 
 /*
  * This trace function scans the stack and writes the information about
@@ -281,8 +281,12 @@ static struct {
 	char* prefix_buf;
 	size_t prefix_ofs;
 
+	struct arcan_extevent* last_segreq;
+	char* pending_socket_label;
+	int pending_socket_descr;
+
 	lua_State* last_ctx;
-} lua_ctx_store = {0};
+} luactx = {0};
 
 extern char* _n_strdup(const char* instr, const char* alt);
 static inline const char* fsrvtos(enum ARCAN_SEGID ink);
@@ -384,13 +388,13 @@ static const char* luaL_lastcaller(lua_State* ctx)
 
 static void trace_allocation(lua_State* ctx, const char* sym, arcan_vobj_id id)
 {
-	if (lua_ctx_store.debug > 2)
+	if (luactx.debug > 2)
 #ifndef ARCAN_LUA_NOCOLOR
 		arcan_warning("\x1b[1m %s: alloc(%s) => %"PRIxVOBJ")\x1b[39m\x1b[0m\n",
-			luaL_lastcaller(ctx), sym, id + lua_ctx_store.lua_vidbase);
+			luaL_lastcaller(ctx), sym, id + luactx.lua_vidbase);
 #else
 		arcan_warning("%s: alloc(%s) => %"PRIxVOBJ")\n",
-			luaL_lastcaller(ctx), sym, id + lua_ctx_store.lua_vidbase);
+			luaL_lastcaller(ctx), sym, id + luactx.lua_vidbase);
 #endif
 }
 
@@ -493,7 +497,7 @@ void lua_rectrigger(const char* msg, ...)
 	va_start(args, msg);
 
 #ifndef ARCAN_LUA_NOCOLOR
-	lua_State* ctx = lua_ctx_store.last_ctx;
+	lua_State* ctx = luactx.last_ctx;
 	char msg_buf[256];
 	vsnprintf(msg_buf, sizeof(msg_buf), msg, args);
 
@@ -533,7 +537,7 @@ static inline arcan_vobj_id luaL_checkaid(lua_State* ctx, int num)
 static inline void lua_pushvid(lua_State* ctx, arcan_vobj_id id)
 {
 	if (id != ARCAN_EID && id != ARCAN_VIDEO_WORLDID)
-		id += lua_ctx_store.lua_vidbase;
+		id += luactx.lua_vidbase;
 
 	lua_pushnumber(ctx, (double) id);
 }
@@ -614,16 +618,16 @@ static bool grabapplfunction(lua_State* ctx,
 	const char* funame, size_t funlen)
 {
 	if (funlen > 0){
-		strncpy(lua_ctx_store.prefix_buf +
-			lua_ctx_store.prefix_ofs + 1, funame, 32);
+		strncpy(luactx.prefix_buf +
+			luactx.prefix_ofs + 1, funame, 32);
 
-		lua_ctx_store.prefix_buf[lua_ctx_store.prefix_ofs] = '_';
-		lua_ctx_store.prefix_buf[lua_ctx_store.prefix_ofs + funlen + 1] = '\0';
+		luactx.prefix_buf[luactx.prefix_ofs] = '_';
+		luactx.prefix_buf[luactx.prefix_ofs + funlen + 1] = '\0';
 	}
 	else
-		lua_ctx_store.prefix_buf[lua_ctx_store.prefix_ofs] = '\0';
+		luactx.prefix_buf[luactx.prefix_ofs] = '\0';
 
-	lua_getglobal(ctx, lua_ctx_store.prefix_buf);
+	lua_getglobal(ctx, luactx.prefix_buf);
 
 	if (!lua_isfunction(ctx, -1)){
 		lua_pop(ctx, 1);
@@ -663,7 +667,7 @@ static inline char* findresource(const char* arg, enum arcan_namespaces space)
  * or bad resources anyhow, we also know which subdirectories to attach
  * to OS specific event monitoring effects */
 
-	if (lua_ctx_store.debug){
+	if (luactx.debug){
 		arcan_warning("Debug, resource lookup for %s, yielded: %s\n", arg, res);
 	}
 
@@ -713,12 +717,12 @@ char* arcan_lua_main(lua_State* ctx, const char* inp, bool file)
 
 	luaL_nil_banned(ctx);
 
-	free(lua_ctx_store.prefix_buf);
-	lua_ctx_store.prefix_ofs = arcan_appl_id_len();
-	lua_ctx_store.prefix_buf = arcan_alloc_mem( arcan_appl_id_len() + suffix_lim,
+	free(luactx.prefix_buf);
+	luactx.prefix_ofs = arcan_appl_id_len();
+	luactx.prefix_buf = arcan_alloc_mem( arcan_appl_id_len() + suffix_lim,
 		ARCAN_MEM_BINDING, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_SIMD
 	);
-	memcpy(lua_ctx_store.prefix_buf, arcan_appl_id(), lua_ctx_store.prefix_ofs);
+	memcpy(luactx.prefix_buf, arcan_appl_id(), luactx.prefix_ofs);
 
 	if ( (file ? alua_doresolve(ctx, inp) != 0 : luaL_dofile(ctx, inp)) == 1){
 		const char* msg = lua_tostring(ctx, -1);
@@ -837,13 +841,13 @@ static int rawresource(lua_State* ctx)
 	LUA_TRACE("open_rawresource");
 
 /* can't do more than this due to legacy */
-	if (lua_ctx_store.rawres.fd > 0){
+	if (luactx.rawres.fd > 0){
 		arcan_warning("open_rawresource(), open requested while other resource "
 			"still open, use close_rawresource first.\n");
 
-		close(lua_ctx_store.rawres.fd);
-		lua_ctx_store.rawres.fd = -1;
-		lua_ctx_store.rawres.ofs = 0;
+		close(luactx.rawres.fd);
+		luactx.rawres.fd = -1;
+		luactx.rawres.ofs = 0;
 	}
 
 	char* path = findresource(luaL_checkstring(ctx, 1), DEFAULT_USERMASK);
@@ -853,17 +857,17 @@ static int rawresource(lua_State* ctx)
 			luaL_checkstring(ctx, 1), RESOURCE_APPL_TEMP);
 
 		if (fname){
-			lua_ctx_store.rawres.fd = open(fname,
+			luactx.rawres.fd = open(fname,
 				O_CREAT | O_CLOEXEC | O_RDWR, S_IRUSR | S_IWUSR);
 			arcan_mem_free(fname);
 		}
 	}
 	else{
-		lua_ctx_store.rawres.fd = open(path, O_RDONLY | O_CLOEXEC);
+		luactx.rawres.fd = open(path, O_RDONLY | O_CLOEXEC);
 		arcan_mem_free(path);
 	}
 
-	lua_pushboolean(ctx, lua_ctx_store.rawres.fd > 0);
+	lua_pushboolean(ctx, luactx.rawres.fd > 0);
 	LUA_ETRACE("open_rawresource", "");
 	return 1;
 }
@@ -965,8 +969,8 @@ static char* to_utf8(uint16_t utf16)
 
 static int push_resstr(lua_State* ctx, struct nonblock_io* ib, off_t ofs)
 {
-	size_t in_sz = sizeof(lua_ctx_store.rawres.buf )/
-		sizeof(lua_ctx_store.rawres.buf[0]);
+	size_t in_sz = sizeof(luactx.rawres.buf )/
+		sizeof(luactx.rawres.buf[0]);
 
 	lua_pushlstring(ctx, ib->buf, ofs);
 
@@ -984,8 +988,8 @@ static int push_resstr(lua_State* ctx, struct nonblock_io* ib, off_t ofs)
 
 static inline size_t bufcheck(lua_State* ctx, struct nonblock_io* ib)
 {
-	size_t in_sz = sizeof(lua_ctx_store.rawres.buf )/
-		sizeof(lua_ctx_store.rawres.buf[0]);
+	size_t in_sz = sizeof(luactx.rawres.buf )/
+		sizeof(luactx.rawres.buf[0]);
 
 	for (size_t i = 0; i < ib->ofs; i++){
 		if (ib->buf[i] == '\n')
@@ -1090,12 +1094,12 @@ static int readrawresource(lua_State* ctx)
 {
 	LUA_TRACE("read_rawresource");
 
-	if (lua_ctx_store.rawres.fd < 0){
+	if (luactx.rawres.fd < 0){
 		LUA_ETRACE("read_rawresource", "no open file");
 		return 0;
 	}
 
-	int n = bufread(ctx, &lua_ctx_store.rawres);
+	int n = bufread(ctx, &luactx.rawres);
 	LUA_ETRACE("read_rawresource", NULL);
 	return n;
 }
@@ -1123,7 +1127,7 @@ static inline arcan_vobj_id luavid_tovid(lua_Number innum)
 	arcan_vobj_id res = ARCAN_VIDEO_WORLDID;
 
 	if (innum != ARCAN_EID && innum != ARCAN_VIDEO_WORLDID)
-		res = (arcan_vobj_id) innum - lua_ctx_store.lua_vidbase;
+		res = (arcan_vobj_id) innum - luactx.lua_vidbase;
 	else if (innum != res)
 		res = ARCAN_EID;
 
@@ -1133,7 +1137,7 @@ static inline arcan_vobj_id luavid_tovid(lua_Number innum)
 static inline lua_Number vid_toluavid(arcan_vobj_id innum)
 {
 	if (innum != ARCAN_EID && innum != ARCAN_VIDEO_WORLDID)
-		innum += lua_ctx_store.lua_vidbase;
+		innum += luactx.lua_vidbase;
 
 	return (double) innum;
 }
@@ -1168,10 +1172,10 @@ static int rawclose(lua_State* ctx)
 
 	bool res = false;
 
-	if (lua_ctx_store.rawres.fd > 0) {
-		close(lua_ctx_store.rawres.fd);
-		lua_ctx_store.rawres.fd = -1;
-		lua_ctx_store.rawres.ofs = 0;
+	if (luactx.rawres.fd > 0) {
+		close(luactx.rawres.fd);
+		luactx.rawres.fd = -1;
+		luactx.rawres.ofs = 0;
 	}
 
 	lua_pushboolean(ctx, res);
@@ -1186,11 +1190,11 @@ static int pushrawstr(lua_State* ctx)
 	const char* mesg = luaL_checkstring(ctx, 1);
 	size_t ntw = strlen(mesg);
 
-	if (ntw && lua_ctx_store.rawres.fd > 0){
+	if (ntw && luactx.rawres.fd > 0){
 		size_t ofs = 0;
 
 		while (ntw) {
-			ssize_t nw = write(lua_ctx_store.rawres.fd, mesg + ofs, ntw);
+			ssize_t nw = write(luactx.rawres.fd, mesg + ofs, ntw);
 			if (-1 != nw){
 				ofs += nw;
 				ntw -= nw;
@@ -2380,7 +2384,7 @@ static int syscollapse(lua_State* ctx)
  * not be used */
 #undef arcan_fatal
 		if (!arcan_verifyload_appl(switch_appl, &errmsg)){
-			if (lua_ctx_store.debug > 0)
+			if (luactx.debug > 0)
 				arcan_verify_namespaces(true);
 
 			arcan_fatal("system_collapse(), "
@@ -3038,10 +3042,9 @@ static inline bool tgtevent(arcan_vobj_id dst, arcan_event ev)
  * the segment request is treated a little different,
  * we maintain a global state
  */
-static struct arcan_extevent* last_segreq;
 static void emit_segreq(lua_State* ctx, struct arcan_extevent* ev)
 {
-	last_segreq = ev;
+	luactx.last_segreq = ev;
 	int top = lua_gettop(ctx);
 
 	tblstr(ctx, "kind", "segment_request", top);
@@ -3052,14 +3055,14 @@ static void emit_segreq(lua_State* ctx, struct arcan_extevent* ev)
 	tblnum(ctx, "xofs", ev->noticereq.xofs, top);
 	tblnum(ctx, "yofs", ev->noticereq.yofs, top);
 
-	lua_ctx_store.cb_source_tag = ev->source;
-	lua_ctx_store.cb_source_kind = CB_SOURCE_FRAMESERVER;
+	luactx.cb_source_tag = ev->source;
+	luactx.cb_source_kind = CB_SOURCE_FRAMESERVER;
 	wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event_external");
-	lua_ctx_store.cb_source_kind = CB_SOURCE_NONE;
+	luactx.cb_source_kind = CB_SOURCE_NONE;
 
 /* call into callback, if we have been consumed,
  * do nothing, otherwise issue a reject */
-	if (last_segreq != NULL){
+	if (luactx.last_segreq != NULL){
 		arcan_event rev = {
 			.category = EVENT_TARGET,
 			.tgt.kind = TARGET_COMMAND_REQFAIL
@@ -3068,7 +3071,7 @@ static void emit_segreq(lua_State* ctx, struct arcan_extevent* ev)
 		tgtevent(ev->source, rev);
 	}
 
-	last_segreq = NULL;
+	luactx.last_segreq = NULL;
 }
 
 /*
@@ -3080,6 +3083,8 @@ static void emit_segreq(lua_State* ctx, struct arcan_extevent* ev)
  */
 void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 {
+	bool adopt_check = false;
+
 	if (ev->category == EVENT_IO && grabapplfunction(ctx, "input", 5)){
 		int top = funtable(ctx, ev->io.kind);
 
@@ -3220,11 +3225,11 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 					arcan_warning("pushevent( net_unknown %d )\n", ev->net.kind);
 			}
 
-			lua_ctx_store.cb_source_tag  = ev->ext.source;
-			lua_ctx_store.cb_source_kind = CB_SOURCE_FRAMESERVER;
+			luactx.cb_source_tag  = ev->ext.source;
+			luactx.cb_source_kind = CB_SOURCE_FRAMESERVER;
 			wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event_net");
 
-			lua_ctx_store.cb_source_kind = CB_SOURCE_NONE;
+			luactx.cb_source_kind = CB_SOURCE_NONE;
 		}
 
 	}
@@ -3373,11 +3378,11 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				tblnum(ctx, "kind_num", ev->ext.kind, top);
 			}
 
-			lua_ctx_store.cb_source_tag  = ev->ext.source;
-			lua_ctx_store.cb_source_kind = CB_SOURCE_FRAMESERVER;
+			luactx.cb_source_tag  = ev->ext.source;
+			luactx.cb_source_kind = CB_SOURCE_FRAMESERVER;
 			wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event_external");
 
-			lua_ctx_store.cb_source_kind = CB_SOURCE_NONE;
+			luactx.cb_source_kind = CB_SOURCE_NONE;
 		}
 	}
 	else if (ev->category == EVENT_FSRV){
@@ -3426,6 +3431,32 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				tblnum(ctx, "number", ev->fsrv.counter, top);
 			break;
 
+/*
+ * to work around connection point problems where the script
+ * may want to rate-limit or not, the default is that the underlying
+ * frameserver_listen_external pushes an EXTCONN as soon as a
+ * connection is initiated. This transfers ownership of resources
+ * (name + descriptor) to the event that we MUST handle here.
+ *
+ * If we receive such an event:
+ * 1. save resources (name+descriptor) in global ctx.
+ * 2. invoke callback
+ * 3.  [ in target_alloc, check if there is a pending resource,
+ *       and the key matches, re-use and remove from ctx]
+ * 4. post-callback, check the context and if the resources
+ *    are still there, free
+ */
+			case EVENT_FSRV_EXTCONN :{
+				char msgbuf[sizeof(ev->fsrv.ident)/sizeof(ev->fsrv.ident[0])];
+				tblstr(ctx, "kind", "connected", top);
+				slimpush(msgbuf, sizeof(msgbuf)/sizeof(msgbuf[0]), ev->fsrv.ident);
+				tblstr(ctx, "key", msgbuf, top);
+				luactx.pending_socket_label = strdup(msgbuf);
+				luactx.pending_socket_descr = ev->fsrv.descriptor;
+				adopt_check = true;
+			}
+			break;
+
 			case EVENT_FSRV_RESIZED :
 				tblstr(ctx, "kind", "resized", top);
 				tblnum(ctx, "width", ev->fsrv.width, top);
@@ -3434,12 +3465,12 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			break;
 		}
 
-		lua_ctx_store.cb_source_tag = ev->fsrv.video;
-		lua_ctx_store.cb_source_kind = CB_SOURCE_FRAMESERVER;
+		luactx.cb_source_tag = ev->fsrv.video;
+		luactx.cb_source_kind = CB_SOURCE_FRAMESERVER;
 		lua_rawgeti(ctx, LUA_REGISTRYINDEX, dst_cb);
 		lua_replace(ctx, 1);
 		wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "frameserver_event");
-		lua_ctx_store.cb_source_kind = CB_SOURCE_NONE;
+		luactx.cb_source_kind = CB_SOURCE_NONE;
 	}
 	else if (ev->category == EVENT_VIDEO){
 
@@ -3474,7 +3505,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			dst_cb = (intptr_t) ev->vid.data;
 			if (dst_cb){
 				evmsg = "video_event(chain_tag reached, callback";
-				lua_ctx_store.cb_source_kind = CB_SOURCE_TRANSFORM;
+				luactx.cb_source_kind = CB_SOURCE_TRANSFORM;
 			}
 		break;
 
@@ -3487,7 +3518,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 
 			if (dst_cb){
 				evmsg = "video_event(asynchimg_loaded), callback";
-				lua_ctx_store.cb_source_kind = CB_SOURCE_IMAGE;
+				luactx.cb_source_kind = CB_SOURCE_IMAGE;
 			}
 		break;
 
@@ -3503,7 +3534,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 
 			if (dst_cb){
 				evmsg = "video_event(asynchimg_load_fail), callback";
-				lua_ctx_store.cb_source_kind = CB_SOURCE_IMAGE;
+				luactx.cb_source_kind = CB_SOURCE_IMAGE;
 			}
 		break;
 
@@ -3512,8 +3543,8 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			"	unknown video event (%i)\n", ev->vid.kind);
 		}
 
-		if (lua_ctx_store.cb_source_kind != CB_SOURCE_NONE){
-			lua_ctx_store.cb_source_tag = ev->vid.source;
+		if (luactx.cb_source_kind != CB_SOURCE_NONE){
+			luactx.cb_source_tag = ev->vid.source;
 			lua_rawgeti(ctx, LUA_REGISTRYINDEX, dst_cb);
 			lua_replace(ctx, 1);
 			gotfun = true;
@@ -3524,7 +3555,16 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		else
 			lua_settop(ctx, 0);
 
-		lua_ctx_store.cb_source_kind = CB_SOURCE_NONE;
+		if (adopt_check){
+			if (luactx.pending_socket_label){
+				arcan_mem_free(luactx.pending_socket_label);
+				close(luactx.pending_socket_descr);
+				luactx.pending_socket_descr = -1;
+				luactx.pending_socket_label = NULL;
+			}
+		}
+
+		luactx.cb_source_kind = CB_SOURCE_NONE;
 	}
 	else if (ev->category == EVENT_AUDIO)
 		;
@@ -3576,7 +3616,7 @@ static int validvid(lua_State* ctx)
 	arcan_vobj_id res = (arcan_vobj_id) luaL_optnumber(ctx, 1, ARCAN_EID);
 
 	if (res != ARCAN_EID && res != ARCAN_VIDEO_WORLDID)
-		res -= lua_ctx_store.lua_vidbase;
+		res -= luactx.lua_vidbase;
 
 	if (res < 0)
 		res = ARCAN_EID;
@@ -4328,14 +4368,14 @@ static int mousegrab(lua_State* ctx)
 	int mode = luaL_optint( ctx, 1, -1);
 
 	if (mode == -1)
-		lua_ctx_store.grab = !lua_ctx_store.grab;
+		luactx.grab = !luactx.grab;
 	else if (mode == MOUSE_GRAB_ON)
-		lua_ctx_store.grab = true;
+		luactx.grab = true;
 	else if (mode == MOUSE_GRAB_OFF)
-		lua_ctx_store.grab = false;
+		luactx.grab = false;
 
-	arcan_device_lock(0, lua_ctx_store.grab);
-	lua_pushboolean(ctx, lua_ctx_store.grab);
+	arcan_device_lock(0, luactx.grab);
+	lua_pushboolean(ctx, luactx.grab);
 
 	LUA_ETRACE("toggle_mouse_grab", NULL);
 	return 1;
@@ -4750,7 +4790,7 @@ lua_State* arcan_lua_alloc()
 		arcan_lua_pushglobalconsts(res);
 	}
 
-	lua_ctx_store.last_ctx = res;
+	luactx.last_ctx = res;
 	return res;
 }
 
@@ -4801,15 +4841,15 @@ static int switchappl(lua_State *ctx)
 
 static void panic(lua_State* ctx)
 {
-	lua_ctx_store.debug = 2;
+	luactx.debug = 2;
 
-	if (!lua_ctx_store.cb_source_kind == CB_SOURCE_NONE){
+	if (!luactx.cb_source_kind == CB_SOURCE_NONE){
 		char vidbuf[64] = {0};
 		snprintf(vidbuf, 63, "script error in callback for VID (%"PRIxVOBJ")",
-			lua_ctx_store.lua_vidbase + lua_ctx_store.cb_source_tag);
+			luactx.lua_vidbase + luactx.cb_source_tag);
 		wraperr(ctx, -1, vidbuf);
 	} else{
-		lua_ctx_store.in_panic = true;
+		luactx.in_panic = true;
 		wraperr(ctx, -1, "(panic)");
 	}
 
@@ -4821,31 +4861,31 @@ static void panic(lua_State* ctx)
 
 static void wraperr(lua_State* ctx, int errc, const char* src)
 {
-	if (lua_ctx_store.debug)
-		lua_ctx_store.lastsrc = src;
+	if (luactx.debug)
+		luactx.lastsrc = src;
 
 	if (errc == 0)
 		return;
 
-	const char* mesg = lua_ctx_store.in_panic ? "Lua VM state broken, panic" :
+	const char* mesg = luactx.in_panic ? "Lua VM state broken, panic" :
 		luaL_optstring(ctx, 1, "unknown");
 /*
  * currently unused, pending refactor of arcan_warning
 	int severity = luaL_optnumber(ctx, 2, 0);
  */
 
-	if (lua_ctx_store.debug){
+	if (luactx.debug){
 		arcan_warning("Warning: wraperr((), %s, from %s\n", mesg, src);
 
-		if (lua_ctx_store.debug >= 1)
+		if (luactx.debug >= 1)
 			dump_call_trace(ctx);
 
-		if (lua_ctx_store.debug > 0)
+		if (luactx.debug > 0)
 			dump_stack(ctx);
 
 		arcan_state_dump("crash", mesg, src);
 
-		if (lua_ctx_store.debug > 2){
+		if (luactx.debug > 2){
 			arcan_warning("Fatal error ignored(%s, %s) through high debuglevel,"
 				" attempting to continue.\n", mesg, src);
 			return;
@@ -5550,17 +5590,17 @@ static int targetaccept(lua_State* ctx)
 {
 	LUA_TRACE("accept_target");
 
-	if (!last_segreq)
+	if (!luactx.last_segreq)
 		arcan_fatal("accept_target(), only permitted inside a segment_request.\n");
 
-	vfunc_state* state = arcan_video_feedstate(last_segreq->source);
+	vfunc_state* state = arcan_video_feedstate(luactx.last_segreq->source);
 	arcan_frameserver* newref = arcan_frameserver_spawn_subsegment(
 		(arcan_frameserver*) state->ptr, false,
-		last_segreq->noticereq.width,
-		last_segreq->noticereq.height,
-		last_segreq->noticereq.id
+		luactx.last_segreq->noticereq.width,
+		luactx.last_segreq->noticereq.height,
+		luactx.last_segreq->noticereq.id
 	);
-	last_segreq = NULL;
+	luactx.last_segreq = NULL;
 
 	lua_pushvid(ctx, newref->vid);
 	lua_pushvid(ctx, newref->aid);
@@ -5609,7 +5649,31 @@ static int targetalloc(lua_State* ctx)
  */
 	if (lua_type(ctx, 1) == LUA_TSTRING){
 		key = luaL_checkstring(ctx, 1);
-		newref = arcan_frameserver_listen_external(key);
+		size_t keylen = strlen(key);
+		if (0 == keylen || keylen > 30)
+			arcan_fatal("target_alloc(), invalid listening key (%s), "
+				"length (%d) should be , 0 < n < 31\n", keylen);
+
+/*
+ * if we are in the handler of a target_alloc call,
+ * and a new one is issued, the connection-point will be re-used
+ * without closing / unlinking.
+ */
+		for (const char* pos = key; *pos; pos++)
+			if (!isalnum(*pos) && *pos != '_' && *pos != '-')
+				arcan_fatal("target_alloc(%s), only"
+					" aZ_ are permitted in names.\n", key);
+
+		if (luactx.pending_socket_label &&
+			strcmp(key, luactx.pending_socket_label) == 0){
+			newref = arcan_frameserver_listen_external(
+				key, luactx.pending_socket_descr);
+			arcan_mem_free(luactx.pending_socket_label);
+			luactx.pending_socket_label = NULL;
+		}
+		else
+			newref = arcan_frameserver_listen_external(key, -1);
+
 		if (!newref){
 			LUA_ETRACE("target_alloc", "couldn't listen on external");
 			return 0;
@@ -6121,7 +6185,7 @@ static enum arcan_ffunc_rv proctarget(enum arcan_ffunc_cmd cmd,
 	ud->valid = true;
 	ud->packing = HIST_DIRTY;
 
-	lua_ctx_store.cb_source_kind = CB_SOURCE_IMAGE;
+	luactx.cb_source_kind = CB_SOURCE_IMAGE;
 
  	lua_pushnumber(src->ctx, width);
 	lua_pushnumber(src->ctx, height);
@@ -6131,7 +6195,7 @@ static enum arcan_ffunc_rv proctarget(enum arcan_ffunc_cmd cmd,
  * Even if the lua function maintains a reference to this userdata,
  * we know that it's accessed outside scope and can put a fatal error on it.
  */
-	lua_ctx_store.cb_source_kind = CB_SOURCE_NONE;
+	luactx.cb_source_kind = CB_SOURCE_NONE;
 	ud->valid = false;
 
 	return 0;
@@ -7992,13 +8056,13 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 	if (!ctx)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
-	lua_ctx_store.debug = debugfuncs;
+	luactx.debug = debugfuncs;
 	lua_atpanic(ctx, (lua_CFunction) panic);
 
 #ifdef _DEBUG
-	lua_ctx_store.lua_vidbase = rand() % 32768;
+	luactx.lua_vidbase = rand() % 32768;
 	arcan_warning("lua_exposefuncs() -- videobase is set to %u\n",
-		lua_ctx_store.lua_vidbase);
+		luactx.lua_vidbase);
 #endif
 
 /* these defines / tables are also scriptably extracted and
@@ -8449,7 +8513,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"NOPERSIST", 0},
 {"PERSIST", 1},
 {"NET_BROADCAST", 0},
-{"DEBUGLEVEL", lua_ctx_store.debug}
+{"DEBUGLEVEL", luactx.debug}
 };
 #undef EXT_CONSTTBL_GLOBINT
 

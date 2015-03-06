@@ -94,7 +94,7 @@ typedef struct arcan_frameserver {
 	char sockinbuf[PP_SHMPAGE_SHMKEYLIM];
 	char* clientkey[PP_SHMPAGE_SHMKEYLIM];
 	off_t sockrofs;
-	char* sockaddr;
+	char* sockaddr, (* sockkey);
 
 	struct {
 		bool alive;
@@ -191,7 +191,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* dst,
  * through a listening socket, then behaves as an avfeed- style
  * frameserver.
  */
-arcan_frameserver* arcan_frameserver_listen_external(const char* key);
+arcan_frameserver* arcan_frameserver_listen_external(const char* key, int fd);
 
 /* allocate shared and heap memory, reset all members to an
  * empty state and then enforce defaults, returns NULL on failure */
