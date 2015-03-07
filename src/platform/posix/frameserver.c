@@ -836,17 +836,10 @@ static int8_t socketpoll(enum arcan_ffunc_cmd cmd, av_pixel* buf,
 				sizeof(adopt.fsrv.ident[0]), "%s", tgt->sockkey);
 
 			arcan_event_enqueue(arcan_event_defaultctx(), &adopt);
-/*
- * note: we could have a flag here to re-use the address,
- * but then we'd need to spawn a new ffunc object with corresponding
- * IPC in beforehand. Left as an exercise to the reader.
- */
-			if (tgt->sockaddr){
-				unlink(tgt->sockaddr);
-				free(tgt->sockaddr);
-				free(tgt->sockkey);
-				tgt->sockaddr = NULL;
-			}
+
+			free(tgt->sockaddr);
+			free(tgt->sockkey);
+			tgt->sockaddr = tgt->sockkey = NULL;
 
 			return socketverify(cmd, buf, s_buf, width, height, mode, state);
 		break;
