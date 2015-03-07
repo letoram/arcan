@@ -553,20 +553,20 @@ bool arcan_shmif_integrity_check(struct arcan_shmif_cont*);
  * race- the shared namespace (enumerable or not) and, more importantly,
  * for the main engine to have a chance of detecting if this is the case or not
  *
- * Setting the ARCAN_SHM_PREFIX to an empty string disables this approach
+ * Setting the ARCAN_SHMIF_PREFIX to an empty string disables this approach
  * entirely. For the non-authoritative additional buffer cases, the
  * code is not used, but rather the UID/GID is checked against the monitoring
  * pid in the preexisting frameserver.
  */
 #ifdef __linux
-#ifndef ARCAN_SHM_PREFIX
-#define ARCAN_SHM_PREFIX "\0arcan_shm_"
+#ifndef ARCAN_SHMIF_PREFIX
+#define ARCAN_SHMIF_PREFIX "\0arcan_"
 #endif
 
 /* if the first character does not begin with /, HOME env will be used. */
 #else
-#ifndef ARCAN_SHM_PREFIX
-#define ARCAN_SHM_PREFIX ".arcan_"
+#ifndef ARCAN_SHMIF_PREFIX
+#define ARCAN_SHMIF_PREFIX ".arcan_"
 #endif
 #endif
 
