@@ -101,6 +101,16 @@ const char* arcan_shmif_eventstr(
 	struct arcan_event* aev, char* dbuf, size_t dsz);
 
 /*
+ * Resolve implementation- defined connection connection path
+ * based on a suggested key. Returns -num if the resolved path
+ * couldn't fit in dsz (with abs(num) indicating the number of
+ * truncated bytes) and number of characters (excluding NULL)
+ * written to dst.
+ */
+int arcan_shmif_resolve_connpath(
+	const char* key, char* dst, size_t dsz);
+
+/*
  * calculates a hash of the layout of the shmpage in order
  * to detect subtle compiler mismatches etc.
  */

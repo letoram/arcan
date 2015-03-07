@@ -358,15 +358,14 @@ static bool sockpair_alloc(int* dst, size_t n, bool cloexec)
 static bool setup_socket(arcan_frameserver* ctx, int shmfd,
 	const char* optkey, int optdesc)
 {
-	size_t optlen;
-	struct sockaddr_un addr;
-	size_t lim = sizeof(addr.sun_path) / sizeof(addr.sun_path[0]) - 1;
-	size_t pref_sz = sizeof(ARCAN_SHM_PREFIX) - 1;
+	struct sockaddr_un addr = {
+		.sun_family = AF_UNIX
+	};
+	size_t lim = sizeof(addr.sun_path) / sizeof(addr.sun_path[0]);
 
-	if (optkey == NULL || (optlen = strlen(optkey)) == 0 ||
-		pref_sz + optlen > lim){
+	if (optkey == NULL){
 		arcan_warning("posix/frameserver.c:shmalloc(), named socket "
-			"connected requested but with empty/missing/oversized key. cannot "
+			"connected requested but with empty key. cannot "
 			"setup frameserver connectionpoint.\n");
 		return false;
 	}
@@ -379,51 +378,15 @@ static bool setup_socket(arcan_frameserver* ctx, int shmfd,
 				"for listening, check permissions and descriptor ulimit.\n");
 			return false;
 		}
-	fcntl(fd, F_SETFD, FD_CLOEXEC);
+		fcntl(fd, F_SETFD, FD_CLOEXEC);
 	}
 
-	memset(&addr, '\0', sizeof(addr));
-	addr.sun_family = AF_UNIX;
 	char* dst = (char*) &addr.sun_path;
-
-#ifdef __linux
-	if (ARCAN_SHM_PREFIX[0] == '\0'){
-		memcpy(dst, ARCAN_SHM_PREFIX, pref_sz);
-		dst += sizeof(ARCAN_SHM_PREFIX) - 1;
-		memcpy(dst, optkey, optlen);
-	}
-	else
-#endif
-		if (ARCAN_SHM_PREFIX[0] != '/'){
-		char* auxp = getenv("HOME");
-		if (!auxp){
-			arcan_warning("posix/frameserver.c:shmalloc(), compile-time "
-				"prefix set to home but HOME environment missing, cannot "
-				"setup frameserver connectionpoint.\n");
-			close(fd);
-			return false;
-		}
-
-		size_t envlen = strlen(auxp);
-		if (envlen + optlen + pref_sz > lim){
-			arcan_warning("posix/frameserver.c:shmalloc(), applying built-in "
-				"prefix and resolving username exceeds socket path limit.\n");
-			close(fd);
-			return false;
-		}
-
-		memcpy(dst, auxp, envlen);
-		dst += envlen;
-		*dst++ = '/';
-		memcpy(dst, ARCAN_SHM_PREFIX, pref_sz);
-		dst += pref_sz;
-		memcpy(dst, optkey, optlen);
-	}
-/* use prefix in its full form */
-	else {
-		memcpy(dst, ARCAN_SHM_PREFIX, pref_sz);
-		dst += pref_sz;
-		memcpy(dst, optkey, optlen);
+	int len = arcan_shmif_resolve_connpath(optkey, dst, lim);
+	if (len < 0){
+		arcan_warning("posix/frameserver.c:setup_socket, resolving path for "
+			"%s, failed -- too long (%d vs. %d)\n", optkey, abs(len), lim);
+		return false;
 	}
 
 	if (-1 == optdesc){
@@ -455,7 +418,7 @@ static bool setup_socket(arcan_frameserver* ctx, int shmfd,
 		}
 
 		fchmod(fd, ARCAN_SHM_UMASK);
-		listen(fd, 1);
+		listen(fd, 5);
 #ifdef __APPLE__
 		int val = 1;
 		setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(int));

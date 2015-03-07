@@ -525,43 +525,54 @@ map_fail:
 	}
 }
 
-char* arcan_shmif_connect(const char* connpath, const char* connkey,
-	file_handle* conn_ch)
-{
-	if (!connpath){
-		DLOG("arcan_shmif_connect(), missing connpath, giving up.\n");
-		return NULL;
-	}
-
-	char* res = NULL;
-	char* workbuf = NULL;
-	size_t conn_sz;
-
 /* the rules for resolving the connection socket namespace are
  * somewhat complex, i.e. on linux we have the atrocious \0 prefix
  * that defines a separate socket namespace, if we don't specify
  * an absolute path, the key will resolve to be relative your
  * HOME environment (BUT we also have an odd size limitation to
  * sun_path to take into consideration). */
+int arcan_shmif_resolve_connpath(const char* key,
+	char* dbuf, size_t dbuf_sz)
+{
+	int len;
 #ifdef __linux
-	if (ARCAN_SHM_PREFIX[0] == '\0'){
-		conn_sz = strlen(connpath) + sizeof(ARCAN_SHM_PREFIX);
-		workbuf = malloc(conn_sz);
-		snprintf(workbuf+1, conn_sz-1, "%s%s", &ARCAN_SHM_PREFIX[1], connpath);
-		workbuf[0] = '\0';
+	if (ARCAN_SHMIF_PREFIX[0] == '\0'){
+		len = snprintf(dbuf, dbuf_sz, "%s%s", &ARCAN_SHMIF_PREFIX[1], key);
 	}
 	else
 #endif
-	if (ARCAN_SHM_PREFIX[0] != '/'){
-		const char* auxp = getenv("HOME");
-		conn_sz = strlen(connpath) + strlen(auxp) + sizeof(ARCAN_SHM_PREFIX) + 1;
-		workbuf = malloc(conn_sz);
-		snprintf(workbuf, conn_sz, "%s/%s%s", auxp, ARCAN_SHM_PREFIX, connpath);
+	if (ARCAN_SHMIF_PREFIX[0] == '/')
+		len = snprintf(dbuf, dbuf_sz, "%s%s", ARCAN_SHMIF_PREFIX, key);
+	else
+		len = snprintf(dbuf, dbuf_sz, "%s/.%s%s",
+			getenv("HOME"), ARCAN_SHMIF_PREFIX, key);
+
+	if (len >= dbuf_sz)
+		return len - dbuf_sz;
+	else
+		return len;
+}
+
+char* arcan_shmif_connect(const char* connpath, const char* connkey,
+	file_handle* conn_ch)
+{
+	struct sockaddr_un dst = {
+		.sun_family = AF_UNIX
+	};
+	size_t lim = sizeof(dst.sun_path) / sizeof(dst.sun_path[0]);
+
+	if (!connpath){
+		DLOG("arcan_shmif_connect(), missing connpath, giving up.\n");
+		return NULL;
 	}
-	else {
-		conn_sz = strlen(connpath) + sizeof(ARCAN_SHM_PREFIX);
-		workbuf = malloc(conn_sz);
-		snprintf(workbuf, conn_sz, "%s%s", ARCAN_SHM_PREFIX, connpath);
+
+	char* res = NULL;
+	int len = arcan_shmif_resolve_connpath(connpath, (char*)&dst.sun_path, lim);
+
+	if (len < 0){
+		LOG("arcan_shmif_resolve_connpath(%s) - connection path too long"
+			" (%d vs %zu)\n", dst.sun_path, abs(len), lim);
+		return NULL;
 	}
 
 /* 1. treat connpath as socket and connect */
@@ -572,54 +583,36 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey,
 	setsockopt(sock, SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(int));
 #endif
 
-	struct sockaddr_un dst = {
-		.sun_family = AF_UNIX
-	};
-
 	if (-1 == sock){
 		DLOG("arcan_shmif_connect(), "
 			"couldn't allocate socket, reason: %s\n", strerror(errno));
 		goto end;
 	}
 
-	size_t lim = sizeof(dst.sun_path) / sizeof(dst.sun_path[0]);
-	if (lim < conn_sz){
-		DLOG("arcan_shmif_connect(), "
-			"specified connection path exceeds limits (%zu)\n", lim);
-		goto end;
-	}
-	memcpy(dst.sun_path, workbuf, conn_sz);
-
 /* connection or not, unlink the connection path */
-	if (connect(sock, (struct sockaddr*) &dst, sizeof(struct sockaddr_un)) < 0){
+	if (connect(sock, (struct sockaddr*) &dst, sizeof(dst))){
 		DLOG("arcan_shmif_connect(%s), "
 			"couldn't connect to server, reason: %s.\n",
 			dst.sun_path, strerror(errno)
 		);
 		close(sock);
-		unlink(workbuf);
 		goto end;
 	}
-	unlink(workbuf);
 
 /* 2. send (optional) connection key, we send that first (keylen + linefeed) */
 	char wbuf[PP_SHMPAGE_SHMKEYLIM+1];
 	if (connkey){
 		ssize_t nw = snprintf(wbuf, PP_SHMPAGE_SHMKEYLIM, "%s\n", connkey);
 		if (nw >= PP_SHMPAGE_SHMKEYLIM){
-			DLOG("arcan_shmif_connect(%s), "
-				"ident string (%s) exceeds limit (%d).\n",
-				workbuf, connkey, PP_SHMPAGE_SHMKEYLIM
-			);
+			DLOG("arcan_shmif_connect(%s), ident string (%s) exceeds "
+				"limit (%d).\n", connpath, connkey, PP_SHMPAGE_SHMKEYLIM);
 			close(sock);
 			goto end;
 		}
 
 		if (write(sock, wbuf, nw) < nw){
-			DLOG("arcan_shmif_connect(%s), "
-				"error sending connection string, reason: %s\n",
-				workbuf, strerror(errno)
-			);
+			DLOG("arcan_shmif_connect(), error sending connection "
+				"string, reason: %s\n", strerror(errno));
 			close(sock);
 			goto end;
 		}
@@ -630,7 +623,7 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey,
 	do {
 		if (-1 == read(sock, wbuf + ofs, 1)){
 			DLOG("arcan_shmif_connect(%s), "
-				"invalid response received during shmpage negotiation.\n", workbuf);
+				"invalid response received during shmpage negotiation.\n", connpath);
 			close(sock);
 			goto end;
 		}
@@ -645,7 +638,6 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey,
 	*conn_ch = sock;
 
 end:
-	free(workbuf);
 	return res;
 }
 
