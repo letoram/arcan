@@ -6000,7 +6000,9 @@ static int procimage_lookup(lua_State* ctx)
 		arcan_fatal("calcImage:frequency, calctarget object called "
 			"out of scope.\n");
 
-	procimage_buildhisto(ud, pack, NULL);
+	if (ud->packing == HIST_DIRTY)
+		procimage_buildhisto(ud, pack, NULL);
+
 	int ofs[4];
 	packing_lut(pack, ofs);
 	lua_pushnumber(ctx, ud->bins[ofs[0]]);
