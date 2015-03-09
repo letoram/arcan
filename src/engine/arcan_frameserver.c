@@ -201,6 +201,7 @@ static void push_buffer(arcan_frameserver* src,
 	av_pixel* buf, struct storage_info_t* store)
 {
 	struct stream_meta stream = {.buf = NULL};
+	bool explicit = src->flags.explicit;
 
 	if (src->desc.width != store->w || src->desc.height != store->h){
 		arcan_video_resizefeed(src->vid, src->desc.width, src->desc.height);
@@ -216,6 +217,7 @@ static void push_buffer(arcan_frameserver* src,
 		};
 
 		arcan_event_enqueue(arcan_event_defaultctx(), &rezev);
+		explicit = true;
 	}
 
 /*
@@ -266,7 +268,7 @@ static void push_buffer(arcan_frameserver* src,
 	}
 	else{
 		stream.buf = buf;
-		stream = agp_stream_prepare(store, stream, src->flags.explicit ?
+		stream = agp_stream_prepare(store, stream, explicit ?
 			STREAM_RAW_DIRECT_SYNCHRONOUS : (
 				src->flags.local_copy ? STREAM_RAW_DIRECT_COPY : STREAM_RAW_DIRECT));
 	}
