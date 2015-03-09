@@ -2164,6 +2164,7 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, size_t w, size_t h)
 
 	agp_resize_vstore(vobj->vstore, w, h);
 
+	FLAG_DIRTY();
 	return ARCAN_OK;
 }
 
@@ -4354,7 +4355,7 @@ static size_t process_rendertarget(
 		else
 			agp_activate_vstore(elem->vstore);
 
-		if (dprops.opa < 1.0 - EPSILON)
+		if (dprops.opa < 1.0 - EPSILON || elem->blendmode == BLEND_NONE)
 			agp_blendstate(elem->blendmode);
 		else
 			if (elem->blendmode == BLEND_FORCE)
