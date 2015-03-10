@@ -5925,6 +5925,8 @@ struct rn_userdata {
 	size_t nelem;
 
 	unsigned bins[1024];
+	float nf[4];
+
 	bool valid;
 	enum hgram_pack packing;
 };
@@ -5947,17 +5949,16 @@ static void packing_lut(enum hgram_pack mode, int* dst)
 	memcpy(dst, otbl, sizeof(int) * 4);
 }
 
-static void procimage_buildhisto(struct rn_userdata* ud,
-	enum hgram_pack pack, float* n)
+static void procimage_buildhisto(struct rn_userdata* ud, enum hgram_pack pack)
 {
+	if (ud->packing == pack)
+		return;
+
 	av_pixel* img = ud->bufptr;
 	memset(ud->bins, '\0', sizeof(ud->bins));
 
 	int otbl[4];
 	packing_lut(pack, otbl);
-
-	if (ud->packing == pack)
-		goto norm_values;
 
 	ud->packing = pack;
 
@@ -5974,8 +5975,7 @@ static void procimage_buildhisto(struct rn_userdata* ud,
 		}
 
 /* update limits for each bin, might be used to normalize */
-norm_values:
-	if (n)
+	float* n = ud->nf;
 	for (size_t i = 0; i <256; i++){
 		n[0] = n[0] < ud->bins[otbl[0] + i] ? ud->bins[otbl[0] + i] : n[0];
 		n[1] = n[1] < ud->bins[otbl[1] + i] ? ud->bins[otbl[1] + i] : n[1];
@@ -5994,22 +5994,31 @@ static int procimage_lookup(lua_State* ctx)
 		arcan_fatal("calcImage:frequency, invalid bin %d specified (0..255).\n");
 
 	enum hgram_pack pack = luaL_optnumber(ctx, 3, HIST_SPLIT);
+	bool norm = luaL_optbnumber(ctx, 4, true) != 0;
 
 /* we can permit out of scope if we have a valid cached packing scheme */
-	if (ud->valid == false && ud->packing != pack)
+	if (ud->valid == false)
 		arcan_fatal("calcImage:frequency, calctarget object called "
 			"out of scope.\n");
 
-	if (ud->packing == HIST_DIRTY)
-		procimage_buildhisto(ud, pack, NULL);
+	procimage_buildhisto(ud, pack);
 
 	int ofs[4];
 	packing_lut(pack, ofs);
-	lua_pushnumber(ctx, ud->bins[ofs[0]]);
-	lua_pushnumber(ctx, ud->bins[ofs[1]]);
-	lua_pushnumber(ctx, ud->bins[ofs[2]]);
-	lua_pushnumber(ctx, ud->bins[ofs[3]]);
 
+	if (norm){
+		lua_pushnumber(ctx, (float)ud->bins[ofs[0]+bin] / (ud->nf[0] + EPSILON));
+		lua_pushnumber(ctx, (float)ud->bins[ofs[1]+bin] / (ud->nf[1] + EPSILON));
+		lua_pushnumber(ctx, (float)ud->bins[ofs[2]+bin] / (ud->nf[2] + EPSILON));
+		lua_pushnumber(ctx, (float)ud->bins[ofs[3]+bin] / (ud->nf[3] + EPSILON));
+	}
+	else {
+		float mpix = ud->width * ud->height;
+		lua_pushnumber(ctx, (float)ud->bins[ofs[0]+bin]);
+		lua_pushnumber(ctx, (float)ud->bins[ofs[1]+bin]);
+		lua_pushnumber(ctx, (float)ud->bins[ofs[2]+bin]);
+		lua_pushnumber(ctx, (float)ud->bins[ofs[3]+bin]);
+	}
 	LUA_ETRACE("procimage:frequency", NULL);
 	return 4;
 }
@@ -6039,13 +6048,18 @@ static int procimage_histo(lua_State* ctx)
 	int packing = luaL_optnumber(ctx, 3, HIST_MERGE);
 	av_pixel* base = (av_pixel*) vobj->vstore->vinf.text.raw;
 	int lut[4];
-	float n[4] = {1, 1, 1, 1};
 	packing_lut(packing, lut);
 
-	if (luaL_optbnumber(ctx, 4, true) != 0)
-		procimage_buildhisto(ud, packing, n);
-	else {
-		procimage_buildhisto(ud, packing, NULL);
+	float n[4];
+	procimage_buildhisto(ud, packing);
+
+	if (luaL_optbnumber(ctx, 4, true)){
+		n[0] = ud->nf[0] + EPSILON;
+		n[1] = ud->nf[1] + EPSILON;
+		n[2] = ud->nf[2] + EPSILON;
+		n[3] = ud->nf[3] + EPSILON;
+	}
+	else{
 		n[0] = n[1] = n[2] = n[3] = ud->width * ud->height;
 	}
 
