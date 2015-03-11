@@ -6013,7 +6013,6 @@ static int procimage_lookup(lua_State* ctx)
 		lua_pushnumber(ctx, (float)ud->bins[ofs[3]+bin] / (ud->nf[3] + EPSILON));
 	}
 	else {
-		float mpix = ud->width * ud->height;
 		lua_pushnumber(ctx, (float)ud->bins[ofs[0]+bin]);
 		lua_pushnumber(ctx, (float)ud->bins[ofs[1]+bin]);
 		lua_pushnumber(ctx, (float)ud->bins[ofs[2]+bin]);

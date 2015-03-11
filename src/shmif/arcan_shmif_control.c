@@ -12,7 +12,6 @@
 #include <errno.h>
 #include <time.h>
 #include <limits.h>
-#include <math.h>
 #include <assert.h>
 #include <string.h>
 #include <stdarg.h>
@@ -117,6 +116,15 @@ static const char* cat_xlt[] = {
 	"NET"
 };
 
+
+static int ilog2(int val)
+{
+	int i = 0;
+	while( val >>= 1)
+		i++;
+	return i;
+}
+
 const char* arcan_shmif_eventstr(arcan_event* aev, char* dbuf, size_t dsz)
 {
 	static char evbuf[256];
@@ -129,7 +137,7 @@ const char* arcan_shmif_eventstr(arcan_event* aev, char* dbuf, size_t dsz)
 		dsz = sizeof(evbuf);
 	}
 
-	int cat_ind = log2(aev->category);
+	int cat_ind = ilog2(aev->category);
 
 	if (cat_ind < 1 || cat_ind > sizeof(cat_xlt) / sizeof(cat_xlt[0]))
 		return NULL;
