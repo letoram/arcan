@@ -180,6 +180,9 @@ struct rendertarget* find_rendertarget(arcan_vobject* vobj)
 		if (current_context->rtargets[i].color == vobj)
 			return &current_context->rtargets[i];
 
+	if (vobj == &current_context->world)
+		return &current_context->stdoutp;
+
 	return NULL;
 }
 
