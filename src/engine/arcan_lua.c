@@ -1790,15 +1790,6 @@ static int loadasample(lua_State* ctx)
 	return 1;
 }
 
-static int pauseaudio(lua_State* ctx)
-{
-	LUA_DEPRECATE("pause_audio");
-
-	arcan_aobj_id id = luaL_checkaid(ctx, 1);
-	arcan_audio_pause(id);
-	return 0;
-}
-
 static int buildshader(lua_State* ctx)
 {
 	LUA_TRACE("build_shader");
@@ -2517,20 +2508,6 @@ static int targetresume(lua_State* ctx)
 
 	LUA_ETRACE("resume_target", NULL);
 	return 0;
-}
-
-static int playmovie(lua_State* ctx)
-{
-	LUA_DEPRECATE("play_movie");
-
-	arcan_vobj_id vid = luaL_checkvid(ctx, 1, NULL);
-	vfunc_state* state = arcan_video_feedstate(vid);
-	arcan_frameserver* fsrv = state->ptr;
-
-	lua_pushvid(ctx, fsrv->vid);
-	lua_pushaid(ctx, fsrv->aid);
-
-	return 2;
 }
 
 static bool is_special_res(const char* msg)
@@ -4822,23 +4799,6 @@ static int alua_shutdown(lua_State *ctx)
 	return 0;
 }
 
-static int switchappl(lua_State *ctx)
-{
-	LUA_DEPRECATE("switch_appl (use system_collapse instead)");
-
-	arcan_event ev = {
-		.category = EVENT_SYSTEM,
-		.sys.kind = EVENT_SYSTEM_SWITCHAPPL
-	};
-	const char* newappl = luaL_optstring(ctx, 1, arcan_appl_id());
-
-	snprintf(ev.sys.message, sizeof(ev.sys.message)
-		/ sizeof(ev.sys.message[0]), "%s", newappl);
-	arcan_event_enqueue(arcan_event_defaultctx(), &ev);
-
-	return 0;
-}
-
 static void panic(lua_State* ctx)
 {
 	luactx.debug = 2;
@@ -4989,25 +4949,6 @@ bool arcan_lua_callvoidfun(lua_State* ctx, const char* fun, bool warn)
 		arcan_warning("missing expected symbol ( %s )\n", fun);
 
 	return false;
-}
-
-static int getqueueopts(lua_State* ctx)
-{
-	LUA_DEPRECATE("default_movie_queueopts");
-
-	lua_pushnumber(ctx, 0);
-	lua_pushnumber(ctx, 0);
-	lua_pushnumber(ctx, 0);
-	lua_pushnumber(ctx, 0);
-
-	return 4;
-}
-
-static int setqueueopts(lua_State* ctx)
-{
-	LUA_DEPRECATE("default_movie_queueopts_override");
-
-	return 0;
 }
 
 static int targethandler(lua_State* ctx)
@@ -6702,48 +6643,6 @@ static int recordgain(lua_State* ctx)
 	return 0;
 }
 
-static int borderscan(lua_State* ctx)
-{
-	LUA_DEPRECATE("image_borderscan");
-	int x1, y1, x2, y2;
-	x1 = y1 = 0;
-
-	struct monitor_mode mode = platform_video_dimensions();
-	x2 = mode.phy_width;
-	y2 = mode.phy_height;
-
-	arcan_vobject* vobj;
-	luaL_checkvid(ctx, 1, &vobj);
-
-/* since GLES doesn't support texture readback, the option would be to render
- * then readback pixels as there is limited use for this feature, we'll stick
- * to the cheap route, i.e. assume we don't use memory- conservative mode and
- * just grab the buffer from the cached storage. */
-	if (vobj && vobj->vstore->txmapped &&
-		vobj->vstore->vinf.text.raw && vobj->vstore->vinf.text.s_raw > 0
-		&& vobj->origw > 0 && vobj->origh > 0){
-
-#define sample(x,y) \
-	( vobj->vstore->vinf.text.raw[ ((y) * vobj->origw + (x)) * 4 + 3 ] )
-
-		for (x1 = vobj->origw >> 1;
-			x1 >= 0 && sample(x1, vobj->origh >> 1) < 128; x1--);
-		for (x2 = vobj->origw >> 1;
-			x2 < vobj->origw && sample(x2, vobj->origh >> 1) < 128; x2++);
-		for (y1 = vobj->origh >> 1;
-			y1 >= 0 && sample(vobj->origw >> 1, y1) < 128; y1--);
-		for (y2 = vobj->origh >> 1;
-			y2 < vobj->origh && sample(vobj->origw >> 1, y2) < 128; y2++);
-#undef sample
-		}
-
-	lua_pushnumber(ctx, x1);
-	lua_pushnumber(ctx, y1);
-	lua_pushnumber(ctx, x2);
-	lua_pushnumber(ctx, y2);
-	return 4;
-}
-
 extern arcan_benchdata benchdata;
 static int togglebench(lua_State* ctx)
 {
@@ -8160,11 +8059,8 @@ static const luaL_Reg tgtfuns[] = {
 {"recordtarget_gain",          recordgain               },
 {"rendertarget_attach",        renderattach             },
 {"rendertarget_noclear",       rendernoclear            },
-{"play_movie",                 playmovie                },
 {"load_movie",                 loadmovie                },
 {"launch_avfeed",              setupavstream            },
-{"pause_movie",                targetsuspend            },
-{"resume_movie",               targetresume             },
 {NULL, NULL}
 };
 #undef EXT_MAPTBL_TARGETCONTROL
@@ -8195,7 +8091,6 @@ static const luaL_Reg custfuns[] = {
 #define EXT_MAPTBL_AUDIO
 static const luaL_Reg audfuns[] = {
 {"play_audio",        playaudio   },
-{"pause_audio",       pauseaudio  },
 {"delete_audio",      dropaudio   },
 {"load_asample",      loadasample },
 {"audio_gain",        gain        },
@@ -8276,7 +8171,6 @@ static const luaL_Reg imgfuns[] = {
 {"image_storage_properties", getimagestorageprop},
 {"render_text",              rendertext         },
 {"text_dimensions",          textdimensions     },
-{"image_borderscan",         borderscan         },
 {"random_surface",           randomsurface      },
 {"force_image_blend",        forceblend         },
 {"image_hit",                hittest            },
@@ -8315,7 +8209,6 @@ static const luaL_Reg threedfuns[] = {
 #define EXT_MAPTBL_SYSTEM
 static const luaL_Reg sysfuns[] = {
 {"shutdown",            alua_shutdown    },
-{"switch_appl",         switchappl       },
 {"warning",             warning          },
 {"system_load",         dofile           },
 {"system_context_size", systemcontextsize},
@@ -8363,8 +8256,6 @@ static const luaL_Reg vidsysfuns[] = {
 {"video_displaymodes",               videodisplay   },
 {"map_video_display",                videomapping   },
 {"video_3dorder",                    v3dorder       },
-{"default_movie_queueopts",          getqueueopts   },
-{"default_movie_queueopts_override", setqueueopts   },
 {"build_shader",                     buildshader    },
 {"valid_vid",                        validvid       },
 {"video_synchronization",            videosynch     },
@@ -8479,7 +8370,6 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"BADID", ARCAN_EID},
 {"CLOCKRATE", ARCAN_TIMER_TICK},
 {"CLOCK", 0},
-{"THEME_RESOURCE", RESOURCE_APPL}, /* DEPRECATE */
 {"APPL_RESOURCE", RESOURCE_APPL},
 {"APPL_TEMP_RESOURCE",RESOURCE_APPL_TEMP},
 {"SHARED_RESOURCE", RESOURCE_APPL_SHARED},
