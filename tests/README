@@ -4,7 +4,7 @@ engine features and are not to be considered proper
 "examples of use" (see the examples/ folder for that).
 
 While most test can be invoked manually, the atest.rb script
-is intended to be used for batching / report generation and 
+is intended to be used for batching / report generation and
 similar testing pursuits. Refer to the testing- and documentation
 side on the wiki for more detail.
 
@@ -26,6 +26,8 @@ that requires it.
 The connection key for the corresponding test should be the same
 as the category the test is in (i.e. benchmark, regression, ...)
 or by having a database target/configuration that match.
+
+modules/ system_load:able Lua modules for extending the built-in API.
 
 security/ (WIP) planned for fuzzing- tools on known interfaces,
 particularly for frameserver->arcan events and in possible future

@@ -2,7 +2,7 @@ set (PLATFORM_PATH ${PLATFORM_ROOT}/posix)
 
 add_definitions(-DPLATFORM_HEADER=\"${PLATFORM_PATH}/../platform.h\" -std=gnu11
 	-Wall -Wno-missing-braces -Wno-unused-function -DCLOCK_SOURCE_RAW -DLUA_51
-	-D__UNIX -D_POSIX_C_SOURCE -D_GNU_SOURCE)
+	-D__UNIX -D_POSIX_C_SOURCE -D_GNU_SOURCE -DOS_DYLIB_EXTENSION=\".so\")
 
 message(" scanning for Linux specific libraries. ")
 

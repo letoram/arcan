@@ -46,6 +46,7 @@
 #include <pthread.h>
 #include <ctype.h>
 #include <setjmp.h>
+#include <dlfcn.h>
 
 #include <string.h>
 #include <fcntl.h>
@@ -116,6 +117,11 @@
 	(RESOURCE_APPL | RESOURCE_APPL_SHARED)
 #endif
 
+#ifndef MODULE_USERMASK
+#define MODULE_USERMASK \
+	(RESOURCE_SYS_LIBS)
+#endif
+
 /*
  * defined in engine/arcan_main.c, rather than terminating directly
  * we'll longjmp to this and hopefully the engine can switch scripts
@@ -136,7 +142,7 @@ typedef int acoord;
  * these should only forward to arcan_fatal if there's no recovery script
  * set.
  */
-#define arcan_fatal(...) { lua_rectrigger( __VA_ARGS__); }
+#define arcan_fatal(...) do { lua_rectrigger( __VA_ARGS__); } while(0)
 
 /*
  * Each function that crosses the LUA->C barrier has a LUA_TRACE
@@ -552,8 +558,8 @@ void arcan_state_dump(const char* key, const char* msg, const char* src)
 	time_t logtime = time(NULL);
 	struct tm* ltime = localtime(&logtime);
 	if (!ltime){
-		arcan_warning("arcan_state_dump(%s, %s, %s) failed, couldn't get localtime.",
-			key, msg, src);
+		arcan_warning("arcan_state_dump(%s, %s, %s) failed, "
+			"couldn't get localtime.", key, msg, src);
 		return;
 	}
 
@@ -2381,7 +2387,7 @@ static int syscollapse(lua_State* ctx)
 			arcan_fatal("system_collapse(), "
 				"failed to load appl (%s), reason: %s\n", switch_appl, errmsg);
 		}
-#define arcan_fatal(...) { lua_rectrigger( __VA_ARGS__); }
+#define arcan_fatal(...) do { lua_rectrigger( __VA_ARGS__); } while(0)
 
 		LUA_ETRACE("system_collapse", NULL);
 		longjmp(arcanmain_recover_state, 1);
@@ -2429,12 +2435,117 @@ static int syssnap(lua_State* ctx)
 	return 0;
 }
 
-static int dofile(lua_State* ctx)
+static int systemload(lua_State* ctx)
 {
 	LUA_TRACE("system_load");
 
 	const char* instr = luaL_checkstring(ctx, 1);
 	bool dieonfail = luaL_optbnumber(ctx, 2, 1);
+	char* ext = strrchr(instr, '.');
+	if (ext == NULL){
+		if (dieonfail)
+			arcan_fatal("system_load(), extension missing.");
+		else
+			arcan_warning("system_load(), extension missing.");
+		return 0;
+	}
+
+	bool islua = strcmp(ext, ".lua") == 0;
+	if (!islua
+#ifndef DISABLE_MODULES
+	&& strcmp(ext, ".lib") != 0
+#endif
+	){
+		if (dieonfail)
+			arcan_fatal("system_load(), unsupported extension: %s\n", ext);
+		else
+			arcan_warning("system_load(), unsupported extension: %s\n", ext);
+		return 0;
+	}
+
+/* countermeasure 1. can safely assume valid extension at this point */
+#ifndef DISABLE_MODULES
+	if (!islua){
+/* strip the extension */
+		*ext = '\0';
+
+		size_t len = strlen(instr) + sizeof(OS_DYLIB_EXTENSION);
+		char workbuf[len];
+		snprintf(workbuf, len, "%s%s", instr, OS_DYLIB_EXTENSION);
+
+/* countermeasure 2, MODULE_USERMASK namespace => RESOURCE_SYS_LIBS */
+		char* fname = findresource(workbuf, MODULE_USERMASK);
+	 	if (!fname){
+			const char* msg = "Couldn't find required module: (%s)\n";
+			if (dieonfail)
+				arcan_fatal(msg, instr);
+			else
+				arcan_warning(msg, instr);
+			return 0;
+		}
+
+/* countermeasure 3. fname is resolved to absolute path */
+		void* dlh = dlopen(fname,
+#ifdef DEBUG
+			RTLD_NOW
+#else
+			RTLD_LAZY
+#endif
+		);
+		if (!dlh){
+			const char* msg = "Couldn't open (%s), error: (%s)\n";
+			arcan_mem_free(fname);
+			if (dieonfail)
+				arcan_fatal(msg, fname, dlerror());
+			else
+				arcan_warning(msg, fname, dlerror());
+			return 0;
+		}
+		arcan_mem_free(fname);
+
+/* countermeasure 4. selected prototypes must exist and accept version */
+		module_init_prototype initfn = dlsym(dlh, "arcan_module_init");
+		if (!initfn){
+			const char* msg = "Couldn't load module (%s), "
+				"missing arcan_module_init symbol";
+
+			if (dieonfail)
+				arcan_fatal(msg, instr);
+			else
+				arcan_warning(msg, instr);
+
+			dlclose(dlh);
+			return 0;
+		}
+
+/* countermeasure 5. map into known table rather than global namespace */
+		const luaL_Reg* resfuns = initfn(
+			LUAAPI_VERSION_MAJOR, LUAAPI_VERSION_MINOR, LUA_VERSION_NUM);
+		if (!resfuns){
+			const char* msg = "Module initialization (%s) failed\n";
+			if (dieonfail)
+				arcan_fatal(msg, instr);
+			else
+				arcan_warning(msg, instr);
+		}
+
+/* countermeasure 6. push into own table/namespace and return it */
+		lua_newtable(ctx);
+		int top = lua_gettop(ctx);
+
+		while(resfuns->name){
+			lua_pushstring(ctx, resfuns->name);
+			lua_pushcfunction(ctx, resfuns->func);
+			lua_rawset(ctx, top);
+			resfuns++;
+		}
+		return 1;
+
+/* now, code in dlh must be treated as trusted at the moment, with
+ * 'lanes' support further down the road, we could fork + drop and map
+ * into a lane to both sandbox and reduce work in main thread */
+	}
+#endif
 
 	char* fname = findresource(instr, CAREFUL_USERMASK);
 	int res = 0;
@@ -8210,7 +8321,7 @@ static const luaL_Reg threedfuns[] = {
 static const luaL_Reg sysfuns[] = {
 {"shutdown",            alua_shutdown    },
 {"warning",             warning          },
-{"system_load",         dofile           },
+{"system_load",         systemload       },
 {"system_context_size", systemcontextsize},
 {"system_snapshot",     syssnap          },
 {"system_collapse",     syscollapse      },
