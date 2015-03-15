@@ -12,6 +12,9 @@
 
 /* arcan_luactx* is just an intermediary alias for lua_State */
 struct arcan_luactx;
+struct luaL_Reg;
+
+typedef struct luaL_Reg* (*module_init_prototype)(int, int, int);
 
 /* we separate alloc and mapfunctions to allow partial VM execution
  * BEFORE we have exposed the engine functions. This allows "constants"

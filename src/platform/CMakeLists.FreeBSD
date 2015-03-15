@@ -1,7 +1,7 @@
 set (PLATFORM_PATH ${PLATFORM_ROOT}/posix)
 
 add_definitions(-DPLATFORM_HEADER=\"${PLATFORM_PATH}/../platform.h\" -std=c11
- -Wall -Wno-missing-braces -Wno-unused-function
+ -Wall -Wno-missing-braces -Wno-unused-function -DOS_DYLIB_EXTENSION=\".so\"
 	-DLUA_51 -D_WITH_DPRINTF -D__UNIX -DLIBUSB_BSD)
 
 message(" scanning for FreeBSD specific libraries. ")

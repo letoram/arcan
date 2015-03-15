@@ -124,7 +124,7 @@ printf("Usage: arcan [-whfmWMOqspBtHbdgaSV] applname "
 "-q\t--timedump    \twait n ticks, dump snapshot to resources/logs/timedump\n"
 "-s\t--windowed    \ttoggle borderless window mode\n"
 #ifdef DISABLE_FRAMESERVERS
-"-B\t--binpath   \tno-op, frameserver support was disabled compile-time\n"
+"-B\t--binpath     \tno-op, frameserver support was disabled compile-time\n"
 #else
 "-B\t--binpath     \tchange default searchpath for arcan_frameserver*\n"
 #endif
