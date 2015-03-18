@@ -5324,7 +5324,7 @@ static int targetsynchronous(lua_State* ctx)
 {
 	LUA_TRACE("target_synchronous");
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
- 	bool toggle = luaL_optbnumber(ctx, 3, 1);
+ 	bool toggle = luaL_optbnumber(ctx, 2, 1);
 	updateflag(tgt, TARGET_FLAG_SYNCHRONOUS, toggle);
 	LUA_ETRACE("target_synchronous", NULL);
 	return 0;
@@ -5334,7 +5334,7 @@ static int targetverbose(lua_State* ctx)
 {
 	LUA_TRACE("target_verbose");
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
- 	bool toggle = luaL_optbnumber(ctx, 3, 1);
+ 	bool toggle = luaL_optbnumber(ctx, 2, 1);
 	updateflag(tgt, TARGET_FLAG_VERBOSE, toggle);
 	LUA_ETRACE("target_verbose", NULL);
 	return 0;
@@ -8423,6 +8423,8 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 
 #define EXT_CONSTTBL_GLOBINT
 	struct { const char* key; int val; } consttbl[] = {
+{"EXIT_SUCCESS", EXIT_SUCCESS},
+{"EXIT_FAILURE", EXIT_FAILURE},
 {"VRESW", mode.width},
 {"VRESH", mode.height},
 {"MAX_SURFACEW", MAX_SURFACEW},
