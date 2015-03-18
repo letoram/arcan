@@ -1,6 +1,6 @@
 -- target_synchronous
 -- @short: Enforce synchronous transfers
--- @inargs: dstvid
+-- @inargs: dstvid, *state*
 -- @outargs:
 -- @longdescr: This function is potentially dangerous;
 -- there is a tradeoff between responsiveness and reliable readbacks
@@ -15,6 +15,9 @@
 -- the "discard if PTS is too old" behavior will be disabled and the
 -- last presented timestamp will be set to the frame that would've otherwise
 -- been discared.
+--
+-- This behavior can be switched on or off dynamically by
+-- setting state to 1/true(default) or 0/false.
 -- @group: targetcontrol
 -- @cfunction: targetsynchronous
 -- @flags: expert
