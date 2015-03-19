@@ -2601,6 +2601,8 @@ static int targetresume(lua_State* ctx)
 	LUA_TRACE("resume_target");
 
 	arcan_vobj_id vid = luaL_checkvid(ctx, 1, NULL);
+	bool rsusp = luaL_optbnumber(ctx, 2, 0);
+
 	vfunc_state* state = arcan_video_feedstate(vid);
 	arcan_frameserver* fsrv = state->ptr;
 
@@ -2614,7 +2616,9 @@ static int targetresume(lua_State* ctx)
 		.tgt.kind = TARGET_COMMAND_UNPAUSE
 	};
 
-	arcan_frameserver_resume(fsrv);
+	if (!rsusp)
+		arcan_frameserver_resume(fsrv);
+
 	arcan_frameserver_pushevent(fsrv, &ev);
 
 	LUA_ETRACE("resume_target", NULL);

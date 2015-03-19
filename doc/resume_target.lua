@@ -1,6 +1,6 @@
 -- resume_target
 -- @short: Request that the targetid resumes from a previously paused state.
--- @inargs: targetvid
+-- @inargs: targetvid, *noblock_fsrv*
 -- @longdescr: There are two principal pause/resume mechanisms that
 -- overlap slightly. resume_movie guarantee that the audio/video playback
 -- sampling will be paused in the main engine. This implies that queued
@@ -8,6 +8,8 @@
 -- frames) will be kept intact. The related resume_target sends a request
 -- to the target frameserver or hijack sessions and blocks the process to
 -- whatever extent is possible.
+-- If *noblock_fsrv* is set to something other than 0, only the hinting
+-- event is sent.
 -- @group: targetcontrol
 -- @cfunction: targetresume
 -- @related: resume_movie
