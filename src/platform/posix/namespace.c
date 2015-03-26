@@ -57,6 +57,13 @@ static const char* lbls[] = {
 	"system-debugoutput"
 };
 
+static unsigned i_log2(uint32_t n)
+{
+	unsigned res = 0;
+	while (n >>= 1) res++;
+	return res;
+}
+
 char* arcan_find_resource(const char* label, enum arcan_namespaces space)
 {
 	if (label == NULL || verify_traverse(label) == NULL)
@@ -84,7 +91,7 @@ char* arcan_find_resource(const char* label, enum arcan_namespaces space)
 char* arcan_expand_resource(const char* label, enum arcan_namespaces space)
 {
 	assert( space > 0 && (space & (space - 1) ) == 0 );
-	int space_ind = log2(space);
+	int space_ind =i_log2(space);
 
 	if (label == NULL ||
 		verify_traverse(label) == NULL || !namespaces.paths[space_ind])
@@ -184,7 +191,7 @@ void arcan_override_namespace(const char* path, enum arcan_namespaces space)
 		return;
 
 	assert( space > 0 && (space & (space - 1) ) == 0 );
-	int space_ind = log2(space);
+	int space_ind =i_log2(space);
 
 	if (namespaces.paths[space_ind] != NULL){
 		arcan_mem_free(namespaces.paths[space_ind]);
