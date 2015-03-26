@@ -75,7 +75,10 @@
 
 #ifdef LUA51_JIT
 #include <luajit.h>
+#else
+
 #endif
+
 #if LUA_VERSION_NUM == 501
 	#define lua_rawlen(x, y) lua_objlen(x, y)
 #endif
@@ -8513,6 +8516,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"MASK_FRAMESET", MASK_FRAMESET},
 {"MASK_MAPPING", MASK_MAPPING},
 {"FORMAT_PNG", OUTFMT_PNG},
+{"FORMAT_PNG_FLIP", OUTFMT_PNG_FLIP},
 {"FORMAT_RAW8", OUTFMT_RAW8},
 {"FORMAT_RAW24", OUTFMT_RAW24},
 {"FORMAT_RAW32", OUTFMT_RAW32},
