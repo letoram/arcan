@@ -5924,28 +5924,29 @@ static int renderset(lua_State* ctx)
 	LUA_TRACE("define_rendertarget");
 
 	arcan_vobj_id did = luaL_checkvid(ctx, 1, NULL);
-	int nvids         = lua_rawlen(ctx, 2);
-	int detach        = luaL_checkint(ctx, 3);
-	int scale         = luaL_checkint(ctx, 4);
-	int format        = luaL_optint(ctx, 5, RENDERFMT_COLOR);
+	int nvids = lua_rawlen(ctx, 2);
+	int detach = luaL_optint(ctx, 3, RENDERTARGET_DETACH);
+	int scale = luaL_optint(ctx, 4, RENDERTARGET_NOSCALE);
+	int rate = luaL_optint(ctx, 5, -1);
+	int format = luaL_optint(ctx, 6, RENDERFMT_COLOR);
 
 	if (detach != RENDERTARGET_DETACH && detach != RENDERTARGET_NODETACH){
-		arcan_warning("renderset(%d) invalid arg 3, expected "
+		arcan_fatal("renderset(%d) invalid arg 3, expected "
 			"RENDERTARGET_DETACH or RENDERTARGET_NODETACH\n", detach);
 		LUA_ETRACE("define_rendertarget", "bad detach arg");
 		return 0;
 	}
 
 	if (scale != RENDERTARGET_SCALE && scale != RENDERTARGET_NOSCALE){
-		arcan_warning("renderset(%d) invalid arg 4, expected "
+		arcan_fatal("renderset(%d) invalid arg 4, expected "
 			"RENDERTARGET_SCALE or RENDERTARGET_NOSCALE\n", scale);
 		LUA_ETRACE("define_rendertarget", "bad scale arg");
 		return 0;
 	}
 
 	if (nvids > 0){
-		arcan_video_setuprendertarget(did, 0,
-			scale == RENDERTARGET_SCALE, format);
+		arcan_video_setuprendertarget(did,
+			0, rate, scale == RENDERTARGET_SCALE, format);
 
 		for (size_t i = 0; i < nvids; i++){
 			lua_rawgeti(ctx, 2, i+1);
@@ -6282,11 +6283,16 @@ static int imagestorage(lua_State* ctx)
 	arcan_vobject* vobj;
 	luaL_checkvid(ctx, 1, &vobj);
 
-	if (vobj->vstore->txmapped != TXSTATE_TEX2D)
-		arcan_fatal("image_access_storage(), referenced object "
+	if (vobj->vstore->txmapped != TXSTATE_TEX2D){
+		arcan_warning("image_access_storage(), referenced object "
 			"must have a textured backing store.");
+		lua_pushboolean(ctx, false);
+		return 1;
+	}
 
 	if (!vobj->vstore->vinf.text.raw){
+		arcan_warning("image_access_storage(), referenced object "
+			"does not have a valid backing store.");
 		lua_pushboolean(ctx, false);
 		return 1;
 	}
@@ -6518,8 +6524,8 @@ static int procset(lua_State* ctx)
 		goto cleanup;
 	}
 
-	if (ARCAN_OK != (arcan_video_setuprendertarget(did, pollrate,
-					scale == RENDERTARGET_SCALE, RENDERTARGET_COLOR)))
+	if (ARCAN_OK != (arcan_video_setuprendertarget(did,
+		pollrate, pollrate, scale == RENDERTARGET_SCALE, RENDERTARGET_COLOR)))
 		arcan_fatal("define_calctarget() couldn't setup rendertarget");
 
 	for (size_t i = 0; i < nvids; i++){
@@ -6677,7 +6683,7 @@ static int recordset(lua_State* ctx)
 	}
 
 	if (ARCAN_OK != arcan_video_setuprendertarget(did, pollrate,
-		scale == RENDERTARGET_SCALE, RENDERTARGET_COLOR))
+		pollrate, scale == RENDERTARGET_SCALE, RENDERTARGET_COLOR))
 	{
 		arcan_warning("define_recordtarget(), setup rendertarget failed.\n");
 		goto cleanup;
