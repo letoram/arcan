@@ -1,61 +1,70 @@
 -- define_rendertarget
--- @short: Create an offscreen rendering pipeline (render to texture).
--- @inargs: dstvid, vidary, detacharg, scalearg
+-- @short: Create an intermediate rendering destination
+-- @inargs: destination, vid_table, *detach*, *scale*, *refreshrate*, *format*
 -- @outargs:
--- @longdescr: This function creates a separate rendering pipeline populated with the set of VIDs passed as the table *vidary*. *detacharg* can be set to either RENDERTARGET_DETACH or RENDERTARGET_NODETACH and controls if the VIDs in *vidary* should be disconnected from the standard output pipeline or not. Lastly *scalearg* can be set to either RENDERTARGET_SCALE or RENDERTARGET_NOSCALE which comes into play when the standard output dimensions (VRESW, VRESH) are different from the VID that will be renderered to. With RENDERTARGET_SCALE set, the pipeline transform will be changed to scale all objects to fit, otherwise clipping may be applied.
--- @group: targetcontrol
--- @cfunction: renderset
--- @note: There is a delay of at least one frame from creation up until the dstvid storage is updated. Rendertarget_forceupdate can be used to perform an additional rendering pass for the specific target alone. This is mostly useful for functions that rely on rendertarget readback, e.g. save_screenshot
--- @related: define_recordtarget, fill_surface
--- @flags:
-#ifdef MAIN
--- this function creates two intermediate surfaces that applies
--- horiz-vert separated gaussian blur along with regular texture filtering
-
-function setupblur(targetw, targeth)
-    local blurshader_h = load_shader("shaders/fullscreen/default.vShader",
- "shaders/fullscreen/gaussianH.fShader",
-"blur_horiz", {});
-
-    local blurshader_v = load_shader("shaders/fullscreen/default.vShader",
-"shaders/fullscreen/gaussianV.fShader",
-"blur_vert", {});
-
-    local blurw = targetw * 0.4;
-    local blurh = targeth * 0.4;
-
-    shader_uniform(blurshader_h, "blur", "f", PERSIST, 1.0 / blurw);
-    shader_uniform(blurshader_v, "blur", "f", PERSIST, 1.0 / blurh);
-    shader_uniform(blurshader_h, "ampl", "f", PERSIST, 1.2);
-    shader_uniform(blurshader_v, "ampl", "f", PERSIST, 1.4);
-
-    local blur_hbuf = fill_surface(blurw, blurh, 1, 1, 1, blurw, blurh);
-    local blur_vbuf = fill_surface(targetw, targeth, 1, 1, 1, blurw, blurh);
-
-    image_shader(blur_hbuf, blurshader_h);
-    image_shader(blur_vbuf, blurshader_v);
-
-    show_image(blur_hbuf);
-    show_image(blur_vbuf);
-
-    return blur_hbuf, blur_vbuf;
-end
-
+-- @longdescr: This function creates a separate rendering pipeline
+-- that sends its output to the storage of another vid- connected
+-- object. The preconditions is that the *destination* is not part
+-- of the integer-indexed *vid_table* and that it has a textured
+-- backing store. ref:alloc_surface is a particularly good function
+-- for creating a surface that can be used as a valid *destination*.
+-- This is an expensive yet powerful function that is the basis
+-- for many advanced effects, but also for offscreen composition and
+-- both synchronous and asynchronous GPU->CPU transfers.
+--
+-- The optional *detach* argument can be set to either RENDERTARGET_DETACH
+-- or RENDERTARGET_NODETACH, and the default is RENDERTARGET_DETACH.
+-- For RENDERTARGET_DETACH, all members of *vid_table* are disconnected from
+-- the main pipe line and only used when updating *destination*, while their
+-- association is kept in RENDERTARGET_NODETACH.
+--
+-- The optional *scale* arguments determines how the various output-relative
+-- properties e.g. object size should be handled in the case that *destination*
+-- does not have the same dimensions as the current canvas. The default is
+-- RENDERTARGET_NOSCALE where the object would simply be clipped if its final
+-- positions fall outside the dimensions of the *destination*.
+-- For RENDERTARGET_SCALE, a scale transform that maps coordinates in the
+-- current canvas dimensions to those of the *destination*.
+--
+-- The optional *refreshrate* arguments determines how often the rendertarget
+-- should be updated. A value of 0 disables automatic updates and
+-- rendertarget_forceupdate needs to be called manually whenever the
+-- rendertarget is to be updated. A value of INT_MIN < n < 0 means that the
+-- rendertarget should only be updated every n video frames, and a value of
+-- INT_MAX > n > 0 means that the contents should be updated very n logic
+-- ticks. Default is -1 (every frame).
+--
+-- The optional *format* defines additional flags for the backing store of
+-- *destination*. Possible values are RENDERTARGET_COLOR (default),
+-- RENDERTARGET_DEPTH and RENDERTARGET_FULL. The difference between COLOR and
+-- FULL is that a stencil buffer (for certain clipping operations) is not
+-- always present in COLOR. DEPTH is a special case primarily used when only
+-- the contents of the depth buffer is to be used. This operation converts the
+-- backing store from having a textured backing to a DEPTH one and makes a lot
+-- of other operations invalid. Its primary purpose is depth-buffer based 3D
+-- effects (e.g. shadow mapping).
+--
+-- @note: Using the same object or backing store for *destination* and as
+-- a member of *vid_table* results undefined contents in *destination*.
+-- @note: RENDERTARGET_SCALE transform factors are not updated when/if the
+-- default canvas is resized.
+-- @note: WORLDID can not be immediately used as part of the *vid table*, but
+-- it is possible to use ref:image_sharestorage to a ref:null_surface and then
+-- use that as part of *vid table*. The two caveats in that case is that the
+-- contents of the ref:null_surface will have its Y axis inverted and if the
+-- new rendertarget is visible in the WORLDID, the contents will quickly
+-- converge to an undefined state from the resulting feedback loop.
+-- @related: define_recordtarget, alloc_surface, define_calctarget,
+-- rendertarget_forceupdate, rendertarget_noclear, rendertarget_attach
+--
 function main()
-local blurw, blurh = setupblur(VRESW, VRESH);
-
--- load an image, create a copy of it and attach as input to the first blur pass
-source = load_image("fullscreen.png");
-resize_image(source, VRESW, VRESH);
-show_image(source);
-define_rendertarget(blurw, {instance_image(source)}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
-
--- then apply the output from that one to a second blur pass
-define_rendertarget(blurh, {blurw}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
-
--- and finally draw it as an overlay to the input image
-blend_image(blurh, 0.99);
-force_image_blend(blurh, BLEND_ADD);
-order_image(blurh, max_current_image_order() + 1);
-end
+#ifdef MAIN
+	local a = color_surface(64, 64, 0, 255, 0);
+	local rtgt = alloc_surface(320, 200);
+	define_rendertarget(rtgt, {a});
+	show_image({rtgt, a});
+	move_image(rtgt, 100, 100, 100);
+	move_image(rtgt, 0, 0, 100);
+	image_transform_cycle(rtgt, true);
 #endif
+end
