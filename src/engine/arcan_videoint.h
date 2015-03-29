@@ -55,7 +55,11 @@ struct rendertarget {
  * every abs(readback) frames. if readback is negative,
  * or readback ticks if it is positive */
 	int readback;
-	long long readcnt;
+	int readcnt;
+
+/* for for controlling refresh, same mechanism as with readback */
+	int refresh;
+	int refreshcnt;
 
 /*
  * number of running transformation, pending transformations +

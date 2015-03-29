@@ -614,7 +614,7 @@ arcan_errc arcan_video_framecyclemode(arcan_vobj_id id, signed mode);
 
 /* Rendertarget- operations */
 arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, int readback,
-	bool scale, enum rendertarget_mode format);
+	int refresh, bool scale, enum rendertarget_mode format);
 arcan_errc arcan_video_forceupdate(arcan_vobj_id vid);
 arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did,
 	arcan_vobj_id src, bool detach);

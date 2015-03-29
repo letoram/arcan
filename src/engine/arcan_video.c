@@ -100,7 +100,7 @@ struct arcan_video_context vcontext_stack[CONTEXT_STACK_LIMIT] = {
 			.tracetag = "(world)",
 			.current  = {
 				.opa = 1.0,
-.rotation.quaternion.w = 1.0
+				.rotation.quaternion.w = 1.0
 			}
 		}
 	}
@@ -480,7 +480,6 @@ void arcan_vint_drawcursor(bool erase)
 	int y1 = arcan_video_display.cursor.oy;
 	int x2 = x1 + arcan_video_display.cursor.w;
 	int y2 = y1 + arcan_video_display.cursor.h;
-
 	struct monitor_mode mode = platform_video_dimensions();
 
 	if (erase){
@@ -849,7 +848,7 @@ arcan_errc arcan_video_resampleobject(arcan_vobj_id vid,
 
 /* set up a rendertarget and a proxy transfer object */
 	arcan_errc rts = arcan_video_setuprendertarget(
-		dst, 0, true, RENDERTARGET_COLOR);
+		dst, 0, -1, true, RENDERTARGET_COLOR);
 
 	if (rts != ARCAN_OK){
 		arcan_video_deleteobject(dst);
@@ -1816,7 +1815,7 @@ arcan_errc arcan_video_rendertarget_setnoclear(arcan_vobj_id did, bool value)
 }
 
 arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did,
-	int readback, bool scale, enum rendertarget_mode format)
+	int readback, int refresh, bool scale, enum rendertarget_mode format)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(did);
@@ -1837,9 +1836,12 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did,
 		struct rendertarget* dst = &current_context->rtargets[ ind ];
 
 		FL_SET(dst, TGTFL_ALIVE);
-		dst->color    = vobj;
-		dst->camtag   = ARCAN_EID;
+		dst->color = vobj;
+		dst->camtag = ARCAN_EID;
 		dst->readback = readback;
+		dst->readcnt = abs(readback);
+		dst->refresh = refresh;
+		dst->refreshcnt = abs(refresh);
 		dst->art = agp_setup_rendertarget(vobj->vstore, format);
 
 		vobj->extrefc.attachments++;
@@ -1860,11 +1862,6 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did,
 
 /* since we may likely have a differently sized FBO, scale it */
 			scale_matrix(dst->base, xs, ys, 1.0);
-		}
-
-		if (readback != 0){
-			dst->readback     = readback;
-			dst->readcnt      = abs(readback);
 		}
 
 		rv = ARCAN_OK;
@@ -3575,12 +3572,37 @@ static void expire_object(arcan_vobject* obj){
 	}
 }
 
-/* process a logical time-frame (which more or less means,
- * update / rescale / redraw / flip) returns msecs elapsed */
+static inline bool process_counter(struct rendertarget* tgt,
+	int* field, int base, float fract)
+{
+	if (0 == base)
+		return false;
+
+	(*field)--;
+	if (*field <= 0){
+		*field = abs(base);
+		return true;
+	}
+
+	return false;
+}
+
+static inline void process_readback(struct rendertarget* tgt, float fract)
+{
+	if (!FL_TEST(tgt, TGTFL_READING) && process_counter(tgt,
+		&tgt->readcnt, tgt->readback, fract)){
+		agp_request_readback(tgt->color->vstore);
+		FL_SET(tgt, TGTFL_READING);
+	}
+}
+
+/*
+ * return number of actual objects that were updated / dirty,
+ * move/process/etc. and possibly dispatch draw commands if needed
+ */
 static int tick_rendertarget(struct rendertarget* tgt)
 {
 	tgt->transfc = 0;
-
 	arcan_vobject_litem* current = tgt->first;
 
 	while (current){
@@ -3594,7 +3616,7 @@ static int tick_rendertarget(struct rendertarget* tgt)
 		if (elem->feed.ffunc && !FL_TEST(elem, FL_CLONE))
 			elem->feed.ffunc(FFUNC_TICK, 0, 0, 0, 0, 0, elem->feed.state);
 
-/* mode > 0, cycle every 'n' ticks */
+/* mode > 0, cycle activate frame every 'n' ticks */
 		if (elem->frameset && elem->frameset->mctr != 0){
 			elem->frameset->ctr--;
 			if (elem->frameset->ctr == 0){
@@ -3608,6 +3630,14 @@ static int tick_rendertarget(struct rendertarget* tgt)
 
 		current = current->next;
 	}
+
+	if (tgt->refresh > 0 && process_counter(tgt,
+		&tgt->refreshcnt, tgt->refresh, 0.0)){
+		tgt->transfc += process_rendertarget(tgt, 0.0);
+	}
+
+	if (tgt->readback < 0)
+		process_readback(tgt, 0.0);
 
 	return tgt->transfc;
 }
@@ -4074,14 +4104,18 @@ static void ffunc_process(arcan_vobject* dst, int cookie)
 }
 
 /*
- * scan all 'feed objects' (possible optimization, keep these tracked
- * in a separate list and run prior to all other rendering, might gain
- * something when other pseudo-asynchronous operations (e.g. PBO) are concerned
+ * For large Ns this approach 'should' be rather dumb in the sense
+ * that we could arguably well just have a set of descriptors and
+ * check the ones that have been signalled. On the other hand, they
+ * will be read almost immediately after this, and with that in mind,
+ * we would possibly gain more by just having a big-array(TM) {for
+ * all cases where n*obj_size < data_cache_size} as that hit/miss is
+ * really all that matters now.
  */
 static void poll_list(arcan_vobject_litem* current, int cookie)
 {
 	while(current && current->elem){
-	arcan_vobject* celem  = current->elem;
+	arcan_vobject* celem = current->elem;
 
 	if (celem->feed.ffunc)
 		ffunc_process(celem, cookie);
@@ -4090,15 +4124,17 @@ static void poll_list(arcan_vobject_litem* current, int cookie)
 	}
 }
 
-void arcan_video_pollfeed(){
+void arcan_video_pollfeed()
+{
+/* vcookie is used just to make sure that we won't update the same
+ * object multiple times during one frame due to the feed being
+ * referenced in many different pipelines and hierarchies */
 	static int vcookie = 1;
 	vcookie++;
 
  for (off_t ind = 0; ind < current_context->n_rtargets; ind++)
 		poll_readback(&current_context->rtargets[ind]);
-
-	if (FL_TEST(&current_context->stdoutp, TGTFL_READING))
-		poll_readback(&current_context->stdoutp);
+	poll_readback(&current_context->stdoutp);
 
 	for (size_t i = 0; i < current_context->n_rtargets; i++)
 		poll_list(current_context->rtargets[i].first, vcookie);
@@ -4252,14 +4288,15 @@ static inline bool setup_shallow_texclip(arcan_vobject* elem,
 	return true;
 }
 
-static size_t process_rendertarget(
-	struct rendertarget* tgt, float fract)
+static size_t process_rendertarget(struct rendertarget* tgt, float fract)
 {
 	arcan_vobject_litem* current = tgt->first;
 
 	if (arcan_video_display.ignore_dirty == false &&
 			arcan_video_display.dirty == 0 && tgt->transfc == 0)
 		return 0;
+
+	agp_activate_rendertarget(tgt->art);
 
 	if (!FL_TEST(tgt, TGTFL_NOCLEAR))
 		agp_rendertarget_clear();
@@ -4448,7 +4485,7 @@ arcan_errc arcan_video_forceupdate(arcan_vobj_id vid)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
 	FLAG_DIRTY(vobj);
-	agp_activate_rendertarget(tgt->art);
+
 	process_rendertarget(tgt, arcan_video_display.c_lerp);
 	agp_activate_rendertarget(NULL);
 
@@ -4501,50 +4538,15 @@ static inline void poll_readback(struct rendertarget* tgt)
 	FL_CLEAR(tgt, TGTFL_READING);
 }
 
-/* should we issue a new readback? */
-static inline void process_readback(struct rendertarget* tgt, float fract)
-{
-	if (FL_TEST(tgt, TGTFL_READING) || tgt->readback == 0)
-		return;
-
-/* resolution is "by tick" */
-	if (tgt->readback < 0){
-		tgt->readcnt--;
-		if (tgt->readcnt <= 0){
-			tgt->readcnt = abs(tgt->readback);
-			goto request;
-		}
-		else
-			return;
-	}
-
-/* resolution is "by other clock", approximately */
-	else if (tgt->readback > 0){
-		long long stamp = round( ((double)arcan_video_display.c_ticks + fract) *
-			(double)ARCAN_TIMER_TICK );
-		if (stamp - tgt->readcnt > tgt->readback){
-			tgt->readcnt = stamp;
-		}
-		else
-			return;
-	}
-
-request:
-	agp_request_readback(tgt->color->vstore);
-	FL_SET(tgt, TGTFL_READING);
-}
-
 unsigned arcan_vint_refresh(float fract, size_t* ndirty)
 {
 	long long int pre = arcan_timemillis();
 	size_t transfc = 0;
 
+/* we track last interp. state in order to handle forcerefresh */
 	arcan_video_display.c_lerp = fract;
 
-/*
- * active shaders with a timed uniform subscription
- * count towards dirty state.
- */
+/* active shaders with counter counts towards dirty */
 	arcan_video_display.dirty +=
 		agp_shader_envv(FRACT_TIMESTAMP_F, &fract, sizeof(float));
 
@@ -4552,15 +4554,18 @@ unsigned arcan_vint_refresh(float fract, size_t* ndirty)
 	for (size_t ind = 0; ind < current_context->n_rtargets; ind++){
 		struct rendertarget* tgt = &current_context->rtargets[ind];
 
-		agp_activate_rendertarget(tgt->art);
-		process_rendertarget(tgt, fract);
-		process_readback(&current_context->rtargets[ind], fract);
+		if (tgt->refresh < 0 && process_counter(tgt,
+			&tgt->refreshcnt, tgt->refresh, fract)){
+			process_rendertarget(tgt, fract);
+			transfc += tgt->transfc;
+		}
 
-		transfc += tgt->transfc;
+/* may need to readback even if we havn't updated as it may
+ * be used as clock (though optimization possibility of using buffer) */
+		process_readback(&current_context->rtargets[ind], fract);
 	}
 
-	agp_activate_rendertarget(current_context->stdoutp.art);
-
+/* there's no refresh clock on stdout, always update */
 	process_rendertarget(&current_context->stdoutp, fract);
 	process_readback(&current_context->stdoutp, fract);
 	transfc += current_context->stdoutp.transfc;
