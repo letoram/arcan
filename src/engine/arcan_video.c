@@ -4012,7 +4012,7 @@ static inline void setup_surf(struct rendertarget* dst,
 
 	agp_shader_envv(OBJ_OPACITY, &prop->opa, sizeof(float));
 
-	float sz_i[2] = {src->origw, src->origh};
+	float sz_i[2] = {1.0 / (double)src->origw, 1.0 / (double)src->origh};
 	agp_shader_envv(SIZE_INPUT, sz_i, sizeof(float)*2);
 
 	float sz_o[2] = {prop->scale.x, prop->scale.y};
