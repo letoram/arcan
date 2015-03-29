@@ -5905,10 +5905,10 @@ static int renderattach(lua_State* ctx)
 
 	arcan_vobj_id did = luaL_checkvid(ctx, 1, NULL);
 	arcan_vobj_id sid = luaL_checkvid(ctx, 2, NULL);
-	int detach        = luaL_checkint(ctx, 3);
+	int detach = luaL_checkint(ctx, 3);
 
 	if (detach != RENDERTARGET_DETACH && detach != RENDERTARGET_NODETACH){
-		arcan_warning("renderattach(%d) invalid arg 3, expected "
+		arcan_fatal("renderattach(%d) invalid arg 3, expected "
 			"RENDERTARGET_DETACH or RENDERTARGET_NODETACH\n", detach);
 		return 0;
 	}
@@ -6339,6 +6339,7 @@ static int spawn_recsubseg(lua_State* ctx,
 	if (!fsrv || vobj->feed.state.tag != ARCAN_TAG_FRAMESERV){
 		arcan_fatal("spawn_recsubseg() -- specified destination is "
 			"not a frameserver.\n");
+		return 0;
 	}
 
 	arcan_frameserver* rv =

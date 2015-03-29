@@ -1,34 +1,40 @@
 -- define_recordtarget
--- @short: Create an offscreen audio/video pipeline that can be sampled by a frameserver.
--- @inargs: dstvid, dstres, encodeargs, vidtbl, aidtbl, detacharg, scalearg, samplerate, *callback*
+-- @short: Create a rendertarget with a periodic readback
+-- @inargs: dest_buffer, dest_res, arguments, vids, aids,
+-- detach, scale, samplerate, *callback*
 -- @outargs:
--- @longdescr: This function takes a *dstvid* (allocated through alloc_surface),
--- and creates a separate audio / video rendertarget populated with the entries
--- in *vidtbl* and *aidtbl*. The *detacharg* can be set to FRAMESERVER_DETACH or
--- FRAMESERVER_NODETACH regulating if the VIDs in *vidtbl* should be removed
--- from the normal rendering pipeline or not. The *scalearg* can be set to
--- RENDERTARGET_SCALE or RENDERTARGET_NOSCALE, and comes into play when the
--- dimensions of the active display fail to match those of *dstvid*.
--- With RENDERTARGET_SCALE, a transformation matrix is calculated that
--- stretches or squeezes the results to fit *dstvid*, with RENDERTARGET_NOSCALE,
--- clipping can occur. The samplerate dictates how often the rendertarget
--- should be read-back into *dstvid*, with negative numbers meaning
--- *abs(samplerate)* video frames between each sample, and positive numbers
--- meaning *samplerate* ticks between each sample. If samplerate is set to the
--- special constant READBACK_MANUAL, readbacks will only be performed when forced
--- through stepframe_target calls. *encodeargs* are passed
--- directly in a key=value:key form to the frameserver.
+-- @longdescr: This function inherits from ref:define_rendertarget. Please
+-- refer to the description of that function for assistance with the
+-- *detach*, *scale* and *samplerate* functions.
 --
--- See the manpage for *arcan_frameserver_encode* for arguments and their interpretation.
--- Lastly, *callback* works as an optional trigger for feedback from the
--- frameserver (use target_verbose to toggle frametransfer status updates).
+-- There are two distinct cases for using recordtargets. One is to create
+-- a new frameserver(encode) session used for features such as streaming
+-- and remote displays. The other is to create a new output segment in an
+-- existing external connection.
+--
+-- For the first case, *dest_res* will be used as the output resource path
+-- which will either be mapped to a NULL file (in the case of container=stream
+-- in *arguments or "") or created in the APPL_TEMP namespace, and *arguments*
+-- will be forwarded using the ARCAN_ARG environment variable.
+--
+-- For the second case, *arguments* will be ignored and *dest_res* is expected
+-- to refer to a VID that is also a segment in a frameserver. Trying to push a
+-- subsegment to a VID that is not a connected frameserver is a terminal
+-- state transition.
+--
+-- The optional *callback* argument should point to a Lua defined function
+-- that accepts a source_id(will match *dest_buffer*) and a table with
+-- members that describe events that are performed on the underlying segment.
+--
+-- *aids* should either be a table of valid AIDs that should be mixed and
+-- forwarded, or to WORLDID as a means of hooking all arcan managed audio
+-- input. By default, they are mixed and clipped equally. This can be changed
+-- using ref:recordtarget_gain.
+--
 -- @group: targetcontrol
--- @note: although WORLDID is not a valid recipient as such, a trick is to define a null_surface, image_sharestorage WORLDID into the null_surface and that works as a valid attachment. Two caveats though is that the contents of null_surface will have its coordinate system flipped around Y and neither the record destination nor the null surface should be visible, as that would add a feedback loop which quickly turns the result into an undefined value (typically black).
--- @note: specifying a valid frameserver connected VID in the dstres slot
--- will allocate a new output segment and attach to the pre-existing frameserver.
--- @note: if dstres is empty, no file will be created or pushed.
 -- @cfunction: recordset
--- @related: define_rendertarget
+-- @related: define_rendertarget, define_calctarget, target_alloc,
+-- recordtarget_gain
 -- @flags:
 function main()
 #ifdef MAIN

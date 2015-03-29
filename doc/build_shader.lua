@@ -1,30 +1,42 @@
 -- build_shader
--- @short: Compile a vertex,fragment tupe into a shader and
--- index using a string shortname (label).
--- @inargs: vertex_program, fragment_program, label
+-- @short: using
+-- @inargs: vertex_program or nil, fragment_program or nil, label
 -- @outargs: shader_id
--- @longdescr: All VIDs (including clones) can have shaders
--- (or rather, GPU programs) associated that can greatly effect
--- the final output. This function, along with image_shader
--- and shader_uniform are used to configure and activate
--- shaders on a VID per VID basis.
--- @note: There is no abstraction to help dealing with the
--- number of possible shader language versions. The global constant
--- SHADER_LANGUAGE can be used to determine which language that
--- the graphics platform requests that you use.
--- @note: Some symbols are reserved and populated by the engine
--- if their respective uniform or attribute slot is requested.
--- @note: Reserved attributes: modelview (mat4), projection (mat4),
--- texturem (mat4).
--- @note: Reserved uniforms: obj_opacity (float),
+-- @longdescr: All video objects can have a series of processing/
+-- rendering instructions associated with them. These are platform
+-- dependent, and you can check (GL_VERSION, SHADER_LANGUAGE) for
+-- identification strings to help support your choice, and the
+-- most commonly supported shader language is currently GLSL120.
+-- This function is used to go from a higher level description
+-- (like a string) to some implementation defined internal
+-- interpretation that can later be referenced and connected to
+-- VIDs using the returned *shader_id* or the *label*.
+-- *vertex_program* describes the processing stage that determines
+-- the shape of the object to be drawn, and *fragment_program* the
+-- content that will be filled inside the shape. Both of these are
+-- allowed to be nil, and the engine will then use whatever platform
+-- specific default that is defined.
+-- A shader can also have a set of limited user-defined variables,
+-- called _uniforms_ (see ref:shader_uniform for details) along
+-- with a number of built in ones (see the notes below).
+-- If the contents of the supplied *vertex_program* or *fragment_program*
+-- could not be interpreted, the returned *shader_id* will be nil.
+-- To associate a successfully built shader to a vid, see ref:image_shader.
+-- @note: For GLSL120, reserved attributes are:
+-- modelview (mat4), projection (mat4), texturem (mat4).
+-- @note: For GLSL120, reserved uniforms are:
 -- trans_move (float, 0.0 .. 1.0), trans_scale (float, 0.0 .. 1.0)
 -- trans_rotate (float, 0.0 .. 1.0), obj_input_sz (vec2, orig w/h)
 -- obj_output_sz (vec2, current w/h), obj_storage_sz (vec2, texture
 -- storage w/h).
 -- @group: vidsys
+-- @related: shader_uniform, image_shader
 -- @cfunction: buildshader
 -- @flags:
-vshader = [[uniform mat4 modelview;
+
+local shfmt = {};
+shfmt["GLSL120"].vertex = [[
+uniform mat4 modelview;
 uniform mat4 projection;
 
 attribute vec4 vertex;
@@ -36,9 +48,11 @@ void main(void)
 {
 	texco = texcoord;
 	gl_Position = (projection * modelview) * vertex;
-}]];
+}
+]];
 
-fshader = [[uniform sampler2D map_diffuse;
+shfmt["GLSL120"].fragment = [[
+uniform sampler2D map_diffuse;
 uniform float obj_opacity;
 
 varying vec2 texco;
@@ -51,8 +65,14 @@ void main(){
 ]];
 
 function main()
+	local sh = shfmt[SHADER_LANGUAGE];
+	if (sh == nil) then
+		return shutdown("no matching shader for the platform language:" ..
+			SHADER_LANGUAGE, EXIT_FAILURE);
+	end
+
 #ifdef MAIN
-	build_shader(vshader, fshader, "default");
+	build_shader(sh.vertex, sh.fragment, "default");
 #endif
 
 #ifdef ERROR
@@ -61,9 +81,5 @@ function main()
 
 #ifdef ERROR2
 	build_shader(vshader, fshader, 0.5);
-#endif
-
-#ifdef ERROR3
-	build_shader(nil, nil, "default");
 #endif
 end
