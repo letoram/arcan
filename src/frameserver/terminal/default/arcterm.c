@@ -6,8 +6,10 @@
 
 /*
  * This is still a rather crude terminal emulator, owing most of its
- * actual work to libtsm -- there are quite a few interesting paths
- * to explore here when sandboxing etc. are in place, in particular.
+ * actual heavy lifting to David Hermans libtsm.
+ *
+ * There are quite a few interesting paths to explore here when
+ * sandboxing etc. are in place, in particular.
  *
  *   - virtualized /dev/ tree with implementations for /dev/dsp,
  *     /dev/mixer etc. and other device nodes we might want plugged
@@ -18,8 +20,8 @@
  *   - mapping / remapping existing file-descriptors in situ
  *
  *  and some more cosmetic things like less "resize- noise" terminal
- *  resize (period hint and rescale in between pulses) and "drag-n-drop"
- *  style font switching.
+ *  resize (period hint and rescale in between pulses), drag-n-drop
+ *  style font switching, dynamic pipe redirection, ...
  */
 #include <stdlib.h>
 #include <stdio.h>
@@ -49,8 +51,7 @@
 #include "frameserver.h"
 
 #define ARCAN_TTF_SUPPORT
-
-#include "graphing/net_graph.h"
+#include "../util/font_8x8.h"
 
 #ifdef ARCAN_TTF_SUPPORT
 #include "arcan_ttf.h"
@@ -71,7 +72,6 @@ static struct {
 	int screen_w, screen_h;
 	struct graph_context* graphing;
 
-	int last_fd;
 	struct arcan_shmif_cont acon;
 } term = {
 	.cell_w = 8,
@@ -277,15 +277,9 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 	}
 }
 
-static void targetev(arcan_event* tgtev)
+static void targetev(arcan_tgtevent* ev)
 {
-/*	arcan_tgtevent* ev = &tgtev->data.target; */
-
-	switch (tgtev->tgt.kind){
-	case TARGET_COMMAND_FDTRANSFER:
-		term.last_fd = arcan_fetchhandle(term.acon.dpipe);
-	break;
-
+	switch (ev->kind){
 /* switch palette? */
 	case TARGET_COMMAND_GRAPHMODE:
 	break;
@@ -303,28 +297,25 @@ static void targetev(arcan_event* tgtev)
 	break;
 
 	case TARGET_COMMAND_BCHUNK_IN:
-/* map last-fd to stdin for the active terminal */
-	break;
-
 	case TARGET_COMMAND_BCHUNK_OUT:
-/* map last-fd to stdout for the active terminal */
+/* map ioev[0].iv to some reachable known path in
+ * the terminal namespace, don't forget to dupe as it
+ * will be on next event */
 	break;
 
-	case TARGET_COMMAND_DISPLAYHINT:
+	case TARGET_COMMAND_DISPLAYHINT:{
+		size_t width = ev->ioevs[0].iv;
+		size_t height = ev->ioevs[1].iv;
+		arcan_shmif_resize(&sess->out, width, height);
+	}
 	break;
 
 	case TARGET_COMMAND_STORE:
-/* need a serialization format for current active terminal
- * environment, grab that, pack here and then unpack on restore */
-	break;
-
 	case TARGET_COMMAND_RESTORE:
-/* unpack environment from state and then inject into active shell */
+/* need a serialization format for current active terminal
+ * environment, grab that, pack and write into ev->tgt.ioevs[0].iv
+ * and then unpack on restore */
 	break;
-
-	case TARGET_COMMAND_SETIODEV:
-
- 	break;
 
 	case TARGET_COMMAND_EXIT:
 		exit(EXIT_SUCCESS);
@@ -359,7 +350,7 @@ static void main_loop()
 			break;
 
 			case EVENT_TARGET:
-				targetev(&ev);
+				targetev(&ev->tgt);
 			break;
 
 			default:
