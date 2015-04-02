@@ -1,7 +1,7 @@
 PROJECT( arcan )
 include(ExternalProject)
 include(CheckIncludeFiles)
-cmake_minimum_required(VERSION 2.8.0 FATAL_ERROR)
+cmake_minimum_required(VERSION 2.8.8 FATAL_ERROR)
 
 set(CMAKE_EXTERNAL_SRCDIR ${CMAKE_CURRENT_SOURCE_DIR}/external)
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake)
@@ -56,15 +56,15 @@ set(SHARED_PERMISSIONS_DIR OWNER_WRITE OWNER_READ GROUP_WRITE
 		GROUP_READ WORLD_EXECUTE WORLD_READ)
 
 if (WIN32)
-	set(VPLATFORM_STR "[ sdl ]")
+	set(VPLATFORM_STR "sdl")
 	set(VIDEO_PLATFORM "sdl")
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-	set(VPLATFORM_STR "[ sdl ]")
+	set(VPLATFORM_STR "sdl")
 	set(VIDEO_PLATFORM "sdl")
 else()
-	set(VPLATFORM_STR "[ x11 | x11-headless | sdl | egl-gles | egl-dri | egl-nvidia ]")
+	set(VPLATFORM_STR "x11|x11-headless|sdl|egl-gles|egl-dri|egl-nvidia")
 endif()
-set(AGPPLATFORM_STR "[ gl21 | gles2 | gles3 | stub ]")
+set(AGPPLATFORM_STR "gl21|gles2|gles3|stub")
 set( MAIN_LIBRARIES )
 
 #
@@ -228,59 +228,6 @@ endif()
 set(OPENCTM_LIBRARY openctm)
 set(ARCAN_DEFINITIONS "")
 
-# OS Specific libraries / dependencies first
-if(WIN32)
-	if (NOT WINDISTR)
-		set(WINDISTR ${CMAKE_CURRENT_SOURCE_DIR}/../data/distr/win32libs)
-		message("(windows) setting DLL search path to ${WINDISTR}")
-	endif()
-
-	set(WININC ${WINDISTR}/include)
-	message("(windows) include search path ${WINDISTR}/include")
-
-	set(CMAKE_INCLUDE_PATH ${WININC} /usr/local/include)
-	set(CMAKE_LIBRARY_PATH ${WINLIB} /usr/local/lib)
-
-# includes
-	set(SDL_INCLUDE_DIR ${WININC}\\SDL)
-	set(ZLIB_INCLUDE_DIR ${WININC})
-	set(BZIP2_INCLUDE_DIR ${WININC})
-	set(OPENAL_INCLUDE_DIR ${WININC}\\AL)
-	set(FREETYPE_INCLUDE_DIRS ${WININC})
-	set(LIBVLC_INCLUDE_DIR ${WININC})
-	set(APR_INCLUDE_DIR ${WININC}\\apr)
-	set(SQLITE3_INCLUDE_DIR ${WININC})
-	set(SDLIMAGE_INCLUDE_DIR ${WININC}\\SDL)
-	set(GLEW_INCLUDE_DIR ${WININC})
-
-# dynamic linkage
-	set(SQLITE3_LIBRARY_RELEASE ${WINDISTR}/sqlite3.dll)
-	set(BZIP2_LIBRARIES ${WINDISTR}/libbz2.a)
-	set(OPENAL_LIBRARY ${WINDISTR}/OpenAL32.lib)
-	set(FREETYPE_LIBRARY ${WINDISTR}/freetype6.dll)
-	set(ZLIB_LIBRARY ${WINDISTR}/zlib1.dll)
-	set(LIBVLC_LIBRARY ${WINDISTR}/libvlc.dll)
-	set(SDL_LIBRARY ${WINDISTR}/SDL.dll)
-	set(FFMPEG_LIBRARIES
-		${WINDISTR}/avcodec-55.dll
-		${WINDISTR}/avdevice-55.dll
-		${WINDISTR}/avfilter-4.dll
-		${WINDISTR}/avformat-55.dll
-		${WINDISTR}/avutil-52.dll
-		${WINDISTR}/swscale-2.dll
-		${WINDISTR}/swresample-0.dll
-	)
-
-# static linkage
-	set(APR_LIBRARY ${WINDISTR}/libapr-1.a)
-	set(PNG_LIBRARY /usr/local/lib/libpng16.a)
-	set(GLEW_LIBRARY ${WINDISTR}/glew32s.lib)
-
-	set(ENABLE_LWA OFF)
-	set(OS_PLATFORM_NAME "Win32")
-	set(VIDEO_PLATFORM "sdl") # there's no other ported options here
-endif()
-
 FIND_PACKAGE ( Freetype REQUIRED )
 FIND_PACKAGE ( PNG REQUIRED )
 
@@ -289,6 +236,7 @@ if (NOT AGP_PLATFORM)
 endif()
 
 SET (AGP_GL_SHARED
+	platform/video_platform.h
 	platform/agp/glshared.c
 	platform/agp/glfun.h
 	platform/agp/shdrmgmt.c
@@ -343,11 +291,6 @@ set(PLATFORM_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/platform)
 
 if (GLOBAL_CFLAGS)
 	add_definitions(${GLOBAL_CFLAGS})
-endif()
-
-if (ENABLE_LIBRETRO3D AND NOT ENABLE_LWA)
-	message("Libretro3D requires LWA build but none- was specified, disabling.")
-	set(ENABLE_LIBRETRO3D OFF)
 endif()
 
 if (VIDEO_PLATFORM STREQUAL "x11" OR VIDEO_PLATFORM STREQUAL "x11-headless")
@@ -514,17 +457,6 @@ if (NOT LUA_LIBRARIES)
 	set (LUA_LIBRARIES lua51 )
 endif (NOT LUA_LIBRARIES)
 
-if (DISABLE_FRAMESERVERS)
-	add_definitions(-DDISABLE_FRAMESERVERS)
-	set (ENABLE_NET OFF)
-	set (ENABLE_VIDDEC OFF)
-	set (ENABLE_REMOTING OFF)
-	set (ENABLE_VIDENC OFF)
-	set (ENABLE_VIDENCVNC OFF)
-	set (ENABLE_LIBRETRO OFF)
-	set (ENABLE_LIBRETRO3D OFF)
-endif()
-
 #
 # We split MAIN_LIBRARIES into ARCANMAIN_LIBRARIES and MAIN_LIBRARIES
 # as some customisations would conflict with building the LWA version.
@@ -551,8 +483,6 @@ LIST (APPEND
 	${FREETYPE_INCLUDE_DIRS}
 	${SQLITE3_INCLUDE_DIR}
 	${CMAKE_CURRENT_SOURCE_DIR}/platform
-	${CMAKE_CURRENT_SOURCE_DIR}/frameserver
-	${CMAKE_CURRENT_SOURCE_DIR}/frameserver/ntsc
 	${CMAKE_CURRENT_SOURCE_DIR}/external
 	${CMAKE_CURRENT_SOURCE_DIR}/shmif
 	${CMAKE_CURRENT_SOURCE_DIR}/engine
@@ -560,7 +490,9 @@ LIST (APPEND
 
 add_subdirectory( external/openctm )
 
-# --- Step 2, source files
+#
+# engine source files + graphics platform
+#
 list (APPEND
  SOURCES
  engine/arcan_event.c
@@ -590,10 +522,11 @@ list (APPEND
  shmif/arcan_shmif_control.c
  shmif/arcan_shmif_control.h
  shmif/arcan_shmif_event.h
- platform/video_platform.h
  ${AGP_SOURCES}
 )
 
+# database tool is sqlite3 + libc so less need to work
+# around with platform layers etc.
 set (ARCANDB_SOURCES
 	engine/arcan_dbtool.c
 	engine/arcan_db.c
@@ -610,11 +543,7 @@ set (SHMIF_SOURCES
 	shmif/arcan_shmif_event.h
 )
 
-# in split-mode, these will bundle with the platform
-# frameserver.c and then each subgroup by its own into
-# a separate binary, in (default) join mode, the final
-# FSRV_SOURCES will be composed of the subgroups
-# We do this because f*** GNU C extensions. Seriously.
+# since these are used on multiple targets, force the define here.
 set_property(SOURCE platform/posix/fdpassing.c
 	APPEND PROPERTY COMPILE_FLAGS -w)
 set_property(SOURCE platform/posix/fdpassing.c
@@ -649,182 +578,6 @@ if (ENABLE_LED)
 	add_definitions(-DARCAN_LED)
 endif()
 
-# Enable / Disable individual frameserver features
-if (ENABLE_LIBRETRO)
-	message("--> Adding libretro support.")
-	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}libretro ")
-	set(FSRV_LIBRETRO_SOURCES
-	 frameserver/libretro.h
-	 frameserver/libretro.c
-	 frameserver/stateman.h
-	 frameserver/stateman.c
-	 frameserver/ievsched.c
-	 frameserver/ievsched.h
-	 frameserver/sync_plot.h
-	 frameserver/sync_plot.c
-	 #	 frameserver/retexture.h
-	 #	 frameserver/retexture.c
-	 frameserver/resampler/resample.c
-	 frameserver/resampler/speex_resampler.h
-	 frameserver/ntsc/snes_ntsc.h
-	 frameserver/ntsc/snes_ntsc.c
-	 frameserver/graphing/net_graph.c
-	 frameserver/graphing/net_graph.h
-	 frameserver/graphing/font_8x8.h
-	)
-
-	if (ENABLE_LIBRETRO3D)
-		message("    |-> Enabling experimental 3D support.")
-		set_property( SOURCE frameserver/libretro.c
-			APPEND PROPERTY COMPILE_DEFINITIONS
-				FRAMESERVER_LIBRETRO_3D
-#				FRAMESERVER_LIBRETRO_3D_RETEXTURE -- developer feature in test
-				HEADLESS_PLATFORM=\"${LWA_HEADLESS}\"
-		)
-		LIST(APPEND FSRV_LIBRETRO_DEFINITIONS HEADLESS_NOARCAN)
-		LIST(APPEND FSRV_LIBRETRO_SOURCES ${AGP_SOURCES})
-		LIST(APPEND FSRV_LIBRETRO_LIBRARIES ${LWA_LIBRARIES} ${AGP_LIBRARIES})
-	endif()
-endif()
-
-if (ENABLE_NET)
-	message("--> Adding networking support.")
-	FIND_PACKAGE(APR REQUIRED)
-	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}net-cl net-srv ")
-
-	list(APPEND INCLUDE_DIRS ${APR_INCLUDE_DIR})
-	list(APPEND FSRV_NET_LIBRARIES ${APR_LIBRARIES} )
-	set(FSRV_NET_SOURCES
-		frameserver/graphing/net_graph.c
-		frameserver/graphing/net_graph.h
-		frameserver/graphing/font_8x8.h
-		frameserver/graphing/rwstat.c
-		frameserver/graphing/rwstat.h
-		frameserver/net.h
-		frameserver/net_srv.c
-		frameserver/net_cl.c
-		frameserver/net_shared.h
-		frameserver/net_shared.c
-	)
-endif()
-
-#
-# AVfeed is a convenience- mapped input skeleton frameserver
-# for hooking up custom input sources
-#
-if (AVFEED_SOURCES)
-	list(APPEND FSRV_AVFEED_SOURCES ${AVFEED_SOURCES})
-	list(APPEND FSRV_AVFEED_LIBRARIES ${AVFEED_LIBS})
-	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}avfeed ")
-endif()
-
-if (ENABLE_VIDDEC)
-	FIND_PACKAGE( VLC )
-	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}decode ")
-	set(FSRV_DECODE_SOURCES
-		frameserver/decode_vlc.c
-		external/fft/kiss_fft.c
-		external/fft/kiss_fftr.c
-	)
-
-	set(FSRV_DECODE_LIBRARIES
-		${LIBVLC_LIBRARY}
-	)
-
-	list(APPEND INCLUDE_DIRS
-		${LIBVLC_INCLUDE_DIR}
-	)
-endif()
-
-if (ENABLE_TERMINAL)
-	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}terminal ")
-	FIND_PACKAGE(TSM REQUIRED)
-
-	if (LIBTSM_FOUND)
-	message("--> Adding terminal support.")
-	set(FSRV_TERMINAL_SOURCES
-		frameserver/arcterm.c
-		frameserver/shl/shl-pty.c
-		frameserver/shl/shl-ring.c
-		frameserver/graphing/net_graph.c
-		engine/arcan_ttf.c
-	)
-	set(FSRV_TERMINAL_LIBRARIES
-		${LIBTSM_LIBRARIES}
-		${FREETYPE_LIBRARY}
-		util
-	)
-	list(APPEND INCLUDE_DIRS
-		${LIBTSM_INCLUDE_DIRS}
-	)
-	else()
-		message("libtsm not found, terminal disabled.")
-	endif()
-endif()
-
-if (${ENABLE_REMOTING})
-	FIND_PACKAGE(VNC REQUIRED)
-
-	if(${LIBVNC_FOUND})
-	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}remoting ")
-	message("--> Adding remoting (vnc) support.")
-	set(FSRV_REMOTING_LIBRARIES
-		${LIBVNC_LIBRARIES})
-	set(FSRV_REMOTING_SOURCES
-		frameserver/remoting.c
-	)
-	list(APPEND INCLUDE_DIRS
-		${LIBVNC_INCLUDE_DIRS}
-	)
-	else()
-		message("libvnc not found, remoting disabled.")
-	endif()
-endif()
-
-if (${ENABLE_VIDENC})
-	FIND_PACKAGE (FFMPEG REQUIRED)
-
-	message("--> Adding video encoding (ffmpeg) support.")
-	FIND_PACKAGE(BZip2 REQUIRED)
-
-	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}encode ")
-	set(FSRV_ENCODE_LIBRARIES
-		${FFMPEG_LIBRARIES}
-		pthread
-		${BZIP2_LIBRARIES}
-		${ZLIB_LIBRARY}
-	)
-
-	set(FSRV_ENCODE_SOURCES
-		frameserver/encode.c
-		frameserver/encode_presets.c
-		frameserver/encode_presets.h
-	)
-
-	if (${ENABLE_VIDENCVNC})
-		FIND_PACKAGE(VNC)
-		if (${LIBVNC_FOUND})
-			message("   |--> VNC Server libraries found, enabling vnc support in encoder.")
-			set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}encode-vnc ")
-			list(APPEND INCLUDE_DIRS ${LIBVNC_INCLUDE_DIRS})
-			list(APPEND FSRV_ENCODE_SOURCES
-				frameserver/vncserver.h
-				frameserver/vncserver.c
-			)
-			set_property(SOURCE frameserver/encode.c APPEND PROPERTY
-				COMPILE_DEFINITIONS HAVE_VNCSERVER)
-		 	list(APPEND FSRV_ENCODE_LIBRARIES ${LIBVNC_LIBRARIES})
-		else()
-			message("   |--> VNC Server libraries not found, disabling vnc support.")
-		endif()
-	endif()
-
-	list(APPEND INCLUDE_DIRS
-		${FFMPEG_INCLUDE_DIRS}
-		${FFMPEG_LIBAVCODEC_INCLUDE_DIR}
-	)
-endif()
-
 if (SQLITE_AMALGAMATE)
 	message("--> Embedding the SQLite Amalgamation.")
 	list(APPEND SOURCES external/sqlite3/sqlite3.c)
@@ -841,10 +594,6 @@ endif()
 
 set(ENGINE_BUILDTAG ${ENGINE_BUILDTAG}-${VIDEO_PLATFORM}-${AGP_PLATFORM}-${AUDIO_PLATFORM}-${INPUT_PLATFORM}-${LUA_TAG})
 
-set_property(SOURCE engine/arcan_lua.c engine/arcan_main.c APPEND PROPERTY
-	COMPILE_DEFINITIONS FRAMESERVER_MODESTRING=\"${FRAMESERVER_MODESTRING}\"
-	LUA_DROPSTR=\"${LUA_DROPSTR}\" ARCAN_BUILDVERSION=\"${ENGINE_BUILDTAG}\")
-
 set (SHMIF_SOURCES
   shmif/arcan_shmif.h
 	shmif/arcan_shmif_interop.h
@@ -856,44 +605,65 @@ set (SHMIF_SOURCES
 
 include_directories(${INCLUDE_DIRS})
 
-message("\n---- Stage 1 configuration: ----")
+message("\n---- Stage 1 configuration ----")
 message("video output (VIDEO_PLATFORM) set to : ${VIDEO_PLATFORM}")
 message("audio output (AUDIO_PLATFORM) set to : ${AUDIO_PLATFORM}")
 message("device input (INPUT_PLATFORM) set to : ${INPUT_PLATFORM}")
-message("frameserver features: ${FRAMESERVER_MODESTRING}")
 
+#
+# Expand with more platforms as needed, all are expected to define
+# PLATFORM_[ ,fsrv, shmif]_SOURCES, add a global definition
+# for PLATFORM_HEADER add any OS- specific definitions to
+# MAIN_LIBRARIES, set OS_DYLIB_EXTENSION
+#
 if (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
-	message("\n---- Stage 2, FreeBSD specific configuration ----")
+	message("\n---- Stage 2, FreeBSD specific ----")
 	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/CMakeLists.FreeBSD)
 
 elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-	message("\n---- Stage 2, Linux specific configuration ----")
+	message("\n---- Stage 2, Linux specific ----")
 	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/CMakeLists.Linux)
 
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
-	message("\n---- Stage 2, Windows specific configuration ----")
+	message("\n---- Stage 2, Windows specific ----")
 	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/CMakeLists.Windows)
 
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-	message("\n---- Stage 2, OS X specific configuration ----")
+	message("\n---- Stage 2, OSX/Darwin specific ----")
 	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/CMakeLists.Darwin)
 
 else()
 	message(FATAL_ERROR "Unsupported OS detected, abandon ship!.")
 endif()
 
-message("\n---- Stage 3, Linking / Packaging ----")
+message("\n---- Stage 3, SHMIF Library ----")
+add_library(arcan-shmif STATIC ${SHMIF_SOURCES} ${PLATFORM_SHMIF_SOURCES})
+
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+add_subdirectory(frameserver)
+
+set_property(SOURCE engine/arcan_lua.c engine/arcan_main.c APPEND PROPERTY
+	COMPILE_DEFINITIONS FRAMESERVER_MODESTRING=\"${FRAMESERVER_MODESTRING}\"
+	LUA_DROPSTR=\"${LUA_DROPSTR}\" ARCAN_BUILDVERSION=\"${ENGINE_BUILDTAG}\")
+
+message("\n---- Stage 4, Linking / Packaging ----")
+
+if (ENABLE_LWA)
+	message("\n---- Stage 4, LWA Build ----")
+	include(platform/CMakeLists.LWA)
+else()
+	message("\n---- Stage 4, LWA Build (omitted) ----")
+endif()
+
+add_executable( arcan_db ${ARCANDB_SOURCES} )
+target_link_libraries( arcan_db ${STDLIB} ${SQLITE3_LIBRARIES})
 
 # GCC *** requiring dl to be the last argument to avoid dlclose in some
 # edge-cases? just take them out behind the shed and pull the trigger.
 
-add_executable( arcan_db ${ARCANDB_SOURCES} )
-target_link_libraries( arcan_db ${STDLIB} ${SQLITE3_LIBRARIES})
+add_executable( arcan ${SOURCES} ${PLATFORM_SOURCES} )
+set_property(TARGET arcan APPEND PROPERTY COMPILE_DEFINITIONS ${ARCAN_DEFINITIONS})
 target_link_libraries( arcan ${STDLIB} ${MAIN_LIBRARIES} ${ARCANMAIN_LIBRARIES})
-
-if (NOT DISABLE_FRAMESERVERS)
-target_link_libraries( arcan_frameserver ${STDLIB} ${FSRV_LIBRARIES})
-endif()
 
 #
 # The database tool is a CLI for the engine/arcan_db with additional
@@ -904,108 +674,3 @@ endif()
 
 set_property(TARGET arcan_db APPEND PROPERTY
 				COMPILE_DEFINITIONS ARCAN_DB_STANDALONE )
-
-#
-# For LWA we need some kind of sound backend. In a sandbox,
-# LWA is not (by default) supposed to get access to any audio device outside
-# the shared memory interface. Therefore we build a patched version of
-# openal, that's linked statically with only a shmif- based backend
-#
-if (ENABLE_LWA)
-	SET (ALPATCHES
-		${CMAKE_CURRENT_SOURCE_DIR}/external/patches/openal/0001-adding-arcan-shmif-support.patch
-		${CMAKE_CURRENT_SOURCE_DIR}/external/patches/openal/0002-arcan-shmif-backend-working.patch
-	)
-
-#
-# Note the || echo "" on the PATCH_COMMAND line, it was added to have
-# cmake IGNORE the return status of the git am command as when the patches
-# have been applied the first time, they are erroneously added AGAIN IF you
-# do a make clean && make.
-#
-	ExternalProject_Add(openal_soft
-		SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/openal_soft
-		GIT_REPOSITORY "${GIT_MIRROR}/openal-soft.git"
-		UPDATE_COMMAND ""
-		PATCH_COMMAND ${EXEC} git am -q ${ALPATCHES} || true
-		INSTALL_COMMAND ""
-		CMAKE_ARGS
-			-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-			-DCMAKE_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}
-			-DALSOFT_BACKEND_ALSA=OFF
-			-DALSOFT_BACKEND_OSS=OFF
-			-DALSOFT_BACKEND_PULSEAUDIO=OFF
-			-DALSOFT_BACKEND_PORTAUDIO=OFF
-			-DALSOFT_BACKEND_WAVE=OFF
-			-DALSOFT_MIDI_FLUIDSYNTH=OFF
-			-DALSOFT_BACKEND_ARCAN=ON
-			-DALSOFT_REQUIRE_ARCAN=ON
-			-DALSOFT_EXAMPLES=OFF
-			-DALSOFT_DLOPEN=OFF
-			-DALSOFT_UTILS=OFF
-			-DALSOFT_CONFIG=OFF
-		 	-DLIBTYPE=STATIC
-			-DARCAN_SHMIF_PATH=${CMAKE_CURRENT_SOURCE_DIR}/shmif
-			-DARCAN_SHMIF_PLATFORM=${FSRV_PLATFORM_SOURCES}
-			-DARCAN_SHMIF_PLATFORM_HEADER=${PLATFORM_PATH}/../platform.h
-	)
-
-	set_property(TARGET arcan_lwa APPEND PROPERTY
-		COMPILE_DEFINITIONS ARCAN_LWA WITH_HEADLESS_MAIN)
-
-	add_dependencies( arcan_lwa openal_soft )
-	target_link_libraries( arcan_lwa ${STDLIB} ${MAIN_LIBRARIES} ${LWA_LIBRARIES}
-		${CMAKE_CURRENT_BINARY_DIR}/openal_soft-prefix/src/openal_soft-build/libcommon.a
-		${CMAKE_CURRENT_BINARY_DIR}/openal_soft-prefix/src/openal_soft-build/libopenal.a
-	)
-endif()
-
-#
-# Collective sigh for stupid standard breaking features (nested functions, seriously..).
-# one GNU extension is forcibly used here, variable size structure member
-# not at end of struct (for Linux/CMSG) else we'd be c11.
-# C11 requirement is for _Alignas and _Atomic
-#
-if (NOT DISABLE_FRAMESERVERS)
-install(TARGETS arcan_frameserver ${FSRV_TARGETS} DESTINATION ${BIN_DST})
-endif()
-
-install(TARGETS arcan DESTINATION ${BIN_DST})
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/../data/appl/
-	DESTINATION ${APPL_DST}
-	DIRECTORY_PERMISSIONS ${SHARED_PERMISSONS_DIR}
-	FILE_PERMISSIONS ${SHARED_PERMISSIONS}
-	PATTERN ".gitignore" EXCLUDE)
-
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/../examples/
-	DESTINATION ${APPL_DST}
-	DIRECTORY_PERMISSIONS ${SHARED_PERMISSIONS_DIR}
-	FILE_PERMISSIONS ${SHARED_PERMISSIONS}
-	PATTERN ".gitignore" EXCLUDE)
-
-if (TEST_DST)
-	install(DIRECTORY ${CMAKE_SOURCE_DIR}/../tests/
-		DESTINATION ${TEST_DST}
-		DIRECTORY_PERMISSIONS ${SHARED_PERMISSIONS_DIR}
-		FILE_PERMISSIONS ${SHARED_PERMISSIONS}
-		PATTERN ".gitignore" EXCLUDE)
-endif (TEST_DST)
-
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/../data/resources/
-				DESTINATION ${RESOURCES_DST}
-				DIRECTORY_PERMISSIONS ${SHARED_PERMISSONS_DIR}
-				FILE_PERMISSIONS ${SHARED_PERMISSIONS}
-				PATTERN ".gitignore" EXCLUDE)
-
-INCLUDE(InstallRequiredSystemLibraries)
-set(CPACK_SOURCE_IGNORE_FILES "/\\\\..*$;~$;${CPACK_SOURCE_IGNORE_FILES}")
-set(CPACK_PACKAGE_NAME "Arcan")
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Lua scriptable 2D/3D multimedia framework.")
-set(CPACK_PACKAGE_DESCRIPTION "Arcan is a fast, portable and lightweight Lua scriptable multimedia framework for developing games, visualization tools, monitoring systems and desktop applications. Among its many features, it can act as a display server, compositor and app- engine with support for video encoding, decoding and streaming, networking and remoting protocols e.g. VNC, hijacking and manipulating legacy application for in-process probing, and more.")
-set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/../COPYING")
-
-set(CPACK_PACKAGE_VERSION_MAJOR ${MAJOR_VERSION} )
-set(CPACK_PACKAGE_VERSION_MINOR ${MINOR_VERSION} )
-set(CPACK_PACKAGE_VERSION_PATCH ${PATCH_LEVEL} )
-set(CPACK_PACKAGE_CONTACT "contact@arcan-fe.com")
-INCLUDE( CPack )

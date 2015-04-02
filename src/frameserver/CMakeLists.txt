@@ -1,199 +1,55 @@
-# Builds on FSRV_[MODE]_SOURCES, FSRV_[MODE]_LIBRARIES,
-# FSRV_PLATFORM_SOURCES
-# FSRV_SOURCES
+#
+# Pulled in from src/CMakeLists.txt
+#
+# Expects:
+#  FSRV_PLATFORM (defined by platforms/CMakeLists.*)
+#  FSRV_INCLUDES (defined by CMakeLists.txt + platforms/CMakeLists.*)
+#  ARCAN_SHMIF_LIBS (currently defined by platforms/CMakeLists.*)
+#  ARCAN_SHMIF_INCLUDES
 
-set(FSRV_TARGETS
-	arcan_frameserver)
+# Options:
+# [ SPLIT_FRAMESERVER ] (different outputs)
+# [ DISABLE_FRAMESERVERS ] ignored entirely
+# FSRV_[ATYPE = subgroup (if not set, default is used)
+# FSRV_[ATYPE = subgroup]_REQUIRED (set if the module should fail on deps)
+#
+# Defines:
+# FSRV_MODES (list of ENABLE_FSRV_ATYPE)
+# FRAMESERVER_MODESTRING (exposed to scripting API)
+#
 
-if (NOT DISABLE_FRAMESERVERS)
-if (SPLIT_FRAMESERVER)
-message("---- Building frameserver in SPLIT mode ----")
+set(FSRV_PLATFORM ${FSRV_PLATFORM}
+	${CMAKE_CURRENT_SOURCE_DIR}/frameserver.h
+	${CMAKE_CURRENT_SOURCE_DIR}/frameserver.c
+)
 
-	if (FSRV_DECODE_SOURCES)
-		add_executable(arcan_frameserver_decode
-			${FSRV_SOURCES}
-			${FSRV_PLATFORM_SOURCES}
-			${FSRV_DECODE_SOURCES}
-		)
-		set_property(TARGET arcan_frameserver_decode APPEND PROPERTY
-			COMPILE_DEFINITIONS ARCAN_SHMIF_THREADSAFE_QUEUE
-			ENABLE_FSRV_DECODE DEFAULT_FSRV_MODE=\"decode\")
+set(FSRV_ROOTPATH ${CMAKE_CURRENT_SOURCE_DIR})
 
-		target_link_libraries(arcan_frameserver_decode
-			${STDLIB}
-			${FSRV_PLATFORM_LIBRARIES}
-			${FSRV_DECODE_LIBRARIES}
-		)
-		LIST(APPEND FSRV_TARGETS arcan_frameserver_decode)
-	endif()
+set(ARCHETYPES
+				#	terminal
+				#	net
+				#	game
+				#	decode
+				#	encode
+				#	remoting
+	avfeed
+)
 
-	if (FSRV_ENCODE_SOURCES)
-		add_executable(arcan_frameserver_record
-			${FSRV_SOURCES}
-			${FSRV_PLATFORM_SOURCES}
-			${FSRV_ENCODE_SOURCES}
-		)
-		set_property(TARGET arcan_frameserver_record APPEND PROPERTY
-			COMPILE_DEFINITIONS ARCAN_SHMIF_THREADSAFE_QUEUE
-			ENABLE_FSRV_ENCODE DEFAULT_FSRV_MODE=\"record\")
-		target_link_libraries(arcan_frameserver_record
-			${STDLIB}
-			${FSRV_PLATFORM_LIBRARIES}
-			${FSRV_ENCODE_LIBRARIES}
-		)
-		LIST(APPEND FSRV_TARGETS arcan_frameserver_record)
-	endif()
+foreach(archetype ${ARCHETYPES})
+	add_subdirectory(${archetype})
+endforeach()
 
-	if (FSRV_TERMINAL_SOURCES)
-		add_executable(arcan_frameserver_terminal
-			${FSRV_SOURCES}
-			${FSRV_PLATFORM_SOURCES}
-			${FSRV_TERMINAL_SOURCES})
-		set_property(TARGET arcan_frameserver_terminal APPEND PROPERTY
-			COMPILE_DEFINITIONS ENABLE_FSRV_TERMINAL DEFAULT_FSRV_MODE=\"terminal\")
-		target_link_libraries(arcan_frameserver_terminal
-			${STDLIB}
-			${FSRV_PLATFORM_LIBRARIES}
-			${FSRV_TERMINAL_LIBRARIES}
-		)
-		LIST(APPEND FSRV_TARGETS arcan_frameserver_terminal)
-	endif()
+set_property(TARGET afsrv_avfeed APPEND PROPERTY
+	COMPILE_DEFINITIONS ENABLE_FSRV_AVFEED DEFAULT_FSRV_MODE=\"avfeed\")
 
-	if (FSRV_REMOTING_SOURCES)
-		add_executable(arcan_frameserver_remoting
-			${FSRV_SOURCES}
-			${FSRV_PLATFORM_SOURCES}
-			${FSRV_REMOTING_SOURCES})
-		set_property(TARGET arcan_frameserver_remoting APPEND PROPERTY
-			COMPILE_DEFINITIONS ARCAN_SHMIF_THREADSAFE_QUEUE
-			ENABLE_FSRV_REMOTING DEFAULT_FSRV_MODE=\"remoting\")
-		target_link_libraries(arcan_frameserver_remoting
-			${STDLIB}
-			${FSRV_PLATFORM_LIBRARIES}
-			${FSRV_REMOTING_LIBRARIES}
-		)
-		LIST(APPEND FSRV_TARGETS arcan_frameserver_remoting)
-	endif()
-
-	if (FSRV_AVFEED_SOURCES)
-		add_executable(arcan_frameserver_avfeed
-			${FSRV_SOURCES}
-			${FSRV_PLATFORM_SOURCES}
-			${FSRV_AVFEED_SOURCES}
-		)
-		set_property(TARGET arcan_frameserver_avfeed APPEND PROPERTY
-			COMPILE_DEFINITIONS ENABLE_FSRV_AVFEED DEFAULT_FSRV_MODE=\"avfeed\")
-		target_link_libraries(arcan_frameserver_avfeed
-			${STDLIB}
-			${FSRV_AVFEED_LIBRARIES}
-		)
-		LIST(APPEND FSRV_TARGETS arcan_frameserver_avfeed)
-	endif()
-
-	if (FSRV_NET_SOURCES)
-		add_executable(arcan_frameserver_net
-			${FSRV_SOURCES}
-			${FSRV_PLATFORM_SOURCES}
-			${FSRV_NET_SOURCES}
-		)
-# shouldn't be run as non-auth.
-		set_property(TARGET arcan_frameserver_net APPEND PROPERTY
-			COMPILE_DEFINITIONS ARCAN_SHMIF_THREADSAFE_QUEUE
-			ENABLE_FSRV_NET	DEFAULT_FSRV_MODE=\"net\")
-		target_link_libraries(arcan_frameserver_net
-			${STDLIB}
-			${FSRV_PLATFORM_LIBRARIES}
-			${FSRV_NET_LIBRARIES}
-		)
-		LIST(APPEND FSRV_TARGETS arcan_frameserver_net)
-	endif()
-
-	if (FSRV_LIBRETRO_SOURCES)
-		add_executable(arcan_frameserver_libretro
-			${FSRV_SOURCES}
-			${FSRV_PLATFORM_SOURCES}
-			${FSRV_LIBRETRO_SOURCES}
-		)
-
-		set_property(TARGET arcan_frameserver_libretro APPEND PROPERTY
-			COMPILE_DEFINITIONS ARCAN_SHMIF_THREADSAFE_QUEUE
-			${FSRV_LIBRETRO_DEFINITIONS}
-			ENABLE_FSRV_LIBRETRO DEFAULT_FSRV_MODE=\"libretro\")
-
-		target_link_libraries(arcan_frameserver_libretro
-			${STDLIB}
-			${FSRV_PLATFORM_LIBRARIES}
-			${FSRV_LIBRETRO_LIBRARIES}
-		)
-		LIST(APPEND FSRV_TARGETS arcan_frameserver_libretro)
-	endif()
-
-	add_executable( arcan_frameserver ${FSRV_SOURCES} ${FSRV_PLATFORM_SOURCES})
-	target_link_libraries(arcan_frameserver ${FSRV_PLATFORM_LIBRARIES})
-	set_property(TARGET arcan_frameserver APPEND PROPERTY
-		COMPILE_DEFINITIONS ARCAN_FRAMESERVER_SPLITMODE)
-
-else(SPLIT_FRAMESERVER)
-message("---- Building Frameserver in COMBINED mode ----")
-	set(definitions ARCAN_SHMIF_THREADSAFE_QUEUE)
-
-	if (FSRV_DECODE_SOURCES)
-		message(" |-> encode/decode added to frameserver")
-		list(APPEND FSRV_SOURCES
-			${FSRV_DECODE_SOURCES}
-			${FSRV_ENCODE_SOURCES})
-		list(APPEND FSRV_LIBRARIES
-			${FSRV_DECODE_LIBRARIES}
-			${FSRV_ENCODE_LIBRARIES})
-		list(APPEND definitions ENABLE_FSRV_DECODE ENABLE_FSRV_ENCODE)
-	endif()
-
-	if (FSRV_NET_SOURCES)
-		message(" |-> networking added to frameserver")
-		list(APPEND FSRV_SOURCES
-			${FSRV_NET_SOURCES})
-		list(APPEND FSRV_LIBRARIES
-			${FSRV_NET_LIBRARIES})
-		list(APPEND definitions ENABLE_FSRV_NET)
-	endif()
-
-	if (FSRV_AVFEED_SOURCES)
-		message(" |-> custom avfeed added to frameserver")
-		list(APPEND FSRV_SOURCES ${FSRV_AVFEED_SOURCES})
-		list(APPEND FSRV_LIBRARIES ${FSRV_AVFEED_LIBRARIES})
-		list(APPEND definitions ENABLE_FSRV_AVFEED)
-	endif()
-
-	if (FSRV_LIBRETRO_SOURCES)
-		message(" |-> libretro added to frameserver")
-		list(APPEND FSRV_SOURCES
-			${FSRV_LIBRETRO_SOURCES})
-		list(APPEND FSRV_LIBRARIES
-			${FSRV_LIBRETRO_LIBRARIES})
-		list(APPEND definitions ENABLE_FSRV_LIBRETRO)
-	endif()
-
-	if (FSRV_TERMINAL_SOURCES)
-		message(" |-> terminal added to frameserver")
-		list(APPEND FSRV_SOURCES
-			${FSRV_TERMINAL_SOURCES})
-		list(APPEND FSRV_LIBRARIES
-			${FSRV_TERMINAL_LIBRARIES})
-		list(APPEND definitions ENABLE_FSRV_TERMINAL)
-	endif()
-
-	if (FSRV_REMOTING_SOURCES)
-		message(" |-> remoting added to frameserver")
-		list(APPEND FSRV_SOURCES
-			${FSRV_REMOTING_SOURCES})
-		list(APPEND FSRV_LIBRARIES
-			${FSRV_REMOTING_LIBRARIES})
-		list(APPEND definitions ENABLE_FSRV_REMOTING)
-	endif()
-
-	add_executable( arcan_frameserver ${FSRV_SOURCES} ${FSRV_PLATFORM_SOURCES})
-	target_link_libraries(arcan_frameserver ${FSRV_PLATFORM_LIBRARIES})
-	set_property(TARGET arcan_frameserver APPEND PROPERTY
-		COMPILE_DEFINITIONS ${definitions})
-endif(SPLIT_FRAMESERVER)
-endif(NOT DISABLE_FRAMESERVERS)
+#
+# afsrv is a chainloader, it takes a mode as first argument that
+# matches any of the specified archetypes to allow for a non-interactive,
+# non-parsing loader that can be given additional capabilities / privileges
+# that are then dropped when setting up the specific sandbox.
+#
+# it is also used to track descriptor / environment leaks from the parent
+#
+add_executable(arcan_frameserver frameserver.c)
+set_property(TARGET arcan_frameserver APPEND PROPERTY
+	COMPILE_DEFINITIONS AFSRV_CHAINLOADER)

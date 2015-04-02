@@ -12,57 +12,15 @@
 #include <arcan_shmif.h>
 #include "frameserver.h"
 
-static void update_frame(struct arcan_shmif_cont* shms, uint32_t val)
+static void update_frame(struct arcan_shmif_cont* shms, shmif_pixel val)
 {
-	uint32_t* cptr = shms->vidp;
+	shmif_pixel* cptr = shms->vidp;
 
 	int np = shms->addr->w * shms->addr->h;
 	for (int i = 0; i < np; i++)
 		*cptr++ = val;
 
 	arcan_shmif_signal(shms, SHMIF_SIGVID);
-}
-
-struct seginf {
-	struct arcan_event ev;
-	struct arcan_shmif_cont shms;
-	uint32_t* vidp;
-	uint16_t* audp;
-};
-
-static void* segthread(void* arg)
-{
-	struct seginf* seg = (struct seginf*) arg;
-	uint8_t green = 0;
-
-	arcan_shmif_resize(&seg->shms, 320, 200);
-
-	while(seg->shms.addr->dms){
-		arcan_event ev;
-		printf("waiting for events\n");
-		while(1 == arcan_shmif_wait(&seg->shms, &ev)){
-			printf("got event\n");
-			if (ev.category == EVENT_TARGET &&
-				ev.tgt.kind == TARGET_COMMAND_EXIT){
-				printf("parent requested termination\n");
-				update_frame(&seg->shms, 0xffffff00);
-				return NULL;
-			}
-			update_frame(&seg->shms, 0xff000000 | (green++ << 8));
-		}
-	}
-
-	return NULL;
-}
-
-static void mapseg(struct arcan_shmif_cont* parent)
-{
-	struct seginf* newseg = malloc(sizeof(struct seginf));
-	newseg->shms = arcan_shmif_acquire(parent, NULL,
-		SEGID_GAME, SHMIF_DISABLE_GUARD);
-
-	pthread_t thr;
-	pthread_create(&thr, NULL, segthread, newseg);
 }
 
 static void dump_help()
@@ -76,9 +34,7 @@ static void dump_help()
  * Quick skeleton to map up a audio/video/input
  * source to an arcan frameserver along with some helpers.
  */
-int arcan_frameserver_avfeed_run(
-	struct arcan_shmif_cont* con,
-	struct arg_arr* args)
+int afsrv_avfeed(struct arcan_shmif_cont* con, struct arg_arr* args)
 {
 	struct arcan_shmif_cont shms = *con;
 	if (!con){
@@ -91,38 +47,22 @@ int arcan_frameserver_avfeed_run(
 		return EXIT_FAILURE;
 	}
 
-	update_frame(&shms, 0xffffffff);
+	update_frame(&shms, RGBA(0xff, 0xff, 0xff, 0xff));
+	arcan_event ev;
 
-/*
- * request a new segment
- */
-	arcan_event ev = {
-		.category = EVENT_EXTERNAL,
-		.ext.kind = EVENT_EXTERNAL_SEGREQ
-	};
-
-	arcan_shmif_enqueue(&shms, &ev);
-
-	while(1){
-		while (1 == arcan_shmif_wait(&shms, &ev)){
+	while(1)
+		while(1 == arcan_shmif_wait(&shms, &ev)){
 			if (ev.category == EVENT_TARGET){
-			if (ev.tgt.kind == TARGET_COMMAND_NEWSEGMENT)
-				mapseg(&shms);
-			else if (ev.tgt.kind == TARGET_COMMAND_EXIT){
-				printf("parent requested termination, leaving.\n");
+			if (ev.tgt.kind == TARGET_COMMAND_EXIT){
+				fprintf(stdout, "parent requested termination, leaving.\n");
 				return EXIT_SUCCESS;
 			}
 			else {
 				static int red;
-				update_frame(&shms, 0xff000000 | red++);
+				update_frame(&shms, RGBA(red++, 0x00, 0x00, 0xff));
+			}
 			}
 		}
-/*
- *	event dispatch loop, look at shmpage interop,
- *	valid categories here should (at least)
- *	be EVENT_SYSTEM, EVENT_IO, EVENT_TARGET
- */
-		}
-	}
+
 	return EXIT_FAILURE;
 }
