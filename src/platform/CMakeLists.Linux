@@ -1,3 +1,19 @@
+#
+# Pick platform files for frameservers, hijack libraries etc.
+#
+# Expects:
+#  PLATFORM_PATH
+#
+# Defines:
+#  PLATFORM_SOURCES
+#  PLATFORM_FSRV_SOURCES
+#  PLATFORM_SHMIF_SOURCES
+#
+#  ARCAN_SHMIF_INCLUDES
+#  PLATFORM_HEADER (global)
+#  OS_DYLIB_EXTENSION
+#
+
 set (PLATFORM_PATH ${PLATFORM_ROOT}/posix)
 
 add_definitions(-DPLATFORM_HEADER=\"${PLATFORM_PATH}/../platform.h\" -std=gnu11
@@ -41,14 +57,13 @@ if (ENABLE_LED)
 	)
 endif()
 
-set (FSRV_PLATFORM_SOURCES
+set (FSRV_PLATFORM
 	${PLATFORM_PATH}/warning.c
 	${PLATFORM_PATH}/time.c
 	${PLATFORM_PATH}/sem.c
 	${PLATFORM_PATH}/base64.c
 	${PLATFORM_PATH}/mem.c
 	${PLATFORM_PATH}/fdpassing.c
-	${SHMIF_SOURCES}
 )
 
 set (LWA_PLATFORM_SOURCES
@@ -76,80 +91,6 @@ set (
 	${SHMIF_SOURCES}
 )
 
-LIST(APPEND FSRV_SOURCES frameserver/frameserver.c)
 LIST(APPEND STDLIB
  rt
  dl)
-include(${PLATFORM_ROOT}/CMakeLists.fsrv)
-
-#
-# For LWA support, we default to a different video platform as all
-# we need is a headless (possibly unaccelerated if paranoid) way of rendering
-# GL into the shared memory buffer.
-#
-# (to get GL up and running) and substitute the shmif for input/audio
-# Audio is managed by building / linking a special AL-soft with a
-# backend that uses the shmif.
-#
-if (ENABLE_LWA)
-	message("LWA support enabled, video backend (EGL/X11, hardcoded)")
-	add_executable(arcan_lwa
-		${SOURCES}
-		${LWA_PLATFORM_SOURCES}
-	)
-
-	set_property(TARGET arcan_lwa APPEND PROPERTY
-		COMPILE_DEFINITIONS HEADLESS_PLATFORM=\"${LWA_HEADLESS}\")
-endif()
-
-add_library(arcan_hijack SHARED ${HIJACK_SOURCES})
-
-set_property(TARGET arcan_hijack APPEND PROPERTY
-	COMPILE_DEFINITIONS ENABLE_X11HIJACK ENABLE_WINE_HIJACK)
-
-target_link_libraries(arcan_hijack
-	${SDL_LIBRARY}
-	${AGP_LIBRARIES}
-	${STDLIB}
-)
-set(BIN_DST ${CMAKE_INSTALL_PREFIX}/bin)
-set(APPL_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/appl)
-set(RESOURCES_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/resources)
-
-add_executable( arcan ${SOURCES} ${PLATFORM_SOURCES} )
-set_property(TARGET arcan APPEND PROPERTY COMPILE_DEFINITIONS ${ARCAN_DEFINITIONS})
-
-install(TARGETS arcan_hijack DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
-
-if (ENABLE_32BITHIJACK)
-	message("(*) 64-bit target detected, building compat. 32-bit hijack library")
-
-	add_library(arcan_hijack32 SHARED ${HIJACK_SOURCES})
-
-	set_property(TARGET arcan_hijack32 APPEND PROPERTY
-		COMPILE_FLAGS "-m32")
-	set_property(TARGET arcan_hijack32 APPEND PROPERTY
-		COMPILE_DEFINITIONS ENABLE_X11HIJACK ENABLE_WINE_HIJACK)
-	 	target_link_libraries(arcan_hijack32 ${STDLIB} -m32 )
-	install(TARGETS arcan_hijack32 DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
-endif (ENABLE_32BITHIJACK)
-
-# install(FILES ${CMAKE_SOURCE_DIR}/utils/arcan_romman.rb DESTINATION ${BIN_DST}
-# 	PERMISSIONS
-#		WORLD_READ WORLD_EXECUTE
-#		OWNER_WRITE OWNER_READ OWNER_EXECUTE
-#		GROUP_READ GROUP_EXECUTE
-#)
-
-#
-# can we add a separate install targument for dev-man?
-# or better yet, add to /usr/share/doc/arcan/man and hint at
-# setting an alias to get the manpage support.
-#
-# same with vim highlights
-#
-
-install(FILES ${CMAKE_SOURCE_DIR}/../doc/arcan.1
-	DESTINATION /usr/local/share/man/man1
-)
-
