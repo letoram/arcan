@@ -29,7 +29,7 @@ set(ARCHETYPES
 				#	terminal
 				#	net
 				#	game
-				#	decode
+	decode
 				#	encode
 				#	remoting
 	avfeed
@@ -38,9 +38,6 @@ set(ARCHETYPES
 foreach(archetype ${ARCHETYPES})
 	add_subdirectory(${archetype})
 endforeach()
-
-set_property(TARGET afsrv_avfeed APPEND PROPERTY
-	COMPILE_DEFINITIONS ENABLE_FSRV_AVFEED DEFAULT_FSRV_MODE=\"avfeed\")
 
 #
 # afsrv is a chainloader, it takes a mode as first argument that
@@ -51,5 +48,4 @@ set_property(TARGET afsrv_avfeed APPEND PROPERTY
 # it is also used to track descriptor / environment leaks from the parent
 #
 add_executable(arcan_frameserver frameserver.c)
-set_property(TARGET arcan_frameserver APPEND PROPERTY
-	COMPILE_DEFINITIONS AFSRV_CHAINLOADER)
+target_compile_definitions(arcan_frameserver PRIVATE AFSRV_CHAINLOADER)

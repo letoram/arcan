@@ -383,9 +383,7 @@ static void process_inevq()
 
 }
 
-int arcan_frameserver_decode_run(
-	struct arcan_shmif_cont* cont,
-	struct arg_arr* args)
+int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 {
 	libvlc_media_t* media = NULL;
 

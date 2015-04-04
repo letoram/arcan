@@ -3,7 +3,7 @@ include(ExternalProject)
 include(CheckIncludeFiles)
 cmake_minimum_required(VERSION 2.8.8 FATAL_ERROR)
 
-set(CMAKE_EXTERNAL_SRCDIR ${CMAKE_CURRENT_SOURCE_DIR}/external)
+set(EXTERNAL_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external)
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake)
 
 # static base version, manually mantained
@@ -483,12 +483,12 @@ LIST (APPEND
 	${FREETYPE_INCLUDE_DIRS}
 	${SQLITE3_INCLUDE_DIR}
 	${CMAKE_CURRENT_SOURCE_DIR}/platform
-	${CMAKE_CURRENT_SOURCE_DIR}/external
+	${EXTERNAL_SRC_DIR}
 	${CMAKE_CURRENT_SOURCE_DIR}/shmif
 	${CMAKE_CURRENT_SOURCE_DIR}/engine
 )
 
-add_subdirectory( external/openctm )
+add_subdirectory( ${EXTERNAL_SRC_DIR}/openctm )
 
 #
 # engine source files + graphics platform
@@ -637,7 +637,7 @@ else()
 endif()
 
 message("\n---- Stage 3, SHMIF Library ----")
-add_library(arcan-shmif STATIC ${SHMIF_SOURCES} ${PLATFORM_SHMIF_SOURCES})
+add_library(arcan_shmif STATIC ${SHMIF_SOURCES} ${PLATFORM_SHMIF_SOURCES})
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 add_subdirectory(frameserver)

@@ -36,11 +36,11 @@ static void dump_help()
  */
 int afsrv_avfeed(struct arcan_shmif_cont* con, struct arg_arr* args)
 {
-	struct arcan_shmif_cont shms = *con;
 	if (!con){
 		dump_help();
 		return EXIT_FAILURE;
 	}
+	struct arcan_shmif_cont shms = *con;
 
 	if (!arcan_shmif_resize(&shms, 320, 200)){
 		LOG("arcan_frameserver(decode) shmpage setup, resize failed\n");
