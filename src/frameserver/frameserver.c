@@ -130,7 +130,7 @@ bool frameserver_dumprawfile_handle(const void* const data, size_t sz_data,
 	return rv;
 }
 
-/* set currently active library for loading symbols */
+#ifndef AFSRV_CHAINLOADER
 static void* lastlib, (* globallib);
 
 bool frameserver_loadlib(const char* const lib)
@@ -163,7 +163,6 @@ static void close_logdev()
 	fflush(stderr);
 }
 
-#ifndef ARCAN_FRAMESERVER_SPLITMODE
 static void toggle_logdev(const char* prefix)
 {
 	const char* const logdir = getenv("ARCAN_FRAMESERVER_LOGDIR");
@@ -192,26 +191,6 @@ static void toggle_logdev(const char* prefix)
 }
 #endif
 
-/*
- * Splitmode warrant some explaining,
- * in the mode we use the frameserver binary as a chainloader;
- * we select a different binary (our own name + _mode and
- * just pass the environment onwards.
- *
- * This is done to limit the effect of some libraries having unreasonable
- * (possible even non-ASLRable) requirements, doing multi-threading,
- * installing signal handlers and what not in .ctor/.init
- * and we like to limit that contamination (the herpes stops here...)
- *
- * This is mostly implemented in the build system;
- * a main arcan_frameserver binary is produced with ARCAN_FRAMESERVER_SPLITMODE
- * defined, and n' different others with the _mode suffix attached and
- * the unused subsystems won't be #defined in.
- *
- * The intent is also to implement sandboxing setup and loading here,
- * one part as a package format with FUSE + chroot,
- * another using local sandboxing options (seccomp and capsicum)
- */
 static void dumpargs(int argc, char** argv)
 {
 	printf("invalid number of arguments (%d):\n", argc);
@@ -259,7 +238,17 @@ void dump_links(const char* path)
 }
 #endif
 
-#ifdef ARCAN_FRAMESERVER_SPLITMODE
+/*
+ * When built as a chainloader we select a different binary (our own
+ * name or afsrv if we're arcan_frameserver) + _mode and just pass
+ * the environment onwards. The afsrv_ split permits the parent to run
+ * with a different set of frameservers for debugging/testing/etc. purposes.
+ *
+ * The chainloading approach is to get a process separated spot for
+ * implementing monitoring, sandboxing and other environment related factors
+ * where we might have temporarily inflated privileges.
+ */
+#ifdef AFSRV_CHAINLOADER
 int main(int argc, char** argv)
 {
 	if (2 != argc){
@@ -267,7 +256,11 @@ int main(int argc, char** argv)
 		return EXIT_FAILURE;
 	}
 
+/* compress to afsrv for namespace cleanliness */
 	char* fsrvmode = argv[1];
+	if (strcmp(fsrvmode, "arcan_frameserver") == 0){
+		fsrvmode = "afsrv";
+	}
 
 	size_t bin_sz = strlen(argv[0]) + strlen(fsrvmode) + 2;
 	char newarg[ bin_sz ];
@@ -276,7 +269,7 @@ int main(int argc, char** argv)
 /*
  * the sweet-spot for adding in privilege/uid/gid swapping and
  * setting up mode- specific sandboxing, package format mount
- * etc.
+ * (or other compatibility / loading) etc.
  */
 
 /* we no longer need the mode argument */
@@ -289,7 +282,6 @@ int main(int argc, char** argv)
 }
 
 #else
-
 typedef int (*mode_fun)(struct arcan_shmif_cont*, struct arg_arr*);
 
 int launch_mode(const char* modestr,
@@ -376,42 +368,42 @@ int main(int argc, char** argv)
  */
 #ifdef ENABLE_FSRV_DECODE
 	if (strcmp(fsrvmode, "decode") == 0){
-		return launch_mode("decode", arcan_frameserver_decode_run,
+		return launch_mode("decode", afsrv_decode,
 			SEGID_MEDIA, argstr);
 	}
 #endif
 
 #ifdef ENABLE_FSRV_TERMINAL
 	if (strcmp(fsrvmode, "terminal") == 0){
-		return launch_mode("terminal", arcan_frameserver_terminal_run,
+		return launch_mode("terminal", afsrv_terminal,
 			SEGID_TERMINAL, argstr);
 	}
 #endif
 
 #ifdef ENABLE_FSRV_ENCODE
 	if (strcmp(fsrvmode, "record") == 0){
-		return launch_mode("record", arcan_frameserver_encode_run,
+		return launch_mode("record", afsrv_encode,
 			SEGID_ENCODER, argstr);
 	}
 #endif
 
 #ifdef ENABLE_FSRV_REMOTING
 	if (strcmp(fsrvmode, "remoting") == 0){
-		return launch_mode("remoting", arcan_frameserver_remoting_run,
+		return launch_mode("remoting", afsrv_remoting,
 			SEGID_REMOTING, argstr);
 	}
 #endif
 
 #ifdef ENABLE_FSRV_LIBRETRO
 	if (strcmp(fsrvmode, "libretro") == 0){
-		return launch_mode("libretro", arcan_frameserver_libretro_run,
+		return launch_mode("libretro", afsrv_libretro,
 			SEGID_GAME, argstr);
 	}
 #endif
 
 #ifdef ENABLE_FSRV_AVFEED
 	if (strcmp(fsrvmode, "avfeed") == 0){
-		return launch_mode("avfeed", arcan_frameserver_avfeed_run,
+		return launch_mode("avfeed", afsrv_avfeed,
 			SEGID_MEDIA, argstr);
 	}
 #endif
@@ -437,12 +429,12 @@ int main(int argc, char** argv)
 		if (tmp && arg_lookup(tmp, "mode", 0, &rk)){
 			if (strcmp(rk, "client") == 0){
 				id = SEGID_NETWORK_CLIENT;
-				fptr = arcan_frameserver_net_client_run;
+				fptr = afsrv_net_client;
 				modestr = "client";
 			}
 			else if (strcmp(rk, "server") == 0){
 				id = SEGID_NETWORK_SERVER;
-				fptr = arcan_frameserver_net_server_run;
+				fptr = afsrv_net_server;
 				modestr = "server";
 			}
 			else{
