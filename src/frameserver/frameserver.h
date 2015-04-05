@@ -55,7 +55,7 @@ int afsrv_terminal(struct arcan_shmif_cont*, struct arg_arr*);
  * multiple input configurations and special cases for multi-
  * segment connections (e.g. HMD, monitor-mapping controls).
  */
-int afsrv_gaming(struct arcan_shmif_cont*, struct arg_arr*);
+int afsrv_game(struct arcan_shmif_cont*, struct arg_arr*);
 
 /*
  * [generic A/V/input]

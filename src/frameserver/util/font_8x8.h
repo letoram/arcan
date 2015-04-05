@@ -188,6 +188,29 @@ static inline void draw_char(struct arcan_shmif_cont* c, uint8_t ch,
 				c->vidp[c->addr->w * (row + y) + col + x] = txcol;
 }
 
+static void text_dimensions(struct arcan_shmif_cont* c,
+	const char* msg, int* dw, int* dh)
+{
+	int cx = 0, cy = fonth;
+	*dw = 0;
+
+	while (*msg){
+		uint8_t ch = *msg++;
+
+		if ('\n' == ch){
+			if (cx > *dw)
+				*dw = cx;
+			if ('\0' != *msg)
+				cy += fonth + 2;
+			cx = 0;
+		}
+
+		cx += fontw;
+	}
+
+	*dh = cy + fonth;
+}
+
 static void draw_text(struct arcan_shmif_cont* c, const char* msg,
 	uint16_t x, uint16_t y, shmif_pixel txcol)
 {
@@ -197,15 +220,13 @@ static void draw_text(struct arcan_shmif_cont* c, const char* msg,
 	while (*msg){
 		uint8_t ch = *msg++;
 
-		if (ch > 127)
-			continue;
-
 		if ('\n' == ch){
 			cx = x;
 			cy += fonth + 2;
 		}
+		if (ch <= 127)
+			draw_char(c, ch, cx, cy, txcol),
 
-		draw_char(c, ch, cx, cy, txcol),
 		cx += fontw;
 	}
 }

@@ -1,7 +1,7 @@
 /*
  * Copyright 2012-2015, Björn Ståhl
  * License: GPLv2, see COPYING file in arcan source repository.
- * Reference: http://arcan-fe.com
+ * Reference: http://www.libretro.com
  */
 
 #include <math.h>
@@ -16,9 +16,7 @@
 #include <pthread.h>
 #include <errno.h>
 
-#define AGP_ENABLE_UNPURE 1
-#include "../shmif/arcan_shmif.h"
-#include "graphing/net_graph.h"
+#include <arcan_shmif.h>
 
 #include "frameserver.h"
 #include "ntsc/snes_ntsc.h"
@@ -27,10 +25,12 @@
 #include "sync_plot.h"
 #include "libretro.h"
 
+#include "font_8x8.h"
 #include "resampler/speex_resampler.h"
 
-#ifdef FRAMESERVER_LIBRETRO_3D
-#ifdef FRAMESERVER_LIBRETRO_3D_RETEXTURE
+#ifdef ENABLE_3DSUPPORT
+#define AGP_ENABLE_UNPURE 1
+#ifdef ENABLE_RETEXTURE
 #include "retexture.h"
 #endif
 #include "video_platform.h"
@@ -86,16 +86,15 @@ typedef void(*pixconv_fun)(const void* data, shmif_pixel* outp,
 	unsigned width, unsigned height, size_t pitch, bool postfilter);
 
 static struct {
-	struct graph_context* graphing; /* overlaying text / information */
 	struct synch_graphing* sync_data; /* overlaying statistics */
 	int graph_pending;
 
-/* frame management */
 /* flag for rendering callbacks, should the frame be processed or not */
 	bool skipframe_a, skipframe_v;
+	bool pause;
 
-	bool pause;     /* event toggle frame, are we paused */
-	double mspf;    /* static for each run, 1000/fps */
+/* miliseconds per frame, 1/fps */
+	double mspf;
 
 /* when did we last seed gameplay timing */
 	long long int basetime;
@@ -165,7 +164,7 @@ static struct {
 	size_t state_sz;
 	char* syspath;
 
-#ifdef FRAMESERVER_LIBRETRO_3D
+#ifdef ENABLE_3DSUPPORT
 	struct retro_hw_render_callback hwctx;
 	struct agp_rendertarget* rtgt;
 	int last_handle;
@@ -218,14 +217,8 @@ static void resize_shmpage(int neww, int newh, bool first)
 	}
 #endif
 
-/* graphing context just works on offsets into the page, need to reset */
-	if (retroctx.graphing != NULL)
-		graphing_destroy(retroctx.graphing);
-
 	if (retroctx.sync_data)
 		retroctx.sync_data->cont_switch(retroctx.sync_data, &retroctx.shmcont);
-
-	retroctx.graphing = graphing_new(neww, newh, retroctx.shmcont.vidp);
 
 /* will be reallocated if needed and not set so just free and unset */
 	if (retroctx.ntsc_imb){
@@ -1524,8 +1517,7 @@ static void dump_help()
 /* map up a libretro compatible library resident at fullpath:game,
  * if resource is /info, no loading will occur but a dump of the capabilities
  * of the core will be sent to stdout. */
-int arcan_frameserver_libretro_run(
-	struct arcan_shmif_cont* cont, struct arg_arr* args)
+int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 {
 	if (!cont || !args){
 		dump_help();
@@ -1884,7 +1876,11 @@ int arcan_frameserver_libretro_run(
 
 static void log_msg(char* msg, bool flush)
 {
-	clear_tocol(retroctx.graphing, 0xff000000);
+	draw_box(&retroctx.shmcont, 0, 0,
+		retroctx.shmcont.addr->w, retroctx.shmcont.addr->h,
+		RGBA(0x00, 0x00, 0x00, 0xff)
+	);
+
 	int dw, dh;
 	int sw = retroctx.shmcont.addr->w;
 
@@ -1892,12 +1888,12 @@ static void log_msg(char* msg, bool flush)
 	char* mendp = msg + strlen(msg) + 1;
 	do {
 		*mendp = '\0';
-		text_dimensions(retroctx.graphing, msg, &dw, &dh);
+		text_dimensions(&retroctx.shmcont, msg, &dw, &dh);
 		mendp--;
 	} while (dw > sw && mendp > msg);
 
 /* center */
-	draw_text(retroctx.graphing, msg,
+	draw_text(&retroctx.shmcont, msg,
 		0.5 * (sw - dw), 0.5 * (retroctx.shmcont.addr->h - dh), 0xffffffff);
 
 	if (flush)

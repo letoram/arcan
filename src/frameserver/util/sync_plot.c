@@ -14,15 +14,13 @@
 
 #include "arcan_shmif.h"
 #include "sync_plot.h"
-
-#include "graphing/net_graph.h"
+#include "font_8x8.h"
 
 #ifndef GRAPH_BUFFER_SIZE
 #define GRAPH_BUFFER_SIZE 160
 #endif
 
 struct graph_int {
-	struct graph_context* graphing;
 	struct arcan_shmif_cont* cont;
 
 	timestamp_t frametimes[GRAPH_BUFFER_SIZE];
@@ -36,10 +34,10 @@ struct graph_int {
 };
 
 #define stepmsg(ctx, x, yv) \
-	draw_box(ctx, 0, yv, PXFONT_WIDTH * strlen(x),\
-		PXFONT_HEIGHT, 0xff000000);\
+	draw_box(ctx, 0, yv, fontw * strlen(x),\
+		fonth, RGBA(0x00, 0x00, 0x00, 0xff));\
 	draw_text(ctx, x, 0, yv, 0xffffffff);\
-	yv += PXFONT_HEIGHT;
+	yv += fonth;
 
 static void f_update(struct synch_graphing* ctx, float period, const char* msg)
 {
@@ -52,11 +50,11 @@ static void f_update(struct synch_graphing* ctx, float period, const char* msg)
 	if (priv->cont->addr->vready)
 		return;
 
-	draw_box(priv->graphing, 0, 0, priv->cont->addr->w,
+	draw_box(priv->cont, 0, 0, priv->cont->addr->w,
 		priv->cont->addr->h, 0xffffffff);
 
 	while(cp){
-		stepmsg(priv->graphing, cp, yv);
+		stepmsg(priv->cont, cp, yv);
 		cp = strtok_r(NULL, "\n", &ctxp);
 	}
 
@@ -64,22 +62,21 @@ static void f_update(struct synch_graphing* ctx, float period, const char* msg)
 
 /* color-coded frame timing / alignment, starting at the far right
  * with the next intended frame, horizontal resolution is 2 px / ms */
-	int dw = priv->cont->addr->w;
+	size_t dw = priv->cont->addr->w;
 
-	draw_box(priv->graphing, 0, yv, dw, PXFONT_HEIGHT * 2, 0xff000000);
-	draw_hline(priv->graphing, 0, yv + PXFONT_HEIGHT, dw, 0xff999999);
+	draw_box(priv->cont, 0, yv, dw, fonth * 2, RGBA(0x00, 0x00, 0x00, 0xff));
+	draw_box(priv->cont, 0, yv + fonth, dw, 1, RGBA(0x99, 0x99, 0x99, 0xff));
 
 /* first, ideal deadlines, now() is at the end of the X scale */
 	int stepc = 0;
 	double current = arcan_timemillis();
-	double minp    = current - dw;
-	double mspf    = period;
+	double minp = current - dw;
+	double mspf = period;
 	double startp  = (double) current - modf(current, &mspf);
 
 	while ( startp - (stepc * period) >= minp ){
-		draw_vline(priv->graphing, startp -
-			(stepc * period) - minp, yv + PXFONT_HEIGHT - 1,
-				-(PXFONT_HEIGHT-1), 0xff00ff00);
+		draw_box(priv->cont, startp - (stepc * period) - minp,
+			yv, 1, fonth-1, RGBA(0x00, 0xff, 0x00, 0xff));
 		stepc++;
 	}
 
@@ -94,17 +91,15 @@ static void f_update(struct synch_graphing* ctx, float period, const char* msg)
 
 	while (true){
 		if (priv->frametimes[ofs] >= minp)
-			draw_vline(priv->graphing, current -
-				priv->frametimes[ofs], yv + PXFONT_HEIGHT + 1,
-				PXFONT_HEIGHT - 1, 0xff00ffff);
+			draw_box(priv->cont, current - priv->frametimes[ofs],
+				yv + 1, 1, fonth - 1, RGBA(0xff, 0xff, 0x00, 0xff));
 		else
 			break;
 
 		ofs = STEPBACK(ofs);
 		if (priv->frametimes[ofs] >= minp)
-			draw_vline(priv->graphing, current -
-				priv->frametimes[ofs], yv + PXFONT_HEIGHT + 1,
-				PXFONT_HEIGHT - 1, 0xff00aaaa);
+			draw_box(priv->cont, current - priv->frametimes[ofs],
+				yv + 1, 1, fonth - 1, RGBA(0xaa, 0xaa, 0x00, 0xff));
 		else
 			break;
 
@@ -115,9 +110,8 @@ static void f_update(struct synch_graphing* ctx, float period, const char* msg)
 	ofs = STEPBACK(priv->ofs_drop);
 
 	while (priv->framedrops[ofs] >= minp){
-		draw_vline(priv->graphing, current -
-			priv->framedrops[ofs], yv + PXFONT_HEIGHT + 1,
-				PXFONT_HEIGHT - 1, 0xff0000ff);
+		draw_box(priv->cont, current- priv->framedrops[ofs],
+			yv + 1, 1, fonth - 1, RGBA(0xff, 0x00, 0x00, 0xff));
 		ofs = STEPBACK(ofs);
 	}
 
@@ -136,21 +130,24 @@ static void f_update(struct synch_graphing* ctx, float period, const char* msg)
 	}
 
 	if (maxv > 0){
-			yv += PXFONT_HEIGHT * 2;
-		float yscale = (float)(PXFONT_HEIGHT * 2) / (float) maxv;
+			yv += fonth * 2;
+		float yscale = (float)(fonth * 2) / (float) maxv;
 		ofs = STEPBACK(priv->ofs_xfer);
 		count = 0;
-		draw_box(priv->graphing, 0, yv, dw, PXFONT_HEIGHT * 2, 0xff000000);
+		draw_box(priv->cont, 0, yv, dw, fonth * 2, RGBA(0x00, 0x00, 0x00, 0xff));
 
 		while (count < dw){
 			int sample = priv->xfercosts[ofs];
 
-			if (sample > -1)
-				draw_vline(priv->graphing, dw - count - 1, yv +
-					(PXFONT_HEIGHT * 2), -1 * yscale * sample, 0xff00ff00);
-			else
-				draw_vline(priv->graphing, dw - count - 1, yv +
-					(PXFONT_HEIGHT * 2), -1 * PXFONT_HEIGHT * 2, 0xff0000ff);
+			if (sample > -1){
+				size_t lineh = yscale * sample;
+				draw_box(priv->cont, dw - count - 1,
+					yv + fonth * 2 - lineh, 1, lineh, RGBA(0x00, 0xff, 0x00, 0xff));
+			}
+			else{
+				draw_box(priv->cont, dw - count - 1, yv,
+					1, fonth * 2, RGBA(0x00, 0x00, 0xff, 0xff));
+			}
 
 			ofs = STEPBACK(ofs);
 			count++;
@@ -166,9 +163,6 @@ static void f_cont_switch(struct synch_graphing* ctx,
 {
 	struct graph_int* g = ctx->priv;
 	g->cont = newcont;
-	graphing_destroy(g->graphing);
-	g->graphing = graphing_new(newcont->addr->w,
-		newcont->addr->h, (uint32_t*) newcont->vidp);
 }
 
 #define STEP_FIELD(ptr, ary, ofs, val) { \
@@ -242,9 +236,6 @@ struct synch_graphing* setup_synch_graph(
 
 	res.priv = priv;
 	priv->cont = cont;
-
-	priv->graphing = graphing_new(cont->addr->w,
-		cont->addr->h, (uint32_t*) cont->vidp);
 
 	*resp = res;
 	return resp;

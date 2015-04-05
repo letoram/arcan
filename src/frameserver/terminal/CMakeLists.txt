@@ -10,7 +10,7 @@ if (LIBTSM_FOUND)
 	find_package(Freetype)
 	if (FREETYPE_FOUND)
 		set(TERM_AUX_LIBS ${FREETYPE_LIBRARY})
-		set(TERM_AUX_SOURCES ${FSRV_ROOTPATH}/../engine/arcan_ttf.c)
+		set(TERM_AUX_SOURCES ${FSRV_ROOT}/../engine/arcan_ttf.c)
 	endif()
 
 	add_executable(afsrv_terminal
@@ -29,13 +29,18 @@ if (LIBTSM_FOUND)
 		${TERM_AUX_LIBS}
 	)
 
+	target_compile_definitions(afsrv_terminal PRIVATE
+		ENABLE_FSRV_TERMINAL
+		DEFAULT_FSRV_MODE=\"terminal\"
+	)
+
 	if (FREETYPE_FOUND)
 		target_compile_definitions(afsrv_terminal PRIVATE TTF_SUPPORT)
 	endif()
 
 	target_include_directories(afsrv_terminal PRIVATE
-		${FSRV_ROOTPATH}
-		${FSRV_ROOTPATH}/util
+		${FSRV_ROOT}
+		${FSRV_ROOT}/util
 		${LIBTSM_INCLUDE_DIRS}
 	)
 

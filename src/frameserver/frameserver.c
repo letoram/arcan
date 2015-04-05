@@ -52,8 +52,8 @@ void* frameserver_getrawfile(const char* fname, ssize_t* dstsize)
 		return NULL;
 	}
 
-	void* buf = mmap(NULL, filedat.st_size, PROT_READ |
-		PROT_WRITE, MAP_PRIVATE, fd, 0);
+	void* buf = mmap(NULL, filedat.st_size,
+		PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
 
 	if (buf == MAP_FAILED){
 		LOG("arcan_frameserver(get_rawfile) mmap (%s) failed"
@@ -367,45 +367,33 @@ int main(int argc, char** argv)
  * separated list of enabled frameserver archetypes.
  */
 #ifdef ENABLE_FSRV_DECODE
-	if (strcmp(fsrvmode, "decode") == 0){
-		return launch_mode("decode", afsrv_decode,
-			SEGID_MEDIA, argstr);
-	}
+	if (strcmp(fsrvmode, "decode") == 0)
+		return launch_mode("decode", afsrv_decode, SEGID_MEDIA, argstr);
 #endif
 
 #ifdef ENABLE_FSRV_TERMINAL
-	if (strcmp(fsrvmode, "terminal") == 0){
-		return launch_mode("terminal", afsrv_terminal,
-			SEGID_TERMINAL, argstr);
-	}
+	if (strcmp(fsrvmode, "terminal") == 0)
+		return launch_mode("terminal", afsrv_terminal, SEGID_TERMINAL, argstr);
 #endif
 
 #ifdef ENABLE_FSRV_ENCODE
-	if (strcmp(fsrvmode, "record") == 0){
-		return launch_mode("record", afsrv_encode,
-			SEGID_ENCODER, argstr);
-	}
+	if (strcmp(fsrvmode, "record") == 0)
+		return launch_mode("record", afsrv_encode, SEGID_ENCODER, argstr);
 #endif
 
 #ifdef ENABLE_FSRV_REMOTING
-	if (strcmp(fsrvmode, "remoting") == 0){
-		return launch_mode("remoting", afsrv_remoting,
-			SEGID_REMOTING, argstr);
-	}
+	if (strcmp(fsrvmode, "remoting") == 0)
+		return launch_mode("remoting", afsrv_remoting, SEGID_REMOTING, argstr);
 #endif
 
-#ifdef ENABLE_FSRV_LIBRETRO
-	if (strcmp(fsrvmode, "libretro") == 0){
-		return launch_mode("libretro", afsrv_libretro,
-			SEGID_GAME, argstr);
-	}
+#ifdef ENABLE_FSRV_GAME
+	if (strcmp(fsrvmode, "game") == 0)
+		return launch_mode("game", afsrv_game, SEGID_GAME, argstr);
 #endif
 
 #ifdef ENABLE_FSRV_AVFEED
-	if (strcmp(fsrvmode, "avfeed") == 0){
-		return launch_mode("avfeed", afsrv_avfeed,
-			SEGID_MEDIA, argstr);
-	}
+	if (strcmp(fsrvmode, "avfeed") == 0)
+		return launch_mode("avfeed", afsrv_avfeed, SEGID_MEDIA, argstr);
 #endif
 
 /*
@@ -443,7 +431,8 @@ int main(int argc, char** argv)
 				return EXIT_FAILURE;
 			}
 		}
-			arg_cleanup(tmp); /* will invalidate all aliases from _lookup */
+ /* will invalidate all aliases from _lookup */
+		arg_cleanup(tmp);
 
 		if (!modestr){
 			fprintf(stdout, "frameserver_net, invalid ARCAN_ARG env:\n"

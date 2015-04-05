@@ -1,6 +1,3 @@
-#
-# Pulled in from src/CMakeLists.txt
-#
 # Expects:
 #  FSRV_PLATFORM (defined by platforms/CMakeLists.*)
 #  FSRV_INCLUDES (defined by CMakeLists.txt + platforms/CMakeLists.*)
@@ -8,14 +5,14 @@
 #  ARCAN_SHMIF_INCLUDES
 
 # Options:
-# [ SPLIT_FRAMESERVER ] (different outputs)
-# [ DISABLE_FRAMESERVERS ] ignored entirely
-# FSRV_[ATYPE = subgroup (if not set, default is used)
-# FSRV_[ATYPE = subgroup]_REQUIRED (set if the module should fail on deps)
+#  [ SPLIT_FRAMESERVER ] (different outputs)
+#  [ DISABLE_FRAMESERVERS ] ignored entirely
+#  FSRV_[ATYPE = subgroup (if not set, default is used)
+#  FSRV_[ATYPE = subgroup]_REQUIRED (set if the module should fail on deps)
 #
 # Defines:
-# FSRV_MODES (list of ENABLE_FSRV_ATYPE)
-# FRAMESERVER_MODESTRING (exposed to scripting API)
+#  FSRV_MODES (list of ENABLE_FSRV_ATYPE)
+#  FRAMESERVER_MODESTRING (exposed to scripting API)
 #
 
 set(FSRV_PLATFORM ${FSRV_PLATFORM}
@@ -23,12 +20,12 @@ set(FSRV_PLATFORM ${FSRV_PLATFORM}
 	${CMAKE_CURRENT_SOURCE_DIR}/frameserver.c
 )
 
-set(FSRV_ROOTPATH ${CMAKE_CURRENT_SOURCE_DIR})
+set(FSRV_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 
 set(ARCHETYPES
 	terminal
 				#	net
-				#	game
+	game
 	decode
 	encode
 	remoting
