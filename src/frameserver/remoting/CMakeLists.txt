@@ -29,6 +29,8 @@ if (LIBVNC_FOUND)
 		DEFAULT_FSRV_MODE=\"remoting\"
 	)
 
+	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING} remoting")
+
 else()
 	message("remoting frameserver disabled, libvnc not found")
 endif()

@@ -3,6 +3,8 @@ add_executable(afsrv_avfeed
 	default/avfeed.c
 )
 
+set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING} avfeed")
+
 target_compile_definitions(afsrv_avfeed PRIVATE
 		ENABLE_FSRV_AVFEED
 		DEFAULT_FSRV_MODE=\"avfeed\"

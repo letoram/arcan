@@ -1,0 +1,126 @@
+#
+# Expects:
+#  VIDEO_PLATFORM (or FATAL)
+#  PLATFORM_ROOT
+#
+# Defines:
+#  INPUT_PLATFORM - Video/Input are rather tightly connected
+#  HEADLESS_PLATFORM - Used for LWA build and some frameservers
+#  HEADLESS_SOURCES
+#  HEADLESS_LIBS
+#
+# Modifies:
+#  INCLUDE_DIRS
+#  MAIN_LIBRARIES
+#
+
+if (VIDEO_PLATFORM STREQUAL "x11" OR VIDEO_PLATFORM STREQUAL "x11-headless")
+	if (NOT INPUT_PLATFORM)
+		set(INPUT_PLATFORM "x11")
+	endif()
+
+	add_definitions(-DWITH_X11)
+
+	if (VIDEO_PLATFORM STREQUAL "x11-headless")
+		set(VIDEO_PLATFORM "x11")
+		add_definitions(-DWITH_HEADLESS_MAIN)
+	endif()
+
+	find_package(X11 REQUIRED)
+
+	list(APPEND INCLUDE_DIRS ${X11_INCLUDE_DIRS})
+	list(APPEND MAIN_LIBRARIES ${AGP_LIBRARIES} ${X11_LIBRARIES})
+	list(APPEND HEADLESS_LIBS ${AGP_LIBRARIES} ${X11_LIBRARIES})
+
+	set(HEADLESS_SOURCES ${PLATFORM_ROOT}/x11/video.c)
+
+# legacy platform for weaker platforms that don't have/support KMS
+elseif(VIDEO_PLATFORM STREQUAL "egl-gles")
+	if (NOT INPUT_PLATFORM)
+		set(INPUT_PLATFORM "linux")
+	endif()
+
+	find_package(EGL REQUIRED)
+	set(HEADLESS_SOURCES ${PLATFORM_ROOT}/egl-gles/video.c)
+
+	if (GLES2_BCM_IMPLEMENTATION)
+		message("broadcom (BCM) GLES implementation found, set BCM_ROOT to bad dir to disable")
+		list(APPEND ARCAN_DEFINITIONS WITH_BCM)
+		set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/platform/egl-gles/video.c
+			APPEND PROPERTY COMPILE_FLAGS -fgnu89-inline)
+	endif()
+
+	list(APPEND INCLUDE_DIRS
+		${GLES2_INCLUDE_DIRS}
+		${EGL_INCLUDE_DIRS}
+	)
+
+	list(APPEND MAIN_LIBRARIES ${EGL_LIBRARIES})
+
+#
+# platform is still incomplete and not really useful, awaiting nvidia
+# specific extensions for headless + buffer passing (using EGLStream)
+# see presentation from aritger@XDC2014
+#
+elseif(VIDEO_PLATFORM STREQUAL "egl-nvidia")
+	if (NOT INPUT_PLATFORM)
+		set(INPUT_PLATFORM "linux")
+	endif()
+
+	find_package(EGL REQUIRED)
+	list(APPEND MAIN_LIBRARIES ${EGL_LIBRARIES})
+	list(APPEND HEADLESS_LIBS ${EGL_LIBRARIES})
+	list(APPEND HEADLESS_SOURCES ${PLATFORM_ROOT}/egl-nvidia/video.c)
+
+#
+# will hopefully become the default on BSDs/linux
+#
+elseif(VIDEO_PLATFORM STREQUAL "egl-dri")
+	if (NOT INPUT_PLATFORM)
+		set(INPUT_PLATFORM "linux")
+	endif()
+
+	find_package(EGL REQUIRED)
+	find_package(GBMKMS REQUIRED)
+
+	list(APPEND MAIN_LIBRARIES
+		${EGL_LIBRARIES}
+		${GBMKMS_LIBRARIES}
+	)
+	list(APPEND HEADLESS_LIBS
+		${EGL_LIBRARIES}
+		${GBMKMS_LIBRARIES}
+	)
+	list(APPEND INCLUDE_DIRS ${GBMKMS_INCLUDE_DIRS})
+	set(HEADLESS_SOURCES ${PLATFORM_ROOT}/egl-dri/video_rnode.c)
+
+#
+# only option on OSX/Windows currently, would also work for
+# drawing to Wayland compositors (though the list of dependencies
+# becomes rather nasty).
+#
+elseif (VIDEO_PLATFORM STREQUAL "sdl")
+	if (NOT INPUT_PLATFORM)
+		set(INPUT_PLATFORM "sdl")
+	endif()
+
+	find_package(SDL REQUIRED)
+
+	list(APPEND INCLUDE_DIRS ${SDL_INCLUDE_DIR})
+	list(APPEND MAIN_LIBRARIES ${SDL_LIBRARY})
+
+# headless with SDL requires OS specific hacks
+	message("Enabling LWA (Arcan-in-Arcan build) using X11 HEADLESS")
+	if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+		set(HEADLESS_SOURCES ${PLATFORM_ROOT}/darwin/video.c)
+	elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
+		message("LWA builds disabled, headless mode unsupported in platform")
+	else()
+		FIND_PACKAGE(X11 REQUIRED)
+		set(HEADLESS_SOURCES ${PLATFORM_ROOT}/x11/video.c)
+		list(APPEND INCLUDE_DIRS ${X11_INCLUDE_DIRS})
+	endif()
+
+else()
+	message(FATAL_ERROR "No video platform specified, use -DVIDEO_PLATFORM=${VPLATFORM_STR} e.g. -DVIDEO_PLATFORM=sdl")
+endif()

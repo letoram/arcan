@@ -13,8 +13,13 @@ if (LIBVLC_FOUND)
 		${EXTERNAL_SRC_DIR}/fft/kiss_fftr.c
 	)
 
+	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING} decode")
+
 	target_link_libraries(afsrv_decode ${LIBVLC_LIBRARY} ${STDLIB} arcan_shmif)
-	target_include_directories(afsrv_decode PRIVATE ${FSRV_ROOT})
+	target_include_directories(afsrv_decode PRIVATE
+		${FSRV_ROOT}
+		${EXTERNAL_SRC_DIR}
+	)
 	target_compile_definitions(afsrv_decode PRIVATE
 		ENABLE_FSRV_DECODE
 		DEFAULT_FSRV_MODE=\"decode\"

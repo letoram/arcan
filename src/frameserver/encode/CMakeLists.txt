@@ -13,6 +13,8 @@ endif()
 if (FFMPEG_FOUND AND BZIP2_FOUND AND ZLIB_FOUND AND LIBLZMA_FOUND)
 	message(STATUS "--(fsrv/encode) building using FFMpeg")
 
+	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING} encode")
+
 	find_package(VNC)
 	if (LIBVNC_FOUND)
 		message(STATUS "--(fsrv/encode) adding VNC support using libvnc")

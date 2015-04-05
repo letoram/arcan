@@ -1,0 +1,52 @@
+#
+# For LWA we need some kind of sound backend. In a sandbox,
+# LWA is not (by default) supposed to get access to any audio device outside
+# the shared memory interface. Therefore we build a patched version of
+# openal, that's linked statically with only a shmif- based backend
+#
+SET (ALPATCHES
+	${CMAKE_CURRENT_SOURCE_DIR}/external/patches/openal/0001-adding-arcan-shmif-support.patch
+	${CMAKE_CURRENT_SOURCE_DIR}/external/patches/openal/0002-arcan-shmif-backend-working.patch
+)
+
+#
+# Note the || echo "" on the PATCH_COMMAND line, it was added to have
+# cmake IGNORE the return status of the git am command as when the patches
+# have been applied the first time, they are erroneously added AGAIN IF you
+# do a make clean && make.
+#
+ExternalProject_Add(openal_soft
+	SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/openal_soft
+	GIT_REPOSITORY "${GIT_MIRROR}/openal-soft.git"
+	UPDATE_COMMAND ""
+	PATCH_COMMAND ${EXEC} git am -q ${ALPATCHES} || true
+	INSTALL_COMMAND ""
+	CMAKE_ARGS
+		-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+		-DCMAKE_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}
+		-DALSOFT_BACKEND_ALSA=OFF
+		-DALSOFT_BACKEND_OSS=OFF
+		-DALSOFT_BACKEND_PULSEAUDIO=OFF
+		-DALSOFT_BACKEND_PORTAUDIO=OFF
+		-DALSOFT_BACKEND_WAVE=OFF
+		-DALSOFT_MIDI_FLUIDSYNTH=OFF
+		-DALSOFT_BACKEND_ARCAN=ON
+		-DALSOFT_REQUIRE_ARCAN=ON
+		-DALSOFT_EXAMPLES=OFF
+		-DALSOFT_DLOPEN=OFF
+		-DALSOFT_UTILS=OFF
+		-DALSOFT_CONFIG=OFF
+	 	-DLIBTYPE=STATIC
+		-DARCAN_SHMIF_PATH=${CMAKE_CURRENT_SOURCE_DIR}/shmif
+		-DARCAN_SHMIF_PLATFORM=${FSRV_PLATFORM_SOURCES}
+		-DARCAN_SHMIF_PLATFORM_HEADER=${PLATFORM_PATH}/../platform.h
+)
+
+set_property(TARGET arcan_lwa APPEND PROPERTY
+	COMPILE_DEFINITIONS ARCAN_LWA WITH_HEADLESS_MAIN)
+
+add_dependencies( arcan_lwa openal_soft )
+target_link_libraries( arcan_lwa ${STDLIB} ${MAIN_LIBRARIES} ${LWA_LIBRARIES}
+	${CMAKE_CURRENT_BINARY_DIR}/openal_soft-prefix/src/openal_soft-build/libcommon.a
+	${CMAKE_CURRENT_BINARY_DIR}/openal_soft-prefix/src/openal_soft-build/libopenal.a
+)
