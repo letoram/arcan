@@ -26,7 +26,7 @@ set(FSRV_PLATFORM ${FSRV_PLATFORM}
 set(FSRV_ROOTPATH ${CMAKE_CURRENT_SOURCE_DIR})
 
 set(ARCHETYPES
-				#	terminal
+	terminal
 				#	net
 				#	game
 	decode

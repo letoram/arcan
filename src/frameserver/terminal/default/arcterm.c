@@ -50,10 +50,9 @@
 #include <arcan_shmif.h>
 #include "frameserver.h"
 
-#define ARCAN_TTF_SUPPORT
-#include "../util/font_8x8.h"
+#include "util/font_8x8.h"
 
-#ifdef ARCAN_TTF_SUPPORT
+#ifdef TTF_SUPPORT
 #include "arcan_ttf.h"
 static TTF_Font* font;
 #endif
@@ -70,7 +69,6 @@ static struct {
 	int cols;
 	int cell_w, cell_h;
 	int screen_w, screen_h;
-	struct graph_context* graphing;
 
 	struct arcan_shmif_cont acon;
 } term = {
@@ -103,12 +101,6 @@ static void screen_size(int screenw, int screenh, int fontw, int fonth)
  * tsm_screen_resize if not first,
  * shl_pty_resize to propagate
  */
-
-	if (term.graphing){
-		graphing_destroy(term.graphing);
-	}
-
-	term.graphing = graphing_new(px_w, px_h, (uint32_t*) term.acon.vidp);
 
 	term.screen_w = screenw;
 	term.screen_h = screenh;
@@ -150,7 +142,7 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 	dbg[1] = attr->bg;
 	dbg[2] = attr->bb;
 
-	draw_box(term.graphing, base_x, base_y, term.cell_w + 1,
+	draw_box(&term.acon, base_x, base_y, term.cell_w + 1,
 		term.cell_h + 1, RGBA(bgc[0], bgc[1], bgc[2], 0xff));
 
 	size_t u8_sz = tsm_ucs4_get_width(*ch) + 1;
@@ -160,19 +152,24 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 	if (nch == 0 || u8_ch[0] == 0)
 		return 0;
 
+#ifdef TTF_SUPPORT
 	if (font == NULL){
+#endif
 /* without proper ttf support, we just go with '?' for unknowns */
 		u8_ch[0] = u8_ch[0] <= 128 ? u8_ch[0] : '?';
 		u8_ch[1] = '\0';
 
-		draw_text(term.graphing, (const char*) u8_ch, base_x, base_y,
+		draw_text(&term.acon, (const char*) u8_ch, base_x, base_y,
 			RGBA(fgc[0], fgc[1], fgc[2], 0xff)
 		);
 		return 0;
+#ifdef TTF_SUPPORT
 	}
+#endif
 
 /* interesting toggle, using typeface embedded images vs.
  * non-bitmap for the same glyph */
+#ifdef TTF_SUPPORT
 	u8_ch[u8_sz-1] = '\0';
 	TTF_Color fg = {.r = fgc[0], .g = fgc[1], .b = fgc[2]};
 	TTF_Surface* surf = TTF_RenderUTF8(font, (char*) u8_ch, fg);
@@ -203,6 +200,7 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 	free(surf);
 
 	return 0;
+#endif
 }
 
 static void read_callback(struct shl_pty* pty,
@@ -306,7 +304,7 @@ static void targetev(arcan_tgtevent* ev)
 	case TARGET_COMMAND_DISPLAYHINT:{
 		size_t width = ev->ioevs[0].iv;
 		size_t height = ev->ioevs[1].iv;
-		arcan_shmif_resize(&sess->out, width, height);
+		arcan_shmif_resize(&term.acon, width, height);
 	}
 	break;
 
@@ -350,7 +348,7 @@ static void main_loop()
 			break;
 
 			case EVENT_TARGET:
-				targetev(&ev->tgt);
+				targetev(&ev.tgt);
 			break;
 
 			default:
@@ -380,17 +378,20 @@ static void dump_help()
 	  " cols      \t n_cols \t specify initial number of terminal columns \n"
 		" cell_w    \t px_w \t specify individual cell width in pixels \n"
 		" cell_h    \t px_h \t specify individual cell height in pixels \n"
+#ifdef TTF_SUPPORT
 		" font      \t ttf-file \t render using font specified by ttf-file \n"
 		" font_hint \t hintval \t hint to font renderer (light, mono or none) \n"
+#endif
 		"---------\t-----------\t----------------\n"
 	);
 }
 
-int arcan_frameserver_terminal_run(
-	struct arcan_shmif_cont* con, struct arg_arr* args)
+int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 {
 	const char* val;
+#ifdef TTF_SUPPORT
 	TTF_Init();
+#endif
 
 	if (!con || !args || arg_lookup(args, "help", 0, &val)){
 		dump_help();
@@ -408,7 +409,7 @@ int arcan_frameserver_terminal_run(
 
 	if (arg_lookup(args, "cell_h", 0, &val))
 		term.cell_h = strtoul(val, NULL, 10);
-
+#ifdef TTF_SUPPORT
 	if (arg_lookup(args, "font", 0, &val)){
 		font = TTF_OpenFont(val, term.cell_h);
 		if (!font)
@@ -428,6 +429,7 @@ int arcan_frameserver_terminal_run(
 			LOG("unknown font hinting requested, "
 				"accepted values(light, mono, none)");
 	}
+#endif
 
 	if (tsm_screen_new(&term.screen, tsm_log, 0) < 0){
 		LOG("fatal, couldn't setup tsm screen\n");
