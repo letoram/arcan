@@ -417,12 +417,12 @@ int main(int argc, char** argv)
 		if (tmp && arg_lookup(tmp, "mode", 0, &rk)){
 			if (strcmp(rk, "client") == 0){
 				id = SEGID_NETWORK_CLIENT;
-				fptr = afsrv_net_client;
+				fptr = afsrv_netcl;
 				modestr = "client";
 			}
 			else if (strcmp(rk, "server") == 0){
 				id = SEGID_NETWORK_SERVER;
-				fptr = afsrv_net_server;
+				fptr = afsrv_netsrv;
 				modestr = "server";
 			}
 			else{

@@ -300,8 +300,7 @@ static void dump_help()
 		"---------\t-----------\t-----------------\n");
 }
 
-int arcan_frameserver_net_client_run(
-	struct arcan_shmif_cont* con, struct arg_arr* args)
+int afsrv_netcl(struct arcan_shmif_cont* con, struct arg_arr* args)
 {
 	if (!con){
 		dump_help();

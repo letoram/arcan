@@ -604,9 +604,7 @@ static void dump_help()
 	);
 }
 
-int arcan_frameserver_net_server_run(
-	struct arcan_shmif_cont* con,
-	struct arg_arr* args)
+int afsrv_netsrv(struct arcan_shmif_cont* con, struct arg_arr* args)
 {
 	if (!con){
 		dump_help();

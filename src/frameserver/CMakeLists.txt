@@ -24,7 +24,7 @@ set(FSRV_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 
 set(ARCHETYPES
 	terminal
-				#	net
+	net
 	game
 	decode
 	encode
