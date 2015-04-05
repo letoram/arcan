@@ -473,9 +473,6 @@ int main(int argc, char* argv[])
 	}
 #endif
 
-/* also used as restart point for switching appls */
-applswitch:
-
 /*
  * try to open the specified database,
  * if that fails, warn, try to create an empty
@@ -696,17 +693,7 @@ applswitch:
 					done = true;
 					goto out;
 				}
-
-/* slated for deprecation in favor of collapsing to .. */
-				else if (ev.sys.kind == EVENT_SYSTEM_SWITCHAPPL){
-					arcan_lua_shutdown(settings.lua);
-					if (switch_appl(ev.sys.message))
-						goto applswitch;
-					else
-						goto error;
-				}
-				else
-					continue;
+				goto error;
 			default:
 			break;
 			}

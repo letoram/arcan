@@ -5830,7 +5830,7 @@ static int targetlaunch(lua_State* ctx)
 
 	case BFRM_RETRO:
 		if (lmode != 1){
-			arcan_warning("launch_target(), configuration specified libretro format"
+			arcan_warning("launch_target(), configuration specified game format"
 				" which is only possible in internal- mode.");
 			goto cleanup;
 		}
@@ -5840,7 +5840,7 @@ static int targetlaunch(lua_State* ctx)
 		struct frameserver_envp args = {
 			.use_builtin = true,
 			.args.builtin.resource = "",
-			.args.builtin.mode = "libretro"
+			.args.builtin.mode = "game"
 		};
 
 		if (!fsrv_ok||arcan_frameserver_spawn_server(intarget, args) != ARCAN_OK){

@@ -868,9 +868,9 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 	arcan_errc errc;
 
 	if (setup.use_builtin){
-/* "libretro" (or rather, interactive mode) treats a single pair of
+/* "game" (or rather, interactive mode) treats a single pair of
  * videoframe+audiobuffer each transfer, minimising latency is key. */
-		if (strcmp(setup.args.builtin.mode, "libretro") == 0){
+		if (strcmp(setup.args.builtin.mode, "game") == 0){
 			ctx->aid = arcan_audio_feed((arcan_afunc_cb)
 				arcan_frameserver_audioframe_direct, ctx, &errc);
 
