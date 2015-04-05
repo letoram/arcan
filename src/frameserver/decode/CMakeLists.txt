@@ -4,8 +4,8 @@ else()
 	find_package(VLC)
 endif()
 
-if (LIBVLC_LIBRARY)
-	message("--(fsrv/decode) building using libVLC\n")
+if (LIBVLC_FOUND)
+	message(STATUS "--(fsrv/decode) building using libVLC\n")
 	add_executable(afsrv_decode
 		${FSRV_PLATFORM}
 		default/decode_vlc.c

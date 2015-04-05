@@ -30,8 +30,8 @@ set(ARCHETYPES
 				#	net
 				#	game
 	decode
-				#	encode
-				#	remoting
+	encode
+	remoting
 	avfeed
 )
 

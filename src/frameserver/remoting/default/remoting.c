@@ -20,10 +20,11 @@
 #include <rfb/rfbclient.h>
 #include <rfb/rfb.h>
 
-#include "../shmif/arcan_shmif.h"
+#include "arcan_shmif.h"
 #include "frameserver.h"
 #include "xsymconv.h"
-
+/*
+*/
 static struct {
 	struct arcan_shmif_cont shmcont;
 	char* pass;
@@ -224,8 +225,7 @@ static void dump_help()
 	);
 }
 
-int arcan_frameserver_remoting_run(
-	struct arcan_shmif_cont* con, struct arg_arr* args)
+int afsrv_remoting(struct arcan_shmif_cont* con, struct arg_arr* args)
 {
 	const char* host;
 	vncctx.pass = "";

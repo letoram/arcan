@@ -1,5 +1,3 @@
-message(${FSRV_ROOTPATH})
-
 add_executable(afsrv_avfeed
 	${FSRV_PLATFORM}
 	default/avfeed.c
