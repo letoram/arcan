@@ -61,8 +61,6 @@ set (FSRV_PLATFORM
 	${PLATFORM_PATH}/warning.c
 	${PLATFORM_PATH}/time.c
 	${PLATFORM_PATH}/sem.c
-	${PLATFORM_PATH}/base64.c
-	${PLATFORM_PATH}/mem.c
 	${PLATFORM_PATH}/fdpassing.c
 )
 

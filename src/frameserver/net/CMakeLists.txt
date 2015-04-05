@@ -34,6 +34,9 @@ if (APR_FOUND)
 		arcan_shmif
 		${STDLIB}
 	)
+
+	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING} net")
+
 else()
 	message("net frameserver disabled, libapr not found\n")
 endif()

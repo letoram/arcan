@@ -34,11 +34,15 @@ if (LIBTSM_FOUND)
 		DEFAULT_FSRV_MODE=\"terminal\"
 	)
 
+	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING} terminal")
+
 	if (FREETYPE_FOUND)
 		target_compile_definitions(afsrv_terminal PRIVATE TTF_SUPPORT)
+		target_include_directories(afsrv_terminal PRIVATE ${FREETYPE_INCLUDE_DIRS})
 	endif()
 
 	target_include_directories(afsrv_terminal PRIVATE
+		${FSRV_ROOT}/../engine
 		${FSRV_ROOT}
 		${FSRV_ROOT}/util
 		${LIBTSM_INCLUDE_DIRS}

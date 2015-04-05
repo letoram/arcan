@@ -1,0 +1,60 @@
+#
+# AGP (Arcan Graphics Platform)
+# the minimal set of graphics features needed for the engine to run
+#
+
+if (NOT AGP_PLATFORM)
+	SET(AGP_PLATFORM "gl21")
+endif()
+
+SET (AGP_GL_SHARED
+	platform/video_platform.h
+	platform/agp/glshared.c
+	platform/agp/glfun.h
+	platform/agp/shdrmgmt.c
+	platform/agp/glinit.c
+)
+
+if (AGP_PLATFORM STREQUAL "stub")
+	set(AGP_SOURCES
+		platform/agp/stub.c
+	)
+
+elseif (AGP_PLATFORM STREQUAL "gl21")
+	FIND_PACKAGE(OpenGL REQUIRED)
+	SET (AGP_LIBRARIES
+		${OPENGL_gl_LIBRARY}
+	)
+
+	SET (AGP_SOURCES
+		${AGP_GL_SHARED}
+		platform/agp/gl21.c
+	)
+
+elseif (AGP_PLATFORM STREQUAL "gles2")
+	FIND_PACKAGE(GLES2 REQUIRED)
+	add_definitions(-DGLES2)
+	SET(AGP_LIBRARIES
+		${GLES2_LIBRARIES}
+	)
+		SET (AGP_SOURCES
+		${AGP_GL_SHARED}
+		platform/agp/gles.c
+	)
+
+elseif (AGP_PLATFORM STREQUAL "gles3")
+	FIND_PACKAGE(GLES3 REQUIRED)
+	add_definitions(-DGLES3)
+	SET(AGP_LIBRARIES
+		${GLES3_LIBRARIES}
+	)
+	SET (AGP_SOURCES
+		${AGP_GL_SHARED}
+		platform/agp/gles.c
+	)
+	set_property(SOURCE platform/agp/gles.c
+		APPEND PROPERTY COMPILE_DEFINITIONS GLES3)
+
+else()
+	message(FATAL_ERROR "Unknown AGP platform specified, #{AGP_PLATFORM}")
+endif()

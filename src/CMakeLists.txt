@@ -5,12 +5,25 @@ cmake_minimum_required(VERSION 2.8.8 FATAL_ERROR)
 
 set(EXTERNAL_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external)
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake)
+if (GLOBAL_CFLAGS)
+	add_definitions(${GLOBAL_CFLAGS})
+endif()
 
 # static base version, manually mantained
 set(MAJOR_VERSION 0 )
 set(MINOR_VERSION 5 )
 set(PATCH_LEVEL 0 )
 set(VERSION ${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_LEVEL})
+set(PLATFORM_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/platform)
+
+# blacklist some built-ins
+if (NOT LUA_DROPSTR)
+set (LUA_DROPSTR "io os package rawequal rawset rawget setfenv coroutine module require")
+endif()
+
+if (NOT GIT_MIRROR)
+	SET(GIT_MIRROR "https://www.github.com/mirror")
+endif()
 
 # generate an identifiable buildtag for tracking purposes
 if (NOT DEFINED ENGINE_BUILDTAG)
@@ -65,7 +78,6 @@ else()
 	set(VPLATFORM_STR "x11|x11-headless|sdl|egl-gles|egl-dri|egl-nvidia")
 endif()
 set(AGPPLATFORM_STR "gl21|gles2|gles3|stub")
-set( MAIN_LIBRARIES )
 
 #
 # for linux/BSD, we can build a 32-bit version of the hi-jack lib as well,
@@ -88,7 +100,6 @@ if (NOT WIN32)
 	option(ENABLE_LWA "Build a lightweight arcan (arcan_lwa) with nested platform" OFF)
 endif()
 option(ENABLE_SIMD_ALIGNED "Assert that SIMD data sources are 16-byte aligned" OFF)
-option(SQLITE_AMALGAMATE "Use the SQLite Amalgamation" OFF)
 
 message("")
 message("Cmake options:")
@@ -108,36 +119,21 @@ message("optimization / core features:")
 message("   -DENABLE_LED=[On|Off] : Build with LED controller support in core")
 message("   -DENABLE_LWA=[Off|On] : Build lightweight additional arcan client")
 message("   -DENABLE_LUAJIT=[On|Off] : link with luajit51 (if found)")
-message("   -DMUSL_LIBC=[Off|On] build and link with MUSL Libc (incomplete)")
-message("   -DSQLITE_AMALGAMATE=[Off|On] : Build / Link with the SQLite Amalgamation")
 message("")
-set (FRAMESERVER_MODESTRING "")
 
-#
-# These work as a sort of black-list that will be dropped when the VM is initialized
-# For more fine-grained control, we should switch to a white-list approach where
-# : is used as a table:member delimiter to keep certain functions.
-#
-if (NOT LUA_DROPSTR)
-set (LUA_DROPSTR "io os package rawequal rawset rawget setfenv coroutine module require")
-endif()
-
-if (NOT GIT_MIRROR)
-	SET(GIT_MIRROR "https://www.github.com/mirror")
-endif()
-
-#
-# Hooks added here to later switch to -nostdlib -nodefaultlibs and
-# get a decent libc for linux
-#
+# Hooks added here to later switch to -nostdlib -nodefaultlibs and get a decent libc for linux
 set (STDLIB
 	m
 	pthread
 )
 
+# no other audio platforms supported currently
+set(AUDIO_PLATFORM "openal")
+
 #
-# Incomplete, major workarounds need to be added for all external deps. etc.
-# to build without linking in all the glibc filth
+# Incomplete still, will probably be extended / fixed when testing/building on Alpine Linux
+# (openrc, grsec and free from systemd and glibc? interesting - can we just drop pulse
+# and d-bus as well, or switch to the reasonably clean nobus implementation)
 #
 if (MUSL_LIBC)
 	set(MUSL ${CMAKE_CURRENT_SOURCE_DIR}/external/musl)
@@ -148,12 +144,11 @@ if (MUSL_LIBC)
 	PREFIX ${MUSL}
 	BUILD_COMMAND make
 	BUILD_IN_SOURCE 1
-)
-
+	)
 	set(STDLIB ${MUSL}/.libs/lib/libc.a)
 endif()
 
-message("Using compiler: ${CMAKE_C_COMPILER_ID}")
+message(STATUS "Using compiler: ${CMAKE_C_COMPILER_ID}")
 
 if ("${CMAKE_C_COMPILER_ID}" MATCHES "GNU")
 	execute_process(
@@ -197,220 +192,17 @@ if (ENABLE_LTO)
 endif()
 
 # --- Step 1, Dependencies / find package flags
-# paths / locations
-set(OPENCTM_LIBRARY openctm)
-set(ARCAN_DEFINITIONS "")
+find_package(Freetype REQUIRED)
+find_package(PNG REQUIRED)
+find_package(OpenAL REQUIRED)
+find_package(SQLITE3 REQUIRED)
+find_package(SSE)
 
-FIND_PACKAGE ( Freetype REQUIRED )
-FIND_PACKAGE ( PNG REQUIRED )
-
-if (NOT AGP_PLATFORM)
-	SET(AGP_PLATFORM "gl21")
-endif()
-
-SET (AGP_GL_SHARED
-	platform/video_platform.h
-	platform/agp/glshared.c
-	platform/agp/glfun.h
-	platform/agp/shdrmgmt.c
-	platform/agp/glinit.c
-)
-
-if (AGP_PLATFORM STREQUAL "stub")
-	set(AGP_SOURCES
-		platform/agp/stub.c
-	)
-
-elseif (AGP_PLATFORM STREQUAL "gl21")
-	FIND_PACKAGE(OpenGL REQUIRED)
-	SET (AGP_LIBRARIES
-		${OPENGL_gl_LIBRARY}
-	)
-
-	SET (AGP_SOURCES
-		${AGP_GL_SHARED}
-		platform/agp/gl21.c
-	)
-
-elseif (AGP_PLATFORM STREQUAL "gles2")
-	FIND_PACKAGE(GLES2 REQUIRED)
-	add_definitions(-DGLES2)
-	SET(AGP_LIBRARIES
-		${GLES2_LIBRARIES}
-	)
-		SET (AGP_SOURCES
-		${AGP_GL_SHARED}
-		platform/agp/gles.c
-	)
-
-elseif (AGP_PLATFORM STREQUAL "gles3")
-	FIND_PACKAGE(GLES3 REQUIRED)
-	add_definitions(-DGLES3)
-	SET(AGP_LIBRARIES
-		${GLES3_LIBRARIES}
-	)
-	SET (AGP_SOURCES
-		${AGP_GL_SHARED}
-		platform/agp/gles.c
-	)
-	set_property(SOURCE platform/agp/gles.c
-		APPEND PROPERTY COMPILE_DEFINITIONS GLES3)
-
-else()
-	message(FATAL_ERROR "Unknown AGP platform specified, #{AGP_PLATFORM}")
-endif()
-
-set(PLATFORM_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/platform)
-
-if (GLOBAL_CFLAGS)
-	add_definitions(${GLOBAL_CFLAGS})
-endif()
-
-if (VIDEO_PLATFORM STREQUAL "x11" OR VIDEO_PLATFORM STREQUAL "x11-headless")
-	if (NOT INPUT_PLATFORM)
-		set(INPUT_PLATFORM "x11")
-	endif()
-
-	add_definitions(-DWITH_X11)
-
-	if (VIDEO_PLATFORM STREQUAL "x11-headless")
-		set(VIDEO_PLATFORM "x11")
-		add_definitions(-DWITH_HEADLESS_MAIN)
-	endif()
-
-	FIND_PACKAGE(X11 REQUIRED)
-
-	LIST(APPEND INCLUDE_DIRS ${X11_INCLUDE_DIRS})
-	LIST(APPEND MAIN_LIBRARIES ${AGP_LIBRARIES} ${X11_LIBRARIES})
-	LIST(APPEND LWA_LIBRARIES ${AGP_LIBRARIES} ${X11_LIBRARIES})
-
-	if (ENABLE_LWA)
-		message("Enabling LWA (Arcan-in-Arcan) build using X11 HEADLESS")
-		SET(LWA_HEADLESS ${PLATFORM_ROOT}/x11/video.c)
-	endif()
-
-# legacy platform for weaker platforms RPI etc.
-elseif(VIDEO_PLATFORM STREQUAL "egl-gles")
-	if (NOT INPUT_PLATFORM)
-		set(INPUT_PLATFORM "linux")
-	endif()
-
-	FIND_PACKAGE(EGL REQUIRED)
-
-	if (ENABLE_LWA)
-		message("Enabling LWA (Arcan-in-Arcan) build using X11 HEADLESS")
-		SET(LWA_HEADLESS ${PLATFORM_ROOT}/egl-gles/video.c)
-		LIST(APPEND LWA_LIBRARIES ${AGP_LIBRARIES} ${EGL_LIBRARIES})
-	endif()
-
-	if (GLES2_BCM_IMPLEMENTATION)
-		message("broadcom (BCM) GLES implementation found, set BCM_ROOT to bad dir to disable")
-		LIST(APPEND ARCAN_DEFINITIONS WITH_BCM)
-		set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/platform/egl-gles/video.c
-			APPEND PROPERTY COMPILE_FLAGS -fgnu89-inline)
-	endif()
-
-	LIST(APPEND INCLUDE_DIRS
-		${GLES2_INCLUDE_DIRS}
-		${EGL_INCLUDE_DIRS}
-	)
-
-	LIST(APPEND MAIN_LIBRARIES
-		${AGP_LIBRARIES}
-		${EGL_LIBRARIES}
-	)
-
-elseif(VIDEO_PLATFORM STREQUAL "egl-nvidia")
-	if (NOT INPUT_PLATFORM)
-		set(INPUT_PLATFORM "linux")
-	endif()
-
-	FIND_PACKAGE(EGL REQUIRED)
-# need a way to check nvidia driver version so that we maintain that
-# dependency statically
-	LIST(APPEND MAIN_LIBRARIES
-		${EGL_LIBRARIES}
-		${AGP_LIBRARIES}
-	)
-	if (ENABLE_LWA)
-		message("Enabling LWA (Arcan-in-Arcan build) using NVIDIA Linux headless")
-		SET(LWA_HEADLESS ${PLATFORM_ROOT}/egl-nvidia/video.c)
-		LIST(APPEND LWA_LIBRARIES ${AGP_LIBRARIES} ${EGL_LIBRARIES})
-	endif()
-elseif(VIDEO_PLATFORM STREQUAL "egl-dri")
-	if (NOT INPUT_PLATFORM)
-		set(INPUT_PLATFORM "linux")
-	endif()
-
-	FIND_PACKAGE(EGL REQUIRED)
-	FIND_PACKAGE(GBMKMS REQUIRED)
-
-	LIST(APPEND MAIN_LIBRARIES
-		${EGL_LIBRARIES}
-		${AGP_LIBRARIES}
-		${GBMKMS_LIBRARIES}
-	)
-	LIST(APPEND INCLUDE_DIRS
-		${GBMKMS_INCLUDE_DIRS}
-	)
-
-	if (ENABLE_LWA)
-		message("Enabling LWA (Arcan-in-Arcan build) using EGL-DRI HEADLESS")
-		SET(LWA_HEADLESS ${PLATFORM_ROOT}/egl-dri/video_rnode.c)
-		LIST(APPEND LWA_LIBRARIES ${AGP_LIBRARIES}
-			${EGL_LIBRARIES} ${GBMKMS_LIBRARIES})
-	endif()
-
-elseif (VIDEO_PLATFORM STREQUAL "sdl")
-	if (NOT INPUT_PLATFORM)
-		set(INPUT_PLATFORM "sdl")
-	endif()
-
-
-	FIND_PACKAGE(SDL REQUIRED)
-	FIND_PACKAGE(SDL_image)
-
-	LIST(APPEND INCLUDE_DIRS ${SDL_INCLUDE_DIR})
-	LIST(APPEND ARCANMAIN_LIBRARIES ${SDL_LIBRARY} ${AGP_LIBRARIES})
-
-	if (${SDLIMAGE_FOUND})
-		message("--> SDL_Image found, adding")
-		list(APPEND ARCANMAIN_LIBRARIES ${SDLIMAGE_LIBRARY})
-		list(APPEND LWA_LIBRARIES ${SDLIMAGE_LIBRARY} ${SDL_LIBRARY})
-		list(APPEND INCLUDE_DIRS ${SDLIMAGE_INCLUDE_DIR})
-		set_property(SOURCE engine/arcan_img.c
-			APPEND PROPERTY COMPILE_DEFINITIONS SDLIMAGE)
-	endif(${SDLIMAGE_FOUND})
-
-	if (ENABLE_LWA)
-		message("Enabling LWA (Arcan-in-Arcan build) using X11 HEADLESS")
-		FIND_PACKAGE(X11 REQUIRED)
-		LIST(APPEND INCLUDE_DIRS ${X11_INCLUDE_DIRS})
-		LIST(APPEND LWA_LIBRARIES ${X11_LIBRARIES} ${AGP_LIBRARIES})
-		if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-			message("Enabling LWA (Arcan-in-Arcan) build using Darwin HEADLESS")
-			SET(LWA_HEADLESS ${PLATFORM_ROOT}/darwin/video.c)
-			set_property(SOURCE ${PLATFORM_ROOT}/arcan/video.c APPEND PROPERTY
-				OBJECT_DEPENDS ${PLATFORM_ROOT}/darwin/video.c)
-			set_property(SOURCE frameserver/libretro.c APPEND PROPERTY
-				OBJECT_DEPENDS ${PLATFORM_ROOT}/darwin/video.c)
-		else()
-			message("Enabling LWA (Arcan-in-Arcan) build using X11 HEADLESS")
-			SET(LWA_HEADLESS ${PLATFORM_ROOT}/x11/video.c)
-		endif()
-	endif()
-
-else()
-	message(FATAL_ERROR "No video platform specified, use -DVIDEO_PLATFORM=${VPLATFORM_STR} e.g. -DVIDEO_PLATFORM=sdl")
-endif()
-
-# no other audio platforms supported currently
-set(AUDIO_PLATFORM "openal")
-FIND_PACKAGE( OpenAL REQUIRED )
+include(${PLATFORM_ROOT}/CMakeLists.AGP)
+include(${PLATFORM_ROOT}/CMakeLists.Video)
 
 message("\n---- Stage 1: library dependencies and configuration ----")
 if (NOT SQLITE_AMALGAMATE)
-FIND_PACKAGE ( SQLITE3 REQUIRED )
 endif(NOT SQLITE_AMALGAMATE)
 
 message(STATUS "Lua")
@@ -441,7 +233,7 @@ LIST (APPEND
 
 LIST (APPEND
 	MAIN_LIBRARIES
-	${OPENCTM_LIBRARY}
+	openctm
 	${FREETYPE_LIBRARY}
 	${LUA_LIBRARIES}
 	${SQLITE3_LIBRARIES}
@@ -522,13 +314,8 @@ set_property(SOURCE platform/posix/fdpassing.c
 set_property(SOURCE platform/posix/fdpassing.c
 	APPEND PROPERTY COMPILE_DEFINITIONS NONBLOCK_RECV)
 
-FIND_PACKAGE(SSE)
 if (ENABLE_SIMD AND SSE_FOUND)
 	message("--> Enabling SIMD")
-
-	set_property(SOURCE engine/arcan_math.c
-		APPEND PROPERTY COMPILE_DEFINITIONS ARCAN_MATH_SIMD)
-	list(APPEND SOURCES engine/arcan_math_simd.c)
 
 	if (ENABLE_SIMD_ALIGNED)
 		message("      |--> Asserting SIMD operands are aligned")
@@ -537,6 +324,10 @@ if (ENABLE_SIMD AND SSE_FOUND)
 		set_property(SOURCE engine/arcan_math_simd.c
 			APPEND PROPERTY COMPILE_DEFINITIONS ARCAN_MATH_ALIGNED_SIMD)
 	endif()
+
+	set_property(SOURCE engine/arcan_math.c
+		APPEND PROPERTY COMPILE_DEFINITIONS ARCAN_MATH_SIMD)
+	list(APPEND SOURCES engine/arcan_math_simd.c)
 
 	set_property(SOURCE engine/arcan_math_simd.c
 		APPEND PROPERTY COMPILE_FLAGS -msse3)
@@ -551,15 +342,10 @@ if (ENABLE_LED)
 	add_definitions(-DARCAN_LED)
 endif()
 
-if (SQLITE_AMALGAMATE)
-	message("--> Embedding the SQLite Amalgamation.")
-	list(APPEND SOURCES external/sqlite3/sqlite3.c)
-endif (SQLITE_AMALGAMATE)
-
 if (LUA51_JIT)
 	message("--> Enabling JIT- mode for Lua.")
 	set_property(SOURCE engine/arcan_lua.c APPEND PROPERTY
-					COMPILE_DEFINITIONS LUA51_JIT)
+		COMPILE_DEFINITIONS LUA51_JIT)
 	set(LUA_TAG "luajit51")
 else()
 	set(LUA_TAG "lua51")
@@ -575,8 +361,7 @@ set (SHMIF_SOURCES
 	shmif/arcan_shmif_interop.c
 	shmif/arcan_shmif_event.h
 )
-
-include_directories(${INCLUDE_DIRS})
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/shmif)
 
 message("\n---- Stage 1 configuration ----")
 message("video output (VIDEO_PLATFORM) set to : ${VIDEO_PLATFORM}")
@@ -628,15 +413,22 @@ else()
 	message("\n---- Stage 4, LWA Build (omitted) ----")
 endif()
 
-add_executable( arcan_db ${ARCANDB_SOURCES} )
-target_link_libraries( arcan_db ${STDLIB} ${SQLITE3_LIBRARIES})
+add_executable(arcan_db ${ARCANDB_SOURCES})
+target_link_libraries(arcan_db ${STDLIB} ${SQLITE3_LIBRARIES})
+target_include_directories(arcan_db PRIVATE ${INCLUDE_DIRS})
 
 # GCC *** requiring dl to be the last argument to avoid dlclose in some
 # edge-cases? just take them out behind the shed and pull the trigger.
 
-add_executable( arcan ${SOURCES} ${PLATFORM_SOURCES} )
-set_property(TARGET arcan APPEND PROPERTY COMPILE_DEFINITIONS ${ARCAN_DEFINITIONS})
-target_link_libraries( arcan ${STDLIB} ${MAIN_LIBRARIES} ${ARCANMAIN_LIBRARIES})
+add_executable(arcan ${SOURCES} ${PLATFORM_SOURCES})
+target_include_directories(arcan PRIVATE ${INCLUDE_DIRS})
+target_compile_definitions(arcan PRIVATE ${ARCAN_DEFINITIONS})
+target_link_libraries( arcan
+	${STDLIB}
+	${MAIN_LIBRARIES}
+	${AGP_LIBRARIES}
+	${ARCANMAIN_LIBRARIES}
+)
 
 #
 # The database tool is a CLI for the engine/arcan_db with additional

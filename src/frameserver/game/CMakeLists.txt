@@ -24,6 +24,8 @@ add_executable(afsrv_game
 	${GAME_AUX_SOURCES}
 )
 
+set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING} game")
+
 target_link_libraries(afsrv_game
 	arcan_shmif
 	${GAME_AUX_LIBS}
