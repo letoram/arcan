@@ -202,8 +202,8 @@ enum arcan_shmif_sigmask {
 	SHMIF_SIGVID = 1,
 	SHMIF_SIGAUD = 2,
 
-/* blocking vs. accepting data corruption (partial) trade-off          */
-  SHMIF_SIGBLK_FORCE = 0, /* wait for synchronous releasefrom parent   */
+/* blocking vs. accepting data corruption (partial) trade-off                */
+	SHMIF_SIGBLK_FORCE = 0, /* wait for synchronous releasefrom parent   */
 	SHMIF_SIGBLK_NONE  = 4, /* never wait, always overwrite              */
 	SHMIF_SIGBLK_ONCE  = 8  /* non-blocking unless already frame pending */
 };

@@ -915,10 +915,10 @@ void arcan_shmif_signal(struct arcan_shmif_cont* ctx, int mask)
 	else if (mask & (SHMIF_SIGVID | SHMIF_SIGAUD)){
 		FORCE_SYNCH();
 		ctx->addr->vready = true;
-    if (ctx->addr->abufused > 0){
+		if (ctx->addr->abufused > 0){
 			ctx->addr->aready = true;
 			arcan_sem_wait(ctx->asem);
-    }
+		}
 		arcan_sem_wait(ctx->vsem);
 	}
 	else
@@ -936,7 +936,7 @@ void arcan_shmif_forceofs(struct arcan_shmif_page* shmp,
 	const int memalign = 64;
 
 	if ( (uintptr_t)vidaddr % memalign != 0)
-		vidaddr += memalign - ( (uintptr_t)vidaddr % memalign);
+		vidaddr += memalign - ( (uintptr_t) vidaddr % memalign);
 
 	audaddr = vidaddr + width * height * bpp;
 	if ( (uintptr_t) audaddr % memalign != 0)

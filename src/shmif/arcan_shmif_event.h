@@ -85,7 +85,7 @@ enum ARCAN_SEGID {
 	SEGID_VM, /* virtual-machine, high resource consumption, high risk */
 	SEGID_HMD_SBS, /* head-mounter display, even split left/ right */
 	SEGID_HMD_L, /* head-mounted display, left eye view (otherwise _GAME) */
-  SEGID_HMD_R, /* head-mounted display, right eye view (otherwise _GAME) */
+	SEGID_HMD_R, /* head-mounted display, right eye view (otherwise _GAME) */
 	SEGID_POPUP, /* pulldown menus, popup windows, ... */
 	SEGID_ICON, /* minimized- status indicator */
 	SEGID_DEBUG, /* can always be terminated, may hold extraneous information */

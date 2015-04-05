@@ -19,8 +19,8 @@ if (LIBVNC_FOUND)
 	)
 
 	target_include_directories(afsrv_remoting PRIVATE
-		${FSRV_ROOTPATH}
-		${FSRV_ROOTPATH}/util
+		${FSRV_ROOT}
+		${FSRV_ROOT}/util
 		${LIBVNC_INCLUDE_DIR}
 	)
 

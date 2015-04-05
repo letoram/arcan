@@ -14,7 +14,7 @@ if (LIBVLC_FOUND)
 	)
 
 	target_link_libraries(afsrv_decode ${LIBVLC_LIBRARY} ${STDLIB} arcan_shmif)
-	target_include_directories(afsrv_decode PRIVATE ${FSRV_ROOTPATH})
+	target_include_directories(afsrv_decode PRIVATE ${FSRV_ROOT})
 	target_compile_definitions(afsrv_decode PRIVATE
 		ENABLE_FSRV_DECODE
 		DEFAULT_FSRV_MODE=\"decode\"

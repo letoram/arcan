@@ -17,8 +17,8 @@ if (FFMPEG_FOUND AND BZIP2_FOUND AND ZLIB_FOUND AND LIBLZMA_FOUND)
 	if (LIBVNC_FOUND)
 		message(STATUS "--(fsrv/encode) adding VNC support using libvnc")
 		set(ENC_AUX_SOURCES
-			${FSRV_ROOTPATH}/util/vncserver.c
-			${FSRV_ROOTPATH}/util/vncserver.h
+			${FSRV_ROOT}/util/vncserver.c
+			${FSRV_ROOT}/util/vncserver.h
 		)
 		set(ENC_AUX_LIBS ${LIBVNC_SERVER_LIBRARY})
 	endif()
@@ -42,8 +42,8 @@ if (FFMPEG_FOUND AND BZIP2_FOUND AND ZLIB_FOUND AND LIBLZMA_FOUND)
 	)
 
 	target_include_directories(afsrv_encode PRIVATE
-		${FSRV_ROOTPATH}
-		${FSRV_ROOTPATH}/util
+		${FSRV_ROOT}
+		${FSRV_ROOT}/util
 	)
 
 	target_compile_definitions(afsrv_encode PRIVATE
