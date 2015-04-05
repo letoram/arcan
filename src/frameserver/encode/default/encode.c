@@ -673,9 +673,7 @@ static void dump_help()
 		" demained by the main arcan process.\n");
 }
 
-int arcan_frameserver_encode_run(
-	struct arcan_shmif_cont* cont,
-	struct arg_arr* args)
+int afsrv_encode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 {
 	if (!args || !cont){
 		dump_help();
