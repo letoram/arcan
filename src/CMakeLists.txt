@@ -123,7 +123,7 @@ if ("${CMAKE_C_COMPILER_ID}" MATCHES "GNU")
 		COMMAND ${CMAKE_C_COMPILER} -dumpversion OUTPUT_VARIABLE GCC_VERSION)
 
 	if (NOT (GCC_VERSION VERSION_GREATER 4.7 OR GCC_VERSION VERSION_EQUAL 4.7))
-		message(FATAL_ERROR "Ancient GCC Version detected, Arcan needs to be compiled with Clang-3.3+ or 4.7+")
+	message(FATAL_ERROR "Ancient GCC Version detected, Arcan needs to be compiled with Clang-3.3+ or gcc 4.7+")
 	endif()
 
 elseif ("${CMAKE_C_COMPILER_ID}" MATCHES "Clang")
@@ -139,7 +139,20 @@ endif(CMAKE_BUILD_TYPE STREQUAL "Profile")
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
 	message("------------------*Debug Build*--------------------")
+	message(" Debug Specific Setting: ")
+	message(" LUA_TRACE_METHOD=[off|stderr|coverage")
+	if (LUA_TRACE_METHOD STREQUAL "stderr")
+		message(STATUS "LUA_TRACE_METHOD set to stderr")
+		list(APPEND ARCAN_DEFINITIONS LUA_TRACE_STDERR)
+	endif()
+
+	if (LUA_TRACE_METHOD STREQUAL "coverage")
+		message(STATUS "LUA_TRACE_METHOD set to coverage, will write to arcan.converage")
+		list(APPEND ARCAN_DEFINITIONS LUA_TRACE_COVERAGE)
+	endif()
+
 	add_definitions(-g -D_DEBUG -O0 -fno-omit-frame-pointer)
+
 endif (CMAKE_BUILD_TYPE STREQUAL "Debug")
 
 if (CMAKE_BUILD_TYPE STREQUAL "DebugTrace")
