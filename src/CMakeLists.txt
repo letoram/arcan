@@ -356,6 +356,9 @@ add_library(arcan_shmif STATIC
 	${SHMIF_PLATFORM}
 )
 target_link_libraries(arcan_shmif PRIVATE ${STDLIB})
+# note that we enable fpic for the static here as some
+# subdirectores need to pull it in as part of building a shared library
+set_property(TARGET arcan_shmif APPEND PROPERTY COMPILE_FLAGS -fPIC)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
@@ -363,6 +366,10 @@ if (NOT DISABLE_FRAMESERVERS)
 	add_subdirectory(frameserver)
 else()
 	set(FSRV_DISABLE DISABLE_FRAMESERVERS)
+endif()
+
+if (NOT DISABLE_HIJACK)
+	add_subdirectory(hijack)
 endif()
 
 set_property(SOURCE engine/arcan_lua.c engine/arcan_main.c

@@ -10,10 +10,9 @@
  * and a table that maintains the original function pointers
  */
 
-#ifndef _HAVE_ARCAN_TARGET
-#define _HAVE_ARCAN_TARGET
+#ifndef HAVE_SDL12
+#define HAVE_SDL12
 
-/* prototypes matching arcan_target.c */
 SDL_GrabMode ARCAN_SDL_WM_GrabInput(SDL_GrabMode mode);
 void ARCAN_target_init();
 void ARCAN_target_shmsize(int w, int h, int bpp);
@@ -33,21 +32,7 @@ void ARCAN_SDL_GL_SwapBuffers();
 void ARCAN_glFinish();
 void ARCAN_glFlush();
 
-#ifdef ENABLE_X11_HIJACK
-int ARCAN_XNextEvent(Display* disp, XEvent* ev);
-int ARCAN_XPeekEvent(Display* disp, XEvent* ev);
-Bool ARCAN_XGetEventData(Display* display, XGenericEventCookie* event);
-void ARCAN_glXSwapBuffers (Display *dpy, GLXDrawable drawable);
-Bool ARCAN_XQueryPointer(Display* display, Window w,
-	Window* root_return, Window* child_return, int* rxret,
-	int* ryret, int* wxret, int* wyret, unsigned* maskret);
-int ARCAN_XCheckIfEvent(Display *display, XEvent *event_return,
-	Bool (*predicate)(Display*, XEvent*, XPointer), XPointer arg);
-Bool ARCAN_XFilterEvent(XEvent* ev, Window m);
-#endif
-
 struct hijack_fwdtbl {
-/* SDL */
 	void (*sdl_swapbuffers)(void);
 	SDL_Surface* (*sdl_setvideomode)(int, int, int, Uint32);
 	int (*sdl_pollevent)(SDL_Event*);
@@ -69,36 +54,6 @@ struct hijack_fwdtbl {
 	void (*glPointSize)(float);
 	void (*glFinish)(void);
 	void (*glFlush)(void);
-
-#ifdef ENABLE_X11_HIJACK
-	XVisualInfo* (*glXChooseVisual)(Display* dpy, int screen, int* attribList);
-	Window (*XCreateWindow)(Display* display, Window parent,
-		int x, int y, unsigned int width,
-		unsigned int height, unsigned int border_width,
-		int depth, unsigned int class, Visual* visual,
-		unsigned long valuemask, XSetWindowAttributes* attributes);
-
-	Window (*XCreateSimpleWindow)(Display* display, Window parent,
-		int x, int y, unsigned int width, unsigned int height,
-		unsigned int border_width,
-		unsigned long border, unsigned long background);
-
-	void* (*glXGetProcAddress)(const GLubyte* name);
-
-	Bool (*XQueryPointer)(Display* display, Window w,
-		Window* root_return, Window* child_return, int* rxret,
-		int* ryret, int* wxret, int* wyret, unsigned* maskret);
-	Bool (*XGetEventData)(Display*, XGenericEventCookie*);
-	int (*XCheckIfEvent)(Display*, XEvent*, Bool (*predicate)(), XPointer);
-	Bool (*XFilterEvent)(XEvent*, Window);
-	int (*XNextEvent)(Display*, XEvent*);
-	int (*XPeekEvent)(Display*, XEvent*);
-
-/* could take the CheckMaskEvent, CheckTypedEvent etc.
- * as well as we're just filtering input */
-
-	void (*glXSwapBuffers)(Display *dpy, GLXDrawable drawable);
-#endif
 };
 
 #endif

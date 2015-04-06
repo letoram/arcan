@@ -6,6 +6,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <poll.h>
@@ -19,23 +20,11 @@
 #include <poll.h>
 #include <signal.h>
 
-#include "../frameserver/resampler/speex_resampler.h"
-
-#ifdef ENABLE_X11_HIJACK
-#include <X11/X.h>
-#include <X11/Xlib.h>
-#include <X11/Xlibint.h>
-#include <X11/Xutil.h>
-#include <GL/glx.h>
-#else
-
-#define GL_GLEXT_PROTOTYPES 1
-#include <SDL/SDL_opengl.h>
-#endif
+#include "util/resampler/speex_resampler.h"
 
 #include <SDL/SDL.h>
 #include <dlfcn.h>
-#include "arcan_target.h"
+#include "sdl12.h"
 
 extern struct hijack_fwdtbl forwardtbl;
 
