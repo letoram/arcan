@@ -328,7 +328,7 @@ message("device input (INPUT_PLATFORM) set to : ${INPUT_PLATFORM}")
 # Expand with more platforms as needed, all are expected to define
 # PLATFORM_[ ,fsrv, shmif]_SOURCES, add a global definition
 # for PLATFORM_HEADER add any OS- specific definitions to
-# MAIN_LIBRARIES, set OS_DYLIB_EXTENSION
+# ARCAN_LIBRARIES, set OS_DYLIB_EXTENSION
 #
 if (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
 	message("\n---- Stage 2, FreeBSD specific ----")
