@@ -47,3 +47,4 @@ endforeach()
 #
 add_executable(arcan_frameserver frameserver.c)
 target_compile_definitions(arcan_frameserver PRIVATE AFSRV_CHAINLOADER)
+install(TARGETS arcan_frameserver DESTINATION bin)

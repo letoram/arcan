@@ -37,6 +37,8 @@ if (APR_FOUND)
 
 	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING} net")
 
+	install(TARGETS afsrv_net DESTINATION bin)
+
 else()
 	message("net frameserver disabled, libapr not found\n")
 endif()

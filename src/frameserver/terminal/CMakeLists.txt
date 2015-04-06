@@ -36,6 +36,8 @@ if (LIBTSM_FOUND)
 
 	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING} terminal")
 
+	install(TARGETS afsrv_terminal DESTINATION bin)
+
 	if (FREETYPE_FOUND)
 		target_compile_definitions(afsrv_terminal PRIVATE TTF_SUPPORT)
 		target_include_directories(afsrv_terminal PRIVATE ${FREETYPE_INCLUDE_DIRS})
