@@ -1,28 +1,30 @@
-PROJECT( arcan )
+PROJECT(arcan)
 include(ExternalProject)
 include(CheckIncludeFiles)
-cmake_minimum_required(VERSION 2.8.8 FATAL_ERROR)
+cmake_minimum_required(VERSION 2.8.12 FATAL_ERROR)
 
 set(EXTERNAL_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external)
-set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake)
+set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/modules)
 if (GLOBAL_CFLAGS)
 	add_definitions(${GLOBAL_CFLAGS})
 endif()
 
+add_compile_options(-std=gnu11 -Wall -Wno-missing-braces -Wno-unused-function)
+
 # static base version, manually mantained
-set(MAJOR_VERSION 0 )
-set(MINOR_VERSION 5 )
-set(PATCH_LEVEL 0 )
+set(MAJOR_VERSION 0)
+set(MINOR_VERSION 5)
+set(PATCH_LEVEL 0)
 set(VERSION ${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_LEVEL})
 set(PLATFORM_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/platform)
 
 # blacklist some built-ins
 if (NOT LUA_DROPSTR)
-set (LUA_DROPSTR "io os package rawequal rawset rawget setfenv coroutine module require")
+set(LUA_DROPSTR "io os package rawequal rawset rawget setfenv coroutine module require")
 endif()
 
 if (NOT GIT_MIRROR)
-	SET(GIT_MIRROR "https://www.github.com/mirror")
+	set(GIT_MIRROR "https://www.github.com/mirror")
 endif()
 
 # generate an identifiable buildtag for tracking purposes
@@ -79,17 +81,6 @@ else()
 endif()
 set(AGPPLATFORM_STR "gl21|gles2|gles3|stub")
 
-#
-# for linux/BSD, we can build a 32-bit version of the hi-jack lib as well,
-# and use it for 32-bit targets.
-#
-if( CMAKE_SIZEOF_VOID_P EQUAL 4 )
-	set( HAVE_64_BIT 0 )
-else()
-	option(ENABLE_32BITHIJACK "Build both 64 and 32bit hijack libraries" OFF)
-	set( HAVE_64_BIT 1 )
-endif()
-
 option(ENABLE_ASAN "Build with Address-Sanitizer, (gcc >= 4.8, clang >= 3.1)" OFF)
 option(ENABLE_LUAJIT "Use the luajit-5.1 VM (if found)" ON)
 option(ENABLE_SIMD "Build with SIMD vector instruction set support" ON)
@@ -115,38 +106,15 @@ message("audio/video/input support:")
 message("   -DVIDEO_PLATFORM=${VPLATFORM_STR} : Set video/display platform")
 message("   -DAGP_PLATFORM=${AGPPLATFORM_STR} : Set video/rendering platform")
 message("")
-message("optimization / core features:")
+message("optional engine builds:")
 message("   -DENABLE_LED=[On|Off] : Build with LED controller support in core")
-message("   -DENABLE_LWA=[Off|On] : Build lightweight additional arcan client")
-message("   -DENABLE_LUAJIT=[On|Off] : link with luajit51 (if found)")
+message("   -DENABLE_LWA=[Off|On] : Build LWA Arcan client (nesting support)")
+message("   -DENABLE_LUAJIT=[On|Off] : Link with luajit51 (if found)")
+message("   -DDISABLE_FRAMESERVERS=[Off|On] : Build Arcan without support for frameservers")
 message("")
-
-# Hooks added here to later switch to -nostdlib -nodefaultlibs and get a decent libc for linux
-set (STDLIB
-	m
-	pthread
-)
 
 # no other audio platforms supported currently
 set(AUDIO_PLATFORM "openal")
-
-#
-# Incomplete still, will probably be extended / fixed when testing/building on Alpine Linux
-# (openrc, grsec and free from systemd and glibc? interesting - can we just drop pulse
-# and d-bus as well, or switch to the reasonably clean nobus implementation)
-#
-if (MUSL_LIBC)
-	set(MUSL ${CMAKE_CURRENT_SOURCE_DIR}/external/musl)
-	ExternalProject_Add(
-	libmusl
-	SOURCE_DIR ${MUSL}
-	CONFIGURE_COMMAND ${MUSL}/configure --prefix=${MUSL}/.libs --disable-shared
-	PREFIX ${MUSL}
-	BUILD_COMMAND make
-	BUILD_IN_SOURCE 1
-	)
-	set(STDLIB ${MUSL}/.libs/lib/libc.a)
-endif()
 
 message(STATUS "Using compiler: ${CMAKE_C_COMPILER_ID}")
 
@@ -198,41 +166,29 @@ find_package(OpenAL REQUIRED)
 find_package(SQLITE3 REQUIRED)
 find_package(SSE)
 
-include(${PLATFORM_ROOT}/CMakeLists.AGP)
-include(${PLATFORM_ROOT}/CMakeLists.Video)
+include(${PLATFORM_ROOT}/cmake/CMakeLists.AGP)
+include(${PLATFORM_ROOT}/cmake/CMakeLists.Video)
 
 message("\n---- Stage 1: library dependencies and configuration ----")
-if (NOT SQLITE_AMALGAMATE)
-endif(NOT SQLITE_AMALGAMATE)
-
 message(STATUS "Lua")
 if (ENABLE_LUAJIT)
 	message(STATUS "Looking for JIT enabled LUA VM")
-	FIND_PACKAGE ( Lua51JIT )
+	find_package(Lua51JIT)
 endif()
 
 if (NOT LUA_LIBRARY)
-	FIND_PACKAGE ( Lua51 )
-endif (NOT LUA_LIBRARY)
+	find_package(Lua51)
+endif()
 
 if (NOT LUA_LIBRARIES)
 	message("--> Lua Library not found, building from external/lua")
-	add_subdirectory( external/lua )
-	set (LUA_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/lua)
-	set (LUA_LIBRARIES lua51 )
-endif (NOT LUA_LIBRARIES)
-
-#
-# We split MAIN_LIBRARIES into ARCANMAIN_LIBRARIES and MAIN_LIBRARIES
-# as some customisations would conflict with building the LWA version.
-#
-LIST (APPEND
-	ARCANMAIN_LIBRARIES
-	${OPENAL_LIBRARY}
-)
+	add_subdirectory(external/lua)
+	set(LUA_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/lua)
+	set(LUA_LIBRARIES lua51)
+endif()
 
 LIST (APPEND
-	MAIN_LIBRARIES
+	ARCAN_LIBRARIES
 	openctm
 	${FREETYPE_LIBRARY}
 	${LUA_LIBRARIES}
@@ -253,7 +209,7 @@ LIST (APPEND
 	${CMAKE_CURRENT_SOURCE_DIR}/engine
 )
 
-add_subdirectory( ${EXTERNAL_SRC_DIR}/openctm )
+add_subdirectory(${EXTERNAL_SRC_DIR}/openctm)
 
 #
 # engine source files + graphics platform
@@ -335,7 +291,10 @@ else()
 	set(LUA_TAG "lua51")
 endif()
 
-set(ENGINE_BUILDTAG ${ENGINE_BUILDTAG}-${VIDEO_PLATFORM}-${AGP_PLATFORM}-${AUDIO_PLATFORM}-${INPUT_PLATFORM}-${LUA_TAG})
+# can we get sane literal concatenation one day?
+set(PFT ${VIDEO_PLATFORM}-${AGP_PLATFORM}-${AUDIO_PLATFORM}-${INPUT_PLATFORM})
+set(ENGINE_BUILDTAG ${ENGINE_BUILDTAG}-${PFT}-${LUA_TAG})
+unset(PFT)
 
 set (SHMIF_SOURCES
   shmif/arcan_shmif.h
@@ -360,19 +319,19 @@ message("device input (INPUT_PLATFORM) set to : ${INPUT_PLATFORM}")
 #
 if (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
 	message("\n---- Stage 2, FreeBSD specific ----")
-	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/CMakeLists.FreeBSD)
+	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/CMakeLists.FreeBSD)
 
 elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 	message("\n---- Stage 2, Linux specific ----")
-	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/CMakeLists.Linux)
+	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/CMakeLists.Linux)
 
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 	message("\n---- Stage 2, Windows specific ----")
-	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/CMakeLists.Windows)
+	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/CMakeLists.Windows)
 
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 	message("\n---- Stage 2, OSX/Darwin specific ----")
-	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/CMakeLists.Darwin)
+	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/CMakeLists.Darwin)
 
 else()
 	message(FATAL_ERROR "Unsupported OS detected, abandon ship!.")
@@ -386,27 +345,30 @@ add_library(arcan_shmif STATIC
 target_link_libraries(arcan_shmif PRIVATE ${STDLIB})
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
-add_subdirectory(frameserver)
 
-set_property(SOURCE engine/arcan_lua.c engine/arcan_main.c APPEND PROPERTY
-	COMPILE_DEFINITIONS FRAMESERVER_MODESTRING=\"${FRAMESERVER_MODESTRING}\"
-	LUA_DROPSTR=\"${LUA_DROPSTR}\" ARCAN_BUILDVERSION=\"${ENGINE_BUILDTAG}\")
+if (NOT DISABLE_FRAMESERVERS)
+	add_subdirectory(frameserver)
+else()
+	set(FSRV_DISABLE DISABLE_FRAMESERVERS)
+endif()
 
-message("\n---- Stage 4, Linking / Packaging ----")
+set_property(SOURCE engine/arcan_lua.c engine/arcan_main.c
+	APPEND PROPERTY COMPILE_DEFINITIONS
+	FRAMESERVER_MODESTRING=\"${FRAMESERVER_MODESTRING}\"
+	LUA_DROPSTR=\"${LUA_DROPSTR}\"
+	ARCAN_BUILDVERSION=\"${ENGINE_BUILDTAG}\"
+	OS_DYLIB_EXTENSION=\"{OS_DYLIB_EXTENSION}\"
+	${FSRV_DISABLE}
+)
 
-if (HEADLESS_PLATFORM)
+if (ENABLE_LWA AND HEADLESS_PLATFORM)
 	message("\n---- Stage 4, LWA Build ----")
-	include(platform/CMakeLists.LWA)
+	include(platform/cmake/CMakeLists.LWA)
 else()
 	message("\n---- Stage 4, LWA Build (omitted) ----")
 endif()
 
-add_executable(arcan_db ${ARCANDB_SOURCES})
-target_link_libraries(arcan_db ${STDLIB} ${SQLITE3_LIBRARIES})
-target_include_directories(arcan_db PRIVATE ${INCLUDE_DIRS})
-
-# GCC *** requiring dl to be the last argument to avoid dlclose in some
-# edge-cases? just take them out behind the shed and pull the trigger.
+message("\n---- Stage 5, Linking / Packaging ----")
 
 add_executable(arcan
 	${SOURCES}
@@ -417,11 +379,12 @@ add_executable(arcan
 
 target_include_directories(arcan PRIVATE ${INCLUDE_DIRS})
 target_compile_definitions(arcan PRIVATE ${ARCAN_DEFINITIONS})
-target_link_libraries( arcan
+target_link_libraries(arcan
 	${STDLIB}
-	${MAIN_LIBRARIES}
+	${ARCAN_LIBRARIES}
+	${VIDEO_LIBRARIES}
 	${AGP_LIBRARIES}
-	${ARCANMAIN_LIBRARIES}
+	${OPENAL_LIBRARY}
 )
 
 #
@@ -430,6 +393,7 @@ target_link_libraries( arcan
 # for a misbehaving script to add / introduce new configs / targets
 # and execute them.
 #
-
-set_property(TARGET arcan_db APPEND PROPERTY
-				COMPILE_DEFINITIONS ARCAN_DB_STANDALONE )
+add_executable(arcan_db ${ARCANDB_SOURCES})
+target_link_libraries(arcan_db ${STDLIB} ${SQLITE3_LIBRARIES})
+target_include_directories(arcan_db PRIVATE ${INCLUDE_DIRS})
+target_compile_definitions(arcan_db PRIVATE ARCAN_DB_STANDALONE)

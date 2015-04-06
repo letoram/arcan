@@ -6,20 +6,27 @@
 #  FSRV_PLATFORM
 #  SHMIF_PLATFORM
 #  LWA_PLATFORM
+#  STDLIB
 #
+# Modifies:
+#  compile_options (global)
 #  PLATFORM_HEADER (global)
 #  OS_DYLIB_EXTENSION
 #
 
-set (PLATFORM_PATH ${PLATFORM_ROOT}/posix)
+set(PLATFORM_PATH ${PLATFORM_ROOT}/posix)
+set(OS_DYLIB_EXTENSION=\".so\")
 
-add_definitions(-DPLATFORM_HEADER=\"${PLATFORM_ROOT}/platform.h\" -std=gnu11
-	-Wall -Wno-missing-braces -Wno-unused-function -DCLOCK_SOURCE_RAW -DLUA_51
-	-D__UNIX -D_POSIX_C_SOURCE -D_GNU_SOURCE -DOS_DYLIB_EXTENSION=\".so\")
+add_definitions(
+	-D__UNIX
+	-DPOSIX_C_SOURCE
+	-D_GNU_SOURCE
+	-DPLATFORM_HEADER=\"${PLATFORM_ROOT}/platform.h\"
+)
 
 message(STATUS " scanning for Linux specific libraries. ")
 
-set (ARCAN_PLATFORM
+set(ARCAN_PLATFORM
 	${PLATFORM_PATH}/mem.c
 	${PLATFORM_PATH}/fmt_open.c
 	${PLATFORM_PATH}/glob.c
@@ -70,13 +77,34 @@ set(SHMIF_PLATFORM
 set(LWA_PLATFORM ${ARCAN_PLATFORM})
 
 # we don't want these coming along in LWA_PLATFORM
-LIST(APPEND PLATFORM_SOURCES
+list(APPEND PLATFORM_SOURCES
 	${PLATFORM_ROOT}/${VIDEO_PLATFORM}/video.c
 	${PLATFORM_ROOT}/${INPUT_PLATFORM}/event.c
 )
 
 set(FSRV_PLATFORM ${SHMIF_PLATFORM})
 
-LIST(APPEND STDLIB
+#
+# Incomplete still, will probably be extended / fixed when testing/building on Alpine Linux
+# (openrc, grsec and free from systemd and glibc? interesting - can we just drop pulse
+# and d-bus as well, or switch to the reasonably clean nobus implementation)
+#
+if (MUSL_LIBC)
+	set(MUSL ${CMAKE_CURRENT_SOURCE_DIR}/external/musl)
+	ExternalProject_Add(
+	libmusl
+	SOURCE_DIR ${MUSL}
+	CONFIGURE_COMMAND ${MUSL}/configure --prefix=${MUSL}/.libs --disable-shared
+	PREFIX ${MUSL}
+	BUILD_COMMAND make
+	BUILD_IN_SOURCE 1
+	)
+	set(STDLIB ${MUSL}/.libs/lib/libc.a)
+endif()
+
+list(APPEND STDLIB
+ m
+ pthread
  rt
- dl)
+ dl
+)

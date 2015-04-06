@@ -32,7 +32,7 @@
 #include <X11/Xatom.h>
 #include <X11/Xutil.h>
 
-#include "../frameserver/xsymconv.h"
+#include "util/xsymconv.h"
 
 static const char* envopts[] = {
 	NULL
