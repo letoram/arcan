@@ -24,6 +24,7 @@ if (LIBVLC_FOUND)
 		ENABLE_FSRV_DECODE
 		DEFAULT_FSRV_MODE=\"decode\"
 	)
+	install(TARGETS afsrv_decode DESTINATION bin)
 else()
 	message("decode frameserver disabled, libvlc not found\n")
 endif()

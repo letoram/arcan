@@ -52,10 +52,11 @@ if (FFMPEG_FOUND AND BZIP2_FOUND AND ZLIB_FOUND AND LIBLZMA_FOUND)
 		ENABLE_FSRV_ENCODE
 		DEFAULT_FSRV_MODE=\"encode\"
 	)
-
 	if (LIBVNC_FOUND)
 		target_compile_definitions(afsrv_encode PRIVATE HAVE_VNCSERVER)
 	endif()
+
+	install(TARGETS afsrv_encode DESTINATION bin)
 
 else()
 	message("encode frameserver disabled, need ffmpeg, bz2, lzma and zlib\n")

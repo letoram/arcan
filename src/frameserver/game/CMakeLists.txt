@@ -42,6 +42,8 @@ target_include_directories(afsrv_game PRIVATE
 	${FSRV_ROOT}/util
 )
 
+install(TARGETS afsrv_game DESTINATION bin)
+
 #message(STATUS "-- Enabling experimental 3D support.")
 #target_compile_definitions(afsrv_game PRIVATE
 # HEADLESS_PLATFORM=\"${LWA_HEADLESS}\"

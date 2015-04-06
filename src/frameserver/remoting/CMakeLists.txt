@@ -31,6 +31,8 @@ if (LIBVNC_FOUND)
 
 	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING} remoting")
 
+	install(TARGETS afsrv_remoting DESTINATION bin)
+
 else()
 	message("remoting frameserver disabled, libvnc not found")
 endif()

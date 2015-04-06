@@ -83,3 +83,5 @@ target_link_libraries(arcan_lwa
 	${LWA_LIBRARIES}
 	${HEADLESS_LIBRARIES}
 )
+
+install(TARGETS arcan_lwa DESTINATION bin)
