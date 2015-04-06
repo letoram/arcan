@@ -1,28 +1,25 @@
-#
-# Pick platform files for frameservers, hijack libraries etc.
-#
 # Expects:
-#  PLATFORM_PATH
+#  PLATFORM_ROOT
 #
 # Defines:
-#  PLATFORM_SOURCES
-#  PLATFORM_FSRV_SOURCES
-#  PLATFORM_SHMIF_SOURCES
+#  ARCAN_PLATFORM
+#  FSRV_PLATFORM
+#  SHMIF_PLATFORM
+#  LWA_PLATFORM
 #
-#  ARCAN_SHMIF_INCLUDES
 #  PLATFORM_HEADER (global)
 #  OS_DYLIB_EXTENSION
 #
 
 set (PLATFORM_PATH ${PLATFORM_ROOT}/posix)
 
-add_definitions(-DPLATFORM_HEADER=\"${PLATFORM_PATH}/../platform.h\" -std=gnu11
+add_definitions(-DPLATFORM_HEADER=\"${PLATFORM_ROOT}/platform.h\" -std=gnu11
 	-Wall -Wno-missing-braces -Wno-unused-function -DCLOCK_SOURCE_RAW -DLUA_51
 	-D__UNIX -D_POSIX_C_SOURCE -D_GNU_SOURCE -DOS_DYLIB_EXTENSION=\".so\")
 
-message(" scanning for Linux specific libraries. ")
+message(STATUS " scanning for Linux specific libraries. ")
 
-set (PLATFORM_SOURCES
+set (ARCAN_PLATFORM
 	${PLATFORM_PATH}/mem.c
 	${PLATFORM_PATH}/fmt_open.c
 	${PLATFORM_PATH}/glob.c
@@ -42,6 +39,12 @@ set (PLATFORM_SOURCES
 	${PLATFORM_PATH}/launch.c
 )
 
+# since these are used on multiple targets, force the define here.
+set_property(SOURCE platform/posix/fdpassing.c
+	APPEND PROPERTY COMPILE_FLAGS -w)
+set_property(SOURCE platform/posix/fdpassing.c
+	APPEND PROPERTY COMPILE_DEFINITIONS NONBLOCK_RECV)
+
 #
 # Either investigate more OS native approaches to get LED
 # controller access, or find a hid- api that doesn't
@@ -57,18 +60,14 @@ if (ENABLE_LED)
 	)
 endif()
 
-set (FSRV_PLATFORM
+set(SHMIF_PLATFORM
 	${PLATFORM_PATH}/warning.c
 	${PLATFORM_PATH}/time.c
 	${PLATFORM_PATH}/sem.c
 	${PLATFORM_PATH}/fdpassing.c
 )
 
-set (LWA_PLATFORM_SOURCES
-	${PLATFORM_SOURCES}
-	${SHMIF_SOURCES}
-	${PLATFORM_PATH}/../arcan/video.c
-)
+set(LWA_PLATFORM ${ARCAN_PLATFORM})
 
 # we don't want these coming along in LWA_PLATFORM
 LIST(APPEND PLATFORM_SOURCES
@@ -76,18 +75,7 @@ LIST(APPEND PLATFORM_SOURCES
 	${PLATFORM_ROOT}/${INPUT_PLATFORM}/event.c
 )
 
-SET(HIJACK_SOURCES
-	hijack/arcan_target_unix.c
-	hijack/arcan_target.c
-	${SHMIF_SOURCES}
-	frameserver/ntsc/snes_ntsc.c
- 	frameserver/resampler/resample.c
-)
-
-set (
- FSRV_SOURCES
-	${SHMIF_SOURCES}
-)
+set(FSRV_PLATFORM ${SHMIF_PLATFORM})
 
 LIST(APPEND STDLIB
  rt

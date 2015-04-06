@@ -24,8 +24,8 @@
 typedef VIDEO_PIXEL_TYPE av_pixel;
 
 /*
- * To change the internal representation, define this macros in
- * some other header that is forcibly included or redefine through
+ * To change the internal representation, define these macros in
+ * some other header that is forcibly included, or redefine through
  * the build-system.
  */
 #ifndef RGBA
@@ -335,13 +335,8 @@ bool platform_video_map_display(arcan_vobj_id id,
 void platform_video_shutdown();
 
 /*
- * The following function abstracts the graphics operations that
+ * The following functions abstract the graphics operations that
  * arcan_video.c relies on, implementations can be found in platform/agp_.
- *
- * This is currently a refactor-in-progress to fix some long standing
- * issues with GL<->GLES incompatibilty and inefficies that come from
- * the previous GL2.1 requirement. When the GL_HEADERS hack has been
- * removed, that refactor can be considered completed.
  */
 
 /*
@@ -478,7 +473,7 @@ struct stream_meta {
  * direct-prepare -> commit but NOT for prepare(non-direct) -> release.
  */
 struct stream_meta agp_stream_prepare(struct storage_info_t*,
-		struct stream_meta, enum stream_type);
+	struct stream_meta, enum stream_type);
 void agp_stream_commit(struct storage_info_t*, struct stream_meta);
 void agp_stream_release(struct storage_info_t*, struct stream_meta);
 /*
