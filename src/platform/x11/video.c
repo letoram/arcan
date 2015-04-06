@@ -20,7 +20,7 @@
 #include "arcan_video.h"
 #include "arcan_videoint.h"
 
-#include "../agp/glfun.h"
+#include "agp/glfun.h"
 
 /*
  * These macro tweaks is so that we can include the .c file from

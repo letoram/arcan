@@ -49,7 +49,13 @@ ExternalProject_Add(openal_soft
 	 	-DLIBTYPE=STATIC
 		-DARCAN_SHMIF_PATH=${CMAKE_CURRENT_SOURCE_DIR}/shmif
 		-DARCAN_SHMIF_PLATFORM=${FSRV_PLATFORM_SOURCES}
-		-DARCAN_SHMIF_PLATFORM_HEADER=${PLATFORM_PATH}/../platform.h
+		-DARCAN_SHMIF_PLATFORM_HEADER=${PLATFORM_ROOT}/platform.h
+)
+
+set(LWA_LIBRARIES
+# is there a prettier way for specifying this?
+	${CMAKE_CURRENT_BINARY_DIR}/openal_soft-prefix/src/openal_soft-build/libcommon.a
+	${CMAKE_CURRENT_BINARY_DIR}/openal_soft-prefix/src/openal_soft-build/libopenal.a
 )
 
 add_executable(arcan_lwa
@@ -62,6 +68,7 @@ add_executable(arcan_lwa
 
 target_compile_definitions(arcan_lwa PRIVATE
 	ARCAN_LWA
+	${ARCAN_DEFINITIONS}
 	WITH_HEADLESS_MAIN
 	HEADLESS_PLATFORM=\"${HEADLESS_PLATFORM}\"
 )
@@ -71,12 +78,8 @@ add_dependencies(arcan_lwa openal_soft)
 target_include_directories(arcan_lwa PRIVATE ${INCLUDE_DIRS})
 target_link_libraries(arcan_lwa
 	${STDLIB}
-	${MAIN_LIBRARIES}
+	${ARCAN_LIBRARIES}
 	${AGP_LIBRARIES}
 	${LWA_LIBRARIES}
 	${HEADLESS_LIBRARIES}
-
-# is there a prettier way for specifying this?
-	${CMAKE_CURRENT_BINARY_DIR}/openal_soft-prefix/src/openal_soft-build/libcommon.a
-	${CMAKE_CURRENT_BINARY_DIR}/openal_soft-prefix/src/openal_soft-build/libopenal.a
 )
