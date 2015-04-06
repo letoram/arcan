@@ -1,8 +1,18 @@
 #
-# For LWA we need some kind of sound backend. In a sandbox,
-# LWA is not (by default) supposed to get access to any audio device outside
-# the shared memory interface. Therefore we build a patched version of
-# openal, that's linked statically with only a shmif- based backend
+# Expects:
+#  HEADLESS_PLATFORM (or FATAL)
+#  PLATFORM_ROOT
+#
+# Defines:
+#  arcan_lwa (new target executable)
+
+# Lightweight arcan is a regular arcan build where we configure an
+# audio/video/input platform that uses arcan-shmif rather than the
+# regular platform configuration.
+#
+# To achieve this, we need special handling for audio, which is
+# currently done by making a separate openal build where we patch
+# in the code needed for this.
 #
 SET (ALPATCHES
 	${CMAKE_CURRENT_SOURCE_DIR}/external/patches/openal/0001-adding-arcan-shmif-support.patch
@@ -42,11 +52,31 @@ ExternalProject_Add(openal_soft
 		-DARCAN_SHMIF_PLATFORM_HEADER=${PLATFORM_PATH}/../platform.h
 )
 
-set_property(TARGET arcan_lwa APPEND PROPERTY
-	COMPILE_DEFINITIONS ARCAN_LWA WITH_HEADLESS_MAIN)
+add_executable(arcan_lwa
+	${SOURCES}
+	${AGP_SOURCES}
+	${LWA_PLATFORM}
+	${PLATFORM_ROOT}/arcan/video.c
+	${HEADLESS_SOURCES}
+)
 
-add_dependencies( arcan_lwa openal_soft )
-target_link_libraries( arcan_lwa ${STDLIB} ${MAIN_LIBRARIES} ${LWA_LIBRARIES}
+target_compile_definitions(arcan_lwa PRIVATE
+	ARCAN_LWA
+	WITH_HEADLESS_MAIN
+	HEADLESS_PLATFORM=\"${HEADLESS_PLATFORM}\"
+)
+
+add_dependencies(arcan_lwa openal_soft)
+
+target_include_directories(arcan_lwa PRIVATE ${INCLUDE_DIRS})
+target_link_libraries(arcan_lwa
+	${STDLIB}
+	${MAIN_LIBRARIES}
+	${AGP_LIBRARIES}
+	${LWA_LIBRARIES}
+	${HEADLESS_LIBRARIES}
+
+# is there a prettier way for specifying this?
 	${CMAKE_CURRENT_BINARY_DIR}/openal_soft-prefix/src/openal_soft-build/libcommon.a
 	${CMAKE_CURRENT_BINARY_DIR}/openal_soft-prefix/src/openal_soft-build/libopenal.a
 )

@@ -287,7 +287,6 @@ list (APPEND
  shmif/arcan_shmif_control.c
  shmif/arcan_shmif_control.h
  shmif/arcan_shmif_event.h
- ${AGP_SOURCES}
 )
 
 # database tool is sqlite3 + libc so less need to work
@@ -298,21 +297,6 @@ set (ARCANDB_SOURCES
 	platform/posix/warning.c
 	platform/stub/mem.c
 )
-
-set (SHMIF_SOURCES
-  shmif/arcan_shmif.h
-	shmif/arcan_shmif_interop.h
-	shmif/arcan_shmif_control.c
-	shmif/arcan_shmif_control.h
-	shmif/arcan_shmif_interop.c
-	shmif/arcan_shmif_event.h
-)
-
-# since these are used on multiple targets, force the define here.
-set_property(SOURCE platform/posix/fdpassing.c
-	APPEND PROPERTY COMPILE_FLAGS -w)
-set_property(SOURCE platform/posix/fdpassing.c
-	APPEND PROPERTY COMPILE_DEFINITIONS NONBLOCK_RECV)
 
 if (ENABLE_SIMD AND SSE_FOUND)
 	message("--> Enabling SIMD")
@@ -395,7 +379,11 @@ else()
 endif()
 
 message("\n---- Stage 3, SHMIF Library ----")
-add_library(arcan_shmif STATIC ${SHMIF_SOURCES} ${PLATFORM_SHMIF_SOURCES})
+add_library(arcan_shmif STATIC
+	${SHMIF_SOURCES}
+	${SHMIF_PLATFORM}
+)
+target_link_libraries(arcan_shmif PRIVATE ${STDLIB})
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 add_subdirectory(frameserver)
@@ -406,7 +394,7 @@ set_property(SOURCE engine/arcan_lua.c engine/arcan_main.c APPEND PROPERTY
 
 message("\n---- Stage 4, Linking / Packaging ----")
 
-if (ENABLE_LWA)
+if (HEADLESS_PLATFORM)
 	message("\n---- Stage 4, LWA Build ----")
 	include(platform/CMakeLists.LWA)
 else()
@@ -420,7 +408,13 @@ target_include_directories(arcan_db PRIVATE ${INCLUDE_DIRS})
 # GCC *** requiring dl to be the last argument to avoid dlclose in some
 # edge-cases? just take them out behind the shed and pull the trigger.
 
-add_executable(arcan ${SOURCES} ${PLATFORM_SOURCES})
+add_executable(arcan
+	${SOURCES}
+	${ARCAN_PLATFORM}
+	${AGP_SOURCES}
+ 	${PLATFORM_SOURCES}
+)
+
 target_include_directories(arcan PRIVATE ${INCLUDE_DIRS})
 target_compile_definitions(arcan PRIVATE ${ARCAN_DEFINITIONS})
 target_link_libraries( arcan

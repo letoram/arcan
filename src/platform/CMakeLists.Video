@@ -5,9 +5,9 @@
 #
 # Defines:
 #  INPUT_PLATFORM - Video/Input are rather tightly connected
-#  HEADLESS_PLATFORM - Used for LWA build and some frameservers
-#  HEADLESS_SOURCES
-#  HEADLESS_LIBS
+#  HEADLESS_PLATFORM
+#  HEADLESS_SOURCES - additional symbols #include HEADLESS_PLATFORM might need
+#  HEADLESS_LIBRARIES
 #
 # Modifies:
 #  INCLUDE_DIRS
@@ -30,9 +30,9 @@ if (VIDEO_PLATFORM STREQUAL "x11" OR VIDEO_PLATFORM STREQUAL "x11-headless")
 
 	list(APPEND INCLUDE_DIRS ${X11_INCLUDE_DIRS})
 	list(APPEND MAIN_LIBRARIES ${AGP_LIBRARIES} ${X11_LIBRARIES})
-	list(APPEND HEADLESS_LIBS ${AGP_LIBRARIES} ${X11_LIBRARIES})
+	list(APPEND HEADLESS_LIBRARIES ${AGP_LIBRARIES} ${X11_LIBRARIES})
 
-	set(HEADLESS_SOURCES ${PLATFORM_ROOT}/x11/video.c)
+	set(HEADLESS_PLATFORM ${PLATFORM_ROOT}/x11/video.c)
 
 # legacy platform for weaker platforms that don't have/support KMS
 elseif(VIDEO_PLATFORM STREQUAL "egl-gles")
@@ -41,7 +41,7 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-gles")
 	endif()
 
 	find_package(EGL REQUIRED)
-	set(HEADLESS_SOURCES ${PLATFORM_ROOT}/egl-gles/video.c)
+	set(HEADLESS_PLATFORM ${PLATFORM_ROOT}/egl-gles/video.c)
 
 	if (GLES2_BCM_IMPLEMENTATION)
 		message("broadcom (BCM) GLES implementation found, set BCM_ROOT to bad dir to disable")
@@ -70,7 +70,7 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-nvidia")
 	find_package(EGL REQUIRED)
 	list(APPEND MAIN_LIBRARIES ${EGL_LIBRARIES})
 	list(APPEND HEADLESS_LIBS ${EGL_LIBRARIES})
-	list(APPEND HEADLESS_SOURCES ${PLATFORM_ROOT}/egl-nvidia/video.c)
+	list(APPEND HEADLESS_PLATFORM ${PLATFORM_ROOT}/egl-nvidia/video.c)
 
 #
 # will hopefully become the default on BSDs/linux
@@ -92,7 +92,7 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-dri")
 		${GBMKMS_LIBRARIES}
 	)
 	list(APPEND INCLUDE_DIRS ${GBMKMS_INCLUDE_DIRS})
-	set(HEADLESS_SOURCES ${PLATFORM_ROOT}/egl-dri/video_rnode.c)
+	set(HEADLESS_PLATFORM ${PLATFORM_ROOT}/egl-dri/video_rnode.c)
 
 #
 # only option on OSX/Windows currently, would also work for
@@ -112,12 +112,13 @@ elseif (VIDEO_PLATFORM STREQUAL "sdl")
 # headless with SDL requires OS specific hacks
 	message("Enabling LWA (Arcan-in-Arcan build) using X11 HEADLESS")
 	if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-		set(HEADLESS_SOURCES ${PLATFORM_ROOT}/darwin/video.c)
+		set(HEADLESS_PLATFORM ${PLATFORM_ROOT}/darwin/video.c)
 	elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 		message("LWA builds disabled, headless mode unsupported in platform")
 	else()
 		FIND_PACKAGE(X11 REQUIRED)
-		set(HEADLESS_SOURCES ${PLATFORM_ROOT}/x11/video.c)
+		set(HEADLESS_PLATFORM ${PLATFORM_ROOT}/x11/video.c)
+		set(HEADLESS_LIBRARIES ${X11_LIBRARIES})
 		list(APPEND INCLUDE_DIRS ${X11_INCLUDE_DIRS})
 	endif()
 

@@ -1,6 +1,8 @@
 #
 # AGP (Arcan Graphics Platform)
-# the minimal set of graphics features needed for the engine to run
+# the minimal set of graphics features needed for the engine to run,
+# the common denominator between implementations are the functions
+# defined in video_platform.h that are prefixed with agp_
 #
 
 if (NOT AGP_PLATFORM)
