@@ -1,8 +1,7 @@
 # Expects:
 #  FSRV_PLATFORM (defined by platforms/CMakeLists.*)
 #  FSRV_INCLUDES (defined by CMakeLists.txt + platforms/CMakeLists.*)
-#  ARCAN_SHMIF_LIBS (currently defined by platforms/CMakeLists.*)
-#  ARCAN_SHMIF_INCLUDES
+#  arcan_shmif (target)
 
 # Options:
 #  [ SPLIT_FRAMESERVER ] (different outputs)
@@ -21,7 +20,9 @@ set(FSRV_PLATFORM ${FSRV_PLATFORM}
 )
 
 set(FSRV_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
-set (FRAMESERVER_MODESTRING "")
+set(FSRV_ROOT ${FSRV_ROOT} PARENT_SCOPE)
+
+set(FRAMESERVER_MODESTRING "")
 
 set(ARCHETYPES
 	terminal
