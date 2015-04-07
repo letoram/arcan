@@ -355,8 +355,8 @@ static long unpack_rec_event(char* bytep, size_t sz, arcan_event* tv,
 		tv->io.input.analog.subid = buf[3];
 		tv->io.input.analog.gotrel = buf[4];
 		if (buf[5] < sizeof(buf) / sizeof(buf[0]) - 6){
-		for (size_t i = 0; i < buf[5]; i++)
-			tv->io.input.analog.axisval[i] = buf[6+i];
+			for (size_t i = 0; i < buf[5]; i++)
+				tv->io.input.analog.axisval[i] = buf[6+i];
 			tv->io.input.analog.nvalues = buf[5];
 		}
 		else
@@ -420,7 +420,7 @@ static void pack_rec_event(const struct arcan_event* const outev)
 		ioarr[4] = outev->io.input.analog.gotrel;
 		for (size_t i = 0; i < nmemb - 6 &&
 			i < outev->io.input.analog.nvalues; i++){
-			ioarr[5+i] = outev->io.input.analog.axisval[i];
+			ioarr[6+i] = outev->io.input.analog.axisval[i];
 			ioarr[5]++;
 		}
 	break;
@@ -497,21 +497,19 @@ float arcan_event_process(arcan_evctx* ctx, arcan_tick_cb cb)
 	int64_t base = ctx->c_ticks * ARCAN_TIMER_TICK;
 	int64_t delta = arcan_frametime() - base;
 
-	if (delta > ARCAN_TIMER_TICK){
-		inject_scheduled(ctx);
-		platform_event_process(ctx);
+	inject_scheduled(ctx);
+	platform_event_process(ctx);
 
+	if (delta > ARCAN_TIMER_TICK){
 		int nticks = delta / ARCAN_TIMER_TICK;
 		if (nticks > ARCAN_TICK_THRESHOLD){
 			epoch += (nticks - 1) * ARCAN_TIMER_TICK;
 			nticks = 1;
 		}
 
-		cb(nticks);
 		ctx->c_ticks += nticks;
-
-		arcan_bench_register_tick(nticks);
 		cb(nticks);
+		arcan_bench_register_tick(nticks);
 		return arcan_event_process(ctx, cb);
 	}
 
