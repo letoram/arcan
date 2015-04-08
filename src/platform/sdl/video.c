@@ -24,6 +24,7 @@ static struct {
 	int sdlarg;
 	size_t mdispw, mdisph;
 	size_t canvasw, canvash;
+	uint64_t last;
 } sdl;
 
 static char* synchopts[] = {
@@ -95,26 +96,21 @@ void platform_video_synch(uint64_t tick_count, float fract,
 	size_t nd;
 	arcan_bench_register_cost( arcan_vint_refresh(fract, &nd) );
 
-	uint64_t start = arcan_timemillis();
 	agp_activate_rendertarget(NULL);
-
 	arcan_vint_drawrt(arcan_vint_world(), 0, 0, sdl.mdispw, sdl.mdisph);
 	arcan_vint_drawcursor(false);
 
-	static int max_swapt;
-
 	SDL_GL_SwapBuffers();
-	uint64_t stop = arcan_timemillis();
 
-	if (stop - start > max_swapt)
-		max_swapt = stop - start;
+/* With dynamic, we run an artificial vsync if the time between swaps
+ * become to low. This is a workaround for a driver issue spotted on
+ * nvidia and friends from time to time where multiple swaps in short
+ * regression in combination with 'only redraw' adds bubbles */
+	int delta = arcan_frametime() - sdl.last;
+	if (synchopt == DYNAMIC && delta >= 0 && delta < 8)
+		arcan_timesleep(16 - delta);
 
-/* just compensates for layers ignoring VSYNC and choking CPU,
- * this platform is on life- support so more interesting synch
- * schemes will be used in eglkms etc. */
-	if (synchopt == DYNAMIC && max_swapt < 8.0)
-		arcan_timesleep(8);
-
+	sdl.last = arcan_frametime();
 	if (post)
 		post();
 }
@@ -296,5 +292,6 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	sdl.canvasw = sdl.mdispw = width;
 	sdl.canvash = sdl.mdisph = height;
 	glViewport(0, 0, width, height);
+	sdl.last = arcan_frametime();
 	return true;
 }
