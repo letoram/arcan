@@ -189,7 +189,7 @@ if (ENABLE_LUAJIT)
 	find_package(Lua51JIT)
 endif()
 
-if (NOT LUA_LIBRARY)
+if (NOT LUA_LIBRARY OR NOT ENABLE_LUAJIT)
 	find_package(Lua51)
 endif()
 
