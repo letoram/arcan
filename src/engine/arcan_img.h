@@ -4,8 +4,8 @@
  * Reference: http://arcan-fe.com
  */
 
-#ifndef _HAVE_ARCAN_PNG
-#define _HAVE_ARCAN_PNG
+#ifndef _HAVE_ARCAN_IMG
+#define _HAVE_ARCAN_IMG
 
 struct arcan_img_meta {
 	bool compressed;
@@ -13,10 +13,6 @@ struct arcan_img_meta {
 	int pwidth, pheight;
 	size_t c_size;
 };
-
-/*
- * these functions wrap libpng and add basic colour conversion
- */
 
 typedef void* (*outimg_allocator)( size_t );
 
@@ -30,18 +26,6 @@ typedef void* (*outimg_allocator)( size_t );
 arcan_errc arcan_img_decode(const char* hint, char* inbuf, size_t inbuf_sz,
 	char** outbuf, int* outw, int* outh,
 	struct arcan_img_meta* outm, bool vflip, outimg_allocator);
-
-/*
- * decode the supplied input buffer 'inbuf' (limited to 'inbuf_sz') and convert
- * to GL- ready RGBA32. 'outbuf' will be allocated by calling 'png_allocator'.
- * which could be set to malloc. 'vflip' sets if the output row order should be
- * inverted, needed by some openGL textures.
- */
-arcan_errc arcan_png_rgba32(char* inbuf, size_t inbuf_sz,
-	char** outbuf, int* outw, int* outh, bool vflip, outimg_allocator);
-
-arcan_errc arcan_jpg_rgba32(char* inbuf, size_t inbuf_sz,
-	char** outbuf, int* outw, int* outh, bool vflip, outimg_allocator);
 
 /*
  * use a pre-opened filedescriptor to encode the contents of inbuf with dimensions
