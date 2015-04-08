@@ -8090,6 +8090,8 @@ static void extend_baseapi(lua_State* ctx)
 	lua_setglobal(ctx, "util");
 }
 
+#include "external/bit.c"
+
 arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 {
 	if (!ctx)
@@ -8426,7 +8428,10 @@ static const luaL_Reg netfuns[] = {
 	lua_setfield(ctx, -2, "frequency");
 	lua_pop(ctx, 1);
 
+	int top = lua_gettop(ctx);
 	extend_baseapi(ctx);
+	luaopen_bit(ctx);
+	lua_settop(ctx, top);
 
 	atexit(arcan_lua_cleanup);
 	return ARCAN_OK;
@@ -8556,13 +8561,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 	arcan_lua_setglobalstr(ctx, "GL_VERSION", agp_ident());
 	arcan_lua_setglobalstr(ctx, "SHADER_LANGUAGE", agp_shader_language());
 	arcan_lua_setglobalstr(ctx, "FRAMESERVER_MODES", FRAMESERVER_MODESTRING);
-	arcan_lua_setglobalstr(ctx, "THEMENAME", "deprecated, use APPLID");
 	arcan_lua_setglobalstr(ctx, "APPLID", arcan_appl_id());
-	arcan_lua_setglobalstr(ctx, "RESOURCEPATH", "deprecated");
-	arcan_lua_setglobalstr(ctx, "THEMEPATH", "deprecated");
-	arcan_lua_setglobalstr(ctx, "BINPATH", "deprecated");
-	arcan_lua_setglobalstr(ctx, "LIBPATH", "deprecated");
-	arcan_lua_setglobalstr(ctx, "INTERNALMODE", "deprecated");
 	arcan_lua_setglobalstr(ctx, "API_ENGINE_BUILD", ARCAN_BUILDVERSION);
 }
 
