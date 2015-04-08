@@ -174,7 +174,6 @@ endif()
 
 # --- Step 1, Dependencies / find package flags
 find_package(Freetype REQUIRED)
-find_package(PNG REQUIRED)
 find_package(OpenAL REQUIRED)
 find_package(SQLITE3 REQUIRED)
 find_package(SSE)
@@ -206,14 +205,12 @@ LIST (APPEND
 	${FREETYPE_LIBRARY}
 	${LUA_LIBRARIES}
 	${SQLITE3_LIBRARIES}
-	${PNG_LIBRARIES}
 )
 
 LIST (APPEND
 	INCLUDE_DIRS
 	${LUA_INCLUDE_DIR}
 	${OPENAL_INCLUDE_DIR}
-	${PNG_INCLUDE_DIR}
 	${FREETYPE_INCLUDE_DIRS}
 	${SQLITE3_INCLUDE_DIR}
 	${CMAKE_CURRENT_SOURCE_DIR}/platform
