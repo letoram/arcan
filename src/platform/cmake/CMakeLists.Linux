@@ -47,9 +47,9 @@ set(ARCAN_PLATFORM
 )
 
 # since these are used on multiple targets, force the define here.
-set_property(SOURCE platform/posix/fdpassing.c
+set_property(SOURCE ${PLATFORM_PATH}/fdpassing.c
 	APPEND PROPERTY COMPILE_FLAGS -w)
-set_property(SOURCE platform/posix/fdpassing.c
+set_property(SOURCE ${PLATFORM_PATH}/fdpassing.c
 	APPEND PROPERTY COMPILE_DEFINITIONS NONBLOCK_RECV)
 
 #
@@ -82,7 +82,8 @@ list(APPEND PLATFORM_SOURCES
 	${PLATFORM_ROOT}/${INPUT_PLATFORM}/event.c
 )
 
-set(FSRV_PLATFORM ${SHMIF_PLATFORM})
+# fsrv already pulls in shmif through the library
+set(FSRV_PLATFORM)
 
 #
 # Incomplete still, will probably be extended / fixed when testing/building on Alpine Linux

@@ -20,8 +20,8 @@ add_executable(afsrv_game
 	${FSRV_ROOT}/util/resampler/resample.c
 	${FSRV_ROOT}/util/resampler/speex_resampler.h
 	${FSRV_ROOT}/util/font_8x8.h
-	${FSRV_PLATFORM}
 	${GAME_AUX_SOURCES}
+	${FSRV_PLATFORM}
 )
 
 set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING} game")
