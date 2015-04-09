@@ -1431,10 +1431,8 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
  * pthreads exclusively
  */
 	arcan_sem_wait(asynchsynch);
-	arcan_errc rv = ARCAN_ERRC_BAD_RESOURCE;
 
-	av_pixel* imgbuf = NULL;
-	int inw, inh;
+	size_t inw, inh;
 
 /* try- open */
 	data_source inres = arcan_open_resource(fname);
@@ -1453,94 +1451,89 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
 	}
 
 	struct arcan_img_meta meta = {0};
-	rv = arcan_img_decode(fname, inmem.ptr, inmem.sz, (char**)&imgbuf, &inw, &inh,
-		&meta, dst->vstore->imageproc == IMAGEPROC_FLIPH, malloc);
+	uint32_t* ch_imgbuf = NULL;
+
+	arcan_errc rv = arcan_img_decode(fname, inmem.ptr, inmem.sz,
+		&ch_imgbuf, &inw, &inh, &meta, dst->vstore->imageproc == IMAGEPROC_FLIPH);
 
 	arcan_release_map(inmem);
 	arcan_release_resource(&inres);
 
-	if (rv == ARCAN_OK){
-		uint16_t neww, newh;
+	if (ARCAN_OK != rv)
+		goto done;
+
+	av_pixel* imgbuf = arcan_img_repack(ch_imgbuf, inw, inh);
+	if (!imgbuf){
+		rv = ARCAN_ERRC_OUT_OF_SPACE;
+		goto done;
+	}
+
+	uint16_t neww, newh;
 
 /* store this so we can maintain aspect ratios etc. while still
  * possibly aligning to next power of two */
-		dst->origw = inw;
-		dst->origh = inh;
+	dst->origw = inw;
+	dst->origh = inh;
 
-		neww = inw;
-		newh = inh;
+	neww = inw;
+	newh = inh;
 
 /* the thread_loader will take care of converting the asynchsrc
  * to an image once its completely done */
-		if (!asynchsrc)
-			dst->feed.state.tag = ARCAN_TAG_IMAGE;
+	if (!asynchsrc)
+		dst->feed.state.tag = ARCAN_TAG_IMAGE;
 
 /* need to keep the identification string in order to rebuild
  * on a forced push/pop */
-		struct storage_info_t* dstframe = dst->vstore;
-		dstframe->vinf.text.source = strdup(fname);
+	struct storage_info_t* dstframe = dst->vstore;
+	dstframe->vinf.text.source = strdup(fname);
 
-		enum arcan_vimage_mode desm = dst->vstore->scale;
+	enum arcan_vimage_mode desm = dst->vstore->scale;
 
-		if (meta.compressed)
-			goto push_comp;
+	if (meta.compressed)
+		goto push_comp;
 
-/* the user requested specific dimensions,
- * so we force the rescale texture mode for mismatches and set
- * dimensions accordingly */
-		if (forced.h > 0 && forced.w > 0){
-			neww = desm == ARCAN_VIMAGE_SCALEPOW2 ? nexthigher(forced.w) : forced.w;
-			newh = desm == ARCAN_VIMAGE_SCALEPOW2 ? nexthigher(forced.h) : forced.h;
-			dst->origw = forced.w;
-			dst->origh = forced.h;
+/* the user requested specific dimensions, or we are in a mode where
+ * we should manually enfore a stretch to the nearest power of two */
+	if (desm == ARCAN_VIMAGE_SCALEPOW2){
+		forced.w = nexthigher(neww) == neww ? 0 : nexthigher(neww);
+		forced.h = nexthigher(newh) == newh ? 0 : nexthigher(newh);
+	}
 
-			dstframe->vinf.text.s_raw = neww * newh * sizeof(av_pixel);
-			dstframe->vinf.text.raw   = arcan_alloc_mem(dstframe->vinf.text.s_raw,
-				ARCAN_MEM_VBUFFER, 0, ARCAN_MEMALIGN_PAGE);
+	if (forced.h > 0 && forced.w > 0){
+		neww = desm == ARCAN_VIMAGE_SCALEPOW2 ? nexthigher(forced.w) : forced.w;
+		newh = desm == ARCAN_VIMAGE_SCALEPOW2 ? nexthigher(forced.h) : forced.h;
+		dst->origw = forced.w;
+		dst->origh = forced.h;
 
-			arcan_renderfun_stretchblit((char*)imgbuf, inw, inh,
-				(uint32_t*) dstframe->vinf.text.raw,
-				neww, newh, dst->vstore->imageproc == IMAGEPROC_FLIPH);
-			arcan_mem_free(imgbuf);
-		}
-		else if (desm == ARCAN_VIMAGE_SCALEPOW2){
-			neww = nexthigher(neww);
-			newh = nexthigher(newh);
+		dstframe->vinf.text.s_raw = neww * newh * sizeof(av_pixel);
+		dstframe->vinf.text.raw = arcan_alloc_mem(dstframe->vinf.text.s_raw,
+			ARCAN_MEM_VBUFFER, 0, ARCAN_MEMALIGN_PAGE);
 
-			if (neww != inw || newh != inh){
-				dstframe->vinf.text.s_raw = neww * newh * sizeof(av_pixel);
-				dstframe->vinf.text.raw = arcan_alloc_mem(dstframe->vinf.text.s_raw,
-					ARCAN_MEM_VBUFFER, 0, ARCAN_MEMALIGN_PAGE);
+		arcan_renderfun_stretchblit((char*)imgbuf, inw, inh,
+			(uint32_t*) dstframe->vinf.text.raw,
+			neww, newh, dst->vstore->imageproc == IMAGEPROC_FLIPH);
+		arcan_mem_free(imgbuf);
+	}
+	else {
+		neww = inw;
+		newh = inh;
+		dstframe->vinf.text.raw = imgbuf;
+		dstframe->vinf.text.s_raw = inw * inh * sizeof(av_pixel);
+	}
 
-				arcan_renderfun_stretchblit((char*)imgbuf, inw, inh,
-					(uint32_t*)dstframe->vinf.text.raw,
-					neww, newh, dst->vstore->imageproc == IMAGEPROC_FLIPH);
-				arcan_mem_free(imgbuf);
-			}
-			else {
-				dstframe->vinf.text.s_raw = neww * newh * sizeof(av_pixel);
-				dstframe->vinf.text.raw = imgbuf;
-			}
-		}
-		else {
-			neww = inw;
-			newh = inh;
-			dstframe->vinf.text.raw = imgbuf;
-			dstframe->vinf.text.s_raw = inw * inh * sizeof(av_pixel);
-		}
-
-		dst->vstore->w = neww;
-		dst->vstore->h = newh;
+	dst->vstore->w = neww;
+	dst->vstore->h = newh;
 
 /*
  * for the asynch case, we need to do this separately as we're in a different
  * thread and forcibly assigning the glcontext to another thread is expensive */
 
 push_comp:
-		if (!asynchsrc && dst->vstore->txmapped != TXSTATE_OFF)
-			agp_update_vstore(dst->vstore, true);
-	}
+	if (!asynchsrc && dst->vstore->txmapped != TXSTATE_OFF)
+		agp_update_vstore(dst->vstore, true);
 
+done:
 	arcan_sem_post(asynchsynch);
 	return rv;
 }

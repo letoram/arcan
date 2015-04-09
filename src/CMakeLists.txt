@@ -255,6 +255,11 @@ list (APPEND
  shmif/arcan_shmif_event.h
 )
 
+set_property(SOURCE engine/arcan_renderfun.c
+	APPEND PROPERTY COMPILE_FLAGS
+	"-Wno-unused-value -Wno-unused-variable"
+)
+
 # database tool is sqlite3 + libc so less need to work
 # around with platform layers etc.
 set (ARCANDB_SOURCES

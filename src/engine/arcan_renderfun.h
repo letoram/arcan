@@ -55,7 +55,7 @@ void arcan_renderfun_reset_fontcache();
  * row-order.
  */
 int arcan_renderfun_stretchblit(char* src, int inw, int inh,
-	uint32_t* dst, size_t dstw, size_t dsth, int flipy);
+	uint32_t* dst, size_t dstw, size_t dsth, int flipv);
 
 /*
  * Similar to arcan_renderfun_renderfmtstr, but doesn't write / blit the output,

@@ -25,8 +25,15 @@
 #include "arcan_video.h"
 #include "arcan_videoint.h"
 #include "arcan_ttf.h"
+
 #include "arcan_renderfun.h"
 #include "arcan_img.h"
+
+#define STB_IMAGE_RESIZE_IMPLEMENTATION
+#define STBIR_MALLOC(sz,ctx) arcan_alloc_mem(sz, ARCAN_MEM_VBUFFER, \
+	ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE)
+#define STBIR_FREE(ptr,ctx) arcan_mem_free(ptr)
+#include "external/stb_image_resize.h"
 
 struct text_format {
 /* font specification */
@@ -182,11 +189,11 @@ TTF_Surface* text_loadimage(const char* const infn, img_cons cons)
 	}
 
 	struct arcan_img_meta meta = {0};
-	char* imgbuf;
-	int inw, inh;
+	uint32_t* imgbuf;
+	size_t inw, inh;
 
-	arcan_errc rv = arcan_img_decode(infn, inmem.ptr, inmem.sz, &imgbuf,
-		&inw, &inh, &meta, false, malloc);
+	arcan_errc rv = arcan_img_decode(infn, inmem.ptr,
+		inmem.sz, &imgbuf, &inw, &inh, &meta, false);
 
 /* stretchblit is assumed to deal with the edgecase of
  * w ^ h being 0 */
@@ -201,20 +208,21 @@ TTF_Surface* text_loadimage(const char* const infn, img_cons cons)
 
 	if (imgbuf && rv == ARCAN_OK){
 		TTF_Surface* res = malloc(sizeof(TTF_Surface));
-		res->bpp    = sizeof(av_pixel);
+		res->bpp = sizeof(av_pixel);
 
 		if ((cons.w != 0 && cons.h != 0) && (inw != cons.w || inh != cons.h)){
 			uint32_t* scalebuf = malloc(cons.w * cons.h * sizeof(av_pixel));
 			arcan_renderfun_stretchblit(
-				imgbuf, inw, inh, scalebuf, cons.w, cons.h, false);
-			free(imgbuf);
+				(char*)imgbuf, inw, inh, scalebuf, cons.w, cons.h, false);
+			arcan_mem_free(imgbuf);
 			res->width  = cons.w;
 			res->height = cons.h;
-			res->data   = (char*) scalebuf;
-		} else {
+			res->data = (char*) scalebuf;
+		}
+		else {
 			res->width  = inw;
 			res->height = inh;
-			res->data   = imgbuf;
+			res->data = (char*) imgbuf;
 		}
 
 		res->stride = res->width * sizeof(av_pixel);
@@ -871,182 +879,29 @@ cleanup:
 	return raw;
 }
 
-/*
- * Stripped down version of SDL rotozoomer, only RGBA<->RGBA upscale
- * this should -- really -- be replaced with something.. clean.
- */
-
-/*
-Copyright (C) 2001-2011  Andreas Schiffler
-
-This software is provided 'as-is', without any express or implied
-warranty. In no event will the authors be held liable for any damages
-arising from the use of this software.
-
-Permission is granted to anyone to use this software for any purpose,
-including commercial applications, and to alter it and redistribute it
-freely, subject to the following restrictions:
-
-   1. The origin of this software must not be misrepresented; you must not
-   claim that you wrote the original software. If you use this software
-   in a product, an acknowledgment in the product documentation would be
-   appreciated but is not required.
-
-   2. Altered source versions must be plainly marked as such, and must not be
-   misrepresented as being the original software.
-
-   3. This notice may not be removed or altered from any source
-   distribution.
-
-Andreas Schiffler -- aschiffler at ferzkopp dot net
-
-*/
-
-typedef struct tColorRGBA {
-	uint8_t r;
-	uint8_t g;
-	uint8_t b;
-	uint8_t a;
-} tColorRGBA;
-
-typedef struct tColorY {
-	uint8_t y;
-} tColorY;
-
 int arcan_renderfun_stretchblit(char* src, int inw, int inh,
-	uint32_t* dst, size_t dstw, size_t dsth, int flipy)
+	uint32_t* dst, size_t dstw, size_t dsth, int flipv)
 {
-	int x, y, sx, sy, ssx, ssy, *sax, *say, *csax, *csay, *salast;
-	int csx, csy, ex, ey, cx, cy, sstep, sstepx, sstepy;
+	const int pack_tight = 0;
+	const int rgba_ch = 4;
 
-	tColorRGBA *c00, *c01, *c10, *c11;
-	tColorRGBA *sp, *csp, *dp;
+	if (1 == stbir_resize_uint8((unsigned char*)src, inw, inh, pack_tight,
+		(unsigned char*)dst, dstw, dsth, pack_tight, rgba_ch)){
 
-	int spixelgap, spixelw, spixelh, dgap, t1, t2;
+		if (flipv){
+			uint32_t row[dstw];
+			size_t stride = dstw * 4;
+			for (size_t y = 0; y < dsth >> 1; y++){
+				if (y == (dsth - 1 - y))
+					continue;
 
-	if ((sax = arcan_alloc_mem((dstw + 1) * sizeof(uint32_t) * 2,
-		ARCAN_MEM_VBUFFER, ARCAN_MEM_NONFATAL | ARCAN_MEM_TEMPORARY,
-		ARCAN_MEMALIGN_PAGE)) == NULL)
-		return -1;
-
-	if ((say = arcan_alloc_mem((dstw + 1) * sizeof(uint32_t) * 2,
-		ARCAN_MEM_VBUFFER, ARCAN_MEM_NONFATAL | ARCAN_MEM_TEMPORARY,
-		ARCAN_MEMALIGN_PAGE)) == NULL){
-		arcan_mem_free(say);
-		return -1;
-	}
-
-	spixelw = (inw - 1);
-	spixelh = (inh - 1);
-	sx = (int) (65536.0 * (float) spixelw / (float) (dstw - 1));
-	sy = (int) (65536.0 * (float) spixelh / (float) (dsth - 1));
-
-/* Maximum scaled source size */
-	ssx = (inw << 16) - 1;
-	ssy = (inh << 16) - 1;
-
-/* Precalculate horizontal row increments */
-	csx = 0;
-	csax = sax;
-	for (x = 0; x <= dstw; x++) {
-		*csax = csx;
-		csax++;
-		csx += sx;
-
-/* Guard from overflows */
-		if (csx > ssx) {
-			csx = ssx;
-		}
-	}
-
-/* Precalculate vertical row increments */
-	csy = 0;
-	csay = say;
-	for (y = 0; y <= dsth; y++) {
-		*csay = csy;
-		csay++;
-		csy += sy;
-
-/* Guard from overflows */
-		if (csy > ssy) {
-			csy = ssy;
-		}
-	}
-
-	sp = (tColorRGBA *) src;
-	dp = (tColorRGBA *) dst;
-
-	dgap = 0;
-	spixelgap = inw;
-
-	if (flipy)
-		sp += (spixelgap * spixelh);
-
-	csay = say;
-	for (y = 0; y < dsth; y++) {
-		csp = sp;
-		csax = sax;
-		for (x = 0; x < dstw; x++) {
-			ex = (*csax & 0xffff);
-			ey = (*csay & 0xffff);
-			cx = (*csax >> 16);
-			cy = (*csay >> 16);
-			sstepx = cx < spixelw;
-			sstepy = cy < spixelh;
-			c00 = sp;
-			c01 = sp;
-			c10 = sp;
-
-			if (sstepy) {
-				if (flipy) {
-				c10 -= spixelgap;
- 			} else {
-				c10 += spixelgap;
- 				}
- 			}
-
-			c11 = c10;
-			if (sstepx) {
-				c01++;
-				c11++;
-			 }
-
-			t1 = ((((c01->r - c00->r) * ex) >> 16) + c00->r) & 0xff;
-			t2 = ((((c11->r - c10->r) * ex) >> 16) + c10->r) & 0xff;
-			dp->r = (((t2 - t1) * ey) >> 16) + t1;
-			t1 = ((((c01->g - c00->g) * ex) >> 16) + c00->g) & 0xff;
-			t2 = ((((c11->g - c10->g) * ex) >> 16) + c10->g) & 0xff;
-			dp->g = (((t2 - t1) * ey) >> 16) + t1;
-			t1 = ((((c01->b - c00->b) * ex) >> 16) + c00->b) & 0xff;
-			t2 = ((((c11->b - c10->b) * ex) >> 16) + c10->b) & 0xff;
-			dp->b = (((t2 - t1) * ey) >> 16) + t1;
-			t1 = ((((c01->a - c00->a) * ex) >> 16) + c00->a) & 0xff;
-			t2 = ((((c11->a - c10->a) * ex) >> 16) + c10->a) & 0xff;
-			dp->a = (((t2 - t1) * ey) >> 16) + t1;
-
-			salast = csax;
-			csax++;
-			sstep = (*csax >> 16) - (*salast >> 16);
-			sp += sstep;
-
-			dp++;
+				memcpy(row, &dst[y*dstw], stride);
+				memcpy(&dst[y*dstw], &dst[(dsth-1-y)*dstw], stride);
+				memcpy(&dst[(dsth-1-y)*dstw], row, stride);
+			}
 		}
 
-		salast = csay;
-		csay++;
-		sstep = (*csay >> 16) - (*salast >> 16);
-		sstep *= spixelgap;
-		if (flipy) {
-			 sp = csp - sstep;
-		} else {
-			sp = csp + sstep;
-		}
-
-		dp = (tColorRGBA *) ((uint8_t *) dp + dgap);
+		return 1;
 	}
-
-	arcan_mem_free(sax);
-	arcan_mem_free(say);
-
-	return 0;
+	return -1;
 }
