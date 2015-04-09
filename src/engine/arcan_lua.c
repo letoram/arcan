@@ -4741,7 +4741,7 @@ static int rawsurface(lua_State* ctx)
 			if (!fpek)
 				arcan_warning("rawsurface() - - couldn't open (%s).\n", fname);
 			else
-				arcan_rgba32_pngfile(fpek, (char*)buf, desw, desh, 0);
+				arcan_img_outpng(fpek, buf, desw, desh, 0);
 		}
 		arcan_mem_free(fname);
 	}
@@ -7552,11 +7552,11 @@ static int screenshot(lua_State* ctx)
 	if (dst)
 		switch(fmt){
 		case OUTFMT_PNG:
-			arcan_rgba32_pngfile(dst, (void*) databuf, dw, dh, false);
+			arcan_img_outpng(dst, databuf, dw, dh, false);
 		break;
 
 		case OUTFMT_PNG_FLIP:
-			arcan_rgba32_pngfile(dst, (void*) databuf, dw, dh, true);
+			arcan_img_outpng(dst, databuf, dw, dh, true);
 		break;
 
 /* flip is assumed in the raw formats */

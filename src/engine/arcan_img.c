@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include <assert.h>
 #include <stdio.h>
+#include <inttypes.h>
 #include <stdbool.h>
 #include <string.h>
 
@@ -38,35 +39,96 @@ struct png_readstr
 	size_t inbuf_sz;
 };
 
-arcan_errc arcan_rgba32_pngfile(FILE* dst, char* inbuf, int inw, int inh, bool vflip)
+arcan_errc arcan_img_outpng(FILE* dst,
+	av_pixel* inbuf, size_t inw, size_t inh, bool vflip)
 {
 	int outln;
+	bool dynout = false;
+	unsigned char* outbuf = (unsigned char*) inbuf;
 
-	char* outbuf = inbuf;
+/* repack if the platform defines a different format than LE RGBA */
+	if (sizeof(av_pixel) != 4 || RGBA(0xff, 0xaa, 0x77, 0x55) != 0x5577aaff){
+		av_pixel* work = inbuf;
 
-	if (vflip){
+		uint32_t* repack = arcan_alloc_mem(inw * inh * 4, ARCAN_MEM_VBUFFER,
+			ARCAN_MEM_TEMPORARY | ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE);
+		if (!repack)
+			return ARCAN_ERRC_OUT_OF_SPACE;
+		outbuf = (unsigned char*) repack;
+
+#define RPACK(r, g, b, a)( ((uint32_t)(a) << 24) | ((uint32_t) (b) << 16) |\
+((uint32_t) (g) << 8) | ((uint32_t) (r)) )
+		if (vflip){
+			for (ssize_t y = inh-1; y >= 0; y--)
+				for (size_t x = 0; x < inw; x++){
+						uint8_t r, g, b, a;
+						RGBA_DECOMP(work[y*inw+x], &r, &g, &b, &a);
+						*repack++ = RPACK(r, g, b, a);
+				}
+		}
+		else{
+			size_t count = inw * inh;
+			while(count--){
+				uint8_t r, g, b, a;
+				RGBA_DECOMP(*work++, &r, &g, &b, &a);
+				*repack++ = RPACK(r, g, b, a);
+			}
+		}
+#undef RPACK
+		dynout = true;
+	}
+	else if (vflip){
 		size_t stride = inw * 4;
 		outbuf = arcan_alloc_mem(stride * inh, ARCAN_MEM_VBUFFER,
 			ARCAN_MEM_TEMPORARY | ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE);
+				return ARCAN_ERRC_OUT_OF_SPACE;
 
 		for (ssize_t row = inh-1, step = 0; row >= 0; row--, step++)
-			memcpy(&outbuf[step * stride], &inbuf[row * stride], stride);
+			memcpy(&outbuf[step * stride], &inbuf[row], stride);
 	}
 
 	unsigned char* png = stbi_write_png_to_mem(
 		(unsigned char*) outbuf, 0, inw, inh, 4, &outln);
 
 	fwrite(png, 1, outln, dst);
-	free(png);
+	arcan_mem_free(png);
 
-	if (vflip)
+	if (vflip || dynout)
 		arcan_mem_free(outbuf);
 
 	return ARCAN_OK;
 }
 
-arcan_errc arcan_pkm_raw(const uint8_t* inbuf, size_t inbuf_sz, char** outbuf,
-		int* outw, int* outh, struct arcan_img_meta* meta, outimg_allocator alloc)
+av_pixel* arcan_img_repack(uint32_t* inbuf, size_t inw, size_t inh)
+{
+	if (sizeof(av_pixel) == 4 && RGBA(0xff, 0xaa, 0x77, 0x55) != 0x5577aaff)
+		return (av_pixel*) inbuf;
+
+	av_pixel* imgbuf = arcan_alloc_mem(sizeof(av_pixel) * inw * inh,
+		ARCAN_MEM_VBUFFER | ARCAN_MEM_NONFATAL, 0, ARCAN_MEMALIGN_PAGE);
+
+		if (!imgbuf)
+			goto done;
+
+	uint32_t* in_work = inbuf;
+	av_pixel* work = imgbuf;
+	for (size_t count = inw * inh; count > 0; count--){
+		uint32_t val = *in_work++;
+		*work++ = RGBA(
+			(val & 0x000000ff),
+			((val & 0x0000ff00) >> 8),
+			((val & 0x00ff0000) >> 16),
+			((val & 0xff000000) >> 24)
+		);
+	}
+
+done:
+	arcan_mem_free(inbuf);
+	return imgbuf;
+}
+
+arcan_errc arcan_pkm_raw(const uint8_t* inbuf, size_t inbuf_sz,
+		uint32_t** outbuf, size_t* outw, size_t* outh, struct arcan_img_meta* meta)
 {
 #ifdef ETC1_SUPPORT
 /* extract header fields */
@@ -76,7 +138,9 @@ arcan_errc arcan_pkm_raw(const uint8_t* inbuf, size_t inbuf_sz, char** outbuf,
 	int height  = (inbuf[14] << 8) | inbuf[15];
 
 /* strip header */
-	*outbuf = alloc(inbuf_sz - 16);
+	*outbuf = arcan_mem_alloc(inbuf_sz - 16,
+		ARCAN_MEM_VBUFFER, ARCAN_MEMALIGN_PAGE);
+
 	memcpy(*outbuf, inbuf + 16, inbuf_sz - 16);
 	meta->compressed = true;
 	meta->pwidth = pwidth;
@@ -103,8 +167,8 @@ struct dds_data_fmt
 };
 */
 
-arcan_errc arcan_dds_raw(const uint8_t* inbuf, size_t inbuf_sz, char** outbuf,
-	int* outw, int* outh, struct arcan_img_meta* meta, outimg_allocator alloc)
+arcan_errc arcan_dds_raw(const uint8_t* inbuf, size_t inbuf_sz,
+	uint32_t** outbuf, size_t* outw, size_t* outh, struct arcan_img_meta* meta)
 {
 #ifdef DDS_SUPPORT
 	struct dds_dsta_fmt* dds_img_data;
@@ -134,8 +198,8 @@ arcan_errc arcan_dds_raw(const uint8_t* inbuf, size_t inbuf_sz, char** outbuf,
 }
 
 arcan_errc arcan_img_decode(const char* hint, char* inbuf, size_t inbuf_sz,
-	char** outbuf, int* outw, int* outh, struct arcan_img_meta* meta,
-	bool vflip, outimg_allocator imalloc)
+	uint32_t** outbuf, size_t* outw, size_t* outh,
+	struct arcan_img_meta* meta, bool vflip)
 {
 	arcan_errc rv = ARCAN_ERRC_BAD_RESOURCE;
 	int len = strlen(hint);
@@ -146,10 +210,15 @@ arcan_errc arcan_img_decode(const char* hint, char* inbuf, size_t inbuf_sz,
 			(len == 4 && strcasecmp(hint + (len - 4), "JPEG") == 0))
 		{
 			int outf;
-			char* buf = (char*) stbi_load_from_memory(
-				(stbi_uc const*) inbuf, inbuf_sz, outw, outh, &outf, 4);
+			int w, h;
+
+/* stbi_load_from_memory will use arcan_alloc_mem that guarantees alignment */
+			uint32_t* buf = (uint32_t*) stbi_load_from_memory(
+				(stbi_uc const*) inbuf, inbuf_sz, &w, &h, &outf, 4);
 			if (buf){
 				*outbuf = buf;
+				*outw = w;
+				*outh = h;
 				return ARCAN_OK;
 			}
 		}
@@ -159,11 +228,11 @@ arcan_errc arcan_img_decode(const char* hint, char* inbuf, size_t inbuf_sz,
 		}
 		else if (strcasecmp(hint + (len - 3), "PKM") == 0){
 			return arcan_pkm_raw((uint8_t*)inbuf, inbuf_sz,
-				outbuf, outw, outh, meta, imalloc);
+				outbuf, outw, outh, meta);
 		}
 		else if (strcasecmp(hint + (len - 3), "DDS") == 0){
 			return arcan_dds_raw((uint8_t*)inbuf, inbuf_sz,
-				outbuf, outw, outh, meta, imalloc);
+				outbuf, outw, outh, meta);
 		}
 	}
 

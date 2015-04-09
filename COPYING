@@ -1,4 +1,4 @@
-This file summarizes the basic licenses that apply to 
+This file summarizes the basic licenses that apply to
 the different parts of the project.
 
 Key Licenses:
@@ -12,23 +12,21 @@ Basic Engine Components:
  * PNG (+Zlib, Zlib License)
  * Freetype (BSD-like FT license or GPLv2)
  * SQLite3 (Public Domain)
- 
+
  External Projects included or referenced:
  external/kissfft - 3-Clause BSD, (c) Mark Borgerdin
- external/hidapi - 3-Clause BSD, (c) Alan Ott 
+ external/hidapi - 3-Clause BSD, (c) Alan Ott
  external/openctm - 3-Clause BSD, (c) Marcus Geelnard
- 
+
 engine/* 3-Claused BSD with exceptions / attribution as follows:
-      /arcan_lua.c - GPLv2 as an artifical restriction 
+      /arcan_lua.c - GPLv2 as an artifical restriction
                      plan is to relicense as BSD with 1.0 release.
 
-      /arcan_ttf.* - special, Derived version from 
+      /arcan_ttf.* - special, Derived version from
                      Sam Lantingas SDL_ttf (to be replaced with freetype-gl)
 
       /arcan_math.c - public domain
       /arcan_math_simd.c - public domain
-      /arcan_renderfun.c - 3-Claused BSD, 
-                           stretchblit attributed to Andreas Schiffler
 
 CMakeLists, platform/CMakeLists.* 3-Clause BSD
 platform/agp/ 3-Clause BSD, Public Domain
@@ -53,7 +51,7 @@ distr/scripts/
 Specific Platforms:
  SDL: (dependency) SDL1.2, optional SDL-image, LGPL.
  EGL-DRI: (dependency) GLES, OpenGL3 or GLES3
- X11: (dependency) xlib  
+ X11: (dependency) xlib
  LWA: LGPL- tainted build, as we statically link a modified openAL-soft backend
 
 Default Frameservers:
