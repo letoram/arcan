@@ -2096,8 +2096,6 @@ void LzmaEnc_Finish(CLzmaEncHandle pp)
   CLzmaEnc *p = (CLzmaEnc *)pp;
   if (p->mtMode)
     MatchFinderMt_ReleaseStream(&p->matchFinderMt);
-  #else
-  pp = pp;
   #endif
 }
 
