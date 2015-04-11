@@ -1,23 +1,37 @@
 if (FSRV_ENCODE_REQUIRED)
-	find_package(FFMPEG REQUIRED)
-	find_package(BZip2 REQUIRED)
-	find_package(ZLIB REQUIRED)
-	find_package(LibLZMA REQUIRED)
+	find_package(FFMPEG REQUIRED QUIET)
+	find_package(BZip2 REQUIRED QUIET)
+	find_package(ZLIB REQUIRED QUIET)
+	find_package(LibLZMA REQUIRED QUIET)
 else()
-	find_package(FFMPEG)
-	find_package(BZip2)
-	find_package(ZLIB)
-	find_package(LibLZMA)
+	find_package(FFMPEG QUIET)
+	find_package(BZip2 QUIET)
+	find_package(ZLIB QUIET)
+	find_package(LibLZMA QUIET)
+endif()
+
+if (NOT FFMPEG_FOUND)
+	set(FSRV_ENC_MISSING "${FSRV_ENC_MISSING}ffmpeg ")
+endif()
+
+if (NOT BZIP2_FOUND)
+	set(FSRV_ENC_MISSING "${FSRV_ENC_MISSING}bzip2 ")
+endif()
+
+if (NOT ZLIB_FOUND)
+	set(FSRV_ENC_MISSING "${FSRV_ENC_MISSING}zlib ")
+endif()
+
+if (NOT LIBLZMA_FOUND)
+	set(FSRV_ENC_MISSING "${FSRV_ENC_MISSING}lzma ")
 endif()
 
 if (FFMPEG_FOUND AND BZIP2_FOUND AND ZLIB_FOUND AND LIBLZMA_FOUND)
-	message(STATUS "--(fsrv/encode) building using FFMpeg")
-
-	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING} encode")
+	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}encode " PARENT_SCOPE)
 
 	find_package(VNC)
 	if (LIBVNC_FOUND)
-		message(STATUS "--(fsrv/encode) adding VNC support using libvnc")
+		message("(${CL_GRN}encode${CL_RST}) frameserver, building with ${CL_GRN}vnc${CL_RED} support ${CL_RST}\n")
 		set(ENC_AUX_SOURCES
 			${FSRV_ROOT}/util/vncserver.c
 			${FSRV_ROOT}/util/vncserver.h
@@ -34,7 +48,7 @@ if (FFMPEG_FOUND AND BZIP2_FOUND AND ZLIB_FOUND AND LIBLZMA_FOUND)
 	)
 
 	target_link_libraries(afsrv_encode
-		arcan_shmif
+		arcan_shmif_int
 		${FFMPEG_LIBRARIES}
 		${BZIP2_LIBRARIES}
 		${ZLIB_LIBRARIES}
@@ -59,6 +73,6 @@ if (FFMPEG_FOUND AND BZIP2_FOUND AND ZLIB_FOUND AND LIBLZMA_FOUND)
 	install(TARGETS afsrv_encode DESTINATION bin)
 
 else()
-	message("encode frameserver disabled, need ffmpeg, bz2, lzma and zlib\n")
+	message("(${CL_GRN}encode${CL_RST}) disabled, ${CL_GRN}${FSRV_ENC_MISSING}${CL_RED}not found${CL_RST}")
 endif()
 

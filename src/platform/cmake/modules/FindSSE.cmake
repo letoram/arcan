@@ -21,12 +21,12 @@
 #   SSE_FOUND   = 1
 #   SSE_VERSION = the requested version, if EXACT is true, or
 #                 the highest SSE version found.
-# 
+#
 # If SSE is not supported on the host platform, these variables are
 # not set. If QUIET is true, the module does not print a message if
 # SSE if missing. If REQUIRED is true, the module produces a fatal
 # error if SSE support is missing.
-# 
+#
 
 include(CheckCXXSourceRuns)
 
@@ -58,7 +58,7 @@ else()
     set(_SSE_TEST_20 1)
   elseif(NOT SSE_FIND_VERSION VERSION_GREATER "1.0")
     set(_SSE_TEST_10 1)
-  endif()  
+  endif()
 endif()
 
 # Set compiler flag to generate instructions for the host architecture.
@@ -83,7 +83,7 @@ if(_SSE_TEST_42)
       return 0;
     else
       return 1;
-  }" SSE_42_DETECTED)
+  }" SSE_42_DETECTED QUIET)
   if(SSE_42_DETECTED)
     set(SSE_VERSION "4.2")
     set(SSE_FOUND 1)
@@ -110,7 +110,7 @@ if(_SSE_TEST_41)
       return 0;
     else
       return 1;
-  }" SSE_41_DETECTED)
+  }" SSE_41_DETECTED QUIET)
   if(SSE_41_DETECTED)
     set(SSE_VERSION "4.1")
     set(SSE_FOUND 1)
@@ -136,7 +136,7 @@ if(_SSE_TEST_31)
       return 0;
     else
       return 1;
-  }" SSE_31_DETECTED)
+  }" SSE_31_DETECTED QUIET)
   if(SSE_31_DETECTED)
     set(SSE_VERSION "3.1")
     set(SSE_FOUND 1)
@@ -169,7 +169,7 @@ if(_SSE_TEST_30)
       return 0;
     else
       return 1;
-  }" SSE_30_DETECTED)
+  }" SSE_30_DETECTED QUIET)
   if(SSE_30_DETECTED)
     set(SSE_VERSION "3.0")
     set(SSE_FOUND 1)
@@ -197,7 +197,7 @@ if(_SSE_TEST_20)
       return 0;
     else
       return 1;
-  }" SSE_20_DETECTED)
+  }" SSE_20_DETECTED QUIET)
   if(SSE_20_DETECTED)
     set(SSE_VERSION "2.0")
     set(SSE_FOUND 1)
@@ -223,7 +223,7 @@ if(_SSE_TEST_10)
       return 0;
     else
       return 1;
-  }" SSE_10_DETECTED)
+  }" SSE_10_DETECTED QUIET)
   if(SSE_10_DETECTED)
     set(SSE_VERSION "1.0")
     set(SSE_FOUND 1)
@@ -233,7 +233,7 @@ endif()
 
 # If no SSE support is found, print an error message.
 if(NOT SSE_FOUND)
-  
+
   if(SSE_FIND_VERSION)
     set(_SSE_ERROR_MESSAGE "SSE ${SSE_FIND_VERSION} support is not found on this architecture")
   else()

@@ -6003,7 +6003,9 @@ static void packing_lut(enum hgram_pack mode, int* dst)
 	case HIST_DIRTY:
 	case HIST_SPLIT: otbl = otbl_separate; break;
 	case HIST_MERGE: otbl = otbl_mergeall; break;
-	case HIST_MERGE_NOALPHA: otbl = otbl_mergergb; break;
+	case HIST_MERGE_NOALPHA:
+	default:
+		otbl = otbl_mergergb; break;
 	}
 
 	memcpy(dst, otbl, sizeof(int) * 4);

@@ -42,7 +42,7 @@ struct png_readstr
 arcan_errc arcan_img_outpng(FILE* dst,
 	av_pixel* inbuf, size_t inw, size_t inh, bool vflip)
 {
-	int outln;
+	int outln = 0;
 	bool dynout = false;
 	unsigned char* outbuf = (unsigned char*) inbuf;
 

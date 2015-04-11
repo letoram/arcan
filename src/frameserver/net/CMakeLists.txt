@@ -6,13 +6,12 @@
 #
 
 if (FSRV_NET_REQUIRED)
-	find_package(APR REQUIRED)
+	find_package(APR REQUIRED QUIET)
 else()
-	find_package(APR)
+	find_package(APR QUIET)
 endif()
 
 if (APR_FOUND)
-	message(STATUS "--(fsrv/net) building using LibAPR")
 	add_executable(afsrv_net
 		${FSRV_PLATFORM}
 		default/net_cl.c
@@ -31,14 +30,13 @@ if (APR_FOUND)
 	)
 	target_link_libraries(afsrv_net
 		${APR_LIBRARIES}
-		arcan_shmif
+		arcan_shmif_int
 		${STDLIB}
 	)
 
-	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING} net")
-
+	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}net " PARENT_SCOPE)
 	install(TARGETS afsrv_net DESTINATION bin)
 
 else()
-	message("net frameserver disabled, libapr not found\n")
+	message("(${CL_GRN}net${CL_RST}) disabled, ${CL_GRN}libapr${CL_RED} not found${CL_RST}")
 endif()

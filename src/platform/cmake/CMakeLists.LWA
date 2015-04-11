@@ -15,8 +15,8 @@
 # in the code needed for this.
 #
 SET (ALPATCHES
-	${CMAKE_CURRENT_SOURCE_DIR}/external/patches/openal/0001-adding-arcan-shmif-support.patch
-	${CMAKE_CURRENT_SOURCE_DIR}/external/patches/openal/0002-arcan-shmif-backend-working.patch
+	${EXTERNAL_SRC_DIR}/patches/openal/0001-adding-arcan-shmif-support.patch
+	${EXTERNAL_SRC_DIR}/patches/openal/0002-arcan-shmif-backend-working.patch
 )
 
 #
@@ -48,8 +48,7 @@ ExternalProject_Add(openal_soft
 		-DALSOFT_CONFIG=OFF
 	 	-DLIBTYPE=STATIC
 		-DARCAN_SHMIF_PATH=${CMAKE_CURRENT_SOURCE_DIR}/shmif
-		-DARCAN_SHMIF_PLATFORM=${FSRV_PLATFORM_SOURCES}
-		-DARCAN_SHMIF_PLATFORM_HEADER=${PLATFORM_ROOT}/platform.h
+		-DCMAKE_REQUIRED_QUIET=ON
 )
 
 set(LWA_LIBRARIES

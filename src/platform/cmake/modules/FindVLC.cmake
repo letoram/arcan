@@ -21,8 +21,8 @@ endif(NOT LIBVLC_MIN_VERSION)
 # searching for the same item do nothing.
 
 if (NOT WIN32)
-    find_package(PkgConfig)
-    pkg_check_modules(PC_LIBVLC libvlc)
+    find_package(PkgConfig QUIET)
+    pkg_check_modules(PC_LIBVLC libvlc QUIET)
     set(LIBVLC_DEFINITIONS ${PC_LIBVLC_CFLAGS_OTHER})
 endif (NOT WIN32)
 
@@ -40,7 +40,7 @@ PATHS
     #mingw
     c:/msys/local/include
 )
-find_path(LIBVLC_INCLUDE_DIR PATHS "${CMAKE_INCLUDE_PATH}/vlc" NAMES vlc.h 
+find_path(LIBVLC_INCLUDE_DIR PATHS "${CMAKE_INCLUDE_PATH}/vlc" NAMES vlc.h
         HINTS ${PC_LIBVLC_INCLUDEDIR} ${PC_LIBVLC_INCLUDE_DIRS})
 
 #Put here path to custom location

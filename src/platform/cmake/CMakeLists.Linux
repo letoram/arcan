@@ -24,8 +24,6 @@ add_definitions(
 	-DPLATFORM_HEADER=\"${PLATFORM_ROOT}/platform.h\"
 )
 
-message(STATUS " scanning for Linux specific libraries. ")
-
 set(ARCAN_PLATFORM
 	${PLATFORM_PATH}/mem.c
 	${PLATFORM_PATH}/fmt_open.c
@@ -95,6 +93,7 @@ if (MUSL_LIBC)
 	ExternalProject_Add(
 	libmusl
 	SOURCE_DIR ${MUSL}
+
 	CONFIGURE_COMMAND ${MUSL}/configure --prefix=${MUSL}/.libs --disable-shared
 	PREFIX ${MUSL}
 	BUILD_COMMAND make

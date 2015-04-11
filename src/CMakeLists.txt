@@ -1,10 +1,21 @@
+set(CMAKE_REQUIRED_QUIET ON)
+
 PROJECT(arcan)
 include(ExternalProject)
 include(CheckIncludeFiles)
 cmake_minimum_required(VERSION 2.8.12 FATAL_ERROR)
 
-set(EXTERNAL_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external)
+set(EXTERNAL_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../external)
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/modules)
+
+# too bad this doesn't actually work for having cmake just shut up,
+# the very notion that text output is part of the user interface seems
+# totally lost on build systems :-(
+
+if (CMAKE_COLOR_MAKEFILE)
+	include(CMakeColor)
+endif()
+
 if (GLOBAL_CFLAGS)
 	add_definitions(${GLOBAL_CFLAGS})
 endif()
@@ -37,7 +48,8 @@ if (NOT DEFINED ENGINE_BUILDTAG)
 			OUTPUT_VARIABLE GIT_VERSION
 		)
 		if (NOT ${EXIT_CODE} EQUAL 0)
-			message(FATAL_ERROR "Extracting build tag using git failed, -DENGINE_BUILDTAG=mytag manually")
+			message(FATAL_ERROR
+				"${CLB_CYN}Extracting build tag using git failed, -DENGINE_BUILDTAG=mytag manually${CL_RST}")
 		endif()
 
 		string(STRIP ${GIT_VERSION} GIT_VERSION)
@@ -48,14 +60,16 @@ if (NOT DEFINED ENGINE_BUILDTAG)
 			OUTPUT_VARIABLE GIT_BRANCH
 		)
 		if (NOT ${EXIT_CODE} EQUAL 0)
-			message(FATAL_ERROR "Extracting build tag using git failed, -DENGINE_BUILDTAG=mytag manually")
+			message(FATAL_ERROR
+				"${CLB_CYN}Extracting build tag using git failed, -DENGINE_BUILDTAG=mytag manually${CL_RST}")
 		endif()
 
 		string(STRIP ${GIT_BRANCH} GIT_BRANCH)
 
 		set(ENGINE_BUILDTAG arcan-git-${GIT_BRANCH}-${GIT_VERSION})
 	else()
-		message(FATAL_ERROR "ENGINE_BUILDTAG not found and no git checkout detected, -DENGINE_BUILDTAG=mytag manually")
+		message(FATAL_ERROR
+			"${CLB_CYN}ENGINE_BUILDTAG not found and no git checkout detected, -DENGINE_BUILDTAG=mytag manually${CL_RST}")
 	endif()
 endif()
 
@@ -70,65 +84,64 @@ set(SHARED_PERMISSIONS OWNER_WRITE OWNER_READ GROUP_WRITE GROUP_READ WORLD_READ)
 set(SHARED_PERMISSIONS_DIR OWNER_WRITE OWNER_READ GROUP_WRITE
 		GROUP_READ WORLD_EXECUTE WORLD_READ)
 
+# perhaps add an 'auto-detect' stage for Linux/BSD?
 if (WIN32)
 	set(VPLATFORM_STR "sdl")
 	set(VIDEO_PLATFORM "sdl")
+	set(DISABLE_HIJACK true)
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 	set(VPLATFORM_STR "sdl")
 	set(VIDEO_PLATFORM "sdl")
 else()
-	set(VPLATFORM_STR "x11|x11-headless|sdl|egl-gles|egl-dri|egl-nvidia")
+	set(VPLATFORM_STR "x11, x11-headless, sdl, egl-gles, egl-dri")
 endif()
-set(AGPPLATFORM_STR "gl21|gles2|gles3|stub")
+set(AGPPLATFORM_STR "gl21, gles2, gles3, stub")
 
+# we can remove some of this cruft when 'buntu LTS gets ~3.0ish
 option(ENABLE_ASAN "Build with Address-Sanitizer, (gcc >= 4.8, clang >= 3.1)" OFF)
-option(ENABLE_LUAJIT "Use the luajit-5.1 VM (if found)" ON)
-option(ENABLE_SIMD "Build with SIMD vector instruction set support" ON)
+option(DISABLE_JIT "Don't use the luajit-5.1 VM (if found)" OFF)
+option(DOWNLOAD_MISSING "Download and build missing dependencies (if possible)" ON)
 option(ENABLE_LED "Build with LED controller support in core" OFF)
 option(ENABLE_LTO "Build with Link-Time Optimization enabled" OFF)
-if (NOT WIN32)
-	option(MUSL_LIBC "Use the MUSL libc implementation (incomplete)" OFF)
-	option(ENABLE_LWA "Build a lightweight arcan (arcan_lwa) with nested platform" OFF)
-endif()
+option(ENABLE_LWA "Build LWA client (arcan-in-arcan)" OFF)
+option(ENABLE_SIMD "Build with SIMD vector instruction set support" ON)
 option(ENABLE_SIMD_ALIGNED "Assert that SIMD data sources are 16-byte aligned" OFF)
 
 message("")
-message("Cmake options:")
-message("   -DCMAKE_BUILD_TYPE=[Debug|Release|Profile|DebugTrace]")
-message("   -DENABLE_ASAN=[Off|On] : Build with Address Sanitizer enabled")
-message("   -DENABLE_SIMD=[On|Off] : Enable SIMD optimized instructions")
-message("   -DENABLE_LTO=[Off|On] : Build with Link-Time Optimizations")
+message("${CL_WHT}Audio/Video/Input Support:")
+message("${CL_YEL}(req.)\t-DVIDEO_PLATFORM=${CL_GRN}${VPLATFORM_STR}${CL_RST}")
+message("${CL_YEL}\t-DAGP_PLATFORM=${CL_GRN}${AGPPLATFORM_STR}${CL_RST}")
+message("")
+message("${CL_WHT}Cmake Options:${CL_RST}")
+message("${CL_YEL}\t-DCMAKE_BUILD_TYPE=${CL_GRN}[Debug|Release|Profile|DebugTrace]")
+message("${CL_YEL}\t-DENABLE_ASAN=${CL_GRN}[Off|On]${CL_RST} - Build with Address Sanitizer enabled")
+message("${CL_YEL}\t-DENABLE_SIMD=${CL_GRN}[On|Off]${CL_RST} - Enable SIMD optimized instructions")
 # message("    -DENABLE_PBO=[Appl-path] : Profile-based Optimization prepass with appl")
 # message("                               as optimization profile.")
-message("   -DENABLE_SIMD_ALIGNED=[Off|On] : |--> SIMD support assumes 16-byte alignment")
+message("${CL_YEL}\t\t-DSIMD_ALIGNED=${CL_GRN}[Off|On]${CL_RST} - SIMD support assumes 16-byte alignment")
+message("${CL_YEL}\t-DENABLE_LTO=${CL_GRN}[Off|On]${CL_RST} - Build with Link-Time Optimizations")
 message("")
-message("audio/video/input support:")
-message("   -DVIDEO_PLATFORM=${VPLATFORM_STR} : Set video/display platform")
-message("   -DAGP_PLATFORM=${AGPPLATFORM_STR} : Set video/rendering platform")
-message("")
-message("optional engine builds:")
-message("   -DENABLE_LED=[On|Off] : Build with LED controller support in core")
-message("   -DENABLE_LWA=[Off|On] : Build LWA Arcan client (nesting support)")
-message("   -DENABLE_LUAJIT=[On|Off] : Link with luajit51 (if found)")
-message("   -DDISABLE_FRAMESERVERS=[Off|On] : Build Arcan without support for frameservers")
+message("Optional engine flags:")
+message("${CL_YEL}\t-DENABLE_LED=${CL_GRN}[On|Off]${CL_RST} - Build with LED controller support in core")
+message("${CL_YEL}\t-DENABLE_LWA=${CL_GRN}[Off|On]${CL_RST} - Build LWA Arcan client (nesting support)")
+message("${CL_YEL}\t-DISABLE_JIT=${CL_GRN}[Off|On]${CL_RST} - Don't Link with luajit51 (even if found)")
+message("${CL_YEL}\t-DDISABLE_FRAMESERVERS=${CL_GRN}[Off|On]${CL_RST} - Build Arcan without support for frameservers")
 message("")
 
 # no other audio platforms supported currently
 set(AUDIO_PLATFORM "openal")
-
-message(STATUS "Using compiler: ${CMAKE_C_COMPILER_ID}")
 
 if ("${CMAKE_C_COMPILER_ID}" MATCHES "GNU")
 	execute_process(
 		COMMAND ${CMAKE_C_COMPILER} -dumpversion OUTPUT_VARIABLE GCC_VERSION)
 
 	if (NOT (GCC_VERSION VERSION_GREATER 4.7 OR GCC_VERSION VERSION_EQUAL 4.7))
-	message(FATAL_ERROR "Ancient GCC Version detected, Arcan needs to be compiled with Clang-3.3+ or gcc 4.7+")
+		message(FATAL_ERROR "${CLB_CYN}Ancient GCC Version detected, Arcan needs to be compiled with Clang-3.3+ or gcc 4.7+${CL_RST}")
 	endif()
 
 elseif ("${CMAKE_C_COMPILER_ID}" MATCHES "Clang")
 else()
-	message(FATAL_ERROR "Arcan requires an ISO C 9899:2011 capable compiler (Clang-3.3+ or gcc 4.7+)")
+				message(FATAL_ERROR "${CLB_CYN}Arcan requires an ISO C 9899:2011 capable compiler (Clang-3.3+ or gcc 4.7+)${CL_RST}")
 endif()
 
 if (CMAKE_BUILD_TYPE STREQUAL "Profile")
@@ -138,9 +151,9 @@ if (CMAKE_BUILD_TYPE STREQUAL "Profile")
 endif(CMAKE_BUILD_TYPE STREQUAL "Profile")
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-	message("------------------*Debug Build*--------------------")
-	message(" Debug Specific Setting: ")
-	message(" LUA_TRACE_METHOD=[off|stderr|coverage")
+	message("${CL_WHT}------------------*Debug Build*--------------------${CL_RST}")
+	message("${CL_YEL}Debug Specific Setting:")
+	message("\tLUA_TRACE_METHOD=${CL_RST}[${CL_GRN}off${CL_RST}|${CL_GRN}stderr${CL_RST}|${CL_GRN}coverage${CL_RST}]")
 	if (LUA_TRACE_METHOD STREQUAL "stderr")
 		message(STATUS "LUA_TRACE_METHOD set to stderr")
 		list(APPEND ARCAN_DEFINITIONS LUA_TRACE_STDERR)
@@ -172,31 +185,31 @@ if (ENABLE_LTO)
 	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -flto")
 endif()
 
-# --- Step 1, Dependencies / find package flags
-find_package(Freetype REQUIRED)
-find_package(OpenAL REQUIRED)
-find_package(SQLITE3 REQUIRED)
-find_package(SSE)
+find_package(Freetype REQUIRED QUIET)
+find_package(OpenAL REQUIRED QUIET)
+find_package(SQLITE3 REQUIRED QUIET)
+find_package(SSE QUIET)
 
 include(${PLATFORM_ROOT}/cmake/CMakeLists.AGP)
 include(${PLATFORM_ROOT}/cmake/CMakeLists.Video)
 
-message("\n---- Stage 1: library dependencies and configuration ----")
-message(STATUS "Lua")
-if (ENABLE_LUAJIT)
-	message(STATUS "Looking for JIT enabled LUA VM")
-	find_package(Lua51JIT)
+message("${CL_WHT}-- Stage 1: dependencies and configuration${CL_RST}")
+if (NOT DISABLE_JIT)
+	find_package(Lua51JIT QUIET)
+	if (LUA_LIBRARY)
+		set(LUA_VSTR "lua5.1 (JIT)")
+	endif()
 endif()
 
-if (NOT LUA_LIBRARY OR NOT ENABLE_LUAJIT)
-	find_package(Lua51)
+if (NOT LUA_LIBRARY OR DISABLE_JIT)
+	find_package(Lua51 QUIET)
 endif()
 
 if (NOT LUA_LIBRARIES)
-	message("--> Lua Library not found, building from external/lua")
-	add_subdirectory(external/lua)
-	set(LUA_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/lua)
+	add_subdirectory(${EXTERNAL_SRC_DIR}/lua ${CMAKE_CURRENT_BINARY_DIR}/lua)
+	set(LUA_INCLUDE_DIR ${EXTERNAL_SRC_DIR}/lua)
 	set(LUA_LIBRARIES lua51)
+	set(LUA_VSTR "lua5.1 (interp)")
 endif()
 
 LIST (APPEND
@@ -219,7 +232,7 @@ LIST (APPEND
 	${CMAKE_CURRENT_SOURCE_DIR}/engine
 )
 
-add_subdirectory(${EXTERNAL_SRC_DIR}/openctm)
+add_subdirectory(${EXTERNAL_SRC_DIR}/openctm ${CMAKE_CURRENT_BINARY_DIR}/openctm)
 
 #
 # engine source files + graphics platform
@@ -270,12 +283,7 @@ set (ARCANDB_SOURCES
 )
 
 if (ENABLE_SIMD AND SSE_FOUND)
-	message("--> Enabling SIMD")
-
-	if (ENABLE_SIMD_ALIGNED)
-		message("      |--> Asserting SIMD operands are aligned")
-		message("           These can *crash* at odd intervals on ")
-		message("           poor _Alignas implementations")
+	if (SIMD_ALIGNED)
 		set_property(SOURCE engine/arcan_math_simd.c
 			APPEND PROPERTY COMPILE_DEFINITIONS ARCAN_MATH_ALIGNED_SIMD)
 	endif()
@@ -289,7 +297,6 @@ if (ENABLE_SIMD AND SSE_FOUND)
 endif()
 
 if (ENABLE_LED)
-	message("--> Adding LED controller support.")
 	list(APPEND ${SOURCES}
 		arcan_led.c
 		arcan_led.h
@@ -298,7 +305,6 @@ if (ENABLE_LED)
 endif()
 
 if (LUA51_JIT)
-	message("--> Enabling JIT- mode for Lua.")
 	set_property(SOURCE engine/arcan_lua.c APPEND PROPERTY
 		COMPILE_DEFINITIONS LUA51_JIT)
 	set(LUA_TAG "luajit51")
@@ -311,20 +317,19 @@ set(PFT ${VIDEO_PLATFORM}-${AGP_PLATFORM}-${AUDIO_PLATFORM}-${INPUT_PLATFORM})
 set(ENGINE_BUILDTAG ${ENGINE_BUILDTAG}-${PFT}-${LUA_TAG})
 unset(PFT)
 
-set (SHMIF_SOURCES
-  shmif/arcan_shmif.h
-	shmif/arcan_shmif_interop.h
-	shmif/arcan_shmif_control.c
+set (SHMIF_HEADERS
 	shmif/arcan_shmif_control.h
-	shmif/arcan_shmif_interop.c
+	shmif/arcan_shmif_interop.h
 	shmif/arcan_shmif_event.h
 )
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/shmif)
 
-message("\n---- Stage 1 configuration ----")
-message("video output (VIDEO_PLATFORM) set to : ${VIDEO_PLATFORM}")
-message("audio output (AUDIO_PLATFORM) set to : ${AUDIO_PLATFORM}")
-message("device input (INPUT_PLATFORM) set to : ${INPUT_PLATFORM}")
+set (SHMIF_SOURCES
+	${SHMIF_HEADERS}
+	shmif/arcan_shmif_control.c
+	shmif/arcan_shmif_interop.c
+)
+
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/shmif)
 
 #
 # Expand with more platforms as needed, all are expected to define
@@ -333,45 +338,44 @@ message("device input (INPUT_PLATFORM) set to : ${INPUT_PLATFORM}")
 # ARCAN_LIBRARIES, set OS_DYLIB_EXTENSION
 #
 if (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
-	message("\n---- Stage 2, FreeBSD specific ----")
 	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/CMakeLists.FreeBSD)
 
 elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-	message("\n---- Stage 2, Linux specific ----")
 	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/CMakeLists.Linux)
 
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
-	message("\n---- Stage 2, Windows specific ----")
 	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/CMakeLists.Windows)
 
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-	message("\n---- Stage 2, OSX/Darwin specific ----")
 	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/CMakeLists.Darwin)
 
 else()
-	message(FATAL_ERROR "Unsupported OS detected, abandon ship!.")
+	message(FATAL_ERROR "${CLB_WHT}Unsupported OS detected, abandon ship!${CL_RST}")
 endif()
 
-message("\n---- Stage 3, SHMIF Library ----")
-add_library(arcan_shmif STATIC
-	${SHMIF_SOURCES}
-	${SHMIF_PLATFORM}
-)
-target_link_libraries(arcan_shmif PRIVATE ${STDLIB})
-# note that we enable fpic for the static here as some
-# subdirectores need to pull it in as part of building a shared library
-set_property(TARGET arcan_shmif APPEND PROPERTY COMPILE_FLAGS -fPIC)
+message("\n${CL_WHT}---- Configuration results:----${CL_RST}")
+message("${CL_YEL}Compiler\t${CLB_GRN}${CMAKE_C_COMPILER_ID}${CL_RST}")
+message("${CL_YEL}Video   \t${CLB_GRN}${VIDEO_PLATFORM}${CL_RST}")
+message("${CL_YEL}AGP     \t${CLB_GRN}${AGP_PLATFORM}${CL_RST}")
+message("${CL_YEL}Audio   \t${CLB_GRN}${AUDIO_PLATFORM}${CL_RST}")
+message("${CL_YEL}Input   \t${CLB_GRN}${INPUT_PLATFORM}${CL_RST}")
+message("${CL_YEL}Headless\t${CLB_GRN}${LWA_PLATFORM_STR}${CL_RST}")
+message("${CL_YEL}Lua     \t${CLB_GRN}${LUA_TAG}${CL_RST}${CL_RST}")
 
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+message("\n-- Stage 2, Frameservers / Hijack")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_INARY_DIR})
 
 if (NOT DISABLE_FRAMESERVERS)
 	add_subdirectory(frameserver)
 else()
 	set(FSRV_DISABLE DISABLE_FRAMESERVERS)
+	message("${CL_YEL}Frameservers:\t${CLB_GRN}Disabled${CL_RST}")
 endif()
 
 if (NOT DISABLE_HIJACK)
 	add_subdirectory(hijack)
+else()
+	message("${CL_YEL}Hijack Libraries:\t${CLB_GRN}Disabled${CL_RST}")
 endif()
 
 set_property(SOURCE engine/arcan_lua.c engine/arcan_main.c
@@ -384,13 +388,29 @@ set_property(SOURCE engine/arcan_lua.c engine/arcan_main.c
 )
 
 if (ENABLE_LWA AND HEADLESS_PLATFORM)
-	message("\n---- Stage 4, LWA Build ----")
+	message("\n-- Stage 3, LWA Build")
 	include(platform/cmake/CMakeLists.LWA)
 else()
-	message("\n---- Stage 4, LWA Build (omitted) ----")
+	message("\n-- Stage 3, LWA Build (omitted)")
 endif()
 
-message("\n---- Stage 5, Linking / Packaging ----")
+message("\n-- Stage 4, Linking / Packaging")
+
+add_library(arcan_shmif_int STATIC
+	${SHMIF_SOURCES}
+	${SHMIF_PLATFORM}
+)
+add_library(arcan_shmif SHARED
+	${SHMIF_SOURCES}
+	${SHMIF_PLATFORM}
+)
+
+target_link_libraries(arcan_shmif PRIVATE ${STDLIB})
+target_link_libraries(arcan_shmif_int PRIVATE ${STDLIB})
+
+# note that we enable fpic for the static here as some
+# subdirectores need to pull it in as part of building a shared library
+set_property(TARGET arcan_shmif_int APPEND PROPERTY COMPILE_FLAGS -fPIC)
 
 add_executable(arcan
 	${SOURCES}

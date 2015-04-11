@@ -22,7 +22,7 @@ set(FSRV_PLATFORM ${FSRV_PLATFORM}
 set(FSRV_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 set(FSRV_ROOT ${FSRV_ROOT} PARENT_SCOPE)
 
-set(FRAMESERVER_MODESTRING "")
+set(FRAMESERVER_MODESTRING " ")
 
 set(ARCHETYPES
 	terminal
@@ -49,3 +49,4 @@ endforeach()
 add_executable(arcan_frameserver frameserver.c)
 target_compile_definitions(arcan_frameserver PRIVATE AFSRV_CHAINLOADER)
 install(TARGETS arcan_frameserver DESTINATION bin)
+message("\n${CL_YEL}Frameservers:${CL_GRN}${FRAMESERVER_MODESTRING}${CL_RST}")
