@@ -794,8 +794,8 @@ bool arcan_shmif_integrity_check(struct arcan_shmif_cont* cont)
 	if (!cont)
 		return false;
 
-	if (shmp->major != ARCAN_VERSION_MAJOR ||
-		shmp->minor != ARCAN_VERSION_MINOR){
+	if (shmp->major != ASHMIF_VERSION_MAJOR ||
+		shmp->minor != ASHMIF_VERSION_MINOR){
 		LOG("frameserver::shmif integrity check failed, version mismatch\n");
 		return false;
 	}

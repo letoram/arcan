@@ -62,6 +62,9 @@ if (FFMPEG_FOUND AND BZIP2_FOUND AND ZLIB_FOUND AND LIBLZMA_FOUND)
 		${FSRV_ROOT}/util
 	)
 
+	set_target_properties(afsrv_encode PROPERTIES
+		COMPILE_FLAGS -Wno-deprecated-declarations
+	)
 	target_compile_definitions(afsrv_encode PRIVATE
 		ENABLE_FSRV_ENCODE
 		DEFAULT_FSRV_MODE=\"encode\"

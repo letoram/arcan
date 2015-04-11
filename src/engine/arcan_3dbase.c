@@ -17,9 +17,9 @@
 
 #include <openctm/openctm.h>
 
-#include "arcan_shmif.h"
 #include "arcan_math.h"
 #include "arcan_general.h"
+#include "arcan_shmif.h"
 #include "arcan_event.h"
 #include "arcan_video.h"
 #include "arcan_videoint.h"

@@ -83,9 +83,9 @@
 	#define lua_rawlen(x, y) lua_objlen(x, y)
 #endif
 
-#include "arcan_shmif.h"
 #include "arcan_math.h"
 #include "arcan_general.h"
+#include "arcan_shmif.h"
 #include "arcan_video.h"
 #include "arcan_videoint.h"
 #include "arcan_3dbase.h"
@@ -93,7 +93,6 @@
 #include "arcan_event.h"
 #include "arcan_db.h"
 #include "arcan_frameserver.h"
-#include "arcan_shmif.h"
 
 #define arcan_luactx lua_State
 #include "arcan_lua.h"

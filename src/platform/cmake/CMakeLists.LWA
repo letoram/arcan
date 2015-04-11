@@ -26,7 +26,7 @@ SET (ALPATCHES
 # do a make clean && make.
 #
 ExternalProject_Add(openal_soft
-	SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/openal_soft
+	SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/alsoft
 	GIT_REPOSITORY "${GIT_MIRROR}/openal-soft.git"
 	UPDATE_COMMAND ""
 	PATCH_COMMAND ${EXEC} git am -q ${ALPATCHES} || true

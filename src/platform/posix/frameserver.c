@@ -475,8 +475,8 @@ fail:
 	memset(shmpage, '\0', ctx->shm.shmsize);
  	shmpage->dms = true;
 	shmpage->parent = getpid();
-	shmpage->major = ARCAN_VERSION_MAJOR;
-	shmpage->minor = ARCAN_VERSION_MINOR;
+	shmpage->major = ASHMIF_VERSION_MAJOR;
+	shmpage->minor = ASHMIF_VERSION_MINOR;
 	shmpage->segment_size = ctx->shm.shmsize;
 	shmpage->cookie = arcan_shmif_cookie();
 	ctx->shm.ptr = shmpage;

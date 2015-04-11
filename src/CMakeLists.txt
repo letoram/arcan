@@ -34,6 +34,8 @@ add_compile_options(-std=gnu11 -Wall -Wno-missing-braces -Wno-unused-function)
 # static base version, manually mantained
 set(MAJOR_VERSION 0)
 set(MINOR_VERSION 5)
+set(ASHMIF_MAJOR 0)
+set(ASHMIF_MINOR 5)
 set(PATCH_LEVEL 0)
 set(VERSION ${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_LEVEL})
 set(PLATFORM_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/platform)
@@ -330,6 +332,7 @@ set (SHMIF_HEADERS
 	shmif/arcan_shmif_control.h
 	shmif/arcan_shmif_interop.h
 	shmif/arcan_shmif_event.h
+	shmif/arcan_shmif.h
 )
 
 set (SHMIF_SOURCES
@@ -372,7 +375,7 @@ amsg("${CL_YEL}Headless\t${CLB_GRN}${LWA_PLATFORM_STR}${CL_RST}")
 amsg("${CL_YEL}Lua     \t${CLB_GRN}${LUA_TAG}${LUA_TAG_MODE}${CL_RST}${CL_RST}")
 
 amsg("\n-- Stage 2, Frameservers / Hijack")
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_INARY_DIR})
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
 if (NOT DISABLE_FRAMESERVERS)
 	add_subdirectory(frameserver)
@@ -413,13 +416,33 @@ add_library(arcan_shmif SHARED
 	${SHMIF_SOURCES}
 	${SHMIF_PLATFORM}
 )
-
 target_link_libraries(arcan_shmif PRIVATE ${STDLIB})
 target_link_libraries(arcan_shmif_int PRIVATE ${STDLIB})
 
 # note that we enable fpic for the static here as some
 # subdirectores need to pull it in as part of building a shared library
-set_property(TARGET arcan_shmif_int APPEND PROPERTY COMPILE_FLAGS -fPIC)
+set_target_properties(arcan_shmif_int PROPERTIES
+	COMPILE_FLAGS -fPIC
+	ALIAS "arcan_shmif"
+	VERSION "${ASHMIF_MAJOR}.${ASHMIF_MINOR}"
+)
+set_target_properties(arcan_shmif PROPERTIES
+	VERSION "${ASHMIF_MAJOR}.${ASHMIF_MINOR}"
+	SOVERSION ${ASHMIF_MAJOR}
+)
+
+install(TARGETS arcan_shmif arcan_shmif_int
+	LIBRARY DESTINATION lib/arcan
+	ARCHIVE DESTINATION lib/arcan
+)
+install(FILES ${SHMIF_HEADERS} DESTINATION include/arcan/shmif)
+
+# The config file is more similar to a regular find module,
+# the procedure for doing something this trivial ("install library,
+# provide means for other projects to find library") seems excessively
+# verbose and 'cmake:y'.
+install(FILES ${PLATFORM_ROOT}/cmake/arcan_shmif-config.cmake
+	DESTINATION CMake COMPONENT dev)
 
 add_executable(arcan
 	${SOURCES}
@@ -437,7 +460,6 @@ target_link_libraries(arcan
 	${AGP_LIBRARIES}
 	${OPENAL_LIBRARY}
 )
-
 #
 # The database tool is a CLI for the engine/arcan_db with additional
 # code not part of the main arcan binaries (to make it somewhat harder

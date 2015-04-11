@@ -37,15 +37,15 @@
 #include <sqlite3.h>
 
 #include "getopt.h"
-#include "arcan_shmif.h"
 #include "arcan_math.h"
 #include "arcan_general.h"
+#include "arcan_shmif.h"
 #include "arcan_event.h"
 #include "arcan_audio.h"
 #include "arcan_video.h"
 #include "arcan_frameserver.h"
 #include "arcan_lua.h"
-#include "../platform/video_platform.h"
+#include "video_platform.h"
 
 #ifdef ARCAN_LED
 #include "arcan_led.h"

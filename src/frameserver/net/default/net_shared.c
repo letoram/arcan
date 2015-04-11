@@ -384,7 +384,7 @@ static uint32_t version_magic(bool req)
 {
 	char buf[32], (* ch) = buf;
 	sprintf(buf, "%s_ARCAN_%d_%d", req ? "REQ" : "REP",
-		ARCAN_VERSION_MAJOR, ARCAN_VERSION_MINOR);
+		ASHMIF_VERSION_MAJOR, ASHMIF_VERSION_MINOR);
 
 	uint32_t hash = 5381;
 	int c;
