@@ -38,5 +38,5 @@ if (APR_FOUND)
 	install(TARGETS afsrv_net DESTINATION bin)
 
 else()
-	message("(${CL_GRN}net${CL_RST}) disabled, ${CL_GRN}libapr${CL_RED} not found${CL_RST}")
+	amsg("(${CL_GRN}net${CL_RST}) disabled, ${CL_GRN}libapr${CL_RED} not found${CL_RST}")
 endif()
