@@ -252,7 +252,8 @@ static size_t err_sz = 0;
 
 void sigsegv_errmsg(int sign)
 {
-	write(STDOUT_FILENO, last_err, err_sz);
+	size_t nw __attribute__((unused));
+	nw = write(STDOUT_FILENO, last_err, err_sz);
 	_exit(EXIT_FAILURE);
 }
 

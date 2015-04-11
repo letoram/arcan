@@ -419,13 +419,15 @@ void platform_event_process(struct arcan_evctx* ctx)
 	}
 
 	char dump[256];
+	size_t nr __attribute__((unused));
+
 	if (poll(iodev.pollset, iodev.n_devs, 0) > 0){
 		for (size_t i = 0; i < iodev.n_devs; i++){
 			if (iodev.pollset[i].revents & POLLIN){
 				if (iodev.nodes[i].hnd.handler)
 					iodev.nodes[i].hnd.handler(ctx, &iodev.nodes[i]);
 				else /* silently flush */
-					read(iodev.nodes[i].handle, dump, 256);
+					nr = read(iodev.nodes[i].handle, dump, 256);
 			}
 		}
 	}
