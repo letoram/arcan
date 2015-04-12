@@ -1,0 +1,20 @@
+For some build-environments where you want tight control over which dependencies
+that are linked statically / dynamically and how these libraries are configured,
+some additional measures are needed.
+
+On systems with the dependencies for [video/input platforms] fulfilled,
+the only needed libraries should be openctm, openal, freetype, sqlite3, and luajit.
+
+For openal/freetype/luajit, there is a bash script in external/git/clone.sh that
+downloads the repositories. CMake will check for the corresponding folders during
+configuration, and for the ones that are found, the normal FindModule will be
+side-stepped.
+
+To set up manually, just make sure that the following git mapping is correct:
+
+http://luajit.org/git/luajit-2.0.git external/luajit
+git://git.sv.nongnu.org/freetype/freetype2.git external/freetype
+git://github.com/mirros/openal-soft.git external/openal
+
+Note that for OpenAL, only LWA will use the git mirror (in order to apply
+patches) by default. For regular arcan, -DSTATIC_OPENAL=ON must also be specified.

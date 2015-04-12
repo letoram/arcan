@@ -45,10 +45,6 @@ if (NOT LUA_DROPSTR)
 set(LUA_DROPSTR "io os package rawequal rawset rawget setfenv coroutine module require")
 endif()
 
-if (NOT GIT_MIRROR)
-	set(GIT_MIRROR "https://www.github.com/mirror")
-endif()
-
 # generate an identifiable buildtag for tracking purposes
 if (NOT DEFINED ENGINE_BUILDTAG)
 	find_package(Git)
@@ -111,7 +107,8 @@ set(AGPPLATFORM_STR "gl21, gles2, gles3, stub")
 # we can remove some of this cruft when 'buntu LTS gets ~3.0ish
 option(ENABLE_ASAN "Build with Address-Sanitizer, (gcc >= 4.8, clang >= 3.1)" OFF)
 option(DISABLE_JIT "Don't use the luajit-5.1 VM (if found)" OFF)
-option(DOWNLOAD_MISSING "Download and build missing dependencies (if possible)" ON)
+option(NO_FSRV "Disable building/launching frameservers" OFF)
+option(STATIC_SQLITE3 "Use SQLite3 Amalgamation" OFF)
 option(ENABLE_LED "Build with LED controller support in core" OFF)
 option(ENABLE_LTO "Build with Link-Time Optimization enabled" OFF)
 option(ENABLE_LWA "Build LWA client (arcan-in-arcan)" OFF)
@@ -132,11 +129,15 @@ amsg("${CL_YEL}\t-DENABLE_SIMD=${CL_GRN}[On|Off]${CL_RST} - Enable SIMD optimize
 amsg("${CL_YEL}\t\t-DSIMD_ALIGNED=${CL_GRN}[Off|On]${CL_RST} - SIMD support assumes 16-byte alignment")
 amsg("${CL_YEL}\t-DENABLE_LTO=${CL_GRN}[Off|On]${CL_RST} - Build with Link-Time Optimizations")
 amsg("")
+amsg("${CL_WHT}Dependency Management:${CL_RST}")
+amsg("${CL_YEL}-DSTATIC_SQLITE3=${CL_GRN}[Off|On]${CL_RST} - In-source SQLite3")
+amsg("${CL_YEL}-DSTATIC_OPENAL=${CL_GRN}[Off|On]${CL_RST} - In-source OpenAL, see external/README")
+amsg("")
 amsg("Optional engine flags:")
 amsg("${CL_YEL}\t-DENABLE_LED=${CL_GRN}[On|Off]${CL_RST} - Build with LED controller support in core")
 amsg("${CL_YEL}\t-DENABLE_LWA=${CL_GRN}[Off|On]${CL_RST} - Build LWA Arcan client (nesting support)")
 amsg("${CL_YEL}\t-DISABLE_JIT=${CL_GRN}[Off|On]${CL_RST} - Don't Link with luajit51 (even if found)")
-amsg("${CL_YEL}\t-DDISABLE_FRAMESERVERS=${CL_GRN}[Off|On]${CL_RST} - Build Arcan without support for frameservers")
+amsg("${CL_YEL}\t-DNO_FSRV=${CL_GRN}[Off|On]${CL_RST} - Build Arcan without support for frameservers")
 amsg("")
 
 # no other audio platforms supported currently
@@ -196,15 +197,72 @@ if (ENABLE_LTO)
 	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -flto")
 endif()
 
-find_package(Freetype REQUIRED QUIET)
-find_package(OpenAL REQUIRED QUIET)
-find_package(SQLITE3 REQUIRED QUIET)
+amsg("\n${CL_WHT}-- Stage 1: dependencies and configuration${CL_RST}")
+
+if (EXISTS ${EXTERNAL_SRC_DIR}/git/freetype)
+	set(STATIC_FREETYPE ON)
+	amsg("${CL_YEL}Building Freetype static from external/git mirror${CL_RST}")
+	ExternalProject_Add(Freetype
+		GIT_REPOSITORY "${EXTERNAL_SRC_DIR}/git/freetype"
+		SOURCE_DIR "${EXTERNAL_SRC_DIR}/git/openal"
+
+	)
+else()
+	find_package(Freetype REQUIRED QUIET)
+endif()
+
+# need the separation here to not confuse openAL here with
+# the version that we patch into LWA
+if (EXISTS ${EXTERNAL_SRC_DIR}/git/openal AND STATIC_OPENAL)
+	amsg("${CL_YEL}Building OpenAL static from external/git mirror${CL_RST}")
+	ExternalProject_Add(OpenAL
+		SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/openal
+		GIT_REPOSITORY "${EXTERNAL_SRC_DIR}/git/openal"
+		UPDATE_COMMAND ""
+		PATCH_COMMAND ""
+		INSTALL_COMMAND ""
+		LOG_DOWNLOAD 1
+		LOG_UPLOAD 1
+		LOG_CONFIGURE 1
+		LOG_BUILD 1
+		LOG_TEST 1
+		LOG_INSTALL 1
+		CMAKE_ARGS
+			-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+			-DCMAKE_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}
+			-DLIBTYPE=STATIC
+	)
+	ExternalProject_Get_Property(OpenAL BINARY_DIR)
+	ExternalProject_Get_Property(OpenAL SOURCE_DIR)
+	set(OPENAL_LIBRARY
+		"${BINARY_DIR}/libcommon.a"
+		"${BINARY_DIR}/libopenal.a"
+	)
+	set(OPENAL_INCLUDE_DIR "${SOURCE_DIR}/include/AL")
+else()
+	find_package(OpenAL REQUIRED QUIET)
+endif()
+
+#
+# the amalgamation is already included in the external/ tree
+# sqlite3 use is primarily settings management and very limited
+# amount of queries, size is more important here
+#
+if (STATIC_SQLITE3)
+	amsg("${CL_YEL}Building SQLite3 from external/sqlite mirror${CL_RST}")
+	add_library(sqlite3 STATIC ${EXTERNAL_SRC_DIR}/sqlite/sqlite3.c)
+	set_target_properties(sqlite3 PROPERTIES COMPILE_FLAGS "-Os")
+	set(SQLITE3_INCLUDE_DIR ${EXTERNAL_SRC_DIR}/sqlite)
+	set(SQLITE3_LIBRARIES sqlite3 pthread)
+else()
+	find_package(SQLITE3 REQUIRED QUIET)
+endif()
+
 find_package(SSE QUIET)
 
 include(${PLATFORM_ROOT}/cmake/CMakeLists.AGP)
 include(${PLATFORM_ROOT}/cmake/CMakeLists.Video)
 
-amsg("${CL_WHT}-- Stage 1: dependencies and configuration${CL_RST}")
 if (NOT DISABLE_JIT)
 	find_package(Lua51JIT QUIET)
 	if (LUA_LIBRARY)
@@ -365,7 +423,7 @@ else()
 	message(FATAL_ERROR "${CLB_WHT}Unsupported OS detected, abandon ship!${CL_RST}")
 endif()
 
-amsg("\n${CL_WHT}---- Configuration results:----${CL_RST}")
+amsg("\n${CL_WHT}---- Configuration results:${CL_RST}")
 amsg("${CL_YEL}Compiler\t${CLB_GRN}${CMAKE_C_COMPILER_ID}${CL_RST}")
 amsg("${CL_YEL}Video   \t${CLB_GRN}${VIDEO_PLATFORM}${CL_RST}")
 amsg("${CL_YEL}AGP     \t${CLB_GRN}${AGP_PLATFORM}${CL_RST}")
@@ -377,11 +435,11 @@ amsg("${CL_YEL}Lua     \t${CLB_GRN}${LUA_TAG}${LUA_TAG_MODE}${CL_RST}${CL_RST}")
 amsg("\n-- Stage 2, Frameservers / Hijack")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
-if (NOT DISABLE_FRAMESERVERS)
-	add_subdirectory(frameserver)
-else()
+if (NO_FSRV)
 	set(FSRV_DISABLE DISABLE_FRAMESERVERS)
 	amsg("${CL_YEL}Frameservers:\t${CLB_GRN}Disabled${CL_RST}")
+else()
+	add_subdirectory(frameserver)
 endif()
 
 if (NOT DISABLE_HIJACK)
@@ -399,25 +457,30 @@ set_property(SOURCE engine/arcan_lua.c engine/arcan_main.c
 	${FSRV_DISABLE}
 )
 
-if (ENABLE_LWA AND HEADLESS_PLATFORM)
-	amsg("\n-- Stage 3, LWA Build")
-	include(platform/cmake/CMakeLists.LWA)
-else()
-	amsg("\n-- Stage 3, LWA Build (omitted)")
-endif()
-
-amsg("\n-- Stage 4, Linking / Packaging")
-
 add_library(arcan_shmif_int STATIC
 	${SHMIF_SOURCES}
 	${SHMIF_PLATFORM}
 )
+
 add_library(arcan_shmif SHARED
 	${SHMIF_SOURCES}
 	${SHMIF_PLATFORM}
 )
 target_link_libraries(arcan_shmif PRIVATE ${STDLIB})
 target_link_libraries(arcan_shmif_int PRIVATE ${STDLIB})
+
+if (EXISTS ${EXTERNAL_SRC_DIR}/git/openal)
+	if(ENABLE_LWA AND HEADLESS_PLATFORM)
+		amsg("\n-- Stage 3, LWA Build")
+		include(platform/cmake/CMakeLists.LWA)
+	else()
+		amsg("\n-- Stage 3, LWA Build (omitted)")
+	endif()
+else()
+	amsg("\n-- Stage 3, LWA Build (omitted, see external/README)")
+endif()
+
+amsg("\n-- Stage 4, Linking / Packaging")
 
 # note that we enable fpic for the static here as some
 # subdirectores need to pull it in as part of building a shared library
@@ -460,6 +523,10 @@ target_link_libraries(arcan
 	${AGP_LIBRARIES}
 	${OPENAL_LIBRARY}
 )
+if (STATIC_OPENAL)
+	add_dependencies(arcan OpenAL)
+endif()
+
 #
 # The database tool is a CLI for the engine/arcan_db with additional
 # code not part of the main arcan binaries (to make it somewhat harder

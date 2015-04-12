@@ -18,16 +18,16 @@ SET (ALPATCHES
 	${EXTERNAL_SRC_DIR}/patches/openal/0001-adding-arcan-shmif-support.patch
 	${EXTERNAL_SRC_DIR}/patches/openal/0002-arcan-shmif-backend-working.patch
 )
-
+get_property(ASHMIF_INT_LOC TARGET arcan_shmif_int PROPERTY LOCATION)
 #
 # Note the || echo "" on the PATCH_COMMAND line, it was added to have
 # cmake IGNORE the return status of the git am command as when the patches
 # have been applied the first time, they are erroneously added AGAIN IF you
 # do a make clean && make.
 #
-ExternalProject_Add(openal_soft
-	SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/alsoft
-	GIT_REPOSITORY "${GIT_MIRROR}/openal-soft.git"
+ExternalProject_Add(openal_lwa
+	SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/openal_lwa
+	GIT_REPOSITORY "${EXTERNAL_SRC_DIR}/git/openal"
 	UPDATE_COMMAND ""
 	PATCH_COMMAND ${EXEC} git am -q ${ALPATCHES} || true
 	INSTALL_COMMAND ""
@@ -53,14 +53,17 @@ ExternalProject_Add(openal_soft
 		-DALSOFT_UTILS=OFF
 		-DALSOFT_CONFIG=OFF
 	 	-DLIBTYPE=STATIC
+		-DARCAN_SHMIF_LIB=${ASHMIF_INT_LOC}
 		-DARCAN_SHMIF_PATH=${CMAKE_CURRENT_SOURCE_DIR}/shmif
-		-DCMAKE_REQUIRED_QUIET=ON
 )
+add_dependencies(openal_lwa arcan_shmif_int)
+ExternalProject_Get_Property(openal_lwa SOURCE_DIR)
+ExternalProject_Get_Property(openal_lwa BINARY_DIR)
 
 set(LWA_LIBRARIES
 # is there a prettier way for specifying this?
-	${CMAKE_CURRENT_BINARY_DIR}/openal_soft-prefix/src/openal_soft-build/libcommon.a
-	${CMAKE_CURRENT_BINARY_DIR}/openal_soft-prefix/src/openal_soft-build/libopenal.a
+	${BINARY_DIR}/libcommon.a
+	${BINARY_DIR}/libopenal.a
 )
 
 add_executable(arcan_lwa
@@ -77,6 +80,10 @@ target_compile_definitions(arcan_lwa PRIVATE
 	WITH_HEADLESS_MAIN
 	HEADLESS_PLATFORM=\"${HEADLESS_PLATFORM}\"
 )
+
+if(STATIC_FREETYPE)
+	add_dependencies(arcan_lwa Freetype)
+endif()
 
 add_dependencies(arcan_lwa openal_soft)
 
