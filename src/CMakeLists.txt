@@ -1,6 +1,6 @@
-# tried playing nice by using REQUIRE_QUIET but some
-# built-in modules (CheckLibraryExists, ...)
-# wouldn't listen so how about a nice cup of shut up
+# tried playing nice by using REQUIRE_QUIET but some built-in modules
+# (CheckLibraryExists, ...) wouldn't listen so how about a nice cup
+# of shut up.
 function(message)
 	list(GET ARGV 0 TYPE)
 	if (type STREQUAL FATAL_ERROR)
@@ -14,12 +14,14 @@ function(amsg msg)
 endfunction()
 
 PROJECT(arcan)
-include(ExternalProject)
-include(CheckIncludeFiles)
 cmake_minimum_required(VERSION 2.8.12 FATAL_ERROR)
 
 set(EXTERNAL_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../external)
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/modules)
+
+# another hack to strip noisy / useless data away from message() abuse
+include(ExternalProject)
+include(CheckIncludeFiles)
 
 if (CMAKE_COLOR_MAKEFILE)
 	include(CMakeColor)
@@ -29,7 +31,7 @@ if (GLOBAL_CFLAGS)
 	add_definitions(${GLOBAL_CFLAGS})
 endif()
 
-add_compile_options(-std=gnu11 -Wall -Wno-missing-braces -Wno-unused-function)
+add_compile_options(-std=gnu11 -Wall)
 
 # static base version, manually mantained
 set(MAJOR_VERSION 0)
@@ -130,10 +132,10 @@ amsg("${CL_YEL}\t\t-DSIMD_ALIGNED=${CL_GRN}[Off|On]${CL_RST} - SIMD support assu
 amsg("${CL_YEL}\t-DENABLE_LTO=${CL_GRN}[Off|On]${CL_RST} - Build with Link-Time Optimizations")
 amsg("")
 amsg("${CL_WHT}Dependency Management:${CL_RST}")
-amsg("${CL_YEL}-DSTATIC_SQLITE3=${CL_GRN}[Off|On]${CL_RST} - In-source SQLite3")
-amsg("${CL_YEL}-DSTATIC_OPENAL=${CL_GRN}[Off|On]${CL_RST} - In-source OpenAL, see external/README")
+amsg("${CL_YEL}\t-DSTATIC_SQLITE3=${CL_GRN}[Off|On]${CL_RST} - In-source SQLite3")
+amsg("${CL_YEL}\t-DSTATIC_OPENAL=${CL_GRN}[Off|On]${CL_RST} - In-source OpenAL, see external/README")
 amsg("")
-amsg("Optional engine flags:")
+amsg("${CL_WHT}Optional engine flags:${CL_RST}")
 amsg("${CL_YEL}\t-DENABLE_LED=${CL_GRN}[On|Off]${CL_RST} - Build with LED controller support in core")
 amsg("${CL_YEL}\t-DENABLE_LWA=${CL_GRN}[Off|On]${CL_RST} - Build LWA Arcan client (nesting support)")
 amsg("${CL_YEL}\t-DISABLE_JIT=${CL_GRN}[Off|On]${CL_RST} - Don't Link with luajit51 (even if found)")
@@ -150,14 +152,21 @@ if ("${CMAKE_C_COMPILER_ID}" MATCHES "GNU")
 	if (NOT (GCC_VERSION VERSION_GREATER 4.7 OR GCC_VERSION VERSION_EQUAL 4.7))
 		message(FATAL_ERROR "${CLB_CYN}Ancient GCC Version detected, Arcan needs to be compiled with Clang-3.3+ or gcc 4.7+${CL_RST}")
 	endif()
+	add_compile_options(-Wno-missing-braces -Wno-unused-function
+		-Wno-unused-value -Wno-unused-variable
+	)
 
 elseif ("${CMAKE_C_COMPILER_ID}" MATCHES "Clang")
+	add_compile_options(-Wno-unknown-warning-option -Wno-unused-const-variable
+		-Wno-unused-value -Wno-missing-braces -Wno-unused-function
+		-Wno-unused-variable
+	)
 else()
-				message(FATAL_ERROR "${CLB_CYN}Arcan requires an ISO C 9899:2011 capable compiler (Clang-3.3+ or gcc 4.7+)${CL_RST}")
+	message(FATAL_ERROR "${CLB_CYN}Arcan requires an ISO C 9899:2011 capable compiler (Clang-3.3+ or gcc 4.7+)${CL_RST}")
 endif()
 
 if (CMAKE_BUILD_TYPE STREQUAL "Profile")
-	amsg("------------------*Profile Build*------------------")
+	amsg("${CL_WHT}------------------*Profile Build*------------------${CL_RST}")
 	add_definitions(-pg)
 	set(CMAKE_EXE_LINKER_FLAGS "-pg")
 endif(CMAKE_BUILD_TYPE STREQUAL "Profile")
@@ -181,7 +190,7 @@ if (CMAKE_BUILD_TYPE STREQUAL "Debug")
 endif (CMAKE_BUILD_TYPE STREQUAL "Debug")
 
 if (CMAKE_BUILD_TYPE STREQUAL "DebugTrace")
-	amsg("-------------- *Debug Tracing Build* --------------")
+	amsg("${CL_WHT}-------------- *Debug Tracing Build* --------------${CL_WHT}")
 	add_definitions(-g -D_DEBUG -DTRACE_ENABLE)
 endif (CMAKE_BUILD_TYPE STREQUAL "DebugTrace")
 
@@ -199,14 +208,40 @@ endif()
 
 amsg("\n${CL_WHT}-- Stage 1: dependencies and configuration${CL_RST}")
 
+set(EXTERNAL_DEFS
+UPDATE_COMMAND ""
+PATCH_COMMAND ""
+INSTALL_COMMAND ""
+LOG_DOWNLOAD 1
+LOG_UPLOAD 1
+LOG_CONFIGURE 1
+LOG_BUILD 1
+LOG_TEST 1
+LOG_INSTALL 1
+)
+
+set (CMAKE_EXTERNAL_DEFS
+	CMAKE_ARGS
+	-DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+	-DMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+	-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+	-DCMAKE_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}
+	-DLIBTYPE=STATIC
+)
+
 if (EXISTS ${EXTERNAL_SRC_DIR}/git/freetype)
 	set(STATIC_FREETYPE ON)
 	amsg("${CL_YEL}Building Freetype static from external/git mirror${CL_RST}")
 	ExternalProject_Add(Freetype
+		SOURCE_DIR "${CMAKE_CURRENT_BINARY_DIR}/freetype"
 		GIT_REPOSITORY "${EXTERNAL_SRC_DIR}/git/freetype"
-		SOURCE_DIR "${EXTERNAL_SRC_DIR}/git/openal"
-
+		${EXTERNAL_DEFS}
+		${CMAKE_EXTERNAL_DEFS}
+		BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/lib/libfreetype.a
 	)
+	set(FREETYPE_INCLUDE_DIRS "${CMAKE_CURRENT_BINARY_DIR}/include/freetype2")
+	set(FREETYPE_LIBRARY "${CMAKE_CURRENT_BINARY_DIR}/lib/libfreetype.a")
+	set(APPEND ${MAIN_DEPS} Freetype)
 else()
 	find_package(Freetype REQUIRED QUIET)
 endif()
@@ -218,27 +253,17 @@ if (EXISTS ${EXTERNAL_SRC_DIR}/git/openal AND STATIC_OPENAL)
 	ExternalProject_Add(OpenAL
 		SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/openal
 		GIT_REPOSITORY "${EXTERNAL_SRC_DIR}/git/openal"
-		UPDATE_COMMAND ""
-		PATCH_COMMAND ""
-		INSTALL_COMMAND ""
-		LOG_DOWNLOAD 1
-		LOG_UPLOAD 1
-		LOG_CONFIGURE 1
-		LOG_BUILD 1
-		LOG_TEST 1
-		LOG_INSTALL 1
-		CMAKE_ARGS
-			-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-			-DCMAKE_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}
-			-DLIBTYPE=STATIC
+		${EXTERNAL_DEFS}
+		${CMAKE_EXTERNAL_DEFS}
+		BYPRODUCTS # 3.2 feature, required for Ninja makefiles
+			${CMAKE_CURRENT_BINARY_DIR}/openal/libcommon.a
+			${CMAKE_CURRENT_BINARY_DIR}/openal/libopenal.a
 	)
-	ExternalProject_Get_Property(OpenAL BINARY_DIR)
-	ExternalProject_Get_Property(OpenAL SOURCE_DIR)
 	set(OPENAL_LIBRARY
-		"${BINARY_DIR}/libcommon.a"
-		"${BINARY_DIR}/libopenal.a"
+		"${CMAKE_CURRENT_BINARY_DIR}/lib/libopenal.a"
 	)
-	set(OPENAL_INCLUDE_DIR "${SOURCE_DIR}/include/AL")
+	set(OPENAL_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/include/AL")
+	set(APPEND ${MAIN_DEPS} OpenAL)
 else()
 	find_package(OpenAL REQUIRED QUIET)
 endif()
@@ -264,7 +289,22 @@ include(${PLATFORM_ROOT}/cmake/CMakeLists.AGP)
 include(${PLATFORM_ROOT}/cmake/CMakeLists.Video)
 
 if (NOT DISABLE_JIT)
-	find_package(Lua51JIT QUIET)
+	if (EXISTS ${EXTERNAL_SRC_DIR}/git/luajit)
+		ExternalProject_Add(luajit
+			SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/luajit
+			GIT_REPOSITORY "${EXTERNAL_SRC_DIR}/git/luajit"
+			CONFIGURE_COMMAND ""
+			BUILD_IN_SOURCE 1
+			${EXTERNAL_DEFS}
+			INSTALL_COMMAND "make install PREFIX=${CMAKE_CURRENT_BINARY_DIR}/luajit"
+		)
+		set(LUA_LIBRARY "${CMAKE_CURRENT_BINARY_DIR}/luajit/lib/libluajit-5.1.a")
+		set(LUA_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/luajit/include")
+		set(MAIN_DEPS ${MAIN_DEPS} luajit)
+	else()
+		find_package(Lua51JIT QUIET)
+	endif()
+
 	if (LUA_LIBRARY)
 		set(LUA_VSTR "lua5.1 (JIT)")
 	endif()
@@ -303,43 +343,29 @@ LIST (APPEND
 
 add_subdirectory(${EXTERNAL_SRC_DIR}/openctm ${CMAKE_CURRENT_BINARY_DIR}/openctm)
 
-#
-# engine source files + graphics platform
-#
-list (APPEND
- SOURCES
- engine/arcan_event.c
- engine/arcan_lua.c
- engine/arcan_main.c
- engine/arcan_db.c
- engine/arcan_video.c
- engine/arcan_renderfun.c
- engine/arcan_3dbase.c
- engine/arcan_math.c
- engine/arcan_audio.c
- engine/arcan_ttf.c
- engine/arcan_img.c
- engine/arcan_audioint.h
- engine/arcan_event.h
- engine/arcan_lua.h
- engine/arcan_math.h
- engine/arcan_3dbase.h
- engine/arcan_video.h
- engine/arcan_audio.h
- engine/arcan_general.h
- engine/arcan_db.h
- engine/arcan_frameserver.h
- engine/arcan_frameserver.c
- shmif/arcan_shmif.h
- shmif/arcan_shmif_interop.h
- shmif/arcan_shmif_control.c
- shmif/arcan_shmif_control.h
- shmif/arcan_shmif_event.h
-)
-
-set_property(SOURCE engine/arcan_renderfun.c
-	APPEND PROPERTY COMPILE_FLAGS
-	"-Wno-unused-value -Wno-unused-variable"
+list (APPEND SOURCES
+	engine/arcan_event.c
+	engine/arcan_lua.c
+	engine/arcan_main.c
+	engine/arcan_db.c
+	engine/arcan_video.c
+	engine/arcan_renderfun.c
+	engine/arcan_3dbase.c
+	engine/arcan_math.c
+	engine/arcan_audio.c
+	engine/arcan_ttf.c
+	engine/arcan_img.c
+	engine/arcan_audioint.h
+	engine/arcan_event.h
+	engine/arcan_lua.h
+	engine/arcan_math.h
+	engine/arcan_3dbase.h
+	engine/arcan_video.h
+	engine/arcan_audio.h
+	engine/arcan_general.h
+	engine/arcan_db.h
+	engine/arcan_frameserver.h
+	engine/arcan_frameserver.c
 )
 
 # database tool is sqlite3 + libc so less need to work
@@ -432,7 +458,7 @@ amsg("${CL_YEL}Input   \t${CLB_GRN}${INPUT_PLATFORM}${CL_RST}")
 amsg("${CL_YEL}Headless\t${CLB_GRN}${LWA_PLATFORM_STR}${CL_RST}")
 amsg("${CL_YEL}Lua     \t${CLB_GRN}${LUA_TAG}${LUA_TAG_MODE}${CL_RST}${CL_RST}")
 
-amsg("\n-- Stage 2, Frameservers / Hijack")
+amsg("\n${CL_WHT}-- Stage 2, Frameservers / Hijack${CLT_RST}")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
 if (NO_FSRV)
@@ -471,16 +497,16 @@ target_link_libraries(arcan_shmif_int PRIVATE ${STDLIB})
 
 if (EXISTS ${EXTERNAL_SRC_DIR}/git/openal)
 	if(ENABLE_LWA AND HEADLESS_PLATFORM)
-		amsg("\n-- Stage 3, LWA Build")
+		amsg("\n${CL_WHT}-- Stage 3, LWA Build${CL_RST}")
 		include(platform/cmake/CMakeLists.LWA)
 	else()
-		amsg("\n-- Stage 3, LWA Build (omitted)")
+		amsg("\n${CL_WHT}-- Stage 3, LWA Build (omitted)${CL_RST}")
 	endif()
 else()
-	amsg("\n-- Stage 3, LWA Build (omitted, see external/README)")
+	amsg("\n${CL_WHT}-- Stage 3, LWA Build (omitted, see external/README)${CL_RST}")
 endif()
 
-amsg("\n-- Stage 4, Linking / Packaging")
+amsg("\n${CL_WHT}-- Stage 4, Linking / Packaging${CL_RST}")
 
 # note that we enable fpic for the static here as some
 # subdirectores need to pull it in as part of building a shared library
@@ -522,10 +548,10 @@ target_link_libraries(arcan
 	${VIDEO_LIBRARIES}
 	${AGP_LIBRARIES}
 	${OPENAL_LIBRARY}
+	arcan_shmif_int
 )
-if (STATIC_OPENAL)
-	add_dependencies(arcan OpenAL)
-endif()
+
+add_dependencies(arcan MAIN_DEPS)
 
 #
 # The database tool is a CLI for the engine/arcan_db with additional

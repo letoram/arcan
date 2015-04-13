@@ -28,18 +28,10 @@ get_property(ASHMIF_INT_LOC TARGET arcan_shmif_int PROPERTY LOCATION)
 ExternalProject_Add(openal_lwa
 	SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/openal_lwa
 	GIT_REPOSITORY "${EXTERNAL_SRC_DIR}/git/openal"
-	UPDATE_COMMAND ""
-	PATCH_COMMAND ${EXEC} git am -q ${ALPATCHES} || true
-	INSTALL_COMMAND ""
-	LOG_DOWNLOAD 1
-	LOG_UPDATE 1
- 	LOG_CONFIGURE 1
- 	LOG_BUILD 1
- 	LOG_TEST 1
- 	LOG_INSTALL 1
-	CMAKE_ARGS
+	${EXTERNAL_DEFS}
+	${CMAKE_EXTERNAL_DEFS}
 		-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-		-DCMAKE_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}
+		-DCMAKE_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/lwa
 		-DALSOFT_BACKEND_ALSA=OFF
 		-DALSOFT_BACKEND_OSS=OFF
 		-DALSOFT_BACKEND_PULSEAUDIO=OFF
@@ -52,18 +44,21 @@ ExternalProject_Add(openal_lwa
 		-DALSOFT_DLOPEN=OFF
 		-DALSOFT_UTILS=OFF
 		-DALSOFT_CONFIG=OFF
-	 	-DLIBTYPE=STATIC
 		-DARCAN_SHMIF_LIB=${ASHMIF_INT_LOC}
 		-DARCAN_SHMIF_PATH=${CMAKE_CURRENT_SOURCE_DIR}/shmif
 )
-add_dependencies(openal_lwa arcan_shmif_int)
+
 ExternalProject_Get_Property(openal_lwa SOURCE_DIR)
 ExternalProject_Get_Property(openal_lwa BINARY_DIR)
 
 set(LWA_LIBRARIES
 # is there a prettier way for specifying this?
-	${BINARY_DIR}/libcommon.a
-	${BINARY_DIR}/libopenal.a
+	${CMAKE_CURRENT_BINARY_DIR}/lwa/lib/libopenal.a
+)
+
+set(LWA_INCLUDES
+	${CMAKE_CURRENT_BINARY_DIR}/lwa/include/AL
+	${INCLUDE_DIRS}
 )
 
 add_executable(arcan_lwa
@@ -73,6 +68,11 @@ add_executable(arcan_lwa
 	${PLATFORM_ROOT}/arcan/video.c
 	${HEADLESS_SOURCES}
 )
+
+add_dependencies(arcan_lwa arcan_shmif_int openal_lwa)
+if(STATIC_FREETYPE)
+	add_dependencies(arcan_lwa Freetype)
+endif()
 
 target_compile_definitions(arcan_lwa PRIVATE
 	ARCAN_LWA

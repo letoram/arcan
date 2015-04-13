@@ -19,6 +19,10 @@ if (LIBTSM_FOUND)
 		${TERM_AUX_SOURCES}
 	)
 
+	if (STATIC_FREETYPE)
+		add_dependencies(afsrv_terminal Freetype)
+	endif()
+
 	target_link_libraries(afsrv_terminal
 		arcan_shmif_int
 		util

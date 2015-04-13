@@ -25,6 +25,9 @@ unless Dir.exist?($ARCANDIR)
 		"cloning from (#{$GITMIRROR})\n")
 
 	system("#{$GITAPP} clone \"#{$GITMIRROR}\" \"#{$ARCANDIR}\" > /dev/null")
+
+	STDOUT.print("Pulling static/external dependencies")
+	system("#{$ARCANDIR}/external/git/clone.sh > /dev/null")
 else
 	STDOUT.print("Pulling updates to (#{$ARCANDIR})\n")
 	cur = Dir.pwd
