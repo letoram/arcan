@@ -647,7 +647,9 @@ typedef enum {
 	ARKMOD_RESERVED = 0x8000
 } key_modifiers;
 
+#ifdef PLATFORM_HEADER
 #include PLATFORM_HEADER
+#endif
 
 struct arcan_evctx {
 /* time and mask- tracking, only used parent-side */
