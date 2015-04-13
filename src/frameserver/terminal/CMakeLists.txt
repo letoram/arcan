@@ -49,5 +49,5 @@ if (LIBTSM_FOUND)
 	)
 
 else()
-	message("(${CL_GRN}terminal${CL_RST}) disabled, ${CL_GRN}libtsm${CL_RED} not found${CL_RST}")
+	amsg("(${CL_GRN}terminal${CL_RST}) disabled, ${CL_GRN}libtsm${CL_RED} not found${CL_RST}")
 endif()

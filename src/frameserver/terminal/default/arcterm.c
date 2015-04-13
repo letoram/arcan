@@ -235,7 +235,7 @@ static void setup_shell()
 	};
 
 	setenv("TERM", "xterm-256color", 1);
-	for (int i = 0; i < sizeof(sigs); i++)
+	for (int i = 0; i < sizeof(sigs) / sizeof(sigs[0]); i++)
 		signal(sigs[i], SIG_DFL);
 
 	char* args[] = {shell, "-i", NULL};

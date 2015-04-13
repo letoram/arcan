@@ -32,5 +32,5 @@ if (LIBVNC_FOUND)
 	install(TARGETS afsrv_remoting DESTINATION bin)
 
 else()
-	message("(${CL_GRN}remoting${CL_RST}) disabled, ${CL_GRN}vnc${CL_RED} not found${CL_RST}")
+	amsg("(${CL_GRN}remoting${CL_RST}) disabled, ${CL_GRN}vnc${CL_RED} not found${CL_RST}")
 endif()

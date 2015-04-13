@@ -31,7 +31,7 @@ if (FFMPEG_FOUND AND BZIP2_FOUND AND ZLIB_FOUND AND LIBLZMA_FOUND)
 
 	find_package(VNC)
 	if (LIBVNC_FOUND)
-		message("(${CL_GRN}encode${CL_RST}) frameserver, building with ${CL_GRN}vnc${CL_RED} support ${CL_RST}\n")
+		amsg("(${CL_GRN}encode${CL_RST}) building with ${CL_GRN}vnc${CL_RED} support ${CL_RST}\n")
 		set(ENC_AUX_SOURCES
 			${FSRV_ROOT}/util/vncserver.c
 			${FSRV_ROOT}/util/vncserver.h
@@ -73,6 +73,6 @@ if (FFMPEG_FOUND AND BZIP2_FOUND AND ZLIB_FOUND AND LIBLZMA_FOUND)
 	install(TARGETS afsrv_encode DESTINATION bin)
 
 else()
-	message("(${CL_GRN}encode${CL_RST}) disabled, ${CL_GRN}${FSRV_ENC_MISSING}${CL_RED}not found${CL_RST}")
+	amsg("(${CL_GRN}encode${CL_RST}) disabled, ${CL_GRN}${FSRV_ENC_MISSING}${CL_RED}not found${CL_RST}")
 endif()
 
