@@ -1,5 +1,3 @@
-message(STATUS "--(fsrv/game) building game support using libretro")
-
 #
 #set(GAME_AUX_LIBS
 #	${AGP_LIBRARIES}
@@ -24,10 +22,10 @@ add_executable(afsrv_game
 	${FSRV_PLATFORM}
 )
 
-set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING} game")
+set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}game " PARENT_SCOPE)
 
 target_link_libraries(afsrv_game
-	arcan_shmif
+	arcan_shmif_int
 	${GAME_AUX_LIBS}
 	${STDLIB}
 )

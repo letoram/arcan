@@ -37,12 +37,8 @@ set(LIBVNC_FOUND TRUE)
 set(LIBVNC_LIBRARIES ${LIBVNC_SERVER_LIBRARY} ${LIBVNC_CLIENT_LIBRARY})
 endif()
 
-if (LIBVNC_FOUND)
-	message(STATUS "LibVNC (client,server) found")
-else (LIBVNC_FOUND)
+if (NOT LIBVNC_FOUND)
 	if (LIBVNC_FIND_REQUIRED)
 		message(FATAL_ERROR "Could not find LibVNC (client,server)")
 	endif (LIBVNC_FIND_REQUIRED)
-endif (LIBVNC_FOUND)
-
-
+endif()

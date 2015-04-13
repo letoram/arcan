@@ -22,7 +22,6 @@ set (
 LIST(APPEND LIBFILES ${lzmacode})
 
 include_directories("./liblzma")
-
 add_library(openctm STATIC ${LIBFILES})
 target_link_libraries(openctm)
-
+set_property(TARGET openctm APPEND PROPERTY COMPILE_FLAGS -Wno-unused-but-set-variable)

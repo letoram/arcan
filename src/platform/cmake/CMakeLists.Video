@@ -26,7 +26,7 @@ if (VIDEO_PLATFORM STREQUAL "x11" OR VIDEO_PLATFORM STREQUAL "x11-headless")
 		add_definitions(-DWITH_HEADLESS_MAIN)
 	endif()
 
-	find_package(X11 REQUIRED)
+	find_package(X11 REQUIRED QUIET)
 
 	list(APPEND INCLUDE_DIRS
 		${X11_INCLUDE_DIRS}
@@ -44,7 +44,7 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-gles")
 		set(INPUT_PLATFORM "linux")
 	endif()
 
-	find_package(EGL REQUIRED)
+	find_package(EGL REQUIRED QUIET)
 	set(HEADLESS_PLATFORM ${PLATFORM_ROOT}/egl-gles/video.c)
 
 	if (GLES2_BCM_IMPLEMENTATION)
@@ -71,11 +71,11 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-nvidia")
 		set(INPUT_PLATFORM "linux")
 	endif()
 
-	find_package(EGL REQUIRED)
+	find_package(EGL REQUIRED QUIET)
 	list(APPEND VIDEO_LIBRARIES ${EGL_LIBRARIES})
 	list(APPEND HEADLESS_LIBRARIES ${EGL_LIBRARIES})
 	list(APPEND HEADLESS_PLATFORM ${PLATFORM_ROOT}/egl-nvidia/video.c)
-
+	set(LWA_PLATFORM_STR "broken")
 #
 # will hopefully become the default on BSDs/linux
 #
@@ -84,8 +84,8 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-dri")
 		set(INPUT_PLATFORM "linux")
 	endif()
 
-	find_package(EGL REQUIRED)
-	find_package(GBMKMS REQUIRED)
+	find_package(EGL REQUIRED QUIET)
+	find_package(GBMKMS REQUIRED QUIET)
 
 	list(APPEND VIDEO_LIBRARIES
 		${EGL_LIBRARIES}
@@ -97,6 +97,7 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-dri")
 	)
 	list(APPEND INCLUDE_DIRS ${GBMKMS_INCLUDE_DIRS})
 	set(HEADLESS_PLATFORM ${PLATFORM_ROOT}/egl-dri/video_rnode.c)
+	set(LWA_PLATFORM_STR "dri-rnodes")
 
 #
 # only option on OSX/Windows currently, would also work for
@@ -108,24 +109,35 @@ elseif (VIDEO_PLATFORM STREQUAL "sdl")
 		set(INPUT_PLATFORM "sdl")
 	endif()
 
-	find_package(SDL REQUIRED)
+	find_package(SDL REQUIRED QUIET)
 
 	list(APPEND INCLUDE_DIRS ${SDL_INCLUDE_DIR})
 	list(APPEND VIDEO_LIBRARIES ${SDL_LIBRARY})
 
 # headless with SDL requires OS specific hacks
-	message("Enabling LWA (Arcan-in-Arcan build) using X11 HEADLESS")
+	set(LWA_PLATFORM_STR "x11-headless")
 	if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+		set(LWA_PLATFORM_STR "darwin")
 		set(HEADLESS_PLATFORM ${PLATFORM_ROOT}/darwin/video.c)
 	elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
-		message("LWA builds disabled, headless mode unsupported in platform")
+		set(LWA_PLATFORM_STR "not found")
 	else()
-		FIND_PACKAGE(X11 REQUIRED)
+		FIND_PACKAGE(X11 REQUIRED QUIET)
 		set(HEADLESS_PLATFORM ${PLATFORM_ROOT}/x11/video.c)
 		set(HEADLESS_LIBRARIES ${X11_LIBRARIES})
 		list(APPEND INCLUDE_DIRS ${X11_INCLUDE_DIRS})
+		set(LWA_PLATFORM_STR "x11-headless")
 	endif()
 
 else()
-	message(FATAL_ERROR "No video platform specified, use -DVIDEO_PLATFORM=${VPLATFORM_STR} e.g. -DVIDEO_PLATFORM=sdl")
+# there are a few things that is just <invective> when it comes
+# to CMake (outside the syntax itself and that it took 10+ years
+# to get to a point where you can split strings across lines),
+# one is why in the name of everything holy is a logging function
+# the only way to do an exit? without the ability to reset a return value.
+# That is just <series of invectives>. In addition, it seems
+# impossible to not have it spew user-unfriendly garbage that hides
+# the CLEAR AND OBVIOUS message you want to convey. Thanks.
+	message(FATAL_ERROR
+"${CLB_WHT}No video platform defined${CLB_RST}, see -DVIDEO_PLATFORM=xx above${CL_RST}.")
 endif()

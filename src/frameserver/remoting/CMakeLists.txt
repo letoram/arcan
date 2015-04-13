@@ -1,19 +1,17 @@
 if (FSRV_REMOTING_REQUIRED)
-	find_package(VNC REQUIRED)
+	find_package(VNC REQUIRED QUIET)
 else()
-	find_package(VNC)
+	find_package(VNC QUIET)
 endif()
 
 if (LIBVNC_FOUND)
-	message(STATUS "--(fsrv/remoting) building using libVNC")
-
 	add_executable(afsrv_remoting
 		${FSRV_PLATFORM}
 		default/remoting.c
 	)
 
 	target_link_libraries(afsrv_remoting
-		arcan_shmif
+		arcan_shmif_int
 		${LIBVNC_CLIENT_LIBRARY}
 		${STDLIB}
 	)
@@ -29,10 +27,10 @@ if (LIBVNC_FOUND)
 		DEFAULT_FSRV_MODE=\"remoting\"
 	)
 
-	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING} remoting")
+	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}remoting " PARENT_SCOPE)
 
 	install(TARGETS afsrv_remoting DESTINATION bin)
 
 else()
-	message("remoting frameserver disabled, libvnc not found")
+	message("(${CL_GRN}remoting${CL_RST}) disabled, ${CL_GRN}vnc${CL_RED} not found${CL_RST}")
 endif()

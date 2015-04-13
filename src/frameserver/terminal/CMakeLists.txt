@@ -1,13 +1,11 @@
 if (FSRV_TERMINAL_REQUIRED)
-	find_package(TSM REQUIRED)
+	find_package(TSM REQUIRED QUIET)
 else()
-	find_package(TSM)
+	find_package(TSM QUIET)
 endif()
 
 if (LIBTSM_FOUND)
-	message(STATUS "--(fsrv/terminal) building terminal support using libTSM")
-
-	find_package(Freetype)
+	find_package(Freetype QUIET)
 	if (FREETYPE_FOUND)
 		set(TERM_AUX_LIBS ${FREETYPE_LIBRARY})
 		set(TERM_AUX_SOURCES ${FSRV_ROOT}/../engine/arcan_ttf.c)
@@ -22,7 +20,7 @@ if (LIBTSM_FOUND)
 	)
 
 	target_link_libraries(afsrv_terminal
-		arcan_shmif
+		arcan_shmif_int
 		util
 		${LIBTSM_LIBRARIES}
 		${STDLIB}
@@ -34,7 +32,7 @@ if (LIBTSM_FOUND)
 		DEFAULT_FSRV_MODE=\"terminal\"
 	)
 
-	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING} terminal")
+	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}terminal " PARENT_SCOPE)
 
 	install(TARGETS afsrv_terminal DESTINATION bin)
 
@@ -51,5 +49,5 @@ if (LIBTSM_FOUND)
 	)
 
 else()
-	message("terminal frameserver disabled, libtsm not found")
+	message("(${CL_GRN}terminal${CL_RST}) disabled, ${CL_GRN}libtsm${CL_RED} not found${CL_RST}")
 endif()
