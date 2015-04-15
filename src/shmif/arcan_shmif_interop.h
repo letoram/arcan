@@ -35,17 +35,45 @@
 #ifndef _HAVE_ARCAN_SHMIF_INTEROP
 #define _HAVE_ARCAN_SHMIF_INTEROP
 
+/*
+ * Version number works as tag and guard- bytes in the shared memory page,
+ * it is set by arcan upon creation and verified along with the offset-
+ * cookie during _integrity_check
+ */
 #define ASHMIF_VERSION_MAJOR 0
 #define ASHMIF_VERSION_MINOR 5
 
-/* There is a limited amount of types that both arcan and frameservers
- * need to agree on. To limit namespaces this header provides definitions
- * that otherwise would've resided in the platform subdirectories or as
- * part of arcan_general.h.
- */
-
 #ifndef LOG
 #define LOG(...) (fprintf(stderr, __VA_ARGS__))
+#endif
+
+/*
+ * plucked from platform.h in arcan platform tree in order to
+ * provide the defines for external projects that just uses the
+ * installed shmif- library
+ */
+#ifndef PLATFORM_HEADER
+#include <stdint.h>
+#include <stdbool.h>
+#ifdef WIN32
+#define INVALID_HANDLE_VALUE
+	typedef HANDLE file_handle;
+	typedef HANDLE sem_handle;
+	typedef void* process_handle;
+#else
+#define BADFD -1
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <semaphore.h>
+	typedef int file_handle;
+	typedef pid_t process_handle;
+	typedef sem_t* sem_handle;
+#endif
+long long int arcan_timemillis();
+int arcan_sem_post(sem_handle sem);
+file_handle arcan_fetchhandle(int insock, bool block);
+bool arcan_pushhandle(int fd, int channel);
+int arcan_sem_wait(sem_handle sem);
 #endif
 
 /*

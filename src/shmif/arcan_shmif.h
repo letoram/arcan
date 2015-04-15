@@ -35,29 +35,6 @@
 #ifndef _HAVE_ARCAN_SHMIF
 #define _HAVE_ARCAN_SHMIF
 
-/*
- * plucked from platform.h in arcan platform tree in order to
- * provide the defines for external projects that just uses the
- * installed shmif- library
- */
-
-#ifndef PLATFORM_HEADER
-#include <stdint.h>
-#include <stdbool.h>
-#ifdef WIN32
-	typedef HANDLE file_handle;
-	typedef HANDLE sem_handle;
-	typedef void* process_handle;
-#else
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <semaphore.h>
-	typedef int file_handle;
-	typedef pid_t process_handle;
-	typedef sem_t* sem_handle;
-#endif
-#endif
-
 #include "arcan_shmif_interop.h"
 #include "arcan_shmif_event.h"
 #include "arcan_shmif_control.h"

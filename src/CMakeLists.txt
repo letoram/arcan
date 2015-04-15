@@ -3,7 +3,7 @@
 # of shut up.
 function(message)
 	list(GET ARGV 0 TYPE)
-	if (type STREQUAL FATAL_ERROR)
+	if (TYPE STREQUAL "FATAL_ERROR")
 		list(REMOVE_AT ARGV 0)
 		_message(${TYPE} ${ARGV})
 	endif()
@@ -36,8 +36,6 @@ add_compile_options(-std=gnu11 -Wall)
 # static base version, manually mantained
 set(MAJOR_VERSION 0)
 set(MINOR_VERSION 5)
-set(ASHMIF_MAJOR 0)
-set(ASHMIF_MINOR 5)
 set(PATCH_LEVEL 0)
 set(VERSION ${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_LEVEL})
 set(PLATFORM_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/platform)
@@ -58,7 +56,7 @@ if (NOT DEFINED ENGINE_BUILDTAG)
 		)
 		if (NOT ${EXIT_CODE} EQUAL 0)
 			message(FATAL_ERROR
-				"${CLB_CYN}Extracting build tag using git failed, -DENGINE_BUILDTAG=mytag manually${CL_RST}")
+				"${CLB_RED}Extracting build tag using git failed, -DENGINE_BUILDTAG=mytag manually${CL_RST}")
 		endif()
 
 		string(STRIP ${GIT_VERSION} GIT_VERSION)
@@ -70,7 +68,7 @@ if (NOT DEFINED ENGINE_BUILDTAG)
 		)
 		if (NOT ${EXIT_CODE} EQUAL 0)
 			message(FATAL_ERROR
-				"${CLB_CYN}Extracting build tag using git failed, -DENGINE_BUILDTAG=mytag manually${CL_RST}")
+				"${CLB_RED}Extracting build tag using git failed, -DENGINE_BUILDTAG=mytag manually${CL_RST}")
 		endif()
 
 		string(STRIP ${GIT_BRANCH} GIT_BRANCH)
@@ -78,7 +76,7 @@ if (NOT DEFINED ENGINE_BUILDTAG)
 		set(ENGINE_BUILDTAG arcan-git-${GIT_BRANCH}-${GIT_VERSION})
 	else()
 		message(FATAL_ERROR
-			"${CLB_CYN}ENGINE_BUILDTAG not found and no git checkout detected, -DENGINE_BUILDTAG=mytag manually${CL_RST}")
+			"${CLB_RED}ENGINE_BUILDTAG not found and no git checkout detected, -DENGINE_BUILDTAG=mytag manually${CL_RST}")
 	endif()
 endif()
 
@@ -150,7 +148,7 @@ if ("${CMAKE_C_COMPILER_ID}" MATCHES "GNU")
 		COMMAND ${CMAKE_C_COMPILER} -dumpversion OUTPUT_VARIABLE GCC_VERSION)
 
 	if (NOT (GCC_VERSION VERSION_GREATER 4.7 OR GCC_VERSION VERSION_EQUAL 4.7))
-		message(FATAL_ERROR "${CLB_CYN}Ancient GCC Version detected, Arcan needs to be compiled with Clang-3.3+ or gcc 4.7+${CL_RST}")
+		message(FATAL_ERROR "${CLB_RED}Ancient GCC Version detected, Arcan needs to be compiled with Clang-3.3+ or gcc 4.7+${CL_RST}")
 	endif()
 	add_compile_options(-Wno-missing-braces -Wno-unused-function
 		-Wno-unused-value -Wno-unused-variable
@@ -162,7 +160,7 @@ elseif ("${CMAKE_C_COMPILER_ID}" MATCHES "Clang")
 		-Wno-unused-variable
 	)
 else()
-	message(FATAL_ERROR "${CLB_CYN}Arcan requires an ISO C 9899:2011 capable compiler (Clang-3.3+ or gcc 4.7+)${CL_RST}")
+	message(FATAL_ERROR "${CLB_RED}Arcan requires an ISO C 9899:2011 capable compiler (Clang-3.3+ or gcc 4.7+)${CL_RST}")
 endif()
 
 if (CMAKE_BUILD_TYPE STREQUAL "Profile")
@@ -204,6 +202,10 @@ endif (ENABLE_ASAN)
 
 if (ENABLE_LTO)
 	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -flto")
+endif()
+
+if (NOT VIDEO_PLATFORM)
+	message(FATAL_ERROR "${CLB_RED}Video Platform missing, see -DVIDEO_PLATFORM= above${CL_RST}")
 endif()
 
 amsg("\n${CL_WHT}-- Stage 1: dependencies and configuration${CL_RST}")
@@ -337,7 +339,6 @@ LIST (APPEND
 	${SQLITE3_INCLUDE_DIR}
 	${CMAKE_CURRENT_SOURCE_DIR}/platform
 	${EXTERNAL_SRC_DIR}
-	${CMAKE_CURRENT_SOURCE_DIR}/shmif
 	${CMAKE_CURRENT_SOURCE_DIR}/engine
 )
 
@@ -412,21 +413,6 @@ set(PFT ${VIDEO_PLATFORM}-${AGP_PLATFORM}-${AUDIO_PLATFORM}-${INPUT_PLATFORM})
 set(ENGINE_BUILDTAG ${ENGINE_BUILDTAG}-${PFT}-${LUA_TAG})
 unset(PFT)
 
-set (SHMIF_HEADERS
-	shmif/arcan_shmif_control.h
-	shmif/arcan_shmif_interop.h
-	shmif/arcan_shmif_event.h
-	shmif/arcan_shmif.h
-)
-
-set (SHMIF_SOURCES
-	${SHMIF_HEADERS}
-	shmif/arcan_shmif_control.c
-	shmif/arcan_shmif_interop.c
-)
-
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/shmif)
-
 #
 # Expand with more platforms as needed, all are expected to define
 # PLATFORM_[ ,fsrv, shmif]_SOURCES, add a global definition
@@ -440,13 +426,14 @@ elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/CMakeLists.Linux)
 
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
+	message(FATAL_ERROR "${CLB_RED}Windows builds broken pending build system refactor")
 	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/CMakeLists.Windows)
 
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+	message(FATAL_ERROR "${CLB_RED}Darwin builds broken pending build system refactor")
 	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/CMakeLists.Darwin)
-
 else()
-	message(FATAL_ERROR "${CLB_WHT}Unsupported OS detected, abandon ship!${CL_RST}")
+	message(FATAL_ERROR "${CLB_RED}Unsupported OS detected, abandon ship!${CL_RST}")
 endif()
 
 amsg("\n${CL_WHT}---- Configuration results:${CL_RST}")
@@ -460,6 +447,9 @@ amsg("${CL_YEL}Lua     \t${CLB_GRN}${LUA_TAG}${LUA_TAG_MODE}${CL_RST}${CL_RST}")
 
 amsg("\n${CL_WHT}-- Stage 2, Frameservers / Hijack${CLT_RST}")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+
+add_subdirectory(shmif)
+include_directories(${ARCAN_SHMIF_INCLUDE_DIR})
 
 if (NO_FSRV)
 	set(FSRV_DISABLE DISABLE_FRAMESERVERS)
@@ -483,18 +473,6 @@ set_property(SOURCE engine/arcan_lua.c engine/arcan_main.c
 	${FSRV_DISABLE}
 )
 
-add_library(arcan_shmif_int STATIC
-	${SHMIF_SOURCES}
-	${SHMIF_PLATFORM}
-)
-
-add_library(arcan_shmif SHARED
-	${SHMIF_SOURCES}
-	${SHMIF_PLATFORM}
-)
-target_link_libraries(arcan_shmif PRIVATE ${STDLIB})
-target_link_libraries(arcan_shmif_int PRIVATE ${STDLIB})
-
 if (EXISTS ${EXTERNAL_SRC_DIR}/git/openal)
 	if(ENABLE_LWA AND HEADLESS_PLATFORM)
 		amsg("\n${CL_WHT}-- Stage 3, LWA Build${CL_RST}")
@@ -507,31 +485,6 @@ else()
 endif()
 
 amsg("\n${CL_WHT}-- Stage 4, Linking / Packaging${CL_RST}")
-
-# note that we enable fpic for the static here as some
-# subdirectores need to pull it in as part of building a shared library
-set_target_properties(arcan_shmif_int PROPERTIES
-	COMPILE_FLAGS -fPIC
-	ALIAS "arcan_shmif"
-	VERSION "${ASHMIF_MAJOR}.${ASHMIF_MINOR}"
-)
-set_target_properties(arcan_shmif PROPERTIES
-	VERSION "${ASHMIF_MAJOR}.${ASHMIF_MINOR}"
-	SOVERSION ${ASHMIF_MAJOR}
-)
-
-install(TARGETS arcan_shmif arcan_shmif_int
-	LIBRARY DESTINATION lib/arcan
-	ARCHIVE DESTINATION lib/arcan
-)
-install(FILES ${SHMIF_HEADERS} DESTINATION include/arcan/shmif)
-
-# The config file is more similar to a regular find module,
-# the procedure for doing something this trivial ("install library,
-# provide means for other projects to find library") seems excessively
-# verbose and 'cmake:y'.
-install(FILES ${PLATFORM_ROOT}/cmake/arcan_shmif-config.cmake
-	DESTINATION CMake COMPONENT dev)
 
 add_executable(arcan
 	${SOURCES}

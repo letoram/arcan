@@ -9,7 +9,11 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#ifndef PLATFORM_HEADER
+#include "arcan_shmif.h"
+#else
 #include PLATFORM_HEADER
+#endif
 
 int arcan_sem_post(sem_handle sem)
 {
