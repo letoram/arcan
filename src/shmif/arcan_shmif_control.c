@@ -72,7 +72,7 @@ extern HANDLE parent;
  */
 #ifndef FORCE_SYNCH
 	#define FORCE_SYNCH() {\
-		asm volatile("": : :"memory");\
+		__asm volatile("": : :"memory");\
 		__sync_synchronize();\
 	}
 #endif

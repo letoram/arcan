@@ -4,7 +4,6 @@
 # Defines:
 #  ARCAN_PLATFORM
 #  FSRV_PLATFORM
-#  SHMIF_PLATFORM
 #  LWA_PLATFORM
 #  STDLIB
 #
@@ -44,7 +43,6 @@ set(ARCAN_PLATFORM
 	${PLATFORM_PATH}/launch.c
 )
 
-# since these are used on multiple targets, force the define here.
 set_property(SOURCE ${PLATFORM_PATH}/fdpassing.c
 	APPEND PROPERTY COMPILE_FLAGS -w)
 set_property(SOURCE ${PLATFORM_PATH}/fdpassing.c
@@ -65,13 +63,6 @@ if (ENABLE_LED)
 	)
 endif()
 
-set(SHMIF_PLATFORM
-	${PLATFORM_PATH}/warning.c
-	${PLATFORM_PATH}/time.c
-	${PLATFORM_PATH}/sem.c
-	${PLATFORM_PATH}/fdpassing.c
-)
-
 set(LWA_PLATFORM ${ARCAN_PLATFORM})
 
 # we don't want these coming along in LWA_PLATFORM
@@ -79,9 +70,6 @@ list(APPEND PLATFORM_SOURCES
 	${PLATFORM_ROOT}/${VIDEO_PLATFORM}/video.c
 	${PLATFORM_ROOT}/${INPUT_PLATFORM}/event.c
 )
-
-# fsrv already pulls in shmif through the library
-set(FSRV_PLATFORM)
 
 #
 # Incomplete still, will probably be extended / fixed when testing/building on Alpine Linux
