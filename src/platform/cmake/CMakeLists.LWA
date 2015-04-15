@@ -94,6 +94,7 @@ target_link_libraries(arcan_lwa
 	${AGP_LIBRARIES}
 	${LWA_LIBRARIES}
 	${HEADLESS_LIBRARIES}
+	arcan_shmif_int
 )
 
 install(TARGETS arcan_lwa DESTINATION bin)

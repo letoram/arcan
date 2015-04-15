@@ -243,7 +243,7 @@ if (EXISTS ${EXTERNAL_SRC_DIR}/git/freetype)
 	)
 	set(FREETYPE_INCLUDE_DIRS "${CMAKE_CURRENT_BINARY_DIR}/include/freetype2")
 	set(FREETYPE_LIBRARY "${CMAKE_CURRENT_BINARY_DIR}/lib/libfreetype.a")
-	set(APPEND ${MAIN_DEPS} Freetype)
+	list(APPEND MAIN_DEPS Freetype)
 else()
 	find_package(Freetype REQUIRED QUIET)
 endif()
@@ -265,7 +265,7 @@ if (EXISTS ${EXTERNAL_SRC_DIR}/git/openal AND STATIC_OPENAL)
 		"${CMAKE_CURRENT_BINARY_DIR}/lib/libopenal.a"
 	)
 	set(OPENAL_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/include/AL")
-	set(APPEND ${MAIN_DEPS} OpenAL)
+	list(APPEND MAIN_DEPS OpenAL)
 else()
 	find_package(OpenAL REQUIRED QUIET)
 endif()
@@ -302,7 +302,7 @@ if (NOT DISABLE_JIT)
 		)
 		set(LUA_LIBRARY "${CMAKE_CURRENT_BINARY_DIR}/luajit/lib/libluajit-5.1.a")
 		set(LUA_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/luajit/include")
-		set(MAIN_DEPS ${MAIN_DEPS} luajit)
+		list(APPEND MAIN_DEPS luajit)
 	else()
 		find_package(Lua51JIT QUIET)
 	endif()
@@ -393,7 +393,7 @@ if (ENABLE_SIMD AND SSE_FOUND)
 endif()
 
 if (ENABLE_LED)
-	list(APPEND ${SOURCES}
+	list(APPEND SOURCES
 		arcan_led.c
 		arcan_led.h
 	)
@@ -504,7 +504,7 @@ target_link_libraries(arcan
 	arcan_shmif_int
 )
 
-add_dependencies(arcan MAIN_DEPS)
+add_dependencies(arcan ${MAIN_DEPS})
 
 #
 # The database tool is a CLI for the engine/arcan_db with additional
