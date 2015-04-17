@@ -292,16 +292,17 @@ include(${PLATFORM_ROOT}/cmake/CMakeLists.Video)
 
 if (NOT DISABLE_JIT)
 	if (EXISTS ${EXTERNAL_SRC_DIR}/git/luajit)
+		amsg("${CL_YEL}Building Luajit static from external/git mirror${CL_RST}")
 		ExternalProject_Add(luajit
 			SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/luajit
 			GIT_REPOSITORY "${EXTERNAL_SRC_DIR}/git/luajit"
 			CONFIGURE_COMMAND ""
 			BUILD_IN_SOURCE 1
 			${EXTERNAL_DEFS}
-			INSTALL_COMMAND "make install PREFIX=${CMAKE_CURRENT_BINARY_DIR}/luajit"
+			INSTALL_COMMAND ""
 		)
-		set(LUA_LIBRARY "${CMAKE_CURRENT_BINARY_DIR}/luajit/lib/libluajit-5.1.a")
-		set(LUA_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/luajit/include")
+		set(LUA_LIBRARY "${CMAKE_CURRENT_BINARY_DIR}/luajit/src/libluajit.a")
+		set(LUA_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/luajit/src")
 		list(APPEND MAIN_DEPS luajit)
 	else()
 		find_package(Lua51JIT QUIET)
