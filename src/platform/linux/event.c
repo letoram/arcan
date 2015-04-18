@@ -832,8 +832,8 @@ static void decode_hat(struct arcan_evctx* ctx,
 {
 	arcan_event newev = {
 		.category = EVENT_IO,
-		.label = "gamepad",
 		.io = {
+			.label = "gamepad",
 			.kind = EVENT_IO_BUTTON,
 			.devkind = EVENT_IDEVKIND_GAMEDEV,
 			.datatype = EVENT_IDATATYPE_DIGITAL
@@ -892,8 +892,8 @@ static void defhandler_game(struct arcan_evctx* ctx,
 
 	arcan_event newev = {
 		.category = EVENT_IO,
-		.label = "gamepad",
 		.io = {
+			.label = "gamepad",
 			.devkind = EVENT_IDEVKIND_GAMEDEV
 		}
 	};
@@ -967,8 +967,8 @@ static void defhandler_mouse(struct arcan_evctx* ctx,
 
 	arcan_event newev = {
 		.category = EVENT_IO,
-		.label = "mouse",
 		.io = {
+			.label = "mouse",
 			.devkind = EVENT_IDEVKIND_MOUSE,
 		}
 	};

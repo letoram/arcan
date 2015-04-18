@@ -1336,7 +1336,7 @@ static inline void flush_eventq(){
 		while ( arcan_shmif_poll(&retroctx.shmcont, &ev) == 1 ){
 			switch (ev.category){
 				case EVENT_IO:
-					ioev_ctxtbl(&(ev.io), ev.label);
+					ioev_ctxtbl(&(ev.io), ev.io.label);
 				break;
 
 				case EVENT_TARGET:
@@ -1702,12 +1702,11 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 			(float)retroctx.avinfo.timing.sample_rate);
 
 		LOG("setting up resampler, %f => %d.\n",
-			(float)retroctx.avinfo.timing.sample_rate, ARCAN_SHMPAGE_SAMPLERATE);
+			(float)retroctx.avinfo.timing.sample_rate, ARCAN_SHMIF_SAMPLERATE);
 
 		int errc;
-		retroctx.resampler = speex_resampler_init(ARCAN_SHMPAGE_ACHANNELS,
-			retroctx.avinfo.timing.sample_rate, ARCAN_SHMPAGE_SAMPLERATE,
-			ARCAN_SHMPAGE_RESAMPLER_QUALITY, &errc);
+		retroctx.resampler = speex_resampler_init(ARCAN_SHMIF_ACHANNELS,
+			retroctx.avinfo.timing.sample_rate, ARCAN_SHMIF_SAMPLERATE, 5, &errc);
 
 /* intermediate buffer for resampling and not
  * relying on a well-behaving shmpage */
@@ -1823,7 +1822,7 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 /* possible to add a size lower limit here to maintain a larger
  * resampling buffer than synched to videoframe */
 				if (retroctx.audbuf_ofs){
-					spx_uint32_t outc  = ARCAN_SHMPAGE_AUDIOBUF_SZ;
+					spx_uint32_t outc  = ARCAN_SHMIF_AUDIOBUF_SZ;
 /*first number of bytes, then after process..., number of samples */
 					spx_uint32_t nsamp = retroctx.audbuf_ofs >> 1;
 					speex_resampler_process_interleaved_int(retroctx.resampler,
@@ -1832,7 +1831,7 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 
 					if (outc)
 						retroctx.shmcont.addr->abufused += outc *
-							ARCAN_SHMPAGE_ACHANNELS * sizeof(uint16_t);
+							ARCAN_SHMIF_ACHANNELS * sizeof(uint16_t);
 					retroctx.audbuf_ofs = 0;
 				}
 

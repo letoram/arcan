@@ -17,11 +17,13 @@
 #include <assert.h>
 #include <signal.h>
 
-/* fixed limit of allowed events in queue before we need to
- * do something more aggressive (flush queue or start dropping
- * or even blacklisting noisy input device) */
+/*
+ * fixed limit of allowed events in queue before we need to
+ * do something more aggressive (flush queue to script,
+ * blacklist noisy sources, rate- limit frameservers)
+ */
 #ifndef ARCAN_EVENT_QUEUE_LIM
-#define ARCAN_EVENT_QUEUE_LIM 500
+#define ARCAN_EVENT_QUEUE_LIM 255
 #endif
 
 #include "arcan_math.h"
@@ -37,7 +39,7 @@
 typedef struct queue_cell queue_cell;
 
 static arcan_event eventbuf[ARCAN_EVENT_QUEUE_LIM];
-static unsigned eventfront = 0, eventback = 0;
+static uint8_t eventfront = 0, eventback = 0;
 static int64_t epoch;
 
 #ifndef FORCE_SYNCH
@@ -109,12 +111,12 @@ int arcan_event_poll(arcan_evctx* ctx, struct arcan_event* dst)
 		return 0;
 
 	if (ctx->local == false){
-		if ( *(ctx->front) > ARCAN_SHMPAGE_QUEUE_SZ )
+		FORCE_SYNCH();
+		if ( *(ctx->front) > PP_QUEUE_SZ )
 			pull_killswitch(ctx);
 		else {
-			FORCE_SYNCH();
 			*dst = ctx->eventbuf[ *(ctx->front) ];
-			*(ctx->front) = (*(ctx->front) + 1) % ARCAN_SHMPAGE_QUEUE_SZ;
+			*(ctx->front) = (*(ctx->front) + 1) % PP_QUEUE_SZ;
 		}
 	}
 	else {
@@ -192,8 +194,7 @@ int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src)
 	}
 
 	if (panic_keysym != -1 && panic_keymod != -1 &&
-		src->category == EVENT_IO &&
-		src->io.kind == EVENT_IO_BUTTON &&
+		src->category == EVENT_IO && src->io.kind == EVENT_IO_BUTTON &&
 		src->io.devkind == EVENT_IDEVKIND_KEYBOARD &&
 		src->io.input.translated.modifiers == panic_keymod &&
 		src->io.input.translated.keysym == panic_keysym
@@ -216,7 +217,6 @@ int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src)
 	}
 
 	ctx->eventbuf[(*ctx->back) % ctx->eventbuf_sz] = *src;
-	ctx->eventbuf[(*ctx->back) % ctx->eventbuf_sz].timestamp = arcan_frametime();
 	*ctx->back = (*ctx->back + 1) % ctx->eventbuf_sz;
 
 /*

@@ -344,7 +344,7 @@ static void main_loop()
 		while (arcan_shmif_poll(&term.acon, &ev) == 1){
 			switch (ev.category){
 			case EVENT_IO:
-				ioev_ctxtbl(&(ev.io), ev.label);
+				ioev_ctxtbl(&(ev.io), ev.io.label);
 			break;
 
 			case EVENT_TARGET:

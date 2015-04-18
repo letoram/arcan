@@ -296,7 +296,7 @@ int ARCAN_SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
 
 	global.samplerate= res->freq;
 	global.channels  = res->channels;
-	global.format    = res->format;
+	global.format = res->format;
 	global.attenuation = 1.0;
 
 	if (global.encabuf)
@@ -309,13 +309,12 @@ int ARCAN_SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
 		global.resampler = (speex_resampler_destroy(global.resampler), NULL);
 
 	global.encabuf_sz = 120 * 1024;
-	global.encabuf    = malloc(global.encabuf_sz);
+	global.encabuf = malloc(global.encabuf_sz);
 
-	if (global.samplerate != ARCAN_SHMPAGE_SAMPLERATE){
+	if (global.samplerate != ARCAN_SHMIF_SAMPLERATE){
 		int errc;
-		global.resampler  = speex_resampler_init(ARCAN_SHMPAGE_ACHANNELS,
-			global.samplerate, ARCAN_SHMPAGE_SAMPLERATE,
-			ARCAN_SHMPAGE_RESAMPLER_QUALITY, &errc);
+		global.resampler = speex_resampler_init(ARCAN_SHMIF_ACHANNELS,
+			global.samplerate, ARCAN_SHMIF_SAMPLERATE, 5, &errc);
 	}
 
 	return rc;
@@ -343,7 +342,7 @@ SDL_Surface* ARCAN_SDL_SetVideoMode(int w, int h, int ncps, Uint32 flags)
 	SDL_Surface* res = forwardtbl.sdl_setvideomode(w, h, ncps, flags);
 	global.doublebuffered = ((flags & SDL_DOUBLEBUF) > 0);
 	global.glsource = ((flags & SDL_OPENGL) > 0);
-	global.shared.addr->glsource = global.glsource;
+	global.shared.addr->hints = global.glsource & RHINT_ORIGO_LL;
 
 	if ( (flags & SDL_FULLSCREEN) > 0) {
 /* oh no you don't */
@@ -502,11 +501,11 @@ static void push_audio()
 	if (global.abuf_synch && global.encabuf_ofs > 0){
 		SDL_mutexP(global.abuf_synch);
 
-			if (global.samplerate == ARCAN_SHMPAGE_SAMPLERATE){
+			if (global.samplerate == ARCAN_SHMIF_SAMPLERATE){
 				memcpy(global.shared.audp, global.encabuf,
 					global.encabuf_ofs * sizeof(int16_t));
 			} else {
-				spx_uint32_t outc  = ARCAN_SHMPAGE_AUDIOBUF_SZ;
+				spx_uint32_t outc  = ARCAN_SHMIF_AUDIOBUF_SZ;
 /*first number of bytes, then after process..., number of samples */
 				spx_uint32_t nsamp = global.encabuf_ofs >> 1;
 
@@ -515,7 +514,7 @@ static void push_audio()
 					(spx_int16_t*) global.shared.audp, &outc);
 				if (outc)
 					global.shared.addr->abufused +=
-						outc * ARCAN_SHMPAGE_ACHANNELS * sizeof(uint16_t);
+						outc * ARCAN_SHMIF_ACHANNELS * sizeof(uint16_t);
 
 				global.shared.addr->aready = true;
 			}
@@ -554,7 +553,7 @@ static void copysurface(SDL_Surface* src){
 		SDL_FreeSurface(surf);
 	}
 
-	global.shared.addr->glsource = false;
+	global.shared.addr->hints = RHINT_ORIGO_UL;
 	push_audio();
 	global.shared.addr->vready = true;
 }
@@ -637,9 +636,9 @@ void ARCAN_SDL_GL_SwapBuffers()
  * (minimize memory bw- use at all time),
  * we want to flip in the main- app using the texture coordinates,
  * hence the glsource flag */
-	if (!global.shared.addr->glsource){
+	if (!(global.shared.addr->hints & RHINT_ORIGO_LL)){
 		trace("Toggle GL surface support");
-		global.shared.addr->glsource = true;
+		global.shared.addr->hints = RHINT_ORIGO_LL;
 		ARCAN_target_shmsize(global.sourcew, global.sourceh, 4);
 	}
 

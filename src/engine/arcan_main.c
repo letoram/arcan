@@ -286,7 +286,6 @@ static void flush_events()
 int main(int argc, char* argv[])
 {
 	settings.in_monitor = getenv("ARCAN_MONITOR_FD") != NULL;
-
 	bool windowed = false;
 	bool fullscreen = false;
 	bool conservative = false;

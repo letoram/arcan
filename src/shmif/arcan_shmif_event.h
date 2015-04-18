@@ -33,32 +33,33 @@
 
 #ifndef _HAVE_ARCAN_SHMIF_EVENT
 #define _HAVE_ARCAN_SHMIF_EVENT
+#include <limits.h>
 
 /*
  * The types and structures used herein are "transitional" in the sense
- * that during the later hardening / cleanup phases, we'll move over to
- * a protobuf based serialization format and only retain the fields that
- * are actually used in parent<->child communication.
+ * that during the later hardening / cleanup phases, we'll likely refactor
+ * to use more compat message sizes in order to consume fewer cache-lines.
  *
- * The only actual categories to rely on / use now for shmif purposes
- * are TARGET (parent -> child), EXTERNAL (child -> parent), NET
- * (parent <-> child) and INPUT (parent <-> child).
- *
- * Then the contents of this header will split into a version that
- * corresponds to what the engine uses internally and what is accessible
- * in the shmif interface. Until then, frameservers built against the
- * shared memory API are expected to recompile with the arcan version.
+ * The event structure is rather messy as it is the result of quite a number
+ * of years of evolutionary "adding more and more fields" as the engine
+ * developed. The size of some fields are rather arbitrary, and has been
+ * picked to cover the largest (networking discovery messages) matching
+ * % 32 == 0 with padding.
  */
 
 enum ARCAN_EVENT_CATEGORY {
-	EVENT_SYSTEM      = 1,
-	EVENT_IO          = 2,
-	EVENT_VIDEO       = 4,
-	EVENT_AUDIO       = 8,
-	EVENT_TARGET      = 16,
-	EVENT_FSRV        = 32,
-	EVENT_EXTERNAL    = 64,
-	EVENT_NET         = 128
+	EVENT_SYSTEM   = 1,
+	EVENT_IO       = 2,
+	EVENT_VIDEO    = 4,
+	EVENT_AUDIO    = 8,
+	EVENT_TARGET   = 16,
+	EVENT_FSRV     = 32,
+	EVENT_EXTERNAL = 64,
+	EVENT_NET      = 128,
+
+/* this is found in every enum to force the type to int, note that
+ * C11 do not allow enums that are larger than int */
+	EVENT_LIM      = INT_MAX
 };
 
 /*
@@ -68,32 +69,90 @@ enum ARCAN_EVENT_CATEGORY {
  * CURSOR should not update 1080p60Hz)
  */
 enum ARCAN_SEGID {
-	SEGID_LWA = 0, /* LIGHTWEIGHT ARCAN (arcan-in-arcan) */
-	SEGID_NETWORK_SERVER, /* external connection, 1:many */
-	SEGID_NETWORK_CLIENT, /* external connection, 1:1 */
-	SEGID_MEDIA, /* multimedia, non-interactive data source */
-	SEGID_TERMINAL, /* terminal, privilege level vary, low-speed interactivity */
-	SEGID_REMOTING, /* network client but A/V/latency sensitive */
-	SEGID_ENCODER, /* high-CPU, low-latency, wants access to engine data */
-	SEGID_SENSOR, /* sampled continuous update */
-	SEGID_TITLEBAR, /* some clients may want to try and draw decoration */
-	SEGID_CURSOR, /* active cursor, competes with cursorhint event */
-	SEGID_INPUTDEVICE, /* event/user-interaction driven */
-	SEGID_GAME, /* high-interactivity, high A/V cost, low latency requirements */
-	SEGID_APPLICATION, /* video updates typically reactive to input */
-	SEGID_BROWSER, /* network client, high-risk for malicious data */
-	SEGID_VM, /* virtual-machine, high resource consumption, high risk */
-	SEGID_HMD_SBS, /* head-mounter display, even split left/ right */
-	SEGID_HMD_L, /* head-mounted display, left eye view (otherwise _GAME) */
-	SEGID_HMD_R, /* head-mounted display, right eye view (otherwise _GAME) */
-	SEGID_POPUP, /* pulldown menus, popup windows, ... */
-	SEGID_ICON, /* minimized- status indicator */
-	SEGID_DEBUG, /* can always be terminated, may hold extraneous information */
-	SEGID_UNKNOWN
+/* LIGHTWEIGHT ARCAN (nested execution) */
+	SEGID_LWA = 1,
+
+/* External Connection, 1:many */
+	SEGID_NETWORK_SERVER,
+
+/* External Connection, 1:1 */
+	SEGID_NETWORK_CLIENT,
+
+/* External Connection, non-interactive data source */
+	SEGID_MEDIA,
+
+/* Sensitive, varying privilege level, event- driven */
+	SEGID_TERMINAL,
+
+/* External client connection, A/V/latency sensitive */
+	SEGID_REMOTING,
+
+/* High-CPU, Low Latency, data exfiltration risk */
+	SEGID_ENCODER,
+
+/* High-frequency event input, little if any A/V use */
+	SEGID_SENSOR,
+
+/* Typically one-shot or rare updates */
+	SEGID_TITLEBAR,
+
+/* User- provided cursor, competes with CURSORHINT event */
+	SEGID_CURSOR,
+
+/* High-interactivity, CPU load, A/V cost, latency requirements */
+	SEGID_GAME,
+
+/* Input reactive, user- sensitive data */
+	SEGID_APPLICATION,
+
+/* Networking, high-risk for malicious data, aggressive resource consumption */
+	SEGID_BROWSER,
+
+/* Virtual Machine, high-risk for malicious data,
+ * CPU load etc. guarantees support for state- management */
+	SEGID_VM,
+
+/* Head-Mounted display, buffer is split evenly left / right but updated
+ * synchronously */
+	SEGID_HMD_SBS,
+
+/* Head-Mounted display, should be mapped as LEFT view */
+	SEGID_HMD_L,
+
+/* Head-Mounted display, should be mapped as RIGHT view */
+	SEGID_HMD_R,
+
+/* One- shot, Short-lived as response to event */
+	SEGID_POPUP,
+
+/* Status indicator, used for visually representing application when
+ * out of scope or focus */
+	SEGID_ICON,
+
+/*
+ * Indicates that this segment is used to propagate accessibility related
+ * data; High-contrast, simplified text, screen-reader friendly.
+ *
+ * A reject on such a segment request indicates that no accessibility
+ * options have been enabled and can thus be used as an initial probe.
+ */
+	SEGID_ACCESSIBILITY,
+
+/*
+ * New / unclassified segments have this type until the first
+ * _EXTERNAL_REGISTER event has been received.
+ */
+	SEGID_UNKNOWN,
+
+/* Can always be terminated without risk, may be stored as part of
+ * debug format in terms of unexpected termination etc. */
+	SEGID_DEBUG,
+	SEGID_LIM = INT_MAX
 };
 
 /*
  * These are commands that map from parent to child.
+ * If any ioevs[0..n].iv/fv are used, it is specified in the comments
  */
 enum ARCAN_TARGET_COMMAND {
 /* shutdown sequence:
@@ -108,20 +167,30 @@ enum ARCAN_TARGET_COMMAND {
 /*
  * Hints regarding how the underlying client should treat
  * rendering and video synchronization.
+ * ioevs[0].iv maps to TARGET_SKIP_*
  */
 	TARGET_COMMAND_FRAMESKIP,
+
+/*
+ * in case of TARGET_SKIP_STEP, this can be used to specify
+ * a relative amount of frames to process or rollback
+ * ioevs[0].iv represents the number of frames.
+ */
 	TARGET_COMMAND_STEPFRAME,
 
 /*
  * Set a specific key-value pair. These have been registered
  * in beforehand through EVENT_EXTERNAL_COREOPT.
+ * message field is used.
  */
 	TARGET_COMMAND_COREOPT,
 
 /*
  * Comes with a single descriptor in ioevs[0].iv that should
  * be dup()ed before next shmif_ call or used immediately
- * for (user-defined) binary store/restore.
+ * for (user-defined) binary store/restore. The conversion
+ * between socket- transfered descriptor and ioev[0] is handled
+ * internally in shmif_control.c
  */
 	TARGET_COMMAND_STORE,
 	TARGET_COMMAND_RESTORE,
@@ -129,28 +198,35 @@ enum ARCAN_TARGET_COMMAND {
 /*
  * Similar to store/store, but used to indicate that the data
  * source and binary protocol carried within is implementation-
- * defined.
+ * defined. It is used for advanced cut/paste or transfer
+ * operations, possibly with zero-copy mechanisms like memfd.
  */
 	TARGET_COMMAND_BCHUNK_IN,
 	TARGET_COMMAND_BCHUNK_OUT,
 
 /*
- * Revert to a safe / known / default state.
+ * User requested that the frameserver should revert to a safe
+ * initial state. This is also an indication that the current
+ * application state is undesired.
  */
 	TARGET_COMMAND_RESET,
 
 /*
- * Suspend operations, only _EXIT and _UNPAUSE should be valid
- * events in this state. Indicates that the server does not
- * want the client to consume any system- resources.
+ * Suspend operations, only _EXIT, _PAUSE and _UNPAUSE should
+ * be valid events in this state. Indicates that the server
+ * does not want the client to consume any system- resources.
+ * Will be sent at user request or as part of power-save.
  */
 	TARGET_COMMAND_PAUSE,
 	TARGET_COMMAND_UNPAUSE,
 
 /*
- * for all connections that have a perception of time that
- * can be manipulated, this is used to request rollback or
- * fast-forward between states
+ * For connections that have a fine-grained perception of time,
+ * both absolute and relative in terms of some internal timebase,
+ * request a seek to a specific point in time (or as close as
+ * possible). Primarily used for video playback.
+ * ioevs[1].iv != 1 indicates relative,
+ * ioevs[0].fv = contains the actual timeslot.
  */
 	TARGET_COMMAND_SEEKTIME,
 
@@ -161,19 +237,25 @@ enum ARCAN_TARGET_COMMAND {
  * the client to use. When the visible image resolution
  * deviates a lot from the internal resolution of the client,
  * this event can appear as a friendly suggestion to resize.
+ * ioevs[0].iv = width,
+ * ioevs[1].iv = height
  */
 	TARGET_COMMAND_DISPLAYHINT,
 
 /*
  * Hint input/device mapping (device-type, input-port),
- * primarily used for gaming / legacy applications and
- * will be reconsidered.
+ * primarily used for gaming / legacy application.
+ * ioevs[0].iv = device_type,
+ * ioevs[1].iv = input_port
  */
 	TARGET_COMMAND_SETIODEV,
 
 /*
  * Used when audio playback is controlled by the frameserver,
  * e.g. clients that do not use the shmif to playback audio
+ * for quality- or latency- reasons. This is sent transparently
+ * when a script changes the gain for an audio source.
+ * ioevs[0].fv = gain_value
  */
 	TARGET_COMMAND_ATTENUATE,
 
@@ -181,6 +263,8 @@ enum ARCAN_TARGET_COMMAND {
  * This indicates that A/V synch is not quite right and
  * the client, if possible, should try to adjust internal
  * buffering.
+ * ioevs[0].iv = audio-skew (ms)
+ * ioevs[1].iv = video-skew (ms)
  */
 	TARGET_COMMAND_AUDDELAY,
 
@@ -201,6 +285,7 @@ enum ARCAN_TARGET_COMMAND {
  * The running application in the server explicitly prohibited
  * the client from getting access to new segments due to UX
  * restrictions or resource limitations.
+ * ioev[0].iv = cookie (submitted in request)
  */
 	TARGET_COMMAND_REQFAIL,
 
@@ -213,42 +298,30 @@ enum ARCAN_TARGET_COMMAND {
 	TARGET_COMMAND_BUFFER_FAIL,
 
 /*
- * Specialized output hinting, considered deprecated
+ * Reserved for future use, will provide a handle to a specific
+ * device node, where the type of the node defines how it is
+ * supposed to be used.
+ * ioev[0].iv = handle,
+ * ioev[1].iv = type [e.g. render-node for switching GPUs]
+ */
+	TARGET_COMMAND_DEVICE_NODE,
+
+/*
+ * Graph- mode is a special case thing for switching between
+ * active representation for a specific segment. It is implementation
+ * defined and primarily used in custom LWA- targeted appls that
+ * need custom frameservers as well (e.g. the Senseye project).
  */
 	TARGET_COMMAND_GRAPHMODE,
+
+/*
+ * Specialized output hinting, considered deprecated
+ */
 	TARGET_COMMAND_VECTOR_LINEWIDTH,
 	TARGET_COMMAND_VECTOR_POINTSIZE,
 	TARGET_COMMAND_NTSCFILTER,
-	TARGET_COMMAND_NTSCFILTER_ARGS
-};
-
-enum ARCAN_TARGET_SKIPMODE {
-	TARGET_SKIP_AUTO     =  0, /* drop to keep sync */
-	TARGET_SKIP_NONE     = -1, /* never discard data */
-	TARGET_SKIP_REVERSE  = -2, /* play backward */
-	TARGET_SKIP_ROLLBACK = -3, /* apply input events to prev. state */
-	TARGET_SKIP_STEP     =  1, /* single stepping, advance with events */
-	TARGET_SKIP_FASTFWD  = 10  /* 10+, only return every nth frame */
-};
-
-enum ARCAN_EVENT_IO {
-	EVENT_IO_BUTTON,
-	EVENT_IO_AXIS_MOVE,
-	EVENT_IO_TOUCH
-};
-
-enum ARCAN_EVENT_IDEVKIND {
-	EVENT_IDEVKIND_KEYBOARD,
-	EVENT_IDEVKIND_MOUSE,
-	EVENT_IDEVKIND_GAMEDEV,
-	EVENT_IDEVKIND_TOUCHDISP
-};
-
-enum ARCAN_EVENT_IDATATYPE {
-	EVENT_IDATATYPE_ANALOG,
-	EVENT_IDATATYPE_DIGITAL,
-	EVENT_IDATATYPE_TRANSLATED,
-	EVENT_IDATATYPE_TOUCH
+	TARGET_COMMAND_NTSCFILTER_ARGS,
+	TARGET_COMMAND_LIMIT = INT_MAX
 };
 
 /*
@@ -257,23 +330,28 @@ enum ARCAN_EVENT_IDATATYPE {
 enum ARCAN_EVENT_EXTERNAL {
 /*
  * custom string message, used as some user- directed hint
+ * uses the message field.
  */
 	EVENT_EXTERNAL_MESSAGE = 0,
 
 /*
- * specify that there is a possible key=value argument
+ * Specify that there is a possible key=value argument
  * that could be set.
+ * uses the message field to encode key and value pair.
  */
 	EVENT_EXTERNAL_COREOPT,
 
 /*
  * Dynamic data source identification string, similar to message
+ * but is expected to come when something has changed radically,
+ * (streaming external video sources for instance).
+ * uses the message field.
  */
 	EVENT_EXTERNAL_IDENT,
 
 /*
- * Hint that the previous I/O operation failed
- * (for FDTRANSFER related operations).
+ * Hint that the previous I/O operation failed (for FDTRANSFER
+ * related operations).
  */
 	EVENT_EXTERNAL_FAILURE,
 
@@ -282,26 +360,29 @@ enum ARCAN_EVENT_EXTERNAL {
  * responsibility for a descriptor on the pipe that should be
  * used for rendering instead of the .vidp buffer. This is for
  * accelerated transfers when using an AGP platform and GPU
- * setup that supports such sharing.
+ * setup that supports such sharing. Note that this is a rather
+ * young interface with possible security complications. Block
+ * this operation in sensitive contexts.
  *
  * This is managed by arcan_shmif_control.
  */
 	EVENT_EXTERNAL_BUFFERSTREAM,
 
 /*
- * Debugging hints for video/timing information
+ * Contains additional timing information about a delivered
+ * videoframe. Uses framestatus substructure.
  */
 	EVENT_EXTERNAL_FRAMESTATUS,
 
 /*
  * Decode playback discovered additional substreams that can be
- * selected or switched between
+ * selected or switched between. Uses the streamstat substructure.
  */
 	EVENT_EXTERNAL_STREAMINFO,
 
 /*
  * playback information regarding completion, current time,
- * estimated length etc.
+ * estimated length etc. Uses the streaminf substructure.
  */
 	EVENT_EXTERNAL_STREAMSTATUS,
 
@@ -323,12 +404,14 @@ enum ARCAN_EVENT_EXTERNAL {
  * Request an additional shm-if connection to be allocated,
  * only one segment is guaranteed per process. Tag with an
  * ID for the parent to be able to accept- or reject properly.
+ * Uses the noticereq- substructure.
  */
 	EVENT_EXTERNAL_SEGREQ,
 
 /*
- * used to indicated that some external entity tries to provide
+ * Used to indicated that some external entity tries to provide
  * input data (e.g. a vnc client connected to an encode frameserver)
+ * uses the key and cursor substructure.
  */
 	EVENT_EXTERNAL_KEYINPUT,
 	EVENT_EXTERNAL_CURSORINPUT,
@@ -336,43 +419,119 @@ enum ARCAN_EVENT_EXTERNAL {
 /*
  * Hint how the cursor is to be rendered; i.e. if it's locally defined
  * or a user-readable string suggesting what kind of cursor image
- * that could be used.
+ * that could be used. Uses the messagefield and the effect is implementation
+ * defined, though suggested labels are:
+ * [normal, wait, select-inv, select, up, down, left-right, drag-up-down,
+ * drag-up, drag-down, drag-left, drag-right, drag-left-right, rotate-cw,
+ * rotate-ccw, normal-tag, diag-ur, diag-ll, drag-diag, datafield,
+ * move, typefield, forbidden, help, vertical-datafield]
  */
 	EVENT_EXTERNAL_CURSORHINT,
 
 /*
- * Hint to the running script what user-readable identifier this
- * segment should be known as, and what archetype the window
- * behaves like (multiple messages will only update identifier,
- * switching archetype is not permitted.)
+ * Hint that video synchronization should only cover a subarea.
+ * This is reset to 0,0,w,h on a completed resize sequence.
+ * Values outside the current range (x+w > segw, y+h > segh) will
+ * be ignored or cause the connection to be terminated.
+ */
+	EVENT_EXTERNAL_VIEWPORT,
+
+/*
+ * A once- only trigger that identifies the subtype of a segment.
+ * (see SEGID_ table), uses registr substructure.
  */
 	EVENT_EXTERNAL_REGISTER
 };
 
+/*
+ * Skipmode are synchronization hints for how A/V/I synch
+ * should be compensated for (if possible), uses ioval[0].iv
+ */
+enum ARCAN_TARGET_SKIPMODE {
+/* Discard V frames if the period time will be overshot */
+	TARGET_SKIP_AUTO =  0,
+/* Never discard frames, prefer period to (period*2) time oscillation */
+	TARGET_SKIP_NONE = -1,
+/* Reverse- playback state */
+	TARGET_SKIP_REVERSE  = -2,
+/* Rollback video to (abs(v+TARGET_SKIP_ROLLBACK)+1) frames, apply
+ * input then simulate forward */
+	TARGET_SKIP_ROLLBACK = -3,
+/* Single- stepping clock, stepframe events drive transfers */
+	TARGET_SKIP_STEP = 1,
+/* Only process every v-TARGET_SKIP_FASTWD+1 frames */
+	TARGET_SKIP_FASTFWD  = 10,
+	TARGET_SKIP_ULIM = INT_MAX
+};
+
+/*
+ * Basic input event type grouping,
+ * CATEGORY  => IO (used for masking, queuetransfer etc.)
+ * KIND      => determines substructure
+ * IDEVKIND  => hints at device origin (should rarely matter)
+ * IDATATYPE => usually redundant against KIND, reserved for future tuning
+ */
+enum ARCAN_EVENT_IO {
+	EVENT_IO_BUTTON,
+	EVENT_IO_AXIS_MOVE,
+	EVENT_IO_TOUCH
+};
+
+enum ARCAN_EVENT_IDEVKIND {
+	EVENT_IDEVKIND_KEYBOARD,
+	EVENT_IDEVKIND_MOUSE,
+	EVENT_IDEVKIND_GAMEDEV,
+	EVENT_IDEVKIND_TOUCHDISP
+};
+
+enum ARCAN_EVENT_IDATATYPE {
+	EVENT_IDATATYPE_ANALOG,
+	EVENT_IDATATYPE_DIGITAL,
+	EVENT_IDATATYPE_TRANSLATED,
+	EVENT_IDATATYPE_TOUCH
+};
+
+/*
+ * Used by networking frameserver only, the enable mask is bound
+ * to that archetype and cannot be initiated by a non-auth connection
+ */
 enum ARCAN_EVENT_NET {
-/* server -> parent */
+/* -- events from frameserver -- */
+/* connection was forcibly broken / terminated */
 	EVENT_NET_BROKEN,
+
+/* new client connected, assumed non-authenticated
+ * (state transfers etc. prohibited) */
 	EVENT_NET_CONNECTED,
+
+/* established client disconnected */
 	EVENT_NET_DISCONNECTED,
+
+/* used when initiating a connection that timed out */
 	EVENT_NET_NORESPONSE,
+
+/* used for frameserver launched in discover mode (query external
+ * list server or using local broadcast) */
 	EVENT_NET_DISCOVERED,
-/* parent -> server */
-	EVENT_NET_GRAPHREFRESH,
+
+/* -- events to frameserver -- */
 	EVENT_NET_CONNECT,
 	EVENT_NET_DISCONNECT,
 	EVENT_NET_AUTHENTICATE,
-/* bidirectional */
+/* events to/from frameserver */
 	EVENT_NET_CUSTOMMSG,
 	EVENT_NET_INPUTEVENT,
 	EVENT_NET_STATEREQ
 };
 
 /*
- * These are actually not connected to the shmif at all,
- * and will be moved to the engine where they belong when
- * the event- management is refactored into an actual
- * protocol. [ Then we can keep the above enums shared,
- * and move everything below this point into the _event.h ]
+ * The following enumerations and subtypes are slated for removal here
+ * as they only refer to engine- internal events. Currently, the
+ * structures and types are re-used with an explicit filter-copy
+ * step (frameserver_queuetransfer). Attempting to use them from an
+ * external source will get the connection terminated.
+ *
+ * -- begin internal --
  */
 enum ARCAN_EVENT_VIDEO {
 	EVENT_VIDEO_EXPIRE,
@@ -404,6 +563,7 @@ enum ARCAN_EVENT_FSRV {
 	EVENT_FSRV_DROPPEDFRAME,
 	EVENT_FSRV_DELIVEREDFRAME
 };
+/* -- end internal -- */
 
 typedef union arcan_ioevent_data {
 	struct {
@@ -442,14 +602,17 @@ typedef union arcan_ioevent_data {
 
 typedef struct {
 	enum ARCAN_EVENT_IO kind;
-
 	enum ARCAN_EVENT_IDEVKIND devkind;
 	enum ARCAN_EVENT_IDATATYPE datatype;
+	char label[16];
 
 	uint32_t pts;
 	arcan_ioevent_data input;
 } arcan_ioevent;
 
+/*
+ * internal engine only
+ */
 typedef struct {
 	enum ARCAN_EVENT_VIDEO kind;
 
@@ -466,6 +629,9 @@ typedef struct {
 	intptr_t data;
 } arcan_vevent;
 
+/*
+ * internal engine only
+ */
 typedef struct {
 	enum ARCAN_EVENT_FSRV kind;
 
@@ -481,7 +647,7 @@ typedef struct {
 		};
 		struct {
 			char ident[32];
-			int descriptor;
+			int64_t descriptor;
 		};
 	};
 
@@ -489,46 +655,58 @@ typedef struct {
 	intptr_t otag;
 } arcan_fsrvevent;
 
+/*
+ * internal engine only
+ */
 typedef struct {
 	enum ARCAN_EVENT_AUDIO kind;
 
 	int32_t source;
-	void* data;
+	uintptr_t* data;
 } arcan_aevent;
 
+/*
+ * internal engine only
+ */
 typedef struct arcan_sevent {
 	enum ARCAN_EVENT_SYSTEM kind;
-
-	int errcode; /* copy of errno if possible */
+	int errcode;
 	union {
 		struct {
-			long long hitag, lotag;
+			uint32_t hitag, lotag;
 		} tagv;
 		struct {
-/* only for dev/dbg purposes, expected scripting
- * frontend to free and not-mask */
 			char* dyneval_msg;
 		} mesg;
 		char message[64];
 	};
 } arcan_sevent;
 
+/*
+ * Biggest substructure, primarily due to discovery which needs
+ * to cover both destination address, public key to use and ident-hint.
+ */
 typedef struct arcan_netevent{
 	enum ARCAN_EVENT_NET kind;
-
-	int64_t source;
-	unsigned connid;
+/* tagged in queuetransfer */
+	uint64_t source;
 
 	union {
 		struct {
+/* public 25519 key, will be mapped to/from base64 at borders,
+ * private key is only ever transmitted during setup as env-arg */
 			char key[32];
-			char ident[15];
+/* text indicator of a subservice in ident packages */
+			char ident[8];
 /* max ipv6 textual representation, 39 + strsep + port */
-			char addr[46];
+			char addr[45];
 		} host;
 
+/* match size of host as we'd pad otherwise */
 		char message[93];
 	};
+
+	uint8_t connid;
 } arcan_netevent;
 
 typedef struct arcan_tgtevent {
@@ -561,14 +739,14 @@ typedef struct arcan_extevent {
 
 		struct{
 			uint8_t id;
-			int keysym;
+			uint32_t keysym;
 			uint8_t active;
 		} key;
 
 		struct{
 /* platform specific content needed for some platforms to map a buffer */
-			size_t pitch;
-			int format;
+			uint32_t pitch;
+			uint32_t format;
 		} bstream;
 
 		struct {
@@ -576,6 +754,10 @@ typedef struct arcan_extevent {
 			uint8_t streamid;   /* key used to tell the decoder to switch */
 			uint8_t datakind;   /* 0: audio, 1: video, 2: text, 3: overlay */
 		} streaminf;
+
+		struct {
+			uint16_t x, y, w, h;
+		} viewport;
 
 		struct {
 			uint32_t id;
@@ -608,15 +790,8 @@ typedef struct arcan_extevent {
 	};
 } arcan_extevent;
 
-typedef union event_data {
-
-	void* other;
-} event_data;
-
 typedef struct arcan_event {
 	enum ARCAN_EVENT_CATEGORY category;
-	unsigned long timestamp;
-	char label[16];
 
 	union {
 		arcan_ioevent io;
@@ -644,7 +819,8 @@ typedef enum {
 	ARKMOD_NUM   = 0x1000,
 	ARKMOD_CAPS  = 0x2000,
 	ARKMOD_MODE  = 0x4000,
-	ARKMOD_RESERVED = 0x8000
+	ARKMOD_RESERVED = 0x8000,
+	ARKMOD_LIMIT = INT_MAX
 } key_modifiers;
 
 #ifdef PLATFORM_HEADER
@@ -653,20 +829,20 @@ typedef enum {
 
 struct arcan_evctx {
 /* time and mask- tracking, only used parent-side */
-	unsigned c_ticks;
-	unsigned c_leaks;
-	unsigned mask_cat_inp;
-	unsigned mask_cat_out;
+	uint32_t c_ticks;
+	uint32_t c_leaks;
+	uint32_t mask_cat_inp;
+	uint32_t mask_cat_out;
 
-/* only used for local queues,  */
-	size_t eventbuf_sz;
+/* only used for local queues */
+	uint8_t eventbuf_sz;
 
 	arcan_event* eventbuf;
 
 /* offsets into the eventbuf queue, parent will always
  * % ARCAN_SHMPAGE_QUEUE_SZ to prevent nasty surprises */
-	volatile unsigned* front;
-	volatile unsigned* back;
+	volatile uint8_t* front;
+	volatile uint8_t* back;
 
 	int8_t local;
 
@@ -685,11 +861,11 @@ struct arcan_evctx {
  * of semaphores).
  */
 	struct {
-		volatile uintptr_t* killswitch;
+		volatile uint8_t* killswitch;
 		sem_handle handle;
 
 #ifdef ARCAN_SHMIF_THREADSAFE_QUEUE
-		bool init;
+		uint8_t init;
 		pthread_mutex_t lock;
 #endif
 	} synch;

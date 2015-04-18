@@ -582,7 +582,7 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	else
 		newseg->segid = SEGID_UNKNOWN;
 
-	newseg->sz_audb = ARCAN_SHMPAGE_AUDIOBUF_SZ;
+	newseg->sz_audb = ARCAN_SHMIF_AUDIOBUF_SZ;
 	newseg->ofs_audb = 0;
 	newseg->audb = malloc(ctx->sz_audb);
 

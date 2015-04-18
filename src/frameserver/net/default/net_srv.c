@@ -229,9 +229,6 @@ static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 				authenticate(active_cons, nconns, ev.net.connid);
 			break;
 
-			case EVENT_NET_GRAPHREFRESH:
-			break;
-
 			case EVENT_NET_CUSTOMMSG:
 				GRAPH_EVENT("Parent pushed message (%s)\n", ev.net.message);
 				server_pack_data(active_cons, nconns, ev.net.connid,

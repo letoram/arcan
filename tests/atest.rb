@@ -124,7 +124,7 @@ regression_flags = [
 # to have a timed shutdown.
 doc_configurations = ["Release"]
 doc_compilers = ["clang"]
-doc_platforms = ["sdl"]
+doc_platforms = platforms[1]
 doc_flags = [""]
 
 class Cfg

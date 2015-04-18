@@ -2941,26 +2941,24 @@ static int targetinput(lua_State* ctx)
 
 	const char* label = intblstr(ctx, tblind, "label");
 	if (label){
-		int ul = sizeof(ev.label) / sizeof(ev.label[0]) - 1;
-		char* dst = ev.label;
+		int ul = sizeof(ev.io.label) / sizeof(ev.io.label[0]) - 1;
+		char* dst = ev.io.label;
 
 		while (*label != '\0' && ul--)
 			*dst++ = *label++;
 		*dst = '\0';
 	}
-
 	ev.io.pts = intblint(ctx, tblind, "pts");
 
 	if ( strcmp( kindlbl, "analog") == 0 ){
 		const char* srcstr = intblstr(ctx, tblind, "source");
 
 		ev.io.kind = EVENT_IO_AXIS_MOVE;
-		ev.io.datatype = EVENT_IDATATYPE_ANALOG;
-		ev.io.devkind = srcstr && strcmp( srcstr, "mouse") == 0 ?
-			EVENT_IDEVKIND_MOUSE : EVENT_IDEVKIND_GAMEDEV;
+		bool mouse = srcstr && strcmp( srcstr, "mouse") == 0;
+		ev.io.devkind = mouse ?	EVENT_IDEVKIND_MOUSE : EVENT_IDEVKIND_GAMEDEV;
 		ev.io.input.analog.devid  = intblint(ctx, tblind, "devid");
 		ev.io.input.analog.subid  = intblint(ctx, tblind, "subid");
-		ev.io.input.analog.gotrel = ev.io.devkind == EVENT_IDEVKIND_MOUSE;
+		ev.io.input.analog.gotrel = mouse;
 
 	/*  sweep the samples subtable, add as many as present (or possible) */
 		lua_getfield(ctx, tblind, "samples");
@@ -2975,7 +2973,6 @@ static int targetinput(lua_State* ctx)
 		ev.io.input.analog.nvalues = naxiss;
 	}
 	else if (strcmp(kindlbl, "touch") == 0){
-		ev.io.datatype = EVENT_IDATATYPE_TOUCH;
 		ev.io.devkind = EVENT_IDEVKIND_TOUCHDISP;
 		ev.io.input.touch.devid = intblint(ctx, tblind, "devid");
 		ev.io.input.touch.subid = intblint(ctx, tblind, "subid");
@@ -2986,8 +2983,7 @@ static int targetinput(lua_State* ctx)
 	}
 	else if (strcmp(kindlbl, "digital") == 0){
 		if (intblbool(ctx, tblind, "translated")){
-			ev.io.datatype = EVENT_IDATATYPE_TRANSLATED;
-			ev.io.devkind  = EVENT_IDEVKIND_KEYBOARD;
+			ev.io.devkind = EVENT_IDEVKIND_KEYBOARD;
 			ev.io.input.translated.active = intblbool(ctx, tblind, "active");
 			ev.io.input.translated.scancode = intblint(ctx, tblind, "number");
 			ev.io.input.translated.keysym = intblint(ctx, tblind, "keysym");
@@ -7947,39 +7943,6 @@ static int net_authenticate(lua_State* ctx)
 	return 0;
 }
 
-/*
- * quite expensive pushes and not that everyone has a use-case for this,
- * so we separate it out and if the user wants working graphing,
- * have him or her push refreshes
- */
-static int net_refresh(lua_State* ctx)
-{
-	LUA_TRACE("net_refresh");
-
-	arcan_vobject* vobj;
-	luaL_checkvid(ctx, 1, &vobj);
-	arcan_event outev = {
-		.category = EVENT_NET,
-		.net.kind = EVENT_NET_GRAPHREFRESH
-	};
-
-	arcan_frameserver* fsrv = vobj->feed.state.ptr;
-
-	if (!fsrv){
-		LUA_ETRACE("net_refresh", "no frameserver");
-		return 0;
-	}
-
-	if (!fsrv->segid == SEGID_NETWORK_SERVER)
-		arcan_fatal("net_pushsrv() -- bad arg1, specified frameserver "
-		"is not in server mode (net_refresh).\n");
-
-	arcan_frameserver_pushevent(fsrv, &outev);
-
-	LUA_ETRACE("net_refresh", NULL);
-	return 0;
-}
-
 void arcan_lua_cleanup()
 {
 }
@@ -8408,7 +8371,6 @@ static const luaL_Reg netfuns[] = {
 {"net_discover",     net_discover    },
 {"net_authenticate", net_authenticate},
 {"net_accept",       net_accept      },
-{"net_refresh",      net_refresh     },
 {NULL, NULL},
 };
 #undef EXT_MAPTBL_NETWORK
@@ -8760,9 +8722,10 @@ static inline const char* fsrvtos(enum ARCAN_SEGID ink)
 	case SEGID_ENCODER: return "encoder";
 	case SEGID_TITLEBAR: return "titlebar";
 	case SEGID_SENSOR: return "sensor";
-	case SEGID_INPUTDEVICE: return "inputdevice";
 	case SEGID_DEBUG: return "debug";
+	case SEGID_ACCESSIBILITY: return "accessibility";
 	case SEGID_UNKNOWN: return "unknown";
+	case SEGID_LIM: break;
 	}
 	return "";
 }
