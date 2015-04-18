@@ -213,7 +213,7 @@ static void push_buffer(arcan_frameserver* src,
 			.fsrv.video = src->vid,
 			.fsrv.audio = src->aid,
 			.fsrv.otag = src->tag,
-			.fsrv.glsource = src->shm.ptr->glsource
+			.fsrv.glsource = src->shm.ptr->hints & RHINT_ORIGO_LL
 		};
 
 		arcan_event_enqueue(arcan_event_defaultctx(), &rezev);
@@ -787,8 +787,8 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 /* resize the source vid in a way that won't propagate to user scripts
  * as we want the resize event to be forwarded to the regular callback */
 	arcan_event_maskall(arcan_event_defaultctx());
-	src->desc.samplerate = ARCAN_SHMPAGE_SAMPLERATE;
-	src->desc.channels = ARCAN_SHMPAGE_ACHANNELS;
+	src->desc.samplerate = ARCAN_SHMIF_SAMPLERATE;
+	src->desc.channels = ARCAN_SHMIF_ACHANNELS;
 
 /*
  * though the frameserver backing is resized, the actual
@@ -902,7 +902,7 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 /* we don't know how many audio feeds are actually monitored to produce the
  * output, thus not how large the intermediate buffer should be to
  * safely accommodate them all */
-			ctx->sz_audb = ARCAN_SHMPAGE_AUDIOBUF_SZ;
+			ctx->sz_audb = ARCAN_SHMIF_AUDIOBUF_SZ;
 			ctx->audb = arcan_alloc_mem(ctx->sz_audb,
 				ARCAN_MEM_ABUFFER, 0, ARCAN_MEMALIGN_PAGE);
 			ctx->queue_mask = EVENT_EXTERNAL;

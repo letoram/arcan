@@ -197,7 +197,7 @@ struct shmif_hidden {
 		bool active;
 		sem_handle semset[3];
 		process_handle parent;
-		volatile uintptr_t* dms;
+		volatile uint8_t* dms;
 		pthread_mutex_t synch;
 		void (*exitf)(int val);
 	} guard;
@@ -706,7 +706,7 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 
 	struct shmif_hidden gs = {
 		.guard = {
-			.dms = (uintptr_t*) &res.addr->dms,
+			.dms = (uint8_t*) &res.addr->dms,
 			.semset = { res.asem, res.vsem, res.esem },
 			.parent = res.addr->parent,
 			.exitf = exitf
@@ -849,13 +849,13 @@ void arcan_shmif_setevqs(struct arcan_shmif_page* dst,
 	inq->eventbuf = dst->childevq.evqueue;
 	inq->front = &dst->childevq.front;
 	inq->back  = &dst->childevq.back;
-	inq->eventbuf_sz = ARCAN_SHMPAGE_QUEUE_SZ;
+	inq->eventbuf_sz = PP_QUEUE_SZ;
 
 	outq->local =false;
 	outq->eventbuf = dst->parentevq.evqueue;
 	outq->front = &dst->parentevq.front;
 	outq->back  = &dst->parentevq.back;
-	outq->eventbuf_sz = ARCAN_SHMPAGE_QUEUE_SZ;
+	outq->eventbuf_sz = PP_QUEUE_SZ;
 }
 
 #if _WIN32
@@ -993,7 +993,7 @@ size_t arcan_shmif_getsize(unsigned width, unsigned height)
 	return PP_SHMPAGE_MAXSZ;
 #else
 	return width * height * ARCAN_SHMPAGE_VCHANNELS +
-		sizeof(struct arcan_shmif_page) + ARCAN_SHMPAGE_AUDIOBUF_SZ;
+		sizeof(struct arcan_shmif_page) + ARCAN_SHMIF_AUDIOBUF_SZ;
 #endif
 }
 

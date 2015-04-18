@@ -5,7 +5,9 @@
  */
 
 /*
- * Todo for this platform module:
+ * Points to explore for this platform module:
+ * (currently a bit careful spending more time here pending the
+ * development of vulcan, nvidia egl streams extension etc.)
  *
  * 1. Display Hotplug Events
  *    [ Note update: we seem again to be forced to consider the
@@ -14,9 +16,10 @@
  *      shared synchronization platform rather than have a custom one
  *      in each sub-platform. ]
  *
- *    Otherwise most things are in place, if we can take a ms to check
- *    every n frames or so, that would probably be sufficient (just
- *    look for arcan_event_enqueue)
+ *    Shallow experiments in the lab showed somewhere around ~150ms
+ *    complete stalls for a rescan so that is not really a viable
+ *    option. One would thing that there would be some mechanism
+ *    for the drm- master to do this already.
  *
  * 2. Support for multiple graphics cards,
  *    I have no hardware and testing rig for this, but the heavy lifting
@@ -25,12 +28,19 @@
  *    or mirror the vstore on both devices. Hunt for node[0] references
  *    as those have to be fixed.
  *
+ *    In addition (and this is harder) we would need some kind of
+ *    hinting to which render-node which application should map to
+ *    and also support migrating between nodes. Platform design currently
+ *    has no way to achieve this.
+ *
  * 3. Support for External Launch / Building, Restoring Contexts
  *    note the test cases mentioned in _prepare
  *
  * 4. DPMS management? native cursor? backlight?
  *    - backlight support should really be added as yet another led
- *      driver, that code is a bit old and dusty though
+ *      driver, that code is a bit old and dusty though so there is
+ *      incentive to redesign that anyhow (so both dedicated led controllers,
+ *      backlights and keyboards are covered in the same interface).
  *
  * 5. Advanced Synchronization options (swap-interval, synch directly
  *    to front buffer, swap-with-tear, pre-render then wake / move
@@ -39,7 +49,7 @@
  *
  * 6. Survive "no output display" (possibly by reverting into a stall/wait
  *    until the display is made available, or switch to a display-less
- *    surface)
+ *    context)
  */
 #include <stdio.h>
 #include <string.h>

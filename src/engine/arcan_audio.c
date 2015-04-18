@@ -887,11 +887,11 @@ static arcan_errc capturefeed(arcan_aobj* aobj, arcan_aobj_id id,
 
 	if (aobj->monitor)
 		aobj->monitor(aobj->id, (uint8_t*) capturebuf, sample << 2,
-			ARCAN_SHMPAGE_ACHANNELS, ARCAN_SHMPAGE_SAMPLERATE, aobj->monitortag);
+			ARCAN_SHMIF_ACHANNELS, ARCAN_SHMIF_SAMPLERATE, aobj->monitortag);
 
 	if (current_acontext->globalhook)
 		current_acontext->globalhook(aobj->id, (uint8_t*) capturebuf,
-			sample << 2, ARCAN_SHMPAGE_ACHANNELS, ARCAN_SHMPAGE_SAMPLERATE,
+			sample << 2, ARCAN_SHMIF_ACHANNELS, ARCAN_SHMIF_SAMPLERATE,
 			current_acontext->global_hooktag
 		);
 
@@ -902,7 +902,7 @@ arcan_aobj_id arcan_audio_capturefeed(const char* dev)
 {
 	arcan_aobj* dstobj = NULL;
 	ALCdevice* capture = alcCaptureOpenDevice(dev,
-		ARCAN_SHMPAGE_SAMPLERATE, AL_FORMAT_STEREO16, 65536);
+		ARCAN_SHMIF_SAMPLERATE, AL_FORMAT_STEREO16, 65536);
 	arcan_audio_alloc(&dstobj, false);
 
 /* we let OpenAL maintain the capture buffer, we flush it like other feeds

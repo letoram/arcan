@@ -136,8 +136,8 @@ static inline void process_mousemotion(struct arcan_evctx* ctx,
 {
 	int16_t dstv, dstv_r;
 	arcan_event nev = {
-		.label = "MOUSE\0",
 		.category = EVENT_IO,
+		.io.label = "MOUSE\0",
 		.io.kind = EVENT_IO_AXIS_MOVE,
 		.io.datatype = EVENT_IDATATYPE_ANALOG,
 		.io.devkind  = EVENT_IDEVKIND_MOUSE,
@@ -146,8 +146,7 @@ static inline void process_mousemotion(struct arcan_evctx* ctx,
 		.io.input.analog.nvalues = 2
 	};
 
-	snprintf(nev.label,
-		sizeof(nev.label) - 1, "mouse");
+	snprintf(nev.io.label, sizeof(nev.io.label) - 1, "mouse");
 
 	if (process_axis(ctx, &iodev.mx, xv, &dstv) &&
 		process_axis(ctx, &iodev.mx_r, xrel, &dstv_r)){

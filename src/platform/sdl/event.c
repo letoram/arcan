@@ -178,8 +178,8 @@ static inline void process_mousemotion(arcan_evctx* ctx,
 {
 	int16_t dstv, dstv_r;
 	arcan_event nev = {
-		.label = "MOUSE\0",
 		.category = EVENT_IO,
+		.io.label = "MOUSE\0",
 		.io.kind = EVENT_IO_AXIS_MOVE,
 		.io.datatype = EVENT_IDATATYPE_ANALOG,
 		.io.devkind  = EVENT_IDEVKIND_MOUSE,
@@ -188,8 +188,7 @@ static inline void process_mousemotion(arcan_evctx* ctx,
 		.io.input.analog.nvalues = 2
 	};
 
-	snprintf(nev.label,
-		sizeof(nev.label) - 1, "mouse");
+	snprintf(nev.io.label, sizeof(nev.io.label) - 1, "mouse");
 
 	if (process_axis(ctx, &iodev.mx, ev->x, &dstv) &&
 		process_axis(ctx, &iodev.mx_r, ev->xrel, &dstv_r)){
@@ -414,7 +413,7 @@ void platform_event_process(arcan_evctx* ctx)
 			newevent.io.input.digital.devid = event.motion.which;
 			newevent.io.input.digital.subid = event.button.button;
 			newevent.io.input.digital.active = true;
-			snprintf(newevent.label, sizeof(newevent.label) - 1, "mouse%i",
+			snprintf(newevent.io.label, sizeof(newevent.io.label) - 1, "mouse%i",
 				event.motion.which);
 			arcan_event_enqueue(ctx, &newevent);
 		break;
@@ -426,7 +425,7 @@ void platform_event_process(arcan_evctx* ctx)
 			newevent.io.input.digital.devid = event.motion.which;
 			newevent.io.input.digital.subid = event.button.button;
 			newevent.io.input.digital.active = false;
-			snprintf(newevent.label, sizeof(newevent.label) - 1, "mouse%i",
+			snprintf(newevent.io.label, sizeof(newevent.io.label) - 1, "mouse%i",
 				event.motion.which);
 			arcan_event_enqueue(ctx, &newevent);
 		break;
@@ -470,7 +469,7 @@ void platform_event_process(arcan_evctx* ctx)
 			newevent.io.input.digital.devid = event.jbutton.which;
 			newevent.io.input.digital.subid = event.jbutton.button;
 			newevent.io.input.digital.active = true;
-			snprintf(newevent.label, sizeof(newevent.label)-1,
+			snprintf(newevent.io.label, sizeof(newevent.io.label)-1,
 				"joystick%i", event.jbutton.which);
 			arcan_event_enqueue(ctx, &newevent);
 		break;
@@ -482,7 +481,7 @@ void platform_event_process(arcan_evctx* ctx)
 			newevent.io.input.digital.devid = event.jbutton.which;
 			newevent.io.input.digital.subid = event.jbutton.button;
 			newevent.io.input.digital.active = false;
-			snprintf(newevent.label, sizeof(newevent.label)-1, "joystick%i",
+			snprintf(newevent.io.label, sizeof(newevent.io.label)-1, "joystick%i",
 				event.jbutton.which);
 			arcan_event_enqueue(ctx, &newevent);
 		break;

@@ -146,7 +146,7 @@ static void generate_frame()
 			arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGVID);
 
 			vptsc += 1000.0f / (
-				(double)(ARCAN_SHMPAGE_SAMPLERATE) / (double)smpl_wndw);
+				(double)(ARCAN_SHMIF_SAMPLERATE) / (double)smpl_wndw);
 		}
 	}
 
@@ -156,7 +156,7 @@ static void generate_frame()
 static void audio_play(void *data,
 	const void *samples, unsigned count, int64_t pts)
 {
-	size_t nb = count * ARCAN_SHMPAGE_ACHANNELS * sizeof(uint16_t);
+	size_t nb = count * ARCAN_SHMIF_ACHANNELS * sizeof(uint16_t);
 
 	if (!decctx.got_video && decctx.shmcont.addr->w != AUD_VIS_HRES)
 	{
@@ -460,7 +460,7 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		video_lock, video_unlock, video_display, NULL);
 
 	libvlc_audio_set_format(decctx.player, "S16N",
-		ARCAN_SHMPAGE_SAMPLERATE, ARCAN_SHMPAGE_ACHANNELS);
+		ARCAN_SHMIF_SAMPLERATE, ARCAN_SHMIF_ACHANNELS);
 
 	libvlc_audio_set_callbacks(decctx.player,
 		audio_play, /*pause*/ NULL, /*resume*/ NULL, audio_flush, audio_drain,NULL);

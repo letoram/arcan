@@ -109,7 +109,6 @@ static bool client_inevq_process(apr_socket_t* outconn)
 				return clctx.conn.pack(&clctx.conn, TAG_NETMSG, msgsz, ev.net.message);
 			break;
 
-			case EVENT_NET_GRAPHREFRESH:
 			default:
 			break;
 			}

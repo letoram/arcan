@@ -38,151 +38,106 @@
 /*
  * This header defines the interface and support functions for
  * shared memory- based communication between the arcan parent
- * and each "frameserver". Some parts of this interface is
- * likely to be changed/expanded in the near future, and is
- * NOT to be treated as a communication protocol between
- * processes of different trust-domains/compiler/abi/... origin,
- * we can/might/should use Wayland for that.
+ * and frameservers/non-authoritative clients.
  *
- * The primary use here is for frequent, synchronized transfer
- * of video frames along with related control events.
- *
- * It is assumed that all newly spawned frameservers are allowed
- * ONE video- buffer and ONE audio- buffer to work with.
- *
- * Other forms of data (files for transferring to a remote source,
- * data sources for state serialization / deserialization) etc.
- * are managed through file-descriptor passing (HANDLES for the
- * windows crowd).
- *
- * See frameserver/avfeed.c for a stripped down example of using
- * this interface. There are three principal ways this interface
- * is used;
- * 1. compliant frameservers - video decoders, encoders, network
- * protocol implementations etc. Environment and connection points
- * are prepared by the parent process in beforehand.
- *
- * 2. external programs - using arcan as a display server. The
- * domain socket is used to find a connection point to the parent.
- * These points has to be explicitly set-up and managed by the
- * parent (from the LUA side, target_alloc).
- *
- * 3. hijacked programs - code injected into other processes,
- * as a means of exfiltrating data. These are launched as compliant
- * frameservers, but additional data (which descriptors should
- * be used to communicate etc.) are conveyed through environmental
- * variables.
- */
-
-/*
- * The IPC connection points (which may vary slightly based on
- * connection method, e.g. authorative or non-authorative, are
- * the shmpage, a socket and three semaphores.
- *
- * The way these can reach the process vary; by being passed as
- * an environment variable (ARCAN_CONNPATH, and for additional
- * authentication, ARCAN_CONNKEY).
+ * For extended documentation on how this interface works, design
+ * rationale, changes and so on, please refer to the wiki @
+ * https://github.com/letoram/arcan/wiki/Shmif
  */
 
 /*
  * Compile-time constants that define the size and layout
- * of the shared structure.
+ * of the shared structure. These values are part in defining the ABI
+ * and should therefore only be tuned when you have control of the
+ * whole-system compilation and packaging (OS distributions, embedded
+ * systems).
  */
 
 /*
- * Number of allowed events in the in-queue and the out-queue,
- * should be kept low and monitored for use.
+ * Define the reserved ring-buffer space used for input and output events
+ * must be 0 < PP_QUEUE_SZ < 256
  */
+#ifndef PP_QUEUE_SZ
 #define PP_QUEUE_SZ 32
-static const int ARCAN_SHMPAGE_QUEUE_SZ = PP_QUEUE_SZ;
+#endif
+static const int ARCAN_SHMIF_QUEUE_SZ = PP_QUEUE_SZ;
 
 /*
- * Default audio storage / transfer characteristics.
- * The gist of it is to keep this interface trivial
- * "for basic sound" now and prepare an (optional)
- * "advanced toggle" later with the whole surround
- * sound in floating point at high sample-rates
- * thing, which is likely to come in the 0.6/0.7 timeframe.
+ * Audio format and basic parameters, this is kept primitive on purpose.
+ * This part is slated for refactoring to support exclusive- device locks,
+ * and raw device access for advanced applications.
  */
-static const int ARCAN_SHMPAGE_MAXAUDIO_FRAME = 192000;
-static const int ARCAN_SHMPAGE_SAMPLERATE = 44100;
-static const int ARCAN_SHMPAGE_ACHANNELS = 2;
-static const int ARCAN_SHMPAGE_SAMPLE_SIZE = sizeof(short);
+static const int ARCAN_SHMIF_SAMPLERATE = 48000;
+static const int ARCAN_SHMIF_ACHANNELS = 2;
+static const int ARCAN_SHMIF_SAMPLE_SIZE = sizeof(short);
+static const int ARCAN_SHMIF_AUDIOBUF_SZ = 65535;
 
 /*
- * This is a hint to resamplers used as part of whatever
- * frameserver uses this interface, on a scale from 1..10,
- * how do we value audio resampling quality
+ * These are technically limited by the combination of graphics and video
+ * platforms. Since the buffers are placed at the end of the struct, they
+ * can be changed without breaking ABI though several resize requests may
+ * be rejected.
  */
-static const int ARCAN_SHMPAGE_RESAMPLER_QUALITY = 5;
-
 #ifndef PP_SHMPAGE_MAXW
 #define PP_SHMPAGE_MAXW 4096
 #endif
+static const int ARCAN_SHMPAGE_MAXW = PP_SHMPAGE_MAXW;
+
 
 #ifndef PP_SHMPAGE_MAXH
 #define PP_SHMPAGE_MAXH 2048
 #endif
+static const int ARCAN_SHMPAGE_MAXH = PP_SHMPAGE_MAXH;
 
+/*
+ * Identification token that may need to be passed when making a socket
+ * connection to the main arcan process.
+ */
 #ifndef PP_SHMPAGE_SHMKEYLIM
-#define PP_SHMPAGE_SHMKEYLIM 78
+#define PP_SHMPAGE_SHMKEYLIM 32
 #endif
 
 /*
- * This works similarly to the video_platform in arcan,
- * we commit statically to one native format (which should map
- * to that of the running arcan build), and shared memory
- * buffer transfers are expected to follow this format,
- * possibly by just using the macro and type indirection below
- * -- other buffer formats should be passed with some accelerated
- *  mechanism (typically prime dma buffers) e.g. shmif_sighandle.
+ * We abstract the base type for a pixel and provide a packing macro in
+ * order to permit systems with lower memory to switch to uint16 RGB565
+ * style formats, and to permit future switches to higher depth/range.
  */
 #ifndef VIDEO_PIXEL_TYPE
 #define VIDEO_PIXEL_TYPE uint32_t
 #endif
-
+#define ARCAN_SHMPAGE_VCHANNELS 4
 typedef VIDEO_PIXEL_TYPE shmif_pixel;
-
 #ifndef RGBA
 #define RGBA(r, g, b, a)( ((uint32_t)(a) << 24) | ((uint32_t) (b) << 16) |\
 ((uint32_t) (g) << 8) | ((uint32_t) (r)) )
 #endif
 
-static const int ARCAN_SHMPAGE_VCHANNELS = 4;
-static const int ARCAN_SHMPAGE_MAXW = PP_SHMPAGE_MAXW;
-static const int ARCAN_SHMPAGE_MAXH = PP_SHMPAGE_MAXH;
-
 /*
- * The final shmpage size will be a function of the constants
- * above, along with a few extra bytes to make room for the
- * header structure (audioframe * 3 / shmpage_achannels),
- * This is a legacy from when this interface was just used
- * to interface with ffmpeg, it would be unwise to rely
- * on this approach ;-)
- */
-static const int ARCAN_SHMPAGE_AUDIOBUF_SZ = 288000;
-
-#ifndef PP_SHMPAGE_MAXSZ
-#define PP_SHMPAGE_MAXSZ 48294400
-#endif
-
-/*
- * If this define is overridden, make sure that the starting dimensions
- * actually fit the minimal (32x32 + buffers + sizeof(struct)
+ * Reasonable starting dimensions, this can be changed without breaking ABI
+ * as parent/client will initiate a resize based on gain relative to the
+ * current size.
+ *
+ * It should, at least, fit 32*32*sizeof(shmif_pixel) + sizeof(struct) +
+ * sizeof event*PP_QUEUE_SIZE*2 + PP_AUDIOBUF_SZ with alignment padding.
  */
 #ifndef PP_SHMPAGE_STARTSZ
 #define PP_SHMPAGE_STARTSZ 2014088
 #endif
 
 /*
- * Some plaforms/implementations do not support dynamically growing/shrinking
- * shared memory. To cope, we principally have two methods;
- * one is to overcommit -- always allocate the limit and then just re-map
- * the same page with lower / greater sizes.
- *
- * The other is to allocate a new shared memory with the new size.
- * This increases the number of context switches and introduces the constraint
- * that the event-queues should be EMPTY on both sides during resize calls.
+ * This is calculated through MAXW*MAXH*sizeof(shmif_pixel) + sizeof
+ * struct + sizeof event*PP_QUEUE_SIZE*2 + PP_AUDIOBUF_SZ with alignment.
+ * It is primarily of concern when OVERCOMMIT build is used.
+ */
+#ifndef PP_SHMPAGE_MAXSZ
+#define PP_SHMPAGE_MAXSZ 48294400
+#endif
+static const int ARCAN_SHMPAGE_MAX_SZ = PP_SHMPAGE_MAXSZ;
+
+/*
+ * Overcommit is a specialized build mode (that should be avoided if possible)
+ * that sets the initial segment size to PP_SHMPAGE_STARTSZ and no new buffer
+ * dimension negotiation will occur.
  */
 #ifdef ARCAN_SHMIF_OVERCOMMIT
 static const int ARCAN_SHMPAGE_START_SZ = PP_SHMPAGE_MAXSZ;
@@ -190,198 +145,41 @@ static const int ARCAN_SHMPAGE_START_SZ = PP_SHMPAGE_MAXSZ;
 static const int ARCAN_SHMPAGE_START_SZ = PP_SHMPAGE_STARTSZ;
 #endif
 
-static const int ARCAN_SHMPAGE_MAX_SZ = PP_SHMPAGE_MAXSZ;
-
+/*
+ * Two primary transfer operation types, from the perspective of the
+ * main arcan application (i.e. normally frameservers feed INPUT but
+ * specialized recording segments are flagged as OUTPUT. Internally,
+ * these have different synchronization rules.
+ */
 enum arcan_shmif_type {
 	SHMIF_INPUT = 1,
 	SHMIF_OUTPUT
 };
 
+/*
+ * This enum defines the possible operations for audio and video
+ * synchronization (both or either) and how locking should behave.
+ */
 enum arcan_shmif_sigmask {
-/* can combine transfers */
 	SHMIF_SIGVID = 1,
 	SHMIF_SIGAUD = 2,
 
-/* blocking vs. accepting data corruption (partial) trade-off                */
-	SHMIF_SIGBLK_FORCE = 0, /* wait for synchronous releasefrom parent   */
-	SHMIF_SIGBLK_NONE  = 4, /* never wait, always overwrite              */
-	SHMIF_SIGBLK_ONCE  = 8  /* non-blocking unless already frame pending */
-};
+/* synchronous, wait for parent to acknowledge */
+	SHMIF_SIGBLK_FORCE = 0,
 
-struct shmif_hidden;
+/* return immediately, further writes may cause tearing and other
+ * visual/aural artifacts */
+	SHMIF_SIGBLK_NONE  = 4,
 
-/*
- * Tracking context for a frameserver connection,
- * will only be used "locally" with references
- */
-struct arcan_shmif_cont {
-	struct arcan_shmif_page* addr;
-
-/* offset- pointers into addr, can change between calls to
- * shmif_ functions so aliasing is not recommended */
-	shmif_pixel* vidp;
-	int16_t* audp;
-
-/*
- * should only be used for expert I/O multiplexation,
- * when multiple handles need to be scanned and the
- * developer taking action based on which ones are available.
- */
-	file_handle epipe;
-
-/*
- * used in integrity_check, should never be != 0 and that
- * would be indicative of poor / broken vidp/audp- dependant
- * code.
- */
-	int16_t oflow_cookie;
-
-/* maintain a connection to the shared memory handle in order
- * to handle resizing (on platforms that support it, otherwise
- * define ARCAN_SHMIF_OVERCOMMIT which will only recalc pointers
- * on resize */
-	intptr_t shmh;
-	size_t shmsize;
-
-/*
- * handles are exposed in the struct rather than in (priv) but
- * manually manipulating them is not recommended. When shmpage
- * layout has been refactored into passing events through a
- * socket, this interface will also be replaced with a descriptor-
- * like signalling interface to get working multiplexation rather
- * than polling.
- */
-	sem_handle vsem;
-	sem_handle asem;
-	sem_handle esem;
-
-	struct arcan_evctx inev;
-	struct arcan_evctx outev;
-
-/*
- * This cookie is a magical value calculated when a page
- * is opened and resized and checked against in each verify_integrity
- * call. It is primarily based on the compiler- perspective of the
- * layout of the shmif_page structure. Deviation between this and
- * the corresponding field in shmif_page is a terminal state transition.
- */
-	uint64_t cookie;
-
-	void* user; /* tag provided to the user */
-	struct shmif_hidden* priv; /* used in _control for guard threads etc. */
+/* return immediately unless there is already a transfer pending */
+	SHMIF_SIGBLK_ONCE = 8
 };
 
 typedef enum arcan_shmif_sigmask(
 	*shmif_trigger_hook)(struct arcan_shmif_cont*);
 
-struct arcan_shmif_page {
-/*
- * These will be set to the ARCAN_VERSION_MAJOR and ARCAN_VERSION_MAJOR
- * defines, a mismatch will cause the integrity_check to fail and
- * both sides may decide to terminate. Thus, they also act as a header
- * guard.
- */
-	int8_t major;
-	int8_t minor;
-
-/*
- * This is calculated on both ends and is a safe-guard against
- * different compilers generating different padding / ofsets etc.
- * in this structure. See also: cookie in shmcount.
- */
-	uint64_t cookie;
-
-/*
- * SLATED FOR REFACTOR
- * should be moved to a FD based channel with a protobuf- managed
- * (de-)serilization structure. The reason this is currently kept
- * this way is to fixate the event- ontology after which we can
- * move the shmif bits to a library format.
- */
-	struct {
-		struct arcan_event evqueue[ PP_QUEUE_SZ ];
-		uint32_t front, back;
-	} childevq, parentevq;
-
-/* will be checked frequently, likely before transfers as it means
- * that shmcontents etc. will be invalid */
-	volatile int8_t resized;
-
-/*
- * On a resize, parent will update segment_size. If this differs from
- * the previously known size (tracked in cont), the segment should be remapped.
- * Parent ignores the value here and maintains a local copy.
- * This allows the parent to dictate if segments should be shrunk
- * to optimal- fit video- buffer or not based on the larger
- * memory subsystems.
- */
-	size_t segment_size;
-
-/* when released, it is assumed that the parent or child or both
- * has failed and everything should be dropped and terminated */
-	volatile uintptr_t dms;
-
-/*
- * flipped whenever a buffer is ready to be synched,
- * polled repeatedly by the parent (or child for the case of an
- * encode frameserver) then the corresponding sem_handle is used
- * as a wake-up trigger.
- *
- * Note that underneath the surface, this are currently just checked
- * and written to in a > non atomic way <. It's trivial to switch
- * to atomic test and sets, but they are currently kept this way
- * to control/check how "non-compliant" manipulation and race-conditions
- * manifest.
- */
-	volatile uint8_t aready;
-	volatile uint8_t vready;
-
-/*
- * Current video output dimensions, if these deviate from the
- * agreed upon dimensions (i.e. change w,h and set the resized flag to !0)
- * the parent will simply ignore the data presented.
- */
-	size_t w, h;
-
-/*
- * this flag is set if the row-order is inverted (i.e. Y starts at
- * the bottom and moves up rather than upper left as per arcan default)
- * and used as a hint to the rendering subsystem in order to
- * just adjust the texture coordinates used (to spare memory bandwidth).
- */
-	uint8_t glsource;
-
-/*
- * some data-sources (e.g. video-playback) may take advantage
- * of buffering in the parent process and keep presentation/timing/queue
- * management there. In those cases, a relative ms timestamp
- * is present in this field and the main process gets the happy job
- * of trying to compensate for synchronization.
- */
-	int64_t vpts;
-
-/*
- * For some cases, the child doesn't always have access to
- * whichever process is responsible for managing "the other end"
- * of this interface. The native PID is therefore set here,
- * and for the local monitoring thread (that frequently checks
- * to see if the parent is still alive as a monitoring target
- * as input to how to behave if the parent has died.
- */
-	process_handle parent;
-
-/* while video transfers are done progressively, one frame at a time,
- * the audio buffering is a bit more lenient. This value signals
- * how much of the audio buffer is actually used, and can be
- * manipulated by both sides (only one at a time, the asem decides who) */
-	uint32_t abufused;
-};
-
-/*
- * The following functions are support functions used to manage
- * the shared memory pages, presented in the order they are likely
- * to be used
- */
+struct shmif_hidden;
+struct arcan_shmif_page;
 
 enum SHMIF_FLAGS {
 /* by default, the connection IPC resources are unlinked, this
@@ -514,6 +312,13 @@ void arcan_shmif_signalhandle(struct arcan_shmif_cont*, int mask,
 size_t arcan_shmif_getsize(unsigned width, unsigned height);
 
 /*
+ * Currently active stride, needed to be respected to set a pixel,
+ * e.g. shmif_cont.vidp[y * stride + x] = RGBA(r, g, b, a);
+ * Only allowed to change between resolution calls.
+ */
+size_t arcan_shmif_getstride(struct arcan_shmif_cont*);
+
+/*
  * Support function to set/unset the primary access segment
  * (one slot for input. one slot for output), manually managed.
  */
@@ -529,47 +334,192 @@ void arcan_shmif_setprimary( enum arcan_shmif_type, struct arcan_shmif_cont*);
  */
 bool arcan_shmif_integrity_check(struct arcan_shmif_cont*);
 
+struct arcan_shmif_cont {
+	struct arcan_shmif_page* addr;
+
+/* offset- pointers into addr, can change between calls to
+ * shmif_ functions so aliasing is not recommended */
+	shmif_pixel* vidp;
+	int16_t* audp;
+
 /*
- * Additional buffers can be allocated, and non-authoritative,
- * (i.e. processes that are outside the direct control of the parent)
- * can optionally be allowed to connect through a similar mechanism;
- * For a new connection to a pre-existing frameserver,
- * the arcan_frameserver_spawn_subsegment (lua: target_alloc) function
- * which pushes an event on the queue notifying which key to access
- * the new connection under. The management / setup is exactly like
- * the main one, including separate eventqueues.
+ * This cookie is set/kept to some implementation defined value
+ * and will be verified during integrity_check. It is placed here
+ * to quickly detect overflows in video or audio management.
+ */
+	int16_t oflow_cookie;
+
+/*
+ * the event handle is provided and used for signal event delivery
+ * in order to allow multiplexation with other input/output sources
+ */
+	file_handle epipe;
+
+/*
+ * Maintain a connection to the shared memory handle in order
+ * to handle resizing (on platforms that support it, otherwise
+ * define ARCAN_SHMIF_OVERCOMMIT which will only recalc pointers
+ * on resize
+ */
+	file_handle shmh;
+	size_t shmsize;
+
+/*
+ * Used internally for synchronization (and mapped / managed outside
+ * the regular shmpage). system-defined but typically named semaphores.
+ */
+	sem_handle vsem, asem, esem;
+
+	struct arcan_evctx inev;
+	struct arcan_evctx outev;
+
+/*
+ * The cookie act as overflow monitor and trigger for ABI incompatibilities
+ * between arcan main and program using the shmif library. Combined from
+ * shmpage struct offsets and type sizes. Periodically monitored (using
+ * arcan_shmif_integrity_check calls) and incompatibilities is a terminal
+ * state transition.
+ */
+	uint64_t cookie;
+
+/*
+ * User-tag, primarily to support attaching ancilliary data to subsegments
+ * that are run and synchronized in separate threads.
+ */
+	void* user;
+
+/*
+ * Opaque struct for implementation defined tracking (guard thread handles
+ * and related data).
+ */
+	struct shmif_hidden* priv;
+};
+
+enum rhint_mask {
+	RHINT_ORIGO_UL = 0,
+	RHINT_ORIGO_LL = 1
+};
+
+struct arcan_shmif_page {
+/*
+ * These will be set to the ARCAN_VERSION_MAJOR and ARCAN_VERSION_MAJOR
+ * defines, a mismatch will cause the integrity_check to fail and
+ * both sides may decide to terminate. Thus, they also act as a header
+ * guard.
+ */
+	int8_t major;
+	int8_t minor;
+
+/* will be checked frequently, likely before transfers as it means
+ * that shmcontents etc. will be invalid */
+	volatile int8_t resized;
+
+/*
+ * Dead man's switch, set to 1 when a connection is active and released
+ * if parent or child detects an anomaly that would indicate misuse or
+ * data corruption. This will trigger guard-threads and similar structures
+ * to release semaphores and attempt to shut down gracefully.
+ */
+	volatile uint8_t dms;
+
+/*
+ * Flipped whenever a buffer is ready to be synched,
+ * polled repeatedly by the parent (or child for the case of an
+ * encode frameserver) then the corresponding sem_handle is used
+ * as a wake-up trigger.
+ */
+	volatile uint8_t aready;
+	volatile uint8_t vready;
+
+/*
+ * Presentation hints, see mask above.
+ */
+	uint8_t hints;
+
+/*
+ * This is set by the parent and will be compared with the cookie
+ * that is generated in the shmcont structure above.
+ */
+	uint64_t cookie;
+
+/*
+ * These heavily rely on the layout provided in shmif/arcan_event.h
+ * and tightly couples the connection model and the event model, which
+ * is an unpleasant tradeoff. Most structures are prepared to quickly
+ * switch this model to using a socket, should it be needed.
+ */
+	struct {
+		struct arcan_event evqueue[ PP_QUEUE_SZ ];
+		uint8_t front, back;
+	} childevq, parentevq;
+
+/*
+ * On a resize, parent will update segment_size. If this differs from
+ * the previously known size (tracked in cont), the segment should be
+ * remapped. Parent has a local copy so from a client perspective, this
+ * value is read-only.
  *
- * For a new external connection, look at the defines below. It's
- * implemented through an event socket with a pre-set prefix
- * (i.e. /tmp/arcan_shm_ or for linux, \0arcan_shm_ a (user-defined
- * or random) key, an optional code and a predefined UMASK.
- * It is up to the script / engine implementation to communicate
- * this to the external process. The main difference between the
- * authoritative way and the non-authoritiative way is that the latter
- * needs to do a domain socket connection and send an activation message.
- * Until then, the shmif segment is viewed as pending by the main engine.
- *
- * The use of a code is to prevent partially compromised processes to
- * race- the shared namespace (enumerable or not) and, more importantly,
- * for the main engine to have a chance of detecting if this is the case or not
- *
- * Setting the ARCAN_SHMIF_PREFIX to an empty string disables this approach
- * entirely. For the non-authoritative additional buffer cases, the
- * code is not used, but rather the UID/GID is checked against the monitoring
- * pid in the preexisting frameserver.
+ * Not all operations will lead to a change in segment_size, OVERCOMMIT
+ * builds has its size fixed, and parent may heuristically determine if
+ * a shrinking- operation is worth the overhead or not.
+ */
+	uint32_t segment_size;
+
+/*
+ * Current video output dimensions, if these deviate from the
+ * agreed upon dimensions (i.e. change w,h and set the resized flag to !0)
+ * the parent will simply ignore the data presented.
+ */
+	uint16_t w, h;
+
+/*
+ * Video buffers are planar transfers of a pre-determined size. Audio,
+ * on the other hand, can be appended and wholly or partially consumed
+ * by the side that currently holds the synch- semaphore.
+ */
+	uint16_t abufused;
+
+/*
+ * Timing related data to a video frame can be attached in order to assist
+ * the parent in determining when/if synchronization should be released
+ * and the frame rendered. This value is a hint, do not rely on it as a
+ * clock/sleep mechanism.
+ */
+	int64_t vpts;
+
+/*
+ * A frameserver or non-authoritative connection do not always know which
+ * process that is responsible for maintaining the connection (which may
+ * be a desired property). To allow a child to monitor and see if the parent
+ * is alive in situations where the event- signal socket do not help,
+ * this value is set upon creation (and can be modified during a video-
+ * frame synch). This is to permit the parent to do hand-overs/migration
+ * etc.
+ */
+
+	process_handle parent;
+};
+
+/*
+ * These prefixes change the search and namespacing rules for how a
+ * non-authoritative connection should find a running arcan server based
+ * on a key.
  */
 #ifdef __linux
 #ifndef ARCAN_SHMIF_PREFIX
 #define ARCAN_SHMIF_PREFIX "\0arcan_"
 #endif
 
-/* if the first character does not begin with /, HOME env will be used. */
+/* If the first character does not begin with /, HOME env will be used. */
 #else
 #ifndef ARCAN_SHMIF_PREFIX
 #define ARCAN_SHMIF_PREFIX ".arcan_"
 #endif
 #endif
 
+/*
+ * Default permissions / mask that listening sockets will be created under
+ */
 #ifndef ARCAN_SHM_UMASK
 #define ARCAN_SHM_UMASK (S_IRWXU | S_IRWXG)
 #endif
