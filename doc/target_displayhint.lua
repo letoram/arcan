@@ -1,17 +1,20 @@
 -- target_displayhint
 -- @short: Send visibility / drawing hint to target frameserver.
 -- @inargs: tgtid, width, height
--- @longdescr: A frameserver is not updated about drawing details
--- such as current display dimensions as that is considered privileged
--- information. target_displayhint can be used to indiciate a discrepancy
--- between the current effective frameserver resolution and the output
--- buffer dimensions that the frameserver has negotiated to provide something
--- for the frameserver to react to when it comes to drawing (or resizing).
+-- @longdescr: The target_displayhint sends a hint to the specified target
+-- that it should try and resize its shared memory connection to the desired
+-- dimensions. This can be used to notify about current drawing dimensions for
+-- the associated video object, or for special cases where one might want
+-- an explicitly over- or under-sized input buffer.
 -- @group: targetcontrol
--- @note: Care should be taken to avoid introducing feedback loops or stalls
--- from sending this event too frequently as the engine does not currently
--- rate-limit frameserver resize requests (as indicated with the FLEXIBLE
--- test that can be found in tests/security).
+-- @note: width/height that exceeds the static compile-time limitations of
+-- MAX_TARGETW or MAX_TARGETH will be clamped to those values. Invalid hint-
+-- dimensions (0 <= n) is a terminal state transition.
+-- @note: The correlated event gets special treatment. When the dequeue function
+-- in the shared memory interface discovers a displayhint event, the remainder of
+-- the queue will be scanned for additional ones. If one is found, the first (i.e.
+-- oldest) event will be dropped. This prevents bubbles from a possible resize-
+-- reaction for common scenarios such as drag-resizing a window.
 -- @cfunction: targetdisphint
 -- @related:
 function main()

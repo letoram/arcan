@@ -5157,9 +5157,12 @@ static int targetdisphint(lua_State* ctx)
 	int width = luaL_checknumber(ctx, 2);
 	int height = luaL_checknumber(ctx, 3);
 
-	if (width < 0 || height < 0)
+	if (width <= 0 || height <= 0)
 		arcan_fatal("target_disphint(), non-negative display "
 			"are not allowed");
+
+	width = width > ARCAN_SHMPAGE_MAXW ? ARCAN_SHMPAGE_MAXW : width;
+	height = height > ARCAN_SHMPAGE_MAXH ? ARCAN_SHMPAGE_MAXH : height;
 
 	arcan_event ev = {
 		.category = EVENT_TARGET,
@@ -8411,6 +8414,8 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"VRESH", mode.height},
 {"MAX_SURFACEW", MAX_SURFACEW},
 {"MAX_SURFACEH", MAX_SURFACEH},
+{"MAX_TARGETW", ARCAN_SHMPAGE_MAXW},
+{"MAX_TARGETH", ARCAN_SHMPAGE_MAXH},
 {"STACK_MAXCOUNT", CONTEXT_STACK_LIMIT},
 {"FRAMESET_SPLIT", ARCAN_FRAMESET_SPLIT},
 {"FRAMESET_MULTITEXTURE", ARCAN_FRAMESET_MULTITEXTURE},
