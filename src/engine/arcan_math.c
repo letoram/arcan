@@ -571,6 +571,18 @@ quat nlerp_quat360(quat a, quat b, float fact){
 	return nlerp_quatfl(a, b, fact, true );
 }
 
+float* matr_rotatef(float ang, float* dmatr)
+{
+	float cv = cosf(ang);
+	float sf = sinf(ang);
+	memcpy(dmatr, midentity, 16 * sizeof(float));
+	dmatr[0] = cv;
+	dmatr[5] = cv;
+	dmatr[1] = sf;
+	dmatr[4] = -sf;
+	return dmatr;
+}
+
 float* matr_quatf(quat a, float* dmatr)
 {
 	if (dmatr){
