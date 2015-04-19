@@ -312,13 +312,6 @@ void arcan_shmif_signalhandle(struct arcan_shmif_cont*, int mask,
 size_t arcan_shmif_getsize(unsigned width, unsigned height);
 
 /*
- * Currently active stride, needed to be respected to set a pixel,
- * e.g. shmif_cont.vidp[y * stride + x] = RGBA(r, g, b, a);
- * Only allowed to change between resolution calls.
- */
-size_t arcan_shmif_getstride(struct arcan_shmif_cont*);
-
-/*
  * Support function to set/unset the primary access segment
  * (one slot for input. one slot for output), manually managed.
  */
@@ -370,8 +363,10 @@ struct arcan_shmif_cont {
  */
 	sem_handle vsem, asem, esem;
 
-	struct arcan_evctx inev;
-	struct arcan_evctx outev;
+/*
+ * should be used to index vidp, i.e. vidp[y * stride + x] = RGBA(r, g, b, a)
+ */
+	size_t w, h, stride;
 
 /*
  * The cookie act as overflow monitor and trigger for ABI incompatibilities

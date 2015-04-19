@@ -178,6 +178,9 @@ struct shmif_hidden {
 
 	bool output;
 
+	struct arcan_evctx inev;
+	struct arcan_evctx outev;
+
 /*
  * as we currently don't serialize both events and descriptors
  * across the socket, we need to track and align the two
@@ -209,26 +212,19 @@ static struct {
 
 static void* guard_thread(void* gstruct);
 
-static void spawn_guardthread(
-	struct shmif_hidden gs, struct arcan_shmif_cont* d, bool nothread)
+static void spawn_guardthread(struct arcan_shmif_cont* d)
 {
-	struct shmif_hidden* hgs = malloc(sizeof(struct shmif_hidden));
-	memset(hgs, '\0', sizeof(struct shmif_hidden));
+	struct shmif_hidden* hgs = d->priv;
 
-	*hgs = gs;
-	d->priv = hgs;
+	pthread_t pth;
+	pthread_attr_t pthattr;
+	pthread_attr_init(&pthattr);
+	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
+	pthread_mutex_init(&hgs->guard.synch, NULL);
 
-	if (!nothread){
-		pthread_t pth;
-		pthread_attr_t pthattr;
-		pthread_attr_init(&pthattr);
-		pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
-		pthread_mutex_init(&hgs->guard.synch, NULL);
-
-		hgs->guard.active = true;
-		pthread_create(&pth, &pthattr, guard_thread, hgs);
-		pthread_detach(pth);
-	}
+	hgs->guard.active = true;
+	pthread_create(&pth, &pthattr, guard_thread, hgs);
+	pthread_detach(pth);
 }
 
 #ifndef offsetof
@@ -280,16 +276,14 @@ static void consume(struct arcan_shmif_cont* c, bool newseg)
 	}
 }
 
-int process_events(struct arcan_shmif_cont* c,
+static int process_events(struct arcan_shmif_cont* c,
 	struct arcan_event* dst, bool blocking)
 {
-	assert(dst);
-	assert(c);
-	if (!c->addr)
+	if (!c || !dst || !c->addr)
 		return 0;
 
 	int rv = 0;
-	struct arcan_evctx* ctx = &c->inev;
+	struct arcan_evctx* ctx = &c->priv->inev;
 	volatile int* ks = (volatile int*) ctx->synch.killswitch;
 
 #ifdef ARCAN_SHMIF_THREADSAFE_QUEUE
@@ -367,7 +361,7 @@ int arcan_shmif_enqueue(struct arcan_shmif_cont* c,
 	if (!c->addr || !c->addr->dms)
 		return 0;
 
-	struct arcan_evctx* ctx = &c->outev;
+	struct arcan_evctx* ctx = &c->priv->outev;
 
 #ifdef ARCAN_SHMIF_THREADSAFE_QUEUE
 	pthread_mutex_lock(&ctx->synch.lock);
@@ -393,10 +387,10 @@ int arcan_shmif_tryenqueue(
 	struct arcan_shmif_cont* c, const arcan_event* const src)
 {
 	assert(c);
-	if (!c->addr || !c->addr->dms)
+	if (!c || !src || !c->addr || !c->addr->dms)
 		return 0;
 
-	struct arcan_evctx* ctx = &c->outev;
+	struct arcan_evctx* ctx = &c->priv->outev;
 
 #ifdef ARCAN_SHMIF_THREADSAFE_QUEUE
 	pthread_mutex_lock(&ctx->synch.lock);
@@ -715,8 +709,12 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 		.pseg = {.epipe = BADFD},
 	};
 
-/* will also set up and popuplate -> priv */
-	spawn_guardthread(gs, &res, flags & SHMIF_DISABLE_GUARD);
+	res.priv = malloc(sizeof(struct shmif_hidden));
+	memset(res.priv, '\0', sizeof(struct shmif_hidden));
+	*res.priv = gs;
+
+	if (flags & SHMIF_DISABLE_GUARD)
+		spawn_guardthread(&res);
 
 	if (privps){
 		struct shmif_hidden* pp = parent->priv;
@@ -732,8 +730,12 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 		consume(parent, true);
 	}
 
-	arcan_shmif_setevqs(res.addr, res.esem, &res.inev, &res.outev, false);
+	arcan_shmif_setevqs(res.addr, res.esem,
+		&res.priv->inev, &res.priv->outev, false);
 	arcan_shmif_calcofs(res.addr, &res.vidp, &res.audp);
+	res.w = res.addr->w;
+	res.h = res.addr->h;
+	res.stride = res.w * ARCAN_SHMPAGE_VCHANNELS;
 
 	res.shmsize = res.addr->segment_size;
 	res.cookie = arcan_shmif_cookie();
@@ -1008,8 +1010,9 @@ bool arcan_shmif_resize(struct arcan_shmif_cont* arg,
 
 	arg->addr->w = width;
 	arg->addr->h = height;
-	FORCE_SYNCH();
 	arg->addr->resized = true;
+
+	FORCE_SYNCH();
 
 	DLOG("request resize to (%d:%d) approx ~%zu bytes (currently: %zu).\n",
 		width, height, arcan_shmif_getsize(width, height), arg->shmsize);
@@ -1052,7 +1055,8 @@ bool arcan_shmif_resize(struct arcan_shmif_cont* arg,
 			return false;
 		}
 
-		arcan_shmif_setevqs(arg->addr, arg->esem, &arg->inev, &arg->outev, false);
+		arcan_shmif_setevqs(arg->addr, arg->esem,
+			&arg->priv->inev, &arg->priv->outev, false);
 
 		if (gs){
 			gs->guard.dms = &arg->addr->dms;
@@ -1064,6 +1068,9 @@ bool arcan_shmif_resize(struct arcan_shmif_cont* arg,
  * parent has ftruncated and copied contents */
 
 	arcan_shmif_calcofs(arg->addr, &arg->vidp, &arg->audp);
+	arg->w = arg->addr->w;
+	arg->h = arg->addr->h;
+	arg->stride = arg->w * ARCAN_SHMPAGE_VCHANNELS;
 	return true;
 }
 
