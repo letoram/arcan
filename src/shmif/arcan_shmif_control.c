@@ -276,15 +276,30 @@ static void consume(struct arcan_shmif_cont* c, bool newseg)
 	}
 }
 
+static bool scan_hint(struct arcan_evctx* c)
+{
+	uint8_t cur = *c->front;
+	while (cur != *c->back){
+		struct arcan_event* ev = &c->eventbuf[cur];
+		if (ev->category == EVENT_TARGET &&
+			ev->tgt.kind == TARGET_COMMAND_DISPLAYHINT)
+			return true;
+		cur = (cur + 1) % c->eventbuf_sz;
+	}
+
+	return false;
+}
+
 static int process_events(struct arcan_shmif_cont* c,
 	struct arcan_event* dst, bool blocking)
 {
+reset:
 	if (!c || !dst || !c->addr)
 		return 0;
 
 	int rv = 0;
 	struct arcan_evctx* ctx = &c->priv->inev;
-	volatile int* ks = (volatile int*) ctx->synch.killswitch;
+	volatile uint8_t* ks = (volatile uint8_t*) ctx->synch.killswitch;
 
 #ifdef ARCAN_SHMIF_THREADSAFE_QUEUE
 	pthread_mutex_lock(&ctx->synch.lock);
@@ -318,6 +333,13 @@ checkfd:
 /* descriptor dependent events need to be flagged and tracked */
 		if (dst->category == EVENT_TARGET)
 			switch (dst->tgt.kind){
+/* ignore displayhint if there are newer ones in the queue */
+			case TARGET_COMMAND_DISPLAYHINT:
+				if (scan_hint(ctx))
+					goto reset;
+				else
+					rv = 1;
+			break;
 			case TARGET_COMMAND_STORE:
 			case TARGET_COMMAND_RESTORE:
 			case TARGET_COMMAND_BCHUNK_IN:
@@ -713,7 +735,7 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 	memset(res.priv, '\0', sizeof(struct shmif_hidden));
 	*res.priv = gs;
 
-	if (flags & SHMIF_DISABLE_GUARD)
+	if (!(flags & SHMIF_DISABLE_GUARD))
 		spawn_guardthread(&res);
 
 	if (privps){

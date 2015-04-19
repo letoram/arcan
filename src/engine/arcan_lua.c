@@ -2959,6 +2959,7 @@ static int targetinput(lua_State* ctx)
 		ev.io.input.analog.devid  = intblint(ctx, tblind, "devid");
 		ev.io.input.analog.subid  = intblint(ctx, tblind, "subid");
 		ev.io.input.analog.gotrel = mouse;
+		ev.io.datatype = EVENT_IDATATYPE_ANALOG;
 
 	/*  sweep the samples subtable, add as many as present (or possible) */
 		lua_getfield(ctx, tblind, "samples");
@@ -2974,6 +2975,7 @@ static int targetinput(lua_State* ctx)
 	}
 	else if (strcmp(kindlbl, "touch") == 0){
 		ev.io.devkind = EVENT_IDEVKIND_TOUCHDISP;
+		ev.io.datatype = EVENT_IDATATYPE_TOUCH;
 		ev.io.input.touch.devid = intblint(ctx, tblind, "devid");
 		ev.io.input.touch.subid = intblint(ctx, tblind, "subid");
 		ev.io.input.touch.x = intblint(ctx, tblind, "x");
@@ -2984,6 +2986,7 @@ static int targetinput(lua_State* ctx)
 	else if (strcmp(kindlbl, "digital") == 0){
 		if (intblbool(ctx, tblind, "translated")){
 			ev.io.devkind = EVENT_IDEVKIND_KEYBOARD;
+			ev.io.datatype = EVENT_IDATATYPE_DIGITAL;
 			ev.io.input.translated.active = intblbool(ctx, tblind, "active");
 			ev.io.input.translated.scancode = intblint(ctx, tblind, "number");
 			ev.io.input.translated.keysym = intblint(ctx, tblind, "keysym");
