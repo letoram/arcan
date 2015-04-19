@@ -44,10 +44,10 @@ enum cstate {
 	outside   = 2
 };
 
+/* generate lookup-tables */
 void arcan_math_init();
 
-/* Matrices
- * All assume column major organization */
+/* all assume column- major order, 4x4 */
 void scale_matrix(float*, float, float, float);
 void translate_matrix(float*, float, float, float);
 void identity_matrix(float*);
@@ -62,8 +62,8 @@ int project_matrix(float objx, float objy, float objz, const float model[16],
 	const float projection[16], const int viewport[4], float*, float*, float*);
 vector unproject_matrix(float dev_x, float dev_y, float dev_z,
 		const float* restrict view, const float* restrict proj);
+float* matr_rotatef(float ang, float* dst);
 
-/* Vectors */
 vector build_vect_polar(const float phi, const float theta);
 vector build_vect(const float x, const float y, const float z);
 float len_vector(vector invect);
@@ -76,7 +76,6 @@ vector sub_vector(vector a, vector b);
 vector mul_vectorf(vector a, float f);
 vector taitbryan_forwardv(float roll, float pitch, float yaw);
 
-/* Quaternions */
 quat inv_quat(quat src);
 float len_quat(quat src);
 quat norm_quat(quat src);

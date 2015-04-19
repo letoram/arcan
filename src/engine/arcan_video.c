@@ -3838,8 +3838,10 @@ static void apply(arcan_vobject* vobj, surface_properties* dprops,
 		dprops->rotation.yaw   += sprops->rotation.yaw;
 		dprops->rotation.pitch += sprops->rotation.pitch;
 		dprops->rotation.roll  += sprops->rotation.roll;
-		dprops->rotation.quaternion = mul_quat( sprops->rotation.quaternion,
-			dprops->rotation.quaternion );
+		if (FL_TEST(vobj, FL_FULL3D)){
+			dprops->rotation.quaternion = mul_quat(
+				sprops->rotation.quaternion, dprops->rotation.quaternion );
+		}
 
 #ifdef _DEBUG
 /*		vector ang = angle_quat(dprops->rotation.quaternion);
@@ -3953,8 +3955,12 @@ static inline void build_modelview(float* dmatr,
 
 	memcpy(tmatr, imatr, sizeof(float) * 16);
 
-	if (src->rotate_state)
-		matr_quatf(norm_quat (prop->rotation.quaternion), omatr);
+	if (src->rotate_state){
+		if (FL_TEST(src, FL_FULL3D))
+			matr_quatf(norm_quat (prop->rotation.quaternion), omatr);
+		else
+			matr_rotatef(DEG2RAD(prop->rotation.roll), omatr);
+	}
 
 	point oofs = src->origo_ofs;
 
