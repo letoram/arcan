@@ -319,7 +319,7 @@ void agp_resize_vstore(struct storage_info_t* s, size_t w, size_t h)
  * uses shm- transfer */
 	if (s->vinf.text.raw && s->vinf.text.s_raw != new_sz){
 		arcan_mem_free(s->vinf.text.raw);
-		s->vinf.text.s_raw = w * h * s->bpp;
+		s->vinf.text.s_raw = new_sz;
 		s->vinf.text.raw = NULL;
 	}
 

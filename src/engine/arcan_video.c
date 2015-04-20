@@ -1545,8 +1545,6 @@ void arcan_video_3dorder(enum arcan_order3d order){
 static void rescale_origwh(arcan_vobject* dst, float fx, float fy)
 {
 	vector svect = build_vect(fx, fy, 1.0);
-
-	dst->current.scale = mul_vector( dst->current.scale, svect );
 	surface_transform* current = dst->transform;
 
 	while (current){
@@ -2145,16 +2143,22 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, size_t w, size_t h)
 		arcan_video_pushasynch(id);
 
 /* rescale transformation chain */
-	float fx = (float)vobj->origw / (float)w;
-	float fy = (float)vobj->origh / (float)h;
+	float ox = (float)vobj->origw*vobj->current.scale.x;
+	float oy = (float)vobj->origh*vobj->current.scale.y;
+	float sfx = ox / (float)w;
+	float sfy = oy / (float)h;
+	rescale_origwh(vobj,
+		sfx / vobj->current.scale.x, sfy / vobj->current.scale.y);
 
 /* "initial" base dimensions, important when dimensions
  * change for objects that have a shared storage elsewhere
  * but where scale differs. */
 	vobj->origw = w;
 	vobj->origh = h;
-	rescale_origwh(vobj, fx, fy);
 
+	vobj->current.scale.x = sfx;
+	vobj->current.scale.y = sfy;
+	invalidate_cache(vobj);
 	agp_resize_vstore(vobj->vstore, w, h);
 
 	FLAG_DIRTY();
@@ -4014,7 +4018,7 @@ static inline void setup_surf(struct rendertarget* dst,
 	float sz_i[2] = {1.0 / (double)src->origw, 1.0 / (double)src->origh};
 	agp_shader_envv(SIZE_INPUT, sz_i, sizeof(float)*2);
 
-	float sz_o[2] = {prop->scale.x, prop->scale.y};
+	float sz_o[2] = {prop->scale.x * 2.0, prop->scale.y * 2.0};
 	agp_shader_envv(SIZE_OUTPUT, sz_o, sizeof(float)*2);
 
 	float sz_s[2] = {src->vstore->w, src->vstore->h};
