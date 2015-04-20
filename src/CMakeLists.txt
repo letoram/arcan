@@ -19,6 +19,11 @@ cmake_minimum_required(VERSION 2.8.12 FATAL_ERROR)
 set(EXTERNAL_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../external)
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/modules)
 
+set(SHARED_PERMISSIONS
+	OWNER_WRITE OWNER_READ GROUP_WRITE GROUP_READ WORLD_READ)
+set(SHARED_PERMISSIONS_DIR OWNER_WRITE OWNER_READ GROUP_WRITE
+	GROUP_READ WORLD_EXECUTE WORLD_READ)
+
 # another hack to strip noisy / useless data away from message() abuse
 include(ExternalProject)
 include(CheckIncludeFiles)
@@ -518,3 +523,40 @@ target_link_libraries(arcan_db ${STDLIB} ${SQLITE3_LIBRARIES})
 target_include_directories(arcan_db PRIVATE ${INCLUDE_DIRS})
 target_compile_definitions(arcan_db PRIVATE ARCAN_DB_STANDALONE)
 install(TARGETS arcan arcan_db DESTINATION bin)
+
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/../data/appl
+	DESTINATION ${APPL_DEST}
+	DIRECTORY_PERMISSIONS ${SHARED_PERMISSONS_DIR}
+	FILE_PERMISSIONS ${SHARED_PERMISSIONS}
+	PATTERN ".gitignore" EXCLUDE
+)
+
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/../data/resources
+	DESTINATION ${RES_DEST}
+	DIRECTORY_PERMISSIONS ${SHARED_PERMISSIONS_DIR}
+	FILE_PERMISSIONS ${SHARED_PERMISSIONS}
+	PATTERN ".gitignore" EXCLUDE
+)
+
+if (MAN_DEST)
+	install(FILES
+		${CMAKE_CURRENT_SOURCE_DIR}/../doc/arcan.1
+		${CMAKE_CURRENT_SOURCE_DIR}/../doc/arcan_db.1
+		DESTINATION ${APIMAN_DEST}
+		PERMISSIONS ${SHARED_PERMISSONS}
+	)
+endif()
+
+#
+# Only installed if they have been generated manually, this is rather
+# suboptimal -- possibly replace with a compile- time option and a probe
+# for the correct ruby version
+#
+if (APIMAN_DEST AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/../doc/mantmp)
+	file(GLOB MANTMP ${CMAKE_CURRENT_SOURCE_DIR}/../doc/mantmp/*.3)
+	install(FILES
+		${MANTMP}
+		DESTINATION ${APIMAN_DEST}
+		PERMISSIONS ${SHARED_PERMISSIONS}
+	)
+endif()

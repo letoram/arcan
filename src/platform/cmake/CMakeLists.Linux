@@ -7,6 +7,11 @@
 #  LWA_PLATFORM
 #  STDLIB
 #
+#  APPL_DEST
+#  RES_DEST
+#  APIMAN_DEST
+#  MAN_DEST
+#
 # Modifies:
 #  compile_options (global)
 #  PLATFORM_HEADER (global)
@@ -22,6 +27,11 @@ add_definitions(
 	-D_GNU_SOURCE
 	-DPLATFORM_HEADER=\"${PLATFORM_ROOT}/platform.h\"
 )
+
+set(APPL_DEST ${CMAKE_INSTALL_PREFIX}/share/arcan)
+set(RES_DEST ${CMAKE_INSTALL_PREFIX}/share/arcan)
+set(APIMAN_DEST ${CMAKE_INSTALL_PREFIX}/man/man3)
+set(MAN_DEST ${CMAKE_INSTALL_PERFIX}/man/man1)
 
 set(ARCAN_PLATFORM
 	${PLATFORM_PATH}/mem.c

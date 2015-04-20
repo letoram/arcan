@@ -8,6 +8,11 @@
 #  LWA_PLATFORM
 #  STDLIB
 #
+#  APPL_DEST
+#  RES_DEST
+#  APIMAN_DEST
+#  MAN_DEST
+#
 # Modifies:
 #  compile_options (global)
 #  PLATFORM_HEADER (global)
@@ -76,6 +81,11 @@ LIST(APPEND PLATFORM_SOURCES
 	${PLATFORM_ROOT}/${VIDEO_PLATFORM}/video.c
 	${PLATFORM_ROOT}/${INPUT_PLATFORM}/event.c
 )
+
+set(APPL_DEST ${CMAKE_INSTALL_PREFIX}/share/arcan/appl)
+set(RES_DEST ${CMAKE_INSTALL_PREFIX}/share/arcan/resources)
+set(APIMAN_DEST ${CMAKE_INSTALL_PREFIX}/man/man3)
+set(MAN_DEST ${CMAKE_INSTALL_PERFIX}/man/man1)
 
 set(FSRV_PLATFORM ${SHMIF_PLATFORM})
 
