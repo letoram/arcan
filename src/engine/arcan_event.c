@@ -275,11 +275,11 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 /* to protect against scripts that would happily try to just allocate/respond
  * to what a the event says, clamp this here */
 				case EVENT_EXTERNAL_SEGREQ:
-					if (inev.ext.noticereq.width > PP_SHMPAGE_MAXW)
-						inev.ext.noticereq.width = PP_SHMPAGE_MAXW;
+					if (inev.ext.segreq.width > PP_SHMPAGE_MAXW)
+						inev.ext.segreq.width = PP_SHMPAGE_MAXW;
 
-					if (inev.ext.noticereq.height > PP_SHMPAGE_MAXH)
-						inev.ext.noticereq.height = PP_SHMPAGE_MAXH;
+					if (inev.ext.segreq.height > PP_SHMPAGE_MAXH)
+						inev.ext.segreq.height = PP_SHMPAGE_MAXH;
 				break;
 
 #ifndef _WIN32

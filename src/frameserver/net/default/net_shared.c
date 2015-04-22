@@ -307,8 +307,8 @@ bool net_hl_decode(struct conn_state* self,
 				arcan_event outev = {
 					.category = EVENT_EXTERNAL,
 					.ext.kind = EVENT_EXTERNAL_SEGREQ,
-					.ext.noticereq.width = desw,
-					.ext.noticereq.height = desh
+					.ext.segreq.width = desw,
+					.ext.segreq.height = desh
 				};
 
 				arcan_shmif_enqueue(self->shmcont, &outev);
