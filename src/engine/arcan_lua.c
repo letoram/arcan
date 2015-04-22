@@ -3141,12 +3141,11 @@ static void emit_segreq(lua_State* ctx, struct arcan_extevent* ev)
 	int top = lua_gettop(ctx);
 
 	tblstr(ctx, "kind", "segment_request", top);
-	tblnum(ctx, "width", ev->noticereq.width, top);
-	tblnum(ctx, "height", ev->noticereq.height, top);
-	tblnum(ctx, "reqid", ev->noticereq.id, top);
-	tblnum(ctx, "type", ev->noticereq.type, top);
-	tblnum(ctx, "xofs", ev->noticereq.xofs, top);
-	tblnum(ctx, "yofs", ev->noticereq.yofs, top);
+	tblnum(ctx, "width", ev->segreq.width, top);
+	tblnum(ctx, "height", ev->segreq.height, top);
+	tblnum(ctx, "reqid", ev->segreq.id, top);
+	tblnum(ctx, "xofs", ev->segreq.xofs, top);
+	tblnum(ctx, "yofs", ev->segreq.yofs, top);
 
 	luactx.cb_source_tag = ev->source;
 	luactx.cb_source_kind = CB_SOURCE_FRAMESERVER;
@@ -3446,27 +3445,27 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				tblstr(ctx, "message", (char*)ev->ext.message, top);
 			break;
 			case EVENT_EXTERNAL_REGISTER:
-				if (fsrv->segid != SEGID_UNKNOWN &&
-					ev->ext.registr.kind != fsrv->segid){
-					arcan_warning("client attempted to change registry ID/type (%d:%d)"
-						"this behavior is not permitted and was ignored.\n", fsrv->segid,
-						ev->ext.registr.kind);
+				if (fsrv->segid != SEGID_UNKNOWN){
 					lua_settop(ctx, reset);
 					return;
 				}
-				else {
-					tblstr(ctx, "kind", "registered", top);
-					tblstr(ctx, "segkind", fsrvtos(ev->ext.registr.kind), top);
-					slimpush(mcbuf, sizeof(ev->ext.registr.title) /
-						sizeof(ev->ext.registr.title[0]),
-						(char*)ev->ext.registr.title);
-					snprintf(fsrv->title,
-						sizeof(fsrv->title) / sizeof(fsrv->title[0]), "%s", mcbuf);
-					tblstr(ctx, "title", mcbuf, top);
+				int id = ev->ext.registr.kind;
+				if (id == SEGID_NETWORK_CLIENT || id == SEGID_NETWORK_SERVER){
+					arcan_warning("client (%d) attempted to register a reserved (%d) "
+						"type which is not permitted.\n", fsrv->segid, id);
+					lua_settop(ctx, reset);
+					return;
 				}
 
+				tblstr(ctx, "kind", "registered", top);
+				tblstr(ctx, "segkind", fsrvtos(ev->ext.registr.kind), top);
+				slimpush(mcbuf, sizeof(ev->ext.registr.title) /
+					sizeof(ev->ext.registr.title[0]), (char*)ev->ext.registr.title);
+					snprintf(fsrv->title,
+						sizeof(fsrv->title) / sizeof(fsrv->title[0]), "%s", mcbuf);
+				tblstr(ctx, "title", mcbuf, top);
 			break;
-			 default:
+		 	default:
 				tblstr(ctx, "kind", "unknown", top);
 				tblnum(ctx, "kind_num", ev->ext.kind, top);
 			}
@@ -5656,9 +5655,9 @@ static int targetaccept(lua_State* ctx)
 	vfunc_state* state = arcan_video_feedstate(luactx.last_segreq->source);
 	arcan_frameserver* newref = arcan_frameserver_spawn_subsegment(
 		(arcan_frameserver*) state->ptr, false,
-		luactx.last_segreq->noticereq.width,
-		luactx.last_segreq->noticereq.height,
-		luactx.last_segreq->noticereq.id
+		luactx.last_segreq->segreq.width,
+		luactx.last_segreq->segreq.height,
+		luactx.last_segreq->segreq.id
 	);
 	luactx.last_segreq = NULL;
 

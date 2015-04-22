@@ -1183,10 +1183,9 @@ static inline void targetev(arcan_event* ev)
 				arcan_event outev = {
 					.category = EVENT_EXTERNAL,
 					.ext.kind = EVENT_EXTERNAL_SEGREQ,
-					.ext.noticereq.width = 640,
-					.ext.noticereq.height = 240,
-					.ext.noticereq.type = SEGID_DEBUG,
-					.ext.noticereq.id = retroctx.graph_pending
+					.ext.segreq.width = 640,
+					.ext.segreq.height = 240,
+					.ext.segreq.id = retroctx.graph_pending
 				};
 
 				arcan_shmif_enqueue(&retroctx.shmcont, &outev);

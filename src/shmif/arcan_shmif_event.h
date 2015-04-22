@@ -72,10 +72,12 @@ enum ARCAN_SEGID {
 /* LIGHTWEIGHT ARCAN (nested execution) */
 	SEGID_LWA = 1,
 
-/* External Connection, 1:many */
+/* Server->Client exclusive --
+ * External Connection, 1:many */
 	SEGID_NETWORK_SERVER,
 
-/* External Connection, 1:1 */
+/* Server->Client exclusive -- cannot be requested
+ * External Connection, 1:1 */
 	SEGID_NETWORK_CLIENT,
 
 /* External Connection, non-interactive data source */
@@ -404,7 +406,7 @@ enum ARCAN_EVENT_EXTERNAL {
  * Request an additional shm-if connection to be allocated,
  * only one segment is guaranteed per process. Tag with an
  * ID for the parent to be able to accept- or reject properly.
- * Uses the noticereq- substructure.
+ * Uses the segreq- substructure.
  */
 	EVENT_EXTERNAL_SEGREQ,
 
@@ -750,24 +752,46 @@ typedef struct arcan_extevent {
 		} bstream;
 
 		struct {
-			uint8_t langid[3];  /* country code */
-			uint8_t streamid;   /* key used to tell the decoder to switch */
-			uint8_t datakind;   /* 0: audio, 1: video, 2: text, 3: overlay */
+			uint8_t langid[3]; /* country code */
+			uint8_t streamid; /* key used to tell the decoder to switch */
+			uint8_t datakind; /* 0: audio, 1: video, 2: text, 3: overlay */
 		} streaminf;
 
+/*
+ * These are - reset - on a resize operation.
+ *  (x+w, y+h)    - clipped against actual surface dimensions
+ *  (bl/br/bt/bb) - "border- pixels" (bl+br < w-1) (bt+bb < h-1)
+ *  (transfer)    - !0 attempt to limit transfer operations to
+ *	                specified area, hint- only.
+ *  (viewid)      - for supporting multiple views on the same segment,
+ *                  default to 0 value
+ */
 		struct {
 			uint16_t x, y, w, h;
+			uint8_t bl, br, bt, bb;
+			uint8_t transfer;
+			uint8_t viewid;
 		} viewport;
 
+/*
+ * (ID)   - user-specified cookie, will propagate with req/resp
+ * width  - desired width, will be clamped to PP_SHMPAGE_MAXW
+ * height - desired height, will be clamped to PP_SHMPAGE_MAXH
+ * xofs   - suggested offset relative to main segment (parent hint)
+ * yofs   - suggested offset relative to main segment (parent hint)
+ */
 		struct {
 			uint32_t id;
-			uint8_t type;
 			uint16_t width;
 			uint16_t height;
 			off_t xofs;
 			off_t yofs;
-		} noticereq;
+		} segreq;
 
+/*
+ * (title) - title-bar info or other short string to indicate state
+ * (kind) -
+ */
 		struct {
 			char title[64];
 			enum ARCAN_SEGID kind;
