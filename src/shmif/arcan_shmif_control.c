@@ -758,6 +758,7 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 	res.w = res.addr->w;
 	res.h = res.addr->h;
 	res.stride = res.w * ARCAN_SHMPAGE_VCHANNELS;
+	res.pitch = res.w;
 
 	res.shmsize = res.addr->segment_size;
 	res.cookie = arcan_shmif_cookie();
@@ -1096,6 +1097,7 @@ bool arcan_shmif_resize(struct arcan_shmif_cont* arg,
 	arg->w = arg->addr->w;
 	arg->h = arg->addr->h;
 	arg->stride = arg->w * ARCAN_SHMPAGE_VCHANNELS;
+	arg->pitch = arg->w;
 	return true;
 }
 
