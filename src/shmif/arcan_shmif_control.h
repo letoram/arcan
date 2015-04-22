@@ -364,9 +364,10 @@ struct arcan_shmif_cont {
 	sem_handle vsem, asem, esem;
 
 /*
- * should be used to index vidp, i.e. vidp[y * stride + x] = RGBA(r, g, b, a)
+ * Should be used to index vidp, i.e. vidp[y * pitch + x] = RGBA(r, g, b, a)
+ * Pitch accounts for padding and should match stride*ARCAN_SHMIF_VCHANNELS.
  */
-	size_t w, h, stride;
+	size_t w, h, stride, pitch;
 
 /*
  * The cookie act as overflow monitor and trigger for ABI incompatibilities
