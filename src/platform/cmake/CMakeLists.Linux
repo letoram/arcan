@@ -31,7 +31,7 @@ add_definitions(
 set(APPL_DEST ${CMAKE_INSTALL_PREFIX}/share/arcan)
 set(RES_DEST ${CMAKE_INSTALL_PREFIX}/share/arcan)
 set(APIMAN_DEST ${CMAKE_INSTALL_PREFIX}/man/man3)
-set(MAN_DEST ${CMAKE_INSTALL_PERFIX}/man/man1)
+set(MAN_DEST ${CMAKE_INSTALL_PREFIX}/man/man1)
 
 set(ARCAN_PLATFORM
 	${PLATFORM_PATH}/mem.c
@@ -66,10 +66,10 @@ set_property(SOURCE ${PLATFORM_PATH}/fdpassing.c
 if (ENABLE_LED)
 	FIND_PACKAGE(UDev REQUIRED)
 
-	LIST(APPEND MAIN_LIBRARIES ${UDEV_LIBRARIES})
+	LIST(APPEND ARCAN_LIBRARIES ${UDEV_LIBRARIES})
 	LIST(APPEND PLATFORM_SOURCES
-		${CMAKE_EXTERNAL_SRCDIR}/hidapi/hid_linux.c
-		${CMAKE_EXTERNAL_SRCDIR}/hidapi/hidapi.h
+		${EXTERNAL_SRC_DIR}/hidapi/hid_linux.c
+		${EXTERNAL_SRC_DIR}/hidapi/hidapi.h
 	)
 endif()
 
@@ -80,25 +80,6 @@ list(APPEND PLATFORM_SOURCES
 	${PLATFORM_ROOT}/${VIDEO_PLATFORM}/video.c
 	${PLATFORM_ROOT}/${INPUT_PLATFORM}/event.c
 )
-
-#
-# Incomplete still, will probably be extended / fixed when testing/building on Alpine Linux
-# (openrc, grsec and free from systemd and glibc? interesting - can we just drop pulse
-# and d-bus as well, or switch to the reasonably clean nobus implementation)
-#
-if (MUSL_LIBC)
-	set(MUSL ${CMAKE_CURRENT_SOURCE_DIR}/external/musl)
-	ExternalProject_Add(
-	libmusl
-	SOURCE_DIR ${MUSL}
-
-	CONFIGURE_COMMAND ${MUSL}/configure --prefix=${MUSL}/.libs --disable-shared
-	PREFIX ${MUSL}
-	BUILD_COMMAND make
-	BUILD_IN_SOURCE 1
-	)
-	set(STDLIB ${MUSL}/.libs/lib/libc.a)
-endif()
 
 list(APPEND STDLIB
  m

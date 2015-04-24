@@ -1273,7 +1273,7 @@ struct arcan_shmif_cont arcan_shmif_open(
 	char* keyfile = NULL;
 
 	if (getenv("ARCAN_SHMKEY") && getenv("ARCAN_SOCKIN_FD")){
-		keyfile = getenv("ARCAN_SHMKEY");
+		keyfile = strdup(getenv("ARCAN_SHMKEY"));
 		dpipe = (int) strtol(getenv("ARCAN_SOCKIN_FD"), NULL, 10);
 	}
 	else if (getenv("ARCAN_CONNPATH")){
@@ -1304,6 +1304,7 @@ struct arcan_shmif_cont arcan_shmif_open(
 	if (-1 == ret.epipe)
 		DLOG("shmif_open() - Could not retrieve event- pipe from parent.\n");
 
+	free(keyfile);
 	return ret;
 
 fail:

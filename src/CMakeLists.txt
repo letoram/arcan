@@ -98,9 +98,13 @@ set(SHARED_PERMISSIONS_DIR OWNER_WRITE OWNER_READ GROUP_WRITE
 
 # perhaps add an 'auto-detect' stage for Linux/BSD?
 if (WIN32)
+	set(WINTYPE win32)
 	set(VPLATFORM_STR "sdl")
 	set(VIDEO_PLATFORM "sdl")
+	set(SDL_INCLUDE_DIR ${EXTERNAL_SRC_DIR}/${WINTYPE}/include/SDL)
+	set(SDL_LIBRARY ${EXTERNAL_SRC_DIR}/${WINTYPE}/lib/SDL.dll)
 	set(DISABLE_HIJACK true)
+
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 	set(VPLATFORM_STR "sdl")
 	set(VIDEO_PLATFORM "sdl")
@@ -400,8 +404,8 @@ endif()
 
 if (ENABLE_LED)
 	list(APPEND SOURCES
-		arcan_led.c
-		arcan_led.h
+		engine/arcan_led.c
+		engine/arcan_led.h
 	)
 	add_definitions(-DARCAN_LED)
 endif()
@@ -432,7 +436,6 @@ elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/CMakeLists.Linux)
 
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
-	message(FATAL_ERROR "${CLB_RED}Windows builds broken pending build system refactor")
 	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/CMakeLists.Windows)
 
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
