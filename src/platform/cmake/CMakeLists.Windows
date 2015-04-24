@@ -1,201 +1,83 @@
-add_definitions(-msse -mfpmath=sse -std=gnu11 -Wall -Wno-missing-braces
-	-Wno-unused-variable -Wno-unused-function -D_POSIX_C_SOURCE -D_GNU_SOURCE
-	-DARCAN_SHMIF_OVERCOMMIT -DOS_DYLIB_EXTENSION=\".dll\")
-set (WIN32_PATH ${CMAKE_SOURCE_DIR}/platform/win32)
-set (DISTR_PATH ${WINDISTR}/../)
+# Expects:
+#  PLATFORM_ROOT
+#
+# Defines:
+#  ARCAN_PLATFORM
+#  FSRV_PLATFORM
+#  LWA_PLATFORM
+#  STDLIB
+#
+#  APPL_DEST
+#  RES_DEST
+#  APIMAN_DEST
+#  MAN_DEST
+#
+# Modifies:
+#  compile_options (global)
+#  PLATFORM_HEADER (global)
+#  OS_DYLIB_EXTENSION
+#
 
-set (PLATFORM_SOURCES
-	platform/posix/fmt_open.c
-	${WIN32_PATH}/sem.c
-	${WIN32_PATH}/strip_traverse.c
-	${WIN32_PATH}/arcan_general.c
-	${WIN32_PATH}/time.c
-	${WIN32_PATH}/glob.c
-	${WIN32_PATH}/paths.c
-	${WIN32_PATH}/resource_io.c
-	${WIN32_PATH}/warning.c
-	${WIN32_PATH}/map_resource.c
-	${WIN32_PATH}/frameserver.c
-	${WIN32_PATH}/../stub/fsrv_guard.c
-	${WIN32_PATH}/launch.c
-	${WIN32_PATH}/../stub/mem.c
-	${WIN32_PATH}/../posix/appl.c
-	${WIN32_PATH}/../posix/base64.c
-	${WIN32_PATH}/../posix/namespace.c
+set(DISTR_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../data/distr)
+
+add_custom_command(
+OUTPUT arcan_resource.obj
+DEPENDS ${DISTR_PATH}/arcan.rc
+COMMAND windres.exe
+ARGS -o arcan_resource.obj
+-i${DISTR_PATH}/arcan.rc
 )
 
-set (FSERV_PLATFORM_SOURCES
-	${WIN32_PATH}/warning.c
-	${WIN32_PATH}/time.c
-	${WIN32_PATH}/sem.c
-	${WIN32_PATH}/paths.c
-	${WIN32_PATH}/warning.c
-	${WIN32_PATH}/strip_traverse.c
-	${WIN32_PATH}/realpath.c
-	${WIN32_PATH}/strtok_r.c
-	${WIN32_PATH}/../stub/mem.c
-	${WIN32_PATH}/../posix/namespace.c
-	${WIN32_PATH}/../posix/base64.c
-	${SHMIF_SOURCES}
+add_custom_command(
+OUTPUT arcan_frameserver_resource.obj
+DEPENDS ${DISTR_PATH}/arcan_frameserver.rc
+COMMAND windres.exe
+ARGS -o arcan_frameserver_resource.obj
+-i${DISTR_PATH}/arcan_frameserver.rc
 )
 
-# we don't want these coming along in LWA_PLATFORM
+set(WIN32_PATH ${PLATFORM_ROOT}/win32)
+set(OS_DYLIB_EXTENSION=\".dll\")
+add_definitions(
+	-D_GNU_SOURCE
+	-DARCAN_SHMIF_OVERCOMMIT
+	-DPLATFORM_HEADER=\"${WIN32_PATH}/platform.h\"
+	-D__WINDOWS
+	-static
+)
+
+set(APPL_DEST ${CMAKE_INSTALL_PREFIX})
+set(RES_DEST ${CMAKE_INSTALL_PREFIX})
+set(APIMAN_DEST ${CMAKE_INSTALL_PREFIX}/doc/api)
+set(MAN_DEST ${CMAKE_INSTALL_PREFIX}/doc)
+
+set(LWA_PLATFORM ${ARCAN_PLATFORM})
 LIST(APPEND PLATFORM_SOURCES
 	${WIN32_PATH}/../${VIDEO_PLATFORM}/video.c
 	${WIN32_PATH}/../${INPUT_PLATFORM}/event.c
 )
 
-if (${ENABLE_LIBRETRO})
-if (${ENABLE_LIBRETRO3D})
-	list(APPEND FSRV_SOURCES platform/sdl/video_mini.c)
-	list(APPEND FSRV_LIBRARIES ${SDL_LIBRARY})
-	list(APPEND FSRV_LIBRARIES ${AGP_LIBRARIES})
-endif(${ENABLE_LIBRETRO3D})
-endif(${ENABLE_LIBRETRO})
-
-add_definitions(-DPLATFORM_HEADER=\"${WIN32_PATH}/platform.h\"
-	-Wno-missing-braces -DLUA_51 -D__WINDOWS -static)
-
 # the win32/ folder should be merged with the platform sources
 LIST(APPEND SOURCES
-	${CMAKE_EXTERNAL_SRCDIR}/hidapi/hid_win32.c
-	${CMAKE_EXTERNAL_SRCDIR}/hidapi/hidapi.h
+	${EXTERNAL_SRC_DIR}/hidapi/hid_win32.c
+	${EXTERNAL_SRC_DIR}/hidapi/hidapi.h
 	${WIN32_PATH}/getopt_win32.c
 	${WIN32_PATH}/getopt.h
 	${WIN32_PATH}/sdl_win32_main.c
-	${DISTR_PATH}/arcan_resource.obj
-${PLATFORM_SOURCES})
-
-LIST(APPEND FSRV_SOURCES
-${WIN32_PATH}/arcan_frameserver_win32.c
-${DISTR_PATH}/arcan_frameserver_resource.obj
-${FSERV_PLATFORM_SOURCES})
-
-LIST(APPEND FSRV_LIBRARIES mingwex ws2_32 winmm pthread)
-LIST(APPEND MAIN_LIBRARIES winmm setupapi mingw32)
-
-include(${WIN32_PATH}/../CMakeLists.fsrv)
-
-set(BIN_DST ".")
-set(RESOURCES_DST "./resources")
-set(APPL_DST "./appl")
-set(TEST_DST "./tests")
-
-add_custom_command(
-OUTPUT ${DISTR_PATH}/arcan_resource.obj
-DEPENDS ${DISTR_PATH}/arcan.rc
-COMMAND windres.exe
-ARGS -o ${DISTR_PATH}/arcan_resource.obj
--i${DISTR_PATH}/arcan.rc
+	arcan_resource.obj
+${PLATFORM_SOURCES}
 )
 
-add_custom_command(
-OUTPUT ${DISTR_PATH}/arcan_frameserver_resource.obj
-DEPENDS ${DISTR_PATH}/arcan_frameserver.rc
-COMMAND windres.exe
-ARGS -o ${DISTR_PATH}/arcan_frameserver_resource.obj
--i${DISTR_PATH}/arcan_frameserver.rc
+SET(FSRV_PLATFORM
+	${WIN32_PATH}/arcan_frameserver_win32.c
+	arcan_frameserver_resource.obj
 )
 
-# there must be a sane way to do this and actually have it work,
-# add_custom_target on the output seems to do absolutely nothing.
-add_custom_target(arcan_romman.exe
-	COMMAND ocra
-	--output ${CMAKE_BINARY_DIR}/arcan_romman.exe
-	${CMAKE_SOURCE_DIR}/utils/arcan_romman.rb
-	${CMAKE_SOURCE_DIR}/resources/scripts/romman_base.rb
+set(STDLIB
+	mingwex
+	ws2_32
+	winmm
+	pthread
+	setupapi
+	mingw32
 )
-add_executable( arcan WIN32 ${SOURCES} )
-
-set (LAUNCHER_PATH ${CMAKE_SOURCE_DIR}/utils/ArcanLauncher)
-set (DISTR_PATH ${CMAKE_SOURCE_DIR}/distr)
-
-# ------------- Win32 Arcan Launcher Tool -----------
-include_external_msproject(ArcanLauncher
-	${LAUNCHER_PATH}/ArcanLauncher/ArcanLauncher.csproj
-	TYPE 1FC6864D-77E3-4AE9-AB3F-3E450B4335E4
-	PLATFORM "Any CPU"
-	)
-
-# ------------- Win32 Installer ------------
-file (GLOB _dlls "${DISTR_PATH}/win32libs/*.dll")
-install(FILES ${_dlls} DESTINATION ${BIN_DST})
-install(FILES ${CMAKE_BINARY_DIR}/arcan_romman.exe DESTINATION ${BIN_DST})
-install(FILES ${DISTR_PATH}/winicon.ico
-	DESTINATION ${BIN_DST})
-
-install(FILES ${DISTR_PATH}/COPYRIGHT
-	DESTINATION ${BIN_DST})
-
-install(FILES ${DISTR_PATH}/oalinst.exe
-	DESTINATION ${BIN_DST})
-
-install(FILES "${LAUNCHER_PATH}/ArcanLauncher/bin/Release/ArcanLauncher.exe"
-	DESTINATION ${BIN_DST})
-
-# overwrite to reduce hassle on Vista++, only affects themes/resources
-# doesn't seem to have the desired effect however ..
-set(SHARED_PERMISSIONS
-	OWNER_WRITE
-	OWNER_READ
-	GROUP_WRITE
-	GROUP_READ
-	WORLD_WRITE
-	WORLD_READ
-)
-
-set(SHARED_PERMISSIONS_DIR
-	${SHARED_PERMISSIONS}
-	WORLD_EXECUTE
-)
-
-set_target_properties(arcan PROPERTIES
-	COMPILE_FLAGS
-		"-Dmain=SDL_main -DREPLACE_GETOPT"
-)
-
- SET(CPACK_GENERATOR ${CPACK_GENERATOR};NSIS)
- SET(CPACK_NSIS_MUI_ICON "${DISTR_PATH}/winicon.ico")
- SET(CPACK_NSIS_MUI_UNIICON "${DISTR_PATH}/winicon.ico")
- SET(CPACK_NSIS_MUI_PRODUCT "Arcan")
- SET(CPACK_PACKAGE_INSTALL_DIRECTORY "Arcan")
- SET(CPACK_PACKAGE_VENDOR "Arcan Frontend")
-
-# try to autoinstall OpenAL (if needed)
-SET(CPACK_NSIS_EXTRA_INSTALL_COMMANDS "${CPACK_NSIS_EXTRA_INSTALL_COMMANDS}
-WriteRegStr HKLM 'Software\\\\Arcan Frontend\\\\Arcan' 'InstallDir' '\$INSTDIR'
-ExecWait '\\\"$INSTDIR\\\\oalinst.exe\\\" /s' ")
-
-SET(CPACK_NSIS_CREATE_ICONS "CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Welcome).lnk' '\$INSTDIR\\\\arcan.exe' 'welcome'")
-SET(CPACK_NSIS_CREATE_ICONS_EXTRA "
-	AccessControl::GrantOnFile '\$INSTDIR\\\\themes' '(BU)' 'GenericRead + GenericWrite'
-	AccessControl::GrantOnFile '\$INSTDIR\\\\resources' '(BU)' 'GenericRead + GenericWrite'
-	CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\ArcanLauncher.lnk' '\$INSTDIR\\\\ArcanLauncher.exe' ''
-	CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Build DB (full).lnk' '\$INSTDIR\\\\arcan_romman.exe' 'builddb --mamegood --mameskipclone --mameshorttitle --dbname ./resources/arcandb.sqlite --rompath ./resources/games --targetpath ./resources/targets'
-	CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Workbench).lnk' '\$INSTDIR\\\\arcan.exe' 'awb'
-	CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Gridle).lnk' '\$INSTDIR\\\\arcan.exe' 'gridle'
-	CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Gridle Remote).lnk' '\$INSTDIR\\\\arcan.exe' 'gridle_remote'
-  WriteINIStr '$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Web Site.url' 'InternetShortcut' 'URL' 'http://arcan-fe.com'
-")
-
-SET(CPACK_NSIS_DELETE_ICONS_EXTRA "
-	Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Arcan (Welcome).lnk'
-	Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Tests\\\\Event Test.lnk'
-	Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Tests\\\\Font Test.lnk'
-	Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Tests\\\\Event Test.lnk'
-	Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Tests\\\\Sound Test.lnk'
-	Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Tests\\\\Image Test.lnk'
-	Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Tests\\\\Movie Test.lnk'
-	Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Tests\\\\Core Comparator.lnk'
-	RMDir '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Tests'
-	Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Build DB (Full).lnk'
-	Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Arcan (Workbench).lnk'
-	Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Arcan (Gridle).lnk'
-	Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Arcan (Gridle Remote).lnk'
-	Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Arcan (Streamer).lnk'
-	Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\ArcanLauncher.lnk'
-	Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Web Site.url'
-")
-
- SET(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION ".")
-

@@ -5244,14 +5244,12 @@ static int targetseek(lua_State* ctx)
 	LUA_TRACE("target_seek");
 
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
-	float val         = luaL_checknumber(ctx, 2);
-	bool relative     = luaL_optnumber(ctx, 3, 1) != 0;
+	float val = luaL_checknumber(ctx, 2);
+	bool relative = luaL_optnumber(ctx, 3, 1) != 0;
 
 	vfunc_state* state = arcan_video_feedstate(tgt);
 
 	if (!(state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr)){
-		arcan_warning("targetseek() vid(%"PRIxVOBJ") is not "
-			"connected to a frameserver\n", tgt);
 		LUA_ETRACE("target_seek", "not a frameserver");
 		return 0;
 	}
