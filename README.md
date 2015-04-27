@@ -1,60 +1,32 @@
 Arcan
 =====
 
-Arcan is a powerful development framework for creating virtually anything between
-user interfaces for specialized embedded applications all the way to
- full-blown standalone desktop environments.
+Arcan is a powerful development framework for creating virtually anything from
+user interfaces for specialized embedded applications all the way to full-blown
+standalone desktop environments.
 
 At its heart lies a robust and portable multimedia engine, with a well-tested
-and well-documented interface, programmable in Lua. At every step of the way,
-the underlying development emphasizes security, performance and debuggability
-guided by a principle of least surprise in terms of API design.
+and well-documented interface, scriptable using in Lua. The development
+emphasizes security, debuggability and performance -- guided by a principle of
+least surprise in terms of API design.
 
-Among the more uncommon features we find:
-
- * A multi-process way of hooking up dynamic data-sources ("frameservers")
-   such as online video streams, capture devices, and even other running
-   programs as programmable objects for both graphics, audio and input.
-   This permits aggressive sandboxing for what has historically been
-   error-prone and security challenged tasks.
-
- * Capable of being its own compositor, display server and window manager at
-   the same time. There are two build outputs, arcan and arcan\_lwa
-   ('lightweight'). Arcan uses the underlying hardware to present aural and
-   visual information and obtains input from external devices. Arcan\_lwa
-   re-uses most of the same codebase and API, but uses arcan for input
-   and output.
-
- * Built-in monitoring and crash-dump analysis. The engine can serialize vital
-   internal state to a Lua script ("crash dump") or to another version of itself
-   periodically ("monitoring") to allow external filters and tools to be written
-   quickly in order to track down bugs or suspicious activity.
-
- * Fallbacks -- Should the running application fail due to a programming error,
-   (which can, of course, happen to any moderately complicated application),
-   the engine will try to gracefully hand-over external data sources and
-   connections to a fallback application that adopts control and tries to
-   recover seamlessly.
-
- * Fine-grained sharing -- Advanced tasks that are notably difficult in some
-   environments, e.g. recording / streaming controlled subsets of audio and
-   video data sources (including 'desktop sharing') requires little more than
-   a handful of lines of code to get going.
+For more details about capabilities, design, goals and current development,
+please refer to the [arcan-wiki](https://github.com/letoram/arcan/wiki) and
+to the [website](https://arcan-fe.com).
 
 The primary development platforms are FreeBSD and Linux, but releases are
-actively tested on both Windows and Mac OS X. While it works under various
-display and input subsystems e.g. SDL, X etc. a primary goal is for the
-framework applications to run with as few layers of ''abstraction'' in the
-way as possible.
+actively tested on several platforms, including Windows and Mac OS X on
+a wide variety of display- and input- subsystems (e.g. SDL, X11, EGL/GLES).
 
 Getting Started
 =====
 The rest of this readme is directed towards developers. As an end- user,
-you would probably do best to look/wait/encourage the development of-
-applications that uses this project as a backend, or at the very least,
+you would probably do best to wait for- or encourage- the development
+applications that uses this project as a backend, or at the very least-
 wait until it is available as a package in your favorite distribution.
+
 For developers, the first step is, of course, getting the engine
-running (see building, below).
+up and running (see building, below).
 
 After that is done, there is a set of challenges and exercises in the wiki
 to help you get a feel for the API, navigating documentation and so on.
@@ -63,9 +35,11 @@ Compiling
 =====
 There are a lot of build options for fine-grained control over your arcan
 build. In this section we will just provide the bare essentials for a build
-on linux, BSD or OSX (windows can cheat with using the prebuilt installer
+on Linux, BSD or OSX (windows can cheat with using the prebuilt installer
 binaries) and you can check out the relevant sections in the wiki for more
-detailed documentation. For starters, the easiest approach is to do the
+detailed documentation.
+
+For starters, the easiest approach is to do the
 following:
 
      git clone https://github.com/letoram/arcan.git
@@ -77,31 +51,39 @@ following:
      make -j 12
 
 The required dependencies for this build is cmake for compilation, and then
-libsdl1.2, openal, opengl and freetype.
+libsdl1.2, openal, opengl and freetype. There is also support for building some
+of these dependencies statically, e.g.
+
+     git clone https://github.com/letoram/arcan.git
+     cd arcan/external/git
+     ./clone.sh
+     cd ../../
+     mkdir build
+     cd build
+     cmake -DCMAKE_BUILD_TYPE="Debug" -DVIDEO_PLATFORM=sdl
+      -DSTATIC_SQLITE3=ON -DSTATIC_OPENAL=ON -DENABLE_LWA=OFF ../src
+     make -j 12
 
 Two important things about this build, the first is that frameserver support is
-disabled entirely. Frameservers are separate programs that connect to the main
-arcan process and cooperatively reacts to input and provides audio/video data.
-They have specialized support in the Lua scripting API and are instrumental in
-features e.g. networking, video decoding, video recording etc. Most builds will
-want to leave them in, but each frameserver adds its own set of non-trivial
-dependencies and are therefore excluded in this example.
+disabled entirely. Frameservers are separate programs that the engine can launch
+in order to access audio/video decoding, encoding and similar features.
+
+Most builds will want to leave them in, but each frameserver adds its own set
+of non-trivial dependencies and are therefore excluded in this example.
 
 LWA support is also disabled in the build configuration above. LWA stands for
 lightweight arcan and provides a specialized build (arcan\_lwa) that uses the
 arcan shared memory interface as an audio/video/input platform, allowing one
 instance of arcan to act as a display server for others. It is a somewhat more
-complex build in that it pulls down adn builds a specialized/patched version
-of openAL.
+complex build in that it pulls down and builds a specialized/patched version
+of OpenAL.
 
 You can then test the build with:
 
-     ./arcan -p ../../data/resources/ ../../data/appl/welcome
+     ./arcan -p ../data/resources/ ../data/appl/welcome
 
-Which tells us to use shared resources from the ../../data/resources directory,
-and launch an application that resides as ../../data/appl/welcome.
-
-Other quick and dirty applications to test are those in ../../test/interactive.
+Which tells us to use shared resources from the ../data/resources directory,
+and launch an application that resides as ../data/appl/welcome.
 
 Database
 =====
@@ -154,9 +136,10 @@ The git-tree has the following structure:
     examples/ -- miniature projects that showcase some specific
                  non-obvious features
 
+    external/ -- external dependencies that may be built in-source
+
     src/
         engine/ -- main engine code-base
-        external/ -- external dependencies that may be built in-source
         frameserver/ -- individual frameservers and support functions
         hijack/ -- interpositioning libraries for different data sources
         platform/ -- os/audio/video/etc. interfacing
