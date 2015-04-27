@@ -8,7 +8,7 @@
 --
 -- The *callback* will follow the prototype function(image, width, height)
 -- where *image* is a table with the following functions:
--- . get(x, y, [nchannels=3]) => r, [g, b, a]
+-- . get(x, y, [nchannels=1]) => r, [g, b, a]
 -- . histogram_impose(destination, *mode*)
 -- . frequency(bin, *mode*, *normalize*) => r,g,b,a
 --
