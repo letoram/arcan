@@ -4673,9 +4673,9 @@ static int rawsurface(lua_State* ctx)
 	luaL_checktype(ctx, 4, LUA_TTABLE);
 	int nsamples = lua_rawlen(ctx, 4);
 
-	if (nsamples != desw * desh * bpp)
-		arcan_fatal("rawsurface(), number of values (%d) doesn't match"
-			"	expected length (%d).\n", nsamples, desw * desh * bpp);
+	if (nsamples < desw * desh * bpp)
+		arcan_fatal("rawsurface(), number of samples (%d) are less than"
+			"	the expected length (%d).\n", nsamples, desw * desh * bpp);
 
 	unsigned ofs = 1;
 
