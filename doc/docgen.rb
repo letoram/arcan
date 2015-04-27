@@ -2,26 +2,30 @@
 require 'fileutils'
 
 def scangrp(inf)
-	line = "";
-	res = {};
-	group = "unknown";
+	line = ""
+	res = {}
+	group = "unknown"
 
-	while ( (line = inf.readline)[0..2] == "-- ") do
-		if line[0..3] == "-- @"
+	while ( (line = inf.readline)[0..1] == "--") do
+# special paragraph break
+		if line[0..2] == "--\n"
+			res[group] << ""
+
+# switch group
+		elsif line[0..3] == "-- @"
 			group = line[4..line.index(":")-1]
-			msg = line[(line.index(":")+1)..-1];
+			msg = line[(line.index(":")+1)..-1]
 			if (res[group] == nil) then
 				res[group] = []
 			else
 				res[group] << ""
 			end
 
-			if (msg != nil)
-				msg.strip!
-				res[group] << msg if msg.length > 0
-			end
+# some groups have a header
+			res[group] << msg.strip if msg != nil
+# more data
 		else
-			res[group] << line[3..-1].strip;
+			res[group] << line[3..-1].strip
 		end
 	end
 
@@ -29,7 +33,8 @@ def scangrp(inf)
 
 rescue => er
 	STDERR.print("parsing error, #{er} while processing " \
-							 "(#{inf.path}\n lastline: #{line}\n")
+		"(#{inf.path}\n lastline: #{line}\n"
+	)
 	return res, ""
 end
 
@@ -39,6 +44,9 @@ class String
 	end
 end
 
+# run through the list of lines through the C pre-parser, this is used multiple
+# times with MAIN, MAIN2, ERROR1, ... defined in order to both generate test
+# cases and for manpage examples
 def extract_example(lines, defs)
 	res = []
 	iobj = IO.popen(
@@ -51,7 +59,9 @@ def extract_example(lines, defs)
 		if (a[0] == "#" or a.strip == "")
 			next
 		end
-		res << a
+		line = a.gsub(/\n/, "")
+		line = ("     " * line[/\A */].size) << line
+		res << line;
 	}
 	iobj.close_read
 	res
@@ -235,13 +245,34 @@ def scangroups(group, sym, csym)
 	$grouptbl[group] << sym
 end
 
+# special paragraphing fixups for *ROFF output (manpages) in
+# the context @longdescr group
+#
+# empty -> \n.PP\n
+# *bla* -> \n.I bla\n
+# ref:function\w -> \n.BR function\n
+# . text -> \n.IP
+# \[A-Z_]1+ -> \n.B MSG\n
+#
+def troff_highlight_str(str)
+	str.gsub!(/([A-Z_]{2,})/, "\n.B \\1\n\\\\&")
+	str.gsub!(/\*([a-z_]{2,})\*/, "\n.I \\1\n\\\\&")
+	str.gsub!(/ref:(\w{2,})/, "\n.BR \\1 \n\\\\&")
+	str
+end
+
 def troffdescr(descr)
-	a = descr.join("\n")
-	a.gsub!(/\./, ".\n.R")
-  a.gsub!(/\*(\w+)\*/, "\\fI \\1 \\fR")
-	a.gsub!("  ", " ")
-	a.strip!
-	a[0..-3]
+	out = ""
+	descr.each{|block|
+		case block
+			when "" then out << "\n.PP\n"
+			when /^\.\s/ then out << troff_highlight_str("\n.B #{block[2..-1]} \n")
+		else
+			out << troff_highlight_str(block) << " "
+		end
+	}
+
+	out.strip
 end
 
 # template:
@@ -270,6 +301,7 @@ end
 
 def funtoman(fname)
 	cgroup = nil
+	return unless File.exists?("#{fname}.lua")
 
 	inf = DocReader.Open("#{fname}.lua")
 	outm = File.new("mantmp/#{fname}.3", IO::CREAT | IO::RDWR)
@@ -323,7 +355,7 @@ def funtoman(fname)
 				count = count + 1
 				outm << ".IP #{count}\n"
 			else
-				outm << "#{a}\n"
+				outm << "#{troff_highlight_str(a)}\n"
 			end
 		}
 	end
