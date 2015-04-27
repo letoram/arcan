@@ -1,22 +1,23 @@
 -- define_calctarget
 -- @short: Create a rendertarget with a periodic readback into a Lua callback
--- @inargs: dest_buffer, vid_table, detacharg, scalearg, samplerate, callback
+-- @inargs: dest_buffer, vid_table, detach, scale, samplerate, callback
 -- @outargs:
--- @longdescr: This function inherits from ref:define_rendertarget. Please
--- refer to the description of that function for assistance with the *detach*,
--- *scale* and *samplerate* functions.
+-- @longdescr: This function inherits some of its behavior from
+-- ref:define_rendertarget. Please refer to the description of that function
+-- for assistance with the *detach*, *scale* and *samplerate* functions.
 --
 -- The *callback* will follow the prototype function(image, width, height)
 -- where *image* is a table with the following functions:
--- . get(x, y, [nchannels=1]) => r, [g, b, a]
--- . histogram_impose(destination, *mode*)
--- . frequency(bin, *mode*, *normalize*) => r,g,b,a
+--
+-- . get (x, y, [nchannels=1]) => r, [g, b, a]
+-- . histogram_impose (destination, *mode*)
+-- . frequency (bin, *mode*, *normalize*) => r,g,b,a
 --
 -- The *get* function can be used to sample the value at the specified
 -- coordinates (x,y) that must be 0 <= x < width, 0 <= y < height. Other
 -- values will result in a terminal state transition. For the *nchannels*
--- argument, the values 1,3,4 and valued and will determine the number
--- of returned values.
+-- argument, the permitted values 1,3,4 and will determine the number
+-- of returned channels.
 --
 -- The *histogram_impose* function will generate a histogram and store
 -- in the first row of *destination*, which subsequently must have at
