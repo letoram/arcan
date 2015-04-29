@@ -248,7 +248,6 @@ if (EXISTS ${EXTERNAL_SRC_DIR}/git/freetype)
 		GIT_REPOSITORY "${EXTERNAL_SRC_DIR}/git/freetype"
 		${EXTERNAL_DEFS}
 		${CMAKE_EXTERNAL_DEFS}
-		BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/lib/libfreetype.a
 	)
 	set(FREETYPE_INCLUDE_DIRS "${CMAKE_CURRENT_BINARY_DIR}/include/freetype2")
 	set(FREETYPE_LIBRARY "${CMAKE_CURRENT_BINARY_DIR}/lib/libfreetype.a")
@@ -266,9 +265,6 @@ if (EXISTS ${EXTERNAL_SRC_DIR}/git/openal AND STATIC_OPENAL)
 		GIT_REPOSITORY "${EXTERNAL_SRC_DIR}/git/openal"
 		${EXTERNAL_DEFS}
 		${CMAKE_EXTERNAL_DEFS}
-		BYPRODUCTS # 3.2 feature, required for Ninja makefiles
-			${CMAKE_CURRENT_BINARY_DIR}/openal/libcommon.a
-			${CMAKE_CURRENT_BINARY_DIR}/openal/libopenal.a
 	)
 	set(OPENAL_LIBRARY
 		"${CMAKE_CURRENT_BINARY_DIR}/lib/libopenal.a"
