@@ -36,8 +36,6 @@ if (GLOBAL_CFLAGS)
 	add_definitions(${GLOBAL_CFLAGS})
 endif()
 
-add_compile_options(-std=gnu11 -Wall)
-
 # static base version, manually mantained
 set(MAJOR_VERSION 0)
 set(MINOR_VERSION 5)
@@ -152,19 +150,31 @@ amsg("")
 # no other audio platforms supported currently
 set(AUDIO_PLATFORM "openal")
 
+# can ignore this abomination on BSD
+set(CSTD gnu11)
+
 if ("${CMAKE_C_COMPILER_ID}" MATCHES "GNU")
 	execute_process(
 		COMMAND ${CMAKE_C_COMPILER} -dumpversion OUTPUT_VARIABLE GCC_VERSION)
 
-	if (NOT (GCC_VERSION VERSION_GREATER 4.7 OR GCC_VERSION VERSION_EQUAL 4.7))
-		message(FATAL_ERROR "${CLB_RED}Ancient GCC Version detected, Arcan needs to be compiled with Clang-3.3+ or gcc 4.7+${CL_RST}")
+	if (NOT (GCC_VERSION VERSION_GREATER 4.6 OR GCC_VERSION VERSION_EQUAL 4.6))
+		message(FATAL_ERROR "${CLB_RED}Ancient GCC Version detected, Arcan should be compiled with Clang-3.3+ or gcc 4.7+${CL_RST}")
 	endif()
-	add_compile_options(-Wno-missing-braces -Wno-unused-function
+
+	if (GCC_VERSION VERSION_LESS 4.7)
+		amsg("${CLB_RED}Ancient GCC Version (4.6.x) detected, switch to a less terrible distribution or be prepared for side-effects${CL_RST}")
+		include_directories(${PLATFORM_ROOT}/freebsd) # stdalign.h placeholder
+		set(CSTD gnu1x)
+		add_compile_options("-D_Alignas(X)=")
+		set(SIMD_ALIGNED OFF)
+	endif()
+
+	add_compile_options(-Wall -Wno-missing-braces -Wno-unused-function
 		-Wno-unused-value -Wno-unused-variable
 	)
 
 elseif ("${CMAKE_C_COMPILER_ID}" MATCHES "Clang")
-	add_compile_options(-Wno-unknown-warning-option -Wno-unused-const-variable
+	add_compile_options(-Wall -Wno-unknown-warning-option -Wno-unused-const-variable
 		-Wno-unused-value -Wno-missing-braces -Wno-unused-function
 		-Wno-unused-variable
 	)
@@ -216,6 +226,8 @@ endif()
 if (NOT VIDEO_PLATFORM)
 	message(FATAL_ERROR "${CLB_RED}Video Platform missing, see -DVIDEO_PLATFORM= above${CL_RST}")
 endif()
+
+add_compile_options(-std=${CSTD})
 
 amsg("\n${CL_WHT}-- Stage 1: dependencies and configuration${CL_RST}")
 
@@ -302,11 +314,13 @@ if (NOT DISABLE_JIT)
 			SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/luajit
 			GIT_REPOSITORY "${EXTERNAL_SRC_DIR}/git/luajit"
 			CONFIGURE_COMMAND ""
+			INSTALL_COMMAND ""
 			BUILD_IN_SOURCE 1
 			${EXTERNAL_DEFS}
-			INSTALL_COMMAND ""
 		)
 		set(LUA_LIBRARY "${CMAKE_CURRENT_BINARY_DIR}/luajit/src/libluajit.a")
+		set(LUA_LIBRARIES ${LUA_LIBRARY})
+		set(LUA51_JIT ON)
 		set(LUA_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/luajit/src")
 		list(APPEND MAIN_DEPS luajit)
 	else()
