@@ -523,7 +523,9 @@ target_link_libraries(arcan
 	arcan_shmif_int
 )
 
-add_dependencies(arcan ${MAIN_DEPS})
+if (MAIN_DEPS)
+	add_dependencies(arcan ${MAIN_DEPS})
+endif()
 
 #
 # The database tool is a CLI for the engine/arcan_db with additional
