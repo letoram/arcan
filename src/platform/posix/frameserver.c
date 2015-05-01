@@ -518,8 +518,7 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 		.height = hinth,
 		.bpp = sizeof(av_pixel)
 	};
-	arcan_vobj_id newvid = arcan_video_addfobject((arcan_vfunc_cb)
-		arcan_frameserver_videoframe_direct, state, cons, 0);
+	arcan_vobj_id newvid = arcan_video_addfobject(FFUNC_VFRAME, state, cons, 0);
 
 	if (newvid == ARCAN_EID){
 		arcan_frameserver_free(newseg);
@@ -646,9 +645,7 @@ static bool memcmp_nodep(const void* s1, const void* s2, size_t n)
 	return !(diffv != 0);
 }
 
-static enum arcan_ffunc_rv socketverify(enum arcan_ffunc_cmd cmd,
-	av_pixel* buf, size_t s_buf, uint16_t width, uint16_t height,
-	unsigned mode, vfunc_state state)
+enum arcan_ffunc_rv arcan_frameserver_socketverify FFUNC_HEAD
 {
 	arcan_frameserver* tgt = state.ptr;
 	char ch = '\n';
@@ -673,11 +670,11 @@ static enum arcan_ffunc_rv socketverify(enum arcan_ffunc_cmd cmd,
 		if (!fd_avail(tgt->dpipe, &term)){
 			if (term)
 				arcan_frameserver_free(tgt);
-			return FFUNC_RV_NOFRAME;
+			return FRV_NOFRAME;
 		}
 
 		if (-1 == read(tgt->dpipe, &ch, 1))
-			return FFUNC_RV_NOFRAME;
+			return FRV_NOFRAME;
 
 		if (ch == '\n'){
 /* 0- pad to max length */
@@ -691,7 +688,7 @@ static enum arcan_ffunc_rv socketverify(enum arcan_ffunc_cmd cmd,
 			arcan_warning("platform/frameserver.c(), key verification failed on %"
 				PRIxVOBJ", received: %s\n", tgt->vid, tgt->sockinbuf);
 			arcan_frameserver_free(tgt);
-			return FFUNC_RV_NOFRAME;
+			return FRV_NOFRAME;
 		}
 		else
 			tgt->sockinbuf[tgt->sockrofs++] = ch;
@@ -701,14 +698,14 @@ static enum arcan_ffunc_rv socketverify(enum arcan_ffunc_cmd cmd,
 				"verify failed on %"PRIxVOBJ", terminating.\n", tgt->vid);
 			arcan_frameserver_free(tgt);
 		}
-		return FFUNC_RV_NOFRAME;
+		return FRV_NOFRAME;
 
 	case FFUNC_DESTROY:
 		if (tgt->sockaddr)
 			unlink(tgt->sockaddr);
 
 	default:
-		return FFUNC_RV_NOFRAME;
+		return FRV_NOFRAME;
 	break;
 	}
 
@@ -740,11 +737,10 @@ send_key:
 
 	if (rtc <= 0){
 		arcan_frameserver_free(tgt);
-		return FFUNC_RV_NOFRAME;
+		return FRV_NOFRAME;
 	}
 
-	arcan_video_alterfeed(tgt->vid,
-		arcan_frameserver_emptyframe, state);
+	arcan_video_alterfeed(tgt->vid, FFUNC_NULLFRAME, state);
 
 	arcan_errc errc;
 	tgt->aid = arcan_audio_feed((arcan_afunc_cb)
@@ -752,12 +748,10 @@ send_key:
 	tgt->sz_audb = 1024 * 64;
 	tgt->audb = malloc(tgt->sz_audb);
 
-	return FFUNC_RV_NOFRAME;
+	return FRV_NOFRAME;
 }
 
-static int8_t socketpoll(enum arcan_ffunc_cmd cmd, av_pixel* buf,
-	size_t s_buf, uint16_t width, uint16_t height, unsigned mode,
-	vfunc_state state)
+enum arcan_ffunc_rv arcan_frameserver_socketpoll FFUNC_HEAD
 {
 	arcan_frameserver* tgt = state.ptr;
 	struct arcan_shmif_page* shmpage = tgt->shm.ptr;
@@ -766,7 +760,7 @@ static int8_t socketpoll(enum arcan_ffunc_cmd cmd, av_pixel* buf,
 	if (state.tag != ARCAN_TAG_FRAMESERV || !shmpage){
 		arcan_warning("platform/posix/frameserver.c:socketpoll, called with"
 			" invalid source tag, investigate.\n");
-		return FFUNC_RV_NOFRAME;
+		return FRV_NOFRAME;
 	}
 
 /* wait for connection, then unlink directory node and switch to verify. */
@@ -776,14 +770,14 @@ static int8_t socketpoll(enum arcan_ffunc_cmd cmd, av_pixel* buf,
 				if (term)
 					arcan_frameserver_free(tgt);
 
-				return FFUNC_RV_NOFRAME;
+				return FRV_NOFRAME;
 			}
 
 			int insock = accept(tgt->dpipe, NULL, NULL);
 			if (-1 == insock)
-				return FFUNC_RV_NOFRAME;
+				return FRV_NOFRAME;
 
-			arcan_video_alterfeed(tgt->vid, socketverify, state);
+			arcan_video_alterfeed(tgt->vid, FFUNC_SOCKVER, state);
 
 /* hand over responsibility for the dpipe to the event layer */
 			arcan_event adopt = {
@@ -804,7 +798,8 @@ static int8_t socketpoll(enum arcan_ffunc_cmd cmd, av_pixel* buf,
 			free(tgt->sockkey);
 			tgt->sockaddr = tgt->sockkey = NULL;
 
-			return socketverify(cmd, buf, s_buf, width, height, mode, state);
+			return arcan_frameserver_socketverify(
+				cmd, buf, buf_sz, width, height, mode, state);
 		break;
 
 /* socket is closed in frameserver_destroy */
@@ -822,7 +817,7 @@ static int8_t socketpoll(enum arcan_ffunc_cmd cmd, av_pixel* buf,
 		break;
 	}
 
-	return FFUNC_RV_NOFRAME;
+	return FRV_NOFRAME;
 }
 
 arcan_frameserver* arcan_frameserver_listen_external(const char* key, int fd)
@@ -844,8 +839,7 @@ arcan_frameserver* arcan_frameserver_listen_external(const char* key, int fd)
 	img_cons cons = {.w = 32, .h = 32, .bpp = 4};
 	vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = res};
 
-	res->vid = arcan_video_addfobject((arcan_vfunc_cb)
-		socketpoll, state, cons, 0);
+	res->vid = arcan_video_addfobject(FFUNC_SOCKPOLL, state, cons, 0);
 
 /*
  * audio setup is deferred until the connection has been acknowledged
@@ -952,8 +946,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 		ctx->source = strdup(setup.args.builtin.resource);
 
 		if (!ctx->vid)
-			ctx->vid = arcan_video_addfobject((arcan_vfunc_cb)
-				arcan_frameserver_emptyframe, state, cons, 0);
+			ctx->vid = arcan_video_addfobject(FFUNC_NULLFRAME, state, cons, 0);
 
 		ctx->aid = ARCAN_EID;
 

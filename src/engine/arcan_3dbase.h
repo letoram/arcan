@@ -66,4 +66,8 @@ arcan_errc arcan_3d_baseorient(arcan_vobj_id dst,
  * into the -1..1 range */
 arcan_errc arcan_3d_scalevertices(arcan_vobj_id vid);
 
+#ifdef A3D_PRIVATE
+enum arcan_ffunc_rv arcan_ffunc_3dobj FFUNC_HEAD;
+#endif
+
 #endif

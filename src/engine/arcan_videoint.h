@@ -195,7 +195,7 @@ typedef struct arcan_vobject {
 	agp_shader_id program;
 
 	struct {
-		arcan_vfunc_cb ffunc;
+		enum arcan_ffunc ffunc;
 		vfunc_state state;
 		int pcookie;
 	} feed;

@@ -28,7 +28,10 @@
 #include "arcan_videoint.h"
 #include "arcan_audio.h"
 #include "arcan_audioint.h"
+
+#define FRAMESERVER_PRIVATE
 #include "arcan_frameserver.h"
+
 #include "arcan_event.h"
 #include "arcan_img.h"
 
@@ -103,7 +106,7 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 		src->dpipe = BADFD;
 	}
 
-	arcan_video_alterfeed(src->vid, NULL, emptys);
+	arcan_video_alterfeed(src->vid, FFUNC_NULL, emptys);
 
 	arcan_event sevent = {
 		.category = EVENT_FSRV,
@@ -276,26 +279,12 @@ static void push_buffer(arcan_frameserver* src,
 	agp_stream_commit(store, stream);
 }
 
-enum arcan_ffunc_rv arcan_frameserver_dummyframe(
-	enum arcan_ffunc_cmd cmd, uint8_t* buf,
-	uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp,
-	unsigned mode, vfunc_state state)
-{
-    if (state.tag == ARCAN_TAG_FRAMESERV && state.ptr && cmd == FFUNC_DESTROY)
-        arcan_frameserver_free( (arcan_frameserver*) state.ptr);
-
-    return FFUNC_RV_NOFRAME;
-}
-
-enum arcan_ffunc_rv arcan_frameserver_emptyframe(
-	enum arcan_ffunc_cmd cmd, av_pixel* buf,
-	size_t s_buf, uint16_t width, uint16_t height,
-	unsigned mode, vfunc_state state)
+enum arcan_ffunc_rv arcan_frameserver_emptyframe FFUNC_HEAD
 {
 	arcan_frameserver* tgt = state.ptr;
 	if (!tgt || state.tag != ARCAN_TAG_FRAMESERV
 	 || !arcan_frameserver_enter(tgt))
-		return FFUNC_RV_NOFRAME;
+		return FRV_NOFRAME;
 
 	switch (cmd){
 		case FFUNC_POLL:
@@ -303,7 +292,7 @@ enum arcan_ffunc_rv arcan_frameserver_emptyframe(
 				arcan_frameserver_tick_control(tgt);
         if (tgt->shm.ptr && tgt->shm.ptr->vready){
 					arcan_frameserver_leave();
-        	return FFUNC_RV_GOTFRAME;
+        	return FRV_GOTFRAME;
 				}
 			}
 
@@ -320,7 +309,7 @@ enum arcan_ffunc_rv arcan_frameserver_emptyframe(
 	}
 
 	arcan_frameserver_leave();
-	return FFUNC_RV_NOFRAME;
+	return FRV_NOFRAME;
 }
 
 static void check_audb(arcan_frameserver* tgt, struct arcan_shmif_page* shmpage)
@@ -335,7 +324,7 @@ static void check_audb(arcan_frameserver* tgt, struct arcan_shmif_page* shmpage)
 	if (ntc == 0){
 		static bool overflow;
 		if (!overflow){
-			arcan_warning("frameserver_videoframe_direct(), incoming buffer "
+			arcan_warning("frameserver_vdirect(), incoming buffer "
 				"overflow for: %d, resetting.\n", tgt->vid);
 			overflow = true;
 		}
@@ -349,10 +338,7 @@ static void check_audb(arcan_frameserver* tgt, struct arcan_shmif_page* shmpage)
 	arcan_sem_post( tgt->async );
 }
 
-enum arcan_ffunc_rv arcan_frameserver_videoframe_direct(
-	enum arcan_ffunc_cmd cmd, av_pixel* buf, size_t s_buf,
-	uint16_t width, uint16_t height,
-	unsigned int mode, vfunc_state state)
+enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 {
 	int8_t rv = 0;
 	if (state.tag != ARCAN_TAG_FRAMESERV || !state.ptr)
@@ -362,7 +348,7 @@ enum arcan_ffunc_rv arcan_frameserver_videoframe_direct(
 	struct arcan_shmif_page* shmpage = tgt->shm.ptr;
 
 	if (!shmpage || !arcan_frameserver_enter(tgt))
-		return FFUNC_RV_NOFRAME;
+		return FRV_NOFRAME;
 
 	switch (cmd){
 /* silent compiler, this should not happen for a target with a
@@ -375,7 +361,7 @@ enum arcan_ffunc_rv arcan_frameserver_videoframe_direct(
 			arcan_frameserver_tick_control(tgt);
 			shmpage = tgt->shm.ptr;
 		if (!shmpage)
-			return FFUNC_RV_NOFRAME;
+			return FRV_NOFRAME;
 		}
 
 /* use this opportunity to make sure that we treat audio as well */
@@ -384,7 +370,7 @@ enum arcan_ffunc_rv arcan_frameserver_videoframe_direct(
 /* caller uses this hint to determine if a transfer should be
  * initiated or not */
 		rv = (tgt->playstate == ARCAN_PLAYING && shmpage->vready) ?
-			FFUNC_RV_GOTFRAME : FFUNC_RV_NOFRAME;
+			FRV_GOTFRAME : FRV_NOFRAME;
 	break;
 
 	case FFUNC_TICK:
@@ -428,17 +414,14 @@ enum arcan_ffunc_rv arcan_frameserver_videoframe_direct(
  * contain the state that we want to forward, and there's
  * no audio mixing or similar going on, so just copy.
  */
-enum arcan_ffunc_rv arcan_frameserver_feedcopy(
-	enum arcan_ffunc_cmd cmd, av_pixel* buf,
-	size_t s_buf, uint16_t width, uint16_t height,
-	unsigned mode, vfunc_state state)
+enum arcan_ffunc_rv arcan_frameserver_feedcopy FFUNC_HEAD
 {
 	assert(state.ptr);
 	assert(state.tag == ARCAN_TAG_FRAMESERV);
 	arcan_frameserver* src = (arcan_frameserver*) state.ptr;
 
 	if (!arcan_frameserver_enter(src))
-		return FFUNC_RV_NOFRAME;
+		return FRV_NOFRAME;
 
 	if (cmd == FFUNC_DESTROY)
 		arcan_frameserver_free(state.ptr);
@@ -448,7 +431,7 @@ enum arcan_ffunc_rv arcan_frameserver_feedcopy(
  * wants to resize segments used for recording */
 		if (!arcan_frameserver_control_chld(src)){
 			arcan_frameserver_leave();
-   		return FFUNC_RV_NOFRAME;
+   		return FRV_NOFRAME;
 		}
 
 /* only push an update when the target is ready and the
@@ -484,20 +467,17 @@ enum arcan_ffunc_rv arcan_frameserver_feedcopy(
 
 leave:
 	arcan_frameserver_leave();
-	return FFUNC_RV_NOFRAME;
+	return FRV_NOFRAME;
 }
 
-enum arcan_ffunc_rv arcan_frameserver_avfeedframe(
-	enum arcan_ffunc_cmd cmd, av_pixel* buf,
-	size_t s_buf, uint16_t width, uint16_t height,
-	unsigned mode, vfunc_state state)
+enum arcan_ffunc_rv arcan_frameserver_avfeedframe FFUNC_HEAD
 {
 	assert(state.ptr);
 	assert(state.tag == ARCAN_TAG_FRAMESERV);
 	arcan_frameserver* src = (arcan_frameserver*) state.ptr;
 
 	if (!arcan_frameserver_enter(src))
-		return FFUNC_RV_NOFRAME;
+		return FRV_NOFRAME;
 
 	if (cmd == FFUNC_DESTROY)
 		arcan_frameserver_free(state.ptr);
@@ -507,7 +487,7 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe(
  * wants to resize segments used for recording */
 		if (!arcan_frameserver_control_chld(src)){
 			arcan_frameserver_leave();
-   		return FFUNC_RV_NOFRAME;
+   		return FRV_NOFRAME;
 		}
 
 		arcan_event_queuetransfer(arcan_event_defaultctx(), &src->inqueue,
@@ -524,7 +504,7 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe(
  */
 	else if (cmd == FFUNC_READBACK){
 		if (!src->shm.ptr->vready){
-			memcpy(src->vidp, buf, s_buf);
+			memcpy(src->vidp, buf, buf_sz);
 			if (src->ofs_audb){
 					memcpy(src->audp, src->audb, src->ofs_audb);
 					src->shm.ptr->abufused = src->ofs_audb;
@@ -798,7 +778,7 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 	arcan_event_clearmask(arcan_event_defaultctx());
 	arcan_shmif_calcofs(shmpage, &(src->vidp), &(src->audp));
 
-	arcan_video_alterfeed(src->vid, arcan_frameserver_videoframe_direct, cstate);
+	arcan_video_alterfeed(src->vid, FFUNC_VFRAME, cstate);
 
 /* acknowledge the resize */
 	shmpage->resized = false;

@@ -66,5 +66,10 @@ void arcan_lua_adopt(arcan_vobj_id id, void* tag);
  * parse this and push it into the struct arcan_luactx as the first
  * and only argument to the function pointed out with (dstfun). */
 void arcan_lua_stategrab(struct arcan_luactx* ctx, char* dstfun, int fd);
+
+#ifdef LUA_PRIVATE
+enum arcan_ffunc_rv arcan_lua_proctarget FFUNC_HEAD;
+#endif
+
 #endif
 

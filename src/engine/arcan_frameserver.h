@@ -167,7 +167,7 @@ struct frameserver_envp {
 	union {
 		struct {
 			const char* const resource;
-/* current: movie, libretro, record, net-cl, net-srv */
+/* mode matches the set of allowed archetypes */
 			const char* const mode;
 		} builtin;
 
@@ -180,30 +180,36 @@ struct frameserver_envp {
 	} args;
 };
 
-/* this will either launch the configured frameserver (use_builtin),
- * or act as a more generic execv of a program that
- * supposedly implements the same shmpage interface and protocol. */
+/*
+ * This will either launch the configured frameserver (use_builtin),
+ * or act as a more generic execv of a program that uses the same
+ * shmpage interface and protocol.
+ */
 arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* dst,
 	struct frameserver_envp);
 
 /*
- * setup a frameserver that is idle until an external party connects
+ * Setup a frameserver that is idle until an external party connects
  * through a listening socket, then behaves as an avfeed- style
  * frameserver.
  */
 arcan_frameserver* arcan_frameserver_listen_external(const char* key, int fd);
 
-/* allocate shared and heap memory, reset all members to an
- * empty state and then enforce defaults, returns NULL on failure */
+/*
+ * Allocate shared and heap memory, reset all members to an
+ * empty state and then enforce defaults, returns NULL on failure
+ */
 arcan_frameserver* arcan_frameserver_alloc();
 
-/* enable the forked process to start decoding */
-arcan_errc arcan_frameserver_playback(arcan_frameserver*);
+/*
+ * Playback control, temporarly disable buffering / synchronizing.
+ * should be used in conjunction with an encoded pause event.
+ */
 arcan_errc arcan_frameserver_pause(arcan_frameserver*);
 arcan_errc arcan_frameserver_resume(arcan_frameserver*);
 
 /*
- * frameserver_pushfd send the file_handle into the process controlled
+ * Frameserver_pushfd send the file_handle into the process controlled
  * by the specified frameserver and emits a corresponding event into the
  * eventqueue of the frameserver. returns !ARCAN_OK if the socket isn't
  * connected, wrong type, OS can't handle transfer or the FD can't be
@@ -212,95 +218,96 @@ arcan_errc arcan_frameserver_resume(arcan_frameserver*);
 arcan_errc arcan_frameserver_pushfd(arcan_frameserver*, arcan_event*, int fd);
 
 /*
- * allocate a new frameserver segment, bind it to the same process
+ * Allocate a new frameserver segment, bind it to the same process
  * and communicate the necessary IPC arguments (key etc.) using
  * the pre-existing eventqueue of the frameserver controlled by (ctx)
  */
 arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	arcan_frameserver* ctx, bool input, int hintw, int hinth, int tag);
 
-/* take the argument event and add it to the event queue of the target,
- * returns a failure if the event queue in the child is full */
+/*
+ * Take the argument event and add it to the event queue of the target,
+ * returns a failure if the event queue in the child is full.
+ */
 arcan_errc arcan_frameserver_pushevent(arcan_frameserver*, arcan_event*);
 
-/* poll the frameserver out eventqueue and push it unto the evctx,
- * filter events that are outside the accepted category / kind */
+/*
+ * Poll the frameserver-out eventqueue and push it unto the evctx,
+ * filter events that are outside the accepted category / kind maintained
+ * in the frameserver struct
+ */
 void arcan_frameserver_pollevent(arcan_frameserver*, arcan_evctx*);
 
-/* symbol should only be used by the backend to reach
- * OS specific implementations (_unix.c / win32 )*/
+/*
+ * Symbol should only be used by the backend to reach OS specific
+ * implementations (_unix.c / win32 )
+ */
 void arcan_frameserver_dropsemaphores(arcan_frameserver*);
 void arcan_frameserver_dropsemaphores_keyed(char*);
 
-/* check if the frameserver is still alive, that the shared memory page
+/*
+ * Check if the frameserver is still alive, that the shared memory page
  * is intact and look for any state-changes, e.g. resize (which would
- * require a recalculation of shared memory layout */
+ * require a recalculation of shared memory layout. These are used by the
+ * various feedfunctions and should not need to be triggered elsewhere.
+ */
 void arcan_frameserver_tick_control(arcan_frameserver*);
 bool arcan_frameserver_resize(arcan_frameserver*, int, int);
 
-/* default implementations for shared memory framequeue readers,
- * two with separate sync (vidcb audcb) and one where sync is
- * locked to vid only but transfer audio frames into
- * intermediate buffer as well */
-ssize_t arcan_frameserver_shmvidcb(int fd, void* dst, size_t ntr);
-ssize_t arcan_frameserver_shmaudcb(int fd, void* dst, size_t ntr);
-ssize_t arcan_frameserver_shmvidaudcb(int fd, void* dst, size_t ntr);
+/*
+ * Various transfer- and buffering schemes. These should not be mapped
+ * into video- feedfunctions by themeselves, but managed through
+ * the arcan_ffunc_lut.h
+ */
+#ifdef FRAMESERVER_PRIVATE
 
-/* used for streaming data to the frameserver,
- * audio / video interleaved in one synch */
-enum arcan_ffunc_rv arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd,
-	av_pixel* buf, size_t s_buf, uint16_t width, uint16_t height,
- 	unsigned int mode, vfunc_state state);
+enum arcan_ffunc_rv arcan_frameserver_avfeedframe FFUNC_HEAD;
+enum arcan_ffunc_rv arcan_frameserver_feedcopy FFUNC_HEAD;
+enum arcan_ffunc_rv arcan_frameserver_emptyframe FFUNC_HEAD;
+enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD;
+enum arcan_ffunc_rv arcan_frameserver_socketverify FFUNC_HEAD;
+enum arcan_ffunc_rv arcan_frameserver_socketpoll FFUNC_HEAD;
 
-enum arcan_ffunc_rv arcan_frameserver_feedcopy(enum arcan_ffunc_cmd cmd,
-	av_pixel* buf, size_t s_buf, uint16_t width, uint16_t height,
-	unsigned int mode, vfunc_state state);
+#endif
 
-/* used as monitor hook for frameserver audio feeds */
+/*
+ * Used as monitor hook for frameserver audio feeds, will be reworked
+ * to a LUT- style callback system similar to that of videofeeds in 0.6
+ */
 void arcan_frameserver_avfeedmon(arcan_aobj_id src, uint8_t* buf,
 	size_t buf_sz, unsigned channels, unsigned frequency, void* tag);
 
-void arcan_frameserver_avfeed_mixer(arcan_frameserver* dst,
-	int n_sources, arcan_aobj_id* sources);
-void arcan_frameserver_update_mixweight(arcan_frameserver* dst,
-	arcan_aobj_id source, float leftch, float rightch);
-
-/* return a callback function for retrieving appropriate video-feeds */
-enum arcan_ffunc_rv arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd,
-	av_pixel* buf, size_t s_buf, uint16_t width, uint16_t height,
-	unsigned int mode, vfunc_state state);
-
-enum arcan_ffunc_rv arcan_frameserver_emptyframe(enum arcan_ffunc_cmd cmd,
-	av_pixel* buf, size_t s_buf, uint16_t width, uint16_t height,
-	unsigned int mode, vfunc_state state);
-
-/* return a callback function for retrieving appropriate audio-feeds */
 arcan_errc arcan_frameserver_audioframe(struct
 	arcan_aobj* aobj, arcan_aobj_id id, unsigned buffer, void* tag);
-
-/* after a seek operation (or something else that would impose
- * a stall or screw with VPTS vs. audioclock ratio, this function
- * flushes out pending buffers etc. and adjusts clocks */
-arcan_errc arcan_frameserver_flush(arcan_frameserver* fsrv);
-
-/* simplified versions of the above that
- * ignores PTS/DTS and doesn't use the framequeue */
-enum arcan_ffunc_rv arcan_frameserver_videoframe_direct(
-	enum arcan_ffunc_cmd cmd,
-	av_pixel* buf, size_t s_buf, uint16_t width, uint16_t height,
-	unsigned int mode, vfunc_state state);
 
 arcan_errc arcan_frameserver_audioframe_direct(struct arcan_aobj* aobj,
 	arcan_aobj_id id, unsigned buffer, void* tag);
 
 /*
- * return if the child process associated with the frameserver context
- * is still alive or not
+ * Update audio mixing settings for a monitoring frameserver that
+ * has multiple audio sources
+ */
+void arcan_frameserver_avfeed_mixer(arcan_frameserver* dst,
+	int n_sources, arcan_aobj_id* sources);
+
+void arcan_frameserver_update_mixweight(arcan_frameserver* dst,
+arcan_aobj_id source, float leftch, float rightch);
+
+/*
+ * After a seek operation (or something else that would impose
+ * a stall or screw with VPTS vs. audioclock ratio, this function
+ * flushes out pending buffers etc. and adjusts clocks.
+ */
+arcan_errc arcan_frameserver_flush(arcan_frameserver* fsrv);
+
+/*
+ * Determine if the connected end is still alive or not,
+ * this is treated as a poll -> state transition
  */
 bool arcan_frameserver_validchild(arcan_frameserver* ctx);
 
 /*
- * guarantee that any and all child processes associated or spawned
+ * Guarantee that any and all child processes associated or spawned
  * from the child connected will be terminated in as clean a
  * manner as possible (thus may not happen immediately although
  * contents of the struct will be reset)
@@ -308,28 +315,30 @@ bool arcan_frameserver_validchild(arcan_frameserver* ctx);
 void arcan_frameserver_killchild(arcan_frameserver* ctx);
 
 /*
- * release any shared memory resources associated with the frameserver
+ * Release any shared memory resources associated with the frameserver
  */
 void arcan_frameserver_dropshared(arcan_frameserver* ctx);
 
-/* PROCEED WITH EXTREME CAUTION, _configure,
+/*
+ * PROCEED WITH EXTREME CAUTION, _configure,
  * _spawn, _free etc. are among the more complicated functions
- * in the entire project, any changes should be
- * thoroughly tested for regressions.
+ * in the entire project, any changes should be thoroughly tested for
+ * regressions.
  *
  * part of the spawn_server that is shared between
  * the unix and the win32 implementations,
- * assumes that shared memory, semaphores etc. are already in place. */
+ * assumes that shared memory, semaphores etc. are already in place.
+ */
 void arcan_frameserver_configure(arcan_frameserver* ctx,
 	struct frameserver_envp setup);
 
 arcan_errc arcan_frameserver_free(arcan_frameserver*);
 
 /*
- * Due to our explicit single-threaded polling access
- * to shared-memory based frameserver connections, we need
- * to explicitly track in order to recover from possible
- * DoS in truncate-on-fd situations.
+ * Working against the mapped shared memory page is a critical section,
+ * there are corner cases and DoS opportunities that could be exploited
+ * by the other side that forces us to setup a fallback point in the
+ * case of signals e.g. SIGBUS (due to truncate-on-fd).
  */
 int arcan_frameserver_enter(struct arcan_frameserver*);
 void arcan_frameserver_leave();

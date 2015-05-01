@@ -6191,9 +6191,7 @@ static int procimage_get(lua_State* ctx)
 	return nch;
 }
 
-static enum arcan_ffunc_rv proctarget(enum arcan_ffunc_cmd cmd,
-	av_pixel* buf, size_t buf_sz, uint16_t width, uint16_t height,
-	unsigned mode, vfunc_state state)
+enum arcan_ffunc_rv arcan_lua_proctarget FFUNC_HEAD
 {
 	if (cmd == FFUNC_DESTROY){
 		free(state.ptr);
@@ -6362,7 +6360,7 @@ static int spawn_recsubseg(lua_State* ctx,
 		shmpage->w = dobj->vstore->w;
 		shmpage->h = dobj->vstore->h;
 		arcan_shmif_calcofs(shmpage, &(rv->vidp), &(rv->audp));
-		arcan_video_alterfeed(did, arcan_frameserver_avfeedframe, fftag);
+		arcan_video_alterfeed(did, FFUNC_AVFEED, fftag);
 
 /* similar restrictions and problems as in spawn_recfsrv */
 		rv->alocks = aidlocks;
@@ -6420,7 +6418,7 @@ static int spawn_recfsrv(lua_State* ctx,
 		.tag = ARCAN_TAG_FRAMESERV,
 		.ptr = mvctx
 	};
-	arcan_video_alterfeed(did, arcan_frameserver_avfeedframe, fftag);
+	arcan_video_alterfeed(did, FFUNC_AVFEED, fftag);
 
 	if (!fsrv_ok||arcan_frameserver_spawn_server(mvctx, args) != ARCAN_OK ){
 		free(mvctx);
@@ -6557,7 +6555,7 @@ static int procset(lua_State* ctx)
 		.tag = ARCAN_TAG_FRAMESERV,
 		.ptr = (void*) cbsrc
 	};
-	arcan_video_alterfeed(did, proctarget, fftag);
+	arcan_video_alterfeed(did, FFUNC_LUA_PROC, fftag);
 
 cleanup:
 	LUA_ETRACE("define_calctarget", NULL);
@@ -6604,7 +6602,7 @@ static int feedtarget(lua_State* ctx)
 
 /* shmpage prepared, force dimensions based on source object */
 	arcan_video_shareglstore(sid, rv->vid);
-	arcan_video_alterfeed(rv->vid, arcan_frameserver_feedcopy, fftag);
+	arcan_video_alterfeed(rv->vid, FFUNC_FEEDCOPY, fftag);
 
 	rv->tag = find_lua_callback(ctx);
 
@@ -7795,7 +7793,7 @@ static int net_pushcl(lua_State* ctx)
 
 /* disable "regular" frameserver behavior */
 			vfunc_state cstate = *arcan_video_feedstate(srv->vid);
-			arcan_video_alterfeed(srv->vid, arcan_frameserver_emptyframe, cstate);
+			arcan_video_alterfeed(srv->vid, FFUNC_NULLFRAME, cstate);
 
 /* we can't delete the frameserver immediately as the child might
  * not have mapped the memory yet, so we defer and use a callback */
