@@ -265,9 +265,7 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
 	}
 }
 
-enum arcan_ffunc_rv arcan_ffunc_3dobj(
-	enum arcan_ffunc_cmd cmd, av_pixel* buf, size_t s_buf,
-	uint16_t width, uint16_t height, unsigned mode, vfunc_state state)
+enum arcan_ffunc_rv arcan_ffunc_3dobj FFUNC_HEAD
 {
 	if ( (state.tag == ARCAN_TAG_3DOBJ ||
 		state.tag == ARCAN_TAG_3DCAMERA) && state.ptr){
