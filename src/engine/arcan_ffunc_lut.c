@@ -24,14 +24,13 @@
 #include "arcan_video.h"
 #include "arcan_frameserver.h"
 #include "arcan_lua.h"
+#include "arcan_3dbase.h"
 
 /*
  * will be allocated / initialized once
  */
 static arcan_vfunc_cb* f_lut;
 extern int system_page_size;
-
-extern arcan_vfunc_cb arcan_ffunc_3dobj;
 
 static enum arcan_ffunc_rv fatal_ffunc(enum arcan_ffunc_cmd cmd,
 	av_pixel* buf, size_t buf_sz, uint16_t width, uint16_t height,
@@ -72,7 +71,7 @@ void arcan_ffunc_initlut()
 	if (!f_lut)
 		arcan_fatal("ffunc_lut() investigate memory issues");
 
-	for (size_t i = 0; i < system_page_size; i++)
+	for (size_t i = 0; i < system_page_size / sizeof(arcan_vfunc_cb*); i++)
 		f_lut[i] = fatal_ffunc;
 
 	f_lut[FFUNC_NULL] = null_ffunc;
