@@ -112,8 +112,8 @@ static void usage()
 {
 printf("Usage: arcan [-whfmWMOqspBtHbdgaSV] applname "
 	"[appl specific arguments]\n\n"
-"-w\t--width       \tdesired initial canvas width (default: 640, auto: 0)\n"
-"-h\t--height      \tdesired initial canvas height (default: 480, auto: 0)\n"
+"-w\t--width       \tdesired initial canvas width (auto: 0)\n"
+"-h\t--height      \tdesired initial canvas height (auto: 0)\n"
 "-f\t--fullscreen  \ttoggle fullscreen mode ON (default: off)\n"
 "-m\t--conservative\ttoggle conservative memory management (default: off)\n"
 "-W\t--sync-strat  \tspecify video synchronization strategy (see below)\n"
@@ -294,8 +294,8 @@ int main(int argc, char* argv[])
 	unsigned char debuglevel = 0;
 
 	int scalemode = ARCAN_VIMAGE_NOPOW2;
-	int width = 640;
-	int height = 480;
+	int width = -1;
+	int height = -1;
 
 /* only used when monitor mode is activated, where we want some
  * of the global paths etc. accessible, but not *all* of them */
@@ -504,10 +504,48 @@ int main(int argc, char* argv[])
 		}
 
 		if (!dbhandle){
-			arcan_warning("Couldn't create database, giving up.\n");
+			arcan_warning("Couldn't create database, using in-mem fallback\n");
+			dbhandle = arcan_db_open(":memory:", arcan_appl_id());
+		}
+
+		if (!dbhandle){
+			arcan_warning("In memory db fallback failed, giving up\n");
 			goto error;
 		}
 	}
+
+/* either use previous explicit dimensions (if found and cached)
+ * or revert to platform default or store last */
+	if (-1 == width){
+		char* dbw = arcan_db_appl_val(dbhandle, "arcan", "width");
+		if (dbw){
+			width = (uint16_t) strtoul(dbw, NULL, 10);
+			arcan_mem_free(dbw);
+		}
+		else
+			width = 0;
+	}
+	else{
+		char buf[6] = {0};
+		snprintf(buf, sizeof(buf), "%d", width);
+		arcan_db_appl_kv(dbhandle, "arcan", "width", buf);
+	}
+
+	if (-1 == height){
+		char* dbh = arcan_db_appl_val(dbhandle, "arcan", "height");
+		if (dbh){
+			height = (uint16_t) strtoul(dbh, NULL, 10);
+			arcan_mem_free(dbh);
+		}
+		else
+			height = 0;
+	}
+	else{
+		char buf[6] = {0};
+		snprintf(buf, sizeof(buf), "%d", height);
+		arcan_db_appl_kv(dbhandle, "arcan", "height", buf);
+	}
+
 
 	arcan_video_default_scalemode(scalemode);
 

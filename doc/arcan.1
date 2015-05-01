@@ -20,13 +20,13 @@ Show a brief summary of commands and usage.
 
 .IP "\fB-w, --width\fR \fIpixels\fR"
 Set the desired active canvas width. Setting this value to zero will let
-the display driver chose based on connected displays. This can be overridden 
-by the running appl.
+the display driver chose based on connected displays. This can be overridden
+by the running appl. This value will be cached/fetched from the database.
 
 .IP "\fB-h, --height\fR \fIpixels\fR"
 Set the desired active canvas height. Setting this value to zero will let
 the display driver chose based on connected displays. This can be overridden
-by the running appl.
+by the running appl. This value will be cached/fetched from the database.
 
 .IP "\fB-f, --fullscreen\fR"
 Fullscreen switch, the display driver will attempt to force the connected
@@ -41,18 +41,18 @@ video platform. Verify and Validate heavily when using conservative mode.
 
 .IP "\fB-W, --sync-strat\fR \fIstrategy\fR"
 Specify the synchronization strategy that the display driver should use
-initially. These are dependent on the built-time configuration of 
-the engine and are listed at the end of running arcan with 
+initially. These are dependent on the built-time configuration of
+the engine and are listed at the end of running arcan with
 the --help command-line argument.
 
 .IP "\fB-M, --monitor\fR \fIrate\fR"
-Enable monitoring mode, every \fIrate\fR ticks, save a snapshot of the 
+Enable monitoring mode, every \fIrate\fR ticks, save a snapshot of the
 scripting engine state to a monitoring target (see -O, --monitor-out).
 
 .IP "\fB-O, --monitor-out \fItarget\fR"
 Defines the monitoring data recipient, used in combination with -M, --monitor.
-Either specify LOG:filename for a text-based recipient or a valid 
-\fIappl\fR for launching two arcan sessions where the monitoring snapshots 
+Either specify LOG:filename for a text-based recipient or a valid
+\fIappl\fR for launching two arcan sessions where the monitoring snapshots
 are forwarded to the other instance for analysis and visualization.
 
 .IP "\fB-q, --timedump \fIticks\fR"
@@ -76,7 +76,7 @@ loaded and executed. The script is expected to be specified relative to
 the RESOURCEPATH namespace (APPL_SHARED) and is primarily intended for
 debugging / testing / measurements. The execution of these scripts is
 rather sensitive and troublesome to debug. Look in resources/scripts/hook
-for examples. 
+for examples.
 
 .IP "\fB-b, --fallback \fIapplname\fR"
 If the running application crashes due to scripting error or from misuse
@@ -120,25 +120,25 @@ compiled.
 
 .SH NAMESPACES
 There is a large assortment of namespaces that the engine will search for
-when a script requests access to- or the creation- of a resource. 
+when a script requests access to- or the creation- of a resource.
 The way these are set up will vary depending on command-line arguments,
-operating-system specific scans, if applname was specified as a 
-relative/absolute path and on a series of environment variables. 
+operating-system specific scans, if applname was specified as a
+relative/absolute path and on a series of environment variables.
 
 For a more detailed explanation on how this works from an appl perspective,
 please refer to the developer documentation on the wiki.
 
-This setup is rather complex in order to account for a large range of 
-platforms and use-cases, with the most simple configuration being an 
+This setup is rather complex in order to account for a large range of
+platforms and use-cases, with the most simple configuration being an
 application base folder (controlled with the \fB-t\fR command-line switch)
 and a shared resource folder (Controlled with the \fB-p\fR switch).
 
 The most important namespaces are the APPLBASE and the RESOURCEPATH.
- 
+
 Appls can manipulate (create, open, read, write) the files within
-the confines of the \fBAPPLBASE/APPNAME\fR. Traversal (../) outside 
-this path will be blocked, but a user can explicitly map 
-(symlink, bind-mounts or similar) other paths into this namespace 
+the confines of the \fBAPPLBASE/APPNAME\fR. Traversal (../) outside
+this path will be blocked, but a user can explicitly map
+(symlink, bind-mounts or similar) other paths into this namespace
 and the engine will allow it.
 
 Scripts gets read- access to resources within the \fBRESOURCEPATH\fR and
@@ -146,7 +146,7 @@ can explicitly request to search either or both namespaces when opening
 a resource. By default, a namespace collision (the same resource existing
 in multiple namespaces) gives priority to \fBAPPLBASE/APPNAME\fR.
 
-The most fine-grained control can be obtained by setting a number of 
+The most fine-grained control can be obtained by setting a number of
 environment variables:
 
 .IP "\fBARCAN_RESOURCEPATH\fR\"
@@ -154,22 +154,22 @@ Shared resources, as described above.
 
 .IP "\fBARCAN_APPBASEPATH\fR\"
 This path is used to search for appls but may be ignored for absolute
-paths specified on the command-line. 
+paths specified on the command-line.
 
 .IP "\fBARCAN_APPSTOREPATH\fR"
 The default setting is to allow the appl full access to its own folder,
-but this can be split into a separate store. This will then expand as 
+but this can be split into a separate store. This will then expand as
 \fBARCAN_APPSTOREPATH/APPLNAME\fR.
 
 .IP "\fBARCAN_STATEBASEPATH\fR"
 The default setting is to map this to RESOURCEPATH/savestates and will
 then be shared between all appls (which holds true whenever STATEBASE
-is set to a subdirectory of RESOURCEPATH). 
+is set to a subdirectory of RESOURCEPATH).
 
 .IP "\fBARCAN_FONTPATH\fR"
-The default setting is to map this to RESOURCEPATH/fonts but can be 
+The default setting is to map this to RESOURCEPATH/fonts but can be
 set to some other system font directory for more fine-grained control
-(as font-parsing is complex and can be a source of vulnerabilities). 
+(as font-parsing is complex and can be a source of vulnerabilities).
 
 .IP "\fBARCAN_BINPATH\fR"
 The default is to set this to /usr/bin/arcan_frameserver (or wherever
@@ -177,11 +177,11 @@ the frameserver is installed, first searching ./ then /usr/local/bin
 then /usr/bin).
 
 .IP "\fBARCAN_LIBPATH\fR"
-(optional) Used when looking for hijack libraries. 
-These are libraries that are preloaded or otherwise injected into 
-specific process in order to infiltrate/exfiltrate/manipulate data 
-and flow of execution within the process. The most common use for 
-this is to alter render/audio and input paths in non-compliant 
+(optional) Used when looking for hijack libraries.
+These are libraries that are preloaded or otherwise injected into
+specific process in order to infiltrate/exfiltrate/manipulate data
+and flow of execution within the process. The most common use for
+this is to alter render/audio and input paths in non-compliant
 applications. These are used in conjunction with entries in the database.
 
 .IP "\fBARCAN_LOGPATH\fR"
