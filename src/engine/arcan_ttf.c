@@ -22,9 +22,8 @@
 /*
  * Modifications:
  *  Removed dependency to SDL
- *
- * Planned Modifications:
- *  Add texture-page caching and string packing to better fit GLES/OpenGL
+ *  This is slated for replacement / deprecation and either fall-back
+ *  on a modified freetype-gl or the renderer and packing built into stb
  */
 
 #include <math.h>

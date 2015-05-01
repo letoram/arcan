@@ -265,7 +265,7 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
 	}
 }
 
-static enum arcan_ffunc_rv ffunc_3d(
+enum arcan_ffunc_rv arcan_ffunc_3dobj(
 	enum arcan_ffunc_cmd cmd, av_pixel* buf, size_t s_buf,
 	uint16_t width, uint16_t height, unsigned mode, vfunc_state state)
 {
@@ -512,7 +512,7 @@ arcan_vobj_id arcan_3d_pointcloud(size_t count, size_t nmaps)
 
 	vfunc_state state = {.tag = ARCAN_TAG_3DOBJ};
 	img_cons empty = {0};
-	arcan_vobj_id rv = arcan_video_addfobject(ffunc_3d, state, empty, 1);
+	arcan_vobj_id rv = arcan_video_addfobject(FFUNC_3DOBJ, state, empty, 1);
 
 	if (rv == ARCAN_EID)
 		return ARCAN_EID;
@@ -520,7 +520,7 @@ arcan_vobj_id arcan_3d_pointcloud(size_t count, size_t nmaps)
 	arcan_3dmodel* newmodel = arcan_alloc_mem(sizeof(arcan_3dmodel),
 		ARCAN_MEM_VTAG, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 	state.ptr = newmodel;
-	arcan_video_alterfeed(rv, ffunc_3d, state);
+	arcan_video_alterfeed(rv, FFUNC_3DOBJ, state);
 	pthread_mutex_init(&newmodel->lock, NULL);
 
 	newmodel->geometry = arcan_alloc_mem(sizeof(struct geometry), ARCAN_MEM_VTAG,
@@ -576,7 +576,7 @@ arcan_vobj_id arcan_3d_buildbox(float w, float h, float d, size_t nmaps)
 {
 	vfunc_state state = {.tag = ARCAN_TAG_3DOBJ};
 	img_cons empty = {0};
-	arcan_vobj_id rv = arcan_video_addfobject(ffunc_3d, state, empty, 1);
+	arcan_vobj_id rv = arcan_video_addfobject(FFUNC_3DOBJ, state, empty, 1);
 
 	if (rv == ARCAN_EID)
 		return rv;
@@ -585,7 +585,7 @@ arcan_vobj_id arcan_3d_buildbox(float w, float h, float d, size_t nmaps)
 	arcan_3dmodel* newmodel = arcan_alloc_mem(sizeof(arcan_3dmodel),
 		ARCAN_MEM_VTAG, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 	state.ptr = (void*) newmodel;
-	arcan_video_alterfeed(rv, ffunc_3d, state);
+	arcan_video_alterfeed(rv, FFUNC_3DOBJ, state);
 	pthread_mutex_init(&newmodel->lock, NULL);
 	arcan_video_allocframes(rv, 1, ARCAN_FRAMESET_SPLIT);
 	newmodel->geometry = arcan_alloc_mem(sizeof(struct geometry), ARCAN_MEM_VTAG,
@@ -666,7 +666,7 @@ arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx,float maxz,
 		(maxz < minz || ddens <= 0 || ddens >= maxz - minz) )
 		return ARCAN_ERRC_BAD_ARGUMENT;
 
-	rv = arcan_video_addfobject(ffunc_3d, state, empty, 1);
+	rv = arcan_video_addfobject(FFUNC_3DOBJ, state, empty, 1);
 	arcan_3dmodel* newmodel = NULL;
 
 	if (rv == ARCAN_EID)
@@ -682,7 +682,7 @@ arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx,float maxz,
 	pthread_mutex_init(&newmodel->lock, NULL);
 
 	state.ptr = (void*) newmodel;
-	arcan_video_alterfeed(rv, ffunc_3d, state);
+	arcan_video_alterfeed(rv, FFUNC_3DOBJ, state);
 
 	struct geometry** nextslot = &(newmodel->geometry);
 	while (*nextslot)
@@ -997,7 +997,7 @@ arcan_vobj_id arcan_3d_emptymodel()
 		ARCAN_MEM_VTAG, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 	vfunc_state state = {.tag = ARCAN_TAG_3DOBJ, .ptr = newmodel};
 
-	rv = arcan_video_addfobject(ffunc_3d, state, econs, 1);
+	rv = arcan_video_addfobject(FFUNC_3DOBJ, state, econs, 1);
 
 	if (rv != ARCAN_EID){
 		newmodel->parent = arcan_video_getobject(rv);
@@ -1085,7 +1085,7 @@ arcan_errc arcan_3d_camtag(arcan_vobj_id vid,
 		camobj->flags = MESH_FACING_BACK;
 
 	vfunc_state state = {.tag = ARCAN_TAG_3DCAMERA, .ptr = camobj};
-	arcan_video_alterfeed(vid, ffunc_3d, state);
+	arcan_video_alterfeed(vid, FFUNC_3DOBJ, state);
 
 	FL_SET(vobj, FL_FULL3D);
 

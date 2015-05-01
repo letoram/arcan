@@ -379,6 +379,7 @@ int main(int argc, char* argv[])
 
 /* probe system, load environment variables, ... */
 	arcan_set_namespace_defaults();
+	arcan_ffunc_initlut();
 #ifdef DISABLE_FRAMESERVERS
 	arcan_override_namespace("", RESOURCE_SYS_BINS);
 #endif

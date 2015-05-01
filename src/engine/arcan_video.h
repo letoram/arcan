@@ -188,14 +188,10 @@ enum arcan_order3d {
 };
 
 /*
- * State container for aux- data.
- * Tag is volatile as it can arbitrarily change from ASYNCIMG loading
- * to regular image.
+ * All pseudo- dynamic code paths (callback driven) go through
+ * an indirection layer specified here
  */
-typedef struct {
-	volatile int tag;
-	void* ptr;
-} vfunc_state;
+#include "arcan_ffunc_lut.h"
 
 /*
  * Reversed VOBJ values, everything is forcibly linked to WORLDID
@@ -204,30 +200,7 @@ typedef struct {
 extern arcan_vobj_id ARCAN_VIDEO_WORLDID;
 extern arcan_vobj_id ARCAN_VIDEO_BADID;
 
-/*
- * Prototype and enumerations for frameserver- and other dynamic data sources
- */
-
-enum arcan_ffunc_cmd {
-	FFUNC_POLL    = 0, /* every frame, check for new data */
-	FFUNC_RENDER  = 1, /* follows a GOTFRAME returning poll */
-	FFUNC_TICK    = 2, /* logic pulse */
-	FFUNC_DESTROY = 3, /* custom cleanup */
-	FFUNC_READBACK= 4  /* recordtargets, when a readback is ready */
-};
-
-enum arcan_ffunc_rv {
-	FFUNC_RV_NOFRAME  = 0,
-	FFUNC_RV_GOTFRAME = 1, /* ready to transfer a frame to the object       */
-	FFUNC_RV_COPIED   = 2, /* means that the local storage has been updated */
-	FFUNC_RV_NOUPLOAD = 64 /* don't synch local storage with GPU buffer     */
-};
-
-typedef enum arcan_ffunc_rv(*arcan_vfunc_cb)(
-	enum arcan_ffunc_cmd cmd, av_pixel* buf,
-	size_t buf_sz, uint16_t width, uint16_t height,
-	unsigned int mode, vfunc_state state
-);
+#include "arcan_ffunc_lut.h"
 
 /*
  * Perform basic rendering library setup and forward
@@ -397,7 +370,7 @@ arcan_vobj_id arcan_video_rawobject(av_pixel* buf,
  * Create an object with a dynamic (callback- driven) input source.
  * This is also used for managing 3D objects.
  */
-arcan_vobj_id arcan_video_addfobject(arcan_vfunc_cb feed,
+arcan_vobj_id arcan_video_addfobject(ffunc_ind feed,
 	vfunc_state state, img_cons constraints, unsigned short zv);
 
 /*
@@ -470,19 +443,12 @@ arcan_errc arcan_video_setlife(arcan_vobj_id id, unsigned ticks);
  * already, e.g. the frameserver feed-functions, otherwise
  * it is likely that resources will leak.
  */
-arcan_errc arcan_video_alterfeed(arcan_vobj_id id,
-	arcan_vfunc_cb feed, vfunc_state state);
+arcan_errc arcan_video_alterfeed(arcan_vobj_id, ffunc_ind, vfunc_state);
 
 /*
  * Get a reference to the current feedstate in use by a specific object.
  */
 vfunc_state* arcan_video_feedstate(arcan_vobj_id);
-
-/*
- * A skeleton that can be used to disable dynamic behaviors in
- * a dynamic object, use as [feed] argument to arcan_video_alterfeed.
- */
-arcan_vfunc_cb arcan_video_emptyffunc();
 
 /*
  * Run through all registered dynamic feed objects and request that they

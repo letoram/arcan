@@ -585,7 +585,7 @@ void arcan_video_recoverexternal(bool pop, int* saved,
 	struct {
 		struct storage_info_t* gl_store;
 		char* tracetag;
-		arcan_vfunc_cb ffunc;
+		ffunc_ind ffunc;
 		vfunc_state state;
 		int origw, origh;
 		int zv;
@@ -632,7 +632,7 @@ void arcan_video_recoverexternal(bool pop, int* saved,
  * and increase refcount on storage (won't be killed in pop) */
 					cobj->vstore->refcount++;
 					cobj->feed.state.tag = ARCAN_TAG_NONE;
-					cobj->feed.ffunc = NULL;
+					cobj->feed.ffunc = FFUNC_NULL;
 					cobj->feed.state.ptr = NULL;
 
 					s_ofs++;
@@ -973,6 +973,7 @@ static arcan_vobject* new_vobject(arcan_vobj_id* id,
 	rv->order = 0;
 	populate_vstore(&rv->vstore);
 
+	rv->feed.ffunc = FFUNC_NULL;
 	rv->childslots = 0;
 	rv->children = NULL;
 
@@ -2052,8 +2053,8 @@ vfunc_state* arcan_video_feedstate(arcan_vobj_id id)
 	return rv;
 }
 
-arcan_errc arcan_video_alterfeed(arcan_vobj_id id, arcan_vfunc_cb cb,
-	vfunc_state state)
+arcan_errc arcan_video_alterfeed(arcan_vobj_id id,
+	ffunc_ind cb, vfunc_state state)
 {
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
@@ -2080,8 +2081,8 @@ arcan_vfunc_cb arcan_video_emptyffunc()
 	return (arcan_vfunc_cb) empty_ffunc;
 }
 
-arcan_vobj_id arcan_video_setupfeed(arcan_vfunc_cb ffunc,
-	img_cons constraints, uint8_t ntus, uint8_t ncpt)
+arcan_vobj_id arcan_video_setupfeed(
+	ffunc_ind ffunc, img_cons cons, uint8_t ntus, uint8_t ncpt)
 {
 	if (!ffunc)
 		return 0;
@@ -2094,23 +2095,23 @@ arcan_vobj_id arcan_video_setupfeed(arcan_vfunc_cb ffunc,
 
 	struct storage_info_t* vstor = newvobj->vstore;
 /* preset */
-	newvobj->origw = constraints.w;
-	newvobj->origh = constraints.h;
+	newvobj->origw = cons.w;
+	newvobj->origh = cons.h;
 	newvobj->vstore->bpp = ncpt == 0 ? sizeof(av_pixel) : ncpt;
 	newvobj->vstore->filtermode &= ~ARCAN_VFILTER_MIPMAP;
 
 	if (newvobj->vstore->scale == ARCAN_VIMAGE_NOPOW2){
-		newvobj->vstore->w = constraints.w;
-		newvobj->vstore->h = constraints.h;
+		newvobj->vstore->w = cons.w;
+		newvobj->vstore->h = cons.h;
 	}
 	else {
 /* For feeds, we don't do the forced- rescale on
  * every frame, way too expensive, this behavior only
  * occurs if there's a custom set of texture coordinates already */
-		newvobj->vstore->w = nexthigher(constraints.w);
-		newvobj->vstore->h = nexthigher(constraints.h);
-		float hx = (float)constraints.w / (float)newvobj->vstore->w;
-		float hy = (float)constraints.h / (float)newvobj->vstore->h;
+		newvobj->vstore->w = nexthigher(cons.w);
+		newvobj->vstore->h = nexthigher(cons.h);
+		float hx = (float)cons.w / (float)newvobj->vstore->w;
+		float hy = (float)cons.h / (float)newvobj->vstore->h;
 		if (newvobj->txcos)
 			generate_basic_mapping(newvobj->txcos, hx, hy);
 	}
@@ -2201,14 +2202,13 @@ arcan_vobj_id arcan_video_loadimage(const char* rloc,
 	return rv;
 }
 
-arcan_vobj_id arcan_video_addfobject(arcan_vfunc_cb feed, vfunc_state state,
-	img_cons constraints, unsigned short zv)
+arcan_vobj_id arcan_video_addfobject(
+	ffunc_ind feed, vfunc_state state, img_cons cons, unsigned short zv)
 {
 	arcan_vobj_id rv;
 	const int feed_ntus = 1;
 
-	if ((rv = arcan_video_setupfeed(feed, constraints, feed_ntus,
-		constraints.bpp)) > 0) {
+	if ((rv = arcan_video_setupfeed(feed, cons, feed_ntus, cons.bpp)) > 0){
 		arcan_vobject* vobj = arcan_video_getobject(rv);
 		vobj->order = zv;
 		vobj->feed.state = state;
@@ -2806,10 +2806,10 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 /* full- object specific clean-up */
 	if (!FL_TEST(vobj, FL_CLONE)){
 		if (vobj->feed.ffunc){
-			vobj->feed.ffunc(FFUNC_DESTROY, 0, 0, 0, 0, 0, vobj->feed.state);
-
+			arcan_ffunc_lookup(vobj->feed.ffunc)(FFUNC_DESTROY,
+				0, 0, 0, 0, 0, vobj->feed.state);
 			vobj->feed.state.ptr = NULL;
-			vobj->feed.ffunc = NULL;
+			vobj->feed.ffunc = FFUNC_NULL;
 			vobj->feed.state.tag = ARCAN_TAG_NONE;
 		}
 
@@ -3611,7 +3611,8 @@ static int tick_rendertarget(struct rendertarget* tgt)
 			tgt->transfc += update_object(elem, arcan_video_display.c_ticks);
 
 		if (elem->feed.ffunc && !FL_TEST(elem, FL_CLONE))
-			elem->feed.ffunc(FFUNC_TICK, 0, 0, 0, 0, 0, elem->feed.state);
+			arcan_ffunc_lookup(elem->feed.ffunc)
+				(FFUNC_TICK, 0, 0, 0, 0, 0, elem->feed.state);
 
 /* mode > 0, cycle activate frame every 'n' ticks */
 		if (elem->frameset && elem->frameset->mctr != 0){
@@ -4080,8 +4081,8 @@ static void ffunc_process(arcan_vobject* dst, int cookie)
 
 /* if there is a new frame available, we make sure to flag it
  * dirty so that it will be rendered */
-	if (dst->feed.ffunc(
-		FFUNC_POLL, 0, 0, 0, 0, 0, dst->feed.state) == FFUNC_RV_GOTFRAME) {
+	if (dst->feed.ffunc && arcan_ffunc_lookup(dst->feed.ffunc)(
+			FFUNC_POLL, 0, 0, 0, 0, 0, dst->feed.state) == FRV_GOTFRAME){
 		FLAG_DIRTY(dst);
 
 /* cycle active frame store (depending on how often we want to
@@ -4095,7 +4096,7 @@ static void ffunc_process(arcan_vobject* dst, int cookie)
 			}
 		}
 
-		dst->feed.ffunc(FFUNC_RENDER,
+		arcan_ffunc_lookup(dst->feed.ffunc)(FFUNC_RENDER,
 			dst->vstore->vinf.text.raw, dst->vstore->vinf.text.s_raw,
 			dst->vstore->w, dst->vstore->h,
 			dst->vstore->vinf.text.glid,
@@ -4533,8 +4534,10 @@ static inline void poll_readback(struct rendertarget* tgt)
 	if (!vobj->feed.ffunc)
 		tgt->readback = 0;
 	else{
-		vobj->feed.ffunc(FFUNC_READBACK, rbb.ptr,
-			rbb.w * rbb.h * sizeof(av_pixel), rbb.w, rbb.h, 0, vobj->feed.state);
+		arcan_ffunc_lookup(vobj->feed.ffunc)(FFUNC_READBACK,
+			rbb.ptr, rbb.w * rbb.h * sizeof(av_pixel),
+			rbb.w, rbb.h, 0, vobj->feed.state
+		);
 	}
 
 	rbb.release(rbb.tag);
