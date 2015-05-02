@@ -632,7 +632,7 @@ void arcan_video_recoverexternal(bool pop, int* saved,
  * and increase refcount on storage (won't be killed in pop) */
 					cobj->vstore->refcount++;
 					cobj->feed.state.tag = ARCAN_TAG_NONE;
-					cobj->feed.ffunc = FFUNC_NULL;
+					cobj->feed.ffunc = FFUNC_FATAL;
 					cobj->feed.state.ptr = NULL;
 
 					s_ofs++;
@@ -973,7 +973,7 @@ static arcan_vobject* new_vobject(arcan_vobj_id* id,
 	rv->order = 0;
 	populate_vstore(&rv->vstore);
 
-	rv->feed.ffunc = FFUNC_NULL;
+	rv->feed.ffunc = FFUNC_FATAL;
 	rv->childslots = 0;
 	rv->children = NULL;
 
@@ -2070,17 +2070,6 @@ arcan_errc arcan_video_alterfeed(arcan_vobj_id id,
 	return ARCAN_OK;
 }
 
-static int8_t empty_ffunc(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf
-	,uint16_t width, uint16_t height, uint8_t bpp, unsigned mode,
-	vfunc_state state){
-	return 0;
-}
-
-arcan_vfunc_cb arcan_video_emptyffunc()
-{
-	return (arcan_vfunc_cb) empty_ffunc;
-}
-
 arcan_vobj_id arcan_video_setupfeed(
 	ffunc_ind ffunc, img_cons cons, uint8_t ntus, uint8_t ncpt)
 {
@@ -2809,7 +2798,7 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 			arcan_ffunc_lookup(vobj->feed.ffunc)(FFUNC_DESTROY,
 				0, 0, 0, 0, 0, vobj->feed.state);
 			vobj->feed.state.ptr = NULL;
-			vobj->feed.ffunc = FFUNC_NULL;
+			vobj->feed.ffunc = FFUNC_FATAL;
 			vobj->feed.state.tag = ARCAN_TAG_NONE;
 		}
 

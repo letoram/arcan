@@ -8,6 +8,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <inttypes.h>
 #include <stdbool.h>
 #include <unistd.h>
 #include <errno.h>
@@ -148,10 +149,19 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
 /* bunch of terminating conditions -- frameserver messes
  * with the structure to provoke a vulnerability, frameserver
  * dying or timing out, ... */
-	if ( src->flags.alive && src->shm.ptr &&
-		src->shm.ptr->cookie == cookie &&
-		arcan_frameserver_validchild(src) == false){
+	bool alive = src->flags.alive && src->shm.ptr
+		&& src->shm.ptr->cookie == cookie && arcan_frameserver_validchild(src);
 
+/* subsegment may well be alive when the parent has just died,
+ * thus we need to check the state of the parent and if it is dead,
+ * clean up just the same */
+	if (alive && src->parent){
+		arcan_vobject* vobj = arcan_video_getobject(src->parent);
+		if (!vobj || vobj->feed.state.tag != ARCAN_TAG_FRAMESERV)
+			alive = false;
+	}
+
+	if (!alive){
 /* force flush beforehand, in a saturated queue, data may still
  * get lost here */
 		arcan_event_queuetransfer(arcan_event_defaultctx(), &src->inqueue,
