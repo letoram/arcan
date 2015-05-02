@@ -20,22 +20,7 @@
 
 set(DISTR_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../data/distr)
 
-add_custom_command(
-OUTPUT arcan_resource.obj
-DEPENDS ${DISTR_PATH}/arcan.rc
-COMMAND windres.exe
-ARGS -o arcan_resource.obj
--i${DISTR_PATH}/arcan.rc
-)
-
-add_custom_command(
-OUTPUT arcan_frameserver_resource.obj
-DEPENDS ${DISTR_PATH}/arcan_frameserver.rc
-COMMAND windres.exe
-ARGS -o arcan_frameserver_resource.obj
--i${DISTR_PATH}/arcan_frameserver.rc
-)
-
+# we assume manual management for using windres -o on .rc
 set(WIN32_PATH ${PLATFORM_ROOT}/win32)
 set(OS_DYLIB_EXTENSION=\".dll\")
 add_definitions(
@@ -43,6 +28,7 @@ add_definitions(
 	-DARCAN_SHMIF_OVERCOMMIT
 	-DPLATFORM_HEADER=\"${WIN32_PATH}/platform.h\"
 	-D__WINDOWS
+	-D_WIN32
 	-static
 )
 
@@ -64,13 +50,13 @@ LIST(APPEND SOURCES
 	${WIN32_PATH}/getopt_win32.c
 	${WIN32_PATH}/getopt.h
 	${WIN32_PATH}/sdl_win32_main.c
-	arcan_resource.obj
+	${DISTR_PATH}/arcan_resource.obj
 ${PLATFORM_SOURCES}
 )
 
 SET(FSRV_PLATFORM
 	${WIN32_PATH}/arcan_frameserver_win32.c
-	arcan_frameserver_resource.obj
+	${DISTR_PATH}/arcan_frameserver_resource.obj
 )
 
 set(STDLIB

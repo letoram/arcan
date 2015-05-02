@@ -546,7 +546,6 @@ int main(int argc, char* argv[])
 		arcan_db_appl_kv(dbhandle, "arcan", "height", buf);
 	}
 
-
 	arcan_video_default_scalemode(scalemode);
 
 	if (windowed)

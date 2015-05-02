@@ -139,13 +139,8 @@ void arcan_frameserver_dropshared(arcan_frameserver* src)
 
 void arcan_frameserver_killchild(arcan_frameserver* src)
 {
-	if (!src || src->parent != ARCAN_EID)
-		return;
-
-/*
- * only kill non-authoritative connections
- */
-	if (src->child <= 1)
+/* only "kill" main-segments and non-authoritative connections */
+	if (!src || src->parent != ARCAN_EID || src->child <= 1)
 		return;
 
 /*

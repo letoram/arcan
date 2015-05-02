@@ -563,28 +563,27 @@ arcan_errc arcan_audio_pause(arcan_aobj_id id)
 arcan_errc arcan_audio_stop(arcan_aobj_id id)
 {
 	arcan_aobj* dobj = arcan_audio_getobj(id);
-	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+	if (!dobj)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
-	if (dobj) {
+	dobj->kind = AOBJ_INVALID;
+
 /* callback with empty buffers means that we want to clean up */
-		if (dobj->feed)
-			dobj->feed(dobj, id, -1, dobj->tag);
+	if (dobj->feed)
+		dobj->feed(dobj, id, -1, dobj->tag);
 
-		_wrap_alError(dobj, "audio_stop(stop)");
-		arcan_audio_free(id);
+	_wrap_alError(dobj, "audio_stop(stop)");
+	arcan_audio_free(id);
 
 /* different from the finished/stopped event */
-		arcan_event newevent = {
-			.category = EVENT_AUDIO,
-			.aud.kind = EVENT_AUDIO_OBJECT_GONE,
-			.aud.source = id
-		};
+	arcan_event newevent = {
+		.category = EVENT_AUDIO,
+		.aud.kind = EVENT_AUDIO_OBJECT_GONE,
+		.aud.source = id
+	};
 
-		arcan_event_enqueue(arcan_event_defaultctx(), &newevent);
-		rv = ARCAN_OK;
-	}
-
-	return rv;
+	arcan_event_enqueue(arcan_event_defaultctx(), &newevent);
+	return ARCAN_OK;
 }
 
 static inline void reset_chain(arcan_aobj* dobj)
