@@ -350,10 +350,7 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 	static bool ld;
 
 	agp_activate_rendertarget(NULL);
-	if (nd > 0 || !ld){
-		arcan_vint_drawrt(arcan_vint_world(), 0, 0, egl.mdispw, egl.mdisph);
-		ld = nd == 0;
-	}
+	arcan_vint_drawrt(arcan_vint_world(), 0, 0, egl.mdispw, egl.mdisph);
 
 	arcan_vint_drawcursor(true);
 	arcan_vint_drawcursor(false);
