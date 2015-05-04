@@ -257,6 +257,7 @@ if (EXISTS ${EXTERNAL_SRC_DIR}/git/freetype)
 	amsg("${CL_YEL}Building Freetype static from external/git mirror${CL_RST}")
 	ExternalProject_Add(Freetype
 		SOURCE_DIR "${CMAKE_CURRENT_BINARY_DIR}/freetype"
+		UPDATE_COMMAND ""
 		GIT_REPOSITORY "${EXTERNAL_SRC_DIR}/git/freetype"
 		${EXTERNAL_DEFS}
 		${CMAKE_EXTERNAL_DEFS}
@@ -274,6 +275,7 @@ if (EXISTS ${EXTERNAL_SRC_DIR}/git/openal AND STATIC_OPENAL)
 	amsg("${CL_YEL}Building OpenAL static from external/git mirror${CL_RST}")
 	ExternalProject_Add(OpenAL
 		SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/openal
+		UPDATE_COMMAND ""
 		GIT_REPOSITORY "${EXTERNAL_SRC_DIR}/git/openal"
 		${EXTERNAL_DEFS}
 		${CMAKE_EXTERNAL_DEFS}
@@ -314,6 +316,7 @@ if (NOT DISABLE_JIT)
 			SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/luajit
 			GIT_REPOSITORY "${EXTERNAL_SRC_DIR}/git/luajit"
 			CONFIGURE_COMMAND ""
+			UPDATE_COMMAND ""
 			INSTALL_COMMAND ""
 			BUILD_IN_SOURCE 1
 			${EXTERNAL_DEFS}
