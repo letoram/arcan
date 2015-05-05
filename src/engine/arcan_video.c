@@ -5,6 +5,7 @@
  */
 
 #include <stdint.h>
+#include <inttypes.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
@@ -120,7 +121,6 @@ struct arcan_video_context* dctx);
 static inline void build_modelview(float* dmatr,
 	float* imatr, surface_properties* prop, arcan_vobject* src);
 static inline void process_readback(struct rendertarget* tgt, float fract);
-static inline void poll_readback(struct rendertarget* tgt);
 
 static inline void trace(const char* msg, ...)
 {
@@ -4126,8 +4126,8 @@ void arcan_video_pollfeed()
 	vcookie++;
 
  for (off_t ind = 0; ind < current_context->n_rtargets; ind++)
-		poll_readback(&current_context->rtargets[ind]);
-	poll_readback(&current_context->stdoutp);
+		arcan_vint_pollreadback(&current_context->rtargets[ind]);
+	arcan_vint_pollreadback(&current_context->stdoutp);
 
 	for (size_t i = 0; i < current_context->n_rtargets; i++)
 		poll_list(current_context->rtargets[i].first, vcookie);
@@ -4484,7 +4484,7 @@ arcan_errc arcan_video_forceupdate(arcan_vobj_id vid)
 
 	if (tgt->readback != 0){
 		process_readback(tgt, arcan_video_display.c_lerp);
-		poll_readback(tgt);
+		arcan_vint_pollreadback(tgt);
 	}
 
 	return ARCAN_OK;
@@ -4509,7 +4509,7 @@ arcan_errc arcan_video_screenshot(av_pixel** dptr, size_t* dsize)
 }
 
 /* check outstanding readbacks, map and feed onwards */
-static inline void poll_readback(struct rendertarget* tgt)
+void arcan_vint_pollreadback(struct rendertarget* tgt)
 {
 	if (!FL_TEST(tgt, TGTFL_READING))
 		return;

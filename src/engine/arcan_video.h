@@ -134,6 +134,7 @@ ARCAN_TAG_3DOBJ     = 6,/* got a corresponding entry in arcan_3dbase, ffunc is
 												   used to control the behavior of the 3d part        */
 ARCAN_TAG_3DCAMERA  = 7,/* set after using camtag,
 													 only usable on NONE/IMAGE                          */
+ARCAN_TAG_CUSTOMPROC = 8, /* used in Lua specific contexts, calctarget etc.   */
 };
 
 /*
