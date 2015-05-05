@@ -34,6 +34,9 @@
 -- or HISTOGRAM_MERGE_NOALPHA (treat R, G, B as packed and ignore A)
 -- @note: The *callback* will be executed as part of the main loop
 -- and it is paramount that the processing done is kept to a minimum.
+-- @note: When the *samplerate* is set to 0 for a calctarget, both
+-- ref:rendertarget_forceupdate and ref:stepframe target need to be called
+-- in order to update the contents and issue a readback.
 -- @group: targetcontrol
 -- @cfunction: procset
 -- @examples: histoview

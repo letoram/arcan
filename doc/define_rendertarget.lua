@@ -18,7 +18,7 @@
 -- the main pipe line and only used when updating *destination*, while their
 -- association is kept in RENDERTARGET_NODETACH.
 --
--- The optional *scale* arguments determines how the various output-relative
+-- The optional *scale* argument determine how the various output-relative
 -- properties e.g. object size should be handled in the case that *destination*
 -- does not have the same dimensions as the current canvas. The default is
 -- RENDERTARGET_NOSCALE where the object would simply be clipped if its final
@@ -26,7 +26,7 @@
 -- For RENDERTARGET_SCALE, a scale transform that maps coordinates in the
 -- current canvas dimensions to those of the *destination*.
 --
--- The optional *refreshrate* arguments determines how often the rendertarget
+-- The optional *refreshrate* argument determine how often the rendertarget
 -- should be updated. A value of 0 disables automatic updates and
 -- rendertarget_forceupdate needs to be called manually whenever the
 -- rendertarget is to be updated. A value of INT_MIN < n < 0 means that the

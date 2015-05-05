@@ -146,17 +146,9 @@ struct vobject_frameset {
  * is up to a sufficient standard.
  *
  * List of planned changes:
- *  - rotate + modelview matrix -> default 2D approach keep the 3D parts on
- *                                 3dbase.c extensions rather than this thing.
- *                                 (will have huge impact)
- *
- *  - pack all flags -> in total, we have somewhere around 20-30 possible
+  *  - pack all flags -> in total, we have somewhere around 20-30 possible
  *                      flags and masks, these should be packed into one
  *                      uint32
- *
- *  - indirect fptr -> protect the structure somewhat and have a static
- *                     table of possible ffuncs with the ffunc being a
- *                     range checked offset in that one.
  *
  *  - reference counters -> only enabled and present in debug mode
  *
@@ -352,6 +344,9 @@ arcan_vobject* arcan_video_newvobject(arcan_vobj_id* id);
  * and should rarely be used directly
  */
 void arcan_vint_drop_vstore(struct storage_info_t* s);
+
+/* check if a readback is completed, and process it if it is. */
+void arcan_vint_pollreadback(struct rendertarget* rtgt);
 
 arcan_errc arcan_video_attachobject(arcan_vobj_id id);
 arcan_errc arcan_video_deleteobject(arcan_vobj_id id);

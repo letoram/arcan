@@ -487,14 +487,12 @@ static lua_Number luaL_checkbnumber(lua_State* L, int narg)
 
 static lua_Number luaL_optbnumber(lua_State* L, int narg, lua_Number opt)
 {
-	lua_Number d = lua_tonumber(L, narg);
-	if (d == 0 && !lua_isnumber(L, narg)){
-		if (!lua_isboolean(L, narg))
-			d = opt;
-		else
-			d = lua_toboolean(L, narg);
-	}
-	return d;
+	if (lua_isnumber(L, narg))
+		return lua_tonumber(L, narg);
+	else if (lua_isboolean(L, narg))
+		return lua_toboolean(L, narg);
+	else
+		return opt;
 }
 
 static void wraperr(struct arcan_luactx* ctx, int errc, const char* src);
@@ -592,7 +590,7 @@ void arcan_state_dump(const char* key, const char* msg, const char* src)
 static void dump_stack(lua_State* ctx)
 {
 	int top = lua_gettop(ctx);
-	arcan_warning("-- stack dump --\n");
+	arcan_warning("-- stack dump (%d)--\n", top);
 
 	for (size_t i = 1; i <= top; i++) {
 		int t = lua_type(ctx, i);
@@ -5560,6 +5558,24 @@ static int targetstepframe(lua_State* ctx)
 	struct rendertarget* rtgt = find_rendertarget(vobj);
 
 	bool qev = true;
+	int nframes = luaL_optnumber(ctx, 2, 1);
+
+/* cascade / repeat call protection */
+	if (rtgt){
+		if (!FL_TEST(rtgt, TGTFL_READING)){
+			agp_request_readback(rtgt->color->vstore);
+			FL_SET(rtgt, TGTFL_READING);
+		}
+
+		bool block = luaL_optbnumber(ctx, 3, false);
+
+/* for rendertargets, we don't want to rely on the synchronous flag
+ * for this behavior, so better to use as an argument */
+		if (1 || block){
+			while (FL_TEST(rtgt, TGTFL_READING))
+				arcan_vint_pollreadback(rtgt);
+		}
+	}
 
 /*
  * Recordtargets are a special case as they have both
@@ -5567,18 +5583,7 @@ static int targetstepframe(lua_State* ctx)
  * The actual stepframe event will be set by the ffunc handler
  * (arcan_frameserver_backend.c)
  */
-
-	if (state->tag != ARCAN_TAG_FRAMESERV || rtgt)
-		qev = false;
-
-	int nframes = luaL_optnumber(ctx, 2, 1);
-
-	if (rtgt && !FL_TEST(rtgt, TGTFL_READING) ){
-		agp_request_readback(rtgt->color->vstore);
-		FL_SET(rtgt, TGTFL_READING);
-	}
-
-	if (qev){
+	if (state->tag == ARCAN_TAG_FRAMESERV && !rtgt){
 		arcan_event ev = {
 			.category = EVENT_TARGET,
 			.tgt.kind = TARGET_COMMAND_STEPFRAME
@@ -5875,6 +5880,7 @@ cleanup:
 static int rendertargetforce(lua_State* ctx)
 {
 	LUA_TRACE("rendertarget_forceupdate");
+
 	arcan_vobj_id vid = luaL_checkvid(ctx, 1, NULL);
 	if (ARCAN_OK != arcan_video_forceupdate(vid))
 		arcan_fatal("rendertarget_forceupdate(), specified vid "
@@ -6552,7 +6558,7 @@ static int procset(lua_State* ctx)
 	}
 
 	vfunc_state fftag = {
-		.tag = ARCAN_TAG_FRAMESERV,
+		.tag = ARCAN_TAG_CUSTOMPROC,
 		.ptr = (void*) cbsrc
 	};
 	arcan_video_alterfeed(did, FFUNC_LUA_PROC, fftag);
