@@ -5280,7 +5280,7 @@ static void updateflag(arcan_vobj_id vid, enum target_flags flag, bool toggle)
 	vfunc_state* state = arcan_video_feedstate(vid);
 
 	if (!(state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr)){
-		arcan_warning("targetverbose() vid(%"PRIxVOBJ") is not "
+		arcan_warning("updateflag() vid(%"PRIxVOBJ") is not "
 			"connected to a frameserver\n", vid);
 		return;
 	}
@@ -5567,14 +5567,11 @@ static int targetstepframe(lua_State* ctx)
 			FL_SET(rtgt, TGTFL_READING);
 		}
 
-		bool block = luaL_optbnumber(ctx, 3, false);
-
 /* for rendertargets, we don't want to rely on the synchronous flag
  * for this behavior, so better to use as an argument */
-		if (1 || block){
+		if (luaL_optbnumber(ctx, 3, false))
 			while (FL_TEST(rtgt, TGTFL_READING))
 				arcan_vint_pollreadback(rtgt);
-		}
 	}
 
 /*
@@ -6166,7 +6163,7 @@ static int procimage_get(lua_State* ctx)
 	int x = luaL_checknumber(ctx, 2);
 	int y = luaL_checknumber(ctx, 3);
 
-	if (x > ud->width || y > ud->height){
+	if (x >= ud->width || y >= ud->height){
 		arcan_fatal("calcImage:get, requested coordinates out of range, "
 			"source: %d * %d, requested: %d, %d\n",
 			ud->width, ud->height, x, y);
