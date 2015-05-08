@@ -2682,7 +2682,7 @@ static void drop_rtarget(arcan_vobject* vobj)
  * responsibility of cleaning it up */
 	for (size_t i = 0; i < cascade_c; i++)
 		if (pool[i] && FL_TEST(pool[i], FL_INUSE) &&
-		(pool[i]->owner == dst || FL_TEST(pool[i]->owner, TGTFL_ALIVE))){
+		(pool[i]->owner == dst || !FL_TEST(pool[i]->owner, TGTFL_ALIVE))){
 			pool[i]->owner = NULL;
 
 /* cascade or push to stdout as new owner */
