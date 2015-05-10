@@ -51,7 +51,7 @@ int afsrv_avfeed(struct arcan_shmif_cont* con, struct arg_arr* args)
 	arcan_event ev;
 
 	while(1)
-		while(1 == arcan_shmif_wait(&shms, &ev)){
+		while(arcan_shmif_wait(&shms, &ev)){
 			if (ev.category == EVENT_TARGET){
 			if (ev.tgt.kind == TARGET_COMMAND_EXIT){
 				fprintf(stdout, "parent requested termination, leaving.\n");

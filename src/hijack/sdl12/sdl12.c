@@ -469,7 +469,7 @@ int ARCAN_SDL_PollEvent(SDL_Event* inev)
 
 	trace("SDL_PollEvent()\n");
 
-	while ( arcan_shmif_poll(&global.shared, &ev) ){
+	while (arcan_shmif_poll(&global.shared, &ev) > 0){
 		switch (ev.category){
 		case EVENT_IO:
 			if (global.gotsdl)

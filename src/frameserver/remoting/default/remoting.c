@@ -300,7 +300,7 @@ int afsrv_remoting(struct arcan_shmif_cont* con, struct arg_arr* args)
 		}
 
 		arcan_event inev;
-		while (arcan_shmif_poll(&vncctx.shmcont, &inev) == 1){
+		while (arcan_shmif_poll(&vncctx.shmcont, &inev) > 0){
 			if (inev.category == EVENT_TARGET)
 				switch(inev.tgt.kind){
 				case TARGET_COMMAND_STEPFRAME:

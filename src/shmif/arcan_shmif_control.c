@@ -47,10 +47,9 @@ extern HANDLE parent;
 #endif
 
 /*
- * a bit clunky, but some scenarios that we want debug-builds
- * but without the debug logging spam for external projects,
- * and others where we want to redefine the logging macro
- * for shmif- only.
+ * a bit clunky, but some scenarios that we want debug-builds but without the
+ * debug logging spam for external projects, and others where we want to
+ * redefine the logging macro for shmif- only.
  */
 #ifdef _DEBUG
 #ifdef _DEBUG_NOLOG
@@ -67,8 +66,7 @@ extern HANDLE parent;
 #endif
 
 /*
- * implementation defined for out-of-order execution
- * and reordering protection
+ * implementation defined for out-of-order execution and reordering protection
  */
 #ifndef FORCE_SYNCH
 	#define FORCE_SYNCH() {\
@@ -77,6 +75,9 @@ extern HANDLE parent;
 	}
 #endif
 
+/*
+ * These should be kept in lock-step with changes to the event structures.
+ */
 static const char* tgt_cmd_xlt[] = {
 	"UNDEFINED",
 	"EXIT",
@@ -116,7 +117,9 @@ static const char* cat_xlt[] = {
 	"NET"
 };
 
-
+/*
+ * To avoid having -lm or similar requirements on terrible libc implementations
+ */
 static int ilog2(int val)
 {
 	int i = 0;
@@ -159,16 +162,17 @@ const char* arcan_shmif_eventstr(arcan_event* aev, char* dbuf, size_t dsz)
 
 /*
  * The guard-thread thing tries to get around all the insane edge conditions
- * that exist when you have a partial parent<->child circular dependency
- * with an untrusted child and a limited set of IPC primitives.
+ * that exist when you have a partial parent<->child circular dependency with
+ * an untrusted child and a limited set of IPC primitives (from portability
+ * constraints).
  *
- * Sleep a fixed amount of seconds, wake up and check if parent is alive.
- * If that's true, go back to sleep -- otherwise -- wake up, pop open
- * all semaphores set the disengage flag and go back to a longer sleep
- * that it shouldn't wake up from. Should this sleep be engaged anyhow,
- * shut down forcefully.
+ * When some monitored condition (process dies, shmpage doesn't validate, ...)
+ * we have a trigger address signaled (dms), forcibly release the semaphores
+ * used for synch, and optionally some user supplied callback function.
+ *
+ * Thereafter, functions that depend on the shmpage will use their failure
+ * path (or forcibly exit if a FATALFAIL behavior has been set).
  */
-
 struct shmif_hidden {
 	shmif_trigger_hook video_hook;
 	void* video_hook_data;
@@ -176,15 +180,11 @@ struct shmif_hidden {
 	shmif_trigger_hook audio_hook;
 	void* audio_hook_data;
 
-	bool output;
+	bool output, alive;
 
 	struct arcan_evctx inev;
 	struct arcan_evctx outev;
 
-/*
- * as we currently don't serialize both events and descriptors
- * across the socket, we need to track and align the two
- */
 	struct {
 		bool gotev, consumed;
 		arcan_event ev;
@@ -276,13 +276,12 @@ static void consume(struct arcan_shmif_cont* c, bool newseg)
 	}
 }
 
-static bool scan_hint(struct arcan_evctx* c)
+static bool scan_tgt_event(struct arcan_evctx* c,enum ARCAN_TARGET_COMMAND cmd)
 {
 	uint8_t cur = *c->front;
 	while (cur != *c->back){
 		struct arcan_event* ev = &c->eventbuf[cur];
-		if (ev->category == EVENT_TARGET &&
-			ev->tgt.kind == TARGET_COMMAND_DISPLAYHINT)
+		if (ev->category == EVENT_TARGET && ev->tgt.kind == cmd)
 			return true;
 		cur = (cur + 1) % c->eventbuf_sz;
 	}
@@ -294,8 +293,8 @@ static int process_events(struct arcan_shmif_cont* c,
 	struct arcan_event* dst, bool blocking)
 {
 reset:
-	if (!c || !dst || !c->addr)
-		return 0;
+	if (!c || !dst || !c->addr || !c->priv->alive)
+		return -1;
 
 	int rv = 0;
 	struct arcan_evctx* ctx = &c->priv->inev;
@@ -324,22 +323,35 @@ checkfd:
 		}
 	} while (c->priv->pev.gotev && *ks);
 
-/* event ready, if it is descriptor dependent - wait for that one */
 	if (*ctx->front != *ctx->back){
 		*dst = ctx->eventbuf[ *ctx->front ];
 		memset(&ctx->eventbuf[ *ctx->front ], '\0', sizeof(arcan_event));
 		*ctx->front = (*ctx->front + 1) % ctx->eventbuf_sz;
 
-/* descriptor dependent events need to be flagged and tracked */
 		if (dst->category == EVENT_TARGET)
 			switch (dst->tgt.kind){
-/* ignore displayhint if there are newer ones in the queue */
+
+/* Ignore displayhints if there are newer ones in the queue. This pattern can
+ * be re-used for other events, should it be necessary, the principle is that
+ * if there is a serious cost involved for a state change that will be
+ * overridden with something in the queue, use this mechanism. */
 			case TARGET_COMMAND_DISPLAYHINT:
-				if (scan_hint(ctx))
+				if (scan_tgt_event(ctx, TARGET_COMMAND_DISPLAYHINT))
 					goto reset;
-				else
-					rv = 1;
 			break;
+
+			case TARGET_COMMAND_EXIT:
+/* While tempting to run _drop here to prevent caller from leaking resources,
+ * we can't as the event- loop might be running in a different thread than
+ * A/V updating. _drop would modify the context in ways that would break, and
+ * we want consistent behavior between threadsafe- and non-threadsafe builds. */
+				c->priv->alive = false;
+			break;
+
+/* Events that require a handle to be tracked (and possibly garbage collected
+ * if the caller does not handle it) should be added here. Then the event will
+ * be deferred until we have received a handle and the specific handle will be
+ * added to the actual event. */
 			case TARGET_COMMAND_STORE:
 			case TARGET_COMMAND_RESTORE:
 			case TARGET_COMMAND_BCHUNK_IN:
@@ -354,7 +366,8 @@ checkfd:
 		rv = 1;
 	}
 	else if (c->addr->dms == 0)
-		return -1;
+		goto done;
+
 	else if (blocking && *ks)
 		goto checkfd;
 
@@ -373,14 +386,14 @@ int arcan_shmif_poll(struct arcan_shmif_cont* c, struct arcan_event* dst)
 
 int arcan_shmif_wait(struct arcan_shmif_cont* c, struct arcan_event* dst)
 {
-	return process_events(c, dst, true);
+	return process_events(c, dst, true) > 0;
 }
 
 int arcan_shmif_enqueue(struct arcan_shmif_cont* c,
 	const struct arcan_event* const src)
 {
 	assert(c);
-	if (!c->addr || !c->addr->dms)
+	if (!c->addr || !c->addr->dms || !c->priv->alive)
 		return 0;
 
 	struct arcan_evctx* ctx = &c->priv->outev;
@@ -461,9 +474,9 @@ static void map_shared(const char* shmkey,
 	}
 
 /*
- * note: this works "poorly" for multiple segments,
- * we should mimic the posix approach where we push a base-key,
- * and then use that to lookup handles for shared memory and semaphores
+ * note: this works "poorly" for multiple segments, we should mimic the posix
+ * approach where we push a base-key, and then use that to lookup handles for
+ * shared memory and semaphores
  */
 	parent = res->addr->parent;
 }
@@ -508,8 +521,8 @@ map_fail:
 		return;
 	}
 
-	/* parent suggested that we work with a different
-   * size from the start, need to remap */
+/* parent suggested that we work with a different
+ * size from the start, need to remap */
 	if (dst->addr->segment_size != ARCAN_SHMPAGE_START_SZ){
 		DLOG("arcan_frameserver(getshm) -- different initial size, remapping.\n");
 		size_t sz = dst->addr->segment_size;
@@ -549,12 +562,11 @@ map_fail:
 	}
 }
 
-/* the rules for resolving the connection socket namespace are
- * somewhat complex, i.e. on linux we have the atrocious \0 prefix
- * that defines a separate socket namespace, if we don't specify
- * an absolute path, the key will resolve to be relative your
- * HOME environment (BUT we also have an odd size limitation to
- * sun_path to take into consideration). */
+/* the rules for resolving the connection socket namespace are somewhat
+ * complex, i.e. on linux we have the atrocious \0 prefix that defines a
+ * separate socket namespace, if we don't specify an absolute path, the key
+ * will resolve to be relative your HOME environment (BUT we also have an odd
+ * size limitation to sun_path to take into consideration). */
 int arcan_shmif_resolve_connpath(const char* key,
 	char* dbuf, size_t dbuf_sz)
 {
@@ -734,6 +746,7 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 	res.priv = malloc(sizeof(struct shmif_hidden));
 	memset(res.priv, '\0', sizeof(struct shmif_hidden));
 	*res.priv = gs;
+	res.priv->alive = true;
 
 	if (!(flags & SHMIF_DISABLE_GUARD))
 		spawn_guardthread(&res);
@@ -1002,8 +1015,9 @@ void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 		gstr->guard.active = false;
 	}
 /* no guard thread for this context */
-	else
+	else{
 		free(inctx->priv);
+	}
 
 #if _WIN32
 #else

@@ -1325,14 +1325,13 @@ static inline void targetev(arcan_event* ev)
 	}
 }
 
-/* use labels etc. for trying to populate the context table */
-/* we also process requests to save state, shutdown, reset,
- * plug/unplug input, here */
+/* use labels etc. for trying to populate the context table we also process
+ * requests to save state, shutdown, reset, plug/unplug input, here */
 static inline void flush_eventq(){
 	 arcan_event ev;
 
 	 do
-		while ( arcan_shmif_poll(&retroctx.shmcont, &ev) == 1 ){
+		while (arcan_shmif_poll(&retroctx.shmcont, &ev) > 0){
 			switch (ev.category){
 				case EVENT_IO:
 					ioev_ctxtbl(&(ev.io), ev.io.label);

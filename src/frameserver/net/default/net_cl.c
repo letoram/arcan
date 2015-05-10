@@ -230,7 +230,7 @@ static bool host_discover(const char* reqhost,
 
 retry_partial:
 /* flush and check for exit */
-		while (1 == arcan_shmif_poll(&clctx.shmcont, &dev))
+		while (arcan_shmif_poll(&clctx.shmcont, &dev) > 0)
 			if (dev.category == EVENT_TARGET && dev.tgt.kind == TARGET_COMMAND_EXIT)
 				return NULL;
 

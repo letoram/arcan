@@ -704,7 +704,7 @@ int afsrv_encode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 /* fail here means there's something wrong with
  * frameserver - main app connection */
 		arcan_event ev;
-		if (0 == arcan_shmif_wait(&recctx.shmcont, &ev))
+		if (!arcan_shmif_wait(&recctx.shmcont, &ev))
 			break;
 
 		if (ev.category == EVENT_TARGET){
