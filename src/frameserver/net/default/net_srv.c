@@ -211,7 +211,7 @@ static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 	arcan_event ev;
 	uint16_t msgsz = sizeof(ev.net.message) / sizeof(ev.net.message[0]);
 
-	while ( arcan_shmif_poll(&srvctx.shmcont, &ev) == 1 )
+	while (arcan_shmif_poll(&srvctx.shmcont, &ev) > 0)
 		if (ev.category == EVENT_NET){
 			switch (ev.net.kind){
 			case EVENT_NET_INPUTEVENT:

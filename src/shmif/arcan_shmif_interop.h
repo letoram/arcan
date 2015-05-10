@@ -36,9 +36,9 @@
 #define _HAVE_ARCAN_SHMIF_INTEROP
 
 /*
- * Version number works as tag and guard- bytes in the shared memory page,
- * it is set by arcan upon creation and verified along with the offset-
- * cookie during _integrity_check
+ * Version number works as tag and guard- bytes in the shared memory page, it
+ * is set by arcan upon creation and verified along with the offset- cookie
+ * during _integrity_check
  */
 #define ASHMIF_VERSION_MAJOR 0
 #define ASHMIF_VERSION_MINOR 5
@@ -47,12 +47,14 @@
 #define LOG(...) (fprintf(stderr, __VA_ARGS__))
 #endif
 
+
 /*
- * plucked from platform.h in arcan platform tree in order to
- * provide the defines for external projects that just uses the
- * installed shmif- library
+ * For porting the shmpage interface, these functions need to be implemented
+ * and pulled in, shouldn't be much moremore complicated than mapping to the
+ * corresponding platform/ functions.
  */
 #ifndef PLATFORM_HEADER
+
 #include <stdint.h>
 #include <stdbool.h>
 #ifdef WIN32
@@ -69,6 +71,7 @@
 	typedef pid_t process_handle;
 	typedef sem_t* sem_handle;
 #endif
+
 long long int arcan_timemillis();
 int arcan_sem_post(sem_handle sem);
 file_handle arcan_fetchhandle(int insock, bool block);
@@ -76,42 +79,39 @@ bool arcan_pushhandle(int fd, int channel);
 int arcan_sem_wait(sem_handle sem);
 #endif
 
-/*
- * this header should define the types:
- * pipe_handle, file_handle, process_handle, sem_handle, arcan_errc
- * arcan_vobj_id, arcan_aobj_id (unused in shmif)
- * along with semaphore handling prototypes and timing functions.
- * See the default platform/platform.h header for examples.
- */
-
 struct arcan_shmif_cont;
 struct arcan_event;
 
 /*
- * For porting the shmpage interface, these functions need to be
- * implemented and pulled in, shouldn't be more complicated than
- * mapping to the corresponding platform/ functions.
+ * Note the different semantics in return- values for _poll versus _wait
  */
+
 /*
- * Try and dequeue the element in the front of the queue with (wait)
- * or without (poll) blocking execution.
- * returns non-zero on success.
+ * _poll will return as soon as possible with one of the following values:
+ *  > 0 when there are incoming events available,
+ *  = 0 when there are no incoming events available,
+ *  < 0 when the shmif_cont is unable to process events (terminal state)
  */
 int arcan_shmif_poll(struct arcan_shmif_cont*, struct arcan_event* dst);
+
+/*
+ * _wait will block an unspecified time and return:
+ * !0 when an event was successfully dequeued and placed in *dst
+ *  0 when the shmif_cont is unable to process events (terminal state)
+ */
 int arcan_shmif_wait(struct arcan_shmif_cont*, struct arcan_event* dst);
 
 /*
- * Try and enqueue the element to the queue. If the context is
- * set to lossless, enqueue may block, sleep (or spinlock).
+ * Try and enqueue the element to the queue. If the context is set to lossless,
+ * enqueue may block, sleep (or spinlock).
  *
- * returns the number of FREE slots left on success or a negative
- * value on failure. The purpose of the try- approach is to let
- * the user distinguish between necessary and merely "helpful"
- * events (e.g. frame numbers, net ping-pongs etc.)
+ * returns the number of FREE slots left on success or a negative value on
+ * failure. The purpose of the try- approach is to let the user distinguish
+ * between necessary and merely "helpful" events (e.g. frame numbers, net
+ * ping-pongs etc.)
  *
- * These methods are thread-safe if and only if
- * ARCAN_SHMIF_THREADSAFE_QUEUE has been defined at build-time and
- * not during a pending resize operation.
+ * These methods are thread-safe if and only if ARCAN_SHMIF_THREADSAFE_QUEUE
+ * has been defined at build-time and not during a pending resize operation.
  */
 int arcan_shmif_enqueue(struct arcan_shmif_cont*,
 	const struct arcan_event* const);
@@ -120,33 +120,32 @@ int arcan_shmif_tryenqueue(struct arcan_shmif_cont*,
 	const struct arcan_event* const);
 
 /*
- * Provide a text representation useful for logging, tracing
- * and debugging purposes. If dbuf is NULL, a static buffer
- * will be used (so for threadsafety, provide your own).
+ * Provide a text representation useful for logging, tracing and debugging
+ * purposes. If dbuf is NULL, a static buffer will be used (so for
+ * threadsafety, provide your own).
  */
 const char* arcan_shmif_eventstr(
 	struct arcan_event* aev, char* dbuf, size_t dsz);
 
 /*
- * Resolve implementation- defined connection connection path
- * based on a suggested key. Returns -num if the resolved path
- * couldn't fit in dsz (with abs(num) indicating the number of
- * truncated bytes) and number of characters (excluding NULL)
- * written to dst.
+ * Resolve implementation- defined connection connection path based on a
+ * suggested key. Returns -num if the resolved path couldn't fit in dsz (with
+ * abs(num) indicating the number of truncated bytes) and number of characters
+ * (excluding NULL) written to dst.
  */
 int arcan_shmif_resolve_connpath(
 	const char* key, char* dst, size_t dsz);
 
 /*
- * calculates a hash of the layout of the shmpage in order
- * to detect subtle compiler mismatches etc.
+ * calculates a hash of the layout of the shmpage in order to detect subtle
+ * compiler mismatches etc.
  */
 uint64_t arcan_shmif_cookie();
 
 /*
- * The following functions are simple lookup/unpack support functions
- * for argument strings usually passed on the command-line to a newly
- * spawned frameserver in a simple (utf-8) key=value\tkey=value type format.
+ * The following functions are simple lookup/unpack support functions for
+ * argument strings usually passed on the command-line to a newly spawned
+ * frameserver in a simple (utf-8) key=value\tkey=value type format.
  */
 struct arg_arr {
 	char* key;
@@ -157,9 +156,8 @@ struct arg_arr {
 struct arg_arr* arg_unpack(const char*);
 
 /*
- * return the value matching a certain key,
- * if ind is larger than 0, it's the n-th result
- * that will be stored in dst
+ * return the value matching a certain key, if ind is larger than 0, it's the
+ * n-th result that will be stored in dst
  */
 bool arg_lookup(struct arg_arr* arr, const char* val,
 	unsigned short ind, const char** found);
