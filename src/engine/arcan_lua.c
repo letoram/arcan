@@ -8046,14 +8046,15 @@ static int base64_decode(lua_State* ctx)
 static void extend_baseapi(lua_State* ctx)
 {
 	lua_newtable(ctx);
+	int top = lua_gettop(ctx);
 
 	lua_pushstring(ctx, "to_base64");
 	lua_pushcfunction(ctx, base64_encode);
-	lua_rawset(ctx, 1);
+	lua_rawset(ctx, top);
 
 	lua_pushstring(ctx, "from_base64");
 	lua_pushcfunction(ctx, base64_decode);
-	lua_rawset(ctx, 1);
+	lua_rawset(ctx, top);
 
 	lua_setglobal(ctx, "util");
 }
