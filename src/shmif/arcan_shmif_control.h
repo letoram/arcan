@@ -262,27 +262,30 @@ void arcan_shmif_calcofs(struct arcan_shmif_page*,
 void arcan_shmif_setevqs(struct arcan_shmif_page*,
 	sem_handle, arcan_evctx* inevq, arcan_evctx* outevq, bool parent);
 
-/* (frameserver use only) helper function to implement
- * request/synchronization protocol to issue a resize of the
- * output video buffer.
+/* (frameserver use only) helper function to implement request/synchronization
+ * protocol to issue a resize of the output video buffer.
  *
- * This request can be declined (false return value) and
- * should be considered expensive (may block indefinitely). Anything
- * that depends on the contents of the shared-memory dependent
- * parts of shmif_cont (eventqueue, vidp/audp, ...) should be considered
- * invalid during/after a call to shmif_resize and the function will
- * internally rebuild these structures.
+ * This request can be declined (false return value) and should be considered
+ * expensive (may block indefinitely). Anything that depends on the contents of
+ * the shared-memory dependent parts of shmif_cont (eventqueue, vidp/audp, ...)
+ * should be considered invalid during/after a call to shmif_resize and the
+ * function will internally rebuild these structures.
  *
- * This function is not thread-safe -- While a resize is pending,
- * none of the other operations (drop, signal, en/de- queue) are safe.
- * If events are managed on a separate thread, these should be treated
- * in mutual exclusion with the size operation.
+ * This function is not thread-safe -- While a resize is pending, none of the
+ * other operations (drop, signal, en/de- queue) are safe.  If events are
+ * managed on a separate thread, these should be treated in mutual exclusion
+ * with the size operation.
  *
  * There are four possible outcomes here:
  * a. resize fails, dimensions exceed hard-coded limits.
  * b. resize succeeds, vidp/audp are re-aligned.
  * c. resize succeeds, the segment is truncated to a new size.
  * d. resize succeeds, we switch to a new shared memory connection.
+ *
+ * Note that the actual effects / resize behavior in the running appl may be
+ * delayed until the first shmif_signal call on the resized segment. This is
+ * done in order to avoid visual artifacts that would stem from having source
+ * material in one resolution while metadata refers to another.
  */
 bool arcan_shmif_resize(struct arcan_shmif_cont*,
 	unsigned width, unsigned height);
@@ -365,7 +368,8 @@ struct arcan_shmif_cont {
 
 /*
  * Should be used to index vidp, i.e. vidp[y * pitch + x] = RGBA(r, g, b, a)
- * Pitch accounts for padding and should match stride*ARCAN_SHMIF_VCHANNELS.
+ * stride and pitch account for padding, with stride being a row length in
+ * bytes and pitch a row length in pixels.
  */
 	size_t w, h, stride, pitch;
 
