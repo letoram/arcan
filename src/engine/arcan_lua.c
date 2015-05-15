@@ -3711,7 +3711,14 @@ static int validvid(lua_State* ctx)
 	if (res < 0)
 		res = ARCAN_EID;
 
-	lua_pushboolean(ctx, arcan_video_findparent(res) != ARCAN_EID);
+	int type = luaL_optnumber(ctx, 2, -1);
+	if (-1 != type){
+		arcan_vobject* vobj = arcan_video_getobject(res);
+		lua_pushboolean(ctx, vobj && vobj->feed.state.tag == type);
+	}
+	else
+		lua_pushboolean(ctx, arcan_video_findparent(res) != ARCAN_EID);
+
 	LUA_ETRACE("valid_vid", NULL);
 	return 1;
 }
@@ -8436,6 +8443,8 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"ANCHOR_C", ANCHORP_C},
 {"FRAMESERVER_LOOP", 0},
 {"FRAMESERVER_NOLOOP", 1},
+{"TYPE_FRAMESERVER", ARCAN_TAG_FRAMESERV},
+{"TYPE_3DOBJECT", ARCAN_TAG_3DOBJ},
 {"TARGET_SYNCHRONOUS", TARGET_FLAG_SYNCHRONOUS},
 {"TARGET_NOALPHA", TARGET_FLAG_NO_ALPHA_UPLOAD},
 {"TARGET_VSTORE_SYNCH", TARGET_FLAG_VSTORE_SYNCH},
