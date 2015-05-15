@@ -6,7 +6,7 @@
 -- the principal way to launch authoritative frameservers and unify the
 -- others (load_movie etc.) and allow a quick and dirty interface for testing
 -- and experimenting with custom ones through the AVFEED_LIBS AVFEED_SOURCES
--- compile time arguments. The global environment in FRAMESERVER_MODESTRING
+-- compile time arguments. The global environment in FRAMESERVER_MODES
 -- limits the possible arguments to avmode and is defined at compile time.
 -- If *avmode* is not specified, it defaults to 'avfeed'.
 -- @group: targetcontrol
