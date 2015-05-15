@@ -256,20 +256,32 @@ int main(int argc, char** argv)
 		return EXIT_FAILURE;
 	}
 
-/* compress to afsrv for namespace cleanliness */
-	char* fsrvmode = argv[1];
-	if (strcmp(fsrvmode, "arcan_frameserver") == 0){
-		fsrvmode = "afsrv";
-	}
+	if (!argv[0])
+		return EXIT_FAILURE;
 
-	size_t bin_sz = strlen(argv[0]) + strlen(fsrvmode) + 2;
+	size_t i = strlen(argv[0])-1;
+	for (; i && argv[0][i] == '/'; i--) argv[0][i] = 0;
+	for (; i && argv[0][i-1] != '/'; i--);
+	if (i)
+		argv[0][i-1] = '\0';
+
+	const char* dirn = argv[0];
+	const char* base = argv[0] + i;
+	const char* mode = argv[1];
+
+	if (strcmp(base, "arcan_frameserver") == 0)
+		base = "afsrv";
+
+	size_t bin_sz = strlen(dirn) + strlen(base) + strlen(argv[1]) + 3;
 	char newarg[ bin_sz ];
-	snprintf(newarg, bin_sz, "%s_%s", argv[0], fsrvmode);
+	snprintf(newarg, bin_sz, "%s/%s_%s", dirn, base, argv[1]);
+	printf("chainload to: %s\n", newarg);
 
 /*
- * the sweet-spot for adding in privilege/uid/gid swapping and
- * setting up mode- specific sandboxing, package format mount
- * (or other compatibility / loading) etc.
+ * the sweet-spot for adding in privilege/uid/gid swapping and setting up mode-
+ * specific sandboxing, package format mount (or other compatibility / loading)
+ * etc. When that is done, ofc. add more stringent control over what newarg
+ * turns out to be.
  */
 
 /* we no longer need the mode argument */
