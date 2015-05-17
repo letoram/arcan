@@ -2067,9 +2067,9 @@ static int settxcos_default(lua_State* ctx)
 
 	if (!dst->txcos)
 		dst->txcos = arcan_alloc_mem(sizeof(float)*8,
-			ARCAN_MEM_VSTRUCT,0,ARCAN_MEMALIGN_SIMD);
+			ARCAN_MEM_VSTRUCT, ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_SIMD);
 
-	if (dst){
+	if (dst->txcos){
 		if (mirror)
 			generate_mirror_mapping(dst->txcos, 1.0, 1.0);
 		else
@@ -2632,7 +2632,7 @@ static bool is_special_res(const char* msg)
 		strncmp(msg, "capture", 7) == 0;
 }
 
-static int setupavstream(lua_State* ctx)
+static int launchavfeed(lua_State* ctx)
 {
 	LUA_TRACE("launch_avfeed");
 
@@ -2984,7 +2984,7 @@ static int targetinput(lua_State* ctx)
 	else if (strcmp(kindlbl, "digital") == 0){
 		if (intblbool(ctx, tblind, "translated")){
 			ev.io.devkind = EVENT_IDEVKIND_KEYBOARD;
-			ev.io.datatype = EVENT_IDATATYPE_DIGITAL;
+			ev.io.datatype = EVENT_IDATATYPE_TRANSLATED;
 			ev.io.input.translated.active = intblbool(ctx, tblind, "active");
 			ev.io.input.translated.scancode = intblint(ctx, tblind, "number");
 			ev.io.input.translated.keysym = intblint(ctx, tblind, "keysym");
@@ -8163,7 +8163,7 @@ static const luaL_Reg tgtfuns[] = {
 {"rendertarget_attach",        renderattach             },
 {"rendertarget_noclear",       rendernoclear            },
 {"load_movie",                 loadmovie                },
-{"launch_avfeed",              setupavstream            },
+{"launch_avfeed",              launchavfeed             },
 {NULL, NULL}
 };
 #undef EXT_MAPTBL_TARGETCONTROL
