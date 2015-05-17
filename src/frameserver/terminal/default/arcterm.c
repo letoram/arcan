@@ -62,6 +62,8 @@ static struct {
 	struct tsm_vte* vte;
 	struct shl_pty* pty;
 
+	bool extclock;
+
 	pid_t child;
 	int child_fd;
 
@@ -84,28 +86,6 @@ static void tsm_log(void* data, const char* file, int line,
 {
 	fprintf(stderr, "[%d] %s:%d - %s, %s()\n", sev, file, line, subs, func);
 	vfprintf(stderr, fmt, arg);
-}
-
-static void screen_size(int screenw, int screenh, int fontw, int fonth)
-{
-	int px_w = screenw * fontw;
-	int px_h = screenh * fonth;
-
-	if (!arcan_shmif_resize(&term.acon, px_w, px_h)){
-		LOG("arcan_shmif_resize(), couldn't set"
-			"	requested dimensions (%d, %d)\n", px_w, px_h);
-		exit(EXIT_FAILURE);
-	}
-
-/*
- * tsm_screen_resize if not first,
- * shl_pty_resize to propagate
- */
-
-	term.screen_w = screenw;
-	term.screen_h = screenh;
-	term.cell_w = fontw;
-	term.cell_h = fonth;
 }
 
 struct unpack_col {
@@ -203,6 +183,29 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 #endif
 }
 
+static void screen_size(int screenw, int screenh, int fontw, int fonth)
+{
+	int px_w = screenw * fontw;
+	int px_h = screenh * fonth;
+
+	if (!arcan_shmif_resize(&term.acon, px_w, px_h)){
+		LOG("arcan_shmif_resize(), couldn't set"
+			"	requested dimensions (%d, %d)\n", px_w, px_h);
+		exit(EXIT_FAILURE);
+	}
+
+	printf("resize to: %d, %d - %d, %d\n", px_w, px_h, screenw, screenh);
+	tsm_screen_resize(term.screen, screenw, screenh);
+	shl_pty_resize(term.pty, screenw, screenh);
+
+	term.screen_w = screenw;
+	term.screen_h = screenh;
+	term.cell_w = fontw;
+	term.cell_h = fonth;
+	tsm_screen_draw(term.screen, draw_cb, NULL /* draw_cb_data */);
+	arcan_shmif_signal(&term.acon, SHMIF_SIGVID);
+}
+
 static void read_callback(struct shl_pty* pty,
 	void* data, char* u8, size_t len)
 {
@@ -215,7 +218,7 @@ static void write_callback(struct tsm_vte* vte,
 	shl_pty_write(term.pty, u8, len);
 }
 
-static void setup_shell()
+static void setup_shell(struct arg_arr* argarr)
 {
 	char* shell = getenv("SHELL");
 	const struct passwd* pass = getpwuid( getuid() );
@@ -226,14 +229,27 @@ static void setup_shell()
 		setenv("HOME", pass->pw_dir, 0);
 	}
 
-	unsetenv("COLUMNS");
-	unsetenv("LINES");
-	unsetenv("TERMCAP");
+	static const char* unset[] = {
+		"COLUMNS", "LINES", "TERMCAP",
+		"ARCAN_ARG", "ARCAN_APPLPATH", "ARCAN_APPLTEMPPATH",
+		"ARCAN_FRAMESERVER_LOGDIR", "ARCAN_RESOURCEPATH",
+		"ARCAN_SHMKEY", "ARCAN_SOCKIN_FD", "ARCAN_STATEPATH"
+	};
+
+	int ind = 0;
+	const char* val;
+
+	for (int i=0; i < sizeof(unset)/sizeof(unset[0]); i++)
+		unsetenv(unset[i]);
+
+	while (arg_lookup(argarr, "env", ind++, &val))
+		putenv(strdup(val));
 
 	int sigs[] = {
 		SIGCHLD, SIGHUP, SIGINT, SIGQUIT, SIGTERM, SIGALRM
 	};
 
+/* uncertain which one actually fits us the best here */
 	setenv("TERM", "xterm-256color", 1);
 	for (int i = 0; i < sizeof(sigs) / sizeof(sigs[0]); i++)
 		signal(sigs[i], SIG_DFL);
@@ -245,15 +261,13 @@ static void setup_shell()
 }
 
 /*
- * keyboard mapping is not correct,
- * and we should have an (even more) detailed version that also
- * carries 7-bit ascii
- * mouse-mapping should go to a local cursor that hides on no motion
+ * this mapping is woefully incomplete
  */
 static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 {
 /* map mouse motion + button to select, etc. */
 	if (label){
+
 	}
 
 /* keyboard input */
@@ -302,11 +316,15 @@ static void targetev(arcan_tgtevent* ev)
 	break;
 
 	case TARGET_COMMAND_DISPLAYHINT:{
-		size_t width = ev->ioevs[0].iv;
-		size_t height = ev->ioevs[1].iv;
-		arcan_shmif_resize(&term.acon, width, height);
+		screen_size(ev->ioevs[0].iv / term.cell_w,
+			ev->ioevs[1].iv / term.cell_h, term.cell_w, term.cell_h);
 	}
 	break;
+
+	case TARGET_COMMAND_STEPFRAME:{
+		tsm_screen_draw(term.screen, draw_cb, NULL /* draw_cb_data */);
+		arcan_shmif_signal(&term.acon, SHMIF_SIGVID);
+	}
 
 	case TARGET_COMMAND_STORE:
 	case TARGET_COMMAND_RESTORE:
@@ -361,9 +379,6 @@ static void main_loop()
  * erase_cursor, erase_chars, ... selection reset, selection start,
  * selection copy, ... */
 		}
-
-		tsm_screen_draw(term.screen, draw_cb, NULL /* draw_cb_data */);
-		arcan_shmif_signal(&term.acon, SHMIF_SIGVID);
 	}
 }
 
@@ -378,6 +393,7 @@ static void dump_help()
 	  " cols      \t n_cols \t specify initial number of terminal columns \n"
 		" cell_w    \t px_w \t specify individual cell width in pixels \n"
 		" cell_h    \t px_h \t specify individual cell height in pixels \n"
+		" extclock  \t      \t require external clock for screen updates \n"
 #ifdef TTF_SUPPORT
 		" font      \t ttf-file \t render using font specified by ttf-file \n"
 		" font_hint \t hintval \t hint to font renderer (light, mono or none) \n"
@@ -393,13 +409,16 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	TTF_Init();
 #endif
 
-	if (!con || !args || arg_lookup(args, "help", 0, &val)){
+	if (!con || arg_lookup(args, "help", 0, &val)){
 		dump_help();
 		return EXIT_FAILURE;
 	}
 
 	if (arg_lookup(args, "rows", 0, &val))
 		term.rows = strtoul(val, NULL, 10);
+
+	if (arg_lookup(args, "extclock", 0, &val))
+		term.extclock = true;
 
 	if (arg_lookup(args, "cols", 0, &val))
 		term.cols = strtoul(val, NULL, 10);
@@ -431,6 +450,9 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	}
 #endif
 
+/* FIXME: option to map environment key to environment variable in
+ * terminal, in order to provide a connection point to the display server */
+
 	if (tsm_screen_new(&term.screen, tsm_log, 0) < 0){
 		LOG("fatal, couldn't setup tsm screen\n");
 		return EXIT_FAILURE;
@@ -453,8 +475,8 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	signal(SIGHUP, SIG_IGN);
 
 	if ( (term.child = shl_pty_open(&term.pty,
-		read_callback, NULL /* term data */, 80, 25)) == 0){
-		setup_shell();
+		read_callback, NULL, term.rows, term.cols)) == 0){
+		setup_shell(args);
 		exit(EXIT_FAILURE);
 	}
 
