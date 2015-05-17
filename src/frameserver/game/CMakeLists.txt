@@ -18,6 +18,8 @@ add_executable(afsrv_game
 	${FSRV_ROOT}/util/resampler/resample.c
 	${FSRV_ROOT}/util/resampler/speex_resampler.h
 	${FSRV_ROOT}/util/font_8x8.h
+	${PLATFORM_ROOT}/posix/map_resource.c
+	${PLATFORM_ROOT}/posix/resource_io.c
 	${GAME_AUX_SOURCES}
 	${FSRV_PLATFORM}
 )
@@ -37,6 +39,7 @@ target_compile_definitions(afsrv_game PRIVATE
 
 target_include_directories(afsrv_game PRIVATE
 	${FSRV_ROOT}
+	${ENGINE_ROOT}
 	${FSRV_ROOT}/util
 )
 

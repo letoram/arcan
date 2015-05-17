@@ -52,7 +52,7 @@ const char* verify_traverse(const char* in);
 
 /*
  * implemented in <platform>/resource_io.c
- * take a <name> resoulved from arcan_find_*, arcan_resolve_*,
+ * take a <name> resolved from arcan_find_*, arcan_resolve_*,
  * open / lock / reserve <name> and store relevant metadata in data_source.
  *
  * On failure, data_source.fd == BADFD and data_source.source == NULL
