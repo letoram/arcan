@@ -15,8 +15,14 @@
 #include <strings.h>
 #include <pthread.h>
 #include <errno.h>
+#include <dlfcn.h>
+#include <fcntl.h>
 
 #include <arcan_shmif.h>
+#include <arcan_namespace.h>
+#include <arcan_resource.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #include "frameserver.h"
 #include "ntsc/snes_ntsc.h"
@@ -53,7 +59,6 @@
 #undef BADID
 #ifdef _WIN32
 #define BADID NULL
-#else
 #define BADID -1
 #endif
 
@@ -196,10 +201,60 @@ static void log_msg(char* msg, bool flush);
 static void setup_3dcore(struct retro_hw_render_callback*);
 #endif
 
+static void* lastlib, (* globallib);
 retro_proc_address_t libretro_requirefun(const char* sym)
 {
-	retro_proc_address_t rfun = frameserver_requirefun(sym, NULL);
-	return rfun;
+/* not very relevant here, but proper form is dlerror() */
+	if (!sym)
+		return NULL;
+
+/*
+  if (module){
+		if (lastlib)
+			return dlsym(lastlib, sym);
+		else
+			return NULL;
+	}
+ */
+
+	return dlsym(lastlib, sym);
+}
+
+static bool write_handle(const void* const data,
+	size_t sz_data, file_handle dst, bool finalize)
+{
+	bool rv = false;
+
+	if (dst != BADFD)
+	{
+		off_t ofs = 0;
+		ssize_t nw;
+
+		while ( ofs != sz_data){
+			nw = write(dst, ((char*) data) + ofs, sz_data - ofs);
+			if (-1 == nw)
+				switch (errno){
+				case EAGAIN: continue;
+				case EINTR: continue;
+				default:
+					LOG("write_handle(dumprawfile) -- write failed (%d),"
+					"	reason: %s\n", errno, strerror(errno));
+					goto out;
+			}
+
+			ofs += nw;
+		}
+		rv = true;
+
+		out:
+		if (finalize)
+			close(dst);
+	}
+	 else
+		 LOG("write_handle(dumprawfile) -- request to dump to invalid "
+			"file handle ignored, no output set by parent.\n");
+
+	return rv;
 }
 
 static void resize_shmpage(int neww, int newh, bool first)
@@ -1273,8 +1328,7 @@ static inline void targetev(arcan_event* ev)
 			if (dstsize && ( buf = malloc( dstsize ) )){
 
 				if ( retroctx.serialize(buf, dstsize) ){
-					frameserver_dumprawfile_handle( buf, dstsize,
-						ev->tgt.ioevs[0].iv, true );
+					write_handle( buf, dstsize, ev->tgt.ioevs[0].iv, true );
 				} else
 					LOG("serialization failed.\n");
 
@@ -1571,9 +1625,13 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 	log_msg(logbuf, true);
 
 /* map up functions and test version */
-	if (!frameserver_loadlib(libname)){
+	lastlib = dlopen(libname, RTLD_LAZY);
+	if (!globallib)
+		globallib = dlopen(NULL, RTLD_LAZY);
+
+	if (!lastlib){
 		LOG("couldn't open library (%s), giving up.\n", libname);
-		exit(1);
+		exit(EXIT_FAILURE);
 	}
 
 	void (*initf)() = libretro_requirefun("retro_init");
@@ -1648,25 +1706,25 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 			logbuf[logbuf_sz - 1] = '\0';
 		log_msg(logbuf, true);
 
-/* load the rom, either by letting the emulator acts as loader, or by
- * mmaping and handing that segment over */
-		ssize_t bufsize = 0;
-
+/* rather ugly -- core actually requires file-path */
 		if (retroctx.sysinfo.need_fullpath){
 			LOG("core(%s), core requires fullpath, resolved to (%s).\n",
 				retroctx.sysinfo.library_name, resname );
 			retroctx.gameinfo.data = NULL;
 			retroctx.gameinfo.path = strdup( resname );
-		} else {
+			retroctx.gameinfo.size = 0;
+		}
+		else {
 			retroctx.gameinfo.path = strdup( resname );
-			retroctx.gameinfo.data = frameserver_getrawfile(resname, &bufsize);
-			if (bufsize == -1){
+			data_source res = arcan_open_resource(resname);
+			map_region map = arcan_map_resource(&res, true);
+			if (!map.ptr){
 				LOG("core(%s), couldn't map data, giving up.\n", resname);
 				return EXIT_FAILURE;
 			}
+			retroctx.gameinfo.data = map.ptr;
+			retroctx.gameinfo.size = map.sz;
 		}
-
-		retroctx.gameinfo.size = bufsize;
 
 /* load the game, and if that fails, give up */
 		outev.ext.kind = EVENT_EXTERNAL_RESOURCE;

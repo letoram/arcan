@@ -48,7 +48,6 @@ const char* deffprg =
 
 const char* defcfprg =
 "#version 120\n"
-"varying vec2 texco;\n"
 "uniform vec3 obj_col;\n"
 "uniform float obj_opacity;\n"
 "void main(){\n"
