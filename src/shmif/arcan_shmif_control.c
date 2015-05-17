@@ -1193,26 +1193,26 @@ struct arg_arr* arg_unpack(const char* resource)
 	int curarg = 0;
 	argv[argc].key = argv[argc].value = NULL;
 
-	char* base    = strdup(resource);
+	char* base = strdup(resource);
 	char* workstr = base;
 
-/* sweep for key=val:key:key style packed arguments,
- * since this is used in such a limited fashion (RFC 3986 at worst),
- * we use a replacement token rather than an escape one,
- * so \t becomes : post-process
+/* sweep for key=val:key:key style packed arguments, since this is used in such
+ * a limited fashion (RFC 3986 at worst), we use a replacement token rather
+ * than an escape one, so \t becomes : post-process
  */
 	while (curarg < argc){
-		char* endp  = workstr;
+		char* endp = workstr;
+		bool inv = false;
 		argv[curarg].key = argv[curarg].value = NULL;
 
 		while (*endp && *endp != ':'){
-/* a==:=a=:a=dd= are disallowed */
-			if (*endp == '='){
+			if (!inv && *endp == '='){
 				if (!argv[curarg].key){
 					*endp = 0;
 					argv[curarg].key = strrep(strdup(workstr), '\t', ':');
 					argv[curarg].value = NULL;
 					workstr = endp + 1;
+					inv = true;
 				}
 				else{
 					free(argv);
