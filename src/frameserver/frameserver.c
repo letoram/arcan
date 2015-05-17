@@ -275,7 +275,6 @@ int main(int argc, char** argv)
 	size_t bin_sz = strlen(dirn) + strlen(base) + strlen(argv[1]) + 3;
 	char newarg[ bin_sz ];
 	snprintf(newarg, bin_sz, "%s/%s_%s", dirn, base, argv[1]);
-	printf("chainload to: %s\n", newarg);
 
 /*
  * the sweet-spot for adding in privilege/uid/gid swapping and setting up mode-
