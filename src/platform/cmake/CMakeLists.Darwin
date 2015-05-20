@@ -1,22 +1,22 @@
-set (PLATFORM_PATH ${CMAKE_SOURCE_DIR}/platform/posix)
-
-add_definitions(-DPLATFORM_HEADER=\"${PLATFORM_ROOT}/platform.h\")
-set(ARCAN_DEFINITIONS ${ARCAN_DEFINITIONS} -DOS_DYLIB_EXTENSION=\".dylib\")
-
-list(APPEND LWA_DEFINITIONS
-	HEADLESS_PLATFORM=\"${LWA_HEADLESS}\"
-)
-
-add_definitions(-DLUA_51 -D_WITH_DPRINTF
-	-D__UNIX -D__APPLE__ -DARCAN_SHMIF_OVERCOMMIT)
-
-# map_file is the default and doesn't need to be set here
-set_property(SOURCE ${PLATFORM_PATH}/map_resource.c
-				PROPERTY COMPILE_FLAGS -DMAP_FILE=0)
-
-# note; for SDL only
-set_property(SOURCE ${CMAKE_SOURCE_DIR}/engine/arcan_main.c
-				PROPERTY COMPILE_FLAGS -Dmain=SDL_main)
+# Expects:
+#  PLATFORM_ROOT
+#
+# Defines:
+#  ARCAN_PLATFORM
+#  FSRV_PLATFORM
+#  LWA_PLATFORM
+#  STDLIB
+#
+#  APPL_DEST
+#  RES_DEST
+#  APIMAN_DEST
+#  MAN_DEST
+#
+# Modifies:
+#  compile_options (global)
+#  PLATFORM_HEADER (global)
+#  OS_DYLIB_EXTENSION
+#
 
 message(" scanning for Darwin specific libraries. ")
 find_library(IOKIT NAMES IOKit)
@@ -26,33 +26,87 @@ find_library(AUDIOUNIT NAMES AudioUnit)
 find_library(COREAUDIO NAMES CoreAudio)
 find_library(AUDIOTOOLBOX NAMES AudioToolbox)
 
+list(APPEND STDLIB
+#	m
+#	pthread
+#	rt
+#	dl
+)
+add_definitions(
+	-D__UNIX
+	-DPOSIX_C_SOURCE
+	-D__APPLE__
+	-DARCAN_SHMIF_OVERCOMMIT
+	-D_WITH_DPRINTF
+	-D_GNU_SOURCE
+	-DPLATFORM_HEADER=\"${PLATFORM_ROOT}/platform.h\"
+)
+
+# still not ported / updated this bit, and interpositioning
+# is rather annoying on OSX still
+set(DISABLE_HIJACK ON)
+
+set(PLATFORM_PATH ${PLATFORM_ROOT}/posix)
+set(OS_DYLIB_EXTENSION=\".dylib\")
+
+set_property(SOURCE engine/arcan_ffunc_lut.c APPEND PROPERTY
+	COMPILE_DEFINITIONS MAP_ANONYMOUS=MAP_ANON)
+
+set(APPL_DEST ${CMAKE_INSTALL_PREFIX}/share/arcan)
+set(RES_DEST ${CMAKE_INSTALL_PREFIX}/share/arcan)
+set(APIMAN_DEST ${CMAKE_INSTALL_PREFIX}/man/man3)
+set(MAN_DEST ${CMAKE_INSTALL_PREFIX}/man/man1)
+
+# map_file is the default and doesn't need to be set here
+set_property(SOURCE ${PLATFORM_PATH}/map_resource.c
+				PROPERTY COMPILE_FLAGS -DMAP_FILE=0)
+
+# note; for SDL only
+set_property(SOURCE ${CMAKE_SOURCE_DIR}/engine/arcan_main.c
+				PROPERTY COMPILE_FLAGS -Dmain=SDL_main)
+
 LIST(APPEND MAIN_LIBRARIES ${IOKIT} ${COREFOUNDATION})
 LIST(APPEND LWA_LIBRARIES ${COCOA} ${COREAUDIO} ${AUDIOTOOLBOX} ${AUDIOUNIT})
 
-set (PLATFORM_SOURCES
+set(ARCAN_PLATFORM
+	${PLATFORM_PATH}/mem.c
 	${PLATFORM_PATH}/fmt_open.c
 	${PLATFORM_PATH}/glob.c
 	${PLATFORM_PATH}/map_resource.c
 	${PLATFORM_PATH}/resource_io.c
-	${PLATFORM_PATH}/launch.c
 	${PLATFORM_PATH}/strip_traverse.c
-	${PLATFORM_PATH}/namespace.c
 	${PLATFORM_PATH}/paths.c
-	${PLATFORM_PATH}/mem.c
-	${PLATFORM_PATH}/base64.c
-	${PLATFORM_PATH}/warning.c
 	${PLATFORM_PATH}/appl.c
-	${PLATFORM_PATH}/frameserver.c
-	${PLATFORM_PATH}/../stub/fsrv_guard.c
-	${PLATFORM_PATH}/fdpassing.c
 	${PLATFORM_PATH}/../darwin/sem.c
+	${PLATFORM_PATH}/base64.c
 	${PLATFORM_PATH}/../darwin/time.c
+	${PLATFORM_PATH}/../stub/fsrv_guard.c
 	${PLATFORM_PATH}/launch.c
-	${CMAKE_EXTERNAL_SRCDIR}/hidapi/hid_darwin.c
-	${CMAKE_EXTERNAL_SRCDIR}/hidapi/hidapi.h
+	${PLATFORM_PATH}/namespace.c
+	${PLATFORM_PATH}/warning.c
+	${PLATFORM_PATH}/frameserver.c
+	${PLATFORM_PATH}/fdpassing.c
+	${PLATFORM_PATH}/launch.c
 )
 
-set (FSRV_PLATFORM_SOURCES
+set(ARCAN_LNK_FLAGS
+	"-pagezero_size 10000 -image_base 100000000")
+
+if (ENABLE_LED)
+	LIST(APPEND ARCAN_PLATFORM
+	${EXTERNAL_SRC_DIR}/hidapi/hid_darwin.c
+	${EXTERNAL_SRC_DIR}/hidapi/hidapi.h
+	)
+endif()
+
+set(LWA_PLATFORM ${ARCAN_PLATFORM})
+
+list(APPEND PLATFORM_SOURCES
+	${PLATFORM_ROOT}/${VIDEO_PLATFORM}/video.c
+	${PLATFORM_ROOT}/${INPUT_PLATFORM}/event.c
+)
+
+set (
 	${PLATFORM_PATH}/warning.c
 	${PLATFORM_PATH}/../darwin/time.c
 	${PLATFORM_PATH}/../darwin/sem.c
@@ -89,53 +143,22 @@ set (
 	${SHMIF_SOURCES}
 	frameserver/frameserver.c
 )
-if (ENABLE_LIBRETRO AND ENABLE_LIBRETRO3D)
-		LIST(APPEND FSRV_LIBRETRO_DEFINITIONS
-			${LWA_DEFINITIONS})
 
-		LIST(APPEND FSRV_LIBRETRO_LIBRARIES
-			${IOKIT}
-			${COREFOUNDATION}
-		)
-endif()
-include(${PLATFORM_PATH}/../CMakeLists.fsrv)
+set(APPL_DEST ${CMAKE_INSTALL_PREFIX}/share/arcan)
+set(RES_DEST ${CMAKE_INSTALL_PREFIX}/share/arcan)
+set(APIMAN_DEST ${CMAKE_INSTALL_PREFIX}/man/man3)
+set(MAN_DEST ${CMAKE_INSTALL_PREFIX}/man/man1)
 
-if (ENABLE_LWA)
-	message("LWA support enabled, video backend (Darwin, hardcoded)")
-	add_executable(arcan_lwa
-		${SOURCES}
-		${LWA_PLATFORM_SOURCES}
-	)
-	set_property(TARGET arcan_lwa APPEND PROPERTY
-					COMPILE_DEFINITIONS ${LWA_DEFINITIONS})
-endif()
-
-# add_library(arcan_hijack SHARED ${HIJACK_SOURCES})
-
-add_executable( arcan ${SOURCES} ${PLATFORM_SOURCES} ${SDL_PLATFORM_SOURCES})
-
-set_property(TARGET arcan APPEND PROPERTY COMPILE_DEFINITIONS ${ARCAN_DEFINITIONS})
-
-# Packaging and installation. build a DMG which installs to a default
-# Application folder, with resources, themes and frameworks included.
+# kept as a 'note' on setting up cpack for darwin
+#set(CPACK_BUNDLE_NAME Arcan)
+#set(CPACK_BUNDLE_PLIST ${PLATFORM_PATH}/../darwin/Info.plist)
+#set(CPACK_BUNDLE_ICON ${CMAKE_SOURCE_DIR}/distr/Arcan.icns)
 #
-# The default search- order for resources/themes in the main app,
-# should be ENV -> home -> unix "share" -> bundle
+#set(frameworks_dir ${bundle_name}/Contents/Frameworks/)
+#set(CMAKE_INSTALL_PREFIX ${bundle_name}/Contents/MacOS/)
+#set(DATA_INSTALL_DIR ".")
+#set(BIN_DST "../MacOS")
+#set(APPL_DST "../Resources/appl")
+#set(RESOURCES_DST "../Resources/resources")
 
-set(CPACK_BUNDLE_NAME Arcan)
-set(CPACK_BUNDLE_PLIST ${PLATFORM_PATH}/../darwin/Info.plist)
-set(CPACK_BUNDLE_ICON ${CMAKE_SOURCE_DIR}/distr/Arcan.icns)
-
-set(frameworks_dir ${bundle_name}/Contents/Frameworks/)
-set(CMAKE_INSTALL_PREFIX ${bundle_name}/Contents/MacOS/)
-set(DATA_INSTALL_DIR ".")
-set(BIN_DST "../MacOS")
-set(APPL_DST "../Resources/appl")
-set(RESOURCES_DST "../Resources/resources")
-
-#install(TARGETS arcan_hijack DESTINATION ${BIN_DST})
-install(FILES ${CMAKE_SOURCE_DIR}/doc/arcan.1
-	DESTINATION /usr/local/share/man/man1
-)
-
-SET(CPACK_GENERATOR ${CPACK_GENERATOR};Bundle)
+#SET(CPACK_GENERATOR ${CPACK_GENERATOR};Bundle)
