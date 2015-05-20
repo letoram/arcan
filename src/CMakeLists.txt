@@ -455,7 +455,6 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/CMakeLists.Windows)
 
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-	message(FATAL_ERROR "${CLB_RED}Darwin builds broken pending build system refactor")
 	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/CMakeLists.Darwin)
 else()
 	message(FATAL_ERROR "${CLB_RED}Unsupported OS detected, abandon ship!${CL_RST}")
@@ -520,6 +519,7 @@ add_executable(arcan
 
 target_include_directories(arcan PRIVATE ${INCLUDE_DIRS})
 target_compile_definitions(arcan PRIVATE ${ARCAN_DEFINITIONS})
+
 target_link_libraries(arcan
 	${STDLIB}
 	${ARCAN_LIBRARIES}
@@ -528,6 +528,10 @@ target_link_libraries(arcan
 	${OPENAL_LIBRARY}
 	arcan_shmif_int
 )
+
+if (ARCAN_LNK_FLAGS)
+set_property(TARGET arcan APPEND PROPERTY LINK_FLAGS ${ARCAN_LNK_FLAGS})
+endif()
 
 if (MAIN_DEPS)
 	add_dependencies(arcan ${MAIN_DEPS})
