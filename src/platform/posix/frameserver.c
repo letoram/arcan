@@ -487,7 +487,7 @@ fail:
  * looks for an ident on the socket.
  */
 arcan_frameserver* arcan_frameserver_spawn_subsegment(
-	arcan_frameserver* ctx, bool record, int hintw, int hinth, int tag)
+	arcan_frameserver* ctx, bool encode, int hintw, int hinth, int tag)
 {
 	if (!ctx || ctx->flags.alive == false)
 		return NULL;
@@ -531,7 +531,7 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
  * to video.
  */
 	arcan_errc errc;
-	if (!record)
+	if (!encode)
 		newseg->aid = arcan_audio_feed((arcan_afunc_cb)
 			arcan_frameserver_audioframe_direct, ctx, &errc);
 
@@ -570,7 +570,7 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
  * the security considerations that comes with it */
 	newseg->queue_mask = EVENT_EXTERNAL;
 
-	if (record)
+	if (encode)
 		newseg->segid = SEGID_ENCODER;
 /* frameserver gets one chance to hint the purpose for this segment */
 	else
@@ -599,7 +599,7 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	};
 
 	keyev.tgt.ioevs[0].iv = tag;
-	keyev.tgt.ioevs[1].iv = record ? 1 : 0;
+	keyev.tgt.ioevs[1].iv = encode ? 1 : 0;
 
 	snprintf(keyev.tgt.message,
 		sizeof(keyev.tgt.message) / sizeof(keyev.tgt.message[1]),

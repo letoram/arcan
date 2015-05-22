@@ -886,7 +886,7 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 
 /* record instead operates by maintaining up-to-date local buffers,
  * then letting the frameserver sample whenever necessary */
-		else if (strcmp(setup.args.builtin.mode, "record") == 0){
+		else if (strcmp(setup.args.builtin.mode, "encode") == 0){
 			ctx->segid = SEGID_ENCODER;
 
 /* we don't know how many audio feeds are actually monitored to produce the

@@ -259,8 +259,8 @@ int main(int argc, char** argv)
 #endif
 
 #ifdef ENABLE_FSRV_ENCODE
-	if (strcmp(fsrvmode, "record") == 0)
-		return launch_mode("record", afsrv_encode, SEGID_ENCODER, argstr);
+	if (strcmp(fsrvmode, "encode") == 0)
+		return launch_mode("encode", afsrv_encode, SEGID_ENCODER, argstr);
 #endif
 
 #ifdef ENABLE_FSRV_REMOTING

@@ -6384,7 +6384,7 @@ static int spawn_recsubseg(lua_State* ctx,
 			arcan_frameserver_avfeed_mixer(rv, naids, aidlocks);
 
 		lua_pushvid(ctx, rv->vid);
-		trace_allocation(ctx, "record", rv->vid);
+		trace_allocation(ctx, "encode", rv->vid);
 		return 1;
 	}
 
@@ -6414,7 +6414,7 @@ static int spawn_recfsrv(lua_State* ctx,
 	struct frameserver_envp args = {
 		.use_builtin = true,
 		.custom_feed = true,
-		.args.builtin.mode = "record",
+		.args.builtin.mode = "encode",
 		.args.builtin.resource = argl,
 		.init_w = dobj->vstore->w,
 		.init_h = dobj->vstore->h
