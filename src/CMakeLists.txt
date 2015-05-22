@@ -447,15 +447,19 @@ unset(PFT)
 #
 if (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
 	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/CMakeLists.FreeBSD)
+	set(PKGCONFIG_DIR libdata/pkgconfig)
 
 elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/CMakeLists.Linux)
+	set(PKGCONFIG_DIR lib/pkgconfig)
 
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/CMakeLists.Windows)
 
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/CMakeLists.Darwin)
+	set(PKGCONFIG_DIR lib/pkgconfig)
+
 else()
 	message(FATAL_ERROR "${CLB_RED}Unsupported OS detected, abandon ship!${CL_RST}")
 endif()
@@ -570,6 +574,13 @@ if (MAN_DEST)
 		DESTINATION ${MAN_DEST}
 		PERMISSIONS ${SHARED_PERMISSONS}
 	)
+endif()
+
+if (PKGCONFIG_DIR)
+	configure_file(${PLATFORM_ROOT}/cmake/shmif.pc.in
+		${CMAKE_CURRENT_BINARY_DIR}/arcan-shmif.pc @ONLY)
+	install(FILES ${CMAKE_CURRENT_BINARY_DIR}/arcan-shmif.pc
+		DESTINATION ${CMAKE_INSTALL_PREFIX}/${PKGCONFIG_DIR})
 endif()
 
 #

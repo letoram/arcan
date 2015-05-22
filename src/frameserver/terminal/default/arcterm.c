@@ -101,6 +101,15 @@ struct unpack_col {
 	};
 };
 
+/*
+ * note:
+ * tsm_screen_sb_up/down, pg_up, pg_dn
+ * check mods:
+ *  TSM_SHIFT_MASK, TSM_LOCK_MASK, TSM_CONTROL_MASK, TSM_ALT_MASK,
+ *  TSM_LOGO_MASK,
+ *  tsm_screen_selection_start, tsm_screen_selection_reset,
+ */
+
 static int draw_cb(struct tsm_screen* screen, uint32_t id,
 	const uint32_t* ch, size_t len, unsigned width, unsigned x, unsigned y,
 	const struct tsm_screen_attr* attr, tsm_age_t age, void* data)
@@ -194,7 +203,6 @@ static void screen_size(int screenw, int screenh, int fontw, int fonth)
 		exit(EXIT_FAILURE);
 	}
 
-	printf("resize to: %d, %d - %d, %d\n", px_w, px_h, screenw, screenh);
 	tsm_screen_resize(term.screen, screenw, screenh);
 	shl_pty_resize(term.pty, screenw, screenh);
 
@@ -202,8 +210,8 @@ static void screen_size(int screenw, int screenh, int fontw, int fonth)
 	term.screen_h = screenh;
 	term.cell_w = fontw;
 	term.cell_h = fonth;
+	int rc = shl_pty_dispatch(term.pty);
 	tsm_screen_draw(term.screen, draw_cb, NULL /* draw_cb_data */);
-	arcan_shmif_signal(&term.acon, SHMIF_SIGVID);
 }
 
 static void read_callback(struct shl_pty* pty,
@@ -342,42 +350,55 @@ static void targetev(arcan_tgtevent* ev)
 	}
 }
 
-/*
- * this is still a bit rough;
- * 1. find a way to select on both client data,
- *    parent events, with a periodic timeout
- *
- * 2. use timeout to implement cursor blink (if requested)
- */
-static void main_loop()
+static void event_dispatch(arcan_event* ev)
 {
-	while(true){
-		arcan_event ev;
+	switch (ev->category){
+	case EVENT_IO:
+		ioev_ctxtbl(&(ev->io), ev->io.label);
+	break;
 
-		int rc = shl_pty_dispatch(term.pty);
-		if (0 < rc){
-			printf("pty dispatch fail\n");
-		}
-
-		while (arcan_shmif_poll(&term.acon, &ev) > 0){
-			switch (ev.category){
-			case EVENT_IO:
-				ioev_ctxtbl(&(ev.io), ev.io.label);
-			break;
-
-			case EVENT_TARGET:
-				targetev(&ev.tgt);
-			break;
-
-			default:
-			break;
-			}
-
+	case EVENT_TARGET:
+		targetev(&ev->tgt);
+	break;
 /* map up: set_palette, reset, hard_reset, input, handle_keyboard,
  * move_to, move_up, move_down, move_left, move_right, move_line_end,
  * move_line_home, tab_right, tab_left, insert_lines, delete_lines,
+ * tsm_tve_reset, hard_reset,
  * erase_cursor, erase_chars, ... selection reset, selection start,
  * selection copy, ... */
+
+	default:
+	break;
+	}
+}
+
+/*
+ * Two different 'clocking' modes, one where an external stepframe
+ * dictate synch (typically interactive- only) and one where there is
+ * a shared poll and first-come first-serve
+ */
+static void main_loop()
+{
+	arcan_event ev;
+	if (term.extclock){
+		while (arcan_shmif_wait(&term.acon, &ev) != 0){
+			int rc = shl_pty_dispatch(term.pty);
+			if (0 < rc){
+				LOG("shl_pty_dispatch failed(%d)\n", rc);
+				break;
+			}
+			event_dispatch(&ev);
+		}
+	}
+	else {
+		while(true){
+			int rc = shl_pty_dispatch(term.pty);
+			if (0 < rc){
+				LOG("shl_pty_dispatch failed(%d)\n", rc);
+				break;
+			}
+			while (arcan_shmif_poll(&term.acon, &ev) > 0)
+				event_dispatch(&ev);
 		}
 	}
 }
