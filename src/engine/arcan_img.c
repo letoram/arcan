@@ -81,6 +81,8 @@ arcan_errc arcan_img_outpng(FILE* dst,
 		size_t stride = inw * 4;
 		outbuf = arcan_alloc_mem(stride * inh, ARCAN_MEM_VBUFFER,
 			ARCAN_MEM_TEMPORARY | ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE);
+
+		if (!outbuf)
 				return ARCAN_ERRC_OUT_OF_SPACE;
 
 		for (ssize_t row = inh-1, step = 0; row >= 0; row--, step++)
