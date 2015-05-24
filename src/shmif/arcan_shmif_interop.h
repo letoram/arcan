@@ -72,7 +72,7 @@
 	typedef sem_t* sem_handle;
 #endif
 
-long long int arcan_timemillis();
+long long int arcan_timemillis(void);
 int arcan_sem_post(sem_handle sem);
 file_handle arcan_fetchhandle(int insock, bool block);
 bool arcan_pushhandle(int fd, int channel);
@@ -140,7 +140,7 @@ int arcan_shmif_resolve_connpath(
  * calculates a hash of the layout of the shmpage in order to detect subtle
  * compiler mismatches etc.
  */
-uint64_t arcan_shmif_cookie();
+uint64_t arcan_shmif_cookie(void);
 
 /*
  * The following functions are simple lookup/unpack support functions for
