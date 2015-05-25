@@ -4744,6 +4744,7 @@ static int rawsurface(lua_State* ctx)
 				arcan_warning("rawsurface() - - couldn't open (%s).\n", fname);
 			else
 				arcan_img_outpng(fpek, buf, desw, desh, 0);
+			fclose(fpek);
 		}
 		arcan_mem_free(fname);
 	}
