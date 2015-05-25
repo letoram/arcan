@@ -86,7 +86,7 @@ arcan_errc arcan_img_outpng(FILE* dst,
 				return ARCAN_ERRC_OUT_OF_SPACE;
 
 		for (ssize_t row = inh-1, step = 0; row >= 0; row--, step++)
-			memcpy(&outbuf[step * stride], &inbuf[row], stride);
+			memcpy(&outbuf[step * stride], &inbuf[row*inw], stride);
 	}
 
 	unsigned char* png = stbi_write_png_to_mem(
