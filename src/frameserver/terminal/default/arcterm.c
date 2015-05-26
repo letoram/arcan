@@ -72,6 +72,8 @@ static struct {
 	int cell_w, cell_h;
 	int screen_w, screen_h;
 
+	tsm_age_t age;
+
 	struct arcan_shmif_cont acon;
 } term = {
 	.cell_w = 8,
@@ -118,6 +120,9 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 	uint8_t* dfg = fgc, (* dbg) = bgc;
 	int base_y = y * term.cell_h;
 	int base_x = x * term.cell_w;
+
+	if (age && term.age && age <= term.age)
+		return 0;
 
 	if (attr->inverse){
 		dfg = bgc;
@@ -210,8 +215,9 @@ static void screen_size(int screenw, int screenh, int fontw, int fonth)
 	term.screen_h = screenh;
 	term.cell_w = fontw;
 	term.cell_h = fonth;
+	term.age = 0;
 	int rc = shl_pty_dispatch(term.pty);
-	tsm_screen_draw(term.screen, draw_cb, NULL /* draw_cb_data */);
+	term.age = tsm_screen_draw(term.screen, draw_cb, NULL /* draw_cb_data */);
 }
 
 static void read_callback(struct shl_pty* pty,
@@ -330,7 +336,7 @@ static void targetev(arcan_tgtevent* ev)
 	break;
 
 	case TARGET_COMMAND_STEPFRAME:{
-		tsm_screen_draw(term.screen, draw_cb, NULL /* draw_cb_data */);
+		term.age = tsm_screen_draw(term.screen, draw_cb, NULL /* draw_cb_data */);
 		arcan_shmif_signal(&term.acon, SHMIF_SIGVID);
 	}
 
@@ -399,6 +405,9 @@ static void main_loop()
 			}
 			while (arcan_shmif_poll(&term.acon, &ev) > 0)
 				event_dispatch(&ev);
+
+			term.age = tsm_screen_draw(term.screen, draw_cb, NULL /* draw_cb_data */);
+			arcan_shmif_signal(&term.acon, SHMIF_SIGVID);
 		}
 	}
 }
