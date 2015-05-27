@@ -1310,10 +1310,12 @@ struct arcan_shmif_cont arcan_shmif_open(
 	}
 
 	ret = arcan_shmif_acquire(NULL, keyfile, type, flags);
-	if (resource)
-		*outarg = arg_unpack(resource);
-	else
-		*outarg = NULL;
+	if (outarg){
+		if (resource)
+			*outarg = arg_unpack(resource);
+		else
+			*outarg = NULL;
+	}
 
 	ret.epipe = dpipe;
 	if (-1 == ret.epipe)
