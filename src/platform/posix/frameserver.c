@@ -250,10 +250,12 @@ static bool findshmkey(arcan_frameserver* ctx, int* dfd){
 	size_t pb_ofs = 0;
 
 	const char pattern[] = "/arcan_%i_%im";
+	const char* errmsg = NULL;
+
 	char playbuf[sizeof(pattern) + 8];
 
-	while (1){
-/* not a security mechanism */
+	while (retrycount){
+/* not a security mechanism, just light "avoid stepping on my own toes" */
 		snprintf(playbuf, sizeof(playbuf), pattern, selfpid % 1000, rand() % 1000);
 
 		pb_ofs = strlen(playbuf) - 1;
@@ -266,16 +268,14 @@ static bool findshmkey(arcan_frameserver* ctx, int* dfd){
  */
 		if (-1 == *dfd && errno != EEXIST){
 			arcan_warning("arcan_findshmkey(), allocating "
-				"shared memory, reason: %d\n", errno);
+				"shared memory failed, reason: %d\n", errno);
 			return false;
 		}
 
 		else if (-1 == *dfd){
-			if (retrycount-- == 0){
-				arcan_warning("arcan_findshmkey(), allocating named "
-				"semaphores failed, reason: %d, aborting.\n", errno);
-				return false;
-			}
+			errmsg = "shmalloc failed -- named exists\n";
+			retrycount--;
+			continue;
 		}
 
 		playbuf[pb_ofs] = 'v';
@@ -284,6 +284,8 @@ static bool findshmkey(arcan_frameserver* ctx, int* dfd){
 		if (SEM_FAILED == ctx->vsync){
 			playbuf[pb_ofs] = 'm'; shm_unlink(playbuf);
 			close(*dfd);
+			retrycount--;
+			errmsg = "couldn't create (v) semaphore\n";
 			continue;
 		}
 
@@ -294,6 +296,8 @@ static bool findshmkey(arcan_frameserver* ctx, int* dfd){
 			playbuf[pb_ofs] = 'v'; sem_unlink(playbuf); sem_close(ctx->vsync);
 			playbuf[pb_ofs] = 'm'; shm_unlink(playbuf);
 			close(*dfd);
+			retrycount--;
+			errmsg = "couldn't create (a) semaphore\n";
 			continue;
 		}
 
@@ -304,6 +308,8 @@ static bool findshmkey(arcan_frameserver* ctx, int* dfd){
 			playbuf[pb_ofs] = 'v'; sem_unlink(playbuf); sem_close(ctx->vsync);
 			playbuf[pb_ofs] = 'm'; shm_unlink(playbuf);
 			close(*dfd);
+			retrycount--;
+			errmsg = "couldn't create (e) semaphore\n";
 			continue;
 		}
 
@@ -312,7 +318,12 @@ static bool findshmkey(arcan_frameserver* ctx, int* dfd){
 
 	playbuf[pb_ofs] = 'm';
 	ctx->shm.key = strdup(playbuf);
-	return true;
+
+	if (retrycount)
+		return true;
+
+	arcan_warning("findshmkey() -- namespace reservation failed: %s\n", errmsg);
+	return false;
 }
 
 static bool sockpair_alloc(int* dst, size_t n, bool cloexec)
