@@ -283,6 +283,28 @@ static void flush_events()
 {
 }
 
+static void appl_user_warning(const char* name, const char* err_msg)
+{
+	arcan_warning("\x1b[1mCouldn't load application (\x1b[33m%s\x1b[39m)\n",
+		name, err_msg);
+
+	if (!name || !strlen(name))
+		arcan_warning("\x1b[1m\tthe appl-name argument is empty\x1b[22m\n");
+	else {
+		if (name[0] == '.')
+			arcan_warning("\x1b[32m\ttried to load "
+	"relative to current directory\x1b[22m\x1b[39m\n");
+		else if (name[0] == '/')
+			arcan_warning("\x1b[32m\ttried to load "
+	"from absolute path. \x1b[39m\x1b[22m\n");
+		else{
+			char* space = arcan_expand_resource("", RESOURCE_SYS_APPLBASE);
+			arcan_warning("\x1b[32m\ttried to load "
+	"appl relative to base: \x1b[33m %s\x1b[22m\x1b[39m\n", space);
+		}
+	}
+}
+
 int main(int argc, char* argv[])
 {
 	settings.in_monitor = getenv("ARCAN_MONITOR_FD") != NULL;
@@ -387,9 +409,7 @@ int main(int argc, char* argv[])
 	const char* err_msg;
 
 	if (!arcan_verifyload_appl(argv[optind], &err_msg)){
-		arcan_warning("arcan_verifyload_appl(), "
-			"failed to load (%s), reason: %s.",
-			argv[optind], err_msg);
+		appl_user_warning(argv[optind], err_msg);
 
 		if (fallback){
 			arcan_warning("trying to load fallback application (%s)\n", fallback);
@@ -761,15 +781,13 @@ error:
 		for (size_t i = 0; i < argc; i++)
 			arcan_warning("%s ", argv[i]);
 		arcan_warning("\n\n");
+
+		arcan_verify_namespaces(true);
 	}
 
 	arcan_mem_free(dbfname);
 	arcan_video_shutdown();
 	arcan_event_deinit(arcan_event_defaultctx());
-
-/* for cases where we have a broken namespace, also dump
- * the current namespace state as that might help troubleshoot */
-	arcan_verify_namespaces(true);
 
 	return EXIT_FAILURE;
 }
