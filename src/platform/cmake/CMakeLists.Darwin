@@ -120,14 +120,14 @@ set (LWA_PLATFORM_SOURCES
 	${SHMIF_SOURCES}
 	${PLATFORM_SOURCES}
 	${PLATFORM_PATH}/../arcan/video.c
-	${PLATFORM_PATH}/../darwin/SDLmain_fsrv.m
+	${PLATFORM_PATH}/../darwin/SDLMain_fsrv.m
 )
 
 # we don't want these coming along in LWA_PLATFORM
 LIST(APPEND PLATFORM_SOURCES
 	${PLATFORM_PATH}/../${VIDEO_PLATFORM}/video.c
 	${PLATFORM_PATH}/../${INPUT_PLATFORM}/event.c
-	${PLATFORM_PATH}/../darwin/SDLmain.m
+	${PLATFORM_PATH}/../darwin/SDLMain.m
 )
 
 SET(HIJACK_SOURCES
