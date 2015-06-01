@@ -14,6 +14,8 @@ handler(){
 
 trap handler INT TERM
 
+ulimit -c unlimited
+
 export ARCAN_CONNPATH="incontinence"
 COUNTER=1
 while :
@@ -27,4 +29,7 @@ do
 	echo "`ls -l /proc/$PID/fd |wc -l` files "
 	ls -l /dev/shm/ |grep arcan >> incontinence.log
 	echo "`ls -l /dev/shm | grep arcan | wc -l` shared entries"
+	if [ -e core ] ; then
+		mv core core.$COUNTER
+	fi
 done

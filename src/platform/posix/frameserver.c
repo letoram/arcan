@@ -41,11 +41,12 @@
 /* NOTE: maintaing pid_t for frameserver (or worse, for hijacked target)
  * should really be replaced by making sure they belong to the same process
  * group and first send a close signal to the group, and thereafter KILL */
-
 extern char* arcan_binpath;
 
-/* dislike resorting to these kinds of antics, but it was among the cleaner
- * solutions given the portability constraints (OSX,Win32) */
+/* Dislike resorting to these kinds of antics, but it was among the cleaner
+ * solutions given the portability constraints (OSX,Win32). Other solutions
+ * are in the pipeline, we're essentially waiting for adoption rates to get
+ * good for descriptor based pid handles. */
 static void* nanny_thread(void* arg)
 {
 	pid_t* pid = (pid_t*) arg;
@@ -58,8 +59,10 @@ static void* nanny_thread(void* arg)
 			int rv = waitpid(*pid, &statusfl, WNOHANG);
 			if (rv > 0)
 				break;
+
 			else if (counter == 0){
 				kill(*pid, SIGKILL);
+				waitpid(*pid, &statusfl, 0);
 				break;
 			}
 
@@ -109,8 +112,8 @@ void arcan_frameserver_dropshared(arcan_frameserver* src)
 		return;
 
 	if (src->dpipe){
-		src->dpipe = -1;
 		close(src->dpipe);
+		src->dpipe = -1;
 	}
 
 	struct arcan_shmif_page* shmpage = src->shm.ptr;
@@ -122,17 +125,17 @@ void arcan_frameserver_dropshared(arcan_frameserver* src)
 	shm_unlink( src->shm.key );
 
 /* step 2, semaphore handles */
-	char* work = strdup(src->shm.key);
-	work[strlen(work) - 1] = 'v';
-	sem_unlink(work);
+	char work[ strlen(src->shm.key) + 1 ];
+	work[sizeof(work) - 1] = 'v';
+	sem_unlink(work); sem_close(src->vsync);
 
-	work[strlen(work) - 1] = 'a';
-	sem_unlink(work);
+	work[sizeof(work) - 1] = 'a';
+	sem_unlink(work); sem_close(src->async);
 
-	work[strlen(work) - 1] = 'e';
-	sem_unlink(work);
-	free(work);
+	work[sizeof(work) - 1] = 'e';
+	sem_unlink(work); sem_close(src->esync);
 
+	close(src->shm.handle);
 	src->shm.ptr = NULL;
 	arcan_mem_free(src->shm.key);
 }
@@ -157,13 +160,10 @@ void arcan_frameserver_killchild(arcan_frameserver* src)
  * is to have a session and group, and a plain run a zombie-catcher / kill
  * broadcaster as a session leader.
  */
-	pid_t* pidptr = malloc(sizeof(pid_t));
-	pthread_t pthr;
-	*pidptr = src->child;
-
 	static bool env_checked;
 	static bool no_nanny;
 
+/* drop env so we don't propagate to sub- arcan_lwa processes */
 	if (!env_checked)
 	{
 		env_checked = true;
@@ -176,9 +176,19 @@ void arcan_frameserver_killchild(arcan_frameserver* src)
 	if (no_nanny)
 		return;
 
-	if (0 != pthread_create(&pthr, NULL, nanny_thread, (void*) pidptr)){
+/* nanny thread: fire once then forget, with what should be,
+ * "minimal" stack, i.e. by glibc standard */
+	pid_t* pidptr = malloc(sizeof(pid_t));
+	pthread_attr_t nanny_attr;
+	pthread_attr_init(&nanny_attr);
+	pthread_attr_setdetachstate(&nanny_attr, PTHREAD_CREATE_DETACHED);
+	pthread_attr_setstacksize(&nanny_attr,
+		PTHREAD_STACK_MIN < (1024*4) ? (1024*4) : PTHREAD_STACK_MIN);
+	*pidptr = src->child;
+
+	pthread_t nanny;
+	if (0 != pthread_create(&nanny, &nanny_attr, nanny_thread, (void*) pidptr))
 		kill(src->child, SIGKILL);
-	}
 }
 
 bool arcan_frameserver_validchild(arcan_frameserver* src){
@@ -190,9 +200,9 @@ bool arcan_frameserver_validchild(arcan_frameserver* src){
 		return false;
 
 /*
- * for non-auth connections, we have few good options of getting
- * a non- race condition prone resource to check for connection
- * status, so use the socket descriptor.
+ * for non-auth connections, we have few good options of getting a non- race
+ * condition prone resource to check for connection status, so use the socket
+ * descriptor.
  */
 	if (src->child == BROKEN_PROCESS_HANDLE){
 		if (src->dpipe > 0){
@@ -212,10 +222,9 @@ bool arcan_frameserver_validchild(arcan_frameserver* src){
 	}
 
 /*
- * Note that on loop conditions, the pid can change,
- * thus we have to assume it will be valid in the near future.
- * PID != privilege, it's simply a process to monitor as hint
- * to what the state of a child is, the child is free to
+ * Note that on loop conditions, the pid can change, thus we have to assume it
+ * will be valid in the near future.  PID != privilege, it's simply a process
+ * to monitor as hint to what the state of a child is, the child is free to
  * redirect to anything (heck, including init)..
  */
 	int ec = waitpid(src->child, &status, WNOHANG);
@@ -262,9 +271,9 @@ static bool findshmkey(arcan_frameserver* ctx, int* dfd){
 		*dfd = shm_open(playbuf, O_CREAT | O_RDWR | O_EXCL, 0700);
 
 /*
- * with EEXIST, we happened to have a name collision,
- * it is unlikely, but may happen. for the others however,
- * there is something else going on and there's no point retrying
+ * with EEXIST, we happened to have a name collision, it is unlikely, but may
+ * happen. for the others however, there is something else going on and there's
+ * no point retrying
  */
 		if (-1 == *dfd && errno != EEXIST){
 			arcan_warning("arcan_findshmkey(), allocating "
@@ -357,9 +366,8 @@ static bool sockpair_alloc(int* dst, size_t n, bool cloexec)
 }
 
 /*
- * even if we have a preset listening socket,
- * we run through the routine to generate unlink- target
- * etc. still
+ * even if we have a preset listening socket, we run through the routine to
+ * generate unlink- target etc. still
  */
 static bool setup_socket(arcan_frameserver* ctx, int shmfd,
 	const char* optkey, int optdesc)
@@ -397,10 +405,9 @@ static bool setup_socket(arcan_frameserver* ctx, int shmfd,
 
 	if (-1 == optdesc){
 /*
- * if we happen to have a stale listener, unlink it but only if it
- * has been used as a domain-socket in beforehand (so in the worst
- * case, some lets a user set this path and it is maliciously used
- * to unlink files.
+ * if we happen to have a stale listener, unlink it but only if it has been
+ * used as a domain-socket in beforehand (so in the worst case, some lets a
+ * user set this path and it is maliciously used to unlink files.
  */
 		if (addr.sun_path[0] == '\0')
 			unlink(addr.sun_path);
@@ -478,24 +485,26 @@ fail:
 		return false;
 	}
 
-	memset(shmpage, '\0', ctx->shm.shmsize);
- 	shmpage->dms = true;
-	shmpage->parent = getpid();
-	shmpage->major = ASHMIF_VERSION_MAJOR;
-	shmpage->minor = ASHMIF_VERSION_MINOR;
-	shmpage->segment_size = ctx->shm.shmsize;
-	shmpage->cookie = arcan_shmif_cookie();
-	ctx->shm.ptr = shmpage;
+/* tiny race condition SIGBUS window here */
+	arcan_frameserver_enter(ctx);
+		memset(shmpage, '\0', ctx->shm.shmsize);
+	 	shmpage->dms = true;
+		shmpage->parent = getpid();
+		shmpage->major = ASHMIF_VERSION_MAJOR;
+		shmpage->minor = ASHMIF_VERSION_MINOR;
+		shmpage->segment_size = ctx->shm.shmsize;
+		shmpage->cookie = arcan_shmif_cookie();
+		ctx->shm.ptr = shmpage;
+	arcan_frameserver_leave(ctx);
 
 	return true;
 }
 
 /*
- * Allocate a new segment (shmalloc), inherit the relevant
- * tracking members from the parent, re-use the segment
- * to notify the new key to be used, mark the segment as
- * pending and set a transitional feed-function that
- * looks for an ident on the socket.
+ * Allocate a new segment (shmalloc), inherit the relevant tracking members
+ * from the parent, re-use the segment to notify the new key to be used, mark
+ * the segment as pending and set a transitional feed-function that looks for
+ * an ident on the socket.
  */
 arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	arcan_frameserver* ctx, bool encode, int hintw, int hinth, int tag)
@@ -535,11 +544,10 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	newseg->shm.ptr->h = hinth;
 
 /*
- * Currently, we're reserving a rather aggressive amount of memory
- * for audio, even though it's likely that (especially for multiple-
- * segments) it will go by unused. For arcan->frameserver data transfers
- * we shouldn't have an AID, attach monitors and synch audio transfers
- * to video.
+ * Currently, we're reserving a rather aggressive amount of memory for audio,
+ * even though it's likely that (especially for multiple- segments) it will go
+ * by unused. For arcan->frameserver data transfers we shouldn't have an AID,
+ * attach monitors and synch audio transfers to video.
  */
 	arcan_errc errc;
 	if (!encode)
@@ -552,11 +560,11 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	newseg->parent = ctx->vid;
 
 /*
- * Transfer the new event socket along with the base-key that will be used
- * to find shm etc. We re-use the same name- allocation approach for
- * convenience - in spite of the risk of someone racing a segment intended
- * for another. Part of this is OSX not supporting unnamed semaphores on
- * shared memory pages (seriously).
+ * Transfer the new event socket along with the base-key that will be used to
+ * find shm etc. We re-use the same name- allocation approach for convenience -
+ * in spite of the risk of someone racing a segment intended for another. Part
+ * of this is OSX not supporting unnamed semaphores on shared memory pages
+ * (seriously).
  */
 	int sockp[4] = {-1, -1};
 	if (!sockpair_alloc(sockp, 1, true)){
@@ -575,10 +583,10 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	newseg->child = ctx->child;
 	newseg->flags.alive = true;
 
-/* NOTE: should we allow some segments to map events with other masks,
- * or should this be a separate command with a heavy warning? i.e.
- * allowing EVENT_INPUT gives remote-control etc. options, with all
- * the security considerations that comes with it */
+/* NOTE: should we allow some segments to map events with other masks, or
+ * should this be a separate command with a heavy warning? i.e.  allowing
+ * EVENT_INPUT gives remote-control etc. options, with all the security
+ * considerations that comes with it */
 	newseg->queue_mask = EVENT_EXTERNAL;
 
 	if (encode)
@@ -598,9 +606,9 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	newseg->outqueue.synch.killswitch = (void*) newseg;
 
 /*
- * We finally have a completed segment with all tracking, buffering etc.
- * in place, send it to the frameserver to map and use. Note that we
- * cheat by sending on additional descriptor in advance.
+ * We finally have a completed segment with all tracking, buffering etc.  in
+ * place, send it to the frameserver to map and use. Note that we cheat by
+ * sending on additional descriptor in advance.
  */
 	newseg->dpipe = sockp[0];
 	arcan_pushhandle(sockp[1], ctx->dpipe);
@@ -622,16 +630,16 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 }
 
 /*
- * When we are in this callback state, it means that there's
- * a VID connected to a frameserver that is waiting for a non-authorative
- * connection. (Pending state), to monitor for suspicious activity,
- * maintain a counter here and/or add a timeout and propagate a
- * "frameserver terminated" session [not implemented].
+ * When we are in this callback state, it means that there's a VID connected to
+ * a frameserver that is waiting for a non-authorative connection. (Pending
+ * state), to monitor for suspicious activity, maintain a counter here and/or
+ * add a timeout and propagate a "frameserver terminated" session [not
+ * implemented].
  *
- * Note that we dont't track the PID of the client here,
- * as the implementation for passing credentials over sockets is exotic
- * (BSD vs Linux etc.) so part of the 'non-authoritative' bit is that
- * the server won't kill-signal or check if pid is still alive in this mode.
+ * Note that we dont't track the PID of the client here, as the implementation
+ * for passing credentials over sockets is exotic (BSD vs Linux etc.) so part
+ * of the 'non-authoritative' bit is that the server won't kill-signal or check
+ * if pid is still alive in this mode.
  *
  * (listen) -> socketpoll (connection) -> socketverify -> (key ? wait) -> ok ->
  * send connection data, set emptyframe.
@@ -659,9 +667,9 @@ enum arcan_ffunc_rv arcan_frameserver_socketverify FFUNC_HEAD
 	size_t ntw;
 
 /*
- * We want this code-path exercised no matter what,
- * so if the caller specified that the first connection should be
- * accepted no mater what, immediately continue.
+ * We want this code-path exercised no matter what, so if the caller specified
+ * that the first connection should be accepted no mater what, immediately
+ * continue.
  */
 	switch (cmd){
 	case FFUNC_POLL:
@@ -670,8 +678,8 @@ enum arcan_ffunc_rv arcan_frameserver_socketverify FFUNC_HEAD
 
 /*
  * We need to read one byte at a time, until we've reached LF or
- * PP_SHMPAGE_SHMKEYLIM as after the LF the socket may be used
- * for other things (e.g. event serialization)
+ * PP_SHMPAGE_SHMKEYLIM as after the LF the socket may be used for other things
+ * (e.g. event serialization)
  */
 		if (!fd_avail(tgt->dpipe, &term)){
 			if (term)
@@ -724,8 +732,8 @@ send_key:
 	off_t wofs = 0;
 
 /*
- * small chance here that a malicious client could manipulate the
- * descriptor in such a way as to block, retry a short while.
+ * small chance here that a malicious client could manipulate the descriptor in
+ * such a way as to block, retry a short while.
  */
 	int flags = fcntl(tgt->dpipe, F_GETFL, 0);
 	fcntl(tgt->dpipe, F_SETFL, flags | O_NONBLOCK);
@@ -836,8 +844,7 @@ arcan_frameserver* arcan_frameserver_listen_external(const char* key, int fd)
 	}
 
 /*
- * start with a default / empty fobject
- * (so all image_ operations still work)
+ * start with a default / empty fobject (so all image_ operations still work)
  */
 	res->segid = SEGID_UNKNOWN;
 	res->launchedtime = arcan_timemillis();
@@ -848,9 +855,9 @@ arcan_frameserver* arcan_frameserver_listen_external(const char* key, int fd)
 	res->vid = arcan_video_addfobject(FFUNC_SOCKPOLL, state, cons, 0);
 
 /*
- * audio setup is deferred until the connection has been acknowledged
- * and verified, but since this call yields a valid VID, we need to have
- * the queues in place.
+ * audio setup is deferred until the connection has been acknowledged and
+ * verified, but since this call yields a valid VID, we need to have the queues
+ * in place.
  */
 	res->queue_mask = EVENT_EXTERNAL;
 	arcan_shmif_setevqs(res->shm.ptr, res->esync,
@@ -871,9 +878,9 @@ bool arcan_frameserver_resize(struct arcan_frameserver* s, int w, int h)
 	if (sz > ARCAN_SHMPAGE_MAX_SZ)
 		return false;
 
-/* Don't resize unless the gain is ~20%, the routines does support
- * shrinking the size of the segment, something to consider in memory
- * constrained environments */
+/* Don't resize unless the gain is ~20%, the routines does support shrinking
+ * the size of the segment, something to consider in memory constrained
+ * environments */
 	if (sz < src->shmsize && sz > (float)src->shmsize * 0.8)
 		goto done;
 
@@ -887,10 +894,10 @@ bool arcan_frameserver_resize(struct arcan_frameserver* s, int w, int h)
 
 	memcpy(tmpbuf, src->ptr, sizeof(struct arcan_shmif_page));
 
-/* Re-use the existing keys and descriptors on OSes that support this
- * feature, for others we should have a fallback that relies on mapping
- * a new segment and doing the transfer that way, but at the moment
- * OVERCOMMIT is the only other option */
+/* Re-use the existing keys and descriptors on OSes that support this feature,
+ * for others we should have a fallback that relies on mapping a new segment
+ * and doing the transfer that way, but at the moment OVERCOMMIT is the only
+ * other option */
 	munmap(src->ptr, src->shmsize);
 	src->ptr = NULL;
 
@@ -989,9 +996,9 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 		setenv("ARCAN_SHMKEY", ctx->shm.key, 1);
 
 /*
- * we need to mask this signal as when debugging parent process,
- * GDB pushes SIGINT to children, killing them and changing
- * the behavior in the core process
+ * we need to mask this signal as when debugging parent process, GDB pushes
+ * SIGINT to children, killing them and changing the behavior in the core
+ * process
  */
 		signal(SIGINT, SIG_IGN);
 
