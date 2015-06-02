@@ -1720,6 +1720,23 @@ arcan_vobj_id arcan_video_rawobject(av_pixel* buf,
 	return rv;
 }
 
+arcan_errc arcan_video_detachfromrendertarget(arcan_vobj_id did,
+	arcan_vobj_id src)
+{
+	arcan_vobject* srcobj = arcan_video_getobject(src);
+	arcan_vobject* dstobj = arcan_video_getobject(did);
+	if (!srcobj || !dstobj)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+
+	for (size_t ind = 0; ind < current_context->n_rtargets; ind++){
+		if (current_context->rtargets[ind].color == dstobj &&
+			srcobj->owner != &current_context->rtargets[ind])
+				detach_fromtarget(&current_context->rtargets[ind], srcobj);
+	}
+
+	return ARCAN_OK;
+}
+
 arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did,
 	arcan_vobj_id src, bool detach)
 {

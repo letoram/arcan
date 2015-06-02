@@ -1,16 +1,16 @@
 -- rendertarget_attach
 -- @short: Modify the attachment statement of a video object
 -- @inargs: rendertarget, source, detach_state
--- @longdescr: Every video object have at least one (primary), but possibly
+-- @longdescr: Every video object has at least one (primary), but possibly
 -- many (secondary) connections to different rendertargets. The primary
 -- connection also defines lifespan, meaning that if the object which act
 -- as a primary connection is deleted, so are any other objects that are
 -- attached to it. This association can be changed either when creating
 -- new rendertargets or dynamically using this function.
 --
--- *rendertarget* specifies the possible new/previous attachment, *source*
--- refers to the object that should be attached or detached and detach_state
--- determines if previous attachments should be dropped (RENDERTARGET_DETACH)
+-- *rendertarget* specifies the attachment point, *source*
+-- refers to the object that should be attached or detached and *detach_state*
+-- determines if the primary attachment should be reassigned (RENDERTARGET_DETACH)
 -- or kept (RENDERTARGET_NODETACH). Only WORLDID or a vid that has been
 -- previously flagged as a rendertarget (using ref:define_rendertarget or
 -- ref:define_calctarget or ref:define_recordtarget) are valid values for

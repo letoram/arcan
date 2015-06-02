@@ -5908,6 +5908,17 @@ static int rendernoclear(lua_State* ctx)
 	return 1;
 }
 
+static int renderdetach(lua_State* ctx)
+{
+	LUA_TRACE("rendertarget_detach");
+	arcan_vobj_id did = luaL_checkvid(ctx, 1, NULL);
+	arcan_vobj_id sid = luaL_checkvid(ctx, 2, NULL);
+
+	arcan_video_detachfromrendertarget(did, sid);
+	LUA_ETRACE("rendertarget_detach", NULL);
+	return 0;
+}
+
 static int renderattach(lua_State* ctx)
 {
 	LUA_TRACE("rendertarget_attach");
@@ -8161,6 +8172,7 @@ static const luaL_Reg tgtfuns[] = {
 {"define_feedtarget",          feedtarget               },
 {"rendertarget_forceupdate",   rendertargetforce        },
 {"recordtarget_gain",          recordgain               },
+{"rendertarget_detach",        renderdetach             },
 {"rendertarget_attach",        renderattach             },
 {"rendertarget_noclear",       rendernoclear            },
 {"load_movie",                 loadmovie                },

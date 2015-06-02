@@ -585,6 +585,14 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, int readback,
 arcan_errc arcan_video_forceupdate(arcan_vobj_id vid);
 arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did,
 	arcan_vobj_id src, bool detach);
+
+/* Drop the any secondary attachments that the rendertarget backing of *did*
+ * may have to *src*.
+ * Error codes:
+ *  ARCAN_ERRC_NO_SUCH_OBJECT
+ */
+arcan_errc arcan_video_detachfromrendertarget(arcan_vobj_id did,
+	arcan_vobj_id src);
 arcan_errc arcan_video_alterreadback(arcan_vobj_id did, int readback);
 arcan_errc arcan_video_rendertarget_setnoclear(arcan_vobj_id did, bool value);
 
