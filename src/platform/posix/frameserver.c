@@ -50,28 +50,24 @@ extern char* arcan_binpath;
 static void* nanny_thread(void* arg)
 {
 	pid_t* pid = (pid_t*) arg;
+	int counter = 10;
 
-	if (pid){
-		int counter = 10;
+	while (counter--){
+		int statusfl;
+		int rv = waitpid(*pid, &statusfl, WNOHANG);
+		if (rv > 0)
+			break;
 
-		while (counter--){
-			int statusfl;
-			int rv = waitpid(*pid, &statusfl, WNOHANG);
-			if (rv > 0)
-				break;
-
-			else if (counter == 0){
-				kill(*pid, SIGKILL);
-				waitpid(*pid, &statusfl, 0);
-				break;
-			}
-
-			sleep(1);
+		else if (counter == 0){
+			kill(*pid, SIGKILL);
+			waitpid(*pid, &statusfl, 0);
+			break;
 		}
 
-		free(pid);
+		sleep(1);
 	}
 
+	free(pid);
 	return NULL;
 }
 
@@ -189,6 +185,7 @@ void arcan_frameserver_killchild(arcan_frameserver* src)
 	pthread_t nanny;
 	if (0 != pthread_create(&nanny, &nanny_attr, nanny_thread, (void*) pidptr))
 		kill(src->child, SIGKILL);
+	pthread_attr_destroy(&nanny_attr);
 }
 
 bool arcan_frameserver_validchild(arcan_frameserver* src){
