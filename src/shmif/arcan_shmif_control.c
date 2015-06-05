@@ -536,22 +536,27 @@ map_fail:
 		" \n", (uintptr_t) dst->addr);
 
 /* step 2, semaphore handles */
-	char* work = strdup(shmkey);
-	work[strlen(work) - 1] = 'v';
-	dst->vsem = sem_open(work, 0);
-	if (force_unlink)
-		sem_unlink(work);
 
-	work[strlen(work) - 1] = 'a';
-	dst->asem = sem_open(work, 0);
-	if (force_unlink)
-		sem_unlink(work);
+	size_t slen = strlen(shmkey) + 1;
+	if (slen > 1){
+		char work[slen];
+		snprintf(work, slen, "%s", shmkey);
+		slen -= 2;
+		work[slen] = 'v';
+		dst->vsem = sem_open(work, 0);
+		if (force_unlink)
+			sem_unlink(work);
 
-	work[strlen(work) - 1] = 'e';
-	dst->esem = sem_open(work, 0);
-	if (force_unlink)
-		sem_unlink(work);
-	free(work);
+		work[slen] = 'a';
+		dst->asem = sem_open(work, 0);
+		if (force_unlink)
+			sem_unlink(work);
+
+		work[slen] = 'e';
+		dst->esem = sem_open(work, 0);
+		if (force_unlink)
+			sem_unlink(work);
+	}
 
 	if (dst->asem == 0x0 || dst->esem == 0x0 || dst->vsem == 0x0){
 		LOG("arcan_shmif_control(getshm) -- couldn't "

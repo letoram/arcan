@@ -121,16 +121,18 @@ void arcan_frameserver_dropshared(arcan_frameserver* src)
 	shm_unlink( src->shm.key );
 
 /* step 2, semaphore handles */
-	char work[ strlen(src->shm.key) + 1 ];
-	work[sizeof(work) - 1] = 'v';
-	sem_unlink(work); sem_close(src->vsync);
-
-	work[sizeof(work) - 1] = 'a';
-	sem_unlink(work); sem_close(src->async);
-
-	work[sizeof(work) - 1] = 'e';
-	sem_unlink(work); sem_close(src->esync);
-
+	size_t slen = strlen(src->shm.key) + 1;
+	if (slen > 1){
+		char work[slen];
+		snprintf(work, slen, "%s", src->shm.key);
+		slen -= 2;
+		work[slen] = 'v';
+		sem_unlink(work); sem_close(src->vsync);
+		work[slen] = 'a';
+		sem_unlink(work); sem_close(src->async);
+		work[slen] = 'e';
+		sem_unlink(work); sem_close(src->esync);
+	}
 	close(src->shm.handle);
 	src->shm.ptr = NULL;
 	arcan_mem_free(src->shm.key);
