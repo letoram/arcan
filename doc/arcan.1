@@ -204,8 +204,12 @@ Can be started in either client or server mode and implements a basic
 communication, identification and discovery protocol.
 
 .IP "\fBDECODE\fR"
-Is used to decode audio/video feeds (a media player) with the usual
-selection of features, ranging from capture devices to subtitled movies.
+Decode is used to decode audio / video feeds and is expected to be able
+to hand seeking commands and can cover multiple user-selectable data streams,
+and overlay secondary information e.g. subtitles. It should be able to work
+in a container without a working file-system with input provided from passed
+handle descriptors but may need access to privileged devices (hardware
+assisted decoding).
 
 .IP "\fBRECORD\fR"
 Is used to implement audio/video recording or streaming, but also for
@@ -224,23 +228,24 @@ dynamically loadable shared libraries, cores) which has the characteristics
 of a high throughput, low-latency, timing sensitive and interactive data source.
 
 .IP "\fBAVFEED\fR"
-This archetype is not typically enabled, but is reserved for assisting the
-development of generic Audio and/or Video sources.
+Avfeed is a special frameserever in the sense that the default implementation
+only tests that the interface and control is working. It is primarily used to
+swiftly develop and test customized integration with some third party interface.
 
 .IP "\fBTERMINAL\fR"
-Used to provide a terminal, a primarily text oriented interface that can
-be bound to a shell or pipes and perform primitive translation, rendering
-etc.
+Used to provide a terminal - a primarily event-driven and text oriented
+interface that can be bound to a shell or data pipes and may span multiple
+levels of privilege.
 
 For more detailed information on the default implementations of these
-archetypes, please refer to the individual manpages as referred to in the
+archetypes, please refer to their individual manpages as referred to in the
 \fISee Also\fR section at the end of this manpage.
 
 All frameservers interact with the main arcan process through the use of
 a (BSD licensed) shared memory interface which provides IPC primitives e.g.
 event queues and dynamically resizeable buffers for audio and video transfers.
 
-There are two ways frameservers can be activated, authoritative and
+There are two ways frameservers can be activated: authoritative and
 non-authoritative (also referred to as \fIexternal\fR).
 
 Authoritative frameservers are spawned by the main arcan process and has
@@ -291,7 +296,7 @@ https://arcan-fe.com
 
 .SH SEE-ALSO
 .IX Header "SEE ALSO"
-\&\fIarcan_api_overview\fR\|(1) \&\fIarcan_lwa\fR\|(1) \&\fIarcan_frameserver\fR\|(1)
+\&\fIarcan_api_overview\fR\|(3) \&\fIarcan_lwa\fR\|(1) \&\fIarcan_frameserver\fR\|(1)
 \&\fIarcan_db\fR\|(1) \&\fIarcan_frameserver_libretro\fR\|(1) \&\fIarcan_frameserver_decode\fR\|(1)
 \&\fIarcan_frameserver_encode\fR\|(1) \&\fIarcan_frameserver_remoting\fR\|(1)
 \&\fIarcan_frameserver_net\fR\|(1) \&\fIarcan_frameserver_terminal\fR\|(1)
