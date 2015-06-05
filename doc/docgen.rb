@@ -523,7 +523,7 @@ when "mangen" then
 		Dir.mkdir("mantmp")
 	end
 
-	outf = File.new("mantmp/arcan_api_overview.1", IO::CREAT | IO::RDWR)
+	outf = File.new("mantmp/arcan_api_overview.3", IO::CREAT | IO::RDWR)
 	inf.each_line{|line| outf << line}
 
 # populate $grptbl with the contents of the lua.c file
