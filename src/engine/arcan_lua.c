@@ -5166,8 +5166,8 @@ static int targetdisphint(lua_State* ctx)
 	int height = luaL_checknumber(ctx, 3);
 
 	if (width <= 0 || height <= 0)
-		arcan_fatal("target_disphint(), non-negative display "
-			"are not allowed");
+		arcan_fatal("target_disphint(%d, %d), "
+			"display dimensions must be > 0", width, height);
 
 	width = width > ARCAN_SHMPAGE_MAXW ? ARCAN_SHMPAGE_MAXW : width;
 	height = height > ARCAN_SHMPAGE_MAXH ? ARCAN_SHMPAGE_MAXH : height;
