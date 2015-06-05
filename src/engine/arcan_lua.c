@@ -293,6 +293,8 @@ static struct {
 	char* pending_socket_label;
 	int pending_socket_descr;
 
+	const char* last_crash_source;
+
 	lua_State* last_ctx;
 } luactx = {0};
 
@@ -4937,9 +4939,15 @@ static void panic(lua_State* ctx)
 	arcan_warning("LUA VM is in a panic state, "
 		"recovery handover might be impossible.\n");
 
+	luactx.last_crash_source = "VM panic";
 	longjmp(arcanmain_recover_state, 2);
 }
 
+/*
+ * never call wraperr with a dynamic src argument, it needs to be
+ * available for the lifespan of the program as it us also used to
+ * propagate crash information between recovery states
+ */
 static void wraperr(lua_State* ctx, int errc, const char* src)
 {
 	if (luactx.debug)
@@ -4982,6 +4990,7 @@ static void wraperr(lua_State* ctx, int errc, const char* src)
 	arcan_warning("\nHanding over to recovery script "
 		"(or shutdown if none present).\n");
 
+	luactx.last_crash_source = src;
 	longjmp(arcanmain_recover_state, 2);
 }
 
@@ -8555,6 +8564,11 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 	arcan_lua_setglobalstr(ctx, "FRAMESERVER_MODES", FRAMESERVER_MODESTRING);
 	arcan_lua_setglobalstr(ctx, "APPLID", arcan_appl_id());
 	arcan_lua_setglobalstr(ctx, "API_ENGINE_BUILD", ARCAN_BUILDVERSION);
+
+	if (luactx.last_crash_source){
+		arcan_lua_setglobalstr(ctx, "CRASH_SOURCE", luactx.last_crash_source);
+		luactx.last_crash_source = NULL;
+	}
 }
 
 /*
