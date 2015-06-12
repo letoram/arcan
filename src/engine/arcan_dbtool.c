@@ -23,14 +23,15 @@ static void usage()
 {
 printf("usage: arcan_db dbfile command args\n\n"
 	"Available data creation / manipulation commands: \n"
-	"  add_target     \tname executable bfrm argv\n"
-	"  add_target_kv  \ttarget name key value\n"
-	"  add_target_env \ttarget name key value\n"
-	"  add_target_lib \ttarget name libstr\n"
-	"  add_config     \ttarget name argv\n"
-	"  add_config_kv  \ttarget config name key val\n"
-	"  add_config_env \ttarget config name key val\n"
-	"  drop_config    \ttarget config\n"
+	"  add_target      \tname executable bfrm argv\n"
+	"  add_target_kv   \ttarget name key value\n"
+	"  add_target_env  \ttarget name key value\n"
+	"  add_target_lib  \ttarget name libstr\n"
+	"  add_config      \ttarget name argv\n"
+	"  add_config_kv   \ttarget config name key val\n"
+	"  add_config_env  \ttarget config name key val\n"
+	"  drop_config     \ttarget config\n"
+	"  drop_all_configs\ttarget\n"
 	"  drop_target    \tname\n"
 	"\nAvailable data extraction commands: \n"
 	"  dump_targets   \n"
@@ -145,6 +146,32 @@ static int drop_config(struct arcan_dbh* dst, int argc, char** argv)
 	}
 
 	return arcan_db_dropconfig(dst, cid) ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+
+static int drop_all_config(struct arcan_dbh* dst, int argc, char** argv)
+{
+	if (argc != 1){
+		printf("drop_all_configs(target), invalid number "
+			"of arguments (%d vs 1).\n", argc);
+		return EXIT_FAILURE;
+	}
+
+	union arcan_dbtrans_id id;
+	id.tid = arcan_db_targetid(dst, argv[0], NULL);
+	struct arcan_strarr res = arcan_db_configs(dst, id.tid);
+	if (!res.data){
+		printf("drop_all_configs(target), no valid list returned.\n");
+		return EXIT_FAILURE;
+	}
+
+	char** curr = res.data;
+	while(*curr){
+		arcan_configid cid = arcan_db_configid(dst, id.tid, *curr++);
+		if (cid != BAD_CONFIG)
+			arcan_db_dropconfig(dst, cid);
+	}
+	arcan_mem_freearr(&res);
+	return EXIT_SUCCESS;
 }
 
 static int set_kv(struct arcan_dbh* dst,
@@ -479,6 +506,11 @@ struct {
 	},
 
 	{
+		.key = "drop_all_configs",
+		.fun = drop_all_config
+	},
+
+	{
 		.key = "add_target_env",
 		.fun = add_target_env
 	},
@@ -498,8 +530,12 @@ static char* grow(char* inp, size_t* outsz)
 {
 	*outsz += 64;
 	char* res = realloc(inp, *outsz);
-	if (!res)
-		*outsz -= 64;
+	if (!res){
+		free(inp);
+		*outsz = 0;
+		return NULL;
+	}
+
 	return res;
 }
 
@@ -552,7 +588,7 @@ int main(int argc, char* argv[])
 			int ch = fgetc(stdin);
 
 			if (bufofs == bufsz - 1)
-				if (!grow(inbuf, &bufsz)){
+				if (!( inbuf = grow(inbuf, &bufsz)) ){
 					fprintf(stderr, "couldn't grow input buffer\n");
 					return EXIT_FAILURE;
 				}
@@ -569,7 +605,7 @@ int main(int argc, char* argv[])
 		}
 
 		if (bufofs == bufsz)
-			if (!grow(inbuf, &bufsz))
+			if (!( inbuf = grow(inbuf, &bufsz)) )
 				return EXIT_FAILURE;
 
 		if (bufofs > 0){

@@ -10,7 +10,7 @@ function main()
 	for k, v in pairs(list_targets()) do
 		print(string.format("target ( %s ) configurations : \n\t:", v));
 
-		for l, m in pairs(list_configurations(v)) do
+		for l, m in pairs(target_configurations(v)) do
 			print("\t" .. m);
 		end
 
@@ -19,6 +19,6 @@ function main()
 #endif
 
 #ifdef ERROR
-	list_configurations(list_targets());
+	target_configurations(list_targets());
 #endif
 end
