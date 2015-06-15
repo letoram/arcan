@@ -166,9 +166,9 @@ struct frameserver_envp {
 
 	union {
 		struct {
-			const char* const resource;
+			const char* resource;
 /* mode matches the set of allowed archetypes */
-			const char* const mode;
+			const char* mode;
 		} builtin;
 
 		struct {
