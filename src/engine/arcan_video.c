@@ -4059,7 +4059,7 @@ static inline void draw_colorsurf(struct rendertarget* dst,
 	float* mvm = NULL;
 
 	setup_surf(dst, &prop, src, &mvm);
-	agp_shader_forceunif("obj_col", shdrvec3, (void*) &cval, false);
+	agp_shader_forceunif("obj_col", shdrvec3, (void*) &cval);
 	agp_draw_vobj(-prop.scale.x,
 		-prop.scale.y, prop.scale.x,
 		prop.scale.y, NULL, mvm);
