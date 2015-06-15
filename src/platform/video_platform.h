@@ -342,6 +342,7 @@ void agp_init();
  */
 #define GROUP_INDEX(X) ((uint16_t) (((X) & 0xffff0000) >> 16))
 #define SHADER_INDEX(X) ((uint16_t) (((X) & 0x0000ffff)))
+#define SHADER_ID(SID, GID) (((uint32_t)(GID) << 16) | (uint32_t)(SID))
 #define BROKEN_SHADER ((uint32_t)0xffffffff)
 typedef uint32_t agp_shader_id;
 
