@@ -322,7 +322,7 @@ void agp_activate_vstore_multi(struct storage_info_t** backing, size_t n)
 			buf[6] = '0' + i;
 			buf[7] = '\0';
 		}
-		agp_shader_forceunif(buf, shdrint, &i, false);
+		agp_shader_forceunif(buf, shdrint, &i);
 	}
 
 	glActiveTexture(GL_TEXTURE0);
@@ -519,7 +519,7 @@ static void toggle_debugstates(float* modelview)
 		glEnableVertexAttribArray(ATTRIBUTE_VERTEX);
 		agp_shader_activate(agp_default_shader(COLOR_2D));
 		agp_shader_envv(MODELVIEW_MATR, modelview, sizeof(float) * 16);
-		agp_shader_forceunif("obj_col", shdrvec3, (void*) white, false);
+		agp_shader_forceunif("obj_col", shdrvec3, (void*) white);
 	}
 	else{
 		agp_shader_activate(agp_default_shader(COLOR_2D));

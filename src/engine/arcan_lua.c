@@ -1810,7 +1810,7 @@ static int buildshader(lua_State* ctx)
 	const char* label = luaL_checkstring(ctx, 3);
 
 	agp_shader_id rv = agp_shader_build(label, NULL, vprog, fprog);
-	lua_pushnumber(ctx, rv);
+	lua_pushnumber(ctx, SHADER_INDEX(rv));
 
 	LUA_ETRACE("build_shader", NULL);
 	return 1;
@@ -1963,7 +1963,7 @@ static int setshader(lua_State* ctx)
 	arcan_vobj_id id = luaL_checkvid(ctx, 1, &vobj);
 	agp_shader_id oldshid = vobj->program;
 
-	if (lua_gettop(ctx) > 1){
+		if (lua_gettop(ctx) > 1){
 		agp_shader_id shid = lua_type(ctx, 2) == LUA_TSTRING ?
 			agp_shader_lookup(luaL_checkstring(ctx, 2)) : luaL_checknumber(ctx, 2);
 
@@ -1985,6 +1985,7 @@ static int setmeshshader(lua_State* ctx)
 	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 	agp_shader_id shid = luaL_checknumber(ctx, 2);
 	int slot = abs ((int)luaL_checknumber(ctx, 3) );
+	id |= (uint32_t) luaL_optnumber(ctx, 4, 0);
 
 	arcan_3d_meshshader(id, shid, slot);
 
@@ -7070,6 +7071,16 @@ static int orientmodel(lua_State* ctx)
 	return 0;
 }
 
+static int shader_ugroup(lua_State* ctx)
+{
+	LUA_TRACE("shader_ugroup");
+	lua_pushnumber(ctx,
+		agp_shader_addgroup(luaL_checknumber(ctx, 1))
+	);
+	LUA_ETRACE("shader_ugroup", NULL);
+	return 0;
+}
+
 /* map a format string to the arcan_shdrmgmt.h different datatypes */
 static int shader_uniform(lua_State* ctx)
 {
@@ -7080,6 +7091,17 @@ static int shader_uniform(lua_State* ctx)
 	int sid = abs((int)luaL_checknumber(ctx, 1));
 	const char* label = luaL_checkstring(ctx, 2);
 	const char* fmtstr = luaL_checkstring(ctx, 3);
+
+	ssize_t darg = lua_gettop(ctx) - strlen(fmtstr);
+	if (darg != 3 && darg != 4)
+		arcan_fatal("shader_uniform(), invalid number of arguments (%d) for "
+			"format string: %s\n", lua_gettop(ctx), darg);
+
+	size_t abase = darg == 4 ? 5 : 4;
+
+	/* FIXME: check fmtlen vs number of arguments,
+	 * if there is ONE more, skip slot [6], else start
+	 * scanning fmtstr types from that position */
 	bool persist = luaL_checkbnumber(ctx, 4);
 
 	if (agp_shader_activate(sid) != ARCAN_OK){
@@ -7093,15 +7115,11 @@ static int shader_uniform(lua_State* ctx)
 	if (!label)
 		label = "unknown";
 
-	if (strcmp(label, "ff") == 0){
-		abort();
-	}
-
 	if (fmtstr[0] == 'b'){
-		int fmt = luaL_checknumber(ctx, 5) != 0;
+		int fmt = luaL_checknumber(ctx, abase) != 0;
 		agp_shader_forceunif(label, shdrbool, &fmt, persist);
 	} else if (fmtstr[0] == 'i'){
-		int fmt = luaL_checknumber(ctx, 5);
+		int fmt = luaL_checknumber(ctx, abase);
 		agp_shader_forceunif(label, shdrint, &fmt, persist);
 	} else {
 		unsigned i = 0;
@@ -7109,34 +7127,34 @@ static int shader_uniform(lua_State* ctx)
 		if (i)
 			switch(i){
 				case 1:
-					fbuf[0] = luaL_checknumber(ctx, 5);
+					fbuf[0] = luaL_checknumber(ctx, abase);
 					agp_shader_forceunif(label, shdrfloat, fbuf, persist);
 				break;
 
 				case 2:
-					fbuf[0] = luaL_checknumber(ctx, 5);
-					fbuf[1] = luaL_checknumber(ctx, 6);
+					fbuf[0] = luaL_checknumber(ctx, abase);
+					fbuf[1] = luaL_checknumber(ctx, abase+1);
 					agp_shader_forceunif(label, shdrvec2, fbuf, persist);
 				break;
 
 				case 3:
-					fbuf[0] = luaL_checknumber(ctx, 5);
-					fbuf[1] = luaL_checknumber(ctx, 6);
-					fbuf[2] = luaL_checknumber(ctx, 7);
+					fbuf[0] = luaL_checknumber(ctx, abase);
+					fbuf[1] = luaL_checknumber(ctx, abase+1);
+					fbuf[2] = luaL_checknumber(ctx, abase+2);
 					agp_shader_forceunif(label, shdrvec3, fbuf, persist);
 				break;
 
 				case 4:
-					fbuf[0] = luaL_checknumber(ctx, 5);
-					fbuf[1] = luaL_checknumber(ctx, 6);
-					fbuf[2] = luaL_checknumber(ctx, 7);
-					fbuf[3] = luaL_checknumber(ctx, 8);
+					fbuf[0] = luaL_checknumber(ctx, abase);
+					fbuf[1] = luaL_checknumber(ctx, abase+1);
+					fbuf[2] = luaL_checknumber(ctx, abase+2);
+					fbuf[3] = luaL_checknumber(ctx, abase+3);
 					agp_shader_forceunif(label, shdrvec4, fbuf, persist);
 				break;
 
 				case 16:
 						while(i--)
-							fbuf[i] = luaL_checknumber(ctx, 5 + i);
+							fbuf[i] = luaL_checknumber(ctx, abase + i);
 
 						agp_shader_forceunif(label, shdrmat4x4, fbuf, persist);
 
@@ -7889,7 +7907,7 @@ static int net_pushsrv(lua_State* ctx)
 		arcan_fatal("net_pushsrv() -- bad arg1, specified frameserver"
 			" is not in client mode (net_open).\n");
 
-/* we clean this as to not expose stack trash */
+/* we clean this as to not expose tack trash */
 	size_t out_sz = sizeof(outev.net.message) /
 		sizeof(outev.net.message[0]);
 
@@ -8385,6 +8403,7 @@ static const luaL_Reg vidsysfuns[] = {
 {"valid_vid",                        validvid       },
 {"video_synchronization",            videosynch     },
 {"shader_uniform",                   shader_uniform },
+{"shader_ugroup",                    shader_ugroup  },
 {"push_video_context",               pushcontext    },
 {"storepush_video_context",          pushcontext_ext},
 {"storepop_video_context",           popcontext_ext },

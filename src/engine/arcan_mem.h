@@ -193,7 +193,10 @@ void* arcan_mem_trunc(void* src, size_t nz, size_t nb, enum arcan_memhint);
 struct arcan_strarr {
 	size_t count;
 	size_t limit;
-	char** data;
+	union{
+		char** data;
+		void** cdata;
+	};
 };
 
 void arcan_mem_growarr(struct arcan_strarr*);

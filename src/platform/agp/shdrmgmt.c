@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <inttypes.h>
 #include <stdbool.h>
 #include <assert.h>
 #include <string.h>
@@ -20,12 +21,19 @@
 #include "arcan_video.h"
 #include "arcan_videoint.h"
 
+#include "video_platform.h"
+
 #ifdef HEADLESS_NOARCAN
 #undef FLAG_DIRTY
 #define FLAG_DIRTY()
 #endif
 
 #define TBLSIZE (1 + TIMESTAMP_D - MODELVIEW_MATR)
+
+/*
+ * UGROUP allocation is broken; we should replace this with a more
+ * normal static-grow-by-8 array or something, this is .. not good
+ */
 
 /* all current global shader settings,
  * updated whenever a vobj/3dobj needs a different state
@@ -113,11 +121,15 @@ static char* attrsymtbl[4] = {
 	"texcoord"
 };
 
+/* REFACTOR:
+ * representing shader uniform tracking in this way is rather disgusting,
+ * parsing the shader and allocating a tightly packed uniform list would
+ * be much better. */
 struct shaderv {
 	GLint loc;
 	char* label;
 	enum shdrutype type;
-	uint8_t data[64]; /* largest supported type, mat4x4 */
+	uint8_t data[64];
 	struct shaderv* next;
 };
 
@@ -128,7 +140,7 @@ struct shader_cont {
 	GLint locations[sizeof(ofstbl) / sizeof(ofstbl[0])];
 /* match attrsymtbl */
 	GLint attributes[4];
-	struct shaderv* persistvs;
+	struct arcan_strarr ugroups;
 };
 
 static int sizetbl[7] = {
@@ -141,16 +153,13 @@ static int sizetbl[7] = {
 	sizeof(float) * 16
 };
 
-/* base is added as a controllable offset similarly to what is done
- * with video/audio IDs, i.e. in order to quickly shake out hard-coded
- * ID references */
 static struct {
 	struct shader_cont slots[256];
-	unsigned ofs, base;
+	size_t ofs;
 	agp_shader_id active_prg;
 	struct shader_envts context;
 	char guard;
-} shdr_global = {.base = 10000, .active_prg = -1, .guard = 64};
+} shdr_global = {.active_prg = BROKEN_SHADER, .guard = 64};
 
 static bool build_shader(const char*, GLuint*, GLuint*, GLuint*,
 	const char*, const char*);
@@ -199,25 +208,26 @@ int agp_shader_activate(agp_shader_id shid)
 {
 	if (!agp_shader_valid(shid))
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
-	shid -= shdr_global.base;
 
  	if (shid != shdr_global.active_prg){
-		struct shader_cont* cur = shdr_global.slots + shid;
-		glUseProgram(cur->prg_container);
+		struct shader_cont* cur = shdr_global.slots + SHADER_INDEX(shid);
+		if (SHADER_INDEX(shdr_global.active_prg) != SHADER_INDEX(shid))
+			glUseProgram(cur->prg_container);
+
  		shdr_global.active_prg = shid;
 
 #ifdef SHADER_TRACE
 		arcan_warning("[shader] shid(%d) => (%d), activate %s\n",
-			shid, cur->prg_container, cur->label);
+			SHADER_INDEX(shid), cur->prg_container, cur->label);
 #endif
 
 /*
- * While we chould practically just update the uniforms that has
- * actually changed since the last push as we keep a cache,
- * the incentive is rather small (uniform- set on a bound shader
- * is among the cheaper state changes possible).
+ * While we chould practically just update the uniforms that has actually
+ * changed since the last push as we keep a cache, the incentive is rather
+ * small (uniform- set on a bound shader is among the cheaper state changes
+ * possible).
  */
-		for (unsigned i = 0; i < sizeof(ofstbl) / sizeof(ofstbl[0]); i++){
+		for (size_t i = 0; i < sizeof(ofstbl) / sizeof(ofstbl[0]); i++){
 			if (cur->locations[i] >= 0){
 				setv(cur->locations[i], typetbl[i], (char*)(&shdr_global.context)
 					+ ofstbl[i], symtbl[i], cur->label);
@@ -226,7 +236,12 @@ int agp_shader_activate(agp_shader_id shid)
 		}
 
 /* activate any persistant values */
-		struct shaderv* current = cur->persistvs;
+		if (cur->ugroups.count < GROUP_INDEX(shid)){
+			arcan_warning("attempt to activate shader with broken group index\n");
+			return -1;
+		}
+
+		struct shaderv* current = cur->ugroups.cdata[GROUP_INDEX(shid)];
 		while (current){
 			setv(current->loc, current->type, (void*) current->data,
 				current->label, cur->label);
@@ -239,14 +254,14 @@ int agp_shader_activate(agp_shader_id shid)
 
 agp_shader_id agp_shader_lookup(const char* tag)
 {
-		for (int i = 0; i < sizeof(shdr_global.slots) /
+		for (size_t i = 0; i < sizeof(shdr_global.slots) /
 			sizeof(shdr_global.slots[0]); i++){
 			if (shdr_global.slots[i].label &&
 				strcmp(tag, shdr_global.slots[i].label) == 0)
-				return i + shdr_global.base;
+				return i;
 		}
 
-	return -1;
+	return BROKEN_SHADER;
 }
 
 const char* agp_shader_lookuptag(agp_shader_id id)
@@ -254,7 +269,7 @@ const char* agp_shader_lookuptag(agp_shader_id id)
 	if (!agp_shader_valid(id))
 		return NULL;
 
-	return shdr_global.slots[id - shdr_global.base].label;
+	return shdr_global.slots[SHADER_INDEX(id)].label;
 }
 
 bool agp_shader_lookupprgs(agp_shader_id id,
@@ -264,19 +279,20 @@ bool agp_shader_lookupprgs(agp_shader_id id,
 		return false;
 
 	if (vert)
-		*vert = shdr_global.slots[id - shdr_global.base].vertex;
+		*vert = shdr_global.slots[SHADER_INDEX(id)].vertex;
 
 	if (frag)
-		*frag = shdr_global.slots[id - shdr_global.base].fragment;
+		*frag = shdr_global.slots[SHADER_INDEX(id)].fragment;
 
 	return true;
 }
 
 bool agp_shader_valid(agp_shader_id id)
 {
-	id -= shdr_global.base;
-	return (id >= 0 && id < sizeof(shdr_global.slots) /
-		sizeof(shdr_global.slots[0]) && shdr_global.slots[id].label != NULL);
+	return (id != BROKEN_SHADER && SHADER_INDEX(id) <
+		sizeof(shdr_global.slots) / sizeof(shdr_global.slots[0]) &&
+		shdr_global.slots[SHADER_INDEX(id)].label != NULL
+	);
 }
 
 agp_shader_id agp_shader_build(const char* tag, const char* geom,
@@ -287,7 +303,7 @@ agp_shader_id agp_shader_build(const char* tag, const char* geom,
 	int dstind = -1;
 
 /* first, look for a preexisting tag */
-	for (unsigned i = 0; i < slot_lim; i++)
+	for (size_t i = 0; i < slot_lim; i++)
 		if (shdr_global.slots[i].label &&
 			strcmp(shdr_global.slots[i].label, tag) == 0){
 			dstind = i;
@@ -301,7 +317,7 @@ agp_shader_id agp_shader_build(const char* tag, const char* geom,
 		if (!shdr_global.slots[shdr_global.ofs].label)
 			dstind = shdr_global.ofs;
 		else
-			for (unsigned i = 0; i < slot_lim; i++)
+			for (size_t i = 0; i < slot_lim; i++)
 				if (!shdr_global.slots[i].label){
 					dstind = i;
 					break;
@@ -310,7 +326,7 @@ agp_shader_id agp_shader_build(const char* tag, const char* geom,
 
 /* still no match? means we're overallocated on shaders, bad program/script */
 	if (dstind == -1)
-		return ARCAN_EID;
+		return BROKEN_SHADER;
 
 	struct shader_cont* cur = &shdr_global.slots[dstind];
 
@@ -321,17 +337,19 @@ agp_shader_id agp_shader_build(const char* tag, const char* geom,
 		free(cur->fragment);
 		free(cur->label);
 
-/* drop all persistant values */
-		struct shaderv* first = cur->persistvs;
-		while (first){
-			struct shaderv* last = first;
-			free(first->label);
-			first = first->next;
-			memset(last, 0, sizeof(struct shaderv));
-			free(last);
-		}
+/* drop all uniform groups */
+		for (size_t i = 0; i < cur->ugroups.count; i++){
+			struct shaderv* first = cur->ugroups.cdata[i];
+			while (first){
+				struct shaderv* last = first;
+				free(first->label);
+				first = first->next;
+				arcan_mem_free(last);
+			}
 
 /* reset everything to NULL */
+		}
+		arcan_mem_freearr(&cur->ugroups);
 		memset(cur, 0, sizeof(struct shader_cont));
 	}
 
@@ -355,7 +373,7 @@ agp_shader_id agp_shader_build(const char* tag, const char* geom,
 
 /* preset global symbol mappings */
 	glUseProgram(cur->prg_container);
-	for (unsigned i = 0; i < global_lim; i++){
+	for (size_t i = 0; i < global_lim; i++){
 		assert(symtbl[i] != NULL);
 		cur->locations[i] = glGetUniformLocation(cur->prg_container, symtbl[i]);
 #ifdef _DEBUG
@@ -366,7 +384,7 @@ agp_shader_id agp_shader_build(const char* tag, const char* geom,
 	}
 
 /* same treatment for attributes */
-	for (unsigned i = 0; i < sizeof(attrsymtbl) / sizeof(attrsymtbl[0]); i++){
+	for (size_t i = 0; i < sizeof(attrsymtbl) / sizeof(attrsymtbl[0]); i++){
 		cur->attributes[i] = glGetAttribLocation(cur->prg_container, attrsymtbl[i]);
 #ifdef _DEBUG
 	if (cur->attributes[i] != -1)
@@ -380,8 +398,11 @@ agp_shader_id agp_shader_build(const char* tag, const char* geom,
 		glUseProgram(shdr_global.slots[shdr_global.active_prg].prg_container);
 	}
 
-/* we use a variable base to prevent hardcoded values */
-	return dstind + shdr_global.base;
+/* make sure we have at least one uniform group */
+	if (cur->ugroups.limit - cur->ugroups.count == 0)
+		arcan_mem_growarr(&cur->ugroups);
+
+	return (uint32_t)dstind;
 }
 
 int agp_shader_envv(enum agp_shader_envts slot, void* value, size_t size)
@@ -390,7 +411,7 @@ int agp_shader_envv(enum agp_shader_envts slot, void* value, size_t size)
 	int rv = counttbl[slot];
 	counttbl[slot] = 0;
 
-	if (-1  == shdr_global.active_prg)
+	if (BROKEN_SHADER == shdr_global.active_prg)
 		return rv;
 
 	int glloc = shdr_global.slots[ shdr_global.active_prg].locations[slot];
@@ -400,8 +421,8 @@ int agp_shader_envv(enum agp_shader_envts slot, void* value, size_t size)
 #endif
 
 /*
- * reflect change in current active shader,
- * the others will be changed on activation
+ * reflect change in current active shader, the others will be changed on
+ * activation
  */
 	if (glloc != -1){
 		assert(size == sizetbl[ typetbl[slot] ]);
@@ -415,57 +436,59 @@ int agp_shader_envv(enum agp_shader_envts slot, void* value, size_t size)
 	return rv;
 }
 
+uint32_t agp_shader_addgroup(agp_shader_id shid)
+{
+	if (!agp_shader_valid(shid))
+		return BROKEN_SHADER;
+
+	struct shader_cont* cur = &shdr_global.slots[SHADER_INDEX(shid)];
+	return 0;
+}
+
 int agp_shader_vattribute_loc(enum shader_vertex_attributes attr)
 {
 	return shdr_global.slots[ shdr_global.active_prg ].attributes[ attr ];
 }
 
-void agp_shader_forceunif(const char* label, enum shdrutype type,
-	void* value, bool persist)
+void agp_shader_forceunif(const char* label, enum shdrutype type, void* value)
 {
 	GLint loc;
-	assert(shdr_global.active_prg != -1);
+	assert(shdr_global.active_prg != BROKEN_SHADER);
 	struct shader_cont* slot = &shdr_global.slots[shdr_global.active_prg];
 	FLAG_DIRTY();
 
-/* try to find a matching label, if one is found, just replace
- * the loc and copy the value */
-	if (persist) {
 /* linear search */
-		struct shaderv** current = &(slot->persistvs);
-		for (current = &(slot->persistvs); *current; current = &(*current)->next)
-			if (strcmp((*current)->label, label) == 0)
-				break;
+	struct shaderv** current = (struct shaderv**) &(slot->ugroups.cdata[0]);
+	for (; *current; current = &(*current)->next)
+		if (strcmp((*current)->label, label) == 0)
+			break;
 
 /* found? then continue, else allocate new and return that loc */
-		if (*current){
-			loc = (*current)->loc;
-			if ((*current)->type != type)
-				arcan_warning("agp_shader_forceunif(), type mismatch for "
-					"persistant shader uniform (%s:%i=>%i), ignored.\n", label, loc, type);
-		}
-		else {
-			loc = glGetUniformLocation(slot->prg_container, label);
-			*current = (struct shaderv*) malloc( sizeof(struct shaderv) );
-			(*current)->label = strdup(label);
-			(*current)->loc   = loc;
-			(*current)->type  = type;
-			(*current)->next  = NULL;
-		}
-
-		memcpy((*current)->data, value, sizetbl[type]);
+	if (*current){
+		loc = (*current)->loc;
+		if ((*current)->type != type)
+			arcan_warning("agp_shader_forceunif(), type mismatch for "
+				"persistant shader uniform (%s:%i=>%i), ignored.\n", label, loc, type);
 	}
-/* or, we just want to update the uniform ONCE (disappear on push/pop etc.) */
-	else
+	else {
 		loc = glGetUniformLocation(slot->prg_container, label);
+		*current = (struct shaderv*) malloc( sizeof(struct shaderv) );
+		(*current)->label = strdup(label);
+		(*current)->loc   = loc;
+		(*current)->type  = type;
+		(*current)->next  = NULL;
+	}
+	memcpy((*current)->data, value, sizetbl[type]);
 
 	if (loc >= 0){
 		setv(loc, type, value, label, slot->label);
 	}
 #ifdef DEBUG
 	else
-		arcan_warning("agp_shader_forceunif(): no matching location found for"
-			"%s in shader: %s\n", label, shdr_global.slots[shdr_global.active_prg].label);
+		arcan_warning("agp_shader_forceunif(): no matching location"
+			" found for %s in shader: %s\n", label,
+			shdr_global.slots[shdr_global.active_prg].label
+		);
 #endif
 }
 
@@ -522,13 +545,11 @@ static bool build_shader(const char* label, GLuint* dprg,
 		dump_shaderlog(label, "fragment", *fprg);
 
 /*
- * driver issues make this validation step rather uncertain,
- * another option would be to use a reference shader that
- * should compile, resolve attributes and uniforms and if they
- * map to the same location, we know something is broken and
- * that it's not our fault.
+ * driver issues make this validation step rather uncertain, another option
+ * would be to use a reference shader that should compile, resolve attributes
+ * and uniforms and if they map to the same location, we know something is
+ * broken and that it's not our fault.
  */
-
 	*dprg = glCreateProgram();
 	glAttachShader(*dprg, *fprg);
 	glAttachShader(*dprg, *vprg);
@@ -538,7 +559,6 @@ static bool build_shader(const char* label, GLuint* dprg,
 	glGetProgramiv(*dprg, GL_LINK_STATUS, &lstat);
 
 	if (GL_FALSE == lstat){
-		printf("LINK STAGE FAILED\n");
 		failed = true;
 		dump_shaderlog(label, "link", *dprg);
 	}
@@ -565,7 +585,7 @@ const char* agp_shader_symtype(enum agp_shader_envts env)
 
 void agp_shader_flush()
 {
-	for (unsigned i = 0; i < sizeof(shdr_global.slots)
+	for (size_t i = 0; i < sizeof(shdr_global.slots)
 		/ sizeof(shdr_global.slots[0]); i++){
 		struct shader_cont* cur = shdr_global.slots + i;
 		if (cur->label == NULL)
@@ -578,15 +598,18 @@ void agp_shader_flush()
 		kill_shader(&cur->prg_container, &cur->obj_vertex, &cur->obj_fragment);
 		cur->prg_container = cur->obj_vertex = cur->obj_fragment;
 
-		struct shaderv* first = cur->persistvs;
-		while (first){
-			struct shaderv* last = first;
-			free(first->label);
-			first = first->next;
-			memset(last, 0, sizeof(struct shaderv));
-			free(last);
+		for (size_t j = 0; j < cur->ugroups.count; j++){
+			struct shaderv* first = cur->ugroups.cdata[j];
+			while (first){
+				struct shaderv* last = first;
+				free(first->label);
+				first = first->next;
+				memset(last, 0, sizeof(struct shaderv));
+				free(last);
+			}
 		}
 
+		arcan_mem_freearr(&cur->ugroups);
 		memset(cur, 0, sizeof(struct shader_cont));
 	}
 
@@ -596,7 +619,7 @@ void agp_shader_flush()
 
 void agp_shader_rebuild_all()
 {
-	for (unsigned i = 0; i < sizeof(shdr_global.slots) /
+	for (size_t i = 0; i < sizeof(shdr_global.slots) /
 			sizeof(shdr_global.slots[0]); i++){
 		struct shader_cont* cur = shdr_global.slots + i;
 		if (cur->label == NULL)
@@ -606,4 +629,3 @@ void agp_shader_rebuild_all()
 			&cur->obj_fragment, cur->vertex, cur->fragment);
 	}
 }
-
