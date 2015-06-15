@@ -7099,11 +7099,6 @@ static int shader_uniform(lua_State* ctx)
 
 	size_t abase = darg == 4 ? 5 : 4;
 
-	/* FIXME: check fmtlen vs number of arguments,
-	 * if there is ONE more, skip slot [6], else start
-	 * scanning fmtstr types from that position */
-	bool persist = luaL_checkbnumber(ctx, 4);
-
 	if (agp_shader_activate(sid) != ARCAN_OK){
 		arcan_warning("shader_uniform(), shader (%d) failed"
 			"	to activate.\n", sid);
@@ -7117,10 +7112,10 @@ static int shader_uniform(lua_State* ctx)
 
 	if (fmtstr[0] == 'b'){
 		int fmt = luaL_checknumber(ctx, abase) != 0;
-		agp_shader_forceunif(label, shdrbool, &fmt, persist);
+		agp_shader_forceunif(label, shdrbool, &fmt);
 	} else if (fmtstr[0] == 'i'){
 		int fmt = luaL_checknumber(ctx, abase);
-		agp_shader_forceunif(label, shdrint, &fmt, persist);
+		agp_shader_forceunif(label, shdrint, &fmt);
 	} else {
 		unsigned i = 0;
 		while(fmtstr[i] == 'f') i++;
@@ -7128,20 +7123,20 @@ static int shader_uniform(lua_State* ctx)
 			switch(i){
 				case 1:
 					fbuf[0] = luaL_checknumber(ctx, abase);
-					agp_shader_forceunif(label, shdrfloat, fbuf, persist);
+					agp_shader_forceunif(label, shdrfloat, fbuf);
 				break;
 
 				case 2:
 					fbuf[0] = luaL_checknumber(ctx, abase);
 					fbuf[1] = luaL_checknumber(ctx, abase+1);
-					agp_shader_forceunif(label, shdrvec2, fbuf, persist);
+					agp_shader_forceunif(label, shdrvec2, fbuf);
 				break;
 
 				case 3:
 					fbuf[0] = luaL_checknumber(ctx, abase);
 					fbuf[1] = luaL_checknumber(ctx, abase+1);
 					fbuf[2] = luaL_checknumber(ctx, abase+2);
-					agp_shader_forceunif(label, shdrvec3, fbuf, persist);
+					agp_shader_forceunif(label, shdrvec3, fbuf);
 				break;
 
 				case 4:
@@ -7149,14 +7144,14 @@ static int shader_uniform(lua_State* ctx)
 					fbuf[1] = luaL_checknumber(ctx, abase+1);
 					fbuf[2] = luaL_checknumber(ctx, abase+2);
 					fbuf[3] = luaL_checknumber(ctx, abase+3);
-					agp_shader_forceunif(label, shdrvec4, fbuf, persist);
+					agp_shader_forceunif(label, shdrvec4, fbuf);
 				break;
 
 				case 16:
 						while(i--)
 							fbuf[i] = luaL_checknumber(ctx, abase + i);
 
-						agp_shader_forceunif(label, shdrmat4x4, fbuf, persist);
+						agp_shader_forceunif(label, shdrmat4x4, fbuf);
 
 				break;
 				default:
