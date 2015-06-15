@@ -7078,7 +7078,7 @@ static int shader_ugroup(lua_State* ctx)
 		agp_shader_addgroup(luaL_checknumber(ctx, 1))
 	);
 	LUA_ETRACE("shader_ugroup", NULL);
-	return 0;
+	return 1;
 }
 
 /* map a format string to the arcan_shdrmgmt.h different datatypes */
