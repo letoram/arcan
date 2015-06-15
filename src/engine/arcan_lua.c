@@ -5839,32 +5839,38 @@ static int targetlaunch(lua_State* ctx)
 	break;
 
 	case BFRM_LWA:
-/* FIXME lookup arcan_lwa binary, and feed that as the executable,
- * this will be more prominent when we have a package format going.
- * There's also the problem of namespacing, but that could probably
- * be fixed just using the env- */
+/* FIXME lookup arcan_lwa binary, and feed that as the executable, this will be
+ * more prominent when we have a package format going.  There's also the
+ * problem of namespacing, but that could probably be fixed just using the env-
+ * */
 		arcan_warning("bfrm_lwa() not yet supported\n");
 	break;
 
 	case BFRM_RETRO:
 		if (lmode != 1){
 			arcan_warning("launch_target(), configuration specified game format"
-				" which is only possible in internal- mode.");
+			" which is only possible in internal- mode.");
 			goto cleanup;
 		}
 
+/* retro want a specific format where core=exec:resource=argv[1] */
 		intarget = arcan_frameserver_alloc();
 		intarget->tag = ref;
 		struct frameserver_envp args = {
 			.use_builtin = true,
-			.args.builtin.resource = "",
 			.args.builtin.mode = "game"
 		};
+
+		char* argstr = NULL;
+		asprintf(&argstr, "core=%s:resource=%s",
+			exec, argv.count >= 2 ? argv.data[1] : "");
+		args.args.builtin.resource = argstr;
 
 		if (!fsrv_ok||arcan_frameserver_spawn_server(intarget, args) != ARCAN_OK){
 			arcan_frameserver_free(intarget);
 			intarget = NULL;
 		}
+		free(argstr);
 	break;
 
 	default:
