@@ -37,28 +37,25 @@ static void close_logdev()
 static void toggle_logdev(const char* prefix)
 {
 	const char* const logdir = getenv("ARCAN_FRAMESERVER_LOGDIR");
-	if (!prefix)
+
+	if (!prefix || !logdir)
 		return;
 
-	if (logdir){
-		char timeb[16];
-		time_t t = time(NULL);
-		struct tm* basetime = localtime(&t);
-		strftime(timeb, sizeof(timeb)-1, "%y%m%d_%H%M", basetime);
+	char timeb[16];
+	time_t t = time(NULL);
+	struct tm* basetime = localtime(&t);
+	strftime(timeb, sizeof(timeb)-1, "%y%m%d_%H%M", basetime);
 
-		size_t logbuf_sz = strlen(logdir) +
-			sizeof("/fsrv__yymmddhhss.txt") + strlen(prefix);
-		char* logbuf = malloc(logbuf_sz + 1);
+	size_t logbuf_sz = strlen(logdir) +
+		sizeof("/fsrv__yymmddhhss.txt") + strlen(prefix);
+	char* logbuf = malloc(logbuf_sz + 1);
 
-		snprintf(logbuf, logbuf_sz+1, "%s/fsrv_%s_%s.txt", logdir, prefix, timeb);
-		if (!freopen(logbuf, "a", stderr)){
-			stderr = fopen("/dev/null", "a");
-			if (!stderr)
-				stderr = stdout;
-		}
+	snprintf(logbuf, logbuf_sz+1, "%s/fsrv_%s_%s.txt", logdir, prefix, timeb);
+	if (!freopen(logbuf, "a", stderr)){
+		stderr = fopen("/dev/null", "a");
+		if (!stderr)
+			stderr = stdout;
 	}
-
-	atexit(close_logdev);
 }
 #endif
 

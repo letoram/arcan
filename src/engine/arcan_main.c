@@ -600,19 +600,6 @@ int main(int argc, char* argv[])
 	arcan_led_init();
 #endif
 
-/*
- * system integration note here, this could essentially provide
- * a side-channel into debugdata as the path can be expanded to
- * the debug directory, thus a compromised frameserver could possibly
- * leak crash-dumps etc. outside the sandbox. If this is a concern,
- * change this behavior or define a different logpath in the env.
- */
-	if (getenv("ARCAN_FRAMESERVER_LOGDIR") == NULL){
-		char* lpath = arcan_expand_resource("", RESOURCE_SYS_DEBUG);
-		setenv("ARCAN_FRAMESERVER_LOGDIR", lpath, 1);
-		arcan_mem_free(lpath);
-	}
-
 	if (hookscript){
 		char* tmphook = arcan_expand_resource(hookscript, RESOURCE_APPL_SHARED);
 		free(hookscript);
