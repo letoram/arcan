@@ -597,6 +597,7 @@ int main(int argc, char* argv[])
 				continue;
 
 			if ('\n' == ch || '\0' == ch){
+				inbuf[bufofs] = '\0';
 				process_line(inbuf, dbhandle);
 				bufofs = 0;
 			}
