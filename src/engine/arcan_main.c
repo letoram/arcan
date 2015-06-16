@@ -202,11 +202,10 @@ bool switch_appl(const char* appname)
 }
 
 /*
- * current several namespaces are (legacy) specified relative
- * to the old resources namespace, since those are expanded in
- * set_namespace_defaults where the command-line switch isn't
- * available, we have to generate these dependent namespaces
- * overrides as well.
+ * current several namespaces are (legacy) specified relative to the old
+ * resources namespace, since those are expanded in set_namespace_defaults
+ * where the command-line switch isn't available, we have to generate these
+ * dependent namespaces overrides as well.
  */
 static void override_resspaces(const char* respath)
 {
@@ -352,7 +351,7 @@ int main(int argc, char* argv[])
 	case 'd' : dbfname = strdup(optarg); break;
 	case 'S' : nosound = true; break;
 	case 'q' : settings.timedump = strtol(optarg, NULL, 10); break;
-	case 'p' : arcan_override_namespace(optarg, RESOURCE_APPL_SHARED); break;
+	case 'p' : override_resspaces(optarg); break;
 	case 'b' : fallback = strdup(optarg); break;
 	case 'V' : fprintf(stdout, "%s\nshmif-%" PRIu64"\nluaapi-%d:%d\n",
 		ARCAN_BUILDVERSION, arcan_shmif_cookie(), LUAAPI_VERSION_MAJOR,
