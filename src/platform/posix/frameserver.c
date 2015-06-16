@@ -966,12 +966,12 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 		int val = 1;
 		setsockopt(sockp[0], SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(int));
 #endif
+		fcntl(sockp[0], F_SETFD, FD_CLOEXEC);
 
 		ctx->dpipe = sockp[0];
 		ctx->child = child;
 
 		arcan_frameserver_configure(ctx, setup);
-
 	}
 	else if (child == 0){
 		char convb[8];
@@ -985,15 +985,16 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
  * Semi-trusteed frameservers are allowed
  * some namespace mapping access.
  */
-		setenv( "ARCAN_APPLPATH", arcan_expand_resource("", RESOURCE_APPL), 1);
-		setenv( "ARCAN_APPLTEMPPATH",
+		setenv("ARCAN_APPLPATH", arcan_expand_resource("", RESOURCE_APPL), 1);
+		setenv("ARCAN_APPLTEMPPATH",
 			arcan_expand_resource("", RESOURCE_APPL_TEMP), 1);
-		setenv( "ARCAN_STATEPATH",
+		setenv("ARCAN_STATEPATH",
 			arcan_expand_resource("", RESOURCE_APPL_STATE), 1);
-		setenv( "ARCAN_RESOURCEPATH",
+		setenv("ARCAN_RESOURCEPATH",
 			arcan_expand_resource("", RESOURCE_APPL_SHARED), 1);
+		setenv("ARCAN_FRAMESERVER_LOGDIR",
+			arcan_expand_resource("", RESOURCE_SYS_DEBUG), 1);
 		setenv("ARCAN_SHMKEY", ctx->shm.key, 1);
-
 /*
  * we need to mask this signal as when debugging parent process, GDB pushes
  * SIGINT to children, killing them and changing the behavior in the core
