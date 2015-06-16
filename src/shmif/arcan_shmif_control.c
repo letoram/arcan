@@ -170,8 +170,8 @@ const char* arcan_shmif_eventstr(arcan_event* aev, char* dbuf, size_t dsz)
  * we have a trigger address signaled (dms), forcibly release the semaphores
  * used for synch, and optionally some user supplied callback function.
  *
- * Thereafter, functions that depend on the shmpage will use their failure
- * path (or forcibly exit if a FATALFAIL behavior has been set).
+ * Thereafter, functions that depend on the shmpage will use their failure path
+ * (or forcibly exit if a FATALFAIL behavior has been set).
  */
 struct shmif_hidden {
 	shmif_trigger_hook video_hook;
@@ -246,9 +246,8 @@ uint64_t arcan_shmif_cookie()
 }
 
 /*
- * Is populated and called whenever we get a descriptor or a
- * descriptor related event. Populates *dst and returns 1 if
- * we have a matching pair.
+ * Is populated and called whenever we get a descriptor or a descriptor related
+ * event. Populates *dst and returns 1 if we have a matching pair.
  */
 static void fd_event(struct arcan_shmif_cont* c, struct arcan_event* dst)
 {
@@ -342,9 +341,9 @@ checkfd:
 
 			case TARGET_COMMAND_EXIT:
 /* While tempting to run _drop here to prevent caller from leaking resources,
- * we can't as the event- loop might be running in a different thread than
- * A/V updating. _drop would modify the context in ways that would break, and
- * we want consistent behavior between threadsafe- and non-threadsafe builds. */
+ * we can't as the event- loop might be running in a different thread than A/V
+ * updating. _drop would modify the context in ways that would break, and we
+ * want consistent behavior between threadsafe- and non-threadsafe builds. */
 				c->priv->alive = false;
 			break;
 
@@ -521,8 +520,7 @@ map_fail:
 		return;
 	}
 
-/* parent suggested that we work with a different
- * size from the start, need to remap */
+/* parent suggested a different size from the start, need to remap */
 	if (dst->addr->segment_size != ARCAN_SHMPAGE_START_SZ){
 		DLOG("arcan_frameserver(getshm) -- different initial size, remapping.\n");
 		size_t sz = dst->addr->segment_size;
@@ -536,7 +534,6 @@ map_fail:
 		" \n", (uintptr_t) dst->addr);
 
 /* step 2, semaphore handles */
-
 	size_t slen = strlen(shmkey) + 1;
 	if (slen > 1){
 		char work[slen];
@@ -672,8 +669,8 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey,
 	while(wbuf[ofs++] != '\n' && ofs < PP_SHMPAGE_SHMKEYLIM);
 	wbuf[ofs-1] = '\0';
 
-/* 4. omitted, just return a copy of the key and let someoneddelse
- * perform the arcan_shmif_acquire call. Just set the env. */
+/* 4. omitted, just return a copy of the key and let someoneddelse perform the
+ * arcan_shmif_acquire call. Just set the env. */
 	res = strdup(wbuf);
 
 	*conn_ch = sock;
@@ -705,8 +702,8 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 
 	bool privps = false;
 
-/* different path based on an acquire from a NEWSEGMENT event or if it
- * comes from a _connect (via _open) call */
+/* different path based on an acquire from a NEWSEGMENT event or if it comes
+ * from a _connect (via _open) call */
 	if (!shmkey){
 		struct shmif_hidden* gs = parent->priv;
 		map_shared(gs->pseg.key, !(flags & SHMIF_DONT_UNLINK), &res);
@@ -931,14 +928,6 @@ void arcan_shmif_signal(struct arcan_shmif_cont* ctx, int mask)
 	if (!ctx->addr->dms)
 		return;
 
-/*
- * possible misuse point (need to verify in kernel source for this)
- * who OWNS this descriptor after a push when it comes to descriptor
- * limits etc.? The misuse here would be a number of pushes that
- * are not aligned with a corresponding event. The parent can
- * detect this by attempting to read from the socket and if it gets
- * one without a pending event, alert + KILL.
- */
 	if ( (mask & SHMIF_SIGVID) && priv->video_hook)
 		mask = priv->video_hook(ctx);
 
@@ -1055,17 +1044,16 @@ bool arcan_shmif_resize(struct arcan_shmif_cont* arg,
 
 	arg->addr->w = width;
 	arg->addr->h = height;
-	arg->addr->resized = true;
-
 	FORCE_SYNCH();
+
+	arg->addr->resized = true;
 
 	DLOG("request resize to (%d:%d) approx ~%zu bytes (currently: %zu).\n",
 		width, height, arcan_shmif_getsize(width, height), arg->shmsize);
 
 /*
- * spin until acknowledged,
- * re-using the "wait on sync-fd" approach might
- * be worthwile (test latency to be sure).
+ * spin until acknowledged, re-using the "wait on sync-fd" approach might be
+ * worthwile (test latency to be sure).
  */
 	while(arg->addr->resized && arg->addr->dms)
 		;
@@ -1077,17 +1065,17 @@ bool arcan_shmif_resize(struct arcan_shmif_cont* arg,
 
 	if (arg->shmsize != arg->addr->segment_size){
 /*
- * the guard struct, if present, has another thread running that may
- * trigger the dms. BUT now the dms may be relocated so we must lock
- * guard and update and recalculate everything.
+ * the guard struct, if present, has another thread running that may trigger
+ * the dms. BUT now the dms may be relocated so we must lock guard and update
+ * and recalculate everything.
  */
 		size_t new_sz = arg->addr->segment_size;
 		struct shmif_hidden* gs = arg->priv;
 		if (gs)
 			pthread_mutex_lock(&gs->guard.synch);
 
-/* win32 is built with overcommit as we don't support dynamically
- * resizing shared memory pages there */
+/* win32 is built with overcommit as we don't support dynamically resizing
+ * shared memory pages there */
 #if _WIN32
 #else
 		munmap(arg->addr, arg->shmsize);
@@ -1109,9 +1097,7 @@ bool arcan_shmif_resize(struct arcan_shmif_cont* arg,
 		}
 	}
 
-/* free, mmap again --
- * parent has ftruncated and copied contents */
-
+/* free, mmap again -- parent has ftruncated and copied contents */
 	arcan_shmif_calcofs(arg->addr, &arg->vidp, &arg->audp);
 	arg->w = arg->addr->w;
 	arg->h = arg->addr->h;
