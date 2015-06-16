@@ -1630,6 +1630,8 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		globallib = dlopen(NULL, RTLD_LAZY);
 
 	if (!lastlib){
+		snprintf(logbuf, logbuf_sz, "Couldn't open (%s), giving up.\n", libname);
+		log_msg(logbuf, true);
 		LOG("couldn't open library (%s), giving up.\n", libname);
 		exit(EXIT_FAILURE);
 	}
@@ -1701,15 +1703,14 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 			retroctx.sysinfo.library_name, retroctx.sysinfo.library_version);
 		arcan_shmif_enqueue(&retroctx.shmcont, &outev);
 
-		if (snprintf(logbuf, logbuf_sz, "(core: %s)",
-			retroctx.sysinfo.library_name) >= logbuf_sz)
-			logbuf[logbuf_sz - 1] = '\0';
+		snprintf(logbuf, logbuf_sz, "(core: %s)", retroctx.sysinfo.library_name);
 		log_msg(logbuf, true);
 
 /* rather ugly -- core actually requires file-path */
 		if (retroctx.sysinfo.need_fullpath){
 			LOG("core(%s), core requires fullpath, resolved to (%s).\n",
 				retroctx.sysinfo.library_name, resname );
+
 			retroctx.gameinfo.data = NULL;
 			retroctx.gameinfo.path = strdup( resname );
 			retroctx.gameinfo.size = 0;
@@ -1719,6 +1720,8 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 			data_source res = arcan_open_resource(resname);
 			map_region map = arcan_map_resource(&res, true);
 			if (!map.ptr){
+				snprintf(logbuf, logbuf_sz, "couldn't map (%s)", resname?resname:"");
+				log_msg(logbuf, true);
 				LOG("core(%s), couldn't map data, giving up.\n", resname);
 				return EXIT_FAILURE;
 			}
@@ -1736,7 +1739,9 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 
 		if ( retroctx.load_game( &retroctx.gameinfo ) == false ){
 			snprintf((char*)outev.ext.message, msgsz, "failed");
+			snprintf(logbuf, logbuf_sz, "loading failed");
 			arcan_shmif_enqueue(&retroctx.shmcont, &outev);
+			log_msg(logbuf, true);
 			return EXIT_FAILURE;
 		}
 
