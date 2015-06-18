@@ -4215,16 +4215,48 @@ static bool validate_key(const char* key)
 	return true;
 }
 
+static union arcan_dbtrans_id setup_transaction(lua_State* ctx,
+	enum DB_KVTARGET* kvtgt, int ind)
+{
+	union arcan_dbtrans_id tid;
+	tid.applname = arcan_appl_id();
+	*kvtgt = DVT_APPL;
+
+	const char* tgt = luaL_optstring(ctx, ind, NULL);
+	if (tgt){
+		*kvtgt = DVT_TARGET;
+		tid.tid = arcan_db_targetid(dbhandle, tgt, NULL);
+		if (tid.tid == BAD_TARGET){
+			*kvtgt = DVT_ENDM;
+			return tid;
+		}
+
+		const char* cfg = luaL_optstring(ctx, ind+1, NULL);
+		if (cfg){
+			tid.cid = arcan_db_configid(dbhandle, tid.tid, cfg);
+			*kvtgt = tid.cid == BAD_CONFIG ? DVT_ENDM : DVT_CONFIG;
+		}
+	}
+
+	return tid;
+}
+
 static int storekey(lua_State* ctx)
 {
 	LUA_TRACE("store_key");
 
-	if (lua_type(ctx, 1) == LUA_TTABLE){
-		union arcan_dbtrans_id tid;
-		tid.applname = arcan_appl_id();
+	enum DB_KVTARGET kvtgt;
+	union arcan_dbtrans_id tid = setup_transaction(ctx, &kvtgt,
+		lua_type(ctx, 1) == LUA_TTABLE ? 2 : 3);
+	if (kvtgt == DVT_ENDM){
+		lua_pushboolean(ctx, false);
+		LUA_ETRACE("store_key", "missing transaction arguments");
+		return 1;
+	}
 
+	if (lua_type(ctx, 1) == LUA_TTABLE){
 		lua_pushnil(ctx);
-		arcan_db_begin_transaction(dbhandle, DVT_APPL, tid);
+		arcan_db_begin_transaction(dbhandle, kvtgt, tid);
 
 		size_t counter = 0;
 		while (lua_next(ctx, 1) != 0){
@@ -4243,15 +4275,28 @@ static int storekey(lua_State* ctx)
 		}
 
 		arcan_db_end_transaction(dbhandle);
-	}
-	else {
-		const char* key = luaL_checkstring(ctx, 1);
-		const char* name = luaL_checkstring(ctx, 2);
-		arcan_db_appl_kv(dbhandle, arcan_appl_id(), key, name);
+		lua_pushboolean(ctx, true);
+		LUA_ETRACE("store_key", NULL);
+		return 1;
 	}
 
+	const char* keystr = luaL_checkstring(ctx, 1);
+	const char* valstr = luaL_checkstring(ctx, 2);
+	if (!validate_key(keystr)){
+		arcan_warning("store_key, key[%s] rejected "
+			"(restricted to [a-Z0-9_])\n", keystr);
+		lua_pushboolean(ctx, false);
+		LUA_ETRACE("store_key", "invalid key");
+		return 1;
+	}
+
+	arcan_db_begin_transaction(dbhandle, kvtgt, tid);
+	arcan_db_add_kvpair(dbhandle, keystr, valstr);
+	arcan_db_end_transaction(dbhandle);
+
+	lua_pushboolean(ctx, true);
 	LUA_ETRACE("store_key", NULL);
-	return 0;
+	return 1;
 }
 
 static int push_stringres(lua_State* ctx, struct arcan_strarr* res)
