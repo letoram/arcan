@@ -26,15 +26,6 @@ static char* g_appl_id = "#appl not initialized";
 static char* appl_script = NULL;
 
 /*
- * run as atexit() after a valid id has been set
- * to "avoid" a leak of a few bytes
- */
-static void drop_appl()
-{
-	free(g_appl_id);
-}
-
-/*
  * This is also planned as an entry point for implementing the
  * APF mapping, possibly with the chainloader setting envvars
  * for how the namespace is made, and if not (.apf extension in appl_id)
@@ -149,7 +140,6 @@ bool arcan_verifyload_appl(const char* appl_id, const char** errc)
 	appl_len = app_len;
 	appl_script = script_path;
 
-	atexit(drop_appl);
 	return true;
 }
 

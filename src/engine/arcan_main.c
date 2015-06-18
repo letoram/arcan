@@ -649,8 +649,7 @@ int main(int argc, char* argv[])
 		}
 
 		if (!fallback){
-			arcan_warning("Lua VM instance failed and no "
-				"fallback defined, giving up.\n");
+			arcan_warning("Lua VM failed with no fallback defined, (see -b arg).\n");
 			goto error;
 		}
 
@@ -709,6 +708,7 @@ int main(int argc, char* argv[])
 		arcan_video_recoverexternal(false, &saved, &truncated,
 			arcan_lua_adopt, settings.lua);
 		arcan_warning("switching applications, %d adopted.\n", saved);
+		in_recover = false;
 	}
 
 	arcan_evctx* evctx = arcan_event_defaultctx();

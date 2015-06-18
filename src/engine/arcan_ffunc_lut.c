@@ -25,6 +25,7 @@
 #include "arcan_frameserver.h"
 #include "arcan_lua.h"
 #include "arcan_3dbase.h"
+#include "arcan_ffunc_lut.h"
 
 /*
  * will be allocated / initialized once
@@ -32,9 +33,7 @@
 static arcan_vfunc_cb* f_lut;
 extern int system_page_size;
 
-static enum arcan_ffunc_rv fatal_ffunc(enum arcan_ffunc_cmd cmd,
-	av_pixel* buf, size_t buf_sz, uint16_t width, uint16_t height,
-	unsigned mode, vfunc_state state)
+static enum arcan_ffunc_rv fatal_ffunc FFUNC_HEAD
 {
 /* avoid the possible infinite recursion in delete(broken ffunc)->
  * fatal->delete->... */
@@ -50,9 +49,7 @@ static enum arcan_ffunc_rv fatal_ffunc(enum arcan_ffunc_cmd cmd,
 	return FRV_NOFRAME;
 }
 
-static enum arcan_ffunc_rv null_ffunc(enum arcan_ffunc_cmd cmd,
-	av_pixel* buf, size_t buf_sz, uint16_t width, uint16_t height,
-	unsigned mode, vfunc_state state)
+static enum arcan_ffunc_rv null_ffunc FFUNC_HEAD
 {
 	return FRV_NOFRAME;
 }

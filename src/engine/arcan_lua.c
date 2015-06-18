@@ -753,8 +753,10 @@ void arcan_lua_adopt(arcan_vobj_id id, void* tag)
 		fsrv->tag = (uintptr_t) 0;
 	}
 
-	if (!grabapplfunction(ctx, "adopt", sizeof("adopt") - 1))
+	if (!grabapplfunction(ctx, "adopt", sizeof("adopt") - 1)){
+		arcan_video_deleteobject(id);
 		return;
+	}
 
 	int argc = 1;
 	lua_pushvid(ctx, id);
@@ -2392,7 +2394,7 @@ static int syscollapse(lua_State* ctx)
 		}
 #define arcan_fatal(...) do { lua_rectrigger( __VA_ARGS__); } while(0)
 
-		LUA_ETRACE("system_collapse", NULL);
+		LUA_ETRACE("system_collapse", null);
 		longjmp(arcanmain_recover_state, 1);
 	}
 	else{
@@ -7080,9 +7082,9 @@ static int orientmodel(lua_State* ctx)
 static int shader_ugroup(lua_State* ctx)
 {
 	LUA_TRACE("shader_ugroup");
-	lua_pushnumber(ctx,
-		agp_shader_addgroup(luaL_checknumber(ctx, 1))
-	);
+	agp_shader_id shid = lua_type(ctx, 1) == LUA_TSTRING ?
+		agp_shader_lookup(luaL_checkstring(ctx, 1)) : luaL_checknumber(ctx, 1);
+	lua_pushnumber(ctx, agp_shader_addgroup(shid));
 	LUA_ETRACE("shader_ugroup", NULL);
 	return 1;
 }
