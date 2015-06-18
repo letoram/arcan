@@ -7148,7 +7148,7 @@ static int shader_uniform(lua_State* ctx)
 	ssize_t darg = lua_gettop(ctx) - strlen(fmtstr);
 	if (darg != 3 && darg != 4)
 		arcan_fatal("shader_uniform(), invalid number of arguments (%d) for "
-			"format string: %s\n", lua_gettop(ctx), darg);
+			"format string: %s\n", lua_gettop(ctx), fmtstr);
 
 	size_t abase = darg == 4 ? 5 : 4;
 
