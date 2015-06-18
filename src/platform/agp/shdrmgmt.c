@@ -349,7 +349,7 @@ agp_shader_id agp_shader_build(const char* tag, const char* geom,
 
 /* reset everything to NULL */
 		}
-		arcan_mem_freearr(&cur->ugroups);
+		arcan_mem_free(cur->ugroups.data);
 		memset(cur, 0, sizeof(struct shader_cont));
 	}
 

@@ -812,7 +812,7 @@ enum arcan_ffunc_rv arcan_frameserver_socketpoll FFUNC_HEAD
 			tgt->sockaddr = tgt->sockkey = NULL;
 
 			return arcan_frameserver_socketverify(
-				cmd, buf, buf_sz, width, height, mode, state);
+				cmd, buf, buf_sz, width, height, mode, state, tgt->vid);
 		break;
 
 /* socket is closed in frameserver_destroy */

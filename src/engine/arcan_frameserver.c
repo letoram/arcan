@@ -314,8 +314,12 @@ enum arcan_ffunc_rv arcan_frameserver_emptyframe FFUNC_HEAD
 			arcan_frameserver_free(tgt);
 		break;
 
+		case FFUNC_ADOPT:
+			tgt->vid = srcid;
+		break;
+
 		default:
-			break;
+		break;
 	}
 
 	arcan_frameserver_leave();
@@ -411,8 +415,11 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
  * so set monitor flags and wake up */
 		shmpage->vready = false;
 		arcan_sem_post( tgt->vsync );
-
 		break;
+
+	case FFUNC_ADOPT:
+		tgt->vid = srcid;
+	break;
   }
 
 	arcan_frameserver_leave();
@@ -435,6 +442,9 @@ enum arcan_ffunc_rv arcan_frameserver_feedcopy FFUNC_HEAD
 
 	if (cmd == FFUNC_DESTROY)
 		arcan_frameserver_free(state.ptr);
+
+	else if (cmd == FFUNC_ADOPT)
+		src->vid = srcid;
 
 	else if (cmd == FFUNC_POLL){
 /* done differently since we don't care if the frameserver
@@ -491,6 +501,9 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe FFUNC_HEAD
 
 	if (cmd == FFUNC_DESTROY)
 		arcan_frameserver_free(state.ptr);
+
+	else if (cmd == FFUNC_ADOPT)
+		src->vid = srcid;
 
 	else if (cmd == FFUNC_TICK){
 /* done differently since we don't care if the frameserver

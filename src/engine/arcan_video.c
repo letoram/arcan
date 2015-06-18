@@ -614,8 +614,12 @@ void arcan_video_recoverexternal(bool pop, int* saved,
 				ctx->vitems_pool[j].feed.state.tag == ARCAN_TAG_FRAMESERV){
 				arcan_vobject* cobj = &ctx->vitems_pool[j];
 
-/* only liberate objects if we have enough
- * space left to store, the rest will be lost */
+/* some feedfunctions are dangerous to try and save */
+				if (cobj->feed.ffunc == FFUNC_SOCKVER ||
+					cobj->feed.ffunc == FFUNC_SOCKPOLL)
+					continue;
+
+/* only liberate if we have enough space left */
 				if (s_ofs < n_ext){
 					alim[s_ofs].state = cobj->feed.state;
 					alim[s_ofs].ffunc = cobj->feed.ffunc;
@@ -664,11 +668,15 @@ clense:
 		vobj->feed.ffunc = alim[i].ffunc;
 		vobj->origw = alim[i].origw;
 		vobj->origh = alim[i].origh;
-		vobj->order = alim[i].zv;
-		vobj->blendmode = BLEND_NORMAL;
+/*		vobj->order = alim[i].zv;
+		vobj->blendmode = BLEND_NORMAL; */
 		vobj->tracetag = alim[i].tracetag;
 
+/* since the feed function may keep a track of its parent (some do)
+ * we also need to support the adopt call */
 		arcan_video_attachobject(did);
+		arcan_ffunc_lookup(vobj->feed.ffunc)(FFUNC_ADOPT,
+			0, 0, 0, 0, 0, vobj->feed.state, vobj->cellid);
 
 		(*saved)++;
 		if (adopt)
@@ -2813,7 +2821,7 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 	if (!FL_TEST(vobj, FL_CLONE)){
 		if (vobj->feed.ffunc){
 			arcan_ffunc_lookup(vobj->feed.ffunc)(FFUNC_DESTROY,
-				0, 0, 0, 0, 0, vobj->feed.state);
+				0, 0, 0, 0, 0, vobj->feed.state, vobj->cellid);
 			vobj->feed.state.ptr = NULL;
 			vobj->feed.ffunc = FFUNC_FATAL;
 			vobj->feed.state.tag = ARCAN_TAG_NONE;
@@ -3618,7 +3626,7 @@ static int tick_rendertarget(struct rendertarget* tgt)
 
 		if (elem->feed.ffunc && !FL_TEST(elem, FL_CLONE))
 			arcan_ffunc_lookup(elem->feed.ffunc)
-				(FFUNC_TICK, 0, 0, 0, 0, 0, elem->feed.state);
+				(FFUNC_TICK, 0, 0, 0, 0, 0, elem->feed.state, elem->cellid);
 
 /* mode > 0, cycle activate frame every 'n' ticks */
 		if (elem->frameset && elem->frameset->mctr != 0){
@@ -4087,8 +4095,8 @@ static void ffunc_process(arcan_vobject* dst, int cookie)
 
 /* if there is a new frame available, we make sure to flag it
  * dirty so that it will be rendered */
-	if (dst->feed.ffunc && arcan_ffunc_lookup(dst->feed.ffunc)(
-			FFUNC_POLL, 0, 0, 0, 0, 0, dst->feed.state) == FRV_GOTFRAME){
+	if (dst->feed.ffunc && arcan_ffunc_lookup(dst->feed.ffunc)(FFUNC_POLL,
+		0, 0, 0, 0, 0, dst->feed.state, dst->cellid) == FRV_GOTFRAME){
 		FLAG_DIRTY(dst);
 
 /* cycle active frame store (depending on how often we want to
@@ -4106,7 +4114,7 @@ static void ffunc_process(arcan_vobject* dst, int cookie)
 			dst->vstore->vinf.text.raw, dst->vstore->vinf.text.s_raw,
 			dst->vstore->w, dst->vstore->h,
 			dst->vstore->vinf.text.glid,
-			dst->feed.state
+			dst->feed.state, dst->cellid
 		);
 	}
 
@@ -4542,7 +4550,7 @@ void arcan_vint_pollreadback(struct rendertarget* tgt)
 	else{
 		arcan_ffunc_lookup(vobj->feed.ffunc)(FFUNC_READBACK,
 			rbb.ptr, rbb.w * rbb.h * sizeof(av_pixel),
-			rbb.w, rbb.h, 0, vobj->feed.state
+			rbb.w, rbb.h, 0, vobj->feed.state, vobj->cellid
 		);
 	}
 
