@@ -10,7 +10,7 @@
 -- different set of uniforms when activated. The returned shader is valid
 -- for all shader related calls but has its lifecycle to the shader it was
 -- derived from. Any forced uniform at the time of group creation will
--- be copied from the primary shader group to the new one.
+-- be copied from the group associated with the specified shid.
 -- @note: Though it is bad form to ever rely in the specific value of
 -- a shid, shaders that are derived typically have a value > 65535.
 -- @group: vidsys
