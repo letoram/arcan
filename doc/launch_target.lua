@@ -32,8 +32,10 @@
 -- "cursor_input", "key_input", "segment_request", "state_size",
 -- "resource_status", "registered", "unknown"
 --
--- @note: "resized" {width, height} the underlying storage
--- has changed dimensions.
+-- @note: "resized" {width, height, origo_ll} the underlying storage
+-- has changed dimensions. If origo_ll is set, the source data is stored
+-- with origo at lower left rather than upper left. To account for this,
+-- look into ref:image_set_txcos_default
 --
 -- @note: "message" {message} - text alert (user hint)
 --

@@ -3575,7 +3575,10 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				tblstr(ctx, "kind", "resized", top);
 				tblnum(ctx, "width", ev->fsrv.width, top);
 				tblnum(ctx, "height", ev->fsrv.height, top);
+
+/* mirrored is incorrect but can't drop it for legacy reasons */
 				tblnum(ctx, "mirrored", ev->fsrv.glsource, top);
+				tblnum(ctx, "origo_ll", ev->fsrv.glsource, top);
 			break;
 		}
 
