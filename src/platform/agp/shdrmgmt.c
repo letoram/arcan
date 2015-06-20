@@ -30,11 +30,6 @@
 
 #define TBLSIZE (1 + TIMESTAMP_D - MODELVIEW_MATR)
 
-/*
- * UGROUP allocation is broken; we should replace this with a more
- * normal static-grow-by-8 array or something, this is .. not good
- */
-
 /* all current global shader settings,
  * updated whenever a vobj/3dobj needs a different state
  * each global */
@@ -132,6 +127,11 @@ struct shaderv {
 	uint8_t data[64];
 	struct shaderv* next;
 };
+
+/*
+ * SLOTS allocation is terrible; we should replace this with a more
+ * normal grow-by-n.
+ */
 
 struct shader_cont {
 	char* label;
@@ -461,7 +461,7 @@ agp_shader_id agp_shader_addgroup(agp_shader_id shid)
 		&cur->ugroups.cdata[group_ind];
 
 /* duplicate the chain from the first group */
-	struct shaderv* main = cur->ugroups.cdata[0];
+	struct shaderv* main = cur->ugroups.cdata[GROUP_INDEX(shid)];
 	while(main){
 		*chain = arcan_alloc_mem(sizeof(struct shaderv),
 			ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
