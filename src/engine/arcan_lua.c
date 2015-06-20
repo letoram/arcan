@@ -770,6 +770,25 @@ void arcan_lua_adopt(arcan_vobj_id id, void* tag)
 	}
 
 	wraperr(ctx, lua_pcall(ctx, argc, 0, 0), "adopt");
+
+/* might've been deleted, otherwise -- simulate some events that reflect
+ * the current state of the object */
+	if (arcan_video_getobject(id) == vobj && vobj->feed.state.ptr == fsrv)
+		if (arcan_frameserver_enter(fsrv)){
+			arcan_event rezev = {
+				.category = EVENT_FSRV,
+				.fsrv.kind = EVENT_FSRV_RESIZED,
+				.fsrv.width = fsrv->desc.width,
+				.fsrv.height = fsrv->desc.height,
+				.fsrv.video = fsrv->vid,
+				.fsrv.audio = fsrv->aid,
+				.fsrv.otag = fsrv->tag,
+				.fsrv.glsource = fsrv->shm.ptr->hints & RHINT_ORIGO_LL
+			};
+
+			arcan_frameserver_leave();
+			arcan_event_enqueue(arcan_event_defaultctx(), &rezev);
+		}
 }
 
 static int zapresource(lua_State* ctx)
