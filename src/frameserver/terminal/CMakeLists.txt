@@ -49,7 +49,7 @@ if (LIBTSM_FOUND)
 		${FSRV_ROOT}/../engine
 		${FSRV_ROOT}
 		${FSRV_ROOT}/util
-		${LIBTSM_INCLUDE_DIRS}
+		${LIBTSM_INCLUDE_DIR}
 	)
 
 else()

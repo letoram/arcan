@@ -12,7 +12,12 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#ifdef __APPLE__
+#include <util.h>
+#else
 #include <pty.h>
+#endif
+
 #include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -145,6 +150,11 @@ static int pty_init_child(int fd)
 	if (r < 0)
 		return -errno;
 
+#ifdef __APPLE__
+#ifndef SIGUNUSED
+#define SIGUNUSED 31
+#endif
+#endif
 	for (i = 1; i < SIGUNUSED; ++i)
 		signal(i, SIG_DFL);
 
@@ -210,9 +220,12 @@ pid_t shl_pty_open(struct shl_pty **out,
 	if (fd < 0)
 		return -errno;
 
-	r = pipe2(comm, O_CLOEXEC);
+	r = pipe(comm);
 	if (r < 0)
 		return -errno;
+
+	fcntl(comm[0], F_SETFD, FD_CLOEXEC);
+	fcntl(comm[1], F_SETFD, FD_CLOEXEC);
 
 	pid = fork();
 	if (pid < 0) {

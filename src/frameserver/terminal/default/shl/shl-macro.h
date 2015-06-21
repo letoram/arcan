@@ -164,7 +164,7 @@ static inline size_t SHL_ALIGN_POWER2(size_t u)
 #define SHL_U64_TO_PTR(_ptr) SHL_TYPE_TO_PTR(uint64_t, (_ptr))
 
 /* compile-time assertions */
-#define shl_assert_cc(_expr) static_assert(_expr, #_expr)
+#define shl_assert_cc(_expr) _Static_assert(_expr, #_expr)
 
 /*
  * Safe Multiplications
