@@ -19,9 +19,9 @@
  *
  *   - mapping / remapping existing file-descriptors in situ
  *
- *  and some more cosmetic things like less "resize- noise" terminal
- *  resize (period hint and rescale in between pulses), drag-n-drop
- *  style font switching, dynamic pipe redirection, ...
+ *  period hint and rescale in between pulses), drag-n-drop
+ *  style font switching, dynamic pipe redirection, env clone/restore,
+ *  time-keeping manipulation
  */
 #include <stdlib.h>
 #include <stdio.h>
@@ -62,7 +62,7 @@ static struct {
 	struct tsm_vte* vte;
 	struct shl_pty* pty;
 
-	bool extclock;
+	bool extclock, dirty;
 
 	pid_t child;
 	int child_fd;
@@ -136,6 +136,7 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 	dbg[1] = attr->bg;
 	dbg[2] = attr->bb;
 
+	term.dirty = true;
 	draw_box(&term.acon, base_x, base_y, term.cell_w + 1,
 		term.cell_h + 1, RGBA(bgc[0], bgc[1], bgc[2], 0xff));
 
@@ -197,10 +198,10 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 #endif
 }
 
-static void screen_size(int screenw, int screenh, int fontw, int fonth)
+static void screen_size(int cols, int rows, int fontw, int fonth)
 {
-	int px_w = screenw * fontw;
-	int px_h = screenh * fonth;
+	int px_w = cols * fontw;
+	int px_h = rows * fonth;
 
 	if (!arcan_shmif_resize(&term.acon, px_w, px_h)){
 		LOG("arcan_shmif_resize(), couldn't set"
@@ -208,15 +209,14 @@ static void screen_size(int screenw, int screenh, int fontw, int fonth)
 		exit(EXIT_FAILURE);
 	}
 
-	tsm_screen_resize(term.screen, screenw, screenh);
-	shl_pty_resize(term.pty, screenw, screenh);
+	tsm_screen_resize(term.screen, cols, rows);
+	shl_pty_resize(term.pty, cols, rows);
 
-	term.screen_w = screenw;
-	term.screen_h = screenh;
+	term.screen_w = cols;
+	term.screen_h = rows;
 	term.cell_w = fontw;
 	term.cell_h = fonth;
-	term.age = 0;
-	int rc = shl_pty_dispatch(term.pty);
+	term.age = 1;
 	term.age = tsm_screen_draw(term.screen, draw_cb, NULL /* draw_cb_data */);
 }
 
@@ -224,6 +224,7 @@ static void read_callback(struct shl_pty* pty,
 	void* data, char* u8, size_t len)
 {
 	tsm_vte_input(term.vte, u8, len);
+	term.age = tsm_screen_draw(term.screen, draw_cb, NULL /* draw_cb_data */);
 }
 
 static void write_callback(struct tsm_vte* vte,
@@ -279,23 +280,39 @@ static void setup_shell(struct arg_arr* argarr)
  */
 static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 {
-/* map mouse motion + button to select, etc. */
-	if (label){
-
-	}
-
 /* keyboard input */
 	if (ioev->datatype == EVENT_IDATATYPE_TRANSLATED){
 		bool pressed = ioev->input.translated.active;
 		if (!pressed)
 			return;
 
-		tsm_vte_handle_keyboard(term.vte,
+		if (label){
+			int mag = 1; /* scan LABEL, check for _D and translate to mag */
+			if (strcmp(label, "SCROLL_UP") == 0)
+				tsm_screen_scroll_up(term.screen, mag);
+			else if (strcmp(label, "SCROLL_DOWN") == 0)
+				tsm_screen_scroll_down(term.screen, mag);
+			else if (strcmp(label, "UP") == 0)
+				tsm_screen_move_up(term.screen, mag, false);
+			else if (strcmp(label, "DOWN") == 0)
+				tsm_screen_move_down(term.screen, mag, false);
+			else if (strcmp(label, "LEFT") == 0)
+				tsm_screen_move_left(term.screen, mag);
+			else if (strcmp(label, "RIGHT") == 0)
+				tsm_screen_move_right(term.screen, mag);
+		}
+/* ARKMOD_LSHIFT / ARKMOD_RSHIFT => TSM_SHIFT_MASK,
+ * ARKMOD_LCTRL / ARKMOD_RCTRL -> TSM_CONTROL_MASK,
+ * ARKMOD_LALT / ARKMOD_RALT -> TSM_ALT_MASK,
+ * ARKMOD_NUM / TSM_LOCK_MASK?
+ * ARKMOD_LMETA / ARKMOD_RMETA -> TSM_LOGO_MASK */
+		if (tsm_vte_handle_keyboard(term.vte,
 			ioev->input.translated.keysym,
 			ioev->input.translated.keysym,
 			ioev->input.translated.modifiers,
 			ioev->input.translated.subid
-		);
+		))
+			tsm_screen_sb_reset(term.screen);
 	}
 	else if (ioev->datatype == EVENT_IDATATYPE_DIGITAL){
 	}
@@ -335,16 +352,14 @@ static void targetev(arcan_tgtevent* ev)
 	}
 	break;
 
-	case TARGET_COMMAND_STEPFRAME:{
-		term.age = tsm_screen_draw(term.screen, draw_cb, NULL /* draw_cb_data */);
-		arcan_shmif_signal(&term.acon, SHMIF_SIGVID);
-	}
+	case TARGET_COMMAND_STEPFRAME:
+	break;
 
+/* problem:
+ *  1. how to grab and pack shell environment?
+ *  2. kill shell, spawn new using unpacked environment */
 	case TARGET_COMMAND_STORE:
 	case TARGET_COMMAND_RESTORE:
-/* need a serialization format for current active terminal
- * environment, grab that, pack and write into ev->tgt.ioevs[0].iv
- * and then unpack on restore */
 	break;
 
 	case TARGET_COMMAND_EXIT:
@@ -386,6 +401,7 @@ static void event_dispatch(arcan_event* ev)
 static void main_loop()
 {
 	arcan_event ev;
+
 	if (term.extclock){
 		while (arcan_shmif_wait(&term.acon, &ev) != 0){
 			int rc = shl_pty_dispatch(term.pty);
@@ -397,17 +413,30 @@ static void main_loop()
 		}
 	}
 	else {
-		while(true){
-			int rc = shl_pty_dispatch(term.pty);
-			if (0 < rc){
-				LOG("shl_pty_dispatch failed(%d)\n", rc);
-				break;
-			}
-			while (arcan_shmif_poll(&term.acon, &ev) > 0)
-				event_dispatch(&ev);
+		short pollev = POLLIN | POLLERR | POLLNVAL;
+		int ptyfd = shl_pty_get_fd(term.pty);
 
-			term.age = tsm_screen_draw(term.screen, draw_cb, NULL /* draw_cb_data */);
-			arcan_shmif_signal(&term.acon, SHMIF_SIGVID);
+		while(true){
+			struct pollfd fds[2] = {
+				{ .fd = ptyfd, .events = pollev},
+				{ .fd = term.acon.epipe, .events = pollev}
+			};
+
+			int sv = poll(fds, 2, -1);
+			if (fds[0].revents & POLLIN){
+				int rc = shl_pty_dispatch(term.pty);
+			}
+			if (fds[1].revents & POLLIN){
+				while (arcan_shmif_poll(&term.acon, &ev) > 0)
+					event_dispatch(&ev);
+				int rc = shl_pty_dispatch(term.pty);
+			}
+
+/* audible beep or not? */
+			if (term.dirty){
+				arcan_shmif_signal(&term.acon, SHMIF_SIGVID);
+				term.dirty = false;
+			}
 		}
 	}
 }
