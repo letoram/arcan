@@ -5934,9 +5934,12 @@ static int targetlaunch(lua_State* ctx)
 			.args.builtin.mode = "game"
 		};
 
+		char* expbuf[] = {colon_escape(strdup(exec)), colon_escape(strdup(
+			argv.count >= 2 ? argv.data[1] : "")), NULL};
+		arcan_expand_namespaces(expbuf);
+
 		char* argstr = NULL;
-		asprintf(&argstr, "core=%s:resource=%s",
-			colon_escape(exec), argv.count >= 2 ? colon_escape(argv.data[1]) : "");
+		asprintf(&argstr, "core=%s:resource=%s", expbuf[0], expbuf[1]);
 		args.args.builtin.resource = argstr;
 
 		if (!fsrv_ok||arcan_frameserver_spawn_server(intarget, args) != ARCAN_OK){
@@ -5944,6 +5947,8 @@ static int targetlaunch(lua_State* ctx)
 			intarget = NULL;
 		}
 		free(argstr);
+		free(expbuf[0]);
+		free(expbuf[1]);
 	break;
 
 	default:
@@ -5966,6 +5971,7 @@ cleanup:
 	arcan_mem_freearr(&argv);
 	arcan_mem_freearr(&env);
 	arcan_mem_freearr(&libs);
+	arcan_mem_free(exec);
 
 	LUA_ETRACE("launch_target", NULL);
 	return rc;

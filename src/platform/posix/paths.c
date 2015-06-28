@@ -104,8 +104,8 @@ static char* rep_str(char* instr)
 			*beg = '\0';
 			*end = '\0';
 			char* newstr = alloc_cat(instr, exp);
-			free(instr);
 			char* resstr = alloc_cat(newstr, end+1);
+			free(instr);
 			free(newstr);
 			return rep_str(resstr);
 		}
