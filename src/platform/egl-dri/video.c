@@ -1,55 +1,51 @@
 /*
- * Copyright 2014-2015, Björn Ståhl
- * License: 3-Clause BSD, see COPYING file in arcan source repository.
- * Reference: http://arcan-fe.com
+ * copyright 2014-2015, björn ståhl
+ * license: 3-clause bsd, see copying file in arcan source repository.
+ * reference: http://arcan-fe.com
  */
 
 /*
- * Points to explore for this platform module:
+ * points to explore for this platform module:
  * (currently a bit careful spending more time here pending the
  * development of vulcan, nvidia egl streams extension etc.)
  *
- * 1. Display Hotplug Events
- *    [ Note update: we seem again to be forced to consider the
- *      whole udev/.. mess, have the display scan be user- invoked
- *      for now and look into the design of a better device-detection+
- *      shared synchronization platform rather than have a custom one
- *      in each sub-platform. ]
+ * 1. display hotplug events [ note update: we seem again to be forced to
+ * consider the whole udev/.. mess, have the display scan be user- invoked for
+ * now and look into the design of a better device-detection+ shared
+ * synchronization platform rather than have a custom one in each sub-platform.
+ * ]
  *
- *    Shallow experiments in the lab showed somewhere around ~150ms
- *    complete stalls for a rescan so that is not really a viable
- *    option. One would thing that there would be some mechanism
- *    for the drm- master to do this already.
+ *    shallow experiments in the lab showed somewhere around ~150ms complete
+ *    stalls for a rescan so that is not really a viable option. one would
+ *    thing that there would be some mechanism for the drm- master to do this
+ *    already.
  *
- * 2. Support for multiple graphics cards,
- *    I have no hardware and testing rig for this, but the heavy lifting
- *    should be left up to the egl implementation or so, maybe we need
- *    to track locality in vstore and do a whole prime-buffer etc. transfer
- *    or mirror the vstore on both devices. Hunt for node[0] references
- *    as those have to be fixed.
+ * 2. support for multiple graphics cards, i have no hardware and testing rig
+ * for this, but the heavy lifting should be left up to the egl implementation
+ * or so, maybe we need to track locality in vstore and do a whole prime-buffer
+ * etc. transfer or mirror the vstore on both devices. hunt for node[0]
+ * references as those have to be fixed.
  *
- *    In addition (and this is harder) we would need some kind of
- *    hinting to which render-node which application should map to
- *    and also support migrating between nodes. Platform design currently
- *    has no way to achieve this.
+ *    in addition (and this is harder) we would need some kind of hinting to
+ *    which render-node which application should map to and also support
+ *    migrating between nodes. platform design currently has no way to achieve
+ *    this.
  *
- * 3. Support for External Launch / Building, Restoring Contexts
+ * 3. support for external launch / building, restoring contexts
  *    note the test cases mentioned in _prepare
  *
- * 4. DPMS management? native cursor? backlight?
- *    - backlight support should really be added as yet another led
- *      driver, that code is a bit old and dusty though so there is
- *      incentive to redesign that anyhow (so both dedicated led controllers,
- *      backlights and keyboards are covered in the same interface).
+ * 4. backlight? backlight support should really be added as yet another led
+ * driver, that code is a bit old and dusty though so there is incentive to
+ * redesign that anyhow (so both dedicated led controllers, backlights and
+ * keyboards are covered in the same interface).
  *
- * 5. Advanced Synchronization options (swap-interval, synch directly
- *    to front buffer, swap-with-tear, pre-render then wake / move
- *    cursor just before etc.), discard when we miss deadline,
- *    DRM_VBLANK_RELATIVE, DRM_VBLANK_SECONDARY?
+ * 5. advanced synchronization options (swap-interval, synch directly to front
+ * buffer, swap-with-tear, pre-render then wake / move cursor just before
+ * etc.), discard when we miss deadline, drm_vblank_relative,
+ * drm_vblank_secondary?
  *
  * 6. Survive "no output display" (possibly by reverting into a stall/wait
- *    until the display is made available, or switch to a display-less
- *    context)
+ * until the display is made available, or switch to a display-less context)
  */
 #include <stdio.h>
 #include <string.h>
@@ -103,7 +99,7 @@ static PFNEGLCREATEIMAGEKHRPROC eglCreateImageKHR;
 static PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES;
 
 /*
- * real heuristics scheduled for 0.5.1
+ * real heuristics scheduled for 0.5.1, see .5 at top
  */
 static char* egl_synchopts[] = {
 	"default", "double buffered, display controls refresh",
@@ -166,10 +162,10 @@ struct dispout {
 		drmModeModeInfoPtr mode;
 		drmModeCrtcPtr old_crtc;
 		int crtc;
+		enum dpms_state dpms;
 	} display;
 
-/* v-store mapping, with texture blitting options
- * and possibly mapping hint */
+/* v-store mapping, with texture blitting options and possibly mapping hint */
 	arcan_vobj_id vid;
 	size_t dispw, disph;
 	_Alignas(16) float projection[16];
@@ -220,6 +216,18 @@ static struct dispout* get_display(size_t index)
 	}
 
 	return NULL;
+}
+
+static int adpms_to_dpms(enum dpms_state state)
+{
+	switch (state){
+	case ADPMS_ON: return DRM_MODE_DPMS_ON;
+	case ADPMS_STANDBY: return DRM_MODE_DPMS_STANDBY;
+	case ADPMS_SUSPEND: return DRM_MODE_DPMS_SUSPEND;
+	case ADPMS_OFF: return DRM_MODE_DPMS_OFF;
+	default:
+		return -1;
+	}
 }
 
 static void dpms_set(struct dispout* d, int level)
@@ -986,6 +994,7 @@ retry:
 
 /* Primary display setup, notify about other ones (?) */
 	dpms_set(d, DRM_MODE_DPMS_ON);
+	d->display.dpms = ADPMS_ON;
 
 	drmModeFreeResources(res);
 	return 0;
@@ -1247,10 +1256,8 @@ struct monitor_mode platform_video_dimensions()
 	};
 
 /*
- * this is done to work around how gl- agp
- * handles scissoring as there's no version of platform_video_dimensiosn
- * that worked for the display out, and we want this module free of
- * AGP calls so it can work for regular framebuffers and a pixman agp
+ * this is done to work around how gl- agp handles scissoring as there's no
+ * version of platform_video_dimension that worked for the display out
  */
 	if (egl_dri.last_display){
 		res.width = egl_dri.last_display->display.mode->hdisplay;
@@ -1278,17 +1285,15 @@ bool platform_video_init(uint16_t w, uint16_t h,
 	};
 
 /*
- * temporarily override segmentation fault handler here
- * because it has happened in libdrm for a number of
- * "user-managable" settings (i.e. drm locked to X, wrong
- * permissions etc.)
+ * temporarily override segmentation fault handler here because it has happened
+ * in libdrm for a number of "user-managable" settings (i.e. drm locked to X,
+ * wrong permissions etc.)
  */
 	sigaction(SIGSEGV, &err_sh, &old_sh);
 
 	const char* device = getenv("ARCAN_VIDEO_DEVICE") ?
 		getenv("ARCAN_VIDEO_DEVICE") : device_name;
 
-	printf("device: %s\n", device);
 	if (setup_node(&nodes[0], device) != 0)
 		goto cleanup;
 
@@ -1298,9 +1303,8 @@ bool platform_video_init(uint16_t w, uint16_t h,
 	map_extensions();
 
 /*
- * if w, h are set it acts as a hint to the resolution that
- * we will request. Default drawing hint is stretch to display
- * anyhow.
+ * if w, h are set it acts as a hint to the resolution that we will request.
+ * Default drawing hint is stretch to display anyhow.
  */
 	struct dispout* d = allocate_display(&nodes[0]);
 
@@ -1347,8 +1351,8 @@ void platform_video_synch(uint64_t tick_count, float fract,
 
 	size_t nd;
 	arcan_bench_register_cost( arcan_vint_refresh(fract, &nd) );
-/* currently we always blit, with a different synchronization,
- * we can avoid updating when there has been no changes (nd == 0) */
+/* currently we always blit, with a different synchronization, we can avoid
+ * updating when there has been no changes (nd == 0) */
 
 /* blit targets to individual outputs and schedule flips */
 	struct dispout* d;
@@ -1380,10 +1384,10 @@ void platform_video_synch(uint64_t tick_count, float fract,
 			arcan_fatal("platform/egl-dri() - poll on device failed.\n");
 
 /*
- * one would think this would be a decent interface to check for hotplug
- * events but alas, it seems to be no serious approach to this other than
- * relying on sysfs? <insert explicit lyrics here>, what's with this
- * interface and vulgar side-channels?
+ * one would think this would be a decent interface to check for hotplug events
+ * but alas, it seems to be no serious approach to this other than relying on
+ * sysfs? <insert explicit lyrics here>, what's with this interface and vulgar
+ * side-channels?
  */
 		drmHandleEvent(nodes[0].fd, &evctx);
 
@@ -1483,16 +1487,6 @@ const char** platform_video_envopts()
 	return (const char**) egl_envopts;
 }
 
-void platform_video_prepare_external()
-{
-/* sweep all displays and save a list of their
- * relevant configuration states (connector ID, etc.)
- * then drop them --
- *
- * if we're in DRM master mode, temporarily release it
- */
-}
-
 static bool map_connector(int fd, int conid, arcan_vobj_id src)
 {
 	for (size_t i = 0; i < disp_sz; i++)
@@ -1521,6 +1515,23 @@ static bool map_connector(int fd, int conid, arcan_vobj_id src)
 	return true;
 }
 
+enum dpms_state platform_video_dpms(
+	platform_display_id disp, enum dpms_state state)
+{
+	struct dispout* out = get_display(disp);
+	if (!out)
+		return ADPMS_IGNORE;
+
+	if (state == ADPMS_IGNORE)
+		return out->display.dpms;
+
+	if (state != out->display.dpms)
+		dpms_set(out, adpms_to_dpms(state));
+
+	out->display.dpms = state;
+	return state;
+}
+
 bool platform_video_map_display(
 	arcan_vobj_id id, platform_display_id disp, enum blitting_hint hint)
 {
@@ -1544,14 +1555,14 @@ bool platform_video_map_display(
 
 /*
  * note that we can't use unmap display here, some drivers behave..
- * aggressively towards creating/releasing a single Crtc repeatedly
- * with others active.
+ * aggressively towards creating/releasing a single Crtc repeatedly with others
+ * active.
  */
 
 /*
- * BADID displays won't be rendered but remain allocated, question
- * is should we power-save the display or return the original
- * Crtc until we need it again? Both have valid points..
+ * BADID displays won't be rendered but remain allocated, question is should we
+ * power-save the display or return the original Crtc until we need it again?
+ * Both have valid points..
  */
 	out->vid = id;
 	return true;
@@ -1608,13 +1619,12 @@ static void draw_display(struct dispout* d)
 		d->display.mode->vdisplay, txcos, NULL);
 
 /*
- * another rough corner case, if we have a store that is not
- * world ID but shared with different texture coordinates
- * (to extend display), we need to draw the cursor .. but
- * if the texture coordinates indicate that we only draw a
- * subset, we need to check if the cursor is actually inside
- * that area... Seems more and more that accelerated cursors
- * add to more state explosion than they are worth ..
+ * another rough corner case, if we have a store that is not world ID but
+ * shared with different texture coordinates (to extend display), we need to
+ * draw the cursor .. but if the texture coordinates indicate that we only draw
+ * a subset, we need to check if the cursor is actually inside that area...
+ * Seems more and more that accelerated cursors add to more state explosion
+ * than they are worth ..
  */
 	if (vobj->vstore == arcan_vint_world()){
 		arcan_vint_drawcursor(false);
@@ -1678,17 +1688,23 @@ static void update_display(struct dispout* d)
  */
 }
 
+void platform_video_prepare_external()
+{
+/* sweep all displays and save a list of their relevant configuration states
+ * (connector ID, etc.) then drop them --
+ *
+ * if we're in DRM master mode, temporarily release it
+ */
+}
+
 void platform_video_restore_external()
 {
-/* this one is for the sadists --
- * AGP is responsible for saving
- * all the GL related buffers (which might be difficult
- * with EGLStreams or MESA handles), reading back
- * into RAM buffers etc.
+/* this one is for the sadists -- AGP is responsible for saving all the GL
+ * related buffers (which might be difficult with EGLStreams or MESA handles),
+ * reading back into RAM buffers etc.
  *
- * the real issue is handling all the possible
- * things that can have changed between prepare and
- * restore - cards disappearing (!), connectors being
+ * the real issue is handling all the possible things that can have changed
+ * between prepare and restore - cards disappearing (!), connectors being
  * switched around etc. and storming these events upwards
  */
 }

@@ -306,7 +306,6 @@ static void set_analogstate(struct axis_opts* dst,
 static struct axis_opts* find_axis(int devid, unsigned axisid)
 {
 	struct arcan_devnode* node = lookup_devnode(devid);
-	axisid = abs(axisid);
 
 	if (!node)
 		return NULL;

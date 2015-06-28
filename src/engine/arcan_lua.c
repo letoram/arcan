@@ -3713,9 +3713,10 @@ static int videosynch(lua_State* ctx)
 		int top = lua_gettop(ctx);
 		size_t count = 0;
 
-		while(opts[count]){
-			lua_pushnumber(ctx, count++);
-			lua_pushstring(ctx, *opts);
+/* platform definition requires opts to be [k,d, ... ,NULL,NULL] */
+		while(opts[count*2]){
+			lua_pushnumber(ctx, count+1);
+			lua_pushstring(ctx, opts[count*2]);
 			lua_rawset(ctx, top);
 			count++;
 		}

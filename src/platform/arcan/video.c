@@ -2,6 +2,9 @@
  * Copyright 2014-2015, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
+ * Description: Platform that draws to an arcan display server using the shmif.
+ * Multiple displays are simulated when we explicitly get a subsegment pushed
+ * to us although they only work with the agp readback approach currently.
  */
 
 #define PLATFORM_SUFFIX lwa
@@ -57,6 +60,7 @@ static struct monitor_mode mmodes[] = {
 struct display {
 	struct arcan_shmif_cont conn;
 	bool mapped;
+	enum dpms_state dpms;
 	struct storage_info_t* vstore;
 } disp[MAX_DISPLAYS];
 
@@ -340,7 +344,7 @@ static void synch_copy(struct storage_info_t* vs)
 	arcan_shmif_signal(&disp[0].conn, SHMIF_SIGVID | SHMIF_SIGBLK_ONCE);
 
 	for (size_t i = 1; i < MAX_DISPLAYS; i++){
-		if (!disp[i].mapped)
+		if (!disp[i].mapped || disp[i].dpms != ADPMS_ON)
 			continue;
 
 /* re-use world readback, make a temporary copy to re-use check_store */
@@ -396,10 +400,9 @@ void platform_video_synch(uint64_t tick_count, float fract,
 	}
 
 /*
- * This should be switched to the synch. strat option when
- * we have a shared implementation for some of the regular
- * timing / statistics analysis functions needed, keep a dynamic
- * refresh limited in the 50-70 area.
+ * This should be switched to the synch. strat option when we have a shared
+ * implementation for some of the regular timing / statistics analysis
+ * functions needed, keep a dynamic refresh limited in the 50-70 area.
  */
 	int64_t current_time = arcan_timemillis();
 	int dt = current_time - last_frametime - 12;
@@ -410,9 +413,9 @@ void platform_video_synch(uint64_t tick_count, float fract,
 	last_frametime = current_time;
 
 /*
- * we should implement a mapping for TARGET_COMMAND_FRAMESKIP or so
- * and use to set virtual display timings. ioev[0] => mode, [1] => prewake,
- * [2] => preaudio, 3/4 for desired jitter (testing / simulation)
+ * we should implement a mapping for TARGET_COMMAND_FRAMESKIP or so and use to
+ * set virtual display timings. ioev[0] => mode, [1] => prewake, [2] =>
+ * preaudio, 3/4 for desired jitter (testing / simulation)
  */
 
 	if (post)
@@ -439,6 +442,24 @@ void platform_event_analogfilter(int devid,
 	int axisid, int lower_bound, int upper_bound, int deadzone,
 	int buffer_sz, enum ARCAN_ANALOGFILTER_KIND kind)
 {
+}
+
+/*
+ * For LWA simulated multidisplay, we still simulate disable by
+ * drawing an empty output display.
+ */
+enum dpms_state
+	platform_video_dpms(platform_display_id did, enum dpms_state state)
+{
+	if (!(did < MAX_DISPLAYS && did[disp].mapped))
+		return ADPMS_IGNORE;
+
+	if (state == ADPMS_IGNORE)
+		return disp[did].dpms;
+
+	disp[did].dpms = state;
+
+	return state;
 }
 
 const char* platform_video_capstr()

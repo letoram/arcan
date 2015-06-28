@@ -112,6 +112,12 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 		post();
 }
 
+enum dpms_state PLATFORM_SYMBOL(_video_dpms)(
+	platform_display_id disp, enum dpms_state state)
+{
+	return ADPMS_ON;
+}
+
 struct monitor_mode* PLATFORM_SYMBOL(_video_query_modes)(
 	platform_display_id id, size_t* count)
 {

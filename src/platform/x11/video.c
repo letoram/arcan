@@ -129,6 +129,12 @@ struct monitor_mode PLATFORM_SYMBOL(_video_dimensions)()
 	return res;
 }
 
+enum dpms_state PLATFORM_SYMBOL(_video_dpms)(
+	platform_display_id disp, enum dpms_state state)
+{
+	return ADPMS_ON;
+}
+
 void* PLATFORM_SYMBOL(_video_gfxsym)(const char* sym)
 {
 	return glXGetProcAddress((const GLubyte*) sym);
