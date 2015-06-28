@@ -301,9 +301,21 @@ static struct {
 extern char* _n_strdup(const char* instr, const char* alt);
 static inline const char* fsrvtos(enum ARCAN_SEGID ink);
 
+static inline char* colon_escape(char* in)
+{
+	char* instr = in;
+	while(*instr){
+		if (*instr == ':')
+			*instr = '\t';
+		instr++;
+	}
+	return in;
+}
+
 /*
- * nil out whatever functions / tables the
- * build- system defined that we should not have.
+ * Nil out whatever functions / tables the build- system defined that we should
+ * not have. Should possibly replace this with a function that maps a warning
+ * about the banned function.
  */
 static void luaL_nil_banned(struct arcan_luactx* ctx)
 {
@@ -317,15 +329,6 @@ static void luaL_nil_banned(struct arcan_luactx* ctx)
 	}
 
 	free(work);
-}
-
-static inline void colon_escape(char* instr)
-{
-	while(*instr){
-		if (*instr == ':')
-			*instr = '\t';
-		instr++;
-	}
 }
 
 static void dump_call_trace(lua_State* ctx)
@@ -3710,7 +3713,7 @@ static int videosynch(lua_State* ctx)
 		int top = lua_gettop(ctx);
 		size_t count = 0;
 
-		while(*opts){
+		while(opts[count]){
 			lua_pushnumber(ctx, count++);
 			lua_pushstring(ctx, *opts);
 			lua_rawset(ctx, top);
@@ -5874,7 +5877,7 @@ static int targetlaunch(lua_State* ctx)
 	enum DB_BFORMAT bfmt;
 	argv = env = libs;
 
-	const char* exec = arcan_db_targetexec(dbhandle, cid,
+	char* exec = arcan_db_targetexec(dbhandle, cid,
 		&bfmt, &argv, &env, &libs);
 
 	if (!exec){
@@ -5932,7 +5935,7 @@ static int targetlaunch(lua_State* ctx)
 
 		char* argstr = NULL;
 		asprintf(&argstr, "core=%s:resource=%s",
-			exec, argv.count >= 2 ? argv.data[1] : "");
+			colon_escape(exec), argv.count >= 2 ? colon_escape(argv.data[1]) : "");
 		args.args.builtin.resource = argstr;
 
 		if (!fsrv_ok||arcan_frameserver_spawn_server(intarget, args) != ARCAN_OK){
