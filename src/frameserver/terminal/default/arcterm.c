@@ -264,7 +264,6 @@ static void setup_shell(struct arg_arr* argarr)
 		SIGCHLD, SIGHUP, SIGINT, SIGQUIT, SIGTERM, SIGALRM
 	};
 
-/* uncertain which one actually fits us the best here */
 	setenv("TERM", "xterm-256color", 1);
 	for (int i = 0; i < sizeof(sigs) / sizeof(sigs[0]); i++)
 		signal(sigs[i], SIG_DFL);
@@ -301,15 +300,23 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 			else if (strcmp(label, "RIGHT") == 0)
 				tsm_screen_move_right(term.screen, mag);
 		}
-/* ARKMOD_LSHIFT / ARKMOD_RSHIFT => TSM_SHIFT_MASK,
- * ARKMOD_LCTRL / ARKMOD_RCTRL -> TSM_CONTROL_MASK,
- * ARKMOD_LALT / ARKMOD_RALT -> TSM_ALT_MASK,
- * ARKMOD_NUM / TSM_LOCK_MASK?
- * ARKMOD_LMETA / ARKMOD_RMETA -> TSM_LOGO_MASK */
+
+		int shmask = 0;
+		shmask |= (ioev->input.translated.modifiers &
+			(ARKMOD_RSHIFT | ARKMOD_LSHIFT)) * TSM_SHIFT_MASK;
+		shmask |= (ioev->input.translated.modifiers &
+			(ARKMOD_LCTRL | ARKMOD_RCTRL)) * TSM_CONTROL_MASK;
+		shmask |= (ioev->input.translated.modifiers &
+			(ARKMOD_LALT | ARKMOD_RALT)) * TSM_ALT_MASK;
+		shmask |= (ioev->input.translated.modifiers &
+			(ARKMOD_LMETA | ARKMOD_RMETA)) * TSM_LOGO_MASK;
+		shmask |= (ioev->input.translated.modifiers & ARKMOD_NUM) * TSM_LOCK_MASK;
+
+/* need some locale- specific handling here, keysym+subid does not suffice */
 		if (tsm_vte_handle_keyboard(term.vte,
 			ioev->input.translated.keysym,
 			ioev->input.translated.keysym,
-			ioev->input.translated.modifiers,
+			shmask,
 			ioev->input.translated.subid
 		))
 			tsm_screen_sb_reset(term.screen);
