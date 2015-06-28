@@ -180,8 +180,10 @@ int64_t platform_output_handle(
 	return -1;
 }
 
-#define MAP(X, Y) if ((Y = platform_video_gfxsym(X)) == NULL)\
-arcan_warning("couldn't find extension (%s)\n", X);
+#define MAP(X, Y) if ((Y = platform_video_gfxsym(X)) == NULL){\
+arcan_warning("Couldn't find extension (%s)\n", X);\
+return false;\
+}
 
 static bool map_extensions()
 {

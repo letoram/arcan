@@ -162,6 +162,12 @@ bool PLATFORM_SYMBOL(_video_map_handle)(
 	return false;
 }
 
+enum dpms_state
+	PLATFORM_SYMBOL(_video_dpms)(platform_display_id did, enum dpms_state state)
+{
+	return ADPMS_ON;
+}
+
 bool PLATFORM_SYMBOL(_video_init)(uint16_t w, uint16_t h,
 	uint8_t bpp, bool fs, bool frames, const char* title)
 {

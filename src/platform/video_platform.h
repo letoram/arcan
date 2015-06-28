@@ -294,6 +294,24 @@ bool platform_video_set_mode(
 	platform_display_id, platform_mode_id mode_id);
 
 /*
+ * set or query the display power management state.
+ * ADPMS_IGNORE => return current state,
+ * other options change the current state of monitors connected to a display
+ * and returns the estimated current state (should match requested state).
+ * For LCDs, OFF / SUSPEND / STANDBY are essentially the same state.
+ */
+enum dpms_state {
+	ADPMS_IGNORE = 0,
+	ADPMS_OFF = 1,
+	ADPMS_SUSPEND = 2,
+	ADPMS_STANDBY = 3,
+	ADPMS_ON = 4
+};
+
+enum dpms_state
+	platform_video_dpms(platform_display_id disp, enum dpms_state state);
+
+/*
  * Update and activate the specific (dynamic) mode with desired mode dimensions
  * and possibly refresh, this fails if the display do not support dynamic
  * mapping.
