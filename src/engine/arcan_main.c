@@ -126,7 +126,7 @@ printf("Usage: arcan [-whfmWMOqspBtHbdgaSV] applname "
 #ifdef DISABLE_FRAMESERVERS
 "-B\t--binpath     \tno-op, frameserver support was disabled compile-time\n"
 #else
-"-B\t--binpath     \tchange default searchpath for arcan_frameserver*\n"
+"-B\t--binpath     \tchange default searchpath for arcan_frameserver/afsrv_*\n"
 #endif
 "-p\t--rpath       \tchange default searchpath for shared resources\n"
 "-t\t--applpath    \tchange default searchpath for applications\n"

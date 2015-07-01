@@ -424,9 +424,8 @@ static void libretro_rgb1555_rgba(const uint16_t* data, uint32_t* outp,
 		push_ntsc(width, height, retroctx.ntsc_imb, outp);
 }
 
-/* some cores have been wrongly implemented in the past,
- * yielding > 1 frames for each run(), so this is reset and checked
- * after each retro_run() */
+/* some cores have been wrongly implemented in the past, yielding > 1 frames
+ * for each run(), so this is reset and checked after each retro_run() */
 static int testcounter;
 static void libretro_vidcb(const void* data, unsigned width,
 	unsigned height, size_t pitch)
@@ -436,9 +435,9 @@ static void libretro_vidcb(const void* data, unsigned width,
 	if (!data || retroctx.skipframe_v)
 		return;
 
-/* width / height can be changed without notice, so we have to be ready
- * for the fact that the cost of conversion can suddenly move outside the
- * allowed boundaries, then NTSC is ignored (or if we have 3d/hw source) */
+/* width / height can be changed without notice, so we have to be ready for the
+ * fact that the cost of conversion can suddenly move outside the allowed
+ * boundaries, then NTSC is ignored (or if we have 3d/hw source) */
 	unsigned outw = width;
 	unsigned outh = height;
 	bool ntscconv = retroctx.ntscconv && data != RETRO_HW_FRAME_BUFFER_VALID;
@@ -455,26 +454,24 @@ static void libretro_vidcb(const void* data, unsigned width,
 	}
 
 /* the shmpage size will be larger than the possible values for width / height,
- * so if we have a mismatch, just change the shared dimensions
- * and toggle resize flag */
+ * so if we have a mismatch, just change the shared dimensions and toggle
+ * resize flag */
 	if (outw != retroctx.shmcont.addr->w || outh !=
 		retroctx.shmcont.addr->h){
 		resize_shmpage(outw, outh, false);
 	}
 
-/* intermediate storage for blargg NTSC filter, if toggled,
- * ntscconv will be applied by the converter however */
 	if (ntscconv && !retroctx.ntsc_imb){
 		retroctx.ntsc_imb = malloc(sizeof(uint16_t) * outw * outh);
 	}
 
 #ifdef FRAMESERVER_LIBRETRO_3D
+/* method one, just read color attachment */
 	if (data == RETRO_HW_FRAME_BUFFER_VALID){
-/* method one, just read color attachment, when this is working,
- * switch to PBO transfers and possible Flip-Flop FBOs */
 		struct storage_info_t store = retroctx.vstore;
 		store.vinf.text.raw = retroctx.shmcont.vidp;
 
+/* if the underlying LWA platform supports zero-copy handle passing, use that */
 		static bool hpassing_disabled;
 		if (!hpassing_disabled){
 			enum status_handle status;
@@ -489,6 +486,7 @@ static void libretro_vidcb(const void* data, unsigned width,
 
 			return;
 		}
+/* or fallback to synchronous expensive readback */
 		else{
 			agp_activate_rendertarget(NULL);
 			agp_readback_synchronous(&store);
@@ -918,9 +916,8 @@ static inline int16_t map_analog_axis(unsigned port, unsigned ind, unsigned id)
 	return (int16_t) retroctx.input_ports[port].axes[ind];
 }
 
-/* use the context-tables from retroctx in combination with dev / ind / ...
- * to try and figure out what to return, this table is
- * populated in flush_eventq() */
+/* use the context-tables from retroctx in combination with dev / ind / ... to
+ * figure out what to return, this table is populated in flush_eventq(). */
 static inline int16_t libretro_inputmain(unsigned port, unsigned dev,
 	unsigned ind, unsigned id){
 	static bool butn_warning = false;
