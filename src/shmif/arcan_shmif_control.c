@@ -1039,6 +1039,9 @@ bool arcan_shmif_resize(struct arcan_shmif_cont* arg,
 	if (width > PP_SHMPAGE_MAXW || height > PP_SHMPAGE_MAXH)
 		return false;
 
+	width = width < 1 ? 1 : width;
+	height = height < 1 ? 1 : height;
+
 	if (width == arg->addr->w && height == arg->addr->h)
 		return true;
 

@@ -36,15 +36,14 @@
 #include <limits.h>
 
 /*
- * The types and structures used herein are "transitional" in the sense
- * that during the later hardening / cleanup phases, we'll likely refactor
- * to use more compat message sizes in order to consume fewer cache-lines.
+ * The types and structures used herein are "transitional" in the sense that
+ * during the later hardening / cleanup phases, we'll likely refactor to use
+ * more compat message sizes in order to consume fewer cache-lines.
  *
- * The event structure is rather messy as it is the result of quite a number
- * of years of evolutionary "adding more and more fields" as the engine
- * developed. The size of some fields are rather arbitrary, and has been
- * picked to cover the largest (networking discovery messages) matching
- * % 32 == 0 with padding.
+ * The event structure is rather messy as it is the result of quite a number of
+ * years of evolutionary "adding more and more fields" as the engine developed.
+ * The size of some fields are rather arbitrary, and has been picked to cover
+ * the largest (networking discovery messages) matching % 32 == 0 with padding.
  */
 
 enum ARCAN_EVENT_CATEGORY {
@@ -63,10 +62,9 @@ enum ARCAN_EVENT_CATEGORY {
 };
 
 /*
- * Primarily hinting to the running appl, but can also dictate
- * scheduling groups, priority in terms of resource exhaustion,
- * sandboxing scheme and similar limitations (e.g. TITLEBAR /
- * CURSOR should not update 1080p60Hz)
+ * Primarily hinting to the running appl, but can also dictate scheduling
+ * groups, priority in terms of resource exhaustion, sandboxing scheme and
+ * similar limitations (e.g. TITLEBAR / CURSOR should not update 1080p60Hz)
  */
 enum ARCAN_SEGID {
 /* LIGHTWEIGHT ARCAN (nested execution) */
@@ -132,11 +130,11 @@ enum ARCAN_SEGID {
 	SEGID_ICON,
 
 /*
- * Indicates that this segment is used to propagate accessibility related
- * data; High-contrast, simplified text, screen-reader friendly.
+ * Indicates that this segment is used to propagate accessibility related data;
+ * High-contrast, simplified text, screen-reader friendly.
  *
- * A reject on such a segment request indicates that no accessibility
- * options have been enabled and can thus be used as an initial probe.
+ * A reject on such a segment request indicates that no accessibility options
+ * have been enabled and can thus be used as an initial probe.
  */
 	SEGID_ACCESSIBILITY,
 
@@ -146,8 +144,8 @@ enum ARCAN_SEGID {
  */
 	SEGID_UNKNOWN,
 
-/* Can always be terminated without risk, may be stored as part of
- * debug format in terms of unexpected termination etc. */
+/* Can always be terminated without risk, may be stored as part of debug format
+ * in terms of unexpected termination etc. */
 	SEGID_DEBUG,
 	SEGID_LIM = INT_MAX
 };
@@ -188,57 +186,54 @@ enum ARCAN_TARGET_COMMAND {
 	TARGET_COMMAND_COREOPT,
 
 /*
- * Comes with a single descriptor in ioevs[0].iv that should
- * be dup()ed before next shmif_ call or used immediately
- * for (user-defined) binary store/restore. The conversion
- * between socket- transfered descriptor and ioev[0] is handled
- * internally in shmif_control.c
+ * Comes with a single descriptor in ioevs[0].iv that should be dup()ed before
+ * next shmif_ call or used immediately for (user-defined) binary
+ * store/restore. The conversion between socket- transfered descriptor and
+ * ioev[0] is handled internally in shmif_control.c
  */
 	TARGET_COMMAND_STORE,
 	TARGET_COMMAND_RESTORE,
 
 /*
- * Similar to store/store, but used to indicate that the data
- * source and binary protocol carried within is implementation-
- * defined. It is used for advanced cut/paste or transfer
- * operations, possibly with zero-copy mechanisms like memfd.
+ * Similar to store/store, but used to indicate that the data source and binary
+ * protocol carried within is implementation- defined. It is used for advanced
+ * cut/paste or transfer operations, possibly with zero-copy mechanisms like
+ * memfd.
  */
 	TARGET_COMMAND_BCHUNK_IN,
 	TARGET_COMMAND_BCHUNK_OUT,
 
 /*
- * User requested that the frameserver should revert to a safe
- * initial state. This is also an indication that the current
- * application state is undesired.
+ * User requested that the frameserver should revert to a safe initial state.
+ * This is also an indication that the current application state is undesired.
+ * ioevs[0].iv == 1 indicates that this comes as a crash- recovery action
  */
 	TARGET_COMMAND_RESET,
 
 /*
- * Suspend operations, only _EXIT, _PAUSE and _UNPAUSE should
- * be valid events in this state. Indicates that the server
- * does not want the client to consume any system- resources.
- * Will be sent at user request or as part of power-save.
+ * Suspend operations, only _EXIT, _PAUSE and _UNPAUSE should be valid events
+ * in this state. Indicates that the server does not want the client to consume
+ * any system- resources.  Will be sent at user request or as part of
+ * power-save.
  */
 	TARGET_COMMAND_PAUSE,
 	TARGET_COMMAND_UNPAUSE,
 
 /*
- * For connections that have a fine-grained perception of time,
- * both absolute and relative in terms of some internal timebase,
- * request a seek to a specific point in time (or as close as
- * possible). Primarily used for video playback.
+ * For connections that have a fine-grained perception of time, both absolute
+ * and relative in terms of some internal timebase, request a seek to a
+ * specific point in time (or as close as possible).
  * ioevs[1].iv != 1 indicates relative,
  * ioevs[0].fv = contains the actual timeslot.
  */
 	TARGET_COMMAND_SEEKTIME,
 
 /*
- * A hint in regards to the currently displayed dimensions.
- * It is up to the program running on the server to decide
- * how much internal resolution that it is recommended for
- * the client to use. When the visible image resolution
- * deviates a lot from the internal resolution of the client,
- * this event can appear as a friendly suggestion to resize.
+ * A hint in regards to the currently displayed dimensions.  It is up to the
+ * program running on the server to decide how much internal resolution that it
+ * is recommended for the client to use. When the visible image resolution
+ * deviates a lot from the internal resolution of the client, this event can
+ * appear as a friendly suggestion to resize.
  * ioevs[0].iv = width,
  * ioevs[1].iv = height
  */
@@ -246,73 +241,69 @@ enum ARCAN_TARGET_COMMAND {
 
 /*
  * Hint input/device mapping (device-type, input-port),
- * primarily used for gaming / legacy application.
+ * primarily used for gaming / legacy applications.
  * ioevs[0].iv = device_type,
  * ioevs[1].iv = input_port
  */
 	TARGET_COMMAND_SETIODEV,
 
 /*
- * Used when audio playback is controlled by the frameserver,
- * e.g. clients that do not use the shmif to playback audio
- * for quality- or latency- reasons. This is sent transparently
- * when a script changes the gain for an audio source.
+ * Used when audio playback is controlled by the frameserver, e.g. clients that
+ * do not use the shmif to playback audio for quality- or latency- reasons.
+ * This is sent transparently when a script changes the gain for an audio
+ * source.
  * ioevs[0].fv = gain_value
  */
 	TARGET_COMMAND_ATTENUATE,
 
 /*
- * This indicates that A/V synch is not quite right and
- * the client, if possible, should try to adjust internal
- * buffering.
+ * This indicates that A/V synch is not quite right and the client, if
+ * possible, should try to adjust internal buffering.
  * ioevs[0].iv = audio-skew (ms)
  * ioevs[1].iv = video-skew (ms)
  */
 	TARGET_COMMAND_AUDDELAY,
 
 /*
- * Comes either as a positive response to a EXTERNAL_SEQREQ,
- * and then ioev[0].iv carries the client- provided request
- * cookie -- or as an explicit request from the parent that
- * a new window of a certain type should be created (used
- * for image- transfers, debug windows, ...)
+ * Comes either as a positive response to a EXTERNAL_SEQREQ, and then
+ * ioev[0].iv carries the client- provided request cookie -- or as an explicit
+ * request from the parent that a new window of a certain type should be
+ * created (used for image- transfers, debug windows, ...)
  *
- * To access this segment, call arcan_shmif_acquire with a
- * NULL key. This can only be called once for each NEWSEGMENT
- * event and the user accepts responsibility for the segment.
+ * To access this segment, call arcan_shmif_acquire with a NULL key. This can
+ * only be called once for each NEWSEGMENT event and the user accepts
+ * responsibility for the segment.
  */
 	TARGET_COMMAND_NEWSEGMENT,
 
 /*
- * The running application in the server explicitly prohibited
- * the client from getting access to new segments due to UX
- * restrictions or resource limitations.
+ * The running application in the server explicitly prohibited the client from
+ * getting access to new segments due to UX restrictions or resource
+ * limitations.
  * ioev[0].iv = cookie (submitted in request)
  */
 	TARGET_COMMAND_REQFAIL,
 
 /*
- * There is a whole slew of reasons why a buffer handled provided
- * could not be used. This event is returned when such a case has
- * been detected in order to try and provide a graceful fallback
- * to regular shm- copying.
+ * There is a whole slew of reasons why a buffer handled provided could not be
+ * used. This event is returned when such a case has been detected in order to
+ * try and provide a graceful fallback to regular shm- copying.
  */
 	TARGET_COMMAND_BUFFER_FAIL,
 
 /*
- * Reserved for future use, will provide a handle to a specific
- * device node, where the type of the node defines how it is
- * supposed to be used.
+ * Reserved for future use, will provide a handle to a specific device node,
+ * where the type of the node defines how it is supposed to be used.
  * ioev[0].iv = handle,
  * ioev[1].iv = type [e.g. render-node for switching GPUs]
  */
 	TARGET_COMMAND_DEVICE_NODE,
 
 /*
- * Graph- mode is a special case thing for switching between
- * active representation for a specific segment. It is implementation
- * defined and primarily used in custom LWA- targeted appls that
- * need custom frameservers as well (e.g. the Senseye project).
+ * Graph- mode is a special case thing for switching between active
+ * representation for a specific segment. It is implementation defined and
+ * primarily used in custom LWA- targeted appls that need custom frameservers
+ * as well (e.g. the Senseye project).
  */
 	TARGET_COMMAND_GRAPHMODE,
 
@@ -337,92 +328,89 @@ enum ARCAN_EVENT_EXTERNAL {
 	EVENT_EXTERNAL_MESSAGE = 0,
 
 /*
- * Specify that there is a possible key=value argument
- * that could be set.
+ * Specify that there is a possible key=value argument that could be set.
  * uses the message field to encode key and value pair.
  */
 	EVENT_EXTERNAL_COREOPT,
 
 /*
- * Dynamic data source identification string, similar to message
- * but is expected to come when something has changed radically,
- * (streaming external video sources for instance).
+ * Dynamic data source identification string, similar to message but is
+ * expected to come when something has changed radically, (streaming external
+ * video sources for instance).
  * uses the message field.
  */
 	EVENT_EXTERNAL_IDENT,
 
 /*
- * Hint that the previous I/O operation failed (for FDTRANSFER
- * related operations).
+ * Hint that the previous I/O operation failed (for FDTRANSFER related
+ * operations).
  */
 	EVENT_EXTERNAL_FAILURE,
 
 /*
- * Similar to FDTRANSFER in that the server is expected to take
- * responsibility for a descriptor on the pipe that should be
- * used for rendering instead of the .vidp buffer. This is for
- * accelerated transfers when using an AGP platform and GPU
- * setup that supports such sharing. Note that this is a rather
- * young interface with possible security complications. Block
- * this operation in sensitive contexts.
+ * Similar to FDTRANSFER in that the server is expected to take responsibility
+ * for a descriptor on the pipe that should be used for rendering instead of
+ * the .vidp buffer. This is for accelerated transfers when using an AGP
+ * platform and GPU setup that supports such sharing. Note that this is a
+ * rather young interface with possible security complications. Block this
+ * operation in sensitive contexts.
  *
  * This is managed by arcan_shmif_control.
  */
 	EVENT_EXTERNAL_BUFFERSTREAM,
 
 /*
- * Contains additional timing information about a delivered
- * videoframe. Uses framestatus substructure.
+ * Contains additional timing information about a delivered videoframe.
+ * Uses framestatus substructure.
  */
 	EVENT_EXTERNAL_FRAMESTATUS,
 
 /*
- * Decode playback discovered additional substreams that can be
- * selected or switched between. Uses the streamstat substructure.
+ * Decode playback discovered additional substreams that can be selected or
+ * switched between.
+ * Uses the streamstat substructure.
  */
 	EVENT_EXTERNAL_STREAMINFO,
 
 /*
- * playback information regarding completion, current time,
- * estimated length etc. Uses the streaminf substructure.
+ * Playback information regarding completion, current time, estimated length
+ * etc. Uses the streaminf substructure.
  */
 	EVENT_EXTERNAL_STREAMSTATUS,
 
 /*
- * hint that serialization operations (STORE / RESTORE)
- * are possible and how much buffer data / which transfer limits
- * that apply.
+ * hint that serialization operations (STORE / RESTORE) are possible and how
+ * much buffer data / which transfer limits that apply.
  */
 	EVENT_EXTERNAL_STATESIZE,
 	EVENT_EXTERNAL_RESOURCE,
 
 /*
- * hint that any pending buffers on the audio device should
- * be discarded. used primarily for A/V synchronization.
+ * hint that any pending buffers on the audio device should be discarded.
+ * used primarily for A/V synchronization.
  */
 	EVENT_EXTERNAL_FLUSHAUD,
 
 /*
- * Request an additional shm-if connection to be allocated,
- * only one segment is guaranteed per process. Tag with an
- * ID for the parent to be able to accept- or reject properly.
- * Uses the segreq- substructure.
+ * Request an additional shm-if connection to be allocated, only one segment is
+ * guaranteed per process. Tag with an ID for the parent to be able to accept-
+ * or reject properly.  Uses the segreq- substructure.
  */
 	EVENT_EXTERNAL_SEGREQ,
 
 /*
- * Used to indicated that some external entity tries to provide
- * input data (e.g. a vnc client connected to an encode frameserver)
- * uses the key and cursor substructure.
+ * Used to indicated that some external entity tries to provide input data
+ * (e.g. a vnc client connected to an encode frameserver) uses the key and
+ * cursor substructure.
  */
 	EVENT_EXTERNAL_KEYINPUT,
 	EVENT_EXTERNAL_CURSORINPUT,
 
 /*
- * Hint how the cursor is to be rendered; i.e. if it's locally defined
- * or a user-readable string suggesting what kind of cursor image
- * that could be used. Uses the messagefield and the effect is implementation
- * defined, though suggested labels are:
+ * Hint how the cursor is to be rendered; i.e. if it's locally defined or a
+ * user-readable string suggesting what kind of cursor image that could be
+ * used. Uses the messagefield and the effect is implementation defined, though
+ * suggested labels are:
  * [normal, wait, select-inv, select, up, down, left-right, drag-up-down,
  * drag-up, drag-down, drag-left, drag-right, drag-left-right, rotate-cw,
  * rotate-ccw, normal-tag, diag-ur, diag-ll, drag-diag, datafield,
@@ -431,10 +419,11 @@ enum ARCAN_EVENT_EXTERNAL {
 	EVENT_EXTERNAL_CURSORHINT,
 
 /*
- * Hint that video synchronization should only cover a subarea.
- * This is reset to 0,0,w,h on a completed resize sequence.
- * Values outside the current range (x+w > segw, y+h > segh) will
- * be ignored or cause the connection to be terminated.
+ * Hint that video synchronization should only cover a subarea.  This is reset
+ * to 0,0,w,h on a completed resize sequence.  Values outside the current range
+ * (x+w > segw, y+h > segh) will be ignored or cause the connection to be
+ * terminated.
+ * Uses the viewport substructure.
  */
 	EVENT_EXTERNAL_VIEWPORT,
 
@@ -527,11 +516,11 @@ enum ARCAN_EVENT_NET {
 };
 
 /*
- * The following enumerations and subtypes are slated for removal here
- * as they only refer to engine- internal events. Currently, the
- * structures and types are re-used with an explicit filter-copy
- * step (frameserver_queuetransfer). Attempting to use them from an
- * external source will get the connection terminated.
+ * The following enumerations and subtypes are slated for removal here as they
+ * only refer to engine- internal events. Currently, the structures and types
+ * are re-used with an explicit filter-copy step (frameserver_queuetransfer).
+ * Attempting to use them from an external source will get the connection
+ * terminated.
  *
  * -- begin internal --
  */
@@ -772,6 +761,11 @@ typedef struct arcan_extevent {
 			uint8_t transfer;
 			uint8_t viewid;
 		} viewport;
+
+		struct {
+			uint16_t x_pos, x_lim;
+			uint16_t y_pos, y_lim;
+		} content;
 
 /*
  * (ID)   - user-specified cookie, will propagate with req/resp

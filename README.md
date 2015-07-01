@@ -39,8 +39,7 @@ on Linux, BSD or OSX (windows can cheat with using the prebuilt installer
 binaries) and you can check out the relevant sections in the wiki for more
 detailed documentation.
 
-For starters, the easiest approach is to do the
-following:
+For starters, the easiest approach is to do the following:
 
      git clone https://github.com/letoram/arcan.git
      cd arcan

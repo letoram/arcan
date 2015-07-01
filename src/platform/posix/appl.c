@@ -41,7 +41,7 @@ bool arcan_verifyload_appl(const char* appl_id, const char** errc)
 	}
 
 /*
- * NOTE: here is the place to check for .apf extension,
+ * NOTE: here is the place to check for .fap extension,
  * and if found, take a separate route for setting up.
  */
 	char* base = strdup(appl_id);
@@ -64,8 +64,8 @@ bool arcan_verifyload_appl(const char* appl_id, const char** errc)
 		free(work);
 
 		arcan_override_namespace(appl_id, RESOURCE_APPL);
-		arcan_override_namespace(appl_id, RESOURCE_APPL_TEMP);
 
+		arcan_softoverride_namespace(appl_id, RESOURCE_APPL_TEMP);
 		arcan_softoverride_namespace(dir, RESOURCE_SYS_APPLBASE);
 		arcan_softoverride_namespace(dir, RESOURCE_SYS_APPLSTORE);
 
