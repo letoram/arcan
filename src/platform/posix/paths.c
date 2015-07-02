@@ -74,46 +74,55 @@ static char* alloc_cat(char* a, char* b)
 	return newstr;
 }
 
+/*
+ * handle:
+ * abc [DEF] ghj [ARCAN_APPLPATH] klm [!.bla =>
+ * 	abc [DEF] ghj /usr/whatever klm [!.bla
+ * abc => abc
+ * [ARCAN_APPLPATH] apa [ARCAN_APPLPATH] => /usr/whatever apa /usr/whatever
+ * [ARCAN_APPLPATH => [ARCAN_APPLPATH
+ */
 static char* rep_str(char* instr)
 {
-	char* beg = strchr(instr, '[');
-	if (!beg)
-		return instr;
+	char* pos = instr;
+	char* beg;
 
-	char* end = strchr(beg+1, ']');
+	while(1){
+rep:
+		beg = strchr(pos, '[');
+		if (!beg)
+			return instr;
 
-	for (size_t i = 0; i < sizeof(envvs)/sizeof(envvs[0]); i++){
-		if (end)
-			*end = '\0';
+		char* end = strchr(beg+1, ']');
+		if (!end)
+			return instr;
 
-		if (strcmp(envvs[i], beg+1) != 0)
-			continue;
+/* counter abc [ [ARCAN_APPLPATH] */
+		char* step;
+		while ((step = strchr(beg+1, '[')) && step < end)
+			beg = step;
 
-		char* exp = arcan_expand_resource("", 1 << i);
+		*end = '\0';
 
-		if (!exp)
-			goto fail;
-
-		if (!end){
-			*beg = '\0';
-			char* newstr = alloc_cat(instr, exp);
-			free(instr);
-			return newstr;
+		for (size_t i = 0; i < sizeof(envvs)/sizeof(envvs[0]); i++){
+			if (strcmp(envvs[i], beg+1) == 0){
+				char* exp = arcan_expand_resource("", 1 << i);
+				if (exp){
+					*beg = '\0';
+					char* newstr = alloc_cat(instr, exp);
+					char* resstr = alloc_cat(newstr, end+1);
+					free(instr);
+					free(newstr);
+					pos = instr = resstr;
+				}
+				arcan_mem_free(exp);
+				goto rep; /* continue 2; */
+			}
 		}
-		else{
-			*beg = '\0';
-			*end = '\0';
-			char* newstr = alloc_cat(instr, exp);
-			char* resstr = alloc_cat(newstr, end+1);
-			free(instr);
-			free(newstr);
-			return rep_str(resstr);
-		}
+
+		*end = ']';
+		pos = end;
 	}
-
-fail:
-	arcan_warning("expand failed, no match for supplied string (%s)\n", beg+1);
-	return instr;
 }
 
 char** arcan_expand_namespaces(char** inargs)
