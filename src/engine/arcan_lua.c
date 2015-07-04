@@ -1858,6 +1858,21 @@ static int cursorstorage(lua_State* ctx)
 {
 	LUA_TRACE("cursor_setstorage");
 	arcan_vobj_id src = luaL_checkvid(ctx, 1, NULL);
+
+	if (lua_type(ctx, 2) == LUA_TTABLE){
+		if (lua_rawlen(ctx, -1) != 8){
+			arcan_warning("cursor_setstorage(), too few elements in txco tables"
+				"(expected 8, got %i)\n", (int) lua_rawlen(ctx, -1));
+			return 0;
+		}
+
+		for(size_t i = 0; i < 8; i++){
+			lua_rawgeti(ctx, -1, i+1);
+			arcan_video_display.cursor_txcos[i] = lua_tonumber(ctx, -1);
+			lua_pop(ctx, 1);
+		}
+	}
+
 	arcan_video_cursorstore(src);
 	LUA_ETRACE("cursor_setstorage", NULL);
 	return 0;
@@ -2117,7 +2132,7 @@ static int settxcos(lua_State* ctx)
 		luaL_checktype(ctx, 2, LUA_TTABLE);
 		int ncords = lua_rawlen(ctx, -1);
 		if (ncords < 8){
-			arcan_warning("Warning: lua_settxcos(), Too few elements in txco tables"
+			arcan_warning("image_set_txcos(), Too few elements in txco tables"
 				"(expected 8, got %i)\n", ncords);
 			LUA_ETRACE("image_set_txcos", "bad input table");
 			return 0;

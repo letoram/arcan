@@ -275,6 +275,7 @@ struct arcan_video_display {
 	float window_projection[16];
 
 	float default_txcos[8];
+	float cursor_txcos[8];
 	float mirror_txcos[8];
 
 /* default image loading options */
