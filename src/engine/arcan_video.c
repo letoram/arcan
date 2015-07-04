@@ -466,7 +466,7 @@ void arcan_vint_drawcursor(bool erase)
 		return;
 
 	float txmatr[8];
-	float* txcos = arcan_video_display.default_txcos;
+	float* txcos = arcan_video_display.cursor_txcos;
 
 /*
  * flip internal cursor position to last drawn cursor position
@@ -1353,6 +1353,7 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 		}
 
 		generate_basic_mapping(arcan_video_display.default_txcos, 1.0, 1.0);
+		generate_basic_mapping(arcan_video_display.cursor_txcos, 1.0, 1.0);
 		generate_mirror_mapping(arcan_video_display.mirror_txcos, 1.0, 1.0);
 		firstinit = false;
 	}
@@ -1608,7 +1609,7 @@ void arcan_video_cursorstore(arcan_vobj_id src)
 		vobj->vstore->txmapped != TXSTATE_TEX2D)
 		return;
 
-/* texture coordinates here will always be restricted to 0..1, 0..1 */
+/* texture coordinates are managed separately through _display.cursor_txcos */
 	arcan_video_display.cursor.vstore = vobj->vstore;
 	vobj->vstore->refcount++;
 }
