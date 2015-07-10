@@ -3485,7 +3485,8 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				tblstr(ctx, "message", (char*)ev->ext.message, top);
 			break;
 			case EVENT_EXTERNAL_REGISTER:
-				if (fsrv->segid != SEGID_UNKNOWN){
+				if (fsrv->segid != SEGID_UNKNOWN &&
+					ev->ext.registr.kind != fsrv->segid){
 					lua_settop(ctx, reset);
 					return;
 				}
@@ -8002,7 +8003,7 @@ static int net_pushsrv(lua_State* ctx)
 		arcan_fatal("net_pushsrv() -- bad arg1, specified frameserver"
 			" is not in client mode (net_open).\n");
 
-/* we clean this as to not expose tack trash */
+/* we clean this as to not expose stack trash */
 	size_t out_sz = sizeof(outev.net.message) /
 		sizeof(outev.net.message[0]);
 
