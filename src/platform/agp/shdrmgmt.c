@@ -461,15 +461,15 @@ agp_shader_id agp_shader_addgroup(agp_shader_id shid)
 		&cur->ugroups.cdata[group_ind];
 
 /* duplicate the chain from the first group */
-	struct shaderv* main = cur->ugroups.cdata[GROUP_INDEX(shid)];
-	while(main){
+	struct shaderv* mgroup = cur->ugroups.cdata[GROUP_INDEX(shid)];
+	while(mgroup){
 		*chain = arcan_alloc_mem(sizeof(struct shaderv),
 			ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
-		memcpy(*chain, main, sizeof(struct shaderv));
-		(*chain)->label = strdup(main->label);
+		memcpy(*chain, mgroup, sizeof(struct shaderv));
+		(*chain)->label = strdup(mgroup->label);
 		(*chain)->next = NULL;
 		chain = &((*chain)->next);
-		main = main->next;
+		mgroup = mgroup->next;
 	}
 
 	return SHADER_ID(SHADER_INDEX(shid), group_ind);
