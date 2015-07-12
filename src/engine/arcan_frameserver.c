@@ -146,15 +146,13 @@ void arcan_frameserver_dropsemaphores(arcan_frameserver* src){
 }
 
 bool arcan_frameserver_control_chld(arcan_frameserver* src){
-/* bunch of terminating conditions -- frameserver messes
- * with the structure to provoke a vulnerability, frameserver
- * dying or timing out, ... */
+/* bunch of terminating conditions -- frameserver messes with the structure to
+ * provoke a vulnerability, frameserver dying or timing out, ... */
 	bool alive = src->flags.alive && src->shm.ptr
 		&& src->shm.ptr->cookie == cookie && arcan_frameserver_validchild(src);
 
-/* subsegment may well be alive when the parent has just died,
- * thus we need to check the state of the parent and if it is dead,
- * clean up just the same */
+/* subsegment may well be alive when the parent has just died, thus we need to
+ * check the state of the parent and if it is dead, clean up just the same */
 	if (alive && src->parent){
 		arcan_vobject* vobj = arcan_video_getobject(src->parent);
 		if (!vobj || vobj->feed.state.tag != ARCAN_TAG_FRAMESERV)
@@ -182,11 +180,6 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst,
 
 	if (!arcan_frameserver_enter(dst))
 		return ARCAN_ERRC_UNACCEPTED_STATE;
-
-/*
- * printf("-> target(%d):%s\n", (int)dst->vid,
-		arcan_shmif_eventstr(ev, NULL, 0));
- */
 
 	arcan_errc rv = dst->flags.alive && (dst->shm.ptr && dst->shm.ptr->dms) ?
 		(arcan_event_enqueue(&dst->outqueue, ev), ARCAN_OK) :
@@ -246,9 +239,8 @@ static void push_buffer(arcan_frameserver* src,
 		store->vinf.text.format = src->vstream.format;
 		stream = agp_stream_prepare(store, stream, STREAM_HANDLE);
 
-/* buffer passing failed, mark that as an unsupported mode for
- * some reason, log and send back to client to revert to shared
- * memory and extra copies */
+/* buffer passing failed, mark that as an unsupported mode for some reason, log
+ * and send back to client to revert to shared memory and extra copies */
 		if (!stream.state){
 			arcan_event ev = {
 				.category = EVENT_TARGET,
@@ -263,7 +255,8 @@ static void push_buffer(arcan_frameserver* src,
 		return;
 	}
 
-/* no-alpha flag was rather dumb, should've been done shader-wise */
+/* no-alpha flag was rather dumb, should've been done shader-side but now it is
+ * kept due to legacy problems that would appear if removed */
 	if (src->flags.no_alpha_copy){
 		stream = agp_stream_prepare(store, stream, STREAM_RAW);
 		if (!stream.buf)
@@ -427,9 +420,9 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 }
 
 /*
- * a little bit special, the vstore is already assumed to
- * contain the state that we want to forward, and there's
- * no audio mixing or similar going on, so just copy.
+ * a little bit special, the vstore is already assumed to contain the state
+ * that we want to forward, and there's no audio mixing or similar going on, so
+ * just copy.
  */
 enum arcan_ffunc_rv arcan_frameserver_feedcopy FFUNC_HEAD
 {
@@ -518,12 +511,11 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe FFUNC_HEAD
 	}
 
 /*
- * if the frameserver isn't ready to receive (semaphore unlocked)
- * then the frame will be dropped, a warning noting that the
- * frameserver isn't fast enough to deal with the data (allowed to
- * duplicate frame to maintain framerate,
- * it can catch up reasonably by using less CPU intensive frame format.
- * Audio will keep on buffering until overflow,
+ * if the frameserver isn't ready to receive (semaphore unlocked) then the
+ * frame will be dropped, a warning noting that the frameserver isn't fast
+ * enough to deal with the data (allowed to duplicate frame to maintain
+ * framerate, it can catch up reasonably by using less CPU intensive frame
+ * format. Audio will keep on buffering until overflow.
  */
 	else if (cmd == FFUNC_READBACK){
 		if (!src->shm.ptr->vready){
@@ -746,9 +738,9 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 		goto leave;
 
 /*
- * Only allow the two categories below, and only let the internal event
- * queue be filled to half in order to not have a crazy frameserver starve
- * the main process.
+ * Only allow the two categories below, and only let the internal event queue
+ * be filled to half in order to not have a crazy frameserver starve the main
+ * process.
  */
 	arcan_event_queuetransfer(arcan_event_defaultctx(), &src->inqueue,
 		src->queue_mask, 0.5, src->vid);
@@ -780,23 +772,22 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 		&(src->inqueue), &(src->outqueue), true);
 
 	struct arcan_shmif_page* shmpage = src->shm.ptr;
-	/*
- * this is a rather costly operation that we want to rate-control or
- * at least monitor as multiple resizes in a short amount of time
- * is indicative of something foul going on.
+/*
+ * this is a rather costly operation that we want to rate-control or at least
+ * monitor as multiple resizes in a short amount of time is indicative of
+ * something foul going on.
  */
 	vfunc_state cstate = *arcan_video_feedstate(src->vid);
 
-/* resize the source vid in a way that won't propagate to user scripts
- * as we want the resize event to be forwarded to the regular callback */
+/* resize the source vid in a way that won't propagate to user scripts as we
+ * want the resize event to be forwarded to the regular callback */
 	arcan_event_maskall(arcan_event_defaultctx());
 	src->desc.samplerate = ARCAN_SHMIF_SAMPLERATE;
 	src->desc.channels = ARCAN_SHMIF_ACHANNELS;
 
 /*
- * though the frameserver backing is resized, the actual
- * resize event won't propagate until the frameserver has provided
- * data (push buffer)
+ * though the frameserver backing is resized, the actual resize event won't
+ * propagate until the frameserver has provided data (push buffer)
  */
 	arcan_event_clearmask(arcan_event_defaultctx());
 	arcan_shmif_calcofs(shmpage, &(src->vidp), &(src->audp));
@@ -877,11 +868,11 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 			ctx->aid = arcan_audio_feed((arcan_afunc_cb)
 				arcan_frameserver_audioframe_direct, ctx, &errc);
 
-			ctx->segid    = SEGID_GAME;
+			ctx->segid = SEGID_GAME;
 			ctx->sz_audb  = 1024 * 64;
 			ctx->ofs_audb = 0;
 			ctx->segid = SEGID_GAME;
-			ctx->audb     = arcan_alloc_mem(ctx->sz_audb,
+			ctx->audb = arcan_alloc_mem(ctx->sz_audb,
 				ARCAN_MEM_ABUFFER, 0, ARCAN_MEMALIGN_PAGE);
 			ctx->queue_mask = EVENT_EXTERNAL;
 		}
@@ -921,19 +912,19 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 			ctx->queue_mask = EVENT_EXTERNAL;
 		}
 	}
-/* hijack works as a 'process parasite' inside the rendering pipeline of
- * other projects, either through a generic fallback library or for
- * specialized "per- target" (in order to minimize size and handle 32/64
- * switching parent-vs-child relations */
+/* hijack works as a 'process parasite' inside the rendering pipeline of other
+ * projects, either through a generic fallback library or for specialized "per-
+ * target" (in order to minimize size and handle 32/64 switching
+ * parent-vs-child relations */
 	else{
 		ctx->aid = arcan_audio_feed((arcan_afunc_cb)
 			arcan_frameserver_audioframe_direct, ctx, &errc);
 		ctx->segid = SEGID_UNKNOWN;
 		ctx->queue_mask = EVENT_EXTERNAL;
 
-/* although audio playback tend to be kept in the child process, the
- * sampledata may still be needed for recording/monitoring */
-		ctx->sz_audb  = 1024 * 64;
+/* although audio playback tend to be kept in the child process, the sampledata
+ * may still be needed for recording/monitoring */
+		ctx->sz_audb = 1024 * 64;
 		ctx->ofs_audb = 0;
 		ctx->audb = arcan_alloc_mem(ctx->sz_audb,
 				ARCAN_MEM_ABUFFER, 0, ARCAN_MEMALIGN_PAGE);
@@ -941,12 +932,9 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 
 /* two separate queues for passing events back and forth between main program
  * and frameserver, set the buffer pointers to the relevant offsets in
- * backend_shmpage, and semaphores from the sem_open calls -- plan is
- * to switch this behavior on some platforms to instead use sockets to
- * improve I/O multiplexing (network- frameservers) or at least have futex
- * triggers on Linux */
-	arcan_shmif_setevqs(ctx->shm.ptr, ctx->esync,
-		&(ctx->inqueue), &(ctx->outqueue), true);
+ * backend_shmpage */
+	arcan_shmif_setevqs(ctx->shm.ptr,
+		ctx->esync, &(ctx->inqueue), &(ctx->outqueue), true);
 	ctx->inqueue.synch.killswitch = (void*) ctx;
 	ctx->outqueue.synch.killswitch = (void*) ctx;
 
