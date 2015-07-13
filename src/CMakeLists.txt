@@ -595,4 +595,6 @@ if (APIMAN_DEST AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/../doc/mantmp)
 		DESTINATION ${APIMAN_DEST}
 		PERMISSIONS ${SHARED_PERMISSIONS}
 	)
+else()
+	amsg("${CLB_WHT} mantmp output not found, run:\n\t ${CL_YEL} cd ${CMAKE_CURRENT_SOURCE_DIR}/../doc ; ruby docgen.rb mangen\n ${CLB_WHT} and reconfigure for manpage generation. ${CL_RST}")
 endif()

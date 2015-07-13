@@ -277,10 +277,11 @@ the ARCAN_CONNPATH mechanism need to be specified.
 .SH DIAGNOSTICS
 There are a number of ways the engine can shut down, especially if the engine
 was built in Debug mode. A governing principle for user supplied scripts is
-that of \fIFail Often, Early and Hard\fR. This means that API misuse,
-i.e. missing or wrong arguments will result in a crash and the related error
-description will be provided (color-coded) to the standard output, and that
-a state dump will be generated and stored in the ARCAN_LOGPATH.
+that of \fIFail Often, Early and Hard\fR. This means that API misuse, i.e.
+missing or wrong arguments will result in a crash and the related error
+description will be provided (color-coded) to the standard output, and that a
+state dump will be generated and stored in the namespace specified by
+ARCAN_LOGPATH.
 
 This state dump is a Lua parsable script that can be loaded either by a
 monitoring script (similar to monitoring mode) or a regular Lua interpreter.
@@ -288,8 +289,8 @@ monitoring script (similar to monitoring mode) or a regular Lua interpreter.
 The environment variable \fBARCAN_FRAMESERVER_DEBUGSTALL\fR can be set if you
 suspect that a frameserver is involved, or to blame, for an issue. This will
 print the process ID (pid) of the new frameserver process to standard output,
-then sleep for 10 seconds, giving ample room for you to attach a debugger or
-tracing tool.
+then sleep for the argument supplied number of seconds, to provide enough time
+to attach a debugger or tracing tool.
 
 .SH HOMEPAGE
 https://arcan-fe.com
@@ -302,17 +303,16 @@ https://arcan-fe.com
 \&\fIarcan_frameserver_net\fR\|(1) \&\fIarcan_frameserver_terminal\fR\|(1)
 
 .SH BUGS
-You can report bugs at the forum on the homepage or through the the AUTHOR
-contact below. Save a snapshot of core-dumps (in the case of engine issues) or
-the appropriate resources/logs entries. For some issues, a copy of the database
-used and a list of files (with permissions) in themepath and
-resourcepath might also be relevant.
+You can report bugs through the tracker on the github page, through the AUTHOR
+contact below, or in the #arcan IRC channel on freenode. Save a snapshot of
+core-dumps (in the case of engine issues) or the appropriate resources/logs
+entries. For some issues, a copy of the database used and a list of files
+(with permissions) in applpath and resourcepath may also be relevant.
 
 .SH COPYRIGHT
-Copyright  ©  2003-2014  Bjorn Stahl. License GPLv3+: GNU GPL version 3 or
-later <http://gnu.org/licenses/gpl.html>. This is free software: you are
-free  to  change  and  redistribute  it. There is NO WARRANTY,
-to the extent permitted by law.
+Copyright  ©  2003-2015  Bjorn Stahl. License GPLv2+ or BSD based on build
+configuration. This is free software: you are free  to  change and redistribute
+it. There is NO WARRANTY, to the extent permitted by law.
 
 .SH AUTHOR
 Bjorn Stahl <contact at arcan-fe dot com>
