@@ -211,7 +211,7 @@ static void override_resspaces(const char* respath)
 {
 	size_t len = strlen(respath);
 	if (len == 0 || !arcan_isdir(respath)){
-		arcan_warning("-p argument ignored, invalid path specified.");
+		arcan_warning("-p argument ignored, invalid path specified.\n");
 		return;
 	}
 
