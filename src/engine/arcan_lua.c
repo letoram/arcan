@@ -369,7 +369,7 @@ static inline intptr_t find_lua_callback(lua_State* ctx)
 			return luaL_ref(ctx, LUA_REGISTRYINDEX);
 		}
 
-	return (intptr_t) 0;
+	return (intptr_t) LUA_NOREF;
 }
 
 static inline int find_lua_type(lua_State* ctx, int type, int ofs)
@@ -2683,8 +2683,6 @@ static int launchavfeed(lua_State* ctx)
 	if (argstr != NULL)
 		modearg = luaL_optstring(ctx, 2, modearg);
 
-	uintptr_t ref = 0;
-
 	if (strstr(FRAMESERVER_MODESTRING, modearg) == NULL){
 		arcan_warning("launch_avfeed(), requested mode (%s) missing from "
 			"build-time frameserver configuration (%s), rejected.\n",
@@ -2693,7 +2691,7 @@ static int launchavfeed(lua_State* ctx)
 		return 0;
 	}
 
-	ref = find_lua_callback(ctx);
+	intptr_t ref = find_lua_callback(ctx);
 	arcan_frameserver* mvctx = arcan_frameserver_alloc();
 
 	struct frameserver_envp args = {
@@ -3542,7 +3540,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		tblnum(ctx, "source_audio", ev->fsrv.audio, top);
 
 		dst_cb = ev->fsrv.otag;
-		if (0 == dst_cb){
+		if (LUA_NOREF == dst_cb){
 			lua_settop(ctx, 0);
 			return;
 		}
@@ -3619,10 +3617,13 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			return;
 		}
 
-		intptr_t dst_cb = 0;
-		arcan_vobject* srcobj;
+/* terminating conditions: no callback or source vid broken */
+		intptr_t dst_cb = (intptr_t) ev->vid.data;
+		arcan_vobject* srcobj = arcan_video_getobject(ev->vid.source);
+		if (0 == dst_cb || !srcobj)
+			return;
+
 		const char* evmsg = "video_event";
-		bool gotfun = false;
 
 /* add placeholder, if we find an asynch recipient */
 		lua_pushnumber(ctx, 0);
@@ -3637,41 +3638,25 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		break;
 
 		case EVENT_VIDEO_CHAIN_OVER:
-			evmsg = "video_event(chain_tag reached)";
-			dst_cb = (intptr_t) ev->vid.data;
-			if (dst_cb){
-				evmsg = "video_event(chain_tag reached, callback";
-				luactx.cb_source_kind = CB_SOURCE_TRANSFORM;
-			}
+			evmsg = "video_event(chain_tag reached), callback";
+			luactx.cb_source_kind = CB_SOURCE_TRANSFORM;
 		break;
 
 		case EVENT_VIDEO_ASYNCHIMAGE_LOADED:
-			evmsg = "video_event(asynchimg_loaded)";
+			evmsg = "video_event(asynchimg_loaded), callback";
+			luactx.cb_source_kind = CB_SOURCE_IMAGE;
 			tblstr(ctx, "kind", "loaded", top);
-			tblnum(ctx, "width", ev->vid.width, top);
-			tblnum(ctx, "height", ev->vid.height, top);
-			dst_cb = (intptr_t) ev->vid.data;
-
-			if (dst_cb){
-				evmsg = "video_event(asynchimg_loaded), callback";
-				luactx.cb_source_kind = CB_SOURCE_IMAGE;
-			}
-		break;
-
+/* C trick warning */
+			if (0)
 		case EVENT_VIDEO_ASYNCHIMAGE_FAILED:
-			srcobj = arcan_video_getobject(ev->vid.source);
-			evmsg = "video_event(asynchimg_load_fail), callback";
-			tblstr(ctx, "kind", "load_failed", top);
+			{
+				evmsg = "video_event(asynchimg_load_fail), callback";
+				tblstr(ctx, "kind", "load_failed", top);
+			}
 			tblstr(ctx, "resource", srcobj && srcobj->vstore->vinf.text.source ?
 				srcobj->vstore->vinf.text.source : "unknown", top);
 			tblnum(ctx, "width", ev->vid.width, top);
 			tblnum(ctx, "height", ev->vid.height, top);
-			dst_cb = (intptr_t) ev->vid.data;
-
-			if (dst_cb){
-				evmsg = "video_event(asynchimg_load_fail), callback";
-				luactx.cb_source_kind = CB_SOURCE_IMAGE;
-			}
 		break;
 
 		default:
@@ -3683,11 +3668,8 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			luactx.cb_source_tag = ev->vid.source;
 			lua_rawgeti(ctx, LUA_REGISTRYINDEX, dst_cb);
 			lua_replace(ctx, 1);
-			gotfun = true;
-		}
-
-		if (gotfun)
 			wraperr(ctx, lua_pcall(ctx, 2, 0, 0), evmsg);
+		}
 		else
 			lua_settop(ctx, 0);
 
@@ -5890,7 +5872,7 @@ static int targetlaunch(lua_State* ctx)
 		arcan_fatal("launch_target(), invalid mode -- expected LAUNCH_INTERNAL "
 			" or LAUNCH_EXTERNAL ");
 
-	uintptr_t ref = find_lua_callback(ctx);
+	intptr_t ref = find_lua_callback(ctx);
 
 	struct arcan_strarr argv, env, libs = {0};
 	enum DB_BFORMAT bfmt;
@@ -5956,8 +5938,10 @@ static int targetlaunch(lua_State* ctx)
 			argv.count >= 2 ? argv.data[1] : "")), NULL};
 		arcan_expand_namespaces(expbuf);
 
-		char* argstr = NULL;
-		asprintf(&argstr, "core=%s:resource=%s", expbuf[0], expbuf[1]);
+		char* argstr;
+		if (-1 == asprintf(&argstr, "core=%s:resource=%s", expbuf[0], expbuf[1]))
+			argstr = NULL;
+
 		args.args.builtin.resource = argstr;
 
 		if (!fsrv_ok||arcan_frameserver_spawn_server(intarget, args) != ARCAN_OK){
