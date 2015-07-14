@@ -5129,10 +5129,12 @@ static int resource(lua_State* ctx)
 	int mask = luaL_optinteger(ctx, 2, DEFAULT_USERMASK) & DEFAULT_USERMASK;
 	char* res = findresource(label, mask);
 	lua_pushstring(ctx, res);
+	lua_pushstring(ctx, res ?
+		(arcan_isdir(res) ? "directory" : "file") : "not found");
 	arcan_mem_free(res);
 
 	LUA_ETRACE("resource", NULL);
-	return 1;
+	return 2;
 }
 
 static int screencoord(lua_State* ctx)
