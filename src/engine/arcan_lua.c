@@ -670,7 +670,7 @@ static inline bool intblbool(lua_State* ctx, int ind, const char* field){
 
 static inline char* findresource(const char* arg, enum arcan_namespaces space)
 {
-	char* res = arcan_find_resource(arg, space);
+	char* res = arcan_find_resource(arg, space, ARES_FILE);
 /* since this is invoked extremely frequently and is involved in file-system
  * related stalls, maybe a sort of caching mechanism should be implemented
  * (invalidate / refill every N ticks or have a flag to side-step it -- as a lot
@@ -4806,7 +4806,7 @@ static int rawsurface(lua_State* ctx)
 		}
 
 	if (dumpstr){
-		char* fname = arcan_find_resource(dumpstr, RESOURCE_APPL_TEMP);
+		char* fname = arcan_find_resource(dumpstr, RESOURCE_APPL_TEMP, ARES_FILE);
 		if (fname){
 			arcan_warning("rawsurface() -- refusing to "
 				"overwrite existing file (%s)\n", fname);
@@ -5109,11 +5109,16 @@ static int resource(lua_State* ctx)
 
 	const char* label = luaL_checkstring(ctx, 1);
 	int mask = luaL_optinteger(ctx, 2, DEFAULT_USERMASK) & DEFAULT_USERMASK;
-	char* res = findresource(label, mask);
-	lua_pushstring(ctx, res);
-	lua_pushstring(ctx, res ?
-		(arcan_isdir(res) ? "directory" : "file") : "not found");
-	arcan_mem_free(res);
+	char* res = arcan_find_resource(label, mask, ARES_FILE | ARES_FOLDER);
+	if (!res){
+		lua_pushstring(ctx, res);
+		lua_pushstring(ctx, "not found");
+	}
+	else{
+		lua_pushstring(ctx, res);
+		lua_pushstring(ctx, arcan_isdir(res) ? "directory" : "file");
+		arcan_mem_free(res);
+	}
 
 	LUA_ETRACE("resource", NULL);
 	return 2;
@@ -5528,7 +5533,7 @@ static int targetrestore(lua_State* ctx)
 		return 1;
 	}
 
-	char* fname = arcan_find_resource(snapkey, RESOURCE_APPL_STATE);
+	char* fname = arcan_find_resource(snapkey, RESOURCE_APPL_STATE, ARES_FILE);
 	int fd = -1;
 	if (fname)
 		fd = open(fname, O_RDONLY);
@@ -7668,7 +7673,7 @@ static int screenshot(lua_State* ctx)
 		return 0;
 	}
 
-	char* fname = arcan_find_resource(resstr, RESOURCE_APPL_TEMP);
+	char* fname = arcan_find_resource(resstr, RESOURCE_APPL_TEMP, ARES_FILE);
 	if (fname){
 		arcan_warning("save_screeenshot() -- refusing to "
 			"overwrite existing file.\n");
