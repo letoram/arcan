@@ -64,7 +64,8 @@ static unsigned i_log2(uint32_t n)
 	return res;
 }
 
-char* arcan_find_resource(const char* label, enum arcan_namespaces space)
+char* arcan_find_resource(const char* label,
+	enum arcan_namespaces space, enum resource_type ares)
 {
 	if (label == NULL || verify_traverse(label) == NULL)
 		return NULL;
@@ -81,7 +82,10 @@ char* arcan_find_resource(const char* label, enum arcan_namespaces space)
 			namespaces.paths[j], label
 		);
 
-		if (arcan_isfile(scratch))
+		if (
+			((ares & ARES_FILE) && arcan_isfile(scratch)) ||
+			((ares & ARES_FOLDER) && arcan_isdir(scratch))
+		)
 			return strdup(scratch);
 	}
 
@@ -124,7 +128,7 @@ char* arcan_find_resource_path(const char* label, const char* path,
 	size_t len_2 = strlen(label);
 
 	if (len_1 == 0)
-		return arcan_find_resource(label, space);
+		return arcan_find_resource(label, space, ARES_FILE);
 
 	if (len_2 == 0)
 		return NULL;
@@ -136,7 +140,7 @@ char* arcan_find_resource_path(const char* label, const char* path,
 	memcpy(&buf[len_1+1], label, len_2 + 1);
 
 /* simply forward */
-	char* res = arcan_find_resource(buf, space);
+	char* res = arcan_find_resource(buf, space, ARES_FILE);
 	return res;
 }
 

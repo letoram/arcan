@@ -19,6 +19,11 @@ typedef struct {
 	char* source;
 } data_source;
 
+enum resource_type {
+	ARES_FILE = 1,
+	ARES_FOLDER = 2
+};
+
 /*
  * implemented in <platform>/namespace.c
  * Expand <label> into the path denoted by <arcan_namespaces>
@@ -29,11 +34,12 @@ char* arcan_expand_resource(const char* label, enum arcan_namespaces);
 
 /*
  * implemented in <platform>/namespace.c
- * Search <namespaces> after matching <label> (file_exists)
+ * Search <namespaces> after matching <label> (exist and resource_type match)
  * ordered by individual enum value (low to high).
  * Returns dynamically allocated string on match, else NULL.
  */
-char* arcan_find_resource(const char* label, enum arcan_namespaces);
+char* arcan_find_resource(const char* label,
+	enum arcan_namespaces, enum resource_type);
 
 /*
  * implemented in <platform>/namespace.c
