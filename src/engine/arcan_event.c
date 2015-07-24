@@ -18,9 +18,9 @@
 #include <signal.h>
 
 /*
- * fixed limit of allowed events in queue before we need to
- * do something more aggressive (flush queue to script,
- * blacklist noisy sources, rate- limit frameservers)
+ * fixed limit of allowed events in queue before we need to do something more
+ * aggressive (flush queue to script, blacklist noisy sources, rate- limit
+ * frameservers)
  */
 #ifndef ARCAN_EVENT_QUEUE_LIM
 #define ARCAN_EVENT_QUEUE_LIM 255

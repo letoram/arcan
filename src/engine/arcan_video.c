@@ -839,8 +839,8 @@ arcan_errc arcan_video_resampleobject(arcan_vobj_id vid,
 		arcan_mem_free(dstbuf);
 		return ARCAN_ERRC_OUT_OF_SPACE;
 	}
-/* dstbuf is now managed by the glstore in xfer */
 
+/* dstbuf is now managed by the glstore in xfer */
 	arcan_video_shareglstore(vid, xfer);
 	arcan_video_objectopacity(xfer, 1.0, 0);
 	arcan_video_setprogram(xfer, shid);
@@ -1435,10 +1435,9 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
 	img_cons forced, bool asynchsrc)
 {
 /*
- * with asynchsynch, it's likely that we get a storm of requests
- * and we'd likely suffer thrashing, so limit this.
- * also, look into using pthread_setschedparam and switch to
- * pthreads exclusively
+ * with asynchsynch, it's likely that we get a storm of requests and we'd
+ * likely suffer thrashing, so limit this.  also, look into using
+ * pthread_setschedparam and switch to pthreads exclusively
  */
 	arcan_sem_wait(asynchsynch);
 
@@ -1451,8 +1450,7 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
 		return ARCAN_ERRC_BAD_RESOURCE;
 	}
 
-/* mmap (preferred) or buffer (mmap not working /
- * useful due to alignment) */
+/* mmap (preferred) or buffer (mmap not working / useful due to alignment) */
 	map_region inmem = arcan_map_resource(&inres, false);
 	if (inmem.ptr == NULL){
 		arcan_sem_post(asynchsynch);
@@ -1634,10 +1632,7 @@ arcan_errc arcan_video_shareglstore(arcan_vobj_id sid, arcan_vobj_id did)
 	dst->vstore = src->vstore;
 	dst->vstore->refcount++;
 
-/*
- * customized texture coordinates unless we should use
- * defaults ...
- */
+/* customized texture coordinates unless we should use defaults ... */
 	if (src->txcos){
 		if (!dst->txcos)
 			dst->txcos = arcan_alloc_mem(8 * sizeof(float),
@@ -2828,14 +2823,11 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 			vobj->feed.state.tag = ARCAN_TAG_NONE;
 		}
 
-/* synchronize with the threadloader so we don't get a race */
-		if (vobj->feed.state.tag == ARCAN_TAG_ASYNCIMGLD){
+		if (vobj->feed.state.tag == ARCAN_TAG_ASYNCIMGLD)
 			arcan_video_pushasynch(id);
-		}
 
-/* video storage, will take care of refcounting in case of
- * shared storage etc. */
-		arcan_vint_drop_vstore( vobj->vstore );
+/* video storage, will take care of refcounting in case of shared storage */
+		arcan_vint_drop_vstore(vobj->vstore);
 		vobj->vstore = NULL;
 	}
 
@@ -3683,9 +3675,9 @@ unsigned arcan_video_tick(unsigned steps, unsigned* njobs)
 
 /*
  * we don't want c_ticks running too high (the tick is monotonic, but not
- * continous) as lots of float operations are relying on this as well,
- * this will cause transformations that are scheduled across the boundary
- * to behave oddly until reset. A fix would be to rebase if that is a problem.
+ * continous) as lots of float operations are relying on this as well, this
+ * will cause transformations that are scheduled across the boundary to behave
+ * oddly until reset. A fix would be to rebase if that is a problem.
  */
 		arcan_video_display.c_ticks =
 			(arcan_video_display.c_ticks + 1) % (INT32_MAX / 3);
