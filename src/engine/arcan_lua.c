@@ -2742,9 +2742,6 @@ static int loadmovie(lua_State* ctx)
 		cbind++;
 	}
 
-/* in order to stay backward compatible API wise,
- * the load_movie with function callback
- * will always need to specify loop condition. */
 	if (lua_isfunction(ctx, cbind) && !lua_iscfunction(ctx, cbind)){
 		lua_pushvalue(ctx, cbind);
 		ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
@@ -8290,6 +8287,7 @@ static const luaL_Reg tgtfuns[] = {
 {"rendertarget_attach",        renderattach             },
 {"rendertarget_noclear",       rendernoclear            },
 {"load_movie",                 loadmovie                },
+{"launch_decode",              loadmovie                },
 {"launch_avfeed",              launchavfeed             },
 {NULL, NULL}
 };
