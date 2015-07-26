@@ -5,13 +5,12 @@
  */
 
 /*
- * a lot of the filtering here is copied of platform/sdl/event.c,
- * as it is scheduled for deprecation, we've not bothered designing
- * an interface for the axis bits to be shared. For future refactoring,
- * the basic signalling processing, e.g. determining device orientation
- * from 3-sensor + Kalman, user-configurable analog filters on noisy
- * devices etc. should be generalized and put in a shared directory,
- * and re-used for other input platforms.
+ * a lot of the filtering here is copied of platform/sdl/event.c, as it is
+ * scheduled for deprecation, we've not bothered designing an interface for the
+ * axis bits to be shared. For future refactoring, the basic signalling
+ * processing, e.g. determining device orientation from 3-sensor + Kalman,
+ * user-configurable analog filters on noisy devices etc. should be generalized
+ * and put in a shared directory, and re-used for other input platforms.
  */
 
 #include <stdlib.h>
@@ -46,18 +45,22 @@
 
 #include <sys/inotify.h>
 
-static const char* envopts[] = {
-	"ARCAN_INPUT_MUTETTY", "Define to disable local tty echo",
-	NULL
-};
-
 /*
- * prever scanning device nodes as sysfs/procfs
- * and friends should not be needed to be mounted/exposed.
+ * scan / probe a node- dir (ENVV overridable)
  */
 #ifndef NOTIFY_SCAN_DIR
 #define NOTIFY_SCAN_DIR "/dev/input"
 #endif
+static const char* notify_scan_dir = NOTIFY_SCAN_DIR;
+static bool log_verbose = false;
+
+static const char* envopts[] = {
+	"ARCAN_INPUT_MUTETTY", "Define to disable local tty echo",
+	"ARCAN_INPUT_SCANDIR", "Directory to monitor for device nodes "
+		"(Default: "NOTIFY_SCAN_DIR")",
+	"ARCAN_INPUT_VERBOSE", "_warning log() input node events",
+	NULL
+};
 
 /*
  * need a reasonable limit on the amount of allowed
@@ -75,9 +78,8 @@ struct axis_opts {
 
 	int lower, upper, deadzone;
 
-/* we won't get access to a good range distribution
- * if we don't emit the first / last sample that got
- * into the drop range */
+/* we won't get access to a good range distribution if we don't emit the first
+ * / last sample that got into the drop range */
 	bool inlzone, inuzone, indzone;
 
 	int kernel_sz;
@@ -99,9 +101,9 @@ static struct {
 struct arcan_devnode {
 	int handle;
 
-/* NULL&size terminated, with chain-block set of the previous
- * one could not handle. This is to cover devices that could
- * expose themselves as being aggregated KEY/DEV/etc. */
+/* NULL&size terminated, with chain-block set of the previous one could not
+ * handle. This is to cover devices that could expose themselves as being
+ * aggregated KEY/DEV/etc. */
 	struct evhandler hnd;
 
 	char label[256];
@@ -138,17 +140,16 @@ struct arcan_devnode {
 
 static int notify_fd;
 static bool mute_tty = false;
-static void got_device(int fd);
+static void got_device(int fd, const char*);
 
 static struct arcan_devnode* lookup_devnode(int devid)
 {
 	if (devid < 0)
 		devid = iodev.mouseid;
 
-/* some other parts of the engine still sweep
- * device IDs due to event/platform legacy,
- * we split the devid namespace in two so that
- * the devids we return are outside MAX_DEVICES */
+/* some other parts of the engine still sweep device IDs due to event/platform
+ * legacy, we split the devid namespace in two so that the devids we return are
+ * outside MAX_DEVICES */
 	if (devid < iodev.n_devs)
 		return &iodev.nodes[devid];
 
@@ -160,19 +161,32 @@ static struct arcan_devnode* lookup_devnode(int devid)
 	return NULL;
 }
 
-static bool identify(int fd, char* label, size_t label_sz, unsigned short* dnum)
+/* another option to this mess (as the hashing thing doesn't seem to work out
+ * is to move identification/etc. to another level and just let whatever device
+ * node generator is active populate with coherent names. */
+static bool identify(int fd, const char* path,
+	char* label, size_t label_sz, unsigned short* dnum)
 {
-	if (-1 == ioctl(fd, EVIOCGNAME(label_sz), label))
-		return false;
+	if (-1 == ioctl(fd, EVIOCGNAME(label_sz), label)){
+		if (log_verbose)
+			arcan_warning("input/identify: bad EVIOCGNAME, setting unknown\n");
+		snprintf(label, label_sz, "unknown");
+	}
+	else
+		if (log_verbose)
+			arcan_warning("input/identify(%d): %s name resolved to %s\n",
+				fd, path, label);
 
 	struct input_id nodeid;
-
-	if (-1 == ioctl(fd, EVIOCGID, &nodeid))
+	if (-1 == ioctl(fd, EVIOCGID, &nodeid)){
+		arcan_warning("input/identify(%d): no EVIOCGID, "
+			"reason:%s\n", fd, strerror(errno));
 		return false;
+	}
 
-/* didn't find much on how unique eviocguniq actually was,
- * nor common lengths or what not so just mix them in a buffer,
- * hash and let unsigned overflow modulo take us down to 16bit */
+/* didn't find much on how unique eviocguniq actually was, nor common lengths
+ * or what not so just mix them in a buffer, hash and let unsigned overflow
+ * modulo take us down to 16bit */
 	size_t bpl = sizeof(long) * 8;
 	size_t nbits = ((EV_MAX)-1) / bpl + 1;
 
@@ -181,9 +195,8 @@ static bool identify(int fd, char* label, size_t label_sz, unsigned short* dnum)
 	memset(buf, '\0', sizeof(buf));
 	memset(bbuf, '\0', sizeof(bbuf));
 
-/* some test devices here answered to the ioctl and returned
- * full empty UNIQs, do something to lower the likelihood of
- * collisions */
+/* some test devices here answered to the ioctl and returned full empty UNIQs,
+ * do something to lower the likelihood of collisions */
 	unsigned long hash = 5381;
 
 	if (-1 == ioctl(fd, EVIOCGUNIQ(sizeof(buf)), buf) ||
@@ -193,6 +206,10 @@ static bool identify(int fd, char* label, size_t label_sz, unsigned short* dnum)
 		for (size_t i = 0; i < llen; i++)
 			hash = ((hash << 5) + hash) + label[i];
 
+		llen = strlen(path);
+		for (size_t i = 0; i < llen; i++)
+			hash  = ((hash << 5) + hash) + path[i];
+
 	 	buf[11] ^= nodeid.vendor >> 8;
 		buf[10] ^= nodeid.vendor;
 		buf[9] ^= nodeid.product >> 8;
@@ -200,9 +217,9 @@ static bool identify(int fd, char* label, size_t label_sz, unsigned short* dnum)
 		buf[7] ^= nodeid.version >> 8;
 		buf[6] ^= nodeid.version;
 
-/* even this point has a few collisions, particularly
- * some keyboards that don't respond to CGUNIQ and expose
- * multiple- subdevices but with different button/axis count */
+/* even this point has a few collisions, particularly some keyboards and mice
+ * that don't respond to CGUNIQ and expose multiple- subdevices but with
+ * different button/axis count */
 		ioctl(fd, EVIOCGBIT(0, EV_MAX), &buf);
 	}
 
@@ -361,9 +378,8 @@ void platform_event_analogall(bool enable, bool mouse)
 		return;
 
 /*
- * FIXME sweep all devices and all axes (or just mouseid)
- * if (enable) then set whatever the previous mode was,
- * else store current mode and set NONE
+ * FIXME sweep all devices and all axes (or just mouseid) if (enable) then set
+ * whatever the previous mode was, else store current mode and set NONE
  */
 }
 
@@ -388,33 +404,38 @@ void platform_event_analogfilter(int devid,
 
 static void discovered(const char* name, size_t name_len)
 {
-/* name might not be terminated */
-	char buf[name_len + 1];
-	memcpy(buf, name, name_len);
-	buf[name_len] = '\0';
+	int fd = fmt_open(0, O_NONBLOCK | O_RDONLY | O_CLOEXEC,
+		"%s/%.*s", notify_scan_dir, name_len, name);
 
-	int fd = fmt_open(0, O_NONBLOCK |
-		O_RDONLY | O_CLOEXEC, "%s/%s", NOTIFY_SCAN_DIR, name);
+	if (log_verbose)
+		arcan_warning(
+			"input: discovered %s/%.*s\n", notify_scan_dir, name_len, name);
 
 	if (-1 != fd)
-		got_device(fd);
+		got_device(fd, name);
 }
 
 void platform_event_process(struct arcan_evctx* ctx)
 {
-	bool more = false;
-
+/* lovely little variable length field at end of struct here /sarcasm,
+ * could get away with running the notify polling less often than once
+ * every frame, somewhat excessive. */
 	if (notify_fd > 0){
-		struct inotify_event ebuf[ 64 ];
-		ssize_t nr = read(notify_fd, ebuf, sizeof(ebuf) );
-		if (-1 != nr)
-			for (size_t i = 0; i < nr / sizeof(struct inotify_event); i++){
-				if ((ebuf[i].mask & IN_CREATE) &&
-					!(ebuf[i].mask & IN_ISDIR) && ebuf[i].len )
-					discovered(ebuf[i].name, ebuf[i].len);
-			}
+		char inbuf[1024];
+		ssize_t nr = read(notify_fd, inbuf, sizeof(inbuf));
+		off_t ofs = 0;
 
-		more = nr == sizeof(ebuf);
+		if (-1 != nr)
+			while (nr - ofs > sizeof(struct inotify_event)){
+				struct inotify_event cur;
+				memcpy(&cur, &inbuf[ofs], sizeof(struct inotify_event));
+				ofs += sizeof(struct inotify_event);
+
+				if ((cur.mask & IN_CREATE) && !(cur.mask & IN_ISDIR)){
+					discovered(&inbuf[ofs], cur.len);
+					ofs += cur.len;
+				}
+			}
 	}
 
 	char dump[256];
@@ -425,14 +446,13 @@ void platform_event_process(struct arcan_evctx* ctx)
 			if (iodev.pollset[i].revents & POLLIN){
 				if (iodev.nodes[i].hnd.handler)
 					iodev.nodes[i].hnd.handler(ctx, &iodev.nodes[i]);
-				else /* silently flush */
+				else /* silently flush */{
 					nr = read(iodev.nodes[i].handle, dump, 256);
+				}
 			}
 		}
 	}
 
-	if (more)
-		platform_event_process(ctx);
 }
 
 /*
@@ -445,6 +465,23 @@ void platform_event_keyrepeat(struct arcan_evctx* ctx, unsigned int rate)
 			int buf[2] = {REP_PERIOD, rate};
 			ioctl(iodev.nodes[i].handle, EVIOCGREP, buf);
 		}
+}
+
+static const char* lookup_type(int val)
+{
+	switch(val){
+	case DEVNODE_GAME:
+		return "game";
+	case DEVNODE_MOUSE:
+		return "mouse";
+	case DEVNODE_SENSOR:
+		return "sensor";
+	case DEVNODE_KEYBOARD:
+		return "keyboard";
+	break;
+	default:
+	return "unknown";
+	}
 }
 
 #define bit_longn(x) ( (x) / (sizeof(long)*8) )
@@ -482,9 +519,8 @@ static bool check_mouse_axis(int fd, size_t bitn)
 	if (-1 == ioctl(fd, EVIOCGBIT(bitn, KEY_MAX), bits))
 		return false;
 
-/* uncertain if other (REL_Z, REL_RX,
- * REL_RY, REL_RZ, REL_DIAL, REL_MISC) should be used
- * as a failing criteria */
+/* uncertain if other (REL_Z, REL_RX, REL_RY, REL_RZ, REL_DIAL, REL_MISC)
+ * should be used as a failing criteria */
 	return bit_isset(bits, REL_X) && bit_isset(bits, REL_Y);
 }
 
@@ -534,44 +570,65 @@ static void map_axes(int fd, size_t bitn, struct arcan_devnode* node)
 		}
 }
 
-static void got_device(int fd)
+static void got_device(int fd, const char* path)
 {
 	struct arcan_devnode node = {
 		.handle = fd
 	};
 
-	if (!identify(fd, node.label, sizeof(node.label), &node.devnum) ||
-		iodev.n_devs >= MAX_DEVICES){
+	struct stat fdstat;
+	if (-1 == fstat(fd, &fdstat)){
+		if (log_verbose)
+			arcan_warning(
+				"input: couldn't stat node to identify (%s)\n", strerror(errno));
+		return;
+	}
+
+	if ((fdstat.st_mode & (S_IFCHR | S_IFBLK)) == 0){
+		if (log_verbose)
+			arcan_warning(
+				"input: ignoring %s, not a character or block device\n", path);
+		return;
+	}
+
+	if (!identify(fd, path, node.label, sizeof(node.label), &node.devnum)){
+		if (log_verbose)
+			arcan_warning("input: identify failed on %s, ignoring unknown.\n", path);
 		close(fd);
 		return;
 	}
 
-/* figure out what kind of a device this is from the exposed
- * capabilities, heuristic nonsense rather than an interface
- * exposing what the driver should know or decide, fantastic.
+	if (iodev.n_devs >= MAX_DEVICES){
+		arcan_warning("input: device limit reached, ignoring %s.\n", path);
+		close(fd);
+	}
+
+/* figure out what kind of a device this is from the exposed capabilities,
+ * heuristic nonsense rather than an interface exposing what the driver should
+ * know or decide, fantastic.
  *
- * keyboards typically have longer key masks (and we can
- * check for a few common ones) no REL/ABS (don't know
- * if those built-in trackball ones expose as two devices
- * or not these days), but also a ton of .. keys
+ * keyboards typically have longer key masks (and we can check for a few common
+ * ones) no REL/ABS (don't know if those built-in trackball ones expose as two
+ * devices or not these days), but also a ton of .. keys
  */
 	struct evhandler eh = lookup_dev_handler(node.label);
 
-/* [eh] may contain overrides, but we still need to probe
- * the driver state for axes etc. and allocate accordingly */
+/* [eh] may contain overrides, but we still need to probe the driver state for
+ * axes etc. and allocate accordingly */
 	node.type = DEVNODE_GAME;
 
 	bool mouse_ax = false;
 	bool mouse_btn = false;
 	bool joystick_btn = false;
 
-/* scoping rules hack */
 	if (1){
 	size_t bpl = sizeof(long) * 8;
 	size_t nbits = ((EV_MAX)-1) / bpl + 1;
 	long prop[ nbits ];
 
 	if (-1 == ioctl(fd, EVIOCGBIT(0, EV_MAX), &prop)){
+		if (log_verbose)
+			arcan_warning("input: probing %s failed, %s\n", path, strerror(errno));
 		close(fd);
 		return;
 	}
@@ -621,8 +678,7 @@ static void got_device(int fd)
 /* not particularly pretty and rather arbitrary */
 		else if (!mouse_btn && !joystick_btn && node.button_count > 84){
 			node.type = DEVNODE_KEYBOARD;
-/* FIXME: query current LED states and set corresponding
- * states in the devnode */
+/* FIX: query current LED states and set corresponding states in the devnode */
 		}
 
 		node.hnd.handler = defhandlers[node.type];
@@ -674,11 +730,16 @@ static void got_device(int fd)
 	iodev.pollset[ofs].fd = fd;
 	iodev.pollset[ofs].events = POLLIN;
 	iodev.nodes[ofs] = node;
+	if (log_verbose)
+		arcan_warning("input: (%s:%s) added as type: %s\n",
+			path, node.label, lookup_type(node.type));
 
 	return;
 	}
 cleanup:
 	iodev.n_devs--;
+	if (log_verbose)
+		arcan_warning("input: dropped %s due to errors during scan.\n", path);
 	close(fd);
 }
 
@@ -689,46 +750,31 @@ cleanup:
 
 void platform_event_rescan_idev(struct arcan_evctx* ctx)
 {
-/* option is to add more namespaces here and have a
- * unique got_device for each of them to handle specific
- * APIs eg. old- style js0 (are they relevant anymore?) */
-	char* namespaces[] = {
-		"event",
-		NULL
-	};
-
-/*
- * rescan is not needed here as we have polling notification
- */
+/* rescan is not needed here as we check inotify while polling */
 	static bool init;
 	if (!init)
 		init = true;
 	else
 		return;
 
-	char** cns = namespaces;
+	char ibuf [strlen(notify_scan_dir) + sizeof("/*")];
+	glob_t res = {0};
+	snprintf(ibuf, sizeof(ibuf), "%s/*", notify_scan_dir);
 
-	while(*cns){
-		char ibuf [strlen(*cns) + strlen(NOTIFY_SCAN_DIR) + sizeof("/*")];
-		glob_t res = {0};
-		snprintf(ibuf, sizeof(ibuf) / sizeof(ibuf[0]),
-			"%s/%s*", NOTIFY_SCAN_DIR, *cns);
+	if (glob(ibuf, 0, NULL, &res) == 0){
+		char** beg = res.gl_pathv;
 
-		if (glob(ibuf, 0, NULL, &res) == 0){
-			char** beg = res.gl_pathv;
-
-			while(*beg){
-				int fd = open(*beg, O_NONBLOCK | O_RDONLY | O_CLOEXEC);
-				if (-1 != fd){
-					got_device(fd);
-				}
-				beg++;
-			}
-
-			cns++;
+		while(*beg){
+			int fd = open(*beg, O_NONBLOCK | O_RDONLY | O_CLOEXEC);
+			if (-1 != fd)
+				got_device(fd, *beg);
+			beg++;
 		}
-	}
 
+		globfree(&res);
+	}
+	else if (log_verbose)
+		arcan_warning("input: couldn't scan %s\n", notify_scan_dir);
 }
 
 static void update_state(int code, bool state, unsigned* statev)
@@ -775,6 +821,8 @@ static void defhandler_kbd(struct arcan_evctx* out,
 {
 	struct input_event inev[64];
 	ssize_t evs = read(node->handle, &inev, sizeof(inev));
+
+	printf("defhandler_kbd: %d\n", evs);
 
 	if (-1 == evs)
 		return disconnect(node);
@@ -1070,12 +1118,11 @@ void platform_event_deinit(struct arcan_evctx* ctx)
 		mute_tty = false;
 	}
 
-	/*
-	 * kill descriptors and pollset
-	 * keep source paths in order to rebuild (adopt style),
-	 * as the primary purpose for this call is to free- up
-	 * locks before switching to external control
-	 */
+/* FIX:
+ * kill descriptors and pollset keep source paths in order to rebuild (adopt
+ * style), as the primary purpose for this call is to free- up locks before
+ * switching to external control
+ */
 }
 
 void platform_device_lock(int devind, bool state)
@@ -1087,9 +1134,8 @@ void platform_device_lock(int devind, bool state)
 	ioctl(node->handle, EVIOCGRAB, state? 1 : 0);
 
 /*
- * doesn't make sense outside some window systems,
- * might be useful to propagate further to device locking
- * on systems that are less forgiving.
+ * doesn't make sense outside some window systems, might be useful to propagate
+ * further to device locking on systems that are less forgiving.
  */
 }
 
@@ -1109,8 +1155,14 @@ void platform_event_init(arcan_evctx* ctx)
 		mute_tty = true;
 	}
 
+	log_verbose = getenv("ARCAN_INPUT_VERBOSE");
+
+	const char* newsd;
+	if ((newsd = getenv("ARCAN_INPUT_SCANDIR")))
+		notify_scan_dir = newsd;
+
 	if (-1 == notify_fd || inotify_add_watch(
-		notify_fd, NOTIFY_SCAN_DIR, IN_CREATE) == -1){
+		notify_fd, notify_scan_dir, IN_CREATE) == -1){
 		arcan_warning("inotify initialization failure (%s),"
 			"	device discovery disabled.", strerror(errno));
 
@@ -1122,4 +1174,3 @@ void platform_event_init(arcan_evctx* ctx)
 
 	platform_event_rescan_idev(ctx);
 }
-

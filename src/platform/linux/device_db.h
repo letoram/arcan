@@ -5,13 +5,11 @@
  */
 
 /*
- * patch this to add a static, device specific, decoder
- * which can also be used to either forcibly disable
- * devices we handle poorly or that misbehave or only
- * allow devices we've verified in beforehand (though
- * the identity is rather weak and spoofable).
+ * patch this to add a static, device specific, decoder which can also be used
+ * to either forcibly disable devices we handle poorly or that misbehave or
+ * only allow devices we've verified in beforehand (though the identity is
+ * rather weak and spoofable).
  */
-
 enum devnode_type {
 	DEVNODE_SENSOR = 0,
 	DEVNODE_GAME,
@@ -43,12 +41,20 @@ static void defhandler_mouse(struct arcan_evctx*, struct arcan_devnode*);
 static void defhandler_game(struct arcan_evctx*, struct arcan_devnode*);
 static void defhandler_null(struct arcan_evctx*, struct arcan_devnode*);
 
+/* as with the other input.c, we should probably just move this out into
+ * the virtual filesystem and have the path indicate decoder type as this
+ * will just get worse and worse */
 static struct evhandler device_db[] = {
 	{
 	.name = "Microsoft X-Box 360 pad",
 	.type = DEVNODE_GAME,
 	.handler = defhandler_game,
 	.digital_hat = true
+	},
+	{
+	.name = "ckb1",
+	.type = DEVNODE_KEYBOARD,
+	.handler = defhandler_kbd
 	}
 };
 

@@ -56,6 +56,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <signal.h>
+#include <glob.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -259,11 +260,36 @@ static void disable_display(struct dispout*);
  */
 static void update_display(struct dispout*);
 
-/* There's probably some sysfs- specific approach
- * but rather keep that outside and use the environment
- * variable to specify.
- */
-static const char device_name[] = "/dev/dri/card0";
+/* naive approach, unless env is set, just scan /dev/dri/card* and
+ * grab the first one present. only used during first init */
+static const char* grab_card()
+{
+	const char* override = getenv("ARCAN_VIDEO_DEVICE");
+	if (override)
+		return override;
+
+	static char* lastcard;
+
+#ifndef VDEV_GLOB
+#define VDEV_GLOB "/dev/dri/card*"
+#endif
+
+	if (lastcard)
+		lastcard = (free(lastcard), NULL);
+
+	glob_t res;
+	if (glob(VDEV_GLOB, 0, NULL, &res) == 0){
+		if (*(res.gl_pathv)){
+			lastcard = strdup(*(res.gl_pathv));
+			globfree(&res);
+			return lastcard;
+		}
+		globfree(&res);
+	}
+
+	return override;
+}
+
 static char* last_err = "unknown";
 static size_t err_sz = 0;
 #define SET_SEGV_MSG(X) last_err = (X); err_sz = sizeof(X);
@@ -750,6 +776,8 @@ static int setup_node(struct dev_node* node, const char* path)
 {
 	SET_SEGV_MSG("libdrm(), open device failed (check permissions) "
 		" or use ARCAN_VIDEO_DEVICE environment.\n");
+	if (!path)
+		return -1;
 
 	memset(node, '\0', sizeof(struct dev_node));
 	node->fd = open(path, O_RDWR);
@@ -1222,9 +1250,6 @@ static void disable_display(struct dispout* d)
 	gbm_surface_destroy(d->buffer.surface);
 	d->buffer.surface = NULL;
 
-	drmModeFreeConnector(d->display.con);
-	d->display.con = NULL;
-
 	if (0 > drmModeSetCrtc(d->device->fd,
 		d->display.old_crtc->crtc_id,
 		d->display.old_crtc->buffer_id,
@@ -1236,6 +1261,9 @@ static void disable_display(struct dispout* d)
 		arcan_warning("Error setting old CRTC on %d\n",
 		d->display.con_id);
 	}
+
+	drmModeFreeConnector(d->display.con);
+	d->display.con = NULL;
 
 	drmModeFreeCrtc(d->display.old_crtc);
 	d->display.old_crtc = NULL;
@@ -1291,8 +1319,7 @@ bool platform_video_init(uint16_t w, uint16_t h,
  */
 	sigaction(SIGSEGV, &err_sh, &old_sh);
 
-	const char* device = getenv("ARCAN_VIDEO_DEVICE") ?
-		getenv("ARCAN_VIDEO_DEVICE") : device_name;
+	const char* device = grab_card();
 
 	if (setup_node(&nodes[0], device) != 0)
 		goto cleanup;
