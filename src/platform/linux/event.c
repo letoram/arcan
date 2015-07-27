@@ -42,7 +42,7 @@
 #include <linux/vt.h>
 #include <linux/major.h>
 #include <linux/kd.h>
-
+#include <signal.h>
 #include <sys/inotify.h>
 
 /*
@@ -55,7 +55,7 @@ static const char* notify_scan_dir = NOTIFY_SCAN_DIR;
 static bool log_verbose = false;
 
 static const char* envopts[] = {
-	"ARCAN_INPUT_MUTETTY", "Define to disable local tty echo",
+	"ARCAN_INPUT_NOMUTETTY", "Don't disable terminal or SIGINT",
 	"ARCAN_INPUT_SCANDIR", "Directory to monitor for device nodes "
 		"(Default: "NOTIFY_SCAN_DIR")",
 	"ARCAN_INPUT_VERBOSE", "_warning log() input node events",
@@ -822,8 +822,6 @@ static void defhandler_kbd(struct arcan_evctx* out,
 	struct input_event inev[64];
 	ssize_t evs = read(node->handle, &inev, sizeof(inev));
 
-	printf("defhandler_kbd: %d\n", evs);
-
 	if (-1 == evs)
 		return disconnect(node);
 
@@ -1115,6 +1113,7 @@ void platform_event_deinit(struct arcan_evctx* ctx)
 {
 	if (mute_tty){
 		ioctl(STDIN_FILENO, KDSKBMUTE, 0);
+		ioctl(STDIN_FILENO, KDSETMODE, KD_TEXT);
 		mute_tty = false;
 	}
 
@@ -1149,9 +1148,14 @@ void platform_event_init(arcan_evctx* ctx)
 	notify_fd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
 	init_keyblut();
 
-	if (getenv("ARCAN_INPUT_MUTETTY")){
+	if (!getenv("ARCAN_INPUT_NOMUTETTY")){
 		ioctl(STDIN_FILENO, KDSKBMUTE, 1);
 		ioctl(STDIN_FILENO, KDSKBMODE, 1);
+/* we're not doing this right,
+ * ioctl(STDIN_FILENO, KDSETMODE, KD_GRAPHICS);
+ */
+		struct sigaction er_sh = {.sa_handler = SIG_IGN};
+		sigaction(SIGINT, &er_sh, NULL);
 		mute_tty = true;
 	}
 

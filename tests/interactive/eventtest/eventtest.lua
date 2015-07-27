@@ -16,10 +16,7 @@ function drawline(text, size)
 end
 
 function eventtest()
---	zap keyconf table
-    system_load("scripts/keyconf.lua")();
     symtable  = system_load("scripts/symtable.lua")();
-keyconfig = keyconf_create();
 
     local analabel   = drawline( [[\bAnalog]], 18 );
     local digilabel  = drawline( [[\bDigital]], 18 );
@@ -36,16 +33,6 @@ keyconfig = keyconf_create();
     show_image(analabel);
     show_image(digilabel);
     show_image(translabel);
-
--- redirect if we need to config hack
-	if (keyconfig.active == false) then
-		keyconfig.iofun = eventtest_input;
-		eventtest_input = function(iotbl)
-			if (keyconfig:input(iotbl) == true) then
-				eventtest_input = keyconfig.iofun;
-			end
-		end
-	end
 
 -- enumerate the list of found devices
 	restbl = inputanalog_query();
@@ -112,10 +99,6 @@ function lookup(iotbl)
 
     if symtable[iotbl.keysym] then
 	line = line .. iotbl.keysym .. " =(symtable)> " .. symtable[iotbl.keysym] .. [[\t]];
-    end
-
-    if keyconfig:match(iotbl) then
-		line = line .. iotbl.keysym ..  " =(keyconf)> " .. table.concat(keyconfig:match(iotbl), ",");
     end
 
     if line ~= "" then
@@ -213,7 +196,6 @@ function eventtest_input( iotbl )
 			table.remove(anatbl.samples, 1);
 		end
 
-		local tbl = keyconfig:match(iotbl);
 		anatbl.match = tbl;
     end
 end

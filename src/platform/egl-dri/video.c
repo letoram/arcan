@@ -140,8 +140,7 @@ struct dev_node {
 static struct dev_node nodes[1];
 
 /*
- * aggregation struct that represent one triple
- * of display, card, bindings
+ * aggregation struct that represent one triple of display, card, bindings
  */
 struct dispout {
 /* connect drm, gbm and EGLs idea of a device */
@@ -373,6 +372,8 @@ bool platform_video_set_mode(platform_display_id disp, platform_mode_id mode)
 		return false;
 
 	d->display.mode = &d->display.con->modes[mode];
+	build_orthographic_matrix(d->projection,
+		0, d->display.mode->hdisplay, d->display.mode->vdisplay, 0, 0, 1);
 
 /*
  * reset scanout buffers to match new crtc mode
@@ -393,9 +394,6 @@ bool platform_video_set_mode(platform_display_id disp, platform_mode_id mode)
  * the next update will setup new BOs and activate CRTC
  */
 
-/*
-  recalculate matrices
- */
 	return true;
 }
 
@@ -987,6 +985,9 @@ retry:
 		return -1;
 	}
 
+	build_orthographic_matrix(d->projection,
+		0, d->display.mode->hdisplay, d->display.mode->vdisplay, 0, 0, 1);
+
 /*
  * find encoder and use that to grab CRTC
  */
@@ -1004,8 +1005,6 @@ retry:
 
 			d->display.crtc = res->crtcs[j];
 			d->display.old_crtc = drmModeGetCrtc(d->device->fd, enc->crtc_id);
-			arcan_warning("new crtc %d, old: %d\n",
-				d->display.crtc, d->display.old_crtc);
 			i = res->count_encoders;
 			crtc_found = true;
 			break;
@@ -1224,10 +1223,6 @@ void platform_video_query_displays()
 
 static void disable_display(struct dispout* d)
 {
-/*
- * we can only really allocate this on shutdown,
- * or have a different approach to allocating on multiple displays
- */
 	if (!d->alive){
 		arcan_warning("egl-dri(), attempting to destroy inactive display\n");
 		return;
@@ -1378,21 +1373,18 @@ void platform_video_synch(uint64_t tick_count, float fract,
 
 	size_t nd;
 	arcan_bench_register_cost( arcan_vint_refresh(fract, &nd) );
-/* currently we always blit, with a different synchronization, we can avoid
- * updating when there has been no changes (nd == 0) */
 
-/* blit targets to individual outputs and schedule flips */
+/* at this stage, the contents of all RTs have been synched,
+ * with nd == 0, nothing has changed from what was draw last time */
 	struct dispout* d;
 	int i = 0;
 
+/* blit to each display */
 	agp_shader_activate(agp_default_shader(BASIC_2D));
 	agp_blendstate(BLEND_NONE);
 
 	while ( (d = get_display(i++)) )
 		update_display(d);
-
-/* syncronization strategy dependant, for the first round
- * we just wait until all are flipped */
 
 	drmEventContext evctx = {
 			.version = DRM_EVENT_CONTEXT_VERSION,
@@ -1410,12 +1402,6 @@ void platform_video_synch(uint64_t tick_count, float fract,
 		if (-1 == poll(&fds, 1, -1) || (fds.revents & (POLLHUP | POLLERR)))
 			arcan_fatal("platform/egl-dri() - poll on device failed.\n");
 
-/*
- * one would think this would be a decent interface to check for hotplug events
- * but alas, it seems to be no serious approach to this other than relying on
- * sysfs? <insert explicit lyrics here>, what's with this interface and vulgar
- * side-channels?
- */
 		drmHandleEvent(nodes[0].fd, &evctx);
 
 		pending = 0;
@@ -1686,14 +1672,13 @@ static void update_display(struct dispout* d)
 		int rv = drmModeSetCrtc(d->device->fd, d->display.crtc,
 			d->buffer.fbid, 0, 0, &d->display.con_id, 1, d->display.mode);
 
-/*		drmModeConnectorSetProperty(d->device->fd, d->display.enc->crtc_id,
-			DRM_MODE_SCALE_FULLSCREEN, 1); */
+/*
+ * drmModeConnectorSetProperty(d->device->fd,
+ * 	d->display.enc->crtc_id, DRM_MODE_SCALE_FULLSCREEN, 1);
+ */
 
-		build_orthographic_matrix(d->projection, 0,
-			d->display.mode->hdisplay,
-			d->display.mode->vdisplay, 0, 0, 1
-		);
-
+/* this should be moved to only be updated when the mapping
+ * has changed, kept here for experimentation purposes */
 		if (rv < 0){
 			arcan_warning("error (%d) setting Crtc for %d:%d(con:%d, buf:%d)\n",
 				errno, d->device->fd, d->display.crtc, d->display.con_id,
@@ -1708,11 +1693,6 @@ static void update_display(struct dispout* d)
 	}
 
 	d->buffer.in_flip = 1;
-
-/*
- * we can't make the decision to poll and wait for flip etc. here yet,
- * as the synchronization might involve multiple displays
- */
 }
 
 void platform_video_prepare_external()

@@ -753,8 +753,8 @@ out:
 #ifdef ARCAN_LED
 	arcan_led_shutdown();
 #endif
-	arcan_video_shutdown();
 	arcan_event_deinit(arcan_event_defaultctx());
+	arcan_video_shutdown();
 	arcan_mem_free(dbfname);
 	if (dbhandle)
 		arcan_db_close(&dbhandle);
