@@ -5,10 +5,9 @@
 #include <ctype.h>
 
 /*
- * For legacy reasons we 've used SDLs keycodes as internal
- * representation, so convert between linux keycodes to
- * SDLs, forward the ones we don't know and leave the rest
- * of the input management to the scripting layer.
+ * For legacy reasons we 've used SDLs keycodes as internal representation, so
+ * convert between linux keycodes to SDLs, forward the ones we don't know and
+ * leave the rest of the input management to the scripting layer.
  */
 static uint16_t klut[512] = {0};
 
@@ -523,19 +522,22 @@ static uint32_t lookup_character(uint16_t code, uint16_t modifiers)
 		return 0;
 
 	if ((modifiers &
-		(ARKMOD_LSHIFT | ARKMOD_RSHIFT)) > 0 && shlut[code])
-		code = shlut[code];
-
-	else if ((modifiers & ARKMOD_CAPS) > 0){
-		if (code >= 'a' && code <= 'z')
-			code = toupper(code);
+		(ARKMOD_LSHIFT | ARKMOD_RSHIFT)) > 0){
+		if (shlut[code])
+			code = shlut[code];
+		else {
+			code = alut[code];
+			if (code >= 'a' && code <= 'z')
+				code = toupper(code);
+		}
 	}
-
 	else if ((modifiers & (ARKMOD_LALT | ARKMOD_RALT)) > 0 && ltlut[code])
 		code = ltlut[code];
-
-	else
+	else{
 		code = alut[code];
+			if ((modifiers & ARKMOD_CAPS) > 0 && code >= 'a' && code <= 'z')
+				code = toupper(code);
+	}
 
 	return code;
 }
