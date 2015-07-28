@@ -5088,8 +5088,8 @@ static int globresource(lua_State* ctx)
 	};
 
 	char* label = (char*) luaL_checkstring(ctx, 1);
-	int mask = luaL_optinteger(
-		ctx, 2, DEFAULT_USERMASK) & (DEFAULT_USERMASK | RESOURCE_SYS_APPLBASE);
+	int mask = luaL_optinteger(ctx, 2, DEFAULT_USERMASK) &
+		(DEFAULT_USERMASK | RESOURCE_SYS_APPLBASE | RESOURCE_SYS_FONT);
 
 	lua_newtable(ctx);
 	bptr.top = lua_gettop(ctx);
@@ -8611,6 +8611,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"APPL_TEMP_RESOURCE",RESOURCE_APPL_TEMP},
 {"SHARED_RESOURCE", RESOURCE_APPL_SHARED},
 {"SYS_APPL_RESOURCE", RESOURCE_SYS_APPLBASE},
+{"SYS_FONT_RESOURCE", RESOURCE_SYS_FONT},
 {"ALL_RESOURCES", DEFAULT_USERMASK},
 {"API_VERSION_MAJOR", LUAAPI_VERSION_MAJOR},
 {"API_VERSION_MINOR", LUAAPI_VERSION_MINOR},

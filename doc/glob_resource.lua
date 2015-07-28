@@ -1,18 +1,19 @@
 -- glob_resource
--- @short: Search the different datastores for resources matching a certain pattern.
+-- @short: Search the different datastores for resources matching a pattern.
 -- @inargs: pattern, *domain*
 -- @outargs: strtbl
--- @longdescr: There are a number of different namespaces (distinct group where a
--- certain resource key corresponds to a file or similar data-source). This function
--- allows you to query parts of these namespaces (indicated by a search path, *pattern*).
--- By specifying a *domain* you can limit the search to a specific set of namespaces.
--- Valid constants for domain (can be ORed) are APPL_RESOURCE, APPL_TEMP_RESOURCE,
--- SHARED_RESOURCE, SYS_APPL_RESOURCE.
+-- @longdescr: There are a number of different namespaces (distinct group where
+-- a certain resource key corresponds to a file or similar data-source). This
+-- function allows you to query parts of these namespaces (indicated by a
+-- search path, *pattern*).  By specifying a *domain* you can limit the search
+-- to a specific set of namespaces.
+-- Valid constants for domain (can be ORed) are APPL_RESOURCE,
+-- APPL_TEMP_RESOURCE, SHARED_RESOURCE, SYS_APPL_RESOURCE, SYS_FONT_RESOURCE
 -- @note: the default domain is the compile-time defined (DEFAULT_USERMASK)
--- which is comprised of (application- specific,
--- application shared, application temporary)
+-- which is comprised of (application- specific, application shared,
+-- application temporary)
 -- @note: The results contain only filename and, possibly, extension.
--- @note: The scan is shallow, meaning that it will not recurse into subdirectories.
+-- @note: The scan is shallow, it will not recurse into subdirectories.
 -- Therefore, more complex patterns, e.g. /*/a* will not work.
 -- @note: SYS_APPL_RESOURCE is special and relates to the list of application
 -- targets that can be used as argument to system_collapse.
