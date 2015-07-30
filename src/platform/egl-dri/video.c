@@ -32,7 +32,9 @@
  *    this.
  *
  * 3. support for external launch / building, restoring contexts
- *    note the test cases mentioned in _prepare
+ *    note the test cases mentioned in _prepare. Also need a handler for
+ *    virtual terminal switching: drop_master, VT_RELDISP along VT_SETMODE
+ *    where vt_mode is passed with signal for switching
  *
  * 4. backlight? backlight support should really be added as yet another led
  * driver, that code is a bit old and dusty though so there is incentive to
@@ -1004,7 +1006,6 @@ retry:
 				continue;
 
 			d->display.crtc = res->crtcs[j];
-			d->display.old_crtc = drmModeGetCrtc(d->device->fd, enc->crtc_id);
 			i = res->count_encoders;
 			crtc_found = true;
 			break;
@@ -1050,16 +1051,14 @@ bool platform_video_map_handle(
 		return false;
 
 /*
- * Security notice: stride and format comes from an untrusted
- * data source, it has not been verified if MESA- implementation
- * of eglCreateImageKHR etc. treats this as trusted in respect
- * to the buffer or not, otherwise this is a possibly source
- * for crashes etc. and I see no good way for verifying the
- * buffer manually. The whole procedure is rather baffling, why can't
- * I as DRM master use the preexisting notification interfaces to be
- * signalled of buffers and metadata, and enumerate which ones
- * have been allocated and by whom, but instead rely on yet another
- * layer of IPC primitives.
+ * Security notice: stride and format comes from an untrusted data source, it
+ * has not been verified if MESA- implementation of eglCreateImageKHR etc.
+ * treats this as trusted in respect to the buffer or not, otherwise this is a
+ * possibly source for crashes etc. and I see no good way for verifying the
+ * buffer manually. The whole procedure is rather baffling, why can't I as DRM
+ * master use the preexisting notification interfaces to be signalled of
+ * buffers and metadata, and enumerate which ones have been allocated and by
+ * whom, but instead rely on yet another layer of IPC primitives.
  */
 
 /*
@@ -1165,9 +1164,8 @@ static struct dispout* match_connector(int fd, drmModeConnector* con, int* id)
 }
 
 /*
- * The cost for this function is rather unsavory,
- * nouveau testing has shown somewhere around ~110+ ms stalls
- * for one re-scan
+ * The cost for this function is rather unsavory, nouveau testing has shown
+ * somewhere around ~110+ ms stalls for one re-scan
  */
 void platform_video_query_displays()
 {
@@ -1245,7 +1243,8 @@ static void disable_display(struct dispout* d)
 	gbm_surface_destroy(d->buffer.surface);
 	d->buffer.surface = NULL;
 
-	if (0 > drmModeSetCrtc(d->device->fd,
+	if (d->display.old_crtc &&  0 > drmModeSetCrtc(
+		d->device->fd,
 		d->display.old_crtc->crtc_id,
 		d->display.old_crtc->buffer_id,
 		d->display.old_crtc->x,
@@ -1669,6 +1668,9 @@ static void update_display(struct dispout* d)
  * the front buffer properties, we'll flip later */
 	if (!d->buffer.bo){
 		step_fb(d, bo);
+		if (!d->display.old_crtc)
+			d->display.old_crtc = drmModeGetCrtc(d->device->fd, d->display.crtc);
+
 		int rv = drmModeSetCrtc(d->device->fd, d->display.crtc,
 			d->buffer.fbid, 0, 0, &d->display.con_id, 1, d->display.mode);
 
