@@ -612,6 +612,12 @@ void platform_event_rescan_idev(arcan_evctx* ctx)
 {
 }
 
+enum PLATFORM_EVENT_CAPABILITIES platform_input_capabilities()
+{
+	return ACAP_TRANSLATED | ACAP_MOUSE | ACAP_TOUCH |
+		ACAP_POSITION | ACAP_ORIENTATION;
+}
+
 void platform_key_repeat(arcan_evctx* ctx, unsigned int rate)
 {
 }

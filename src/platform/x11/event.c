@@ -427,6 +427,11 @@ void platform_event_deinit(struct arcan_evctx* ctx)
 {
 }
 
+enum PLATFORM_EVENT_CAPABILITIES platform_input_capabilities()
+{
+	return ACAP_TRANSLATED | ACAP_MOUSE;
+}
+
 void platform_device_lock(int devind, bool state)
 {
 #ifndef WITH_HEADLESS_MAIN

@@ -4530,6 +4530,23 @@ static int videomapping(lua_State* ctx)
 	return 0;
 }
 
+static int inputcap(lua_State* ctx)
+{
+	LUA_TRACE("input_capabilities");
+	enum PLATFORM_EVENT_CAPABILITIES pcap = platform_input_capabilities();
+	lua_newtable(ctx);
+	int top = lua_gettop(ctx);
+	tblbool(ctx, "translated", (pcap & ACAP_TRANSLATED) > 0, top);
+	tblbool(ctx, "mouse", (pcap & ACAP_MOUSE) > 0, top);
+	tblbool(ctx, "gaming", (pcap & ACAP_GAMING) > 0, top);
+	tblbool(ctx, "touch", (pcap & ACAP_TOUCH) > 0, top);
+	tblbool(ctx, "position", (pcap & ACAP_POSITION) > 0, top);
+	tblbool(ctx, "orientation", (pcap & ACAP_ORIENTATION) > 0, top);
+
+	LUA_ETRACE("input_capabilities", NULL);
+	return 1;
+}
+
 static int mousegrab(lua_State* ctx)
 {
 	LUA_TRACE("toggle_mouse_grab");
@@ -8460,6 +8477,7 @@ static const luaL_Reg sysfuns[] = {
 static const luaL_Reg iofuns[] = {
 {"kbd_repeat",          kbdrepeat        },
 {"toggle_mouse_grab",   mousegrab        },
+{"input_capabilities",  inputcap         },
 #ifdef ARCAN_LED
 {"set_led",             setled           },
 {"led_intensity",       led_intensity    },
