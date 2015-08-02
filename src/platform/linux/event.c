@@ -51,20 +51,36 @@
 #ifndef NOTIFY_SCAN_DIR
 #define NOTIFY_SCAN_DIR "/dev/input"
 #endif
+
 static const char* notify_scan_dir = NOTIFY_SCAN_DIR;
 static bool log_verbose = false;
+
+static struct {
+	unsigned long kbmode;
+	int mode;
+	unsigned char leds;
+	bool mute;
+	int tty, notify;
+}
+gstate = {
+	.mode = KD_TEXT,
+	.tty = STDIN_FILENO,
+	.notify = -1
+};
 
 static const char* envopts[] = {
 	"ARCAN_INPUT_NOMUTETTY", "Don't disable terminal or SIGINT",
 	"ARCAN_INPUT_SCANDIR", "Directory to monitor for device nodes "
 		"(Default: "NOTIFY_SCAN_DIR")",
+	"ARCAN_INPUT_TTYOVERRIDE", "Force a specific tty- device",
 	"ARCAN_INPUT_VERBOSE", "_warning log() input node events",
 	NULL
 };
 
 /*
- * need a reasonable limit on the amount of allowed
- * devices, should this become a problem -- whitelist
+ * need a reasonable limit on the amount of allowed devices, should this become
+ * a problem -- whitelist. See lookup_devnode for an explanation on the problem
+ * with devid-.
  */
 #define MAX_DEVICES 256
 
@@ -88,8 +104,6 @@ struct axis_opts {
 };
 
 static struct {
-	bool active;
-
 	size_t n_devs, sz_nodes;
 
 	unsigned short mouseid;
@@ -138,18 +152,18 @@ struct arcan_devnode {
 	};
 };
 
-static int notify_fd;
-static bool mute_tty = false;
 static void got_device(int fd, const char*);
 
+/* for other platforms and legacy, devid used to be allocated sequentially
+ * and swept linear, even though this platform do not work like that and we
+ * have a dynamic set of devices. For this reason, we split the 16 bit space
+ * into < MAX_DEVICES and >= MAX_DEVICES and a device a can be accessed by
+ * either id */
 static struct arcan_devnode* lookup_devnode(int devid)
 {
 	if (devid < 0)
 		devid = iodev.mouseid;
 
-/* some other parts of the engine still sweep device IDs due to event/platform
- * legacy, we split the devid namespace in two so that the devids we return are
- * outside MAX_DEVICES */
 	if (devid < iodev.n_devs)
 		return &iodev.nodes[devid];
 
@@ -163,7 +177,8 @@ static struct arcan_devnode* lookup_devnode(int devid)
 
 /* another option to this mess (as the hashing thing doesn't seem to work out
  * is to move identification/etc. to another level and just let whatever device
- * node generator is active populate with coherent names. */
+ * node generator is active populate with coherent names. and use a hash of that
+ * name as the ID */
 static bool identify(int fd, const char* path,
 	char* label, size_t label_sz, unsigned short* dnum)
 {
@@ -229,7 +244,7 @@ static bool identify(int fd, const char* path,
 /* 16-bit clamp is legacy in the scripting layer */
 	unsigned short devnum = hash;
 	if (devnum < MAX_DEVICES)
-		devnum++;
+		devnum += MAX_DEVICES;
 
 	*dnum = devnum;
 
@@ -320,16 +335,17 @@ static void set_analogstate(struct axis_opts* dst,
 	dst->kernel_ofs = 0;
 }
 
-static struct axis_opts* find_axis(int devid, unsigned axisid)
+static struct axis_opts* find_axis(int devid, unsigned axisid, bool* outn)
 {
 	struct arcan_devnode* node = lookup_devnode(devid);
+	*outn = node != NULL;
 
 	if (!node)
 		return NULL;
 
 	switch(node->type){
 	case DEVNODE_SENSOR:
-		return &node->sensor.data;
+		return axisid == 0 ? &node->sensor.data : NULL;
 	break;
 
 	case DEVNODE_GAME:
@@ -355,12 +371,12 @@ arcan_errc platform_event_analogstate(int devid, int axisid,
 	int* lower_bound, int* upper_bound, int* deadzone,
 	int* kernel_size, enum ARCAN_ANALOGFILTER_KIND* mode)
 {
-	struct axis_opts* axis = find_axis(devid, axisid);
+	bool gotnode;
+	struct axis_opts* axis = find_axis(devid, axisid, &gotnode);
 
-	if (!axis){
-		struct arcan_devnode* node = lookup_devnode(devid);
-		return node ? ARCAN_ERRC_BAD_RESOURCE : ARCAN_ERRC_NO_SUCH_OBJECT;
-	}
+	if (!axis)
+		return gotnode ?
+			ARCAN_ERRC_BAD_RESOURCE : ARCAN_ERRC_NO_SUCH_OBJECT;
 
 	*lower_bound = axis->lower;
 	*upper_bound = axis->upper;
@@ -387,7 +403,8 @@ void platform_event_analogfilter(int devid,
 	int axisid, int lower_bound, int upper_bound, int deadzone,
 	int buffer_sz, enum ARCAN_ANALOGFILTER_KIND kind)
 {
-	struct axis_opts* axis = find_axis(devid, axisid);
+	bool node;
+	struct axis_opts* axis = find_axis(devid, axisid, &node);
 	if (!axis)
 		return;
 
@@ -420,9 +437,9 @@ void platform_event_process(struct arcan_evctx* ctx)
 /* lovely little variable length field at end of struct here /sarcasm,
  * could get away with running the notify polling less often than once
  * every frame, somewhat excessive. */
-	if (notify_fd > 0){
+	if (-1 != gstate.notify){
 		char inbuf[1024];
-		ssize_t nr = read(notify_fd, inbuf, sizeof(inbuf));
+		ssize_t nr = read(gstate.notify, inbuf, sizeof(inbuf));
 		off_t ofs = 0;
 
 		if (-1 != nr)
@@ -441,18 +458,18 @@ void platform_event_process(struct arcan_evctx* ctx)
 	char dump[256];
 	size_t nr __attribute__((unused));
 
-	if (poll(iodev.pollset, iodev.n_devs, 0) > 0){
-		for (size_t i = 0; i < iodev.n_devs; i++){
-			if (iodev.pollset[i].revents & POLLIN){
-				if (iodev.nodes[i].hnd.handler)
-					iodev.nodes[i].hnd.handler(ctx, &iodev.nodes[i]);
-				else /* silently flush */{
-					nr = read(iodev.nodes[i].handle, dump, 256);
-				}
-			}
-		}
-	}
+	if (poll(iodev.pollset, iodev.n_devs, 0) <= 0)
+		return;
 
+	for (size_t i = 0; i < iodev.n_devs; i++){
+		if (!(iodev.pollset[i].revents & POLLIN))
+			continue;
+
+		if (iodev.nodes[i].hnd.handler)
+			iodev.nodes[i].hnd.handler(ctx, &iodev.nodes[i]);
+		else
+			nr = read(iodev.nodes[i].handle, dump, 256);
+	}
 }
 
 /*
@@ -686,8 +703,15 @@ static void got_device(int fd, const char* path)
 	else
 		node.hnd = eh;
 
-/* new or pre-existing? */
+/* pre-existing? close old node and replace with this one */
+	int hole = -1;
+
 	for (size_t i = 0; i < iodev.n_devs; i++){
+		if (-1 == hole && iodev.nodes[i].handle <= 0){
+			hole = i;
+			continue;
+		}
+
 		if (iodev.nodes[i].devnum == node.devnum){
 			if (iodev.nodes[i].handle > 0)
 				close(iodev.nodes[i].handle);
@@ -700,36 +724,33 @@ static void got_device(int fd, const char* path)
 		}
 	}
 
-/* allocate add at end of pollset */
-	iodev.n_devs++;
-	if (iodev.n_devs >= iodev.sz_nodes){
+/* no empty slot, grow pollsets and node tracking */
+	if (hole == -1){
 		size_t new_sz = iodev.sz_nodes + 8;
-		char* buf = realloc(iodev.nodes,
-			sizeof(struct arcan_devnode) * new_sz);
+		struct arcan_devnode* nn = realloc(
+			iodev.nodes, sizeof(struct arcan_devnode) * new_sz);
+		if (!nn)
+			goto cleanup;
+		iodev.nodes = nn;
 
-		iodev.nodes = (struct arcan_devnode*) buf;
-
-		if (!buf)
+		struct pollfd* np = realloc(
+			iodev.pollset, sizeof(struct pollfd) * new_sz);
+		if (!np)
 			goto cleanup;
 
-		buf = realloc(iodev.pollset,
-			sizeof(struct pollfd) * new_sz);
-
-		if (!buf)
-			goto cleanup;
-
-		iodev.pollset = (struct pollfd*) buf;
+		iodev.pollset = np;
+		hole = iodev.sz_nodes;
 		iodev.sz_nodes = new_sz;
+		iodev.n_devs++;
 	}
 
-	off_t ofs = iodev.n_devs - 1;
+	memset(&iodev.nodes[hole], '\0', sizeof(struct arcan_devnode));
+	memset(&iodev.pollset[hole], '\0', sizeof(struct pollfd));
 
-	memset(&iodev.nodes[ofs], '\0', sizeof(struct arcan_devnode));
-	memset(&iodev.pollset[ofs], '\0', sizeof(struct pollfd));
+	iodev.pollset[hole].fd = fd;
+	iodev.pollset[hole].events = POLLIN;
+	iodev.nodes[hole] = node;
 
-	iodev.pollset[ofs].fd = fd;
-	iodev.pollset[ofs].events = POLLIN;
-	iodev.nodes[ofs] = node;
 	if (log_verbose)
 		arcan_warning("input: (%s:%s) added as type: %s\n",
 			path, node.label, lookup_type(node.type));
@@ -737,7 +758,6 @@ static void got_device(int fd, const char* path)
 	return;
 	}
 cleanup:
-	iodev.n_devs--;
 	if (log_verbose)
 		arcan_warning("input: dropped %s due to errors during scan.\n", path);
 	close(fd);
@@ -794,6 +814,9 @@ static void update_state(int code, bool state, unsigned* statev)
 	case K_RCTRL:
 		modifier = ARKMOD_RCTRL;
 	break;
+	case K_CAPSLOCK:
+		modifier = ARKMOD_CAPS;
+	break;
 	default:
 		return;
 	}
@@ -812,6 +835,8 @@ static void disconnect(struct arcan_devnode* node)
 			node->handle = 0;
 			iodev.pollset[i].fd = 0;
 			iodev.pollset[i].events = 0;
+			if (i == iodev.n_devs - 1)
+				iodev.n_devs--;
 			break;
 		}
 }
@@ -1111,17 +1136,34 @@ const char* platform_event_devlabel(int devid)
 
 void platform_event_deinit(struct arcan_evctx* ctx)
 {
-	if (mute_tty){
-		ioctl(STDIN_FILENO, KDSKBMUTE, 0);
-		ioctl(STDIN_FILENO, KDSETMODE, KD_TEXT);
-		mute_tty = false;
+	if (isatty(gstate.tty) && gstate.mute){
+		ioctl(gstate.tty, KDSKBMUTE, 0);
+		if (-1 == ioctl(gstate.tty, KDSETMODE, KD_TEXT)){
+			arcan_warning("reset failed %s\n", strerror(errno));
+		}
+		gstate.kbmode = gstate.kbmode == K_OFF ? K_XLATE : gstate.kbmode;
+		ioctl(gstate.tty, KDSKBMODE, gstate.kbmode);
+		ioctl(gstate.tty, KDSETLED, gstate.leds);
+		gstate.mute = false;
 	}
 
-/* FIX:
- * kill descriptors and pollset keep source paths in order to rebuild (adopt
- * style), as the primary purpose for this call is to free- up locks before
- * switching to external control
- */
+	if (gstate.tty != STDIN_FILENO){
+		close(gstate.tty);
+		gstate.tty = STDIN_FILENO;
+	}
+
+	if (gstate.notify != -1){
+		close(gstate.notify);
+		gstate.notify = -1;
+	}
+
+	for (size_t i = 0; i < iodev.n_devs; i++)
+		if (iodev.nodes[i].handle > 0){
+			close(iodev.nodes[i].handle);
+			memset(&iodev.nodes[i], '\0', sizeof(struct arcan_devnode));
+		}
+
+	iodev.n_devs = 0;
 }
 
 void platform_device_lock(int devind, bool state)
@@ -1138,25 +1180,105 @@ void platform_device_lock(int devind, bool state)
  */
 }
 
+enum PLATFORM_EVENT_CAPABILITIES platform_input_capabilities()
+{
+	enum PLATFORM_EVENT_CAPABILITIES rv = 0;
+
+	for (size_t i = 0; i < iodev.n_devs; i++){
+		if (iodev.nodes[i].handle)
+			switch(iodev.nodes[i].type){
+/* don't have better granularity in this step at the moment */
+			case DEVNODE_SENSOR:
+				rv |= ACAP_POSITION | ACAP_ORIENTATION;
+			break;
+			case DEVNODE_MOUSE:
+				rv |= ACAP_MOUSE;
+			break;
+			case DEVNODE_GAME:
+				rv |= ACAP_GAMING;
+			break;
+			case DEVNODE_KEYBOARD:
+				rv |= ACAP_TRANSLATED;
+			break;
+			case DEVNODE_TOUCH:
+				rv |= ACAP_TOUCH;
+			break;
+			default:
+			break;
+		}
+	}
+	return rv;
+}
+
 const char** platform_input_envopts()
 {
 	return (const char**) envopts;
 }
 
+static int find_tty()
+{
+/* first, check if the env. defines a specific TTY device to use and try that */
+	const char* newtty = NULL;
+	int tty = -1;
+
+	if ((newtty = getenv("ARCAN_INPUT_TTYOVERRIDE"))){
+		int fd = open(newtty, O_RDWR, O_CLOEXEC);
+		if (-1 == fd)
+			arcan_warning("couldn't open TTYOVERRIDE %s, reason: %s\n",
+				newtty, strerror(errno));
+		else
+			tty = fd;
+	}
+
+/* Failing that, try and find what tty we might be on -- some might redirect
+ * stdin to something else and then it is not a valid tty to work on. Which,
+ * of course, brings us back to the special kid in the class, sysfs. */
+	if (!isatty(tty)){
+		FILE* fpek = fopen("/sys/class/tty/tty0/active", "r");
+		if (fpek){
+			char line[32] = "/dev/";
+			if (fgets(line+5, 32-5, fpek)){
+				char* endl = strrchr(line, '\n');
+				if (endl)
+					*endl = '\0';
+				tty = open(line, O_RDWR);
+			}
+			fclose(fpek);
+		}
+	}
+
+	return tty == -1 ? STDIN_FILENO : tty;
+}
+
 void platform_event_init(arcan_evctx* ctx)
 {
-	notify_fd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
+	gstate.notify = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
 	init_keyblut();
 
-	if (!getenv("ARCAN_INPUT_NOMUTETTY")){
-		ioctl(STDIN_FILENO, KDSKBMUTE, 1);
-		ioctl(STDIN_FILENO, KDSKBMODE, 1);
-/* we're not doing this right,
- * ioctl(STDIN_FILENO, KDSETMODE, KD_GRAPHICS);
+	gstate.tty = find_tty();
+
+	if (isatty(gstate.tty)){
+		ioctl(gstate.tty, KDGETMODE, &gstate.mode);
+		ioctl(gstate.tty, KDGETLED, &gstate.leds);
+		ioctl(gstate.tty, KDGKBMODE, &gstate.kbmode);
+		ioctl(gstate.tty, KDSETLED, 0);
+
+		if (!getenv("ARCAN_INPUT_NOMUTETTY")){
+			ioctl(gstate.tty, KDSKBMUTE, 1);
+			ioctl(gstate.tty, KDSKBMODE, K_OFF);
+			ioctl(gstate.tty, KDSETMODE, KD_GRAPHICS);
+		}
+
+/* missing: install handler for signal - switching VTY:
+ * setup VT_PROCESS for the TTY, with a relsig and an acqsig along
+ * with matching signal handlers.
+ *
+ * relsig sets value that during next event process will force a
+ * set_external, sleep-loop until acqsig is triggered where we restore
  */
 		struct sigaction er_sh = {.sa_handler = SIG_IGN};
 		sigaction(SIGINT, &er_sh, NULL);
-		mute_tty = true;
+		gstate.mute = true;
 	}
 
 	log_verbose = getenv("ARCAN_INPUT_VERBOSE");
@@ -1165,14 +1287,14 @@ void platform_event_init(arcan_evctx* ctx)
 	if ((newsd = getenv("ARCAN_INPUT_SCANDIR")))
 		notify_scan_dir = newsd;
 
-	if (-1 == notify_fd || inotify_add_watch(
-		notify_fd, notify_scan_dir, IN_CREATE) == -1){
+	if (-1 == gstate.notify || inotify_add_watch(
+		gstate.notify, notify_scan_dir, IN_CREATE) == -1){
 		arcan_warning("inotify initialization failure (%s),"
 			"	device discovery disabled.", strerror(errno));
 
-		if (notify_fd > 0){
-			close(notify_fd);
-			notify_fd = 0;
+		if (-1 != gstate.notify){
+			close(gstate.notify);
+			gstate.notify = -1;
 		}
 	}
 

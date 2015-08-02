@@ -500,20 +500,19 @@ klut[KEY_UNKNOWN] = K_UNKNOWN;
 }
 
 /*
- * currently just map to the common 7-bit ascii ones,
- * might add a system to load other maps but the sentiment
- * right now is that should be done on a lower level (table in kernel)
- * and on a higher level (actual IME support script)
+ * currently just map to the common 7-bit ascii ones, might add a system to
+ * load other maps but the sentiment right now is that should be done on a
+ * lower level (table in kernel) and on a higher level (actual IME support
+ * script)
  *
- * There's likely a shift/bit-magic heavy way of doing this
- * conversion, but feels like we have the datacache to spare,
- * anyhow, this barely gives a working 7-bit ASCII model -- but
- * as a fallback when scripted IMEs fail to deliver.
+ * There's likely a shift/bit-magic heavy way of doing this conversion, but
+ * feels like we have the datacache to spare, anyhow, this barely gives a
+ * working 7-bit ASCII model -- but as a fallback when scripted IMEs fail to
+ * deliver.
  *
- * The basic plan is still to have this low-level layout provide
- * 7-bit ASCII us-style then let higher-level local etc.
- * be left to the set of scripts that are running, but provide
- * support scripts that implement detection etc.
+ * The basic plan is still to have this low-level layout provide 7-bit ASCII
+ * us-style then let higher-level local etc.  be left to the set of scripts
+ * that are running, but provide support scripts that implement detection etc.
  *
  */
 static uint32_t lookup_character(uint16_t code, uint16_t modifiers)

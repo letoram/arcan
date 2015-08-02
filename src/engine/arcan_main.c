@@ -771,9 +771,9 @@ error:
 		arcan_verify_namespaces(true);
 	}
 
+	arcan_event_deinit(arcan_event_defaultctx());
 	arcan_mem_free(dbfname);
 	arcan_video_shutdown();
-	arcan_event_deinit(arcan_event_defaultctx());
 
 	return EXIT_FAILURE;
 }
