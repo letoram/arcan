@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2015, Björn Ståhl
+ * Copyright 2003-2015, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -255,7 +255,7 @@ void arcan_video_reset_fontcache();
 
 /*
  * the arcan_video_default_ class of functions all change the current
- * default values for newly created objects. They do not update already
+* default values for newly created objects. They do not update already
  * existing ones.
  */
 void arcan_video_default_scalemode(enum arcan_vimage_mode);
@@ -704,12 +704,12 @@ void arcan_video_cursorstore(arcan_vobj_id src);
 
 /* picking, collision detection */
 unsigned arcan_video_tick(unsigned steps, unsigned* njobs);
-bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y);
-unsigned int arcan_video_pick(arcan_vobj_id* dst, unsigned int count,
-	int x, int y);
-unsigned int arcan_video_rpick(arcan_vobj_id* dst, unsigned int count,
-	int x, int y);
-uint32_t arcan_video_pick_detailed(uint32_t* dst, uint32_t count,
-	uint16_t x, uint16_t y, int zval_low, int zval_high, bool ignore_alpha);
+bool arcan_video_hittest(arcan_vobj_id id, int x, int y);
+
+size_t arcan_video_pick(arcan_vobj_id rt,
+	arcan_vobj_id* dst, size_t count, int x, int y);
+
+size_t arcan_video_rpick(arcan_vobj_id rt,
+	arcan_vobj_id* dst, size_t count, int x, int y);
 #endif
 

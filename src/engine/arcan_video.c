@@ -4314,8 +4314,7 @@ static size_t process_rendertarget(struct rendertarget* tgt, float fract)
 
 	size_t pc = 0;
 
-/* first, handle all 3d work
- * (which may require multiple passes etc.) */
+/* first, handle all 3d work (which may require multiple passes etc.) */
 	if (!arcan_video_display.order3d == ORDER3D_FIRST &&
 		current && current->elem->order < 0){
 		current = arcan_refresh_3d(tgt->camtag, current, fract);
@@ -4669,7 +4668,7 @@ static inline bool itri(int x, int y, int t[6])
 	return (b1 == b2) && (b2 == b3);
 }
 
-bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y)
+bool arcan_video_hittest(arcan_vobj_id id, int x, int y)
 {
 	vector projv[4];
 	arcan_vobject* vobj = arcan_video_getobject(id);
@@ -4700,72 +4699,68 @@ bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y)
 			(x <= projv[2].x && y <= projv[2].y);
 }
 
-/*
- * since hit/rhit might be called at high frequency
- * we need to limit the CPU impact here until
- * there's proper caching of resolve_ calls
- */
-static bool obj_visible(arcan_vobject* vobj)
+static inline bool obj_visible(arcan_vobject* vobj)
 {
 	bool visible = vobj->current.opa > EPSILON;
 
 	while (visible && vobj->parent && (vobj->mask & MASK_OPACITY) > 0){
 		visible = vobj->current.opa > EPSILON;
-	vobj = vobj->parent;
+		vobj = vobj->parent;
 	}
 
 	return visible;
 }
 
-unsigned int arcan_video_rpick(arcan_vobj_id* dst,
-	unsigned count, int x, int y)
+size_t arcan_video_rpick(arcan_vobj_id rt,
+	arcan_vobj_id* dst, size_t lim, int x, int y)
 {
-	if (count == 0 || !current_context->stdoutp.first)
-		return 0;
+	size_t count = 0;
+	arcan_vobject* vobj = arcan_video_getobject(rt);
+	struct rendertarget* tgt = find_rendertarget(vobj);
+	if (lim == 0 || !tgt || !tgt->first)
+		return count;
 
-/* skip to last item, then scan backwards */
-	arcan_vobject_litem* current = current_context->stdoutp.first;
-	unsigned base = 0;
+	arcan_vobject_litem* current = tgt->first;
 
+/* skip to last, then start stepping backwards */
 	while (current->next)
 		current = current->next;
 
-	while (current && base < count){
+	while (current && count < lim){
 		arcan_vobject* vobj = current->elem;
 
-		if (vobj->cellid && (vobj->mask &
-			MASK_UNPICKABLE) == 0 && obj_visible(vobj)){
-
-			if (arcan_video_hittest(vobj->cellid, x, y))
-				dst[base++] = vobj->cellid;
-		}
+		if ((vobj->mask & MASK_UNPICKABLE) == 0 && obj_visible(vobj) &&
+			arcan_video_hittest(vobj->cellid, x, y))
+				dst[count++] = vobj->cellid;
 
 		current = current->previous;
 	}
 
-	return base;
+	return count;
 }
 
-unsigned arcan_video_pick(arcan_vobj_id* dst,
-	unsigned count, int x, int y)
+size_t arcan_video_pick(arcan_vobj_id rt,
+	arcan_vobj_id* dst, size_t lim, int x, int y)
 {
-	if (count == 0)
-		return 0;
+	size_t count = 0;
+	arcan_vobject* vobj = arcan_video_getobject(rt);
+	struct rendertarget* tgt = find_rendertarget(vobj);
+	if (lim == 0 || !tgt || !tgt->first)
+		return count;
 
-	arcan_vobject_litem* current = current_context->stdoutp.first;
-	unsigned base = 0;
+	arcan_vobject_litem* current = tgt->first;
 
-	while (current && base < count){
+	while (current && count < lim){
 		arcan_vobject* vobj = current->elem;
 
 		if (vobj->cellid && !(vobj->mask & MASK_UNPICKABLE) &&
 			obj_visible(vobj) && arcan_video_hittest(vobj->cellid, x, y))
-				dst[base++] = vobj->cellid;
+				dst[count++] = vobj->cellid;
 
 		current = current->next;
 	}
 
-	return base;
+	return count;
 }
 
 img_cons arcan_video_dimensions(uint16_t w, uint16_t h)
