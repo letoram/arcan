@@ -706,7 +706,7 @@ static void got_device(int fd, const char* path)
 /* pre-existing? close old node and replace with this one */
 	int hole = -1;
 
-	for (size_t i = 0; i < iodev.n_devs; i++){
+	for (size_t i = 0; i < iodev.sz_nodes; i++){
 		if (-1 == hole && iodev.nodes[i].handle <= 0){
 			hole = i;
 			continue;
@@ -732,21 +732,20 @@ static void got_device(int fd, const char* path)
 		if (!nn)
 			goto cleanup;
 		iodev.nodes = nn;
+		memset(nn + iodev.sz_nodes, '\0', sizeof(struct arcan_devnode) * 8);
 
 		struct pollfd* np = realloc(
 			iodev.pollset, sizeof(struct pollfd) * new_sz);
 		if (!np)
 			goto cleanup;
 
+		memset(np + iodev.sz_nodes, '\0', sizeof(struct pollfd) * 8);
 		iodev.pollset = np;
 		hole = iodev.sz_nodes;
 		iodev.sz_nodes = new_sz;
-		iodev.n_devs++;
 	}
 
-	memset(&iodev.nodes[hole], '\0', sizeof(struct arcan_devnode));
-	memset(&iodev.pollset[hole], '\0', sizeof(struct pollfd));
-
+	iodev.n_devs++;
 	iodev.pollset[hole].fd = fd;
 	iodev.pollset[hole].events = POLLIN;
 	iodev.nodes[hole] = node;
