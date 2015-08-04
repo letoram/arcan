@@ -2307,7 +2307,7 @@ static int pick(lua_State* ctx)
 	bool reverse = luaL_optbnumber(ctx, 4, 0);
 	size_t limit = luaL_optint(ctx, 3, 8);
 	arcan_vobj_id res = (arcan_vobj_id)
-		luaL_optnumber(ctx, 1, ARCAN_VIDEO_WORLDID);
+		luaL_optnumber(ctx, 5, ARCAN_VIDEO_WORLDID);
 
 	if (res != ARCAN_EID && res != ARCAN_VIDEO_WORLDID)
 		res -= luactx.lua_vidbase;
