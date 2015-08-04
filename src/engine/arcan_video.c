@@ -4717,6 +4717,7 @@ size_t arcan_video_rpick(arcan_vobj_id rt,
 	size_t count = 0;
 	arcan_vobject* vobj = arcan_video_getobject(rt);
 	struct rendertarget* tgt = find_rendertarget(vobj);
+
 	if (lim == 0 || !tgt || !tgt->first)
 		return count;
 
