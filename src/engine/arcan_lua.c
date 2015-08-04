@@ -2305,16 +2305,21 @@ static int pick(lua_State* ctx)
 	int x = luaL_checkint(ctx, 1);
 	int y = luaL_checkint(ctx, 2);
 	bool reverse = luaL_optbnumber(ctx, 4, 0);
-	unsigned int limit = luaL_optint(ctx, 3, 8);
+	size_t limit = luaL_optint(ctx, 3, 8);
+	arcan_vobj_id res = (arcan_vobj_id)
+		luaL_optnumber(ctx, 1, ARCAN_VIDEO_WORLDID);
 
-	static arcan_vobj_id pickbuf[1024];
-	if (limit > 1024)
+	if (res != ARCAN_EID && res != ARCAN_VIDEO_WORLDID)
+		res -= luactx.lua_vidbase;
+
+	static arcan_vobj_id pickbuf[64];
+	if (limit > 64)
 		arcan_fatal("pick_items(), unreasonable pick "
 			"buffer size (%d) requested.", limit);
 
-	unsigned int count = reverse ?
-		arcan_video_rpick(pickbuf, limit, x, y) :
-		arcan_video_pick(pickbuf, limit, x, y);
+	size_t count = reverse ?
+		arcan_video_rpick(res, pickbuf, limit, x, y) :
+		arcan_video_pick(res, pickbuf, limit, x, y);
 	unsigned int ofs = 1;
 
 	lua_newtable(ctx);

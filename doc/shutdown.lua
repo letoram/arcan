@@ -5,6 +5,9 @@
 -- process when deemed safe. This means that it will not happened immediately,
 -- but rather that an event will be queued internally in order to give
 -- frameservers and other pending-data related tasks time to clean-up.
+-- The system interpretation of *optcode* varies with the underlying
+-- environment, though the EXIT_SUCCESS and EXIT_FAILURE constants are
+-- propagated and useful here.
 -- @note: by default, the exit code corresponds to system EXIT_SUCCESS,
 -- but can be set to a custom value through *optcode*.
 -- @note: optmsg is filtered to only accept [a-Z,.0-9] and whitespace.
