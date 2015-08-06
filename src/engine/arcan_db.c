@@ -635,6 +635,23 @@ struct arcan_strarr arcan_db_getkeys(struct arcan_dbh* dbh,
 	return db_string_query(dbh, stmt, NULL, 0);
 }
 
+struct arcan_strarr arcan_db_applkeys(struct arcan_dbh* dbh,
+	const char* applname, const char* pattern)
+{
+#define MATCH_APPL "SELECT key || '=' || val FROM appl_%s WHERE key LIKE ?;"
+
+	size_t mk_sz = sizeof(MATCH_APPL) + strlen(applname);
+	char mk_buf[ mk_sz ];
+	ssize_t nw = snprintf(mk_buf, mk_sz, MATCH_APPL, applname);
+
+	sqlite3_stmt* stmt;
+	sqlite3_prepare_v2(dbh->dbh, mk_buf, mk_sz-1, &stmt, NULL);
+	sqlite3_bind_text(stmt, 1, pattern, -1, SQLITE_TRANSIENT);
+
+	return db_string_query(dbh, stmt, NULL, 0);
+#undef MATCH_KEY_APPL
+}
+
 struct arcan_strarr arcan_db_matchkey(struct arcan_dbh* dbh,
 	enum DB_KVTARGET tgt, const char* pattern)
 {

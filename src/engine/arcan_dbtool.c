@@ -446,6 +446,24 @@ static int dump_targets(struct arcan_dbh* dst, int argc, char** argv)
 
 static int dump_appl(struct arcan_dbh* dst, int argc, char** argv)
 {
+	if (argc <= 0){
+		printf("dump_appl(), no appl name specified.\n");
+		return EXIT_FAILURE;
+	}
+
+	const char* ptn = argc > 1 ? argv[1] : "%";
+
+	struct arcan_strarr res = arcan_db_applkeys(dst, argv[0], ptn);
+	if (!res.data){
+		printf("dump_appl(), no valid list returned");
+		return EXIT_FAILURE;
+	}
+
+	char** curr = res.data;
+	while(*curr)
+		printf("%s\n", *curr++);
+
+	arcan_mem_freearr(&res);
 	return EXIT_SUCCESS;
 }
 

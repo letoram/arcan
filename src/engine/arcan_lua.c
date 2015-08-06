@@ -4354,13 +4354,18 @@ static int matchkeys(lua_State* ctx)
 {
 	LUA_TRACE("match_keys");
 	const char* pattern = luaL_checkstring(ctx, 1);
-	int domain = luaL_checknumber(ctx, 2);
+	int domain = luaL_optnumber(ctx, 2, DVT_APPL);
 
-	if (domain != DVT_TARGET && domain != DVT_CONFIG)
+	if (domain != DVT_TARGET && domain != DVT_CONFIG && domain != DVT_APPL)
 		arcan_fatal("match keys(%d) invalid domain specified, "
 			"domain must be KEY_TARGET or KEY_CONFIG\n");
 
-	struct arcan_strarr res = arcan_db_matchkey(dbhandle, domain, pattern);
+	struct arcan_strarr res;
+	if (domain == DVT_APPL)
+		res = arcan_db_applkeys(dbhandle, arcan_appl_id(), pattern);
+	else
+		res = arcan_db_matchkey(dbhandle, domain, pattern);
+
 	int rv = push_stringres(ctx, &res);
 	arcan_mem_freearr(&res);
 

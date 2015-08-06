@@ -172,6 +172,12 @@ struct arcan_strarr arcan_db_matchkey(struct arcan_dbh*, enum DB_KVTARGET,
 	const char* pattern);
 
 /*
+ * return a key=value list for appl- specific keys matching pattern
+ */
+struct arcan_strarr arcan_db_applkeys(struct arcan_dbh*,
+	const char* appl, const char* pattern);
+
+/*
  * Returns true or false depending on if the requested targetid
  * exists or not.
  */
