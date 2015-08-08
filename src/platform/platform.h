@@ -164,8 +164,12 @@ void platform_event_rescan_idev(struct arcan_evctx* ctx);
 /*
  * Legacy for translated devices, features like this should most of the time be
  * implemented at a higher layer, state tracking + clock is sufficient to do so
+ * The default state for any input platform should be no-repeat.
+ * period = 0, disable
+ * period | delay < 0, query only
+ * returns old value in argument
  */
-void platform_event_keyrepeat(struct arcan_evctx*, unsigned rate);
+void platform_event_keyrepeat(struct arcan_evctx*, int* period, int* delay);
 
 /*
  * Some kind of string representation for the device, it may well  be used for

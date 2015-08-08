@@ -1243,7 +1243,7 @@ static void disable_display(struct dispout* d)
 	gbm_surface_destroy(d->buffer.surface);
 	d->buffer.surface = NULL;
 
-	if (d->display.old_crtc &&  0 > drmModeSetCrtc(
+	if (d->display.old_crtc && 0 > drmModeSetCrtc(
 		d->device->fd,
 		d->display.old_crtc->crtc_id,
 		d->display.old_crtc->buffer_id,

@@ -4422,12 +4422,16 @@ static int getkey(lua_State* ctx)
 static int kbdrepeat(lua_State* ctx)
 {
 	LUA_TRACE("kbd_repeat");
-	unsigned rrate = luaL_checknumber(ctx, 1);
+	int rperiod = luaL_checknumber(ctx, 1);
+	int rdelay = luaL_optnumber(ctx, 2, -1);
 
-	platform_event_keyrepeat(arcan_event_defaultctx(), rrate);
+	platform_event_keyrepeat(arcan_event_defaultctx(), &rperiod, &rdelay);
+
+	lua_pushnumber(ctx, rperiod);
+	lua_pushnumber(ctx, rdelay);
 
 	LUA_ETRACE("kbd_repeat", NULL);
-	return 0;
+	return 2;
 }
 
 static int v3dorder(lua_State* ctx)

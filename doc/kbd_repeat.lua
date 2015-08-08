@@ -1,13 +1,20 @@
 -- kbd_repeat
--- @short: Change keyboard repeat rate
--- @inargs: repeatrate
--- @longdescr: Keyboard- and mouse input devices are treated as somewhat special
--- compared to other forms of input, and therefore has more global states tracked.
--- This function is used to enable (rrate > 0) or disable (rrate == 0) emitting
--- "push/release" input events for keyboard devices.
+-- @short: Change keyboard repeat period
+-- @inargs: repeat_period, *repeat_delay*
+-- @outargs: old_period, old_delay
+-- @longdescr: Keyboard- and mouse input devices are treated as somewhat
+-- special compared to other forms of input, and therefore has more global
+-- states tracked.  This function is used to manipulate the behavior for
+-- when a key is pressed and held down.
+-- The *repeat_period* argument specifies the number of miliseconds between
+-- each press/release event, or 0 if disabled. The optional *repeat_delay*
+-- argument specifies how long the key has to be held down before the
+-- repeat press/release events start being delivered.
+-- @note: If period is set to a negative number, only the old values will
+-- be returned.
 -- @group: iodev
 -- @cfunction: kbdrepeat
 -- @planned: The long-term plan for this part of the input system is
--- to be able to specify a repeat-rate on a device:(optional subid) bases
+-- to be able to specify a repeat-period on a device:(optional subid) bases
 -- for all digital data-sources, not just the active keyboard.
 

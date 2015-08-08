@@ -646,16 +646,31 @@ void platform_event_rescan_idev(arcan_evctx* ctx)
 	iodev.joys = joys;
 }
 
-void platform_event_keyrepeat(arcan_evctx* ctx, unsigned int rate)
+void platform_event_keyrepeat(arcan_evctx* ctx, int* rate, int* delay)
 {
-	static int kbdrepeat;
+/* sdl repeat start disabled */
+	static int cur_rep, cur_del;
+	bool upd = false;
 
-		if (rate == 0)
-			SDL_EnableKeyRepeat(0, SDL_DEFAULT_REPEAT_INTERVAL);
-		else{
-			kbdrepeat = rate;
-			SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY, kbdrepeat);
-		}
+	if (*rate < 0){
+		*rate = cur_rep;
+	}
+	else{
+		int tmp = *rate;
+		*rate = cur_rep;
+		cur_rep = tmp;
+		upd = true;
+	}
+
+	if (*delay < 0){
+		int tmp = *delay;
+		*delay = cur_del;
+		cur_del = tmp;
+		upd = true;
+	}
+
+	if (upd)
+		SDL_EnableKeyRepeat(cur_del, cur_rep);
 }
 
 void platform_event_deinit(arcan_evctx* ctx)
@@ -676,7 +691,6 @@ void platform_event_init(arcan_evctx* ctx)
 	static bool first_init;
 
 	SDL_EnableUNICODE(1);
-	platform_event_keyrepeat(ctx, SDL_DEFAULT_REPEAT_INTERVAL);
 
 /* OSX hack */
 	SDL_ShowCursor(0);
@@ -689,6 +703,8 @@ void platform_event_init(arcan_evctx* ctx)
 		platform_event_analogfilter(-1, 1,
 			-32768, 32767, 0, 1, ARCAN_ANALOGFILTER_AVG);
 		first_init = true;
+		int r = 0, d = 0;
+		platform_event_keyrepeat(ctx, &r, &d);
 	}
 /* flush out initial storm */
 	SDL_Event dummy[1];
