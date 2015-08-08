@@ -106,6 +106,11 @@ struct axis_opts {
 static struct {
 	size_t n_devs, sz_nodes;
 
+/* repeat is currently enforced uniformly across all keyboards, might be
+ * usecases where this is not preferable but there is no higher-level api
+ * that provides this granularity. */
+	unsigned period, delay;
+
 	unsigned short mouseid;
 	struct arcan_devnode* nodes;
 
@@ -430,6 +435,9 @@ static void discovered(const char* name, size_t name_len)
 
 	if (-1 != fd)
 		got_device(fd, name);
+	else
+		arcan_warning("input: couldn't open new device (%s), reason: %s\n",
+			name, strerror(errno));
 }
 
 void platform_event_process(struct arcan_evctx* ctx)
@@ -472,16 +480,37 @@ void platform_event_process(struct arcan_evctx* ctx)
 	}
 }
 
-/*
- * poll all open FDs
- */
-void platform_event_keyrepeat(struct arcan_evctx* ctx, unsigned int rate)
+void platform_event_keyrepeat(struct arcan_evctx* ctx, int* period, int* delay)
 {
-	for (size_t i = 0; i < iodev.n_devs; i++)
-		if (iodev.nodes[i].type == DEVNODE_KEYBOARD){
-			int buf[2] = {REP_PERIOD, rate};
-			ioctl(iodev.nodes[i].handle, EVIOCGREP, buf);
-		}
+	bool upd = false;
+
+	if (*period < 0){
+		*period = iodev.period;
+	}
+	else{
+		int tmp = *period;
+		*period = iodev.period;
+		iodev.period = tmp;
+		upd = true;
+	}
+
+	if (*delay < 0){
+		int tmp = *delay;
+		*delay = iodev.delay;
+		iodev.delay = tmp;
+		upd = true;
+	}
+
+	if (upd){
+		for (size_t i = 0; i < iodev.n_devs; i++)
+			if (iodev.nodes[i].type == DEVNODE_KEYBOARD){
+				struct kbd_repeat kbrv = {
+					.period = iodev.period,
+					.delay = iodev.delay
+				};
+				ioctl(iodev.nodes[i].handle, KDKBDREP, &kbrv);
+			}
+	}
 }
 
 static const char* lookup_type(int val)
@@ -695,13 +724,17 @@ static void got_device(int fd, const char* path)
 /* not particularly pretty and rather arbitrary */
 		else if (!mouse_btn && !joystick_btn && node.button_count > 84){
 			node.type = DEVNODE_KEYBOARD;
+			struct kbd_repeat kbrv = {0};
+			ioctl(node.handle, KDKBDREP, &kbrv);
 /* FIX: query current LED states and set corresponding states in the devnode */
 		}
 
 		node.hnd.handler = defhandlers[node.type];
 	}
-	else
+	else{
 		node.hnd = eh;
+		node.type = eh.type;
+	}
 
 /* pre-existing? close old node and replace with this one */
 	int hole = -1;

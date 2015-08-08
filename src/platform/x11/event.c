@@ -5,9 +5,10 @@
  */
 
 /*
- * Rather quick and dirty hack to get some kind of X11
- * input support. Missing joysticks and similar devices.
- * keyboard data / translation isn't exactly correct either.
+ * Rather quick and dirty hack to get some kind of X11 input support. Missing
+ * joysticks and similar devices, keyboard translation is only partially
+ * working and so on. This is a very low priority platform, use the SDL layer
+ * if possible.
  */
 #include <stdlib.h>
 #include <stdint.h>
@@ -402,10 +403,6 @@ const char** platform_input_envopts()
 	return (const char**) envopts;
 }
 
-void platform_key_repeat(struct arcan_evctx* ctx, unsigned int rate)
-{
-}
-
 void platform_event_rescan_idev(struct arcan_evctx* ctx)
 {
 }
@@ -418,10 +415,9 @@ const char* platform_event_devlabel(int devid)
 	return "no device";
 }
 
-void platform_event_keyrepeat(arcan_evctx* ctx, unsigned rate)
+void platform_event_keyrepeat(arcan_evctx* ctx, int* rate, int* delay)
 {
 }
-
 
 void platform_event_deinit(struct arcan_evctx* ctx)
 {
