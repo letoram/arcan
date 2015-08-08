@@ -24,6 +24,7 @@ function eventtest()
     local translabel = drawline( [[\bTranslated]], 18 );
 
 		inputanalog_toggle(1);
+		tc = null_surface(1, 1);
 
     move_image(analabel, 0, 0, 0);
     move_image(digilabel, (VRESW / 3), 0, 0);
@@ -153,7 +154,22 @@ function eventtest_clock_pulse(stamp, delta)
     show_image(analogimg);
 end
 
+tick_counter = 500;
+function eventtest_clock_pulse()
+	tick_counter = tick_counter - 1;
+	if (tick_counter == 0) then
+		return shutdown("timeout");
+	else
+		delete_image(tc);
+		tc = render_text("Shutdown in " .. tostring(tick_counter));
+		show_image(tc);
+		move_image(tc, 0, VRESH - 20);
+	end
+end
+
 function eventtest_input( iotbl )
+	tick_counter = 500;
+
 	if (iotbl.kind == "digital") then
 		if (iotbl.translated) then
 			translate_str(iotbl);
