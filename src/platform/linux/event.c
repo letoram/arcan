@@ -426,7 +426,7 @@ void platform_event_analogfilter(int devid,
 
 static void discovered(const char* name, size_t name_len)
 {
-	int fd = fmt_open(0, O_NONBLOCK | O_RDONLY | O_CLOEXEC,
+	int fd = fmt_open(0, O_NONBLOCK | O_RDWR | O_CLOEXEC,
 		"%s/%.*s", notify_scan_dir, name_len, name);
 
 	if (log_verbose)
@@ -504,11 +504,20 @@ void platform_event_keyrepeat(struct arcan_evctx* ctx, int* period, int* delay)
 	if (upd){
 		for (size_t i = 0; i < iodev.n_devs; i++)
 			if (iodev.nodes[i].type == DEVNODE_KEYBOARD){
-				struct kbd_repeat kbrv = {
-					.period = iodev.period,
-					.delay = iodev.delay
+				struct input_event ev = {
+					.type = EV_REP,
+					.code = REP_DELAY,
+					.value = *delay
 				};
-				ioctl(iodev.nodes[i].handle, KDKBDREP, &kbrv);
+				if (-1 == write(iodev.nodes[i].handle,&ev,sizeof(struct input_event)))
+					arcan_warning("linux/event: keydelay fail (%s)\n", strerror(errno));
+				else
+					arcan_warning("set for %d\n", iodev.nodes[i].handle);
+
+				ev.code = REP_PERIOD;
+				ev.value = *period;
+				if (-1 == write(iodev.nodes[i].handle,&ev,sizeof(struct input_event)))
+					arcan_warning("linux/event: keyrepeat fail (%s)\n", strerror(errno));
 			}
 	}
 }
@@ -817,7 +826,7 @@ void platform_event_rescan_idev(struct arcan_evctx* ctx)
 		char** beg = res.gl_pathv;
 
 		while(*beg){
-			int fd = open(*beg, O_NONBLOCK | O_RDONLY | O_CLOEXEC);
+			int fd = open(*beg, O_NONBLOCK | O_RDWR | O_CLOEXEC);
 			if (-1 != fd)
 				got_device(fd, *beg);
 			beg++;
@@ -909,11 +918,15 @@ static void defhandler_kbd(struct arcan_evctx* out,
 		newev.io.input.translated.subid =
 			lookup_character(inev[i].code, node->keyboard.state);
 
+/* auto-repeat, may get even if we are not in this state because of broken
+ * drivers or failed mode-setting. */
 		if (inev[i].value == 2){
-			newev.io.input.translated.active = false;
-			arcan_event_enqueue(out, &newev);
-			newev.io.input.translated.active = true;
-			arcan_event_enqueue(out, &newev);
+			if (iodev.period){
+				newev.io.input.translated.active = false;
+				arcan_event_enqueue(out, &newev);
+				newev.io.input.translated.active = true;
+				arcan_event_enqueue(out, &newev);
+			}
 		}
 		else{
 			newev.io.input.translated.active = inev[i].value != 0;
