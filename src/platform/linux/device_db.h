@@ -9,6 +9,9 @@
  * to either forcibly disable devices we handle poorly or that misbehave or
  * only allow devices we've verified in beforehand (though the identity is
  * rather weak and spoofable).
+ *
+ * It's possible that we might/should check if we have accidentally gotten hold
+ * of the uinput- device node (used for registering customized input devices)
  */
 enum devnode_type {
 	DEVNODE_SENSOR = 0,

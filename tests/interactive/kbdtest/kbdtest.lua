@@ -2,9 +2,9 @@ function kbdtest()
 	show_image(
 		render_text([[\ffonts/default.ttf,18 KBDTest:
 	\n\rF1 period(0), delay(0), F2 inc. period
-	F3 dec. period, F4 inc. delay, F5 dec.delay, F6 zero period/delay]]));
+	F3 dec. period, F4 inc. delay, F5 dec.delay]]));
 	symtable = system_load("scripts/symtable.lua")();
-	last_event = 1000;
+	last_event = 500;
 	history = {};
 	let = null_surface(1, 1);
 	pertxt = null_surface(1, 1);
@@ -54,7 +54,7 @@ end
 
 function kbdtest_input(inp)
 	if (inp.translated and inp.active) then
-		last_event = 1000;
+		last_event = 500;
 		table.insert(history, {
 			CLOCK, inp.devid, inp.subid, inp.keysym,
 			symtable[inp.keysym] and symtable[inp.keysym] or ""
