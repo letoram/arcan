@@ -73,6 +73,13 @@ struct arcan_frameserver* arcan_target_launch_internal(
 	struct arcan_strarr* libs
 );
 
+/*
+ * return a string (can be empty) matching the existing and allowed frameserver
+ * archetypes (a filtered version of the FRAMSESERVER_MODESTRING buildtime var.
+ * and which ones that resolve to valid and existing executables)
+ */
+const char* arcan_frameserver_atypes();
+
 /* estimated time-waster in milisecond resolution, little reason for this
  * to be exact, but undershooting rather than overshooting is important */
 void arcan_timesleep(unsigned long);

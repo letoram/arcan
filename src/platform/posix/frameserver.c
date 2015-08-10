@@ -41,7 +41,6 @@
 /* NOTE: maintaing pid_t for frameserver (or worse, for hijacked target)
  * should really be replaced by making sure they belong to the same process
  * group and first send a close signal to the group, and thereafter KILL */
-extern char* arcan_binpath;
 
 /* Dislike resorting to these kinds of antics, but it was among the cleaner
  * solutions given the portability constraints (OSX,Win32). Other solutions

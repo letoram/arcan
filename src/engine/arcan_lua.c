@@ -2688,10 +2688,12 @@ static int launchavfeed(lua_State* ctx)
 	if (argstr != NULL)
 		modearg = luaL_optstring(ctx, 2, modearg);
 
-	if (strstr(FRAMESERVER_MODESTRING, modearg) == NULL){
+	const char* modestr = arcan_frameserver_atypes();
+
+	if (strstr(modestr, modearg) == NULL){
 		arcan_warning("launch_avfeed(), requested mode (%s) missing from "
-			"build-time frameserver configuration (%s), rejected.\n",
-			modearg, FRAMESERVER_MODESTRING);
+			"detected and allowed frameserver archetypes (%s), rejected.\n",
+			modearg, modestr);
 		LUA_ETRACE("launch_avfeed", "invalid mode");
 		return 0;
 	}
@@ -8711,7 +8713,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 
 	arcan_lua_setglobalstr(ctx, "GL_VERSION", agp_ident());
 	arcan_lua_setglobalstr(ctx, "SHADER_LANGUAGE", agp_shader_language());
-	arcan_lua_setglobalstr(ctx, "FRAMESERVER_MODES", FRAMESERVER_MODESTRING);
+	arcan_lua_setglobalstr(ctx, "FRAMESERVER_MODES", arcan_frameserver_atypes());
 	arcan_lua_setglobalstr(ctx, "APPLID", arcan_appl_id());
 	arcan_lua_setglobalstr(ctx, "API_ENGINE_BUILD", ARCAN_BUILDVERSION);
 

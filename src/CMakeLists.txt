@@ -494,10 +494,9 @@ endif()
 
 set_property(SOURCE engine/arcan_lua.c engine/arcan_main.c
 	APPEND PROPERTY COMPILE_DEFINITIONS
-	FRAMESERVER_MODESTRING=\"${FRAMESERVER_MODESTRING}\"
 	LUA_DROPSTR=\"${LUA_DROPSTR}\"
 	ARCAN_BUILDVERSION=\"${ENGINE_BUILDTAG}\"
-	OS_DYLIB_EXTENSION=\"{OS_DYLIB_EXTENSION}\"
+	OS_DYLIB_EXTENSION=\"${OS_DYLIB_EXTENSION}\"
 	${FSRV_DISABLE}
 )
 
@@ -521,8 +520,12 @@ add_executable(arcan
  	${PLATFORM_SOURCES}
 )
 
+string(STRIP ${FRAMESERVER_MODESTRING} FRAMESERVER_MODESTRING)
 target_include_directories(arcan PRIVATE ${INCLUDE_DIRS})
-target_compile_definitions(arcan PRIVATE ${ARCAN_DEFINITIONS})
+target_compile_definitions(arcan PRIVATE
+	${ARCAN_DEFINITIONS}
+	FRAMESERVER_MODESTRING=\"${FRAMESERVER_MODESTRING}\"
+)
 
 target_link_libraries(arcan
 	${STDLIB}
