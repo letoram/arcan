@@ -139,6 +139,13 @@ enum ARCAN_SEGID {
 	SEGID_ACCESSIBILITY,
 
 /*
+ * Indicates that this segment will be used to provide clipboard style data
+ * and can be used for image, text or audio sharing. Larger state- transfers
+ * should use the bchunk- mechanism.
+ */
+	SEGID_CLIPBOARD,
+
+/*
  * New / unclassified segments have this type until the first
  * _EXTERNAL_REGISTER event has been received.
  */
@@ -778,8 +785,8 @@ typedef struct arcan_extevent {
 			uint32_t id;
 			uint16_t width;
 			uint16_t height;
-			off_t xofs;
-			off_t yofs;
+			int16_t xofs;
+			int16_t yofs;
 		} segreq;
 
 /*
