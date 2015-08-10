@@ -3227,23 +3227,29 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			lua_pushstring(ctx, "touch");
 			lua_rawset(ctx, top);
 
-			tblnum(ctx, "devid",    ev->io.input.touch.devid,    top);
-			tblnum(ctx, "subid",    ev->io.input.touch.subid,    top);
+			tblbool(ctx, "touch", true, top);
+			tblnum(ctx, "devid", ev->io.input.touch.devid, top);
+			tblnum(ctx, "subid", ev->io.input.touch.subid, top);
 			tblnum(ctx, "pressure", ev->io.input.touch.pressure, top);
-			tblnum(ctx, "size",     ev->io.input.touch.size,     top);
-			tblnum(ctx, "x",        ev->io.input.touch.x,        top);
-			tblnum(ctx, "y",        ev->io.input.touch.y,        top);
+			tblnum(ctx, "size", ev->io.input.touch.size, top);
+			tblnum(ctx, "x", ev->io.input.touch.x, top);
+			tblnum(ctx, "y", ev->io.input.touch.y, top);
 		break;
 
 		case EVENT_IO_AXIS_MOVE:
 			lua_pushstring(ctx, "analog");
 			lua_rawset(ctx, top);
+			if (ev->io.devkind == EVENT_IDEVKIND_MOUSE){
+				tblbool(ctx, "mouse", true, top);
+				tblstr(ctx, "source", "mouse", top);
+			}
+			else
+				tblstr(ctx, "source", "joystick", top);
 
-			tblstr(ctx, "source", ev->io.devkind ==
-				EVENT_IDEVKIND_MOUSE ? "mouse" : "joystick", top);
 			tblnum(ctx, "devid", ev->io.input.analog.devid, top);
 			tblnum(ctx, "subid", ev->io.input.analog.subid, top);
 			tblbool(ctx, "active", true, top);
+			tblbool(ctx, "analog", true, top);
 			tblbool(ctx, "relative", ev->io.input.analog.gotrel,top);
 
 			lua_pushstring(ctx, "samples");
@@ -3260,6 +3266,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		case EVENT_IO_BUTTON:
 			lua_pushstring(ctx, "digital");
 			lua_rawset(ctx, top);
+			tblbool(ctx, "digital", true, top);
 
 			if (ev->io.devkind == EVENT_IDEVKIND_KEYBOARD) {
 				tblbool(ctx, "translated", true, top);
@@ -3275,8 +3282,14 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			}
 			else if (ev->io.devkind == EVENT_IDEVKIND_MOUSE ||
 				ev->io.devkind == EVENT_IDEVKIND_GAMEDEV) {
-				tblstr(ctx, "source", ev->io.devkind == EVENT_IDEVKIND_MOUSE ?
-					"mouse" : "joystick", top);
+				if (ev->io.devkind == EVENT_IDEVKIND_MOUSE){
+					tblbool(ctx, "mouse", true, top);
+					tblstr(ctx, "source", "mouse", top);
+				}
+				else {
+					tblbool(ctx, "joystick", true, top);
+					tblstr(ctx, "source", "joystick", top);
+				}
 				tblbool(ctx, "translated", false, top);
 				tblnum(ctx, "devid", ev->io.input.digital.devid, top);
 				tblnum(ctx, "subid", ev->io.input.digital.subid, top);
@@ -8898,6 +8911,7 @@ static inline const char* fsrvtos(enum ARCAN_SEGID ink)
 	case SEGID_HMD_SBS: return "hmd-sbs-lr";
 	case SEGID_VM: return "vm";
 	case SEGID_APPLICATION: return "application";
+	case SEGID_CLIPBOARD: return "clipboard";
 	case SEGID_BROWSER: return "browser";
 	case SEGID_ENCODER: return "encoder";
 	case SEGID_TITLEBAR: return "titlebar";
