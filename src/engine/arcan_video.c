@@ -1297,7 +1297,7 @@ arcan_errc arcan_video_linkobjs(arcan_vobj_id srcid, arcan_vobj_id parentid,
 	arcan_vobject* current = dst;
 
 /* traverse destination and make sure we don't create cycles */
-	while (current) {
+	while (current){
 		if (current->parent == src)
 			return ARCAN_ERRC_CLONE_NOT_PERMITTED;
 		else
@@ -1324,9 +1324,9 @@ arcan_errc arcan_video_linkobjs(arcan_vobj_id srcid, arcan_vobj_id parentid,
 	if (FL_TEST(src, FL_ORDOFS))
 		update_zv(src, src->parent->order);
 
-/* reset all transformations as they don't make sense in this space */
-	swipe_chain(src->transform, offsetof(surface_transform, blend),
-		sizeof(struct transf_blend ));
+/* reset all transformations except blend as they don't make sense until
+ * redefined relative to their new parent. Blend is a special case in that
+ * [fade + switch ownership] is often a desired operation */
 	swipe_chain(src->transform, offsetof(surface_transform, move),
 		sizeof(struct transf_move  ));
 	swipe_chain(src->transform, offsetof(surface_transform, scale),

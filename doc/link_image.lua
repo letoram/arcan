@@ -16,6 +16,8 @@
 -- refers to the anchor point, meaning that if the *newparent* would change
 -- size, the position of *src* will be shifted in to reflect this based on the
 -- anchor point. The default anchor point is ANCHOR_UL.
+-- @warning: Changing link ownership resets all scheduled transformations
+-- except for blending.
 -- @note: Rotation/Orientation do not apply to the anchor point.
 -- @note: Link to self is equivalent to linking back to WORLDID.
 -- @group: image
