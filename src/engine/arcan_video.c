@@ -4937,13 +4937,8 @@ surface_properties arcan_video_properties_at(arcan_vobj_id id, unsigned ticks)
 	return rv;
 }
 
-void platform_video_prepare_external();
 bool arcan_video_prepare_external()
 {
-/* There seems to be no decent, portable, way to minimize + suspend
- * and when child terminates, maximize and be sure that OpenGL / SDL context
- * data is restored respectively. Thus we destroy the surface,
- * and then rebuild / reupload all textures. */
 	if (-1 == arcan_video_pushcontext())
 		return false;
 
@@ -4996,7 +4991,6 @@ bool arcan_video_contextsize(unsigned newlim)
 	return true;
 }
 
-extern void platform_video_restore_external();
 void arcan_video_restore_external()
 {
 	platform_video_restore_external();
