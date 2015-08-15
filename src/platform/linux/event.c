@@ -12,7 +12,6 @@
  * user-configurable analog filters on noisy devices etc. should be generalized
  * and put in a shared directory, and re-used for other input platforms.
  */
-
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -27,6 +26,7 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/signalfd.h>
 #include <fcntl.h>
 
 #include <linux/input.h>
@@ -61,11 +61,13 @@ static struct {
 	unsigned char leds;
 	bool mute;
 	int tty, notify;
+	int signalfd;
 }
 gstate = {
 	.mode = KD_TEXT,
 	.tty = STDIN_FILENO,
-	.notify = -1
+	.notify = -1,
+	.signalfd = -1
 };
 
 static const char* envopts[] = {
@@ -73,6 +75,7 @@ static const char* envopts[] = {
 	"ARCAN_INPUT_SCANDIR", "Directory to monitor for device nodes "
 		"(Default: "NOTIFY_SCAN_DIR")",
 	"ARCAN_INPUT_TTYOVERRIDE", "Force a specific tty- device",
+	"ARCAN_INPUT_DISABLE_TTYPSWAP", "Disable tty- swapping signal handler",
 	"ARCAN_INPUT_VERBOSE", "_warning log() input node events",
 	NULL
 };
@@ -466,6 +469,32 @@ void platform_event_process(struct arcan_evctx* ctx)
 	char dump[256];
 	size_t nr __attribute__((unused));
 
+	struct signalfd_siginfo sig;
+	if (gstate.signalfd != -1 && read(gstate.signalfd, &sig,
+		sizeof(struct signalfd_siginfo)) == sizeof(struct signalfd_siginfo)){
+		static bool in_suspend;
+		printf("signal: %d\n", sig.ssi_signo);
+/* acquire */
+		if (sig.ssi_signo == SIGUSR1){
+			if (in_suspend)
+				arcan_video_restore_external();
+			else
+				arcan_warning("USR1 received while not in a signal- suspended state");
+			in_suspend = false;
+			arcan_video_restore_external();
+		}
+/* release, check signal source */
+		else if (sig.ssi_signo == SIGUSR2){
+			if (!in_suspend)
+				arcan_video_prepare_external();
+			else
+				arcan_warning("USR2 received while in a signal- suspended state");
+			in_suspend = true;
+		}
+		else
+			;
+	}
+
 	if (poll(iodev.pollset, iodev.n_devs, 0) <= 0)
 		return;
 
@@ -776,8 +805,7 @@ static void got_device(int fd, const char* path)
 		iodev.nodes = nn;
 		memset(nn + iodev.sz_nodes, '\0', sizeof(struct arcan_devnode) * 8);
 
-		struct pollfd* np = realloc(
-			iodev.pollset, sizeof(struct pollfd) * new_sz);
+		struct pollfd* np = realloc(iodev.pollset, sizeof(struct pollfd) * new_sz);
 		if (!np)
 			goto cleanup;
 
@@ -1179,6 +1207,11 @@ const char* platform_event_devlabel(int devid)
 #define KDSKBMUTE 0x4B51
 #endif
 
+/*
+ * note, this do not currently save/restore individual options between
+ * init/deinit sessions, which is needed for virtual terminal switching
+ * and external_launch.
+ */
 void platform_event_deinit(struct arcan_evctx* ctx)
 {
 	if (isatty(gstate.tty) && gstate.mute){
@@ -1195,6 +1228,11 @@ void platform_event_deinit(struct arcan_evctx* ctx)
 	if (gstate.tty != STDIN_FILENO){
 		close(gstate.tty);
 		gstate.tty = STDIN_FILENO;
+	}
+
+	if (gstate.signalfd != -1){
+		close(gstate.signalfd);
+		gstate.signalfd = -1;
 	}
 
 	if (gstate.notify != -1){
@@ -1313,18 +1351,35 @@ void platform_event_init(arcan_evctx* ctx)
 			ioctl(gstate.tty, KDSKBMODE, K_OFF);
 			ioctl(gstate.tty, KDSETMODE, KD_GRAPHICS);
 		}
-
-/* missing: install handler for signal - switching VTY:
- * setup VT_PROCESS for the TTY, with a relsig and an acqsig along
- * with matching signal handlers.
- *
- * relsig sets value that during next event process will force a
- * set_external, sleep-loop until acqsig is triggered where we restore
- */
-		struct sigaction er_sh = {.sa_handler = SIG_IGN};
-		sigaction(SIGINT, &er_sh, NULL);
 		gstate.mute = true;
 	}
+
+	struct sigaction er_sh = {.sa_handler = SIG_IGN};
+	sigaction(SIGINT, &er_sh, NULL);
+
+/* This also has implications for graphics, if we for some reason would get in
+ * a context where the egl-dri shouldn't use the same tty management semantics
+ * (FBSD) that part is initiated from the event layer. The other is the
+ * implications of allowing signals from same user but in a less privileged
+ * context */
+	if (!getenv("ARCAN_INPUT_DISABLE_TTYPSWAP")){
+		struct vt_mode mode = {
+			.mode = VT_PROCESS,
+			.acqsig = SIGUSR1,
+			.relsig = SIGUSR2
+		};
+		sigset_t mask;
+		sigemptyset(&mask);
+		sigaddset(&mask, SIGUSR1);
+		sigaddset(&mask, SIGUSR2);
+		sigprocmask(SIG_BLOCK, &mask, NULL);
+
+		gstate.signalfd = signalfd(-1, &mask, SFD_NONBLOCK | SFD_CLOEXEC);
+		if (gstate.signalfd == -1 || -1 == ioctl(gstate.tty, VT_SETMODE, &mode))
+			arcan_warning("couldn't setup tty switching, feature disabled.\n");
+	}
+	else
+		gstate.signalfd = -1;
 
 	log_verbose = getenv("ARCAN_INPUT_VERBOSE");
 

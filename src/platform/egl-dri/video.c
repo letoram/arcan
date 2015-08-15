@@ -1318,8 +1318,13 @@ bool platform_video_init(uint16_t w, uint16_t h,
 	if (setup_node(&nodes[0], device) != 0)
 		goto cleanup;
 
-	if (!getenv("ARCAN_VIDEO_DRM_NOMASTER"))
-		drmSetMaster(nodes[0].fd);
+	if (!getenv("ARCAN_VIDEO_DRM_NOMASTER")){
+		if (-1 == drmSetMaster(nodes[0].fd)){
+			arcan_fatal("platform/egl-dri(), couldn't get drmMaster (%s) - make sure"
+				" nothing else holds the master lock or try "
+				"ARCAN_VIDEO_DRM_NOMASTER=1\n", strerror(errno));
+		}
+	}
 
 	map_extensions();
 
@@ -1697,23 +1702,38 @@ static void update_display(struct dispout* d)
 	d->buffer.in_flip = 1;
 }
 
+/* These two functions are important yet incomplete (and something for the
+ * sadists) -- For these to be working and complete we need to:
+ *
+ *  1. handle detection of all device changes that might've occured while
+ *     we were gone and propagate the related events. This includes GPUs
+ *     appearing / disappearing and monitors being plugged/replaced/unplugged
+ *     The testing backlog etc. is what makes this difficult.
+ *
+ *  2. add correct flushing as part of agp memory management, meaning reading
+ *     back and store all GPU-local assets.
+ *
+ * Unfortunately this is a necessary feature for proper hibernate/suspend/
+ * virtual terminal/seat switching. Then we need to do the same for audio,
+ * event and led devices.
+ */
 void platform_video_prepare_external()
 {
-/* sweep all displays and save a list of their relevant configuration states
- * (connector ID, etc.) then drop them --
- *
- * if we're in DRM master mode, temporarily release it
- */
+	if (!getenv("ARCAN_VIDEO_DRM_NOMASTER"))
+		drmDropMaster(nodes[0].fd);
 }
 
 void platform_video_restore_external()
 {
-/* this one is for the sadists -- AGP is responsible for saving all the GL
- * related buffers (which might be difficult with EGLStreams or MESA handles),
- * reading back into RAM buffers etc.
- *
- * the real issue is handling all the possible things that can have changed
- * between prepare and restore - cards disappearing (!), connectors being
- * switched around etc. and storming these events upwards
- */
+/* uncertain if it is possible to poll on the device node to determine
+ * when / if the drmMaster lock is released or not */
+	if (!getenv("ARCAN_VIDEO_DRM_NOMASTER")){
+		while(-1 == drmSetMaster(nodes[0].fd)){
+			arcan_warning("platform/egl-dri(), couldn't regain drmMaster access, "
+				"retrying in 1 second\n");
+			arcan_timesleep(1000);
+		}
+	}
+
+	platform_video_query_displays();
 }

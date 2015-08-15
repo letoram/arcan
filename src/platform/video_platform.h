@@ -171,6 +171,19 @@ bool platform_video_init(uint16_t w, uint16_t h,
 	uint8_t bpp, bool fs, bool frames, const char* caption);
 
 /*
+ * Release / free as much resource as possible while still being able to
+ * resume operations later. This is used for suspend/resume style behavior
+ * when switching virtual terminals or when going into powersave- states.
+ * After this point, the event subsystem will also be deinitialized.
+ */
+void platform_video_prepare_external();
+
+/*
+ * Undo the effects of the prepare_external call.
+ */
+void platform_video_restore_external();
+
+/*
  * get a (NULL terminated) array of synchronization options that are valid
  * arguments to _setsynch(). It should follow the pattern
  * {"synchopt1", "description1",
