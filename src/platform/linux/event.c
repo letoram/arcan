@@ -26,7 +26,6 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <sys/signalfd.h>
 #include <fcntl.h>
 
 #include <linux/input.h>
@@ -59,15 +58,16 @@ static struct {
 	unsigned long kbmode;
 	int mode;
 	unsigned char leds;
-	bool mute;
+	bool mute, init;
 	int tty, notify;
-	int signalfd;
+	int sigpipe[2];
+	struct pollfd sigpipe_p;
 }
 gstate = {
 	.mode = KD_TEXT,
 	.tty = STDIN_FILENO,
 	.notify = -1,
-	.signalfd = -1
+	.sigpipe = {-1, -1}
 };
 
 static const char* envopts[] = {
@@ -159,6 +159,23 @@ struct arcan_devnode {
 		} touch;
 	};
 };
+
+static const char* vt_acq = "x";
+static const char* vt_rel = "y";
+
+static void sigusr_acq(int sign, siginfo_t* info, void* ctx)
+{
+	int s_errn = errno;
+	write(gstate.sigpipe[1], vt_acq, 1);
+	errno = s_errn;
+}
+
+static void sigusr_rel(int sign, siginfo_t* info, void* ctx)
+{
+	int s_errn = errno;
+	write(gstate.sigpipe[1], vt_rel, 1);
+	errno = s_errn;
+}
 
 static void got_device(int fd, const char*);
 
@@ -466,33 +483,26 @@ void platform_event_process(struct arcan_evctx* ctx)
 			}
 	}
 
-	char dump[256];
-	size_t nr __attribute__((unused));
-
-	struct signalfd_siginfo sig;
-	if (gstate.signalfd != -1 && read(gstate.signalfd, &sig,
-		sizeof(struct signalfd_siginfo)) == sizeof(struct signalfd_siginfo)){
-		static bool in_suspend;
-		printf("signal: %d\n", sig.ssi_signo);
-/* acquire */
-		if (sig.ssi_signo == SIGUSR1){
-			if (in_suspend)
-				arcan_video_restore_external();
-			else
-				arcan_warning("USR1 received while not in a signal- suspended state");
-			in_suspend = false;
-			arcan_video_restore_external();
-		}
-/* release, check signal source */
-		else if (sig.ssi_signo == SIGUSR2){
-			if (!in_suspend)
+	if (gstate.sigpipe[0] != -1){
+		if (poll(&gstate.sigpipe_p, 1, 0) > 0){
+			char ch;
+			if (1 == read(gstate.sigpipe[0], &ch, 1) && ch == vt_rel[0]){
+				arcan_warning("prepare external!");
 				arcan_video_prepare_external();
-			else
-				arcan_warning("USR2 received while in a signal- suspended state");
-			in_suspend = true;
+				ioctl(gstate.tty, VT_RELDISP, 1);
+/* poor name, but video_prepare_external should be the trigger for
+ * both audio, video and event deinit/release */
+				while(true)
+					if(poll(&gstate.sigpipe_p, 1, -1) <= 0)
+						continue;
+					else if (1 == read(gstate.sigpipe[0], &ch, 1) && ch == vt_acq[0]){
+						arcan_warning("time to restore!");
+						ioctl(gstate.tty, VT_RELDISP, VT_ACKACQ);
+						arcan_video_restore_external();
+						break;
+					}
+			}
 		}
-		else
-			;
 	}
 
 	if (poll(iodev.pollset, iodev.n_devs, 0) <= 0)
@@ -504,8 +514,11 @@ void platform_event_process(struct arcan_evctx* ctx)
 
 		if (iodev.nodes[i].hnd.handler)
 			iodev.nodes[i].hnd.handler(ctx, &iodev.nodes[i]);
-		else
+		else{
+			char dump[256];
+			size_t nr __attribute__((unused));
 			nr = read(iodev.nodes[i].handle, dump, 256);
+		}
 	}
 }
 
@@ -540,8 +553,6 @@ void platform_event_keyrepeat(struct arcan_evctx* ctx, int* period, int* delay)
 				};
 				if (-1 == write(iodev.nodes[i].handle,&ev,sizeof(struct input_event)))
 					arcan_warning("linux/event: keydelay fail (%s)\n", strerror(errno));
-				else
-					arcan_warning("set for %d\n", iodev.nodes[i].handle);
 
 				ev.code = REP_PERIOD;
 				ev.value = *period;
@@ -840,9 +851,8 @@ cleanup:
 void platform_event_rescan_idev(struct arcan_evctx* ctx)
 {
 /* rescan is not needed here as we check inotify while polling */
-	static bool init;
-	if (!init)
-		init = true;
+	if (!gstate.init)
+		gstate.init = true;
 	else
 		return;
 
@@ -877,6 +887,12 @@ static void update_state(int code, bool state, unsigned* statev)
 	case K_RSHIFT:
 		modifier = ARKMOD_RSHIFT;
 	break;
+	case K_LALT:
+		modifier = ARKMOD_LALT;
+	break;
+	case K_RALT:
+		modifier = ARKMOD_RALT;
+	break;
 	case K_LCTRL:
 		modifier = ARKMOD_LCTRL;
 	break;
@@ -891,9 +907,9 @@ static void update_state(int code, bool state, unsigned* statev)
 	}
 
 	if (state)
-		*statev |= (1 << modifier);
+		*statev |= modifier;
 	else
-		*statev &= ~(1 << modifier);
+		*statev &= ~modifier;
 }
 
 static void disconnect(struct arcan_devnode* node)
@@ -939,12 +955,20 @@ static void defhandler_kbd(struct arcan_evctx* out,
 		case EV_KEY:
 		newev.io.input.translated.scancode = inev[i].code;
 		newev.io.input.translated.keysym = lookup_keycode(inev[i].code);
-
 		update_state(inev[i].code, inev[i].value != 0, &node->keyboard.state);
-
 		newev.io.input.translated.modifiers = node->keyboard.state;
+/* possible checkpoint for adding other keyboard layout support here */
 		newev.io.input.translated.subid =
 			lookup_character(inev[i].code, node->keyboard.state);
+
+/* virtual terminal switching for press on LCTRL+LALT+Fn.
+ * should possibly have more advanced config here to limit # of eligible
+ * devices and change combination */
+ 		if (gstate.tty != -1 && gstate.sigpipe[0] != -1 &&
+			(node->keyboard.state == (ARKMOD_LALT | ARKMOD_LCTRL)) &&
+			inev[i].code >= KEY_F1 && inev[i].code <= KEY_F10 && inev[i].value != 0){
+			ioctl(gstate.tty, VT_ACTIVATE, inev[i].code - KEY_F1 + 1);
+		}
 
 /* auto-repeat, may get even if we are not in this state because of broken
  * drivers or failed mode-setting. */
@@ -1230,16 +1254,17 @@ void platform_event_deinit(struct arcan_evctx* ctx)
 		gstate.tty = STDIN_FILENO;
 	}
 
-	if (gstate.signalfd != -1){
-		close(gstate.signalfd);
-		gstate.signalfd = -1;
-	}
+/* note, we purposely leak (let it disappear on close) to avoid the races and
+ * interactions that come from TTY switching -> deinit -> signal -> init */
 
 	if (gstate.notify != -1){
 		close(gstate.notify);
 		gstate.notify = -1;
 	}
 
+/* note, for VT switching this means that the state of devices when it comes
+ * to filtering etc. do not persist between external launches, should rework
+ * this */
 	for (size_t i = 0; i < iodev.n_devs; i++)
 		if (iodev.nodes[i].handle > 0){
 			close(iodev.nodes[i].handle);
@@ -1247,6 +1272,7 @@ void platform_event_deinit(struct arcan_evctx* ctx)
 		}
 
 	iodev.n_devs = 0;
+	gstate.init = false;
 }
 
 void platform_device_lock(int devind, bool state)
@@ -1357,29 +1383,34 @@ void platform_event_init(arcan_evctx* ctx)
 	struct sigaction er_sh = {.sa_handler = SIG_IGN};
 	sigaction(SIGINT, &er_sh, NULL);
 
-/* This also has implications for graphics, if we for some reason would get in
- * a context where the egl-dri shouldn't use the same tty management semantics
- * (FBSD) that part is initiated from the event layer. The other is the
- * implications of allowing signals from same user but in a less privileged
- * context */
+/* This one is uncomfortably involved, one is that we consume both signal
+ * slots for this single purpose. The other is that far from all states
+ * are safe for 'switching' and we need a way to distinguish that. The
+ * current approach builds on the 'self-pipe' trick and then do the switch
+ * as part of the normal event loop. */
 	if (!getenv("ARCAN_INPUT_DISABLE_TTYPSWAP")){
-		struct vt_mode mode = {
-			.mode = VT_PROCESS,
-			.acqsig = SIGUSR1,
-			.relsig = SIGUSR2
-		};
-		sigset_t mask;
-		sigemptyset(&mask);
-		sigaddset(&mask, SIGUSR1);
-		sigaddset(&mask, SIGUSR2);
-		sigprocmask(SIG_BLOCK, &mask, NULL);
+		if (gstate.sigpipe[0] == -1){
+			struct vt_mode mode = {
+				.mode = VT_PROCESS,
+				.acqsig = SIGUSR1,
+				.relsig = SIGUSR2
+			};
+			pipe(gstate.sigpipe);
+			fcntl(gstate.sigpipe[0], F_SETFD, FD_CLOEXEC);
+			fcntl(gstate.sigpipe[1], F_SETFD, FD_CLOEXEC);
+			gstate.sigpipe_p.fd = gstate.sigpipe[0];
+			gstate.sigpipe_p.events = POLLIN;
 
-		gstate.signalfd = signalfd(-1, &mask, SFD_NONBLOCK | SFD_CLOEXEC);
-		if (gstate.signalfd == -1 || -1 == ioctl(gstate.tty, VT_SETMODE, &mode))
-			arcan_warning("couldn't setup tty switching, feature disabled.\n");
+			er_sh.sa_handler = NULL;
+			er_sh.sa_sigaction = sigusr_acq;
+			er_sh.sa_flags = SA_SIGINFO;
+			sigaction(SIGUSR1, &er_sh, NULL);
+
+			er_sh.sa_sigaction = sigusr_rel;
+			sigaction(SIGUSR2, &er_sh, NULL);
+			ioctl(gstate.tty, VT_SETMODE, &mode);
+		}
 	}
-	else
-		gstate.signalfd = -1;
 
 	log_verbose = getenv("ARCAN_INPUT_VERBOSE");
 

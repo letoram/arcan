@@ -1227,7 +1227,7 @@ static void disable_display(struct dispout* d)
 	}
 	d->device->refc -= 1;
 
-	if (d->buffer.in_flip){
+  if (d->buffer.in_flip){
 		arcan_warning("Attempting to destroy display during flip\n");
 		return;
 	}
@@ -1403,10 +1403,16 @@ void platform_video_synch(uint64_t tick_count, float fract,
 			.events = POLLIN | POLLERR | POLLHUP
 		};
 
-		if (-1 == poll(&fds, 1, -1) || (fds.revents & (POLLHUP | POLLERR)))
-			arcan_fatal("platform/egl-dri() - poll on device failed.\n");
+		if (-1 == poll(&fds, 1, -1)){
+			if (errno == EINTR || errno == EAGAIN)
+				continue;
 
-		drmHandleEvent(nodes[0].fd, &evctx);
+			arcan_fatal("platform/egl-dri() - poll on device failed.\n");
+		}
+		else if (fds.revents & (POLLHUP | POLLERR))
+			arcan_warning("platform/egl-dri() - display broken/recovery missing.\n");
+		else
+			drmHandleEvent(nodes[0].fd, &evctx);
 
 		pending = 0;
 		int i = 0;
