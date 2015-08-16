@@ -74,20 +74,20 @@ function digital_str(iotbl)
 end
 
 function translate_str(iotbl)
-    table.insert(translatetbl, "dev(" .. iotbl.devid .. "), sub(" ..iotbl.subid .. ") [" ..
-	iotbl.modifiers .. "] => " .. iotbl.keysym .. ", " .. tostring(iotbl.active));
+		table.insert(translatetbl, string.format("dev(%d):sub(%d)[%s] => %s, %s",
+			iotbl.devid, iotbl.subid,
+			table.concat(decode_modifiers(iotbl.modifiers),","),
+			iotbl.keysym, iotbl.active)
+		);
 
-    line = "";
-    for i=1, #translatetbl do
-	line = line .. translatetbl[i] .. [[\r\n]];
-    end
+		line = table.concat(translatetbl, [[\r\n]]);
 
     if (#translatetbl > 10) then
-	table.remove(translatetbl, 1);
+			table.remove(translatetbl, 1);
     end
 
     if (translateimg) then
-	delete_image(translateimg);
+			delete_image(translateimg);
     end
 
     translateimg = drawline(line, 12);
