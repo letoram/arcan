@@ -325,8 +325,13 @@ enum ARCAN_TARGET_COMMAND {
 };
 
 /*
- * These events map from a connected client to an arcan server.
+ * These events map from a connected client to an arcan server, the
+ * namespacing is transitional nad it is recommended that the indirection
+ * macro, ARCAN_EVENT(X) is used.
  */
+#define _INT_SHMIF_TMERGE X ## Y
+#define _INT_SHMIF_TEVAL(X, Y) _INT_SHMIF_TMERGE(X, Y)
+#define ARCAN_EVENT(X)_INT_SHMIF_TEVAL(EVENT_EXTERNAL_, X)
 enum ARCAN_EVENT_EXTERNAL {
 /*
  * custom string message, used as some user- directed hint
@@ -435,6 +440,13 @@ enum ARCAN_EVENT_EXTERNAL {
 	EVENT_EXTERNAL_VIEWPORT,
 
 /*
+ * Message hint that a specific input label is supported Uses the labelhint
+ * substructure and label is subject to A-Z,0-9_ normalization with * used
+ * as wildchar character for incremental indexing.
+ */
+	EVENT_EXTERNAL_LABELHINT,
+
+/*
  * A once- only trigger that identifies the subtype of a segment.
  * (see SEGID_ table), uses registr substructure.
  */
@@ -470,20 +482,20 @@ enum ARCAN_TARGET_SKIPMODE {
  * IDATATYPE => usually redundant against KIND, reserved for future tuning
  */
 enum ARCAN_EVENT_IO {
-	EVENT_IO_BUTTON,
+	EVENT_IO_BUTTON = 0,
 	EVENT_IO_AXIS_MOVE,
 	EVENT_IO_TOUCH
 };
 
 enum ARCAN_EVENT_IDEVKIND {
-	EVENT_IDEVKIND_KEYBOARD,
+	EVENT_IDEVKIND_KEYBOARD = 0,
 	EVENT_IDEVKIND_MOUSE,
 	EVENT_IDEVKIND_GAMEDEV,
 	EVENT_IDEVKIND_TOUCHDISP
 };
 
 enum ARCAN_EVENT_IDATATYPE {
-	EVENT_IDATATYPE_ANALOG,
+	EVENT_IDATATYPE_ANALOG = 0,
 	EVENT_IDATATYPE_DIGITAL,
 	EVENT_IDATATYPE_TRANSLATED,
 	EVENT_IDATATYPE_TOUCH
@@ -734,6 +746,11 @@ typedef struct arcan_extevent {
 			uint32_t x, y;
 			uint8_t buttons[5];
 		} cursor;
+
+		struct {
+			char label[16];
+			int idatatype;
+		} labelhint;
 
 		struct{
 			uint8_t id;
