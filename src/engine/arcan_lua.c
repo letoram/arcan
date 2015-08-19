@@ -947,6 +947,29 @@ static inline void tblbool(lua_State* ctx, char* k, bool v, int top){
 	lua_rawset(ctx, top);
 }
 
+static inline void fltpush(char* dst, char ulim,
+	char* inmsg, const char* fltch, char replch)
+{
+	while (*inmsg && ulim--){
+		const char* pos = fltch;
+		bool found = false;
+
+		while(*fltch){
+			if (*inmsg == *fltch){
+				*dst++ = replch;
+				found = true;
+				break;
+			}
+			fltch++;
+		}
+
+		if (!found)
+			*dst++ = *inmsg++;
+	}
+
+	*dst = '\0';
+}
+
 static inline void slimpush(char* dst, char ulim, char* inmsg)
 {
 	while (*inmsg && ulim--)
@@ -3060,6 +3083,21 @@ kinderr:
 	return 1;
 }
 
+static const char* lookup_idatatype(int type)
+{
+	static const char* idatalut[] = {
+		"analog",
+		"digital",
+		"translated",
+		"touch"
+	};
+
+	if (type < 0 || type > sizeof(idatalut)/sizeof(idatalut[0]))
+		return NULL;
+
+	return idatalut[type];
+}
+
 /*
  * assumes there's a table at the current top of the stack,
  * grab all the display modes available for a specific display
@@ -3418,6 +3456,12 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 					(char*)ev->ext.message);
 				tblstr(ctx, "argument", mcbuf, top);
 			break;
+			case EVENT_EXTERNAL_CURSORHINT:
+				fltpush(mcbuf, sizeof(ev->ext.message) /
+					sizeof(ev->ext.message[0]),
+					(char*)ev->ext.message, "abcdefghijklmnopqrstuwxyz-", '?');
+				tblstr(ctx, "kind", "cursorhint", top);
+			break;
 			case EVENT_EXTERNAL_MESSAGE:
 				slimpush(mcbuf, sizeof(ev->ext.message) /
 					sizeof(ev->ext.message[0]),
@@ -3490,7 +3534,20 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			case EVENT_EXTERNAL_SEGREQ:
 				return emit_segreq(ctx, &ev->ext);
 			break;
+			case EVENT_EXTERNAL_LABELHINT:{
+				const char* idt = lookup_idatatype(ev->ext.labelhint.idatatype);
+				if (!idt){
+					lua_settop(ctx, reset);
+					return;
+				}
 
+				tblstr(ctx, "kind", "input_label", top);
+				fltpush(mcbuf, sizeof(ev->ext.labelhint.label)/
+					sizeof(ev->ext.labelhint.label[0]), ev->ext.labelhint.label,
+					"abcdefghijklmnopqrstuvwxyz0123456789_", '?');
+				tblstr(ctx, "datatype", idt, top);
+			}
+			break;
 			case EVENT_EXTERNAL_STATESIZE:
 				tblstr(ctx, "kind", "state_size", top);
 				tblnum(ctx, "state_size", ev->ext.state_sz, top);
