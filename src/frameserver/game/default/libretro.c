@@ -659,7 +659,7 @@ static void update_varset( struct retro_variable* data )
 	int count = 0;
 	arcan_event outev = {
 		.category = EVENT_EXTERNAL,
-		.ext.kind = EVENT_EXTERNAL_COREOPT
+		.ext.kind = ARCAN_EVENT(COREOPT)
 	};
 
 	size_t msgsz = sizeof(outev.ext.message) / sizeof(outev.ext.message[0]);
@@ -1234,7 +1234,7 @@ static inline void targetev(arcan_event* ev)
 				retroctx.graph_pending = rand();
 				arcan_event outev = {
 					.category = EVENT_EXTERNAL,
-					.ext.kind = EVENT_EXTERNAL_SEGREQ,
+					.ext.kind = ARCAN_EVENT(SEGREQ),
 					.ext.segreq.width = 640,
 					.ext.segreq.height = 240,
 					.ext.segreq.id = retroctx.graph_pending
@@ -1527,7 +1527,7 @@ static void setup_3dcore(struct retro_hw_render_callback* ctx)
  */
 	arcan_event ev = {
 		.category = EVENT_EXTERNAL,
-		.kind = EVENT_EXTERNAL_SEGREQ
+		.kind = ARCAN_EVENT(SEGREQ)
 	};
 
 	arcan_event_enqueue(&retroctx.shmcont.outev, &ev);
@@ -1692,7 +1692,7 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 /* send some information on what core is actually loaded etc. */
 		arcan_event outev = {
 			.category = EVENT_EXTERNAL,
-			.ext.kind = EVENT_EXTERNAL_IDENT
+			.ext.kind = ARCAN_EVENT(IDENT)
 		};
 
 		size_t msgsz = sizeof(outev.ext.message) / sizeof(outev.ext.message[0]);
@@ -1727,7 +1727,7 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		}
 
 /* load the game, and if that fails, give up */
-		outev.ext.kind = EVENT_EXTERNAL_RESOURCE;
+		outev.ext.kind = ARCAN_EVENT(RESOURCE);
 		snprintf((char*)outev.ext.message, msgsz, "loading");
 		arcan_shmif_enqueue(&retroctx.shmcont, &outev);
 		if (snprintf(logbuf, logbuf_sz, "loading game...") >= logbuf_sz)
@@ -1802,7 +1802,7 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
  * to determine strategy for netplay and for enabling / disabling savestates */
 		retroctx.state_sz = retroctx.serialize_size();
 		outev.category = EVENT_EXTERNAL;
-		outev.ext.kind = EVENT_EXTERNAL_STATESIZE;
+		outev.ext.kind = ARCAN_EVENT(STATESIZE);
 		outev.ext.state_sz = retroctx.state_sz;
 		arcan_shmif_enqueue(&retroctx.shmcont, &outev);
 
@@ -1855,7 +1855,7 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 
 /* Some FE applications need a grasp of "where" we are frame-wise,
  * particularly for single-stepping etc. */
-			outev.ext.kind = EVENT_EXTERNAL_FRAMESTATUS;
+			outev.ext.kind = ARCAN_EVENT(FRAMESTATUS);
 			outev.ext.framestatus.framenumber++;
 			arcan_shmif_enqueue(&retroctx.shmcont, &outev);
 

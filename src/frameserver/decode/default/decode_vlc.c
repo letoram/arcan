@@ -180,7 +180,7 @@ static void audio_flush()
 {
 	arcan_event ev = {
 		.category = EVENT_EXTERNAL,
-		.ext.kind = EVENT_EXTERNAL_FLUSHAUD,
+		.ext.kind = ARCAN_EVENT(FLUSHAUD)
 	};
 
 	arcan_shmif_enqueue(&decctx.shmcont, &ev);
@@ -221,7 +221,7 @@ static void push_streamstatus()
 
 	struct arcan_event status = {
 		.category = EVENT_EXTERNAL,
-		.ext.kind = EVENT_EXTERNAL_STREAMSTATUS,
+		.ext.kind = ARCAN_EVENT(STREAMSTATUS),
 		.ext.streamstat.frameno = c++
 	};
 
