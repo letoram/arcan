@@ -263,7 +263,7 @@ int afsrv_remoting(struct arcan_shmif_cont* con, struct arg_arr* args)
 		if (-1 == rc){
 			arcan_event outev = {
 				.category = EVENT_EXTERNAL,
-				.ext.kind = EVENT_EXTERNAL_FAILURE,
+				.ext.kind = ARCAN_EVENT(FAILURE),
 				.ext.message = "(01) server connection broken"
 			};
 
@@ -275,7 +275,7 @@ int afsrv_remoting(struct arcan_shmif_cont* con, struct arg_arr* args)
 			if (!HandleRFBServerMessage(vncctx.client)){
 				arcan_event outev = {
 					.category = EVENT_EXTERNAL,
-					.ext.kind = EVENT_EXTERNAL_FAILURE,
+					.ext.kind = ARCAN_EVENT(FAILURE),
 					.ext.message = "(02) couldn't parse server message"
 				};
 

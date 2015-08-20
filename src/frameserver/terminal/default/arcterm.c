@@ -71,6 +71,7 @@ static struct {
 	int cols;
 	int cell_w, cell_h;
 	int screen_w, screen_h;
+	uint8_t alpha;
 
 	tsm_age_t age;
 
@@ -78,8 +79,9 @@ static struct {
 } term = {
 	.cell_w = 8,
 	.cell_h = 8,
-	.rows = 80,
-	.cols = 25
+	.rows = 25,
+	.cols = 80,
+	.alpha = 0xff
 };
 
 static void tsm_log(void* data, const char* file, int line,
@@ -138,7 +140,7 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 
 	term.dirty = true;
 	draw_box(&term.acon, base_x, base_y, term.cell_w + 1,
-		term.cell_h + 1, RGBA(bgc[0], bgc[1], bgc[2], 0xff));
+		term.cell_h + 1, RGBA(bgc[0], bgc[1], bgc[2], term.alpha));
 
 	size_t u8_sz = tsm_ucs4_get_width(*ch) + 1;
 	uint8_t u8_ch[u8_sz];
@@ -198,16 +200,14 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 #endif
 }
 
-static void screen_size(int cols, int rows, int fontw, int fonth)
+static void update_screensize()
 {
-	int px_w = cols * fontw;
-	int px_h = rows * fonth;
+	int cols = term.acon.w / term.cell_w;
+	int rows = term.acon.h / term.cell_h;
 
-	if (!arcan_shmif_resize(&term.acon, px_w, px_h)){
-		LOG("arcan_shmif_resize(), couldn't set"
-			"	requested dimensions (%d, %d)\n", px_w, px_h);
-		exit(EXIT_FAILURE);
-	}
+	shmif_pixel px = RGBA(0x00, 0x00, 0x00, term.alpha);
+	for (size_t i=0; i < term.acon.pitch * term.acon.h; i++)
+		term.acon.vidp[i] = px;
 
 	tsm_screen_resize(term.screen, cols, rows);
 	shl_pty_resize(term.pty, cols, rows);
@@ -274,12 +274,39 @@ static void setup_shell(struct arg_arr* argarr)
 	exit(EXIT_FAILURE);
 }
 
+static void expose_labels()
+{
+	static const char* labels[] = {
+		"SCROLL_UP",
+		"SCROLL_DOWN",
+		"UP",
+		"DOWN",
+		"LEFT",
+		"RIGHT",
+		NULL
+	};
+
+	const char** cur = labels;
+	while(*cur){
+		arcan_event ev = {
+			.ext.kind = ARCAN_EVENT(LABELHINT),
+			.ext.labelhint.idatatype = EVENT_IDATATYPE_DIGITAL
+		};
+		snprintf(ev.ext.labelhint.label,
+			sizeof(ev.ext.labelhint.label)/sizeof(ev.ext.labelhint.label[0]),
+			"%s", *cur++
+		);
+		arcan_shmif_enqueue(&term.acon, &ev);
+	}
+}
+
 /*
  * this mapping is woefully incomplete
  */
 static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 {
 /* keyboard input */
+	int shmask = 0;
 	if (ioev->datatype == EVENT_IDATATYPE_TRANSLATED){
 		bool pressed = ioev->input.translated.active;
 		if (!pressed)
@@ -299,9 +326,10 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 				tsm_screen_move_left(term.screen, mag);
 			else if (strcmp(label, "RIGHT") == 0)
 				tsm_screen_move_right(term.screen, mag);
+			else goto normal;
+			return;
 		}
-
-		int shmask = 0;
+normal:
 		shmask |= (ioev->input.translated.modifiers &
 			(ARKMOD_RSHIFT | ARKMOD_LSHIFT)) * TSM_SHIFT_MASK;
 		shmask |= (ioev->input.translated.modifiers &
@@ -354,8 +382,8 @@ static void targetev(arcan_tgtevent* ev)
 	break;
 
 	case TARGET_COMMAND_DISPLAYHINT:{
-		screen_size(ev->ioevs[0].iv / term.cell_w,
-			ev->ioevs[1].iv / term.cell_h, term.cell_w, term.cell_h);
+		arcan_shmif_resize(&term.acon, ev->ioevs[0].iv, ev->ioevs[1].iv);
+		update_screensize();
 	}
 	break;
 
@@ -420,7 +448,7 @@ static void main_loop()
 		}
 	}
 	else {
-		short pollev = POLLIN | POLLERR | POLLNVAL;
+		short pollev = POLLIN | POLLERR | POLLNVAL | POLLHUP;
 		int ptyfd = shl_pty_get_fd(term.pty);
 
 		while(true){
@@ -433,11 +461,16 @@ static void main_loop()
 			if (fds[0].revents & POLLIN){
 				int rc = shl_pty_dispatch(term.pty);
 			}
+			else if (fds[0].revents)
+				break;
+
 			if (fds[1].revents & POLLIN){
 				while (arcan_shmif_poll(&term.acon, &ev) > 0)
 					event_dispatch(&ev);
 				int rc = shl_pty_dispatch(term.pty);
 			}
+			else if (fds[1].revents)
+				break;
 
 /* audible beep or not? */
 			if (term.dirty){
@@ -446,6 +479,7 @@ static void main_loop()
 			}
 		}
 	}
+	arcan_shmif_drop(&term.acon);
 }
 
 static void dump_help()
@@ -460,7 +494,7 @@ static void dump_help()
 		" cell_w      \t px_w      \t specify individual cell width in pixels\n"
 		" cell_h      \t px_h      \t specify individual cell height in pixels\n"
 		" extclock    \t           \t require external clock for screen updates\n"
-    " translucent \t           \t don't fill alpha channel\n"
+/*    " translucent \t           \t don't fill alpha channel\n" */
 #ifdef TTF_SUPPORT
 		" font        \t ttf-file  \t render using font specified by ttf-file\n"
 		" font_hint   \t hintval   \t hint to font renderer (light, mono, none)\n"
@@ -517,9 +551,6 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	}
 #endif
 
-/* FIXME: option to map environment key to environment variable in
- * terminal, in order to provide a connection point to the display server */
-
 	if (tsm_screen_new(&term.screen, tsm_log, 0) < 0){
 		LOG("fatal, couldn't setup tsm screen\n");
 		return EXIT_FAILURE;
@@ -533,12 +564,14 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 
 	term.acon = *con;
 
-	screen_size(term.rows, term.cols, term.cell_w, term.cell_h);
+	arcan_shmif_resize(&term.acon,
+		term.cell_w * term.cols, term.cell_h * term.rows);
+	update_screensize();
+	expose_labels();
 	tsm_screen_set_max_sb(term.screen, 1000);
 
 	setlocale(LC_CTYPE, "");
 
-/* possible need to track this and run shl_pty_close */
 	signal(SIGHUP, SIG_IGN);
 
 	if ( (term.child = shl_pty_open(&term.pty,

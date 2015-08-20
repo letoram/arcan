@@ -329,7 +329,7 @@ enum ARCAN_TARGET_COMMAND {
  * namespacing is transitional nad it is recommended that the indirection
  * macro, ARCAN_EVENT(X) is used.
  */
-#define _INT_SHMIF_TMERGE X ## Y
+#define _INT_SHMIF_TMERGE(X, Y) X ## Y
 #define _INT_SHMIF_TEVAL(X, Y) _INT_SHMIF_TMERGE(X, Y)
 #define ARCAN_EVENT(X)_INT_SHMIF_TEVAL(EVENT_EXTERNAL_, X)
 enum ARCAN_EVENT_EXTERNAL {
