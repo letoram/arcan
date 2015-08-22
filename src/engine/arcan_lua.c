@@ -3545,6 +3545,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				fltpush(mcbuf, sizeof(ev->ext.labelhint.label)/
 					sizeof(ev->ext.labelhint.label[0]), ev->ext.labelhint.label,
 					"abcdefghijklmnopqrstuvwxyz0123456789_", '?');
+				tblstr(ctx, "labelhint", mcbuf, top);
 				tblstr(ctx, "datatype", idt, top);
 			}
 			break;

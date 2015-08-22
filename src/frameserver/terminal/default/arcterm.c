@@ -289,6 +289,7 @@ static void expose_labels()
 	const char** cur = labels;
 	while(*cur){
 		arcan_event ev = {
+			.category = EVENT_EXTERNAL,
 			.ext.kind = ARCAN_EVENT(LABELHINT),
 			.ext.labelhint.idatatype = EVENT_IDATATYPE_DIGITAL
 		};

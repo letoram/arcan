@@ -66,6 +66,21 @@
 -- @note: "resource_status" {message} - status update in regards to some
 -- resource related operation (snapshot save/restore etc.) UI hint only.
 --
+-- @note: "label_hint" {input_label, datatype} - suggest that the target
+-- supports customized abstract input labels for use with the target_input
+-- function. May be called repeatedly, input_label values are restricted
+-- to 16 characters in the [a-z,0-9_] set with ? values indicating that
+-- the caller tried to add an invalid value.
+--
+-- @note: "cursorhint" {message} - lacking a customized cursor using a subseg
+-- request for a cursor window, this is a text suggestion of what local visual
+-- state the mouse cursor should have. The content of message is implementation
+-- defined, though suggested values are: normal, wait, select-inv, select,
+-- up, down, left-right, drag-up-down, drag-up, drag-down, drag-left,
+-- drag-right, drag-left-right, rotate-cw, rotate-ccw, normal-tag, diag-ur,
+-- diag-ll, drag-diag, datafield, move, typefield, forbidden, help and
+-- vertical-datafield.
+--
 -- @note: "registered", {kind, title} - notice that the underlying engine
 -- has completed negotiating with the frameserver.
 --
