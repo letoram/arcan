@@ -272,11 +272,14 @@ arcan_errc arcan_video_screenshot(av_pixel** dptr, size_t* dsize);
 void arcan_video_fullscreen();
 
 /*
- * Get the currently highest Z value (rendering order) for the
- * currently active context. This imposes a linear search through
- * the entire context, O(n) where n is context size.
+ * Store the currently highest Z value for a specific rendertarget (or WORLDID)
+ * in the currently active context. This imposes a linear search through the
+ * active context. Note that the last 5 values are (65531-65535) reserved and
+ * won't be returned. This is to allow a maxorder()+n idiom while still having
+ * objects with an 'overlay' or cursor role.
+ *
  */
-unsigned arcan_video_maxorder();
+arcan_errc arcan_video_maxorder(arcan_vobj_id rt, uint16_t* ov);
 
 /*
  * Set a new object limit for new contexts. This will not effect

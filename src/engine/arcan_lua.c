@@ -1663,7 +1663,16 @@ static int orderimage(lua_State* ctx)
 static int maxorderimage(lua_State* ctx)
 {
 	LUA_TRACE("max_current_image_order");
-	lua_pushnumber(ctx, arcan_video_maxorder());
+
+	arcan_vobj_id rtgt = (arcan_vobj_id)
+		luaL_optnumber(ctx, 1, ARCAN_VIDEO_WORLDID);
+
+	if (rtgt != ARCAN_EID && rtgt != ARCAN_VIDEO_WORLDID)
+		rtgt -= luactx.lua_vidbase;
+
+	uint16_t rv = 0;
+	arcan_video_maxorder(rtgt, &rv);
+	lua_pushnumber(ctx, rv);
 	LUA_ETRACE("max_current_image_order", NULL);
 	return 1;
 }
