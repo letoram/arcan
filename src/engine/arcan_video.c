@@ -4948,19 +4948,29 @@ bool arcan_video_prepare_external()
 	return true;
 }
 
-unsigned arcan_video_maxorder()
+arcan_errc arcan_video_maxorder(arcan_vobj_id rt, uint16_t* ov)
 {
+	arcan_vobject* vobj = arcan_video_getobject(rt);
+	if (!vobj)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+
+	struct rendertarget* tgt = find_rendertarget(vobj);
+	if (!tgt)
+		return ARCAN_ERRC_UNACCEPTED_STATE;
+
 	arcan_vobject_litem* current = current_context->stdoutp.first;
-	int order = 0;
+	uint16_t order = 0;
 
 	while (current){
-		if (current->elem && current->elem->order > order)
+		if (current->elem && current->elem->order > order &&
+			current->elem->order < 65531)
 			order = current->elem->order;
 
 		current = current->next;
 	}
 
-	return order;
+	*ov = order;
+	return ARCAN_OK;
 }
 
 unsigned arcan_video_contextusage(unsigned* used)
