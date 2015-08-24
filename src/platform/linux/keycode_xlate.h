@@ -156,6 +156,7 @@ static char ltlut[256] = {0};
 static void init_keyblut()
 {
 klut[KEY_ESC] = K_ESCAPE;
+alut[KEY_ESC] = 0x1b;
 
 klut[KEY_1] = K_1;
 alut[KEY_1] = '1';
@@ -310,7 +311,7 @@ alut[KEY_DOT] = '.';
 shlut[KEY_DOT] = '>';
 
 klut[KEY_SLASH] = K_SLASH;
-alut[KEY_SLASH] = '-';
+alut[KEY_SLASH] = '/';
 shlut[KEY_SLASH] = '?';
 
 klut[KEY_RIGHTSHIFT] = K_RSHIFT;
