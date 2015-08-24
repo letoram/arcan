@@ -105,15 +105,6 @@ struct unpack_col {
 	};
 };
 
-/*
- * note:
- * tsm_screen_sb_up/down, pg_up, pg_dn
- * check mods:
- *  TSM_SHIFT_MASK, TSM_LOCK_MASK, TSM_CONTROL_MASK, TSM_ALT_MASK,
- *  TSM_LOGO_MASK,
- *  tsm_screen_selection_start, tsm_screen_selection_reset,
- */
-
 static int draw_cb(struct tsm_screen* screen, uint32_t id,
 	const uint32_t* ch, size_t len, unsigned width, unsigned x, unsigned y,
 	const struct tsm_screen_attr* attr, tsm_age_t age, void* data)
@@ -264,7 +255,7 @@ static void setup_shell(struct arg_arr* argarr)
 		SIGCHLD, SIGHUP, SIGINT, SIGQUIT, SIGTERM, SIGALRM
 	};
 
-	setenv("TERM", "xterm-256color", 1);
+	setenv("TERM", "linux", 1); // "xterm-256color", 1);
 	for (int i = 0; i < sizeof(sigs) / sizeof(sigs[0]); i++)
 		signal(sigs[i], SIG_DFL);
 
@@ -277,9 +268,12 @@ static void setup_shell(struct arg_arr* argarr)
 static void expose_labels()
 {
 	static const char* labels[] = {
-		"SCROLL_UP",
+		"MUTE", /* toggle, temporary suspend rendering for speed */
+		"SIGINT", /* to provide ctrl+c like mechanism */
+		"SIGINFO", /* to provide bsd like ctrl+t */
+		"SCROLL_UP", /* scrollback buffer control */
 		"SCROLL_DOWN",
-		"UP",
+		"UP", /* navigation arrows */
 		"DOWN",
 		"LEFT",
 		"RIGHT",
@@ -301,9 +295,26 @@ static void expose_labels()
 	}
 }
 
-/*
- * this mapping is woefully incomplete
- */
+static bool consume_label(arcan_ioevent* ioev, const char* label)
+{
+	int mag = 1;
+	if (strcmp(label, "SCROLL_UP") == 0)
+		tsm_screen_scroll_up(term.screen, mag);
+	else if (strcmp(label, "SCROLL_DOWN") == 0)
+		tsm_screen_scroll_down(term.screen, mag);
+	else if (strcmp(label, "UP") == 0)
+		tsm_screen_move_up(term.screen, mag, false);
+	else if (strcmp(label, "DOWN") == 0)
+		tsm_screen_move_down(term.screen, mag, false);
+	else if (strcmp(label, "LEFT") == 0)
+		tsm_screen_move_left(term.screen, mag);
+	else if (strcmp(label, "RIGHT") == 0)
+		tsm_screen_move_right(term.screen, mag);
+	else
+		return false;
+	return true;
+}
+
 static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 {
 /* keyboard input */
@@ -313,24 +324,13 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 		if (!pressed)
 			return;
 
-		if (label){
-			int mag = 1; /* scan LABEL, check for _D and translate to mag */
-			if (strcmp(label, "SCROLL_UP") == 0)
-				tsm_screen_scroll_up(term.screen, mag);
-			else if (strcmp(label, "SCROLL_DOWN") == 0)
-				tsm_screen_scroll_down(term.screen, mag);
-			else if (strcmp(label, "UP") == 0)
-				tsm_screen_move_up(term.screen, mag, false);
-			else if (strcmp(label, "DOWN") == 0)
-				tsm_screen_move_down(term.screen, mag, false);
-			else if (strcmp(label, "LEFT") == 0)
-				tsm_screen_move_left(term.screen, mag);
-			else if (strcmp(label, "RIGHT") == 0)
-				tsm_screen_move_right(term.screen, mag);
-			else goto normal;
+/* special keys that couldn't be translated */
+		if (ioev->input.translated.subid == 0)
 			return;
-		}
-normal:
+
+		if (label[0] && consume_label(ioev, label))
+			return;
+
 		shmask |= (ioev->input.translated.modifiers &
 			(ARKMOD_RSHIFT | ARKMOD_LSHIFT)) * TSM_SHIFT_MASK;
 		shmask |= (ioev->input.translated.modifiers &
@@ -343,14 +343,19 @@ normal:
 
 /* need some locale- specific handling here, keysym+subid does not suffice */
 		if (tsm_vte_handle_keyboard(term.vte,
-			ioev->input.translated.keysym,
-			ioev->input.translated.keysym,
+			ioev->input.translated.keysym, /* should be 'keysym' */
+			ioev->input.translated.keysym, /* should be ascii */
 			shmask,
-			ioev->input.translated.subid
+			ioev->input.translated.subid /* should be unicode */
 		))
 			tsm_screen_sb_reset(term.screen);
 	}
 	else if (ioev->datatype == EVENT_IDATATYPE_DIGITAL){
+/* already covered with label */
+		if (!ioev->input.digital.active)
+			return;
+
+		consume_label(ioev, label);
 	}
 	else if (ioev->datatype == EVENT_IDATATYPE_ANALOG){
 	}
@@ -495,7 +500,7 @@ static void dump_help()
 		" cell_w      \t px_w      \t specify individual cell width in pixels\n"
 		" cell_h      \t px_h      \t specify individual cell height in pixels\n"
 		" extclock    \t           \t require external clock for screen updates\n"
-/*    " translucent \t           \t don't fill alpha channel\n" */
+/*  " translucent \t val       \t set background alpha \n" */
 #ifdef TTF_SUPPORT
 		" font        \t ttf-file  \t render using font specified by ttf-file\n"
 		" font_hint   \t hintval   \t hint to font renderer (light, mono, none)\n"
