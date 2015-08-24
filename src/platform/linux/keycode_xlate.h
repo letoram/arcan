@@ -149,6 +149,7 @@ enum {
 };
 
 static char  alut[256] = {0};
+static char clut[256] = {0};
 static char shlut[256] = {0};
 static char ltlut[256] = {0};
 
@@ -209,6 +210,7 @@ alut[KEY_GRAVE] = '~';
 shlut[KEY_GRAVE] = '`';
 
 klut[KEY_BACKSPACE] = K_BACKSPACE;
+alut[KEY_BACKSPACE] = '\b';
 klut[KEY_TAB] = K_TAB;
 alut[KEY_TAB] = '\t';
 klut[KEY_Q] = K_Q;
@@ -243,7 +245,7 @@ shlut[KEY_RIGHTBRACE] = '}';
 /* shouldn't we have | \ here? */
 
 klut[KEY_ENTER] = K_RETURN;
-alut[KEY_ENTER] = '\n';
+alut[KEY_ENTER] = '\r';
 
 klut[KEY_LEFTCTRL] = K_LCTRL;
 klut[KEY_A] = K_A;
@@ -289,6 +291,7 @@ klut[KEY_X] = K_X;
 alut[KEY_X] = 'x';
 klut[KEY_C] = K_C;
 alut[KEY_C] = 'c';
+clut[KEY_C] = 0x03; /* END OF TEXT */
 klut[KEY_V] = K_V;
 alut[KEY_V] = 'v';
 klut[KEY_B] = K_B;
@@ -530,6 +533,8 @@ static uint32_t lookup_character(uint16_t code, uint16_t modifiers)
 				code = toupper(code);
 		}
 	}
+	else if ((modifiers & (ARKMOD_LCTRL | ARKMOD_RCTRL)) > 0 && clut[code])
+		code = clut[code];
 	else if ((modifiers & (ARKMOD_LALT | ARKMOD_RALT)) > 0 && ltlut[code])
 		code = ltlut[code];
 	else{
