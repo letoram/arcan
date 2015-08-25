@@ -1,9 +1,16 @@
+/* not a particularly good or geniuine try, what we really need is one
+ * iotbl-translated function that can actually take the possible span of
+ * unicode, keysyms, keycodes etc. with a locale hint and emit proper x- and
+ * other- valid symbols */
+
 #ifndef HAVE_XSYMCONV
 #define HAVE_XSYMCONV
 
 #define XK_MISCELLANY
 #define XK_LATIN1
 #include "keysymdef.h"
+
+#ifndef DEFINE_XKB
 
 static int symtbl_out[1024];
 static int* symtbl_in;
@@ -197,8 +204,8 @@ static void gen_symtbl()
 	symtbl_out[272] = XK_KP_Equal;
 	symtbl_out[273] = XK_KP_Up;
 	symtbl_out[274] = XK_KP_Down;
-	symtbl_out[275] = XK_KP_Left;
-	symtbl_out[276] = XK_KP_Right;
+	symtbl_out[275] = XK_KP_Right;
+	symtbl_out[276] = XK_KP_Left;
 	symtbl_out[277] = XK_KP_Insert;
 	symtbl_out[278] = XK_KP_Home;
 	symtbl_out[279] = XK_KP_End;
@@ -248,4 +255,248 @@ static void gen_symtbl()
 	}
 }
 
+#else
+static int symtbl_out[1024];
+static int* symtbl_in;
+
+static void gen_symtbl()
+{
+	symtbl_out[8] = XKB_KEY_BackSpace;
+	symtbl_out[9] = XKB_KEY_Tab;
+	symtbl_out[12] = XKB_KEY_Clear;
+	symtbl_out[13] = XKB_KEY_Return;
+	symtbl_out[19] = XKB_KEY_Pause;
+	symtbl_out[27] = XKB_KEY_Escape;
+	symtbl_out[32] = XKB_KEY_space;
+	symtbl_out[33] = XKB_KEY_exclam;
+	symtbl_out[34] = XKB_KEY_quotedbl;
+	symtbl_out[35] = XKB_KEY_numbersign;
+	symtbl_out[36] = XKB_KEY_dollar;
+	symtbl_out[37] = XKB_KEY_percent;
+	symtbl_out[38] = XKB_KEY_ampersand;
+	symtbl_out[39] = XKB_KEY_apostrophe;
+	symtbl_out[40] = XKB_KEY_parenleft;
+	symtbl_out[41] = XKB_KEY_parenright;
+	symtbl_out[42] = XKB_KEY_asterisk;
+	symtbl_out[43] = XKB_KEY_plus;
+	symtbl_out[44] = XKB_KEY_comma;
+	symtbl_out[45] = XKB_KEY_minus;
+	symtbl_out[46] = XKB_KEY_period;
+	symtbl_out[47] = XKB_KEY_slash;
+	symtbl_out[48] = XKB_KEY_0;
+	symtbl_out[49] = XKB_KEY_1;
+	symtbl_out[50] = XKB_KEY_2;
+	symtbl_out[51] = XKB_KEY_3;
+	symtbl_out[52] = XKB_KEY_4;
+	symtbl_out[53] = XKB_KEY_5;
+	symtbl_out[54] = XKB_KEY_6;
+	symtbl_out[55] = XKB_KEY_7;
+	symtbl_out[56] = XKB_KEY_8;
+	symtbl_out[57] = XKB_KEY_9;
+	symtbl_out[58] = XKB_KEY_colon;
+	symtbl_out[59] = XKB_KEY_semicolon;
+	symtbl_out[60] = XKB_KEY_less;
+	symtbl_out[61] = XKB_KEY_equal;
+	symtbl_out[62] = XKB_KEY_greater;
+	symtbl_out[63] = XKB_KEY_question;
+	symtbl_out[64] = XKB_KEY_at;
+	symtbl_out[91] = XKB_KEY_bracketleft;
+	symtbl_out[92] = XKB_KEY_backslash;
+	symtbl_out[93] = XKB_KEY_bracketright;
+	symtbl_out[94] = XKB_KEY_asciicircum;
+	symtbl_out[95] = XKB_KEY_underscore;
+	symtbl_out[96] = XKB_KEY_quoteleft;
+	symtbl_out[97] = XKB_KEY_a;
+	symtbl_out[98] = XKB_KEY_b;
+	symtbl_out[99] = XKB_KEY_c;
+	symtbl_out[100] = XKB_KEY_d;
+	symtbl_out[101] = XKB_KEY_e;
+	symtbl_out[102] = XKB_KEY_f;
+	symtbl_out[103] = XKB_KEY_g;
+	symtbl_out[104] = XKB_KEY_h;
+	symtbl_out[105] = XKB_KEY_i;
+	symtbl_out[106] = XKB_KEY_j;
+	symtbl_out[107] = XKB_KEY_k;
+	symtbl_out[108] = XKB_KEY_l;
+	symtbl_out[109] = XKB_KEY_m;
+	symtbl_out[110] = XKB_KEY_n;
+	symtbl_out[111] = XKB_KEY_o;
+	symtbl_out[112] = XKB_KEY_p;
+	symtbl_out[113] = XKB_KEY_q;
+	symtbl_out[114] = XKB_KEY_r;
+	symtbl_out[115] = XKB_KEY_s;
+	symtbl_out[116] = XKB_KEY_t;
+	symtbl_out[117] = XKB_KEY_u;
+	symtbl_out[118] = XKB_KEY_v;
+	symtbl_out[119] = XKB_KEY_w;
+	symtbl_out[120] = XKB_KEY_x;
+	symtbl_out[121] = XKB_KEY_y;
+	symtbl_out[122] = XKB_KEY_z;
+	symtbl_out[127] = XKB_KEY_Delete;
+	symtbl_out[160] = XKB_KEY_nobreakspace;
+	symtbl_out[161] = XKB_KEY_exclamdown;
+	symtbl_out[162] = XKB_KEY_cent;
+	symtbl_out[163] = XKB_KEY_sterling;
+	symtbl_out[164] = XKB_KEY_currency;
+	symtbl_out[165] = XKB_KEY_yen;
+	symtbl_out[166] = XKB_KEY_brokenbar;
+	symtbl_out[167] = XKB_KEY_section;
+	symtbl_out[168] = XKB_KEY_diaeresis;
+	symtbl_out[169] = XKB_KEY_copyright;
+	symtbl_out[170] = XKB_KEY_ordfeminine;
+	symtbl_out[171] = XKB_KEY_guillemotleft;
+	symtbl_out[172] = XKB_KEY_notsign;
+	symtbl_out[173] = XKB_KEY_hyphen;
+	symtbl_out[174] = XKB_KEY_registered;
+	symtbl_out[175] = XKB_KEY_macron;
+	symtbl_out[176] = XKB_KEY_degree;
+	symtbl_out[177] = XKB_KEY_plusminus;
+	symtbl_out[178] = XKB_KEY_twosuperior;
+	symtbl_out[179] = XKB_KEY_threesuperior;
+	symtbl_out[180] = XKB_KEY_acute;
+	symtbl_out[181] = XKB_KEY_mu;
+	symtbl_out[182] = XKB_KEY_paragraph;
+	symtbl_out[183] = XKB_KEY_periodcentered;
+	symtbl_out[184] = XKB_KEY_cedilla;
+	symtbl_out[185] = XKB_KEY_onesuperior;
+	symtbl_out[186] = XKB_KEY_masculine;
+	symtbl_out[187] = XKB_KEY_guillemotright;
+	symtbl_out[188] = XKB_KEY_onequarter;
+	symtbl_out[189] = XKB_KEY_onehalf;
+	symtbl_out[190] = XKB_KEY_threequarters;
+	symtbl_out[191] = XKB_KEY_questiondown;
+	symtbl_out[192] = XKB_KEY_Agrave;
+	symtbl_out[193] = XKB_KEY_Aacute;
+	symtbl_out[194] = XKB_KEY_Acircumflex;
+	symtbl_out[195] = XKB_KEY_Atilde;
+	symtbl_out[196] = XKB_KEY_Adiaeresis;
+	symtbl_out[197] = XKB_KEY_Aring;
+	symtbl_out[198] = XKB_KEY_AE;
+	symtbl_out[199] = XKB_KEY_Ccedilla;
+	symtbl_out[200] = XKB_KEY_Egrave;
+	symtbl_out[201] = XKB_KEY_Eacute;
+	symtbl_out[202] = XKB_KEY_Ecircumflex;
+	symtbl_out[203] = XKB_KEY_Ediaeresis;
+	symtbl_out[204] = XKB_KEY_Igrave;
+	symtbl_out[205] = XKB_KEY_Iacute;
+	symtbl_out[206] = XKB_KEY_Icircumflex;
+	symtbl_out[207] = XKB_KEY_Idiaeresis;
+	symtbl_out[208] = XKB_KEY_ETH;
+	symtbl_out[209] = XKB_KEY_Eth;
+	symtbl_out[210] = XKB_KEY_Ntilde;
+	symtbl_out[211] = XKB_KEY_Ograve;
+	symtbl_out[212] = XKB_KEY_Oacute;
+	symtbl_out[213] = XKB_KEY_Ocircumflex;
+	symtbl_out[214] = XKB_KEY_Otilde;
+	symtbl_out[215] = XKB_KEY_Odiaeresis;
+	symtbl_out[216] = XKB_KEY_multiply;
+	symtbl_out[217] = XKB_KEY_Ooblique;
+	symtbl_out[218] = XKB_KEY_oslash;
+	symtbl_out[219] = XKB_KEY_Ugrave;
+	symtbl_out[220] = XKB_KEY_Uacute;
+	symtbl_out[221] = XKB_KEY_Ucircumflex;
+	symtbl_out[222] = XKB_KEY_Udiaeresis;
+	symtbl_out[223] = XKB_KEY_Yacute;
+	symtbl_out[224] = XKB_KEY_THORN;
+	symtbl_out[225] = XKB_KEY_Thorn;
+	symtbl_out[226] = XKB_KEY_ssharp;
+	symtbl_out[227] = XKB_KEY_agrave;
+	symtbl_out[228] = XKB_KEY_aacute;
+	symtbl_out[229] = XKB_KEY_acircumflex;
+	symtbl_out[230] = XKB_KEY_atilde;
+	symtbl_out[231] = XKB_KEY_adiaeresis;
+	symtbl_out[232] = XKB_KEY_aring;
+	symtbl_out[233] = XKB_KEY_ae;
+	symtbl_out[234] = XKB_KEY_ccedilla;
+	symtbl_out[235] = XKB_KEY_egrave;
+	symtbl_out[236] = XKB_KEY_eacute;
+	symtbl_out[237] = XKB_KEY_ecircumflex;
+	symtbl_out[238] = XKB_KEY_ediaeresis;
+	symtbl_out[239] = XKB_KEY_igrave;
+	symtbl_out[240] = XKB_KEY_iacute;
+	symtbl_out[241] = XKB_KEY_icircumflex;
+	symtbl_out[242] = XKB_KEY_idiaeresis;
+	symtbl_out[243] = XKB_KEY_eth;
+	symtbl_out[244] = XKB_KEY_ntilde;
+	symtbl_out[245] = XKB_KEY_ograve;
+	symtbl_out[246] = XKB_KEY_oacute;
+	symtbl_out[247] = XKB_KEY_ocircumflex;
+	symtbl_out[248] = XKB_KEY_otilde;
+	symtbl_out[249] = XKB_KEY_odiaeresis;
+	symtbl_out[250] = XKB_KEY_division;
+	symtbl_out[251] = XKB_KEY_oslash;
+	symtbl_out[252] = XKB_KEY_Ooblique;
+	symtbl_out[253] = XKB_KEY_ugrave;
+	symtbl_out[254] = XKB_KEY_uacute;
+	symtbl_out[255] = XKB_KEY_ucircumflex;
+	symtbl_out[256] = XKB_KEY_KP_0;
+	symtbl_out[257] = XKB_KEY_KP_1;
+	symtbl_out[258] = XKB_KEY_KP_2;
+	symtbl_out[259] = XKB_KEY_KP_3;
+	symtbl_out[260] = XKB_KEY_KP_4;
+	symtbl_out[261] = XKB_KEY_KP_5;
+	symtbl_out[262] = XKB_KEY_KP_6;
+	symtbl_out[263] = XKB_KEY_KP_7;
+	symtbl_out[264] = XKB_KEY_KP_8;
+	symtbl_out[265] = XKB_KEY_KP_9;
+	symtbl_out[266] = XKB_KEY_KP_Decimal;
+	symtbl_out[267] = XKB_KEY_KP_Divide;
+	symtbl_out[268] = XKB_KEY_KP_Multiply;
+	symtbl_out[269] = XKB_KEY_KP_Subtract;
+	symtbl_out[270] = XKB_KEY_KP_Add;
+	symtbl_out[271] = XKB_KEY_KP_Enter;
+	symtbl_out[272] = XKB_KEY_KP_Equal;
+	symtbl_out[273] = XKB_KEY_KP_Up;
+	symtbl_out[274] = XKB_KEY_KP_Down;
+	symtbl_out[275] = XKB_KEY_KP_Right;
+	symtbl_out[276] = XKB_KEY_KP_Left;
+	symtbl_out[277] = XKB_KEY_KP_Insert;
+	symtbl_out[278] = XKB_KEY_KP_Home;
+	symtbl_out[279] = XKB_KEY_KP_End;
+	symtbl_out[280] = XKB_KEY_KP_Page_Up;
+	symtbl_out[281] = XKB_KEY_KP_Page_Down;
+	symtbl_out[282] = XKB_KEY_F1;
+	symtbl_out[283] = XKB_KEY_F2;
+	symtbl_out[284] = XKB_KEY_F3;
+	symtbl_out[285] = XKB_KEY_F4;
+	symtbl_out[286] = XKB_KEY_F5;
+	symtbl_out[287] = XKB_KEY_F6;
+	symtbl_out[288] = XKB_KEY_F7;
+	symtbl_out[289] = XKB_KEY_F8;
+	symtbl_out[290] = XKB_KEY_F9;
+	symtbl_out[291] = XKB_KEY_F10;
+	symtbl_out[292] = XKB_KEY_F11;
+	symtbl_out[293] = XKB_KEY_F12;
+	symtbl_out[294] = XKB_KEY_F13;
+	symtbl_out[295] = XKB_KEY_F14;
+	symtbl_out[296] = XKB_KEY_F15;
+	symtbl_out[300] = XKB_KEY_Num_Lock;
+	symtbl_out[301] = XKB_KEY_Caps_Lock;
+	symtbl_out[302] = XKB_KEY_Scroll_Lock;
+	symtbl_out[303] = XKB_KEY_Shift_R;
+	symtbl_out[304] = XKB_KEY_Shift_L;
+	symtbl_out[305] = XKB_KEY_Control_R;
+	symtbl_out[306] = XKB_KEY_Control_L;
+	symtbl_out[307] = XKB_KEY_Alt_R;
+	symtbl_out[308] = XKB_KEY_Alt_L;
+	symtbl_out[309] = XKB_KEY_Meta_R;
+	symtbl_out[310] = XKB_KEY_Meta_L;
+	symtbl_out[311] = XKB_KEY_Super_L;
+	symtbl_out[312] = XKB_KEY_Super_R;
+	symtbl_out[313] = XKB_KEY_Mode_switch;
+	symtbl_out[315] = XKB_KEY_Help;
+	symtbl_out[316] = XKB_KEY_Print;
+	symtbl_out[317] = XKB_KEY_Sys_Req;
+	symtbl_out[318] = XKB_KEY_Break;
+	symtbl_in = malloc(65536 * sizeof(*symtbl_in));
+	memset(symtbl_in, '\0', 65536 * sizeof(*symtbl_in));
+	for (int i=0; i < sizeof(symtbl_out)/sizeof(symtbl_out[0]); i++){
+		if (symtbl_out[i] > 65535){
+			LOG("unexpectedly high constant in slot (%d): %d\n", i, symtbl_out[i]);
+		}
+		else
+			symtbl_in[ symtbl_out[i] ] = i;
+	}
+}
+#endif
 #endif
