@@ -52,6 +52,9 @@
 
 #include "util/font_8x8.h"
 
+#define DEFINE_XKB
+#include "util/xsymconv.h"
+
 #ifdef TTF_SUPPORT
 #include "arcan_ttf.h"
 static TTF_Font* font;
@@ -62,13 +65,14 @@ static struct {
 	struct tsm_vte* vte;
 	struct shl_pty* pty;
 
-	bool extclock, dirty;
+	bool extclock, dirty, mute;
 
 	pid_t child;
 	int child_fd;
 
 	int rows;
 	int cols;
+	int mag;
 	int cell_w, cell_h;
 	int screen_w, screen_h;
 	uint8_t alpha;
@@ -81,6 +85,7 @@ static struct {
 	.cell_h = 8,
 	.rows = 25,
 	.cols = 80,
+	.mag = 1,
 	.alpha = 0xff
 };
 
@@ -216,6 +221,7 @@ static void read_callback(struct shl_pty* pty,
 {
 	tsm_vte_input(term.vte, u8, len);
 	term.age = tsm_screen_draw(term.screen, draw_cb, NULL /* draw_cb_data */);
+	term.dirty = true;
 }
 
 static void write_callback(struct tsm_vte* vte,
@@ -265,23 +271,121 @@ static void setup_shell(struct arg_arr* argarr)
 	exit(EXIT_FAILURE);
 }
 
+static void mute_toggle()
+{
+	term.mute = !term.mute;
+}
+
+static void send_sigint()
+{
+	shl_pty_signal(term.pty, SIGINT);
+}
+
+static void scroll_up()
+{
+	tsm_screen_scroll_up(term.screen, term.mag);
+}
+
+static void scroll_down()
+{
+	tsm_screen_scroll_down(term.screen, term.mag);
+}
+
+static void move_up()
+{
+	tsm_screen_move_up(term.screen, term.mag, false);
+}
+
+static void move_down()
+{
+	tsm_screen_move_down(term.screen, term.mag, false);
+}
+
+static void move_left()
+{
+	tsm_screen_move_left(term.screen, term.mag);
+}
+
+static void move_right()
+{
+	tsm_screen_move_right(term.screen, term.mag);
+}
+
+static void select_begin()
+{
+	tsm_screen_selection_start(term.screen,
+		tsm_screen_get_cursor_x(term.screen),
+		tsm_screen_get_cursor_y(term.screen)
+	);
+}
+
+static void select_copy()
+{
+	char* sel = NULL;
+	tsm_screen_selection_copy(term.screen, &sel);
+/* TODO: map to events [ or if the data is large enough,
+ * check / wait for CLIPBOARD subsegment ] */
+	if (sel)
+		LOG("selected: %s\n", sel);
+	free(sel);
+}
+
+static void select_cancel()
+{
+	tsm_screen_selection_reset(term.screen);
+}
+
+static void select_up()
+{
+/* track cursor, move row / col accordingly */
+}
+
+static void select_down()
+{
+}
+
+static void select_left()
+{
+}
+
+static void select_right()
+{
+}
+
+/* map to the quite dangerous SIGUSR1 when we don't have INFO? */
+static void send_siginfo()
+{
+	shl_pty_signal(term.pty, SIGUSR1);
+}
+
+struct lent {
+	const char* lbl;
+	void(*ptr)(void);
+};
+
+static const struct lent labels[] = {
+	{"MUTE", mute_toggle},
+	{"SIGINT", send_sigint},
+	{"SIGINFO", send_siginfo},
+	{"SCROLL_UP", scroll_up},
+	{"SCROLL_DOWN", scroll_down},
+	{"UP", move_up},
+	{"DOWN", move_down},
+	{"LEFT", move_left},
+	{"RIGHT", move_right},
+	{"SELECT_BEGIN", select_begin},
+	{"SELECT_CANCEL", select_cancel},
+	{"SELECT_COPY", select_copy},
+	{"SELECT_UP", select_up},
+	{"SELECT_DOWN", select_down},
+	{NULL, NULL}
+};
+
 static void expose_labels()
 {
-	static const char* labels[] = {
-		"MUTE", /* toggle, temporary suspend rendering for speed */
-		"SIGINT", /* to provide ctrl+c like mechanism */
-		"SIGINFO", /* to provide bsd like ctrl+t */
-		"SCROLL_UP", /* scrollback buffer control */
-		"SCROLL_DOWN",
-		"UP", /* navigation arrows */
-		"DOWN",
-		"LEFT",
-		"RIGHT",
-		NULL
-	};
+	const struct lent* cur = labels;
 
-	const char** cur = labels;
-	while(*cur){
+	while(cur->lbl){
 		arcan_event ev = {
 			.category = EVENT_EXTERNAL,
 			.ext.kind = ARCAN_EVENT(LABELHINT),
@@ -289,30 +393,25 @@ static void expose_labels()
 		};
 		snprintf(ev.ext.labelhint.label,
 			sizeof(ev.ext.labelhint.label)/sizeof(ev.ext.labelhint.label[0]),
-			"%s", *cur++
+			"%s", cur->lbl
 		);
+		cur++;
 		arcan_shmif_enqueue(&term.acon, &ev);
 	}
 }
 
 static bool consume_label(arcan_ioevent* ioev, const char* label)
 {
-	int mag = 1;
-	if (strcmp(label, "SCROLL_UP") == 0)
-		tsm_screen_scroll_up(term.screen, mag);
-	else if (strcmp(label, "SCROLL_DOWN") == 0)
-		tsm_screen_scroll_down(term.screen, mag);
-	else if (strcmp(label, "UP") == 0)
-		tsm_screen_move_up(term.screen, mag, false);
-	else if (strcmp(label, "DOWN") == 0)
-		tsm_screen_move_down(term.screen, mag, false);
-	else if (strcmp(label, "LEFT") == 0)
-		tsm_screen_move_left(term.screen, mag);
-	else if (strcmp(label, "RIGHT") == 0)
-		tsm_screen_move_right(term.screen, mag);
-	else
-		return false;
-	return true;
+	const struct lent* cur = labels;
+	while(cur->lbl){
+		if (strcmp(label, cur->lbl) == 0){
+			cur->ptr();
+			return true;
+		}
+		cur++;
+	}
+
+	return false;
 }
 
 static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
@@ -323,32 +422,46 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 		bool pressed = ioev->input.translated.active;
 		if (!pressed)
 			return;
-
-/* special keys that couldn't be translated */
-		if (ioev->input.translated.subid == 0)
-			return;
+		LOG("got: %d %d now:\n", ioev->input.translated.subid,
+			ioev->input.translated.keysym);
 
 		if (label[0] && consume_label(ioev, label))
 			return;
 
-		shmask |= (ioev->input.translated.modifiers &
-			(ARKMOD_RSHIFT | ARKMOD_LSHIFT)) * TSM_SHIFT_MASK;
-		shmask |= (ioev->input.translated.modifiers &
-			(ARKMOD_LCTRL | ARKMOD_RCTRL)) * TSM_CONTROL_MASK;
-		shmask |= (ioev->input.translated.modifiers &
-			(ARKMOD_LALT | ARKMOD_RALT)) * TSM_ALT_MASK;
-		shmask |= (ioev->input.translated.modifiers &
-			(ARKMOD_LMETA | ARKMOD_RMETA)) * TSM_LOGO_MASK;
-		shmask |= (ioev->input.translated.modifiers & ARKMOD_NUM) * TSM_LOCK_MASK;
+/* ignore the meta keys as we already treat them in modifiers */
+		int sym = ioev->input.translated.keysym;
+		if (sym >= 300 && sym <= 314)
+			return;
 
-/* need some locale- specific handling here, keysym+subid does not suffice */
+		shmask |= ((ioev->input.translated.modifiers &
+			(ARKMOD_RSHIFT | ARKMOD_LSHIFT)) > 0) * TSM_SHIFT_MASK;
+		shmask |= ((ioev->input.translated.modifiers &
+			(ARKMOD_LCTRL | ARKMOD_RCTRL)) > 0) * TSM_CONTROL_MASK;
+		shmask |= ((ioev->input.translated.modifiers &
+			(ARKMOD_LALT | ARKMOD_RALT)) > 0) * TSM_ALT_MASK;
+		shmask |= ((ioev->input.translated.modifiers &
+			(ARKMOD_LMETA | ARKMOD_RMETA)) > 0) * TSM_LOGO_MASK;
+		shmask |= ((ioev->input.translated.modifiers & ARKMOD_NUM) > 0) * TSM_LOCK_MASK;
+
+/* need some locale- specific handling here, keysym+subid does not suffice.
+ * looking at the tsm-vte code shows that we would need to jump to XKB- style
+ * syms (so that is shared with the vnc client/server), but what most this
+ * turns into is [vte_write(vte, "\e[xx;y~" and vte_write_raw(vtw, utf8, len so
+ * we can do that ourselves, but right now we're just basically throwing stuff
+ * against the wall and hope that something sticks.
+ */
+		if (sym && sym < sizeof(symtbl_out) / sizeof(symtbl_out[0]))
+			sym = symtbl_out[ioev->input.translated.keysym];
+
 		if (tsm_vte_handle_keyboard(term.vte,
-			ioev->input.translated.keysym, /* should be 'keysym' */
-			ioev->input.translated.keysym, /* should be ascii */
+			sym, /* should be 'keysym' */
+			sym, // ioev->input.translated.keysym, /* should be ascii */
 			shmask,
 			ioev->input.translated.subid /* should be unicode */
-		))
+		)){
 			tsm_screen_sb_reset(term.screen);
+			term.dirty = true;
+		}
 	}
 	else if (ioev->datatype == EVENT_IDATATYPE_DIGITAL){
 /* already covered with label */
@@ -377,7 +490,7 @@ static void targetev(arcan_tgtevent* ev)
 	break;
 
 	case TARGET_COMMAND_RESET:
-		tsm_vte_reset(term.vte);
+		tsm_vte_hard_reset(term.vte);
 	break;
 
 	case TARGET_COMMAND_BCHUNK_IN:
@@ -422,12 +535,10 @@ static void event_dispatch(arcan_event* ev)
 	case EVENT_TARGET:
 		targetev(&ev->tgt);
 	break;
-/* map up: set_palette, reset, hard_reset, input, handle_keyboard,
- * move_to, move_up, move_down, move_left, move_right, move_line_end,
- * move_line_home, tab_right, tab_left, insert_lines, delete_lines,
- * tsm_tve_reset, hard_reset,
- * erase_cursor, erase_chars, ... selection reset, selection start,
- * selection copy, ... */
+/* map up: set_palette,
+ * move_line_end, move_line_home,
+ * tab_right, tab_left, insert_lines, delete_lines,
+ */
 
 	default:
 	break;
@@ -500,7 +611,8 @@ static void dump_help()
 		" cell_w      \t px_w      \t specify individual cell width in pixels\n"
 		" cell_h      \t px_h      \t specify individual cell height in pixels\n"
 		" extclock    \t           \t require external clock for screen updates\n"
-/*  " translucent \t val       \t set background alpha \n" */
+/*  " translucent \t val       \t set background alpha \n"
+ *  palette definitions, scrollback information, flags */
 #ifdef TTF_SUPPORT
 		" font        \t ttf-file  \t render using font specified by ttf-file\n"
 		" font_hint   \t hintval   \t hint to font renderer (light, mono, none)\n"
@@ -568,6 +680,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		return EXIT_FAILURE;
 	}
 
+	gen_symtbl();
 	term.acon = *con;
 
 	arcan_shmif_resize(&term.acon,
