@@ -203,7 +203,7 @@ alut[KEY_MINUS] = '-';
 shlut[KEY_MINUS] = '_';
 
 klut[KEY_EQUAL] = K_EQUALS;
-alut[K_EQUALS] = '=';
+alut[KEY_EQUAL] = '=';
 shlut[KEY_EQUAL] = '+';
 
 klut[KEY_GRAVE] = K_UNKNOWN;

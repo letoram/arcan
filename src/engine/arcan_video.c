@@ -4945,6 +4945,12 @@ bool arcan_video_prepare_external()
 	arcan_event_deinit(arcan_event_defaultctx());
 	platform_video_prepare_external();
 
+	arcan_event ev = {
+		.category = EVENT_VIDEO,
+		.vid.kind = EVENT_VIDEO_DISPLAY_RESET,
+	};
+	arcan_event_enqueue(arcan_event_defaultctx(), &ev);
+
 	return true;
 }
 

@@ -3179,6 +3179,16 @@ static void push_displaymodes(lua_State* ctx, platform_display_id id)
 	}
 }
 
+static void display_reset(lua_State* ctx)
+{
+	if (!grabapplfunction(ctx, "display_state", sizeof("display_state")-1))
+		return;
+	LUA_TRACE("_display_state (reset)");
+	lua_pushstring(ctx, "reset");
+	wraperr(ctx, lua_pcall(ctx, 1, 0, 0), "event loop: display state");
+	LUA_ETRACE("_display_state (reset)", NULL);
+}
+
 static void display_added(lua_State* ctx, platform_display_id id)
 {
 	if (!grabapplfunction(ctx, "display_state", sizeof("display_state")-1))
@@ -3694,6 +3704,10 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 
 		if (ev->vid.kind == EVENT_VIDEO_DISPLAY_ADDED){
 			display_added(ctx, ev->vid.source);
+			return;
+		}
+		else if (ev->vid.kind == EVENT_VIDEO_DISPLAY_RESET){
+			display_reset(ctx);
 			return;
 		}
 		else if (ev->vid.kind == EVENT_VIDEO_DISPLAY_REMOVED){
