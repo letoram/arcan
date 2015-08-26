@@ -487,7 +487,6 @@ void platform_event_process(struct arcan_evctx* ctx)
 		if (poll(&gstate.sigpipe_p, 1, 0) > 0){
 			char ch;
 			if (1 == read(gstate.sigpipe[0], &ch, 1) && ch == vt_rel[0]){
-				arcan_warning("prepare external!");
 				arcan_video_prepare_external();
 				ioctl(gstate.tty, VT_RELDISP, 1);
 /* poor name, but video_prepare_external should be the trigger for
@@ -496,9 +495,15 @@ void platform_event_process(struct arcan_evctx* ctx)
 					if(poll(&gstate.sigpipe_p, 1, -1) <= 0)
 						continue;
 					else if (1 == read(gstate.sigpipe[0], &ch, 1) && ch == vt_acq[0]){
-						arcan_warning("time to restore!");
 						ioctl(gstate.tty, VT_RELDISP, VT_ACKACQ);
 						arcan_video_restore_external();
+
+/* We have a state problem here, when returning from virtual terminal stop, the
+ * CTRL and ALT events are enqueued as pressed and there's no great way of
+ * ensuring that the related lua scripts know how to recover. The current
+ * approach is that video_restore_external sends a reset event to the display
+ * entry point. The other option of enqeueing release- events had the problem
+ * of introducing multiple- release events. */
 						break;
 					}
 			}
@@ -773,9 +778,9 @@ static void got_device(int fd, const char* path)
 /* not particularly pretty and rather arbitrary */
 		else if (!mouse_btn && !joystick_btn && node.button_count > 84){
 			node.type = DEVNODE_KEYBOARD;
+/* FIX: query current LED states and set corresponding states in the devnode */
 			struct kbd_repeat kbrv = {0};
 			ioctl(node.handle, KDKBDREP, &kbrv);
-/* FIX: query current LED states and set corresponding states in the devnode */
 		}
 
 		node.hnd.handler = defhandlers[node.type];
