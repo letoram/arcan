@@ -1180,7 +1180,8 @@ arcan_errc arcan_video_attachobject(arcan_vobj_id id)
 	if (src){
 /* make sure that there isn't already one attached */
 		detach_fromtarget(&current_context->stdoutp, src);
-		attach_object(&current_context->stdoutp, src);
+		attach_object(current_context->attachment ?
+			current_context->attachment : &current_context->stdoutp, src);
 		FLAG_DIRTY(src);
 
 		rv = ARCAN_OK;
@@ -1780,6 +1781,23 @@ arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did,
 	}
 
 	return ARCAN_ERRC_BAD_ARGUMENT;
+}
+
+arcan_errc arcan_video_defaultattachment(arcan_vobj_id src)
+{
+	if (src == ARCAN_EID)
+		return ARCAN_ERRC_BAD_ARGUMENT;
+
+	arcan_vobject* vobj = arcan_video_getobject(src);
+	if (!vobj)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+
+	struct rendertarget* rtgt = find_rendertarget(vobj);
+	if (!rtgt)
+		return ARCAN_ERRC_UNACCEPTED_STATE;
+
+	current_context->attachment = rtgt;
+	return ARCAN_OK;
 }
 
 arcan_errc arcan_video_alterreadback ( arcan_vobj_id did, int readback )
@@ -2640,6 +2658,9 @@ static void drop_rtarget(arcan_vobject* vobj)
 
 	if (!dst)
 		return;
+
+	if (current_context->attachment == dst)
+		current_context->attachment = NULL;
 
 /* found one, disassociate with the context */
 	current_context->n_rtargets--;

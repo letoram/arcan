@@ -599,6 +599,14 @@ arcan_errc arcan_video_detachfromrendertarget(arcan_vobj_id did,
 arcan_errc arcan_video_alterreadback(arcan_vobj_id did, int readback);
 arcan_errc arcan_video_rendertarget_setnoclear(arcan_vobj_id did, bool value);
 
+/*
+ * Switch default attachmentpoint from the normal WORLDID to a user-
+ * specified one. If this rendertarget is deleted, the default attachment
+ * reverts back to WORLDID. Same applies to new contexts. Persisted objects
+ * will default back to WORLDID on context transfers.
+ */
+arcan_errc arcan_video_defaultattachment(arcan_vobj_id id);
+
 /* Object state property manipulation */
 enum arcan_transform_mask arcan_video_getmask(arcan_vobj_id src);
 arcan_errc arcan_video_transformmask(arcan_vobj_id src,
