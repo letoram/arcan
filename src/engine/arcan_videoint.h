@@ -311,6 +311,7 @@ struct arcan_video_context {
 	arcan_vobject* vitems_pool;
 
 	struct rendertarget rtargets[RENDERTARGET_LIMIT];
+	struct rendertarget* attachment;
 	ssize_t n_rtargets;
 
 	struct rendertarget stdoutp;

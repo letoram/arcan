@@ -6145,6 +6145,15 @@ static int renderdetach(lua_State* ctx)
 	return 0;
 }
 
+static int setdefattach(lua_State* ctx)
+{
+	LUA_TRACE("set_context_attachment");
+	arcan_vobj_id did = luaL_checkvid(ctx, 1, NULL);
+	arcan_video_defaultattachment(did);
+	LUA_ETRACE("set_context_attachment", NULL);
+	return 0;
+}
+
 static int renderattach(lua_State* ctx)
 {
 	LUA_TRACE("rendertarget_attach");
@@ -8608,6 +8617,7 @@ static const luaL_Reg vidsysfuns[] = {
 {"switch_default_texmode",           settexmode     },
 {"switch_default_imageproc",         setimageproc   },
 {"switch_default_texfilter",         settexfilter   },
+{"set_context_attachment",           setdefattach   },
 {"resize_video_canvas",              videocanvasrsz },
 {"video_displaymodes",               videodisplay   },
 {"map_video_display",                videomapping   },
