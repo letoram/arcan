@@ -350,6 +350,38 @@ static unsigned long djb_hash(const char* str)
 
 	return hash;
 }
+static char* to_utf8(uint16_t utf16, uint8_t out[4])
+{
+	int count = 1, ofs = 0;
+	uint32_t mask = 0x800;
+
+	if (utf16 >= 0x80)
+		count++;
+
+	for(size_t i=0; i < 5; i++){
+		if ( (uint32_t) utf16 >= mask )
+			count++;
+
+		mask <<= 5;
+	}
+
+	if (count == 1){
+		out[0] = (char) utf16;
+		out[1] = 0x00;
+	}
+	else {
+		for (int i = (count-1 > 4 ? 4 : count - 1); i >= 0; i--){
+			unsigned char ch = ( utf16 >> (6 * i)) & 0x3f;
+			ch |= 0x80;
+			if (i == count-1)
+				ch |= 0xff << (8-count);
+			out[ofs++] = ch;
+		}
+		out[ofs++] = 0x00;
+	}
+
+	return (char*) out;
+}
 
 static inline void process_hatmotion(arcan_evctx* ctx, unsigned devid,
 	unsigned hatid, unsigned value)
@@ -447,6 +479,7 @@ void platform_event_process(arcan_evctx* ctx)
 			newevent.io.input.translated.modifiers = event.key.keysym.mod;
 			newevent.io.input.translated.scancode = event.key.keysym.scancode;
 			newevent.io.input.translated.subid = event.key.keysym.unicode;
+			to_utf8(event.key.keysym.unicode, newevent.io.input.translated.utf8);
 			arcan_event_enqueue(ctx, &newevent);
 		break;
 
@@ -459,6 +492,7 @@ void platform_event_process(arcan_evctx* ctx)
 			newevent.io.input.translated.modifiers = event.key.keysym.mod;
 			newevent.io.input.translated.scancode = event.key.keysym.scancode;
 			newevent.io.input.translated.subid = event.key.keysym.unicode;
+			to_utf8(event.key.keysym.unicode, newevent.io.input.translated.utf8);
 			arcan_event_enqueue(ctx, &newevent);
 		break;
 

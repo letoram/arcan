@@ -601,11 +601,22 @@ typedef union arcan_ioevent_data {
 	} touch;
 
 	struct {
-		uint8_t active;
+/* local index for translated devices, last bit signifies
+ * X- compliant keysyms */
 		uint8_t devid;
+/* device- "agnostic" 16-bit code (if there is one), for cases where a unique
+ * identifiable (not translatable) id is needed (label-binding) */
 		uint16_t subid;
-		uint16_t keysym;
+/* pressed or not */
+		uint8_t active;
+/* bitmask of key_modifiers */
 		uint16_t modifiers;
+/* possible utf8- match, if known, received events should
+ * prefer these, if set. */
+		uint8_t utf8[5];
+/* depending on devid, SDL or X keysym */
+		uint16_t keysym;
+/* propagated device code, for identification and troubleshooting */
 		uint8_t scancode;
 	} translated;
 
