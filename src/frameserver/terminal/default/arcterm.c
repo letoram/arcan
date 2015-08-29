@@ -433,6 +433,15 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 		if (sym >= 300 && sym <= 314)
 			return;
 
+/* if utf8- values have been supplied, use them! */
+		if (ioev->input.translated.utf8[0]){
+			size_t len = 0;
+			while (len < 5 && ioev->input.translated.utf8[len]) len++;
+			shl_pty_write(term.pty, (char*)ioev->input.translated.utf8, len);
+			return;
+		}
+
+/* otherwise try to hack something together */
 		shmask |= ((ioev->input.translated.modifiers &
 			(ARKMOD_RSHIFT | ARKMOD_LSHIFT)) > 0) * TSM_SHIFT_MASK;
 		shmask |= ((ioev->input.translated.modifiers &
@@ -443,13 +452,6 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 			(ARKMOD_LMETA | ARKMOD_RMETA)) > 0) * TSM_LOGO_MASK;
 		shmask |= ((ioev->input.translated.modifiers & ARKMOD_NUM) > 0) * TSM_LOCK_MASK;
 
-/* need some locale- specific handling here, keysym+subid does not suffice.
- * looking at the tsm-vte code shows that we would need to jump to XKB- style
- * syms (so that is shared with the vnc client/server), but what most this
- * turns into is [vte_write(vte, "\e[xx;y~" and vte_write_raw(vtw, utf8, len so
- * we can do that ourselves, but right now we're just basically throwing stuff
- * against the wall and hope that something sticks.
- */
 		if (sym && sym < sizeof(symtbl_out) / sizeof(symtbl_out[0]))
 			sym = symtbl_out[ioev->input.translated.keysym];
 

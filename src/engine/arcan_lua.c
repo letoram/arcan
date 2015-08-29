@@ -989,39 +989,6 @@ static char* streamtype(int num)
 	return "broken";
 }
 
-static char* to_utf8(uint16_t utf16)
-{
-	static char utf8buf[6] = {0};
-	int count = 1, ofs = 0;
-	uint32_t mask = 0x800;
-
-	if (utf16 >= 0x80)
-		count++;
-
-	for (size_t i=0; i < 5; i++){
-		if ( (uint32_t) utf16 >= mask )
-			count++;
-
-		mask <<= 5;
-	}
-
-	if (count == 1){
-		utf8buf[0] = (char) utf16;
-		utf8buf[1] = 0x00;
-	} else {
-		for (int i = count-1; i >= 0; i--){
-			unsigned char ch = ( utf16 >> (6 * i)) & 0x3f;
-			ch |= 0x80;
-			if (i == count-1)
-				ch |= 0xff << (8-count);
-			utf8buf[ofs++] = ch;
-		}
-		utf8buf[ofs++] = 0x00;
-	}
-
-	return (char*) utf8buf;
-}
-
 static int push_resstr(lua_State* ctx, struct nonblock_io* ib, off_t ofs)
 {
 	size_t in_sz = sizeof(luactx.rawres.buf )/
@@ -2967,15 +2934,11 @@ static int contextusage(lua_State* ctx)
 	return 2;
 }
 
-/*
- * Next step in the input mess, take a properly formatted table,
- * convert it back into an arcan event, push that to the target_launcher
- * or frameserver. The target_launcher will serialise it to a hijack function
- * which then decodes into a native format (currently most likely SDL).
- * All this hassle (instead of creating a custom Lua object,
- * tag it with the raw event and be done with it) is to allow the appl- to
- * modify or even generate new ones based on in-appl actions.
- */
+static inline void get_utf8(const char* instr, uint8_t dst[5])
+{
+	size_t len = strlen(instr);
+	memcpy(dst, instr, len <= 4 ? len : 4);
+}
 
 /* there is a slight API inconsistency here in that we had (iotbl, vid)
  * in the first few versions while other functions tend to lead with vid,
@@ -3067,6 +3030,7 @@ static int targetinput(lua_State* ctx)
 			ev.io.input.translated.modifiers = intblint(ctx, tblind,"modifiers");
 			ev.io.input.translated.devid = intblint(ctx, tblind, "devid");
 			ev.io.input.translated.subid = intblint(ctx, tblind, "subid");
+			get_utf8(intblstr(ctx, tblind, "utf8"), ev.io.input.translated.utf8);
 		}
 		else {
 			const char* tblsrc = intblstr(ctx, tblind, "source");
@@ -3334,7 +3298,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				tblnum(ctx, "modifiers", ev->io.input.translated.modifiers, top);
 				tblnum(ctx, "devid", ev->io.input.translated.devid, top);
 				tblnum(ctx, "subid", ev->io.input.translated.subid, top);
-				tblstr(ctx, "utf8", to_utf8(ev->io.input.translated.subid), top);
+				tblstr(ctx, "utf8", (char*)ev->io.input.translated.utf8, top);
 				tblbool(ctx, "active", ev->io.input.translated.active, top);
 				tblstr(ctx, "device", "translated", top);
 				tblstr(ctx, "subdevice", "keyboard", top);
