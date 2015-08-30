@@ -2689,10 +2689,14 @@ static int launchavfeed(lua_State* ctx)
 
 	const char* modestr = arcan_frameserver_atypes();
 
+	char* expbuf[2] = {strdup(argstr), NULL};
+	arcan_expand_namespaces(expbuf);
+
 	if (strstr(modestr, modearg) == NULL){
 		arcan_warning("launch_avfeed(), requested mode (%s) missing from "
 			"detected and allowed frameserver archetypes (%s), rejected.\n",
 			modearg, modestr);
+		free(expbuf[0]);
 		LUA_ETRACE("launch_avfeed", "invalid mode");
 		return 0;
 	}
@@ -2703,7 +2707,7 @@ static int launchavfeed(lua_State* ctx)
 	struct frameserver_envp args = {
 		.use_builtin = true,
 		.args.builtin.mode = modearg,
-		.args.builtin.resource = argstr
+		.args.builtin.resource = expbuf[0]
 	};
 
 	if ( fsrv_ok && arcan_frameserver_spawn_server(mvctx, args) == ARCAN_OK )
@@ -2721,6 +2725,7 @@ static int launchavfeed(lua_State* ctx)
 		lua_pushvid(ctx, ARCAN_EID);
 	}
 
+	free(expbuf[1]);
 	LUA_ETRACE("launch_avfeed", NULL);
 	return 2;
 }
