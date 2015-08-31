@@ -519,7 +519,7 @@ klut[KEY_UNKNOWN] = K_UNKNOWN;
  * that are running, but provide support scripts that implement detection etc.
  *
  */
-static uint32_t lookup_character(uint16_t code, uint16_t modifiers)
+static uint16_t lookup_character(uint16_t code, uint16_t modifiers)
 {
 	if (code > sizeof(alut) / sizeof(alut[0]))
 		return 0;
