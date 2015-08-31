@@ -624,6 +624,39 @@ static bool check_mouse_axis(int fd, size_t bitn)
 	return bit_isset(bits, REL_X) && bit_isset(bits, REL_Y);
 }
 
+static char* to_utf8(uint16_t utf16, uint8_t out[4])
+{
+	int count = 1, ofs = 0;
+	uint32_t mask = 0x800;
+
+	if (utf16 >= 0x80)
+		count++;
+
+	for(size_t i=0; i < 5; i++){
+		if ( (uint32_t) utf16 >= mask )
+			count++;
+
+		mask <<= 5;
+	}
+
+	if (count == 1){
+		out[0] = (char) utf16;
+		out[1] = 0x00;
+	}
+	else {
+		for (int i = (count-1 > 4 ? 4 : count - 1); i >= 0; i--){
+			unsigned char ch = ( utf16 >> (6 * i)) & 0x3f;
+			ch |= 0x80;
+			if (i == count-1)
+				ch |= 0xff << (8-count);
+			out[ofs++] = ch;
+		}
+		out[ofs++] = 0x00;
+	}
+
+	return (char*) out;
+}
+
 static void map_axes(int fd, size_t bitn, struct arcan_devnode* node)
 {
 	unsigned long bits[ bit_count(ABS_MAX) ];
@@ -963,8 +996,9 @@ static void defhandler_kbd(struct arcan_evctx* out,
 		newev.io.input.translated.modifiers = node->keyboard.state;
 		update_state(inev[i].code, inev[i].value != 0, &node->keyboard.state);
 /* possible checkpoint for adding other keyboard layout support here */
-		newev.io.input.translated.subid =
-			lookup_character(inev[i].code, node->keyboard.state);
+		newev.io.input.translated.subid = inev[i].code;
+		to_utf8(lookup_character(inev[i].code, node->keyboard.state),
+			newev.io.input.translated.utf8);
 
 /* virtual terminal switching for press on LCTRL+LALT+Fn.
  * should possibly have more advanced config here to limit # of eligible
