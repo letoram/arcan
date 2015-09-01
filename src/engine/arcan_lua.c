@@ -9055,15 +9055,15 @@ static inline void dump_vobject(FILE* dst, arcan_vobject* src)
 	char* mask = maskstr(src->mask);
 
 /*
- * note that most strings á glstore_*, scale* etc. are safe
- * in the sense that they are not user-supplied in any way.
+ * note that most strings á glstore_*, scale* etc. are safe in the sense that
+ * they are not user-supplied in any way. We ignore last_updated as parameter
+ * to remove "useless" values in diffs. Add if needed for debugging cache.
  */
 	fprintf(dst,
 "vobj = {\n\
 \torigw = %d,\n\
 \torigh = %d,\n\
 \torder = %d,\n\
-\tlast_updated = %d,\n\
 \tlifetime = %d,\n\
 \tcellid = %d,\n\
 \tvalid_cache = %d,\n\
@@ -9099,7 +9099,6 @@ static inline void dump_vobject(FILE* dst, arcan_vobject* src)
 (int) src->origw,
 (int) src->origh,
 (int) src->order,
-(int) src->last_updated,
 (int) src->lifetime,
 (int) src->cellid,
 (int) src->valid_cache,
@@ -9249,7 +9248,39 @@ vobj.cellid_translated = %ld;\n\
 ctx.vobjs[vobj.cellid] = vobj;\n", (long int)vid_toluavid(i));
 		}
 
-/* missing, rendertarget dump */
+		for (size_t i = 0; i < ctx->n_rtargets; i++){
+			struct rendertarget* rtgt = &ctx->rtargets[i];
+			fprintf(dst, "\
+local rtgt = {\n\
+	attached = {");
+			struct arcan_vobject_litem* first = rtgt->first;
+			while(first){
+				fprintf(dst, "%" PRIxVOBJ", ", first->elem->cellid);
+				first = first->next;
+			}
+			fprintf(dst, "},\n\
+color_id = %" PRIxVOBJ",\n"
+#ifdef _DEBUG
+"attach_refc = %d,\n"
+#endif
+"readback = %d,\n\
+readcnt = %d,\n\
+refresh = %d,\n\
+refreshcnt = %d,\n\
+transfc = %zu,\n\
+camtag = %"PRIxVOBJ",\n\
+flags = %d\n\
+};\n\
+table.insert(ctx.rtargets, rtgt);\n\
+", rtgt->color ? rtgt->color->cellid : ARCAN_EID,
+#ifdef _DEBUG
+		rtgt-color->attachments,
+#endif
+		rtgt->readback, rtgt->readcnt, rtgt->refresh, rtgt->refreshcnt,
+		rtgt->transfc, rtgt->camtag, rtgt->flags
+);
+		}
+
 		fprintf(dst,"table.insert(restbl.vcontexts, ctx);");
 		cctx--;
 	}

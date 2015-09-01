@@ -21,6 +21,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <stdalign.h>
+#include <stdarg.h>
 
 #include <pthread.h>
 #include <semaphore.h>
@@ -1091,7 +1092,7 @@ static bool detach_fromtarget(struct rendertarget* dst, arcan_vobject* src)
 		dst->color->extrefc.attachments--;
 		src->extrefc.attachments--;
 
-		trace("(detatch) (%ld:%s) removed from rendertarget:(%ld:%s),"
+		trace("(detach) (%ld:%s) removed from rendertarget:(%ld:%s),"
 			"left: %d, attached to: %d\n", src->cellid, video_tracetag(src),
 			dst->color ? dst->color->cellid : -1, video_tracetag(dst->color),
 			dst->color->extrefc.attachments, src->extrefc.attachments);
@@ -1179,9 +1180,20 @@ arcan_errc arcan_video_attachobject(arcan_vobj_id id)
 
 	if (src){
 /* make sure that there isn't already one attached */
-		detach_fromtarget(&current_context->stdoutp, src);
+		arcan_warning("state [stdout] = %d, [obj] = %d, [ca] = %d\n",
+			current_context->stdoutp.color->extrefc.attachments,
+			src->extrefc.attachments,
+			current_context->attachment ?
+				current_context->attachment->color->extrefc.attachments
+			: -1
+		);
+		trace("(attach-eval-detach)\n");
+		if (src->extrefc.attachments)
+			detach_fromtarget(&current_context->stdoutp, src);
+		trace("(attach-eval-attach)\n");
 		attach_object(current_context->attachment ?
 			current_context->attachment : &current_context->stdoutp, src);
+		trace("(attach-eval-done)\n");
 		FLAG_DIRTY(src);
 
 		rv = ARCAN_OK;
@@ -1649,9 +1661,6 @@ arcan_errc arcan_video_shareglstore(arcan_vobj_id sid, arcan_vobj_id did)
 	return ARCAN_OK;
 }
 
-/* solid and null are essentially treated the same,
- * the difference being there's no program associated
- * in the vstore for the nullobject */
 arcan_vobj_id arcan_video_solidcolor(float origw, float origh,
 	uint8_t r, uint8_t g, uint8_t b, unsigned short zv)
 {
@@ -1677,6 +1686,8 @@ arcan_vobj_id arcan_video_solidcolor(float origw, float origh,
 	return rv;
 }
 
+/* solid and null are essentially treated the same, the difference being
+ * there's no program associated in the vstore for the nullobject */
 arcan_vobj_id arcan_video_nullobject(float origw,
 	float origh, unsigned short zv)
 {
@@ -1707,8 +1718,8 @@ arcan_vobj_id arcan_video_rawobject(av_pixel* buf,
 
 	struct storage_info_t* ds = newvobj->vstore;
 
-	ds->w   = cons.w;
-	ds->h   = cons.h;
+	ds->w = cons.w;
+	ds->h = cons.h;
 	ds->bpp = cons.bpp;
 	ds->vinf.text.s_raw = bufs;
 	ds->vinf.text.raw = buf;
@@ -2854,7 +2865,10 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 
 	if (vobj->extrefc.attachments|vobj->extrefc.links | vobj->extrefc.instances){
 		arcan_warning("[BUG] Broken reference counters for expiring objects, "
-			"tracetag? (%s)\n", vobj->tracetag ? vobj->tracetag : "(NO TAG)");
+			"%d, %d, %d, tracetag? (%s)\n", vobj->extrefc.attachments,
+			vobj->extrefc.links, vobj->extrefc.instances,
+			vobj->tracetag ? vobj->tracetag : "(NO TAG)"
+		);
 #ifdef _DEBUG
 		abort();
 #endif
