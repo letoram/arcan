@@ -479,7 +479,8 @@ void platform_event_process(arcan_evctx* ctx)
 			newevent.io.input.translated.modifiers = event.key.keysym.mod;
 			newevent.io.input.translated.scancode = event.key.keysym.scancode;
 			newevent.io.input.translated.subid = event.key.keysym.unicode;
-			to_utf8(event.key.keysym.unicode, newevent.io.input.translated.utf8);
+			if (!((event.key.keysym.mod & (ARKMOD_LCTRL | ARKMOD_RCTRL)) > 0))
+				to_utf8(event.key.keysym.unicode, newevent.io.input.translated.utf8);
 			arcan_event_enqueue(ctx, &newevent);
 		break;
 
@@ -492,7 +493,6 @@ void platform_event_process(arcan_evctx* ctx)
 			newevent.io.input.translated.modifiers = event.key.keysym.mod;
 			newevent.io.input.translated.scancode = event.key.keysym.scancode;
 			newevent.io.input.translated.subid = event.key.keysym.unicode;
-			to_utf8(event.key.keysym.unicode, newevent.io.input.translated.utf8);
 			arcan_event_enqueue(ctx, &newevent);
 		break;
 

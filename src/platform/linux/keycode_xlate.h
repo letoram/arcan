@@ -519,7 +519,7 @@ klut[KEY_UNKNOWN] = K_UNKNOWN;
  * that are running, but provide support scripts that implement detection etc.
  *
  */
-static uint16_t lookup_character(uint16_t code, uint16_t modifiers)
+static uint16_t lookup_character(uint16_t code, uint16_t modifiers, bool hard)
 {
 	if (code > sizeof(alut) / sizeof(alut[0]))
 		return 0;
@@ -534,9 +534,11 @@ static uint16_t lookup_character(uint16_t code, uint16_t modifiers)
 				code = toupper(code);
 		}
 	}
-	else if ((modifiers & (ARKMOD_LCTRL | ARKMOD_RCTRL)) > 0 && clut[code])
+	else if ((modifiers & (ARKMOD_LCTRL |
+		ARKMOD_RCTRL)) > 0 && (hard || (!hard &&clut[code])))
 		code = clut[code];
-	else if ((modifiers & (ARKMOD_LALT | ARKMOD_RALT)) > 0 && ltlut[code])
+	else if ((modifiers & (ARKMOD_LALT |
+		ARKMOD_RALT)) > 0 && (hard || (!hard && ltlut[code])))
 		code = ltlut[code];
 	else{
 		code = alut[code];
