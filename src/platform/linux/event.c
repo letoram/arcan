@@ -997,8 +997,8 @@ static void defhandler_kbd(struct arcan_evctx* out,
 		update_state(inev[i].code, inev[i].value != 0, &node->keyboard.state);
 /* possible checkpoint for adding other keyboard layout support here */
 		newev.io.input.translated.subid = inev[i].code;
-		to_utf8(lookup_character(inev[i].code, node->keyboard.state),
-			newev.io.input.translated.utf8);
+		uint16_t code = lookup_character(inev[i].code, node->keyboard.state, true);
+		if (code) to_utf8(code, newev.io.input.translated.utf8);
 
 /* virtual terminal switching for press on LCTRL+LALT+Fn.
  * should possibly have more advanced config here to limit # of eligible

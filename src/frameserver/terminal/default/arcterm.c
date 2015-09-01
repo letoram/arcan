@@ -363,6 +363,14 @@ static void select_right()
 {
 }
 
+static void page_up()
+{
+}
+
+static void page_down()
+{
+}
+
 /* map to the quite dangerous SIGUSR1 when we don't have INFO? */
 static void send_siginfo()
 {
@@ -384,6 +392,8 @@ static const struct lent labels[] = {
 	{"DOWN", move_down},
 	{"LEFT", move_left},
 	{"RIGHT", move_right},
+	{"PAGE_UP", page_up},
+	{"PAGE_DOWN", page_down},
 	{"SELECT_BEGIN", select_begin},
 	{"SELECT_CANCEL", select_cancel},
 	{"SELECT_COPY", select_copy},
