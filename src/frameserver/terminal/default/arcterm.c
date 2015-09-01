@@ -75,6 +75,8 @@ static struct {
 	int mag;
 	int cell_w, cell_h;
 	int screen_w, screen_h;
+	uint8_t fgc[3];
+	uint8_t bgc[3];
 	uint8_t alpha;
 
 	tsm_age_t age;
@@ -86,7 +88,9 @@ static struct {
 	.rows = 25,
 	.cols = 80,
 	.mag = 1,
-	.alpha = 0xff
+	.alpha = 0xff,
+	.bgc = {0x00, 0x00, 0x00},
+	.fgc = {0xff, 0xff, 0xff}
 };
 
 static void tsm_log(void* data, const char* file, int line,
@@ -133,6 +137,15 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 	dbg[0] = attr->br;
 	dbg[1] = attr->bg;
 	dbg[2] = attr->bb;
+
+/* unset to ignore local colors, we can switch this with displaymode
+  dfg[0] = term.fgc[0];
+ 	dfg[1] = term.fgc[1];
+	dfg[2] = term.fgc[2];
+	dbg[0] = term.bgc[0];
+	dbg[1] = term.bgc[1];
+	dbg[2] = term.bgc[2];
+ */
 
 	term.dirty = true;
 	draw_box(&term.acon, base_x, base_y, term.cell_w + 1,
@@ -210,8 +223,6 @@ static void update_screensize()
 
 	term.screen_w = cols;
 	term.screen_h = rows;
-	term.cell_w = fontw;
-	term.cell_h = fonth;
 	term.age = 1;
 	term.age = tsm_screen_draw(term.screen, draw_cb, NULL /* draw_cb_data */);
 }
@@ -422,8 +433,6 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 		bool pressed = ioev->input.translated.active;
 		if (!pressed)
 			return;
-		LOG("got: %d %d now:\n", ioev->input.translated.subid,
-			ioev->input.translated.keysym);
 
 		if (label[0] && consume_label(ioev, label))
 			return;
@@ -613,8 +622,13 @@ static void dump_help()
 		" cell_w      \t px_w      \t specify individual cell width in pixels\n"
 		" cell_h      \t px_h      \t specify individual cell height in pixels\n"
 		" extclock    \t           \t require external clock for screen updates\n"
-/*  " translucent \t val       \t set background alpha \n"
- *  palette definitions, scrollback information, flags */
+		" bgr         \t rv(0..255)\t background red channel\n"
+		" bgg         \t rv(0..255)\t background green channel\n"
+		" bgb         \t rv(0..255)\t background blue channel\n"
+		" fgr         \t rv(0..255)\t foreground red channel\n"
+		" fgg         \t rv(0..255)\t foreground green channel\n"
+		" fgb         \t rv(0..255)\t foreground blue channel\n"
+		" bgalpha     \t rv(0..255)\t background opacity (default: 255, opaque)\n"
 #ifdef TTF_SUPPORT
 		" font        \t ttf-file  \t render using font specified by ttf-file\n"
 		" font_hint   \t hintval   \t hint to font renderer (light, mono, none)\n"
@@ -646,6 +660,23 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 
 	if (arg_lookup(args, "cell_w", 0, &val))
 		term.cell_w = strtoul(val, NULL, 10);
+
+	if (arg_lookup(args, "fgr", 0, &val))
+		term.fgc[0] = strtoul(val, NULL, 10);
+	if (arg_lookup(args, "fgg", 0, &val))
+		term.fgc[1] = strtoul(val, NULL, 10);
+	if (arg_lookup(args, "fgb", 0, &val))
+		term.fgc[2] = strtoul(val, NULL, 10);
+
+	if (arg_lookup(args, "bgr", 0, &val))
+		term.bgc[0] = strtoul(val, NULL, 10);
+	if (arg_lookup(args, "bgg", 0, &val))
+		term.bgc[1] = strtoul(val, NULL, 10);
+	if (arg_lookup(args, "bgb", 0, &val))
+		term.bgc[2] = strtoul(val, NULL, 10);
+
+	if (arg_lookup(args, "bgalpha", 0, &val))
+		term.alpha = strtoul(val, NULL, 10);
 
 	if (arg_lookup(args, "cell_h", 0, &val))
 		term.cell_h = strtoul(val, NULL, 10);
@@ -690,6 +721,18 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	update_screensize();
 	expose_labels();
 	tsm_screen_set_max_sb(term.screen, 1000);
+
+	struct tsm_screen_attr attr = {
+		.fccode = -1,
+		.bccode = -1,
+		.fr = term.fgc[0],
+		.fg = term.fgc[1],
+		.fb = term.fgc[2],
+		.br = term.bgc[0],
+		.bg = term.bgc[1],
+		.bb = term.bgc[2]
+	};
+	tsm_screen_set_def_attr(term.screen, &attr);
 
 	setlocale(LC_CTYPE, "");
 
