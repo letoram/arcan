@@ -9274,7 +9274,7 @@ flags = %d\n\
 table.insert(ctx.rtargets, rtgt);\n\
 ", rtgt->color ? rtgt->color->cellid : ARCAN_EID,
 #ifdef _DEBUG
-		rtgt-color->attachments,
+		rtgt->color->extrefc.attachments,
 #endif
 		rtgt->readback, rtgt->readcnt, rtgt->refresh, rtgt->refreshcnt,
 		rtgt->transfc, rtgt->camtag, rtgt->flags
