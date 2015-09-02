@@ -406,7 +406,7 @@ static void push_transfer_persists(
 		if (!FL_TEST(srcobj, FL_INUSE) || !FL_TEST(srcobj, FL_PRSIST))
 			continue;
 
-		detach_fromtarget(&src->stdoutp, srcobj);
+		detach_fromtarget(&srcobj->owner, srcobj);
 		memcpy(dstobj, srcobj, sizeof(arcan_vobject));
 		dst->nalive++; /* fake allocate */
 		dstobj->parent = &dst->world; /* don't cross- reference worlds */
@@ -433,7 +433,7 @@ static void pop_transfer_persists(
 
 		arcan_vobject* parent = dstobj->parent;
 
-		detach_fromtarget(&src->stdoutp, srcobj);
+		detach_fromtarget(&srcobj->owner, srcobj);
 		src->nalive--;
 
 		memcpy(dstobj, srcobj, sizeof(arcan_vobject));
@@ -1180,16 +1180,9 @@ arcan_errc arcan_video_attachobject(arcan_vobj_id id)
 
 	if (src){
 /* make sure that there isn't already one attached */
-		arcan_warning("state [stdout] = %d, [obj] = %d, [ca] = %d\n",
-			current_context->stdoutp.color->extrefc.attachments,
-			src->extrefc.attachments,
-			current_context->attachment ?
-				current_context->attachment->color->extrefc.attachments
-			: -1
-		);
 		trace("(attach-eval-detach)\n");
 		if (src->extrefc.attachments)
-			detach_fromtarget(&current_context->stdoutp, src);
+			detach_fromtarget(src->owner, src);
 		trace("(attach-eval-attach)\n");
 		attach_object(current_context->attachment ?
 			current_context->attachment : &current_context->stdoutp, src);
@@ -2120,7 +2113,7 @@ arcan_errc arcan_video_alterfeed(arcan_vobj_id id,
 	return ARCAN_OK;
 }
 
-arcan_vobj_id arcan_video_setupfeed(
+static arcan_vobj_id arcan_video_setupfeed(
 	ffunc_ind ffunc, img_cons cons, uint8_t ntus, uint8_t ncpt)
 {
 	if (!ffunc)
