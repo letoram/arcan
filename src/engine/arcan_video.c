@@ -406,7 +406,7 @@ static void push_transfer_persists(
 		if (!FL_TEST(srcobj, FL_INUSE) || !FL_TEST(srcobj, FL_PRSIST))
 			continue;
 
-		detach_fromtarget(&srcobj->owner, srcobj);
+		detach_fromtarget(srcobj->owner, srcobj);
 		memcpy(dstobj, srcobj, sizeof(arcan_vobject));
 		dst->nalive++; /* fake allocate */
 		dstobj->parent = &dst->world; /* don't cross- reference worlds */
@@ -433,7 +433,7 @@ static void pop_transfer_persists(
 
 		arcan_vobject* parent = dstobj->parent;
 
-		detach_fromtarget(&srcobj->owner, srcobj);
+		detach_fromtarget(srcobj->owner, srcobj);
 		src->nalive--;
 
 		memcpy(dstobj, srcobj, sizeof(arcan_vobject));

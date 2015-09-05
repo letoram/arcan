@@ -152,8 +152,8 @@ struct dispout {
 	struct {
 		int in_flip;
 		EGLSurface esurf;
-		struct gbm_bo* bo;
-		uint32_t fbid;
+		struct gbm_bo* cur_bo, (* next_bo);
+		uint32_t cur_fb, next_fb;
 		struct gbm_surface* surface;
 	} buffer;
 
@@ -380,14 +380,28 @@ bool platform_video_set_mode(platform_display_id disp, platform_mode_id mode)
 /*
  * reset scanout buffers to match new crtc mode
  */
-	if (d->buffer.bo){
-		gbm_surface_release_buffer(d->buffer.surface, d->buffer.bo);
-		d->buffer.bo = NULL;
+	if (d->buffer.cur_bo){
+		gbm_surface_release_buffer(d->buffer.surface, d->buffer.cur_bo);
+		d->buffer.cur_bo = NULL;
 	}
+
+	if (d->buffer.next_bo){
+		gbm_surface_release_buffer(d->buffer.surface, d->buffer.next_bo);
+		d->buffer.next_bo = NULL;
+	}
+
 	d->in_cleanup = true;
 	eglDestroySurface(d->device->display, d->buffer.esurf);
-	if(d->buffer.fbid)
-		drmModeRmFB(d->device->fd, d->buffer.fbid);
+
+	if (d->buffer.cur_fb){
+		drmModeRmFB(d->device->fd, d->buffer.cur_fb);
+		d->buffer.cur_fb = 0;
+	}
+
+	if(d->buffer.next_fb){
+		drmModeRmFB(d->device->fd, d->buffer.next_fb);
+		d->buffer.next_fb = 0;
+	}
 
 	gbm_surface_destroy(d->buffer.surface);
 	setup_buffers(d);
@@ -1236,9 +1250,15 @@ static void disable_display(struct dispout* d)
 	eglDestroySurface(d->device->display, d->buffer.esurf);
 	d->buffer.esurf = NULL;
 
-	if (d->buffer.fbid)
-		drmModeRmFB(d->device->fd, d->buffer.fbid);
-	d->buffer.fbid = 0;
+	if (d->buffer.cur_fb){
+		drmModeRmFB(d->device->fd, d->buffer.cur_fb);
+		d->buffer.cur_fb = 0;
+	}
+
+	if (d->buffer.next_fb){
+		drmModeRmFB(d->device->fd, d->buffer.next_fb);
+		d->buffer.next_fb = 0;
+	}
 
 	gbm_surface_destroy(d->buffer.surface);
 	d->buffer.surface = NULL;
@@ -1366,7 +1386,16 @@ static void page_flip_handler(int fd, unsigned int frame,
 	struct dispout* d = data;
 	assert(d->buffer.in_flip == 1);
 	d->buffer.in_flip = 0;
-	gbm_surface_release_buffer(d->buffer.surface, d->buffer.bo);
+
+	if (d->buffer.cur_fb)
+		drmModeRmFB(fd, d->buffer.cur_fb);
+	d->buffer.cur_fb = d->buffer.next_fb;
+	d->buffer.next_fb = 0;
+
+	if (d->buffer.cur_bo)
+		gbm_surface_release_buffer(d->buffer.surface, d->buffer.cur_bo);
+	d->buffer.cur_bo = d->buffer.next_bo;
+	d->buffer.next_bo = NULL;
 }
 
 void platform_video_synch(uint64_t tick_count, float fract,
@@ -1601,24 +1630,6 @@ static void fb_cleanup(struct gbm_bo* bo, void* data)
 	disable_display(d);
 }
 
-static void step_fb(struct dispout* d, struct gbm_bo* bo)
-{
-	uint32_t handle = gbm_bo_get_handle(bo).u32;
-	uint32_t width  = gbm_bo_get_width(bo);
-	uint32_t height = gbm_bo_get_height(bo);
-	uint32_t stride = gbm_bo_get_stride(bo);
-
-	if (drmModeAddFB(d->device->fd, width, height, 24, sizeof(av_pixel) * 8,
-		stride, handle, &d->buffer.fbid)){
-		arcan_warning("rgl-dri(), couldn't add framebuffer (%s)\n",
-			strerror(errno));
-		return;
-	}
-
-	gbm_bo_set_user_data(bo, d, fb_cleanup);
-	d->buffer.bo = bo;
-}
-
 static void draw_display(struct dispout* d)
 {
 	float* txcos = arcan_video_display.default_txcos;
@@ -1664,7 +1675,7 @@ static void update_display(struct dispout* d)
 	agp_activate_rendertarget(NULL);
 
 /*
- * drawing hints, mapping etc. should be taken into account here,
+ current_fbid* drawing hints, mapping etc. should be taken into account here,
  * there's quite possible drm flags to set scale here
  */
 	eglMakeCurrent(d->device->display, d->buffer.esurf,
@@ -1673,35 +1684,45 @@ static void update_display(struct dispout* d)
 	draw_display(d);
 	eglSwapBuffers(d->device->display, d->buffer.esurf);
 
+/* next/cur switching comes in the page-flip handler */
 	struct gbm_bo* bo = gbm_surface_lock_front_buffer(d->buffer.surface);
+	if (!bo)
+		return;
 
-/* allocate buffer object now that we have data on
- * the front buffer properties, we'll flip later */
-	if (!d->buffer.bo){
-		step_fb(d, bo);
-		if (!d->display.old_crtc)
-			d->display.old_crtc = drmModeGetCrtc(d->device->fd, d->display.crtc);
+/* mode-switching is defered to the first frame that is ready as things
+ * might've happened in the engine between _init and draw */
+	if (!d->display.old_crtc){
+
+		d->display.old_crtc = drmModeGetCrtc(d->device->fd, d->display.crtc);
 
 		int rv = drmModeSetCrtc(d->device->fd, d->display.crtc,
-			d->buffer.fbid, 0, 0, &d->display.con_id, 1, d->display.mode);
-
+			d->buffer.next_fb, 0, 0, &d->display.con_id, 1, d->display.mode);
+		if (rv < 0){
+			arcan_warning("error (%d) setting Crtc for %d:%d(con:%d)\n",
+				errno, d->device->fd, d->display.crtc, d->display.con_id);
+		}
 /*
  * drmModeConnectorSetProperty(d->device->fd,
  * 	d->display.enc->crtc_id, DRM_MODE_SCALE_FULLSCREEN, 1);
  */
+	}
 
-/* this should be moved to only be updated when the mapping
- * has changed, kept here for experimentation purposes */
-		if (rv < 0){
-			arcan_warning("error (%d) setting Crtc for %d:%d(con:%d, buf:%d)\n",
-				errno, d->device->fd, d->display.crtc, d->display.con_id,
-				d->buffer.fbid
-			);
-		}
+	uint32_t handle = gbm_bo_get_handle(bo).u32;
+	uint32_t width  = gbm_bo_get_width(bo);
+	uint32_t height = gbm_bo_get_height(bo);
+	uint32_t stride = gbm_bo_get_stride(bo);
+	gbm_bo_set_user_data(bo, d, fb_cleanup);
+
+	d->buffer.next_bo = bo;
+	if (drmModeAddFB(d->device->fd, width, height, 24, sizeof(av_pixel) * 8,
+		stride, handle, &d->buffer.next_fb)){
+		arcan_warning("rgl-dri(), couldn't add framebuffer (%s)\n",
+			strerror(errno));
+		return;
 	}
 
 	if (drmModePageFlip(d->device->fd, d->display.crtc,
-		d->buffer.fbid, DRM_MODE_PAGE_FLIP_EVENT, d)){
+		d->buffer.next_fb, DRM_MODE_PAGE_FLIP_EVENT, d)){
 		arcan_fatal("couldn't queue page flip (%s).\n", strerror(errno));
 	}
 
