@@ -1516,13 +1516,13 @@ static int resampleimage(lua_State* ctx)
 	return 0;
 }
 
-static int resizestorage(lua_State* ctx)
+static int imageresizestorage(lua_State* ctx)
 {
-	LUA_TRACE("image_resize_storage", NULL);
+	LUA_TRACE("image_resize_storage");
 
 	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
-	size_t w = abs((int)luaL_checknumber(ctx, 2);
-	size_t h = abs((int)luaL_checknumber(ctx, 3);
+	size_t w = abs((int)luaL_checknumber(ctx, 2));
+	size_t h = abs((int)luaL_checknumber(ctx, 3));
 	if (w == 0 || w > MAX_SURFACEW || h == 0 || h > MAX_SURFACEH)
 		arcan_fatal("image_resize_storage(), illegal dimensions"
 			"	requested (%d:%d x %d:%d)\n", w, MAX_SURFACEW, h, MAX_SURFACEH);
