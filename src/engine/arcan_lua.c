@@ -1516,6 +1516,23 @@ static int resampleimage(lua_State* ctx)
 	return 0;
 }
 
+static int resizestorage(lua_State* ctx)
+{
+	LUA_TRACE("image_resize_storage", NULL);
+
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
+	size_t w = abs((int)luaL_checknumber(ctx, 2);
+	size_t h = abs((int)luaL_checknumber(ctx, 3);
+	if (w == 0 || w > MAX_SURFACEW || h == 0 || h > MAX_SURFACEH)
+		arcan_fatal("image_resize_storage(), illegal dimensions"
+			"	requested (%d:%d x %d:%d)\n", w, MAX_SURFACEW, h, MAX_SURFACEH);
+
+	arcan_video_resizefeed(id, w, h);
+
+	LUA_ETRACE("image_resize_storage", NULL);
+	return 0;
+}
+
 /* Input is absolute values,
  * arcan_video_objectscale takes relative to initial size */
 static int scaleimage2(lua_State* ctx)
@@ -8487,6 +8504,7 @@ static const luaL_Reg imgfuns[] = {
 {"image_shader",             setshader          },
 {"image_state",              imagestate         },
 {"image_access_storage",     imagestorage       },
+{"image_resize_storage",     imageresizestorage },
 {"image_sharestorage",       sharestorage       },
 {"cursor_setstorage",        cursorstorage      },
 {"cursor_position",          cursorposition     },
