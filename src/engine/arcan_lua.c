@@ -3225,12 +3225,16 @@ static void emit_segreq(lua_State* ctx, struct arcan_extevent* ev)
 	luactx.last_segreq = ev;
 	int top = lua_gettop(ctx);
 
+	if (ev->segreq.kind > SEGID_DEBUG || ev->segreq.kind == 0)
+		ev->segreq.kind == SEGID_UNKNOWN;
+
 	tblstr(ctx, "kind", "segment_request", top);
 	tblnum(ctx, "width", ev->segreq.width, top);
 	tblnum(ctx, "height", ev->segreq.height, top);
 	tblnum(ctx, "reqid", ev->segreq.id, top);
 	tblnum(ctx, "xofs", ev->segreq.xofs, top);
 	tblnum(ctx, "yofs", ev->segreq.yofs, top);
+	tblstr(ctx, "segkind", fsrvtos(ev->segreq.kind), top);
 
 	luactx.cb_source_tag = ev->source;
 	luactx.cb_source_kind = CB_SOURCE_FRAMESERVER;
@@ -5866,6 +5870,7 @@ static int targetaccept(lua_State* ctx)
 		luactx.last_segreq->segreq.id
 	);
 	luactx.last_segreq = NULL;
+	newref->segid = luactx.last_segreq->segreq.kind;
 
 	lua_pushvid(ctx, newref->vid);
 	lua_pushvid(ctx, newref->aid);

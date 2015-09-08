@@ -809,6 +809,7 @@ typedef struct arcan_extevent {
  * height - desired height, will be clamped to PP_SHMPAGE_MAXH
  * xofs   - suggested offset relative to main segment (parent hint)
  * yofs   - suggested offset relative to main segment (parent hint)
+ * kind   -
  */
 		struct {
 			uint32_t id;
@@ -816,11 +817,13 @@ typedef struct arcan_extevent {
 			uint16_t height;
 			int16_t xofs;
 			int16_t yofs;
+			enum ARCAN_SEGID kind;
 		} segreq;
 
 /*
  * (title) - title-bar info or other short string to indicate state
- * (kind) -
+ * (kind)  - only used for non-auth connection primary segments or
+ *           for subseg requests that got accepted with an empty kind
  */
 		struct {
 			char title[64];

@@ -8,10 +8,18 @@
 -- associated with the frameserver. If this request goes unhandled
 -- in the callback implementation, a rejection reply will be sent.
 -- By calling accept_target in immediate response to a segment_request,
--- a new segment will be allocated and sent to the frameserver.
+-- a new segment will be allocated and sent to the frameserver. The
+-- type of this segment will follow the one present in the request,
+-- and it is the responsibility of the script to determine that this
+-- is one that is supported. To filter the segkind field, prefer to
+-- use an inclusive whitelisting approach.
 -- @note: accept_target is context sensitive. This means that calling
 -- it outside a frameserver event-handler, or when there is no pending
 -- segment_request event, is a terminal state transition.
+-- @note: Possible segkind values are: "multimedia", "cursor", "shell",
+-- "popup", "icon", "remoting", "game", "hmd-l", "hmd-r", "hmd-sbs-lr",
+-- "vm", "application", "clipboard", "browser", "encoder", "titlebar",
+-- "sensor", "debug", "accessibility", "unknown".
 -- @note: The number of permitted segments etc. should be limited
 -- by available vids and other resources so that a malicious client
 -- cannot starve the serving arcan process. See the 'recursive_evil'
