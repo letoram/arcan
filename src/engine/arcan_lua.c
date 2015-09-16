@@ -1520,14 +1520,19 @@ static int imageresizestorage(lua_State* ctx)
 {
 	LUA_TRACE("image_resize_storage");
 
-	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
+	arcan_vobject* vobj;
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, &vobj);
 	size_t w = abs((int)luaL_checknumber(ctx, 2));
 	size_t h = abs((int)luaL_checknumber(ctx, 3));
 	if (w == 0 || w > MAX_SURFACEW || h == 0 || h > MAX_SURFACEH)
 		arcan_fatal("image_resize_storage(), illegal dimensions"
 			"	requested (%d:%d x %d:%d)\n", w, MAX_SURFACEW, h, MAX_SURFACEH);
 
-	arcan_video_resizefeed(id, w, h);
+	struct rendertarget* rtgt = find_rendertarget(vobj);
+	if (rtgt)
+		agp_resize_rendertarget(rtgt->art, w, h);
+	else
+		arcan_video_resizefeed(id, w, h);
 
 	LUA_ETRACE("image_resize_storage", NULL);
 	return 0;
