@@ -5874,8 +5874,8 @@ static int targetaccept(lua_State* ctx)
 		luactx.last_segreq->segreq.height,
 		luactx.last_segreq->segreq.id
 	);
-	luactx.last_segreq = NULL;
 	newref->segid = luactx.last_segreq->segreq.kind;
+	luactx.last_segreq = NULL;
 
 	lua_pushvid(ctx, newref->vid);
 	lua_pushvid(ctx, newref->aid);
