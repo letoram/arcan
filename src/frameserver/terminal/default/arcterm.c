@@ -265,6 +265,9 @@ static void setup_shell(struct arg_arr* argarr)
 	for (int i=0; i < sizeof(unset)/sizeof(unset[0]); i++)
 		unsetenv(unset[i]);
 
+/* might get overridden with putenv below */
+	setenv("TERM", "xterm", 1);
+
 	while (arg_lookup(argarr, "env", ind++, &val))
 		putenv(strdup(val));
 
@@ -272,7 +275,6 @@ static void setup_shell(struct arg_arr* argarr)
 		SIGCHLD, SIGHUP, SIGINT, SIGQUIT, SIGTERM, SIGALRM
 	};
 
-	setenv("TERM", "linux", 1); // "xterm-256color", 1);
 	for (int i = 0; i < sizeof(sigs) / sizeof(sigs[0]); i++)
 		signal(sigs[i], SIG_DFL);
 
