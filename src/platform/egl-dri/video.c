@@ -48,7 +48,7 @@
  *
  * 6. Survive "no output display" (possibly by reverting into a stall/wait
  * until the display is made available, or switch to a display-less context)
- */
+_id */
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -158,7 +158,7 @@ struct dispout {
 	} buffer;
 
 	struct {
-		bool ready;
+		bool ready, reset_mode;
 		drmModeConnector* con;
 		uint32_t con_id;
 		drmModeModeInfoPtr mode;
@@ -373,13 +373,16 @@ bool platform_video_set_mode(platform_display_id disp, platform_mode_id mode)
 	if (!d || mode >= d->display.con->count_modes)
 		return false;
 
+	if (d->display.mode == &d->display.con->modes[mode])
+		return true;
+
+	d->display.reset_mode = true;
 	d->display.mode = &d->display.con->modes[mode];
 	build_orthographic_matrix(d->projection,
 		0, d->display.mode->hdisplay, d->display.mode->vdisplay, 0, 0, 1);
 
 /*
  * reset scanout buffers to match new crtc mode
- */
 	if (d->buffer.cur_bo){
 		gbm_surface_release_buffer(d->buffer.surface, d->buffer.cur_bo);
 		d->buffer.cur_bo = NULL;
@@ -389,11 +392,13 @@ bool platform_video_set_mode(platform_display_id disp, platform_mode_id mode)
 		gbm_surface_release_buffer(d->buffer.surface, d->buffer.next_bo);
 		d->buffer.next_bo = NULL;
 	}
-
+*/
 	d->in_cleanup = true;
 	eglDestroySurface(d->device->display, d->buffer.esurf);
 
-	if (d->buffer.cur_fb){
+/*
+ * drop current framebuffers
+ 	if (d->buffer.cur_fb){
 		drmModeRmFB(d->device->fd, d->buffer.cur_fb);
 		d->buffer.cur_fb = 0;
 	}
@@ -402,13 +407,14 @@ bool platform_video_set_mode(platform_display_id disp, platform_mode_id mode)
 		drmModeRmFB(d->device->fd, d->buffer.next_fb);
 		d->buffer.next_fb = 0;
 	}
-
+*/
 	gbm_surface_destroy(d->buffer.surface);
+
+/*
+ * setup / allocate a new set of buffers that match the new mode
+ */
 	setup_buffers(d);
 	d->in_cleanup = false;
-/*
- * the next update will setup new BOs and activate CRTC
- */
 
 	return true;
 }
@@ -1263,6 +1269,9 @@ static void disable_display(struct dispout* d)
 	gbm_surface_destroy(d->buffer.surface);
 	d->buffer.surface = NULL;
 
+	arcan_warning("restoring crtc: %d\n",  d->display.old_crtc ?
+		d->display.old_crtc->crtc_id : -1);
+
 	if (d->display.old_crtc && 0 > drmModeSetCrtc(
 		d->device->fd,
 		d->display.old_crtc->crtc_id,
@@ -1689,29 +1698,22 @@ static void update_display(struct dispout* d)
 	if (!bo)
 		return;
 
-/* mode-switching is defered to the first frame that is ready as things
- * might've happened in the engine between _init and draw */
-	if (!d->display.old_crtc){
-
-		d->display.old_crtc = drmModeGetCrtc(d->device->fd, d->display.crtc);
-
-		int rv = drmModeSetCrtc(d->device->fd, d->display.crtc,
-			d->buffer.next_fb, 0, 0, &d->display.con_id, 1, d->display.mode);
-		if (rv < 0){
-			arcan_warning("error (%d) setting Crtc for %d:%d(con:%d)\n",
-				errno, d->device->fd, d->display.crtc, d->display.con_id);
-		}
-/*
- * drmModeConnectorSetProperty(d->device->fd,
- * 	d->display.enc->crtc_id, DRM_MODE_SCALE_FULLSCREEN, 1);
- */
-	}
-
 	uint32_t handle = gbm_bo_get_handle(bo).u32;
 	uint32_t width  = gbm_bo_get_width(bo);
 	uint32_t height = gbm_bo_get_height(bo);
 	uint32_t stride = gbm_bo_get_stride(bo);
 	gbm_bo_set_user_data(bo, d, fb_cleanup);
+
+	bool new_crtc = false;
+
+/* mode-switching is defered to the first frame that is ready as things
+ * might've happened in the engine between _init and draw */
+	if (d->display.reset_mode || !d->display.old_crtc){
+		if (!d->display.old_crtc)
+			d->display.old_crtc = drmModeGetCrtc(d->device->fd, d->display.crtc);
+		d->display.reset_mode = false;
+		new_crtc = true;
+	}
 
 	d->buffer.next_bo = bo;
 	if (drmModeAddFB(d->device->fd, width, height, 24, sizeof(av_pixel) * 8,
@@ -1721,12 +1723,18 @@ static void update_display(struct dispout* d)
 		return;
 	}
 
-	if (drmModePageFlip(d->device->fd, d->display.crtc,
-		d->buffer.next_fb, DRM_MODE_PAGE_FLIP_EVENT, d)){
-		arcan_fatal("couldn't queue page flip (%s).\n", strerror(errno));
+	if (new_crtc){
+		int rv = drmModeSetCrtc(d->device->fd, d->display.crtc,
+			d->buffer.next_fb, 0, 0, &d->display.con_id, 1, d->display.mode);
+		if (rv < 0){
+			arcan_warning("error (%d) setting Crtc for %d:%d(con:%d)\n",
+				errno, d->device->fd, d->display.crtc, d->display.con_id);
+		}
 	}
 
-	d->buffer.in_flip = 1;
+	if (!drmModePageFlip(d->device->fd, d->display.crtc,
+		d->buffer.next_fb, DRM_MODE_PAGE_FLIP_EVENT, d))
+		d->buffer.in_flip = 1;
 }
 
 /* These two functions are important yet incomplete (and something for the

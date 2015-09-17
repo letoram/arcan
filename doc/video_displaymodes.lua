@@ -41,13 +41,13 @@ function main()
 	for i,v in ipairs(list) do
 		print(string.format("(%d) display(%d:%d)\n\t" ..
 			"dimensions(%d * %d) @ %d Hz, depth: %d\n\n",
-			v.moderef, v.cardid, v.displayid, v.width,
+			v.modeid, v.cardid, v.displayid, v.width,
 			v.height, v.refresh, v.depth)
 		);
 	end
 
 	print("swiching modes\n");
-	video_displaymodes(0, math.random(#list));
+	video_displaymodes(0, list[math.random(#list)].modeid);
 	print("modes switched\n");
 #endif
 
