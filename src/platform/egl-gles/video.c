@@ -150,6 +150,14 @@ bool PLATFORM_SYMBOL(_video_set_mode)(
 	return disp == 0 && mode == 0;
 }
 
+bool PLATFORM_SYMBOL(_video_display_edid)(platform_display_id did,
+	char** out, size_t* sz)
+{
+	*out = NULL;
+	*sz = 0;
+	return false;
+}
+
 bool PLATFORM_SYMBOL(_video_map_display)(
 	arcan_vobj_id id, platform_display_id disp, enum blitting_hint hint)
 {

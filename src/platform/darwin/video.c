@@ -184,6 +184,14 @@ void PLATFORM_SYMBOL(_video_shutdown) ()
 {
 }
 
+bool PLATFORM_SYMBOL(_video_display_edid)(platform_display_id did,
+	char** out, size_t* sz)
+{
+	*out = NULL;
+	*sz = 0;
+	return false;
+}
+
 void* PLATFORM_SYMBOL(_video_gfxsym)(const char* sym)
 {
 	static void* dlh = NULL;

@@ -135,6 +135,14 @@ enum dpms_state PLATFORM_SYMBOL(_video_dpms)(
 	return ADPMS_ON;
 }
 
+bool PLATFORM_SYMBOL(_video_display_edid)(platform_display_id did,
+	char** out, size_t* sz)
+{
+	*out = NULL;
+	*sz = 0;
+	return false;
+}
+
 void* PLATFORM_SYMBOL(_video_gfxsym)(const char* sym)
 {
 	return glXGetProcAddress((const GLubyte*) sym);
