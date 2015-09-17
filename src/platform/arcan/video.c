@@ -116,6 +116,14 @@ void platform_video_shutdown()
 	lwa_video_shutdown();
 }
 
+bool platform_video_display_edid(platform_display_id did,
+	char** out, size_t* sz)
+{
+	*out = NULL;
+	*sz = 0;
+	return false;
+}
+
 void platform_video_prepare_external()
 {
 	lwa_video_prepare_external();

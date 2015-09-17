@@ -266,6 +266,14 @@ bool PLATFORM_SYMBOL(_video_init)(uint16_t w, uint16_t h,
 	return true;
 }
 
+bool PLATFORM_SYMBOL(_video_display_edid)(platform_display_id did,
+	char** out, size_t* sz)
+{
+	*out = NULL;
+	*sz = 0;
+	return false;
+}
+
 void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 	video_synchevent pre, video_synchevent post)
 {

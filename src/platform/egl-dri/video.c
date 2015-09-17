@@ -181,15 +181,14 @@ static struct {
 	size_t canvasw, canvash;
 } egl_dri;
 
-/*
- * primary functions for doing video- platform to egl/dri mapping,
- * returns NULL if no display could be mapped to the device
- */
 #ifndef MAX_DISPLAYS
 #define MAX_DISPLAYS 8
 #endif
+
 static struct dispout displays[MAX_DISPLAYS];
-size_t const disp_sz = sizeof(displays) / sizeof(displays[0]);
+const size_t disp_sz = sizeof(displays) / sizeof(displays[0]);
+const size_t id_blk_sz = 100;
+
 static struct dispout* allocate_display(struct dev_node* node)
 {
 	for (size_t i = 0; i < sizeof(displays)/sizeof(displays[0]); i++)
@@ -204,10 +203,14 @@ static struct dispout* allocate_display(struct dev_node* node)
 }
 
 /*
- * get device indexed, this is used as an iterator
+ * get device by index or by device + connector_id
  */
 static struct dispout* get_display(size_t index)
 {
+	if (index > disp_sz){
+		index = (index - disp_sz) / id_blk_sz;
+	}
+
 	for (size_t i = 0; i < MAX_DISPLAYS; i++){
 		if (displays[i].alive){
 			if (index == 0)
@@ -417,6 +420,44 @@ bool platform_video_set_mode(platform_display_id disp, platform_mode_id mode)
 	d->in_cleanup = false;
 
 	return true;
+}
+
+bool platform_video_display_edid(platform_display_id did,
+	char** out, size_t* sz)
+{
+	struct dispout* d = get_display(did);
+	*out = NULL;
+	*sz = 0;
+
+	if (!d)
+		return false;
+
+	bool done = false;
+	drmModePropertyPtr prop;
+	for (size_t i = 0; i < d->display.con->count_props && !done; i++){
+		prop = drmModeGetProperty(d->device->fd, d->display.con->props[i]);
+		if (!prop)
+			continue;
+
+		if ((prop->flags & DRM_MODE_PROP_BLOB) &&
+			0 == strcmp(prop->name, "EDID")){
+			drmModePropertyBlobPtr blob =
+				drmModeGetPropertyBlob(d->device->fd, d->display.con->props[i]);
+
+			if (blob && blob->length > 0){
+				*out = malloc(blob->length);
+				if (*out){
+					memcpy(*out, blob->data, blob->length);
+					*sz = blob->length;
+					done = true;
+				}
+				drmModeFreePropertyBlob(blob);
+			}
+		}
+		drmModeFreeProperty(prop);
+	}
+
+	return done;
 }
 
 /*
@@ -1210,24 +1251,25 @@ void platform_video_query_displays()
 		struct dispout* d = match_connector(nodes[0].fd, con, &id);
 
 		if (con->connection == DRM_MODE_CONNECTED){
+/* already known? then ignore */
 			if (d)
 				continue;
 
 			arcan_event ev = {
 				.category = EVENT_VIDEO,
 				.vid.kind = EVENT_VIDEO_DISPLAY_ADDED,
-				.vid.source = sizeof(displays) / sizeof(displays[0]) +
-					con->connector_id
+				.vid.source = disp_sz + (id * id_blk_sz) + con->connector_id
 			};
 			arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 		}
 		else {
+/* only event-notify known displays */
 			if (d){
 				disable_display(d);
 				arcan_event ev = {
 					.category = EVENT_VIDEO,
 					.vid.kind = EVENT_VIDEO_DISPLAY_REMOVED,
-					.vid.source = id
+					.vid.source = disp_sz + (id * id_blk_sz) + con->connector_id
 				};
 				arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 			}

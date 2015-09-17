@@ -300,8 +300,16 @@ struct monitor_mode* platform_video_query_modes(
 	platform_display_id, size_t* count);
 
 /*
+ * query a specific display_id for a descriptive blob (EDID for some platforms)
+ * that could be used to further identify the display. Actual parsing/
+ * identification is left as an exercise for the caller.
+ */
+bool platform_video_display_edid(platform_display_id did,
+	char** out, size_t* sz);
+
+/*
  * switch mode on the display to a previously queried one from
- * platform_video_queery_modes
+ * platform_video_query_modes
  */
 bool platform_video_set_mode(
 	platform_display_id, platform_mode_id mode_id);

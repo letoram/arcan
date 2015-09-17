@@ -4559,6 +4559,30 @@ static int videocanvasrsz(lua_State* ctx)
 	return 0;
 }
 
+static int videodispdescr(lua_State* ctx)
+{
+	LUA_TRACE("video_displaydescr");
+	platform_display_id id = luaL_checknumber(ctx, 1);
+	char* buf;
+	size_t buf_sz;
+
+	if (platform_video_display_edid(id, &buf, &buf_sz)){
+		unsigned long hash = 5381;
+		lua_pushlstring(ctx, buf, buf_sz);
+		for (size_t i = 0; i < buf_sz; i++)
+			hash = ((hash << 5) + hash) + buf[i];
+
+		free(buf);
+		lua_pushnumber(ctx, hash);
+
+		LUA_ETRACE("video_displaydescr", NULL);
+		return 2;
+	}
+
+	LUA_ETRACE("video_displaydescr", "unknown display");
+	return 0;
+}
+
 static int videodisplay(lua_State* ctx)
 {
 	LUA_TRACE("video_displaymodes");
@@ -8617,6 +8641,7 @@ static const luaL_Reg vidsysfuns[] = {
 {"set_context_attachment",           setdefattach   },
 {"resize_video_canvas",              videocanvasrsz },
 {"video_displaymodes",               videodisplay   },
+{"video_displaydescr",               videodispdescr },
 {"map_video_display",                videomapping   },
 {"video_3dorder",                    v3dorder       },
 {"build_shader",                     buildshader    },

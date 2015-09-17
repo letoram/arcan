@@ -155,6 +155,14 @@ void platform_video_query_displays()
 {
 }
 
+bool platform_video_display_edid(platform_display_id did,
+	char** out, size_t* sz)
+{
+	*out = NULL;
+	*sz = 0;
+	return false;
+}
+
 bool platform_video_specify_mode(platform_display_id disp,
 	struct monitor_mode mode)
 {
