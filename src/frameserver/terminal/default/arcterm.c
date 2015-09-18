@@ -148,8 +148,8 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
  */
 
 	term.dirty = true;
-	draw_box(&term.acon, base_x, base_y, term.cell_w + 1,
-		term.cell_h + 1, RGBA(bgc[0], bgc[1], bgc[2], term.alpha));
+	draw_box(&term.acon, base_x, base_y, term.cell_w,
+		term.cell_h, RGBA(bgc[0], bgc[1], bgc[2], term.alpha));
 
 	size_t u8_sz = tsm_ucs4_get_width(*ch) + 1;
 	uint8_t u8_ch[u8_sz];
@@ -643,6 +643,7 @@ static void dump_help()
 		" bgalpha     \t rv(0..255)\t background opacity (default: 255, opaque)\n"
 #ifdef TTF_SUPPORT
 		" font        \t ttf-file  \t render using font specified by ttf-file\n"
+		" font_sz     \t px        \t set font rendering size (may alter cellsz))\n"
 		" font_hint   \t hintval   \t hint to font renderer (light, mono, none)\n"
 #endif
 		"---------\t-----------\t----------------\n"
@@ -693,10 +694,29 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	if (arg_lookup(args, "cell_h", 0, &val))
 		term.cell_h = strtoul(val, NULL, 10);
 #ifdef TTF_SUPPORT
+	size_t sz = term.cell_h;
+	if (arg_lookup(args, "font_sz", 0, &val))
+		sz = strtoul(val, NULL, 10);
 	if (arg_lookup(args, "font", 0, &val)){
-		font = TTF_OpenFont(val, term.cell_h);
+		font = TTF_OpenFont(val, sz);
 		if (!font)
 			LOG("font %s could not be opened, forcing built-in fallback\n", val);
+		else{
+			TTF_Color fg = {.r = 0xff, .g = 0xff, .b = 0xff};
+			TTF_Surface* surf = TTF_RenderUTF8(font, "A", fg);
+			if (!surf){
+				TTF_CloseFont(font);
+				font = NULL;
+			}
+			else{
+				if (term.cell_w < surf->width)
+					term.cell_w = surf->width;
+				if (term.cell_h < surf->height)
+					term.cell_h = surf->height;
+			}
+
+			free(surf);
+		}
 	}
 	else
 		LOG("no font argument specified, forcing built-in fallback.\n");
