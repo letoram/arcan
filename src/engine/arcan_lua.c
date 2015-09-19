@@ -3683,8 +3683,8 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				tblnum(ctx, "height", ev->fsrv.height, top);
 
 /* mirrored is incorrect but can't drop it for legacy reasons */
-				tblnum(ctx, "mirrored", ev->fsrv.glsource, top);
-				tblnum(ctx, "origo_ll", ev->fsrv.glsource, top);
+				tblbool(ctx, "mirrored", ev->fsrv.glsource, top);
+				tblbool(ctx, "origo_ll", ev->fsrv.glsource, top);
 			break;
 		}
 
