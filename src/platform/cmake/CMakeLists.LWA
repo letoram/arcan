@@ -111,6 +111,10 @@ target_link_libraries(arcan_lwa
 	arcan_shmif_int
 )
 
+if (ARCAN_LNK_FLAGS)
+set_property(TARGET arcan_lwa APPEND PROPERTY LINK_FLAGS ${ARCAN_LNK_FLAGS})
+endif()
+
 target_compile_definitions(arcan_lwa PRIVATE
 	FRAMESERVER_MODESTRING=\"${FRAMESERVER_MODESTRING}\")
 
