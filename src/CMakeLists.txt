@@ -291,9 +291,9 @@ else()
 endif()
 
 #
-# the amalgamation is already included in the external/ tree
-# sqlite3 use is primarily settings management and very limited
-# amount of queries, size is more important here
+# the amalgamation is already included in the external/ tree sqlite3 use is
+# primarily settings management and very limited amount of queries, size is
+# more important here
 #
 if (STATIC_SQLITE3)
 	amsg("${CL_YEL}Building SQLite3 from external/sqlite mirror${CL_RST}")
@@ -440,10 +440,9 @@ set(ENGINE_BUILDTAG ${ENGINE_BUILDTAG}-${PFT}-${LUA_TAG})
 unset(PFT)
 
 #
-# Expand with more platforms as needed, all are expected to define
-# PLATFORM_[ ,fsrv, shmif]_SOURCES, add a global definition
-# for PLATFORM_HEADER add any OS- specific definitions to
-# ARCAN_LIBRARIES, set OS_DYLIB_EXTENSION
+# Expand with more platforms as needed, all are expected to define PLATFORM_[
+# ,fsrv, shmif]_SOURCES, add a global definition for PLATFORM_HEADER add any
+# OS- specific definitions to ARCAN_LIBRARIES, set OS_DYLIB_EXTENSION
 #
 if (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
 	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/CMakeLists.FreeBSD)
@@ -524,6 +523,7 @@ string(STRIP ${FRAMESERVER_MODESTRING} FRAMESERVER_MODESTRING)
 target_include_directories(arcan PRIVATE ${INCLUDE_DIRS})
 target_compile_definitions(arcan PRIVATE
 	${ARCAN_DEFINITIONS}
+	${ARCAN_NOLWA_DEFINITIONS}
 	FRAMESERVER_MODESTRING=\"${FRAMESERVER_MODESTRING}\"
 )
 

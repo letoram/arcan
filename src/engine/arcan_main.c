@@ -304,7 +304,16 @@ static void appl_user_warning(const char* name, const char* err_msg)
 	}
 }
 
-int main(int argc, char* argv[])
+/*
+ * needed to be able to shift entry points on a per- target basis in cmake
+ * (lwa/normal/sdl and other combinations all mess around with main as an entry
+ * point
+ */
+#ifndef MAIN_REDIR
+#define MAIN_REDIR main
+#endif
+
+int MAIN_REDIR(int argc, char* argv[])
 {
 	settings.in_monitor = getenv("ARCAN_MONITOR_FD") != NULL;
 	bool windowed = false;
