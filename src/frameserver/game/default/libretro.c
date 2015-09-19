@@ -267,6 +267,7 @@ static void resize_shmpage(int neww, int newh, bool first)
 
 #ifdef FRAMESERVER_LIBRETRO_3D
 	if (retroctx.rtgt){
+		retroctx.shmcont.rhints = RHINT_ORIGO_LL;
 		agp_resize_rendertarget(retroctx.rtgt, neww, newh);
 		retroctx.hwctx.context_reset();
 	}
