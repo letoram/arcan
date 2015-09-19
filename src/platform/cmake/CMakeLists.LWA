@@ -14,6 +14,11 @@
 # currently done by making a separate openal build where we patch
 # in the code needed for this.
 #
+# When audio is refactored in the same platform/etc. structure as was
+# done with video and agp, we'll have a soft- version with just basic
+# resampling (already here) and basic mixing (already here) and get rid
+# of the licensing pollution and overhead.
+#
 SET (ALPATCHES
 	${EXTERNAL_SRC_DIR}/patches/openal/0001-adding-arcan-shmif-support.patch
 	${EXTERNAL_SRC_DIR}/patches/openal/0002-arcan-shmif-backend-working.patch
@@ -32,11 +37,20 @@ ExternalProject_Add(openal_lwa
 	${CMAKE_EXTERNAL_DEFS}
 		-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
 		-DCMAKE_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/lwa
+    -DALSOFT_BACKEND_DSOUND=OFF
+    -DALSOFT_BACKEND_MMDEVAPI=OFF
+    -DALSOFT_BACKEND_JACK=OFF
+    -DALSOFT_BACKEND_COREAUDIO=OFF
+    -DALSOFT_BACKEND_OPENSL=OFF
 		-DALSOFT_BACKEND_ALSA=OFF
 		-DALSOFT_BACKEND_OSS=OFF
 		-DALSOFT_BACKEND_PULSEAUDIO=OFF
 		-DALSOFT_BACKEND_PORTAUDIO=OFF
+		-DALSOFT_BACKEND_SOLARIS=OFF
+		-DALSOFT_BACKEND_SNDIO=OFF
+		-DALSOFT_BACKEND_QSA=OFF
 		-DALSOFT_BACKEND_WAVE=OFF
+		-DALSOFT_BACKEND_WINMM=OFF
 		-DALSOFT_MIDI_FLUIDSYNTH=OFF
 		-DALSOFT_BACKEND_ARCAN=ON
 		-DALSOFT_REQUIRE_ARCAN=ON
@@ -96,5 +110,8 @@ target_link_libraries(arcan_lwa
 	${HEADLESS_LIBRARIES}
 	arcan_shmif_int
 )
+
+target_compile_definitions(arcan_lwa PRIVATE
+	FRAMESERVER_MODESTRING=\"${FRAMESERVER_MODESTRING}\")
 
 install(TARGETS arcan_lwa DESTINATION bin)

@@ -598,8 +598,10 @@ void platform_input_help()
 {
 }
 
-void platform_event_keyrepeat(arcan_evctx* ctx, unsigned rate)
+void platform_event_keyrepeat(arcan_evctx* ctx, int* period, int* delay)
 {
+	*period = 0;
+	*delay = 0;
 /* in principle, we could use the tick, implied in _process,
  * track the latest input event that corresponded to a translated
  * keyboard device (track per devid) and emit that every oh so often */

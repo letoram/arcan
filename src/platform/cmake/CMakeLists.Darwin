@@ -61,9 +61,8 @@ set(MAN_DEST ${CMAKE_INSTALL_PREFIX}/man/man1)
 set_property(SOURCE ${PLATFORM_PATH}/map_resource.c
 				PROPERTY COMPILE_FLAGS -DMAP_FILE=0)
 
-# note; for SDL only
-set_property(SOURCE ${CMAKE_SOURCE_DIR}/engine/arcan_main.c
-				PROPERTY COMPILE_FLAGS -Dmain=SDL_main)
+# doing like this as we don't want or
+set(ARCAN_NOLWA_DEFINITIONS MAIN_REDIR=SDL_main)
 
 LIST(APPEND MAIN_LIBRARIES ${IOKIT} ${COREFOUNDATION})
 LIST(APPEND LWA_LIBRARIES ${COCOA} ${COREAUDIO} ${AUDIOTOOLBOX} ${AUDIOUNIT})
@@ -120,7 +119,7 @@ set (LWA_PLATFORM_SOURCES
 	${SHMIF_SOURCES}
 	${PLATFORM_SOURCES}
 	${PLATFORM_PATH}/../arcan/video.c
-	${PLATFORM_PATH}/../darwin/SDLMain_fsrv.m
+#	${PLATFORM_PATH}/../darwin/SDLMain_fsrv.m
 )
 
 # we don't want these coming along in LWA_PLATFORM
