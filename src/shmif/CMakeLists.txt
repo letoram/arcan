@@ -29,6 +29,8 @@ else()
 	set(ASHMIF_STDLIB -lrt)
 endif()
 
+set(ASHMIF_INSTPATH lib/arcan)
+
 set (SHMIF_HEADERS
 	${ASD}/shmif/arcan_shmif_control.h
 	${ASD}/shmif/arcan_shmif_interop.h
@@ -63,6 +65,7 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 		${ASD}/platform/darwin/sem.c
 		${ASD}/platform/posix/fdpassing.c
 	)
+	set(ASHMIF_INSTPATH lib)
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 # missing at the moment
 else()
@@ -94,8 +97,8 @@ target_include_directories(arcan_shmif PRIVATE ${ASD}/shmif)
 
 if (NOT ARCAN_SOURCE_DIR)
 	install(TARGETS arcan_shmif arcan_shmif_int
-		LIBRARY DESTINATION lib/arcan
-		ARCHIVE DESTINATION lib/arcan
+		LIBRARY DESTINATION ${ASHMIF_INSTPATH}
+		ARCHIVE DESTINATION ${ASHMIF_INSTPATH}
 	)
 	install(FILES ${SHMIF_HEADERS} DESTINATION include/arcan/shmif)
 
