@@ -23,7 +23,6 @@ SET (ALPATCHES
 	${EXTERNAL_SRC_DIR}/patches/openal/0001-adding-arcan-shmif-support.patch
 	${EXTERNAL_SRC_DIR}/patches/openal/0002-arcan-shmif-backend-working.patch
 )
-get_property(ASHMIF_INT_LOC TARGET arcan_shmif_int PROPERTY LOCATION)
 #
 # Note the || echo "" on the PATCH_COMMAND line, it was added to have
 # cmake IGNORE the return status of the git am command as when the patches
@@ -58,7 +57,7 @@ ExternalProject_Add(openal_lwa
 		-DALSOFT_DLOPEN=OFF
 		-DALSOFT_UTILS=OFF
 		-DALSOFT_CONFIG=OFF
-		-DARCAN_SHMIF_LIB=${ASHMIF_INT_LOC}
+		-DARCAN_SHMIF_LIB=$<arcan_shmif_int>
 		-DARCAN_SHMIF_PATH=${CMAKE_CURRENT_SOURCE_DIR}/shmif
 )
 
@@ -99,7 +98,7 @@ if(STATIC_FREETYPE)
 	add_dependencies(arcan_lwa Freetype)
 endif()
 
-add_dependencies(arcan_lwa openal_soft)
+add_dependencies(arcan_lwa openal_lwa)
 
 target_include_directories(arcan_lwa PRIVATE ${INCLUDE_DIRS})
 target_link_libraries(arcan_lwa

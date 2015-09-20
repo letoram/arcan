@@ -27,7 +27,7 @@ static void vcodec_defaults(struct codec_ent* dst, unsigned width,
 	ctx->width     = width;
 	ctx->height    = height;
 	ctx->bit_rate  = vbr;
-	ctx->pix_fmt   = PIX_FMT_YUV420P;
+	ctx->pix_fmt   = AV_PIX_FMT_YUV420P;
 	ctx->gop_size  = 12;
 	ctx->time_base.den = fps;
 	ctx->time_base.num = 1;
@@ -282,19 +282,19 @@ static struct codec_ent vcodec_tbl[] = {
 	{.kind = CODEC_VIDEO,
 					.name = "libvpx",
 					.shortname = "VP8",
-					.id = CODEC_ID_VP8,
+					.id = AV_CODEC_ID_VP8,
 					.setup.video = setup_cb_vp8},
 
 	{.kind = CODEC_VIDEO,
 					.name = "libx264",
 					.shortname = "H264",
-					.id = CODEC_ID_H264,
+					.id = AV_CODEC_ID_H264,
 					.setup.video = setup_cb_x264},
 
 	{.kind = CODEC_VIDEO,
 				 	.name = "ffv1",
 					.shortname = "FFV1",
-				 	.id = CODEC_ID_FFV1,
+				 	.id = AV_CODEC_ID_FFV1,
 				 	.setup.video = default_vcodec_setup },
 };
 
@@ -313,13 +313,13 @@ static struct codec_ent acodec_tbl[] = {
 	{.kind = CODEC_AUDIO,
 					.name = "flac",
 					.shortname = "FLAC",
-			 		.id = CODEC_ID_FLAC,
+			 		.id = AV_CODEC_ID_FLAC,
 				 	.setup.audio = default_acodec_setup},
 
 	{.kind = CODEC_AUDIO,
 				 	.name = "aac",
 	 				.shortname = "AAC",
-					.id = CODEC_ID_AAC,
+					.id = AV_CODEC_ID_AAC,
 					.setup.audio = default_acodec_setup},
 
 	{.kind = CODEC_AUDIO,
