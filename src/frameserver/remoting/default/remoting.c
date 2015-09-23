@@ -16,15 +16,38 @@
 #include <sys/types.h>
 #include <stddef.h>
 #include <pthread.h>
+#include <sys/poll.h>
+#include <errno.h>
 
+/*
+ * some ports for vncserver install endian.h that push out an annoying warning
+ */
+#ifdef __APPLE__
+#define APPLE
+#endif
 #include <rfb/rfbclient.h>
 #include <rfb/rfb.h>
 
 #include "arcan_shmif.h"
 #include "frameserver.h"
 #include "xsymconv.h"
+
 /*
-*/
+ * missing:
+ *  cut and paste (GotXCutTextProc), sending receiving files
+ *  connecting through incoming descriptor
+ *  partial updates
+ *  polling / multi
+ *  labels
+ *  xvb -> force reset (extension)
+ *  ExtendedDesktopSize -> respond to displayhints with SetDesktopSize
+ *  HandleTextChatProc
+ *  FinishedFramebuffferUpdateProc
+ *  rfbRegisterTightVNCFileTransferExtension()
+ *  desktopName propagation
+ *  specifyEncodingType
+ */
+
 static struct {
 	struct arcan_shmif_cont shmcont;
 	char* pass;
@@ -58,6 +81,8 @@ static rfbBool client_resize(struct _rfbClient* client)
 			"accepted dimensions (%d, %d)\n", neww, newh);
 		return false;
 	}
+	else
+		LOG("client resize to %d, %d\n", neww, newh);
 
 	client->frameBuffer = (uint8_t*) vncctx.shmcont.vidp;
 	SetFormatAndEncodings(client);
@@ -184,6 +209,8 @@ static void map_cl_input(arcan_ioevent* ioev)
 
 		SendKeyEvent(vncctx.client, kv, ioev->input.translated.active);
 	}
+/* just use one of the first four buttons of any device, not necessarily
+ * a mouse */
 	else if (ioev->datatype == EVENT_IDATATYPE_DIGITAL){
 		int btn = ioev->input.digital.subid;
 		int value = 0;
@@ -194,7 +221,8 @@ static void map_cl_input(arcan_ioevent* ioev)
 		bmask = ioev->input.digital.active ? bmask | value : bmask & ~value;
 		SendPointerEvent(vncctx.client, mx, my, bmask);
 	}
-	else if (ioev->datatype == EVENT_IDATATYPE_ANALOG){
+	else if (ioev->datatype == EVENT_IDATATYPE_ANALOG &&
+		ioev->devkind == EVENT_IDEVKIND_MOUSE){
 		if (ioev->input.analog.subid == 0)
 			mx = ioev->input.analog.axisval[0];
 		else if (ioev->input.analog.subid == 1)
@@ -223,6 +251,38 @@ static void dump_help()
 		" port    \t portnum   \t use the specified port for connecting\n"
 		"---------\t-----------\t----------------\n"
 	);
+}
+
+bool process_shmif()
+{
+	arcan_event inev;
+
+	while (arcan_shmif_poll(&vncctx.shmcont, &inev) > 0){
+		if (inev.category == EVENT_TARGET)
+			switch(inev.tgt.kind){
+			case TARGET_COMMAND_STEPFRAME:
+				SendFramebufferUpdateRequest(vncctx.client, 0, 0,
+					vncctx.shmcont.addr->w, vncctx.shmcont.addr->h, FALSE);
+			break;
+
+			case TARGET_COMMAND_EXIT:
+				return false;
+
+			case TARGET_COMMAND_RESET:
+				cl_unstick();
+			break;
+
+			default:
+				LOG("unhandled target event (%d:%s)\n",
+					inev.tgt.kind, arcan_shmif_eventstr(&inev, NULL, 0));
+			}
+			else if (inev.category == EVENT_IO)
+				map_cl_input(&inev.io);
+			else
+				LOG("unhandled event (%d:%s)\n", inev.tgt.kind,
+					arcan_shmif_eventstr(&inev, NULL, 0));
+		}
+	return true;
 }
 
 int afsrv_remoting(struct arcan_shmif_cont* con, struct arg_arr* args)
@@ -255,78 +315,61 @@ int afsrv_remoting(struct arcan_shmif_cont* con, struct arg_arr* args)
 	if (!client_connect(host, port))
 		return EXIT_FAILURE;
 
+	arcan_event ev_cfail = {
+		.category = EVENT_EXTERNAL,
+		.ext.kind = ARCAN_EVENT(FAILURE),
+		.ext.message = "(01) server connection broken"
+	};
+
 	vncctx.client->frameBuffer = (uint8_t*) vncctx.shmcont.vidp;
 	atexit( cleanup );
 
+	short poller = POLLERR | POLLHUP | POLLNVAL;
+	short pollev = POLLIN | poller;
+
 	while (true){
-		int rc = WaitForMessage(vncctx.client, 100);
-		if (-1 == rc){
-			arcan_event outev = {
-				.category = EVENT_EXTERNAL,
-				.ext.kind = ARCAN_EVENT(FAILURE),
-				.ext.message = "(01) server connection broken"
-			};
-
-			arcan_shmif_enqueue(&vncctx.shmcont, &outev);
-			break;
-		}
-
-		if (rc > 0)
-			if (!HandleRFBServerMessage(vncctx.client)){
-				arcan_event outev = {
-					.category = EVENT_EXTERNAL,
-					.ext.kind = ARCAN_EVENT(FAILURE),
-					.ext.message = "(02) couldn't parse server message"
-				};
-
-				arcan_shmif_enqueue(&vncctx.shmcont, &outev);
-				break;
-			}
-
+/* no obvious way to make vncclient set full alpha channel without modifying
+ * source code, and that means pulling it in and patching in the build system,
+ * so for now, take the suboptimal "flip alpha on" */
 		if (vncctx.dirty){
 			vncctx.dirty = false;
-/*
- * couldn't find a decent flag to set this in
- * the first draw batch unfortunately
- */
-			int nb = vncctx.shmcont.addr->w * vncctx.shmcont.addr->h *
-				ARCAN_SHMPAGE_VCHANNELS;
-
-			for (int ofs = ARCAN_SHMPAGE_VCHANNELS-1;
-				ofs < nb; ofs += ARCAN_SHMPAGE_VCHANNELS)
-				vncctx.shmcont.vidp[ofs] = 0xff;
+			shmif_pixel* avp = vncctx.shmcont.vidp;
+			size_t ntc = vncctx.shmcont.pitch * vncctx.shmcont.h;
+			for (size_t i = 0; i < ntc; i++)
+				avp[i] |= RGBA(0x00, 0x00, 0x00, 0xff);
 
 			arcan_shmif_signal(&vncctx.shmcont, SHMIF_SIGVID);
 		}
 
-		arcan_event inev;
-		while (arcan_shmif_poll(&vncctx.shmcont, &inev) > 0){
-			if (inev.category == EVENT_TARGET)
-				switch(inev.tgt.kind){
-				case TARGET_COMMAND_STEPFRAME:
-					SendFramebufferUpdateRequest(vncctx.client, 0, 0,
-						vncctx.shmcont.addr->w, vncctx.shmcont.addr->h, FALSE);
-				break;
+		struct pollfd fds[2] = {
+			{	.fd = vncctx.client->sock, .events = pollev},
+			{ .fd = vncctx.shmcont.epipe, .events = pollev}
+		};
 
-				case TARGET_COMMAND_EXIT:
-					return EXIT_SUCCESS;
+		int sv = poll(fds, 2, 16);
+		if (0 == sv)
+			continue;
 
-				case TARGET_COMMAND_RESET:
-					cl_unstick();
-				break;
-
-				default:
-					LOG("unhandled target event (%d)\n", inev.tgt.kind);
-				}
-			else if (inev.category == EVENT_IO)
-				map_cl_input(&inev.io);
+		if (-1 == sv){
+			if (errno == EINTR || errno == EAGAIN)
+				continue;
 			else
-				LOG("unhandled event (%d:%d)\n", inev.tgt.kind, inev.category);
+				break;
 		}
-/* map input for mouse motion, keyboard, exit etc.
- * use SendKeyEvent for that, need translation table
- */
-	}
 
+		if ( ((fds[0].revents & POLLIN) && !HandleRFBServerMessage(vncctx.client))
+			|| (fds[0].revents & poller)){
+			arcan_shmif_enqueue(&vncctx.shmcont, &ev_cfail);
+			arcan_shmif_drop(&vncctx.shmcont);
+			break;
+		}
+
+		if ( ((fds[1].revents & POLLIN) && !process_shmif()) ||
+			(fds[1].revents & poller)){
+			process_shmif();
+			break;
+		}
+	}
+/* shutdown */
 	return EXIT_SUCCESS;
 }
