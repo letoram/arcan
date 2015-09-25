@@ -165,6 +165,11 @@ struct arcan_strarr arcan_db_getkeys(struct arcan_dbh*,
 	enum DB_KVTARGET, union arcan_dbtrans_id);
 
 /*
+ * get a copy of the executable associated with a specific target
+ */
+char* arcan_db_execname(struct arcan_dbh* dbh, arcan_targetid tid);
+
+/*
  * return a list of id:value strings for configurations or targets
  * that match pattern.
  */

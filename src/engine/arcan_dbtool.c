@@ -324,7 +324,10 @@ static int dump_target(struct arcan_dbh* dbh, int argc, char** argv)
 		return EXIT_FAILURE;
 	}
 
-	printf("target (%s)\nconfigurations:\n", argv[0]);
+	char* exec = arcan_db_execname(dbh, id.tid);
+
+	printf("target (%s)\nexecutable:%s\nconfigurations:\n", argv[0],
+		exec ? exec : "(none)");
 	char** curr = res.data;
 	while(*curr)
 		printf("\t%s\n", *curr++);
@@ -345,6 +348,7 @@ static int dump_target(struct arcan_dbh* dbh, int argc, char** argv)
 	arcan_mem_freearr(&res);
 	printf("\n");
 
+	free(exec);
 	return EXIT_SUCCESS;
 }
 
