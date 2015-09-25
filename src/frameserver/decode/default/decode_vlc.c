@@ -252,7 +252,6 @@ static void push_streamstatus()
 
 static void player_event(const struct libvlc_event_t* event, void* ud)
 {
-
 	switch(event->type){
 	case libvlc_MediaPlayerPlaying:
 	break;
@@ -393,11 +392,18 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 	}
 
 	decctx.shmcont = *cont;
+	setenv("VLC_PLUGIN_PATH", "/usr/local/lib/vlc/plugin", 0);
 
 /* decode external arguments, map the necessary ones to VLC */
 	const char* val;
-
-	decctx.vlc = libvlc_new(0, NULL);
+	char const* vargs[] = {
+		"--no-xlib",
+//		"--verbose", "3",
+		"--vout", "vmem",
+		"--intf", "dummy",
+		"--aout", "amem"
+	};
+	decctx.vlc = libvlc_new(sizeof(vargs)/sizeof(vargs[0]), vargs);
   if (decctx.vlc == NULL){
   	LOG("Couldn't initialize VLC session, giving up.\n");
     return EXIT_FAILURE;
