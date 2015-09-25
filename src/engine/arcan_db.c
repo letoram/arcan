@@ -153,6 +153,7 @@ static struct arcan_strarr db_string_query(struct arcan_dbh* dbh,
 		res.data[res.count++] = (arg ? strdup(arg) : NULL);
 	}
 
+	sqlite3_finalize(stmt);
 	return res;
 }
 
@@ -558,6 +559,23 @@ struct arcan_strarr arcan_db_configs(struct arcan_dbh* dbh, arcan_targetid tid)
 	sqlite3_bind_int(stmt, 1, tid);
 
 	return db_string_query(dbh, stmt, NULL, 0);
+}
+
+char* arcan_db_execname(struct arcan_dbh* dbh, arcan_targetid tid)
+{
+	static const char dql[] = "SELECT executable FROM target WHERE tgtid = ?;";
+	sqlite3_stmt* stmt;
+	sqlite3_prepare_v2(dbh->dbh, dql, sizeof(dql)-1, &stmt, NULL);
+	sqlite3_bind_int(stmt, 1, tid);
+
+	char* res = NULL;
+	if (sqlite3_step(stmt) == SQLITE_ROW) {
+		const unsigned char* arg = sqlite3_column_text(stmt, 0);
+		res = arg ? strdup((char*)arg) : NULL;
+	}
+
+	sqlite3_finalize(stmt);
+	return res;
 }
 
 void arcan_db_begin_transaction(struct arcan_dbh* dbh,
