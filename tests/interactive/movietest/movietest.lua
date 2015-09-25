@@ -37,12 +37,11 @@ function movietest()
 
 	webcam_ind = 0
 
-	vid = load_movie("movietest.avi",
+	vid = launch_decode("movietest.avi",
 	function(source, statustbl)
 		if (statustbl.kind == "resized") then
 			show_image(source)
 			resize_image(source, statustbl.width, statustbl.height);
-			play_movie(source);
 		end
 	end);
 	img.last = vid;
