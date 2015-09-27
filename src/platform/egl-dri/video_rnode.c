@@ -41,6 +41,9 @@
 #define EVAL(X,Y) MERGE(X,Y)
 #define PLATFORM_SYMBOL(fun) EVAL(PLATFORM_SUFFIX, fun)
 
+static PFNEGLCREATEIMAGEKHRPROC create_image;
+static PFNEGLEXPORTDRMIMAGEMESAPROC export_drm_image;
+
 static char* rnode_envopts[] = {
 	"ARCAN_VIDEO_NODE=/dev/dri/renderD128", "specify render-node",
 	"ARCAN_VIDEO_FDPASS", "set to use in-GPU buffer transfers to parent",
@@ -50,6 +53,14 @@ static char* rnode_envopts[] = {
 	"GALLIUM_LOG_FILE", "Gallium driver status output",
 	NULL
 };
+
+static void map_extensions()
+{
+	create_image = (PFNEGLCREATEIMAGEKHRPROC)
+		eglGetProcAddress("eglCreateImageKHR");
+	export_drm_image = (PFNEGLEXPORTDRMIMAGEMESAPROC)
+		eglGetProcAddress("eglExportDRMImageMESA");
+}
 
 static const char* egl_errstr()
 {
@@ -135,12 +146,12 @@ int64_t PLATFORM_SYMBOL(_output_handle)(
 	int32_t fd = -1;
 	intptr_t descr = store->vinf.text.glid;
 
-	rnode.output = eglCreateImageKHR(rnode.display,
+	rnode.output = create_image(rnode.display,
 		rnode.context, EGL_GL_TEXTURE_2D_KHR, (EGLClientBuffer)(descr), NULL);
 
 	EGLint name, handle, stride;
 
-	if (eglExportDRMImageMESA(rnode.display, rnode.output,
+	if (export_drm_image(rnode.display, rnode.output,
 		&name, &handle, &stride)){
 		drmPrimeHandleToFD(rnode.fd, handle, DRM_CLOEXEC, &fd);
 		*status = READY_TRANSFER;
@@ -260,7 +271,7 @@ bool PLATFORM_SYMBOL(_video_init)(uint16_t w, uint16_t h,
  * world- fbo mechanism for that indirectly in the arcan-in-arcan
  * platform.
  */
-
+	map_extensions();
 	eglMakeCurrent(rnode.display, NULL, NULL, rnode.context);
 
 	return true;

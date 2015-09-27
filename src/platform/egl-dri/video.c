@@ -442,7 +442,7 @@ bool platform_video_display_edid(platform_display_id did,
 		if ((prop->flags & DRM_MODE_PROP_BLOB) &&
 			0 == strcmp(prop->name, "EDID")){
 			drmModePropertyBlobPtr blob =
-				drmModeGetPropertyBlob(d->device->fd, d->display.con->props[i]);
+				drmModeGetPropertyBlob(d->device->fd, d->display.con->prop_values[i]);
 
 			if (blob && blob->length > 0){
 				*out = malloc(blob->length);
