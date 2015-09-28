@@ -207,13 +207,17 @@ bool arcan_verify_namespaces(bool report)
 /* could / should do a more rigorous test of the corresponding afsrv, e.g.
  * executable, permission and linked shmif version */
 			atypestr[0] = '\0';
+			bool first = true;
 			do{
 				char* fn;
 				char exp[2 + baselen + strlen(tok)];
 				snprintf(exp, sizeof(exp), "%s_%s", base, tok);
 				if (arcan_isfile(exp)){
+					if (!first){
+						strcat(atypestr, " ");
+					}
 					strcat(atypestr, tok);
-					strcat(atypestr, " ");
+					first = false;
 				}
 			} while ((tok = strtok_r(NULL, " ", &tokctx)));
 

@@ -9,46 +9,38 @@
  * (currently a bit careful spending more time here pending the
  * development of vulcan, nvidia egl streams extension etc.)
  *
- * 1. display hotplug events [ note update: we seem again to be forced to
- * consider the whole udev/.. mess, have the display scan be user- invoked for
- * now and look into the design of a better device-detection+ shared
- * synchronization platform rather than have a custom one in each sub-platform.
- * ]
+ * 0. _prepare _restore external support, currently there are a number of
+ * related bugs and races that can be triggered with VT switching that tells us
+ * the _agp layer and our rebuilding/reinit is incomplete.
  *
- *    shallow experiments in the lab showed somewhere around ~150ms complete
- *    stalls for a rescan so that is not really a viable option. one would
- *    thing that there would be some mechanism for the drm- master to do this
- *    already.
+ * 1. <Zero Connector mode> This one is quite heavy, due to the way EGL and
+ * friends are integrated the current case with all displays being removed
  *
- * 2. support for multiple graphics cards, i have no hardware and testing rig
- * for this, but the heavy lifting should be left up to the egl implementation
- * or so, maybe we need to track locality in vstore and do a whole prime-buffer
- * etc. transfer or mirror the vstore on both devices. hunt for node[0]
- * references as those have to be fixed.
+ * 2. Multiple graphics cards and hotplugging graphics cards Bonus points for
+ * surviving VT switch, moving all displays to a new plugged GPU, VT switch
+ * back and everything remapped correctly.
  *
- *    in addition (and this is harder) we would need some kind of hinting to
- *    which render-node which application should map to and also support
- *    migrating between nodes. platform design currently has no way to achieve
- *    this.
+ * 3. Backlight support by improving the old murky _led codebase
  *
- * 3. support for external launch / building, restoring contexts
- *    note the test cases mentioned in _prepare. Also need a handler for
- *    virtual terminal switching: drop_master, VT_RELDISP along VT_SETMODE
- *    where vt_mode is passed with signal for switching
- *
- * 4. backlight? backlight support should really be added as yet another led
- * driver, that code is a bit old and dusty though so there is incentive to
- * redesign that anyhow (so both dedicated led controllers, backlights and
- * keyboards are covered in the same interface).
- *
- * 5. advanced synchronization options (swap-interval, synch directly to front
+ * 4. advanced synchronization options (swap-interval, synch directly to front
  * buffer, swap-with-tear, pre-render then wake / move cursor just before
  * etc.), discard when we miss deadline, drm_vblank_relative,
- * drm_vblank_secondary?
+ * drm_vblank_secondary - also try synch strategy on a per display basis.
+ */
+
+/*
+ * Notes on hotplug / hotremoval: We are quite adamant in staying away from
+ * pulling in a nasty dependency like udev into the platform build, but it
+ * seems like the libdrm interface fails to provide a polling mechanism for
+ * display changes, and that CRTC scanning is very costly (hundreds of
+ * miliseconds)
  *
- * 6. Survive "no output display" (possibly by reverting into a stall/wait
- * until the display is made available, or switch to a display-less context)
-_id */
+ * the current concession is that this is something that is up to the appl to
+ * decide if it should be exposed or not. As an example, 'durden' has its
+ * _cmd fifo for that purpose.
+ *
+ */
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -75,8 +67,9 @@ _id */
 #include <EGL/eglext.h>
 
 /*
- * Any way to evict the xf86 dependency, in the dream scenario
- * where we can get away without having the thing installed AT ALL?
+ * Other refactoring project -- see if we can extract out what we need from
+ * libdrm etc. without pulling in xlib, xcb and everything else that world
+ * has to offer.
  */
 #include <xf86drm.h>
 #include <xf86drmMode.h>
@@ -128,11 +121,19 @@ enum {
 struct dev_node {
 	int fd;
 	int refc;
+	uint32_t crtc_alloc;
 	struct gbm_device* gbm;
 
 	EGLConfig config;
 	EGLContext context;
 	EGLDisplay display;
+};
+
+enum disp_state {
+	DISP_UNUSED = 0,
+	DISP_KNOWN = 1,
+	DISP_MAPPED = 2,
+	DISP_CLEANUP = 3
 };
 
 /*
@@ -158,13 +159,15 @@ struct dispout {
 	} buffer;
 
 	struct {
-		bool ready, reset_mode;
+		bool reset_mode;
 		drmModeConnector* con;
 		uint32_t con_id;
 		drmModeModeInfoPtr mode;
 		drmModeCrtcPtr old_crtc;
 		int crtc;
 		enum dpms_state dpms;
+		char* edid_blob;
+		size_t blob_sz;
 	} display;
 
 /* v-store mapping, with texture blitting options and possibly mapping hint */
@@ -173,7 +176,8 @@ struct dispout {
 	_Alignas(16) float projection[16];
 	_Alignas(16) float txcos[8];
 
-	bool alive, in_cleanup;
+	enum disp_state state;
+	platform_display_id id;
 };
 
 static struct {
@@ -182,45 +186,32 @@ static struct {
 } egl_dri;
 
 #ifndef MAX_DISPLAYS
-#define MAX_DISPLAYS 8
+#define MAX_DISPLAYS 16
 #endif
 
 static struct dispout displays[MAX_DISPLAYS];
-const size_t disp_sz = sizeof(displays) / sizeof(displays[0]);
-const size_t id_blk_sz = 100;
 
 static struct dispout* allocate_display(struct dev_node* node)
 {
-	for (size_t i = 0; i < sizeof(displays)/sizeof(displays[0]); i++)
-		if (displays[i].alive == false){
+	for (size_t i = 0; i < MAX_DISPLAYS; i++){
+		if (displays[i].state == DISP_UNUSED){
 			displays[i].device = node;
+			displays[i].id = i;
 			node->refc++;
-			displays[i].alive = true;
+			displays[i].state = DISP_KNOWN;
 			return &displays[i];
 		}
+	}
 
 	return NULL;
 }
 
-/*
- * get device by index or by device + connector_id
- */
 static struct dispout* get_display(size_t index)
 {
-	if (index > disp_sz){
-		index = (index - disp_sz) / id_blk_sz;
-	}
-
-	for (size_t i = 0; i < MAX_DISPLAYS; i++){
-		if (displays[i].alive){
-			if (index == 0)
-				return &displays[i];
-			else
-				index--;
-		}
-	}
-
-	return NULL;
+	if (index >= MAX_DISPLAYS)
+		return NULL;
+	else
+		return &displays[index];
 }
 
 static int adpms_to_dpms(enum dpms_state state)
@@ -373,7 +364,7 @@ bool platform_video_set_mode(platform_display_id disp, platform_mode_id mode)
 {
 	struct dispout* d = get_display(disp);
 
-	if (!d || mode >= d->display.con->count_modes)
+	if (!d || d->state != DISP_MAPPED || mode >= d->display.con->count_modes)
 		return false;
 
 	if (d->display.mode == &d->display.con->modes[mode])
@@ -396,7 +387,7 @@ bool platform_video_set_mode(platform_display_id disp, platform_mode_id mode)
 		d->buffer.next_bo = NULL;
 	}
 */
-	d->in_cleanup = true;
+	d->state = DISP_CLEANUP;
 	eglDestroySurface(d->device->display, d->buffer.esurf);
 
 /*
@@ -417,7 +408,7 @@ bool platform_video_set_mode(platform_display_id disp, platform_mode_id mode)
  * setup / allocate a new set of buffers that match the new mode
  */
 	setup_buffers(d);
-	d->in_cleanup = false;
+	d->state = DISP_MAPPED;
 
 	return true;
 }
@@ -429,35 +420,16 @@ bool platform_video_display_edid(platform_display_id did,
 	*out = NULL;
 	*sz = 0;
 
-	if (!d)
-		return false;
-
-	bool done = false;
-	drmModePropertyPtr prop;
-	for (size_t i = 0; i < d->display.con->count_props && !done; i++){
-		prop = drmModeGetProperty(d->device->fd, d->display.con->props[i]);
-		if (!prop)
-			continue;
-
-		if ((prop->flags & DRM_MODE_PROP_BLOB) &&
-			0 == strcmp(prop->name, "EDID")){
-			drmModePropertyBlobPtr blob =
-				drmModeGetPropertyBlob(d->device->fd, d->display.con->prop_values[i]);
-
-			if (blob && blob->length > 0){
-				*out = malloc(blob->length);
-				if (*out){
-					memcpy(*out, blob->data, blob->length);
-					*sz = blob->length;
-					done = true;
-				}
-				drmModeFreePropertyBlob(blob);
-			}
+	if (d->display.edid_blob){
+		*sz = 0;
+		*out = malloc(d->display.blob_sz);
+		if (*out){
+			*sz = d->display.blob_sz;
+			memcpy(*out, d->display.edid_blob, d->display.blob_sz);
 		}
-		drmModeFreeProperty(prop);
+		return true;
 	}
-
-	return done;
+	return false;
 }
 
 /*
@@ -984,6 +956,9 @@ retry:
 		return -1;
 	}
 
+/* for the default case we don't have a connector, but for
+ * newly detected displays we store / reserve */
+	if (!d->display.con)
 	for (int i = 0; i < res->count_connectors; i++){
 		d->display.con = drmModeGetConnector(d->device->fd, res->connectors[i]);
 
@@ -1052,7 +1027,37 @@ retry:
 		0, d->display.mode->hdisplay, d->display.mode->vdisplay, 0, 0, 1);
 
 /*
- * find encoder and use that to grab CRTC
+ * grab any EDID data now as we've had issues trying to query it on some
+ * displays later while buffers etc. are queued(?)
+ */
+	drmModePropertyPtr prop;
+	bool done;
+	for (size_t i = 0; i < d->display.con->count_props && !done; i++){
+		prop = drmModeGetProperty(d->device->fd, d->display.con->props[i]);
+		if (!prop)
+			continue;
+
+		if ((prop->flags & DRM_MODE_PROP_BLOB) &&
+			0 == strcmp(prop->name, "EDID")){
+			drmModePropertyBlobPtr blob =
+				drmModeGetPropertyBlob(d->device->fd, d->display.con->prop_values[i]);
+
+			if (blob && blob->length > 0){
+				d->display.edid_blob = malloc(blob->length);
+				if (d->display.edid_blob){
+					d->display.blob_sz = blob->length;
+					memcpy(d->display.edid_blob, blob->data, blob->length);
+					done = true;
+				}
+			}
+			drmModeFreePropertyBlob(blob);
+		}
+		drmModeFreeProperty(prop);
+	}
+
+/*
+ * find encoder and use that to grab CRTC, question is if we need to track
+ * encoder use as well or the crtc_alloc is sufficient.
  */
 	SET_SEGV_MSG("libdrm(), setting matching encoder failed.\n");
 	bool crtc_found = false;
@@ -1066,10 +1071,14 @@ retry:
 			if (!(enc->possible_crtcs & (1 << j)))
 				continue;
 
-			d->display.crtc = res->crtcs[j];
-			i = res->count_encoders;
-			crtc_found = true;
-			break;
+			if (!(d->device->crtc_alloc & (1 << res->crtcs[j]))){
+				d->display.crtc = res->crtcs[j];
+				d->device->crtc_alloc |= 1 << res->crtcs[j];
+				crtc_found = true;
+				i = res->count_encoders;
+				break;
+			}
+
 		}
 	}
 
@@ -1151,29 +1160,15 @@ struct monitor_mode* platform_video_query_modes(
 {
 	bool free_conn = false;
 
-	drmModeConnector* conn;
-	drmModeRes* res;
+	struct dispout* d = get_display(id);
+	if (!d || d->state == DISP_UNUSED)
+		return NULL;
 
-	if (id >= disp_sz){
-		id -= disp_sz;
-		res = drmModeGetResources(nodes[0].fd);
-		if (!res)
-			return NULL;
-
-		conn = drmModeGetConnector(nodes[0].fd, id);
-		free_conn = true;
-	}
-	else {
-		struct dispout* d = get_display(id);
-		if (!d)
-			return NULL;
-		conn = d->display.con;
-	}
+	drmModeConnector* conn = d->display.con;
+	drmModeRes* res = drmModeGetResources(d->device->fd);
 
 	static struct monitor_mode* mcache;
 	static size_t mcache_sz;
-
-	*count = 0;
 
 	*count = conn->count_modes;
 
@@ -1201,24 +1196,21 @@ struct monitor_mode* platform_video_query_modes(
 		mcache[i].depth = sizeof(av_pixel) * 8;
 	}
 
-	if (free_conn){
-		drmModeFreeConnector(conn);
-		drmModeFreeResources(res);
-	}
-
 	return mcache;
 }
 
-static struct dispout* match_connector(int fd, drmModeConnector* con, int* id)
+static struct dispout* match_connector(int fd, drmModeConnector* con)
 {
 	int j = 0;
 
-	for (struct dispout* d; (d = get_display(j++));){
+	for (size_t i=0; i < MAX_DISPLAYS; i++){
+		struct dispout* d = &displays[i];
+		if (d->state == DISP_UNUSED)
+			continue;
+
 		if (d->device->fd == fd &&
-			d->display.con->connector_id == con->connector_id){
-				*id = j-1;
+			d->display.con->connector_id == con->connector_id)
 				return d;
-			}
 	}
 
 	return NULL;
@@ -1248,28 +1240,39 @@ void platform_video_query_displays()
 			res->connectors[i]);
 
 		int id;
-		struct dispout* d = match_connector(nodes[0].fd, con, &id);
+		struct dispout* d = match_connector(nodes[0].fd, con);
 
 		if (con->connection == DRM_MODE_CONNECTED){
-/* already known? then ignore */
-			if (d)
+			if (d){
+				drmModeFreeConnector(con);
 				continue;
+			}
+
+/* allocate display and mark as known but not mapped, give up
+ * if we're out of display slots */
+			d = allocate_display(&nodes[0]);
+			if (!d)
+				break;
+			d->display.con = con;
+			d->display.con_id = d->display.con->connector_id;
 
 			arcan_event ev = {
 				.category = EVENT_VIDEO,
 				.vid.kind = EVENT_VIDEO_DISPLAY_ADDED,
-				.vid.source = disp_sz + (id * id_blk_sz) + con->connector_id
+				.vid.source = d->id
 			};
 			arcan_event_enqueue(arcan_event_defaultctx(), &ev);
+			continue; /* don't want to free con */
 		}
 		else {
 /* only event-notify known displays */
 			if (d){
+				platform_display_id id = d->id;
 				disable_display(d);
 				arcan_event ev = {
 					.category = EVENT_VIDEO,
 					.vid.kind = EVENT_VIDEO_DISPLAY_REMOVED,
-					.vid.source = disp_sz + (id * id_blk_sz) + con->connector_id
+					.vid.source = id
 				};
 				arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 			}
@@ -1283,18 +1286,25 @@ void platform_video_query_displays()
 
 static void disable_display(struct dispout* d)
 {
-	if (!d->alive){
-		arcan_warning("egl-dri(), attempting to destroy inactive display\n");
+	if (!d || d->state == DISP_UNUSED)
+		return;
+
+	d->device->refc--;
+
+	if (d->display.edid_blob){
+		free(d->display.edid_blob);
+		d->display.edid_blob = NULL;
+		d->display.blob_sz = 0;
+	}
+
+	if (d->state == DISP_KNOWN){
+		d->device = NULL;
+		d->state = DISP_UNUSED;
 		return;
 	}
-	d->device->refc -= 1;
 
-  if (d->buffer.in_flip){
-		arcan_warning("Attempting to destroy display during flip\n");
-		return;
-	}
-
-	d->in_cleanup = true;
+/* set this flag so we notice callback triggers */
+	d->state = DISP_CLEANUP;
 	eglDestroySurface(d->device->display, d->buffer.esurf);
 	d->buffer.esurf = NULL;
 
@@ -1311,8 +1321,7 @@ static void disable_display(struct dispout* d)
 	gbm_surface_destroy(d->buffer.surface);
 	d->buffer.surface = NULL;
 
-	arcan_warning("restoring crtc: %d\n",  d->display.old_crtc ?
-		d->display.old_crtc->crtc_id : -1);
+	d->device->crtc_alloc &= ~(1 << d->display.crtc);
 
 	if (d->display.old_crtc && 0 > drmModeSetCrtc(
 		d->device->fd,
@@ -1334,11 +1343,11 @@ static void disable_display(struct dispout* d)
 	d->display.old_crtc = NULL;
 
 /*
- * drop vstore mapping as well?
+ * currently does not drop vstore mapping, issue is what happends if the
+ * primary display gets disconnected temporarily from bad cabling or similar
  */
 	d->device = NULL;
-	d->alive = false;
-	d->in_cleanup = false;
+	d->state = DISP_UNUSED;
 }
 
 struct monitor_mode platform_video_dimensions()
@@ -1414,6 +1423,7 @@ bool platform_video_init(uint16_t w, uint16_t h,
 		disable_display(d);
 		goto cleanup;
 	}
+	d->state = DISP_MAPPED;
 
 /*
  * requested canvas does not always match display
@@ -1422,8 +1432,21 @@ bool platform_video_init(uint16_t w, uint16_t h,
 	egl_dri.canvash = d->display.mode->vdisplay;
 
 	d->vid = ARCAN_VIDEO_WORLDID;
+#ifdef _DEBUG
 	dump_connectors(stdout, &nodes[0]);
+#endif
 	rv = true;
+
+/*
+ * send a first 'added' event for display tracking as the primary / connected
+ * display will not show up in the rescan
+ */
+	arcan_event ev = {
+		.category = EVENT_VIDEO,
+		.vid.kind = EVENT_VIDEO_DISPLAY_ADDED
+	};
+	arcan_event_enqueue(arcan_event_defaultctx(), &ev);
+	platform_video_query_displays();
 
 cleanup:
 	sigaction(SIGSEGV, &old_sh, NULL);
@@ -1468,7 +1491,8 @@ void platform_video_synch(uint64_t tick_count, float fract,
 	agp_blendstate(BLEND_NONE);
 
 	while ( (d = get_display(i++)) )
-		update_display(d);
+		if (d->state == DISP_MAPPED)
+			update_display(d);
 
 	drmEventContext evctx = {
 			.version = DRM_EVENT_CONTEXT_VERSION,
@@ -1510,8 +1534,8 @@ void platform_video_shutdown()
 {
 	struct dispout* d;
 
-	while((d = get_display(0)))
-		disable_display(d);
+	for(size_t i = 0; i < MAX_DISPLAYS; i++)
+		disable_display(&displays[i]);
 
 	for (size_t i = 0; i < sizeof(nodes)/sizeof(nodes[0]); i++){
 		if (0 >= nodes[i].fd)
@@ -1590,39 +1614,11 @@ const char** platform_video_envopts()
 	return (const char**) egl_envopts;
 }
 
-static bool map_connector(int fd, int conid, arcan_vobj_id src)
-{
-	for (size_t i = 0; i < disp_sz; i++)
-		if (displays[i].device &&
-			fd == displays[i].device->fd &&
-			conid == displays[i].display.con->connector_id){
-			arcan_warning("egl-dri(map_connector) - connector already in use\n");
-			return false;
-		}
-
-	struct dispout* out = allocate_display(&nodes[0]);
-
-	if (setup_kms(out, conid, 0, 0) != 0){
-		arcan_warning("egl-dri(map_connector) - couldn't setup connector\n");
-		disable_display(out);
-		return false;
-	}
-
-	if (setup_buffers(out) != 0){
-		arcan_warning("egl-dri(map_connector) - couldn't setup rendering"
-			" buffers for new connector\n");
-		disable_display(out);
-		return false;
-	}
-
-	return true;
-}
-
 enum dpms_state platform_video_dpms(
 	platform_display_id disp, enum dpms_state state)
 {
 	struct dispout* out = get_display(disp);
-	if (!out)
+	if (!out || out->state <= DISP_KNOWN)
 		return ADPMS_IGNORE;
 
 	if (state == ADPMS_IGNORE)
@@ -1638,16 +1634,20 @@ enum dpms_state platform_video_dpms(
 bool platform_video_map_display(
 	arcan_vobj_id id, platform_display_id disp, enum blitting_hint hint)
 {
-/* if disp > max number of active displays,
- * it is actually a device:connector reference */
-
-	if (disp >= disp_sz)
-		return map_connector(nodes[0].fd, disp-disp_sz, id);
-
-	struct dispout* out = get_display(disp);
-
-	if (!out)
+	struct dispout* d = get_display(disp);
+	if (!d || d->state == DISP_UNUSED)
 		return false;
+
+/* we have a known but previously unmapped display, set it up */
+	if (d->state == DISP_KNOWN){
+		if (setup_kms(d,
+			d->display.con->connector_id, 0, 0) != 0 || setup_buffers(d) != 0){
+			arcan_warning("egl-dri(map_display) - couldn't setup kms/"
+				"buffers on %d:%d\n", (int)d->id, (int)d->display.con->connector_id);
+			return false;
+		}
+		d->state = DISP_MAPPED;
+	}
 
 	arcan_vobject* vobj = arcan_video_getobject(id);
 	if (vobj && vobj->vstore->txmapped != TXSTATE_TEX2D){
@@ -1657,17 +1657,11 @@ bool platform_video_map_display(
 	}
 
 /*
- * note that we can't use unmap display here, some drivers behave..
- * aggressively towards creating/releasing a single Crtc repeatedly with others
- * active.
- */
-
-/*
  * BADID displays won't be rendered but remain allocated, question is should we
  * power-save the display or return the original Crtc until we need it again?
  * Both have valid points..
  */
-	out->vid = id;
+	d->vid = id;
 	return true;
 }
 
@@ -1675,7 +1669,7 @@ static void fb_cleanup(struct gbm_bo* bo, void* data)
 {
 	struct dispout* d = data;
 
-	if (d->in_cleanup)
+	if (d->state == DISP_CLEANUP)
 		return;
 
 	disable_display(d);
@@ -1798,6 +1792,9 @@ void platform_video_prepare_external()
 {
 	if (!getenv("ARCAN_VIDEO_DRM_NOMASTER"))
 		drmDropMaster(nodes[0].fd);
+
+	for(size_t i = 0; i < MAX_DISPLAYS; i++)
+		disable_display(&displays[i]);
 }
 
 void platform_video_restore_external()
@@ -1810,6 +1807,13 @@ void platform_video_restore_external()
 				"retrying in 1 second\n");
 			arcan_timesleep(1000);
 		}
+	}
+
+/* regain the primary display */
+	struct dispout* d = allocate_display(&nodes[0]);
+
+	if (setup_kms(d, -1, 0, 0) != 0){
+		disable_display(d);
 	}
 
 	platform_video_query_displays();
