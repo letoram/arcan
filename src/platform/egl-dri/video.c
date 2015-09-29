@@ -159,7 +159,7 @@ struct dispout {
 	} buffer;
 
 	struct {
-		bool reset_mode;
+		bool reset_mode, primary;
 		drmModeConnector* con;
 		uint32_t con_id;
 		drmModeModeInfoPtr mode;
@@ -1090,7 +1090,6 @@ retry:
 		return -1;
 	}
 
-/* Primary display setup, notify about other ones (?) */
 	dpms_set(d, DRM_MODE_DPMS_ON);
 	d->display.dpms = ADPMS_ON;
 
@@ -1342,10 +1341,6 @@ static void disable_display(struct dispout* d)
 	drmModeFreeCrtc(d->display.old_crtc);
 	d->display.old_crtc = NULL;
 
-/*
- * currently does not drop vstore mapping, issue is what happends if the
- * primary display gets disconnected temporarily from bad cabling or similar
- */
 	d->device = NULL;
 	d->state = DISP_UNUSED;
 }
@@ -1413,6 +1408,7 @@ bool platform_video_init(uint16_t w, uint16_t h,
  * Default drawing hint is stretch to display anyhow.
  */
 	struct dispout* d = allocate_display(&nodes[0]);
+	d->display.primary = true;
 
 	if (setup_kms(d, -1, w, h) != 0){
 		disable_display(d);
@@ -1458,7 +1454,6 @@ static void page_flip_handler(int fd, unsigned int frame,
 	unsigned int sec, unsigned int usec, void* data)
 {
 	struct dispout* d = data;
-	assert(d->buffer.in_flip == 1);
 	d->buffer.in_flip = 0;
 
 	if (d->buffer.cur_fb)
@@ -1472,6 +1467,13 @@ static void page_flip_handler(int fd, unsigned int frame,
 	d->buffer.next_bo = NULL;
 }
 
+/*
+ * A lot more work / research is needed on this one to be able to handle
+ * all weird edge-cases depending on the mapped displays and priorities
+ * (powersave? tearfree? lowest possible latency in regards to other
+ * external clocks etc.) - especially when mixing in future synch
+ * models that don't require VBlank
+ */
 void platform_video_synch(uint64_t tick_count, float fract,
 	video_synchevent pre, video_synchevent post)
 {
@@ -1479,27 +1481,25 @@ void platform_video_synch(uint64_t tick_count, float fract,
 		pre();
 
 	size_t nd;
-	arcan_bench_register_cost( arcan_vint_refresh(fract, &nd) );
 
 /* at this stage, the contents of all RTs have been synched,
  * with nd == 0, nothing has changed from what was draw last time */
 	struct dispout* d;
 	int i = 0;
 
-/* blit to each display */
-	agp_shader_activate(agp_default_shader(BASIC_2D));
-	agp_blendstate(BLEND_NONE);
+	arcan_bench_register_cost( arcan_vint_refresh(fract, &nd) );
 
-	while ( (d = get_display(i++)) )
-		if (d->state == DISP_MAPPED)
+	while ( (d = get_display(i++)) ){
+		if (d->state == DISP_MAPPED && d->buffer.in_flip == 0)
 			update_display(d);
+	}
 
 	drmEventContext evctx = {
 			.version = DRM_EVENT_CONTEXT_VERSION,
 			.page_flip_handler = page_flip_handler,
 	};
 
-	int pending;
+	int pending = 1;
 	do{
 /* for multiple cards, extend this pollset */
 		struct pollfd fds = {
@@ -1518,13 +1518,15 @@ void platform_video_synch(uint64_t tick_count, float fract,
 		else
 			drmHandleEvent(nodes[0].fd, &evctx);
 
-		pending = 0;
+/* with this approach we only force- synch on primary displays,
+ * as we don't want to be throttled by lower- clocked secondary displays */
 		int i = 0;
-		while((d = get_display(i++))){
-			pending |= d->buffer.in_flip;
-		}
+		pending = 0;
+		while((d = get_display(i++)))
+			if (d->display.primary)
+				pending |= d->buffer.in_flip;
 	}
-	while (pending != 0);
+	while (pending);
 
 	if (post)
 		post();
@@ -1717,10 +1719,13 @@ static void update_display(struct dispout* d)
 /* render-target may set scissors etc. based on the display
  * when using the NULL rendertarget */
 	egl_dri.last_display = d;
-	agp_activate_rendertarget(NULL);
 
+	agp_shader_activate(agp_default_shader(BASIC_2D));
+	agp_blendstate(BLEND_NONE);
+
+	agp_activate_rendertarget(NULL);
 /*
- current_fbid* drawing hints, mapping etc. should be taken into account here,
+ * current_fbid* drawing hints, mapping etc. should be taken into account here,
  * there's quite possible drm flags to set scale here
  */
 	eglMakeCurrent(d->device->display, d->buffer.esurf,
