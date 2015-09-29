@@ -3187,9 +3187,7 @@ static void display_added(lua_State* ctx, platform_display_id id)
 
 	LUA_TRACE("_display_state (add)");
 	lua_pushstring(ctx, "added");
-	lua_newtable(ctx);
-
-	push_displaymodes(ctx, id);
+	lua_pushnumber(ctx, id);
 
 	wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: display state");
 	LUA_ETRACE("_display_state (add)", NULL);
