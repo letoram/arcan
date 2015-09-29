@@ -662,6 +662,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		return EXIT_FAILURE;
 	}
 
+	bool custom_w = false;
 	if (arg_lookup(args, "rows", 0, &val))
 		term.rows = strtoul(val, NULL, 10);
 
@@ -671,8 +672,10 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	if (arg_lookup(args, "cols", 0, &val))
 		term.cols = strtoul(val, NULL, 10);
 
-	if (arg_lookup(args, "cell_w", 0, &val))
+	if (arg_lookup(args, "cell_w", 0, &val)){
+		custom_w = true;
 		term.cell_w = strtoul(val, NULL, 10);
+	}
 
 	if (arg_lookup(args, "fgr", 0, &val))
 		term.fgc[0] = strtoul(val, NULL, 10);
@@ -691,8 +694,10 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	if (arg_lookup(args, "bgalpha", 0, &val))
 		term.alpha = strtoul(val, NULL, 10);
 
-	if (arg_lookup(args, "cell_h", 0, &val))
+	if (arg_lookup(args, "cell_h", 0, &val)){
+		custom_w = true;
 		term.cell_h = strtoul(val, NULL, 10);
+	}
 #ifdef TTF_SUPPORT
 	size_t sz = term.cell_h;
 	if (arg_lookup(args, "font_sz", 0, &val))
@@ -701,7 +706,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		font = TTF_OpenFont(val, sz);
 		if (!font)
 			LOG("font %s could not be opened, forcing built-in fallback\n", val);
-		else{
+		else if (!custom_w){
 			TTF_Color fg = {.r = 0xff, .g = 0xff, .b = 0xff};
 			TTF_Surface* surf = TTF_RenderUTF8(font, "A", fg);
 			if (!surf){
@@ -709,10 +714,10 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 				font = NULL;
 			}
 			else{
-				if (term.cell_w < surf->width)
-					term.cell_w = surf->width;
-				if (term.cell_h < surf->height)
-					term.cell_h = surf->height;
+				LOG("font dimensions used for cell size (%d * %d)\n",
+					surf->width, surf->height);
+				term.cell_w = surf->width;
+				term.cell_h = surf->height;
 			}
 
 			free(surf);
