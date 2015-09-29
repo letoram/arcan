@@ -156,7 +156,7 @@ static void generate_frame()
 static void audio_play(void *data,
 	const void *samples, unsigned count, int64_t pts)
 {
-	size_t nb = count * ARCAN_SHMIF_ACHANNELS * sizeof(uint16_t);
+	size_t nb = count * ARCAN_SHMIF_ACHANNELS * ARCAN_SHMIF_SAMPLE_SIZE;
 
 	if (!decctx.got_video && decctx.shmcont.addr->w != AUD_VIS_HRES)
 	{
@@ -166,9 +166,19 @@ static void audio_play(void *data,
 		pthread_mutex_unlock(&decctx.rsync);
 	}
 
+	uint8_t* ab = decctx.shmcont.audp;
+
 	pthread_mutex_lock(&decctx.rsync);
-	memcpy(decctx.shmcont.audp + decctx.shmcont.addr->abufused, samples, nb);
+
+	size_t left = ARCAN_SHMIF_AUDIOBUF_SZ - decctx.shmcont.addr->abufused;
+	if (left < nb)
+		arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGAUD);
+
+	left = ARCAN_SHMIF_AUDIOBUF_SZ - decctx.shmcont.addr->abufused;
+		memcpy( (uint8_t*)(decctx.shmcont.audp) +
+			decctx.shmcont.addr->abufused, samples, nb);
 	decctx.shmcont.addr->abufused += nb;
+
 	pthread_mutex_unlock(&decctx.rsync);
 
 	if (decctx.fft_audio){
@@ -398,7 +408,7 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 	const char* val;
 	char const* vargs[] = {
 		"--no-xlib",
-//		"--verbose", "3",
+/*		"--verbose", "3", */
 		"--vout", "vmem",
 		"--intf", "dummy",
 		"--aout", "amem"
