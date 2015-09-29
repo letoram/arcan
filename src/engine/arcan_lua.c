@@ -817,14 +817,22 @@ static int opennonblock(lua_State* ctx)
 
 	const char* metatable = NULL;
 	bool wrmode = luaL_optbnumber(ctx, 2, 0);
+	bool fifo = false;
 	char* path;
 	int fd;
 
+	const char* str = luaL_checkstring(ctx, 1);
+	if (str[0] == '<'){
+		fifo = true;
+		str++;
+	}
+
+/* note on file-system races: it is an explicit contract that the namespace
+ * provided for RESOURCE_APPL_TEMP is single- user (us) only */
 	if (wrmode){
 		metatable = "nonblockIOw";
-		path = findresource(luaL_checkstring(ctx, 1), RESOURCE_APPL_TEMP);
-		if (path || !(path = arcan_expand_resource(
-				luaL_checkstring(ctx, 1), RESOURCE_APPL_TEMP))){
+		path = findresource(str, RESOURCE_APPL_TEMP);
+		if (path || !(path = arcan_expand_resource(str, RESOURCE_APPL_TEMP))){
 			arcan_warning("open_nonblock(), refusing to open "
 				"existing file for writing\n");
 			arcan_mem_free(path);
@@ -833,17 +841,25 @@ static int opennonblock(lua_State* ctx)
 			return 0;
 		}
 
-		fd = open(path, O_NONBLOCK | O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+		mode_t mode = O_NONBLOCK | O_CREAT | O_WRONLY | O_CLOEXEC;
+		fd = fifo ? mkfifo(path, mode) : open(path, mode, S_IRUSR | S_IWUSR);
 	}
 	else{
-		path = findresource(luaL_checkstring(ctx, 1), DEFAULT_USERMASK);
-		if (!path){
-			LUA_ETRACE("open_nonblock", "file does not exist");
-			return 0;
-		}
-
+		path = findresource(str, fifo ? RESOURCE_APPL_TEMP : DEFAULT_USERMASK);
 		metatable = "nonblockIOr";
-		fd = open(path, O_NONBLOCK | O_CLOEXEC | O_RDONLY);
+
+		if (!path){
+			if (fifo){
+				path = arcan_expand_resource(str, RESOURCE_APPL_TEMP);
+				fd = mkfifo(path, O_NONBLOCK | O_CLOEXEC | O_CREAT | O_RDONLY);
+			}
+			else{
+				LUA_ETRACE("open_nonblock", "file does not exist");
+				return 0;
+			}
+		}
+		else
+			fd = open(path, O_NONBLOCK | O_CLOEXEC | O_RDONLY);
 	}
 
 	arcan_mem_free(path);
