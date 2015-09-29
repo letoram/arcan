@@ -175,9 +175,11 @@ static void audio_play(void *data,
 		arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGAUD);
 
 	left = ARCAN_SHMIF_AUDIOBUF_SZ - decctx.shmcont.addr->abufused;
+	if (left > nb){
 		memcpy( (uint8_t*)(decctx.shmcont.audp) +
 			decctx.shmcont.addr->abufused, samples, nb);
-	decctx.shmcont.addr->abufused += nb;
+		decctx.shmcont.addr->abufused += nb;
+	}
 
 	pthread_mutex_unlock(&decctx.rsync);
 

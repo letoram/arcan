@@ -841,8 +841,15 @@ static int opennonblock(lua_State* ctx)
 			return 0;
 		}
 
-		mode_t mode = O_NONBLOCK | O_CREAT | O_WRONLY | O_CLOEXEC;
-		fd = fifo ? mkfifo(path, mode) : open(path, mode, S_IRUSR | S_IWUSR);
+		if (fifo){
+			fd = mkfifo(path, S_IRWXU);
+			if (-1 != fd)
+				if (-1 == fcntl(fd, F_SETFD, O_WRONLY | O_NONBLOCK | O_CLOEXEC))
+					arcan_warning("open_nonblock(), flags failed on fifo (%d)\n", errno);
+		}
+		else
+			fd = open(path, O_NONBLOCK | O_CREAT |
+				O_WRONLY | O_CLOEXEC, S_IRWXU);
 	}
 	else{
 		path = findresource(str, fifo ? RESOURCE_APPL_TEMP : DEFAULT_USERMASK);
@@ -851,7 +858,11 @@ static int opennonblock(lua_State* ctx)
 		if (!path){
 			if (fifo){
 				path = arcan_expand_resource(str, RESOURCE_APPL_TEMP);
-				fd = mkfifo(path, O_NONBLOCK | O_CLOEXEC | O_CREAT | O_RDONLY);
+				fd = mkfifo(path, S_IRWXU);
+				if (-1 != fd)
+					if (-1 == fcntl(fd, F_SETFD, O_NONBLOCK | O_RDONLY | O_CLOEXEC))
+						arcan_warning("open_nonblock(), "
+							"flags failed on fifo (%d)\n", errno);
 			}
 			else{
 				LUA_ETRACE("open_nonblock", "file does not exist");
