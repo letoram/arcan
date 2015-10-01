@@ -28,7 +28,7 @@
 -- @related:
 function main()
 #ifdef MAIN
-	icon = load_image("images/icons/arcanicon.png");
+	icon = load_image("test.png");
 	props = image_surface_properties(icon);
 	icon2 = null_surface(props.width, props.height);
 	icon2 = image_sharestorage(icon, icon2);

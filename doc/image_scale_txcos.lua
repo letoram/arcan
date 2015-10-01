@@ -6,7 +6,7 @@
 -- @related: image_set_txcos, image_get_txcos, image_set_txcos_default
 function main()
 #ifdef MAIN
-	a = load_image("test_pattern.png");
+	a = load_image("test.png");
 	switch_default_texmode(TEX_REPEAT, TEX_REPEAT, a);
 	show_image(a);
 	resize_image(a, VRESW, VRESH);

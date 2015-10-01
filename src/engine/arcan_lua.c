@@ -1565,6 +1565,36 @@ static int imageresizestorage(lua_State* ctx)
 	return 0;
 }
 
+static int cropimage(lua_State* ctx)
+{
+	LUA_TRACE("crop_image");
+	arcan_vobject* vobj;
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, &vobj);
+	float w = luaL_checknumber(ctx, 2);
+	float h = luaL_checknumber(ctx, 3);
+
+	surface_properties prop = arcan_video_initial_properties(id);
+	float ss = 1.0;
+	float st = 1.0;
+	bool crop_st = false;
+
+	if (prop.scale.x > w){
+		ss = w / prop.scale.x;
+		crop_st = true;
+	}
+	if (prop.scale.y > h){
+		st = h / prop.scale.y;
+		crop_st = true;
+	}
+
+	arcan_video_objectscale(id, ss, st, 1.0, 0);
+	if (crop_st)
+		arcan_video_scaletxcos(id, ss, st);
+
+	LUA_ETRACE("crop_image", NULL);
+	return 0;
+}
+
 /* Input is absolute values,
  * arcan_video_objectscale takes relative to initial size */
 static int scaleimage2(lua_State* ctx)
@@ -1899,6 +1929,19 @@ static int sharestorage(lua_State* ctx)
 	lua_pushboolean(ctx, rv == ARCAN_OK);
 
 	LUA_ETRACE("image_sharestorage", NULL);
+	return 1;
+}
+
+static int matchstorage(lua_State* ctx)
+{
+	LUA_TRACE("image_matchstorage");
+
+	arcan_vobject* v1, (* v2);
+	luaL_checkvid(ctx, 1, &v1);
+	luaL_checkvid(ctx, 2, &v2);
+	lua_pushboolean(ctx, v1->vstore == v2->vstore);
+
+	LUA_ETRACE("image_matchstorage", NULL);
 	return 1;
 }
 
@@ -8525,6 +8568,7 @@ static const luaL_Reg imgfuns[] = {
 {"resize_image",             scaleimage2        },
 {"resample_image",           resampleimage      },
 {"blend_image",              imageopacity       },
+{"crop_image",               cropimage          },
 {"persist_image",            imagepersist       },
 {"image_parent",             imageparent        },
 {"image_children",           imagechildren      },
@@ -8565,6 +8609,7 @@ static const luaL_Reg imgfuns[] = {
 {"image_access_storage",     imagestorage       },
 {"image_resize_storage",     imageresizestorage },
 {"image_sharestorage",       sharestorage       },
+{"image_matchstorage",       matchstorage       },
 {"cursor_setstorage",        cursorstorage      },
 {"cursor_position",          cursorposition     },
 {"move_cursor",              cursormove         },
