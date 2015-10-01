@@ -10,7 +10,7 @@
 -- @related: image_surface_resolve_propreties, image_surface_properties
 function main()
 #ifdef MAIN
-	a = load_image("demoimg.png");
+	a = load_image("test.png");
 	resize_image(a, 32, 32);
 	iprop = image_surface_initial_properties(a);
 	cprop = image_surface_properties(a);

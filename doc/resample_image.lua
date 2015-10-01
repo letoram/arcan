@@ -23,7 +23,7 @@
 -- @related:
 
 function main()
-	local img = load_image("images/icons/arcanicon.png");
+	local img = load_image("test.png");
 	local shid = build_shader(nil, [[
 uniform sampler2D map_diffuse;
 varying vec2 texco;

@@ -21,10 +21,10 @@
 -- @flags:
 function main()
 #ifdef MAIN
-	vid = load_image("demoimg.png");
+	vid = load_image("test.png");
 	show_image(vid);
 
-	vid2 = load_image("demoimg.png", 2, 48, 48);
+	vid2 = load_image("test.png", 2, 48, 48);
 	show_image(vid);
 #endif
 
@@ -33,6 +33,6 @@ function main()
 #endif
 
 #ifdef ERROR2
-	vid = load_image("demoimg.png", -1, -1, -1);
+	vid = load_image("test.png", -1, -1, -1);
 #endif
 end

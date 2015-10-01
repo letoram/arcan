@@ -19,7 +19,7 @@
 -- @related: image_pushasynch load_image
 function main()
 #ifdef MAIN
-	vid = load_image_asynch("demoimg.png", function(source, tbl)
+	vid = load_image_asynch("test.png", function(source, tbl)
 	    if (tbl.kind == "loaded") then
 		resize_image(source, tbl.width, tbl.height);
 		warning("image loaded\n");
@@ -31,10 +31,10 @@ function main()
 #endif
 
 #ifdef ERROR
-	vid = load_image_asynch("demoimg.png", load_image_asynch);
+	vid = load_image_asynch("test.png", load_image_asynch);
 #endif
 
 #ifdef ERROR2
-	vid = load_image_asynch("demoimg.png", -1);
+	vid = load_image_asynch("test.png", -1);
 #endif
 end
