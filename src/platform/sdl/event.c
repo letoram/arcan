@@ -697,6 +697,9 @@ void platform_event_keyrepeat(arcan_evctx* ctx, int* rate, int* delay)
 	}
 
 	if (*delay < 0){
+		*delay = cur_del;
+	}
+	else{
 		int tmp = *delay;
 		*delay = cur_del;
 		cur_del = tmp;
