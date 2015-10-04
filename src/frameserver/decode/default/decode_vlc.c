@@ -166,8 +166,6 @@ static void audio_play(void *data,
 		pthread_mutex_unlock(&decctx.rsync);
 	}
 
-	uint8_t* ab = decctx.shmcont.audp;
-
 	pthread_mutex_lock(&decctx.rsync);
 
 	size_t left = ARCAN_SHMIF_AUDIOBUF_SZ - decctx.shmcont.addr->abufused;

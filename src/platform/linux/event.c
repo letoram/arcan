@@ -527,6 +527,16 @@ void platform_event_process(struct arcan_evctx* ctx)
 	}
 }
 
+void platform_event_samplebase(int devid, float xyz[3])
+{
+	struct arcan_devnode* node = lookup_devnode(devid);
+	if (!node || node->type != DEVNODE_MOUSE)
+		return;
+
+	node->cursor.mx = xyz[0];
+	node->cursor.my = xyz[1];
+}
+
 void platform_event_keyrepeat(struct arcan_evctx* ctx, int* period, int* delay)
 {
 	bool upd = false;

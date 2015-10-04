@@ -3092,7 +3092,7 @@ static int targetinput(lua_State* ctx)
 		ev.io.devkind = mouse ?	EVENT_IDEVKIND_MOUSE : EVENT_IDEVKIND_GAMEDEV;
 		ev.io.input.analog.devid  = intblint(ctx, tblind, "devid");
 		ev.io.input.analog.subid  = intblint(ctx, tblind, "subid");
-		ev.io.input.analog.gotrel = mouse;
+		ev.io.input.analog.gotrel = mouse ? (!intblbool(ctx, tblind, "norel")) : false;
 		ev.io.datatype = EVENT_IDATATYPE_ANALOG;
 
 	/*  sweep the samples subtable, add as many as present (or possible) */
@@ -4727,6 +4727,19 @@ static int videomapping(lua_State* ctx)
 	return 0;
 }
 
+static int inputbase(lua_State* ctx)
+{
+	LUA_TRACE("input_samplebase");
+	int devid = luaL_checknumber(ctx, 1);
+	float xyz[3];
+	xyz[0] = luaL_optnumber(ctx, 2, 0);
+	xyz[1] = luaL_optnumber(ctx, 3, 0);
+	xyz[2] = luaL_optnumber(ctx, 4, 0);
+	platform_event_samplebase(devid, xyz);
+	LUA_ETRACE("input_samplebase", NULL);
+	return 0;
+}
+
 static int inputcap(lua_State* ctx)
 {
 	LUA_TRACE("input_capabilities");
@@ -4739,7 +4752,6 @@ static int inputcap(lua_State* ctx)
 	tblbool(ctx, "touch", (pcap & ACAP_TOUCH) > 0, top);
 	tblbool(ctx, "position", (pcap & ACAP_POSITION) > 0, top);
 	tblbool(ctx, "orientation", (pcap & ACAP_ORIENTATION) > 0, top);
-
 	LUA_ETRACE("input_capabilities", NULL);
 	return 1;
 }
@@ -8688,6 +8700,7 @@ static const luaL_Reg iofuns[] = {
 {"kbd_repeat",          kbdrepeat        },
 {"toggle_mouse_grab",   mousegrab        },
 {"input_capabilities",  inputcap         },
+{"input_samplebase",    inputbase        },
 #ifdef ARCAN_LED
 {"set_led",             setled           },
 {"led_intensity",       led_intensity    },
