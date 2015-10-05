@@ -173,6 +173,12 @@ static inline void process_axismotion(arcan_evctx* ctx,
 	}
 }
 
+void platform_event_samplebase(int devid, float xyz[3])
+{
+	if (0 == devid)
+		SDL_WarpMouse(xyz[0], xyz[1]);
+}
+
 static inline void process_mousemotion(arcan_evctx* ctx,
 	const SDL_MouseMotionEvent* const ev)
 {

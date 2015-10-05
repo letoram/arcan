@@ -282,6 +282,13 @@ Display* x11_get_display();
 Window* x11_get_window();
 static Cursor null_cursor;
 
+void platform_event_samplebase(int devid, float xyz[3])
+{
+	if (0 == devid)
+	XWarpPointer(x11_get_display(),
+		None, x11_get_window(), 0, 0, 0, 0, xyz[0], xyz[1]);
+}
+
 void create_null_cursor()
 {
 	Pixmap cmask = XCreatePixmap(x11_get_display(), *x11_get_window(), 1, 1, 1);
