@@ -187,7 +187,7 @@ const char* platform_event_devlabel(int devid);
 
 /*
  * Quick-helper to toggle all analog device samples on / off. If mouse is set
- * the action will also be toggled on mouse x / y This will keep track of the
+ * the action will also be toggled on mouse x / y. This will keep track of the
  * old state, but repeating the same toggle will flush state memory. All
  * devices (except mouse) start in off mode. Devices that are connected after
  * this has been set should use it as a global state identifier (so that we
@@ -196,13 +196,9 @@ const char* platform_event_devlabel(int devid);
 void platform_event_analogall(bool enable, bool mouse);
 
 /*
- * Set A/D mappings, when the specific dev/axis enter or exit the set interval,
- * a digital press/release event with the set subid will be emitted. This is
- * intended for analog sticks/buttons, not touch- class displays that need a
- * more refined classification/ remapping system.
- *
- * The implementation is left to the respective platform/input code to handle.
+ * Special controls for devices that sample relative values but report
+ * absolute values based on an internal tracking value and we might need to
+ * 'warp' for device control.
  */
-void platform_event_analoginterval(int devid, int axisid,
-	int enter, int exit, int subid);
+void platform_event_samplebase(int devid, float xyz[3]);
 #endif

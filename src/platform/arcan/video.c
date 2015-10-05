@@ -155,6 +155,12 @@ void platform_video_setsynch(const char* arg)
 	}
 }
 
+void platform_event_samplebase(int devid, float xyz[3])
+{
+/* no-op for now, should retain a base to patch mouse
+ * absolute sample values and add / modify */
+}
+
 const char** platform_video_synchopts()
 {
 	return (const char**) synchopts;
@@ -441,7 +447,7 @@ arcan_errc platform_event_analogstate(int devid, int axisid,
 	int* lower_bound, int* upper_bound, int* deadzone,
 	int* kernel_size, enum ARCAN_ANALOGFILTER_KIND* mode)
 {
-	return ARCAN_ERRC_UNACCEPTED_STATE;
+	return ARCAN_ERRC_NO_SUCH_OBJECT;
 }
 
 void platform_event_analogall(bool enable, bool mouse)
@@ -564,6 +570,7 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
  * can be made when the process dies.
  */
 		case TARGET_COMMAND_EXIT:
+			printf("arcan_lwa: EXIT RECEIVED\n");
 			if (d == &disp[0]){
 				ev.category = EVENT_SYSTEM;
 				ev.sys.kind = EVENT_SYSTEM_EXIT;
