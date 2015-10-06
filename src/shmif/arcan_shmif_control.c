@@ -769,6 +769,17 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 
 	arcan_shmif_setevqs(res.addr, res.esem,
 		&res.priv->inev, &res.priv->outev, false);
+
+	if (0 != type) {
+		struct arcan_event ev = {
+			.category = EVENT_EXTERNAL,
+			.ext.kind = EVENT_EXTERNAL_REGISTER,
+			.ext.registr.kind = type
+		};
+
+		arcan_shmif_enqueue(&res, &ev);
+	}
+
 	arcan_shmif_calcofs(res.addr, &res.vidp, &res.audp);
 	res.w = res.addr->w;
 	res.h = res.addr->h;
@@ -780,16 +791,6 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 
 	if (type == SEGID_ENCODER){
 		((struct shmif_hidden*)res.priv)->output = true;
-	}
-
-	if (0 != type) {
-		struct arcan_event ev = {
-			.category = EVENT_EXTERNAL,
-			.ext.kind = EVENT_EXTERNAL_REGISTER,
-			.ext.registr.kind = type
-		};
-
-		arcan_shmif_enqueue(&res, &ev);
 	}
 
 	return res;

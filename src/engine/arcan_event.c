@@ -295,6 +295,10 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 				break;
 #endif
 
+				case EVENT_EXTERNAL_REGISTER:
+					if (tgt->segid == SEGID_UNKNOWN)
+						tgt->segid = inev.ext.registr.kind;
+				break;
 /* note: one could manually enable EVENT_INPUT and use separate processes
  * as input sources (with all the risks that comes with it security wise)
  * if that ever becomes a concern, here would be a good place to consider
