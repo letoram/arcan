@@ -570,7 +570,6 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
  * can be made when the process dies.
  */
 		case TARGET_COMMAND_EXIT:
-			printf("arcan_lwa: EXIT RECEIVED\n");
 			if (d == &disp[0]){
 				ev.category = EVENT_SYSTEM;
 				ev.sys.kind = EVENT_SYSTEM_EXIT;

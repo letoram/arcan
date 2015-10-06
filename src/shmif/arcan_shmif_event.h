@@ -73,8 +73,15 @@ enum ARCAN_EVENT_CATEGORY {
  * [UNIQUE] only one per connection
  */
 enum ARCAN_SEGID {
+/*
+ * New / unclassified segments have this type until the first
+ * _EXTERNAL_REGISTER event has been received. aud/vid signalling is ignored
+ * in this state.
+ */
+	SEGID_UNKNOWN = 0,
+
 /* LIGHTWEIGHT ARCAN (nested execution) */
-	SEGID_LWA = 1,
+	SEGID_LWA,
 
 /* Server->Client exclusive --
  * External Connection, 1:many */
@@ -159,13 +166,6 @@ enum ARCAN_SEGID {
  * [INPUT] Incoming clipboard data
  */
 	SEGID_CLIPBOARD_PASTE,
-
-/*
- * New / unclassified segments have this type until the first
- * _EXTERNAL_REGISTER event has been received. aud/vid signalling is ignored
- * in this state.
- */
-	SEGID_UNKNOWN,
 
 /* Can always be terminated without risk, may be stored as part of debug format
  * in terms of unexpected termination etc. */

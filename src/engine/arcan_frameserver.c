@@ -352,13 +352,16 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 		return rv;
 
 	arcan_frameserver* tgt = state.ptr;
-	if (tgt->segid == SEGID_UNKNOWN)
-		return FRV_NOFRAME;
-
 	struct arcan_shmif_page* shmpage = tgt->shm.ptr;
 
 	if (!shmpage || !arcan_frameserver_enter(tgt))
 		return FRV_NOFRAME;
+
+	if (tgt->segid == SEGID_UNKNOWN){
+		arcan_frameserver_tick_control(tgt);
+		arcan_frameserver_leave();
+		return FRV_NOFRAME;
+	}
 
 	switch (cmd){
 /* silent compiler, this should not happen for a target with a
