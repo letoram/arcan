@@ -173,8 +173,6 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 	}
 #endif
 
-/* interesting toggle, using typeface embedded images vs.
- * non-bitmap for the same glyph */
 #ifdef TTF_SUPPORT
 	u8_ch[u8_sz-1] = '\0';
 	TTF_Color fg = {.r = fgc[0], .g = fgc[1], .b = fgc[2]};
@@ -204,7 +202,6 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 		}
 
 	free(surf);
-
 	return 0;
 #endif
 }
@@ -223,7 +220,7 @@ static void update_screensize()
 
 	term.screen_w = cols;
 	term.screen_h = rows;
-	term.age = 1;
+	term.age = 0;
 	term.age = tsm_screen_draw(term.screen, draw_cb, NULL /* draw_cb_data */);
 }
 
@@ -232,7 +229,6 @@ static void read_callback(struct shl_pty* pty,
 {
 	tsm_vte_input(term.vte, u8, len);
 	term.age = tsm_screen_draw(term.screen, draw_cb, NULL /* draw_cb_data */);
-	term.dirty = true;
 }
 
 static void write_callback(struct tsm_vte* vte,
@@ -296,12 +292,12 @@ static void send_sigint()
 
 static void scroll_up()
 {
-	tsm_screen_scroll_up(term.screen, term.mag);
+	tsm_screen_sb_up(term.screen, term.mag);
 }
 
 static void scroll_down()
 {
-	tsm_screen_scroll_down(term.screen, term.mag);
+	tsm_screen_sb_down(term.screen, term.mag);
 }
 
 static void move_up()
@@ -314,14 +310,17 @@ static void move_down()
 	tsm_screen_move_down(term.screen, term.mag, false);
 }
 
+/* in TSM< typically mapped to ctrl+ arrow but we allow external rebind */
 static void move_left()
 {
-	tsm_screen_move_left(term.screen, term.mag);
+	const char lch[] = {0x1b, '[', 'D'};
+	shl_pty_write(term.pty, lch, 3);
 }
 
 static void move_right()
 {
-	tsm_screen_move_right(term.screen, term.mag);
+	const char rch[] = {0x1b, '[', 'C'};
+	shl_pty_write(term.pty, rch, 3);
 }
 
 static void select_begin()
@@ -429,6 +428,7 @@ static bool consume_label(arcan_ioevent* ioev, const char* label)
 	while(cur->lbl){
 		if (strcmp(label, cur->lbl) == 0){
 			cur->ptr();
+			term.age = tsm_screen_draw(term.screen, draw_cb, NULL /* draw_cb_data */);
 			return true;
 		}
 		cur++;
@@ -568,6 +568,24 @@ static void event_dispatch(arcan_event* ev)
 	}
 }
 
+#ifdef TTF_SUPPORT
+static void probe_font(const char* msg, size_t* dw, size_t* dh)
+{
+	TTF_Color fg = {.r = 0xff, .g = 0xff, .b = 0xff};
+	TTF_Surface* surf = TTF_RenderUTF8(font, msg, fg);
+	if (!surf)
+		return;
+
+	if (surf->width > *dw)
+		*dw = surf->width;
+
+	if (surf->height > *dh)
+		*dh = surf->height;
+
+	free(surf);
+}
+#endif
+
 /*
  * Two different 'clocking' modes, one where an external stepframe
  * dictate synch (typically interactive- only) and one where there is
@@ -706,37 +724,43 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		font = TTF_OpenFont(val, sz);
 		if (!font)
 			LOG("font %s could not be opened, forcing built-in fallback\n", val);
-		else if (!custom_w){
-			TTF_Color fg = {.r = 0xff, .g = 0xff, .b = 0xff};
-			TTF_Surface* surf = TTF_RenderUTF8(font, "A", fg);
-			if (!surf){
-				TTF_CloseFont(font);
-				font = NULL;
-			}
-			else{
-				LOG("font dimensions used for cell size (%d * %d)\n",
-					surf->width, surf->height);
-				term.cell_w = surf->width;
-				term.cell_h = surf->height;
+		else {
+			if (arg_lookup(args, "font_hint", 0, &val)){
+			if (strcmp(val, "light") == 0)
+				TTF_SetFontHinting(font, TTF_HINTING_LIGHT);
+			else if (strcmp(val, "mono") == 0)
+				TTF_SetFontHinting(font, TTF_HINTING_MONO);
+			else if (strcmp(val, "none") == 0)
+				TTF_SetFontHinting(font, TTF_HINTING_NONE);
+			else
+				LOG("unknown font hinting requested, "
+					"accepted values(light, mono, none)");
 			}
 
-			free(surf);
+/* Just run through a practice set to determine the actual width when hinting
+ * is taken into account. We still suffer the problem of more advanced glyphs
+ * though */
+			if (!custom_w){
+				size_t w = 0, h = 0;
+				static const char* set[] = {
+					"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l",
+					"m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "x", "y",
+					"z", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+					"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L",
+					"M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "X", "Y",
+					"Z"
+				};
+				for (size_t i = 0; i < sizeof(set)/sizeof(set[0]); i++)
+					probe_font(set[i], &w, &h);
+				if (w && h){
+					term.cell_w = w;
+					term.cell_h = h;
+				}
+			}
 		}
 	}
 	else
 		LOG("no font argument specified, forcing built-in fallback.\n");
-
-	if (font && arg_lookup(args, "font_hint", 0, &val)){
-		if (strcmp(val, "light") == 0)
-			TTF_SetFontHinting(font, TTF_HINTING_LIGHT);
-		else if (strcmp(val, "mono") == 0)
-			TTF_SetFontHinting(font, TTF_HINTING_MONO);
-		else if (strcmp(val, "none") == 0)
-			TTF_SetFontHinting(font, TTF_HINTING_NONE);
-		else
-			LOG("unknown font hinting requested, "
-				"accepted values(light, mono, none)");
-	}
 #endif
 
 	if (tsm_screen_new(&term.screen, tsm_log, 0) < 0){
