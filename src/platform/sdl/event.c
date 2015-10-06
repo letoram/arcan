@@ -448,8 +448,15 @@ void platform_event_process(arcan_evctx* ctx)
 			newevent.io.kind = EVENT_IO_BUTTON;
 			newevent.io.datatype = EVENT_IDATATYPE_DIGITAL;
 			newevent.io.devkind  = EVENT_IDEVKIND_MOUSE;
+			switch(event.button.button){
+			case SDL_BUTTON_LEFT: newevent.io.input.digital.subid = 1; break;
+			case SDL_BUTTON_MIDDLE: newevent.io.input.digital.subid = 2; break;
+			case SDL_BUTTON_RIGHT: newevent.io.input.digital.subid = 3; break;
+			default:
+				newevent.io.input.digital.subid = event.button.button;
+			break;
+			}
 			newevent.io.input.digital.devid = event.motion.which;
-			newevent.io.input.digital.subid = event.button.button;
 			newevent.io.input.digital.active = true;
 			snprintf(newevent.io.label, sizeof(newevent.io.label) - 1, "mouse%i",
 				event.motion.which);
