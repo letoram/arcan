@@ -725,42 +725,46 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		if (!font)
 			LOG("font %s could not be opened, forcing built-in fallback\n", val);
 		else {
+			LOG("font %s opened, ", val);
 			if (arg_lookup(args, "font_hint", 0, &val)){
 			if (strcmp(val, "light") == 0)
 				TTF_SetFontHinting(font, TTF_HINTING_LIGHT);
 			else if (strcmp(val, "mono") == 0)
 				TTF_SetFontHinting(font, TTF_HINTING_MONO);
-			else if (strcmp(val, "none") == 0)
+			else{
+				LOG("unknown hinting %s, falling back to mono\n", val);
 				TTF_SetFontHinting(font, TTF_HINTING_NONE);
-			else
-				LOG("unknown font hinting requested, "
-					"accepted values(light, mono, none)");
 			}
+		}
+		else{
+			LOG("no hinting specified, using mono.\n");
+			TTF_SetFontHinting(font, TTF_HINTING_MONO);
+		}
 
 /* Just run through a practice set to determine the actual width when hinting
  * is taken into account. We still suffer the problem of more advanced glyphs
  * though */
-			if (!custom_w){
-				size_t w = 0, h = 0;
-				static const char* set[] = {
-					"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l",
-					"m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "x", "y",
-					"z", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
-					"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L",
-					"M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "X", "Y",
-					"Z"
-				};
-				for (size_t i = 0; i < sizeof(set)/sizeof(set[0]); i++)
-					probe_font(set[i], &w, &h);
-				if (w && h){
-					term.cell_w = w;
-					term.cell_h = h;
-				}
+		if (!custom_w){
+			size_t w = 0, h = 0;
+			static const char* set[] = {
+				"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l",
+				"m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "x", "y",
+				"z", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+				"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L",
+				"M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "X", "Y",
+				"Z"
+			};
+			for (size_t i = 0; i < sizeof(set)/sizeof(set[0]); i++)
+				probe_font(set[i], &w, &h);
+			if (w && h){
+				term.cell_w = w;
+				term.cell_h = h;
 			}
 		}
 	}
+	}
 	else
-		LOG("no font argument specified, forcing built-in fallback.\n");
+		LOG("no font specified, using built-in fallback.");
 #endif
 
 	if (tsm_screen_new(&term.screen, tsm_log, 0) < 0){

@@ -355,6 +355,30 @@ static void send_buttonev(struct arcan_evctx* ctx, int button, bool state)
 		.io.input.digital.subid = button
 	};
 
+	if (button & Button1Mask){
+		ev.io.input.digital.subid = 1;
+		arcan_event_enqueue(ctx, &ev);
+	}
+	if (button & Button2Mask){
+		ev.io.input.digital.subid = 2;
+		arcan_event_enqueue(ctx, &ev);
+	}
+
+	if (button & Button3Mask){
+		ev.io.input.digital.subid = 3;
+		arcan_event_enqueue(ctx, &ev);
+	}
+
+	if (button & Button4Mask){
+		ev.io.input.digital.subid = 4;
+		arcan_event_enqueue(ctx, &ev);
+	}
+
+	if (button & Button5Mask){
+		ev.io.input.digital.subid = 5;
+		arcan_event_enqueue(ctx, &ev);
+	}
+
 	arcan_event_enqueue(ctx, &ev);
 }
 
@@ -363,6 +387,8 @@ void platform_event_process(struct arcan_evctx* ctx)
 	static bool mouse_init;
 	static int last_mx;
 	static int last_my;
+	static int last_mask;
+
 	Display* x11_display = x11_get_display();
 
 	while (x11_display && XPending(x11_display)){
@@ -387,11 +413,13 @@ void platform_event_process(struct arcan_evctx* ctx)
 		break;
 
 		case ButtonPress:
-			send_buttonev(ctx, xev.xbutton.button, true);
+			send_buttonev(ctx, (~last_mask) & xev.xbutton.button, true);
+			last_mask = xev.xbutton.button;
 		break;
 
 		case ButtonRelease:
-			send_buttonev(ctx, xev.xbutton.button, false);
+			send_buttonev(ctx, (~last_mask) & xev.xbutton.button, false);
+			last_mask = xev.xbutton.button;
 		break;
 
 		case KeyPress:

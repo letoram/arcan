@@ -58,8 +58,8 @@ static struct {
 
 int mouse_button_map[] = {
 	rfbButton1Mask,
-	rfbButton2Mask,
 	rfbButton3Mask,
+	rfbButton2Mask,
 	rfbButton4Mask,
 	rfbButton5Mask
 };
@@ -212,12 +212,13 @@ static void map_cl_input(arcan_ioevent* ioev)
 /* just use one of the first four buttons of any device, not necessarily
  * a mouse */
 	else if (ioev->datatype == EVENT_IDATATYPE_DIGITAL){
-		int btn = ioev->input.digital.subid;
+		int btn = ioev->input.digital.subid-1;
 		int value = 0;
 
 		if (btn >= 0 && btn <= 4)
 			value = mouse_button_map[btn];
 
+		LOG("button: %d, %d\n", btn, value);
 		bmask = ioev->input.digital.active ? bmask | value : bmask & ~value;
 		SendPointerEvent(vncctx.client, mx, my, bmask);
 	}
@@ -321,6 +322,7 @@ int afsrv_remoting(struct arcan_shmif_cont* con, struct arg_arr* args)
 		.ext.message = "(01) server connection broken"
 	};
 
+/* this is cheating a bit as we don't guarantee the color format used */
 	vncctx.client->frameBuffer = (uint8_t*) vncctx.shmcont.vidp;
 	atexit( cleanup );
 
@@ -346,7 +348,7 @@ int afsrv_remoting(struct arcan_shmif_cont* con, struct arg_arr* args)
 			{ .fd = vncctx.shmcont.epipe, .events = pollev}
 		};
 
-		int sv = poll(fds, 2, 16);
+		int sv = poll(fds, 2, -1);
 		if (0 == sv)
 			continue;
 
