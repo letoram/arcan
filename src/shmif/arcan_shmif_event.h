@@ -37,8 +37,9 @@
 
 /*
  * The types and structures used herein are "transitional" in the sense that
- * during the later hardening / cleanup phases, we'll likely refactor to use
- * more compat message sizes in order to consume fewer cache-lines.
+ * during the later optimization / harderning, we'll likely refactor to use
+ * more compat message sizes in order to consume fewer cache-lines, and split
+ * larger messages over a protobuf+socket.
  *
  * The event structure is rather messy as it is the result of quite a number of
  * years of evolutionary "adding more and more fields" as the engine developed.
@@ -65,6 +66,11 @@ enum ARCAN_EVENT_CATEGORY {
  * Primarily hinting to the running appl, but can also dictate scheduling
  * groups, priority in terms of resource exhaustion, sandboxing scheme and
  * similar limitations (e.g. TITLEBAR / CURSOR should not update 1080p60Hz)
+ *
+ * Special flags (not enforced yet, will be after hardening phase) :
+ * [INPUT] data from server to client
+ * [LOCKSTEP] signalling may block indefinitely, appl- controlled
+ * [UNIQUE] only one per connection
  */
 enum ARCAN_SEGID {
 /* LIGHTWEIGHT ARCAN (nested execution) */
@@ -87,17 +93,11 @@ enum ARCAN_SEGID {
 /* External client connection, A/V/latency sensitive */
 	SEGID_REMOTING,
 
-/* High-CPU, Low Latency, data exfiltration risk */
+/* [INPUT] High-CPU, Low Latency, data exfiltration risk */
 	SEGID_ENCODER,
 
 /* High-frequency event input, little if any A/V use */
 	SEGID_SENSOR,
-
-/* Typically one-shot or rare updates */
-	SEGID_TITLEBAR,
-
-/* User- provided cursor, competes with CURSORHINT event */
-	SEGID_CURSOR,
 
 /* High-interactivity, CPU load, A/V cost, latency requirements */
 	SEGID_GAME,
@@ -122,14 +122,24 @@ enum ARCAN_SEGID {
 /* Head-Mounted display, should be mapped as RIGHT view */
 	SEGID_HMD_R,
 
-/* One- shot, Short-lived as response to event */
+/*
+ * [LOCKSTEP, UNIQUE] Popup-window, use with viewport hints
+ */
 	SEGID_POPUP,
 
-/* Status indicator, used for visually representing application when
- * out of scope or focus */
+/*
+ * [UNIQUE] Used for statusbar style visual alert / identifcation
+ */
 	SEGID_ICON,
 
+/* [UNIQUE] Visual titlebar style, actual text content can be per segment */
+	SEGID_TITLEBAR,
+
+/* [UNIQUE] User- provided cursor, competes with CURSORHINT event. */
+	SEGID_CURSOR,
+
 /*
+ * [UNIQUE]
  * Indicates that this segment is used to propagate accessibility related data;
  * High-contrast, simplified text, screen-reader friendly.
  *
@@ -139,15 +149,21 @@ enum ARCAN_SEGID {
 	SEGID_ACCESSIBILITY,
 
 /*
- * Indicates that this segment will be used to provide clipboard style data
- * and can be used for image, text or audio sharing. Larger state- transfers
- * should use the bchunk- mechanism.
+ * [UNIQUE] Clipboard style data transfors, for image, text or audio sharing.
+ * Can also have streaming transfers using the bchunk mechanism.  Distinction
+ * between Drag'n'Drop and Clipboard state uses the CURSORHINT mechanism.
  */
 	SEGID_CLIPBOARD,
 
 /*
+ * [INPUT] Incoming clipboard data
+ */
+	SEGID_CLIPBOARD_PASTE,
+
+/*
  * New / unclassified segments have this type until the first
- * _EXTERNAL_REGISTER event has been received.
+ * _EXTERNAL_REGISTER event has been received. aud/vid signalling is ignored
+ * in this state.
  */
 	SEGID_UNKNOWN,
 
@@ -326,7 +342,7 @@ enum ARCAN_TARGET_COMMAND {
 
 /*
  * These events map from a connected client to an arcan server, the
- * namespacing is transitional nad it is recommended that the indirection
+ * namespacing is transitional and it is recommended that the indirection
  * macro, ARCAN_EVENT(X) is used.
  */
 #define _INT_SHMIF_TMERGE(X, Y) X ## Y
@@ -348,8 +364,7 @@ enum ARCAN_EVENT_EXTERNAL {
 /*
  * Dynamic data source identification string, similar to message but is
  * expected to come when something has changed radically, (streaming external
- * video sources for instance).
- * uses the message field.
+ * video sources for instance).  uses the message field.
  */
 	EVENT_EXTERNAL_IDENT,
 
@@ -379,8 +394,7 @@ enum ARCAN_EVENT_EXTERNAL {
 
 /*
  * Decode playback discovered additional substreams that can be selected or
- * switched between.
- * Uses the streamstat substructure.
+ * switched between.  Uses the streamstat substructure.
  */
 	EVENT_EXTERNAL_STREAMINFO,
 
@@ -426,7 +440,8 @@ enum ARCAN_EVENT_EXTERNAL {
  * [normal, wait, select-inv, select, up, down, left-right, drag-up-down,
  * drag-up, drag-down, drag-left, drag-right, drag-left-right, rotate-cw,
  * rotate-ccw, normal-tag, diag-ur, diag-ll, drag-diag, datafield,
- * move, typefield, forbidden, help, vertical-datafield]
+ * move, typefield, forbidden, help, vertical-datafield, drag-drop,
+ * drag-reject ]
  */
 	EVENT_EXTERNAL_CURSORHINT,
 
@@ -809,7 +824,7 @@ typedef struct arcan_extevent {
  * height - desired height, will be clamped to PP_SHMPAGE_MAXH
  * xofs   - suggested offset relative to main segment (parent hint)
  * yofs   - suggested offset relative to main segment (parent hint)
- * kind   -
+ * kind   - desired type of the segment request, can be UNKNOWN
  */
 		struct {
 			uint32_t id;
@@ -824,6 +839,7 @@ typedef struct arcan_extevent {
  * (title) - title-bar info or other short string to indicate state
  * (kind)  - only used for non-auth connection primary segments or
  *           for subseg requests that got accepted with an empty kind
+ * if called with the existing kind, titlebar is updated
  */
 		struct {
 			char title[64];

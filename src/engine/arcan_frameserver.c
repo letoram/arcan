@@ -352,6 +352,9 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 		return rv;
 
 	arcan_frameserver* tgt = state.ptr;
+	if (tgt->segid == SEGID_UNKNOWN)
+		return FRV_NOFRAME;
+
 	struct arcan_shmif_page* shmpage = tgt->shm.ptr;
 
 	if (!shmpage || !arcan_frameserver_enter(tgt))
@@ -717,6 +720,8 @@ arcan_errc arcan_frameserver_audioframe_direct(arcan_aobj* aobj,
 {
 	arcan_errc rv = ARCAN_ERRC_NOTREADY;
 	arcan_frameserver* src = (arcan_frameserver*) tag;
+	if (src->segid == SEGID_UNKNOWN)
+		return rv;
 
 	if (buffer != -1 && src->audb && src->ofs_audb > ARCAN_ASTREAMBUF_LLIMIT){
 /* this function will make sure all monitors etc. gets their chance */
