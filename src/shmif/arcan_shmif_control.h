@@ -46,6 +46,30 @@
  */
 
 /*
+ * These prefixes change the search and namespacing rules for how a
+ * non-authoritative connection should find a running arcan server based
+ * on a key.
+ */
+#ifdef __linux
+#ifndef ARCAN_SHMIF_PREFIX
+#define ARCAN_SHMIF_PREFIX "\0arcan_"
+#endif
+
+/* If the first character does not begin with /, HOME env will be used. */
+#else
+#ifndef ARCAN_SHMIF_PREFIX
+#define ARCAN_SHMIF_PREFIX ".arcan_"
+#endif
+#endif
+
+/*
+ * Default permissions / mask that listening sockets will be created under
+ */
+#ifndef ARCAN_SHM_UMASK
+#define ARCAN_SHM_UMASK (S_IRWXU | S_IRWXG)
+#endif
+
+/*
  * Compile-time constants that define the size and layout
  * of the shared structure. These values are part in defining the ABI
  * and should therefore only be tuned when you have control of the
@@ -499,29 +523,5 @@ struct arcan_shmif_page {
 
 	process_handle parent;
 };
-
-/*
- * These prefixes change the search and namespacing rules for how a
- * non-authoritative connection should find a running arcan server based
- * on a key.
- */
-#ifdef __linux
-#ifndef ARCAN_SHMIF_PREFIX
-#define ARCAN_SHMIF_PREFIX "\0arcan_"
-#endif
-
-/* If the first character does not begin with /, HOME env will be used. */
-#else
-#ifndef ARCAN_SHMIF_PREFIX
-#define ARCAN_SHMIF_PREFIX ".arcan_"
-#endif
-#endif
-
-/*
- * Default permissions / mask that listening sockets will be created under
- */
-#ifndef ARCAN_SHM_UMASK
-#define ARCAN_SHM_UMASK (S_IRWXU | S_IRWXG)
-#endif
 
 #endif
