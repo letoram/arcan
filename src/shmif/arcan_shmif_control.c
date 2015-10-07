@@ -773,7 +773,7 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 	if (0 != type) {
 		struct arcan_event ev = {
 			.category = EVENT_EXTERNAL,
-			.ext.kind = EVENT_EXTERNAL_REGISTER,
+			.ext.kind = ARCAN_EVENT(REGISTER),
 			.ext.registr.kind = type
 		};
 
