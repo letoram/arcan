@@ -163,6 +163,12 @@ static void audio_play(void *data,
 		pthread_mutex_lock(&decctx.rsync);
 		arcan_shmif_resize(&decctx.shmcont, AUD_VIS_HRES, 2);
 		decctx.fft_audio = true;
+		arcan_event ev = {
+			.category = EVENT_EXTERNAL,
+			.ext.kind = ARCAN_EVENT(STREAMINFO),
+			.ext.streaminf.langid = {'A', 'U', 'D'}
+		};
+		arcan_shmif_enqueue(&decctx.shmcont, &ev);
 		pthread_mutex_unlock(&decctx.rsync);
 	}
 
