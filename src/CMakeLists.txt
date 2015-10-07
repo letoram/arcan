@@ -15,7 +15,9 @@ endfunction()
 
 PROJECT(arcan)
 cmake_minimum_required(VERSION 2.8.12 FATAL_ERROR)
+if (POLICY CMP0042)
 cmake_policy(SET CMP0042 OLD)
+endif()
 
 set(EXTERNAL_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../external)
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/modules)
