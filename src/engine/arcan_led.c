@@ -4,6 +4,8 @@
  * Reference: http://arcan-fe.com
  */
 
+#ifdef ARCAN_LED
+
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -198,3 +200,5 @@ void arcan_led_shutdown()
 
 	n_controllers = 0;
 }
+
+#endif

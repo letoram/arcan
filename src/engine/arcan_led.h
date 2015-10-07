@@ -4,6 +4,7 @@
  * Reference: http://arcan-fe.com
  */
 
+#ifdef ARCAN_LED
 #ifndef _HAVE_ARCAN_LED
 #define _HAVE_ARCAN_LED
 
@@ -50,4 +51,4 @@ led_capabilities arcan_led_capabilities(uint8_t device);
  * direct use of the same usb device. */
 void arcan_led_shutdown();
 #endif
-
+#endif

@@ -23,8 +23,6 @@
         http://github.com/signal11/hidapi .
 ********************************************************/
 
-#define _GNU_SOURCE /* needed for wcsdup() before glibc 2.10 */
-
 /* C */
 #include <stdio.h>
 #include <string.h>
@@ -44,10 +42,73 @@
 #include <wchar.h>
 
 /* GNU / LibUSB */
-#include "libusb.h"
-#include "iconv.h"
+#include <libusb.h>
+#ifndef __ANDROID__
+#include <iconv.h>
+#endif
 
 #include "hidapi.h"
+
+#ifdef __ANDROID__
+
+/* Barrier implementation because Android/Bionic don't have pthread_barrier.
+   This implementation came from Brent Priddy and was posted on
+   StackOverflow. It is used with his permission. */
+typedef int pthread_barrierattr_t;
+typedef struct pthread_barrier {
+    pthread_mutex_t mutex;
+    pthread_cond_t cond;
+    int count;
+    int trip_count;
+} pthread_barrier_t;
+
+static int pthread_barrier_init(pthread_barrier_t *barrier, const pthread_barrierattr_t *attr, unsigned int count)
+{
+	if(count == 0) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	if(pthread_mutex_init(&barrier->mutex, 0) < 0) {
+		return -1;
+	}
+	if(pthread_cond_init(&barrier->cond, 0) < 0) {
+		pthread_mutex_destroy(&barrier->mutex);
+		return -1;
+	}
+	barrier->trip_count = count;
+	barrier->count = 0;
+
+	return 0;
+}
+
+static int pthread_barrier_destroy(pthread_barrier_t *barrier)
+{
+	pthread_cond_destroy(&barrier->cond);
+	pthread_mutex_destroy(&barrier->mutex);
+	return 0;
+}
+
+static int pthread_barrier_wait(pthread_barrier_t *barrier)
+{
+	pthread_mutex_lock(&barrier->mutex);
+	++(barrier->count);
+	if(barrier->count >= barrier->trip_count)
+	{
+		barrier->count = 0;
+		pthread_cond_broadcast(&barrier->cond);
+		pthread_mutex_unlock(&barrier->mutex);
+		return 1;
+	}
+	else
+	{
+		pthread_cond_wait(&barrier->cond, &(barrier->mutex));
+		pthread_mutex_unlock(&barrier->mutex);
+		return 0;
+	}
+}
+
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -69,7 +130,7 @@ this is very invasive as it requires the detach
 and re-attach of the kernel driver. See comments inside hid_enumerate().
 libusb HIDAPI programs are encouraged to use the interface number
 instead to differentiate between interfaces on a composite HID device. */
-#define INVASIVE_GET_USAGE
+/*#define INVASIVE_GET_USAGE*/
 
 /* Linked List of input reports received from the device. */
 struct input_report {
@@ -250,15 +311,14 @@ static int get_usage(uint8_t *report_descriptor, size_t size,
 }
 #endif /* INVASIVE_GET_USAGE */
 
-#ifdef __FreeBSD__
-/* The FreeBSD version of libusb doesn't have this funciton. In mainline
-   libusb, it's inlined in libusb.h. This function will bear a striking
+#if defined(__FreeBSD__) && __FreeBSD__ < 10
+/* The libusb version included in FreeBSD < 10 doesn't have this function. In
+   mainline libusb, it's inlined in libusb.h. This function will bear a striking
    resemblence to that one, because there's about one way to code it.
 
    Note that the data parameter is Unicode in UTF-16LE encoding.
    Return value is the number of bytes in data, or LIBUSB_ERROR_*.
  */
-#if 0
 static inline int libusb_get_string_descriptor(libusb_device_handle *dev,
 	uint8_t descriptor_index, uint16_t lang_id,
 	unsigned char *data, int length)
@@ -269,7 +329,7 @@ static inline int libusb_get_string_descriptor(libusb_device_handle *dev,
 		(LIBUSB_DT_STRING << 8) | descriptor_index,
 		lang_id, data, (uint16_t) length, 1000);
 }
-#endif
+
 #endif
 
 
@@ -327,8 +387,9 @@ static wchar_t *get_usb_string(libusb_device_handle *dev, uint8_t idx)
 	char buf[512];
 	int len;
 	wchar_t *str = NULL;
-	wchar_t wbuf[256];
 
+#ifndef __ANDROID__ /* we don't use iconv on Android */
+	wchar_t wbuf[256];
 	/* iconv variables */
 	iconv_t ic;
 	size_t inbytes;
@@ -340,6 +401,7 @@ static wchar_t *get_usb_string(libusb_device_handle *dev, uint8_t idx)
 	char *inptr;
 #endif
 	char *outptr;
+#endif
 
 	/* Determine which language to use. */
 	uint16_t lang;
@@ -355,6 +417,25 @@ static wchar_t *get_usb_string(libusb_device_handle *dev, uint8_t idx)
 			sizeof(buf));
 	if (len < 0)
 		return NULL;
+
+#ifdef __ANDROID__
+
+	/* Bionic does not have iconv support nor wcsdup() function, so it
+	   has to be done manually.  The following code will only work for
+	   code points that can be represented as a single UTF-16 character,
+	   and will incorrectly convert any code points which require more
+	   than one UTF-16 character.
+
+	   Skip over the first character (2-bytes).  */
+	len -= 2;
+	str = malloc((len / 2 + 1) * sizeof(wchar_t));
+	int i;
+	for (i = 0; i < len / 2; i++) {
+		str[i] = buf[i * 2 + 2] | (buf[i * 2 + 3] << 8);
+	}
+	str[len / 2] = 0x00000000;
+
+#else
 
 	/* buf does not need to be explicitly NULL-terminated because
 	   it is only passed into iconv() which does not need it. */
@@ -388,6 +469,8 @@ static wchar_t *get_usb_string(libusb_device_handle *dev, uint8_t idx)
 
 err:
 	iconv_close(ic);
+
+#endif
 
 	return str;
 }
@@ -620,7 +703,8 @@ hid_device * hid_open(unsigned short vendor_id, unsigned short product_id, const
 		if (cur_dev->vendor_id == vendor_id &&
 		    cur_dev->product_id == product_id) {
 			if (serial_number) {
-				if (wcscmp(serial_number, cur_dev->serial_number) == 0) {
+				if (cur_dev->serial_number &&
+				    wcscmp(serial_number, cur_dev->serial_number) == 0) {
 					path_to_open = cur_dev->path;
 					break;
 				}
@@ -757,7 +841,8 @@ static void *read_thread(void *param)
 	   if no transfers are pending, but that's OK. */
 	libusb_cancel_transfer(dev->transfer);
 
-	libusb_handle_events(usb_context);
+	while (!dev->cancelled)
+		libusb_handle_events_completed(usb_context, &dev->cancelled);
 
 	/* Now that the read thread is stopping, Wake any threads which are
 	   waiting on data (in hid_read_timeout()). Do this under a mutex to
