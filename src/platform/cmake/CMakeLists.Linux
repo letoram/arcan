@@ -58,17 +58,13 @@ set_property(SOURCE ${PLATFORM_PATH}/fdpassing.c
 set_property(SOURCE ${PLATFORM_PATH}/fdpassing.c
 	APPEND PROPERTY COMPILE_DEFINITIONS NONBLOCK_RECV)
 
-#
-# Either investigate more OS native approaches to get LED
-# controller access, or find a hid- api that doesn't
-# require UDev
-#
 if (ENABLE_LED)
-	FIND_PACKAGE(UDev REQUIRED)
+	FIND_PACKAGE(libusb-1.0 REQUIRED)
 
-	LIST(APPEND ARCAN_LIBRARIES ${UDEV_LIBRARIES})
+	LIST(APPEND ARCAN_LIBRARIES ${LIBUSB_1_LIBRARIES})
+	LIST(APPEND INCLUDE_DIRS ${LIBUSB_1_INCLUDE_DIR})
 	LIST(APPEND PLATFORM_SOURCES
-		${EXTERNAL_SRC_DIR}/hidapi/hid_linux.c
+		${EXTERNAL_SRC_DIR}/hidapi/hid.c
 		${EXTERNAL_SRC_DIR}/hidapi/hidapi.h
 	)
 endif()

@@ -383,6 +383,8 @@ list (APPEND SOURCES
 	engine/arcan_audio.c
 	engine/arcan_ttf.c
 	engine/arcan_img.c
+	engine/arcan_led.c
+	engine/arcan_led.h
 	engine/arcan_ffunc_lut.c
 	engine/arcan_ffunc_lut.h
 	engine/arcan_audioint.h
@@ -422,11 +424,7 @@ if (ENABLE_SIMD AND SSE_FOUND)
 endif()
 
 if (ENABLE_LED)
-	list(APPEND SOURCES
-		engine/arcan_led.c
-		engine/arcan_led.h
-	)
-	add_definitions(-DARCAN_LED)
+	list(APPEND ARCAN_NOLWA_DEFINITIONS ARCAN_LED)
 endif()
 
 if (LUA51_JIT)
@@ -439,7 +437,7 @@ endif()
 
 # can we get sane literal concatenation one day?
 set(PFT ${VIDEO_PLATFORM}-${AGP_PLATFORM}-${AUDIO_PLATFORM}-${INPUT_PLATFORM})
-set(ENGINE_BUILDTAG ${ENGINE_BUILDTAG}-${PFT}-${LUA_TAG})
+set(ENGINE_BUILDTAG ${ENGINE_BUILDTAG}-${PFT}-${LUA_TAG}-${DISTR_TAG})
 unset(PFT)
 
 #

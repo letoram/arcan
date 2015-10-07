@@ -52,7 +52,7 @@ set (ARCAN_PLATFORM
 	${PLATFORM_PATH}/fdpassing.c
 	${PLATFORM_PATH}/namespace.c
 	${PLATFORM_PATH}/launch.c
-	${EXTERNAL_SRC_DIR}/hidapi/hid_bsd.c
+	${EXTERNAL_SRC_DIR}/hidapi/hid.c
 	${EXTERNAL_SRC_DIR}/hidapi/hidapi.h
 )
 
