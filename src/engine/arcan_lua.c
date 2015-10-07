@@ -190,11 +190,11 @@ typedef int acoord;
 #endif
 
 #ifndef CONST_MAX_SURFACEW
-#define CONST_MAX_SURFACEW 2048
+#define CONST_MAX_SURFACEW 8192
 #endif
 
 #ifndef CONST_MAX_SURFACEH
-#define CONST_MAX_SURFACEH 2048
+#define CONST_MAX_SURFACEH 4096
 #endif
 
 #ifndef CONST_RENDERTARGET_DETACH
