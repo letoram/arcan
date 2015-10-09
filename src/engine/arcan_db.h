@@ -189,6 +189,11 @@ struct arcan_strarr arcan_db_applkeys(struct arcan_dbh*,
 bool arcan_db_verifytarget(struct arcan_dbh* dbh, arcan_targetid);
 
 /*
+ * Quick- reset settings / specific keys
+ */
+void arcan_db_dropappl(struct arcan_dbh* dbh, const char* appl);
+
+/*
  * Synchronously store/retrieve a key-value pair,
  * set to empty value to delete.
  */

@@ -33,6 +33,7 @@ printf("usage: arcan_db dbfile command args\n\n"
 	"  drop_config     \ttarget config\n"
 	"  drop_all_configs\ttarget\n"
 	"  drop_target    \tname\n"
+	"  drop_appl      \tname\n"
 	"\nAvailable data extraction commands: \n"
 	"  dump_targets   \n"
 	"  dump_target    \tname\n"
@@ -93,11 +94,18 @@ static int add_target(struct arcan_dbh* dst, int argc, char** argv)
 	arcan_db_addconfig(dst, tid, "default", NULL, 0);
 
 	return EXIT_SUCCESS;
+}
 
-	printf("couldn't set target, expected targetname, path, binary format "
-		"(accepted: BIN, LWA, RETRO) and argument list\n");
+static int drop_appl(struct arcan_dbh* dst, int argc, char** argv)
+{
+	if (argc != 1){
+		printf("drop_appl(appl) unexpected number of "
+			"arguments (%d vs 1)\n", argc);
+		return EXIT_FAILURE;
+	}
 
-	return EXIT_FAILURE;
+	arcan_db_dropappl(dst, argv[1]);
+	return EXIT_SUCCESS;
 }
 
 static int drop_target(struct arcan_dbh* dst, int argc, char** argv)
@@ -526,7 +534,10 @@ struct {
 		.key = "drop_config",
 		.fun = drop_config
 	},
-
+	{
+		.key = "drop_appl",
+		.fun = drop_appl
+	},
 	{
 		.key = "drop_all_configs",
 		.fun = drop_all_config

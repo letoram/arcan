@@ -204,6 +204,22 @@ static inline void db_void_query(struct arcan_dbh* dbh,
 	sqlite3_finalize(stmt);
 }
 
+void arcan_db_dropappl(struct arcan_dbh* dbh, const char* appl)
+{
+	if (!appl || !dbh)
+		return;
+
+	size_t len = strlen(appl);
+	if (0 == len)
+		return;
+
+	const char* dropqry = "DELETE FROM appl_";
+	char dropbuf[sizeof(dropqry) + len];
+	snprintf(dropbuf, sizeof(dropbuf), "%s%s;", dropqry, appl);
+
+	db_void_query(dbh, dropbuf, true);
+}
+
 static void sqliteexit()
 {
 	sqlite3_shutdown();

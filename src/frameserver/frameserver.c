@@ -155,6 +155,8 @@ int main(int argc, char** argv)
 	argv[1] = NULL;
 	argv[0] = newarg;
 
+	setsid();
+
 	execv(newarg, argv);
 
 	return EXIT_FAILURE;
