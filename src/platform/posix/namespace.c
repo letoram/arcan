@@ -39,6 +39,7 @@ static struct {
 		char* paths[11];
 	};
 
+	int flags[11];
 	int lenv[11];
 
 } namespaces = {0};
@@ -92,13 +93,23 @@ char* arcan_find_resource(const char* label,
 	return NULL;
 }
 
+char* arcan_fetch_namespace(enum arcan_namespaces space)
+{
+	int space_ind = i_log2(space);
+	assert(space > 0 && (space & (space - 1) ) == 0);
+	if (space_ind > sizeof(namespaces.paths)/sizeof(namespaces.paths[0]))
+		return NULL;
+	return namespaces.paths[space_ind];
+}
+
 char* arcan_expand_resource(const char* label, enum arcan_namespaces space)
 {
 	assert( space > 0 && (space & (space - 1) ) == 0 );
 	int space_ind =i_log2(space);
-
-	if (label == NULL ||
-		verify_traverse(label) == NULL || !namespaces.paths[space_ind])
+	if (space_ind > sizeof(namespaces.paths)/sizeof(namespaces.paths[0]) ||
+		label == NULL || verify_traverse(label) == NULL ||
+		!namespaces.paths[space_ind]
+	)
 		return NULL;
 
 	size_t len_1 = strlen(label);
@@ -238,6 +249,12 @@ void arcan_softoverride_namespace(const char* new, enum arcan_namespaces space)
 		free(tmp);
 }
 
+void arcan_pin_namespace(enum arcan_namespaces space)
+{
+	int ind = i_log2(space);
+	namespaces.flags[ind] = 1;
+}
+
 void arcan_override_namespace(const char* path, enum arcan_namespaces space)
 {
 	if (path == NULL)
@@ -247,6 +264,9 @@ void arcan_override_namespace(const char* path, enum arcan_namespaces space)
 	int space_ind =i_log2(space);
 
 	if (namespaces.paths[space_ind] != NULL){
+		if (namespaces.flags[space_ind])
+			return;
+
 		arcan_mem_free(namespaces.paths[space_ind]);
 	}
 

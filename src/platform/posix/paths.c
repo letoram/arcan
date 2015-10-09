@@ -63,6 +63,20 @@ static char* envvs[] = {
 	"ARCAN_LOGPATH"
 };
 
+static char* pinvs[] = {
+	"ARCAN_APPLPIN",
+	"ARCAN_RESOURCEPIN",
+	"ARCAN_APPLTEMPPIN",
+	"ARCAN_STATEPIN", /* will be ignored */
+	"ARCAN_APPLBASEPIN",
+	"ARCAN_APPLSTOREPIN",
+	"ARCAN_STATEBASEPIN",
+	"ARCAN_FONTPIN",
+	"ARCAN_BINPIN",
+	"ARCAN_LIBPIN",
+	"ARCAN_LOGPIN"
+};
+
 static char* alloc_cat(char* a, char* b)
 {
 	size_t a_sz = strlen(a);
@@ -217,6 +231,8 @@ void arcan_set_namespace_defaults()
 	for (int i = 0; i < sizeof( envvs ) / sizeof( envvs[0] ); i++){
 		const char* tmp = getenv(envvs[i]);
 		arcan_override_namespace(tmp, 1 << i);
+		if (getenv(pinvs[i]))
+			arcan_pin_namespace(1 << i);
 	}
 
 /*
@@ -249,8 +265,6 @@ void arcan_set_namespace_defaults()
 	}
 
 	char* scrpath = unix_find("appl");
-	if (!scrpath)
-		scrpath = unix_find("themes");
 
 	if (scrpath){
 		arcan_softoverride_namespace(scrpath, RESOURCE_SYS_APPLBASE);

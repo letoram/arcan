@@ -17,6 +17,8 @@
 #include <sys/types.h>
 #include <sys/ipc.h>
 #include <sys/mman.h>
+#include <sys/time.h>
+#include <sys/resource.h>
 #include <unistd.h>
 #include <pthread.h>
 
@@ -87,6 +89,7 @@ unsigned long arcan_target_launch_external(const char* fname,
 		return 0;
 	}
 
+	add_interpose(libs, envv);
 	pid_t child = fork();
 
 	if (child > 0) {
@@ -106,13 +109,39 @@ unsigned long arcan_target_launch_external(const char* fname,
 	}
 	else {
 /* GNU extension warning */
-		add_interpose(libs, envv);
 		execve(fname, argv->data, envv->data);
 		_exit(1);
 	}
 
 	*exitc = EXIT_FAILURE;
 	return 0;
+}
+
+void arcan_closefrom(int fd)
+{
+#if defined(__APPLE__) || defined(__linux__)
+	struct rlimit rlim;
+	int lim = 512;
+	if (0 == getrlimit(RLIMIT_NOFILE, &rlim))
+		lim = rlim.rlim_cur;
+
+	struct pollfd* fds = arcan_alloc_mem(sizeof(struct rlimit)*lim,
+		ARCAN_MEM_STRINGBUF, ARCAN_MEM_BZERO |
+			ARCAN_MEM_TEMPORARY, ARCAN_MEMALIGN_NATURAL);
+
+	for (size_t i = 0; i < lim; i++)
+		fds[i].fd = i+fd;
+
+	poll(fds, lim, 0);
+
+	for (size_t i = 0; i < lim; i++)
+		if (!(fds[i].revents & POLLNVAL))
+			close(fds[i].fd);
+
+	arcan_mem_free(fds);
+#else
+	closefrom(fd);
+#endif
 }
 
 arcan_frameserver* arcan_target_launch_internal(const char* fname,
@@ -133,7 +162,7 @@ arcan_frameserver* arcan_target_launch_internal(const char* fname,
 	};
 
 	if (
-		arcan_frameserver_spawn_server(res, args) != ARCAN_OK) {
+		arcan_frameserver_spawn_server(res, &args) != ARCAN_OK) {
 		free(res);
 		res = NULL;
 	}

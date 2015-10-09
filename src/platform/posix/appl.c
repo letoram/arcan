@@ -133,6 +133,18 @@ bool arcan_verifyload_appl(const char* appl_id, const char** errc)
 		return false;
 	}
 
+/*
+ * Switch to appl- suppled fonts if a folder exists to avoid relying on res
+ * namespace pollution. Specific speetings can still pin the namespace to
+ * prevent this action.
+ */
+	char* font_path = arcan_expand_resource("/fonts", RESOURCE_APPL);
+	if (font_path){
+		if (arcan_isdir(font_path))
+			arcan_override_namespace(font_path, RESOURCE_SYS_FONT);
+		free(font_path);
+	}
+
 	if (strcmp(g_appl_id, "#appl not initialized") != 0)
 		arcan_mem_free(g_appl_id);
 

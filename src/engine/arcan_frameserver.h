@@ -186,7 +186,7 @@ struct frameserver_envp {
  * shmpage interface and protocol.
  */
 arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* dst,
-	struct frameserver_envp);
+	struct frameserver_envp*);
 
 /*
  * Setup a frameserver that is idle until an external party connects

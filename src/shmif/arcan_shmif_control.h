@@ -151,7 +151,9 @@ typedef VIDEO_PIXEL_TYPE shmif_pixel;
 /*
  * This is calculated through MAXW*MAXH*sizeof(shmif_pixel) + sizeof
  * struct + sizeof event*PP_QUEUE_SIZE*2 + PP_AUDIOBUF_SZ with alignment.
- * It is primarily of concern when OVERCOMMIT build is used.
+ * (too bad constexpr isn't part of C11)
+ * It is primarily of concern when OVERCOMMIT build is used where it isn't
+ * possible to resize dynamically.
  */
 #ifndef PP_SHMPAGE_MAXSZ
 #define PP_SHMPAGE_MAXSZ 48294400
