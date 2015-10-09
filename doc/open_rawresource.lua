@@ -5,13 +5,13 @@
 -- @longdescr: Each session can have one- globally opened and synchronously
 -- managed text file for working with in a rather limited fashion, primarily
 -- intended for debugging or quick temporary hacks.
--- Typically, user/theme data should be stored in the database if at all
+-- Typically, user/appl data should be stored in the database if at all
 -- possible, and binary data should only be in forms that the indirect
 -- functions can working with (like load_image etc.). Other I/O operations
 -- e.g. named pipes should go through the ref:open_nonblock style functions.
 -- @note: If the resource exists, it will be opened in a read-only mode.
 -- @note: If the resource doesn't exist, it will be created and opened
--- for writing (in themepath, shared resources are read-only).
+-- for writing (in appl, shared resources are read-only).
 -- @note: This function is blocking, and should only be used where
 -- possible I/O stalls is desired.
 -- @group: resource

@@ -1269,6 +1269,21 @@ static int freezeimage(lua_State* ctx)
 	LUA_ETRACE("freeze_image", NULL);
 	return 0;
 }
+static int debugstall(lua_State* ctx)
+{
+	LUA_TRACE("frameserver_debugstall");
+	int tn = luaL_checknumber(ctx, 1);
+	if (tn <= 0)
+		unsetenv("ARCAN_FRAMESERVER_DEBUGSTALL");
+	else{
+		char buf[4];
+		snprintf(buf, 4, "%4d", tn);
+		setenv("ARCAN_FRAMESERVER_DEBUGSTALL", buf, 1);
+	}
+
+	LUA_ETRACE("frameserver_debugstall", NULL);
+	return 0;
+}
 #endif
 
 static int loadimage(lua_State* ctx)
@@ -8692,6 +8707,7 @@ static const luaL_Reg sysfuns[] = {
 {"system_identstr",     getidentstr      },
 #ifdef _DEBUG
 {"freeze_image",        freezeimage      },
+{"frameserver_debugstall", debugstall    },
 #endif
 {NULL, NULL}
 };

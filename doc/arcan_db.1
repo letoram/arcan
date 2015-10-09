@@ -1,29 +1,29 @@
 .\" groff -man -Tascii arcan.1
-.TH arcan 1 "October 2014" arcan_db "User manual"
+.TH arcan 1 "October 2015" arcan_db "User manual"
 .SH NAME
-Arcan_db \- Database Support tool for Arcan 
+Arcan_db \- Database Support tool for Arcan
 .SH SYNOPSIS
-.B arcan_db dbfile 
+.B arcan_db dbfile
 .RI [COMMAND]
-.B command-specific data 
+.B command-specific data
 
 .SH DESCRIPTION
 The arcan_db tool manages the database that arcan uses as an application
 specific key-value store, but also for controlling which programs (targets) and
 which set of arguments (configuration) that are allowed to be launched
-by an application using Arcan. 
+by an application using Arcan.
 
 .SH COMMAND
 .IP "\fBadd_target\fR \fIname\fR \fIexecutable\fR \fIbfrm\fB \fIargv\fR"
 Create a new target or update values for a pre-existing ones. The \fIname\fR
 field is a unique identifier that will be used to reference the target from
-within the engine. \fIexecutable\fR should point to the binary, folder or 
+within the engine. \fIexecutable\fR should point to the binary, folder or
 specific data file to be launched. \fIbfrm\fR specifies the binary format
 to be loaded, where BIN corresponds to a native binary (e.g. ELF for POSIX
-systems and PE on windows), LWA for using arcan-in-arcan style execution and 
+systems and PE on windows), LWA for using arcan-in-arcan style execution and
 RETRO for a libretro- compatible core (.so or .dll).
 
-\fIArgv\fR can be a variable number of arguments that will be set as the base 
+\fIArgv\fR can be a variable number of arguments that will be set as the base
 arguments for the target. For bfrm LWA, these will be passed to the application
 and will be ignored for bfrm RETRO.
 
@@ -50,8 +50,8 @@ for accomplishing this is implementation defined.
 
 .IP "\fBadd_config\fR \fItargetname\fR \fIconfigname\fR \fIargv\fR"
 
-Create or update \fIconfigname\fR in the specific target. 
-The arguments specified in \fIargv\fR are similar to 
+Create or update \fIconfigname\fR in the specific target.
+The arguments specified in \fIargv\fR are similar to
 those used in \fIadd_target\fR but will always be appended after
 the arguments associated with the target.
 
@@ -72,18 +72,18 @@ library and key/value pairs.
 
 .SH SCRIPTING MODE
 To assist when using this program as a database interface for a script,
-a single dash can be specified instead of the command. In that case, the 
-program will process line- separated input from STDIN where each 
-element is separated with a tab character. The command format is 
-otherwise the same as regular usage. In addition, the program 
-will output 'OK' or 'FAIL' to stderr in response to each command 
-(while stdout will contained the more detailed error description). 
+a single dash can be specified instead of the command. In that case, the
+program will process line- separated input from STDIN where each
+element is separated with a tab character. The command format is
+otherwise the same as regular usage. In addition, the program
+will output 'OK' or 'FAIL' to stderr in response to each command
+(while stdout will contained the more detailed error description).
 
 .SH NOTES
 There is also a number of dump_ commands that are listed if you run the
 program without any arguments. These are not intended as a serialization
 or interfacing tool, interface with the arcan_db.c / arcan_db.h for those
-kinds of purposes. 
+kinds of purposes.
 
 .SH SEE-ALSO
 .IX Header "SEE ALSO"
@@ -93,11 +93,11 @@ kinds of purposes.
 You can report bugs at the forum on the homepage or through the the AUTHOR
 contact below. Save a snapshot of core-dumps (in the case of engine issues) or
 the appropriate resources/logs entries. For some issues, a copy of the database
-used and a list of files (with permissions) in themepath and
+used and a list of files (with permissions) in applpath and
 resourcepath might also be relevant.
 
 .SH COPYRIGHT
-Copyright  ©  2014  Bjorn Stahl. License 3-clause BSD. This is free software: 
+Copyright  ©  2014-2015  Bjorn Stahl. License 3-clause BSD. This is free software:
 you are free  to  change  and  redistribute  it. There is NO WARRANTY,
 to the extent permitted by law.
 
