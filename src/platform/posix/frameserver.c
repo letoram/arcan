@@ -832,6 +832,83 @@ enum arcan_ffunc_rv arcan_frameserver_socketpoll FFUNC_HEAD
 	return FRV_NOFRAME;
 }
 
+/*
+ * expand-env pre-fork and make sure appropriate namespaces are present
+ * and that there's enough room in the frameserver_envp for NULL term.
+ * The caller will cleanup env with free_strarr.
+ */
+static void append_env(struct arcan_strarr* darr,
+	char* argarg, char* sockmsg, char* conn)
+{
+/*
+ * slightly unsure which ones we actually need to propagate, for now these go
+ * through the chainloader so it is much less of an issue as most namespace
+ * remapping features will go there, and arcterm need to configure the new
+ * userenv anyhow.
+ */
+	const char* spaces[] = {
+		getenv("PATH"),
+		getenv("CWD"),
+		getenv("HOME"),
+		getenv("LANG"),
+		getenv("ARCAN_FRAMESERVER_DEBUGSTALL"),
+		arcan_fetch_namespace(RESOURCE_APPL),
+		arcan_fetch_namespace(RESOURCE_APPL_TEMP),
+		arcan_fetch_namespace(RESOURCE_APPL_STATE),
+		arcan_fetch_namespace(RESOURCE_APPL_SHARED),
+		arcan_fetch_namespace(RESOURCE_SYS_DEBUG),
+		sockmsg,
+		argarg,
+		conn
+	};
+
+/* HARDENING / REFACTOR: we should NOT pass logdir here as it should
+ * not be accessible due to exfiltration risk. We should setup the log-
+ * entry here and inherit that descriptor as stderr instead!. For harder
+ * sandboxing, we can also pass the directory descriptors here */
+	size_t n_spaces = sizeof(spaces) / sizeof(spaces[0]);
+	const char* keys[] = {
+		"PATH",
+		"CWD",
+		"HOME",
+		"LANG",
+		"ARCAN_FRAMESERVER_DEBUGSTALL",
+		"ARCAN_APPLPATH",
+		"ARCAN_APPLTEMPPATH",
+		"ARCAN_STATEPATH",
+		"ARCAN_RESOURCEPATH",
+		"ARCAN_FRAMESERVER_LOGDIR",
+		"ARCAN_SOCKIN_FD",
+		"ARCAN_ARG",
+		"ARCAN_SHMKEY"
+	};
+
+/* growarr is set to FATALFAIL internally */
+	while(darr->count + n_spaces + 1 > darr->limit)
+		arcan_mem_growarr(darr);
+
+	size_t max_sz = 0;
+	for (size_t i = 0; i < n_spaces; i++){
+		size_t len = spaces[i] ? strlen(spaces[i]) : 0;
+		max_sz = len > max_sz ? len : max_sz;
+	}
+
+	char convb[max_sz + sizeof("ARCAN_FRAMESERVER_LOGDIR=")];
+	size_t ofs = darr->count > 0 ? darr->count - 1 : 0;
+	size_t step = ofs;
+
+	for (size_t i = 0; i < n_spaces; i++){
+		if (spaces[i] && strlen(spaces[i]) &&
+			snprintf(convb, sizeof(convb), "%s=%s", keys[i], spaces[i])){
+			darr->data[step] = strdup(convb);
+			step++;
+		}
+	}
+
+	darr->count = step;
+	darr->data[step] = NULL;
+}
+
 arcan_frameserver* arcan_frameserver_listen_external(const char* key, int fd)
 {
 	arcan_frameserver* res = arcan_frameserver_alloc();
@@ -925,7 +1002,7 @@ done:
 }
 
 arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
-	struct frameserver_envp setup)
+	struct frameserver_envp* setup)
 {
 	if (ctx == NULL)
 		return ARCAN_ERRC_BAD_ARGUMENT;
@@ -940,13 +1017,28 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 	shmalloc(ctx, false, NULL, -1);
 
 	ctx->launchedtime = arcan_frametime();
+
+/*
+ * this warrants explaining - to avoid dynamic allocations in the asynch unsafe
+ * context of fork, we prepare the str_arr in *setup along with all envs needed
+ * for the two to find eachother. The descriptor used for passing socket etc.
+ * is inherited and duped to a fix position and possible leaked fds are closed.
+ */
+	struct arcan_strarr arr = {0};
+	const char* source;
+	if (setup->use_builtin)
+		append_env(&arr,
+			(char*) setup->args.builtin.resource, "3", ctx->shm.key);
+	else
+		append_env(setup->args.external.envv, "", "3", ctx->shm.key);
+
 	pid_t child = fork();
 	if (child) {
 		close(sockp[1]);
 
 		img_cons cons = {
-			.w = setup.init_w,
-			.h = setup.init_h,
+			.w = setup->init_w,
+			.h = setup->init_h,
 			.bpp = 4
 		};
 		vfunc_state state = {
@@ -954,7 +1046,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 			.ptr = ctx
 		};
 
-		ctx->source = strdup(setup.args.builtin.resource);
+		ctx->source = strdup(setup->args.builtin.resource);
 
 		if (!ctx->vid)
 			ctx->vid = arcan_video_addfobject(FFUNC_NULLFRAME, state, cons, 0);
@@ -967,33 +1059,16 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 #endif
 		fcntl(sockp[0], F_SETFD, FD_CLOEXEC);
 
-		ctx->dpipe = sockp[0];
 		ctx->child = child;
 
-		arcan_frameserver_configure(ctx, setup);
+		arcan_frameserver_configure(ctx, *setup);
 	}
 	else if (child == 0){
-		char convb[8];
-		close(sockp[0]);
+		close(STDERR_FILENO+1);
+/* will also strip CLOEXEC */
+		dup2(sockp[0], STDERR_FILENO+1);
+		arcan_closefrom(STDERR_FILENO+2);
 
-		sprintf(convb, "%i", sockp[1]);
-		setenv("ARCAN_SOCKIN_FD", convb, 1);
-		setenv("ARCAN_ARG", setup.args.builtin.resource, 1);
-
-/*
- * Semi-trusteed frameservers are allowed
- * some namespace mapping access.
- */
-		setenv("ARCAN_APPLPATH", arcan_expand_resource("", RESOURCE_APPL), 1);
-		setenv("ARCAN_APPLTEMPPATH",
-			arcan_expand_resource("", RESOURCE_APPL_TEMP), 1);
-		setenv("ARCAN_STATEPATH",
-			arcan_expand_resource("", RESOURCE_APPL_STATE), 1);
-		setenv("ARCAN_RESOURCEPATH",
-			arcan_expand_resource("", RESOURCE_APPL_SHARED), 1);
-		setenv("ARCAN_FRAMESERVER_LOGDIR",
-			arcan_expand_resource("", RESOURCE_SYS_DEBUG), 1);
-		setenv("ARCAN_SHMKEY", ctx->shm.key, 1);
 /*
  * we need to mask this signal as when debugging parent process, GDB pushes
  * SIGINT to children, killing them and changing the behavior in the core
@@ -1001,32 +1076,29 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
  */
 		signal(SIGINT, SIG_IGN);
 
-		if (setup.use_builtin){
+		if (setup->use_builtin){
 			char* argv[] = {
-				arcan_expand_resource("", RESOURCE_SYS_BINS),
-				strdup(setup.args.builtin.mode),
+				arcan_fetch_namespace(RESOURCE_SYS_BINS),
+				(char*) setup->args.builtin.mode,
 				NULL
 			};
 
-			execv(argv[0], argv);
-			arcan_fatal("FATAL, arcan_frameserver_spawn_server(), "
-				"couldn't spawn frameserver(%s) with %s:%s. Reason: %s\n",
-				argv[0], setup.args.builtin.mode,
-				setup.args.builtin.resource, strerror(errno));
-			exit(1);
+			execve(argv[0], argv, arr.data);
+			const char errmsg[] = "arcan_frameserver_spawn_server() failed:";
+			write(STDERR_FILENO, errmsg, sizeof(errmsg));
+			write(STDERR_FILENO, argv[0], strlen(argv[0]));
+			exit(EXIT_FAILURE);
 		}
 /* non-frameserver executions (hijack libs, ...) */
 		else {
-			char** envv = setup.args.external.envv->data;
-			while(*envv)
-				putenv(*(envv++));
-
-			execv(setup.args.external.fname, setup.args.external.argv->data);
-			exit(1);
+			execve(setup->args.external.fname,
+				setup->args.external.argv->data, setup->args.external.envv->data);
+			exit(EXIT_FAILURE);
 		}
 	}
 	else /* -1 */
 		arcan_fatal("fork() failed, check ulimit or similar configuration issue.");
 
+	arcan_mem_freearr(&arr);
 	return ARCAN_OK;
 }

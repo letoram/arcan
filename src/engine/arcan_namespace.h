@@ -103,6 +103,13 @@ enum arcan_namespaces {
 char** arcan_expand_namespaces(char** inargs);
 
 /*
+ * to avoid the pattern arcan_expand_namespace("", space) as that
+ * entails dynamic memory allocation which may or may not be safe
+ * in some contexts.
+ */
+char* arcan_fetch_namespace(enum arcan_namespaces space);
+
+/*
  * implemented in <platform>/paths.c
  * search for a suitable arcan setup through configuration files,
  * environment variables, etc.
@@ -129,6 +136,15 @@ void arcan_override_namespace(const char* path, enum arcan_namespaces space);
  * if the slot is currently empty.
  */
 void arcan_softoverride_namespace(const char* newp, enum arcan_namespaces space);
+
+
+/*
+ * implemented in <platform>/namespace.c,
+ * prevent the specific slot from being overridden with either soft/hard
+ * modes. Intended for more sensitive namespaces (APPLBASE, FONT, STATE, DEBUG)
+ * for settings that need the control. Can't be undone.
+ */
+void arcan_pin_namespace(enum arcan_namespaces space);
 
 /*
  * implemented in <platform>/appl.c

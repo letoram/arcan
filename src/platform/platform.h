@@ -94,10 +94,20 @@ file_handle arcan_fetchhandle(int insock, bool block);
 bool arcan_pushhandle(int fd, int channel);
 
 /*
+ * This is a nasty little function, but used as a safe-guard in the fork()+
+ * exec() case ONLY. There should be no risk of syslog or other things
+ * corrupting future descriptors. On linux etc. this is implemented as an empty
+ * poll on a rlimit- full set and using that to close()
+ */
+void arcan_closefrom(int num);
+
+/*
  * Don't have much need for more fine-grained data model in regards to the
  * filesystem other than 'is it possible that this, at the moment, refers
  * to a file (loadable resource) or a container of files? Trace calls to this
  * function for verifying against TOCTU vulns.
+ * Depending on how the windows platform develops, we should consider moving
+ * this in hardening phase to return descriptor to dir/file instead
  */
 bool arcan_isfile(const char*);
 bool arcan_isdir(const char*);

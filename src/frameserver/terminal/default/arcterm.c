@@ -240,12 +240,14 @@ static void write_callback(struct tsm_vte* vte,
 static void setup_shell(struct arg_arr* argarr)
 {
 	char* shell = getenv("SHELL");
+
 	const struct passwd* pass = getpwuid( getuid() );
 	if (pass){
 		setenv("LOGNAME", pass->pw_name, 1);
 		setenv("USER", pass->pw_name, 1);
 		setenv("SHELL", pass->pw_shell, 0);
 		setenv("HOME", pass->pw_dir, 0);
+		shell = pass->pw_shell;
 	}
 
 	static const char* unset[] = {

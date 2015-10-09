@@ -2802,7 +2802,7 @@ static int launchavfeed(lua_State* ctx)
 		.args.builtin.resource = expbuf[0]
 	};
 
-	if ( fsrv_ok && arcan_frameserver_spawn_server(mvctx, args) == ARCAN_OK )
+	if ( fsrv_ok && arcan_frameserver_spawn_server(mvctx, &args) == ARCAN_OK )
 	{
 		mvctx->tag = ref;
 
@@ -2817,7 +2817,9 @@ static int launchavfeed(lua_State* ctx)
 		lua_pushvid(ctx, ARCAN_EID);
 	}
 
+/* internal so no need to free memarr */
 	free(expbuf[1]);
+
 	LUA_ETRACE("launch_avfeed", NULL);
 	return 2;
 }
@@ -2887,7 +2889,7 @@ static int loadmovie(lua_State* ctx)
 	arcan_vobj_id vid = ARCAN_EID;
 	arcan_aobj_id aid = ARCAN_EID;
 
-	if ( fsrv_ok && arcan_frameserver_spawn_server(mvctx, args) == ARCAN_OK )
+	if ( fsrv_ok && arcan_frameserver_spawn_server(mvctx, &args) == ARCAN_OK )
 	{
 		mvctx->tag = ref;
 		arcan_video_objectopacity(mvctx->vid, 0.0, 0);
@@ -6110,6 +6112,7 @@ static int targetlaunch(lua_State* ctx)
 	char* exec = arcan_db_targetexec(dbhandle, cid,
 		&bfmt, &argv, &env, &libs);
 
+/* means strarrs won't be populated */
 	if (!exec){
 		arcan_warning("launch_target(), failed -- invalid configuration");
 		return 0;
@@ -6173,7 +6176,7 @@ static int targetlaunch(lua_State* ctx)
 
 		args.args.builtin.resource = argstr;
 
-		if (!fsrv_ok||arcan_frameserver_spawn_server(intarget, args) != ARCAN_OK){
+		if (!fsrv_ok||arcan_frameserver_spawn_server(intarget, &args) != ARCAN_OK){
 			arcan_frameserver_free(intarget);
 			intarget = NULL;
 		}
@@ -6777,7 +6780,7 @@ static int spawn_recfsrv(lua_State* ctx,
 	};
 	arcan_video_alterfeed(did, FFUNC_AVFEED, fftag);
 
-	if (!fsrv_ok||arcan_frameserver_spawn_server(mvctx, args) != ARCAN_OK ){
+	if (!fsrv_ok||arcan_frameserver_spawn_server(mvctx, &args) != ARCAN_OK){
 		free(mvctx);
 		return 0;
 	}
@@ -7975,7 +7978,7 @@ static bool lua_launch_fsrv(lua_State* ctx,
 	arcan_frameserver* intarget = arcan_frameserver_alloc();
 	intarget->tag = callback;
 
-	if (fsrv_ok && arcan_frameserver_spawn_server(intarget, *args) == ARCAN_OK){
+	if (fsrv_ok && arcan_frameserver_spawn_server(intarget, args) == ARCAN_OK){
 		lua_pushvid(ctx, intarget->vid);
 		trace_allocation(ctx, "net", intarget->vid);
 		return true;
