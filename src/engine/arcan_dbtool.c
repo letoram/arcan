@@ -263,6 +263,7 @@ static int add_config(struct arcan_dbh* dst, int argc, char** argv)
 	if (argc < 2){
 		printf("add_config(target, identifier, argv) invalid number"
 			" of arguments (%d vs at least 2).\n", argc);
+		return EXIT_FAILURE;
 	}
 
 	arcan_targetid tid = arcan_db_targetid(dst, argv[0], NULL);
