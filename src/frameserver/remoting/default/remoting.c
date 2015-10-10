@@ -53,7 +53,7 @@ static struct {
 	char* pass;
 	int depth;
 	rfbClient* client;
-	bool dirty;
+	bool dirty, forcealpha;
 } vncctx = {0};
 
 int mouse_button_map[] = {
@@ -250,6 +250,7 @@ static void dump_help()
 		" password\t val       \t use this (7-bit ascii) password for auth\n"
 	  " host    \t hostname  \t connect to the specified host\n"
 		" port    \t portnum   \t use the specified port for connecting\n"
+		" forcealpha           \t set alpha channel to fullbright (normally off)\n"
 		"---------\t-----------\t----------------\n"
 	);
 }
@@ -311,6 +312,9 @@ int afsrv_remoting(struct arcan_shmif_cont* con, struct arg_arr* args)
 		port = strtoul(argtmp, NULL, 10);
 	}
 
+	if (arg_lookup(args, "noalpha", 0, &argtmp))
+		vncctx.forcealpha = true;
+
 	vncctx.shmcont = *con;
 
 	if (!client_connect(host, port))
@@ -326,7 +330,7 @@ int afsrv_remoting(struct arcan_shmif_cont* con, struct arg_arr* args)
 	vncctx.client->frameBuffer = (uint8_t*) vncctx.shmcont.vidp;
 	atexit( cleanup );
 
-	short poller = POLLERR | POLLHUP | POLLNVAL;
+	short poller = POLLHUP | POLLNVAL;
 	short pollev = POLLIN | poller;
 
 	while (true){
@@ -337,6 +341,8 @@ int afsrv_remoting(struct arcan_shmif_cont* con, struct arg_arr* args)
 			vncctx.dirty = false;
 			shmif_pixel* avp = vncctx.shmcont.vidp;
 			size_t ntc = vncctx.shmcont.pitch * vncctx.shmcont.h;
+
+			if (vncctx.forcealpha)
 			for (size_t i = 0; i < ntc; i++)
 				avp[i] |= RGBA(0x00, 0x00, 0x00, 0xff);
 
@@ -355,8 +361,10 @@ int afsrv_remoting(struct arcan_shmif_cont* con, struct arg_arr* args)
 		if (-1 == sv){
 			if (errno == EINTR || errno == EAGAIN)
 				continue;
-			else
+			else{
+				LOG("polling on arcan signalling socket / RFB connection failed\n");
 				break;
+			}
 		}
 
 		if ( ((fds[0].revents & POLLIN) && !HandleRFBServerMessage(vncctx.client))
@@ -366,10 +374,23 @@ int afsrv_remoting(struct arcan_shmif_cont* con, struct arg_arr* args)
 			break;
 		}
 
-		if ( ((fds[1].revents & POLLIN) && !process_shmif()) ||
-			(fds[1].revents & poller)){
-			process_shmif();
-			break;
+		int rev = fds[1].revents;
+		if ( ((rev & POLLIN)) ){
+			if (!process_shmif()){
+				LOG("arcan- connection requested termination.\n");
+				break;
+			}
+			if ((rev & poller)){
+				uint8_t buf;
+				if (-1 == read(fds[1].fd, &buf, 1)){
+					LOG("arcan- connection socket failure: %s\n", strerror(errno));
+				}
+				else
+					LOG("arcan connection suspiciously failed poll"
+						" hup: %s, err: %s, nval: %s\n", (rev & POLLERR) ? "yes" : "no",
+						(rev & POLLHUP) ? "yes" : "no", (rev & POLLNVAL) ? "yes" : "no");
+				break;
+			}
 		}
 	}
 /* shutdown */

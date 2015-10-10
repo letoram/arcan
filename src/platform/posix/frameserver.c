@@ -1059,6 +1059,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 #endif
 		fcntl(sockp[0], F_SETFD, FD_CLOEXEC);
 
+		ctx->dpipe = sockp[0];
 		ctx->child = child;
 
 		arcan_frameserver_configure(ctx, *setup);
@@ -1066,7 +1067,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 	else if (child == 0){
 		close(STDERR_FILENO+1);
 /* will also strip CLOEXEC */
-		dup2(sockp[0], STDERR_FILENO+1);
+		dup2(sockp[1], STDERR_FILENO+1);
 		arcan_closefrom(STDERR_FILENO+2);
 
 /*
