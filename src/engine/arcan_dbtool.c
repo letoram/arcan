@@ -104,7 +104,7 @@ static int drop_appl(struct arcan_dbh* dst, int argc, char** argv)
 		return EXIT_FAILURE;
 	}
 
-	arcan_db_dropappl(dst, argv[1]);
+	arcan_db_dropappl(dst, argv[0]);
 	return EXIT_SUCCESS;
 }
 
