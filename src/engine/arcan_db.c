@@ -213,7 +213,7 @@ void arcan_db_dropappl(struct arcan_dbh* dbh, const char* appl)
 	if (0 == len)
 		return;
 
-	const char* dropqry = "DELETE FROM appl_";
+	const char dropqry[] = "DELETE FROM appl_;";
 	char dropbuf[sizeof(dropqry) + len];
 	snprintf(dropbuf, sizeof(dropbuf), "%s%s;", dropqry, appl);
 
