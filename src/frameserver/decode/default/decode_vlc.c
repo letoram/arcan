@@ -4,6 +4,12 @@
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  * Depends: LibVLC (LGPL)
+ * Description: Default VLC based player. Still in quite a terrible shape with
+ * few features mapped (subtitle control, subtitle as subsegment, playlists,
+ * descriptor passing, stream switching, attenuation, accelerated handle, mouse
+ * cursor handling for DVDs, passing, audio/video/subtitle track switching all
+ * missing still, accelerated audio passthrough control, exposing chapters /
+ * titles)
  */
 
 #include <stdlib.h>
@@ -31,10 +37,11 @@ static struct {
 	bool fft_audio, got_video;
 	kiss_fftr_cfg fft_state;
 
+	bool loop;
+
 	pthread_mutex_t rsync;
 } decctx;
 
-#define LOG(...) (fprintf(stderr, __VA_ARGS__))
 #define AUD_VIS_HRES 2048
 
 static void process_inevq();
@@ -198,7 +205,8 @@ static void audio_flush()
 		.category = EVENT_EXTERNAL,
 		.ext.kind = ARCAN_EVENT(FLUSHAUD)
 	};
-
+	LOG("flush\n");
+	decctx.shmcont.addr->abufused = 0;
 	arcan_shmif_enqueue(&decctx.shmcont, &ev);
 }
 
@@ -278,11 +286,12 @@ static void player_event(const struct libvlc_event_t* event, void* ud)
 
 	case libvlc_MediaPlayerEncounteredError:
 		case libvlc_MediaPlayerEndReached:
+			LOG("end reached\n");
 			decctx.shmcont.addr->dms = false;
 	break;
 
 	default:
-		printf("unhandled event\n");
+		LOG("unhandled event (%s)\n", libvlc_event_type_name(event->type));
 	}
 
 	process_inevq();
@@ -348,6 +357,10 @@ static void process_inevq()
 		case TARGET_COMMAND_GRAPHMODE:
 /* switch audio /video visualization, RGBA-pack YUV420 hinting,
  * set_deinterlace */
+		break;
+
+		case TARGET_COMMAND_AUDDELAY:
+
 		break;
 
 		case TARGET_COMMAND_FRAMESKIP:
@@ -447,6 +460,9 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		if (arg_lookup(args, "fps", 0, &val))
 			fps = strtof(val, NULL);
 
+		if (arg_lookup(args, "loop", 0, &val))
+			decctx.loop = true;
+
 		if (arg_lookup(args, "width", 0, &val))
 			desw = strtoul(val, NULL, 10);
 			desw = (desw > 0 && desw < ARCAN_SHMPAGE_MAXW) ? desw : 0;
@@ -489,6 +505,7 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 
 	libvlc_media_player_play(decctx.player);
 
+/* video playback finish will pull this or seek back to beginning on loop */
 	while(decctx.shmcont.addr->dms)
 #if _WIN32
 		Sleep(1000);

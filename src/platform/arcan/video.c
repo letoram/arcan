@@ -644,6 +644,11 @@ void platform_event_deinit(arcan_evctx* ctx)
 {
 }
 
+void platform_event_reset(arcan_evctx* ctx)
+{
+	platform_event_deinit(ctx);
+}
+
 void platform_device_lock(int devind, bool state)
 {
 }

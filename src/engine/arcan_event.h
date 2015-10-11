@@ -76,14 +76,15 @@ void arcan_event_repl(struct arcan_evctx* ctx, enum ARCAN_EVENT_CATEGORY cat,
 );
 
 /*
- * used as part of trying to salvage external connections while
- * resetting audio/video/scripting contexts. This sweeps the "to be processed"
- * event-queue and removes all events that doesn't strictly come from
- * external sources.
+ * used as part of trying to salvage external connections while resetting
+ * audio/video/scripting contexts. This sweeps the "to be processed"
+ * event-queue and removes all events that doesn't strictly come from external
+ * sources or might otherwise leak state from previous context
  */
 void arcan_event_purge();
 
 void arcan_event_init(struct arcan_evctx* dstcontext);
+
 void arcan_event_deinit(struct arcan_evctx*);
 
 #endif

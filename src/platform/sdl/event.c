@@ -731,6 +731,11 @@ void platform_event_deinit(arcan_evctx* ctx)
 	}
 }
 
+void platform_event_reset(arcan_evctx* ctx)
+{
+	platform_event_deinit(ctx);
+}
+
 void platform_device_lock(int devind, bool state)
 {
 	SDL_WM_GrabInput( state ? SDL_GRAB_ON : SDL_GRAB_OFF );

@@ -15,8 +15,11 @@
  *
  * 1. <Zero Connector mode> This one is quite heavy, due to the way EGL and
  * friends are integrated the current case with all displays being removed
+ * isn't well supported. The best approach would probably be to treat as an
+ * external_launch sort of situation or rebuild the EGL context with a headless
+ * one in order for other features (sharing etc.) to remain working.
  *
- * 2. Multiple graphics cards and hotplugging graphics cards Bonus points for
+ * 2. Multiple graphics cards and hotplugging graphics cards. Bonus points for
  * surviving VT switch, moving all displays to a new plugged GPU, VT switch
  * back and everything remapped correctly.
  *
@@ -40,7 +43,6 @@
  * _cmd fifo for that purpose.
  *
  */
-
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -151,7 +153,7 @@ struct dispout {
 
 /* 1 buffer for 1 device for 1 display */
 	struct {
-		int in_flip;
+		int in_flip, in_destroy;
 		EGLSurface esurf;
 		struct gbm_bo* cur_bo, (* next_bo);
 		uint32_t cur_fb, next_fb;
@@ -183,6 +185,7 @@ struct dispout {
 static struct {
 	struct dispout* last_display;
 	size_t canvasw, canvash;
+	int destroy_pending;
 } egl_dri;
 
 #ifndef MAX_DISPLAYS
@@ -1288,7 +1291,16 @@ static void disable_display(struct dispout* d)
 	if (!d || d->state == DISP_UNUSED)
 		return;
 
+	if (d->buffer.in_flip){
+		d->buffer.in_destroy = true;
+		egl_dri.destroy_pending++;
+		return;
+	}
+
 	d->device->refc--;
+	if (d->buffer.in_destroy)
+		egl_dri.destroy_pending--;
+	d->buffer.in_destroy = false;
 
 	if (d->display.edid_blob){
 		free(d->display.edid_blob);
@@ -1304,6 +1316,9 @@ static void disable_display(struct dispout* d)
 
 /* set this flag so we notice callback triggers */
 	d->state = DISP_CLEANUP;
+	eglMakeCurrent(d->device->display, EGL_NO_SURFACE,
+		EGL_NO_SURFACE, d->device->context);
+
 	eglDestroySurface(d->device->display, d->buffer.esurf);
 	d->buffer.esurf = NULL;
 
@@ -1467,39 +1482,17 @@ static void page_flip_handler(int fd, unsigned int frame,
 	d->buffer.next_bo = NULL;
 }
 
-/*
- * A lot more work / research is needed on this one to be able to handle
- * all weird edge-cases depending on the mapped displays and priorities
- * (powersave? tearfree? lowest possible latency in regards to other
- * external clocks etc.) - especially when mixing in future synch
- * models that don't require VBlank
- */
-void platform_video_synch(uint64_t tick_count, float fract,
-	video_synchevent pre, video_synchevent post)
+void flush_display_events()
 {
-	if (pre)
-		pre();
-
-	size_t nd;
-
-/* at this stage, the contents of all RTs have been synched,
- * with nd == 0, nothing has changed from what was draw last time */
+	int pending = 1;
 	struct dispout* d;
-	int i = 0;
-
-	arcan_bench_register_cost( arcan_vint_refresh(fract, &nd) );
-
-	while ( (d = get_display(i++)) ){
-		if (d->state == DISP_MAPPED && d->buffer.in_flip == 0)
-			update_display(d);
-	}
 
 	drmEventContext evctx = {
 			.version = DRM_EVENT_CONTEXT_VERSION,
-			.page_flip_handler = page_flip_handler,
+			.page_flip_handler = page_flip_handler
+/* also possible to get access to vblank here (vblank_handler) for when we
+ * implement actual synching strategies */
 	};
-
-	int pending = 1;
 	do{
 /* for multiple cards, extend this pollset */
 		struct pollfd fds = {
@@ -1527,6 +1520,45 @@ void platform_video_synch(uint64_t tick_count, float fract,
 				pending |= d->buffer.in_flip;
 	}
 	while (pending);
+}
+
+/*
+ * A lot more work / research is needed on this one to be able to handle all
+ * weird edge-cases depending on the mapped displays and priorities (powersave?
+ * tearfree? lowest possible latency in regards to other external clocks etc.)
+ * - especially when mixing in future synch models that don't require VBlank
+ */
+void platform_video_synch(uint64_t tick_count, float fract,
+	video_synchevent pre, video_synchevent post)
+{
+	if (pre)
+		pre();
+
+	size_t nd;
+	struct dispout* d;
+
+/*
+ * there are some conditions to when it is safe to destroy a display or not,
+ * and with multiple queued buffers, we need to wait for the queue to flush
+ */
+	int i = 0;
+	while (egl_dri.destroy_pending > 0){
+		while( (d = get_display(i++)) )
+			disable_display(d);
+		flush_display_events();
+		i = 0;
+	}
+
+/* at this stage, the contents of all RTs have been synched,
+ * with nd == 0, nothing has changed from what was draw last time */
+	arcan_bench_register_cost( arcan_vint_refresh(fract, &nd) );
+
+	while ( (d = get_display(i++)) ){
+		if (d->state == DISP_MAPPED && d->buffer.in_flip == 0)
+			update_display(d);
+	}
+
+	flush_display_events();
 
 	if (post)
 		post();
@@ -1795,11 +1827,11 @@ static void update_display(struct dispout* d)
  */
 void platform_video_prepare_external()
 {
-	if (!getenv("ARCAN_VIDEO_DRM_NOMASTER"))
-		drmDropMaster(nodes[0].fd);
-
 	for(size_t i = 0; i < MAX_DISPLAYS; i++)
 		disable_display(&displays[i]);
+
+	if (!getenv("ARCAN_VIDEO_DRM_NOMASTER"))
+		drmDropMaster(nodes[0].fd);
 }
 
 void platform_video_restore_external()

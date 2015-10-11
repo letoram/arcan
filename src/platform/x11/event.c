@@ -458,6 +458,11 @@ void platform_event_deinit(struct arcan_evctx* ctx)
 {
 }
 
+void platform_event_reset(arcan_evctx* ctx)
+{
+	platform_event_deinit(ctx);
+}
+
 enum PLATFORM_EVENT_CAPABILITIES platform_input_capabilities()
 {
 	return ACAP_TRANSLATED | ACAP_MOUSE;

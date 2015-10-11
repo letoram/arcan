@@ -282,8 +282,8 @@ enum ARCAN_TARGET_COMMAND {
 /*
  * This indicates that A/V synch is not quite right and the client, if
  * possible, should try to adjust internal buffering.
- * ioevs[0].iv = audio-skew (ms)
- * ioevs[1].iv = video-skew (ms)
+ * ioevs[0].iv = relative audio-skew (ms)
+ * ioevs[1].iv = relative video-skew (ms)
  */
 	TARGET_COMMAND_AUDDELAY,
 
