@@ -206,6 +206,13 @@ const char* platform_event_devlabel(int devid);
 void platform_event_analogall(bool enable, bool mouse);
 
 /*
+ * Used for recovery handover where a full deinit would be damaging or has
+ * some connection to the video layer. One example is for egl-dri related
+ * pseudo-terminal management where some IOCTLs affect graphics state.
+ */
+void arcan_event_reset();
+
+/*
  * Special controls for devices that sample relative values but report
  * absolute values based on an internal tracking value and we might need to
  * 'warp' for device control.

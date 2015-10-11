@@ -1285,6 +1285,11 @@ const char* platform_event_devlabel(int devid)
  * init/deinit sessions, which is needed for virtual terminal switching
  * and external_launch.
  */
+void platform_event_reset(struct arcan_evctx* ctx)
+{
+
+}
+
 void platform_event_deinit(struct arcan_evctx* ctx)
 {
 	if (isatty(gstate.tty) && gstate.mute){
@@ -1292,6 +1297,7 @@ void platform_event_deinit(struct arcan_evctx* ctx)
 		if (-1 == ioctl(gstate.tty, KDSETMODE, KD_TEXT)){
 			arcan_warning("reset failed %s\n", strerror(errno));
 		}
+
 		gstate.kbmode = gstate.kbmode == K_OFF ? K_XLATE : gstate.kbmode;
 		ioctl(gstate.tty, KDSKBMODE, gstate.kbmode);
 		ioctl(gstate.tty, KDSETLED, gstate.leds);

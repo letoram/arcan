@@ -2527,8 +2527,7 @@ static int syscollapse(lua_State* ctx)
 		arcan_lua_shutdown(ctx);
 
 /* flush eventqueue to avoid danglers */
-		arcan_event_deinit(arcan_event_defaultctx());
-		arcan_event_init(arcan_event_defaultctx());
+		platform_event_reset(arcan_event_defaultctx());
 
 /* we no longer have a context, the Lua specific error reporter should
  * not be used */
