@@ -76,6 +76,13 @@ static struct {
 	int cell_w, cell_h;
 	int screen_w, screen_h;
 	int cursor_x, cursor_y;
+
+/* mouse selection management */
+	int mouse_x, mouse_y;
+	int lm_x, lm_y;
+	int bsel_x, bsel_y;
+	bool in_select;
+
 	uint8_t fgc[3];
 	uint8_t bgc[3];
 	uint8_t alpha;
@@ -83,6 +90,8 @@ static struct {
 	tsm_age_t age;
 
 	struct arcan_shmif_cont acon;
+	struct arcan_shmif_cont clip_in;
+	struct arcan_shmif_cont clip_out;
 } term = {
 	.cell_w = 8,
 	.cell_h = 8,
@@ -118,11 +127,10 @@ struct unpack_col {
 /* support different cursor types here; blinking, underline,
  * vert-line, block, square. */
 
-static void cursor_at(int x, int y)
+static void cursor_at(int x, int y, shmif_pixel ccol)
 {
 	size_t w = term.acon.addr->w;
 	shmif_pixel* dst = term.acon.vidp;
-	shmif_pixel ccol = RGBA(0x00, 0xff, 0x00, 0xff);
 	x *= term.cell_w;
 	y *= term.cell_h;
 
@@ -162,33 +170,23 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 	dbg[1] = attr->bg;
 	dbg[2] = attr->bb;
 
-/* unset to ignore local colors, we can switch this with displaymode
-  dfg[0] = term.fgc[0];
- 	dfg[1] = term.fgc[1];
-	dfg[2] = term.fgc[2];
-	dbg[0] = term.bgc[0];
-	dbg[1] = term.bgc[1];
-	dbg[2] = term.bgc[2];
- */
-
+	term.dirty = true;
 	if (x == term.cursor_x && y == term.cursor_y){
 /* blend or draw differently */
-		cursor_at(x, y);
+		cursor_at(x, y, RGBA(0x00, 0xff, 0x00, 0xff));
 		return 0;
 	}
 
-	term.dirty = true;
 	draw_box(&term.acon, base_x, base_y, term.cell_w,
 		term.cell_h, SHMIF_RGBA(bgc[0], bgc[1], bgc[2], term.alpha));
-	if (len == 0)
+
+	if (len == 0){
 		return 0;
+	}
 
 	size_t u8_sz = tsm_ucs4_get_width(*ch) + 1;
 	uint8_t u8_ch[u8_sz];
 	size_t nch = tsm_ucs4_to_utf8(*ch, (char*) u8_ch);
-
-	if (nch == 0 || u8_ch[0] == 0)
-		return 0;
 
 #ifdef TTF_SUPPORT
 	if (font == NULL){
@@ -196,7 +194,6 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 /* without proper ttf support, we just go with '?' for unknowns */
 		u8_ch[0] = u8_ch[0] <= 128 ? u8_ch[0] : '?';
 		u8_ch[1] = '\0';
-
 		draw_text(&term.acon, (const char*) u8_ch, base_x, base_y,
 			SHMIF_RGBA(fgc[0], fgc[1], fgc[2], 0xff)
 		);
@@ -208,29 +205,41 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 #ifdef TTF_SUPPORT
 	u8_ch[u8_sz-1] = '\0';
 	TTF_Color fg = {.r = fgc[0], .g = fgc[1], .b = fgc[2]};
+
+/* unfortunately, this lil' function do not do in-place rendering,
+ * should be fixed to cut down on w * h malloc/free pairs */
 	TTF_Surface* surf = TTF_RenderUTF8(font, (char*) u8_ch, fg);
 	if (!surf)
 		return 0;
 
 	size_t w = term.acon.addr->w;
 	shmif_pixel* dst = term.acon.vidp;
+	cursor_at(x, y, SHMIF_RGBA(bgc[0], bgc[1], bgc[2], 0xff));
 
 	for (int row = 0; row < surf->height; row++)
 		for (int col = 0; col < surf->width; col++){
 			uint8_t* bgra = (uint8_t*) &surf->data[ row * surf->stride + (col * 4) ];
-			float fact = (float)bgra[3] / 255.0;
-			float ifact = 1.0 - fact;
 			off_t ofs = (row + base_y) * term.acon.pitch + col + base_x;
-
-/* this should be cleaned up somewhat to consider subpixel hinting,
- * cursor-or-not, ... */
-			struct unpack_col incl;
-			dst[ofs] = SHMIF_RGBA(
-				(bgra[3] * fgc[0]) / 255,
-				(bgra[3] * fgc[1]) / 255,
-				(bgra[3] * fgc[2]) / 255,
-				0xff
-			);
+			if (bgra[3] == 0)
+				dst[ofs] = SHMIF_RGBA(bgc[0], bgc[1], bgc[2], 0xff);
+/* blend 1 - src alpha */
+			else{
+				shmif_pixel inp = dst[ofs];
+				uint32_t r, g, b;
+			 	uint8_t or, og, ob, oa;
+/* classic "avoid div hack" */
+				SHMIF_RGBA_DECOMP(inp, &or, &og, &ob, &oa);
+				r = bgra[3] * fgc[0] + bgc[0] * (255 - or);
+				r += 0x80;
+				r = (r + (r >> 8)) >> 8;
+				g = bgra[3] * fgc[1] + bgc[1] * (255 - ob);
+				g += 0x80;
+				g = (g + (g >> 8)) >> 8;
+				b = bgra[3] * fgc[2] + bgc[2] * (255 - og);
+				b += 0x80;
+				b = (b + (b >> 8)) >> 8;
+				dst[ofs] = SHMIF_RGBA(r, g, b, 0xff);
+			}
 		}
 
 	free(surf);
@@ -300,7 +309,7 @@ static void setup_shell(struct arg_arr* argarr)
 		unsetenv(unset[i]);
 
 /* might get overridden with putenv below */
-	setenv("TERM", "xterm", 1);
+	setenv("TERM", "xterm-256color", 1);
 
 	while (arg_lookup(argarr, "env", ind++, &val))
 		putenv(strdup(val));
@@ -374,12 +383,23 @@ static void select_begin()
 static void select_copy()
 {
 	char* sel = NULL;
-	tsm_screen_selection_copy(term.screen, &sel);
-/* TODO: map to events [ or if the data is large enough,
- * check / wait for CLIPBOARD subsegment ] */
-	if (sel)
-		LOG("selected: %s\n", sel);
-	free(sel);
+/*
+ * there are more advanced clipboard options to be used when
+ * we have the option of exposing other devices using a fuse- vfs
+ * in: /vdev/istream, /vdev/vin, /vdev/istate
+ * out: /vdev/ostream, /dev/vout, /vdev/vstate, /vdev/dsp
+ */
+	if (term.clip_out.vidp){
+		tsm_screen_selection_copy(term.screen, &sel);
+		size_t len = strlen(sel);
+		char* outs = sel;
+
+		while(len){
+
+		}
+
+		free(sel);
+	}
 }
 
 static void select_cancel()
@@ -429,12 +449,12 @@ static const struct lent labels[] = {
 	{"SIGINFO", send_siginfo},
 	{"SCROLL_UP", scroll_up},
 	{"SCROLL_DOWN", scroll_down},
+	{"PAGE_UP", page_up},
+	{"PAGE_DOWN", page_down},
 	{"UP", move_up},
 	{"DOWN", move_down},
 	{"LEFT", move_left},
 	{"RIGHT", move_right},
-	{"PAGE_UP", page_up},
-	{"PAGE_DOWN", page_down},
 	{"SELECT_BEGIN", select_begin},
 	{"SELECT_CANCEL", select_cancel},
 	{"SELECT_COPY", select_copy},
@@ -526,14 +546,52 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 			term.dirty = true;
 		}
 	}
-	else if (ioev->datatype == EVENT_IDATATYPE_DIGITAL){
-/* already covered with label */
-		if (!ioev->input.digital.active)
-			return;
+	else if (ioev->devkind == EVENT_IDEVKIND_MOUSE){
+		if (ioev->datatype == EVENT_IDATATYPE_ANALOG){
+			if (ioev->subid == 0)
+				term.mouse_x = ioev->input.analog.axisval[0] / term.cell_w;
+			else if (ioev->subid == 1){
+				term.mouse_y = ioev->input.analog.axisval[0] / term.cell_h;
+				if (!term.in_select)
+					return;
 
-		consume_label(ioev, label);
-	}
-	else if (ioev->datatype == EVENT_IDATATYPE_ANALOG){
+				bool upd = false;
+				if (term.mouse_x != term.lm_x){
+					term.lm_x = term.mouse_x;
+					upd = true;
+				}
+				if (term.mouse_y != term.lm_y){
+					term.lm_y = term.mouse_y;
+					upd = true;
+				}
+
+				if (upd){
+					tsm_screen_selection_target(term.screen, term.lm_x, term.lm_y);
+					term.age = tsm_screen_draw(term.screen, draw_cb, NULL);
+				}
+/* in select? check if motion tile is different than old, if so,
+ * tsm_selection_target */
+			}
+		}
+/* press? press-point tsm_screen_selection_start,
+ * release and press-tile ~= release_tile? copy */
+		else if (ioev->subid == 1){
+			if (ioev->input.digital.active){
+				tsm_screen_selection_start(term.screen, term.mouse_x, term.mouse_y);
+				term.bsel_x = term.mouse_x;
+				term.bsel_y = term.mouse_y;
+				term.lm_x = term.mouse_x;
+				term.lm_y = term.mouse_y;
+				term.in_select = true;
+			}
+			else{
+				if (term.mouse_x != term.bsel_x || term.mouse_y != term.bsel_y)
+					select_copy();
+				tsm_screen_selection_reset(term.screen);
+				term.in_select = false;
+				term.age = tsm_screen_draw(term.screen, draw_cb, NULL);
+			}
+		}
 	}
 }
 
@@ -612,17 +670,14 @@ static void event_dispatch(arcan_event* ev)
 static void probe_font(const char* msg, size_t* dw, size_t* dh)
 {
 	TTF_Color fg = {.r = 0xff, .g = 0xff, .b = 0xff};
-	TTF_Surface* surf = TTF_RenderUTF8(font, msg, fg);
-	if (!surf)
-		return;
+	int w = *dw, h = *dh;
+	TTF_SizeText(font, msg, &w, &h);
 
-	if (surf->width > *dw)
-		*dw = surf->width;
+	if (w > *dw)
+		*dw = w;
 
-	if (surf->height > *dh)
-		*dh = surf->height;
-
-	free(surf);
+	if (h > *dh)
+		*dh = h;
 }
 #endif
 
@@ -771,20 +826,23 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 				TTF_SetFontHinting(font, TTF_HINTING_LIGHT);
 			else if (strcmp(val, "mono") == 0)
 				TTF_SetFontHinting(font, TTF_HINTING_MONO);
+			else if (strcmp(val, "none") == 0)
+				TTF_SetFontHinting(font, TTF_HINTING_NONE);
 			else{
-				LOG("unknown hinting %s, falling back to mono\n", val);
+				LOG("unknown hinting %s, falling back to none\n", val);
 				TTF_SetFontHinting(font, TTF_HINTING_NONE);
 			}
 		}
 		else{
-			LOG("no hinting specified, using mono.\n");
-			TTF_SetFontHinting(font, TTF_HINTING_MONO);
+			LOG("no hinting specified, using none.\n");
+			TTF_SetFontHinting(font, TTF_HINTING_NONE);
 		}
 
 /* Just run through a practice set to determine the actual width when hinting
  * is taken into account. We still suffer the problem of more advanced glyphs
  * though */
 		if (!custom_w){
+			TTF_SetFontStyle(font, TTF_STYLE_BOLD);
 			size_t w = 0, h = 0;
 			static const char* set[] = {
 				"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l",
@@ -800,6 +858,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 				term.cell_w = w;
 				term.cell_h = h;
 			}
+			TTF_SetFontStyle(font, TTF_STYLE_NORMAL);
 		}
 	}
 	}
@@ -839,7 +898,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	};
 	tsm_screen_set_def_attr(term.screen, &attr);
 
-	setlocale(LC_CTYPE, "");
+	setlocale(LC_CTYPE, "C");
 
 	signal(SIGHUP, SIG_IGN);
 

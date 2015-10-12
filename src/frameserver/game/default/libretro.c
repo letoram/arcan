@@ -62,6 +62,9 @@
 #define BADID -1
 #endif
 
+#define COUNT_OF(x) \
+	((sizeof(x)/sizeof(0[x])) / ((size_t)(!(sizeof(x) % sizeof(0[x])))))
+
 /* note on synchronization:
  * the async and esync mechanisms will buffer locally and have that buffer
  * flushed by the main application whenever appropriate. For audio, this is
@@ -663,7 +666,7 @@ static void update_varset( struct retro_variable* data )
 		.ext.kind = ARCAN_EVENT(COREOPT)
 	};
 
-	size_t msgsz = sizeof(outev.ext.message) / sizeof(outev.ext.message[0]);
+	size_t msgsz = COUNT_OF(outev.ext.message.data);
 
 /* reset current varset */
 	if (retroctx.varset){
@@ -721,12 +724,12 @@ static void update_varset( struct retro_variable* data )
 		while(*workend && *workend == ' ') workend++;
 
 /* key */
-			snprintf((char*)outev.ext.message, msgsz-1,
+			snprintf((char*)outev.ext.message.data, msgsz,
 				"%d:key:%s", count, data[count].key);
 			arcan_shmif_enqueue(&retroctx.shmcont, &outev);
 
 /* description */
-			snprintf((char*)outev.ext.message, msgsz-1,
+			snprintf((char*)outev.ext.message.data, msgsz,
 				"%d:descr:%s", count, workbeg);
 			arcan_shmif_enqueue(&retroctx.shmcont, &outev);
 
@@ -743,7 +746,7 @@ startarg:
 				if (!gotval && (gotval = true))
 					retroctx.varset[count].value = strdup(workbeg);
 
-				snprintf((char*)outev.ext.message, msgsz-1,
+				snprintf((char*)outev.ext.message.data, msgsz,
 					"%d:arg:%s", count, workbeg);
 				arcan_shmif_enqueue(&retroctx.shmcont, &outev);
 
@@ -752,7 +755,7 @@ startarg:
 
 			const char* curv = lookup_varset(data[count].key);
 			if (curv){
-				snprintf((char*)outev.ext.message, msgsz-1,
+				snprintf((char*)outev.ext.message.data, msgsz,
 				"%d:curv:%s", count, curv);
 				arcan_shmif_enqueue(&retroctx.shmcont, &outev);
 			}
@@ -1696,8 +1699,8 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 			.ext.kind = ARCAN_EVENT(IDENT)
 		};
 
-		size_t msgsz = sizeof(outev.ext.message) / sizeof(outev.ext.message[0]);
-		snprintf((char*)outev.ext.message, msgsz-1, "%s %s",
+		size_t msgsz = COUNT_OF(outev.ext.message.data);
+		snprintf((char*)outev.ext.message.data, msgsz, "%s %s",
 			retroctx.sysinfo.library_name, retroctx.sysinfo.library_version);
 		arcan_shmif_enqueue(&retroctx.shmcont, &outev);
 
@@ -1728,22 +1731,19 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		}
 
 /* load the game, and if that fails, give up */
-		outev.ext.kind = ARCAN_EVENT(RESOURCE);
-		snprintf((char*)outev.ext.message, msgsz, "loading");
-		arcan_shmif_enqueue(&retroctx.shmcont, &outev);
 		if (snprintf(logbuf, logbuf_sz, "loading game...") >= logbuf_sz)
 			logbuf[logbuf_sz - 1] = '\0';
 		log_msg(logbuf, true);
 
 		if ( retroctx.load_game( &retroctx.gameinfo ) == false ){
-			snprintf((char*)outev.ext.message, msgsz, "failed");
+			snprintf((char*)outev.ext.message.data, msgsz, "failed");
 			snprintf(logbuf, logbuf_sz, "loading failed");
 			arcan_shmif_enqueue(&retroctx.shmcont, &outev);
 			log_msg(logbuf, true);
 			return EXIT_FAILURE;
 		}
 
-		snprintf((char*)outev.ext.message, msgsz, "loaded");
+		snprintf((char*)outev.ext.message.data, msgsz, "loaded");
 		arcan_shmif_enqueue(&retroctx.shmcont, &outev);
 
 		( (void(*)(struct retro_system_av_info*))
@@ -1804,7 +1804,7 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		retroctx.state_sz = retroctx.serialize_size();
 		outev.category = EVENT_EXTERNAL;
 		outev.ext.kind = ARCAN_EVENT(STATESIZE);
-		outev.ext.state_sz = retroctx.state_sz;
+		outev.ext.stateinf.size = retroctx.state_sz;
 		arcan_shmif_enqueue(&retroctx.shmcont, &outev);
 
 		if (retroctx.state_sz > 0)
