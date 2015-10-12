@@ -75,6 +75,7 @@ static struct {
 	int mag;
 	int cell_w, cell_h;
 	int screen_w, screen_h;
+	int cursor_x, cursor_y;
 	uint8_t fgc[3];
 	uint8_t bgc[3];
 	uint8_t alpha;
@@ -114,6 +115,29 @@ struct unpack_col {
 	};
 };
 
+/* support different cursor types here; blinking, underline,
+ * vert-line, block, square. */
+
+static void cursor_at(int x, int y)
+{
+	size_t w = term.acon.addr->w;
+	shmif_pixel* dst = term.acon.vidp;
+	shmif_pixel ccol = RGBA(0x00, 0xff, 0x00, 0xff);
+	x *= term.cell_w;
+	y *= term.cell_h;
+
+/* just outline border if we are on top of an existing cell */
+	for (int col = x; col < x + term.cell_w; col++){
+		dst[y * term.acon.pitch + col] = ccol;
+		dst[(y + term.cell_h-1 )* term.acon.pitch + col] = ccol;
+	}
+
+	for (int row = y+1; row < y + term.cell_h-1; row++){
+		dst[row * term.acon.pitch + x] = ccol;
+		dst[row * term.acon.pitch + x + term.cell_w - 1] = ccol;
+	}
+}
+
 static int draw_cb(struct tsm_screen* screen, uint32_t id,
 	const uint32_t* ch, size_t len, unsigned width, unsigned x, unsigned y,
 	const struct tsm_screen_attr* attr, tsm_age_t age, void* data)
@@ -147,9 +171,17 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 	dbg[2] = term.bgc[2];
  */
 
+	if (x == term.cursor_x && y == term.cursor_y){
+/* blend or draw differently */
+		cursor_at(x, y);
+		return 0;
+	}
+
 	term.dirty = true;
 	draw_box(&term.acon, base_x, base_y, term.cell_w,
-		term.cell_h, RGBA(bgc[0], bgc[1], bgc[2], term.alpha));
+		term.cell_h, SHMIF_RGBA(bgc[0], bgc[1], bgc[2], term.alpha));
+	if (len == 0)
+		return 0;
 
 	size_t u8_sz = tsm_ucs4_get_width(*ch) + 1;
 	uint8_t u8_ch[u8_sz];
@@ -166,7 +198,7 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 		u8_ch[1] = '\0';
 
 		draw_text(&term.acon, (const char*) u8_ch, base_x, base_y,
-			RGBA(fgc[0], fgc[1], fgc[2], 0xff)
+			SHMIF_RGBA(fgc[0], fgc[1], fgc[2], 0xff)
 		);
 		return 0;
 #ifdef TTF_SUPPORT
@@ -181,22 +213,22 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 		return 0;
 
 	size_t w = term.acon.addr->w;
-	uint32_t* dst = (uint32_t*) term.acon.vidp;
+	shmif_pixel* dst = term.acon.vidp;
 
-/* alpha blending against background is the more tedious bits here */
 	for (int row = 0; row < surf->height; row++)
 		for (int col = 0; col < surf->width; col++){
 			uint8_t* bgra = (uint8_t*) &surf->data[ row * surf->stride + (col * 4) ];
 			float fact = (float)bgra[3] / 255.0;
 			float ifact = 1.0 - fact;
-			off_t ofs = (row + base_y) * w + col + base_x;
+			off_t ofs = (row + base_y) * term.acon.pitch + col + base_x;
 
+/* this should be cleaned up somewhat to consider subpixel hinting,
+ * cursor-or-not, ... */
 			struct unpack_col incl;
-			incl.rgba = dst[ofs];
-			dst[ofs] = RGBA(
-				incl.r * ifact + fgc[0] * fact,
-				incl.g * ifact + fgc[1] * fact,
-				incl.b * ifact + fgc[2] * fact,
+			dst[ofs] = SHMIF_RGBA(
+				(bgra[3] * fgc[0]) / 255,
+				(bgra[3] * fgc[1]) / 255,
+				(bgra[3] * fgc[2]) / 255,
 				0xff
 			);
 		}
@@ -211,7 +243,7 @@ static void update_screensize()
 	int cols = term.acon.w / term.cell_w;
 	int rows = term.acon.h / term.cell_h;
 
-	shmif_pixel px = RGBA(0x00, 0x00, 0x00, term.alpha);
+	shmif_pixel px = SHMIF_RGBA(0x00, 0x00, 0x00, term.alpha);
 	for (size_t i=0; i < term.acon.pitch * term.acon.h; i++)
 		term.acon.vidp[i] = px;
 
@@ -221,6 +253,8 @@ static void update_screensize()
 	term.screen_w = cols;
 	term.screen_h = rows;
 	term.age = 0;
+	term.cursor_x = tsm_screen_get_cursor_x(term.screen);
+	term.cursor_y = tsm_screen_get_cursor_y(term.screen);
 	term.age = tsm_screen_draw(term.screen, draw_cb, NULL /* draw_cb_data */);
 }
 
@@ -228,6 +262,8 @@ static void read_callback(struct shl_pty* pty,
 	void* data, char* u8, size_t len)
 {
 	tsm_vte_input(term.vte, u8, len);
+	term.cursor_x = tsm_screen_get_cursor_x(term.screen);
+	term.cursor_y = tsm_screen_get_cursor_y(term.screen);
 	term.age = tsm_screen_draw(term.screen, draw_cb, NULL /* draw_cb_data */);
 }
 
@@ -304,25 +340,27 @@ static void scroll_down()
 
 static void move_up()
 {
-	tsm_screen_move_up(term.screen, term.mag, false);
+	if (tsm_vte_handle_keyboard(term.vte, XKB_KEY_Up, 0, 0, 0))
+		term.dirty = true;
 }
 
 static void move_down()
 {
-	tsm_screen_move_down(term.screen, term.mag, false);
+	if (tsm_vte_handle_keyboard(term.vte, XKB_KEY_Down, 0, 0, 0))
+		term.dirty = true;
 }
 
 /* in TSM< typically mapped to ctrl+ arrow but we allow external rebind */
 static void move_left()
 {
-	const char lch[] = {0x1b, '[', 'D'};
-	shl_pty_write(term.pty, lch, 3);
+	if (tsm_vte_handle_keyboard(term.vte, XKB_KEY_Left, 0, 0, 0))
+		term.dirty = true;
 }
 
 static void move_right()
 {
-	const char rch[] = {0x1b, '[', 'C'};
-	shl_pty_write(term.pty, rch, 3);
+	if (tsm_vte_handle_keyboard(term.vte, XKB_KEY_Right, 0, 0, 0))
+		term.dirty = true;
 }
 
 static void select_begin()
