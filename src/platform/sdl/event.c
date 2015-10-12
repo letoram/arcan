@@ -159,13 +159,13 @@ static inline void process_axismotion(arcan_evctx* ctx,
 
 	if (process_axis(ctx, daxis, ev->value, &dstv)){
 		arcan_event newevent = {
-			.io.kind = EVENT_IO_AXIS_MOVE,
 			.category = EVENT_IO,
+			.io.kind = EVENT_IO_AXIS_MOVE,
+			.io.devid = ev->which,
+			.io.subid = ev->axis,
 			.io.datatype = EVENT_IDATATYPE_ANALOG,
 			.io.devkind  = EVENT_IDEVKIND_GAMEDEV,
 			.io.input.analog.gotrel = false,
-			.io.input.analog.devid = ev->which,
-			.io.input.analog.subid = ev->axis,
 			.io.input.analog.nvalues = 1,
 			.io.input.analog.axisval[0] = dstv
 		};
@@ -189,7 +189,7 @@ static inline void process_mousemotion(arcan_evctx* ctx,
 		.io.kind = EVENT_IO_AXIS_MOVE,
 		.io.datatype = EVENT_IDATATYPE_ANALOG,
 		.io.devkind  = EVENT_IDEVKIND_MOUSE,
-		.io.input.analog.devid  = 0,
+		.io.devid  = 0,
 		.io.input.analog.gotrel = true,
 		.io.input.analog.nvalues = 2
 	};
@@ -198,7 +198,7 @@ static inline void process_mousemotion(arcan_evctx* ctx,
 
 	if (process_axis(ctx, &iodev.mx, ev->x, &dstv) &&
 		process_axis(ctx, &iodev.mx_r, ev->xrel, &dstv_r)){
-		nev.io.input.analog.subid = 0;
+		nev.io.subid = 0;
 		nev.io.input.analog.axisval[0] = dstv;
 		nev.io.input.analog.axisval[1] = dstv_r;
 		arcan_event_enqueue(ctx, &nev);
@@ -206,7 +206,7 @@ static inline void process_mousemotion(arcan_evctx* ctx,
 
 	if (process_axis(ctx, &iodev.my, ev->y, &dstv) &&
 		process_axis(ctx, &iodev.my_r, ev->yrel, &dstv_r)){
-		nev.io.input.analog.subid = 1;
+		nev.io.subid = 1;
 		nev.io.input.analog.axisval[0] = dstv;
 		nev.io.input.analog.axisval[1] = dstv_r;
 		arcan_event_enqueue(ctx, &nev);
@@ -397,8 +397,8 @@ static inline void process_hatmotion(arcan_evctx* ctx, unsigned devid,
 		.io.kind = EVENT_IO_BUTTON,
 		.io.datatype = EVENT_IDATATYPE_DIGITAL,
 		.io.devkind = EVENT_IDEVKIND_GAMEDEV,
-		.io.input.digital.devid = devid,
-		.io.input.digital.subid = 128 + (hatid * 4)
+		.io.devid = devid,
+		.io.subid = 128 + (hatid * 4)
 	};
 
 	static unsigned hattbl[4] = {SDL_HAT_UP, SDL_HAT_DOWN,
@@ -413,7 +413,7 @@ static inline void process_hatmotion(arcan_evctx* ctx, unsigned devid,
 
 		for (int i = 0; i < 4; i++){
 			if ( (oldtbl & hattbl[i]) != (value & hattbl[i]) ){
-				newevent.io.input.digital.subid  = (hatid * 4) + i;
+				newevent.io.subid  = (hatid * 4) + i;
 				newevent.io.input.digital.active =
 					(value & hattbl[i]) > 0;
 				arcan_event_enqueue(ctx, &newevent);
@@ -449,14 +449,14 @@ void platform_event_process(arcan_evctx* ctx)
 			newevent.io.datatype = EVENT_IDATATYPE_DIGITAL;
 			newevent.io.devkind  = EVENT_IDEVKIND_MOUSE;
 			switch(event.button.button){
-			case SDL_BUTTON_LEFT: newevent.io.input.digital.subid = 1; break;
-			case SDL_BUTTON_MIDDLE: newevent.io.input.digital.subid = 2; break;
-			case SDL_BUTTON_RIGHT: newevent.io.input.digital.subid = 3; break;
+			case SDL_BUTTON_LEFT: newevent.io.subid = 1; break;
+			case SDL_BUTTON_MIDDLE: newevent.io.subid = 2; break;
+			case SDL_BUTTON_RIGHT: newevent.io.subid = 3; break;
 			default:
-				newevent.io.input.digital.subid = event.button.button;
+				newevent.io.subid = event.button.button;
 			break;
 			}
-			newevent.io.input.digital.devid = event.motion.which;
+			newevent.io.devid = event.motion.which;
 			newevent.io.input.digital.active = true;
 			snprintf(newevent.io.label, sizeof(newevent.io.label) - 1, "mouse%i",
 				event.motion.which);
@@ -467,8 +467,8 @@ void platform_event_process(arcan_evctx* ctx)
 			newevent.io.kind = EVENT_IO_BUTTON;
 			newevent.io.datatype = EVENT_IDATATYPE_DIGITAL;
 			newevent.io.devkind  = EVENT_IDEVKIND_MOUSE;
-			newevent.io.input.digital.devid = event.motion.which;
-			newevent.io.input.digital.subid = event.button.button;
+			newevent.io.devid = event.motion.which;
+			newevent.io.subid = event.button.button;
 			newevent.io.input.digital.active = false;
 			snprintf(newevent.io.label, sizeof(newevent.io.label) - 1, "mouse%i",
 				event.motion.which);
@@ -491,7 +491,7 @@ void platform_event_process(arcan_evctx* ctx)
 			newevent.io.input.translated.keysym = event.key.keysym.sym;
 			newevent.io.input.translated.modifiers = event.key.keysym.mod;
 			newevent.io.input.translated.scancode = event.key.keysym.scancode;
-			newevent.io.input.translated.subid = event.key.keysym.unicode;
+			newevent.io.subid = event.key.keysym.unicode;
 			if (!((event.key.keysym.mod & (ARKMOD_LCTRL | ARKMOD_RCTRL)) > 0))
 				to_utf8(event.key.keysym.unicode, newevent.io.input.translated.utf8);
 			arcan_event_enqueue(ctx, &newevent);
@@ -505,7 +505,7 @@ void platform_event_process(arcan_evctx* ctx)
 			newevent.io.input.translated.keysym = event.key.keysym.sym;
 			newevent.io.input.translated.modifiers = event.key.keysym.mod;
 			newevent.io.input.translated.scancode = event.key.keysym.scancode;
-			newevent.io.input.translated.subid = event.key.keysym.unicode;
+			newevent.io.subid = event.key.keysym.unicode;
 			arcan_event_enqueue(ctx, &newevent);
 		break;
 
@@ -513,8 +513,8 @@ void platform_event_process(arcan_evctx* ctx)
 			newevent.io.kind = EVENT_IO_BUTTON;
 			newevent.io.datatype = EVENT_IDATATYPE_DIGITAL;
 			newevent.io.devkind  = EVENT_IDEVKIND_GAMEDEV;
-			newevent.io.input.digital.devid = event.jbutton.which;
-			newevent.io.input.digital.subid = event.jbutton.button;
+			newevent.io.devid = event.jbutton.which;
+			newevent.io.subid = event.jbutton.button;
 			newevent.io.input.digital.active = true;
 			snprintf(newevent.io.label, sizeof(newevent.io.label)-1,
 				"joystick%i", event.jbutton.which);
@@ -525,8 +525,8 @@ void platform_event_process(arcan_evctx* ctx)
 			newevent.io.kind = EVENT_IO_BUTTON;
 			newevent.io.datatype = EVENT_IDATATYPE_DIGITAL;
 			newevent.io.devkind  = EVENT_IDEVKIND_GAMEDEV;
-			newevent.io.input.digital.devid = event.jbutton.which;
-			newevent.io.input.digital.subid = event.jbutton.button;
+			newevent.io.devid = event.jbutton.which;
+			newevent.io.subid = event.jbutton.button;
 			newevent.io.input.digital.active = false;
 			snprintf(newevent.io.label, sizeof(newevent.io.label)-1, "joystick%i",
 				event.jbutton.which);

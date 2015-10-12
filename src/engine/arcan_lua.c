@@ -3106,8 +3106,8 @@ static int targetinput(lua_State* ctx)
 		ev.io.kind = EVENT_IO_AXIS_MOVE;
 		bool mouse = srcstr && strcmp( srcstr, "mouse") == 0;
 		ev.io.devkind = mouse ?	EVENT_IDEVKIND_MOUSE : EVENT_IDEVKIND_GAMEDEV;
-		ev.io.input.analog.devid  = intblint(ctx, tblind, "devid");
-		ev.io.input.analog.subid  = intblint(ctx, tblind, "subid");
+		ev.io.devid = intblint(ctx, tblind, "devid");
+		ev.io.subid = intblint(ctx, tblind, "subid");
 		ev.io.input.analog.gotrel = mouse ? (!intblbool(ctx, tblind, "norel")) : false;
 		ev.io.datatype = EVENT_IDATATYPE_ANALOG;
 
@@ -3126,8 +3126,8 @@ static int targetinput(lua_State* ctx)
 	else if (strcmp(kindlbl, "touch") == 0){
 		ev.io.devkind = EVENT_IDEVKIND_TOUCHDISP;
 		ev.io.datatype = EVENT_IDATATYPE_TOUCH;
-		ev.io.input.touch.devid = intblint(ctx, tblind, "devid");
-		ev.io.input.touch.subid = intblint(ctx, tblind, "subid");
+		ev.io.devid = intblint(ctx, tblind, "devid");
+		ev.io.subid = intblint(ctx, tblind, "subid");
 		ev.io.input.touch.x = intblint(ctx, tblind, "x");
 		ev.io.input.touch.y = intblint(ctx, tblind, "y");
 		ev.io.input.touch.pressure = intblfloat(ctx, tblind, "pressure");
@@ -3141,8 +3141,8 @@ static int targetinput(lua_State* ctx)
 			ev.io.input.translated.scancode = intblint(ctx, tblind, "number");
 			ev.io.input.translated.keysym = intblint(ctx, tblind, "keysym");
 			ev.io.input.translated.modifiers = intblint(ctx, tblind,"modifiers");
-			ev.io.input.translated.devid = intblint(ctx, tblind, "devid");
-			ev.io.input.translated.subid = intblint(ctx, tblind, "subid");
+			ev.io.devid = intblint(ctx, tblind, "devid");
+			ev.io.subid = intblint(ctx, tblind, "subid");
 			get_utf8(intblstr(ctx, tblind, "utf8"), ev.io.input.translated.utf8);
 		}
 		else {
@@ -3151,8 +3151,8 @@ static int targetinput(lua_State* ctx)
 				EVENT_IDEVKIND_MOUSE : EVENT_IDEVKIND_GAMEDEV;
 			ev.io.datatype = EVENT_IDATATYPE_DIGITAL;
 			ev.io.input.digital.active= intblbool(ctx, tblind, "active");
-			ev.io.input.digital.devid = intblint(ctx, tblind, "devid");
-			ev.io.input.digital.subid = intblint(ctx, tblind, "subid");
+			ev.io.devid = intblint(ctx, tblind, "devid");
+			ev.io.subid = intblint(ctx, tblind, "subid");
 		}
 	}
 	else {
@@ -3366,12 +3366,22 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			lua_rawset(ctx, top);
 
 			tblbool(ctx, "touch", true, top);
-			tblnum(ctx, "devid", ev->io.input.touch.devid, top);
-			tblnum(ctx, "subid", ev->io.input.touch.subid, top);
+			tblnum(ctx, "devid", ev->io.devid, top);
+			tblnum(ctx, "subid", ev->io.subid, top);
 			tblnum(ctx, "pressure", ev->io.input.touch.pressure, top);
 			tblnum(ctx, "size", ev->io.input.touch.size, top);
 			tblnum(ctx, "x", ev->io.input.touch.x, top);
 			tblnum(ctx, "y", ev->io.input.touch.y, top);
+		break;
+
+		case EVENT_IO_STATUS:
+			lua_pushstring(ctx, "status");
+			lua_rawset(ctx, top);
+			tblnum(ctx, "devid", ev->io.devid, top);
+			tblnum(ctx, "subid", ev->io.subid, top);
+			tblstr(ctx, "action", (ev->io.input.status.action == EVENT_IDEV_ADDED ?
+				"added" : (ev->io.input.status.action == EVENT_IDEV_REMOVED ?
+					"removed" : "blocked")), top);
 		break;
 
 		case EVENT_IO_AXIS_MOVE:
@@ -3384,8 +3394,8 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			else
 				tblstr(ctx, "source", "joystick", top);
 
-			tblnum(ctx, "devid", ev->io.input.analog.devid, top);
-			tblnum(ctx, "subid", ev->io.input.analog.subid, top);
+			tblnum(ctx, "devid", ev->io.devid, top);
+			tblnum(ctx, "subid", ev->io.subid, top);
 			tblbool(ctx, "active", true, top);
 			tblbool(ctx, "analog", true, top);
 			tblbool(ctx, "relative", ev->io.input.analog.gotrel,top);
@@ -3411,8 +3421,8 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				tblnum(ctx, "number", ev->io.input.translated.scancode, top);
 				tblnum(ctx, "keysym", ev->io.input.translated.keysym, top);
 				tblnum(ctx, "modifiers", ev->io.input.translated.modifiers, top);
-				tblnum(ctx, "devid", ev->io.input.translated.devid, top);
-				tblnum(ctx, "subid", ev->io.input.translated.subid, top);
+				tblnum(ctx, "devid", ev->io.devid, top);
+				tblnum(ctx, "subid", ev->io.subid, top);
 				tblstr(ctx, "utf8", (char*)ev->io.input.translated.utf8, top);
 				tblbool(ctx, "active", ev->io.input.translated.active, top);
 				tblstr(ctx, "device", "translated", top);
@@ -3429,8 +3439,8 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 					tblstr(ctx, "source", "joystick", top);
 				}
 				tblbool(ctx, "translated", false, top);
-				tblnum(ctx, "devid", ev->io.input.digital.devid, top);
-				tblnum(ctx, "subid", ev->io.input.digital.subid, top);
+				tblnum(ctx, "devid", ev->io.devid, top);
+				tblnum(ctx, "subid", ev->io.subid, top);
  				tblbool(ctx, "active", ev->io.input.digital.active, top);
 			}
 			else;

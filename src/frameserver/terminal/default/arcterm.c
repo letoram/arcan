@@ -482,7 +482,7 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 			sym, /* should be 'keysym' */
 			sym, // ioev->input.translated.keysym, /* should be ascii */
 			shmask,
-			ioev->input.translated.subid /* should be unicode */
+			ioev->subid /* should be unicode */
 		)){
 			tsm_screen_sb_reset(term.screen);
 			term.dirty = true;

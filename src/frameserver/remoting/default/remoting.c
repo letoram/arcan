@@ -205,14 +205,14 @@ static void map_cl_input(arcan_ioevent* ioev)
 
 /* last resort, just use the unicode value and hope for the best */
 		if (kv == 0)
-			kv = ioev->input.translated.subid;
+			kv = ioev->subid;
 
 		SendKeyEvent(vncctx.client, kv, ioev->input.translated.active);
 	}
 /* just use one of the first four buttons of any device, not necessarily
  * a mouse */
 	else if (ioev->datatype == EVENT_IDATATYPE_DIGITAL){
-		int btn = ioev->input.digital.subid-1;
+		int btn = ioev->subid-1;
 		int value = 0;
 
 		if (btn >= 0 && btn <= 4)
@@ -224,9 +224,9 @@ static void map_cl_input(arcan_ioevent* ioev)
 	}
 	else if (ioev->datatype == EVENT_IDATATYPE_ANALOG &&
 		ioev->devkind == EVENT_IDEVKIND_MOUSE){
-		if (ioev->input.analog.subid == 0)
+		if (ioev->subid == 0)
 			mx = ioev->input.analog.axisval[0];
-		else if (ioev->input.analog.subid == 1)
+		else if (ioev->subid == 1)
 			my = ioev->input.analog.axisval[0];
 
 /* only send when we get updates in pairs */

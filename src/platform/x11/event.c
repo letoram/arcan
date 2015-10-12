@@ -142,7 +142,7 @@ static inline void process_mousemotion(struct arcan_evctx* ctx,
 		.io.kind = EVENT_IO_AXIS_MOVE,
 		.io.datatype = EVENT_IDATATYPE_ANALOG,
 		.io.devkind  = EVENT_IDEVKIND_MOUSE,
-		.io.input.analog.devid  = 0,
+		.io.devid  = 0,
 		.io.input.analog.gotrel = true,
 		.io.input.analog.nvalues = 2
 	};
@@ -151,7 +151,7 @@ static inline void process_mousemotion(struct arcan_evctx* ctx,
 
 	if (process_axis(ctx, &iodev.mx, xv, &dstv) &&
 		process_axis(ctx, &iodev.mx_r, xrel, &dstv_r)){
-		nev.io.input.analog.subid = 0;
+		nev.io.subid = 0;
 		nev.io.input.analog.axisval[0] = dstv;
 		nev.io.input.analog.axisval[1] = dstv_r;
 		arcan_event_enqueue(ctx, &nev);
@@ -159,7 +159,7 @@ static inline void process_mousemotion(struct arcan_evctx* ctx,
 
 	if (process_axis(ctx, &iodev.my, yv, &dstv) &&
 		process_axis(ctx, &iodev.my_r, yrel, &dstv_r)){
-		nev.io.input.analog.subid = 1;
+		nev.io.subid = 1;
 		nev.io.input.analog.axisval[0] = dstv;
 		nev.io.input.analog.axisval[1] = dstv_r;
 		arcan_event_enqueue(ctx, &nev);
@@ -317,8 +317,8 @@ static void send_keyev(struct arcan_evctx* ctx, XKeyEvent key, bool state)
 		.io.datatype = EVENT_IDATATYPE_TRANSLATED,
 		.io.devkind = EVENT_IDEVKIND_KEYBOARD,
 		.io.input.translated.active = state,
-		.io.input.translated.devid = key.keycode,
-		.io.input.translated.subid = keybuf[1],
+		.io.devid = key.keycode,
+		.io.subid = keybuf[1],
 	};
 
 /*
@@ -351,31 +351,31 @@ static void send_buttonev(struct arcan_evctx* ctx, int button, bool state)
 		.io.datatype = EVENT_IDATATYPE_DIGITAL,
 		.io.devkind = EVENT_IDEVKIND_MOUSE,
 		.io.input.digital.active = state,
-		.io.input.digital.devid = 0,
-		.io.input.digital.subid = button
+		.io.devid = 0,
+		.io.subid = button
 	};
 
 	if (button & Button1Mask){
-		ev.io.input.digital.subid = 1;
+		ev.io.subid = 1;
 		arcan_event_enqueue(ctx, &ev);
 	}
 	if (button & Button2Mask){
-		ev.io.input.digital.subid = 2;
+		ev.io.subid = 2;
 		arcan_event_enqueue(ctx, &ev);
 	}
 
 	if (button & Button3Mask){
-		ev.io.input.digital.subid = 3;
+		ev.io.subid = 3;
 		arcan_event_enqueue(ctx, &ev);
 	}
 
 	if (button & Button4Mask){
-		ev.io.input.digital.subid = 4;
+		ev.io.subid = 4;
 		arcan_event_enqueue(ctx, &ev);
 	}
 
 	if (button & Button5Mask){
-		ev.io.input.digital.subid = 5;
+		ev.io.subid = 5;
 		arcan_event_enqueue(ctx, &ev);
 	}
 
