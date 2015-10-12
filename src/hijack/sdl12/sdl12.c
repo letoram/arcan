@@ -367,14 +367,14 @@ static inline void push_ioevent_sdl(arcan_ioevent event){
 	switch (event.datatype){
 		case EVENT_IDATATYPE_TOUCH: break;
 		case EVENT_IDATATYPE_DIGITAL:
-			newev.button.which = event.input.digital.devid;
+			newev.button.which = event.devid;
 
 			if (event.devkind == EVENT_IDEVKIND_MOUSE){
 				newev.button.state  = event.input.digital.active ?
 					SDL_PRESSED : SDL_RELEASED;
 				newev.button.type   = event.input.digital.active ?
 					SDL_MOUSEBUTTONDOWN : SDL_MOUSEBUTTONUP;
-				newev.button.button = event.input.digital.subid;
+				newev.button.button = event.subid;
 				newev.button.x = global.mousestate.x;
 				newev.button.y = global.mousestate.y;
 
@@ -386,7 +386,7 @@ static inline void push_ioevent_sdl(arcan_ioevent event){
 					SDL_PRESSED : SDL_RELEASED;
 				newev.jbutton.type   = event.input.digital.active ?
 					SDL_JOYBUTTONDOWN : SDL_JOYBUTTONUP;
-				newev.jbutton.button = event.input.digital.subid;
+				newev.jbutton.button = event.subid;
 			}
 
 			forwardtbl.sdl_pushevent(&newev);
@@ -394,10 +394,10 @@ static inline void push_ioevent_sdl(arcan_ioevent event){
 
 		case EVENT_IDATATYPE_TRANSLATED:
 			newev.key.keysym.scancode = event.input.translated.scancode;
-			newev.key.keysym.sym      = event.input.translated.keysym;
-			newev.key.keysym.mod      = event.input.translated.modifiers;
-			newev.key.keysym.unicode  = event.input.translated.subid;
-			newev.key.which           = event.input.translated.devid;
+			newev.key.keysym.sym = event.input.translated.keysym;
+			newev.key.keysym.mod = event.input.translated.modifiers;
+			newev.key.keysym.unicode = event.subid;
+			newev.key.which = event.devid;
 			newev.key.state = event.input.translated.active ?SDL_PRESSED:SDL_RELEASED;
 			newev.key.type = event.input.translated.active ? SDL_KEYDOWN : SDL_KEYUP;
 
@@ -409,16 +409,16 @@ static inline void push_ioevent_sdl(arcan_ioevent event){
 			if (event.devkind == EVENT_IDEVKIND_MOUSE){
 					newev.motion = global.mousestate;
 
-					newev.motion.which = event.input.analog.devid;
+					newev.motion.which = event.devid;
 					newev.motion.state = global.mousebutton;
 					newev.motion.type = SDL_MOUSEMOTION;
 
-				if (event.input.analog.subid == 0){
+				if (event.subid == 0){
 					newev.motion.x = event.input.analog.axisval[0];
 					newev.motion.xrel = event.input.analog.axisval[1];
 					newev.motion.yrel = 0;
 
-				} else if (event.input.analog.subid == 1){
+				} else if (event.subid == 1){
 					newev.motion.y = event.input.analog.axisval[0];
 					newev.motion.yrel = event.input.analog.axisval[1];
 					newev.motion.xrel = 0;
@@ -428,8 +428,8 @@ static inline void push_ioevent_sdl(arcan_ioevent event){
 				forwardtbl.sdl_pushevent(&newev);
 			} else {
 				newev.jaxis.value = event.input.analog.axisval[0];
-				newev.jaxis.which = event.input.analog.devid;
-				newev.jaxis.axis = event.input.analog.subid;
+				newev.jaxis.which = event.devid;
+				newev.jaxis.axis = event.subid;
 				newev.jaxis.type = SDL_JOYAXISMOTION;
 				forwardtbl.sdl_pushevent(&newev);
 			}

@@ -1135,8 +1135,8 @@ static void default_map(arcan_ioevent* ioev)
 		}
 	}
 	else if (ioev->devkind == EVENT_IDEVKIND_GAMEDEV){
-		int port_number = ioev->input.digital.devid % MAX_PORTS;
-		int button_number = ioev->input.digital.subid % MAX_BUTTONS;
+		int port_number = ioev->devid % MAX_PORTS;
+		int button_number = ioev->subid % MAX_BUTTONS;
 		int button = remaptbl[button_number];
 		retroctx.input_ports[
 			port_number].buttons[button] = ioev->input.digital.active;

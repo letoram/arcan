@@ -499,14 +499,22 @@ enum ARCAN_TARGET_SKIPMODE {
 enum ARCAN_EVENT_IO {
 	EVENT_IO_BUTTON = 0,
 	EVENT_IO_AXIS_MOVE,
-	EVENT_IO_TOUCH
+	EVENT_IO_TOUCH,
+	EVENT_IO_STATUS
 };
 
 enum ARCAN_EVENT_IDEVKIND {
 	EVENT_IDEVKIND_KEYBOARD = 0,
 	EVENT_IDEVKIND_MOUSE,
 	EVENT_IDEVKIND_GAMEDEV,
-	EVENT_IDEVKIND_TOUCHDISP
+	EVENT_IDEVKIND_TOUCHDISP,
+	EVENT_IDEVKIND_STATUS
+};
+
+enum ARCAN_IDEV_STATUS {
+	EVENT_IDEV_ADDED = 0,
+	EVENT_IDEV_REMOVED,
+	EVENT_IDEV_BLOCKED
 };
 
 enum ARCAN_EVENT_IDATATYPE {
@@ -594,34 +602,30 @@ enum ARCAN_EVENT_FSRV {
 typedef union arcan_ioevent_data {
 	struct {
 		uint8_t active;
-		uint8_t devid;
-		uint8_t subid;
 	} digital;
 
 	struct {
 /* axis- values are first relative then absolute if set */
 		int8_t gotrel;
-		uint8_t devid;
-		uint8_t subid;
 		uint8_t idcount;
 		uint8_t nvalues;
 		int16_t axisval[4];
 	} analog;
 
 	struct {
-		uint8_t devid;
-		uint8_t subid;
 		int16_t x, y;
 		float pressure, size;
 	} touch;
 
 	struct {
+/* match ARCAN_IDEV_STATUS */
+		uint8_t action;
+	} status;
+
+	struct {
 /* local index for translated devices, last bit signifies
  * X- compliant keysyms */
 		uint8_t devid;
-/* device- "agnostic" 16-bit code (if there is one), for cases where a unique
- * identifiable (not translatable) id is needed (label-binding) */
-		uint16_t subid;
 /* pressed or not */
 		uint8_t active;
 /* bitmask of key_modifiers */
@@ -643,6 +647,17 @@ typedef struct {
 	enum ARCAN_EVENT_IDATATYPE datatype;
 	char label[16];
 
+	union{
+	struct {
+		uint16_t devid;
+		uint16_t subid;
+	};
+	uint16_t id[2];
+	uint32_t iid;
+	};
+
+/* relative to connection start, for scheduling future I/O without
+ * risking a saturated event-queue or latency blocks from signal */
 	uint32_t pts;
 	arcan_ioevent_data input;
 } arcan_ioevent;

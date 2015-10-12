@@ -344,19 +344,17 @@ static long unpack_rec_event(char* bytep, size_t sz, arcan_event* tv,
 
 	tv->category = EVENT_IO;
 	tv->io.kind = buf[1];
+	tv->io.devid = buf[2];
+	tv->io.subid = buf[3];
 
 	switch (buf[1]){
 	case EVENT_IO_TOUCH:
-		tv->io.input.touch.devid = buf[2];
-		tv->io.input.touch.subid = buf[3];
 		tv->io.input.touch.pressure = buf[4];
 		tv->io.input.touch.size = buf[5];
 		tv->io.input.touch.x = buf[6];
 		tv->io.input.touch.y = buf[7];
 	break;
 	case EVENT_IO_AXIS_MOVE:
-		tv->io.input.analog.devid = buf[2];
-		tv->io.input.analog.subid = buf[3];
 		tv->io.input.analog.gotrel = buf[4];
 		if (buf[5] < sizeof(buf) / sizeof(buf[0]) - 6){
 			for (size_t i = 0; i < buf[5]; i++)
@@ -368,8 +366,6 @@ static long unpack_rec_event(char* bytep, size_t sz, arcan_event* tv,
 	break;
 	case EVENT_IO_BUTTON:
 		if (buf[4] == EVENT_IDEVKIND_KEYBOARD){
-			tv->io.input.translated.devid = buf[2];
-			tv->io.input.translated.subid = buf[3];
 			tv->io.devkind = EVENT_IDEVKIND_KEYBOARD;
 			tv->io.input.translated.active = buf[5];
 			tv->io.input.translated.scancode = buf[6];
@@ -378,12 +374,18 @@ static long unpack_rec_event(char* bytep, size_t sz, arcan_event* tv,
 		}
 		else if (buf[4] == EVENT_IDEVKIND_MOUSE||buf[4] == EVENT_IDEVKIND_GAMEDEV){
 			tv->io.devkind = buf[4];
-			tv->io.input.digital.devid = buf[2];
-			tv->io.input.digital.subid = buf[3];
+			tv->io.devid = buf[2];
+			tv->io.subid = buf[3];
 			tv->io.input.digital.active = buf[5];
 		}
 		else
 			return -1;
+	case EVENT_IO_STATUS:
+		if (buf[4] == EVENT_IDEVKIND_STATUS){
+			tv->io.devkind = EVENT_IDEVKIND_STATUS;
+			tv->io.input.status.action = buf[5];
+		}
+	break;
 	}
 
 	return nb;
@@ -408,19 +410,17 @@ static void pack_rec_event(const struct arcan_event* const outev)
 	ioarr[0] = arcan_frametime();
 	size_t nmemb = sizeof(ioarr) / sizeof(ioarr[0]);
 	ioarr[1] = outev->io.kind;
+	ioarr[2] = outev->io.devid;
+	ioarr[3] = outev->io.subid;
 
 	switch(outev->io.kind){
 	case EVENT_IO_TOUCH:
-		ioarr[2] = outev->io.input.touch.devid;
-		ioarr[3] = outev->io.input.touch.subid;
 		ioarr[4] = outev->io.input.touch.pressure;
 		ioarr[5] = outev->io.input.touch.size;
 		ioarr[6] = outev->io.input.touch.x;
 		ioarr[7] = outev->io.input.touch.y;
 	break;
 	case EVENT_IO_AXIS_MOVE:
-		ioarr[2] = outev->io.input.analog.devid;
-		ioarr[3] = outev->io.input.analog.subid;
 		ioarr[4] = outev->io.input.analog.gotrel;
 		for (size_t i = 0; i < nmemb - 6 &&
 			i < outev->io.input.analog.nvalues; i++){
@@ -430,8 +430,6 @@ static void pack_rec_event(const struct arcan_event* const outev)
 	break;
 	case EVENT_IO_BUTTON:
 		if (outev->io.devkind == EVENT_IDEVKIND_KEYBOARD){
-			ioarr[2] = outev->io.input.translated.devid;
-			ioarr[3] = outev->io.input.translated.subid;
 			ioarr[4] = outev->io.devkind;
 			ioarr[5] = outev->io.input.translated.active;
 			ioarr[6] = outev->io.input.translated.scancode;
@@ -440,13 +438,16 @@ static void pack_rec_event(const struct arcan_event* const outev)
 		}
 		else if (outev->io.devkind == EVENT_IDEVKIND_MOUSE ||
 			outev->io.devkind == EVENT_IDEVKIND_GAMEDEV){
-			ioarr[2] = outev->io.input.digital.devid;
-			ioarr[3] = outev->io.input.digital.subid;
 			ioarr[4] = outev->io.devkind;
 			ioarr[5] = outev->io.input.digital.active;
 		}
 		else
 			return;
+	break;
+	case EVENT_IO_STATUS:
+		if (outev->io.devkind == EVENT_IDEVKIND_STATUS){
+			ioarr[4] = outev->io.input.status.action;
+		}
 	break;
 	}
 

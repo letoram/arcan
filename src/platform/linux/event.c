@@ -990,11 +990,9 @@ static void defhandler_kbd(struct arcan_evctx* out,
 		.category = EVENT_IO,
 		.io = {
 			.kind = EVENT_IO_BUTTON,
+			.devid = node->devnum,
 			.datatype = EVENT_IDATATYPE_TRANSLATED,
 			.devkind = EVENT_IDEVKIND_KEYBOARD,
-			.input.translated = {
-				.devid = node->devnum
-			}
 		}
 	};
 
@@ -1006,7 +1004,7 @@ static void defhandler_kbd(struct arcan_evctx* out,
 		newev.io.input.translated.modifiers = node->keyboard.state;
 		update_state(inev[i].code, inev[i].value != 0, &node->keyboard.state);
 /* possible checkpoint for adding other keyboard layout support here */
-		newev.io.input.translated.subid = inev[i].code;
+		newev.io.subid = inev[i].code;
 		uint16_t code = lookup_character(inev[i].code, node->keyboard.state, true);
 		if (code) to_utf8(code, newev.io.input.translated.utf8);
 
@@ -1059,7 +1057,7 @@ static void decode_hat(struct arcan_evctx* ctx,
 	ind *= 2;
 	const int base = 64;
 
-	newev.io.input.digital.devid = node->devnum;
+	newev.io.devid = node->devnum;
 
 /* clamp */
 	if (val < 0)
@@ -1071,13 +1069,13 @@ static void decode_hat(struct arcan_evctx* ctx,
 		newev.io.input.digital.active = false;
 
 		if (node->game.hats[ind] != 0){
-			newev.io.input.digital.subid = base + ind;
+			newev.io.subid = base + ind;
 			node->game.hats[ind] = 0;
 			arcan_event_enqueue(ctx, &newev);
 		}
 
 		if (node->game.hats[ind+1] != 0){
-			newev.io.input.digital.subid = base + ind + 1;
+			newev.io.subid = base + ind + 1;
 			node->game.hats[ind+1] = 0;
 			arcan_event_enqueue(ctx, &newev);
 		}
@@ -1090,7 +1088,7 @@ static void decode_hat(struct arcan_evctx* ctx,
 
 	node->game.hats[ind] = val;
 	newev.io.input.digital.active = true;
-	newev.io.input.digital.subid = base + ind;
+	newev.io.subid = base + ind;
 	arcan_event_enqueue(ctx, &newev);
 }
 
@@ -1127,8 +1125,8 @@ static void defhandler_game(struct arcan_evctx* ctx,
 			newev.io.kind = EVENT_IO_BUTTON;
 			newev.io.datatype = EVENT_IDATATYPE_DIGITAL;
 			newev.io.input.digital.active = inev[i].value;
-			newev.io.input.digital.subid = inev[i].code - BTN_JOYSTICK;
-			newev.io.input.digital.devid = node->devnum;
+			newev.io.subid = inev[i].code - BTN_JOYSTICK;
+			newev.io.devid = node->devnum;
 			arcan_event_enqueue(ctx, &newev);
 		break;
 
@@ -1147,8 +1145,8 @@ static void defhandler_game(struct arcan_evctx* ctx,
 				newev.io.kind = EVENT_IO_AXIS_MOVE;
 				newev.io.datatype = EVENT_IDATATYPE_ANALOG;
 				newev.io.input.analog.gotrel = false;
-				newev.io.input.analog.subid = inev[i].code;
-				newev.io.input.analog.devid = node->devnum;
+				newev.io.subid = inev[i].code;
+				newev.io.devid = node->devnum;
 				newev.io.input.analog.axisval[0] = samplev;
 				newev.io.input.analog.nvalues = 2;
 
@@ -1201,8 +1199,8 @@ static void defhandler_mouse(struct arcan_evctx* ctx,
 			newev.io.kind = EVENT_IO_BUTTON;
 			newev.io.datatype = EVENT_IDATATYPE_DIGITAL;
 			newev.io.input.digital.active = inev[i].value;
-			newev.io.input.digital.subid = samplev;
-			newev.io.input.digital.devid = node->devnum;
+			newev.io.subid = samplev;
+			newev.io.devid = node->devnum;
 
 			arcan_event_enqueue(ctx, &newev);
 		break;
@@ -1218,8 +1216,8 @@ static void defhandler_mouse(struct arcan_evctx* ctx,
 					newev.io.kind = EVENT_IO_AXIS_MOVE;
 					newev.io.datatype = EVENT_IDATATYPE_ANALOG;
 					newev.io.input.analog.gotrel = true;
-					newev.io.input.analog.subid = 0;
-					newev.io.input.analog.devid = node->devnum;
+					newev.io.subid = 0;
+					newev.io.devid = node->devnum;
 					newev.io.input.analog.axisval[0] = node->cursor.mx;
 					newev.io.input.analog.axisval[1] = samplev;
 					newev.io.input.analog.nvalues = 2;
@@ -1235,8 +1233,8 @@ static void defhandler_mouse(struct arcan_evctx* ctx,
 					newev.io.kind = EVENT_IO_AXIS_MOVE;
 					newev.io.datatype = EVENT_IDATATYPE_ANALOG;
 					newev.io.input.analog.gotrel = true;
-					newev.io.input.analog.subid = 1;
-					newev.io.input.analog.devid = node->devnum;
+					newev.io.subid = 1;
+					newev.io.devid = node->devnum;
 					newev.io.input.analog.axisval[0] = node->cursor.my;
 					newev.io.input.analog.axisval[1] = samplev;
 					newev.io.input.analog.nvalues = 2;

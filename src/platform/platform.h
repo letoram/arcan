@@ -210,7 +210,7 @@ void platform_event_analogall(bool enable, bool mouse);
  * some connection to the video layer. One example is for egl-dri related
  * pseudo-terminal management where some IOCTLs affect graphics state.
  */
-void arcan_event_reset();
+void platform_event_reset();
 
 /*
  * Special controls for devices that sample relative values but report
