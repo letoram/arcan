@@ -122,18 +122,35 @@ static const int ARCAN_SHMPAGE_MAXH = PP_SHMPAGE_MAXH;
 #endif
 
 /*
- * We abstract the base type for a pixel and provide a packing macro in
- * order to permit systems with lower memory to switch to uint16 RGB565
- * style formats, and to permit future switches to higher depth/range.
+ * We abstract the base type for a pixel and provide a packing macro in order
+ * to permit systems with lower memory to switch to uint16 RGB565 style
+ * formats, and to permit future switches to higher depth/range.  The
+ * separation between video_platform definition of these macros also allows a
+ * comparison between engine internals and interface to warn or convert.
  */
 #ifndef VIDEO_PIXEL_TYPE
 #define VIDEO_PIXEL_TYPE uint32_t
 #endif
+
+#ifndef ARCAN_SHMPAGE_VCHANNELS
 #define ARCAN_SHMPAGE_VCHANNELS 4
+#endif
+
 typedef VIDEO_PIXEL_TYPE shmif_pixel;
-#ifndef RGBA
-#define RGBA(r, g, b, a)( ((uint32_t)(a) << 24) | ((uint32_t) (b) << 16) |\
-((uint32_t) (g) << 8) | ((uint32_t) (r)) )
+#ifndef SHMIF_RGBA
+#define SHMIF_RGBA(r, g, b, a)( ((uint32_t)(a) << 24) | ((uint32_t) (b) << 16)\
+| ((uint32_t) (g) << 8) | ((uint32_t) (r)) )
+#endif
+
+#ifndef SHMIF_RGBA_DECOMP
+static inline void SHMIF_RGBA_DECOMP(shmif_pixel val,
+	uint8_t* r, uint8_t* g, uint8_t* b, uint8_t* a)
+{
+	*r = (val & 0x000000ff);
+	*g = (val & 0x0000ff00) >>  8;
+	*b = (val & 0x00ff0000) >> 16;
+	*a = (val & 0xff000000) >> 24;
+}
 #endif
 
 /*
