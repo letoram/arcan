@@ -350,8 +350,8 @@ enum ARCAN_TARGET_COMMAND {
 #define ARCAN_EVENT(X)_INT_SHMIF_TEVAL(EVENT_EXTERNAL_, X)
 enum ARCAN_EVENT_EXTERNAL {
 /*
- * custom string message, used as some user- directed hint
- * uses the message field.
+ * custom string message, used as some user- directed hint uses the message
+ * field.
  */
 	EVENT_EXTERNAL_MESSAGE = 0,
 
@@ -409,7 +409,6 @@ enum ARCAN_EVENT_EXTERNAL {
  * much buffer data / which transfer limits that apply.
  */
 	EVENT_EXTERNAL_STATESIZE,
-	EVENT_EXTERNAL_RESOURCE,
 
 /*
  * hint that any pending buffers on the audio device should be discarded.
@@ -455,7 +454,7 @@ enum ARCAN_EVENT_EXTERNAL {
 	EVENT_EXTERNAL_VIEWPORT,
 
 /*
- * Message hint that a specific input label is supported Uses the labelhint
+ * Hint that a specific input label is supported Uses the labelhint
  * substructure and label is subject to A-Z,0-9_ normalization with * used
  * as wildchar character for incremental indexing.
  */
@@ -764,6 +763,7 @@ typedef struct arcan_netevent{
 typedef struct arcan_tgtevent {
 	enum ARCAN_TARGET_COMMAND kind;
 	union {
+		uint32_t uiv;
 		int32_t iv;
 		float fv;
 	} ioevs[6];
@@ -780,28 +780,61 @@ typedef struct arcan_extevent {
 	int64_t source;
 
 	union {
-		uint8_t message[78];
-		int32_t state_sz;
+/*
+ * For events that set one or multiple short messages:
+ * MESSAGE, IDENT, COREOPT, CURSORHINT
+ * Only MESSAGE type has any multipart meaning
+ */
+		struct {
+			uint8_t data[78];
+			uint8_t multipart;
+		} message;
 
+/*
+ * Hint the current active size of a possible statetransfer along with
+ * a user-defined type identifer. Tuple(identifier, size) should match
+ * for doing a fsrv-fsrv state transfer. 0 indicates that state transfers
+ * should be disabled (initial state).
+ */
+		struct {
+			uint32_t size;
+			uint32_t type;
+		} stateinf;
+
+/* Used for remoting, indicate state of (possibly multiple) cursors:
+ * id - cursor identifier
+ * x, y - cursor coordinates, not necessarily clamped against surface
+ * buttons active - recipient must track to determine press/release events
+ */
 		struct {
 			uint32_t id;
 			uint32_t x, y;
 			uint8_t buttons[5];
 		} cursor;
 
-		struct {
-			char label[16];
-			int idatatype;
-		} labelhint;
-
+/* Used for remoting, keysym is unfortunately XKeySym translated into SDL one
+ * for legacy reasons. Type identifier and UTF-8 alternative should probably be
+ * needed in the future when we look into SPICE or similar protocols to replace
+ * VNC. */
 		struct{
 			uint8_t id;
 			uint32_t keysym;
 			uint8_t active;
 		} key;
 
+/*
+ * Indicate that the connection supports abstract input labels, along
+ * with the expected data type (match EVENT_IDATATYPE_*)
+ */
+		struct {
+			char label[16];
+			int idatatype;
+		} labelhint;
+
+/* platform specific content needed for some platforms to map a buffer,
+ * used internally by backend and user-defined values may cause the
+ * connection to be terminated */
 		struct{
-/* platform specific content needed for some platforms to map a buffer */
 			uint32_t pitch;
 			uint32_t format;
 		} bstream;

@@ -218,7 +218,6 @@ static void map_cl_input(arcan_ioevent* ioev)
 		if (btn >= 0 && btn <= 4)
 			value = mouse_button_map[btn];
 
-		LOG("button: %d, %d\n", btn, value);
 		bmask = ioev->input.digital.active ? bmask | value : bmask & ~value;
 		SendPointerEvent(vncctx.client, mx, my, bmask);
 	}

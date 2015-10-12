@@ -124,6 +124,9 @@
 	(RESOURCE_SYS_LIBS)
 #endif
 
+#define COUNT_OF(x) \
+	((sizeof(x)/sizeof(0[x])) / ((size_t)(!(sizeof(x) % sizeof(0[x])))))
+
 /*
  * defined in engine/arcan_main.c, rather than terminating directly
  * we'll longjmp to this and hopefully the engine can switch scripts
@@ -997,12 +1000,14 @@ static inline void fltpush(char* dst, char ulim,
 	*dst = '\0';
 }
 
-static inline void slimpush(char* dst, char ulim, char* inmsg)
+static inline size_t slimpush(char* dst, char ulim, char* inmsg)
 {
 	while (*inmsg && ulim--)
 		*dst++ = *inmsg++;
 
 	*dst = '\0';
+
+	return (uintptr_t)dst - (uintptr_t)inmsg;
 }
 
 static char* streamtype(int num)
@@ -3541,6 +3546,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV)
 			return;
 
+		size_t extmsg_sz = COUNT_OF(ev->ext.message.data);
 		arcan_frameserver* fsrv = vobj->feed.state.ptr;
 		if (fsrv->tag){
 			intptr_t dst_cb = fsrv->tag;
@@ -3552,36 +3558,28 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			switch (ev->ext.kind){
 			case EVENT_EXTERNAL_IDENT:
 				tblstr(ctx, "kind", "ident", top);
-				slimpush(mcbuf, sizeof(ev->ext.message) /
-					sizeof(ev->ext.message[0]),
-					(char*)ev->ext.message);
+				slimpush(mcbuf, extmsg_sz, (char*)ev->ext.message.data);
 				tblstr(ctx, "message", mcbuf, top);
 			break;
 			case EVENT_EXTERNAL_COREOPT:
 				tblstr(ctx, "kind", "coreopt", top);
-				slimpush(mcbuf, sizeof(ev->ext.message) /
-					sizeof(ev->ext.message[0]),
-					(char*)ev->ext.message);
+				slimpush(mcbuf, extmsg_sz, (char*)ev->ext.message.data);
 				tblstr(ctx, "argument", mcbuf, top);
 			break;
 			case EVENT_EXTERNAL_CURSORHINT:
-				fltpush(mcbuf, sizeof(ev->ext.message) /
-					sizeof(ev->ext.message[0]),
-					(char*)ev->ext.message, "abcdefghijklmnopqrstuwxyz-", '?');
+				fltpush(mcbuf, extmsg_sz, (char*)ev->ext.message.data,
+					"abcdefghijklmnopqrstuwxyz-", '?');
 				tblstr(ctx, "kind", "cursorhint", top);
 			break;
 			case EVENT_EXTERNAL_MESSAGE:
-				slimpush(mcbuf, sizeof(ev->ext.message) /
-					sizeof(ev->ext.message[0]),
-					(char*)ev->ext.message);
+				slimpush(mcbuf, extmsg_sz, (char*)ev->ext.message.data);
+				tblbool(ctx, "multipart", ev->ext.message.multipart != 0, top);
 				tblstr(ctx, "kind", "message", top);
 				tblstr(ctx, "message", mcbuf, top);
 			break;
 			case EVENT_EXTERNAL_FAILURE:
 				tblstr(ctx, "kind", "failure", top);
-				slimpush(mcbuf, sizeof(ev->ext.message) /
-					sizeof(ev->ext.message[0]),
-					(char*)ev->ext.message);
+				slimpush(mcbuf, extmsg_sz, (char*)ev->ext.message.data);
 				tblstr(ctx, "message", mcbuf, top);
 			break;
 			case EVENT_EXTERNAL_FRAMESTATUS:
@@ -3593,8 +3591,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			break;
 
 			case EVENT_EXTERNAL_STREAMINFO:
-				slimpush(mcbuf, sizeof(ev->ext.streaminf.langid) /
-					sizeof(ev->ext.streaminf.langid[0]),
+				slimpush(mcbuf, COUNT_OF(ev->ext.streaminf.langid),
 					(char*)ev->ext.streaminf.langid);
 				tblstr(ctx, "kind", "streaminfo", top);
 				tblstr(ctx, "lang", mcbuf, top);
@@ -3605,12 +3602,10 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 
 			case EVENT_EXTERNAL_STREAMSTATUS:
 				tblstr(ctx, "kind", "streamstatus", top);
-					slimpush(mcbuf, sizeof(ev->ext.streamstat.timestr) /
-					sizeof(ev->ext.streamstat.timestr[0]),
+					slimpush(mcbuf, COUNT_OF(ev->ext.streamstat.timestr),
 					(char*)ev->ext.streamstat.timestr);
 				tblstr(ctx, "ctime", mcbuf, top);
-				slimpush(mcbuf, sizeof(ev->ext.streamstat.timelim) /
-					sizeof(ev->ext.streamstat.timelim[0]),
+				slimpush(mcbuf, COUNT_OF(ev->ext.streamstat.timelim),
 					(char*)ev->ext.streamstat.timelim);
 				tblstr(ctx, "endtime", mcbuf, top);
 				tblnum(ctx,"completion",ev->ext.streamstat.completion,top);
@@ -3650,20 +3645,18 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				}
 
 				tblstr(ctx, "kind", "input_label", top);
-				fltpush(mcbuf, sizeof(ev->ext.labelhint.label)/
-					sizeof(ev->ext.labelhint.label[0]), ev->ext.labelhint.label,
-					"abcdefghijklmnopqrstuvwxyz0123456789_", '?');
+				fltpush(mcbuf, COUNT_OF(ev->ext.labelhint.label),
+					ev->ext.labelhint.label,
+					"abcdefghijklmnopqrstuvwxyz0123456789_", '?'
+				);
 				tblstr(ctx, "labelhint", mcbuf, top);
 				tblstr(ctx, "datatype", idt, top);
 			}
 			break;
 			case EVENT_EXTERNAL_STATESIZE:
 				tblstr(ctx, "kind", "state_size", top);
-				tblnum(ctx, "state_size", ev->ext.state_sz, top);
-			break;
-			case EVENT_EXTERNAL_RESOURCE:
-				tblstr(ctx, "kind", "resource_status", top);
-				tblstr(ctx, "message", (char*)ev->ext.message, top);
+				tblnum(ctx, "state_size", ev->ext.stateinf.size, top);
+				tblnum(ctx, "typeid", ev->ext.stateinf.type, top);
 			break;
 			case EVENT_EXTERNAL_REGISTER:
 				if (fsrv->segid != SEGID_UNKNOWN &&
@@ -3681,10 +3674,9 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 
 				tblstr(ctx, "kind", "registered", top);
 				tblstr(ctx, "segkind", fsrvtos(ev->ext.registr.kind), top);
-				slimpush(mcbuf, sizeof(ev->ext.registr.title) /
-					sizeof(ev->ext.registr.title[0]), (char*)ev->ext.registr.title);
-					snprintf(fsrv->title,
-						sizeof(fsrv->title) / sizeof(fsrv->title[0]), "%s", mcbuf);
+				slimpush(mcbuf,
+					COUNT_OF(ev->ext.registr.title), (char*)ev->ext.registr.title);
+					snprintf(fsrv->title, COUNT_OF(fsrv->title), "%s", mcbuf);
 				tblstr(ctx, "title", mcbuf, top);
 			break;
 		 	default:
