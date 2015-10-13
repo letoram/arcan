@@ -1241,6 +1241,7 @@ static inline void targetev(arcan_event* ev)
 					.ext.kind = ARCAN_EVENT(SEGREQ),
 					.ext.segreq.width = 640,
 					.ext.segreq.height = 240,
+					.ext.segreq.kind = SEGID_DEBUG,
 					.ext.segreq.id = retroctx.graph_pending
 				};
 

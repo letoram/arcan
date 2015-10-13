@@ -331,6 +331,15 @@ enum ARCAN_TARGET_COMMAND {
 	TARGET_COMMAND_GRAPHMODE,
 
 /*
+ * Primarily used on clipboards ("pasteboards") that are sent as recordtargets,
+ * and comes with a possibly multipart UTF-8 encoded message at a fixed limit
+ * per message. Each individual message MUST be valid UTF-8 even in multipart.
+ * ioev[0].iv = !0, multipart continued
+ * ioev.message = utf-8 valid byte sequence
+ */
+	TARGET_COMMAND_MESSAGE,
+
+/*
  * Specialized output hinting, considered deprecated
  */
 	TARGET_COMMAND_VECTOR_LINEWIDTH,
@@ -350,8 +359,9 @@ enum ARCAN_TARGET_COMMAND {
 #define ARCAN_EVENT(X)_INT_SHMIF_TEVAL(EVENT_EXTERNAL_, X)
 enum ARCAN_EVENT_EXTERNAL {
 /*
- * custom string message, used as some user- directed hint uses the message
- * field.
+ * Custom string message, used as some user- directed hint, or in the case
+ * of a clipboard segid, UTF-8 sequence to inject.
+ * Uses the message field.
  */
 	EVENT_EXTERNAL_MESSAGE = 0,
 

@@ -77,7 +77,7 @@ void arcan_ffunc_initlut()
 	f_lut[FFUNC_FEEDCOPY] = arcan_frameserver_feedcopy;
 	f_lut[FFUNC_NULLFRAME] = arcan_frameserver_emptyframe;
 	f_lut[FFUNC_VFRAME] = arcan_frameserver_vdirect;
-
+	f_lut[FFUNC_NULLFEED] = arcan_frameserver_nullfeed;
 	f_lut[FFUNC_LUA_PROC] = arcan_lua_proctarget;
 	f_lut[FFUNC_3DOBJ] = arcan_ffunc_3dobj;
 	f_lut[FFUNC_SOCKVER] = arcan_frameserver_socketverify;

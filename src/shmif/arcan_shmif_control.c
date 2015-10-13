@@ -789,7 +789,7 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 	res.shmsize = res.addr->segment_size;
 	res.cookie = arcan_shmif_cookie();
 
-	if (type == SEGID_ENCODER){
+	if (type == SEGID_ENCODER || type == SEGID_CLIPBOARD_PASTE){
 		((struct shmif_hidden*)res.priv)->output = true;
 	}
 
