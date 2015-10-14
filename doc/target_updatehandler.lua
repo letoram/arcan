@@ -17,7 +17,7 @@ function main()
 #ifdef MAIN
 	a = launch_avfeed("", "avfeed", function(source, status)
 		print("in first handler");
-		target_updatehandler(source; function()
+		target_updatehandler(source, function()
 			print("in second handler");
 		end);
 	end);

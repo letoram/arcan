@@ -65,7 +65,7 @@ static struct {
 	struct tsm_vte* vte;
 	struct shl_pty* pty;
 
-	bool extclock, dirty, mute;
+	bool dirty, mute;
 
 	pid_t child;
 	int child_fd;
@@ -90,6 +90,7 @@ static struct {
 	tsm_age_t age;
 
 	struct arcan_shmif_cont acon;
+
 	struct arcan_shmif_cont clip_in;
 	struct arcan_shmif_cont clip_out;
 } term = {
@@ -100,7 +101,7 @@ static struct {
 	.mag = 1,
 	.alpha = 0xff,
 	.bgc = {0x00, 0x00, 0x00},
-	.fgc = {0xff, 0xff, 0xff}
+	.fgc = {0xff, 0xff, 0xff},
 };
 
 static void tsm_log(void* data, const char* file, int line,
@@ -391,11 +392,31 @@ static void select_copy()
  */
 	if (term.clip_out.vidp){
 		tsm_screen_selection_copy(term.screen, &sel);
+		arcan_event msgev = {
+			.category = EVENT_EXTERNAL,
+			.ext.kind = ARCAN_EVENT(MESSAGE)
+		};
+
 		size_t len = strlen(sel);
 		char* outs = sel;
+		size_t maxlen = sizeof(msgev.ext.message);
 
-		while(len){
+/* utf8- point aligned against block size */
+		while(len > maxlen){
+			size_t cp = maxlen - 1;
+			while ( !((outs[cp] & (1 << 7)) & (1 << 6)) ) cp--;
+			memcpy(msgev.ext.message.data, outs, cp);
+			len -= cp;
+			outs += cp;
+			msgev.ext.message.multipart = 1;
+			arcan_shmif_enqueue(&term.clip_out, &msgev);
+		}
 
+/* flush remaining */
+		if (len){
+			snprintf((char*)msgev.ext.message.data, maxlen, "%s", outs);
+			msgev.ext.message.multipart = 0;
+			arcan_shmif_enqueue(&term.clip_out, &msgev);
 		}
 
 		free(sel);
@@ -627,6 +648,28 @@ static void targetev(arcan_tgtevent* ev)
 	}
 	break;
 
+/*
+ * map the two clipboards needed for both cut and for paste operations
+ */
+	case TARGET_COMMAND_NEWSEGMENT:
+		if (ev->ioevs[1].iv == 1){
+			if (!term.clip_in.vidp){
+				term.clip_in = arcan_shmif_acquire(&term.acon,
+					NULL, SEGID_CLIPBOARD_PASTE, 0);
+			}
+			else
+				LOG("multiple paste- clipboards received, likely appl. error\n");
+		}
+		else if (ev->ioevs[1].iv == 0){
+			if (!term.clip_out.vidp){
+				term.clip_out = arcan_shmif_acquire(&term.acon,
+					NULL, SEGID_CLIPBOARD, 0);
+			}
+			else
+				LOG("multiple clipboards received, likely appl. error\n");
+		}
+	break;
+
 	case TARGET_COMMAND_STEPFRAME:
 	break;
 
@@ -666,6 +709,29 @@ static void event_dispatch(arcan_event* ev)
 	}
 }
 
+static void check_pasteboard()
+{
+	arcan_event ev;
+
+	while (arcan_shmif_poll(&term.clip_in, &ev) > 0){
+		if (ev.category != EVENT_TARGET)
+			continue;
+
+		arcan_tgtevent* tev = &ev.tgt;
+		switch(tev->kind){
+		case TARGET_COMMAND_MESSAGE:
+			shl_pty_write(term.pty, tev->message, strlen(tev->message));
+		break;
+		case TARGET_COMMAND_EXIT:
+			arcan_shmif_drop(&term.clip_in);
+			return;
+		break;
+		default:
+		break;
+		}
+	}
+}
+
 #ifdef TTF_SUPPORT
 static void probe_font(const char* msg, size_t* dw, size_t* dh)
 {
@@ -681,55 +747,47 @@ static void probe_font(const char* msg, size_t* dw, size_t* dh)
 }
 #endif
 
-/*
- * Two different 'clocking' modes, one where an external stepframe
- * dictate synch (typically interactive- only) and one where there is
- * a shared poll and first-come first-serve
- */
 static void main_loop()
 {
 	arcan_event ev;
 
-	if (term.extclock){
-		while (arcan_shmif_wait(&term.acon, &ev) != 0){
-			int rc = shl_pty_dispatch(term.pty);
-			if (0 < rc){
-				LOG("shl_pty_dispatch failed(%d)\n", rc);
-				break;
-			}
-			event_dispatch(&ev);
+	short pollev = POLLIN | POLLERR | POLLNVAL | POLLHUP;
+	int ptyfd = shl_pty_get_fd(term.pty);
+
+	while(true){
+		int pc = 2;
+		struct pollfd fds[3] = {
+			{ .fd = ptyfd, .events = pollev},
+			{ .fd = term.acon.epipe, .events = pollev},
+			{ .fd  = -1, .events = pollev}
+		};
+
+/* if we've received a clipboard for paste- operations */
+		if (term.clip_in.vidp){
+			fds[2].fd = term.clip_in.epipe;
+			pc = 3;
 		}
-	}
-	else {
-		short pollev = POLLIN | POLLERR | POLLNVAL | POLLHUP;
-		int ptyfd = shl_pty_get_fd(term.pty);
 
-		while(true){
-			struct pollfd fds[2] = {
-				{ .fd = ptyfd, .events = pollev},
-				{ .fd = term.acon.epipe, .events = pollev}
-			};
+		int sv = poll(fds, pc, -1);
+		if (fds[0].revents & POLLIN){
+			int rc = shl_pty_dispatch(term.pty);
+		}
+		else if (fds[0].revents)
+			break;
 
-			int sv = poll(fds, 2, -1);
-			if (fds[0].revents & POLLIN){
-				int rc = shl_pty_dispatch(term.pty);
-			}
-			else if (fds[0].revents)
-				break;
-
-			if (fds[1].revents & POLLIN){
-				while (arcan_shmif_poll(&term.acon, &ev) > 0)
-					event_dispatch(&ev);
-				int rc = shl_pty_dispatch(term.pty);
-			}
-			else if (fds[1].revents)
-				break;
-
+		if (fds[1].revents & POLLIN){
+			while (arcan_shmif_poll(&term.acon, &ev) > 0)
+				event_dispatch(&ev);
+			int rc = shl_pty_dispatch(term.pty);
+		}
+		else if (fds[1].revents)
+			break;
+		else if (pc == 3 && (fds[2].revents & POLLIN))
+			check_pasteboard();
 /* audible beep or not? */
-			if (term.dirty){
-				arcan_shmif_signal(&term.acon, SHMIF_SIGVID);
-				term.dirty = false;
-			}
+		if (term.dirty){
+			arcan_shmif_signal(&term.acon, SHMIF_SIGVID);
+			term.dirty = false;
 		}
 	}
 	arcan_shmif_drop(&term.acon);
@@ -746,7 +804,6 @@ static void dump_help()
 	  " cols        \t n_cols    \t specify initial number of terminal columns\n"
 		" cell_w      \t px_w      \t specify individual cell width in pixels\n"
 		" cell_h      \t px_h      \t specify individual cell height in pixels\n"
-		" extclock    \t           \t require external clock for screen updates\n"
 		" bgr         \t rv(0..255)\t background red channel\n"
 		" bgg         \t rv(0..255)\t background green channel\n"
 		" bgb         \t rv(0..255)\t background blue channel\n"
@@ -778,9 +835,6 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	bool custom_w = false;
 	if (arg_lookup(args, "rows", 0, &val))
 		term.rows = strtoul(val, NULL, 10);
-
-	if (arg_lookup(args, "extclock", 0, &val))
-		term.extclock = true;
 
 	if (arg_lookup(args, "cols", 0, &val))
 		term.cols = strtoul(val, NULL, 10);
@@ -899,7 +953,6 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	tsm_screen_set_def_attr(term.screen, &attr);
 
 	setlocale(LC_CTYPE, "C");
-
 	signal(SIGHUP, SIG_IGN);
 
 	if ( (term.child = shl_pty_open(&term.pty,
@@ -912,6 +965,18 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		LOG("couldn't spawn child terminal.\n");
 		return EXIT_FAILURE;
 	}
+
+/* immediately request a clipboard for cut operations (none received ==
+ * running appl doesn't care about cut'n'paste/drag'n'drop support). */
+	arcan_event segreq = {
+		.category = EVENT_EXTERNAL,
+		.ext.kind = ARCAN_EVENT(SEGREQ),
+		.ext.segreq.width = 1,
+		.ext.segreq.height = 1,
+		.ext.segreq.kind = SEGID_CLIPBOARD,
+		.ext.segreq.id = 0xfeedface
+	};
+	arcan_shmif_enqueue(&term.acon, &segreq);
 
 	main_loop();
 	return EXIT_SUCCESS;

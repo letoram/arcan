@@ -23,6 +23,7 @@ enum arcan_ffunc {
 
 /* arcan_frameserver.c */
 	FFUNC_AVFEED,
+	FFUNC_NULLFEED,
 	FFUNC_FEEDCOPY,
 	FFUNC_VFRAME,
 	FFUNC_NULLFRAME,

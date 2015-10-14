@@ -282,6 +282,38 @@ static void push_buffer(arcan_frameserver* src,
 	agp_stream_commit(store, stream);
 }
 
+enum arcan_ffunc_rv arcan_frameserver_nullfeed FFUNC_HEAD
+{
+	arcan_frameserver* tgt = state.ptr;
+
+	if (!tgt || state.tag != ARCAN_TAG_FRAMESERV
+	 || !arcan_frameserver_enter(tgt))
+		return FRV_NOFRAME;
+
+	if (cmd == FFUNC_DESTROY)
+		arcan_frameserver_free(state.ptr);
+
+	else if (cmd == FFUNC_ADOPT)
+		tgt->vid = srcid;
+
+	else if (cmd == FFUNC_TICK){
+		if (!arcan_frameserver_control_chld(tgt)){
+			arcan_frameserver_leave();
+			return FRV_NOFRAME;
+		}
+		arcan_event_queuetransfer(arcan_event_defaultctx(), &tgt->inqueue,
+		tgt->queue_mask, 0.5, tgt->vid);
+	}
+	else if (cmd == FFUNC_DESTROY)
+		arcan_frameserver_free(tgt);
+
+	else if (cmd == FFUNC_ADOPT)
+		tgt->vid = srcid;
+
+	arcan_frameserver_leave();
+	return FRV_NOFRAME;
+}
+
 enum arcan_ffunc_rv arcan_frameserver_emptyframe FFUNC_HEAD
 {
 	arcan_frameserver* tgt = state.ptr;

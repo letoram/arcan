@@ -8,6 +8,9 @@
 -- This function is a quick helper to determine if you're about to
 -- corrupt a UTF-8 string or not. state values:
 -- 0 = 7bit character, 1 = start of char, 2 = middle of char.
+-- @note: This is very primitive and was added before we included the
+-- bitopts- LuaJIT extension into the codebase. It does not directly
+-- help for validating UTF8 sequences, only for avoiding obvious truncation.
 -- @group: system
 -- @cfunction: utf8kind
 function main()

@@ -651,6 +651,9 @@ static bool grabapplfunction(lua_State* ctx,
 	return true;
 }
 
+/* the places in _lua.c that calls this function should probably have a better
+ * handover as this incurs additional and almost always unnecessary strlen
+ * calls */
 static inline const char* intblstr(lua_State* ctx, int ind, const char* field){
 	lua_getfield(ctx, ind, field);
 	return lua_tostring(ctx, -1);
@@ -977,6 +980,12 @@ static inline void tblbool(lua_State* ctx, char* k, bool v, int top){
 	lua_rawset(ctx, top);
 }
 
+static const char flt_alpha[] = "abcdefghijklmnopqrstuvwxyz-_";
+static const char flt_alphanum[] = "abcdefghijklmnopqrstuvwyz-0123456789-_";
+static const char flt_Alpha[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ-_"
+	"abcdefghijklmnopqrstuvwxyz";
+static const char flt_num[] = "0123456789_-";
+
 static inline void fltpush(char* dst, char ulim,
 	char* inmsg, const char* fltch, char replch)
 {
@@ -1000,14 +1009,28 @@ static inline void fltpush(char* dst, char ulim,
 	*dst = '\0';
 }
 
-static inline size_t slimpush(char* dst, char ulim, char* inmsg)
+
+/*
+ * Scan and check that the sequence is valid utf-8 and does not exceed the set
+ * upper limit. If it does, truncate and return, otherwise copy into dst. Ulim
+ * includes the terminating 0.
+ */
+#include "external/utf8.c"
+
+static inline void slim_utf8_push(char* dst, int ulim, char* inmsg)
 {
-	while (*inmsg && ulim--)
-		*dst++ = *inmsg++;
+	uint32_t state = 0;
+	uint32_t codepoint = 0;
 
-	*dst = '\0';
+	for (size_t i = 0; inmsg[i] != '\0', i < ulim; i++){
+		dst[i] = inmsg[i];
+		utf8_decode(&state, &codepoint, inmsg[i]);
+	}
 
-	return (uintptr_t)dst - (uintptr_t)inmsg;
+/* for broken state, just ignore. The other options would be 'warn' (will spam)
+ * or to truncate (might in some cases be prefered). */
+	if (state)
+		dst[0] = '\0';
 }
 
 static char* streamtype(int num)
@@ -1023,8 +1046,7 @@ static char* streamtype(int num)
 
 static int push_resstr(lua_State* ctx, struct nonblock_io* ib, off_t ofs)
 {
-	size_t in_sz = sizeof(luactx.rawres.buf )/
-		sizeof(luactx.rawres.buf[0]);
+	size_t in_sz = COUNT_OF(luactx.rawres.buf);
 
 	lua_pushlstring(ctx, ib->buf, ofs);
 
@@ -1042,8 +1064,7 @@ static int push_resstr(lua_State* ctx, struct nonblock_io* ib, off_t ofs)
 
 static inline size_t bufcheck(lua_State* ctx, struct nonblock_io* ib)
 {
-	size_t in_sz = sizeof(luactx.rawres.buf )/
-		sizeof(luactx.rawres.buf[0]);
+	size_t in_sz = COUNT_OF(luactx.rawres.buf);
 
 	for (size_t i = 0; i < ib->ofs; i++){
 		if (ib->buf[i] == '\n')
@@ -1058,7 +1079,7 @@ static inline size_t bufcheck(lua_State* ctx, struct nonblock_io* ib)
 
 static int bufread(lua_State* ctx, struct nonblock_io* ib)
 {
-	size_t buf_sz = sizeof(ib->buf) / sizeof(ib->buf[0]);
+	size_t buf_sz = COUNT_OF(ib->buf);
 
 	if (!ib || ib->fd < 0)
 		return 0;
@@ -3052,6 +3073,9 @@ static int contextusage(lua_State* ctx)
 	return 2;
 }
 
+/*
+ * trused -> untrused
+ */
 static inline void get_utf8(const char* instr, uint8_t dst[5])
 {
 	size_t len = strlen(instr);
@@ -3065,30 +3089,42 @@ static inline void get_utf8(const char* instr, uint8_t dst[5])
 static int targetinput(lua_State* ctx)
 {
 	LUA_TRACE("target_input/input_target");
-
-	arcan_event ev = {.io.kind = 0, .category = EVENT_IO };
 	int vidind, tblind;
 
 /* swizzle if necessary */
-	if (lua_type(ctx, 1) == LUA_TTABLE){
-		vidind = 2;
-		tblind = 1;
-	} else {
-		tblind = 2;
+	if (lua_type(ctx, 1) == LUA_TNUMBER){
 		vidind = 1;
+		tblind = 2;
+	} else {
+		tblind = 1;
+		vidind = 2;
 	}
 
 	arcan_vobj_id vid = luaL_checkvid(ctx, vidind, NULL);
-	luaL_checktype(ctx, tblind, LUA_TTABLE);
-
 	vfunc_state* vstate = arcan_video_feedstate(vid);
-
 	if (!vstate || vstate->tag != ARCAN_TAG_FRAMESERV){
 		lua_pushnumber(ctx, false);
 		LUA_ETRACE("target_input/input_target", "dst not a frameserver");
 		return 1;
 	}
 
+	if (lua_type(ctx, tblind) == LUA_TSTRING){
+		arcan_event ev = {
+			.category = EVENT_TARGET,
+			.tgt.kind = TARGET_COMMAND_MESSAGE,
+		};
+
+		const char* msg = luaL_checkstring(ctx, tblind);
+		size_t msgsz = COUNT_OF(ev.tgt.message);
+		snprintf(ev.tgt.message, msgsz, "%s", msg);
+
+		lua_pushboolean(ctx, true);
+		arcan_frameserver_pushevent( (arcan_frameserver*) vstate->ptr, &ev);
+		return 1;
+	}
+
+	luaL_checktype(ctx, tblind, LUA_TTABLE);
+	arcan_event ev = {.io.kind = 0, .category = EVENT_IO };
 /* populate all arguments */
 	const char* kindlbl = intblstr(ctx, tblind, "kind");
 	if (kindlbl == NULL)
@@ -3096,7 +3132,7 @@ static int targetinput(lua_State* ctx)
 
 	const char* label = intblstr(ctx, tblind, "label");
 	if (label){
-		int ul = sizeof(ev.io.label) / sizeof(ev.io.label[0]) - 1;
+		int ul = COUNT_OF(ev.io.label) - 1;
 		char* dst = ev.io.label;
 
 		while (*label != '\0' && ul--)
@@ -3113,19 +3149,19 @@ static int targetinput(lua_State* ctx)
 		ev.io.devkind = mouse ?	EVENT_IDEVKIND_MOUSE : EVENT_IDEVKIND_GAMEDEV;
 		ev.io.devid = intblint(ctx, tblind, "devid");
 		ev.io.subid = intblint(ctx, tblind, "subid");
-		ev.io.input.analog.gotrel = mouse ? (!intblbool(ctx, tblind, "norel")) : false;
+		ev.io.input.analog.gotrel = mouse ?
+			(!intblbool(ctx, tblind, "norel")) : false;
 		ev.io.datatype = EVENT_IDATATYPE_ANALOG;
 
 	/*  sweep the samples subtable, add as many as present (or possible) */
 		lua_getfield(ctx, tblind, "samples");
 		size_t naxiss = lua_rawlen(ctx, -1);
 		for (size_t i = 0; i < naxiss &&
-			i < sizeof(ev.io.input.analog.axisval) /
-				sizeof(ev.io.input.analog.axisval[0]); i++){
-			lua_rawgeti(ctx, -1, i+1);
-			ev.io.input.analog.axisval[i] = lua_tointeger(ctx, -1);
-			lua_pop(ctx, 1);
-		}
+				i < COUNT_OF(ev.io.input.analog.axisval); i++){
+				lua_rawgeti(ctx, -1, i+1);
+				ev.io.input.analog.axisval[i] = lua_tointeger(ctx, -1);
+				lua_pop(ctx, 1);
+			}
 		ev.io.input.analog.nvalues = naxiss;
 	}
 	else if (strcmp(kindlbl, "touch") == 0){
@@ -3183,7 +3219,7 @@ static const char* lookup_idatatype(int type)
 		"touch"
 	};
 
-	if (type < 0 || type > sizeof(idatalut)/sizeof(idatalut[0]))
+	if (type < 0 || type > COUNT_OF(idatalut))
 		return NULL;
 
 	return idatalut[type];
@@ -3507,8 +3543,9 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				size_t outl;
 				uint8_t* strkey = arcan_base64_encode(
 					(const uint8_t*) ev->net.host.key,
-					sizeof(ev->net.host.key) / sizeof(ev->net.host.key[0]),
-					&outl, ARCAN_MEM_SENSITIVE | ARCAN_MEM_NONFATAL);
+					COUNT_OF(ev->net.host.key),
+					&outl, ARCAN_MEM_SENSITIVE | ARCAN_MEM_NONFATAL
+				);
 				if (strkey){
 					tblstr(ctx, "key", (const char*) strkey, top);
 					free(strkey);
@@ -3532,7 +3569,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 
 	}
 	else if (ev->category == EVENT_EXTERNAL){
-		char mcbuf[65];
+		char mcbuf[sizeof(ev->ext.message.data)+1];
 		if (arcan_video_findparent(ev->ext.source) == ARCAN_EID)
 			return;
 
@@ -3558,28 +3595,27 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			switch (ev->ext.kind){
 			case EVENT_EXTERNAL_IDENT:
 				tblstr(ctx, "kind", "ident", top);
-				slimpush(mcbuf, extmsg_sz, (char*)ev->ext.message.data);
+				slim_utf8_push(mcbuf, extmsg_sz, (char*)ev->ext.message.data);
 				tblstr(ctx, "message", mcbuf, top);
 			break;
 			case EVENT_EXTERNAL_COREOPT:
 				tblstr(ctx, "kind", "coreopt", top);
-				slimpush(mcbuf, extmsg_sz, (char*)ev->ext.message.data);
+				slim_utf8_push(mcbuf, extmsg_sz, (char*)ev->ext.message.data);
 				tblstr(ctx, "argument", mcbuf, top);
 			break;
 			case EVENT_EXTERNAL_CURSORHINT:
-				fltpush(mcbuf, extmsg_sz, (char*)ev->ext.message.data,
-					"abcdefghijklmnopqrstuwxyz-", '?');
+				fltpush(mcbuf, extmsg_sz, (char*)ev->ext.message.data, flt_alpha, '?');
 				tblstr(ctx, "kind", "cursorhint", top);
 			break;
 			case EVENT_EXTERNAL_MESSAGE:
-				slimpush(mcbuf, extmsg_sz, (char*)ev->ext.message.data);
+				slim_utf8_push(mcbuf, extmsg_sz, (char*)ev->ext.message.data);
 				tblbool(ctx, "multipart", ev->ext.message.multipart != 0, top);
 				tblstr(ctx, "kind", "message", top);
 				tblstr(ctx, "message", mcbuf, top);
 			break;
 			case EVENT_EXTERNAL_FAILURE:
 				tblstr(ctx, "kind", "failure", top);
-				slimpush(mcbuf, extmsg_sz, (char*)ev->ext.message.data);
+				slim_utf8_push(mcbuf, extmsg_sz, (char*)ev->ext.message.data);
 				tblstr(ctx, "message", mcbuf, top);
 			break;
 			case EVENT_EXTERNAL_FRAMESTATUS:
@@ -3591,8 +3627,8 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			break;
 
 			case EVENT_EXTERNAL_STREAMINFO:
-				slimpush(mcbuf, COUNT_OF(ev->ext.streaminf.langid),
-					(char*)ev->ext.streaminf.langid);
+				fltpush(mcbuf, COUNT_OF(ev->ext.streaminf.langid),
+					(char*)ev->ext.streaminf.langid, flt_Alpha, '?');
 				tblstr(ctx, "kind", "streaminfo", top);
 				tblstr(ctx, "lang", mcbuf, top);
 				tblnum(ctx, "streamid", ev->ext.streaminf.streamid, top);
@@ -3602,11 +3638,11 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 
 			case EVENT_EXTERNAL_STREAMSTATUS:
 				tblstr(ctx, "kind", "streamstatus", top);
-					slimpush(mcbuf, COUNT_OF(ev->ext.streamstat.timestr),
-					(char*)ev->ext.streamstat.timestr);
+				fltpush(mcbuf, COUNT_OF(ev->ext.streamstat.timestr),
+					(char*)ev->ext.streamstat.timestr, flt_num, '?');
 				tblstr(ctx, "ctime", mcbuf, top);
-				slimpush(mcbuf, COUNT_OF(ev->ext.streamstat.timelim),
-					(char*)ev->ext.streamstat.timelim);
+				fltpush(mcbuf, COUNT_OF(ev->ext.streamstat.timelim),
+					(char*)ev->ext.streamstat.timelim, flt_num, '?');
 				tblstr(ctx, "endtime", mcbuf, top);
 				tblnum(ctx,"completion",ev->ext.streamstat.completion,top);
 				tblnum(ctx, "frameno", ev->ext.streamstat.frameno, top);
@@ -3646,9 +3682,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 
 				tblstr(ctx, "kind", "input_label", top);
 				fltpush(mcbuf, COUNT_OF(ev->ext.labelhint.label),
-					ev->ext.labelhint.label,
-					"abcdefghijklmnopqrstuvwxyz0123456789_", '?'
-				);
+					ev->ext.labelhint.label, flt_alphanum, '?');
 				tblstr(ctx, "labelhint", mcbuf, top);
 				tblstr(ctx, "datatype", idt, top);
 			}
@@ -3674,7 +3708,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 
 				tblstr(ctx, "kind", "registered", top);
 				tblstr(ctx, "segkind", fsrvtos(ev->ext.registr.kind), top);
-				slimpush(mcbuf,
+				slim_utf8_push(mcbuf,
 					COUNT_OF(ev->ext.registr.title), (char*)ev->ext.registr.title);
 					snprintf(fsrv->title, COUNT_OF(fsrv->title), "%s", mcbuf);
 				tblstr(ctx, "title", mcbuf, top);
@@ -3753,9 +3787,9 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
  *    are still there, free
  */
 			case EVENT_FSRV_EXTCONN :{
-				char msgbuf[sizeof(ev->fsrv.ident)/sizeof(ev->fsrv.ident[0])];
+				char msgbuf[COUNT_OF(ev->fsrv.ident)+1];
 				tblstr(ctx, "kind", "connected", top);
-				slimpush(msgbuf, sizeof(msgbuf)/sizeof(msgbuf[0]), ev->fsrv.ident);
+				slim_utf8_push(msgbuf, COUNT_OF(msgbuf), ev->fsrv.ident);
 				tblstr(ctx, "key", msgbuf, top);
 				luactx.pending_socket_label = strdup(msgbuf);
 				luactx.pending_socket_descr = ev->fsrv.descriptor;
@@ -5543,13 +5577,10 @@ static int targetcoreopt(lua_State* ctx)
 		.tgt.kind = TARGET_COMMAND_COREOPT
 	};
 
-	size_t msgsz = sizeof(ev.tgt.message) /
-		sizeof(ev.tgt.message[0]);
-
 	ev.tgt.code = luaL_checknumber(ctx, 2);
 	const char* msg = luaL_checkstring(ctx, 3);
 
-	strncpy(ev.tgt.message, msg, msgsz - 1);
+	snprintf(ev.tgt.message, COUNT_OF(ev.tgt.message), "%s", msg);
 	tgtevent(tgt, ev);
 
 	LUA_ETRACE("target_coreopt", NULL);
@@ -5777,7 +5808,7 @@ static int targetrestore(lua_State* ctx)
 	char* fname = arcan_find_resource(snapkey, RESOURCE_APPL_STATE, ARES_FILE);
 	int fd = -1;
 	if (fname)
-		fd = open(fname, O_RDONLY);
+		fd = open(fname, O_CLOEXEC |O_RDONLY);
 	free(fname);
 
 	if (-1 == fd){
@@ -5948,7 +5979,8 @@ static int targetsnapshot(lua_State* ctx)
 	char* fname = arcan_expand_resource(snapkey, RESOURCE_APPL_STATE);
 	int fd = -1;
 	if (fname)
-		fd = open(fname, O_CREAT | O_WRONLY | O_TRUNC, S_IRUSR | S_IWUSR);
+		fd = open(fname, O_CREAT | O_WRONLY |
+			O_TRUNC | O_CLOEXEC, S_IRUSR | S_IWUSR);
 	arcan_mem_free(fname);
 
 	if (-1 == fd){
@@ -6820,7 +6852,7 @@ static int spawn_recfsrv(lua_State* ctx,
  * recording was when recieving the fd to work with */
 	if (strstr(args.args.builtin.resource,
 		"container=stream") != NULL || strlen(resf) == 0)
-		fd = open(NULFILE, O_WRONLY);
+		fd = open(NULFILE, O_WRONLY | O_CLOEXEC);
 	else {
 		char* fn = arcan_expand_resource(resf, RESOURCE_APPL_TEMP);
 
@@ -6830,7 +6862,7 @@ static int spawn_recfsrv(lua_State* ctx,
 		if (-1 == fd){
 			arcan_warning("couldn't create output (%s), "
 				"recorded data will be lost\n", fn);
-			fd = open(NULFILE, O_WRONLY);
+			fd = open(NULFILE, O_WRONLY | O_CLOEXEC);
 		}
 
 		arcan_mem_free(fn);
@@ -6936,6 +6968,45 @@ static int procset(lua_State* ctx)
 cleanup:
 	LUA_ETRACE("define_calctarget", NULL);
 	return 0;
+}
+
+static int nulltarget(lua_State* ctx)
+{
+	LUA_TRACE("define_nulltarget");
+	arcan_vobject* dobj;
+	arcan_vobj_id did = luaL_checkvid(ctx, 1, &dobj);
+	if (FL_TEST(dobj, FL_CLONE)){
+		arcan_fatal("define_nulltarget(), nulltarget recipient "
+			"cannto be a clone.");
+	}
+
+	vfunc_state* state = arcan_video_feedstate(did);
+	if (state->tag != ARCAN_TAG_FRAMESERV)
+		arcan_fatal("define_feedtarget(), feedtarget "
+			"recipient must be a frameserver");
+
+	arcan_frameserver* rv =
+		arcan_frameserver_spawn_subsegment(
+			(arcan_frameserver*) state->ptr, true, 1, 1, 0);
+
+	if (!rv){
+		LUA_ETRACE("define_nulltarget", "no subsegment");
+		lua_pushvid(ctx, ARCAN_EID);
+		return 1;
+	}
+
+	vfunc_state fftag = {
+		.tag = ARCAN_TAG_FRAMESERV,
+		.ptr = rv
+	};
+
+/* nullframe does not do any audio/video polling but still maintains
+ * the event-loop so it can be used to push messages etc. */
+	arcan_video_alterfeed(rv->vid, FFUNC_NULLFRAME, fftag);
+	rv->tag = find_lua_callback(ctx);
+	LUA_ETRACE("define_nulltarget", NULL);
+	lua_pushvid(ctx, rv->vid);
+	return 1;
 }
 
 static int feedtarget(lua_State* ctx)
@@ -7170,7 +7241,7 @@ static int togglebench(lua_State* ctx)
 static int getbenchvals(lua_State* ctx)
 {
 	LUA_TRACE("benchmark_data");
-	size_t bench_sz = sizeof(benchdata.ticktime) / sizeof(benchdata.ticktime[0]);
+	size_t bench_sz = COUNT_OF(benchdata.ticktime);
 
 	lua_pushnumber(ctx, benchdata.tickcount);
 	lua_newtable(ctx);
@@ -7185,7 +7256,7 @@ static int getbenchvals(lua_State* ctx)
 		i = (i + 1) % bench_sz;
 	}
 
-	bench_sz = sizeof(benchdata.frametime) / sizeof(benchdata.frametime[0]);
+	bench_sz = COUNT_OF(benchdata.frametime);
 	i = (benchdata.frameofs + 1) % bench_sz;
 	lua_pushnumber(ctx, benchdata.framecount);
 	lua_newtable(ctx);
@@ -7199,7 +7270,7 @@ static int getbenchvals(lua_State* ctx)
 		i = (i + 1) % bench_sz;
 	}
 
-	bench_sz = sizeof(benchdata.framecost) / sizeof(benchdata.framecost[0]);
+	bench_sz = COUNT_OF(benchdata.framecost);
 	i = (benchdata.costofs + 1) % bench_sz;
 	lua_pushnumber(ctx, benchdata.costcount);
 	lua_newtable(ctx);
@@ -8144,8 +8215,7 @@ static int net_pushcl(lua_State* ctx)
 			outev.net.kind = EVENT_NET_CUSTOMMSG;
 
 			const char* msg = luaL_checkstring(ctx, 2);
-			size_t out_sz = sizeof(outev.net.message) /
-				sizeof(outev.net.message[0]);
+			size_t out_sz = COUNT_OF(outev.net.message);
 			snprintf(outev.net.message, out_sz, "%s", msg);
 		break;
 
@@ -8247,8 +8317,7 @@ static int net_pushsrv(lua_State* ctx)
 			" is not in client mode (net_open).\n");
 
 /* we clean this as to not expose stack trash */
-	size_t out_sz = sizeof(outev.net.message) /
-		sizeof(outev.net.message[0]);
+	size_t out_sz = COUNT_OF(outev.net.message);
 
 	if (lua_isstring(ctx, 2)){
 		outev.net.kind = EVENT_NET_CUSTOMMSG;
@@ -8536,6 +8605,7 @@ static const luaL_Reg tgtfuns[] = {
 {"define_recordtarget",        recordset                },
 {"define_calctarget",          procset                  },
 {"define_feedtarget",          feedtarget               },
+{"define_nulltarget",          nulltarget               },
 {"rendertarget_forceupdate",   rendertargetforce        },
 {"recordtarget_gain",          recordgain               },
 {"rendertarget_detach",        renderdetach             },
@@ -8927,7 +8997,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 };
 #undef EXT_CONSTTBL_GLOBINT
 
-	for (size_t i = 0; i < sizeof(consttbl) / sizeof(consttbl[0]); i++)
+	for (size_t i = 0; i < COUNT_OF(consttbl); i++)
 		arcan_lua_setglobalint(ctx, consttbl[i].key, consttbl[i].val);
 
 	arcan_lua_setglobalstr(ctx, "GL_VERSION", agp_ident());
@@ -9446,9 +9516,9 @@ table.insert(ctx.rtargets, rtgt);\n\
 	}
 
 	if (benchdata.bench_enabled){
-		size_t bsz = sizeof(benchdata.ticktime)  / sizeof(benchdata.ticktime[0]);
-		size_t fsz = sizeof(benchdata.frametime) / sizeof(benchdata.frametime[0]);
-		size_t csz = sizeof(benchdata.framecost) / sizeof(benchdata.framecost[0]);
+		size_t bsz = COUNT_OF(benchdata.ticktime);
+		size_t fsz = COUNT_OF(benchdata.frametime);
+		size_t csz = COUNT_OF(benchdata.framecost);
 
 		int i = (benchdata.tickofs + 1) % bsz;
 		fprintf(dst, "\nrestbl.benchmark = {};\nrestbl.benchmark.ticks = {");

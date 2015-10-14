@@ -267,6 +267,7 @@ enum arcan_ffunc_rv arcan_frameserver_emptyframe FFUNC_HEAD;
 enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD;
 enum arcan_ffunc_rv arcan_frameserver_socketverify FFUNC_HEAD;
 enum arcan_ffunc_rv arcan_frameserver_socketpoll FFUNC_HEAD;
+enum arcan_ffunc_rv arcan_frameserver_nullfeed FFUNC_HEAD;
 
 #endif
 
