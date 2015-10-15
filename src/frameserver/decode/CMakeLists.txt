@@ -1,29 +1,21 @@
-if (FSRV_DECODE_REQUIRED)
-	find_package(VLC REQUIRED)
+if (DECODE_IMPLEMENTATION)
+	add_subdirectory("${DECODE_IMPLEMENTATION}")
 else()
-	find_package(VLC)
+	add_subdirectory("default")
 endif()
 
-if (LIBVLC_FOUND)
+if (DECODE_SOURCES)
 	add_executable(afsrv_decode
 		${FSRV_PLATFORM}
-		default/decode_vlc.c
-		${EXTERNAL_SRC_DIR}/fft/kiss_fft.c
-		${EXTERNAL_SRC_DIR}/fft/kiss_fftr.c
+		${DECODE_SOURCES}
 	)
-
 	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}decode " PARENT_SCOPE)
-
-	target_link_libraries(afsrv_decode ${LIBVLC_LIBRARY} ${STDLIB} arcan_shmif_int)
-	target_include_directories(afsrv_decode PRIVATE
-		${FSRV_ROOT}
-		${EXTERNAL_SRC_DIR}
-	)
 	target_compile_definitions(afsrv_decode PRIVATE
 		ENABLE_FSRV_DECODE
 		DEFAULT_FSRV_MODE=\"decode\"
+		${DECODE_DEFS}
 	)
+	target_include_directories(afsrv_decode PRIVATE ${FSRV_ROOT} ${DECODE_INCLUDE_DIRS})
+	target_link_libraries(afsrv_decode ${STDLIB} arcan_shmif_int ${DECODE_LIBS})
 	install(TARGETS afsrv_decode DESTINATION bin)
-else()
-	amsg("(${CL_GRN}decode${CL_RST}) disabled, ${CL_GRN}libvlc${CL_RED} not found${CL_RST}")
 endif()

@@ -1015,7 +1015,7 @@ static inline void fltpush(char* dst, char ulim,
  * upper limit. If it does, truncate and return, otherwise copy into dst. Ulim
  * includes the terminating 0.
  */
-#include "external/utf8.c"
+#include "../frameserver/util/utf8.c"
 
 static inline void slim_utf8_push(char* dst, int ulim, char* inmsg)
 {
@@ -1024,13 +1024,18 @@ static inline void slim_utf8_push(char* dst, int ulim, char* inmsg)
 
 	for (size_t i = 0; inmsg[i] != '\0', i < ulim; i++){
 		dst[i] = inmsg[i];
-		utf8_decode(&state, &codepoint, inmsg[i]);
+
+		if (utf8_decode(&state, &codepoint, inmsg[i]) == UTF8_REJECT)
+			goto out;
 	}
+
+	if (state == UTF8_ACCEPT)
+		return;
 
 /* for broken state, just ignore. The other options would be 'warn' (will spam)
  * or to truncate (might in some cases be prefered). */
-	if (state)
-		dst[0] = '\0';
+out:
+	dst[0] = '\0';
 }
 
 static char* streamtype(int num)
@@ -3114,12 +3119,57 @@ static int targetinput(lua_State* ctx)
 			.tgt.kind = TARGET_COMMAND_MESSAGE,
 		};
 
+/* validate UTF8 */
 		const char* msg = luaL_checkstring(ctx, tblind);
-		size_t msgsz = COUNT_OF(ev.tgt.message);
-		snprintf(ev.tgt.message, msgsz, "%s", msg);
+		uint32_t state = 0, codepoint = 0, len = 0;
+		while(msg[len])
+			if (UTF8_REJECT == utf8_decode(&state, &codepoint,(uint8_t)(msg[len++])))
+				goto fail;
+
+/* truncated? */
+		if (state != UTF8_ACCEPT){
+fail:
+			lua_pushnumber(ctx, false);
+			LUA_ETRACE("target_input/input_target", "invalid UTF-8 sequence");
+			return 1;
+		}
+
+/*
+ * multipart / split - this is NOT a good way to achieve it as WHEN the
+ * outgoing queue gets saturated, we currently fail 'silently' but that will be
+ * changed. When that occurs, we risk partial truncation with this apporach as
+ * we can't block on outqueue due to DoS. The correct solution then would be to
+ * queue all here, then pushevent_multi -> ack or nack -> error propagation.
+ */
+		size_t msgsz = COUNT_OF(ev.tgt.message) - 1;
+		while (len > msgsz){
+			size_t i, lastok = 0;
+			state = 0;
+			for (i = 0; i < msgsz; i++){
+				if (UTF8_ACCEPT == utf8_decode(&state, &codepoint, (uint8_t)(msg[i])))
+					lastok = i;
+			}
+/* if we split on the wrong point */
+			if (i != lastok){
+				i = lastok;
+/* and this should never happen */
+				if (0 == i)
+					goto fail;
+			}
+
+			memcpy(ev.tgt.message, msg, i);
+			ev.tgt.message[i] = '\0';
+			arcan_frameserver_pushevent(vstate->ptr, &ev);
+			len -= i;
+			msg += i;
+		}
+
+		if (len){
+			snprintf(ev.tgt.message, msgsz, "%s", msg);
+			arcan_frameserver_pushevent(vstate->ptr, &ev);
+		}
 
 		lua_pushboolean(ctx, true);
-		arcan_frameserver_pushevent( (arcan_frameserver*) vstate->ptr, &ev);
 		return 1;
 	}
 

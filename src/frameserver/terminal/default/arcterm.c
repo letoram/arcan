@@ -5,8 +5,10 @@
  */
 
 /*
- * This is still a rather crude terminal emulator, owing most of its
- * actual heavy lifting to David Hermans libtsm.
+ * This is still a rather crude terminal emulator, owing most of its actual
+ * heavy lifting to David Hermanns libtsm - which sadly isn't actively
+ * maintained anymore. Because of that, we include most of that codebase here
+ * rather than maintain it as as a separate dependency.
  *
  * There are quite a few interesting paths to explore here when
  * sandboxing etc. are in place, in particular.
@@ -248,6 +250,13 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 #endif
 }
 
+static void update_screen()
+{
+	term.cursor_x = tsm_screen_get_cursor_x(term.screen);
+	term.cursor_y = tsm_screen_get_cursor_y(term.screen);
+	term.age = tsm_screen_draw(term.screen, draw_cb, NULL /* draw_cb_data */);
+}
+
 static void update_screensize()
 {
 	int cols = term.acon.w / term.cell_w;
@@ -263,9 +272,7 @@ static void update_screensize()
 	term.screen_w = cols;
 	term.screen_h = rows;
 	term.age = 0;
-	term.cursor_x = tsm_screen_get_cursor_x(term.screen);
-	term.cursor_y = tsm_screen_get_cursor_y(term.screen);
-	term.age = tsm_screen_draw(term.screen, draw_cb, NULL /* draw_cb_data */);
+	update_screen();
 }
 
 static void read_callback(struct shl_pty* pty,
@@ -274,7 +281,7 @@ static void read_callback(struct shl_pty* pty,
 	tsm_vte_input(term.vte, u8, len);
 	term.cursor_x = tsm_screen_get_cursor_x(term.screen);
 	term.cursor_y = tsm_screen_get_cursor_y(term.screen);
-	term.age = tsm_screen_draw(term.screen, draw_cb, NULL /* draw_cb_data */);
+	update_screen();
 }
 
 static void write_callback(struct tsm_vte* vte,
@@ -381,6 +388,8 @@ static void select_begin()
 	);
 }
 
+#include "util/utf8.c"
+
 static void select_copy()
 {
 	char* sel = NULL;
@@ -390,37 +399,53 @@ static void select_copy()
  * in: /vdev/istream, /vdev/vin, /vdev/istate
  * out: /vdev/ostream, /dev/vout, /vdev/vstate, /vdev/dsp
  */
-	if (term.clip_out.vidp){
-		tsm_screen_selection_copy(term.screen, &sel);
-		arcan_event msgev = {
-			.category = EVENT_EXTERNAL,
-			.ext.kind = ARCAN_EVENT(MESSAGE)
-		};
+	if (!term.clip_out.vidp)
+		return;
 
-		size_t len = strlen(sel);
-		char* outs = sel;
-		size_t maxlen = sizeof(msgev.ext.message);
+/* the selection routine here seems very wonky, assume the complexity comes
+ * from char.conv and having to consider scrollback -- but the current behavior
+ * looks like it cuts of on whitespace */
+	tsm_screen_selection_copy(term.screen, &sel);
+	arcan_event msgev = {
+		.category = EVENT_EXTERNAL,
+		.ext.kind = ARCAN_EVENT(MESSAGE)
+	};
+
+	uint32_t state = 0, codepoint = 0, len = strlen(sel);
+	char* outs = sel;
+	size_t maxlen = sizeof(msgev.ext.message) - 1;
 
 /* utf8- point aligned against block size */
-		while(len > maxlen){
-			size_t cp = maxlen - 1;
-			while ( !((outs[cp] & (1 << 7)) & (1 << 6)) ) cp--;
-			memcpy(msgev.ext.message.data, outs, cp);
-			len -= cp;
-			outs += cp;
+	while (len > maxlen){
+		size_t i, lastok = 0;
+		state = 0;
+		for (i = 0; i < maxlen; i++){
+		if (UTF8_ACCEPT == utf8_decode(&state, &codepoint, (uint8_t)(sel[i])))
+			lastok = i;
+
+			if (i != lastok){
+				i = lastok;
+				if (0 == i)
+					return;
+			}
+
+			memcpy(msgev.ext.message.data, outs, i);
+			msgev.ext.message.data[i] = '\0';
+			len -= i;
+			outs += i;
 			msgev.ext.message.multipart = 1;
 			arcan_shmif_enqueue(&term.clip_out, &msgev);
 		}
+	}
 
 /* flush remaining */
-		if (len){
-			snprintf((char*)msgev.ext.message.data, maxlen, "%s", outs);
-			msgev.ext.message.multipart = 0;
-			arcan_shmif_enqueue(&term.clip_out, &msgev);
-		}
-
-		free(sel);
+	if (len){
+		snprintf((char*)msgev.ext.message.data, maxlen, "%s", outs);
+		msgev.ext.message.multipart = 0;
+		arcan_shmif_enqueue(&term.clip_out, &msgev);
 	}
+
+	free(sel);
 }
 
 static void select_cancel()
@@ -509,7 +534,7 @@ static bool consume_label(arcan_ioevent* ioev, const char* label)
 	while(cur->lbl){
 		if (strcmp(label, cur->lbl) == 0){
 			cur->ptr();
-			term.age = tsm_screen_draw(term.screen, draw_cb, NULL /* draw_cb_data */);
+			update_screen();
 			return true;
 		}
 		cur++;
@@ -588,7 +613,7 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 
 				if (upd){
 					tsm_screen_selection_target(term.screen, term.lm_x, term.lm_y);
-					term.age = tsm_screen_draw(term.screen, draw_cb, NULL);
+					update_screen();
 				}
 /* in select? check if motion tile is different than old, if so,
  * tsm_selection_target */
@@ -610,7 +635,7 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 					select_copy();
 				tsm_screen_selection_reset(term.screen);
 				term.in_select = false;
-				term.age = tsm_screen_draw(term.screen, draw_cb, NULL);
+				update_screen();
 			}
 		}
 	}
@@ -754,7 +779,7 @@ static void main_loop()
 	short pollev = POLLIN | POLLERR | POLLNVAL | POLLHUP;
 	int ptyfd = shl_pty_get_fd(term.pty);
 
-	while(true){
+	while(term.acon.addr->dms){
 		int pc = 2;
 		struct pollfd fds[3] = {
 			{ .fd = ptyfd, .events = pollev},
@@ -768,7 +793,7 @@ static void main_loop()
 			pc = 3;
 		}
 
-		int sv = poll(fds, pc, -1);
+		int sv = poll(fds, pc, 32);
 		if (fds[0].revents & POLLIN){
 			int rc = shl_pty_dispatch(term.pty);
 		}
