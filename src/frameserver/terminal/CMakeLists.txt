@@ -1,57 +1,26 @@
-if (FSRV_TERMINAL_REQUIRED)
-	find_package(TSM REQUIRED QUIET)
+if (TERMINAL_IMPLEMENTATION)
+	add_subdirectory("${TERMINAL_IMPLEMENTATION}")
 else()
-	find_package(TSM QUIET)
+	add_subdirectory("default")
 endif()
 
-if (LIBTSM_FOUND)
-	find_package(Freetype QUIET)
-	if (FREETYPE_FOUND)
-		set(TERM_AUX_LIBS ${FREETYPE_LIBRARY})
-		set(TERM_AUX_SOURCES ${FSRV_ROOT}/../engine/arcan_ttf.c)
-	endif()
-
+if (TERMINAL_SOURCES)
 	add_executable(afsrv_terminal
 		${FSRV_PLATFORM}
-		default/arcterm.c
-		default/shl/shl-pty.c
-		default/shl/shl-ring.c
-		${TERM_AUX_SOURCES}
+		${TERMINAL_SOURCES}
 	)
-
-	if (STATIC_FREETYPE)
-		add_dependencies(afsrv_terminal Freetype)
-	endif()
-
-	target_link_libraries(afsrv_terminal
-		arcan_shmif_int
-		util
-		${LIBTSM_LIBRARIES}
-		${STDLIB}
-		${TERM_AUX_LIBS}
-	)
-
+	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}terminal " PARENT_SCOPE)
 	target_compile_definitions(afsrv_terminal PRIVATE
 		ENABLE_FSRV_TERMINAL
 		DEFAULT_FSRV_MODE=\"terminal\"
+		${TERMINAL_DEFS}
 	)
+	target_include_directories(afsrv_terminal PRIVATE ${FSRV_ROOT} ${TERMINAL_INCLUDE_DIRS})
+	target_link_libraries(afsrv_terminal ${STDLIB} arcan_shmif_int ${TERMINAL_LIBS})
 
-	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}terminal " PARENT_SCOPE)
-
-	install(TARGETS afsrv_terminal DESTINATION bin)
-
-	if (FREETYPE_FOUND)
-		target_compile_definitions(afsrv_terminal PRIVATE TTF_SUPPORT)
-		target_include_directories(afsrv_terminal PRIVATE ${FREETYPE_INCLUDE_DIRS})
+	if (TERMINAL_DEPENDENCIES)
+		add_dependencies(afsrv_terminal ${TERMINAL_DEPENDENCIES})
 	endif()
 
-	target_include_directories(afsrv_terminal PRIVATE
-		${FSRV_ROOT}/../engine
-		${FSRV_ROOT}
-		${FSRV_ROOT}/util
-		${LIBTSM_INCLUDE_DIR}
-	)
-
-else()
-	amsg("(${CL_GRN}terminal${CL_RST}) disabled, ${CL_GRN}libtsm${CL_RED} not found${CL_RST}")
+	install(TARGETS afsrv_terminal DESTINATION bin)
 endif()

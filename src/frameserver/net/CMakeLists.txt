@@ -1,42 +1,21 @@
-#
-# The big first todo for this frameserver is to evacuate
-# APR support altogether, it was used in the hopes of mitigating
-# some of the porting issues from socket use, and was terrible
-# in this regard.
-#
-
-if (FSRV_NET_REQUIRED)
-	find_package(APR REQUIRED QUIET)
+if (NET_IMPLEMENTATION)
+	add_subdirectory("${NET_IMPLEMENTATION}")
 else()
-	find_package(APR QUIET)
+	add_subdirectory("default")
 endif()
 
-if (APR_FOUND)
+if (NET_SOURCES)
 	add_executable(afsrv_net
 		${FSRV_PLATFORM}
-		default/net_cl.c
-		default/net.h
-		default/net_shared.c
-		default/net_srv.c
-		default/net_shared.h
+		${NET_SOURCES}
 	)
-	target_include_directories(afsrv_net PRIVATE
-		${FSRV_ROOT}
-		${APR_INCLUDE_DIR}
-	)
+	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}net " PARENT_SCOPE)
 	target_compile_definitions(afsrv_net PRIVATE
 		ENABLE_FSRV_NET
 		DEFAULT_FSRV_MODE=\"net\"
+		${NET_DEFS}
 	)
-	target_link_libraries(afsrv_net
-		${APR_LIBRARIES}
-		arcan_shmif_int
-		${STDLIB}
-	)
-
-	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}net " PARENT_SCOPE)
+	target_include_directories(afsrv_net PRIVATE ${FSRV_ROOT} ${NET_INCLUDE_DIRS})
+	target_link_libraries(afsrv_net ${STDLIB} arcan_shmif_int ${NET_LIBS})
 	install(TARGETS afsrv_net DESTINATION bin)
-
-else()
-	amsg("(${CL_GRN}net${CL_RST}) disabled, ${CL_GRN}libapr${CL_RED} not found${CL_RST}")
 endif()
