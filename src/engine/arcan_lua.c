@@ -993,17 +993,19 @@ static inline void fltpush(char* dst, char ulim,
 		const char* pos = fltch;
 		bool found = false;
 
-		while(*fltch){
-			if (*inmsg == *fltch){
-				*dst++ = replch;
+		while(*pos){
+			if (*pos == *inmsg){
 				found = true;
 				break;
 			}
-			fltch++;
+			pos++;
 		}
 
 		if (!found)
-			*dst++ = *inmsg++;
+			*dst++ = replch;
+		else
+			*dst++ = *inmsg;
+		inmsg++;
 	}
 
 	*dst = '\0';
