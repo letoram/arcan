@@ -266,13 +266,12 @@ static void update_screensize()
 	for (size_t i=0; i < term.acon.pitch * term.acon.h; i++)
 		term.acon.vidp[i] = px;
 
+	term.age = 0;
 	tsm_screen_resize(term.screen, cols, rows);
 	shl_pty_resize(term.pty, cols, rows);
 
 	term.screen_w = cols;
 	term.screen_h = rows;
-	term.age = 0;
-	update_screen();
 }
 
 static void read_callback(struct shl_pty* pty,
