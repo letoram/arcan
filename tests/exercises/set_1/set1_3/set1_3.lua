@@ -1,4 +1,4 @@
-function set1_3()
+function set1_3(arguments)
 	if (#arguments ~= 1) then
 		return shutdown("missing argument, filename (images/icons/arcanicon.png)")
 	end

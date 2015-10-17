@@ -5475,10 +5475,20 @@ static int screencoord(lua_State* ctx)
 	return 0;
 }
 
-bool arcan_lua_callvoidfun(lua_State* ctx, const char* fun, bool warn)
+bool arcan_lua_callvoidfun(lua_State* ctx,
+	const char* fun, bool warn, const char** argv)
 {
 	if ( grabapplfunction(ctx, fun, strlen(fun)) ){
-		wraperr(ctx, lua_pcall(ctx, 0, 0, 0), fun);
+		int argc = 0;
+		lua_newtable(ctx);
+		int top = lua_gettop(ctx);
+		while (argv && argv[argc]){
+			lua_pushnumber(ctx, argc+1);
+			lua_pushstring(ctx, argv[argc++]);
+			lua_rawset(ctx, top);
+		}
+
+		wraperr(ctx, lua_pcall(ctx, 1, 0, 0), fun);
 		return true;
 	}
 	else if (warn)
@@ -8455,23 +8465,6 @@ static int net_authenticate(lua_State* ctx)
 
 void arcan_lua_cleanup()
 {
-}
-
-void arcan_lua_pushargv(lua_State* ctx, char** argv)
-{
-	int argc = 0;
-
-	lua_newtable(ctx);
-	int top = lua_gettop(ctx);
-
-	while(argv[argc]){
-		lua_pushnumber(ctx, argc + 1);
-		lua_pushstring(ctx, argv[argc]);
-		lua_rawset(ctx, top);
-		argc++;
-	}
-
-	lua_setglobal(ctx, "arguments");
 }
 
 static void register_tbl(lua_State* ctx, const luaL_Reg* funtbl)

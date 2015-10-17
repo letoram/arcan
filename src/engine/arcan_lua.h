@@ -38,8 +38,7 @@ void arcan_lua_setglobalstr(struct arcan_luactx* ctx,
 	const char* key, const char* val);
 void arcan_lua_pushevent(struct arcan_luactx* ctx, arcan_event* ev);
 bool arcan_lua_callvoidfun(struct arcan_luactx* ctx,
-	const char* fun, bool warn);
-void arcan_lua_pushargv(struct arcan_luactx* ctx, char** argv);
+	const char* fun, bool warn, const char** argv);
 
 /* used to implement an interactive shell,
  * iterate the global (_G) table for a matching prefix, yield callback
