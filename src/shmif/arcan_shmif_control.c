@@ -407,6 +407,8 @@ int arcan_shmif_enqueue(struct arcan_shmif_cont* c,
 	}
 
 	ctx->eventbuf[*ctx->back] = *src;
+	if (src->category == 0)
+		ctx->eventbuf[*ctx->back].category = EVENT_EXTERNAL;
 	FORCE_SYNCH();
 	*ctx->back = (*ctx->back + 1) % ctx->eventbuf_sz;
 
