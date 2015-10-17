@@ -405,6 +405,9 @@ static void select_copy()
  * from char.conv and having to consider scrollback -- but the current behavior
  * looks like it cuts of on whitespace */
 	tsm_screen_selection_copy(term.screen, &sel);
+	if (!sel)
+		return;
+
 	arcan_event msgev = {
 		.category = EVENT_EXTERNAL,
 		.ext.kind = ARCAN_EVENT(MESSAGE)

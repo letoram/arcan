@@ -231,12 +231,12 @@ static void override_resspaces(const char* respath)
 
 static void preframe()
 {
-	arcan_lua_callvoidfun(settings.lua, "preframe_pulse", false);
+	arcan_lua_callvoidfun(settings.lua, "preframe_pulse", false, NULL);
 }
 
 static void postframe()
 {
-	arcan_lua_callvoidfun(settings.lua, "postframe_pulse", false);
+	arcan_lua_callvoidfun(settings.lua, "postframe_pulse", false, NULL);
 	arcan_bench_register_frame();
 }
 
@@ -700,14 +700,10 @@ int MAIN_REDIR(int argc, char* argv[])
 	}
 	free(msg);
 
-/* entry point follows the name of the appl,
- * hand over execution and begin event loop */
-	if (argc > optind)
-		arcan_lua_pushargv(settings.lua, argv + optind + 1);
-
-	if (!arcan_lua_callvoidfun(settings.lua, "", false))
+	if (!arcan_lua_callvoidfun(settings.lua, "", false, (const char**)
+		(argc > optind ? (argv + optind + 1) : NULL)))
 		arcan_fatal("couldn't load appl, missing %s function\n", arcan_appl_id() ?
-			arcan_appl_id() : "");
+		arcan_appl_id() : "");
 
 	if (hookscript)
 		arcan_lua_dostring(settings.lua, hookscript);
@@ -758,7 +754,7 @@ int MAIN_REDIR(int argc, char* argv[])
 
 out:
 	free(hookscript);
-	arcan_lua_callvoidfun(settings.lua, "shutdown", false);
+	arcan_lua_callvoidfun(settings.lua, "shutdown", false, NULL);
 #ifdef ARCAN_LED
 	arcan_led_shutdown();
 #endif
