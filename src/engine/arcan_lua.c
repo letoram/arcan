@@ -1027,7 +1027,7 @@ static inline void slim_utf8_push(char* dst, int ulim, char* inmsg)
 	for (size_t i = 0; inmsg[i] != '\0', i < ulim; i++){
 		dst[i] = inmsg[i];
 
-		if (utf8_decode(&state, &codepoint, inmsg[i]) == UTF8_REJECT)
+		if (utf8_decode(&state, &codepoint, (uint8_t)(inmsg[i])) == UTF8_REJECT)
 			goto out;
 	}
 
