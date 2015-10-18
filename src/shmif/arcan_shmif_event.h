@@ -257,8 +257,15 @@ enum ARCAN_TARGET_COMMAND {
  * is recommended for the client to use. When the visible image resolution
  * deviates a lot from the internal resolution of the client, this event can
  * appear as a friendly suggestion to resize.
+ * The continued field may be set to !0 indicating that there will be more
+ * resize events shortly.
+ * The 3/4 slots, if set, indicates the phyiscal properties of the display
+ * currently in use.
  * ioevs[0].iv = width,
- * ioevs[1].iv = height
+ * ioevs[1].iv = height,
+ * ioevs[2].iv = continued,
+ * ioevs[3].iv = (uint16_t) xdpi << 16 | (uint16_t) ydpi in mm.
+ * ioevs[4].iv = RGB layout (0 RGB, 1 BGR, 2 VRGB, 3 VBGR)
  */
 	TARGET_COMMAND_DISPLAYHINT,
 

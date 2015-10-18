@@ -5581,6 +5581,19 @@ static int targetportcfg(lua_State* ctx)
 	return 0;
 }
 
+static int layout_tonum(const char* layout)
+{
+	if (!layout || strcmp(layout, "hRGB") == 0)
+		return 0;
+	else if (strcmp(layout, "hBGR") == 0)
+		return 1;
+	else if (strcmp(layout, "vRGB") == 0)
+		return 2;
+	else if (strcmp(layout, "vBGR") == 0)
+		return 3;
+	return 0;
+}
+
 static int targetdisphint(lua_State* ctx)
 {
 	LUA_TRACE("target_disphint");
@@ -5589,6 +5602,24 @@ static int targetdisphint(lua_State* ctx)
 
 	int width = luaL_checknumber(ctx, 2);
 	int height = luaL_checknumber(ctx, 3);
+	int cont = luaL_optbnumber(ctx, 4, 0);
+
+/* note: 5 can be a table that is assumed to come from a monitor,
+ * ioevs[4].iv = RGB layout (0 RGB, 1 BGR, 2 VRGB, 3 VBGR)
+ * otherwise we use the platform default. */
+
+	int phy_iv = 0, phy_lay = 0;
+	int type = lua_type(ctx, 5);
+	if (type == LUA_TNUMBER && ARCAN_VIDEO_WORLDID == luaL_checknumber(ctx, 5)){
+		struct monitor_mode mmode = platform_video_dimensions();
+		phy_iv = mmode.phy_width << 16 | mmode.phy_height;
+		phy_lay = layout_tonum(mmode.subpixel);
+	}
+	else if (type == LUA_TTABLE){
+		phy_iv = ((uint16_t)intblint(ctx, 5, "phy_width_mm")) << 16 |
+			((uint16_t)intblint(ctx, 5, "phy_height_mm"));
+		phy_lay = layout_tonum(intblstr(ctx, 5, "subpixel_layout"));
+	}
 
 	if (width <= 0 || height <= 0)
 		arcan_fatal("target_disphint(%d, %d), "
@@ -5601,7 +5632,10 @@ static int targetdisphint(lua_State* ctx)
 		.category = EVENT_TARGET,
 		.tgt.kind = TARGET_COMMAND_DISPLAYHINT,
 		.tgt.ioevs[0].iv = width,
-		.tgt.ioevs[1].iv = height
+		.tgt.ioevs[1].iv = height,
+		.tgt.ioevs[2].iv = cont,
+		.tgt.ioevs[3].iv = phy_iv,
+		.tgt.ioevs[4].iv = phy_lay
 	};
 
 	tgtevent(tgt, ev);
