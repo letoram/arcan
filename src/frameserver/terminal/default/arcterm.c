@@ -7,8 +7,7 @@
 /*
  * This is still a rather crude terminal emulator, owing most of its actual
  * heavy lifting to David Hermanns libtsm - which sadly isn't actively
- * maintained anymore. Because of that, we include most of that codebase here
- * rather than maintain it as as a separate dependency.
+ * maintained anymore.
  *
  * There are quite a few interesting paths to explore here when
  * sandboxing etc. are in place, in particular.
@@ -24,6 +23,20 @@
  *  period hint and rescale in between pulses), drag-n-drop
  *  style font switching, dynamic pipe redirection, env clone/restore,
  *  time-keeping manipulation
+ *
+ * Still there are basic stuff that isn't working so hot at the moment:
+ *  - non-freetype supported font rendering
+ *  - advanced color
+ *  - palette switching
+ *  - alternate escape sequences (for titlebar upd. link propagation etc.)
+ *  - doubleclick on word
+ *  - scrollback- status / control
+ *  - cursor / refresh behavior:
+ *    - serious flickering in top/mc during drag resize (cps limit?)
+ *    - cursor bleed in vim etc.
+ *    - cursor style selection, blinking support
+ *  - integrate tsm in codebase / buildsystem as it isn't work maintaining
+ *    as separate dependency anymore
  */
 #include <stdlib.h>
 #include <stdio.h>
@@ -76,7 +89,6 @@ static struct {
 	int cols;
 	int mag;
 	int cell_w, cell_h;
-	int screen_w, screen_h;
 	int cursor_x, cursor_y;
 
 /* mouse selection management */
@@ -174,18 +186,19 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 	dbg[2] = attr->bb;
 
 	term.dirty = true;
+
 	if (x == term.cursor_x && y == term.cursor_y){
 /* blend or draw differently */
 		cursor_at(x, y, RGBA(0x00, 0xff, 0x00, 0xff));
 		return 0;
 	}
-
-	draw_box(&term.acon, base_x, base_y, term.cell_w,
-		term.cell_h, SHMIF_RGBA(bgc[0], bgc[1], bgc[2], term.alpha));
-
-	if (len == 0){
-		return 0;
+	else{
+		draw_box(&term.acon, base_x, base_y, term.cell_w,
+			term.cell_h, SHMIF_RGBA(bgc[0], bgc[1], bgc[2], term.alpha));
 	}
+
+	if (len == 0)
+		return 0;
 
 	size_t u8_sz = tsm_ucs4_get_width(*ch) + 1;
 	uint8_t u8_ch[u8_sz];
@@ -257,7 +270,7 @@ static void update_screen()
 	term.age = tsm_screen_draw(term.screen, draw_cb, NULL /* draw_cb_data */);
 }
 
-static void update_screensize()
+static void update_screensize(bool cont)
 {
 	int cols = term.acon.w / term.cell_w;
 	int rows = term.acon.h / term.cell_h;
@@ -266,12 +279,14 @@ static void update_screensize()
 	for (size_t i=0; i < term.acon.pitch * term.acon.h; i++)
 		term.acon.vidp[i] = px;
 
-	term.age = 0;
-	tsm_screen_resize(term.screen, cols, rows);
-	shl_pty_resize(term.pty, cols, rows);
+	term.cols = cols;
+	term.rows = rows;
 
-	term.screen_w = cols;
-	term.screen_h = rows;
+	shl_pty_resize(term.pty, cols, rows);
+	tsm_screen_resize(term.screen, cols, rows);
+
+	term.age = 0;
+	update_screen();
 }
 
 static void read_callback(struct shl_pty* pty,
@@ -430,14 +445,18 @@ static void select_copy()
 				if (0 == i)
 					return;
 			}
-
-			memcpy(msgev.ext.message.data, outs, i);
-			msgev.ext.message.data[i] = '\0';
-			len -= i;
-			outs += i;
-			msgev.ext.message.multipart = 1;
-			arcan_shmif_enqueue(&term.clip_out, &msgev);
 		}
+
+		memcpy(msgev.ext.message.data, outs, i);
+		msgev.ext.message.data[i] = '\0';
+		len -= i;
+		outs += i;
+		if (len)
+			msgev.ext.message.multipart = 1;
+		else
+			msgev.ext.message.multipart = 0;
+
+		arcan_shmif_enqueue(&term.clip_out, &msgev);
 	}
 
 /* flush remaining */
@@ -671,7 +690,7 @@ static void targetev(arcan_tgtevent* ev)
 
 	case TARGET_COMMAND_DISPLAYHINT:{
 		arcan_shmif_resize(&term.acon, ev->ioevs[0].iv, ev->ioevs[1].iv);
-		update_screensize();
+		update_screensize(ev->ioevs[2].iv != 0);
 	}
 	break;
 
@@ -963,7 +982,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 
 	arcan_shmif_resize(&term.acon,
 		term.cell_w * term.cols, term.cell_h * term.rows);
-	update_screensize();
+	update_screensize(false);
 	expose_labels();
 	tsm_screen_set_max_sb(term.screen, 1000);
 
