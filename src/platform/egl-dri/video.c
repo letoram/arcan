@@ -250,7 +250,7 @@ static void dpms_set(struct dispout* d, int level)
 /*
  * free, dealloc, possibly re-index displays
  */
-static void disable_display(struct dispout*);
+static void disable_display(struct dispout*, bool);
 
 /*
  * assumes that the video pipeline is in a state to safely
@@ -1270,7 +1270,7 @@ void platform_video_query_displays()
 /* only event-notify known displays */
 			if (d){
 				platform_display_id id = d->id;
-				disable_display(d);
+				disable_display(d, true);
 				arcan_event ev = {
 					.category = EVENT_VIDEO,
 					.vid.kind = EVENT_VIDEO_DISPLAY_REMOVED,
@@ -1286,7 +1286,7 @@ void platform_video_query_displays()
 	drmModeFreeResources(res);
 }
 
-static void disable_display(struct dispout* d)
+static void disable_display(struct dispout* d, bool dealloc)
 {
 	if (!d || d->state == DISP_UNUSED)
 		return;
@@ -1350,14 +1350,16 @@ static void disable_display(struct dispout* d)
 		d->display.con_id);
 	}
 
-	drmModeFreeConnector(d->display.con);
-	d->display.con = NULL;
+	if (dealloc){
+		drmModeFreeConnector(d->display.con);
+		d->display.con = NULL;
 
-	drmModeFreeCrtc(d->display.old_crtc);
-	d->display.old_crtc = NULL;
+		drmModeFreeCrtc(d->display.old_crtc);
+		d->display.old_crtc = NULL;
 
-	d->device = NULL;
-	d->state = DISP_UNUSED;
+		d->device = NULL;
+		d->state = DISP_UNUSED;
+	}
 }
 
 struct monitor_mode platform_video_dimensions()
@@ -1426,12 +1428,12 @@ bool platform_video_init(uint16_t w, uint16_t h,
 	d->display.primary = true;
 
 	if (setup_kms(d, -1, w, h) != 0){
-		disable_display(d);
+		disable_display(d, true);
 		goto cleanup;
 	}
 
 	if (setup_buffers(d) != 0){
-		disable_display(d);
+		disable_display(d, true);
 		goto cleanup;
 	}
 	d->state = DISP_MAPPED;
@@ -1482,7 +1484,7 @@ static void page_flip_handler(int fd, unsigned int frame,
 	d->buffer.next_bo = NULL;
 }
 
-void flush_display_events()
+void flush_display_events(int timeout)
 {
 	int pending = 1;
 	struct dispout* d;
@@ -1500,13 +1502,16 @@ void flush_display_events()
 			.events = POLLIN | POLLERR | POLLHUP
 		};
 
-		if (-1 == poll(&fds, 1, -1)){
+		int rv = poll(&fds, 1, timeout);
+		if (-1 == rv){
 			if (errno == EINTR || errno == EAGAIN)
 				continue;
-
 			arcan_fatal("platform/egl-dri() - poll on device failed.\n");
 		}
-		else if (fds.revents & (POLLHUP | POLLERR))
+		else if (0 == rv)
+			return;
+
+		if (fds.revents & (POLLHUP | POLLERR))
 			arcan_warning("platform/egl-dri() - display broken/recovery missing.\n");
 		else
 			drmHandleEvent(nodes[0].fd, &evctx);
@@ -1544,8 +1549,8 @@ void platform_video_synch(uint64_t tick_count, float fract,
 	int i = 0;
 	while (egl_dri.destroy_pending > 0){
 		while( (d = get_display(i++)) )
-			disable_display(d);
-		flush_display_events();
+			disable_display(d, true);
+		flush_display_events(16);
 		i = 0;
 	}
 
@@ -1558,7 +1563,7 @@ void platform_video_synch(uint64_t tick_count, float fract,
 			update_display(d);
 	}
 
-	flush_display_events();
+	flush_display_events(-1);
 
 	if (post)
 		post();
@@ -1567,9 +1572,14 @@ void platform_video_synch(uint64_t tick_count, float fract,
 void platform_video_shutdown()
 {
 	struct dispout* d;
+	int rc = 10;
 
-	for(size_t i = 0; i < MAX_DISPLAYS; i++)
-		disable_display(&displays[i]);
+	do{
+		for(size_t i = 0; i < MAX_DISPLAYS; i++){
+			disable_display(&displays[i], true);
+		}
+		flush_display_events(16);
+	} while (egl_dri.destroy_pending && rc-- > 0);
 
 	for (size_t i = 0; i < sizeof(nodes)/sizeof(nodes[0]); i++){
 		if (0 >= nodes[i].fd)
@@ -1577,10 +1587,15 @@ void platform_video_shutdown()
 
 		eglDestroyContext(nodes[i].display, nodes[i].context);
 		gbm_device_destroy(nodes[i].gbm);
+
+		if (!getenv("ARCAN_VIDEO_DRM_NOMASTER"))
+			drmDropMaster(nodes[0].fd);
 		close(nodes[i].fd);
+
 		nodes[i].fd = -1;
 		eglTerminate(nodes[i].display);
 	}
+
 }
 
 void platform_video_setsynch(const char* arg)
@@ -1706,7 +1721,8 @@ static void fb_cleanup(struct gbm_bo* bo, void* data)
 	if (d->state == DISP_CLEANUP)
 		return;
 
-	disable_display(d);
+	arcan_warning("fb cleanup\n");
+	disable_display(d, true);
 }
 
 static void draw_display(struct dispout* d)
@@ -1827,8 +1843,13 @@ static void update_display(struct dispout* d)
  */
 void platform_video_prepare_external()
 {
-	for(size_t i = 0; i < MAX_DISPLAYS; i++)
-		disable_display(&displays[i]);
+	int rc = 10;
+	do{
+		for(size_t i = 0; i < MAX_DISPLAYS; i++)
+			disable_display(&displays[i], false);
+		if (egl_dri.destroy_pending)
+			flush_display_events(16);
+	} while(egl_dri.destroy_pending && rc-- > 0);
 
 	if (!getenv("ARCAN_VIDEO_DRM_NOMASTER"))
 		drmDropMaster(nodes[0].fd);
@@ -1850,8 +1871,11 @@ void platform_video_restore_external()
 	struct dispout* d = allocate_display(&nodes[0]);
 
 	if (setup_kms(d, -1, 0, 0) != 0){
-		disable_display(d);
+		arcan_warning("failed to rebuild primary display after external "
+			"suspend, things will likely be broken.\n");
+		disable_display(d, true);
 	}
 
+/* sweep and let the script handle readding / mapping */
 	platform_video_query_displays();
 }
