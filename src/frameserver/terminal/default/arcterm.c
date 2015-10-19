@@ -35,6 +35,7 @@
  *    - serious flickering in top/mc during drag resize (cps limit?)
  *    - cursor bleed in vim etc.
  *    - cursor style selection, blinking support
+ *    - forward mouse cursor input to shell
  *  - integrate tsm in codebase / buildsystem as it isn't work maintaining
  *    as separate dependency anymore
  */
@@ -230,7 +231,6 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 
 	size_t w = term.acon.addr->w;
 	shmif_pixel* dst = term.acon.vidp;
-	cursor_at(x, y, SHMIF_RGBA(bgc[0], bgc[1], bgc[2], 0xff));
 
 	for (int row = 0; row < surf->height; row++)
 		for (int col = 0; col < surf->width; col++){
@@ -242,16 +242,14 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 			else{
 				shmif_pixel inp = dst[ofs];
 				uint32_t r, g, b;
-			 	uint8_t or, og, ob, oa;
 /* classic "avoid div hack" */
-				SHMIF_RGBA_DECOMP(inp, &or, &og, &ob, &oa);
-				r = bgra[3] * fgc[0] + bgc[0] * (255 - or);
+				r = bgra[3] * fgc[0] + bgc[0] * (255 - bgra[3]);
 				r += 0x80;
 				r = (r + (r >> 8)) >> 8;
-				g = bgra[3] * fgc[1] + bgc[1] * (255 - ob);
+				g = bgra[3] * fgc[1] + bgc[1] * (255 - bgra[3]);
 				g += 0x80;
 				g = (g + (g >> 8)) >> 8;
-				b = bgra[3] * fgc[2] + bgc[2] * (255 - og);
+				b = bgra[3] * fgc[2] + bgc[2] * (255 - bgra[3]);
 				b += 0x80;
 				b = (b + (b >> 8)) >> 8;
 				dst[ofs] = SHMIF_RGBA(r, g, b, 0xff);
