@@ -49,7 +49,6 @@
 #include <errno.h>
 #include <ctype.h>
 #include <fcntl.h>
-#include <libtsm.h>
 #include <pwd.h>
 #include <signal.h>
 #include <poll.h>
@@ -61,7 +60,8 @@
 #include <sys/signal.h>
 #include <sys/wait.h>
 
-#include "shl/shl-pty.h"
+#include "tsm/libtsm.h"
+#include "tsm/shl-pty.h"
 
 #include <arcan_shmif.h>
 #include "frameserver.h"
