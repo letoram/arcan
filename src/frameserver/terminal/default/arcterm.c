@@ -98,6 +98,9 @@ static struct {
 	int bsel_x, bsel_y;
 	bool in_select;
 
+/* tracking when to reset scrollback */
+	int sbofs;
+
 	uint8_t fgc[3];
 	uint8_t bgc[3];
 	uint8_t alpha;
@@ -171,7 +174,7 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 	int base_y = y * term.cell_h;
 	int base_x = x * term.cell_w;
 
-	if (age && term.age && age <= term.age)
+	if (term.mute || (age && term.age && age <= term.age))
 		return 0;
 
 	if (attr->inverse){
@@ -252,7 +255,9 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 				b = bgra[3] * fgc[2] + bgc[2] * (255 - bgra[3]);
 				b += 0x80;
 				b = (b + (b >> 8)) >> 8;
-				dst[ofs] = SHMIF_RGBA(r, g, b, 0xff);
+				dst[ofs] = SHMIF_RGBA(r, g, b, (bgc[0] == term.bgc[0] &&
+					bgc[1] == term.bgc[1] && term.bgc[2] == term.bgc[2]) ?
+					term.alpha : 0xff);
 			}
 		}
 
@@ -350,6 +355,7 @@ static void setup_shell(struct arg_arr* argarr)
 static void mute_toggle()
 {
 	term.mute = !term.mute;
+	update_screen();
 }
 
 static void send_sigint()
@@ -359,37 +365,42 @@ static void send_sigint()
 
 static void scroll_up()
 {
-	tsm_screen_sb_up(term.screen, term.mag);
+	tsm_screen_sb_up(term.screen, 1);
+	term.sbofs += 1;
+	update_screen();
 }
 
 static void scroll_down()
 {
-	tsm_screen_sb_down(term.screen, term.mag);
+	tsm_screen_sb_down(term.screen, 1);
+	term.sbofs -= 1;
+	term.sbofs = term.sbofs < 0 ? 0 : term.sbofs;
+	update_screen();
 }
 
 static void move_up()
 {
 	if (tsm_vte_handle_keyboard(term.vte, XKB_KEY_Up, 0, 0, 0))
-		term.dirty = true;
+		update_screen();
 }
 
 static void move_down()
 {
 	if (tsm_vte_handle_keyboard(term.vte, XKB_KEY_Down, 0, 0, 0))
-		term.dirty = true;
+		update_screen();
 }
 
 /* in TSM< typically mapped to ctrl+ arrow but we allow external rebind */
 static void move_left()
 {
 	if (tsm_vte_handle_keyboard(term.vte, XKB_KEY_Left, 0, 0, 0))
-		term.dirty = true;
+		update_screen();
 }
 
 static void move_right()
 {
 	if (tsm_vte_handle_keyboard(term.vte, XKB_KEY_Right, 0, 0, 0))
-		term.dirty = true;
+		update_screen();
 }
 
 static void select_begin()
@@ -472,29 +483,19 @@ static void select_cancel()
 	tsm_screen_selection_reset(term.screen);
 }
 
-static void select_up()
-{
-/* track cursor, move row / col accordingly */
-}
-
-static void select_down()
-{
-}
-
-static void select_left()
-{
-}
-
-static void select_right()
-{
-}
-
 static void page_up()
 {
+	tsm_screen_sb_up(term.screen, term.rows);
+	term.sbofs += term.rows;
+	update_screen();
 }
 
 static void page_down()
 {
+	tsm_screen_sb_down(term.screen, term.rows);
+	term.sbofs -= term.rows;
+	term.sbofs = term.sbofs < 0 ? 0 : term.sbofs;
+	update_screen();
 }
 
 /* map to the quite dangerous SIGUSR1 when we don't have INFO? */
@@ -520,11 +521,6 @@ static const struct lent labels[] = {
 	{"DOWN", move_down},
 	{"LEFT", move_left},
 	{"RIGHT", move_right},
-	{"SELECT_BEGIN", select_begin},
-	{"SELECT_CANCEL", select_cancel},
-	{"SELECT_COPY", select_copy},
-	{"SELECT_UP", select_up},
-	{"SELECT_DOWN", select_down},
 	{NULL, NULL}
 };
 
@@ -574,6 +570,12 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 		if (label[0] && consume_label(ioev, label))
 			return;
 
+		if (term.sbofs != 0){
+			term.sbofs = 0;
+			tsm_screen_sb_reset(term.screen);
+			update_screen();
+		}
+
 /* ignore the meta keys as we already treat them in modifiers */
 		int sym = ioev->input.translated.keysym;
 		if (sym >= 300 && sym <= 314)
@@ -606,10 +608,7 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 			sym, // ioev->input.translated.keysym, /* should be ascii */
 			shmask,
 			ioev->subid /* should be unicode */
-		)){
-			tsm_screen_sb_reset(term.screen);
-			term.dirty = true;
-		}
+		)){}
 	}
 	else if (ioev->devkind == EVENT_IDEVKIND_MOUSE){
 		if (ioev->datatype == EVENT_IDATATYPE_ANALOG){
@@ -829,7 +828,7 @@ static void main_loop()
 		else if (pc == 3 && (fds[2].revents & POLLIN))
 			check_pasteboard();
 /* audible beep or not? */
-		if (term.dirty){
+		if (term.dirty && !term.mute){
 			arcan_shmif_signal(&term.acon, SHMIF_SIGVID);
 			term.dirty = false;
 		}
@@ -851,15 +850,18 @@ static void dump_help()
 		" bgr         \t rv(0..255)\t background red channel\n"
 		" bgg         \t rv(0..255)\t background green channel\n"
 		" bgb         \t rv(0..255)\t background blue channel\n"
+		" bgalpha     \t rv(0..255)\t background opacity (default: 255, opaque)\n"
 		" fgr         \t rv(0..255)\t foreground red channel\n"
 		" fgg         \t rv(0..255)\t foreground green channel\n"
 		" fgb         \t rv(0..255)\t foreground blue channel\n"
-		" bgalpha     \t rv(0..255)\t background opacity (default: 255, opaque)\n"
+		" palette     \t name      \t use built-in palette (below)\n"
 #ifdef TTF_SUPPORT
 		" font        \t ttf-file  \t render using font specified by ttf-file\n"
 		" font_sz     \t px        \t set font rendering size (may alter cellsz))\n"
 		" font_hint   \t hintval   \t hint to font renderer (light, mono, none)\n"
 #endif
+		"Built-in palettes:\n"
+		"default, solarized, solarized-black, solarized-white\n"
 		"---------\t-----------\t----------------\n"
 	);
 }
@@ -974,6 +976,9 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		LOG("fatal, couldn't setup vte\n");
 		return EXIT_FAILURE;
 	}
+
+	if (arg_lookup(args, "palette", 0, &val))
+		tsm_vte_set_palette(term.vte, val);
 
 	gen_symtbl();
 	term.acon = *con;

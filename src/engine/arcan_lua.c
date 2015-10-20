@@ -982,6 +982,8 @@ static inline void tblbool(lua_State* ctx, char* k, bool v, int top){
 
 static const char flt_alpha[] = "abcdefghijklmnopqrstuvwxyz-_";
 static const char flt_alphanum[] = "abcdefghijklmnopqrstuvwyz-0123456789-_";
+static const char flt_Alphanum[] = "abcdefghijklmnopqrstuvwyz-0123456789-_"
+"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 static const char flt_Alpha[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ-_"
 	"abcdefghijklmnopqrstuvwxyz";
 static const char flt_num[] = "0123456789_-";
@@ -3734,7 +3736,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 
 				tblstr(ctx, "kind", "input_label", top);
 				fltpush(mcbuf, COUNT_OF(ev->ext.labelhint.label),
-					ev->ext.labelhint.label, flt_alphanum, '?');
+					ev->ext.labelhint.label, flt_Alphanum, '?');
 				tblstr(ctx, "labelhint", mcbuf, top);
 				tblstr(ctx, "datatype", idt, top);
 			}
