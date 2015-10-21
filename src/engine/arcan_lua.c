@@ -2559,10 +2559,6 @@ static int syscollapse(lua_State* ctx)
 /* lua will free when we destroy the context */
 		switch_appl = strdup(switch_appl);
 		const char* errmsg;
-		arcan_lua_shutdown(ctx);
-
-/* flush eventqueue to avoid danglers */
-		platform_event_reset(arcan_event_defaultctx());
 
 /* we no longer have a context, the Lua specific error reporter should
  * not be used */
@@ -2576,14 +2572,11 @@ static int syscollapse(lua_State* ctx)
 		}
 #define arcan_fatal(...) do { lua_rectrigger( __VA_ARGS__); } while(0)
 
-		LUA_ETRACE("system_collapse", null);
-		longjmp(arcanmain_recover_state, 1);
+		LUA_ETRACE("system_collapse", NULL);
 	}
-	else{
-		int saved, truncated;
-		arcan_video_recoverexternal(true, &saved, &truncated,
-			arcan_lua_adopt, ctx);
-	}
+
+	arcan_lua_shutdown(ctx);
+	longjmp(arcanmain_recover_state, 1);
 
 	LUA_ETRACE("system_collapse", NULL);
 	return 0;
