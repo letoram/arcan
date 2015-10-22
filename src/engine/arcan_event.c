@@ -560,8 +560,10 @@ void arcan_event_purge()
 
 	memset(eventbuf, '\0', sizeof(arcan_event) * ARCAN_EVENT_QUEUE_LIM);
 	memcpy(eventbuf, meventbuf, sizeof(arcan_event) * ind);
-	eventfront = ind;
+	eventfront = 0;
 	eventback = 0;
+
+	platform_event_reset(&default_evctx);
 
 	UNLOCK();
 }

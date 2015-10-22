@@ -184,23 +184,6 @@ printf("Usage: arcan [-whfmWMOqspBtHbdgaSV] applname "
 	}
 }
 
-bool switch_appl(const char* appname)
-{
-	arcan_video_shutdown();
-	arcan_audio_shutdown();
-	arcan_event_deinit(arcan_event_defaultctx());
-	arcan_db_close(&dbhandle);
-
-	const char* err_msg;
-	if (!arcan_verifyload_appl(appname, &err_msg)){
-		arcan_warning("(verifyload) in switch app "
-			"failed, reason: %s\n", err_msg);
-		return false;
-	}
-
-	return true;
-}
-
 /*
  * current several namespaces are (legacy) specified relative to the old
  * resources namespace, since those are expanded in set_namespace_defaults
@@ -710,7 +693,7 @@ int MAIN_REDIR(int argc, char* argv[])
 
 	if (adopt){
 		int saved, truncated;
-		arcan_video_recoverexternal(false, &saved, &truncated,
+		arcan_video_recoverexternal(true, &saved, &truncated,
 			arcan_lua_adopt, settings.lua);
 		arcan_warning("switching applications, %d adopted.\n", saved);
 		in_recover = false;
