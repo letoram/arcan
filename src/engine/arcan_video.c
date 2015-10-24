@@ -689,11 +689,11 @@ clense:
 }
 
 /*
- * the first approach to the _extpop etc. was to create a separate
- * FBO, a vid in the current context and a view in the next context
- * then run a separate rendertarget and readback the FBO into a texture.
- * Now we reuse the screenshot function into a buffer, use that buffer
- * to create a raw image and voilà.
+ * the first approach to the _extpop etc. was to create a separate FBO, a vid
+ * in the current context and a view in the next context then run a separate
+ * rendertarget and readback the FBO into a texture.  Now we reuse the
+ * screenshot function into a buffer, use that buffer to create a raw image and
+ * voilà.
  */
 unsigned arcan_video_extpopcontext(arcan_vobj_id* dst)
 {

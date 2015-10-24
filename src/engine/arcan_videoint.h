@@ -256,9 +256,9 @@ struct arcan_video_display {
 	enum arcan_order3d order3d;
 
 /*
- * track mouse-cursor as a separate entity that re-uses
- * an image vstore, in order to have a default FBO that
- * is rendered to and not cause excessive refreshes.
+ * track mouse-cursor as a separate entity that re-uses an image vstore, in
+ * order to have a default FBO that is rendered to and not cause excessive
+ * refreshes.
  */
 	struct {
 		struct storage_info_t* vstore;
@@ -322,14 +322,13 @@ extern unsigned vcontext_ind;
 extern struct arcan_video_display arcan_video_display;
 
 /*
- * Perform a render-pass, set synch to true if we should block
- * Fragment is in the 0..999 range and specifies how far we are
- * towards the next logical tick. This is used to calculate interpolations
- * for transformation chains to get smoother animation even when running
- * with a slow logic clock.
+ * Perform a render-pass, set synch to true if we should block Fragment is in
+ * the 0..999 range and specifies how far we are towards the next logical tick.
+ * This is used to calculate interpolations for transformation chains to get
+ * smoother animation even when running with a slow logic clock.
  *
- * This will only populate the underlying vstores, mapping to the
- * output display is made by the platform_video_sync function.
+ * This will only populate the underlying vstores, mapping to the output
+ * display is made by the platform_video_sync function.
  */
 unsigned arcan_vint_refresh(float fragment, size_t* ndirty);
 

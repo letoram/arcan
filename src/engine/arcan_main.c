@@ -624,6 +624,8 @@ int MAIN_REDIR(int argc, char* argv[])
  */
 	bool adopt = false, in_recover = false;
 	int jumpcode = setjmp(arcanmain_recover_state);
+	int saved, truncated;
+	arcan_evctx* evctx = arcan_event_defaultctx();
 
 	if (jumpcode == 1){
 		arcan_db_close(&dbhandle);
@@ -632,6 +634,9 @@ int MAIN_REDIR(int argc, char* argv[])
 		if (!dbhandle)
 			goto error;
 
+		arcan_event_maskall(evctx);
+		arcan_video_recoverexternal(true, &saved, &truncated, NULL, NULL);
+		arcan_event_clearmask(evctx);
 		adopt = true;
 	}
 	else if (jumpcode == 2){
@@ -645,6 +650,10 @@ int MAIN_REDIR(int argc, char* argv[])
 			goto error;
 		}
 
+		arcan_event_maskall(evctx);
+		arcan_video_recoverexternal(true, &saved, &truncated, NULL, NULL);
+		arcan_event_clearmask(evctx);
+
 		const char* errmsg;
 		arcan_lua_shutdown(settings.lua);
 		if (!arcan_verifyload_appl(fallback, &errmsg)){
@@ -656,6 +665,8 @@ int MAIN_REDIR(int argc, char* argv[])
 		if (!arcan_verify_namespaces(false))
 			goto error;
 
+/* to track if we get a crash in the fallback application and not get stuck
+ * in an endless loop */
 		in_recover = true;
 		adopt = true;
 	}
@@ -692,14 +703,10 @@ int MAIN_REDIR(int argc, char* argv[])
 		arcan_lua_dostring(settings.lua, hookscript);
 
 	if (adopt){
-		int saved, truncated;
-		arcan_video_recoverexternal(true, &saved, &truncated,
-			arcan_lua_adopt, settings.lua);
-		arcan_warning("switching applications, %d adopted.\n", saved);
+		arcan_lua_adopt(settings.lua);
 		in_recover = false;
 	}
 
-	arcan_evctx* evctx = arcan_event_defaultctx();
 	bool done = false;
 	int exit_code = EXIT_SUCCESS;
 	arcan_event ev;

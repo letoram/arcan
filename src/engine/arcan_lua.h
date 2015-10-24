@@ -56,10 +56,11 @@ void arcan_lua_pushglobalconsts(struct arcan_luactx* ctx);
 void arcan_lua_statesnap(FILE* dst, const char* tag, bool delim);
 
 /*
- * (tag) will contain the active lua context, will be invoked once
- * for every frameserver that needs to be adopted by the new context.
+ * will sweep the main rendertarget in the activ econtext and
+ * expose running frameserver connections through an applname_adopt handler
+ * indended as a continuation of recoveryexternal
  */
-void arcan_lua_adopt(arcan_vobj_id id, void* tag);
+void arcan_lua_adopt(struct arcan_luactx* ctx);
 
 /* nonblock/read from (dst) filestream until an #ENDBLOCK\n tag is encountered,
  * parse this and push it into the struct arcan_luactx as the first
