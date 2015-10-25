@@ -505,6 +505,26 @@ static lua_Number luaL_optbnumber(lua_State* L, int narg, lua_Number opt)
 
 static void wraperr(struct arcan_luactx* ctx, int errc, const char* src);
 
+/*
+ * iterate all vobject and drop any known tag-cb associations that
+ * are used to map events to lua functions
+ */
+static void lua_cbdrop()
+{
+	for (size_t i = 0; i <= vcontext_ind; i++){
+		struct arcan_video_context* ctx = &vcontext_stack[i];
+		for (size_t j = 0; j < ctx->vitem_limit; j++)
+			if (FL_TEST(&ctx->vitems_pool[j], FL_INUSE) &&
+				ctx->vitems_pool[j].feed.state.tag == ARCAN_TAG_FRAMESERV){
+				arcan_frameserver* fsrv = ctx->vitems_pool[j].feed.state.ptr;
+				if (!fsrv)
+					continue;
+
+				fsrv->tag = LUA_NOREF;
+			}
+	}
+}
+
 void lua_rectrigger(const char* msg, ...)
 {
 	va_list args;
@@ -522,15 +542,20 @@ void lua_rectrigger(const char* msg, ...)
 
 	arcan_warning("\x1b[0m\n");
 #else
-
 	arcan_warning(msg, args);
 #endif
 
 /* we got redirected here from an arcan_fatal macro- based redirection
  * so expand in order to get access to the actual call */
 	va_end(args);
+
+	if (luactx.debug > 2)
+		arcan_state_dump("misuse", msg, "");
+
 	arcan_warning("\nHanding over to recovery script "
 		"(or shutdown if none present).\n");
+
+	lua_cbdrop();
 	longjmp(arcanmain_recover_state, 2);
 }
 
@@ -750,54 +775,92 @@ char* arcan_lua_main(lua_State* ctx, const char* inp, bool file)
 	return NULL;
 }
 
-void arcan_lua_adopt(arcan_vobj_id id, void* tag)
+void arcan_lua_adopt(struct arcan_luactx* ctx)
 {
-	lua_State* ctx = tag;
-	arcan_vobject* vobj = arcan_video_getobject(id);
-	arcan_frameserver* fsrv = NULL;
+	struct arcan_vobject_litem* first = vcontext_stack[0].rtargets[0].first;
+	struct arcan_vobject_litem* current = first;
 
-/* should only be this type at the moment but need to protect ourselves */
-	if (vobj->feed.state.tag == ARCAN_TAG_FRAMESERV){
-		fsrv = vobj->feed.state.ptr;
-		fsrv->tag = (uintptr_t) 0;
+	size_t n_fsrv = 0;
+/* one: find out how many frameservers are running in the context */
+	while(current){
+		if (current->elem->feed.state.tag == ARCAN_TAG_FRAMESERV)
+			n_fsrv++;
+		current = current->next;
 	}
 
-	if (!grabapplfunction(ctx, "adopt", sizeof("adopt") - 1)){
-		arcan_video_deleteobject(id);
+	if (n_fsrv == 0)
 		return;
-	}
 
-	int argc = 1;
-	lua_pushvid(ctx, id);
-	if (fsrv){
-		argc += 2;
-		lua_pushstring(ctx, fsrvtos(fsrv->segid));
-		if (strlen(fsrv->title) > 0)
-			lua_pushstring(ctx, fsrv->title);
-		else
-			lua_pushstring(ctx, "_untitled");
-	}
-
-	wraperr(ctx, lua_pcall(ctx, argc, 0, 0), "adopt");
-
-/* might've been deleted, otherwise -- simulate some events that reflect
- * the current state of the object */
-	if (arcan_video_getobject(id) == vobj && vobj->feed.state.ptr == fsrv)
-		if (arcan_frameserver_enter(fsrv)){
-			arcan_event rezev = {
-				.category = EVENT_FSRV,
-				.fsrv.kind = EVENT_FSRV_RESIZED,
-				.fsrv.width = fsrv->desc.width,
-				.fsrv.height = fsrv->desc.height,
-				.fsrv.video = fsrv->vid,
-				.fsrv.audio = fsrv->aid,
-				.fsrv.otag = fsrv->tag,
-				.fsrv.glsource = fsrv->shm.ptr->hints & RHINT_ORIGO_LL
-			};
-
-			arcan_frameserver_leave();
-			arcan_event_enqueue(arcan_event_defaultctx(), &rezev);
+/* two: save all the IDs, this tracking is because every call to
+ * adopt may possibly change the context and number of frameservers */
+	arcan_vobj_id ids[n_fsrv];
+	size_t count = 0;
+	current = first;
+	while(count < n_fsrv && current){
+		if (current->elem->feed.state.tag == ARCAN_TAG_FRAMESERV){
+			ids[count] = current->elem->cellid;
+			count++;
 		}
+		current = current->next;
+	}
+
+	arcan_vobj_id delids[n_fsrv];
+	size_t delcount = 0;
+
+/* three: forward to adopt function (or delete) */
+	for (count = 0; count < n_fsrv; count++){
+		arcan_vobject* vobj = arcan_video_getobject(ids[count]);
+		if (!vobj || vobj->feed.state.tag != ARCAN_TAG_FRAMESERV)
+			continue;
+
+		arcan_frameserver* fsrv = vobj->feed.state.ptr;
+		fsrv->tag = LUA_NOREF;
+
+		if (grabapplfunction(ctx, "adopt", sizeof("adopt") - 1)){
+			lua_pushvid(ctx, vobj->cellid);
+			lua_pushstring(ctx, fsrvtos(fsrv->segid));
+
+			if (strlen(fsrv->title) > 0)
+				lua_pushstring(ctx, fsrv->title);
+			else
+				lua_pushstring(ctx, "_untitled");
+
+			wraperr(ctx, lua_pcall(ctx, 3, 0, 0), "adopt");
+
+			if (arcan_frameserver_enter(fsrv)){
+				arcan_event rezev = {
+					.category = EVENT_FSRV,
+					.fsrv.kind = EVENT_FSRV_RESIZED,
+					.fsrv.width = fsrv->desc.width,
+					.fsrv.height = fsrv->desc.height,
+					.fsrv.video = fsrv->vid,
+					.fsrv.audio = fsrv->aid,
+					.fsrv.otag = fsrv->tag,
+					.fsrv.glsource = fsrv->shm.ptr->hints & RHINT_ORIGO_LL
+				};
+				arcan_event_enqueue(arcan_event_defaultctx(), &rezev);
+			}
+			arcan_frameserver_leave();
+/* NOTE: currently not sending a soft reset event to frameserver, but
+ * might be useful to do so */
+		}
+		else
+			delids[delcount++] = ids[count];
+	}
+/* purge will remove all events that are not external, and those that
+ * are external will have its otag reset (as otherwise we'd be calling
+ * into a damaged luactx */
+	arcan_event_purge();
+
+/* maskall will prevent new events from being added during delete,
+ * as we are not in a state of being able to track or interpret */
+	arcan_event_maskall(arcan_event_defaultctx());
+	for (count = 0; count < delcount; count++)
+		arcan_video_deleteobject(ids[count]);
+	arcan_event_clearmask(arcan_event_defaultctx());
+
+/* lastly, there might be events that have been tagged to an old callback
+ * where we again lack state information enough to track */
 }
 
 static int zapresource(lua_State* ctx)
@@ -2575,6 +2638,7 @@ static int syscollapse(lua_State* ctx)
 		LUA_ETRACE("system_collapse", NULL);
 	}
 
+	lua_cbdrop();
 	arcan_lua_shutdown(ctx);
 	longjmp(arcanmain_recover_state, 1);
 
@@ -3632,7 +3696,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 
 		size_t extmsg_sz = COUNT_OF(ev->ext.message.data);
 		arcan_frameserver* fsrv = vobj->feed.state.ptr;
-		if (fsrv->tag){
+		if (fsrv->tag != LUA_NOREF){
 			intptr_t dst_cb = fsrv->tag;
 			lua_rawgeti(ctx, LUA_REGISTRYINDEX, dst_cb);
 			lua_pushvid(ctx, ev->ext.source);
@@ -3776,10 +3840,10 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		intptr_t dst_cb = 0;
 
 /*
- * Drop frameserver events for which the queue object has died,
- * VID reuse won't actually be a problem unless the script
- * allocates/deletes full 32-bit (-context_size) in one go which
- * is not possible from the context size restriction.
+ * Drop frameserver events for which the queue object has died, VID reuse
+ * won't actually be a problem unless the script allocates/deletes full 32-bit
+ * (-context_size) in one go which is not possible from the context size
+ * restriction.
  */
 		if (arcan_video_findparent(ev->fsrv.video) == ARCAN_EID)
 			return;
@@ -5265,6 +5329,9 @@ static int warning(lua_State* ctx)
 
 void arcan_lua_shutdown(lua_State* ctx)
 {
+/* deal with:
+ * luactx : rawres, lastsrc, cb_source_kind, db_source_tag, last_segreq,
+ * pending_socket_label, pending_socket_descr */
 	lua_close(ctx);
 }
 
@@ -5334,6 +5401,7 @@ static void panic(lua_State* ctx)
 		"recovery handover might be impossible.\n");
 
 	luactx.last_crash_source = "VM panic";
+	lua_cbdrop();
 	longjmp(arcanmain_recover_state, 2);
 }
 
@@ -5385,6 +5453,7 @@ static void wraperr(lua_State* ctx, int errc, const char* src)
 		"(or shutdown if none present).\n");
 
 	luactx.last_crash_source = src;
+	lua_cbdrop();
 	longjmp(arcanmain_recover_state, 2);
 }
 
@@ -5544,7 +5613,7 @@ static int targetpacify(lua_State* ctx)
 /*
  * don't want the event to propagate for terminated here
  */
-	fsrv->tag = (intptr_t) 0;
+	fsrv->tag = (intptr_t) LUA_NOREF;
 
 	arcan_frameserver_free(fsrv);
 	vobj->feed.state.ptr = NULL;

@@ -106,6 +106,34 @@ static const char* tgt_cmd_xlt[] = {
 	"NTSCFILTER_ARGS"
 };
 
+static const char* ext_cmd_xlt[] = {
+	"MESSAGE",
+	"COREOPT",
+	"IDENT",
+	"FAILURE",
+	"BUFFERSTREAM",
+	"FRAMESTATUS",
+	"STREAMINFO",
+	"STREAMSTATUS",
+	"STATESIZE",
+	"FLUSHAUDIO",
+	"SEGMENT_REQUEST",
+	"KEYINPUT",
+	"CURSORINPUT",
+	"CURSORHINT",
+	"VIEWPORT",
+	"LABELHINT",
+	"REGISTER"
+};
+
+static const char* fsrv_cmd_xlt[] = {
+	"EXTCONN",
+	"RESIZED",
+	"TERMINATED",
+	"DROPPEDFRAME",
+	"DELIVEREDFRAME"
+};
+
 static const char* cat_xlt[] = {
 	"SYSTEM",
 	"IO",
@@ -149,8 +177,16 @@ const char* arcan_shmif_eventstr(arcan_event* aev, char* dbuf, size_t dsz)
 	switch(aev->category){
 	case EVENT_TARGET:
 		evstr = aev->tgt.kind > sizeof(tgt_cmd_xlt)/sizeof(tgt_cmd_xlt[0])
-			? "overflow/broken" : tgt_cmd_xlt[aev->tgt.kind];
+			? "overflow/broken" : tgt_cmd_xlt[aev->ext.kind];
 	break;
+	case EVENT_FSRV:
+		evstr = aev->fsrv.kind > sizeof(fsrv_cmd_xlt)/sizeof(fsrv_cmd_xlt[0])
+			? "" : fsrv_cmd_xlt[aev->fsrv.kind];
+	break;
+	case EVENT_EXTERNAL:
+		evstr = aev->ext.kind > sizeof(ext_cmd_xlt)/sizeof(ext_cmd_xlt[0])
+			? "overflow/broken" : ext_cmd_xlt[aev->ext.kind];
+		break;
 	default:
 		evstr = "UNKNOWN";
 	}

@@ -323,6 +323,7 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 		}
 
 		wake = true;
+
 		arcan_event_enqueue(dstqueue, &inev);
 	}
 
@@ -449,6 +450,8 @@ static void pack_rec_event(const struct arcan_event* const outev)
 			ioarr[4] = outev->io.input.status.action;
 		}
 	break;
+	default:
+	break;
 	}
 
 	if (1 != fwrite(ioarr, sizeof(int32_t) * nmemb, 1, record_out)){
@@ -551,20 +554,9 @@ void arcan_bench_register_tick(unsigned nticks)
 void arcan_event_purge()
 {
 	LOCK();
-	arcan_event meventbuf[ARCAN_EVENT_QUEUE_LIM];
-	int ind = 0;
-
-	for (int i = eventback; i != eventfront; i = (i + 1) % ARCAN_EVENT_QUEUE_LIM)
-		if (eventbuf[i].category == EVENT_EXTERNAL)
-			meventbuf[ind++] = eventbuf[i];
-
-	memset(eventbuf, '\0', sizeof(arcan_event) * ARCAN_EVENT_QUEUE_LIM);
-	memcpy(eventbuf, meventbuf, sizeof(arcan_event) * ind);
 	eventfront = 0;
 	eventback = 0;
-
 	platform_event_reset(&default_evctx);
-
 	UNLOCK();
 }
 
@@ -619,6 +611,20 @@ void arcan_event_deinit(arcan_evctx* ctx)
 
 	eventfront = eventback = 0;
 }
+
+#ifdef _DEBUG
+void arcan_event_dump(struct arcan_evctx* ctx)
+{
+	unsigned front = *ctx->front;
+	size_t count = 0;
+
+	while (front != *ctx->back){
+		arcan_warning("slot: %d, category: %d, kind: %d\n",
+			count, ctx->eventbuf[front].io.kind, ctx->eventbuf[front].category);
+		front = (front + 1) % ctx->eventbuf_sz;
+	}
+}
+#endif
 
 extern void platform_event_init(arcan_evctx* ctx);
 void arcan_event_init(arcan_evctx* ctx)

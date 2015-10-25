@@ -21,14 +21,15 @@ struct arcan_evctx* arcan_event_defaultctx();
 /*
  * Pushes as many events from srcqueue to dstqueue as possible
  * without over-saturating. allowed defines which kind of category
- * that will be transferred, other events will be ignored.
+ * that will be transferred, other events will be silently ignored (dropped)
  * The saturation cap is defined in 0..1 range as % of full capacity
  * specifying a source ID (can be ARCAN_EID) will be used for rewrites
  * if the category has a source identifier
  */
 void arcan_event_queuetransfer(
 	struct arcan_evctx* dstqueue, struct arcan_evctx* srcqueue,
-	enum ARCAN_EVENT_CATEGORY allowed, float saturation, arcan_vobj_id source);
+	enum ARCAN_EVENT_CATEGORY allowed, float saturation, arcan_vobj_id source
+);
 
 int arcan_event_poll(struct arcan_evctx*, struct arcan_event* dst);
 int arcan_event_wait(struct arcan_evctx*, struct arcan_event* dst);
@@ -48,7 +49,6 @@ int arcan_event_wait(struct arcan_evctx*, struct arcan_event* dst);
  */
 int arcan_event_enqueue(struct arcan_evctx*, const struct arcan_event* const);
 int arcan_event_tryenqueue(struct arcan_evctx*,const struct arcan_event* const);
-
 
 /* ignore-all on enqueue */
 void arcan_event_maskall(struct arcan_evctx*);
@@ -82,6 +82,10 @@ void arcan_event_repl(struct arcan_evctx* ctx, enum ARCAN_EVENT_CATEGORY cat,
  * sources or might otherwise leak state from previous context
  */
 void arcan_event_purge();
+
+#ifdef _DEBUG
+void arcan_event_dump(struct arcan_evctx*);
+#endif
 
 void arcan_event_init(struct arcan_evctx* dstcontext);
 

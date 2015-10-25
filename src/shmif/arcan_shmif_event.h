@@ -57,8 +57,11 @@ enum ARCAN_EVENT_CATEGORY {
 	EVENT_EXTERNAL = 64,
 	EVENT_NET      = 128,
 
-/* this is found in every enum to force the type to int, note that
- * C11 do not allow enums that are larger than int */
+/* This is found in every enum that is explicitly used as that enum
+ * as member-of-struct (which debuggers etc. need) rather than the explicit
+ * sized member. The effect is that the standard restricts size to a numeric
+ * type that fits (but not exceeds) an int, but the compiler is allowed to
+ * use a smaller one which is bad for IPC. */
 	EVENT_LIM      = INT_MAX
 };
 
@@ -481,7 +484,8 @@ enum ARCAN_EVENT_EXTERNAL {
  * A once- only trigger that identifies the subtype of a segment.
  * (see SEGID_ table), uses registr substructure.
  */
-	EVENT_EXTERNAL_REGISTER
+	EVENT_EXTERNAL_REGISTER,
+	EVENT_EXTERNAL_ULIM = INT_MAX
 };
 
 /*
@@ -516,7 +520,8 @@ enum ARCAN_EVENT_IO {
 	EVENT_IO_BUTTON = 0,
 	EVENT_IO_AXIS_MOVE,
 	EVENT_IO_TOUCH,
-	EVENT_IO_STATUS
+	EVENT_IO_STATUS,
+	EVENT_IO_ULIM = INT_MAX
 };
 
 enum ARCAN_EVENT_IDEVKIND {
@@ -524,7 +529,8 @@ enum ARCAN_EVENT_IDEVKIND {
 	EVENT_IDEVKIND_MOUSE,
 	EVENT_IDEVKIND_GAMEDEV,
 	EVENT_IDEVKIND_TOUCHDISP,
-	EVENT_IDEVKIND_STATUS
+	EVENT_IDEVKIND_STATUS,
+	EVENT_IDEVKIND_ULIM = INT_MAX
 };
 
 enum ARCAN_IDEV_STATUS {
@@ -537,7 +543,8 @@ enum ARCAN_EVENT_IDATATYPE {
 	EVENT_IDATATYPE_ANALOG = 0,
 	EVENT_IDATATYPE_DIGITAL,
 	EVENT_IDATATYPE_TRANSLATED,
-	EVENT_IDATATYPE_TOUCH
+	EVENT_IDATATYPE_TOUCH,
+	EVENT_IDATATYPE_ULIM = INT_MAX
 };
 
 /*
@@ -570,7 +577,8 @@ enum ARCAN_EVENT_NET {
 /* events to/from frameserver */
 	EVENT_NET_CUSTOMMSG,
 	EVENT_NET_INPUTEVENT,
-	EVENT_NET_STATEREQ
+	EVENT_NET_STATEREQ,
+	EVENT_NET_ULIM = INT_MAX
 };
 
 /*
@@ -970,7 +978,6 @@ struct arcan_evctx {
 	uint32_t c_ticks;
 	uint32_t c_leaks;
 	uint32_t mask_cat_inp;
-	uint32_t mask_cat_out;
 
 /* only used for local queues */
 	uint8_t eventbuf_sz;
