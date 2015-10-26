@@ -232,7 +232,9 @@ enum ARCAN_TARGET_COMMAND {
 /*
  * User requested that the frameserver should revert to a safe initial state.
  * This is also an indication that the current application state is undesired.
- * ioevs[0].iv == 1 indicates that this comes as a crash- recovery action
+ * ioevs[0].iv == 0, normal / "soft" (impl. defined) reset
+ * ioevs[0].iv == 1, hard reset (as close to initial state as possible)
+ * ioevs[0].iv == 2, recovery- reset, parent has lost tracking states
  */
 	TARGET_COMMAND_RESET,
 

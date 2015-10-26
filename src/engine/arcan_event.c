@@ -189,9 +189,8 @@ int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src)
  * The recover option would be to silently overwrite one of the lesser
  * important (typically, ANALOG INPUTS or frame counters) in the queue
  */
-	if (((*ctx->back + 1) % ctx->eventbuf_sz) == *ctx->front){
+	if (((*ctx->back + 1) % ctx->eventbuf_sz) == *ctx->front)
 		return 0;
-	}
 
 	if (panic_keysym != -1 && panic_keymod != -1 &&
 		src->category == EVENT_IO && src->io.kind == EVENT_IO_BUTTON &&
@@ -199,7 +198,6 @@ int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src)
 		src->io.input.translated.modifiers == panic_keymod &&
 		src->io.input.translated.keysym == panic_keysym
 	){
-
 		arcan_event ev = {
 			.category = EVENT_SYSTEM,
 			.sys.kind = EVENT_SYSTEM_EXIT,

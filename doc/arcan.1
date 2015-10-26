@@ -81,7 +81,8 @@ for examples.
 .IP "\fB-b, --fallback \fIapplname\fR"
 If the running application crashes due to scripting error or from misuse
 of the API, all running external, \fIframeserver\fR, connections will be
-transferred to \fIapplname\fR.
+transferred to \fIapplname\fR. If applname is set to the reserved value
+:self the same appl will be used without running a verifyload cycle.
 
 .IP "\fB-d, --database \fIdbname\fR"
 Specify a different database for use when launching external targets and

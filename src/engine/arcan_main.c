@@ -403,11 +403,15 @@ int MAIN_REDIR(int argc, char* argv[])
 		appl_user_warning(argv[optind], err_msg);
 
 		if (fallback){
-			arcan_warning("trying to load fallback application (%s)\n", fallback);
-			if (!arcan_verifyload_appl(fallback, &err_msg)){
-				arcan_warning("fallback application failed to load (%s), giving up.\n",
-					err_msg);
-				goto error;
+			if (strcmp(fallback, ":self") == 0)
+				arcan_warning("trying to fallback to the same appl\n");
+			else{
+				arcan_warning("trying to load fallback appl (%s)\n", fallback);
+				if (!arcan_verifyload_appl(fallback, &err_msg)){
+					arcan_warning("fallback application failed to load (%s), giving up.\n",
+						err_msg);
+					goto error;
+				}
 			}
 		}
 		else

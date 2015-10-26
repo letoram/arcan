@@ -884,7 +884,6 @@ static bool libretro_setenv(unsigned cmd, void* data){
 		if (hwrend->context_type == RETRO_HW_CONTEXT_OPENGL ||
 			hwrend->context_type == RETRO_HW_CONTEXT_OPENGL_CORE){
 			setup_3dcore( hwrend );
-			rv = true;
 		}
 		else
 			LOG("unsupported hw context requested.\n");
@@ -895,6 +894,7 @@ static bool libretro_setenv(unsigned cmd, void* data){
 	case RETRO_ENVIRONMENT_SET_HW_RENDER:
 		LOG("trying to load a GL/3D enabled core, but "
 			"frameserver was built without 3D support.\n");
+		rv = false;
 	break;
 #endif
 
@@ -1305,6 +1305,10 @@ static inline void targetev(arcan_event* ev)
 			reset_timing(false);
 		break;
 
+		case TARGET_COMMAND_DISPLAYHINT:
+/* don't do anything about these, scaling is implemented arcan - side */
+		break;
+
 		case TARGET_COMMAND_COREOPT:
 			retroctx.optdirty = true;
 			update_corearg(tgt->code, tgt->message);
@@ -1377,7 +1381,8 @@ static inline void targetev(arcan_event* ev)
 		break;
 
 		default:
-			LOG("unknown target event (%d), ignored.\n", tgt->kind);
+			LOG("unknown target event (%s), ignored.\n",
+				arcan_shmif_eventstr(ev, NULL, 0));
 	}
 }
 
@@ -1724,7 +1729,7 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 			if (!map.ptr){
 				snprintf(logbuf, logbuf_sz, "couldn't map (%s)", resname?resname:"");
 				log_msg(logbuf, true);
-				LOG("core(%s), couldn't map data, giving up.\n", resname);
+				LOG("%s\n", logbuf);
 				return EXIT_FAILURE;
 			}
 			retroctx.gameinfo.data = map.ptr;
