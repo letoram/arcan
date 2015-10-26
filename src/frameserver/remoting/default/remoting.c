@@ -273,6 +273,11 @@ bool process_shmif()
 				cl_unstick();
 			break;
 
+			case TARGET_COMMAND_DISPLAYHINT:
+/* not really useful here, there's a VNC extension to communicate display
+ * dimensions but afaik. not yet supported in libvncclient interface */
+			break;
+
 			default:
 				LOG("unhandled target event (%d:%s)\n",
 					inev.tgt.kind, arcan_shmif_eventstr(&inev, NULL, 0));

@@ -211,8 +211,6 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 #ifdef TTF_SUPPORT
 	if (font == NULL){
 #endif
-/* without proper ttf support, we just go with '?' for unknowns */
-		u8_ch[0] = u8_ch[0] <= 128 ? u8_ch[0] : '?';
 		u8_ch[1] = '\0';
 		draw_text(&term.acon, (const char*) u8_ch, base_x, base_y,
 			SHMIF_RGBA(fgc[0], fgc[1], fgc[2], 0xff)
