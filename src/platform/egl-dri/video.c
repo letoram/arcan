@@ -1467,6 +1467,32 @@ cleanup:
 	return rv;
 }
 
+/*
+ * for recovery, first emit a display added for the default 0 display, then
+ * interate all already known displays and do the same. Lastly, do a rescan for
+ * good measure
+ */
+void platform_video_recovery()
+{
+	arcan_event ev = {
+		.category = EVENT_VIDEO,
+		.vid.kind = EVENT_VIDEO_DISPLAY_ADDED
+	};
+	arcan_evctx* evctx = arcan_event_defaultctx();
+	arcan_event_enqueue(evctx, &ev);
+
+	for (size_t i = 0; i < MAX_DISPLAYS; i++){
+		if (displays[i].state == DISP_MAPPED){
+			platform_video_map_display(
+				ARCAN_VIDEO_WORLDID, displays[i].id, HINT_NONE);
+			ev.vid.source = displays[i].id;
+			arcan_event_enqueue(evctx, &ev);
+		}
+	}
+
+	platform_video_query_displays();
+}
+
 static void page_flip_handler(int fd, unsigned int frame,
 	unsigned int sec, unsigned int usec, void* data)
 {

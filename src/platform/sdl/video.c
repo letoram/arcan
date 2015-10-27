@@ -155,6 +155,10 @@ void platform_video_query_displays()
 {
 }
 
+void platform_video_recovery()
+{
+}
+
 bool platform_video_display_edid(platform_display_id did,
 	char** out, size_t* sz)
 {

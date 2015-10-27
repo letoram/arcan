@@ -644,6 +644,10 @@ void platform_event_deinit(arcan_evctx* ctx)
 {
 }
 
+void platform_video_recovery()
+{
+}
+
 void platform_event_reset(arcan_evctx* ctx)
 {
 	platform_event_deinit(ctx);

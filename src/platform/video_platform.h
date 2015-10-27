@@ -171,6 +171,13 @@ bool platform_video_init(uint16_t w, uint16_t h,
 	uint8_t bpp, bool fs, bool frames, const char* caption);
 
 /*
+ * Sent as a trigger to notify that higher scripting levels have recovered
+ * from an error and possible video- layer related events are possibly missing
+ * and may need to be re-emitted.
+ */
+void platform_video_recovery();
+
+/*
  * Release / free as much resource as possible while still being able to
  * resume operations later. This is used for suspend/resume style behavior
  * when switching virtual terminals or when going into powersave- states.
