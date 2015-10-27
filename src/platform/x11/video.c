@@ -259,6 +259,10 @@ const char* PLATFORM_SYMBOL(_video_capstr)()
 	return buf;
 }
 
+void PLATFORM_SYMBOL(_video_recovery)()
+{
+}
+
 void PLATFORM_SYMBOL(_video_query_displays)()
 {
 }

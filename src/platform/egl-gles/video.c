@@ -392,3 +392,4 @@ void PLATFORM_SYMBOL(_video_shutdown) ()
 
 void PLATFORM_SYMBOL(_video_minimize) () {}
 
+void PLATFORM_SYMBOL(_video_recovery) () {}

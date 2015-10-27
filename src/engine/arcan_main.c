@@ -708,6 +708,7 @@ int MAIN_REDIR(int argc, char* argv[])
 
 	if (adopt){
 		arcan_lua_adopt(settings.lua);
+		platform_video_recovery();
 		in_recover = false;
 	}
 
