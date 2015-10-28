@@ -191,7 +191,9 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 
 	term.dirty = true;
 
-	if (x == term.cursor_x && y == term.cursor_y){
+/* disable custom cursor drawing for now, needs better tracking /
+ * restoring as som examples (particularly vim) bleeds over */
+	if (0 && x == term.cursor_x && y == term.cursor_y){
 /* blend or draw differently */
 		cursor_at(x, y, RGBA(0x00, 0xff, 0x00, 0xff));
 		return 0;
