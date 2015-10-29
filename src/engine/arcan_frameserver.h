@@ -71,7 +71,7 @@ struct frameserver_audmix {
 	struct frameserver_audsrc* inaud;
 };
 
-typedef struct arcan_frameserver {
+struct arcan_frameserver {
 /* video / audio properties used */
 	arcan_frameserver_meta desc;
 	struct arcan_evctx inqueue, outqueue;
@@ -108,7 +108,10 @@ typedef struct arcan_frameserver {
 	arcan_aobj_id* alocks;
 	arcan_aobj_id aid;
 	arcan_vobj_id vid;
-	arcan_vobj_id parent;
+	struct {
+		struct arcan_framserver* ptr;
+		arcan_vobj_id vid;
+	} parent;
 
 	struct {
 		unsigned n_aids;
@@ -155,7 +158,10 @@ typedef struct arcan_frameserver {
  * they should hit this canary -- use for watchpoint in debugging
  * integrity- check for release */
 	uint16_t watch_const;
-} arcan_frameserver;
+};
+
+/* refactor out when time permits */
+typedef struct arcan_frameserver arcan_frameserver;
 
 /* contains both structures for managing movie- playback,
  * both video and audio support functions */

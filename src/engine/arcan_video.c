@@ -660,7 +660,11 @@ clense:
 	if (n_ext == 0)
 		return;
 
-/* pass 3, setup new world. */
+/* pass 3, setup new world. a big note here: since we adopt and get a new
+ * cellid, internally tracked relations (subsegments tracking parents for
+ * instance) will point to an old and broken ID or, even worse, frameservers in
+ * different context levels being merged down and subsegments now referring to
+ * the wrong parent. This need to be fixed by the FFUNC_ADOPT */
 	for (size_t i = 0; i < s_ofs; i++){
 		arcan_vobj_id did;
 		arcan_vobject* vobj = new_vobject(&did, current_context);
@@ -686,6 +690,19 @@ clense:
 
 	arcan_audio_purge(audbuf, s_ofs);
 	arcan_event_purge();
+}
+
+arcan_vobj_id arcan_video_findstate(enum arcan_vobj_tags tag, void* ptr)
+{
+	for (size_t i = 1; i < current_context->vitem_limit; i++){
+	if (FL_TEST(&current_context->vitems_pool[i], FL_INUSE)){
+		arcan_vobject* vobj = &current_context->vitems_pool[i];
+		if (vobj->feed.state.tag == tag && vobj->feed.state.ptr == ptr)
+			return i;
+	}
+	}
+
+	return ARCAN_EID;
 }
 
 /*

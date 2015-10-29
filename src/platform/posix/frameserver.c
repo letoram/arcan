@@ -140,7 +140,7 @@ void arcan_frameserver_dropshared(arcan_frameserver* src)
 void arcan_frameserver_killchild(arcan_frameserver* src)
 {
 /* only "kill" main-segments and non-authoritative connections */
-	if (!src || src->parent != ARCAN_EID || src->child <= 1)
+	if (!src || src->parent.vid != ARCAN_EID || src->child <= 1)
 		return;
 
 /*
@@ -555,7 +555,8 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
  	newseg->desc = vinfo;
 	newseg->source = ctx->source ? strdup(ctx->source) : NULL;
 	newseg->vid = newvid;
-	newseg->parent = ctx->vid;
+	newseg->parent.vid = ctx->vid;
+	newseg->parent.ptr = (void*) ctx;
 
 /*
  * Transfer the new event socket along with the base-key that will be used to
