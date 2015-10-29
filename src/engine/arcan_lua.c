@@ -835,6 +835,16 @@ void arcan_lua_adopt(struct arcan_luactx* ctx)
 
 			wraperr(ctx, lua_pcall(ctx, 4, 0, 0), "adopt");
 
+/* send register event again so adoption imposed handler might map
+ * to related archetype, then follow up with resized to underlying
+ * format. Other state restoration has to be handled by fsrv itself */
+			arcan_event regev = {
+				.category = EVENT_EXTERNAL,
+				.ext.kind = EVENT_EXTERNAL_REGISTER,
+				.ext.registr.kind = fsrv->segid
+			};
+			arcan_event_enqueue(arcan_event_defaultctx(), &regev);
+
 			if (arcan_frameserver_enter(fsrv)){
 				arcan_event rezev = {
 					.category = EVENT_FSRV,
@@ -850,7 +860,7 @@ void arcan_lua_adopt(struct arcan_luactx* ctx)
 			}
 			arcan_frameserver_leave();
 /* NOTE: currently not sending a soft reset event to frameserver, but
- * might be useful to do so */
+ * might be useful to do so with ioev[0] set to 2 */
 		}
 		else
 			delids[delcount++] = ids[count];
