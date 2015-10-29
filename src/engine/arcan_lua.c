@@ -777,7 +777,9 @@ char* arcan_lua_main(lua_State* ctx, const char* inp, bool file)
 
 void arcan_lua_adopt(struct arcan_luactx* ctx)
 {
-	struct arcan_vobject_litem* first = vcontext_stack[0].rtargets[0].first;
+/* works on the idea that the context stack has already been collapsed into
+ * 'only-fsrv' related vids left */
+	struct arcan_vobject_litem* first = vcontext_stack[0].stdoutp.first;
 	struct arcan_vobject_litem* current = first;
 
 	size_t n_fsrv = 0;
@@ -791,15 +793,19 @@ void arcan_lua_adopt(struct arcan_luactx* ctx)
 	if (n_fsrv == 0)
 		return;
 
-/* two: save all the IDs, this tracking is because every call to
- * adopt may possibly change the context and number of frameservers */
+/* two: save all the IDs, this tracking is because every call to adopt may
+ * possibly change the context and number of frameservers, order losely so that
+ * we get primary segments before secondary ones */
 	arcan_vobj_id ids[n_fsrv];
-	size_t count = 0;
+	size_t count = 0, lcount = n_fsrv -1;
 	current = first;
 	while(count < n_fsrv && current){
 		if (current->elem->feed.state.tag == ARCAN_TAG_FRAMESERV){
-			ids[count] = current->elem->cellid;
-			count++;
+			arcan_frameserver* fsrv = current->elem->feed.state.ptr;
+			if (fsrv->parent.vid != ARCAN_EID)
+				ids[lcount--] = current->elem->cellid;
+			else
+				ids[count++] = current->elem->cellid;
 		}
 		current = current->next;
 	}
@@ -825,7 +831,9 @@ void arcan_lua_adopt(struct arcan_luactx* ctx)
 			else
 				lua_pushstring(ctx, "_untitled");
 
-			wraperr(ctx, lua_pcall(ctx, 3, 0, 0), "adopt");
+			lua_pushvid(ctx, fsrv->parent.vid);
+
+			wraperr(ctx, lua_pcall(ctx, 4, 0, 0), "adopt");
 
 			if (arcan_frameserver_enter(fsrv)){
 				arcan_event rezev = {
@@ -856,7 +864,7 @@ void arcan_lua_adopt(struct arcan_luactx* ctx)
  * as we are not in a state of being able to track or interpret */
 	arcan_event_maskall(arcan_event_defaultctx());
 	for (count = 0; count < delcount; count++)
-		arcan_video_deleteobject(ids[count]);
+		arcan_video_deleteobject(delids[count]);
 	arcan_event_clearmask(arcan_event_defaultctx());
 
 /* lastly, there might be events that have been tagged to an old callback
@@ -5758,7 +5766,7 @@ static int targetparent(lua_State* ctx)
 	}
 	else {
 		arcan_frameserver* fsrv = (arcan_frameserver*) state->ptr;
-		lua_pushvid(ctx, fsrv->parent);
+		lua_pushvid(ctx, fsrv->parent.vid);
 	}
 
 	LUA_ETRACE("target_parent", NULL);
@@ -8350,7 +8358,7 @@ static inline arcan_frameserver* luaL_checknet(lua_State* ctx,
 		arcan_fatal("%s -- Frameserver connected to VID is not in client mode "
 			"(net_open vs net_listen)\n", prefix);
 
-	if (fsrv->parent != ARCAN_EID)
+	if (fsrv->parent.vid != ARCAN_EID)
 		arcan_fatal("%s -- Subsegment argument target not allowed\n", prefix);
 
 	*dvobj = vobj;
@@ -8469,7 +8477,7 @@ static int net_pushsrv(lua_State* ctx)
 		arcan_fatal("net_pushsrv() -- bad arg1, VID "
 			"is not a frameserver.\n");
 
-	if (fsrv->parent != ARCAN_EID)
+	if (fsrv->parent.vid != ARCAN_EID)
 		arcan_fatal("net_pushsrv() -- cannot push VID to a subsegment.\n");
 
 	if (!(fsrv->segid == SEGID_NETWORK_CLIENT))

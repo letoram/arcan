@@ -634,6 +634,12 @@ void arcan_video_recoverexternal(bool pop, int* saved,
 	int* truncated, recovery_adoptfun, void* tag);
 
 /*
+ * sweep the active context and look for a vobj- with matching
+ * vfunc tuple (tag, ptr)
+ */
+arcan_vobj_id arcan_video_findstate(enum arcan_vobj_tags tag, void* ptr);
+
+/*
  * Convert the mipmapping mode for the video object to on [state=true] or
  * off [state=false]. By default, all objects are created with mimapping,
  * but for certain ones, there is a possible performance gain if you are

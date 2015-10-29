@@ -126,6 +126,18 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 	return ARCAN_OK;
 }
 
+/*
+ * specialized case, during recovery and adoption the lose association between
+ * tgt->parent (vid) is broken as the vid may in some rare cases be reassigned
+ * when there's context namespace collisions.
+ */
+static void default_adoph(arcan_frameserver* tgt, arcan_vobj_id id)
+{
+	tgt->parent.vid = arcan_video_findstate(
+		ARCAN_TAG_FRAMESERV, tgt->parent.ptr);
+	tgt->vid = id;
+}
+
 /* won't do anything on windows */
 void arcan_frameserver_dropsemaphores_keyed(char* key)
 {
@@ -153,8 +165,8 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
 
 /* subsegment may well be alive when the parent has just died, thus we need to
  * check the state of the parent and if it is dead, clean up just the same */
-	if (alive && src->parent){
-		arcan_vobject* vobj = arcan_video_getobject(src->parent);
+	if (alive && src->parent.vid != ARCAN_EID){
+		arcan_vobject* vobj = arcan_video_getobject(src->parent.vid);
 		if (!vobj || vobj->feed.state.tag != ARCAN_TAG_FRAMESERV)
 			alive = false;
 	}
@@ -294,7 +306,7 @@ enum arcan_ffunc_rv arcan_frameserver_nullfeed FFUNC_HEAD
 		arcan_frameserver_free(state.ptr);
 
 	else if (cmd == FFUNC_ADOPT)
-		tgt->vid = srcid;
+		default_adoph(tgt, srcid);
 
 	else if (cmd == FFUNC_TICK){
 		if (!arcan_frameserver_control_chld(tgt)){
@@ -306,9 +318,6 @@ enum arcan_ffunc_rv arcan_frameserver_nullfeed FFUNC_HEAD
 	}
 	else if (cmd == FFUNC_DESTROY)
 		arcan_frameserver_free(tgt);
-
-	else if (cmd == FFUNC_ADOPT)
-		tgt->vid = srcid;
 
 	arcan_frameserver_leave();
 	return FRV_NOFRAME;
@@ -340,7 +349,7 @@ enum arcan_ffunc_rv arcan_frameserver_emptyframe FFUNC_HEAD
 		break;
 
 		case FFUNC_ADOPT:
-			tgt->vid = srcid;
+			default_adoph(tgt, srcid);
 		break;
 
 		default:
@@ -446,10 +455,10 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
  * so set monitor flags and wake up */
 		shmpage->vready = false;
 		arcan_sem_post( tgt->vsync );
-		break;
+	break;
 
 	case FFUNC_ADOPT:
-		tgt->vid = srcid;
+		default_adoph(tgt, srcid);
 	break;
   }
 
@@ -475,7 +484,7 @@ enum arcan_ffunc_rv arcan_frameserver_feedcopy FFUNC_HEAD
 		arcan_frameserver_free(state.ptr);
 
 	else if (cmd == FFUNC_ADOPT)
-		src->vid = srcid;
+		default_adoph(src, srcid);
 
 	else if (cmd == FFUNC_POLL){
 /* done differently since we don't care if the frameserver
@@ -534,7 +543,7 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe FFUNC_HEAD
 		arcan_frameserver_free(state.ptr);
 
 	else if (cmd == FFUNC_ADOPT)
-		src->vid = srcid;
+		default_adoph(src, srcid);
 
 	else if (cmd == FFUNC_TICK){
 /* done differently since we don't care if the frameserver
@@ -886,7 +895,7 @@ arcan_frameserver* arcan_frameserver_alloc()
 
 	res->playstate = ARCAN_PLAYING;
 	res->flags.alive = true;
-	res->parent = ARCAN_EID;
+	res->parent.vid = ARCAN_EID;
 
 /* shm- related settings are deferred as this is called previous to mapping
  * (spawn_subsegment / spawn_server) so setting up the eventqueues with
