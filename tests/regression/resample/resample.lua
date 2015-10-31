@@ -9,7 +9,7 @@ local rshader = [[
 	}
 ]];
 
-function resample()
+function resample(arguments)
 	local img = fill_surface(256, 256, 0, 0, 0);
 	local resamp = build_shader(nil, rshader, "scaler");
 

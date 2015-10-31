@@ -27,7 +27,8 @@ local fshader_2 = [[
 	}
 ]];
 
-function readback()
+function readback(args)
+	arguments = args
 	local img = fill_surface(128, 256, 0, 0, 0);
 	local img2 = fill_surface(128, 256, 0, 0, 0);
 	move_image(img2, 128, 0);
