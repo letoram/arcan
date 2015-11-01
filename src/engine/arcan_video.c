@@ -304,7 +304,8 @@ static inline void step_active_frame(arcan_vobject* vobj)
 		vobj->frameset->n_frames);
 
 	vobj->frameset->index = (vobj->frameset->index + 1) % sz;
-	vobj->owner->transfc++;
+	if (vobj->owner)
+		vobj->owner->transfc++;
 
 	FLAG_DIRTY(vobj);
 }
@@ -2940,18 +2941,9 @@ arcan_errc arcan_video_retrieve_mapping(arcan_vobj_id id, float* dst)
 
 arcan_vobj_id arcan_video_findparent(arcan_vobj_id id)
 {
-	arcan_vobj_id rv = ARCAN_EID;
 	arcan_vobject* vobj = arcan_video_getobject(id);
-
-		if (vobj){
-			rv = id;
-
-			if (vobj->parent && vobj->parent->owner) {
-				rv = vobj->parent->cellid;
-			}
-		}
-
-	return rv;
+	return (vobj && vobj->parent && vobj->parent->owner) ?
+		vobj->parent->cellid : ARCAN_EID;
 }
 
 arcan_vobj_id arcan_video_findchild(arcan_vobj_id parentid, unsigned ofs)
@@ -3063,7 +3055,8 @@ arcan_errc arcan_video_objectrotate3d(arcan_vobj_id id,
 	base->rotate.endo.pitch = pitch;
 	base->rotate.endo.yaw   = yaw;
 	base->rotate.endo.quaternion = build_quat_taitbryan(roll, pitch, yaw);
-	vobj->owner->transfc++;
+	if (vobj->owner)
+		vobj->owner->transfc++;
 
 	base->rotate.interp = (fabsf(bv.roll - roll) > 180.0 ||
 		fabsf(bv.pitch - pitch) > 180.0 || fabsf(bv.yaw - yaw) > 180.0) ?
@@ -3181,7 +3174,9 @@ arcan_errc arcan_video_objectopacity(arcan_vobj_id id,
 			if (!vobj->transform)
 				vobj->transform = base;
 
-			vobj->owner->transfc++;
+			if (vobj->owner)
+				vobj->owner->transfc++;
+
 			base->blend.startt = last->blend.endt < arcan_video_display.c_ticks ?
 				arcan_video_display.c_ticks : last->blend.endt;
 			base->blend.endt = base->blend.startt + tv;
@@ -3318,7 +3313,8 @@ arcan_errc arcan_video_objectmove(arcan_vobj_id id, float newx,
 			base->move.interp = ARCAN_VINTER_LINEAR;
 			base->move.startp = bwp;
 			base->move.endp   = newp;
-			vobj->owner->transfc++;
+			if (vobj->owner)
+				vobj->owner->transfc++;
 		}
 	}
 
@@ -3382,7 +3378,9 @@ arcan_errc arcan_video_objectscale(arcan_vobj_id id, float wf,
 			base->scale.endd.x = wf;
 			base->scale.endd.y = hf;
 			base->scale.endd.z = df;
-			vobj->owner->transfc++;
+
+			if (vobj->owner)
+				vobj->owner->transfc++;
 		}
 	}
 
