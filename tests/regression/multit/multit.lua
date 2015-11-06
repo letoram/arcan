@@ -1,4 +1,5 @@
-function multit()
+function multit(args)
+	arguments = args
 	math.randomseed(1);
 
 -- automatic stepping

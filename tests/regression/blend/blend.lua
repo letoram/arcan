@@ -1,4 +1,5 @@
-function blend()
+function blend(arg)
+	arguments = arg
 	local bgsurf = fill_surface(VRESW, VRESH, 32, 64, 96);
 	show_image(bgsurf);
 	local bnorm  = fill_surface(64, 64, 255, 0, 0);

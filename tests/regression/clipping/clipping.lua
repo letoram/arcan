@@ -1,4 +1,5 @@
-function clipping()
+function clipping(args)
+	arguments = args
 	p1 = fill_surface(64, 64, 255, 0, 0);
 	c1 = fill_surface(64, 64, 0, 255, 0);
 	move_image(c1, 32, 32);

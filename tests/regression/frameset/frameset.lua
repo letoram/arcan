@@ -1,4 +1,5 @@
-function frameset()
+function frameset(args)
+	arguments = args
 	f1 = fill_surface(32, 32, 255,   0,   0);
 	f2 = fill_surface(32, 32, 255, 255, 255);
 	f3 = fill_surface(32, 32, 0,   255,   0);
