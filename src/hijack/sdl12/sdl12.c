@@ -434,6 +434,8 @@ static inline void push_ioevent_sdl(arcan_ioevent event){
 				forwardtbl.sdl_pushevent(&newev);
 			}
 		break;
+		default:
+		break;
 	}
 }
 
