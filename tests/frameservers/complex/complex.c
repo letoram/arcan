@@ -36,6 +36,8 @@
 #include <pthread.h>
 #include <arcan_shmif.h>
 
+#include "font.h"
+
 static void got_icon(struct arcan_shmif_cont cont)
 {
 	arcan_event ev;
