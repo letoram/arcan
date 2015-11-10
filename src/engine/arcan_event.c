@@ -293,6 +293,15 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 				break;
 #endif
 
+/* for autoclocking, only one-fire events are forwarded if flag has been set */
+				case EVENT_EXTERNAL_CLOCKREQ:
+					if (tgt->flags.autoclock && !inev.ext.clock.once){
+						tgt->clock.frame = inev.ext.clock.dynamic;
+						tgt->clock.left = tgt->clock.start = inev.ext.clock.rate;
+						continue;
+					}
+				break;
+
 				case EVENT_EXTERNAL_REGISTER:
 					if (tgt->segid == SEGID_UNKNOWN)
 						tgt->segid = inev.ext.registr.kind;

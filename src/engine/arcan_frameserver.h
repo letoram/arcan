@@ -102,7 +102,16 @@ struct arcan_frameserver {
 		bool explicit;
 		bool local_copy;
 		bool no_alpha_copy;
+		bool autoclock;
 	} flags;
+
+/* if autoclock is set */
+	struct {
+		uint32_t left;
+		uint32_t start;
+		int64_t frametime;
+		bool frame;
+	} clock;
 
 /* for monitoring hooks, 0 entry terminates. */
 	arcan_aobj_id* alocks;
@@ -257,7 +266,7 @@ void arcan_frameserver_dropsemaphores_keyed(char*);
  * require a recalculation of shared memory layout. These are used by the
  * various feedfunctions and should not need to be triggered elsewhere.
  */
-void arcan_frameserver_tick_control(arcan_frameserver*);
+void arcan_frameserver_tick_control(arcan_frameserver*, bool);
 bool arcan_frameserver_resize(arcan_frameserver*, int, int);
 
 /*
