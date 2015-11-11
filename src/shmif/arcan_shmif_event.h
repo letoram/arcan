@@ -859,10 +859,12 @@ typedef struct arcan_extevent {
 
 /* Used with the CLOCKREQ event for hinting how the server should provide
  * STEPFRAME events. if once is set, it is interpreted as a hint to register
- * as a separate / independent timer */
+ * as a separate / independent timer. If once is set, ID will be tracked and
+ * used as iv[1] in the stepframe. */
 		struct{
 			uint32_t rate;
 			uint8_t dynamic, once;
+			uint32_t id;
 		} clock;
 
 /*

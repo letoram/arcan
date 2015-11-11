@@ -35,9 +35,9 @@ sad cases: CVE- reference + exploit PoC. Will also have specialized
 build options for getting access to functions that eases exploit
 development (which, in turn, eases evaluation of countermeasures).
 
-interactive/ quick hacks and experiments, particularly when
-developing a new- or refactoring an existing- interface or
-when we still need manual input.
+interactive/ quick hacks and experiments, particularly when developing a new-
+or refactoring an existing- interface or when we still need manual input.
+These are not expected to be particularly stable or easy to set up and use.
 
 regression/ for non-trivial bugs reported and fixed, and as a prelude
 to specific engine refactoring (flag all related APIs, make sure there

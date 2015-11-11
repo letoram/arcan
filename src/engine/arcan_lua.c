@@ -3740,6 +3740,9 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				tblbool(ctx, "dynamic", ev->ext.clock.dynamic, top);
 				tblbool(ctx, "once", ev->ext.clock.once, top);
 				tblnum(ctx, "value", ev->ext.clock.rate, top);
+				if (ev->ext.clock.once)
+					tblnum(ctx, "id", ev->ext.clock.id, top);
+
 			break;
 			case EVENT_EXTERNAL_CURSORHINT:
 				fltpush(mcbuf, extmsg_sz, (char*)ev->ext.message.data, flt_alpha, '?');
