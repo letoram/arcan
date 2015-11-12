@@ -1,0 +1,16 @@
+This directory contains shmif- dependent frameservers, individual
+instructions on building and use may apply.
+
+complex/ tries to previde an exhaustive test case for all complex
+ window manager operations, ranging from popups, to subwindows,
+ viewports etc.
+
+counter/ provides a simple color cycle in a predictable pattern
+
+counter-rcv/ used as a recipient for feedcopy or recordtarget
+ hooked up to a counter as a provider, checks for dropped or corrupted
+ frames
+
+clockreq/ needs the corresponding clockreq appl in interactive running
+ (use clockreq as connection path) and tests both the builtin clock
+ handler for monotonic event delivery and for timers.
