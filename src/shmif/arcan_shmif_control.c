@@ -331,6 +331,8 @@ reset:
 	if (!c || !dst || !c->addr || !c->priv->alive)
 		return -1;
 
+	bool noks = false;
+
 	int rv = 0;
 	struct arcan_evctx* ctx = &c->priv->inev;
 	volatile uint8_t* ks = (volatile uint8_t*) ctx->synch.killswitch;
@@ -381,6 +383,7 @@ checkfd:
  * updating. _drop would modify the context in ways that would break, and we
  * want consistent behavior between threadsafe- and non-threadsafe builds. */
 				c->priv->alive = false;
+				noks = true;
 			break;
 
 /* Events that require a handle to be tracked (and possibly garbage collected
@@ -411,7 +414,7 @@ done:
 	pthread_mutex_unlock(&ctx->synch.lock);
 #endif
 
-	return *ks ? rv : -1;
+	return *ks || noks ? rv : -1;
 }
 
 int arcan_shmif_poll(struct arcan_shmif_cont* c, struct arcan_event* dst)
