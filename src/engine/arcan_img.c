@@ -28,6 +28,9 @@
 #define STBI_ONLY_JPEG
 #define STBI_IMAGE_STATIC
 #define STBI_NO_FAILURE_STRINGS
+#define STB_IMAGE_WRITE_STATIC
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#define STB_IMAGE_IMPLEMENTATION
 
 #include "external/stb_image.h"
 #include "external/stb_image_write.h"
