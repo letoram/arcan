@@ -3732,6 +3732,15 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				slim_utf8_push(mcbuf, extmsg_sz, (char*)ev->ext.message.data);
 				tblstr(ctx, "argument", mcbuf, top);
 			break;
+			case EVENT_EXTERNAL_CLOCKREQ:
+/* check frameserver flags and see if we are set to autoclock, then only
+ * forward the once events and have others just update the frameserver
+ * statetable */
+				tblstr(ctx, "kind", "clock", top);
+				tblbool(ctx, "dynamic", ev->ext.clock.dynamic, top);
+				tblbool(ctx, "once", ev->ext.clock.once, top);
+				tblnum(ctx, "value", ev->ext.clock.rate, top);
+			break;
 			case EVENT_EXTERNAL_CURSORHINT:
 				fltpush(mcbuf, extmsg_sz, (char*)ev->ext.message.data, flt_alpha, '?');
 				tblstr(ctx, "kind", "cursorhint", top);

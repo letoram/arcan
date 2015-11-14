@@ -72,6 +72,10 @@
 -- to 16 characters in the [a-z,0-9_] set with ? values indicating that
 -- the caller tried to add an invalid value.
 --
+-- @note: "clock" (value, monotonic, once) - frameserver wants a periodic or
+-- fire-once stepframe event call. monotonic suggests the time-frame relative to
+-- the built-in CLOCKRATE (clock_pulse)
+--
 -- @note: "cursorhint" {message} - lacking a customized cursor using a subseg
 -- request for a cursor window, this is a text suggestion of what local visual
 -- state the mouse cursor should have. The content of message is implementation

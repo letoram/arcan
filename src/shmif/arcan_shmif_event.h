@@ -487,6 +487,14 @@ enum ARCAN_EVENT_EXTERNAL {
  * (see SEGID_ table), uses registr substructure.
  */
 	EVENT_EXTERNAL_REGISTER,
+
+/*
+ * Request that the frameserver provide a monotonic update clock for events,
+ * can be used both to drive the _shmif_signal calls and as a crude timer.
+ * Uses the 'clock' substructure.
+ */
+	EVENT_EXTERNAL_CLOCKREQ,
+
 	EVENT_EXTERNAL_ULIM = INT_MAX
 };
 
@@ -848,6 +856,14 @@ typedef struct arcan_extevent {
 			uint32_t keysym;
 			uint8_t active;
 		} key;
+
+/* Used with the CLOCKREQ event for hinting how the server should provide
+ * STEPFRAME events. if once is set, it is interpreted as a hint to register
+ * as a separate / independent timer */
+		struct{
+			uint32_t rate;
+			uint8_t dynamic, once;
+		} clock;
 
 /*
  * Indicate that the connection supports abstract input labels, along
