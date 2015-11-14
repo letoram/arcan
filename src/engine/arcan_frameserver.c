@@ -54,6 +54,36 @@ static inline void emit_deliveredframe(arcan_frameserver* src,
 static inline void emit_droppedframe(arcan_frameserver* src,
 	unsigned long long pts, unsigned long long framecount);
 
+static void autoclock_frame(arcan_frameserver* tgt)
+{
+	if (!tgt->clock.left)
+		return;
+
+	if (!tgt->clock.frametime)
+		tgt->clock.frametime = arcan_frametime();
+
+	int64_t delta = arcan_frametime() - tgt->clock.frametime;
+	if (delta < 0){
+
+	}
+	else if (delta == 0)
+		return;
+
+	if (tgt->clock.left <= delta){
+		tgt->clock.left = tgt->clock.start;
+		tgt->clock.frametime = arcan_frametime();
+		arcan_event ev = {
+			.category = EVENT_TARGET,
+			.tgt.kind = TARGET_COMMAND_STEPFRAME,
+			.tgt.ioevs[0].iv = delta / tgt->clock.start,
+			.tgt.ioevs[1].iv = 1
+		};
+		arcan_frameserver_pushevent(tgt, &ev);
+	}
+	else
+		tgt->clock.left -= delta;
+}
+
 arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 {
 	if (!src)
@@ -333,15 +363,18 @@ enum arcan_ffunc_rv arcan_frameserver_emptyframe FFUNC_HEAD
 	switch (cmd){
 		case FFUNC_POLL:
 			if (tgt->shm.ptr->resized){
-				arcan_frameserver_tick_control(tgt);
+				arcan_frameserver_tick_control(tgt, false);
         if (tgt->shm.ptr && tgt->shm.ptr->vready){
 					arcan_frameserver_leave();
         	return FRV_GOTFRAME;
 				}
 			}
 
+		if (tgt->flags.autoclock && tgt->clock.frame)
+			autoclock_frame(tgt);
+
 		case FFUNC_TICK:
-			arcan_frameserver_tick_control(tgt);
+			arcan_frameserver_tick_control(tgt, true);
 		break;
 
 		case FFUNC_DESTROY:
@@ -399,7 +432,7 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 		return FRV_NOFRAME;
 
 	if (tgt->segid == SEGID_UNKNOWN){
-		arcan_frameserver_tick_control(tgt);
+		arcan_frameserver_tick_control(tgt, false);
 		arcan_frameserver_leave();
 		return FRV_NOFRAME;
 	}
@@ -412,14 +445,18 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 
 	case FFUNC_POLL:
 		if (shmpage->resized){
-			arcan_frameserver_tick_control(tgt);
+			arcan_frameserver_tick_control(tgt, false);
 			shmpage = tgt->shm.ptr;
+
 		if (!shmpage)
 			return FRV_NOFRAME;
 		}
 
 /* use this opportunity to make sure that we treat audio as well */
 		check_audb(tgt, shmpage);
+
+		if (tgt->flags.autoclock && tgt->clock.frame)
+			autoclock_frame(tgt);
 
 /* caller uses this hint to determine if a transfer should be
  * initiated or not */
@@ -428,7 +465,7 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 	break;
 
 	case FFUNC_TICK:
-		arcan_frameserver_tick_control( tgt );
+		arcan_frameserver_tick_control(tgt, true);
 	break;
 
 	case FFUNC_DESTROY:
@@ -520,6 +557,9 @@ enum arcan_ffunc_rv arcan_frameserver_feedcopy FFUNC_HEAD
 			FORCE_SYNCH();
 			arcan_frameserver_pushevent(src, &ev);
 		}
+
+		if (src->flags.autoclock && src->clock.frame)
+			autoclock_frame(src);
 
 		arcan_event_queuetransfer(arcan_event_defaultctx(), &src->inqueue,
 			src->queue_mask, 0.5, src->vid);
@@ -780,8 +820,9 @@ arcan_errc arcan_frameserver_audioframe_direct(arcan_aobj* aobj,
 	return rv;
 }
 
-void arcan_frameserver_tick_control(arcan_frameserver* src)
+void arcan_frameserver_tick_control(arcan_frameserver* src, bool tick)
 {
+	bool fail = true;
 	if (!arcan_frameserver_control_chld(src) ||
 		!src || !src->shm.ptr || !src->shm.ptr->dms)
 		goto leave;
@@ -814,6 +855,7 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 		goto leave;
 	}
 
+	fail = false;
 /*
  * evqueues contain pointers into the shmpage that may have been moved
  */
@@ -848,6 +890,22 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 
 leave:
 	arcan_frameserver_leave();
+
+/* want the event to be queued after resize so the possible reaction (i.e.
+ * redraw + synch) aligns with pending resize */
+	if (!fail && tick){
+		if (0 == src->clock.left){
+			arcan_event ev = {
+				.category = EVENT_TARGET,
+				.tgt.kind = TARGET_COMMAND_STEPFRAME,
+				.tgt.ioevs[0].iv = 1,
+				.tgt.ioevs[1].iv = 1
+			};
+
+			src->clock.left = src->clock.start;
+			arcan_frameserver_pushevent(src, &ev);
+		}
+	}
 }
 
 arcan_errc arcan_frameserver_pause(arcan_frameserver* src)
@@ -895,6 +953,7 @@ arcan_frameserver* arcan_frameserver_alloc()
 
 	res->playstate = ARCAN_PLAYING;
 	res->flags.alive = true;
+	res->flags.autoclock = true;
 	res->parent.vid = ARCAN_EID;
 
 /* shm- related settings are deferred as this is called previous to mapping

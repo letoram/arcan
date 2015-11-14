@@ -5827,6 +5827,7 @@ enum target_flags {
 	TARGET_FLAG_NO_ALPHA_UPLOAD,
 	TARGET_FLAG_VERBOSE,
 	TARGET_FLAG_VSTORE_SYNCH,
+	TARGET_FLAG_AUTOCLOCK,
 	TARGET_FLAG_ENDM
 };
 
@@ -5858,6 +5859,9 @@ static void updateflag(arcan_vobj_id vid, enum target_flags flag, bool toggle)
 	case TARGET_FLAG_NO_ALPHA_UPLOAD:
 		fsrv->flags.no_alpha_copy = toggle;
 	break;
+
+	case TARGET_FLAG_AUTOCLOCK:
+		fsrv->flags.autoclock = toggle;
 
 	case TARGET_FLAG_ENDM:
 	break;
@@ -9078,6 +9082,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"TARGET_NOALPHA", TARGET_FLAG_NO_ALPHA_UPLOAD},
 {"TARGET_VSTORE_SYNCH", TARGET_FLAG_VSTORE_SYNCH},
 {"TARGET_VERBOSE", TARGET_FLAG_VERBOSE},
+{"TARGET_AUTOCLOCK", TARGET_FLAG_AUTOCLOCK},
 {"RENDERTARGET_NOSCALE", RENDERTARGET_NOSCALE},
 {"RENDERTARGET_SCALE", RENDERTARGET_SCALE},
 {"RENDERTARGET_NODETACH", RENDERTARGET_NODETACH},

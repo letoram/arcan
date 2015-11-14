@@ -18,6 +18,9 @@
 -- memory operations) alpha blending for untrusted sources would be
 -- to associate the respective VIDs with a shader that doesn't use or
 -- lookup alpha value.
+-- @note: flag: TARGET_AUTOCLOCK is on by default and provides a
+-- standardd implementation for some of the autoclock requests that
+-- are then filtered and not forwarded to the eventhandler.
 -- @note: flag: TARGET_VERBOSE emits additional data about delivered
 -- or dropped frames.
 -- @group: targetcontrol
@@ -33,6 +36,7 @@ function main()
 	target_flag(a, TARGET_VERBOSE);
 	target_flag(a, TARGET_SYNCHRONOUS);
 	target_flag(a, TARGET_NOALPHA);
+	target_flag(a, TARGET_AUTOCLOCK);
 #endif
 
 #ifdef ERROR

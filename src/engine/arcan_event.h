@@ -59,6 +59,7 @@ void arcan_event_clearmask(struct arcan_evctx*);
 /* set a specific mask, somewhat limited */
 void arcan_event_setmask(struct arcan_evctx*, unsigned mask);
 
+/* global clock, milisecond resolution relative to epoch set during start */
 int64_t arcan_frametime();
 
 /*
