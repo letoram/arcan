@@ -1,13 +1,16 @@
 -- stepframe_target
 -- @short: Request that the target generate / consume a video frame.
--- @inargs: targetid, *n_frames*
--- @longdescr: Some external targets either require, or can be set to
--- require, a frame-pulse that hints when it should emit, consume
--- or ignore one or several video frames, especially for non-realtime tasks.
--- This is handled as events passed on the event-queue, in order to wake
--- processes that idle or sleep when no event has been received.
--- @note: n_frames (default:1) is a hint, relative to the current position
--- and the actual behavior is implementation defined in the target frameserver
+-- @inargs: targetid, *n_frames*, *id*
+-- @longdescr: Some external targets either require, or can be set to require,
+-- a frame-pulse that hints when it should emit, consume or ignore one or
+-- several video frames, especially for non-realtime tasks. This is handled as
+-- events passed on the event-queue, in order to wake processes that idle or
+-- sleep when no event has been received. The optional id feed only has a use
+-- when stepframe_target comes as an implementation of a received clock event
+-- (see ref:launch_target), where it should be passed to help the frameserver
+-- to match the timer request to some internal handler.
+-- @note: n_frames (default:1) is a hint, relative to the current position and
+-- the actual behavior is implementation defined in the target frameserver
 -- or internal object.
 -- @note: stepframe can also be used on record and calctargets and will
 -- then force a readback.

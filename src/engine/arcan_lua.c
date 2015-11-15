@@ -3626,10 +3626,10 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		wraperr(ctx, lua_pcall(ctx, 1, 0, 0), "push event( input )");
 	}
 	else if (ev->category == EVENT_NET){
-		if (arcan_video_findparent(ev->ext.source) == ARCAN_EID)
+		arcan_vobject* vobj = arcan_video_getobject(ev->net.source);
+		if (!vobj || vobj->feed.state.tag != ARCAN_TAG_FRAMESERV)
 			return;
 
-		arcan_vobject* vobj = arcan_video_getobject(ev->net.source);
 		arcan_frameserver* fsrv = vobj ? vobj->feed.state.ptr : NULL;
 
 		if (fsrv && fsrv->tag){
@@ -3699,21 +3699,15 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 	}
 	else if (ev->category == EVENT_EXTERNAL){
 		char mcbuf[sizeof(ev->ext.message.data)+1];
-		if (arcan_video_findparent(ev->ext.source) == ARCAN_EID)
+/* need to jump through a few hoops to get hold of the possible callback */
+		arcan_vobject* vobj = arcan_video_getobject(ev->ext.source);
+		if (!vobj || vobj->feed.state.tag != ARCAN_TAG_FRAMESERV)
 			return;
 
 		int reset = lua_gettop(ctx);
-
-/* need to jump through a few hoops to get hold of the possible callback */
-		arcan_vobject* vobj = arcan_video_getobject(ev->ext.source);
-
-/* edge case, dangling event with frameserver
- * that died during initialization but wasn't pruned from the eventqueue */
-		if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV)
-			return;
-
 		size_t extmsg_sz = COUNT_OF(ev->ext.message.data);
 		arcan_frameserver* fsrv = vobj->feed.state.ptr;
+
 		if (fsrv->tag != LUA_NOREF){
 			intptr_t dst_cb = fsrv->tag;
 			lua_rawgeti(ctx, LUA_REGISTRYINDEX, dst_cb);
@@ -3868,14 +3862,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 	}
 	else if (ev->category == EVENT_FSRV){
 		intptr_t dst_cb = 0;
-
-/*
- * Drop frameserver events for which the queue object has died, VID reuse
- * won't actually be a problem unless the script allocates/deletes full 32-bit
- * (-context_size) in one go which is not possible from the context size
- * restriction.
- */
-		if (arcan_video_findparent(ev->fsrv.video) == ARCAN_EID)
+		if (!arcan_video_getobject(ev->fsrv.video))
 			return;
 
 /*
@@ -4100,7 +4087,7 @@ static int validvid(lua_State* ctx)
 		lua_pushboolean(ctx, vobj && vobj->feed.state.tag == type);
 	}
 	else
-		lua_pushboolean(ctx, arcan_video_findparent(res) != ARCAN_EID);
+		lua_pushboolean(ctx, arcan_video_getobject(res) != NULL);
 
 	LUA_ETRACE("valid_vid", NULL);
 	return 1;
@@ -6137,10 +6124,9 @@ static int targetstepframe(lua_State* ctx)
 	}
 
 /*
- * Recordtargets are a special case as they have both
- * a frameserver feedstate and the output of a rendertarget.
- * The actual stepframe event will be set by the ffunc handler
- * (arcan_frameserver_backend.c)
+ * Recordtargets are a special case as they have both a frameserver feedstate
+ * and the output of a rendertarget.  The actual stepframe event will be set by
+ * the ffunc handler (arcan_frameserver_backend.c)
  */
 	if (state->tag == ARCAN_TAG_FRAMESERV && !rtgt){
 		arcan_event ev = {
@@ -6148,6 +6134,7 @@ static int targetstepframe(lua_State* ctx)
 			.tgt.kind = TARGET_COMMAND_STEPFRAME
 		};
 		ev.tgt.ioevs[0].iv = nframes;
+		ev.tgt.ioevs[1].iv = luaL_optnumber(ctx, 3, 0);
 		tgtevent(tgt, ev);
 	}
 

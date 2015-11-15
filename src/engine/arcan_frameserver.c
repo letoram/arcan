@@ -370,8 +370,9 @@ enum arcan_ffunc_rv arcan_frameserver_emptyframe FFUNC_HEAD
 				}
 			}
 
-		if (tgt->flags.autoclock && tgt->clock.frame)
-			autoclock_frame(tgt);
+			if (tgt->flags.autoclock && tgt->clock.frame)
+				autoclock_frame(tgt);
+		break;
 
 		case FFUNC_TICK:
 			arcan_frameserver_tick_control(tgt, true);
@@ -835,8 +836,10 @@ void arcan_frameserver_tick_control(arcan_frameserver* src, bool tick)
 	arcan_event_queuetransfer(arcan_event_defaultctx(), &src->inqueue,
 		src->queue_mask, 0.5, src->vid);
 
-	if (!src->shm.ptr->resized)
+	if (!src->shm.ptr->resized){
+		fail = false;
 		goto leave;
+	}
 
 	FORCE_SYNCH();
 	size_t neww = src->shm.ptr->w;
@@ -894,7 +897,7 @@ leave:
 /* want the event to be queued after resize so the possible reaction (i.e.
  * redraw + synch) aligns with pending resize */
 	if (!fail && tick){
-		if (0 == src->clock.left){
+		if (0 >= --src->clock.left){
 			arcan_event ev = {
 				.category = EVENT_TARGET,
 				.tgt.kind = TARGET_COMMAND_STEPFRAME,
