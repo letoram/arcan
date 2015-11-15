@@ -6202,11 +6202,12 @@ static int targetaccept(lua_State* ctx)
 	if (!luactx.last_segreq)
 		arcan_fatal("accept_target(), only permitted inside a segment_request.\n");
 
+	uint16_t w = luaL_optnumber(ctx, 1, luactx.last_segreq->segreq.width);
+	uint16_t h = luaL_optnumber(ctx, 2, luactx.last_segreq->segreq.height);
+
 	vfunc_state* state = arcan_video_feedstate(luactx.last_segreq->source);
 	arcan_frameserver* newref = arcan_frameserver_spawn_subsegment(
-		(arcan_frameserver*) state->ptr, false,
-		luactx.last_segreq->segreq.width,
-		luactx.last_segreq->segreq.height,
+		(arcan_frameserver*) state->ptr, false, w, h,
 		luactx.last_segreq->segreq.id
 	);
 	newref->segid = luactx.last_segreq->segreq.kind;

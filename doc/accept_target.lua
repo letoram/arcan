@@ -1,6 +1,6 @@
 -- accept_target
 -- @short: accept a pending target request for a new segment
--- @inargs:
+-- @inargs: *setw*, *seth*
 -- @outargs:
 -- @longdescr: A connected frameserver is provided with one segment
 -- by default, but additional ones can be requested. If that happens,
@@ -13,6 +13,12 @@
 -- and it is the responsibility of the script to determine that this
 -- is one that is supported. To filter the segkind field, prefer to
 -- use an inclusive whitelisting approach.
+-- The optional arguments *setw*, *seth* can be used to change the
+-- initial dimensions of the new segment from the ones requested in the
+-- segreq event (see ref:launch\_target). The frameserver can still
+-- perform a resize to ignore these values, but it saves a possible
+-- displayhint->resize cycle with the 1-2 frame latency that would
+-- impose.
 -- @note: accept_target is context sensitive. This means that calling
 -- it outside a frameserver event-handler, or when there is no pending
 -- segment_request event, is a terminal state transition.
