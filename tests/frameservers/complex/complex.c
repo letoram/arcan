@@ -24,7 +24,7 @@
  *  [ ] event-driven subwindow
  *  [ ] subwindow- spawn spam
  *  [ ] multiple windows on one buffer
- *  [ ] state load/store
+ *  [ ] state load/store on main.
  *  [ ] scrollbar / content feedback support
  */
 
@@ -193,6 +193,9 @@ int main(int argc, char** argv)
 		case TARGET_COMMAND_NEWSEGMENT:{
 			for (size_t i = 0; i < sizeof(segtbl)/sizeof(segtbl[0]); i++){
 /* FIXME: match against segtbl and ID */
+				if (ev.tgt.ioev[1].iv == segtbl[i].id){
+					printf("matched handler\n");
+				}
 			}
 		}
 		break;
