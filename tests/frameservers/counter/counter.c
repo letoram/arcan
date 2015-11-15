@@ -28,7 +28,7 @@ int main(int argc, char** argv)
 	while(running){
 	for (size_t row = 0; row < cont.addr->h; row++)
 		for (size_t col = 0; col < cont.addr->w; col++)
-			cont.vidp[ row * cont.addr->w + col ] = RGBA(step_r, step_g, step_b, 0xff);
+			cont.vidp[ row * cont.addr->w + col ] = SHMIF_RGBA(step_r, step_g, step_b, 0xff);
 			step_r++;
 			step_g += step_r == 255;
 			step_b += step_g == 255;
