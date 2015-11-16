@@ -38,81 +38,94 @@
 
 #include "font.h"
 
-static void got_icon(struct arcan_shmif_cont cont)
+static void got_icon(struct arcan_shmif_cont* cont)
 {
 	arcan_event ev;
 	char buf[256];
 
-	while (arcan_shmif_wait(&cont, &ev)){
+	arcan_shmif_resize(cont, 64, 64);
+	draw_box(cont, 0, 0, cont->w, cont->h, SHMIF_RGBA(0, 255, 0));
+
+/* request periodic timer, use that to pulsate.
+ * request random once- timer and use that to send alert event */
+	while (arcan_shmif_wait(cont, &ev)){
 		printf("icon event(%s)\n", arcan_shmif_eventstr(&ev, buf, sizeof(buf)));
 	}
-	arcan_shmif_drop(&cont);
+
+	arcan_shmif_drop(cont);
+	free(cont);
 }
 
-static void got_status(struct arcan_shmif_cont cont)
+static void got_title(struct arcan_shmif_cont* cont)
 {
 	arcan_event ev;
 	char buf[256];
 
-	while (arcan_shmif_wait(&cont, &ev)){
+	while (arcan_shmif_wait(cont, &ev)){
 		printf("status event(%s)\n", arcan_shmif_eventstr(&ev, buf, sizeof(buf)));
 	}
-	arcan_shmif_drop(&cont);
+	arcan_shmif_drop(cont);
+	free(cont);
 }
 
-static void got_clipboard(struct arcan_shmif_cont cont)
+static void got_clipboard(struct arcan_shmif_cont* cont)
 {
 	arcan_event ev;
 	char buf[256];
 
-	while (arcan_shmif_wait(&cont, &ev)){
+	while (arcan_shmif_wait(cont, &ev)){
 		printf("clipboard(%s)\n", arcan_shmif_eventstr(&ev, buf, sizeof(buf)));
 	}
-	arcan_shmif_drop(&cont);
+	arcan_shmif_drop(cont);
+	free(cont);
 }
 
-static void got_clipboard_paste(struct arcan_shmif_cont cont)
+static void got_clipboard_paste(struct arcan_shmif_cont* cont)
 {
 	arcan_event ev;
 	char buf[256];
 
-	while (arcan_shmif_wait(&cont, &ev)){
+	while (arcan_shmif_wait(cont, &ev)){
 		printf("clipboard(%s)\n", arcan_shmif_eventstr(&ev, buf, sizeof(buf)));
 	}
-	arcan_shmif_drop(&cont);
+	arcan_shmif_drop(cont);
+	free(cont);
 }
 
-static void got_accessibility(struct arcan_shmif_cont cont)
+static void got_accessibility(struct arcan_shmif_cont* cont)
 {
 	arcan_event ev;
 	char buf[256];
 
-	while (arcan_shmif_wait(&cont, &ev)){
+	while (arcan_shmif_wait(cont, &ev)){
 		printf("accessib.(%s)\n", arcan_shmif_eventstr(&ev, buf, sizeof(buf)));
 	}
-	arcan_shmif_drop(&cont);
+	arcan_shmif_drop(cont);
+	free(cont);
 }
 
-static void got_cursor(struct arcan_shmif_cont cont)
+static void got_cursor(struct arcan_shmif_cont* cont)
 {
 	arcan_event ev;
 	char buf[256];
 
-	while (arcan_shmif_wait(&cont, &ev)){
+	while (arcan_shmif_wait(cont, &ev)){
 		printf("cursor.(%s)\n", arcan_shmif_eventstr(&ev, buf, sizeof(buf)));
 	}
-	arcan_shmif_drop(&cont);
+	arcan_shmif_drop(cont);
+	free(cont);
 }
 
-static void got_debug(struct arcan_shmif_cont cont)
+static void got_debug(struct arcan_shmif_cont* cont)
 {
 	arcan_event ev;
 	char buf[256];
 
-	while (arcan_shmif_wait(&cont, &ev)){
+	while (arcan_shmif_wait(cont, &ev)){
 		printf("debug.(%s)\n", arcan_shmif_eventstr(&ev, buf, sizeof(buf)));
 	}
-	arcan_shmif_drop(&cont);
+	arcan_shmif_drop(cont);
+	free(cont);
 }
 
 /*
@@ -125,7 +138,7 @@ struct {
 	uint32_t kind;
 	uint32_t id;
 	struct arcan_shmif_cont cont;
-	void (*handler)(struct arcan_shmif_cont cont);
+	void (*handler)(struct arcan_shmif_cont* cont);
 }
 segtbl[] = {
 	{
@@ -137,7 +150,7 @@ segtbl[] = {
 	{
 		.kind = SEGID_TITLEBAR,
 		.id = 0xbacabaca,
-		.handler = got_status,
+		.handler = got_title,
 		.threaded = true
 	},
 	{
@@ -190,14 +203,20 @@ int main(int argc, char** argv)
 	while(arcan_shmif_wait(&cont, &ev) != 0){
 		if (ev.category == EVENT_TARGET)
 		switch(ev.tgt.kind){
-		case TARGET_COMMAND_NEWSEGMENT:{
+		case TARGET_COMMAND_NEWSEGMENT:
 			for (size_t i = 0; i < sizeof(segtbl)/sizeof(segtbl[0]); i++){
-/* FIXME: match against segtbl and ID */
-				if (ev.tgt.ioev[1].iv == segtbl[i].id){
-					printf("matched handler\n");
+				if (segtbl[i].id == ev.tgt.ioevs[0].iv){
+					struct arcan_shmif_cont* tc = malloc(sizeof(struct arcan_shmif_cont));
+					*tc = arcan_shmif_acquire(&cont, NULL, segtbl[i].kind, SHMIF_DISABLE_GUARD);
+					if (!tc->vidp)
+						free(tc);
+					else {
+						pthread_t pth;
+						pthread_create(&pth, NULL, (void*) segtbl[i].handler, tc);
+						pthread_detach(pth);
+					}
 				}
 			}
-		}
 		break;
 		default:
 		break;
