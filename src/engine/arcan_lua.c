@@ -6250,7 +6250,24 @@ static int targetalloc(lua_State* ctx)
 	lua_pushvalue(ctx, cb_ind);
 	intptr_t ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
 
-	int tag = luaL_optint(ctx, cb_ind+1, 0);
+	int tag = 0;
+	int segid = SEGID_UNKNOWN;
+
+	if (lua_type(ctx, cb_ind+1) == LUA_TNUMBER)
+		tag = lua_tonumber(ctx, cb_ind+1);
+	else if (lua_type(ctx, cb_ind+1) == LUA_TSTRING){
+		const char* msg = lua_tostring(ctx, 2);
+/* only type explicitly supported now */
+		if (strcmp(msg, "debug") == 0)
+			segid = SEGID_DEBUG;
+		else if (strcmp(msg, "accessibility") == 0)
+			segid = SEGID_ACCESSIBILITY;
+		else
+			arcan_warning("target_alloc(), unaccepted segid "
+				"type-string (%s), allowed: debug, accessibility\n", msg);
+	}
+	else
+		;
 
 	arcan_frameserver* newref = NULL;
 	const char* key = "";
@@ -6303,6 +6320,8 @@ static int targetalloc(lua_State* ctx)
 	}
 
 	newref->tag = ref;
+	newref->segid = segid;
+
 	if (pw)
 		memcpy(newref->clientkey, pw, pwlen);
 

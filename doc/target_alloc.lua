@@ -1,17 +1,21 @@
 -- target_alloc
 -- @short: Setup a subsegment or external connection
--- @inargs: key or vid, [passcode], callback, [tag]
+-- @inargs: key or vid, [passcode], callback, [tag or type]
 -- @outargs: vid, aid
 -- @longdescr: By default, frameserver connections are single-segment and
 -- authoritative, meaning that they can only be explicitly created and
--- setup by a user through the related functions (net_open, load_movie, ...)
+-- setup by a user through the related functions (net_open, launch_target, ...)
 -- and that they are either input (provides data to arcan) or output
 -- (receive datastreams from arcan for purposes such as recording).
 -- target_alloc is then used to attach additional input segments
 -- to a pre-existing frameserver connection (by specifying the vid of said
 -- frameserver). When communicating these segments, it is also possible to
 -- specify a *tag* (default: 0) which should correspond to the tag value
--- in an segment_request kind target event in a frameserver callback.
+-- in an segment_request kind target event in a frameserver callback, or
+-- a *type* with a string that matches any of the possible subsegment
+-- types from the list: (debug, accessibility). Both of tag/type are
+-- primarily for specialized applications, and the accept_target
+-- mechanism should be preferred for other types.
 -- target_alloc is also used to allow non-authoritative connections that
 -- follow a more traditional client server model. By specifying a
 -- key string, a listening connection is prepared in a shared namespace (OS
@@ -34,7 +38,7 @@
 -- first verified connection goes through. To re-use the connection point,
 -- invoke target_alloc again with the same key from within the callback handler.
 -- @note: for honoring explicit requests from a frameserver regarding new
--- subsegments the accept_target function.
+-- subsegments, use the accept_target function.
 -- @group: targetcontrol
 -- @cfunction: targetalloc
 -- @related: define_recordtarget, accept_target
