@@ -505,7 +505,7 @@ fail:
  * an ident on the socket.
  */
 arcan_frameserver* arcan_frameserver_spawn_subsegment(
-	arcan_frameserver* ctx, bool encode, int hintw, int hinth, int tag)
+	arcan_frameserver* ctx, enum ARCAN_SEGID segid, int hintw, int hinth, int tag)
 {
 	if (!ctx || ctx->flags.alive == false)
 		return NULL;
@@ -548,7 +548,7 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
  * attach monitors and synch audio transfers to video.
  */
 	arcan_errc errc;
-	if (!encode)
+	if (segid != SEGID_ENCODER)
 		newseg->aid = arcan_audio_feed((arcan_afunc_cb)
 			arcan_frameserver_audioframe_direct, ctx, &errc);
 
@@ -587,12 +587,7 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
  * EVENT_INPUT gives remote-control etc. options, with all the security
  * considerations that comes with it */
 	newseg->queue_mask = EVENT_EXTERNAL;
-
-	if (encode)
-		newseg->segid = SEGID_ENCODER;
-/* frameserver gets one chance to hint the purpose for this segment */
-	else
-		newseg->segid = SEGID_UNKNOWN;
+	newseg->segid = segid;
 
 	newseg->sz_audb = ARCAN_SHMIF_AUDIOBUF_SZ;
 	newseg->ofs_audb = 0;
@@ -617,7 +612,8 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	};
 
 	keyev.tgt.ioevs[0].iv = tag;
-	keyev.tgt.ioevs[1].iv = encode ? 1 : 0;
+	keyev.tgt.ioevs[1].iv = segid == SEGID_ENCODER ? 1 : 0;
+	keyev.tgt.ioevs[2].iv = segid;
 
 	snprintf(keyev.tgt.message,
 		sizeof(keyev.tgt.message) / sizeof(keyev.tgt.message[1]),
