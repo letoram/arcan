@@ -238,7 +238,7 @@ arcan_errc arcan_frameserver_pushfd(arcan_frameserver*, arcan_event*, int fd);
  * the pre-existing eventqueue of the frameserver controlled by (ctx)
  */
 arcan_frameserver* arcan_frameserver_spawn_subsegment(
-	arcan_frameserver* ctx, bool input, int hintw, int hinth, int tag);
+	arcan_frameserver* ctx, enum ARCAN_SEGID, int hintw, int hinth, int tag);
 
 /*
  * Take the argument event and add it to the event queue of the target,

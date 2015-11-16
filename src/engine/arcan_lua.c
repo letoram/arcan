@@ -6207,10 +6207,10 @@ static int targetaccept(lua_State* ctx)
 
 	vfunc_state* state = arcan_video_feedstate(luactx.last_segreq->source);
 	arcan_frameserver* newref = arcan_frameserver_spawn_subsegment(
-		(arcan_frameserver*) state->ptr, false, w, h,
+		(arcan_frameserver*) state->ptr,
+		luactx.last_segreq->segreq.kind, w, h,
 		luactx.last_segreq->segreq.id
 	);
-	newref->segid = luactx.last_segreq->segreq.kind;
 	luactx.last_segreq = NULL;
 
 	lua_pushvid(ctx, newref->vid);
@@ -6313,14 +6313,13 @@ static int targetalloc(lua_State* ctx)
 
 		if (state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr)
 			newref = arcan_frameserver_spawn_subsegment(
-				(arcan_frameserver*) state->ptr, false, 0, 0, tag);
+				(arcan_frameserver*) state->ptr, segid, 0, 0, tag);
 		else
 			arcan_fatal("target_alloc() specified source ID doesn't "
 				"contain a frameserver\n.");
 	}
 
 	newref->tag = ref;
-	newref->segid = segid;
 
 	if (pw)
 		memcpy(newref->clientkey, pw, pwlen);
@@ -6950,7 +6949,7 @@ static int spawn_recsubseg(lua_State* ctx,
 	}
 
 	arcan_frameserver* rv =
-		arcan_frameserver_spawn_subsegment(fsrv, true, 0, 0, 0);
+		arcan_frameserver_spawn_subsegment(fsrv, SEGID_ENCODER, 0, 0, 0);
 
 	if(rv){
 		vfunc_state fftag = {
@@ -7188,7 +7187,7 @@ static int nulltarget(lua_State* ctx)
 
 	arcan_frameserver* rv =
 		arcan_frameserver_spawn_subsegment(
-			(arcan_frameserver*) state->ptr, true, 1, 1, 0);
+			(arcan_frameserver*) state->ptr, SEGID_ENCODER, 1, 1, 0);
 
 	if (!rv){
 		LUA_ETRACE("define_nulltarget", "no subsegment");
@@ -7233,7 +7232,7 @@ static int feedtarget(lua_State* ctx)
  */
 	arcan_frameserver* rv =
 		arcan_frameserver_spawn_subsegment(
-			(arcan_frameserver*)state->ptr, true,
+			(arcan_frameserver*)state->ptr, SEGID_ENCODER,
 			sobj->vstore->w, sobj->vstore->h, 0
 		);
 
