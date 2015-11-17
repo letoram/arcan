@@ -257,6 +257,14 @@ enum ARCAN_TARGET_COMMAND {
 	TARGET_COMMAND_SEEKTIME,
 
 /*
+ * For segments that have indicated content-state, move content position
+ * to specified "absolute" position:
+ * ioevs[0].iv = x axis: 0[no change], 1 (left) <= n <= 65536 (right)
+ * ioevs[1].iv = y axis: 0[no change], 1 (top) <= n <= 65536 (bottom)
+ */
+	TARGET_COMMAND_SEEKCONTENT,
+
+/*
  * A hint in regards to the currently displayed dimensions.  It is up to the
  * program running on the server to decide how much internal resolution that it
  * is recommended for the client to use. When the visible image resolution
@@ -264,11 +272,11 @@ enum ARCAN_TARGET_COMMAND {
  * appear as a friendly suggestion to resize.
  * The continued field may be set to !0 indicating that there will be more
  * resize events shortly.
- * The 3/4 slots, if set, indicates the phyiscal properties of the display
+ * The 3/4 slots, if set, indicates the physical properties of the display
  * currently in use.
  * ioevs[0].iv = width,
  * ioevs[1].iv = height,
- * ioevs[2].iv = continued,
+ * ioevs[2].iv = continued
  * ioevs[3].iv = (uint16_t) xdpi << 16 | (uint16_t) ydpi in mm.
  * ioevs[4].iv = RGB layout (0 RGB, 1 BGR, 2 VRGB, 3 VBGR)
  */
@@ -304,10 +312,15 @@ enum ARCAN_TARGET_COMMAND {
  * ioev[0].iv carries the client- provided request cookie -- or as an explicit
  * request from the parent that a new window of a certain type should be
  * created (used for image- transfers, debug windows, ...)
+ * ioev[1].iv is set to !0 if the segment is used to receive rather than send
+ * data.
+ * ioev[2].iv carries the current segment type, which should pair the request
+ * (or if the request is unknown, hint what it should be used for).
  *
  * To access this segment, call arcan_shmif_acquire with a NULL key. This can
  * only be called once for each NEWSEGMENT event and the user accepts
- * responsibility for the segment.
+ * responsibility for the segment. Future calls to _poll or _wait with a
+ * pending NEWSEGMENT without accept will drop the segment negotiation.
  */
 	TARGET_COMMAND_NEWSEGMENT,
 
@@ -362,9 +375,10 @@ enum ARCAN_TARGET_COMMAND {
 };
 
 /*
- * These events map from a connected client to an arcan server, the
- * namespacing is transitional and it is recommended that the indirection
- * macro, ARCAN_EVENT(X) is used.
+ * These events map from a connected client to an arcan server, the namespacing
+ * is transitional and it is recommended that the indirection macro,
+ * ARCAN_EVENT(X) is used. Those marked UNIQUE _may_ lead to the queue window
+ * being scanned for newer events of the same time, discarding previous ones.
  */
 #define _INT_SHMIF_TMERGE(X, Y) X ## Y
 #define _INT_SHMIF_TEVAL(X, Y) _INT_SHMIF_TMERGE(X, Y)
@@ -384,6 +398,7 @@ enum ARCAN_EVENT_EXTERNAL {
 	EVENT_EXTERNAL_COREOPT,
 
 /*
+ * [UNIQUE]
  * Dynamic data source identification string, similar to message but is
  * expected to come when something has changed radically, (streaming external
  * video sources for instance).  uses the message field.
@@ -408,7 +423,7 @@ enum ARCAN_EVENT_EXTERNAL {
  */
 	EVENT_EXTERNAL_BUFFERSTREAM,
 
-/*
+/* [UNIQUE]
  * Contains additional timing information about a delivered videoframe.
  * Uses framestatus substructure.
  */
@@ -421,18 +436,21 @@ enum ARCAN_EVENT_EXTERNAL {
 	EVENT_EXTERNAL_STREAMINFO,
 
 /*
+ * [UNIQUE]
  * Playback information regarding completion, current time, estimated length
  * etc. Uses the streaminf substructure.
  */
 	EVENT_EXTERNAL_STREAMSTATUS,
 
 /*
+ * [UNIQUE]
  * hint that serialization operations (STORE / RESTORE) are possible and how
  * much buffer data / which transfer limits that apply.
  */
 	EVENT_EXTERNAL_STATESIZE,
 
 /*
+ * [UNIQUE]
  * hint that any pending buffers on the audio device should be discarded.
  * used primarily for A/V synchronization.
  */
@@ -454,6 +472,7 @@ enum ARCAN_EVENT_EXTERNAL {
 	EVENT_EXTERNAL_CURSORINPUT,
 
 /*
+ * [UNIQUE]
  * Hint how the cursor is to be rendered; i.e. if it's locally defined or a
  * user-readable string suggesting what kind of cursor image that could be
  * used. Uses the messagefield and the effect is implementation defined, though
@@ -476,7 +495,13 @@ enum ARCAN_EVENT_EXTERNAL {
 	EVENT_EXTERNAL_VIEWPORT,
 
 /*
- * Hint that a specific input label is supported Uses the labelhint
+ * [UNIQUE]
+ * Hint about local content state in regards to uses the content substructure.
+ */
+	EVENT_EXTERNAL_CONTENT,
+
+/*
+ * Hint that a specific input label is supported. Uses the labelhint
  * substructure and label is subject to A-Z,0-9_ normalization with * used
  * as wildchar character for incremental indexing.
  */
@@ -487,6 +512,12 @@ enum ARCAN_EVENT_EXTERNAL {
  * (see SEGID_ table), uses registr substructure.
  */
 	EVENT_EXTERNAL_REGISTER,
+
+/*
+ * Request attention to the segment or subsegment, uses the message substr
+ * and multipart messages need to be properly terminated.
+ */
+	EVENT_EXTERNAL_ALERT,
 
 /*
  * Request that the frameserver provide a monotonic update clock for events,
@@ -817,8 +848,8 @@ typedef struct arcan_extevent {
 	union {
 /*
  * For events that set one or multiple short messages:
- * MESSAGE, IDENT, COREOPT, CURSORHINT
- * Only MESSAGE type has any multipart meaning
+ * MESSAGE, IDENT, COREOPT, CURSORHINT, ALERT
+ * Only MESSAGE and ALERT type has any multipart meaning
  */
 		struct {
 			uint8_t data[78];
@@ -892,23 +923,29 @@ typedef struct arcan_extevent {
 
 /*
  * These are - reset - on a resize operation.
- *  (x+w, y+h)    - clipped against actual surface dimensions
- *  (bl/br/bt/bb) - "border- pixels" (bl+br < w-1) (bt+bb < h-1)
- *  (transfer)    - !0 attempt to limit transfer operations to
+ *  (x+w), (y+h)  - clipped against actual surface dimensions
+ *  border (px)   -
+ *   transfer     - !0 attempt to limit transfer operations to
  *	                specified area, hint- only.
- *  (viewid)      - for supporting multiple views on the same segment,
+ *   viewid       - for supporting multiple views on the same segment,
  *                  default to 0 value
  */
 		struct {
 			uint16_t x, y, w, h;
-			uint8_t bl, br, bt, bb;
+			uint8_t border;
 			uint8_t transfer;
 			uint8_t viewid;
 		} viewport;
 
+/*
+ * Used as hints for content (scrollbar etc.)
+ * x_pos + x_sz - 0 <= n <= 1.0
+ * y_pos + y_sz - 0 <= n <= 1.0
+ * 0 lim disables the dimension
+ */
 		struct {
-			uint16_t x_pos, x_lim;
-			uint16_t y_pos, y_lim;
+			float x_pos, x_sz;
+			float y_pos, y_sz;
 		} content;
 
 /*
