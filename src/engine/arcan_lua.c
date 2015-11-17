@@ -3475,6 +3475,35 @@ static inline bool tgtevent(arcan_vobj_id dst, arcan_event ev)
 	return false;
 }
 
+static void push_view(lua_State* ctx, struct arcan_extevent* ev, int top)
+{
+	lua_pushstring(ctx, "view");
+	lua_newtable(ctx);
+	int top2 = lua_gettop(ctx);
+	lua_pushnumber(ctx, 1);
+	lua_pushnumber(ctx, ev->viewport.x);
+	lua_rawset(ctx, top2);
+	lua_pushnumber(ctx, 2);
+	lua_pushnumber(ctx, ev->viewport.y);
+	lua_rawset(ctx, top2);
+	lua_pushnumber(ctx, 3);
+/* fake clamp to protect against user doing div/0 on bad data */
+	float ul = ev->viewport.x + ev->viewport.w;
+	ul = ul > 1.0 ? 1.0 : ul;
+	ul = ul < ev->viewport.x ? ev->viewport.x + 0.01 : ul;
+	lua_pushnumber(ctx, ul);
+	lua_rawset(ctx, top2);
+	lua_pushnumber(ctx, 4);
+	ul = ev->viewport.y + ev->viewport.h;
+	ul = ul > 1.0 ? 1.0 : ul;
+	ul = ul < ev->viewport.y ? ev->viewport.y + 0.01 : ul;
+	lua_pushnumber(ctx, ul);
+	lua_rawset(ctx, top2);
+	lua_rawset(ctx, top);
+	tblnum(ctx, "border", ev->viewport.border, top);
+	tblnum(ctx, "view", ev->viewport.viewid, top);
+}
+
 /*
  * the segment request is treated a little different,
  * we maintain a global state
@@ -3736,16 +3765,29 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				tblnum(ctx, "value", ev->ext.clock.rate, top);
 				if (ev->ext.clock.once)
 					tblnum(ctx, "id", ev->ext.clock.id, top);
-
+			break;
+			case EVENT_EXTERNAL_CONTENT:
+				tblstr(ctx, "kind", "content_state", top);
+				tblnum(ctx, "rel_x", (float)ev->ext.content.x_pos, top);
+				tblnum(ctx, "rel_y", (float)ev->ext.content.y_pos, top);
+				tblnum(ctx, "x_size", (float)ev->ext.content.x_sz, top);
+				tblnum(ctx, "y_size", (float)ev->ext.content.y_sz, top);
+			break;
+			case EVENT_EXTERNAL_VIEWPORT:
+				tblstr(ctx, "kind", "viewport", top);
+				push_view(ctx, &ev->ext, top);
 			break;
 			case EVENT_EXTERNAL_CURSORHINT:
 				fltpush(mcbuf, extmsg_sz, (char*)ev->ext.message.data, flt_alpha, '?');
 				tblstr(ctx, "kind", "cursorhint", top);
 			break;
+			case EVENT_EXTERNAL_ALERT:
+				tblstr(ctx, "kind", "alert", top);
+				if (0)
 			case EVENT_EXTERNAL_MESSAGE:
+					tblstr(ctx, "kind", "message", top);
 				slim_utf8_push(mcbuf, extmsg_sz, (char*)ev->ext.message.data);
 				tblbool(ctx, "multipart", ev->ext.message.multipart != 0, top);
-				tblstr(ctx, "kind", "message", top);
 				tblstr(ctx, "message", mcbuf, top);
 			break;
 			case EVENT_EXTERNAL_FAILURE:
