@@ -6298,7 +6298,7 @@ static int targetalloc(lua_State* ctx)
 	if (lua_type(ctx, cb_ind+1) == LUA_TNUMBER)
 		tag = lua_tonumber(ctx, cb_ind+1);
 	else if (lua_type(ctx, cb_ind+1) == LUA_TSTRING){
-		const char* msg = lua_tostring(ctx, 2);
+		const char* msg = lua_tostring(ctx, cb_ind+1);
 /* only type explicitly supported now */
 		if (strcmp(msg, "debug") == 0)
 			segid = SEGID_DEBUG;
