@@ -256,7 +256,7 @@ set (CMAKE_EXTERNAL_DEFS
 	-DLIBTYPE=STATIC
 )
 
-if (EXISTS ${EXTERNAL_SRC_DIR}/git/freetype)
+if (EXISTS ${EXTERNAL_SRC_DIR}/git/freetype AND STATIC_FREETYPE)
 	set(STATIC_FREETYPE ON)
 	amsg("${CL_YEL}Building Freetype static from external/git mirror${CL_RST}")
 	ExternalProject_Add(Freetype
@@ -266,8 +266,17 @@ if (EXISTS ${EXTERNAL_SRC_DIR}/git/freetype)
 		${EXTERNAL_DEFS}
 		${CMAKE_EXTERNAL_DEFS}
 	)
+	find_package(PNG REQUIRED)
+	find_package(ZLIB REQUIRED)
+	find_package(BZip2 REQUIRED)
 	set(FREETYPE_INCLUDE_DIRS "${CMAKE_CURRENT_BINARY_DIR}/include/freetype2")
 	set(FREETYPE_LIBRARY "${CMAKE_CURRENT_BINARY_DIR}/lib/libfreetype.a")
+	set(FREETYPE_LIBRARIES
+		${FREETYPE_LIBRARY}
+		${PNG_LIBRARIES}
+		${ZLIB_LIBRARIES}
+		${BZIP2_LIBRARIES}
+	)
 	list(APPEND MAIN_DEPS Freetype)
 else()
 	find_package(Freetype REQUIRED QUIET)
@@ -353,7 +362,7 @@ endif()
 LIST (APPEND
 	ARCAN_LIBRARIES
 	openctm
-	${FREETYPE_LIBRARY}
+	${FREETYPE_LIBRARIES}
 	${LUA_LIBRARIES}
 	${SQLITE3_LIBRARIES}
 )
