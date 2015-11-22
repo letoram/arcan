@@ -95,7 +95,6 @@ typedef void(*pixconv_fun)(const void* data, shmif_pixel* outp,
 
 static struct {
 	struct synch_graphing* sync_data; /* overlaying statistics */
-	int graph_pending;
 
 /* flag for rendering callbacks, should the frame be processed or not */
 	bool skipframe_a, skipframe_v;
@@ -1030,14 +1029,14 @@ static inline int16_t libretro_inputmain(unsigned port, unsigned dev,
 	return 0;
 }
 
-static void enable_graphseg(int id, const char* key)
+static void enable_graphseg()
 {
 	struct arcan_shmif_cont cont =
 		arcan_shmif_acquire(&retroctx.shmcont,
-			key, SEGID_DEBUG, SHMIF_DISABLE_GUARD);
+			NULL, SEGID_DEBUG, SHMIF_DISABLE_GUARD);
 
 	if (!cont.addr){
-		LOG("segment transfer failed in (%d:%s), investigate.\n", id, key );
+		LOG("segment transfer failed, investigate.\n");
 		return;
 	}
 
@@ -1046,6 +1045,7 @@ static void enable_graphseg(int id, const char* key)
 		return;
 	}
 
+	LOG("spawning debug thread\n");
 	struct arcan_shmif_cont* pcont = malloc(sizeof(struct arcan_shmif_cont));
 
 	if (retroctx.sync_data)
@@ -1225,28 +1225,6 @@ static inline void targetev(arcan_event* ev)
 		break;
 
 		case TARGET_COMMAND_GRAPHMODE:
-			if (retroctx.sync_data)
-				retroctx.sync_data->free(&retroctx.sync_data);
-
-			retroctx.graphmode = tgt->ioevs[0].iv;
-			if (retroctx.graphmode){
-				if (retroctx.graph_pending){
-					LOG("debuggraph request while another still pending.\n");
-					return;
-				}
-
-				retroctx.graph_pending = rand();
-				arcan_event outev = {
-					.category = EVENT_EXTERNAL,
-					.ext.kind = ARCAN_EVENT(SEGREQ),
-					.ext.segreq.width = 640,
-					.ext.segreq.height = 240,
-					.ext.segreq.kind = SEGID_DEBUG,
-					.ext.segreq.id = retroctx.graph_pending
-				};
-
-				arcan_shmif_enqueue(&retroctx.shmcont, &outev);
-			}
 		break;
 
 		case TARGET_COMMAND_NTSCFILTER:
@@ -1284,8 +1262,8 @@ static inline void targetev(arcan_event* ev)
  * retexture transfer page, debugwindow or secondary etc. screens
  */
 		case TARGET_COMMAND_NEWSEGMENT:
-			if (retroctx.graph_pending ==	tgt->ioevs[1].iv)
-				enable_graphseg(tgt->ioevs[0].iv, tgt->message);
+			if (tgt->ioevs[2].iv == SEGID_DEBUG)
+				enable_graphseg();
 		break;
 
 /* any event not being UNPAUSE is ignored, no frames are processed
