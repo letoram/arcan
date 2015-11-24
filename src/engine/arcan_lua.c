@@ -5771,16 +5771,17 @@ static int targetgraph(lua_State* ctx)
 {
 	LUA_TRACE("target_graphmode");
 
-	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
-	unsigned ioval = luaL_checkinteger(ctx, 2);
-
 	arcan_event ev = {
 		.category = EVENT_TARGET,
 		.tgt.kind = TARGET_COMMAND_GRAPHMODE,
-		.tgt.ioevs[0].iv = ioval
+		.tgt.ioevs[0].iv = luaL_checkinteger(ctx, 2),
+		.tgt.ioevs[1].fv = luaL_optnumber(ctx, 3, 0.0),
+		.tgt.ioevs[2].fv = luaL_optnumber(ctx, 4, 0.0),
+		.tgt.ioevs[3].fv = luaL_optnumber(ctx, 5, 0.0),
+		.tgt.ioevs[4].fv = luaL_optnumber(ctx, 6, 0.0)
 	};
 
-	tgtevent(tgt, ev);
+	tgtevent(luaL_checkvid(ctx, 1, NULL), ev);
 
 	LUA_ETRACE("target_graphmode", NULL);
 	return 0;

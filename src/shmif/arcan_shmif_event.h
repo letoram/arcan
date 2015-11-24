@@ -352,6 +352,8 @@ enum ARCAN_TARGET_COMMAND {
  * representation for a specific segment. It is implementation defined and
  * primarily used in custom LWA- targeted appls that need custom frameservers
  * as well (e.g. the Senseye project).
+ * ioev[0].iv = mode,
+ * ioev[1].fv .. ioev[4].fv = user defined, mode related values
  */
 	TARGET_COMMAND_GRAPHMODE,
 
@@ -365,7 +367,8 @@ enum ARCAN_TARGET_COMMAND {
 	TARGET_COMMAND_MESSAGE,
 
 /*
- * Specialized output hinting, considered deprecated
+ * Specialized output hinting, considered deprecated. To be replaced with
+ * graphmode.
  */
 	TARGET_COMMAND_VECTOR_LINEWIDTH,
 	TARGET_COMMAND_VECTOR_POINTSIZE,
