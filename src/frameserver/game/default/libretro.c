@@ -134,6 +134,7 @@ static struct {
 	uint16_t* ntsc_imb;
 	bool ntscconv;
 	snes_ntsc_t* ntscctx;
+	int ntscvals[4];
 	snes_ntsc_setup_t ntsc_opts;
 
 /* SHM- API input /output */
@@ -195,7 +196,7 @@ static struct {
 };
 
 /* render statistics unto *vidp, at the very end of this .c file */
-static void update_ntsc(int v1, int v2, int v3, int v4);
+static void update_ntsc();
 static void push_stats();
 static void log_msg(char* msg, bool flush);
 
@@ -1225,16 +1226,16 @@ static inline void targetev(arcan_event* ev)
 		break;
 
 		case TARGET_COMMAND_GRAPHMODE:
-		break;
-
-		case TARGET_COMMAND_NTSCFILTER:
-			toggle_ntscfilter(tgt->ioevs[0].iv);
-		break;
-
-/* ioev[0].iv = group, 1.fv, 2.fv, 3.fv */
-		case TARGET_COMMAND_NTSCFILTER_ARGS:
-			update_ntsc(tgt->ioevs[0].iv, tgt->ioevs[1].fv,
-				tgt->ioevs[2].fv, tgt->ioevs[3].fv);
+			if (tgt->ioevs[0].iv == 1 || tgt->ioevs[1].iv == 2){
+				toggle_ntscfilter(tgt->ioevs[1].iv - 1);
+			}
+			else if (tgt->ioevs[0].iv == 3){
+				retroctx.ntscvals[0] = tgt->ioevs[1].fv;
+				retroctx.ntscvals[1] = tgt->ioevs[2].fv;
+				retroctx.ntscvals[2] = tgt->ioevs[3].fv;
+				retroctx.ntscvals[3] = tgt->ioevs[4].fv;
+				update_ntsc();
+			}
 		break;
 
 /* 0 : auto, -1 : single-step, > 0 render every n frames.
@@ -1388,7 +1389,7 @@ static inline void flush_eventq(){
 			retroctx.pause && (arcan_timesleep(1), 1));
 }
 
-void update_ntsc(int v1, int v2, int v3, int v4)
+void update_ntsc()
 {
 	static bool init;
 	if (!init){
@@ -1399,7 +1400,9 @@ void update_ntsc(int v1, int v2, int v3, int v4)
 	}
 
 	snes_ntsc_update_setup(
-		retroctx.ntscctx, &retroctx.ntsc_opts, v1, v2, v3, v4);
+		retroctx.ntscctx, &retroctx.ntsc_opts,
+		retroctx.ntscvals[0], retroctx.ntscvals[1],
+		retroctx.ntscvals[2], retroctx.ntscvals[3]);
 }
 
 /* return true if we're in synch (may sleep),

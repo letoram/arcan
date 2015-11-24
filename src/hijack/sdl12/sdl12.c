@@ -443,16 +443,16 @@ void process_targetevent(unsigned kind, arcan_tgtevent* ev)
 {
 	switch (kind)
 	{
-		case TARGET_COMMAND_VECTOR_LINEWIDTH:
-			global.update_vector = true;
-			global.line_size = ev->ioevs[0].fv;
+		case TARGET_COMMAND_GRAPHMODE:
+			if (ev->ioevs[0].iv == 4){
+				global.update_vector = true;
+				global.line_size = ev->ioevs[0].fv;
+			}
+			else if (ev->ioevs[0].iv == 5){
+				global.update_vector = true;
+				global.point_size = ev->ioevs[0].fv;
+			}
 		break;
-
-		case TARGET_COMMAND_VECTOR_POINTSIZE:
-			global.update_vector = true;
-			global.point_size = ev->ioevs[0].fv;
-		break;
-
 		case TARGET_COMMAND_EXIT:
 			exit(0);
 		break;

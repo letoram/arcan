@@ -256,9 +256,6 @@ static const int RENDERFMT_COLOR = RENDERTARGET_COLOR;
 static const int RENDERFMT_DEPTH = RENDERTARGET_DEPTH;
 static const int RENDERFMT_FULL  = RENDERTARGET_COLOR_DEPTH_STENCIL;
 
-static const int POSTFILTER_NTSC = 100;
-static const int POSTFILTER_OFF  = 10;
-
 extern struct arcan_dbh* dbhandle;
 
 enum arcan_cb_source {
@@ -6054,92 +6051,6 @@ static int targetrestore(lua_State* ctx)
 	return 1;
 }
 
-static int targetlinewidth(lua_State* ctx)
-{
-	LUA_TRACE("target_linewidth");
-
-	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
-	float lsz = luaL_checknumber(ctx, 2);
-	arcan_event ev = {
-			.category = EVENT_TARGET,
-			.tgt.kind = TARGET_COMMAND_VECTOR_LINEWIDTH,
-			.tgt.ioevs[0].fv = lsz
-	};
-
-	tgtevent(tgt, ev);
-
-	LUA_ETRACE("target_linewidth", NULL);
-	return 0;
-}
-
-static int targetpointsize(lua_State* ctx)
-{
-	LUA_TRACE("target_pointsize");
-
-	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
-	float psz = luaL_checknumber(ctx, 2);
-	arcan_event ev = {
-			.category = EVENT_TARGET,
-			.tgt.kind = TARGET_COMMAND_VECTOR_POINTSIZE,
-			.tgt.ioevs[0].fv = psz
-	};
-
-	tgtevent(tgt, ev);
-
-	LUA_ETRACE("target_pointsize", NULL);
-	return 0;
-}
-
-static int targetpostfilter(lua_State* ctx)
-{
-	LUA_TRACE("target_postfilter");
-
-	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
-	int filtertype = luaL_checknumber(ctx, 2);
-
-	if (filtertype != POSTFILTER_NTSC && filtertype != POSTFILTER_OFF)
-		arcan_warning("targetpostfilter() -- "
-			"unknown filter (%d) specified.\n", filtertype);
-	else {
-		arcan_event ev = {
-			.category = EVENT_TARGET,
-			.tgt.kind = TARGET_COMMAND_NTSCFILTER
-		};
-
-		ev.tgt.ioevs[0].iv = filtertype == POSTFILTER_NTSC;
-		tgtevent(tgt, ev);
-	}
-
-	LUA_ETRACE("target_postfilter", NULL);
-	return 0;
-}
-
-static int targetpostfilterargs(lua_State* ctx)
-{
-	LUA_TRACE("target_postfilter_args");
-
-	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
-	int group = luaL_checknumber(ctx, 2);
-	float v1  = luaL_optnumber(ctx, 3, 0.0);
-	float v2  = luaL_optnumber(ctx, 4, 0.0);
-	float v3  = luaL_optnumber(ctx, 5, 0.0);
-
-	arcan_event ev = {
-		.category = EVENT_TARGET,
-		.tgt.kind = TARGET_COMMAND_NTSCFILTER_ARGS
-	};
-
-	ev.tgt.ioevs[0].iv = group;
-	ev.tgt.ioevs[1].fv = v1;
-	ev.tgt.ioevs[2].fv = v2;
-	ev.tgt.ioevs[3].fv = v3;
-
-	tgtevent(tgt, ev);
-
-	LUA_ETRACE("target_postfilter_args", NULL);
-	return 0;
-}
-
 static int targetstepframe(lua_State* ctx)
 {
 	LUA_TRACE("stepframe_target");
@@ -8817,12 +8728,8 @@ static const luaL_Reg tgtfuns[] = {
 {"target_verbose",             targetverbose            },
 {"target_synchronous",         targetsynchronous        },
 {"target_flags",               targetflags              },
-{"target_pointsize",           targetpointsize          },
-{"target_linewidth",           targetlinewidth          },
-{"target_postfilter",          targetpostfilter         },
 {"target_graphmode",           targetgraph              },
 {"target_displayhint",         targetdisphint           },
-{"target_postfilter_args",     targetpostfilterargs     },
 {"target_seek",                targetseek               },
 {"target_parent",              targetparent             },
 {"target_coreopt",             targetcoreopt            },
@@ -9207,8 +9114,6 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"MOUSE_BTNLEFT", 1},
 {"MOUSE_BTNMIDDLE", 2},
 {"MOUSE_BTNRIGHT", 3},
-{"POSTFILTER_NTSC", POSTFILTER_NTSC},
-{"POSTFILTER_OFF", POSTFILTER_OFF},
 #ifdef ARCAN_LED
 {"LEDCONTROLLERS", arcan_led_controllers()},
 #else
