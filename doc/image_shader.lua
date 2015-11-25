@@ -6,8 +6,10 @@
 -- @note: if only the vid is provided, the active program won't be changed
 -- @note: if a string argument is supplied as the second argument, the routine
 -- will first resolve it by looking for a previously compiled shader with a
--- name that matches the argument. If no match is found, the shader state will
--- forcibly be reset to DEFAULT.
+-- name that matches the argument.
+-- @note: the shader state of all video objects are set to 'DEFAULT' which
+-- is some platform default safe sate that follows obj_opacity and normal
+-- texturing.
 -- @related: build_shader, shader_ugroup, shader_uniform
 -- @cfunction: setshader
 -- @flags:
