@@ -2,87 +2,163 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
+#include <stdbool.h>
 
-typedef uint16_t u_short;
-typedef uint16_t ushort;
-#include "keymap.h"
+#include <keymap/common.h>
+#include <keymap/context.h>
+#include <keymap/dump.h>
+#include <keymap/kmap.h>
 
-static size_t ucs2_to_utf8(int ucs2, uint8_t utf8[])
+static char * mk_mapname(char modifier)
 {
-	if (ucs2 < 0x80){
-		utf8[0] = ucs2;
-		return 1;
-	}
+	static char *mods[8] = {
+		"shift", "altgr", "ctrl", "alt", "shl", "shr", "ctl", "ctr"
+	};
+	static char buf[60];
+	int i;
 
-	if (ucs2 >= 0x80 && ucs2 < 0x800){
-		utf8[0] = (ucs2 >> 6) | 0xc0;
-		utf8[1] = (ucs2 & 0x3f) | 0x80;
-		return 2;
-	}
-
-	if (ucs2 >= 0x800 && ucs2 < 0xdfff){
-		if (ucs2 >= 0xd800 && ucs2 <= 0xdfff){
-			return 0;
+	if (!modifier)
+		return "plain";
+	buf[0] = 0;
+	for (i = 0; i < 8; i++)
+		if (modifier & (1 << i)) {
+			if (buf[0])
+				strcat(buf, "_");
+			strcat(buf, mods[i]);
 		}
-
-		utf8[0] = ((ucs2 >> 12)) | 0xe0;
-		utf8[1] = ((ucs2 >> 6) & 0x3f) | 0x80;
-		utf8[2] = (ucs2 & 0x3f) | 0x80;
-		return 3;
-	}
-
-	if (ucs2 >= 0x1000 && ucs2 < 0x10ffff){
-		utf8[0] = (ucs2 >> 18) | 0xf0;
-		utf8[1] = ((ucs2 >> 12)) | 0xe0;
-		utf8[2] = ((ucs2 >> 6) & 0x3f) | 0x80;
-		utf8[3] = (ucs2 & 0x3f) | 0x80;
-		return 4;
-	}
-
-	return 0;
+	return buf;
 }
 
-/* just use keymap.h and emit arcan/symtable.lua compatible keymap */
-int main(int argc, char** arg)
+static inline size_t u32u8(uint32_t u32, uint8_t* u8)
 {
+    if (u32 < 0x80) {
+        *u8 = (uint8_t)u32;
+        return 1;
+    }
+    if (u32 < 0x800) {
+        u8[0] = 0xc0 | ((u32 & 0x07c0) >> 6);
+        u8[1] = 0x80 |  (u32 & 0x003f);
+        return 2;
+    }
+    if (u32 < 0x10000) {
+        u8[0] = 0xe0 | ((u32 & 0xf000) >> 12);
+        u8[1] = 0x80 | ((u32 & 0x0fc0) >>  6);
+        u8[2] = 0x80 |  (u32 & 0x003f);
+        return 3;
+    }
+    if (u32 < 0x110000) {
+        u8[0] = 0xf0 | ((u32 & 0x1c0000) >> 18);
+        u8[1] = 0x80 | ((u32 & 0x03f000) >> 12);
+        u8[2] = 0x80 | ((u32 & 0x000fc0) >>  6);
+        u8[3] = 0x80 |  (u32 & 0x00003f);
+        return 4;
+    }
+    return 0;
+}
+
+static void dump_utf8(uint8_t ub[4], size_t nb)
+{
+	if (nb == 1)
+		fprintf(stdout, "\\%.3d", ub[0]);
+	else if (nb == 2)
+		fprintf(stdout, "\\%.3d\\%.3d", ub[0], ub[1]);
+	else if (nb == 3)
+		fprintf(stdout, "\\%.3d\\%.3d\\%.3d", ub[0], ub[1], ub[2]);
+	else if (nb == 4)
+		fprintf(stdout, "\\%.3d\\%.3d\\%.3d\\%.3d", ub[0], ub[1], ub[2], ub[3]);
+}
+
+static size_t code_tou8(struct lk_ctx* ctx, int code, uint8_t ub[4])
+{
+	char* sym = lk_code_to_ksym(ctx, code);
+	if (!sym || strcmp(sym, "VoidSymbol") == 0){
+		free(sym);
+		return 0;
+	}
+
+	size_t nb = u32u8(lk_ksym_to_unicode(ctx, sym), ub);
+	if (0 == nb){
+		free(sym);
+		return 0;
+	}
+
+	free(sym);
+	return nb;
+}
+
+int main(int argc, char** argv)
+{
+	struct lk_ctx* ctx = lk_init();
+
+	if (argc < 3){
+			fprintf(stderr, "usage: conv name keymap1 keymap2 .. keymapn \n");
+			return EXIT_FAILURE;
+	}
+
+	lk_add_constants(ctx);
+	lk_set_log_fn(ctx, NULL, NULL);
+	lk_set_parser_flags(ctx, LK_FLAG_UNICODE_MODE | LK_FLAG_PREFER_UNICODE);
+
+	for (size_t i = 2; i < argc; i++){
+		lkfile_t* file = lk_fpopen(argv[i]);
+	if (file){
+		lk_parse_keymap(ctx, file);
+		lk_fpclose(file);
+	}
+	else
+		fprintf(stderr, "couldn't load keymap (%s)\n", argv[i]);
+	}
+
 	fprintf(stdout,
 "local restbl = {\n\
 	name = [[%s]],\n\
 	diac_ind = 0,\n\
+	diac = {},\n\
 	map = {},\n\
 	platform_flt = function(tbl, str)\n\
 		return string.match(str, \"linux\") ~= nil;\n\
 	end\n\
-};", arg[1]);
+};", argv[1]);
 
-/* do plain_map, shift_map, altgr_map, ctrl_map, shift_ctrl_map,
- * altgr_ctrl_map, alt_map - do nothing for 0xf200 */
-	struct {
-		const char* key;
-		u_short* map;
-	} maps[] = {
-		{.key = "none", .map = plain_map},
-		{.key = "altgr", .map = altgr_map},
-		{.key = "ctrl", .map = ctrl_map},
-		{.key = "shift_ctrl", .map = shift_ctrl_map},
-		{.key = "altgr_ctrl", .map = altgr_ctrl_map},
-		{.key = "alt", .map = alt_map}
-	};
-	for (int map=0; map < sizeof(maps)/sizeof(maps[0]); map++){
-		fprintf(stdout, "local buf = {};\n");
-
-		for (size_t i = 0; i < NR_KEYS; i++){
-			uint8_t u8buf[4];
-			size_t nb;
-
-			if (maps[map].map[i] && maps[map].map[i] != 0xf200 &&
-				(nb = ucs2_to_utf8(maps[map].map[i], u8buf)) > 0){
-				fprintf(stdout, "buf[%zu] = [[", i);
-				fwrite(u8buf, 1, nb, stdout);
-				fwrite("]];\n", 1, 4, stdout);
+	for (size_t i = 0; i < MAX_NR_KEYMAPS; i++){
+		if (lk_map_exists(ctx, i)){
+			fprintf(stdout, "local buf = {};\n");
+			for (size_t j = 0; j < NR_KEYS; j++){
+				int code = lk_get_key(ctx, i, j);
+				uint8_t ub[4];
+				size_t nb = code_tou8(ctx, code, ub);
+				if (0 == nb)
+					continue;
+				fprintf(stdout, "buf[%zu] = \"", j);
+				dump_utf8(ub, nb);
+				fprintf(stdout, "\";\n");
 			}
+			fprintf(stdout, "restbl.map[\"%s\"] = buf;\n", mk_mapname(i));
 		}
-		fprintf(stdout, "restbl.map[%s] = buf;\n", maps[map].key);
+	}
+
+	int ind = 1;
+	for (size_t i=0; i < MAX_DIACR; i++){
+		if (lk_diacr_exists(ctx, i)){
+			struct lk_kbdiacr dcr;
+			lk_get_diacr(ctx, i, &dcr);
+
+			uint8_t base[4], diacr[4], res[4];
+			size_t base_sz = code_tou8(ctx, dcr.base, base);
+			size_t diacr_sz = code_tou8(ctx, dcr.diacr, diacr);
+			size_t res_sz = code_tou8(ctx, dcr.result, res);
+			if (base_sz && diacr_sz && res_sz){
+				fprintf(stdout, "restbl.diac[%d] = {\"", ind++);
+				dump_utf8(base, base_sz);
+				fprintf(stdout, "\", \"");
+				dump_utf8(diacr, diacr_sz);
+				fprintf(stdout, "\", \"");
+				dump_utf8(res, res_sz);
+				fprintf(stdout, "\"};\n");
+			}
+			else
+				fprintf(stdout, "failed on diacr %zu\n", i);
+		}
 	}
 
 	fprintf(stdout, "return restbl;\n");

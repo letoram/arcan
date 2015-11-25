@@ -1,5 +1,19 @@
-still scripts missing to scan / automate the process but:
+This tool is a quick hack to convert some linux keymap to a .lua script
+that can be used with the symtable script to get utf-8 encoded character
+outputs.
 
-loadkeys -m -q /usr/share/keymaps/i386/qwerty/se-latin1.kmap.gz &> keymap.h
-gcc -std=c99 conv.c -o conv
-./conv "se-SV" > se-latin1.lua
+Feel free to patch- extend or rewrite this into something that is not
+completely *****, with support for keymap merging and other keymap formats,
+e.g. android keymap -> charmap -> .lua
+
+to actually get conv.c to build you need libkeymap to read the .. exotic ..
+keymap format linux uses. For that you need (automake, yacc and flex):
+
+git clone git://git.kernel.org/pub/scm/linux/kernel/git/legion/kbd.git
+cd kbd
+./autogen.sh
+./configure --enable-libkeymap
+make && make install
+
+gcc -std=c99 conv.c -o conv -lkeymap
+./conv "mapname" /usr/share/keymaps/i386/qwerty/se-latin1.kmap.gz > se-latin1.lua
