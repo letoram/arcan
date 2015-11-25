@@ -1,0 +1,5 @@
+still scripts missing to scan / automate the process but:
+
+loadkeys -m -q /usr/share/keymaps/i386/qwerty/se-latin1.kmap.gz &> keymap.h
+gcc -std=c99 conv.c -o conv
+./conv "se-SV" > se-latin1.lua
