@@ -30,6 +30,9 @@
 -- by available vids and other resources so that a malicious client
 -- cannot starve the serving arcan process. See the 'recursive_evil'
 -- security test case for more detail.
+-- @note: Subsegments are always bound to the primary segment,
+-- this means that attempts at complex hierarchies (main- window
+-- with a popup window with a titlebar with an icon is not possible).
 -- @group: targetcontrol
 -- @cfunction: targetaccept
 -- @related: target_alloc

@@ -3497,6 +3497,7 @@ static void push_view(lua_State* ctx, struct arcan_extevent* ev, int top)
 	lua_pushnumber(ctx, ul);
 	lua_rawset(ctx, top2);
 	lua_rawset(ctx, top);
+	tblbool(ctx, "invisible", ev->viewport.invisible != 0, top);
 	tblnum(ctx, "border", ev->viewport.border, top);
 	tblnum(ctx, "view", ev->viewport.viewid, top);
 }
@@ -3541,11 +3542,10 @@ static void emit_segreq(lua_State* ctx, struct arcan_extevent* ev)
 }
 
 /*
- * emit input() call based on a arcan_event, uses a separate format
- * and translation to make it easier for the user to modify. This
- * is a rather ugly and costly step in the whole chain,
- * planned to switch into a more optimized less string- damaged
- * approach around the hardening stage.
+ * emit input() call based on a arcan_event, uses a separate format and
+ * translation to make it easier for the user to modify. This is a rather ugly
+ * and costly step in the whole chain, planned to switch into a more optimized
+ * less string- damaged approach around the hardening stage.
  */
 void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 {

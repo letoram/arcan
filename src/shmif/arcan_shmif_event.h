@@ -927,16 +927,19 @@ typedef struct arcan_extevent {
 /*
  * These are - reset - on a resize operation.
  *  (x+w), (y+h)  - clipped against actual surface dimensions
- *  border (px)   -
+ *  border (px)   - how thick the border area
  *   transfer     - !0 attempt to limit transfer operations to
  *	                specified area, hint- only.
- *   viewid       - for supporting multiple views on the same segment,
+ *	invisible     - hint that the segment does not need to have its
+ *	                backing store synched or drawn at this point
+ *  viewid        - for supporting multiple views on the same segment,
  *                  default to 0 value
  */
 		struct {
 			uint16_t x, y, w, h;
 			uint8_t border;
 			uint8_t transfer;
+			uint8_t invisible;
 			uint8_t viewid;
 		} viewport;
 

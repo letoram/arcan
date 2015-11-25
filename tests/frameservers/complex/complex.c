@@ -95,6 +95,17 @@ static void got_title(struct arcan_shmif_cont* cont)
 	draw_text(cont, "Custom Titlebar", 2, 2, SHMIF_RGBA(255, 255, 255, 255));
 	arcan_shmif_signal(cont, SHMIF_SIGVID);
 
+/* request new segments inside the titlebar to test if the running appl
+ * ignores more complex hiearchies */
+	arcan_shmif_enqueue(cont, &(arcan_event){
+		.ext.kind = ARCAN_EVENT(SEGREQ),
+		.ext.segreq.kind = SEGID_UNKNOWN
+	});
+	arcan_shmif_enqueue(cont, &(arcan_event){
+		.ext.kind = ARCAN_EVENT(SEGREQ),
+		.ext.segreq.kind = SEGID_TITLEBAR
+	});
+
 	arcan_event ev;
 	while (arcan_shmif_wait(cont, &ev)){
 		if (ev.category == EVENT_TARGET)
@@ -103,6 +114,14 @@ static void got_title(struct arcan_shmif_cont* cont)
 		case TARGET_COMMAND_DISPLAYHINT:
 			arcan_shmif_resize(cont,
 				ev.tgt.ioevs[0].iv, ev.tgt.ioevs[1].iv);
+			draw_box(cont, 0, 0, cont->w, cont->h, SHMIF_RGBA(69, 47, 47, 255));
+
+/* instead of drawing text, update IDENT so the user- set font can be used */
+			arcan_shmif_enqueue(cont, &(arcan_event){
+				.ext.kind = ARCAN_EVENT(IDENT),
+				.ext.message.data = "titlebar- test"
+			});
+			arcan_shmif_signal(cont, SHMIF_SIGVID);
 		break;
 		default:
 		break;
@@ -286,7 +305,6 @@ int main(int argc, char** argv)
 	};
 
 	arcan_shmif_resize(&cont, 640, 480);
-	arcan_event req;
 
 /* request all 'special types' */
 	for (size_t i = 0; i < sizeof(segtbl)/sizeof(segtbl[0]); i++){
