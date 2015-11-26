@@ -218,11 +218,12 @@ enum arcan_shmif_sigmask {
 	SHMIF_SIGBLK_ONCE = 8
 };
 
-typedef enum arcan_shmif_sigmask(
-	*shmif_trigger_hook)(struct arcan_shmif_cont*);
-
+struct arcan_shmif_cont;
 struct shmif_hidden;
 struct arcan_shmif_page;
+
+typedef enum arcan_shmif_sigmask(
+	*shmif_trigger_hook)(struct arcan_shmif_cont*);
 
 enum SHMIF_FLAGS {
 /* by default, the connection IPC resources are unlinked, this
@@ -253,6 +254,7 @@ enum SHMIF_FLAGS {
  *
  * If no arguments could be unpacked, *arg_arr will be set to NULL.
  */
+struct arg_arr;
 struct arcan_shmif_cont arcan_shmif_open(
 	enum ARCAN_SEGID type, enum SHMIF_FLAGS flags, struct arg_arr**);
 

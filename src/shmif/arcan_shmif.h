@@ -32,8 +32,19 @@
  THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+/*
+ * This header pulls in all needed standard library headers,
+ * if that is undesired, hand-pick the individual ones that are needed
+ */
 #ifndef _HAVE_ARCAN_SHMIF
 #define _HAVE_ARCAN_SHMIF
+
+#include <limits.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdbool.h>
+#include <unistd.h>
 
 #include "arcan_shmif_interop.h"
 #include "arcan_shmif_event.h"

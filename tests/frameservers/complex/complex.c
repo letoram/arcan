@@ -28,13 +28,8 @@
  *  [ ] scrollbar / content feedback support
  */
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <stdint.h>
-#include <stdbool.h>
-#include <unistd.h>
-#include <pthread.h>
 #include <arcan_shmif.h>
+#include <pthread.h>
 
 #include "font.h"
 
@@ -269,6 +264,9 @@ int main(int argc, char** argv)
 	struct arcan_shmif_cont cont = arcan_shmif_open(
 		SEGID_APPLICATION, SHMIF_ACQUIRE_FATALFAIL, &aarr);
 
+	arcan_shmif_enqueue(cont, &(arcan_event){
+		.ext.kind = ARCAN_EVENT(CLOCKREQ), .ext.clock.rate = 40});
+
 /* default static properties to send on connection */
 	struct arcan_event etbl[] = {
 		{
@@ -349,13 +347,23 @@ int main(int argc, char** argv)
 				}
 			}
 		break;
+		case TARGET_COMMAND_STEPFRAME:
+/* if it is our timer, redraw with different border area and send viewport hint */
+			if (ev.tgt.ioevs[1].iv > 1){
+					arcan_shmif_enqueue(&cont, &(arcan_event){
+						.ext.kind = ARCAN_EVENT(CURSORHINT),
+						.ext.message.data = cursors[cursorind]
+					});
+			}
+		break;
 		default:
 		break;
 		}
 		else if (ev.category == EVENT_IO){
 /* mouse cursor implementation, use position to send update to cursor
  * subsegment (if present), right click in one quanta to set popup.. these are
- * expensive on purpose */
+ * expensive on purpose . Scroll UP ->update content hint, Scroll Down ->
+ * update content hint */
 		}
 		else
 			;

@@ -41,7 +41,6 @@ set (SHMIF_HEADERS
 set (SHMIF_SOURCES
 	${SHMIF_HEADERS}
 	${ASD}/shmif/arcan_shmif_control.c
-	${ASD}/shmif/arcan_shmif_interop.c
 )
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
