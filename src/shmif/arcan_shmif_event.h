@@ -33,7 +33,6 @@
 
 #ifndef _HAVE_ARCAN_SHMIF_EVENT
 #define _HAVE_ARCAN_SHMIF_EVENT
-#include <limits.h>
 
 /*
  * The types and structures used herein are "transitional" in the sense that
@@ -480,11 +479,14 @@ enum ARCAN_EVENT_EXTERNAL {
  * user-readable string suggesting what kind of cursor image that could be
  * used. Uses the messagefield and the effect is implementation defined, though
  * suggested labels are:
- * [normal, wait, select-inv, select, up, down, left-right, drag-up-down,
+ * [default, wait, select-inv, select, up, down, left-right, drag-up-down,
  * drag-up, drag-down, drag-left, drag-right, drag-left-right, rotate-cw,
  * rotate-ccw, normal-tag, diag-ur, diag-ll, drag-diag, datafield,
  * move, typefield, forbidden, help, vertical-datafield, drag-drop,
  * drag-reject ]
+ *
+ * The only mandated cursorhint is 'custom' which is treated as 'default'
+ * UNLESS there is a CURSORHINT type subsegment mapped, then that will be used.
  */
 	EVENT_EXTERNAL_CURSORHINT,
 

@@ -50,13 +50,11 @@
 
 /*
  * For porting the shmpage interface, these functions need to be implemented
- * and pulled in, shouldn't be much moremore complicated than mapping to the
+ * and pulled in, shouldn't be more complicated than mapping to the
  * corresponding platform/ functions.
  */
 #ifndef PLATFORM_HEADER
 
-#include <stdint.h>
-#include <stdbool.h>
 #ifdef WIN32
 #define INVALID_HANDLE_VALUE
 	typedef HANDLE file_handle;
