@@ -540,6 +540,7 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 
 	newseg->shm.ptr->w = hintw;
 	newseg->shm.ptr->h = hinth;
+	newseg->shm.ptr->segment_token = ((uint32_t) newvid) ^ ctx->cookie;
 
 /*
  * Currently, we're reserving a rather aggressive amount of memory for audio,
