@@ -189,6 +189,25 @@ static void got_debug(struct arcan_shmif_cont* cont)
 	free(cont);
 }
 
+static void update_surf(struct arcan_shmif_cont* cont, size_t border)
+{
+	if (border)
+		draw_box(cont, 0,0, cont->w, cont->h, SHMIF_RGBA(0x00, 0xff, 0x00, 0xff));
+
+	shmif_pixel* vidp = cont->vidp;
+	for (size_t y = border; y < cont->h - border; y++){
+		float lf_y = (float)y / (cont->h - border - border);
+
+		for (size_t x = border; x < cont->w - border; x++){
+			float lf_x = (float)x / (cont->w - border - border);
+			vidp[y * cont->pitch + x] = SHMIF_RGBA(
+				x*255.0, y*255.0, 0, lf_x * lf_y * 255.0);
+		}
+	}
+
+	arcan_shmif_signal(cont, SHMIF_SIGVID);
+}
+
 /*
  * mapped:
  * knowned and fixed, reactive = don't request,
@@ -250,7 +269,7 @@ segtbl[] = {
 };
 
 static const char* cursors[] = {
-	"normal", "wwait", "select-inv", "select", "up", "down",
+	"normal", "wait", "select-inv", "select", "up", "down",
 	"left-right", "drag-up-down", "drag-up", "drag-down", "drag-left",
 	"drag-right", "drag-left-right", "rotate-cw", "rotate-ccw", "normal-tag",
 	"diag-ur", "diag-ll", "drag-diag", "datafield", "move", "typefield",
@@ -261,10 +280,11 @@ static size_t cursor_ind;
 int main(int argc, char** argv)
 {
 	struct arg_arr* aarr;
+	size_t border_sz = 0;
 	struct arcan_shmif_cont cont = arcan_shmif_open(
 		SEGID_APPLICATION, SHMIF_ACQUIRE_FATALFAIL, &aarr);
 
-	arcan_shmif_enqueue(cont, &(arcan_event){
+	arcan_shmif_enqueue(&cont, &(arcan_event){
 		.ext.kind = ARCAN_EVENT(CLOCKREQ), .ext.clock.rate = 40});
 
 /* default static properties to send on connection */
@@ -336,7 +356,8 @@ int main(int argc, char** argv)
 				if (segtbl[i].id == ev.tgt.ioevs[0].iv ||
 					(segtbl[i].reactive && ev.tgt.ioevs[2].iv == segtbl[i].kind)){
 					struct arcan_shmif_cont* tc = malloc(sizeof(struct arcan_shmif_cont));
-					*tc = arcan_shmif_acquire(&cont, NULL, segtbl[i].kind, SHMIF_DISABLE_GUARD);
+					*tc = arcan_shmif_acquire(&cont,
+						NULL, segtbl[i].kind, SHMIF_DISABLE_GUARD);
 					if (!tc->vidp)
 						free(tc);
 					else {
@@ -348,14 +369,30 @@ int main(int argc, char** argv)
 			}
 		break;
 		case TARGET_COMMAND_STEPFRAME:
-/* if it is our timer, redraw with different border area and send viewport hint */
+/* on timer, rotate custom mouse cursor and change border area */
 			if (ev.tgt.ioevs[1].iv > 1){
-					arcan_shmif_enqueue(&cont, &(arcan_event){
-						.ext.kind = ARCAN_EVENT(CURSORHINT),
-						.ext.message.data = cursors[cursorind]
-					});
+				static bool cflip;
+				arcan_event ev = {.ext.kind = ARCAN_EVENT(CURSORHINT)};
+				cflip = !cflip;
+				if (cflip)
+					memcpy(ev.ext.message.data, "custom", 6);
+				else{
+					memcpy(ev.ext.message.data,
+						cursors[cursor_ind], strlen(cursors[cursor_ind]));
+					cursor_ind = (cursor_ind+1) % (sizeof(cursors)/sizeof(cursors[0]));
+				}
 			}
+			border_sz = (border_sz + 2) % 10;
+			arcan_shmif_enqueue(&cont, &ev);
+			arcan_shmif_enqueue(&cont, &(arcan_event){
+				.ext.kind = ARCAN_EVENT(VIEWPORT),
+				.ext.viewport.w = cont.w,
+				.ext.viewport.h = cont.h,
+				.ext.viewport.border = border_sz
+			});
+			update_surf(&cont, border_sz);
 		break;
+
 		default:
 		break;
 		}
