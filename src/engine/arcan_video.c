@@ -4358,7 +4358,7 @@ static size_t process_rendertarget(struct rendertarget* tgt, float fract)
 	size_t pc = 0;
 
 /* first, handle all 3d work (which may require multiple passes etc.) */
-	if (!arcan_video_display.order3d == ORDER3D_FIRST &&
+	if (arcan_video_display.order3d == ORDER3D_FIRST &&
 		current && current->elem->order < 0){
 		current = arcan_refresh_3d(tgt->camtag, current, fract);
 		pc++;
@@ -5119,7 +5119,7 @@ arcan_vobj_id arcan_video_renderstring(const char* message,
 	struct storage_info_t* ds = vobj->vstore;
 
 	ds->vinf.text.raw = arcan_renderfun_renderfmtstr(
-		message, line_spacing, tab_spacing,
+		message, ARCAN_EID, line_spacing, tab_spacing,
 		tabs, true, n_lines, lineheights,
 		&ds->w, &ds->h, &ds->vinf.text.s_raw, &maxw, &maxh
 	);

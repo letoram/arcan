@@ -1,3 +1,8 @@
+/*
+ * GPLv2 only -
+ * Derived from linux kbd project, see the COPYING file from
+ * git://git.kernel.org/pub/scm/linux/kernel/git/legion/kbd.git
+ */
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>

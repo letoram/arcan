@@ -511,9 +511,11 @@ static inline void currstyle_cnode(struct text_format* curr_style,
 
 /* just figure out the dimensions */
 	else if (curr_style->font){
+		int dw, dh;
 		TTF_SetFontStyle(curr_style->font, curr_style->style);
-		TTF_SizeUTF8(curr_style->font, base, (int*) &cnode->width,
-			(int*) &cnode->height);
+		TTF_SizeUTF8(curr_style->font, base, &dw, &dh);
+		cnode->width = dw;
+		cnode->height = dh;
 
 /* load only if we don't have a dimension specifier */
 		if (curr_style->imgcons.w && curr_style->imgcons.h){
@@ -524,7 +526,8 @@ static inline void currstyle_cnode(struct text_format* curr_style,
 }
 
 /* a */
-static int build_textchain(char* message, struct rcell* root, bool sizeonly)
+static int build_textchain(char* message, struct rcell* root,
+	bool sizeonly, bool nolast)
 {
 	int rv = 0;
 	struct text_format* curr_style = &last_style;
@@ -547,7 +550,7 @@ static int build_textchain(char* message, struct rcell* root, bool sizeonly)
 			}
 /* split-point (one or several formatting arguments) found */
 			else {
-				if (msglen > 0) {
+				if (msglen > 0){
 					*current = 0;
 /* render surface and slide window */
 					currstyle_cnode(curr_style, base, cnode, sizeonly);
@@ -581,14 +584,18 @@ static int build_textchain(char* message, struct rcell* root, bool sizeonly)
 					cnode->data.format.cr = curr_style->cr;
 					cnode = cnode->next =
 						arcan_alloc_mem(sizeof(struct rcell), ARCAN_MEM_VSTRUCT,
-							ARCAN_MEM_TEMPORARY | ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
+							ARCAN_MEM_TEMPORARY | ARCAN_MEM_BZERO,
+							ARCAN_MEMALIGN_NATURAL
+						);
 				}
 
 				if (curr_style->image){
 					currstyle_cnode(curr_style, base, cnode, sizeonly);
 					cnode = cnode->next =
 						arcan_alloc_mem(sizeof(struct rcell), ARCAN_MEM_VSTRUCT,
-							ARCAN_MEM_TEMPORARY | ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
+							ARCAN_MEM_TEMPORARY | ARCAN_MEM_BZERO,
+							ARCAN_MEMALIGN_NATURAL
+					);
 				}
 
 				current = base = curr_style->endofs;
@@ -622,13 +629,17 @@ static int build_textchain(char* message, struct rcell* root, bool sizeonly)
 		}
 	}
 
-	cnode = cnode->next = arcan_alloc_mem(
-		sizeof(struct rcell), ARCAN_MEM_VSTRUCT,
-		ARCAN_MEM_TEMPORARY | ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL
-	);
+/* special handling needed for longer append chains */
+	if (!nolast){
+		cnode = cnode->next = arcan_alloc_mem(
+			sizeof(struct rcell), ARCAN_MEM_VSTRUCT,
+			ARCAN_MEM_TEMPORARY | ARCAN_MEM_BZERO,
+			ARCAN_MEMALIGN_NATURAL
+		);
 
-	cnode->data.format.newline = 1;
-	rv++;
+		cnode->data.format.newline = 1;
+		rv++;
+	}
 
 	return rv;
 }
@@ -642,11 +653,9 @@ static unsigned int round_mult(unsigned num, unsigned int mult)
 }
 
 /*
- * tabs are messier still,
- * for each format segment, there may be 'tabc' number of tabsteps,
- * these concern only the current text block and are thus calculated
- * from a fixed offset.
- * */
+ * tabs are messier still, for each format segment, there may be 'tabc' number
+ * of tabsteps, these concern only the current text block and are thus
+ * calculated from a fixed offset.  */
 static unsigned int get_tabofs(int offset, int tabc, int8_t tab_spacing,
 	unsigned int* tabs)
 {
@@ -676,80 +685,218 @@ static unsigned int get_tabofs(int offset, int tabc, int8_t tab_spacing,
 	return offset;
 }
 
-void arcan_video_stringdimensions(const char* message, int8_t line_spacing,
-	int8_t tab_spacing, unsigned* tabs, unsigned* maxw, unsigned* maxh)
+/*
+ * should really have a fast blit path, but since font rendering is expected to
+ * be mostly replaced/complemented with a mix of in-place rendering and
+ * proper packing and vertex buffers in 0.6 or 0.5.1 dso just leave it like this
+ */
+static inline void copy_rect(TTF_Surface* surf, av_pixel* dst,
+	int width, int x, int y)
 {
-	if (!message)
-		return;
+	uint32_t* wrk = (uint32_t*) surf->data;
+	if (sizeof(av_pixel) != 4){
+		for (size_t row = 0; row < surf->height; row++)
+			for (size_t col = 0; col < surf->width; col++){
+				uint32_t pack = wrk[row * surf->width + col];
+				dst[(row + y) * width + x + col] = RGBA(
+					(pack & 0x000000ff), (pack & 0x0000ff00) >> 8,
+					(pack & 0x00ff0000) >> 16, (pack & 0xff000000) >> 24);
+			}
+	}
+	else
+		for (int row = 0; row < surf->height; row++)
+			memcpy( &dst[ (y + row) * width + x],
+				&wrk[row * surf->width], surf->width * 4);
+}
 
-	/* (A) */
-	int chainlines;
-	struct rcell root = {.surface = false};
-	char* work = strdup(message);
+static void cleanup_chain(struct rcell* root)
+{
+	while (root){
+		assert(root != (void*) 0xdeadbeef);
+		if (root->surface && root->data.surf)
+			arcan_mem_free(root->data.surf);
+
+		struct rcell* prev = root;
+		root = root->next;
+		prev->next = (void*) 0xdeadbeef;
+		arcan_mem_free(prev);
+	}
+}
+
+static av_pixel* process_chain(struct rcell* root, arcan_vobject* dst,
+	size_t chainlines, bool norender,
+	int8_t line_spacing, int8_t tab_spacing, unsigned int* tabs, bool pot,
+	unsigned int* n_lines, unsigned int** lineheights, size_t* dw,
+	size_t* dh, uint32_t* d_sz, size_t* maxw, size_t* maxh)
+{
+	struct rcell* cnode = root;
+	unsigned int linecount = 0;
+	*maxw = 0;
+	*maxh = 0;
+	int lineh = 0;
+	int curw = 0;
+
+/* note, linecount is overflow */
+	unsigned int* lines = arcan_alloc_mem(sizeof(unsigned) * (chainlines + 1),
+		ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO | ARCAN_MEM_TEMPORARY,
+		ARCAN_MEMALIGN_NATURAL
+	);
+
+/* (A) figure out visual constraints */
+	while (cnode) {
+		if (cnode->surface) {
+			assert(cnode->data.surf != NULL);
+			if (cnode->data.surf->height > lineh + line_spacing)
+				lineh = cnode->data.surf->height;
+
+			curw += cnode->data.surf->width;
+		}
+		else {
+			if (cnode->data.format.cr)
+				curw = 0;
+
+			if (cnode->data.format.tab)
+				curw = get_tabofs(curw, cnode->data.format.tab, tab_spacing, tabs);
+
+			if (cnode->data.format.newline > 0)
+				for (int i = cnode->data.format.newline; i > 0; i--) {
+					lines[linecount++] = *maxh;
+					*maxh += lineh + line_spacing;
+					lineh = 0;
+				}
+		}
+
+		if (curw > *maxw)
+			*maxw = curw;
+
+		cnode = cnode->next;
+	}
+
+/* (B) render into destination buffers */
+	*dw = pot ? nexthigher(*maxw) : *maxw;
+	*dh = pot ? nexthigher(*maxh) : *maxh;
+
+	*d_sz = *dw * *dh * sizeof(av_pixel);
+
+	if (norender)
+		return (cleanup_chain(root), NULL);
+
+/* if we have a vobj set, re-use that backing store, and treat
+ * it as a source-stream resize (so scaling factors etc. get reapplied) */
+
+	av_pixel* raw = NULL;
+
+	if (dst){
+/* arcan_video_resizefeed(dst->cellid, *dw, *dh);,
+ * then resize to known dimensions */
+		arcan_fatal("inplace render not yet implemented\n");
+	}
+	else
+		raw = arcan_alloc_mem(*d_sz, ARCAN_MEM_VBUFFER,
+			ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE);
+
+	if (!raw)
+		return (cleanup_chain(root), raw);
+
+/* reset easy here as MEM_BZERO actually sets a full alpha channel */
+	memset(raw, '\0', *d_sz);
+
+	cnode = root;
+	curw = 0;
+	int line = 0;
+
+	while (cnode) {
+		if (cnode->surface) {
+			copy_rect(cnode->data.surf, raw, *dw, curw, lines[line]);
+			curw += cnode->data.surf->width;
+		}
+		else {
+			if (cnode->data.format.tab > 0)
+				curw = get_tabofs(curw, cnode->data.format.tab, tab_spacing, tabs);
+
+			if (cnode->data.format.cr)
+				curw = 0;
+
+			if (cnode->data.format.newline > 0)
+				line += cnode->data.format.newline;
+		}
+		cnode = cnode->next;
+	}
+
+	if (n_lines)
+		*n_lines = linecount;
+
+	if (lineheights)
+		*lineheights = lines;
+	else
+		arcan_mem_free(lines);
+
+	return (cleanup_chain(root), raw);
+}
+
+av_pixel* arcan_renderfun_renderfmtstr_extended(const char** msgarray,
+	arcan_vobj_id dstore, int8_t line_spacing, int8_t tab_spacing,
+	unsigned int* tabs, bool pot,
+	unsigned int* n_lines, unsigned int** lineheights, size_t* dw,
+	size_t* dh, uint32_t* d_sz, size_t* maxw, size_t* maxh)
+{
+	struct rcell* root = arcan_alloc_mem(sizeof(struct rcell),
+		ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO | ARCAN_MEM_TEMPORARY,
+		ARCAN_MEMALIGN_NATURAL
+	);
+	if (!root || !msgarray || !msgarray[0])
+		return NULL;
+
 	last_style.newline = 0;
 	last_style.tab = 0;
 	last_style.cr = false;
 
-	if ((chainlines = build_textchain(work, &root, true)) > 0) {
-		struct rcell* cnode = &root;
-		*maxw = 0;
-		*maxh = 0;
+/* %2, build as text-chain, accumulate linechain view */
+	size_t acc = 0, ind = 0;
 
-		int lineh = 0;
-		int curw = 0;
-
-		while (cnode) {
-			if (cnode->width > 0) {
-				if (cnode->height > lineh + line_spacing)
-					lineh = cnode->height;
-
-				curw += cnode->width;
-			}
-			else {
-				if (cnode->data.format.cr)
-					curw = 0;
-
-				if (cnode->data.format.tab)
-					curw = get_tabofs(curw, cnode->data.format.tab, tab_spacing, tabs);
-
-				if (cnode->data.format.newline > 0)
-					for (int i = cnode->data.format.newline; i > 0; i--) {
-						*maxh += lineh + line_spacing;
-						lineh = 0;
-					}
-			}
-
-			if (curw > *maxw)
-				*maxw = curw;
-
-			cnode = cnode->next;
+	struct rcell* cur = root;
+	while (*msgarray[ind]){
+		if (msgarray[ind][0] == 0){
+			ind++;
+			continue;
 		}
+
+		if (ind % 2 == 0){
+			char* work = strdup(msgarray[ind]);
+			int nlines = build_textchain(work, cur, false, true);
+			arcan_mem_free(work);
+			if (-1 == nlines)
+				break;
+			acc += nlines;
+			while (cur->next != NULL)
+				cur = cur->next;
+		}
+/* %2+1, no format-string input, just treat as text */
+		else{
+			struct rcell* cnode = arcan_alloc_mem(sizeof(struct rcell),
+				ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO | ARCAN_MEM_TEMPORARY,
+				ARCAN_MEMALIGN_NATURAL
+			);
+			cur->next = cnode;
+			currstyle_cnode(&last_style, *msgarray, cnode, false);
+		}
+		ind++;
 	}
 
-	struct rcell* current = root.next;
+/* append newline */
+	cur = cur->next = arcan_alloc_mem(
+			sizeof(struct rcell), ARCAN_MEM_VSTRUCT,
+			ARCAN_MEM_TEMPORARY | ARCAN_MEM_BZERO,
+			ARCAN_MEMALIGN_NATURAL
+		);
+	cur->data.format.newline = 1;
 
-	while (current){
-		struct rcell* prev = current;
-		current = current->next;
-		prev->next = (void*) 0xdeadbeef;
-		free(prev);
-	}
-
-	free(work);
+	return process_chain(root, NULL, acc+1, false, line_spacing,
+		tab_spacing, tabs, pot, n_lines, lineheights, dw, dh, d_sz, maxw, maxh);
 }
 
-/* assumes surf dimensions fit within dst without clipping */
-static inline void copy_rect(TTF_Surface* surf, uint32_t* dst,
-	int pitch, int x, int y)
-{
-	uint32_t* wrk = (uint32_t*) surf->data;
-
-	for (int row = 0; row < surf->height; row++)
-		memcpy( &dst[ (y + row) * pitch + x],
-			&wrk[row * surf->width], surf->width * 4);
-}
-
-void* arcan_renderfun_renderfmtstr(const char* message,
+av_pixel* arcan_renderfun_renderfmtstr(const char* message,
+	arcan_vobj_id dstore,
 	int8_t line_spacing, int8_t tab_spacing, unsigned int* tabs, bool pot,
 	unsigned int* n_lines, unsigned int** lineheights,
 	size_t* dw, size_t* dh, uint32_t* d_sz,
@@ -758,10 +905,9 @@ void* arcan_renderfun_renderfmtstr(const char* message,
 	if (!message)
 		return NULL;
 
-	uint32_t* raw = NULL;
+	av_pixel* raw = NULL;
 
 /* (A) parse format string and build chains of renderblocks */
-	int chainlines;
 	struct rcell* root = arcan_alloc_mem(sizeof(struct rcell),
 		ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO | ARCAN_MEM_TEMPORARY,
 		ARCAN_MEMALIGN_NATURAL);
@@ -771,112 +917,54 @@ void* arcan_renderfun_renderfmtstr(const char* message,
 	last_style.tab = 0;
 	last_style.cr = false;
 
-	if ((chainlines = build_textchain(work, root, false)) > 0) {
-/* (B) traverse the renderblocks and figure out constraints*/
-		struct rcell* cnode = root;
-		unsigned int linecount = 0;
+	int chainlines = build_textchain(work, root, false, false);
+	arcan_mem_free(work);
+
+	if (chainlines > 0){
+		raw = process_chain(root, NULL, chainlines, false,
+			line_spacing, tab_spacing,
+			tabs, pot, n_lines, lineheights, dw, dh, d_sz,
+			maxw, maxh
+		);
+	}
+
+	return raw;
+}
+
+void arcan_renderfun_stringdimensions(const char* message,
+	int8_t line_spacing, int8_t tab_spacing, unsigned* tabs,
+	size_t* maxw, size_t* maxh)
+{
+	if (!message)
+		return;
+
+	struct rcell* root = arcan_alloc_mem(sizeof(struct rcell),
+		ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO | ARCAN_MEM_TEMPORARY,
+		ARCAN_MEMALIGN_NATURAL);
+
+	size_t dw, dh;
+	uint32_t d_sz;
+
+	char* work = strdup(message);
+	last_style.newline = 0;
+	last_style.tab = 0;
+	last_style.cr = false;
+
+	int chainlines = build_textchain(work, root, false, true);
+	arcan_mem_free(work);
+
+	unsigned n_lines;
+
+	if (chainlines > 0){
+		process_chain(root, NULL, chainlines, true,
+			line_spacing, tab_spacing, tabs, false, &n_lines, NULL,
+			&dw, &dh, &d_sz, maxw, maxh
+		);
+	}
+	else {
 		*maxw = 0;
 		*maxh = 0;
-		int lineh = 0;
-		int curw = 0;
-/* note, linecount is overflow */
-		unsigned int* lines = arcan_alloc_mem(sizeof(unsigned) * (chainlines + 1),
-			ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO | ARCAN_MEM_TEMPORARY,
-			ARCAN_MEMALIGN_NATURAL
-		);
-
-		while (cnode) {
-			if (cnode->surface) {
-				assert(cnode->data.surf != NULL);
-				if (cnode->data.surf->height > lineh + line_spacing)
-					lineh = cnode->data.surf->height;
-
-				curw += cnode->data.surf->width;
-			}
-			else {
-				if (cnode->data.format.cr)
-					curw = 0;
-
-				if (cnode->data.format.tab)
-					curw = get_tabofs(curw, cnode->data.format.tab, tab_spacing, tabs);
-
-				if (cnode->data.format.newline > 0)
-					for (int i = cnode->data.format.newline; i > 0; i--) {
-						lines[linecount++] = *maxh;
-						*maxh += lineh + line_spacing;
-						lineh = 0;
-					}
-			}
-
-			if (curw > *maxw)
-				*maxw = curw;
-
-			cnode = cnode->next;
-		}
-
-/* (C) render into destination buffers */
-		*dw = pot ? nexthigher(*maxw) : *maxw;
-		*dh = pot ? nexthigher(*maxh) : *maxh;
-
-		*d_sz = *dw * *dh * sizeof(av_pixel);
-
-		raw = arcan_alloc_mem(*d_sz, ARCAN_MEM_VBUFFER,
-			ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE);
-
-		if (!raw)
-			goto cleanup;
-
-/* reset easy here as MEM_BZERO actually sets a full alpha channel */
-		memset(raw, '\0', *d_sz);
-
-		cnode = root;
-		curw = 0;
-		int line = 0;
-
-		while (cnode) {
-			if (cnode->surface) {
-				copy_rect(cnode->data.surf, raw, *dw, curw, lines[line]);
-				curw += cnode->data.surf->width;
-			}
-			else {
-				if (cnode->data.format.tab > 0)
-					curw = get_tabofs(curw, cnode->data.format.tab, tab_spacing, tabs);
-
-				if (cnode->data.format.cr)
-					curw = 0;
-
-				if (cnode->data.format.newline > 0)
-					line += cnode->data.format.newline;
-			}
-			cnode = cnode->next;
-		}
-
-		if (n_lines)
-			*n_lines = linecount;
-
-		if (lineheights)
-			*lineheights = lines;
-		else
-			arcan_mem_free(lines);
 	}
-
-	struct rcell* current;
-
-cleanup:
-	current = root;
-	while (current){
-		assert(current != (void*) 0xdeadbeef);
-		if (current->surface && current->data.surf)
-			arcan_mem_free(current->data.surf);
-
-		struct rcell* prev = current;
-		current = current->next;
-		prev->next = (void*) 0xdeadbeef;
-		arcan_mem_free(prev);
-	}
-
-	arcan_mem_free(work);
-	return raw;
 }
 
 int arcan_renderfun_stretchblit(char* src, int inw, int inh,

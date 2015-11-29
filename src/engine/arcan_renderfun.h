@@ -9,6 +9,7 @@
  * returns a pointer to the buffer or NULL.
  *
  * message - obligatory !NULL UTF8 + format string
+ * dst - video object backing store (or ARCAN_EID) to render into
  * line_spacing - (pixels) increment after each row
  * tab_spacing - (pixels) default tab-width. Can be overridden with tabs arg.
  * tabs - (NULL possible), NULL- terminated list of preset tab-widths to use.
@@ -37,11 +38,25 @@
  * \pfname (load and embedd image from fname into string, dimensions limited)
  * \Pfname,w,h (load and stretch image from fname into string)
  */
-void* arcan_renderfun_renderfmtstr(const char* message,
-	int8_t line_spacing, int8_t tab_spacing, unsigned int* tabs, bool pot,
+av_pixel* arcan_renderfun_renderfmtstr(const char* message,
+	arcan_vobj_id dst, int8_t line_spacing, int8_t tab_spacing, unsigned int* tabs,
+	bool pot, unsigned int* n_lines, unsigned int** lineheights,
+	size_t* dw, size_t* dh, uint32_t* d_sz,
+	size_t* maxw, size_t* maxh
+);
+
+/*
+ * Extended version with an array of messages (NULL terminated) where
+ * each % 2 message is interpreted as possible format string and each %2+1 is
+ * interpreted as text only.
+ */
+av_pixel* arcan_renderfun_renderfmtstr_extended(const char** message,
+	arcan_vobj_id dst, int8_t line_spacing, int8_t tab_spacing,
+	unsigned int* tabs, bool pot,
 	unsigned int* n_lines, unsigned int** lineheights,
 	size_t* dw, size_t* dh, uint32_t* d_sz,
-	size_t* maxw, size_t* maxh);
+	size_t* maxw, size_t* maxh
+);
 
 /*
  * Shouldn't need to be called outside debugging /troubleshooting purposes.
@@ -62,5 +77,5 @@ int arcan_renderfun_stretchblit(char* src, int inw, int inh,
  * only returns rendering dimensions in maxw and maxh
  */
 void arcan_renderfun_stringdimensions(const char* message, int8_t line_spacing,
-	int8_t tab_spacing, unsigned* tabs, unsigned* maxw, unsigned* maxh);
+	int8_t tab_spacing, unsigned* tabs, size_t* maxw, size_t* maxh);
 
