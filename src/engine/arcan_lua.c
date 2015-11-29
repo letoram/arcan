@@ -2274,21 +2274,56 @@ static int textdimensions(lua_State* ctx)
 static int rendertext(lua_State* ctx)
 {
 	LUA_TRACE("render_text");
-	arcan_vobj_id id  = ARCAN_EID;
+	arcan_vobj_id id = ARCAN_EID;
 
-	const char* message = luaL_checkstring(ctx, 1);
-	int vspacing = luaL_optint(ctx, 2, 4);
-	int tspacing = luaL_optint(ctx, 3, 64);
+	int argpos = 1;
 
+	int type = lua_type(ctx, 1);
+	if (type == LUA_TNUMBER){
+		id = luaL_checkvid(ctx, 1, NULL);
+		argpos++;
+	}
+
+	type = lua_type(ctx, argpos);
+	int vspacing = luaL_optint(ctx, argpos+1, 4);
+	int tspacing = luaL_optint(ctx, argpos+2, 64);
 	unsigned int nlines = 0;
 	unsigned int* lineheights = NULL;
+	arcan_errc errc;
 
-	id = arcan_video_renderstring(message, vspacing, tspacing, NULL,
-		&nlines, &lineheights);
+	if (type == LUA_TSTRING){
+		char* message = strdup(luaL_checkstring(ctx, argpos));
+		trace_allocation(ctx, "render_text", id);
+		id = arcan_video_renderstring(id, (struct arcan_rstrarg){
+			.multiple = false, .message = message}, vspacing, tspacing,
+			NULL, &nlines, &lineheights, &errc
+		);
+	}
+	else if (type == LUA_TTABLE){
+		int nelems = lua_rawlen(ctx, argpos);
+		if (nelems == 0){
+			arcan_warning("render_text(), passed empty table");
+			return 0;
+		}
+
+		char** messages = arcan_alloc_mem(sizeof(char*) * (nelems + 1),
+			ARCAN_MEM_VSTRUCT, 0, ARCAN_MEMALIGN_NATURAL);
+
+		for (size_t i = 0; i < nelems; i++){
+			lua_rawgeti(ctx, argpos, i+1);
+			messages[i] = strdup(luaL_checkstring(ctx, -1));
+			lua_pop(ctx, 1);
+		}
+		messages[nelems] = NULL;
+
+		id = arcan_video_renderstring(id, (struct arcan_rstrarg){
+			.multiple = true, .array = messages},
+			vspacing, tspacing, NULL, &nlines, &lineheights, &errc);
+	}
+	else
+		arcan_fatal("render_text(), expected string or table\n");
 
 	lua_pushvid(ctx, id);
-	trace_allocation(ctx, "render_text", id);
-
 	lua_newtable(ctx);
 	int top = lua_gettop(ctx);
 

@@ -394,7 +394,15 @@ arcan_vobj_id arcan_video_addfobject(ffunc_ind feed,
 arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id id);
 
 /*
- * Create a new video object based on a format string.
+ * Create a new video object based on a format string (multiple = false,
+ * message = formatstr) or array of strings (where %2 == 0 is treated as
+ * format string and %2==1 is treated as plain string.
+ *
+ * If ID is set to a valid object (not BADID or WORLDID) with a textured
+ * backing store, that backing store will be rendered to and resized --
+ * breaking and resetting ongoing resize chain. The targetted vobject must be
+ * the result of a previous call to arcan_video_renderstring.
+ *
  * Message is a UTF-8 encoded string with backslash triggered format
  * strings. Accepted formatting commands:
  * \ffontres,fontdim : set the currently active font to the resource specified
@@ -411,13 +419,32 @@ arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id id);
  * \Pw,h,resname : load image and scale to specific dimensions
  * \#rrggbb : switch font color
  *
- * stringdimensions is a reduced version of this function that only
- * generates the data without creating a video object, setting up a
- * backing store etc.
+ * The contents pointed to by message and array is assumed to be dynamically
+ * allocated (array and fields separately for array member) and the associated
+ * vobject will claim ownership. This is needed in order to be able to recrate
+ * the video object in the event of a lost context.
+ *
+ * Error code will be provided if errc pointer is set and returned id is
+ * ARCAN_EID.
+ *
+ * stringdimensions is a reduced version of this function that only generates
+ * the data without creating a video object, setting up a backing store or
+ * claiming ownership over message.
  */
-arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing,
+struct arcan_rstrarg {
+	bool multiple;
+	union {
+		char* message;
+		char** array;
+	};
+};
+
+arcan_vobj_id arcan_video_renderstring(arcan_vobj_id id,
+	struct arcan_rstrarg arg, int8_t line_spacing,
 	int8_t tab_spacing, unsigned int* tabs, unsigned int* lines,
-	unsigned int** lineheights);
+	unsigned int** lineheights, arcan_errc* errc
+);
+
 void arcan_video_stringdimensions(const char* message, int8_t line_spacing,
 	int8_t tab_spacing, unsigned int* tabs, unsigned int* maxw,
 	unsigned int* maxh);
