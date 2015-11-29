@@ -123,7 +123,7 @@ const char* agp_shader_language()
 
 void agp_readback_synchronous(struct storage_info_t* dst)
 {
-	if (!dst->txmapped == TXSTATE_TEX2D || !dst->vinf.text.raw)
+	if (!(dst->txmapped == TXSTATE_TEX2D) || !dst->vinf.text.raw)
 		return;
 
 	glBindTexture(GL_TEXTURE_2D, dst->vinf.text.glid);

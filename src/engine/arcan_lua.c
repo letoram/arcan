@@ -88,6 +88,7 @@
 #include "arcan_shmif.h"
 #include "arcan_video.h"
 #include "arcan_videoint.h"
+#include "arcan_renderfun.h"
 #include "arcan_3dbase.h"
 #include "arcan_audio.h"
 #include "arcan_event.h"
@@ -2255,13 +2256,13 @@ static int textdimensions(lua_State* ctx)
 {
 	LUA_TRACE("text_dimensions");
 
-	unsigned int width = 0, height = 0;
+	size_t width = 0, height = 0;
 	const char* message = luaL_checkstring(ctx, 1);
 	int vspacing = luaL_optint(ctx, 2, 4);
 	int tspacing = luaL_optint(ctx, 2, 64);
 
-	arcan_video_stringdimensions(message, vspacing, tspacing, NULL,
-		&width, &height);
+	arcan_renderfun_stringdimensions(message,
+		vspacing, tspacing, NULL, &width, &height);
 
 	lua_pushnumber(ctx, width);
 	lua_pushnumber(ctx, height);
@@ -5306,7 +5307,7 @@ static int randomsurface(lua_State* ctx)
 	return 1;
 }
 
-char* filter_text(char* in, size_t* out_sz)
+static char* filter_text(char* in, size_t* out_sz)
 {
 /* 1. a-Z, 0-9 + whitespace */
 	char* work = in;

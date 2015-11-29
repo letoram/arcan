@@ -1008,10 +1008,11 @@ static void defhandler_kbd(struct arcan_evctx* out,
 		uint16_t code = lookup_character(inev[i].code, node->keyboard.state, true);
 		if (code) to_utf8(code, newev.io.input.translated.utf8);
 
-/* virtual terminal switching for press on LCTRL+LALT+Fn.
- * should possibly have more advanced config here to limit # of eligible
- * devices and change combination */
- 		if (gstate.tty != -1 && gstate.sigpipe[0] != -1 &&
+/* virtual terminal switching for press on LCTRL+LALT+Fn. should possibly have
+ * more advanced config here to limit # of eligible devices and change
+ * combination, and option to disable the thing entirely because it is
+ * just terrible */
+		if (gstate.tty != -1 && gstate.sigpipe[0] != -1 &&
 			(node->keyboard.state == (ARKMOD_LALT | ARKMOD_LCTRL)) &&
 			inev[i].code >= KEY_F1 && inev[i].code <= KEY_F10 && inev[i].value != 0){
 			ioctl(gstate.tty, VT_ACTIVATE, inev[i].code - KEY_F1 + 1);
