@@ -109,6 +109,12 @@ enum txstate {
 	TXSTATE_DEPTH = 2
 };
 
+enum storage_source {
+	STORAGE_IMAGE_URI,
+	STORAGE_TEXT,
+	STORAGE_TEXTARRAY
+};
+
 struct storage_info_t {
 	size_t refcount;
 	uint32_t update_ts;
@@ -128,8 +134,13 @@ struct storage_info_t {
 /* may need to propagate vpts state */
 			uint64_t vpts;
 
-/* re- construction string should we be conservative and free raw */
-			char*   source;
+/* re- construction string may be used as factory in conservative memory
+ * management model to recreate contents of raw */
+			enum storage_source kind;
+			union {
+				char* source;
+				char** source_arr;
+			};
 
 /* used if we have an external buffered backing store
  * (implies s_raw / raw / source are useless) */

@@ -5097,55 +5097,112 @@ arcan_errc arcan_video_tracetag(arcan_vobj_id id, const char*const message)
 	return rv;
 }
 
-arcan_vobj_id arcan_video_renderstring(const char* message,
-	int8_t line_spacing, int8_t tab_spacing, unsigned int* tabs,
-	unsigned int* n_lines, unsigned int** lineheights)
+static void update_sourcedescr(struct storage_info_t* ds,
+	struct arcan_rstrarg* data)
 {
-	arcan_vobj_id rv = ARCAN_EID;
-	if (!message)
-		return rv;
+	assert(ds->vinf.text.kind != STORAGE_IMAGE_URI);
 
-	arcan_vobject* vobj = arcan_video_newvobject(&rv);
-
-	if (!vobj){
-		arcan_fatal("Fatal: arcan_video_renderstring(), "
-			"couldn't allocate video object. Out of Memory or out of IDs "
-			"in current context. There is likely a resource leak in the "
-			"scripts of the current appl.\n");
+	if (ds->vinf.text.kind == STORAGE_TEXT){
+		arcan_mem_free(ds->vinf.text.source);
+	}
+	else if (ds->vinf.text.kind == STORAGE_TEXTARRAY){
+		char** work = ds->vinf.text.source_arr;
+		while(*work){
+			arcan_mem_free(*work);
+			work++;
+		}
+		arcan_mem_free(ds->vinf.text.source_arr);
 	}
 
-	size_t maxw, maxh;
+	if (data->multiple){
+		ds->vinf.text.kind = STORAGE_TEXTARRAY;
+		ds->vinf.text.source_arr = data->array;
+	}
+	else {
+		ds->vinf.text.kind = STORAGE_TEXT;
+		ds->vinf.text.source = data->message;
+	}
+}
 
-	struct storage_info_t* ds = vobj->vstore;
+arcan_vobj_id arcan_video_renderstring(arcan_vobj_id src,
+	struct arcan_rstrarg data,
+	int8_t line_spacing, int8_t tab_spacing, unsigned int* tabs,
+	unsigned int* n_lines, unsigned int** lineheights, arcan_errc* errc)
+{
+#define FAIL(CODE){ if (errc) *errc = CODE; return ARCAN_EID; }
+	arcan_vobject* vobj;
+	arcan_vobj_id rv = src;
 
-	ds->vinf.text.raw = arcan_renderfun_renderfmtstr(
-		message, ARCAN_EID, line_spacing, tab_spacing,
-		tabs, true, n_lines, lineheights,
-		&ds->w, &ds->h, &ds->vinf.text.s_raw, &maxw, &maxh
-	);
-
-	if (ds->vinf.text.raw == NULL){
-		arcan_video_deleteobject(rv);
-		return ARCAN_EID;
+	if (src == ARCAN_VIDEO_WORLDID){
+		return ARCAN_ERRC_UNACCEPTED_STATE;
 	}
 
-	vobj->feed.state.tag = ARCAN_TAG_TEXT;
-	vobj->blendmode = BLEND_FORCE;
+	size_t maxw, maxh, w, h;
+	struct storage_info_t* ds;
+	uint32_t dsz;
+
+	if (src == ARCAN_EID){
+		vobj = arcan_video_newvobject(&rv);
+		if (!vobj)
+			FAIL(ARCAN_ERRC_OUT_OF_SPACE);
+
+#define ARGLST src, line_spacing, tab_spacing, tabs, false, n_lines, \
+	lineheights, &w, &h, &dsz, &maxw, &maxh
+
+		ds = vobj->vstore;
+		av_pixel* rawdst = ds->vinf.text.raw;
+
+		vobj->feed.state.tag = ARCAN_TAG_TEXT;
+		vobj->blendmode = BLEND_FORCE;
+
+		ds->vinf.text.raw = data.multiple ?
+			arcan_renderfun_renderfmtstr_extended((const char**)data.array, ARGLST) :
+			arcan_renderfun_renderfmtstr(data.message, ARGLST);
+
+		if (ds->vinf.text.raw == NULL){
+			arcan_video_deleteobject(rv);
+			FAIL(ARCAN_ERRC_BAD_ARGUMENT);
+		}
+
+		ds->vinf.text.kind = STORAGE_TEXT;
+		ds->vinf.text.s_raw = dsz;
+		ds->w = w;
+		ds->h = h;
+
+	/* transfer sync is done separately here */
+		agp_update_vstore(vobj->vstore, true);
+		arcan_video_attachobject(rv);
+	}
+	else {
+		vobj = arcan_video_getobject(src);
+
+		if (!vobj)
+			FAIL(ARCAN_ERRC_NO_SUCH_OBJECT);
+		if (vobj->feed.state.tag != ARCAN_TAG_TEXT)
+			FAIL(ARCAN_ERRC_UNACCEPTED_STATE);
+
+		ds = vobj->vstore;
+
+		if (data.multiple)
+			arcan_renderfun_renderfmtstr_extended((const char**)data.array, ARGLST);
+		else
+			arcan_renderfun_renderfmtstr(data.message, ARGLST);
+	}
+
 	vobj->origw = maxw;
 	vobj->origh = maxh;
-	vobj->txcos = arcan_alloc_mem(8 * sizeof(float),
-		ARCAN_MEM_VSTRUCT, 0, ARCAN_MEMALIGN_SIMD);
-	ds->vinf.text.source = strdup(message);
 
-	agp_update_vstore(vobj->vstore, true);
+	update_sourcedescr(ds, &data);
 
 /*
  * POT but not all used,
- */
+	vobj->txcos = arcan_alloc_mem(8 * sizeof(float),
+		ARCAN_MEM_VSTRUCT, 0, ARCAN_MEMALIGN_SIMD);
 	float wv = (float)maxw / (float)vobj->vstore->w;
 	float hv = (float)maxh / (float)vobj->vstore->h;
 	generate_basic_mapping(vobj->txcos, wv, hv);
-	arcan_video_attachobject(rv);
-
+ */
+#undef ARGLST
+#undef FAIL
 	return rv;
 }

@@ -855,7 +855,7 @@ av_pixel* arcan_renderfun_renderfmtstr_extended(const char** msgarray,
 	size_t acc = 0, ind = 0;
 
 	struct rcell* cur = root;
-	while (*msgarray[ind]){
+	while (msgarray[ind]){
 		if (msgarray[ind][0] == 0){
 			ind++;
 			continue;
@@ -877,8 +877,8 @@ av_pixel* arcan_renderfun_renderfmtstr_extended(const char** msgarray,
 				ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO | ARCAN_MEM_TEMPORARY,
 				ARCAN_MEMALIGN_NATURAL
 			);
-			cur->next = cnode;
-			currstyle_cnode(&last_style, *msgarray, cnode, false);
+			cur = cur->next = cnode;
+			currstyle_cnode(&last_style, msgarray[ind], cnode, false);
 		}
 		ind++;
 	}
