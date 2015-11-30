@@ -42,7 +42,22 @@ function fonttest()
 		yofs = yofs + props["height"];
 	end
 
+	countervid = render_text("placeholder");
+	show_image(countervid);
+	move_image(countervid, 0, VRESH - 20);
 end
 
-function fonttest_input(inputbl)
+local counter = 400;
+function fonttest_clock_pulse()
+	counter = counter - 1;
+	render_text(countervid, {
+		[[\ffonts/default.ttf,18]], string.format("Shutdown in %d", counter)});
+
+	if (counter == 0) then
+		return shutdown;
+	end
+end
+
+function fonttest_input(inputtbl)
+	if (inputtbl.translated) then counter = 400; end
 end

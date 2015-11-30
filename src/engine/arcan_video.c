@@ -5147,7 +5147,7 @@ arcan_vobj_id arcan_video_renderstring(arcan_vobj_id src,
 			FAIL(ARCAN_ERRC_OUT_OF_SPACE);
 
 #define ARGLST src, line_spacing, tab_spacing, tabs, false, n_lines, \
-	lineheights, &w, &h, &dsz, &maxw, &maxh
+	lineheights, &w, &h, &dsz, &maxw, &maxh, false
 
 		ds = vobj->vstore;
 		av_pixel* rawdst = ds->vinf.text.raw;
@@ -5169,8 +5169,8 @@ arcan_vobj_id arcan_video_renderstring(arcan_vobj_id src,
 		ds->w = w;
 		ds->h = h;
 
-	/* transfer sync is done separately here */
-		agp_update_vstore(vobj->vstore, true);
+/* transfer sync is done separately here */
+		agp_update_vstore(ds, true);
 		arcan_video_attachobject(rv);
 	}
 	else {
@@ -5187,6 +5187,9 @@ arcan_vobj_id arcan_video_renderstring(arcan_vobj_id src,
 			arcan_renderfun_renderfmtstr_extended((const char**)data.array, ARGLST);
 		else
 			arcan_renderfun_renderfmtstr(data.message, ARGLST);
+
+		invalidate_cache(vobj);
+		arcan_video_objectscale(vobj->cellid, 1.0, 1.0, 1.0, 0);
 	}
 
 	vobj->origw = maxw;

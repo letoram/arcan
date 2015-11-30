@@ -772,7 +772,8 @@ static av_pixel* process_chain(struct rcell* root, arcan_vobject* dst,
 		cnode = cnode->next;
 	}
 
-/* (B) render into destination buffers */
+/* (B) render into destination buffers, possibly pad to reduce number
+ * of needed relocations on dynamic resizing from small changes */
 	*dw = pot ? nexthigher(*maxw) : *maxw;
 	*dh = pot ? nexthigher(*maxh) : *maxh;
 
@@ -787,20 +788,25 @@ static av_pixel* process_chain(struct rcell* root, arcan_vobject* dst,
 	av_pixel* raw = NULL;
 
 	if (dst){
-/* arcan_video_resizefeed(dst->cellid, *dw, *dh);,
- * then resize to known dimensions */
-		arcan_fatal("inplace render not yet implemented\n");
+/* manually resize the local buffer so the video_resizefeed call won't
+ * do dual agp_update_vstore synchs */
+		struct storage_info_t* s = dst->vstore;
+
+	 	raw = s->vinf.text.raw = arcan_alloc_mem(*d_sz,
+			ARCAN_MEM_VBUFFER, 0, ARCAN_MEMALIGN_PAGE);
+		s->vinf.text.s_raw = *d_sz;
+		s->w = *dw;
+		s->h = *dh;
 	}
-	else
+	else{
 		raw = arcan_alloc_mem(*d_sz, ARCAN_MEM_VBUFFER,
 			ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE);
+	}
 
 	if (!raw)
 		return (cleanup_chain(root), raw);
 
-/* reset easy here as MEM_BZERO actually sets a full alpha channel */
 	memset(raw, '\0', *d_sz);
-
 	cnode = root;
 	curw = 0;
 	int line = 0;
@@ -831,6 +837,10 @@ static av_pixel* process_chain(struct rcell* root, arcan_vobject* dst,
 	else
 		arcan_mem_free(lines);
 
+	if (dst){
+		agp_resize_vstore(dst->vstore, *dw, *dh);
+	}
+
 	return (cleanup_chain(root), raw);
 }
 
@@ -838,7 +848,7 @@ av_pixel* arcan_renderfun_renderfmtstr_extended(const char** msgarray,
 	arcan_vobj_id dstore, int8_t line_spacing, int8_t tab_spacing,
 	unsigned int* tabs, bool pot,
 	unsigned int* n_lines, unsigned int** lineheights, size_t* dw,
-	size_t* dh, uint32_t* d_sz, size_t* maxw, size_t* maxh)
+	size_t* dh, uint32_t* d_sz, size_t* maxw, size_t* maxh, bool norender)
 {
 	struct rcell* root = arcan_alloc_mem(sizeof(struct rcell),
 		ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO | ARCAN_MEM_TEMPORARY,
@@ -891,8 +901,10 @@ av_pixel* arcan_renderfun_renderfmtstr_extended(const char** msgarray,
 		);
 	cur->data.format.newline = 1;
 
-	return process_chain(root, NULL, acc+1, false, line_spacing,
-		tab_spacing, tabs, pot, n_lines, lineheights, dw, dh, d_sz, maxw, maxh);
+	return process_chain(root, arcan_video_getobject(dstore),
+		acc+1, norender, line_spacing, tab_spacing, tabs, pot, n_lines,
+		lineheights, dw, dh, d_sz, maxw, maxh
+	);
 }
 
 av_pixel* arcan_renderfun_renderfmtstr(const char* message,
@@ -900,7 +912,7 @@ av_pixel* arcan_renderfun_renderfmtstr(const char* message,
 	int8_t line_spacing, int8_t tab_spacing, unsigned int* tabs, bool pot,
 	unsigned int* n_lines, unsigned int** lineheights,
 	size_t* dw, size_t* dh, uint32_t* d_sz,
-	size_t* maxw, size_t* maxh)
+	size_t* maxw, size_t* maxh, bool norender)
 {
 	if (!message)
 		return NULL;
@@ -921,50 +933,14 @@ av_pixel* arcan_renderfun_renderfmtstr(const char* message,
 	arcan_mem_free(work);
 
 	if (chainlines > 0){
-		raw = process_chain(root, NULL, chainlines, false,
-			line_spacing, tab_spacing,
+		raw = process_chain(root, arcan_video_getobject(dstore),
+			chainlines, norender, line_spacing, tab_spacing,
 			tabs, pot, n_lines, lineheights, dw, dh, d_sz,
 			maxw, maxh
 		);
 	}
 
 	return raw;
-}
-
-void arcan_renderfun_stringdimensions(const char* message,
-	int8_t line_spacing, int8_t tab_spacing, unsigned* tabs,
-	size_t* maxw, size_t* maxh)
-{
-	if (!message)
-		return;
-
-	struct rcell* root = arcan_alloc_mem(sizeof(struct rcell),
-		ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO | ARCAN_MEM_TEMPORARY,
-		ARCAN_MEMALIGN_NATURAL);
-
-	size_t dw, dh;
-	uint32_t d_sz;
-
-	char* work = strdup(message);
-	last_style.newline = 0;
-	last_style.tab = 0;
-	last_style.cr = false;
-
-	int chainlines = build_textchain(work, root, false, true);
-	arcan_mem_free(work);
-
-	unsigned n_lines;
-
-	if (chainlines > 0){
-		process_chain(root, NULL, chainlines, true,
-			line_spacing, tab_spacing, tabs, false, &n_lines, NULL,
-			&dw, &dh, &d_sz, maxw, maxh
-		);
-	}
-	else {
-		*maxw = 0;
-		*maxh = 0;
-	}
 }
 
 int arcan_renderfun_stretchblit(char* src, int inw, int inh,
