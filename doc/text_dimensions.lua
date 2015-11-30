@@ -2,9 +2,11 @@
 -- @short: Calculate the output volume of a format string.
 -- @inargs: message, *vspacing*, *tspacing*
 -- @outargs: width, height
--- @note: The main difference between this function and render_text is
--- that, although intermediate allocations are still needed, no output
--- video object will be setup.
+-- @longdecr: Text dimensions follow many of the same rules and restrictions
+-- as render_text, with the notable exception that it does not produce
+-- any output.
+-- @note: Global text- rendering state can still be affected, e.g. the
+-- currently loaded font and style.
 -- @group: image
 -- @cfunction: strsize
 -- @exampleappl: tests/interactive/fonttest

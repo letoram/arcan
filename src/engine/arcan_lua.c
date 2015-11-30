@@ -2256,14 +2256,43 @@ static int textdimensions(lua_State* ctx)
 {
 	LUA_TRACE("text_dimensions");
 
-	size_t width = 0, height = 0;
-	const char* message = luaL_checkstring(ctx, 1);
+	size_t width = 0, height = 0, maxw = 0, maxh = 0;
 	int vspacing = luaL_optint(ctx, 2, 4);
 	int tspacing = luaL_optint(ctx, 2, 64);
 
-	arcan_renderfun_stringdimensions(message,
-		vspacing, tspacing, NULL, &width, &height);
+	uint32_t sz;
 
+	int type = lua_type(ctx, 1);
+	if (type == LUA_TSTRING){
+		const char* message = luaL_checkstring(ctx, 1);
+		arcan_renderfun_renderfmtstr(message, ARCAN_EID,
+			vspacing, tspacing, NULL, false, NULL, NULL,
+			&width, &height, &sz, &maxw, &maxh, true
+		);
+	}
+	else if (type == LUA_TTABLE){
+		int nelems = lua_rawlen(ctx, 1);
+
+		if (0 == nelems)
+			goto out;
+
+		const char* messages[nelems + 1];
+		for (size_t i = 0; i < nelems; i++){
+			lua_rawgeti(ctx, 1, i+1);
+			messages[i] = luaL_checkstring(ctx, -1);
+			lua_pop(ctx, 1);
+		}
+		messages[nelems] = NULL;
+		arcan_renderfun_renderfmtstr_extended(messages, ARCAN_EID,
+			vspacing, tspacing, NULL, false, NULL, NULL,
+			&width, &height, &sz, &maxw, &maxh, true
+		);
+	}
+	else
+		arcan_fatal("text_dimensions(), invalid type for argument 1, "
+			"accepted string or table\n");
+
+out:
 	lua_pushnumber(ctx, width);
 	lua_pushnumber(ctx, height);
 
