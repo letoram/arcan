@@ -959,6 +959,10 @@ arcan_frameserver* arcan_frameserver_alloc()
 	res->flags.autoclock = true;
 	res->parent.vid = ARCAN_EID;
 
+/* not used for any serious identification purpose,
+ * just to prevent / help detect developer errors */
+	res->cookie = (uint32_t) random();
+
 /* shm- related settings are deferred as this is called previous to mapping
  * (spawn_subsegment / spawn_server) so setting up the eventqueues with
  * killswitches have to be done elsewhere

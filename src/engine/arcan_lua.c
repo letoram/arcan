@@ -3537,7 +3537,8 @@ static inline bool tgtevent(arcan_vobj_id dst, arcan_event ev)
 	return false;
 }
 
-static void push_view(lua_State* ctx, struct arcan_extevent* ev, int top)
+static void push_view(lua_State* ctx, struct arcan_extevent* ev,
+	struct arcan_frameserver* fsrv, int top)
 {
 	lua_pushstring(ctx, "view");
 	lua_newtable(ctx);
@@ -3565,6 +3566,16 @@ static void push_view(lua_State* ctx, struct arcan_extevent* ev, int top)
 	tblbool(ctx, "invisible", ev->viewport.invisible != 0, top);
 	tblnum(ctx, "border", ev->viewport.border, top);
 	tblnum(ctx, "view", ev->viewport.viewid, top);
+
+/* translate to vid namespace if it matches a valid frameserver segment,
+ * not a sensitive operation as it only affects window positioning */
+	uint32_t pid = ev->viewport.parent;
+	if (pid > 0){
+		pid ^= fsrv->cookie;
+		arcan_vobject* vobj = arcan_video_getobject(pid);
+		if (vobj && vobj->feed.state.tag == ARCAN_TAG_FRAMESERV)
+			tblnum(ctx, "parent", pid + luactx.lua_vidbase, top);
+	}
 }
 
 /*
@@ -3837,7 +3848,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			break;
 			case EVENT_EXTERNAL_VIEWPORT:
 				tblstr(ctx, "kind", "viewport", top);
-				push_view(ctx, &ev->ext, top);
+				push_view(ctx, &ev->ext, fsrv, top);
 			break;
 			case EVENT_EXTERNAL_CURSORHINT:
 				fltpush(mcbuf, extmsg_sz, (char*)ev->ext.message.data, flt_alpha, '?');

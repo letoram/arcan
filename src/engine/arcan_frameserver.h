@@ -135,6 +135,7 @@ struct arcan_frameserver {
 	unsigned vfcount;
 
 	enum ARCAN_SEGID segid;
+	uint32_t cookie;
 
 /* attempts at using lower level handle-passing and sharing
  * mechanisms, metadata comes from events due to design constraints

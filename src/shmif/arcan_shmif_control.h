@@ -477,6 +477,13 @@ struct arcan_shmif_page {
 	volatile uint8_t vready;
 
 /*
+ * Unique (or 0) segment identifier. Primarily used to provide a local
+ * namespace for specifying relative properties (e.g. VIEWPORT commands
+ * from popups) between subsegments, will always be 0 for subsegment.
+ */
+	uint32_t segment_token;
+
+/*
  * Presentation hints, see mask above.
  */
 	uint8_t hints;
