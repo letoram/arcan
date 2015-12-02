@@ -4,6 +4,7 @@
 -- @inargs: targetid, snapres
 -- @longdescr: targets that support the snapshot capability can
 -- have its state saved and restored at the request of the caller.
+-- The function will fail silently if *snapres* is not found or lack permission
+-- to open from the APPL_STATE_RESOURCE namespace
 -- @group: targetcontrol
 -- @cfunction: targetrestore
-

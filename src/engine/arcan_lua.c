@@ -3825,8 +3825,21 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			break;
 			case EVENT_EXTERNAL_COREOPT:
 				tblstr(ctx, "kind", "coreopt", top);
-				slim_utf8_push(mcbuf, extmsg_sz, (char*)ev->ext.message.data);
+				tblnum(ctx, "slot", ev->ext.coreopt.index, top);
+				slim_utf8_push(mcbuf, extmsg_sz-1, (char*)ev->ext.coreopt.data);
 				tblstr(ctx, "argument", mcbuf, top);
+				if (ev->ext.coreopt.type == 0)
+					tblstr(ctx, "type", "key", top);
+				else if (ev->ext.coreopt.type == 1)
+					tblstr(ctx, "type", "description", top);
+				else if (ev->ext.coreopt.type == 2)
+					tblstr(ctx, "type", "value", top);
+				else if (ev->ext.coreopt.type == 3)
+					tblstr(ctx, "type", "current", top);
+				else {
+					lua_settop(ctx, reset);
+					return;
+				}
 			break;
 			case EVENT_EXTERNAL_CLOCKREQ:
 /* check frameserver flags and see if we are set to autoclock, then only
@@ -9151,6 +9164,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"CLOCKRATE", ARCAN_TIMER_TICK},
 {"CLOCK", 0},
 {"APPL_RESOURCE", RESOURCE_APPL},
+{"APPL_STATE_RESOURCE", RESOURCE_APPL_STATE},
 {"APPL_TEMP_RESOURCE",RESOURCE_APPL_TEMP},
 {"SHARED_RESOURCE", RESOURCE_APPL_SHARED},
 {"SYS_APPL_RESOURCE", RESOURCE_SYS_APPLBASE},

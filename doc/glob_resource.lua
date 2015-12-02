@@ -8,7 +8,8 @@
 -- search path, *pattern*).  By specifying a *domain* you can limit the search
 -- to a specific set of namespaces.
 -- Valid constants for domain (can be ORed) are APPL_RESOURCE,
--- APPL_TEMP_RESOURCE, SHARED_RESOURCE, SYS_APPL_RESOURCE, SYS_FONT_RESOURCE
+-- APPL_TEMP_RESOURCE, SHARED_RESOURCE, SYS_APPL_RESOURCE, SYS_FONT_RESOURCE,
+-- APPL_STATE_RESOURCE,
 -- @note: the default domain is the compile-time defined (DEFAULT_USERMASK)
 -- which is comprised of (application- specific, application shared,
 -- application temporary)

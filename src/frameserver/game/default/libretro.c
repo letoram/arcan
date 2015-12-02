@@ -666,7 +666,7 @@ static void update_varset( struct retro_variable* data )
 		.ext.kind = ARCAN_EVENT(COREOPT)
 	};
 
-	size_t msgsz = COUNT_OF(outev.ext.message.data);
+	size_t msgsz = COUNT_OF(outev.ext.coreopt.data);
 
 /* reset current varset */
 	if (retroctx.varset){
@@ -695,6 +695,7 @@ static void update_varset( struct retro_variable* data )
 	count = 0;
 	while ( data[count].key ){
 		retroctx.varset[count].key = strdup(data[count].key);
+		outev.ext.coreopt.index = count;
 
 /* parse, grab the first argument and keep in table,
  * queue the argument as a series of event to the parent */
@@ -724,13 +725,13 @@ static void update_varset( struct retro_variable* data )
 		while(*workend && *workend == ' ') workend++;
 
 /* key */
-			snprintf((char*)outev.ext.message.data, msgsz,
-				"%d:key:%s", count, data[count].key);
+			outev.ext.coreopt.type = 0;
+			snprintf((char*)outev.ext.coreopt.data, msgsz, "%s", data[count].key);
 			arcan_shmif_enqueue(&retroctx.shmcont, &outev);
 
 /* description */
-			snprintf((char*)outev.ext.message.data, msgsz,
-				"%d:descr:%s", count, workbeg);
+			outev.ext.coreopt.type = 1;
+			snprintf((char*)outev.ext.coreopt.data, msgsz, "%s", workbeg);
 			arcan_shmif_enqueue(&retroctx.shmcont, &outev);
 
 /* each option */
@@ -746,8 +747,8 @@ startarg:
 				if (!gotval && (gotval = true))
 					retroctx.varset[count].value = strdup(workbeg);
 
-				snprintf((char*)outev.ext.message.data, msgsz,
-					"%d:arg:%s", count, workbeg);
+				outev.ext.coreopt.type = 2;
+				snprintf((char*)outev.ext.coreopt.data, msgsz, "%s", workbeg);
 				arcan_shmif_enqueue(&retroctx.shmcont, &outev);
 
 				goto startarg;
@@ -755,8 +756,8 @@ startarg:
 
 			const char* curv = lookup_varset(data[count].key);
 			if (curv){
-				snprintf((char*)outev.ext.message.data, msgsz,
-				"%d:curv:%s", count, curv);
+				outev.ext.coreopt.type = 3;
+				snprintf((char*)outev.ext.coreopt.data, msgsz, "%s", curv);
 				arcan_shmif_enqueue(&retroctx.shmcont, &outev);
 			}
 

@@ -206,7 +206,7 @@ enum ARCAN_TARGET_COMMAND {
 /*
  * Set a specific key-value pair. These have been registered
  * in beforehand through EVENT_EXTERNAL_COREOPT.
- * message field is used.
+ * Uses coreopt substructure.
  */
 	TARGET_COMMAND_COREOPT,
 
@@ -853,13 +853,22 @@ typedef struct arcan_extevent {
 	union {
 /*
  * For events that set one or multiple short messages:
- * MESSAGE, IDENT, COREOPT, CURSORHINT, ALERT
+ * MESSAGE, IDENT, CURSORHINT, ALERT
  * Only MESSAGE and ALERT type has any multipart meaning
  */
 		struct {
 			uint8_t data[78];
 			uint8_t multipart;
 		} message;
+
+/*
+ * For user-toggleable options that can be persistantly tracked
+ */
+		struct {
+			uint8_t index;
+			uint8_t type; /* 0: key, 1: descr, 2: value, 3: current value */
+			uint8_t data[77];
+		} coreopt;
 
 /*
  * Hint the current active size of a possible statetransfer along with
