@@ -14,10 +14,11 @@
 #include <keymap/dump.h>
 #include <keymap/kmap.h>
 
-static char * mk_mapname(char modifier)
+/* for shift state, we alias to both lshift and rshift */
+static char * mk_mapname(char modifier, bool* alias)
 {
 	static char *mods[8] = {
-		"shift", "altgr", "ctrl", "alt", "shl", "shr", "ctl", "ctr"
+		"shift", "ralt", "ctrl", "lalt", "lshift", "rshift", "lctrl", "rctrl"
 	};
 	static char buf[60];
 	int i;
@@ -25,12 +26,20 @@ static char * mk_mapname(char modifier)
 	if (!modifier)
 		return "plain";
 	buf[0] = 0;
+
 	for (i = 0; i < 8; i++)
-		if (modifier & (1 << i)) {
+		if (modifier & (1 << i)){
 			if (buf[0])
 				strcat(buf, "_");
-			strcat(buf, mods[i]);
+
+			if (i == 0){
+				strcat(buf, *alias ? "rshift" : "lshift");
+				*alias = true;
+			}
+			else
+				strcat(buf, mods[i]);
 		}
+
 	return buf;
 }
 
@@ -138,7 +147,10 @@ int main(int argc, char** argv)
 				dump_utf8(ub, nb);
 				fprintf(stdout, "\";\n");
 			}
-			fprintf(stdout, "restbl.map[\"%s\"] = buf;\n", mk_mapname(i));
+			bool alias = false;
+			fprintf(stdout, "restbl.map[\"%s\"] = buf;\n", mk_mapname(i, &alias));
+			if (alias)
+				fprintf(stdout, "restbl.map[\"%s\"] = buf;\n", mk_mapname(i, &alias));
 		}
 	}
 
