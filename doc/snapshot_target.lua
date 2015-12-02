@@ -4,12 +4,16 @@
 -- @inargs: targetid, resname
 -- @outargs: statusbool
 -- @longdescr: Frameservers running targets that expose the snapshot capability
--- can have their states stored and restored. This function opens the resource
--- in the main process and then passes the file-handle to the process connected
--- to the specific target.
+-- by sending STATESIZE events, can have their states stored and restored.
+-- This function opens the resource in the main process and then passes the
+-- file-handle to the process connected to the specific target.
+-- @note: The states are expected to be accessible through the APPL_STATE_RESOURCE
+-- namespace (see ref:glob_resource).
 -- @note: This function is scheduled to have some revisions in coming versions,
 -- most notably a. limiting traversal for resname, b. allowing namespace specifier
--- (SHARED or PRIVATE) and c. allowing hints on intended use (FULL or MINIMAL).
+-- (SHARED or PRIVATE) and c. allowing hints on intended use (FULL or MINIMAL),
+-- d. allowing the state to be signed and verified using a target/config related
+-- assymetric keypair.
 -- @group: targetcontrol
 -- @cfunction: targetsnapshot
 
