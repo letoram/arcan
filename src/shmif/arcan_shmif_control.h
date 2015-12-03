@@ -412,6 +412,14 @@ struct arcan_shmif_cont {
 	sem_handle vsem, asem, esem;
 
 /*
+ * Hint to the dirty region that should be synched, will be clamped
+ * against active width/height.
+ */
+	struct {
+		size_t x1, y1, x2, y2;
+	} signal_region;
+
+/*
  * Should be used to index vidp, i.e. vidp[y * pitch + x] = RGBA(r, g, b, a)
  * stride and pitch account for padding, with stride being a row length in
  * bytes and pitch a row length in pixels.
