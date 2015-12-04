@@ -728,7 +728,6 @@ static void update_varset( struct retro_variable* data )
 			outev.ext.coreopt.type = 0;
 			snprintf((char*)outev.ext.coreopt.data, msgsz, "%s", data[count].key);
 			arcan_shmif_enqueue(&retroctx.shmcont, &outev);
-
 /* description */
 			outev.ext.coreopt.type = 1;
 			snprintf((char*)outev.ext.coreopt.data, msgsz, "%s", workbeg);

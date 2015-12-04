@@ -3224,6 +3224,11 @@ static int contextusage(lua_State* ctx)
  */
 static inline void get_utf8(const char* instr, uint8_t dst[5])
 {
+	if (!instr){
+		dst[0] = dst[1] = dst[2] = dst[3] = dst[4] = 0;
+		return;
+	}
+
 	size_t len = strlen(instr);
 	memcpy(dst, instr, len <= 4 ? len : 4);
 }
