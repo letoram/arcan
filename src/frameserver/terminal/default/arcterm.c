@@ -73,7 +73,6 @@
 
 #ifdef TTF_SUPPORT
 #include "arcan_ttf.h"
-static TTF_Font* font;
 #endif
 
 static struct {
@@ -81,6 +80,12 @@ static struct {
 	struct tsm_vte* vte;
 	struct shl_pty* pty;
 
+#ifdef TTF_SUPPORT
+	TTF_Font* font;
+	const char* fontname;
+	int hint;
+	size_t font_sz;
+#endif
 	bool dirty, mute;
 
 	pid_t child;
@@ -120,6 +125,9 @@ static struct {
 	.alpha = 0xff,
 	.bgc = {0x00, 0x00, 0x00},
 	.fgc = {0xff, 0xff, 0xff},
+#ifdef TTF_SUPPORT
+	.hint = TTF_HINTING_NONE
+#endif
 };
 
 static void tsm_log(void* data, const char* file, int line,
@@ -211,7 +219,7 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 	size_t nch = tsm_ucs4_to_utf8(*ch, (char*) u8_ch);
 
 #ifdef TTF_SUPPORT
-	if (font == NULL){
+	if (term.font == NULL){
 #endif
 		u8_ch[1] = '\0';
 		draw_text(&term.acon, (const char*) u8_ch, base_x, base_y,
@@ -228,7 +236,7 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 
 /* unfortunately, this lil' function do not do in-place rendering,
  * should be fixed to cut down on w * h malloc/free pairs */
-	TTF_Surface* surf = TTF_RenderUTF8(font, (char*) u8_ch, fg);
+	TTF_Surface* surf = TTF_RenderUTF8(term.font, (char*) u8_ch, fg);
 	if (!surf)
 		return 0;
 
@@ -509,6 +517,22 @@ struct lent {
 	void(*ptr)(void);
 };
 
+#ifdef TTF_SUPPORT
+static bool setup_font(const char* val, size_t font_sz);
+void inc_fontsz()
+{
+	term.font_sz += 2;
+	setup_font(term.fontname, term.font_sz);
+}
+
+void dec_fontsz()
+{
+	if (term.font_sz > 8)
+		term.font_sz -= 2;
+	setup_font(term.fontname, term.font_sz);
+}
+#endif
+
 static const struct lent labels[] = {
 	{"MUTE", mute_toggle},
 	{"SIGINT", send_sigint},
@@ -521,6 +545,10 @@ static const struct lent labels[] = {
 	{"DOWN", move_down},
 	{"LEFT", move_left},
 	{"RIGHT", move_right},
+#ifdef TTF_SUPPORT
+	{"FONTSZ_INC", inc_fontsz},
+	{"FONTSZ_DEC", dec_fontsz},
+#endif
 	{NULL, NULL}
 };
 
@@ -546,10 +574,10 @@ static void expose_labels()
 static bool consume_label(arcan_ioevent* ioev, const char* label)
 {
 	const struct lent* cur = labels;
+
 	while(cur->lbl){
 		if (strcmp(label, cur->lbl) == 0){
 			cur->ptr();
-			update_screen();
 			return true;
 		}
 		cur++;
@@ -662,8 +690,12 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 static void targetev(arcan_tgtevent* ev)
 {
 	switch (ev->kind){
-/* switch palette? */
+/* control alpha, palette, cursor mode, ... */
 	case TARGET_COMMAND_GRAPHMODE:
+		if (ev->ioevs[0].iv == 1){
+			term.alpha = ev->ioevs[1].fv;
+			update_screen();
+		}
 	break;
 
 /* sigsuspend to group */
@@ -776,7 +808,8 @@ static void check_pasteboard()
 }
 
 #ifdef TTF_SUPPORT
-static void probe_font(const char* msg, size_t* dw, size_t* dh)
+static void probe_font(TTF_Font* font,
+	const char* msg, size_t* dw, size_t* dh)
 {
 	TTF_Color fg = {.r = 0xff, .g = 0xff, .b = 0xff};
 	int w = *dw, h = *dh;
@@ -787,6 +820,44 @@ static void probe_font(const char* msg, size_t* dw, size_t* dh)
 
 	if (h > *dh)
 		*dh = h;
+}
+
+static bool setup_font(const char* val, size_t font_sz)
+{
+	TTF_Font* font = TTF_OpenFont(val, font_sz);
+	if (!font)
+		return false;
+
+	TTF_SetFontHinting(font, term.hint);
+	TTF_SetFontStyle(font, TTF_STYLE_BOLD);
+
+	size_t w = 0, h = 0;
+	static const char* set[] = {
+		"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l",
+		"m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "x", "y",
+		"z", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+		"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L",
+		"M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "X", "Y",
+		"Z"
+	};
+	for (size_t i = 0; i < sizeof(set)/sizeof(set[0]); i++)
+		probe_font(font, set[i], &w, &h);
+
+	if (w && h){
+		term.cell_w = w;
+		term.cell_h = h;
+	}
+	TTF_SetFontStyle(font, TTF_STYLE_NORMAL);
+
+	if (term.font){
+		TTF_CloseFont(term.font);
+		update_screensize(false);
+	}
+
+	term.font = font;
+	term.font_sz = font_sz;
+	term.fontname = val;
+	return true;
 }
 #endif
 
@@ -913,55 +984,18 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	}
 #ifdef TTF_SUPPORT
 	size_t sz = term.cell_h;
+
+	if (arg_lookup(args, "font_hint", 0, &val)){
+		if (strcmp(val, "light") == 0)
+			term.hint = TTF_HINTING_LIGHT;
+		else if (strcmp(val, "mono") == 0)
+			term.hint = TTF_HINTING_MONO;
+	}
+
 	if (arg_lookup(args, "font_sz", 0, &val))
 		sz = strtoul(val, NULL, 10);
-	if (arg_lookup(args, "font", 0, &val)){
-		font = TTF_OpenFont(val, sz);
-		if (!font)
-			LOG("font %s could not be opened, forcing built-in fallback\n", val);
-		else {
-			LOG("font %s opened, ", val);
-			if (arg_lookup(args, "font_hint", 0, &val)){
-			if (strcmp(val, "light") == 0)
-				TTF_SetFontHinting(font, TTF_HINTING_LIGHT);
-			else if (strcmp(val, "mono") == 0)
-				TTF_SetFontHinting(font, TTF_HINTING_MONO);
-			else if (strcmp(val, "none") == 0)
-				TTF_SetFontHinting(font, TTF_HINTING_NONE);
-			else{
-				LOG("unknown hinting %s, falling back to none\n", val);
-				TTF_SetFontHinting(font, TTF_HINTING_NONE);
-			}
-		}
-		else{
-			LOG("no hinting specified, using none.\n");
-			TTF_SetFontHinting(font, TTF_HINTING_NONE);
-		}
-
-/* Just run through a practice set to determine the actual width when hinting
- * is taken into account. We still suffer the problem of more advanced glyphs
- * though */
-		if (!custom_w){
-			TTF_SetFontStyle(font, TTF_STYLE_BOLD);
-			size_t w = 0, h = 0;
-			static const char* set[] = {
-				"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l",
-				"m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "x", "y",
-				"z", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
-				"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L",
-				"M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "X", "Y",
-				"Z"
-			};
-			for (size_t i = 0; i < sizeof(set)/sizeof(set[0]); i++)
-				probe_font(set[i], &w, &h);
-			if (w && h){
-				term.cell_w = w;
-				term.cell_h = h;
-			}
-			TTF_SetFontStyle(font, TTF_STYLE_NORMAL);
-		}
-	}
-	}
+	if (arg_lookup(args, "font", 0, &val))
+		setup_font(val, sz);
 	else
 		LOG("no font specified, using built-in fallback.");
 #endif
