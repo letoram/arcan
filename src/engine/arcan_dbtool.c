@@ -600,6 +600,13 @@ int main(int argc, char* argv[])
 		return EXIT_FAILURE;
 	}
 
+	for (int i = 0; i < sizeof(dispatch)/sizeof(dispatch[0]); i++)
+		if (strcmp(argv[1], dispatch[i].key) == 0){
+			arcan_warning("got command (%s) in database filename slot\n");
+			usage();
+			return EXIT_FAILURE;
+		}
+
 	struct arcan_dbh* dbhandle = arcan_db_open(argv[1], "arcan");
 	if (!dbhandle){
 		arcan_warning("database (%s) not found, creating.\n", argv[1]);
