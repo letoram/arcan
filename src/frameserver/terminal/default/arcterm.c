@@ -228,9 +228,7 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 		return 0;
 #ifdef TTF_SUPPORT
 	}
-#endif
 
-#ifdef TTF_SUPPORT
 	u8_ch[u8_sz-1] = '\0';
 	TTF_Color fg = {.r = fgc[0], .g = fgc[1], .b = fgc[2]};
 
@@ -243,7 +241,20 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 	size_t w = term.acon.addr->w;
 	shmif_pixel* dst = term.acon.vidp;
 
-	for (int row = 0; row < surf->height; row++)
+/* retain alpha in output rather than blending against BGC */
+	if (term.alpha < 0xff){
+		for (int row = 0; row < surf->height; row++)
+		for (int col = 0; col < surf->width; col++){
+			uint8_t* bgra = (uint8_t*) &surf->data[ row * surf->stride + (col * 4) ];
+			off_t ofs = (row + base_y) * term.acon.pitch + col + base_x;
+			if (bgra[3] == 0)
+				dst[ofs] = SHMIF_RGBA(bgc[0], bgc[1], bgc[2], term.alpha);
+			else
+				dst[ofs] = SHMIF_RGBA(bgra[2], bgra[1], bgra[0], bgra[3]);
+		}
+	}
+	else{
+		for (int row = 0; row < surf->height; row++)
 		for (int col = 0; col < surf->width; col++){
 			uint8_t* bgra = (uint8_t*) &surf->data[ row * surf->stride + (col * 4) ];
 			off_t ofs = (row + base_y) * term.acon.pitch + col + base_x;
@@ -268,7 +279,7 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 					term.alpha : 0xff);
 			}
 		}
-
+	}
 	free(surf);
 	return 0;
 #endif
@@ -848,15 +859,17 @@ static bool setup_font(const char* val, size_t font_sz)
 		term.cell_h = h;
 	}
 	TTF_SetFontStyle(font, TTF_STYLE_NORMAL);
-
-	if (term.font){
-		TTF_CloseFont(term.font);
-		update_screensize(false);
-	}
+	TTF_Font* old_font = term.font;
 
 	term.font = font;
 	term.font_sz = font_sz;
 	term.fontname = val;
+
+	if (old_font){
+		TTF_CloseFont(old_font);
+		update_screensize(false);
+	}
+
 	return true;
 }
 #endif
