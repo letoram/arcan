@@ -4,6 +4,8 @@
  * Reference: http://www.libretro.com
  */
 
+#define AGP_ENABLE_UNPURE 1
+
 #include <math.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -34,14 +36,12 @@
 #include "font_8x8.h"
 #include "resampler/speex_resampler.h"
 
-#ifdef ENABLE_3DSUPPORT
-#define AGP_ENABLE_UNPURE 1
+#ifdef FRAMESERVER_LIBRETRO_3D
 #ifdef ENABLE_RETEXTURE
 #include "retexture.h"
 #endif
 #include "video_platform.h"
 #include "platform.h"
-#include HEADLESS_PLATFORM
 #endif
 
 #ifndef MAX_PORTS
@@ -172,7 +172,7 @@ static struct {
 	size_t state_sz;
 	char* syspath;
 
-#ifdef ENABLE_3DSUPPORT
+#ifdef FRAMESERVER_LIBRETRO_3D
 	struct retro_hw_render_callback hwctx;
 	struct agp_rendertarget* rtgt;
 	int last_handle;
@@ -270,7 +270,7 @@ static void resize_shmpage(int neww, int newh, bool first)
 
 #ifdef FRAMESERVER_LIBRETRO_3D
 	if (retroctx.rtgt){
-		retroctx.shmcont.rhints = RHINT_ORIGO_LL;
+		retroctx.shmcont.addr->hints = RHINT_ORIGO_LL;
 		agp_resize_rendertarget(retroctx.rtgt, neww, newh);
 		retroctx.hwctx.context_reset();
 	}
@@ -479,7 +479,7 @@ static void libretro_vidcb(const void* data, unsigned width,
 		static bool hpassing_disabled;
 		if (!hpassing_disabled){
 			enum status_handle status;
-			retroctx.last_handle = platform_output_handle(&retroctx.vstore, &status);
+			retroctx.last_handle = platform_video_output_handle(&retroctx.vstore, &status);
 
 			if (status < 0){
 				LOG("3d(), couldn't get output handle -- direct handle passing "
@@ -1480,20 +1480,6 @@ static uintptr_t get_framebuffer()
 	return tgt;
 }
 
-/*
- * In preparation for additional dynamic hijinx
- */
-static void* intercept_procaddr(const char* proc)
-{
-	void* procfun = frameserver_requirefun(proc, false);
-	if (!procfun){
-		LOG("libretro3d, requested symbol (%s) was not found.\n", proc);
-		return NULL;
-	}
-
-	return procfun;
-}
-
 static void setup_3dcore(struct retro_hw_render_callback* ctx)
 {
 /* we just want a dummy window with a valid openGL context
@@ -1526,9 +1512,6 @@ static void setup_3dcore(struct retro_hw_render_callback* ctx)
 
 	ctx->get_current_framebuffer = get_framebuffer;
 	ctx->get_proc_address = (retro_hw_get_proc_address_t) platform_video_gfxsym;
-
-	if (ctx->bottom_left_origin)
-		retroctx.shmcont.addr->glsource = true;
 
 	memcpy(&retroctx.hwctx, ctx,
 		sizeof(struct retro_hw_render_callback));

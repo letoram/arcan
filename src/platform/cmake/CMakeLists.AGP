@@ -10,16 +10,16 @@ if (NOT AGP_PLATFORM)
 endif()
 
 SET (AGP_GL_SHARED
-	platform/video_platform.h
-	platform/agp/glshared.c
-	platform/agp/glfun.h
-	platform/agp/shdrmgmt.c
-	platform/agp/glinit.c
+	${CMAKE_CURRENT_SOURCE_DIR}/platform/video_platform.h
+	${CMAKE_CURRENT_SOURCE_DIR}/platform/agp/glshared.c
+	${CMAKE_CURRENT_SOURCE_DIR}/platform/agp/glfun.h
+	${CMAKE_CURRENT_SOURCE_DIR}/platform/agp/shdrmgmt.c
+	${CMAKE_CURRENT_SOURCE_DIR}/platform/agp/glinit.c
 )
 
 if (AGP_PLATFORM STREQUAL "stub")
 	set(AGP_SOURCES
-		platform/agp/stub.c
+		${CMAKE_CURRENT_SOURCE_DIR}/platform/agp/stub.c
 	)
 
 elseif (AGP_PLATFORM STREQUAL "gl21")
@@ -30,7 +30,7 @@ elseif (AGP_PLATFORM STREQUAL "gl21")
 
 	SET (AGP_SOURCES
 		${AGP_GL_SHARED}
-		platform/agp/gl21.c
+		${CMAKE_CURRENT_SOURCE_DIR}/platform/agp/gl21.c
 	)
 
 elseif (AGP_PLATFORM STREQUAL "gles2")
@@ -41,7 +41,7 @@ elseif (AGP_PLATFORM STREQUAL "gles2")
 	)
 		SET (AGP_SOURCES
 		${AGP_GL_SHARED}
-		platform/agp/gles.c
+		${CMAKE_CURRENT_SOURCE_DIR}/platform/agp/gles.c
 	)
 
 elseif (AGP_PLATFORM STREQUAL "gles3")
@@ -52,9 +52,9 @@ elseif (AGP_PLATFORM STREQUAL "gles3")
 	)
 	SET (AGP_SOURCES
 		${AGP_GL_SHARED}
-		platform/agp/gles.c
+		${CMAKE_CURRENT_SOURCE_DIR}/platform/agp/gles.c
 	)
-	set_property(SOURCE platform/agp/gles.c
+	set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/platform/agp/gles.c
 		APPEND PROPERTY COMPILE_DEFINITIONS GLES3)
 
 else()

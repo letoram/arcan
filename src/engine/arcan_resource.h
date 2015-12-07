@@ -5,7 +5,7 @@
  */
 
 #ifndef _HAVE_ARCAN_RESOURCE
-
+#define _HAVE_ARCAN_RESOURCE
 typedef struct {
 	char* ptr;
 	size_t sz;

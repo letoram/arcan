@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
+#include <stdbool.h>
 #include <math.h>
 #include <unistd.h>
 #include <drm.h>
@@ -140,7 +141,7 @@ struct monitor_mode PLATFORM_SYMBOL(_video_dimensions)()
 	return res;
 }
 
-int64_t PLATFORM_SYMBOL(_output_handle)(
+int64_t PLATFORM_SYMBOL(_video_output_handle)(
 	struct storage_info_t* store, enum status_handle* status)
 {
 	int32_t fd = -1;

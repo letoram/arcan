@@ -407,7 +407,7 @@ void platform_video_synch(uint64_t tick_count, float fract,
 	struct storage_info_t* vs = arcan_vint_world();
 	enum status_handle status;
 
-	int handle = lwa_output_handle(vs, &status);
+	int handle = lwa_video_output_handle(vs, &status);
 
 	if (status < 0)
 		synch_copy(vs);

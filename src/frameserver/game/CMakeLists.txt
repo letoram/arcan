@@ -13,13 +13,19 @@ if (GAME_SOURCES)
 	target_compile_definitions(afsrv_game PRIVATE
 		ENABLE_FSRV_GAME
 		DEFAULT_FSRV_MODE=\"game\"
-		${GAME_DEFS}
+		${GAME_DEFINITIONS}
 	)
 	target_include_directories(afsrv_game PRIVATE
 		${FSRV_ROOT}
 		${FSRV_ROOT}/util
 		${GAME_INCLUDE_DIRS}
+		${INCLUDE_DIRS}
 	)
-	target_link_libraries(afsrv_game ${STDLIB} arcan_shmif_int ${GAME_LIBS})
+
+	target_link_libraries(afsrv_game PRIVATE
+		${STDLIB}
+		arcan_shmif_int
+		${GAME_LIBS}
+	)
 	install(TARGETS afsrv_game DESTINATION bin)
 endif()
