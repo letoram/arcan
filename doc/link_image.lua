@@ -3,10 +3,10 @@
 -- @inargs: src, newparent, *anchor*
 -- @longdescr: By default, all objects defines their properties relative to
 -- WORLDID, but this association can be reassigned by calling *link_image* for
--- full video objects.  A full video object is one that do is not a clone
--- (instance) and have not been marked as persistant. The default properties
--- that are turned relatrive in this way are *opacity*, *position*,
--- *orientation*, though these can be controlled with mask functions such as
+-- full video objects. A full video object is one that has not been marked
+-- as persistant. The default properties that become relative to another
+-- object in this way are *opacity*, *position* and *orientation*,
+-- though these can be controlled with mask functions such as
 -- ref:image_mask_set. *src* refers to the object that should be reassigned and
 -- *newparent* refers to the object that the assignment would be changed to.
 -- This also applies to life tracking, delete or expire *newparent* and this

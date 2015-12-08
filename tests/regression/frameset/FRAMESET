@@ -1,10 +1,8 @@
-This test runs through the basic options for a frameset,
-except for normal multitexturing as that is
-already covered.
+This test runs through the basic options for a frameset, except for normal
+multitexturing as that is already covered.
 
 1. Animated object (one per frame)
-3. Animated clone
-4. Animated clone with different speed.
+2. Animated object with a shared store but different txcos
 
 The advanced ones:
  round robin with history

@@ -479,7 +479,7 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 
 		struct arcan_vobject* vobj = arcan_video_getobject(tgt->vid);
 		struct storage_info_t* dst_store = vobj->frameset ?
-			vobj->frameset->frames[vobj->frameset->index] : vobj->vstore;
+			vobj->frameset->frames[vobj->frameset->index].frame : vobj->vstore;
 		push_buffer(tgt, tgt->vidp, dst_store);
 		dst_store->vinf.text.vpts = shmpage->vpts;
 

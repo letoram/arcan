@@ -221,7 +221,6 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
 	agp_shader_envv(OBJ_OPACITY, &props.opa, sizeof(float));
 
 	struct geometry* base = src->geometry;
-	size_t ind = (vobj->frameset ? vobj->frameset->index : 0);
 
 	agp_blendstate(vobj->blendmode);
 
@@ -230,36 +229,11 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
 
 		if (!vobj->frameset)
 			agp_activate_vstore(vobj->vstore);
-		else {
-			struct storage_info_t* elems[ base->nmaps ];
-			size_t sz;
-			struct storage_info_t** frames;
-
-			if (FL_TEST(vobj, FL_CLONE)){
-				frames = vobj->parent->frameset->frames;
-				sz = vobj->parent->frameset->n_frames;
-			}
-			else {
-				frames = vobj->frameset->frames;
-				sz = vobj->frameset->n_frames;
-			}
-
-			size_t count = 0;
-			while(count < base->nmaps){
-				elems[count] = frames[ind];
-				count++;
-				ind = (ind + 1) % sz;
-			}
-			agp_activate_vstore_multi(elems, base->nmaps);
-		}
+		else
+			arcan_vint_bindmulti(vobj, vobj->frameset->index);
 
 		agp_submit_mesh(&base->store, flags);
 
-/*
- * note, what happens to clones and multitexture?
- * we should also add blendstate as a property of a mesh
- * rather than the whole model (or?).
- */
 		cframe += base->nmaps;
 		base = base->next;
 	}
@@ -296,9 +270,8 @@ static arcan_vobject_litem* process_scene_infinite(
 
 	while (current){
 		arcan_vobject* cvo = current->elem;
-		arcan_vobject* dvo = FL_TEST(cvo, FL_CLONE) ? cvo->parent : cvo;
 
-		arcan_3dmodel* obj3d = dvo->feed.state.ptr;
+		arcan_3dmodel* obj3d = cvo->feed.state.ptr;
 
 		if (cvo->order >= 0 || obj3d->flags.infinite == false)
 			break;
@@ -306,7 +279,7 @@ static arcan_vobject_litem* process_scene_infinite(
 		surface_properties dprops;
 
 		arcan_resolve_vidprop(cvo, lerp, &dprops);
-		rendermodel(dvo, obj3d, dvo->program,
+		rendermodel(cvo, obj3d, cvo->program,
 				dprops, modelview, flags & MESH_FACING_NODEPTH);
 
 		current = current->next;
@@ -327,12 +300,10 @@ static void process_scene_normal(arcan_vobject_litem* cell,
 		if (cvo->order >= 0)
 			break;
 
-/* use parent if we have an instance.. */
 		surface_properties dprops;
-		arcan_vobject* dvo = FL_TEST(cvo, FL_CLONE) ? cvo->parent : cvo;
 
 		arcan_resolve_vidprop(cvo, lerp, &dprops);
-		rendermodel(dvo, dvo->feed.state.ptr, dvo->program,
+		rendermodel(cvo, cvo->feed.state.ptr, cvo->program,
 			dprops, modelview, flags);
 
 		current = current->next;
@@ -399,7 +370,7 @@ bool arcan_3d_obj_bb_intersect(arcan_vobj_id cam,
 
 /* Chained to the video-pass in arcan_video, stop at the
  * first non-negative order value */
-arcan_vobject_litem* arcan_refresh_3d(arcan_vobj_id camtag,
+arcan_vobject_litem* arcan_3d_refresh(arcan_vobj_id camtag,
 	arcan_vobject_litem* cell, float fract)
 {
 	arcan_vobject* camobj = arcan_video_getobject(camtag);

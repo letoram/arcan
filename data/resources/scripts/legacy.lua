@@ -24,5 +24,16 @@ end
 function target_postfilter_args(vid, group, v1, v2, v3)
 	target_graphmode(vid, 3, group, v1, v2, v3);
 end
-end
 
+function instance_image(vid)
+	local props = image_surface_properties(vid);
+	local newvid = null_surface(props.width, props.height);
+	if (not valid_vid(newvid)) then
+		return BADID;
+	end
+	link_image(newvid, vid);
+	image_sharestorage(vid, newvid);
+	show_image(newvid);
+	return newvid;
+end
+end

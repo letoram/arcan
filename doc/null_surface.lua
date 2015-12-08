@@ -2,14 +2,15 @@
 -- @short: Create a minimalistic video object.
 -- @inargs: startw, starth
 -- @outargs: vid
--- @longdescr: Null surfaces is a special object container, similar to instances
--- but with less restrictions. They can be used as a lower level clone through
--- image_sharestorage or as attribute containers for larger hierarchies of
--- objects used for clipping or movable anchors without the cost of hidden
--- fill_surface style objects.
+-- @longdescr: Null surfaces creates a normal textured video object that
+-- lacks a backing store and will therefore not be rendered in the normal
+-- draw pass, although it can be used for clipping operations. It is
+-- primarily used as an intermediate stage before using ref:image_sharestorage
+-- to share the backing storage between two objects. The null_sueface is
+-- also useful as a property anchor for creating object hierarchies.
 -- @note: intial starting dimensions still need to be specified in order for
 -- other lookup functions e.g. image_surface_initial_properties to work
--- without workarounds.
+-- properly.
 -- dependencies
 -- @group: image
 -- @cfunction: nullsurface

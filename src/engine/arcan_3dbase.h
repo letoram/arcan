@@ -7,9 +7,11 @@
 #ifndef _HAVE_ARCAN_3DBASE
 #define _HAVE_ARCAN_3DBASE
 
-/* Loads a compressed triangle mesh and wrap it around a
- video object */
 void arcan_3d_setdefaults();
+
+struct arcan_vobject_litem;
+struct arcan_vobject_litem* arcan_3d_refresh(arcan_vobj_id camtag,
+	struct arcan_vobject_litem* cell, float frag);
 
 arcan_errc arcan_3d_camtag(arcan_vobj_id parent,
 	float near, float far, float ar, float fov, bool front, bool back);
