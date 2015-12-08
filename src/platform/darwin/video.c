@@ -149,7 +149,7 @@ bool PLATFORM_SYMBOL(_video_map_handle)(
 	return false;
 }
 
-int64_t PLATFORM_SYMBOL(_output_handle)(
+int64_t PLATFORM_SYMBOL(_video_output_handle)(
 	struct storage_info_t* store, enum status_handle* status)
 {
 	*status = ERROR_UNSUPPORTED;

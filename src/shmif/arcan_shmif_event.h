@@ -403,7 +403,8 @@ enum ARCAN_EVENT_EXTERNAL {
  * [UNIQUE]
  * Dynamic data source identification string, similar to message but is
  * expected to come when something has changed radically, (streaming external
- * video sources for instance).  uses the message field.
+ * video sources redirecting to new url for instance).
+ * uses the message field.
  */
 	EVENT_EXTERNAL_IDENT,
 
@@ -512,9 +513,17 @@ enum ARCAN_EVENT_EXTERNAL {
  */
 	EVENT_EXTERNAL_LABELHINT,
 
-/*
- * A once- only trigger that identifies the subtype of a segment.
- * (see SEGID_ table), uses registr substructure.
+/* [ONCE]
+ * Specify the requested subtype of a segment, along with a descriptive UTF-8
+ * string (application title or similar) and a caller- selected 64-bit UUID.
+
+ * The UUID is an unmanaged identifier namespace where the caller or
+ * surrounding system tries to avoid collsions. The ID is primarily intended
+ * for recalling user-interface (not security- related) properties (window
+ * dimensions, ...).
+ *
+ * Although possible to call this multiple times, attempts at switching SEGID
+ * from the established type will be ignored.
  */
 	EVENT_EXTERNAL_REGISTER,
 
@@ -988,11 +997,14 @@ typedef struct arcan_extevent {
  * (title) - title-bar info or other short string to indicate state
  * (kind)  - only used for non-auth connection primary segments or
  *           for subseg requests that got accepted with an empty kind
- * if called with the existing kind, titlebar is updated
+ *           if called with the existing kind, titlebar is updated
+ * (guid)  - numeric identifier (insecure, non-enforced unique ID)
+ *           used for tracking settings etc. between session
  */
 		struct {
 			char title[64];
 			enum ARCAN_SEGID kind;
+			uint64_t guid;
 		} registr;
 
 		struct {
