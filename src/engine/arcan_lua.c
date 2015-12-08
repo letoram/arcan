@@ -3980,6 +3980,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 					COUNT_OF(ev->ext.registr.title), (char*)ev->ext.registr.title);
 					snprintf(fsrv->title, COUNT_OF(fsrv->title), "%s", mcbuf);
 				tblstr(ctx, "title", mcbuf, top);
+				tblnum(ctx, "guid", ev->ext.registr.guid, top);
 			break;
 		 	default:
 				tblstr(ctx, "kind", "unknown", top);

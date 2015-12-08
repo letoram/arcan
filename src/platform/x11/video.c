@@ -277,7 +277,7 @@ const char** PLATFORM_SYMBOL(_video_envopts)(void)
 	return (const char**) x11_envopts;
 }
 
-int64_t PLATFORM_SYMBOL(_output_handle)(struct storage_info_t* store,
+int64_t PLATFORM_SYMBOL(_video_output_handle)(struct storage_info_t* store,
 	enum status_handle* status)
 {
 	*status = ERROR_UNSUPPORTED;
