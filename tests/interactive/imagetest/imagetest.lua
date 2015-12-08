@@ -31,7 +31,7 @@ end
 -- Using persist, so draw once and present in all contexts.
 function drawmenu()
 	local total, used = current_context_usage();
-
+	system_load("scripts/legacy.lua")();
 	text_vid = render_text( [[\ffonts/default.ttf,14\#ffffff\bImagetest:\n\r]] ..
 	[[\b\!i(1)\t\!binstancing test\n\r]] ..
 	[[\b\!i(2)\t\!border + transform-stress test\n\r]] ..
@@ -86,7 +86,7 @@ function zordervidlim(load)
 end
 
 function instancing_test()
-	local newid = color_surface(64, 64, 0, 255, 0);
+	local newid = fill_surface(64, 64, 0, 255, 0);
 	move_image(newid, 0.5*VRESW - 32, 0.5*VRESH - 32, 0);
 	show_image(newid);
 	order_image(newid, 255);

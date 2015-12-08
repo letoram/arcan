@@ -1,15 +1,16 @@
 -- delete_image
--- @short: Delete a VID and all its associated resources.
--- @inargs: VID
+-- @short: Delete a video object and associated resources.
+-- @inargs: vid
 -- @outargs:
--- @longdescr: This function deleted as VID, its clones, any attached frameservers
+-- @longdescr: This function deletes vid, any attached frameservers
 -- and linked images without the MASK_LIVING flag cleared.
--- @note: Trying to delete a non-existing image is considered a fatal error and
--- will immediately terminate the engine. The valid_vid function can be used to
--- determine if a deletion would be considered illegal or not.
--- @note: Trying to delete WORLDID and BADID is also considered a fatal error.
--- @note: Deleting an VID in an asynchronous state will force the asynchronous load
--- operation to complete first.
+-- @note: Trying to delete a non-existing image is considered a terminal state
+-- transition. The valid_vid function can be used as a last resort to
+-- to determine if a number maps to a valid vid or not, but is in many cases
+-- a sign of bad design.
+-- @note: Trying to delete WORLDID is a terminal state transition.
+-- @note: If the underlying object is in an asynchronous load state,
+-- the load operation will be completed first.
 -- @group: image
 -- @related: expire_image
 -- @cfunction: deleteimage

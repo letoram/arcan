@@ -378,22 +378,6 @@ arcan_vobj_id arcan_video_addfobject(ffunc_ind feed,
 	vfunc_state state, img_cons constraints, unsigned short zv);
 
 /*
- * Create a restricted instance of a specific object.
- * These instances forcibly inherits a lot of properties from its
- * parent, and other arcan_video_ functions that are restricted to
- * instances will return ARCAN_ERRC_CLONE_NOT_PERMITTED, if used.
- *
- * Ideally, instance calls can re-use a lot of graphic state containers
- * from its parent, but the feature is largely superseeded by the less
- * restricted nullobject with shared storage.
- *
- * Some clone-restricted features include feed functions, framesets,
- * linking, altering living mask, persist flags.
- *
- */
-arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id id);
-
-/*
  * Create a new video object based on a format string (multiple = false,
  * message = formatstr) or array of strings (where %2 == 0 is treated as
  * format string and %2==1 is treated as plain string.

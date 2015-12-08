@@ -76,15 +76,14 @@ struct rendertarget {
 
 enum vobj_flags {
 	FL_INUSE  = 1,
-	FL_CLONE  = 2,
-	FL_NASYNC = 4,
-	FL_TCYCLE = 8,
-	FL_ROTOFS = 16,
-	FL_ORDOFS = 32,
-	FL_PRSIST = 64,
-	FL_FULL3D = 128, /* switch to a quaternion- based orientation scheme */
+	FL_NASYNC = 2,
+	FL_TCYCLE = 4,
+	FL_ROTOFS = 18,
+	FL_ORDOFS = 16,
+	FL_PRSIST = 32,
+	FL_FULL3D = 64, /* switch to a quaternion- based orientation scheme */
 #ifdef _DEBUG
-	FL_FROZEN = 256
+	FL_FROZEN = 128
 #endif
 };
 
@@ -131,8 +130,13 @@ typedef struct surface_transform {
 	struct surface_transform* next;
 } surface_transform;
 
+struct frameset_store {
+	struct storage_info_t* frame;
+	float txcos[8];
+};
+
 struct vobject_frameset {
-	struct storage_info_t** frames;
+	struct frameset_store* frames;
 	size_t n_frames; /* number of slots in frames */
 	size_t index; /* current frame */
 	int ctr; /* ticks- left counter */
@@ -151,9 +155,6 @@ struct vobject_frameset {
  *                      uint32
  *
  *  - reference counters -> only enabled and present in debug mode
- *
- *  - framesets -> pointer to extended struct, use vstores instead of other
- *                 vobjects severly reduce fptr overhead.
  *
  *  - smaller types -> a lot of members use way to large integer ranges
  *
@@ -232,7 +233,6 @@ typedef struct arcan_vobject {
 /* for integrity checks, a destructive operation on a
  * !0 reference count is a terminal state */
 	struct {
-		signed instances;
 		signed attachments;
 		signed links;
 	} extrefc;
@@ -293,14 +293,14 @@ struct arcan_video_display {
 	char* txdump;
 };
 
-/* these all represent a subset of the current context that is to be drawn.
- * if (dest != NULL) this means that the vid actually represents a rendertarget,
- * e.g. FBO. The mode defines which output buffers (color, depth, ...)
- * that should be stored. Readback defines if we want a PBO- or glReadPixels
- * style  readback into the .raw buffer of the target. reset defines if any of
- * the intermediate buffers should be cleared beforehand. first refers to the
- * first object in the subset. if first and dest are null, stop processing
- * the list of rendertargets. */
+/* these all represent a subset of the current context that is to be drawn.  if
+ * (dest != NULL) this means that the vid actually represents a rendertarget,
+ * e.g. FBO. The mode defines which output buffers (color, depth, ...) that
+ * should be stored. Readback defines if we want a PBO- or glReadPixels style
+ * readback into the .raw buffer of the target. reset defines if any of the
+ * intermediate buffers should be cleared beforehand. first refers to the first
+ * object in the subset. if first and dest are null, stop processing the list
+ * of rendertargets. */
 struct arcan_video_context {
 	unsigned vitem_ofs;
 	unsigned vitem_limit;
@@ -332,49 +332,85 @@ extern struct arcan_video_display arcan_video_display;
  */
 unsigned arcan_vint_refresh(float fragment, size_t* ndirty);
 
-int arcan_debug_pumpglwarnings(const char* src);
+/*
+ * populate props with the (possibly cached) transformation state
+ * of existing video object (vobj) at interpolation stage (0..1)
+ */
 void arcan_resolve_vidprop(arcan_vobject* vobj,
 	float lerp, surface_properties* props);
 
 arcan_vobject* arcan_video_getobject(arcan_vobj_id id);
 arcan_vobject* arcan_video_newvobject(arcan_vobj_id* id);
 
+void arcan_vint_bindmulti(arcan_vobject* elem, size_t ind);
+
 /*
- * agp_drop_vstore does not explicitly manage reference
- * counting etc. that is up to the video layer,
- * and should rarely be used directly
+ * agp_drop_vstore does not explicitly manage reference counting etc. that is
+ * up to the video layer. All cases that access s-> directly should be
+ * manually inspected.
  */
 void arcan_vint_drop_vstore(struct storage_info_t* s);
 
-/* check if a readback is completed, and process it if it is. */
+/* check if a pending readback is completed, and process it if it is. */
 void arcan_vint_pollreadback(struct rendertarget* rtgt);
 
-arcan_errc arcan_video_attachobject(arcan_vobj_id id);
-arcan_errc arcan_video_deleteobject(arcan_vobj_id id);
+/*
+ * ensure that the video object pointed to by id is attached to the
+ * currently active (main) rendergarget
+ */
+arcan_errc arcan_vint_attachobject(arcan_vobj_id id);
 
-arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
-	img_cons forced, bool asynchsrc);
-
-void arcan_video_setblend(const surface_properties* dprops,
-	const arcan_vobject* elem);
+/*
+ * semaphore- rate limited image decoding and repacking to native
+ * format used both threaded and non-threaded
+ */
+arcan_errc arcan_vint_getimage(const char* fname,
+	arcan_vobject* dst, img_cons forced, bool asynchsrc);
 
 #ifdef _DEBUG
 void arcan_debug_tracetag_dump();
 #endif
 
+/*
+ * access to the current rendertarget backend store for primary rendertarget
+ * used primarily by the video-platform layer
+ */
 struct storage_info_t* arcan_vint_world();
 
-struct arcan_img_meta;
-void generate_basic_mapping(float* dst, float st, float tt);
-void generate_mirror_mapping(float* dst, float st, float tt);
-void arcan_video_joinasynch(arcan_vobject* img, bool emit, bool force);
-struct rendertarget* find_rendertarget(arcan_vobject* vobj);
+/*
+ * generate the normal set of texture coordinates (should be CW:
+ * 0.0 , 1.0,  1.1,  0.1
+ */
+void arcan_vint_defaultmapping(float* dst, float st, float tt);
 
+/*
+ * same as basic mapping but invert T to aaccount for LL origo vs UL
+ */
+void arcan_vint_mirrormapping(float* dst, float st, float tt);
+
+/*
+ * try to complete vobject asynchronous loading process, set emit to have the
+ * asynch- loaded event propagate and force to wait for completion
+ */
+void arcan_vint_joinasynch(arcan_vobject* img, bool emit, bool force);
+
+/*
+ * get the internal structure of the rendertarget that vobj has as
+ * its primary attachment (for ordering etc.)
+ */
+struct rendertarget* arcan_vint_findrt(arcan_vobject* vobj);
+
+/*
+ * used by the video platform layer, assume that storage_info_t points
+ * to the backing end of a rendertarget, and draw it to the bound output-rt
+ * at the specified (x,y, x+w, y+h) position
+ */
 void arcan_vint_drawrt(struct storage_info_t*, int x, int y, int w, int h);
+
+/*
+ * used by the video platform layer for "accelerated" cursor drawing,
+ * meaning that !erase draws using the backing store set as the cursor
+ * and erase draws using the current attached rendertarget
+ */
 void arcan_vint_drawcursor(bool erase);
-
-void arcan_3d_setdefaults();
-
-arcan_vobject_litem* arcan_refresh_3d(arcan_vobj_id camtag,
-	arcan_vobject_litem* cell, float frag);
 #endif

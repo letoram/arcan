@@ -1542,27 +1542,6 @@ static int nudgeimage(lua_State* ctx)
 	return 0;
 }
 
-static int instanceimage(lua_State* ctx)
-{
-	LUA_TRACE("instance_image");
-	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
-	arcan_vobj_id newid = arcan_video_cloneobject(id);
-
-	if (newid != ARCAN_EID){
-		enum arcan_transform_mask lmask = MASK_SCALE | MASK_OPACITY
-			| MASK_POSITION | MASK_ORIENTATION;
-		arcan_video_transformmask(newid, lmask);
-
-		lua_pushvid(ctx, newid);
-		trace_allocation(ctx, "instance_image", id);
-		LUA_ETRACE("instance_image", NULL);
-		return 1;
-	}
-
-	LUA_ETRACE("instance_image", "couldn't instance image");
-	return 0;
-}
-
 static int resettransform(lua_State* ctx)
 {
 	LUA_TRACE("reset_image_transform");
@@ -1684,7 +1663,7 @@ static int imageresizestorage(lua_State* ctx)
 		arcan_fatal("image_resize_storage(), illegal dimensions"
 			"	requested (%d:%d x %d:%d)\n", w, MAX_SURFACEW, h, MAX_SURFACEH);
 
-	struct rendertarget* rtgt = find_rendertarget(vobj);
+	struct rendertarget* rtgt = arcan_vint_findrt(vobj);
 	if (rtgt)
 		agp_resize_rendertarget(rtgt->art, w, h);
 	else
@@ -2397,9 +2376,9 @@ static int settxcos_default(lua_State* ctx)
 
 	if (dst->txcos){
 		if (mirror)
-			generate_mirror_mapping(dst->txcos, 1.0, 1.0);
+			arcan_vint_mirrormapping(dst->txcos, 1.0, 1.0);
 		else
-			generate_basic_mapping(dst->txcos, 1.0, 1.0);
+			arcan_vint_defaultmapping(dst->txcos, 1.0, 1.0);
 	}
 
 	LUA_ETRACE("image_set_txcos_default", NULL);
@@ -4368,7 +4347,7 @@ static int imageasframe(lua_State* ctx)
 		break;
 		case ARCAN_ERRC_BAD_ARGUMENT:
 			arcan_warning("set_image_as_frame(%"PRIxVOBJ":%"PRIxVOBJ") failed, "
-				"dest doesn't have enough frames or is a clone.\n", sid, did);
+				"dest doesn't have enough frames.\n", sid, did);
 		break;
 		default:
 		arcan_fatal("set_image_as_frame() failed, unknown code: %d\n", (int)code);
@@ -6153,7 +6132,7 @@ static int targetstepframe(lua_State* ctx)
 	arcan_vobject* vobj;
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, &vobj);
 	vfunc_state* state = arcan_video_feedstate(tgt);
-	struct rendertarget* rtgt = find_rendertarget(vobj);
+	struct rendertarget* rtgt = arcan_vint_findrt(vobj);
 
 	bool qev = true;
 	int nframes = luaL_optnumber(ctx, 2, 1);
@@ -7224,10 +7203,6 @@ static int nulltarget(lua_State* ctx)
 	LUA_TRACE("define_nulltarget");
 	arcan_vobject* dobj;
 	arcan_vobj_id did = luaL_checkvid(ctx, 1, &dobj);
-	if (FL_TEST(dobj, FL_CLONE)){
-		arcan_fatal("define_nulltarget(), nulltarget recipient "
-			"cannto be a clone.");
-	}
 
 	vfunc_state* state = arcan_video_feedstate(did);
 	if (state->tag != ARCAN_TAG_FRAMESERV)
@@ -7264,10 +7239,6 @@ static int feedtarget(lua_State* ctx)
 	arcan_vobject* dobj, (* sobj);
 	arcan_vobj_id did = luaL_checkvid(ctx, 1, &dobj);
 	arcan_vobj_id sid = luaL_checkvid(ctx, 2, &sobj);
-
-	if (FL_TEST(dobj, FL_CLONE) || FL_TEST(sobj, FL_CLONE))
-		arcan_fatal("define_feedtarget(), feedtarget provider or "
-			"recipient cannot be a clone.");
 
 	vfunc_state* state = arcan_video_feedstate(did);
 	if (state->tag != ARCAN_TAG_FRAMESERV)
@@ -7313,10 +7284,6 @@ static int recordset(lua_State* ctx)
 
 	arcan_vobject* dvobj;
 	arcan_vobj_id did = luaL_checkvid(ctx, 1, &dvobj);
-
-	if (FL_TEST(dvobj, FL_CLONE))
-		arcan_fatal("define_recordtarget(), recordtarget "
-			"recipient cannot be a clone.");
 
 	if (dvobj->vstore->txmapped != TXSTATE_TEX2D)
 		arcan_fatal("define_recordtarget(), recordtarget "
@@ -8903,7 +8870,6 @@ static const luaL_Reg imgfuns[] = {
 {"image_children",           imagechildren      },
 {"order_image",              orderimage         },
 {"max_current_image_order",  maxorderimage      },
-{"instance_image",           instanceimage      },
 {"link_image",               linkimage          },
 {"set_image_as_frame",       imageasframe       },
 {"image_framesetsize",       framesetalloc      },
@@ -9249,14 +9215,12 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
  */
 static const char* const vobj_flags(arcan_vobject* src)
 {
-	static char fbuf[sizeof("persist clone clip noasynch "
+	static char fbuf[sizeof("persist clip noasynch "
 		"cycletransform rothier_origo order ")];
 
 	fbuf[0] = '\0';
 	if (FL_TEST(src, FL_PRSIST))
 		strcat(fbuf, "persist ");
-	if (FL_TEST(src, FL_CLONE))
-		strcat(fbuf, "clone ");
 	if (src->clip != ARCAN_CLIP_OFF)
 		strcat(fbuf, "clip ");
 	if (FL_TEST(src, FL_NASYNC))
@@ -9531,8 +9495,7 @@ static inline void dump_vobject(FILE* dst, arcan_vobject* src)
 \tframeset_counter = %d,\n\
 \tframeset_current = %d,\n"
 #ifdef _DEBUG
-"\textrefc_instances = %d,\n\
-\textrefc_attachments = %d,\n\
+"\textrefc_attachments = %d,\n\
 \textrefc_links = %d,\n"
 #endif
 "\tstorage_source = [[%s]],\n\
@@ -9566,7 +9529,6 @@ src->frameset ? lut_framemode(src->frameset->mode) : "",
 (int) (src->frameset ? src->frameset->mctr : -1),
 (int) (src->frameset ? src->frameset->ctr : -1),
 #ifdef _DEBUG
-(int) src->extrefc.instances,
 (int) src->extrefc.attachments,
 (int) src->extrefc.links,
 #endif
@@ -9607,11 +9569,11 @@ vobj.glstore_refc = %zu;\n", src->vstore->vinf.text.glid,
 		fprintf_float(dst, "", src->vstore->vinf.col.b, "};\n");
 	}
 
-	if (!FL_TEST(src, FL_CLONE) && src->frameset)
+	if (src->frameset)
 	for (size_t i = 0; i < src->frameset->ctr; i++)
 	{
 		fprintf(dst, "vobj.frameset[%zu] = %d\n", i + 1,
-			src->frameset->frames[i]->vinf.text.glid);
+			src->frameset->frames[i].frame->vinf.text.glid);
 	}
 
 	if (src->children){

@@ -6,7 +6,8 @@
 -- attaching objects. By default, these refer back to the source object,
 -- but each slot can be filled with an object using the set_image_as_frame
 -- function. The behavior and restrictons for *srcvid* are similar to
--- image_sharestorage
+-- image_sharestorage with the addition that the texture coordinate set
+-- in use will also carry over.
 -- @note: attempts at setting the image to a value larger than the number
 -- of available slots will be ignored with a warning.
 -- @group: image

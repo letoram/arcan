@@ -175,7 +175,7 @@ void arcan_video_default_imageprocmode(enum arcan_imageproc_mode mode)
 	arcan_video_display.imageproc = mode;
 }
 
-struct rendertarget* find_rendertarget(arcan_vobject* vobj)
+struct rendertarget* arcan_vint_findrt(arcan_vobject* vobj)
 {
 	for (size_t i = 0; i < current_context->n_rtargets && vobj; i++)
 		if (current_context->rtargets[i].color == vobj)
@@ -217,10 +217,7 @@ static void addchild(arcan_vobject* parent, arcan_vobject* child)
 		parent->childslots += 8;
 	}
 
-	if (FL_TEST(child, FL_CLONE))
-		parent->extrefc.instances++;
-	else
-		parent->extrefc.links++;
+	parent->extrefc.links++;
 
 	child->parent = parent;
 	*slot = child;
@@ -249,10 +246,7 @@ static void dropchild(arcan_vobject* parent, arcan_vobject* child)
 	for (size_t i = 0; i < parent->childslots; i++){
 		if (parent->children[i] == child){
 			parent->children[i] = NULL;
-			if (FL_TEST(child, FL_CLONE))
-				parent->extrefc.instances--;
-			else
-				parent->extrefc.links--;
+			parent->extrefc.links--;
 			child->parent = &current_context->world;
 			break;
 		}
@@ -300,8 +294,7 @@ static inline void step_active_frame(arcan_vobject* vobj)
 	if (!vobj->frameset)
 		return;
 
-	size_t sz = (FL_TEST(vobj, FL_CLONE) ? vobj->parent->frameset->n_frames :
-		vobj->frameset->n_frames);
+	size_t sz = vobj->frameset->n_frames;
 
 	vobj->frameset->index = (vobj->frameset->index + 1) % sz;
 	if (vobj->owner)
@@ -343,9 +336,6 @@ static void reallocate_gl_context(struct arcan_video_context* context)
 				rebase_transform(ctrans, cticks - context->last_tickstamp);
 			}
 
-			if (FL_TEST(current, FL_CLONE))
-				continue;
-
 /* for conservative memory management mode we need to reallocate
  * static resources. getimage will strdup the source so to avoid leaking,
  * copy and free */
@@ -353,7 +343,7 @@ static void reallocate_gl_context(struct arcan_video_context* context)
 				(char)current->feed.state.tag == ARCAN_TAG_IMAGE){
 					char* fname = strdup( current->vstore->vinf.text.source );
 					arcan_mem_free(current->vstore->vinf.text.source);
-				arcan_video_getimage(fname, current,
+				arcan_vint_getimage(fname, current,
 					arcan_video_dimensions(current->origw, current->origh), false);
 				arcan_mem_free(fname);
 			}
@@ -680,7 +670,7 @@ clense:
 
 /* since the feed function may keep a track of its parent (some do)
  * we also need to support the adopt call */
-		arcan_video_attachobject(did);
+		arcan_vint_attachobject(did);
 		arcan_ffunc_lookup(vobj->feed.ffunc)(FFUNC_ADOPT,
 			0, 0, 0, 0, 0, vobj->feed.state, vobj->cellid);
 
@@ -742,7 +732,7 @@ unsigned arcan_video_extpopcontext(arcan_vobj_id* dst)
 			vobj->txcos = arcan_alloc_mem(sizeof(float) * 8,
 				ARCAN_MEM_VSTRUCT, 0, ARCAN_MEMALIGN_SIMD);
 
-			generate_mirror_mapping(vobj->txcos, 1.0, 1.0);
+			arcan_vint_mirrormapping(vobj->txcos, 1.0, 1.0);
 		}
 	}
 
@@ -775,7 +765,7 @@ signed arcan_video_extpushcontext(arcan_vobj_id* dst)
 			vobj->txcos = arcan_alloc_mem(sizeof(float) * 8,
 				ARCAN_MEM_VSTRUCT, 0, ARCAN_MEMALIGN_SIMD);
 
-			generate_mirror_mapping(vobj->txcos, 1.0, 1.0);
+			arcan_vint_mirrormapping(vobj->txcos, 1.0, 1.0);
 		}
 	}
 
@@ -936,7 +926,7 @@ arcan_errc arcan_video_mipmapset(arcan_vobj_id vid, bool enable)
 	return ARCAN_OK;
 }
 
-void generate_basic_mapping(float* dst, float st, float tt)
+void arcan_vint_defaultmapping(float* dst, float st, float tt)
 {
 	dst[0] = 0.0;
 	dst[1] = 0.0;
@@ -948,7 +938,7 @@ void generate_basic_mapping(float* dst, float st, float tt)
 	dst[7] = tt;
 }
 
-void generate_mirror_mapping(float* dst, float st, float tt)
+void arcan_vint_mirrormapping(float* dst, float st, float tt)
 {
 	dst[6] = 0.0;
 	dst[7] = 0.0;
@@ -1191,7 +1181,7 @@ static void attach_object(struct rendertarget* dst, arcan_vobject* src)
 	}
 }
 
-arcan_errc arcan_video_attachobject(arcan_vobj_id id)
+arcan_errc arcan_vint_attachobject(arcan_vobj_id id)
 {
 	arcan_vobject* src = arcan_video_getobject(id);
 	arcan_errc rv = ARCAN_ERRC_BAD_RESOURCE;
@@ -1313,11 +1303,6 @@ arcan_errc arcan_video_linkobjs(arcan_vobj_id srcid, arcan_vobj_id parentid,
 	if (!src || !dst)
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
-/* can't relink clone to another object, or link an object to a clone */
-	if (FL_TEST(src, FL_CLONE) || FL_TEST(src, FL_PRSIST) ||
-		(FL_TEST(dst, FL_CLONE) || FL_TEST(dst, FL_PRSIST)))
-		return ARCAN_ERRC_CLONE_NOT_PERMITTED;
-
 	arcan_vobject* current = dst;
 
 /* traverse destination and make sure we don't create cycles */
@@ -1376,9 +1361,9 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 			arcan_warning("video_init couldn't create synchronization handle\n");
 		}
 
-		generate_basic_mapping(arcan_video_display.default_txcos, 1.0, 1.0);
-		generate_basic_mapping(arcan_video_display.cursor_txcos, 1.0, 1.0);
-		generate_mirror_mapping(arcan_video_display.mirror_txcos, 1.0, 1.0);
+		arcan_vint_defaultmapping(arcan_video_display.default_txcos, 1.0, 1.0);
+		arcan_vint_defaultmapping(arcan_video_display.cursor_txcos, 1.0, 1.0);
+		arcan_vint_mirrormapping(arcan_video_display.mirror_txcos, 1.0, 1.0);
 		firstinit = false;
 	}
 
@@ -1455,7 +1440,7 @@ static uint16_t nexthigher(uint16_t k)
 	return k+1;
 }
 
-arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
+arcan_errc arcan_vint_getimage(const char* fname, arcan_vobject* dst,
 	img_cons forced, bool asynchsrc)
 {
 /*
@@ -1646,8 +1631,8 @@ arcan_errc arcan_video_shareglstore(arcan_vobj_id sid, arcan_vobj_id did)
 
 	if (src->vstore->txmapped == TXSTATE_OFF ||
 		src->vstore->vinf.text.glid == 0 ||
-		FL_TEST(src, FL_PRSIST | FL_CLONE) ||
-		FL_TEST(dst, FL_PRSIST | FL_CLONE)
+		FL_TEST(src, FL_PRSIST) ||
+		FL_TEST(dst, FL_PRSIST)
 	)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
@@ -1692,7 +1677,7 @@ arcan_vobj_id arcan_video_solidcolor(float origw, float origh,
 	newvobj->order = zv;
 	newvobj->blendmode = BLEND_NORMAL;
 
-	arcan_video_attachobject(rv);
+	arcan_vint_attachobject(rv);
 
 	return rv;
 }
@@ -1707,7 +1692,7 @@ arcan_vobj_id arcan_video_nullobject(float origw,
 	if (rv != ARCAN_EID){
 		arcan_vobject* vobj = arcan_video_getobject(rv);
 		vobj->program = 0;
-		arcan_video_attachobject(rv);
+		arcan_vint_attachobject(rv);
 	}
 
 	return rv;
@@ -1742,7 +1727,7 @@ arcan_vobj_id arcan_video_rawobject(av_pixel* buf,
 	newvobj->order = zv;
 
 	agp_update_vstore(newvobj->vstore, true);
-	arcan_video_attachobject(rv);
+	arcan_vint_attachobject(rv);
 
 	return rv;
 }
@@ -1814,7 +1799,7 @@ arcan_errc arcan_video_defaultattachment(arcan_vobj_id src)
 	if (!vobj)
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
-	struct rendertarget* rtgt = find_rendertarget(vobj);
+	struct rendertarget* rtgt = arcan_vint_findrt(vobj);
 	if (!rtgt)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
@@ -1833,7 +1818,7 @@ arcan_errc arcan_video_alterreadback ( arcan_vobj_id did, int readback )
 	if (!vobj)
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
-	struct rendertarget* rtgt = find_rendertarget(vobj);
+	struct rendertarget* rtgt = arcan_vint_findrt(vobj);
 	if (!rtgt)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
@@ -1853,7 +1838,7 @@ arcan_errc arcan_video_rendertarget_setnoclear(arcan_vobj_id did, bool value)
 		if (!vobj)
 			return ARCAN_ERRC_NO_SUCH_OBJECT;
 
-		rtgt = find_rendertarget(vobj);
+		rtgt = arcan_vint_findrt(vobj);
 	}
 
 	if (!rtgt)
@@ -1875,7 +1860,7 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did,
 	if (!vobj)
 		return rv;
 
-	bool is_rtgt = find_rendertarget(vobj) != NULL;
+	bool is_rtgt = arcan_vint_findrt(vobj) != NULL;
 	if (is_rtgt){
 		arcan_warning("arcan_video_setuprendertarget() source vid"
 			"already is a rendertarget\n");
@@ -1935,9 +1920,7 @@ arcan_errc arcan_video_setactiveframe(arcan_vobj_id dst, unsigned fid)
 	if (!dstvobj->frameset)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
-	dstvobj->frameset->index = fid <
-		(FL_TEST(dstvobj, FL_CLONE) ? dstvobj->parent->frameset->n_frames :
-			dstvobj->frameset->n_frames) ? fid : 0;
+	dstvobj->frameset->index = fid < dstvobj->frameset->n_frames ? fid : 0;
 
 	FLAG_DIRTY(dstvobj);
 	return ARCAN_OK;
@@ -1955,15 +1938,24 @@ arcan_errc arcan_video_setasframe(arcan_vobj_id dst,
 	if (dstvobj->frameset == NULL || srcvobj->vstore->txmapped != TXSTATE_TEX2D)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
-	if (fid >= dstvobj->frameset->n_frames || FL_TEST(dstvobj, FL_CLONE))
+	if (fid >= dstvobj->frameset->n_frames)
 		return ARCAN_ERRC_BAD_ARGUMENT;
 
-	if (dstvobj->frameset->frames[fid] == srcvobj->vstore)
+	struct frameset_store* store = &dstvobj->frameset->frames[fid];
+	if (store->frame == srcvobj->vstore)
 		return ARCAN_OK;
 
-	arcan_vint_drop_vstore(dstvobj->frameset->frames[fid]);
-	dstvobj->frameset->frames[fid] = srcvobj->vstore;
-	dstvobj->frameset->frames[fid]->refcount++;
+	arcan_vint_drop_vstore(store->frame);
+	store->frame = srcvobj->vstore;
+
+/* we need texture coordinates to come with in order to support
+ * animations using 'sprite-sheet' like features */
+	if (srcvobj->txcos)
+		memcpy(store->txcos, srcvobj->txcos, sizeof(float)*8);
+	else
+		arcan_vint_defaultmapping(store->txcos, 1.0, 1.0);
+
+	store->frame->refcount++;
 
 	return ARCAN_OK;
 }
@@ -1982,12 +1974,12 @@ static void* thread_loader(void* in)
 {
 	struct thread_loader_args* largs = (struct thread_loader_args*) in;
 	arcan_vobject* dst = largs->dst;
-	largs->rc = arcan_video_getimage(largs->fname, dst, largs->constraints, true);
+	largs->rc = arcan_vint_getimage(largs->fname, dst, largs->constraints, true);
 	dst->feed.state.tag = ARCAN_TAG_ASYNCIMGRD;
 	return 0;
 }
 
-void arcan_video_joinasynch(arcan_vobject* img, bool emit, bool force)
+void arcan_vint_joinasynch(arcan_vobject* img, bool emit, bool force)
 {
 	if (!force && img->feed.state.tag != ARCAN_TAG_ASYNCIMGRD){
 		return;
@@ -2074,7 +2066,7 @@ arcan_errc arcan_video_pushasynch(arcan_vobj_id source)
 	if (vobj->feed.state.tag == ARCAN_TAG_ASYNCIMGLD ||
 		vobj->feed.state.tag == ARCAN_TAG_ASYNCIMGRD){
 		/* protect us against premature invocation */
-		arcan_video_joinasynch(vobj, false, true);
+		arcan_vint_joinasynch(vobj, false, true);
 	}
 	else
 		return ARCAN_ERRC_UNACCEPTED_STATE;
@@ -2091,7 +2083,7 @@ static arcan_vobj_id loadimage(const char* fname, img_cons constraints,
 	if (newvobj == NULL)
 		return ARCAN_EID;
 
-	arcan_errc rc = arcan_video_getimage(fname, newvobj, constraints, false);
+	arcan_errc rc = arcan_vint_getimage(fname, newvobj, constraints, false);
 
 	if (rc != ARCAN_OK)
 		arcan_video_deleteobject(rv);
@@ -2121,9 +2113,6 @@ arcan_errc arcan_video_alterfeed(arcan_vobj_id id,
 
 	if (!vobj)
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
-
-	if (FL_TEST(vobj, FL_CLONE))
-		return ARCAN_ERRC_CLONE_NOT_PERMITTED;
 
 	vobj->feed.state = state;
 	vobj->feed.ffunc = cb;
@@ -2163,7 +2152,7 @@ static arcan_vobj_id arcan_video_setupfeed(
 		float hx = (float)cons.w / (float)newvobj->vstore->w;
 		float hy = (float)cons.h / (float)newvobj->vstore->h;
 		if (newvobj->txcos)
-			generate_basic_mapping(newvobj->txcos, hx, hy);
+			arcan_vint_defaultmapping(newvobj->txcos, hx, hy);
 	}
 
 /* allocate */
@@ -2185,9 +2174,6 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, size_t w, size_t h)
 	arcan_vobject* vobj = arcan_video_getobject(id);
 	if (!vobj)
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
-
-	if (FL_TEST(vobj, FL_CLONE))
-		return ARCAN_ERRC_CLONE_NOT_PERMITTED;
 
 	if (vobj->feed.state.tag == ARCAN_TAG_ASYNCIMGLD ||
 		vobj->feed.state.tag == ARCAN_TAG_ASYNCIMGRD)
@@ -2226,7 +2212,7 @@ arcan_vobj_id arcan_video_loadimageasynch(const char* rloc,
 
 		if (vobj){
 			vobj->current.rotation.quaternion = default_quat;
-			arcan_video_attachobject(rv);
+			arcan_vint_attachobject(rv);
 		}
 	}
 
@@ -2245,7 +2231,7 @@ arcan_vobj_id arcan_video_loadimage(const char* rloc,
 		if (vobj){
 			vobj->order = zv;
 			vobj->current.rotation.quaternion = default_quat;
-			arcan_video_attachobject(rv);
+			arcan_vint_attachobject(rv);
 		}
 	}
 
@@ -2268,7 +2254,7 @@ arcan_vobj_id arcan_video_addfobject(
 			vobj->order *= -1;
 		}
 
-		arcan_video_attachobject(rv);
+		arcan_vint_attachobject(rv);
 	}
 
 	return rv;
@@ -2284,7 +2270,7 @@ arcan_errc arcan_video_scaletxcos(arcan_vobj_id id, float sfs, float sft)
 			vobj->txcos = arcan_alloc_mem(8 * sizeof(float),
 				ARCAN_MEM_VSTRUCT, 0, ARCAN_MEMALIGN_SIMD);
 
-		generate_basic_mapping(vobj->txcos, 1.0, 1.0);
+		arcan_vint_defaultmapping(vobj->txcos, 1.0, 1.0);
 		vobj->txcos[0] *= sfs;
 		vobj->txcos[1] *= sft;
 		vobj->txcos[2] *= sfs;
@@ -2750,7 +2736,7 @@ static void drop_rtarget(arcan_vobject* vobj)
 			pool[i]->owner = NULL;
 
 /* cascade or push to stdout as new owner */
-			if ((pool[i]->mask & MASK_LIVING) > 0 ||FL_TEST(pool[i], FL_CLONE))
+			if ((pool[i]->mask & MASK_LIVING) > 0)
 				arcan_video_deleteobject(pool[i]->cellid);
 			else
 				attach_object(&current_context->stdoutp, pool[i]);
@@ -2762,13 +2748,11 @@ static void drop_rtarget(arcan_vobject* vobj)
 static void drop_frameset(arcan_vobject* vobj)
 {
 	if (vobj->frameset){
-		if (!FL_TEST(vobj, FL_CLONE)){
-			for (size_t i = 0; i < vobj->frameset->n_frames; i++)
-				arcan_vint_drop_vstore(vobj->frameset->frames[i]);
+		for (size_t i = 0; i < vobj->frameset->n_frames; i++)
+			arcan_vint_drop_vstore(vobj->frameset->frames[i].frame);
 
-			arcan_mem_free(vobj->frameset->frames);
-			vobj->frameset->frames = NULL;
-		}
+		arcan_mem_free(vobj->frameset->frames);
+		vobj->frameset->frames = NULL;
 
 		arcan_mem_free(vobj->frameset);
 		vobj->frameset = NULL;
@@ -2782,7 +2766,6 @@ static void drop_frameset(arcan_vobject* vobj)
  * Things to consider:
  * persistence (existing in multiple stack layers, only allowed to be deleted
  * IF it doesn't exist at a lower layer
- * cloning (instances of an object),
  * rendertargets (objects that gets rendered to)
  * links (objects linked to others to be deleted in a cascading fashion)
  *
@@ -2824,11 +2807,8 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 	drop_rtarget(vobj);
 	drop_frameset(vobj);
 
-/* populate a pool of cascade deletions, none of this applies to
- * instances as they can only really be part of a rendertarget,
- * and those are handled separately */
-	unsigned sum = FL_TEST(vobj, FL_CLONE) ? 0 :
-		vobj->extrefc.links + vobj->extrefc.instances;
+/* populate a pool of cascade deletions */
+	unsigned sum = vobj->extrefc.links;
 
 	arcan_vobject* pool[ (sum + 1) ];
 
@@ -2841,7 +2821,7 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 			if (!cur)
 				continue;
 
-			if (FL_TEST(cur, FL_CLONE) || (cur->mask & MASK_LIVING) > 0)
+			if ((cur->mask & MASK_LIVING) > 0)
 				pool[cascade_c++] = cur;
 
 			dropchild(vobj, cur);
@@ -2857,28 +2837,25 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 	arcan_mem_free(vobj->txcos);
 
 /* full- object specific clean-up */
-	if (!FL_TEST(vobj, FL_CLONE)){
-		if (vobj->feed.ffunc){
-			arcan_ffunc_lookup(vobj->feed.ffunc)(FFUNC_DESTROY,
-				0, 0, 0, 0, 0, vobj->feed.state, vobj->cellid);
-			vobj->feed.state.ptr = NULL;
-			vobj->feed.ffunc = FFUNC_FATAL;
-			vobj->feed.state.tag = ARCAN_TAG_NONE;
-		}
-
-		if (vobj->feed.state.tag == ARCAN_TAG_ASYNCIMGLD)
-			arcan_video_pushasynch(id);
-
-/* video storage, will take care of refcounting in case of shared storage */
-		arcan_vint_drop_vstore(vobj->vstore);
-		vobj->vstore = NULL;
+	if (vobj->feed.ffunc){
+		arcan_ffunc_lookup(vobj->feed.ffunc)(FFUNC_DESTROY,
+			0, 0, 0, 0, 0, vobj->feed.state, vobj->cellid);
+		vobj->feed.state.ptr = NULL;
+		vobj->feed.ffunc = FFUNC_FATAL;
+		vobj->feed.state.tag = ARCAN_TAG_NONE;
 	}
 
-	if (vobj->extrefc.attachments|vobj->extrefc.links | vobj->extrefc.instances){
+	if (vobj->feed.state.tag == ARCAN_TAG_ASYNCIMGLD)
+		arcan_video_pushasynch(id);
+
+/* video storage, will take care of refcounting in case of shared storage */
+	arcan_vint_drop_vstore(vobj->vstore);
+	vobj->vstore = NULL;
+
+	if (vobj->extrefc.attachments|vobj->extrefc.links){
 		arcan_warning("[BUG] Broken reference counters for expiring objects, "
-			"%d, %d, %d, tracetag? (%s)\n", vobj->extrefc.attachments,
-			vobj->extrefc.links, vobj->extrefc.instances,
-			vobj->tracetag ? vobj->tracetag : "(NO TAG)"
+			"%d, %d, tracetag? (%s)\n", vobj->extrefc.attachments,
+			vobj->extrefc.links, vobj->tracetag ? vobj->tracetag : "(NO TAG)"
 		);
 #ifdef _DEBUG
 		abort();
@@ -3078,7 +3055,7 @@ arcan_errc arcan_video_allocframes(arcan_vobj_id id, unsigned char capacity,
 	if (target->vstore->txmapped != TXSTATE_TEX2D)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
-	if (FL_TEST(target, FL_CLONE) || FL_TEST(target, FL_PRSIST))
+	if (FL_TEST(target, FL_PRSIST))
 		return ARCAN_ERRC_CLONE_NOT_PERMITTED;
 
 /* special case, de-allocate */
@@ -3098,12 +3075,14 @@ arcan_errc arcan_video_allocframes(arcan_vobj_id id, unsigned char capacity,
 
 	target->frameset->n_frames = capacity;
 	target->frameset->frames = arcan_alloc_mem(
-			sizeof(struct storage_info_t) * capacity,
+			sizeof(struct frameset_store) * capacity,
 			ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL
 	);
 
 	for (size_t i = 0; i < capacity; i++){
-		target->frameset->frames[i] = target->vstore;
+		target->frameset->frames[i].frame = target->vstore;
+		arcan_vint_defaultmapping(target->frameset->frames[i].txcos, 1.0, 1.0);
+
 		target->vstore->refcount++;
 	}
 
@@ -3655,12 +3634,12 @@ static int tick_rendertarget(struct rendertarget* tgt)
 	while (current){
 		arcan_vobject* elem = current->elem;
 
-		arcan_video_joinasynch(elem, true, false);
+		arcan_vint_joinasynch(elem, true, false);
 
 		if (elem->last_updated != arcan_video_display.c_ticks)
 			tgt->transfc += update_object(elem, arcan_video_display.c_ticks);
 
-		if (elem->feed.ffunc && !FL_TEST(elem, FL_CLONE))
+		if (elem->feed.ffunc)
 			arcan_ffunc_lookup(elem->feed.ffunc)
 				(FFUNC_TICK, 0, 0, 0, 0, 0, elem->feed.state, elem->cellid);
 
@@ -3742,70 +3721,6 @@ arcan_errc arcan_video_setclip(arcan_vobj_id id, enum arcan_clipmode mode)
 	return ARCAN_OK;
 }
 
-arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id parent)
-{
-	if (parent == ARCAN_EID || parent == ARCAN_VIDEO_WORLDID)
-		return ARCAN_EID;
-
-	arcan_vobject* pobj = arcan_video_getobject(parent);
-	arcan_vobj_id rv = ARCAN_EID;
-
-	if (pobj == NULL || FL_TEST(pobj, FL_PRSIST))
-		return rv;
-
-	while (FL_TEST(pobj, FL_CLONE))
-		pobj = pobj->parent;
-
-	bool status;
-	rv = arcan_video_allocid(&status, current_context);
-
-	if (status){
-		arcan_vobject* nobj = arcan_video_getobject(rv);
-
-/* use parent values as template */
-		FL_SET(nobj, FL_CLONE);
-		nobj->blendmode     = pobj->blendmode;
-		nobj->origw         = pobj->origw;
-		nobj->origh         = pobj->origh;
-		nobj->order         = pobj->order;
-		nobj->cellid        = rv;
-
-/* for this time, we inherit the parent frameset
- * (though one cannot be set exclusively) */
-		if (pobj->frameset){
-			nobj->frameset = arcan_alloc_mem(sizeof(struct vobject_frameset),
-				ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
-
-			nobj->frameset->index = pobj->frameset->index;
-			nobj->frameset->mode = pobj->frameset->mode;
-			nobj->frameset->ctr = pobj->frameset->ctr;
-			nobj->frameset->mctr = pobj->frameset->mctr;
-		}
-
-/* don't alter refcount for vstore */
-		nobj->vstore        = pobj->vstore;
-		nobj->current.scale = pobj->current.scale;
-
-		nobj->current.rotation.quaternion = default_quat;
-		nobj->program = pobj->program;
-
-		if (pobj->txcos){
-			nobj->txcos = arcan_alloc_fillmem(pobj->txcos,
-				sizeof(float)*8, ARCAN_MEM_VSTRUCT, 0, ARCAN_MEMALIGN_SIMD);
-		}
-		else
-			nobj->txcos = NULL;
-
-		addchild(pobj, nobj);
-		trace("(clone) new instance of (%d:%s) with ID: %d, total: %d\n",
-			parent, video_tracetag(pobj), nobj->cellid,
-			nobj->parent->extrefc.instances);
-		arcan_video_attachobject(rv);
-	}
-
-	return rv;
-}
-
 arcan_errc arcan_video_persistobject(arcan_vobj_id id)
 {
 	arcan_vobject* vobj = arcan_video_getobject(id);
@@ -3813,8 +3728,7 @@ arcan_errc arcan_video_persistobject(arcan_vobj_id id)
 	if (!vobj)
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
-	if (!FL_TEST(vobj, FL_CLONE) &&
-		!vobj->frameset &&
+	if (!vobj->frameset &&
 		vobj->vstore->refcount == 1 &&
 		vobj->parent == &current_context->world){
 		FL_SET(vobj, FL_PRSIST);
@@ -4123,8 +4037,7 @@ static void ffunc_process(arcan_vobject* dst, int cookie)
 {
 /* we use an update cookie to make sure that we don't process
  * the same object multiple times when/if it is shared */
-	if (!dst->feed.ffunc ||
-		dst->feed.pcookie == cookie || FL_TEST(dst, FL_CLONE))
+	if (!dst->feed.ffunc || dst->feed.pcookie == cookie)
 		return;
 
 	dst->feed.pcookie = cookie;
@@ -4228,43 +4141,25 @@ static inline void populate_stencil(struct rendertarget* tgt,
 	agp_activate_stencil();
 }
 
-static inline void bind_multitexture(arcan_vobject* elem)
+void arcan_vint_bindmulti(arcan_vobject* elem, size_t ind)
 {
-	struct storage_info_t** frames;
-	size_t sz;
+	struct vobject_frameset* set = elem->frameset;
+	size_t sz = set->n_frames;
 
-	if (FL_TEST(elem, FL_CLONE)){
-		frames = elem->parent->frameset->frames;
-		sz = elem->parent->frameset->n_frames;
-	}
-	else {
-		frames = elem->frameset->frames;
-		sz = elem->frameset->n_frames;
-	}
-
-/* regular multitexture case, just forward */
-	if (elem->frameset->index == 0){
-		agp_activate_vstore_multi(frames, sz);
-		return;
-	}
-
+/* Build a temporary array of storage- info references for multi-
+ * build. Note that this does not respect texture coordinates */
 	struct storage_info_t* elems[sz];
 
-/* round-robin "history frame" mode, now the previous slots
- * represent previous frames */
-
-	for (ssize_t ind = elem->frameset->index, i = 0; i < sz;
-		i++, ind = (ind > 0 ? ind - 1 : sz - 1))
-		elems[i] = frames[ind];
+	for (size_t i = 0; i < sz; i++, ind = (ind > 0 ? ind - 1 : sz - 1))
+		elems[i] = set->frames[ind].frame;
 
 	agp_activate_vstore_multi(elems, sz);
 }
 
 /*
- * Apply clipping without using the stencil buffer,
- * cheaper but with some caveats of its own.
- * Will work particularly bad for partial clipping
- * with customized texture coordinates.
+ * Apply clipping without using the stencil buffer, cheaper but with some
+ * caveats of its own. Will work particularly bad for partial clipping with
+ * customized texture coordinates.
  */
 static inline bool setup_shallow_texclip(arcan_vobject* elem,
 	float** txcos, surface_properties* dprops, float fract)
@@ -4360,7 +4255,7 @@ static size_t process_rendertarget(struct rendertarget* tgt, float fract)
 /* first, handle all 3d work (which may require multiple passes etc.) */
 	if (arcan_video_display.order3d == ORDER3D_FIRST &&
 		current && current->elem->order < 0){
-		current = arcan_refresh_3d(tgt->camtag, current, fract);
+		current = arcan_3d_refresh(tgt->camtag, current, fract);
 		pc++;
 	}
 
@@ -4390,15 +4285,13 @@ static size_t process_rendertarget(struct rendertarget* tgt, float fract)
 			continue;
 		}
 
-/* enable clipping using stencil buffer,
- * we need to reset the state of the stencil buffer between
- * draw calls so track if it's enabled or not */
+/* enable clipping using stencil buffer, we need to reset the state of the
+ * stencil buffer between draw calls so track if it's enabled or not */
 		bool clipped = false;
 
 /*
- * texture coordinates that will be passed to the draw call,
- * clipping and other effects may maintain a local copy and
- * manipulate these
+ * texture coordinates that will be passed to the draw call, clipping and other
+ * effects may maintain a local copy and manipulate these
  */
 		float* txcos = elem->txcos;
 		float** dstcos = &txcos;
@@ -4406,11 +4299,25 @@ static size_t process_rendertarget(struct rendertarget* tgt, float fract)
 		if ( (elem->mask & MASK_MAPPING) > 0)
 			txcos = elem->parent != &current_context->world ?
 				elem->parent->txcos : elem->txcos;
-		else if (FL_TEST(elem, FL_CLONE))
-			txcos = elem->txcos;
 
 		if (!txcos)
 			txcos = arcan_video_display.default_txcos;
+
+/* depending on frameset- mode, we may need to split the frameset up into
+ * multitexturing, or switch the txcos with the ones that may be used for
+ * clipping */
+		if (elem->frameset){
+			if (elem->frameset->mode == ARCAN_FRAMESET_MULTITEXTURE)
+				arcan_vint_bindmulti(elem, elem->frameset->index);
+			else{
+				struct frameset_store* ds =
+					&elem->frameset->frames[elem->frameset->index];
+				txcos = ds->txcos;
+				agp_activate_vstore(ds->frame);
+			}
+		}
+		else
+			agp_activate_vstore(elem->vstore);
 
 /* a common clipping situation is that we have an invisible clipping parent
  * where neither objects is in a rotated state, which gives an easy way
@@ -4430,23 +4337,6 @@ static size_t process_rendertarget(struct rendertarget* tgt, float fract)
 
 		agp_shader_activate( elem->program > 0 ?
 			elem->program : agp_default_shader(BASIC_2D) );
-
-/* depending on frameset- mode, we may need to split
- * the frameset up into multitexturing */
-
-		if (elem->frameset){
-			if (elem->frameset->mode == ARCAN_FRAMESET_MULTITEXTURE)
-				bind_multitexture(elem);
-			else{
-				if (FL_TEST(elem, FL_CLONE))
-					agp_activate_vstore(
-						elem->parent->frameset->frames[elem->frameset->index]);
-				else
-					agp_activate_vstore(elem->frameset->frames[elem->frameset->index]);
-			}
-		}
-		else
-			agp_activate_vstore(elem->vstore);
 
 		if (dprops.opa < 1.0 - EPSILON || elem->blendmode == BLEND_NONE)
 			agp_blendstate(elem->blendmode);
@@ -4477,7 +4367,7 @@ end3d:
 	if (current && current->elem->order < 0 &&
 		arcan_video_display.order3d == ORDER3D_LAST){
 		agp_shader_activate(agp_default_shader(BASIC_2D));
-		current = arcan_refresh_3d(tgt->camtag, current, fract);
+		current = arcan_3d_refresh(tgt->camtag, current, fract);
 		if (current != tgt->first)
 			pc++;
 	}
@@ -4533,7 +4423,7 @@ arcan_errc arcan_video_forceupdate(arcan_vobj_id vid)
 	if (!vobj)
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
-	struct rendertarget* tgt = find_rendertarget(vobj);
+	struct rendertarget* tgt = arcan_vint_findrt(vobj);
 	if (!tgt)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
@@ -4759,7 +4649,7 @@ size_t arcan_video_rpick(arcan_vobj_id rt,
 {
 	size_t count = 0;
 	arcan_vobject* vobj = arcan_video_getobject(rt);
-	struct rendertarget* tgt = find_rendertarget(vobj);
+	struct rendertarget* tgt = arcan_vint_findrt(vobj);
 
 	if (lim == 0 || !tgt || !tgt->first)
 		return count;
@@ -4788,7 +4678,7 @@ size_t arcan_video_pick(arcan_vobj_id rt,
 {
 	size_t count = 0;
 	arcan_vobject* vobj = arcan_video_getobject(rt);
-	struct rendertarget* tgt = find_rendertarget(vobj);
+	struct rendertarget* tgt = arcan_vint_findrt(vobj);
 	if (lim == 0 || !tgt || !tgt->first)
 		return count;
 
@@ -5003,7 +4893,7 @@ arcan_errc arcan_video_maxorder(arcan_vobj_id rt, uint16_t* ov)
 	if (!vobj)
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
-	struct rendertarget* tgt = find_rendertarget(vobj);
+	struct rendertarget* tgt = arcan_vint_findrt(vobj);
 	if (!tgt)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
@@ -5171,7 +5061,7 @@ arcan_vobj_id arcan_video_renderstring(arcan_vobj_id src,
 
 /* transfer sync is done separately here */
 		agp_update_vstore(ds, true);
-		arcan_video_attachobject(rv);
+		arcan_vint_attachobject(rv);
 	}
 	else {
 		vobj = arcan_video_getobject(src);
@@ -5203,7 +5093,7 @@ arcan_vobj_id arcan_video_renderstring(arcan_vobj_id src,
 		ARCAN_MEM_VSTRUCT, 0, ARCAN_MEMALIGN_SIMD);
 	float wv = (float)maxw / (float)vobj->vstore->w;
 	float hv = (float)maxh / (float)vobj->vstore->h;
-	generate_basic_mapping(vobj->txcos, wv, hv);
+	arcan_vint_defaultmapping(vobj->txcos, wv, hv);
  */
 #undef ARGLST
 #undef FAIL
