@@ -74,7 +74,16 @@
 #include "arcan_ttf.h"
 #endif
 
-static struct {
+enum cursors {
+	CURSOR_BLOCK = 0,
+	CURSOR_HALFBLOCK,
+	CURSOR_FRAME,
+	CURSOR_VLINE,
+	CURSOR_ULINE,
+	CURSOR_END
+};
+
+struct {
 	struct tsm_screen* screen;
 	struct tsm_vte* vte;
 	struct shl_pty* pty;
@@ -109,6 +118,8 @@ static struct {
 	uint8_t fgc[3];
 	uint8_t bgc[3];
 	shmif_pixel ccol;
+	enum cursors cursor;
+
 	uint8_t alpha;
 
 	tsm_age_t age;
@@ -153,28 +164,52 @@ struct unpack_col {
 	};
 };
 
+const char* curslbl[] = {
+	"block",
+	"halfblock",
+	"frame",
+	"vline",
+	"uline",
+	NULL
+};
+
 /* support different cursor types here; blinking, underline,
  * vert-line, block, square. */
 
 static void cursor_at(int x, int y, shmif_pixel ccol)
 {
-	size_t w = term.acon.addr->w;
 	shmif_pixel* dst = term.acon.vidp;
 	x *= term.cell_w;
 	y *= term.cell_h;
 
-	draw_box(&term.acon, x, y, term.cell_w, term.cell_h, ccol);
-/* style: border
-	for (int col = x; col < x + term.cell_w; col++){
-		dst[y * term.acon.pitch + col] = ccol;
-		dst[(y + term.cell_h-1 )* term.acon.pitch + col] = ccol;
-	}
+	switch (term.cursor){
+	case CURSOR_BLOCK:
+		draw_box(&term.acon, x, y, term.cell_w, term.cell_h, ccol);
+	break;
+	case CURSOR_HALFBLOCK:
+		draw_box(&term.acon, x, y, term.cell_w >> 1, term.cell_h, ccol);
+	break;
+	case CURSOR_FRAME:
+		for (int col = x; col < x + term.cell_w; col++){
+			dst[y * term.acon.pitch + col] = ccol;
+			dst[(y + term.cell_h-1 )* term.acon.pitch + col] = ccol;
+		}
 
-	for (int row = y+1; row < y + term.cell_h-1; row++){
-		dst[row * term.acon.pitch + x] = ccol;
-		dst[row * term.acon.pitch + x + term.cell_w - 1] = ccol;
+		for (int row = y+1; row < y + term.cell_h-1; row++){
+			dst[row * term.acon.pitch + x] = ccol;
+			dst[row * term.acon.pitch + x + term.cell_w - 1] = ccol;
+		}
+	break;
+	case CURSOR_VLINE:
+		draw_box(&term.acon, x + 1, y, 1, term.cell_h, ccol);
+	break;
+	case CURSOR_ULINE:
+		draw_box(&term.acon, x, y+term.cell_h-1, term.cell_w, 1, ccol);
+	break;
+	case CURSOR_END:
+	default:
+	break;
 	}
- */
 }
 
 static int draw_cb(struct tsm_screen* screen, uint32_t id,
@@ -191,7 +226,7 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 
 	bool match_cursor = x == term.cursor_x && y == term.cursor_y;
 
-	if (attr->inverse || match_cursor){
+	if (attr->inverse){
 		dfg = bgc;
 		dbg = fgc;
 	}
@@ -205,18 +240,20 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 
 	term.dirty = true;
 
-/* disable custom cursor drawing for now, needs better tracking /
- * restoring as som examples (particularly vim) bleeds over */
+/* first erase */
+	if (len == 0){
+		draw_box(&term.acon, base_x, base_y, term.cell_w, term.cell_h,
+			SHMIF_RGBA(bgc[0], bgc[1], bgc[2], term.alpha));
+	}
+
+/* then draw custom cursor */
 	if (match_cursor && !(term.flags & TSM_SCREEN_HIDE_CURSOR)){
 		cursor_at(x, y, term.ccol);
 		return 0;
 	}
 
-	if (len == 0){
-		draw_box(&term.acon, base_x, base_y, term.cell_w, term.cell_h,
-			SHMIF_RGBA(bgc[0], bgc[1], bgc[2], term.alpha));
+	if (len == 0)
 		return 0;
-	}
 
 	size_t u8_sz = tsm_ucs4_get_width(*ch) + 1;
 	uint8_t u8_ch[u8_sz];
@@ -981,6 +1018,11 @@ static void dump_help()
 		" fgr         \t rv(0..255)\t foreground red channel\n"
 		" fgg         \t rv(0..255)\t foreground green channel\n"
 		" fgb         \t rv(0..255)\t foreground blue channel\n"
+		" ccr         \t rv(0..255)\t cursor red channel\n"
+		" ccg         \t rv(0..255)\t cursor green channel\n"
+		" ccb         \t rv(0..255)\t cursor blue channel\n"
+		" cursor      \t name      \t set cursor (block, frame, halfblock,\n"
+		"             \t           \t underline, vertical)\n"
 		" palette     \t name      \t use built-in palette (below)\n"
 #ifdef TTF_SUPPORT
 		" font        \t ttf-file  \t render using font specified by ttf-file\n"
@@ -1004,6 +1046,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		dump_help();
 		return EXIT_FAILURE;
 	}
+	uint8_t ccol[3] = {0, 255, 0};
 
 	bool custom_w = false;
 	if (arg_lookup(args, "rows", 0, &val))
@@ -1030,6 +1073,26 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		term.bgc[1] = strtoul(val, NULL, 10);
 	if (arg_lookup(args, "bgb", 0, &val))
 		term.bgc[2] = strtoul(val, NULL, 10);
+
+	if (arg_lookup(args, "ccr", 0, &val))
+		ccol[0] = strtoul(val, NULL, 10);
+	if (arg_lookup(args, "ccg", 0, &val))
+		ccol[1] = strtoul(val, NULL, 10);
+	if (arg_lookup(args, "ccb", 0, &val))
+		ccol[2] = strtoul(val, NULL, 10);
+
+	term.ccol = SHMIF_RGBA(ccol[0], ccol[1], ccol[2], 0xff);
+
+	if (arg_lookup(args, "cursor", 0, &val)){
+		const char** cur = curslbl;
+	while(*cur){
+		if (strcmp(*cur, val) == 0){
+			term.cursor = (cur - curslbl);
+			break;
+		}
+		cur++;
+	 }
+	}
 
 	if (arg_lookup(args, "bgalpha", 0, &val))
 		term.alpha = strtoul(val, NULL, 10);
