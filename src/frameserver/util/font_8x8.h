@@ -308,6 +308,15 @@ static bool draw_box(struct arcan_shmif_cont* c, uint16_t x, uint16_t y,
 	return true;
 }
 
+static inline void draw_char_bg(struct arcan_shmif_cont* c, uint8_t ch,
+	uint16_t x, uint16_t y, shmif_pixel fg, shmif_pixel bg)
+{
+	for (int row = 0; row < fonth && row + y < c->addr->h; row++)
+		for (int col = 0; col < fontw && col + x < c->addr->w; col++)
+			c->vidp[c->addr->w * (row + y) + col + x] =
+				(builtin_font[ch][row] & 1 << col) ? fg : bg;
+}
+
 static inline void draw_char(struct arcan_shmif_cont* c, uint8_t ch,
 	uint16_t x, uint16_t y, shmif_pixel txcol)
 {
@@ -338,6 +347,24 @@ static void text_dimensions(struct arcan_shmif_cont* c,
 	}
 
 	*dh = cy + fonth;
+}
+
+static void draw_text_bg(struct arcan_shmif_cont* c, const char* msg,
+	uint16_t x, uint16_t y, shmif_pixel fg, shmif_pixel bg)
+{
+	uint16_t cx = x;
+	uint16_t cy = y;
+
+	while (*msg){
+		uint8_t ch = *msg++;
+
+		if ('\n' == ch){
+			cx = x;
+			cy += fonth + 2;
+		}
+		draw_char_bg(c, ch, cx, cy, fg, bg),
+		cx += fontw;
+	}
 }
 
 static void draw_text(struct arcan_shmif_cont* c, const char* msg,

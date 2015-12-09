@@ -1019,7 +1019,8 @@ static void do_esc(struct tsm_vte *vte, uint32_t data)
 static void csi_attribute(struct tsm_vte *vte)
 {
 	static const uint8_t bval[6] = { 0x00, 0x5f, 0x87, 0xaf, 0xd7, 0xff };
-	unsigned int i, code;
+	unsigned int i, code, val;
+	uint8_t cr, cg, cb;
 
 	if (vte->csi_argc <= 1 && vte->csi_argv[0] == -1) {
 		vte->csi_argc = 1;
@@ -1167,53 +1168,60 @@ static void csi_attribute(struct tsm_vte *vte)
 		case 38:
 			/* fallthrough */
 		case 48:
-			if (i + 2 >= vte->csi_argc ||
-			    vte->csi_argv[i + 1] != 5 ||
-			    vte->csi_argv[i + 2] < 0) {
-				llog_debug(vte, "invalid 256color SGR");
+			val = vte->csi_argv[i];
+			if (vte->csi_argv[i + 1] == 5) { // 256color mode
+				if (i + 2 >= vte->csi_argc ||
+					vte->csi_argv[i + 2] < 0) {
+					llog_debug(vte, "invalid 256color SGR");
+					break;
+				}
+				code = vte->csi_argv[i + 2];
+				if (code < 16) {
+					//nochange
+				} else if (code < 232) {
+					code -= 16;
+					cb = bval[code % 6];
+					code /= 6;
+					cg = bval[code % 6];
+					code /= 6;
+					cr = bval[code % 6];
+					code = -1;
+				} else {
+					code = (code - 232) * 10 + 8;
+					cr = code;
+					cg = code;
+					cb = code;
+					code = -1;
+				}
+				i += 2;
+			} else if (vte->csi_argv[i + 1] == 2) {  // true color mode
+				if (i + 4 >= vte->csi_argc ||
+					vte->csi_argv[i + 2] < 0 ||
+					vte->csi_argv[i + 3] < 0 ||
+					vte->csi_argv[i + 4] < 0) {
+						llog_debug(vte, "invalid true color SGR");
+						break;
+					}
+				cr = vte->csi_argv[i + 2];
+				cg = vte->csi_argv[i + 3];
+				cb = vte->csi_argv[i + 4];
+				code = -1;
+				i += 4;
+			} else {
+				llog_debug(vte, "invalid SGR");
 				break;
 			}
-
-			code = vte->csi_argv[i + 2];
-			if (vte->csi_argv[i] == 38) {
-				if (code < 16) {
-					vte->cattr.fccode = code;
-				} else if (code < 232) {
-					vte->cattr.fccode = -1;
-					code -= 16;
-					vte->cattr.fb = bval[code % 6];
-					code /= 6;
-					vte->cattr.fg = bval[code % 6];
-					code /= 6;
-					vte->cattr.fr = bval[code % 6];
-				} else {
-					vte->cattr.fccode = -1;
-					code = (code - 232) * 10 + 8;
-					vte->cattr.fr = code;
-					vte->cattr.fg = code;
-					vte->cattr.fb = code;
-				}
+			if (val == 38) {
+				vte->cattr.fccode = code;
+				vte->cattr.fr = cr;
+				vte->cattr.fg = cg;
+				vte->cattr.fb = cb;
 			} else {
-				if (code < 16) {
-					vte->cattr.bccode = code;
-				} else if (code < 232) {
-					vte->cattr.bccode = -1;
-					code -= 16;
-					vte->cattr.bb = bval[code % 6];
-					code /= 6;
-					vte->cattr.bg = bval[code % 6];
-					code /= 6;
-					vte->cattr.br = bval[code % 6];
-				} else {
-					vte->cattr.bccode = -1;
-					code = (code - 232) * 10 + 8;
-					vte->cattr.br = code;
-					vte->cattr.bg = code;
-					vte->cattr.bb = code;
-				}
+				vte->cattr.bccode = code;
+				vte->cattr.br = cr;
+				vte->cattr.bg = cg;
+				vte->cattr.bb = cb;
 			}
-
-			i += 2;
 			break;
 		default:
 			llog_debug(vte, "unhandled SGR attr %i",

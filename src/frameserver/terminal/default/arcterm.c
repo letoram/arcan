@@ -6,11 +6,11 @@
 
 /*
  * This is still a rather crude terminal emulator, owing most of its actual
- * heavy lifting to David Hermanns libtsm - which sadly isn't actively
- * maintained anymore.
+ * heavy lifting to David Hermanns libtsm - which sadly doesn't seem to be
+ * maintained/developed anymore.
  *
  * There are quite a few interesting paths to explore here when
- * sandboxing etc. are in place, in particular.
+ * sandboxing etc. are in place, in particular [or placed in chainloader]
  *
  *   - virtualized /dev/ tree with implementations for /dev/dsp,
  *     /dev/mixer etc. and other device nodes we might want plugged
@@ -33,7 +33,6 @@
  *  - scrollback- status / control
  *  - cursor / refresh behavior:
  *    - serious flickering in top/mc during drag resize (cps limit?)
- *    - cursor bleed in vim etc.
  *    - cursor style selection, blinking support
  *    - forward mouse cursor input to shell
  *  - integrate tsm in codebase / buildsystem as it isn't work maintaining
@@ -79,6 +78,7 @@ static struct {
 	struct tsm_screen* screen;
 	struct tsm_vte* vte;
 	struct shl_pty* pty;
+	unsigned flags;
 
 #ifdef TTF_SUPPORT
 	TTF_Font* font;
@@ -108,6 +108,7 @@ static struct {
 
 	uint8_t fgc[3];
 	uint8_t bgc[3];
+	shmif_pixel ccol;
 	uint8_t alpha;
 
 	tsm_age_t age;
@@ -125,6 +126,7 @@ static struct {
 	.alpha = 0xff,
 	.bgc = {0x00, 0x00, 0x00},
 	.fgc = {0xff, 0xff, 0xff},
+	.ccol = SHMIF_RGBA(0x00, 0xaa, 0x00, 0xff),
 #ifdef TTF_SUPPORT
 	.hint = TTF_HINTING_NONE
 #endif
@@ -161,7 +163,8 @@ static void cursor_at(int x, int y, shmif_pixel ccol)
 	x *= term.cell_w;
 	y *= term.cell_h;
 
-/* just outline border if we are on top of an existing cell */
+	draw_box(&term.acon, x, y, term.cell_w, term.cell_h, ccol);
+/* style: border
 	for (int col = x; col < x + term.cell_w; col++){
 		dst[y * term.acon.pitch + col] = ccol;
 		dst[(y + term.cell_h-1 )* term.acon.pitch + col] = ccol;
@@ -171,6 +174,7 @@ static void cursor_at(int x, int y, shmif_pixel ccol)
 		dst[row * term.acon.pitch + x] = ccol;
 		dst[row * term.acon.pitch + x + term.cell_w - 1] = ccol;
 	}
+ */
 }
 
 static int draw_cb(struct tsm_screen* screen, uint32_t id,
@@ -185,7 +189,9 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 	if (term.mute || (age && term.age && age <= term.age))
 		return 0;
 
-	if (attr->inverse){
+	bool match_cursor = x == term.cursor_x && y == term.cursor_y;
+
+	if (attr->inverse || match_cursor){
 		dfg = bgc;
 		dbg = fgc;
 	}
@@ -201,18 +207,16 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 
 /* disable custom cursor drawing for now, needs better tracking /
  * restoring as som examples (particularly vim) bleeds over */
-	if (0 && x == term.cursor_x && y == term.cursor_y){
-/* blend or draw differently */
-		cursor_at(x, y, RGBA(0x00, 0xff, 0x00, 0xff));
+	if (match_cursor && !(term.flags & TSM_SCREEN_HIDE_CURSOR)){
+		cursor_at(x, y, term.ccol);
 		return 0;
-	}
-	else{
-		draw_box(&term.acon, base_x, base_y, term.cell_w,
-			term.cell_h, SHMIF_RGBA(bgc[0], bgc[1], bgc[2], term.alpha));
 	}
 
-	if (len == 0)
+	if (len == 0){
+		draw_box(&term.acon, base_x, base_y, term.cell_w, term.cell_h,
+			SHMIF_RGBA(bgc[0], bgc[1], bgc[2], term.alpha));
 		return 0;
+	}
 
 	size_t u8_sz = tsm_ucs4_get_width(*ch) + 1;
 	uint8_t u8_ch[u8_sz];
@@ -222,8 +226,9 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 	if (term.font == NULL){
 #endif
 		u8_ch[1] = '\0';
-		draw_text(&term.acon, (const char*) u8_ch, base_x, base_y,
-			SHMIF_RGBA(fgc[0], fgc[1], fgc[2], 0xff)
+		draw_text_bg(&term.acon, (const char*) u8_ch, base_x, base_y,
+			SHMIF_RGBA(fgc[0], fgc[1], fgc[2], 0xff),
+			SHMIF_RGBA(bgc[0], bgc[1], bgc[2], term.alpha)
 		);
 		return 0;
 #ifdef TTF_SUPPORT
@@ -232,8 +237,16 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 	u8_ch[u8_sz-1] = '\0';
 	TTF_Color fg = {.r = fgc[0], .g = fgc[1], .b = fgc[2]};
 
-/* unfortunately, this lil' function do not do in-place rendering,
- * should be fixed to cut down on w * h malloc/free pairs */
+/* huge room for improvement / optimization here:
+ * 1. remove the first "draw_box with bgcolor"
+ * 2. replace TTF_RenderUTF8 with a function that draws the entirety
+ *    of cell_w * cell_h with background color into a preallocated
+ *    buffer of that size! - this would cut down on a malloc call
+ *    per cell and the amount of overdraw etc. with 70-80% */
+
+	draw_box(&term.acon, base_x, base_y, term.cell_w, term.cell_h,
+		SHMIF_RGBA(bgc[0], bgc[1], bgc[2], term.alpha));
+
 	TTF_Surface* surf = TTF_RenderUTF8(term.font, (char*) u8_ch, fg);
 	if (!surf)
 		return 0;
@@ -285,30 +298,60 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 #endif
 }
 
-static void update_screen()
+static void update_screen(bool redraw)
 {
 	term.cursor_x = tsm_screen_get_cursor_x(term.screen);
 	term.cursor_y = tsm_screen_get_cursor_y(term.screen);
+
+	if (redraw){
+		tsm_screen_sb_reset(term.screen);
+		draw_box(&term.acon,
+			term.cell_w * term.cursor_x, term.cell_h * term.cursor_y,
+			term.cell_w, term.cell_h,
+			SHMIF_RGBA(term.bgc[0], term.bgc[1], term.bgc[2], term.alpha)
+		);
+	}
+
+	term.flags = tsm_screen_get_flags(term.screen);
 	term.age = tsm_screen_draw(term.screen, draw_cb, NULL /* draw_cb_data */);
 }
 
-static void update_screensize(bool cont)
+static void update_screensize()
 {
 	int cols = term.acon.w / term.cell_w;
 	int rows = term.acon.h / term.cell_h;
 
-	shmif_pixel px = SHMIF_RGBA(0x00, 0x00, 0x00, term.alpha);
-	for (size_t i=0; i < term.acon.pitch * term.acon.h; i++)
-		term.acon.vidp[i] = px;
+/* compensate for terminal- resize delays with padding */
+	size_t padw = term.acon.w - (cols * term.cell_w);
+	size_t padh = term.acon.h - (rows * term.cell_h);
 
-	term.cols = cols;
-	term.rows = rows;
+	if (cols != term.cols || rows != term.rows){
+		if (cols > term.cols)
+			padw += (cols - term.cols) * term.cell_w;
 
-	shl_pty_resize(term.pty, cols, rows);
-	tsm_screen_resize(term.screen, cols, rows);
+		if (rows > term.rows)
+			padh += (rows - term.rows) * term.cell_h;
 
-	term.age = 0;
-	update_screen();
+		term.cols = cols;
+		term.rows = rows;
+
+		tsm_screen_resize(term.screen, cols, rows);
+		shl_pty_resize(term.pty, cols, rows);
+	}
+
+/* possibly need to check flags and attr for cell */
+	shmif_pixel col = term.alpha < 0xff ?
+		SHMIF_RGBA(0, 0, 0, term.alpha) : SHMIF_RGBA(term.bgc[0],
+			term.bgc[1], term.bgc[2], 0xff);
+
+	if (padw)
+		draw_box(&term.acon, term.acon.w - padw - 1, 0, padw + 1, term.acon.h, col);
+
+	if (padh)
+		draw_box(&term.acon, 0, term.acon.h - padh - 1, term.acon.w, padh + 1, col);
+
+	term.dirty = true;
+	update_screen(true);
 }
 
 static void read_callback(struct shl_pty* pty,
@@ -317,7 +360,7 @@ static void read_callback(struct shl_pty* pty,
 	tsm_vte_input(term.vte, u8, len);
 	term.cursor_x = tsm_screen_get_cursor_x(term.screen);
 	term.cursor_y = tsm_screen_get_cursor_y(term.screen);
-	update_screen();
+	update_screen(false);
 }
 
 static void write_callback(struct tsm_vte* vte,
@@ -374,7 +417,7 @@ static void setup_shell(struct arg_arr* argarr)
 static void mute_toggle()
 {
 	term.mute = !term.mute;
-	update_screen();
+	update_screen(false);
 }
 
 static void send_sigint()
@@ -386,7 +429,7 @@ static void scroll_up()
 {
 	tsm_screen_sb_up(term.screen, 1);
 	term.sbofs += 1;
-	update_screen();
+	update_screen(false);
 }
 
 static void scroll_down()
@@ -394,32 +437,32 @@ static void scroll_down()
 	tsm_screen_sb_down(term.screen, 1);
 	term.sbofs -= 1;
 	term.sbofs = term.sbofs < 0 ? 0 : term.sbofs;
-	update_screen();
+	update_screen(false);
 }
 
 static void move_up()
 {
 	if (tsm_vte_handle_keyboard(term.vte, XKB_KEY_Up, 0, 0, 0))
-		update_screen();
+		update_screen(false);
 }
 
 static void move_down()
 {
 	if (tsm_vte_handle_keyboard(term.vte, XKB_KEY_Down, 0, 0, 0))
-		update_screen();
+		update_screen(false);
 }
 
 /* in TSM< typically mapped to ctrl+ arrow but we allow external rebind */
 static void move_left()
 {
 	if (tsm_vte_handle_keyboard(term.vte, XKB_KEY_Left, 0, 0, 0))
-		update_screen();
+		update_screen(false);
 }
 
 static void move_right()
 {
 	if (tsm_vte_handle_keyboard(term.vte, XKB_KEY_Right, 0, 0, 0))
-		update_screen();
+		update_screen(false);
 }
 
 static void select_begin()
@@ -506,7 +549,7 @@ static void page_up()
 {
 	tsm_screen_sb_up(term.screen, term.rows);
 	term.sbofs += term.rows;
-	update_screen();
+	update_screen(false);
 }
 
 static void page_down()
@@ -514,7 +557,7 @@ static void page_down()
 	tsm_screen_sb_down(term.screen, term.rows);
 	term.sbofs -= term.rows;
 	term.sbofs = term.sbofs < 0 ? 0 : term.sbofs;
-	update_screen();
+	update_screen(false);
 }
 
 /* map to the quite dangerous SIGUSR1 when we don't have INFO? */
@@ -612,7 +655,7 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 		if (term.sbofs != 0){
 			term.sbofs = 0;
 			tsm_screen_sb_reset(term.screen);
-			update_screen();
+			update_screen(false);
 		}
 
 /* ignore the meta keys as we already treat them in modifiers */
@@ -670,7 +713,7 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 
 				if (upd){
 					tsm_screen_selection_target(term.screen, term.lm_x, term.lm_y);
-					update_screen();
+					update_screen(false);
 				}
 /* in select? check if motion tile is different than old, if so,
  * tsm_selection_target */
@@ -692,7 +735,7 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 					select_copy();
 				tsm_screen_selection_reset(term.screen);
 				term.in_select = false;
-				update_screen();
+				update_screen(false);
 			}
 		}
 	}
@@ -705,7 +748,7 @@ static void targetev(arcan_tgtevent* ev)
 	case TARGET_COMMAND_GRAPHMODE:
 		if (ev->ioevs[0].iv == 1){
 			term.alpha = ev->ioevs[1].fv;
-			update_screen();
+			update_screen(true);
 		}
 	break;
 
@@ -730,7 +773,7 @@ static void targetev(arcan_tgtevent* ev)
 
 	case TARGET_COMMAND_DISPLAYHINT:{
 		arcan_shmif_resize(&term.acon, ev->ioevs[0].iv, ev->ioevs[1].iv);
-		update_screensize(ev->ioevs[2].iv != 0);
+		update_screensize();
 	}
 	break;
 
@@ -867,7 +910,7 @@ static bool setup_font(const char* val, size_t font_sz)
 
 	if (old_font){
 		TTF_CloseFont(old_font);
-		update_screensize(false);
+		update_screensize();
 	}
 
 	return true;
@@ -1032,7 +1075,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 
 	arcan_shmif_resize(&term.acon,
 		term.cell_w * term.cols, term.cell_h * term.rows);
-	update_screensize(false);
+	update_screensize();
 	expose_labels();
 	tsm_screen_set_max_sb(term.screen, 1000);
 
