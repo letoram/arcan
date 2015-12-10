@@ -225,7 +225,7 @@ struct arcan_shmif_page;
 typedef enum arcan_shmif_sigmask(
 	*shmif_trigger_hook)(struct arcan_shmif_cont*);
 
-enum SHMIF_FLAGS {
+enum ARCAN_FLAGS {
 /* by default, the connection IPC resources are unlinked, this
  * may not always be desired (debugging, monitoring, ...) */
 	SHMIF_DONT_UNLINK = 1,
@@ -242,7 +242,11 @@ enum SHMIF_FLAGS {
 	SHMIF_FATALFAIL_FUNC = 8,
 
 /* set to sleep- try spin until a connection is established */
-	SHMIF_CONNECT_LOOP = 16
+	SHMIF_CONNECT_LOOP = 16,
+
+/* don't implement pause/resume management in backend, forward the
+ * events to frontend */
+	SHMIF_MANUAL_PAUSE = 32
 };
 
 /*
@@ -256,7 +260,7 @@ enum SHMIF_FLAGS {
  */
 struct arg_arr;
 struct arcan_shmif_cont arcan_shmif_open(
-	enum ARCAN_SEGID type, enum SHMIF_FLAGS flags, struct arg_arr**);
+	enum ARCAN_SEGID type, enum ARCAN_FLAGS flags, struct arg_arr**);
 
 /*
  * This is used to make a non-authoritative connection using
@@ -278,7 +282,7 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 	struct arcan_shmif_cont* parent, /* should only be NULL internally */
 	const char* shmkey,    /* provided in ENV or from shmif_connect below */
 	enum ARCAN_SEGID type, /* archetype, defined in shmif_event.h */
-	enum SHMIF_FLAGS flags, ...
+	enum ARCAN_FLAGS flags, ...
 );
 
 /*
