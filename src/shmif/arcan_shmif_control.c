@@ -216,7 +216,9 @@ struct shmif_hidden {
 	shmif_trigger_hook audio_hook;
 	void* audio_hook_data;
 
-	bool output, alive;
+	bool output, alive, paused;
+
+	enum ARCAN_FLAGS flags;
 
 	struct arcan_evctx inev;
 	struct arcan_evctx outev;
@@ -325,7 +327,7 @@ static bool scan_tgt_event(struct arcan_evctx* c,enum ARCAN_TARGET_COMMAND cmd)
 }
 
 static int process_events(struct arcan_shmif_cont* c,
-	struct arcan_event* dst, bool blocking)
+	struct arcan_event* dst, bool blocking, bool upret)
 {
 reset:
 	if (!c || !dst || !c->addr || !c->priv->alive)
@@ -365,6 +367,13 @@ checkfd:
 		memset(&ctx->eventbuf[ *ctx->front ], '\0', sizeof(arcan_event));
 		*ctx->front = (*ctx->front + 1) % ctx->eventbuf_sz;
 
+/* Unless mask is set, paused won't be changes so that is ok. This has the
+ * effect of silently discarding events if the server acts in a weird way
+ * (pause -> do things -> unpause) but that is the expected behavior */
+		if (c->priv->paused && (dst->category != EVENT_TARGET ||
+			dst->tgt.kind != TARGET_COMMAND_UNPAUSE))
+				goto reset;
+
 		if (dst->category == EVENT_TARGET)
 			switch (dst->tgt.kind){
 
@@ -375,6 +384,22 @@ checkfd:
 			case TARGET_COMMAND_DISPLAYHINT:
 				if (scan_tgt_event(ctx, TARGET_COMMAND_DISPLAYHINT))
 					goto reset;
+			break;
+
+			case TARGET_COMMAND_PAUSE:
+				if ((c->priv->flags & SHMIF_MANUAL_PAUSE) == 0){
+				}
+				c->priv->paused = true;
+				goto reset;
+			break;
+
+			case TARGET_COMMAND_UNPAUSE:
+				if ((c->priv->flags & SHMIF_MANUAL_PAUSE) == 0){
+				}
+				c->priv->paused = false;
+				if (upret)
+					return 0;
+				goto reset;
 			break;
 
 			case TARGET_COMMAND_EXIT:
@@ -419,12 +444,12 @@ done:
 
 int arcan_shmif_poll(struct arcan_shmif_cont* c, struct arcan_event* dst)
 {
-	return process_events(c, dst, false);
+	return process_events(c, dst, false, false);
 }
 
 int arcan_shmif_wait(struct arcan_shmif_cont* c, struct arcan_event* dst)
 {
-	return process_events(c, dst, true) > 0;
+	return process_events(c, dst, true, false) > 0;
 }
 
 int arcan_shmif_enqueue(struct arcan_shmif_cont* c,
@@ -435,6 +460,13 @@ int arcan_shmif_enqueue(struct arcan_shmif_cont* c,
 		return 0;
 
 	struct arcan_evctx* ctx = &c->priv->outev;
+
+/* paused only set if segment is configured to handle it,
+ * and process_events on blocking will block until unpaused */
+	if (c->priv->paused){
+		struct arcan_event ev;
+		process_events(c, &ev, true, true);
+	}
 
 #ifdef ARCAN_SHMIF_THREADSAFE_QUEUE
 	pthread_mutex_lock(&ctx->synch.lock);
@@ -466,6 +498,8 @@ int arcan_shmif_tryenqueue(
 		return 0;
 
 	struct arcan_evctx* ctx = &c->priv->outev;
+	if (c->priv->paused)
+		return 0;
 
 #ifdef ARCAN_SHMIF_THREADSAFE_QUEUE
 	pthread_mutex_lock(&ctx->synch.lock);
@@ -732,7 +766,7 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 	struct arcan_shmif_cont* parent,
 	const char* shmkey,
 	enum ARCAN_SEGID type,
-	enum SHMIF_FLAGS flags, ...)
+	enum ARCAN_FLAGS flags, ...)
 {
 	struct arcan_shmif_cont res = {
 		.vidp = NULL
@@ -782,6 +816,7 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 			.parent = res.addr->parent,
 			.exitf = exitf
 		},
+		.flags = flags,
 		.pev = {.fd = BADFD},
 		.pseg = {.epipe = BADFD},
 	};
@@ -1314,7 +1349,7 @@ bool arg_lookup(struct arg_arr* arr, const char* val,
 }
 
 struct arcan_shmif_cont arcan_shmif_open(
-	enum ARCAN_SEGID type, enum SHMIF_FLAGS flags, struct arg_arr** outarg)
+	enum ARCAN_SEGID type, enum ARCAN_FLAGS flags, struct arg_arr** outarg)
 {
 	struct arcan_shmif_cont ret = {0};
 	file_handle dpipe;

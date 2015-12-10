@@ -17,6 +17,8 @@
 #include "arcan_mem.h"
 #include "arcan_db.h"
 
+#include "../frameserver/util/utf8.c"
+
 void arcan_warning(const char*, ...);
 
 static void usage()
@@ -57,6 +59,16 @@ static bool validate_key(const char* key)
 	return true;
 }
 
+static bool valid_str(const char* msg)
+{
+	uint32_t state = 0, codepoint = 0, len = 0;
+	while(msg[len])
+		if (UTF8_REJECT == utf8_decode(&state, &codepoint,(uint8_t)(msg[len++])))
+			return false;
+
+	return state == UTF8_ACCEPT;
+}
+
 static int add_target(struct arcan_dbh* dst, int argc, char** argv)
 {
 	enum DB_BFORMAT bfmt;
@@ -80,6 +92,11 @@ static int add_target(struct arcan_dbh* dst, int argc, char** argv)
 		printf("add_target(name executable bfmt argv) unknown bfmt specified, "
 			" accepted (BIN, LWA, RETRO).\n");
 
+		return EXIT_FAILURE;
+	}
+
+	if (!valid_str(argv[0])){
+		printf("add_target(name), invalid/incomplete UTF8 sequence in name\n");
 		return EXIT_FAILURE;
 	}
 
@@ -270,6 +287,11 @@ static int add_config(struct arcan_dbh* dst, int argc, char** argv)
 
 	if (tid == BAD_TARGET){
 		printf("couldn't find a matching target for (%s).\n", argv[0]);
+		return EXIT_FAILURE;
+	}
+
+	if (!valid_str(argv[1])){
+		printf("add_config(identifier), invalid/incomplete UTF8 sequence\n");
 		return EXIT_FAILURE;
 	}
 

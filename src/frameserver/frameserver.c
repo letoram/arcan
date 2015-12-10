@@ -166,13 +166,13 @@ int main(int argc, char** argv)
 typedef int (*mode_fun)(struct arcan_shmif_cont*, struct arg_arr*);
 
 int launch_mode(const char* modestr,
-	mode_fun fptr, enum ARCAN_SEGID id, char* altarg)
+	mode_fun fptr, enum ARCAN_SEGID id, enum ARCAN_FLAGS flags, char* altarg)
 {
 	if (!getenv("ARCAN_FRAMESERVER_DEBUGSTALL"))
 		toggle_logdev(modestr);
 
 	struct arg_arr* arg;
-	struct arcan_shmif_cont con = arcan_shmif_open(id, 0, &arg);
+	struct arcan_shmif_cont con = arcan_shmif_open(id, flags, &arg);
 
 	if (!arg && altarg)
 		arg = arg_unpack(altarg);
@@ -249,32 +249,34 @@ int main(int argc, char** argv)
  */
 #ifdef ENABLE_FSRV_DECODE
 	if (strcmp(fsrvmode, "decode") == 0)
-		return launch_mode("decode", afsrv_decode, SEGID_MEDIA, argstr);
+		return launch_mode("decode",
+			afsrv_decode, SEGID_MEDIA, 0, argstr);
 #endif
 
 #ifdef ENABLE_FSRV_TERMINAL
 	if (strcmp(fsrvmode, "terminal") == 0)
-		return launch_mode("terminal", afsrv_terminal, SEGID_TERMINAL, argstr);
+		return launch_mode("terminal", afsrv_terminal, SEGID_TERMINAL, 0, argstr);
 #endif
 
 #ifdef ENABLE_FSRV_ENCODE
 	if (strcmp(fsrvmode, "encode") == 0)
-		return launch_mode("encode", afsrv_encode, SEGID_ENCODER, argstr);
+		return launch_mode("encode", afsrv_encode, SEGID_ENCODER, 0, argstr);
 #endif
 
 #ifdef ENABLE_FSRV_REMOTING
 	if (strcmp(fsrvmode, "remoting") == 0)
-		return launch_mode("remoting", afsrv_remoting, SEGID_REMOTING, argstr);
+		return launch_mode("remoting", afsrv_remoting, SEGID_REMOTING, 0, argstr);
 #endif
 
 #ifdef ENABLE_FSRV_GAME
 	if (strcmp(fsrvmode, "game") == 0)
-		return launch_mode("game", afsrv_game, SEGID_GAME, argstr);
+		return launch_mode("game", afsrv_game,
+			SEGID_GAME, SHMIF_MANUAL_PAUSE, argstr);
 #endif
 
 #ifdef ENABLE_FSRV_AVFEED
 	if (strcmp(fsrvmode, "avfeed") == 0)
-		return launch_mode("avfeed", afsrv_avfeed, SEGID_MEDIA, argstr);
+		return launch_mode("avfeed", afsrv_avfeed, SEGID_MEDIA, 0, argstr);
 #endif
 
 /*
@@ -321,7 +323,7 @@ int main(int argc, char** argv)
 			return EXIT_FAILURE;
 		}
 
-		return launch_mode(modestr, fptr, id, argstr);
+		return launch_mode(modestr, fptr, id, 0, argstr);
 	}
 #endif
 
