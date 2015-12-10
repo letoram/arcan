@@ -18,7 +18,7 @@ set (GAME_INCLUDE_DIRS
 	PARENT_SCOPE
 )
 
-if (LWA_PLATFORM)
+if ((NOT LWA_PLATFORM_STR STREQUAL "broken") AND LWA_PLATFORM_STR)
 	amsg("(game/libretro) Enabling 3D support.")
 	list(APPEND SOURCE_LIST
 		${AGP_SOURCES}

@@ -32,6 +32,10 @@
 #include "shl-pty.h"
 #include "shl-ring.h"
 
+#ifndef TIOCSIG
+#include <asm/ioctls.h>
+#endif
+
 #define SHL_PTY_BUFSIZE 16384
 
 /*

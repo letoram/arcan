@@ -52,9 +52,8 @@ static void toggle_logdev(const char* prefix)
 
 	snprintf(logbuf, logbuf_sz+1, "%s/fsrv_%s_%s.txt", logdir, prefix, timeb);
 	if (!freopen(logbuf, "a", stderr)){
-		stderr = fopen("/dev/null", "a");
-		if (!stderr)
-			stderr = stdout;
+		if (!freopen("/dev/null", "a", stderr))
+			fclose(stderr);
 	}
 }
 #endif
