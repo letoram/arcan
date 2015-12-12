@@ -1057,7 +1057,7 @@ bool arcan_frameserver_resize(struct arcan_frameserver* s)
 
 /* other option here would be to set up a new subsegment, make the process
  * asynchronous and push a MIGRATE event, but the gains seem rather pointless */
-#if defined(_GNU_SOURCE) && !defined(__APPLE__)
+#if defined(_GNU_SOURCE) && !defined(__APPLE__) && !defined(__BSD)
 	struct arcan_shmif_page* newp = mremap(src->ptr,
 		src->shmsize, shmsz, MREMAP_MAYMOVE, NULL);
 	if (MAP_FAILED == newp){
@@ -1066,14 +1066,15 @@ bool arcan_frameserver_resize(struct arcan_frameserver* s)
 		goto fail;
 	}
 	src->ptr = newp;
-#elif __BSD
+/*
+ * doesn't seem to exist on FBSD10 etc.?
 	struct arcan_shmif_page* newp = mremap(src->ptr, src->shmsize, shmsz, NULL);
-/* really can't handle a situation where the next ftruncate won't work */
 	if (MAP_FAILED == newp){
 		ftruncate(src->handle, src->shmsize);
 		goto fail;
 	}
 	src->ptr = newp;
+*/
 #else
 	munmap(src->ptr, src->shmsize);
 	src->ptr = mmap(NULL, shmsz, PROT_READ|PROT_WRITE, MAP_SHARED,src->handle,0);

@@ -109,6 +109,7 @@ set(AGPPLATFORM_STR "gl21, gles2, gles3, stub")
 # we can remove some of this cruft when 'buntu LTS gets ~3.0ish
 option(ENABLE_ASAN "Build with Address-Sanitizer, (gcc >= 4.8, clang >= 3.1)" OFF)
 option(DISABLE_JIT "Don't use the luajit-5.1 VM (if found)" OFF)
+option(DISABLE_HIJACK "Disable building hijack libraries" ON)
 option(NO_FSRV "Disable building/launching frameservers" OFF)
 option(STATIC_SQLITE3 "Use SQLite3 Amalgamation" OFF)
 option(ENABLE_LED "Build with LED controller support in core" OFF)
