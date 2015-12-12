@@ -4684,8 +4684,10 @@ static int copyimageprop(lua_State* ctx)
 
 static bool validate_key(const char* key)
 {
+/* accept 0-9 and base64 valid values */
 	while(*key){
-		if (!isalnum(*key) && *key != '_')
+		if (!isalnum(*key) && *key != '_'
+			&& *key != '+' && *key != '/' && *key != '=')
 			return false;
 		key++;
 	}
@@ -8696,6 +8698,31 @@ static int base64_decode(lua_State* ctx)
 	return 1;
 }
 
+
+static int hash_string(lua_State* ctx)
+{
+	LUA_TRACE("util:hash");
+	const char* str = luaL_checkstring(ctx, 1);
+	const char* method = luaL_optstring(ctx, 2, "djb");
+
+	if (strcmp(method, "djb") == 0){
+		unsigned long hash = 5381;
+		for(; *str != 0; str++)
+			hash = ((hash << 5) + hash) + *str;
+		lua_pushnumber(ctx, hash);
+	}
+	else{
+		arcan_warning("util:hash(%s), unknown hash method"
+			" supported: djb)\n", method);
+
+		LUA_ETRACE("util:hash", "unknown hash function");
+		return 0;
+	}
+
+	LUA_ETRACE("util:hash", NULL);
+	return 1;
+}
+
 static void extend_baseapi(lua_State* ctx)
 {
 	lua_newtable(ctx);
@@ -8707,6 +8734,10 @@ static void extend_baseapi(lua_State* ctx)
 
 	lua_pushstring(ctx, "from_base64");
 	lua_pushcfunction(ctx, base64_decode);
+	lua_rawset(ctx, top);
+
+	lua_pushstring(ctx, "hash");
+	lua_pushcfunction(ctx, hash_string);
 	lua_rawset(ctx, top);
 
 	lua_setglobal(ctx, "util");

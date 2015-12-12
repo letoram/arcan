@@ -42,7 +42,7 @@ printf("usage: arcan_db dbfile command args\n\n"
 	"  dump_config    \ttargetname configname\n"
 	"  dump_appl      \tapplname\n"
 	"  dump_exec      \ttargetname configname\n"
-	"Accepted keys are restricted to the set [a-Z0-9_]\n\n"
+	"Accepted keys are restricted to the set [a-Z0-9_+=/]\n\n"
 	"alternative (scripted) usage: arcan_db dbfile -\n"
  	"above commands are supplied using STDIN, tab as arg separator, linefeed \n"
 	"as command submit. Close stdin to terminate execution.\n"
@@ -51,9 +51,12 @@ printf("usage: arcan_db dbfile command args\n\n"
 
 static bool validate_key(const char* key)
 {
+/* accept 0-9 and base64 valid values */
 	while(*key){
-		if (!isalnum(*key) && *key++ != '_')
+		if (!isalnum(*key) && *key != '_'
+			&& *key != '+' && *key != '/' && *key != '=')
 			return false;
+		key++;
 	}
 
 	return true;
@@ -221,7 +224,7 @@ static int add_target_kv(struct arcan_dbh* dst, int argc, char** argv)
 	}
 
 	if (!validate_key(argv[1])){
-		printf("invalid key specified (restricted to [a-Z0-9_])\n");
+		printf("invalid key specified (restricted to [a-Z0-9_+/=])\n");
 		return EXIT_FAILURE;
 	}
 
@@ -310,7 +313,7 @@ static int add_config_kv(struct arcan_dbh* dst, int argc, char** argv)
 	}
 
 	if (!validate_key(argv[2])){
-		printf("invalid key specified (restricted to [a-Z0-9_])\n");
+		printf("invalid key specified (restricted to [a-Z0-9_/+=])\n");
 		return EXIT_FAILURE;
 	}
 

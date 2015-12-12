@@ -14,8 +14,10 @@ For more details about capabilities, design, goals and current development,
 please refer to the [arcan-wiki](https://github.com/letoram/arcan/wiki) and
 to the [website](https://arcan-fe.com).
 
-The primary development platforms are FreeBSD and Linux, but releases are
-actively tested on several platforms, including Windows and Mac OS X on
+The primary development platforms are FreeBSD and Linux (secondary being
+Mac OS X and Windows, although after 0.4 the Windows port is on hold).
+actively tested on several platforms and a wide variety of display- and
+input- subsystems (e.g. SDL, EGL/GLES, DRI/KMS). including Mac OS X on
 a wide variety of display- and input- subsystems (e.g. SDL, X11, EGL/GLES).
 
 Getting Started
@@ -37,7 +39,7 @@ There are a lot of build options for fine-grained control over your arcan
 build. In this section we will just provide the bare essentials for a build
 on Linux, BSD or OSX (windows can cheat with using the prebuilt installer
 binaries) and you can check out the relevant sections in the wiki for more
-detailed documentation.
+detailed documentation, and for information on specialized build environments.
 
 For starters, the easiest approach is to do the following:
 

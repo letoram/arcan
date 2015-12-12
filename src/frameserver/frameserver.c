@@ -20,7 +20,7 @@
 #include <sys/socket.h>
 #include <sys/uio.h>
 #include <sys/time.h>
-#include <sys/signal.h>
+#include <signal.h>
 #include <fcntl.h>
 #include <time.h>
 #include <dlfcn.h>
