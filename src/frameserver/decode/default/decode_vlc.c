@@ -21,10 +21,10 @@
 #include <sys/types.h>
 #include <pthread.h>
 #include <math.h>
-#include <fft/kiss_fftr.h>
 #include <fcntl.h>
 
 #include <vlc/vlc.h>
+#include <kiss_fftr.h>
 #include <arcan_shmif.h>
 #include "frameserver.h"
 
