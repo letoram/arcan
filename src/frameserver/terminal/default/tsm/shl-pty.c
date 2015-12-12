@@ -14,8 +14,17 @@
 #include <limits.h>
 #ifdef __APPLE__
 #include <util.h>
+#elif defined(__BSD)
+#include <libutil.h>
+#ifndef IUTF8
+#define IUTF8 0x00004000
+#endif
 #else
 #include <pty.h>
+#endif
+
+#ifndef SIGUNUSED
+#define SIGUNUSED 31
 #endif
 
 #include <signal.h>
@@ -154,11 +163,6 @@ static int pty_init_child(int fd)
 	if (r < 0)
 		return -errno;
 
-#ifdef __APPLE__
-#ifndef SIGUNUSED
-#define SIGUNUSED 31
-#endif
-#endif
 	for (i = 1; i < SIGUNUSED; ++i)
 		signal(i, SIG_DFL);
 
