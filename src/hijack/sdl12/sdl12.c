@@ -342,7 +342,7 @@ SDL_Surface* ARCAN_SDL_SetVideoMode(int w, int h, int ncps, Uint32 flags)
 	SDL_Surface* res = forwardtbl.sdl_setvideomode(w, h, ncps, flags);
 	global.doublebuffered = ((flags & SDL_DOUBLEBUF) > 0);
 	global.glsource = ((flags & SDL_OPENGL) > 0);
-	global.shared.addr->hints = global.glsource & RHINT_ORIGO_LL;
+	global.shared.addr->hints = global.glsource & SHMIF_RHINT_ORIGO_LL;
 
 	if ( (flags & SDL_FULLSCREEN) > 0) {
 /* oh no you don't */
@@ -507,7 +507,7 @@ static void push_audio()
 				memcpy(global.shared.audp, global.encabuf,
 					global.encabuf_ofs * sizeof(int16_t));
 			} else {
-				spx_uint32_t outc  = ARCAN_SHMIF_AUDIOBUF_SZ;
+				spx_uint32_t outc  = global.shared.abufsize;
 /*first number of bytes, then after process..., number of samples */
 				spx_uint32_t nsamp = global.encabuf_ofs >> 1;
 
@@ -515,13 +515,13 @@ static void push_audio()
 					(const spx_int16_t*) global.encabuf, &nsamp,
 					(spx_int16_t*) global.shared.audp, &outc);
 				if (outc)
-					global.shared.addr->abufused +=
+					global.shared.abufused +=
 						outc * ARCAN_SHMIF_ACHANNELS * sizeof(uint16_t);
 
-				global.shared.addr->aready = true;
+				arcan_shmif_signal(&global.shared, SHMIF_SIGAUD);
 			}
 
-			global.encabuf_ofs = 0;
+		global.encabuf_ofs = 0;
 		SDL_mutexV(global.abuf_synch);
 	}
 }
@@ -555,9 +555,9 @@ static void copysurface(SDL_Surface* src){
 		SDL_FreeSurface(surf);
 	}
 
-	global.shared.addr->hints = RHINT_ORIGO_UL;
+	global.shared.addr->hints = SHMIF_RHINT_ORIGO_UL;
 	push_audio();
-	global.shared.addr->vready = true;
+	arcan_shmif_signal(&global.shared, SHMIF_SIGVID);
 }
 
 /* NON-GL SDL applications (unfortunately, moreso for 1.3
@@ -638,9 +638,9 @@ void ARCAN_SDL_GL_SwapBuffers()
  * (minimize memory bw- use at all time),
  * we want to flip in the main- app using the texture coordinates,
  * hence the glsource flag */
-	if (!(global.shared.addr->hints & RHINT_ORIGO_LL)){
+	if (!(global.shared.addr->hints & SHMIF_RHINT_ORIGO_LL)){
 		trace("Toggle GL surface support");
-		global.shared.addr->hints = RHINT_ORIGO_LL;
+		global.shared.addr->hints = SHMIF_RHINT_ORIGO_LL;
 		ARCAN_target_shmsize(global.sourcew, global.sourceh, 4);
 	}
 
@@ -662,9 +662,7 @@ void ARCAN_SDL_GL_SwapBuffers()
 
 	push_audio();
 
-	global.shared.addr->vready = true;
-	sem_wait(global.shared.vsem);
-
+	arcan_shmif_signal(&global.shared, SHMIF_SIGVID);
 	trace("CopySurface(GL:post)\n");
 
 /*
