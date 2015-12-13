@@ -880,6 +880,9 @@ static bool libretro_setenv(unsigned cmd, void* data){
 	case RETRO_ENVIRONMENT_SET_HW_RENDER | RETRO_ENVIRONMENT_EXPERIMENTAL:
 	case RETRO_ENVIRONMENT_SET_HW_RENDER:
 	{
+/* this should be matched with AGP model rather than statically
+ * set that we only care about GL, doesn't look like any core rely
+ * on this behavior though */
 		struct retro_hw_render_callback* hwrend = data;
 		if (hwrend->context_type == RETRO_HW_CONTEXT_OPENGL ||
 			hwrend->context_type == RETRO_HW_CONTEXT_OPENGL_CORE){
@@ -1514,10 +1517,9 @@ static void setup_3dcore(struct retro_hw_render_callback* ctx)
 	memcpy(&retroctx.hwctx, ctx,
 		sizeof(struct retro_hw_render_callback));
 
+/*
 	ctx->context_reset();
-
-/* missing (except for the build options)
- * is possibly the timer trigger thing */
+ */
 }
 #endif
 
