@@ -15,6 +15,7 @@
 #include <assert.h>
 #include <string.h>
 #include <stdarg.h>
+#include <stddef.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -229,6 +230,7 @@ struct shmif_hidden {
 		file_handle fd;
 	} pev;
 
+/* used for pending / incoming subsegments */
 	struct {
 		int epipe;
 		char key[256];
@@ -283,34 +285,52 @@ uint64_t arcan_shmif_cookie()
 	return base;
 }
 
-/*
- * Is populated and called whenever we get a descriptor or a descriptor related
- * event. Populates *dst and returns 1 if we have a matching pair.
- */
 static void fd_event(struct arcan_shmif_cont* c, struct arcan_event* dst)
 {
+/*
+ * if we get a descriptor event that is connected to acquiring a new
+ * frameserver subsegment- set up special tracking so we can retain the
+ * descriptor as new signalling/socket transfer descriptor
+ */
 	if (dst->category == EVENT_TARGET &&
 		dst->tgt.kind == TARGET_COMMAND_NEWSEGMENT){
 		c->priv->pseg.epipe = c->priv->pev.fd;
 		c->priv->pev.fd = BADFD;
 		memcpy(c->priv->pseg.key, dst->tgt.message, sizeof(dst->tgt.message));
 	}
-	else{
+/*
+ * otherwise we have a normal pending slot with a descriptor that
+ * is inserted into the event, then set as consumed (so next call,
+ * unless the descriptor is dup:ed or used, it will close
+ */
+	else
 		dst->tgt.ioevs[0].iv = c->priv->pev.fd;
-	}
+
 	c->priv->pev.consumed = true;
 }
 
-static void consume(struct arcan_shmif_cont* c, bool newseg)
+/*
+ * reset pending- state tracking
+ */
+static void consume(struct arcan_shmif_cont* c)
 {
-	if (c->priv->pev.consumed){
-		if (!newseg)
-			close(c->priv->pev.fd);
+	if (!c->priv->pev.consumed)
+		return;
 
-		c->priv->pev.fd = BADFD;
-		c->priv->pev.gotev = false;
-		c->priv->pev.consumed = false;
+	if (BADFD != c->priv->pev.fd){
+		close(c->priv->pev.fd);
+		LOG("(shmif) closing unhandled / ignored state descriptor\n");
 	}
+
+	if (BADFD != c->priv->pseg.epipe){
+		close(c->priv->pseg.epipe);
+		c->priv->pseg.epipe = BADFD;
+		LOG("(shmif) closing unhandled / ignored subsegment descriptor\n");
+	}
+
+	c->priv->pev.fd = BADFD;
+	c->priv->pev.gotev = false;
+	c->priv->pev.consumed = false;
 }
 
 static bool scan_tgt_event(struct arcan_evctx* c,enum ARCAN_TARGET_COMMAND cmd)
@@ -344,17 +364,20 @@ reset:
 #endif
 
 /* clean up any pending descriptors, ... */
-	consume(c, false);
+	consume(c);
 
+/* fetchhandle also pumps 'got event' pings that we send
+ * in order to portably I/O multiplex in the eventqueue,
+ * see arcan/ source for frameserver_pushevent */
 checkfd:
-/* got a descriptor dependent event, descriptor is on its way */
 	do {
-		if (-1 == c->priv->pev.fd){
+		if (-1 == c->priv->pev.fd)
 			c->priv->pev.fd = arcan_fetchhandle(c->epipe, blocking);
-		}
 
 		if (c->priv->pev.gotev){
-			if (c->priv->pev.fd > 0){
+			LOG("(shmif) waiting for descriptor from %d parent (%d)\n",
+				c->epipe, c->priv->pev.fd);
+			if (c->priv->pev.fd != BADFD){
 				fd_event(c, dst);
 				rv = 1;
 			}
@@ -420,6 +443,7 @@ checkfd:
 			case TARGET_COMMAND_BCHUNK_IN:
 			case TARGET_COMMAND_BCHUNK_OUT:
 			case TARGET_COMMAND_NEWSEGMENT:
+				LOG("(shmif) got descriptor transfer related event\n");
 				c->priv->pev.gotev = true;
 				goto checkfd;
 			default:
@@ -838,9 +862,12 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 		setsockopt(res.epipe, SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(int));
 #endif
 
+/* clear this here so consume won't eat it */
 		pp->pseg.epipe = BADFD;
 		memset(pp->pseg.key, '\0', sizeof(pp->pseg.key));
-		consume(parent, true);
+
+/* reset pending descriptor state */
+		consume(parent);
 	}
 
 	arcan_shmif_setevqs(res.addr, res.esem,
@@ -1080,6 +1107,7 @@ void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 	struct shmif_hidden* gstr = inctx->priv;
 
 	close(inctx->epipe);
+	close(inctx->shmh);
 
 /* guard thread will clean up on its own */
 	if (gstr->guard.active){
