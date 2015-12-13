@@ -144,6 +144,7 @@ The git-tree has the following structure:
         frameserver/ -- individual frameservers and support functions
         hijack/ -- interpositioning libraries for different data sources
         platform/ -- os/audio/video/etc. interfacing
+				tools/ -- database tools, keymap conversion
         shmif/ -- engine<->frameserver IPC
 
     tests/ -- (fairly incomplete, development focus target now)
