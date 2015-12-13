@@ -200,6 +200,7 @@ static struct dispout* allocate_display(struct dev_node* node)
 		if (displays[i].state == DISP_UNUSED){
 			displays[i].device = node;
 			displays[i].id = i;
+			displays[i].display.primary = false;
 			node->refc++;
 			displays[i].state = DISP_KNOWN;
 			return &displays[i];
@@ -1178,7 +1179,7 @@ struct monitor_mode* platform_video_query_modes(
 		mcache_sz = *count;
 		arcan_mem_free(mcache);
 		mcache = arcan_alloc_mem(sizeof(struct monitor_mode) * mcache_sz,
-			ARCAN_MEM_VSTRUCT, 0, ARCAN_MEMALIGN_NATURAL);
+			ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 	}
 
 	for (size_t i = 0; i < conn->count_modes; i++){
