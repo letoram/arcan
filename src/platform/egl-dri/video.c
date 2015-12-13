@@ -6,29 +6,42 @@
 
 /*
  * points to explore for this platform module:
- * (currently a bit careful spending more time here pending the
- * development of vulcan, nvidia egl streams extension etc.)
+ *
+ * (currently a bit careful spending more time here pending the development
+ * of vulcan, nvidia egl streams extension etc.)
  *
  * 0. _prepare _restore external support, currently there are a number of
- * related bugs and races that can be triggered with VT switching that tells us
- * the _agp layer and our rebuilding/reinit is incomplete.
+ * related bugs and races that can be triggered with VT switching that tells
+ * us the _agp layer and our rebuilding/reinit is incomplete.
  *
  * 1. <Zero Connector mode> This one is quite heavy, due to the way EGL and
  * friends are integrated the current case with all displays being removed
  * isn't well supported. The best approach would probably be to treat as an
- * external_launch sort of situation or rebuild the EGL context with a headless
- * one in order for other features (sharing etc.) to remain working.
+ * external_launch sort of situation or rebuild the EGL context with a
+ * headless one in order for other features (sharing etc.) to remain working
+ * and then switch when something is plugged in.
  *
- * 2. Multiple graphics cards and hotplugging graphics cards. Bonus points for
- * surviving VT switch, moving all displays to a new plugged GPU, VT switch
- * back and everything remapped correctly.
+ * 2. Multiple graphics cards and hotplugging graphics cards. Bonus points
+ * for surviving VT switch, moving all displays to a new plugged GPU, VT
+ * switch back and everything remapped correctly. Don't have the hardware
+ * to test this at all now.
  *
  * 3. Backlight support by improving the old murky _led codebase
  *
- * 4. advanced synchronization options (swap-interval, synch directly to front
- * buffer, swap-with-tear, pre-render then wake / move cursor just before
- * etc.), discard when we miss deadline, drm_vblank_relative,
+ * 4. Advanced synchronization options (swap-interval, synch directly to
+ * front buffer, swap-with-tear, pre-render then wake / move cursor just
+ * before etc.), discard when we miss deadline, drm_vblank_relative,
  * drm_vblank_secondary - also try synch strategy on a per display basis.
+ *
+ * 5. Launching children that use video_rnode has no good way for deciding
+ * which node to use (we're taking load balacing and conversion costs
+ * between GPUs that don't share backing store), part of this is not being
+ * able to enumerate and associate render-nodes from a drm- like interface.
+ *
+ * 6. Pain-less builds, this is more for drm/gbm upstream, but currently
+ * it seems like building Mesa+DRM libraries is impossible without dragging
+ * in other X dependencies. Breaking this out so that we can get rid of
+ * libX* once and for all would be highly desirable.
  */
 
 /*
@@ -40,7 +53,7 @@
  *
  * the current concession is that this is something that is up to the appl to
  * decide if it should be exposed or not. As an example, 'durden' has its
- * _cmd fifo for that purpose.
+ * _cmd fifo mapped to rescan for that purpose.
  *
  */
 #include <stdio.h>
@@ -106,7 +119,7 @@ static char* egl_synchopts[] = {
 
 static char* egl_envopts[] = {
 	"ARCAN_VIDEO_DEVICE=/dev/dri/card0", "specifiy primary device",
-	"ARCAN_VIDEO_DRM_NOMASTER", "set to disable drmMaster management",
+	"ARCAN_VIDEO_DRM_MASTER", "fail if drmMaster can't be obtained",
 	"ARCAN_VIDEO_DRM_NOBUFFER", "set to disable IPC buffer passing",
 	"ARCAN_VIDEO_WAIT_CONNECTOR", "loop until an active connector is found",
 	NULL
@@ -260,40 +273,39 @@ static void disable_display(struct dispout*, bool);
 static void update_display(struct dispout*);
 
 /* naive approach, unless env is set, just scan /dev/dri/card* and
- * grab the first one present. only used during first init */
-static const char* grab_card()
+ * grab the first one present that also results in a working gbm
+ * device, only used during first init */
+static char* grab_card(int n)
 {
 	const char* override = getenv("ARCAN_VIDEO_DEVICE");
-	if (override)
-		return override;
-
-	static char* lastcard;
+	if (override){
+		return n == 0 ? strdup(override) : NULL;
+	}
 
 #ifndef VDEV_GLOB
 #define VDEV_GLOB "/dev/dri/card*"
 #endif
 
-	if (lastcard)
-		lastcard = (free(lastcard), NULL);
-
 	glob_t res;
+
 	if (glob(VDEV_GLOB, 0, NULL, &res) == 0){
-		if (*(res.gl_pathv)){
-			lastcard = strdup(*(res.gl_pathv));
-			globfree(&res);
-			return lastcard;
+		char** beg = res.gl_pathv;
+		while(n > 0 && *beg++){
+			n--;
 		}
+		char* rstr = *beg ? strdup(*beg) : NULL;
 		globfree(&res);
+		return rstr;
 	}
 
-	return override;
+	return NULL;
 }
 
 static char* last_err = "unknown";
 static size_t err_sz = 0;
 #define SET_SEGV_MSG(X) last_err = (X); err_sz = sizeof(X);
 
-void sigsegv_errmsg(int sign)
+static void sigsegv_errmsg(int sign)
 {
 	size_t nw __attribute__((unused));
 	nw = write(STDOUT_FILENO, last_err, err_sz);
@@ -830,7 +842,7 @@ static int setup_node(struct dev_node* node, const char* path)
 	if (!node->gbm){
 		arcan_warning("egl-dri(), couldn't create gbm device on node.\n");
 		close(node->fd);
-		node->fd = 0;
+		node->fd = -1;
 		return -1;
 	}
 
@@ -866,7 +878,7 @@ static int setup_node(struct dev_node* node, const char* path)
 #ifndef EGL_OPENGL_ES2_BIT
 			arcan_warning("EGL implementation do not support GLESv2, "
 				"yet AGP platform requires it, use a different AGP platform.\n");
-			return -1;
+			return -2;
 #endif
 
 #ifndef EGL_OPENGL_ES3_BIT
@@ -876,7 +888,7 @@ static int setup_node(struct dev_node* node, const char* path)
 		apiv = EGL_OPENGL_ES_API;
 	}
 	else
-		return -1;
+		return -2;
 
 	SET_SEGV_MSG("EGL-dri(), getting the display failed\n");
 /*
@@ -921,7 +933,6 @@ static int setup_node(struct dev_node* node, const char* path)
 			"egl-dri() -- couldn't chose a configuration (%s).\n", egl_errstr());
 		free(configs);
 		goto reset_node;
-		return -1;
 	}
 
 /*
@@ -939,7 +950,7 @@ static int setup_node(struct dev_node* node, const char* path)
 
 reset_node:
 	close(node->fd);
-	node->fd = 0;
+	node->fd = -1;
 	gbm_device_destroy(node->gbm);
 	node->gbm = NULL;
 
@@ -1406,17 +1417,26 @@ bool platform_video_init(uint16_t w, uint16_t h,
  */
 	sigaction(SIGSEGV, &err_sh, &old_sh);
 
-	const char* device = grab_card();
+	int n = 0;
+	while(1){
+		char* device = grab_card(n++);
+		if (!device)
+			goto cleanup;
 
-	if (setup_node(&nodes[0], device) != 0)
-		goto cleanup;
+		int rc = setup_node(&nodes[0], device);
+		free(device);
 
-	if (!getenv("ARCAN_VIDEO_DRM_NOMASTER")){
-		if (-1 == drmSetMaster(nodes[0].fd)){
-			arcan_fatal("platform/egl-dri(), couldn't get drmMaster (%s) - make sure"
-				" nothing else holds the master lock or try "
-				"ARCAN_VIDEO_DRM_NOMASTER=1\n", strerror(errno));
-		}
+		if (0 == rc)
+			break;
+
+		if (-2 == rc)
+			goto cleanup;
+	}
+
+	if (-1 == drmSetMaster(nodes[0].fd) && getenv("ARCAN_VIDEO_DRM_MASTER")){
+		arcan_fatal("platform/egl-dri(), couldn't get drmMaster (%s) - make sure"
+			" nothing else holds the master lock or try "
+			"ARCAN_VIDEO_DRM_NOMASTER=1\n", strerror(errno));
 	}
 
 	map_extensions();
