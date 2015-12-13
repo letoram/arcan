@@ -5918,10 +5918,8 @@ static int targetseek(lua_State* ctx)
 		.tgt.kind = TARGET_COMMAND_SEEKTIME
 	};
 
-	if (relative)
-		ev.tgt.ioevs[1].iv = (int32_t) val;
-	else
-		ev.tgt.ioevs[0].fv = val;
+	ev.tgt.ioevs[0].iv = relative;
+	ev.tgt.ioevs[1].fv = val;
 	tgtevent(tgt, ev);
 
 	LUA_ETRACE("target_seek", NULL);

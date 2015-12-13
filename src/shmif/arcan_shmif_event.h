@@ -250,8 +250,8 @@ enum ARCAN_TARGET_COMMAND {
  * For connections that have a fine-grained perception of time, both absolute
  * and relative in terms of some internal timebase, request a seek to a
  * specific point in time (or as close as possible).
- * ioevs[1].iv != 1 indicates relative,
- * ioevs[0].fv = contains the actual timeslot.
+ * ioevs[0].iv != 1 indicates relative,
+ * ioevs[1].fv = contains the actual timeslot.
  */
 	TARGET_COMMAND_SEEKTIME,
 

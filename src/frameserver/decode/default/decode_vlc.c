@@ -4,14 +4,20 @@
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  * Depends: LibVLC (LGPL)
- * Description: Default VLC based player. Still in quite a terrible shape with
- * few features mapped (subtitle control, subtitle as subsegment, playlists,
- * descriptor passing, stream switching, attenuation, accelerated handle, mouse
- * cursor handling for DVDs, passing, audio/video/subtitle track switching all
- * missing still, accelerated audio passthrough control, exposing chapters /
- * titles)
+ * Description: Default VLC based player. Still in quite a terrible shape
+ * with few features mapped - all missing:
+ * subtitle control, subtitle as subsegment, playlists, descriptor passing,
+ * stream switching, attenuation, accelerated handle passing,
+ * mouse cursor handling for menu navigation, audio/video
+ * filters, ssing still, accelerated audio passthrough control,
+ * exposing chapters / titles, ...
+ *
+ * It is not certain if this is a good default to run with either due to the
+ * horrible plugin/api/callback structure. A better future strategy would
+ * be providing a more simple / lightweight decoder using only ffmpeg now that
+ * the libav/debian fiasco is slowly fixing itself, and have an advanced version
+ * be a player more in the lines of mpv.
  */
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdbool.h>
@@ -19,6 +25,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <pthread.h>
 #include <math.h>
 #include <fcntl.h>
@@ -40,9 +47,15 @@ static struct {
 	bool loop;
 
 	pthread_mutex_t rsync;
+	pthread_mutex_t vsync;
 } decctx;
 
 #define AUD_VIS_HRES 2048
+#define arcan_shmif_signal(X, Y){\
+	pthread_mutex_lock(&decctx.vsync);\
+	arcan_shmif_signal(X, Y);\
+	pthread_mutex_unlock(&decctx.vsync);\
+}
 
 static void process_inevq();
 
@@ -59,14 +72,12 @@ static unsigned video_setup(void** ctx, char* chroma, unsigned* width,
 
 	*pitches = *width * 4;
 
-	pthread_mutex_lock(&decctx.rsync);
 	if (!arcan_shmif_resize(&decctx.shmcont, *width, *height)){
 		LOG("arcan_frameserver(decode) shmpage setup failed, "
 			"requested: (%d x %d)\n", *width, *height);
 
 		rv = 0;
 	}
-	pthread_mutex_unlock(&decctx.rsync);
 
 	return rv;
 }
@@ -93,9 +104,8 @@ static void generate_frame()
 	int counter = decctx.shmcont.addr->abufused;
 
 	while (counter){
-/* could've split the window up into
- * two functions and used the b and a channels
- * but little point atm. */
+/* could've split the window up into two functions and used the b and a
+ * channels but little point atm. */
 		float lv = (*basep++) / 32767.0f;
 		float rv = (*basep++) / 32767.0f;
 		float smpl = (lv + rv) / 2.0f;
@@ -130,12 +140,10 @@ static void generate_frame()
 			}
 
 /*
- * This should be re-worked to pack in base256 with an
- * unpack shader to get decent precision in the output vis,
- * and generalized to a support function that we can
- * associate with any data-channel and new context
+ * This should be re-worked to pack in base256 with an unpack shader to get
+ * decent precision in the output vis, and generalized to a support function
+ * that we can associate with any data-channel and new context
  */
-
 			for (int j=0; j<smpl_wndw / 2; j++){
 				*base++ = RGBA(0, 0, 0, 0xff);
 			}
@@ -150,7 +158,6 @@ static void generate_frame()
 				);
 
 			decctx.shmcont.addr->vpts = vptsc;
-			arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGVID);
 
 			vptsc += 1000.0f / (
 				(double)(ARCAN_SHMIF_SAMPLERATE) / (double)smpl_wndw);
@@ -167,7 +174,6 @@ static void audio_play(void *data,
 
 	if (!decctx.got_video && decctx.shmcont.addr->w != AUD_VIS_HRES)
 	{
-		pthread_mutex_lock(&decctx.rsync);
 		arcan_shmif_resize(&decctx.shmcont, AUD_VIS_HRES, 2);
 		decctx.fft_audio = true;
 		arcan_event ev = {
@@ -176,14 +182,14 @@ static void audio_play(void *data,
 			.ext.streaminf.langid = {'A', 'U', 'D'}
 		};
 		arcan_shmif_enqueue(&decctx.shmcont, &ev);
-		pthread_mutex_unlock(&decctx.rsync);
 	}
 
-	pthread_mutex_lock(&decctx.rsync);
-
+/* buffer overflow, need to flush */
 	size_t left = ARCAN_SHMIF_AUDIOBUF_SZ - decctx.shmcont.addr->abufused;
-	if (left < nb)
+	if (left < nb){
+		LOG("audio_play(), overflow flush\n");
 		arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGAUD);
+	}
 
 	left = ARCAN_SHMIF_AUDIOBUF_SZ - decctx.shmcont.addr->abufused;
 	if (left > nb){
@@ -191,8 +197,6 @@ static void audio_play(void *data,
 			decctx.shmcont.addr->abufused, samples, nb);
 		decctx.shmcont.addr->abufused += nb;
 	}
-
-	pthread_mutex_unlock(&decctx.rsync);
 
 	if (decctx.fft_audio){
 		generate_frame();
@@ -205,7 +209,7 @@ static void audio_flush()
 		.category = EVENT_EXTERNAL,
 		.ext.kind = ARCAN_EVENT(FLUSHAUD)
 	};
-	LOG("flush\n");
+	LOG("vlc requested audio flush\n");
 	decctx.shmcont.addr->abufused = 0;
 	arcan_shmif_enqueue(&decctx.shmcont, &ev);
 }
@@ -221,22 +225,18 @@ static void video_cleanup(void* ctx)
 
 static void* video_lock(void* ctx, void** planes)
 {
-	pthread_mutex_lock(&decctx.rsync);
 	*planes = decctx.shmcont.vidp;
 	return NULL;
 }
 
 static void video_display(void* ctx, void* picture)
 {
-	if (decctx.shmcont.addr->abufused)
-		arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGAUD | SHMIF_SIGVID);
-	else
-		arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGVID);
+	arcan_shmif_signal(&decctx.shmcont, decctx.shmcont.addr->abufused ?
+		SHMIF_SIGAUD | SHMIF_SIGVID : SHMIF_SIGVID);
 }
 
 static void video_unlock(void* ctx, void* picture, void* const* planes)
 {
-	pthread_mutex_unlock(&decctx.rsync);
 }
 
 static void push_streamstatus()
@@ -271,6 +271,7 @@ static void push_streamstatus()
 	snprintf((char*)status.ext.streamstat.timestr, strlim,
 		"%d:%02d:%02d", dh, dm, ds);
 
+	LOG("streamstatus: %s\n", status.ext.streamstat.timestr);
 	arcan_shmif_enqueue(&decctx.shmcont, &status);
 }
 
@@ -286,7 +287,7 @@ static void player_event(const struct libvlc_event_t* event, void* ud)
 
 	case libvlc_MediaPlayerEncounteredError:
 		case libvlc_MediaPlayerEndReached:
-			LOG("end reached\n");
+			LOG("player end reached\n");
 			decctx.shmcont.addr->dms = false;
 	break;
 
@@ -340,9 +341,19 @@ static void dump_help()
 static void seek_relative(int seconds)
 {
 	int64_t time_v = libvlc_media_player_get_time(decctx.player);
-	time_v += seconds * 1000;
+/* not seekable */
+	if (-1 == time_v)
+		return;
+
+//	seconds *= 1000;
+
+	time_v += seconds;
 	time_v = time_v > 0 ? time_v : 0;
+	pthread_mutex_lock(&decctx.vsync);
+
+	LOG("seek to %d\n", time_v);
 	libvlc_media_player_set_time(decctx.player, time_v);
+	pthread_mutex_unlock(&decctx.vsync);
 }
 
 static void process_inevq()
@@ -375,6 +386,14 @@ static void process_inevq()
  * */
 		break;
 
+		case TARGET_COMMAND_PAUSE:
+			libvlc_media_player_pause(decctx.player);
+		break;
+
+		case TARGET_COMMAND_UNPAUSE:
+			libvlc_media_player_pause(decctx.player);
+		break;
+
 /*
  * case TARGET_COMMAND_FDTRANSFER:
 		{
@@ -397,15 +416,16 @@ static void process_inevq()
 		break;
 
 		case TARGET_COMMAND_SEEKTIME:
-			if (tgt->ioevs[1].iv != 0){
-					seek_relative(tgt->ioevs[1].iv);
+			if (tgt->ioevs[0].iv != 0)
+					seek_relative(tgt->ioevs[1].fv);
+			else{
+				LOG("non-relative seek\n");
+				libvlc_media_player_set_position(decctx.player, tgt->ioevs[1].fv);
 			}
-			else
-				libvlc_media_player_set_position(decctx.player, tgt->ioevs[0].fv);
 		break;
 
 		default:
-			LOG("unhandled target event received (%d:%d)\n", tgt->kind, ev.category);
+			LOG("unhandled target event (%s)\n", arcan_shmif_eventstr(&ev, NULL, 0));
 		}
 	}
 
@@ -421,7 +441,28 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 	}
 
 	decctx.shmcont = *cont;
-	setenv("VLC_PLUGIN_PATH", "/usr/local/lib/vlc/plugin", 0);
+#ifdef __APPLE__
+	const char* paths[] = {
+		"/usr/local/lib/vlc/plugins",
+		"/usr/lib/vlc/plugins",
+		"/Applications/VLC.app/Contents/MacOS/plugins"
+		NULL
+	};
+#else
+	const char* paths[] = {
+		"/usr/local/lib/vlc/plugins",
+		"/usr/lib/vlc/plugins",
+		NULL
+	};
+#endif
+
+	for (const char** cur = paths; *cur; cur++){
+		struct stat buf;
+		if (stat(*cur, &buf) == 0){
+			setenv("VLC_PLUGIN_PATH", *cur, 0);
+			break;
+		}
+	}
 
 /* decode external arguments, map the necessary ones to VLC */
 	const char* val;
@@ -482,6 +523,7 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 	}
 
 	pthread_mutex_init(&decctx.rsync, NULL);
+	pthread_mutex_init(&decctx.vsync, NULL);
 
 /* register media with vlc, hook up local input mapping */
   decctx.player = libvlc_media_player_new_from_media(media);
