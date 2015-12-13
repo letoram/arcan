@@ -3980,7 +3980,10 @@ static inline void setup_surf(struct rendertarget* dst,
 
 	agp_shader_envv(OBJ_OPACITY, &prop->opa, sizeof(float));
 
-	float sz_i[2] = {1.0 / (double)src->origw, 1.0 / (double)src->origh};
+	float sz_i[2];
+	sz_i[0] = 1.0 / (double)(src->origw == 0 ? 1 : src->origw);
+	sz_i[1] = 1.0 / (double)(src->origh == 0 ? 1 : src->origh);
+
 	agp_shader_envv(SIZE_INPUT, sz_i, sizeof(float)*2);
 
 	float sz_o[2] = {prop->scale.x * 2.0, prop->scale.y * 2.0};
