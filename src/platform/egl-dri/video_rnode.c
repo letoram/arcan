@@ -18,7 +18,10 @@
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <signal.h>
 #include <errno.h>
+#include <glob.h>
+#include <ctype.h>
 
 #define EGL_EGLEXT_PROTOTYPES
 #include <EGL/egl.h>
@@ -127,7 +130,10 @@ int egl_rnode_worldfbo_required[-1];
 
 void* PLATFORM_SYMBOL(_video_gfxsym)(const char* sym)
 {
-	return eglGetProcAddress(sym);
+	void* addr = eglGetProcAddress(sym);
+	printf("look for : %s => %"PRIxPTR"\n", sym, addr);
+
+	return addr;
 }
 
 struct monitor_mode PLATFORM_SYMBOL(_video_dimensions)()
@@ -180,26 +186,83 @@ enum dpms_state
 	return ADPMS_ON;
 }
 
+static bool scan_node()
+{
+#ifndef VDEV_GLOB
+#define VDEV_GLOB "/dev/dri/renderD*"
+#endif
+	bool rv = false;
+	glob_t res;
+
+	if (glob(VDEV_GLOB, 0, NULL, &res) == 0){
+		char** beg = res.gl_pathv;
+
+		while(*beg){
+			int fd = open(*beg, O_RDWR);
+			if (-1 != fd){
+				rnode.dev = gbm_create_device(fd);
+				if (rnode.dev){
+					rnode.fd = fd;
+					rv = true;
+					break;
+				}
+				close(fd);
+			}
+			beg++;
+		}
+
+		globfree(&res);
+	}
+
+	return rv;
+}
+
+static void sigsegv_errmsg(int sign)
+{
+	static const char msg[] = "gbm- crash looking for render-nodes";
+	size_t nw __attribute__((unused));
+	nw = write(STDOUT_FILENO, msg, sizeof(msg));
+	_exit(EXIT_FAILURE);
+}
+
 bool PLATFORM_SYMBOL(_video_init)(uint16_t w, uint16_t h,
 	uint8_t bpp, bool fs, bool frames, const char* title)
 {
-	const char* device = getenv("ARCAN_VIDEO_NODE");
+/*
+ * we don't have a good way of communicating which rnode to use yet,
+ * or if we should be able to switch, start by checking a device,
+ * path or preset descriptor
+ */
+	const char* device = getenv("ARCAN_SHMIF_NODE");
 
-/* can be set by shmif_open/connect if the display-server wants us
- * to explicitly use a certain node */
-	if (!device){
-		device = getenv("ARCAN_SHMIF_NODE");
-		if (!device)
-			device = "/dev/dri/renderD128";
+/*
+ * hack around gbm crashes to get some kind of log output
+ */
+	struct sigaction old_sh;
+	struct sigaction err_sh = {
+		.sa_handler = sigsegv_errmsg
+	};
+	sigaction(SIGSEGV, &err_sh, &old_sh);
+
+/*
+ * try parent supplied or scan / brute force for a working device node
+ */
+	if (device){
+		int fd = isdigit(device[0]) ?
+			strtoul(device, NULL, 10) : open(device, O_RDWR);
+		if (-1 != fd){
+			rnode.dev = gbm_create_device(rnode.fd);
+			if (!rnode.dev)
+				close(fd);
+		}
 	}
 
-	rnode.fd = open(device, O_RDWR);
-	if (rnode.fd < 0){
-		arcan_warning("egl-rnode(), couldn't open rendernode (%s), reason: (%s)",
-			device, strerror(errno));
+/* static set to NULL, will remain so on fail above */
+	if (!rnode.dev && !scan_node()){
+		sigaction(SIGSEGV, &old_sh, NULL);
+		return false;
 	}
-
-	rnode.dev = gbm_create_device(rnode.fd);
+	sigaction(SIGSEGV, &old_sh, NULL);
 
 /*
  * EGL setup is similar, but we don't have an output display
