@@ -1046,7 +1046,6 @@ static void enable_graphseg()
 		return;
 	}
 
-	LOG("spawning debug thread\n");
 	struct arcan_shmif_cont* pcont = malloc(sizeof(struct arcan_shmif_cont));
 
 	if (retroctx.sync_data)
@@ -1493,14 +1492,13 @@ static void setup_3dcore(struct retro_hw_render_callback* ctx)
 	agp_init();
 
 #ifdef FRAMSESERVER_LIBRETRO_3D_RETEXTURE
+	exit(1); /* not ready */
 	arcan_retexture_init(NULL, false);
 
 /*
- * allocate an input and an output segment and map up,
- * the socket file descriptors will just be ignored here
- * as the main thread will be used to pump the queues
- * and the shared memory segments will be used to push
- * data
+ * allocate an input and an output segment and map up, the socket file
+ * descriptors will just be ignored here as the main thread will be used to
+ * pump the queues and the shared memory segments will be used to push data
  */
 	arcan_event ev = {
 		.category = EVENT_EXTERNAL,
@@ -1953,5 +1951,8 @@ static void push_stats()
 		retroctx.framecost, retroctx.prewake, retroctx.transfercost
 	);
 
-	retroctx.sync_data->update(retroctx.sync_data, retroctx.mspf, scratch);
+	if (!retroctx.sync_data->update(
+		retroctx.sync_data, retroctx.mspf, scratch)){
+		retroctx.sync_data->free(&retroctx.sync_data);
+	}
 }

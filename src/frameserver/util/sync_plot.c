@@ -39,7 +39,7 @@ struct graph_int {
 	draw_text(ctx, x, 0, yv, 0xffffffff);\
 	yv += fonth;
 
-static void f_update(struct synch_graphing* ctx, float period, const char* msg)
+static bool f_update(struct synch_graphing* ctx, float period, const char* msg)
 {
 	size_t yv = 0;
 	struct graph_int* priv = ctx->priv;
@@ -48,7 +48,7 @@ static void f_update(struct synch_graphing* ctx, float period, const char* msg)
 	char* cp = strtok_r(work, "\n", &ctxp);
 
 	if (priv->cont->addr->vready)
-		return;
+		return true;
 
 	draw_box(priv->cont, 0, 0, priv->cont->addr->w,
 		priv->cont->addr->h, 0xffffffff);
@@ -156,6 +156,12 @@ static void f_update(struct synch_graphing* ctx, float period, const char* msg)
 
 	if (ctx->state == SYNCH_INDEPENDENT)
 		priv->cont->addr->vready = true;
+
+	arcan_event ev;
+	while (arcan_shmif_poll(priv->cont, &ev) > 0)
+		if (ev.category == EVENT_TARGET && ev.tgt.kind == TARGET_COMMAND_EXIT)
+			return false;
+	return true;
 }
 
 static void f_cont_switch(struct synch_graphing* ctx,
@@ -202,7 +208,9 @@ static void f_mark_video_transfer(
 
 static void f_free(struct synch_graphing** ctx)
 {
-	free((*ctx)->priv);
+	struct graph_int* priv = (*ctx)->priv;
+	arcan_shmif_drop(priv->cont);
+	free(priv);
 	memset(*ctx, '\0', sizeof(struct synch_graphing));
 	free(*ctx);
 	*ctx = NULL;

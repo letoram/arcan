@@ -26,7 +26,8 @@ struct synch_graphing {
 		SYNCH_INDEPENDENT
 	} state;
 
-	void (*update)(struct synch_graphing*, float period, const char* msg);
+/* sync transfer, will poll event-loop and _drop segment on fail */
+	bool (*update)(struct synch_graphing*, float period, const char* msg);
 
 /* signal whenever parent provides non-periodic input */
 	void (*mark_input)(struct synch_graphing*, timestamp_t);
