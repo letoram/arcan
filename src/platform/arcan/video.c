@@ -345,7 +345,7 @@ static void stub()
 static void synch_hpassing(struct storage_info_t* vs,
 	int handle, enum status_handle status)
 {
-	arcan_shmif_signalhandle(&disp[0].conn, SHMIF_SIGVID | SHMIF_SIGBLK_ONCE,
+	arcan_shmif_signalhandle(&disp[0].conn, SHMIF_SIGVID,
 		handle, vs->vinf.text.stride, vs->vinf.text.format);
 /* we likely need to kill the EGLImage as well? */
 	close(handle);
@@ -357,7 +357,7 @@ static void synch_copy(struct storage_info_t* vs)
 	store.vinf.text.raw = disp[0].conn.vidp;
 
 	agp_readback_synchronous(&store);
-	arcan_shmif_signal(&disp[0].conn, SHMIF_SIGVID | SHMIF_SIGBLK_ONCE);
+	arcan_shmif_signal(&disp[0].conn, SHMIF_SIGVID);
 
 	for (size_t i = 1; i < MAX_DISPLAYS; i++){
 		if (!disp[i].mapped || disp[i].dpms != ADPMS_ON)
@@ -383,7 +383,7 @@ static void synch_copy(struct storage_info_t* vs)
 			agp_readback_synchronous(&store);
 		}
 
-		arcan_shmif_signal(&disp[i].conn, SHMIF_SIGVID | SHMIF_SIGBLK_ONCE);
+		arcan_shmif_signal(&disp[i].conn, SHMIF_SIGVID);
 	}
 }
 
