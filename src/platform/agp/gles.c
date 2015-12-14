@@ -144,6 +144,20 @@ void agp_shader_source(enum SHADER_TYPES type,
 	}
 }
 
+#ifdef GLES3
+static void pbo_alloc_write(struct storage_info_t* store)
+{
+	GLuint pboid;
+	glGenBuffers(1, &pboid);
+	store->vinf.text.wid = pboid;
+
+	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pboid);
+	glBufferData(GL_PIXEL_UNPACK_BUFFER,
+		store->w * store->h * store->bpp, NULL, GL_STREAM_READ);
+	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+}
+#endif
+
 void agp_env_help(FILE* out)
 {
 /* write agp specific tuning here,
@@ -195,6 +209,13 @@ struct asynch_readback_meta argp_buffer_readback_asynchronous(
 
 static void default_release(void* tag)
 {
+#ifdef GLES3
+	if (!tag)
+		return;
+
+	glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
+	glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+#endif
 }
 
 struct asynch_readback_meta agp_poll_readback(struct storage_info_t* store)
@@ -215,12 +236,9 @@ void agp_drop_vstore(struct storage_info_t* s)
 	s->vinf.text.glid = 0;
 
 #ifdef GLES3
-	if (GL_NONE != s->vinf.text.rid)
-		glDeleteBuffers(1, &s->vinf.text.rid);
-#endif
-
 	if (GL_NONE != s->vinf.text.wid)
 		glDeleteBuffers(1, &s->vinf.text.wid);
+#endif
 
 	memset(s, '\0', sizeof(struct storage_info_t));
 }
@@ -230,13 +248,27 @@ void agp_resize_vstore(struct storage_info_t* s, size_t w, size_t h)
 	s->w = w;
 	s->h = h;
 	s->bpp = sizeof(av_pixel);
+	size_t new_sz = w * h * s->bpp;
 
-	if (s->vinf.text.raw){
+/* some cases the vstore can have been "secretly" resized to
+ * the new dimensions, common case is resize in a frameserver that
+ * uses shm- transfer */
+	if (s->vinf.text.raw && s->vinf.text.s_raw != new_sz){
 		arcan_mem_free(s->vinf.text.raw);
-		s->vinf.text.s_raw = w * h * s->bpp;
+		s->vinf.text.s_raw = new_sz;
+		s->vinf.text.raw = NULL;
+	}
+
+	if (s->vinf.text.raw == NULL)
 		s->vinf.text.raw = arcan_alloc_mem(s->vinf.text.s_raw,
 			ARCAN_MEM_VBUFFER, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
+
+#ifdef GLES3
+	if (s->vinf.text.wid){
+		glDeleteBuffers(1, &s->vinf.text.wid);
+		pbo_alloc_write(s);
 	}
+#endif
 
 	agp_update_vstore(s, true);
 }

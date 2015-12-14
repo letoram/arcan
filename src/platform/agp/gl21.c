@@ -310,7 +310,8 @@ void agp_resize_vstore(struct storage_info_t* s, size_t w, size_t h)
 	s->w = w;
 	s->h = h;
 	s->bpp = sizeof(av_pixel);
-	size_t new_sz = w * h * s->bpp;
+
+	alloc_buffer(s);
 
 /* some cases the vstore can have been "secretly" resized to
  * the new dimensions, common case is resize in a frameserver that
