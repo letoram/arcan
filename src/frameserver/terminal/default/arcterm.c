@@ -56,7 +56,6 @@
 #include <sys/ioctl.h>
 #include <sys/time.h>
 #include <sys/types.h>
-#include <sys/signal.h>
 #include <sys/wait.h>
 
 #include "tsm/libtsm.h"
@@ -600,7 +599,11 @@ static void page_down()
 /* map to the quite dangerous SIGUSR1 when we don't have INFO? */
 static void send_siginfo()
 {
+#ifdef SIGINFO
+	shl_pty_signal(term.pty, SIGINFO);
+#else
 	shl_pty_signal(term.pty, SIGUSR1);
+#endif
 }
 
 struct lent {
@@ -991,9 +994,14 @@ static void main_loop()
 			break;
 		else if (pc == 3 && (fds[2].revents & POLLIN))
 			check_pasteboard();
-/* audible beep or not? */
+
+/*
+ * since terminals typically update at such a low rate, we shouldn't
+ * block / stall add latency here, and for the "woops did find or ls
+ * on too much data", tearing can be preferable
+ */
 		if (term.dirty && !term.mute){
-			arcan_shmif_signal(&term.acon, SHMIF_SIGVID);
+			arcan_shmif_signal(&term.acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
 			term.dirty = false;
 		}
 	}
