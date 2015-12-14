@@ -1041,7 +1041,9 @@ void arcan_shmif_signal(struct arcan_shmif_cont* ctx, int mask)
 	if ( (mask & SHMIF_SIGVID) && !(mask & SHMIF_SIGAUD)){
 		FORCE_SYNCH();
 		ctx->addr->vready = true;
-		arcan_sem_wait(ctx->vsem);
+
+		if (!(mask & (SHMIF_SIGBLK_NONE | SHMIF_SIGBLK_ONCE)))
+			arcan_sem_wait(ctx->vsem);
 	}
 	else if ( (mask & SHMIF_SIGAUD) && !(mask & SHMIF_SIGVID)){
 		FORCE_SYNCH();
@@ -1053,9 +1055,12 @@ void arcan_shmif_signal(struct arcan_shmif_cont* ctx, int mask)
 		ctx->addr->vready = true;
 		if (ctx->addr->abufused > 0){
 			ctx->addr->aready = true;
-			arcan_sem_wait(ctx->asem);
+			if (!(mask & (SHMIF_SIGBLK_NONE | SHMIF_SIGBLK_ONCE)))
+				arcan_sem_wait(ctx->asem);
 		}
-		arcan_sem_wait(ctx->vsem);
+
+		if (!(mask & (SHMIF_SIGBLK_NONE | SHMIF_SIGBLK_ONCE)))
+			arcan_sem_wait(ctx->vsem);
 	}
 	else
 		;
