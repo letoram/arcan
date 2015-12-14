@@ -131,7 +131,6 @@ int egl_rnode_worldfbo_required[-1];
 void* PLATFORM_SYMBOL(_video_gfxsym)(const char* sym)
 {
 	void* addr = eglGetProcAddress(sym);
-	printf("look for : %s => %"PRIxPTR"\n", sym, addr);
 
 	return addr;
 }

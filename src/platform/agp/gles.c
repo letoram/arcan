@@ -264,12 +264,14 @@ struct stream_meta agp_stream_prepare(struct storage_info_t* s,
 	switch(type){
 	case STREAM_RAW:
 		alloc_buffer(s);
+
 		mout.buf = s->vinf.text.raw;
 		mout.state = mout.buf != NULL;
 	break;
 
 	case STREAM_RAW_DIRECT_COPY:{
 		alloc_buffer(s);
+
 		size_t ntc = s->w * s->h;
 		av_pixel* ptr = s->vinf.text.raw, (* buf) = meta.buf;
 		s->update_ts = arcan_timemillis();
@@ -280,13 +282,15 @@ struct stream_meta agp_stream_prepare(struct storage_info_t* s,
 			for (size_t i = 0; i < ntc; i++)
 				*ptr++ = *buf++;
 	}
+	break;
 
 	case STREAM_RAW_DIRECT:
 	case STREAM_RAW_DIRECT_SYNCHRONOUS:
-		agp_activate_vstore(s);
+	agp_activate_vstore(s);
 		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, s->w, s->h,
 			GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, meta.buf);
 		agp_deactivate_vstore();
+	break;
 
 	case STREAM_HANDLE:
 		mout.state = platform_video_map_handle(
@@ -303,8 +307,4 @@ void agp_stream_release(struct storage_info_t* s, struct stream_meta meta)
 
 void agp_stream_commit(struct storage_info_t* s, struct stream_meta meta)
 {
-	agp_activate_vstore(s);
-		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, s->w, s->h,
-			GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, s->vinf.text.raw);
-	agp_deactivate_vstore(s);
 }
