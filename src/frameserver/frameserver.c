@@ -249,7 +249,7 @@ int main(int argc, char** argv)
 #ifdef ENABLE_FSRV_DECODE
 	if (strcmp(fsrvmode, "decode") == 0)
 		return launch_mode("decode",
-			afsrv_decode, SEGID_MEDIA, 0, argstr);
+			afsrv_decode, SEGID_MEDIA, SHMIF_MANUAL_PAUSE, argstr);
 #endif
 
 #ifdef ENABLE_FSRV_TERMINAL
