@@ -250,12 +250,11 @@ struct stream_meta agp_stream_prepare(struct storage_info_t* s,
 	break;
 
 	case STREAM_HANDLE:
-/* if platform_video_map_handle fails here, prepare an
- * empty vstore and attempt again, if that succeeds it
- * means that we had to go through a RTT indirection,
- * if that fails we should convey back to the client that
-  we can't accept this kind of transfer */
-		res.state = platform_video_map_handle(s, meta.handle);
+/* if platform_video_map_handle fails here, prepare an empty vstore and attempt
+ * again, if that succeeds it means that we had to go through a RTT
+ * indirection, if that fails we should convey back to the client that
+	we can't accept this kind of transfer */
+	res.state = platform_video_map_handle(s, meta.handle);
 	break;
 	}
 
