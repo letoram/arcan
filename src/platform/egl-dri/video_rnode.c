@@ -49,8 +49,8 @@ static PFNEGLCREATEIMAGEKHRPROC create_image;
 static PFNEGLEXPORTDRMIMAGEMESAPROC export_drm_image;
 
 static char* rnode_envopts[] = {
-	"ARCAN_VIDEO_NODE=/dev/dri/renderD128", "specify render-node",
-	"ARCAN_VIDEO_FDPASS", "set to use in-GPU buffer transfers to parent",
+	"ARCAN_RENDER_NODE=/dev/dri/renderD128", "specify render-node",
+	"ARCAN_VIDEO_NO_FDPASS", "set to use in-GPU buffer transfers to parent",
 	"EGL_LOG_LEVEL=debug|info|warning|fatal", "Mesa/EGL debug aid",
 	"EGL_SOFTWARE", "Force software rendering if possible",
 	"GALLIUM_HUD", "Gallium driver performance overlay",
@@ -232,7 +232,7 @@ bool PLATFORM_SYMBOL(_video_init)(uint16_t w, uint16_t h,
  * or if we should be able to switch, start by checking a device,
  * path or preset descriptor
  */
-	const char* device = getenv("ARCAN_SHMIF_NODE");
+	const char* device = getenv("ARCAN_RENDER_NODE");
 
 /*
  * hack around gbm crashes to get some kind of log output
@@ -250,14 +250,22 @@ bool PLATFORM_SYMBOL(_video_init)(uint16_t w, uint16_t h,
 		int fd = isdigit(device[0]) ?
 			strtoul(device, NULL, 10) : open(device, O_RDWR);
 		if (-1 != fd){
-			rnode.dev = gbm_create_device(rnode.fd);
+			rnode.dev = gbm_create_device(fd);
 			if (!rnode.dev)
 				close(fd);
+			else
+				rnode.fd = fd;
+		}
+		else{
+			arcan_warning("couldn't map (env:ARCAN_RENDER_NODE) %s\n", device);
+			sigaction(SIGSEGV, &old_sh, NULL);
+			return false;
 		}
 	}
 
 /* static set to NULL, will remain so on fail above */
 	if (!rnode.dev && !scan_node()){
+		arcan_warning("no available render node, giving up.\n");
 		sigaction(SIGSEGV, &old_sh, NULL);
 		return false;
 	}

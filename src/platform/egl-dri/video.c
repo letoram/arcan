@@ -846,6 +846,20 @@ static int setup_node(struct dev_node* node, const char* path)
 		return -1;
 	}
 
+/*
+ * this is a hack until we find a better way to derive a handle to a
+ * matching render node from the gbm connection, and then use
+ * TARGET_COMMAND_DEVICE_NODE with FD passing to force this to a
+ * running client (or inherit in environment)
+ */
+	const char cpath[] = "/dev/dri/card";
+	if (!getenv("ARCAN_RENDER_NODE") && strncmp(path, cpath, 13) == 0){
+		size_t ind = strtoul(&path[13], NULL, 10);
+		char pbuf[24];
+		snprintf(pbuf, 24, "/dev/dri/renderD%d", (int)(ind + 128));
+		setenv("ARCAN_RENDER_NODE", pbuf, 1);
+	}
+
 	static const EGLint context_attribs[] = {
 		EGL_CONTEXT_CLIENT_VERSION, 2,
 		EGL_NONE
@@ -1156,7 +1170,10 @@ bool platform_video_map_handle(
 	);
 
 	if (img == EGL_NO_IMAGE_KHR){
-		arcan_warning("could not import EGL buffer\n");
+		arcan_warning("could not import EGL buffer (%zu * %zu), "
+			"stride: %d, format: %d from %d\n", dst->w, dst->h,
+		 dst->vinf.text.stride, dst->vinf.text.format,handle
+		);
 		return false;
 	}
 

@@ -99,6 +99,7 @@ static struct {
 /* flag for rendering callbacks, should the frame be processed or not */
 	bool skipframe_a, skipframe_v;
 	bool pause;
+	bool hpassing_disabled;
 
 /* miliseconds per frame, 1/fps */
 	double mspf;
@@ -193,6 +194,9 @@ static struct {
 	void (*set_ioport)(unsigned, unsigned);
 } retroctx = {
 	.prewake = 4, .preaudiogen = 0
+#ifdef FRAMESERVER_LIBRETRO_3D
+	,.last_handle = -1
+#endif
 };
 
 /* render statistics unto *vidp, at the very end of this .c file */
@@ -476,15 +480,14 @@ static void libretro_vidcb(const void* data, unsigned width,
 		store.vinf.text.raw = retroctx.shmcont.vidp;
 
 /* if the underlying LWA platform supports zero-copy handle passing, use that */
-		static bool hpassing_disabled;
-		if (!hpassing_disabled){
+		if (!retroctx.hpassing_disabled){
 			enum status_handle status;
 			retroctx.last_handle = platform_video_output_handle(&retroctx.vstore, &status);
 
-			if (status < 0){
+			if (status != READY_TRANSFER){
 				LOG("3d(), couldn't get output handle -- direct handle passing "
 					"disabled.\n");
-				hpassing_disabled = true;
+				retroctx.hpassing_disabled = true;
 				retroctx.last_handle = -1;
 			}
 
@@ -1299,6 +1302,11 @@ static inline void targetev(arcan_event* ev)
 			retroctx.set_ioport(tgt->ioevs[0].iv, tgt->ioevs[1].iv);
 		break;
 
+		case TARGET_COMMAND_BUFFER_FAIL:
+			retroctx.hpassing_disabled = true;
+			LOG("parent requested that we stop try sending buffer handles\n");
+		break;
+
 /* should also emit a corresponding event back with the current framenumber */
 		case TARGET_COMMAND_STEPFRAME:
 			if (tgt->ioevs[0].iv < 0);
@@ -1874,7 +1882,7 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 #ifdef FRAMESERVER_LIBRETRO_3D
 					if (-1 != retroctx.last_handle){
 						arcan_shmif_signalhandle(&retroctx.shmcont,
-							SHMIF_SIGVID | SHMIF_SIGAUD | SHMIF_SIGBLK_ONCE,
+							SHMIF_SIGVID | SHMIF_SIGAUD,
 							retroctx.last_handle,
 							retroctx.vstore.vinf.text.stride,
 							retroctx.vstore.vinf.text.format
@@ -1885,8 +1893,7 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 					else
 #endif
 {
-						arcan_shmif_signal(&retroctx.shmcont,
-							SHMIF_SIGVID | SHMIF_SIGAUD | SHMIF_SIGBLK_ONCE);
+						arcan_shmif_signal(&retroctx.shmcont, SHMIF_SIGVID | SHMIF_SIGAUD);
 }
 				stop = arcan_timemillis();
 
