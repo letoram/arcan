@@ -978,7 +978,7 @@ static void main_loop()
 			pc = 3;
 		}
 
-		int sv = poll(fds, pc, 32);
+		int sv = poll(fds, pc, -1);
 		if (fds[0].revents & POLLIN){
 			int rc = shl_pty_dispatch(term.pty);
 		}
@@ -1041,6 +1041,11 @@ static void dump_help()
 		"default, solarized, solarized-black, solarized-white\n"
 		"---------\t-----------\t----------------\n"
 	);
+}
+
+static void sighuph(int num)
+{
+	shl_pty_close(term.pty);
 }
 
 int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
@@ -1146,7 +1151,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 
 	arcan_shmif_resize(&term.acon,
 		term.cell_w * term.cols, term.cell_h * term.rows);
-	update_screensize();
+
 	expose_labels();
 	tsm_screen_set_max_sb(term.screen, 1000);
 
@@ -1162,8 +1167,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	};
 	tsm_screen_set_def_attr(term.screen, &attr);
 
-	setlocale(LC_CTYPE, "C");
-	signal(SIGHUP, SIG_IGN);
+	signal(SIGHUP, sighuph);
 
 	if ( (term.child = shl_pty_open(&term.pty,
 		read_callback, NULL, term.rows, term.cols)) == 0){
@@ -1175,6 +1179,8 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		LOG("couldn't spawn child terminal.\n");
 		return EXIT_FAILURE;
 	}
+
+	update_screensize();
 
 /* immediately request a clipboard for cut operations (none received ==
  * running appl doesn't care about cut'n'paste/drag'n'drop support). */

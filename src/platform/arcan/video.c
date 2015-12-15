@@ -65,11 +65,15 @@ struct display {
 } disp[MAX_DISPLAYS];
 
 static struct arg_arr* shmarg;
+static bool nopass;
 
 bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	bool fs, bool frames, const char* title)
 {
 	static bool first_init = true;
+
+	if (getenv("ARCAN_VIDEO_NO_FDPASS"))
+		nopass = true;
 
 	if (width == 0 || height == 0){
 		width = 640;
@@ -157,8 +161,6 @@ void platform_video_setsynch(const char* arg)
 
 void platform_event_samplebase(int devid, float xyz[3])
 {
-/* no-op for now, should retain a base to patch mouse
- * absolute sample values and add / modify */
 }
 
 const char** platform_video_synchopts()
@@ -167,7 +169,6 @@ const char** platform_video_synchopts()
 }
 
 static const char* arcan_envopts[] = {
-	"ARCAN_LWA_GPUBUF_PASS", "Pass GPU buffers rather than issue readbacks",
 	NULL
 };
 
@@ -407,9 +408,10 @@ void platform_video_synch(uint64_t tick_count, float fract,
 	struct storage_info_t* vs = arcan_vint_world();
 	enum status_handle status;
 
-	int handle = lwa_video_output_handle(vs, &status);
+	int handle = nopass ? -1 :
+		lwa_video_output_handle(vs, &status);
 
-	if (status < 0)
+	if (handle == -1 || status < 0)
 		synch_copy(vs);
 	else{
 		synch_hpassing(vs, handle, status);
@@ -557,6 +559,10 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
 
 		case TARGET_COMMAND_PAUSE:
 		case TARGET_COMMAND_UNPAUSE:
+		break;
+
+		case TARGET_COMMAND_BUFFER_FAIL:
+			nopass = true;
 		break;
 
 /*
