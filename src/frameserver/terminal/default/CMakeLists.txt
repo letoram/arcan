@@ -1,10 +1,4 @@
-if (FREETYPE_LIBRARIES)
-	set(TERM_AUX_LIBS ${FREETYPE_LIBRARIES})
-	set(TERM_AUX_SOURCES ${FSRV_ROOT}/../engine/arcan_ttf.c)
-endif()
-
-set(TERMINAL_SOURCES
-	${CMAKE_CURRENT_SOURCE_DIR}/arcterm.c
+set(TSM_SOURCES
 	${CMAKE_CURRENT_SOURCE_DIR}/tsm/shl-pty.c
 	${CMAKE_CURRENT_SOURCE_DIR}/tsm/shl-ring.c
 	${CMAKE_CURRENT_SOURCE_DIR}/tsm/shl_htable.c
@@ -14,6 +8,22 @@ set(TERMINAL_SOURCES
 	${CMAKE_CURRENT_SOURCE_DIR}/tsm/tsm_vte_charsets.c
 	${CMAKE_CURRENT_SOURCE_DIR}/tsm/wcwidth.c
 	${TERM_AUX_SOURCES}
+)
+
+if (DEBUG_TSM)
+	add_executable(tsm_debug tsmdebug.c ${TSM_SOURCES})
+	target_include_directories(tsm_debug PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tsm)
+	target_link_libraries(tsm_debug ${STDLIB} util)
+endif()
+
+if (FREETYPE_LIBRARIES)
+	set(TERM_AUX_LIBS ${FREETYPE_LIBRARIES})
+	list(APPEND TSM_SOURCES ${FSRV_ROOT}/../engine/arcan_ttf.c)
+endif()
+
+set(TERMINAL_SOURCES
+	${TSM_SOURCES}
+	${CMAKE_CURRENT_SOURCE_DIR}/arcterm.c
 	PARENT_SCOPE
 )
 
