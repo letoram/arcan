@@ -136,7 +136,14 @@ static inline void shl_set_errno(int *r)
 /* align to next higher power-of-2 (except for: 0 => 0, overflow => 0) */
 static inline size_t SHL_ALIGN_POWER2(size_t u)
 {
-	return 1ULL << ((sizeof(u) * 8ULL) - __builtin_clzll(u - 1ULL));
+	if (u == 0)
+		return 0;
+
+	u--;
+	for (size_t i = 1; i < sizeof(size_t) * 8; i = i * 2)
+		u = u | u >> i;
+
+	return u+1;
 }
 
 /* zero memory or type */
