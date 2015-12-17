@@ -942,9 +942,9 @@ static bool setup_font(const char* val, size_t font_sz)
 			.category = EVENT_EXTERNAL,
 			.ext.kind = ARCAN_EVENT(MESSAGE),
 		};
-		sprintf(msgev.ext.message.data, "cell_w:%d:cell_h:%d",
+		sprintf((char*)ev.ext.message.data, "cell_w:%d:cell_h:%d",
 			term.cell_w, term.cell_h);
-		arcan_shmif_enqueue(&term.acon, &segreq);
+		arcan_shmif_enqueue(&term.acon, &ev);
 
 		term.cell_w = w;
 		term.cell_h = h;
@@ -1070,7 +1070,6 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	}
 	uint8_t ccol[3] = {0, 255, 0};
 
-	bool custom_w = false;
 	if (arg_lookup(args, "rows", 0, &val))
 		term.rows = strtoul(val, NULL, 10);
 
@@ -1078,7 +1077,6 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		term.cols = strtoul(val, NULL, 10);
 
 	if (arg_lookup(args, "cell_w", 0, &val)){
-		custom_w = true;
 		term.cell_w = strtoul(val, NULL, 10);
 	}
 
@@ -1118,11 +1116,6 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 
 	if (arg_lookup(args, "bgalpha", 0, &val))
 		term.alpha = strtoul(val, NULL, 10);
-
-	if (arg_lookup(args, "cell_h", 0, &val)){
-		custom_w = true;
-		term.cell_h = strtoul(val, NULL, 10);
-	}
 #ifdef TTF_SUPPORT
 	size_t sz = term.cell_h;
 
