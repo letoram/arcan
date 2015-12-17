@@ -275,7 +275,7 @@ void agp_null_vstore(struct storage_info_t* store)
 		return;
 
 	glDeleteTextures(1, &store->vinf.text.glid);
-	store->vinf.text.glid = 0;
+	store->vinf.text.glid = GL_NONE;
 }
 
 void agp_resize_rendertarget(
@@ -338,7 +338,8 @@ void agp_update_vstore(struct storage_info_t* s, bool copy)
 	if (!copy)
 		glBindTexture(GL_TEXTURE_2D, s->vinf.text.glid);
 	else{
-		glGenTextures(1, &s->vinf.text.glid);
+		if (GL_NONE == s->vinf.text.glid)
+			glGenTextures(1, &s->vinf.text.glid);
 
 /* for the launch_resume and resize states, were we'd push a new
  * update	but have multiple references */
