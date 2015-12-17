@@ -3682,7 +3682,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				tblstr(ctx, "utf8", (char*)ev->io.input.translated.utf8, top);
 				tblbool(ctx, "active", ev->io.input.translated.active, top);
 				tblstr(ctx, "device", "translated", top);
-				tblstr(ctx, "subdevice", "keyboard", top);
+				tblbool(ctx, "keyboard", true, top);
 			}
 			else if (ev->io.devkind == EVENT_IDEVKIND_MOUSE ||
 				ev->io.devkind == EVENT_IDEVKIND_GAMEDEV) {
