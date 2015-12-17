@@ -340,7 +340,7 @@ static void update_screen(bool redraw)
 	term.cursor_y = tsm_screen_get_cursor_y(term.screen);
 
 	if (redraw){
-		tsm_screen_sb_reset(term.screen);
+		tsm_screen_selection_reset(term.screen);
 		draw_box(&term.acon,
 			term.cell_w * term.cursor_x, term.cell_h * term.cursor_y,
 			term.cell_w, term.cell_h,
@@ -938,9 +938,18 @@ static bool setup_font(const char* val, size_t font_sz)
 		probe_font(font, set[i], &w, &h);
 
 	if (w && h){
+		arcan_event ev = {
+			.category = EVENT_EXTERNAL,
+			.ext.kind = ARCAN_EVENT(MESSAGE),
+		};
+		sprintf(msgev.ext.message.data, "cell_w:%d:cell_h:%d",
+			term.cell_w, term.cell_h);
+		arcan_shmif_enqueue(&term.acon, &segreq);
+
 		term.cell_w = w;
 		term.cell_h = h;
 	}
+
 	TTF_SetFontStyle(font, TTF_STYLE_NORMAL);
 	TTF_Font* old_font = term.font;
 

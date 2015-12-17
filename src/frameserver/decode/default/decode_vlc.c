@@ -216,7 +216,8 @@ static void audio_flush()
 
 static void audio_drain()
 {
-	arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGAUD);
+	if (decctx.shmcont.addr->abufused > 4096)
+		arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGAUD)
 }
 
 static void video_cleanup(void* ctx)
@@ -445,7 +446,7 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 	const char* paths[] = {
 		"/usr/local/lib/vlc/plugins",
 		"/usr/lib/vlc/plugins",
-		"/Applications/VLC.app/Contents/MacOS/plugins"
+		"/Applications/VLC.app/Contents/MacOS/plugins",
 		NULL
 	};
 #else
@@ -468,7 +469,7 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 	const char* val;
 	char const* vargs[] = {
 		"--no-xlib",
-/*		"--verbose", "3", */
+		"--verbose", "3",
 		"--vout", "vmem",
 		"--intf", "dummy",
 		"--aout", "amem"

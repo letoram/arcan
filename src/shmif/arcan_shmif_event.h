@@ -434,14 +434,14 @@ enum ARCAN_EVENT_EXTERNAL {
 
 /*
  * Decode playback discovered additional substreams that can be selected or
- * switched between.  Uses the streamstat substructure.
+ * switched between.  Uses the streaminf substructure.
  */
 	EVENT_EXTERNAL_STREAMINFO,
 
 /*
  * [UNIQUE]
  * Playback information regarding completion, current time, estimated length
- * etc. Uses the streaminf substructure.
+ * etc. Uses the streamstat substructure.
  */
 	EVENT_EXTERNAL_STREAMSTATUS,
 
