@@ -902,6 +902,7 @@ static int opennonblock(lua_State* ctx)
 
 	const char* metatable = NULL;
 	bool wrmode = luaL_optbnumber(ctx, 2, 0);
+
 	bool fifo = false;
 	char* path;
 	int fd;
@@ -3305,6 +3306,7 @@ fail:
 	if (kindlbl == NULL)
 		goto kinderr;
 
+	ev.io.flags = (intblbool(ctx, tblind, "gesture") * 0xff)&ARCAN_IOFL_GESTURE;
 	const char* label = intblstr(ctx, tblind, "label");
 	if (label){
 		int ul = COUNT_OF(ev.io.label) - 1;
