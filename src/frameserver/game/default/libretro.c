@@ -1585,6 +1585,10 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 	if (arg_lookup(args, "resource", 0, &val))
 		resname = strdup(val);
 
+	if (getenv("ARCAN_VIDEO_NO_FDPASS")){
+		retroctx.hpassing_disabled = true;
+	}
+
 /* system directory doesn't really match any of arcan namespaces,
  * provide some kind of global-  user overridable way */
 	const char* spath = getenv("ARCAN_LIBRETRO_SYSPATH");

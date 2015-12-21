@@ -153,6 +153,12 @@ environment variables:
 .IP "\fBARCAN_RESOURCEPATH\fR\"
 Shared resources, as described above.
 
+.IP "\fBARCAN_APPLTEMPPATH\fR\"
+Used when there is a need to split the folder that an appl can use as a
+writable (delete, create, update) backing store. By default, this is resolved
+to the same folder as the appl is - but can be unmapped to prevent an appl from
+killing or modifying itself.
+
 .IP "\fBARCAN_APPLBASEPATH\fR\"
 This path is used to search for appls but may be ignored for absolute
 paths specified on the command-line.
