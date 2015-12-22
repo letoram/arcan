@@ -256,6 +256,17 @@ void tsm_screen_selection_target(struct tsm_screen *con,
 				 unsigned int posy);
 int tsm_screen_selection_copy(struct tsm_screen *con, char **out);
 
+/* returns: 0 on success, or -einval
+ * starting from the character at x,y find the first and last
+ * character in that word (using isspace as delimiter) */
+int tsm_screen_get_word(struct tsm_screen *con,
+								unsigned x, unsigned y,
+								unsigned *sx, unsigned *sy,
+								unsigned *ex, unsigned *ey);
+
+/* returns: !0 if cell is empty */
+int tsm_screen_empty(struct tsm_screen *con, unsigned x, unsigned y);
+
 tsm_age_t tsm_screen_draw(struct tsm_screen *con, tsm_screen_draw_cb draw_cb,
 			  void *data);
 

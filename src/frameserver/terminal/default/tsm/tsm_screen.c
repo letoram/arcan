@@ -61,6 +61,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include "libtsm.h"
 #include "libtsm_int.h"
 #include "shl_llog.h"
@@ -807,6 +808,86 @@ int tsm_screen_resize(struct tsm_screen *con, unsigned int x,
 
 	return 0;
 }
+
+static int ascii_test(struct tsm_screen *con, tsm_symbol_t inch)
+{
+	size_t len;
+	const uint32_t *ch = tsm_symbol_get(con->sym_table, &inch, &len);
+
+	size_t u8w = tsm_ucs4_get_width(*ch)+1;
+	char u8_ch[u8w];
+	size_t nch = tsm_ucs4_to_utf8(*ch, u8_ch);
+
+	return !(nch == 1 && isspace(u8_ch[0]));
+}
+
+SHL_EXPORT
+int tsm_screen_get_word(struct tsm_screen *con,
+								unsigned x, unsigned y,
+								unsigned *sx, unsigned *sy,
+								unsigned *ex, unsigned *ey)
+{
+	if (y > con->size_y-1)
+		return -EINVAL;
+
+	struct line *cur = con->lines[y];
+
+	int cy = y;
+
+	if (!cur || x >= cur->size)
+		return -EINVAL;
+
+	*sx = x; *sy = y; *ex = x; *ey = y;
+
+	struct line *wl = cur;
+	if (!ascii_test(con, wl->cells[*sx].ch))
+		return -EINVAL;
+
+/* scan left */
+	for(;;){
+		int tx = *sx;
+/* wrap around back */
+		if (tx == 0){
+			wl = wl->prev;
+			if (!wl || !ascii_test(con, wl->cells[wl->size-1].ch))
+				break;
+
+			*sy--;
+			*sx = wl->size - 1;
+			continue;
+		}
+		else{
+			tx = tx - 1;
+			if (!ascii_test(con, wl->cells[tx].ch))
+				break;
+			*sx = tx;
+		}
+	}
+
+	wl = cur;
+/* scan right */
+	for(;;){
+		int tx = *ex;
+		if (tx == wl->size-1){
+			wl = wl->next;
+			if (!wl || !ascii_test(con, wl->cells[0].ch))
+				break;
+
+			*ey++;
+			*ex = 0;
+		}
+		else{
+			tx = tx+1;
+			if (!ascii_test(con, wl->cells[tx].ch))
+				break;
+			*ex = tx;
+		}
+	}
+
+	return (*sx != *ex || *sy != *ey) ? 0 : -EINVAL;
+}
+
+/* use line_num and sb_count to figure out where we are */
 
 SHL_EXPORT
 int tsm_screen_set_margins(struct tsm_screen *con,
