@@ -280,6 +280,7 @@ static void resize_shmpage(int neww, int newh, bool first)
 #ifdef FRAMESERVER_LIBRETRO_3D
 	if (retroctx.rtgt){
 		retroctx.shmcont.addr->hints = RHINT_ORIGO_LL;
+		agp_activate_rendertarget(NULL);
 		agp_resize_rendertarget(retroctx.rtgt, neww, newh);
 		retroctx.hwctx.context_reset();
 	}
@@ -295,6 +296,8 @@ static void resize_shmpage(int neww, int newh, bool first)
 	}
 }
 
+#include <GL/gl.h>
+
 /* overrv / overra are needed for handling rollbacks etc.
  * while still making sure the other frameskipping options are working */
 static void process_frames(int nframes, bool overrv, bool overra)
@@ -308,6 +311,9 @@ static void process_frames(int nframes, bool overrv, bool overra)
 	if (overra)
 		retroctx.skipframe_a = true;
 
+	if (retroctx.rtgt){
+//		agp_activate_rendertarget(retroctx.rtgt);
+	}
 	while(nframes--)
 		retroctx.run();
 
@@ -437,13 +443,14 @@ static void libretro_rgb1555_rgba(const uint16_t* data, uint32_t* outp,
 		push_ntsc(width, height, retroctx.ntsc_imb, outp);
 }
 
-/* some cores have been wrongly implemented in the past, yielding > 1 frames
- * for each run(), so this is reset and checked after each retro_run() */
+
 static int testcounter;
 static void libretro_vidcb(const void* data, unsigned width,
 	unsigned height, size_t pitch)
 {
 	testcounter++;
+
+	if (!data) data = RETRO_HW_FRAME_BUFFER_VALID;
 
 	if (!data){
 		retroctx.empty_v = false;
@@ -901,6 +908,7 @@ static bool libretro_setenv(unsigned cmd, void* data){
 		if (hwrend->context_type == RETRO_HW_CONTEXT_OPENGL ||
 			hwrend->context_type == RETRO_HW_CONTEXT_OPENGL_CORE){
 			setup_3dcore( hwrend );
+			glFrontFace(GL_CW);
 		}
 		else
 			LOG("unsupported hw context requested.\n");
@@ -1492,7 +1500,6 @@ static inline void add_jitter(int num)
  * into the shmpage
  */
 #ifdef FRAMESERVER_LIBRETRO_3D
-
 static uintptr_t get_framebuffer()
 {
 	uintptr_t tgt, col, depth;
@@ -1505,8 +1512,6 @@ static uintptr_t get_framebuffer()
 	}
 
 	agp_rendertarget_ids(retroctx.rtgt, &tgt, &col, &depth);
-	agp_activate_rendertarget(retroctx.rtgt);
-	LOG("rendertarget req: %d, %d; %d\n", tgt, col, depth);
 	return tgt;
 }
 
