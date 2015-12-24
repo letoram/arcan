@@ -720,11 +720,23 @@ typedef union arcan_ioevent_data {
 
 } arcan_ioevent_data;
 
+enum ARCAN_EVENT_IOFLAG {
+/* Possibly used by mouse, touch, gamedev  etc. where some implementation
+ * defined gesture descriptions comes in label, suggested values follow
+ * the google terminology (gestures-touch-mechanics):
+ * touch, dbltouch, click, dblclick, drag, swipe, fling, press, release,
+ * drag, drop, openpinch, closepinch, rotate.
+ * n- finger variations will fire an event each, subid gives index.
+ */
+	ARCAN_IOFL_GESTURE = 1
+};
+
 typedef struct {
 	enum ARCAN_EVENT_IO kind;
 	enum ARCAN_EVENT_IDEVKIND devkind;
 	enum ARCAN_EVENT_IDATATYPE datatype;
 	char label[16];
+	uint8_t flags;
 
 	union{
 	struct {
