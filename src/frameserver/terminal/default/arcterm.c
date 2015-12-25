@@ -104,6 +104,11 @@ struct {
 	int mag;
 	int cell_w, cell_h;
 	int cursor_x, cursor_y;
+	int last_dbl_x,last_dbl_y;
+
+/* if we receive a label set in mouse events, we switch to a different
+ * interpreteation where drag, click, dblclick, wheelup, wheeldown work */
+	bool gesture_support;
 
 /* mouse selection management */
 	int mouse_x, mouse_y;
@@ -761,7 +766,44 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 		}
 /* press? press-point tsm_screen_selection_start,
  * release and press-tile ~= release_tile? copy */
-		else if (ioev->subid == 1){
+		else if (ioev->datatype == EVENT_IDATATYPE_DIGITAL){
+			if (ioev->flags & ARCAN_IOFL_GESTURE){
+				if (strcmp(ioev->label, "dblclick") == 0){
+/* select row if double doubleclick */
+					if (term.last_dbl_x == term.mouse_x &&
+						term.last_dbl_y == term.mouse_y){
+						tsm_screen_selection_reset(term.screen);
+						tsm_screen_selection_start(term.screen, 0, term.mouse_y);
+						tsm_screen_selection_target(
+							term.screen, term.cols-1, term.mouse_y);
+						select_copy();
+						update_screen(false);
+						term.in_select = false;
+					}
+/* select word */
+					else{
+						unsigned sx, sy, ex, ey;
+						sx = sy = ex = ey = 0;
+						int rv = tsm_screen_get_word(term.screen,
+							term.mouse_x, term.mouse_y, &sx, &sy, &ex, &ey);
+						if (0 == rv){
+							tsm_screen_selection_reset(term.screen);
+							tsm_screen_selection_start(term.screen, sx, sy);
+							tsm_screen_selection_target(term.screen, ex, ey);
+							select_copy();
+							update_screen(false);
+							term.in_select = false;
+						}
+					}
+
+					term.last_dbl_x = term.mouse_x;
+					term.last_dbl_y = term.mouse_y;
+				}
+				else if (strcmp(ioev->label, "click") == 0){
+/* forward to terminal? */
+				}
+				return;
+			}
 			if (ioev->input.digital.active){
 				tsm_screen_selection_start(term.screen, term.mouse_x, term.mouse_y);
 				term.bsel_x = term.mouse_x;
@@ -773,6 +815,7 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 			else{
 				if (term.mouse_x != term.bsel_x || term.mouse_y != term.bsel_y)
 					select_copy();
+
 				tsm_screen_selection_reset(term.screen);
 				term.in_select = false;
 				update_screen(false);
@@ -868,10 +911,6 @@ static void event_dispatch(arcan_event* ev)
 	case EVENT_TARGET:
 		targetev(&ev->tgt);
 	break;
-/* map up: set_palette,
- * move_line_end, move_line_home,
- * tab_right, tab_left, insert_lines, delete_lines,
- */
 
 	default:
 	break;
