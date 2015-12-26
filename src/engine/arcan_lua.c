@@ -3551,7 +3551,7 @@ static void push_view(lua_State* ctx, struct arcan_extevent* ev,
 	lua_rawset(ctx, top);
 	tblbool(ctx, "invisible", ev->viewport.invisible != 0, top);
 	tblnum(ctx, "border", ev->viewport.border, top);
-	tblnum(ctx, "view", ev->viewport.viewid, top);
+	tblnum(ctx, "id", ev->viewport.viewid, top);
 
 /* translate to vid namespace if it matches a valid frameserver segment,
  * not a sensitive operation as it only affects window positioning */
@@ -6372,12 +6372,12 @@ static int targetlaunch(lua_State* ctx)
 	if (lua_type(ctx, 1) == LUA_TSTRING){
 		cid = arcan_db_configid(dbhandle, arcan_db_targetid(dbhandle,
 			luaL_checkstring(ctx, 1), NULL), luaL_checkstring(ctx, 2));
-		lmode = luaL_checknumber(ctx, 3);
+		lmode = luaL_optnumber(ctx, 3, LAUNCH_INTERNAL);
 	}
 	else
 		lmode = luaL_checknumber(ctx, 2);
 
-	if (lmode != 0 && lmode != 1)
+	if (lmode != LAUNCH_EXTERNAL && lmode != LAUNCH_INTERNAL)
 		arcan_fatal("launch_target(), invalid mode -- expected LAUNCH_INTERNAL "
 			" or LAUNCH_EXTERNAL ");
 
@@ -6444,12 +6444,17 @@ static int targetlaunch(lua_State* ctx)
 			.args.builtin.mode = "game"
 		};
 
-		char* expbuf[] = {colon_escape(strdup(exec)), colon_escape(strdup(
-			argv.count >= 2 ? argv.data[1] : "")), NULL};
+		char* expbuf[] = {colon_escape(strdup(exec)),
+			argv.count > 1 ? colon_escape(strdup(argv.data[1])) : NULL,
+			argv.count > 2 ? colon_escape(strdup(argv.data[2])) : NULL
+		};
 		arcan_expand_namespaces(expbuf);
 
 		char* argstr;
-		if (-1 == asprintf(&argstr, "core=%s:resource=%s", expbuf[0], expbuf[1]))
+		if (-1 == asprintf(&argstr, "core=%s%s%s%s%s", expbuf[0],
+			expbuf[1] ? ":resource=" : "", expbuf[1] ? expbuf[1] : "",
+			expbuf[1] ? ":syspath=" : "", expbuf[2] ? expbuf[2] : "")
+		)
 			argstr = NULL;
 
 		args.args.builtin.resource = argstr;
@@ -9105,6 +9110,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"EXIT_FAILURE", EXIT_FAILURE},
 {"VRESW", mode.width},
 {"VRESH", mode.height},
+{"VDPI", 96.96},
 {"MAX_SURFACEW", MAX_SURFACEW},
 {"MAX_SURFACEH", MAX_SURFACEH},
 {"MAX_TARGETW", ARCAN_SHMPAGE_MAXW},
