@@ -296,8 +296,6 @@ static void resize_shmpage(int neww, int newh, bool first)
 	}
 }
 
-#include <GL/gl.h>
-
 /* overrv / overra are needed for handling rollbacks etc.
  * while still making sure the other frameskipping options are working */
 static void process_frames(int nframes, bool overrv, bool overra)
@@ -908,7 +906,6 @@ static bool libretro_setenv(unsigned cmd, void* data){
 		if (hwrend->context_type == RETRO_HW_CONTEXT_OPENGL ||
 			hwrend->context_type == RETRO_HW_CONTEXT_OPENGL_CORE){
 			setup_3dcore( hwrend );
-			glFrontFace(GL_CW);
 		}
 		else
 			LOG("unsupported hw context requested.\n");
