@@ -180,7 +180,7 @@ int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src)
 /* early-out mask-filter, these are only ever used to silently
  * discard input / output (only operate on head and tail of ringbuffer) */
 	if (!src || (src->category & ctx->mask_cat_inp)){
-		return 1;
+		return ARCAN_OK;
 	}
 
 /*
@@ -190,7 +190,7 @@ int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src)
  * important (typically, ANALOG INPUTS or frame counters) in the queue
  */
 	if (((*ctx->back + 1) % ctx->eventbuf_sz) == *ctx->front)
-		return 0;
+		return ARCAN_ERRC_OUT_OF_SPACE;
 
 	if (panic_keysym != -1 && panic_keymod != -1 &&
 		src->category == EVENT_IO && src->io.kind == EVENT_IO_BUTTON &&
@@ -228,7 +228,7 @@ int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src)
 		UNLOCK();
 	}
 
-	return 1;
+	return ARCAN_OK;
 }
 
 static inline int queue_used(arcan_evctx* dq)
