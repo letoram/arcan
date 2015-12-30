@@ -1,16 +1,10 @@
 -- launch_target
 -- @short: Setup and launch an external program.
--- @inargs: target, *configuration*, mode, *handler*, *argstr*
+-- @inargs: target, configuration, *mode*, *handler*, *argstr*
 -- @outargs: *vid* or *rcode, timev*
 -- @longdescr: Launch Target uses the database to build an execution environment
 -- for the specific tuple (target, configuration). The mode can be set to either
--- LAUNCH_EXTERNAL or LAUNCH_INTERNAL.
---
--- if (LAUNCH_EXTERNAL) is set, arcan will minimize its execution and resource
--- footprint and wait for the specified program to finish executing. The return
--- code of the program will be returned as the function return along with the
--- elapsed time in milliseconds. This call is blocking and is intended
--- for suspend/resume and similar situations.
+-- LAUNCH_INTERNAL or LAUNCH_EXTERNAL.
 --
 -- if (LAUNCH_INTERNAL) is set, arcan will set up a frameserver container,
 -- launch the configuration and continue executing. The callback specified
@@ -19,9 +13,17 @@
 -- communicate with the frameserver. The notes section below covers events
 -- realted to this callback.
 --
+-- if (LAUNCH_EXTERNAL) is set, arcan will minimize its execution and resource
+-- footprint and wait for the specified program to finish executing. The return
+-- code of the program will be returned as the function return along with the
+-- elapsed time in milliseconds. This call is blocking and is intended
+-- for suspend/resume and similar situations. It only works if the binary format
+-- in the database entry has been set explicitly to EXTERNAL.
+--
 -- Depending on the binary format of the specified configuration, an additional
 -- *argstr* may be forwarded as the ARCAN_ARG environment variable and follows
--- the standard key1=value:boolkey:key3=value etc.
+-- the key1=value:key2:key3=value format (: delimiter, = indicates key value
+-- pair, otherwise just key.
 --
 -- If the target:configuration tuple does not exist (if configuration is
 -- not specified, it will be forced to 'default') or the configuration
@@ -30,14 +32,16 @@
 -- @note: Possible statustbl.kind values: "resized", "ident", "coreopt",
 -- "message", "failure", "framestatus", "streaminfo", "streamstatus",
 -- "cursor_input", "key_input", "segment_request", "state_size",
--- "resource_status", "registered", "unknown"
+-- "viewport", "alert", "content_state", "resource_status", "registered",
+-- "unknown"
 --
 -- @note: "resized" {width, height, origo_ll} the underlying storage
 -- has changed dimensions. If origo_ll is set, the source data is stored
 -- with origo at lower left rather than upper left. To account for this,
 -- look into ref:image_set_txcos_default
 --
--- @note: "message" {message} - text alert (user hint)
+-- @note: "message" {message, multipart} - generic text message (UTF-8) that
+-- terminates when multipart is set to false.
 --
 -- @note: "framestatus" {frame,pts,acquired,fhint} - metadata about the last
 -- delivered frame.
@@ -66,7 +70,16 @@
 -- @note: "resource_status" {message} - status update in regards to some
 -- resource related operation (snapshot save/restore etc.) UI hint only.
 --
--- @note: "label_hint" {input_label, datatype} - suggest that the target
+-- @note: "alert" {message} - version of "message" that hints a user-interface
+-- alert to the segment.
+--
+-- @note: "viewport" {parent, invisible, view, id, border} - indicate view
+-- and visibility
+--
+-- @note: "content_state" {rel_x, rel_y, x_size, y_size} - indicates that
+-- scrollbars could/should be shown
+--
+-- @note: "input_label" {labelhint, datatype} - suggest that the target
 -- supports customized abstract input labels for use with the target_input
 -- function. May be called repeatedly, input_label values are restricted
 -- to 16 characters in the [a-z,0-9_] set with ? values indicating that

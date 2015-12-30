@@ -21,7 +21,8 @@ within the engine. \fIexecutable\fR should point to the binary, folder or
 specific data file to be launched. \fIbfrm\fR specifies the binary format
 to be loaded, where BIN corresponds to a native binary (e.g. ELF for POSIX
 systems and PE on windows), LWA for using arcan-in-arcan style execution and
-RETRO for a libretro- compatible core (.so or .dll).
+RETRO for a libretro- compatible core (.so or .dll).see \fIBINARY FORMATS\fR
+below for details.
 
 \fIArgv\fR can be a variable number of arguments that will be set as the base
 arguments for the target. For bfrm LWA, these will be passed to the application
@@ -78,6 +79,34 @@ element is separated with a tab character. The command format is
 otherwise the same as regular usage. In addition, the program
 will output 'OK' or 'FAIL' to stderr in response to each command
 (while stdout will contained the more detailed error description).
+
+.SH BINARY FORMATS
+The currently suport binary formats are \fBBIN\fR, \fBLWA\fR and \fBRETRO\fR.
+Binary format specifies how the new process will be created when launching
+a target/configuration pair.
+
+For \fBBIN\fR, the argv, envv and libs are treated with expanding namespaces.
+This means that all entries will have [ARCAN_XXXPATH] fields being replaced with
+the respective namespace expansion. Libs will, in turn, be added to the
+LD_PRELOAD, DYLD_INSERT_LIBRARIES or some other implementation defined
+hijack/interposition technique. (Corresponding fields may be fileted from env).
+
+For \fBSHELL\fR, the \fBBIN\fR expansion rules apply, but indicate that it
+should be launched / monitored as a shell. This currently has no further
+semantic meaning (and is internally aliased as BIN) but reserved for future use.
+
+For \fBEXTERN\fR, the \fBBIN\fR expansion rules apply, but indicate that the
+engine should suspend all operations (or maintain an audio/video/frameserver-
+less pipeline) and release as much resources as possible,
+until the target/configuration has finished executing.
+
+For \fBLWA\fR, (currently not implemented, scheduled for 0.6) arcan_lwa will
+be used as a loader, with similar expansion to envv. Libs- list will be ignored.
+
+For \fBRETRO\fR, the fsrv_game frameserver will be used as a chainloader. The
+target executable with be expanded into the core to be run, the first (optional)
+argument aded to the configuration will be the resource to pass on and the
+seocond (also optional) argument defines the system- path.
 
 .SH NOTES
 There is also a number of dump_ commands that are listed if you run the
