@@ -246,6 +246,8 @@ static int fsrv_ok =
 #endif
 ;
 
+#define FATAL_MSG_FRAMESERV "specified destination is not a frameserver.\n"
+
 /* we map the constants here so that poor or confused
  * debuggers also have a chance to give us symbol resolution */
 static const int MOUSE_GRAB_ON  = 20;
@@ -3524,8 +3526,7 @@ static inline bool tgtevent(arcan_vobj_id dst, arcan_event ev)
 
 	if (state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr){
 		arcan_frameserver* fsrv = (arcan_frameserver*) state->ptr;
-		arcan_frameserver_pushevent( fsrv, &ev );
-		return true;
+		return arcan_frameserver_pushevent( fsrv, &ev ) == ARCAN_OK;
 	}
 
 	return false;
@@ -5800,6 +5801,54 @@ static int layout_tonum(const char* layout)
 	return 0;
 }
 
+static int targetfonthint(lua_State* ctx)
+{
+/* (dstfsrv, [fontstr], size (mm), hinting -1 or (0..16) */
+	LUA_TRACE("target_fonthint");
+	arcan_vobject* vobj;
+	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, &vobj);
+	arcan_frameserver* fsrv = vobj->feed.state.ptr;
+
+	int numind = 2;
+	int fd = -1;
+
+	if (!fsrv || vobj->feed.state.tag != ARCAN_TAG_FRAMESERV){
+		arcan_fatal("target_fonthint() -- " FATAL_MSG_FRAMESERV);
+		return 0;
+	}
+
+	if (lua_type(ctx, numind) == LUA_TSTRING){
+		char* fname = arcan_expand_resource(
+			luaL_checkstring(ctx, numind), RESOURCE_SYS_FONT);
+		numind++;
+		if (fname){
+			fd = open(fname, O_RDONLY | O_CLOEXEC);
+			arcan_mem_free(fname);
+			if (-1 == fd){
+				lua_pushboolean(ctx, false);
+				LUA_ETRACE("target_fonthint", "font could not be opened");
+				return 1;
+			}
+		}
+		else{
+			lua_pushboolean(ctx, false);
+			LUA_ETRACE("target_fonthint", "font could not be found");
+			return 1;
+		}
+	}
+
+	arcan_event ev = {
+		.category = EVENT_TARGET, .tgt.kind = TARGET_COMMAND_FONTHINT,
+		.tgt.ioevs[1].iv = fd != -1 ? 1 : 0,
+		.tgt.ioevs[2].iv = luaL_checknumber(ctx, 2),
+		.tgt.ioevs[3].iv = luaL_checknumber(ctx, 3)
+	};
+
+	lua_pushboolean(ctx, arcan_frameserver_pushfd(fsrv, &ev, fd));
+	LUA_ETRACE("target_fonthint", NULL);
+	return 1;
+}
+
 static int targetdisphint(lua_State* ctx)
 {
 	LUA_TRACE("target_displayhint");
@@ -6990,8 +7039,7 @@ static int spawn_recsubseg(lua_State* ctx,
 	arcan_frameserver* fsrv = vobj->feed.state.ptr;
 
 	if (!fsrv || vobj->feed.state.tag != ARCAN_TAG_FRAMESERV){
-		arcan_fatal("spawn_recsubseg() -- specified destination is "
-			"not a frameserver.\n");
+		arcan_fatal("spawn_recsubseg() -- " FATAL_MSG_FRAMESERV);
 		return 0;
 	}
 
@@ -7225,8 +7273,7 @@ static int nulltarget(lua_State* ctx)
 
 	vfunc_state* state = arcan_video_feedstate(did);
 	if (state->tag != ARCAN_TAG_FRAMESERV)
-		arcan_fatal("define_feedtarget(), feedtarget "
-			"recipient must be a frameserver");
+		arcan_fatal("define_nulltarget(), nulltarget (1) " FATAL_MSG_FRAMESERV);
 
 	arcan_frameserver* rv =
 		arcan_frameserver_spawn_subsegment(
@@ -7261,8 +7308,7 @@ static int feedtarget(lua_State* ctx)
 
 	vfunc_state* state = arcan_video_feedstate(did);
 	if (state->tag != ARCAN_TAG_FRAMESERV)
-		arcan_fatal("define_feedtarget(), feedtarget "
-			"recipient must be a frameserver");
+		arcan_fatal("define_feedtarget() feedtarget (1) " FATAL_MSG_FRAMESERV);
 /*
  * trick here is to set up as a "normal" recordtarget,
  * but where we simply sample one object and use the offline vstore --
@@ -7433,15 +7479,14 @@ static int recordgain(lua_State* ctx)
 
 	arcan_vobject* vobj;
 	luaL_checkvid(ctx, 1, &vobj);
+	arcan_frameserver* fsrv = vobj->feed.state.ptr;
 	arcan_aobj_id aid = luaL_checkaid(ctx, 2);
 	float left = luaL_checknumber(ctx, 3);
 	float right = luaL_checknumber(ctx, 4);
 
-	if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV || !vobj->feed.state.ptr)
-		arcan_fatal("recordgain() -- bad arg1, "
-			"VID is not a frameserver.\n");
+	if (!fsrv || vobj->feed.state.tag != ARCAN_TAG_FRAMESERV)
+		arcan_fatal("recordtarget_gain(1), " FATAL_MSG_FRAMESERV);
 
-	arcan_frameserver* fsrv = vobj->feed.state.ptr;
 	arcan_frameserver_update_mixweight(fsrv, aid, left, right);
 
 	LUA_ETRACE("recordtarget_gain", NULL);
@@ -8411,11 +8456,10 @@ static inline arcan_frameserver* luaL_checknet(lua_State* ctx,
 {
 	arcan_vobject* vobj;
 	luaL_checkvid(ctx, 1, &vobj);
-
-	if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV || !vobj->feed.state.ptr)
-		arcan_fatal("%s -- VID is not a frameserver.\n", prefix);
-
 	arcan_frameserver* fsrv = vobj->feed.state.ptr;
+
+	if (!fsrv || vobj->feed.state.tag != ARCAN_TAG_FRAMESERV)
+		arcan_fatal("%S (1), " FATAL_MSG_FRAMESERV, prefix);
 
 	if (server && fsrv->segid != SEGID_NETWORK_SERVER){
 		arcan_fatal("%s -- Frameserver connected to VID is not in server mode "
@@ -8840,6 +8884,7 @@ static const luaL_Reg tgtfuns[] = {
 {"target_flags",               targetflags              },
 {"target_graphmode",           targetgraph              },
 {"target_displayhint",         targetdisphint           },
+{"target_fonthint",            targetfonthint           },
 {"target_seek",                targetseek               },
 {"target_parent",              targetparent             },
 {"target_coreopt",             targetcoreopt            },

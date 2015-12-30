@@ -381,17 +381,17 @@ enum ARCAN_TARGET_COMMAND {
  * ioev[1].iv = type describing font in [0]:
  *  0 : default, off
  *  1 : TTF ( True Type ), other values are invalid/reserved for now.
- *
  * ioev[2].iv = desired normal font size in mm
- * ioev[3].iv = render mask,
- * first nibble: AA strength from (0, off) to 8
- * rest: reserved
+ * ioev[3].iv = hinting,
+ *  -1 (unchanged), 0: off, 1..16 (implementation defined, recommendation
+ *  is to range from light to strong). DISPLAYHINT should also be considered
+ *  when configuring font rendering.
  */
 	TARGET_COMMAND_FONTHINT,
 
 /*
  * Specialized output hinting, considered deprecated. To be replaced with
- * graphmode.
+ * graphmode in game/hijack where it still has any use.
  */
 	TARGET_COMMAND_VECTOR_LINEWIDTH,
 	TARGET_COMMAND_VECTOR_POINTSIZE,
