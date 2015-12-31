@@ -65,9 +65,13 @@ int TTF_Init(void);
  * point size becomes the index of choosing which size. If the value
  * is too high, the last indexed size will be the default. */
 TTF_Font* TTF_OpenFont(const char *file, int ptsize);
+
 TTF_Font* TTF_OpenFontIndex(const char *file, int ptsize, long index);
 TTF_Font* TTF_OpenFontRW(FILE* src, int freesrc, int ptsize);
 TTF_Font* TTF_OpenFontIndexRW(FILE* src, int freesrc, int ptsize, long index);
+
+/* open font using a preexisting file descriptor, takes ownership of fd */
+TTF_Font* TTF_OpenFontFD(int fd, int ptsize);
 
 /* Set and retrieve the font style */
 #define TTF_STYLE_NORMAL	0x00

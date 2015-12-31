@@ -26,15 +26,16 @@
 -- @tblent: u underline
 -- @tblent: b bold
 -- @tblent: i italic
--- @tblent: ffname,size switch font
+-- @tblent: ffname,size switch font, use f,size to use default font (first used)
 -- @tblent: #rrggbb switch font color
--- @tblent: pfname embedd image
--- @tblent: Pfname,w,h embedd image, scale to w*h
+-- @tblent: pfname embed image
+-- @tblent: Pfname,w,h embed image, scale to w*h
 -- @group: image
 -- @cfunction: buildstr
 -- @note: Some format string states carry over between render_text calls, such
 -- as the currently active font/size (to cut down on \ffontfile.ttf,num \#ffffff
 -- style preludes.
+-- @note: Pfname,w,h function clamp to a built in limit (typically 256x256).
 -- @exampleappl: tests/interactive/fonttest
 -- @related: text_dimensions
 

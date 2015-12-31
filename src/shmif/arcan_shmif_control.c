@@ -442,6 +442,7 @@ checkfd:
 			case TARGET_COMMAND_RESTORE:
 			case TARGET_COMMAND_BCHUNK_IN:
 			case TARGET_COMMAND_BCHUNK_OUT:
+			case TARGET_COMMAND_FONTHINT:
 			case TARGET_COMMAND_NEWSEGMENT:
 				LOG("(shmif) got descriptor transfer related event\n");
 				c->priv->pev.gotev = true;

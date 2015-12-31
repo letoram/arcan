@@ -1,5 +1,6 @@
 testlines_normal = {
 	[[\fdefault.ttf,14\#ffffffTest1:Backslash:\\]],
+	[[\f,20\#aaaaaaReuse previous as default]],
 	[[Test2:\#ff00ffMulti_\#ff0000c\#00ff00o\#0000ffl\#ff00ffo\#ffffffr]],
 	[[Multiline_test\nMultiline_test]],
 	[[Multiline_test\n\rShould_be_CR]],
@@ -7,8 +8,8 @@ testlines_normal = {
 	[[Multiline_test\n\n\rTwo empty lines]],
 	[[Multi\nLine\test]],
 	[[Multi\ffonts/default.ttf,28Sizes\nSizes2\ffonts/default.ttf,32Sizes3]],
-	[[Multi\ffonts/default.ttf,16Size and \pfonttest.ico, \ticon]],
-	[[differently\P12,12,fonttest.ico, sized \P16,16,fonttest.ico, even huge \P128,128,fonttest.ico, icons]],
+	[[Multi\ffonts/default.ttf,16Size and \pfonttest.png, \ticon]],
+	[[differently\P12,12,fonttest.ico, sized \P16,16,fonttest.png, even huge \P128,128,fonttest.png, icons]],
 	[[\!iaxis on an analog device for:\n\r CURSOR_X\t 0 samples grabbed]],
 	[[\n\n\n]]
 };
@@ -51,10 +52,10 @@ local counter = 400;
 function fonttest_clock_pulse()
 	counter = counter - 1;
 	render_text(countervid, {
-		[[\ffonts/default.ttf,18]], string.format("Shutdown in %d", counter)});
+		[[\f,18]], string.format("Shutdown in %d", counter)});
 
-	if (counter == 0) then
-		return shutdown;
+	if (counter < 0) then
+		return shutdown();
 	end
 end
 
