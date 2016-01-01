@@ -633,6 +633,19 @@ void arcan_event_dump(struct arcan_evctx* ctx)
 }
 #endif
 
+#ifdef _CLOCK_FUZZ
+/* jump back ~34 hours */
+static void sig_rtfuzz_a(int v)
+{
+	epoch -= 3600 * 24 * 1000;
+}
+/* jump forward ~24 hours */
+static void sig_rtfuzz_b(int v)
+{
+	epoch += 3600 * 24 * 1000;
+}
+#endif
+
 extern void platform_event_init(arcan_evctx* ctx);
 void arcan_event_init(arcan_evctx* ctx)
 {
@@ -643,6 +656,14 @@ void arcan_event_init(arcan_evctx* ctx)
 	if (!ctx->local){
 		return;
 	}
+
+/*
+ * used for testing response to clock skew over time
+ */
+#if defined(_DEBUG) && defined(_CLOCK_FUZZ)
+	sigaction(SIGRTMIN+0, &(struct sigaction) {.sa_handler = sig_rtfuzz_a}, NULL);
+	sigaction(SIGRTMIN+1, &(struct sigaction) {.sa_handler = sig_rtfuzz_b}, NULL);
+#endif
 
 	const char* panicbutton = getenv("ARCAN_EVENT_SHUTDOWN");
 	char* cp;
