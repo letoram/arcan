@@ -225,6 +225,14 @@ typedef int acoord;
 #define CONST_FRAMESERVER_OUTPUT 42
 #endif
 
+#ifndef LAUNCH_EXTERNAL
+#define LAUNCH_EXTERNAL 0
+#endif
+
+#ifndef LAUNCH_INTERNAL
+#define LAUNCH_INTERNAL 1
+#endif
+
 /*
  * disable support for all builtin frameservers
  * which removes most (launch_target and target_alloc remain)
@@ -5794,7 +5802,7 @@ static int layout_tonum(const char* layout)
 
 static int targetdisphint(lua_State* ctx)
 {
-	LUA_TRACE("target_disphint");
+	LUA_TRACE("target_displayhint");
 
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
 
@@ -5802,29 +5810,33 @@ static int targetdisphint(lua_State* ctx)
 	int height = luaL_checknumber(ctx, 3);
 	int cont = luaL_optbnumber(ctx, 4, 0);
 
-/* note: 5 can be a table that is assumed to come from a monitor,
- * ioevs[4].iv = RGB layout (0 RGB, 1 BGR, 2 VRGB, 3 VBGR)
- * otherwise we use the platform default. */
+/* clamp to not have client propagate illegal dimensions */
+	width = width > ARCAN_SHMPAGE_MAXW ? ARCAN_SHMPAGE_MAXW : width;
+	height = height > ARCAN_SHMPAGE_MAXH ? ARCAN_SHMPAGE_MAXH : height;
 
-	int phy_iv = 0, phy_lay = 0;
+/* we support explicit displayhint or just passing a mode table that
+ * comes from a monitor / display event (though width/height/continuation need
+ * to be specified still) */
+	int phy_lay = 0, phy_w = 0;
+
 	int type = lua_type(ctx, 5);
 	if (type == LUA_TNUMBER && ARCAN_VIDEO_WORLDID == luaL_checknumber(ctx, 5)){
 		struct monitor_mode mmode = platform_video_dimensions();
-		phy_iv = mmode.phy_width << 16 | mmode.phy_height;
+		phy_w = mmode.width;
 		phy_lay = layout_tonum(mmode.subpixel);
 	}
 	else if (type == LUA_TTABLE){
-		phy_iv = ((uint16_t)intblint(ctx, 5, "phy_width_mm")) << 16 |
-			((uint16_t)intblint(ctx, 5, "phy_height_mm"));
+		phy_w = intblint(ctx, 5, "phy_width_mm");
 		phy_lay = layout_tonum(intblstr(ctx, 5, "subpixel_layout"));
 	}
+	else
+		;
 
 	if (width <= 0 || height <= 0)
 		arcan_fatal("target_disphint(%d, %d), "
 			"display dimensions must be > 0", width, height);
 
-	width = width > ARCAN_SHMPAGE_MAXW ? ARCAN_SHMPAGE_MAXW : width;
-	height = height > ARCAN_SHMPAGE_MAXH ? ARCAN_SHMPAGE_MAXH : height;
+	float ppmm = phy_w > 0 ? (float)phy_w / (float)width : 0.0384;
 
 	arcan_event ev = {
 		.category = EVENT_TARGET,
@@ -5832,13 +5844,13 @@ static int targetdisphint(lua_State* ctx)
 		.tgt.ioevs[0].iv = width,
 		.tgt.ioevs[1].iv = height,
 		.tgt.ioevs[2].iv = cont,
-		.tgt.ioevs[3].iv = phy_iv,
-		.tgt.ioevs[4].iv = phy_lay
+		.tgt.ioevs[3].iv = phy_lay,
+		.tgt.ioevs[4].fv = ppmm
 	};
 
 	tgtevent(tgt, ev);
 
-	LUA_ETRACE("target_disphint", NULL);
+	LUA_ETRACE("target_displayhint", NULL);
 	return 0;
 }
 
@@ -9108,9 +9120,12 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 	struct { const char* key; int val; } consttbl[] = {
 {"EXIT_SUCCESS", EXIT_SUCCESS},
 {"EXIT_FAILURE", EXIT_FAILURE},
+/* these two constants are an old left-over from easier times when there was no
+ * multi-monitor support, and should be phased out with a support script that
+ * uses physical- dimensions (mm) and output display pixel density to calculate
+ * sizes */
 {"VRESW", mode.width},
 {"VRESH", mode.height},
-{"VDPI", 96.96},
 {"MAX_SURFACEW", MAX_SURFACEW},
 {"MAX_SURFACEH", MAX_SURFACEH},
 {"MAX_TARGETW", ARCAN_SHMPAGE_MAXW},
@@ -9230,6 +9245,11 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 
 	for (size_t i = 0; i < COUNT_OF(consttbl); i++)
 		arcan_lua_setglobalint(ctx, consttbl[i].key, consttbl[i].val);
+
+/* same problem as with VRESW, VRESH */
+	lua_pushnumber(ctx,
+		mode.phy_width > 0 ? (float) mode.width / (float)mode.phy_width : 0.0384);
+	lua_setglobal(ctx, "VPPMM");
 
 	arcan_lua_setglobalstr(ctx, "GL_VERSION", agp_ident());
 	arcan_lua_setglobalstr(ctx, "SHADER_LANGUAGE", agp_shader_language());

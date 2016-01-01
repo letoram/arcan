@@ -275,9 +275,10 @@ enum ARCAN_TARGET_COMMAND {
  * currently in use.
  * ioevs[0].iv = width,
  * ioevs[1].iv = height,
- * ioevs[2].iv = continued
- * ioevs[3].iv = (uint16_t) xdpi << 16 | (uint16_t) ydpi in mm.
- * ioevs[4].iv = RGB layout (0 RGB, 1 BGR, 2 VRGB, 3 VBGR)
+ * ioevs[2].iv = bitmask hintflags:
+ *  1: continued,
+ * ioevs[3].iv = RGB layout (0 RGB, 1 BGR, 2 VRGB, 3 VBGR)
+ * ioevs[4].fv = ppmm (pixels per milimeter, square assumed)
  */
 	TARGET_COMMAND_DISPLAYHINT,
 
@@ -288,6 +289,14 @@ enum ARCAN_TARGET_COMMAND {
  * ioevs[1].iv = input_port
  */
 	TARGET_COMMAND_SETIODEV,
+
+/*
+ * [UNIQUE]
+ * Request substream switch.
+ * ioev[0].iv - Streamid, should match previously provided STREAMINFO data
+ *              (or be ignored!)
+ */
+	EVENT_EXTERNAL_STREAMSET,
 
 /*
  * Used when audio playback is controlled by the frameserver, e.g. clients that
@@ -364,6 +373,21 @@ enum ARCAN_TARGET_COMMAND {
  * ioev.message = utf-8 valid byte sequence
  */
 	TARGET_COMMAND_MESSAGE,
+
+/*
+ * A hint in regards to how text rendering should be managed in relation to
+ * the display regarding filtering, font, and sizing decision.
+ * ioev[0].iv = BADFD or descriptor of font to use
+ * ioev[1].iv = type describing font in [0]:
+ *  0 : default, off
+ *  1 : TTF ( True Type ), other values are invalid/reserved for now.
+ *
+ * ioev[2].iv = desired normal font size in mm
+ * ioev[3].iv = render mask,
+ * first nibble: AA strength from (0, off) to 8
+ * rest: reserved
+ */
+	TARGET_COMMAND_FONTHINT,
 
 /*
  * Specialized output hinting, considered deprecated. To be replaced with
@@ -876,6 +900,8 @@ typedef struct arcan_extevent {
  * For events that set one or multiple short messages:
  * MESSAGE, IDENT, CURSORHINT, ALERT
  * Only MESSAGE and ALERT type has any multipart meaning
+ * (data) - UTF-8 (complete, valid)
+ * (multipart) - !0 (more to come, terminated with 0)
  */
 		struct {
 			uint8_t data[78];
@@ -883,19 +909,26 @@ typedef struct arcan_extevent {
 		} message;
 
 /*
- * For user-toggleable options that can be persistantly tracked
+ * For user-toggleable options that can be persistantly tracked,
+ * per segment related key/value store
+ * (index) - setting index
+ * (type)  - setting type, 0: key, 1: description, 2: value, 3: current value
+ * (data)  - UTF-8 encoded, type specific value. Limitations on key are similar
+ *           to arcan database key (see arcan_db man)
  */
 		struct {
 			uint8_t index;
-			uint8_t type; /* 0: key, 1: descr, 2: value, 3: current value */
+			uint8_t type;
 			uint8_t data[77];
 		} coreopt;
 
 /*
- * Hint the current active size of a possible statetransfer along with
- * a user-defined type identifer. Tuple(identifier, size) should match
- * for doing a fsrv-fsrv state transfer. 0 indicates that state transfers
- * should be disabled (initial state).
+ * Hint the current active size of a possible statetransfer along with a
+ * user-defined type identifer. Tuple(identifier, size) should match for doing
+ * a fsrv-fsrv state transfer, disabled (initial state).
+ *
+ * (size) - size, in bytes, of the state (0 to disable)
+ * (type) - application/segment identifier (spoofable, no strong identity)
  */
 		struct {
 			uint32_t size;
@@ -903,9 +936,9 @@ typedef struct arcan_extevent {
 		} stateinf;
 
 /* Used for remoting, indicate state of (possibly multiple) cursors:
- * id - cursor identifier
- * x, y - cursor coordinates, not necessarily clamped against surface
- * buttons active - recipient must track to determine press/release events
+ * (id)      - cursor identifier
+ * (x, y)    - absolute coordinates, not necessarily clamped against surface
+ * (buttons) - state list mask of active buttons
  */
 		struct {
 			uint32_t id;
@@ -913,10 +946,11 @@ typedef struct arcan_extevent {
 			uint8_t buttons[5];
 		} cursor;
 
-/* Used for remoting, keysym is unfortunately XKeySym translated into SDL one
- * for legacy reasons. Type identifier and UTF-8 alternative should probably be
- * needed in the future when we look into SPICE or similar protocols to replace
- * VNC. */
+/* Used for remoting, indicate keyboard button state change:
+ * (id)     - numeric key ID, for use when we have translation tables
+ * (keysym) - currently horrible, XKeySym with SDL- related translation (legacy)
+ * (active) - & !0 > 0 active (pressed)
+ */
 		struct{
 			uint8_t id;
 			uint32_t keysym;
@@ -924,9 +958,12 @@ typedef struct arcan_extevent {
 		} key;
 
 /* Used with the CLOCKREQ event for hinting how the server should provide
- * STEPFRAME events. if once is set, it is interpreted as a hint to register
- * as a separate / independent timer. If once is set, ID will be tracked and
- * used as iv[1] in the stepframe. */
+ * STEPFRAME events. if once is set, it is interpreted as a hint to register as
+ * a separate / independent timer.
+ * (once) - & !0 > 0, fire once or use as periodic timer
+ * (rate) - if once is set, relative to last tick otherwise every n ticks
+ * (id)   - caller specified ID that will be used in stepframe reply
+ */
 		struct{
 			uint32_t rate;
 			uint8_t dynamic, once;
@@ -936,52 +973,68 @@ typedef struct arcan_extevent {
 /*
  * Indicate that the connection supports abstract input labels, along
  * with the expected data type (match EVENT_IDATATYPE_*)
+ * (label)     - 7-bit ASCII filtered to alnum and _
+ * (idatatype) - match IDATATYPE enum of expected data
  */
 		struct {
 			char label[16];
 			int idatatype;
 		} labelhint;
 
-/* platform specific content needed for some platforms to map a buffer,
- * used internally by backend and user-defined values may cause the
- * connection to be terminated */
+/*
+ * Platform specific content needed for some platforms to map a buffer, used
+ * internally by backend and user-defined values may cause the connection to be
+ * terminated, check arcan_shmif_sighandle and corresponding platform code
+ * (pitch)  - row width in bytes
+ * (format) - color format, also platform specific value
+ */
 		struct{
 			uint32_t pitch;
 			uint32_t format;
 		} bstream;
 
+/*
+ * Define the arrival of a new data stream (for decode),
+ * (streamid) - caller specific identifier (to specify stream),
+ *
+ */
 		struct {
-			uint8_t langid[3]; /* country code */
 			uint8_t streamid; /* key used to tell the decoder to switch */
 			uint8_t datakind; /* 0: audio, 1: video, 2: text, 3: overlay */
+			uint8_t langid[3]; /* country code */
 		} streaminf;
 
 /*
- * These are - reset - on a resize operation.
+ * The viewport is an advanced feature that can map multiple subwindows
+ * on the same surface, but also indicate that the source is trying to
+ * provide its own decorations or content indicators and the actual
+ * dimensions of these (so that the running appl can decide what to show).
+ *
  *  (x+w), (y+h)   - position and cliped against actual surface dimensions
- *  border (px)    - how thick the border area
- *  parent (wndid) - can be 0 or the window-id we are relative against
- *   transfer      - !0 attempt to limit transfer operations to
- *	                specified area, hint- only.
- *	invisible      - hint that the segment does not need to have its
- *	                backing store synched or drawn at this point
- *  viewid         - for supporting multiple views on the same segment,
- *                  default to 0 value
+ *  (border) (px)  - note if there is a border area and its thickness
+ *                   so that it can be cropped away if desired (w,h > border)
+ *  (parent) (tok) - can be 0 or the window-id we are relative against,
+ *                   useful for popup subsegments etc. tok comes from
+ *                   shmif_page segment_token
+ *	(invisible)    - hint that the current content segment backing store
+ *	                 contains no information that is visibly helpful
+ *  viewid         - (reserved and not currently in use)
+ *                   for supporting multiple windows on the same segment
  */
 		struct {
 			uint16_t x, y, w, h;
 			uint32_t parent;
 			uint8_t border;
-			uint8_t transfer;
 			uint8_t invisible;
 			uint8_t viewid;
 		} viewport;
 
 /*
- * Used as hints for content (scrollbar etc.)
- * x_pos + x_sz - 0 <= n <= 1.0
- * y_pos + y_sz - 0 <= n <= 1.0
- * 0 lim disables the dimension
+ * Used as hints for content which may be used to enable scrollbars.
+ * SZ determines how much of the contents is being showed, x,y + sz
+ * is therefore in the range 0.00 <= n <= 1.0
+ * (x,y_pos) - < 0.000, disable, +x_sz > 1.0 invalid (bad value)
+ * (x,y_sz ) - < 0.000, invalid, > 1.0 invalid
  */
 		struct {
 			float x_pos, x_sz;
@@ -989,12 +1042,12 @@ typedef struct arcan_extevent {
 		} content;
 
 /*
- * (ID)   - user-specified cookie, will propagate with req/resp
- * width  - desired width, will be clamped to PP_SHMPAGE_MAXW
- * height - desired height, will be clamped to PP_SHMPAGE_MAXH
- * xofs   - suggested offset relative to main segment (parent hint)
- * yofs   - suggested offset relative to main segment (parent hint)
- * kind   - desired type of the segment request, can be UNKNOWN
+ * (ID)     - user-specified cookie, will propagate with req/resp
+ * (width)  - desired width, will be clamped to PP_SHMPAGE_MAXW
+ * (height) - desired height, will be clamped to PP_SHMPAGE_MAXH
+ * (xofs)   - suggested offset relative to main segment (parent hint)
+ * (yofs)   - suggested offset relative to main segment (parent hint)
+ * (kind)   - desired type of the segment request, can be UNKNOWN
  */
 		struct {
 			uint32_t id;
@@ -1019,14 +1072,26 @@ typedef struct arcan_extevent {
 			uint64_t guid;
 		} registr;
 
+/*
+ * (timestr, timelim) - 7-bit ascii, isnum : describing HH:MM:SS\0
+ * (completion)       - 0..1 (start, 1 finish)
+ * (streaming)        - dynamic / unknown source
+ * (frameno)          - incremental counter
+ */
 		struct {
-			uint8_t timestr[9]; /* HH:MM:SS\0 */
-			uint8_t timelim[9]; /* HH:MM:SS\0 */
-			float completion;   /* float 0..1 -> 8-bit */
-			uint8_t streaming;  /* makes lim/completion unknown */
-			uint32_t frameno;  /* simple counter */
+			uint8_t timestr[9];
+			uint8_t timelim[9];
+			float completion;
+			uint8_t streaming;
+			uint32_t frameno;
 		} streamstat;
 
+/*
+ * (framenumber) - incremental counter
+ * (pts)         - presentation time stamp, ms (0 - source start)
+ * (acquired)    - delievered time stamp, ms (0 - source start)
+ * (fhint)       - float metadata used for quality, or similar indicator
+ */
 		struct {
 			uint32_t framenumber;
 			uint64_t pts;
