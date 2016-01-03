@@ -32,6 +32,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <fcntl.h>
+#include <unistd.h>
 
 /* Note;
  * These should be refactored to use a small pre-allocated pool that
@@ -463,7 +464,7 @@ TTF_Font* TTF_OpenFontRW( FILE* src, int freesrc, int ptsize )
 
 TTF_Font* TTF_OpenFontIndex( const char *file, int ptsize, long index )
 {
-	FILE* rw = fopen(file, "rb");
+	FILE* rw = fopen(file, "r");
 	if (rw){
 #ifndef WIN32
 	fcntl(fileno(rw), F_SETFD, FD_CLOEXEC);
@@ -477,6 +478,31 @@ TTF_Font* TTF_OpenFontIndex( const char *file, int ptsize, long index )
 TTF_Font* TTF_OpenFont( const char *file, int ptsize )
 {
 	return TTF_OpenFontIndex(file, ptsize, 0);
+}
+
+TTF_Font* TTF_OpenFontFD(int fd, int ptsize)
+{
+	if (-1 == fd)
+		return NULL;
+
+	int nfd = dup(fd);
+	if (-1 == fd)
+		return NULL;
+
+	fcntl(nfd, F_SETFD, FD_CLOEXEC);
+
+	FILE* fstream = fdopen(nfd, "r");
+	if (!fstream){
+		close(nfd);
+		return NULL;
+	}
+
+	TTF_Font* res = TTF_OpenFontIndexRW(fstream, 1, ptsize, 0);
+
+	if (!res)
+		fclose(fstream);
+
+	return res;
 }
 
 static void Flush_Glyph( c_glyph* glyph )

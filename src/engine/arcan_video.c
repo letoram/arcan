@@ -1364,6 +1364,7 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 		arcan_vint_defaultmapping(arcan_video_display.default_txcos, 1.0, 1.0);
 		arcan_vint_defaultmapping(arcan_video_display.cursor_txcos, 1.0, 1.0);
 		arcan_vint_mirrormapping(arcan_video_display.mirror_txcos, 1.0, 1.0);
+		arcan_video_reset_fontcache();
 		firstinit = false;
 	}
 

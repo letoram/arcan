@@ -14,6 +14,7 @@
 #include <sys/types.h>
 #include <stddef.h>
 #include <math.h>
+#include <unistd.h>
 #include <assert.h>
 
 #ifndef ARCAN_FONT_CACHE_LIMIT
@@ -58,6 +59,7 @@ struct text_format {
 
 struct font_entry {
 	TTF_Font* data;
+	file_handle fd;
 	char* identifier;
 	uint8_t size;
 	uint8_t usecount;
@@ -110,28 +112,41 @@ struct rcell {
 	struct rcell* next;
 };
 
-/* Simple font-cache */
+/* Simple LRU font cache */
 static TTF_Font* grab_font(const char* fname, uint8_t size)
 {
-	int leasti = 0, i, leastv = -1;
+	int leasti = 1, i, leastv = -1;
 
-	if (!fname)
-		return NULL;
+/* empty identifier - use default (slot 0) */
+	if (!fname){
+		fname = font_cache[0].identifier;
+		if (!fname)
+			return NULL;
+	}
 
+/* match / track */
+	file_handle matchfd = BADFD;
 	for (i = 0; i < font_cache_size && font_cache[i].data != NULL; i++){
-		if (font_cache[i].usecount < leastv){
+		if (i && font_cache[i].usecount < leastv){
 			leasti = i;
 			leastv = font_cache[i].usecount;
 		}
-		if (font_cache[i].size == size && strcmp(font_cache[i].identifier,
-		fname) == 0){
-			font_cache[i].usecount++;
-			return font_cache[i].data;
+
+		if (strcmp(font_cache[i].identifier, fname) == 0){
+			if (font_cache[i].fd != BADFD)
+				matchfd = font_cache[i].fd;
+
+			if (font_cache[i].size == size){
+				font_cache[i].usecount++;
+				return font_cache[i].data;
+			}
 		}
 	}
 
 /* try to load */
-	TTF_Font* font = TTF_OpenFont(fname, size);
+	TTF_Font* font = matchfd != BADFD ?
+		TTF_OpenFontFD(matchfd, size) : TTF_OpenFont(fname, size);
+
 	if (!font){
 		arcan_warning("grab_font(), Open Font (%s,%d) failed\n", fname, size);
 		return NULL;
@@ -144,6 +159,7 @@ static TTF_Font* grab_font(const char* fname, uint8_t size)
 		TTF_CloseFont(font_cache[leasti].data);
 	}
 
+/* update counters */
 	font_cache[i].identifier = strdup(fname);
 	font_cache[i].usecount++;
 	font_cache[i].size = size;
@@ -152,14 +168,50 @@ static TTF_Font* grab_font(const char* fname, uint8_t size)
 	return font;
 }
 
+static void zap_slot(int i)
+{
+	if (font_cache[i].fd != BADFD){
+		close(font_cache[i].fd);
+		font_cache[i].fd = BADFD;
+	}
+
+	if (font_cache[i].data){
+		TTF_CloseFont(font_cache[i].data);
+		free(font_cache[i].identifier);
+		memset(&font_cache[i], '\0', sizeof(font_cache[0]));
+	}
+}
+
+bool arcan_video_defaultfont(const char* ident,
+	file_handle fd, size_t sz, int hint)
+{
+	if (BADFD == fd || !ident)
+		return false;
+
+/* try to load */
+	TTF_Font* font = TTF_OpenFontFD(fd, sz);
+	if (!font)
+		return false;
+
+	switch(hint){
+	case 0: TTF_SetFontHinting(font, TTF_HINTING_NONE); break;
+	case 1: TTF_SetFontHinting(font, TTF_HINTING_LIGHT); break;
+	default: break;
+	}
+
+	zap_slot(0);
+	font_cache[0].identifier = strdup(ident);
+	font_cache[0].size = sz;
+	font_cache[0].data = font;
+	font_cache[0].fd = fd;
+
+	return true;
+}
+
 void arcan_video_reset_fontcache()
 {
 	for (int i = 0; i < ARCAN_FONT_CACHE_LIMIT; i++)
-		if (font_cache[i].data){
-			TTF_CloseFont(font_cache[i].data);
-			free(font_cache[i].identifier);
-			memset(&font_cache[i], '\0', sizeof(font_cache[0]));
-		}
+		zap_slot(i);
 }
 
 #ifndef TEXT_EMBEDDEDICON_MAXW
@@ -197,10 +249,12 @@ TTF_Surface* text_loadimage(const char* const infn, img_cons cons)
 
 /* stretchblit is assumed to deal with the edgecase of
  * w ^ h being 0 */
-	if (cons.w > TEXT_EMBEDDEDICON_MAXW || inw > TEXT_EMBEDDEDICON_MAXW)
+	if (cons.w > TEXT_EMBEDDEDICON_MAXW ||
+		(cons.w == 0 && inw > TEXT_EMBEDDEDICON_MAXW))
 		cons.w = TEXT_EMBEDDEDICON_MAXW;
 
-	if (cons.h > TEXT_EMBEDDEDICON_MAXH || inh > TEXT_EMBEDDEDICON_MAXH)
+	if (cons.h > TEXT_EMBEDDEDICON_MAXH ||
+		(cons.h == 0 && inh > TEXT_EMBEDDEDICON_MAXH))
 		cons.h = TEXT_EMBEDDEDICON_MAXH;
 
 	arcan_release_map(inmem);
@@ -239,7 +293,7 @@ static char* extract_color(struct text_format* prev, char* base){
 /* scan 6 characters to the right, check for valid hex */
 	for (int i = 0; i < 6; i++) {
 		if (!isxdigit(*base++)){
-			arcan_warning("Warning: arcan_video_renderstring(),"
+			arcan_warning("arcan_video_renderstring(),"
 				"couldn't scan font colour directive (#rrggbb, 0-9, a-f)\n");
 			return NULL;
 		}
@@ -264,7 +318,7 @@ static char* extract_font(struct text_format* prev, char* base){
 /* find fontname vs fontsize separator */
 	while (*base != ',') {
 		if (*base == 0) {
-			arcan_warning("Warning: arcan_video_renderstring(), couldn't scan font "
+			arcan_warning("arcan_video_renderstring(), couldn't scan font "
 				"directive '%s (%s)'\n", fontbase, orig);
 			return NULL;
 		}
@@ -275,46 +329,50 @@ static char* extract_font(struct text_format* prev, char* base){
 /* fontbase points to full fontname, find the size */
 	numbase = base;
 	while (*base != 0 && isdigit(*base))
-	base++;
+		base++;
 
 /* error state, no size specifier */
-	if (numbase == base)
-		arcan_warning("Warning: arcan_video_renderstring(), missing size argument "
+	if (numbase == base){
+		arcan_warning("arcan_video_renderstring(), missing size argument "
 			"in font specification (%s).\n", orig);
-	else {
-		char ch = *base;
-		*base = 0;
+		return base;
+	}
+
+	char ch = *base;
+	*base = 0;
+
+	TTF_Font* font = NULL;
+	int font_sz = strtoul(numbase, NULL, 10);
+
+/*
+ * use current 'default-font' if just size is provided
+ */
+	if (*fontbase == '\0'){
+		font = grab_font(NULL, font_sz);
+		*base = ch;
+		return base;
+	}
 
 /*
  * SECURITY NOTE, TTF is a complex format with a rich history of decoding
- * vulnerabilities. To lessen this it is wise not to let third parties define
- * what font is going to get executed. The lines below ALLOW appl- specified
- * local fonts and appl- specified shared fonts. In more strict environments,
- * this could be changed to only RESOURCE_SYS_FONT or move font rendering /
- * packing as a sandboxed process. This is slated for moving to a
- * security_profile.h file as part of 0.6
+ * vulnerabilities. To lessen this we use a specific namespace for fonts.
+ * This is currently not strongly enforced as it will break some older
+ * applications.
  */
-		char* fname = arcan_find_resource(fontbase,
-			RESOURCE_SYS_FONT | RESOURCE_APPL | RESOURCE_APPL_SHARED, ARES_FILE);
+	char* fname = arcan_find_resource(fontbase,
+		RESOURCE_SYS_FONT | RESOURCE_APPL_SHARED | RESOURCE_APPL, ARES_FILE);
 
-		TTF_Font* font = NULL;
-		if (!fname){
-			arcan_warning("Warning: arcan_video_renderstring(), couldn't find "
-				"font (%s) (%s)\n", fontbase, orig);
-			return NULL;
-		}
-/* load font */
-		else if ((font = grab_font(fname, strtoul(numbase, NULL, 10))) == NULL){
-			free(fname);
-			return NULL;
-		}
-		else
-			prev->font = font;
+	if (!fname)
+		arcan_warning("arcan_video_renderstring(), couldn't find "
+			"font (%s) (%s)\n", fontbase, orig);
+	else if (!font && !(font = grab_font(fname, font_sz)))
+		arcan_warning("arcan_video_renderstring(), couldn't load "
+			"font (%s) (%s), (%d)\n", fname, orig, font_sz);
+	else
+		prev->font = font;
 
-		free(fname);
-		*base = ch;
-	}
-
+	arcan_mem_free(fname);
+	*base = ch;
 	return base;
 }
 
@@ -329,6 +387,7 @@ static char* extract_image_simple(struct text_format* prev, char* base){
 	if (strlen(wbase) > 0){
 		prev->imgcons.w = prev->imgcons.h = 0;
 		prev->image = text_loadimage(wbase, prev->imgcons);
+
 		if (prev->image){
 			prev->imgcons.w = prev->image->width;
 			prev->imgcons.h = prev->image->height;
@@ -337,8 +396,7 @@ static char* extract_image_simple(struct text_format* prev, char* base){
 		return base;
 	}
 	else{
-		arcan_warning("Warning: arcan_video_renderstring(),"
-		"	missing resource name.\n");
+		arcan_warning("arcan_video_renderstring(), missing resource name.\n");
 		return NULL;
 	}
 }
@@ -352,13 +410,13 @@ static char* extract_image(struct text_format* prev, char* base)
 	if (*base && strlen(widbase) > 0)
 		*base++ = 0;
 	else {
-		arcan_warning("Warning: arcan_video_renderstring(), width scan failed,"
+		arcan_warning("arcan_video_renderstring(), width scan failed,"
 			" premature end in sized image scan directive (%s)\n", widbase);
 		return NULL;
 	}
 	forcew = strtol(widbase, 0, 10);
 	if (forcew <= 0 || forcew > 1024){
-		arcan_warning("Warning: arcan_video_renderstring(), width scan failed,"
+		arcan_warning("arcan_video_renderstring(), width scan failed,"
 			" unreasonable width (%d) specified in sized image scan "
 			"directive (%s)\n", forcew, widbase);
 		return NULL;
@@ -369,13 +427,13 @@ static char* extract_image(struct text_format* prev, char* base)
 	if (*base && strlen(hghtbase) > 0)
 		*base++ = 0;
 	else {
-		arcan_warning("Warning: arcan_video_renderstring(), height scan failed, "
+		arcan_warning("arcan_video_renderstring(), height scan failed, "
 			"premature end in sized image scan directive (%s)\n", hghtbase);
 		return NULL;
 	}
 	forceh = strtol(hghtbase, 0, 10);
 	if (forceh <= 0 || forceh > 1024){
-		arcan_warning("Warning: arcan_video_renderstring(), height scan failed, "
+		arcan_warning("arcan_video_renderstring(), height scan failed, "
 			"unreasonable height (%d) specified in sized image scan "
 			"directive (%s)\n", forceh, hghtbase);
 		return NULL;
@@ -387,7 +445,7 @@ static char* extract_image(struct text_format* prev, char* base)
 		*base++ = 0;
 	}
 	else {
-		arcan_warning("Warning: arcan_video_renderstring(), missing resource name"
+		arcan_warning("arcan_video_renderstring(), missing resource name"
 			" terminator (,) in sized image scan directive (%s)\n", wbase);
 		return NULL;
 	}
@@ -396,16 +454,11 @@ static char* extract_image(struct text_format* prev, char* base)
 		prev->imgcons.w = forcew;
 		prev->imgcons.h = forceh;
 		prev->image = text_loadimage(wbase, prev->imgcons);
-		if (prev->image){
-			prev->imgcons.w = prev->image->width;
-			prev->imgcons.h = prev->image->height;
-		}
 
 		return base;
 	}
 	else{
-		arcan_warning("Warning: arcan_video_renderstring()"
-		", missing resource name.\n");
+		arcan_warning("arcan_video_renderstring(), missing resource name.\n");
 		return NULL;
 	}
 }
@@ -463,7 +516,7 @@ retry:
 		case 'f': base = extract_font(&prev, base); break;
 
 		default:
-			arcan_warning("Warning: arcan_video_renderstring(), "
+			arcan_warning("arcan_video_renderstring(), "
 				"unknown escape sequence: '\\%c' (%s)\n", *(base+1), orig);
 			*ok = false;
 			return failed;
@@ -500,13 +553,11 @@ static inline void currstyle_cnode(struct text_format* curr_style,
 			cnode->data.surf = TTF_RenderUTF8(curr_style->font,base,curr_style->col);
 		}
 		else{
-			arcan_warning("Warning: arcan_video_renderstring()"
-				", broken font specifier.\n");
+			arcan_warning("arcan_video_renderstring(), broken font specifier.\n");
 		}
 
 		if (!cnode->data.surf)
-			arcan_warning("Warning: arcan_video_renderstring()"
-			", couldn't render node.\n");
+			arcan_warning("arcan_video_renderstring(), couldn't render node.\n");
 	}
 
 /* just figure out the dimensions */
@@ -555,7 +606,7 @@ static int build_textchain(char* message, struct rcell* root,
 /* render surface and slide window */
 					currstyle_cnode(curr_style, base, cnode, sizeonly);
 					if (!curr_style->font) {
-						arcan_warning("Warning: arcan_video_renderstring(),"
+						arcan_warning("arcan_video_renderstring(),"
 							" no font specified / found.\n");
 						return -1;
 					}
@@ -744,8 +795,7 @@ static av_pixel* process_chain(struct rcell* root, arcan_vobject* dst,
 
 /* (A) figure out visual constraints */
 	while (cnode) {
-		if (cnode->surface) {
-			assert(cnode->data.surf != NULL);
+		if (cnode->surface && cnode->data.surf) {
 			if (cnode->data.surf->height > lineh + line_spacing)
 				lineh = cnode->data.surf->height;
 
@@ -812,7 +862,7 @@ static av_pixel* process_chain(struct rcell* root, arcan_vobject* dst,
 	int line = 0;
 
 	while (cnode) {
-		if (cnode->surface) {
+		if (cnode->surface && cnode->data.surf) {
 			copy_rect(cnode->data.surf, raw, *dw, curw, lines[line]);
 			curw += cnode->data.surf->width;
 		}

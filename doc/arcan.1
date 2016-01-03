@@ -174,9 +174,10 @@ then be shared between all appls (which holds true whenever STATEBASE
 is set to a subdirectory of RESOURCEPATH).
 
 .IP "\fBARCAN_FONTPATH\fR"
-The default setting is to map this to RESOURCEPATH/fonts but can be
-set to some other system font directory for more fine-grained control
-(as font-parsing is complex and can be a source of vulnerabilities).
+The default setting is to map this to the APPLPATH/fonts with fallback
+to RESOURCEPATH/fonts but can be set to some other system font directory
+for more fine-grained control (as font-parsing is complex and can be a
+source of vulnerabilities).
 
 .IP "\fBARCAN_BINPATH\fR"
 The default is to set this to /usr/bin/arcan_frameserver (or wherever
@@ -195,6 +196,10 @@ applications. These are used in conjunction with entries in the database.
 Set to RESOURCEPATH/logs by default (if it exists) and is used for storing
 debugging, profiling and similar development/troubleshooting related data.
 This includes state dumps which may contain sensitive data.
+
+Some namespaces are also reset when an appl does an explicit switch,
+this behavior can be cancelled out by setting ARCAN_XXXPIN for any
+namespaces that should explicitly be locked to some path.
 
 .SH FRAMESERVERS
 A principal design decision behind Arcan is to split tasks that are
