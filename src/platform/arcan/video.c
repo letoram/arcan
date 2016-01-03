@@ -94,10 +94,15 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 			return false;
 		}
 
+		arcan_shmif_enqueue(&disp[0].conn, &(struct arcan_event){
+			.category = EVENT_EXTERNAL,
+			.ext.kind = ARCAN_EVENT(CURSORHINT),
+			.ext.message = "hidden"
+		});
+
 /* disp[0] always start out mapped / enabled and we'll use the
  * current world unless overridden */
 		disp[0].mapped = true;
-
 		first_init = false;
 	}
 	else {
@@ -557,6 +562,37 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
 		case TARGET_COMMAND_STEPFRAME:
 		break;
 
+/*
+ * We can't automatically resize as the layouting in the running
+ * appl may not be able to handle relayouting in an event-driven
+ * manner, so we translate and forward as a monitor event.
+ */
+		case TARGET_COMMAND_DISPLAYHINT:
+				arcan_event_enqueue(ctx, &(arcan_event) {
+					.category = EVENT_VIDEO,
+					.vid.kind = EVENT_VIDEO_DISPLAY_RESET,
+					.vid.source = -1,
+					.vid.width = ev.tgt.ioevs[0].iv,
+					.vid.height = ev.tgt.ioevs[1].iv
+				});
+		break;
+/*
+ * This behavior may be a bit strong, but we allow the display server
+ * to override the default font (if provided)
+ */
+		case TARGET_COMMAND_FONTHINT:
+/*
+			if (ev.tgt.ioevs[0].iv == 1 && BADFD != ev.tgt.ioevs[0].iv){
+				arcan_video_defaultfont("arcan-default",
+					ev.tgt.ioevs[0].iv
+			}
+*/
+		break;
+
+/*
+ * These will not actually be received as we can let the ashmif
+ * library automatically handle suspend/resume
+ */
 		case TARGET_COMMAND_PAUSE:
 		case TARGET_COMMAND_UNPAUSE:
 		break;

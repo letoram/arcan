@@ -508,10 +508,11 @@ enum ARCAN_EVENT_EXTERNAL {
  * drag-up, drag-down, drag-left, drag-right, drag-left-right, rotate-cw,
  * rotate-ccw, normal-tag, diag-ur, diag-ll, drag-diag, datafield,
  * move, typefield, forbidden, help, vertical-datafield, drag-drop,
- * drag-reject ]
+ * drag-reject, hidden ]
  *
- * The only mandated cursorhint is 'custom' which is treated as 'default'
- * UNLESS there is a CURSORHINT type subsegment mapped, then that will be used.
+ * The only mandated cursorhints are 'hidden', 'custom' which is treated as
+ * 'default' UNLESS there is a CURSORHINT type subsegment mapped, then that
+ * will be used.
  */
 	EVENT_EXTERNAL_CURSORHINT,
 

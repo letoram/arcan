@@ -3484,10 +3484,27 @@ static void push_displaymodes(lua_State* ctx, platform_display_id id)
 	}
 }
 
-static void display_reset(lua_State* ctx)
+static void display_reset(lua_State* ctx, arcan_event* ev)
 {
+/* special handling for LWA receiving DISPLAYHINT to resize, by default we just
+ * run the builtin autores that corresponds to resizecanvas */
+#ifdef ARCAN_LWA
+	if (ev->vid.source == -1){
+		lua_getglobal(ctx, "VRES_AUTORES");
+		if (!lua_isfunction(ctx, -1))
+			lua_pop(ctx, 1);
+		else{
+			lua_pushnumber(ctx, ev->vid.width);
+			lua_pushnumber(ctx, ev->vid.height);
+			wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: lwa-displayhint");
+		}
+		return;
+	}
+#endif
+
 	if (!grabapplfunction(ctx, "display_state", sizeof("display_state")-1))
 		return;
+
 	LUA_TRACE("_display_state (reset)");
 	lua_pushstring(ctx, "reset");
 	wraperr(ctx, lua_pcall(ctx, 1, 0, 0), "event loop: display state");
@@ -4074,7 +4091,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			return;
 		}
 		else if (ev->vid.kind == EVENT_VIDEO_DISPLAY_RESET){
-			display_reset(ctx);
+			display_reset(ctx, ev);
 			return;
 		}
 		else if (ev->vid.kind == EVENT_VIDEO_DISPLAY_REMOVED){
@@ -4923,6 +4940,12 @@ static int videocanvasrsz(lua_State* ctx)
 /* note that this actually creates a texture in WORLDID that
  * is larger than the other permitted max surface dimensions,
  * this may need to be restricted ( create -> share storage etc. ) */
+
+#ifdef ARCAN_LWA
+	if (!platform_video_specify_mode(0, (struct monitor_mode){
+		.width = w, .height = h}))
+		return 0;
+#endif
 
 	if (ARCAN_OK == arcan_video_resize_canvas(w, h)){
 		arcan_lua_setglobalint(ctx, "VRESW", w);
@@ -9066,6 +9089,9 @@ static const luaL_Reg sysfuns[] = {
 #ifdef _DEBUG
 {"freeze_image",        freezeimage      },
 {"frameserver_debugstall", debugstall    },
+#endif
+#ifdef ARCAN_LWA
+{"VRES_AUTORES", videocanvasrsz },
 #endif
 {NULL, NULL}
 };
