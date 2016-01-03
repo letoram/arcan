@@ -26,6 +26,7 @@
 #include "arcan_video.h"
 #include "arcan_event.h"
 #include "arcan_videoint.h"
+#include "arcan_renderfun.h"
 
 static char* synchopts[] = {
 	"parent", "display server controls synchronisation",
@@ -581,12 +582,12 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
  * to override the default font (if provided)
  */
 		case TARGET_COMMAND_FONTHINT:
-/*
 			if (ev.tgt.ioevs[0].iv == 1 && BADFD != ev.tgt.ioevs[0].iv){
-				arcan_video_defaultfont("arcan-default",
-					ev.tgt.ioevs[0].iv
+				int newfd = dup(ev.tgt.ioevs[0].iv);
+				if (BADFD != newfd)
+					arcan_video_defaultfont("arcan-default", newfd,
+						ev.tgt.ioevs[2].iv, ev.tgt.ioevs[3].iv);
 			}
-*/
 		break;
 
 /*
