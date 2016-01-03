@@ -73,6 +73,9 @@ enum ARCAN_EVENT_CATEGORY {
  * [INPUT] data from server to client
  * [LOCKSTEP] signalling may block indefinitely, appl- controlled
  * [UNIQUE] only one per connection
+ * [DESCRIPTOR_PASSING] for target commands where ioev[0] may be populated
+ * with a descriptor. shmif_control retains ownership and may close after
+ * it has been consumed, so continued use need to be dup:ed.
  */
 enum ARCAN_SEGID {
 /*
@@ -211,6 +214,7 @@ enum ARCAN_TARGET_COMMAND {
 	TARGET_COMMAND_COREOPT,
 
 /*
+ * [DESCRIPTOR_PASSING]
  * Comes with a single descriptor in ioevs[0].iv that should be dup()ed before
  * next shmif_ call or used immediately for (user-defined) binary
  * store/restore. The conversion between socket- transfered descriptor and
@@ -375,6 +379,7 @@ enum ARCAN_TARGET_COMMAND {
 	TARGET_COMMAND_MESSAGE,
 
 /*
+ * [DESCRIPTOR_PASSING]
  * A hint in regards to how text rendering should be managed in relation to
  * the display regarding filtering, font, and sizing decision.
  * ioev[0].iv = BADFD or descriptor of font to use

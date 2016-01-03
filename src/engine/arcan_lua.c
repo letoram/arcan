@@ -8759,6 +8759,37 @@ static int getidentstr(lua_State* ctx)
 	return 1;
 }
 
+static int setdefaultfont(lua_State* ctx)
+{
+	LUA_TRACE("system_defaultfont");
+
+	const char* fontn = luaL_checkstring(ctx, 1);
+
+	char* fn = arcan_find_resource(fontn, RESOURCE_SYS_FONT, ARES_FILE);
+	if (!fn){
+		lua_pushboolean(ctx, false);
+		LUA_ETRACE("system_defaultfont", "couldn't find font in namespace");
+		return 1;
+	}
+
+	int fd = open(fn, O_RDONLY);
+	free(fn);
+	if (BADFD == fd){
+		lua_pushboolean(ctx, false);
+		LUA_ETRACE("system_defaultfont", "couldn't open fontfile");
+		return 1;
+	}
+
+	size_t fontsz = luaL_checknumber(ctx, 2);
+	int fonth = luaL_checknumber(ctx, 3);
+
+	bool res = arcan_video_defaultfont(fontn, fd, fontsz, fonth);
+
+	lua_pushboolean(ctx, res);
+	LUA_ETRACE("system_defaultfont", res ? NULL : "defaultfont fail");
+	return 1;
+}
+
 static int base64_encode(lua_State* ctx)
 {
 	LUA_TRACE("util:base64_encode");
@@ -9092,6 +9123,7 @@ static const luaL_Reg sysfuns[] = {
 {"benchmark_timestamp", timestamp        },
 {"benchmark_data",      getbenchvals     },
 {"system_identstr",     getidentstr      },
+{"system_defaultfont",  setdefaultfont   },
 #ifdef _DEBUG
 {"freeze_image",        freezeimage      },
 {"frameserver_debugstall", debugstall    },
