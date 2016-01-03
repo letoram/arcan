@@ -23,6 +23,12 @@
 -- are then filtered and not forwarded to the eventhandler.
 -- @note: flag: TARGET_VERBOSE emits additional data about delivered
 -- or dropped frames.
+-- @note: flag: TARGET_NOBUFFERPASS applies to plaforms where accelerated
+-- buffer passing is supported. This can be disabled statically/globally
+-- through a platform specific environment variable, and dynamically by setting
+-- this flag. The default behavior is to allow buffer passing, but if the
+-- graphics (agp) layer gets an invalid buffer, this flag is automatically set
+-- to true.
 -- @group: targetcontrol
 -- @cfunction: targetflags
 -- @related:
@@ -37,6 +43,7 @@ function main()
 	target_flag(a, TARGET_SYNCHRONOUS);
 	target_flag(a, TARGET_NOALPHA);
 	target_flag(a, TARGET_AUTOCLOCK);
+	target_flag(a, TARGET_NOBUFFERPASS);
 #endif
 
 #ifdef ERROR
