@@ -1,6 +1,6 @@
 /*
  * Arcan Frameserver Quick'n'Dirty timing graphing
- * Copyright 2012-2015, Björn Ståhl
+ * Copyright 2012-2016, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */

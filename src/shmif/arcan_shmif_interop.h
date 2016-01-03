@@ -1,7 +1,7 @@
 /*
  Arcan Shared Memory Interface, Interoperability definitions
 
- Copyright (c) 2014-2015, Bjorn Stahl
+ Copyright (c) 2014-2016, Bjorn Stahl
  All rights reserved.
 
  Redistribution and use in source and binary forms,

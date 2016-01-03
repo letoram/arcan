@@ -1,6 +1,6 @@
 /*
  * Encode reference frameserver archetype
- * Copyright 2012-2015, Björn Ståhl
+ * Copyright 2012-2016, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  * Depends: FFMPEG (GPLv2,v3,LGPL)
