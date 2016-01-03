@@ -309,9 +309,6 @@ static void process_frames(int nframes, bool overrv, bool overra)
 	if (overra)
 		retroctx.skipframe_a = true;
 
-	if (retroctx.rtgt){
-//		agp_activate_rendertarget(retroctx.rtgt);
-	}
 	while(nframes--)
 		retroctx.run();
 
