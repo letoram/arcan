@@ -1,5 +1,5 @@
 /*
- * copyright 2014-2015, björn ståhl
+ * copyright 2014-2016, björn ståhl
  * license: 3-clause bsd, see copying file in arcan source repository.
  * reference: http://arcan-fe.com
  */

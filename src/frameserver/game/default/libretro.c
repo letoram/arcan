@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2015, Björn Ståhl
+ * Copyright 2012-2016, Björn Ståhl
  * License: GPLv2, see COPYING file in arcan source repository.
  * Reference: http://www.libretro.com
  */
