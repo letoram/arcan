@@ -200,10 +200,13 @@ bool arcan_video_defaultfont(const char* ident,
 	}
 
 	zap_slot(0);
+
 	font_cache[0].identifier = strdup(ident);
 	font_cache[0].size = sz;
 	font_cache[0].data = font;
 	font_cache[0].fd = fd;
+
+	last_style.font = font;
 
 	return true;
 }
@@ -343,6 +346,8 @@ static char* extract_font(struct text_format* prev, char* base){
 
 	TTF_Font* font = NULL;
 	int font_sz = strtoul(numbase, NULL, 10);
+	if (font_sz <= 0)
+		font_sz = font_cache[0].size;
 
 /*
  * use current 'default-font' if just size is provided

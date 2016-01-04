@@ -26,7 +26,10 @@
 -- @tblent: u underline
 -- @tblent: b bold
 -- @tblent: i italic
--- @tblent: ffname,size switch font, use f,size to use default font (first used)
+-- @tblent: ffname,size_pt switch font, use f,size to use default font which
+-- can be set with system_defaultfont or through the first used successful
+-- render_text call. Set size to <= 0 to use default font size. Size is in
+-- points assuming 72 dpi.
 -- @tblent: #rrggbb switch font color
 -- @tblent: pfname embed image
 -- @tblent: Pfname,w,h embed image, scale to w*h
