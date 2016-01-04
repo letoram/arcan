@@ -9358,7 +9358,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 
 /* same problem as with VRESW, VRESH */
 	lua_pushnumber(ctx,
-		mode.phy_width > 0 ? (float) mode.width / (float)mode.phy_width : 0.0384);
+		mode.phy_width > 0 ? (float) mode.width / (float)mode.phy_width : 3.84);
 	lua_setglobal(ctx, "VPPMM");
 
 	arcan_lua_setglobalstr(ctx, "GL_VERSION", agp_ident());
