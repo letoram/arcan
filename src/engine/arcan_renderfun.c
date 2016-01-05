@@ -127,7 +127,8 @@ static TTF_Font* grab_font(const char* fname, uint8_t size)
 /* match / track */
 	file_handle matchfd = BADFD;
 	for (i = 0; i < font_cache_size && font_cache[i].data != NULL; i++){
-		if (i && font_cache[i].usecount < leastv){
+		if (i && font_cache[i].usecount < leastv &&
+			font_cache[i].data != last_style.font){
 			leasti = i;
 			leastv = font_cache[i].usecount;
 		}
@@ -559,10 +560,13 @@ static inline void currstyle_cnode(struct text_format* curr_style,
 		}
 		else{
 			arcan_warning("arcan_video_renderstring(), broken font specifier.\n");
+			goto reset;
 		}
 
-		if (!cnode->data.surf)
+		if (!cnode->data.surf){
 			arcan_warning("arcan_video_renderstring(), couldn't render node.\n");
+			goto reset;
+		}
 	}
 
 /* just figure out the dimensions */
@@ -579,6 +583,13 @@ static inline void currstyle_cnode(struct text_format* curr_style,
 			cnode->height = curr_style->imgcons.h;
 		}
 	}
+
+	return;
+reset:
+	last_style.newline = 0;
+	last_style.tab = 0;
+	last_style.cr = false;
+	last_style.font = font_cache[0].data;
 }
 
 /* a */
