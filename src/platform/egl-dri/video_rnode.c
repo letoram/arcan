@@ -24,6 +24,7 @@
 #include <ctype.h>
 
 #define EGL_EGLEXT_PROTOTYPES
+#define MESA_EGL_NO_X11_HEADERS
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 

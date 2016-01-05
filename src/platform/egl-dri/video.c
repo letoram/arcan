@@ -78,6 +78,7 @@
 #include <libdrm/drm_mode.h>
 #include <libdrm/drm_fourcc.h>
 
+#define MESA_EGL_NO_X11_HEADERS
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 
@@ -120,7 +121,6 @@ static char* egl_synchopts[] = {
 static char* egl_envopts[] = {
 	"ARCAN_VIDEO_DEVICE=/dev/dri/card0", "specifiy primary device",
 	"ARCAN_VIDEO_DRM_MASTER", "fail if drmMaster can't be obtained",
-	"ARCAN_VIDEO_DRM_NOBUFFER", "set to disable IPC buffer passing",
 	"ARCAN_VIDEO_WAIT_CONNECTOR", "loop until an active connector is found",
 	NULL
 };
