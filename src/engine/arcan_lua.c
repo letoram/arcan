@@ -6536,7 +6536,8 @@ static int targetlaunch(lua_State* ctx)
 
 		char* expbuf[] = {colon_escape(strdup(exec)),
 			argv.count > 1 ? colon_escape(strdup(argv.data[1])) : NULL,
-			argv.count > 2 ? colon_escape(strdup(argv.data[2])) : NULL
+			argv.count > 2 ? colon_escape(strdup(argv.data[2])) : NULL,
+			NULL
 		};
 		arcan_expand_namespaces(expbuf);
 
