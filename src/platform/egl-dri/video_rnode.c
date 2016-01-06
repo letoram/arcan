@@ -47,7 +47,11 @@
 #define PLATFORM_SYMBOL(fun) EVAL(PLATFORM_SUFFIX, fun)
 
 static PFNEGLCREATEIMAGEKHRPROC create_image;
-static PFNEGLEXPORTDRMIMAGEMESAPROC export_drm_image;
+static PFNEGLEXPORTDMABUFIMAGEQUERYMESAPROC query_image_format;
+static PFNEGLEXPORTDMABUFIMAGEMESAPROC export_dmabuf;
+static PFNEGLDESTROYIMAGEKHRPROC destroy_image;
+
+static bool handle_disable = false;
 
 static char* rnode_envopts[] = {
 	"ARCAN_RENDER_NODE=/dev/dri/renderD128", "specify render-node",
@@ -63,8 +67,36 @@ static void map_extensions()
 {
 	create_image = (PFNEGLCREATEIMAGEKHRPROC)
 		eglGetProcAddress("eglCreateImageKHR");
-	export_drm_image = (PFNEGLEXPORTDRMIMAGEMESAPROC)
-		eglGetProcAddress("eglExportDRMImageMESA");
+	if (!create_image){
+		arcan_warning("no eglCreateImageKHR,buffer passing disabled\n");
+		goto fail;
+	}
+
+	destroy_image = (PFNEGLDESTROYIMAGEKHRPROC)
+		eglGetProcAddress("eglDestroyImageKHR");
+	if (!destroy_image){
+		arcan_warning("no eglDestroyImageKHR,buffer passing disabled\n");
+		goto fail;
+	}
+
+	query_image_format = (PFNEGLEXPORTDMABUFIMAGEQUERYMESAPROC)
+		eglGetProcAddress("eglExportDMABUFImageQueryMESA");
+	if (!query_image_format){
+		arcan_warning("no eglExportDMABUFImageQueryMESA,buffer passing disabled\n");
+		goto fail;
+	}
+
+	export_dmabuf = (PFNEGLEXPORTDMABUFIMAGEMESAPROC)
+		eglGetProcAddress("eglExportDMABUFImageMESA");
+	if (!export_dmabuf){
+		arcan_warning("no eglExportDMABUFImageMESA,buffer passing disabled\n");
+		goto fail;
+	}
+
+	return;
+fail:
+	handle_disable = true;
+	return;
 }
 
 static const char* egl_errstr()
@@ -153,24 +185,55 @@ int64_t PLATFORM_SYMBOL(_video_output_handle)(
 	int32_t fd = -1;
 	intptr_t descr = store->vinf.text.glid;
 
+	if (handle_disable){
+		*status = ERROR_UNSUPPORTED;
+		return -1;
+	}
+
 	rnode.output = create_image(rnode.display,
 		rnode.context, EGL_GL_TEXTURE_2D_KHR, (EGLClientBuffer)(descr), NULL);
 
-	EGLint name, handle, stride;
-
-	if (export_drm_image(rnode.display, rnode.output,
-		&name, &handle, &stride)){
-		drmPrimeHandleToFD(rnode.fd, handle, DRM_CLOEXEC, &fd);
-		*status = READY_TRANSFER;
-	}
-	else
+	if (!rnode.output){
+		arcan_warning("eglCreateImageKHR failed, buffer passing disabled\n");
+		handle_disable = true;
 		*status = ERROR_UNSUPPORTED;
+		return -1;
+	}
 
-/* how is this allocation managed, should the handle be destroyed
- * or is it collected with the fd? */
+	int fourcc, nplanes;
+	uint64_t modifiers;
+
+	if (!query_image_format(rnode.display,rnode.output,&fourcc,&nplanes,NULL)){
+		arcan_warning("ExportDMABUFImageQuery failed, buffer passing disabled\n");
+		destroy_image(rnode.display, rnode.output);
+		handle_disable = true;
+		*status = ERROR_UNSUPPORTED;
+		return -1;
+	}
+
+	if (nplanes != 1){
+		arcan_warning("_video_output_handle - only single plane "
+			"supported (%d)", nplanes);
+		handle_disable = true;
+		destroy_image(rnode.display, rnode.output);
+		*status = ERROR_UNSUPPORTED;
+		return -1;
+	}
+
+/* this is not safe if nplanes != 1 */
+	EGLint stride;
+	if (!export_dmabuf(rnode.display, rnode.output, &fd, &stride, NULL)){
+		arcan_warning("exportDMABUFImage failed, buffer passing disabled\n");
+		destroy_image(rnode.display, rnode.output);
+		handle_disable = true;
+		*status = ERROR_UNSUPPORTED;
+		return -1;
+	}
+
+/* fd should be destroyed by caller, and since this can be called from
+ * multiple threads, we're not safe tracking it here */
+	store->vinf.text.format = fourcc;
 	store->vinf.text.stride = stride;
-	store->vinf.text.format = DRM_FORMAT_XRGB8888;
-
 	return fd;
 }
 
