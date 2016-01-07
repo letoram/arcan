@@ -138,46 +138,57 @@ printf("Usage: arcan [-whfmWMOqspBtHbdgaSV] applname "
 "-V\t--version     \tdisplay a version string then exit\n\n");
 
 	const char** cur = platform_video_synchopts();
+	if (*cur){
 	printf("Video platform synchronization options (-W strat):\n");
-	while(*cur){
+	while(1){
 		const char* a = *cur++;
+		if (!a) break;
 		const char* b = *cur++;
+		if (!b) break;
 		printf("\t%s - %s\n", a, b);
 	}
 	printf("\n");
+	}
 
 	cur = platform_video_envopts();
 	if (*cur){
 	printf("Video platform environment variables:\n");
-	while(*cur){
+	while(1){
 		const char* a = *cur++;
+		if (!a) break;
 		const char* b = *cur++;
+		if (!b) break;
 		printf("\t%s - %s\n", a, b);
 	}
 	printf("\n");
 	}
 
-	if (*cur){
 	cur = agp_envopts();
+	if (*cur){
 	printf("AGP environment variables:\n");
-	while(*cur){
+	while(1){
 		const char* a = *cur++;
+		if (!a) break;
 		const char* b = *cur++;
+		if (!b) break;
 		printf("\t%s - %s\n", a, b);
 	}
 	printf("\n");
 	}
 
-	cur = platform_input_envopts();
+/* built-in envopts for _event.c */
 	printf("Input platform environment variables:\n");
 	printf("\tARCAN_EVENT_RECORD=file - record input-layer events to file\n");
 	printf("\tARCAN_EVENT_REPLAY=file - playback previous input recording\n");
 	printf("\tARCAN_EVENT_SHUTDOWN=keysym:modifiers "
 		"- press to inject shutdown event\n");
+	cur = platform_input_envopts();
 	if (*cur){
-	while(*cur){
+	while(1){
 		const char* a = *cur++;
+		if (!a) break;
 		const char* b = *cur++;
+		if (!b) break;
 		printf("\t%s - %s\n", a, b);
 	}
 	printf("\n");

@@ -1805,7 +1805,7 @@ arcan_errc arcan_video_defaultattachment(arcan_vobj_id src)
 	return ARCAN_OK;
 }
 
-arcan_errc arcan_video_alterreadback ( arcan_vobj_id did, int readback )
+arcan_errc arcan_video_alterreadback(arcan_vobj_id did, int readback)
 {
 	if (did == ARCAN_VIDEO_WORLDID){
 		current_context->stdoutp.readback = readback;

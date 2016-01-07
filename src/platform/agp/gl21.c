@@ -111,7 +111,7 @@ void agp_shader_source(enum SHADER_TYPES type,
 const char** agp_envopts()
 {
 	static const char* env[] = {
-		NULL
+		NULL, NULL
 	};
 	return env;
 }
