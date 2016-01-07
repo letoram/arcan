@@ -195,9 +195,7 @@ int64_t PLATFORM_SYMBOL(_video_output_handle)(
 
 	if (!rnode.output){
 		arcan_warning("eglCreateImageKHR failed, buffer passing disabled\n");
-		handle_disable = true;
-		*status = ERROR_UNSUPPORTED;
-		return -1;
+		goto unsup_fail;
 	}
 
 	int fourcc, nplanes;
@@ -205,29 +203,27 @@ int64_t PLATFORM_SYMBOL(_video_output_handle)(
 
 	if (!query_image_format(rnode.display,rnode.output,&fourcc,&nplanes,NULL)){
 		arcan_warning("ExportDMABUFImageQuery failed, buffer passing disabled\n");
-		destroy_image(rnode.display, rnode.output);
-		handle_disable = true;
-		*status = ERROR_UNSUPPORTED;
-		return -1;
+		goto unsup_fail;
 	}
 
 	if (nplanes != 1){
 		arcan_warning("_video_output_handle - only single plane "
 			"supported (%d)", nplanes);
-		handle_disable = true;
-		destroy_image(rnode.display, rnode.output);
-		*status = ERROR_UNSUPPORTED;
-		return -1;
+		goto unsup_fail;
 	}
 
 /* this is not safe if nplanes != 1 */
 	EGLint stride;
 	if (!export_dmabuf(rnode.display, rnode.output, &fd, &stride, NULL)){
 		arcan_warning("exportDMABUFImage failed, buffer passing disabled\n");
-		destroy_image(rnode.display, rnode.output);
-		handle_disable = true;
-		*status = ERROR_UNSUPPORTED;
-		return -1;
+		goto unsup_fail;
+	}
+
+/* some drivers have been spotted failing to create buffer but
+ * still returning "valid" (0) file descriptor */
+	if (fd <= 0){
+		arcan_warning("exportDMABUFImage returned bad descriptor\n");
+		goto unsup_fail;
 	}
 
 /* fd should be destroyed by caller, and since this can be called from
@@ -235,6 +231,15 @@ int64_t PLATFORM_SYMBOL(_video_output_handle)(
 	store->vinf.text.format = fourcc;
 	store->vinf.text.stride = stride;
 	return fd;
+
+unsup_fail:
+	*status = ERROR_UNSUPPORTED;
+	if (rnode.output){
+		destroy_image(rnode.display, rnode.output);
+		rnode.output = NULL;
+	}
+	handle_disable = true;
+	return -1;
 }
 
 bool PLATFORM_SYMBOL(_video_map_handle)(
