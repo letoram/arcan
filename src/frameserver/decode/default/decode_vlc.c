@@ -13,10 +13,10 @@
  * exposing chapters / titles, ...
  *
  * It is not certain if this is a good default to run with either due to the
- * horrible plugin/api/callback structure. A better future strategy would
- * be providing a more simple / lightweight decoder using only ffmpeg now that
- * the libav/debian fiasco is slowly fixing itself, and have an advanced version
- * be a player more in the lines of mpv.
+ * horrible plugin/api/callback structure. A better future strategy would be
+ * providing a more simple / lightweight decoder using only ffmpeg now that the
+ * libav/debian fiasco is slowly fixing itself, and have an advanced version be
+ * a player more in the lines of mpv, possibly with buffer passing as default.
  */
 #include <stdlib.h>
 #include <stdio.h>
@@ -26,6 +26,7 @@
 #include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <poll.h>
 #include <pthread.h>
 #include <math.h>
 #include <fcntl.h>
@@ -46,14 +47,19 @@ static struct {
 
 	bool loop;
 
-	pthread_mutex_t rsync;
+	pthread_mutex_t async;
 	pthread_mutex_t vsync;
 } decctx;
 
 #define AUD_VIS_HRES 2048
-#define arcan_shmif_signal(X, Y){\
+#define arcan_shmif_signalA(){\
+	pthread_mutex_lock(&decctx.async);\
+	arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGAUD);\
+	pthread_mutex_lock(&decctx.async);\
+}
+#define arcan_shmif_signalV(){\
 	pthread_mutex_lock(&decctx.vsync);\
-	arcan_shmif_signal(X, Y);\
+	arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGVID);\
 	pthread_mutex_unlock(&decctx.vsync);\
 }
 
@@ -72,12 +78,14 @@ static unsigned video_setup(void** ctx, char* chroma, unsigned* width,
 
 	*pitches = *width * 4;
 
+	pthread_mutex_lock(&decctx.vsync);
 	if (!arcan_shmif_resize(&decctx.shmcont, *width, *height)){
 		LOG("arcan_frameserver(decode) shmpage setup failed, "
 			"requested: (%d x %d)\n", *width, *height);
 
 		rv = 0;
 	}
+	pthread_mutex_unlock(&decctx.vsync);
 
 	return rv;
 }
@@ -164,7 +172,8 @@ static void generate_frame()
 		}
 	}
 
-	arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGVID | SHMIF_SIGAUD);
+/* special case, we won't have a video thread living */
+	arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
 }
 
 static void audio_play(void *data,
@@ -187,8 +196,7 @@ static void audio_play(void *data,
 /* buffer overflow, need to flush */
 	size_t left = ARCAN_SHMIF_AUDIOBUF_SZ - decctx.shmcont.addr->abufused;
 	if (left < nb){
-		LOG("audio_play(), overflow flush\n");
-		arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGAUD);
+		arcan_shmif_signalA();
 	}
 
 	left = ARCAN_SHMIF_AUDIOBUF_SZ - decctx.shmcont.addr->abufused;
@@ -201,6 +209,7 @@ static void audio_play(void *data,
 	if (decctx.fft_audio){
 		generate_frame();
 	}
+
 }
 
 static void audio_flush()
@@ -209,7 +218,6 @@ static void audio_flush()
 		.category = EVENT_EXTERNAL,
 		.ext.kind = ARCAN_EVENT(FLUSHAUD)
 	};
-	LOG("vlc requested audio flush\n");
 	decctx.shmcont.addr->abufused = 0;
 	arcan_shmif_enqueue(&decctx.shmcont, &ev);
 }
@@ -217,7 +225,7 @@ static void audio_flush()
 static void audio_drain()
 {
 	if (decctx.shmcont.addr->abufused > 4096)
-		arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGAUD)
+		arcan_shmif_signalA();
 }
 
 static void video_cleanup(void* ctx)
@@ -226,18 +234,12 @@ static void video_cleanup(void* ctx)
 
 static void* video_lock(void* ctx, void** planes)
 {
-	*planes = decctx.shmcont.vidp;
-	return NULL;
+	return *planes = decctx.shmcont.vidp;
 }
 
 static void video_display(void* ctx, void* picture)
 {
-	arcan_shmif_signal(&decctx.shmcont, decctx.shmcont.addr->abufused ?
-		SHMIF_SIGAUD | SHMIF_SIGVID : SHMIF_SIGVID);
-}
-
-static void video_unlock(void* ctx, void* picture, void* const* planes)
-{
+	arcan_shmif_signalV();
 }
 
 static void push_streamstatus()
@@ -250,7 +252,7 @@ static void push_streamstatus()
 		.ext.streamstat.frameno = c++
 	};
 
-	int64_t dura =  libvlc_media_player_get_length(decctx.player) / 1000;
+	int64_t dura = libvlc_media_player_get_length(decctx.player) / 1000;
 
 	int dh = dura / 3600;
 	int dm = (dura % 3600) / 60;
@@ -272,7 +274,6 @@ static void push_streamstatus()
 	snprintf((char*)status.ext.streamstat.timestr, strlim,
 		"%d:%02d:%02d", dh, dm, ds);
 
-	LOG("streamstatus: %s\n", status.ext.streamstat.timestr);
 	arcan_shmif_enqueue(&decctx.shmcont, &status);
 }
 
@@ -295,8 +296,6 @@ static void player_event(const struct libvlc_event_t* event, void* ud)
 	default:
 		LOG("unhandled event (%s)\n", libvlc_event_type_name(event->type));
 	}
-
-	process_inevq();
 }
 
 static libvlc_media_t* find_capture_device(
@@ -343,57 +342,49 @@ static void seek_relative(int seconds)
 {
 	int64_t time_v = libvlc_media_player_get_time(decctx.player);
 /* not seekable */
-	if (-1 == time_v)
+	if (-1 == time_v || !libvlc_media_player_is_seekable(decctx.player))
 		return;
 
-//	seconds *= 1000;
+	seconds *= 1000;
 
 	time_v += seconds;
 	time_v = time_v > 0 ? time_v : 0;
-	pthread_mutex_lock(&decctx.vsync);
 
-	LOG("seek to %d\n", time_v);
+//	libvlc_media_player_set_position(decctx.player, 0.5);
 	libvlc_media_player_set_time(decctx.player, time_v);
-	pthread_mutex_unlock(&decctx.vsync);
 }
 
-static void process_inevq()
+static bool dispatch(arcan_event* ev)
 {
-	arcan_event ev;
-
-	while (arcan_shmif_poll(&decctx.shmcont, &ev) > 0){
-		arcan_tgtevent* tgt = &ev.tgt;
-
-		if (ev.category == EVENT_TARGET)
-		switch(tgt->kind){
-		case TARGET_COMMAND_GRAPHMODE:
+	if (ev->category == EVENT_TARGET)
+	switch(ev->tgt.kind){
+	case TARGET_COMMAND_GRAPHMODE:
 /* switch audio /video visualization, RGBA-pack YUV420 hinting,
  * set_deinterlace */
-		break;
+	break;
 
-		case TARGET_COMMAND_AUDDELAY:
+	case TARGET_COMMAND_AUDDELAY:
+	break;
 
-		break;
-
-		case TARGET_COMMAND_FRAMESKIP:
+	case TARGET_COMMAND_FRAMESKIP:
 /* change buffering etc. behavior */
-		break;
+	break;
 
-		case TARGET_COMMAND_SETIODEV:
+	case TARGET_COMMAND_SETIODEV:
 /* switch stream
  * get_spu_count, get_spu_description,
  * get_title_description, get_chapter_description
  * get_track, set_track, ...
  * */
-		break;
+	break;
 
-		case TARGET_COMMAND_PAUSE:
-			libvlc_media_player_pause(decctx.player);
-		break;
+	case TARGET_COMMAND_PAUSE:
+		libvlc_media_player_pause(decctx.player);
+	break;
 
-		case TARGET_COMMAND_UNPAUSE:
-			libvlc_media_player_pause(decctx.player);
-		break;
+	case TARGET_COMMAND_UNPAUSE:
+		libvlc_media_player_pause(decctx.player);
+	break;
 
 /*
  * case TARGET_COMMAND_FDTRANSFER:
@@ -412,24 +403,23 @@ static void process_inevq()
 		break;
  */
 
-		case TARGET_COMMAND_EXIT:
-			decctx.shmcont.addr->dms = false;
-		break;
+	case TARGET_COMMAND_EXIT:
+		return false;
+	break;
 
-		case TARGET_COMMAND_SEEKTIME:
-			if (tgt->ioevs[0].iv != 0)
-					seek_relative(tgt->ioevs[1].fv);
-			else{
-				LOG("non-relative seek\n");
-				libvlc_media_player_set_position(decctx.player, tgt->ioevs[1].fv);
-			}
-		break;
-
-		default:
-			LOG("unhandled target event (%s)\n", arcan_shmif_eventstr(&ev, NULL, 0));
+	case TARGET_COMMAND_SEEKTIME:
+		if (ev->tgt.ioevs[0].iv != 0)
+				seek_relative(ev->tgt.ioevs[1].fv);
+		else{
+			LOG("non-relative seek\n");
+			libvlc_media_player_set_position(decctx.player, ev->tgt.ioevs[1].fv);
 		}
-	}
+	break;
 
+	default:
+		LOG("unhandled target event (%s)\n", arcan_shmif_eventstr(ev, NULL, 0));
+	}
+	return true;
 }
 
 int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
@@ -523,8 +513,11 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		 return EXIT_FAILURE;
 	}
 
-	pthread_mutex_init(&decctx.rsync, NULL);
-	pthread_mutex_init(&decctx.vsync, NULL);
+	pthread_mutexattr_t attr;
+	pthread_mutexattr_init(&attr);
+	pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_ERRORCHECK);
+	pthread_mutex_init(&decctx.async, &attr);
+	pthread_mutex_init(&decctx.vsync, &attr);
 
 /* register media with vlc, hook up local input mapping */
   decctx.player = libvlc_media_player_new_from_media(media);
@@ -538,7 +531,7 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 
 	libvlc_video_set_format_callbacks(decctx.player, video_setup, video_cleanup);
 	libvlc_video_set_callbacks(decctx.player,
-		video_lock, video_unlock, video_display, NULL);
+		video_lock, NULL, video_display, NULL);
 
 	libvlc_audio_set_format(decctx.player, "S16N",
 		ARCAN_SHMIF_SAMPLERATE, ARCAN_SHMIF_ACHANNELS);
@@ -549,13 +542,25 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 	libvlc_media_player_play(decctx.player);
 
 /* video playback finish will pull this or seek back to beginning on loop */
-	while(decctx.shmcont.addr->dms)
-#if _WIN32
-		Sleep(1000);
-#else
-		sleep(1);
-#endif
+	arcan_event ev;
+	while(1){
+		struct pollfd pfd = {
+			.fd = decctx.shmcont.epipe,
+			.events = POLLIN|POLLERR|POLLNVAL|POLLHUP
+		};
+		int sv = poll(&pfd, 1, -1);
 
+		int rc;
+		while( (rc = arcan_shmif_poll(&decctx.shmcont, &ev)) > 0)
+			if (!dispatch(&ev)){
+				rc = -1;
+				break;
+			}
+
+		if (rc < 0)
+			break;
+	}
+	arcan_shmif_drop(&decctx.shmcont);
  	libvlc_media_player_stop(decctx.player);
  	libvlc_media_player_release(decctx.player);
 	libvlc_release(decctx.vlc);
