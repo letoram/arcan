@@ -193,7 +193,7 @@ static struct {
 	bool (*deserialize)(const void*, size_t);
 	void (*set_ioport)(unsigned, unsigned);
 } retroctx = {
-	.prewake = 4, .preaudiogen = 0
+	.prewake = 4, .preaudiogen = 1
 #ifdef FRAMESERVER_LIBRETRO_3D
 	,.last_handle = -1
 #endif
