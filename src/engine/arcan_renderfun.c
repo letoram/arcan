@@ -186,7 +186,7 @@ static void zap_slot(int i)
 bool arcan_video_defaultfont(const char* ident,
 	file_handle fd, size_t sz, int hint)
 {
-	if (BADFD == fd || !ident)
+	if (BADFD == fd)
 		return false;
 
 /* try to load */

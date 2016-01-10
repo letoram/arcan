@@ -1689,12 +1689,9 @@ arcan_vobj_id arcan_video_nullobject(float origw,
 	float origh, unsigned short zv)
 {
 	arcan_vobj_id rv =  arcan_video_solidcolor(origw, origh, 0, 0, 0, zv);
-
-	if (rv != ARCAN_EID){
-		arcan_vobject* vobj = arcan_video_getobject(rv);
+	arcan_vobject* vobj = arcan_video_getobject(rv);
+	if (vobj)
 		vobj->program = 0;
-		arcan_vint_attachobject(rv);
-	}
 
 	return rv;
 }

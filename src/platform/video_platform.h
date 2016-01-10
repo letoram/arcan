@@ -24,23 +24,45 @@
 
 typedef VIDEO_PIXEL_TYPE av_pixel;
 
-/*
- * To change the internal representation, define these macros in some other
- * header that is forcibly included, or redefine through the build-system.
- */
 #ifndef RGBA
 #define RGBA(r, g, b, a)( ((uint32_t)(a) << 24) | ((uint32_t) (b) << 16) |\
 ((uint32_t) (g) << 8) | ((uint32_t) (r)) )
 #endif
 
+/*
+ * Just prepared for a low-def format, none is really active at the moment
+ * but likely candidate is RGB565
+ */
+#define RGBA_LOWDEF(r, g, b, a)( RGBA((r), (g), (b)) )
+
+/*
+ * To change the internal representation, define these macros in some other
+ * header that is forcibly included, or redefine through the build-system.
+ */
+#ifdef HDEF_10BIT
+#include "video_platform_hdef.h"
+#else
+#define OUT_DEPTH_R 8
+#define OUT_DEPTH_G 8
+#define OUT_DEPTH_B 8
+#define OUT_DEPTH_A 0
+
 #ifndef GL_PIXEL_FORMAT
 #define GL_PIXEL_FORMAT GL_RGBA
 #endif
 
+#define GL_PIXEL_HDEF_FORMAT GL_PIXEL_FORMAT
+#define RGBA_HDEF(r, g, b, a) RGBA(\
+	(uint8_t)((r) * 255.0f), (uint8_t)((g) * 255.0f), \
+	(uint8_t)((b) * 255.0f), (uint8_t)((a) * 255.0f))
+
+#endif
 #ifndef RGBA_FULLALPHA_REPACK
 #define RGBA_FULLALPHA_REPACK(inv)(	RGBA( ((inv) & 0x000000ff), \
 (((inv) & 0x0000ff00) >> 8), (((inv) & 0x00ff0000) >> 16), 0xff) )
 #endif
+
+#define GL_PIXEL_LDEF_FORMAT GL_PIXEL_FORMAT
 
 #ifndef RGBA_DECOMP
 static inline void RGBA_DECOMP(av_pixel val, uint8_t* r,
@@ -123,6 +145,7 @@ struct storage_info_t {
 		struct {
 /* ID number connecting to AGP */
 			unsigned glid;
+			uint64_t glformat;
 
 /* used for PBO transfers */
 			unsigned rid, wid;
@@ -462,6 +485,23 @@ void agp_null_vstore(struct storage_info_t* backing);
  * Setup an empty vstore backing with the specified dimensions
  */
 void agp_empty_vstore(struct storage_info_t* backing, size_t w, size_t h);
+
+/*
+ * Extended form to allow internal platform choice in format used,
+ * can be used to some rendertargets for improved performance and for
+ * buffer-passing workarounds
+ */
+enum vstore_hint
+{
+	VSTORE_HINT_NORMAL = 0,
+	VSTORE_HINT_NOALPHA = 1,
+	VSTORE_HINT_LODEF = 2,
+	VSTORE_HINT_LODEF_NOALPHA = 3,
+	VSTORE_HINT_HIDEF = 4,
+	VSTORE_HINT_HIDEF_NOALPHA = 5,
+};
+void agp_empty_vstoreext(struct storage_info_t* backing,
+	size_t w, size_t h, enum vstore_hint);
 
 /*
  * Rebuild an existing vstore to handle a change in data source dimensions

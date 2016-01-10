@@ -371,10 +371,10 @@ bool PLATFORM_SYMBOL(_video_init)(uint16_t w, uint16_t h,
 	static const EGLint attribs[] = {
 		EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
 		EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
-		EGL_RED_SIZE, 1,
-		EGL_GREEN_SIZE, 1,
-		EGL_BLUE_SIZE, 1,
-		EGL_ALPHA_SIZE, 0,
+		EGL_RED_SIZE, OUT_DEPTH_R,
+		EGL_GREEN_SIZE, OUT_DEPTH_G,
+		EGL_BLUE_SIZE, OUT_DEPTH_B,
+		EGL_ALPHA_SIZE, OUT_DEPTH_A,
 		EGL_DEPTH_SIZE, 1,
 		EGL_NONE
 	};
@@ -436,7 +436,10 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 	arcan_bench_register_cost( arcan_vint_refresh(fract, &nupd) );
 #endif
 
+/*
+ * shouldn't be needed
 	glFlush();
+ */
 
 	if (post)
 		post();
