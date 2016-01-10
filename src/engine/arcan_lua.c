@@ -253,8 +253,8 @@ static int fsrv_ok =
 static const int MOUSE_GRAB_ON  = 20;
 static const int MOUSE_GRAB_OFF = 21;
 
-static const int MAX_SURFACEW = CONST_MAX_SURFACEH;
-static const int MAX_SURFACEH = CONST_MAX_SURFACEW;
+static const int MAX_SURFACEH = CONST_MAX_SURFACEH;
+static const int MAX_SURFACEW = CONST_MAX_SURFACEW;
 
 static const int FRAMESET_NODETACH = 11;
 static const int FRAMESET_DETACH   = 10;
@@ -5137,29 +5137,39 @@ static int getconfigs(lua_State* ctx)
 static int allocsurface(lua_State* ctx)
 {
 	LUA_TRACE("alloc_surface");
-	img_cons cons = {};
-	cons.w = luaL_checknumber(ctx, 1);
-	cons.h = luaL_checknumber(ctx, 2);
-	cons.bpp = sizeof(av_pixel);
+	int w = luaL_checknumber(ctx, 1);
+	int h = luaL_checknumber(ctx, 2);
 
-	if (cons.w > MAX_SURFACEW || cons.h > MAX_SURFACEH)
+	bool noalpha = luaL_optbnumber(ctx, 3, 0);
+	int quality = luaL_optnumber(ctx, 4, 0);
+
+	if (w > MAX_SURFACEW || h > MAX_SURFACEH)
 		arcan_fatal("alloc_surface(%d, %d) failed, unacceptable "
 			"surface dimensions. Compile time restriction (%d,%d)\n",
-			cons.w, cons.h, MAX_SURFACEW, MAX_SURFACEH);
+			w, h, MAX_SURFACEW, MAX_SURFACEH);
 
-	av_pixel* buf = arcan_alloc_mem(cons.w * cons.h * sizeof(av_pixel),
-		ARCAN_MEM_VBUFFER, 0, ARCAN_MEMALIGN_PAGE);
+	arcan_vobj_id rv;
+	arcan_vobject* vobj = arcan_video_newvobject(&rv);
+	if (!vobj){
+		LUA_ETRACE("alloc_surface", "out of vobj-ids");
+		lua_pushvid(ctx, ARCAN_EID);
+	}
 
-	av_pixel* cptr = buf;
+	struct storage_info_t* ds = vobj->vstore;
+	agp_empty_vstoreext(ds, w, h, noalpha ?
+		(quality < 0 ? VSTORE_HINT_LODEF_NOALPHA :
+	 	quality == 0 ? VSTORE_HINT_NOALPHA : VSTORE_HINT_HIDEF_NOALPHA) :
+		VSTORE_HINT_HIDEF
+	);
 
-	for (size_t y = 0; y < cons.h; y++)
-		for (size_t x = 0; x < cons.w; x++)
-			*cptr = RGBA(0, 0, 0, 0xff);
+	vobj->origw = w;
+	vobj->origh = h;
+	vobj->order = 0;
+	vobj->blendmode = BLEND_NORMAL;
+	arcan_vint_attachobject(rv);
 
-	arcan_vobj_id id = arcan_video_rawobject(buf, cons, cons.w, cons.h, 0);
-
-	lua_pushvid(ctx, id);
- 	trace_allocation(ctx, "alloc_surface", id);
+	lua_pushvid(ctx, rv);
+ 	trace_allocation(ctx, "alloc_surface", rv);
 
 	LUA_ETRACE("alloc_surface", NULL);
 	return 1;
@@ -8764,7 +8774,7 @@ static int setdefaultfont(lua_State* ctx)
 {
 	LUA_TRACE("system_defaultfont");
 
-	const char* fontn = luaL_checkstring(ctx, 1);
+	const char* fontn = luaL_optstring(ctx, 1, NULL);
 
 	char* fn = arcan_find_resource(fontn, RESOURCE_SYS_FONT, ARES_FILE);
 	if (!fn){

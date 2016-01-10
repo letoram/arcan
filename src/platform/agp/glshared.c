@@ -173,6 +173,12 @@ void agp_empty_vstore(struct storage_info_t* vs, size_t w, size_t h)
 	vs->vinf.text.s_raw = 0;
 }
 
+void agp_empty_vstoreext(struct storage_info_t* vs,
+	size_t w, size_t h, enum vstore_hint hint)
+{
+	agp_empty_vstore(vs, w, h);
+}
+
 struct agp_rendertarget* agp_setup_rendertarget(struct storage_info_t* vstore,
 	enum rendertarget_mode m)
 {

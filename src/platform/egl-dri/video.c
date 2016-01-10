@@ -356,11 +356,20 @@ static int setup_buffers(struct dispout* d)
 	SET_SEGV_MSG("libgbm(), creating scanout buffer"
 		" failed catastrophically.\n")
 
+#ifdef HDEF_10BIT
 	d->buffer.surface = gbm_surface_create(d->device->gbm,
 		d->display.mode->hdisplay, d->display.mode->vdisplay,
-		GBM_FORMAT_XRGB8888,
-		GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING
+		GBM_FORMAT_XRGB2101010, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING
 	);
+
+	if (!d->buffer.surface && (arcan_warning("libgbm(), 10-bit output\
+		requested but no suitable scanout, trying 8-bit\n"), 1))
+#else
+	d->buffer.surface = gbm_surface_create(d->device->gbm,
+		d->display.mode->hdisplay, d->display.mode->vdisplay,
+		GBM_FORMAT_XRGB8888, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING
+	);
+#endif
 
 	d->buffer.esurf = eglCreateWindowSurface(d->device->display,
 		d->device->config, (uintptr_t)d->buffer.surface, NULL);
@@ -872,11 +881,12 @@ static int setup_node(struct dev_node* node, const char* path)
 	static EGLint attribs[] = {
 		EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
 		EGL_RENDERABLE_TYPE, 0,
-		EGL_RED_SIZE, 1,
-		EGL_GREEN_SIZE, 1,
-		EGL_BLUE_SIZE, 1,
-		EGL_ALPHA_SIZE, 0,
+		EGL_RED_SIZE, OUT_DEPTH_R,
+		EGL_GREEN_SIZE, OUT_DEPTH_G,
+		EGL_BLUE_SIZE, OUT_DEPTH_B,
+		EGL_ALPHA_SIZE, OUT_DEPTH_A,
 		EGL_DEPTH_SIZE, 1,
+		EGL_STENCIL_SIZE, 1,
 		EGL_NONE
 	};
 
@@ -1785,7 +1795,6 @@ static void fb_cleanup(struct gbm_bo* bo, void* data)
 	if (d->state == DISP_CLEANUP)
 		return;
 
-	arcan_warning("fb cleanup\n");
 	disable_display(d, true);
 }
 

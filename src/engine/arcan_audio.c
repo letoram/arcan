@@ -615,10 +615,12 @@ arcan_errc arcan_audio_setgain(arcan_aobj_id id, float gain, uint16_t time)
 
 			if (dobj->gproxy)
 				dobj->gproxy(dobj->gain, dobj->tag);
-			else if (dobj->alid)
+			else if (dobj->alid){
 				alSourcef(dobj->alid, AL_GAIN, gain);
-
-			_wrap_alError(dobj, "audio_setgain(getSource/source)");
+				_wrap_alError(dobj, "audio_setgain(getSource/source)");
+			}
+			else
+				;
 		}
 		else{
 			struct arcan_achain** dptr = &dobj->transform;
