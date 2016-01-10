@@ -569,7 +569,7 @@ arcan_errc arcan_audio_stop(arcan_aobj_id id)
 	dobj->kind = AOBJ_INVALID;
 
 /* callback with empty buffers means that we want to clean up */
-	if (dobj->feed)
+	if (dobj->feed && dobj->alid)
 		dobj->feed(dobj, id, -1, dobj->tag);
 
 	_wrap_alError(dobj, "audio_stop(stop)");

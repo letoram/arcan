@@ -95,8 +95,16 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 	if (!src->flags.alive)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
-	if (shmpage){
-		if (arcan_frameserver_enter(src)){
+/* unhook audio monitors */
+	if (arcan_frameserver_enter(src)){
+		arcan_aobj_id* base = src->alocks;
+		while (base && *base){
+			arcan_audio_hookfeed(*base, NULL, NULL, NULL);
+			base++;
+		}
+		arcan_audio_stop(src->aid);
+
+		if (shmpage){
 			arcan_event exev = {
 				.category = EVENT_TARGET,
 				.tgt.kind = TARGET_COMMAND_EXIT
@@ -112,7 +120,6 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 
 		arcan_frameserver_dropshared(src);
 		src->shm.ptr = NULL;
-
 		arcan_frameserver_leave();
 	}
 
@@ -121,15 +128,7 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 	src->child = BROKEN_PROCESS_HANDLE;
 	src->flags.alive = false;
 
-/* unhook audio monitors */
-	arcan_aobj_id* base = src->alocks;
-	while (base && *base){
-		arcan_audio_hookfeed(*base, NULL, NULL, NULL);
-		base++;
-	}
-
 	vfunc_state emptys = {0};
-	arcan_audio_stop(src->aid);
 	arcan_mem_free(src->audb);
 
 	if (BADFD != src->dpipe){
@@ -451,6 +450,7 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 		if (!shmpage)
 			return FRV_NOFRAME;
 		}
+/* note: OK place to put vpts- enforcement */
 
 /* use this opportunity to make sure that we treat audio as well */
 		check_audb(tgt, shmpage);
