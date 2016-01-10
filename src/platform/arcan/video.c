@@ -13,6 +13,8 @@
 #include <stdbool.h>
 #include <unistd.h>
 #include <stdio.h>
+#include <sys/types.h>
+#include <poll.h>
 
 #include "../video_platform.h"
 
@@ -352,6 +354,11 @@ static void stub()
 static void synch_hpassing(struct storage_info_t* vs,
 	int handle, enum status_handle status)
 {
+/*
+ * This does not yet handle multiple windows handle passing,
+ * only for primary segment (which isn't correct of course but is
+ * currently pretty much a fringle case for multidisplay testing)
+ */
 	arcan_shmif_signalhandle(&disp[0].conn, SHMIF_SIGVID,
 		handle, vs->vinf.text.stride, vs->vinf.text.format);
 	close(handle);
@@ -410,30 +417,27 @@ void platform_video_synch(uint64_t tick_count, float fract,
  * gpu- specific handles
  */
 
-	struct storage_info_t* vs = arcan_vint_world();
-	enum status_handle status;
+	if (platform_nupd){
+		struct storage_info_t* vs = arcan_vint_world();
+		enum status_handle status;
 
-	int handle = nopass ? -1 :
-		lwa_video_output_handle(vs, &status);
+		int handle = nopass ? -1 :
+			lwa_video_output_handle(vs, &status);
 
-	if (handle == -1 || status < 0)
-		synch_copy(vs);
-	else{
-		synch_hpassing(vs, handle, status);
+		if (handle == -1 || status < 0)
+			synch_copy(vs);
+		else{
+			synch_hpassing(vs, handle, status);
+		}
 	}
-
-/*
- * This should be switched to the synch. strat option when we have a shared
- * implementation for some of the regular timing / statistics analysis
- * functions needed, keep a dynamic refresh limited in the 50-70 area.
- */
-	int64_t current_time = arcan_timemillis();
-	int dt = current_time - last_frametime - 12;
-
-	if (dt > 0 && dt < 4)
-		arcan_timesleep(dt);
-
-	last_frametime = current_time;
+/* or just check on a ~60Hz basis letting external events prewake */
+	else {
+		struct pollfd pfd = {
+			.fd = disp[0].conn.epipe,
+			.events = POLLIN | POLLERR | POLLHUP | POLLNVAL
+		};
+		poll(&pfd, 1, 16);
+	}
 
 /*
  * we should implement a mapping for TARGET_COMMAND_FRAMESKIP or so and use to
