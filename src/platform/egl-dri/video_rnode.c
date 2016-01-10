@@ -425,6 +425,8 @@ bool PLATFORM_SYMBOL(_video_display_edid)(platform_display_id did,
 	return false;
 }
 
+size_t platform_nupd;
+
 void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 	video_synchevent pre, video_synchevent post)
 {
@@ -432,14 +434,12 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 		pre();
 
 #ifndef HEADLESS_NOARCAN
-	size_t nupd;
-	arcan_bench_register_cost( arcan_vint_refresh(fract, &nupd) );
+	arcan_bench_register_cost(
+		arcan_vint_refresh(fract, &platform_nupd));
 #endif
 
-/*
- * shouldn't be needed
+/* actually needed for arcan platform or our handle-content may be bad */
 	glFlush();
- */
 
 	if (post)
 		post();
