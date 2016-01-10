@@ -90,7 +90,7 @@ struct {
 
 #ifdef TTF_SUPPORT
 	TTF_Font* font;
-	const char* fontname;
+	int font_fd;
 	int hint;
 	size_t font_sz;
 #endif
@@ -143,6 +143,7 @@ struct {
 	.fgc = {0xff, 0xff, 0xff},
 	.ccol = SHMIF_RGBA(0x00, 0xaa, 0x00, 0xff),
 #ifdef TTF_SUPPORT
+	.font_fd = BADFD,
 	.hint = TTF_HINTING_NONE
 #endif
 };
@@ -359,20 +360,26 @@ static void update_screen(bool redraw)
 
 static void update_screensize()
 {
+/*
+ * commented out approach seem to have led to some edge case
+ * wrong-stride, ignored for now
+ */
 	int cols = term.acon.w / term.cell_w;
 	int rows = term.acon.h / term.cell_h;
 
-/* compensate for terminal- resize delays with padding */
-	size_t padw = term.acon.w - (cols * term.cell_w);
+/*
+ * size_t padw = term.acon.w - (cols * term.cell_w);
 	size_t padh = term.acon.h - (rows * term.cell_h);
+ */
 
 	if (cols != term.cols || rows != term.rows){
-		if (cols > term.cols)
+/*
+ * if (cols > term.cols)
 			padw += (cols - term.cols) * term.cell_w;
 
 		if (rows > term.rows)
 			padh += (rows - term.rows) * term.cell_h;
-
+*/
 		term.cols = cols;
 		term.rows = rows;
 
@@ -385,11 +392,15 @@ static void update_screensize()
 		SHMIF_RGBA(0, 0, 0, term.alpha) : SHMIF_RGBA(term.bgc[0],
 			term.bgc[1], term.bgc[2], 0xff);
 
+	draw_box(&term.acon, 0, 0, term.acon.w, term.acon.h, col);
+
+/*
 	if (padw)
 		draw_box(&term.acon, term.acon.w - padw - 1, 0, padw + 1, term.acon.h, col);
 
 	if (padh)
 		draw_box(&term.acon, 0, term.acon.h - padh - 1, term.acon.w, padh + 1, col);
+*/
 
 	term.dirty = true;
 	update_screen(true);
@@ -617,18 +628,18 @@ struct lent {
 };
 
 #ifdef TTF_SUPPORT
-static bool setup_font(const char* val, size_t font_sz);
+static bool setup_font(int fd, size_t font_sz);
 void inc_fontsz()
 {
 	term.font_sz += 2;
-	setup_font(term.fontname, term.font_sz);
+	setup_font(BADFD, term.font_sz);
 }
 
 void dec_fontsz()
 {
 	if (term.font_sz > 8)
 		term.font_sz -= 2;
-	setup_font(term.fontname, term.font_sz);
+	setup_font(BADFD, term.font_sz);
 }
 #endif
 
@@ -854,9 +865,36 @@ static void targetev(arcan_tgtevent* ev)
  * will be on next event */
 	break;
 
-	case TARGET_COMMAND_DISPLAYHINT:{
-		arcan_shmif_resize(&term.acon, ev->ioevs[0].iv, ev->ioevs[1].iv);
+	case TARGET_COMMAND_FONTHINT:{
+#ifdef TTF_SUPPORT
+		int fd = BADFD;
+		if (ev->ioevs[0].iv != BADFD)
+			fd = dup(ev->ioevs[0].iv);
+
+/* size- calculation is not correct here, does not take
+ * DISPLAYHINT on PPMM into account when setting size */
+		setup_font(fd, ev->ioevs[1].iv);
+		switch(ev->ioevs[2].iv){
+		case -1: break;
+		case 0: term.hint = TTF_HINTING_NONE; break;
+		case 1: term.hint = TTF_HINTING_MONO; break;
+		case 2: term.hint = TTF_HINTING_LIGHT; break;
+		default:
+			term.hint = TTF_HINTING_NORMAL;
+		break;
+		}
 		update_screensize();
+#endif
+	}
+
+	case TARGET_COMMAND_DISPLAYHINT:{
+		bool dev = ev->ioevs[0].iv != term.acon.addr->w ||
+			ev->ioevs[1].iv != term.acon.addr->h;
+
+		if (dev){
+			arcan_shmif_resize(&term.acon, ev->ioevs[0].iv, ev->ioevs[1].iv);
+			update_screensize();
+		}
 	}
 	break;
 
@@ -955,11 +993,24 @@ static void probe_font(TTF_Font* font,
 		*dh = h;
 }
 
-static bool setup_font(const char* val, size_t font_sz)
+static bool setup_font(int fd, size_t font_sz)
 {
-	TTF_Font* font = TTF_OpenFont(val, font_sz);
-	if (!font)
-		return false;
+	TTF_Font* font;
+
+/* re-use last descriptor and change size or grab new */
+	if (BADFD == fd){
+		fd = term.font_fd;
+		font = TTF_OpenFontFD(fd, font_sz);
+		if (!font)
+			return false;
+	}
+	else {
+		font = TTF_OpenFontFD(fd, font_sz);
+		if (!font){
+			close(fd);
+			return false;
+		}
+	}
 
 	TTF_SetFontHinting(font, term.hint);
 	TTF_SetFontStyle(font, TTF_STYLE_BOLD);
@@ -994,7 +1045,9 @@ static bool setup_font(const char* val, size_t font_sz)
 
 	term.font = font;
 	term.font_sz = font_sz;
-	term.fontname = val;
+	if (term.font_fd != fd)
+		close(term.font_fd);
+	term.font_fd = fd;
 
 	if (old_font){
 		TTF_CloseFont(old_font);
@@ -1167,8 +1220,10 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 
 	if (arg_lookup(args, "font_sz", 0, &val))
 		sz = strtoul(val, NULL, 10);
-	if (arg_lookup(args, "font", 0, &val))
-		setup_font(val, sz);
+	if (arg_lookup(args, "font", 0, &val)){
+		int fd = open(val, O_RDONLY);
+		setup_font(fd, sz);
+	}
 	else
 		LOG("no font specified, using built-in fallback.");
 #endif
