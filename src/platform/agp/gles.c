@@ -103,7 +103,7 @@ agp_shader_id agp_default_shader(enum SHADER_TYPES type)
 const char** agp_envopts()
 {
 	static const char* env[] = {
-		NULL
+		NULL, NULL
 	};
 	return env;
 }
