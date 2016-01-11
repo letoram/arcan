@@ -13,12 +13,12 @@
 function picktest()
 	symtable = system_load("scripts/symtable.lua")();
 
-	local b1 = color_surface(64, 64, 255, 0, 0);
+	local b1 = fill_surface(64, 64, 255, 0, 0);
 	show_image(b1);
 	move_image(b1, 10, 10);
 	image_tracetag(b1, "normal, static.");
 
-	local b2 = color_surface(64, 64, 0, 255, 0);
+	local b2 = fill_surface(64, 64, 0, 255, 0);
 	show_image(b2);
 	move_image(b2, 10, 84);
 	move_image(b2, 64, 84, 100);
@@ -26,7 +26,7 @@ function picktest()
 	image_transform_cycle(b2, 1);
 	image_tracetag(b2, "normal, moving.");
 
-	local b3 = color_surface(64, 64, 0, 255, 255);
+	local b3 = fill_surface(64, 64, 0, 255, 255);
 	show_image(b3);
 	rotate_image(b3, 300, 100);
 	rotate_image(b3, 0, 100);
@@ -51,9 +51,9 @@ function picktest()
 	mx = 0;
 	my = 0;
 
-	system_load("scripts/3dsupport.lua")();
-	camera = setup_3dsupport();
-
+	camera = null_surface(1, 1);
+	camtag_model(camera, 0.01, 100.0, 45.0, 1.33, nil, 1, 1);
+	image_tracetag(camera, "camera");
 	forward3d_model(camera, -10.0);
 
 	local cube_1 = build_3dbox(1, 1, 1);
@@ -64,8 +64,6 @@ function picktest()
 	image_transform_cycle(cube_1, 1);
 	image_tracetag(cube_1, "cube_1");
 
-	local shid = load_shader("shaders/dir_light.vShader", "shaders/dir_light.fShader", "light", {});
-
 	local cube_2 = build_3dbox(1, 1, 1);
 	show_image(cube_2);
 	move3d_model(cube_2, -1, -1, 0, 100);
@@ -73,18 +71,8 @@ function picktest()
 	rotate3d_model(cube_2, 0, 300, 0, 100);
 	image_transform_cycle(cube_2, 1);
 	image_tracetag(cube_2, "cube_2");
-
-	local col  = fill_surface(32, 32, 255, 128, 0);
-
-	set_image_as_frame(cube_1, col, 0, FRAMESET_NODETACH);
-	set_image_as_frame(cube_2, col, 0, FRAMESET_NODETACH);
-
-	shader_uniform(shid, "wdiffuse", "fff", PERSIST, 0.0, 1.0, 0.0);
-	shader_uniform(shid, "wambient", "fff", PERSIST, 0.3, 0.3, 0.1);
-	shader_uniform(shid, "wlightdir", "fff", PERSIST, 0.0, 1.0, 0.0);
-
-	image_shader(cube_1, shid);
-	image_shader(cube_2, shid);
+	image_sharestorage(b1, cube_1);
+	image_sharestorage(b2, cube_2);
 end
 
 function picktest_input(iotbl)
