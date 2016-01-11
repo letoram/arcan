@@ -82,6 +82,7 @@ struct arcan_video_display arcan_video_display = {
 	.deftxs = ARCAN_VTEX_CLAMP, ARCAN_VTEX_CLAMP,
 	.scalemode = ARCAN_VIMAGE_NOPOW2,
 	.filtermode = ARCAN_VFILTER_BILINEAR,
+	.order3d = ORDER3D_FIRST,
 	.suspended = false,
 	.msasamples = 4,
 	.c_ticks = 1,
@@ -1556,8 +1557,22 @@ done:
 	return rv;
 }
 
-void arcan_video_3dorder(enum arcan_order3d order){
+arcan_errc arcan_video_3dorder(enum arcan_order3d order, arcan_vobj_id rt)
+{
+	if (rt != ARCAN_EID){
+		arcan_vobject* vobj = arcan_video_getobject(rt);
+		if (!vobj)
+			return ARCAN_ERRC_NO_SUCH_OBJECT;
+
+		struct rendertarget* rtgt = arcan_vint_findrt(vobj);
+		if (!rtgt)
+			return ARCAN_ERRC_NO_SUCH_OBJECT;
+
+		rtgt->order3d = order;
+	}
+	else
 		arcan_video_display.order3d = order;
+	return ARCAN_OK;
 }
 
 static void rescale_origwh(arcan_vobject* dst, float fx, float fy)
@@ -1879,6 +1894,7 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did,
 		dst->refresh = refresh;
 		dst->refreshcnt = abs(refresh);
 		dst->art = agp_setup_rendertarget(vobj->vstore, format);
+		dst->order3d = arcan_video_display.order3d;
 
 		vobj->extrefc.attachments++;
 		trace("(setuprendertarget), (%d:%s) defined as rendertarget."
@@ -4254,8 +4270,7 @@ static size_t process_rendertarget(struct rendertarget* tgt, float fract)
 	size_t pc = 0;
 
 /* first, handle all 3d work (which may require multiple passes etc.) */
-	if (arcan_video_display.order3d == ORDER3D_FIRST &&
-		current && current->elem->order < 0){
+	if (tgt->order3d == ORDER3D_FIRST && current && current->elem->order < 0){
 		current = arcan_3d_refresh(tgt->camtag, current, fract);
 		pc++;
 	}
@@ -4365,8 +4380,7 @@ static size_t process_rendertarget(struct rendertarget* tgt, float fract)
 /* reset and try the 3d part again if requested */
 end3d:
 	current = tgt->first;
-	if (current && current->elem->order < 0 &&
-		arcan_video_display.order3d == ORDER3D_LAST){
+	if (current && current->elem->order < 0 && tgt->order3d == ORDER3D_LAST){
 		agp_shader_activate(agp_default_shader(BASIC_2D));
 		current = arcan_3d_refresh(tgt->camtag, current, fract);
 		if (current != tgt->first)

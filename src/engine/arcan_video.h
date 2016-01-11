@@ -245,8 +245,12 @@ void arcan_video_restore_external();
 /*
  * Specify if the 3D pipeline should be processed and if so,
  * if it should happen before or after the 2D pipeline has been processed.
+ * This attribute is copied to new rendertargets.
+ *
+ * [rt] is optional and should be set to ARCAN_EID or a VID referencing
+ *      a valid rendertarget.
  */
-void arcan_video_3dorder(enum arcan_order3d);
+arcan_errc arcan_video_3dorder(enum arcan_order3d, arcan_vobj_id rt);
 
 /*
  * Forcibly empty the font cache, this can free up some memory resources.

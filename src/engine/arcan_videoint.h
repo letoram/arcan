@@ -50,6 +50,7 @@ struct rendertarget {
 	struct agp_rendertarget* art;
 
 	enum rtgt_flags flags;
+	enum arcan_order3d order3d;
 
 /* readback == 0, no readback. Otherwise, a readback is requested
  * every abs(readback) frames. if readback is negative,

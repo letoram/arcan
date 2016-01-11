@@ -56,7 +56,7 @@ void arcan_lua_pushglobalconsts(struct arcan_luactx* ctx);
 void arcan_lua_statesnap(FILE* dst, const char* tag, bool delim);
 
 /*
- * will sweep the main rendertarget in the activ econtext and
+ * will sweep the main rendertarget in the active context and
  * expose running frameserver connections through an applname_adopt handler
  * indended as a continuation of recoveryexternal
  */
