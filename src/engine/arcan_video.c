@@ -1356,7 +1356,7 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 {
 	static bool firstinit = true;
 
-/* might be called multiple times so.. */
+/* might be called multiple times due to longjmp recover etc. */
 	if (firstinit){
 		if (-1 == arcan_sem_init(&asynchsynch, ASYNCH_CONCURRENT_THREADS)){
 			arcan_warning("video_init couldn't create synchronization handle\n");
@@ -1391,6 +1391,7 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	arcan_video_resize_canvas(mode.width, mode.height);
 
 	identity_matrix(current_context->stdoutp.base);
+	current_context->stdoutp.order3d = arcan_video_display.order3d;
 /*
  * By default, expected video output display matches canvas 1:1,
  * canvas can be explicitly resized and these two matrices will still

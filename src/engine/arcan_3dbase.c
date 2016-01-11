@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2016, Björn Ståhl
+ * Copyright 2009-2016, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -952,9 +952,12 @@ arcan_errc arcan_3d_finalizemodel(arcan_vobj_id id)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
 	arcan_3dmodel* dstobj = vobj->feed.state.ptr;
-	dstobj->flags.complete = true;
 
-	push_deferred(dstobj);
+	if (dstobj->flags.complete == false){
+		dstobj->flags.complete = true;
+		push_deferred(dstobj);
+	}
+
 	return ARCAN_OK;
 }
 
