@@ -193,7 +193,9 @@ static struct {
 	bool (*deserialize)(const void*, size_t);
 	void (*set_ioport)(unsigned, unsigned);
 } retroctx = {
-	.prewake = 4
+	.prewake = 8,
+	.preaudiogen = 1,
+	.skipmode = TARGET_SKIP_AUTO
 #ifdef FRAMESERVER_LIBRETRO_3D
 	,.last_handle = -1
 #endif
@@ -1769,8 +1771,6 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 
 		LOG("setting up resampler, %f => %d.\n",
 			(float)retroctx.avinfo.timing.sample_rate, ARCAN_SHMIF_SAMPLERATE);
-		float resample_scalef = (float) ARCAN_SHMIF_SAMPLERATE /
-			(float)retroctx.avinfo.timing.sample_rate;
 
 		int errc;
 		retroctx.resampler = speex_resampler_init(ARCAN_SHMIF_ACHANNELS,

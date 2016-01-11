@@ -2,6 +2,9 @@
  * Copyright 2003-2016, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
+ * Description: audio management code (just basic buffering, gain, ...)
+ * This is seriously dated and need to be reworked into something notably
+ * cleaner.
  */
 
 #include <stdlib.h>
@@ -28,15 +31,15 @@
 #include "arcan_audioint.h"
 #include "arcan_event.h"
 
-typedef struct {
-/* linked list of audio sources,
- * the number of available sources are platform / hw dependant,
- * ranging between 10-100 or so */
+struct arcan_acontext {
+/* linked list of audio sources, the number of available sources are platform /
+ * hw dependant, ranging between 10-100 or so */
 	arcan_aobj* first;
 	ALCcontext* context;
 	bool al_active;
 
 	arcan_aobj_id lastid;
+	float def_gain;
 
 /* limit on amount of simultaneous active sources */
 	ALuint sample_sources[ARCAN_AUDIO_SLIMIT];
@@ -44,7 +47,7 @@ typedef struct {
 
 	arcan_monafunc_cb globalhook;
 	void* global_hooktag;
-} arcan_acontext;
+};
 
 static bool _wrap_alError(arcan_aobj*, char*);
 static ssize_t find_bufferind(arcan_aobj* cur, unsigned bufnum);
@@ -53,11 +56,13 @@ static ssize_t find_bufferind(arcan_aobj* cur, unsigned bufnum);
 #define CONST_MAX_ASAMPLESZ 1048756
 #endif
 
-/* context management here is quite different from
- * video (no push / pop / etc. openAL volatility alongside
- * hardware buffering problems etc. make it too much of a hazzle */
-static arcan_acontext _current_acontext = {.first = NULL, .context = NULL};
-static arcan_acontext* current_acontext = &_current_acontext;
+/* context management here is quite different from video (no push / pop / etc.
+ * openAL volatility alongside hardware buffering problems etc. make it too
+ * much of a hazzle */
+static struct arcan_acontext _current_acontext = {
+	.first = NULL, .context = NULL, .def_gain = 1.0
+};
+static struct arcan_acontext* current_acontext = &_current_acontext;
 
 static arcan_aobj* arcan_audio_getobj(arcan_aobj_id);
 static arcan_errc arcan_audio_free(arcan_aobj_id);
@@ -205,6 +210,7 @@ static arcan_aobj_id arcan_audio_alloc(arcan_aobj** dst, bool defer)
  * when not feeding to save on IDs */
 	if (!defer){
 		alGenSources(1, &alid);
+		alSourcef(alid, AL_GAIN, current_acontext->def_gain);
 		_wrap_alError(NULL, "audio_alloc(genSources)");
 		if (alid == AL_NONE)
 			return rv;
@@ -214,8 +220,13 @@ static arcan_aobj_id arcan_audio_alloc(arcan_aobj** dst, bool defer)
 		ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 
 	newcell->alid = alid;
+	newcell->gain = current_acontext->def_gain;
 
-	rv = newcell->id = current_acontext->lastid++;
+/* unlikely event of wrap-around */
+	newcell->id = current_acontext->lastid++;
+	if (newcell->id == ARCAN_EID)
+		newcell->id = 1;
+
 	if (dst)
 		*dst = newcell;
 
@@ -229,7 +240,7 @@ static arcan_aobj_id arcan_audio_alloc(arcan_aobj** dst, bool defer)
 	else
 		current_acontext->first = newcell;
 
-	return rv;
+	return newcell->id;
 }
 
 static arcan_aobj* arcan_audio_getobj(arcan_aobj_id id)
@@ -466,8 +477,7 @@ arcan_aobj_id arcan_audio_feed(arcan_afunc_cb feed, void* tag, arcan_errc* errc)
 	return rid;
 }
 
-/* Another workaround to the many "fine" problems
- * experienced with OpenAL .. */
+/* Another workaround to the many "fine" problems experienced with OpenAL .. */
 arcan_errc arcan_audio_rebuild(arcan_aobj_id id)
 {
 	arcan_aobj* aobj = arcan_audio_getobj(id);
@@ -490,6 +500,8 @@ arcan_errc arcan_audio_rebuild(arcan_aobj_id id)
 
 		alDeleteSources(1, &aobj->alid);
 		alGenSources(1, &aobj->alid);
+		alSourcef(aobj->alid, AL_GAIN, aobj->gain);
+
 		_wrap_alError(NULL, "audio_rebuild(recreate)");
 
 		rv = ARCAN_OK;
@@ -602,43 +614,46 @@ static inline void reset_chain(arcan_aobj* dobj)
 
 arcan_errc arcan_audio_setgain(arcan_aobj_id id, float gain, uint16_t time)
 {
-	arcan_aobj* dobj = arcan_audio_getobj(id);
-	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
-
-	if (dobj) {
-		rv = ARCAN_OK;
-
-/* immediately */
-		if (time == 0){
-			reset_chain(dobj);
-			dobj->gain = gain;
-
-			if (dobj->gproxy)
-				dobj->gproxy(dobj->gain, dobj->tag);
-			else if (dobj->alid){
-				alSourcef(dobj->alid, AL_GAIN, gain);
-				_wrap_alError(dobj, "audio_setgain(getSource/source)");
-			}
-			else
-				;
-		}
-		else{
-			struct arcan_achain** dptr = &dobj->transform;
-
-			while(*dptr){
-				dptr = &(*dptr)->next;
-			}
-
-			*dptr = arcan_alloc_mem(sizeof(struct arcan_achain),
-				ARCAN_MEM_ATAG, 0, ARCAN_MEMALIGN_NATURAL);
-
-			(*dptr)->next = NULL;
-			(*dptr)->t_gain = time;
-			(*dptr)->d_gain = gain;
-		}
+	if (id == ARCAN_EID){
+		current_acontext->def_gain = gain;
+		return ARCAN_OK;
 	}
 
-	return rv;
+	arcan_aobj* dobj = arcan_audio_getobj(id);
+
+	if (!dobj)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+
+/* immediately */
+	if (time == 0){
+		reset_chain(dobj);
+		dobj->gain = gain;
+
+		if (dobj->gproxy)
+			dobj->gproxy(dobj->gain, dobj->tag);
+		else if (dobj->alid){
+			alSourcef(dobj->alid, AL_GAIN, gain);
+			_wrap_alError(dobj, "audio_setgain(getSource/source)");
+		}
+		else
+			;
+	}
+	else{
+		struct arcan_achain** dptr = &dobj->transform;
+
+		while(*dptr){
+			dptr = &(*dptr)->next;
+		}
+
+		*dptr = arcan_alloc_mem(sizeof(struct arcan_achain),
+			ARCAN_MEM_ATAG, 0, ARCAN_MEMALIGN_NATURAL);
+
+		(*dptr)->next = NULL;
+		(*dptr)->t_gain = time;
+		(*dptr)->d_gain = gain;
+	}
+
+	return ARCAN_OK;
 }
 
 static ssize_t find_bufferind(arcan_aobj* cur, unsigned bufnum){
@@ -689,6 +704,7 @@ void arcan_audio_buffer(arcan_aobj* aobj, ssize_t buffer, void* audbuf,
 	if (aobj->alid == AL_NONE){
 		alGenSources(1, &aobj->alid);
 		alGenBuffers(aobj->n_streambuf, aobj->streambuf);
+		alSourcef(aobj->alid, AL_GAIN, aobj->gain);
 
 		alSourceQueueBuffers(aobj->alid, 1, &aobj->streambuf[0]);
 		aobj->streambufmask[0] = true;
