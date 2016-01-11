@@ -6,7 +6,7 @@ user interfaces for specialized embedded applications all the way to full-blown
 standalone desktop environments.
 
 At its heart lies a robust and portable multimedia engine, with a well-tested
-and well-documented interface, scriptable using in Lua. The development
+and well-documented Lua scripting interface. The development
 emphasizes security, debuggability and performance -- guided by a principle of
 least surprise in terms of API design.
 
@@ -39,7 +39,8 @@ There are a lot of build options for fine-grained control over your arcan
 build. In this section we will just provide the bare essentials for a build
 on Linux, BSD or OSX (windows can cheat with using the prebuilt installer
 binaries) and you can check out the relevant sections in the wiki for more
-detailed documentation, and for information on specialized build environments.
+detailed documentation on specialized build environments, e.g. an X.org-free
+KMS/DRM. (https://github.com/letoram/arcan.wiki.git)
 
 For starters, the easiest approach is to do the following:
 
