@@ -392,8 +392,10 @@ enum arcan_ffunc_rv arcan_frameserver_emptyframe FFUNC_HEAD
 	return FRV_NOFRAME;
 }
 
-static void check_audb(arcan_frameserver* tgt, struct arcan_shmif_page* shmpage)
+static void check_audb(arcan_frameserver* tgt)
 {
+	struct arcan_shmif_page* shmpage = tgt->shm.ptr;
+
 /* interleave audio / video processing */
 	if (!(shmpage->aready && shmpage->abufused))
 		return;
@@ -451,7 +453,7 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 			goto no_out;
 
 /* use this opportunity to make sure that we treat audio as well */
-		check_audb(tgt, shmpage);
+		check_audb(tgt);
 
 		if (tgt->flags.autoclock && tgt->clock.frame)
 			autoclock_frame(tgt);
@@ -470,6 +472,8 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 	break;
 
 	case FFUNC_RENDER:
+		check_audb(tgt);
+
 		arcan_event_queuetransfer(arcan_event_defaultctx(),
 			&tgt->inqueue, tgt->queue_mask, 0.5, tgt->vid);
 
@@ -482,8 +486,6 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 /* for some connections, we want additional statistics */
 		if (tgt->desc.callback_framestate)
 			emit_deliveredframe(tgt, shmpage->vpts, tgt->desc.framecount++);
-
-		check_audb(tgt, shmpage);
 
 /* interactive frameserver blocks on vsemaphore only,
  * so set monitor flags and wake up */
@@ -801,16 +803,19 @@ arcan_errc arcan_frameserver_audioframe_direct(arcan_aobj* aobj,
 {
 	arcan_errc rv = ARCAN_ERRC_NOTREADY;
 	arcan_frameserver* src = (arcan_frameserver*) tag;
-	if (src->segid == SEGID_UNKNOWN)
+
+	if (buffer == -1 || src->segid == SEGID_UNKNOWN)
 		return rv;
 
-	if (buffer != -1 && src->audb && src->ofs_audb > ARCAN_ASTREAMBUF_LLIMIT){
-/* this function will make sure all monitors etc. gets their chance */
+	if (arcan_frameserver_enter(src)){
+		check_audb(src);
+		arcan_frameserver_leave(src);
+	};
+
+	if (src->audb && src->ofs_audb > ARCAN_ASTREAMBUF_LLIMIT){
 			arcan_audio_buffer(aobj, buffer, src->audb, src->ofs_audb,
 				src->desc.channels, src->desc.samplerate, tag);
-
 		src->ofs_audb = 0;
-
 		rv = ARCAN_OK;
 	}
 

@@ -7,10 +7,13 @@
 -- argument applies a fade from the old gain to the new one, the interpolation used is
 -- undefined and implementation specific.
 -- @note: Any value outside the particular range will be clamped.
--- @note: For the cases where the engine is responsible for pushing the audio to the target device, even a gain of 0.0 will generate data due to some buffering restrictions with underlying APIs.
--- @note: There's a logarithmic distribution applied internally to better mimic the linear appearance used in other sound interfaces.
--- @group: audio
--- @cfunction: gain
+-- @note: AID 0 is reserved for changing the default gain for new sources.
+-- @note: For the cases where the engine is responsible for pushing the audio
+-- to the target device, even a gain of 0.0 will generate data due to some
+-- buffering restrictions with underlying APIs.
+-- @note: There's a logarithmic distribution applied internally to better
+-- mimic the linear appearance used in other sound interfaces.
+-- @group: audio @cfunction: gain
 -- @flags:
 function main()
 	local asrc = load_asample("sample.wav");
