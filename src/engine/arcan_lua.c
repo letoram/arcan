@@ -4919,13 +4919,23 @@ static int kbdrepeat(lua_State* ctx)
 static int v3dorder(lua_State* ctx)
 {
 	LUA_TRACE("video_3dorder");
-	int order = luaL_checknumber(ctx, 1);
+
+	arcan_vobj_id rt = ARCAN_EID;
+	int nargs = lua_gettop(ctx);
+	int order;
+
+	if (nargs == 2){
+		rt = luaL_checkvid(ctx, 1, NULL);
+		order = luaL_checknumber(ctx, 2);
+	}
+	else
+		order = luaL_checknumber(ctx, 1);
 
 	if (order != ORDER3D_FIRST && order != ORDER3D_LAST && order != ORDER3D_NONE)
 		arcan_fatal("3dorder(%d) invalid order specified (%d),"
 			"	expected ORDER_FIRST, ORDER_LAST or ORDER_NONE\n");
 
-	arcan_video_3dorder(order);
+	arcan_video_3dorder(order, rt);
 	LUA_ETRACE("video_3dorder", NULL);
 	return 0;
 }
