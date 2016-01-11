@@ -45,7 +45,7 @@
 -- effects (e.g. shadow mapping).
 --
 -- @note: Using the same object or backing store for *destination* and as
--- a member of *vid_table* results undefined contents in *destination*.
+-- a member of *vid_table* results in undefined contents in *destination*.
 -- @note: RENDERTARGET_SCALE transform factors are not updated when/if the
 -- default canvas is resized.
 -- @note: WORLDID can not be immediately used as part of the *vid table*, but

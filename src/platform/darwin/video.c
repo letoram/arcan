@@ -89,6 +89,7 @@ bool PLATFORM_SYMBOL(_video_init)(uint16_t w, uint16_t h,
 	return true;
 }
 
+size_t platform_nupd;
 void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 	video_synchevent pre, video_synchevent post)
 {
@@ -96,8 +97,7 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 		pre();
 
 #ifndef HEADLESS_NOARCAN
-	size_t nd;
-	arcan_bench_register_cost( arcan_vint_refresh(fract, &nd) );
+	arcan_bench_register_cost( arcan_vint_refresh(fract, &platform_nupd) );
 
 	agp_activate_rendertarget(NULL);
 

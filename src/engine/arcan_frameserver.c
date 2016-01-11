@@ -337,16 +337,16 @@ enum arcan_ffunc_rv arcan_frameserver_nullfeed FFUNC_HEAD
 		default_adoph(tgt, srcid);
 
 	else if (cmd == FFUNC_TICK){
-		if (!arcan_frameserver_control_chld(tgt)){
-			arcan_frameserver_leave();
-			return FRV_NOFRAME;
-		}
-		arcan_event_queuetransfer(arcan_event_defaultctx(), &tgt->inqueue,
-		tgt->queue_mask, 0.5, tgt->vid);
+		if (!arcan_frameserver_control_chld(tgt))
+			goto no_out;
+
+		arcan_event_queuetransfer(arcan_event_defaultctx(),
+			&tgt->inqueue, tgt->queue_mask, 0.5, tgt->vid);
 	}
 	else if (cmd == FFUNC_DESTROY)
 		arcan_frameserver_free(tgt);
 
+no_out:
 	arcan_frameserver_leave();
 	return FRV_NOFRAME;
 }
@@ -420,7 +420,7 @@ static void check_audb(arcan_frameserver* tgt, struct arcan_shmif_page* shmpage)
 
 enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 {
-	int8_t rv = 0;
+	int rv = FRV_NOFRAME;
 	if (state.tag != ARCAN_TAG_FRAMESERV || !state.ptr)
 		return rv;
 
@@ -432,8 +432,7 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 
 	if (tgt->segid == SEGID_UNKNOWN){
 		arcan_frameserver_tick_control(tgt, false);
-		arcan_frameserver_leave();
-		return FRV_NOFRAME;
+		goto no_out;
 	}
 
 	switch (cmd){
@@ -445,12 +444,11 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 	case FFUNC_POLL:
 		if (shmpage->resized){
 			arcan_frameserver_tick_control(tgt, false);
-			shmpage = tgt->shm.ptr;
-
-		if (!shmpage)
-			return FRV_NOFRAME;
+			goto no_out;
 		}
-/* note: OK place to put vpts- enforcement */
+
+		if (tgt->playstate != ARCAN_PLAYING)
+			goto no_out;
 
 /* use this opportunity to make sure that we treat audio as well */
 		check_audb(tgt, shmpage);
@@ -460,8 +458,7 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 
 /* caller uses this hint to determine if a transfer should be
  * initiated or not */
-		rv = (tgt->playstate == ARCAN_PLAYING && shmpage->vready) ?
-			FRV_GOTFRAME : FRV_NOFRAME;
+		rv = tgt->shm.ptr->vready ? FRV_GOTFRAME : FRV_NOFRAME;
 	break;
 
 	case FFUNC_TICK:
@@ -499,6 +496,7 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 	break;
   }
 
+no_out:
 	arcan_frameserver_leave();
 	return rv;
 }
@@ -588,10 +586,8 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe FFUNC_HEAD
 	else if (cmd == FFUNC_TICK){
 /* done differently since we don't care if the frameserver
  * wants to resize segments used for recording */
-		if (!arcan_frameserver_control_chld(src)){
-			arcan_frameserver_leave();
-   		return FRV_NOFRAME;
-		}
+		if (!arcan_frameserver_control_chld(src))
+			goto no_out;
 
 		arcan_event_queuetransfer(arcan_event_defaultctx(), &src->inqueue,
 			src->queue_mask, 0.5, src->vid);
@@ -638,8 +634,9 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe FFUNC_HEAD
 	else
 			;
 
+no_out:
 	arcan_frameserver_leave();
-	return 0;
+	return FRV_NOFRAME;
 }
 
 /* assumptions:
@@ -823,8 +820,8 @@ arcan_errc arcan_frameserver_audioframe_direct(arcan_aobj* aobj,
 void arcan_frameserver_tick_control(arcan_frameserver* src, bool tick)
 {
 	bool fail = true;
-	if (!arcan_frameserver_control_chld(src) ||
-		!src || !src->shm.ptr || !src->shm.ptr->dms)
+	if (!arcan_frameserver_control_chld(src) || !src || !src->shm.ptr ||
+		!src->shm.ptr->dms || src->playstate == ARCAN_PAUSED)
 		goto leave;
 
 /*
@@ -832,8 +829,8 @@ void arcan_frameserver_tick_control(arcan_frameserver* src, bool tick)
  * be filled to half in order to not have a crazy frameserver starve the main
  * process.
  */
-	arcan_event_queuetransfer(arcan_event_defaultctx(), &src->inqueue,
-		src->queue_mask, 0.5, src->vid);
+	arcan_event_queuetransfer(arcan_event_defaultctx(),
+		&src->inqueue, src->queue_mask, 0.5, src->vid);
 
 	if (!src->shm.ptr->resized){
 		fail = false;
@@ -889,6 +886,7 @@ void arcan_frameserver_tick_control(arcan_frameserver* src, bool tick)
 
 /* acknowledge the resize */
 	shmpage->resized = false;
+	arcan_sem_post(src->vsync);
 
 leave:
 	arcan_frameserver_leave();
