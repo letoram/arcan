@@ -3486,8 +3486,9 @@ static void push_displaymodes(lua_State* ctx, platform_display_id id)
 
 static void display_reset(lua_State* ctx, arcan_event* ev)
 {
-/* special handling for LWA receiving DISPLAYHINT to resize, by default we just
- * run the builtin autores that corresponds to resizecanvas */
+/* special handling for LWA receiving DISPLAYHINT to resize or indicate that
+ * the default font has changed. For DISPLAYHINT we default to run the builtin
+ * autores.or a possible override */
 #ifdef ARCAN_LWA
 	if (ev->vid.source == -1){
 		lua_getglobal(ctx, "VRES_AUTORES");
@@ -3500,6 +3501,15 @@ static void display_reset(lua_State* ctx, arcan_event* ev)
 		}
 		return;
 	}
+	else if (ev->vid.source == -2){
+		lua_getglobal(ctx, "VRES_AUTOFONT");
+		if (!lua_isfunction(ctx, -1))
+			lua_pop(ctx, 1);
+		else{
+			lua_pushnumber(ctx, ev->vid.width);
+			wraperr(ctx, lua_pcall(ctx, 1, 0, 0), "event loop: lwa-autofont");
+		}
+	};
 #endif
 
 	if (!grabapplfunction(ctx, "display_state", sizeof("display_state")-1))

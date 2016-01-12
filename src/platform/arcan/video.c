@@ -591,6 +591,12 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
 					arcan_video_defaultfont("arcan-default", newfd,
 						ev.tgt.ioevs[2].iv, ev.tgt.ioevs[3].iv);
 			}
+			arcan_event_enqueue(ctx, &(arcan_event){
+				.category = EVENT_VIDEO,
+				.vid.kind = EVENT_VIDEO_DISPLAY_RESET,
+				.vid.source = -2,
+				.vid.width = ev.tgt.ioevs[2].iv
+			});
 		break;
 
 /*
