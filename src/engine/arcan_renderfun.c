@@ -319,6 +319,7 @@ static char* extract_color(struct text_format* prev, char* base){
 static char* extract_font(struct text_format* prev, char* base){
 	char* fontbase = base, (* numbase), (* orig) = base;
 
+	int relsign = 0;
 /* find fontname vs fontsize separator */
 	while (*base != ',') {
 		if (*base == 0) {
@@ -329,6 +330,15 @@ static char* extract_font(struct text_format* prev, char* base){
 		base++;
 	}
 	*base++ = 0;
+
+	if (*base == '+'){
+		relsign = 1;
+		base++;
+	}
+	else if (*base == '-'){
+		relsign = -1;
+		base++;
+	}
 
 /* fontbase points to full fontname, find the size */
 	numbase = base;
@@ -347,8 +357,8 @@ static char* extract_font(struct text_format* prev, char* base){
 
 	TTF_Font* font = NULL;
 	int font_sz = strtoul(numbase, NULL, 10);
-	if (font_sz <= 0)
-		font_sz = font_cache[0].size;
+	if (relsign != 0 || font_sz == 0)
+		font_sz = font_cache[0].size + relsign * font_sz;
 
 /*
  * use current 'default-font' if just size is provided
