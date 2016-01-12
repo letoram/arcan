@@ -382,11 +382,13 @@ int MAIN_REDIR(int argc, char* argv[])
 	break;
 	case '1' :
 		stdout_redirected = true;
-		if (freopen(optarg, "a", stdout) == NULL);
+		if (freopen(optarg, "a", stdout) == NULL)
+			;
 		break;
 	case '2' :
 		stderr_redirected = true;
-		if (freopen(optarg, "a", stderr) == NULL);
+		if (freopen(optarg, "a", stderr) == NULL)
+			;
 		break;
 
 	default:

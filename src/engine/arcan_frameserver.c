@@ -397,7 +397,7 @@ static void check_audb(arcan_frameserver* tgt)
 	struct arcan_shmif_page* shmpage = tgt->shm.ptr;
 
 /* interleave audio / video processing */
-	if (!(shmpage->aready && shmpage->abufused))
+	if (!shmpage || !(shmpage->aready && shmpage->abufused))
 		return;
 
 	size_t ntc = tgt->ofs_audb + shmpage->abufused > tgt->sz_audb ?

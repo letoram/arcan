@@ -1014,9 +1014,10 @@ void arcan_audio_tick(uint8_t ntt)
 			if (step_transform(current)){
 				if (current->gproxy)
 					current->gproxy(current->gain, current->tag);
-				else
+				else if (current->alid){
 					alSourcef(current->alid, AL_GAIN, current->gain);
-				_wrap_alError(current, "audio_tick(source/gain)");
+					_wrap_alError(current, "audio_tick(source/gain)");
+				}
 			}
 
 			current = current->next;
