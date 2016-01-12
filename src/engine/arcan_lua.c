@@ -5166,6 +5166,7 @@ static int allocsurface(lua_State* ctx)
 	}
 
 	struct storage_info_t* ds = vobj->vstore;
+
 	agp_empty_vstoreext(ds, w, h, noalpha ?
 		(quality < 0 ? VSTORE_HINT_LODEF_NOALPHA :
 	 	quality == 0 ? VSTORE_HINT_NOALPHA : VSTORE_HINT_HIDEF_NOALPHA) :

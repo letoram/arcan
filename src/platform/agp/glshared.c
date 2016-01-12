@@ -164,6 +164,7 @@ void agp_empty_vstore(struct storage_info_t* vs, size_t w, size_t h)
 	);
 	vs->w = w;
 	vs->h = h;
+	vs->bpp = sizeof(av_pixel);
 	vs->txmapped = TXSTATE_TEX2D;
 
 	agp_update_vstore(vs, true);
