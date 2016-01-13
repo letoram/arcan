@@ -416,6 +416,7 @@ set (ARCANDB_SOURCES
 	tools/arcan_dbtool.c
 	engine/arcan_db.c
 	platform/posix/warning.c
+	platform/posix/dbpath.c
 	platform/stub/mem.c
 )
 

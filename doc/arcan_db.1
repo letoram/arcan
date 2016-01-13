@@ -3,7 +3,7 @@
 .SH NAME
 Arcan_db \- Database Support tool for Arcan
 .SH SYNOPSIS
-.B arcan_db dbfile
+.B arcan_db [-d dbfile]
 .RI [COMMAND]
 .B command-specific data
 
@@ -14,7 +14,7 @@ which set of arguments (configuration) that are allowed to be launched
 by an application using Arcan.
 
 .SH COMMAND
-.IP "\fBadd_target\fR \fIname\fR \fIexecutable\fR \fIbfrm\fB \fIargv\fR"
+.IP "\fBadd_target\fR \fIname\fR \fIbfrm\fB \fIexecutable\fR \fIargv\fR"
 Create a new target or update values for a pre-existing ones. The \fIname\fR
 field is a unique identifier that will be used to reference the target from
 within the engine. \fIexecutable\fR should point to the binary, folder or
@@ -105,7 +105,7 @@ be used as a loader, with similar expansion to envv. Libs- list will be ignored.
 
 For \fBRETRO\fR, the fsrv_game frameserver will be used as a chainloader. The
 target executable with be expanded into the core to be run, the first (optional)
-argument aded to the configuration will be the resource to pass on and the
+argument aded to the \fBconfiguration\fR will be the resource to pass on and the
 seocond (also optional) argument defines the system- path.
 
 .SH NOTES
