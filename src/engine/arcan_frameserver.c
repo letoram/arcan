@@ -417,6 +417,7 @@ static void check_audb(arcan_frameserver* tgt)
 	tgt->ofs_audb += ntc;
 	shmpage->abufused = 0;
 	shmpage->aready = false;
+	FORCE_SYNCH();
 	arcan_sem_post( tgt->async );
 }
 
@@ -452,7 +453,8 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 		if (tgt->playstate != ARCAN_PLAYING)
 			goto no_out;
 
-/* use this opportunity to make sure that we treat audio as well */
+/* use this opportunity to make sure that we treat audio as well,
+ * when theres the one there is usually the other */
 		check_audb(tgt);
 
 		if (tgt->flags.autoclock && tgt->clock.frame)
@@ -472,8 +474,6 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 	break;
 
 	case FFUNC_RENDER:
-		check_audb(tgt);
-
 		arcan_event_queuetransfer(arcan_event_defaultctx(),
 			&tgt->inqueue, tgt->queue_mask, 0.5, tgt->vid);
 
@@ -490,7 +490,9 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 /* interactive frameserver blocks on vsemaphore only,
  * so set monitor flags and wake up */
 		shmpage->vready = false;
+		FORCE_SYNCH();
 		arcan_sem_post( tgt->vsync );
+		check_audb(tgt);
 	break;
 
 	case FFUNC_ADOPT:

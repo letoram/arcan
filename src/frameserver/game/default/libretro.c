@@ -98,7 +98,7 @@ static struct {
 
 /* flag for rendering callbacks, should the frame be processed or not */
 	bool skipframe_a, skipframe_v, empty_v;
-	bool pause;
+	bool pause, in_3d;
 	bool hpassing_disabled;
 
 /* miliseconds per frame, 1/fps */
@@ -193,7 +193,7 @@ static struct {
 	bool (*deserialize)(const void*, size_t);
 	void (*set_ioport)(unsigned, unsigned);
 } retroctx = {
-	.prewake = 8,
+	.prewake = 10,
 	.preaudiogen = 1,
 	.skipmode = TARGET_SKIP_AUTO
 #ifdef FRAMESERVER_LIBRETRO_3D
@@ -447,15 +447,14 @@ static void libretro_vidcb(const void* data, unsigned width,
 {
 	testcounter++;
 
-	if (!data) data = RETRO_HW_FRAME_BUFFER_VALID;
-
-	if (!data){
-		retroctx.empty_v = false;
+	if (retroctx.in_3d && !data)
+		;
+	else if (!data || retroctx.skipframe_v){
+		retroctx.empty_v = true;
 		return;
 	}
-
-	if (retroctx.skipframe_v)
-		return;
+	else
+		retroctx.empty_v = false;
 
 /* width / height can be changed without notice, so we have to be ready for the
  * fact that the cost of conversion can suddenly move outside the allowed
@@ -536,6 +535,7 @@ static void do_preaudio()
 	for (int i = 0; i < retroctx.preaudiogen; i++)
 		retroctx.run();
 
+	retroctx.skipframe_v = false;
 	retroctx.aframecount = afc;
 	retroctx.vframecount = vfc;
 }
@@ -590,6 +590,7 @@ static void reset_timing(bool newstate)
 	retroctx.rebasecount++;
 }
 
+static FILE* aout;
 static void libretro_audscb(int16_t left, int16_t right)
 {
 	if (retroctx.skipframe_a)
@@ -1441,6 +1442,7 @@ static inline bool retroctx_sync()
 	long long int next = floor( (double)retroctx.vframecount * retroctx.mspf );
 	int left = next - now;
 
+	printf("%lld vs %lld gives %d\n", now, next, left);
 /* ntpd, settimeofday, wonky OS etc. or some massive stall, disqualify
  * DEBUGSTALL for the normal timing thing */
 	static int checked;
@@ -1465,16 +1467,19 @@ static inline bool retroctx_sync()
 	}
 
 /* since we have to align the transfer with the parent, and it's better to
- * under- than overshoot- a deadline in that respect, prewake
- * tries to compensate lightly for scheduling jitter etc. */
+ * under- than overshoot- a deadline in that respect, prewake tries to
+ * compensate lightly for scheduling jitter etc. */
 	int prewake = retroctx.prewake;
 	if (retroctx.prewake < 0)
-		prewake = retroctx.framecost; /* use last frame cost as an estimate */
+		prewake = retroctx.framecost + abs(prewake);
+/* use last frame cost as an estimate */
 	else if (retroctx.prewake > 0) /* or just a constant number */
 		prewake = retroctx.prewake > retroctx.mspf?retroctx.mspf:retroctx.prewake;
 
-	if (left > prewake )
+	if (prewake && left > prewake ){
 		arcan_timesleep( left - prewake );
+		printf("sleep %d\n", (int) left-prewake);
+	}
 
 	return true;
 }
@@ -1522,6 +1527,7 @@ static void setup_3dcore(struct retro_hw_render_callback* ctx)
 	}
 
 	agp_init();
+	retroctx.in_3d = true;
 
 #ifdef FRAMSESERVER_LIBRETRO_3D_RETEXTURE
 	exit(1); /* not ready */
@@ -1884,14 +1890,16 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 			retroctx.skipframe_a = false;
 			retroctx.skipframe_v = !retroctx_sync();
 
-			int maskv = (lastskip ? SHMIF_SIGBLK_NONE : 0) |
+/* don't lock on parent synch if we are dragging behind */
+			int maskv = (0 * lastskip * SHMIF_SIGBLK_NONE) |
 				(retroctx.empty_v ? 0 : SHMIF_SIGVID);
 
 /* possible to add a size lower limit here to maintain a larger
  * resampling buffer than synched to videoframe */
-			if (retroctx.audbuf_ofs){
+			if (retroctx.audbuf_ofs && !retroctx.shmcont.addr->abufused){
 				spx_uint32_t outc = ARCAN_SHMIF_AUDIOBUF_SZ >> 2;
 /*first number of bytes, then after process..., number of samples */
+
 				spx_uint32_t nsamp = retroctx.audbuf_ofs >> 1;
 				speex_resampler_process_interleaved_int(retroctx.resampler,
 					(const spx_int16_t*) retroctx.audbuf, &nsamp,
@@ -1900,10 +1908,13 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 					if (outc)
 						retroctx.shmcont.addr->abufused += outc *
 							ARCAN_SHMIF_ACHANNELS * sizeof(uint16_t);
+
 				retroctx.audbuf_ofs = 0;
 			}
 
-			if (retroctx.shmcont.addr->abufused)
+/* other option here is to synch even without video, or let audio buffer
+ * internally until we have video or won't block */
+			if (retroctx.shmcont.addr->abufused && maskv > 0)
 				maskv |= SHMIF_SIGAUD;
 
 /* Possibly overlay as much tracking / debugging data we can muster */
