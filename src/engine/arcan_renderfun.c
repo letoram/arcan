@@ -120,8 +120,18 @@ static TTF_Font* grab_font(const char* fname, uint8_t size)
 /* empty identifier - use default (slot 0) */
 	if (!fname){
 		fname = font_cache[0].identifier;
+
 		if (!fname)
 			return NULL;
+	}
+/* special case, set default slot to loaded font */
+	else if (!font_cache[0].identifier){
+		int fd = open(fname, O_RDONLY);
+		if (BADFD == fd)
+			return NULL;
+
+		if (!arcan_video_defaultfont(fname, fd, size, 2))
+			close(fd);
 	}
 
 /* match / track */
@@ -602,14 +612,24 @@ reset:
 	last_style.font = font_cache[0].data;
 }
 
+static struct rcell* trystep(struct rcell* cnode, bool force)
+{
+	if (force || cnode->surface)
+	cnode = cnode->next = arcan_alloc_mem(sizeof(struct rcell),
+		ARCAN_MEM_VSTRUCT, ARCAN_MEM_TEMPORARY | ARCAN_MEM_BZERO,
+		ARCAN_MEMALIGN_NATURAL
+	);
+	return cnode;
+}
+
 /* a */
 static int build_textchain(char* message, struct rcell* root,
 	bool sizeonly, bool nolast)
 {
 	int rv = 0;
 	struct text_format* curr_style = &last_style;
-	curr_style->col.r = curr_style->col.g = curr_style->col.b = 0xff;
-	curr_style->style = 0;
+/* curr_style->col.r = curr_style->col.g = curr_style->col.b = 0xff;
+	curr_style->style = 0; */
 
 	struct rcell* cnode = root;
 	char* current = message;
@@ -638,10 +658,7 @@ static int build_textchain(char* message, struct rcell* root,
 					}
 
 /* slide- alloc list of rendered blocks */
-					cnode = cnode->next =
-						arcan_alloc_mem(sizeof(struct rcell), ARCAN_MEM_VSTRUCT,
-							ARCAN_MEM_TEMPORARY | ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
-
+					cnode = trystep(cnode, false);
 					*current = '\\';
 				}
 
@@ -654,25 +671,17 @@ static int build_textchain(char* message, struct rcell* root,
 /* caret modifiers need to be separately chained to avoid (three?) nasty
  * little edge conditions */
 				if (curr_style->newline || curr_style->tab || curr_style->cr) {
-					cnode->surface = false;
+					cnode = trystep(cnode, false);
 					rv += curr_style->newline;
 					cnode->data.format.newline = curr_style->newline;
 					cnode->data.format.tab = curr_style->tab;
 					cnode->data.format.cr = curr_style->cr;
-					cnode = cnode->next =
-						arcan_alloc_mem(sizeof(struct rcell), ARCAN_MEM_VSTRUCT,
-							ARCAN_MEM_TEMPORARY | ARCAN_MEM_BZERO,
-							ARCAN_MEMALIGN_NATURAL
-						);
+					cnode = trystep(cnode, true);
 				}
 
 				if (curr_style->image){
 					currstyle_cnode(curr_style, base, cnode, sizeonly);
-					cnode = cnode->next =
-						arcan_alloc_mem(sizeof(struct rcell), ARCAN_MEM_VSTRUCT,
-							ARCAN_MEM_TEMPORARY | ARCAN_MEM_BZERO,
-							ARCAN_MEMALIGN_NATURAL
-					);
+					cnode = trystep(cnode, false);
 				}
 
 				current = base = curr_style->endofs;
@@ -708,12 +717,7 @@ static int build_textchain(char* message, struct rcell* root,
 
 /* special handling needed for longer append chains */
 	if (!nolast){
-		cnode = cnode->next = arcan_alloc_mem(
-			sizeof(struct rcell), ARCAN_MEM_VSTRUCT,
-			ARCAN_MEM_TEMPORARY | ARCAN_MEM_BZERO,
-			ARCAN_MEMALIGN_NATURAL
-		);
-
+		cnode = trystep(cnode, true);
 		cnode->data.format.newline = 1;
 		rv++;
 	}
@@ -959,12 +963,11 @@ av_pixel* arcan_renderfun_renderfmtstr_extended(const char** msgarray,
 		}
 /* %2+1, no format-string input, just treat as text */
 		else{
-			struct rcell* cnode = arcan_alloc_mem(sizeof(struct rcell),
+			cur = cur->next = arcan_alloc_mem(sizeof(struct rcell),
 				ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO | ARCAN_MEM_TEMPORARY,
 				ARCAN_MEMALIGN_NATURAL
 			);
-			cur = cur->next = cnode;
-			currstyle_cnode(&last_style, msgarray[ind], cnode, false);
+			currstyle_cnode(&last_style, msgarray[ind], cur, false);
 		}
 		ind++;
 	}
