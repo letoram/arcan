@@ -43,6 +43,7 @@ set (ARCAN_PLATFORM
 	${PLATFORM_PATH}/resource_io.c
 	${PLATFORM_PATH}/strip_traverse.c
 	${PLATFORM_PATH}/paths.c
+	${PLATFORM_PATH}/dbpath.c
 	${PLATFORM_PATH}/base64.c
 	${PLATFORM_PATH}/sem.c
 	${PLATFORM_PATH}/fsrv_guard.c

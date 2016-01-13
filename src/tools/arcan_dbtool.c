@@ -20,12 +20,13 @@
 #include "../frameserver/util/utf8.c"
 
 void arcan_warning(const char*, ...);
+char* platform_dbstore_path();
 
 static void usage()
 {
-printf("usage: arcan_db dbfile command args\n\n"
+	printf("usage: arcan_db [-b dbfile] command args\n\n"
 	"Available data creation / manipulation commands: \n"
-	"  add_target      \tname executable bfrm argv\n"
+	"  add_target      \tname bfrm executable argv\n"
 	"  add_target_kv   \ttarget name key value\n"
 	"  add_target_env  \ttarget name key value\n"
 	"  add_target_lib  \ttarget name libstr\n"
@@ -77,23 +78,23 @@ static int add_target(struct arcan_dbh* dst, int argc, char** argv)
 	enum DB_BFORMAT bfmt;
 
 	if (argc < 3){
-		printf("add_target(name executable bfmt argv) unexpected "
+		printf("add_target(name bfmt executable argv) unexpected "
 			"number of arguments, (%d) vs 3+.\n", argc);
 
 		return EXIT_FAILURE;
 	}
 
-	if (strcmp(argv[2], "BIN") == 0)
+	if (strcmp(argv[1], "BIN") == 0)
 		bfmt = BFRM_BIN;
-	else if (strcmp(argv[2], "LWA") == 0)
+	else if (strcmp(argv[1], "LWA") == 0)
 		bfmt = BFRM_LWA;
-	else if (strcmp(argv[2], "RETRO") == 0)
+	else if (strcmp(argv[1], "RETRO") == 0)
 		bfmt = BFRM_RETRO;
-	else if (strcmp(argv[2], "EXTERN") == 0)
+	else if (strcmp(argv[1], "EXTERN") == 0)
 		bfmt = BFRM_EXTERN;
 	else {
-		printf("add_target(name executable bfmt argv) unknown bfmt specified, "
-			" accepted (BIN, LWA, RETRO).\n");
+		printf("add_target(name executable bfmt argv) unknown bfmt (%s) specified,"
+			" accepted (BIN, LWA, RETRO).\n", argv[1]);
 
 		return EXIT_FAILURE;
 	}
@@ -104,7 +105,7 @@ static int add_target(struct arcan_dbh* dst, int argc, char** argv)
 	}
 
 	arcan_targetid tid = arcan_db_addtarget(
-		dst, argv[0], argv[1], (const char**) &argv[3], argc - 3, bfmt);
+		dst, argv[0], argv[2], (const char**) &argv[3], argc - 3, bfmt);
 
 	if (tid == BAD_TARGET){
 		printf("couldn't add target (%s)\n", argv[0]);
@@ -625,27 +626,30 @@ int main(int argc, char* argv[])
 		return EXIT_FAILURE;
 	}
 
-	for (int i = 0; i < sizeof(dispatch)/sizeof(dispatch[0]); i++)
-		if (strcmp(argv[1], dispatch[i].key) == 0){
-			arcan_warning("got command (%s) in database filename slot\n");
-			usage();
-			return EXIT_FAILURE;
+	char* dbfile = NULL;
+	int startind = 1;
+
+	if (strcmp(argv[1], "-b") == 0){
+		for (int i = 0; i < sizeof(dispatch)/sizeof(dispatch[0]); i++)
+			if (strcmp(argv[2], dispatch[i].key) == 0){
+				arcan_warning("got command (%s) in database filename slot\n");
+				usage();
+				return EXIT_FAILURE;
 		}
 
-	struct arcan_dbh* dbhandle = arcan_db_open(argv[1], "arcan");
+		dbfile = argv[2];
+		startind = 3;
+	}
+	else
+		dbfile = platform_dbstore_path();
+
+	struct arcan_dbh* dbhandle = arcan_db_open(dbfile, "arcan");
 	if (!dbhandle){
-		arcan_warning("database (%s) not found, creating.\n", argv[1]);
-		FILE* fpek = fopen(argv[1], "w+");
-		if (fpek)
-			fclose(fpek);
-		dbhandle = arcan_db_open(argv[1], "arcan");
-		if (!dbhandle){
-			arcan_warning("couldn't create database (%s).\n", argv[1]);
-			return EXIT_FAILURE;
-		}
+		arcan_warning("database (%s) could not be opened/created.\n", dbfile);
+		return EXIT_FAILURE;
 	}
 
-	if (strcmp(argv[2], "-") == 0){
+	if (strcmp(argv[startind], "-") == 0){
 		char* inbuf = NULL;
 		size_t bufsz = 0, bufofs = 0;
 		inbuf = grow(inbuf, &bufsz);
@@ -685,8 +689,8 @@ int main(int argc, char* argv[])
 	}
 
 	for (size_t i=0; i < sizeof(dispatch) / sizeof(dispatch[0]); i++)
-		if (strcmp(dispatch[i].key, argv[2]) == 0){
-			int rc = dispatch[i].fun(dbhandle, argc-3, &argv[3]);
+		if (strcmp(dispatch[i].key, argv[startind]) == 0){
+			int rc = dispatch[i].fun(dbhandle, argc-startind-1, &argv[startind+1]);
 			arcan_db_close(&dbhandle);
 			return rc;
 		}
