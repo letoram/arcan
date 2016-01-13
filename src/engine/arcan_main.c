@@ -108,6 +108,35 @@ static const struct option longopts[] = {
 	{ NULL,           no_argument,       NULL,  0 }
 };
 
+static void vplatform_usage()
+{
+	const char** cur = platform_video_envopts();
+	if (*cur){
+	printf("Video platform environment variables:\n");
+	while(1){
+		const char* a = *cur++;
+		if (!a) break;
+		const char* b = *cur++;
+		if (!b) break;
+		printf("\t%s - %s\n", a, b);
+	}
+	printf("\n");
+	}
+
+	cur = agp_envopts();
+	if (*cur){
+	printf("AGP environment variables:\n");
+	while(1){
+		const char* a = *cur++;
+		if (!a) break;
+		const char* b = *cur++;
+		if (!b) break;
+		printf("\t%s - %s\n", a, b);
+	}
+	printf("\n");
+	}
+}
+
 static void usage()
 {
 printf("Usage: arcan [-whfmWMOqspBtHbdgaSV] applname "
@@ -150,31 +179,7 @@ printf("Usage: arcan [-whfmWMOqspBtHbdgaSV] applname "
 	printf("\n");
 	}
 
-	cur = platform_video_envopts();
-	if (*cur){
-	printf("Video platform environment variables:\n");
-	while(1){
-		const char* a = *cur++;
-		if (!a) break;
-		const char* b = *cur++;
-		if (!b) break;
-		printf("\t%s - %s\n", a, b);
-	}
-	printf("\n");
-	}
-
-	cur = agp_envopts();
-	if (*cur){
-	printf("AGP environment variables:\n");
-	while(1){
-		const char* a = *cur++;
-		if (!a) break;
-		const char* b = *cur++;
-		if (!b) break;
-		printf("\t%s - %s\n", a, b);
-	}
-	printf("\n");
-	}
+	vplatform_usage();
 
 /* built-in envopts for _event.c */
 	printf("Input platform environment variables:\n");
@@ -501,45 +506,19 @@ int MAIN_REDIR(int argc, char* argv[])
 	}
 #endif
 
-/*
- * try to open the specified database,
- * if that fails, warn, try to create an empty
- * database and if that fails, give up.
- */
-	if (!dbfname)
-		dbfname = arcan_expand_resource("arcandb.sqlite", RESOURCE_APPL_SHARED);
+/* fallback to whatever is the platform database- storepath */
+	if (dbfname || (dbfname = platform_dbstore_path()))
+		dbhandle = arcan_db_open(dbfname, arcan_appl_id());
 
-	dbhandle = arcan_db_open(dbfname, arcan_appl_id());
+	if (!dbhandle){
+		arcan_warning("Couldn't open/create database (%s), "
+			"fallback to :memory:\n", dbfname);
+		dbhandle = arcan_db_open(":memory:", arcan_appl_id());
+	}
 
-	if (!dbhandle) {
-		arcan_warning("Couldn't open database (requested: %s),"
-			"trying to create a new one.\n", dbfname);
-		FILE* fpek = fopen(dbfname, "w+");
-
-/* case of non-write:able dbpath */
-		if (!fpek){
-			arcan_mem_free(dbfname);
-			dbfname = arcan_expand_resource("arcandb.sqlite", RESOURCE_APPL_TEMP);
-			if (!dbfname)
-				goto error;
-
-			fpek = fopen(dbfname, "w+");
-		}
-
-		if (fpek){
-			fclose(fpek);
-			dbhandle = arcan_db_open(dbfname, arcan_appl_id());
-		}
-
-		if (!dbhandle){
-			arcan_warning("Couldn't create database, using in-mem fallback\n");
-			dbhandle = arcan_db_open(":memory:", arcan_appl_id());
-		}
-
-		if (!dbhandle){
-			arcan_warning("In memory db fallback failed, giving up\n");
-			goto error;
-		}
+	if (!dbhandle){
+		arcan_warning("In memory db fallback failed, giving up\n");
+		goto error;
 	}
 
 /* either use previous explicit dimensions (if found and cached)
@@ -582,8 +561,10 @@ int MAIN_REDIR(int argc, char* argv[])
 /* grab video, (necessary) */
 	if (arcan_video_init(width, height, 32, fullscreen, windowed,
 		conservative, arcan_appl_id()) != ARCAN_OK){
-		arcan_fatal("Error; Couldn't initialize video system,"
-			"try other windowing options (-f, -w, ...)\n");
+		printf("Error: couldn't initialize video subsystem. Check permissions, "
+			" try other video platform options (-f, -w, -h)\n");
+		vplatform_usage();
+		arcan_fatal("Video platform initialization failed\n");
 	}
 
 /* defined in warning.c for arcan_fatal, we avoid the use of an
