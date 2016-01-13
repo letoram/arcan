@@ -939,7 +939,8 @@ struct arcan_dbh* arcan_db_open(const char* fname, const char* applname)
 	if (!applname)
 		applname = "_default";
 
-	if (sqlite3_open_v2(fname, &dbh, SQLITE_OPEN_READWRITE, NULL) == SQLITE_OK){
+	if (sqlite3_open_v2(fname, &dbh,
+		SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL) == SQLITE_OK){
 		struct arcan_dbh* res = arcan_alloc_mem(
 			sizeof(struct arcan_dbh), ARCAN_MEM_EXTSTRUCT,
 			ARCAN_MEM_SENSITIVE | ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE

@@ -216,6 +216,26 @@ static char* unix_find(const char* fname)
 	return res;
 }
 
+char* platform_dbstore_path()
+{
+	char* out = NULL;
+	char* homedir = getenv("HOME");
+	size_t len;
+
+	if (homedir && (len = strlen(homedir))){
+		char dirbuf[len + sizeof("/.arcan")];
+		snprintf(dirbuf, sizeof(dirbuf), "%s/.arcan", homedir);
+
+/* ensure it exists, ignore EEXIST */
+		mkdir(dirbuf, S_IRWXU);
+		char fbuf[sizeof(dirbuf) + sizeof("/arcan.sqlite")];
+		snprintf(fbuf, sizeof(fbuf), "%s/.arcan/arcan.sqlite", homedir);
+		return strdup(fbuf);
+	}
+
+	return NULL;
+}
+
 /*
  * This is set-up to mimic the behavior of previous arcan
  * version as much as possible. For other, more controlled settings,

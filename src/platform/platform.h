@@ -167,6 +167,12 @@ arcan_errc platform_event_analogstate(int devid, int axisid,
 	int* kernel_size, enum ARCAN_ANALOGFILTER_KIND* mode);
 
 /*
+ * returns a [caller-managed COPY] of a OS- specific safe (read/writeable) path
+ * to the database to use unless one has been provided at the command-line.
+ */
+char* platform_dbstore_path();
+
+/*
  * poll / flush all incoming platform input event into specified context.
  */
 void platform_event_process(struct arcan_evctx* ctx);
