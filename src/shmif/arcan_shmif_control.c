@@ -1040,26 +1040,31 @@ void arcan_shmif_signal(struct arcan_shmif_cont* ctx, int mask)
 		mask = priv->audio_hook(ctx);
 
 	if ( (mask & SHMIF_SIGVID) && !(mask & SHMIF_SIGAUD)){
-		FORCE_SYNCH();
 		ctx->addr->vready = true;
+		FORCE_SYNCH();
 
 		if (!(mask & (SHMIF_SIGBLK_NONE | SHMIF_SIGBLK_ONCE)))
 			arcan_sem_wait(ctx->vsem);
 	}
 	else if ( (mask & SHMIF_SIGAUD) && !(mask & SHMIF_SIGVID)){
-		FORCE_SYNCH();
 		ctx->addr->aready = true;
+		FORCE_SYNCH();
+
+		if (mask & SHMIF_SIGAUD &&
+			!(mask & (SHMIF_SIGBLK_NONE | SHMIF_SIGBLK_ONCE)))
 		arcan_sem_wait(ctx->asem);
 	}
 	else if (mask & (SHMIF_SIGVID | SHMIF_SIGAUD)){
-		FORCE_SYNCH();
 		ctx->addr->vready = true;
+
 		if (ctx->addr->abufused > 0){
 			ctx->addr->aready = true;
+			FORCE_SYNCH();
 			if (!(mask & (SHMIF_SIGBLK_NONE | SHMIF_SIGBLK_ONCE)))
 				arcan_sem_wait(ctx->asem);
 		}
 
+		FORCE_SYNCH();
 		if (!(mask & (SHMIF_SIGBLK_NONE | SHMIF_SIGBLK_ONCE)))
 			arcan_sem_wait(ctx->vsem);
 	}
