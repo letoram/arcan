@@ -59,15 +59,20 @@ av_pixel* arcan_renderfun_renderfmtstr_extended(const char** message,
 );
 
 /*
- * Set the default font that will be used for format strings
- * that do not explicitly say which font to use. 'ident' is
- * some unique- non filesystem-valid string 'fd' is an open
- * file-handle to a supported font file, sz the default size
- * and hint is: 0 - no anti-aliasing, 1 - light any other
- * value - truetype default
+ * Set the default font that will be used for format strings that do not
+ * explicitly say which font to use. 'ident' is some unique- non
+ * filesystem-valid string 'fd' is an open file-handle to a supported font
+ * file, sz the default size and hint is: 0 - no anti-aliasing, 1 - light any
+ * other value - truetype default
  */
 bool arcan_video_defaultfont(const char* ident,
-	file_handle fd, size_t sz, int hint);
+	file_handle fd, int sz, int hint);
+
+/*
+ * Retrieve the current font defaults for the fields that have their value
+ * set to the correct type (NULL ignored)
+ */
+void arcan_video_fontdefaults(file_handle* fd, int* pt_sz, int* hint);
 
 /*
  * Shouldn't need to be called outside debugging /troubleshooting purposes.

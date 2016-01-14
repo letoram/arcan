@@ -136,6 +136,12 @@ static const int ARCAN_SHMPAGE_MAXH = PP_SHMPAGE_MAXH;
 #define ARCAN_SHMPAGE_VCHANNELS 4
 #endif
 
+#ifndef ARCAN_SHMPAGE_DEFAULT_PPCM
+#define ARCAN_SHMPAGE_DEFAULT_PPCM 28.34
+#endif
+
+static const float shmif_ppcm_default = ARCAN_SHMPAGE_DEFAULT_PPCM;
+
 typedef VIDEO_PIXEL_TYPE shmif_pixel;
 #ifndef SHMIF_RGBA
 #define SHMIF_RGBA(r, g, b, a)( ((uint32_t)(a) << 24) | ((uint32_t) (b) << 16)\

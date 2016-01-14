@@ -65,6 +65,7 @@ struct display {
 	bool mapped;
 	enum dpms_state dpms;
 	struct storage_info_t* vstore;
+	float ppcm;
 } disp[MAX_DISPLAYS];
 
 static struct arg_arr* shmarg;
@@ -106,6 +107,7 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 /* disp[0] always start out mapped / enabled and we'll use the
  * current world unless overridden */
 		disp[0].mapped = true;
+		disp[0].ppcm = ARCAN_SHMPAGE_DEFAULT_PPCM;
 		first_init = false;
 	}
 	else {
@@ -567,9 +569,9 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
 		break;
 
 /*
- * We can't automatically resize as the layouting in the running
- * appl may not be able to handle relayouting in an event-driven
- * manner, so we translate and forward as a monitor event.
+ * We can't automatically resize as the layouting in the running appl may not
+ * be able to handle relayouting in an event-driven manner, so we translate and
+ * forward as a monitor event.
  */
 		case TARGET_COMMAND_DISPLAYHINT:
 				arcan_event_enqueue(ctx, &(arcan_event) {
@@ -577,34 +579,49 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
 					.vid.kind = EVENT_VIDEO_DISPLAY_RESET,
 					.vid.source = -1,
 					.vid.width = ev.tgt.ioevs[0].iv,
-					.vid.height = ev.tgt.ioevs[1].iv
+					.vid.height = ev.tgt.ioevs[1].iv,
+					.vid.vppcm = ev.tgt.ioevs[4].fv,
 				});
+
+/*
+ * If the density has changed, grab the current standard font size
+ * and convert to mm to get the scaling factor, apply and update default
+ */
+				if (ev.tgt.ioevs[4].fv > 0){
+					int font_sz;
+					int hint;
+					arcan_video_fontdefaults(NULL, &font_sz, &hint);
+					float sf = ev.tgt.ioevs[4].fv / d->ppcm;
+					arcan_video_defaultfont("arcan-default",
+						BADFD, (float)font_sz * sf, hint);
+					d->ppcm = ev.tgt.ioevs[4].fv;
+				}
 		break;
 /*
  * This behavior may be a bit strong, but we allow the display server
  * to override the default font (if provided)
  */
-		case TARGET_COMMAND_FONTHINT:
-			if (ev.tgt.ioevs[0].iv == 1 && BADFD != ev.tgt.ioevs[0].iv){
-				int newfd = dup(ev.tgt.ioevs[0].iv);
-				if (BADFD != newfd)
-					arcan_video_defaultfont("arcan-default", newfd,
-						ev.tgt.ioevs[2].iv, ev.tgt.ioevs[3].iv);
-			}
+		case TARGET_COMMAND_FONTHINT:{
+			int newfd = BADFD;
+			int font_sz = 0;
+			int hint = ev.tgt.ioevs[3].iv;
+
+			if (ev.tgt.ioevs[1].iv == 1 && BADFD != ev.tgt.ioevs[0].iv){
+				newfd = dup(ev.tgt.ioevs[0].iv);
+			};
+
+			if (ev.tgt.ioevs[2].fv > 0)
+				font_sz = ceilf(d->ppcm * ev.tgt.ioevs[2].fv);
+			arcan_video_defaultfont("arcan-default", BADFD, font_sz, hint);
+
 			arcan_event_enqueue(ctx, &(arcan_event){
 				.category = EVENT_VIDEO,
 				.vid.kind = EVENT_VIDEO_DISPLAY_RESET,
 				.vid.source = -2,
-				.vid.width = ev.tgt.ioevs[2].iv
+				.vid.vppcm = ev.tgt.ioevs[2].fv,
+				.vid.width = ev.tgt.ioevs[3].iv
 			});
-		break;
-
-/*
- * These will not actually be received as we can let the ashmif
- * library automatically handle suspend/resume
- */
-		case TARGET_COMMAND_PAUSE:
-		case TARGET_COMMAND_UNPAUSE:
+		}
 		break;
 
 		case TARGET_COMMAND_BUFFER_FAIL:
@@ -612,7 +629,9 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
 		break;
 
 /*
- * Could be used with the switch appl- feature.
+ * Could be used with the switch appl- feature as a fallback / adopt
+ * to self. Good test-case for state management would be full appl
+ * migrationo (say 0.6).
  */
 		case TARGET_COMMAND_RESET:
 		break;

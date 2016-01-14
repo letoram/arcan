@@ -366,7 +366,7 @@ agp_shader_id agp_shader_build(const char* tag, const char* geom,
 	cur->vertex   = strdup(vert);
 	cur->fragment = strdup(frag);
 
-#ifdef _DEBUG
+#ifdef SHADER_DEBUG
 	arcan_warning("agp_shader_build(%s) -- new ID : (%i)\n",
 		tag, cur->prg_container);
 #endif
@@ -376,7 +376,7 @@ agp_shader_id agp_shader_build(const char* tag, const char* geom,
 	for (size_t i = 0; i < global_lim; i++){
 		assert(symtbl[i] != NULL);
 		cur->locations[i] = glGetUniformLocation(cur->prg_container, symtbl[i]);
-#ifdef _DEBUG
+#ifdef SHADER_DEBUG
 		if(cur->locations[i] != -1)
 				arcan_warning("agp_shader_build(%s)(%d), "
 				"resolving uniform: %s to %i\n", tag, i, symtbl[i], cur->locations[i]);
@@ -386,7 +386,7 @@ agp_shader_id agp_shader_build(const char* tag, const char* geom,
 /* same treatment for attributes */
 	for (size_t i = 0; i < sizeof(attrsymtbl) / sizeof(attrsymtbl[0]); i++){
 		cur->attributes[i] = glGetAttribLocation(cur->prg_container, attrsymtbl[i]);
-#ifdef _DEBUG
+#ifdef SHADER_DEBUG
 	if (cur->attributes[i] != -1)
 		arcan_warning("agp_shader_build(%s)(%d), "
 			"resolving attribute: %s to %i\n", tag,
