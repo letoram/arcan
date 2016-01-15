@@ -242,9 +242,11 @@ enum ARCAN_TARGET_COMMAND {
 	TARGET_COMMAND_RESET,
 
 /*
- * Suspend operations, only _EXIT, _PAUSE and _UNPAUSE should be valid events
- * in this state. Indicates that the server does not want the client to consume
- * any system- resources.  Will be sent at user request or as part of
+ * Suspend operations, _EXIT, _PAUSE, _UNPAUSE, _DISPLAYHINT, _FONTHINT should
+ * be valid events in this state. If state management is left to the backend
+ * shmif implementation, the latest DISPLAYHINT, FONTHINT will be queued and
+ * appear on UNPAUSE. Indicates that the server does not want the client to
+ * consume any system- resources. Will be sent at user request or as part of
  * power-save.
  */
 	TARGET_COMMAND_PAUSE,
@@ -267,22 +269,27 @@ enum ARCAN_TARGET_COMMAND {
  */
 	TARGET_COMMAND_SEEKCONTENT,
 
-/*
- * A hint in regards to the currently displayed dimensions.  It is up to the
- * program running on the server to decide how much internal resolution that it
- * is recommended for the client to use. When the visible image resolution
- * deviates a lot from the internal resolution of the client, this event can
- * appear as a friendly suggestion to resize.
- * The continued field may be set to !0 indicating that there will be more
- * resize events shortly.
- * The 3/4 slots, if set, indicates the physical properties of the display
- * currently in use.
+/* [UNIQUE]
+ * This event hints towards current display properties or desired display
+ * properties.
+ *
+ * Changes in width / height from the current segment size is
+ * a hint to call shmif_resize if the client can handle drawing in different
+ * resolutions without unecessary scaling.
+ *
+ * Changes to the hintflag indicate more abstract states: e.g.
+ * more displayhint events to come shortly, segment not being used or shown,
+ * etc.
+ *
+ * Changes to the RGB layout or the density are hints to improve rendering
+ * quality in regard to a physical display (having things displayed at a
+ * known physical size and layout)
+ *
  * ioevs[0].iv = width,
  * ioevs[1].iv = height,
- * ioevs[2].iv = bitmask hintflags:
- *  1: continued,
+ * ioevs[2].iv = bitmask hintflags: 1: drag resize, 2: invisible, 4: unfocused
  * ioevs[3].iv = RGB layout (0 RGB, 1 BGR, 2 VRGB, 3 VBGR)
- * ioevs[4].fv = ppmm (pixels per milimeter, square assumed)
+ * ioevs[4].fv = ppcm (pixels per centimeter, square assumed), < 0 ignored.
  */
 	TARGET_COMMAND_DISPLAYHINT,
 
@@ -386,7 +393,7 @@ enum ARCAN_TARGET_COMMAND {
  * ioev[1].iv = type describing font in [0]:
  *  0 : default, off
  *  1 : TTF ( True Type ), other values are invalid/reserved for now.
- * ioev[2].iv = desired normal font size in mm
+ * ioev[2].fv = desired normal font size in mm, <= 0, unchanged from current
  * ioev[3].iv = hinting,
  *  -1 (unchanged), 0: off, 1..16 (implementation defined, recommendation
  *  is to range from light to strong). DISPLAYHINT should also be considered
@@ -795,6 +802,7 @@ typedef struct {
 		struct {
 			int16_t width;
 			int16_t height;
+			float vppcm;
 		};
 		int slot;
 	};

@@ -497,6 +497,10 @@ TTF_Font* TTF_OpenFontFD(int fd, int ptsize)
 		return NULL;
 	}
 
+/* because dup doesn't give us a copy of file position, the reset of _ttf will
+ * handle this though by ft_read being explicit about position (but not
+ * thread-safe) */
+	fseek(fstream, SEEK_SET, 0);
 	TTF_Font* res = TTF_OpenFontIndexRW(fstream, 1, ptsize, 0);
 
 	if (!res)

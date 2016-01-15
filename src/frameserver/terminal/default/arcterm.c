@@ -93,6 +93,7 @@ struct {
 	int font_fd;
 	int hint;
 	size_t font_sz;
+	float ppcm;
 #endif
 	bool dirty, mute;
 
@@ -144,6 +145,7 @@ struct {
 	.ccol = SHMIF_RGBA(0x00, 0xaa, 0x00, 0xff),
 #ifdef TTF_SUPPORT
 	.font_fd = BADFD,
+	.ppcm = ARCAN_SHMPAGE_DEFAULT_PPCM,
 	.hint = TTF_HINTING_NONE
 #endif
 };
@@ -358,7 +360,7 @@ static void update_screen(bool redraw)
 	term.age = tsm_screen_draw(term.screen, draw_cb, NULL /* draw_cb_data */);
 }
 
-static void update_screensize()
+static void update_screensize(bool clear)
 {
 /*
  * commented out approach seem to have led to some edge case
@@ -388,11 +390,13 @@ static void update_screensize()
 	}
 
 /* possibly need to check flags and attr for cell */
-	shmif_pixel col = term.alpha < 0xff ?
-		SHMIF_RGBA(0, 0, 0, term.alpha) : SHMIF_RGBA(term.bgc[0],
-			term.bgc[1], term.bgc[2], 0xff);
+	if (clear){
+		shmif_pixel col = term.alpha < 0xff ?
+			SHMIF_RGBA(0, 0, 0, term.alpha) : SHMIF_RGBA(term.bgc[0],
+				term.bgc[1], term.bgc[2], 0xff);
 
-	draw_box(&term.acon, 0, 0, term.acon.w, term.acon.h, col);
+		draw_box(&term.acon, 0, 0, term.acon.w, term.acon.h, col);
+	}
 
 /*
 	if (padw)
@@ -868,13 +872,10 @@ static void targetev(arcan_tgtevent* ev)
 	case TARGET_COMMAND_FONTHINT:{
 #ifdef TTF_SUPPORT
 		int fd = BADFD;
-		if (ev->ioevs[0].iv != BADFD)
+		if (ev->ioevs[1].iv == 1)
 			fd = dup(ev->ioevs[0].iv);
 
-/* size- calculation is not correct here, does not take
- * DISPLAYHINT on PPMM into account when setting size */
-		setup_font(fd, ev->ioevs[1].iv);
-		switch(ev->ioevs[2].iv){
+		switch(ev->ioevs[3].iv){
 		case -1: break;
 		case 0: term.hint = TTF_HINTING_NONE; break;
 		case 1: term.hint = TTF_HINTING_MONO; break;
@@ -883,7 +884,11 @@ static void targetev(arcan_tgtevent* ev)
 			term.hint = TTF_HINTING_NORMAL;
 		break;
 		}
-		update_screensize();
+
+		float npx = setup_font(fd, ev->ioevs[2].fv > 0 ?
+			ceilf(term.ppcm * ev->ioevs[2].fv) : 0);
+
+		update_screensize(false);
 #endif
 	}
 
@@ -893,8 +898,19 @@ static void targetev(arcan_tgtevent* ev)
 
 		if (dev){
 			arcan_shmif_resize(&term.acon, ev->ioevs[0].iv, ev->ioevs[1].iv);
-			update_screensize();
+			update_screensize(true);
 		}
+
+/* calculate scale factor based on old density, multiply previous size
+ * with scale factor and treat as a FONTHINT */
+#ifdef TTF_SUPPORT
+		if (ev->ioevs[3].fv > 0){
+			float sf = ev->ioevs[3].fv / term.ppcm;
+			LOG("got display: %f, factor: %f\n", ev->ioevs[4].fv, sf);
+			term.ppcm = ev->ioevs[3].fv;
+			setup_font(BADFD, term.font_sz * sf);
+		}
+#endif
 	}
 	break;
 
@@ -996,21 +1012,17 @@ static void probe_font(TTF_Font* font,
 static bool setup_font(int fd, size_t font_sz)
 {
 	TTF_Font* font;
+	if (font_sz <= 0)
+		font_sz = term.font_sz;
 
 /* re-use last descriptor and change size or grab new */
 	if (BADFD == fd){
 		fd = term.font_fd;
-		font = TTF_OpenFontFD(fd, font_sz);
-		if (!font)
-			return false;
-	}
-	else {
-		font = TTF_OpenFontFD(fd, font_sz);
-		if (!font){
-			close(fd);
-			return false;
-		}
-	}
+	};
+
+	font = TTF_OpenFontFD(fd, font_sz);
+	if (!font)
+		return false;
 
 	TTF_SetFontHinting(font, term.hint);
 	TTF_SetFontStyle(font, TTF_STYLE_BOLD);
@@ -1045,13 +1057,16 @@ static bool setup_font(int fd, size_t font_sz)
 
 	term.font = font;
 	term.font_sz = font_sz;
+
+/* internally, TTF_Open dup:s the descriptor, we only keep it here
+ * to allow size changes without specifying a new font */
 	if (term.font_fd != fd)
 		close(term.font_fd);
 	term.font_fd = fd;
 
 	if (old_font){
 		TTF_CloseFont(old_font);
-		update_screensize();
+		update_screensize(false);
 	}
 
 	return true;
@@ -1276,7 +1291,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		return EXIT_FAILURE;
 	}
 
-	update_screensize();
+	update_screensize(true);
 
 /* immediately request a clipboard for cut operations (none received ==
  * running appl doesn't care about cut'n'paste/drag'n'drop support). */

@@ -224,6 +224,12 @@ struct shmif_hidden {
 	struct arcan_evctx inev;
 	struct arcan_evctx outev;
 
+/* during automatic pause, we want displayhint and fonthint events to queue and
+ * aggregate so we can return immediately on release, this pattern can be
+ * re-used for more events should they be needed (possibly CLOCK..) */
+	struct arcan_event dh, fh;
+	int ph; /* bit 1, dh - bit 2 fh */
+
 	struct {
 		bool gotev, consumed;
 		arcan_event ev;
@@ -319,7 +325,7 @@ static void consume(struct arcan_shmif_cont* c)
 
 	if (BADFD != c->priv->pev.fd){
 		close(c->priv->pev.fd);
-		LOG("(shmif) closing unhandled / ignored state descriptor\n");
+		LOG("(shmif) closing unhandled/ignored/dup:ed state descriptor\n");
 	}
 
 	if (BADFD != c->priv->pseg.epipe){
@@ -346,6 +352,55 @@ static bool scan_tgt_event(struct arcan_evctx* c,enum ARCAN_TARGET_COMMAND cmd)
 	return false;
 }
 
+/*
+ * shorter handling cycle for automated paused state with partial buffering,
+ * true if the event was consumed, false if it should be forwarded.
+ */
+static bool pause_evh(struct arcan_shmif_cont* c,
+	struct shmif_hidden* priv, arcan_event* ev)
+{
+	if (ev->category != EVENT_TARGET)
+		return true;
+
+	bool rv = true;
+	if (ev->tgt.kind == TARGET_COMMAND_UNPAUSE)
+		priv->paused = false;
+	else if (ev->tgt.kind == TARGET_COMMAND_EXIT){
+		priv->alive = false;
+		rv = false;
+	}
+	else if (ev->tgt.kind == TARGET_COMMAND_DISPLAYHINT){
+		priv->dh = *ev;
+		priv->ph |= 1;
+	}
+
+/*
+ * theoretical race here is not possible with kms/ks being pulled resulting
+ * in either end of epipe being closed and broken socket,
+ * in contrast to DISPLAYHINT, FONTHINT needs state merge.
+ */
+	else if (ev->tgt.kind == TARGET_COMMAND_FONTHINT){
+		priv->fh.category = EVENT_TARGET;
+		priv->fh.tgt.kind = TARGET_COMMAND_FONTHINT;
+
+/* received event while one already pending? don't leak descriptor */
+		if (ev->tgt.ioevs[1].iv != 0){
+			if (priv->fh.tgt.ioevs[0].iv != BADFD)
+				close(priv->fh.tgt.ioevs[0].iv);
+			priv->fh.tgt.ioevs[0].iv = arcan_fetchhandle(c->epipe, true);
+		}
+
+		if (ev->tgt.ioevs[2].fv > 0.0)
+			priv->fh.tgt.ioevs[2].fv = ev->tgt.ioevs[2].fv;
+		if (ev->tgt.ioevs[3].iv > -1)
+			priv->fh.tgt.ioevs[3].iv = ev->tgt.ioevs[3].iv;
+
+/* set the bit to indicate we need to return this event */
+		priv->ph |= 2;
+	}
+	return rv;
+}
+
 static int process_events(struct arcan_shmif_cont* c,
 	struct arcan_event* dst, bool blocking, bool upret)
 {
@@ -353,49 +408,84 @@ reset:
 	if (!c || !dst || !c->addr || !c->priv->alive)
 		return -1;
 
+	struct shmif_hidden* priv = c->priv;
 	bool noks = false;
-
 	int rv = 0;
-	struct arcan_evctx* ctx = &c->priv->inev;
+
+/* Select few events has a special queue position and can be delivered 'out of
+ * order' from normal affairs. This is needed for displayhint/fonthint in WM
+ * cases where a connection may be suspended for a long time and normal system
+ * state (move window between displays, change global fonts) may be silently
+ * ignored, when we actually want them delivered immediately upon UNPAUSE */
+	if (!priv->paused && priv->ph){
+		if (priv->ph & 1){
+			priv->ph &= ~1;
+			*dst = priv->dh;
+			rv = 1;
+			goto done;
+		}
+		if (priv->ph & 2){
+			*dst = priv->fh;
+			c->priv->pev.consumed = dst->tgt.ioevs[0].iv != BADFD;
+			c->priv->pev.fd = dst->tgt.ioevs[0].iv;
+			priv->ph &= ~2;
+			rv = 1;
+			goto done;
+		}
+	}
+
+/* difference between dms and ks are that the dms is pulled by the shared
+ * memory interface and process management, killswitch from the event queues */
+	struct arcan_evctx* ctx = &priv->inev;
 	volatile uint8_t* ks = (volatile uint8_t*) ctx->synch.killswitch;
 
 #ifdef ARCAN_SHMIF_THREADSAFE_QUEUE
 	pthread_mutex_lock(&ctx->synch.lock);
 #endif
 
-/* clean up any pending descriptors, ... */
+/* clean up any pending descriptors, as the client has a short frame to
+ * directly use them or at the very least dup() to safety */
 	consume(c);
 
-/* fetchhandle also pumps 'got event' pings that we send
- * in order to portably I/O multiplex in the eventqueue,
- * see arcan/ source for frameserver_pushevent */
+/*
+ * fetchhandle also pumps 'got event' pings that we send in order to portably
+ * I/O multiplex in the eventqueue, see arcan/ source for frameserver_pushevent
+ */
 checkfd:
 	do {
-		if (-1 == c->priv->pev.fd)
-			c->priv->pev.fd = arcan_fetchhandle(c->epipe, blocking);
+		if (-1 == priv->pev.fd)
+			priv->pev.fd = arcan_fetchhandle(c->epipe, blocking);
 
-		if (c->priv->pev.gotev){
+		if (priv->pev.gotev){
 			LOG("(shmif) waiting for descriptor from %d parent (%d)\n",
-				c->epipe, c->priv->pev.fd);
-			if (c->priv->pev.fd != BADFD){
+				c->epipe, priv->pev.fd);
+			if (priv->pev.fd != BADFD){
 				fd_event(c, dst);
 				rv = 1;
 			}
 			goto done;
 		}
-	} while (c->priv->pev.gotev && *ks);
+	} while (priv->pev.gotev && *ks);
 
+/* atomic increment of front -> event enqueued, memset is technically
+ * superflous but helps showing event queue consumption in debugging */
 	if (*ctx->front != *ctx->back){
 		*dst = ctx->eventbuf[ *ctx->front ];
 		memset(&ctx->eventbuf[ *ctx->front ], '\0', sizeof(arcan_event));
 		*ctx->front = (*ctx->front + 1) % ctx->eventbuf_sz;
 
-/* Unless mask is set, paused won't be changes so that is ok. This has the
+/* Unless mask is set, paused won't be changed so that is ok. This has the
  * effect of silently discarding events if the server acts in a weird way
- * (pause -> do things -> unpause) but that is the expected behavior */
-		if (c->priv->paused && (dst->category != EVENT_TARGET ||
-			dst->tgt.kind != TARGET_COMMAND_UNPAUSE))
+ * (pause -> do things -> unpause) but that is the expected behavior, with
+ * the exception of DISPLAYHINT, FONTHINT and EXIT */
+		if (priv->paused){
+			if (pause_evh(c, priv, dst))
 				goto reset;
+			rv = 1;
+			noks = dst->category == EVENT_TARGET
+				&& dst->tgt.kind == TARGET_COMMAND_EXIT;
+			goto done;
+		}
 
 		if (dst->category == EVENT_TARGET)
 			switch (dst->tgt.kind){
@@ -403,35 +493,51 @@ checkfd:
 /* Ignore displayhints if there are newer ones in the queue. This pattern can
  * be re-used for other events, should it be necessary, the principle is that
  * if there is a serious cost involved for a state change that will be
- * overridden with something in the queue, use this mechanism. */
+ * overridden with something in the queue, use this mechanism. Cannot be appled
+ * to descriptor- carrying events */
 			case TARGET_COMMAND_DISPLAYHINT:
 				if (scan_tgt_event(ctx, TARGET_COMMAND_DISPLAYHINT))
 					goto reset;
 			break;
 
+/* automatic pause switches to pause_ev, which only supports subset */
 			case TARGET_COMMAND_PAUSE:
-				if ((c->priv->flags & SHMIF_MANUAL_PAUSE) == 0){
-				}
-				c->priv->paused = true;
+				if ((priv->flags & SHMIF_MANUAL_PAUSE) == 0){
+				priv->paused = true;
 				goto reset;
+			}
 			break;
 
 			case TARGET_COMMAND_UNPAUSE:
-				if ((c->priv->flags & SHMIF_MANUAL_PAUSE) == 0){
+				if ((priv->flags & SHMIF_MANUAL_PAUSE) == 0){
+/* used when enqueue:ing while we are asleep */
+					if (upret)
+						return 0;
+					priv->paused = false;
+					goto reset;
 				}
-				c->priv->paused = false;
-				if (upret)
-					return 0;
-				goto reset;
-			break;
+				break;
 
 			case TARGET_COMMAND_EXIT:
 /* While tempting to run _drop here to prevent caller from leaking resources,
  * we can't as the event- loop might be running in a different thread than A/V
  * updating. _drop would modify the context in ways that would break, and we
  * want consistent behavior between threadsafe- and non-threadsafe builds. */
-				c->priv->alive = false;
+				priv->alive = false;
 				noks = true;
+			break;
+
+/* fonthint is different in the sense that the descriptor is not always
+ * mandatory, it is conditional on one of the ioevs (as there might not be an
+ * interest to override default font */
+			case TARGET_COMMAND_FONTHINT:
+				if (dst->tgt.ioevs[1].iv == 1){
+					LOG("(shmif) awaiting descriptor for default font\n");
+					priv->pev.gotev = true;
+					goto checkfd;
+				}
+				else
+					dst->tgt.ioevs[0].iv = BADFD;
 			break;
 
 /* Events that require a handle to be tracked (and possibly garbage collected
@@ -442,10 +548,9 @@ checkfd:
 			case TARGET_COMMAND_RESTORE:
 			case TARGET_COMMAND_BCHUNK_IN:
 			case TARGET_COMMAND_BCHUNK_OUT:
-			case TARGET_COMMAND_FONTHINT:
 			case TARGET_COMMAND_NEWSEGMENT:
 				LOG("(shmif) got descriptor transfer related event\n");
-				c->priv->pev.gotev = true;
+				priv->pev.gotev = true;
 				goto checkfd;
 			default:
 			break;
@@ -456,6 +561,9 @@ checkfd:
 	else if (c->addr->dms == 0)
 		goto done;
 
+/* Need to constantly pump the event socket for incoming descriptors and
+ * caller- mandated polling, as the order between event and descriptor is
+ * not deterministic */
 	else if (blocking && *ks)
 		goto checkfd;
 

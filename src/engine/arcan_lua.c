@@ -3497,7 +3497,8 @@ static void display_reset(lua_State* ctx, arcan_event* ev)
 		else{
 			lua_pushnumber(ctx, ev->vid.width);
 			lua_pushnumber(ctx, ev->vid.height);
-			wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: lwa-displayhint");
+			lua_pushnumber(ctx, ev->vid.vppcm);
+			wraperr(ctx, lua_pcall(ctx, 3, 0, 0), "event loop: lwa-displayhint");
 		}
 		return;
 	}
@@ -3506,8 +3507,9 @@ static void display_reset(lua_State* ctx, arcan_event* ev)
 		if (!lua_isfunction(ctx, -1))
 			lua_pop(ctx, 1);
 		else{
+			lua_pushnumber(ctx, ev->vid.vppcm);
 			lua_pushnumber(ctx, ev->vid.width);
-			wraperr(ctx, lua_pcall(ctx, 1, 0, 0), "event loop: lwa-autofont");
+			wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: lwa-autofont");
 		}
 	};
 #endif
@@ -5864,41 +5866,50 @@ static int targetfonthint(lua_State* ctx)
 	arcan_frameserver* fsrv = vobj->feed.state.ptr;
 
 	int numind = 2;
-	int fd = -1;
+	file_handle fd = BADFD;
 
 	if (!fsrv || vobj->feed.state.tag != ARCAN_TAG_FRAMESERV){
 		arcan_fatal("target_fonthint() -- " FATAL_MSG_FRAMESERV);
 		return 0;
 	}
 
+/* some cases implies 'change current font size or hinting without
+ * changing font', hence why we begin with an optional string arg. */
 	if (lua_type(ctx, numind) == LUA_TSTRING){
-		char* fname = arcan_expand_resource(
-			luaL_checkstring(ctx, numind), RESOURCE_SYS_FONT);
+		const char* instr = luaL_checkstring(ctx, numind);
 		numind++;
-		if (fname){
+		if (strcmp(instr, ".default") == 0){
+			arcan_video_fontdefaults(&fd, NULL, NULL);
+		}
+		else{
+			char* fname = arcan_expand_resource(instr, RESOURCE_SYS_FONT);
+			if (arcan_isfile(fname))
 			fd = open(fname, O_RDONLY | O_CLOEXEC);
 			arcan_mem_free(fname);
-			if (-1 == fd){
+			if (BADFD == fd){
 				lua_pushboolean(ctx, false);
 				LUA_ETRACE("target_fonthint", "font could not be opened");
 				return 1;
 			}
 		}
-		else{
-			lua_pushboolean(ctx, false);
-			LUA_ETRACE("target_fonthint", "font could not be found");
-			return 1;
-		}
 	}
 
-	arcan_event ev = {
-		.category = EVENT_TARGET, .tgt.kind = TARGET_COMMAND_FONTHINT,
-		.tgt.ioevs[1].iv = fd != -1 ? 1 : 0,
-		.tgt.ioevs[2].iv = luaL_checknumber(ctx, 2),
-		.tgt.ioevs[3].iv = luaL_checknumber(ctx, 3)
+	arcan_event outev = {
+		.category = EVENT_TARGET,
+		.tgt.kind = TARGET_COMMAND_FONTHINT,
+		.tgt.ioevs[1].iv = fd != BADFD ? 1 : 0,
+		.tgt.ioevs[2].fv = luaL_checknumber(ctx, numind),
+		.tgt.ioevs[3].iv = luaL_checknumber(ctx, numind+1)
 	};
 
-	lua_pushboolean(ctx, arcan_frameserver_pushfd(fsrv, &ev, fd));
+	if (fd != BADFD){
+		lua_pushboolean(ctx, arcan_frameserver_pushfd(fsrv, &outev, fd));
+		close(fd);
+	}
+	else{
+		lua_pushboolean(ctx, ARCAN_OK == arcan_frameserver_pushevent(fsrv, &outev));
+	}
+
 	LUA_ETRACE("target_fonthint", NULL);
 	return 1;
 }
@@ -5911,7 +5922,7 @@ static int targetdisphint(lua_State* ctx)
 
 	int width = luaL_checknumber(ctx, 2);
 	int height = luaL_checknumber(ctx, 3);
-	int cont = luaL_optbnumber(ctx, 4, 0);
+	int cont = luaL_optnumber(ctx, 4, 0);
 
 /* clamp to not have client propagate illegal dimensions */
 	width = width > ARCAN_SHMPAGE_MAXW ? ARCAN_SHMPAGE_MAXW : width;
@@ -5939,7 +5950,7 @@ static int targetdisphint(lua_State* ctx)
 		arcan_fatal("target_disphint(%d, %d), "
 			"display dimensions must be > 0", width, height);
 
-	float ppmm = phy_w > 0 ? (float)phy_w / (float)width : 0.0384;
+	float ppmm = phy_w > 0 ? (float)phy_w / (float)width : -1;
 
 	arcan_event ev = {
 		.category = EVENT_TARGET,
@@ -6325,7 +6336,7 @@ static int targetsnapshot(lua_State* ctx)
 		.category = EVENT_TARGET, .tgt.kind = TARGET_COMMAND_STORE
 	};
 	lua_pushboolean(ctx, arcan_frameserver_pushfd(fsrv, &ev, fd));
-
+	close(fd);
 	LUA_ETRACE("snapshot_target", NULL);
 	return 1;
 }
@@ -9391,7 +9402,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 /* same problem as with VRESW, VRESH */
 	lua_pushnumber(ctx,
 		mode.phy_width > 0 ? (float) mode.width / (float)mode.phy_width : 3.84);
-	lua_setglobal(ctx, "VPPMM");
+	lua_setglobal(ctx, "VPPCM");
 
 	arcan_lua_setglobalstr(ctx, "GL_VERSION", agp_ident());
 	arcan_lua_setglobalstr(ctx, "SHADER_LANGUAGE", agp_shader_language());

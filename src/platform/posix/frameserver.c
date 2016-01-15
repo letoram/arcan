@@ -238,7 +238,7 @@ bool arcan_frameserver_validchild(arcan_frameserver* src){
 arcan_errc arcan_frameserver_pushfd(
 	arcan_frameserver* fsrv, arcan_event* ev, int fd)
 {
-	if (!fsrv || fd == 0)
+	if (!fsrv || fd == BADFD)
 		return ARCAN_ERRC_BAD_ARGUMENT;
 
 	arcan_frameserver_pushevent( fsrv, ev );

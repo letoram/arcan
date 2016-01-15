@@ -61,9 +61,11 @@ struct font_entry {
 	TTF_Font* data;
 	file_handle fd;
 	char* identifier;
-	uint8_t size;
+	size_t size;
 	uint8_t usecount;
 };
+
+static int default_hint = TTF_HINTING_NORMAL;
 
 static struct text_format last_style = {
 	.col = {.r = 0xff, .g = 0xff, .b = 0xff}
@@ -112,10 +114,23 @@ struct rcell {
 	struct rcell* next;
 };
 
+void arcan_video_fontdefaults(file_handle* fd, int* pt_sz, int* hint)
+{
+	if (fd)
+		*fd = font_cache[0].fd;
+
+	if (pt_sz)
+		*pt_sz = font_cache[0].size;
+
+	if (hint)
+		*hint = default_hint;
+}
+
 /* Simple LRU font cache */
-static TTF_Font* grab_font(const char* fname, uint8_t size)
+static TTF_Font* grab_font(const char* fname, size_t size)
 {
 	int leasti = 1, i, leastv = -1;
+	TTF_Font* font;
 
 /* empty identifier - use default (slot 0) */
 	if (!fname){
@@ -144,18 +159,20 @@ static TTF_Font* grab_font(const char* fname, uint8_t size)
 		}
 
 		if (strcmp(font_cache[i].identifier, fname) == 0){
-			if (font_cache[i].fd != BADFD)
+			if (font_cache[i].fd != BADFD){
 				matchfd = font_cache[i].fd;
+			}
 
 			if (font_cache[i].size == size){
 				font_cache[i].usecount++;
-				return font_cache[i].data;
+				font = font_cache[i].data;
+				goto done;
 			}
 		}
 	}
 
 /* try to load */
-	TTF_Font* font = matchfd != BADFD ?
+	font = matchfd != BADFD ?
 		TTF_OpenFontFD(matchfd, size) : TTF_OpenFont(fname, size);
 
 	if (!font){
@@ -176,6 +193,8 @@ static TTF_Font* grab_font(const char* fname, uint8_t size)
 	font_cache[i].size = size;
 	font_cache[i].data = font;
 
+done:
+	TTF_SetFontHinting(font, default_hint);
 	return font;
 }
 
@@ -194,7 +213,7 @@ static void zap_slot(int i)
 }
 
 bool arcan_video_defaultfont(const char* ident,
-	file_handle fd, size_t sz, int hint)
+	file_handle fd, int sz, int hint)
 {
 	if (BADFD == fd)
 		return false;
@@ -204,11 +223,8 @@ bool arcan_video_defaultfont(const char* ident,
 	if (!font)
 		return false;
 
-	switch(hint){
-	case 0: TTF_SetFontHinting(font, TTF_HINTING_NONE); break;
-	case 1: TTF_SetFontHinting(font, TTF_HINTING_LIGHT); break;
-	default: break;
-	}
+	if (-1 != default_hint)
+		default_hint = hint;
 
 	zap_slot(0);
 
