@@ -38,11 +38,11 @@ static void usage()
 	"  drop_target    \tname\n"
 	"  drop_appl      \tname\n"
 	"\nAvailable data extraction commands: \n"
-	"  dump_targets   \n"
-	"  dump_target    \tname\n"
-	"  dump_config    \ttargetname configname\n"
-	"  dump_appl      \tapplname\n"
-	"  dump_exec      \ttargetname configname\n"
+	"  list_targets   \n"
+	"  show_target    \tname\n"
+	"  show_config    \ttargetname configname\n"
+	"  show_appl      \tapplname\n"
+	"  show_exec      \ttargetname configname\n"
 	"Accepted keys are restricted to the set [a-Z0-9_+=/]\n\n"
 	"alternative (scripted) usage: arcan_db dbfile -\n"
  	"above commands are supplied using STDIN, tab as arg separator, linefeed \n"
@@ -339,10 +339,10 @@ static int add_config_env(struct arcan_dbh* dst, int argc, char** argv)
 	return set_kv(dst, DVT_CONFIG_ENV, id, argv[2], argv[3]);
 }
 
-static int dump_target(struct arcan_dbh* dbh, int argc, char** argv)
+static int show_target(struct arcan_dbh* dbh, int argc, char** argv)
 {
 	if (argc != 1){
-		printf("dump_target(target), invalid number "
+		printf("show_target(target), invalid number "
 			"of arguments (%d vs 1).\n", argc);
 
 		return EXIT_FAILURE;
@@ -355,7 +355,7 @@ static int dump_target(struct arcan_dbh* dbh, int argc, char** argv)
 	assert(res.data != NULL);
 
 	if (!res.data){
-		printf("dump_targets(), no valid list returned.\n");
+		printf("show_target(), no valid target data returned.\n");
 		return EXIT_FAILURE;
 	}
 
@@ -387,10 +387,10 @@ static int dump_target(struct arcan_dbh* dbh, int argc, char** argv)
 	return EXIT_SUCCESS;
 }
 
-static int dump_config(struct arcan_dbh* dst, int argc, char** argv)
+static int show_config(struct arcan_dbh* dst, int argc, char** argv)
 {
 	if (argc != 2){
-		printf("dump_config(target, config) invalid number "
+		printf("show_config(target, config) invalid number "
 			"of arguments (%d vs 2).\n", argc);
 		return EXIT_FAILURE;
 	}
@@ -399,18 +399,19 @@ static int dump_config(struct arcan_dbh* dst, int argc, char** argv)
 	tgt.tid = arcan_db_targetid(dst, argv[0], NULL);
 	cfg.cid = arcan_db_configid(dst, tgt.tid, argv[1]);
 
-	struct arcan_strarr res = arcan_db_config_argv(dst, tgt.cid);
+	struct arcan_strarr res = arcan_db_config_argv(dst, cfg.cid);
 
 	if (!res.data){
-		printf("dump_targets(), no valid list returned.\n");
+		printf("show_config(), no valid config data returned.\n");
 		return EXIT_FAILURE;
 	}
 
-	printf("target (%s) config (%s)\narguments:\n\t", argv[0], argv[1]);
+	printf("target (%s) config (%s)\narguments:\n", argv[0], argv[1]);
 
+	int count = 1;
 	char** curr = res.data;
 	while(*curr)
-		printf("%s \n", *curr++);
+		printf("%d\t%s \n", count++, *curr++);
 	arcan_mem_freearr(&res);
 
 	printf("\n\nkvpairs:\n");
@@ -424,14 +425,14 @@ static int dump_config(struct arcan_dbh* dst, int argc, char** argv)
 	return EXIT_SUCCESS;
 }
 
-static int dump_exec(struct arcan_dbh* dst, int argc, char** argv)
+static int show_exec(struct arcan_dbh* dst, int argc, char** argv)
 {
 	struct arcan_strarr env = {0};
 	struct arcan_strarr outargv = {0};
 	struct arcan_strarr libs = {0};
 
 	if (argc <= 0 || argc > 2){
-		printf("dump_exec(target, [config]) invalid number"
+		printf("show_exec(target, [config]) invalid number"
 			" of arguments (%d vs (1,2)).\n", argc);
 		return EXIT_FAILURE;
 	}
@@ -442,7 +443,7 @@ static int dump_exec(struct arcan_dbh* dst, int argc, char** argv)
 	enum DB_BFORMAT bfmt;
 	char* execstr = arcan_db_targetexec(dst, cfgid, &bfmt, &outargv, &env, &libs);
 	if (!execstr){
-		printf("couldn't generate execution string\n");
+		printf("show_exec() couldn't generate execution string\n");
 		return EXIT_FAILURE;
 	}
 
@@ -467,11 +468,11 @@ static int dump_exec(struct arcan_dbh* dst, int argc, char** argv)
 	return EXIT_SUCCESS;
 }
 
-static int dump_targets(struct arcan_dbh* dst, int argc, char** argv)
+static int list_targets(struct arcan_dbh* dst, int argc, char** argv)
 {
 	struct arcan_strarr res = arcan_db_targets(dst);
 	if (!res.data){
-		printf("dump_targets(), no valid list returned.\n");
+		printf("list_targets(), no valid list of targets returned.\n");
 		return EXIT_FAILURE;
 	}
 
@@ -483,10 +484,10 @@ static int dump_targets(struct arcan_dbh* dst, int argc, char** argv)
 	return EXIT_SUCCESS;
 }
 
-static int dump_appl(struct arcan_dbh* dst, int argc, char** argv)
+static int show_appl(struct arcan_dbh* dst, int argc, char** argv)
 {
 	if (argc <= 0){
-		printf("dump_appl(), no appl name specified.\n");
+		printf("show_appl(), no appl name specified.\n");
 		return EXIT_FAILURE;
 	}
 
@@ -494,7 +495,7 @@ static int dump_appl(struct arcan_dbh* dst, int argc, char** argv)
 
 	struct arcan_strarr res = arcan_db_applkeys(dst, argv[0], ptn);
 	if (!res.data){
-		printf("dump_appl(), no valid list returned");
+		printf("show_appl(), no valid list returned");
 		return EXIT_FAILURE;
 	}
 
@@ -519,22 +520,22 @@ struct {
 		.fun = drop_target
 	},
 	{
-		.key = "dump_appl",
-		.fun = dump_appl
+		.key = "show_appl",
+		.fun = show_appl
 	},
 	{
-		.key = "dump_config",
-		.fun = dump_config
-	},
-
-	{
-		.key = "dump_target",
-		.fun = dump_target
+		.key = "show_config",
+		.fun = show_config
 	},
 
 	{
-		.key = "dump_targets",
-		.fun = dump_targets
+		.key = "show_target",
+		.fun = show_target
+	},
+
+	{
+		.key = "list_targets",
+		.fun = list_targets
 	},
 
 	{
@@ -579,10 +580,9 @@ struct {
 		.key = "add_target_lib",
 		.fun = add_target_libv
 	},
-
 	{
-		.key = "dump_exec",
-		.fun = dump_exec
+		.key = "show_exec",
+		.fun = show_exec
 	}
 };
 
@@ -621,7 +621,7 @@ static inline void process_line(char* in, struct arcan_dbh* dbh)
 
 int main(int argc, char* argv[])
 {
-	if (argc < 3){
+	if (argc < 2){
 		usage();
 		return EXIT_FAILURE;
 	}
@@ -630,6 +630,12 @@ int main(int argc, char* argv[])
 	int startind = 1;
 
 	if (strcmp(argv[1], "-b") == 0){
+		if (argc < 3){
+			arcan_warning("got -b but missing database file argument\n");
+			usage();
+			return EXIT_FAILURE;
+		}
+
 		for (int i = 0; i < sizeof(dispatch)/sizeof(dispatch[0]); i++)
 			if (strcmp(argv[2], dispatch[i].key) == 0){
 				arcan_warning("got command (%s) in database filename slot\n");
