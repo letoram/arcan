@@ -137,7 +137,7 @@ extern jmp_buf arcanmain_recover_state;
 
 /*
  * some operations, typically resize, move and rotate suffered a lot from
- * lua floats propagating, meaning that we'd either get subpixel positioning
+ * lua floats propagating, meaning that we'd get subpixel positioning
  * and blurring text etc. as a consequence. For these functions, we now
  * force the type to whatever acoord is specified as (here, signed).
  */
@@ -161,7 +161,8 @@ typedef int acoord;
 /*
  * This trace function scans the stack and writes the information about
  * calls to a CSV file (arcan.trace): function;timestamp;type;type
- * the primary purpose for this is to run through the suite of benchmark
+ * This is useful for benchmarking / profiling / test coverage and
+ * hardening.
  */
 #elif defined(LUA_TRACE_COVERAGE)
 #define LUA_TRACE(fsym) trace_coverage(fsym, ctx);
@@ -5179,11 +5180,15 @@ static int allocsurface(lua_State* ctx)
 
 	struct storage_info_t* ds = vobj->vstore;
 
-	agp_empty_vstoreext(ds, w, h, noalpha ?
-		(quality < 0 ? VSTORE_HINT_LODEF_NOALPHA :
-	 	quality == 0 ? VSTORE_HINT_NOALPHA : VSTORE_HINT_HIDEF_NOALPHA) :
-		VSTORE_HINT_HIDEF
-	);
+	if (quality == 0)
+		agp_empty_vstoreext(ds, w, h, noalpha ?
+			VSTORE_HINT_NOALPHA : VSTORE_HINT_NORMAL);
+	else if (quality > 0)
+		agp_empty_vstoreext(ds, w, h, noalpha ?
+			VSTORE_HINT_HIDEF : VSTORE_HINT_HIDEF_NOALPHA);
+	else
+		agp_empty_vstoreext(ds, w, h, noalpha ?
+			VSTORE_HINT_LODEF : VSTORE_HINT_LODEF_NOALPHA);
 
 	vobj->origw = w;
 	vobj->origh = h;
@@ -9340,6 +9345,8 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"BADID", ARCAN_EID},
 {"CLOCKRATE", ARCAN_TIMER_TICK},
 {"CLOCK", 0},
+{"ALLOC_LODEF", -1},
+{"ALLOC_HIDEF", 1},
 {"APPL_RESOURCE", RESOURCE_APPL},
 {"APPL_STATE_RESOURCE", RESOURCE_APPL_STATE},
 {"APPL_TEMP_RESOURCE",RESOURCE_APPL_TEMP},
