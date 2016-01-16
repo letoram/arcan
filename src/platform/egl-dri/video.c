@@ -120,6 +120,7 @@ static char* egl_synchopts[] = {
 
 static char* egl_envopts[] = {
 	"ARCAN_VIDEO_DEVICE=/dev/dri/card0", "specifiy primary device",
+	"ARCAN_VIDEO_CONNECTOR=conn_ind", "force primary display connector",
 	"ARCAN_VIDEO_DRM_MASTER", "fail if drmMaster can't be obtained",
 	"ARCAN_VIDEO_WAIT_CONNECTOR", "loop until an active connector is found",
 	NULL
@@ -135,6 +136,7 @@ enum {
  */
 struct dev_node {
 	int fd;
+	bool master;
 	int refc;
 	uint32_t crtc_alloc;
 	struct gbm_device* gbm;
@@ -1447,8 +1449,10 @@ bool platform_video_init(uint16_t w, uint16_t h,
 	int n = 0;
 	while(1){
 		char* device = grab_card(n++);
-		if (!device)
+		if (!device){
+			arcan_warning("Couldn't open/setup Card #%d\n", n-1);
 			goto cleanup;
+		}
 
 		int rc = setup_node(&nodes[0], device);
 		free(device);
@@ -1462,8 +1466,8 @@ bool platform_video_init(uint16_t w, uint16_t h,
 
 	if (-1 == drmSetMaster(nodes[0].fd) && getenv("ARCAN_VIDEO_DRM_MASTER")){
 		arcan_fatal("platform/egl-dri(), couldn't get drmMaster (%s) - make sure"
-			" nothing else holds the master lock or try "
-			"ARCAN_VIDEO_DRM_NOMASTER=1\n", strerror(errno));
+			" nothing else holds the master lock or try without "
+			"ARCAN_VIDEO_DRM_MASTER env.\n", strerror(errno));
 	}
 
 	map_extensions();
@@ -1475,8 +1479,32 @@ bool platform_video_init(uint16_t w, uint16_t h,
 	struct dispout* d = allocate_display(&nodes[0]);
 	d->display.primary = true;
 
-	if (setup_kms(d, -1, w, h) != 0){
+/*
+ * force connector is a workaround for dealing with explicitly getting a single
+ * monitor being primary synch, as we have no good mechanism for communicating /
+ * managing that (dynamic synchronization strategy refactor will change that)
+ */
+	int connid = -1;
+	const char* arg = getenv("ARCAN_VIDEO_CONNECTOR");
+	if (arg){
+		char* end;
+		int vl = strtoul(arg, &end, 10);
+		if (end != arg && *end == '\0')
+			connid = vl;
+		else{
+			arcan_warning("ARCAN_VIDEO_CONNECTOR specified but couldn't "
+				"parse ID from (%s)\n", arg);
+			goto cleanup;
+		}
+	}
+
+	if (setup_kms(d, connid, w, h) != 0){
 		disable_display(d, true);
+		arcan_warning( arg ?
+			"ARCAN_VIDEO_CONNECTOR specified but couldn't configure display.\n" :
+			"setup_kms(), card found but no working/connected display.\n");
+
+		dump_connectors(stdout, &nodes[0]);
 		goto cleanup;
 	}
 
@@ -1493,9 +1521,6 @@ bool platform_video_init(uint16_t w, uint16_t h,
 	egl_dri.canvash = d->display.mode->vdisplay;
 
 	d->vid = ARCAN_VIDEO_WORLDID;
-#ifdef _DEBUG
-	dump_connectors(stdout, &nodes[0]);
-#endif
 	rv = true;
 
 /*
@@ -1662,7 +1687,7 @@ void platform_video_shutdown()
 		eglDestroyContext(nodes[i].display, nodes[i].context);
 		gbm_device_destroy(nodes[i].gbm);
 
-		if (!getenv("ARCAN_VIDEO_DRM_NOMASTER"))
+		if (nodes[0].master)
 			drmDropMaster(nodes[0].fd);
 		close(nodes[i].fd);
 
@@ -1924,7 +1949,7 @@ void platform_video_prepare_external()
 			flush_display_events(16);
 	} while(egl_dri.destroy_pending && rc-- > 0);
 
-	if (!getenv("ARCAN_VIDEO_DRM_NOMASTER"))
+	if (nodes[0].master)
 		drmDropMaster(nodes[0].fd);
 }
 
@@ -1932,13 +1957,20 @@ void platform_video_restore_external()
 {
 /* uncertain if it is possible to poll on the device node to determine
  * when / if the drmMaster lock is released or not */
-	if (!getenv("ARCAN_VIDEO_DRM_NOMASTER")){
-		while(-1 == drmSetMaster(nodes[0].fd)){
-			arcan_warning("platform/egl-dri(), couldn't regain drmMaster access, "
-				"retrying in 1 second\n");
-			arcan_timesleep(1000);
+	if (-1 == drmSetMaster(nodes[0].fd)){
+		if (getenv("ARCAN_VIDEO_DRM_MASTER")){
+			while(-1 == drmSetMaster(nodes[0].fd)){
+				arcan_warning("platform/egl-dri(), couldn't regain drmMaster access, "
+					"retrying in 1 second\n");
+				arcan_timesleep(1000);
+			}
+			nodes[0].master = true;
 		}
+		else
+			nodes[0].master = false;
 	}
+	else
+		nodes[0].master = true;
 
 /* regain the primary display */
 	struct dispout* d = allocate_display(&nodes[0]);
@@ -1949,6 +1981,6 @@ void platform_video_restore_external()
 		disable_display(d, true);
 	}
 
-/* sweep and let the script handle readding / mapping */
+/* sweep and let the script handle rediscovery / mapping */
 	platform_video_query_displays();
 }
