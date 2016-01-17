@@ -2,16 +2,13 @@
  * Copyright 2014-2016, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
+ * Description:
+ * This platform layer is an attempt to decouple the _video.c and _3dbase.c
+ * parts of the engine from working with OpenGL directly.
  */
 
 #ifndef HAVE_ARCAN_VIDEOPLATFORM
 #define HAVE_ARCAN_VIDEOPLATFORM
-
-/*
- * This platform layer is an attempt to decouple the _video.c and _3dbase.c
- * parts of the engine from OpenGL and to be able to support software based
- * rendering and other 3D APIs.
- */
 
 /*
  * We only work with / support one internal pixel representation which should
@@ -31,7 +28,8 @@ typedef VIDEO_PIXEL_TYPE av_pixel;
 
 /*
  * Just prepared for a low-def format, none is really active at the moment
- * but likely candidate is RGB565
+ * but likely candidate is RGB565 in scenarios where we need to constrain
+ * memory and bandwidth use.
  */
 #define RGBA_LOWDEF(r, g, b, a)( RGBA((r), (g), (b)) )
 
@@ -198,10 +196,11 @@ enum shader_vertex_attributes {
 typedef long long arcan_vobj_id;
 
 /*
- * Setup the video layer to some undetermined default.  The
- * w/h/bpp/fs/frames/caption arguments are currently here due to legacy, in the
- * future we simply probe reasonable values and then let the display/window
- * mechanisms take over.
+ * Allocate resources, devices and set up a safe initial default.
+ * [w, h, bpp, fs, frames, caption] arguments are used for legacy reasons,
+ * and new platform implementations should accept 0- values and rather
+ * probe best values and use other mapping / notification functions for
+ * resizing and similar operations.
  */
 bool platform_video_init(uint16_t w, uint16_t h,
 	uint8_t bpp, bool fs, bool frames, const char* caption);
@@ -524,33 +523,23 @@ void agp_activate_vstore_multi(struct storage_info_t** backing, size_t n);
 
 /*
  * Prepare the specified backing store for streaming texture uploads. The
- * semantics is determined by the stream_type and meta:
+ * semantics is determined by the stream_type and meta. See description
+ * for agp_stream_prepare.
  */
 enum stream_type {
-/* buf will be NULL, call returns NULL (fail) or a pointer to a buffer to
- * populate manually and then commit */
 	STREAM_RAW,
-
-/* buf will be an av_pixel buffer that matches the backing store dimensions */
 	STREAM_RAW_DIRECT,
-
-/* similar to direct but guarantee that the vstore retains a local copy */
 	STREAM_RAW_DIRECT_COPY,
-
-/* similar to DIRECT but will block until the transfer is complete */
 	STREAM_RAW_DIRECT_SYNCHRONOUS,
-
-/*
- * with buf 0, return a handle that can be passed to a child or different
- * context that needs to render onwards.  with buf !0, treat it as a handle
- * that can be used by the graphics layer to access an external data source
- */
 	STREAM_HANDLE
 };
 
 struct stream_meta {
 	union{
+		struct {
 		av_pixel* buf;
+		size_t x, y, w, h;
+		};
 		int64_t handle;
 	};
 	enum stream_type type;
@@ -558,40 +547,62 @@ struct stream_meta {
 };
 
 /*
- * flow: [prepare(RAW, HANDLE)] -> populate returned buffer / handle ->
- * release -> commit.
+ * Streaming update of the !NULL textured backing store in [store].
  *
- * [prepare(RAW_DIRECT, HANDLE_DIRECT)] -> commit.
+ * Contents of [base] depends on [type]:
+ *  - RAW: just synch opaque backing store (on-GPU), buffer to populate
+ *         will be returned in meta.buf.
+ *                prop: none, really. con: additional copy, slow
  *
- * other agp calls are permitted between release -> commit or
- * direct-prepare -> commit but NOT for prepare(non-direct) -> release.
+ *  - RAW_DIRECT: prop: asynchronous copy of contents, fastest when handle
+ *                is unavailable, con:
+ *
+ *  - RAW_DIRECT_SYNCHRONOUS: block and copy meta.buf.
+ *                pro: guarantee of content state, con: stalls pipeline
+ *
+ *  - RAW_HANDLE: handle contains reference to opaque backing store.
+ *                pro: possibly the fastest, covers more formats
+ *                con: .raw is not in synch, reliability/availability issues
+ *
+ * Typical use:
+ *  create a [struct stream_meta] with possble subregion or handle.
+ *
+ *  meta = agp_stream_prepare(store, mode, type);
+ *   - populate meta.buf or meta.handle (type: STREAM_HANDLE)
+ *  agp_stream_commit(store, mode, type); (unless meta/buf)
+ *   - for type:HANDLE, state should be valid or fallback
+ *  agp_stream_release(store); (type: STREAM_RAW)
+ *
+ * In a dream world, there should be an option to take our shmif- vidp,
+ * a synch fence and have driver map to opaque backing store.
  */
-struct stream_meta agp_stream_prepare(struct storage_info_t*,
-	struct stream_meta, enum stream_type);
+struct stream_meta agp_stream_prepare(struct storage_info_t* store,
+	struct stream_meta base, enum stream_type type);
+
 void agp_stream_commit(struct storage_info_t*, struct stream_meta);
 void agp_stream_release(struct storage_info_t*, struct stream_meta);
-/*
- * Synchronize a populated backing store with the underlying graphics layer
- */
-void agp_update_vstore(struct storage_info_t*, bool copy);
 
 /*
- * Allocate id and upload / store raw buffer into vstore
+ * Synchronize a populated backing store with the underlying graphics layer.
+ * [copy] is used to indicate if the backing contents should be updated,
+ *        if set to false, only filtering and similar flags will be synched
  */
-void agp_buffer_tostore(struct storage_info_t* dst,
-	av_pixel* buf, size_t buf_sz, size_t w, size_t h,
-	size_t origw, size_t origh, unsigned short zv
-);
+void agp_update_vstore(struct storage_info_t*, bool copy);
 
 enum pipeline_mode {
 	PIPELINE_2D,
 	PIPELINE_3D
 };
+
+/*
+ * Set up the base internal state tracking for 2D, 3D or other specialized
+ * configurations.
+ */
 void agp_pipeline_hint(enum pipeline_mode);
 
 /*
  * Synchronize the current backing store on-host buffer (i.e.
- * dstore->vinf.text.raw)
+ * dstore->vinf.text.raw).
  */
 void agp_readback_synchronous(struct storage_info_t* dst);
 
@@ -607,21 +618,21 @@ struct asynch_readback_meta {
 };
 
 /*
- * Check if a pending readback request has been completed.  If so, meta.ptr
- * will be !NULL. In that case, the caller is expected to invoke meta.release
- * with tag as argument.
+ * Check if a pending readback request has been completed.
+ * In that case, [meta.ptr] will be !NULL and the caller is expected to:
+ * meta.release(meta.tag); when finished using the contents of [meta.ptr]
  */
 struct asynch_readback_meta agp_poll_readback(struct storage_info_t*);
 
 /*
- * Initiate a new asynchronous readback, if one is already pending, this is a
- * no-operation.
+ * Initiate a new asynchronous readback.
+ * if one is already pending, this is a no-operation.
  */
 void agp_request_readback(struct storage_info_t*);
 
 /*
  * For clipping and similar operations where we want to
- * prepare a mask ("stencil") buffer, this sequency of operations
+ * prepare a mask ("stencil") buffer, this sequence of operations
  * is used:
  * agp_prepare_stencil()  -- reset lingering state
  * agp_draw_stencil(...)  -- multiple calls to populate
@@ -640,11 +651,12 @@ void agp_disable_stencil();
 void agp_blendstate(enum arcan_blendfunc);
 
 /*
- * Bind uniforms and draw using the currently active vstore.  Txcos, Ident and
- * Model can be NULL and then defaults will be used.
+ * Bind uniforms and draw using the currently active vstore to the active
+ * rendertarget. [txcos], [modelview] can be NULL. In that case, texturing
+ * will be ignored and identity matrix will be used.
  */
 void agp_draw_vobj(float x1, float y1, float x2, float y2,
-	float* txcos, float*);
+	const float* txcos, const float* modelview);
 
 /*
  * Destination format for rendertargets. Note that we do not currently suport

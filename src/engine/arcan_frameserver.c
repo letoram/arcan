@@ -249,6 +249,8 @@ static void push_buffer(arcan_frameserver* src,
 	struct stream_meta stream = {.buf = NULL};
 	bool explicit = src->flags.explicit;
 
+/* Need to do this check here as-well as in the regular frameserver tick control
+ * because the backing store might have changed somehwere else. */
 	if (src->desc.width != store->w || src->desc.height != store->h){
 		arcan_video_resizefeed(src->vid, src->desc.width, src->desc.height);
 		arcan_event rezev = {
@@ -259,7 +261,7 @@ static void push_buffer(arcan_frameserver* src,
 			.fsrv.video = src->vid,
 			.fsrv.audio = src->aid,
 			.fsrv.otag = src->tag,
-			.fsrv.glsource = src->shm.ptr->hints & RHINT_ORIGO_LL
+			.fsrv.glsource = src->shm.ptr->hints & SHMIF_RHINT_ORIGO_LL
 		};
 
 		arcan_event_enqueue(arcan_event_defaultctx(), &rezev);

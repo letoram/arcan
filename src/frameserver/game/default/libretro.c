@@ -281,7 +281,7 @@ static void resize_shmpage(int neww, int newh, bool first)
 
 #ifdef FRAMESERVER_LIBRETRO_3D
 	if (retroctx.rtgt){
-		retroctx.shmcont.addr->hints = RHINT_ORIGO_LL;
+		retroctx.shmcont.addr->hints = SHMIF_RHINT_ORIGO_LL;
 		agp_activate_rendertarget(NULL);
 		agp_resize_rendertarget(retroctx.rtgt, neww, newh);
 		retroctx.hwctx.context_reset();
@@ -1442,7 +1442,6 @@ static inline bool retroctx_sync()
 	long long int next = floor( (double)retroctx.vframecount * retroctx.mspf );
 	int left = next - now;
 
-	printf("%lld vs %lld gives %d\n", now, next, left);
 /* ntpd, settimeofday, wonky OS etc. or some massive stall, disqualify
  * DEBUGSTALL for the normal timing thing */
 	static int checked;

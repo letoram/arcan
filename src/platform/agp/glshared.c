@@ -483,7 +483,7 @@ void agp_blendstate(enum arcan_blendfunc mode)
 }
 
 void agp_draw_vobj(float x1, float y1, float x2, float y2,
-	float* txcos, float* model)
+	const float* txcos, const float* model)
 {
 	GLfloat verts[] = {
 		x1, y1,
@@ -493,9 +493,10 @@ void agp_draw_vobj(float x1, float y1, float x2, float y2,
 	};
 	bool settex = false;
 
-	agp_shader_envv(MODELVIEW_MATR, model?model:ident, sizeof(float) * 16);
-/* projection, scissor is set when activating rendertarget */
+	agp_shader_envv(MODELVIEW_MATR,
+		model ? (void*) model : ident, sizeof(float) * 16);
 
+/* projection, scissor is set when activating rendertarget */
 	GLint attrindv = agp_shader_vattribute_loc(ATTRIBUTE_VERTEX);
 	GLint attrindt = agp_shader_vattribute_loc(ATTRIBUTE_TEXCORD);
 

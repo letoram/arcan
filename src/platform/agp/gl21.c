@@ -148,14 +148,14 @@ void agp_drop_vstore(struct storage_info_t* s)
 		glDeleteBuffers(1, &s->vinf.text.wid);
 }
 
-static void pbo_stream(struct storage_info_t* s, av_pixel* buf, bool synch)
+static void pbo_stream(struct storage_info_t* s,
+	av_pixel* buf, struct stream_meta* meta, bool synch)
 {
 	agp_activate_vstore(s);
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, s->vinf.text.wid);
 	size_t ntc = s->w * s->h;
 
-	av_pixel* ptr = (av_pixel*) glMapBuffer(GL_PIXEL_UNPACK_BUFFER,
-			GL_WRITE_ONLY);
+	av_pixel* ptr = glMapBuffer(GL_PIXEL_UNPACK_BUFFER,GL_WRITE_ONLY);
 
 	if (!ptr)
 		return;
@@ -182,6 +182,12 @@ static void pbo_stream(struct storage_info_t* s, av_pixel* buf, bool synch)
 	}
 
 	glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+
+/* glPixelStorei(GL_UNPACK_SKIP_PIXELS, x1)
+ * glPixelStorei(GL_UNPACK_SKIP_ROWS, y1)
+ * glPixelStorei(GL_:UNPACK_ROW_LENGTH)
+ */
+
 	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, s->w, s->h,
 			GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, 0);
 
@@ -239,11 +245,13 @@ struct stream_meta agp_stream_prepare(struct storage_info_t* s,
 		if (!s->vinf.text.wid)
 			setup_unpack_pbo(s, meta.buf);
 
-		pbo_stream(s, meta.buf, type == STREAM_RAW_DIRECT_COPY);
+		pbo_stream(s, meta.buf, &meta, type == STREAM_RAW_DIRECT_COPY);
 	break;
 
 	case STREAM_RAW_DIRECT_SYNCHRONOUS:
 		agp_activate_vstore(s);
+
+/* FIXME, set sub region if used */
 		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, s->w, s->h,
 			GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, meta.buf);
 		agp_deactivate_vstore();
@@ -263,7 +271,7 @@ struct stream_meta agp_stream_prepare(struct storage_info_t* s,
 
 void agp_stream_release(struct storage_info_t* s, struct stream_meta meta)
 {
-	pbo_stream(s, s->vinf.text.raw, false);
+	pbo_stream(s, s->vinf.text.raw, &meta, false);
 	glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, GL_NONE);
 }

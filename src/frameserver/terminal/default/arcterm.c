@@ -349,12 +349,12 @@ static void update_screen(bool redraw)
 /*
  * [ mark broken update region, this will prevent _signal to synch
  *   unless something actually changes in tsm_screen_draw ]
- *
-	term.acon.addr->signal_region.x1 = term.acon.w;
-	term.acon.addr->signal_region.x2 = 0;
-	term.acon.addr->signal_region.y1 = term.acon.h;
-	term.acon.addr->signal_region.y2 = 0;
  */
+
+	term.acon.addr->dirty.x1 = term.acon.w;
+	term.acon.addr->dirty.x2 = 0;
+	term.acon.addr->dirty.y1 = term.acon.h;
+	term.acon.addr->dirty.y2 = 0;
 
 	if (redraw){
 		tsm_screen_selection_reset(term.screen);
