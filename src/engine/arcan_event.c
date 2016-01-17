@@ -2,6 +2,11 @@
  * Copyright 2003-2016, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
+ * Description: The event-queue interface has gone through a lot of hacks
+ * over the years and some of the decisions made makes little to no sense
+ * anymore. It is primarily used as an ordering and queueing mechanism to
+ * avoid a ton of callbacks when mapping between Script<->Core engine but
+ * also for synchronizing transfers over the shared memory interface.
  */
 
 #include <stdlib.h>
@@ -61,22 +66,6 @@ static size_t playback_ofs;
 
 static void pack_rec_event(const struct arcan_event* const outev);
 
-/*
- * By default, we only have a
- * single-producer,single-consumer,single-threaded approach
- * but some platforms may need different support, so allow
- * multiple-producers single-consumer at compile-time
- */
-#ifdef EVENT_MULTITHREAD_SUPPORT
-#include <pthread.h>
-static pthread_mutex_t defctx_mutex = PTHREAD_MUTEX_INITIALIZER;
-#define LOCK() pthread_mutex_lock(&defctx_mutex);
-#define UNLOCK() pthread_mutex_unlock(&defctx_mutex);
-#else
-#define LOCK(X)
-#define UNLOCK(X)
-#endif
-
 static struct arcan_evctx default_evctx = {
 	.eventbuf = eventbuf,
 	.eventbuf_sz = ARCAN_EVENT_QUEUE_LIM,
@@ -103,13 +92,14 @@ static void pull_killswitch(arcan_evctx* ctx)
 	ctx->synch.killswitch = NULL;
 }
 
-/* check queue for event, ignores mask */
 int arcan_event_poll(arcan_evctx* ctx, struct arcan_event* dst)
 {
 	assert(dst);
 	if (*ctx->front == *ctx->back)
 		return 0;
 
+/* overflow in external connection? pull killswitch that will hopefully
+ * wake the guard thread that will try to safely shut down */
 	if (ctx->local == false){
 		FORCE_SYNCH();
 		if ( *(ctx->front) > PP_QUEUE_SZ )
@@ -120,15 +110,12 @@ int arcan_event_poll(arcan_evctx* ctx, struct arcan_event* dst)
 		}
 	}
 	else {
-		LOCK();
 			*dst = ctx->eventbuf[ *(ctx->front) ];
 			*(ctx->front) = (*(ctx->front) + 1) % ctx->eventbuf_sz;
-		UNLOCK();
 	}
 
 	return 1;
 }
-
 
 void arcan_event_repl(struct arcan_evctx* ctx, enum ARCAN_EVENT_CATEGORY cat,
 	size_t r_ofs, size_t r_b, void* cmpbuf, size_t w_ofs, size_t w_b, void* w_buf)
@@ -136,7 +123,6 @@ void arcan_event_repl(struct arcan_evctx* ctx, enum ARCAN_EVENT_CATEGORY cat,
 	if (!ctx->local)
 		return;
 
-	LOCK();
 
 	unsigned front = *ctx->front;
 
@@ -149,7 +135,6 @@ void arcan_event_repl(struct arcan_evctx* ctx, enum ARCAN_EVENT_CATEGORY cat,
 		front = (front + 1) % ctx->eventbuf_sz;
 	}
 
-	UNLOCK();
 }
 
 void arcan_event_maskall(arcan_evctx* ctx)
@@ -168,29 +153,44 @@ void arcan_event_setmask(arcan_evctx* ctx, uint32_t mask)
 }
 
 /*
- * enqueue to current context considering input-masking,
- * unless label is set, assign one based on what kind of event it is
- * This function has a similar prototype to the enqueue defined in
- * the interop.h, but a different implementation to support waking up
- * the child, and that blocking behaviors in the main thread is always
- * forbidden.
+ * enqueue to current context considering input-masking, unless label is set,
+ * assign one based on what kind of event it is This function has a similar
+ * prototype to the enqueue defined in the interop.h, but a different
+ * implementation to support waking up the child, and that blocking behaviors
+ * in the main thread is always forbidden.
  */
 int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src)
 {
 /* early-out mask-filter, these are only ever used to silently
  * discard input / output (only operate on head and tail of ringbuffer) */
-	if (!src || (src->category & ctx->mask_cat_inp)){
+	if (!src || (src->category & ctx->mask_cat_inp) || (ctx->state_fl & 1) > 0)
 		return ARCAN_OK;
-	}
 
-/*
- * Note, we should add panic /warning hooks here as the internal event
- * subsystem is overloaded, which is a sign of something gone wrong.
- * The recover option would be to silently overwrite one of the lesser
- * important (typically, ANALOG INPUTS or frame counters) in the queue
- */
-	if (((*ctx->back + 1) % ctx->eventbuf_sz) == *ctx->front)
-		return ARCAN_ERRC_OUT_OF_SPACE;
+/* One big caveat with this approach is the possibility of feedback loop with
+ * magnification - forcing us to break ordering by directly feeding drain.
+ * Given that we have special treatment for _EXPIRE and similar calls,
+ * there shouldn't be any functions that has this behavior. Still, broken
+ * ordering is better than running out of space. */
+
+ if (((*ctx->back + 1) % ctx->eventbuf_sz) == *ctx->front){
+		if (ctx->drain){
+/* very rare / impossible, but safe-guard against future bad code */
+			if ((ctx->state_fl & 2) > 0){
+				arcan_event ev = *src;
+				ctx->drain(&ev, 1);
+			}
+/* tradeoff, can cascade to embarassing GC pause or video- stall but better
+ * than data corruption and unpredictable states -- this can theoretically
+ * have us return a broken 'custom' error code from some script */
+			else {
+				ctx->state_fl |= 2;
+					arcan_event_feed(ctx, ctx->drain, NULL);
+				ctx->state_fl &= ~2;
+			}
+		}
+		else
+			return ARCAN_ERRC_OUT_OF_SPACE;
+	}
 
 	if (panic_keysym != -1 && panic_keymod != -1 &&
 		src->category == EVENT_IO && src->io.kind == EVENT_IO_BUTTON &&
@@ -207,26 +207,11 @@ int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src)
 		return arcan_event_enqueue(ctx, &ev);
 	}
 
-	if (ctx->local){
-		LOCK();
-		if (src->category == EVENT_IO){
+	if (ctx->local && src->category == EVENT_IO)
 			pack_rec_event(src);
-		}
-	}
 
 	ctx->eventbuf[(*ctx->back) % ctx->eventbuf_sz] = *src;
 	*ctx->back = (*ctx->back + 1) % ctx->eventbuf_sz;
-
-/*
- * Currently, we just wake the sleeping frameserver up as soon as we get
- * an event (and it's actually sleeping), the better option would be
- * to somehow determine if we'll have more useful events coming in a little
- * while so that we don't get a sleep -> 1 event -> sleep -> 1 event scenario
- * for highly interactive frameservers
- */
-	if (ctx->local){
-		UNLOCK();
-	}
 
 	return ARCAN_OK;
 }
@@ -560,11 +545,9 @@ void arcan_bench_register_tick(unsigned nticks)
 
 void arcan_event_purge()
 {
-	LOCK();
 	eventfront = 0;
 	eventback = 0;
 	platform_event_reset(&default_evctx);
-	UNLOCK();
 }
 
 void arcan_bench_register_cost(unsigned cost)
@@ -600,10 +583,6 @@ extern void platform_event_deinit(arcan_evctx* ctx);
 void arcan_event_deinit(arcan_evctx* ctx)
 {
 	platform_event_deinit(ctx);
-
-#ifdef EVENT_MULTITHREAD_SUPPORT
-	pthread_mutex_destroy(&defctx_mutex);
-#endif
 
 	if (record_out){
 		fclose(record_out);
@@ -646,8 +625,37 @@ static void sig_rtfuzz_b(int v)
 }
 #endif
 
+bool arcan_event_feed(struct arcan_evctx* ctx,
+	arcan_event_handler hnd, int* exit_code)
+{
+	while (*ctx->front != *ctx->back){
+/* slide, we forego _poll to cut down on one copy */
+		arcan_event* ev = &ctx->eventbuf[ *(ctx->front) ];
+		*(ctx->front) = (*(ctx->front) + 1) % ctx->eventbuf_sz;
+
+		switch (ev->category){
+			case EVENT_VIDEO:
+				if (ev->vid.kind == EVENT_VIDEO_EXPIRE)
+					arcan_video_deleteobject(ev->vid.source);
+			break;
+
+/* this event category is never propagated to the scripting engine itself */
+			case EVENT_SYSTEM:
+				if (ev->sys.kind == EVENT_SYSTEM_EXIT){
+					ctx->state_fl |= 1;
+					if (exit_code) *exit_code = ev->sys.errcode;
+					break;
+				}
+			default:
+				hnd(ev, 0);
+			break;
+		}
+	}
+	return (ctx->state_fl & 1) == 0;
+}
+
 extern void platform_event_init(arcan_evctx* ctx);
-void arcan_event_init(arcan_evctx* ctx)
+void arcan_event_init(arcan_evctx* ctx, arcan_event_handler drain)
 {
 /*
  * non-local (i.e. shmpage resident) event queues has a different
@@ -695,10 +703,7 @@ void arcan_event_init(arcan_evctx* ctx)
 		arcan_release_resource(&source);
 	}
 
-#ifdef EVENT_MULTITHREAD_SUPPORT
-	pthread_mutex_init(&defctx_mutex, NULL);
-#endif
-
+	ctx->drain = drain;
 	platform_event_init(ctx);
 	epoch = arcan_timemillis();
 }

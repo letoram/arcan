@@ -2,74 +2,89 @@
  * Copyright 2003-2016, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
+ * Description: Internal engine event queue handler and pseudo-monotonic
+ * time keeping. Grab _defaultctx, prepare with _init -> pump with _process
+ * and flush with _feed.
+ *
+ * For synching frameserver, explicitly run _queuetransfer.
  */
-
 #ifndef _HAVE_ARCAN_EPRIV
 #define _HAVE_ARCAN_EPRIV
 
 struct arcan_evctx;
+
+/*
+ * Retrieve the default (internally static) event context
+ */
+struct arcan_evctx* arcan_event_defaultctx();
 
 /* check timers, poll IO events and timing calculations
  * out : (NOT NULL) storage- container for number of ticks that has passed
  *                   since the last call to arcan_process
  * ret : range [0 > n < 1] how much time has passed towards the next tick */
 typedef void (*arcan_tick_cb)(int count);
-float arcan_event_process(struct arcan_evctx*, arcan_tick_cb);
-
-struct arcan_evctx* arcan_event_defaultctx();
 
 /*
- * Pushes as many events from srcqueue to dstqueue as possible
- * without over-saturating. allowed defines which kind of category
- * that will be transferred, other events will be silently ignored (dropped)
- * The saturation cap is defined in 0..1 range as % of full capacity
- * specifying a source ID (can be ARCAN_EID) will be used for rewrites
- * if the category has a source identifier
+ * initialize a context structure. The [drain] function will be invoked if the
+ * queue gets saturated during an enqueue. That will force an internal
+ * dequeue-race, and in the rare case of feedback loops (drain function leads
+ * to more enqueue calls) break ordering.
+ */
+typedef void (*arcan_event_handler)(arcan_event*, int);
+void arcan_event_init(struct arcan_evctx*, arcan_event_handler drain);
+
+/*
+ * Time- keeping function, need to be pumped regularly (will take care of
+ * polling input devices and maintain the pseudo-monotonic clock).
+ * Returns the fraction of the next tick (useful for interpolation).
+ */
+float arcan_event_process(struct arcan_evctx*, arcan_tick_cb);
+
+/*
+ * Process the entire event queue and forward relevant events through [hnd].
+ * Will return false if an exit state is enqueued, and optional [ec] exit code
+ * set.
+ */
+bool arcan_event_feed(struct arcan_evctx*, arcan_event_handler hnd, int* ec);
+
+/*
+ * Convert as many external events in [srcqueue] to [dstqueue] as possible
+ * without breaking [saturation] (% of dstqueue slots, 0..1 range).
+ *
+ * Some events will need rewriting, specify source- vobj id (can be EID but
+ * should typically be a valid VID).
  */
 void arcan_event_queuetransfer(
 	struct arcan_evctx* dstqueue, struct arcan_evctx* srcqueue,
 	enum ARCAN_EVENT_CATEGORY allowed, float saturation, arcan_vobj_id source
 );
 
-int arcan_event_poll(struct arcan_evctx*, struct arcan_event* dst);
-int arcan_event_wait(struct arcan_evctx*, struct arcan_event* dst);
-
 /*
- * Try and enqueue the element to the queue. If the context is
- * set to lossless, enqueue may block, sleep (or spinlock).
- *
- * returns the number of FREE slots left on success or a negative
- * value on failure. The purpose of the try- approach is to let
- * the user distinguish between necessary and merely "helpful"
- * events (e.g. frame numbers, net ping-pongs etc.)
- *
- * These methods are thread-safe if and only if
- * ARCAN_SHMIF_THREADSAFE_QUEUE has been defined at build-time and
- * not during a pending resize operation.
+ * enqueue event into context, returns [ARCAN_OK] if successful or
+ * [ARCAN_ERRC_OUT_SPACE]  if the context lacks a drain function and the queue
+ * is full.
  */
 int arcan_event_enqueue(struct arcan_evctx*, const struct arcan_event* const);
-int arcan_event_tryenqueue(struct arcan_evctx*,const struct arcan_event* const);
-
-/* ignore-all on enqueue */
-void arcan_event_maskall(struct arcan_evctx*);
-
-/* drop any mask, including maskall */
-void arcan_event_clearmask(struct arcan_evctx*);
-
-/* set a specific mask, somewhat limited */
-void arcan_event_setmask(struct arcan_evctx*, unsigned mask);
 
 /* global clock, milisecond resolution relative to epoch set during start */
 int64_t arcan_frametime();
 
 /*
- * Lock and sweep the event queue to alter all events in category
- * where memcmp((ev+r_ofs), cmpbuf, r_b) match and then write
- * w_b from buf to ev+w_ofs.
+ * Masking functions should only be needed for very special edge cases,
+ * e.g. recovering from a scripting environment failure.
+ */
+void arcan_event_maskall(struct arcan_evctx*);
+void arcan_event_clearmask(struct arcan_evctx*);
+void arcan_event_setmask(struct arcan_evctx*, unsigned mask);
+
+/*
+ * [DANGEROUS]
+ * Lock and sweep the event queue to alter all events in category where
+ * memcmp((ev+r_ofs), cmpbuf, r_b) match and then write w_b from buf to
+ * ev+w_ofs.
  *
- * This is used to manually patch or rewrite events that need
- * to be invalidated after that they have been enqueued, primarily
- * for EVENT_FRAMESERVER_*
+ * This is used to manually patch or rewrite events that need to be invalidated
+ * after that they have been enqueued, primarily for EVENT_FRAMESERVER_*
  */
 void arcan_event_repl(struct arcan_evctx* ctx, enum ARCAN_EVENT_CATEGORY cat,
 	size_t r_ofs, size_t r_b, void* cmpbuf,
@@ -77,6 +92,7 @@ void arcan_event_repl(struct arcan_evctx* ctx, enum ARCAN_EVENT_CATEGORY cat,
 );
 
 /*
+ * [DANGEROUS]
  * used as part of trying to salvage external connections while resetting
  * audio/video/scripting contexts. This sweeps the "to be processed"
  * event-queue and removes all events that doesn't strictly come from external
@@ -84,13 +100,9 @@ void arcan_event_repl(struct arcan_evctx* ctx, enum ARCAN_EVENT_CATEGORY cat,
  */
 void arcan_event_purge();
 
-#ifdef _DEBUG
-void arcan_event_dump(struct arcan_evctx*);
-#endif
-
-void arcan_event_init(struct arcan_evctx* dstcontext);
-
+/*
+ * Try and cleanly close down device drivers and other platform specifics.
+ * Any pending events are lost rather than processed.
+ */
 void arcan_event_deinit(struct arcan_evctx*);
-
 #endif
-

@@ -317,8 +317,7 @@ void arcan_shmif_calcofs(struct arcan_shmif_page*,
 void arcan_shmif_setevqs(struct arcan_shmif_page*,
 	sem_handle, arcan_evctx* inevq, arcan_evctx* outevq, bool parent);
 
-/* (frameserver use only) helper function to implement request/synchronization
- * protocol to issue a resize of the output video buffer.
+/* resize/synchronization protocol to issue a resize of the output video buffer.
  *
  * This request can be declined (false return value) and should be considered
  * expensive (may block indefinitely). Anything that depends on the contents of
@@ -345,6 +344,18 @@ void arcan_shmif_setevqs(struct arcan_shmif_page*,
 bool arcan_shmif_resize(struct arcan_shmif_cont*,
 	unsigned width, unsigned height);
 
+/*
+ * Extended version of _resize that transparently adds buffering options
+ * to _signal VIDEO synchronization. This has the effect of manipulating
+ * vidp* in *cont to reduce stall propagation in latency sensitive settings.
+ */
+enum shmif_resize_fl {
+	BUFFER_DOUBLE = 1,
+	BUFFER_TRIPLE = 2
+};
+
+bool arcan_shmif_resize_ext(struct arcan_shmif_cont*,
+	unsigned width, unsigned height, enum shmif_resize_fl);
 /*
  * Unmap memory, release semaphores and related resources
  */
@@ -486,10 +497,11 @@ struct arcan_shmif_page {
 	volatile uint8_t dms;
 
 /*
- * Flipped whenever a buffer is ready to be synched,
- * polled repeatedly by the parent (or child for the case of an
- * encode frameserver) then the corresponding sem_handle is used
- * as a wake-up trigger.
+ * Set whenever a buffer is ready to be synched, polled repeatedly by the
+ * parent (or child for the case of an encode frameserver) then the
+ * corresponding sem_handle is used as a wake-up trigger. The actual
+ * value on ready indicates which buffer was written into (if multi-
+ * buffering is enabled).
  */
 	volatile uint8_t aready;
 	volatile uint8_t vready;
