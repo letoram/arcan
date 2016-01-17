@@ -83,6 +83,12 @@ enum cursors {
 	CURSOR_END
 };
 
+enum dirty_state {
+	DIRTY_NONE,
+	DIRTY_PENDING,
+	DIRTY_UPDATED
+};
+
 struct {
 	struct tsm_screen* screen;
 	struct tsm_vte* vte;
@@ -96,7 +102,9 @@ struct {
 	size_t font_sz;
 	float ppcm;
 #endif
-	bool dirty, mute;
+	bool mute;
+	enum dirty_state dirty;
+	int64_t last;
 
 	pid_t child;
 	int child_fd;
@@ -246,7 +254,7 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 	dbg[1] = attr->bg;
 	dbg[2] = attr->bb;
 
-	term.dirty = true;
+	term.dirty = DIRTY_UPDATED;
 
 /* first erase */
 	if (len == 0){
@@ -332,8 +340,21 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 
 static void update_screen(bool redraw)
 {
+	if (term.dirty == DIRTY_PENDING && term.acon.addr->vready)
+		return;
+
 	term.cursor_x = tsm_screen_get_cursor_x(term.screen);
 	term.cursor_y = tsm_screen_get_cursor_y(term.screen);
+
+/*
+ * [ mark broken update region, this will prevent _signal to synch
+ *   unless something actually changes in tsm_screen_draw ]
+ *
+	term.acon.addr->signal_region.x1 = term.acon.w;
+	term.acon.addr->signal_region.x2 = 0;
+	term.acon.addr->signal_region.y1 = term.acon.h;
+	term.acon.addr->signal_region.y2 = 0;
+ */
 
 	if (redraw){
 		tsm_screen_selection_reset(term.screen);
@@ -344,6 +365,7 @@ static void update_screen(bool redraw)
 		);
 	}
 
+	term.dirty = DIRTY_NONE;
 	term.flags = tsm_screen_get_flags(term.screen);
 	term.age = tsm_screen_draw(term.screen, draw_cb, NULL /* draw_cb_data */);
 }
@@ -392,9 +414,9 @@ static void update_screensize(bool clear)
 
 	if (padh)
 		draw_box(&term.acon, 0, term.acon.h - padh - 1, term.acon.w, padh + 1, col);
+	term.dirty = true;
 */
 
-	term.dirty = true;
 	update_screen(true);
 }
 
@@ -404,7 +426,7 @@ static void read_callback(struct shl_pty* pty,
 	tsm_vte_input(term.vte, u8, len);
 	term.cursor_x = tsm_screen_get_cursor_x(term.screen);
 	term.cursor_y = tsm_screen_get_cursor_y(term.screen);
-	update_screen(false);
+	term.dirty = DIRTY_PENDING;
 }
 
 static void write_callback(struct tsm_vte* vte,
@@ -692,6 +714,8 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 {
 /* keyboard input */
 	int shmask = 0;
+	term.last = 0;
+
 	if (ioev->datatype == EVENT_IDATATYPE_TRANSLATED){
 		bool pressed = ioev->input.translated.active;
 		if (!pressed)
@@ -1082,7 +1106,7 @@ static void main_loop()
 			pc = 3;
 		}
 
-		int sv = poll(fds, pc, -1);
+		int sv = poll(fds, pc, 16);
 		if (fds[0].revents & POLLIN){
 			int rc = shl_pty_dispatch(term.pty);
 		}
@@ -1100,13 +1124,32 @@ static void main_loop()
 			check_pasteboard();
 
 /*
- * since terminals typically update at such a low rate, we shouldn't
- * block / stall add latency here, and for the "woops did find or ls
- * on too much data", tearing can be preferable
+ * We do several dynamic tricks here to work around the wasted cycles that
+ * come from intensive update that come from something like `find /`
+ *
+ * First is that we accept tearing (SIGBLK_NONE) because the terminal
+ * latency is typically way higher than what the display system consumes.
+ *
+ * Second is that we track if we need to update while one is already pending,
+ * and only try if it is marked as pending.
+ *
+ * Third is that we cap the update rate to some ~16fps unless we've had
+ * user input recently. That could also be changed to something more dynamic
+ * depending on a slightly larger statistical window but larger gains would
+ * be found
+ *
  */
-		if (term.dirty && !term.mute){
+		int64_t now = arcan_timemillis();
+		if (now - term.last < 64)
+			continue;
+
+		if (term.dirty == DIRTY_PENDING)
+			update_screen(false);
+
+		if (term.dirty == DIRTY_UPDATED && !term.mute){
 			arcan_shmif_signal(&term.acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
-			term.dirty = false;
+			term.dirty = DIRTY_PENDING;
+			term.last = arcan_timemillis();
 		}
 	}
 	arcan_shmif_drop(&term.acon);
