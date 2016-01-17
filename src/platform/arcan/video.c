@@ -91,7 +91,7 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 			return false;
 		}
 
-		disp[0].conn.addr->hints = RHINT_ORIGO_LL;
+		disp[0].conn.addr->hints = SHMIF_RHINT_ORIGO_LL;
 
 		if (!arcan_shmif_resize( &disp[0].conn, width, height )){
 			arcan_warning("couldn't set shm dimensions (%d, %d)\n", width, height);

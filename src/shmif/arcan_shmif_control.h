@@ -350,8 +350,9 @@ bool arcan_shmif_resize(struct arcan_shmif_cont*,
  * vidp* in *cont to reduce stall propagation in latency sensitive settings.
  */
 enum shmif_resize_fl {
-	BUFFER_DOUBLE = 1,
-	BUFFER_TRIPLE = 2
+	SHMIF_BUFFER_NORMAL = 1,
+	SHMIF_BUFFER_DOUBLE = 2,
+	SHMIF_BUFFER_TRIPLE = 3
 };
 
 bool arcan_shmif_resize_ext(struct arcan_shmif_cont*,
@@ -396,6 +397,10 @@ void arcan_shmif_setprimary( enum arcan_shmif_type, struct arcan_shmif_cont*);
  */
 bool arcan_shmif_integrity_check(struct arcan_shmif_cont*);
 
+struct arcan_shmif_region {
+	uint16_t x1,x2,y1,y2;
+};
+
 struct arcan_shmif_cont {
 	struct arcan_shmif_page* addr;
 
@@ -433,14 +438,6 @@ struct arcan_shmif_cont {
 	sem_handle vsem, asem, esem;
 
 /*
- * Hint to the dirty region that should be synched, will be clamped
- * against active width/height.
- */
-	struct {
-		size_t x1, y1, x2, y2;
-	} signal_region;
-
-/*
  * Should be used to index vidp, i.e. vidp[y * pitch + x] = RGBA(r, g, b, a)
  * stride and pitch account for padding, with stride being a row length in
  * bytes and pitch a row length in pixels.
@@ -470,25 +467,28 @@ struct arcan_shmif_cont {
 };
 
 enum rhint_mask {
-	RHINT_ORIGO_UL = 0,
-	RHINT_ORIGO_LL = 1
+	SHMIF_RHINT_ORIGO_UL = 0,
+	SHMIF_RHINT_ORIGO_LL = 1,
+	SHMIF_RHINT_SUBREGION = 2
 };
 
 struct arcan_shmif_page {
 /*
- * These will be set to the ARCAN_VERSION_MAJOR and ARCAN_VERSION_MAJOR
- * defines, a mismatch will cause the integrity_check to fail and
- * both sides may decide to terminate. Thus, they also act as a header
+ * These will be statically set to the ARCAN_VERSION_MAJOR and
+ * ARCAN_VERSION_MAJOR defines, a mismatch will cause the integrity_check to
+ * fail and both sides may decide to terminate. Thus, they also act as a header
  * guard.
  */
 	int8_t major;
 	int8_t minor;
 
-/* will be checked frequently, likely before transfers as it means
- * that shmcontents etc. will be invalid */
-	volatile int8_t resized;
+/* [FSRV-REQ, ARCAN-ACK]
+ * Will be checked periodically and before transfers. When set, FSRV should
+ * treat other contents of page as UNDEFINED until acknowledged.
+ * RELATES-TO: width, height */
+	 volatile int8_t resized;
 
-/*
+/* [FSRV-SET or ARCAN-SET]
  * Dead man's switch, set to 1 when a connection is active and released
  * if parent or child detects an anomaly that would indicate misuse or
  * data corruption. This will trigger guard-threads and similar structures
@@ -496,90 +496,94 @@ struct arcan_shmif_page {
  */
 	volatile uint8_t dms;
 
-/*
- * Set whenever a buffer is ready to be synched, polled repeatedly by the
- * parent (or child for the case of an encode frameserver) then the
- * corresponding sem_handle is used as a wake-up trigger. The actual
- * value on ready indicates which buffer was written into (if multi-
- * buffering is enabled).
+/* [FSRV-SET, ARCAN-ACK(fl+sem)]
+ * Set whenever a buffer is ready to be synchronized.
+ * [vready-1, aready-1] indicate the negotiated buffer(s) to synchronize
+ * and |hints] indicate any specific synchronization options to consider
+ * apending / vpending is used internally to determine the next buffer
+ * to write to.
  */
-	volatile uint8_t aready;
-	volatile uint8_t vready;
-
-/*
- * Unique (or 0) segment identifier. Primarily used to provide a local
- * namespace for specifying relative properties (e.g. VIEWPORT commands
- * from popups) between subsegments, will always be 0 for subsegment.
- */
-	uint32_t segment_token;
+	volatile uint8_t aready, apending;
+	volatile uint8_t vready, vpending;
 
 /*
  * Presentation hints, see mask above.
  */
-	uint8_t hints;
+	volatile uint8_t hints;
 
 /*
- * This is set by the parent and will be compared with the cookie
- * that is generated in the shmcont structure above.
+ * IF the contraints:
+ * [Hints & SHMIF_RHINT_SUBREGION] and (X2>X1,(X2-X1)<=W,Y2>Y1,(Y2-Y1<=H))
+ * valid, [ARCAN] MAY synch only the specified region.
+ */
+	volatile struct arcan_shmif_region dirty;
+
+/* [FSRV-SET]
+ * Unique (or 0) segment identifier. Prvodes a local namespace for specifying
+ * relative properties (e.g. VIEWPORT command from popups) between subsegments,
+ * is always 0 for subsegments.
+ */
+	uint32_t segment_token;
+
+/* [ARCAN-SET]
+ * Calculated once when initializing segment, and verified periodically from
+ * both [FSRV] and [ARCAN]. Any deviation MAY have the [dms] be pulled.
  */
 	uint64_t cookie;
 
 /*
- * These heavily rely on the layout provided in shmif/arcan_event.h
- * and tightly couples the connection model and the event model, which
- * is an unpleasant tradeoff. Most structures are prepared to quickly
- * switch this model to using a socket, should it be needed.
+ * [ARCAN-SET (parent), FSRV-SET (child)]
+ * Uses the event model provded in shmif/arcan_event and tightly couples
+ * structure / event layout which introduces a number of implementation defined
+ * constraints, making this interface a poor choice for a protocol.
  */
 	struct {
 		struct arcan_event evqueue[ PP_QUEUE_SZ ];
 		uint8_t front, back;
 	} childevq, parentevq;
 
-/*
- * On a resize, parent will update segment_size. If this differs from
- * the previously known size (tracked in cont), the segment should be
- * remapped. Parent has a local copy so from a client perspective, this
- * value is read-only.
+/* [ARCAN-SET (parent), FSRV-CHECK]
+ * Arcan mandates segment size, will only change during resize negotiation.
+ * If this differs from the previous known size (tracked inside shmif_cont),
+ * the segment should be remapped.
  *
  * Not all operations will lead to a change in segment_size, OVERCOMMIT
  * builds has its size fixed, and parent may heuristically determine if
  * a shrinking- operation is worth the overhead or not.
  */
-	uint32_t segment_size;
+	volatile uint32_t segment_size;
 
 /*
- * Current video output dimensions, if these deviate from the
- * agreed upon dimensions (i.e. change w,h and set the resized flag to !0)
- * the parent will simply ignore the data presented.
+ * [FSRV-SET (resize), ARCAN-ACK]
+ * Current video output dimensions. If these deviate from the agreed upon
+ * dimensions (i.e. change w,h and set the resized flag to !0) ARCAN will
+ * simply ignore the data presented.
  */
-	uint16_t w, h;
+	volatile uint16_t w, h;
 
 /*
+ * [FSRV-SET (aready signal), ARCAN-ACK]
  * Video buffers are planar transfers of a pre-determined size. Audio,
  * on the other hand, can be appended and wholly or partially consumed
  * by the side that currently holds the synch- semaphore.
- */
-	uint16_t abufused;
+*/
+	volatile uint16_t abufused;
 
 /*
- * Timing related data to a video frame can be attached in order to assist
- * the parent in determining when/if synchronization should be released
- * and the frame rendered. This value is a hint, do not rely on it as a
- * clock/sleep mechanism.
+ * [FSRV-SET, ARCAN-ACK (vready signal)]
+ * Timing related data to a video frame can be attached in order to assist the
+ * parent in determining when/if synchronization should be released and the
+ * frame rendered. This value is a hint, do not rely on it as a clock/sleep
+ * mechanism.
  */
-	int64_t vpts;
+	volatile int64_t vpts;
 
 /*
- * A frameserver or non-authoritative connection do not always know which
- * process that is responsible for maintaining the connection (which may
- * be a desired property). To allow a child to monitor and see if the parent
- * is alive in situations where the event- signal socket do not help,
- * this value is set upon creation (and can be modified during a video-
- * frame synch). This is to permit the parent to do hand-overs/migration
- * etc.
+ * [ARCAN-SET]
+ * Set during segment initalization, provides some identifier to determine
+ * if the parent process is still allowed (used internally by GUARDTHREAD).
+ * Can also be updated in relation to a RESET event.
  */
-
 	process_handle parent;
 };
-
 #endif

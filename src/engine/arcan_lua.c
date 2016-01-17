@@ -863,7 +863,7 @@ void arcan_lua_adopt(struct arcan_luactx* ctx)
 					.fsrv.video = fsrv->vid,
 					.fsrv.audio = fsrv->aid,
 					.fsrv.otag = fsrv->tag,
-					.fsrv.glsource = fsrv->shm.ptr->hints & RHINT_ORIGO_LL
+					.fsrv.glsource = fsrv->shm.ptr->hints & SHMIF_RHINT_ORIGO_LL
 				};
 				arcan_event_enqueue(arcan_event_defaultctx(), &rezev);
 			}

@@ -637,6 +637,8 @@ bool arcan_event_feed(struct arcan_evctx* ctx,
 			case EVENT_VIDEO:
 				if (ev->vid.kind == EVENT_VIDEO_EXPIRE)
 					arcan_video_deleteobject(ev->vid.source);
+				else
+					hnd(ev, 0);
 			break;
 
 /* this event category is never propagated to the scripting engine itself */
