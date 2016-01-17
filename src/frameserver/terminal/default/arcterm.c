@@ -5,39 +5,29 @@
  */
 
 /*
- * This is still a rather crude terminal emulator, owing most of its actual
- * heavy lifting to David Hermanns libtsm - which sadly doesn't seem to be
- * maintained/developed anymore.
+ * This is still a crude terminal emulator, with most of the heavy lifting
+ * due to David Herrmanns libtsm. Most of the common features are in place,
+ * with the following rough list on the 'todo':
  *
- * There are quite a few interesting paths to explore here when
- * sandboxing etc. are in place, in particular [or placed in chainloader]
+ * - Compatibilty Work
+ * - Font rendering optimizations (possibly other formats than TT)
+ * - More / Better cursor and offscreen buffer support
+ * - X Mouse protocol
+ * - Respect CATTR for protect, underline, bold, ...
+ * - Respect Displayhint events in regards to visibility and focus
+ *   [ don't update while visibility is off, fade cursor when not focused ]
  *
- *   - virtualized /dev/ tree with implementations for /dev/dsp,
- *     /dev/mixer etc. and other device nodes we might want plugged
- *     or unplugged.
+ * Known Bugs:
+ *  - Resize tends to force scroll up one row
  *
- *   - "honey-pot" style proc, sysfs etc.
- *
- *   - mapping / remapping existing file-descriptors in situ
- *
- *  period hint and rescale in between pulses), drag-n-drop
- *  style font switching, dynamic pipe redirection, env clone/restore,
- *  time-keeping manipulation
- *
- * Still there are basic stuff that isn't working so hot at the moment:
- *  - non-freetype supported font rendering
- *  - advanced color
- *  - palette switching
- *  - alternate escape sequences (for titlebar upd. link propagation etc.)
- *  - doubleclick on word
- *  - scrollback- status / control
- *  - cursor / refresh behavior:
- *    - serious flickering in top/mc during drag resize (cps limit?)
- *    - cursor style selection, blinking support
- *    - forward mouse cursor input to shell
- *  - integrate tsm in codebase / buildsystem as it isn't work maintaining
- *    as separate dependency anymore
+ * Experiments:
+ *  - State transfers (of env, etc. to allow restore)
+ *  - Paste complex data streams into shell namespace (to move files)
+ *  - Injecting / redirecting descriptors (senseye integration)
+ *  - Drag and Drop- file copy
+ *  - Time-keeping manipulation
  */
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -72,6 +62,10 @@
 
 #ifdef TTF_SUPPORT
 #include "arcan_ttf.h"
+#else
+typedef struct {
+    uint8_t r, g, b;
+} TTF_Color;
 #endif
 
 enum cursors {
@@ -90,11 +84,15 @@ enum dirty_state {
 };
 
 struct {
+/* terminal / state control */
 	struct tsm_screen* screen;
 	struct tsm_vte* vte;
 	struct shl_pty* pty;
+	pid_t child;
+	int child_fd;
 	unsigned flags;
 
+/* font rendering / tracking */
 #ifdef TTF_SUPPORT
 	TTF_Font* font;
 	int font_fd;
@@ -105,16 +103,6 @@ struct {
 	bool mute;
 	enum dirty_state dirty;
 	int64_t last;
-
-	pid_t child;
-	int child_fd;
-
-	int rows;
-	int cols;
-	int mag;
-	int cell_w, cell_h;
-	int cursor_x, cursor_y;
-	int last_dbl_x,last_dbl_y;
 
 /* if we receive a label set in mouse events, we switch to a different
  * interpreteation where drag, click, dblclick, wheelup, wheeldown work */
@@ -129,17 +117,30 @@ struct {
 /* tracking when to reset scrollback */
 	int sbofs;
 
+/* color, cursor and other drawing states */
+	int cursor_x, cursor_y;
+	int last_dbl_x,last_dbl_y;
+	int rows;
+	int cols;
+	int cell_w, cell_h;
+
 	uint8_t fgc[3];
 	uint8_t bgc[3];
 	shmif_pixel ccol;
 	enum cursors cursor;
+	struct {
+		TTF_Color fg;
+		TTF_Color bg;
+		uint8_t cursor_d[5];
+	} cdata;
 
 	uint8_t alpha;
 
+/* track last time counter we did update on to avoid overdraw */
 	tsm_age_t age;
 
+/* upstream connection */
 	struct arcan_shmif_cont acon;
-
 	struct arcan_shmif_cont clip_in;
 	struct arcan_shmif_cont clip_out;
 } term = {
@@ -147,7 +148,6 @@ struct {
 	.cell_h = 8,
 	.rows = 25,
 	.cols = 80,
-	.mag = 1,
 	.alpha = 0xff,
 	.bgc = {0x00, 0x00, 0x00},
 	.fgc = {0xff, 0xff, 0xff},
@@ -166,19 +166,6 @@ static void tsm_log(void* data, const char* file, int line,
 	fprintf(stderr, "[%d] %s:%d - %s, %s()\n", sev, file, line, subs, func);
 	vfprintf(stderr, fmt, arg);
 }
-
-struct unpack_col {
-	union{
-		struct {
-			uint8_t r;
-			uint8_t g;
-			uint8_t b;
-			uint8_t a;
-		};
-
-		uint32_t rgba;
-	};
-};
 
 const char* curslbl[] = {
 	"block",
@@ -228,17 +215,93 @@ static void cursor_at(int x, int y, shmif_pixel ccol)
 	}
 }
 
+static void draw_ch(uint8_t u8_ch[5], int base_x, int base_y,
+	TTF_Color fg, TTF_Color bg)
+{
+#ifdef TTF_SUPPORT
+	if (term.font == NULL){
+#endif
+		u8_ch[1] = '\0';
+		draw_text_bg(&term.acon, (const char*) u8_ch, base_x, base_y,
+			SHMIF_RGBA(fg.r, fg.g, fg.b, 0xff),
+			SHMIF_RGBA(bg.r, bg.g, bg.b, term.alpha)
+		);
+		return;
+#ifdef TTF_SUPPORT
+	}
+
+/* huge room for improvement / optimization here:
+ * 1. remove the first "draw_box with bgcolor"
+ * 2. replace TTF_RenderUTF8 with a function that draws the entirety
+ *    of cell_w * cell_h with background color into a preallocated
+ *    buffer of that size! - this would cut down on a malloc call
+ *    per cell and the amount of overdraw etc. with 70-80% */
+
+	draw_box(&term.acon, base_x, base_y, term.cell_w, term.cell_h,
+		SHMIF_RGBA(bg.r, bg.g, bg.b, term.alpha));
+
+	TTF_Surface* surf = TTF_RenderUTF8(term.font, (char*) u8_ch, fg);
+	if (!surf)
+		return;
+
+	size_t w = term.acon.addr->w;
+	shmif_pixel* dst = term.acon.vidp;
+
+	for (int row = 0; row < surf->height; row++)
+		for (int col = 0; col < surf->width; col++){
+		uint8_t* bgra = (uint8_t*) &surf->data[ row * surf->stride + (col * 4) ];
+		off_t ofs = (row + base_y) * term.acon.pitch + col + base_x;
+		if (bgra[3] == 0)
+			dst[ofs] = SHMIF_RGBA(bg.r, bg.g, bg.b, term.alpha);
+/* blend 1 - src alpha */
+		else{
+			shmif_pixel inp = dst[ofs];
+			uint32_t r, g, b;
+			uint8_t a = bgra[3];
+/* classic "avoid div hack" */
+			r = a * fg.r + bg.r * (255 - a);
+			r += 0x80;
+			r = (r + (r >> 8)) >> 8;
+			g = a * fg.g + bg.g * (255 - a);
+			g += 0x80;
+			g = (g + (g >> 8)) >> 8;
+			b = a * fg.b + bg.b * (255 - a);
+			b += 0x80;
+			b = (b + (b >> 8)) >> 8;
+			dst[ofs] = SHMIF_RGBA(r, g, b, (fg.r == bg.r && fg.g == bg.g
+				&& fg.b == bg.b) ? term.alpha : 0xff);
+		}
+	}
+
+	free(surf);
+	return;
+#endif
+}
+
 static int draw_cb(struct tsm_screen* screen, uint32_t id,
 	const uint32_t* ch, size_t len, unsigned width, unsigned x, unsigned y,
 	const struct tsm_screen_attr* attr, tsm_age_t age, void* data)
 {
 	uint8_t fgc[3], bgc[3];
 	uint8_t* dfg = fgc, (* dbg) = bgc;
-	int base_y = y * term.cell_h;
-	int base_x = x * term.cell_w;
+	int y1 = y * term.cell_h;
+	int x1 = x * term.cell_w;
 
 	if (term.mute || (age && term.age && age <= term.age))
 		return 0;
+
+	int x2 = x1 + term.cell_w;
+	int y2 = y1 + term.cell_h;
+
+/* update dirty rectangle for synchronization */
+	if (x1 < term.acon.addr->dirty.x1)
+		term.acon.addr->dirty.x1 = x1;
+	if (x2 > term.acon.addr->dirty.x2)
+		term.acon.addr->dirty.x2 = x2;
+	if (y1 < term.acon.addr->dirty.y1)
+		term.acon.addr->dirty.y1 = y1;
+	if (y2 > term.acon.addr->dirty.y2)
+		term.acon.addr->dirty.y2;
 
 	bool match_cursor = x == term.cursor_x && y == term.cursor_y;
 
@@ -256,16 +319,11 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 
 	term.dirty = DIRTY_UPDATED;
 
+
 /* first erase */
 	if (len == 0){
-		draw_box(&term.acon, base_x, base_y, term.cell_w, term.cell_h,
+		draw_box(&term.acon, x1, y1, term.cell_w, term.cell_h,
 			SHMIF_RGBA(bgc[0], bgc[1], bgc[2], term.alpha));
-	}
-
-/* then draw custom cursor */
-	if (match_cursor && !(term.flags & TSM_SCREEN_HIDE_CURSOR)){
-		cursor_at(x, y, term.ccol);
-		return 0;
 	}
 
 	if (len == 0)
@@ -274,68 +332,21 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 	size_t u8_sz = tsm_ucs4_get_width(*ch) + 1;
 	uint8_t u8_ch[u8_sz];
 	size_t nch = tsm_ucs4_to_utf8(*ch, (char*) u8_ch);
-
-#ifdef TTF_SUPPORT
-	if (term.font == NULL){
-#endif
-		u8_ch[1] = '\0';
-		draw_text_bg(&term.acon, (const char*) u8_ch, base_x, base_y,
-			SHMIF_RGBA(fgc[0], fgc[1], fgc[2], 0xff),
-			SHMIF_RGBA(bgc[0], bgc[1], bgc[2], term.alpha)
-		);
-		return 0;
-#ifdef TTF_SUPPORT
-	}
-
 	u8_ch[u8_sz-1] = '\0';
-	TTF_Color fg = {.r = fgc[0], .g = fgc[1], .b = fgc[2]};
 
-/* huge room for improvement / optimization here:
- * 1. remove the first "draw_box with bgcolor"
- * 2. replace TTF_RenderUTF8 with a function that draws the entirety
- *    of cell_w * cell_h with background color into a preallocated
- *    buffer of that size! - this would cut down on a malloc call
- *    per cell and the amount of overdraw etc. with 70-80% */
+	TTF_Color tfg = {.r = dfg[0], .g = dfg[1], .b = dfg[2]};
+	TTF_Color tbg = {.r = dbg[0], .g = dbg[1], .b = dbg[2]};
 
-	draw_box(&term.acon, base_x, base_y, term.cell_w, term.cell_h,
-		SHMIF_RGBA(bgc[0], bgc[1], bgc[2], term.alpha));
-
-	TTF_Surface* surf = TTF_RenderUTF8(term.font, (char*) u8_ch, fg);
-	if (!surf)
-		return 0;
-
-	size_t w = term.acon.addr->w;
-	shmif_pixel* dst = term.acon.vidp;
-
-	for (int row = 0; row < surf->height; row++)
-		for (int col = 0; col < surf->width; col++){
-		uint8_t* bgra = (uint8_t*) &surf->data[ row * surf->stride + (col * 4) ];
-		off_t ofs = (row + base_y) * term.acon.pitch + col + base_x;
-		if (bgra[3] == 0)
-			dst[ofs] = SHMIF_RGBA(bgc[0], bgc[1], bgc[2], term.alpha);
-/* blend 1 - src alpha */
-		else{
-			shmif_pixel inp = dst[ofs];
-			uint32_t r, g, b;
-/* classic "avoid div hack" */
-			r = bgra[3] * fgc[0] + bgc[0] * (255 - bgra[3]);
-			r += 0x80;
-			r = (r + (r >> 8)) >> 8;
-			g = bgra[3] * fgc[1] + bgc[1] * (255 - bgra[3]);
-			g += 0x80;
-			g = (g + (g >> 8)) >> 8;
-			b = bgra[3] * fgc[2] + bgc[2] * (255 - bgra[3]);
-			b += 0x80;
-			b = (b + (b >> 8)) >> 8;
-			dst[ofs] = SHMIF_RGBA(r, g, b, (bgc[0] == term.bgc[0] &&
-				bgc[1] == term.bgc[1] && term.bgc[2] == term.bgc[2]) ?
-				term.alpha : 0xff);
-		}
+	if (match_cursor && !(term.flags & TSM_SCREEN_HIDE_CURSOR)){
+		term.cdata.fg = tfg;
+		term.cdata.bg = tbg;
+		memcpy(term.cdata.cursor_d, u8_ch, u8_sz);
+		cursor_at(x, y, term.ccol);
 	}
+	else
+		draw_ch(u8_ch, x1, y1, tfg, tbg);
 
-	free(surf);
 	return 0;
-#endif
 }
 
 static void update_screen(bool redraw)
@@ -356,6 +367,7 @@ static void update_screen(bool redraw)
 	term.acon.addr->dirty.y1 = term.acon.h;
 	term.acon.addr->dirty.y2 = 0;
 
+/* current test, try and erase cursor */
 	if (redraw){
 		tsm_screen_selection_reset(term.screen);
 		draw_box(&term.acon,
@@ -1290,6 +1302,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 
 	gen_symtbl();
 	term.acon = *con;
+	term.acon.addr->hints = SHMIF_RHINT_SUBREGION;
 
 	arcan_shmif_resize(&term.acon,
 		term.cell_w * term.cols, term.cell_h * term.rows);
