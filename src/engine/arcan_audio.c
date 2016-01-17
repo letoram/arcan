@@ -296,9 +296,9 @@ arcan_errc arcan_audio_free(arcan_aobj_id id)
 
 			if (current->n_streambuf)
 				alDeleteBuffers(current->n_streambuf, current->streambuf);
-		}
 
-		_wrap_alError(NULL, "audio_free(DeleteBuffers/sources)");
+			_wrap_alError(NULL, "audio_free(DeleteBuffers/sources)");
+		}
 		arcan_mem_free(current);
 
 		rv = ARCAN_OK;
@@ -581,10 +581,10 @@ arcan_errc arcan_audio_stop(arcan_aobj_id id)
 	dobj->kind = AOBJ_INVALID;
 
 /* callback with empty buffers means that we want to clean up */
-	if (dobj->feed && dobj->alid)
+	if (dobj->feed && dobj->alid){
 		dobj->feed(dobj, id, -1, dobj->tag);
-
-	_wrap_alError(dobj, "audio_stop(stop)");
+		_wrap_alError(dobj, "audio_stop(stop)");
+	}
 	arcan_audio_free(id);
 
 /* different from the finished/stopped event */
