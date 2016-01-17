@@ -239,6 +239,13 @@ static void postframe()
 	arcan_bench_register_frame();
 }
 
+static void process_event(arcan_event* ev, int drain)
+{
+	if (drain)
+		arcan_warning("event-queue saturation, drain performed\n");
+	arcan_lua_pushevent(settings.lua, ev);
+}
+
 static void on_clock_pulse(int nticks)
 {
 	settings.tick_count += nticks;
@@ -582,8 +589,8 @@ int MAIN_REDIR(int argc, char* argv[])
 	arcan_math_init();
 
 /* setup device polling, cleanup, ... */
-	arcan_evctx* def = arcan_event_defaultctx();
-	arcan_event_init( def );
+	arcan_evctx* evctx = arcan_event_defaultctx();
+	arcan_event_init(evctx, process_event);
 
 #ifdef ARCAN_LED
 	arcan_led_init();
@@ -623,7 +630,6 @@ int MAIN_REDIR(int argc, char* argv[])
 	bool adopt = false, in_recover = false;
 	int jumpcode = setjmp(arcanmain_recover_state);
 	int saved, truncated;
-	arcan_evctx* evctx = arcan_event_defaultctx();
 
 	if (jumpcode == 1){
 		arcan_db_close(&dbhandle);
@@ -707,47 +713,24 @@ int MAIN_REDIR(int argc, char* argv[])
 	}
 
 	bool done = false;
-	int exit_code = EXIT_SUCCESS;
-	arcan_event ev;
+	int exit_code = EXIT_FAILURE;
 
-	while (!done) {
-/* these can populate event queue, but only to a certain limit */
+/* Main loop */
+	for(;;){
 		arcan_video_pollfeed();
 		arcan_audio_refresh();
-
 		float frag = arcan_event_process(evctx, on_clock_pulse);
-		while (1 == arcan_event_poll(evctx, &ev)){
-			switch (ev.category){
-			case EVENT_VIDEO:
-				if (ev.vid.kind == EVENT_VIDEO_EXPIRE)
-					arcan_video_deleteobject(ev.vid.source);
+		if (!arcan_event_feed(evctx, process_event, &exit_code))
 			break;
-
-/* this event category is never propagated to the scripting engine itself */
-			case EVENT_SYSTEM:
-				if (ev.sys.kind == EVENT_SYSTEM_EXIT){
-					exit_code = ev.sys.errcode;
-					done = true;
-					goto out;
-				}
-				goto error;
-			default:
-			break;
-			}
-
-			arcan_lua_pushevent(settings.lua, &ev);
-		}
-
 		platform_video_synch(settings.tick_count, frag, preframe, postframe);
 	}
 
-out:
 	free(hookscript);
 	arcan_lua_callvoidfun(settings.lua, "shutdown", false, NULL);
 #ifdef ARCAN_LED
 	arcan_led_shutdown();
 #endif
-	arcan_event_deinit(arcan_event_defaultctx());
+	arcan_event_deinit(evctx);
 	arcan_video_shutdown();
 	arcan_mem_free(dbfname);
 	if (dbhandle)
@@ -765,7 +748,7 @@ error:
 		arcan_verify_namespaces(true);
 	}
 
-	arcan_event_deinit(arcan_event_defaultctx());
+	arcan_event_deinit(evctx);
 	arcan_mem_free(dbfname);
 	arcan_video_shutdown();
 

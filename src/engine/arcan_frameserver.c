@@ -266,13 +266,6 @@ static void push_buffer(arcan_frameserver* src,
 		explicit = true;
 	}
 
-/*
- * currently many situations not handled;
- * parent- allocated explicit buffers
- * parent- rejecting accelerated buffers (incompatible formats),
- * activating shmif fallback
- *  - wasted shmif space on vidp that won't be used
- */
 	if (src->vstream.handle && !src->vstream.dead){
 		stream.handle = src->vstream.handle;
 		store->vinf.text.stride = src->vstream.stride;

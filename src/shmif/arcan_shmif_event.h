@@ -1154,11 +1154,12 @@ typedef enum {
 
 struct arcan_evctx {
 /* time and mask- tracking, only used parent-side */
-	uint32_t c_ticks;
-	uint32_t c_leaks;
+	int32_t c_ticks;
 	uint32_t mask_cat_inp;
 
 /* only used for local queues */
+	uint32_t state_fl;
+	void (*drain)(arcan_event*, int);
 	uint8_t eventbuf_sz;
 
 	arcan_event* eventbuf;
