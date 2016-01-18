@@ -193,6 +193,7 @@ struct dispout {
 	_Alignas(16) float projection[16];
 	_Alignas(16) float txcos[8];
 
+	enum blitting_hint hint;
 	enum disp_state state;
 	platform_display_id id;
 };
@@ -1804,11 +1805,15 @@ bool platform_video_map_display(
 			return false;
 	}
 
-	float* txcos = vobj && vobj->txcos ? vobj->txcos :
-		arcan_video_default_display.default_txcos;
+	float txcos[8];
+		memcpy(txcos, vobj && vobj->txcos ? vobj->txcos :
+			(vobj->vstore == arcan_vint_world() ?
+				arcan_video_display.mirror_txcos :
+				arcan_video_display.default_txcos), sizeof(float) * 8
+		);
 
 	switch(hint){
-		case HINT_ROTATE_90_CW:
+		case HINT_ROTATE_CW_90:
 			d->txcos[0] = txcos[2];
 			d->txcos[1] = txcos[3];
 			d->txcos[2] = txcos[4];
@@ -1818,7 +1823,7 @@ bool platform_video_map_display(
 			d->txcos[6] = txcos[0];
 			d->txcos[7] = txcos[1];
 		break;
-		case HINT_ROTATE_90_CCW:
+		case HINT_ROTATE_CCW_90:
 			d->txcos[0] = txcos[6];
 			d->txcos[1] = txcos[7];
 			d->txcos[2] = txcos[0];
@@ -1828,7 +1833,7 @@ bool platform_video_map_display(
 			d->txcos[6] = txcos[4];
 			d->txcos[7] = txcos[5];
 			break;
-		case HINT_FLIPY:
+		case HINT_YFLIP:
 			d->txcos[0] = txcos[6];
 			d->txcos[1] = txcos[7];
 			d->txcos[2] = txcos[4];
@@ -1838,10 +1843,12 @@ bool platform_video_map_display(
 			d->txcos[6] = txcos[0];
 			d->txcos[7] = txcos[1];
 		break;
+		case HINT_ENDM:
+			arcan_warning("egl_dri() - broken hint, falling back to none\n");
+		break;
 		case HINT_CROP:
 		case HINT_NONE:
 		case HINT_FIT:
-		case HINT_DEFAULT:
 			memcpy(d->txcos, txcos, sizeof(float) * 8);
 		break;
 	}
@@ -1870,19 +1877,16 @@ static void draw_display(struct dispout* d)
 {
 	arcan_vobject* vobj = arcan_video_getobject(d->vid);
 
-	if (d->vid == ARCAN_VIDEO_WORLDID){
-		agp_activate_vstore(arcan_vint_world());
-		txcos = arcan_video_display.mirror_txcos;
-	}
-	else if (!vobj) {
+	if (!vobj) {
 		agp_rendertarget_clear();
 		return;
 	}
+	else
+		agp_activate_vstore(d->vid == ARCAN_VIDEO_WORLDID ?
+			arcan_vint_world() : vobj->vstore);
 
-	agp_activate_vstore(vobj->vstore);
 	agp_shader_envv(PROJECTION_MATR, d->projection, sizeof(float)*16);
-	agp_draw_vobj(x1, y1, x2, y2, d->txcos, NULL);
-
+	agp_draw_vobj(0, 0, d->dispw, d->disph, d->txcos, NULL);
 /*
  * another rough corner case, if we have a store that is not world ID but
  * shared with different texture coordinates (to extend display), we need to

@@ -221,7 +221,7 @@ static void pbo_stream_sub(struct storage_info_t* s,
 	agp_deactivate_vstore(s);
 
 	if (synch){
-		void* cpy = s->vinf.text.raw;
+		av_pixel* cpy = s->vinf.text.raw;
 		for (size_t y = meta->y1; y < meta->y1 + meta->h; y++)
 		memcpy(&cpy[y * s->w + meta->x1], &buf[y * s->w + meta->x1], row_sz);
 		s->update_ts = arcan_timemillis();

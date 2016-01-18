@@ -612,7 +612,7 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
 
 			if (ev.tgt.ioevs[2].fv > 0)
 				font_sz = ceilf(d->ppcm * ev.tgt.ioevs[2].fv);
-			arcan_video_defaultfont("arcan-default", BADFD, font_sz, hint);
+			arcan_video_defaultfont("arcan-default", newfd, font_sz, hint);
 
 			arcan_event_enqueue(ctx, &(arcan_event){
 				.category = EVENT_VIDEO,
