@@ -162,40 +162,6 @@ void agp_drop_vstore(struct storage_info_t* s)
 		glDeleteBuffers(1, &s->vinf.text.wid);
 }
 
-/* positions and offsets in meta have been verified in _frameserver */
-static void pbo_stream_sub(struct storage_info_t* s,
-	av_pixel* buf, struct stream_meta* meta, bool synch)
-{
-	agp_activate_vstore(s);
-	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, s->vinf.text.wid);
-
-	av_pixel* ptr = glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
-	size_t row_sz = meta->w * sizeof(av_pixel);
-
-/* warning, with the normal copy we check alignment in beforehand as we have
- * had cases where glMapBuffer intermittently returns unaligned pointers AND
- * the compiler has emitted intrinsics that assumed alignment */
-	for (size_t y = meta->y1; y < meta->y1 + meta->h; y++)
-		memcpy(&ptr[y * s->w + meta->x1], &buf[y * s->w + meta->x1], row_sz);
-
-	if (synch){
-		ptr = s->vinf.text.raw;
-	for (size_t y = meta->y1; y < meta->y1 + meta->h; y++)
-		memcpy(&ptr[y * s->w + meta->x1], &buf[y * s->w + meta->x1], row_sz);
-		s->update_ts = arcan_timemillis();
-	}
-
-	glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
-
-	set_pixel_store(s->w, *meta);
-	glTexSubImage2D(GL_TEXTURE_2D, 0, meta->x1, meta->y1, meta->w, meta->h,
-		GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, 0);
-	reset_pixel_store();
-
-	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
-	agp_deactivate_vstore();
-}
-
 static void pbo_stream(struct storage_info_t* s,
 	av_pixel* buf, struct stream_meta* meta, bool synch)
 {
@@ -237,6 +203,52 @@ static void pbo_stream(struct storage_info_t* s,
 
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 	agp_deactivate_vstore();
+}
+
+/* positions and offsets in meta have been verified in _frameserver */
+static void pbo_stream_sub(struct storage_info_t* s,
+	av_pixel* buf, struct stream_meta* meta, bool synch)
+{
+	if ( (float)(meta->w * meta->h) / (s->w * s->h) > 0.5)
+		return pbo_stream(s, buf, meta, synch);
+
+	agp_activate_vstore(s);
+	size_t row_sz = meta->w * sizeof(av_pixel);
+	set_pixel_store(s->w, *meta);
+	glTexSubImage2D(GL_TEXTURE_2D, 0, meta->x1, meta->y1, meta->w, meta->h,
+		GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, buf);
+	reset_pixel_store();
+	agp_deactivate_vstore(s);
+
+	if (synch){
+		void* cpy = s->vinf.text.raw;
+		for (size_t y = meta->y1; y < meta->y1 + meta->h; y++)
+		memcpy(&cpy[y * s->w + meta->x1], &buf[y * s->w + meta->x1], row_sz);
+		s->update_ts = arcan_timemillis();
+	}
+
+/*
+ * Currently disabled approach to update subregion using PBO, experienced
+ * data corruption / driver bugs on several drivers :'(
+ */
+
+#if 0
+	av_pixel* ptr = glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
+
+glBindBuffer(GL_PIXEL_UNPACK_BUFFER, s->vinf.text.wid);
+
+
+/* warning, with the normal copy we check alignment in beforehand as we have
+ * had cases where glMapBuffer intermittently returns unaligned pointers AND
+ * the compiler has emitted intrinsics that assumed alignment */
+	for (size_t y = meta->y1; y < meta->y1 + meta->h; y++)
+		memcpy(&ptr[y * s->w + meta->x1], &buf[y * s->w + meta->x1], row_sz);
+
+		glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+	glTexSubImage2D(GL_TEXTURE_2D, 0, meta->x1, meta->y1, meta->w, meta->h,
+		GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, 0);
+	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+#endif
 }
 
 static inline void setup_unpack_pbo(struct storage_info_t* s, void* buf)
@@ -344,7 +356,7 @@ static void pbo_alloc_read(struct storage_info_t* store)
 
 	glBindBuffer(GL_PIXEL_PACK_BUFFER, pboid);
 	glBufferData(GL_PIXEL_PACK_BUFFER,
-		store->w * store->h * store->bpp, NULL, GL_STREAM_READ);
+		store->w * store->h * store->bpp, NULL, GL_STREAM_COPY);
 	glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 }
 
@@ -356,7 +368,7 @@ static void pbo_alloc_write(struct storage_info_t* store)
 
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pboid);
 	glBufferData(GL_PIXEL_UNPACK_BUFFER,
-		store->w * store->h * store->bpp, NULL, GL_STREAM_READ);
+		store->w * store->h * store->bpp, NULL, GL_STREAM_DRAW);
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 }
 

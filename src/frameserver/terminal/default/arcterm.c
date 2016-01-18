@@ -268,8 +268,8 @@ static void draw_ch(uint8_t u8_ch[5], int base_x, int base_y,
 			b = a * fg.b + bg.b * (255 - a);
 			b += 0x80;
 			b = (b + (b >> 8)) >> 8;
-			dst[ofs] = SHMIF_RGBA(r, g, b, (fg.r == bg.r && fg.g == bg.g
-				&& fg.b == bg.b) ? term.alpha : 0xff);
+			dst[ofs] = SHMIF_RGBA(r, g, b, (r == bg.r && g == bg.g
+				&& b == bg.b) ? term.alpha : 0xff);
 		}
 	}
 
@@ -326,7 +326,7 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 			SHMIF_RGBA(bgc[0], bgc[1], bgc[2], term.alpha));
 	}
 
-	if (len == 0)
+	if (len == 0 && !match_cursor)
 		return 0;
 
 	size_t u8_sz = tsm_ucs4_get_width(*ch) + 1;
