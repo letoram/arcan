@@ -301,7 +301,7 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 	if (y1 < term.acon.addr->dirty.y1)
 		term.acon.addr->dirty.y1 = y1;
 	if (y2 > term.acon.addr->dirty.y2)
-		term.acon.addr->dirty.y2;
+		term.acon.addr->dirty.y2 = y2;
 
 	bool match_cursor = x == term.cursor_x && y == term.cursor_y;
 

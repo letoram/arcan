@@ -538,7 +538,8 @@ struct stream_meta {
 	union{
 		struct {
 		av_pixel* buf;
-		size_t x, y, w, h;
+		bool dirty;
+		unsigned x1, y1, w, h, stride;
 		};
 		int64_t handle;
 	};

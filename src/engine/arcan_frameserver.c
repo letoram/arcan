@@ -244,7 +244,7 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst,
 }
 
 static void push_buffer(arcan_frameserver* src,
-	av_pixel* buf, struct storage_info_t* store)
+	av_pixel* buf, struct storage_info_t* store, struct arcan_shmif_region* dirty)
 {
 	struct stream_meta stream = {.buf = NULL};
 	bool explicit = src->flags.explicit;
@@ -309,6 +309,14 @@ static void push_buffer(arcan_frameserver* src,
 	}
 	else{
 		stream.buf = buf;
+/* validate, fallback to fullsynch if we get bad values */
+		if (dirty){
+			stream.x1 = dirty->x1; stream.w = dirty->x2 - dirty->x1;
+			stream.y1 = dirty->y1; stream.h = dirty->y2 - dirty->y1;
+			stream.dirty = /* unsigned but int prom. */
+				(dirty->x2 - dirty->x1 > 0 && stream.w <= store->w) &&
+				(dirty->y2 - dirty->y1 > 0 && stream.h <= store->h);
+		}
 		stream = agp_stream_prepare(store, stream, explicit ?
 			STREAM_RAW_DIRECT_SYNCHRONOUS : (
 				src->flags.local_copy ? STREAM_RAW_DIRECT_COPY : STREAM_RAW_DIRECT));
@@ -475,7 +483,9 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 		struct arcan_vobject* vobj = arcan_video_getobject(tgt->vid);
 		struct storage_info_t* dst_store = vobj->frameset ?
 			vobj->frameset->frames[vobj->frameset->index].frame : vobj->vstore;
-		push_buffer(tgt, tgt->vidp, dst_store);
+		struct arcan_shmif_region dirty = shmpage->dirty;
+		push_buffer(tgt, tgt->vidp, dst_store,
+			shmpage->hints & SHMIF_RHINT_SUBREGION ? &dirty : NULL);
 		dst_store->vinf.text.vpts = shmpage->vpts;
 
 /* for some connections, we want additional statistics */
