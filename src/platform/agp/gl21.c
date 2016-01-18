@@ -121,6 +121,20 @@ const char* agp_shader_language()
 	return "GLSL120";
 }
 
+static void set_pixel_store(size_t w, struct stream_meta const meta)
+{
+	glPixelStorei(GL_UNPACK_SKIP_ROWS, meta.y1);
+	glPixelStorei(GL_UNPACK_SKIP_PIXELS, meta.x1);
+	glPixelStorei(GL_UNPACK_ROW_LENGTH, w);
+}
+
+static void reset_pixel_store()
+{
+	glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
+	glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
+	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+}
+
 void agp_readback_synchronous(struct storage_info_t* dst)
 {
 	if (!(dst->txmapped == TXSTATE_TEX2D) || !dst->vinf.text.raw)
@@ -148,6 +162,40 @@ void agp_drop_vstore(struct storage_info_t* s)
 		glDeleteBuffers(1, &s->vinf.text.wid);
 }
 
+/* positions and offsets in meta have been verified in _frameserver */
+static void pbo_stream_sub(struct storage_info_t* s,
+	av_pixel* buf, struct stream_meta* meta, bool synch)
+{
+	agp_activate_vstore(s);
+	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, s->vinf.text.wid);
+
+	av_pixel* ptr = glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
+	size_t row_sz = meta->w * sizeof(av_pixel);
+
+/* warning, with the normal copy we check alignment in beforehand as we have
+ * had cases where glMapBuffer intermittently returns unaligned pointers AND
+ * the compiler has emitted intrinsics that assumed alignment */
+	for (size_t y = meta->y1; y < meta->y1 + meta->h; y++)
+		memcpy(&ptr[y * s->w + meta->x1], &buf[y * s->w + meta->x1], row_sz);
+
+	if (synch){
+		ptr = s->vinf.text.raw;
+	for (size_t y = meta->y1; y < meta->y1 + meta->h; y++)
+		memcpy(&ptr[y * s->w + meta->x1], &buf[y * s->w + meta->x1], row_sz);
+		s->update_ts = arcan_timemillis();
+	}
+
+	glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+
+	set_pixel_store(s->w, *meta);
+	glTexSubImage2D(GL_TEXTURE_2D, 0, meta->x1, meta->y1, meta->w, meta->h,
+		GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, 0);
+	reset_pixel_store();
+
+	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+	agp_deactivate_vstore();
+}
+
 static void pbo_stream(struct storage_info_t* s,
 	av_pixel* buf, struct stream_meta* meta, bool synch)
 {
@@ -169,6 +217,7 @@ static void pbo_stream(struct storage_info_t* s,
 		for (size_t i = 0; i < ntc; i++)
 			*ptr++ = *buf++;
 
+/* synch :- on-host backing store, one extra copy into local buffer */
 	if (synch){
 		buf = obuf;
 		ptr = s->vinf.text.raw;
@@ -182,11 +231,6 @@ static void pbo_stream(struct storage_info_t* s,
 	}
 
 	glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
-
-/* glPixelStorei(GL_UNPACK_SKIP_PIXELS, x1)
- * glPixelStorei(GL_UNPACK_SKIP_ROWS, y1)
- * glPixelStorei(GL_:UNPACK_ROW_LENGTH)
- */
 
 	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, s->w, s->h,
 			GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, 0);
@@ -245,15 +289,24 @@ struct stream_meta agp_stream_prepare(struct storage_info_t* s,
 		if (!s->vinf.text.wid)
 			setup_unpack_pbo(s, meta.buf);
 
-		pbo_stream(s, meta.buf, &meta, type == STREAM_RAW_DIRECT_COPY);
+		if (meta.dirty)
+			pbo_stream_sub(s, meta.buf, &meta, type == STREAM_RAW_DIRECT_COPY);
+		else
+			pbo_stream(s, meta.buf, &meta, type == STREAM_RAW_DIRECT_COPY);
 	break;
 
 	case STREAM_RAW_DIRECT_SYNCHRONOUS:
 		agp_activate_vstore(s);
 
-/* FIXME, set sub region if used */
-		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, s->w, s->h,
-			GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, meta.buf);
+		if (meta.dirty){
+			set_pixel_store(s->w, meta);
+			glTexSubImage2D(GL_TEXTURE_2D, 0, meta.x1, meta.y1, meta.w, meta.h,
+				GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, meta.buf);
+			reset_pixel_store();
+		}
+		else
+			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, s->w, s->h,
+				GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, meta.buf);
 		agp_deactivate_vstore();
 	break;
 
@@ -271,7 +324,10 @@ struct stream_meta agp_stream_prepare(struct storage_info_t* s,
 
 void agp_stream_release(struct storage_info_t* s, struct stream_meta meta)
 {
-	pbo_stream(s, s->vinf.text.raw, &meta, false);
+	if (meta.dirty)
+		pbo_stream_sub(s, s->vinf.text.raw, &meta, false);
+	else
+		pbo_stream(s, s->vinf.text.raw, &meta, false);
 	glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, GL_NONE);
 }
