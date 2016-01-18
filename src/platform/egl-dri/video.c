@@ -1799,10 +1799,53 @@ bool platform_video_map_display(
 
 	arcan_vobject* vobj = arcan_video_getobject(id);
 	if (vobj && vobj->vstore->txmapped != TXSTATE_TEX2D){
-		arcan_warning("platform_video_map_display(), attempted to map a "
-			"video object with an invalid backing store");
-		return false;
+			arcan_warning("platform_video_map_display(), attempted to map a "
+				"video object with an invalid backing store");
+			return false;
 	}
+
+	float* txcos = vobj && vobj->txcos ? vobj->txcos :
+		arcan_video_default_display.default_txcos;
+
+	switch(hint){
+		case HINT_ROTATE_90_CW:
+			d->txcos[0] = txcos[2];
+			d->txcos[1] = txcos[3];
+			d->txcos[2] = txcos[4];
+			d->txcos[3] = txcos[5];
+			d->txcos[4] = txcos[6];
+			d->txcos[5] = txcos[7];
+			d->txcos[6] = txcos[0];
+			d->txcos[7] = txcos[1];
+		break;
+		case HINT_ROTATE_90_CCW:
+			d->txcos[0] = txcos[6];
+			d->txcos[1] = txcos[7];
+			d->txcos[2] = txcos[0];
+			d->txcos[3] = txcos[1];
+			d->txcos[4] = txcos[2];
+			d->txcos[5] = txcos[3];
+			d->txcos[6] = txcos[4];
+			d->txcos[7] = txcos[5];
+			break;
+		case HINT_FLIPY:
+			d->txcos[0] = txcos[6];
+			d->txcos[1] = txcos[7];
+			d->txcos[2] = txcos[4];
+			d->txcos[3] = txcos[5];
+			d->txcos[4] = txcos[2];
+			d->txcos[5] = txcos[3];
+			d->txcos[6] = txcos[0];
+			d->txcos[7] = txcos[1];
+		break;
+		case HINT_CROP:
+		case HINT_NONE:
+		case HINT_FIT:
+		case HINT_DEFAULT:
+			memcpy(d->txcos, txcos, sizeof(float) * 8);
+		break;
+	}
+	d->hint = hint;
 
 /*
  * BADID displays won't be rendered but remain allocated, question is should we
@@ -1825,7 +1868,6 @@ static void fb_cleanup(struct gbm_bo* bo, void* data)
 
 static void draw_display(struct dispout* d)
 {
-	float* txcos = arcan_video_display.default_txcos;
 	arcan_vobject* vobj = arcan_video_getobject(d->vid);
 
 	if (d->vid == ARCAN_VIDEO_WORLDID){
@@ -1836,14 +1878,10 @@ static void draw_display(struct dispout* d)
 		agp_rendertarget_clear();
 		return;
 	}
-	else {
-		agp_activate_vstore(vobj->vstore);
-		txcos = vobj->txcos ? vobj->txcos : arcan_video_display.default_txcos;
-	}
 
+	agp_activate_vstore(vobj->vstore);
 	agp_shader_envv(PROJECTION_MATR, d->projection, sizeof(float)*16);
-	agp_draw_vobj(0, 0, d->display.mode->hdisplay,
-		d->display.mode->vdisplay, txcos, NULL);
+	agp_draw_vobj(x1, y1, x2, y2, d->txcos, NULL);
 
 /*
  * another rough corner case, if we have a store that is not world ID but
