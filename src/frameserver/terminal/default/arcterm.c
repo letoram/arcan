@@ -80,7 +80,8 @@ enum cursors {
 enum dirty_state {
 	DIRTY_NONE,
 	DIRTY_PENDING,
-	DIRTY_UPDATED
+	DIRTY_UPDATED,
+	DIRTY_INACTIVE
 };
 
 struct {
@@ -319,7 +320,6 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 
 	term.dirty = DIRTY_UPDATED;
 
-
 /* first erase */
 	if (len == 0){
 		draw_box(&term.acon, x1, y1, term.cell_w, term.cell_h,
@@ -428,8 +428,6 @@ static void update_screensize(bool clear)
 		draw_box(&term.acon, 0, term.acon.h - padh - 1, term.acon.w, padh + 1, col);
 	term.dirty = true;
 */
-
-	update_screen(true);
 }
 
 static void read_callback(struct shl_pty* pty,
@@ -438,7 +436,9 @@ static void read_callback(struct shl_pty* pty,
 	tsm_vte_input(term.vte, u8, len);
 	term.cursor_x = tsm_screen_get_cursor_x(term.screen);
 	term.cursor_y = tsm_screen_get_cursor_y(term.screen);
-	term.dirty = DIRTY_PENDING;
+
+	if (term.dirty != DIRTY_INACTIVE)
+		term.dirty = DIRTY_PENDING;
 }
 
 static void write_callback(struct tsm_vte* vte,
@@ -913,28 +913,49 @@ static void targetev(arcan_tgtevent* ev)
 			ceilf(term.ppcm * ev->ioevs[2].fv) : 0);
 
 		update_screensize(false);
+		update_screen(true);
 #endif
 	}
 
 	case TARGET_COMMAND_DISPLAYHINT:{
-		bool dev = ev->ioevs[0].iv != term.acon.addr->w ||
-			ev->ioevs[1].iv != term.acon.addr->h;
+		bool dev =
+			(ev->ioevs[0].iv && ev->ioevs[1].iv) &&
+			(ev->ioevs[0].iv != term.acon.addr->w ||
+			ev->ioevs[1].iv != term.acon.addr->h);
 
+/* don't redraw / refresh etc. until we are actually visible */
+		bool update = false;
+		if (!(ev->ioevs[2].iv & 128)){
+			if (ev->ioevs[2].iv & 2)
+				term.dirty = DIRTY_INACTIVE;
+			else if (term.dirty == DIRTY_INACTIVE){
+				term.dirty = DIRTY_NONE;
+				update = true;
+			}
+		}
+
+/* switch cursor kind on changes to 4 in ioevs[2] */
 		if (dev){
 			arcan_shmif_resize(&term.acon, ev->ioevs[0].iv, ev->ioevs[1].iv);
 			update_screensize(true);
+			update = true;
 		}
+
+/* turn cursor drawing on / off */
 
 /* calculate scale factor based on old density, multiply previous size
  * with scale factor and treat as a FONTHINT */
 #ifdef TTF_SUPPORT
-		if (ev->ioevs[3].fv > 0){
+		if (ev->ioevs[3].fv > 0 && fabs(ev->ioevs[3].fv - term.ppcm) > 0.01){
 			float sf = ev->ioevs[3].fv / term.ppcm;
-			LOG("got display: %f, factor: %f\n", ev->ioevs[4].fv, sf);
 			term.ppcm = ev->ioevs[3].fv;
 			setup_font(BADFD, term.font_sz * sf);
+			update = true;
 		}
 #endif
+
+		if (update)
+			update_screen(true);
 	}
 	break;
 
@@ -1336,6 +1357,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	}
 
 	update_screensize(true);
+	update_screen(true);
 
 /* immediately request a clipboard for cut operations (none received ==
  * running appl doesn't care about cut'n'paste/drag'n'drop support). */

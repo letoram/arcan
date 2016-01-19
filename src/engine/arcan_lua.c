@@ -5927,7 +5927,7 @@ static int targetdisphint(lua_State* ctx)
 
 	int width = luaL_checknumber(ctx, 2);
 	int height = luaL_checknumber(ctx, 3);
-	int cont = luaL_optnumber(ctx, 4, 0);
+	int cont = luaL_optnumber(ctx, 4, 128);
 
 /* clamp to not have client propagate illegal dimensions */
 	width = width > ARCAN_SHMPAGE_MAXW ? ARCAN_SHMPAGE_MAXW : width;
@@ -5951,9 +5951,9 @@ static int targetdisphint(lua_State* ctx)
 	else
 		;
 
-	if (width <= 0 || height <= 0)
+	if (width < 0 || height < 0)
 		arcan_fatal("target_disphint(%d, %d), "
-			"display dimensions must be > 0", width, height);
+			"display dimensions must be >= 0", width, height);
 
 	float ppmm = phy_w > 0 ? (float)phy_w / (float)width : -1;
 
@@ -9367,6 +9367,9 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"HINT_ROTATE_CW_90", HINT_ROTATE_CW_90},
 {"HINT_ROTATE_CCW_90", HINT_ROTATE_CCW_90},
 {"HINT_YFLIP", HINT_YFLIP},
+{"TD_HINT_CONTINUED", 1},
+{"TD_HINT_INVISIBLE", 2},
+{"TD_HINT_UNFOCUSED", 4},
 {"MASK_LIVING", MASK_LIVING},
 {"MASK_ORIENTATION", MASK_ORIENTATION},
 {"MASK_OPACITY", MASK_OPACITY},

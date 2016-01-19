@@ -7,7 +7,8 @@
 -- the associated video object, or for special cases where one might want
 -- an explicitly over- or under-sized input buffer.
 -- Possible optional *flag* values:
--- (1 - continued resize, 2 - invisible, 4 - unfocused).
+-- TD_HINT_INVISIBLE - invisible, TD_HINT_UNFOCUSED). Hence the default is
+-- visible and focused.
 -- If the optional *disptbl* is set to a table that matches the format for
 -- display added events, additional information (physical dimensions, rgb
 -- hinting layout etc.) may be propagated. If it is set to WORLDID, the display
@@ -19,10 +20,11 @@
 -- @note: changing the pixel density (width/height + *disptbl* with phy_width,
 -- phy_height) may incur font rendering changes in the *tgtid* referenced target.
 -- @note: The correlated event gets special treatment. When the dequeue function
--- in the shared memory interface discovers a displayhint event, the remainder of
--- the queue will be scanned for additional ones. If one is found, the first (i.e.
--- oldest) event will be dropped. This prevents bubbles from a possible resize-
--- reaction for common scenarios such as drag-resizing a window.
+-- in the shared memory interface discover a displayhint event, the remainder of
+-- the queue will be scanned for additional ones. Relevant fields will be
+-- merged and properties that are in conflict will favor the most recent.
+-- This prevents bubbles from a possible resize- reaction for common scenarios
+-- such as drag-resizing a window.
 -- @cfunction: targetdisphint
 -- @related:
 function main()
