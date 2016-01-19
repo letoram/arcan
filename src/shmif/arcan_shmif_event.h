@@ -275,7 +275,9 @@ enum ARCAN_TARGET_COMMAND {
  *
  * Changes in width / height from the current segment size is
  * a hint to call shmif_resize if the client can handle drawing in different
- * resolutions without unecessary scaling.
+ * resolutions without unecessary scaling UNLESS the specified dimensions
+ * are 0, 0 (indication that only hintflags are to be changed). These will
+ * all be aggregated to the last displahint in queue.
  *
  * Changes to the hintflag indicate more abstract states: e.g.
  * more displayhint events to come shortly, segment not being used or shown,
@@ -287,9 +289,19 @@ enum ARCAN_TARGET_COMMAND {
  *
  * ioevs[0].iv = width,
  * ioevs[1].iv = height,
- * ioevs[2].iv = bitmask hintflags: 1: drag resize, 2: invisible, 4: unfocused
+ * ioevs[2].iv = bitmask hintflags: 0: normal, 1: drag resize,
+ *               2: invisible, 4: unfocused, 128: ignore
  * ioevs[3].iv = RGB layout (0 RGB, 1 BGR, 2 VRGB, 3 VBGR)
  * ioevs[4].fv = ppcm (pixels per centimeter, square assumed), < 0 ignored.
+ *
+ * There are subtle side-effects from the UNIQUE/AGGREGATE approach,
+ * some other events may be relative to current display dimensions (typically
+ * analog input). In the cases where there is a queue like:
+ * (DH : displayhint, AIO : analog IOev.)
+ * DH, AIO, AIO, AIO, DH this will be 'optimized' into
+ * AIO, AIO, AIO, DH possibly changing the effect of the AIO. If this corner
+ * case is an actual risk, it should be taken into consideration by the ARCAN-
+ * APPL side.
  */
 	TARGET_COMMAND_DISPLAYHINT,
 

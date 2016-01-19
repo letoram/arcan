@@ -339,13 +339,31 @@ static void consume(struct arcan_shmif_cont* c)
 	c->priv->pev.consumed = false;
 }
 
-static bool scan_tgt_event(struct arcan_evctx* c,enum ARCAN_TARGET_COMMAND cmd)
+/*
+ * special rules for compacting DISPLAYHINT events,
+ * where we keep w/h (if set) but overwrite hint/rgb/ppcm
+ */
+static inline void merge_dh(arcan_event* new, arcan_event* old)
+{
+	if (!new->tgt.ioevs[0].iv)
+		new->tgt.ioevs[0].iv = old->tgt.ioevs[0].iv;
+
+	if (!new->tgt.ioevs[1].iv)
+		new->tgt.ioevs[1].iv = old->tgt.ioevs[1].iv;
+
+	if ((new->tgt.ioevs[2].iv & 128))
+		new->tgt.ioevs[2].iv = old->tgt.ioevs[2].iv;
+}
+
+static bool scan_disp_event(struct arcan_evctx* c, struct arcan_event* old)
 {
 	uint8_t cur = *c->front;
 	while (cur != *c->back){
 		struct arcan_event* ev = &c->eventbuf[cur];
-		if (ev->category == EVENT_TARGET && ev->tgt.kind == cmd)
+		if (ev->category == EVENT_TARGET && ev->tgt.kind == old->tgt.kind){
+			merge_dh(ev, old);
 			return true;
+		}
 		cur = (cur + 1) % c->eventbuf_sz;
 	}
 
@@ -370,14 +388,14 @@ static bool pause_evh(struct arcan_shmif_cont* c,
 		rv = false;
 	}
 	else if (ev->tgt.kind == TARGET_COMMAND_DISPLAYHINT){
+		merge_dh(ev, &priv->dh);
 		priv->dh = *ev;
 		priv->ph |= 1;
 	}
 
 /*
  * theoretical race here is not possible with kms/ks being pulled resulting
- * in either end of epipe being closed and broken socket,
- * in contrast to DISPLAYHINT, FONTHINT needs state merge.
+ * in either end of epipe being closed and broken socket
  */
 	else if (ev->tgt.kind == TARGET_COMMAND_FONTHINT){
 		priv->fh.category = EVENT_TARGET;
@@ -493,10 +511,10 @@ checkfd:
 /* Ignore displayhints if there are newer ones in the queue. This pattern can
  * be re-used for other events, should it be necessary, the principle is that
  * if there is a serious cost involved for a state change that will be
- * overridden with something in the queue, use this mechanism. Cannot be appled
- * to descriptor- carrying events */
+ * overridden with something in the queue, use this mechanism. Cannot be applied
+ * to descriptor- carrying events as more state tracking is needed. */
 			case TARGET_COMMAND_DISPLAYHINT:
-				if (scan_tgt_event(ctx, TARGET_COMMAND_DISPLAYHINT))
+				if (scan_disp_event(ctx, dst))
 					goto reset;
 			break;
 

@@ -26,6 +26,28 @@
  * switch back and everything remapped correctly. Don't have the hardware
  * to test this at all now.
  *
+ * Possibly approach is to do something like this:
+ *  a. create an agp- function that synchs raw / s_raw for all objects
+ *     (readback into buffers etc).
+ *
+ *  b. reset hadle passing failure state for all frameservers,
+ *     send a MIGRATE event with descriptor, indicating that those who use
+ *     a certain render node need to switch / rebuild. This would work
+ *     recursively for arcan_lwa.
+ *
+ *  c. [shared output]
+ *      ACPI- twiddle to shut down one GPU, activate the other, redo
+ *      grab_card and build GL, and just rerun the mapping.
+ *
+ *     [different output]
+ *      activate the other card and build GL, emitt a display reset event
+ *      and do a new connector scan.
+ *
+ *  d. agp call to push all data back up, and possible erase if needed.
+ *
+ *  The number of failure modes for this one is quite high, especially
+ *  when OOM on one card but not the other. Still, pretty cool feature ;-)
+ *
  * 3. Backlight support by improving the old murky _led codebase
  *
  * 4. Advanced synchronization options (swap-interval, synch directly to
@@ -34,14 +56,13 @@
  * drm_vblank_secondary - also try synch strategy on a per display basis.
  *
  * 5. Launching children that use video_rnode has no good way for deciding
- * which node to use (we're taking load balacing and conversion costs
- * between GPUs that don't share backing store), part of this is not being
- * able to enumerate and associate render-nodes from a drm- like interface.
+ * which node to use (we're talking load balancing and conversion costs
+ * between GPUs that don't share backing store), so we currently just assume
+ * there is some sense to the name/node allocation scheme relative to the
+ * device in question and forward that.
  *
- * 6. Pain-less builds, this is more for drm/gbm upstream, but currently
- * it seems like building Mesa+DRM libraries is impossible without dragging
- * in other X dependencies. Breaking this out so that we can get rid of
- * libX* once and for all would be highly desirable.
+ * Instead of using an ENV for the NODE, we could use the MIGRATE descriptor
+ * hinted at in (2) to kill two birds with one stone.
  */
 
 /*
@@ -53,7 +74,8 @@
  *
  * the current concession is that this is something that is up to the appl to
  * decide if it should be exposed or not. As an example, 'durden' has its
- * _cmd fifo mapped to rescan for that purpose.
+ * _cmd fifo mapped to rescan for that purpose. This can further be mapped
+ * to evdev- style nodes which some drivers seem to map hotplug.
  *
  */
 #include <stdio.h>
