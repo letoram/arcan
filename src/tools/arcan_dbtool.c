@@ -33,6 +33,7 @@ static void usage()
 	"  add_config      \ttarget name argv\n"
 	"  add_config_kv   \ttarget config name key val\n"
 	"  add_config_env  \ttarget config name key val\n"
+	"  add_appl_kv     \tappl key value\n"
 	"  drop_config     \ttarget config\n"
 	"  drop_all_configs\ttarget\n"
 	"  drop_target    \tname\n"
@@ -212,6 +213,30 @@ static int set_kv(struct arcan_dbh* dst,
 	arcan_db_end_transaction(dst);
 
 	return EXIT_SUCCESS;
+}
+
+static int add_appl_kv(struct arcan_dbh* dst, int argc, char** argv)
+{
+	union arcan_dbtrans_id id;
+	if (argc != 3){
+		printf("add_appl_kv(appl, key, val) "
+			"invalid number of arguments, %d vs 3\n", argc);
+
+		return EXIT_FAILURE;
+	}
+
+	if (strlen(argv[0]) == 0){
+		printf("invalid appl specified (0-length) \n");
+		return EXIT_FAILURE;
+	}
+
+	if (!validate_key(argv[1])){
+		printf("invalid key specified (restricted to [a-Z0-9_+/=])\n");
+		return EXIT_FAILURE;
+	}
+
+	return arcan_db_appl_kv(dst, argv[0], argv[1], argv[2]) ?
+		EXIT_SUCCESS : EXIT_FAILURE;
 }
 
 static int add_target_kv(struct arcan_dbh* dst, int argc, char** argv)
@@ -541,6 +566,11 @@ struct {
 	{
 		.key = "add_config_env",
 		.fun = add_config_env
+	},
+
+	{
+		.key = "add_appl_kv",
+		.fun = add_appl_kv
 	},
 
 	{
