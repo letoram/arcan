@@ -113,8 +113,6 @@ static int add_target(struct arcan_dbh* dst, int argc, char** argv)
 		return EXIT_FAILURE;
 	}
 
-	arcan_db_addconfig(dst, tid, "default", NULL, 0);
-
 	return EXIT_SUCCESS;
 }
 
@@ -155,11 +153,6 @@ static int drop_config(struct arcan_dbh* dst, int argc, char** argv)
 		printf("drop_config(target, config) unexpected number of "
 			"arguments (%d vs 2)\n", argc);
 
-		return EXIT_FAILURE;
-	}
-
-	if (strcmp(argv[1], "default") == 0){
-		printf("drop_config, deleting 'default' configuration is not permitted.\n");
 		return EXIT_FAILURE;
 	}
 
@@ -456,14 +449,14 @@ static int show_exec(struct arcan_dbh* dst, int argc, char** argv)
 	struct arcan_strarr outargv = {0};
 	struct arcan_strarr libs = {0};
 
-	if (argc <= 0 || argc > 2){
-		printf("show_exec(target, [config]) invalid number"
-			" of arguments (%d vs (1,2)).\n", argc);
+	if (argc != 2){
+		printf("show_exec(target, config) invalid number"
+			" of arguments (%d vs 2).\n", argc);
 		return EXIT_FAILURE;
 	}
 
 	arcan_configid cfgid = arcan_db_configid(dst, arcan_db_targetid(
-		dst, argv[0], NULL), argc == 1 ? "default" : argv[1]);
+		dst, argv[0], NULL), argv[1]);
 
 	enum DB_BFORMAT bfmt;
 	char* execstr = arcan_db_targetexec(dst, cfgid, &bfmt, &outargv, &env, &libs);
