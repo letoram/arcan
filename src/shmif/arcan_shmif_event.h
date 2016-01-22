@@ -68,6 +68,9 @@ enum ARCAN_EVENT_CATEGORY {
  * Primarily hinting to the running appl, but can also dictate scheduling
  * groups, priority in terms of resource exhaustion, sandboxing scheme and
  * similar limitations (e.g. TITLEBAR / CURSOR should not update 1080p60Hz)
+ * While not currently enforced, it is likely that (with real-world use data),
+ * there will be a mask to queuetransfer+enqueue in ARCAN that will react
+ * based on SEGID type (statetransfer for TITLEBAR, no..).
  *
  * Special flags (not enforced yet, will be after hardening phase) :
  * [INPUT] data from server to client
@@ -1089,13 +1092,13 @@ typedef struct arcan_extevent {
  * (kind)  - only used for non-auth connection primary segments or
  *           for subseg requests that got accepted with an empty kind
  *           if called with the existing kind, titlebar is updated
- * (guid)  - numeric identifier (insecure, non-enforced unique ID)
+ * (uid )  - numeric identifier (insecure, non-enforced unique ID)
  *           used for tracking settings etc. between session
  */
 		struct {
 			char title[64];
 			enum ARCAN_SEGID kind;
-			uint64_t guid;
+			uint64_t guid[2];
 		} registr;
 
 /*

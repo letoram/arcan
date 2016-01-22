@@ -8,7 +8,8 @@
 -- target that is accessed by setting *opttgt* to any value from ref:list_targets.
 -- There is also a execution target configuration specific key- value store if
 -- both *opttgt* and *optcfg* are set to a valid target- configuration pair.
--- Only characters in the set [a-Z][0-9]_ are valid *key* values.
+-- Only characters in the set [a-Z][0-9]_/+= are valid *key* values.
+-- @note: The /+= are allowed to support base64 encoded values.
 -- To set multiple pairs at once, pack them in a key- indexed table.
 -- @group: database
 -- @cfunction: storekey

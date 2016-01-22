@@ -16,6 +16,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include <stddef.h>
+#include <stdatomic.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -26,6 +27,7 @@
 #include <pthread.h>
 
 #include "arcan_shmif.h"
+
 /*
  * The windows implementation here is rather broken in several ways:
  * 1. non-authoritative connections not accepted
@@ -33,19 +35,10 @@
  *    semaphores and shared memory handles are passed
  * 3. split- mode not implemented
  */
-#if _WIN32
-#define sleep(n) Sleep(1000 * n)
-
-#define LOG(...) (fprintf(stderr, __VA_ARGS__))
-extern sem_handle async, vsync, esync;
-extern HANDLE parent;
-
-#else
 #include <signal.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/un.h>
-#endif
 
 /*
  * a bit clunky, but some scenarios that we want debug-builds but without the
@@ -203,19 +196,25 @@ const char* arcan_shmif_eventstr(arcan_event* aev, char* dbuf, size_t dsz)
  * an untrusted child and a limited set of IPC primitives (from portability
  * constraints).
  *
- * When some monitored condition (process dies, shmpage doesn't validate, ...)
- * we have a trigger address signaled (dms), forcibly release the semaphores
- * used for synch, and optionally some user supplied callback function.
+ * When some monitored condition (process dies, shmpage doesn't validate,
+ * dead man switch has been pulled), we also signal dms, then forcibly release
+ * the semaphores used for synch, and optionally some user supplied callback
+ * function.
  *
  * Thereafter, functions that depend on the shmpage will use their failure path
- * (or forcibly exit if a FATALFAIL behavior has been set).
+ * (or forcibly exit if a FATALFAIL behavior has been set) and event triggered
+ * functions will fail.
  */
 struct shmif_hidden {
 	shmif_trigger_hook video_hook;
 	void* video_hook_data;
+	uint8_t vbuf_ind, vbuf_cnt;
+	shmif_pixel* vbuf[3];
 
 	shmif_trigger_hook audio_hook;
 	void* audio_hook_data;
+	uint8_t abuf_ind, abuf_cnt;
+	shmif_pixel* abuf[3];
 
 	bool output, alive, paused;
 
@@ -242,6 +241,8 @@ struct shmif_hidden {
 		char key[256];
 	} pseg;
 
+/* guard thread checks DMS and a parent PID, then tries to pull synch
+ * handles and/or run an @exit function */
 	struct {
 		bool active;
 		sem_handle semset[3];
@@ -671,51 +672,6 @@ int arcan_shmif_tryenqueue(
 	return arcan_shmif_enqueue(c, src);
 }
 
-#if _WIN32
-static inline bool parent_alive()
-{
-	return IsWindow(parent);
-}
-
-/* force_unlink isn't used here as the semaphores are
- * passed as inherited handles */
-static void map_shared(const char* shmkey,
-	char force_unlink, struct arcan_shmif_cont* res)
-{
-	assert(shmkey);
-	HANDLE shmh = (HANDLE) strtoul(shmkey, NULL, 10);
-
-	res->addr = MapViewOfFile(shmh,
-		FILE_MAP_ALL_ACCESS, 0, 0, ARCAN_SHMPAGE_MAX_SZ);
-
-	res->asem = async;
-	res->vsem = vsync;
-	res->esem = esync;
-
-	if ( res->addr == NULL ) {
-		LOG("fatal: Couldn't map the allocated shared "
-			"memory buffer (%i) => error: %i\n", shmkey, GetLastError());
-		CloseHandle(shmh);
-	}
-
-/*
- * note: this works "poorly" for multiple segments, we should mimic the posix
- * approach where we push a base-key, and then use that to lookup handles for
- * shared memory and semaphores
- */
-	parent = res->addr->parent;
-}
-
-/*
- * No implementation on windows currently
- */
-char* arcan_shmif_connect(const char* connpath, const char* connkey,
-	file_handle* conn_ch)
-{
-	return NULL;
-}
-
-#else
 static void map_shared(const char* shmkey, char force_unlink,
 	struct arcan_shmif_cont* dst)
 {
@@ -907,12 +863,38 @@ end:
 
 static inline bool parent_alive(struct shmif_hidden* gs)
 {
-/* based on the idea that init inherits an orphaned process,
- * return getppid() != 1; won't work for hijack targets that fork() fork() */
+/* based on the idea that init inherits an orphaned process, return getppid()
+ * != 1; won't work for hijack targets that double fork, and we don't have
+ * the means for an inhertied connection right now (though a reasonable
+ * possibility) */
 	return kill(gs->guard.parent, 0) != -1;
 }
-#endif
 
+static void setup_avbuf(struct arcan_shmif_cont* res)
+{
+	res->w = res->addr->w;
+	res->h = res->addr->h;
+	res->stride = res->w * ARCAN_SHMPAGE_VCHANNELS;
+	res->pitch = res->w;
+
+	res->priv->vbuf_cnt = res->addr->vpending;
+	res->priv->abuf_cnt = res->addr->apending;
+
+	res->priv->abuf_ind = res->priv->vbuf_ind = 0;
+	res->addr->vpending = res->addr->apending = 0;
+
+	arcan_shmif_mapav(res->addr,
+		res->priv->vbuf, res->priv->vbuf_cnt, res->w*res->h*sizeof(shmif_pixel),
+		res->priv->abuf, res->priv->abuf_cnt, res->addr->abufsize
+	);
+
+	res->vidp = res->priv->vbuf[0];
+	res->audp = res->priv->abuf[0];
+}
+
+/* using a base address where the meta structure will reside, allocate n- audio
+ * and n- video slots and populate vbuf/abuf with matching / aligned pointers
+ * and return the total size */
 struct arcan_shmif_cont arcan_shmif_acquire(
 	struct arcan_shmif_cont* parent,
 	const char* shmkey,
@@ -1010,15 +992,12 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 		arcan_shmif_enqueue(&res, &ev);
 	}
 
-	arcan_shmif_calcofs(res.addr, &res.vidp, &res.audp);
-	res.w = res.addr->w;
-	res.h = res.addr->h;
-	res.stride = res.w * ARCAN_SHMPAGE_VCHANNELS;
-	res.pitch = res.w;
-
 	res.shmsize = res.addr->segment_size;
 	res.cookie = arcan_shmif_cookie();
 
+	setup_avbuf(&res);
+
+/* local flag that hints at different synchronization work */
 	if (type == SEGID_ENCODER || type == SEGID_CLIPBOARD_PASTE){
 		((struct shmif_hidden*)res.priv)->output = true;
 	}
@@ -1026,6 +1005,9 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 	return res;
 }
 
+/* this act as our safeword (or well safebyte), if either party
+ * for _any_reason decides that it is not worth going - the dms
+ * (dead man's switch) is pulled. */
 static void* guard_thread(void* gs)
 {
 	struct shmif_hidden* gstr = gs;
@@ -1129,18 +1111,11 @@ void arcan_shmif_setevqs(struct arcan_shmif_page* dst,
 	outq->eventbuf_sz = PP_QUEUE_SZ;
 }
 
-#if _WIN32
-void arcan_shmif_signalhandle(struct arcan_shmif_cont* ctx, int mask,
-	int handle, size_t stride, int format, ...)
-{
-}
-
-#else
-void arcan_shmif_signalhandle(struct arcan_shmif_cont* ctx, int mask,
-	int handle, size_t stride, int format, ...)
+unsigned arcan_shmif_signalhandle(struct arcan_shmif_cont* ctx,
+	enum arcan_shmif_sigmask mask, int handle, size_t stride, int format, ...)
 {
 	if (!arcan_pushhandle(handle, ctx->epipe))
-		return;
+		return 0;
 
 	struct arcan_event ev = {
 		.category = EVENT_EXTERNAL,
@@ -1149,16 +1124,17 @@ void arcan_shmif_signalhandle(struct arcan_shmif_cont* ctx, int mask,
 		.ext.bstream.format = format
 	};
 	arcan_shmif_enqueue(ctx, &ev);
-	arcan_shmif_signal(ctx, mask);
+	return arcan_shmif_signal(ctx, mask);
 }
-#endif
 
-void arcan_shmif_signal(struct arcan_shmif_cont* ctx, int mask)
+unsigned arcan_shmif_signal(struct arcan_shmif_cont* ctx,
+	enum arcan_shmif_sigmask mask)
 {
 	struct shmif_hidden* priv = ctx->priv;
 	if (!ctx->addr->dms)
-		return;
+		return 0;
 
+	unsigned startt = arcan_timemillis();
 	if ( (mask & SHMIF_SIGVID) && priv->video_hook)
 		mask = priv->video_hook(ctx);
 
@@ -1171,6 +1147,8 @@ void arcan_shmif_signal(struct arcan_shmif_cont* ctx, int mask)
 
 		if (!(mask & (SHMIF_SIGBLK_NONE | SHMIF_SIGBLK_ONCE)))
 			arcan_sem_wait(ctx->vsem);
+		else
+			arcan_sem_trywait(ctx->vsem);
 	}
 	else if ( (mask & SHMIF_SIGAUD) && !(mask & SHMIF_SIGVID)){
 		ctx->addr->aready = true;
@@ -1178,7 +1156,9 @@ void arcan_shmif_signal(struct arcan_shmif_cont* ctx, int mask)
 
 		if (mask & SHMIF_SIGAUD &&
 			!(mask & (SHMIF_SIGBLK_NONE | SHMIF_SIGBLK_ONCE)))
-		arcan_sem_wait(ctx->asem);
+			arcan_sem_wait(ctx->asem);
+		else
+			arcan_sem_trywait(ctx->asem);
 	}
 	else if (mask & (SHMIF_SIGVID | SHMIF_SIGAUD)){
 		ctx->addr->vready = true;
@@ -1188,49 +1168,19 @@ void arcan_shmif_signal(struct arcan_shmif_cont* ctx, int mask)
 			FORCE_SYNCH();
 			if (!(mask & (SHMIF_SIGBLK_NONE | SHMIF_SIGBLK_ONCE)))
 				arcan_sem_wait(ctx->asem);
+			else
+				arcan_sem_trywait(ctx->asem);
 		}
 
 		FORCE_SYNCH();
 		if (!(mask & (SHMIF_SIGBLK_NONE | SHMIF_SIGBLK_ONCE)))
 			arcan_sem_wait(ctx->vsem);
+		else
+			arcan_sem_trywait(ctx->vsem);
 	}
 	else
 		;
-}
-
-void arcan_shmif_forceofs(struct arcan_shmif_page* shmp,
-	uint32_t** dstvidptr, int16_t** dstaudptr, unsigned width,
-	unsigned height, unsigned bpp)
-{
-	uint8_t* base = (uint8_t*) shmp;
-	uint8_t* vidaddr = base + sizeof(struct arcan_shmif_page);
-	uint8_t* audaddr;
-
-	const int memalign = 64;
-
-	if ( (uintptr_t)vidaddr % memalign != 0)
-		vidaddr += memalign - ( (uintptr_t) vidaddr % memalign);
-
-	audaddr = vidaddr + width * height * bpp;
-	if ( (uintptr_t) audaddr % memalign != 0)
-		audaddr += memalign - ( (uintptr_t) audaddr % memalign);
-
-	if (audaddr < base || vidaddr < base){
-		*dstvidptr = NULL;
-		*dstaudptr = NULL;
-	}
-/* we guarantee the alignment, hence the cast */
-	else {
-		*dstvidptr = (uint32_t*) vidaddr;
-		*dstaudptr = (int16_t*) audaddr;
-	}
-}
-
-void arcan_shmif_calcofs(struct arcan_shmif_page* shmp,
-	uint32_t** dstvidptr, int16_t** dstaudptr)
-{
-	arcan_shmif_forceofs(shmp, dstvidptr, dstaudptr,
-		shmp->w, shmp->h, ARCAN_SHMPAGE_VCHANNELS);
+	return arcan_timemillis() - startt;
 }
 
 void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
@@ -1255,54 +1205,59 @@ void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 		free(inctx->priv);
 	}
 
-#if _WIN32
-#else
 	munmap(inctx->addr, inctx->shmsize);
-#endif
 	memset(inctx, '\0', sizeof(struct arcan_shmif_cont));
 }
 
-size_t arcan_shmif_getsize(unsigned width, unsigned height)
+static bool shmif_resize(struct arcan_shmif_cont* arg,
+	unsigned width, unsigned height, int vidc, int audc)
 {
-#ifdef ARCAN_SHMIF_OVERCOMMIT
-	return PP_SHMPAGE_MAXSZ;
-#else
-	return width * height * ARCAN_SHMPAGE_VCHANNELS +
-		sizeof(struct arcan_shmif_page) + ARCAN_SHMIF_AUDIOBUF_SZ;
-#endif
-}
-
-bool arcan_shmif_resize(struct arcan_shmif_cont* arg,
-	unsigned width, unsigned height)
-{
-	if (!arg->addr || !arcan_shmif_integrity_check(arg))
+	if (!arg->addr || !arcan_shmif_integrity_check(arg) ||
+	width > PP_SHMPAGE_MAXW || height > PP_SHMPAGE_MAXH ||
+	!arg->addr->dms)
 		return false;
 
-	if (width > PP_SHMPAGE_MAXW || height > PP_SHMPAGE_MAXH)
-		return false;
+/* wait for any outstanding v/asynch */
+	if (arg->addr->vready){
+		while (arg->addr->vready && arg->addr->dms)
+			arcan_sem_wait(arg->vsem);
+	}
+	if (arg->addr->vready){
+		while (arg->addr->vready && arg->addr->dms)
+			arcan_sem_wait(arg->vsem);
+	}
 
 	width = width < 1 ? 1 : width;
 	height = height < 1 ? 1 : height;
 
-	if (width == arg->addr->w && height == arg->addr->h)
+/* 0 is allowed to disable any related data, useful for not wasting
+ * storage when accelerated buffer passing is working */
+	vidc = vidc < 0 ? arg->priv->vbuf_cnt : vidc;
+	audc = audc < 0 ? arg->priv->abuf_cnt : audc;
+
+/* don't negotiate unless the goals have changed */
+	if (width == arg->addr->w && height == arg->addr->h &&
+		vidc == arg->priv->vbuf_cnt && audc == arg->priv->abuf_cnt)
 		return true;
 
+/* need strict ordering across procss boundaries here, first desired
+ * dimensions, buffering etc. THEN resize request flag */
 	arg->addr->w = width;
 	arg->addr->h = height;
+	arg->addr->apending = audc;
+	arg->addr->vpending = vidc;
 	FORCE_SYNCH();
-	arg->addr->resized = true;
-
-	DLOG("request resize to (%d:%d) approx ~%zu bytes (currently: %zu).\n",
-		width, height, arcan_shmif_getsize(width, height), arg->shmsize);
-
+	arg->addr->resized = 1;
 	FORCE_SYNCH();
 	arcan_sem_wait(arg->vsem);
 
 /*
  * spin until acknowledged, re-using the "wait on sync-fd" approach might be
- * worthwile (test latency to be sure).
+ * worthwile, but previous latency etc. showed it's not worth it based on the
+ * code overhead from needing to buffer, manage descriptors, etc. as there
+ * might be other events 'in flight'.
  */
-	while(arg->addr->resized && arg->addr->dms)
+	while(arg->addr->resized == 1 && arg->addr->dms)
 		;
 
 	if (!arg->addr->dms){
@@ -1310,26 +1265,21 @@ bool arcan_shmif_resize(struct arcan_shmif_cont* arg,
 		return false;
 	}
 
-	if (arg->shmsize != arg->addr->segment_size){
 /*
  * the guard struct, if present, has another thread running that may trigger
  * the dms. BUT now the dms may be relocated so we must lock guard and update
  * and recalculate everything.
  */
+	if (arg->shmsize != arg->addr->segment_size){
 		size_t new_sz = arg->addr->segment_size;
 		struct shmif_hidden* gs = arg->priv;
 		if (gs)
 			pthread_mutex_lock(&gs->guard.synch);
 
-/* win32 is built with overcommit as we don't support dynamically resizing
- * shared memory pages there */
-#if _WIN32
-#else
 		munmap(arg->addr, arg->shmsize);
 		arg->shmsize = new_sz;
 		arg->addr = mmap(NULL, arg->shmsize,
 			PROT_READ | PROT_WRITE, MAP_SHARED, arg->shmh, 0);
-#endif
 		if (!arg->addr){
 			DLOG("arcan_shmif_resize() failed on segment remapping.\n");
 			return false;
@@ -1344,13 +1294,17 @@ bool arcan_shmif_resize(struct arcan_shmif_cont* arg,
 		}
 	}
 
-/* free, mmap again -- parent has ftruncated and copied contents */
-	arcan_shmif_calcofs(arg->addr, &arg->vidp, &arg->audp);
-	arg->w = arg->addr->w;
-	arg->h = arg->addr->h;
-	arg->stride = arg->w * ARCAN_SHMPAGE_VCHANNELS;
-	arg->pitch = arg->w;
+/*
+ * make sure we start from the right buffer counts and positions
+ */
+	setup_avbuf(arg);
 	return true;
+}
+
+bool arcan_shmif_resize(struct arcan_shmif_cont* arg,
+	unsigned width, unsigned height)
+{
+	return shmif_resize(arg, width, height, -1, -1);
 }
 
 shmif_trigger_hook arcan_shmif_signalhook(struct arcan_shmif_cont* cont,

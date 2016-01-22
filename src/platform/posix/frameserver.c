@@ -38,6 +38,13 @@
 
 #define INCR(X, C) ( ( (X) = ( (X) + 1) % (C)) )
 
+#ifndef FORCE_SYNCH
+	#define FORCE_SYNCH() {\
+		asm volatile("": : :"memory");\
+		__sync_synchronize();\
+	}
+#endif
+
 /* NOTE: maintaing pid_t for frameserver (or worse, for hijacked target)
  * should really be replaced by making sure they belong to the same process
  * group and first send a close signal to the group, and thereafter KILL */
@@ -68,6 +75,14 @@ static void* nanny_thread(void* arg)
 
 	free(pid);
 	return NULL;
+}
+
+static size_t shmpage_size(size_t w, size_t h,
+	size_t vbufc, size_t abufc, int abufsz)
+{
+	return sizeof(struct arcan_shmif_page) + 64 +
+		abufc * abufsz + (abufc * 64) +
+		vbufc * w * h * sizeof(shmif_pixel) + (vbufc * 64);
 }
 
 /*
@@ -492,6 +507,8 @@ fail:
 		shmpage->minor = ASHMIF_VERSION_MINOR;
 		shmpage->segment_size = ctx->shm.shmsize;
 		shmpage->cookie = arcan_shmif_cookie();
+		shmpage->vpending = 1;
+		shmpage->apending = 1;
 		ctx->shm.ptr = shmpage;
 	arcan_frameserver_leave(ctx);
 
@@ -517,12 +534,13 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	if (!newseg)
 		return NULL;
 
-	newseg->shm.shmsize = arcan_shmif_getsize(hintw, hinth);
+	newseg->shm.shmsize = shmpage_size(hintw, hinth, 1, 2, 16384);
 
 	if (!shmalloc(newseg, false, NULL, -1)){
 		arcan_frameserver_free(newseg);
 		return NULL;
 	}
+	struct arcan_shmif_page* shmpage = newseg->shm.ptr;
 
 	img_cons cons = {.w = hintw , .h = hinth, .bpp = ARCAN_SHMPAGE_VCHANNELS};
 	vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = newseg};
@@ -538,9 +556,12 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 		return NULL;
 	}
 
-	newseg->shm.ptr->w = hintw;
-	newseg->shm.ptr->h = hinth;
-	newseg->shm.ptr->segment_token = ((uint32_t) newvid) ^ ctx->cookie;
+	shmpage->w = hintw;
+	shmpage->h = hinth;
+	shmpage->vpending = 1;
+	shmpage->abufsize = 16384;
+	shmpage->apending = 2;
+	shmpage->segment_token = ((uint32_t) newvid) ^ ctx->cookie;
 
 /*
  * Currently, we're reserving a rather aggressive amount of memory for audio,
@@ -594,7 +615,11 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	newseg->ofs_audb = 0;
 	newseg->audb = malloc(ctx->sz_audb);
 
-	arcan_shmif_calcofs(newseg->shm.ptr, &(newseg->vidp), &(newseg->audp));
+	shmpage->segment_size = arcan_shmif_mapav(shmpage,
+		&newseg->vidp, 1, cons.w * cons.h * sizeof(shmif_pixel),
+		&newseg->audp, 2, 16384
+	);
+
 	arcan_shmif_setevqs(newseg->shm.ptr, newseg->esync,
 		&(newseg->inqueue), &(newseg->outqueue), true);
 	newseg->inqueue.synch.killswitch = (void*) newseg;
@@ -945,62 +970,93 @@ arcan_frameserver* arcan_frameserver_listen_external(const char* key, int fd)
 	return res;
 }
 
-bool arcan_frameserver_resize(struct arcan_frameserver* s, int w, int h)
+bool arcan_frameserver_resize(struct arcan_frameserver* s)
 {
+	bool state = false;
 	shm_handle* src = &s->shm;
-	w = abs(w);
-	h = abs(h);
+	struct arcan_shmif_page* shmpage = s->shm.ptr;
 
-	size_t sz = arcan_shmif_getsize(w, h);
-	if (sz > ARCAN_SHMPAGE_MAX_SZ)
-		return false;
+/* local copy so we don't fall victim for TOCTU */
+	size_t w = shmpage->w;
+	size_t h = shmpage->h;
+	size_t vbufc = shmpage->vpending;
+	size_t abufc = shmpage->apending;
+	size_t abufsz = shmpage->abufsize;
 
-/* Don't resize unless the gain is ~20%, the routines does support shrinking
- * the size of the segment, something to consider in memory constrained
- * environments */
-	if (sz < src->shmsize && sz > (float)src->shmsize * 0.8)
-		goto done;
+/* with room for padding both structures and buffers */
+	size_t shmsz = shmpage_size(w, h, vbufc, abufc, abufsz);
 
-/* Cheap option out when we can't ftruncate to new sizes */
+/* initial sanity check */
+	if (shmsz > ARCAN_SHMPAGE_MAX_SZ)
+		goto fail;
+
+/* no remapping required, resize effect is insignificant or impossible */
+	bool rmap = (shmsz > src->shmsize || shmsz < (float) src->shmsize * 0.8);
+
+/* special case, no remap supported */
 #ifdef ARCAN_SHMIF_OVERCOMMIT
-	goto done;
+	rmap = false;
 #endif
 
-	char* tmpbuf = arcan_alloc_mem(sizeof(struct arcan_shmif_page),
-		ARCAN_MEM_VSTRUCT, ARCAN_MEM_TEMPORARY, ARCAN_MEMALIGN_NATURAL);
-
-	memcpy(tmpbuf, src->ptr, sizeof(struct arcan_shmif_page));
-
-/* Re-use the existing keys and descriptors on OSes that support this feature,
- * for others we should have a fallback that relies on mapping a new segment
- * and doing the transfer that way, but at the moment OVERCOMMIT is the only
- * other option */
-	munmap(src->ptr, src->shmsize);
-	src->ptr = NULL;
-
-	src->shmsize = sz;
-	if (-1 == ftruncate(src->handle, sz)){
-		arcan_warning("frameserver_resize() failed, "
-			"bad (broken?) truncate (%s)\n", strerror(errno));
-		return false;
+	if (rmap){
+	if (-1 == ftruncate(src->handle, shmsz)){
+		arcan_warning("truncate failed during resize operation (%d, %d)\n",
+			(int) src->handle, (int) shmsz);
+		goto fail;
 	}
 
-	src->ptr = mmap(NULL, sz, PROT_READ|PROT_WRITE, MAP_SHARED, src->handle, 0);
+/* other option here would be to set up a new subsegment, make the process
+ * asynchronous and push a MIGRATE event, but the gains seem rather pointless */
+#if defined(_GNU_SOURCE) && !defined(__APPLE__)
+	struct arcan_shmif_page* newp = mremap(src->ptr,
+		src->shmsize, shmsz, MREMAP_MAYMOVE, NULL);
+	if (MAP_FAILED == newp){
+		ftruncate(src->handle, src->shmsize);
+		goto fail;
+	}
 
+#elif __BSD
+	struct arcan_shmif_page* newp = mremap(src->ptr, src->shmsize, shmsz, NULL);
+/* really can't handle a situation where the next ftruncate won't work */
+	if (MAP_FAILED == newp){
+		ftruncate(src->handle, src->shmsize);
+		goto fail;
+	}
+	src->ptr = nep;
+#else
+	munmap(src->ptr, src->shmsize);
+	src->ptr = mmap(NULL, shmsz, PROT_READ|PROT_WRITE, MAP_SHARED,src->handle,0);
   if (MAP_FAILED == src->ptr){
   	src->ptr = NULL;
 		arcan_warning("frameserver_resize() failed, reason: %s\n", strerror(errno));
-    return false;
-  }
+  	goto fail;
+	}
+#endif
+	}
 
-  memcpy(src->ptr, tmpbuf, sizeof(struct arcan_shmif_page));
-  src->ptr->segment_size = sz;
-	arcan_mem_free(tmpbuf);
+	shmpage = src->ptr;
+	src->shmsize = shmsz;
+	shmpage->w = w;
+	shmpage->h = h;
+	shmpage->segment_size = arcan_shmif_mapav(shmpage,
+		&s->vidp, vbufc, w * h * sizeof(shmif_pixel), &s->audp, abufc, abufsz);
+	arcan_shmif_setevqs(shmpage, s->esync, &(s->inqueue), &(s->outqueue), 1);
+	shmpage->resized = 0;
+	shmpage->apending = abufc;
+	shmpage->vpending = vbufc;
+	state = true;
+
+	goto done;
+
+fail:
+	shmpage->vpending = 0;
+	shmpage->apending = 0;
+	shmpage->resized = -1;
 
 done:
-	s->desc.width = w;
-	s->desc.height = h;
-	return true;
+	FORCE_SYNCH();
+	arcan_sem_post(s->vsync);
+	return state;
 }
 
 arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,

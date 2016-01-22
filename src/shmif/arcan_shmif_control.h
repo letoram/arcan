@@ -88,12 +88,43 @@ static const int ARCAN_SHMIF_QUEUE_SZ = PP_QUEUE_SZ;
 
 /*
  * Audio format and basic parameters, this is kept primitive on purpose.
- * This part is slated for refactoring to support exclusive- device locks,
- * and raw device access for advanced applications.
+ * This will be revised shortly, but modifying still breaks ABI and may
+ * break current frameservers.
  */
+#ifndef AUDIO_SAMPLE_TYPE
+#define AUDIO_SAMPLE_TYPE int16_t
+#endif
+
+/*
+ * ALWAYS interleaved
+ */
+typedef VIDEO_PIXEL_TYPE shmif_asample;
 static const int ARCAN_SHMIF_SAMPLERATE = 48000;
 static const int ARCAN_SHMIF_ACHANNELS = 2;
-static const int ARCAN_SHMIF_SAMPLE_SIZE = sizeof(short);
+static const int ARCAN_SHMIF_SAMPLE_SIZE = sizeof(shmif_asample);
+
+/*
+ * Both SHMIF_AFLOAT / SHMIF_AINT16 macros and expansion to later support
+ * a static configurable format / packing (and the similar version for
+ * SHMIF_RGBA, ...) would probably benefit from a reimplementation as C11
+ * type generic macros (are there any tricks to get these to expand on
+ * variadic as well in order to satisfy channels and downmixing)
+ */
+#ifndef SHMIF_AFLOAT
+#define SHMIF_AFLOAT(X) ( (int16_t) ((X) * 32767.0) ) /* sacrifice -32768 */
+#endif
+
+#ifndef SHMIF_AINT16
+#define SHMIF_AINT16(X) ( (int16_t) ((X))
+#endif
+
+/*
+ * This is the TOTAL size of the audio output buffer, we can slice this
+ * into evenly sized chunks during _resize using _ext version should we
+ * want to work with smaller buffers and less blocking.
+ *
+ * shmpage->abufsize is the user- exposed, currently negotiated size.
+ */
 static const int ARCAN_SHMIF_AUDIOBUF_SZ = 65535;
 
 /*
@@ -292,6 +323,17 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 );
 
 /*
+ * Used internally by _control etc. but also in ARCAN for mapping the
+ * different buffer positions / pointers, very limited use outside those
+ * contexts. Returns size: (end of last buffer) - addr
+ */
+uintptr_t arcan_shmif_mapav(
+	struct arcan_shmif_page* addr,
+	shmif_pixel* vbuf[], size_t vbufc, size_t vbuf_sz,
+	shmif_asample* abuf[], size_t abufc, size_t abuf_sz
+);
+
+/*
  * There can be one "post-flag, pre-semaphore" hook that will occur
  * before triggering a sigmask and can be used to synch audio to video
  * or video to audio during transfers.
@@ -300,14 +342,6 @@ struct arcan_shmif_cont arcan_shmif_acquire(
  */
 shmif_trigger_hook arcan_shmif_signalhook(struct arcan_shmif_cont*,
 	enum arcan_shmif_sigmask mask, shmif_trigger_hook, void* data);
-
-/*
- * Using the specified shmpage state, return pointers into
- * suitable offsets into the shared memory pages for video
- * (planar, packed, RGBA) and audio (limited by abufsize constant).
- */
-void arcan_shmif_calcofs(struct arcan_shmif_page*,
-	uint32_t** dstvidptr, int16_t** dstaudptr);
 
 /*
  * Using the specified shmpage state, synchronization semaphore handle,
@@ -345,55 +379,55 @@ bool arcan_shmif_resize(struct arcan_shmif_cont*,
 	unsigned width, unsigned height);
 
 /*
- * Extended version of _resize that transparently adds buffering options
- * to _signal VIDEO synchronization. This has the effect of manipulating
- * vidp* in *cont to reduce stall propagation in latency sensitive settings.
+ * Extended version of resize that supports requesting more
+ * audio / video buffers for better swap/synch control.
  */
-enum shmif_resize_fl {
-	SHMIF_BUFFER_NORMAL = 1,
-	SHMIF_BUFFER_DOUBLE = 2,
-	SHMIF_BUFFER_TRIPLE = 3
+struct shmif_resize_ext {
+	size_t abuf_sz;
+	int abuf_cnt;
+	int vbuf_cnt;
 };
 
 bool arcan_shmif_resize_ext(struct arcan_shmif_cont*,
-	unsigned width, unsigned height, enum shmif_resize_fl);
+	unsigned width, unsigned height, struct shmif_resize_ext);
 /*
  * Unmap memory, release semaphores and related resources
  */
 void arcan_shmif_drop(struct arcan_shmif_cont*);
 
 /*
- * Signal that the audio and/or video blocks are ready for
- * a transfer, this may block indefinitely
+ * Signal that a synchronized transfer should take place. The contents of the
+ * mask determine buffers to synch and blocking behavior.
+ *
+ * Returns the number of miliseconds that the synchronization reportedly, and
+ * is a value that can be used to adjust local rendering/buffer.
  */
-void arcan_shmif_signal(struct arcan_shmif_cont*, int mask);
+unsigned arcan_shmif_signal(struct arcan_shmif_cont*, enum arcan_shmif_sigmask);
 
 /*
- * Signal a video transfer that is based on buffer sharing
- * rather than on data in the shmpage
+ * Signal a video transfer that is based on buffer sharing rather than on data
+ * in the shmpage. Otherwise it behaves like [arcan_shmif_signal] but with a
+ * possible reserved variadic argument for future use.
  */
-void arcan_shmif_signalhandle(struct arcan_shmif_cont*, int mask,
-	int handle, size_t stride, int format, ...);
+unsigned arcan_shmif_signalhandle(struct arcan_shmif_cont* ctx,
+	enum arcan_shmif_sigmask,	int handle, size_t stride, int format, ...);
 
 /*
- * Support function to calculate the size of a shared memory
- * segment given the specified dimensions (width, height).
- */
-size_t arcan_shmif_getsize(unsigned width, unsigned height);
-
-/*
- * Support function to set/unset the primary access segment
- * (one slot for input. one slot for output), manually managed.
+ * Support function to set/unset the primary access segment (one slot for
+ * input. one slot for output), manually managed. This is just a static member
+ * helper with no currently strongly negotiated meaning.
  */
 struct arcan_shmif_cont* arcan_shmif_primary(enum arcan_shmif_type);
 void arcan_shmif_setprimary( enum arcan_shmif_type, struct arcan_shmif_cont*);
 
 /*
- * This should be called periodically to prevent more subtle
- * bugs from cascading and be caught at an earlier stage,
- * it checks the shared memory context against a series of cookies
- * and known guard values, returning [false] if not everything
- * checks out.
+ * This should be called periodically to prevent more subtle bugs from
+ * cascading and be caught at an earlier stage, it checks the shared memory
+ * context against a series of cookies and known guard values, returning
+ * [false] if not everything checks out.
+ *
+ * The guard thread (if active) uses this function as part of its monitoring
+ * heuristic.
  */
 bool arcan_shmif_integrity_check(struct arcan_shmif_cont*);
 
@@ -407,7 +441,7 @@ struct arcan_shmif_cont {
 /* offset- pointers into addr, can change between calls to
  * shmif_ functions so aliasing is not recommended */
 	shmif_pixel* vidp;
-	int16_t* audp;
+	shmif_asample* audp;
 
 /*
  * This cookie is set/kept to some implementation defined value
@@ -503,7 +537,7 @@ struct arcan_shmif_page {
  * apending / vpending is used internally to determine the next buffer
  * to write to.
  */
-	volatile uint8_t aready, apending;
+	volatile int8_t aready, apending;
 	volatile uint8_t vready, vpending;
 
 /*
@@ -567,7 +601,7 @@ struct arcan_shmif_page {
  * on the other hand, can be appended and wholly or partially consumed
  * by the side that currently holds the synch- semaphore.
 */
-	volatile uint16_t abufused;
+	volatile uint16_t abufused, abufsize;
 
 /*
  * [FSRV-SET, ARCAN-ACK (vready signal)]

@@ -850,8 +850,11 @@ void arcan_lua_adopt(struct arcan_luactx* ctx)
 			arcan_event regev = {
 				.category = EVENT_EXTERNAL,
 				.ext.kind = EVENT_EXTERNAL_REGISTER,
-				.ext.registr.kind = fsrv->segid
+				.ext.registr.kind = fsrv->segid,
+				.ext.registr.guid[0] = fsrv->guid[0],
+				.ext.registr.guid[1] = fsrv->guid[1]
 			};
+
 			arcan_event_enqueue(arcan_event_defaultctx(), &regev);
 
 			if (arcan_frameserver_enter(fsrv)){
@@ -3980,7 +3983,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				tblnum(ctx, "state_size", ev->ext.stateinf.size, top);
 				tblnum(ctx, "typeid", ev->ext.stateinf.type, top);
 			break;
-			case EVENT_EXTERNAL_REGISTER:
+			case EVENT_EXTERNAL_REGISTER:{
 				if (fsrv->segid != SEGID_UNKNOWN &&
 					ev->ext.registr.kind != fsrv->segid){
 					lua_settop(ctx, reset);
@@ -4000,7 +4003,15 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 					COUNT_OF(ev->ext.registr.title), (char*)ev->ext.registr.title);
 					snprintf(fsrv->title, COUNT_OF(fsrv->title), "%s", mcbuf);
 				tblstr(ctx, "title", mcbuf, top);
-				tblnum(ctx, "guid", ev->ext.registr.guid, top);
+
+				size_t dsz;
+				uint8_t* b64 = arcan_base64_encode(
+					(uint8_t*)&ev->ext.registr.guid[0], 16, &dsz, 0);
+				lua_pushstring(ctx, "guid");
+				lua_pushlstring(ctx, (char*) b64, dsz);
+				lua_rawset(ctx, top);
+				arcan_mem_free(b64);
+			}
 			break;
 		 	default:
 				tblstr(ctx, "kind", "unknown", top);
@@ -4785,7 +4796,7 @@ static int storekey(lua_State* ctx)
 			const char* key = lua_tostring(ctx, -2);
 			if (!validate_key(key)){
 				arcan_warning("store_key, key[%d] rejected "
-					"(restricted to [a-Z0-9_])\n", counter);
+					"(restricted to [a-Z0-9_+/=])\n", counter);
 			}
 			else {
 				const char* val = lua_tostring(ctx, -1);
@@ -7134,12 +7145,14 @@ static int spawn_recsubseg(lua_State* ctx,
 			rv->tag = luaL_ref(ctx, LUA_REGISTRYINDEX);
 		}
 
-/* shmpage prepared, force dimensions based on source object */
+/* shmpage prepared, force dimensions based on source object
+ * using a single audio/video buffer */
 		arcan_vobject* dobj = arcan_video_getobject(did);
 		struct arcan_shmif_page* shmpage = rv->shm.ptr;
 		shmpage->w = dobj->vstore->w;
 		shmpage->h = dobj->vstore->h;
-		arcan_shmif_calcofs(shmpage, &(rv->vidp), &(rv->audp));
+		arcan_shmif_mapav(shmpage, &(rv->vidp), 1, dobj->vstore->w *
+			dobj->vstore->h * sizeof(shmif_pixel), &(rv->audp), 1, 65536);
 		arcan_video_alterfeed(did, FFUNC_AVFEED, fftag);
 
 /* similar restrictions and problems as in spawn_recfsrv */
@@ -7190,7 +7203,14 @@ static int spawn_recfsrv(lua_State* ctx,
 		.init_h = dobj->vstore->h
 	};
 
-	mvctx->shm.shmsize = arcan_shmif_getsize(args.init_w, args.init_h);
+	size_t vbuf_sz = args.init_w * args.init_h * sizeof(shmif_pixel);
+/*
+ * chicken and egg, need the size to map the buffer and need the buffer
+ * to map the size -- but not really, _mapav won't read/write. This is
+ * safe as long as an implementation of _mapav matches the one in posix/shmop
+ */
+	mvctx->shm.shmsize = arcan_shmif_mapav(
+		(struct arcan_shmif_page*) &args, NULL, 1, vbuf_sz, NULL, 1, 65536);
 
 /* we use a special feed function meant to flush audiobuffer +
  * a single video frame for encoding */
@@ -7211,7 +7231,8 @@ static int spawn_recfsrv(lua_State* ctx,
 	shmpage->w = dobj->vstore->w;
 	shmpage->h = dobj->vstore->h;
 
-	arcan_shmif_calcofs(shmpage, &(mvctx->vidp), &(mvctx->audp));
+	arcan_shmif_mapav(shmpage,
+		&(mvctx->vidp), 1, vbuf_sz, &(mvctx->audp), 1, 65536);
 
 /* pushing the file descriptor signals the frameserver to start receiving
  * (and use the proper dimensions), it is permitted to close and push another
@@ -7219,9 +7240,9 @@ static int spawn_recfsrv(lua_State* ctx,
  * or streaming sessions */
 	int fd = 0;
 
-/* currently we allow null- files and failed lookups to be pushed
- * for legacy reasons as the trigger for the frameserver to started
- * recording was when recieving the fd to work with */
+/* currently we allow null- files and failed lookups to be pushed for legacy
+ * reasons as the trigger for the frameserver to started recording was when
+ * recieving the fd to work with */
 	if (strstr(args.args.builtin.resource,
 		"container=stream") != NULL || strlen(resf) == 0)
 		fd = open(NULFILE, O_WRONLY | O_CLOEXEC);
@@ -7229,7 +7250,7 @@ static int spawn_recfsrv(lua_State* ctx,
 		char* fn = arcan_expand_resource(resf, RESOURCE_APPL_TEMP);
 
 /* it is currently allowed to "record over" an existing file without forcing
- * the caller to use zap_resource first, this should be REFACTORED. */
+ * the caller to use zap_resource first, this should possibly be reconsidered*/
 		fd = open(fn, O_CREAT | O_RDWR, S_IRWXU);
 		if (-1 == fd){
 			arcan_warning("couldn't create output (%s), "
@@ -7251,9 +7272,9 @@ static int spawn_recfsrv(lua_State* ctx,
 	mvctx->alocks = aidlocks;
 
 /*
- * lastly, lock each audio object and forcibly attach the frameserver as
- * a monitor. NOTE that this currently doesn't handle the case where we we
- * set up multiple recording sessions sharing audio objects.
+ * lastly, lock each audio object and forcibly attach the frameserver as a
+ * monitor. NOTE that this currently doesn't handle the case where we we set up
+ * multiple recording sessions sharing audio objects.
  */
 	arcan_aobj_id* base = mvctx->alocks;
 	while(base && *base){

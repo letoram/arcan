@@ -193,7 +193,8 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
 		&& src->shm.ptr->cookie == cookie && arcan_frameserver_validchild(src);
 
 /* subsegment may well be alive when the parent has just died, thus we need to
- * check the state of the parent and if it is dead, clean up just the same */
+ * check the state of the parent and if it is dead, clean up just the same,
+ * which will likely lead to kill() and a cascade */
 	if (alive && src->parent.vid != ARCAN_EID){
 		arcan_vobject* vobj = arcan_video_getobject(src->parent.vid);
 		if (!vobj || vobj->feed.state.tag != ARCAN_TAG_FRAMESERV)
@@ -850,55 +851,35 @@ void arcan_frameserver_tick_control(arcan_frameserver* src, bool tick)
 	}
 
 	FORCE_SYNCH();
-	size_t neww = src->shm.ptr->w;
-	size_t newh = src->shm.ptr->h;
 
-	if (src->desc.width == neww && src->desc.height == newh){
+/*
+ * This used to be considered suspicious behavior but with the option to switch
+ * buffering strategies, and the protocol for that is the same as resize, we no
+ * longer warn, but keep the code here commented as a note to it
+
+ if (src->desc.width == neww && src->desc.height == newh){
 		arcan_warning("frameserver_tick_control(), source requested "
 			"resize to current dimensions.\n");
 		goto leave;
 	}
 
-	if (!arcan_frameserver_resize(src, neww, newh)){
- 		arcan_warning("client requested illegal resize (%d, %d) -- killing.\n",
-			neww, newh);
-		arcan_frameserver_free(src);
+	in the same fashion, we killed on resize failure, but that did not work well
+	with switching buffer strategies (valid buffer in one size, failed because
+	size over reach with other strategy, so now there's a failure mechanism.
+ */
+	if (!arcan_frameserver_resize(src))
 		goto leave;
-	}
 
 	fail = false;
-/*
- * evqueues contain pointers into the shmpage that may have been moved
- */
-	arcan_shmif_setevqs(src->shm.ptr, src->esync,
-		&(src->inqueue), &(src->outqueue), true);
 
-	struct arcan_shmif_page* shmpage = src->shm.ptr;
 /*
- * this is a rather costly operation that we want to rate-control or at least
- * monitor as multiple resizes in a short amount of time is indicative of
- * something foul going on.
+ * at this stage, frameserver impl. should have remapped event queues,
+ * vidp/audps, and signaled the connected process. Make sure we are running the
+ * right feed function (may have been turned into another or started in a
+ * passive one
  */
 	vfunc_state cstate = *arcan_video_feedstate(src->vid);
-
-/* resize the source vid in a way that won't propagate to user scripts as we
- * want the resize event to be forwarded to the regular callback */
-	arcan_event_maskall(arcan_event_defaultctx());
-	src->desc.samplerate = ARCAN_SHMIF_SAMPLERATE;
-	src->desc.channels = ARCAN_SHMIF_ACHANNELS;
-
-/*
- * though the frameserver backing is resized, the actual resize event won't
- * propagate until the frameserver has provided data (push buffer)
- */
-	arcan_event_clearmask(arcan_event_defaultctx());
-	arcan_shmif_calcofs(shmpage, &(src->vidp), &(src->audp));
-
 	arcan_video_alterfeed(src->vid, FFUNC_VFRAME, cstate);
-
-/* acknowledge the resize */
-	shmpage->resized = false;
-	arcan_sem_post(src->vsync);
 
 leave:
 	arcan_frameserver_leave();
@@ -1061,10 +1042,15 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 		ctx->esync, &(ctx->inqueue), &(ctx->outqueue), true);
 	ctx->inqueue.synch.killswitch = (void*) ctx;
 	ctx->outqueue.synch.killswitch = (void*) ctx;
+	ctx->desc.samplerate = ARCAN_SHMIF_SAMPLERATE;
+	ctx->desc.channels = ARCAN_SHMIF_ACHANNELS;
 
 	struct arcan_shmif_page* shmpage = ctx->shm.ptr;
 	shmpage->w = setup.init_w;
 	shmpage->h = setup.init_h;
 
-	arcan_shmif_calcofs(shmpage, &(ctx->vidp), &(ctx->audp));
+	arcan_shmif_mapav(shmpage,
+		&(ctx->vidp), 1, setup.init_w * setup.init_h * sizeof(shmif_pixel),
+		&(ctx->audp), 1, 65536
+	);
 }
