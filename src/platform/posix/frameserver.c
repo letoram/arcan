@@ -8,6 +8,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <stdlib.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <time.h>
 #include <unistd.h>
@@ -534,7 +535,7 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	if (!newseg)
 		return NULL;
 
-	newseg->shm.shmsize = shmpage_size(hintw, hinth, 1, 2, 16384);
+	newseg->shm.shmsize = shmpage_size(hintw, hinth, 1, 1, 65535);
 
 	if (!shmalloc(newseg, false, NULL, -1)){
 		arcan_frameserver_free(newseg);
@@ -559,8 +560,8 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	shmpage->w = hintw;
 	shmpage->h = hinth;
 	shmpage->vpending = 1;
-	shmpage->abufsize = 16384;
-	shmpage->apending = 2;
+	shmpage->abufsize = 65535;
+	shmpage->apending = 1;
 	shmpage->segment_token = ((uint32_t) newvid) ^ ctx->cookie;
 
 /*
@@ -617,7 +618,7 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 
 	shmpage->segment_size = arcan_shmif_mapav(shmpage,
 		&newseg->vidp, 1, cons.w * cons.h * sizeof(shmif_pixel),
-		&newseg->audp, 2, 16384
+		&newseg->audp, 1, 65535
 	);
 
 	arcan_shmif_setevqs(newseg->shm.ptr, newseg->esync,
@@ -983,6 +984,14 @@ bool arcan_frameserver_resize(struct arcan_frameserver* s)
 	size_t abufc = shmpage->apending;
 	size_t abufsz = shmpage->abufsize;
 
+/* you can potentially have a really big audiobuffer (or well, quite a few 64k
+ * ones unless we exceed the upper limit, but by setting 0 there's the
+ * indication that we want the size that match the output device the best.
+ * Currently, we can't know this and there's a pending audio subsystem refactor
+ * to remedy this (kindof) but for now, just revert to say 16k per buffer */
+	if (0 == abufsz)
+		abufsz = 16384;
+
 /* with room for padding both structures and buffers */
 	size_t shmsz = shmpage_size(w, h, vbufc, abufc, abufsz);
 
@@ -1014,7 +1023,7 @@ bool arcan_frameserver_resize(struct arcan_frameserver* s)
 		ftruncate(src->handle, src->shmsize);
 		goto fail;
 	}
-
+	src->ptr = newp;
 #elif __BSD
 	struct arcan_shmif_page* newp = mremap(src->ptr, src->shmsize, shmsz, NULL);
 /* really can't handle a situation where the next ftruncate won't work */
@@ -1022,7 +1031,7 @@ bool arcan_frameserver_resize(struct arcan_frameserver* s)
 		ftruncate(src->handle, src->shmsize);
 		goto fail;
 	}
-	src->ptr = nep;
+	src->ptr = newp;
 #else
 	munmap(src->ptr, src->shmsize);
 	src->ptr = mmap(NULL, shmsz, PROT_READ|PROT_WRITE, MAP_SHARED,src->handle,0);
@@ -1036,12 +1045,14 @@ bool arcan_frameserver_resize(struct arcan_frameserver* s)
 
 	shmpage = src->ptr;
 	src->shmsize = shmsz;
-	shmpage->w = w;
-	shmpage->h = h;
+	s->desc.width = shmpage->w = w;
+	s->desc.height = shmpage->h = h;
+
 	shmpage->segment_size = arcan_shmif_mapav(shmpage,
 		&s->vidp, vbufc, w * h * sizeof(shmif_pixel), &s->audp, abufc, abufsz);
 	arcan_shmif_setevqs(shmpage, s->esync, &(s->inqueue), &(s->outqueue), 1);
 	shmpage->resized = 0;
+	shmpage->abufsize = abufsz;
 	shmpage->apending = abufc;
 	shmpage->vpending = vbufc;
 	state = true;
