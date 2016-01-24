@@ -92,6 +92,8 @@ struct {
 	pid_t child;
 	int child_fd;
 	unsigned flags;
+	bool focus;
+	int inact_timer;
 
 /* font rendering / tracking */
 #ifdef TTF_SUPPORT
@@ -128,12 +130,12 @@ struct {
 	uint8_t fgc[3];
 	uint8_t bgc[3];
 	shmif_pixel ccol;
+
+/* store a copy of the state where the cursor is */
+	struct tsm_screen_attr cattr;
+	uint32_t cvalue;
+	bool cursor_off;
 	enum cursors cursor;
-	struct {
-		TTF_Color fg;
-		TTF_Color bg;
-		uint8_t cursor_d[5];
-	} cdata;
 
 	uint8_t alpha;
 
@@ -147,6 +149,7 @@ struct {
 } term = {
 	.cell_w = 8,
 	.cell_h = 8,
+	.focus = true,
 	.rows = 25,
 	.cols = 80,
 	.alpha = 0xff,
@@ -159,6 +162,11 @@ struct {
 	.hint = TTF_HINTING_NONE
 #endif
 };
+
+/* to be able to update the cursor cell with other information */
+static int draw_cbt(struct tsm_screen* screen, uint32_t ch,
+	unsigned x, unsigned y, const struct tsm_screen_attr* attr,
+	tsm_age_t age, bool cstate, bool empty);
 
 static void tsm_log(void* data, const char* file, int line,
 	const char* func, const char* subs, unsigned int sev,
@@ -252,6 +260,15 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 	const uint32_t* ch, size_t len, unsigned width, unsigned x, unsigned y,
 	const struct tsm_screen_attr* attr, tsm_age_t age, void* data)
 {
+	return
+	draw_cbt(screen,*ch, x, y, attr, age,
+		!(term.flags & TSM_SCREEN_HIDE_CURSOR), len == 0);
+}
+
+static int draw_cbt(struct tsm_screen* screen, uint32_t ch,
+	unsigned x, unsigned y, const struct tsm_screen_attr* attr,
+	tsm_age_t age, bool cstate, bool empty)
+{
 	uint8_t fgc[] = {0, 0, 0, 255}, bgc[] = {0, 0, 0, 255};
 	uint8_t* dfg = fgc, (* dbg) = bgc;
 	int y1 = y * term.cell_h;
@@ -273,15 +290,15 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 	if (y2 > term.acon.addr->dirty.y2)
 		term.acon.addr->dirty.y2 = y2;
 
-	bool match_cursor = x == term.cursor_x && y == term.cursor_y;
+	bool match_cursor = (cstate && x == term.cursor_x && y == term.cursor_y);
 
 /* do the inverse by just flipping color targets */
 	if (attr->inverse){
 		dfg = bgc;
 		dbg = fgc;
-
 	}
 
+/* copy values from the attribute */
 	dfg[0] = attr->fr;
 	dfg[1] = attr->fg;
 	dfg[2] = attr->fb;
@@ -295,30 +312,32 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 	draw_box(&term.acon, x1, y1, term.cell_w, term.cell_h,
 		SHMIF_RGBA(bgc[0], bgc[1], bgc[2], term.alpha));
 
-	if (attr->underline){
+	if (attr->underline && !match_cursor){
 		draw_box(&term.acon, x1, y1 + term.cell_h-1, term.cell_w, 1,
 			SHMIF_RGBA(fgc[0], fgc[1], fgc[2], 0xff));
 	}
 
 /* quick erase if nothing more is needed */
-	if (len == 0 && !match_cursor){
-		return 0;
+	if (empty){
+		if (!match_cursor)
+			return 0;
+		else
+			ch = 0x00000008;
 	}
 
-/* save as cursor or draw as character */
-	if (match_cursor && !(term.flags & TSM_SCREEN_HIDE_CURSOR)){
-/*		term.cdata.fg = tfg;
-		term.cdata.bg = tbg;
-		memcpy(term.cdata.cursor_d, u8_ch, u8_sz); */
-		cursor_at(x, y, term.ccol, false);
+	size_t u8_sz = tsm_ucs4_get_width(ch) + 1;
+	uint8_t u8_ch[u8_sz];
+	size_t nch = tsm_ucs4_to_utf8(ch, (char*) u8_ch);
+	u8_ch[u8_sz-1] = '\0';
+
+/* cursor slot updated and not disabled in any way - draw cursor */
+	if (match_cursor && (!(term.flags & TSM_SCREEN_HIDE_CURSOR))){
+		term.cattr = *attr;
+		term.cvalue = ch;
+		cursor_at(x, y, term.ccol, true);
 	}
-	else{
-		size_t u8_sz = tsm_ucs4_get_width(*ch) + 1;
-		uint8_t u8_ch[u8_sz];
-		size_t nch = tsm_ucs4_to_utf8(*ch, (char*) u8_ch);
-		u8_ch[u8_sz-1] = '\0';
+	else
 		draw_ch(u8_ch, x1, y1, dfg, dbg, attr->bold, attr->underline);
-	}
 
 	return 0;
 }
@@ -378,6 +397,7 @@ static void update_screensize(bool clear)
 		if (rows > term.rows)
 			padh += (rows - term.rows) * term.cell_h;
 */
+		int dr = term.rows - rows;
 		term.cols = cols;
 		term.rows = rows;
 
@@ -707,6 +727,8 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 		if (!pressed)
 			return;
 
+		term.inact_timer = 0;
+
 		if (label[0] && consume_label(ioev, label))
 			return;
 
@@ -906,6 +928,24 @@ static void targetev(arcan_tgtevent* ev)
 				term.dirty = DIRTY_NONE;
 				update = true;
 			}
+
+			if (ev->ioevs[2].iv & 4){
+				term.focus = false;
+				if (!term.cursor_off){
+					term.cursor_off = true;
+					draw_cbt(term.screen, term.cvalue, term.cursor_x, term.cursor_y,
+						&term.cattr, 0, !term.cursor_off, false);
+				}
+			}
+			else{
+				term.focus = true;
+				term.inact_timer = 0;
+				if (term.cursor_off){
+					term.cursor_off = false;
+					draw_cbt(term.screen, term.cvalue, term.cursor_x, term.cursor_y,
+						&term.cattr, 0, !term.cursor_off, false);
+				}
+			}
 		}
 
 /* switch cursor kind on changes to 4 in ioevs[2] */
@@ -956,6 +996,20 @@ static void targetev(arcan_tgtevent* ev)
 	break;
 
 	case TARGET_COMMAND_STEPFRAME:
+		if (ev->ioevs[1].iv == 1 && term.focus){
+			term.inact_timer++;
+			term.cursor_off = term.inact_timer > 1 ? !term.cursor_off : false;
+			draw_cbt(term.screen, term.cvalue, term.cursor_x, term.cursor_y,
+				&term.cattr, 0, !term.cursor_off, false);
+		}
+		else{
+			if (!term.cursor_off){
+				term.cursor_off = true;
+			draw_cbt(term.screen, term.cvalue, term.cursor_x, term.cursor_y,
+				&term.cattr, 0, !term.cursor_off, false);
+			}
+		}
+
 	break;
 
 /* problem:
@@ -1335,15 +1389,23 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 
 /* immediately request a clipboard for cut operations (none received ==
  * running appl doesn't care about cut'n'paste/drag'n'drop support). */
-	arcan_event segreq = {
+/* and send a timer that will be used for cursor blinking when active */
+	arcan_shmif_enqueue(&term.acon, &(struct arcan_event){
 		.category = EVENT_EXTERNAL,
 		.ext.kind = ARCAN_EVENT(SEGREQ),
 		.ext.segreq.width = 1,
 		.ext.segreq.height = 1,
 		.ext.segreq.kind = SEGID_CLIPBOARD,
 		.ext.segreq.id = 0xfeedface
-	};
-	arcan_shmif_enqueue(&term.acon, &segreq);
+	});
+
+/* and a 1s. timer for blinking cursor */
+	arcan_shmif_enqueue(&term.acon, &(struct arcan_event){
+		.category = EVENT_EXTERNAL,
+		.ext.kind = ARCAN_EVENT(CLOCKREQ),
+		.ext.clock.rate = 25,
+		.ext.clock.id = 0xabcdef00,
+	});
 
 	main_loop();
 	return EXIT_SUCCESS;

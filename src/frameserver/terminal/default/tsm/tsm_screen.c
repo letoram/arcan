@@ -673,6 +673,8 @@ int tsm_screen_resize(struct tsm_screen *con, unsigned int x,
 	if (!con || !x || !y)
 		return -EINVAL;
 
+	inc_age(con);
+
 	if (con->size_x == x && con->size_y == y)
 		return 0;
 
@@ -744,8 +746,6 @@ int tsm_screen_resize(struct tsm_screen *con, unsigned int x,
 				return ret;
 		}
 	}
-
-	inc_age(con);
 
 	/* clear expansion/padding area */
 	start = x;
