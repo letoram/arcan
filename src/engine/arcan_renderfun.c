@@ -200,7 +200,7 @@ done:
 
 static void zap_slot(int i)
 {
-	if (font_cache[i].fd != BADFD){
+	if (font_cache[i].fd != BADFD && font_cache[i].fd){
 		close(font_cache[i].fd);
 		font_cache[i].fd = BADFD;
 	}
@@ -240,8 +240,15 @@ bool arcan_video_defaultfont(const char* ident,
 
 void arcan_video_reset_fontcache()
 {
-	for (int i = 0; i < ARCAN_FONT_CACHE_LIMIT; i++)
-		zap_slot(i);
+	static bool init;
+	if (!init){
+		init = true;
+		for (int i = 0; i < ARCAN_FONT_CACHE_LIMIT; i++)
+			font_cache[i].fd = BADFD;
+	}
+	else
+		for (int i = 0; i < ARCAN_FONT_CACHE_LIMIT; i++)
+			zap_slot(i);
 }
 
 #ifndef TEXT_EMBEDDEDICON_MAXW
