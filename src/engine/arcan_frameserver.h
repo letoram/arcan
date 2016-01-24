@@ -37,7 +37,7 @@ typedef struct {
 /* video */
 	uint16_t width;
 	uint16_t height;
-	uint16_t bpp;
+	char bpp;
 
 /* primarily for feedcopy */
 	uint32_t synch_ts;
@@ -47,9 +47,7 @@ typedef struct {
 	uint8_t channels;
 	uint16_t vfthresh;
 
-/* if the user wants detailed
- * info about the latest frame that was
- * uploaded */
+/* statistics for tracking performance / timing */
 	bool callback_framestate;
 	unsigned long long framecount;
 	unsigned long long dropcount;
@@ -63,12 +61,6 @@ struct frameserver_audsrc {
 	arcan_aobj_id src_aid;
 	float l_gain;
 	float r_gain;
-};
-
-struct frameserver_audmix {
-	unsigned n_aids;
-	size_t max_bufsz;
-	struct frameserver_audsrc* inaud;
 };
 
 struct arcan_frameserver {
@@ -89,10 +81,9 @@ struct arcan_frameserver {
 	DWORD childp;
 #endif
 
-/* used for connections negotiated via socket
- * (sockout_fd) */
+/* used for connections negotiated via socket (sockout_fd) */
 	char sockinbuf[PP_SHMPAGE_SHMKEYLIM];
-	char* clientkey[PP_SHMPAGE_SHMKEYLIM];
+	char clientkey[PP_SHMPAGE_SHMKEYLIM];
 	off_t sockrofs;
 	char* sockaddr, (* sockkey);
 
@@ -105,7 +96,7 @@ struct arcan_frameserver {
 		bool autoclock;
 	} flags;
 
-/* if autoclock is set */
+/* if autoclock is set, track and use as metric for firing events */
 	struct {
 		uint32_t left;
 		uint32_t start;
@@ -134,14 +125,10 @@ struct arcan_frameserver {
 	int64_t launchedtime;
 	unsigned vfcount;
 
-	enum ARCAN_SEGID segid;
 	uint32_t cookie;
 
-/* attempts at using lower level handle-passing and sharing
- * mechanisms, metadata comes from events due to design constraints
- * imposed by some platform low-level details, dead marks that
- * we have tried to share, received broken buffers and expect
- * fallback behavior */
+/* state tracking for accelerated buffer sharing, populated by handle
+ * events that accompany signalling if enabled */
 	struct {
 		bool dead;
 		int handle;
@@ -149,24 +136,27 @@ struct arcan_frameserver {
 		int format;
 	} vstream;
 
-/* usual hack, similar to load_asynchimage */
-	intptr_t tag;
-
 /* temporary buffer for aligning queue/dequeue events in audio */
 	size_t sz_audb;
 	off_t ofs_audb, ofs_audp;
 	uint8_t* audb;
 
+/* trackable members to help scriping engine recover on script failure */
 	char title[64];
+	enum ARCAN_SEGID segid;
+	uint64_t guid[2];
+
+	/* hack used to match frameserver generated events (from vid->tag
+ * to fsrv->tag) needed to correlate callback in script engine with event */
+	intptr_t tag;
 
 /* precalc offsets into mapped shmpage, calculated at resize */
 	shmif_pixel* vidp;
-	int16_t* audp;
+	shmif_asample* audp;
 	shm_handle shm;
 
-/* above pointers are all placed so that if they overflow
- * they should hit this canary -- use for watchpoint in debugging
- * integrity- check for release */
+/* above pointers are all placed so that if they overflow they should hit this
+ * canary -- use for watchpoint in debugging integrity- check for release */
 	uint16_t watch_const;
 };
 
@@ -268,7 +258,7 @@ void arcan_frameserver_dropsemaphores_keyed(char*);
  * various feedfunctions and should not need to be triggered elsewhere.
  */
 void arcan_frameserver_tick_control(arcan_frameserver*, bool);
-bool arcan_frameserver_resize(arcan_frameserver*, int, int);
+bool arcan_frameserver_resize(arcan_frameserver*);
 
 /*
  * Various transfer- and buffering schemes. These should not be mapped

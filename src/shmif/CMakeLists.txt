@@ -29,7 +29,7 @@ else()
 	set(ASHMIF_STDLIB -lrt)
 endif()
 
-set(ASHMIF_INSTPATH lib/arcan)
+set(ASHMIF_INSTPATH lib)
 
 set (SHMIF_HEADERS
 	${ASD}/shmif/arcan_shmif_control.h
@@ -41,6 +41,7 @@ set (SHMIF_HEADERS
 set (SHMIF_SOURCES
 	${SHMIF_HEADERS}
 	${ASD}/shmif/arcan_shmif_control.c
+	${ASD}/platform/posix/shmemop.c
 )
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
@@ -64,7 +65,6 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 		${ASD}/platform/darwin/sem.c
 		${ASD}/platform/posix/fdpassing.c
 	)
-	set(ASHMIF_INSTPATH lib)
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 # missing at the moment
 else()
@@ -78,6 +78,7 @@ set_property(SOURCE ${ASD}/platform/posix/fdpassing.c
 
 add_library(arcan_shmif_int STATIC ${SHMIF_SOURCES} ${SHMIF_PLATFORM})
 add_library(arcan_shmif SHARED ${SHMIF_SOURCES} ${SHMIF_PLATFORM})
+
 target_link_libraries(arcan_shmif PRIVATE ${STDLIB})
 target_link_libraries(arcan_shmif_int PRIVATE ${STDLIB})
 
@@ -85,9 +86,16 @@ target_link_libraries(arcan_shmif_int PRIVATE ${STDLIB})
 # subdirectores need to pull it in as part of building a shared library
 set_target_properties(arcan_shmif_int PROPERTIES
 	COMPILE_FLAGS -fPIC
+	OUTPUT_NAME arcan_shmif
 	VERSION ${ASHMIF_MAJOR}.${ASHMIF_MINOR}
-	SOVERSION ${ASHMIF_MAJOR}
 )
+set_target_properties(arcan_shmif PROPERTIES
+	COMPILE_FLAGS -fPIC
+	OUTPUT_NAME arcan_shmif
+	VERSION ${ASHMIF_MAJOR}.${ASHMIF_MINOR}
+	SOVERSION ${ASHMIF_MAJOR}.${ASHMIF_MINOR}
+)
+
 set(ARCAN_SHMIF_INCLUDE_DIR ${ASD}/shmif PARENT_SCOPE)
 set(ARCAN_SHMIF_LIBRARY arcan_shmif_int ${ASHMIF_STDLIB} PARENT_SCOPE)
 

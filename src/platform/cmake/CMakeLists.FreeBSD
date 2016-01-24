@@ -25,7 +25,7 @@ add_definitions(
 	-DPLATFORM_HEADER=\"${PLATFORM_ROOT}/platform.h\"
 	-D_WITH_DPRINTF_
 	-D__UNIX
-        -D__BSD
+	-D__BSD
 	-DLIBUSB_BSD
 	-DCLOCK_MONOTONIC_RAW=CLOCK_REALTIME_FAST
 )
