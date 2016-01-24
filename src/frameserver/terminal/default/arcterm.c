@@ -180,7 +180,7 @@ const char* curslbl[] = {
 /* support different cursor types here; blinking, underline,
  * vert-line, block, square. */
 
-static void cursor_at(int x, int y, shmif_pixel ccol)
+static void cursor_at(int x, int y, shmif_pixel ccol, bool active)
 {
 	shmif_pixel* dst = term.acon.vidp;
 	x *= term.cell_w;
@@ -216,66 +216,35 @@ static void cursor_at(int x, int y, shmif_pixel ccol)
 	}
 }
 
-static void draw_ch(uint8_t u8_ch[5], int base_x, int base_y,
-	TTF_Color fg, TTF_Color bg)
+static void draw_ch(uint8_t u8_ch[5],
+	int base_x, int base_y, uint8_t fg[4], uint8_t bg[4],
+	bool bold, bool underline)
 {
 #ifdef TTF_SUPPORT
 	if (term.font == NULL){
 #endif
 		u8_ch[1] = '\0';
 		draw_text_bg(&term.acon, (const char*) u8_ch, base_x, base_y,
-			SHMIF_RGBA(fg.r, fg.g, fg.b, 0xff),
-			SHMIF_RGBA(bg.r, bg.g, bg.b, term.alpha)
+			SHMIF_RGBA(fg[0], fg[1], fg[2], fg[3]),
+			SHMIF_RGBA(bg[0], bg[1], bg[2], bg[3])
 		);
 		return;
 #ifdef TTF_SUPPORT
 	}
 
-/* huge room for improvement / optimization here:
- * 1. remove the first "draw_box with bgcolor"
- * 2. replace TTF_RenderUTF8 with a function that draws the entirety
- *    of cell_w * cell_h with background color into a preallocated
- *    buffer of that size! - this would cut down on a malloc call
- *    per cell and the amount of overdraw etc. with 70-80% */
+/*	draw_box(&term.acon, base_x, base_y, term.cell_w, term.cell_h,
+		SHMIF_RGBA(bg[0], bg[1], bg[2], bg[3]);
+*/
 
-	draw_box(&term.acon, base_x, base_y, term.cell_w, term.cell_h,
-		SHMIF_RGBA(bg.r, bg.g, bg.b, term.alpha));
-
-	TTF_Surface* surf = TTF_RenderUTF8(term.font, (char*) u8_ch, fg);
-	if (!surf)
-		return;
-
-	size_t w = term.acon.addr->w;
-	shmif_pixel* dst = term.acon.vidp;
-
-	for (int row = 0; row < surf->height; row++)
-		for (int col = 0; col < surf->width; col++){
-		uint8_t* bgra = (uint8_t*) &surf->data[ row * surf->stride + (col * 4) ];
-		off_t ofs = (row + base_y) * term.acon.pitch + col + base_x;
-		if (bgra[3] == 0)
-			dst[ofs] = SHMIF_RGBA(bg.r, bg.g, bg.b, term.alpha);
-/* blend 1 - src alpha */
-		else{
-			shmif_pixel inp = dst[ofs];
-			uint32_t r, g, b;
-			uint8_t a = bgra[3];
-/* classic "avoid div hack" */
-			r = a * fg.r + bg.r * (255 - a);
-			r += 0x80;
-			r = (r + (r >> 8)) >> 8;
-			g = a * fg.g + bg.g * (255 - a);
-			g += 0x80;
-			g = (g + (g >> 8)) >> 8;
-			b = a * fg.b + bg.b * (255 - a);
-			b += 0x80;
-			b = (b + (b >> 8)) >> 8;
-			dst[ofs] = SHMIF_RGBA(r, g, b, (r == bg.r && g == bg.g
-				&& b == bg.b) ? term.alpha : 0xff);
-		}
+	if (bold){
+		TTF_SetFontStyle(term.font, TTF_STYLE_BOLD);
+		TTF_RenderUTF8_ext(&term.acon.vidp[base_y * term.acon.pitch + base_x],
+		term.acon.pitch, term.font, (const char*) u8_ch, fg, bg, 0);
+		TTF_SetFontStyle(term.font, TTF_STYLE_NORMAL);
 	}
-
-	free(surf);
-	return;
+	else
+		TTF_RenderUTF8_ext(&term.acon.vidp[base_y * term.acon.pitch + base_x],
+		term.acon.pitch, term.font, (const char*) u8_ch, fg, bg, 0);
 #endif
 }
 
@@ -283,7 +252,7 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 	const uint32_t* ch, size_t len, unsigned width, unsigned x, unsigned y,
 	const struct tsm_screen_attr* attr, tsm_age_t age, void* data)
 {
-	uint8_t fgc[3], bgc[3];
+	uint8_t fgc[] = {0, 0, 0, 255}, bgc[] = {0, 0, 0, 255};
 	uint8_t* dfg = fgc, (* dbg) = bgc;
 	int y1 = y * term.cell_h;
 	int x1 = x * term.cell_w;
@@ -306,9 +275,11 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 
 	bool match_cursor = x == term.cursor_x && y == term.cursor_y;
 
+/* do the inverse by just flipping color targets */
 	if (attr->inverse){
 		dfg = bgc;
 		dbg = fgc;
+
 	}
 
 	dfg[0] = attr->fr;
@@ -317,34 +288,37 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 	dbg[0] = attr->br;
 	dbg[1] = attr->bg;
 	dbg[2] = attr->bb;
+	dbg[3] = term.alpha;
 
 	term.dirty = DIRTY_UPDATED;
 
-/* first erase */
-	if (len == 0){
-		draw_box(&term.acon, x1, y1, term.cell_w, term.cell_h,
-			SHMIF_RGBA(bgc[0], bgc[1], bgc[2], term.alpha));
+	draw_box(&term.acon, x1, y1, term.cell_w, term.cell_h,
+		SHMIF_RGBA(bgc[0], bgc[1], bgc[2], term.alpha));
+
+	if (attr->underline){
+		draw_box(&term.acon, x1, y1 + term.cell_h-1, term.cell_w, 1,
+			SHMIF_RGBA(fgc[0], fgc[1], fgc[2], 0xff));
 	}
 
-	if (len == 0 && !match_cursor)
+/* quick erase if nothing more is needed */
+	if (len == 0 && !match_cursor){
 		return 0;
-
-	size_t u8_sz = tsm_ucs4_get_width(*ch) + 1;
-	uint8_t u8_ch[u8_sz];
-	size_t nch = tsm_ucs4_to_utf8(*ch, (char*) u8_ch);
-	u8_ch[u8_sz-1] = '\0';
-
-	TTF_Color tfg = {.r = dfg[0], .g = dfg[1], .b = dfg[2]};
-	TTF_Color tbg = {.r = dbg[0], .g = dbg[1], .b = dbg[2]};
-
-	if (match_cursor && !(term.flags & TSM_SCREEN_HIDE_CURSOR)){
-		term.cdata.fg = tfg;
-		term.cdata.bg = tbg;
-		memcpy(term.cdata.cursor_d, u8_ch, u8_sz);
-		cursor_at(x, y, term.ccol);
 	}
-	else
-		draw_ch(u8_ch, x1, y1, tfg, tbg);
+
+/* save as cursor or draw as character */
+	if (match_cursor && !(term.flags & TSM_SCREEN_HIDE_CURSOR)){
+/*		term.cdata.fg = tfg;
+		term.cdata.bg = tbg;
+		memcpy(term.cdata.cursor_d, u8_ch, u8_sz); */
+		cursor_at(x, y, term.ccol, false);
+	}
+	else{
+		size_t u8_sz = tsm_ucs4_get_width(*ch) + 1;
+		uint8_t u8_ch[u8_sz];
+		size_t nch = tsm_ucs4_to_utf8(*ch, (char*) u8_ch);
+		u8_ch[u8_sz-1] = '\0';
+		draw_ch(u8_ch, x1, y1, dfg, dbg, attr->bold, attr->underline);
+	}
 
 	return 0;
 }
@@ -1070,7 +1044,7 @@ static bool setup_font(int fd, size_t font_sz)
 		return false;
 
 	TTF_SetFontHinting(font, term.hint);
-	TTF_SetFontStyle(font, TTF_STYLE_BOLD);
+	TTF_SetFontStyle(font, TTF_STYLE_BOLD | TTF_STYLE_UNDERLINE);
 
 	size_t w = 0, h = 0;
 	static const char* set[] = {
