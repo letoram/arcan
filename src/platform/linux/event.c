@@ -166,15 +166,17 @@ static const char* vt_rel = "y";
 static void sigusr_acq(int sign, siginfo_t* info, void* ctx)
 {
 	int s_errn = errno;
-	write(gstate.sigpipe[1], vt_acq, 1);
+	if (write(gstate.sigpipe[1], vt_acq, 1) == 1)
+		;
 	errno = s_errn;
 }
 
 static void sigusr_rel(int sign, siginfo_t* info, void* ctx)
 {
 	int s_errn = errno;
-	write(gstate.sigpipe[1], vt_rel, 1);
-	errno = s_errn;
+	if (write(gstate.sigpipe[1], vt_rel, 1) == 1)
+		;
+		errno = s_errn;
 }
 
 static void got_device(int fd, const char*);
@@ -1449,20 +1451,23 @@ void platform_event_init(arcan_evctx* ctx)
 				.acqsig = SIGUSR1,
 				.relsig = SIGUSR2
 			};
-			pipe(gstate.sigpipe);
-			fcntl(gstate.sigpipe[0], F_SETFD, FD_CLOEXEC);
-			fcntl(gstate.sigpipe[1], F_SETFD, FD_CLOEXEC);
-			gstate.sigpipe_p.fd = gstate.sigpipe[0];
-			gstate.sigpipe_p.events = POLLIN;
+			if (0 == pipe(gstate.sigpipe)){
+				fcntl(gstate.sigpipe[0], F_SETFD, FD_CLOEXEC);
+				fcntl(gstate.sigpipe[1], F_SETFD, FD_CLOEXEC);
+				gstate.sigpipe_p.fd = gstate.sigpipe[0];
+				gstate.sigpipe_p.events = POLLIN;
 
-			er_sh.sa_handler = NULL;
-			er_sh.sa_sigaction = sigusr_acq;
-			er_sh.sa_flags = SA_SIGINFO;
-			sigaction(SIGUSR1, &er_sh, NULL);
+				er_sh.sa_handler = NULL;
+				er_sh.sa_sigaction = sigusr_acq;
+				er_sh.sa_flags = SA_SIGINFO;
+				sigaction(SIGUSR1, &er_sh, NULL);
 
-			er_sh.sa_sigaction = sigusr_rel;
-			sigaction(SIGUSR2, &er_sh, NULL);
-			ioctl(gstate.tty, VT_SETMODE, &mode);
+				er_sh.sa_sigaction = sigusr_rel;
+				sigaction(SIGUSR2, &er_sh, NULL);
+				ioctl(gstate.tty, VT_SETMODE, &mode);
+			}
+			else
+				arcan_warning("tty- swapping support requested, but pipe() failed\n");
 		}
 	}
 

@@ -63,7 +63,7 @@ CTMuint _ctmStreamWrite(_CTMcontext * self, void * aBuf, CTMuint aCount)
 //-----------------------------------------------------------------------------
 CTMuint _ctmStreamReadUINT(_CTMcontext * self)
 {
-  unsigned char buf[4];
+  unsigned char buf[4] = {0, 0, 0, 0};
   _ctmStreamRead(self, (void *) buf, 4);
   return ((CTMuint) buf[0]) |
          (((CTMuint) buf[1]) << 8) |
