@@ -500,7 +500,8 @@ fail:
 	}
 
 /* tiny race condition SIGBUS window here */
-	arcan_frameserver_enter(ctx);
+	while (!arcan_frameserver_enter(ctx))
+		;
 		memset(shmpage, '\0', ctx->shm.shmsize);
 	 	shmpage->dms = true;
 		shmpage->parent = getpid();
@@ -557,12 +558,14 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 		return NULL;
 	}
 
-	shmpage->w = hintw;
-	shmpage->h = hinth;
-	shmpage->vpending = 1;
-	shmpage->abufsize = 65535;
-	shmpage->apending = 1;
-	shmpage->segment_token = ((uint32_t) newvid) ^ ctx->cookie;
+	while (!arcan_frameserver_enter(ctx)){}
+		shmpage->w = hintw;
+		shmpage->h = hinth;
+		shmpage->vpending = 1;
+		shmpage->abufsize = 65535;
+		shmpage->apending = 1;
+		shmpage->segment_token = ((uint32_t) newvid) ^ ctx->cookie;
+	arcan_frameserver_leave(ctx);
 
 /*
  * Currently, we're reserving a rather aggressive amount of memory for audio,
@@ -1020,7 +1023,8 @@ bool arcan_frameserver_resize(struct arcan_frameserver* s)
 	struct arcan_shmif_page* newp = mremap(src->ptr,
 		src->shmsize, shmsz, MREMAP_MAYMOVE, NULL);
 	if (MAP_FAILED == newp){
-		ftruncate(src->handle, src->shmsize);
+		if (-1 == ftruncate(src->handle, src->shmsize))
+			arcan_warning("_resize, truncate reset on resize fail fail\n");
 		goto fail;
 	}
 	src->ptr = newp;
@@ -1155,8 +1159,9 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 
 			execve(argv[0], argv, arr.data);
 			const char errmsg[] = "arcan_frameserver_spawn_server() failed:";
-			write(STDERR_FILENO, errmsg, sizeof(errmsg));
-			write(STDERR_FILENO, argv[0], strlen(argv[0]));
+			if (write(STDERR_FILENO, errmsg, sizeof(errmsg)) > 0 &&
+				write(STDERR_FILENO, argv[0], strlen(argv[0])) > 0)
+				;
 			exit(EXIT_FAILURE);
 		}
 /* non-frameserver executions (hijack libs, ...) */

@@ -553,13 +553,13 @@ static void select_copy()
 
 	uint32_t state = 0, codepoint = 0, len = strlen(sel);
 	char* outs = sel;
-	size_t maxlen = sizeof(msgev.ext.message) - 1;
+	size_t maxlen = sizeof(msgev.ext.message.data) - 1;
 
 /* utf8- point aligned against block size */
 	while (len > maxlen){
 		size_t i, lastok = 0;
 		state = 0;
-		for (i = 0; i < maxlen; i++){
+		for (i = 0; i <= maxlen - 1; i++){
 		if (UTF8_ACCEPT == utf8_decode(&state, &codepoint, (uint8_t)(sel[i])))
 			lastok = i;
 

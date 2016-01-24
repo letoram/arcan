@@ -2091,7 +2091,6 @@ SHL_EXPORT
 tsm_age_t tsm_screen_draw(struct tsm_screen *con, tsm_screen_draw_cb draw_cb,
 			  void *data)
 {
-	unsigned int cur_x, cur_y;
 	unsigned int i, j, k;
 	struct line *iter, *line = NULL;
 	struct cell *cell;
@@ -2105,13 +2104,6 @@ tsm_age_t tsm_screen_draw(struct tsm_screen *con, tsm_screen_draw_cb draw_cb,
 
 	if (!con || !draw_cb)
 		return 0;
-
-	cur_x = con->cursor_x;
-	if (con->cursor_x >= con->size_x)
-		cur_x = con->size_x - 1;
-	cur_y = con->cursor_y;
-	if (con->cursor_y >= con->size_y)
-		cur_y = con->size_y - 1;
 
 	/* push each character into rendering pipeline */
 

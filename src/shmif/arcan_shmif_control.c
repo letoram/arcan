@@ -431,6 +431,12 @@ reset:
 	bool noks = false;
 	int rv = 0;
 
+/* difference between dms and ks are that the dms is pulled by the shared
+ * memory interface and process management, killswitch from the event queues */
+	struct arcan_evctx* ctx = &priv->inev;
+	volatile uint8_t* ks = (volatile uint8_t*) ctx->synch.killswitch;
+
+
 /* Select few events has a special queue position and can be delivered 'out of
  * order' from normal affairs. This is needed for displayhint/fonthint in WM
  * cases where a connection may be suspended for a long time and normal system
@@ -452,11 +458,6 @@ reset:
 			goto done;
 		}
 	}
-
-/* difference between dms and ks are that the dms is pulled by the shared
- * memory interface and process management, killswitch from the event queues */
-	struct arcan_evctx* ctx = &priv->inev;
-	volatile uint8_t* ks = (volatile uint8_t*) ctx->synch.killswitch;
 
 #ifdef ARCAN_SHMIF_THREADSAFE_QUEUE
 	pthread_mutex_lock(&ctx->synch.lock);

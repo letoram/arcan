@@ -1020,7 +1020,7 @@ static void csi_attribute(struct tsm_vte *vte)
 {
 	static const uint8_t bval[6] = { 0x00, 0x5f, 0x87, 0xaf, 0xd7, 0xff };
 	unsigned int i, code, val;
-	uint8_t cr, cg, cb;
+	uint8_t cr = 0, cg = 0, cb = 0;
 
 	if (vte->csi_argc <= 1 && vte->csi_argv[0] == -1) {
 		vte->csi_argc = 1;
