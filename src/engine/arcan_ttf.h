@@ -84,6 +84,9 @@ void TTF_SetFontStyle(TTF_Font *font, int style);
 int TTF_GetFontOutline(const TTF_Font *font);
 void TTF_SetFontOutline(TTF_Font *font, int outline);
 
+int TTF_underline_top_row(TTF_Font *font);
+int TTF_underline_bottom_row(TTF_Font *font);
+
 /* Set and retrieve FreeType hinter settings */
 #define TTF_HINTING_NORMAL  0
 #define TTF_HINTING_LIGHT   1
@@ -134,6 +137,19 @@ int TTF_GlyphMetrics(TTF_Font *font, uint16_t ch, int *minx,
 int TTF_SizeText(TTF_Font *font, const char *text, int *w, int *h);
 int TTF_SizeUTF8(TTF_Font *font, const char *text, int *w, int *h);
 int TTF_SizeUNICODE(TTF_Font *font, const uint16_t *text, int *w, int *h);
+
+#if defined(SHMIF_TTF) || defined(ARCAN_TTF)
+#ifdef SHMIF_TTF
+#define PIXEL shmif_pixel
+#define PACK(R, G, B, A) SHMIF_RGBA(R, G, B, A)
+#elif ARCAN_TTF
+#define PIXEL av_pixel
+#define PACK(R, G, B, A) RGBA(R, G, B, A)
+#endif
+
+bool TTF_RenderUTF8_ext(PIXEL* dst, int stride, TTF_Font *font,
+	const char* intext, uint8_t fg[4], uint8_t bg[4], int hint);
+#endif
 
 TTF_Surface* TTF_RenderText(TTF_Font *font,
 				const char *text, TTF_Color fg);

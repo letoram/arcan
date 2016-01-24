@@ -56,6 +56,10 @@
 #include FT_GLYPH_H
 #include FT_TRUETYPE_IDS_H
 
+#if defined(SHMIF_TTF) || defined(ARCAN_TTF)
+#include "arcan_shmif.h"
+#endif
+
 #include "arcan_ttf.h"
 
 /* FIXME: Right now we assume the gray-scale renderer Freetype is using
@@ -151,7 +155,7 @@ void TTF_SetError(const char* msg){
 /* Gets the top row of the underline. The outline
    is taken into account.
 */
-static inline int TTF_underline_top_row(TTF_Font *font)
+int TTF_underline_top_row(TTF_Font *font)
 {
 	/* With outline, the underline_offset is underline_offset+outline. */
 	/* So, we don't have to remove the top part of the outline height. */
@@ -161,7 +165,7 @@ static inline int TTF_underline_top_row(TTF_Font *font)
 /* Gets the bottom row of the underline. The outline
    is taken into account.
 */
-static inline int TTF_underline_bottom_row(TTF_Font *font)
+int TTF_underline_bottom_row(TTF_Font *font)
 {
 	int row = TTF_underline_top_row(font) + font->underline_height;
 	if( font->outline  > 0 ) {
@@ -175,7 +179,7 @@ static inline int TTF_underline_bottom_row(TTF_Font *font)
 /* Gets the top row of the strikethrough. The outline
    is taken into account.
 */
-static inline int TTF_strikethrough_top_row(TTF_Font *font)
+int TTF_strikethrough_top_row(TTF_Font *font)
 {
 	/* With outline, the first text row is 'outline'. */
 	/* So, we don't have to remove the top part of the outline height. */
@@ -1258,6 +1262,147 @@ TTF_Surface* TTF_RenderUTF8(TTF_Font *font,
 	FREEA(unicode_text);
 	return(textbuf);
 }
+
+/*
+ * Extended quickhack to allow UTF8 to render using the arcan or shmif
+ * internal packing macro directly into a buffer without going through
+ * an intermediate. These functions are in dire need of a more efficient
+ * and clean rewrite.
+ *
+ * We are still missing correct subpixel hinting, not sure how the normal
+ * patent-hell approaches work, but the obvious one seem to be spliting
+ * the < fullbright alphas based on intensity into three bins + filter
+ * for abberations..
+ */
+
+#if defined(SHMIF_TTF) || defined(ARCAN_TTF)
+bool TTF_RenderUTF8_ext(PIXEL* dst, int stride, TTF_Font *font,
+	const char* intext, uint8_t fg[4], uint8_t bg[4], int hint)
+{
+	int xstart;
+	int width, height;
+	const uint16_t* ch;
+	int swapped;
+	bool done = false;
+	c_glyph* glyph;
+	FT_Long use_kerning;
+	FT_UInt prev_index = 0;
+
+	int unicode_len;
+
+	/* Copy the UTF-8 text to a UNICODE text buffer */
+	unicode_len = strlen(intext);
+	uint16_t tbuf[1+unicode_len+1];
+	uint16_t* text = tbuf;
+
+	*text = UNICODE_BOM_NATIVE;
+	UTF8_to_UNICODE(text+1, intext, unicode_len);
+
+/* Get the dimensions of the text surface */
+	if ( (TTF_SizeUNICODE(font, text, &width, &height) < 0) || !width ) {
+		TTF_SetError("Text has zero width");
+		goto end;
+	}
+
+	PIXEL* dst_check = dst + width + height * stride;
+
+/* check kerning */
+	use_kerning = FT_HAS_KERNING( font->face ) && font->kerning;
+
+/* Load and render each character */
+	xstart = 0;
+	swapped = TTF_byteswapped;
+
+	for ( ch=text; *ch; ++ch ) {
+		uint16_t c = *ch;
+		if ( c == UNICODE_BOM_NATIVE ) {
+			swapped = 0;
+			if ( text == ch ) {
+				++text;
+			}
+			continue;
+		}
+		if ( c == UNICODE_BOM_SWAPPED ) {
+			swapped = 1;
+			if ( text == ch ) {
+				++text;
+			}
+			continue;
+		}
+		if ( swapped ) {
+			c = swap_bo(c);
+		}
+
+		if ( Find_Glyph(font, c, CACHED_METRICS|CACHED_PIXMAP) )
+			goto end;
+
+		glyph = font->current;
+
+/* Ensure the width of the pixmap is correct. On some cases,
+ * freetype may report a larger pixmap than possible.*/
+		width = glyph->pixmap.width;
+		if (font->outline <= 0 && width > glyph->maxx - glyph->minx)
+			width = glyph->maxx - glyph->minx;
+
+/* do kerning, if possible AC-Patch */
+		if ( use_kerning && prev_index && glyph->index ) {
+			FT_Vector delta;
+			FT_Get_Kerning( font->face, prev_index, glyph->index, ft_kerning_default, &delta );
+			xstart += delta.x >> 6;
+		}
+
+/* Compensate for the wrap around bug with negative minx's */
+		if ( (ch == text) && (glyph->minx < 0) ) {
+			xstart -= glyph->minx;
+		}
+
+		for (int row = 0; row < glyph->pixmap.rows; ++row ){
+			if ( row+glyph->yoffset < 0 || row+glyph->yoffset >= height )
+				continue;
+
+			PIXEL* out = &dst[(row+glyph->yoffset)*stride+(xstart+glyph->minx)];
+			uint8_t* src = (uint8_t*) (glyph->pixmap.buffer + glyph->pixmap.pitch * row);
+
+			for (int col = 0; col < width && dst < dst_check; col++){
+				uint8_t a = *src++;
+				if (0 == a)
+					*out++ = PACK(bg[0], bg[1], bg[2], bg[3]);
+				else if (255 == a)
+					*out++ = PACK(fg[0], fg[1], fg[2], 0xff);
+				else {
+/* replace with proper blending */
+					uint32_t r = 0x80 + (a * fg[0]+bg[0]*(255-a));
+					r = (r + (r >> 8)) >> 8;
+					uint32_t g = 0x80 + (a * fg[1]+bg[1]*(255-a));
+					g = (g + (g >> 8)) >> 8;
+					uint32_t b = 0x80 + (a * fg[2]+bg[2]*(255-a));
+					b = (b + (b >> 8)) >> 8;
+					*out++ = PACK(r, g, b, bg[3]);
+				}
+			}
+		}
+
+		xstart += glyph->advance;
+		if ( TTF_HANDLE_STYLE_BOLD(font) ) {
+			xstart += font->glyph_overhang;
+		}
+		prev_index = glyph->index;
+	}
+	done = true;
+
+/* Underline / Strikethrough can be handled by the caller for this func
+ * just getting toprow:
+		row = TTF_underline_top_row(font);
+		row = TTF_strikethrough_top_row(font);
+	with metrics:
+		TTF_initLineMectrics(font, textbuf, row, &dst8, &height);
+*/
+
+end:
+	/* Free the text buffer and return */
+	return done;
+}
+#endif
 
 TTF_Surface* TTF_RenderUNICODE(TTF_Font *font,
 				const uint16_t *text, TTF_Color fg)
