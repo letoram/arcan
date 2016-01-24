@@ -205,7 +205,8 @@ enum ARCAN_TARGET_COMMAND {
 /*
  * in case of TARGET_SKIP_STEP, this can be used to specify
  * a relative amount of frames to process or rollback
- * ioevs[0].iv represents the number of frames.
+ * ioevs[0].iv represents the number of frames,
+ * ioevs[1].iv can contain an ID (see CLOCKREQ)
  */
 	TARGET_COMMAND_STEPFRAME,
 
@@ -272,7 +273,7 @@ enum ARCAN_TARGET_COMMAND {
  */
 	TARGET_COMMAND_SEEKCONTENT,
 
-/* [UNIQUE]
+/* [UNIQUE/AGGREGATE]
  * This event hints towards current display properties or desired display
  * properties.
  *
@@ -992,6 +993,9 @@ typedef struct arcan_extevent {
  * (once) - & !0 > 0, fire once or use as periodic timer
  * (rate) - if once is set, relative to last tick otherwise every n ticks
  * (id)   - caller specified ID that will be used in stepframe reply
+ *
+ * there is one automatic clock- slot per connection, and will always have
+ * ID 1 in the reply.
  */
 		struct{
 			uint32_t rate;
