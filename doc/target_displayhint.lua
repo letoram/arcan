@@ -8,7 +8,8 @@
 -- an explicitly over- or under-sized input buffer.
 -- Possible optional *flag* values:
 -- TD_HINT_INVISIBLE - invisible, TD_HINT_UNFOCUSED). Hence the default is
--- visible and focused.
+-- visible and focused. These can be combined with bit.band(fl1, fl2) or
+-- set to no change with TD_HINT_IGNORE.
 -- If the optional *disptbl* is set to a table that matches the format for
 -- display added events, additional information (physical dimensions, rgb
 -- hinting layout etc.) may be propagated. If it is set to WORLDID, the display
