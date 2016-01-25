@@ -1678,12 +1678,16 @@ static int imageresizestorage(lua_State* ctx)
 		arcan_fatal("image_resize_storage(), illegal dimensions"
 			"	requested (%d:%d x %d:%d)\n", w, MAX_SURFACEW, h, MAX_SURFACEH);
 
+	vobj->origw = w;
+	vobj->origh = h;
+
 	struct rendertarget* rtgt = arcan_vint_findrt(vobj);
-	if (rtgt)
+	if (rtgt){
 		agp_resize_rendertarget(rtgt->art, w, h);
+		build_orthographic_matrix(rtgt->projection, 0, w, 0, h, 0, 1);
+	}
 	else
 		arcan_video_resizefeed(id, w, h);
-
 	LUA_ETRACE("image_resize_storage", NULL);
 	return 0;
 }
