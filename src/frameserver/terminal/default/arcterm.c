@@ -185,21 +185,23 @@ const char* curslbl[] = {
 	NULL
 };
 
-/* support different cursor types here; blinking, underline,
- * vert-line, block, square. */
-
 static void cursor_at(int x, int y, shmif_pixel ccol, bool active)
 {
 	shmif_pixel* dst = term.acon.vidp;
 	x *= term.cell_w;
 	y *= term.cell_h;
 
+/* first draw "original character" if it's not occluded */
+	if (term.cursor != CURSOR_BLOCK)
+		draw_cbt(term.screen, term.cvalue, term.cursor_x, term.cursor_y,
+			&term.cattr, 0, true, false);
+
 	switch (term.cursor){
 	case CURSOR_BLOCK:
 		draw_box(&term.acon, x, y, term.cell_w, term.cell_h, ccol);
 	break;
 	case CURSOR_HALFBLOCK:
-		draw_box(&term.acon, x, y, term.cell_w >> 1, term.cell_h, ccol);
+	draw_box(&term.acon, x, y, term.cell_w >> 1, term.cell_h, ccol);
 	break;
 	case CURSOR_FRAME:
 		for (int col = x; col < x + term.cell_w; col++){
@@ -695,8 +697,8 @@ static const struct lent labels[] = {
 	{"MUTE", mute_toggle},
 	{"SIGINT", send_sigint},
 	{"SIGINFO", send_siginfo},
-	{"SCROLL_UP", scroll_up},
-	{"SCROLL_DOWN", scroll_down},
+	{"LINE_UP", scroll_up},
+	{"LINE_DOWN", scroll_down},
 	{"PAGE_UP", page_up},
 	{"PAGE_DOWN", page_down},
 	{"UP", move_up},
