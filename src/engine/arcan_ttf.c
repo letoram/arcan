@@ -1365,9 +1365,9 @@ bool TTF_RenderUTF8_ext(PIXEL* dst, int stride, TTF_Font *font,
 
 			for (int col = 0; col < width && dst < dst_check; col++){
 				uint8_t a = *src++;
-				if (0 == a)
+/*				if (0 == a)
 					*out++ = PACK(bg[0], bg[1], bg[2], bg[3]);
-				else if (255 == a)
+				else*/ if (255 == a)
 					*out++ = PACK(fg[0], fg[1], fg[2], 0xff);
 				else {
 /* replace with proper blending */
