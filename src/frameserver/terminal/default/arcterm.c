@@ -27,7 +27,6 @@
  *  - Drag and Drop- file copy
  *  - Time-keeping manipulation
  */
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -246,9 +245,8 @@ static void draw_ch(uint8_t u8_ch[5],
 #ifdef TTF_SUPPORT
 	}
 
-/*	draw_box(&term.acon, base_x, base_y, term.cell_w, term.cell_h,
-		SHMIF_RGBA(bg[0], bg[1], bg[2], bg[3]);
-*/
+	draw_box(&term.acon, base_x, base_y, term.cell_w, term.cell_h,
+		SHMIF_RGBA(bg[0], bg[1], bg[2], bg[3]));
 
 	if (bold){
 		TTF_SetFontStyle(term.font, TTF_STYLE_BOLD);
@@ -275,13 +273,21 @@ static int draw_cbt(struct tsm_screen* screen, uint32_t ch,
 	unsigned x, unsigned y, const struct tsm_screen_attr* attr,
 	tsm_age_t age, bool cstate, bool empty)
 {
-	uint8_t fgc[] = {0, 0, 0, 255}, bgc[] = {0, 0, 0, 255};
+	uint8_t fgc[4] = {attr->fr, attr->fg, attr->fb, 255};
+	uint8_t bgc[4] = {attr->br, attr->bg, attr->bb, term.alpha};
 	uint8_t* dfg = fgc, (* dbg) = bgc;
 	int y1 = y * term.cell_h;
 	int x1 = x * term.cell_w;
 
 	if (term.mute || (age && term.age && age <= term.age))
 		return 0;
+
+	if (attr->inverse){
+		dfg = bgc;
+		dbg = fgc;
+		dbg[3] = term.alpha;
+		dfg[3] = 0xff;
+	}
 
 	int x2 = x1 + term.cell_w;
 	int y2 = y1 + term.cell_h;
@@ -298,21 +304,6 @@ static int draw_cbt(struct tsm_screen* screen, uint32_t ch,
 
 	bool match_cursor = (cstate && x == term.cursor_x && y == term.cursor_y);
 
-/* do the inverse by just flipping color targets */
-	if (attr->inverse){
-		dfg = bgc;
-		dbg = fgc;
-	}
-
-/* copy values from the attribute */
-	dfg[0] = attr->fr;
-	dfg[1] = attr->fg;
-	dfg[2] = attr->fb;
-	dbg[0] = attr->br;
-	dbg[1] = attr->bg;
-	dbg[2] = attr->bb;
-	dbg[3] = term.alpha;
-
 	term.dirty = DIRTY_UPDATED;
 
 	draw_box(&term.acon, x1, y1, term.cell_w, term.cell_h,
@@ -325,7 +316,11 @@ static int draw_cbt(struct tsm_screen* screen, uint32_t ch,
 
 /* quick erase if nothing more is needed */
 	if (empty){
-		if (!match_cursor)
+		if (attr->inverse)
+	draw_box(&term.acon, x1, y1, term.cell_w, term.cell_h,
+		SHMIF_RGBA(fgc[0], fgc[1], fgc[2], term.alpha));
+
+	if (!match_cursor)
 			return 0;
 		else
 			ch = 0x00000008;
