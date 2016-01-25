@@ -98,7 +98,7 @@ static const int ARCAN_SHMIF_QUEUE_SZ = PP_QUEUE_SZ;
 /*
  * ALWAYS interleaved
  */
-typedef VIDEO_PIXEL_TYPE shmif_asample;
+typedef AUDIO_SAMPLE_TYPE shmif_asample;
 static const int ARCAN_SHMIF_SAMPLERATE = 48000;
 static const int ARCAN_SHMIF_ACHANNELS = 2;
 static const int ARCAN_SHMIF_SAMPLE_SIZE = sizeof(shmif_asample);
