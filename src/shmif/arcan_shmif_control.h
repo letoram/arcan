@@ -217,7 +217,9 @@ static const int ARCAN_SHMPAGE_MAX_SZ = PP_SHMPAGE_MAXSZ;
 /*
  * Overcommit is a specialized build mode (that should be avoided if possible)
  * that sets the initial segment size to PP_SHMPAGE_STARTSZ and no new buffer
- * dimension negotiation will occur.
+ * dimension negotiation will occur. This is needed for shitty platforms that
+ * don't provide the means for resizing a handle- backed memory mapped store.
+ * Not to point any fingers, but system-level OSX is a pile of shit.
  */
 #ifdef ARCAN_SHMIF_OVERCOMMIT
 static const int ARCAN_SHMPAGE_START_SZ = PP_SHMPAGE_MAXSZ;

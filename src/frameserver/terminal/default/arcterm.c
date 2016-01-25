@@ -192,9 +192,12 @@ static void cursor_at(int x, int y, shmif_pixel ccol, bool active)
 	y *= term.cell_h;
 
 /* first draw "original character" if it's not occluded */
-	if (term.cursor != CURSOR_BLOCK)
+	if (term.cursor_off || term.cursor != CURSOR_BLOCK){
 		draw_cbt(term.screen, term.cvalue, term.cursor_x, term.cursor_y,
-			&term.cattr, 0, true, false);
+			&term.cattr, 0, false, false);
+	}
+	if (term.cursor_off)
+		return;
 
 	switch (term.cursor){
 	case CURSOR_BLOCK:
@@ -333,7 +336,7 @@ static int draw_cbt(struct tsm_screen* screen, uint32_t ch,
 	u8_ch[u8_sz-1] = '\0';
 
 /* cursor slot updated and not disabled in any way - draw cursor */
-	if (match_cursor && (!(term.flags & TSM_SCREEN_HIDE_CURSOR))){
+	if (match_cursor){
 		term.cattr = *attr;
 		term.cvalue = ch;
 		cursor_at(x, y, term.ccol, true);
@@ -756,7 +759,6 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 			return;
 
 		term.inact_timer = 0;
-
 		if (label[0] && consume_label(ioev, label))
 			return;
 
@@ -1024,7 +1026,8 @@ static void targetev(arcan_tgtevent* ev)
 	break;
 
 	case TARGET_COMMAND_STEPFRAME:
-		if (ev->ioevs[1].iv == 1 && term.focus){
+		return;
+		if (ev->ioevs[1].iv == 1){
 			term.inact_timer++;
 			term.cursor_off = term.inact_timer > 1 ? !term.cursor_off : false;
 			draw_cbt(term.screen, term.cvalue, term.cursor_x, term.cursor_y,
@@ -1199,16 +1202,19 @@ static void main_loop()
 		if (fds[0].revents & POLLIN){
 			int rc = shl_pty_dispatch(term.pty);
 		}
-		else if (fds[0].revents)
+		else if (fds[0].revents){
 			break;
+		}
 
 		if (fds[1].revents & POLLIN){
-			while (arcan_shmif_poll(&term.acon, &ev) > 0)
+			while (arcan_shmif_poll(&term.acon, &ev) > 0){
 				event_dispatch(&ev);
+			}
 			int rc = shl_pty_dispatch(term.pty);
 		}
-		else if (fds[1].revents)
+		else if (fds[1].revents){
 			break;
+		}
 		else if (pc == 3 && (fds[2].revents & POLLIN))
 			check_pasteboard();
 
@@ -1241,6 +1247,7 @@ static void main_loop()
 			term.last = arcan_timemillis();
 		}
 	}
+
 	arcan_shmif_drop(&term.acon);
 }
 
@@ -1428,12 +1435,13 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	});
 
 /* and a 1s. timer for blinking cursor */
-	arcan_shmif_enqueue(&term.acon, &(struct arcan_event){
+	/*arcan_shmif_enqueue(&term.acon, &(struct arcan_event){
 		.category = EVENT_EXTERNAL,
 		.ext.kind = ARCAN_EVENT(CLOCKREQ),
 		.ext.clock.rate = 25,
 		.ext.clock.id = 0xabcdef00,
 	});
+ */
 
 	main_loop();
 	return EXIT_SUCCESS;

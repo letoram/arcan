@@ -1008,6 +1008,7 @@ bool arcan_frameserver_resize(struct arcan_frameserver* s)
 /* special case, no remap supported */
 #ifdef ARCAN_SHMIF_OVERCOMMIT
 	rmap = false;
+	shmsz = ARCAN_SHMPAGE_MAX_SZ;
 #endif
 
 	if (rmap){
