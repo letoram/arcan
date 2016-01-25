@@ -543,6 +543,7 @@ checkfd:
  * we can't as the event- loop might be running in a different thread than A/V
  * updating. _drop would modify the context in ways that would break, and we
  * want consistent behavior between threadsafe- and non-threadsafe builds. */
+				LOG("(shmif) TARGET_COMMAND_EXIT\n");
 				priv->alive = false;
 				noks = true;
 			break;
@@ -774,6 +775,11 @@ int arcan_shmif_resolve_connpath(const char* key,
 		return len;
 }
 
+static void shmif_exit(int c)
+{
+	exit(c);
+}
+
 char* arcan_shmif_connect(const char* connpath, const char* connkey,
 	file_handle* conn_ch)
 {
@@ -934,7 +940,7 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 			return res;
 	}
 
-	void (*exitf)(int) = exit;
+	void (*exitf)(int) = shmif_exit;
 	if (flags & SHMIF_FATALFAIL_FUNC){
 		va_list funarg;
 
@@ -1286,9 +1292,6 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 			return false;
 		}
 
-		arcan_shmif_setevqs(arg->addr, arg->esem,
-			&arg->priv->inev, &arg->priv->outev, false);
-
 		if (gs){
 			gs->guard.dms = &arg->addr->dms;
 			pthread_mutex_unlock(&gs->guard.synch);
@@ -1298,6 +1301,8 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 /*
  * make sure we start from the right buffer counts and positions
  */
+	arcan_shmif_setevqs(arg->addr, arg->esem,
+		&arg->priv->inev, &arg->priv->outev, false);
 	setup_avbuf(arg);
 	return true;
 }

@@ -29,5 +29,9 @@ uintptr_t arcan_shmif_mapav(
 			wbuf += vbuf_sz;
 		}
 
+#ifdef ARCAN_SHMIF_OVERCOMMIT
+	return ARCAN_SHMPAGE_MAX_SZ;
+#else
 	return (uintptr_t) wbuf - (uintptr_t) addr;
+#endif
 }
