@@ -116,6 +116,7 @@ struct {
 	int lm_x, lm_y;
 	int bsel_x, bsel_y;
 	bool in_select;
+	int scrollback;
 
 /* tracking when to reset scrollback */
 	int sbofs;
@@ -807,7 +808,8 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 			if (ioev->subid == 0)
 				term.mouse_x = ioev->input.analog.axisval[0] / term.cell_w;
 			else if (ioev->subid == 1){
-				term.mouse_y = ioev->input.analog.axisval[0] / term.cell_h;
+				int yv = ioev->input.analog.axisval[0];
+				term.mouse_y = yv / term.cell_h;
 				if (!term.in_select)
 					return;
 
@@ -820,7 +822,17 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 					term.lm_y = term.mouse_y;
 					upd = true;
 				}
+/* we use the upper / lower regions as triggers for scrollback + selection,
+ * with a magnitude based on how far "off" we are */
+				if (yv < 0.3 * term.cell_h)
+					term.scrollback = -1 * (1 + yv / term.cell_h);
+				else if (yv > term.rows * term.cell_h + 0.3 * term.cell_h)
+					term.scrollback = 1 + (yv - term.rows * term.cell_h) / term.cell_h;
+				else
+					term.scrollback = 0;
 
+/* in select and drag negative in window or half-size - then use ticker
+ * to scroll and an accelerated scrollback */
 				if (upd){
 					tsm_screen_selection_target(term.screen, term.lm_x, term.lm_y);
 					update_screen(false);
@@ -881,6 +893,7 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 				if (term.mouse_x != term.bsel_x || term.mouse_y != term.bsel_y)
 					select_copy();
 
+				tsm_screen_sb_reset(term.screen);
 				tsm_screen_selection_reset(term.screen);
 				term.in_select = false;
 				update_screen(false);
@@ -1026,21 +1039,25 @@ static void targetev(arcan_tgtevent* ev)
 	break;
 
 	case TARGET_COMMAND_STEPFRAME:
-		return;
-		if (ev->ioevs[1].iv == 1){
+		if (ev->ioevs[1].iv == 1 && term.focus){
 			term.inact_timer++;
 			term.cursor_off = term.inact_timer > 1 ? !term.cursor_off : false;
 			draw_cbt(term.screen, term.cvalue, term.cursor_x, term.cursor_y,
 				&term.cattr, 0, !term.cursor_off, false);
 		}
 		else{
-			if (!term.cursor_off){
+			if (!term.cursor_off && term.focus){
 				term.cursor_off = true;
 			draw_cbt(term.screen, term.cvalue, term.cursor_x, term.cursor_y,
 				&term.cattr, 0, !term.cursor_off, false);
 			}
 		}
-
+		if (term.in_select && term.scrollback != 0){
+			if (term.scrollback < 0)
+				tsm_screen_sb_up(term.screen, abs(term.scrollback));
+			else
+				tsm_screen_sb_down(term.screen, term.scrollback);
+		}
 	break;
 
 /* problem:
@@ -1435,13 +1452,12 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	});
 
 /* and a 1s. timer for blinking cursor */
-	/*arcan_shmif_enqueue(&term.acon, &(struct arcan_event){
+	arcan_shmif_enqueue(&term.acon, &(struct arcan_event){
 		.category = EVENT_EXTERNAL,
 		.ext.kind = ARCAN_EVENT(CLOCKREQ),
-		.ext.clock.rate = 25,
+		.ext.clock.rate = 12,
 		.ext.clock.id = 0xabcdef00,
 	});
- */
 
 	main_loop();
 	return EXIT_SUCCESS;

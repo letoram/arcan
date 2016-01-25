@@ -214,7 +214,7 @@ struct shmif_hidden {
 	shmif_trigger_hook audio_hook;
 	void* audio_hook_data;
 	uint8_t abuf_ind, abuf_cnt;
-	shmif_pixel* abuf[3];
+	shmif_asample* abuf[3];
 
 	bool output, alive, paused;
 
