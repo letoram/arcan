@@ -642,6 +642,34 @@ static void send_siginfo()
 #endif
 }
 
+static void select_at()
+{
+	tsm_screen_selection_reset(term.screen);
+	unsigned sx, sy, ex, ey;
+	int rv = tsm_screen_get_word(term.screen,
+		term.mouse_x, term.mouse_y, &sx, &sy, &ex, &ey);
+
+	if (0 == rv){
+		tsm_screen_selection_reset(term.screen);
+		tsm_screen_selection_start(term.screen, sx, sy);
+		tsm_screen_selection_target(term.screen, ex, ey);
+		select_copy();
+		update_screen(false);
+	}
+
+	term.in_select = false;
+}
+
+static void select_row()
+{
+	tsm_screen_selection_reset(term.screen);
+	tsm_screen_selection_start(term.screen, 0, term.cursor_y);
+	tsm_screen_selection_target(term.screen, term.cols-1, term.cursor_y);
+	select_copy();
+	update_screen(false);
+	term.in_select = false;
+}
+
 struct lent {
 	const char* lbl;
 	void(*ptr)(void);
@@ -675,10 +703,8 @@ static const struct lent labels[] = {
 	{"DOWN", move_down},
 	{"LEFT", move_left},
 	{"RIGHT", move_right},
-#ifdef TTF_SUPPORT
-	{"FONTSZ_INC", inc_fontsz},
-	{"FONTSZ_DEC", dec_fontsz},
-#endif
+	{"SELECT_AT", select_at},
+	{"SELECT_ROW", select_row},
 	{NULL, NULL}
 };
 
