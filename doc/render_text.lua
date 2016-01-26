@@ -1,7 +1,7 @@
 -- render_text
 -- @short: Convert a format string to a new video object.
 -- @inargs: *dststore*, message, *vspacing*, *tspacing*, *tabs*
--- @outargs: vid, lineheights
+-- @outargs: vid, lineheights, width, height
 -- @longdescr: Render a format string into a texture assigned to a new video
 -- object. Return this object along with a table of individual line-heights.
 -- The optional *dststore* can be used to update a previous result from
@@ -38,6 +38,8 @@
 -- @note: Some format string states carry over between render_text calls, such
 -- as the currently active font/size (to cut down on \ffontfile.ttf,num \#ffffff
 -- style preludes.
+-- @note: returned width and height does not necessarily match the values
+-- returned by ref:text_dimensions
 -- @note: Pfname,w,h function clamp to a built in limit (typically 256x256).
 -- @exampleappl: tests/interactive/fonttest
 -- @related: text_dimensions

@@ -2363,6 +2363,14 @@ static int rendertext(lua_State* ctx)
 	if (lineheights)
 		free(lineheights);
 
+	arcan_vobject* vobj = arcan_video_getobject(id);
+	if (vobj){
+		lua_pushnumber(ctx, vobj->origw);
+		lua_pushnumber(ctx, vobj->origh);
+		LUA_ETRACE("render_text", NULL);
+		return 4;
+	}
+
 	LUA_ETRACE("render_text", NULL);
 	return 2;
 }
