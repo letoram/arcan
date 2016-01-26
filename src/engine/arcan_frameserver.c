@@ -417,7 +417,9 @@ static void check_audb(arcan_frameserver* tgt)
 		tgt->ofs_audb = 0;
 	}
 
-	memcpy(&tgt->audb[tgt->ofs_audb], tgt->audp, ntc);
+/* every signaled bit in the abufused bitmask indicate a full audio
+ * buffer slot (except the last), with abufused indicating the total used */
+	memcpy(&tgt->audb[tgt->ofs_audb], tgt->abufs[0], ntc);
 	tgt->ofs_audb += ntc;
 	shmpage->abufused = 0;
 	shmpage->aready = false;
@@ -485,7 +487,7 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 		struct storage_info_t* dst_store = vobj->frameset ?
 			vobj->frameset->frames[vobj->frameset->index].frame : vobj->vstore;
 		struct arcan_shmif_region dirty = shmpage->dirty;
-		push_buffer(tgt, tgt->vidp, dst_store,
+		push_buffer(tgt, tgt->vbufs[0], dst_store,
 			shmpage->hints & SHMIF_RHINT_SUBREGION ? &dirty : NULL);
 		dst_store->vinf.text.vpts = shmpage->vpts;
 
@@ -558,7 +560,7 @@ enum arcan_ffunc_rv arcan_frameserver_feedcopy FFUNC_HEAD
 				.tgt.ioevs[0] = src->vfcount++
 			};
 
-			memcpy(src->vidp,
+			memcpy(src->vbufs[0],
 				me->vstore->vinf.text.raw, me->vstore->vinf.text.s_raw);
 			src->shm.ptr->vpts = me->vstore->vinf.text.vpts;
 			src->shm.ptr->vready = true;
@@ -612,11 +614,11 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe FFUNC_HEAD
  */
 	else if (cmd == FFUNC_READBACK){
 		if (!src->shm.ptr->vready){
-			memcpy(src->vidp, buf, buf_sz);
+			memcpy(src->vbufs[0], buf, buf_sz);
 			if (src->ofs_audb){
-					memcpy(src->audp, src->audb, src->ofs_audb);
-					src->shm.ptr->abufused = src->ofs_audb;
-					src->ofs_audb = 0;
+				memcpy(src->abufs[0], src->audb, src->ofs_audb);
+				src->shm.ptr->abufused = src->ofs_audb;
+				src->ofs_audb = 0;
 			}
 
 /*
@@ -874,7 +876,7 @@ void arcan_frameserver_tick_control(arcan_frameserver* src, bool tick)
 
 /*
  * at this stage, frameserver impl. should have remapped event queues,
- * vidp/audps, and signaled the connected process. Make sure we are running the
+ * vbuf/abufs, and signaled the connected process. Make sure we are running the
  * right feed function (may have been turned into another or started in a
  * passive one
  */
@@ -1049,8 +1051,9 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 	shmpage->w = setup.init_w;
 	shmpage->h = setup.init_h;
 
+	ctx->vbuf_cnt = ctx->abuf_cnt = 1;
 	arcan_shmif_mapav(shmpage,
-		&(ctx->vidp), 1, setup.init_w * setup.init_h * sizeof(shmif_pixel),
-		&(ctx->audp), 1, 65536
+		ctx->vbufs, ctx->vbuf_cnt, setup.init_w*setup.init_h*sizeof(shmif_pixel),
+		ctx->abufs, ctx->abuf_cnt, 65536
 	);
 }
