@@ -62,7 +62,7 @@ static struct monitor_mode mmodes[] = {
 
 struct display {
 	struct arcan_shmif_cont conn;
-	bool mapped;
+	bool mapped, visible, focused, dirty;
 	enum dpms_state dpms;
 	struct storage_info_t* vstore;
 	float ppcm;
@@ -108,6 +108,8 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
  * current world unless overridden */
 		disp[0].mapped = true;
 		disp[0].ppcm = ARCAN_SHMPAGE_DEFAULT_PPCM;
+		disp[0].visible = true;
+		disp[0].focused = true;
 		first_init = false;
 	}
 	else {
@@ -234,8 +236,8 @@ bool platform_video_specify_mode(platform_display_id id,
 	if (!(id < MAX_DISPLAYS && disp[id].conn.addr))
 		return false;
 
-	return arcan_shmif_resize(&disp[id].conn,
-		mode.width, mode.height);
+	return (mode.width > 0 && mode.height > 0 &&
+		arcan_shmif_resize(&disp[id].conn, mode.width, mode.height));
 }
 
 struct monitor_mode platform_video_dimensions()
@@ -419,7 +421,8 @@ void platform_video_synch(uint64_t tick_count, float fract,
  * gpu- specific handles
  */
 
-	if (platform_nupd){
+	if (disp[0].dirty || (platform_nupd && disp[0].visible)){
+		disp[0].dirty = false;
 		struct storage_info_t* vs = arcan_vint_world();
 		enum status_handle status;
 
@@ -574,14 +577,26 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
  * forward as a monitor event.
  */
 		case TARGET_COMMAND_DISPLAYHINT:
+			if (ev.tgt.ioevs[0].iv && ev.tgt.ioevs[1].iv){
 				arcan_event_enqueue(ctx, &(arcan_event) {
 					.category = EVENT_VIDEO,
 					.vid.kind = EVENT_VIDEO_DISPLAY_RESET,
 					.vid.source = -1,
 					.vid.width = ev.tgt.ioevs[0].iv,
 					.vid.height = ev.tgt.ioevs[1].iv,
+					.vid.flags = ev.tgt.ioevs[2].iv,
 					.vid.vppcm = ev.tgt.ioevs[4].fv,
 				});
+			}
+
+			if (!(ev.tgt.ioevs[2].iv & 128)){
+				bool vss = !((ev.tgt.ioevs[2].iv & 2) > 0);
+				if (vss && !disp[0].visible){
+					disp[0].dirty = true;
+				}
+				d->visible = vss;
+				d->focused = !((ev.tgt.ioevs[2].iv & 4) > 0);
+			}
 
 /*
  * If the density has changed, grab the current standard font size
