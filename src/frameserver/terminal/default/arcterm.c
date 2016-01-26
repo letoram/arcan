@@ -754,7 +754,7 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 		if (!pressed)
 			return;
 
-		term.inact_timer = 0;
+		term.inact_timer = -4;
 		if (label[0] && consume_label(ioev, label))
 			return;
 
