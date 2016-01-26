@@ -3514,7 +3514,8 @@ static void display_reset(lua_State* ctx, arcan_event* ev)
 			lua_pushnumber(ctx, ev->vid.width);
 			lua_pushnumber(ctx, ev->vid.height);
 			lua_pushnumber(ctx, ev->vid.vppcm);
-			wraperr(ctx, lua_pcall(ctx, 3, 0, 0), "event loop: lwa-displayhint");
+			lua_pushnumber(ctx, ev->vid.flags);
+			wraperr(ctx, lua_pcall(ctx, 4, 0, 0), "event loop: lwa-displayhint");
 		}
 		return;
 	}
@@ -4982,6 +4983,11 @@ static int videocanvasrsz(lua_State* ctx)
 
 	size_t w = abs((int)luaL_checknumber(ctx, 1));
 	size_t h = abs((int)luaL_checknumber(ctx, 2));
+
+	if (!w || !h){
+		LUA_ETRACE("resize_video_canvas", NULL);
+		return 0;
+	}
 
 /* note that this actually creates a texture in WORLDID that
  * is larger than the other permitted max surface dimensions,

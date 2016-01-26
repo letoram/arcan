@@ -818,6 +818,7 @@ typedef struct {
 		struct {
 			int16_t width;
 			int16_t height;
+			int flags;
 			float vppcm;
 		};
 		int slot;
