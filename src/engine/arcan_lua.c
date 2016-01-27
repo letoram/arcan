@@ -5108,6 +5108,45 @@ static int videomapping(lua_State* ctx)
 	return 0;
 }
 
+static const char* dpms_to_str(int dpms)
+{
+	switch (dpms){
+	case ADPMS_OFF:
+		return "off";
+	case ADPMS_SUSPEND:
+		return "suspend";
+	case ADPMS_STANDBY:
+		return "standby";
+	case ADPMS_ON:
+		return "on";
+	default:
+		return "bad-display";
+	}
+}
+
+static int videodpms(lua_State* ctx)
+{
+	LUA_TRACE("video_display_state");
+	int n = lua_gettop(ctx);
+	platform_display_id did = luaL_checknumber(ctx, 1);
+	if (1 == n)
+		;
+	else if (2 == n){
+		int state = luaL_checknumber(ctx, 2);
+		if (strcmp(dpms_to_str(state), "bad-display") == 0)
+			arcan_fatal("video_display_state(), invalid DPMS value (valid: "
+				"DISPLAY _ON, _OFF, _SUSPEND or _STANDBY) \n");
+		platform_video_dpms(did, state);
+	}
+	else
+		arcan_fatal("video_display_state(), 1 or 2 arguments expected, not %d\n",n);
+
+	lua_pushstring(ctx, dpms_to_str(platform_video_dpms(did, ADPMS_IGNORE)));
+
+	return 1;
+	LUA_ETRACE("video_display_state", NULL);
+}
+
 static int inputbase(lua_State* ctx)
 {
 	LUA_TRACE("input_samplebase");
@@ -9254,6 +9293,7 @@ static const luaL_Reg vidsysfuns[] = {
 {"video_displaymodes",               videodisplay   },
 {"video_displaydescr",               videodispdescr },
 {"map_video_display",                videomapping   },
+{"video_display_state",              videodpms      },
 {"video_3dorder",                    v3dorder       },
 {"build_shader",                     buildshader    },
 {"valid_vid",                        validvid       },
@@ -9352,6 +9392,10 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"TARGET_VERBOSE", TARGET_FLAG_VERBOSE},
 {"TARGET_AUTOCLOCK", TARGET_FLAG_AUTOCLOCK},
 {"TARGET_NOBUFFERPASS", TARGET_FLAG_NO_BUFFERPASS},
+{"DISPLAY_STANDBY", ADPMS_STANDBY},
+{"DISPLAY_OFF", ADPMS_OFF},
+{"DISPLAY_SUSPEND", ADPMS_SUSPEND},
+{"DISPLAY_ON", ADPMS_ON},
 {"RENDERTARGET_NOSCALE", RENDERTARGET_NOSCALE},
 {"RENDERTARGET_SCALE", RENDERTARGET_SCALE},
 {"RENDERTARGET_NODETACH", RENDERTARGET_NODETACH},
