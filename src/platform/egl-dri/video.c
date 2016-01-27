@@ -1410,8 +1410,10 @@ static void disable_display(struct dispout* d, bool dealloc)
 		&d->display.con_id, 1,
 		&d->display.old_crtc->mode
 	)){
-		arcan_warning("Error setting old CRTC on %d\n",
-		d->display.con_id);
+
+#ifdef _DEBUG
+		arcan_warning("Error setting old CRTC on %d\n", d->display.con_id);
+#endif
 	}
 
 	if (dealloc){
@@ -1685,7 +1687,7 @@ void platform_video_synch(uint64_t tick_count, float fract,
 			update_display(d);
 	}
 
-	flush_display_events(-1);
+	flush_display_events(16);
 
 	if (post)
 		post();
@@ -1926,6 +1928,9 @@ static void draw_display(struct dispout* d)
 
 static void update_display(struct dispout* d)
 {
+	if (d->display.dpms != ADPMS_ON)
+		return;
+
 /* render-target may set scissors etc. based on the display
  * when using the NULL rendertarget */
 	egl_dri.last_display = d;
