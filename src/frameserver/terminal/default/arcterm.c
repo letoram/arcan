@@ -442,7 +442,7 @@ static void write_callback(struct tsm_vte* vte,
 	shl_pty_write(term.pty, u8, len);
 }
 
-static void setup_shell(struct arg_arr* argarr)
+static char* get_shellenv()
 {
 	char* shell = getenv("SHELL");
 
@@ -455,6 +455,12 @@ static void setup_shell(struct arg_arr* argarr)
 		shell = pass->pw_shell;
 	}
 
+/* will be exec:ed so don't worry to much about leak or mgmt */
+	return shell;
+}
+
+static void setup_shell(struct arg_arr* argarr, char* const args[])
+{
 	static const char* unset[] = {
 		"COLUMNS", "LINES", "TERMCAP",
 		"ARCAN_ARG", "ARCAN_APPLPATH", "ARCAN_APPLTEMPPATH",
@@ -480,8 +486,6 @@ static void setup_shell(struct arg_arr* argarr)
 
 	for (int i = 0; i < sizeof(sigs) / sizeof(sigs[0]); i++)
 		signal(sigs[i], SIG_DFL);
-
-	char* args[] = {shell, "-i", NULL};
 
 	execvp(args[0], args);
 	exit(EXIT_FAILURE);
@@ -1286,6 +1290,7 @@ static void dump_help()
 		" ccb         \t rv(0..255)\t cursor blue channel\n"
 		" cursor      \t name      \t set cursor (block, frame, halfblock,\n"
 		"             \t           \t underline, vertical)\n"
+		" cmd         \t name      \t command to run (rather than user-shell\n"
 		" palette     \t name      \t use built-in palette (below)\n"
 #ifdef TTF_SUPPORT
 		" font        \t ttf-file  \t render using font specified by ttf-file\n"
@@ -1422,7 +1427,14 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 
 	if ( (term.child = shl_pty_open(&term.pty,
 		read_callback, NULL, term.rows, term.cols)) == 0){
-		setup_shell(args);
+		if (arg_lookup(args, "cmd", 0, &val)){
+			char* const argv[] = {strdup(val), NULL};
+			setup_shell(args, argv);
+		}
+		else{
+			char* const argv[] = {get_shellenv(), "-i", NULL};
+			setup_shell(args, argv);
+		}
 		exit(EXIT_FAILURE);
 	}
 
