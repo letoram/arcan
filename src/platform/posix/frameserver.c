@@ -619,9 +619,10 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	newseg->ofs_audb = 0;
 	newseg->audb = malloc(ctx->sz_audb);
 
+	newseg->vbuf_cnt = newseg->abuf_cnt = 1;
 	shmpage->segment_size = arcan_shmif_mapav(shmpage,
-		&newseg->vidp, 1, cons.w * cons.h * sizeof(shmif_pixel),
-		&newseg->audp, 1, 65535
+		newseg->vbufs, 1, cons.w * cons.h * sizeof(shmif_pixel),
+		newseg->abufs, 1, 32768
 	);
 
 	arcan_shmif_setevqs(newseg->shm.ptr, newseg->esync,
@@ -983,17 +984,20 @@ bool arcan_frameserver_resize(struct arcan_frameserver* s)
 /* local copy so we don't fall victim for TOCTU */
 	size_t w = shmpage->w;
 	size_t h = shmpage->h;
+	size_t abufsz = shmpage->abufsize;
 	size_t vbufc = shmpage->vpending;
 	size_t abufc = shmpage->apending;
-	size_t abufsz = shmpage->abufsize;
+	vbufc = vbufc > FSRV_MAX_VBUFC ? FSRV_MAX_VBUFC : vbufc;
+	abufc = abufc > FSRV_MAX_ABUFC ? FSRV_MAX_ABUFC : abufc;
 
-/* you can potentially have a really big audiobuffer (or well, quite a few 64k
+/*
+ * you can potentially have a really big audiobuffer (or well, quite a few 64k
  * ones unless we exceed the upper limit, but by setting 0 there's the
  * indication that we want the size that match the output device the best.
  * Currently, we can't know this and there's a pending audio subsystem refactor
- * to remedy this (kindof) but for now, just revert to say 16k per buffer */
-	if (0 == abufsz)
-		abufsz = 16384;
+ * to remedy this (kindof) but for now, just revert to splitting a 32k buffer
+ */
+	if (0 == abufsz) abufsz = 32768 / (abufc ? abufc : 1);
 
 /* with room for padding both structures and buffers */
 	size_t shmsz = shmpage_size(w, h, vbufc, abufc, abufsz);
@@ -1050,16 +1054,24 @@ bool arcan_frameserver_resize(struct arcan_frameserver* s)
 
 	shmpage = src->ptr;
 	src->shmsize = shmsz;
+
+/* commit to local tracking */
 	s->desc.width = shmpage->w = w;
 	s->desc.height = shmpage->h = h;
+	s->vbuf_cnt = vbufc;
+	s->abuf_cnt = abufc;
 
+/* remap pointers */
 	shmpage->segment_size = arcan_shmif_mapav(shmpage,
-		&s->vidp, vbufc, w * h * sizeof(shmif_pixel), &s->audp, abufc, abufsz);
+		s->vbufs, s->vbuf_cnt, w * h * sizeof(shmif_pixel),
+		s->abufs, s->abuf_cnt, abufsz);
 	arcan_shmif_setevqs(shmpage, s->esync, &(s->inqueue), &(s->outqueue), 1);
+
+/* commit to shared page */
 	shmpage->resized = 0;
 	shmpage->abufsize = abufsz;
-	shmpage->apending = abufc;
-	shmpage->vpending = vbufc;
+	shmpage->apending = s->abuf_cnt;
+	shmpage->vpending = s->vbuf_cnt;
 	state = true;
 
 	goto done;
@@ -1070,6 +1082,7 @@ fail:
 	shmpage->resized = -1;
 
 done:
+/* barrier + signal */
 	FORCE_SYNCH();
 	arcan_sem_post(s->vsync);
 	return state;

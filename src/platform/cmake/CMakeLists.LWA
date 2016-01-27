@@ -57,7 +57,7 @@ ExternalProject_Add(openal_lwa
 		-DALSOFT_DLOPEN=OFF
 		-DALSOFT_UTILS=OFF
 		-DALSOFT_CONFIG=OFF
-		-DARCAN_SHMIF_LIB=$<arcan_shmif_int>
+		-DARCAN_SHMIF_LIB=$<TARGET_FILE:arcan_shmif_int>
 		-DARCAN_SHMIF_PATH=${CMAKE_CURRENT_SOURCE_DIR}/shmif
 )
 

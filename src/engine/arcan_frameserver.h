@@ -7,6 +7,9 @@
 #ifndef _HAVE_ARCAN_FRAMESERVER
 #define _HAVE_ARCAN_FRAMESERVER
 
+#define FSRV_MAX_VBUFC 3
+#define FSRV_MAX_ABUFC 6
+
 /*
  * The following functions are implemented in the platform layer;
  * arcan_frameserver_validchild,
@@ -136,7 +139,8 @@ struct arcan_frameserver {
 		int format;
 	} vstream;
 
-/* temporary buffer for aligning queue/dequeue events in audio */
+/* temporary buffer for aligning queue/dequeue events in audio, can/should
+ * be scrapped after the 0.6 audio refactor */
 	size_t sz_audb;
 	off_t ofs_audb, ofs_audp;
 	uint8_t* audb;
@@ -151,8 +155,10 @@ struct arcan_frameserver {
 	intptr_t tag;
 
 /* precalc offsets into mapped shmpage, calculated at resize */
-	shmif_pixel* vidp;
-	shmif_asample* audp;
+	shmif_pixel* vbufs[FSRV_MAX_VBUFC];
+	size_t vbuf_cnt;
+	shmif_asample* abufs[FSRV_MAX_ABUFC];
+	size_t abuf_cnt;
 	shm_handle shm;
 
 /* above pointers are all placed so that if they overflow they should hit this

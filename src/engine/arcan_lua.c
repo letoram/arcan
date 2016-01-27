@@ -7169,8 +7169,9 @@ static int spawn_recsubseg(lua_State* ctx,
 		struct arcan_shmif_page* shmpage = rv->shm.ptr;
 		shmpage->w = dobj->vstore->w;
 		shmpage->h = dobj->vstore->h;
-		arcan_shmif_mapav(shmpage, &(rv->vidp), 1, dobj->vstore->w *
-			dobj->vstore->h * sizeof(shmif_pixel), &(rv->audp), 1, 65536);
+		rv->vbuf_cnt = rv->abuf_cnt = 1;
+		arcan_shmif_mapav(shmpage, rv->vbufs, 1, dobj->vstore->w *
+			dobj->vstore->h * sizeof(shmif_pixel), rv->abufs, 1, 32768);
 		arcan_video_alterfeed(did, FFUNC_AVFEED, fftag);
 
 /* similar restrictions and problems as in spawn_recfsrv */
@@ -7228,7 +7229,7 @@ static int spawn_recfsrv(lua_State* ctx,
  * safe as long as an implementation of _mapav matches the one in posix/shmop
  */
 	mvctx->shm.shmsize = arcan_shmif_mapav(
-		(struct arcan_shmif_page*) &args, NULL, 1, vbuf_sz, NULL, 1, 65536);
+		(struct arcan_shmif_page*) &args, NULL, 1, vbuf_sz, NULL, 1, 32768);
 
 /* we use a special feed function meant to flush audiobuffer +
  * a single video frame for encoding */
@@ -7249,8 +7250,7 @@ static int spawn_recfsrv(lua_State* ctx,
 	shmpage->w = dobj->vstore->w;
 	shmpage->h = dobj->vstore->h;
 
-	arcan_shmif_mapav(shmpage,
-		&(mvctx->vidp), 1, vbuf_sz, &(mvctx->audp), 1, 65536);
+	arcan_shmif_mapav(shmpage, mvctx->vbufs, 1, vbuf_sz, mvctx->abufs, 1, 32768);
 
 /* pushing the file descriptor signals the frameserver to start receiving
  * (and use the proper dimensions), it is permitted to close and push another
@@ -8650,7 +8650,7 @@ static int net_pushcl(lua_State* ctx)
 
 /* we can't delete the frameserver immediately as the child might
  * not have mapped the memory yet, so we defer and use a callback */
-			memcpy(srv->vidp, dvobj->vstore->vinf.text.raw,
+			memcpy(srv->vbufs[0], dvobj->vstore->vinf.text.raw,
 				dvobj->vstore->vinf.text.s_raw);
 
 			srv->shm.ptr->vready = true;
