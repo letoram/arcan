@@ -558,12 +558,25 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 		return NULL;
 	}
 
+	size_t abufc = 0;
+	size_t abufsz = 0;
+
+/*
+ * Normally, subsegments don't get any audiobuffers unless they recipient
+ * ask for it during a resize/negotiation. We ignore this for the encoder
+ * case as there's currently no negotiation protocol in place.
+ */
+	if (segid == SEGID_ENCODER){
+		abufc = 1;
+		abufsz = 65535;
+	}
+
 	while (!arcan_frameserver_enter(ctx)){}
 		shmpage->w = hintw;
 		shmpage->h = hinth;
 		shmpage->vpending = 1;
-		shmpage->abufsize = 65535;
-		shmpage->apending = 1;
+		shmpage->abufsize = abufsz;
+		shmpage->apending = abufc;
 		shmpage->segment_token = ((uint32_t) newvid) ^ ctx->cookie;
 	arcan_frameserver_leave(ctx);
 
@@ -619,10 +632,11 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	newseg->ofs_audb = 0;
 	newseg->audb = malloc(ctx->sz_audb);
 
-	newseg->vbuf_cnt = newseg->abuf_cnt = 1;
+	newseg->vbuf_cnt = 1;
+	newseg->abuf_cnt = abufc;
 	shmpage->segment_size = arcan_shmif_mapav(shmpage,
 		newseg->vbufs, 1, cons.w * cons.h * sizeof(shmif_pixel),
-		newseg->abufs, 1, 32768
+		newseg->abufs, abufc, abufsz
 	);
 
 	arcan_shmif_setevqs(newseg->shm.ptr, newseg->esync,
