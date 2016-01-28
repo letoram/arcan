@@ -43,6 +43,7 @@
 #include <math.h>
 
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/ioctl.h>
 #include <sys/time.h>
 #include <sys/types.h>
@@ -1290,7 +1291,7 @@ static void dump_help()
 		" ccb         \t rv(0..255)\t cursor blue channel\n"
 		" cursor      \t name      \t set cursor (block, frame, halfblock,\n"
 		"             \t           \t underline, vertical)\n"
-		" cmd         \t name      \t command to run (rather than user-shell\n"
+		" login       \t [user]    \t login (optional: user, only works for root)\n"
 		" palette     \t name      \t use built-in palette (below)\n"
 #ifdef TTF_SUPPORT
 		" font        \t ttf-file  \t render using font specified by ttf-file\n"
@@ -1425,16 +1426,27 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 
 	signal(SIGHUP, sighuph);
 
+/* find /bin/login or /usr/bin/login, keep env. as some may want
+ * to forward an ARCAN_CONNPATH in order to draw / control */
 	if ( (term.child = shl_pty_open(&term.pty,
 		read_callback, NULL, term.rows, term.cols)) == 0){
-		if (arg_lookup(args, "cmd", 0, &val)){
-			char* const argv[] = {strdup(val), NULL};
+		if (arg_lookup(args, "login", 0, &val)){
+			struct stat buf;
+			char* argv[] = {NULL, "-p", NULL};
+			if (stat("/bin/login", &buf) == 0 && S_ISREG(buf.st_mode))
+				argv[0] = "/bin/login";
+			else if (stat("/usr/bin/login", &buf) == 0 && S_ISREG(buf.st_mode))
+				argv[0] = "/usr/bin/login";
+			else{
+				LOG("login prompt requested but none was found\n");
+				exit(EXIT_FAILURE);
+			}
 			setup_shell(args, argv);
+			exit(EXIT_FAILURE);
 		}
-		else{
-			char* const argv[] = {get_shellenv(), "-i", NULL};
-			setup_shell(args, argv);
-		}
+
+		char* const argv[] = {get_shellenv(), "-i", NULL};
+		setup_shell(args, argv);
 		exit(EXIT_FAILURE);
 	}
 
