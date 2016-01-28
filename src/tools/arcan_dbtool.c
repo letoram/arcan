@@ -26,7 +26,7 @@ static void usage()
 {
 	printf("usage: arcan_db [-b dbfile] command args\n\n"
 	"Available data creation / manipulation commands: \n"
-	"  add_target      \tname bfrm executable argv\n"
+	"  add_target      \tname (-tag) bfrm executable argv\n"
 	"  add_target_kv   \ttarget name key value\n"
 	"  add_target_env  \ttarget name key value\n"
 	"  add_target_lib  \ttarget name libstr\n"
@@ -40,6 +40,7 @@ static void usage()
 	"  drop_appl      \tname\n"
 	"\nAvailable data extraction commands: \n"
 	"  list_targets   \n"
+	"  list_tags      \n"
 	"  show_target    \tname\n"
 	"  show_config    \ttargetname configname\n"
 	"  show_appl      \tapplname\n"
@@ -79,23 +80,30 @@ static int add_target(struct arcan_dbh* dst, int argc, char** argv)
 	enum DB_BFORMAT bfmt;
 
 	if (argc < 3){
-		printf("add_target(name bfmt executable argv) unexpected "
+		printf("add_target(name (-tag) bfmt executable argv) unexpected "
 			"number of arguments, (%d) vs 3+.\n", argc);
 
 		return EXIT_FAILURE;
 	}
 
-	if (strcmp(argv[1], "BIN") == 0)
+	int fi = 1;
+	const char* tag = "default";
+	if (argv[1][0] == '-'){
+		tag = &argv[1][1];
+		fi++;
+	}
+
+	if (strcmp(argv[fi], "BIN") == 0)
 		bfmt = BFRM_BIN;
-	else if (strcmp(argv[1], "LWA") == 0)
+	else if (strcmp(argv[fi], "LWA") == 0)
 		bfmt = BFRM_LWA;
-	else if (strcmp(argv[1], "RETRO") == 0)
+	else if (strcmp(argv[fi], "RETRO") == 0)
 		bfmt = BFRM_RETRO;
-	else if (strcmp(argv[1], "EXTERN") == 0)
+	else if (strcmp(argv[fi], "EXTERN") == 0)
 		bfmt = BFRM_EXTERN;
 	else {
 		printf("add_target(name executable bfmt argv) unknown bfmt (%s) specified,"
-			" accepted (BIN, LWA, RETRO).\n", argv[1]);
+			" accepted (BIN, LWA, RETRO).\n", argv[fi]);
 
 		return EXIT_FAILURE;
 	}
@@ -106,7 +114,7 @@ static int add_target(struct arcan_dbh* dst, int argc, char** argv)
 	}
 
 	arcan_targetid tid = arcan_db_addtarget(
-		dst, argv[0], argv[2], (const char**) &argv[3], argc - 3, bfmt);
+		dst, argv[0], tag, argv[2], (const char**) &argv[3], argc - 3, bfmt);
 
 	if (tid == BAD_TARGET){
 		printf("couldn't add target (%s)\n", argv[0]);
@@ -378,9 +386,10 @@ static int show_target(struct arcan_dbh* dbh, int argc, char** argv)
 	}
 
 	char* exec = arcan_db_execname(dbh, id.tid);
+	char* tag = arcan_db_targettag(dbh, id.tid);
 
-	printf("target (%s)\nexecutable:%s\nconfigurations:\n", argv[0],
-		exec ? exec : "(none)");
+	printf("target (%s), tag: (%s)\nexecutable:%s\nconfigurations:\n", argv[0],
+		tag, exec ? exec : "(none)");
 	char** curr = res.data;
 	while(*curr)
 		printf("\t%s\n", *curr++);
@@ -488,7 +497,7 @@ static int show_exec(struct arcan_dbh* dst, int argc, char** argv)
 
 static int list_targets(struct arcan_dbh* dst, int argc, char** argv)
 {
-	struct arcan_strarr res = arcan_db_targets(dst);
+	struct arcan_strarr res = arcan_db_targets(dst, NULL);
 	if (!res.data){
 		printf("list_targets(), no valid list of targets returned.\n");
 		return EXIT_FAILURE;
@@ -496,6 +505,22 @@ static int list_targets(struct arcan_dbh* dst, int argc, char** argv)
 
 	char** curr = res.data;
 	while(*curr)
+		printf("%s\n", *curr++);
+	arcan_mem_freearr(&res);
+
+	return EXIT_SUCCESS;
+}
+
+static int list_tags(struct arcan_dbh* dst, int argc, char** argv)
+{
+	struct arcan_strarr res = arcan_db_target_tags(dst);
+	if (!res.data){
+		printf("list_tags(), no valid list of tags returned.\n");
+		return EXIT_FAILURE;
+	}
+
+	char** curr = res.data;
+	while (*curr)
 		printf("%s\n", *curr++);
 	arcan_mem_freearr(&res);
 
@@ -554,6 +579,11 @@ struct {
 	{
 		.key = "list_targets",
 		.fun = list_targets
+	},
+
+	{
+		.key = "list_tags",
+		.fun = list_tags
 	},
 
 	{

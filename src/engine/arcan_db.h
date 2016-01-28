@@ -73,6 +73,7 @@ bool arcan_db_dropconfig(struct arcan_dbh* dbh, arcan_configid);
 
 arcan_targetid arcan_db_addtarget(struct arcan_dbh* dbh,
 	const char* identifier, /* unique, string identifier of the target */
+	const char* group,      /* sorting / grouping tag, non-enforced */
 	const char* exec,       /* executable identifier */
 	const char* argv[],     /* argument string that will be attached */
 	size_t nargs,
@@ -96,6 +97,11 @@ void arcan_db_launch_status(struct arcan_dbh*, arcan_configid, bool);
 arcan_targetid arcan_db_targetid(struct arcan_dbh*,
 	const char* targetname, arcan_configid*);
 
+/*
+ * Retrieve the tag associated with a specific target
+ */
+char* arcan_db_targettag(struct arcan_dbh*, arcan_targetid targetname);
+
 arcan_configid arcan_db_configid(struct arcan_dbh*,
 	arcan_targetid targetname, const char* configname);
 
@@ -117,6 +123,11 @@ char* arcan_db_targetexec(struct arcan_dbh*,
 );
 
 /*
+ * retrieve a list of unique target tags that have been used
+ */
+struct arcan_strarr arcan_db_target_tags(struct arcan_dbh*);
+
+/*
  * Provided primarily for debugging / tool reasons, this data
  * comes implied with the _exec functions
  */
@@ -125,8 +136,9 @@ struct arcan_strarr arcan_db_config_argv(struct arcan_dbh*, arcan_configid);
 
 /*
  * Retrieve a list of available targets
+ * Optionally filtered using [tag]
  */
-struct arcan_strarr arcan_db_targets(struct arcan_dbh*);
+struct arcan_strarr arcan_db_targets(struct arcan_dbh*, const char* tag);
 
 /*
  * Retrieve a list of available configurations

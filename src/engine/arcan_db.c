@@ -24,6 +24,7 @@ static bool db_init = false;
 
 #define DDL_TARGET "CREATE TABLE target ("\
 	"tgtid INTEGER PRIMARY KEY,"\
+	"tag STRING UNIQUE NOT NULL,"\
 	"name STRING UNIQUE NOT NULL,"\
 	"executable TEXT NOT NULL,"\
 	"user_id STRING DEFAULT NULL,"\
@@ -291,20 +292,21 @@ bool arcan_db_dropconfig(struct arcan_dbh* dbh, arcan_configid id)
 }
 
 arcan_targetid arcan_db_addtarget(struct arcan_dbh* dbh,
-	const char* identifier, const char* exec,
+	const char* identifier, const char* group, const char* exec,
 	const char* argv[], size_t sz, enum DB_BFORMAT bfmt)
 {
 	static const char ddl[] = "INSERT OR REPLACE INTO "
-		"	target(tgtid, name, executable, bfmt) VALUES "
-		"((select tgtid FROM target where name = ?), ?, ?, ?)";
+		"	target(tgtid, name, tag, executable, bfmt) VALUES "
+		"((select tgtid FROM target where name = ?), ?, ?, ?, ?)";
 
 	sqlite3_stmt* stmt;
 	sqlite3_prepare_v2(dbh->dbh, ddl, sizeof(ddl)-1, &stmt, NULL);
 
 	sqlite3_bind_text(stmt, 1, identifier, -1, SQLITE_STATIC);
 	sqlite3_bind_text(stmt, 2, identifier, -1, SQLITE_STATIC);
-	sqlite3_bind_text(stmt, 3, exec, -1, SQLITE_STATIC);
-	sqlite3_bind_int(stmt, 4, bfmt);
+	sqlite3_bind_text(stmt, 3, group, -1, SQLITE_STATIC);
+	sqlite3_bind_text(stmt, 4, exec, -1, SQLITE_STATIC);
+	sqlite3_bind_int(stmt, 5, bfmt);
 
 	sqlite3_step(stmt);
 	sqlite3_finalize(stmt);
@@ -471,13 +473,46 @@ arcan_configid arcan_db_configid(struct arcan_dbh* dbh,
 	return cid;
 }
 
-struct arcan_strarr arcan_db_targets(struct arcan_dbh* dbh)
+struct arcan_strarr arcan_db_target_tags(struct arcan_dbh* dbh)
 {
-	static const char dql[] = "SELECT name FROM target;";
+	sqlite3_stmt* stmt;
+	static const char dql[] = "SELECT DISTINCT tag FROM target;";
+	sqlite3_prepare_v2(dbh->dbh, dql, sizeof(dql)-1, &stmt, NULL);
+	return db_string_query(dbh, stmt, NULL, 0);
+}
+
+struct arcan_strarr arcan_db_targets(struct arcan_dbh* dbh, const char* tag)
+{
+	sqlite3_stmt* stmt;
+	if (!tag){
+		static const char dql[] = "SELECT name FROM target;";
+		sqlite3_prepare_v2(dbh->dbh, dql, sizeof(dql)-1, &stmt, NULL);
+	}
+	else {
+		static const char dql[] = "SELECT name FROM target WHERE tag=?;";
+		sqlite3_prepare_v2(dbh->dbh, dql, sizeof(dql)-1, &stmt, NULL);
+		sqlite3_bind_text(stmt, 1, tag, strlen(tag), SQLITE_STATIC);
+	}
+	return db_string_query(dbh, stmt, NULL, 0);
+}
+
+char* arcan_db_targettag(struct arcan_dbh* dbh, arcan_targetid tid)
+{
+	static const char dql[] = "SELECT tag FROM target WHERE tgtid = ?;";
+	char* resstr = NULL;
 	sqlite3_stmt* stmt;
 	sqlite3_prepare_v2(dbh->dbh, dql, sizeof(dql)-1, &stmt, NULL);
 
-	return db_string_query(dbh, stmt, NULL, 0);
+	sqlite3_bind_int(stmt, 1, tid);
+	if (sqlite3_step(stmt) == SQLITE_ROW){
+		resstr = (char*) sqlite3_column_text(stmt, 0);
+	}
+
+	if (resstr)
+		resstr = strdup(resstr);
+
+	sqlite3_finalize(stmt);
+	return resstr;
 }
 
 char* arcan_db_targetexec(struct arcan_dbh* dbh,
