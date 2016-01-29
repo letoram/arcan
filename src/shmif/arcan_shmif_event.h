@@ -917,9 +917,6 @@ typedef struct arcan_tgtevent {
 
 	int code;
 	char message[78];
-#ifdef _WIN32
-	HANDLE fh;
-#endif
 } arcan_tgtevent;
 
 typedef struct arcan_extevent {

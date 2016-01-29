@@ -548,12 +548,8 @@ char* arcan_db_targetexec(struct arcan_dbh* dbh,
 		sizeof(dql_tgt_argv)-1, &stmt, NULL);
 	sqlite3_bind_int(stmt, 1, tid);
 
-#ifdef WIN32
-	*argv = db_string_query(dbh, stmt, NULL, 0);
-#else
 	*argv = db_string_query(dbh, stmt, NULL, 1);
 	argv->data[0] = strdup(execstr ? execstr : "");
-#endif
 
 	static const char dql_cfg_argv[] = "SELECT arg FROM config_argv WHERE "
 		"config = ? ORDER BY argnum ASC;";

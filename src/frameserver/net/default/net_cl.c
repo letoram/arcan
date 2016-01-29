@@ -387,8 +387,6 @@ int afsrv_netcl(struct arcan_shmif_cont* con, struct arg_arr* args)
  * event-queue poll and monitored in the operation as we're waiting
  * on incoming / outgoing
  */
-#ifdef _WIN32
-#else
 	int sockin_fd = con->epipe;
 
 	if (apr_os_sock_put(
@@ -396,7 +394,6 @@ int afsrv_netcl(struct arcan_shmif_cont* con, struct arg_arr* args)
 		LOG("(net) -- Couldn't convert FD socket to APR, giving up.\n");
 		return EXIT_FAILURE;
 	}
-#endif
 
 	apr_pollfd_t pfd = {
 		.p = clctx.mempool,
@@ -419,18 +416,12 @@ int afsrv_netcl(struct arcan_shmif_cont* con, struct arg_arr* args)
 
 	int timeout = -1;
 
-#ifdef _WIN32
-    timeout = 1000;
-#endif
-
 	if (apr_pollset_create(&clctx.pollset, 1, clctx.mempool, 0) != APR_SUCCESS){
 		LOG("(net) -- couldn't allocate pollset. Giving up.\n");
 		return EXIT_FAILURE;
 	}
 
-#ifndef _WIN32
 	apr_pollset_add(clctx.pollset, &epfd);
-#endif
 	apr_pollset_add(clctx.pollset, &clctx.conn.poll_state);
 
 /* setup client connection context, this rather awkward structure

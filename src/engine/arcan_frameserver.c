@@ -16,10 +16,8 @@
 #include <assert.h>
 #include <limits.h>
 
-#ifndef _WIN32
 #include <sys/types.h>
 #include <sys/socket.h>
-#endif
 
 #include "arcan_math.h"
 #include "arcan_general.h"
@@ -225,7 +223,6 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst,
 
 	arcan_errc rv = dst->flags.alive && (dst->shm.ptr && dst->shm.ptr->dms) ?
 		arcan_event_enqueue(&dst->outqueue, ev) : ARCAN_ERRC_UNACCEPTED_STATE;
-#ifndef _WIN32
 
 #ifndef MSG_DONTWAIT
 #define MSG_DONTWAIT 0
@@ -238,8 +235,6 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst,
 /* this has the effect of a ping message, when we have moved event
  * passing to the socket, the data will be mixed in here */
 	arcan_pushhandle(-1, dst->dpipe);
-#endif
-
 	arcan_frameserver_leave();
 	return rv;
 }

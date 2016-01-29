@@ -55,12 +55,6 @@
  */
 #ifndef PLATFORM_HEADER
 
-#ifdef WIN32
-#define INVALID_HANDLE_VALUE
-	typedef HANDLE file_handle;
-	typedef HANDLE sem_handle;
-	typedef void* process_handle;
-#else
 #define BADFD -1
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -68,7 +62,6 @@
 	typedef int file_handle;
 	typedef pid_t process_handle;
 	typedef sem_t* sem_handle;
-#endif
 
 long long int arcan_timemillis(void);
 int arcan_sem_post(sem_handle sem);

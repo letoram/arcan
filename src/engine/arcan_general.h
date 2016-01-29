@@ -52,8 +52,6 @@
 #include "arcan_namespace.h"
 #include "arcan_resource.h"
 
-#ifndef _WIN32
-
 #define NULFILE "/dev/null"
 #define BROKEN_PROCESS_HANDLE -1
 
@@ -66,8 +64,6 @@ typedef struct {
 	char* key;
 	size_t shmsize;
 } shm_handle;
-
-#endif
 
 typedef uint32_t arcan_tickv;
 
