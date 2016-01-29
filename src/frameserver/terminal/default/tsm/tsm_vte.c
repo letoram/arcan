@@ -906,6 +906,7 @@ static void do_esc(struct tsm_vte *vte, uint32_t data)
 	case 'H':
 	case '7': /* map Swedish into G0-G3 */
 		/* TODO: create Swedish charset from DEC */
+		printf("TSM SWEDISH DEC\n");
 		if (set_charset(vte, &tsm_vte_unicode_upper))
 			return;
 		break;
@@ -1390,6 +1391,25 @@ static void csi_mode(struct tsm_vte *vte, bool set)
 			continue;
 		case 8: /* DECARM */
 			set_reset_flag(vte, set, FLAG_AUTO_REPEAT_MODE);
+			continue;
+		case 9: /* X10 mouse compatibility mode */
+			// set_reset_flag(vte, set, FLAG_ */
+			fprintf(stderr, "X10 mouse mode\n");
+			continue;
+		case 1000:
+			fprintf(stderr, "report presses\n");
+			continue;
+		case 1002:
+			fprintf(stderr, "motion on press\n");
+			continue;
+		case 1003:
+			fprintf(stderr, "all mouse motion\n");
+			continue;
+		case 1004:
+			fprintf(stderr, "forward focus events\n");
+			continue;
+		case 1006:
+			fprintf(stderr, "extended reporting\n");
 			continue;
 		case 12: /* blinking cursor */
 			/* TODO: implement */
