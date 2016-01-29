@@ -13,9 +13,6 @@
  * - Font rendering optimizations (possibly other formats than TT)
  * - More / Better cursor and offscreen buffer support
  * - X Mouse protocol
- * - Respect CATTR for protect, underline, bold, ...
- * - Respect Displayhint events in regards to visibility and focus
- *   [ don't update while visibility is off, fade cursor when not focused ]
  *
  * Known Bugs:
  *  - Resize tends to force scroll up one row
@@ -80,8 +77,7 @@ enum cursors {
 enum dirty_state {
 	DIRTY_NONE,
 	DIRTY_PENDING,
-	DIRTY_UPDATED,
-	DIRTY_INACTIVE
+	DIRTY_UPDATED
 };
 
 struct {
@@ -92,7 +88,7 @@ struct {
 	pid_t child;
 	int child_fd;
 	unsigned flags;
-	bool focus;
+	bool focus, inactive;
 	int inact_timer;
 
 /* font rendering / tracking */
@@ -103,7 +99,6 @@ struct {
 	size_t font_sz;
 	float ppcm;
 #endif
-	bool mute;
 	enum dirty_state dirty;
 	int64_t last;
 
@@ -280,7 +275,10 @@ static int draw_cbt(struct tsm_screen* screen, uint32_t ch,
 	int y1 = y * term.cell_h;
 	int x1 = x * term.cell_w;
 
-	if (term.mute || (age && term.age && age <= term.age))
+	if (x >= term.cols || y >= term.rows)
+		return 0;
+
+	if (age && term.age && age <= term.age)
 		return 0;
 
 	if (attr->inverse){
@@ -346,35 +344,26 @@ static int draw_cbt(struct tsm_screen* screen, uint32_t ch,
 
 static void update_screen(bool redraw)
 {
-	if (term.dirty == DIRTY_PENDING && term.acon.addr->vready)
+/* don't redraw while we have an update pending or when we
+ * are in an invisible state */
+	if (term.inactive)
 		return;
 
 	term.cursor_x = tsm_screen_get_cursor_x(term.screen);
 	term.cursor_y = tsm_screen_get_cursor_y(term.screen);
 
-/*
- * [ mark broken update region, this will prevent _signal to synch
- *   unless something actually changes in tsm_screen_draw ]
- */
-
-	term.acon.addr->dirty.x1 = term.acon.w;
-	term.acon.addr->dirty.x2 = 0;
-	term.acon.addr->dirty.y1 = term.acon.h;
-	term.acon.addr->dirty.y2 = 0;
-
-/* current test, try and erase cursor */
-	if (redraw){
+	if (redraw)
 		tsm_screen_selection_reset(term.screen);
-		draw_box(&term.acon,
-			term.cell_w * term.cursor_x, term.cell_h * term.cursor_y,
-			term.cell_w, term.cell_h,
-			SHMIF_RGBA(term.bgc[0], term.bgc[1], term.bgc[2], term.alpha)
-		);
-	}
 
-	term.dirty = DIRTY_NONE;
 	term.flags = tsm_screen_get_flags(term.screen);
 	term.age = tsm_screen_draw(term.screen, draw_cb, NULL /* draw_cb_data */);
+
+/* current test, try and erase cursor
+	if (redraw){
+		draw_cbt(term.screen, term.cvalue, term.cursor_x, term.cursor_y,
+			&term.cattr, 0, !term.cursor_off, false);
+	}
+*/
 }
 
 static void update_screensize(bool clear)
@@ -386,19 +375,16 @@ static void update_screensize(bool clear)
 	int cols = term.acon.w / term.cell_w;
 	int rows = term.acon.h / term.cell_h;
 
-/*
- * size_t padw = term.acon.w - (cols * term.cell_w);
+  size_t padw = term.acon.w - (cols * term.cell_w);
 	size_t padh = term.acon.h - (rows * term.cell_h);
- */
 
 	if (cols != term.cols || rows != term.rows){
-/*
- * if (cols > term.cols)
+		if (cols > term.cols)
 			padw += (cols - term.cols) * term.cell_w;
 
 		if (rows > term.rows)
 			padh += (rows - term.rows) * term.cell_h;
-*/
+
 		int dr = term.rows - rows;
 		term.cols = cols;
 		term.rows = rows;
@@ -407,23 +393,25 @@ static void update_screensize(bool clear)
 		shl_pty_resize(term.pty, cols, rows);
 	}
 
-/* possibly need to check flags and attr for cell */
-	if (clear){
-		shmif_pixel col = term.alpha < 0xff ?
-			SHMIF_RGBA(0, 0, 0, term.alpha) : SHMIF_RGBA(term.bgc[0],
-				term.bgc[1], term.bgc[2], 0xff);
-
-		draw_box(&term.acon, 0, 0, term.acon.w, term.acon.h, col);
-	}
-
-/*
+/* just fill the padded areas where a character can't fit, nicer than having to
+ * consider clipping while blitting glyphs */
+	shmif_pixel col = SHMIF_RGBA(term.bgc[0],term.bgc[1],term.bgc[2],term.alpha);
 	if (padw)
-		draw_box(&term.acon, term.acon.w - padw - 1, 0, padw + 1, term.acon.h, col);
-
+		draw_box(&term.acon, term.acon.w-padw-1, padw, 0, term.acon.h, col);
 	if (padh)
-		draw_box(&term.acon, 0, term.acon.h - padh - 1, term.acon.w, padh + 1, col);
-	term.dirty = true;
-*/
+		draw_box(&term.acon, 0, term.acon.h-padh-1, term.acon.w, padh, col);
+
+/* possibly need to check flags and attr for cell */
+	if (clear)
+		draw_box(&term.acon, 0, 0, term.acon.w, term.acon.h, col);
+
+/* mark everything as dirty */
+	term.acon.addr->dirty.x1 = 0;
+	term.acon.addr->dirty.x2 = term.acon.w;
+	term.acon.addr->dirty.y1 = 0;
+	term.acon.addr->dirty.y2 = term.acon.h;
+
+	term.dirty = DIRTY_PENDING;
 }
 
 static void read_callback(struct shl_pty* pty,
@@ -433,8 +421,7 @@ static void read_callback(struct shl_pty* pty,
 	term.cursor_x = tsm_screen_get_cursor_x(term.screen);
 	term.cursor_y = tsm_screen_get_cursor_y(term.screen);
 
-	if (term.dirty != DIRTY_INACTIVE)
-		term.dirty = DIRTY_PENDING;
+	term.dirty = DIRTY_PENDING;
 }
 
 static void write_callback(struct tsm_vte* vte,
@@ -475,12 +462,17 @@ static void setup_shell(struct arg_arr* argarr, char* const args[])
 	for (int i=0; i < sizeof(unset)/sizeof(unset[0]); i++)
 		unsetenv(unset[i]);
 
-/* might get overridden with putenv below */
+/* set some of the common UTF-8 default envs, shell overrides if needed */
+	setenv("LANG", "en_GB.UTF-8", 0);
+	setenv("LC_CTYPE", "en_GB.UTF-8", 0);
+
+/* might get overridden with putenv below, or if we are exec:ing /bin/login */
 	setenv("TERM", "xterm-256color", 1);
 
 	while (arg_lookup(argarr, "env", ind++, &val))
 		putenv(strdup(val));
 
+/* signal default handlers persist across exec, reset */
 	int sigs[] = {
 		SIGCHLD, SIGHUP, SIGINT, SIGQUIT, SIGTERM, SIGALRM
 	};
@@ -490,12 +482,6 @@ static void setup_shell(struct arg_arr* argarr, char* const args[])
 
 	execvp(args[0], args);
 	exit(EXIT_FAILURE);
-}
-
-static void mute_toggle()
-{
-	term.mute = !term.mute;
-	update_screen(false);
 }
 
 static void send_sigint()
@@ -698,7 +684,6 @@ void dec_fontsz()
 #endif
 
 static const struct lent labels[] = {
-	{"MUTE", mute_toggle},
 	{"SIGINT", send_sigint},
 	{"SIGINFO", send_siginfo},
 	{"LINE_UP", scroll_up},
@@ -938,6 +923,7 @@ static void targetev(arcan_tgtevent* ev)
 		if (ev->ioevs[1].iv == 1)
 			fd = dup(ev->ioevs[0].iv);
 
+		printf("setting hinting to: %d\n", ev->ioevs[3].iv);
 		switch(ev->ioevs[3].iv){
 		case -1: break;
 		case 0: term.hint = TTF_HINTING_NONE; break;
@@ -957,21 +943,24 @@ static void targetev(arcan_tgtevent* ev)
 	}
 
 	case TARGET_COMMAND_DISPLAYHINT:{
+/* be conservative in responding to resize,
+ * parent should be running crop shader anyhow */
 		bool dev =
 			(ev->ioevs[0].iv && ev->ioevs[1].iv) &&
-			(ev->ioevs[0].iv != term.acon.addr->w ||
-			ev->ioevs[1].iv != term.acon.addr->h);
+			(abs(ev->ioevs[0].iv - term.acon.addr->w) > term.cell_w ||
+			 abs(ev->ioevs[1].iv - term.acon.addr->h) > term.cell_h);
 
-/* don't redraw / refresh etc. until we are actually visible */
+/* visibility change */
 		bool update = false;
 		if (!(ev->ioevs[2].iv & 128)){
 			if (ev->ioevs[2].iv & 2)
-				term.dirty = DIRTY_INACTIVE;
-			else if (term.dirty == DIRTY_INACTIVE){
-				term.dirty = DIRTY_NONE;
+				term.inactive = true;
+			else if (term.inactive){
+				term.inactive = false;
 				update = true;
 			}
 
+	/* selection change */
 			if (ev->ioevs[2].iv & 4){
 				term.focus = false;
 				if (!term.cursor_off){
@@ -997,8 +986,6 @@ static void targetev(arcan_tgtevent* ev)
 			update_screensize(true);
 			update = true;
 		}
-
-/* turn cursor drawing on / off */
 
 /* calculate scale factor based on old density, multiply previous size
  * with scale factor and treat as a FONTHINT */
@@ -1038,6 +1025,7 @@ static void targetev(arcan_tgtevent* ev)
 		}
 	break;
 
+/* we use draw_cbt so that dirty region will be updated accordingly */
 	case TARGET_COMMAND_STEPFRAME:
 		if (ev->ioevs[1].iv == 1 && term.focus){
 			term.inact_timer++;
@@ -1200,6 +1188,8 @@ static void main_loop()
 
 	short pollev = POLLIN | POLLERR | POLLNVAL | POLLHUP;
 	int ptyfd = shl_pty_get_fd(term.pty);
+	int timeout = -1;
+	int flushc = 0;
 
 	while(term.acon.addr->dms){
 		int pc = 2;
@@ -1215,26 +1205,32 @@ static void main_loop()
 			pc = 3;
 		}
 
-		int sv = poll(fds, pc, 16);
-		if (fds[0].revents & POLLIN){
-			int rc = shl_pty_dispatch(term.pty);
-		}
-		else if (fds[0].revents){
-			break;
-		}
-
-		if (fds[1].revents & POLLIN){
-			while (arcan_shmif_poll(&term.acon, &ev) > 0){
-				event_dispatch(&ev);
+		int sv = poll(fds, pc, term.acon.addr->vready ? 8 : -1);
+		if (sv != 0 && flushc < 10){
+			if (fds[0].revents & POLLIN){
+				if (-EAGAIN == shl_pty_dispatch(term.pty)){
+/* if we start an EAGAIN cycle, do periodically allow
+ * a redraw so we don't look stalled */
+					flushc++;
+					continue;
+				}
 			}
-			int rc = shl_pty_dispatch(term.pty);
-		}
-		else if (fds[1].revents){
-			break;
-		}
-		else if (pc == 3 && (fds[2].revents & POLLIN))
-			check_pasteboard();
+			else if (fds[0].revents){
+				break;
+			}
 
+			if (fds[1].revents & POLLIN){
+				while (arcan_shmif_poll(&term.acon, &ev) > 0){
+					event_dispatch(&ev);
+				}
+				int rc = shl_pty_dispatch(term.pty);
+			}
+			else if (fds[1].revents){
+				break;
+			}
+			else if (pc == 3 && (fds[2].revents & POLLIN))
+				check_pasteboard();
+		}
 /*
  * We do several dynamic tricks here to work around the wasted cycles that
  * come from intensive update that come from something like `find /`
@@ -1242,29 +1238,36 @@ static void main_loop()
  * First is that we accept tearing (SIGBLK_NONE) because the terminal
  * latency is typically way higher than what the display system consumes.
  *
- * Second is that we track if we need to update while one is already pending,
- * and only try if it is marked as pending.
+ * Second is that we track DIRTY state between pending and updated and
+ * don't try to synch when we are not sufficiently dirty, and that we use
+ * dirty-region subsynch.
  *
- * Third is that we cap the update rate to some ~16fps unless we've had
- * user input recently. That could also be changed to something more dynamic
- * depending on a slightly larger statistical window but larger gains would
- * be found
- *
+ * Third is that we cap the update rate to some ~16fps unless we've had user
+ * input recently (which act as a reset).
  */
 		int64_t now = arcan_timemillis();
+		flushc = 0;
 		if (now - term.last < 64)
 			continue;
 
-		if (term.dirty == DIRTY_PENDING)
+		if (term.dirty != DIRTY_NONE)
 			update_screen(false);
 
-		if (term.dirty == DIRTY_UPDATED && !term.mute){
+		if (term.dirty == DIRTY_UPDATED && !term.acon.addr->vready){
+			term.dirty = DIRTY_NONE;
 			arcan_shmif_signal(&term.acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
-			term.dirty = DIRTY_PENDING;
 			term.last = arcan_timemillis();
+/* set invalid synch region until redraw changes that */
+			term.acon.addr->dirty.x1 = term.acon.w;
+			term.acon.addr->dirty.x2 = 0;
+			term.acon.addr->dirty.y1 = term.acon.h;
+			term.acon.addr->dirty.y2 = 0;
 		}
 	}
 
+/* don't want to fight with signal handler */
+	if (term.pty)
+		term.pty = (shl_pty_close(term.pty), NULL);
 	arcan_shmif_drop(&term.acon);
 }
 
@@ -1306,7 +1309,8 @@ static void dump_help()
 
 static void sighuph(int num)
 {
-	shl_pty_close(term.pty);
+	if (term.pty)
+		term.pty = (shl_pty_close(term.pty), NULL);
 }
 
 int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
@@ -1424,10 +1428,9 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	};
 	tsm_screen_set_def_attr(term.screen, &attr);
 
-	signal(SIGHUP, sighuph);
-
 /* find /bin/login or /usr/bin/login, keep env. as some may want
  * to forward an ARCAN_CONNPATH in order to draw / control */
+	signal(SIGHUP, sighuph);
 	if ( (term.child = shl_pty_open(&term.pty,
 		read_callback, NULL, term.rows, term.cols)) == 0){
 		if (arg_lookup(args, "login", 0, &val)){
