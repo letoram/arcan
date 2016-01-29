@@ -1,7 +1,7 @@
 -- target_configurations
 -- @short: List all configurations associated with a target
 -- @inargs: targetname
--- @outargs: configlist
+-- @outargs: configlist, tag
 -- @group: database
 -- @cfunction: getconfigs
 -- @related:

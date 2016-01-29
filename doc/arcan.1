@@ -64,7 +64,9 @@ Change default searchpath for shared resources, see the \fInamespaces\fR
 section below for additional details.
 
 .IP "\fB-B, --binpath \fIpath\fR"
-Specify the full path to the desired frameserver (e.g. /usr/bin/arcan_frameserver).
+Specify the full path to the desired frameserver (e.g.
+/usr/bin/arcan_frameserver) or to a prefix /path/to/prefix_ (decode, encode,
+game, terminal, remoting).
 
 .IP "\fB-t, --applpath \fIpath\fR"
 Change default searchpath for applications, see the \fInamespaces\fR
@@ -122,7 +124,7 @@ compiled.
 
 .SH NAMESPACES
 There is a large assortment of namespaces that the engine will search for
-when a script requests access to- or the creation- of a resource.
+when an appl requests read access to- or the creation of- a resource.
 The way these are set up will vary depending on command-line arguments,
 operating-system specific scans, if applname was specified as a
 relative/absolute path and on a series of environment variables.
@@ -278,14 +280,15 @@ environment variable.
 .SH LIGHTWEIGHT (LWA) ARCAN
 
 Lightweight arcan is a specialized build of the engine that uses the
-frameserver shared memory API as a audio/video display backend. This allows
+frameserver shared memory API as its audio/video display backend. This allows
 Arcan to run and control additional instances of itself, with the same or
 a different application, thus reusing the engine to fulfill the role of
-application framework, rendering engine, display server etc.
+application framework, rendering engine and display server all rolled into
+one.
 
-The lightweight application works just the same (although likely with
-fewer dependencies on external libraries) as the main version, except
-the ARCAN_CONNPATH mechanism need to be specified.
+The lwa build works just the same (although likely with fewer dependencies on
+external libraries) as the main version, except the ARCAN_CONNPATH environment
+need to be set to a connection point that the arcan instance exposes.
 
 .SH DIAGNOSTICS
 There are a number of ways the engine can shut down, especially if the engine
