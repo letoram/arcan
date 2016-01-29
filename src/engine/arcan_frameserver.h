@@ -80,9 +80,6 @@ struct arcan_frameserver {
 	file_handle dpipe;
 
 	process_handle child;
-#if _WIN32
-	DWORD childp;
-#endif
 
 /* used for connections negotiated via socket (sockout_fd) */
 	char sockinbuf[PP_SHMPAGE_SHMKEYLIM];

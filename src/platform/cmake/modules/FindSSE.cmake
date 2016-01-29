@@ -148,11 +148,7 @@ endif()
 if(_SSE_TEST_30)
   check_cxx_source_runs("
   #include <emmintrin.h>
-  #ifdef _WIN32
-    #include <intrin.h>
-  #else
-    #include <x86intrin.h>
-  #endif
+  #include <x86intrin.h>
 
   int main()
   {

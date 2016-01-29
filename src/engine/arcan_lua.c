@@ -60,18 +60,7 @@
 #include <lualib.h>
 #include <lauxlib.h>
 
-#ifndef WIN32
 #include <poll.h>
-#else
-/* windows doesn't support non-blocking file I/O as such
- * (no surprise there) ignore for now and get some workaround
- * going. */
-#define O_NONBLOCK 0
-#endif
-
-#ifndef O_CLOEXEC
-#define O_CLOEXEC 0
-#endif
 
 #ifdef LUA51_JIT
 #include <luajit.h>
@@ -6280,7 +6269,6 @@ static int targetbond(lua_State* ctx)
 /* if target_a is net or target_b is net, a possible third argument
  * may be added to specify which domain that should receive the state
  * in question */
-#ifndef WIN32
 	int pair[2];
 	if (pipe(pair) == -1){
 		arcan_warning("bond_target(), pipe pair failed."
@@ -6301,10 +6289,6 @@ static int targetbond(lua_State* ctx)
 
 	close(pair[0]);
 	close(pair[1]);
-
-#else
-	arcan_warning("bond_target yet to be implemented for WIN32");
-#endif
 
 	LUA_ETRACE("bond_target", NULL);
 	return 0;
@@ -10067,7 +10051,6 @@ table.insert(ctx.rtargets, rtgt);\n\
 	fflush(dst);
 }
 
-#ifndef _WIN32
 #include <poll.h>
 /* this assumes a trusted (src), as injected \0 could make the
  * strstr fail and buffer indefinately
@@ -10148,5 +10131,3 @@ void arcan_lua_stategrab(lua_State* ctx, char* dstfun, int src)
 	}
 
 }
-#endif
-

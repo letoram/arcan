@@ -21,12 +21,10 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 
-#ifndef _WIN32
 #include <sys/resource.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
-#endif
 
 #include <math.h>
 #include <limits.h>
@@ -146,10 +144,8 @@ printf("Usage: arcan [-whfmWMOqspBtHbdgaSV] applname "
 "-f\t--fullscreen  \ttoggle fullscreen mode ON (default: off)\n"
 "-m\t--conservative\ttoggle conservative memory management (default: off)\n"
 "-W\t--sync-strat  \tspecify video synchronization strategy (see below)\n"
-#ifndef _WIN32
 "-M\t--monitor     \tenable monitor session (arg: samplerate, ticks/sample)\n"
 "-O\t--monitor-out \tLOG:fname or applname\n"
-#endif
 "-q\t--timedump    \twait n ticks, dump snapshot to resources/logs/timedump\n"
 "-s\t--windowed    \ttoggle borderless window mode\n"
 #ifdef DISABLE_FRAMESERVERS
@@ -278,10 +274,8 @@ static void on_clock_pulse(int nticks)
 		arcan_state_dump("timedump", "user requested a dump", __func__);
 	}
 
-#ifndef WIN32
 		if (settings.in_monitor)
 			arcan_lua_stategrab(settings.lua, "sample", settings.mon_infd);
-#endif
 }
 
 static void flush_events()
@@ -375,11 +369,9 @@ int MAIN_REDIR(int argc, char* argv[])
 		exit(EXIT_SUCCESS);
 	break;
 	case 'H' : hookscript = strdup( optarg ); break;
-#ifndef _WIN32
 	case 'M' : settings.monitor_counter = settings.monitor =
 		abs( (int)strtol(optarg, NULL, 10) ); break;
 	case 'O' : monitor_arg = strdup( optarg ); break;
-#endif
 	case 't' :
 		arcan_override_namespace(optarg, RESOURCE_SYS_APPLBASE);
 		arcan_override_namespace(optarg, RESOURCE_SYS_APPLSTORE);
@@ -451,7 +443,6 @@ int MAIN_REDIR(int argc, char* argv[])
 	if (debuglevel > 1)
 		arcan_verify_namespaces(true);
 
-#ifndef _WIN32
 /* pipe to file, socket or launch script based on monitor output,
  * format will be LUA tables with the exception of each cell ending with
  * #ENDSAMPLE . The block will be sampled, parsed and should return a table
@@ -508,10 +499,6 @@ int MAIN_REDIR(int argc, char* argv[])
 
 		fullscreen = false;
 	}
-#else
-	if (!stdout_redirected){
-	}
-#endif
 
 /* fallback to whatever is the platform database- storepath */
 	if (dbfname || (dbfname = platform_dbstore_path()))
@@ -617,9 +604,7 @@ int MAIN_REDIR(int argc, char* argv[])
 			free(tmphook);
 		}
 	}
-#ifndef _WIN32
 	system_page_size = sysconf(_SC_PAGE_SIZE);
-#endif
 
 /*
  * fallback implementation resides here and a little further down

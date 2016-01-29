@@ -303,9 +303,7 @@ static libvlc_media_t* find_capture_device(
 {
 	libvlc_media_t* media = NULL;
 
-#ifdef WIN32
-
-#elif __APPLE__
+#ifdef __APPLE__
 	char url[48];
 	snprintf(url, sizeof(url) / sizeof(url[0]), "qtcapture://%d", id);
 	media = libvlc_media_new_location(decctx.vlc, url);
@@ -389,14 +387,8 @@ static bool dispatch(arcan_event* ev)
 /*
  * case TARGET_COMMAND_FDTRANSFER:
 		{
-#if _WIN32
-			libvlc_media_t* media = libvlc_media_new_fd(
-				decctx.vlc, _open_osfhandle(
-				(intptr_t)frameserver_readhandle(&ev), _O_APPEND));
-#else
 			libvlc_media_t* media = libvlc_media_new_fd(
 				decctx.vlc, dup(ev.tgt.ioevs[0].iv));
-#endif
 			libvlc_media_player_set_media(decctx.player, media);
 			libvlc_media_release(media);
 		}

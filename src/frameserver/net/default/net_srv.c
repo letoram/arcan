@@ -52,16 +52,6 @@
 #include "net.h"
 #include "frameserver.h"
 
-#ifdef _WIN32
-/* Doesn't seem like mingw/apr actually gets the
- * TransmitFile symbol so stub it here */
-#define sleep(X) (Sleep(X * 1000))
-BOOL PASCAL TransmitFile(SOCKET hs, HANDLE hf, DWORD nbtw, DWORD nbps,
-	LPOVERLAPPED lpo, LPTRANSMIT_FILE_BUFFERS lpTransmitBuffers, DWORD dfl){
-    return false;
-}
-#endif
-
 /*
  * just rand() XoR key for use with higher level API (Arcan scripting),
  * purpose is just to enforce actual tracking in the script and preventing
@@ -431,9 +421,6 @@ static void server_session(const char* host, char* ident, int limit)
 /* we need 1 for each connection (limit) one for the
  * gatekeeper and finally one for each IP (multihomed) */
 	int timeout = -1;
-#ifdef _WIN32
-   timeout = 10000;
-#endif
 
 	if (apr_pollset_create(&poll_in, limit + 4,
 		srvctx.mempool, 0) != APR_SUCCESS){
@@ -501,9 +488,7 @@ retry:
 		apr_pollset_add(poll_in, &gkpfd);
 	}
 
-#ifndef _WIN32
 	apr_pollset_add(poll_in, &epfd);
-#endif
 	apr_pollset_add(poll_in, &pfd);
 
 	while (true){
@@ -615,15 +600,12 @@ int afsrv_netsrv(struct arcan_shmif_cont* con, struct arg_arr* args)
 	apr_pool_create(&srvctx.mempool, NULL);
 
 /* for win32, we transfer the first one in the HANDLE of the shmpage */
-#ifdef _WIN32
-#else
 	int sockin_fd = con->epipe;
 	if (apr_os_sock_put(&srvctx.evsock, &sockin_fd,
 		srvctx.mempool) != APR_SUCCESS){
 		LOG("(net) -- Couldn't convert FD socket to APR, giving up.\n");
 		return EXIT_FAILURE;
 	}
-#endif
 
 /* make ID slot cookies predictable only in debug,
  * to ensure that the parent process doesn't assume these are

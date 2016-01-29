@@ -265,7 +265,6 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 						inev.ext.segreq.height = PP_SHMPAGE_MAXH;
 				break;
 
-#ifndef _WIN32
 				case EVENT_EXTERNAL_BUFFERSTREAM:
 /* this assumes that we are in non-blocking state and that a single
  * CSMG on a socket is sufficient for a non-blocking recvmsg */
@@ -276,7 +275,6 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 					tgt->vstream.stride = inev.ext.bstream.pitch;
 					tgt->vstream.format = inev.ext.bstream.format;
 				break;
-#endif
 
 /* for autoclocking, only one-fire events are forwarded if flag has been set */
 				case EVENT_EXTERNAL_CLOCKREQ:

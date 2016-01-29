@@ -57,10 +57,6 @@
 #endif
 
 #undef BADID
-#ifdef _WIN32
-#define BADID NULL
-#define BADID -1
-#endif
 
 #define COUNT_OF(x) \
 	((sizeof(x)/sizeof(0[x])) / ((size_t)(!(sizeof(x) % sizeof(0[x])))))
@@ -1606,11 +1602,7 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 
 /* some cores (mednafen-psx, ..) currently breaks on relative paths,
  * so resolve to absolute one for the time being */
-#ifdef _WIN32
-		retroctx.syspath = _fullpath(NULL, spath, MAX_PATH);
-#else
-		retroctx.syspath = realpath(spath, NULL);
-#endif
+	retroctx.syspath = realpath(spath, NULL);
 
 	bool info_only = arg_lookup(args, "info", 0, NULL) || cont->addr == NULL;
 
