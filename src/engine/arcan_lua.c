@@ -5201,11 +5201,21 @@ static int gettargets(lua_State* ctx)
 
 	int rv = 0;
 
-	struct arcan_strarr res = arcan_db_targets(dbhandle);
+	struct arcan_strarr res = arcan_db_targets(
+		dbhandle, luaL_optstring(ctx, 1, NULL));
 	rv += push_stringres(ctx, &res);
 	arcan_mem_freearr(&res);
 
 	LUA_ETRACE("list_targets", NULL);
+	return rv;
+}
+
+static int gettags(lua_State* ctx)
+{
+	LUA_TRACE("list_target_tags");
+	struct arcan_strarr res = arcan_db_target_tags(dbhandle);
+	int rv = push_stringres(ctx, &res);
+	LUA_ETRACE("list_target_tags", NULL);
 	return rv;
 }
 
@@ -5215,10 +5225,17 @@ static int getconfigs(lua_State* ctx)
 	const char* target = luaL_checkstring(ctx, 1);
 	int rv = 0;
 
-	struct arcan_strarr res = arcan_db_configs(dbhandle,
-		arcan_db_targetid(dbhandle, target, NULL));
+	arcan_targetid tid = arcan_db_targetid(dbhandle, target, NULL);
+	struct arcan_strarr res = arcan_db_configs(dbhandle, tid);
 
 	rv += push_stringres(ctx, &res);
+	char* tag = arcan_db_targettag(dbhandle, tid);
+	if (tag){
+		lua_pushstring(ctx, tag);
+		arcan_mem_free(tag);
+		rv++;
+	}
+
 	arcan_mem_freearr(&res);
 
 	LUA_ETRACE("target_configurations", NULL);
@@ -9099,6 +9116,7 @@ static const luaL_Reg dbfuns[] = {
 {"get_key",      getkey     },
 {"match_keys",   matchkeys  },
 {"list_targets", gettargets },
+{"list_target_tags", gettags },
 {"target_configurations", getconfigs },
 {NULL, NULL}
 };
@@ -9498,6 +9516,9 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 	lua_pushnumber(ctx,
 		mode.phy_width > 0 ? (float) mode.width / (float)mode.phy_width : 3.84);
 	lua_setglobal(ctx, "VPPCM");
+
+	lua_pushnumber(ctx, 0.0352778);
+	lua_setglobal(ctx, "FONT_PT_SZ");
 
 	arcan_lua_setglobalstr(ctx, "GL_VERSION", agp_ident());
 	arcan_lua_setglobalstr(ctx, "SHADER_LANGUAGE", agp_shader_language());
