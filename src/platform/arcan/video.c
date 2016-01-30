@@ -245,9 +245,10 @@ struct monitor_mode platform_video_dimensions()
 	struct monitor_mode mode = {
 		.width = disp[0].conn.addr->w,
 		.height = disp[0].conn.addr->h,
-		.phy_width = disp[0].conn.addr->w,
-		.phy_height = disp[0].conn.addr->h
 	};
+	mode.phy_width = (float)mode.width / disp[0].ppcm * 10.0;
+	mode.phy_height = (float)mode.height / disp[0].ppcm * 10.0;
+
 	return mode;
 }
 
@@ -602,15 +603,15 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
  * If the density has changed, grab the current standard font size
  * and convert to mm to get the scaling factor, apply and update default
  */
-				if (ev.tgt.ioevs[4].fv > 0){
-					int font_sz;
-					int hint;
-					arcan_video_fontdefaults(NULL, &font_sz, &hint);
-					float sf = ev.tgt.ioevs[4].fv / d->ppcm;
-					arcan_video_defaultfont("arcan-default",
-						BADFD, (float)font_sz * sf, hint);
-					d->ppcm = ev.tgt.ioevs[4].fv;
-				}
+			if (ev.tgt.ioevs[4].fv > 0){
+				int font_sz;
+				int hint;
+				arcan_video_fontdefaults(NULL, &font_sz, &hint);
+				float sf = ev.tgt.ioevs[4].fv / d->ppcm;
+				arcan_video_defaultfont("arcan-default",
+					BADFD, (float)font_sz * sf, hint);
+				d->ppcm = ev.tgt.ioevs[4].fv;
+			}
 		break;
 /*
  * This behavior may be a bit strong, but we allow the display server

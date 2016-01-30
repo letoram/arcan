@@ -19,6 +19,7 @@
 #include "arcan_general.h"
 #include "arcan_video.h"
 #include "arcan_videoint.h"
+#include "arcan_shmif.h"
 
 #include "agp/glfun.h"
 
@@ -123,9 +124,11 @@ struct monitor_mode PLATFORM_SYMBOL(_video_dimensions)()
 	struct monitor_mode res = {
 		.width = x11.canvasw,
 		.height = x11.canvash,
-		.phy_width = x11.mdispw,
-		.phy_height = x11.mdisph
 	};
+/* any decent way to query for that value here? */
+	res.phy_width = (float) res.width / ARCAN_SHMPAGE_DEFAULT_PPCM * 10.0;
+	res.phy_height = (float) res.height / ARCAN_SHMPAGE_DEFAULT_PPCM * 10.0;
+
 	return res;
 }
 

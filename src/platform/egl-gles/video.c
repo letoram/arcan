@@ -24,6 +24,7 @@
 #include "arcan_general.h"
 #include "arcan_video.h"
 #include "arcan_videoint.h"
+#include "arcan_shmif.h"
 
 #ifndef PLATFORM_SUFFIX
 #define PLATFORM_SUFFIX platform
@@ -61,10 +62,12 @@ struct monitor_mode PLATFORM_SYMBOL(_video_dimensions)()
 {
 	struct monitor_mode res = {
 		.width = egl.canvasw,
-		.height = egl.canvash,
-		.phy_width = egl.mdispw,
-		.phy_height = egl.mdisph
+		.height = egl.canvash
 	};
+
+	res.phy_width = (float) res.width / ARCAN_SHMPAGE_DEFAULT_PPCM * 10.0;
+	res.phy_height = (float) res.height / ARCAN_SHMPAGE_DEFAULT_PPCM * 10.0;
+
 	return res;
 }
 

@@ -3341,8 +3341,8 @@ fail:
 		ev.io.devkind = mouse ?	EVENT_IDEVKIND_MOUSE : EVENT_IDEVKIND_GAMEDEV;
 		ev.io.devid = intblint(ctx, tblind, "devid");
 		ev.io.subid = intblint(ctx, tblind, "subid");
-		ev.io.input.analog.gotrel = mouse ?
-			(!intblbool(ctx, tblind, "norel")) : false;
+		ev.io.input.analog.gotrel = mouse ? intblbool(
+			ctx, tblind, "relative") : false;
 		ev.io.datatype = EVENT_IDATATYPE_ANALOG;
 
 	/*  sweep the samples subtable, add as many as present (or possible) */
@@ -9497,8 +9497,10 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 		arcan_lua_setglobalint(ctx, consttbl[i].key, consttbl[i].val);
 
 /* same problem as with VRESW, VRESH */
-	lua_pushnumber(ctx,
-		mode.phy_width > 0 ? (float) mode.width / (float)mode.phy_width : 3.84);
+	float ppcm = mode.width && mode.phy_width ?
+		10 * ((float) mode.width / (float)mode.phy_width) : 38.4;
+
+	lua_pushnumber(ctx, ppcm);
 	lua_setglobal(ctx, "VPPCM");
 
 	lua_pushnumber(ctx, 0.0352778);
