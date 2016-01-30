@@ -30,6 +30,7 @@
 
 #include "../agp/glfun.h"
 
+#include "arcan_shmif.h"
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_video.h"
@@ -147,9 +148,7 @@ static struct {
 	EGLSurface surface;
 	EGLImageKHR output;
 
-	size_t mdispw, mdisph;
 	size_t canvasw, canvash;
-
 	struct gbm_device* dev;
 
 } rnode;
@@ -172,10 +171,12 @@ struct monitor_mode PLATFORM_SYMBOL(_video_dimensions)()
 {
 	struct monitor_mode res = {
 		.width = rnode.canvasw,
-		.height = rnode.canvash,
-		.phy_width = rnode.mdispw,
-		.phy_height = rnode.mdisph
+		.height = rnode.canvash
 	};
+
+	res.phy_width = (float) res.width / ARCAN_SHMPAGE_DEFAULT_PPCM * 10.0;
+	res.phy_height = (float) res.height / ARCAN_SHMPAGE_DEFAULT_PPCM * 10.0;
+
 	return res;
 }
 
@@ -349,8 +350,8 @@ bool PLATFORM_SYMBOL(_video_init)(uint16_t w, uint16_t h,
 	if (0 == h)
 		h = 480;
 
-	rnode.mdispw = rnode.canvasw = 640;
-	rnode.mdisph = rnode.canvash = 480;
+	rnode.canvasw = 640;
+	rnode.canvash = 480;
 
 	rnode.display = eglGetDisplay(rnode.dev);
 	if (!eglInitialize(rnode.display, NULL, NULL)){

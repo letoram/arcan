@@ -1443,9 +1443,11 @@ struct monitor_mode platform_video_dimensions()
 		res.width = egl_dri.last_display->display.mode->hdisplay;
 		res.height = egl_dri.last_display->display.mode->vdisplay;
 	}
-
-	res.phy_width = egl_dri.canvasw;
-	res.phy_height = egl_dri.canvash;
+/*
+ * fake dimensions to provide an OK default PPCM (say 72)
+ */
+	res.phy_width = (float)egl_dri.canvasw / (float)28.34645 * 10.0;
+	res.phy_height = (float)egl_dri.canvash / (float)28.34645 * 10.0;
 
 	return res;
 }

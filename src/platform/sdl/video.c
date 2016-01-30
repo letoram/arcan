@@ -22,7 +22,6 @@
 static struct {
 	SDL_Surface* screen;
 	int sdlarg;
-	size_t mdispw, mdisph;
 	size_t canvasw, canvash;
 	uint64_t last;
 } sdl;
@@ -197,9 +196,12 @@ struct monitor_mode platform_video_dimensions()
 	struct monitor_mode res = {
 		.width = sdl.canvasw,
 		.height = sdl.canvash,
-		.phy_width = sdl.mdispw,
-		.phy_height = sdl.mdisph
 	};
+
+/* any decent way to query for that value here? */
+	res.phy_width = (float) res.width / ARCAN_SHMPAGE_DEFAULT_PPCM * 10.0;
+	res.phy_height = (float) res.height / ARCAN_SHMPAGE_DEFAULT_PPCM * 10.0;
+
 	return res;
 }
 
@@ -307,8 +309,8 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	if (!sdl.screen)
 		return false;
 
-	sdl.canvasw = sdl.mdispw = width;
-	sdl.canvash = sdl.mdisph = height;
+	sdl.canvasw = width;
+	sdl.canvash = height;
 	glViewport(0, 0, width, height);
 	sdl.last = arcan_frametime();
 	return true;
