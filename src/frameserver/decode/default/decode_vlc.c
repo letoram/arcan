@@ -109,7 +109,7 @@ static void generate_frame()
 	static double vptsc = 0;
 
 	int16_t* basep = decctx.shmcont.audp;
-	int counter = decctx.shmcont.addr->abufused;
+	int counter = *decctx.shmcont.abufused;
 
 	while (counter){
 /* could've split the window up into two functions and used the b and a
@@ -194,16 +194,16 @@ static void audio_play(void *data,
 	}
 
 /* buffer overflow, need to flush */
-	size_t left = ARCAN_SHMIF_AUDIOBUF_SZ - decctx.shmcont.addr->abufused;
+	size_t left = decctx.shmcont.addr->abufsize - *decctx.shmcont.abufused;
 	if (left < nb){
 		arcan_shmif_signalA();
+		left = decctx.shmcont.addr->abufsize;
 	}
 
-	left = ARCAN_SHMIF_AUDIOBUF_SZ - decctx.shmcont.addr->abufused;
 	if (left > nb){
 		memcpy( (uint8_t*)(decctx.shmcont.audp) +
-			decctx.shmcont.addr->abufused, samples, nb);
-		decctx.shmcont.addr->abufused += nb;
+			*decctx.shmcont.abufused, samples, nb);
+		*decctx.shmcont.abufused += nb;
 	}
 
 	if (decctx.fft_audio){
@@ -218,13 +218,14 @@ static void audio_flush()
 		.category = EVENT_EXTERNAL,
 		.ext.kind = ARCAN_EVENT(FLUSHAUD)
 	};
-	decctx.shmcont.addr->abufused = 0;
+	*decctx.shmcont.abufused = 0;
+	decctx.shmcont.addr->apending = 0;
 	arcan_shmif_enqueue(&decctx.shmcont, &ev);
 }
 
 static void audio_drain()
 {
-	if (decctx.shmcont.addr->abufused > 4096)
+	if (*decctx.shmcont.abufused > 4096)
 		arcan_shmif_signalA();
 }
 

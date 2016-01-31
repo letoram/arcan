@@ -209,12 +209,12 @@ struct shmif_hidden {
 	shmif_trigger_hook video_hook;
 	void* video_hook_data;
 	uint8_t vbuf_ind, vbuf_cnt;
-	shmif_pixel* vbuf[3];
+	shmif_pixel* vbuf[ARCAN_SHMIF_VBUFC_LIM];
 
 	shmif_trigger_hook audio_hook;
 	void* audio_hook_data;
 	uint8_t abuf_ind, abuf_cnt;
-	shmif_asample* abuf[3];
+	shmif_asample* abuf[ARCAN_SHMIF_ABUFC_LIM];
 
 	bool output, alive, paused;
 
@@ -889,6 +889,7 @@ static void setup_avbuf(struct arcan_shmif_cont* res)
 
 	res->priv->abuf_ind = res->priv->vbuf_ind = 0;
 	res->addr->vpending = res->addr->apending = 0;
+	res->abufused = &res->addr->abufused[0];
 
 	arcan_shmif_mapav(res->addr,
 		res->priv->vbuf, res->priv->vbuf_cnt, res->w*res->h*sizeof(shmif_pixel),
@@ -1134,6 +1135,52 @@ unsigned arcan_shmif_signalhandle(struct arcan_shmif_cont* ctx,
 	return arcan_shmif_signal(ctx, mask);
 }
 
+static bool step_v(struct arcan_shmif_cont* ctx)
+{
+	struct shmif_hidden* priv = ctx->priv;
+	bool lock = false;
+
+	int pending = atomic_fetch_or_explicit(&ctx->addr->vpending,
+		1 << priv->vbuf_ind, memory_order_release);
+	atomic_store_explicit(&ctx->addr->vready,
+		priv->vbuf_ind+1, memory_order_release);
+
+/* slide window so the caller don't have to care about which
+ * buffer we are actually working against */
+	priv->vbuf_ind++;
+	if (priv->vbuf_ind == priv->vbuf_cnt)
+		priv->vbuf_ind = 0;
+	lock = priv->vbuf_cnt == 1 || (pending & (1 << priv->vbuf_ind));
+	ctx->vidp = priv->vbuf[priv->vbuf_ind];
+
+	FORCE_SYNCH();
+	return lock;
+}
+
+static bool step_a(struct arcan_shmif_cont* ctx)
+{
+	struct shmif_hidden* priv = ctx->priv;
+	bool lock = false;
+
+	if (*ctx->abufused == 0)
+		return false;
+
+	atomic_fetch_or_explicit(&ctx->addr->apending,
+		1 << priv->abuf_ind, memory_order_release);
+	atomic_store_explicit(&ctx->addr->aready,
+		priv->abuf_ind+1, memory_order_release);
+	lock = true;
+
+	priv->abuf_ind++;
+	if (priv->abuf_ind == priv->abuf_cnt)
+		priv->abuf_ind = 0;
+	ctx->abufused = &ctx->addr->abufused[priv->abuf_ind];
+	ctx->audp = priv->abuf[priv->abuf_ind];
+
+	FORCE_SYNCH();
+	return lock;
+}
+
 unsigned arcan_shmif_signal(struct arcan_shmif_cont* ctx,
 	enum arcan_shmif_sigmask mask)
 {
@@ -1148,45 +1195,23 @@ unsigned arcan_shmif_signal(struct arcan_shmif_cont* ctx,
 	if ( (mask & SHMIF_SIGAUD) && priv->audio_hook)
 		mask = priv->audio_hook(ctx);
 
-	if ( (mask & SHMIF_SIGVID) && !(mask & SHMIF_SIGAUD)){
-		ctx->addr->vready = true;
-		FORCE_SYNCH();
+	if ( (mask & SHMIF_SIGAUD) && !(mask & SHMIF_SIGVID)){
+		bool lock = step_a(ctx);
 
-		if (!(mask & (SHMIF_SIGBLK_NONE | SHMIF_SIGBLK_ONCE)))
-			arcan_sem_wait(ctx->vsem);
-		else
-			arcan_sem_trywait(ctx->vsem);
-	}
-	else if ( (mask & SHMIF_SIGAUD) && !(mask & SHMIF_SIGVID)){
-		ctx->addr->aready = true;
-		FORCE_SYNCH();
-
-		if (mask & SHMIF_SIGAUD &&
-			!(mask & (SHMIF_SIGBLK_NONE | SHMIF_SIGBLK_ONCE)))
+		if (lock && !(mask & (SHMIF_SIGBLK_NONE | SHMIF_SIGBLK_ONCE)))
 			arcan_sem_wait(ctx->asem);
 		else
 			arcan_sem_trywait(ctx->asem);
 	}
-	else if (mask & (SHMIF_SIGVID | SHMIF_SIGAUD)){
-		ctx->addr->vready = true;
+	if ( (mask & SHMIF_SIGVID) && !(mask & SHMIF_SIGAUD)){
+		bool lock = step_v(ctx);
 
-		if (ctx->addr->abufused > 0){
-			ctx->addr->aready = true;
-			FORCE_SYNCH();
-			if (!(mask & (SHMIF_SIGBLK_NONE | SHMIF_SIGBLK_ONCE)))
-				arcan_sem_wait(ctx->asem);
-			else
-				arcan_sem_trywait(ctx->asem);
-		}
-
-		FORCE_SYNCH();
-		if (!(mask & (SHMIF_SIGBLK_NONE | SHMIF_SIGBLK_ONCE)))
+		if (lock && !(mask & (SHMIF_SIGBLK_NONE | SHMIF_SIGBLK_ONCE)))
 			arcan_sem_wait(ctx->vsem);
 		else
 			arcan_sem_trywait(ctx->vsem);
 	}
-	else
-		;
+
 	return arcan_timemillis() - startt;
 }
 
@@ -1217,7 +1242,7 @@ void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 }
 
 static bool shmif_resize(struct arcan_shmif_cont* arg,
-	unsigned width, unsigned height, int vidc, int audc)
+	unsigned width, unsigned height, size_t abufsz, int vidc, int audc)
 {
 	if (!arg->addr || !arcan_shmif_integrity_check(arg) ||
 	width > PP_SHMPAGE_MAXW || height > PP_SHMPAGE_MAXH ||
@@ -1229,9 +1254,9 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 		while (arg->addr->vready && arg->addr->dms)
 			arcan_sem_wait(arg->vsem);
 	}
-	if (arg->addr->vready){
-		while (arg->addr->vready && arg->addr->dms)
-			arcan_sem_wait(arg->vsem);
+	if (arg->addr->aready){
+		while (arg->addr->aready && arg->addr->dms)
+			arcan_sem_wait(arg->asem);
 	}
 
 	width = width < 1 ? 1 : width;
@@ -1251,11 +1276,11 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
  * dimensions, buffering etc. THEN resize request flag */
 	arg->addr->w = width;
 	arg->addr->h = height;
-	arg->addr->apending = audc;
-	arg->addr->vpending = vidc;
+	arg->addr->abufsize = abufsz;
+	atomic_store_explicit(&arg->addr->apending, audc, memory_order_release);
+	atomic_store_explicit(&arg->addr->vpending, vidc, memory_order_release);
 	FORCE_SYNCH();
 	arg->addr->resized = 1;
-	FORCE_SYNCH();
 	arcan_sem_wait(arg->vsem);
 
 /*
@@ -1307,10 +1332,16 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 	return true;
 }
 
+bool arcan_shmif_resize_ext(struct arcan_shmif_cont* arg,
+	unsigned width, unsigned height, struct shmif_resize_ext ext)
+{
+	return shmif_resize(arg,width,height,ext.abuf_sz,ext.vbuf_cnt,ext.abuf_cnt);
+}
+
 bool arcan_shmif_resize(struct arcan_shmif_cont* arg,
 	unsigned width, unsigned height)
 {
-	return shmif_resize(arg, width, height, -1, -1);
+	return shmif_resize(arg, width, height, arg->addr->abufsize, -1, -1);
 }
 
 shmif_trigger_hook arcan_shmif_signalhook(struct arcan_shmif_cont* cont,

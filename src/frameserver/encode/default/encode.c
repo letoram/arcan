@@ -104,11 +104,11 @@ struct cl_track {
  * buffer to feed encoder */
 static void flush_audbuf()
 {
-	size_t ntc = recctx.shmcont.addr->abufused;
+	size_t ntc = recctx.shmcont.addr->abufused[0];
 	uint8_t* dataptr = (uint8_t*) recctx.shmcont.audp;
 
 	if (!recctx.acontext){
-		recctx.shmcont.addr->abufused = 0;
+		recctx.shmcont.addr->abufused[0] = 0;
 		return;
 	}
 
@@ -131,7 +131,7 @@ static void flush_audbuf()
 			recctx.silence_samples << 2 : ntc;
 		if (ntd == ntc){
 			recctx.silence_samples -= recctx.silence_samples << 2;
-			recctx.shmcont.addr->abufused = 0;
+			recctx.shmcont.addr->abufused[0] = 0;
 			return;
 		}
 
@@ -156,7 +156,7 @@ static void flush_audbuf()
 	recctx.encabuf_ofs += ntc;
 
 /* worst case, we get overflown buffers and need to drop sound */
-	recctx.shmcont.addr->abufused = 0;
+	recctx.shmcont.addr->abufused[0] = 00;
 }
 
 /*
@@ -614,7 +614,7 @@ static bool setup_ffmpeg_encode(struct arg_arr* args, int desw, int desh)
 
 	if (!noaudio && video.storage.audio.codec){
 		if ( audio.setup.audio(&audio, channels, samplerate, abr) ){
-			recctx.encabuf_sz = ARCAN_SHMIF_AUDIOBUF_SZ * 2;
+			recctx.encabuf_sz = recctx.shmcont.addr->abufsize * 2;
 			recctx.encabuf_ofs = 0;
 			recctx.encabuf = av_malloc(recctx.encabuf_sz);
 

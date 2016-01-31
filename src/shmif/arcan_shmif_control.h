@@ -118,15 +118,13 @@ static const int ARCAN_SHMIF_SAMPLE_SIZE = sizeof(shmif_asample);
 #define SHMIF_AINT16(X) ( (int16_t) ((X))
 #endif
 
-/*
- * This is the TOTAL size of the audio output buffer, we can slice this
- * into evenly sized chunks during _resize using _ext version should we
- * want to work with smaller buffers and less blocking.
- *
- * shmpage->abufsize is the user- exposed, currently negotiated size.
- */
-static const int ARCAN_SHMIF_AUDIOBUF_SZ = 65535;
 
+/*
+ * These limits affect ABI as we need to track how much is used in each
+ * audiobuffer slot
+ */
+#define ARCAN_SHMIF_ABUFC_LIM 12
+#define ARCAN_SHMIF_VBUFC_LIM 3
 /*
  * These are technically limited by the combination of graphics and video
  * platforms. Since the buffers are placed at the end of the struct, they
@@ -137,7 +135,6 @@ static const int ARCAN_SHMIF_AUDIOBUF_SZ = 65535;
 #define PP_SHMPAGE_MAXW 4096
 #endif
 static const int ARCAN_SHMPAGE_MAXW = PP_SHMPAGE_MAXW;
-
 
 #ifndef PP_SHMPAGE_MAXH
 #define PP_SHMPAGE_MAXH 2048
@@ -381,8 +378,9 @@ bool arcan_shmif_resize(struct arcan_shmif_cont*,
 	unsigned width, unsigned height);
 
 /*
- * Extended version of resize that supports requesting more
- * audio / video buffers for better swap/synch control.
+ * Extended version of resize that supports requesting more audio / video
+ * buffers for better swap/synch control. abuf_cnt and vbuf_cnt are limited
+ * to the constants ARCAN_SHMIF_
  */
 struct shmif_resize_ext {
 	size_t abuf_sz;
@@ -444,6 +442,7 @@ struct arcan_shmif_cont {
  * shmif_ functions so aliasing is not recommended */
 	shmif_pixel* vidp;
 	shmif_asample* audp;
+	volatile uint16_t* abufused;
 
 /*
  * This cookie is set/kept to some implementation defined value
@@ -534,13 +533,19 @@ struct arcan_shmif_page {
 
 /* [FSRV-SET, ARCAN-ACK(fl+sem)]
  * Set whenever a buffer is ready to be synchronized.
- * [vready-1, aready-1] indicate the negotiated buffer(s) to synchronize
- * and |hints] indicate any specific synchronization options to consider
- * apending / vpending is used internally to determine the next buffer
- * to write to.
+ * [vready-1] indicates the buffer index of the last set frame, while
+ * vpending are the number of frames with contents that hasn't been
+ * synchronzied.
+ * [aready-1] indicates the starting index for buffers that have not
+ * been synchronized, ring-buffer wrapping the bits that are set.
  */
-	volatile int8_t aready, apending;
-	volatile uint8_t vready, vpending;
+	volatile atomic_uint aready;
+	volatile atomic_uint apending;
+	volatile atomic_uint vready;
+	volatile atomic_uint vpending;
+
+/* abufused contains the number of bytes consumed in every slot */
+	volatile uint16_t abufused[ARCAN_SHMIF_ABUFC_LIM];
 
 /*
  * Presentation hints, see mask above.
@@ -600,10 +605,10 @@ struct arcan_shmif_page {
 /*
  * [FSRV-SET (aready signal), ARCAN-ACK]
  * Video buffers are planar transfers of a pre-determined size. Audio,
- * on the other hand, can be appended and wholly or partially consumed
- * by the side that currently holds the synch- semaphore.
+ * on the other hand, can be appended and consumed by the side that currently
+ * holds the synch- semaphore.
 */
-	volatile uint16_t abufused, abufsize;
+	volatile uint16_t abufsize;
 
 /*
  * [FSRV-SET, ARCAN-ACK (vready signal)]
