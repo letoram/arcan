@@ -628,9 +628,9 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	newseg->queue_mask = EVENT_EXTERNAL;
 	newseg->segid = segid;
 
-	newseg->sz_audb = ARCAN_SHMIF_AUDIOBUF_SZ;
+	newseg->sz_audb = 0;
 	newseg->ofs_audb = 0;
-	newseg->audb = malloc(ctx->sz_audb);
+	newseg->audb = NULL;
 
 	newseg->vbuf_cnt = 1;
 	newseg->abuf_cnt = abufc;
@@ -998,9 +998,9 @@ bool arcan_frameserver_resize(struct arcan_frameserver* s)
 /* local copy so we don't fall victim for TOCTU */
 	size_t w = shmpage->w;
 	size_t h = shmpage->h;
-	size_t abufsz = shmpage->abufsize;
-	size_t vbufc = shmpage->vpending;
-	size_t abufc = shmpage->apending;
+	size_t abufsz = atomic_load(&shmpage->abufsize);
+	size_t vbufc = atomic_load(&shmpage->vpending);
+	size_t abufc = atomic_load(&shmpage->apending);
 	vbufc = vbufc > FSRV_MAX_VBUFC ? FSRV_MAX_VBUFC : vbufc;
 	abufc = abufc > FSRV_MAX_ABUFC ? FSRV_MAX_ABUFC : abufc;
 

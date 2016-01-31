@@ -3,9 +3,12 @@ instructions on building and use may apply.
 
 complex/ tries to previde an exhaustive test case for all complex
  window manager operations, ranging from popups, to subwindows,
- viewports etc.
+ viewports, dynamic custom mouse cursors etc.
 
 counter/ provides a simple color cycle in a predictable pattern
+
+counter-ndt/ uses a known color cycle and multi-buffering to test
+ how arcan selects buffers in multi-buffer mode
 
 counter-rcv/ used as a recipient for feedcopy or recordtarget
  hooked up to a counter as a provider, checks for dropped or corrupted

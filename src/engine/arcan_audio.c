@@ -680,6 +680,24 @@ static ssize_t find_freebufferind(arcan_aobj* cur, bool tag){
 	return -1;
 }
 
+size_t arcan_audio_getbuffers(arcan_aobj* obj,
+	unsigned* buffers, size_t bufc)
+{
+	size_t rv = 0;
+	if (!obj)
+		return rv;
+
+	for (size_t i = 0; bufc > 0 && i < obj->n_streambuf; i++){
+		if (!obj->streambufmask[i]){
+			obj->streambufmask[i] = true;
+			*buffers++ = obj->streambuf[i];
+			rv++;
+		}
+	}
+
+	return rv;
+}
+
 void arcan_audio_buffer(arcan_aobj* aobj, ssize_t buffer, void* audbuf,
 	size_t abufs, unsigned int channels, unsigned int samplerate, void* tag)
 {

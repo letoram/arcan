@@ -59,9 +59,16 @@ typedef struct arcan_aobj {
 	struct arcan_aobj* next;
 } arcan_aobj;
 
+/*
+ * Request [bufc] buffer indices to be stored in [buffers], return
+ * the amount that could actually be fulfilled. These are expected to
+ * be populated each with _audio_buffer calls.
+ */
+size_t arcan_audio_getbuffers(arcan_aobj* obj, unsigned* buffers, size_t bufc);
+
 /* just a wrapper around alBufferData that takes monitors into account */
-void arcan_audio_buffer(arcan_aobj*, ssize_t, void*,
-	size_t, unsigned, unsigned, void*);
+void arcan_audio_buffer(arcan_aobj*, ssize_t buffer, void* abuf,
+	size_t abuf_sz, unsigned channels, unsigned samplerate, void* tag);
 
 #endif
 

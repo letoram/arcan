@@ -744,6 +744,10 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 		if (!pressed)
 			return;
 
+		if (term.in_select){
+			term.in_select = false;
+			tsm_screen_selection_reset(term.screen);
+		}
 		term.inact_timer = -4;
 		if (label[0] && consume_label(ioev, label))
 			return;

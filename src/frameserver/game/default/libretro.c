@@ -1473,7 +1473,6 @@ static inline bool retroctx_sync()
 
 	if (prewake && left > prewake ){
 		arcan_timesleep( left - prewake );
-		printf("sleep %d\n", (int) left-prewake);
 	}
 
 	return true;
@@ -1887,26 +1886,23 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 
 /* possible to add a size lower limit here to maintain a larger
  * resampling buffer than synched to videoframe */
-			if (retroctx.audbuf_ofs && !retroctx.shmcont.addr->abufused){
-				spx_uint32_t outc = ARCAN_SHMIF_AUDIOBUF_SZ >> 2;
+			if (retroctx.audbuf_ofs && *retroctx.shmcont.abufused == 0){
+				spx_uint32_t outc = retroctx.shmcont.addr->abufsize >> 2;
 /*first number of bytes, then after process..., number of samples */
-
 				spx_uint32_t nsamp = retroctx.audbuf_ofs >> 1;
 				speex_resampler_process_interleaved_int(retroctx.resampler,
 					(const spx_int16_t*) retroctx.audbuf, &nsamp,
 					(spx_int16_t*) retroctx.shmcont.audp, &outc);
 
-					if (outc)
-						retroctx.shmcont.addr->abufused += outc *
-							ARCAN_SHMIF_ACHANNELS * sizeof(uint16_t);
+				if (outc){
+					*retroctx.shmcont.abufused += outc *
+						ARCAN_SHMIF_ACHANNELS * sizeof(uint16_t);
+					arcan_shmif_signal(&retroctx.shmcont,
+						SHMIF_SIGAUD | SHMIF_SIGBLK_NONE);
+				}
 
 				retroctx.audbuf_ofs = 0;
 			}
-
-/* other option here is to synch even without video, or let audio buffer
- * internally until we have video or won't block */
-			if (retroctx.shmcont.addr->abufused && maskv > 0)
-				maskv |= SHMIF_SIGAUD;
 
 /* Possibly overlay as much tracking / debugging data we can muster */
 			if (retroctx.sync_data)

@@ -240,10 +240,17 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst,
 }
 
 static void push_buffer(arcan_frameserver* src,
-	av_pixel* buf, struct storage_info_t* store, struct arcan_shmif_region* dirty)
+	struct storage_info_t* store, struct arcan_shmif_region* dirty)
 {
 	struct stream_meta stream = {.buf = NULL};
 	bool explicit = src->flags.explicit;
+
+/* we know that vpending contains the latest region that was synched,
+ * so the ~vready mask should be the bits that we want to keep. */
+	int vready = atomic_load_explicit(&src->shm.ptr->vready,memory_order_consume);
+	int vmask=~atomic_load_explicit(&src->shm.ptr->vpending,memory_order_consume);
+	vready = (vready <= 0 || vready > src->vbuf_cnt) ? 0 : vready - 1;
+	shmif_pixel* buf = src->vbufs[vready];
 
 /* Need to do this check here as-well as in the regular frameserver tick control
  * because the backing store might have changed somehwere else. */
@@ -283,7 +290,7 @@ static void push_buffer(arcan_frameserver* src,
 		else
 			agp_stream_commit(store, stream);
 
-		return;
+		goto commit_mask;
 	}
 
 /* no-alpha flag was rather dumb, should've been done shader-side but now it is
@@ -291,7 +298,7 @@ static void push_buffer(arcan_frameserver* src,
 	if (src->flags.no_alpha_copy){
 		stream = agp_stream_prepare(store, stream, STREAM_RAW);
 		if (!stream.buf)
-			return;
+			goto commit_mask;
 
 		av_pixel* wbuf = stream.buf;
 
@@ -319,6 +326,8 @@ static void push_buffer(arcan_frameserver* src,
 	}
 
 	agp_stream_commit(store, stream);
+commit_mask:
+	atomic_fetch_and(&src->shm.ptr->vpending, vmask);
 }
 
 enum arcan_ffunc_rv arcan_frameserver_nullfeed FFUNC_HEAD
@@ -398,7 +407,7 @@ static void check_audb(arcan_frameserver* tgt)
 /* interleave audio / video processing */
 	if (!shmpage || !(shmpage->aready && shmpage->abufused))
 		return;
-
+/*
 	size_t ntc = tgt->ofs_audb + shmpage->abufused > tgt->sz_audb ?
 		(tgt->sz_audb - tgt->ofs_audb) : shmpage->abufused;
 
@@ -412,14 +421,13 @@ static void check_audb(arcan_frameserver* tgt)
 		tgt->ofs_audb = 0;
 	}
 
-/* every signaled bit in the abufused bitmask indicate a full audio
- * buffer slot (except the last), with abufused indicating the total used */
+/every signaled bit in the abufused bitmask indicate a full audio
+ * buffer slot (except the last), with abufused indicating the total used
 	memcpy(&tgt->audb[tgt->ofs_audb], tgt->abufs[0], ntc);
 	tgt->ofs_audb += ntc;
 	shmpage->abufused = 0;
 	shmpage->aready = false;
-	FORCE_SYNCH();
-	arcan_sem_post( tgt->async );
+	FORCE_SYNCH();*/
 }
 
 enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
@@ -455,8 +463,8 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 			goto no_out;
 
 /* use this opportunity to make sure that we treat audio as well,
- * when theres the one there is usually the other */
-		check_audb(tgt);
+ * when theres the one there is usually the other
+		check_audb(tgt); */
 
 		if (tgt->flags.autoclock && tgt->clock.frame)
 			autoclock_frame(tgt);
@@ -482,7 +490,7 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 		struct storage_info_t* dst_store = vobj->frameset ?
 			vobj->frameset->frames[vobj->frameset->index].frame : vobj->vstore;
 		struct arcan_shmif_region dirty = shmpage->dirty;
-		push_buffer(tgt, tgt->vbufs[0], dst_store,
+		push_buffer(tgt, dst_store,
 			shmpage->hints & SHMIF_RHINT_SUBREGION ? &dirty : NULL);
 		dst_store->vinf.text.vpts = shmpage->vpts;
 
@@ -492,10 +500,11 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 
 /* interactive frameserver blocks on vsemaphore only,
  * so set monitor flags and wake up */
-		shmpage->vready = false;
+		atomic_store(&shmpage->vready, 0);
+
 		FORCE_SYNCH();
 		arcan_sem_post( tgt->vsync );
-		check_audb(tgt);
+/*		check_audb(tgt); */
 	break;
 
 	case FFUNC_ADOPT:
@@ -612,7 +621,7 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe FFUNC_HEAD
 			memcpy(src->vbufs[0], buf, buf_sz);
 			if (src->ofs_audb){
 				memcpy(src->abufs[0], src->audb, src->ofs_audb);
-				src->shm.ptr->abufused = src->ofs_audb;
+				src->shm.ptr->abufused[0] = src->ofs_audb;
 				src->ofs_audb = 0;
 			}
 
@@ -803,28 +812,75 @@ static inline void emit_droppedframe(arcan_frameserver* src,
 	arcan_event_enqueue(arcan_event_defaultctx(), &deliv);
 }
 
+/*
+ * This is a legacy- feed interface and doesn't reflect how the shmif audio
+ * buffering works. Hence we ignore queing to the selected buffer, and instead
+ * use a populate function to retrieve at most n' buffers that we then fill.
+ */
 arcan_errc arcan_frameserver_audioframe_direct(arcan_aobj* aobj,
 	arcan_aobj_id id, unsigned buffer, void* tag)
 {
-	arcan_errc rv = ARCAN_ERRC_NOTREADY;
 	arcan_frameserver* src = (arcan_frameserver*) tag;
 
 	if (buffer == -1 || src->segid == SEGID_UNKNOWN)
-		return rv;
+		return ARCAN_ERRC_NOTREADY;
 
-	if (arcan_frameserver_enter(src)){
-		check_audb(src);
+/* we need to switch to an interface where we can retrieve a set number of
+ * buffers, matching the number of set bits in amask, then walk from ind-1 and
+ * buffering all */
+	if (!arcan_frameserver_enter(src))
+		return ARCAN_ERRC_UNACCEPTED_STATE;
+
+	volatile int ind = atomic_load(&src->shm.ptr->aready) - 1;
+	volatile int amask = atomic_load(&src->shm.ptr->apending);
+
+/* sanity check, untrusted source */
+	if (ind >= src->abuf_cnt || ind < 0){
 		arcan_frameserver_leave(src);
-	};
-
-	if (src->audb && src->ofs_audb > ARCAN_ASTREAMBUF_LLIMIT){
-			arcan_audio_buffer(aobj, buffer, src->audb, src->ofs_audb,
-				src->desc.channels, src->desc.samplerate, tag);
-		src->ofs_audb = 0;
-		rv = ARCAN_OK;
+		return ARCAN_ERRC_UNACCEPTED_STATE;
 	}
 
-	return rv;
+	int nbufs = 0;
+	for (int i = 0; i < src->abuf_cnt; i++)
+		nbufs += amask & (1 << i);
+
+/* easy case, "bigbuffer" */
+	if (src->abuf_cnt == 1 || nbufs == 1){
+		arcan_audio_buffer(aobj, buffer,
+			src->abufs[ind], src->shm.ptr->abufused[ind],
+			src->desc.channels, src->desc.samplerate, tag
+		);
+		src->shm.ptr->abufused[ind] = 0;
+		atomic_store_explicit(&src->shm.ptr->apending, 0, memory_order_release);
+	}
+/* request as many buffers as possible */
+	else {
+		unsigned buffers[nbufs];
+
+/* rewind index to beginning */
+		for (size_t i = 0; i < nbufs; i++)
+			ind = (ind > 0 ? ind-1 : src->abuf_cnt-1);
+
+/* request as many buffers as the audio layer can handle,
+ * queue them and update the producer bitmask */
+		size_t nf = arcan_audio_getbuffers(aobj, buffers, nbufs);
+		for (int ofs = 0; ofs < nf; ind = (ind + 1) % src->abuf_cnt, ofs++){
+			arcan_audio_buffer(aobj, buffers[ofs],
+				src->abufs[ind], src->shm.ptr->abufused[ind],
+				src->desc.channels, src->desc.samplerate, tag
+			);
+			src->shm.ptr->abufused[ind] = 0;
+			amask &= ~ind;
+		}
+
+		atomic_store_explicit(&src->shm.ptr->apending, 0, memory_order_release);
+	}
+
+/* flag that we're done processing */
+	atomic_store_explicit(&src->shm.ptr->aready, 0, memory_order_release);
+	arcan_frameserver_leave(src);
+	arcan_sem_post(src->async);
+	return ARCAN_OK;
 }
 
 void arcan_frameserver_tick_control(arcan_frameserver* src, bool tick)
@@ -971,11 +1027,10 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 				arcan_frameserver_audioframe_direct, ctx, &errc);
 
 			ctx->segid = SEGID_GAME;
-			ctx->sz_audb  = 1024 * 64;
+			ctx->sz_audb  = 0;
 			ctx->ofs_audb = 0;
 			ctx->segid = SEGID_GAME;
-			ctx->audb = arcan_alloc_mem(ctx->sz_audb,
-				ARCAN_MEM_ABUFFER, 0, ARCAN_MEMALIGN_PAGE);
+			ctx->audb = NULL;
 			ctx->queue_mask = EVENT_EXTERNAL;
 		}
 
@@ -994,11 +1049,10 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
  * then letting the frameserver sample whenever necessary */
 		else if (strcmp(setup.args.builtin.mode, "encode") == 0){
 			ctx->segid = SEGID_ENCODER;
-
 /* we don't know how many audio feeds are actually monitored to produce the
  * output, thus not how large the intermediate buffer should be to
  * safely accommodate them all */
-			ctx->sz_audb = ARCAN_SHMIF_AUDIOBUF_SZ;
+			ctx->sz_audb = 65535;
 			ctx->audb = arcan_alloc_mem(ctx->sz_audb,
 				ARCAN_MEM_ABUFFER, 0, ARCAN_MEMALIGN_PAGE);
 			ctx->queue_mask = EVENT_EXTERNAL;
@@ -1007,10 +1061,9 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 			ctx->segid = SEGID_MEDIA;
 			ctx->aid = arcan_audio_feed(
 			(arcan_afunc_cb) arcan_frameserver_audioframe_direct, ctx, &errc);
-			ctx->sz_audb  = 1024 * 64;
+			ctx->sz_audb  = 0;
 			ctx->ofs_audb = 0;
-			ctx->audb = arcan_alloc_mem(ctx->sz_audb,
-				ARCAN_MEM_ABUFFER, 0, ARCAN_MEMALIGN_PAGE);
+			ctx->audb = NULL;
 			ctx->queue_mask = EVENT_EXTERNAL;
 		}
 	}
@@ -1024,12 +1077,10 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 		ctx->segid = SEGID_UNKNOWN;
 		ctx->queue_mask = EVENT_EXTERNAL;
 
-/* although audio playback tend to be kept in the child process, the sampledata
- * may still be needed for recording/monitoring */
-		ctx->sz_audb = 1024 * 64;
+/* local-side buffering only used for recording/mixing now */
+		ctx->sz_audb = 0;
 		ctx->ofs_audb = 0;
-		ctx->audb = arcan_alloc_mem(ctx->sz_audb,
-				ARCAN_MEM_ABUFFER, 0, ARCAN_MEMALIGN_PAGE);
+		ctx->audb = NULL;
 	}
 
 /* two separate queues for passing events back and forth between main program
