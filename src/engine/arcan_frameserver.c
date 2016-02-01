@@ -400,39 +400,11 @@ enum arcan_ffunc_rv arcan_frameserver_emptyframe FFUNC_HEAD
 	return FRV_NOFRAME;
 }
 
-static void check_audb(arcan_frameserver* tgt)
-{
-	struct arcan_shmif_page* shmpage = tgt->shm.ptr;
-
-/* interleave audio / video processing */
-	if (!shmpage || !(shmpage->aready && shmpage->abufused))
-		return;
-/*
-	size_t ntc = tgt->ofs_audb + shmpage->abufused > tgt->sz_audb ?
-		(tgt->sz_audb - tgt->ofs_audb) : shmpage->abufused;
-
-	if (ntc == 0){
-		static bool overflow;
-		if (!overflow){
-			arcan_warning("frameserver_vdirect(), incoming buffer "
-				"overflow for: %d, resetting.\n", tgt->vid);
-			overflow = true;
-		}
-		tgt->ofs_audb = 0;
-	}
-
-/every signaled bit in the abufused bitmask indicate a full audio
- * buffer slot (except the last), with abufused indicating the total used
-	memcpy(&tgt->audb[tgt->ofs_audb], tgt->abufs[0], ntc);
-	tgt->ofs_audb += ntc;
-	shmpage->abufused = 0;
-	shmpage->aready = false;
-	FORCE_SYNCH();*/
-}
-
 enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 {
 	int rv = FRV_NOFRAME;
+	bool do_aud = false;
+
 	if (state.tag != ARCAN_TAG_FRAMESERV || !state.ptr)
 		return rv;
 
@@ -463,8 +435,9 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 			goto no_out;
 
 /* use this opportunity to make sure that we treat audio as well,
- * when theres the one there is usually the other
-		check_audb(tgt); */
+ * when theres the one there is usually the other */
+			do_aud = (atomic_load(&tgt->shm.ptr->aready) > 0 &&
+				atomic_load(&tgt->shm.ptr->apending) > 0);
 
 		if (tgt->flags.autoclock && tgt->clock.frame)
 			autoclock_frame(tgt);
@@ -500,11 +473,11 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 
 /* interactive frameserver blocks on vsemaphore only,
  * so set monitor flags and wake up */
-		atomic_store(&shmpage->vready, 0);
-
-		FORCE_SYNCH();
+		atomic_store_explicit(&shmpage->vready, 0, memory_order_release);
 		arcan_sem_post( tgt->vsync );
-/*		check_audb(tgt); */
+
+		do_aud = (atomic_load(&tgt->shm.ptr->aready) > 0 &&
+			atomic_load(&tgt->shm.ptr->apending) > 0);
 	break;
 
 	case FFUNC_ADOPT:
@@ -514,6 +487,12 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 
 no_out:
 	arcan_frameserver_leave();
+
+/* we need to defer the fake invocation here to not mess with
+ * the signal- guard */
+	if (do_aud)
+		arcan_aid_refresh(tgt->aid);
+
 	return rv;
 }
 
@@ -818,7 +797,7 @@ static inline void emit_droppedframe(arcan_frameserver* src,
  * use a populate function to retrieve at most n' buffers that we then fill.
  */
 arcan_errc arcan_frameserver_audioframe_direct(arcan_aobj* aobj,
-	arcan_aobj_id id, unsigned buffer, void* tag)
+	arcan_aobj_id id, unsigned buffer, bool cont, void* tag)
 {
 	arcan_frameserver* src = (arcan_frameserver*) tag;
 
@@ -828,7 +807,7 @@ arcan_errc arcan_frameserver_audioframe_direct(arcan_aobj* aobj,
 /* we need to switch to an interface where we can retrieve a set number of
  * buffers, matching the number of set bits in amask, then walk from ind-1 and
  * buffering all */
-	if (!arcan_frameserver_enter(src))
+	if (!src->shm.ptr || !arcan_frameserver_enter(src))
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
 	volatile int ind = atomic_load(&src->shm.ptr->aready) - 1;
@@ -837,49 +816,39 @@ arcan_errc arcan_frameserver_audioframe_direct(arcan_aobj* aobj,
 /* sanity check, untrusted source */
 	if (ind >= src->abuf_cnt || ind < 0){
 		arcan_frameserver_leave(src);
-		return ARCAN_ERRC_UNACCEPTED_STATE;
+		return ARCAN_ERRC_NOTREADY;
 	}
 
-	int nbufs = 0;
-	for (int i = 0; i < src->abuf_cnt; i++)
-		nbufs += amask & (1 << i);
-
-/* easy case, "bigbuffer" */
-	if (src->abuf_cnt == 1 || nbufs == 1){
-		arcan_audio_buffer(aobj, buffer,
-			src->abufs[ind], src->shm.ptr->abufused[ind],
-			src->desc.channels, src->desc.samplerate, tag
-		);
-		src->shm.ptr->abufused[ind] = 0;
-		atomic_store_explicit(&src->shm.ptr->apending, 0, memory_order_release);
-	}
-/* request as many buffers as possible */
-	else {
-		unsigned buffers[nbufs];
-
-/* rewind index to beginning */
-		for (size_t i = 0; i < nbufs; i++)
-			ind = (ind > 0 ? ind-1 : src->abuf_cnt-1);
-
-/* request as many buffers as the audio layer can handle,
- * queue them and update the producer bitmask */
-		size_t nf = arcan_audio_getbuffers(aobj, buffers, nbufs);
-		for (int ofs = 0; ofs < nf; ind = (ind + 1) % src->abuf_cnt, ofs++){
-			arcan_audio_buffer(aobj, buffers[ofs],
-				src->abufs[ind], src->shm.ptr->abufused[ind],
-				src->desc.channels, src->desc.samplerate, tag
-			);
-			src->shm.ptr->abufused[ind] = 0;
-			amask &= ~ind;
-		}
-
-		atomic_store_explicit(&src->shm.ptr->apending, 0, memory_order_release);
+	if (0 == amask || ((1<<ind)&amask) == 0){
+		atomic_store_explicit(&src->shm.ptr->aready, 0, memory_order_release);
+		return ARCAN_ERRC_NOTREADY;
 	}
 
-/* flag that we're done processing */
-	atomic_store_explicit(&src->shm.ptr->aready, 0, memory_order_release);
-	arcan_frameserver_leave(src);
-	arcan_sem_post(src->async);
+/* find oldest buffer, we know there is at least one */
+	int i = ind, prev;
+	do {
+		prev = i;
+		i--;
+		if (i < 0)
+			i = src->abuf_cnt-1;
+	} while (i != ind && ((1<<i)&amask) > 0);
+
+	arcan_audio_buffer(aobj, buffer,
+		src->abufs[prev], src->shm.ptr->abufused[prev],
+		src->desc.channels, src->desc.samplerate, tag
+	);
+
+	atomic_store(&src->shm.ptr->abufused[prev], 0);
+	int last = atomic_fetch_and_explicit(&src->shm.ptr->apending,
+		~(1 << prev), memory_order_release);
+
+/* check for cont and > 1, wait for signal.. else release */
+	if (!cont){
+		atomic_store_explicit(&src->shm.ptr->aready, 0, memory_order_release);
+		arcan_frameserver_leave(src);
+		arcan_sem_post(src->async);
+	}
+
 	return ARCAN_OK;
 }
 

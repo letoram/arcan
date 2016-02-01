@@ -114,15 +114,10 @@ static struct {
 /* for frameskip auto to compensate for jitter in transfer etc. */
 	int prewake;
 
-/* how many video frames have we processed, used to calculate when the next
- * frame is supposed to be used */
-	unsigned long long vframecount;
-
-/* audio frame counter, used to determine jitter in samplerate */
-	unsigned long long aframecount;
+/* statistics / timing */
+	unsigned long long aframecount, vframecount;
 	struct retro_system_av_info avinfo; /* timing according to libretro */
 
-/* statistics */
 	int rebasecount, frameskips, transfercost, framecost;
 	const char* colorspace;
 
@@ -138,8 +133,8 @@ static struct {
 	struct arcan_shmif_cont shmcont;
 	int graphmode;
 
-/* internal resampling */
-	int16_t* audbuf;
+/* need to resample as speex don't manage buffering internally */
+	int16_t* in_audb, (* out_audb);
 	size_t audbuf_sz;
 	off_t audbuf_ofs;
 	SpeexResamplerState* resampler;
@@ -163,6 +158,7 @@ static struct {
  * and when input is "dirty" roll back one frame ignoring output,
  * apply, then fast forward one frame */
  	bool dirty_input;
+	float aframesz;
 	int rollback_window;
 	unsigned rollback_front;
 	char* rollback_state;
@@ -189,8 +185,8 @@ static struct {
 	bool (*deserialize)(const void*, size_t);
 	void (*set_ioport)(unsigned, unsigned);
 } retroctx = {
-	.prewake = 10,
-	.preaudiogen = 1,
+	.prewake = 8,
+	.preaudiogen = 0,
 	.skipmode = TARGET_SKIP_AUTO
 #ifdef FRAMESERVER_LIBRETRO_3D
 	,.last_handle = -1
@@ -264,14 +260,18 @@ static bool write_handle(const void* const data,
 
 static void resize_shmpage(int neww, int newh, bool first)
 {
-/* present error message, synch then terminate. */
-	if (!arcan_shmif_resize(&retroctx.shmcont, neww, newh)){
+/* present error message, synch then terminate.
+ * setting a tiny valid buffer size will get the system preferred */
+	if (!arcan_shmif_resize_ext(&retroctx.shmcont, neww, newh,
+		(struct shmif_resize_ext){
+			.abuf_sz = 1, .abuf_cnt = 8, .vbuf_cnt=3})){
 		LOG("resizing shared memory page failed\n");
 		exit(1);
 	}
 	else {
 		char buf[256];
-		snprintf(buf, 256, "resized (%d * %d)", neww, newh);
+		snprintf(buf, 256, "resized (%d * %d) abufsize: %d", neww, newh,
+			(int)retroctx.shmcont.addr->abufsize);
 		log_msg(buf, true);
 	}
 
@@ -586,7 +586,6 @@ static void reset_timing(bool newstate)
 	retroctx.rebasecount++;
 }
 
-static FILE* aout;
 static void libretro_audscb(int16_t left, int16_t right)
 {
 	if (retroctx.skipframe_a)
@@ -596,8 +595,8 @@ static void libretro_audscb(int16_t left, int16_t right)
 
 /* can happen if we skip a lot and never transfer */
 	if (retroctx.audbuf_ofs + 2 < retroctx.audbuf_sz >> 1){
-		retroctx.audbuf[retroctx.audbuf_ofs++] = left;
-		retroctx.audbuf[retroctx.audbuf_ofs++] = right;
+		retroctx.in_audb[retroctx.audbuf_ofs++] = left;
+		retroctx.in_audb[retroctx.audbuf_ofs++] = right;
 	}
 }
 
@@ -608,13 +607,14 @@ static size_t libretro_audcb(const int16_t* data, size_t nframes)
 
 	retroctx.aframecount += nframes;
 
+/* local buffer overflow, shouldn't happen.. */
 	if ((retroctx.audbuf_ofs << 1) +
 		(nframes << 1) + (nframes << 2) > retroctx.audbuf_sz )
 		return nframes;
 
 /* 2 bytes per sample, 2 channels */
 /* audbuf is in int16_t and ofs used as index */
-	memcpy(&retroctx.audbuf[retroctx.audbuf_ofs], data, nframes << 2);
+	memcpy(&retroctx.in_audb[retroctx.audbuf_ofs], data, nframes << 2);
 	retroctx.audbuf_ofs += nframes << 1;
 
 	return nframes;
@@ -1438,6 +1438,7 @@ static inline bool retroctx_sync()
 	long long int next = floor( (double)retroctx.vframecount * retroctx.mspf );
 	int left = next - now;
 
+	LOG("left until next frame? %d\n", left);
 /* ntpd, settimeofday, wonky OS etc. or some massive stall, disqualify
  * DEBUGSTALL for the normal timing thing */
 	static int checked;
@@ -1457,7 +1458,7 @@ static inline bool retroctx_sync()
 		if (retroctx.sync_data)
 			retroctx.sync_data->mark_drop(retroctx.sync_data, timestamp);
 		retroctx.frameskips++;
-
+		LOG("Skip!\n");
 		return false;
 	}
 
@@ -1478,12 +1479,19 @@ static inline bool retroctx_sync()
 	return true;
 }
 
-static inline void add_jitter(int num)
+/*
+ * used for debugging / testing synchronization during various levels of harsh
+ * synchronization costs
+ */
+static inline long long add_jitter(int num)
 {
+	long long start = arcan_timemillis();
 	if (num < 0)
 		arcan_timesleep( rand() % abs(num) );
 	else if (num > 0)
 		arcan_timesleep( num );
+	long long stop = arcan_timemillis();
+	return stop - start;
 }
 
 /*
@@ -1759,6 +1767,12 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		assert(retroctx.avinfo.timing.sample_rate > 1);
 		retroctx.mspf = ( 1000.0 * (1.0 / retroctx.avinfo.timing.fps) );
 
+/* estimate buffer size to store one frame */
+		retroctx.aframesz = (float)ARCAN_SHMIF_SAMPLERATE /
+			retroctx.avinfo.timing.fps *
+			ARCAN_SHMIF_SAMPLE_SIZE * ARCAN_SHMIF_ACHANNELS * 2;
+		LOG("audioframe size: %f b\n", retroctx.aframesz);
+
 		retroctx.ntscconv  = false;
 
 		LOG("video timing: %f fps (%f ms), audio samplerate: %f Hz\n",
@@ -1772,11 +1786,14 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		retroctx.resampler = speex_resampler_init(ARCAN_SHMIF_ACHANNELS,
 			retroctx.avinfo.timing.sample_rate, ARCAN_SHMIF_SAMPLERATE, 5, &errc);
 
-/* we have an intermediate accumulation buffer for audio resampling */
-		retroctx.audbuf_sz = retroctx.avinfo.timing.sample_rate *
-			sizeof(uint16_t) * 2;
-		retroctx.audbuf = malloc(retroctx.audbuf_sz);
-		memset(retroctx.audbuf, 0, retroctx.audbuf_sz);
+/* we have an accumulation buffer for audio samples, we then resample
+ * into another buffer and finally repack in whatever bin sizes the
+ * shmif connection negotiated */
+		retroctx.audbuf_sz = retroctx.avinfo.timing.sample_rate;
+		float sf = (float)ARCAN_SHMIF_SAMPLERATE /
+			(float)retroctx.avinfo.timing.sample_rate;
+		retroctx.in_audb = malloc(retroctx.audbuf_sz);
+		retroctx.out_audb = malloc(ceil((float)retroctx.audbuf_sz * sf));
 
 /* since we're guaranteed to get at least one input callback each run(),
  * call, we multiplex parent event processing as well */
@@ -1873,47 +1890,19 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 			}
 #endif
 
-/* frameskipping here is a simple adaptive thing, if we're too out of alignment
- * against the next deadline, drop the transfer / parent synch or at least
- * accept tearing */
+/* if we start lagging behind on frametime, try selectively skipping frames */
 			bool lastskip = retroctx.skipframe_v;
 			retroctx.skipframe_a = false;
 			retroctx.skipframe_v = !retroctx_sync();
 
-/* don't lock on parent synch if we are dragging behind */
-			int maskv = (0 * lastskip * SHMIF_SIGBLK_NONE) |
-				(retroctx.empty_v ? 0 : SHMIF_SIGVID);
-
-/* possible to add a size lower limit here to maintain a larger
- * resampling buffer than synched to videoframe */
-			if (retroctx.audbuf_ofs && *retroctx.shmcont.abufused == 0){
-				spx_uint32_t outc = retroctx.shmcont.addr->abufsize >> 2;
-/*first number of bytes, then after process..., number of samples */
-				spx_uint32_t nsamp = retroctx.audbuf_ofs >> 1;
-				speex_resampler_process_interleaved_int(retroctx.resampler,
-					(const spx_int16_t*) retroctx.audbuf, &nsamp,
-					(spx_int16_t*) retroctx.shmcont.audp, &outc);
-
-				if (outc){
-					*retroctx.shmcont.abufused += outc *
-						ARCAN_SHMIF_ACHANNELS * sizeof(uint16_t);
-					arcan_shmif_signal(&retroctx.shmcont,
-						SHMIF_SIGAUD | SHMIF_SIGBLK_NONE);
-				}
-
-				retroctx.audbuf_ofs = 0;
-			}
-
-/* Possibly overlay as much tracking / debugging data we can muster */
-			if (retroctx.sync_data)
-				push_stats();
-
-/* Frametransfer step */
-			start = arcan_timemillis();
-				add_jitter(retroctx.jitterxfer);
+/* begin with synching video, as it is the one with the biggest deadline
+ * penalties and the cost for resampling can be enough if we are close */
+		if (!retroctx.empty_v){
+			long long elapsed = add_jitter(retroctx.jitterstep);
 #ifdef FRAMESERVER_LIBRETRO_3D
 			if (-1 != retroctx.last_handle){
-				arcan_shmif_signalhandle(&retroctx.shmcont, maskv,
+				elapsed += arcan_shmif_signalhandle(&retroctx.shmcont,
+					SHMIF_SIGVID,
 					retroctx.last_handle,
 					retroctx.vstore.vinf.text.stride,
 					retroctx.vstore.vinf.text.format
@@ -1923,18 +1912,47 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 			}
 			else
 #endif
-			{
-				arcan_shmif_signal(&retroctx.shmcont, maskv);
-			}
-			stop = arcan_timemillis();
-
-			retroctx.transfercost = stop - start;
+			elapsed += arcan_shmif_signal(&retroctx.shmcont, SHMIF_SIGVID);
+			retroctx.transfercost = elapsed;
 			if (retroctx.sync_data)
 				retroctx.sync_data->mark_transfer(retroctx.sync_data,
 					stop, retroctx.transfercost);
 		}
-	}
 
+		if(retroctx.audbuf_ofs){
+			spx_uint32_t inc = retroctx.audbuf_ofs >> 1; /* per channel, 2 chan */
+			spx_uint32_t left = retroctx.audbuf_ofs;
+			retroctx.audbuf_ofs = 0;
+			speex_resampler_process_interleaved_int(retroctx.resampler,
+				retroctx.in_audb, &inc, retroctx.out_audb, &left);
+
+			left *= sizeof(shmif_asample) * ARCAN_SHMIF_ACHANNELS;
+			uint8_t* inb = (uint8_t*) retroctx.out_audb;
+			size_t bufsz = retroctx.shmcont.addr->abufsize;
+			while (left){
+				uint8_t* outb = (uint8_t*) retroctx.shmcont.audp;
+				size_t used = retroctx.shmcont.abufused;
+				size_t ntc = bufsz - used;
+				if (!ntc)
+					break;
+
+				if (left >= ntc){
+					memcpy(&outb[used], inb, ntc);
+					left -= ntc;
+					inb += ntc;
+					retroctx.shmcont.abufused = bufsz;
+					arcan_shmif_signal(&retroctx.shmcont, SHMIF_SIGAUD);
+				}
+				else{
+					memcpy(&outb[used], inb, left);
+					retroctx.shmcont.abufused += left;
+					left = 0;
+				}
+			}
+		}
+
+	}
+	}
 	return EXIT_SUCCESS;
 }
 

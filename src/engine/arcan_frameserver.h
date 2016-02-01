@@ -7,8 +7,8 @@
 #ifndef _HAVE_ARCAN_FRAMESERVER
 #define _HAVE_ARCAN_FRAMESERVER
 
-#define FSRV_MAX_VBUFC 3
-#define FSRV_MAX_ABUFC 6
+#define FSRV_MAX_VBUFC ARCAN_SHMIF_VBUFC_LIM
+#define FSRV_MAX_ABUFC ARCAN_SHMIF_ABUFC_LIM
 
 /*
  * The following functions are implemented in the platform layer;
@@ -156,6 +156,7 @@ struct arcan_frameserver {
 	size_t vbuf_cnt;
 	shmif_asample* abufs[FSRV_MAX_ABUFC];
 	size_t abuf_cnt;
+	size_t abuf_sz;
 	shm_handle shm;
 
 /* above pointers are all placed so that if they overflow they should hit this
@@ -287,11 +288,8 @@ enum arcan_ffunc_rv arcan_frameserver_nullfeed FFUNC_HEAD;
 void arcan_frameserver_avfeedmon(arcan_aobj_id src, uint8_t* buf,
 	size_t buf_sz, unsigned channels, unsigned frequency, void* tag);
 
-arcan_errc arcan_frameserver_audioframe(struct
-	arcan_aobj* aobj, arcan_aobj_id id, unsigned buffer, void* tag);
-
 arcan_errc arcan_frameserver_audioframe_direct(struct arcan_aobj* aobj,
-	arcan_aobj_id id, unsigned buffer, void* tag);
+	arcan_aobj_id id, unsigned buffer, bool cont, void* tag);
 
 /*
  * Update audio mixing settings for a monitoring frameserver that
@@ -352,5 +350,7 @@ arcan_errc arcan_frameserver_free(arcan_frameserver*);
  */
 int arcan_frameserver_enter(struct arcan_frameserver*);
 void arcan_frameserver_leave();
+
+size_t arcan_frameserver_default_abufsize(size_t new_sz);
 
 #endif

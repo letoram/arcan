@@ -8,9 +8,10 @@
 #define _HAVE_ARCAN_AUDIO
 
 /*
- * This part of the engine has received notably less attention,
- * We've so- far stuck with fixed format, fixed frequency etc.
- * Many of the more interesting OpenAL bits (effects) are missing.
+ * This part of the engine has received notably less attention, We've so- far
+ * stuck with fixed format, fixed frequency etc.  Many of the more interesting
+ * OpenAL bits (effects) are missing. The entire interface, buffer management
+ * and platform abstraction is slated for rework in 0.6.
  */
 
 enum aobj_kind {
@@ -23,15 +24,16 @@ enum aobj_kind {
 struct arcan_aobj;
 
 /*
- * For streaming audio sources where we have defined a feed function,
- * a callback of this form will be added. Buffer == -1 means that the
- * audio feed is shutting down.
- *
- * Audio data is fed through arcan_audio_buffer, where the buffer value
- * in this callback should be forwarded.
+ * Request a [buffer] to be filled using buffer_data. Provides a negative
+ * value to indicate that the audio object is being destructed. [tag] is a a
+ * caller-provided that used when creating the feed.  Expects  ARCAN_OK as
+ * result to indicate that the buffer should be queued for playback.
+ * if [cont] is set, more buffers will be provided if [ARCAN_OK] is
+ * returned. Expects [ARCAN_ERRC_NOTREADY] to indicate that there is no more
+ * data to feed. Any other error leads to cleanup / destruction.
  */
 typedef arcan_errc(*arcan_afunc_cb)(struct arcan_aobj* aobj,
-	arcan_aobj_id id, ssize_t buffer, void* tag);
+	arcan_aobj_id id, ssize_t buffer, bool cont, void* tag);
 
 /*
  * There is one global hook that can be used to get access to audio

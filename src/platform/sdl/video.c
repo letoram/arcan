@@ -66,7 +66,7 @@ void platform_video_restore_external()
 		SDL_Init(SDL_INIT_VIDEO | SDL_INIT_NOPARACHUTE);
 
 	sdl.screen = SDL_SetVideoMode(
-		sdl.mdispw, sdl.mdisph, sizeof(av_pixel), sdl.sdlarg);
+		sdl.canvasw, sdl.canvash, sizeof(av_pixel), sdl.sdlarg);
 }
 
 void* platform_video_gfxsym(const char* sym)
@@ -96,7 +96,7 @@ void platform_video_synch(uint64_t tick_count, float fract,
 	arcan_bench_register_cost( arcan_vint_refresh(fract, &nd) );
 
 	agp_activate_rendertarget(NULL);
-	arcan_vint_drawrt(arcan_vint_world(), 0, 0, sdl.mdispw, sdl.mdisph);
+	arcan_vint_drawrt(arcan_vint_world(), 0, 0, sdl.canvasw, sdl.canvash);
 	arcan_vint_drawcursor(false);
 
 	SDL_GL_SwapBuffers();
@@ -182,8 +182,8 @@ struct monitor_mode* platform_video_query_modes(
 {
 	static struct monitor_mode mode = {};
 
-	mode.width  = sdl.mdispw;
-	mode.height = sdl.mdisph;
+	mode.width  = sdl.canvasw;
+	mode.height = sdl.canvash;
 	mode.depth  = sizeof(av_pixel) * 8;
 	mode.refresh = 60; /* should be queried */
 
@@ -265,6 +265,9 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	if (height == 0)
 		height = vi->current_h;
 
+	sdl.canvasw = width;
+	sdl.canvash = height;
+
 	arcan_warning("Notice: [SDL] Video Info: %i, %i, hardware acceleration: %s, "
 		"window manager: %s, MSAA: %i\n",
 			vi->current_w, vi->current_h, vi->hw_available ? "yes" : "no",
@@ -273,7 +276,8 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 
 /* some GL attributes have to be set before creating the video-surface */
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-	SDL_GL_SetAttribute(SDL_GL_SWAP_CONTROL, synchopt == PROCESSING ? 0 : 1);
+	SDL_GL_SetAttribute(SDL_GL_SWAP_CONTROL,
+		(synchopt == PROCESSING || synchopt == DYNAMIC) ? 0 : 1);
 	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 1);
 	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);
 
@@ -309,8 +313,6 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	if (!sdl.screen)
 		return false;
 
-	sdl.canvasw = width;
-	sdl.canvash = height;
 	glViewport(0, 0, width, height);
 	sdl.last = arcan_frametime();
 	return true;

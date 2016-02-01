@@ -221,7 +221,9 @@ end
 #
 def cscan(cfun, cfile)
 	in_grp = false
+  linec = 0
 	File.open(cfile).each_line{|line|
+		linec = linec + 1
 	if (not in_grp and line =~ /\#define\sEXT_MAPTBL_(\w+)/)
 		in_grp = $1
 	elsif (in_grp)
@@ -235,6 +237,8 @@ def cscan(cfun, cfile)
 			end
 		end
 	}
+rescue
+	STDOUT.print("exception at line #{linec}")
 end
 
 $grouptbl = {}

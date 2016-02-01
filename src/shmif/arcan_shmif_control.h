@@ -442,7 +442,7 @@ struct arcan_shmif_cont {
  * shmif_ functions so aliasing is not recommended */
 	shmif_pixel* vidp;
 	shmif_asample* audp;
-	volatile uint16_t* abufused;
+	uint16_t abufused;
 
 /*
  * This cookie is set/kept to some implementation defined value
@@ -517,13 +517,13 @@ struct arcan_shmif_page {
 	int8_t major;
 	int8_t minor;
 
-/* [FSRV-REQ, ARCAN-ACK]
+/* [FSRV-REQ, ARCAN-ACK, ATOMIC-NOCARE]
  * Will be checked periodically and before transfers. When set, FSRV should
  * treat other contents of page as UNDEFINED until acknowledged.
  * RELATES-TO: width, height */
 	 volatile int8_t resized;
 
-/* [FSRV-SET or ARCAN-SET]
+/* [FSRV-SET or ARCAN-SET, ATOMIC-NOCARE]
  * Dead man's switch, set to 1 when a connection is active and released
  * if parent or child detects an anomaly that would indicate misuse or
  * data corruption. This will trigger guard-threads and similar structures
@@ -545,12 +545,12 @@ struct arcan_shmif_page {
 	volatile atomic_uint vpending;
 
 /* abufused contains the number of bytes consumed in every slot */
-	volatile uint16_t abufused[ARCAN_SHMIF_ABUFC_LIM];
+	volatile _Atomic uint_least16_t abufused[ARCAN_SHMIF_ABUFC_LIM];
 
 /*
  * Presentation hints, see mask above.
  */
-	volatile uint8_t hints;
+	volatile _Atomic uint_least8_t hints;
 
 /*
  * IF the contraints:
@@ -600,24 +600,22 @@ struct arcan_shmif_page {
  * dimensions (i.e. change w,h and set the resized flag to !0) ARCAN will
  * simply ignore the data presented.
  */
-	volatile uint16_t w, h;
+	volatile _Atomic uint_least16_t w, h;
 
 /*
  * [FSRV-SET (aready signal), ARCAN-ACK]
  * Video buffers are planar transfers of a pre-determined size. Audio,
  * on the other hand, can be appended and consumed by the side that currently
- * holds the synch- semaphore.
-*/
-	volatile uint16_t abufsize;
+ * holds the synch- semaphore. Note that if the transfered amount for each
+ * synch is less than the negotiated abufsize, audio artifacts may be heard.
+ */
+	volatile _Atomic uint_least16_t abufsize;
 
 /*
- * [FSRV-SET, ARCAN-ACK (vready signal)]
- * Timing related data to a video frame can be attached in order to assist the
- * parent in determining when/if synchronization should be released and the
- * frame rendered. This value is a hint, do not rely on it as a clock/sleep
- * mechanism.
+ * [FSRV-OR-ARCAN-SET]
+ * Timestamp hint for presentation of a video frame (using synch-to-video)
  */
-	volatile int64_t vpts;
+	volatile _Atomic uint_least64_t vpts;
 
 /*
  * [ARCAN-SET]

@@ -8,11 +8,10 @@
 #define _HAVE_ARCAN_AUDIOINT
 
 #ifndef ARCAN_AUDIO_SLIMIT
-#define ARCAN_AUDIO_SLIMIT 16
+#define ARCAN_AUDIO_SLIMIT 32
 #endif
 
-#define ARCAN_ASTREAMBUF_LIMIT 8
-#define ARCAN_ASTREAMBUF_LLIMIT 4096
+#define ARCAN_ASTREAMBUF_LIMIT ARCAN_SHMIF_ABUFC_LIM
 
 struct arcan_aobj_cell;
 
@@ -59,12 +58,7 @@ typedef struct arcan_aobj {
 	struct arcan_aobj* next;
 } arcan_aobj;
 
-/*
- * Request [bufc] buffer indices to be stored in [buffers], return
- * the amount that could actually be fulfilled. These are expected to
- * be populated each with _audio_buffer calls.
- */
-size_t arcan_audio_getbuffers(arcan_aobj* obj, unsigned* buffers, size_t bufc);
+void arcan_aid_refresh(arcan_aobj_id aid);
 
 /* just a wrapper around alBufferData that takes monitors into account */
 void arcan_audio_buffer(arcan_aobj*, ssize_t buffer, void* abuf,

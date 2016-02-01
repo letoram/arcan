@@ -35,6 +35,7 @@
 #include <arcan_event.h>
 #include <arcan_video.h>
 #include <arcan_audio.h>
+#include "arcan_audioint.h"
 #include <arcan_frameserver.h>
 
 #define INCR(X, C) ( ( (X) = ( (X) + 1) % (C)) )
@@ -638,6 +639,7 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 		newseg->vbufs, 1, cons.w * cons.h * sizeof(shmif_pixel),
 		newseg->abufs, abufc, abufsz
 	);
+	newseg->abuf_sz = abufsz;
 
 	arcan_shmif_setevqs(newseg->shm.ptr, newseg->esync,
 		&(newseg->inqueue), &(newseg->outqueue), true);
@@ -989,6 +991,15 @@ arcan_frameserver* arcan_frameserver_listen_external(const char* key, int fd)
 	return res;
 }
 
+static size_t default_sz = 4096;
+size_t arcan_frameserver_default_abufsize(size_t new_sz)
+{
+	size_t res = default_sz;
+	if (new_sz > 0)
+		default_sz = new_sz;
+	return res;
+}
+
 bool arcan_frameserver_resize(struct arcan_frameserver* s)
 {
 	bool state = false;
@@ -1009,12 +1020,16 @@ bool arcan_frameserver_resize(struct arcan_frameserver* s)
  * ones unless we exceed the upper limit, but by setting 0 there's the
  * indication that we want the size that match the output device the best.
  * Currently, we can't know this and there's a pending audio subsystem refactor
- * to remedy this (kindof) but for now, just revert to splitting a 32k buffer
+ * to remedy this (kindof) but for now, just have it as a user controlled var.
  */
-	if (0 == abufsz) abufsz = 32768 / (abufc ? abufc : 1);
+	if (abufsz < default_sz)
+		abufsz = default_sz;
 
-/* with room for padding both structures and buffers */
-	size_t shmsz = shmpage_size(w, h, vbufc, abufc, abufsz);
+/* shrink number of video buffers if we don't fit */
+	size_t shmsz;
+	do{
+		shmsz = shmpage_size(w, h, vbufc, abufc, abufsz);
+	} while (shmsz > ARCAN_SHMPAGE_MAX_SZ && vbufc-- > 1);
 
 /* initial sanity check */
 	if (shmsz > ARCAN_SHMPAGE_MAX_SZ)
@@ -1070,8 +1085,10 @@ bool arcan_frameserver_resize(struct arcan_frameserver* s)
 	src->shmsize = shmsz;
 
 /* commit to local tracking */
-	s->desc.width = shmpage->w = w;
-	s->desc.height = shmpage->h = h;
+	atomic_store(&shmpage->w, w);
+	atomic_store(&shmpage->h, h);
+	s->desc.width = w;
+	s->desc.height = h;
 	s->vbuf_cnt = vbufc;
 	s->abuf_cnt = abufc;
 
@@ -1079,6 +1096,7 @@ bool arcan_frameserver_resize(struct arcan_frameserver* s)
 	shmpage->segment_size = arcan_shmif_mapav(shmpage,
 		s->vbufs, s->vbuf_cnt, w * h * sizeof(shmif_pixel),
 		s->abufs, s->abuf_cnt, abufsz);
+	s->abuf_sz = abufsz;
 	arcan_shmif_setevqs(shmpage, s->esync, &(s->inqueue), &(s->outqueue), 1);
 
 /* commit to shared page */
