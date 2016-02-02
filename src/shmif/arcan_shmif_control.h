@@ -443,7 +443,7 @@ struct arcan_shmif_cont {
 	shmif_pixel* vidp;
 	shmif_asample* audp;
 	uint16_t abufused;
-
+	uint16_t abufsize;
 /*
  * This cookie is set/kept to some implementation defined value
  * and will be verified during integrity_check. It is placed here
@@ -478,6 +478,22 @@ struct arcan_shmif_cont {
  * bytes and pitch a row length in pixels.
  */
 	size_t w, h, stride, pitch;
+
+/*
+ * Presentation hints:
+ * SHMIF_RHINT_ORIGO_UL (or LL),
+ * SHMIF_RHINT_SUBREGION (only synch dirty region below)
+ * If MULTIPLE video buffers are used, the SUBREGION applies to BOTH.
+ */
+	uint8_t hints;
+
+/*
+ * IF the contraints:
+ * [Hints & SHMIF_RHINT_SUBREGION] and (X2>X1,(X2-X1)<=W,Y2>Y1,(Y2-Y1<=H))
+ * valid, [ARCAN] MAY synch only the specified region.
+ * Caller manipulates this field, will be copied to shmpage during synch.
+ */
+  struct arcan_shmif_region dirty;
 
 /*
  * The cookie act as overflow monitor and trigger for ABI incompatibilities
@@ -548,16 +564,14 @@ struct arcan_shmif_page {
 	volatile _Atomic uint_least16_t abufused[ARCAN_SHMIF_ABUFC_LIM];
 
 /*
- * Presentation hints, see mask above.
+ * Presentation hints, manipulate field in _cont, not here.
  */
 	volatile _Atomic uint_least8_t hints;
 
 /*
- * IF the contraints:
- * [Hints & SHMIF_RHINT_SUBREGION] and (X2>X1,(X2-X1)<=W,Y2>Y1,(Y2-Y1<=H))
- * valid, [ARCAN] MAY synch only the specified region.
+ * see dirty- field in _cont, manipulate there, not here.
  */
-	volatile struct arcan_shmif_region dirty;
+	volatile _Atomic struct arcan_shmif_region dirty;
 
 /* [FSRV-SET]
  * Unique (or 0) segment identifier. Prvodes a local namespace for specifying

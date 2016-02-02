@@ -79,10 +79,11 @@ static unsigned video_setup(void** ctx, char* chroma, unsigned* width,
 	*pitches = *width * 4;
 
 	pthread_mutex_lock(&decctx.vsync);
-	if (!arcan_shmif_resize(&decctx.shmcont, *width, *height)){
+	if (!arcan_shmif_resize_ext(&decctx.shmcont, *width, *height,
+		(struct shmif_resize_ext){
+			.abuf_sz = 8192, .abuf_cnt = 4, .vbuf_cnt = 1})){
 		LOG("arcan_frameserver(decode) shmpage setup failed, "
 			"requested: (%d x %d)\n", *width, *height);
-
 		rv = 0;
 	}
 	pthread_mutex_unlock(&decctx.vsync);
@@ -193,7 +194,6 @@ static void audio_play(void *data,
 		arcan_shmif_enqueue(&decctx.shmcont, &ev);
 	}
 
-/* buffer overflow, need to flush */
 	size_t left = decctx.shmcont.addr->abufsize - decctx.shmcont.abufused;
 	if (left < nb){
 		arcan_shmif_signalA();

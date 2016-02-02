@@ -292,14 +292,14 @@ static int draw_cbt(struct tsm_screen* screen, uint32_t ch,
 	int y2 = y1 + term.cell_h;
 
 /* update dirty rectangle for synchronization */
-	if (x1 < term.acon.addr->dirty.x1)
-		term.acon.addr->dirty.x1 = x1;
-	if (x2 > term.acon.addr->dirty.x2)
-		term.acon.addr->dirty.x2 = x2;
-	if (y1 < term.acon.addr->dirty.y1)
-		term.acon.addr->dirty.y1 = y1;
-	if (y2 > term.acon.addr->dirty.y2)
-		term.acon.addr->dirty.y2 = y2;
+	if (x1 < term.acon.dirty.x1)
+		term.acon.dirty.x1 = x1;
+	if (x2 > term.acon.dirty.x2)
+		term.acon.dirty.x2 = x2;
+	if (y1 < term.acon.dirty.y1)
+		term.acon.dirty.y1 = y1;
+	if (y2 > term.acon.dirty.y2)
+		term.acon.dirty.y2 = y2;
 
 	bool match_cursor = (cstate && x == term.cursor_x && y == term.cursor_y);
 
@@ -406,10 +406,10 @@ static void update_screensize(bool clear)
 		draw_box(&term.acon, 0, 0, term.acon.w, term.acon.h, col);
 
 /* mark everything as dirty */
-	term.acon.addr->dirty.x1 = 0;
-	term.acon.addr->dirty.x2 = term.acon.w;
-	term.acon.addr->dirty.y1 = 0;
-	term.acon.addr->dirty.y2 = term.acon.h;
+	term.acon.dirty.x1 = 0;
+	term.acon.dirty.x2 = term.acon.w;
+	term.acon.dirty.y1 = 0;
+	term.acon.dirty.y2 = term.acon.h;
 
 	term.dirty = DIRTY_PENDING;
 }
@@ -1262,10 +1262,10 @@ static void main_loop()
 			arcan_shmif_signal(&term.acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
 			term.last = arcan_timemillis();
 /* set invalid synch region until redraw changes that */
-			term.acon.addr->dirty.x1 = term.acon.w;
-			term.acon.addr->dirty.x2 = 0;
-			term.acon.addr->dirty.y1 = term.acon.h;
-			term.acon.addr->dirty.y2 = 0;
+			term.acon.dirty.x1 = term.acon.w;
+			term.acon.dirty.x2 = 0;
+			term.acon.dirty.y1 = term.acon.h;
+			term.acon.dirty.y2 = 0;
 		}
 	}
 
@@ -1412,7 +1412,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 
 	gen_symtbl();
 	term.acon = *con;
-	term.acon.addr->hints = SHMIF_RHINT_SUBREGION;
+	term.acon.hints = SHMIF_RHINT_SUBREGION;
 
 	arcan_shmif_resize(&term.acon,
 		term.cell_w * term.cols, term.cell_h * term.rows);

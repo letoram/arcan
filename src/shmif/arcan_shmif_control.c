@@ -890,12 +890,12 @@ static void setup_avbuf(struct arcan_shmif_cont* res)
 	res->priv->abuf_ind = res->priv->vbuf_ind = 0;
 	res->addr->vpending = res->addr->apending = 0;
 	res->abufused = 0;
+	res->abufsize = atomic_load(&res->addr->abufsize);
 
 	arcan_shmif_mapav(res->addr,
 		res->priv->vbuf, res->priv->vbuf_cnt, res->w*res->h*sizeof(shmif_pixel),
-		res->priv->abuf, res->priv->abuf_cnt, res->addr->abufsize
+		res->priv->abuf, res->priv->abuf_cnt, res->abufsize
 	);
-
 	res->vidp = res->priv->vbuf[0];
 	res->audp = res->priv->abuf[0];
 }
@@ -1140,6 +1140,9 @@ static bool step_v(struct arcan_shmif_cont* ctx)
 	struct shmif_hidden* priv = ctx->priv;
 	bool lock = false;
 
+	atomic_store(&ctx->addr->hints, ctx->hints);
+	if (ctx->hints & SHMIF_RHINT_SUBREGION)
+		atomic_store(&ctx->addr->dirty, ctx->dirty);
 	int pending = atomic_fetch_or_explicit(&ctx->addr->vpending,
 		1 << priv->vbuf_ind, memory_order_release);
 	atomic_store_explicit(&ctx->addr->vready,

@@ -462,7 +462,7 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 		struct arcan_vobject* vobj = arcan_video_getobject(tgt->vid);
 		struct storage_info_t* dst_store = vobj->frameset ?
 			vobj->frameset->frames[vobj->frameset->index].frame : vobj->vstore;
-		struct arcan_shmif_region dirty = shmpage->dirty;
+		struct arcan_shmif_region dirty = atomic_load(&shmpage->dirty);
 		push_buffer(tgt, dst_store,
 			shmpage->hints & SHMIF_RHINT_SUBREGION ? &dirty : NULL);
 		dst_store->vinf.text.vpts = shmpage->vpts;
