@@ -114,7 +114,7 @@ static int add_target(struct arcan_dbh* dst, int argc, char** argv)
 	}
 
 	arcan_targetid tid = arcan_db_addtarget(
-		dst, argv[0], tag, argv[2], (const char**) &argv[3], argc - 3, bfmt);
+		dst, argv[0], tag, argv[fi+1], (const char**) &argv[fi+2], argc-fi-2, bfmt);
 
 	if (tid == BAD_TARGET){
 		printf("couldn't add target (%s)\n", argv[0]);

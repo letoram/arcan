@@ -582,7 +582,7 @@ arcan_errc arcan_audio_stop(arcan_aobj_id id)
 
 /* callback with empty buffers means that we want to clean up */
 	if (dobj->feed && dobj->alid){
-		dobj->feed(dobj, id, -1, dobj->tag);
+		dobj->feed(dobj, id, -1, false, dobj->tag);
 		_wrap_alError(dobj, "audio_stop(stop)");
 	}
 	arcan_audio_free(id);
@@ -680,24 +680,6 @@ static ssize_t find_freebufferind(arcan_aobj* cur, bool tag){
 	return -1;
 }
 
-size_t arcan_audio_getbuffers(arcan_aobj* obj,
-	unsigned* buffers, size_t bufc)
-{
-	size_t rv = 0;
-	if (!obj)
-		return rv;
-
-	for (size_t i = 0; bufc > 0 && i < obj->n_streambuf; i++){
-		if (!obj->streambufmask[i]){
-			obj->streambufmask[i] = true;
-			*buffers++ = obj->streambuf[i];
-			rv++;
-		}
-	}
-
-	return rv;
-}
-
 void arcan_audio_buffer(arcan_aobj* aobj, ssize_t buffer, void* audbuf,
 	size_t abufs, unsigned int channels, unsigned int samplerate, void* tag)
 {
@@ -754,7 +736,7 @@ static void arcan_astream_refill(arcan_aobj* current)
 	ALint processed = 0;
 
 	if (current->alid == AL_NONE && current->feed){
-		current->feed(current, current->alid, 0, current->tag);
+		current->feed(current, current->alid, 0, false, current->tag);
 		return;
 	}
 
@@ -784,7 +766,7 @@ static void arcan_astream_refill(arcan_aobj* current)
  * Some frameserver modes will do this as a push rather than pull however. */
 		if (current->feed){
 			arcan_errc rv = current->feed(current, current->alid,
-				buffer, current->tag);
+				buffer, i < processed - 1, current->tag);
 			_wrap_alError(current, "audio_refill(refill:buffer)");
 
 			if (rv == ARCAN_OK){
@@ -807,14 +789,16 @@ static void arcan_astream_refill(arcan_aobj* current)
 			"	internal vs openAL buffers.\n");
 
 	if (current->used < current->n_streambuf && current->feed){
-		for (size_t i = current->used; i < sizeof(current->streambuf) /
-			sizeof(current->streambuf[0]); i++){
+		size_t lim = sizeof(current->streambuf) / sizeof(current->streambuf[0]);
+		for (size_t i = current->used; i < lim; i++){
 			int ind = find_freebufferind(current, false);
 			if (-1 == ind)
 				break;
 
 			arcan_errc rv = current->feed(current, current->alid,
-				current->streambuf[ind], current->tag);
+				current->streambuf[ind], find_freebufferind(
+				current, false) != -1, current->tag
+			);
 
 			if (rv == ARCAN_OK){
 				alSourceQueueBuffers(current->alid, 1, &current->streambuf[ind]);
@@ -838,6 +822,13 @@ cleanup:
 /* means that when main() receives this event, it will kill/free the object */
 	newevent.aud.source = current->id;
 	arcan_event_enqueue(arcan_event_defaultctx(), &newevent);
+}
+
+void arcan_aid_refresh(arcan_aobj_id aid)
+{
+	struct arcan_aobj* obj = arcan_audio_getobj(aid);
+ 	if (obj)
+		arcan_astream_refill(obj);
 }
 
 char** arcan_audio_capturelist()
@@ -895,7 +886,7 @@ char** arcan_audio_capturelist()
  * then it's up to the monitoring function of the recording
  * frameserver to do the mixing */
 static arcan_errc capturefeed(arcan_aobj* aobj, arcan_aobj_id id,
-	ssize_t buffer, void* tag)
+	ssize_t buffer, bool cont, void* tag)
 {
 	if (buffer < 0)
 		return ARCAN_ERRC_NOTREADY;
@@ -1077,7 +1068,7 @@ void arcan_audio_purge(arcan_aobj_id* ids, size_t nids)
 		if (!match){
 			(*previous) = next;
 			if (current->feed)
-				current->feed(current, current->id, -1, current->tag);
+				current->feed(current, current->id, -1, false, current->tag);
 
 			_wrap_alError(current, "audio_stop(stop)");
 

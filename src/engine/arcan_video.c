@@ -1421,7 +1421,7 @@ arcan_errc arcan_video_resize_canvas(size_t neww, size_t newh)
 		agp_resize_rendertarget(current_context->stdoutp.art, neww, newh);
 
 	build_orthographic_matrix(arcan_video_display.window_projection, 0,
-		mode.phy_width, mode.phy_height, 0, 0, 1);
+		mode.width, mode.height, 0, 0, 1);
 
 	build_orthographic_matrix(arcan_video_display.default_projection, 0,
 		mode.width, mode.height, 0, 0, 1);

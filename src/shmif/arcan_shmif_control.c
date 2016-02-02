@@ -889,7 +889,7 @@ static void setup_avbuf(struct arcan_shmif_cont* res)
 
 	res->priv->abuf_ind = res->priv->vbuf_ind = 0;
 	res->addr->vpending = res->addr->apending = 0;
-	res->abufused = &res->addr->abufused[0];
+	res->abufused = 0;
 
 	arcan_shmif_mapav(res->addr,
 		res->priv->vbuf, res->priv->vbuf_cnt, res->w*res->h*sizeof(shmif_pixel),
@@ -1162,20 +1162,25 @@ static bool step_a(struct arcan_shmif_cont* ctx)
 	struct shmif_hidden* priv = ctx->priv;
 	bool lock = false;
 
-	if (*ctx->abufused == 0)
+	if (ctx->abufused == 0)
 		return false;
 
-	atomic_fetch_or_explicit(&ctx->addr->apending,
+/* atomic, set [pending, used] -> flag */
+	int pending = atomic_fetch_or_explicit(&ctx->addr->apending,
 		1 << priv->abuf_ind, memory_order_release);
+	atomic_store_explicit(&ctx->addr->abufused[priv->abuf_ind],
+		ctx->abufused, memory_order_release);
 	atomic_store_explicit(&ctx->addr->aready,
 		priv->abuf_ind+1, memory_order_release);
-	lock = true;
 
+/* now it is safe to slide local references */
+	pending |= 1 << priv->abuf_ind;
 	priv->abuf_ind++;
 	if (priv->abuf_ind == priv->abuf_cnt)
 		priv->abuf_ind = 0;
-	ctx->abufused = &ctx->addr->abufused[priv->abuf_ind];
+	ctx->abufused = 0;
 	ctx->audp = priv->abuf[priv->abuf_ind];
+	lock = priv->abuf_cnt == 1 || (pending & (1 << priv->abuf_ind));
 
 	FORCE_SYNCH();
 	return lock;
@@ -1195,7 +1200,7 @@ unsigned arcan_shmif_signal(struct arcan_shmif_cont* ctx,
 	if ( (mask & SHMIF_SIGAUD) && priv->audio_hook)
 		mask = priv->audio_hook(ctx);
 
-	if ( (mask & SHMIF_SIGAUD) && !(mask & SHMIF_SIGVID)){
+	if ( mask & SHMIF_SIGAUD ){
 		bool lock = step_a(ctx);
 
 		if (lock && !(mask & (SHMIF_SIGBLK_NONE | SHMIF_SIGBLK_ONCE)))
@@ -1203,7 +1208,7 @@ unsigned arcan_shmif_signal(struct arcan_shmif_cont* ctx,
 		else
 			arcan_sem_trywait(ctx->asem);
 	}
-	if ( (mask & SHMIF_SIGVID) && !(mask & SHMIF_SIGAUD)){
+	if (mask & SHMIF_SIGVID){
 		bool lock = step_v(ctx);
 
 		if (lock && !(mask & (SHMIF_SIGBLK_NONE | SHMIF_SIGBLK_ONCE)))
@@ -1335,7 +1340,8 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 bool arcan_shmif_resize_ext(struct arcan_shmif_cont* arg,
 	unsigned width, unsigned height, struct shmif_resize_ext ext)
 {
-	return shmif_resize(arg,width,height,ext.abuf_sz,ext.vbuf_cnt,ext.abuf_cnt);
+	return shmif_resize(arg, width, height,
+		ext.abuf_sz, ext.vbuf_cnt, ext.abuf_cnt);
 }
 
 bool arcan_shmif_resize(struct arcan_shmif_cont* arg,

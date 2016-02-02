@@ -1944,6 +1944,31 @@ static int gain(lua_State* ctx)
 	return 0;
 }
 
+static int abufsz(lua_State* ctx)
+{
+	LUA_TRACE("audio_buffer_size");
+	size_t new_sz = luaL_checknumber(ctx, 1);
+	if (new_sz && new_sz < 1024){
+		arcan_warning("audio_buffer_size(), input size too small, forcing 1024\n");
+		new_sz = 1024;
+	}
+	else if (new_sz > 32768){
+		arcan_warning("audio_buffer_size(), excessively large buffer, capping"
+			"to 32k\n");
+		new_sz = 32768;
+	}
+	else if (new_sz != 0 && new_sz %
+		(sizeof(shmif_asample) * ARCAN_SHMIF_ACHANNELS)){
+		arcan_warning("audio_buffer_size(%zu), useless size, "
+			"growing to align with sample size\n");
+		new_sz += new_sz % (sizeof(shmif_asample) * ARCAN_SHMIF_ACHANNELS);
+	}
+
+	lua_pushnumber(ctx, arcan_frameserver_default_abufsize(new_sz));
+	LUA_ETRACE("audio_buffer_size", NULL);
+	return 1;
+}
+
 static int playaudio(lua_State* ctx)
 {
 	LUA_TRACE("play_audio");
@@ -9123,6 +9148,7 @@ static const luaL_Reg audfuns[] = {
 {"delete_audio",      dropaudio   },
 {"load_asample",      loadasample },
 {"audio_gain",        gain        },
+{"audio_buffer_size", abufsz      },
 {"capture_audio",     captureaudio},
 {"list_audio_inputs", capturelist },
 {NULL, NULL}
