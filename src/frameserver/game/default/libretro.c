@@ -185,9 +185,9 @@ static struct {
 	bool (*deserialize)(const void*, size_t);
 	void (*set_ioport)(unsigned, unsigned);
 } retroctx = {
-	.prewake = 8,
+	.prewake = 10,
 	.preaudiogen = 0,
-	.skipmode = TARGET_SKIP_AUTO
+	.skipmode = TARGET_SKIP_NONE
 #ifdef FRAMESERVER_LIBRETRO_3D
 	,.last_handle = -1
 #endif
@@ -264,20 +264,20 @@ static void resize_shmpage(int neww, int newh, bool first)
  * setting a tiny valid buffer size will get the system preferred */
 	if (!arcan_shmif_resize_ext(&retroctx.shmcont, neww, newh,
 		(struct shmif_resize_ext){
-			.abuf_sz = 1, .abuf_cnt = 8, .vbuf_cnt=3})){
+			.abuf_sz = 1, .abuf_cnt = 8, .vbuf_cnt=2})){
 		LOG("resizing shared memory page failed\n");
 		exit(1);
 	}
 	else {
 		char buf[256];
 		snprintf(buf, 256, "resized (%d * %d) abufsize: %d", neww, newh,
-			(int)retroctx.shmcont.addr->abufsize);
+			(int)retroctx.shmcont.abufsize);
 		log_msg(buf, true);
 	}
 
 #ifdef FRAMESERVER_LIBRETRO_3D
 	if (retroctx.rtgt){
-		retroctx.shmcont.addr->hints = SHMIF_RHINT_ORIGO_LL;
+		retroctx.shmcont.hints = SHMIF_RHINT_ORIGO_LL;
 		agp_activate_rendertarget(NULL);
 		agp_resize_rendertarget(retroctx.rtgt, neww, newh);
 		retroctx.hwctx.context_reset();
@@ -1438,7 +1438,6 @@ static inline bool retroctx_sync()
 	long long int next = floor( (double)retroctx.vframecount * retroctx.mspf );
 	int left = next - now;
 
-	LOG("left until next frame? %d\n", left);
 /* ntpd, settimeofday, wonky OS etc. or some massive stall, disqualify
  * DEBUGSTALL for the normal timing thing */
 	static int checked;
@@ -1928,7 +1927,7 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 
 			left *= sizeof(shmif_asample) * ARCAN_SHMIF_ACHANNELS;
 			uint8_t* inb = (uint8_t*) retroctx.out_audb;
-			size_t bufsz = retroctx.shmcont.addr->abufsize;
+			size_t bufsz = retroctx.shmcont.abufsize;
 			while (left){
 				uint8_t* outb = (uint8_t*) retroctx.shmcont.audp;
 				size_t used = retroctx.shmcont.abufused;
@@ -1951,6 +1950,8 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 			}
 		}
 
+		if (retroctx.sync_data)
+				push_stats();
 	}
 	}
 	return EXIT_SUCCESS;
@@ -1959,12 +1960,12 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 static void log_msg(char* msg, bool flush)
 {
 	draw_box(&retroctx.shmcont, 0, 0,
-		retroctx.shmcont.addr->w, retroctx.shmcont.addr->h,
+		retroctx.shmcont.w, retroctx.shmcont.h,
 		RGBA(0x00, 0x00, 0x00, 0xff)
 	);
 
 	int dw, dh;
-	int sw = retroctx.shmcont.addr->w;
+	int sw = retroctx.shmcont.w;
 
 /* clip string */
 	char* mendp = msg + strlen(msg) + 1;
@@ -1976,7 +1977,7 @@ static void log_msg(char* msg, bool flush)
 
 /* center */
 	draw_text(&retroctx.shmcont, msg,
-		0.5 * (sw - dw), 0.5 * (retroctx.shmcont.addr->h - dh), 0xffffffff);
+		0.5 * (sw - dw), 0.5 * (retroctx.shmcont.h - dh), 0xffffffff);
 
 	if (flush)
 		arcan_shmif_signal(&retroctx.shmcont, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
