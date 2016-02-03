@@ -46,21 +46,21 @@ static struct {
 	kiss_fftr_cfg fft_state;
 
 	bool loop;
-
-	pthread_mutex_t async;
-	pthread_mutex_t vsync;
 } decctx;
 
+/*
+ * the sigblk on audio may be a poor workaround at the moment, the problem
+ * is that for unknown connections, an al-listener won't be allocated
+ * unless there's a need to (i.e. while checking video we also see audio)
+ * but VLC can prebuffer a *lot* of audio filling the queue and locking..
+ */
 #define AUD_VIS_HRES 2048
 #define arcan_shmif_signalA(){\
-	pthread_mutex_lock(&decctx.async);\
-	arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGAUD);\
-	pthread_mutex_lock(&decctx.async);\
+	arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGAUD | SHMIF_SIGBLK_NONE);\
 }
+
 #define arcan_shmif_signalV(){\
-	pthread_mutex_lock(&decctx.vsync);\
 	arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGVID);\
-	pthread_mutex_unlock(&decctx.vsync);\
 }
 
 static void process_inevq();
@@ -78,15 +78,13 @@ static unsigned video_setup(void** ctx, char* chroma, unsigned* width,
 
 	*pitches = *width * 4;
 
-	pthread_mutex_lock(&decctx.vsync);
 	if (!arcan_shmif_resize_ext(&decctx.shmcont, *width, *height,
 		(struct shmif_resize_ext){
-			.abuf_sz = 8192, .abuf_cnt = 4, .vbuf_cnt = 1})){
+			.abuf_sz = 16384, .abuf_cnt = 12, .vbuf_cnt = 1})){
 		LOG("arcan_frameserver(decode) shmpage setup failed, "
 			"requested: (%d x %d)\n", *width, *height);
 		rv = 0;
 	}
-	pthread_mutex_unlock(&decctx.vsync);
 
 	return rv;
 }
@@ -180,36 +178,43 @@ static void generate_frame()
 static void audio_play(void *data,
 	const void *samples, unsigned count, int64_t pts)
 {
-	size_t nb = count * ARCAN_SHMIF_ACHANNELS * ARCAN_SHMIF_SAMPLE_SIZE;
+	size_t smplsz = ARCAN_SHMIF_ACHANNELS * sizeof(shmif_asample);
+	size_t nb = count * smplsz;
 
 	if (!decctx.got_video && decctx.shmcont.addr->w != AUD_VIS_HRES)
 	{
 		arcan_shmif_resize(&decctx.shmcont, AUD_VIS_HRES, 2);
 		decctx.fft_audio = true;
-		arcan_event ev = {
+		arcan_shmif_enqueue(&decctx.shmcont, &(struct arcan_event){
 			.category = EVENT_EXTERNAL,
 			.ext.kind = ARCAN_EVENT(STREAMINFO),
 			.ext.streaminf.langid = {'A', 'U', 'D'}
-		};
-		arcan_shmif_enqueue(&decctx.shmcont, &ev);
+		});
 	}
 
-	size_t left = decctx.shmcont.addr->abufsize - decctx.shmcont.abufused;
-	if (left < nb){
-		arcan_shmif_signalA();
-		left = decctx.shmcont.addr->abufsize;
-	}
+/* split the incoming samples across the available bufferslots,
+ * update FFT where applicable */
+	const uint8_t* inptr = samples;
+	while (nb){
+		size_t left = decctx.shmcont.abufsize - decctx.shmcont.abufused;
+		uint8_t* daddr = &((uint8_t*)decctx.shmcont.audp)[decctx.shmcont.abufused];
 
-	if (left > nb){
-		memcpy( (uint8_t*)(decctx.shmcont.audp) +
-			decctx.shmcont.abufused, samples, nb);
-		decctx.shmcont.abufused += nb;
+		if (nb > left){
+			size_t ntc = (left % smplsz != 0) ? left - (left % smplsz) : left;
+			memcpy(daddr, inptr, ntc);
+			inptr += ntc;
+			nb -= ntc;
+			decctx.shmcont.abufused += ntc;
+			if (decctx.fft_audio)
+				generate_frame();
+			arcan_shmif_signalA();
+		}
+		else{
+			memcpy(daddr, inptr, nb);
+			decctx.shmcont.abufused += nb;
+			break;
+		}
 	}
-
-	if (decctx.fft_audio){
-		generate_frame();
-	}
-
 }
 
 static void audio_flush()
@@ -218,8 +223,10 @@ static void audio_flush()
 		.category = EVENT_EXTERNAL,
 		.ext.kind = ARCAN_EVENT(FLUSHAUD)
 	};
+	atomic_store(&decctx.shmcont.addr->apending, 0);
+	atomic_store(&decctx.shmcont.addr->aready, 0);
 	decctx.shmcont.abufused = 0;
-	decctx.shmcont.addr->apending = 0;
+/* may be additional buffers in the audio layer somewhere */
 	arcan_shmif_enqueue(&decctx.shmcont, &ev);
 }
 
@@ -508,8 +515,6 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 	pthread_mutexattr_t attr;
 	pthread_mutexattr_init(&attr);
 	pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_ERRORCHECK);
-	pthread_mutex_init(&decctx.async, &attr);
-	pthread_mutex_init(&decctx.vsync, &attr);
 
 /* register media with vlc, hook up local input mapping */
   decctx.player = libvlc_media_player_new_from_media(media);
@@ -552,9 +557,10 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		if (rc < 0)
 			break;
 	}
-	arcan_shmif_drop(&decctx.shmcont);
+
  	libvlc_media_player_stop(decctx.player);
  	libvlc_media_player_release(decctx.player);
 	libvlc_release(decctx.vlc);
+	arcan_shmif_drop(&decctx.shmcont);
 	return EXIT_SUCCESS;
 }

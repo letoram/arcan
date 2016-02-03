@@ -971,6 +971,12 @@ arcan_frameserver* arcan_frameserver_alloc()
 	res->flags.autoclock = true;
 	res->parent.vid = ARCAN_EID;
 
+/* these are statically defined right now, but we may want to make them
+ * configurable in the future to possibly utilize other accelerated resampling
+ * etc. */
+	res->desc.samplerate = ARCAN_SHMIF_SAMPLERATE;
+	res->desc.channels = ARCAN_SHMIF_ACHANNELS;
+
 /* not used for any serious identification purpose,
  * just to prevent / help detect developer errors */
 	res->cookie = (uint32_t) random();
@@ -1059,8 +1065,6 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 		ctx->esync, &(ctx->inqueue), &(ctx->outqueue), true);
 	ctx->inqueue.synch.killswitch = (void*) ctx;
 	ctx->outqueue.synch.killswitch = (void*) ctx;
-	ctx->desc.samplerate = ARCAN_SHMIF_SAMPLERATE;
-	ctx->desc.channels = ARCAN_SHMIF_ACHANNELS;
 
 	struct arcan_shmif_page* shmpage = ctx->shm.ptr;
 	shmpage->w = setup.init_w;
