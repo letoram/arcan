@@ -64,7 +64,7 @@ static bool alloc_fbo(struct agp_rendertarget* dst, bool retry)
 				glBindRenderbuffer(GL_RENDERBUFFER, dst->depth);
 				glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8,
 					dst->store->w, dst->store->h);
-
+				glBindRenderbuffer(GL_RENDERBUFFER, 0);
 				glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
 					GL_RENDERBUFFER, dst->depth);
 			}
@@ -310,7 +310,7 @@ void agp_resize_rendertarget(
 	glDeleteRenderbuffers(1,&tgt->depth);
 	tgt->fbo = GL_NONE;
 	tgt->depth = GL_NONE;
-	alloc_fbo(tgt, tgt->mode);
+	alloc_fbo(tgt, false);
 }
 
 void agp_activate_vstore_multi(struct storage_info_t** backing, size_t n)
