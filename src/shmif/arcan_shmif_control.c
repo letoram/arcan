@@ -1261,12 +1261,12 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 		return false;
 
 /* wait for any outstanding v/asynch */
-	if (arg->addr->vready){
-		while (arg->addr->vready && arg->addr->dms)
+	if (atomic_load(&arg->addr->vready)){
+		while (atomic_load(&arg->addr->vready) && arg->addr->dms)
 			arcan_sem_wait(arg->vsem);
 	}
-	if (arg->addr->aready){
-		while (arg->addr->aready && arg->addr->dms)
+	if (atomic_load(&arg->addr->aready)){
+		while (atomic_load(&arg->addr->aready) && arg->addr->dms)
 			arcan_sem_wait(arg->asem);
 	}
 
