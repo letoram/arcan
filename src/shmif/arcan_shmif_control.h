@@ -250,8 +250,11 @@ enum arcan_shmif_sigmask {
  * visual/aural artifacts */
 	SHMIF_SIGBLK_NONE  = 4,
 
-/* return immediately unless there is already a transfer pending */
+/* return immediately unless there is already a transfer pending,
+ * currently disabled as the option of having multiple A/V buffers
+ * might work out better
 	SHMIF_SIGBLK_ONCE = 8
+ */
 };
 
 struct arcan_shmif_cont;

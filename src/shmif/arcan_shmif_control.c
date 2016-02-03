@@ -1206,7 +1206,7 @@ unsigned arcan_shmif_signal(struct arcan_shmif_cont* ctx,
 	if ( mask & SHMIF_SIGAUD ){
 		bool lock = step_a(ctx);
 
-		if (lock && !(mask & (SHMIF_SIGBLK_NONE | SHMIF_SIGBLK_ONCE)))
+		if (lock && !(mask & SHMIF_SIGBLK_NONE))
 			arcan_sem_wait(ctx->asem);
 		else
 			arcan_sem_trywait(ctx->asem);
@@ -1214,7 +1214,7 @@ unsigned arcan_shmif_signal(struct arcan_shmif_cont* ctx,
 	if (mask & SHMIF_SIGVID){
 		bool lock = step_v(ctx);
 
-		if (lock && !(mask & (SHMIF_SIGBLK_NONE | SHMIF_SIGBLK_ONCE)))
+		if (lock && !(mask & SHMIF_SIGBLK_NONE))
 			arcan_sem_wait(ctx->vsem);
 		else
 			arcan_sem_trywait(ctx->vsem);
@@ -1243,6 +1243,9 @@ void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 /* no guard thread for this context */
 	else{
 		free(inctx->priv);
+		sem_close(inctx->asem);
+		sem_close(inctx->esem);
+		sem_close(inctx->vsem);
 	}
 
 	munmap(inctx->addr, inctx->shmsize);

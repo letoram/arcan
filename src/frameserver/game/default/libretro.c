@@ -264,7 +264,7 @@ static void resize_shmpage(int neww, int newh, bool first)
  * setting a tiny valid buffer size will get the system preferred */
 	if (!arcan_shmif_resize_ext(&retroctx.shmcont, neww, newh,
 		(struct shmif_resize_ext){
-			.abuf_sz = 1, .abuf_cnt = 8, .vbuf_cnt=2})){
+			.abuf_sz = 1, .abuf_cnt = 8, .vbuf_cnt=1})){
 		LOG("resizing shared memory page failed\n");
 		exit(1);
 	}
@@ -1555,6 +1555,145 @@ static void setup_3dcore(struct retro_hw_render_callback* ctx)
 }
 #endif
 
+static void map_lretrofun()
+{
+/* map normal functions that will be called repeatedly */
+	retroctx.run = (void(*)()) libretro_requirefun("retro_run");
+	retroctx.reset = (void(*)()) libretro_requirefun("retro_reset");
+	retroctx.load_game = (bool(*)(const struct retro_game_info* game))
+		libretro_requirefun("retro_load_game");
+	retroctx.serialize = (bool(*)(void*, size_t))
+		libretro_requirefun("retro_serialize");
+	retroctx.set_ioport = (void(*)(unsigned,unsigned))
+		libretro_requirefun("retro_set_controller_port_device");
+	retroctx.deserialize = (bool(*)(const void*, size_t))
+		libretro_requirefun("retro_unserialize");
+	retroctx.serialize_size = (size_t(*)())
+		libretro_requirefun("retro_serialize_size");
+
+/* setup callbacks */
+	( (void(*)(retro_video_refresh_t) )
+		libretro_requirefun("retro_set_video_refresh"))(libretro_vidcb);
+	( (size_t(*)(retro_audio_sample_batch_t))
+		libretro_requirefun("retro_set_audio_sample_batch"))(libretro_audcb);
+	( (void(*)(retro_audio_sample_t))
+		libretro_requirefun("retro_set_audio_sample"))(libretro_audscb);
+	( (void(*)(retro_input_poll_t))
+		libretro_requirefun("retro_set_input_poll"))(libretro_pollcb);
+	( (void(*)(retro_input_state_t))
+		libretro_requirefun("retro_set_input_state") )(libretro_inputstate);
+}
+
+/* might need to add another subgrammar here to handle multiple file-
+ * images (another ??, why not just populate an array with images and a
+ * swap- function.. */
+static bool load_resource(const char* resname)
+{
+	char logbuf[128];
+	char logbuf_sz = sizeof(logbuf);
+
+/* rather ugly -- core actually requires file-path */
+	if (retroctx.sysinfo.need_fullpath){
+		LOG("core(%s), core requires fullpath, resolved to (%s).\n",
+			retroctx.sysinfo.library_name, resname );
+
+		retroctx.gameinfo.data = NULL;
+		retroctx.gameinfo.path = strdup( resname );
+		retroctx.gameinfo.size = 0;
+	}
+	else {
+		retroctx.gameinfo.path = strdup( resname );
+		data_source res = arcan_open_resource(resname);
+		map_region map = arcan_map_resource(&res, true);
+		if (!map.ptr){
+			snprintf(logbuf, logbuf_sz, "couldn't map (%s)", resname?resname:"");
+			log_msg(logbuf, true);
+			LOG("%s\n", logbuf);
+			return false;
+		}
+		retroctx.gameinfo.data = map.ptr;
+		retroctx.gameinfo.size = map.sz;
+	}
+
+	snprintf(logbuf, logbuf_sz, "loading game...");
+	log_msg(logbuf, true);
+
+	if ( retroctx.load_game( &retroctx.gameinfo ) == false ){
+		snprintf(logbuf, logbuf_sz, "loading failed");
+		log_msg(logbuf, true);
+		return false;
+	}
+
+	return true;
+}
+
+static void setup_av()
+{
+/* load the game, and if that fails, give up */
+#ifdef FRAMESERVER_LIBRETRO_3D
+	if (retroctx.hwctx.context_reset)
+		retroctx.hwctx.context_reset();
+#endif
+
+	( (void(*)(struct retro_system_av_info*))
+		libretro_requirefun("retro_get_system_av_info"))(&retroctx.avinfo);
+
+/* setup frameserver, synchronization etc. */
+	assert(retroctx.avinfo.timing.fps > 1);
+	assert(retroctx.avinfo.timing.sample_rate > 1);
+	retroctx.mspf = ( 1000.0 * (1.0 / retroctx.avinfo.timing.fps) );
+
+/* estimate buffer size to store one frame */
+	retroctx.aframesz = (float)ARCAN_SHMIF_SAMPLERATE /
+		retroctx.avinfo.timing.fps *
+		ARCAN_SHMIF_SAMPLE_SIZE * ARCAN_SHMIF_ACHANNELS * 2;
+	LOG("audioframe size: %f b\n", retroctx.aframesz);
+
+	retroctx.ntscconv = false;
+
+	LOG("video timing: %f fps (%f ms), audio samplerate: %f Hz\n",
+		(float)retroctx.avinfo.timing.fps, (float)retroctx.mspf,
+		(float)retroctx.avinfo.timing.sample_rate);
+
+	LOG("setting up resampler, %f => %d.\n",
+		(float)retroctx.avinfo.timing.sample_rate, ARCAN_SHMIF_SAMPLERATE);
+
+	int errc;
+	retroctx.resampler = speex_resampler_init(ARCAN_SHMIF_ACHANNELS,
+		retroctx.avinfo.timing.sample_rate, ARCAN_SHMIF_SAMPLERATE, 5, &errc);
+
+/* we have an accumulation buffer for audio samples, we then resample into
+ * another buffer and finally repack in whatever bin sizes the shmif
+ * connection negotiated, a streaming resampler interface would be nice..*/
+	retroctx.audbuf_sz = retroctx.avinfo.timing.sample_rate;
+	float sf = (float)ARCAN_SHMIF_SAMPLERATE /
+		(float)retroctx.avinfo.timing.sample_rate;
+	retroctx.in_audb = malloc(retroctx.audbuf_sz);
+	retroctx.out_audb = malloc(ceil((float)retroctx.audbuf_sz * sf));
+}
+
+static void setup_input()
+{
+/* setup standard device remapping tables, these can be changed
+ * by the calling process with a corresponding target event. */
+	for (int i = 0; i < MAX_PORTS; i++){
+		retroctx.input_ports[i].cursor_x = 0;
+		retroctx.input_ports[i].cursor_y = 1;
+		retroctx.input_ports[i].cursor_btns[0] = 0;
+		retroctx.input_ports[i].cursor_btns[1] = 1;
+		retroctx.input_ports[i].cursor_btns[2] = 2;
+		retroctx.input_ports[i].cursor_btns[3] = 3;
+		retroctx.input_ports[i].cursor_btns[4] = 4;
+	}
+
+	retroctx.state_sz = retroctx.serialize_size();
+	arcan_shmif_enqueue(&retroctx.shmcont, &(struct arcan_event){
+		.category = EVENT_EXTERNAL,
+		.ext.kind = ARCAN_EVENT(STATESIZE),
+		.ext.stateinf.size = retroctx.state_sz
+	});
+}
+
 static void dump_help()
 {
 	fprintf(stdout, "ARCAN_ARG (environment variable, "
@@ -1610,6 +1749,9 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
  * so resolve to absolute one for the time being */
 	retroctx.syspath = realpath(spath, NULL);
 
+/* set if we only want to dump status about the core, info etc.  (which
+ * incidentally was then moved to yet another format to parse and manage as
+ * a separate file, not an embedded string in core.. */
 	bool info_only = arg_lookup(args, "info", 0, NULL) || cont->addr == NULL;
 
 	if (!libname || *libname == 0){
@@ -1651,248 +1793,135 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 	( (void(*)(retro_environment_t))
 		libretro_requirefun("retro_set_environment"))(libretro_setenv);
 
-/* get the lib up and running */
-	if ( (initf(), true) && apiver() == RETRO_API_VERSION){
-		((void(*)(struct retro_system_info*))
-		 libretro_requirefun("retro_get_system_info"))(&retroctx.sysinfo);
+/* get the lib up and running, ensure that the version matches
+ * the one we got from the header */
+	if (!( (initf(), true) && apiver() == RETRO_API_VERSION) )
+		return EXIT_FAILURE;
 
-/* added as a support to romman etc. so they don't have
- * to load the libs in question */
-		if (info_only){
-			fprintf(stdout, "arcan_frameserver(info)\nlibrary:%s\n"
-				"version:%s\nextensions:%s\n/arcan_frameserver(info)",
-				retroctx.sysinfo.library_name, retroctx.sysinfo.library_version,
-				retroctx.sysinfo.valid_extensions);
-			return EXIT_FAILURE;
-		}
+	((void(*)(struct retro_system_info*))
+	 libretro_requirefun("retro_get_system_info"))(&retroctx.sysinfo);
 
-		LOG("libretro(%s), version %s loaded. Accepted extensions: %s\n",
+	if (info_only){
+		fprintf(stdout, "arcan_frameserver(info)\nlibrary:%s\n"
+			"version:%s\nextensions:%s\n/arcan_frameserver(info)",
 			retroctx.sysinfo.library_name, retroctx.sysinfo.library_version,
 			retroctx.sysinfo.valid_extensions);
+		return EXIT_FAILURE;
+	}
+
+	LOG("libretro(%s), version %s loaded. Accepted extensions: %s\n",
+		retroctx.sysinfo.library_name, retroctx.sysinfo.library_version,
+		retroctx.sysinfo.valid_extensions);
 
 /* map functions to context structure */
-		retroctx.run   = (void(*)()) libretro_requirefun("retro_run");
-		retroctx.reset = (void(*)()) libretro_requirefun("retro_reset");
-
-		retroctx.load_game  = (bool(*)(const struct retro_game_info* game))
-			libretro_requirefun("retro_load_game");
-		retroctx.serialize  = (bool(*)(void*, size_t))
-			libretro_requirefun("retro_serialize");
-		retroctx.set_ioport = (void(*)(unsigned,unsigned))
-			libretro_requirefun("retro_set_controller_port_device");
-
-		retroctx.deserialize    = (bool(*)(const void*, size_t))
-			libretro_requirefun("retro_unserialize");
-/* bah, unmarshal or deserialize.. not unserialize :p */
-
-		retroctx.serialize_size = (size_t(*)())
-			libretro_requirefun("retro_serialize_size");
-
-/* setup callbacks */
-		( (void(*)(retro_video_refresh_t) )
-			libretro_requirefun("retro_set_video_refresh"))(libretro_vidcb);
-		( (size_t(*)(retro_audio_sample_batch_t))
-			libretro_requirefun("retro_set_audio_sample_batch"))(libretro_audcb);
-		( (void(*)(retro_audio_sample_t))
-			libretro_requirefun("retro_set_audio_sample"))(libretro_audscb);
-		( (void(*)(retro_input_poll_t))
-			libretro_requirefun("retro_set_input_poll"))(libretro_pollcb);
-		( (void(*)(retro_input_state_t))
-			libretro_requirefun("retro_set_input_state") )(libretro_inputstate);
-
 /* send some information on what core is actually loaded etc. */
-		arcan_event outev = {
-			.category = EVENT_EXTERNAL,
-			.ext.kind = ARCAN_EVENT(IDENT)
-		};
+	arcan_event outev = {
+		.category = EVENT_EXTERNAL,
+		.ext.kind = ARCAN_EVENT(IDENT)
+	};
 
-		size_t msgsz = COUNT_OF(outev.ext.message.data);
-		snprintf((char*)outev.ext.message.data, msgsz, "%s %s",
-			retroctx.sysinfo.library_name, retroctx.sysinfo.library_version);
-		arcan_shmif_enqueue(&retroctx.shmcont, &outev);
+	size_t msgsz = COUNT_OF(outev.ext.message.data);
+	snprintf((char*)outev.ext.message.data, msgsz, "%s %s",
+		retroctx.sysinfo.library_name, retroctx.sysinfo.library_version);
+	arcan_shmif_enqueue(&retroctx.shmcont, &outev);
 
-		snprintf(logbuf, logbuf_sz, "(core: %s)", retroctx.sysinfo.library_name);
-		log_msg(logbuf, true);
+/* map the functions we need during runtime */
+	map_lretrofun();
 
-/* rather ugly -- core actually requires file-path */
-		if (retroctx.sysinfo.need_fullpath){
-			LOG("core(%s), core requires fullpath, resolved to (%s).\n",
-				retroctx.sysinfo.library_name, resname );
+/* load / start */
+	if (!load_resource(resname))
+		return EXIT_FAILURE;
 
-			retroctx.gameinfo.data = NULL;
-			retroctx.gameinfo.path = strdup( resname );
-			retroctx.gameinfo.size = 0;
-		}
-		else {
-			retroctx.gameinfo.path = strdup( resname );
-			data_source res = arcan_open_resource(resname);
-			map_region map = arcan_map_resource(&res, true);
-			if (!map.ptr){
-				snprintf(logbuf, logbuf_sz, "couldn't map (%s)", resname?resname:"");
-				log_msg(logbuf, true);
-				LOG("%s\n", logbuf);
-				return EXIT_FAILURE;
-			}
-			retroctx.gameinfo.data = map.ptr;
-			retroctx.gameinfo.size = map.sz;
-		}
+	snprintf((char*)outev.ext.message.data, msgsz, "loaded");
+	arcan_shmif_enqueue(&retroctx.shmcont, &outev);
 
-/* load the game, and if that fails, give up */
-		if (snprintf(logbuf, logbuf_sz, "loading game...") >= logbuf_sz)
-			logbuf[logbuf_sz - 1] = '\0';
-		log_msg(logbuf, true);
+/* remixing, conversion functions for color formats... */
+	setup_av();
 
-		if ( retroctx.load_game( &retroctx.gameinfo ) == false ){
-			snprintf((char*)outev.ext.message.data, msgsz, "failed");
-			snprintf(logbuf, logbuf_sz, "loading failed");
-			arcan_shmif_enqueue(&retroctx.shmcont, &outev);
-			log_msg(logbuf, true);
-			return EXIT_FAILURE;
-		}
+/* default input tables, state management */
+	setup_input();
 
-#ifdef FRAMESERVER_LIBRETRO_3D
-		if (retroctx.hwctx.context_reset)
-			retroctx.hwctx.context_reset();
-#endif
-
-		snprintf((char*)outev.ext.message.data, msgsz, "loaded");
-		arcan_shmif_enqueue(&retroctx.shmcont, &outev);
-
-		( (void(*)(struct retro_system_av_info*))
-			libretro_requirefun("retro_get_system_av_info"))(&retroctx.avinfo);
-
-/* setup frameserver, synchronization etc. */
-		assert(retroctx.avinfo.timing.fps > 1);
-		assert(retroctx.avinfo.timing.sample_rate > 1);
-		retroctx.mspf = ( 1000.0 * (1.0 / retroctx.avinfo.timing.fps) );
-
-/* estimate buffer size to store one frame */
-		retroctx.aframesz = (float)ARCAN_SHMIF_SAMPLERATE /
-			retroctx.avinfo.timing.fps *
-			ARCAN_SHMIF_SAMPLE_SIZE * ARCAN_SHMIF_ACHANNELS * 2;
-		LOG("audioframe size: %f b\n", retroctx.aframesz);
-
-		retroctx.ntscconv  = false;
-
-		LOG("video timing: %f fps (%f ms), audio samplerate: %f Hz\n",
-			(float)retroctx.avinfo.timing.fps, (float)retroctx.mspf,
-			(float)retroctx.avinfo.timing.sample_rate);
-
-		LOG("setting up resampler, %f => %d.\n",
-			(float)retroctx.avinfo.timing.sample_rate, ARCAN_SHMIF_SAMPLERATE);
-
-		int errc;
-		retroctx.resampler = speex_resampler_init(ARCAN_SHMIF_ACHANNELS,
-			retroctx.avinfo.timing.sample_rate, ARCAN_SHMIF_SAMPLERATE, 5, &errc);
-
-/* we have an accumulation buffer for audio samples, we then resample
- * into another buffer and finally repack in whatever bin sizes the
- * shmif connection negotiated */
-		retroctx.audbuf_sz = retroctx.avinfo.timing.sample_rate;
-		float sf = (float)ARCAN_SHMIF_SAMPLERATE /
-			(float)retroctx.avinfo.timing.sample_rate;
-		retroctx.in_audb = malloc(retroctx.audbuf_sz);
-		retroctx.out_audb = malloc(ceil((float)retroctx.audbuf_sz * sf));
-
-/* since we're guaranteed to get at least one input callback each run(),
+/* since we're 'guaranteed' to get at least one input callback each run(),
  * call, we multiplex parent event processing as well */
-		outev.ext.framestatus.framenumber = 0;
-/* some cores die on this kind of reset, retroctx.reset() e.g. NXengine */
+	outev.ext.framestatus.framenumber = 0;
+
+/* some cores die on this kind of reset, retroctx.reset() e.g. NXengine
+ * retro_reset() */
 
 /* basetime is used as epoch for all other timing calculations */
-		retroctx.basetime = arcan_timemillis();
+	retroctx.basetime = arcan_timemillis();
 
-/* since we might have requests to save state before we die,
- * we use the flush_eventq as an atexit */
-		atexit(flush_eventq);
+/* since we might have requests to save state before we die, we use the
+ * flush_eventq as an atexit */
+	atexit(flush_eventq);
 
-/* setup standard device remapping tables, these can be changed
- * by the calling process with a corresponding target event. */
-		for (int i = 0; i < MAX_PORTS; i++){
-			retroctx.input_ports[i].cursor_x = 0;
-			retroctx.input_ports[i].cursor_y = 1;
-			retroctx.input_ports[i].cursor_btns[0] = 0;
-			retroctx.input_ports[i].cursor_btns[1] = 1;
-			retroctx.input_ports[i].cursor_btns[2] = 2;
-			retroctx.input_ports[i].cursor_btns[3] = 3;
-			retroctx.input_ports[i].cursor_btns[4] = 4;
-		}
+	if (retroctx.state_sz > 0)
+		retroctx.rollback_state = malloc(retroctx.state_sz);
 
-/* only now, when a game is loaded and set-up, can we know how large a
- * savestate might possibly be, the frontend need to know this in order
- * to determine strategy for netplay and for enabling / disabling savestates */
-		retroctx.state_sz = retroctx.serialize_size();
-		outev.category = EVENT_EXTERNAL;
-		outev.ext.kind = ARCAN_EVENT(STATESIZE);
-		outev.ext.stateinf.size = retroctx.state_sz;
-		arcan_shmif_enqueue(&retroctx.shmcont, &outev);
+/* pre-audio is a last- resort to work around buffering size issues
+ * in audio layers -- run one or more frames of emulation, ignoring
+ * timing and input, and just keep the audioframes */
+	do_preaudio();
+	long long int start, stop;
 
-		if (retroctx.state_sz > 0)
-			retroctx.rollback_state = malloc(retroctx.state_sz);
-
-		do_preaudio();
-		long long int start, stop;
-
-		while (retroctx.shmcont.addr->dms){
+	while (retroctx.shmcont.addr->dms){
 /* since pause and other timing anomalies are part of the eventq flush,
  * take care of it outside of frame frametime measurements */
-			flush_eventq();
+		flush_eventq();
 
-			if (retroctx.skipmode >= TARGET_SKIP_FASTFWD)
-				libretro_skipnframes(retroctx.skipmode -
-					TARGET_SKIP_FASTFWD + 1, true);
+		if (retroctx.skipmode >= TARGET_SKIP_FASTFWD)
+			libretro_skipnframes(retroctx.skipmode -
+				TARGET_SKIP_FASTFWD + 1, true);
 
-			else if (retroctx.skipmode >= TARGET_SKIP_STEP)
-				libretro_skipnframes(retroctx.skipmode -
-					TARGET_SKIP_STEP + 1, false);
+		else if (retroctx.skipmode >= TARGET_SKIP_STEP)
+			libretro_skipnframes(retroctx.skipmode -
+				TARGET_SKIP_STEP + 1, false);
 
-			else if (retroctx.skipmode <= TARGET_SKIP_ROLLBACK &&
-				retroctx.dirty_input){
+		else if (retroctx.skipmode <= TARGET_SKIP_ROLLBACK &&
+			retroctx.dirty_input){
 /* last entry will always be the current front */
-				retroctx.deserialize(retroctx.rollback_state +
-					retroctx.state_sz * retroctx.rollback_front, retroctx.state_sz);
+			retroctx.deserialize(retroctx.rollback_state +
+				retroctx.state_sz * retroctx.rollback_front, retroctx.state_sz);
 
 /* rollback to desired "point", run frame (which will consume input)
  * then roll forward to next video frame */
-				process_frames(retroctx.rollback_window - 1, true, true);
-				retroctx.dirty_input = false;
-			}
+			process_frames(retroctx.rollback_window - 1, true, true);
+			retroctx.dirty_input = false;
+		}
 
-			testcounter = 0;
+		testcounter = 0;
 
-/* add jitter, jitterstep, framecost etc. are mostly just
- * used for debug graphing */
-			start = arcan_timemillis();
-				add_jitter(retroctx.jitterstep);
-				process_frames(1, false, false);
-			stop = arcan_timemillis();
-
-			retroctx.framecost = stop - start;
-
-			if (retroctx.sync_data){
-				retroctx.sync_data->mark_start(retroctx.sync_data, start);
-				retroctx.sync_data->mark_stop(retroctx.sync_data, stop);
-			}
+/* add jitter, jitterstep, framecost etc. are used for debugging /
+ * testing by adding delays at various key synchronization points */
+		start = arcan_timemillis();
+			add_jitter(retroctx.jitterstep);
+			process_frames(1, false, false);
+		stop = arcan_timemillis();
+		retroctx.framecost = stop - start;
+		if (retroctx.sync_data){
+			retroctx.sync_data->mark_start(retroctx.sync_data, start);
+			retroctx.sync_data->mark_stop(retroctx.sync_data, stop);
+		}
 
 /* Some FE applications need a grasp of "where" we are frame-wise,
  * particularly for single-stepping etc. */
-			outev.ext.kind = ARCAN_EVENT(FRAMESTATUS);
-			outev.ext.framestatus.framenumber++;
-			arcan_shmif_enqueue(&retroctx.shmcont, &outev);
+		outev.ext.kind = ARCAN_EVENT(FRAMESTATUS);
+		outev.ext.framestatus.framenumber++;
+		arcan_shmif_enqueue(&retroctx.shmcont, &outev);
 
 #ifdef _DEBUG
-			if (testcounter != 1){
-				static bool countwarn = 0;
-				if (!countwarn && (countwarn = true))
-					LOG("inconsistent core behavior, "
-						"expected 1 video frame / run(), got %d\n", testcounter);
-			}
+		if (testcounter != 1){
+			static bool countwarn = 0;
+			if (!countwarn && (countwarn = true))
+				LOG("inconsistent core behavior, "
+					"expected 1 video frame / run(), got %d\n", testcounter);
+		}
 #endif
 
 /* if we start lagging behind on frametime, try selectively skipping frames */
-			bool lastskip = retroctx.skipframe_v;
-			retroctx.skipframe_a = false;
-			retroctx.skipframe_v = !retroctx_sync();
+		bool lastskip = retroctx.skipframe_v;
+		retroctx.skipframe_a = false;
+		retroctx.skipframe_v = !retroctx_sync();
 
 /* begin with synching video, as it is the one with the biggest deadline
  * penalties and the cost for resampling can be enough if we are close */
@@ -1928,6 +1957,7 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 			left *= sizeof(shmif_asample) * ARCAN_SHMIF_ACHANNELS;
 			uint8_t* inb = (uint8_t*) retroctx.out_audb;
 			size_t bufsz = retroctx.shmcont.abufsize;
+
 			while (left){
 				uint8_t* outb = (uint8_t*) retroctx.shmcont.audp;
 				size_t used = retroctx.shmcont.abufused;
@@ -1952,7 +1982,6 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 
 		if (retroctx.sync_data)
 				push_stats();
-	}
 	}
 	return EXIT_SUCCESS;
 }
