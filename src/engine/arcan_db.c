@@ -24,7 +24,7 @@ static bool db_init = false;
 
 #define DDL_TARGET "CREATE TABLE target ("\
 	"tgtid INTEGER PRIMARY KEY,"\
-	"tag STRING UNIQUE NOT NULL,"\
+	"tag STRING NOT NULL,"\
 	"name STRING UNIQUE NOT NULL,"\
 	"executable TEXT NOT NULL,"\
 	"user_id STRING DEFAULT NULL,"\
