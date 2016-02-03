@@ -821,6 +821,7 @@ arcan_errc arcan_frameserver_audioframe_direct(arcan_aobj* aobj,
 
 	if (0 == amask || ((1<<ind)&amask) == 0){
 		atomic_store_explicit(&src->shm.ptr->aready, 0, memory_order_release);
+		arcan_sem_post(src->async);
 		return ARCAN_ERRC_NOTREADY;
 	}
 
