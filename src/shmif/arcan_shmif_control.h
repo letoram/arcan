@@ -132,12 +132,12 @@ static const int ARCAN_SHMIF_SAMPLE_SIZE = sizeof(shmif_asample);
  * be rejected.
  */
 #ifndef PP_SHMPAGE_MAXW
-#define PP_SHMPAGE_MAXW 4096
+#define PP_SHMPAGE_MAXW 8192
 #endif
 static const int ARCAN_SHMPAGE_MAXW = PP_SHMPAGE_MAXW;
 
 #ifndef PP_SHMPAGE_MAXH
-#define PP_SHMPAGE_MAXH 2048
+#define PP_SHMPAGE_MAXH 8192
 #endif
 static const int ARCAN_SHMPAGE_MAXH = PP_SHMPAGE_MAXH;
 
