@@ -315,19 +315,16 @@ void agp_resize_rendertarget(
 
 void agp_activate_vstore_multi(struct storage_info_t** backing, size_t n)
 {
-	char buf[] = "map_tu99";
+	char buf[] = {'m', 'a', 'p', '_', 't', 'u', 0, 0, 0};
 
 	for (int i = 0; i < n && i < 99; i++){
 		glActiveTexture(GL_TEXTURE0 + i);
 		glBindTexture(GL_TEXTURE_2D, backing[i]->vinf.text.glid);
-		if (i > 10){
+		if (i < 10)
+			buf[6] = '0' + i;
+		else{
 			buf[6] = '0' + (i / 10);
 			buf[7] = '0' + (i % 10);
-			buf[8] = '\0';
-		}
-		else {
-			buf[6] = '0' + i;
-			buf[7] = '\0';
 		}
 		agp_shader_forceunif(buf, shdrint, &i);
 	}

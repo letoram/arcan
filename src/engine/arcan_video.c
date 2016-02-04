@@ -4322,10 +4322,19 @@ static size_t process_rendertarget(struct rendertarget* tgt, float fract)
 
 /* depending on frameset- mode, we may need to split the frameset up into
  * multitexturing, or switch the txcos with the ones that may be used for
- * clipping */
+ * clipping, but mapping TU indices to current shader must be done before.
+ * To not skip on the early-out-on-clipping and not incur additional state
+ * change costs, only do it in this edge case. */
+		bool shader_sw = false;
+		agp_shader_id shid = elem->program > 0 ?
+			elem->program : agp_default_shader(BASIC_2D);
+
 		if (elem->frameset){
-			if (elem->frameset->mode == ARCAN_FRAMESET_MULTITEXTURE)
+			if (elem->frameset->mode == ARCAN_FRAMESET_MULTITEXTURE){
+				agp_shader_activate(shid);
+				shader_sw = true;
 				arcan_vint_bindmulti(elem, elem->frameset->index);
+			}
 			else{
 				struct frameset_store* ds =
 					&elem->frameset->frames[elem->frameset->index];
@@ -4352,8 +4361,8 @@ static size_t process_rendertarget(struct rendertarget* tgt, float fract)
 			populate_stencil(tgt, elem, fract);
 		}
 
-		agp_shader_activate( elem->program > 0 ?
-			elem->program : agp_default_shader(BASIC_2D) );
+		if (!shader_sw)
+			agp_shader_activate(shid);
 
 		if (dprops.opa < 1.0 - EPSILON || elem->blendmode == BLEND_NONE)
 			agp_blendstate(elem->blendmode);
