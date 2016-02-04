@@ -82,9 +82,13 @@ static void* nanny_thread(void* arg)
 static size_t shmpage_size(size_t w, size_t h,
 	size_t vbufc, size_t abufc, int abufsz)
 {
+#ifdef ARCAN_SHMIF_OVERCOMMIT
+	return ARCAN_SHMPAGE_START_SZ;
+#else
 	return sizeof(struct arcan_shmif_page) + 64 +
 		abufc * abufsz + (abufc * 64) +
 		vbufc * w * h * sizeof(shmif_pixel) + (vbufc * 64);
+#endif
 }
 
 /*
