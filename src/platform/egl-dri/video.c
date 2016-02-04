@@ -142,7 +142,7 @@ static char* egl_synchopts[] = {
 
 static char* egl_envopts[] = {
 	"ARCAN_VIDEO_DEVICE=/dev/dri/card0", "specifiy primary device",
-	"ARCAN_VIDEO_CONNECTOR=conn_ind", "force primary display connector",
+	"ARCAN_VIDEO_CONNECTOR=conn_ind", "primary display connector (invalid lists)",
 	"ARCAN_VIDEO_DRM_MASTER", "fail if drmMaster can't be obtained",
 	"ARCAN_VIDEO_WAIT_CONNECTOR", "loop until an active connector is found",
 	NULL
@@ -815,7 +815,7 @@ static const char* connection_type(int conn)
 	}
 }
 
-static void dump_connectors(FILE* dst, struct dev_node* node)
+static void dump_connectors(FILE* dst, struct dev_node* node, bool shorth)
 {
 	drmModeRes* res = drmModeGetResources(node->fd);
 	if (!res){
@@ -838,15 +838,16 @@ static void dump_connectors(FILE* dst, struct dev_node* node)
 			connection_type(conn->connection),
 			subpixel_type(conn->subpixel));
 
-		for (size_t j = 0; j < conn->count_modes; j++){
-			fprintf(dst, "\t\t Mode (%d:%s): clock@%d, refresh@%d\n\t\tflags : ",
-				(int)j, conn->modes[j].name,
-				conn->modes[j].clock, conn->modes[j].vrefresh
-			);
-			drm_mode_flag(dst, conn->modes[j].flags);
-			fprintf(dst, " type : ");
-			drm_mode_tos(dst, conn->modes[j].type);
-		}
+		if (!shorth)
+			for (size_t j = 0; j < conn->count_modes; j++){
+				fprintf(dst, "\t\t Mode (%d:%s): clock@%d, refresh@%d\n\t\tflags : ",
+					(int)j, conn->modes[j].name,
+					conn->modes[j].clock, conn->modes[j].vrefresh
+			)	;
+				drm_mode_flag(dst, conn->modes[j].flags);
+				fprintf(dst, " type : ");
+				drm_mode_tos(dst, conn->modes[j].type);
+			}
 
 		fprintf(dst, "\n\n");
 		drmModeFreeConnector(conn);
@@ -1250,15 +1251,10 @@ struct monitor_mode* platform_video_query_modes(
 		mcache[i].width = conn->modes[i].hdisplay;
 		mcache[i].height = conn->modes[i].vdisplay;
 		mcache[i].subpixel = subpixel_type(conn->subpixel);
-		mcache[i].phy_width = 0;
-		mcache[i].phy_height = 0;
+		mcache[i].phy_width = conn->mmWidth;
+		mcache[i].phy_height = conn->mmHeight;
 		mcache[i].dynamic = false;
 		mcache[i].id = i;
-/*
- * phy_width, dpi > dpmm
- * phy_height, dpi > dpmm
- * decode flags into mode as well
- */
 		mcache[i].depth = sizeof(av_pixel) * 8;
 	}
 
@@ -1442,12 +1438,19 @@ struct monitor_mode platform_video_dimensions()
 	if (egl_dri.last_display){
 		res.width = egl_dri.last_display->display.mode->hdisplay;
 		res.height = egl_dri.last_display->display.mode->vdisplay;
+		if (egl_dri.last_display->display.con){
+			res.phy_width = egl_dri.last_display->display.con->mmWidth;
+			res.phy_height = egl_dri.last_display->display.con->mmHeight;
+		}
 	}
 /*
  * fake dimensions to provide an OK default PPCM (say 72)
  */
-	res.phy_width = (float)egl_dri.canvasw / (float)28.34645 * 10.0;
-	res.phy_height = (float)egl_dri.canvash / (float)28.34645 * 10.0;
+	if (!res.phy_width)
+		res.phy_width = (float)egl_dri.canvasw / (float)28.34645 * 10.0;
+
+	if (!res.phy_height)
+		res.phy_height = (float)egl_dri.canvash / (float)28.34645 * 10.0;
 
 	return res;
 }
@@ -1531,7 +1534,7 @@ bool platform_video_init(uint16_t w, uint16_t h,
 			"ARCAN_VIDEO_CONNECTOR specified but couldn't configure display.\n" :
 			"setup_kms(), card found but no working/connected display.\n");
 
-		dump_connectors(stdout, &nodes[0]);
+		dump_connectors(stdout, &nodes[0], true);
 		goto cleanup;
 	}
 
@@ -1766,7 +1769,7 @@ const char* platform_video_capstr()
 		eglexts = (const char*)eglQueryString(
 		get_display(0)->device->display, EGL_EXTENSIONS);
 
-		dump_connectors(stream, get_display(0)->device);
+		dump_connectors(stream, get_display(0)->device, true);
 	}
 	fprintf(stream, "Video Platform (EGL-DRI)\n"
 			"Vendor: %s\nRenderer: %s\nGL Version: %s\n"
