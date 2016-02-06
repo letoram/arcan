@@ -23,6 +23,7 @@ set(OS_DYLIB_EXTENSION=\".so\")
 
 add_definitions(
 	-D__UNIX
+	-D__LINUX
 	-DPOSIX_C_SOURCE
 	-D_GNU_SOURCE
 	-DPLATFORM_HEADER=\"${PLATFORM_ROOT}/platform.h\"
