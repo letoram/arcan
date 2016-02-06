@@ -759,7 +759,7 @@ int arcan_shmif_resolve_connpath(const char* key,
 	int len;
 #ifdef __LINUX
 	if (ARCAN_SHMIF_PREFIX[0] == '\0'){
-		len = snprintf(dbuf, dbuf_sz, "%s%s", &ARCAN_SHMIF_PREFIX[1], key);
+		len = 1+snprintf(dbuf+1, dbuf_sz-1, "%s%s", &ARCAN_SHMIF_PREFIX[1], key);
 	}
 	else
 #endif
