@@ -457,8 +457,10 @@ elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 	set(PKGCONFIG_DIR lib/pkgconfig)
 
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
-	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/CMakeLists.Windows)
-
+	message(FATAL_ERROR "Windows no longer supported")
+#
+#	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/CMakeLists.Windows)
+#
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/CMakeLists.Darwin)
 	set(PKGCONFIG_DIR lib/pkgconfig)
