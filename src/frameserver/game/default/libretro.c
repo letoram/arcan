@@ -264,15 +264,9 @@ static void resize_shmpage(int neww, int newh, bool first)
  * setting a tiny valid buffer size will get the system preferred */
 	if (!arcan_shmif_resize_ext(&retroctx.shmcont, neww, newh,
 		(struct shmif_resize_ext){
-			.abuf_sz = 1, .abuf_cnt = 8, .vbuf_cnt=1})){
+			.abuf_sz = 1, .abuf_cnt = 8, .vbuf_cnt=2})){
 		LOG("resizing shared memory page failed\n");
 		exit(1);
-	}
-	else {
-		char buf[256];
-		snprintf(buf, 256, "resized (%d * %d) abufsize: %d", neww, newh,
-			(int)retroctx.shmcont.abufsize);
-		log_msg(buf, true);
 	}
 
 #ifdef FRAMESERVER_LIBRETRO_3D
@@ -1863,6 +1857,13 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
  * timing and input, and just keep the audioframes */
 	do_preaudio();
 	long long int start, stop;
+
+/* don't want the UI to draw a mouse cursor in this window */
+	arcan_shmif_enqueue(&retroctx.shmcont, &(struct arcan_event){
+		.category = EVENT_EXTERNAL,
+		.ext.kind = ARCAN_EVENT(CURSORHINT),
+		.ext.message = "hidden"
+	});
 
 	while (retroctx.shmcont.addr->dms){
 /* since pause and other timing anomalies are part of the eventq flush,

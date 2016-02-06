@@ -91,13 +91,15 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 			return false;
 		}
 
-		disp[0].conn.addr->hints = SHMIF_RHINT_ORIGO_LL;
+		atomic_store(&disp[0].conn.hints, SHMIF_RHINT_ORIGO_LL);
 
-		if (!arcan_shmif_resize( &disp[0].conn, width, height )){
+		if (!arcan_shmif_resize_ext( &disp[0].conn, width, height,
+			(struct shmif_resize_ext){.abuf_sz = 1, .abuf_cnt = 8, .vbuf_cnt = 1})){
 			arcan_warning("couldn't set shm dimensions (%d, %d)\n", width, height);
 			return false;
 		}
 
+/* we provide our own cursor that is blended in the output */
 		arcan_shmif_enqueue(&disp[0].conn, &(struct arcan_event){
 			.category = EVENT_EXTERNAL,
 			.ext.kind = ARCAN_EVENT(CURSORHINT),
