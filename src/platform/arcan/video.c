@@ -91,7 +91,7 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 			return false;
 		}
 
-		atomic_store(&disp[0].conn.hints, SHMIF_RHINT_ORIGO_LL);
+		disp[0].conn.hints = SHMIF_RHINT_ORIGO_LL;
 
 		if (!arcan_shmif_resize_ext( &disp[0].conn, width, height,
 			(struct shmif_resize_ext){.abuf_sz = 1, .abuf_cnt = 8, .vbuf_cnt = 1})){
