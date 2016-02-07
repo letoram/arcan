@@ -766,7 +766,7 @@ int arcan_shmif_resolve_connpath(const char* key,
 	if (ARCAN_SHMIF_PREFIX[0] == '/')
 		len = snprintf(dbuf, dbuf_sz, "%s%s", ARCAN_SHMIF_PREFIX, key);
 	else
-		len = snprintf(dbuf, dbuf_sz, "%s/.%s%s",
+		len = snprintf(dbuf, dbuf_sz, "%s/%s%s",
 			getenv("HOME"), ARCAN_SHMIF_PREFIX, key);
 
 	if (len >= dbuf_sz)
