@@ -1584,7 +1584,7 @@ static void map_lretrofun()
 static bool load_resource(const char* resname)
 {
 	char logbuf[128];
-	char logbuf_sz = sizeof(logbuf);
+	size_t logbuf_sz = sizeof(logbuf);
 
 /* rather ugly -- core actually requires file-path */
 	if (retroctx.sysinfo.need_fullpath){
