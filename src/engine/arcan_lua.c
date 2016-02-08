@@ -3920,6 +3920,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			break;
 			case EVENT_EXTERNAL_CURSORHINT:
 				fltpush(mcbuf, extmsg_sz, (char*)ev->ext.message.data, flt_alpha, '?');
+				tblstr(ctx, "cursor", mcbuf, top);
 				tblstr(ctx, "kind", "cursorhint", top);
 			break;
 			case EVENT_EXTERNAL_ALERT:
