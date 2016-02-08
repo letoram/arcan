@@ -19,6 +19,7 @@
 #include <errno.h>
 #include <dlfcn.h>
 #include <fcntl.h>
+#include <inttypes.h>
 
 #include <arcan_shmif.h>
 #include <arcan_namespace.h>
@@ -275,6 +276,15 @@ static void resize_shmpage(int neww, int newh, bool first)
 		agp_activate_rendertarget(NULL);
 		agp_resize_rendertarget(retroctx.rtgt, neww, newh);
 		retroctx.hwctx.context_reset();
+		shmif_pixel px = RGBA(0x44, 0x44, 0x44, 0xff);
+
+		for (int i = 0; i < 2; i++){
+			shmif_pixel* out = retroctx.shmcont.vidp;
+			for (int y = 0; y < retroctx.shmcont.h; y++)
+				for (int x = 0; x < retroctx.shmcont.w; x++)
+					*out++ = px;
+			arcan_shmif_signal(&retroctx.shmcont, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
+		}
 	}
 #endif
 
@@ -478,29 +488,33 @@ static void libretro_vidcb(const void* data, unsigned width,
 
 #ifdef FRAMESERVER_LIBRETRO_3D
 /* method one, just read color attachment */
-	if (data == RETRO_HW_FRAME_BUFFER_VALID){
-		struct storage_info_t store = retroctx.vstore;
-		store.vinf.text.raw = retroctx.shmcont.vidp;
+	if (retroctx.in_3d){
+		if (data == RETRO_HW_FRAME_BUFFER_VALID){
+			struct storage_info_t store = retroctx.vstore;
+			store.vinf.text.raw = retroctx.shmcont.vidp;
 
 /* if the underlying LWA platform supports zero-copy handle passing, use that */
-		if (!retroctx.hpassing_disabled){
-			enum status_handle status;
-			retroctx.last_handle = platform_video_output_handle(&retroctx.vstore, &status);
+			if (!retroctx.hpassing_disabled){
+				enum status_handle status;
+				retroctx.last_handle = platform_video_output_handle(&retroctx.vstore, &status);
 
-			if (status != READY_TRANSFER){
-				LOG("3d(), couldn't get output handle -- direct handle passing "
+				if (status != READY_TRANSFER){
+					LOG("3d(), couldn't get output handle -- direct handle passing "
 					"disabled.\n");
-				retroctx.hpassing_disabled = true;
-				retroctx.last_handle = -1;
-			}
+					retroctx.hpassing_disabled = true;
+					retroctx.last_handle = -1;
+				}
 
-			return;
-		}
+				return;
+			}
 /* or fallback to synchronous expensive readback */
-		else{
-			agp_activate_rendertarget(NULL);
-			agp_readback_synchronous(&store);
+			else{
+				agp_activate_rendertarget(NULL);
+				agp_readback_synchronous(&store);
+			}
 		}
+		else
+			return;
 	}
 	else
 #endif
@@ -1496,6 +1510,25 @@ static inline long long add_jitter(int num)
  * into the shmpage
  */
 #ifdef FRAMESERVER_LIBRETRO_3D
+#ifdef _DEBUG
+static void glBadCapture()
+{
+	LOG("Invalid OpenGL function called\n");
+	abort();
+}
+#endif
+
+static void* get_gfxsym(const char* symname)
+{
+	void* ret = platform_video_gfxsym(symname);
+#ifdef _DEBUG
+	if (!ret){
+		LOG("(GL) couldn't resolve %s\n", symname);
+		ret = glBadCapture;
+	}
+#endif
+	return ret;
+}
 static uintptr_t get_framebuffer()
 {
 	uintptr_t tgt, col, depth;
@@ -1542,7 +1575,7 @@ static void setup_3dcore(struct retro_hw_render_callback* ctx)
 #endif
 
 	ctx->get_current_framebuffer = get_framebuffer;
-	ctx->get_proc_address = (retro_hw_get_proc_address_t) platform_video_gfxsym;
+	ctx->get_proc_address = (retro_hw_get_proc_address_t) get_gfxsym;
 
 	memcpy(&retroctx.hwctx, ctx,
 		sizeof(struct retro_hw_render_callback));
