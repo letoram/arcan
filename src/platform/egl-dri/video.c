@@ -1508,6 +1508,7 @@ bool platform_video_init(uint16_t w, uint16_t h,
  */
 	struct dispout* d = allocate_display(&nodes[0]);
 	d->display.primary = true;
+	egl_dri.last_display = d;
 
 /*
  * force connector is a workaround for dealing with explicitly getting a single
