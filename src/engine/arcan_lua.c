@@ -4907,6 +4907,30 @@ static int matchkeys(lua_State* ctx)
 	return rv;
 }
 
+static int getkeys(lua_State* ctx)
+{
+	LUA_TRACE("get_keys");
+	const char* tgt = luaL_checkstring(ctx, 1);
+	const char* cfg = luaL_optstring(ctx, 2, NULL);
+	union arcan_dbtrans_id tid, cid;
+	tid.tid	= arcan_db_targetid(dbhandle, tgt, NULL);
+
+	struct arcan_strarr res;
+	if (!cfg){
+		res = arcan_db_getkeys(dbhandle, DVT_TARGET, tid);
+	}
+	else {
+		cid.cid = arcan_db_configid(dbhandle, tid.tid, cfg);
+		res = arcan_db_getkeys(dbhandle, DVT_CONFIG, cid);
+	}
+
+	int rv = push_stringres(ctx, &res);
+	arcan_mem_freearr(&res);
+
+	LUA_ETRACE("get_keys", NULL);
+	return rv;
+}
+
 static int getkey(lua_State* ctx)
 {
 	LUA_TRACE("get_key");
@@ -9124,6 +9148,7 @@ static const luaL_Reg tgtfuns[] = {
 static const luaL_Reg dbfuns[] = {
 {"store_key",    storekey   },
 {"get_key",      getkey     },
+{"get_keys",     getkeys    },
 {"match_keys",   matchkeys  },
 {"list_targets", gettargets },
 {"list_target_tags", gettags },
