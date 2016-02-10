@@ -399,6 +399,8 @@ static char* extract_font(struct text_format* prev, char* base){
 	if (*fontbase == '\0'){
 		font = grab_font(NULL, font_sz);
 		*base = ch;
+		if (font)
+			prev->font = font;
 		return base;
 	}
 
