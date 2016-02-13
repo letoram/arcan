@@ -1209,9 +1209,8 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 			};
 
 			execve(argv[0], argv, arr.data);
-			const char errmsg[] = "arcan_frameserver_spawn_server() failed:";
-			if (write(STDERR_FILENO, errmsg, sizeof(errmsg)) > 0 &&
-				write(STDERR_FILENO, argv[0], strlen(argv[0])) > 0)
+			arcan_warning("arcan_frameserver_spawn_server() failed: %s, %s\n",
+				strerror(errno), argv[0]);
 				;
 			exit(EXIT_FAILURE);
 		}
