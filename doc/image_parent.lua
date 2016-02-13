@@ -1,7 +1,11 @@
 -- image_parent
 -- @short: Return a reference to the parent object.
 -- @inargs: vid
--- @outargs: parentvid
+-- @longdescr: This function is used to figure out if *vid* is
+-- linked to another object from a previous call to ref:link_image
+-- and which primary attachement the image has (typically WORLID
+-- unless it has been explicitly attached to another rendertarget).
+-- @outargs: parentvid, attachvid
 -- @group: image
 -- @related: image_children, link_image, valid_vid
 -- @cfunction: imageparent

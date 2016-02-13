@@ -4225,13 +4225,16 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 static int imageparent(lua_State* ctx)
 {
 	LUA_TRACE("image_parent");
-	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
+	arcan_vobject* srcobj;
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, &srcobj);
 
 	arcan_vobj_id pid = arcan_video_findparent(id);
 
-	lua_pushvid( ctx, pid );
+	lua_pushvid(ctx, pid);
+	lua_pushvid(ctx, srcobj->owner ?
+		srcobj->owner->color->cellid : ARCAN_VIDEO_WORLDID);
 	LUA_ETRACE("image_parent", NULL);
-	return 1;
+	return 2;
 }
 
 static int videosynch(lua_State* ctx)
