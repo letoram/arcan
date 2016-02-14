@@ -1681,6 +1681,68 @@ static int imageresizestorage(lua_State* ctx)
 	return 0;
 }
 
+static int centerimage(lua_State* ctx)
+{
+	LUA_TRACE("center_image");
+	arcan_vobject* sobj;
+
+/*
+ * now this is primarily used for centering text on other
+ * components and similar UI operations so don't optimize
+ * without benchmarks, but there is a few ops that can be
+ * saved by checking if src and dst are in same space, if
+ * so, then the costly resolve can be skipped.
+ */
+	arcan_vobj_id src = luaL_checkvid(ctx, 1, &sobj);
+	arcan_vobj_id obj = luaL_checkvid(ctx, 2, NULL);
+	int al = luaL_optnumber(ctx, 3, ANCHORP_C);
+
+	surface_properties sprop, dprop;
+	sprop = arcan_video_resolve_properties(src);
+	dprop = arcan_video_resolve_properties(obj);
+
+/* scale actually contains width, now we move our center
+ * the specified anchor point */
+	int cp_sx = sprop.position.x + (sprop.scale.x * 0.5);
+	int cp_sy = sprop.position.y + (sprop.scale.y * 0.5);
+
+	int ap_x = dprop.position.x;
+	int ap_y = dprop.position.y;
+
+	switch(al){
+	case ANCHORP_C:
+		ap_x += dprop.scale.x * 0.5;
+		ap_y += dprop.scale.y * 0.5;
+	break;
+	case ANCHORP_UL:
+	break;
+	case ANCHORP_UR:
+		ap_x += dprop.scale.x;
+	break;
+	case ANCHORP_LL:
+		ap_y += dprop.scale.y;
+	break;
+	case ANCHORP_LR:
+		ap_x += dprop.scale.x;
+		ap_y += dprop.scale.y;
+	break;
+	default:
+		arcan_fatal("center_image(), unknown anchor point (%d)\n", al);
+	break;
+	}
+
+/* calculate deltas in world-space, add attachment-point local delta
+ * and finally translate to coordinates in src-obj space */
+
+	arcan_video_objectmove(src,
+		sobj->current.position.x + ap_x - cp_sx,
+		sobj->current.position.y + ap_y - cp_sy, 1.0, 0
+	);
+
+	LUA_ETRACE("center_image", NULL);
+	return 0;
+}
+
 static int cropimage(lua_State* ctx)
 {
 	LUA_TRACE("crop_image");
@@ -9203,6 +9265,7 @@ static const luaL_Reg imgfuns[] = {
 {"crop_image",               cropimage          },
 {"persist_image",            imagepersist       },
 {"image_parent",             imageparent        },
+{"center_image",             centerimage        },
 {"image_children",           imagechildren      },
 {"order_image",              orderimage         },
 {"max_current_image_order",  maxorderimage      },
