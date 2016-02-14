@@ -1543,15 +1543,17 @@ bool platform_video_init(uint16_t w, uint16_t h,
 		disable_display(d, true);
 		goto cleanup;
 	}
-	d->state = DISP_MAPPED;
 
 /*
  * requested canvas does not always match display
  */
 	egl_dri.canvasw = d->display.mode->hdisplay;
 	egl_dri.canvash = d->display.mode->vdisplay;
-
+	build_orthographic_matrix(d->projection, 0,
+		egl_dri.canvasw, egl_dri.canvash, 0, 0, 1);
+	memcpy(d->txcos, arcan_video_display.mirror_txcos, sizeof(float) * 8);
 	d->vid = ARCAN_VIDEO_WORLDID;
+	d->state = DISP_MAPPED;
 	rv = true;
 
 /*
