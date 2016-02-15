@@ -112,6 +112,7 @@ struct {
 	int bsel_x, bsel_y;
 	bool in_select;
 	int scrollback;
+	bool scroll_lock;
 
 /* tracking when to reset scrollback */
 	int sbofs;
@@ -125,7 +126,7 @@ struct {
 
 	uint8_t fgc[3];
 	uint8_t bgc[3];
-	shmif_pixel ccol;
+	shmif_pixel ccol, clcol;
 
 /* store a copy of the state where the cursor is */
 	struct tsm_screen_attr cattr;
@@ -152,6 +153,7 @@ struct {
 	.bgc = {0x00, 0x00, 0x00},
 	.fgc = {0xff, 0xff, 0xff},
 	.ccol = SHMIF_RGBA(0x00, 0xaa, 0x00, 0xff),
+	.clcol = SHMIF_RGBA(0xaa 0xaa, 0x00, 0xff),
 #ifdef TTF_SUPPORT
 	.font_fd = BADFD,
 	.ppcm = ARCAN_SHMPAGE_DEFAULT_PPCM,
@@ -334,7 +336,7 @@ static int draw_cbt(struct tsm_screen* screen, uint32_t ch,
 	if (match_cursor){
 		term.cattr = *attr;
 		term.cvalue = ch;
-		cursor_at(x, y, term.ccol, true);
+		cursor_at(x, y, term.scroll_lock ? term.clcol : term.ccol, true);
 	}
 	else
 		draw_ch(u8_ch, x1, y1, dfg, dbg, attr->bold, attr->underline);
@@ -489,6 +491,21 @@ static void send_sigint()
 	shl_pty_signal(term.pty, SIGINT);
 }
 
+static void page_up()
+{
+	tsm_screen_sb_up(term.screen, term.rows);
+	term.sbofs += term.rows;
+	update_screen(false);
+}
+
+static void page_down()
+{
+	tsm_screen_sb_down(term.screen, term.rows);
+	term.sbofs -= term.rows;
+	term.sbofs = term.sbofs < 0 ? 0 : term.sbofs;
+	update_screen(false);
+}
+
 static void scroll_up()
 {
 	tsm_screen_sb_up(term.screen, 1);
@@ -506,12 +523,16 @@ static void scroll_down()
 
 static void move_up()
 {
-	if (tsm_vte_handle_keyboard(term.vte, XKB_KEY_Up, 0, 0, 0))
+	if (term.scroll_lock)
+		page_up();
+	else if (tsm_vte_handle_keyboard(term.vte, XKB_KEY_Up, 0, 0, 0))
 		update_screen(false);
 }
 
 static void move_down()
 {
+	if (term.scroll_lock)
+		page_down();
 	if (tsm_vte_handle_keyboard(term.vte, XKB_KEY_Down, 0, 0, 0))
 		update_screen(false);
 }
@@ -609,21 +630,6 @@ static void select_cancel()
 	tsm_screen_selection_reset(term.screen);
 }
 
-static void page_up()
-{
-	tsm_screen_sb_up(term.screen, term.rows);
-	term.sbofs += term.rows;
-	update_screen(false);
-}
-
-static void page_down()
-{
-	tsm_screen_sb_down(term.screen, term.rows);
-	term.sbofs -= term.rows;
-	term.sbofs = term.sbofs < 0 ? 0 : term.sbofs;
-	update_screen(false);
-}
-
 /* map to the quite dangerous SIGUSR1 when we don't have INFO? */
 static void send_siginfo()
 {
@@ -683,6 +689,16 @@ void dec_fontsz()
 }
 #endif
 
+static void scroll_lock()
+{
+	term.scroll_lock = !term.scroll_lock;
+	if (!term.scroll_lock){
+		term.sbofs = 0;
+		tsm_screen_sb_reset(term.screen);
+		update_screen(false);
+	}
+}
+
 static const struct lent labels[] = {
 	{"SIGINT", send_sigint},
 	{"SIGINFO", send_siginfo},
@@ -696,6 +712,7 @@ static const struct lent labels[] = {
 	{"RIGHT", move_right},
 	{"SELECT_AT", select_at},
 	{"SELECT_ROW", select_row},
+	{"SCROLL_LOCK", scroll_lock},
 	{NULL, NULL}
 };
 
@@ -1293,9 +1310,8 @@ static void dump_help()
 		" fgr         \t rv(0..255)\t foreground red channel\n"
 		" fgg         \t rv(0..255)\t foreground green channel\n"
 		" fgb         \t rv(0..255)\t foreground blue channel\n"
-		" ccr         \t rv(0..255)\t cursor red channel\n"
-		" ccg         \t rv(0..255)\t cursor green channel\n"
-		" ccb         \t rv(0..255)\t cursor blue channel\n"
+		" ccr,ccg,ccb \t rv(0..255)\t cursor color\n"
+		" clr,clg,clb \t rv(0..255)\t cursor alternate (locked) state color\n"
 		" cursor      \t name      \t set cursor (block, frame, halfblock,\n"
 		"             \t           \t underline, vertical)\n"
 		" login       \t [user]    \t login (optional: user, only works for root)\n"
@@ -1362,6 +1378,16 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		ccol[2] = strtoul(val, NULL, 10);
 
 	term.ccol = SHMIF_RGBA(ccol[0], ccol[1], ccol[2], 0xff);
+
+	if (arg_lookup(args, "clr", 0, &val))
+		ccol[0] = strtoul(val, NULL, 10);
+	if (arg_lookup(args, "clg", 0, &val))
+		ccol[1] = strtoul(val, NULL, 10);
+	if (arg_lookup(args, "clb", 0, &val))
+		ccol[2] = strtoul(val, NULL, 10);
+
+	term.clcol = SHMIF_RGBA(ccol[0], ccol[1], ccol[2], 0xff);
+
 
 	if (arg_lookup(args, "cursor", 0, &val)){
 		const char** cur = curslbl;
