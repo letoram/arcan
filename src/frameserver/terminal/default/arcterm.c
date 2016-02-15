@@ -153,7 +153,7 @@ struct {
 	.bgc = {0x00, 0x00, 0x00},
 	.fgc = {0xff, 0xff, 0xff},
 	.ccol = SHMIF_RGBA(0x00, 0xaa, 0x00, 0xff),
-	.clcol = SHMIF_RGBA(0xaa 0xaa, 0x00, 0xff),
+	.clcol = SHMIF_RGBA(0xaa, 0xaa, 0x00, 0xff),
 #ifdef TTF_SUPPORT
 	.font_fd = BADFD,
 	.ppcm = ARCAN_SHMPAGE_DEFAULT_PPCM,
@@ -697,6 +697,9 @@ static void scroll_lock()
 		tsm_screen_sb_reset(term.screen);
 		update_screen(false);
 	}
+
+	draw_cbt(term.screen, term.cvalue, term.cursor_x, term.cursor_y,
+		&term.cattr, 0, !term.cursor_off, false);
 }
 
 static const struct lent labels[] = {
@@ -1370,24 +1373,39 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	if (arg_lookup(args, "bgb", 0, &val))
 		term.bgc[2] = strtoul(val, NULL, 10);
 
-	if (arg_lookup(args, "ccr", 0, &val))
+	bool ccol_upd = false;
+	if (arg_lookup(args, "ccr", 0, &val)){
 		ccol[0] = strtoul(val, NULL, 10);
-	if (arg_lookup(args, "ccg", 0, &val))
+		ccol_upd = true;
+	}
+	if (arg_lookup(args, "ccg", 0, &val)){
 		ccol[1] = strtoul(val, NULL, 10);
-	if (arg_lookup(args, "ccb", 0, &val))
+		ccol_upd = true;
+	}
+	if (arg_lookup(args, "ccb", 0, &val)){
 		ccol[2] = strtoul(val, NULL, 10);
+		ccol_upd = true;
+	}
 
-	term.ccol = SHMIF_RGBA(ccol[0], ccol[1], ccol[2], 0xff);
+	if (ccol_upd)
+		term.ccol = SHMIF_RGBA(ccol[0], ccol[1], ccol[2], 0xff);
+	ccol_upd = false;
 
-	if (arg_lookup(args, "clr", 0, &val))
+	if (arg_lookup(args, "clr", 0, &val)){
 		ccol[0] = strtoul(val, NULL, 10);
-	if (arg_lookup(args, "clg", 0, &val))
+		ccol_upd = true;
+	}
+	if (arg_lookup(args, "clg", 0, &val)){
 		ccol[1] = strtoul(val, NULL, 10);
-	if (arg_lookup(args, "clb", 0, &val))
+		ccol_upd = true;
+	}
+	if (arg_lookup(args, "clb", 0, &val)){
 		ccol[2] = strtoul(val, NULL, 10);
+		ccol_upd = true;
+	}
 
-	term.clcol = SHMIF_RGBA(ccol[0], ccol[1], ccol[2], 0xff);
-
+	if (ccol_upd)
+		term.clcol = SHMIF_RGBA(ccol[0], ccol[1], ccol[2], 0xff);
 
 	if (arg_lookup(args, "cursor", 0, &val)){
 		const char** cur = curslbl;
