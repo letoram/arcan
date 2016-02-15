@@ -1,0 +1,10 @@
+This tests shader uniform groups and collisions between
+shaders. We build two shader IDs from the same source code,
+and then subgroup three times for both shaders with different uniforms.
+
+We draw to small blocks that have the variants attached to
+eachother. One row channels will be enabled (one per block(
+and for the other they will be disabled.
+
+If two or more blocks look the same, we have some collision in
+uniform group handling.
