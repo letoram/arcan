@@ -711,7 +711,6 @@ static void map_axes(int fd, size_t bitn, struct arcan_devnode* node)
 
 			ax->upper = ainf.maximum;
 			ax->lower = ainf.minimum;
-			assert(ainf.maximum != ainf.minimum && ainf.maximum > ainf.minimum);
 		}
 }
 
