@@ -114,9 +114,6 @@
 	(RESOURCE_SYS_LIBS)
 #endif
 
-#define COUNT_OF(x) \
-	((sizeof(x)/sizeof(0[x])) / ((size_t)(!(sizeof(x) % sizeof(0[x])))))
-
 /*
  * defined in engine/arcan_main.c, rather than terminating directly
  * we'll longjmp to this and hopefully the engine can switch scripts

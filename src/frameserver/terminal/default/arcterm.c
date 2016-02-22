@@ -947,7 +947,6 @@ static void targetev(arcan_tgtevent* ev)
 		if (ev->ioevs[1].iv == 1)
 			fd = dup(ev->ioevs[0].iv);
 
-		printf("setting hinting to: %d\n", ev->ioevs[3].iv);
 		switch(ev->ioevs[3].iv){
 		case -1: break;
 		case 0: term.hint = TTF_HINTING_NONE; break;

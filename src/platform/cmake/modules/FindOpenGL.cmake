@@ -1,6 +1,6 @@
 # - Try to find OpenGL
 # Modified from the CMake-2.8 built-in version to:
-# remove X11 assumption, 
+# remove X11 assumption,
 # remove support for GLUT, XMESA etc.
 #
 
@@ -81,7 +81,7 @@ else ()
     )
 
     find_library(OPENGL_gl_LIBRARY
-      NAMES GL MesaGL
+			NAMES GL MesaGL OSMesa
       PATHS /opt/graphics/OpenGL/lib
             /usr/openwin/lib
             /usr/shlib /usr/X11R6/lib

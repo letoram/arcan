@@ -906,7 +906,6 @@ static void do_esc(struct tsm_vte *vte, uint32_t data)
 	case 'H':
 	case '7': /* map Swedish into G0-G3 */
 		/* TODO: create Swedish charset from DEC */
-		printf("TSM SWEDISH DEC\n");
 		if (set_charset(vte, &tsm_vte_unicode_upper))
 			return;
 		break;
