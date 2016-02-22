@@ -54,6 +54,21 @@
 static const char* notify_scan_dir = NOTIFY_SCAN_DIR;
 static bool log_verbose = false;
 
+/*
+ * In happy-fun everything is user-space land, we face the policy problem of
+ * device nodes not being created with the desired permissions in an atomic
+ * manner. Combine with inotify and we may beat some deaemon to the races and
+ * there we go. For EACCES we go the 'retry a little later' route.
+ */
+static const int default_eacces_tries = 8;
+static const int default_eacces_delay = 1000;
+
+static struct {
+	char* path;
+	int tries;
+	int64_t last_ts;
+} pending[8];
+
 static struct {
 	unsigned long kbmode;
 	int mode;
@@ -61,6 +76,7 @@ static struct {
 	bool mute, init;
 	int tty, notify;
 	int sigpipe[2];
+	int pending;
 	struct pollfd sigpipe_p;
 }
 gstate = {
@@ -129,6 +145,7 @@ struct arcan_devnode {
 	struct evhandler hnd;
 
 	char label[256];
+	char* path;
 	unsigned short devnum;
 	size_t button_count;
 
@@ -446,20 +463,86 @@ void platform_event_analogfilter(int devid,
 	set_analogstate(axis,lower_bound, upper_bound, deadzone, buffer_sz, kind);
 }
 
-static void discovered(const char* name, size_t name_len)
+static bool discovered(const char* name, size_t name_len, bool nopending)
 {
 	int fd = fmt_open(0, O_NONBLOCK | O_RDWR | O_CLOEXEC,
 		"%s/%.*s", notify_scan_dir, name_len, name);
 
 	if (log_verbose)
 		arcan_warning(
-			"input: discovered %s/%.*s\n", notify_scan_dir, name_len, name);
+			"input: trying to add %s/%.*s\n", notify_scan_dir, (int)name_len, name);
 
-	if (-1 != fd)
+	if (-1 == fd && errno == EACCES){
+		if (gstate.pending >= COUNT_OF(pending)){
+			arcan_warning(
+				"input: pending queue limit exceeded, possibly something wrong"
+				" with monitored folder (%s) and permissions.\n", notify_scan_dir);
+			return false;
+		}
+
+/* already know about this one */
+		if (nopending)
+			return false;
+
+/* sign that someone is impatient and plugging / unplugging while pending */
+		size_t i;
+		ssize_t j = -1;
+		for (i = 0; i < COUNT_OF(pending); i++){
+			if (!pending[i].path && j == -1)
+				j = i;
+			if (pending[i].path && strcmp(name, pending[i].path) == 0)
+				return false;
+		}
+/* name comes from inotify which does not have to terminate */
+		gstate.pending++;
+		pending[j].path = malloc(name_len + 1);
+		sprintf(pending[j].path, "%.*s", (int)name_len, name);
+		pending[j].tries = default_eacces_tries;
+		pending[j].last_ts = arcan_frametime();
+		return false;
+	}
+
+/* even if we can access it and it is of the right type, it is not certain
+ * that we can actually identify and use it according with evdev */
+	if (-1 != fd){
 		got_device(fd, name);
+		return true;
+	}
 	else
 		arcan_warning("input: couldn't open new device (%s), reason: %s\n",
 			name, strerror(errno));
+	return false;
+}
+
+static void process_pending()
+{
+	for (size_t i = 0; i < COUNT_OF(pending); i++){
+		if (!pending[i].path)
+			continue;
+
+/* wait a little longer for each failed attempt */
+		if (arcan_frametime() - pending[i].last_ts < (default_eacces_tries -
+			pending[i].tries + 1) * default_eacces_delay)
+			continue;
+
+		pending[i].last_ts = arcan_frametime();
+
+		if (discovered(pending[i].path, strlen(pending[i].path), true)){
+			free(pending[i].path);
+			pending[i].path = NULL;
+			gstate.pending--;
+		}
+		else{
+			pending[i].tries--;
+			if (pending[i].tries <= 0){
+				arcan_warning("input(eperm): device(%s) retry count"
+					"exceeded\n", pending[i].path);
+				free(pending[i].path);
+				pending[i].path = NULL;
+				gstate.pending--;
+			}
+		}
+	}
 }
 
 void platform_event_process(struct arcan_evctx* ctx)
@@ -479,11 +562,14 @@ void platform_event_process(struct arcan_evctx* ctx)
 				ofs += sizeof(struct inotify_event);
 
 				if ((cur.mask & IN_CREATE) && !(cur.mask & IN_ISDIR)){
-					discovered(&inbuf[ofs], cur.len);
+					discovered(&inbuf[ofs], cur.len, false);
 					ofs += cur.len;
 				}
 			}
 	}
+
+	if (gstate.pending)
+		process_pending();
 
 	if (gstate.sigpipe[0] != -1){
 		if (poll(&gstate.sigpipe_p, 1, 0) > 0){
@@ -512,11 +598,12 @@ void platform_event_process(struct arcan_evctx* ctx)
 		}
 	}
 
-	if (poll(iodev.pollset, iodev.n_devs, 0) <= 0)
+	int nr = poll(iodev.pollset, iodev.n_devs, 0);
+	if (nr <= 0)
 		return;
 
 	for (size_t i = 0; i < iodev.n_devs; i++){
-		if (!(iodev.pollset[i].revents & POLLIN))
+		if (0 == (iodev.pollset[i].revents & POLLIN))
 			continue;
 
 		if (iodev.nodes[i].hnd.handler)
@@ -822,6 +909,8 @@ static void got_device(int fd, const char* path)
 /* not particularly pretty and rather arbitrary */
 		else if (!mouse_btn && !joystick_btn && node.button_count > 84){
 			node.type = DEVNODE_KEYBOARD;
+			node.keyboard.state = 0;
+
 /* FIX: query current LED states and set corresponding states in the devnode */
 			struct kbd_repeat kbrv = {0};
 			ioctl(node.handle, KDKBDREP, &kbrv);
@@ -843,8 +932,8 @@ static void got_device(int fd, const char* path)
 			continue;
 		}
 
-		if (iodev.nodes[i].devnum == node.devnum){
-			if (iodev.nodes[i].handle > 0)
+/* or collision with existing? we use file-path for this */
+		if (iodev.nodes[i].path && strcmp(iodev.nodes[i].path, path) == 0){
 				close(iodev.nodes[i].handle);
 
 			iodev.nodes[i].handle = fd;
@@ -876,6 +965,7 @@ static void got_device(int fd, const char* path)
 	}
 
 	iodev.n_devs++;
+	node.path = strdup(path);
 	iodev.pollset[hole].fd = fd;
 	iodev.pollset[hole].events = POLLIN;
 	iodev.nodes[hole] = node;
@@ -966,8 +1056,10 @@ static void disconnect(struct arcan_devnode* node)
 	for (size_t i = 0; i < iodev.n_devs; i++)
 		if (node->devnum == iodev.nodes[i].devnum){
 			close(node->handle);
-			node->handle = 0;
-			iodev.pollset[i].fd = 0;
+			free(node->path);
+			node->path = NULL;
+			node->handle = -1;
+			iodev.pollset[i].fd = -1;
 			iodev.pollset[i].events = 0;
 			if (i == iodev.n_devs - 1)
 				iodev.n_devs--;
