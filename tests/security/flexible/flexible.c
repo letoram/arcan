@@ -34,7 +34,7 @@ int main(int argc, char** argv)
 
 		for (size_t row = 0; row < cont.addr->h; row++)
 			for (size_t col = 0; col < cont.addr->w; col++)
-				cont.vidp[ row * cont.addr->w + col ] = RGBA(r, g, b, 255);
+				cont.vidp[ row * cont.addr->w + col ] = SHMIF_RGBA(r, g, b, 255);
 
 		arcan_shmif_signal(&cont, SHMIF_SIGVID);
 	}
