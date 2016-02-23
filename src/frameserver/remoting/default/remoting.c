@@ -235,8 +235,7 @@ static void map_cl_input(arcan_ioevent* ioev)
 		}
 	}
 
-	SendFramebufferUpdateRequest(vncctx.client, 0, 0, vncctx.shmcont.addr->w,
-		vncctx.shmcont.addr->h, true);
+	SendIncrementalFramebufferUpdateRequest(vncctx.client);
 }
 
 static void dump_help()

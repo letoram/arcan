@@ -11,4 +11,4 @@ DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
 
 git clone http://luajit.org/git/luajit-2.0.git $DIR/luajit
 git clone git://git.sv.nongnu.org/freetype/freetype2.git $DIR/freetype
-git clone https://www.github.com/mirror/openal-soft.git $DIR/openal
+git clone git://repo.or.cz/openal-soft.git $DIR/openal
