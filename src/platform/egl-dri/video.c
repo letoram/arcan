@@ -424,6 +424,8 @@ bool platform_video_set_mode(platform_display_id disp, platform_mode_id mode)
 	d->display.mode = &d->display.con->modes[mode];
 	build_orthographic_matrix(d->projection,
 		0, d->display.mode->hdisplay, d->display.mode->vdisplay, 0, 0, 1);
+	d->dispw = d->display.mode->hdisplay;
+	d->disph = d->display.mode->vdisplay;
 
 /*
  * reset scanout buffers to match new crtc mode
