@@ -16,7 +16,7 @@
 #include <sys/types.h>
 #include <stddef.h>
 #include <pthread.h>
-#include <sys/poll.h>
+#include <poll.h>
 #include <errno.h>
 
 /*
