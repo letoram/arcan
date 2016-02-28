@@ -914,7 +914,8 @@ static int opennonblock(lua_State* ctx)
 	}
 
 /* note on file-system races: it is an explicit contract that the namespace
- * provided for RESOURCE_APPL_TEMP is single- user (us) only */
+ * provided for RESOURCE_APPL_TEMP is single- user (us) only. Anyhow, this
+ * code turned out a lot messier than needed, refactor when time permits. */
 	if (wrmode){
 		metatable = "nonblockIOw";
 		path = findresource(str, RESOURCE_APPL_TEMP);
@@ -927,28 +928,33 @@ static int opennonblock(lua_State* ctx)
 			return 0;
 		}
 
+		int fl = O_NONBLOCK | O_WRONLY | O_CLOEXEC;
 		if (fifo){
-			fd = mkfifo(path, S_IRWXU);
-			if (-1 != fd)
-				if (-1 == fcntl(fd, F_SETFD, O_WRONLY | O_NONBLOCK | O_CLOEXEC))
-					arcan_warning("open_nonblock(), flags failed on fifo (%d)\n", errno);
+			if (-1 == mkfifo(path, S_IRWXU)){
+				arcan_warning("open_nonblock(): mkfifo (%s) failed\n", path);
+				LUA_ETRACE("open_nonblock", "mkfifo failed");
+				return 0;
+			}
 		}
 		else
-			fd = open(path, O_NONBLOCK | O_CREAT |
-				O_WRONLY | O_CLOEXEC, S_IRWXU);
+			fl |= O_CREAT;
+
+		fd = open(path, fl, S_IRWXU);
 	}
 	else{
+retryopen:
 		path = findresource(str, fifo ? RESOURCE_APPL_TEMP : DEFAULT_USERMASK);
 		metatable = "nonblockIOr";
 
 		if (!path){
 			if (fifo){
 				path = arcan_expand_resource(str, RESOURCE_APPL_TEMP);
-				fd = mkfifo(path, S_IRWXU);
-				if (-1 != fd)
-					if (-1 == fcntl(fd, F_SETFD, O_NONBLOCK | O_RDONLY | O_CLOEXEC))
-						arcan_warning("open_nonblock(), "
-							"flags failed on fifo (%d)\n", errno);
+				if (-1 == mkfifo(path, S_IRWXU)){
+					arcan_warning("open_nonblock(): mkfifo (%s) failed\n", path);
+					LUA_ETRACE("open_nonblock", "mkfifo failed");
+					return 0;
+				}
+				goto retryopen;
 			}
 			else{
 				LUA_ETRACE("open_nonblock", "file does not exist");
