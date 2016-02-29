@@ -8,7 +8,7 @@
  * points to explore for this platform module:
  *
  * (currently a bit careful spending more time here pending the development
- * of vulcan, nvidia egl streams extension etc.)
+ * of vulkan, nvidia egl streams extension etc.)
  *
  * 0. _prepare _restore external support, currently there are a number of
  * related bugs and races that can be triggered with VT switching that tells
@@ -48,7 +48,9 @@
  *  The number of failure modes for this one is quite high, especially
  *  when OOM on one card but not the other. Still, pretty cool feature ;-)
  *
- * 3. Backlight support by improving the old murky _led codebase
+ * 3. Backlight support by improving the old murky _led codebase,
+ *    note that the backlight interface seems to be *double facepalm*
+ *    sysfs again
  *
  * 4. Advanced synchronization options (swap-interval, synch directly to
  * front buffer, swap-with-tear, pre-render then wake / move cursor just
@@ -1688,15 +1690,22 @@ void platform_video_synch(uint64_t tick_count, float fract,
 		i = 0;
 	}
 
-/* at this stage, the contents of all RTs have been synched,
- * with nd == 0, nothing has changed from what was draw last time */
+/* at this stage, the contents of all RTs have been synched, with nd == 0,
+ * nothing has changed from what was draw last time - but since we normally run
+ * double buffered it is easier to synch the same contents in both buffers */
 	arcan_bench_register_cost( arcan_vint_refresh(fract, &nd) );
 
-	while ( (d = get_display(i++)) ){
-		if (d->state == DISP_MAPPED && d->buffer.in_flip == 0)
-			update_display(d);
+	static int last_nd;
+	if (nd || last_nd){
+		while ( (d = get_display(i++)) ){
+			if (d->state == DISP_MAPPED && d->buffer.in_flip == 0)
+				update_display(d);
+			}
 	}
+	last_nd = nd;
 
+/* still use VSYNC as limiter until we migrate to a more sane event driven
+ * source pool where more steps can be event driven */
 	flush_display_events(16);
 
 	if (post)
@@ -1956,6 +1965,13 @@ static void update_display(struct dispout* d)
 	eglMakeCurrent(d->device->display, d->buffer.esurf,
 		d->buffer.esurf, d->device->context);
 
+/*
+ * currently we only do binary damage / update tracking in that there are EGL
+ * versions for saying 'this region is damaged, update that' to cut down on
+ * fillrate/bw, but the video.c synch code does not expose such information
+ * (though trivial to add), just have reset/add_region list to the normal
+ * draw calls - and forward this list here.
+ */
 	draw_display(d);
 	eglSwapBuffers(d->device->display, d->buffer.esurf);
 
