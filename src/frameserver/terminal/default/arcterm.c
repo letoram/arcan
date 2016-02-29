@@ -430,6 +430,7 @@ static void write_callback(struct tsm_vte* vte,
 	const char* u8, size_t len, void* data)
 {
 	shl_pty_write(term.pty, u8, len);
+	shl_pty_dispatch(term.pty);
 }
 
 static char* get_shellenv()
@@ -788,6 +789,7 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 			size_t len = 0;
 			while (len < 5 && ioev->input.translated.utf8[len]) len++;
 			shl_pty_write(term.pty, (char*)ioev->input.translated.utf8, len);
+			shl_pty_dispatch(term.pty);
 			return;
 		}
 
@@ -1124,6 +1126,7 @@ static void check_pasteboard()
 		switch(tev->kind){
 		case TARGET_COMMAND_MESSAGE:
 			shl_pty_write(term.pty, tev->message, strlen(tev->message));
+			shl_pty_dispatch(term.pty);
 		break;
 		case TARGET_COMMAND_EXIT:
 			arcan_shmif_drop(&term.clip_in);
@@ -1514,7 +1517,6 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	}
 
 	LOG("update screensize: %f * %d, %d\n", term.ppcm, initw, inith);
-	sleep(5);
 	update_screensize(true);
 	update_screen(true);
 
