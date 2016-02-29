@@ -1010,13 +1010,22 @@ static void targetev(arcan_tgtevent* ev)
 			update = true;
 		}
 
-/* calculate scale factor based on old density, multiply previous size
- * with scale factor and treat as a FONTHINT */
+/* currently ignoring field [3], RGB layout as freetype with
+ * subpixel hinting builds isn't default / tested properly here */
+
 #ifdef TTF_SUPPORT
-		if (ev->ioevs[3].fv > 0 && fabs(ev->ioevs[3].fv - term.ppcm) > 0.01){
-			float sf = ev->ioevs[3].fv / term.ppcm;
-			term.ppcm = ev->ioevs[3].fv;
+		LOG("displayhint[4]: %f, ppc: %f\n", ev->ioevs[3].fv, term.ppcm);
+		if (ev->ioevs[4].fv > 0 && fabs(ev->ioevs[4].fv - term.ppcm) > 0.01){
+			float sf = ev->ioevs[4].fv / term.ppcm;
+			LOG("scalef: %f\n", sf);
+			int last_fsz = term.font_sz;
 			setup_font(BADFD, term.font_sz * sf);
+
+/* if we just update the local density, it is possible (however insane)
+ * that a slowly sliding density would cause the size to never change */
+			if (last_fsz != term.font_sz){
+				term.ppcm = ev->ioevs[4].fv;
+			}
 			update = true;
 		}
 #endif
@@ -1265,12 +1274,12 @@ static void main_loop()
  * don't try to synch when we are not sufficiently dirty, and that we use
  * dirty-region subsynch.
  *
- * Third is that we cap the update rate to some ~16fps unless we've had user
+ * Third is that we cap the update rate to some ~32fps unless we've had user
  * input recently (which act as a reset).
  */
 		int64_t now = arcan_timemillis();
 		flushc = 0;
-		if (now - term.last < 64)
+		if (now - term.last < 32)
 			continue;
 
 		if (term.dirty != DIRTY_NONE)
@@ -1301,10 +1310,9 @@ static void dump_help()
 		"Accepted packed_args:\n"
 		"    key      \t   value   \t   description\n"
 		"-------------\t-----------\t-----------------\n"
-		" rows        \t n_rows    \t specify initial number of terminal rows\n"
-	  " cols        \t n_cols    \t specify initial number of terminal columns\n"
-		" cell_w      \t px_w      \t specify individual cell width in pixels\n"
-		" cell_h      \t px_h      \t specify individual cell height in pixels\n"
+		" rows        \t n_rows    \t specify initial surface width\n"
+	  " cols        \t n_cols    \t specify initial surface height\n"
+		" ppcm        \t density   \t specify output display pixel density\n"
 		" bgr         \t rv(0..255)\t background red channel\n"
 		" bgg         \t rv(0..255)\t background green channel\n"
 		" bgb         \t rv(0..255)\t background blue channel\n"
@@ -1347,17 +1355,18 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		return EXIT_FAILURE;
 	}
 	uint8_t ccol[3] = {0, 255, 0};
+	int initw = term.cell_w * term.rows;
+	int inith = term.cell_h * term.cols;
 
-	if (arg_lookup(args, "rows", 0, &val))
-		term.rows = strtoul(val, NULL, 10);
-
-	if (arg_lookup(args, "cols", 0, &val))
-		term.cols = strtoul(val, NULL, 10);
-
-	if (arg_lookup(args, "cell_w", 0, &val)){
-		term.cell_w = strtoul(val, NULL, 10);
+	if (arg_lookup(args, "width", 0, &val))
+		initw = strtoul(val, NULL, 10);
+	if (arg_lookup(args, "height", 0, &val))
+		inith = strtoul(val, NULL, 10);
+	if (arg_lookup(args, "ppcm", 0, &val)){
+		term.ppcm = strtof(val, NULL);
+		if (isnan(term.ppcm) || isinf(term.ppcm) || !(term.ppcm > 0))
+			term.ppcm = ARCAN_SHMPAGE_DEFAULT_PPCM;
 	}
-
 	if (arg_lookup(args, "fgr", 0, &val))
 		term.fgc[0] = strtoul(val, NULL, 10);
 	if (arg_lookup(args, "fgg", 0, &val))
@@ -1457,8 +1466,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	term.acon = *con;
 	term.acon.hints = SHMIF_RHINT_SUBREGION;
 
-	arcan_shmif_resize(&term.acon,
-		term.cell_w * term.cols, term.cell_h * term.rows);
+	arcan_shmif_resize(&term.acon, initw, inith);
 
 	expose_labels();
 	tsm_screen_set_max_sb(term.screen, 1000);
@@ -1505,6 +1513,8 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		return EXIT_FAILURE;
 	}
 
+	LOG("update screensize: %f * %d, %d\n", term.ppcm, initw, inith);
+	sleep(5);
 	update_screensize(true);
 	update_screen(true);
 

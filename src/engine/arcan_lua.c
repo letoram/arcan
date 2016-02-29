@@ -6125,19 +6125,31 @@ static int targetdisphint(lua_State* ctx)
 	width = width > ARCAN_SHMPAGE_MAXW ? ARCAN_SHMPAGE_MAXW : width;
 	height = height > ARCAN_SHMPAGE_MAXH ? ARCAN_SHMPAGE_MAXH : height;
 
-/* we support explicit displayhint or just passing a mode table that
- * comes from a monitor / display event (though width/height/continuation need
- * to be specified still) */
-	int phy_lay = 0, phy_w = 0;
+/* we support explicit displayhint or just passing a mode table that comes from
+ * a monitor / display event (though width/height/flags need to be specified
+ * still) */
+	int phy_lay = 0;
+	float ppcm = 0;
 
 	int type = lua_type(ctx, 5);
 	if (type == LUA_TNUMBER && ARCAN_VIDEO_WORLDID == luaL_checknumber(ctx, 5)){
 		struct monitor_mode mmode = platform_video_dimensions();
+		int lw = mmode.width;
+		int phy_w = mmode.phy_width;
+		if (lw && phy_w)
+			ppcm = 10.0f * ((float)lw / (float)phy_w);
 		phy_w = mmode.width;
 		phy_lay = layout_tonum(mmode.subpixel);
 	}
 	else if (type == LUA_TTABLE){
-		phy_w = intblint(ctx, 5, "phy_width_mm");
+		int lw = intblint(ctx, 5, "width");
+		int phy_w = intblint(ctx, 5, "phy_width_mm");
+		if (lw && phy_w)
+			ppcm = 10.0f * ((float)lw / (float)phy_w);
+		else
+			arcan_warning("target_displayhint(), modetable provided but "
+				"contains broken fields, ignoring\n");
+
 		phy_lay = layout_tonum(intblstr(ctx, 5, "subpixel_layout"));
 	}
 	else
@@ -6147,8 +6159,6 @@ static int targetdisphint(lua_State* ctx)
 		arcan_fatal("target_disphint(%d, %d), "
 			"display dimensions must be >= 0", width, height);
 
-	float ppmm = phy_w > 0 ? (float)phy_w / (float)width : -1;
-
 	arcan_event ev = {
 		.category = EVENT_TARGET,
 		.tgt.kind = TARGET_COMMAND_DISPLAYHINT,
@@ -6156,7 +6166,7 @@ static int targetdisphint(lua_State* ctx)
 		.tgt.ioevs[1].iv = height,
 		.tgt.ioevs[2].iv = cont,
 		.tgt.ioevs[3].iv = phy_lay,
-		.tgt.ioevs[4].fv = ppmm
+		.tgt.ioevs[4].fv = ppcm
 	};
 
 	tgtevent(tgt, ev);
