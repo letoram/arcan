@@ -792,7 +792,7 @@ int tsm_screen_resize(struct tsm_screen *con, unsigned int x,
 		move_cursor(con, con->size_x - 1, con->cursor_y);
 
 	/* scroll buffer if screen height shrinks */
-	if (y < con->size_y) {
+	if (con->cursor_y && y < con->size_y) {
 		diff = con->size_y - y;
 		screen_scroll_up(con, diff);
 		if (con->cursor_y > diff)
