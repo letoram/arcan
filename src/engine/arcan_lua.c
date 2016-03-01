@@ -817,7 +817,9 @@ void arcan_lua_adopt(struct arcan_luactx* ctx)
 		arcan_frameserver* fsrv = vobj->feed.state.ptr;
 		fsrv->tag = LUA_NOREF;
 
-		if (grabapplfunction(ctx, "adopt", sizeof("adopt") - 1)){
+		bool delete = true;
+		if (grabapplfunction(ctx, "adopt", sizeof("adopt") - 1) &&
+			arcan_video_getobject(ids[count]) != NULL){
 			lua_pushvid(ctx, vobj->cellid);
 			lua_pushstring(ctx, fsrvtos(fsrv->segid));
 
@@ -827,9 +829,14 @@ void arcan_lua_adopt(struct arcan_luactx* ctx)
 				lua_pushstring(ctx, "_untitled");
 
 			lua_pushvid(ctx, fsrv->parent.vid);
+			lua_pushboolean(ctx, count < n_fsrv-1);
 
-			wraperr(ctx, lua_pcall(ctx, 4, 0, 0), "adopt");
+			wraperr(ctx, lua_pcall(ctx, 5, 1, 0), "adopt");
 
+/* if we don't get an explicit accept, assume deletion */
+			if (lua_type(ctx, -1) == LUA_TBOOLEAN &&
+				lua_toboolean(ctx, -1) == true){
+				delete = false;
 /* send register event again so adoption imposed handler might map
  * to related archetype, then follow up with resized to underlying
  * format. Other state restoration has to be handled by fsrv itself */
@@ -856,11 +863,15 @@ void arcan_lua_adopt(struct arcan_luactx* ctx)
 				};
 				arcan_event_enqueue(arcan_event_defaultctx(), &rezev);
 			}
-			arcan_frameserver_leave();
 /* NOTE: currently not sending a soft reset event to frameserver, but
  * might be useful to do so with ioev[0] set to 2 */
+			arcan_frameserver_leave();
 		}
-		else
+
+			lua_pop(ctx, 1);
+		}
+
+		if (delete)
 			delids[delcount++] = ids[count];
 	}
 /* purge will remove all events that are not external, and those that
