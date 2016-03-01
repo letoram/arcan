@@ -76,7 +76,6 @@ enum cursors {
 
 enum dirty_state {
 	DIRTY_NONE,
-	DIRTY_PENDING,
 	DIRTY_UPDATED
 };
 
@@ -359,13 +358,6 @@ static void update_screen(bool redraw)
 
 	term.flags = tsm_screen_get_flags(term.screen);
 	term.age = tsm_screen_draw(term.screen, draw_cb, NULL /* draw_cb_data */);
-
-/* current test, try and erase cursor
-	if (redraw){
-		draw_cbt(term.screen, term.cvalue, term.cursor_x, term.cursor_y,
-			&term.cattr, 0, !term.cursor_off, false);
-	}
-*/
 }
 
 static void update_screensize(bool clear)
@@ -391,8 +383,9 @@ static void update_screensize(bool clear)
 		term.cols = cols;
 		term.rows = rows;
 
-		tsm_screen_resize(term.screen, cols, rows);
+		LOG("resize screen and pty: %d, %d\n", cols, rows);
 		shl_pty_resize(term.pty, cols, rows);
+		tsm_screen_resize(term.screen, cols, rows);
 	}
 
 /* just fill the padded areas where a character can't fit, nicer than having to
@@ -412,8 +405,6 @@ static void update_screensize(bool clear)
 	term.acon.dirty.x2 = term.acon.w;
 	term.acon.dirty.y1 = 0;
 	term.acon.dirty.y2 = term.acon.h;
-
-	term.dirty = DIRTY_PENDING;
 }
 
 static void read_callback(struct shl_pty* pty,
@@ -422,8 +413,6 @@ static void read_callback(struct shl_pty* pty,
 	tsm_vte_input(term.vte, u8, len);
 	term.cursor_x = tsm_screen_get_cursor_x(term.screen);
 	term.cursor_y = tsm_screen_get_cursor_y(term.screen);
-
-	term.dirty = DIRTY_PENDING;
 }
 
 static void write_callback(struct tsm_vte* vte,
@@ -1114,9 +1103,10 @@ static void event_dispatch(arcan_event* ev)
 	}
 }
 
-static void check_pasteboard()
+static bool check_pasteboard()
 {
 	arcan_event ev;
+	bool rv = false;
 
 	while (arcan_shmif_poll(&term.clip_in, &ev) > 0){
 		if (ev.category != EVENT_TARGET)
@@ -1126,16 +1116,18 @@ static void check_pasteboard()
 		switch(tev->kind){
 		case TARGET_COMMAND_MESSAGE:
 			shl_pty_write(term.pty, tev->message, strlen(tev->message));
-			shl_pty_dispatch(term.pty);
+			rv = true;
 		break;
 		case TARGET_COMMAND_EXIT:
 			arcan_shmif_drop(&term.clip_in);
-			return;
+			return false;
 		break;
 		default:
 		break;
 		}
 	}
+
+	return rv;
 }
 
 #ifdef TTF_SUPPORT
@@ -1240,55 +1232,45 @@ static void main_loop()
 			pc = 3;
 		}
 
-		int sv = poll(fds, pc, term.acon.addr->vready ? 8 : -1);
-		if (sv != 0 && flushc < 10){
-			if (fds[0].revents & POLLIN){
-				if (-EAGAIN == shl_pty_dispatch(term.pty)){
-/* if we start an EAGAIN cycle, do periodically allow
- * a redraw so we don't look stalled */
-					flushc++;
-					continue;
-				}
-			}
-			else if (fds[0].revents){
-				break;
-			}
+/* use a time-out for the dirty-but-we-were-in-synch case */
+		int sv = poll(fds, pc, term.dirty ? 4 : 16);
+		if (sv != 0){
+			bool dispatch = false;
 
 			if (fds[1].revents & POLLIN){
 				while (arcan_shmif_poll(&term.acon, &ev) > 0){
 					event_dispatch(&ev);
 				}
-				int rc = shl_pty_dispatch(term.pty);
+				dispatch = true;
 			}
-			else if (fds[1].revents){
+/* fail on upstream event */
+			else if (fds[1].revents)
 				break;
-			}
 			else if (pc == 3 && (fds[2].revents & POLLIN))
-				check_pasteboard();
+				dispatch |= check_pasteboard();
+
+/* fail on the terminal descriptor */
+			if (fds[0].revents & POLLIN)
+				dispatch = true;
+			else if (fds[0].revents)
+				break;
+
+/* need some limiter here so we won't completely stall if the terminal
+ * gets spammed (find /) */
+			if (dispatch)
+				while (-EAGAIN == shl_pty_dispatch(term.pty) &&
+					(atomic_load(&term.acon.addr->vready) || flushc++ < 10))
+				;
 		}
-/*
- * We do several dynamic tricks here to work around the wasted cycles that
- * come from intensive update that come from something like `find /`
- *
- * First is that we accept tearing (SIGBLK_NONE) because the terminal
- * latency is typically way higher than what the display system consumes.
- *
- * Second is that we track DIRTY state between pending and updated and
- * don't try to synch when we are not sufficiently dirty, and that we use
- * dirty-region subsynch.
- *
- * Third is that we cap the update rate to some ~32fps unless we've had user
- * input recently (which act as a reset).
- */
-		int64_t now = arcan_timemillis();
+
 		flushc = 0;
-		if (now - term.last < 32)
+		if (atomic_load(&term.acon.addr->vready))
 			continue;
 
-		if (term.dirty != DIRTY_NONE)
-			update_screen(false);
+		update_screen(false);
 
-		if (term.dirty == DIRTY_UPDATED && !term.acon.addr->vready){
+/* we don't synch explicitly, hence the vready check above */
+		if (term.dirty == DIRTY_UPDATED){
 			term.dirty = DIRTY_NONE;
 			arcan_shmif_signal(&term.acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
 			term.last = arcan_timemillis();
@@ -1490,7 +1472,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
  * to forward an ARCAN_CONNPATH in order to draw / control */
 	signal(SIGHUP, sighuph);
 	if ( (term.child = shl_pty_open(&term.pty,
-		read_callback, NULL, term.rows, term.cols)) == 0){
+		read_callback, NULL, 1, 1)) == 0){
 		if (arg_lookup(args, "login", 0, &val)){
 			struct stat buf;
 			char* argv[] = {NULL, "-p", NULL};
@@ -1516,7 +1498,6 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		return EXIT_FAILURE;
 	}
 
-	LOG("update screensize: %f * %d, %d\n", term.ppcm, initw, inith);
 	update_screensize(true);
 	update_screen(true);
 
