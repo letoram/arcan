@@ -15,7 +15,7 @@
  * - X Mouse protocol
  *
  * Known Bugs:
- *  - Resize tends to force scroll up one row
+ *  - Vim rendering bugs out, frames in midnight commander
  *
  * Experiments:
  *  - State transfers (of env, etc. to allow restore)
@@ -384,8 +384,8 @@ static void update_screensize(bool clear)
 		term.rows = rows;
 
 		LOG("resize screen and pty: %d, %d\n", cols, rows);
-		shl_pty_resize(term.pty, cols, rows);
 		tsm_screen_resize(term.screen, cols, rows);
+		shl_pty_resize(term.pty, cols, rows);
 	}
 
 /* just fill the padded areas where a character can't fit, nicer than having to
@@ -948,8 +948,10 @@ static void targetev(arcan_tgtevent* ev)
 		break;
 		}
 
+/* unit conversion again, we get the size in cm, truetype wrapper takes pt,
+ * (at 0.03527778 cm/pt), then update_font will take ppcm into account */
 		float npx = setup_font(fd, ev->ioevs[2].fv > 0 ?
-			ceilf(term.ppcm * ev->ioevs[2].fv) : 0);
+			ev->ioevs[2].fv / 0.0352778 : 0);
 
 		update_screensize(false);
 		update_screen(true);
@@ -1007,16 +1009,8 @@ static void targetev(arcan_tgtevent* ev)
 #ifdef TTF_SUPPORT
 		LOG("displayhint[4]: %f, ppc: %f\n", ev->ioevs[3].fv, term.ppcm);
 		if (ev->ioevs[4].fv > 0 && fabs(ev->ioevs[4].fv - term.ppcm) > 0.01){
-			float sf = ev->ioevs[4].fv / term.ppcm;
-			LOG("scalef: %f\n", sf);
-			int last_fsz = term.font_sz;
-			setup_font(BADFD, term.font_sz * sf);
-
-/* if we just update the local density, it is possible (however insane)
- * that a slowly sliding density would cause the size to never change */
-			if (last_fsz != term.font_sz){
-				term.ppcm = ev->ioevs[4].fv;
-			}
+			term.ppcm = ev->ioevs[4].fv;
+			setup_font(BADFD, term.font_sz);
 			update = true;
 		}
 #endif
@@ -1148,6 +1142,7 @@ static void probe_font(TTF_Font* font,
 static bool setup_font(int fd, size_t font_sz)
 {
 	TTF_Font* font;
+
 	if (font_sz <= 0)
 		font_sz = term.font_sz;
 
@@ -1156,7 +1151,8 @@ static bool setup_font(int fd, size_t font_sz)
 		fd = term.font_fd;
 	};
 
-	font = TTF_OpenFontFD(fd, font_sz);
+	size_t scale_sz = ceilf((float)font_sz * (term.ppcm / 28.346566f));
+	font = TTF_OpenFontFD(fd, scale_sz);
 	if (!font)
 		return false;
 
@@ -1233,7 +1229,7 @@ static void main_loop()
 		}
 
 /* use a time-out for the dirty-but-we-were-in-synch case */
-		int sv = poll(fds, pc, term.dirty ? 4 : 16);
+		int sv = poll(fds, pc, term.dirty ? 4 : -1);
 		if (sv != 0){
 			bool dispatch = false;
 

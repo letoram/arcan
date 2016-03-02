@@ -6153,13 +6153,13 @@ static int targetdisphint(lua_State* ctx)
 		phy_lay = layout_tonum(mmode.subpixel);
 	}
 	else if (type == LUA_TTABLE){
-		int lw = intblint(ctx, 5, "width");
-		int phy_w = intblint(ctx, 5, "phy_width_mm");
-		if (lw && phy_w)
-			ppcm = 10.0f * ((float)lw / (float)phy_w);
-		else
-			arcan_warning("target_displayhint(), modetable provided but "
-				"contains broken fields, ignoring\n");
+		float nv = intblfloat(ctx, 5, "ppcm");
+		if (nv > 10)
+			ppcm = nv;
+		else {
+			arcan_warning("target_displahint(), display table provided "
+				"but with broken / bad ppcm field, ignoring\n");
+		}
 
 		phy_lay = layout_tonum(intblstr(ctx, 5, "subpixel_layout"));
 	}
