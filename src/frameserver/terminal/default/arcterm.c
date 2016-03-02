@@ -15,14 +15,16 @@
  * - X Mouse protocol
  *
  * Known Bugs:
- *  - Vim rendering bugs out, frames in midnight commander
+ *  - Vim rendering bugs out, frames in midnight commander. mc is notoriously
+ *    painfull as it uses the dect terminal ability of mapping alternative
+ *    character-sets into some bits..
  *
  * Experiments:
  *  - State transfers (of env, etc. to allow restore)
  *  - Paste complex data streams into shell namespace (to move files)
  *  - Injecting / redirecting descriptors (senseye integration)
  *  - Drag and Drop- file copy
- *  - Time-keeping manipulation
+ *  - Time-keeping manipulation,
  */
 #include <stdlib.h>
 #include <stdio.h>
@@ -75,8 +77,10 @@ enum cursors {
 };
 
 enum dirty_state {
-	DIRTY_NONE,
-	DIRTY_UPDATED
+	DIRTY_NONE = 0,
+	DIRTY_UPDATED = 1,
+	DIRTY_PENDING = 2,
+	DIRTY_PENDING_FULL = 4
 };
 
 struct {
@@ -113,6 +117,10 @@ struct {
 	int scrollback;
 	bool scroll_lock;
 
+	struct {
+		bool pending;
+		size_t w, h, padw, padh;
+	} defer;
 /* tracking when to reset scrollback */
 	int sbofs;
 
@@ -206,7 +214,7 @@ static void cursor_at(int x, int y, shmif_pixel ccol, bool active)
 	case CURSOR_FRAME:
 		for (int col = x; col < x + term.cell_w; col++){
 			dst[y * term.acon.pitch + col] = ccol;
-			dst[(y + term.cell_h-1 )* term.acon.pitch + col] = ccol;
+			dst[(y + term.cell_h-1 ) * term.acon.pitch + col] = ccol;
 		}
 
 		for (int row = y+1; row < y + term.cell_h-1; row++){
@@ -304,7 +312,7 @@ static int draw_cbt(struct tsm_screen* screen, uint32_t ch,
 
 	bool match_cursor = (cstate && x == term.cursor_x && y == term.cursor_y);
 
-	term.dirty = DIRTY_UPDATED;
+	term.dirty |= DIRTY_UPDATED;
 
 	draw_box(&term.acon, x1, y1, term.cell_w, term.cell_h,
 		SHMIF_RGBA(bgc[0], bgc[1], bgc[2], term.alpha));
@@ -343,23 +351,59 @@ static int draw_cbt(struct tsm_screen* screen, uint32_t ch,
 	return 0;
 }
 
-static void update_screen(bool redraw)
+static void update_screen()
 {
 /* don't redraw while we have an update pending or when we
  * are in an invisible state */
 	if (term.inactive)
 		return;
 
+/* always erase previous cursor */
+	draw_cbt(term.screen, term.cvalue, term.cursor_x, term.cursor_y,
+		&term.cattr, 0, false, false);
+
 	term.cursor_x = tsm_screen_get_cursor_x(term.screen);
 	term.cursor_y = tsm_screen_get_cursor_y(term.screen);
 
-	if (redraw)
-		tsm_screen_selection_reset(term.screen);
+	if (term.dirty & DIRTY_PENDING_FULL){
+		term.acon.dirty.x1 = 0;
+		term.acon.dirty.x2 = term.acon.w;
+		term.acon.dirty.y1 = 0;
+		term.acon.dirty.y2 = term.acon.h;
+	}
+
+	if (term.defer.pending){
+		shmif_pixel col = SHMIF_RGBA(
+			term.bgc[0],term.bgc[1],term.bgc[2],term.alpha);
+
+		if (term.defer.w){
+			draw_box(&term.acon, 0, 0, term.acon.w, term.acon.h, col);
+		}
+		else{
+			size_t padw = term.defer.padw;
+			size_t padh = term.defer.padh;
+		if (padw)
+			draw_box(&term.acon, term.acon.w-padw-1, padw, 0, term.acon.h, col);
+		if (padh)
+			draw_box(&term.acon, 0, term.acon.h-padh-1, term.acon.w, padh, col);
+		}
+
+		term.defer.pending = false;
+		term.defer.w = term.defer.h = term.defer.padw = term.defer.padh = 0;
+	}
 
 	term.flags = tsm_screen_get_flags(term.screen);
 	term.age = tsm_screen_draw(term.screen, draw_cb, NULL /* draw_cb_data */);
+
+	draw_cbt(term.screen, term.cvalue, term.cursor_x, term.cursor_y,
+		&term.cattr, 0, !term.cursor_off, false);
 }
 
+/*
+ * Note that this can currently lead to tearing problems (draw calls
+ * while pending and no queue mechanism for resize step) but considering
+ * all the other funky steps that happen here..
+ */
 static void update_screensize(bool clear)
 {
 /*
@@ -383,28 +427,23 @@ static void update_screensize(bool clear)
 		term.cols = cols;
 		term.rows = rows;
 
-		LOG("resize screen and pty: %d, %d\n", cols, rows);
 		tsm_screen_resize(term.screen, cols, rows);
 		shl_pty_resize(term.pty, cols, rows);
 	}
 
-/* just fill the padded areas where a character can't fit, nicer than having to
- * consider clipping while blitting glyphs */
-	shmif_pixel col = SHMIF_RGBA(term.bgc[0],term.bgc[1],term.bgc[2],term.alpha);
-	if (padw)
-		draw_box(&term.acon, term.acon.w-padw-1, padw, 0, term.acon.h, col);
-	if (padh)
-		draw_box(&term.acon, 0, term.acon.h-padh-1, term.acon.w, padh, col);
+	if (clear || term.defer.pending){
+		term.defer.pending = true;
+		term.defer.w = term.acon.w;
+		term.defer.h = term.acon.h;
+	}
+	else if (padw || padh){
+		term.defer.pending = true;
+		term.defer.padw = padw;
+		term.defer.padh = padh;
+	}
 
-/* possibly need to check flags and attr for cell */
-	if (clear)
-		draw_box(&term.acon, 0, 0, term.acon.w, term.acon.h, col);
-
-/* mark everything as dirty */
-	term.acon.dirty.x1 = 0;
-	term.acon.dirty.x2 = term.acon.w;
-	term.acon.dirty.y1 = 0;
-	term.acon.dirty.y2 = term.acon.h;
+	tsm_screen_selection_reset(term.screen);
+	term.dirty |= DIRTY_PENDING_FULL;
 }
 
 static void read_callback(struct shl_pty* pty,
@@ -413,6 +452,7 @@ static void read_callback(struct shl_pty* pty,
 	tsm_vte_input(term.vte, u8, len);
 	term.cursor_x = tsm_screen_get_cursor_x(term.screen);
 	term.cursor_y = tsm_screen_get_cursor_y(term.screen);
+	term.dirty |= DIRTY_PENDING;
 }
 
 static void write_callback(struct tsm_vte* vte,
@@ -420,6 +460,7 @@ static void write_callback(struct tsm_vte* vte,
 {
 	shl_pty_write(term.pty, u8, len);
 	shl_pty_dispatch(term.pty);
+	term.dirty |= DIRTY_PENDING;
 }
 
 static char* get_shellenv()
@@ -485,7 +526,7 @@ static void page_up()
 {
 	tsm_screen_sb_up(term.screen, term.rows);
 	term.sbofs += term.rows;
-	update_screen(false);
+	term.dirty |= DIRTY_PENDING;
 }
 
 static void page_down()
@@ -493,14 +534,14 @@ static void page_down()
 	tsm_screen_sb_down(term.screen, term.rows);
 	term.sbofs -= term.rows;
 	term.sbofs = term.sbofs < 0 ? 0 : term.sbofs;
-	update_screen(false);
+	term.dirty |= DIRTY_PENDING;
 }
 
 static void scroll_up()
 {
 	tsm_screen_sb_up(term.screen, 1);
 	term.sbofs += 1;
-	update_screen(false);
+	term.dirty |= DIRTY_PENDING;
 }
 
 static void scroll_down()
@@ -508,7 +549,7 @@ static void scroll_down()
 	tsm_screen_sb_down(term.screen, 1);
 	term.sbofs -= 1;
 	term.sbofs = term.sbofs < 0 ? 0 : term.sbofs;
-	update_screen(false);
+	term.dirty |= DIRTY_PENDING;
 }
 
 static void move_up()
@@ -516,7 +557,7 @@ static void move_up()
 	if (term.scroll_lock)
 		page_up();
 	else if (tsm_vte_handle_keyboard(term.vte, XKB_KEY_Up, 0, 0, 0))
-		update_screen(false);
+		term.dirty |= DIRTY_PENDING;
 }
 
 static void move_down()
@@ -524,20 +565,20 @@ static void move_down()
 	if (term.scroll_lock)
 		page_down();
 	if (tsm_vte_handle_keyboard(term.vte, XKB_KEY_Down, 0, 0, 0))
-		update_screen(false);
+		term.dirty |= DIRTY_PENDING;
 }
 
 /* in TSM< typically mapped to ctrl+ arrow but we allow external rebind */
 static void move_left()
 {
 	if (tsm_vte_handle_keyboard(term.vte, XKB_KEY_Left, 0, 0, 0))
-		update_screen(false);
+		term.dirty |= DIRTY_PENDING;
 }
 
 static void move_right()
 {
 	if (tsm_vte_handle_keyboard(term.vte, XKB_KEY_Right, 0, 0, 0))
-		update_screen(false);
+		term.dirty |= DIRTY_PENDING;
 }
 
 static void select_begin()
@@ -642,7 +683,7 @@ static void select_at()
 		tsm_screen_selection_start(term.screen, sx, sy);
 		tsm_screen_selection_target(term.screen, ex, ey);
 		select_copy();
-		update_screen(false);
+		term.dirty |= DIRTY_PENDING;
 	}
 
 	term.in_select = false;
@@ -654,7 +695,7 @@ static void select_row()
 	tsm_screen_selection_start(term.screen, 0, term.cursor_y);
 	tsm_screen_selection_target(term.screen, term.cols-1, term.cursor_y);
 	select_copy();
-	update_screen(false);
+	term.dirty |= DIRTY_PENDING;
 	term.in_select = false;
 }
 
@@ -685,11 +726,8 @@ static void scroll_lock()
 	if (!term.scroll_lock){
 		term.sbofs = 0;
 		tsm_screen_sb_reset(term.screen);
-		update_screen(false);
+		term.dirty |= DIRTY_PENDING;
 	}
-
-	draw_cbt(term.screen, term.cvalue, term.cursor_x, term.cursor_y,
-		&term.cattr, 0, !term.cursor_off, false);
 }
 
 static const struct lent labels[] = {
@@ -765,7 +803,7 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 		if (term.sbofs != 0){
 			term.sbofs = 0;
 			tsm_screen_sb_reset(term.screen);
-			update_screen(false);
+			term.dirty |= DIRTY_PENDING;
 		}
 
 /* ignore the meta keys as we already treat them in modifiers */
@@ -835,7 +873,7 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
  * to scroll and an accelerated scrollback */
 				if (upd){
 					tsm_screen_selection_target(term.screen, term.lm_x, term.lm_y);
-					update_screen(false);
+					term.dirty |= DIRTY_PENDING;
 				}
 /* in select? check if motion tile is different than old, if so,
  * tsm_selection_target */
@@ -854,7 +892,7 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 						tsm_screen_selection_target(
 							term.screen, term.cols-1, term.mouse_y);
 						select_copy();
-						update_screen(false);
+						term.dirty |= DIRTY_PENDING;
 						term.in_select = false;
 					}
 /* select word */
@@ -868,7 +906,7 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 							tsm_screen_selection_start(term.screen, sx, sy);
 							tsm_screen_selection_target(term.screen, ex, ey);
 							select_copy();
-							update_screen(false);
+							term.dirty |= DIRTY_PENDING;
 							term.in_select = false;
 						}
 					}
@@ -896,7 +934,7 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 				tsm_screen_sb_reset(term.screen);
 				tsm_screen_selection_reset(term.screen);
 				term.in_select = false;
-				update_screen(false);
+				term.dirty |= DIRTY_PENDING;
 			}
 		}
 	}
@@ -909,7 +947,7 @@ static void targetev(arcan_tgtevent* ev)
 	case TARGET_COMMAND_GRAPHMODE:
 		if (ev->ioevs[0].iv == 1){
 			term.alpha = ev->ioevs[1].fv;
-			update_screen(true);
+			term.dirty = DIRTY_PENDING_FULL;
 		}
 	break;
 
@@ -954,7 +992,6 @@ static void targetev(arcan_tgtevent* ev)
 			ev->ioevs[2].fv / 0.0352778 : 0);
 
 		update_screensize(false);
-		update_screen(true);
 #endif
 	}
 
@@ -981,8 +1018,7 @@ static void targetev(arcan_tgtevent* ev)
 				term.focus = false;
 				if (!term.cursor_off){
 					term.cursor_off = true;
-					draw_cbt(term.screen, term.cvalue, term.cursor_x, term.cursor_y,
-						&term.cattr, 0, !term.cursor_off, false);
+					term.dirty |= DIRTY_PENDING;
 				}
 			}
 			else{
@@ -990,8 +1026,7 @@ static void targetev(arcan_tgtevent* ev)
 				term.inact_timer = 0;
 				if (term.cursor_off){
 					term.cursor_off = false;
-					draw_cbt(term.screen, term.cvalue, term.cursor_x, term.cursor_y,
-						&term.cattr, 0, !term.cursor_off, false);
+					term.dirty |= DIRTY_PENDING;
 				}
 			}
 		}
@@ -1000,7 +1035,6 @@ static void targetev(arcan_tgtevent* ev)
 		if (dev){
 			arcan_shmif_resize(&term.acon, ev->ioevs[0].iv, ev->ioevs[1].iv);
 			update_screensize(true);
-			update = true;
 		}
 
 /* currently ignoring field [3], RGB layout as freetype with
@@ -1016,7 +1050,7 @@ static void targetev(arcan_tgtevent* ev)
 #endif
 
 		if (update)
-			update_screen(true);
+			term.dirty = DIRTY_PENDING_FULL;
 	}
 	break;
 
@@ -1047,14 +1081,12 @@ static void targetev(arcan_tgtevent* ev)
 		if (ev->ioevs[1].iv == 1 && term.focus){
 			term.inact_timer++;
 			term.cursor_off = term.inact_timer > 1 ? !term.cursor_off : false;
-			draw_cbt(term.screen, term.cvalue, term.cursor_x, term.cursor_y,
-				&term.cattr, 0, !term.cursor_off, false);
+			term.dirty |= DIRTY_PENDING;
 		}
 		else{
 			if (!term.cursor_off && term.focus){
 				term.cursor_off = true;
-			draw_cbt(term.screen, term.cvalue, term.cursor_x, term.cursor_y,
-				&term.cattr, 0, !term.cursor_off, false);
+				term.dirty |= DIRTY_PENDING;
 			}
 		}
 		if (term.in_select && term.scrollback != 0){
@@ -1062,6 +1094,7 @@ static void targetev(arcan_tgtevent* ev)
 				tsm_screen_sb_up(term.screen, abs(term.scrollback));
 			else
 				tsm_screen_sb_down(term.screen, term.scrollback);
+			term.dirty |= DIRTY_PENDING;
 		}
 	break;
 
@@ -1163,10 +1196,10 @@ static bool setup_font(int fd, size_t font_sz)
 	static const char* set[] = {
 		"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l",
 		"m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "x", "y",
-		"z", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+		"z", "!", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
 		"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L",
 		"M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "X", "Y",
-		"Z"
+		"Z", "|", "_"
 	};
 	for (size_t i = 0; i < sizeof(set)/sizeof(set[0]); i++)
 		probe_font(font, set[i], &w, &h);
@@ -1229,7 +1262,7 @@ static void main_loop()
 		}
 
 /* use a time-out for the dirty-but-we-were-in-synch case */
-		int sv = poll(fds, pc, term.dirty ? 4 : -1);
+		int sv = poll(fds, pc, -1); //term.dirty ? 4 : 8);
 		if (sv != 0){
 			bool dispatch = false;
 
@@ -1253,20 +1286,19 @@ static void main_loop()
 
 /* need some limiter here so we won't completely stall if the terminal
  * gets spammed (find /) */
-			if (dispatch)
-				while (-EAGAIN == shl_pty_dispatch(term.pty) &&
-					(atomic_load(&term.acon.addr->vready) || flushc++ < 10))
-				;
+			while (-EAGAIN == shl_pty_dispatch(term.pty) &&
+				(atomic_load(&term.acon.addr->vready) || flushc++ < 10))
+			;
 		}
 
 		flushc = 0;
 		if (atomic_load(&term.acon.addr->vready))
 			continue;
 
-		update_screen(false);
+		update_screen();
 
 /* we don't synch explicitly, hence the vready check above */
-		if (term.dirty == DIRTY_UPDATED){
+		if (term.dirty & DIRTY_UPDATED){
 			term.dirty = DIRTY_NONE;
 			arcan_shmif_signal(&term.acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
 			term.last = arcan_timemillis();
@@ -1495,7 +1527,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	}
 
 	update_screensize(true);
-	update_screen(true);
+	term.dirty |= DIRTY_PENDING_FULL;
 
 /* immediately request a clipboard for cut operations (none received ==
  * running appl doesn't care about cut'n'paste/drag'n'drop support). */
