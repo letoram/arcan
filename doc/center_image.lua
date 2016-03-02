@@ -1,11 +1,11 @@
 -- center_image
 -- @short: move a video object relative to an external reference object
--- @inargs: srcvid, refvid, *anchorp*
+-- @inargs: srcvid, refvid, *anchorp*, *xofs*, *yofs*
 -- @outargs:
 -- @longdescr: This positions the center of *srcvid* relative to an
 -- anchor point on *refvid* (default to center, other options are
 -- ANCHOR_ UL, UR, LL, LR) taking relative coordinate systems into
--- account.
+-- account, and shifting by an additional *xofs*,*yofs* (default: 0)
 -- @group: image
 -- @cfunction: centerimage
 -- @related: link_image

@@ -1710,6 +1710,8 @@ static int centerimage(lua_State* ctx)
 	arcan_vobj_id src = luaL_checkvid(ctx, 1, &sobj);
 	arcan_vobj_id obj = luaL_checkvid(ctx, 2, NULL);
 	int al = luaL_optnumber(ctx, 3, ANCHORP_C);
+	int xofs = luaL_optnumber(ctx, 4, 0);
+	int yofs = luaL_optnumber(ctx, 5, 0);
 
 	surface_properties sprop, dprop;
 	sprop = arcan_video_resolve_properties(src);
@@ -1749,8 +1751,8 @@ static int centerimage(lua_State* ctx)
  * and finally translate to coordinates in src-obj space */
 
 	arcan_video_objectmove(src,
-		sobj->current.position.x + ap_x - cp_sx,
-		sobj->current.position.y + ap_y - cp_sy, 1.0, 0
+		sobj->current.position.x + ap_x - cp_sx + xofs,
+		sobj->current.position.y + ap_y - cp_sy + yofs, 1.0, 0
 	);
 
 	LUA_ETRACE("center_image", NULL);
