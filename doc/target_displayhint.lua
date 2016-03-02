@@ -1,6 +1,6 @@
 -- target_displayhint
 -- @short: Send visibility / drawing hint to target frameserver.
--- @inargs: tgtid, width, height, *flags*, *disptbl*
+-- @inargs: tgtid, width, height, *flags*, *displaytbl*
 -- @longdescr: The target_displayhint sends a hint to the specified target
 -- that it should try and resize its shared memory connection to the desired
 -- dimensions. This can be used to notify about current drawing dimensions for
@@ -10,10 +10,10 @@
 -- TD_HINT_INVISIBLE - invisible, TD_HINT_UNFOCUSED). Hence the default is
 -- visible and focused. These can be combined with bit.band(fl1, fl2) or
 -- set to no change with TD_HINT_IGNORE.
--- If the optional *disptbl* is set to a table that matches the format for
--- display added events, additional information (physical dimensions, rgb
--- hinting layout etc.) may be propagated. If it is set to WORLDID, the display
--- information for the primary display will be propagated.
+-- If the optional *displaytbl* is set and is a table, the fields 'ppcm' and
+-- 'subpixel_layout' are expected to be present.
+-- If the optional *displaytbl* is set to WORLDID, the display informationfor
+-- the primary display will be used.
 -- @group: targetcontrol
 -- @note: width/height that exceeds the static compile-time limitations of
 -- MAX_TARGETW or MAX_TARGETH will be clamped to those values. Invalid hint-
