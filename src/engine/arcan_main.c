@@ -626,6 +626,9 @@ int MAIN_REDIR(int argc, char* argv[])
 		arcan_event_maskall(evctx);
 		arcan_video_recoverexternal(true, &saved, &truncated, NULL, NULL);
 		arcan_event_clearmask(evctx);
+		platform_video_recovery();
+/* unmap all displays */
+
 		adopt = true;
 	}
 	else if (jumpcode == 2){
@@ -642,6 +645,7 @@ int MAIN_REDIR(int argc, char* argv[])
 		arcan_event_maskall(evctx);
 		arcan_video_recoverexternal(true, &saved, &truncated, NULL, NULL);
 		arcan_event_clearmask(evctx);
+		platform_video_recovery();
 
 		const char* errmsg;
 		arcan_lua_shutdown(settings.lua);
