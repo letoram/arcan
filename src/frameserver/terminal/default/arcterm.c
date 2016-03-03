@@ -117,10 +117,6 @@ struct {
 	int scrollback;
 	bool scroll_lock;
 
-	struct {
-		bool pending;
-		size_t w, h, padw, padh;
-	} defer;
 /* tracking when to reset scrollback */
 	int sbofs;
 
@@ -370,26 +366,7 @@ static void update_screen()
 		term.acon.dirty.x2 = term.acon.w;
 		term.acon.dirty.y1 = 0;
 		term.acon.dirty.y2 = term.acon.h;
-	}
-
-	if (term.defer.pending){
-		shmif_pixel col = SHMIF_RGBA(
-			term.bgc[0],term.bgc[1],term.bgc[2],term.alpha);
-
-		if (term.defer.w){
-			draw_box(&term.acon, 0, 0, term.acon.w, term.acon.h, col);
-		}
-		else{
-			size_t padw = term.defer.padw;
-			size_t padh = term.defer.padh;
-		if (padw)
-			draw_box(&term.acon, term.acon.w-padw-1, padw, 0, term.acon.h, col);
-		if (padh)
-			draw_box(&term.acon, 0, term.acon.h-padh-1, term.acon.w, padh, col);
-		}
-
-		term.defer.pending = false;
-		term.defer.w = term.defer.h = term.defer.padw = term.defer.padh = 0;
+		tsm_screen_selection_reset(term.screen);
 	}
 
 	term.flags = tsm_screen_get_flags(term.screen);
@@ -406,6 +383,7 @@ static void update_screen()
  */
 static void update_screensize(bool clear)
 {
+	LOG("update screensize\n");
 /*
  * commented out approach seem to have led to some edge case
  * wrong-stride, ignored for now
@@ -427,23 +405,32 @@ static void update_screensize(bool clear)
 		term.cols = cols;
 		term.rows = rows;
 
-		tsm_screen_resize(term.screen, cols, rows);
+/*
+ * actual resize, we can assume that we are not in signal
+ * state as shmif_ will block on that
+ */
 		shl_pty_resize(term.pty, cols, rows);
+		tsm_screen_resize(term.screen, cols, rows);
 	}
 
-	if (clear || term.defer.pending){
-		term.defer.pending = true;
-		term.defer.w = term.acon.w;
-		term.defer.h = term.acon.h;
-	}
-	else if (padw || padh){
-		term.defer.pending = true;
-		term.defer.padw = padw;
-		term.defer.padh = padh;
+	while (atomic_load(&term.acon.addr->vready))
+		;
+
+	shmif_pixel col = SHMIF_RGBA(
+		term.bgc[0],term.bgc[1],term.bgc[2],term.alpha);
+
+	if (clear)
+		draw_box(&term.acon, 0, 0, term.acon.w, term.acon.h, col);
+	else{
+		if (padw)
+			draw_box(&term.acon, term.acon.w-padw-1, padw, 0, term.acon.h, col);
+		if (padh)
+			draw_box(&term.acon, 0, term.acon.h-padh-1, term.acon.w, padh, col);
 	}
 
-	tsm_screen_selection_reset(term.screen);
+/* will enforce full redraw */
 	term.dirty |= DIRTY_PENDING_FULL;
+	update_screen();
 }
 
 static void read_callback(struct shl_pty* pty,
@@ -1245,7 +1232,7 @@ static void main_loop()
 	short pollev = POLLIN | POLLERR | POLLNVAL | POLLHUP;
 	int ptyfd = shl_pty_get_fd(term.pty);
 	int timeout = -1;
-	int flushc = 0;
+	int flushc = 0, last_estate = 0;
 
 	while(term.acon.addr->dms){
 		int pc = 2;
@@ -1261,11 +1248,18 @@ static void main_loop()
 			pc = 3;
 		}
 
-/* use a time-out for the dirty-but-we-were-in-synch case */
-		int sv = poll(fds, pc, -1); //term.dirty ? 4 : 8);
-		if (sv != 0){
-			bool dispatch = false;
+/* try to balance latency and responsiveness in the case of saturation */
+		int sv, tv;
+		if (last_estate == -EAGAIN)
+			tv = 0;
+		else if (atomic_load(&term.acon.addr->vready) && term.dirty)
+			tv = 4;
+		else
+			tv = -1;
+		sv = poll(fds, pc, tv);
+		bool dispatch = last_estate == -EAGAIN;
 
+		if (sv != 0){
 			if (fds[1].revents & POLLIN){
 				while (arcan_shmif_poll(&term.acon, &ev) > 0){
 					event_dispatch(&ev);
@@ -1283,13 +1277,13 @@ static void main_loop()
 				dispatch = true;
 			else if (fds[0].revents)
 				break;
+		}
 
 /* need some limiter here so we won't completely stall if the terminal
- * gets spammed (find /) */
-			while (-EAGAIN == shl_pty_dispatch(term.pty) &&
-				(atomic_load(&term.acon.addr->vready) || flushc++ < 10))
-			;
-		}
+ * gets spammed (running find / or cat on huge file are good testcases) */
+		while ( (last_estate = shl_pty_dispatch(term.pty)) == -EAGAIN &&
+			(atomic_load(&term.acon.addr->vready) || flushc++ < 10))
+		;
 
 		flushc = 0;
 		if (atomic_load(&term.acon.addr->vready))
@@ -1527,7 +1521,6 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	}
 
 	update_screensize(true);
-	term.dirty |= DIRTY_PENDING_FULL;
 
 /* immediately request a clipboard for cut operations (none received ==
  * running appl doesn't care about cut'n'paste/drag'n'drop support). */
