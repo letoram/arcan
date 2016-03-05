@@ -249,15 +249,17 @@ static void draw_ch(uint8_t u8_ch[5],
 	draw_box(&term.acon, base_x, base_y, term.cell_w, term.cell_h,
 		SHMIF_RGBA(bg[0], bg[1], bg[2], bg[3]));
 
+	int prem = TTF_STYLE_UNDERLINE * underline;
 	if (bold){
-		TTF_SetFontStyle(term.font, TTF_STYLE_BOLD);
+		TTF_SetFontStyle(term.font, TTF_STYLE_BOLD | prem);
 		TTF_RenderUTF8_ext(&term.acon.vidp[base_y * term.acon.pitch + base_x],
 		term.acon.pitch, term.font, (const char*) u8_ch, fg, bg, 0);
-		TTF_SetFontStyle(term.font, TTF_STYLE_NORMAL);
 	}
-	else
+	else{
+		TTF_SetFontStyle(term.font, TTF_STYLE_NORMAL | prem);
 		TTF_RenderUTF8_ext(&term.acon.vidp[base_y * term.acon.pitch + base_x],
 		term.acon.pitch, term.font, (const char*) u8_ch, fg, bg, 0);
+	}
 #endif
 }
 
@@ -312,11 +314,6 @@ static int draw_cbt(struct tsm_screen* screen, uint32_t ch,
 
 	draw_box(&term.acon, x1, y1, term.cell_w, term.cell_h,
 		SHMIF_RGBA(bgc[0], bgc[1], bgc[2], term.alpha));
-
-	if (attr->underline && !match_cursor){
-		draw_box(&term.acon, x1, y1 + term.cell_h-1, term.cell_w, 1,
-			SHMIF_RGBA(fgc[0], fgc[1], fgc[2], 0xff));
-	}
 
 /* quick erase if nothing more is needed */
 	if (empty){
