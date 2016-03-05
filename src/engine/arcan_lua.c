@@ -4909,7 +4909,7 @@ static int storekey(lua_State* ctx)
 			}
 			else {
 				const char* val = lua_tostring(ctx, -1);
-				arcan_db_add_kvpair(dbhandle, key, val);
+				arcan_db_add_kvpair(dbhandle, key, strlen(val) > 0 ? val : NULL);
 			}
 
 			lua_pop(ctx, 1);

@@ -94,11 +94,15 @@ static const char* ddls[] = {
 #define DI_INSARG_TARGET "INSERT INTO target_argv(target, arg) VALUES(?, ?);"
 #define DI_INSARG_CONFIG "INSERT INTO config_argv(config, arg) VALUES(?, ?);"
 
+#define DI_DROPKV_TARGET "DELETE FROM target_kv WHERE val=\"\";"
+
 #define DI_INSKV_TARGET "INSERT OR REPLACE INTO "\
 	"target_kv(key, val, target) VALUES(?, ?, ?);"
 
 #define DI_INSKV_CONFIG "INSERT OR REPLACE INTO "\
 	"config_kv(key, val, config) VALUES(?, ?, ?);"
+
+#define DI_DROPKV_CONFIG "DELETE FROM config_kv WHERE val=\"\";"
 
 #define DI_INSKV_CONFIG_ENV "INSERT OR REPLACE INTO "\
 	"config_env(key, val, config) VALUES(?, ?, ?);"
@@ -117,12 +121,15 @@ struct arcan_dbh {
 	char* applname;
 	char* akv_update;
 	char* akv_get;
+	char* akv_clean;
 
 	size_t akv_upd_sz;
 	size_t akv_get_sz;
+	size_t akv_clean_sz;
 
 	enum DB_KVTARGET ttype;
 	union arcan_dbtrans_id trid;
+	bool trclean;
 	sqlite3_stmt* transaction;
 };
 
@@ -234,21 +241,32 @@ static void create_appl_group(struct arcan_dbh* dbh, const char* applname)
 {
 	const char ddl[] = "CREATE TABLE appl_%s "
 		"(key TEXT UNIQUE, val TEXT NOT NULL);";
-
 	const char kv_ddl[] = "INSERT OR REPLACE INTO "
 		" appl_%s(key, val) VALUES(?, ?);";
-
 	const char kv_get[] = "SELECT val FROM appl_%s WHERE key = ?;";
+	const char kv_drop[] = "DELETE FROM appl_%s WHERE val = \"\";";
 
 	if (dbh->akv_update)
 		arcan_mem_free(dbh->akv_update);
 
+	size_t len = applname ? strlen(applname) : 0;
+	if (0 == len){
+		arcan_warning("create_appl_group(), missing or broken applname\n");
+		return;
+	}
+
 /* cache key insert into app specific table */
 	assert(sizeof(kv_get) < sizeof(kv_ddl));
-	size_t ddl_sz = strlen(applname) + sizeof(kv_ddl);
+	size_t ddl_sz = len + sizeof(kv_ddl);
 	dbh->akv_update = arcan_alloc_mem(
 		ddl_sz, ARCAN_MEM_STRINGBUF, 0, ARCAN_MEMALIGN_NATURAL);
 	dbh->akv_upd_sz = snprintf(dbh->akv_update, ddl_sz, kv_ddl, applname);
+
+/* cache drop empty values from table */
+	ddl_sz = len + sizeof(kv_drop);
+	dbh->akv_clean = arcan_alloc_mem(
+		ddl_sz, ARCAN_MEM_STRINGBUF, 0, ARCAN_MEMALIGN_NATURAL);
+	dbh->akv_clean_sz = snprintf(dbh->akv_clean, ddl_sz, kv_drop, applname);
 
 /* cache key retrieve into app specific table */
 	ddl_sz = strlen(applname) + sizeof(kv_get);
@@ -629,7 +647,8 @@ void arcan_db_begin_transaction(struct arcan_dbh* dbh,
 	enum DB_KVTARGET kvt, union arcan_dbtrans_id id)
 {
 	if (dbh->transaction)
-		arcan_fatal("arcan_db_appl_kv() called during a pending transaction\n");
+		arcan_fatal("arcan_db_begin_transaction()"
+			"	called during a pending transaction\n");
 
 	sqlite3_exec(dbh->dbh, "BEGIN;", NULL, NULL, NULL);
 	int code = SQLITE_OK;
@@ -792,6 +811,11 @@ void arcan_db_add_kvpair(struct arcan_dbh* dbh,
 		arcan_fatal("arcan_db_add_kvpair() "
 			"called without any open transaction.");
 
+	if (!val){
+		dbh->trclean = true;
+		return;
+	}
+
 	sqlite3_bind_text(dbh->transaction, 1, key, -1, SQLITE_TRANSIENT);
 	sqlite3_bind_text(dbh->transaction, 2, val, -1, SQLITE_TRANSIENT);
 
@@ -829,6 +853,23 @@ void arcan_db_end_transaction(struct arcan_dbh* dbh)
 			"called without any open transaction.");
 
 	sqlite3_finalize(dbh->transaction);
+	if (dbh->trclean){
+		switch (dbh->ttype){
+		case DVT_APPL:
+			sqlite3_exec(dbh->dbh, dbh->akv_clean, NULL, NULL, NULL);
+		break;
+		case DVT_TARGET:
+			sqlite3_exec(dbh->dbh, DI_DROPKV_TARGET, NULL, NULL, NULL);
+		break;
+		case DVT_CONFIG:
+			sqlite3_exec(dbh->dbh, DI_DROPKV_CONFIG, NULL, NULL, NULL);
+		break;
+		default:
+		break;
+		}
+		dbh->trclean = false;
+	}
+
 	if (SQLITE_OK != sqlite3_exec(dbh->dbh, "COMMIT;", NULL, NULL, NULL)){
 		arcan_warning("arcan_db_end_transaction(), failed: %s\n",
 			sqlite3_errmsg(dbh->dbh));
@@ -845,8 +886,17 @@ bool arcan_db_appl_kv(struct arcan_dbh* dbh, const char* applname,
 	if (dbh->transaction)
 		arcan_fatal("arcan_db_appl_kv() called during a pending transaction\n");
 
-	if (!dbh || !key || !value)
+	if (!applname || !dbh || !key)
 		return rv;
+
+	if (!value){
+		const char kv_drop[] = "DELETE FROM appl_%s WHERE val = \"\";";
+		size_t upd_sz = sizeof(kv_drop) + strlen(applname);
+		char upd_buf[upd_sz];
+		ssize_t nw = snprintf(upd_buf, upd_sz, kv_drop, applname);
+		db_void_query(dbh, upd_buf, false);
+		return true;
+	}
 
 	const char ddl_insert[] = "INSERT OR REPLACE "
 		"INTO appl_%s(key, val) VALUES(?, ?);";
