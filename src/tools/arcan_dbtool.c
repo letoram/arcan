@@ -210,7 +210,7 @@ static int set_kv(struct arcan_dbh* dst,
 		char* key, char* val)
 {
 	arcan_db_begin_transaction(dst, tgt, id);
-	arcan_db_add_kvpair(dst, key, val);
+	arcan_db_add_kvpair(dst, key, strlen(val) > 0 ? val : NULL);
 	arcan_db_end_transaction(dst);
 
 	return EXIT_SUCCESS;
@@ -236,7 +236,8 @@ static int add_appl_kv(struct arcan_dbh* dst, int argc, char** argv)
 		return EXIT_FAILURE;
 	}
 
-	return arcan_db_appl_kv(dst, argv[0], argv[1], argv[2]) ?
+	return arcan_db_appl_kv(dst, argv[0],
+		argv[1], strlen(argv[2]) > 0 ? argv[2] : NULL) ?
 		EXIT_SUCCESS : EXIT_FAILURE;
 }
 

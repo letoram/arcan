@@ -3,13 +3,16 @@
 -- @inargs: argtbl or [key, val], *opttgt*, *optcfg*
 -- @outargs: true or false
 -- @longdescr: There are multiple key- value stores that can be used for
--- keeping track of specific key value pairs. The normal one is bound to the
+-- keeping track of specific key value pairs. The default one is bound to the
 -- currently running appl, but there is also one connected to each execution
--- target that is accessed by setting *opttgt* to any value from ref:list_targets.
--- There is also a execution target configuration specific key- value store if
--- both *opttgt* and *optcfg* are set to a valid target- configuration pair.
+-- target that can be accessed by setting *opttgt* to any value returned
+-- from calling ref:list_targets. There is also an execution target
+-- configuration specific key- value store if both *opttgt* and *optcfg*
+-- are set to a valid target- configuration pair.
 -- Only characters in the set [a-Z][0-9]_/+= are valid *key* values.
 -- @note: The /+= are allowed to support base64 encoded values.
+-- @note: If the string length of a value field is set to 0, the key
+-- will be deleted.
 -- To set multiple pairs at once, pack them in a key- indexed table.
 -- @group: database
 -- @cfunction: storekey

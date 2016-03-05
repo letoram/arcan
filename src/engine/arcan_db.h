@@ -159,6 +159,11 @@ union arcan_dbtrans_id {
  */
 void arcan_db_begin_transaction(struct arcan_dbh*, enum DB_KVTARGET,
 	union arcan_dbtrans_id);
+
+/*
+ * if val is set to NULL, all entries with an 0-length string will be dropped
+ * in the transaction target.
+ */
 void arcan_db_add_kvpair(struct arcan_dbh*, const char* key, const char* val);
 void arcan_db_end_transaction(struct arcan_dbh*);
 
