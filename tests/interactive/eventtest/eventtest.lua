@@ -213,6 +213,9 @@ function eventtest_input( iotbl )
 		end
 
 		anatbl.match = tbl;
-    end
+	elseif (iotbl.kind == "status") then
+		warning(string.format("status(%d) - %s, %s, %s", iotbl.devid, iotbl.devkind,
+			iotbl.label, iotbl.action));
+	end
 end
 

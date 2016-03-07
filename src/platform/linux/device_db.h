@@ -14,11 +14,11 @@
  * of the uinput- device node (used for registering customized input devices)
  */
 enum devnode_type {
-	DEVNODE_SENSOR = 0,
-	DEVNODE_GAME,
+	DEVNODE_KEYBOARD = 0,
 	DEVNODE_MOUSE,
+	DEVNODE_GAME,
 	DEVNODE_TOUCH,
-	DEVNODE_KEYBOARD,
+	DEVNODE_SENSOR,
 	DEVNODE_MISSING
 };
 
@@ -61,12 +61,15 @@ static struct evhandler device_db[] = {
 	}
 };
 
+/*
+ * matching devnode_type enum, sensor detection and touch notably missing
+ */
 static devnode_decode_cb defhandlers[] = {
-	defhandler_null,
-	defhandler_game,
-	defhandler_mouse,
-	defhandler_null,
 	defhandler_kbd,
+	defhandler_mouse,
+	defhandler_game,
+	defhandler_null,
+	defhandler_null,
 	defhandler_null
 };
 
