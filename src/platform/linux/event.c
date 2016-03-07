@@ -196,7 +196,7 @@ static void sigusr_rel(int sign, siginfo_t* info, void* ctx)
 		errno = s_errn;
 }
 
-static void got_device(int fd, const char*);
+static void got_device(struct arcan_evctx* ctx, int fd, const char*);
 
 /* for other platforms and legacy, devid used to be allocated sequentially
  * and swept linear, even though this platform do not work like that and we
@@ -463,7 +463,8 @@ void platform_event_analogfilter(int devid,
 	set_analogstate(axis,lower_bound, upper_bound, deadzone, buffer_sz, kind);
 }
 
-static bool discovered(const char* name, size_t name_len, bool nopending)
+static bool discovered(struct arcan_evctx* ctx,
+	const char* name, size_t name_len, bool nopending)
 {
 	int fd = fmt_open(0, O_NONBLOCK | O_RDWR | O_CLOEXEC,
 		"%s/%.*s", notify_scan_dir, name_len, name);
@@ -505,7 +506,7 @@ static bool discovered(const char* name, size_t name_len, bool nopending)
 /* even if we can access it and it is of the right type, it is not certain
  * that we can actually identify and use it according with evdev */
 	if (-1 != fd){
-		got_device(fd, name);
+		got_device(ctx, fd, name);
 		return true;
 	}
 	else
@@ -514,7 +515,7 @@ static bool discovered(const char* name, size_t name_len, bool nopending)
 	return false;
 }
 
-static void process_pending()
+static void process_pending(struct arcan_evctx* ctx)
 {
 	for (size_t i = 0; i < COUNT_OF(pending); i++){
 		if (!pending[i].path)
@@ -527,7 +528,7 @@ static void process_pending()
 
 		pending[i].last_ts = arcan_frametime();
 
-		if (discovered(pending[i].path, strlen(pending[i].path), true)){
+		if (discovered(ctx, pending[i].path, strlen(pending[i].path), true)){
 			free(pending[i].path);
 			pending[i].path = NULL;
 			gstate.pending--;
@@ -562,14 +563,14 @@ void platform_event_process(struct arcan_evctx* ctx)
 				ofs += sizeof(struct inotify_event);
 
 				if ((cur.mask & IN_CREATE) && !(cur.mask & IN_ISDIR)){
-					discovered(&inbuf[ofs], cur.len, false);
+					discovered(ctx, &inbuf[ofs], cur.len, false);
 					ofs += cur.len;
 				}
 			}
 	}
 
 	if (gstate.pending)
-		process_pending();
+		process_pending(ctx);
 
 	if (gstate.sigpipe[0] != -1){
 		if (poll(&gstate.sigpipe_p, 1, 0) > 0){
@@ -801,7 +802,7 @@ static void map_axes(int fd, size_t bitn, struct arcan_devnode* node)
 		}
 }
 
-static void got_device(int fd, const char* path)
+static void got_device(struct arcan_evctx* ctx, int fd, const char* path)
 {
 	struct arcan_devnode node = {
 		.handle = fd
@@ -964,11 +965,24 @@ static void got_device(int fd, const char* path)
 		iodev.sz_nodes = new_sz;
 	}
 
+/* finally added */
 	iodev.n_devs++;
 	node.path = strdup(path);
 	iodev.pollset[hole].fd = fd;
 	iodev.pollset[hole].events = POLLIN;
 	iodev.nodes[hole] = node;
+
+	struct arcan_event addev = {
+		.category = EVENT_IO,
+		.io.kind = EVENT_IO_STATUS,
+		.io.devkind = EVENT_IDEVKIND_STATUS,
+		.io.devid = node.devnum,
+		.io.input.status.devkind = node.type,
+		.io.input.status.action = EVENT_IDEV_ADDED
+	};
+	snprintf((char*) &addev.io.label, sizeof(addev.io.label) /
+		sizeof(addev.io.label[0]), "%s", node.label);
+	arcan_event_enqueue(ctx, &addev);
 
 	if (log_verbose)
 		arcan_warning("input: (%s:%s) added as type: %s\n",
@@ -1005,7 +1019,7 @@ void platform_event_rescan_idev(struct arcan_evctx* ctx)
 		while(*beg){
 			int fd = open(*beg, O_NONBLOCK | O_RDWR | O_CLOEXEC);
 			if (-1 != fd)
-				got_device(fd, *beg);
+				got_device(ctx, fd, *beg);
 			beg++;
 		}
 
@@ -1051,8 +1065,20 @@ static void update_state(int code, bool state, unsigned* statev)
 		*statev &= ~modifier;
 }
 
-static void disconnect(struct arcan_devnode* node)
+static void disconnect(struct arcan_evctx* ctx, struct arcan_devnode* node)
 {
+	struct arcan_event addev = {
+		.category = EVENT_IO,
+		.io.kind = EVENT_IO_STATUS,
+		.io.devid = node->devnum,
+		.io.devkind = EVENT_IDEVKIND_STATUS,
+		.io.input.status.devkind = node->type,
+		.io.input.status.action = EVENT_IDEV_REMOVED
+	};
+	snprintf((char*) &addev.io.label, sizeof(addev.io.label) /
+		sizeof(addev.io.label[0]), "%s", node->label);
+	arcan_event_enqueue(ctx, &addev);
+
 	for (size_t i = 0; i < iodev.n_devs; i++)
 		if (node->devnum == iodev.nodes[i].devnum){
 			close(node->handle);
@@ -1074,7 +1100,7 @@ static void defhandler_kbd(struct arcan_evctx* out,
 	ssize_t evs = read(node->handle, &inev, sizeof(inev));
 
 	if (-1 == evs)
-		return disconnect(node);
+		return disconnect(out, node);
 
 	if (evs < 0 || evs < sizeof(struct input_event))
 		return;
@@ -1193,7 +1219,7 @@ static void defhandler_game(struct arcan_evctx* ctx,
 	ssize_t evs = read(node->handle, &inev, sizeof(inev));
 
 	if (-1 == evs)
-		return disconnect(node);
+		return disconnect(ctx, node);
 
 	if (evs < 0 || evs < sizeof(struct input_event))
 		return;
@@ -1268,7 +1294,7 @@ static void defhandler_mouse(struct arcan_evctx* ctx,
 
 	ssize_t evs = read(node->handle, &inev, sizeof(inev));
 	if (-1 == evs)
-		return disconnect(node);
+		return disconnect(ctx, node);
 
 	if (evs < 0 || evs < sizeof(struct input_event))
 		return;
@@ -1352,7 +1378,7 @@ static void defhandler_null(struct arcan_evctx* out,
 	char nbuf[256];
 	ssize_t evs = read(node->handle, nbuf, sizeof(nbuf));
 	if (-1 == evs)
-		return disconnect(node);
+		return disconnect(out, node);
 }
 
 const char* platform_event_devlabel(int devid)

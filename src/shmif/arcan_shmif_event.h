@@ -418,6 +418,16 @@ enum ARCAN_TARGET_COMMAND {
 	TARGET_COMMAND_FONTHINT,
 
 /*
+ * A hint to active positioning and localization settings
+ * ioev[0].fv = GPS(lat)
+ * ioev[1].fv = GPS(long)
+ * ioev[2].fv = GPS(elev)
+ * ioev[3].cv = ISO-3166-1 Alpha 3 code for country + \'0'
+ * ioev[4].cv = ISO-639-2, Alpha 3 code for language + \'0'
+ */
+	TARGET_COMMAND_GEOHINT,
+
+/*
  * Specialized output hinting, considered deprecated. To be replaced with
  * graphmode in game/hijack where it still has any use.
  */
@@ -752,6 +762,7 @@ typedef union arcan_ioevent_data {
 	struct {
 /* match ARCAN_IDEV_STATUS */
 		uint8_t action;
+		uint8_t devkind;
 	} status;
 
 	struct {
@@ -913,6 +924,7 @@ typedef struct arcan_tgtevent {
 		uint32_t uiv;
 		int32_t iv;
 		float fv;
+		uint8_t cv[4];
 	} ioevs[6];
 
 	int code;

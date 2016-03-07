@@ -3750,6 +3750,18 @@ static void emit_segreq(lua_State* ctx, struct arcan_extevent* ev)
 	luactx.last_segreq = NULL;
 }
 
+static const char* kindstr(int num)
+{
+	switch(num){
+	case EVENT_IDEVKIND_KEYBOARD: return "keyboard";
+	case EVENT_IDEVKIND_MOUSE: return "mouse";
+	case EVENT_IDEVKIND_GAMEDEV: return "game";
+	case EVENT_IDEVKIND_TOUCHDISP: return "touch";
+	default:
+		return "broken";
+	}
+}
+
 /*
  * emit input() call based on a arcan_event, uses a separate format and
  * translation to make it easier for the user to modify. This is a rather ugly
@@ -3784,6 +3796,8 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			lua_rawset(ctx, top);
 			tblnum(ctx, "devid", ev->io.devid, top);
 			tblnum(ctx, "subid", ev->io.subid, top);
+			tblstr(ctx, "devkind", kindstr(ev->io.input.status.devkind), top);
+			tblstr(ctx, "label", ev->io.label, top);
 			tblstr(ctx, "action", (ev->io.input.status.action == EVENT_IDEV_ADDED ?
 				"added" : (ev->io.input.status.action == EVENT_IDEV_REMOVED ?
 					"removed" : "blocked")), top);
