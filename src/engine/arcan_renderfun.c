@@ -897,6 +897,9 @@ static av_pixel* process_chain(struct rcell* root, arcan_vobject* dst,
  * do dual agp_update_vstore synchs */
 		struct storage_info_t* s = dst->vstore;
 
+		if (s->vinf.text.raw)
+			arcan_mem_free(s->vinf.text.raw);
+
 	 	raw = s->vinf.text.raw = arcan_alloc_mem(*d_sz,
 			ARCAN_MEM_VBUFFER, 0, ARCAN_MEMALIGN_PAGE);
 		s->vinf.text.s_raw = *d_sz;
