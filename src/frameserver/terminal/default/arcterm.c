@@ -100,8 +100,8 @@ struct {
 	int font_fd;
 	int hint;
 	size_t font_sz;
-	float ppcm;
 #endif
+	float ppcm;
 	enum dirty_state dirty;
 	int64_t last;
 
@@ -232,7 +232,7 @@ static void cursor_at(int x, int y, shmif_pixel ccol, bool active)
 
 static void draw_ch(uint8_t u8_ch[5],
 	int base_x, int base_y, uint8_t fg[4], uint8_t bg[4],
-	bool bold, bool underline)
+	bool bold, bool underline, bool italic)
 {
 #ifdef TTF_SUPPORT
 	if (term.font == NULL){
@@ -250,16 +250,12 @@ static void draw_ch(uint8_t u8_ch[5],
 		SHMIF_RGBA(bg[0], bg[1], bg[2], bg[3]));
 
 	int prem = TTF_STYLE_UNDERLINE * underline;
-	if (bold){
-		TTF_SetFontStyle(term.font, TTF_STYLE_BOLD | prem);
-		TTF_RenderUTF8_ext(&term.acon.vidp[base_y * term.acon.pitch + base_x],
-		term.acon.pitch, term.font, (const char*) u8_ch, fg, bg, 0);
-	}
-	else{
-		TTF_SetFontStyle(term.font, TTF_STYLE_NORMAL | prem);
-		TTF_RenderUTF8_ext(&term.acon.vidp[base_y * term.acon.pitch + base_x],
-		term.acon.pitch, term.font, (const char*) u8_ch, fg, bg, 0);
-	}
+	prem |= TTF_STYLE_ITALIC * italic;
+	prem |= (bold ? TTF_STYLE_BOLD : TTF_STYLE_NORMAL);
+
+	TTF_SetFontStyle(term.font, TTF_STYLE_NORMAL | prem);
+	TTF_RenderUTF8_ext(&term.acon.vidp[base_y * term.acon.pitch + base_x],
+	term.acon.pitch, term.font, (const char*) u8_ch, fg, bg, 0);
 #endif
 }
 
@@ -308,7 +304,11 @@ static int draw_cbt(struct tsm_screen* screen, uint32_t ch,
 	if (y2 > term.acon.dirty.y2)
 		term.acon.dirty.y2 = y2;
 
-	bool match_cursor = (cstate && x == term.cursor_x && y == term.cursor_y);
+	bool match_cursor = false;
+	if (x == term.cursor_x && y == term.cursor_y){
+		if (!(tsm_screen_get_flags(term.screen) & TSM_SCREEN_HIDE_CURSOR))
+			match_cursor = cstate;
+	}
 
 	term.dirty |= DIRTY_UPDATED;
 
@@ -339,7 +339,7 @@ static int draw_cbt(struct tsm_screen* screen, uint32_t ch,
 		cursor_at(x, y, term.scroll_lock ? term.clcol : term.ccol, true);
 	}
 	else
-		draw_ch(u8_ch, x1, y1, dfg, dbg, attr->bold, attr->underline);
+		draw_ch(u8_ch, x1, y1, dfg, dbg, attr->bold, attr->underline, attr->italic);
 
 	return 0;
 }
@@ -351,7 +351,8 @@ static void update_screen()
 	if (term.inactive)
 		return;
 
-/* always erase previous cursor */
+/* "always" erase previous cursor, except when terminal screen state explicitly
+ * say that cursor drawing should be turned off */
 	draw_cbt(term.screen, term.cvalue, term.cursor_x, term.cursor_y,
 		&term.cattr, 0, false, false);
 

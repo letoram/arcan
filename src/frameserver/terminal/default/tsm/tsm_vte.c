@@ -543,6 +543,7 @@ static void reset_state(struct tsm_vte *vte)
 	copy_fcolor(&vte->saved_state.cattr, &vte->def_attr);
 	copy_bcolor(&vte->saved_state.cattr, &vte->def_attr);
 	vte->saved_state.cattr.bold = 0;
+	vte->saved_state.cattr.italic = 0;
 	vte->saved_state.cattr.underline = 0;
 	vte->saved_state.cattr.inverse = 0;
 	vte->saved_state.cattr.protect = 0;
@@ -1042,6 +1043,9 @@ static void csi_attribute(struct tsm_vte *vte)
 		case 1:
 			vte->cattr.bold = 1;
 			break;
+		case 3:
+			vte->cattr.italic = 1;
+		break;
 		case 4:
 			vte->cattr.underline = 1;
 			break;
@@ -1053,6 +1057,9 @@ static void csi_attribute(struct tsm_vte *vte)
 			break;
 		case 22:
 			vte->cattr.bold = 0;
+			break;
+		case 23:
+			vte->cattr.italic = 0;
 			break;
 		case 24:
 			vte->cattr.underline = 0;
