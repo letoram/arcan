@@ -6732,7 +6732,7 @@ static int targetlaunch(lua_State* ctx)
 
 	if (lua_type(ctx, 1) == LUA_TSTRING){
 		cid = arcan_db_configid(dbhandle, arcan_db_targetid(dbhandle,
-			luaL_checkstring(ctx, 1), NULL), luaL_checkstring(ctx, 2));
+			luaL_checkstring(ctx, 1), NULL), luaL_optstring(ctx, 2, "default"));
 		lmode = luaL_optnumber(ctx, 3, LAUNCH_INTERNAL);
 	}
 	else
