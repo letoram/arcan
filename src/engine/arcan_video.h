@@ -427,10 +427,19 @@ struct arcan_rstrarg {
 	};
 };
 
+#ifndef HAVE_RLINE_META
+#define HAVE_RLINE_META
+struct renderline_meta {
+	int height;
+	int ystart;
+	int ascent;
+};
+#endif
+
 arcan_vobj_id arcan_video_renderstring(arcan_vobj_id id,
 	struct arcan_rstrarg arg, int8_t line_spacing,
 	int8_t tab_spacing, unsigned int* tabs, unsigned int* lines,
-	unsigned int** lineheights, arcan_errc* errc
+	struct renderline_meta** lineheights, arcan_errc* errc
 );
 
 void arcan_video_stringdimensions(const char* message, int8_t line_spacing,

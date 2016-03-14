@@ -21,6 +21,8 @@
 #define ARCAN_FONT_CACHE_LIMIT 8
 #endif
 
+#define ARCAN_TTF
+
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_video.h"
@@ -39,17 +41,26 @@
 struct text_format {
 /* font specification */
 	TTF_Font* font;
-	TTF_Color col;
+	uint8_t col[4];
+	uint8_t bgcol[4];
 	int style;
 	uint8_t alpha;
 
 /* for forced loading of images */
-	TTF_Surface* image;
+	struct {
+		size_t w, h;
+		av_pixel* buf;
+	} surf;
 	img_cons imgcons;
 
 /* pointer into line of text where the format was extracted,
  * only temporary use */
 	char* endofs;
+
+/* metrics */
+	int height;
+	int skip;
+	int ascent;
 
 /* whitespace management */
 	bool cr;
@@ -58,8 +69,11 @@ struct text_format {
 };
 
 struct font_entry {
-	TTF_Font* data;
-	file_handle fd;
+	struct {
+		TTF_Font* data[4];
+		file_handle fd[4];
+	} chain;
+
 	char* identifier;
 	size_t size;
 	uint8_t usecount;
@@ -68,7 +82,8 @@ struct font_entry {
 static int default_hint = TTF_HINTING_NORMAL;
 
 static struct text_format last_style = {
-	.col = {.r = 0xff, .g = 0xff, .b = 0xff}
+	.col = {0xff, 0xff, 0xff, 0xff},
+	.bgcol = {0xaa, 0xaa, 0xaa, 0xaa}
 };
 
 static unsigned int font_cache_size = ARCAN_FONT_CACHE_LIMIT;
@@ -96,13 +111,19 @@ static uint16_t nexthigher(uint16_t k)
 */
 
 // TTF_FontHeight sets line-spacing.
+
 struct rcell {
 	bool surface;
 	unsigned int width;
 	unsigned int height;
+	int skipv;
+	int ascent;
 
 	union {
-		TTF_Surface* surf;
+		struct {
+			size_t w, h;
+			av_pixel* buf;
+		} surf;
 
 		struct {
 			uint8_t newline;
@@ -117,7 +138,7 @@ struct rcell {
 void arcan_video_fontdefaults(file_handle* fd, int* pt_sz, int* hint)
 {
 	if (fd)
-		*fd = font_cache[0].fd;
+		*fd = font_cache[0].chain.fd[0];
 
 	if (pt_sz)
 		*pt_sz = font_cache[0].size;
@@ -126,7 +147,30 @@ void arcan_video_fontdefaults(file_handle* fd, int* pt_sz, int* hint)
 		*hint = default_hint;
 }
 
-/* Simple LRU font cache */
+static void update_style(struct text_format* dst, TTF_Font* font)
+{
+	if (!font){
+		arcan_warning("renderfun(), tried to update from broken font\n");
+		return;
+	}
+
+	dst->ascent = TTF_FontAscent(font);
+	dst->height = TTF_FontHeight(font);
+	dst->skip = dst->height - TTF_FontLineSkip(font);
+	dst->font = font;
+}
+
+static void set_style(struct text_format* dst, TTF_Font* font)
+{
+	dst->newline = dst->tab = dst->cr = 0;
+	dst->col[0] = dst->col[1] = dst->col[2] = dst->col[3] = 0xff;
+	if (font)
+		update_style(dst, font);
+	else {
+		dst->ascent = dst->height = dst->skip = 0;
+	}
+}
+
 static TTF_Font* grab_font(const char* fname, size_t size)
 {
 	int leasti = 1, i, leastv = -1;
@@ -145,27 +189,27 @@ static TTF_Font* grab_font(const char* fname, size_t size)
 		if (BADFD == fd)
 			return NULL;
 
-		if (!arcan_video_defaultfont(fname, fd, size, 2))
+		if (!arcan_video_defaultfont(fname, fd, size, 2, false))
 			close(fd);
 	}
 
 /* match / track */
 	file_handle matchfd = BADFD;
-	for (i = 0; i < font_cache_size && font_cache[i].data != NULL; i++){
+	for (i = 0; i < font_cache_size && font_cache[i].chain.data[0] != NULL; i++){
 		if (i && font_cache[i].usecount < leastv &&
-			font_cache[i].data != last_style.font){
+			font_cache[i].chain.data[0] != last_style.font){
 			leasti = i;
 			leastv = font_cache[i].usecount;
 		}
 
 		if (strcmp(font_cache[i].identifier, fname) == 0){
-			if (font_cache[i].fd != BADFD){
-				matchfd = font_cache[i].fd;
+			if (font_cache[i].chain.fd[0] != BADFD){
+				matchfd = font_cache[i].chain.fd[0];
 			}
 
 			if (font_cache[i].size == size){
 				font_cache[i].usecount++;
-				font = font_cache[i].data;
+				font = font_cache[i].chain.data[0];
 				goto done;
 			}
 		}
@@ -184,36 +228,37 @@ static TTF_Font* grab_font(const char* fname, size_t size)
 	if (i == font_cache_size){
 		i = leasti;
 		free(font_cache[leasti].identifier);
-		TTF_CloseFont(font_cache[leasti].data);
+		TTF_CloseFont(font_cache[leasti].chain.data[0]);
 	}
 
 /* update counters */
 	font_cache[i].identifier = strdup(fname);
 	font_cache[i].usecount++;
 	font_cache[i].size = size;
-	font_cache[i].data = font;
+	font_cache[i].chain.data[0] = font;
 
 done:
+	printf("hinting set to: %d\n", default_hint);
 	TTF_SetFontHinting(font, default_hint);
 	return font;
 }
 
 static void zap_slot(int i)
 {
-	if (font_cache[i].fd != BADFD && font_cache[i].fd){
-		close(font_cache[i].fd);
-		font_cache[i].fd = BADFD;
+	if (font_cache[i].chain.fd[0] != BADFD && font_cache[i].chain.fd[0]){
+		close(font_cache[i].chain.fd[0]);
+		font_cache[i].chain.fd[0] = BADFD;
 	}
 
-	if (font_cache[i].data){
-		TTF_CloseFont(font_cache[i].data);
+	if (font_cache[i].chain.data[0]){
+		TTF_CloseFont(font_cache[i].chain.data[0]);
 		free(font_cache[i].identifier);
 		memset(&font_cache[i], '\0', sizeof(font_cache[0]));
 	}
 }
 
 bool arcan_video_defaultfont(const char* ident,
-	file_handle fd, int sz, int hint)
+	file_handle fd, int sz, int hint, bool append)
 {
 	if (BADFD == fd)
 		return false;
@@ -223,17 +268,22 @@ bool arcan_video_defaultfont(const char* ident,
 	if (!font)
 		return false;
 
-	if (-1 != default_hint)
+	if (-1 != default_hint){
 		default_hint = hint;
+	}
 
-	zap_slot(0);
+	if (!append){
+		zap_slot(0);
+		font_cache[0].identifier = strdup(ident);
+		font_cache[0].size = sz;
+		font_cache[0].chain.data[0] = font;
+		font_cache[0].chain.fd[0] = fd;
+	}
+	else{
+		arcan_warning("fixme, append\n");
+	}
 
-	font_cache[0].identifier = strdup(ident);
-	font_cache[0].size = sz;
-	font_cache[0].data = font;
-	font_cache[0].fd = fd;
-
-	last_style.font = font;
+	set_style(&last_style, font);
 
 	return true;
 }
@@ -244,7 +294,7 @@ void arcan_video_reset_fontcache()
 	if (!init){
 		init = true;
 		for (int i = 0; i < ARCAN_FONT_CACHE_LIMIT; i++)
-			font_cache[i].fd = BADFD;
+			font_cache[i].chain.fd[0] = BADFD;
 	}
 	else
 		for (int i = 0; i < ARCAN_FONT_CACHE_LIMIT; i++)
@@ -260,7 +310,8 @@ void arcan_video_reset_fontcache()
 #endif
 
 #ifndef RENDERFUN_NOSUBIMAGE
-TTF_Surface* text_loadimage(const char* const infn, img_cons cons)
+static void text_loadimage(struct text_format* dst,
+	const char* const infn, img_cons cons)
 {
 	char* path = arcan_find_resource(infn,
 		RESOURCE_SYS_FONT | RESOURCE_APPL_SHARED | RESOURCE_APPL, ARES_FILE);
@@ -269,12 +320,12 @@ TTF_Surface* text_loadimage(const char* const infn, img_cons cons)
 
 	free(path);
 	if (inres.fd == BADFD)
-		return NULL;
+		return;
 
 	map_region inmem = arcan_map_resource(&inres, false);
 	if (inmem.ptr == NULL){
 		arcan_release_resource(&inres);
-		return NULL;
+		return;
 	}
 
 	struct arcan_img_meta meta = {0};
@@ -298,29 +349,21 @@ TTF_Surface* text_loadimage(const char* const infn, img_cons cons)
 	arcan_release_resource(&inres);
 
 	if (imgbuf && rv == ARCAN_OK){
-		TTF_Surface* res = malloc(sizeof(TTF_Surface));
-		res->bpp = sizeof(av_pixel);
-
 		if ((cons.w != 0 && cons.h != 0) && (inw != cons.w || inh != cons.h)){
-			uint32_t* scalebuf = malloc(cons.w * cons.h * sizeof(av_pixel));
+			dst->surf.buf = arcan_alloc_mem(cons.w * cons.h * sizeof(av_pixel),
+				ARCAN_MEM_VBUFFER, ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE);
 			arcan_renderfun_stretchblit(
-				(char*)imgbuf, inw, inh, scalebuf, cons.w, cons.h, false);
+				(char*)imgbuf, inw, inh, dst->surf.buf, cons.w, cons.h, false);
 			arcan_mem_free(imgbuf);
-			res->width  = cons.w;
-			res->height = cons.h;
-			res->data = (char*) scalebuf;
+			dst->surf.w = cons.w;
+			dst->surf.h = cons.h;
 		}
 		else {
-			res->width  = inw;
-			res->height = inh;
-			res->data = (char*) imgbuf;
+			dst->surf.w = inw;
+			dst->surf.h = inh;
+			dst->surf.buf = imgbuf;
 		}
-
-		res->stride = res->width * sizeof(av_pixel);
-		return res;
 	}
-
-	return NULL;
 }
 #endif
 
@@ -338,13 +381,13 @@ static char* extract_color(struct text_format* prev, char* base){
 
 /* now we know 6 valid chars are there, time to collect. */
 	cbuf[0] = *(base - 6); cbuf[1] = *(base - 5); cbuf[2] = 0;
-	prev->col.r = strtol(cbuf, 0, 16);
+	prev->col[0] = strtol(cbuf, 0, 16);
 
 	cbuf[0] = *(base - 4); cbuf[1] = *(base - 3); cbuf[2] = 0;
-	prev->col.g = strtol(cbuf, 0, 16);
+	prev->col[1] = strtol(cbuf, 0, 16);
 
 	cbuf[0] = *(base - 2); cbuf[1] = *(base - 1); cbuf[2] = 0;
-	prev->col.b = strtol(cbuf, 0, 16);
+	prev->col[2] = strtol(cbuf, 0, 16);
 
 	return base;
 }
@@ -400,7 +443,7 @@ static char* extract_font(struct text_format* prev, char* base){
 		font = grab_font(NULL, font_sz);
 		*base = ch;
 		if (font)
-			prev->font = font;
+			update_style(prev, font);
 		return base;
 	}
 
@@ -420,8 +463,7 @@ static char* extract_font(struct text_format* prev, char* base){
 		arcan_warning("arcan_video_renderstring(), couldn't load "
 			"font (%s) (%s), (%d)\n", fname, orig, font_sz);
 	else
-		prev->font = font;
-
+		update_style(prev, font);
 	arcan_mem_free(fname);
 	*base = ch;
 	return base;
@@ -437,11 +479,13 @@ static char* extract_image_simple(struct text_format* prev, char* base){
 
 	if (strlen(wbase) > 0){
 		prev->imgcons.w = prev->imgcons.h = 0;
-		prev->image = text_loadimage(wbase, prev->imgcons);
+		prev->surf.buf = NULL;
 
-		if (prev->image){
-			prev->imgcons.w = prev->image->width;
-			prev->imgcons.h = prev->image->height;
+		text_loadimage(prev, wbase, prev->imgcons);
+
+		if (prev->surf.buf){
+			prev->imgcons.w = prev->surf.w;
+			prev->imgcons.h = prev->surf.h;
 		}
 
 		return base;
@@ -504,7 +548,8 @@ static char* extract_image(struct text_format* prev, char* base)
 	if (strlen(wbase) > 0){
 		prev->imgcons.w = forcew;
 		prev->imgcons.h = forceh;
-		prev->image = text_loadimage(wbase, prev->imgcons);
+		prev->surf.buf = NULL;
+		text_loadimage(prev, wbase, prev->imgcons);
 
 		return base;
 	}
@@ -588,53 +633,101 @@ retry:
 	return prev;
 }
 
+/*
+ * arcan_lua.c
+ */
+#ifndef CONST_MAX_SURFACEW
+#define CONST_MAX_SURFACEW 8192
+#endif
+
+#ifndef CONST_MAX_SURFACEH
+#define CONST_MAX_SURFACEH 4096
+#endif
+
+static bool render_alloc(struct rcell* cnode,
+	const char* const base, struct text_format* style)
+{
+	int w, h;
+
+	TTF_SetFontStyle(style->font, style->style);
+	if (TTF_SizeUTF8(style->font, base, &w, &h)){
+		arcan_warning("arcan_video_renderstring(), couldn't size node.\n");
+		return false;
+	}
+/* easy to circumvent here by just splitting into larger nodes, need
+ * to do some accumulation for this to be less pointless */
+	if (w==0 || w > CONST_MAX_SURFACEW || h == 0 || h > CONST_MAX_SURFACEH){
+		arcan_warning("arcan_video_renderstring(%d,%d), bad dimensions.\n",w,h);
+		return false;
+	}
+
+	cnode->data.surf.buf = arcan_alloc_mem(w * h * sizeof(av_pixel),
+		ARCAN_MEM_VBUFFER, ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE);
+	if (!cnode->data.surf.buf){
+		arcan_warning("arcan_video_renderstring(%d,%d), failed alloc.\n",w, h);
+		return false;
+	}
+
+	for (size_t i=0; i < w * h; i++)
+		cnode->data.surf.buf[i] = 0;
+
+	if (!TTF_RenderUTF8_ext(cnode->data.surf.buf, w,style->font,
+		base, style->col, style->col, false)){
+		arcan_warning("arcan_video_renderstring(), failed to render.\n");
+		arcan_mem_free(cnode->data.surf.buf);
+		cnode->data.surf.buf = NULL;
+		return false;
+	}
+
+	cnode->surface = true;
+	cnode->data.surf.w = w;
+	cnode->data.surf.h = h;
+	cnode->ascent = style->ascent;
+	cnode->height = style->height;
+	cnode->skipv = style->skip;
+
+	return true;
+}
+
 static inline void currstyle_cnode(struct text_format* curr_style,
 	const char* const base, struct rcell* cnode, bool sizeonly)
 {
-	if (!sizeonly){
-		cnode->surface = true;
-
-/* image or render font */
-		if (curr_style->image){
-			cnode->data.surf = curr_style->image;
-			curr_style->image = NULL;
-		}
-		else if (curr_style->font){
+	if (sizeonly){
+		if (curr_style->font){
+			int dw, dh;
 			TTF_SetFontStyle(curr_style->font, curr_style->style);
-			cnode->data.surf = TTF_RenderUTF8(curr_style->font,base,curr_style->col);
+			TTF_SizeUTF8(curr_style->font, base, &dw, &dh);
+			cnode->ascent = TTF_FontAscent(curr_style->font);
+			cnode->width = dw;
+			cnode->height = TTF_FontHeight(curr_style->font);
 		}
 		else{
-			arcan_warning("arcan_video_renderstring(), broken font specifier.\n");
-			goto reset;
-		}
-
-		if (!cnode->data.surf){
-			arcan_warning("arcan_video_renderstring(), couldn't render node.\n");
-			goto reset;
-		}
-	}
-
-/* just figure out the dimensions */
-	else if (curr_style->font){
-		int dw, dh;
-		TTF_SetFontStyle(curr_style->font, curr_style->style);
-		TTF_SizeUTF8(curr_style->font, base, &dw, &dh);
-		cnode->width = dw;
-		cnode->height = dh;
-
-/* load only if we don't have a dimension specifier */
-		if (curr_style->imgcons.w && curr_style->imgcons.h){
 			cnode->width = curr_style->imgcons.w;
 			cnode->height = curr_style->imgcons.h;
 		}
+		return;
 	}
+
+/* image or render font */
+	if (curr_style->surf.buf){
+		cnode->data.surf.buf = curr_style->surf.buf;
+		cnode->data.surf.w = curr_style->surf.w;
+		cnode->data.surf.h = curr_style->surf.h;
+		curr_style->surf.buf = NULL;
+		return;
+	}
+
+	if (!curr_style->font){
+		arcan_warning("arcan_video_renderstring(), couldn't render node.\n");
+		goto reset;
+	}
+
+	if (!render_alloc(cnode, base, curr_style))
+		goto reset;
 
 	return;
 reset:
-	last_style.newline = 0;
-	last_style.tab = 0;
-	last_style.cr = false;
-	last_style.font = font_cache[0].data;
+	set_style(&last_style, font_cache[0].chain.data[0]);
 }
 
 static struct rcell* trystep(struct rcell* cnode, bool force)
@@ -652,9 +745,11 @@ static int build_textchain(char* message, struct rcell* root,
 	bool sizeonly, bool nolast)
 {
 	int rv = 0;
+/*
+ * if we don't want this to be stateful, we can just go:
+ * set_style(&curr_style, font_cache[0].data);
+ */
 	struct text_format* curr_style = &last_style;
-/* curr_style->col.r = curr_style->col.g = curr_style->col.b = 0xff;
-	curr_style->style = 0; */
 
 	struct rcell* cnode = root;
 	char* current = message;
@@ -704,7 +799,7 @@ static int build_textchain(char* message, struct rcell* root,
 					cnode = trystep(cnode, true);
 				}
 
-				if (curr_style->image){
+				if (curr_style->surf.buf){
 					currstyle_cnode(curr_style, base, cnode, sizeonly);
 					cnode = trystep(cnode, false);
 				}
@@ -726,18 +821,13 @@ static int build_textchain(char* message, struct rcell* root,
 /* last element .. */
 	if (msglen && curr_style->font) {
 		cnode->next = NULL;
-
 		if (sizeonly){
 			TTF_SetFontStyle(curr_style->font, curr_style->style);
 			TTF_SizeUTF8(curr_style->font, base, (int*) &cnode->width,
 				(int*) &cnode->height);
 		}
-		else{
-			cnode->surface = true;
-			TTF_SetFontStyle(curr_style->font, curr_style->style);
-			cnode->data.surf = TTF_RenderUTF8(curr_style->font, base,
-				curr_style->col);
-		}
+		else
+			render_alloc(cnode, base, curr_style);
 	}
 
 /* special handling needed for longer append chains */
@@ -793,34 +883,28 @@ static unsigned int get_tabofs(int offset, int tabc, int8_t tab_spacing,
 
 /*
  * should really have a fast blit path, but since font rendering is expected to
- * be mostly replaced/complemented with a mix of in-place rendering and
- * proper packing and vertex buffers in 0.6 or 0.5.1 dso just leave it like this
+ * be mostly replaced/complemented with a mix of in-place rendering and proper
+ * packing and vertex buffers in 0.6 or 0.5.1 we just leave it like this
  */
-static inline void copy_rect(TTF_Surface* surf, av_pixel* dst,
-	int width, int x, int y)
+static inline void copy_rect(av_pixel* dst, struct rcell* surf,
+	int width, int height, int x, int y)
 {
-	uint32_t* wrk = (uint32_t*) surf->data;
-	if (sizeof(av_pixel) != 4){
-		for (size_t row = 0; row < surf->height; row++)
-			for (size_t col = 0; col < surf->width; col++){
-				uint32_t pack = wrk[row * surf->width + col];
-				dst[(row + y) * width + x + col] = RGBA(
-					(pack & 0x000000ff), (pack & 0x0000ff00) >> 8,
-					(pack & 0x00ff0000) >> 16, (pack & 0xff000000) >> 24);
-			}
-	}
-	else
-		for (int row = 0; row < surf->height; row++)
-			memcpy( &dst[ (y + row) * width + x],
-				&wrk[row * surf->width], surf->width * 4);
+	for (int row = 0; row < surf->data.surf.h && row < height - y; row++)
+		memcpy(
+			&dst[(y+row)*width+x],
+			&surf->data.surf.buf[row*surf->data.surf.w],
+			surf->data.surf.w * sizeof(av_pixel)
+		);
 }
 
 static void cleanup_chain(struct rcell* root)
 {
 	while (root){
 		assert(root != (void*) 0xdeadbeef);
-		if (root->surface && root->data.surf)
-			arcan_mem_free(root->data.surf);
+		if (root->surface && root->data.surf.buf){
+			arcan_mem_free(root->data.surf.buf);
+			root->data.surf.buf = (void*) 0xfeedface;
+		}
 
 		struct rcell* prev = root;
 		root = root->next;
@@ -832,29 +916,42 @@ static void cleanup_chain(struct rcell* root)
 static av_pixel* process_chain(struct rcell* root, arcan_vobject* dst,
 	size_t chainlines, bool norender,
 	int8_t line_spacing, int8_t tab_spacing, unsigned int* tabs, bool pot,
-	unsigned int* n_lines, unsigned int** lineheights, size_t* dw,
+	unsigned int* n_lines, struct renderline_meta** lineheights, size_t* dw,
 	size_t* dh, uint32_t* d_sz, size_t* maxw, size_t* maxh)
 {
 	struct rcell* cnode = root;
 	unsigned int linecount = 0;
 	*maxw = 0;
 	*maxh = 0;
-	int lineh = 0;
+	int lineh = 0, fonth = 0, ascenth = 0;
 	int curw = 0;
 
+	bool fixed_spacing = true;
+	if (line_spacing == 0){
+		fixed_spacing = false;
+	}
+
 /* note, linecount is overflow */
-	unsigned int* lines = arcan_alloc_mem(sizeof(unsigned) * (chainlines + 1),
-		ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO | ARCAN_MEM_TEMPORARY,
-		ARCAN_MEMALIGN_NATURAL
+	struct renderline_meta* lines = arcan_alloc_mem(sizeof(
+		struct renderline_meta) * (chainlines + 1), ARCAN_MEM_VSTRUCT,
+		ARCAN_MEM_BZERO | ARCAN_MEM_TEMPORARY, ARCAN_MEMALIGN_NATURAL
 	);
 
 /* (A) figure out visual constraints */
 	while (cnode) {
-		if (cnode->surface && cnode->data.surf) {
-			if (cnode->data.surf->height > lineh + line_spacing)
-				lineh = cnode->data.surf->height;
+		if (cnode->surface && cnode->data.surf.buf) {
+			if (!fixed_spacing)
+				line_spacing = cnode->skipv;
 
-			curw += cnode->data.surf->width;
+			if (cnode->data.surf.h > lineh + line_spacing)
+				lineh = cnode->data.surf.h;
+
+			if (cnode->ascent > ascenth){
+				ascenth = cnode->ascent;
+				fonth = cnode->height;
+			}
+
+			curw += cnode->data.surf.w;
 		}
 		else {
 			if (cnode->data.format.cr)
@@ -865,9 +962,11 @@ static av_pixel* process_chain(struct rcell* root, arcan_vobject* dst,
 
 			if (cnode->data.format.newline > 0)
 				for (int i = cnode->data.format.newline; i > 0; i--) {
-					lines[linecount++] = *maxh;
+					lines[linecount].ystart = *maxh;
+					lines[linecount].height = fonth;
+					lines[linecount++].ascent = ascenth;
 					*maxh += lineh + line_spacing;
-					lineh = 0;
+					ascenth = fonth = lineh = 0;
 				}
 		}
 
@@ -920,9 +1019,9 @@ static av_pixel* process_chain(struct rcell* root, arcan_vobject* dst,
 	int line = 0;
 
 	while (cnode) {
-		if (cnode->surface && cnode->data.surf) {
-			copy_rect(cnode->data.surf, raw, *dw, curw, lines[line]);
-			curw += cnode->data.surf->width;
+		if (cnode->surface && cnode->data.surf.buf) {
+			copy_rect(raw, cnode, *dw, *dh, curw, lines[line].ystart);
+			curw += cnode->data.surf.w;
 		}
 		else {
 			if (cnode->data.format.tab > 0)
@@ -955,7 +1054,7 @@ static av_pixel* process_chain(struct rcell* root, arcan_vobject* dst,
 av_pixel* arcan_renderfun_renderfmtstr_extended(const char** msgarray,
 	arcan_vobj_id dstore, int8_t line_spacing, int8_t tab_spacing,
 	unsigned int* tabs, bool pot,
-	unsigned int* n_lines, unsigned int** lineheights, size_t* dw,
+	unsigned int* n_lines, struct renderline_meta** lineheights, size_t* dw,
 	size_t* dh, uint32_t* d_sz, size_t* maxw, size_t* maxh, bool norender)
 {
 	struct rcell* root = arcan_alloc_mem(sizeof(struct rcell),
@@ -1017,7 +1116,7 @@ av_pixel* arcan_renderfun_renderfmtstr_extended(const char** msgarray,
 av_pixel* arcan_renderfun_renderfmtstr(const char* message,
 	arcan_vobj_id dstore,
 	int8_t line_spacing, int8_t tab_spacing, unsigned int* tabs, bool pot,
-	unsigned int* n_lines, unsigned int** lineheights,
+	unsigned int* n_lines, struct renderline_meta** lineheights,
 	size_t* dw, size_t* dh, uint32_t* d_sz,
 	size_t* maxw, size_t* maxh, bool norender)
 {
@@ -1029,7 +1128,8 @@ av_pixel* arcan_renderfun_renderfmtstr(const char* message,
 /* (A) parse format string and build chains of renderblocks */
 	struct rcell* root = arcan_alloc_mem(sizeof(struct rcell),
 		ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO | ARCAN_MEM_TEMPORARY,
-		ARCAN_MEMALIGN_NATURAL);
+		ARCAN_MEMALIGN_NATURAL
+	);
 
 	char* work = strdup(message);
 	last_style.newline = 0;
