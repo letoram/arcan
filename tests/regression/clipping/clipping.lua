@@ -2,9 +2,13 @@ function clipping(args)
 	arguments = args
 	p1 = fill_surface(64, 64, 255, 0, 0);
 	c1 = fill_surface(64, 64, 0, 255, 0);
+	local d1 = render_text([[\fdefault.ttf,20\#ffffff abcdefhijklmnopqrstuvwxyz123456789abcdefhijklmnopqrstuvwxyz]]);
+
 	move_image(c1, 32, 32);
 	move_image(p1, 32, 32);
 	image_clip_on(c1, CLIP_SHALLOW);
+	image_clip_on(d1, CLIP_SHALLOW);
+	link_image(d1, p1);
 	link_image(c1, p1);
 
 	p2 = fill_surface(64, 64, 255, 0, 0);
@@ -46,7 +50,7 @@ function clipping(args)
 	link_image(c6, p5);
 	link_image(c7, c6);
 
-	show_image({p1, c1, p2, c2, p3, c3, p4, c4, c5, p5, c6, c7});
+	show_image({p1, c1, d1, p2, c2, p3, c3, p4, c4, c5, p5, c6, c7});
 end
 
 count = 1;

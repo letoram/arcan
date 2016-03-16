@@ -410,10 +410,14 @@ enum ARCAN_TARGET_COMMAND {
  *  0 : default, off
  *  1 : TTF ( True Type ), other values are invalid/reserved for now.
  * ioev[2].fv = desired normal font size in mm, <= 0, unchanged from current
- * ioev[3].iv = hinting,
+ * ioev[3].iv = hinting: 0, off. 1, monochromatic, 2. light, 3. medium,
  *  -1 (unchanged), 0: off, 1..16 (implementation defined, recommendation
  *  is to range from light to strong). DISPLAYHINT should also be considered
  *  when configuring font rendering.
+ *  ioev[4].iv = group:
+ *  <= 0 : ignore.
+ *  1 : continuation, append as a chain to the last fonthint.
+ *  (other values are reserved)
  */
 	TARGET_COMMAND_FONTHINT,
 
