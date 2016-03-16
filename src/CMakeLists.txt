@@ -252,6 +252,19 @@ set (CMAKE_EXTERNAL_DEFS
 if (EXISTS ${EXTERNAL_SRC_DIR}/git/freetype AND STATIC_FREETYPE)
 	set(STATIC_FREETYPE ON)
 	amsg("${CL_YEL}Building Freetype static from external/git mirror${CL_RST}")
+	find_package(PNG QUIET)
+	if (PNG_FOUND)
+		if (STATIC_FREETYPE_NOPNG)
+			set(PNG_EXT_STATE OFF)
+			amsg("${CL_YEL} |-> PNG support force-disabled.${CL_RST}")
+		else()
+			set(PNG_EXT_STATE ON)
+			amsg("${CL_YEL} |-> PNG support (embedded bitmaps) added.${CL_RST}")
+		endif()
+	else()
+		set(PNG_EXT_STATE OFF)
+		amsg("${CL_YEL} |-> PNG support (embedded bitmaps) disabled, no libpng${CL_RST}")
+	endif()
 	ExternalProject_Add(Freetype
 		SOURCE_DIR "${CMAKE_CURRENT_BINARY_DIR}/freetype"
 		UPDATE_COMMAND ""
@@ -261,12 +274,18 @@ if (EXISTS ${EXTERNAL_SRC_DIR}/git/freetype AND STATIC_FREETYPE)
 		-DWITH_ZLIB=OFF
 		-DWITH_HarfBuzz=OFF
 		-DWITH_BZip2=OFF
-		-DWITH_PNG=OFF
+		-DWITH_PNG=${PNG_EXT_STATE}
 	)
+	if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+		set(FREETYPE_LIBRARY "${CMAKE_CURRENT_BINARY_DIR}/lib/libfreetyped.a")
+	else()
+		set(FREETYPE_LIBRARY "${CMAKE_CURRENT_BINARY_DIR}/lib/libfreetype.a")
+	endif()
+
 	set(FREETYPE_INCLUDE_DIRS "${CMAKE_CURRENT_BINARY_DIR}/include/freetype2")
-	set(FREETYPE_LIBRARY "${CMAKE_CURRENT_BINARY_DIR}/lib/libfreetype.a")
 	set(FREETYPE_LIBRARIES
 		${FREETYPE_LIBRARY}
+		${PNG_LIBRARIES}
 	)
 	list(APPEND MAIN_DEPS Freetype)
 else()
