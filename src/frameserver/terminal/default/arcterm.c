@@ -24,7 +24,7 @@
  *  - Paste complex data streams into shell namespace (to move files)
  *  - Injecting / redirecting descriptors (senseye integration)
  *  - Drag and Drop- file copy
- *  - Time-keeping manipulation,
+ *  - Time-keeping manipulation
  */
 #include <stdlib.h>
 #include <stdio.h>
@@ -94,11 +94,13 @@ struct {
 	bool focus, inactive;
 	int inact_timer;
 
-/* font rendering / tracking */
+/* font rendering / tracking - we support one main that defines cell size
+ * and one secondary that can be used for alternative glyphs */
 #ifdef TTF_SUPPORT
-	TTF_Font* font;
-	int font_fd;
+	TTF_Font* font[2];
+	int font_fd[2];
 	int hint;
+/* size in font pt */
 	size_t font_sz;
 #endif
 	float ppcm;
@@ -158,7 +160,7 @@ struct {
 	.ccol = SHMIF_RGBA(0x00, 0xaa, 0x00, 0xff),
 	.clcol = SHMIF_RGBA(0xaa, 0xaa, 0x00, 0xff),
 #ifdef TTF_SUPPORT
-	.font_fd = BADFD,
+	.font_fd = {BADFD, BADFD},
 	.ppcm = ARCAN_SHMPAGE_DEFAULT_PPCM,
 	.hint = TTF_HINTING_NONE
 #endif
@@ -230,36 +232,40 @@ static void cursor_at(int x, int y, shmif_pixel ccol, bool active)
 	}
 }
 
-static void draw_ch(uint8_t u8_ch[5],
+static void draw_ch_u8(uint8_t u8_ch[5],
 	int base_x, int base_y, uint8_t fg[4], uint8_t bg[4],
 	bool bold, bool underline, bool italic)
 {
-#ifdef TTF_SUPPORT
-	if (term.font == NULL){
-#endif
-		u8_ch[1] = '\0';
-		draw_text_bg(&term.acon, (const char*) u8_ch, base_x, base_y,
-			SHMIF_RGBA(fg[0], fg[1], fg[2], fg[3]),
-			SHMIF_RGBA(bg[0], bg[1], bg[2], bg[3])
-		);
-		return;
-#ifdef TTF_SUPPORT
-	}
+	u8_ch[1] = '\0';
+	draw_text_bg(&term.acon, (const char*) u8_ch, base_x, base_y,
+		SHMIF_RGBA(fg[0], fg[1], fg[2], fg[3]),
+		SHMIF_RGBA(bg[0], bg[1], bg[2], bg[3])
+	);
+}
 
-/*
- * should be superfluous now, as RenderUTF8_ext blends against background
+#ifdef TTF_SUPPORT
+static void draw_ch(uint32_t ch,
+	int base_x, int base_y, uint8_t fg[4], uint8_t bg[4],
+	bool bold, bool underline, bool italic)
+{
 	draw_box(&term.acon, base_x, base_y, term.cell_w, term.cell_h,
 		SHMIF_RGBA(bg[0], bg[1], bg[2], bg[3]));
- */
 
 	int prem = TTF_STYLE_NORMAL | (TTF_STYLE_UNDERLINE * underline);
 	prem |= TTF_STYLE_ITALIC * italic;
 	prem |= (bold ? TTF_STYLE_BOLD : TTF_STYLE_NORMAL);
 
-	TTF_RenderUTF8_ext(&term.acon.vidp[base_y * term.acon.pitch + base_x],
-	term.acon.pitch, term.font, (const char*) u8_ch, fg, bg, true, prem);
-#endif
+	unsigned xs = 0, ind = 0;
+	int adv = 0;
+
+	TTF_RenderUNICODEglyph(
+		&term.acon.vidp[base_y * term.acon.pitch + base_x],
+		term.cell_w, term.cell_h, term.acon.pitch,
+		term.font, term.font[1] ? 2 : 1,
+		ch, &xs, fg, bg, true, false, prem, &adv, &ind
+	);
 }
+#endif
 
 static int draw_cb(struct tsm_screen* screen, uint32_t id,
 	const uint32_t* ch, size_t len, unsigned width, unsigned x, unsigned y,
@@ -329,19 +335,27 @@ static int draw_cbt(struct tsm_screen* screen, uint32_t ch,
 			ch = 0x00000008;
 	}
 
-	size_t u8_sz = tsm_ucs4_get_width(ch) + 1;
-	uint8_t u8_ch[u8_sz];
-	size_t nch = tsm_ucs4_to_utf8(ch, (char*) u8_ch);
-	u8_ch[u8_sz-1] = '\0';
-
-/* cursor slot updated and not disabled in any way - draw cursor */
 	if (match_cursor){
 		term.cattr = *attr;
 		term.cvalue = ch;
 		cursor_at(x, y, term.scroll_lock ? term.clcol : term.ccol, true);
+		return 0;
+	}
+
+#ifdef TTF_SUPPORT
+	if (!term.font[0]){
+#endif
+	size_t u8_sz = tsm_ucs4_get_width(ch) + 1;
+	uint8_t u8_ch[u8_sz];
+	size_t nch = tsm_ucs4_to_utf8(ch, (char*) u8_ch);
+	u8_ch[u8_sz-1] = '\0';
+		draw_ch_u8(u8_ch, x1, y1, dfg, dbg,
+			attr->bold, attr->underline, attr->italic);
+#ifdef TTF_SUPPORT
 	}
 	else
-		draw_ch(u8_ch, x1, y1, dfg, dbg, attr->bold, attr->underline, attr->italic);
+		draw_ch(ch, x1, y1, dfg, dbg, attr->bold, attr->underline, attr->italic);
+#endif
 
 	return 0;
 }
@@ -1158,6 +1172,9 @@ static void probe_font(TTF_Font* font,
 		*dh = h;
 }
 
+/*
+ * modes supported now is 0 (default), 1 (append)
+ */
 static bool setup_font(int fd, size_t font_sz, int mode)
 {
 	TTF_Font* font;
@@ -1165,9 +1182,11 @@ static bool setup_font(int fd, size_t font_sz, int mode)
 	if (font_sz <= 0)
 		font_sz = term.font_sz;
 
+	int modeind = mode == 1 ? 1 : 0;
+
 /* re-use last descriptor and change size or grab new */
 	if (BADFD == fd){
-		fd = term.font_fd;
+		fd = term.font_fd[modeind];
 	};
 
 	size_t scale_sz = ceilf((float)font_sz * (term.ppcm / 28.346566f));
@@ -1186,33 +1205,37 @@ static bool setup_font(int fd, size_t font_sz, int mode)
 		"M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "X", "Y",
 		"Z", "|", "_"
 	};
-	for (size_t i = 0; i < sizeof(set)/sizeof(set[0]); i++)
-		probe_font(font, set[i], &w, &h);
 
-	if (w && h){
-		arcan_event ev = {
-			.category = EVENT_EXTERNAL,
-			.ext.kind = ARCAN_EVENT(MESSAGE),
-		};
-		sprintf((char*)ev.ext.message.data, "cell_w:%d:cell_h:%d",
-			term.cell_w, term.cell_h);
-		arcan_shmif_enqueue(&term.acon, &ev);
+	if (mode == 0){
+		term.font_sz = font_sz;
+		for (size_t i = 0; i < sizeof(set)/sizeof(set[0]); i++)
+			probe_font(font, set[i], &w, &h);
 
-		term.cell_w = w;
-		term.cell_h = h;
+/* send result of new cell sizes, can assist UI in doing resize req. */
+		if (w && h){
+			arcan_event ev = {
+				.category = EVENT_EXTERNAL,
+				.ext.kind = ARCAN_EVENT(MESSAGE),
+			};
+			sprintf((char*)ev.ext.message.data, "cell_w:%d:cell_h:%d",
+				term.cell_w, term.cell_h);
+			arcan_shmif_enqueue(&term.acon, &ev);
+
+			term.cell_w = w;
+			term.cell_h = h;
+		}
 	}
 
 	TTF_SetFontStyle(font, TTF_STYLE_NORMAL);
-	TTF_Font* old_font = term.font;
+	TTF_Font* old_font = term.font[modeind];
 
-	term.font = font;
-	term.font_sz = font_sz;
+	term.font[modeind] = font;
 
 /* internally, TTF_Open dup:s the descriptor, we only keep it here
  * to allow size changes without specifying a new font */
-	if (term.font_fd != fd)
-		close(term.font_fd);
-	term.font_fd = fd;
+	if (term.font_fd[modeind] != fd)
+		close(term.font_fd[modeind]);
+	term.font_fd[modeind] = fd;
 
 	if (old_font){
 		TTF_CloseFont(old_font);
@@ -1333,6 +1356,7 @@ static void dump_help()
 		" palette     \t name      \t use built-in palette (below)\n"
 #ifdef TTF_SUPPORT
 		" font        \t ttf-file  \t render using font specified by ttf-file\n"
+		" font_fb     \t ttf-file  \t use other font for missing glyphs\n"
 		" font_sz     \t px        \t set font rendering size (may alter cellsz))\n"
 		" font_hint   \t hintval   \t hint to font renderer (light, mono, none)\n"
 #endif
@@ -1441,6 +1465,12 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 			term.hint = TTF_HINTING_LIGHT;
 		else if (strcmp(val, "mono") == 0)
 			term.hint = TTF_HINTING_MONO;
+		else if (strcmp(val, "normal") == 0)
+			term.hint = TTF_HINTING_NORMAL;
+		else if (strcmp(val, "rgb") == 0)
+			term.hint = TTF_HINTING_RGB;
+		else if (strcmp(val, "vrgb") == 0)
+			term.hint = TTF_HINTING_VRGB;
 	}
 
 	if (arg_lookup(args, "font_sz", 0, &val))
@@ -1448,6 +1478,11 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	if (arg_lookup(args, "font", 0, &val)){
 		int fd = open(val, O_RDONLY);
 		setup_font(fd, sz, 0);
+/* fallback font for missing glyphs */
+		if (fd != -1 && arg_lookup(args,"font_fb", 0, &val)){
+			fd = open(val, O_RDONLY);
+			setup_font(fd, sz, 1);
+		}
 	}
 	else
 		LOG("no font specified, using built-in fallback.");

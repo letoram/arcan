@@ -6136,7 +6136,6 @@ static int targetfonthint(lua_State* ctx)
 		.tgt.ioevs[4].iv = luaL_optbnumber(ctx, numind+2, 0)
 	};
 
-	printf("forward hinting request: %d\n", outev.tgt.ioevs[3]);
 	if (fd != BADFD){
 		lua_pushboolean(ctx, arcan_frameserver_pushfd(fsrv, &outev, fd));
 		close(fd);

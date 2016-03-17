@@ -135,6 +135,11 @@ int TTF_SizeUTF8(TTF_Font *font,
 int TTF_SizeUNICODE(TTF_Font *font,
 	const uint32_t *text, int *w, int *h, int style);
 
+int TTF_SizeUNICODEchain(TTF_Font **font, size_t n,
+	const uint32_t *text, int *w, int *h, int style);
+
+/* This compilation unit is re-used by some frameservers as well,
+ * in order to not mix and match types we need some trickery */
 #if defined(SHMIF_TTF) || defined(ARCAN_TTF)
 #ifdef SHMIF_TTF
 #define PIXEL shmif_pixel
@@ -148,16 +153,32 @@ int TTF_SizeUNICODE(TTF_Font *font,
  * fonts and select / scale a fallback if a glyph is not found. */
 int TTF_SizeUTF8chain(TTF_Font **font, size_t n,
 	const char *text, int *w, int *h, int style);
-int TTF_SizeUNICODEchain(TTF_Font **font, size_t n,
-	const uint32_t *text, int *w, int *h, int style);
 
-bool TTF_RenderUTF8_ext(PIXEL* dst, int stride, TTF_Font *font,
-	const char* intext, uint8_t fg[4], uint8_t bg[4], bool usebg, int style);
+bool TTF_RenderUTF8chain(PIXEL* dst, size_t w, size_t h,
+		int stride, TTF_Font **font, size_t n, const char* intext,
+		uint8_t fg[4], int style
+);
 
-bool TTF_RenderUTF8chain(PIXEL* dst, int stride, TTF_Font **font,
-		size_t n, const char* intext, uint8_t fg[4], uint8_t bg[4],
-		bool usebg, int style
-	);
+/*
+ * RenderUTF8chain boils down to a number of these calls
+ * [dst] buffer (possinly at offset) to render to
+ * [width], [height] limitations to [dst] (in px)
+ * [stride] number (of bytes) to step per row
+ * [font] array of [n] TTF_Fonts for glyphs
+ * [ch] UCS4 for unicode code point
+ * [fg/bg] color (ignored on colored bitmaps)
+ * [usebg] [usekerning] [style] drawing hints to font and positioning
+ * [advance] incremental step write-back
+ * [prev_index] state tracker for kerning
+ */
+bool TTF_RenderUNICODEglyph(PIXEL* dst,
+	size_t width, size_t height, int stride,
+	TTF_Font **font, size_t n,
+	uint32_t ch,
+	unsigned* xstart, uint8_t fg[4], uint8_t bg[4],
+	bool usebg, bool use_kerning, int style,
+	int* advance, unsigned* prev_index
+);
 #endif
 
 /* Close an opened font file */

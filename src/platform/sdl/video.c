@@ -106,8 +106,9 @@ void platform_video_synch(uint64_t tick_count, float fract,
  * nvidia and friends from time to time where multiple swaps in short
  * regression in combination with 'only redraw' adds bubbles */
 	int delta = arcan_frametime() - sdl.last;
-	if (synchopt == DYNAMIC && delta >= 0 && delta < 8)
+	if (synchopt == DYNAMIC && delta >= 0 && delta < 8){
 		arcan_timesleep(16 - delta);
+	}
 
 	sdl.last = arcan_frametime();
 	if (post)
