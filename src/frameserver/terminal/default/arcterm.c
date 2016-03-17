@@ -246,16 +246,18 @@ static void draw_ch(uint8_t u8_ch[5],
 #ifdef TTF_SUPPORT
 	}
 
+/*
+ * should be superfluous now, as RenderUTF8_ext blends against background
 	draw_box(&term.acon, base_x, base_y, term.cell_w, term.cell_h,
 		SHMIF_RGBA(bg[0], bg[1], bg[2], bg[3]));
+ */
 
-	int prem = TTF_STYLE_UNDERLINE * underline;
+	int prem = TTF_STYLE_NORMAL | (TTF_STYLE_UNDERLINE * underline);
 	prem |= TTF_STYLE_ITALIC * italic;
 	prem |= (bold ? TTF_STYLE_BOLD : TTF_STYLE_NORMAL);
 
-	TTF_SetFontStyle(term.font, TTF_STYLE_NORMAL | prem);
 	TTF_RenderUTF8_ext(&term.acon.vidp[base_y * term.acon.pitch + base_x],
-	term.acon.pitch, term.font, (const char*) u8_ch, fg, bg, 0);
+	term.acon.pitch, term.font, (const char*) u8_ch, fg, bg, true, prem);
 #endif
 }
 
@@ -690,18 +692,18 @@ struct lent {
 };
 
 #ifdef TTF_SUPPORT
-static bool setup_font(int fd, size_t font_sz);
+static bool setup_font(int fd, size_t font_sz, int mode);
 void inc_fontsz()
 {
 	term.font_sz += 2;
-	setup_font(BADFD, term.font_sz);
+	setup_font(BADFD, term.font_sz, 0);
 }
 
 void dec_fontsz()
 {
 	if (term.font_sz > 8)
 		term.font_sz -= 2;
-	setup_font(BADFD, term.font_sz);
+	setup_font(BADFD, term.font_sz, 0);
 }
 #endif
 
@@ -963,18 +965,17 @@ static void targetev(arcan_tgtevent* ev)
 
 		switch(ev->ioevs[3].iv){
 		case -1: break;
-		case 0: term.hint = TTF_HINTING_NONE; break;
-		case 1: term.hint = TTF_HINTING_MONO; break;
-		case 2: term.hint = TTF_HINTING_LIGHT; break;
+/* happen to match TTF_HINTING values, though LED layout could be
+ * modified through DISPLAYHINT but in practice, not so much. */
 		default:
-			term.hint = TTF_HINTING_NORMAL;
+			term.hint = ev->ioevs[3].iv;
 		break;
 		}
 
 /* unit conversion again, we get the size in cm, truetype wrapper takes pt,
  * (at 0.03527778 cm/pt), then update_font will take ppcm into account */
 		float npx = setup_font(fd, ev->ioevs[2].fv > 0 ?
-			ev->ioevs[2].fv / 0.0352778 : 0);
+			ev->ioevs[2].fv / 0.0352778 : 0, ev->ioevs[4].iv);
 
 		update_screensize(false);
 #endif
@@ -1029,7 +1030,7 @@ static void targetev(arcan_tgtevent* ev)
 		LOG("displayhint[4]: %f, ppc: %f\n", ev->ioevs[3].fv, term.ppcm);
 		if (ev->ioevs[4].fv > 0 && fabs(ev->ioevs[4].fv - term.ppcm) > 0.01){
 			term.ppcm = ev->ioevs[4].fv;
-			setup_font(BADFD, term.font_sz);
+			setup_font(BADFD, term.font_sz, 0);
 			update = true;
 		}
 #endif
@@ -1148,7 +1149,7 @@ static void probe_font(TTF_Font* font,
 {
 	TTF_Color fg = {.r = 0xff, .g = 0xff, .b = 0xff};
 	int w = *dw, h = *dh;
-	TTF_SizeText(font, msg, &w, &h);
+	TTF_SizeUTF8(font, msg, &w, &h, TTF_STYLE_BOLD | TTF_STYLE_UNDERLINE);
 
 	if (w > *dw)
 		*dw = w;
@@ -1157,7 +1158,7 @@ static void probe_font(TTF_Font* font,
 		*dh = h;
 }
 
-static bool setup_font(int fd, size_t font_sz)
+static bool setup_font(int fd, size_t font_sz, int mode)
 {
 	TTF_Font* font;
 
@@ -1175,7 +1176,6 @@ static bool setup_font(int fd, size_t font_sz)
 		return false;
 
 	TTF_SetFontHinting(font, term.hint);
-	TTF_SetFontStyle(font, TTF_STYLE_BOLD | TTF_STYLE_UNDERLINE);
 
 	size_t w = 0, h = 0;
 	static const char* set[] = {
@@ -1447,7 +1447,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		sz = strtoul(val, NULL, 10);
 	if (arg_lookup(args, "font", 0, &val)){
 		int fd = open(val, O_RDONLY);
-		setup_font(fd, sz);
+		setup_font(fd, sz, 0);
 	}
 	else
 		LOG("no font specified, using built-in fallback.");

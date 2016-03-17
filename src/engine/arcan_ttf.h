@@ -25,32 +25,25 @@
 */
 
 /*
- * This version has been modified to strip down most of the SDL specific code,
- * as well as rendering modes other than blended, so TTF_Surface* and SDL_color
- * references have all been replaced.
+ * Arcan Modifications:
+ *
+ *  1. Removed dependency to SDL and a ton of related functions
+ *  2. Added in-place rendering
+ *  3. Switched to UTF8 at border, UCS4 Internally (no more UCS2)
+ *  4. Added glyph selection from multiple font files
+ *  5. Added support for multicolored output and subpixel hinting
+ *
+ *  Big Note: While still messy, this is slated for full replacement /
+ *  deprecation to use something akin to freetype-gl (but with a similar
+ *  interface for when/if we need raster fallback) so we can use bin-packing,
+ *  distance field quality improvements and harfbuzz shaping.
  */
 
-#ifndef _SDL_TTF_H
-#define _SDL_TTF_H
-
-/* ZERO WIDTH NO-BREAKSPACE (Unicode byte order mark) */
-#define UNICODE_BOM_NATIVE	0xFEFF
-#define UNICODE_BOM_SWAPPED	0xFFFE
-
-/* This function tells the library whether UNICODE text is generally
-  byteswapped. A UNICODE BOM character in a string will override
-  this setting for the remainder of that string.
-*/
-void TTF_ByteSwappedUNICODE(int swapped);
+#ifndef _ARCAN_TTF_H
+#define _ARCAN_TTF_H
 
 /* The internal structure containing font information */
 typedef struct _TTF_Font TTF_Font;
-
-typedef struct {
-    int width, height, stride;
-    char bpp;
-    char* data;
-} TTF_Surface;
 
 typedef struct {
     uint8_t r, g, b;
@@ -88,10 +81,13 @@ int TTF_underline_top_row(TTF_Font *font);
 int TTF_underline_bottom_row(TTF_Font *font);
 
 /* Set and retrieve FreeType hinter settings */
-#define TTF_HINTING_NORMAL  0
-#define TTF_HINTING_LIGHT   1
-#define TTF_HINTING_MONO   2
-#define TTF_HINTING_NONE   3
+#define TTF_HINTING_NORMAL  3
+#define TTF_HINTING_LIGHT  2
+#define TTF_HINTING_MONO   1
+#define TTF_HINTING_NONE   0
+#define TTF_HINTING_RGB 4
+#define TTF_HINTING_VRGB 5
+
 int TTF_GetFontHinting(const TTF_Font *font);
 void TTF_SetFontHinting(TTF_Font *font, int hinting);
 
@@ -134,29 +130,35 @@ int TTF_GlyphMetrics(TTF_Font *font, uint16_t ch, int *minx,
 	int *maxx, int *miny, int *maxy, int *advance);
 
 /* Get the dimensions of a rendered string of text */
-int TTF_SizeText(TTF_Font *font, const char *text, int *w, int *h);
-int TTF_SizeUTF8(TTF_Font *font, const char *text, int *w, int *h);
-int TTF_SizeUNICODE(TTF_Font *font, const uint16_t *text, int *w, int *h);
+int TTF_SizeUTF8(TTF_Font *font,
+	const char *text, int *w, int *h, int style);
+int TTF_SizeUNICODE(TTF_Font *font,
+	const uint32_t *text, int *w, int *h, int style);
 
 #if defined(SHMIF_TTF) || defined(ARCAN_TTF)
 #ifdef SHMIF_TTF
 #define PIXEL shmif_pixel
 #define PACK(R, G, B, A) SHMIF_RGBA(R, G, B, A)
-#elif ARCAN_TTF
+#elif defined(ARCAN_TTF)
 #define PIXEL av_pixel
 #define PACK(R, G, B, A) RGBA(R, G, B, A)
 #endif
 
-bool TTF_RenderUTF8_ext(PIXEL* dst, int stride, TTF_Font *font,
-	const char* intext, uint8_t fg[4], uint8_t bg[4], int hint);
-#endif
+/* chain functions work like normal, except that they take multiple
+ * fonts and select / scale a fallback if a glyph is not found. */
+int TTF_SizeUTF8chain(TTF_Font **font, size_t n,
+	const char *text, int *w, int *h, int style);
+int TTF_SizeUNICODEchain(TTF_Font **font, size_t n,
+	const uint32_t *text, int *w, int *h, int style);
 
-TTF_Surface* TTF_RenderText(TTF_Font *font,
-				const char *text, TTF_Color fg);
-TTF_Surface* TTF_RenderUTF8(TTF_Font *font,
-				const char *text, TTF_Color fg);
-TTF_Surface* TTF_RenderUNICODE(TTF_Font *font,
-				const uint16_t *text, TTF_Color fg);
+bool TTF_RenderUTF8_ext(PIXEL* dst, int stride, TTF_Font *font,
+	const char* intext, uint8_t fg[4], uint8_t bg[4], bool usebg, int style);
+
+bool TTF_RenderUTF8chain(PIXEL* dst, int stride, TTF_Font **font,
+		size_t n, const char* intext, uint8_t fg[4], uint8_t bg[4],
+		bool usebg, int style
+	);
+#endif
 
 /* Close an opened font file */
 void TTF_CloseFont(TTF_Font *font);

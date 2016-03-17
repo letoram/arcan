@@ -611,7 +611,7 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
 				arcan_video_fontdefaults(NULL, &font_sz, &hint);
 				float sf = ev.tgt.ioevs[4].fv / d->ppcm;
 				arcan_video_defaultfont("arcan-default",
-					BADFD, (float)font_sz * sf, hint);
+					BADFD, (float)font_sz * sf, hint, false);
 				d->ppcm = ev.tgt.ioevs[4].fv;
 			}
 		break;
@@ -630,7 +630,8 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
 
 			if (ev.tgt.ioevs[2].fv > 0)
 				font_sz = ceilf(d->ppcm * ev.tgt.ioevs[2].fv);
-			arcan_video_defaultfont("arcan-default", newfd, font_sz, hint);
+			arcan_video_defaultfont("arcan-default",
+				newfd, font_sz, hint, ev.tgt.ioevs[4].iv);
 
 			arcan_event_enqueue(ctx, &(arcan_event){
 				.category = EVENT_VIDEO,

@@ -889,21 +889,22 @@ bool arcan_db_appl_kv(struct arcan_dbh* dbh, const char* applname,
 	if (!applname || !dbh || !key)
 		return rv;
 
-	if (!value){
-		const char kv_drop[] = "DELETE FROM appl_%s WHERE val = \"\";";
-		size_t upd_sz = sizeof(kv_drop) + strlen(applname);
-		char upd_buf[upd_sz];
-		ssize_t nw = snprintf(upd_buf, upd_sz, kv_drop, applname);
-		db_void_query(dbh, upd_buf, false);
-		return true;
-	}
-
 	const char ddl_insert[] = "INSERT OR REPLACE "
 		"INTO appl_%s(key, val) VALUES(?, ?);";
+	const char k_drop[] = "DELETE FROM appl_%s WHERE key=?;";
 
-	size_t upd_sz = sizeof(ddl_insert) + strlen(applname);
+	size_t upd_sz = 0;
+	const char* dqry = ddl_insert;
+
+	if (!value){
+		upd_sz = sizeof(k_drop) + strlen(applname);
+		dqry = k_drop;
+	}
+	else
+		upd_sz = sizeof(ddl_insert) + strlen(applname);
+
 	char upd_buf[ upd_sz ];
-	ssize_t nw = snprintf(upd_buf, upd_sz, ddl_insert, applname);
+	ssize_t nw = snprintf(upd_buf, upd_sz, dqry, applname);
 
 	sqlite3_stmt* stmt = NULL;
 	sqlite3_prepare_v2(dbh->dbh, upd_buf, nw, &stmt, NULL);

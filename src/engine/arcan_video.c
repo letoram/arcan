@@ -5042,7 +5042,7 @@ static void update_sourcedescr(struct storage_info_t* ds,
 arcan_vobj_id arcan_video_renderstring(arcan_vobj_id src,
 	struct arcan_rstrarg data,
 	int8_t line_spacing, int8_t tab_spacing, unsigned int* tabs,
-	unsigned int* n_lines, unsigned int** lineheights, arcan_errc* errc)
+	unsigned int* n_lines,struct renderline_meta** lineheights,arcan_errc* errc)
 {
 #define FAIL(CODE){ if (errc) *errc = CODE; return ARCAN_EID; }
 	arcan_vobject* vobj;
