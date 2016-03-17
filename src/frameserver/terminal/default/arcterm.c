@@ -252,13 +252,12 @@ static void draw_ch(uint8_t u8_ch[5],
 		SHMIF_RGBA(bg[0], bg[1], bg[2], bg[3]));
  */
 
-	int prem = TTF_STYLE_UNDERLINE * underline;
+	int prem = TTF_STYLE_NORMAL | (TTF_STYLE_UNDERLINE * underline);
 	prem |= TTF_STYLE_ITALIC * italic;
 	prem |= (bold ? TTF_STYLE_BOLD : TTF_STYLE_NORMAL);
 
-	TTF_SetFontStyle(term.font, TTF_STYLE_NORMAL | prem);
 	TTF_RenderUTF8_ext(&term.acon.vidp[base_y * term.acon.pitch + base_x],
-	term.acon.pitch, term.font, (const char*) u8_ch, fg, bg, true);
+	term.acon.pitch, term.font, (const char*) u8_ch, fg, bg, true, prem);
 #endif
 }
 
@@ -1150,7 +1149,7 @@ static void probe_font(TTF_Font* font,
 {
 	TTF_Color fg = {.r = 0xff, .g = 0xff, .b = 0xff};
 	int w = *dw, h = *dh;
-	TTF_SizeUTF8(font, msg, &w, &h);
+	TTF_SizeUTF8(font, msg, &w, &h, TTF_STYLE_BOLD | TTF_STYLE_UNDERLINE);
 
 	if (w > *dw)
 		*dw = w;
@@ -1177,7 +1176,6 @@ static bool setup_font(int fd, size_t font_sz, int mode)
 		return false;
 
 	TTF_SetFontHinting(font, term.hint);
-	TTF_SetFontStyle(font, TTF_STYLE_BOLD | TTF_STYLE_UNDERLINE);
 
 	size_t w = 0, h = 0;
 	static const char* set[] = {

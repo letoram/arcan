@@ -130,8 +130,10 @@ int TTF_GlyphMetrics(TTF_Font *font, uint16_t ch, int *minx,
 	int *maxx, int *miny, int *maxy, int *advance);
 
 /* Get the dimensions of a rendered string of text */
-int TTF_SizeUTF8(TTF_Font *font, const char *text, int *w, int *h);
-int TTF_SizeUNICODE(TTF_Font *font, const uint32_t *text, int *w, int *h);
+int TTF_SizeUTF8(TTF_Font *font,
+	const char *text, int *w, int *h, int style);
+int TTF_SizeUNICODE(TTF_Font *font,
+	const uint32_t *text, int *w, int *h, int style);
 
 #if defined(SHMIF_TTF) || defined(ARCAN_TTF)
 #ifdef SHMIF_TTF
@@ -142,11 +144,20 @@ int TTF_SizeUNICODE(TTF_Font *font, const uint32_t *text, int *w, int *h);
 #define PACK(R, G, B, A) RGBA(R, G, B, A)
 #endif
 
+/* chain functions work like normal, except that they take multiple
+ * fonts and select / scale a fallback if a glyph is not found. */
+int TTF_SizeUTF8chain(TTF_Font **font, size_t n,
+	const char *text, int *w, int *h, int style);
+int TTF_SizeUNICODEchain(TTF_Font **font, size_t n,
+	const uint32_t *text, int *w, int *h, int style);
+
 bool TTF_RenderUTF8_ext(PIXEL* dst, int stride, TTF_Font *font,
-	const char* intext, uint8_t fg[4], uint8_t bg[4], bool usebg);
+	const char* intext, uint8_t fg[4], uint8_t bg[4], bool usebg, int style);
 
 bool TTF_RenderUTF8chain(PIXEL* dst, int stride, TTF_Font **font,
-	size_t n, const char* intext, uint8_t fg[4], uint8_t bg[4], bool usebg);
+		size_t n, const char* intext, uint8_t fg[4], uint8_t bg[4],
+		bool usebg, int style
+	);
 #endif
 
 /* Close an opened font file */
