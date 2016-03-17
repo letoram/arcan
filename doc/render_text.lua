@@ -1,7 +1,7 @@
 -- render_text
 -- @short: Convert a format string to a new video object.
 -- @inargs: *dststore*, message, *vspacing*, *tspacing*, *tabs*
--- @outargs: vid, lineheights, width, height
+-- @outargs: vid, lineheights, width, height, ascent
 -- @longdescr: Render a format string into a texture assigned to a new video
 -- object. Return this object along with a table of individual line-heights.
 -- The optional *dststore* can be used to update a previous result from
@@ -17,7 +17,8 @@
 -- If *message* is a table of strings, strings at odd indices will be treated as
 -- format strings and even indices are treated as raw UTF8.
 -- Vspacing indicates the default padding between lines, and tspacing the
--- horizontal spacing between tabs. Each formatting sequence is initiated
+-- horizontal spacing between tabs. If *vspacing* is set to nil or 0, the added
+-- padding will be taken from the font. Each formatting sequence is initiated
 -- with a single backspace, followed with a command code (see table below).
 -- Stateful commands (b, i, u) can be negated with a preluding exclamation point.
 -- @tblent: t tab
@@ -26,10 +27,12 @@
 -- @tblent: u underline
 -- @tblent: b bold
 -- @tblent: i italic
--- @tblent: ffname,size_pt switch font, use f,size to use default font which
--- can be set with system_defaultfont or through the first used successful
--- render_text call. Set size to = 0 or add a sign specifier (- or +)
--- to specify relative to default font. Size is in points assuming 2.88 mmpp.
+-- @tblent: ffname,size_pt switch primary font, use f,size to use default
+-- font which can be set with system_defaultfont or through the first used
+-- successful render_text call. Set size to = 0 or add a sign specifier
+-- (- or +) to specify relative to default font. Size is in points
+-- assuming 28.8 ppcm density output as the internal font management cannot
+-- currently take output display into account when rendering.
 -- @tblent: #rrggbb switch font color
 -- @tblent: pfname embed image
 -- @tblent: Pfname,w,h embed image, scale to w*h

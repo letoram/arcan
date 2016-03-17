@@ -38,9 +38,19 @@
  * \pfname (load and embedd image from fname into string, dimensions limited)
  * \Pfname,w,h (load and stretch image from fname into string)
  */
+
+#ifndef HAVE_RLINE_META
+#define HAVE_RLINE_META
+struct renderline_meta{
+	int height;
+	int ystart;
+	int ascent; /* only accurate if there's a single font used on the line */
+};
+#endif
+
 av_pixel* arcan_renderfun_renderfmtstr(const char* message,
 	arcan_vobj_id dst, int8_t line_spacing, int8_t tab_spacing, unsigned int* tabs,
-	bool pot, unsigned int* n_lines, unsigned int** lineheights,
+	bool pot, unsigned int* n_lines, struct renderline_meta** lineheights,
 	size_t* dw, size_t* dh, uint32_t* d_sz,
 	size_t* maxw, size_t* maxh, bool norender
 );
@@ -53,7 +63,7 @@ av_pixel* arcan_renderfun_renderfmtstr(const char* message,
 av_pixel* arcan_renderfun_renderfmtstr_extended(const char** message,
 	arcan_vobj_id dst, int8_t line_spacing, int8_t tab_spacing,
 	unsigned int* tabs, bool pot,
-	unsigned int* n_lines, unsigned int** lineheights,
+	unsigned int* n_lines, struct renderline_meta** lineheights,
 	size_t* dw, size_t* dh, uint32_t* d_sz,
 	size_t* maxw, size_t* maxh, bool norender
 );
@@ -62,11 +72,17 @@ av_pixel* arcan_renderfun_renderfmtstr_extended(const char** message,
  * Set the default font that will be used for format strings that do not
  * explicitly say which font to use. 'ident' is some unique- non
  * filesystem-valid string 'fd' is an open file-handle to a supported font
- * file, sz the default size and hint is: 0 - no anti-aliasing, 1 - light any
- * other value - truetype default
+ * file, sz the default size and hint is:
+ * <0 - keep previous setting
+ *  0 - none,
+ *  1 - mono,
+ *  2 - weak,
+ *  3 - normal,
+ *  4 - rgb,
+ *  5 - rgbv
  */
 bool arcan_video_defaultfont(const char* ident,
-	file_handle fd, int sz, int hint);
+	file_handle fd, int sz, int hint, bool append);
 
 /*
  * Retrieve the current font defaults for the fields that have their value

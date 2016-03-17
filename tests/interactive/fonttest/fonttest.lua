@@ -1,6 +1,6 @@
 testlines_normal = {
 	[[\fdefault.ttf,14\#ffffffTest1:Backslash:\\]],
-	[[\f,20\#aaaaaaReuse previous as default]],
+	[[\f,20\#aaaaaa\!bReuse previous as default]],
 	[[Test2:\#ff00ffMulti_\#ff0000c\#00ff00o\#0000ffl\#ff00ffo\#ffffffr]],
 	[[Multiline_test\nMultiline_test]],
 	[[Multiline_test\n\rShould_be_CR]],

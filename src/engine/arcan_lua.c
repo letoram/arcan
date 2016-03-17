@@ -2347,7 +2347,7 @@ static int textdimensions(lua_State* ctx)
 	LUA_TRACE("text_dimensions");
 
 	size_t width = 0, height = 0, maxw = 0, maxh = 0;
-	int vspacing = luaL_optint(ctx, 2, 4);
+	int vspacing = luaL_optint(ctx, 2, 0);
 	int tspacing = luaL_optint(ctx, 2, 64);
 
 	uint32_t sz;
@@ -2404,10 +2404,10 @@ static int rendertext(lua_State* ctx)
 	}
 
 	type = lua_type(ctx, argpos);
-	int vspacing = luaL_optint(ctx, argpos+1, 4);
+	int vspacing = luaL_optint(ctx, argpos+1, 0);
 	int tspacing = luaL_optint(ctx, argpos+2, 64);
 	unsigned int nlines = 0;
-	unsigned int* lineheights = NULL;
+	struct renderline_meta* lineheights = NULL;
 	arcan_errc errc;
 
 	if (type == LUA_TSTRING){
@@ -2444,11 +2444,18 @@ static int rendertext(lua_State* ctx)
 
 	lua_pushvid(ctx, id);
 	lua_newtable(ctx);
+	int asc = 0;
+	int height = 0;
 	int top = lua_gettop(ctx);
-
 	for (size_t i = 0; i < nlines; i++) {
 		lua_pushnumber(ctx, i + 1);
-		lua_pushnumber(ctx, lineheights[i]);
+		lua_pushnumber(ctx, lineheights[i].ystart);
+/* just grab any ascender */
+		if (!asc && lineheights[i].ascent){
+			asc = lineheights[i].ascent;
+			height = lineheights[i].height;
+		}
+
 		lua_rawset(ctx, top);
 	}
 
@@ -2458,9 +2465,10 @@ static int rendertext(lua_State* ctx)
 	arcan_vobject* vobj = arcan_video_getobject(id);
 	if (vobj){
 		lua_pushnumber(ctx, vobj->origw);
-		lua_pushnumber(ctx, vobj->origh);
+		lua_pushnumber(ctx, height);
+		lua_pushnumber(ctx, asc);
 		LUA_ETRACE("render_text", NULL);
-		return 4;
+		return 5;
 	}
 
 	LUA_ETRACE("render_text", NULL);
@@ -5922,7 +5930,8 @@ static int resource(lua_State* ctx)
 	LUA_TRACE("resource");
 
 	const char* label = luaL_checkstring(ctx, 1);
-	int mask = luaL_optinteger(ctx, 2, DEFAULT_USERMASK) & DEFAULT_USERMASK;
+/* can only be used to test for resource so don't & against mask */
+	int mask = luaL_optinteger(ctx, 2, DEFAULT_USERMASK);
 	char* res = arcan_find_resource(label, mask, ARES_FILE | ARES_FOLDER);
 	if (!res){
 		lua_pushstring(ctx, res);
@@ -6083,7 +6092,7 @@ static int layout_tonum(const char* layout)
 
 static int targetfonthint(lua_State* ctx)
 {
-/* (dstfsrv, [fontstr], size (mm), hinting -1 or (0..16) */
+/* (dstfsrv, [fontstr], size (pt), hinting -1 or (0..5), merge */
 	LUA_TRACE("target_fonthint");
 	arcan_vobject* vobj;
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, &vobj);
@@ -6123,9 +6132,11 @@ static int targetfonthint(lua_State* ctx)
 		.tgt.kind = TARGET_COMMAND_FONTHINT,
 		.tgt.ioevs[1].iv = fd != BADFD ? 1 : 0,
 		.tgt.ioevs[2].fv = luaL_checknumber(ctx, numind),
-		.tgt.ioevs[3].iv = luaL_checknumber(ctx, numind+1)
+		.tgt.ioevs[3].iv = luaL_checknumber(ctx, numind+1),
+		.tgt.ioevs[4].iv = luaL_optbnumber(ctx, numind+2, 0)
 	};
 
+	printf("forward hinting request: %d\n", outev.tgt.ioevs[3]);
 	if (fd != BADFD){
 		lua_pushboolean(ctx, arcan_frameserver_pushfd(fsrv, &outev, fd));
 		close(fd);
@@ -9064,8 +9075,9 @@ static int setdefaultfont(lua_State* ctx)
 
 	size_t fontsz = luaL_checknumber(ctx, 2);
 	int fonth = luaL_checknumber(ctx, 3);
+	bool append = luaL_optbnumber(ctx, 4, 0);
 
-	bool res = arcan_video_defaultfont(fontn, fd, fontsz, fonth);
+	bool res = arcan_video_defaultfont(fontn, fd, fontsz, fonth, append);
 
 	lua_pushboolean(ctx, res);
 	LUA_ETRACE("system_defaultfont", res ? NULL : "defaultfont fail");
