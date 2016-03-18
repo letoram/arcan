@@ -37,6 +37,12 @@
 #include FT_LCD_FILTER_H
 #define ARCAN_TTF
 
+#if defined(SHMIF_TTF)
+#define STB_IMAGE_RESIZE_IMPLEMENTATION
+#endif
+
+#include "external/stb_image_resize.h"
+
 #if defined(SHMIF_TTF) || defined(ARCAN_TTF)
 #include "arcan_shmif.h"
 #endif
@@ -69,6 +75,12 @@ typedef struct cached_glyph {
 	int yoffset;
 	int advance;
 	uint32_t cached;
+
+/* special case, set this to true when we deal with non- scalable fonts with
+ * embedded bitmaps where we scale to fit the set pt- size (or, with a
+ * render-chain, the cached height of the main font */
+	bool manual_scale;
+
 } c_glyph;
 
 /* The structure used to hold internal font information */
@@ -81,11 +93,6 @@ struct _TTF_Font {
 	int ascent;
 	int descent;
 	int lineskip;
-
-/* special case, set this to true when we deal with non- scalable fonts with
- * embedded bitmaps where we scale to fit the set pt- size (or, with a
- * render-chain, the cached height of the main font */
-	bool scaled;
 
 	/* The font style */
 	int face_style;
@@ -114,6 +121,7 @@ struct _TTF_Font {
 
 	/* For non-scalable formats, we must remember which font index size */
 	int font_size_family;
+	int ptsize;
 
 	/* really just flags passed into FT_Load_Glyph */
 	int hinting;
@@ -320,6 +328,7 @@ TTF_Font* TTF_OpenFontIndexRW( FILE* src, int freesrc, int ptsize, long index )
 
 	font->args.flags = FT_OPEN_STREAM;
 	font->args.stream = stream;
+	font->ptsize = ptsize;
 
 	error = FT_Open_Face( library, &font->args, index, &font->face );
 	if( error ) {
@@ -529,7 +538,9 @@ static FT_Error Load_Glyph( TTF_Font* font, uint32_t ch,
 			cached->miny = cached->maxy - FT_CEIL(metrics->height);
 			cached->yoffset = font->ascent - cached->maxy;
 			cached->advance = FT_CEIL(metrics->horiAdvance);
-		} else {
+			cached->manual_scale = false;
+		}
+		else {
 /* Get the bounding box for non-scalable format.  Again, freetype2 fills in
  * many of the font metrics with the value of 0, so some of the values we need
  * must be calculated differently with certain assumptions about non-scalable
@@ -540,8 +551,9 @@ static FT_Error Load_Glyph( TTF_Font* font, uint32_t ch,
 			FT_Glyph_Get_CBox(gglyph, FT_GLYPH_BBOX_PIXELS, &bbox);
 			cached->minx = bbox.xMin;
 			cached->maxx = bbox.xMax;
-			cached->miny = bbox.yMin;
-			cached->maxy = bbox.yMax;
+			cached->miny = 0;
+			cached->maxy = bbox.yMax - bbox.yMin;
+			cached->manual_scale = true;
 			cached->yoffset = 0;
 			cached->advance = FT_CEIL(metrics->horiAdvance);
 		}
@@ -1098,7 +1110,7 @@ int TTF_SizeUNICODEchain(TTF_Font **font, size_t n,
 /* dominant (first) font in chain gets to control dimensions */
 	use_kerning = FT_HAS_KERNING( font[0]->face ) && font[0]->kerning;
 
-	/* Init outline handling */
+/* Init outline handling */
 	if ( font[0]->outline  > 0 ) {
 		outline_delta = font[0]->outline * 2;
 	}
@@ -1113,10 +1125,20 @@ int TTF_SizeUNICODEchain(TTF_Font **font, size_t n,
 			continue;
 		glyph = outf->current;
 
-		/* handle kerning */
+/* cheating with the manual_scale bitmap fonts */
+		if (glyph->manual_scale){
+			x += outf->ptsize;
+			maxx += outf->ptsize;
+			if (maxy < outf->ptsize)
+				maxy = outf->ptsize;
+			continue;
+		}
+
+/* kerning needs the index of the previous glyph and the current one */
 		if ( use_kerning && prev_index && glyph->index ) {
 			FT_Vector delta;
-			FT_Get_Kerning( outf->face, prev_index, glyph->index, ft_kerning_default, &delta );
+			FT_Get_Kerning( outf->face, prev_index,
+				glyph->index, ft_kerning_default, &delta );
 			x += delta.x >> 6;
 		}
 
@@ -1201,12 +1223,6 @@ int TTF_SizeUNICODEchain(TTF_Font **font, size_t n,
  * for abberations..
  */
 #if defined(SHMIF_TTF) || defined(ARCAN_TTF)
-bool TTF_RenderUTF8_ext(PIXEL* dst, int stride, TTF_Font *font,
-	const char* intext, uint8_t fg[4], uint8_t bg[4], bool usebg, int style)
-{
-	return TTF_RenderUTF8chain(dst,
-		stride, &font, 1, intext, fg, bg, usebg, style);
-}
 
 static inline av_pixel pack_pixel_bg(uint8_t fg[4], uint8_t bg[4], uint8_t a)
 {
@@ -1232,123 +1248,151 @@ static inline av_pixel pack_pixel(uint8_t fg[4],
 	return PACK(fg[0] * fa, fg[1] * fa, fg[2] * fa, a);
 }
 
-bool TTF_RenderUTF8chain(PIXEL* dst, int stride, TTF_Font **font,
-	size_t n, const char* intext, uint8_t fg[4], uint8_t bg[4],
-	bool usebg, int style)
+bool TTF_RenderUNICODEglyph(PIXEL* dst,
+	size_t width, size_t height,
+	int stride, TTF_Font **font, size_t n,
+	uint32_t ch,
+	unsigned* xstart, uint8_t fg[4], uint8_t bg[4],
+	bool usebg, bool use_kerning, int style,
+	int* advance, unsigned* prev_index)
 {
-	int xstart;
-	int width, height;
-	const uint32_t* ch;
-	bool done = false;
-	c_glyph* glyph;
-	FT_Long use_kerning;
-	FT_UInt prev_index = 0;
-
-/* Copy the UTF-8 text to a UNICODE text buffer, naive size */
-	int unicode_len = strlen(intext);
-	size_upool(unicode_len+1);
-	if (!unicode_buf)
+	TTF_Font* outf = Find_Glyph_fb(font, n, ch, CACHED_METRICS|CACHED_PIXMAP);
+	if (!outf)
 		return false;
 
-	uint32_t* text = unicode_buf;
-	UTF8_to_UTF32(text, (const uint8_t*) intext, unicode_len);
-
-/* Get the dimensions of the text surface */
-	if ( (TTF_SizeUNICODE(font[0],
-		text, &width, &height, style) < 0) || !width ) {
-		TTF_SetError("Text has zero width");
-		goto end;
-	}
-
 	PIXEL* dst_check = dst + width + height * stride;
+	c_glyph* glyph = outf->current;
+	*advance = glyph->advance;
 
-/* check kerning */
-	use_kerning = FT_HAS_KERNING( font[0]->face ) && font[0]->kerning;
-
-/* Load and render each character */
-	xstart = 0;
-
-	for ( ch=text; *ch; ++ch ) {
-		uint32_t c = *ch;
-		TTF_Font* outf;
-
-		if (!(outf = Find_Glyph_fb(font, n, c, CACHED_METRICS|CACHED_PIXMAP)) ){
-			continue;
-		}
-
-		glyph = outf->current;
-
-/* Ensure the width of the pixmap is correct. On some cases,
+	int gwidth = 0;
+	/* Ensure the width of the pixmap is correct. On some cases,
  * freetype may report a larger pixmap than possible.*/
-		width = glyph->pixmap.width;
+	if (glyph->manual_scale){
+		*advance = outf->ptsize;
+		gwidth = outf->ptsize;
+	}
+	else {
+		gwidth = glyph->pixmap.width;
 		if (outf->outline <= 0 && width > glyph->maxx - glyph->minx)
-			width = glyph->maxx - glyph->minx;
+			gwidth = glyph->maxx - glyph->minx;
 
 /* do kerning, if possible AC-Patch */
-		if ( use_kerning && prev_index && glyph->index ) {
+		if ( use_kerning && *prev_index && glyph->index ) {
 			FT_Vector delta;
-			FT_Get_Kerning( outf->face, prev_index, glyph->index, ft_kerning_default, &delta );
-			xstart += delta.x >> 6;
+			FT_Get_Kerning( outf->face, *prev_index,
+				glyph->index, ft_kerning_default, &delta );
+			*xstart += delta.x >> 6;
 		}
 
 /* Compensate for the wrap around bug with negative minx's */
-		if ( (ch == text) && (glyph->minx < 0) ) {
-			xstart -= glyph->minx;
+		if ( glyph->minx && *xstart > glyph->minx ){
+			*xstart -= glyph->minx;
 		}
+	}
 
 /* special treatment for subpixel hinting and for colored output, pitch is
  * still correct but the dimensions are too wide or high */
-		if (glyph->pixmap.pixel_mode == FT_PIXEL_MODE_BGRA){
-			for (int row = 0; row < glyph->pixmap.rows; row++){
-				if (row+glyph->yoffset < 0 || row+glyph->yoffset >= height){
-					continue;
-				}
+	if (glyph->pixmap.pixel_mode == FT_PIXEL_MODE_BGRA){
+		if (glyph->manual_scale){
+/* maintain AR and center around PTSIZE (as em = 1/72@72DPI = 1 px)	*/
+			float ar = glyph->pixmap.rows / glyph->pixmap.width;
+			int newh = font[0]->ptsize;
+			int neww = newh * ar;
 
-				PIXEL* out = &dst[(row+glyph->yoffset)*stride+(xstart+glyph->minx)];
-				uint8_t* src = (uint8_t*) (glyph->pixmap.buffer + glyph->pixmap.pitch * row);
+			if (neww > width){
+				neww = width;
+/*	uncomment to maintain aspect ratio
+ *	newh = width / ar; */
+			}
+			if (newh > height)
+				newh = height;
+
+/* this approach gives us the wrong packing for color channels, but we
+ * repack after scale as it is fewer operations */
+			stbir_resize_uint8(glyph->pixmap.buffer, glyph->pixmap.width,
+				glyph->pixmap.rows, 0,
+				(unsigned char*) &dst[*xstart], neww, newh, stride * 4, 4);
+
+			for (int row = 0; row < outf->ptsize; row++){
+				PIXEL* out = &dst[*xstart + (row * stride)];
+
+				for (int col = 0; col < neww; col++){
+					uint8_t* in = (uint8_t*) out;
+					uint8_t b = *in++;
+					uint8_t g = *in++;
+					uint8_t r = *in++;
+					uint8_t a = *in++;
+					*out++ = PACK(r, g, b, a);
+				}
+			}
+		}
+		else{
+			for (int row = 0; row < glyph->pixmap.rows; row++){
+				if (row+glyph->yoffset < 0 || row+glyph->yoffset >= height)
+					continue;
+
+				PIXEL* out = &dst[(row+glyph->yoffset)*stride+(*xstart+glyph->minx)];
+				uint8_t* src = (uint8_t*)
+					(glyph->pixmap.buffer + glyph->pixmap.pitch * row);
 
 /* scale here: stbir_resize_uint8(glyph->pixmap.buffer, inw, inh, pitch,
  * outbuf, outw, outh, pitch, 4 */
-					for (int col = 0; col < width && out < dst_check; col++){
-						int b = *src++;
-						int g = *src++;
-						int r = *src++;
-						int a = *src++;
-						*out++ = PACK(r,g,b,a);
-					}
+				for (int col = 0; col < gwidth && out < dst_check; col++){
+					int b = *src++;
+					int g = *src++;
+					int r = *src++;
+					int a = *src++;
+					*out++ = PACK(r,g,b,a);
+				}
 			}
 		}
-		else if (glyph->pixmap.pixel_mode == FT_PIXEL_MODE_LCD){
-		}
-		else if (glyph->pixmap.pixel_mode == FT_PIXEL_MODE_LCD_V){
-		}
-		else
-		for (int row = 0; row < glyph->pixmap.rows; ++row ){
-			if ( row+glyph->yoffset < 0 || row+glyph->yoffset >= height )
+	}
+/* similar to normal drawing, but 3 times as wide and go full alpha */
+	else if (glyph->pixmap.pixel_mode == FT_PIXEL_MODE_LCD){
+		for (int row = 0; row < glyph->pixmap.rows; ++row){
+			if (row+glyph->yoffset < 0 || row+glyph->yoffset >= height)
 				continue;
 
 /* this blit- routine is a bit worse - there's one strategy if we want to
  * blend against BG and one where we just want the foreground channel, but
  * also a number of color formats for the glyph. */
-			PIXEL* out = &dst[(row+glyph->yoffset)*stride+(xstart+glyph->minx)];
-			uint8_t* src = (uint8_t*) (glyph->pixmap.buffer + glyph->pixmap.pitch * row);
+			PIXEL* out = &dst[(row+glyph->yoffset)*stride+(*xstart+glyph->minx)];
+			uint8_t* src = (uint8_t*)(glyph->pixmap.buffer+glyph->pixmap.pitch*row);
 
-			for (int col = 0; col < width && out < dst_check; col++){
-				uint8_t a = *src++;
+			for (int col = 0; col < gwidth && out < dst_check; col++){
+				uint8_t b = *src++;
+				uint8_t g = *src++;
+				uint8_t r = *src++;
+				uint8_t a = (b + g + r) / 3;
+
 				if (usebg)
 					*out++ = pack_pixel_bg(fg, bg, a);
 				else
-					*out++ = pack_pixel(fg, a, a, a, a);
+					*out++ = pack_pixel(fg, r, g, b, a);
 			}
 		}
-
-		xstart += glyph->advance;
-		if ( TTF_HANDLE_STYLE_BOLD(outf) ) {
-			xstart += outf->glyph_overhang;
-		}
-		prev_index = glyph->index;
 	}
-	done = true;
+	else if (glyph->pixmap.pixel_mode == FT_PIXEL_MODE_LCD_V){
+	}
+	else
+	for (int row = 0; row < glyph->pixmap.rows; ++row){
+		if (row+glyph->yoffset < 0 || row+glyph->yoffset >= height)
+			continue;
+
+/* this blit- routine is a bit worse - there's one strategy if we want to
+ * blend against BG and one where we just want the foreground channel, but
+ * also a number of color formats for the glyph. */
+		PIXEL* out = &dst[(row+glyph->yoffset)*stride+(*xstart+glyph->minx)];
+		uint8_t* src = (uint8_t*)(glyph->pixmap.buffer+glyph->pixmap.pitch * row);
+
+		for (int col = 0; col < gwidth && out < dst_check; col++){
+			uint8_t a = *src++;
+			if (usebg)
+				*out++ = pack_pixel_bg(fg, bg, a);
+			else
+				*out++ = pack_pixel(fg, a, a, a, a);
+		}
+	}
 
 /* Underline / Strikethrough can be handled by the caller for this func
  * just getting toprow:
@@ -1356,9 +1400,51 @@ bool TTF_RenderUTF8chain(PIXEL* dst, int stride, TTF_Font **font,
 		row = TTF_strikethrough_top_row(font);
 */
 
-end:
-	/* Free the text buffer and return */
-	return done;
+	if (TTF_HANDLE_STYLE_BOLD(outf))
+		*xstart += outf->glyph_overhang;
+
+	*prev_index = glyph->index;
+	return true;
+}
+
+bool TTF_RenderUTF8chain(PIXEL* dst, size_t width, size_t height,
+	int stride, TTF_Font **font, size_t n,
+	const char* intext, uint8_t fg[4], int style)
+{
+	unsigned xstart;
+	const uint32_t* ch;
+	unsigned prev_index = 0;
+
+	if (!intext || intext[0] == '\0')
+		return true;
+
+/* Copy the UTF-8 text to a UNICODE text buffer, naive size */
+	int unicode_len = strlen(intext);
+
+/* Note that this buffer is shared and grows! */
+	size_upool(unicode_len+1);
+	if (!unicode_buf)
+		return false;
+
+	uint32_t* text = unicode_buf;
+	UTF8_to_UTF32(text, (const uint8_t*) intext, unicode_len);
+
+/* Load and render each character */
+	xstart = 0;
+
+	for (ch=text; *ch; ++ch){
+		int advance = 0;
+
+		TTF_RenderUNICODEglyph(dst, width, height, stride,
+			font, n, *ch, &xstart, fg, fg,
+			false, FT_HAS_KERNING(font[0]->face) && font[0]->kerning, style,
+			&advance, &prev_index
+		);
+
+		xstart += advance;
+	}
+
+	return true;
 }
 #endif
 

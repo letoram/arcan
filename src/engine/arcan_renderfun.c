@@ -38,13 +38,14 @@
 #define STBIR_FREE(ptr,ctx) arcan_mem_free(ptr)
 #include "external/stb_image_resize.h"
 
-struct font_entry {
-	struct {
-		TTF_Font* data[4];
-		file_handle fd[4];
-		size_t count;
-	} chain;
+struct font_entry_chain {
+	TTF_Font* data[4];
+	file_handle fd[4];
+	size_t count;
+};
 
+struct font_entry {
+	struct font_entry_chain chain;
 	char* identifier;
 	size_t size;
 	uint8_t usecount;
@@ -213,7 +214,7 @@ static struct font_entry* grab_font(const char* fname, size_t size)
 	}
 
 /* match / track */
-	file_handle matchfd = BADFD;
+	struct font_entry* matchf = NULL;
 	for (i = 0; i < font_cache_size && font_cache[i].chain.data[0] != NULL; i++){
 		if (i && font_cache[i].usecount < leastv &&
 			&font_cache[i] != last_style.font){
@@ -223,7 +224,7 @@ static struct font_entry* grab_font(const char* fname, size_t size)
 
 		if (strcmp(font_cache[i].identifier, fname) == 0){
 			if (font_cache[i].chain.fd[0] != BADFD){
-				matchfd = font_cache[i].chain.fd[0];
+				matchf = &font_cache[i];
 			}
 
 			if (font_cache[i].size == size){
@@ -234,11 +235,37 @@ static struct font_entry* grab_font(const char* fname, size_t size)
 		}
 	}
 
-/* try to load */
-	TTF_Font* fontdata = matchfd != BADFD ?
-		TTF_OpenFontFD(matchfd, size) : TTF_OpenFont(fname, size);
+/* we have an edge case here - there are fallback slots defined for the font
+ * that was found but had the wrong size so we need to rebuild the entire
+ * chain. Also note that not all (!default) slots have a font that is derived
+ * from an accessible file descriptor. */
+	struct font_entry_chain newch = {};
 
-	if (!fontdata){
+	if (matchf){
+		if (i == font_cache_size){
+			i = leasti;
+		}
+		int count = 0;
+		for (size_t i = 0; i < matchf->chain.count; i++){
+			newch.data[count] = TTF_OpenFontFD(matchf->chain.fd[i], size);
+			newch.fd[count] = BADFD;
+			if (!newch.data[count]){
+				arcan_warning("grab font(), couldn't duplicate entire "
+					"fallback chain (fail @ ind %d)\n", i);
+			}
+			else
+				count++;
+		}
+		newch.count = count;
+	}
+	else {
+		newch.data[0] = TTF_OpenFont(fname, size);
+		newch.fd[0] = BADFD;
+		if (newch.data[0])
+			newch.count = 1;
+	}
+
+	if (newch.count == 0){
 		arcan_warning("grab_font(), Open Font (%s,%d) failed\n", fname, size);
 		return NULL;
 	}
@@ -253,8 +280,7 @@ static struct font_entry* grab_font(const char* fname, size_t size)
 	font_cache[i].identifier = strdup(fname);
 	font_cache[i].usecount++;
 	font_cache[i].size = size;
-	font_cache[i].chain.data[0] = fontdata;
-	font_cache[i].chain.count = 1;
+	font_cache[i].chain = newch;
 	font = &font_cache[i];
 
 done:
@@ -688,9 +714,9 @@ static bool render_alloc(struct rcell* cnode,
 	for (size_t i=0; i < w * h; i++)
 		cnode->data.surf.buf[i] = 0;
 
-	if (!TTF_RenderUTF8chain(cnode->data.surf.buf, w, style->font->chain.data,
-		style->font->chain.count, base,
-		style->col, style->col, false, style->style)){
+	if (!TTF_RenderUTF8chain(cnode->data.surf.buf, w, h, w,
+		style->font->chain.data, style->font->chain.count,
+		base, style->col, style->style)){
 		arcan_warning("arcan_video_renderstring(), failed to render.\n");
 		arcan_mem_free(cnode->data.surf.buf);
 		cnode->data.surf.buf = NULL;
