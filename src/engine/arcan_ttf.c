@@ -1318,11 +1318,15 @@ bool TTF_RenderUNICODEglyph(PIXEL* dst,
 
 				for (int col = 0; col < neww; col++){
 					uint8_t* in = (uint8_t*) out;
-					uint8_t b = *in++;
-					uint8_t g = *in++;
-					uint8_t r = *in++;
-					uint8_t a = *in++;
-					*out++ = PACK(r, g, b, a);
+					uint8_t col[4];
+					col[2] = *in++;
+					col[1] = *in++;
+					col[0] = *in++;
+					col[3] = *in++;
+					if (usebg)
+						*out++ = pack_pixel_bg(col, bg, col[3]);
+					else
+						*out++ = PACK(col[0], col[1], col[2], col[3]);
 				}
 			}
 		}
