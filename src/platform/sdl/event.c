@@ -44,12 +44,10 @@ struct axis_opts {
 };
 
 static struct {
-		struct axis_opts mx, my,
-			mx_r, my_r;
-
-		bool sticks_init;
-		unsigned short n_joy;
-		struct arcan_stick* joys;
+	struct axis_opts mx, my, mx_r, my_r;
+	bool sticks_init;
+	unsigned short n_joy;
+	struct arcan_stick* joys;
 } iodev = {0};
 
 struct arcan_stick {
@@ -57,6 +55,7 @@ struct arcan_stick {
  * to higher layers in order to retain / track settings
  * for a certain device, put that here */
 	char label[256];
+	bool tagged;
 
 	SDL_Joystick* handle;
 
@@ -151,7 +150,7 @@ static inline void process_axismotion(arcan_evctx* ctx,
 {
 	int devid = ev->which;
 
-	if (iodev.joys[devid].axis < ev->axis)
+	if (!iodev.joys || iodev.joys[devid].axis < ev->axis)
 		return;
 
 	struct axis_opts* daxis = &iodev.joys[devid].adata[ev->axis];
@@ -254,7 +253,7 @@ arcan_errc platform_event_analogstate(int devid, int axisid,
 	if (devid < 0 || devid >= iodev.n_joy)
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
-	if (axisid >= iodev.joys[devid].axis)
+	if (!iodev.joys || axisid >= iodev.joys[devid].axis)
 		return ARCAN_ERRC_BAD_RESOURCE;
 
 	struct axis_opts* daxis = &iodev.joys[devid].adata[axisid];
@@ -287,18 +286,20 @@ void platform_event_analogall(bool enable, bool mouse)
 		}
 	}
 
-	for (int i = 0; i < iodev.n_joy; i++)
-		for (int j = 0; j < iodev.joys[i].axis; j++)
-			if (enable){
-				if (iodev.joys[i].adata[j].oldmode == ARCAN_ANALOGFILTER_NONE)
-					iodev.joys[i].adata[j].mode = ARCAN_ANALOGFILTER_AVG;
-				else
-					iodev.joys[i].adata[j].mode = iodev.joys[i].adata[j].oldmode;
-			}
-			else {
-				iodev.joys[i].adata[j].oldmode = iodev.joys[i].adata[j].mode;
-				iodev.joys[i].adata[j].mode = ARCAN_ANALOGFILTER_NONE;
-			}
+	if (iodev.joys){
+		for (int i = 0; i < iodev.n_joy; i++)
+			for (int j = 0; j < iodev.joys[i].axis; j++)
+				if (enable){
+					if (iodev.joys[i].adata[j].oldmode == ARCAN_ANALOGFILTER_NONE)
+						iodev.joys[i].adata[j].mode = ARCAN_ANALOGFILTER_AVG;
+					else
+						iodev.joys[i].adata[j].mode = iodev.joys[i].adata[j].oldmode;
+				}
+				else {
+					iodev.joys[i].adata[j].oldmode = iodev.joys[i].adata[j].mode;
+					iodev.joys[i].adata[j].mode = ARCAN_ANALOGFILTER_NONE;
+				}
+	}
 }
 
 void platform_event_analogfilter(int devid,
@@ -401,6 +402,9 @@ static inline void process_hatmotion(arcan_evctx* ctx, unsigned devid,
 		.io.subid = 128 + (hatid * 4)
 	};
 
+	if (!iodev.joys)
+		return;
+
 	static unsigned hattbl[4] = {SDL_HAT_UP, SDL_HAT_DOWN,
 		SDL_HAT_LEFT, SDL_HAT_RIGHT};
 
@@ -432,7 +436,7 @@ const char* platform_event_devlabel(int devid)
 	if (devid < 0 || devid >= iodev.n_joy)
 		return "no device";
 
-	return strlen(iodev.joys[devid].label) == 0 ?
+	return iodev.joys && strlen(iodev.joys[devid].label) == 0 ?
 		"no identifier" : iodev.joys[devid].label;
 }
 
@@ -542,9 +546,6 @@ void platform_event_process(arcan_evctx* ctx)
 			process_hatmotion(ctx, event.jhat.which, event.jhat.hat, event.jhat.value);
 		break;
 
-/* in theory, it should be fine to just manage window resizes by keeping
- * track of a scale factor to the grid size (window size) specified
- * during launch) */
 		case SDL_ACTIVEEVENT:
 //newevent.io.kind = (MOUSEFOCUS, INPUTFOCUS, APPACTIVE(0 = icon, 1 = restored)
 //if (event->active.state & SDL_APPINPUTFOCUS){
@@ -564,7 +565,10 @@ void platform_event_process(arcan_evctx* ctx)
  * supported, although the video- code is capable of handling a rebuild/reinit,
  * the lua- scripts themselves all depend quite a bit on VRESH/VRESW, one
  * option would be to just calculate a scale factor for the newvresh, newvresw
- * and apply that as a translation step when passing the lua<->core border
+ * and apply that as a translation step when passing the lua<->core border.
+ *
+ * Recently, changes in the egl-dri and arcan_lwa platforms makes this possible
+ * so maybe it is time to update a little here ;-)
 	case SDL_VIDEORESIZE:
 	break;
 
@@ -579,16 +583,45 @@ void platform_event_process(arcan_evctx* ctx)
 	}
 }
 
-void drop_joytbl()
+/* just separate chain on hid until no collision */
+static unsigned gen_devid(unsigned hid)
+{
+	for (int i = 0; i < iodev.n_joy; i++){
+		if (iodev.joys[i].devnum == hid){
+			hid += 257;
+			i = 0;
+		}
+	}
+	return hid;
+}
+
+void drop_joytbl(struct arcan_evctx* ctx)
 {
 	for(int i=0; i < iodev.n_joy; i++){
-		free(iodev.joys[i].adata);
-		free(iodev.joys[i].hattbls);
-	}
+		if (!iodev.joys[i].tagged){
+			struct arcan_event remev = {
+				.category = EVENT_IO,
+				.io.kind = EVENT_IO_STATUS,
+				.io.devid = iodev.joys[i].devnum,
+				.io.devkind = EVENT_IDEVKIND_STATUS,
+				.io.input.status.devkind = EVENT_IDEVKIND_GAMEDEV,
+				.io.input.status.action = EVENT_IDEV_REMOVED
+			};
 
-	free(iodev.joys);
-	iodev.joys = NULL;
-	iodev.n_joy = 0;
+			snprintf((char*) &remev.io.label, sizeof(remev.io.label) /
+				sizeof(remev.io.label[0]), "%s", iodev.joys[i].label);
+			arcan_event_enqueue(ctx, &remev);
+
+			free(iodev.joys[i].adata);
+			free(iodev.joys[i].hattbls);
+		}
+		else
+			iodev.joys[i].tagged = false;
+
+		free(iodev.joys);
+		iodev.joys = NULL;
+		iodev.n_joy = 0;
+	}
 }
 
 enum PLATFORM_EVENT_CAPABILITIES platform_input_capabilities()
@@ -602,13 +635,13 @@ void platform_event_rescan_idev(arcan_evctx* ctx)
 		SDL_QuitSubSystem(SDL_INIT_JOYSTICK);
 
 	SDL_Init(SDL_INIT_JOYSTICK);
-	iodev.sticks_init = true;
 	SDL_JoystickEventState(SDL_ENABLE);
 
 	int n_joys = SDL_NumJoysticks();
+	iodev.sticks_init = true;
 
 	if (n_joys == 0){
-		drop_joytbl();
+		drop_joytbl(ctx);
 		return;
 	}
 
@@ -630,14 +663,12 @@ void platform_event_rescan_idev(arcan_evctx* ctx)
 		if (iodev.joys){
 			for (int j = 0; j < iodev.n_joy; j++){
 				if (iodev.joys[j].hashid == hashid){
-					arcan_warning("found matching\n");
 					sj = &iodev.joys[j];
 					break;
 				}
-				else
-					arcan_warning("didn't match %d, %d\n", iodev.joys[j].hashid, hashid);
 			}
 
+/* if found, copy to new table */
 			if (sj){
 				memcpy(dj, sj, sizeof(struct arcan_stick));
 				if (dj->hats){
@@ -655,11 +686,11 @@ void platform_event_rescan_idev(arcan_evctx* ctx)
 			}
 		}
 
-/* new entry */
+/* otherwise add as new entry */
 		strncpy(dj->label, SDL_JoystickName(i), 255);
 		dj->hashid = djb_hash(SDL_JoystickName(i));
 		dj->handle = SDL_JoystickOpen(i);
-		dj->devnum = i;
+		dj->devnum = gen_devid(dj->hashid);
 
 		dj->axis    = SDL_JoystickNumAxes(joys[i].handle);
 		dj->buttons = SDL_JoystickNumButtons(joys[i].handle);
@@ -686,9 +717,21 @@ void platform_event_rescan_idev(arcan_evctx* ctx)
 				dj->adata[i].kernel_sz = 1;
 			}
 		}
+
+/* notify the rest of the system about the added device */
+		struct arcan_event addev = {
+			.category = EVENT_IO,
+			.io.kind = EVENT_IO_STATUS,
+			.io.devkind = EVENT_IDEVKIND_STATUS,
+			.io.devid = dj->devnum,
+			.io.input.status.devkind = EVENT_IDEVKIND_GAMEDEV,
+			.io.input.status.action = EVENT_IDEV_ADDED
+		};
+		snprintf((char*) &addev.io.label, sizeof(addev.io.label) /
+			sizeof(addev.io.label[0]), "%s", dj->label);
+		arcan_event_enqueue(ctx, &addev);
 	}
 
-	drop_joytbl();
 	iodev.n_joy = n_joys;
 	iodev.joys = joys;
 }
