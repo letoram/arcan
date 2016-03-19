@@ -5913,8 +5913,10 @@ static int globresource(lua_State* ctx)
 	};
 
 	char* label = (char*) luaL_checkstring(ctx, 1);
-	int mask = luaL_optinteger(ctx, 2, DEFAULT_USERMASK) &
-		(DEFAULT_USERMASK | RESOURCE_SYS_APPLBASE | RESOURCE_SYS_FONT);
+	int mask = luaL_optinteger(ctx, 2, DEFAULT_USERMASK &
+		(DEFAULT_USERMASK | RESOURCE_APPL_STATE |
+		 RESOURCE_SYS_APPLBASE | RESOURCE_SYS_FONT)
+	);
 
 	lua_newtable(ctx);
 	bptr.top = lua_gettop(ctx);
