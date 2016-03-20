@@ -4297,7 +4297,7 @@ static size_t process_rendertarget(struct rendertarget* tgt, float fract)
 		arcan_resolve_vidprop(elem, fract, &dprops);
 
 /* don't waste time on objects that aren't supposed to be visible */
-		if ( dprops.opa < EPSILON || elem == tgt->color){
+		if ( dprops.opa <= EPSILON || elem == tgt->color){
 			current = current->next;
 			continue;
 		}
