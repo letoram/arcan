@@ -52,6 +52,12 @@ if (NOT LUA_DROPSTR)
 set(LUA_DROPSTR "io os package rawequal rawset rawget setfenv coroutine module require")
 endif()
 
+# distributions packaging a build should tag this accordingly so we
+# can take that into consideration for bug reports
+if (NOT DEFINED DISTR_TAG)
+	set(DISTR_TAG "unknown")
+endif()
+
 # generate an identifiable buildtag for tracking purposes
 if (NOT DEFINED ENGINE_BUILDTAG)
 	find_package(Git)
@@ -467,10 +473,12 @@ unset(PFT)
 #
 if (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
 	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/CMakeLists.FreeBSD)
+	set(ENGINE_BUILDTAG ${ENGINE_BUILDTAG}-fbsd)
 	set(PKGCONFIG_DIR libdata/pkgconfig)
 
 elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/CMakeLists.Linux)
+	set(ENGINE_BUILDTAG ${ENGINE_BUILDTAG}-linux)
 	set(PKGCONFIG_DIR lib/pkgconfig)
 
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
@@ -480,6 +488,7 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 #
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/CMakeLists.Darwin)
+	set(ENGINE_BUILDTAG ${ENGINE_BUILDTAG}-darwin)
 	set(PKGCONFIG_DIR lib/pkgconfig)
 
 else()
