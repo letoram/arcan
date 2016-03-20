@@ -74,6 +74,16 @@ struct arcan_stick {
 	struct axis_opts* adata;
 };
 
+static int find_devind(int devnum)
+{
+	for (int i = 0; i < iodev.n_joy; i++){
+		if (iodev.joys[i].devnum == devnum){
+			return i;
+		}
+	}
+	return -1;
+}
+
 static inline bool process_axis(arcan_evctx* ctx,
 	struct axis_opts* daxis, int16_t samplev, int16_t* outv)
 {
@@ -160,7 +170,7 @@ static inline void process_axismotion(arcan_evctx* ctx,
 		arcan_event newevent = {
 			.category = EVENT_IO,
 			.io.kind = EVENT_IO_AXIS_MOVE,
-			.io.devid = ev->which,
+			.io.devid = iodev.joys[devid].devnum,
 			.io.subid = ev->axis,
 			.io.datatype = EVENT_IDATATYPE_ANALOG,
 			.io.devkind  = EVENT_IDEVKIND_GAMEDEV,
@@ -250,13 +260,16 @@ arcan_errc platform_event_analogstate(int devid, int axisid,
 		return true;
 	}
 
-	if (devid < 0 || devid >= iodev.n_joy)
+	int jind = find_devind(devid);
+
+	if (devid < 0 || -1 == jind)
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
-	if (!iodev.joys || axisid >= iodev.joys[devid].axis)
+
+	if (!iodev.joys || axisid >= iodev.joys[jind].axis)
 		return ARCAN_ERRC_BAD_RESOURCE;
 
-	struct axis_opts* daxis = &iodev.joys[devid].adata[axisid];
+	struct axis_opts* daxis = &iodev.joys[jind].adata[axisid];
 	*mode = daxis->mode;
 	*lower_bound = daxis->lower;
 	*upper_bound = daxis->upper;
@@ -318,13 +331,15 @@ void platform_event_analogfilter(int devid,
 	if (devid == -1)
 		goto setmouse;
 
-	if (devid < 0 || devid >= iodev.n_joy)
+	int jind = find_devind(devid);
+
+	if (devid < 0 || -1 == jind)
 		return;
 
-	if (axisid < 0 || axisid >= iodev.joys[devid].axis)
+	if (axisid < 0 || axisid >= iodev.joys[jind].axis)
 		return;
 
-	struct axis_opts* daxis = &iodev.joys[devid].adata[axisid];
+	struct axis_opts* daxis = &iodev.joys[jind].adata[axisid];
 
 	if (0){
 setmouse:
@@ -393,15 +408,6 @@ static char* to_utf8(uint16_t utf16, uint8_t out[4])
 static inline void process_hatmotion(arcan_evctx* ctx, unsigned devid,
 	unsigned hatid, unsigned value)
 {
-	arcan_event newevent = {
-		.category = EVENT_IO,
-		.io.kind = EVENT_IO_BUTTON,
-		.io.datatype = EVENT_IDATATYPE_DIGITAL,
-		.io.devkind = EVENT_IDEVKIND_GAMEDEV,
-		.io.devid = devid,
-		.io.subid = 128 + (hatid * 4)
-	};
-
 	if (!iodev.joys)
 		return;
 
@@ -410,6 +416,15 @@ static inline void process_hatmotion(arcan_evctx* ctx, unsigned devid,
 
 	assert(iodev.n_joy > devid);
 	assert(iodev.joys[devid].hats > hatid);
+
+	arcan_event newevent = {
+		.category = EVENT_IO,
+		.io.kind = EVENT_IO_BUTTON,
+		.io.datatype = EVENT_IDATATYPE_DIGITAL,
+		.io.devkind = EVENT_IDEVKIND_GAMEDEV,
+		.io.devid = iodev.joys[devid].devnum,
+		.io.subid = 128 + (hatid * 4)
+	};
 
 /* shouldn't really ever be the same, but not trusting SDL */
 	if (iodev.joys[devid].hattbls[ hatid ] != value){
@@ -432,6 +447,8 @@ const char* platform_event_devlabel(int devid)
 {
 	if (devid == -1)
 		return "mouse";
+
+	devid = find_devind(devid);
 
 	if (devid < 0 || devid >= iodev.n_joy)
 		return "no device";
@@ -460,7 +477,7 @@ void platform_event_process(arcan_evctx* ctx)
 				newevent.io.subid = event.button.button;
 			break;
 			}
-			newevent.io.devid = event.motion.which;
+			newevent.io.devid = iodev.joys[event.motion.which].devnum;
 			newevent.io.input.digital.active = true;
 			snprintf(newevent.io.label, sizeof(newevent.io.label) - 1, "mouse%i",
 				event.motion.which);
@@ -471,7 +488,7 @@ void platform_event_process(arcan_evctx* ctx)
 			newevent.io.kind = EVENT_IO_BUTTON;
 			newevent.io.datatype = EVENT_IDATATYPE_DIGITAL;
 			newevent.io.devkind  = EVENT_IDEVKIND_MOUSE;
-			newevent.io.devid = event.motion.which;
+			newevent.io.devid = iodev.joys[event.motion.which].devnum;
 			newevent.io.subid = event.button.button;
 			newevent.io.input.digital.active = false;
 			snprintf(newevent.io.label, sizeof(newevent.io.label) - 1, "mouse%i",
@@ -491,7 +508,7 @@ void platform_event_process(arcan_evctx* ctx)
 			newevent.io.datatype = EVENT_IDATATYPE_TRANSLATED;
 			newevent.io.devkind  = EVENT_IDEVKIND_KEYBOARD;
 			newevent.io.input.translated.active = true;
-			newevent.io.input.translated.devid = event.key.which;
+			newevent.io.input.translated.devid = iodev.joys[event.key.which].devnum;
 			newevent.io.input.translated.keysym = event.key.keysym.sym;
 			newevent.io.input.translated.modifiers = event.key.keysym.mod;
 			newevent.io.input.translated.scancode = event.key.keysym.scancode;
@@ -505,7 +522,7 @@ void platform_event_process(arcan_evctx* ctx)
 			newevent.io.datatype = EVENT_IDATATYPE_TRANSLATED;
 			newevent.io.devkind  = EVENT_IDEVKIND_KEYBOARD;
 			newevent.io.input.translated.active = false;
-			newevent.io.input.translated.devid = event.key.which;
+			newevent.io.input.translated.devid = iodev.joys[event.key.which].devnum;
 			newevent.io.input.translated.keysym = event.key.keysym.sym;
 			newevent.io.input.translated.modifiers = event.key.keysym.mod;
 			newevent.io.input.translated.scancode = event.key.keysym.scancode;
@@ -517,7 +534,7 @@ void platform_event_process(arcan_evctx* ctx)
 			newevent.io.kind = EVENT_IO_BUTTON;
 			newevent.io.datatype = EVENT_IDATATYPE_DIGITAL;
 			newevent.io.devkind  = EVENT_IDEVKIND_GAMEDEV;
-			newevent.io.devid = event.jbutton.which;
+			newevent.io.devid = iodev.joys[event.jbutton.which].devnum;
 			newevent.io.subid = event.jbutton.button;
 			newevent.io.input.digital.active = true;
 			snprintf(newevent.io.label, sizeof(newevent.io.label)-1,
@@ -529,7 +546,7 @@ void platform_event_process(arcan_evctx* ctx)
 			newevent.io.kind = EVENT_IO_BUTTON;
 			newevent.io.datatype = EVENT_IDATATYPE_DIGITAL;
 			newevent.io.devkind  = EVENT_IDEVKIND_GAMEDEV;
-			newevent.io.devid = event.jbutton.which;
+			newevent.io.devid = iodev.joys[event.jbutton.which].devnum;
 			newevent.io.subid = event.jbutton.button;
 			newevent.io.input.digital.active = false;
 			snprintf(newevent.io.label, sizeof(newevent.io.label)-1, "joystick%i",
