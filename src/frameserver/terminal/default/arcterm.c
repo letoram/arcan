@@ -10,14 +10,11 @@
  * with the following rough list on the 'todo':
  *
  * - Compatibilty Work
- * - Font rendering optimizations (possibly other formats than TT)
  * - More / Better cursor and offscreen buffer support
- * - X Mouse protocol
+ * - X Mouse protocols and similar extensions (set titlebar text etc.)
  *
  * Known Bugs:
- *  - Vim rendering bugs out, frames in midnight commander. mc is notoriously
- *    painfull as it uses the dect terminal ability of mapping alternative
- *    character-sets into some bits..
+ *  - Some fullscreen rendering (vim) and scrolling issues
  *
  * Experiments:
  *  - State transfers (of env, etc. to allow restore)
@@ -25,6 +22,11 @@
  *  - Injecting / redirecting descriptors (senseye integration)
  *  - Drag and Drop- file copy
  *  - Time-keeping manipulation
+ *
+ * Another decent project is to take a lot of this interface and move into
+ * some re-usable utility- code for tile-text like interfaces for
+ * applications like senseye translators and similar to re-use with working
+ * cut-and-pace/behavior respecting displayhints, fonthints etc.
  */
 #include <stdlib.h>
 #include <stdio.h>

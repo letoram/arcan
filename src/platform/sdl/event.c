@@ -477,7 +477,7 @@ void platform_event_process(arcan_evctx* ctx)
 				newevent.io.subid = event.button.button;
 			break;
 			}
-			newevent.io.devid = iodev.joys[event.motion.which].devnum;
+			newevent.io.devid = event.button.which;
 			newevent.io.input.digital.active = true;
 			snprintf(newevent.io.label, sizeof(newevent.io.label) - 1, "mouse%i",
 				event.motion.which);
@@ -488,7 +488,7 @@ void platform_event_process(arcan_evctx* ctx)
 			newevent.io.kind = EVENT_IO_BUTTON;
 			newevent.io.datatype = EVENT_IDATATYPE_DIGITAL;
 			newevent.io.devkind  = EVENT_IDEVKIND_MOUSE;
-			newevent.io.devid = iodev.joys[event.motion.which].devnum;
+			newevent.io.devid = event.button.which;
 			newevent.io.subid = event.button.button;
 			newevent.io.input.digital.active = false;
 			snprintf(newevent.io.label, sizeof(newevent.io.label) - 1, "mouse%i",
@@ -508,7 +508,7 @@ void platform_event_process(arcan_evctx* ctx)
 			newevent.io.datatype = EVENT_IDATATYPE_TRANSLATED;
 			newevent.io.devkind  = EVENT_IDEVKIND_KEYBOARD;
 			newevent.io.input.translated.active = true;
-			newevent.io.input.translated.devid = iodev.joys[event.key.which].devnum;
+			newevent.io.input.translated.devid = event.key.which;
 			newevent.io.input.translated.keysym = event.key.keysym.sym;
 			newevent.io.input.translated.modifiers = event.key.keysym.mod;
 			newevent.io.input.translated.scancode = event.key.keysym.scancode;
@@ -522,7 +522,7 @@ void platform_event_process(arcan_evctx* ctx)
 			newevent.io.datatype = EVENT_IDATATYPE_TRANSLATED;
 			newevent.io.devkind  = EVENT_IDEVKIND_KEYBOARD;
 			newevent.io.input.translated.active = false;
-			newevent.io.input.translated.devid = iodev.joys[event.key.which].devnum;
+			newevent.io.input.translated.devid = event.key.which;
 			newevent.io.input.translated.keysym = event.key.keysym.sym;
 			newevent.io.input.translated.modifiers = event.key.keysym.mod;
 			newevent.io.input.translated.scancode = event.key.keysym.scancode;
