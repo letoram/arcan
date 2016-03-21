@@ -1298,14 +1298,17 @@ bool TTF_RenderUNICODEglyph(PIXEL* dst,
 			float ar = glyph->pixmap.rows / glyph->pixmap.width;
 			int newh = font[0]->ptsize;
 			int neww = newh * ar;
+			int yshift = 0;
 
 			if (neww > width){
 				neww = width;
 /*	uncomment to maintain aspect ratio
  *	newh = width / ar; */
 			}
-			if (newh > height)
+			if (newh >= height)
 				newh = height;
+			else
+				yshift = (height - newh) >> 1;
 
 /* this approach gives us the wrong packing for color channels, but we
  * repack after scale as it is fewer operations */
@@ -1314,7 +1317,7 @@ bool TTF_RenderUNICODEglyph(PIXEL* dst,
 				(unsigned char*) &dst[*xstart], neww, newh, stride * 4, 4);
 
 			for (int row = 0; row < outf->ptsize; row++){
-				PIXEL* out = &dst[*xstart + (row * stride)];
+				PIXEL* out = &dst[*xstart + ((row + yshift) * stride)];
 
 				for (int col = 0; col < neww; col++){
 					uint8_t* in = (uint8_t*) out;
