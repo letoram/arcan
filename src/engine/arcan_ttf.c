@@ -1058,7 +1058,7 @@ static void size_upool(int len)
 
 	if (pool_cnt < len){
 		free(unicode_buf);
-		unicode_buf = malloc(len * sizeof(uint32_t));
+		unicode_buf = malloc((len + 1) * sizeof(uint32_t));
 		pool_cnt = len + 1;
 	}
 }
@@ -1368,8 +1368,8 @@ bool TTF_RenderUNICODEglyph(PIXEL* dst,
 
 			for (int col = 0; col < gwidth && out < dst_check; col++){
 				uint8_t b = *src++;
-				uint8_t g = *src++;
-				uint8_t r = *src++;
+				uint8_t g = b; // *src++;
+				uint8_t r = b; // *src++;
 				uint8_t a = (b + g + r) / 3;
 
 				if (usebg)

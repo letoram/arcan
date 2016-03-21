@@ -2721,7 +2721,7 @@ static void drop_rtarget(arcan_vobject* vobj)
 
 /* cleanup and unlink before moving on */
 		arcan_vobject_litem* last = current;
-		current->elem = NULL;
+		current->elem = (arcan_vobject*) 0xfacefeed;
 		current = current->next;
 		last->next = (struct arcan_vobject_litem*) 0xdeadbeef;
 		arcan_mem_free(last);
@@ -4992,7 +4992,7 @@ void arcan_video_shutdown()
 	deallocate_gl_context(current_context, true, NULL);
 	arcan_video_reset_fontcache();
 	agp_rendertarget_clear(NULL);
-
+	TTF_Quit();
 	platform_video_shutdown();
 }
 
