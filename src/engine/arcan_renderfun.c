@@ -165,20 +165,17 @@ static void update_style(struct text_format* dst, struct font_entry* font)
 static void zap_slot(int i)
 {
 	for (size_t j = 0; j < font_cache[i].chain.count; j++){
-		if (font_cache[j].chain.fd[j] != BADFD && font_cache[j].chain.fd[0]){
+		if (font_cache[i].chain.fd[j] != BADFD){
 			close(font_cache[i].chain.fd[j]);
-			font_cache[j].chain.fd[j] = BADFD;
+			font_cache[i].chain.fd[j] = BADFD;
 		}
 
-		if (font_cache[i].chain.data[j]){
+		if (font_cache[i].chain.data[j])
 			TTF_CloseFont(font_cache[i].chain.data[j]);
-			free(font_cache[i].identifier);
-			memset(&font_cache[i], '\0', sizeof(font_cache[0]));
-		}
-		font_cache[j].chain.count = 0;
 	}
+	free(font_cache[i].identifier);
+	memset(&font_cache[i], '\0', sizeof(font_cache[0]));
 }
-
 
 static void set_style(struct text_format* dst, struct font_entry* font)
 {
@@ -339,9 +336,10 @@ void arcan_video_reset_fontcache()
 		for (int i = 0; i < ARCAN_FONT_CACHE_LIMIT; i++)
 			font_cache[i].chain.fd[0] = BADFD;
 	}
-	else
+	else{
 		for (int i = 0; i < ARCAN_FONT_CACHE_LIMIT; i++)
 			zap_slot(i);
+	}
 }
 
 #ifndef TEXT_EMBEDDEDICON_MAXW

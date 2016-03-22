@@ -399,13 +399,10 @@ static void update_screen()
  */
 static void update_screensize(bool clear)
 {
-	LOG("update screensize\n");
-/*
- * commented out approach seem to have led to some edge case
- * wrong-stride, ignored for now
- */
 	int cols = term.acon.w / term.cell_w;
 	int rows = term.acon.h / term.cell_h;
+	LOG("update screensize (%d * %d), (%d * %d)\n",
+		cols, rows, (int)term.acon.w, (int)term.acon.h);
 
   size_t padw = term.acon.w - (cols * term.cell_w);
 	size_t padh = term.acon.h - (rows * term.cell_h);
@@ -977,7 +974,7 @@ static void targetev(arcan_tgtevent* ev)
 #ifdef TTF_SUPPORT
 		int fd = BADFD;
 		if (ev->ioevs[1].iv == 1)
-			fd = dup(ev->ioevs[0].iv);
+			fd = ev->ioevs[0].iv; //dup(ev->ioevs[0].iv);
 
 		switch(ev->ioevs[3].iv){
 		case -1: break;
@@ -996,6 +993,7 @@ static void targetev(arcan_tgtevent* ev)
 		update_screensize(false);
 #endif
 	}
+	break;
 
 	case TARGET_COMMAND_DISPLAYHINT:{
 /* be conservative in responding to resize,
@@ -1043,7 +1041,7 @@ static void targetev(arcan_tgtevent* ev)
  * subpixel hinting builds isn't default / tested properly here */
 
 #ifdef TTF_SUPPORT
-		LOG("displayhint[4]: %f, ppc: %f\n", ev->ioevs[3].fv, term.ppcm);
+		LOG("displayhint[4]: %f, ppc: %f\n", ev->ioevs[4].fv, term.ppcm);
 		if (ev->ioevs[4].fv > 0 && fabs(ev->ioevs[4].fv - term.ppcm) > 0.01){
 			term.ppcm = ev->ioevs[4].fv;
 			setup_font(BADFD, term.font_sz, 0);
@@ -1184,15 +1182,16 @@ static bool setup_font(int fd, size_t font_sz, int mode)
 	if (font_sz <= 0)
 		font_sz = term.font_sz;
 
-	int modeind = mode == 1 ? 1 : 0;
+	int modeind = mode >= 1 ? 1 : 0;
 
 /* re-use last descriptor and change size or grab new */
-	if (BADFD == fd){
+	if (BADFD == fd)
 		fd = term.font_fd[modeind];
-	};
 
-	size_t scale_sz = ceilf((float)font_sz * (term.ppcm / 28.346566f));
-	font = TTF_OpenFontFD(fd, scale_sz);
+	float font_sf = font_sz;
+	font_sz = font_sf + ((font_sf * term.ppcm / 28.346566f) - font_sf);
+
+	font = TTF_OpenFontFD(fd, font_sz);
 	if (!font)
 		return false;
 
