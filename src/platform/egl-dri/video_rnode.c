@@ -231,6 +231,12 @@ int64_t PLATFORM_SYMBOL(_video_output_handle)(
  * multiple threads, we're not safe tracking it here */
 	store->vinf.text.format = fourcc;
 	store->vinf.text.stride = stride;
+
+/* there is no invalidation / signalling mechanism in place right now, just the
+ * tacit assumption that the output buffer will be consumed and destroyed
+ * between synch calls (though the shmif- mechanism of hinting rendernode
+ * device might help us with that) */
+	eglSwapBuffers(rnode.display, rnode.surface);
 	return fd;
 
 unsup_fail:
