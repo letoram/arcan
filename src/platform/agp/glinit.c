@@ -63,10 +63,7 @@ glMapBuffer = MAP("glMapBuffer");
 glGetAttribLocation = MAP("glGetAttribLocation");
 glDeleteProgram = MAP("glDeleteProgram");
 glCreateShader = MAP("glCreateShader");
-
-#ifdef __WINDOWS
 glActiveTexture = MAP("glActiveTexture");
-#endif
 
 #endif
 #endif

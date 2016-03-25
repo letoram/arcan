@@ -434,9 +434,8 @@ void platform_video_synch(uint64_t tick_count, float fract,
 
 		if (handle == -1 || status < 0)
 			synch_copy(vs);
-		else{
+		else
 			synch_hpassing(vs, handle, status);
-		}
 	}
 /* or just check on a ~60Hz basis letting external events prewake */
 	else {

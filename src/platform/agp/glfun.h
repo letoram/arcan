@@ -41,9 +41,8 @@ static void glReadBuffer(){}
 #include "glext.h"
 
 #else
-
 #include <GL/gl.h>
-#include <GL/glext.h>
+#include "glext.h"
 #endif
 
 #ifndef MAP_PREFIX
@@ -92,10 +91,7 @@ MAP_PREFIX PFNGLMAPBUFFERARBPROC glMapBuffer;
 MAP_PREFIX PFNGLGETATTRIBLOCATIONPROC glGetAttribLocation;
 MAP_PREFIX PFNGLDELETEPROGRAMPROC glDeleteProgram;
 MAP_PREFIX PFNGLCREATESHADERPROC glCreateShader;
-
-#ifdef __WINDOWS
 MAP_PREFIX PFNGLACTIVETEXTUREPROC glActiveTexture;
-#endif
 
 /* part of 1.1 (i.e. all openGL libs), ignored
 MAP_PREFIX PFNGLBINDTEXTUREEXTPROC glBindTexture;
