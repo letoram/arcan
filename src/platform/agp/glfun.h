@@ -41,8 +41,11 @@ static void glReadBuffer(){}
 #include "glext.h"
 
 #else
+
+#define glActiveTexture glActiveTextureIGNORE
 #include <GL/gl.h>
 #include "glext.h"
+#undef glActiveTexture
 #endif
 
 #ifndef MAP_PREFIX

@@ -1483,12 +1483,12 @@ bool platform_video_init(uint16_t w, uint16_t h,
 	int n = 0;
 	while(1){
 		char* device = grab_card(n++);
-		if (!device){
-			arcan_warning("Couldn't open/setup Card #%d\n", n-1);
+		if (!device)
 			goto cleanup;
-		}
 
 		int rc = setup_node(&nodes[0], device);
+		if (rc != 0)
+			arcan_warning("egl-dri() - setup on %s failed\n", device);
 		free(device);
 
 		if (0 == rc)
