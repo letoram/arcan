@@ -93,6 +93,7 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/mman.h>
 #include <poll.h>
 
 #include <fcntl.h>
@@ -485,6 +486,40 @@ static int setup_buffers(struct dispout* d)
 		arcan_warning("egl-dri() - couldn't create producer-surface\n");
 		return -1;
 	}
+
+/*
+ * Create a dumb-buffer, add it as a framebuffer, clear it to black
+ */
+	uint32_t fb = 0;
+	struct drm_mode_create_dumb creq = {
+		.width = d->display.mode->hdisplay,
+		.height = d->display.mode->vdisplay,
+		.bpp = 32
+	};
+	struct drm_mode_map_dumb mreq = {0};
+	uint8_t* fbmap;
+
+	if (drmIoctl(d->device->fd, DRM_IOCTL_MODE_CREATE_DUMB, &creq) < 0){
+		arcan_warning("egl-dri() - dump buffer creation failed\n");
+		return -1;
+	}
+
+	if (drmModeAddFB(d->device->fd, d->display.mode->hdisplay,
+			d->display.mode->vdisplay, 24, 32, creq.pitch, creq.handle, &fb)){
+		arcan_warning("egl-dri() - couldn't add framebuffer\n");
+		return -1;
+	}
+
+	mreq.handle = creq.handle;
+	if (drmIoctl(d->device->fd, DRM_IOCTL_MODE_MAP_DUMB, &mreq)){
+		arcan_warning("egl-dri() - couldn't map dumb buffer\n");
+		return -1;
+	}
+
+	fbmap = mmap(0, creq.size, PROT_READ | PROT_WRITE, MAP_SHARED,
+		d->device->fd, mreq.offset);
+
+	memset(fbmap, 0, creq.size);
 
 	return eglMakeCurrent(d->device->display,
 		d->buffer.surface, d->buffer.surface,	d->device->context) ? 0 : -1;
@@ -1283,7 +1318,7 @@ retry:
 #ifdef EGL_STREAMS
 	drmSetClientCap(d->device->fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1);
 /*
-	drmSetClientCap(d->device->fd, DRM_CLIENT_CAP_ATOMIC, 1);
+ * drmSetClientCap(d->device->fd, DRM_CLIENT_CAP_ATOMIC, 1);
  */
 
 /* scan each plane, and check for the DRM_MODE_OBJECT_PLANE property,
