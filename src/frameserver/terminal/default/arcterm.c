@@ -1041,10 +1041,10 @@ static void targetev(arcan_tgtevent* ev)
  * subpixel hinting builds isn't default / tested properly here */
 
 #ifdef TTF_SUPPORT
-		LOG("displayhint[4]: %f, ppc: %f\n", ev->ioevs[4].fv, term.ppcm);
 		if (ev->ioevs[4].fv > 0 && fabs(ev->ioevs[4].fv - term.ppcm) > 0.01){
+			float sf = term.ppcm / ev->ioevs[4].fv;
 			term.ppcm = ev->ioevs[4].fv;
-			setup_font(BADFD, term.font_sz, 0);
+			setup_font(BADFD, 0, 0);
 			update = true;
 		}
 #endif
@@ -1189,9 +1189,9 @@ static bool setup_font(int fd, size_t font_sz, int mode)
 		fd = term.font_fd[modeind];
 
 	float font_sf = font_sz;
-	font_sz = font_sf + ((font_sf * term.ppcm / 28.346566f) - font_sf);
+	size_t sf_sz = font_sf + ((font_sf * term.ppcm / 28.346566f) - font_sf);
 
-	font = TTF_OpenFontFD(fd, font_sz);
+	font = TTF_OpenFontFD(fd, sf_sz);
 	if (!font)
 		return false;
 
