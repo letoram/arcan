@@ -68,7 +68,7 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-gles")
 #
 # NVidia EGLStreams version of egl-dri, needs to be built without GBM
 #
-elseif(VIDEO_PLATFORM STREQUAL "egl-dri-nvidia")
+elseif(VIDEO_PLATFORM STREQUAL "egl-nvidia")
 	if (NOT INPUT_PLATFORM)
 		set(INPUT_PLATFORM "linux")
 	endif()
@@ -84,7 +84,12 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-dri-nvidia")
 	list(APPEND VIDEO_LIBRARIES ${EGL_LIBRARIES} ${GBMKMS_LIBRARIES})
 	list(APPEND HEADLESS_LIBRARIES ${EGL_LIBRARIES})
 	list(APPEND HEADLESS_PLATFORM ${PLATFORM_ROOT}/egl-dri/stream_headless.c)
-	set(VIDEO_PLATFORM_SOURCES ${PLATFORM_ROOT}/egl-dri/video.c)
+	set(VIDEO_PLATFORM_SOURCES
+		${PLATFORM_ROOT}/egl-nvidia/video.c
+		${PLATFORM_ROOT}/egl-nvidia/egl.c
+		${PLATFORM_ROOT}/egl-nvidia/kms.c
+		${PLATFORM_ROOT}/egl-nvidia/utils.c
+	)
 	set(LWA_PLATFORM_STR "broken")
 #
 # will hopefully become the default on BSDs/linux

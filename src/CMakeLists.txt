@@ -108,7 +108,7 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 	set(VPLATFORM_STR "sdl")
 	set(VIDEO_PLATFORM "sdl")
 else()
-set(VPLATFORM_STR "egl-dri, egl-dri-nvidia, sdl, egl-gles, x11, x11-headless")
+set(VPLATFORM_STR "egl-dri, egl-nvidia, sdl, egl-gles, x11, x11-headless")
 endif()
 set(AGPPLATFORM_STR "gl21, gles2, gles3, stub")
 
