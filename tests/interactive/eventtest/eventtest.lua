@@ -40,8 +40,10 @@ function eventtest()
 	print(#restbl, "entries found");
 
 	for k, v in ipairs(restbl) do
-		print("-new table-")
-		print(k, v)
+		print("-- new device -- ");
+		for i, j in pairs(v) do
+			print(i, j);
+		end
 	end
 
 -- enable analog events
@@ -133,29 +135,26 @@ function analog_str(intbl)
 	return res;
 end
 
+tick_counter = 500;
 function eventtest_clock_pulse(stamp, delta)
-    if (analogimg) then
-	delete_image(analogimg);
-    end
-
-    line = "";
-    for ak, ad in pairs( analogdata ) do
-	workline = [[\n\rDevice(]] .. ak .. [[):\n\r\t]];
-
-	for id, iv in pairs( ad ) do
-	    workline = workline .. " axis: " .. id .. " # " .. analog_str(iv) .. [[\n\r\t]];
+	if (analogimg) then
+		delete_image(analogimg);
 	end
 
-	line = line .. workline .. [[\r\n]];
-    end
+ 	line = "";
+	for ak, ad in pairs( analogdata ) do
+		workline = [[\n\rDevice(]] .. ak .. [[):\n\r\t]];
+		for id, iv in pairs( ad ) do
+			workline = workline .. " axis: " .. id .. " # " .. analog_str(iv) .. [[\n\r\t]];
+		end
 
-    analogimg = drawline(line, 12);
-    move_image(analogimg, 0, 20, 0);
-    show_image(analogimg);
-end
+		line = line .. workline .. [[\r\n]];
+	end
 
-tick_counter = 500;
-function eventtest_clock_pulse()
+	analogimg = drawline(line, 12);
+	move_image(analogimg, 0, 20, 0);
+	show_image(analogimg);
+
 	tick_counter = tick_counter - 1;
 	if (tick_counter == 0) then
 		return shutdown("timeout");
@@ -169,7 +168,6 @@ end
 
 function eventtest_input( iotbl )
 	tick_counter = 500;
-
 	if (iotbl.kind == "digital") then
 		if (iotbl.translated) then
 			translate_str(iotbl);

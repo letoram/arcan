@@ -90,7 +90,9 @@ set_target_properties(arcan_shmif_int PROPERTIES
 	VERSION ${ASHMIF_MAJOR}.${ASHMIF_MINOR}
 )
 
-string (REGEX REPLACE "-fsanitize=[^ ]+" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
+if (CMAKE_C_FLAGS)
+	string (REGEX REPLACE "-fsanitize=[^ ]+" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
+endif()
 
 set_target_properties(arcan_shmif PROPERTIES
 	COMPILE_FLAGS -fPIC

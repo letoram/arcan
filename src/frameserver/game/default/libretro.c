@@ -165,6 +165,7 @@ static struct {
 	char* rollback_state;
 	size_t state_sz;
 	char* syspath;
+	bool res_empty;
 
 #ifdef FRAMESERVER_LIBRETRO_3D
 	struct retro_hw_render_callback hwctx;
@@ -861,6 +862,8 @@ static bool libretro_setenv(unsigned cmd, void* data){
 
 	case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE:
 		rv = retroctx.optdirty;
+		if (data)
+			*(bool*)data = rv;
 		retroctx.optdirty = false;
 	break;
 
@@ -887,7 +890,7 @@ static bool libretro_setenv(unsigned cmd, void* data){
 	break;
 
 	case RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME:
-/* we don't really care */
+		retroctx.res_empty = true;
 	break;
 
 	case RETRO_ENVIRONMENT_SET_KEYBOARD_CALLBACK:
@@ -1856,7 +1859,9 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 	map_lretrofun();
 
 /* load / start */
-	if (!load_resource(resname))
+	if (!resname && retroctx.res_empty)
+		;
+	else if (!load_resource(resname ? resname : ""))
 		return EXIT_FAILURE;
 
 	snprintf((char*)outev.ext.message.data, msgsz, "loaded");
