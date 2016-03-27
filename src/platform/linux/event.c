@@ -880,6 +880,10 @@ static void got_device(struct arcan_evctx* ctx, int fd, const char* path)
 			map_axes(fd, bit, &node);
 		break;
 
+		case EV_SW:
+
+		break;
+
 /* useless for the time being */
 		case EV_MSC:
 		break;
@@ -1161,6 +1165,12 @@ static void defhandler_kbd(struct arcan_evctx* out,
 	}
 }
 
+static void decode_mt(struct arcan_evctx* ctx,
+	struct arcan_devnode* node, int ind, int val)
+{
+	printf("mt ev : %d, %d\n", ind, val);
+}
+
 static void decode_hat(struct arcan_evctx* ctx,
 	struct arcan_devnode* node, int ind, int val)
 {
@@ -1245,7 +1255,16 @@ static void defhandler_game(struct arcan_evctx* ctx,
 			newev.io.kind = EVENT_IO_BUTTON;
 			newev.io.datatype = EVENT_IDATATYPE_DIGITAL;
 			newev.io.input.digital.active = inev[i].value;
-			newev.io.subid = inev[i].code - BTN_JOYSTICK;
+			newev.io.subid = inev[i].code;
+			newev.io.devid = node->devnum;
+			arcan_event_enqueue(ctx, &newev);
+		break;
+
+		case EV_SW:
+			newev.io.kind = EVENT_IO_BUTTON;
+			newev.io.datatype = EVENT_IDATATYPE_DIGITAL;
+			newev.io.input.digital.active = inev[i].value;
+			newev.io.subid = inev[i].code;
 			newev.io.devid = node->devnum;
 			arcan_event_enqueue(ctx, &newev);
 		break;
@@ -1255,10 +1274,11 @@ static void defhandler_game(struct arcan_evctx* ctx,
 				( (node->hnd.axis_mask >> inev[i].code) & 1) )
 				continue;
 
-			if (node->hnd.digital_hat &&
-				inev[i].code >= ABS_HAT0X && inev[i].code <= ABS_HAT3Y)
+			if (inev[i].code >= ABS_HAT0X && inev[i].code <= ABS_HAT3Y)
 				decode_hat(ctx, node, inev[i].code - ABS_HAT0X, inev[i].value);
-
+			else
+			if (inev[i].code >= ABS_MT_SLOT && inev[i].code <= ABS_MT_TOOL_Y)
+				decode_mt(ctx, node, inev[i].code, inev[i].value);
 			else if (inev[i].code < node->game.axes &&
 				process_axis(ctx,
 				&node->game.adata[inev[i].code], inev[i].value, &samplev)){

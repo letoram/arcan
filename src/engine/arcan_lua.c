@@ -3805,7 +3805,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			tblnum(ctx, "devid", ev->io.devid, top);
 			tblnum(ctx, "subid", ev->io.subid, top);
 			tblstr(ctx, "devkind", kindstr(ev->io.input.status.devkind), top);
-			tblstr(ctx, "label", ev->io.label, top);
+			tblstr(ctx, "label", platform_event_devlabel(ev->io.devid), top);
 			tblstr(ctx, "action", (ev->io.input.status.action == EVENT_IDEV_ADDED ?
 				"added" : (ev->io.input.status.action == EVENT_IDEV_REMOVED ?
 					"removed" : "blocked")), top);

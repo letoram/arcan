@@ -95,13 +95,9 @@ typedef void*                           EGLNativeDisplayType;
 
 #elif defined(__unix__)
 
-/* X11 (tentative)  */
-#include <X11/Xlib.h>
-#include <X11/Xutil.h>
-
-typedef Display *EGLNativeDisplayType;
-typedef Pixmap   EGLNativePixmapType;
-typedef Window   EGLNativeWindowType;
+typedef void* *EGLNativeDisplayType;
+typedef void*   EGLNativePixmapType;
+typedef uintptr_t   EGLNativeWindowType;
 
 #else
 #error "Platform not recognized"
