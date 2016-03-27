@@ -641,6 +641,10 @@ static FT_Error Load_Glyph( TTF_Font* font, uint32_t ch,
 		} else if ( src->pixel_mode == FT_PIXEL_MODE_GRAY4 ) {
 			dst->pitch *= 2;
 		}
+		else if (src->pixel_mode == FT_PIXEL_MODE_LCD ||
+			src->pixel_mode == FT_PIXEL_MODE_LCD_V){
+			dst->pitch *= 3;
+		}
 
 		/* Adjust for bold and italic text */
 		if( TTF_HANDLE_STYLE_BOLD(font) ) {
@@ -1214,13 +1218,9 @@ int TTF_SizeUNICODEchain(TTF_Font **font, size_t n,
 /*
  * Extended quickhack to allow UTF8 to render using the arcan or shmif
  * internal packing macro directly into a buffer without going through
- * an intermediate. These functions are in dire need of a more efficient
- * and clean rewrite.
- *
- * We are still missing correct subpixel hinting, not sure how the normal
- * patent-hell approaches work, but the obvious one seem to be spliting
- * the < fullbright alphas based on intensity into three bins + filter
- * for abberations..
+ * an intermediate. These functions are in need of a more efficient
+ * and clean rewrite. The 'direct' rendering mode in FreeType comes to
+ * mind
  */
 #if defined(SHMIF_TTF) || defined(ARCAN_TTF)
 
@@ -1237,15 +1237,64 @@ static inline av_pixel pack_pixel_bg(uint8_t fg[4], uint8_t bg[4], uint8_t a)
 		g = (g + (g >> 8)) >> 8;
 		uint32_t b = 0x80 + (a * fg[2]+bg[2]*(255-a));
 		b = (b + (b >> 8)) >> 8;
-		return PACK(r, g, b, bg[3]);
+		uint8_t av = (a < bg[3] || a - bg[3] < bg[3]) ? bg[3] : a;
+		return PACK(r, g, b, av);
 	}
 }
 
-static inline av_pixel pack_pixel(uint8_t fg[4],
-	uint8_t r, uint8_t g, uint8_t b, uint8_t a)
+static inline av_pixel pack_pixel(uint8_t fg[4], uint8_t a)
 {
 	uint8_t fa = a > 0;
 	return PACK(fg[0] * fa, fg[1] * fa, fg[2] * fa, a);
+}
+
+static inline av_pixel pack_subpx_bg(uint8_t fg[4], uint8_t bg[4],
+	uint8_t r, uint8_t g, uint8_t b)
+{
+	uint8_t a = (r + g + b) / 3;
+/* should be rewritten as fixed prec. vectorized */
+	if (a < 0xff){
+		uint8_t nfg[4];
+		uint32_t rr = 0x80 + (r * fg[0]);
+		nfg[0] = (rr + (rr >> 8)) >> 8;
+		uint32_t rg = 0x80 + (g * fg[1]);
+		nfg[1] = (rg + (rg >> 8)) >> 8;
+		uint32_t rb = 0x80 + (b * fg[2]);
+		nfg[2] = (rb + (rb >> 8)) >> 8;
+		nfg[3] = 0xff;
+		return pack_pixel_bg(nfg, bg, a);
+	}
+	return pack_pixel(fg, a);
+}
+
+static inline av_pixel pack_subpx(uint8_t fg[4],
+	uint8_t r, uint8_t g, uint8_t b)
+{
+	uint8_t a = (r + g + b) / 3;
+/* should be rewritten as fixed prec. vectorized */
+	if (a < 0xff){
+		uint32_t rr = 0x80 + (r * fg[0]);
+		r = (rr + (rr >> 8)) >> 8;
+		uint32_t rg = 0x80 + (g * fg[1]);
+		g = (rg + (rg >> 8)) >> 8;
+		uint32_t rb = 0x80 + (b * fg[2]);
+		b = (rb + (rb >> 8)) >> 8;
+		return PACK(r, g, b, a);
+	}
+	else
+		return PACK(fg[0], fg[1], fg[2], 0xff);
+}
+
+static void yfill(PIXEL* dst, PIXEL col, int yfill, int w, int h, int stride)
+{
+	for (int br = 0, ur = h-1; br < yfill; br++, ur--){
+		PIXEL* dr = &dst[br * stride];
+		for (int col = 0; col < w; col++)
+			*dr++ = col;
+		dr = &dst[ur * stride];
+		for (int col = 0; col < w; col++)
+			*dr++ = col;
+	}
 }
 
 bool TTF_RenderUNICODEglyph(PIXEL* dst,
@@ -1260,7 +1309,7 @@ bool TTF_RenderUNICODEglyph(PIXEL* dst,
 	if (!outf)
 		return false;
 
-	PIXEL* dst_check = dst + width + height * stride;
+	PIXEL* ubound = dst + (height * stride) + width;
 	c_glyph* glyph = outf->current;
 	*advance = glyph->advance;
 
@@ -1284,15 +1333,17 @@ bool TTF_RenderUNICODEglyph(PIXEL* dst,
 			*xstart += delta.x >> 6;
 		}
 
-/* Compensate for the wrap around bug with negative minx's */
+/* Compensate for the wrap around bug with negative minx's
 		if ( glyph->minx && *xstart > glyph->minx ){
 			*xstart -= glyph->minx;
 		}
+	*/
 	}
 
-/* special treatment for subpixel hinting and for colored output, pitch is
- * still correct but the dimensions are too wide or high */
 	if (glyph->pixmap.pixel_mode == FT_PIXEL_MODE_BGRA){
+/* special cases for embedded glyphs of fixed sizes that we want mixed
+ * with 'regular' text, so scale and just use center rather than try and
+ * fit with other font baseline */
 		if (glyph->manual_scale){
 /* maintain AR and center around PTSIZE (as em = 1/72@72DPI = 1 px)	*/
 			float ar = glyph->pixmap.rows / glyph->pixmap.width;
@@ -1307,8 +1358,10 @@ bool TTF_RenderUNICODEglyph(PIXEL* dst,
 			}
 			if (newh >= height)
 				newh = height;
-			else
+			else{
 				yshift = (height - newh) >> 1;
+				yfill(dst, *xstart, yshift, width, height, stride);
+			}
 
 /* this approach gives us the wrong packing for color channels, but we
  * repack after scale as it is fewer operations */
@@ -1318,6 +1371,7 @@ bool TTF_RenderUNICODEglyph(PIXEL* dst,
 
 			for (int row = 0; row < outf->ptsize; row++){
 				PIXEL* out = &dst[*xstart + ((row + yshift) * stride)];
+				out = out < dst ? dst : out;
 
 				for (int col = 0; col < neww; col++){
 					uint8_t* in = (uint8_t*) out;
@@ -1326,6 +1380,7 @@ bool TTF_RenderUNICODEglyph(PIXEL* dst,
 					col[1] = *in++;
 					col[0] = *in++;
 					col[3] = *in++;
+
 					if (usebg)
 						*out++ = pack_pixel_bg(col, bg, col[3]);
 					else
@@ -1333,18 +1388,18 @@ bool TTF_RenderUNICODEglyph(PIXEL* dst,
 				}
 			}
 		}
+/* path should be pretty untraveled until FT itself supports color fonts */
 		else{
 			for (int row = 0; row < glyph->pixmap.rows; row++){
 				if (row+glyph->yoffset < 0 || row+glyph->yoffset >= height)
 					continue;
 
 				PIXEL* out = &dst[(row+glyph->yoffset)*stride+(*xstart+glyph->minx)];
+				out = out < dst ? dst : out;
 				uint8_t* src = (uint8_t*)
 					(glyph->pixmap.buffer + glyph->pixmap.pitch * row);
 
-/* scale here: stbir_resize_uint8(glyph->pixmap.buffer, inw, inh, pitch,
- * outbuf, outw, outh, pitch, 4 */
-				for (int col = 0; col < gwidth && out < dst_check; col++){
+				for (int col = 0; col < gwidth && col < width; col++){
 					int b = *src++;
 					int g = *src++;
 					int r = *src++;
@@ -1354,32 +1409,52 @@ bool TTF_RenderUNICODEglyph(PIXEL* dst,
 			}
 		}
 	}
-/* similar to normal drawing, but 3 times as wide and go full alpha */
+/* similar to normal drawing, but 3 times as wide */
 	else if (glyph->pixmap.pixel_mode == FT_PIXEL_MODE_LCD){
 		for (int row = 0; row < glyph->pixmap.rows; ++row){
 			if (row+glyph->yoffset < 0 || row+glyph->yoffset >= height)
 				continue;
 
-/* this blit- routine is a bit worse - there's one strategy if we want to
- * blend against BG and one where we just want the foreground channel, but
- * also a number of color formats for the glyph. */
 			PIXEL* out = &dst[(row+glyph->yoffset)*stride+(*xstart+glyph->minx)];
 			uint8_t* src = (uint8_t*)(glyph->pixmap.buffer+glyph->pixmap.pitch*row);
+			out = out < dst ? dst : out;
 
-			for (int col = 0; col < gwidth && out < dst_check; col++){
+			for (int col = 0; col < gwidth && col < width && out < ubound; col++){
 				uint8_t b = *src++;
-				uint8_t g = b; // *src++;
-				uint8_t r = b; // *src++;
-				uint8_t a = (b + g + r) / 3;
+				uint8_t g = *src++;
+				uint8_t r = *src++;
 
 				if (usebg)
-					*out++ = pack_pixel_bg(fg, bg, a);
+					*out++ = pack_subpx_bg(fg, bg, r, g, b);
+				else if (b|g|r)
+					*out++ = pack_subpx(fg, r, g, b);
 				else
-					*out++ = pack_pixel(fg, r, g, b, a);
+					out++;
 			}
 		}
 	}
 	else if (glyph->pixmap.pixel_mode == FT_PIXEL_MODE_LCD_V){
+		for (int row = 0; row < glyph->pixmap.rows; ++row){
+			if (row+glyph->yoffset < 0 || row+glyph->yoffset >= height)
+				continue;
+
+			PIXEL* out = &dst[(row+glyph->yoffset)*stride+(*xstart+glyph->minx)];
+			uint8_t* src = (uint8_t*)(glyph->pixmap.buffer+(glyph->pixmap.pitch*3)*row);
+			out = out < dst ? dst : out;
+
+			for (int col = 0; col < gwidth && col < width && out < ubound; col++){
+				uint8_t b = *src;
+				uint8_t g = *(src + glyph->pixmap.pitch);
+				uint8_t r = *(src + glyph->pixmap.pitch + glyph->pixmap.pitch);
+
+				if (usebg)
+					*out++ = pack_subpx_bg(fg, bg, r, g, b);
+				else if (b|g|r)
+					*out++ = pack_subpx(fg, r, g, b);
+				else
+					out++;
+			}
+		}
 	}
 	else
 	for (int row = 0; row < glyph->pixmap.rows; ++row){
@@ -1391,13 +1466,15 @@ bool TTF_RenderUNICODEglyph(PIXEL* dst,
  * also a number of color formats for the glyph. */
 		PIXEL* out = &dst[(row+glyph->yoffset)*stride+(*xstart+glyph->minx)];
 		uint8_t* src = (uint8_t*)(glyph->pixmap.buffer+glyph->pixmap.pitch * row);
-
-		for (int col = 0; col < gwidth && out < dst_check; col++){
+		out = out < dst ? dst : out;
+		for (int col = 0; col < gwidth && col < width && out < ubound; col++){
 			uint8_t a = *src++;
 			if (usebg)
 				*out++ = pack_pixel_bg(fg, bg, a);
+			else if (a)
+				*out++ = pack_pixel(fg, a);
 			else
-				*out++ = pack_pixel(fg, a, a, a, a);
+				out++;
 		}
 	}
 
