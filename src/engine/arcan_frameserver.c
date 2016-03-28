@@ -93,15 +93,15 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 	if (!src->flags.alive)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
-/* unhook audio monitors */
 	if (arcan_frameserver_enter(src)){
+/* unhook audio monitors */
 		arcan_aobj_id* base = src->alocks;
 		while (base && *base){
 			arcan_audio_hookfeed(*base, NULL, NULL, NULL);
 			base++;
 		}
-		arcan_audio_stop(src->aid);
 
+/* be nice and say that you'll be dropped off */
 		if (shmpage){
 			arcan_event exev = {
 				.category = EVENT_TARGET,
@@ -109,6 +109,7 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 			};
 			arcan_frameserver_pushevent(src, &exev);
 
+/* and flick any other switch that might keep the child locked */
 			shmpage->dms = false;
 			shmpage->vready = false;
 			shmpage->aready = false;
@@ -121,6 +122,7 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 		arcan_frameserver_leave();
 	}
 
+	arcan_audio_stop(src->aid);
 	arcan_frameserver_killchild(src);
 
 	src->child = BROKEN_PROCESS_HANDLE;
