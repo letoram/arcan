@@ -65,7 +65,7 @@ static struct arcan_acontext _current_acontext = {
 static struct arcan_acontext* current_acontext = &_current_acontext;
 
 static arcan_aobj* arcan_audio_getobj(arcan_aobj_id);
-static arcan_errc arcan_audio_free(arcan_aobj_id);
+static arcan_errc audio_free(arcan_aobj_id);
 
 static ALuint load_wave(const char* fname){
 	ALuint rv = 0;
@@ -274,7 +274,7 @@ arcan_errc arcan_audio_alterfeed(arcan_aobj_id id, arcan_afunc_cb cb)
 	return rv;
 }
 
-arcan_errc arcan_audio_free(arcan_aobj_id id)
+static arcan_errc audio_free(arcan_aobj_id id)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_aobj* current = current_acontext->first;
@@ -420,7 +420,7 @@ arcan_aobj_id arcan_audio_load_sample(const char* fname,
 	ALuint id = load_wave(fname);
 	if (id == AL_NONE){
 		if (err) *err = ARCAN_ERRC_BAD_RESOURCE;
-		arcan_audio_free(id);
+		audio_free(id);
 		return ARCAN_EID;
 	}
 
@@ -579,15 +579,10 @@ arcan_errc arcan_audio_stop(arcan_aobj_id id)
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
 	dobj->kind = AOBJ_INVALID;
+	dobj->feed = NULL;
 
-/* callback with empty buffers means that we want to clean up */
-	if (dobj->feed && dobj->alid){
-		dobj->feed(dobj, id, -1, false, dobj->tag);
-		_wrap_alError(dobj, "audio_stop(stop)");
-	}
-	arcan_audio_free(id);
+	audio_free(id);
 
-/* different from the finished/stopped event */
 	arcan_event newevent = {
 		.category = EVENT_AUDIO,
 		.aud.kind = EVENT_AUDIO_OBJECT_GONE,
@@ -954,7 +949,7 @@ arcan_aobj_id arcan_audio_capturefeed(const char* dev)
 		}
 
 		if (dstobj)
-			arcan_audio_free(dstobj->id);
+			audio_free(dstobj->id);
 	}
 
 	return ARCAN_EID;

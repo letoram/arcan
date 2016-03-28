@@ -4,6 +4,7 @@
 analogtbl = {};
 digitaltbl = {};
 translatetbl = {};
+statustbl = {};
 lookuptbl = {};
 analogdata = {};
 
@@ -16,24 +17,28 @@ function drawline(text, size)
 end
 
 function eventtest()
-    symtable  = system_load("scripts/symtable.lua")();
+	symtable = system_load("scripts/symtable.lua")();
 
-    local analabel   = drawline( [[\bAnalog]], 18 );
-    local digilabel  = drawline( [[\bDigital]], 18 );
-    local lookuplabel = drawline( [[\bLookup]], 18 );
-    local translabel = drawline( [[\bTranslated]], 18 );
+	analabel = drawline([[\bAnalog]], 18);
+	digilabel = drawline([[\bDigital]], 18);
+	touchlabel = drawline([[\bTouch]], 18);
+	lookuplabel = drawline([[\bLookup]], 18);
+	statuslabel = drawline([[\bStatus]], 18);
+	translabel = drawline([[\bTranslated]], 18);
 
-		inputanalog_toggle(1);
-		tc = null_surface(1, 1);
+	inputanalog_toggle(1);
+	tc = null_surface(1, 1);
 
-    move_image(analabel, 0, 0, 0);
-    move_image(digilabel, (VRESW / 3), 0, 0);
-    move_image(translabel, (VRESW / 3) * 2, 0, 0);
-    move_image(lookuplabel, VRESW / 3 * 2, VRESH / 2, 0);
+	local w3 = VRESW / 3;
+	local h2 = VRESH / 2;
+	move_image(analabel, 0, 0);
+	move_image(digilabel, w3, 0);
+	move_image(translabel, w3 + w3, 0);
+	move_image(touchlabel, 0, h2);
+	move_image(lookuplabel, w3, h2);
+	move_image(statuslabel, w3 + w3, h2);
 
-    show_image(analabel);
-    show_image(digilabel);
-    show_image(translabel);
+	show_image({statuslabel, analabel, digilabel, translabel, touchlabel});
 
 -- enumerate the list of found devices
 	restbl = inputanalog_query();
@@ -54,85 +59,97 @@ function round(inn, dec)
 	return math.floor( (inn * 10^dec) / 10^dec);
 end
 
+function touch_str(iotbl)
+	table.insert(touchtbl, string.format(
+		"dev(%d:%d) @ %d, %d, press: %f, size: %f",
+		iotbl.devid, iotbl.x, iotbl.y, iotbl.subid, iotbl.pressure, iotbl.size)
+	);
+	if (#touchtbl > 10) then
+		table.remove(touchtbl, 1);
+	end
+	local line = table.concat(touchtbl, "\\r\\n");
+	if (touchimg) then
+		delete_image(touchimg);
+	end
+	touchimg = drawline(line, 12);
+	link_image(touchimg, touchlabel);
+	nudge_image(touchimg, 0, 20);
+	show_image(touchimg);
+end
+
 function digital_str(iotbl)
-    table.insert(digitaltbl, "dev(" .. iotbl.devid .. "),sub(" ..iotbl.subid .. "):" .. tostring(iotbl.active));
+ 	table.insert(digitaltbl, string.format(
+		"dev(%d:%d) %s", iotbl.devid, iotbl.subid, iotbl.active and "press" or "release"));
 
-    line = "";
-    for i=1, #digitaltbl do
-	line = line .. digitaltbl[i] .. [[\r\n]];
-    end
+	if (#digitaltbl > 10) then
+		table.remove(digitaltbl, 1);
+	end
 
-    if (#digitaltbl > 10) then
-	table.remove(digitaltbl, 1);
-    end
+	local line = table.concat(digitaltbl, "\\r\\n");
 
-    if (digitalimg) then
-	delete_image(digitalimg);
-    end
+	if (digitalimg) then
+		delete_image(digitalimg);
+	end
 
-    digitalimg = drawline(line, 12);
-    move_image(digitalimg, (VRESW / 3), 20, 0);
-    show_image(digitalimg);
+	digitalimg = drawline(line, 12);
+	link_image(digitalimg, digilabel);
+	nudge_image(digitalimg, 0, 20);
+	show_image(digitalimg);
 end
 
 function translate_str(iotbl)
-		table.insert(translatetbl, string.format("dev(%d):sub(%d)[%s] => %s, %s",
-			iotbl.devid, iotbl.subid,
-			table.concat(decode_modifiers(iotbl.modifiers),","),
-			iotbl.keysym, iotbl.active)
-		);
+	table.insert(translatetbl, string.format("dev(%d:%d)[%s] => %s, %s",
+		iotbl.devid, iotbl.subid,
+		table.concat(decode_modifiers(iotbl.modifiers),","),
+		iotbl.keysym, iotbl.active)
+	);
 
-		line = table.concat(translatetbl, [[\r\n]]);
+	if (#translatetbl > 10) then
+		table.remove(translatetbl, 1);
+	end
 
-    if (#translatetbl > 10) then
-			table.remove(translatetbl, 1);
-    end
+	line = table.concat(translatetbl, [[\r\n]]);
 
-    if (translateimg) then
-			delete_image(translateimg);
-    end
+	if (translateimg) then
+		delete_image(translateimg);
+	end
 
-    translateimg = drawline(line, 12);
-    move_image(translateimg, (VRESW / 3) * 2, 20, 0);
-    show_image(translateimg);
+	translateimg = drawline(line, 12);
+	link_image(translateimg, translabel);
+	nudge_image(translateimg, 0, 20);
+	show_image(translateimg);
 end
 
 function lookup(iotbl)
-    line = "";
+	line = "";
 
-    if symtable[iotbl.keysym] then
-	line = line .. iotbl.keysym .. " =(symtable)> " .. symtable[iotbl.keysym] .. [[\t]];
-    end
+	if symtable[iotbl.keysym] then
+		line = line .. iotbl.keysym .. " =(symtable)> " .. symtable[iotbl.keysym] .. [[\t]];
+	end
 
-    if line ~= "" then
-	table.insert(lookuptbl, line);
-    end
+	if (#lookuptbl > 10) then
+		table.remove(lookuptbl, 1);
+	end
 
-    if (#lookuptbl > 10) then
-	table.remove(lookuptbl, 1);
-    end
+	if line ~= "" then
+		table.insert(lookuptbl, line);
+	end
 
-    line = "";
-    for i=1, #lookuptbl do
-	line = line .. lookuptbl[i] .. [[\r\n]];
-    end
+	line = table.concat(lookuptbl, "\\r\\n");
 
-    if (lookupimg) then
-	delete_image(lookupimg);
-    end
+	if (lookupimg) then
+		delete_image(lookupimg);
+	end
 
-    lookupimg = drawline(line, 12);
-    move_image(lookupimg, VRESW / 3, VRESH / 2 + 20, 0);
-    show_image(lookupimg);
+	lookupimg = drawline(line, 12);
+	link_image(lookupimg, lookuplabel);
+	nudge_image(lookupimg, 0, 20);
+	show_image(lookupimg);
 end
 
 function analog_str(intbl)
-	local res = "";
-
-	res = tostring(intbl.count) .. " : " .. tostring(round(intbl.min, 2)) ..
-"/" .. tostring(round(intbl.max, 2)) .. "(" .. tostring(round(intbl.avg, 2)) .. ")";
-
-	return res;
+	return string.format("%d:%f/%f avg: %f", intbl.count,
+		round(intbl.min, 2), round(intbl.max, 2), round(intbl.avg, 2));
 end
 
 tick_counter = 500;
@@ -141,7 +158,7 @@ function eventtest_clock_pulse(stamp, delta)
 		delete_image(analogimg);
 	end
 
- 	line = "";
+	line = "";
 	for ak, ad in pairs( analogdata ) do
 		workline = [[\n\rDevice(]] .. ak .. [[):\n\r\t]];
 		for id, iv in pairs( ad ) do
@@ -152,9 +169,13 @@ function eventtest_clock_pulse(stamp, delta)
 	end
 
 	analogimg = drawline(line, 12);
-	move_image(analogimg, 0, 20, 0);
+	link_image(analogimg, analabel);
+	nudge_image(analogimg, 0, 20);
 	show_image(analogimg);
 
+-- need a fallback counter as all our inputs might be busy
+-- should possible have an 'all analog off' switch as well or this
+-- might not trigger on noisy sensors
 	tick_counter = tick_counter - 1;
 	if (tick_counter == 0) then
 		return shutdown("timeout");
@@ -168,7 +189,7 @@ end
 
 function eventtest_input( iotbl )
 	tick_counter = 500;
-	if (iotbl.kind == "digital") then
+	if (iotbl.digital) then
 		if (iotbl.translated) then
 			translate_str(iotbl);
 			lookup(iotbl);
@@ -176,7 +197,10 @@ function eventtest_input( iotbl )
 			digital_str(iotbl);
 		end
 
-    elseif (iotbl.kind == "analog") then -- analog
+	elseif (iotbl.touch) then
+		touch_str(iotbl);
+
+	elseif (iotbl.analog) then
 		local anatbl = {};
 
 		if (analogdata[iotbl.devid] == nil) then

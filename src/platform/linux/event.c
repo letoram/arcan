@@ -172,7 +172,10 @@ struct arcan_devnode {
 			bool scrolllock;
 		} keyboard;
 		struct {
-			bool incomplete;
+			int x;
+			int y;
+			int pressure;
+			int size;
 		} touch;
 	};
 };
@@ -208,10 +211,10 @@ static struct arcan_devnode* lookup_devnode(int devid)
 	if (devid < 0)
 		devid = iodev.mouseid;
 
-	if (devid < iodev.n_devs)
+	if (devid < iodev.sz_nodes)
 		return &iodev.nodes[devid];
 
-	for (size_t i = 0; i < iodev.n_devs; i++){
+	for (size_t i = 0; i < iodev.sz_nodes; i++){
 		if (iodev.nodes[i].devnum == devid)
 			return &iodev.nodes[i];
 	}
@@ -546,6 +549,33 @@ static void process_pending(struct arcan_evctx* ctx)
 	}
 }
 
+static void disconnect(struct arcan_evctx* ctx, struct arcan_devnode* node)
+{
+	struct arcan_event addev = {
+		.category = EVENT_IO,
+		.io.kind = EVENT_IO_STATUS,
+		.io.devid = node->devnum,
+		.io.devkind = EVENT_IDEVKIND_STATUS,
+		.io.input.status.devkind = node->type,
+		.io.input.status.action = EVENT_IDEV_REMOVED
+	};
+	snprintf((char*) &addev.io.label, sizeof(addev.io.label) /
+		sizeof(addev.io.label[0]), "%s", node->label);
+	arcan_event_enqueue(ctx, &addev);
+
+	for (size_t i = 0; i < iodev.sz_nodes; i++)
+		if (node->devnum == iodev.nodes[i].devnum){
+			close(node->handle);
+			free(node->path);
+			node->path = NULL;
+			node->handle = -1;
+			iodev.pollset[i].fd = -1;
+			iodev.pollset[i].events = iodev.pollset[i].revents = 0;
+			iodev.n_devs--;
+			break;
+		}
+}
+
 void platform_event_process(struct arcan_evctx* ctx)
 {
 /* lovely little variable length field at end of struct here /sarcasm,
@@ -599,22 +629,32 @@ void platform_event_process(struct arcan_evctx* ctx)
 		}
 	}
 
-	int nr = poll(iodev.pollset, iodev.n_devs, 0);
+	int nr = poll(iodev.pollset, iodev.sz_nodes, 0);
 	if (nr <= 0)
 		return;
 
-	for (size_t i = 0; i < iodev.n_devs; i++){
-		if (0 == (iodev.pollset[i].revents & POLLIN))
+	for (size_t i = 0; i < iodev.sz_nodes; i++){
+		if (0 == iodev.pollset[i].revents)
 			continue;
 
-		if (iodev.nodes[i].hnd.handler)
-			iodev.nodes[i].hnd.handler(ctx, &iodev.nodes[i]);
-		else{
-			char dump[256];
-			size_t nr __attribute__((unused));
-			nr = read(iodev.nodes[i].handle, dump, 256);
+/* !POLLIN, then something is wrong, remove the node */
+		if (0 == (iodev.pollset[i].revents & POLLIN)){
+			disconnect(ctx, &iodev.nodes[i]);
+			continue;
+		}
+/* some nodes may get a null handler temporarily or permanently assiged,
+ * drain those for evdev structures */
+		else {
+			if (iodev.nodes[i].hnd.handler)
+				iodev.nodes[i].hnd.handler(ctx, &iodev.nodes[i]);
+			else{
+				char dump[256];
+				size_t nr __attribute__((unused));
+				nr = read(iodev.nodes[i].handle, dump, 256);
+			}
 		}
 	}
+
 }
 
 void platform_event_samplebase(int devid, float xyz[3])
@@ -649,7 +689,7 @@ void platform_event_keyrepeat(struct arcan_evctx* ctx, int* period, int* delay)
 	}
 
 	if (upd){
-		for (size_t i = 0; i < iodev.n_devs; i++)
+		for (size_t i = 0; i < iodev.sz_nodes; i++)
 			if (iodev.nodes[i].type == DEVNODE_KEYBOARD){
 				struct input_event ev = {
 					.type = EV_REP,
@@ -881,7 +921,6 @@ static void got_device(struct arcan_evctx* ctx, int fd, const char* path)
 		break;
 
 		case EV_SW:
-
 		break;
 
 /* useless for the time being */
@@ -943,7 +982,7 @@ static void got_device(struct arcan_evctx* ctx, int fd, const char* path)
 
 			iodev.nodes[i].handle = fd;
 			iodev.pollset[i].fd = fd;
-			iodev.pollset[i].events = POLLIN;
+			iodev.pollset[i].events = POLLIN | POLLERR | POLLHUP;
 
 			return;
 		}
@@ -958,12 +997,17 @@ static void got_device(struct arcan_evctx* ctx, int fd, const char* path)
 			goto cleanup;
 		iodev.nodes = nn;
 		memset(nn + iodev.sz_nodes, '\0', sizeof(struct arcan_devnode) * 8);
+		for (size_t i = iodev.sz_nodes; i < new_sz; i++)
+			iodev.nodes[i].handle = BADFD;
 
 		struct pollfd* np = realloc(iodev.pollset, sizeof(struct pollfd) * new_sz);
 		if (!np)
 			goto cleanup;
 
 		memset(np + iodev.sz_nodes, '\0', sizeof(struct pollfd) * 8);
+		for (size_t i = iodev.sz_nodes; i < new_sz; i++)
+			np[i].fd = BADFD;
+
 		iodev.pollset = np;
 		hole = iodev.sz_nodes;
 		iodev.sz_nodes = new_sz;
@@ -973,7 +1017,7 @@ static void got_device(struct arcan_evctx* ctx, int fd, const char* path)
 	iodev.n_devs++;
 	node.path = strdup(path);
 	iodev.pollset[hole].fd = fd;
-	iodev.pollset[hole].events = POLLIN;
+	iodev.pollset[hole].events = POLLIN | POLLERR | POLLHUP;
 	iodev.nodes[hole] = node;
 
 	struct arcan_event addev = {
@@ -1069,42 +1113,16 @@ static void update_state(int code, bool state, unsigned* statev)
 		*statev &= ~modifier;
 }
 
-static void disconnect(struct arcan_evctx* ctx, struct arcan_devnode* node)
-{
-	struct arcan_event addev = {
-		.category = EVENT_IO,
-		.io.kind = EVENT_IO_STATUS,
-		.io.devid = node->devnum,
-		.io.devkind = EVENT_IDEVKIND_STATUS,
-		.io.input.status.devkind = node->type,
-		.io.input.status.action = EVENT_IDEV_REMOVED
-	};
-	snprintf((char*) &addev.io.label, sizeof(addev.io.label) /
-		sizeof(addev.io.label[0]), "%s", node->label);
-	arcan_event_enqueue(ctx, &addev);
-
-	for (size_t i = 0; i < iodev.n_devs; i++)
-		if (node->devnum == iodev.nodes[i].devnum){
-			close(node->handle);
-			free(node->path);
-			node->path = NULL;
-			node->handle = -1;
-			iodev.pollset[i].fd = -1;
-			iodev.pollset[i].events = 0;
-			if (i == iodev.n_devs - 1)
-				iodev.n_devs--;
-			break;
-		}
-}
-
 static void defhandler_kbd(struct arcan_evctx* out,
 	struct arcan_devnode* node)
 {
 	struct input_event inev[64];
 	ssize_t evs = read(node->handle, &inev, sizeof(inev));
 
-	if (-1 == evs)
-		return disconnect(out, node);
+	if (-1 == evs){
+		if (errno != EINTR && errno != EAGAIN)
+			disconnect(out, node);
+	}
 
 	if (evs < 0 || evs < sizeof(struct input_event))
 		return;
@@ -1168,7 +1186,28 @@ static void defhandler_kbd(struct arcan_evctx* out,
 static void decode_mt(struct arcan_evctx* ctx,
 	struct arcan_devnode* node, int ind, int val)
 {
-	printf("mt ev : %d, %d\n", ind, val);
+/* there are multiple protocols and mappings for this that we don't
+ * account for here, move it to a toch event with the basic information
+ * and let higher layers deal with it */
+	arcan_event newev = {
+		.category = EVENT_IO,
+		.io = {
+			.label = "touch",
+			.devid = node->devnum,
+			.subid = 128,
+			.kind = EVENT_IO_TOUCH,
+			.devkind = EVENT_IDEVKIND_TOUCHDISP,
+			.datatype = EVENT_IDATATYPE_TOUCH
+		}
+	};
+
+	newev.io.input.touch.x = 0;
+	newev.io.input.touch.y = 0;
+	newev.io.input.touch.pressure = 0;
+	newev.io.input.touch.size = 0;
+
+/* incomplete */
+//	arcan_event_enqueue(ctx, &newev);
 }
 
 static void decode_hat(struct arcan_evctx* ctx,
@@ -1228,8 +1267,10 @@ static void defhandler_game(struct arcan_evctx* ctx,
 	struct input_event inev[64];
 	ssize_t evs = read(node->handle, &inev, sizeof(inev));
 
-	if (-1 == evs)
-		return disconnect(ctx, node);
+	if (-1 == evs){
+		if (errno != EINTR && errno != EAGAIN)
+			disconnect(ctx, node);
+	}
 
 	if (evs < 0 || evs < sizeof(struct input_event))
 		return;
@@ -1313,8 +1354,11 @@ static void defhandler_mouse(struct arcan_evctx* ctx,
 	struct input_event inev[64];
 
 	ssize_t evs = read(node->handle, &inev, sizeof(inev));
-	if (-1 == evs)
-		return disconnect(ctx, node);
+
+	if (-1 == evs){
+		if (errno != EINTR && errno != EAGAIN)
+			disconnect(ctx, node);
+	}
 
 	if (evs < 0 || evs < sizeof(struct input_event))
 		return;
@@ -1397,8 +1441,10 @@ static void defhandler_null(struct arcan_evctx* out,
 {
 	char nbuf[256];
 	ssize_t evs = read(node->handle, nbuf, sizeof(nbuf));
-	if (-1 == evs)
-		return disconnect(out, node);
+	if (-1 == evs){
+		if (errno != EINTR && errno != EAGAIN)
+			disconnect(out, node);
+	}
 }
 
 const char* platform_event_devlabel(int devid)
