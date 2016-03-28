@@ -129,7 +129,7 @@ struct {
 	int last_dbl_x,last_dbl_y;
 	int rows;
 	int cols;
-	int cell_w, cell_h;
+	int cell_w, cell_h, pad_w, pad_h;
 
 	uint8_t fgc[3];
 	uint8_t bgc[3];
@@ -383,6 +383,16 @@ static void update_screen()
 		term.acon.dirty.y1 = 0;
 		term.acon.dirty.y2 = term.acon.h;
 		tsm_screen_selection_reset(term.screen);
+
+		shmif_pixel col = SHMIF_RGBA(
+			term.bgc[0],term.bgc[1],term.bgc[2],term.alpha);
+
+		if (term.pad_w)
+			draw_box(&term.acon,
+				term.acon.w-term.pad_w-1, 0, term.pad_w, term.acon.h, col);
+		if (term.pad_h)
+			draw_box(&term.acon,
+				0, term.acon.h-term.pad_h-1, term.acon.w, term.pad_h, col);
 	}
 
 	term.flags = tsm_screen_get_flags(term.screen);
@@ -404,15 +414,15 @@ static void update_screensize(bool clear)
 	LOG("update screensize (%d * %d), (%d * %d)\n",
 		cols, rows, (int)term.acon.w, (int)term.acon.h);
 
-  size_t padw = term.acon.w - (cols * term.cell_w);
-	size_t padh = term.acon.h - (rows * term.cell_h);
+	term.pad_w = term.acon.w - (cols * term.cell_w);
+	term.pad_h = term.acon.h - (rows * term.cell_h);
 
 	if (cols != term.cols || rows != term.rows){
 		if (cols > term.cols)
-			padw += (cols - term.cols) * term.cell_w;
+			term.pad_w += (cols - term.cols) * term.cell_w;
 
 		if (rows > term.rows)
-			padh += (rows - term.rows) * term.cell_h;
+			term.pad_h += (rows - term.rows) * term.cell_h;
 
 		int dr = term.rows - rows;
 		term.cols = cols;
@@ -434,14 +444,8 @@ static void update_screensize(bool clear)
 
 	if (clear)
 		draw_box(&term.acon, 0, 0, term.acon.w, term.acon.h, col);
-	else{
-		if (padw)
-			draw_box(&term.acon, term.acon.w-padw-1, padw, 0, term.acon.h, col);
-		if (padh)
-			draw_box(&term.acon, 0, term.acon.h-padh-1, term.acon.w, padh, col);
-	}
 
-/* will enforce full redraw */
+/* will enforce full redraw, and full redraw will also update padding */
 	term.dirty |= DIRTY_PENDING_FULL;
 	update_screen();
 }
@@ -931,7 +935,6 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 				if (term.mouse_x != term.bsel_x || term.mouse_y != term.bsel_y)
 					select_copy();
 
-				tsm_screen_sb_reset(term.screen);
 				tsm_screen_selection_reset(term.screen);
 				term.in_select = false;
 				term.dirty |= DIRTY_PENDING;
@@ -1165,6 +1168,10 @@ static void probe_font(TTF_Font* font,
 	int w = *dw, h = *dh;
 	TTF_SizeUTF8(font, msg, &w, &h, TTF_STYLE_BOLD | TTF_STYLE_UNDERLINE);
 
+/* SizeUTF8 does not give the right dimensions for all hinting */
+	if (term.hint == TTF_HINTING_RGB)
+		w++;
+
 	if (w > *dw)
 		*dw = w;
 
@@ -1359,7 +1366,7 @@ static void dump_help()
 		" font        \t ttf-file  \t render using font specified by ttf-file\n"
 		" font_fb     \t ttf-file  \t use other font for missing glyphs\n"
 		" font_sz     \t px        \t set font rendering size (may alter cellsz))\n"
-		" font_hint   \t hintval   \t hint to font renderer (light, mono, none)\n"
+		" font_hint   \t hintval   \t hint to font renderer (light, mono, subpixel, none)\n"
 #endif
 		"Built-in palettes:\n"
 		"default, solarized, solarized-black, solarized-white\n"
@@ -1468,10 +1475,8 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 			term.hint = TTF_HINTING_MONO;
 		else if (strcmp(val, "normal") == 0)
 			term.hint = TTF_HINTING_NORMAL;
-		else if (strcmp(val, "rgb") == 0)
+		else if (strcmp(val, "subpixel") == 0)
 			term.hint = TTF_HINTING_RGB;
-		else if (strcmp(val, "vrgb") == 0)
-			term.hint = TTF_HINTING_VRGB;
 	}
 
 	if (arg_lookup(args, "font_sz", 0, &val))
