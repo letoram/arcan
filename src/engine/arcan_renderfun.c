@@ -709,6 +709,8 @@ static bool render_alloc(struct rcell* cnode,
 		return false;
 	}
 
+/* we manually clear the buffer here because BZERO on VBUFFER sets FULLALPHA,
+ * that means we need to repack etc. to handle kerning and that costs more */
 	for (size_t i=0; i < w * h; i++)
 		cnode->data.surf.buf[i] = 0;
 
