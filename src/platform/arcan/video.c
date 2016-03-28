@@ -199,7 +199,7 @@ const char** platform_video_envopts()
 		while (*wrk++)
 			count++;
 
-		cache = malloc(sizeof(char*) * count);
+		cache = malloc(sizeof(char*) * (count + 1));
 		cache[count] = NULL;
 		wrk = buf;
 
