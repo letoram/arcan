@@ -354,6 +354,12 @@ static inline void merge_dh(arcan_event* new, arcan_event* old)
 
 	if ((new->tgt.ioevs[2].iv & 128))
 		new->tgt.ioevs[2].iv = old->tgt.ioevs[2].iv;
+
+	if (!(new->tgt.ioevs[4].fv > 0))
+		new->tgt.ioevs[4].fv = old->tgt.ioevs[4].fv;
+
+	if (new->tgt.ioevs[3].iv < 0)
+		new->tgt.ioevs[3].iv = old->tgt.ioevs[3].iv;
 }
 
 static bool scan_disp_event(struct arcan_evctx* c, struct arcan_event* old)
