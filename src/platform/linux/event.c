@@ -1449,14 +1449,12 @@ static void defhandler_null(struct arcan_evctx* out,
 
 const char* platform_event_devlabel(int devid)
 {
-	if (devid == -1)
-		return "mouse";
+	struct arcan_devnode* node = lookup_devnode(devid);
+	if (!node)
+		return "bad devid";
 
-	if (devid < 0 || devid >= iodev.n_devs)
-		return "no device";
-
-	return strlen(iodev.nodes[devid].label) == 0 ?
-		"no identifier" : iodev.nodes[devid].label;
+	return strlen(node->label) == 0 ?
+		"no identifier" : node->label;
 }
 
 /* ajax @ xorg-dev ml, [PATCH] linux: Prefer ioctl(KDSKBMUTE), ... */
