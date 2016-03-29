@@ -269,6 +269,18 @@ static void draw_ch(uint32_t ch,
 }
 #endif
 
+static void send_cell_sz()
+{
+	arcan_event ev = {
+		.category = EVENT_EXTERNAL,
+		.ext.kind = ARCAN_EVENT(MESSAGE),
+	};
+
+	sprintf((char*)ev.ext.message.data, "cell_w:%d:cell_h:%d",
+		term.cell_w, term.cell_h);
+	arcan_shmif_enqueue(&term.acon, &ev);
+}
+
 static int draw_cb(struct tsm_screen* screen, uint32_t id,
 	const uint32_t* ch, size_t len, unsigned width, unsigned x, unsigned y,
 	const struct tsm_screen_attr* attr, tsm_age_t age, void* data)
@@ -389,10 +401,10 @@ static void update_screen()
 
 		if (term.pad_w)
 			draw_box(&term.acon,
-				term.acon.w-term.pad_w-1, 0, term.pad_w, term.acon.h, col);
+				term.acon.w-term.pad_w-1, 0, term.pad_w+1, term.acon.h, col);
 		if (term.pad_h)
 			draw_box(&term.acon,
-				0, term.acon.h-term.pad_h-1, term.acon.w, term.pad_h, col);
+				0, term.acon.h-term.pad_h-1, term.acon.w, term.pad_h+1, col);
 	}
 
 	term.flags = tsm_screen_get_flags(term.screen);
@@ -1219,19 +1231,12 @@ static bool setup_font(int fd, size_t font_sz, int mode)
 		for (size_t i = 0; i < sizeof(set)/sizeof(set[0]); i++)
 			probe_font(font, set[i], &w, &h);
 
-/* send result of new cell sizes, can assist UI in doing resize req. */
 		if (w && h){
-			arcan_event ev = {
-				.category = EVENT_EXTERNAL,
-				.ext.kind = ARCAN_EVENT(MESSAGE),
-			};
-			sprintf((char*)ev.ext.message.data, "cell_w:%d:cell_h:%d",
-				term.cell_w, term.cell_h);
-			arcan_shmif_enqueue(&term.acon, &ev);
-
 			term.cell_w = w;
 			term.cell_h = h;
 		}
+
+		send_cell_sz();
 	}
 
 	TTF_SetFontStyle(font, TTF_STYLE_NORMAL);
@@ -1580,6 +1585,9 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		.ext.clock.rate = 12,
 		.ext.clock.id = 0xabcdef00,
 	});
+
+/* show the current cell dimensions to help limit resize requests */
+	send_cell_sz();
 
 	main_loop();
 	return EXIT_SUCCESS;
