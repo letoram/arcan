@@ -1285,15 +1285,15 @@ static inline av_pixel pack_subpx(uint8_t fg[4],
 		return PACK(fg[0], fg[1], fg[2], 0xff);
 }
 
-static void yfill(PIXEL* dst, PIXEL col, int yfill, int w, int h, int stride)
+static void yfill(PIXEL* dst, PIXEL clr, int yfill, int w, int h, int stride)
 {
 	for (int br = 0, ur = h-1; br < yfill; br++, ur--){
 		PIXEL* dr = &dst[br * stride];
 		for (int col = 0; col < w; col++)
-			*dr++ = col;
+			*dr++ = clr;
 		dr = &dst[ur * stride];
 		for (int col = 0; col < w; col++)
-			*dr++ = col;
+			*dr++ = clr;
 	}
 }
 
@@ -1360,7 +1360,8 @@ bool TTF_RenderUNICODEglyph(PIXEL* dst,
 				newh = height;
 			else{
 				yshift = (height - newh) >> 1;
-				yfill(dst, *xstart, yshift, width, height, stride);
+				yfill(dst, usebg ? PACK(bg[0], bg[1], bg[2], bg[3]) : 0,
+					yshift, width, height, stride);
 			}
 
 /* this approach gives us the wrong packing for color channels, but we
