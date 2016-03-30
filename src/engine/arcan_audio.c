@@ -299,6 +299,9 @@ static arcan_errc audio_free(arcan_aobj_id id)
 
 			_wrap_alError(NULL, "audio_free(DeleteBuffers/sources)");
 		}
+		current->next = (void*) 0xdeadbeef;
+		current->tag = (void*) 0xdeadbeef;
+		current->feed = NULL;
 		arcan_mem_free(current);
 
 		rv = ARCAN_OK;
@@ -439,19 +442,16 @@ arcan_errc arcan_audio_hookfeed(arcan_aobj_id id, void* tag,
 	arcan_monafunc_cb hookfun, void** oldtag)
 {
 	arcan_aobj* aobj = arcan_audio_getobj(id);
-	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+	if (!aobj)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
-	if (aobj){
-		if (oldtag)
-			*oldtag = aobj->monitortag ? aobj->monitortag : NULL;
+	if (oldtag)
+		*oldtag = aobj->monitortag ? aobj->monitortag : NULL;
 
-		aobj->monitor = hookfun;
-		aobj->monitortag = tag;
+	aobj->monitor = hookfun;
+	aobj->monitortag = tag;
 
-		rv = ARCAN_OK;
-	}
-
-	return rv;
+	return ARCAN_OK;
 }
 
 arcan_aobj_id arcan_audio_feed(arcan_afunc_cb feed, void* tag, arcan_errc* errc)
