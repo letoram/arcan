@@ -594,7 +594,7 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	arcan_errc errc;
 	if (segid != SEGID_ENCODER)
 		newseg->aid = arcan_audio_feed((arcan_afunc_cb)
-			arcan_frameserver_audioframe_direct, ctx, &errc);
+			arcan_frameserver_audioframe_direct, newseg, &errc);
 
  	newseg->desc = vinfo;
 	newseg->source = ctx->source ? strdup(ctx->source) : NULL;
