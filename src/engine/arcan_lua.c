@@ -850,7 +850,10 @@ void arcan_lua_adopt(struct arcan_luactx* ctx)
 
 			arcan_event_enqueue(arcan_event_defaultctx(), &regev);
 
-			if (arcan_frameserver_enter(fsrv)){
+			jmp_buf out;
+			if (0 != setjmp(out))
+				goto jmpout;
+			arcan_frameserver_enter(fsrv, out);
 				arcan_event rezev = {
 					.category = EVENT_FSRV,
 					.fsrv.kind = EVENT_FSRV_RESIZED,
@@ -861,13 +864,13 @@ void arcan_lua_adopt(struct arcan_luactx* ctx)
 					.fsrv.otag = fsrv->tag,
 					.fsrv.glsource = fsrv->shm.ptr->hints & SHMIF_RHINT_ORIGO_LL
 				};
-				arcan_event_enqueue(arcan_event_defaultctx(), &rezev);
-			}
+			arcan_event_enqueue(arcan_event_defaultctx(), &rezev);
 /* NOTE: currently not sending a soft reset event to frameserver, but
  * might be useful to do so with ioev[0] set to 2 */
 			arcan_frameserver_leave();
 		}
 
+jmpout:
 			lua_pop(ctx, 1);
 		}
 

@@ -15,6 +15,7 @@
 #include <math.h>
 #include <assert.h>
 #include <limits.h>
+#include <setjmp.h>
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -51,6 +52,15 @@ static inline void emit_deliveredframe(arcan_frameserver* src,
 	unsigned long long pts, unsigned long long framecount);
 static inline void emit_droppedframe(arcan_frameserver* src,
 	unsigned long long pts, unsigned long long framecount);
+
+/*
+ * Check if the frameserver is still alive, that the shared memory page
+ * is intact and look for any state-changes, e.g. resize (which would
+ * require a recalculation of shared memory layout. These are used by the
+ * various feedfunctions and should not need to be triggered elsewhere.
+ */
+static void tick_control(arcan_frameserver*, bool);
+bool arcan_frameserver_resize(arcan_frameserver*);
 
 static void autoclock_frame(arcan_frameserver* tgt)
 {
@@ -93,35 +103,39 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 	if (!src->flags.alive)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
-	if (arcan_frameserver_enter(src)){
 /* unhook audio monitors */
-		arcan_aobj_id* base = src->alocks;
-		while (base && *base){
-			arcan_audio_hookfeed(*base, NULL, NULL, NULL);
-			base++;
-		}
-
-/* be nice and say that you'll be dropped off */
-		if (shmpage){
-			arcan_event exev = {
-				.category = EVENT_TARGET,
-				.tgt.kind = TARGET_COMMAND_EXIT
-			};
-			arcan_frameserver_pushevent(src, &exev);
-
-/* and flick any other switch that might keep the child locked */
-			shmpage->dms = false;
-			shmpage->vready = false;
-			shmpage->aready = false;
-			arcan_sem_post( src->vsync );
-			arcan_sem_post( src->async );
-		}
-
-		arcan_frameserver_dropshared(src);
-		src->shm.ptr = NULL;
-		arcan_frameserver_leave();
+	arcan_aobj_id* base = src->alocks;
+	while (base && *base){
+		arcan_audio_hookfeed(*base, NULL, NULL, NULL);
+		base++;
 	}
 
+	jmp_buf buf;
+	if (0 != setjmp(buf))
+		goto out;
+
+	arcan_frameserver_enter(src, buf);
+/* be nice and say that you'll be dropped off */
+	if (shmpage){
+		arcan_event exev = {
+			.category = EVENT_TARGET,
+			.tgt.kind = TARGET_COMMAND_EXIT
+		};
+		arcan_frameserver_pushevent(src, &exev);
+
+/* and flick any other switch that might keep the child locked */
+		shmpage->dms = false;
+		shmpage->vready = false;
+		shmpage->aready = false;
+		arcan_sem_post( src->vsync );
+		arcan_sem_post( src->async );
+	}
+/* if BUS happens during _enter, the handler will take
+ * care of dropping shared */
+	arcan_frameserver_dropshared(src);
+	arcan_frameserver_leave();
+
+out:
 	arcan_audio_stop(src->aid);
 	arcan_frameserver_killchild(src);
 
@@ -186,7 +200,7 @@ void arcan_frameserver_dropsemaphores(arcan_frameserver* src){
 	}
 }
 
-bool arcan_frameserver_control_chld(arcan_frameserver* src){
+static bool arcan_frameserver_control_chld(arcan_frameserver* src){
 /* bunch of terminating conditions -- frameserver messes with the structure to
  * provoke a vulnerability, frameserver dying or timing out, ... */
 	bool alive = src->flags.alive && src->shm.ptr
@@ -202,8 +216,6 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
 	}
 
 	if (!alive){
-/* force flush beforehand, in a saturated queue, data may still
- * get lost here */
 		arcan_event_queuetransfer(arcan_event_defaultctx(), &src->inqueue,
 			src->queue_mask, 0.5, src->vid);
 
@@ -220,8 +232,7 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst,
 	if (!dst || !ev)
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
-	if (!arcan_frameserver_enter(dst))
-		return ARCAN_ERRC_UNACCEPTED_STATE;
+	TRAMP_GUARD(ARCAN_ERRC_UNACCEPTED_STATE, dst);
 
 	arcan_errc rv = dst->flags.alive && (dst->shm.ptr && dst->shm.ptr->dms) ?
 		arcan_event_enqueue(&dst->outqueue, ev) : ARCAN_ERRC_UNACCEPTED_STATE;
@@ -336,9 +347,10 @@ enum arcan_ffunc_rv arcan_frameserver_nullfeed FFUNC_HEAD
 {
 	arcan_frameserver* tgt = state.ptr;
 
-	if (!tgt || state.tag != ARCAN_TAG_FRAMESERV
-	 || !arcan_frameserver_enter(tgt))
+	if (!tgt || state.tag != ARCAN_TAG_FRAMESERV)
 		return FRV_NOFRAME;
+
+	TRAMP_GUARD(FRV_NOFRAME, tgt);
 
 	if (cmd == FFUNC_DESTROY)
 		arcan_frameserver_free(state.ptr);
@@ -364,14 +376,15 @@ no_out:
 enum arcan_ffunc_rv arcan_frameserver_emptyframe FFUNC_HEAD
 {
 	arcan_frameserver* tgt = state.ptr;
-	if (!tgt || state.tag != ARCAN_TAG_FRAMESERV
-	 || !arcan_frameserver_enter(tgt))
+	if (!tgt || state.tag != ARCAN_TAG_FRAMESERV)
 		return FRV_NOFRAME;
+
+	TRAMP_GUARD(FRV_NOFRAME, tgt);
 
 	switch (cmd){
 		case FFUNC_POLL:
 			if (tgt->shm.ptr->resized){
-				arcan_frameserver_tick_control(tgt, false);
+				tick_control(tgt, false);
         if (tgt->shm.ptr && tgt->shm.ptr->vready){
 					arcan_frameserver_leave();
         	return FRV_GOTFRAME;
@@ -383,7 +396,7 @@ enum arcan_ffunc_rv arcan_frameserver_emptyframe FFUNC_HEAD
 		break;
 
 		case FFUNC_TICK:
-			arcan_frameserver_tick_control(tgt, true);
+			tick_control(tgt, true);
 		break;
 
 		case FFUNC_DESTROY:
@@ -412,12 +425,16 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 
 	arcan_frameserver* tgt = state.ptr;
 	struct arcan_shmif_page* shmpage = tgt->shm.ptr;
-
-	if (!shmpage || !arcan_frameserver_enter(tgt))
+	if (!shmpage)
 		return FRV_NOFRAME;
 
+/* complexity note here: this is to guard against SIGBUS, which becomes
+ * quite ugly with ftruncate on a shared page that should support resize
+ * under certain conditions. */
+	TRAMP_GUARD(FRV_NOFRAME, tgt);
+
 	if (tgt->segid == SEGID_UNKNOWN){
-		arcan_frameserver_tick_control(tgt, false);
+		tick_control(tgt, false);
 		goto no_out;
 	}
 
@@ -429,7 +446,7 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 
 	case FFUNC_POLL:
 		if (shmpage->resized){
-			arcan_frameserver_tick_control(tgt, false);
+			tick_control(tgt, false);
 			goto no_out;
 		}
 
@@ -450,7 +467,7 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 	break;
 
 	case FFUNC_TICK:
-		arcan_frameserver_tick_control(tgt, true);
+		tick_control(tgt, true);
 	break;
 
 	case FFUNC_DESTROY:
@@ -509,8 +526,7 @@ enum arcan_ffunc_rv arcan_frameserver_feedcopy FFUNC_HEAD
 	assert(state.tag == ARCAN_TAG_FRAMESERV);
 	arcan_frameserver* src = (arcan_frameserver*) state.ptr;
 
-	if (!arcan_frameserver_enter(src))
-		return FRV_NOFRAME;
+	TRAMP_GUARD(FRV_NOFRAME, src);
 
 	if (cmd == FFUNC_DESTROY)
 		arcan_frameserver_free(state.ptr);
@@ -571,8 +587,7 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe FFUNC_HEAD
 	assert(state.tag == ARCAN_TAG_FRAMESERV);
 	arcan_frameserver* src = (arcan_frameserver*) state.ptr;
 
-	if (!arcan_frameserver_enter(src))
-		return FRV_NOFRAME;
+	TRAMP_GUARD(FRV_NOFRAME, src);
 
 	if (cmd == FFUNC_DESTROY)
 		arcan_frameserver_free(state.ptr);
@@ -811,8 +826,10 @@ arcan_errc arcan_frameserver_audioframe_direct(arcan_aobj* aobj,
 /* we need to switch to an interface where we can retrieve a set number of
  * buffers, matching the number of set bits in amask, then walk from ind-1 and
  * buffering all */
-	if (!src->shm.ptr || !arcan_frameserver_enter(src))
+	if (!src->shm.ptr)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
+
+	TRAMP_GUARD(ARCAN_ERRC_UNACCEPTED_STATE, src);
 
 	volatile int ind = atomic_load(&src->shm.ptr->aready) - 1;
 	volatile int amask = atomic_load(&src->shm.ptr->apending);
@@ -857,7 +874,7 @@ arcan_errc arcan_frameserver_audioframe_direct(arcan_aobj* aobj,
 	return ARCAN_OK;
 }
 
-void arcan_frameserver_tick_control(arcan_frameserver* src, bool tick)
+static void tick_control(arcan_frameserver* src, bool tick)
 {
 	bool fail = true;
 	if (!arcan_frameserver_control_chld(src) || !src || !src->shm.ptr ||
@@ -885,7 +902,7 @@ void arcan_frameserver_tick_control(arcan_frameserver* src, bool tick)
  * longer warn, but keep the code here commented as a note to it
 
  if (src->desc.width == neww && src->desc.height == newh){
-		arcan_warning("frameserver_tick_control(), source requested "
+		arcan_warning("tick_control(), source requested "
 			"resize to current dimensions.\n");
 		goto leave;
 	}
@@ -909,8 +926,6 @@ void arcan_frameserver_tick_control(arcan_frameserver* src, bool tick)
 	arcan_video_alterfeed(src->vid, FFUNC_VFRAME, cstate);
 
 leave:
-	arcan_frameserver_leave();
-
 /* want the event to be queued after resize so the possible reaction (i.e.
  * redraw + synch) aligns with pending resize */
 	if (!fail && tick){
