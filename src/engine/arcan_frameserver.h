@@ -256,15 +256,6 @@ void arcan_frameserver_dropsemaphores(arcan_frameserver*);
 void arcan_frameserver_dropsemaphores_keyed(char*);
 
 /*
- * Check if the frameserver is still alive, that the shared memory page
- * is intact and look for any state-changes, e.g. resize (which would
- * require a recalculation of shared memory layout. These are used by the
- * various feedfunctions and should not need to be triggered elsewhere.
- */
-void arcan_frameserver_tick_control(arcan_frameserver*, bool);
-bool arcan_frameserver_resize(arcan_frameserver*);
-
-/*
  * Various transfer- and buffering schemes. These should not be mapped
  * into video- feedfunctions by themeselves, but managed through
  * the arcan_ffunc_lut.h
@@ -348,7 +339,15 @@ arcan_errc arcan_frameserver_free(arcan_frameserver*);
  * by the other side that forces us to setup a fallback point in the
  * case of signals e.g. SIGBUS (due to truncate-on-fd).
  */
-int arcan_frameserver_enter(struct arcan_frameserver*);
+#include <setjmp.h>
+#define TRAMP_GUARD(ERRC, fsrv){\
+	jmp_buf tramp;\
+	if (0 != setjmp(tramp))\
+		return ERRC;\
+	arcan_frameserver_enter(fsrv, tramp);\
+}
+
+void arcan_frameserver_enter(struct arcan_frameserver*, jmp_buf ctx);
 void arcan_frameserver_leave();
 
 size_t arcan_frameserver_default_abufsize(size_t new_sz);

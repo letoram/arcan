@@ -504,9 +504,12 @@ fail:
 		return false;
 	}
 
+	jmp_buf out;
+	if (0 != setjmp(out))
+		goto fail;
+
 /* tiny race condition SIGBUS window here */
-	while (!arcan_frameserver_enter(ctx))
-		;
+	arcan_frameserver_enter(ctx, out);
 		memset(shmpage, '\0', ctx->shm.shmsize);
 	 	shmpage->dms = true;
 		shmpage->parent = getpid();
@@ -576,7 +579,13 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 		abufsz = 65535;
 	}
 
-	while (!arcan_frameserver_enter(ctx)){}
+	jmp_buf out;
+	if (0 != setjmp(out)){
+		arcan_frameserver_free(newseg);
+		return NULL;
+	}
+
+	arcan_frameserver_enter(ctx, out);
 		shmpage->w = hintw;
 		shmpage->h = hinth;
 		shmpage->vpending = 1;

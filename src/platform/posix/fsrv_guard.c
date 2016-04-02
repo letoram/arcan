@@ -48,7 +48,12 @@ static void bus_handler(int signo)
 	siglongjmp(recover, 1);
 }
 
-int arcan_frameserver_enter(struct arcan_frameserver* m)
+static void recursive_warning()
+{
+	arcan_warning("fsrv_guard() - enter called from within enter\n");
+}
+
+void arcan_frameserver_enter(struct arcan_frameserver* m, jmp_buf out)
 {
 	static bool initialized;
 
@@ -58,15 +63,17 @@ int arcan_frameserver_enter(struct arcan_frameserver* m)
 			arcan_warning("(posix/fsrv_guard) can't install sigbus handler.\n");
 		}
 
+	if (tag)
+		recursive_warning();
+
 	if (sigsetjmp(recover, 1)){
 		arcan_warning("(posix/fsrv_guard) DoS attempt from client.\n");
 		arcan_frameserver_dropshared(tag);
 		tag = NULL;
-		return 0;
+		longjmp(out, -1);
 	}
 
 	tag = m;
-	return 1;
 }
 
 void arcan_frameserver_leave()
