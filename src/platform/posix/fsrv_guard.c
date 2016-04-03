@@ -48,11 +48,6 @@ static void bus_handler(int signo)
 	siglongjmp(recover, 1);
 }
 
-static void recursive_warning()
-{
-	arcan_warning("fsrv_guard() - enter called from within enter\n");
-}
-
 void arcan_frameserver_enter(struct arcan_frameserver* m, jmp_buf out)
 {
 	static bool initialized;
@@ -62,9 +57,6 @@ void arcan_frameserver_enter(struct arcan_frameserver* m, jmp_buf out)
 		if (signal(SIGBUS, bus_handler) == SIG_ERR)
 			arcan_warning("(posix/fsrv_guard) can't install sigbus handler.\n");
 		}
-
-	if (tag)
-		recursive_warning();
 
 	if (sigsetjmp(recover, 1)){
 		arcan_warning("(posix/fsrv_guard) DoS attempt from client.\n");

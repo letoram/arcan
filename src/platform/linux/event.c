@@ -252,7 +252,7 @@ static bool identify(int fd, const char* path,
 	size_t bpl = sizeof(long) * 8;
 	size_t nbits = ((EV_MAX)-1) / bpl + 1;
 
-	char buf[nbits * sizeof(long)];
+	char buf[12 + nbits * sizeof(long)];
 	char bbuf[sizeof(buf)];
 	memset(buf, '\0', sizeof(buf));
 	memset(bbuf, '\0', sizeof(bbuf));
