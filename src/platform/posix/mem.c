@@ -241,7 +241,8 @@ void arcan_mem_growarr(struct arcan_strarr* res)
 		ARCAN_MEM_STRINGBUF, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL
 	);
 
-	memcpy(newbuf, res->data, res->limit * sizeof(char*));
+	if (res->data)
+		memcpy(newbuf, res->data, res->limit * sizeof(char*));
 	arcan_mem_free(res->data);
 	res->data= newbuf;
 	res->limit += REALLOC_STEP;
