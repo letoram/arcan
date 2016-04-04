@@ -44,6 +44,7 @@ function recordtest()
 
 	define_recordtarget(dstvid, "testout.mkv", "container=mkv:noaudio:" ..
 		"vcodec=H264:fps=60:vpreset=8", {ns}, {},
-		RENDERTARGET_DETACH, RENDERTARGET_SCALE, -1
+		RENDERTARGET_DETACH, RENDERTARGET_NOSCALE, -1,
+		function() end
 	);
 end
