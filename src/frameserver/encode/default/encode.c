@@ -276,7 +276,7 @@ forceencode:
 		av_freep(&frame);
 	}
 
-	av_free_packet(&pkt);
+	av_packet_unref(&pkt);
 
 /*
  * for the flush case, we may have a little bit of buffers left, both in the
@@ -312,7 +312,7 @@ forceencode:
 				av_init_packet(&flushpkt);
 				if (0 == avcodec_encode_audio2(ctx, &flushpkt, NULL, &gotpkt)){
 					av_interleaved_write_frame(recctx.fcontext, &flushpkt);
-				av_free_packet(&flushpkt);
+					av_packet_unref(&flushpkt);
 				}
 			} while (gotpkt);
 		}
@@ -370,8 +370,12 @@ static int encode_video(bool flush)
 			pkt.dts = av_rescale_q_rnd(pkt.dts, ctx->time_base,
 				recctx.vstream->time_base, AV_ROUND_NEAR_INF | AV_ROUND_PASS_MINMAX);
 
-		if (ctx->coded_frame->key_frame)
+/*
+ * deprecated, seems from code inspection that the flag is set in the packet
+ * in the encoder instead
+		if (recctx.pframe->flags ctx->coded_frame->key_frame)
 			pkt.flags |= AV_PKT_FLAG_KEY;
+ */
 
 		if (pkt.dts > pkt.pts){
 			static bool dts_warn;
@@ -394,7 +398,7 @@ static int encode_video(bool flush)
 		}
 	}
 
-	av_free_packet(&pkt);
+	av_packet_unref(&pkt);
 	return fc;
 }
 
@@ -419,8 +423,8 @@ void arcan_frameserver_stepframe()
 /* interleave audio / video */
 	if (recctx.astream && recctx.vstream){
 		while(1){
-			apts = recctx.astream->pts.val * av_q2d(recctx.astream->time_base);
-			vpts = recctx.vstream->pts.val * av_q2d(recctx.vstream->time_base);
+			apts = av_stream_get_end_pts(recctx.astream);
+			vpts = av_stream_get_end_pts(recctx.vstream);
 
 			if (apts < vpts){
 				if (!encode_audio(false))
@@ -668,6 +672,13 @@ static bool setup_ffmpeg_encode(struct arg_arr* args, int desw, int desh)
 
 static void dump_help()
 {
+	fprintf(stdout, "afsrv_encode, feature status: vnc "
+#ifdef HAVE_VNCSERVER
+"(enabled)"
+#else
+"(disabled)"
+#endif
+	"\n");
 	fprintf(stdout, "Encode - frameserver is not currently supported "
 		" in non-authorative mode, this frameserver will be spawned on "
 		" demand by the main arcan process.\n");
@@ -713,13 +724,7 @@ int afsrv_encode(struct arcan_shmif_cont* cont, struct arg_arr* args)
  * really only be "useful" in streaming situations, and perhaps not even there,
  * so consider that scenario untested */
 			case TARGET_COMMAND_STORE:
-#ifdef _WIN32
-				recctx.lastfd = _open_osfhandle(
-/* is this actually safe on 64-bit win? */
-					(intptr_t) frameserver_readhandle(&ev), _O_APPEND );
-#else
 				recctx.lastfd = dup(ev.tgt.ioevs[0].iv);
-#endif
 				LOG("received file-descriptor, setting up encoder.\n");
 				atexit(encoder_atexit);
 				if (!setup_ffmpeg_encode(args, recctx.shmcont.addr->w,
