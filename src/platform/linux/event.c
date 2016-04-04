@@ -1188,7 +1188,7 @@ static void decode_mt(struct arcan_evctx* ctx,
 {
 /* there are multiple protocols and mappings for this that we don't
  * account for here, move it to a toch event with the basic information
- * and let higher layers deal with it */
+ * and let higher layers deal with it
 	arcan_event newev = {
 		.category = EVENT_IO,
 		.io = {
@@ -1206,8 +1206,8 @@ static void decode_mt(struct arcan_evctx* ctx,
 	newev.io.input.touch.pressure = 0;
 	newev.io.input.touch.size = 0;
 
-/* incomplete */
 //	arcan_event_enqueue(ctx, &newev);
+	*/
 }
 
 static void decode_hat(struct arcan_evctx* ctx,

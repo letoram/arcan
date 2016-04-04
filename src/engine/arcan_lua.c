@@ -315,18 +315,18 @@ static inline char* colon_escape(char* in)
  * not have. Should possibly replace this with a function that maps a warning
  * about the banned function.
  */
+#include "arcan_bootstrap.h"
 static void luaL_nil_banned(struct arcan_luactx* ctx)
 {
-	char* work = strdup(LUA_DROPSTR);
-	char* cch = strtok(work, " ");
+	int rv = luaL_loadbuffer(ctx, (const char*) arcan_bootstrap_lua,
+		arcan_bootstrap_lua_len, "bootstrap");
 
-	while (cch){
-		lua_pushnil(ctx);
-		lua_setglobal(ctx, cch);
-		cch = strtok(NULL, " ");
+	if (0 != rv){
+		arcan_warning("BROKEN BUILD: bootstrap code couldn't be parsed\n");
 	}
-
-	free(work);
+	else
+/* called from err-handler will be ignored as it'll fatal or reload */
+		rv = lua_pcall(ctx, 0, 0, 0);
 }
 
 static void dump_call_trace(lua_State* ctx)
@@ -751,8 +751,6 @@ char* arcan_lua_main(lua_State* ctx, const char* inp, bool file)
  * as possible, arcan_lua_dofile is only ever invoked when
  * an appl is about to be loaded so here is a decent entrypoint */
 	const int suffix_lim = 34;
-
-	luaL_nil_banned(ctx);
 
 	free(luactx.prefix_buf);
 	luactx.prefix_ofs = arcan_appl_id_len();
@@ -5791,6 +5789,7 @@ lua_State* arcan_lua_alloc()
 
 void arcan_lua_mapfunctions(lua_State* ctx, int debuglevel)
 {
+	luaL_nil_banned(ctx);
 	arcan_lua_exposefuncs(ctx, debuglevel);
 /* update with debuglevel etc. */
 	arcan_lua_pushglobalconsts(ctx);
@@ -8640,29 +8639,6 @@ cleanup:
 
 	LUA_ETRACE("save_screenshot", NULL);
 	return 0;
-}
-
-void arcan_lua_eachglobal(lua_State* ctx, char* prefix,
-	int (*callback)(const char*, const char*, void*), void* tag)
-{
-/* FIXME: incomplete (planned for the sandboxing / hardening release).
- * 1. have a toggle saying that this functionality is desired
- *    (as the overhead is notable),
- * 2. maintain a trie/prefix tree that this functions just maps to
- * 3. populate the tree with a C version of:
-
-	local metatable = {}
-		setmetatable(_G,{
-    __index    = metatable, -- or a function handling reads
-    __newindex = function(t,k,v)
-     -- k and v will contain table key and table value respectively.
-     rawset(metatable,k, v)
-    end})
-	}
-
-	this would in essence intercept all global table updates, meaning that we can,
- 	at least, use that as a lookup scope for tab completion etc.
-*/
 }
 
 static bool lua_launch_fsrv(lua_State* ctx,

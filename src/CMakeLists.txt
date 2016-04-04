@@ -47,11 +47,6 @@ set(VERSION ${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_LEVEL})
 set(PLATFORM_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/platform)
 set(ENGINE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/engine)
 
-# blacklist some built-ins
-if (NOT LUA_DROPSTR)
-set(LUA_DROPSTR "io os package rawequal rawset rawget setfenv coroutine module require")
-endif()
-
 # distributions packaging a build should tag this accordingly so we
 # can take that into consideration for bug reports
 if (NOT DEFINED DISTR_TAG)
@@ -526,7 +521,6 @@ endif()
 
 set_property(SOURCE engine/arcan_lua.c engine/arcan_main.c
 	APPEND PROPERTY COMPILE_DEFINITIONS
-	LUA_DROPSTR=\"${LUA_DROPSTR}\"
 	ARCAN_BUILDVERSION=\"${ENGINE_BUILDTAG}\"
 	OS_DYLIB_EXTENSION=\"${OS_DYLIB_EXTENSION}\"
 	${FSRV_DISABLE}
