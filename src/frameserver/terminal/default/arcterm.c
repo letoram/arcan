@@ -1015,8 +1015,8 @@ static void targetev(arcan_tgtevent* ev)
  * parent should be running crop shader anyhow */
 		bool dev =
 			(ev->ioevs[0].iv && ev->ioevs[1].iv) &&
-			(abs(ev->ioevs[0].iv - term.acon.addr->w) > term.cell_w ||
-			 abs(ev->ioevs[1].iv - term.acon.addr->h) > term.cell_h);
+			(abs(ev->ioevs[0].iv - term.acon.addr->w) > 0 ||
+			 abs(ev->ioevs[1].iv - term.acon.addr->h) > 0);
 
 /* visibility change */
 		bool update = false;
