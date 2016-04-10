@@ -197,7 +197,7 @@ static struct {
 	.def_abuf_sz = 1,
 	.vbuf_cnt = 1,
 	.prewake = 10,
-	.preaudiogen = 0,
+	.preaudiogen = 1,
 	.skipmode = TARGET_SKIP_AUTO
 #ifdef FRAMESERVER_LIBRETRO_3D
 	,.last_handle = -1
@@ -585,6 +585,9 @@ static void reset_timing(bool newstate)
 	retroctx.vframecount = 1;
 	retroctx.aframecount = 1;
 	retroctx.frameskips  = 0;
+	if (!newstate){
+		retroctx.rebasecount++;
+	}
 
 /* since we can't be certain about our current vantage point...*/
 	if (newstate && retroctx.skipmode <= TARGET_SKIP_ROLLBACK &&
@@ -604,7 +607,6 @@ static void reset_timing(bool newstate)
 
 			LOG("setting input rollback (%d)\n", retroctx.rollback_window);
 	}
-	retroctx.rebasecount++;
 }
 
 static void libretro_audscb(int16_t left, int16_t right)
@@ -1465,28 +1467,38 @@ static inline bool retroctx_sync()
 	long long int timestamp = arcan_timemillis();
 	retroctx.vframecount++;
 
+/* only skip (at most) 1 frame */
+	if (retroctx.skipframe_v || retroctx.empty_v)
+		return true;
+
 	long long int now  = timestamp - retroctx.basetime;
 	long long int next = floor( (double)retroctx.vframecount * retroctx.mspf );
 	int left = next - now;
 
 /* ntpd, settimeofday, wonky OS etc. or some massive stall, disqualify
- * DEBUGSTALL for the normal timing thing */
+ * DEBUGSTALL for the normal timing thing, or even switching 3d settings */
 	static int checked;
 
-	if (now < 0 || abs( left ) > retroctx.mspf * 60.0){
-		if (checked == 0)
+	if (abs(left) > 200){
+		if (checked == 0){
 			checked = getenv("ARCAN_FRAMESERVER_DEBUGSTALL") ? -1 : 1;
+		}
 		else if (checked == 1){
-			LOG("stall detected, resetting timers.\n");
+			LOG("frameskip stall detected, resetting timers.\n");
 			reset_timing(false);
 		}
 		return true;
 	}
 
-/* more than a frame behind? just skip */
-	if ( retroctx.skipmode == TARGET_SKIP_AUTO && left < -retroctx.mspf ){
+/* more than half a frame behind? skip */
+	if ( retroctx.skipmode != TARGET_SKIP_AUTO)
+		return true;
+
+	if (left < -0.5 * retroctx.mspf){
 		if (retroctx.sync_data)
 			retroctx.sync_data->mark_drop(retroctx.sync_data, timestamp);
+		LOG("frameskip: at(%lld), next: (%lld), "
+			"deviation: (%d)\n", now, next, left);
 		retroctx.frameskips++;
 		return false;
 	}
@@ -1494,15 +1506,8 @@ static inline bool retroctx_sync()
 /* since we have to align the transfer with the parent, and it's better to
  * under- than overshoot- a deadline in that respect, prewake tries to
  * compensate lightly for scheduling jitter etc. */
-	int prewake = retroctx.prewake;
-	if (retroctx.prewake < 0)
-		prewake = retroctx.framecost + abs(prewake);
-/* use last frame cost as an estimate */
-	else if (retroctx.prewake > 0) /* or just a constant number */
-		prewake = retroctx.prewake > retroctx.mspf?retroctx.mspf:retroctx.prewake;
-
-	if (prewake && left > prewake ){
-		arcan_timesleep( left - prewake );
+	if (left > retroctx.prewake){
+		arcan_timesleep( left - retroctx.prewake );
 	}
 
 	return true;
@@ -1532,22 +1537,12 @@ static inline long long add_jitter(int num)
  * into the shmpage
  */
 #ifdef FRAMESERVER_LIBRETRO_3D
-#ifdef _DEBUG
-static void glBadCapture()
-{
-	LOG("Invalid OpenGL function called\n");
-	abort();
-}
-#endif
-
 static void* get_gfxsym(const char* symname)
 {
 	void* ret = platform_video_gfxsym(symname);
 #ifdef _DEBUG
-	if (!ret){
+	if (!ret)
 		LOG("(GL) couldn't resolve %s\n", symname);
-		ret = glBadCapture;
-	}
 #endif
 	return ret;
 }
@@ -1568,14 +1563,6 @@ static uintptr_t get_framebuffer()
 
 static void setup_3dcore(struct retro_hw_render_callback* ctx)
 {
-/* we just want a dummy window with a valid openGL context
- * bound and then set up a FBO with the proper dimensions,
- * when things are working, just use a 2x2 window and minimize */
-	if (!platform_video_init(640, 480, 32, false, true, "libretro")){
-		LOG("Couldn't setup OpenGL context\n");
-		exit(1);
-	}
-
 /*
  * cheat with some envvars as the agp_ interface because it was not designed
  * to handle these sort of 'someone else decides which version to use'
@@ -1588,6 +1575,13 @@ static void setup_3dcore(struct retro_hw_render_callback* ctx)
 		setenv("AGP_GL_MINOR", tmpbuf, 0);
 		LOG("Switching to GL CORE context (%d, %d)\n",
 			ctx->version_major, ctx->version_minor);
+	}
+/* we just want a dummy window with a valid openGL context
+ * bound and then set up a FBO with the proper dimensions,
+ * when things are working, just use a 2x2 window and minimize */
+	if (!platform_video_init(640, 480, 32, false, true, "libretro")){
+		LOG("Couldn't setup OpenGL context\n");
+		exit(1);
 	}
 
 	agp_init();
@@ -1934,15 +1928,19 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 /* some cores die on this kind of reset, retroctx.reset() e.g. NXengine
  * retro_reset() */
 
-/* basetime is used as epoch for all other timing calculations */
-	retroctx.basetime = arcan_timemillis();
-
 /* since we might have requests to save state before we die, we use the
  * flush_eventq as an atexit */
 	atexit(flush_eventq);
 
 	if (retroctx.state_sz > 0)
 		retroctx.rollback_state = malloc(retroctx.state_sz);
+
+/* basetime is used as epoch for all other timing calculations, run
+ * an initial frame because sometimes first run can introduce a large stall */
+	retroctx.skipframe_v = retroctx.skipframe_a = true;
+	retroctx.run();
+	retroctx.skipframe_v = retroctx.skipframe_a = false;
+	retroctx.basetime = arcan_timemillis();
 
 /* pre-audio is a last- resort to work around buffering size issues
  * in audio layers -- run one or more frames of emulation, ignoring
@@ -2012,7 +2010,6 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 #endif
 
 /* if we start lagging behind on frametime, try selectively skipping frames */
-		bool lastskip = retroctx.skipframe_v;
 		retroctx.skipframe_a = false;
 		retroctx.skipframe_v = !retroctx_sync();
 
@@ -2053,22 +2050,19 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 
 			while (left){
 				uint8_t* outb = (uint8_t*) retroctx.shmcont.audp;
-				size_t used = retroctx.shmcont.abufused;
-				size_t ntc = bufsz - used;
-				if (!ntc)
-					break;
+				size_t limit = retroctx.shmcont.abufsize - retroctx.shmcont.abufused;
 
-				if (left >= ntc){
-					memcpy(&outb[used], inb, ntc);
-					left -= ntc;
-					inb += ntc;
-					retroctx.shmcont.abufused = bufsz;
+				if (left >= limit){
+					memcpy(&outb[retroctx.shmcont.abufused], inb, limit);
+					left -= limit;
+					inb += limit;
+					retroctx.shmcont.abufused = retroctx.shmcont.abufsize;
 					arcan_shmif_signal(&retroctx.shmcont, SHMIF_SIGAUD);
 				}
 				else{
-					memcpy(&outb[used], inb, left);
+					memcpy(&outb[retroctx.shmcont.abufused], inb, left);
 					retroctx.shmcont.abufused += left;
-					left = 0;
+					break;
 				}
 			}
 		}
