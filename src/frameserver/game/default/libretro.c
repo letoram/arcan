@@ -502,7 +502,8 @@ static void libretro_vidcb(const void* data, unsigned width,
 #ifdef FRAMESERVER_LIBRETRO_3D
 /* method one, just read color attachment */
 	if (retroctx.in_3d){
-		if (data == RETRO_HW_FRAME_BUFFER_VALID){
+/* it seems like tons of cores doesn't actually set this correctly */
+		if (1 || data == RETRO_HW_FRAME_BUFFER_VALID){
 			struct storage_info_t store = retroctx.vstore;
 			store.vinf.text.raw = retroctx.shmcont.vidp;
 
@@ -1719,14 +1720,12 @@ static void setup_av()
 	retroctx.resampler = speex_resampler_init(ARCAN_SHMIF_ACHANNELS,
 		retroctx.avinfo.timing.sample_rate, ARCAN_SHMIF_SAMPLERATE, 5, &errc);
 
-/* we have an accumulation buffer for audio samples, we then resample into
- * another buffer and finally repack in whatever bin sizes the shmif
- * connection negotiated, a streaming resampler interface would be nice..*/
-	retroctx.audbuf_sz = retroctx.avinfo.timing.sample_rate;
-	float sf = (float)ARCAN_SHMIF_SAMPLERATE /
-		(float)retroctx.avinfo.timing.sample_rate;
+/*
+ * just prepare some (overly) large audio resampling buffers
+ */
+	retroctx.audbuf_sz = retroctx.avinfo.timing.sample_rate * 4;
 	retroctx.in_audb = malloc(retroctx.audbuf_sz);
-	retroctx.out_audb = malloc(ceil((float)retroctx.audbuf_sz * sf));
+	retroctx.out_audb = malloc(retroctx.audbuf_sz);
 }
 
 static void setup_input()
@@ -2039,7 +2038,7 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 
 		if(retroctx.audbuf_ofs){
 			spx_uint32_t inc = retroctx.audbuf_ofs >> 1; /* per channel, 2 chan */
-			spx_uint32_t left = retroctx.audbuf_ofs;
+			spx_uint32_t left = retroctx.audbuf_sz;
 			retroctx.audbuf_ofs = 0;
 			speex_resampler_process_interleaved_int(retroctx.resampler,
 				retroctx.in_audb, &inc, retroctx.out_audb, &left);
