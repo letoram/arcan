@@ -1518,7 +1518,10 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	term.acon.hints = SHMIF_RHINT_SUBREGION;
 
 	arcan_shmif_resize(&term.acon, initw, inith);
-
+	shmif_pixel bgc = SHMIF_RGBA(term.bgc[0], term.bgc[1], term.bgc[2], term.alpha);
+	for (size_t i = 0; i < initw*inith; i++)
+		term.acon.vidp[i] = bgc;
+	arcan_shmif_signal(&term.acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
 	expose_labels();
 	tsm_screen_set_max_sb(term.screen, 1000);
 
@@ -1564,7 +1567,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		return EXIT_FAILURE;
 	}
 
-	update_screensize(true);
+	update_screensize(false);
 
 /* immediately request a clipboard for cut operations (none received ==
  * running appl doesn't care about cut'n'paste/drag'n'drop support). */
