@@ -85,14 +85,15 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	}
 
 	if (first_init){
-		disp[0].conn = arcan_shmif_open(SEGID_LWA, 0, &shmarg);
+/* we send our own register events, so set empty type */
+		disp[0].conn = arcan_shmif_open(0, 0, &shmarg);
 		if (disp[0].conn.addr == NULL){
 			arcan_warning("couldn't connect to parent\n");
 			return false;
 		}
 
+/* empty dimensions will be ignored, chances are we'll get a displayhint */
 		disp[0].conn.hints = SHMIF_RHINT_ORIGO_LL;
-
 		if (!arcan_shmif_resize_ext( &disp[0].conn, width, height,
 			(struct shmif_resize_ext){.abuf_sz = 1, .abuf_cnt = 8, .vbuf_cnt = 1})){
 			arcan_warning("couldn't set shm dimensions (%d, %d)\n", width, height);
@@ -124,7 +125,27 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 /*
  * currently, we actually never de-init this
  */
+	unsigned long h = 5381;
+	const char* str = title;
+	for (; *str; str++)
+		h = (h << 5) + h + *str;
+
 	arcan_shmif_setprimary(SHMIF_INPUT, &disp[0].conn);
+	struct arcan_event ev = {
+		.category = EVENT_EXTERNAL,
+		.ext.kind = ARCAN_EVENT(REGISTER),
+		.ext.registr.kind = SEGID_LWA,
+		.ext.registr.guid = {h, 0}
+	};
+	snprintf(ev.ext.registr.title,
+		COUNT_OF(ev.ext.registr.title), "%s", title);
+	arcan_shmif_enqueue(&disp[0].conn, &ev);
+/*
+ * for actual authentication, when crypto is added in 0.6 with support
+ * for Ed/Curve25519/Sha3, the register process will use a challenge in
+ * the shmif that we'll sign with an appl- stored public key and a local
+ * install- ID.
+ */
 	return lwa_video_init(width, height, bpp, fs, frames, title);
 }
 
@@ -562,13 +583,21 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
  * We use subsegments forced from the parent- side as an analog for
  * hotplug displays, giving developers a testbed for a rather hard
  * feature and at the same time get to evaluate the API.
- */
+ * Other enhancements would be to let alloc_surface+flag for rendertargets
+ * act as newseg request and map the new rendertarget to that segment.
+ *
+ * Note: we don't handle SEGID_CLIPBOARD_PASTE yet, as these come as DISPLAY_
+ * ADDED we can hook them up to default handlers matching kind as the caller
+ * is allowed to change anyhow.
+*/
 		case TARGET_COMMAND_NEWSEGMENT:
 			map_window(&d->conn, ctx, ev.tgt.ioevs[0].iv, ev.tgt.message);
 		break;
 
 /*
- * Depends on active synchronization strategy of course.
+ * Depends on active synchronization strategy, could also be used with a
+ * 'every tick' timer to synch clockrate to server or have a single-frame
+ * stepping mode.
  */
 		case TARGET_COMMAND_STEPFRAME:
 		break;
@@ -649,7 +678,7 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
 /*
  * Could be used with the switch appl- feature as a fallback / adopt
  * to self. Good test-case for state management would be full appl
- * migrationo (say 0.6).
+ * migration (say 0.6).
  */
 		case TARGET_COMMAND_RESET:
 		break;
