@@ -82,7 +82,7 @@ static int add_target(struct arcan_dbh* dst, int argc, char** argv)
 	if (argc < 3){
 		printf("add_target(name (-tag) bfmt executable argv) unexpected "
 			"number of arguments, (%d) vs 3+.\n\t accepted bfmts:"
-			" BIN, LWA, RETRO, SHELL, EXTERN", argc);
+			" BIN, LWA, RETRO, SHELL, EXTERN\n", argc);
 
 		return EXIT_FAILURE;
 	}
@@ -702,6 +702,10 @@ int main(int argc, char* argv[])
 
 		dbfile = argv[2];
 		startind = 3;
+		if (argc < 4){
+			usage();
+			return EXIT_FAILURE;
+		}
 	}
 	else
 		dbfile = platform_dbstore_path();
