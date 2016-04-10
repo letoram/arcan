@@ -81,7 +81,8 @@ static int add_target(struct arcan_dbh* dst, int argc, char** argv)
 
 	if (argc < 3){
 		printf("add_target(name (-tag) bfmt executable argv) unexpected "
-			"number of arguments, (%d) vs 3+.\n", argc);
+			"number of arguments, (%d) vs 3+.\n\t accepted bfmts:"
+			" BIN, LWA, RETRO, SHELL, EXTERN", argc);
 
 		return EXIT_FAILURE;
 	}
@@ -99,6 +100,8 @@ static int add_target(struct arcan_dbh* dst, int argc, char** argv)
 		bfmt = BFRM_LWA;
 	else if (strcmp(argv[fi], "RETRO") == 0)
 		bfmt = BFRM_RETRO;
+	else if (strcmp(argv[fi], "SHELL") == 0)
+		bfmt = BFRM_SHELL;
 	else if (strcmp(argv[fi], "EXTERN") == 0)
 		bfmt = BFRM_EXTERN;
 	else {
