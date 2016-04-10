@@ -359,7 +359,7 @@ bool PLATFORM_SYMBOL(_video_init)(uint16_t w, uint16_t h,
 	rnode.canvasw = 640;
 	rnode.canvash = 480;
 
-	rnode.display = eglGetDisplay(rnode.dev);
+	rnode.display = eglGetDisplay((EGLNativeDisplayType) rnode.dev);
 	if (!eglInitialize(rnode.display, NULL, NULL)){
 		arcan_warning("egl-rnode() -- failed to initialize EGL display\n");
 		return false;
