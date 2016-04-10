@@ -1092,6 +1092,10 @@ static bool _wrap_alError(arcan_aobj* obj, char* prefix)
 	if (!obj)
 		obj = &empty;
 
+#ifndef _DEBUG
+	return errc == AL_NO_ERROR;
+#endif
+
 	if (errc != AL_NO_ERROR) {
 		arcan_warning("(openAL): ");
 
