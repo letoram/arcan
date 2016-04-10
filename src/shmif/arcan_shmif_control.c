@@ -86,14 +86,20 @@ static const char* tgt_cmd_xlt[] = {
 	"PAUSE",
 	"UNPAUSE",
 	"SEEKTIME",
+	"SEEKCONTENT",
 	"DISPLAYHINT",
 	"SETIODEV",
+	"STREAMSET",
 	"ATTENUATE",
 	"AUDDELAY",
 	"NEWSEGMENT",
 	"REQFAIL",
 	"BUFFER_FAIL",
+	"DEVICE_NODE",
 	"GRAPHMODE",
+	"MESSAGE",
+	"FONTHINT",
+	"GEOHINT",
 	"VECTOR_LINEWIDTH",
 	"VECTOR_POINTSIZE",
 	"NTSCFILTER",
@@ -116,8 +122,11 @@ static const char* ext_cmd_xlt[] = {
 	"CURSORINPUT",
 	"CURSORHINT",
 	"VIEWPORT",
+	"CONTENT",
 	"LABELHINT",
-	"REGISTER"
+	"REGISTER",
+	"ALERT",
+	"CLOCKREQ"
 };
 
 static const char* fsrv_cmd_xlt[] = {
@@ -1199,8 +1208,13 @@ unsigned arcan_shmif_signal(struct arcan_shmif_cont* ctx,
 	enum arcan_shmif_sigmask mask)
 {
 	struct shmif_hidden* priv = ctx->priv;
-	if (!ctx->addr->dms)
+
+/* to protect against some callers being stuck in a 'just signal
+ * as a means of draining buffers' */
+	if (!ctx->addr->dms){
+		ctx->abufused = 0;
 		return 0;
+	}
 
 	unsigned startt = arcan_timemillis();
 	if ( (mask & SHMIF_SIGVID) && priv->video_hook)
