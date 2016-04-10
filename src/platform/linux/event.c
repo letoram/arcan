@@ -208,7 +208,7 @@ static void got_device(struct arcan_evctx* ctx, int fd, const char*);
  * either id */
 static struct arcan_devnode* lookup_devnode(int devid)
 {
-	if (devid < 0)
+	if (devid <= 0)
 		devid = iodev.mouseid;
 
 	if (devid < iodev.sz_nodes)
