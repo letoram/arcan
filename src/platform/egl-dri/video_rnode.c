@@ -370,10 +370,16 @@ bool PLATFORM_SYMBOL(_video_init)(uint16_t w, uint16_t h,
 		return false;
 	}
 
-	static const EGLint context_attribs[] = {
-		EGL_CONTEXT_CLIENT_VERSION, 2,
-		EGL_NONE
+	EGLint context_attribs[] = {
+	EGL_CONTEXT_CLIENT_VERSION, 2,
+	EGL_NONE, EGL_NONE, EGL_NONE
 	};
+
+	if (getenv("AGP_GL_MAJOR")){
+		context_attribs[0] = strtoul(getenv("AGP_GL_MAJOR"), NULL, 10);
+		context_attribs[2] = EGL_CONTEXT_MINOR_VERSION_KHR;
+		context_attribs[3] = strtoul(getenv("AGP_GL_MINOR"), NULL, 10);
+	}
 
 	static const EGLint attribs[] = {
 		EGL_SURFACE_TYPE, EGL_WINDOW_BIT,

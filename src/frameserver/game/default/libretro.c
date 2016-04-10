@@ -167,6 +167,12 @@ static struct {
 	char* syspath;
 	bool res_empty;
 
+/*
+ * performance trim-values for video/audio buffer synchronization
+ */
+	uint16_t def_abuf_sz;
+	uint8_t abuf_cnt, vbuf_cnt;
+
 #ifdef FRAMESERVER_LIBRETRO_3D
 	struct retro_hw_render_callback hwctx;
 	struct agp_rendertarget* rtgt;
@@ -187,9 +193,12 @@ static struct {
 	bool (*deserialize)(const void*, size_t);
 	void (*set_ioport)(unsigned, unsigned);
 } retroctx = {
+	.abuf_cnt = 8,
+	.def_abuf_sz = 1,
+	.vbuf_cnt = 1,
 	.prewake = 10,
 	.preaudiogen = 0,
-	.skipmode = TARGET_SKIP_NONE
+	.skipmode = TARGET_SKIP_AUTO
 #ifdef FRAMESERVER_LIBRETRO_3D
 	,.last_handle = -1
 #endif
@@ -266,7 +275,9 @@ static void resize_shmpage(int neww, int newh, bool first)
  * setting a tiny valid buffer size will get the system preferred */
 	if (!arcan_shmif_resize_ext(&retroctx.shmcont, neww, newh,
 		(struct shmif_resize_ext){
-			.abuf_sz = 1, .abuf_cnt = 8, .vbuf_cnt=2})){
+			.abuf_sz = retroctx.def_abuf_sz,
+			.abuf_cnt = retroctx.abuf_cnt,
+			.vbuf_cnt = retroctx.vbuf_cnt})){
 		LOG("resizing shared memory page failed\n");
 		exit(1);
 	}
@@ -276,7 +287,8 @@ static void resize_shmpage(int neww, int newh, bool first)
 		retroctx.shmcont.hints = SHMIF_RHINT_ORIGO_LL;
 		agp_activate_rendertarget(NULL);
 		agp_resize_rendertarget(retroctx.rtgt, neww, newh);
-		retroctx.hwctx.context_reset();
+		if (!getenv("GAME_NORESET"))
+			retroctx.hwctx.context_reset();
 		shmif_pixel px = RGBA(0x44, 0x44, 0x44, 0xff);
 
 		for (int i = 0; i < 2; i++){
@@ -902,6 +914,14 @@ static bool libretro_setenv(unsigned cmd, void* data){
 		*((struct retro_log_callback*) data) = log_cb;
 	break;
 
+	case RETRO_ENVIRONMENT_GET_USERNAME:
+		*((const char**) data) = strdup("defusr");
+	break;
+
+	case RETRO_ENVIRONMENT_GET_LANGUAGE:
+		*((unsigned*) data) = RETRO_LANGUAGE_ENGLISH;
+	break;
+
 #ifdef FRAMESERVER_LIBRETRO_3D
 	case RETRO_ENVIRONMENT_SET_HW_RENDER | RETRO_ENVIRONMENT_EXPERIMENTAL:
 	case RETRO_ENVIRONMENT_SET_HW_RENDER:
@@ -1468,7 +1488,6 @@ static inline bool retroctx_sync()
 		if (retroctx.sync_data)
 			retroctx.sync_data->mark_drop(retroctx.sync_data, timestamp);
 		retroctx.frameskips++;
-		LOG("Skip!\n");
 		return false;
 	}
 
@@ -1555,6 +1574,20 @@ static void setup_3dcore(struct retro_hw_render_callback* ctx)
 	if (!platform_video_init(640, 480, 32, false, true, "libretro")){
 		LOG("Couldn't setup OpenGL context\n");
 		exit(1);
+	}
+
+/*
+ * cheat with some envvars as the agp_ interface because it was not designed
+ * to handle these sort of 'someone else decides which version to use'
+ */
+	if (ctx->context_type == RETRO_HW_CONTEXT_OPENGL_CORE){
+		char tmpbuf[8];
+		snprintf(tmpbuf, 8, "%d", ctx->version_major);
+		setenv("AGP_GL_MAJOR", tmpbuf, 0);
+		snprintf(tmpbuf, 8, "%d", ctx->version_minor);
+		setenv("AGP_GL_MINOR", tmpbuf, 0);
+		LOG("Switching to GL CORE context (%d, %d)\n",
+			ctx->version_major, ctx->version_minor);
 	}
 
 	agp_init();
@@ -1736,6 +1769,14 @@ static void dump_help()
 		" resource\t filename  \t resource file to load with core\n"
 		"---------\t-----------\t-----------------\n"
 	);
+	fprintf(stdout, "ENVIRONMENT VARIABLES:\n"
+		"   key        \t   value   \t   description:\n"
+		"--------------\t-----------\t-----------------\n"
+		" GAME_ABUFC   \t 1..16 (8) \t number of audio buffers\n"
+		" GAME_ABUFSZ  \t bytes (1) \t size of each audio buffer, 1 = probe\n"
+		" GAME_VBUFC   \t 1..4 (1)  \t number of video buffers\n"
+		" GAME_NORESET \t           \t (3d) set to disable context reset calls\n"
+	);
 }
 
 /* map up a libretro compatible library resident at fullpath:game,
@@ -1765,6 +1806,19 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 	if (getenv("ARCAN_VIDEO_NO_FDPASS")){
 		retroctx.hpassing_disabled = true;
 	}
+
+	if ((val = getenv("GAME_ABUFC"))){
+		uint8_t bufc = strtoul(val, NULL, 10);
+		retroctx.abuf_cnt = bufc > 0 && bufc < 16 ? bufc : 8;
+	}
+
+	if ((val = getenv("GAME_VBUFC"))){
+		uint8_t bufc = strtoul(val, NULL, 10);
+		retroctx.abuf_cnt = bufc > 0 && bufc <= 4 ? bufc : 1;
+	}
+
+	if ((val = getenv("GAME_ABUFSZ")))
+		retroctx.def_abuf_sz = strtoul(val, NULL, 10);
 
 /* system directory doesn't really match any of arcan namespaces,
  * provide some kind of global-  user overridable way */
