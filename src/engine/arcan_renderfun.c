@@ -698,7 +698,6 @@ static bool render_alloc(struct rcell* cnode,
 /* easy to circumvent here by just splitting into larger nodes, need
  * to do some accumulation for this to be less pointless */
 	if (w==0 || w > CONST_MAX_SURFACEW || h == 0 || h > CONST_MAX_SURFACEH){
-		arcan_warning("arcan_video_renderstring(%d,%d), bad dimensions.\n",w,h);
 		return false;
 	}
 
