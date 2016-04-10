@@ -89,6 +89,10 @@ static unsigned video_setup(void** ctx, char* chroma, unsigned* width,
 	return rv;
 }
 
+/*
+ * the alignment between aframe and vframe here is embarassingly
+ * inexact here,
+ */
 static void generate_frame()
 {
 	const int smpl_wndw = AUD_VIS_HRES * 2;
@@ -183,7 +187,12 @@ static void audio_play(void *data,
 
 	if (!decctx.got_video && decctx.shmcont.addr->w != AUD_VIS_HRES)
 	{
-		arcan_shmif_resize(&decctx.shmcont, AUD_VIS_HRES, 2);
+		arcan_shmif_resize_ext(&decctx.shmcont, AUD_VIS_HRES, 2,
+			(struct shmif_resize_ext){
+				.abuf_sz = AUD_VIS_HRES*2, .abuf_cnt = 4, .vbuf_cnt = 1
+			}
+		);
+
 		decctx.fft_audio = true;
 		arcan_shmif_enqueue(&decctx.shmcont, &(struct arcan_event){
 			.category = EVENT_EXTERNAL,
@@ -205,9 +214,12 @@ static void audio_play(void *data,
 			inptr += ntc;
 			nb -= ntc;
 			decctx.shmcont.abufused += ntc;
-			if (decctx.fft_audio)
+			if (decctx.fft_audio){
 				generate_frame();
-			arcan_shmif_signalA();
+				arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGAUD);
+			}
+			else
+				arcan_shmif_signalA();
 		}
 		else{
 			memcpy(daddr, inptr, nb);
