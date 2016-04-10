@@ -286,8 +286,14 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 				break;
 
 				case EVENT_EXTERNAL_REGISTER:
-					if (tgt->segid == SEGID_UNKNOWN)
+					if (tgt->segid == SEGID_UNKNOWN){
 						tgt->segid = inev.ext.registr.kind;
+/* 0.6/CRYPTO - need actual signature authentication here */
+						tgt->guid[0] = inev.ext.registr.guid[0];
+						tgt->guid[1] = inev.ext.registr.guid[1];
+					}
+					snprintf(tgt->title,
+						COUNT_OF(tgt->title), "%s", inev.ext.registr.title);
 				break;
 /* note: one could manually enable EVENT_INPUT and use separate processes
  * as input sources (with all the risks that comes with it security wise)
