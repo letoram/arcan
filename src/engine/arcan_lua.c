@@ -3611,7 +3611,8 @@ static void display_reset(lua_State* ctx, arcan_event* ev)
 		lua_getglobal(ctx, "VRES_AUTORES");
 		if (!lua_isfunction(ctx, -1)){
 			lua_pop(ctx, 1);
-			platform_video_specify_mode(0, ev->vid.width, ev->vid.height);
+			platform_video_specify_mode(0, (struct monitor_mode){
+			.width = ev->vid.width, .height = ev->vid.height});
 		}
 		else{
 			lua_pushnumber(ctx, ev->vid.width);
