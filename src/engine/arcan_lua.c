@@ -7463,6 +7463,7 @@ static int spawn_recfsrv(lua_State* ctx,
 	shmpage->h = dobj->vstore->h;
 
 	arcan_shmif_mapav(shmpage, mvctx->vbufs, 1, vbuf_sz, mvctx->abufs, 1, 32768);
+	shmpage->abufsize = 32768;
 
 /* pushing the file descriptor signals the frameserver to start receiving
  * (and use the proper dimensions), it is permitted to close and push another
