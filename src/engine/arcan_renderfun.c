@@ -314,8 +314,8 @@ bool arcan_video_defaultfont(const char* ident,
 		int dst_i = font_cache[0].chain.count;
 		size_t lim = COUNT_OF(font_cache[0].chain.data);
 		if (dst_i == lim){
-			close(font_cache[0].chain.fd[dst_i]);
-			TTF_CloseFont(font_cache[0].chain.data[dst_i]);
+			close(font_cache[0].chain.fd[dst_i-1]);
+			TTF_CloseFont(font_cache[0].chain.data[dst_i-1]);
 		}
 		else
 			dst_i++;

@@ -117,7 +117,7 @@ static bool default_acodec_setup(struct codec_ent* dst, unsigned channels,
 
 	LOG("(encode) audio encoder setup @ %d hz, requested quality: %d, "
 		"got %d kbit/s using %s\n", samplerate, abr,
-		ctx->bit_rate / 1000, codec->name);
+		(int)(ctx->bit_rate / 1000), codec->name);
 
 	if (avcodec_open2(dst->storage.audio.context,
 		dst->storage.audio.codec, NULL) != 0){
