@@ -6,19 +6,14 @@ user interfaces for specialized embedded applications all the way to full-blown
 standalone desktop environments.
 
 At its heart lies a robust and portable multimedia engine, with a well-tested
-and well-documented Lua scripting interface. The development
-emphasizes security, debuggability and performance -- guided by a principle of
-least surprise in terms of API design.
+and well-documented Lua scripting interface. The development emphasizes
+security, debuggability and performance -- guided by a principle of least
+surprise in terms of API design.
 
-For more details about capabilities, design, goals and current development,
-please refer to the [arcan-wiki](https://github.com/letoram/arcan/wiki) and
-to the [website](https://arcan-fe.com).
-
-The primary development platforms are FreeBSD and Linux (secondary being
-Mac OS X and Windows, although after 0.4 the Windows port is on hold).
-actively tested on several platforms and a wide variety of display- and
-input- subsystems (e.g. SDL, EGL/GLES, DRI/KMS). including Mac OS X on
-a wide variety of display- and input- subsystems (e.g. SDL, X11, EGL/GLES).
+For more details about capabilities, design, goals, current development,
+roadmap, changelogs and so on, please refer to the
+[arcan-wiki](https://github.com/letoram/arcan/wiki) and to the
+[website](https://arcan-fe.com).
 
 Getting Started
 =====
@@ -48,8 +43,7 @@ For starters, the easiest approach is to do the following:
      cd arcan
      mkdir build
      cd build
-     cmake -DCMAKE_BUILD_TYPE="Debug" -DVIDEO_PLATFORM=sdl
-      -DENABLE_LWA=OFF -DDISABLE_FRAMESERVERS=ON ../src
+     cmake -DCMAKE_BUILD_TYPE="Debug" -DVIDEO_PLATFORM=sdl ../src
      make -j 12
 
 The required dependencies for this build is cmake for compilation, and then
@@ -63,15 +57,8 @@ of these dependencies statically, e.g.
      mkdir build
      cd build
      cmake -DCMAKE_BUILD_TYPE="Debug" -DVIDEO_PLATFORM=sdl
-      -DSTATIC_SQLITE3=ON -DSTATIC_OPENAL=ON -DENABLE_LWA=OFF ../src
+      -DSTATIC_SQLITE3=ON -DSTATIC_OPENAL=ON -DSTATIC_FREETYPE=ON ../src
      make -j 12
-
-Two important things about this build, the first is that frameserver support is
-disabled entirely. Frameservers are separate programs that the engine can launch
-in order to access audio/video decoding, encoding and similar features.
-
-Most builds will want to leave them in, but each frameserver adds its own set
-of non-trivial dependencies and are therefore excluded in this example.
 
 LWA support is also disabled in the build configuration above. LWA stands for
 lightweight arcan and provides a specialized build (arcan\_lwa) that uses the
