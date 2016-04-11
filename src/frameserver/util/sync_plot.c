@@ -44,7 +44,7 @@ static bool f_update(struct synch_graphing* ctx, float period, const char* msg)
 	size_t yv = 0;
 	struct graph_int* priv = ctx->priv;
 	char* work = strdup(msg);
-	char* ctxp;
+	char* ctxp = NULL;
 	char* cp = strtok_r(work, "\n", &ctxp);
 
 	if (priv->cont->addr->vready)
