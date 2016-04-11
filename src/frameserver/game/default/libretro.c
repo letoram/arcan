@@ -193,9 +193,9 @@ static struct {
 	bool (*deserialize)(const void*, size_t);
 	void (*set_ioport)(unsigned, unsigned);
 } retroctx = {
-	.abuf_cnt = 8,
+	.abuf_cnt = 12,
 	.def_abuf_sz = 1,
-	.vbuf_cnt = 1,
+	.vbuf_cnt = 3,
 	.prewake = 10,
 	.preaudiogen = 1,
 	.skipmode = TARGET_SKIP_AUTO

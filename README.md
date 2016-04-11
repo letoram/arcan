@@ -135,9 +135,6 @@ The git-tree has the following structure:
 
     doc/*.1   -- manpages for the binaries
     doc/*.pdf -- presentation slides (updated yearly)
-    examples/ -- miniature projects that showcase some specific
-                 non-obvious features
-
     external/ -- external dependencies that may be built in-source
 
     src/
@@ -156,4 +153,5 @@ The git-tree has the following structure:
           security -- fuzzing tools, regression tests for possible CVEs etc.
           regression -- populated with test-cases that highlight reported bugs.
           exercises -- solutions to the exercises in the wiki.
+          examples -- quick examples / snippets
 
