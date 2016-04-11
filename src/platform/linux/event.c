@@ -171,13 +171,15 @@ struct arcan_devnode {
 			bool capslock;
 			bool scrolllock;
 		} keyboard;
-		struct {
-			int x;
-			int y;
-			int pressure;
-			int size;
-		} touch;
 	};
+	struct {
+		bool pending;
+		int x;
+		int y;
+		int pressure;
+		int size;
+		int ind;
+	} touch;
 };
 
 static const char* vt_acq = "x";
@@ -1183,31 +1185,67 @@ static void defhandler_kbd(struct arcan_evctx* out,
 	}
 }
 
-static void decode_mt(struct arcan_evctx* ctx,
-	struct arcan_devnode* node, int ind, int val)
+static void flush_pending(struct arcan_evctx* ctx,
+	struct arcan_devnode* node)
 {
-/* there are multiple protocols and mappings for this that we don't
- * account for here, move it to a toch event with the basic information
- * and let higher layers deal with it
 	arcan_event newev = {
 		.category = EVENT_IO,
 		.io = {
-			.label = "touch",
-			.devid = node->devnum,
-			.subid = 128,
-			.kind = EVENT_IO_TOUCH,
-			.devkind = EVENT_IDEVKIND_TOUCHDISP,
-			.datatype = EVENT_IDATATYPE_TOUCH
+		.label = "touch",
+		.devid = node->devnum,
+		.subid = node->touch.ind + 128,
+		.kind = EVENT_IO_TOUCH,
+		.devkind = EVENT_IDEVKIND_TOUCHDISP,
+		.datatype = EVENT_IDATATYPE_TOUCH
 		}
 	};
 
-	newev.io.input.touch.x = 0;
-	newev.io.input.touch.y = 0;
-	newev.io.input.touch.pressure = 0;
-	newev.io.input.touch.size = 0;
+	newev.io.input.touch.x = node->touch.x;
+	newev.io.input.touch.y = node->touch.y;
+	newev.io.input.touch.pressure = node->touch.pressure;
+	newev.io.input.touch.size = node->touch.size;
 
-//	arcan_event_enqueue(ctx, &newev);
-	*/
+	arcan_event_enqueue(ctx, &newev);
+	node->touch.pending = false;
+}
+
+static void decode_mt(struct arcan_evctx* ctx,
+	struct arcan_devnode* node, int code, int val)
+{
+/* there are multiple protocols and mappings for this that we don't
+ * account for here, move it to a toch event with the basic information
+ * and let higher layers deal with it */
+	int newind = -1;
+
+	switch(code){
+	case ABS_X:
+		node->touch.ind = 0;
+		node->touch.x = val;
+		node->touch.pending = true;
+	break;
+	case ABS_Y:
+		node->touch.ind = 0;
+		node->touch.y = val;
+		node->touch.pending = true;
+	break;
+	case ABS_MT_POSITION_X:
+		node->touch.x = val;
+		node->touch.pending = true;
+	break;
+	case ABS_MT_POSITION_Y:
+		node->touch.y = val;
+		node->touch.pending = true;
+	break;
+	case ABS_DISTANCE:
+		node->touch.pressure = val;
+		node->touch.pending = true;
+	break;
+	case ABS_MT_TRACKING_ID:
+		node->touch.ind = val;
+	break;
+	default:
+	break;
+	}
 }
 
 static void decode_hat(struct arcan_evctx* ctx,
@@ -1318,7 +1356,8 @@ static void defhandler_game(struct arcan_evctx* ctx,
 			if (inev[i].code >= ABS_HAT0X && inev[i].code <= ABS_HAT3Y)
 				decode_hat(ctx, node, inev[i].code - ABS_HAT0X, inev[i].value);
 			else
-			if (inev[i].code >= ABS_MT_SLOT && inev[i].code <= ABS_MT_TOOL_Y)
+			if ((inev[i].code >= ABS_X && inev[i].code <= ABS_Y) ||
+				(inev[i].code >= ABS_MT_SLOT && inev[i].code <= ABS_MT_TOOL_Y))
 				decode_mt(ctx, node, inev[i].code, inev[i].value);
 			else if (inev[i].code < node->game.axes &&
 				process_axis(ctx,
@@ -1333,6 +1372,12 @@ static void defhandler_game(struct arcan_evctx* ctx,
 
 				arcan_event_enqueue(ctx, &newev);
 			}
+		break;
+
+		case EV_SYN:
+		case EV_REP:
+			if (node->touch.pending)
+				flush_pending(ctx, node);
 		break;
 
 		default:
