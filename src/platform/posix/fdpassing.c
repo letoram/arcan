@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <stdint.h>
+#include <fcntl.h>
 #include "../platform.h"
 
 /* yet another sigh for Mac OSX */
@@ -48,6 +49,7 @@ bool arcan_pushhandle(file_handle source, int channel)
 		cmsg->cmsg_type  = SCM_RIGHTS;
 		int* dptr = (int*) CMSG_DATA(cmsg);
 		*dptr = source;
+		fcntl(source, F_SETFD, FD_CLOEXEC);
 	}
 
 #ifdef __APPLE__

@@ -1570,6 +1570,7 @@ struct arcan_shmif_cont arcan_shmif_open(
 		goto fail;
 	}
 
+	fcntl(dpipe, F_SETFD, FD_CLOEXEC);
 	ret = arcan_shmif_acquire(NULL, keyfile, type, flags);
 	if (outarg){
 		if (resource)
