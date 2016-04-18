@@ -1481,8 +1481,10 @@ bool platform_video_init(uint16_t w, uint16_t h,
 	sigaction(SIGSEGV, &err_sh, &old_sh);
 
 	int n = 0;
+	char* device;
 	while(1){
-		char* device = grab_card(n++);
+retry_card:
+		device = grab_card(n++);
 		if (!device)
 			goto cleanup;
 
@@ -1538,6 +1540,9 @@ bool platform_video_init(uint16_t w, uint16_t h,
 		arcan_warning( arg ?
 			"ARCAN_VIDEO_CONNECTOR specified but couldn't configure display.\n" :
 			"setup_kms(), card found but no working/connected display.\n");
+
+		if (!getenv("ARCAN_VIDEO_DEVICE"))
+			goto retry_card;
 
 		dump_connectors(stdout, &nodes[0], true);
 		goto cleanup;
