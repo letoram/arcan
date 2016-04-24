@@ -620,18 +620,24 @@ static void select_copy()
 		return;
 
 /* the selection routine here seems very wonky, assume the complexity comes
- * from char.conv and having to consider scrollback -- but the current behavior
- * looks like it cuts of on whitespace */
-	tsm_screen_selection_copy(term.screen, &sel);
-	if (!sel)
+ * from char.conv and having to consider scrollback */
+	ssize_t len = tsm_screen_selection_copy(term.screen, &sel);
+	if (!sel || len <= 1)
 		return;
 
+	len--;
 	arcan_event msgev = {
 		.category = EVENT_EXTERNAL,
 		.ext.kind = ARCAN_EVENT(MESSAGE)
 	};
 
-	uint32_t state = 0, codepoint = 0, len = strlen(sel);
+/* empty cells gets marked as null, but that would cut the copy short */
+	for (size_t i = 0; i < len; i++){
+		if (sel[i] == '\0')
+			sel[i] = ' ';
+	}
+
+	uint32_t state = 0, codepoint = 0;
 	char* outs = sel;
 	size_t maxlen = sizeof(msgev.ext.message.data) - 1;
 
