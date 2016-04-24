@@ -90,5 +90,6 @@ local env = {
 	},
 };
 env._G = env;
-setfenv(0, env);
-
+if (setfenv) then
+	setfenv(0, env);
+end
