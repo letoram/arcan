@@ -1924,15 +1924,21 @@ static void fb_cleanup(struct gbm_bo* bo, void* data)
 static void draw_display(struct dispout* d)
 {
 	arcan_vobject* vobj = arcan_video_getobject(d->vid);
+	agp_shader_id shid = agp_default_shader(BASIC_2D);
 
 	if (!vobj) {
 		agp_rendertarget_clear();
 		return;
 	}
-	else
+	else{
+		if (vobj->program > 0)
+			shid = vobj->program;
+
 		agp_activate_vstore(d->vid == ARCAN_VIDEO_WORLDID ?
 			arcan_vint_world() : vobj->vstore);
+	}
 
+	agp_shader_activate(shid);
 	agp_shader_envv(PROJECTION_MATR, d->projection, sizeof(float)*16);
 	agp_draw_vobj(0, 0, d->dispw, d->disph, d->txcos, NULL);
 /*
@@ -1959,9 +1965,7 @@ static void update_display(struct dispout* d)
  * when using the NULL rendertarget */
 	egl_dri.last_display = d;
 
-	agp_shader_activate(agp_default_shader(BASIC_2D));
 	agp_blendstate(BLEND_NONE);
-
 	agp_activate_rendertarget(NULL);
 /*
  * current_fbid* drawing hints, mapping etc. should be taken into account here,
