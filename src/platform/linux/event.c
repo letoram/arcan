@@ -1417,8 +1417,9 @@ static void defhandler_mouse(struct arcan_evctx* ctx,
 	};
 
 	short samplev;
-
 	for (size_t i = 0; i < evs / sizeof(struct input_event); i++){
+		int vofs = 0;
+
 		switch(inev[i].type){
 		case EV_KEY:
 			samplev = code_to_mouse(inev[i].code);
@@ -1435,6 +1436,18 @@ static void defhandler_mouse(struct arcan_evctx* ctx,
 		break;
 		case EV_REL:
 			switch (inev[i].code){
+			case REL_HWHEEL:
+				vofs += 2;
+			case REL_WHEEL:
+				newev.io.kind = EVENT_IO_BUTTON;
+				newev.io.datatype = EVENT_IDATATYPE_DIGITAL;
+				newev.io.input.digital.active = 1;
+				newev.io.subid = vofs + (inev[i].value > 0 ? 256 : 257);
+				arcan_event_enqueue(ctx, &newev);
+				newev.io.input.digital.active = 0;
+				arcan_event_enqueue(ctx, &newev);
+			break;
+
 			case REL_X:
 				if (process_axis(ctx, &node->cursor.flt[0], inev[i].value, &samplev)){
 					samplev = inev[i].value;
