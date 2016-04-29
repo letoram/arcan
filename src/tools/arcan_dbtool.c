@@ -24,7 +24,7 @@ char* platform_dbstore_path();
 
 static void usage()
 {
-	printf("usage: arcan_db [-b dbfile] command args\n\n"
+	printf("usage: arcan_db [-d dbfile] command args\n\n"
 	"Available data creation / manipulation commands: \n"
 	"  add_target      \tname (-tag) bfrm executable argv\n"
 	"  add_target_kv   \ttarget name key value\n"
@@ -686,9 +686,9 @@ int main(int argc, char* argv[])
 	char* dbfile = NULL;
 	int startind = 1;
 
-	if (strcmp(argv[1], "-b") == 0){
+	if (strcmp(argv[1], "-d") == 0){
 		if (argc < 3){
-			arcan_warning("got -b but missing database file argument\n");
+			arcan_warning("got -d but missing database file argument\n");
 			usage();
 			return EXIT_FAILURE;
 		}
