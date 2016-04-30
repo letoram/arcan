@@ -267,6 +267,7 @@ struct nonblock_io {
 	char buf[4096];
 	off_t ofs;
 	int fd;
+	char* pending;
 };
 
 static struct {
@@ -914,8 +915,7 @@ static int opennonblock(lua_State* ctx)
 
 	const char* metatable = NULL;
 	bool wrmode = luaL_optbnumber(ctx, 2, 0);
-
-	bool fifo = false;
+	bool fifo = false, ignerr = false;
 	char* path;
 	int fd;
 
@@ -942,15 +942,22 @@ static int opennonblock(lua_State* ctx)
 
 		int fl = O_NONBLOCK | O_WRONLY | O_CLOEXEC;
 		if (fifo){
+/* this is susceptible to the normal race conditions, but we also expect
+ * APPL_TEMP to be mapped to a 'safe' path */
 			if (-1 == mkfifo(path, S_IRWXU)){
-				arcan_warning("open_nonblock(): mkfifo (%s) failed\n", path);
-				LUA_ETRACE("open_nonblock", "mkfifo failed");
-				return 0;
+				struct stat fi;
+				if (errno != EEXIST || -1 == stat(path, &fi) || !S_ISFIFO(fi.st_mode)){
+					arcan_warning("open_nonblock(): mkfifo (%s) failed\n", path);
+					LUA_ETRACE("open_nonblock", "mkfifo failed");
+					return 0;
+				}
 			}
+			ignerr = true;
 		}
 		else
 			fl |= O_CREAT;
 
+/* failure to open fifo can be expected, then opening will be deferred */
 		fd = open(path, fl, S_IRWXU);
 	}
 	else{
@@ -975,11 +982,12 @@ retryopen:
 		}
 		else
 			fd = open(path, O_NONBLOCK | O_CLOEXEC | O_RDONLY);
+		arcan_mem_free(path);
+		path = NULL;
 	}
 
-	arcan_mem_free(path);
 
-	if (fd < 0){
+	if (fd < 0 && !ignerr){
 		LUA_ETRACE("open_nonblock", "couldn't open file");
 		return 0;
 	}
@@ -988,6 +996,7 @@ retryopen:
 			ARCAN_MEM_BINDING, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 
 	conn->fd = fd;
+	conn->pending = path;
 
 	uintptr_t* dp = lua_newuserdata(ctx, sizeof(uintptr_t));
 	*dp = (uintptr_t) conn;
@@ -1211,7 +1220,9 @@ static int nbio_closer(lua_State* ctx)
 		return 0;
 	}
 
-	close((*ib)->fd);
+	if (-1 != (*ib)->fd)
+		close((*ib)->fd);
+	free((*ib)->pending);
 	free(*ib);
 	*ib = NULL;
 
@@ -1239,18 +1250,25 @@ static int nbio_closew(lua_State* ctx)
 static int nbio_write(lua_State* ctx)
 {
 	LUA_TRACE("open_nonblock:write");
-	struct nonblock_io** iw = luaL_checkudata(ctx, 1, "nonblockIOw");
+	struct nonblock_io** ud = luaL_checkudata(ctx, 1, "nonblockIOw");
+	struct nonblock_io* iw = *ud;
 	const char* buf = luaL_checkstring(ctx, 2);
-
 	size_t len = strlen(buf);
 	off_t of = 0;
 
+/* special case for FIFOs that aren't hooked up on creation */
+	if (-1 == iw->fd && iw->pending)
+		iw->fd = open(iw->pending, O_NONBLOCK | O_WRONLY | O_CLOEXEC);
+
 	while (len - of){
-		size_t nw = write((*iw)->fd, buf + of, len - of);
+		size_t nw = write(iw->fd, buf + of, len - of);
 		if (-1 == nw){
 			if (errno == EAGAIN || errno == EINTR)
 				continue;
-			else
+			else{
+				close(iw->fd);
+				iw->fd = -1;
+			}
 				break;
 		}
 		else
@@ -10207,7 +10225,6 @@ table.insert(ctx.rtargets, rtgt);\n\
 	fflush(dst);
 }
 
-#include <poll.h>
 /* this assumes a trusted (src), as injected \0 could make the
  * strstr fail and buffer indefinately
  * (so if this assumption breaks in the future,
