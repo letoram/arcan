@@ -8,7 +8,7 @@
 -- yield nil or a string representing a line or null-terminated buffer
 -- contents.  If the open operation fails for any reason, blocktbl will be nil.
 -- Calls to write will yield the number of character successfully written
--- (should ideally be #res).
+-- (should ideally be #res but short-writes are possible).
 -- @note: If *res* begins with a '<' character, the input will be created as a
 -- named pipe (fifo) and the fifo will be restricted to the APPL_TEMP namespace.
 -- @note: blocktbl methods: (read-mode: read, close)
