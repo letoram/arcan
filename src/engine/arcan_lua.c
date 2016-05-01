@@ -5823,7 +5823,7 @@ static void panic(lua_State* ctx)
 {
 	luactx.debug = 2;
 
-	if (!luactx.cb_source_kind == CB_SOURCE_NONE){
+	if (luactx.cb_source_kind != CB_SOURCE_NONE){
 		char vidbuf[64] = {0};
 		snprintf(vidbuf, 63, "script error in callback for VID (%"PRIxVOBJ")",
 			luactx.lua_vidbase + luactx.cb_source_tag);
