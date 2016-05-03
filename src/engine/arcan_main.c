@@ -493,12 +493,16 @@ int MAIN_REDIR(int argc, char* argv[])
 /* don't terminate just because the pipe gets broken (i.e. dead monitor) */
 				close(pair[0]);
 				settings.mon_outf = fdopen(pair[1], "w");
-			 	signal(SIGPIPE, SIG_IGN);
 			}
 		}
 
 		fullscreen = false;
 	}
+
+/* two main sources for sigpipe, one being monitor and the other being
+ * lua- layer open_nonblock calls, neither has any use for it so mask */
+	sigaction(SIGPIPE, &(struct sigaction){
+		.sa_handler = SIG_IGN, .sa_flags = 0}, 0);
 
 /* fallback to whatever is the platform database- storepath */
 	if (dbfname || (dbfname = platform_dbstore_path()))

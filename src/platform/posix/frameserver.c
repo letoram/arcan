@@ -1208,7 +1208,8 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
  * SIGINT to children, killing them and changing the behavior in the core
  * process
  */
-		signal(SIGINT, SIG_IGN);
+		sigaction(SIGPIPE, &(struct sigaction){
+			.sa_handler = SIG_IGN}, NULL);s
 
 		if (setup->use_builtin){
 			char* argv[] = {
