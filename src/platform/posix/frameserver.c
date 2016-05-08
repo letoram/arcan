@@ -1209,7 +1209,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
  * process
  */
 		sigaction(SIGPIPE, &(struct sigaction){
-			.sa_handler = SIG_IGN}, NULL);s
+			.sa_handler = SIG_IGN}, NULL);
 
 		if (setup->use_builtin){
 			char* argv[] = {
