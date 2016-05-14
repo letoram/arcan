@@ -1,6 +1,7 @@
 -- set_context_attachment
 -- @short: change the active attachment point for the current context
--- @inargs: vid
+-- @inargs: *newty*
+-- outargs: *vid*
 -- @longdescr: By default, every newly created object is attached to the
 -- world rendertarget that is refered to using WORLDID and newly created
 -- rendertargets explicitly adopts source objects and attaches to itself.
@@ -9,7 +10,8 @@
 -- are to be assigned to a rendertarget dynamically. For such purposes,
 -- it is possible to change the default rendertarget for the current
 -- context using this function.
--- @note: vid should point to a rendertarget or WORLDID.
+-- @note: providing a bad, missing or non-rt designated vid will
+-- not change any default attachment state, only return the current
 -- @note: the default attachment is local to every context.
 -- @group: vidsys
 -- @cfunction: setdefattach

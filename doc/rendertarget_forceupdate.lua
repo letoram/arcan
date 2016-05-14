@@ -1,16 +1,19 @@
 -- rendertarget_forceupdate
 -- @short: Manually perform an out-of-loop update of a rendertarget
--- @inargs: rendertarget
+-- @inargs: rendertarget, *newrate*
 -- @outargs:
 -- @longdescr: By default, rendertargets update synchronously with the
 -- regular video refresh/redraw that is performed as part of the active
--- synchronization strategy. For rendertargets that has a customised
--- refresh-rate or that need to be managed outside this cycle due to
--- a temporary life-span or similar need, this function can be used to
--- force a separate renderpass of the specified rendertarget. This will
--- also include possible readbacks, in the case of ref:define_calctarget
--- and ref:define_recordtarget. Any pending counters/timers for frame/
--- or tick based automatic updates will be reset.
+-- synchronization strategy combined with the refreshrate hinted during
+-- creation. This function covers two use-cases. The first use case is
+-- to force an out-of-loop update of the specified target in 'manual'
+-- update mode (rate=0). The second use case is to change the rate-
+-- value set for the target after creation in order. This can be used as
+-- an optimization to temporarily disable rendertargets without going
+-- through the process of rebuilding and migrating between rendertargets.
+-- Any pending counters/timers for frame or tick/based automatic updates
+-- will be reset, and the update includes synchronizing with readback in
+-- the case of calctargets and recordtargets.
 -- @note: Trying to call this function on a VID that references an object
 -- that is not flagged as a rendertarget is a terminal state transition.
 -- @group: targetcontrol

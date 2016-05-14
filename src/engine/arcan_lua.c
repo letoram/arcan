@@ -6895,13 +6895,56 @@ static int rendertargetforce(lua_State* ctx)
 {
 	LUA_TRACE("rendertarget_forceupdate");
 
-	arcan_vobj_id vid = luaL_checkvid(ctx, 1, NULL);
-	if (ARCAN_OK != arcan_video_forceupdate(vid))
+	arcan_vobject* vobj;
+	arcan_vobj_id vid = luaL_checkvid(ctx, 1, &vobj);
+	struct rendertarget* rtgt = arcan_vint_findrt(vobj);
+	if (!rtgt)
 		arcan_fatal("rendertarget_forceupdate(), specified vid "
-			"was not connected to a rendertarget");
+			"does not reference a rendertarget");
+
+	if (lua_isnumber(ctx, 2)){
+		rtgt->refresh = luaL_checknumber(ctx, 2);
+		rtgt->refreshcnt = abs(rtgt->refresh);
+
+		if (lua_isnumber(ctx, 3)){
+			rtgt->readback = luaL_checknumber(ctx, 3);
+			rtgt->readcnt = abs(rtgt->readback);
+		}
+	}
+	else if (ARCAN_OK != arcan_video_forceupdate(vid))
+		arcan_fatal("rendertarget_forceupdate() failed on vid");
 
 	LUA_ETRACE("rendertarget_forceupdate", NULL);
 	return 0;
+}
+
+static int rendertarget_vids(lua_State* ctx)
+{
+	LUA_TRACE("rendertarget_vids");
+	arcan_vobject* vobj;
+	arcan_vobj_id vid = luaL_checkvid(ctx, 1, &vobj);
+	struct rendertarget* rtgt = arcan_vint_findrt(vobj);
+
+	if (!rtgt)
+		arcan_fatal("rendertarget_vids(), specified vid "
+			"does not reference a rendertarget");
+
+/* build a table here, we do not supply a callback function due to the
+ * invalidation- cascade tracking that would be needed to guarantee that
+ * rendertarget- modifications from callback would be safe */
+	lua_newtable(ctx);
+
+	int i = 1, top = lua_gettop(ctx);
+	arcan_vobject_litem* current = rtgt->first;
+	while(current){
+		lua_pushnumber(ctx, i++);
+		lua_pushvid(ctx, current->elem->cellid);
+		lua_rawset(ctx, top);
+		current = current->next;
+	}
+
+	return 1;
+	LUA_ETRACE("rendertarget_vids", NULL);
 }
 
 static int rendernoclear(lua_State* ctx)
@@ -6931,10 +6974,13 @@ static int renderdetach(lua_State* ctx)
 static int setdefattach(lua_State* ctx)
 {
 	LUA_TRACE("set_context_attachment");
-	arcan_vobj_id did = luaL_checkvid(ctx, 1, NULL);
-	arcan_video_defaultattachment(did);
+	arcan_vobj_id did = luavid_tovid(luaL_optnumber(ctx, 1, ARCAN_EID));
+	if (did != ARCAN_EID)
+		arcan_video_defaultattachment(did);
+
+	lua_pushvid(ctx, arcan_video_currentattachment());
 	LUA_ETRACE("set_context_attachment", NULL);
-	return 0;
+	return 1;
 }
 
 static int renderattach(lua_State* ctx)
@@ -9251,6 +9297,7 @@ static const luaL_Reg tgtfuns[] = {
 {"define_feedtarget",          feedtarget               },
 {"define_nulltarget",          nulltarget               },
 {"rendertarget_forceupdate",   rendertargetforce        },
+{"rendertarget_vids",          rendertarget_vids        },
 {"recordtarget_gain",          recordgain               },
 {"rendertarget_detach",        renderdetach             },
 {"rendertarget_attach",        renderattach             },

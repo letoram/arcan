@@ -538,6 +538,8 @@ signed arcan_video_pushcontext()
 	current_context->nalive = 0;
 
 	current_context->world = empty_vobj;
+	current_context->stdoutp.refreshcnt = 1;
+	current_context->stdoutp.refresh = 1;
 	current_context->stdoutp.color = &current_context->world;
 	current_context->vitem_limit = arcan_video_display.default_vitemlim;
 	current_context->vitems_pool = arcan_alloc_mem(
@@ -1392,6 +1394,8 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 
 	identity_matrix(current_context->stdoutp.base);
 	current_context->stdoutp.order3d = arcan_video_display.order3d;
+	current_context->stdoutp.refreshcnt = 1;
+	current_context->stdoutp.refresh = -1;
 /*
  * By default, expected video output display matches canvas 1:1,
  * canvas can be explicitly resized and these two matrices will still
@@ -1819,6 +1823,15 @@ arcan_errc arcan_video_defaultattachment(arcan_vobj_id src)
 
 	current_context->attachment = rtgt;
 	return ARCAN_OK;
+}
+
+arcan_vobj_id arcan_video_currentattachment()
+{
+	struct rendertarget* rtgt = current_context->attachment;
+	if (!rtgt || !rtgt->color)
+		return ARCAN_EID;
+
+	return rtgt->color->cellid;
 }
 
 arcan_errc arcan_video_alterreadback(arcan_vobj_id did, int readback)
@@ -3676,6 +3689,7 @@ static int tick_rendertarget(struct rendertarget* tgt)
 	if (tgt->refresh > 0 && process_counter(tgt,
 		&tgt->refreshcnt, tgt->refresh, 0.0)){
 		tgt->transfc += process_rendertarget(tgt, 0.0);
+		tgt->dirtyc = 0;
 	}
 
 	if (tgt->readback < 0)
@@ -4260,7 +4274,7 @@ static size_t process_rendertarget(struct rendertarget* tgt, float fract)
 	arcan_vobject_litem* current = tgt->first;
 
 	if (arcan_video_display.ignore_dirty == false &&
-			arcan_video_display.dirty == 0 && tgt->transfc == 0)
+			tgt->dirtyc == 0 && tgt->transfc == 0)
 		return 0;
 
 	agp_activate_rendertarget(tgt->art);
@@ -4508,6 +4522,21 @@ void arcan_vint_pollreadback(struct rendertarget* tgt)
 	FL_CLEAR(tgt, TGTFL_READING);
 }
 
+static size_t steptgt(float fract, struct rendertarget* tgt)
+{
+	size_t transfc = 0;
+	if (tgt->refresh < 0 && process_counter(tgt,
+		&tgt->refreshcnt, tgt->refresh, fract)){
+		process_rendertarget(tgt, fract);
+		transfc = tgt->transfc;
+		tgt->dirtyc = 0;
+/* may need to readback even if we havn't updated as it may
+ * be used as clock (though optimization possibility of using buffer) */
+		process_readback(tgt, fract);
+	}
+	return transfc;
+}
+
 unsigned arcan_vint_refresh(float fract, size_t* ndirty)
 {
 	long long int pre = arcan_timemillis();
@@ -4523,23 +4552,12 @@ unsigned arcan_vint_refresh(float fract, size_t* ndirty)
 /* rendertargets may be composed on world- output, begin there */
 	for (size_t ind = 0; ind < current_context->n_rtargets; ind++){
 		struct rendertarget* tgt = &current_context->rtargets[ind];
-
-		if (tgt->refresh < 0 && process_counter(tgt,
-			&tgt->refreshcnt, tgt->refresh, fract)){
-			process_rendertarget(tgt, fract);
-			transfc += tgt->transfc;
-		}
-
-/* may need to readback even if we havn't updated as it may
- * be used as clock (though optimization possibility of using buffer) */
-		process_readback(&current_context->rtargets[ind], fract);
+		tgt->dirtyc += arcan_video_display.dirty;
+		transfc += steptgt(fract, tgt);
 	}
 
-/* there's no refresh clock on stdout, always update */
-	process_rendertarget(&current_context->stdoutp, fract);
-	process_readback(&current_context->stdoutp, fract);
-	transfc += current_context->stdoutp.transfc;
-
+	current_context->stdoutp.dirtyc += arcan_video_display.dirty;
+	transfc += steptgt(fract, &current_context->stdoutp);
 	*ndirty = arcan_video_display.dirty;
 	arcan_video_display.dirty = transfc;
 

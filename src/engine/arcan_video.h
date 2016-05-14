@@ -631,6 +631,11 @@ arcan_errc arcan_video_rendertarget_setnoclear(arcan_vobj_id did, bool value);
  */
 arcan_errc arcan_video_defaultattachment(arcan_vobj_id id);
 
+/*
+ * Retrieve the vobj_id of the current default attachment.
+ */
+arcan_vobj_id arcan_video_currentattachment();
+
 /* Object state property manipulation */
 enum arcan_transform_mask arcan_video_getmask(arcan_vobj_id src);
 arcan_errc arcan_video_transformmask(arcan_vobj_id src,
