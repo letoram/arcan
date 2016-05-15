@@ -15,6 +15,8 @@
 #include <stdio.h>
 #include <sys/types.h>
 #include <poll.h>
+#include <setjmp.h>
+extern jmp_buf arcanmain_recover_state;
 
 #include "../video_platform.h"
 
@@ -597,7 +599,8 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
 /*
  * Depends on active synchronization strategy, could also be used with a
  * 'every tick' timer to synch clockrate to server or have a single-frame
- * stepping mode.
+ * stepping mode. This ought to be used with the ability to set RT clocking
+ * mode
  */
 		case TARGET_COMMAND_STEPFRAME:
 		break;
@@ -676,11 +679,11 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
 		break;
 
 /*
- * Could be used with the switch appl- feature as a fallback / adopt
- * to self. Good test-case for state management would be full appl
- * migration (say 0.6).
+ * This is harsher than perhaps necessary as this does not care
+ * for adoption of old connections, they are just killed off.
  */
 		case TARGET_COMMAND_RESET:
+			longjmp(arcanmain_recover_state, 2);
 		break;
 
 /*
