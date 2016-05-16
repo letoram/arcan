@@ -3484,6 +3484,7 @@ fail:
 		ev.io.input.analog.nvalues = naxiss;
 	}
 	else if (strcmp(kindlbl, "touch") == 0){
+		ev.io.kind = EVENT_IO_TOUCH;
 		ev.io.devkind = EVENT_IDEVKIND_TOUCHDISP;
 		ev.io.datatype = EVENT_IDATATYPE_TOUCH;
 		ev.io.devid = intblint(ctx, tblind, "devid");
@@ -3495,6 +3496,7 @@ fail:
 	}
 	else if (strcmp(kindlbl, "digital") == 0){
 		if (intblbool(ctx, tblind, "translated")){
+			ev.io.kind = EVENT_IO_BUTTON;
 			ev.io.devkind = EVENT_IDEVKIND_KEYBOARD;
 			ev.io.datatype = EVENT_IDATATYPE_TRANSLATED;
 			ev.io.input.translated.active = intblbool(ctx, tblind, "active");
@@ -3510,6 +3512,7 @@ fail:
 			ev.io.devkind = tblsrc && strcmp(tblsrc, "mouse") == 0 ?
 				EVENT_IDEVKIND_MOUSE : EVENT_IDEVKIND_GAMEDEV;
 			ev.io.datatype = EVENT_IDATATYPE_DIGITAL;
+			ev.io.kind = EVENT_IO_BUTTON;
 			ev.io.input.digital.active= intblbool(ctx, tblind, "active");
 			ev.io.devid = intblint(ctx, tblind, "devid");
 			ev.io.subid = intblint(ctx, tblind, "subid");
