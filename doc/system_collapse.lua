@@ -1,11 +1,12 @@
 -- system_collapse
 -- @short: Collapse important subsystems, leaving only frameservers alive.
--- @inargs: *applname*
+-- @inargs: *applname*, *noadopt*
 -- @longdescr: This function purges audio/video/events from everything not
 -- strictly related to frameservers. Then, if *applname* was specified, it loads
 -- and runs *applname* and invokes an applname_adopt function for each
--- frameserver related VID. This enables recovery from bad system states,
--- switching to an app that can permit the user to clean-up and save important
+-- frameserver related VID, unless *noadopt* has been set to true.
+-- This enables recovery from bad system states switching to an app that can
+-- permit the user to clean-up and save important
 -- information that would otherwise be lost or simply to switch active scripts
 -- while keeping core services intact. If *applname* is left undefined,
 -- the current namespaces and active scripts will be re-used but the scripting

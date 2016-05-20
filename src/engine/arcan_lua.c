@@ -505,7 +505,7 @@ static void wraperr(struct arcan_luactx* ctx, int errc, const char* src);
  * iterate all vobject and drop any known tag-cb associations that
  * are used to map events to lua functions
  */
-static void lua_cbdrop()
+void arcan_lua_cbdrop()
 {
 	for (size_t i = 0; i <= vcontext_ind; i++){
 		struct arcan_video_context* ctx = &vcontext_stack[i];
@@ -551,8 +551,7 @@ void lua_rectrigger(const char* msg, ...)
 	arcan_warning("\nHanding over to recovery script "
 		"(or shutdown if none present).\n");
 
-	lua_cbdrop();
-	longjmp(arcanmain_recover_state, 2);
+	longjmp(arcanmain_recover_state, 3);
 }
 
 #ifdef _DEBUG
@@ -2843,9 +2842,7 @@ static int syscollapse(lua_State* ctx)
 		LUA_ETRACE("system_collapse", NULL);
 	}
 
-	lua_cbdrop();
-	arcan_lua_shutdown(ctx);
-	longjmp(arcanmain_recover_state, 1);
+	longjmp(arcanmain_recover_state, luaL_optbnumber(ctx, 2, 0) ? 2 : 1);
 
 	LUA_ETRACE("system_collapse", NULL);
 	return 0;
@@ -3639,7 +3636,6 @@ static void display_reset(lua_State* ctx, arcan_event* ev)
 			lua_pushnumber(ctx, ev->vid.flags);
 			wraperr(ctx, lua_pcall(ctx, 4, 0, 0), "event loop: lwa-displayhint");
 		}
-		return;
 	}
 	else if (ev->vid.source == -2){
 		lua_getglobal(ctx, "VRES_AUTOFONT");
@@ -3651,7 +3647,7 @@ static void display_reset(lua_State* ctx, arcan_event* ev)
 			wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: lwa-autofont");
 		}
 	};
-#endif
+#else
 
 	if (!grabapplfunction(ctx, "display_state", sizeof("display_state")-1))
 		return;
@@ -3660,6 +3656,7 @@ static void display_reset(lua_State* ctx, arcan_event* ev)
 	lua_pushstring(ctx, "reset");
 	wraperr(ctx, lua_pcall(ctx, 1, 0, 0), "event loop: display state");
 	LUA_ETRACE("_display_state (reset)", NULL);
+#endif
 }
 
 static void display_added(lua_State* ctx, platform_display_id id)
@@ -5855,8 +5852,7 @@ static void panic(lua_State* ctx)
 		"recovery handover might be impossible.\n");
 
 	luactx.last_crash_source = "VM panic";
-	lua_cbdrop();
-	longjmp(arcanmain_recover_state, 2);
+	longjmp(arcanmain_recover_state, 3);
 }
 
 /*
@@ -5907,8 +5903,7 @@ static void wraperr(lua_State* ctx, int errc, const char* src)
 		"(or shutdown if none present).\n");
 
 	luactx.last_crash_source = src;
-	lua_cbdrop();
-	longjmp(arcanmain_recover_state, 2);
+	longjmp(arcanmain_recover_state, 3);
 }
 
 struct globs{

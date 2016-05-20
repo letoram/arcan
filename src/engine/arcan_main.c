@@ -620,20 +620,32 @@ int MAIN_REDIR(int argc, char* argv[])
 	int jumpcode = setjmp(arcanmain_recover_state);
 	int saved, truncated;
 
-	if (jumpcode == 1){
+	if (jumpcode == 1 || jumpcode == 2){
 		arcan_db_close(&dbhandle);
 
 		dbhandle = arcan_db_open(dbfname, arcan_appl_id());
 		if (!dbhandle)
 			goto error;
 
+		arcan_lua_cbdrop();
+		arcan_lua_shutdown(settings.lua);
+
 		arcan_event_maskall(evctx);
-		arcan_video_recoverexternal(true, &saved, &truncated, NULL, NULL);
+
+/* switch and adopt or just switch */
+		if (jumpcode == 2){
+			int lastctxc = arcan_video_popcontext();
+			int lastctxa;
+			while( lastctxc != (lastctxa = arcan_video_popcontext()) )
+				lastctxc = lastctxa;
+		}
+		else{
+			arcan_video_recoverexternal(true, &saved, &truncated, NULL, NULL);
+			adopt = true;
+		}
 		arcan_event_clearmask(evctx);
 		platform_video_recovery();
 /* unmap all displays */
-
-		adopt = true;
 	}
 	else if (jumpcode == 2){
 		if (in_recover){
@@ -652,6 +664,7 @@ int MAIN_REDIR(int argc, char* argv[])
 		platform_video_recovery();
 
 		const char* errmsg;
+		arcan_lua_cbdrop();
 		arcan_lua_shutdown(settings.lua);
 		if (!arcan_verifyload_appl(fallback, &errmsg)){
 			arcan_warning("Lua VM error fallback, failure loading (%s), reason: %s\n",
