@@ -633,7 +633,7 @@ int MAIN_REDIR(int argc, char* argv[])
 		arcan_event_maskall(evctx);
 
 /* switch and adopt or just switch */
-		if (jumpcode == 2){
+		if (jumpcode == 3){
 			int lastctxc = arcan_video_popcontext();
 			int lastctxa;
 			while( lastctxc != (lastctxa = arcan_video_popcontext()) )
@@ -647,7 +647,7 @@ int MAIN_REDIR(int argc, char* argv[])
 		platform_video_recovery();
 /* unmap all displays */
 	}
-	else if (jumpcode == 2){
+	else if (jumpcode == 3){
 		if (in_recover){
 			arcan_warning("Double-Failure (main appl + adopt appl), giving up.\n");
 			goto error;
