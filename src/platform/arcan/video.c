@@ -124,7 +124,7 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 		}
 	}
 
-/*
+	/*
  * currently, we actually never de-init this
  */
 	unsigned long h = 5381;
@@ -307,10 +307,19 @@ static bool check_store(platform_display_id id)
 	return true;
 }
 
+/*
+ * Two things that are currently wrong with this approach to mapping:
+ * 1. hint is ignored entirely, mapping mode is just based on WORLDID
+ * 2. the texture coordinates of the source are not being ignored.
+ *
+ * For these to be solved, we need to extend the full path of shmif rhints
+ * to cover all possible mapping modes, and a on-gpu rtarget- style blit
+ * with extra buffer or partial synch and VIEWPORT events.
+ */
 bool platform_video_map_display(arcan_vobj_id vid, platform_display_id id,
 	enum blitting_hint hint)
 {
-	if (id > MAX_DISPLAYS)
+	if (id > MAX_DISPLAYS || id < 0)
 		return false;
 
 	if (disp[id].vstore){
@@ -320,9 +329,11 @@ bool platform_video_map_display(arcan_vobj_id vid, platform_display_id id,
 
 	disp[id].mapped = false;
 
-	if (id == ARCAN_VIDEO_WORLDID)
-		disp[id].vstore = disp[0].vstore;
-	else if (id == ARCAN_EID)
+	if (vid == ARCAN_VIDEO_WORLDID){
+		disp[id].conn.hints = SHMIF_RHINT_ORIGO_LL;
+		disp[id].vstore = arcan_vint_world();
+	}
+	else if (vid == ARCAN_EID)
 		return true;
 	else{
 		arcan_vobject* vobj = arcan_video_getobject(vid);
@@ -338,8 +349,8 @@ bool platform_video_map_display(arcan_vobj_id vid, platform_display_id id,
 			return false;
 		}
 
+		disp[id].conn.hints = 0;
 		disp[id].vstore = vobj->vstore;
-		vobj->vstore->refcount++;
 	}
 
 /*
@@ -396,6 +407,7 @@ static void synch_hpassing(struct storage_info_t* vs,
 
 static void synch_copy(struct storage_info_t* vs)
 {
+	check_store(0);
 	struct storage_info_t store = *vs;
 	store.vinf.text.raw = disp[0].conn.vidp;
 
@@ -406,25 +418,10 @@ static void synch_copy(struct storage_info_t* vs)
 		if (!disp[i].mapped || disp[i].dpms != ADPMS_ON)
 			continue;
 
-/* re-use world readback, make a temporary copy to re-use check_store */
-		if (!disp[i].vstore){
-			disp[i].vstore = &store;
-			check_store(i);
-
-			memcpy(disp[i].conn.vidp, disp[0].conn.vidp,
-				disp[i].vstore->vinf.text.s_raw);
-
-			disp[i].vstore = NULL;
-
-			if (!check_store(i))
-				continue;
-		}
-		else {
-			check_store(i);
-			store = *(disp[i].vstore);
-			store.vinf.text.raw = disp[i].conn.vidp;
-			agp_readback_synchronous(&store);
-		}
+		check_store(i);
+		store = *(disp[i].vstore);
+		store.vinf.text.raw = disp[i].conn.vidp;
+		agp_readback_synchronous(&store);
 
 		arcan_shmif_signal(&disp[i].conn, SHMIF_SIGVID);
 	}
@@ -449,7 +446,8 @@ void platform_video_synch(uint64_t tick_count, float fract,
 
 	if (disp[0].dirty || (platform_nupd && disp[0].visible)){
 		disp[0].dirty = false;
-		struct storage_info_t* vs = arcan_vint_world();
+		struct storage_info_t* vs = disp[0].vstore ?
+			disp[0].vstore : arcan_vint_world();
 		enum status_handle status;
 
 		int handle = nopass ? -1 :
@@ -558,6 +556,7 @@ static void map_window(struct arcan_shmif_cont* seg, arcan_evctx* ctx,
 	}
 
 	base->conn = arcan_shmif_acquire(seg, key, SEGID_LWA, SHMIF_DISABLE_GUARD);
+
 	arcan_event ev = {
 		.category = EVENT_VIDEO,
 		.vid.kind = EVENT_VIDEO_DISPLAY_ADDED,
@@ -767,6 +766,18 @@ void platform_event_deinit(arcan_evctx* ctx)
 
 void platform_video_recovery()
 {
+	arcan_event ev = {
+		.category = EVENT_VIDEO,
+		.vid.kind = EVENT_VIDEO_DISPLAY_ADDED
+	};
+	arcan_evctx* evctx = arcan_event_defaultctx();
+	arcan_event_enqueue(evctx, &ev);
+
+	for (size_t i = 0; i < MAX_DISPLAYS; i++){
+		platform_video_map_display(ARCAN_VIDEO_WORLDID, i, HINT_NONE);
+		ev.vid.source = i;
+		arcan_event_enqueue(evctx, &ev);
+	}
 }
 
 void platform_event_reset(arcan_evctx* ctx)

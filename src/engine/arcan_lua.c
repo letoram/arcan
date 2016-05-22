@@ -3806,6 +3806,10 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		int top = funtable(ctx, ev->io.kind);
 
 		lua_pushstring(ctx, "kind");
+		if (ev->io.label[0] && ev->io.kind != EVENT_IO_STATUS &&
+			ev->io.label[COUNT_OF(ev->io.label)-1] == '\0'){
+			tblstr(ctx, "label", ev->io.label, top);
+		}
 
 		switch (ev->io.kind) {
 		case EVENT_IO_TOUCH:
