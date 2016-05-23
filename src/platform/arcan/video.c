@@ -319,7 +319,7 @@ static bool check_store(platform_display_id id)
 bool platform_video_map_display(arcan_vobj_id vid, platform_display_id id,
 	enum blitting_hint hint)
 {
-	if (id > MAX_DISPLAYS || id < 0)
+	if (id > MAX_DISPLAYS)
 		return false;
 
 	if (disp[id].vstore){
@@ -563,7 +563,7 @@ static void map_window(struct arcan_shmif_cont* seg, arcan_evctx* ctx,
 		.vid.source = i
 	};
 
-	arcan_shmif_enqueue(&base->conn, &ev);
+	arcan_shmif_enqueue(ctx, &ev);
 }
 
 /*
