@@ -650,16 +650,15 @@ static void select_copy()
 			lastok = i;
 
 			if (i != lastok){
-				i = lastok;
 				if (0 == i)
 					return;
 			}
 		}
 
-		memcpy(msgev.ext.message.data, outs, i);
-		msgev.ext.message.data[i] = '\0';
-		len -= i;
-		outs += i;
+		memcpy(msgev.ext.message.data, outs, lastok);
+		msgev.ext.message.data[lastok] = '\0';
+		len -= lastok;
+		outs += lastok;
 		if (len)
 			msgev.ext.message.multipart = 1;
 		else
