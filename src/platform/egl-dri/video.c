@@ -1325,7 +1325,7 @@ void platform_video_query_displays()
 			arcan_event ev = {
 				.category = EVENT_VIDEO,
 				.vid.kind = EVENT_VIDEO_DISPLAY_ADDED,
-				.vid.source = d->id
+				.vid.displayid = d->id
 			};
 			arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 			continue; /* don't want to free con */
@@ -1338,7 +1338,7 @@ void platform_video_query_displays()
 				arcan_event ev = {
 					.category = EVENT_VIDEO,
 					.vid.kind = EVENT_VIDEO_DISPLAY_REMOVED,
-					.vid.source = id
+					.vid.displayid = id
 				};
 				arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 			}
@@ -1600,7 +1600,7 @@ void platform_video_recovery()
 		if (displays[i].state == DISP_MAPPED){
 			platform_video_map_display(
 				ARCAN_VIDEO_WORLDID, displays[i].id, HINT_NONE);
-			ev.vid.source = displays[i].id;
+			ev.vid.displayid = displays[i].id;
 			arcan_event_enqueue(evctx, &ev);
 		}
 	}

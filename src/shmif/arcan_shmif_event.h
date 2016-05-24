@@ -835,6 +835,7 @@ typedef struct {
 			int16_t height;
 			int flags;
 			float vppcm;
+			int displayid;
 		};
 		int slot;
 	};
