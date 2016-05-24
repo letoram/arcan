@@ -3629,7 +3629,7 @@ static void display_reset(lua_State* ctx, arcan_event* ev)
 		lua_getglobal(ctx, "VRES_AUTORES");
 		if (!lua_isfunction(ctx, -1)){
 			lua_pop(ctx, 1);
-			platform_video_specify_mode(0, (struct monitor_mode){
+			platform_video_specify_mode(ev->vid.displayid, (struct monitor_mode){
 			.width = ev->vid.width, .height = ev->vid.height});
 		}
 		else{
@@ -3637,7 +3637,8 @@ static void display_reset(lua_State* ctx, arcan_event* ev)
 			lua_pushnumber(ctx, ev->vid.height);
 			lua_pushnumber(ctx, ev->vid.vppcm);
 			lua_pushnumber(ctx, ev->vid.flags);
-			wraperr(ctx, lua_pcall(ctx, 4, 0, 0), "event loop: lwa-displayhint");
+			lua_pushnumber(ctx, ev->vid.displayid);
+			wraperr(ctx, lua_pcall(ctx, 5, 0, 0), "event loop: lwa-displayhint");
 		}
 	}
 	else if (ev->vid.source == -2){
@@ -3647,7 +3648,8 @@ static void display_reset(lua_State* ctx, arcan_event* ev)
 		else{
 			lua_pushnumber(ctx, ev->vid.vppcm);
 			lua_pushnumber(ctx, ev->vid.width);
-			wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: lwa-autofont");
+			lua_pushnumber(ctx, ev->vid.displayid);
+			wraperr(ctx, lua_pcall(ctx, 3, 0, 0), "event loop: lwa-autofont");
 		}
 	};
 #else
@@ -3657,6 +3659,7 @@ static void display_reset(lua_State* ctx, arcan_event* ev)
 
 	LUA_TRACE("_display_state (reset)");
 	lua_pushstring(ctx, "reset");
+
 	wraperr(ctx, lua_pcall(ctx, 1, 0, 0), "event loop: display state");
 	LUA_ETRACE("_display_state (reset)", NULL);
 #endif
@@ -4265,7 +4268,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 	else if (ev->category == EVENT_VIDEO){
 
 		if (ev->vid.kind == EVENT_VIDEO_DISPLAY_ADDED){
-			display_added(ctx, ev->vid.source);
+			display_added(ctx, ev->vid.displayid);
 			return;
 		}
 		else if (ev->vid.kind == EVENT_VIDEO_DISPLAY_RESET){
@@ -4273,7 +4276,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			return;
 		}
 		else if (ev->vid.kind == EVENT_VIDEO_DISPLAY_REMOVED){
-			display_removed(ctx, ev->vid.source);
+			display_removed(ctx, ev->vid.displayid);
 			return;
 		}
 

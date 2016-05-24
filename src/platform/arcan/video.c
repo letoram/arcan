@@ -68,6 +68,7 @@ struct display {
 	enum dpms_state dpms;
 	struct storage_info_t* vstore;
 	float ppcm;
+	int id;
 } disp[MAX_DISPLAYS];
 
 static struct arg_arr* shmarg;
@@ -85,6 +86,9 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 		width = 640;
 		height = 480;
 	}
+
+	for (size_t i = 0; i < MAX_DISPLAYS; i++)
+		disp[i].id = i;
 
 	if (first_init){
 /* we send our own register events, so set empty type */
@@ -294,11 +298,11 @@ bool platform_video_set_mode(platform_display_id id, platform_mode_id newmode)
 
 static bool check_store(platform_display_id id)
 {
-	if (disp[id].vstore->w != disp[id].conn.addr->w ||
-		disp[id].vstore->h != disp[id].conn.addr->h){
+	struct storage_info_t* vs = (disp[id].vstore ?
+		disp[id].vstore : arcan_vint_world());
 
-		if (!arcan_shmif_resize(&disp[id].conn,
-				disp[id].vstore->w, disp[id].vstore->h)){
+	if (vs->w != disp[id].conn.w || vs->h != disp[id].conn.h){
+		if (!arcan_shmif_resize(&disp[id].conn, vs->w, vs->h)){
 			arcan_warning("platform_video_map_display(), attempt to switch "
 				"display output mode to match backing store failed.\n");
 			return false;
@@ -560,10 +564,13 @@ static void map_window(struct arcan_shmif_cont* seg, arcan_evctx* ctx,
 	arcan_event ev = {
 		.category = EVENT_VIDEO,
 		.vid.kind = EVENT_VIDEO_DISPLAY_ADDED,
-		.vid.source = i
+		.vid.source = -1,
+		.vid.displayid = i,
+		.vid.width = seg->w,
+		.vid.height = seg->h,
 	};
 
-	arcan_shmif_enqueue(ctx, &ev);
+	arcan_event_enqueue(ctx, &ev);
 }
 
 /*
@@ -615,6 +622,7 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
 					.category = EVENT_VIDEO,
 					.vid.kind = EVENT_VIDEO_DISPLAY_RESET,
 					.vid.source = -1,
+					.vid.displayid = d->id,
 					.vid.width = ev.tgt.ioevs[0].iv,
 					.vid.height = ev.tgt.ioevs[1].iv,
 					.vid.flags = ev.tgt.ioevs[2].iv,
@@ -624,8 +632,8 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
 
 			if (!(ev.tgt.ioevs[2].iv & 128)){
 				bool vss = !((ev.tgt.ioevs[2].iv & 2) > 0);
-				if (vss && !disp[0].visible){
-					disp[0].dirty = true;
+				if (vss && !d->visible){
+					d->dirty = true;
 				}
 				d->visible = vss;
 				d->focused = !((ev.tgt.ioevs[2].iv & 4) > 0);
@@ -667,6 +675,7 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
 				.category = EVENT_VIDEO,
 				.vid.kind = EVENT_VIDEO_DISPLAY_RESET,
 				.vid.source = -2,
+				.vid.displayid = d->id,
 				.vid.vppcm = ev.tgt.ioevs[2].fv,
 				.vid.width = ev.tgt.ioevs[3].iv
 			});
@@ -700,7 +709,7 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
 				arcan_event ev = {
 					.category = EVENT_VIDEO,
 					.vid.kind = EVENT_VIDEO_DISPLAY_REMOVED,
-					.vid.source = d - &disp[MAX_DISPLAYS-1]
+					.vid.displayid = d->id
 				};
 				arcan_event_enqueue(ctx, &ev);
 				free(d->conn.user);
@@ -775,7 +784,8 @@ void platform_video_recovery()
 
 	for (size_t i = 0; i < MAX_DISPLAYS; i++){
 		platform_video_map_display(ARCAN_VIDEO_WORLDID, i, HINT_NONE);
-		ev.vid.source = i;
+		ev.vid.source = -1;
+		ev.vid.displayid = i;
 		arcan_event_enqueue(evctx, &ev);
 	}
 }
