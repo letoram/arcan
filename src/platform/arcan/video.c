@@ -117,6 +117,7 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
  * current world unless overridden */
 		disp[0].mapped = true;
 		disp[0].ppcm = ARCAN_SHMPAGE_DEFAULT_PPCM;
+		disp[0].dpms = ADPMS_ON;
 		disp[0].visible = true;
 		disp[0].focused = true;
 		first_init = false;
@@ -366,6 +367,7 @@ bool platform_video_map_display(arcan_vobj_id vid, platform_display_id id,
 
 	disp[id].vstore->refcount++;
 	disp[id].mapped = true;
+	disp[id].dirty = true;
 
 	return true;
 }
@@ -396,39 +398,27 @@ static void stub()
 {
 }
 
-static void synch_hpassing(struct storage_info_t* vs,
-	int handle, enum status_handle status)
-{
 /*
- * This does not yet handle multiple windows handle passing,
- * only for primary segment (which isn't correct of course but is
- * currently pretty much a fringle case for multidisplay testing)
+ * open question in regards to handle passing is the granulairty for
+ * using handle- passing as a mechanism when we are looking at subs.
+ * allocated to a display when that feature is working.
  */
-	arcan_shmif_signalhandle(&disp[0].conn, SHMIF_SIGVID,
+static void synch_hpassing(struct display* disp,
+	struct storage_info_t* vs, int handle, enum status_handle status)
+{
+	arcan_shmif_signalhandle(&disp->conn, SHMIF_SIGVID,
 		handle, vs->vinf.text.stride, vs->vinf.text.format);
 	close(handle);
 }
 
-static void synch_copy(struct storage_info_t* vs)
+static void synch_copy(struct display* disp, struct storage_info_t* vs)
 {
-	check_store(0);
+	check_store(disp->id);
 	struct storage_info_t store = *vs;
-	store.vinf.text.raw = disp[0].conn.vidp;
+	store.vinf.text.raw = disp->conn.vidp;
 
 	agp_readback_synchronous(&store);
-	arcan_shmif_signal(&disp[0].conn, SHMIF_SIGVID);
-
-	for (size_t i = 1; i < MAX_DISPLAYS; i++){
-		if (!disp[i].mapped || disp[i].dpms != ADPMS_ON)
-			continue;
-
-		check_store(i);
-		store = *(disp[i].vstore);
-		store.vinf.text.raw = disp[i].conn.vidp;
-		agp_readback_synchronous(&store);
-
-		arcan_shmif_signal(&disp[i].conn, SHMIF_SIGVID);
-	}
+	arcan_shmif_signal(&disp->conn, SHMIF_SIGVID);
 }
 
 void platform_video_synch(uint64_t tick_count, float fract,
@@ -440,35 +430,27 @@ void platform_video_synch(uint64_t tick_count, float fract,
 	if (0 == last_frametime)
 		last_frametime = arcan_timemillis();
 
-/*
- * Other options, schedule all readbacks asynchronously first pass
- * and then do a synch- pass after.
- *
- * Evaluate when we can compare performance against sharing
- * gpu- specific handles
- */
+	bool sleep = true;
+	for (size_t i = 0; i < MAX_DISPLAYS; i++){
+		if (!(disp[i].dirty || (platform_nupd && disp[i].visible)))
+			continue;
 
-	if (disp[0].dirty || (platform_nupd && disp[0].visible)){
-		disp[0].dirty = false;
-		struct storage_info_t* vs = disp[0].vstore ?
-			disp[0].vstore : arcan_vint_world();
+		if (!disp[i].mapped || disp[i].dpms != ADPMS_ON)
+			continue;
+
 		enum status_handle status;
+		disp[i].dirty = false;
+		struct storage_info_t* vs = disp[i].vstore ?
+			disp[i].vstore : arcan_vint_world();
 
 		int handle = nopass ? -1 :
 			lwa_video_output_handle(vs, &status);
 
 		if (handle == -1 || status < 0)
-			synch_copy(vs);
+			synch_copy(&disp[i], vs);
 		else
-			synch_hpassing(vs, handle, status);
-	}
-/* or just check on a ~60Hz basis letting external events prewake */
-	else {
-		struct pollfd pfd = {
-			.fd = disp[0].conn.epipe,
-			.events = POLLIN | POLLERR | POLLHUP | POLLNVAL
-		};
-		poll(&pfd, 1, 16);
+			synch_hpassing(&disp[i], vs, handle, status);
+		sleep = false;
 	}
 
 /*
@@ -476,6 +458,13 @@ void platform_video_synch(uint64_t tick_count, float fract,
  * set virtual display timings. ioev[0] => mode, [1] => prewake, [2] =>
  * preaudio, 3/4 for desired jitter (testing / simulation)
  */
+	if (sleep){
+		struct pollfd pfd = {
+			.fd = disp[0].conn.epipe,
+			.events = POLLIN | POLLERR | POLLHUP | POLLNVAL
+		};
+		poll(&pfd, 1, 16);
+	}
 
 	if (post)
 		post();
@@ -560,6 +549,10 @@ static void map_window(struct arcan_shmif_cont* seg, arcan_evctx* ctx,
 	}
 
 	base->conn = arcan_shmif_acquire(seg, key, SEGID_LWA, SHMIF_DISABLE_GUARD);
+	base->ppcm = ARCAN_SHMPAGE_DEFAULT_PPCM;
+	base->dpms = ADPMS_ON;
+	base->visible = true;
+	base->dirty = true;
 
 	arcan_event ev = {
 		.category = EVENT_VIDEO,
