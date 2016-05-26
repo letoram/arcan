@@ -4465,7 +4465,10 @@ arcan_errc arcan_video_forceupdate(arcan_vobj_id vid)
 
 	FLAG_DIRTY(vobj);
 
+	bool id = arcan_video_display.ignore_dirty;
+	arcan_video_display.ignore_dirty = true;
 	process_rendertarget(tgt, arcan_video_display.c_lerp);
+	arcan_video_display.ignore_dirty = id;
 	agp_activate_rendertarget(NULL);
 
 	if (tgt->readback != 0){
