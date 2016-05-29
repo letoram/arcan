@@ -554,7 +554,7 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 
 	img_cons cons = {.w = hintw , .h = hinth, .bpp = ARCAN_SHMPAGE_VCHANNELS};
 	vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = newseg};
-	arcan_frameserver_meta vinfo = {
+	struct arcan_frameserver_meta vinfo = {
 		.width = hintw,
 		.height = hinth,
 		.bpp = sizeof(av_pixel)
@@ -1103,6 +1103,7 @@ bool arcan_frameserver_resize(struct arcan_frameserver* s)
 	atomic_store(&shmpage->h, h);
 	s->desc.width = w;
 	s->desc.height = h;
+	s->desc.hints = atomic_load(&shmpage->hints);
 	s->vbuf_cnt = vbufc;
 	s->abuf_cnt = abufc;
 

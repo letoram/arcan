@@ -277,7 +277,7 @@ static void push_buffer(arcan_frameserver* src,
 			.fsrv.video = src->vid,
 			.fsrv.audio = src->aid,
 			.fsrv.otag = src->tag,
-			.fsrv.glsource = src->shm.ptr->hints & SHMIF_RHINT_ORIGO_LL
+			.fsrv.glsource = src->desc.hints & SHMIF_RHINT_ORIGO_LL
 		};
 
 		arcan_event_enqueue(arcan_event_defaultctx(), &rezev);

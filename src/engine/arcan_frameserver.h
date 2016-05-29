@@ -36,11 +36,12 @@ enum arcan_frameserver_kinds {
 	ARCAN_HIJACKLIB
 };
 
-typedef struct {
+struct arcan_frameserver_meta {
 /* video */
 	uint16_t width;
 	uint16_t height;
 	char bpp;
+	int hints;
 
 /* primarily for feedcopy */
 	uint32_t synch_ts;
@@ -55,8 +56,7 @@ typedef struct {
 	unsigned long long framecount;
 	unsigned long long dropcount;
 	unsigned long long lastpts;
-
-} arcan_frameserver_meta;
+};
 
 struct frameserver_audsrc {
 	float inbuf[4096];
@@ -68,7 +68,7 @@ struct frameserver_audsrc {
 
 struct arcan_frameserver {
 /* video / audio properties used */
-	arcan_frameserver_meta desc;
+	struct arcan_frameserver_meta desc;
 	struct arcan_evctx inqueue, outqueue;
 	int queue_mask;
 
