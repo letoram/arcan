@@ -1300,8 +1300,13 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 
 /* don't negotiate unless the goals have changed */
 	if (width == arg->addr->w && height == arg->addr->h &&
-		vidc == arg->priv->vbuf_cnt && audc == arg->priv->abuf_cnt)
+		vidc == arg->priv->vbuf_cnt && audc == arg->priv->abuf_cnt &&
+		arg->addr->hints == arg->hints)
 		return true;
+
+/* synchronize hints as _ORIGO_LL and similar changes only synch
+ * on resize */
+	atomic_store(&arg->addr->hints, arg->hints);
 
 /* need strict ordering across procss boundaries here, first desired
  * dimensions, buffering etc. THEN resize request flag */
