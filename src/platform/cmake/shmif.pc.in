@@ -1,12 +1,12 @@
 prefix=@CMAKE_INSTALL_PREFIX@
 exec_prefix=${prefix}
-libdir=${prefix}/lib/arcan
+libdir=${prefix}/lib
 includedir=${prefix}/include/arcan/shmif
 
 Name: Arcan-shmif
 Description: Arcan Shared Memory Interface Library
 URL: http://arcan-fe.com
-Libs: -L${libdir} -larcan-shmif
+Libs: -L${libdir} -larcan_shmif
 Cflags: -I${includedir}
 Version:@VERSION@
 Requires:
