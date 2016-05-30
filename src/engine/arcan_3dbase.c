@@ -42,7 +42,8 @@ struct geometry {
 
 	struct mesh_storage_t store;
 
-	volatile bool complete;
+	bool complete;
+	bool threaded;
 
 	pthread_t worker;
 	struct geometry* next;
@@ -142,7 +143,10 @@ static void freemodel(arcan_3dmodel* src)
 
 /* always make sure the model is loaded before freeing */
 	while(geom){
-		pthread_join(geom->worker, NULL);
+		if (geom->threaded){
+			pthread_join(geom->worker, NULL);
+			geom->threaded = false;
+		}
 		geom = geom->next;
 	}
 
@@ -856,6 +860,7 @@ arcan_errc arcan_3d_addmesh(arcan_vobj_id dst,
 	model->work_count++;
 	pthread_mutex_unlock(&model->lock);
 
+	arg->geom->threaded = true;
 	pthread_create(&arg->geom->worker, NULL, threadloader, (void*) arg);
 
 	return ARCAN_OK;
