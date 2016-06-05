@@ -43,7 +43,7 @@ if (VIDEO_PLATFORM STREQUAL "x11" OR VIDEO_PLATFORM STREQUAL "x11-headless")
 # legacy platform for weaker platforms that don't have/support KMS
 elseif(VIDEO_PLATFORM STREQUAL "egl-gles")
 	if (NOT INPUT_PLATFORM)
-		set(INPUT_PLATFORM "linux")
+		set(INPUT_PLATFORM "evdev")
 	endif()
 
 	find_package(EGL REQUIRED QUIET)
@@ -70,7 +70,7 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-gles")
 #
 elseif(VIDEO_PLATFORM STREQUAL "egl-nvidia")
 	if (NOT INPUT_PLATFORM)
-		set(INPUT_PLATFORM "linux")
+		set(INPUT_PLATFORM "evdev")
 	endif()
 
 	find_package(EGL REQUIRED QUIET)
@@ -96,7 +96,7 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-nvidia")
 #
 elseif(VIDEO_PLATFORM STREQUAL "egl-dri")
 	if (NOT INPUT_PLATFORM)
-		set(INPUT_PLATFORM "linux")
+		set(INPUT_PLATFORM "evdev")
 	endif()
 
 	find_package(EGL REQUIRED QUIET)
