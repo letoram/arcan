@@ -1543,6 +1543,12 @@ bool arg_lookup(struct arg_arr* arr, const char* val,
 	return false;
 }
 
+bool arcan_shmif_migrate(struct arcan_shmif_cont conn,
+	const char* connpath, const char* connkey, enum ARCAN_FLAGS flags)
+{
+	return false;
+}
+
 struct arcan_shmif_cont arcan_shmif_open(
 	enum ARCAN_SEGID type, enum ARCAN_FLAGS flags, struct arg_arr** outarg)
 {

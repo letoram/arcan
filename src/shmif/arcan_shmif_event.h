@@ -242,7 +242,9 @@ enum ARCAN_TARGET_COMMAND {
  * ioevs[0].iv == 0, normal / "soft" (impl. defined) reset
  * ioevs[0].iv == 1, hard reset (as close to initial state as possible)
  * ioevs[0].iv == 2, recovery- reset, parent has lost tracking states
- */
+ * ioevs[0].iv == 3, recovery- reconnect, connection was broken but has been
+ * re-established. This will still cause reset subsegments to terminate.
+*/
 	TARGET_COMMAND_RESET,
 
 /*
@@ -323,7 +325,7 @@ enum ARCAN_TARGET_COMMAND {
  * ioev[0].iv - Streamid, should match previously provided STREAMINFO data
  *              (or be ignored!)
  */
-	EVENT_EXTERNAL_STREAMSET,
+	TARGET_COMMAND_STREAMSET,
 
 /*
  * Used when audio playback is controlled by the frameserver, e.g. clients that
@@ -646,6 +648,13 @@ enum ARCAN_EVENT_IO {
 	EVENT_IO_ULIM = INT_MAX
 };
 
+/* subid on a IDATATYPE = DIGITAL on IDEVKIND = MOUSE */
+enum ARCAN_MBTN_IMAP {
+	MBTN_LEFT_IND = 0,
+	MBTN_RIGHT_IND,
+	MBTN_MIDDLE_IND
+};
+
 enum ARCAN_EVENT_IDEVKIND {
 	EVENT_IDEVKIND_KEYBOARD = 0,
 	EVENT_IDEVKIND_MOUSE,
@@ -759,6 +768,7 @@ typedef union arcan_ioevent_data {
 	} analog;
 
 	struct {
+		uint8_t active;
 		int16_t x, y;
 		float pressure, size;
 	} touch;

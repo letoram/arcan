@@ -120,7 +120,6 @@ static const int ARCAN_SHMIF_SAMPLE_SIZE = sizeof(shmif_asample);
 #define SHMIF_AINT16(X) ( (int16_t) ((X))
 #endif
 
-
 /*
  * These limits affect ABI as we need to track how much is used in each
  * audiobuffer slot
@@ -267,6 +266,8 @@ typedef enum arcan_shmif_sigmask(
 	*shmif_trigger_hook)(struct arcan_shmif_cont*);
 
 enum ARCAN_FLAGS {
+	SHMIF_NOFLAGS = 0,
+
 /* by default, the connection IPC resources are unlinked, this
  * may not always be desired (debugging, monitoring, ...) */
 	SHMIF_DONT_UNLINK = 1,
@@ -287,7 +288,20 @@ enum ARCAN_FLAGS {
 
 /* don't implement pause/resume management in backend, forward the
  * events to frontend */
-	SHMIF_MANUAL_PAUSE = 32
+	SHMIF_MANUAL_PAUSE = 32,
+
+/* On crash or disconnect, wait and try to reconnect. If successful,
+ * a _RESET event will be enqueued locally with ioev[0].iv == 3.
+ * Subsegments will still be lost, and if the connection has been set-up
+ * inherited+anonymous, this will still exit like normally. Set this
+ * fal to disable RECONNECT attempts entirely. */
+	SHMIF_NOAUTO_RECONNECT = 64,
+
+/* for use as flag input to shmif_migrate calls, the default behavior
+ * is to only permit migration of the primary segment as there are
+ * further client considerations when secondary segments run in different
+ * threads along with the problem if subsegment requests are rejected */
+	SHMIF_MIGRATE_SUBSEGMENTS = 128
 };
 
 /*
@@ -298,6 +312,8 @@ enum ARCAN_FLAGS {
  * to prevent propagation.
  *
  * If no arguments could be unpacked, *arg_arr will be set to NULL.
+ * If type is set to 0, no REGISTER event will be sent and you will
+ * need to send one manually.
  */
 struct arg_arr;
 struct arcan_shmif_cont arcan_shmif_open(
@@ -316,8 +332,21 @@ char* arcan_shmif_connect(const char* connpath,
 	const char* connkey, file_handle* conn_ch);
 
 /*
+ * [STUB, NO-USE]
+ * Attempt to migrate all local state to another shmif- connection.
+ * This attempts to first initialize a new connection then, if successful,
+ * copy buffer states into the new connection and terminate the old one.
+ *
+ * [conn] must be a valid connection and refer to the primary segment
+ * of a shmif connection (no subsegment).
+ */
+bool arcan_shmif_migrate(struct arcan_shmif_cont conn,
+	const char* connpath, const char* connkey, enum ARCAN_FLAGS flags);
+
+/*
  * Using a identification string (implementation defined connection
- * mechanism)
+ * mechanism) If type is set to 0, no REGISTER event will be sent and
+ * you will need to send one manually.
  */
 struct arcan_shmif_cont arcan_shmif_acquire(
 	struct arcan_shmif_cont* parent, /* should only be NULL internally */
