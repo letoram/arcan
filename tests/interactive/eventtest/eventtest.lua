@@ -6,6 +6,7 @@ digitaltbl = {};
 translatetbl = {};
 statustbl = {};
 lookuptbl = {};
+touchtbl = {};
 analogdata = {};
 
 function drawline(text, size)
@@ -61,8 +62,9 @@ end
 
 function touch_str(iotbl)
 	table.insert(touchtbl, string.format(
-		"dev(%d:%d) @ %d, %d, press: %f, size: %f",
-		iotbl.devid, iotbl.x, iotbl.y, iotbl.subid, iotbl.pressure, iotbl.size)
+		"dev(%d:%d) @ %d, %d, press: %.2f, size: %.2f, active: %s",
+		iotbl.devid, iotbl.x, iotbl.y, iotbl.subid, iotbl.pressure, iotbl.size,
+		iotbl.active and "yes" or "no")
 	);
 	if (#touchtbl > 10) then
 		table.remove(touchtbl, 1);
@@ -188,8 +190,8 @@ function eventtest_clock_pulse(stamp, delta)
 end
 
 function eventtest_input( iotbl )
-	tick_counter = 500;
 	if (iotbl.digital) then
+		tick_counter = 500;
 		if (iotbl.translated) then
 			translate_str(iotbl);
 			lookup(iotbl);
