@@ -4164,11 +4164,9 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				tblstr(ctx, "title", mcbuf, top);
 
 				size_t dsz;
-				uint8_t* b64 = arcan_base64_encode(
+				char* b64 = (char*) arcan_base64_encode(
 					(uint8_t*)&ev->ext.registr.guid[0], 16, &dsz, 0);
-				lua_pushstring(ctx, "guid");
-				lua_pushlstring(ctx, (char*) b64, dsz);
-				lua_rawset(ctx, top);
+				tblstr(ctx, "guid", b64, top);
 				arcan_mem_free(b64);
 			}
 			break;
@@ -9147,7 +9145,7 @@ static int base64_encode(lua_State* ctx)
 	const uint8_t* instr = (const uint8_t*) luaL_checklstring(ctx, 1, &dsz);
 	char* outstr = (char*) arcan_base64_encode(instr, dsz, &dsz2, 0);
 
-	lua_pushlstring(ctx, outstr, dsz2);
+	lua_pushstring(ctx, outstr);
 	arcan_mem_free(outstr);
 
 	LUA_ETRACE("util:base64_encode", NULL);
