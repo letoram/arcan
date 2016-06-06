@@ -5,7 +5,7 @@
 --
 --
 
-function thierarch()
+function thierarch(arguments)
 	system_load("scripts/benchmark.lua")();
 
 	xpos = 0;

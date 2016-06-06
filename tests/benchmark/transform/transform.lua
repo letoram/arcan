@@ -3,7 +3,7 @@
 -- primarily GPU- related memory writes
 --
 
-function transform()
+function transform(arguments)
 	system_load("scripts/benchmark.lua")();
 
 	benchmark_setup( arguments[1] );

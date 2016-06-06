@@ -4,7 +4,7 @@
 -- for the same screen-sized random texture (blended with 0.1 opa)
 --
 
-function textblend()
+function textblend(arguments)
 	system_load("scripts/benchmark.lua")();
 
 	benchmark_setup( arguments[1] );

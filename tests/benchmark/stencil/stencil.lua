@@ -2,7 +2,7 @@
 -- Hierarchical stencil (depth)
 --
 
-function stencil()
+function stencil(arguments)
 	system_load("scripts/benchmark.lua")();
 	benchmark_setup( arguments[1] );
 

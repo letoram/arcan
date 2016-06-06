@@ -1,7 +1,7 @@
 --
 -- Horizontal stencil (individual pairs)
 --
-function stencilflat()
+function stencilflat(arguments)
 	system_load("scripts/benchmark.lua")();
 	benchmark_setup( arguments[1] );
 	benchmark = benchmark_create(40, 5, 10, fill_step);
