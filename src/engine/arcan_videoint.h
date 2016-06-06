@@ -354,8 +354,6 @@ void arcan_resolve_vidprop(arcan_vobject* vobj,
 arcan_vobject* arcan_video_getobject(arcan_vobj_id id);
 arcan_vobject* arcan_video_newvobject(arcan_vobj_id* id);
 
-void arcan_vint_bindmulti(arcan_vobject* elem, size_t ind);
-
 /*
  * agp_drop_vstore does not explicitly manage reference counting etc. that is
  * up to the video layer. All cases that access s-> directly should be
