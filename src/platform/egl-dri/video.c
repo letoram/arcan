@@ -90,6 +90,7 @@
 #include <errno.h>
 #include <signal.h>
 #include <glob.h>
+#include <ctype.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -302,11 +303,17 @@ static void update_display(struct dispout*);
 /* naive approach, unless env is set, just scan /dev/dri/card* and
  * grab the first one present that also results in a working gbm
  * device, only used during first init */
-static char* grab_card(int n)
+static void grab_card(int n, char** card, int* fd)
 {
+	*card = NULL;
+	*fd = -1;
 	const char* override = getenv("ARCAN_VIDEO_DEVICE");
 	if (override){
-		return n == 0 ? strdup(override) : NULL;
+		if (isdigit(override[0]))
+			*fd = strtoul(override, NULL, 10);
+		else
+			*card = strdup(override);
+		return;
 	}
 
 #ifndef VDEV_GLOB
@@ -322,10 +329,8 @@ static char* grab_card(int n)
 		}
 		char* rstr = *beg ? strdup(*beg) : NULL;
 		globfree(&res);
-		return rstr;
+		*card = rstr;
 	}
-
-	return NULL;
 }
 
 static char* last_err = "unknown";
@@ -860,22 +865,29 @@ static void dump_connectors(FILE* dst, struct dev_node* node, bool shorth)
 	drmModeFreeResources(res);
 }
 
-static int setup_node(struct dev_node* node, const char* path)
+static int setup_node(struct dev_node* node, const char* path, int fd)
 {
 	SET_SEGV_MSG("libdrm(), open device failed (check permissions) "
 		" or use ARCAN_VIDEO_DEVICE environment.\n");
-	if (!path)
-		return -1;
 
 	memset(node, '\0', sizeof(struct dev_node));
-	node->fd = open(path, O_RDWR);
+	if (!path && fd == -1)
+		return -1;
+	else if (!path)
+		node->fd = fd;
+	else
+		node->fd = open(path, O_RDWR);
 
 	if (-1 == node->fd){
-		arcan_warning("egl-dri(), open device failed on %s\n", path);
+		if (path)
+			arcan_warning("egl-dri(), open device failed on path(%s)\n", path);
+		else
+			arcan_warning("egl-dri(), open device failed on fd(%d)\n", fd);
 		return -1;
 	}
 
 	SET_SEGV_MSG("libgbm(), create device failed catastrophically.\n");
+	fcntl(node->fd, F_SETFD, FD_CLOEXEC);
 	node->gbm = gbm_create_device(node->fd);
 
 	if (!node->gbm){
@@ -892,12 +904,13 @@ static int setup_node(struct dev_node* node, const char* path)
  * running client (or inherit in environment)
  */
 	const char cpath[] = "/dev/dri/card";
-	if (!getenv("ARCAN_RENDER_NODE") && strncmp(path, cpath, 13) == 0){
+	char pbuf[24] = "/dev/dri/renderD128";
+
+	if (!getenv("ARCAN_RENDER_NODE") && path && strncmp(path, cpath, 13) == 0){
 		size_t ind = strtoul(&path[13], NULL, 10);
-		char pbuf[24];
 		snprintf(pbuf, 24, "/dev/dri/renderD%d", (int)(ind + 128));
-		setenv("ARCAN_RENDER_NODE", pbuf, 1);
 	}
+	setenv("ARCAN_RENDER_NODE", pbuf, 1);
 
 	static const EGLint context_attribs[] = {
 		EGL_CONTEXT_CLIENT_VERSION, 2,
@@ -1480,15 +1493,15 @@ bool platform_video_init(uint16_t w, uint16_t h,
  */
 	sigaction(SIGSEGV, &err_sh, &old_sh);
 
-	int n = 0;
+	int n = 0, fd;
 	char* device;
 	while(1){
 retry_card:
-		device = grab_card(n++);
-		if (!device)
+		grab_card(n++, &device, &fd);
+		if (!device && -1 == fd)
 			goto cleanup;
 
-		int rc = setup_node(&nodes[0], device);
+		int rc = setup_node(&nodes[0], device, fd);
 		if (rc != 0)
 			arcan_warning("egl-dri() - setup on %s failed\n", device);
 		free(device);
@@ -1500,12 +1513,16 @@ retry_card:
 			goto cleanup;
 	}
 
-	if (-1 == drmSetMaster(nodes[0].fd) && getenv("ARCAN_VIDEO_DRM_MASTER")){
+	if (-1 == drmSetMaster(nodes[0].fd)){
+		if (getenv("ARCAN_VIDEO_DRM_MASTER")){
 		arcan_fatal("platform/egl-dri(), couldn't get drmMaster (%s) - make sure"
 			" nothing else holds the master lock or try without "
 			"ARCAN_VIDEO_DRM_MASTER env.\n", strerror(errno));
+		}
+		else
+		arcan_warning("platform/egl-dri(), couldn't get drmMaster (%s), trying "
+			" to continue anyways.\n", strerror(errno));
 	}
-
 	map_extensions();
 
 /*
