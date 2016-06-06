@@ -207,8 +207,6 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
 	if (props.opa < EPSILON || !src->flags.complete || src->work_count > 0)
 		return;
 
-	unsigned cframe = 0;
-
 	float _Alignas(16) wmvm[16];
 	float _Alignas(16) dmatr[16];
 	float _Alignas(16) omatr[16];
@@ -227,18 +225,33 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
 	struct geometry* base = src->geometry;
 
 	agp_blendstate(vobj->blendmode);
+	int fset_ofs = vobj->frameset ? vobj->frameset->index : 0;
 
 	while (base){
 		agp_shader_activate(base->program > 0 ? base->program : baseprog);
 
 		if (!vobj->frameset)
 			agp_activate_vstore(vobj->vstore);
-		else
-			arcan_vint_bindmulti(vobj, vobj->frameset->index);
+		else {
+			if (base->nmaps == 1){
+				agp_activate_vstore(vobj->frameset->frames[fset_ofs].frame);
+				fset_ofs = (fset_ofs + 1) % vobj->frameset->n_frames;
+			}
+			else if (base->nmaps > 1){
+				struct storage_info_t* backing[base->nmaps];
+				for (size_t i = 0; i < base->nmaps; i++){
+					backing[i] = vobj->frameset->frames[fset_ofs].frame;
+					fset_ofs = (fset_ofs + 1) % vobj->frameset->n_frames;
+				}
+				agp_activate_vstore_multi(backing, base->nmaps);
+			}
+			else
+				;
+		}
 
+/* NOTE: we do not currently manage multiple texture coordinate sets for
+ * meshes with multiple maps, slated for 0.7 */
 		agp_submit_mesh(&base->store, flags);
-
-		cframe += base->nmaps;
 		base = base->next;
 	}
 }
