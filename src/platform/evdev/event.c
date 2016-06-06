@@ -173,6 +173,7 @@ struct arcan_devnode {
 		} keyboard;
 	};
 	struct {
+		bool active;
 		bool pending;
 		int x;
 		int y;
@@ -1200,6 +1201,7 @@ static void flush_pending(struct arcan_evctx* ctx,
 		}
 	};
 
+	newev.io.input.touch.active = node->touch.active;
 	newev.io.input.touch.x = node->touch.x;
 	newev.io.input.touch.y = node->touch.y;
 	newev.io.input.touch.pressure = node->touch.pressure;
@@ -1207,6 +1209,7 @@ static void flush_pending(struct arcan_evctx* ctx,
 
 	arcan_event_enqueue(ctx, &newev);
 	node->touch.pending = false;
+	node->touch.active = true;
 }
 
 static void decode_mt(struct arcan_evctx* ctx,
@@ -1241,7 +1244,13 @@ static void decode_mt(struct arcan_evctx* ctx,
 		node->touch.pending = true;
 	break;
 	case ABS_MT_TRACKING_ID:
-		node->touch.ind = val;
+		if (-1 == val){
+			node->touch.active = false;
+			node->touch.pending = true;
+			flush_pending(ctx, node);
+		}
+		else
+			node->touch.ind = val;
 	break;
 	default:
 	break;

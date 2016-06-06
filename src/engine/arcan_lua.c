@@ -3489,6 +3489,7 @@ fail:
 		ev.io.datatype = EVENT_IDATATYPE_TOUCH;
 		ev.io.devid = intblint(ctx, tblind, "devid");
 		ev.io.subid = intblint(ctx, tblind, "subid");
+		ev.io.input.touch.active = intblint(ctx, tblind, "active");
 		ev.io.input.touch.x = intblint(ctx, tblind, "x");
 		ev.io.input.touch.y = intblint(ctx, tblind, "y");
 		ev.io.input.touch.pressure = intblfloat(ctx, tblind, "pressure");
@@ -3823,6 +3824,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			tblnum(ctx, "devid", ev->io.devid, top);
 			tblnum(ctx, "subid", ev->io.subid, top);
 			tblnum(ctx, "pressure", ev->io.input.touch.pressure, top);
+			tblbool(ctx, "active", ev->io.input.touch.active, top);
 			tblnum(ctx, "size", ev->io.input.touch.size, top);
 			tblnum(ctx, "x", ev->io.input.touch.x, top);
 			tblnum(ctx, "y", ev->io.input.touch.y, top);
