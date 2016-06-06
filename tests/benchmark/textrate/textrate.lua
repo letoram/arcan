@@ -4,7 +4,7 @@
 -- for the same screen-sized random texture
 --
 
-function textrate()
+function textrate(arguments)
 	system_load("scripts/benchmark.lua")();
 
 	benchmark_setup( arguments[1] );

@@ -3,7 +3,7 @@
 -- primarily GPU- related memory writes
 --
 
-function fillrate()
+function fillrate(arguments)
 	system_load("scripts/benchmark.lua")();
 
 	benchmark_setup( arguments[1] );

@@ -4,7 +4,7 @@
 -- for the same screen-sized random texture
 --
 
-function videospawn()
+function videospawn(arguments)
 	system_load("scripts/benchmark.lua")();
 
 	xpos = 0;
