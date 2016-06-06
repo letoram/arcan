@@ -35,7 +35,7 @@ build. In this section we will just provide the bare essentials for a build
 on Linux, BSD or OSX (windows can cheat with using the prebuilt installer
 binaries) and you can check out the relevant sections in the wiki for more
 detailed documentation on specialized build environments, e.g. an X.org-free
-KMS/DRM. (https://github.com/letoram/arcan.wiki.git)
+KMS/DRM. (https://github.com/letoram/arcan.wiki/linux-egl)
 
 For starters, the easiest approach is to do the following:
 
@@ -72,7 +72,22 @@ You can then test the build with:
      ./arcan -p ../data/resources/ ../data/appl/welcome
 
 Which tells us to use shared resources from the ../data/resources directory,
-and launch an application that resides as ../data/appl/welcome.
+and launch an application that resides as ../data/appl/welcome. If this path
+isn't specified relative to current path (./ or ../) or absolute (/path/to),
+the engine will try and search in the default 'applbase', which varies with
+OS, but typically something like /usr/local/share/arcan/appl or to the current
+user: /path/to/home/.arcan/appl
+
+Now what?
+One is to try out some of the more complex appls, like the desktop environment,
+'durden'. Clone the repo:
+
+    git clone https://github.com/letoram/durden.git
+    arcan -p /my/home /path/to/checkout/durden
+
+note that it's the durden subdirectory in the git, not the root. The reason
+for the different sdtart path (-p /my/home) is to give read-only access to
+the appl for the built-in resource browser.
 
 Database
 =====
@@ -108,6 +123,24 @@ execute the specified program and wake up again when the program finishes.
 The second example would execute the program in the background, expect it to
 be able to handle the engine shmif- API for audio/video/input cooperatively
 or through an interposition library.
+
+Frameservers
+=====
+It can be cumbersome to set up database entries to just test something.
+Frameservers is a way of separating sensitive or crash-prone functions from
+the main engine for purposes such as running games or playing back video.
+
+In a default installation, they are prefixed with afsrv_ [game, encode,
+decode, ...] and while they are best managed from the appl itself, you can
+run them from the terminal as well. Which ones that are available depend on
+the dependencies that were available at build time, but for starting a
+libretro core for instance:
+
+    ARCAN_ARG=core=/path/to/core:resource=/path/to/resourcefile afsrv_game
+
+or video playback:
+
+    ARCAN_ARG=file=/path/to/moviefile.mkv afsrv_decode
 
 Filesystem Layout
 =====

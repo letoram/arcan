@@ -334,6 +334,10 @@ find_package(SSE QUIET)
 include(${PLATFORM_ROOT}/cmake/CMakeLists.AGP)
 include(${PLATFORM_ROOT}/cmake/CMakeLists.Video)
 
+if (${CMAKE_SYSTEM_NAME} MATCHES "BSD")
+set(BSD_BUILD TRUE)
+endif()
+
 if (NOT DISABLE_JIT)
 	if (EXISTS ${EXTERNAL_SRC_DIR}/git/luajit)
 		amsg("${CL_YEL}Building Luajit static from external/git mirror${CL_RST}")
@@ -546,7 +550,10 @@ add_executable(arcan
  	${PLATFORM_SOURCES}
 )
 
+if (${FRAMESERVER_MODESTRING})
 string(STRIP ${FRAMESERVER_MODESTRING} FRAMESERVER_MODESTRING)
+endif()
+
 target_include_directories(arcan PRIVATE ${INCLUDE_DIRS})
 target_compile_definitions(arcan PRIVATE
 	${ARCAN_DEFINITIONS}
