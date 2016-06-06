@@ -56,7 +56,7 @@ static bool handle_disable = false;
 
 static char* rnode_envopts[] = {
 	"ARCAN_RENDER_NODE=/dev/dri/renderD128", "specify render-node",
-	"ARCAN_VIDEO_NO_FDPASS", "set to use in-GPU buffer transfers to parent",
+	"ARCAN_VIDEO_NO_FDPASS", "set to disble GPU handle passing",
 	"EGL_LOG_LEVEL=debug|info|warning|fatal", "Mesa/EGL debug aid",
 	"EGL_SOFTWARE", "Force software rendering if possible",
 	"GALLIUM_HUD", "Gallium driver performance overlay",
@@ -236,7 +236,8 @@ int64_t PLATFORM_SYMBOL(_video_output_handle)(
  * tacit assumption that the output buffer will be consumed and destroyed
  * between synch calls (though the shmif- mechanism of hinting rendernode
  * device might help us with that) */
-	eglSwapBuffers(rnode.display, rnode.surface);
+	destroy_image(rnode.display, rnode.output);
+	rnode.output = NULL;
 	return fd;
 
 unsup_fail:
