@@ -14,6 +14,8 @@ struct arcan_img_meta {
 	size_t c_size;
 };
 
+void arcan_img_init();
+
 /*
  * Wrapper around the other decode functions in that it tries to
  * identify (heuristically, experimentally or by the 'hint' inbuf)

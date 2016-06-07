@@ -202,6 +202,17 @@ arcan_errc arcan_dds_raw(const uint8_t* inbuf, size_t inbuf_sz,
 #endif
 }
 
+pthread_mutex_t img_sync;
+void arcan_img_init()
+{
+	static bool initialized;
+	if (initialized)
+		return;
+
+	initialized = true;
+	pthread_mutex_init(&img_sync, NULL);
+}
+
 arcan_errc arcan_img_decode(const char* hint, char* inbuf, size_t inbuf_sz,
 	uint32_t** outbuf, size_t* outw, size_t* outh,
 	struct arcan_img_meta* meta, bool vflip)
@@ -216,10 +227,20 @@ arcan_errc arcan_img_decode(const char* hint, char* inbuf, size_t inbuf_sz,
 		{
 			int outf;
 			int w, h;
-
-/* stbi_load_from_memory will use arcan_alloc_mem that guarantees alignment */
+/* three things to note here,
+ * 1. PNG Z-Lib state is not thread safe in current stbi-, neither is the
+ *    flip-on-load toggle. This should be fixed upstream.
+ * 2. stbi uses arcan_alloc_mem with arguments that guarantee alignment
+ * 3. this does not handle hi/norm/lo- quality re-packing or anti-repack
+ *    protection, but rather assumes that the buffer contents has the right
+ *    format
+ */
+pthread_mutex_lock(&img_sync);
+			stbi_set_flip_vertically_on_load(vflip);
 			uint32_t* buf = (uint32_t*) stbi_load_from_memory(
 				(stbi_uc const*) inbuf, inbuf_sz, &w, &h, &outf, 4);
+pthread_mutex_unlock(&img_sync);
+
 			if (buf){
 				*outbuf = buf;
 				*outw = w;
