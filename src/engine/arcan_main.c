@@ -41,6 +41,7 @@
 #include "arcan_event.h"
 #include "arcan_audio.h"
 #include "arcan_video.h"
+#include "arcan_img.h"
 #include "arcan_frameserver.h"
 #include "arcan_lua.h"
 #include "video_platform.h"
@@ -578,6 +579,7 @@ int MAIN_REDIR(int argc, char* argv[])
 		arcan_warning("Warning: No audio devices could be found.\n");
 
 	arcan_math_init();
+	arcan_img_init();
 
 /* setup device polling, cleanup, ... */
 	arcan_evctx* evctx = arcan_event_defaultctx();
