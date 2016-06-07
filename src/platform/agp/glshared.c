@@ -552,6 +552,19 @@ void agp_submit_mesh(struct mesh_storage_t* base, enum agp_mesh_flags fl)
 		agp_shader_vattribute_loc(ATTRIBUTE_TEXCORD)
 	};
 
+	if (fl & MESH_FACING_BOTH){
+		if ((fl & MESH_FACING_BACK) == 0){
+			glEnable(GL_CULL_FACE);
+			glCullFace(GL_BACK);
+		}
+		else if ((fl & MESH_FACING_FRONT) == 0){
+			glEnable(GL_CULL_FACE);
+			glCullFace(GL_FRONT);
+		}
+		else
+			glDisable(GL_CULL_FACE);
+	}
+
 	if (attribs[0] == -1)
 		return;
 	else {
