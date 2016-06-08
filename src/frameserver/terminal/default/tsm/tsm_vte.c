@@ -97,6 +97,17 @@ enum parser_action {
 	ACTION_NUM
 };
 
+enum mouse_data {
+	MOUSE_BUTTON = 1,
+	MOUSE_DRAG   = 2,
+	MOUSE_MOTION = 4,
+	MOUSE_SGR    = 8,
+	MOUSE_X10    = 16,
+	MOUSE_RXVT   = 32
+};
+
+const static int MOUSE_PROTO = MOUSE_SGR | MOUSE_X10 | MOUSE_RXVT;
+
 /* CSI flags */
 #define CSI_BANG	0x0001		/* CSI: ! */
 #define CSI_CASH	0x0002		/* CSI: $ */
@@ -136,6 +147,9 @@ enum parser_action {
 struct vte_saved_state {
 	unsigned int cursor_x;
 	unsigned int cursor_y;
+	unsigned int mouse_x;
+	unsigned int mouse_y;
+	enum mouse_data mouse_state;
 	struct tsm_screen_attr cattr;
 	tsm_vte_charset **gl;
 	tsm_vte_charset **gr;
@@ -156,6 +170,9 @@ struct tsm_vte {
 	unsigned long parse_cnt;
 
 	unsigned int state;
+	enum mouse_data mstate;
+	int mbutton;
+
 	unsigned int csi_argc;
 	int csi_argv[CSI_ARG_MAX];
 	unsigned int csi_flags;
@@ -535,6 +552,10 @@ static void reset_state(struct tsm_vte *vte)
 {
 	vte->saved_state.cursor_x = 0;
 	vte->saved_state.cursor_y = 0;
+	vte->saved_state.mouse_x = 0;
+	vte->saved_state.mouse_y = 0;
+	vte->saved_state.mouse_state = 0;
+	vte->mbutton = 0;
 	vte->saved_state.origin_mode = false;
 	vte->saved_state.wrap_mode = true;
 	vte->saved_state.gl = &vte->g0;
@@ -557,6 +578,7 @@ static void save_state(struct tsm_vte *vte)
 	vte->saved_state.cattr = vte->cattr;
 	vte->saved_state.gl = vte->gl;
 	vte->saved_state.gr = vte->gr;
+	vte->saved_state.mouse_state = vte->mstate;
 	vte->saved_state.wrap_mode = vte->flags & FLAG_AUTO_WRAP_MODE;
 	vte->saved_state.origin_mode = vte->flags & FLAG_ORIGIN_MODE;
 }
@@ -571,6 +593,7 @@ static void restore_state(struct tsm_vte *vte)
 		tsm_screen_set_def_attr(vte->con, &vte->cattr);
 	vte->gl = vte->saved_state.gl;
 	vte->gr = vte->saved_state.gr;
+	vte->mstate = vte->saved_state.mouse_state;
 
 	if (vte->saved_state.wrap_mode) {
 		vte->flags |= FLAG_AUTO_WRAP_MODE;
@@ -635,6 +658,88 @@ void tsm_vte_hard_reset(struct tsm_vte *vte)
 	tsm_screen_erase_screen(vte->con, false);
 	tsm_screen_clear_sb(vte->con);
 	tsm_screen_move_to(vte->con, 0, 0);
+}
+
+static void mouse_wr(struct tsm_vte *vte,
+	int btni, int press, int mods, int row, int col)
+{
+	size_t nw = 0;
+	char buf[32];
+
+	if (vte->mstate & MOUSE_SGR){
+		nw = snprintf(buf, 32, "\e[%d;%d;%d%c", btni | mods, col, row, press ? 'M' : 'm');
+	}
+	else if (vte->mstate & MOUSE_X10){
+		if (col > 222)
+			col -= 32;
+		if (row > 222)
+			row -= 32;
+		nw = snprintf(buf, 32, "\e[<M%c%c%c", (btni | mods) + 32, col+32, row+32);
+	}
+	else if (vte->mstate & MOUSE_RXVT){
+		if (!press)
+			btni = 3;
+
+		nw = snprintf(buf, 32, "\e[<%d;%d;%dM", btni | mods, col, row);
+	}
+
+	if (nw && nw < 32)
+		vte_write(vte, buf, nw);
+}
+
+SHL_EXPORT
+void tsm_vte_mouse_motion(struct tsm_vte *vte, int x, int y, int mods)
+{
+	if (x == vte->saved_state.mouse_x &&
+		y == vte->saved_state.mouse_y)
+			return;
+
+	int mc = 0;
+	mc |= (mods & TSM_SHIFT_MASK)   ? 1 : 0;
+	mc |= (mods & TSM_ALT_MASK)     ? 2 : 0;
+	mc |= (mods & TSM_CONTROL_MASK) ? 4 : 0;
+
+	vte->saved_state.mouse_x = x;
+	vte->saved_state.mouse_y = y;
+
+	if ( ((vte->mstate & MOUSE_DRAG) && vte->mbutton) ||
+		((vte->mstate & MOUSE_MOTION)) ){
+		int btnind =
+			vte->mbutton & 0x01 ? 1 :
+			vte->mbutton & 0x02 ? 2 :
+			vte->mbutton & 0x04 ? 3 : 4;
+		mouse_wr(vte, btnind-1+32, 1, mc, y+1, x+1);
+	}
+}
+
+SHL_EXPORT
+void tsm_vte_mouse_button(struct tsm_vte *vte, int index, bool press, int mods)
+{
+	int old = vte->mbutton;
+
+/* out of buttons? */
+	if (index < 0 || index > 5)
+		return;
+
+/* modify held- mask */
+	else if (index <= 3){
+		if (press)
+			vte->mbutton |= (1 << (index - 1));
+		else
+			vte->mbutton &= ~(1 << (index - 1));
+	}
+
+/* only report on change (but not for wheel) */
+	if (old == vte->mbutton && index < 4)
+		return;
+
+	int mc = 0;
+	mc |= (mods & TSM_SHIFT_MASK)   ? 1 : 0;
+	mc |= (mods & TSM_ALT_MASK)     ? 2 : 0;
+	mc |= (mods & TSM_CONTROL_MASK) ? 4 : 0;
+
+	mouse_wr(vte, index < 4 ? index-1 : index-4+64, press, mods,
+		vte->saved_state.mouse_y+1, vte->saved_state.mouse_x+1);
 }
 
 static void send_primary_da(struct tsm_vte *vte)
@@ -1403,20 +1508,31 @@ static void csi_mode(struct tsm_vte *vte, bool set)
 			fprintf(stderr, "X10 mouse mode\n");
 			continue;
 		case 1000:
-			fprintf(stderr, "report presses\n");
-			continue;
+			vte->mstate = MOUSE_BUTTON;
+			if (0)
 		case 1002:
-			fprintf(stderr, "motion on press\n");
-			continue;
+			vte->mstate = MOUSE_DRAG;
+			if (0)
 		case 1003:
-			fprintf(stderr, "all mouse motion\n");
+			vte->mstate = MOUSE_MOTION;
+			vte->mstate |= MOUSE_X10;
+			if (!set)
+				vte->mstate = 0;
 			continue;
 		case 1004:
-			fprintf(stderr, "forward focus events\n");
+/* TODO: report focus event */
+			continue;
+		case 1005:
+/* TODO: UTF-8 Mouse Mode? */
 			continue;
 		case 1006:
-			fprintf(stderr, "extended reporting\n");
+			vte->mstate = (vte->mstate & (~MOUSE_PROTO)) |
+				( set ? MOUSE_SGR : MOUSE_X10);
 			continue;
+		case 1015:
+			vte->mstate = (vte->mstate & (~MOUSE_PROTO)) |
+				( set ? MOUSE_RXVT : MOUSE_X10);
+		break;
 		case 12: /* blinking cursor */
 			/* TODO: implement */
 			continue;

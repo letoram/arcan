@@ -323,6 +323,8 @@ void tsm_vte_input(struct tsm_vte *vte, const char *u8, size_t len);
 bool tsm_vte_handle_keyboard(struct tsm_vte *vte, uint32_t keysym,
 			     uint32_t ascii, unsigned int mods,
 			     uint32_t unicode);
+void tsm_vte_mouse_button(struct tsm_vte *vte, int index, bool press, int mods);
+void tsm_vte_mouse_motion(struct tsm_vte *vte, int x, int y, int mods);
 
 /** @} */
 
