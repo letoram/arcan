@@ -119,6 +119,7 @@ struct {
 	int bsel_x, bsel_y;
 	bool in_select;
 	int scrollback;
+	bool mouse_forward;
 	bool scroll_lock;
 
 /* tracking when to reset scrollback */
@@ -129,6 +130,7 @@ struct {
 	int last_dbl_x,last_dbl_y;
 	int rows;
 	int cols;
+	int last_shmask;
 	int cell_w, cell_h, pad_w, pad_h;
 
 	uint8_t fgc[3];
@@ -751,6 +753,11 @@ static void scroll_lock()
 	}
 }
 
+static void mouse_forward()
+{
+	term.mouse_forward = !term.mouse_forward;
+}
+
 static const struct lent labels[] = {
 	{"SIGINT", send_sigint},
 	{"SIGINFO", send_siginfo},
@@ -762,6 +769,7 @@ static const struct lent labels[] = {
 	{"DOWN", move_down},
 	{"LEFT", move_left},
 	{"RIGHT", move_right},
+	{"MOUSE_FORWARD", mouse_forward},
 	{"SELECT_AT", select_at},
 	{"SELECT_ROW", select_row},
 	{"SCROLL_LOCK", scroll_lock},
@@ -851,6 +859,7 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 		shmask |= ((ioev->input.translated.modifiers &
 			(ARKMOD_LMETA | ARKMOD_RMETA)) > 0) * TSM_LOGO_MASK;
 		shmask |= ((ioev->input.translated.modifiers & ARKMOD_NUM) > 0) * TSM_LOCK_MASK;
+		term.last_shmask = shmask;
 
 		if (sym && sym < sizeof(symtbl_out) / sizeof(symtbl_out[0]))
 			sym = symtbl_out[ioev->input.translated.keysym];
@@ -869,6 +878,13 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 			else if (ioev->subid == 1){
 				int yv = ioev->input.analog.axisval[0];
 				term.mouse_y = yv / term.cell_h;
+
+				if (term.mouse_forward){
+					tsm_vte_mouse_motion(term.vte,
+						term.mouse_x, term.mouse_y, term.last_shmask);
+					return;
+				}
+
 				if (!term.in_select)
 					return;
 
@@ -903,6 +919,12 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 /* press? press-point tsm_screen_selection_start,
  * release and press-tile ~= release_tile? copy */
 		else if (ioev->datatype == EVENT_IDATATYPE_DIGITAL){
+			if (term.mouse_forward){
+				tsm_vte_mouse_button(term.vte,
+					ioev->subid,ioev->input.digital.active,term.last_shmask);
+				return;
+			}
+
 			if (ioev->flags & ARCAN_IOFL_GESTURE){
 				if (strcmp(ioev->label, "dblclick") == 0){
 /* select row if double doubleclick */
@@ -980,6 +1002,7 @@ static void targetev(arcan_tgtevent* ev)
 	break;
 
 	case TARGET_COMMAND_RESET:
+		term.last_shmask = 0;
 		tsm_vte_hard_reset(term.vte);
 	break;
 
@@ -1026,8 +1049,10 @@ static void targetev(arcan_tgtevent* ev)
 /* visibility change */
 		bool update = false;
 		if (!(ev->ioevs[2].iv & 128)){
-			if (ev->ioevs[2].iv & 2)
+			if (ev->ioevs[2].iv & 2){
+				term.last_shmask = 0;
 				term.inactive = true;
+			}
 			else if (term.inactive){
 				term.inactive = false;
 				update = true;
@@ -1037,6 +1062,7 @@ static void targetev(arcan_tgtevent* ev)
 			if (ev->ioevs[2].iv & 4){
 				term.focus = false;
 				if (!term.cursor_off){
+					term.last_shmask = 0;
 					term.cursor_off = true;
 					term.dirty |= DIRTY_PENDING;
 				}
