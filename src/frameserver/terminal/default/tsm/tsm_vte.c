@@ -160,6 +160,13 @@ struct vte_saved_state {
 struct tsm_vte {
 	unsigned long ref;
 	tsm_log_t llog;
+
+	tsm_str_cb strcb;
+	void *strcb_data;
+	size_t colbuf_sz;
+	size_t colbuf_pos;
+	char *colbuf;
+
 	void *llog_data;
 	struct tsm_screen *con;
 	tsm_vte_write_cb write_cb;
@@ -1954,11 +1961,21 @@ static void do_action(struct tsm_vte *vte, uint32_t data, int action)
 			break;
 		case ACTION_DCS_END:
 			break;
+/* just dumbly buffer these and callback- forward to the frontend */
 		case ACTION_OSC_START:
+			vte->colbuf_pos = 0;
 			break;
 		case ACTION_OSC_COLLECT:
+			vte->colbuf[vte->colbuf_pos] = data;
+			if (vte->colbuf_pos < vte->colbuf_sz-1)
+				vte->colbuf_pos++;
 			break;
 		case ACTION_OSC_END:
+			if (vte->colbuf_pos && vte->strcb){
+				vte->colbuf[vte->colbuf_pos] = '\0';
+				vte->strcb(vte, TSM_GROUP_OSC, vte->colbuf, vte->colbuf_pos+1,
+					vte->colbuf_pos == vte->colbuf_sz, vte->strcb_data);
+			}
 			break;
 		default:
 			llog_warn(vte, "invalid action %d", action);
@@ -2375,7 +2392,30 @@ void tsm_vte_input(struct tsm_vte *vte, const char *u8, size_t len)
 			}
 		}
 	}
-	--vte->parse_cnt;
+}
+
+SHL_EXPORT
+void tsm_set_strhandler(struct tsm_vte *vte, tsm_str_cb cb, size_t limit, void* data)
+{
+	if (vte->strcb)
+		vte->strcb(vte, TSM_GROUP_FREE, NULL, 0, false, vte->strcb_data);
+
+	free(vte->colbuf);
+	vte->colbuf = NULL;
+	if (!cb)
+		return;
+
+	vte->colbuf = malloc(limit);
+	if (!vte->colbuf){
+		vte->strcb(vte, TSM_GROUP_FREE, NULL, 0, false, data);
+		return;
+	}
+
+	vte->colbuf_sz = limit;
+	vte->colbuf_pos = 0;
+	vte->colbuf[0] = '\0';
+	vte->strcb = cb;
+	vte->strcb_data = data;
 }
 
 SHL_EXPORT

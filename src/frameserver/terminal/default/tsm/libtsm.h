@@ -309,6 +309,17 @@ typedef void (*tsm_vte_write_cb) (struct tsm_vte *vte,
 				  size_t len,
 				  void *data);
 
+enum tsm_vte_group {
+	TSM_GROUP_FREE,
+	TSM_GROUP_OSC
+};
+
+typedef void (*tsm_str_cb) (struct tsm_vte *vte, enum tsm_vte_group group,
+	const char *u8, size_t len, bool crop, void* data);
+
+void tsm_set_strhandler(struct tsm_vte *vte,
+	tsm_str_cb cb, size_t limit, void* data);
+
 int tsm_vte_new(struct tsm_vte **out, struct tsm_screen *con,
 		tsm_vte_write_cb write_cb, void *data,
 		tsm_log_t log, void *log_data);

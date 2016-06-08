@@ -481,6 +481,30 @@ static void write_callback(struct tsm_vte* vte,
 	term.dirty |= DIRTY_PENDING;
 }
 
+/* for future integration with more specific shmif- features when it
+ * comes to streaming images back and forth, sending additional meta-
+ * information about security state and context, highlighing datatypes
+ * and so on */
+static void str_callback(struct tsm_vte* vte, enum tsm_vte_group group,
+	const char* msg, size_t len, bool crop, void* data)
+{
+/* parse and see if we should set title */
+	if (!msg || len < 3 || crop)
+		return;
+
+	if ((msg[0] == '0' || msg[0] == '1' || msg[0] == '2') && msg[1] == ';'){
+		arcan_event outev = {
+			.ext.kind = ARCAN_EVENT(IDENT),
+			.category = EVENT_EXTERNAL
+		};
+		size_t lim=sizeof(outev.ext.message.data)/sizeof(outev.ext.message.data[1]);
+		snprintf((char*)outev.ext.message.data, lim, "%s", &msg[2]);
+		arcan_shmif_enqueue(&term.acon, &outev);
+	}
+	else
+		LOG("ignoring unknown OSC sequence (%s)\n", msg);
+}
+
 static char* get_shellenv()
 {
 	char* shell = getenv("SHELL");
@@ -1555,6 +1579,11 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	arcan_shmif_signal(&term.acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
 	expose_labels();
 	tsm_screen_set_max_sb(term.screen, 1000);
+
+/* register to get raw OSC (Operating System Command) strings, used for
+ * purposes like setting window title, changing palette, and for hackish
+ * integration with shell */
+	tsm_set_strhandler(term.vte, str_callback, 256, NULL);
 
 	struct tsm_screen_attr attr = {
 		.fccode = -1,
