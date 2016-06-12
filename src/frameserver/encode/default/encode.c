@@ -703,6 +703,13 @@ int afsrv_encode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		}
 #endif
 
+#ifdef HAVE_OCR
+		if (strcmp(argval, "ocr") == 0){
+			ocr_serv_run(args, recctx.shmcont);
+			return EXIT_SUCCESS;
+		}
+#endif
+
 		LOG("unsupported encoding protocol (%s) specified, giving up.\n", argval);
 		return EXIT_FAILURE;
 	}
