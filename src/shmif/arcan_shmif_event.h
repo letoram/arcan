@@ -1033,9 +1033,15 @@ typedef struct arcan_extevent {
  * with the expected data type (match EVENT_IDATATYPE_*)
  * (label)     - 7-bit ASCII filtered to alnum and _
  * (idatatype) - match IDATATYPE enum of expected data
+ * (initial)   - suggested default sym (as 7-bit ASCII) to bind as
+ *               alnum and _, matching the used symtable.lua
+ * (descr)     - short 8-bit UTF description, if localization is avail.
+ *               also follow the language from the last GEOHINT
  */
 		struct {
 			char label[16];
+			char initial[16];
+			char descr[64];
 			int idatatype;
 		} labelhint;
 
