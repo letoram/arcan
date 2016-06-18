@@ -175,7 +175,8 @@ enum disp_state {
 	DISP_UNUSED = 0,
 	DISP_KNOWN = 1,
 	DISP_MAPPED = 2,
-	DISP_CLEANUP = 3
+	DISP_CLEANUP = 3,
+	DISP_EXTSUSP = 4
 };
 
 /*
@@ -1391,7 +1392,6 @@ static void disable_display(struct dispout* d, bool dealloc)
 		return;
 	}
 
-/* set this flag so we notice callback triggers */
 	d->state = DISP_CLEANUP;
 	eglMakeCurrent(d->device->display, EGL_NO_SURFACE,
 		EGL_NO_SURFACE, d->device->context);
@@ -1439,6 +1439,8 @@ static void disable_display(struct dispout* d, bool dealloc)
 		d->device = NULL;
 		d->state = DISP_UNUSED;
 	}
+	else
+		d->state = DISP_EXTSUSP;
 }
 
 struct monitor_mode platform_video_dimensions()
@@ -1855,7 +1857,8 @@ bool platform_video_map_display(
 /* we have a known but previously unmapped display, set it up */
 	if (d->state == DISP_KNOWN){
 		if (setup_kms(d,
-			d->display.con->connector_id, 0, 0) != 0 || setup_buffers(d) != 0){
+			d->display.con->connector_id, d->display.mode->hdisplay,
+			d->display.mode->vdisplay) != 0 || setup_buffers(d) != 0){
 			arcan_warning("egl-dri(map_display) - couldn't setup kms/"
 				"buffers on %d:%d\n", (int)d->id, (int)d->display.con->connector_id);
 			return false;
@@ -2093,15 +2096,22 @@ void platform_video_restore_external()
 	else
 		nodes[0].master = true;
 
-/* regain the primary display */
-	struct dispout* d = allocate_display(&nodes[0]);
-
-	if (setup_kms(d, -1, 0, 0) != 0){
-		arcan_warning("failed to rebuild primary display after external "
-			"suspend, things will likely be broken.\n");
-		disable_display(d, true);
+/* rebuild the mapped and known displays, extsusp is a marker that indicate
+ * that the state of the engine is that the display is still alive, and should
+ * be brought back to that state before we push 'removed' events */
+	for (size_t i = 0; i < MAX_DISPLAYS; i++){
+		if (displays[i].state == DISP_EXTSUSP){
+/* refc? */
+			if (setup_kms(&displays[i], displays[i].display.con->connector_id, 0, 0) != 0){
+				disable_display(&displays[i], true);
+			}
+			else if (setup_buffers(&displays[i]) != 0){
+				disable_display(&displays[i], true);
+			}
+			displays[i].state = DISP_MAPPED;
+			displays[i].display.reset_mode = true;
+		}
 	}
 
-/* sweep and let the script handle rediscovery / mapping */
-	platform_video_query_displays();
+/* defer the video_rescan to arcan_video.c as the event queue may not be ready */
 }
