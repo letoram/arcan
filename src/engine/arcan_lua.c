@@ -401,13 +401,8 @@ static const char* luaL_lastcaller(lua_State* ctx)
 static void trace_allocation(lua_State* ctx, const char* sym, arcan_vobj_id id)
 {
 	if (luactx.debug > 2)
-#ifndef ARCAN_LUA_NOCOLOR
 		arcan_warning("\x1b[1m %s: alloc(%s) => %"PRIxVOBJ")\x1b[39m\x1b[0m\n",
 			luaL_lastcaller(ctx), sym, id + luactx.lua_vidbase);
-#else
-		arcan_warning("%s: alloc(%s) => %"PRIxVOBJ")\n",
-			luaL_lastcaller(ctx), sym, id + luactx.lua_vidbase);
-#endif
 }
 
 static void trace_coverage(const char* fsym, lua_State* ctx)
@@ -628,16 +623,15 @@ static void dump_stack(lua_State* ctx)
 				arcan_warning(lua_toboolean(ctx, i) ? "true" : "false");
 				break;
 			case LUA_TSTRING:
-				arcan_warning("`%s'", lua_tostring(ctx, i));
+				arcan_warning("%d\t'%s'\n", i, lua_tostring(ctx, i));
 				break;
 			case LUA_TNUMBER:
-				arcan_warning("%g", lua_tonumber(ctx, i));
+				arcan_warning("%d\t%g\n", i, lua_tonumber(ctx, i));
 				break;
 			default:
-				arcan_warning("%s", lua_typename(ctx, t));
+				arcan_warning("%d\t%s\n", i, lua_typename(ctx, t));
 				break;
 		}
-		arcan_warning("  ");
 	}
 
 	arcan_warning("\n");
@@ -674,24 +668,36 @@ static bool grabapplfunction(lua_State* ctx,
 /* the places in _lua.c that calls this function should probably have a better
  * handover as this incurs additional and almost always unnecessary strlen
  * calls */
-static inline const char* intblstr(lua_State* ctx, int ind, const char* field){
+static inline const char* intblstr(lua_State* ctx, int ind, const char* field)
+{
 	lua_getfield(ctx, ind, field);
-	return lua_tostring(ctx, -1);
+	const char* rv = lua_tostring(ctx, -1);
+	lua_pop(ctx, 1);
+	return rv;
 }
 
-static inline float intblfloat(lua_State* ctx, int ind, const char* field){
+static inline float intblfloat(lua_State* ctx, int ind, const char* field)
+{
 	lua_getfield(ctx, ind, field);
-	return lua_tonumber(ctx, -1);
+	float rv = lua_tonumber(ctx, -1);
+	lua_pop(ctx, 1);
+	return rv;
 }
 
-static inline int intblint(lua_State* ctx, int ind, const char* field){
+static inline int intblint(lua_State* ctx, int ind, const char* field)
+{
 	lua_getfield(ctx, ind, field);
-	return lua_tointeger(ctx, -1);
+	int rv = lua_tointeger(ctx, -1);
+	lua_pop(ctx, 1);
+	return rv;
 }
 
-static inline bool intblbool(lua_State* ctx, int ind, const char* field){
+static inline bool intblbool(lua_State* ctx, int ind, const char* field)
+{
 	lua_getfield(ctx, ind, field);
-	return lua_toboolean(ctx, -1);
+	bool rv = lua_toboolean(ctx, -1);
+	lua_pop(ctx, 1);
+	return rv;
 }
 
 static inline char* findresource(const char* arg, enum arcan_namespaces space)
@@ -3474,6 +3480,12 @@ fail:
 
 	/*  sweep the samples subtable, add as many as present (or possible) */
 		lua_getfield(ctx, tblind, "samples");
+		if (lua_type(ctx, -1) != LUA_TTABLE){
+			arcan_warning("target_input(), no samples provided for target input\n");
+			lua_pushnumber(ctx, false);
+			return 1;
+		}
+
 		size_t naxiss = lua_rawlen(ctx, -1);
 		for (size_t i = 0; i < naxiss &&
 				i < COUNT_OF(ev.io.input.analog.axisval); i++){
@@ -5911,12 +5923,9 @@ static void wraperr(lua_State* ctx, int errc, const char* src)
 		}
 	}
 
-#ifdef ARCAN_LUA_NOCOLOR
-	arcan_warning("Lua Script failure, %s from %s.\n", mesg, src);
-#else
 	arcan_warning("\n\x1b[1mScript failure:\n \x1b[32m %s\n"
 		"\x1b[39mC-entry point: \x1b[32m %s \x1b[39m\x1b[0m.\n", mesg, src);
-#endif
+
 	arcan_warning("\nHanding over to recovery script "
 		"(or shutdown if none present).\n");
 
