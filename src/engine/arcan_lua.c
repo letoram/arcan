@@ -4129,11 +4129,19 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 					lua_settop(ctx, reset);
 					return;
 				}
-
+				slim_utf8_push(mcbuf,
+					COUNT_OF(ev->ext.labelhint.descr),
+					(char*)ev->ext.labelhint.descr
+				);
+				snprintf(fsrv->title, COUNT_OF(fsrv->title), "%s", mcbuf);
+				tblstr(ctx, "description", mcbuf, top);
 				tblstr(ctx, "kind", "input_label", top);
 				fltpush(mcbuf, COUNT_OF(ev->ext.labelhint.label),
 					ev->ext.labelhint.label, flt_Alphanum, '?');
 				tblstr(ctx, "labelhint", mcbuf, top);
+				fltpush(mcbuf, COUNT_OF(ev->ext.labelhint.initial),
+					ev->ext.labelhint.initial, flt_Alphanum, '?');
+				tblstr(ctx, "initial", mcbuf, top);
 				tblstr(ctx, "datatype", idt, top);
 			}
 			break;

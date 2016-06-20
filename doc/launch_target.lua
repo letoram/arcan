@@ -83,7 +83,10 @@
 -- supports customized abstract input labels for use with the target_input
 -- function. May be called repeatedly, input_label values are restricted
 -- to 16 characters in the [a-z,0-9_] set with ? values indicating that
--- the caller tried to add an invalid value.
+-- the caller tried to add an invalid value. This also comes with an
+-- initial and a description field, where initial suggest the initial
+-- keybind if one should be available, and the description is a localized
+-- user-presentable string (UTF-8).
 --
 -- @note: "clock" (value, monotonic, once) - frameserver wants a periodic or
 -- fire-once stepframe event call. monotonic suggests the time-frame relative to
