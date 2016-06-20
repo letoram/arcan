@@ -183,13 +183,14 @@ struct arcan_devnode {
 	} touch;
 };
 
-static const char* vt_acq = "x";
-static const char* vt_rel = "y";
+static const char vt_acq = 'x';
+static const char vt_rel = 'y';
+static const char vt_trm = 'z';
 
 static void sigusr_acq(int sign, siginfo_t* info, void* ctx)
 {
 	int s_errn = errno;
-	if (write(gstate.sigpipe[1], vt_acq, 1) == 1)
+	if (write(gstate.sigpipe[1], &vt_acq, 1) == 1)
 		;
 	errno = s_errn;
 }
@@ -197,9 +198,17 @@ static void sigusr_acq(int sign, siginfo_t* info, void* ctx)
 static void sigusr_rel(int sign, siginfo_t* info, void* ctx)
 {
 	int s_errn = errno;
-	if (write(gstate.sigpipe[1], vt_rel, 1) == 1)
+	if (write(gstate.sigpipe[1], &vt_rel, 1) == 1)
 		;
 		errno = s_errn;
+}
+
+static void sigusr_term(int sign, siginfo_t* info, void* ctx)
+{
+	int s_errn = errno;
+	if (write(gstate.sigpipe[1], &vt_trm, 1) == 1)
+		;
+	errno = s_errn;
 }
 
 static void got_device(struct arcan_evctx* ctx, int fd, const char*);
@@ -605,20 +614,28 @@ void platform_event_process(struct arcan_evctx* ctx)
 	if (gstate.pending)
 		process_pending(ctx);
 
-	if (gstate.sigpipe[0] != -1){
-		if (poll(&gstate.sigpipe_p, 1, 0) > 0){
-			char ch;
-			if (1 == read(gstate.sigpipe[0], &ch, 1) && ch == vt_rel[0]){
-				arcan_video_prepare_external();
-				ioctl(gstate.tty, VT_RELDISP, 1);
+	if (gstate.sigpipe[0] != -1 && poll(&gstate.sigpipe_p, 1, 0) > 0){
+		char ch;
+		if (1 != read(gstate.sigpipe[0], &ch, 1))
+			;
+		else if (ch == vt_trm){
+			arcan_event_enqueue(arcan_event_defaultctx(), &(struct arcan_event){
+				.category = EVENT_SYSTEM,
+				.sys.kind = EVENT_SYSTEM_EXIT,
+				.sys.errcode = EXIT_SUCCESS
+			});
+		}
+		else if (ch == vt_rel){
+			arcan_video_prepare_external();
+			ioctl(gstate.tty, VT_RELDISP, 1);
 /* poor name, but video_prepare_external should be the trigger for
  * both audio, video and event deinit/release */
-				while(true)
-					if(poll(&gstate.sigpipe_p, 1, -1) <= 0)
-						continue;
-					else if (1 == read(gstate.sigpipe[0], &ch, 1) && ch == vt_acq[0]){
-						ioctl(gstate.tty, VT_RELDISP, VT_ACKACQ);
-						arcan_video_restore_external();
+			while(true)
+				if(poll(&gstate.sigpipe_p, 1, -1) <= 0)
+					continue;
+				else if (1 == read(gstate.sigpipe[0], &ch, 1) && ch == vt_acq){
+					ioctl(gstate.tty, VT_RELDISP, VT_ACKACQ);
+					arcan_video_restore_external();
 
 /* We have a state problem here, when returning from virtual terminal stop, the
  * CTRL and ALT events are enqueued as pressed and there's no great way of
@@ -626,8 +643,7 @@ void platform_event_process(struct arcan_evctx* ctx)
  * approach is that video_restore_external sends a reset event to the display
  * entry point. The other option of enqeueing release- events had the problem
  * of introducing multiple- release events. */
-						break;
-					}
+					break;
 			}
 		}
 	}
@@ -1539,6 +1555,54 @@ void platform_event_reset(struct arcan_evctx* ctx)
 
 }
 
+/*
+ * We use a signalling pipe to forward signals to their respective internal
+ * events. The VTTY switching is uncomfortably involved here, consuming both
+ * SIGUSR- slots for a race-condition prone piece of legacy. Essentially we
+ * don't know anything about the world when we come back from a VT switch, and
+ * due to the devices we manage, it is not safe to just blindly release all
+ * resources - we need time. Since there's a timeout for the switch/ack
+ * process, our deferred release may hit that interval and leave us in an
+ * unknown state.
+ */
+static void setup_signals()
+{
+	if (0 != pipe(gstate.sigpipe)){
+		arcan_fatal("couldn't create internal signal pipe, "
+			"code: %d, reason: %s\n", errno, strerror(errno));
+	}
+
+	fcntl(gstate.sigpipe[0], F_SETFD, FD_CLOEXEC);
+	fcntl(gstate.sigpipe[1], F_SETFD, FD_CLOEXEC);
+
+	struct sigaction er_sh = {.sa_handler = SIG_IGN};
+	sigaction(SIGINT, &er_sh, NULL);
+
+	er_sh.sa_handler = NULL;
+	er_sh.sa_sigaction = sigusr_term;
+	er_sh.sa_flags = SA_RESTART;
+	sigaction(SIGTERM, &er_sh, NULL);
+
+	if (!getenv("ARCAN_INPUT_DISABLE_TTYPSWAP")){
+		struct vt_mode mode = {
+			.mode = VT_PROCESS,
+			.acqsig = SIGUSR1,
+			.relsig = SIGUSR2
+		};
+		gstate.sigpipe_p.fd = gstate.sigpipe[0];
+		gstate.sigpipe_p.events = POLLIN;
+
+		er_sh.sa_handler = NULL;
+		er_sh.sa_sigaction = sigusr_acq;
+		er_sh.sa_flags = SA_SIGINFO;
+		sigaction(SIGUSR1, &er_sh, NULL);
+
+		er_sh.sa_sigaction = sigusr_rel;
+		sigaction(SIGUSR2, &er_sh, NULL);
+		ioctl(gstate.tty, VT_SETMODE, &mode);
+	}
+}
+
 void platform_event_deinit(struct arcan_evctx* ctx)
 {
 	if (isatty(gstate.tty) && gstate.mute){
@@ -1684,41 +1748,8 @@ void platform_event_init(arcan_evctx* ctx)
 		gstate.mute = true;
 	}
 
-	struct sigaction er_sh = {.sa_handler = SIG_IGN};
-	sigaction(SIGINT, &er_sh, NULL);
-
-/* This one is uncomfortably involved, one is that we consume both signal
- * slots for this single purpose. The other is that far from all states
- * are safe for 'switching' and we need a way to distinguish that. The
- * current approach builds on the 'self-pipe' trick and then do the switch
- * as part of the normal event loop. */
-	if (!getenv("ARCAN_INPUT_DISABLE_TTYPSWAP")){
-		if (gstate.sigpipe[0] == -1){
-			struct vt_mode mode = {
-				.mode = VT_PROCESS,
-				.acqsig = SIGUSR1,
-				.relsig = SIGUSR2
-			};
-			if (0 == pipe(gstate.sigpipe)){
-				fcntl(gstate.sigpipe[0], F_SETFD, FD_CLOEXEC);
-				fcntl(gstate.sigpipe[1], F_SETFD, FD_CLOEXEC);
-				gstate.sigpipe_p.fd = gstate.sigpipe[0];
-				gstate.sigpipe_p.events = POLLIN;
-
-				er_sh.sa_handler = NULL;
-				er_sh.sa_sigaction = sigusr_acq;
-				er_sh.sa_flags = SA_SIGINFO;
-				sigaction(SIGUSR1, &er_sh, NULL);
-
-				er_sh.sa_sigaction = sigusr_rel;
-				sigaction(SIGUSR2, &er_sh, NULL);
-				ioctl(gstate.tty, VT_SETMODE, &mode);
-			}
-			else
-				arcan_warning("tty- swapping support requested, but pipe() failed\n");
-		}
-	}
-
+if (gstate.sigpipe[0] == -1)
+		setup_signals();
 	log_verbose = getenv("ARCAN_INPUT_VERBOSE");
 
 	const char* newsd;
