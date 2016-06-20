@@ -4987,6 +4987,7 @@ void arcan_video_restore_external()
 {
 	platform_video_restore_external();
 	arcan_event_init( arcan_event_defaultctx(), arcan_event_defaultctx()->drain );
+	platform_video_query_displays();
 	agp_shader_rebuild_all();
 	arcan_video_popcontext();
 }
