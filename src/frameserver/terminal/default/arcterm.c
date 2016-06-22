@@ -1103,7 +1103,8 @@ static void targetev(arcan_tgtevent* ev)
 
 /* switch cursor kind on changes to 4 in ioevs[2] */
 		if (dev){
-			arcan_shmif_resize(&term.acon, ev->ioevs[0].iv, ev->ioevs[1].iv);
+			if (!arcan_shmif_resize(&term.acon, ev->ioevs[0].iv, ev->ioevs[1].iv))
+				LOG("resize to (%d * %d( failed\n", ev->ioevs[0].iv, ev->ioevs[1].iv);
 			update_screensize(true);
 		}
 
@@ -1561,7 +1562,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 
 	if (tsm_vte_new(&term.vte, term.screen, write_callback,
 		NULL /* write_cb_data */, tsm_log, NULL /* tsm_log_data */) < 0){
-		LOG("fatal, couldn't setup vte\n");
+		LOG("failed to setup terminal emulator, giving up\n");
 		return EXIT_FAILURE;
 	}
 
@@ -1572,8 +1573,13 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	term.acon = *con;
 	term.acon.hints = SHMIF_RHINT_SUBREGION;
 
-	arcan_shmif_resize(&term.acon, initw, inith);
-	shmif_pixel bgc = SHMIF_RGBA(term.bgc[0], term.bgc[1], term.bgc[2], term.alpha);
+	if (!arcan_shmif_resize(&term.acon, initw, inith)){
+		LOG("failed to set initial size (%d * %d)\n", initw, inith);
+		return EXIT_FAILURE;
+	}
+
+	shmif_pixel bgc = SHMIF_RGBA(term.bgc[0],
+		term.bgc[1], term.bgc[2], term.alpha);
 	for (size_t i = 0; i < initw*inith; i++)
 		term.acon.vidp[i] = bgc;
 	arcan_shmif_signal(&term.acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
