@@ -894,16 +894,18 @@ static inline bool parent_alive(struct shmif_hidden* gs)
 
 static void setup_avbuf(struct arcan_shmif_cont* res)
 {
-	res->w = res->addr->w;
-	res->h = res->addr->h;
+	res->w = atomic_load(&res->addr->w);
+	res->h = atomic_load(&res->addr->h);
 	res->stride = res->w * ARCAN_SHMPAGE_VCHANNELS;
 	res->pitch = res->w;
 
-	res->priv->vbuf_cnt = res->addr->vpending;
-	res->priv->abuf_cnt = res->addr->apending;
+	res->priv->vbuf_cnt = atomic_load(&res->addr->vpending);
+	res->priv->abuf_cnt = atomic_load(&res->addr->apending);
 
-	res->priv->abuf_ind = res->priv->vbuf_ind = 0;
-	res->addr->vpending = res->addr->apending = 0;
+	res->priv->abuf_ind = 0;
+	res->priv->vbuf_ind = 0;
+	atomic_store(&res->addr->vpending, 0);
+	atomic_store(&res->addr->apending, 0);
 	res->abufused = 0;
 	res->abufsize = atomic_load(&res->addr->abufsize);
 
@@ -1299,7 +1301,7 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 	audc = audc < 0 ? arg->priv->abuf_cnt : audc;
 
 /* don't negotiate unless the goals have changed */
-	if (width == arg->addr->w && height == arg->addr->h &&
+	if (arg->vidp && width == arg->w && height == arg->h &&
 		vidc == arg->priv->vbuf_cnt && audc == arg->priv->abuf_cnt &&
 		arg->addr->hints == arg->hints)
 		return true;
