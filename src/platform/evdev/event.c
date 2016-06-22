@@ -192,6 +192,7 @@ static void sigusr_acq(int sign, siginfo_t* info, void* ctx)
 	int s_errn = errno;
 	if (write(gstate.sigpipe[1], &vt_acq, 1) == 1)
 		;
+	write(STDOUT_FILENO, &vt_acq, 1);
 	errno = s_errn;
 }
 
@@ -200,7 +201,8 @@ static void sigusr_rel(int sign, siginfo_t* info, void* ctx)
 	int s_errn = errno;
 	if (write(gstate.sigpipe[1], &vt_rel, 1) == 1)
 		;
-		errno = s_errn;
+	write(STDOUT_FILENO, &vt_rel, 1);
+	errno = s_errn;
 }
 
 static void sigusr_term(int sign, siginfo_t* info, void* ctx)
@@ -208,6 +210,7 @@ static void sigusr_term(int sign, siginfo_t* info, void* ctx)
 	int s_errn = errno;
 	if (write(gstate.sigpipe[1], &vt_trm, 1) == 1)
 		;
+	write(STDOUT_FILENO, &vt_trm, 1);
 	errno = s_errn;
 }
 
@@ -644,6 +647,13 @@ void platform_event_process(struct arcan_evctx* ctx)
  * entry point. The other option of enqeueing release- events had the problem
  * of introducing multiple- release events. */
 					break;
+			}
+			else {
+				arcan_event_enqueue(arcan_event_defaultctx(), &(struct arcan_event){
+					.category = EVENT_SYSTEM,
+					.sys.kind = EVENT_SYSTEM_EXIT,
+					.sys.errcode = EXIT_SUCCESS
+				});
 			}
 		}
 	}
