@@ -1248,14 +1248,23 @@ static void decode_mt(struct arcan_evctx* ctx,
 
 	switch(code){
 	case ABS_X:
+		if (node->touch.ind != 0 && node->touch.pending)
+			flush_pending(ctx, node);
+
 		node->touch.ind = 0;
 		node->touch.x = val;
 		node->touch.pending = true;
 	break;
 	case ABS_Y:
+		if (node->touch.ind != 0 && node->touch.pending)
+			flush_pending(ctx, node);
+
 		node->touch.ind = 0;
 		node->touch.y = val;
 		node->touch.pending = true;
+	break;
+	case ABS_MT_PRESSURE:
+		node->touch.pressure = val;
 	break;
 	case ABS_MT_POSITION_X:
 		node->touch.x = val;
@@ -1267,7 +1276,6 @@ static void decode_mt(struct arcan_evctx* ctx,
 	break;
 	case ABS_DISTANCE:
 		node->touch.pressure = val;
-		node->touch.pending = true;
 	break;
 	case ABS_MT_TRACKING_ID:
 		if (-1 == val){
@@ -1276,7 +1284,12 @@ static void decode_mt(struct arcan_evctx* ctx,
 			flush_pending(ctx, node);
 		}
 		else
-			node->touch.ind = val;
+			; /* we don't distingush between IDs, only SLOTs */
+	break;
+	case ABS_MT_SLOT:
+		if (node->touch.pending && node->touch.ind != val)
+			flush_pending(ctx, node);
+		node->touch.ind = val;
 	break;
 	default:
 	break;
@@ -1361,7 +1374,12 @@ static void defhandler_game(struct arcan_evctx* ctx,
 	for (size_t i = 0; i < evs / sizeof(struct input_event); i++){
 		switch(inev[i].type){
 		case EV_KEY:
-			inev[i].code -= BTN_JOYSTICK;
+			if (inev[i].code >= BTN_TOUCH)
+				inev[i].code -= BTN_TOUCH;
+			else if (inev[i].code >= BTN_JOYSTICK)
+				inev[i].code -= BTN_JOYSTICK;
+			else if (inev[i].code >= BTN_MOUSE)
+				inev[i].code -= BTN_MOUSE - 1;
 			if (node->hnd.button_mask && inev[i].code <= 64 &&
 				( (node->hnd.button_mask >> inev[i].code) & 1) )
 				continue;
