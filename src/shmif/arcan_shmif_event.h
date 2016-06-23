@@ -268,10 +268,13 @@ enum ARCAN_TARGET_COMMAND {
 	TARGET_COMMAND_SEEKTIME,
 
 /*
- * For segments that have indicated content-state, move content position
- * to specified "absolute" position:
- * ioevs[0].iv = x axis: 0[no change], 1 (left) <= n <= 65536 (right)
- * ioevs[1].iv = y axis: 0[no change], 1 (top) <= n <= 65536 (bottom)
+ * ioev[0].iv : 0 = seek_relative, 1 = seek_absolute
+ * if (seek_relative)
+ *  ioevs[1].iv = y-axis: step 'n' logic steps (impl. defined size)
+ *  ioevs[2].iv = x-axis: step 'n' logic steps (impl. defined size)
+ * if (seek_absolute)
+ *  ioevs[1].fv = y-axis: set content position (ignore < 0 <= n <= 1)
+ *  ioevs[2].fv = x-axis: set content position (ignore < 0 <= n <= 1)
  */
 	TARGET_COMMAND_SEEKCONTENT,
 
@@ -1032,17 +1035,19 @@ typedef struct arcan_extevent {
  * Indicate that the connection supports abstract input labels, along
  * with the expected data type (match EVENT_IDATATYPE_*)
  * (label)     - 7-bit ASCII filtered to alnum and _
- * (idatatype) - match IDATATYPE enum of expected data
  * (initial)   - suggested default sym (as 7-bit ASCII) to bind as
  *               alnum and _, matching the used symtable.lua
  * (descr)     - short 8-bit UTF description, if localization is avail.
  *               also follow the language from the last GEOHINT
+ * (subv)      - > 0, use subid as pseudonym for this label (reduce string use)
+ * (idatatype) - match IDATATYPE enum of expected data
  */
 		struct {
 			char label[16];
 			char initial[16];
-			char descr[64];
-			int idatatype;
+			char descr[58];
+			uint16_t subv;
+			uint8_t idatatype;
 		} labelhint;
 
 /*
