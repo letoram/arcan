@@ -1408,10 +1408,6 @@ static void defhandler_game(struct arcan_evctx* ctx,
 
 			if (inev[i].code >= ABS_HAT0X && inev[i].code <= ABS_HAT3Y)
 				decode_hat(ctx, node, inev[i].code - ABS_HAT0X, inev[i].value);
-			else
-			if ((inev[i].code >= ABS_X && inev[i].code <= ABS_Y) ||
-				(inev[i].code >= ABS_MT_SLOT && inev[i].code <= ABS_MT_TOOL_Y))
-				decode_mt(ctx, node, inev[i].code, inev[i].value);
 			else if (inev[i].code < node->game.axes &&
 				process_axis(ctx,
 				&node->game.adata[inev[i].code], inev[i].value, &samplev)){
@@ -1425,6 +1421,9 @@ static void defhandler_game(struct arcan_evctx* ctx,
 
 				arcan_event_enqueue(ctx, &newev);
 			}
+			else if ((inev[i].code >= ABS_X && inev[i].code <= ABS_Y) ||
+				(inev[i].code >= ABS_MT_SLOT && inev[i].code <= ABS_MT_TOOL_Y))
+				decode_mt(ctx, node, inev[i].code, inev[i].value);
 		break;
 
 		case EV_SYN:
