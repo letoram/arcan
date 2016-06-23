@@ -1857,8 +1857,10 @@ bool platform_video_map_display(
 /* we have a known but previously unmapped display, set it up */
 	if (d->state == DISP_KNOWN){
 		if (setup_kms(d,
-			d->display.con->connector_id, d->display.mode->hdisplay,
-			d->display.mode->vdisplay) != 0 || setup_buffers(d) != 0){
+			d->display.con->connector_id,
+			d->display.mode ? d->display.mode->hdisplay : 0,
+			d->display.mode ? d->display.mode->vdisplay : 0) ||
+			setup_buffers(d) != 0){
 			arcan_warning("egl-dri(map_display) - couldn't setup kms/"
 				"buffers on %d:%d\n", (int)d->id, (int)d->display.con->connector_id);
 			return false;
