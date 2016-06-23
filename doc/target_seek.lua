@@ -1,15 +1,17 @@
 -- target_seek
 -- @short: Request a change playback position for a frameserver.
--- @inargs: vid, seekpos, *rel*
--- @longdescr: Request that the specified decode frameserver try and seek to a different position.
--- This will flush queues in both ends. If *rel* is set to anything other than 1,
--- the seek will be absolute and expected to be a float in the 0..1 range (where 0 denotes beginning
--- of clip or possible buffer for streams and 1 the end). If *rel* is set to 1 or skipped,
--- the seek will be relative to the current playback position and seekpos is a positive or negative
--- offset in milliseconds.
--- @note: For libretro/hijack cores that support snapshot capabilities, this will enable
--- state tracking and delta-states for rewinding gameplay.
--- @note: A relative seek of 0 ms will still impose a buffer flush.
+-- @inargs: vid, step, *relative*, *time*, *alt_step*
+-- @longdescr: Request an absolute or relative *step* sized change in active
+-- content position in either time or space.
+-- If seeking in *time* (default), the relative (default) is expected to be
+-- an offset in miliseconds. Absolute seeking in *time* is a float in the 0..1
+-- range from beginning (0) to end or current-end (if streaming). This will likely
+-- impose a video and audio buffer flush, even in the case of a relative 0ms seek.
+-- If seeking in *space*, the relative (default) is in a discrete +- steps on a
+-- target defined scale. Absolute seeking is a float in the 0..1 range.
+-- If *alt_step* is defined, the *relative* meaning remains, but *alt_step* is
+-- along a secondary axis. A common case for this is scrolling window content
+-- where the *step* dimension is the Y-axis and *alt_step* is the X-axis.
 -- @group: targetcontrol
 -- @cfunction: targetseek
 

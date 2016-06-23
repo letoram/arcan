@@ -6323,23 +6323,38 @@ static int targetseek(lua_State* ctx)
 
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
 	float val = luaL_checknumber(ctx, 2);
-	bool relative = luaL_optnumber(ctx, 3, 1) != 0;
+	bool relative = luaL_optbnumber(ctx, 3, true);
+	bool time = luaL_optnumber(ctx, 3, true);
 
 	vfunc_state* state = arcan_video_feedstate(tgt);
 
-	if (!(state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr)){
-		LUA_ETRACE("target_seek", "not a frameserver");
-		return 0;
+	if (time){
+		arcan_event ev = {
+			.category = EVENT_TARGET,
+			.tgt.kind = TARGET_COMMAND_SEEKTIME
+		};
+
+		ev.tgt.ioevs[0].iv = relative;
+		ev.tgt.ioevs[1].fv = val;
+		tgtevent(tgt, ev);
 	}
+	else {
+		arcan_event ev = {
+			.category = EVENT_TARGET,
+			.tgt.kind = TARGET_COMMAND_SEEKCONTENT
+		};
 
-	arcan_event ev = {
-		.category = EVENT_TARGET,
-		.tgt.kind = TARGET_COMMAND_SEEKTIME
-	};
-
-	ev.tgt.ioevs[0].iv = relative;
-	ev.tgt.ioevs[1].fv = val;
-	tgtevent(tgt, ev);
+		ev.tgt.ioevs[0].iv = relative;
+		if (relative){
+			ev.tgt.ioevs[1].iv = val;
+			ev.tgt.ioevs[2].iv = luaL_optnumber(ctx, 4, 0);
+		}
+		else {
+			ev.tgt.ioevs[1].fv = val;
+			ev.tgt.ioevs[2].fv = luaL_optnumber(ctx, 4, -1);
+		}
+		tgtevent(tgt, ev);
+	}
 
 	LUA_ETRACE("target_seek", NULL);
 	return 0;
