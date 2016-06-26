@@ -247,12 +247,12 @@ SDL_GrabMode ARCAN_SDL_WM_GrabInput(SDL_GrabMode mode)
 	if (mode != SDL_GRAB_QUERY){
 		requested_mode = mode;
 		if (mode == SDL_GRAB_OFF)
-			arcan_shmif_enqueue(c, &(struct arcan_event){
+			arcan_shmif_enqueue(&global.shared, &(struct arcan_event){
 				.ext.kind = ARCAN_EVENT(CURSORHINT),
 				.ext.message.data = "hidden-abs"
 			});
 		else
-			arcan_shmif_enqueue(c, &(struct arcan_event){
+			arcan_shmif_enqueue(&global.shared, &(struct arcan_event){
 				.ext.kind = ARCAN_EVENT(CURSORHINT),
 				.ext.message.data = "hidden-rel"
 			});
