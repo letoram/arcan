@@ -28,15 +28,14 @@
 
 extern struct hijack_fwdtbl forwardtbl;
 
-/* prototypes matching arcan_target.c */
 SDL_GrabMode ARCAN_SDL_WM_GrabInput(SDL_GrabMode mode);
-void ARCAN_target_init();
 void ARCAN_target_shmsize(int w, int h, int bpp);
 int ARCAN_SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained);
 SDL_Surface* ARCAN_SDL_CreateRGBSurface(Uint32 flags, int width, int height,
 	int depth, Uint32 Rmask, Uint32 Gmask, Uint32 Bmask, Uint32 Amask);
 SDL_Surface* ARCAN_SDL_SetVideoMode(int w, int h, int ncps, Uint32 flags);
 int ARCAN_SDL_PollEvent(SDL_Event* inev);
+int ARCAN_SDL_WaitEvent(SDL_Event* inev);
 int ARCAN_SDL_Flip(SDL_Surface* screen);
 void ARCAN_SDL_UpdateRect(SDL_Surface* screen,
 	Sint32 x, Sint32 y, Uint32 w, Uint32 h);
@@ -89,7 +88,7 @@ static void* lookupsym(const char* symname, void* bounce, bool fatal){
 	void* res = dlsym(RTLD_NEXT, symname);
 
 	if (res == NULL && fatal){
-		fprintf(stderr, "ARCAN_Hijack, warning: %s not found.\n", symname);
+//		fprintf(stderr, "ARCAN_Hijack, warning: %s not found.\n", symname);
 		res = fatal_catcher;
 	}
 
@@ -126,12 +125,13 @@ static struct symentry* find_symbol(const char* sym)
 	return res;
 }
 
-__attribute__((constructor))
-static void hijack_init(void){
+void build_forwardtbl()
+{
   forwardtbl.sdl_grabinput = lookupsym("SDL_WM_GrabInput",ARCAN_SDL_WM_GrabInput, true);
 	forwardtbl.sdl_openaudio = lookupsym("SDL_OpenAudio",ARCAN_SDL_OpenAudio, true);
 	forwardtbl.sdl_peepevents = lookupsym("SDL_PeepEvents",NULL, true);
 	forwardtbl.sdl_pollevent = lookupsym("SDL_PollEvent",ARCAN_SDL_PollEvent, true);
+	forwardtbl.sdl_waitevent = lookupsym("SDL_WaitEvent", ARCAN_SDL_WaitEvent, true);
 	forwardtbl.sdl_pushevent = lookupsym("SDL_PushEvent",NULL, true);
 	forwardtbl.sdl_swapbuffers = lookupsym("SDL_GL_SwapBuffers",ARCAN_SDL_GL_SwapBuffers, true);
 	forwardtbl.sdl_flip = lookupsym("SDL_Flip",ARCAN_SDL_Flip, true);
@@ -139,9 +139,11 @@ static void hijack_init(void){
 	forwardtbl.sdl_updaterect = lookupsym("SDL_UpdateRect", ARCAN_SDL_UpdateRect, true);
 	forwardtbl.sdl_updaterects = lookupsym("SDL_UpdateRects", ARCAN_SDL_UpdateRects, true);
 	forwardtbl.sdl_upperblit = lookupsym("SDL_UpperBlit", ARCAN_SDL_UpperBlit, true);
-
+	forwardtbl.sdl_starteventloop = lookupsym("SDL_StartEventLoop", NULL, true);
 	forwardtbl.sdl_setvideomode = lookupsym("SDL_SetVideoMode", ARCAN_SDL_SetVideoMode, true);
 	forwardtbl.sdl_creatergbsurface = lookupsym("SDL_CreateRGBSurface", ARCAN_SDL_CreateRGBSurface, true);
+
+/* we need XOpenDisplay() to return some nonsens */
 
 	forwardtbl.glLineWidth = lookupsym("glLineWidth", NULL, true);
 	forwardtbl.glPointSize = lookupsym("glPointSize", NULL, true);
@@ -161,7 +163,14 @@ static void hijack_init(void){
 
 /* SDL_mixer hijack, might not be present */
 	forwardtbl.audioproxy = lookupsym("Mix_Volume", NULL, false);
-	ARCAN_target_init();
+}
+
+__attribute__((constructor))
+static void hijack_init(void){
+/* force an SDL video driver with a known behavior */
+	setenv("SDL_VIDEODRIVER", "dummy", 0);
+	setenv("SDL_AUDIODRIVER", "alsa", 0);
+	build_forwardtbl();
 }
 
 __attribute__((destructor))
@@ -196,6 +205,12 @@ int SDL_PollEvent(SDL_Event* ev)
 {
 	lastsym = "SDL_PollEvent";
 	return ARCAN_SDL_PollEvent(ev);
+}
+
+int SDL_WaitEvent(SDL_Event* ev)
+{
+	lastsym = "SDL_WaitEvent";
+	return ARCAN_SDL_WaitEvent(ev);
 }
 
 /* Used by double-buffered non-GL apps */

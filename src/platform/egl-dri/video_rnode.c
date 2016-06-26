@@ -450,10 +450,10 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 #ifndef HEADLESS_NOARCAN
 	arcan_bench_register_cost(
 		arcan_vint_refresh(fract, &platform_nupd));
-#endif
 
 /* actually needed for arcan platform or our handle-content may be bad */
 	glFlush();
+#endif
 
 	if (post)
 		post();

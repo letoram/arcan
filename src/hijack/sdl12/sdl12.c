@@ -244,22 +244,21 @@ SDL_GrabMode ARCAN_SDL_WM_GrabInput(SDL_GrabMode mode)
 	trace("WM_GrabInput( %d )\n", mode);
 
 /* blatantly lie about being able to grab input */
-	if (mode != SDL_GRAB_QUERY)
+	if (mode != SDL_GRAB_QUERY){
 		requested_mode = mode;
+		if (mode == SDL_GRAB_OFF)
+			arcan_shmif_enqueue(c, &(struct arcan_event){
+				.ext.kind = ARCAN_EVENT(CURSORHINT),
+				.ext.message.data = "hidden-abs"
+			});
+		else
+			arcan_shmif_enqueue(c, &(struct arcan_event){
+				.ext.kind = ARCAN_EVENT(CURSORHINT),
+				.ext.message.data = "hidden-rel"
+			});
+	}
 
 	return requested_mode;
-}
-
-void ARCAN_target_init()
-{
-	struct arg_arr* args;
-	global.shared = arcan_shmif_open(SEGID_GAME, SHMIF_ACQUIRE_FATALFAIL, &args);
-
-	if (getenv("ARCAN_FRAMESERVER_DEBUGSTALL")){
-		fprintf(stderr, "frameserver_debugstall, waiting 10s"
-			"	to continue. pid: %d\n", (int) getpid());
-		sleep(10);
-	}
 }
 
 void ARCAN_target_shmsize(int w, int h, int bpp)
@@ -276,10 +275,11 @@ void ARCAN_target_shmsize(int w, int h, int bpp)
 	if (!	arcan_shmif_resize( &(global.shared), w, h) )
 		exit(EXIT_FAILURE);
 
-	uint32_t px = 0xff000000;
-	uint32_t* vidp = (uint32_t*) global.shared.vidp;
-	for (int i = 0; i < w * h * 4; i++)
-		*vidp = px;
+	trace("resize/fill\n");
+	shmif_pixel px = SHMIF_RGBA(0x00, 0x00, 0x00, 0xff);
+	shmif_pixel* vidp = global.shared.vidp;
+	for (int i = 0; i < w * h; i++)
+		*vidp++ = px;
 }
 
 int ARCAN_SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
@@ -329,15 +329,18 @@ SDL_Surface* ARCAN_SDL_CreateRGBSurface(Uint32 flags,
 }
 
 /*
- * certain events might be filtered as well,
- * since the subject needs to be tricked to belive that it is active/in focus/...
- * even though it is not
+ * certain events might be filtered as well, since the subject needs to be
+ * tricked to belive that it is active/in focus/...  even though it is not
  */
-
 SDL_Surface* ARCAN_SDL_SetVideoMode(int w, int h, int ncps, Uint32 flags)
 {
 	trace("SDL_SetVideoMode(%d, %d, %d, %d)\n", w, h, ncps, flags);
 	global.gotsdl = true;
+
+	if (!global.shared.addr){
+		struct arg_arr* args;
+		global.shared = arcan_shmif_open(SEGID_GAME, SHMIF_ACQUIRE_FATALFAIL, &args);
+	}
 
 	SDL_Surface* res = forwardtbl.sdl_setvideomode(w, h, ncps, flags);
 	global.doublebuffered = ((flags & SDL_DOUBLEBUF) > 0);
@@ -365,77 +368,82 @@ static inline void push_ioevent_sdl(arcan_ioevent event){
 	SDL_Event newev = {0};
 
 	switch (event.datatype){
-		case EVENT_IDATATYPE_TOUCH: break;
-		case EVENT_IDATATYPE_DIGITAL:
-			newev.button.which = event.devid;
+	case EVENT_IDATATYPE_TOUCH:
+	break;
+	case EVENT_IDATATYPE_DIGITAL:
+		newev.button.which = event.devid;
 
-			if (event.devkind == EVENT_IDEVKIND_MOUSE){
-				newev.button.state  = event.input.digital.active ?
-					SDL_PRESSED : SDL_RELEASED;
-				newev.button.type   = event.input.digital.active ?
-					SDL_MOUSEBUTTONDOWN : SDL_MOUSEBUTTONUP;
-				newev.button.button = event.subid;
-				newev.button.x = global.mousestate.x;
-				newev.button.y = global.mousestate.y;
+		if (event.devkind == EVENT_IDEVKIND_MOUSE){
+			newev.button.state = event.input.digital.active ?
+				SDL_PRESSED : SDL_RELEASED;
+			newev.button.type  = event.input.digital.active ?
+				SDL_MOUSEBUTTONDOWN : SDL_MOUSEBUTTONUP;
+			newev.button.button = event.subid;
+			newev.button.x = global.mousestate.x;
+			newev.button.y = global.mousestate.y;
 
-				global.mousebutton = event.input.digital.active ?
-					global.mousebutton | SDL_BUTTON( newev.button.button + 1 ) :
-					global.mousebutton & ~(SDL_BUTTON( newev.button.button + 1 ));
-			} else {
-				newev.jbutton.state  = event.input.digital.active ?
-					SDL_PRESSED : SDL_RELEASED;
-				newev.jbutton.type   = event.input.digital.active ?
-					SDL_JOYBUTTONDOWN : SDL_JOYBUTTONUP;
-				newev.jbutton.button = event.subid;
-			}
+			global.mousebutton = event.input.digital.active ?
+				global.mousebutton | SDL_BUTTON( newev.button.button + 1 ) :
+				global.mousebutton & ~(SDL_BUTTON( newev.button.button + 1 ));
+		} else {
+			newev.jbutton.state  = event.input.digital.active ?
+				SDL_PRESSED : SDL_RELEASED;
+			newev.jbutton.type   = event.input.digital.active ?
+				SDL_JOYBUTTONDOWN : SDL_JOYBUTTONUP;
+			newev.jbutton.button = event.subid;
+		}
 
-			forwardtbl.sdl_pushevent(&newev);
-		break;
+		forwardtbl.sdl_pushevent(&newev);
+	break;
 
-		case EVENT_IDATATYPE_TRANSLATED:
-			newev.key.keysym.scancode = event.input.translated.scancode;
-			newev.key.keysym.sym = event.input.translated.keysym;
-			newev.key.keysym.mod = event.input.translated.modifiers;
-			newev.key.keysym.unicode = event.subid;
-			newev.key.which = event.devid;
-			newev.key.state = event.input.translated.active ?SDL_PRESSED:SDL_RELEASED;
-			newev.key.type = event.input.translated.active ? SDL_KEYDOWN : SDL_KEYUP;
+	case EVENT_IDATATYPE_TRANSLATED:
+		newev.key.keysym.scancode = event.input.translated.scancode;
+		newev.key.keysym.sym = event.input.translated.keysym;
+		newev.key.keysym.mod = event.input.translated.modifiers;
+		newev.key.keysym.unicode = event.subid;
+		newev.key.which = event.devid;
+		newev.key.state = event.input.translated.active ?SDL_PRESSED:SDL_RELEASED;
+		newev.key.type = event.input.translated.active ? SDL_KEYDOWN : SDL_KEYUP;
 
-			trace("got key: %c\n", newev.key.keysym.sym);
-			forwardtbl.sdl_pushevent(&newev);
-		break;
+		trace("got key: %c\n", newev.key.keysym.sym);
+		forwardtbl.sdl_pushevent(&newev);
+	break;
 
-		case EVENT_IDATATYPE_ANALOG:
-			if (event.devkind == EVENT_IDEVKIND_MOUSE){
-					newev.motion = global.mousestate;
+	case EVENT_IDATATYPE_ANALOG:
+	if (event.devkind == EVENT_IDEVKIND_MOUSE){
+			newev.motion = global.mousestate;
 
-					newev.motion.which = event.devid;
-					newev.motion.state = global.mousebutton;
-					newev.motion.type = SDL_MOUSEMOTION;
+			newev.motion.which = event.devid;
+			newev.motion.state = global.mousebutton;
+			newev.motion.type = SDL_MOUSEMOTION;
 
-				if (event.subid == 0){
-					newev.motion.x = event.input.analog.axisval[0];
-					newev.motion.xrel = event.input.analog.axisval[1];
-					newev.motion.yrel = 0;
+		if (event.subid == 0){
+			newev.motion.x = event.input.analog.axisval[0];
+			newev.motion.xrel = event.input.analog.axisval[1];
+			newev.motion.yrel = 0;
 
-				} else if (event.subid == 1){
-					newev.motion.y = event.input.analog.axisval[0];
-					newev.motion.yrel = event.input.analog.axisval[1];
-					newev.motion.xrel = 0;
-				}
+		}
+		else if (event.subid == 1){
+			newev.motion.y = event.input.analog.axisval[0];
+			newev.motion.yrel = event.input.analog.axisval[1];
+			newev.motion.xrel = 0;
+		}
 
-				global.mousestate = newev.motion;
-				forwardtbl.sdl_pushevent(&newev);
-			} else {
-				newev.jaxis.value = event.input.analog.axisval[0];
-				newev.jaxis.which = event.devid;
-				newev.jaxis.axis = event.subid;
-				newev.jaxis.type = SDL_JOYAXISMOTION;
-				forwardtbl.sdl_pushevent(&newev);
-			}
-		break;
-		default:
-		break;
+		trace("mouse: %d (%d), %d (%d)\n", newev.motion.x, newev.motion.xrel,
+			newev.motion.y, newev.motion.yrel);
+		global.mousestate = newev.motion;
+		forwardtbl.sdl_pushevent(&newev);
+	}
+	else {
+		newev.jaxis.value = event.input.analog.axisval[0];
+		newev.jaxis.which = event.devid;
+		newev.jaxis.axis = event.subid;
+		newev.jaxis.type = SDL_JOYAXISMOTION;
+		forwardtbl.sdl_pushevent(&newev);
+	}
+	break;
+	default:
+	break;
 	}
 }
 
@@ -464,24 +472,53 @@ void process_targetevent(unsigned kind, arcan_tgtevent* ev)
 	}
 }
 
+static void run_event(struct arcan_event* ev)
+{
+	switch (ev->category){
+	case EVENT_IO:
+		if (global.gotsdl)
+			push_ioevent_sdl(ev->io);
+	break;
+	case EVENT_TARGET:
+		process_targetevent(ev->tgt.kind, &ev->tgt);
+	default:
+	break;
+	}
+}
+
+int ARCAN_SDL_WaitEvent(SDL_Event* out)
+{
+	static bool got_pulse;
+
+	if (!got_pulse){
+		arcan_shmif_enqueue(&global.shared, &(struct arcan_event){
+			.ext.kind = ARCAN_EVENT(CLOCKREQ),
+			.ext.clock.rate = 1,
+			.ext.clock.id = 1
+		});
+		got_pulse = true;
+	}
+
+/* register an automatic timer so we have a chance to catch
+ * some timer in SDL at least */
+	struct arcan_event ev;
+	while (arcan_shmif_wait(&global.shared, &ev) != 0){
+		run_event(&ev);
+
+		if (forwardtbl.sdl_pollevent(out))
+			return 1;
+	}
+
+	return 0;
+}
+
 int ARCAN_SDL_PollEvent(SDL_Event* inev)
 {
 	SDL_Event gevent;
 	arcan_event ev;
 
-	trace("SDL_PollEvent()\n");
-
 	while (arcan_shmif_poll(&global.shared, &ev) > 0){
-		switch (ev.category){
-		case EVENT_IO:
-			if (global.gotsdl)
-				push_ioevent_sdl(ev.io);
-		break;
-		case EVENT_TARGET:
-			process_targetevent(ev.tgt.kind, &ev.tgt);
-		default:
-		break;
-		}
+		run_event(&ev);
 	}
 
 /* strip away a few events related to fullscreen,

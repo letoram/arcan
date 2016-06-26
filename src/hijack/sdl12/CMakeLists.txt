@@ -4,6 +4,7 @@ if (SDL_FOUND)
 	set(SDL12_SOURCES
 		unix_stub.c
 		sdl12.c
+		resample.c
 	)
 
 	set(HIJACK_LIBSTRING "${HIJACK_LIBSTRING}sdl12 " PARENT_SCOPE)
