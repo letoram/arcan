@@ -3743,7 +3743,15 @@ static void push_view(lua_State* ctx, struct arcan_extevent* ev,
 	lua_rawset(ctx, top2);
 	lua_rawset(ctx, top);
 	tblbool(ctx, "invisible", ev->viewport.invisible != 0, top);
-	tblnum(ctx, "border", ev->viewport.border, top);
+	lua_pushstring(ctx, "border");
+	lua_newtable(ctx);
+	top2 = lua_gettop(ctx);
+	for (size_t i = 0; i < 4; i++){
+		lua_pushnumber(ctx, i+1);
+		lua_pushnumber(ctx, ev->viewport.border[i]);
+		lua_rawset(ctx, top2);
+	}
+	lua_rawset(ctx, top);
 	tblnum(ctx, "id", ev->viewport.viewid, top);
 
 /* translate to vid namespace if it matches a valid frameserver segment,

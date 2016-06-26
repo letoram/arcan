@@ -332,16 +332,25 @@ char* arcan_shmif_connect(const char* connpath,
 	const char* connkey, file_handle* conn_ch);
 
 /*
- * [STUB, NO-USE]
- * Attempt to migrate all local state to another shmif- connection.
- * This attempts to first initialize a new connection then, if successful,
- * copy buffer states into the new connection and terminate the old one.
+ * This is used to migrate a currect connection, authoritative or not,
+ * to a non-authoritate connection, possibly using a different connection
+ * path and primitive.
  *
- * [conn] must be a valid connection and refer to the primary segment
- * of a shmif connection (no subsegment).
+ * Will return false on invalid [cont] argument.
+ *
+ * Current limitations are that subsegments are not re-negotiated.
+ * Will return true or false depending on if the transfer was successful
+ * or not. If it failed, the referenced main connection is still valid.
  */
-bool arcan_shmif_migrate(struct arcan_shmif_cont conn,
-	const char* connpath, const char* connkey, enum ARCAN_FLAGS flags);
+enum shmif_migrate_status {
+	SHMIF_MIGRATE_OK = 0,
+	SHMIF_MIGRATE_BADARG = -1,
+	SHMIF_MIGRATE_NOCON = -2,
+	SHMIF_MIGRATE_TRANSFER_FAIL = -4
+};
+
+enum shmif_migrate_status arcan_shmif_migrate(
+	struct arcan_shmif_cont* cont, const char* newpath, const char* key);
 
 /*
  * Using a identification string (implementation defined connection
