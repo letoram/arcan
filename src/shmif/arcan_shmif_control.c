@@ -28,13 +28,6 @@
 
 #include "arcan_shmif.h"
 
-/*
- * The windows implementation here is rather broken in several ways:
- * 1. non-authoritative connections not accepted
- * 2. multiple- segments failed due to the hackish way that
- *    semaphores and shared memory handles are passed
- * 3. split- mode not implemented
- */
 #include <signal.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
@@ -61,6 +54,7 @@
 
 /*
  * implementation defined for out-of-order execution and reordering protection
+ * when we+the compilers are full c11 thread+atomics, this can be dropped
  */
 #ifndef FORCE_SYNCH
 	#define FORCE_SYNCH() {\
@@ -793,6 +787,19 @@ int arcan_shmif_resolve_connpath(const char* key,
 static void shmif_exit(int c)
 {
 	exit(c);
+}
+
+enum shmif_migrate_status arcan_shmif_migrate(
+	struct arcan_shmif_cont* cont, const char* newpath, const char* key)
+{
+	if (!cont || !cont->addr || !newpath)
+		return -SHMIF_MIGRATE_BADARG;
+
+	enum ARCAN_FLAGS flags = 0;
+
+	file_handle dpipe;
+	char* keyfile = arcan_shmif_connect(newpath, key, &dpipe);
+
 }
 
 char* arcan_shmif_connect(const char* connpath, const char* connkey,
@@ -1542,12 +1549,6 @@ bool arg_lookup(struct arg_arr* arr, const char* val,
 		pos++;
 	}
 
-	return false;
-}
-
-bool arcan_shmif_migrate(struct arcan_shmif_cont conn,
-	const char* connpath, const char* connkey, enum ARCAN_FLAGS flags)
-{
 	return false;
 }
 

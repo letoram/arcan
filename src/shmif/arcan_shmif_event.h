@@ -383,7 +383,14 @@ enum ARCAN_TARGET_COMMAND {
  * Reserved for future use, will provide a handle to a specific device node,
  * where the type of the node defines how it is supposed to be used.
  * ioev[0].iv = handle,
- * ioev[1].iv = type [e.g. render-node for switching GPUs]
+ * ioev[1].iv = 0: switch render node, negative handle value: release
+ *              1: switch local connection, negative handle value:
+ *                 message field will contain new _CONNPATH otherwise
+ *                 connection primitive will be passed as handle
+ *              2: switch remote connection, negative handle value:
+ *                 message field will contain new _CONNPATH otherwise
+ *                 connection primitive will be passed handle
+ *
  */
 	TARGET_COMMAND_DEVICE_NODE,
 
@@ -555,26 +562,30 @@ enum ARCAN_EVENT_EXTERNAL {
  * drag-up, drag-down, drag-left, drag-right, drag-left-right, rotate-cw,
  * rotate-ccw, normal-tag, diag-ur, diag-ll, drag-diag, datafield,
  * move, typefield, forbidden, help, vertical-datafield, drag-drop,
- * drag-reject, hidden ]
+ * drag-reject, hidden-abs, hidden-rel ]
  *
- * The only mandated cursorhints are 'hidden', 'custom' which is treated as
- * 'default' UNLESS there is a CURSORHINT type subsegment mapped, then that
- * will be used.
+ * The only mandated cursorhints are 'hidden-abs', 'hidden-rel' which
+ * indicate the preferred type of cursor events when it comes to coordinates.
+ * It may also be used by the appl- to alter window- local cursor locking
+ * behavior. If a CURSOR subsegment has been accepted, it will be used for
+ * drawing instead.
  */
 	EVENT_EXTERNAL_CURSORHINT,
 
 /*
- * Hint that video synchronization should only cover a subarea.  This is reset
- * to 0,0,w,h on a completed resize sequence.  Values outside the current range
- * (x+w > segw, y+h > segh) will be ignored or cause the connection to be
- * terminated.
+ * Hint that video synchronization should only cover a subarea. It can also
+ * indicate if the segment should be hidden, or the range of client-side
+ * decorations. This is reset to 0,0,w,h on a completed resize sequence.
+ * Values outside the current range (x+w > segw, y+h > segh) will be ignored
+ * or cause the connection to be terminated.
  * Uses the viewport substructure.
  */
 	EVENT_EXTERNAL_VIEWPORT,
 
 /*
  * [UNIQUE]
- * Hint about local content state in regards to uses the content substructure.
+ * Hint about local content state in regards to viewport or window position
+ * relative to available uses the content substructure.
  */
 	EVENT_EXTERNAL_CONTENT,
 
@@ -1021,6 +1032,8 @@ typedef struct arcan_extevent {
  * (once) - & !0 > 0, fire once or use as periodic timer
  * (rate) - if once is set, relative to last tick otherwise every n ticks
  * (id)   - caller specified ID that will be used in stepframe reply
+ * (dynamic) - set to !0 if it should be hooked to video frame delivery rather
+ *             than an approximate monotonic clock
  *
  * there is one automatic clock- slot per connection, and will always have
  * ID 1 in the reply.
@@ -1079,22 +1092,27 @@ typedef struct arcan_extevent {
  * provide its own decorations or content indicators and the actual
  * dimensions of these (so that the running appl can decide what to show).
  *
- *  (x+w), (y+h)   - position and cliped against actual surface dimensions
- *  (border) (px)  - note if there is a border area and its thickness
- *                   so that it can be cropped away if desired (w,h > border)
- *  (parent) (tok) - can be 0 or the window-id we are relative against,
- *                   useful for popup subsegments etc. tok comes from
- *                   shmif_page segment_token
- *	(invisible)    - hint that the current content segment backing store
- *	                 contains no information that is visibly helpful
- *  viewid         - (reserved and not currently in use)
- *                   for supporting multiple windows on the same segment
+ *  (x+w), (y+h)     - position and cliped against actual surface dimensions
+ *  (borderpx)[tlrd] - indicate if there is a border area and its thickness
+ *                     so that it can be cropped away if CSDs are undesired
+ *  (parent) (tok)   - can be 0 or the window-id we are relative against,
+ *                     useful for popup subsegments etc. tok comes from
+ *                     shmif_page segment_token
+ *	(invisible)      - hint that the current content segment backing store
+ *	                   contains no information that is visibly helpful
+ *  (relx, rely)     - positioning HINT relative to parent- (x,y >= 1)
+ *  viewid           - (reserved and not currently in use)
+ *                     for supporting multiple windows on the same segment
+ *
+ *  viewports may become invalidated on shrinking resize, though
+ *  border- properties for still-valid areas are retained.
  */
 		struct {
 			uint16_t x, y, w, h;
 			uint32_t parent;
-			uint8_t border;
+			uint8_t border[4];
 			uint8_t invisible;
+			uint16_t rel_x, rel_y;
 			uint8_t viewid;
 		} viewport;
 
@@ -1114,8 +1132,8 @@ typedef struct arcan_extevent {
  * (ID)     - user-specified cookie, will propagate with req/resp
  * (width)  - desired width, will be clamped to PP_SHMPAGE_MAXW
  * (height) - desired height, will be clamped to PP_SHMPAGE_MAXH
- * (xofs)   - suggested offset relative to main segment (parent hint)
- * (yofs)   - suggested offset relative to main segment (parent hint)
+ * (xofs)   - suggested offset relative to parent segment (parent hint)
+ * (yofs)   - suggested offset relative to parent segment (parent hint)
  * (kind)   - desired type of the segment request, can be UNKNOWN
  */
 		struct {
