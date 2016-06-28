@@ -9,7 +9,12 @@
 -- textured, backing store (including rendertargets, WORLDID or a
 -- null_surface that subsamples a region of WORLDID).
 -- Blithint can be any of (HINT_NONE, HINT_FIT, HINT_CROP, HINT_ROTATE_CW_90,
--- HINT_ROTATE_CCW_90, HINT_YFLIP).
+-- HINT_ROTATE_CCW_90, HINT_YFLIP) or:ed with the optional HINT_PRIMARY.
+-- If PRIMARY is set, the platform will attempt to wait for synchronization
+-- acknowledgement of one submitted update before sending the next. This can
+-- reduce effective framerate to the least common denominator of all primary
+-- flagged displays. The actual end-behavior is tied to the active synchronization
+-- strategy, which is platform-defined.
 -- @note: Vid referencing an object with a feed- function
 -- (recordtarget, frameserver, calctarget etc.) is a
 -- terminal state transition

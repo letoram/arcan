@@ -392,13 +392,14 @@ bool platform_video_specify_mode(
  * it, this in order for the platform to be notified when it is removed.
  */
 enum blitting_hint {
-	HINT_NONE,
-	HINT_FIT,
-	HINT_CROP,
-	HINT_YFLIP,
-	HINT_ROTATE_CW_90,
-	HINT_ROTATE_CCW_90,
-	HINT_ENDM
+	HINT_NONE = 0,
+	HINT_FL_PRIMARY = 1,
+	HINT_FIT = 2,
+	HINT_CROP = 4,
+	HINT_YFLIP = 8,
+	HINT_ROTATE_CW_90 = 16,
+	HINT_ROTATE_CCW_90 = 32,
+	HINT_ENDM = 32
 };
 
 bool platform_video_map_display(arcan_vobj_id id,

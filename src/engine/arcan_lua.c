@@ -9711,6 +9711,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"LAUNCH_EXTERNAL", 0},
 {"LAUNCH_INTERNAL", 1},
 {"HINT_NONE", HINT_NONE},
+{"HINT_PRIMARY", HINT_FL_PRIMARY},
 {"HINT_FIT", HINT_FIT},
 {"HINT_CROP", HINT_CROP},
 {"HINT_ROTATE_CW_90", HINT_ROTATE_CW_90},
