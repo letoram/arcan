@@ -1882,7 +1882,9 @@ bool platform_video_map_display(
 				arcan_video_display.default_txcos), sizeof(float) * 8
 		);
 
-	switch(hint){
+	d->display.primary = hint & HINT_FL_PRIMARY;
+
+	switch(hint & (~HINT_FL_PRIMARY)){
 		case HINT_ROTATE_CW_90:
 			d->txcos[0] = txcos[2];
 			d->txcos[1] = txcos[3];
@@ -1912,9 +1914,6 @@ bool platform_video_map_display(
 			d->txcos[5] = txcos[3];
 			d->txcos[6] = txcos[0];
 			d->txcos[7] = txcos[1];
-		break;
-		case HINT_ENDM:
-			arcan_warning("egl_dri() - broken hint, falling back to none\n");
 		break;
 		case HINT_CROP:
 		case HINT_NONE:
