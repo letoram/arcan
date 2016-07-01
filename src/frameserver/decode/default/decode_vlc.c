@@ -330,7 +330,7 @@ static libvlc_media_t* find_capture_device(
 #else
 	char url[24];
 	snprintf(url,24, "v4l2:///dev/video%d", id);
-	media = libvlc_media_new_path(decctx.vlc, url);
+	media = libvlc_media_new_location(decctx.vlc, url);
 #endif
 
 /* add_media_options	:v4l2-width=640 :v4l2-height=480 */
@@ -347,7 +347,8 @@ static void dump_help()
 		"---------\t-----------\t-----------------\n"
 		" file    \t path      \t try to open file path for playback \n"
 		" stream  \t url       \t attempt to open URL for streaming input \n"
-		" capture \t devind    \t try to open a capture device\n"
+		" capture \t           \t try to open a capture device\n"
+		" device  \t number    \t find capture device with specific index\n"
 		" fps     \t rate      \t force a specific framerate\n"
 		" width   \t outw      \t scale output to a specific width\n"
 		" height  \t outh      \t scale output to a specific height\n"
