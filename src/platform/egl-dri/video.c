@@ -1504,8 +1504,12 @@ retry_card:
 			goto cleanup;
 
 		int rc = setup_node(&nodes[0], device, fd);
-		if (rc != 0)
+		if (rc != 0){
 			arcan_warning("egl-dri() - setup on %s failed\n", device);
+			if (getenv("ARCAN_VIDEO_DEVICE"))
+				goto cleanup;
+		}
+
 		free(device);
 
 		if (0 == rc)
