@@ -1273,6 +1273,7 @@ struct monitor_mode* platform_video_query_modes(
 		mcache[i].phy_height = conn->mmHeight;
 		mcache[i].dynamic = false;
 		mcache[i].id = i;
+		mcache[i].primary = d->display.mode == &conn->modes[i];
 		mcache[i].depth = sizeof(av_pixel) * 8;
 	}
 
