@@ -918,7 +918,8 @@ static void append_env(struct arcan_strarr* darr,
 		arcan_fetch_namespace(RESOURCE_SYS_DEBUG),
 		sockmsg,
 		argarg,
-		conn
+		conn,
+		getenv("LD_LIBRARY_PATH")
 	};
 
 /* HARDENING / REFACTOR: we should NOT pass logdir here as it should
@@ -941,7 +942,8 @@ static void append_env(struct arcan_strarr* darr,
 		"ARCAN_FRAMESERVER_LOGDIR",
 		"ARCAN_SOCKIN_FD",
 		"ARCAN_ARG",
-		"ARCAN_SHMKEY"
+		"ARCAN_SHMKEY",
+		"LD_LIBRARY_PATH"
 	};
 
 /* growarr is set to FATALFAIL internally */
