@@ -383,14 +383,24 @@ enum ARCAN_TARGET_COMMAND {
  * Reserved for future use, will provide a handle to a specific device node,
  * where the type of the node defines how it is supposed to be used.
  * ioev[0].iv = handle,
- * ioev[1].iv = 0: switch render node, negative handle value: release
- *              1: switch local connection, negative handle value:
+ * ioev[1].iv = 0: switch buffering mode, ignore handle value
+ *              1: switch render node, negative handle value: release
+ *              2: switch local connection, negative handle value:
  *                 message field will contain new _CONNPATH otherwise
  *                 connection primitive will be passed as handle
- *              2: switch remote connection, negative handle value:
+ *              3: switch remote connection, negative handle value:
  *                 message field will contain new _CONNPATH otherwise
  *                 connection primitive will be passed handle
  *
+ * ioev[2].iv = 0: indirect-, output handles for buffer passing will be used
+ *                 for internal processing and do not need scanout capable
+ *                 memory
+ *              1: direct, output handles should be of a type that can be used
+ *                 as display scanout type (GBM_BO_USE_SCANOUT)
+ *
+ * ioev[3].iv = 0: ignored
+ *                 other values, if [2].iv==1, will be used as node- specific
+ *                 buffer type for other output formats (565, r10g10b10 etc.)
  */
 	TARGET_COMMAND_DEVICE_NODE,
 
