@@ -139,7 +139,7 @@ static PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES;
  * real heuristics scheduled for 0.5.1, see .5 at top
  */
 static char* egl_synchopts[] = {
-	"default", "double buffered, display controls refresh",
+	"default", "double buffered, Display controls refresh",
 	NULL
 };
 
@@ -211,11 +211,12 @@ struct dispout {
 		enum dpms_state dpms;
 		char* edid_blob;
 		size_t blob_sz;
+		size_t blackframes;
 	} display;
 
 /* v-store mapping, with texture blitting options and possibly mapping hint */
 	arcan_vobj_id vid;
-	size_t dispw, disph;
+	size_t dispw, disph, dispx, dispy;;
 	_Alignas(16) float projection[16];
 	_Alignas(16) float txcos[8];
 
@@ -1888,44 +1889,69 @@ bool platform_video_map_display(
 		);
 
 	d->display.primary = hint & HINT_FL_PRIMARY;
+	memcpy(d->txcos, txcos, sizeof(float) * 8);
 
-	switch(hint & (~HINT_FL_PRIMARY)){
-		case HINT_ROTATE_CW_90:
-			d->txcos[0] = txcos[2];
-			d->txcos[1] = txcos[3];
-			d->txcos[2] = txcos[4];
-			d->txcos[3] = txcos[5];
-			d->txcos[4] = txcos[6];
-			d->txcos[5] = txcos[7];
-			d->txcos[6] = txcos[0];
-			d->txcos[7] = txcos[1];
-		break;
-		case HINT_ROTATE_CCW_90:
-			d->txcos[0] = txcos[6];
-			d->txcos[1] = txcos[7];
-			d->txcos[2] = txcos[0];
-			d->txcos[3] = txcos[1];
-			d->txcos[4] = txcos[2];
-			d->txcos[5] = txcos[3];
-			d->txcos[6] = txcos[4];
-			d->txcos[7] = txcos[5];
-			break;
-		case HINT_YFLIP:
-			d->txcos[0] = txcos[6];
-			d->txcos[1] = txcos[7];
-			d->txcos[2] = txcos[4];
-			d->txcos[3] = txcos[5];
-			d->txcos[4] = txcos[2];
-			d->txcos[5] = txcos[3];
-			d->txcos[6] = txcos[0];
-			d->txcos[7] = txcos[1];
-		break;
-		case HINT_CROP:
-		case HINT_NONE:
-		case HINT_FIT:
-			memcpy(d->txcos, txcos, sizeof(float) * 8);
-		break;
+	if (hint & HINT_ROTATE_CW_90){
+		d->txcos[0] = txcos[2];
+		d->txcos[1] = txcos[3];
+		d->txcos[2] = txcos[4];
+		d->txcos[3] = txcos[5];
+		d->txcos[4] = txcos[6];
+		d->txcos[5] = txcos[7];
+		d->txcos[6] = txcos[0];
+		d->txcos[7] = txcos[1];
 	}
+
+	if (hint & HINT_ROTATE_CCW_90){
+		d->txcos[0] = txcos[6];
+		d->txcos[1] = txcos[7];
+		d->txcos[2] = txcos[0];
+		d->txcos[3] = txcos[1];
+		d->txcos[4] = txcos[2];
+		d->txcos[5] = txcos[3];
+		d->txcos[6] = txcos[4];
+		d->txcos[7] = txcos[5];
+	}
+
+	if (hint & HINT_YFLIP){
+		d->txcos[0] = d->txcos[6];
+		d->txcos[1] = d->txcos[7];
+		d->txcos[2] = d->txcos[4];
+		d->txcos[3] = d->txcos[5];
+		d->txcos[4] = d->txcos[2];
+		d->txcos[5] = d->txcos[3];
+		d->txcos[6] = d->txcos[0];
+		d->txcos[7] = d->txcos[1];
+	}
+
+	if (hint & HINT_CROP){
+		ssize_t diffw = d->display.mode->hdisplay - vobj->vstore->w;
+		ssize_t diffh = d->display.mode->vdisplay - vobj->vstore->h;
+		if (diffw < 0){
+			d->dispw = d->display.mode->hdisplay;
+			d->dispx = -1 * diffw;
+		}
+		else{
+			d->dispw = vobj->vstore->w;
+			d->dispx = diffw >> 1;
+		}
+
+		if (diffh < 0){
+			d->disph = d->display.mode->vdisplay;
+			d->dispy = -1 * diffh;
+		}
+		else{
+			d->disph = vobj->vstore->h;
+			d->dispy = diffh >> 1;
+		}
+	}
+	else {
+		d->dispw = d->display.mode->hdisplay;
+		d->disph = d->display.mode->vdisplay;
+		d->dispx = d->dispy = 0;
+	}
+
+	d->display.blackframes = 3;
 	d->hint = hint;
 
 /*
@@ -1999,6 +2025,15 @@ static void update_display(struct dispout* d)
  */
 	eglMakeCurrent(d->device->display, d->buffer.esurf,
 		d->buffer.esurf, d->device->context);
+
+/*
+ * for when we map fullscreen, have multi-buffering and garbage from previous
+ * mapping left in the crop area
+ */
+	if (d->display.blackframes){
+		agp_rendertarget_clear();
+		d->display.blackframes--;
+	}
 
 /*
  * currently we only do binary damage / update tracking in that there are EGL
