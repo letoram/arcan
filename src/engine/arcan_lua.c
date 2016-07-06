@@ -5283,7 +5283,7 @@ static int videomapping(lua_State* ctx)
 	platform_display_id id = luaL_checknumber(ctx, 2);
 	enum blitting_hint hint = luaL_optnumber(ctx, 3, HINT_NONE);
 
-	if (hint < HINT_NONE || hint >= HINT_ENDM){
+	if (hint < HINT_NONE){
 		arcan_fatal("map_video_display(), invalid blitting "
 			"hint specified (%d)\n", (int) hint);
 	}
