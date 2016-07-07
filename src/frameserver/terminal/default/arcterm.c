@@ -986,6 +986,15 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 				}
 				return;
 			}
+/* scroll or select */
+			if (ioev->subid == MBTN_WHEEL_UP_IND){
+				if (ioev->input.digital.active)
+					scroll_up();
+			}
+			else if (ioev->subid == MBTN_WHEEL_DOWN_IND){
+				if (ioev->input.digital.active)
+					scroll_down();
+			}
 			if (ioev->input.digital.active){
 				tsm_screen_selection_start(term.screen, term.mouse_x, term.mouse_y);
 				term.bsel_x = term.mouse_x;
@@ -1035,6 +1044,17 @@ static void targetev(arcan_tgtevent* ev)
 /* map ioev[0].iv to some reachable known path in
  * the terminal namespace, don't forget to dupe as it
  * will be on next event */
+	break;
+
+	case TARGET_COMMAND_SEEKCONTENT:
+		if (ev->ioevs[0].iv){ /* relative */
+			if (ev->ioevs[1].iv < 0)
+				tsm_screen_sb_up(term.screen, -1 * ev->ioevs[1].iv);
+			else
+				tsm_screen_sb_down(term.screen, ev->ioevs[1].iv);
+			term.sbofs += ev->ioevs[1].iv;
+			term.dirty |= DIRTY_PENDING;
+		}
 	break;
 
 	case TARGET_COMMAND_FONTHINT:{
