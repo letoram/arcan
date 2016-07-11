@@ -5,7 +5,6 @@ analogtbl = {};
 digitaltbl = {};
 translatetbl = {};
 statustbl = {};
-lookuptbl = {};
 touchtbl = {};
 analogdata = {};
 
@@ -23,7 +22,6 @@ function eventtest()
 	analabel = drawline([[\bAnalog]], 18);
 	digilabel = drawline([[\bDigital]], 18);
 	touchlabel = drawline([[\bTouch]], 18);
-	lookuplabel = drawline([[\bLookup]], 18);
 	statuslabel = drawline([[\bStatus]], 18);
 	translabel = drawline([[\bTranslated]], 18);
 
@@ -36,7 +34,6 @@ function eventtest()
 	move_image(digilabel, w3, 0);
 	move_image(translabel, w3 + w3, 0);
 	move_image(touchlabel, 0, h2);
-	move_image(lookuplabel, w3, h2);
 	move_image(statuslabel, w3 + w3, h2);
 
 	show_image({statuslabel, analabel, digilabel, translabel, touchlabel});
@@ -100,10 +97,12 @@ function digital_str(iotbl)
 end
 
 function translate_str(iotbl)
-	table.insert(translatetbl, string.format("dev(%d:%d)[%s] => %s, %s",
+	table.insert(translatetbl, string.format("dev(%d:%d)[mod %s] => %s, %s, %s, %s",
 		iotbl.devid, iotbl.subid,
 		table.concat(decode_modifiers(iotbl.modifiers),","),
-		iotbl.keysym, iotbl.active)
+		iotbl.keysym, iotbl.active,
+		symtable[iotbl.keysym] and symtable[iotbl.keysym] or "_nil",
+		iotbl.utf8)
 	);
 
 	if (#translatetbl > 10) then
@@ -120,33 +119,6 @@ function translate_str(iotbl)
 	link_image(translateimg, translabel);
 	nudge_image(translateimg, 0, 20);
 	show_image(translateimg);
-end
-
-function lookup(iotbl)
-	line = "";
-
-	if symtable[iotbl.keysym] then
-		line = line .. iotbl.keysym .. " =(symtable)> " .. symtable[iotbl.keysym] .. [[\t]];
-	end
-
-	if (#lookuptbl > 10) then
-		table.remove(lookuptbl, 1);
-	end
-
-	if line ~= "" then
-		table.insert(lookuptbl, line);
-	end
-
-	line = table.concat(lookuptbl, "\\r\\n");
-
-	if (lookupimg) then
-		delete_image(lookupimg);
-	end
-
-	lookupimg = drawline(line, 12);
-	link_image(lookupimg, lookuplabel);
-	nudge_image(lookupimg, 0, 20);
-	show_image(lookupimg);
 end
 
 function analog_str(intbl)
@@ -194,7 +166,6 @@ function eventtest_input( iotbl )
 		tick_counter = 500;
 		if (iotbl.translated) then
 			translate_str(iotbl);
-			lookup(iotbl);
 		else
 			digital_str(iotbl);
 		end
