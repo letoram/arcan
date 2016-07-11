@@ -333,9 +333,11 @@ find_package(SSE QUIET)
 
 include(${PLATFORM_ROOT}/cmake/CMakeLists.AGP)
 include(${PLATFORM_ROOT}/cmake/CMakeLists.Video)
+set(EXTMAKE_CMD make)
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "BSD")
 set(BSD_BUILD TRUE)
+set(EXTMAKE_CMD gmake)
 endif()
 
 if (NOT DISABLE_JIT)
@@ -348,6 +350,7 @@ if (NOT DISABLE_JIT)
 			UPDATE_COMMAND ""
 			INSTALL_COMMAND ""
 			BUILD_IN_SOURCE 1
+			BUILD_COMMAND "${EXTMAKE_CMD}"
 			${EXTERNAL_DEFS}
 		)
 		set(LUA_LIBRARY "${CMAKE_CURRENT_BINARY_DIR}/luajit/src/libluajit.a")
