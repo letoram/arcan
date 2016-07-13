@@ -1563,11 +1563,11 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	if (arg_lookup(args, "font_sz", 0, &val))
 		sz = strtoul(val, NULL, 10);
 	if (arg_lookup(args, "font", 0, &val)){
-		int fd = open(val, O_RDONLY);
+		int fd = open(val, O_RDONLY | O_CLOEXEC);
 		setup_font(fd, sz, 0);
 /* fallback font for missing glyphs */
 		if (fd != -1 && arg_lookup(args,"font_fb", 0, &val)){
-			fd = open(val, O_RDONLY);
+			fd = open(val, O_RDONLY | O_CLOEXEC);
 			setup_font(fd, sz, 1);
 		}
 	}
