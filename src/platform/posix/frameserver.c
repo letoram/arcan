@@ -1029,6 +1029,7 @@ bool arcan_frameserver_resize(struct arcan_frameserver* s)
 	size_t abufc = atomic_load(&shmpage->apending);
 	vbufc = vbufc > FSRV_MAX_VBUFC ? FSRV_MAX_VBUFC : vbufc;
 	abufc = abufc > FSRV_MAX_ABUFC ? FSRV_MAX_ABUFC : abufc;
+	vbufc = vbufc == 0 ? 1 : vbufc;
 
 /*
  * you can potentially have a really big audiobuffer (or well, quite a few 64k
