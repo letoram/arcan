@@ -442,7 +442,7 @@ TTF_Font* TTF_OpenFontFD(int fd, int ptsize)
 		return NULL;
 
 	int nfd = dup(fd);
-	if (-1 == fd)
+	if (-1 == nfd)
 		return NULL;
 
 	fcntl(nfd, F_SETFD, FD_CLOEXEC);

@@ -100,6 +100,8 @@ file_handle arcan_fetchhandle(int sockin_fd, bool block)
 		;
 
 	int nd = msgbuf.fd[0];
+	if (-1 != nd)
+		fcntl(nd, F_SETFD, FD_CLOEXEC);
 
 	return nd;
 }
