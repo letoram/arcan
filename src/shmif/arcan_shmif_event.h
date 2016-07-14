@@ -380,27 +380,29 @@ enum ARCAN_TARGET_COMMAND {
 	TARGET_COMMAND_BUFFER_FAIL,
 
 /*
- * Reserved for future use, will provide a handle to a specific device node,
- * where the type of the node defines how it is supposed to be used.
- * ioev[0].iv = handle,
- * ioev[1].iv = 0: switch buffering mode, ignore handle value
- *              1: switch render node, negative handle value: release
- *              2: switch local connection, negative handle value:
+ * [DESCRIPTOR_PASSING]
+ * Provide a handle to a specific device node, the [1].iv determines type and
+ * intended use.
+ * ioev[0].iv = handle (or BADFD)
+ * ioev[1].iv =
+ *              1: switch render node, handle is a reference to the new node.
+ *              2: switch local connection:
  *                 message field will contain new _CONNPATH otherwise
- *                 connection primitive will be passed as handle
- *              3: switch remote connection, negative handle value:
+ *                 connection primitive will be passed as handle.
+ *              3: switch remote connection:
  *                 message field will contain new _CONNPATH otherwise
- *                 connection primitive will be passed handle
+ *                 connection primitive will be passed handle.
+ *              4: hint alternative connection, will not be forwarded but
+ *                 tracked internally to use as a different connection path
+ *                 on parent failure. Uses message field.
+ *
+ * for [1].iv == 1:
  *
  * ioev[2].iv = 0: indirect-, output handles for buffer passing will be used
  *                 for internal processing and do not need scanout capable
  *                 memory
  *              1: direct, output handles should be of a type that can be used
- *                 as display scanout type (GBM_BO_USE_SCANOUT)
- *
- * ioev[3].iv = 0: ignored
- *                 other values, if [2].iv==1, will be used as node- specific
- *                 buffer type for other output formats (565, r10g10b10 etc.)
+ *                 as display scanout type (e.g. GBM_BO_USE_SCANOUT)
  */
 	TARGET_COMMAND_DEVICE_NODE,
 
