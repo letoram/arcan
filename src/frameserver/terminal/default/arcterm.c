@@ -995,7 +995,7 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 				if (ioev->input.digital.active)
 					scroll_down();
 			}
-			if (ioev->input.digital.active){
+			else if (ioev->input.digital.active){
 				tsm_screen_selection_start(term.screen, term.mouse_x, term.mouse_y);
 				term.bsel_x = term.mouse_x;
 				term.bsel_y = term.mouse_y;
