@@ -220,8 +220,10 @@ struct shmif_hidden {
 	shmif_asample* abuf[ARCAN_SHMIF_ABUFC_LIM];
 
 	bool output, alive, paused;
+	char* alt_conn;
 
 	enum ARCAN_FLAGS flags;
+	int type;
 
 	struct arcan_evctx inev;
 	struct arcan_evctx outev;
@@ -254,6 +256,11 @@ struct shmif_hidden {
 		pthread_mutex_t synch;
 		void (*exitf)(int val);
 	} guard;
+
+/* if we permit 'reconnect on parent- death', this callback will be invoked
+ * when a previously returned cont is invalid, and provide a newly negotiated
+ * context */
+	void (*resetf)(struct arcan_shmif_cont*);
 };
 
 static struct {
@@ -429,6 +436,43 @@ static bool pause_evh(struct arcan_shmif_cont* c,
 	return rv;
 }
 
+static void fallback_migrate(struct arcan_shmif_cont* c)
+{
+/* sleep - retry connect loop */
+	enum shmif_migrate_status sv;
+	int step = 0;
+	if (c->priv->flags & SHMIF_NOAUTO_RECONNECT)
+		return;
+
+/* we force CONNECT_LOOP style behavior here */
+	while ((sv = arcan_shmif_migrate(
+		c, c->priv->alt_conn, NULL)) == SHMIF_MIGRATE_NOCON){
+		sleep(1 << step);
+		if (step < 4)
+			step++;
+	}
+
+	switch (sv){
+	case SHMIF_MIGRATE_NOCON: break;
+	case SHMIF_MIGRATE_BADARG:
+		LOG("(shmif) recover process failed, broken alternate- path/key\n");
+	break;
+	case SHMIF_MIGRATE_TRANSFER_FAIL:
+		LOG("(shmif) the migration process failed during setup, can't recover\n");
+	break;
+
+/* set a reset event in the "to be dispatched next dequeue" slot */
+	case SHMIF_MIGRATE_OK:
+		c->priv->ph |= 4;
+		c->priv->fh = (struct arcan_event){
+			.category = EVENT_TARGET,
+			.tgt.kind = TARGET_COMMAND_RESET,
+			.tgt.ioevs[0].iv = 3
+		};
+	break;
+	}
+}
+
 static int process_events(struct arcan_shmif_cont* c,
 	struct arcan_event* dst, bool blocking, bool upret)
 {
@@ -445,7 +489,6 @@ reset:
 	struct arcan_evctx* ctx = &priv->inev;
 	volatile uint8_t* ks = (volatile uint8_t*) ctx->synch.killswitch;
 
-
 /* Select few events has a special queue position and can be delivered 'out of
  * order' from normal affairs. This is needed for displayhint/fonthint in WM
  * cases where a connection may be suspended for a long time and normal system
@@ -458,12 +501,18 @@ reset:
 			rv = 1;
 			goto done;
 		}
-		if (priv->ph & 2){
+		else if (priv->ph & 2){
 			*dst = priv->fh;
 			c->priv->pev.consumed = dst->tgt.ioevs[0].iv != BADFD;
 			c->priv->pev.fd = dst->tgt.ioevs[0].iv;
 			priv->ph &= ~2;
 			rv = 1;
+			goto done;
+		}
+		else{
+			priv->ph = 0;
+			rv = 1;
+			*dst = priv->fh;
 			goto done;
 		}
 	}
@@ -494,7 +543,7 @@ checkfd:
 			}
 			goto done;
 		}
-	} while (priv->pev.gotev && *ks);
+	} while (priv->pev.gotev && *ks && c->addr->dms);
 
 /* atomic increment of front -> event enqueued, memset is technically
  * superflous but helps showing event queue consumption in debugging */
@@ -552,7 +601,6 @@ checkfd:
  * we can't as the event- loop might be running in a different thread than A/V
  * updating. _drop would modify the context in ways that would break, and we
  * want consistent behavior between threadsafe- and non-threadsafe builds. */
-				LOG("(shmif) TARGET_COMMAND_EXIT\n");
 				priv->alive = false;
 				noks = true;
 			break;
@@ -562,12 +610,35 @@ checkfd:
  * interest to override default font */
 			case TARGET_COMMAND_FONTHINT:
 				if (dst->tgt.ioevs[1].iv == 1){
-					LOG("(shmif) awaiting descriptor for default font\n");
 					priv->pev.gotev = true;
 					goto checkfd;
 				}
 				else
 					dst->tgt.ioevs[0].iv = BADFD;
+			break;
+
+/* similar to fonthint but uses different descriptor- indicator field,
+ * more complex rules for if we should forward or handle ourselves. If
+ * it's about switching or defining render node for handle passing, then
+ * we need to forward as the client need to rebuild its context. */
+			case TARGET_COMMAND_DEVICE_NODE:{
+				int iev = dst->tgt.ioevs[1].iv;
+				if (iev == 4){
+/* replace slot with message, never forward */
+					if (priv->alt_conn)
+						free(priv->alt_conn);
+					priv->alt_conn = strdup(dst->tgt.message);
+					goto reset;
+				}
+				else if (iev >= 1 && iev <= 3){
+					if (dst->tgt.message[0] == '\0'){
+						priv->pev.gotev = true;
+						goto checkfd;
+					}
+				}
+				else
+					goto reset;
+			}
 			break;
 
 /* Events that require a handle to be tracked (and possibly garbage collected
@@ -588,8 +659,10 @@ checkfd:
 
 		rv = 1;
 	}
-	else if (c->addr->dms == 0)
+	else if (c->addr->dms == 0){
+		fallback_migrate(c);
 		goto done;
+	}
 
 /* Need to constantly pump the event socket for incoming descriptors and
  * caller- mandated polling, as the order between event and descriptor is
@@ -619,8 +692,13 @@ int arcan_shmif_enqueue(struct arcan_shmif_cont* c,
 	const struct arcan_event* const src)
 {
 	assert(c);
-	if (!c->addr || !c->addr->dms || !c->priv->alive)
+	if (!c->addr)
 		return 0;
+
+	if (!c->addr->dms || !c->priv->alive){
+		fallback_migrate(c);
+		return 0;
+	}
 
 	struct arcan_evctx* ctx = &c->priv->outev;
 
@@ -786,20 +864,7 @@ int arcan_shmif_resolve_connpath(const char* key,
 
 static void shmif_exit(int c)
 {
-	exit(c);
-}
-
-enum shmif_migrate_status arcan_shmif_migrate(
-	struct arcan_shmif_cont* cont, const char* newpath, const char* key)
-{
-	if (!cont || !cont->addr || !newpath)
-		return -SHMIF_MIGRATE_BADARG;
-
-	enum ARCAN_FLAGS flags = 0;
-
-	file_handle dpipe;
-	char* keyfile = arcan_shmif_connect(newpath, key, &dpipe);
-
+	DLOG("(guard_thread::exit) - empty shmif_exit\n");
 }
 
 char* arcan_shmif_connect(const char* connpath, const char* connkey,
@@ -1020,12 +1085,12 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 			.ext.kind = ARCAN_EVENT(REGISTER),
 			.ext.registr.kind = type
 		};
-
 		arcan_shmif_enqueue(&res, &ev);
 	}
 
 	res.shmsize = res.addr->segment_size;
 	res.cookie = arcan_shmif_cookie();
+	res.priv->type = type;
 
 	setup_avbuf(&res);
 
@@ -1217,11 +1282,14 @@ unsigned arcan_shmif_signal(struct arcan_shmif_cont* ctx,
 	enum arcan_shmif_sigmask mask)
 {
 	struct shmif_hidden* priv = ctx->priv;
+	if (!ctx || !ctx->addr)
+		return 0;
 
 /* to protect against some callers being stuck in a 'just signal
  * as a means of draining buffers' */
 	if (!ctx->addr->dms){
 		ctx->abufused = 0;
+		fallback_migrate(ctx);
 		return 0;
 	}
 
@@ -1235,6 +1303,7 @@ unsigned arcan_shmif_signal(struct arcan_shmif_cont* ctx,
 	if ( mask & SHMIF_SIGAUD ){
 		bool lock = step_a(ctx);
 
+/* guard-thread will pull the sems for us on dms */
 		if (lock && !(mask & SHMIF_SIGBLK_NONE))
 			arcan_sem_wait(ctx->asem);
 		else
@@ -1271,6 +1340,7 @@ void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 	}
 /* no guard thread for this context */
 	else{
+		free(inctx->priv->alt_conn);
 		free(inctx->priv);
 		sem_close(inctx->asem);
 		sem_close(inctx->esem);
@@ -1319,11 +1389,14 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 
 /* need strict ordering across procss boundaries here, first desired
  * dimensions, buffering etc. THEN resize request flag */
-	arg->addr->w = width;
-	arg->addr->h = height;
-	arg->addr->abufsize = abufsz;
+	atomic_store(&arg->addr->w, width);
+	atomic_store(&arg->addr->h, height);
+	atomic_store(&arg->addr->abufsize, abufsz);
 	atomic_store_explicit(&arg->addr->apending, audc, memory_order_release);
 	atomic_store_explicit(&arg->addr->vpending, vidc, memory_order_release);
+
+/* all force synch- calls should be removed when atomicity and reordering
+ * behavior have been verified properly */
 	FORCE_SYNCH();
 	arg->addr->resized = 1;
 	arcan_sem_wait(arg->vsem);
@@ -1552,6 +1625,65 @@ bool arg_lookup(struct arg_arr* arr, const char* val,
 	return false;
 }
 
+enum shmif_migrate_status arcan_shmif_migrate(
+	struct arcan_shmif_cont* cont, const char* newpath, const char* key)
+{
+	if (!cont || !cont->addr || !newpath)
+		return SHMIF_MIGRATE_BADARG;
+
+	enum ARCAN_FLAGS flags = 0;
+	struct shmif_hidden* gs = cont->priv;
+	bool active;
+
+	file_handle dpipe;
+	char* keyfile = arcan_shmif_connect(newpath, key, &dpipe);
+	if (!keyfile)
+		return SHMIF_MIGRATE_NOCON;
+
+/* re-use tracked "old" credentials" */
+	fcntl(dpipe, F_SETFD, FD_CLOEXEC);
+	struct arcan_shmif_cont ret =
+		arcan_shmif_acquire(NULL, keyfile, cont->priv->type, cont->priv->flags);
+	ret.epipe = dpipe;
+
+	if (!ret.addr){
+		close(dpipe);
+		return SHMIF_MIGRATE_NOCON;
+	}
+
+/* got a valid connection, first synch source segment so we don't have
+ * anything pending */
+	while(atomic_load(&cont->addr->vready) && cont->addr->dms)
+		arcan_sem_wait(cont->vsem);
+
+	while(atomic_load(&cont->addr->aready) && cont->addr->dms)
+		arcan_sem_wait(cont->vsem);
+
+	size_t w = atomic_load(&cont->addr->w);
+	size_t h = atomic_load(&cont->addr->h);
+
+	if (!shmif_resize(&ret, w, h, cont->abufsize, gs->vbuf_cnt, gs->abuf_cnt)){
+		arcan_shmif_drop(&ret);
+		return SHMIF_MIGRATE_TRANSFER_FAIL;
+	}
+
+/* Copy the contents of cont into ret, although audio buffers are safer
+ * to just drain rather than believe that we can make a seamless handover.
+ * Right now, we don't respect the vbuf_cnt and pick the 'right' handover
+ * buffer, so chances are that for double/triple buffering there might be
+ * a break or even garbage data. */
+	memcpy(ret.vidp, cont->vidp, cont->stride * h);
+	arcan_shmif_drop(cont);
+	memcpy(cont, &ret, sizeof(struct arcan_shmif_cont));
+	arcan_shmif_signal(&ret, SHMIF_SIGVID);
+
+/* This does not currently handle subsegment remapping as they typically
+ * depend on more state "server-side" and there are not that many safe
+ * options. The current approach is simply to kill tracked subsegments,
+ * although we could "in theory" repeat the process for each subsegment */
+	return SHMIF_MIGRATE_OK;
+}
+
 struct arcan_shmif_cont arcan_shmif_open(
 	enum ARCAN_SEGID type, enum ARCAN_FLAGS flags, struct arg_arr** outarg)
 {
@@ -1560,16 +1692,16 @@ struct arcan_shmif_cont arcan_shmif_open(
 
 	char* resource = getenv("ARCAN_ARG");
 	char* keyfile = NULL;
+	char* conn_src = getenv("ARCAN_CONNPATH");
 
 	if (getenv("ARCAN_SHMKEY") && getenv("ARCAN_SOCKIN_FD")){
 		keyfile = strdup(getenv("ARCAN_SHMKEY"));
 		dpipe = (int) strtol(getenv("ARCAN_SOCKIN_FD"), NULL, 10);
 	}
-	else if (getenv("ARCAN_CONNPATH")){
+	else if (conn_src){
 		int step = 0;
 		do {
-			keyfile = arcan_shmif_connect(
-				getenv("ARCAN_CONNPATH"), getenv("ARCAN_CONNKEY"), &dpipe);
+			keyfile = arcan_shmif_connect(conn_src, getenv("ARCAN_CONNKEY"), &dpipe);
 		} while (keyfile == NULL &&
 			(flags & SHMIF_CONNECT_LOOP) > 0 && (sleep(1 << (step>4?4:step++)), 1));
 	}
@@ -1596,6 +1728,9 @@ struct arcan_shmif_cont arcan_shmif_open(
 	ret.epipe = dpipe;
 	if (-1 == ret.epipe)
 		DLOG("shmif_open() - Could not retrieve event- pipe from parent.\n");
+
+	if (conn_src)
+		ret.priv->alt_conn = strdup(conn_src);
 
 	free(keyfile);
 	return ret;
