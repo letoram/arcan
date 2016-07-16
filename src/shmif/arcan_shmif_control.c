@@ -200,7 +200,7 @@ const char* arcan_shmif_eventstr(arcan_event* aev, char* dbuf, size_t dsz)
  * constraints).
  *
  * When some monitored condition (process dies, shmpage doesn't validate,
- * dead man switch has been pulled), we also signal dms, then forcibly release
+ * dead man switch has been pulled), we also dms, then forcibly release
  * the semaphores used for synch, and optionally some user supplied callback
  * function.
  *
@@ -436,13 +436,13 @@ static bool pause_evh(struct arcan_shmif_cont* c,
 	return rv;
 }
 
-static void fallback_migrate(struct arcan_shmif_cont* c)
+static enum shmif_migrate_status fallback_migrate(struct arcan_shmif_cont* c)
 {
 /* sleep - retry connect loop */
 	enum shmif_migrate_status sv;
 	int step = 0;
 	if (c->priv->flags & SHMIF_NOAUTO_RECONNECT)
-		return;
+		return SHMIF_MIGRATE_NOCON;
 
 /* we force CONNECT_LOOP style behavior here */
 	while ((sv = arcan_shmif_migrate(
@@ -471,6 +471,8 @@ static void fallback_migrate(struct arcan_shmif_cont* c)
 		};
 	break;
 	}
+
+	return sv;
 }
 
 static int process_events(struct arcan_shmif_cont* c,
@@ -494,6 +496,10 @@ reset:
  * cases where a connection may be suspended for a long time and normal system
  * state (move window between displays, change global fonts) may be silently
  * ignored, when we actually want them delivered immediately upon UNPAUSE */
+#ifdef ARCAN_SHMIF_THREADSAFE_QUEUE
+	pthread_mutex_lock(&ctx->synch.lock);
+#endif
+
 	if (!priv->paused && priv->ph){
 		if (priv->ph & 1){
 			priv->ph &= ~1;
@@ -516,10 +522,6 @@ reset:
 			goto done;
 		}
 	}
-
-#ifdef ARCAN_SHMIF_THREADSAFE_QUEUE
-	pthread_mutex_lock(&ctx->synch.lock);
-#endif
 
 /* clean up any pending descriptors, as the client has a short frame to
  * directly use them or at the very least dup() to safety */
@@ -1334,6 +1336,10 @@ void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 	close(inctx->epipe);
 	close(inctx->shmh);
 
+	sem_close(inctx->asem);
+	sem_close(inctx->esem);
+	sem_close(inctx->vsem);
+
 /* guard thread will clean up on its own */
 	if (gstr->guard.active){
 		gstr->guard.active = false;
@@ -1342,9 +1348,6 @@ void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 	else{
 		free(inctx->priv->alt_conn);
 		free(inctx->priv);
-		sem_close(inctx->asem);
-		sem_close(inctx->esem);
-		sem_close(inctx->vsem);
 	}
 
 	munmap(inctx->addr, inctx->shmsize);
@@ -1355,9 +1358,13 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 	unsigned width, unsigned height, size_t abufsz, int vidc, int audc)
 {
 	if (!arg->addr || !arcan_shmif_integrity_check(arg) ||
-	width > PP_SHMPAGE_MAXW || height > PP_SHMPAGE_MAXH ||
-	!arg->addr->dms)
+	width > PP_SHMPAGE_MAXW || height > PP_SHMPAGE_MAXH)
 		return false;
+
+	if (!arg->addr->dms){
+		if (SHMIF_MIGRATE_OK != fallback_migrate(arg));
+		return false;
+	}
 
 /* wait for any outstanding v/asynch */
 	if (atomic_load(&arg->addr->vready)){
@@ -1423,8 +1430,7 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 	if (arg->shmsize != arg->addr->segment_size){
 		size_t new_sz = arg->addr->segment_size;
 		struct shmif_hidden* gs = arg->priv;
-		if (gs)
-			pthread_mutex_lock(&gs->guard.synch);
+		pthread_mutex_lock(&gs->guard.synch);
 
 		munmap(arg->addr, arg->shmsize);
 		arg->shmsize = new_sz;
@@ -1435,10 +1441,8 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 			return false;
 		}
 
-		if (gs){
-			gs->guard.dms = &arg->addr->dms;
-			pthread_mutex_unlock(&gs->guard.synch);
-		}
+		gs->guard.dms = &arg->addr->dms;
+		pthread_mutex_unlock(&gs->guard.synch);
 	}
 
 /*
@@ -1632,7 +1636,6 @@ enum shmif_migrate_status arcan_shmif_migrate(
 		return SHMIF_MIGRATE_BADARG;
 
 	enum ARCAN_FLAGS flags = 0;
-	struct shmif_hidden* gs = cont->priv;
 	bool active;
 
 	file_handle dpipe;
@@ -1662,20 +1665,59 @@ enum shmif_migrate_status arcan_shmif_migrate(
 	size_t w = atomic_load(&cont->addr->w);
 	size_t h = atomic_load(&cont->addr->h);
 
-	if (!shmif_resize(&ret, w, h, cont->abufsize, gs->vbuf_cnt, gs->abuf_cnt)){
+	if (!shmif_resize(&ret, w, h, cont->abufsize,
+		cont->priv->vbuf_cnt, cont->priv->abuf_cnt)){
 		arcan_shmif_drop(&ret);
 		return SHMIF_MIGRATE_TRANSFER_FAIL;
 	}
 
-/* Copy the contents of cont into ret, although audio buffers are safer
- * to just drain rather than believe that we can make a seamless handover.
- * Right now, we don't respect the vbuf_cnt and pick the 'right' handover
- * buffer, so chances are that for double/triple buffering there might be
- * a break or even garbage data. */
-	memcpy(ret.vidp, cont->vidp, cont->stride * h);
+/* Copy the audio/video video contents of [cont] into [ret] */
+	for (size_t i = 0; i < cont->priv->vbuf_cnt; i++)
+		memcpy(ret.priv->vbuf[i], cont->priv->vbuf[i], cont->stride * cont->h);
+	for (size_t i = 0; i < cont->priv->abuf_cnt; i++)
+		memcpy(ret.priv->abuf[i], cont->priv->abuf[i], cont->abufsize);
+
+	void* contaddr = cont->addr;
+
+/* now we can free cont and update the video state of the new connection */
+	void* olduser = cont->user;
+	int oldhints = cont->hints;
+	struct arcan_shmif_region olddirty = cont->dirty;
 	arcan_shmif_drop(cont);
-	memcpy(cont, &ret, sizeof(struct arcan_shmif_cont));
 	arcan_shmif_signal(&ret, SHMIF_SIGVID);
+
+/* last step, replace the relevant members of cont with the values from ret */
+/* first try and just re-use the mapping so any aliasing issues from the
+ * caller can be masked */
+	void* alias = mmap(contaddr, ret.shmsize, PROT_READ |
+		PROT_WRITE, MAP_SHARED, ret.shmh, 0);
+
+	pthread_mutex_lock(&ret.priv->guard.synch);
+	if (alias != contaddr){
+		munmap(alias, ret.shmsize);
+		DLOG("Couldn't retain mapping, client-aliasing may break\n");
+	}
+/* we did manage to retain our old mapping, so switch the pointers,
+ * including synchronization with the guard thread */
+	else {
+		munmap(ret.addr, ret.shmsize);
+		ret.addr = alias;
+		ret.priv->guard.dms = &ret.addr->dms;
+
+/* need to recalculate the buffer pointers */
+		arcan_shmif_mapav(ret.addr, ret.priv->vbuf, ret.priv->vbuf_cnt,
+			ret.w * ret.h * sizeof(shmif_pixel), ret.priv->abuf, ret.priv->abuf_cnt,
+			ret.abufsize);
+
+		ret.vidp = ret.priv->vbuf[0];
+		ret.audp = ret.priv->abuf[0];
+	}
+	memcpy(cont, &ret, sizeof(struct arcan_shmif_cont));
+	pthread_mutex_unlock(&ret.priv->guard.synch);
+
+	cont->hints = oldhints;
+	cont->dirty = olddirty;
+	cont->user = olduser;
 
 /* This does not currently handle subsegment remapping as they typically
  * depend on more state "server-side" and there are not that many safe

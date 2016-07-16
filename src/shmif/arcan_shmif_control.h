@@ -442,7 +442,7 @@ void arcan_shmif_drop(struct arcan_shmif_cont*);
  * Signal that a synchronized transfer should take place. The contents of the
  * mask determine buffers to synch and blocking behavior.
  *
- * Returns the number of miliseconds that the synchronization reportedly, and
+ * Returns the number of miliseconds that the synchronization reported, and
  * is a value that can be used to adjust local rendering/buffer.
  */
 unsigned arcan_shmif_signal(struct arcan_shmif_cont*, enum arcan_shmif_sigmask);
@@ -464,6 +464,15 @@ struct arcan_shmif_cont* arcan_shmif_primary(enum arcan_shmif_type);
 void arcan_shmif_setprimary( enum arcan_shmif_type, struct arcan_shmif_cont*);
 
 /*
+ * update the failure callback associated with a context- remapping due to
+ * a connection failure. Although ->vidp and ->audp may be correct, there are
+ * no guarantees and any aliases to these buffers should be updated in the
+ * callback.
+ */
+void arcan_shmif_resetfunc(struct arcan_shmif_cont*,
+	void (*resetf)(struct arcan_shmif_cont*));
+
+/*
  * This should be called periodically to prevent more subtle bugs from
  * cascading and be caught at an earlier stage, it checks the shared memory
  * context against a series of cookies and known guard values, returning
@@ -481,9 +490,11 @@ struct arcan_shmif_region {
 struct arcan_shmif_cont {
 	struct arcan_shmif_page* addr;
 
-/* offset- pointers into addr, can change between calls to
- * shmif_ functions so aliasing is not recommended */
-	shmif_pixel* vidp;
+/* offset- pointers into addr, can change between calls to shmif_ functions so
+ * aliasing is not recommended, especially important if (default)
+ * connection-crash recovery-reconnect is enabled as the address >may< be
+ * changed. If that is a concern, define a handler using the shmif_resetfunc */
+  shmif_pixel* vidp;
 	shmif_asample* audp;
 	uint16_t abufused;
 	uint16_t abufsize;
