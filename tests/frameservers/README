@@ -17,3 +17,7 @@ counter-rcv/ used as a recipient for feedcopy or recordtarget
 clockreq/ needs the corresponding clockreq appl in interactive running
  (use clockreq as connection path) and tests both the builtin clock
  handler for monotonic event delivery and for timers.
+
+migrant/ will connect to the normal CONNPATH, render a number of frames
+ in one color channel, migrate or voluntarily pull its *dms and on
+ successful reconnection, switch active color channel
