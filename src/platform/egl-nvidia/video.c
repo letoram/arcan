@@ -79,6 +79,11 @@ void platform_video_minimize()
 {
 }
 
+int platform_video_cardhandle(int cardn)
+{
+	return -1;
+}
+
 void platform_video_synch(uint64_t tick_count, float fract,
 	video_synchevent pre, video_synchevent post)
 {

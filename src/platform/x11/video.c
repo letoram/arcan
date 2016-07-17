@@ -146,6 +146,11 @@ bool PLATFORM_SYMBOL(_video_display_edid)(platform_display_id did,
 	return false;
 }
 
+int PLATFORM_SYMBOL(_video_cardhandle)(int cardn)
+{
+	return -1;
+}
+
 void* PLATFORM_SYMBOL(_video_gfxsym)(const char* sym)
 {
 	return glXGetProcAddress((const GLubyte*) sym);

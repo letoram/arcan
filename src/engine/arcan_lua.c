@@ -212,6 +212,18 @@ typedef int acoord;
 #define CONST_FRAMESERVER_OUTPUT 42
 #endif
 
+#ifndef CONST_DEVICE_INDIRECT
+#define CONST_DEVICE_INDIRECT 1
+#endif
+
+#ifndef CONST_DEVICE_DIRECT
+#define CONST_DEVICE_DIRECT 2
+#endif
+
+#ifndef CONST_DEVICE_LOST
+#define CONST_DEVICE_LOST 3
+#endif
+
 #ifndef LAUNCH_EXTERNAL
 #define LAUNCH_EXTERNAL 0
 #endif
@@ -253,6 +265,9 @@ static const int RENDERTARGET_NOSCALE  = CONST_RENDERTARGET_NOSCALE;
 static const int RENDERFMT_COLOR = RENDERTARGET_COLOR;
 static const int RENDERFMT_DEPTH = RENDERTARGET_DEPTH;
 static const int RENDERFMT_FULL  = RENDERTARGET_COLOR_DEPTH_STENCIL;
+static const int DEVICE_INDIRECT = CONST_DEVICE_INDIRECT;
+static const int DEVICE_DIRECT = CONST_DEVICE_DIRECT;
+static const int DEVICE_LOST = CONST_DEVICE_LOST;
 
 extern struct arcan_dbh* dbhandle;
 
@@ -6203,6 +6218,77 @@ static int targetfonthint(lua_State* ctx)
 	return 1;
 }
 
+static int xlt_dev(int inv)
+{
+	switch(inv){
+	case CONST_DEVICE_DIRECT:
+		return 1;
+	case CONST_DEVICE_LOST:
+		return 2;
+	case CONST_DEVICE_INDIRECT:
+	default:
+		return 0;
+	}
+}
+
+static int targetdevhint(lua_State* ctx)
+{
+	LUA_TRACE("target_devicehint");
+	arcan_vobject* vobj;
+	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, &vobj);
+	if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV)
+		arcan_fatal("target_devicehint(), vid not connected to a frameserver\n");
+
+	arcan_frameserver* fsrv = (arcan_frameserver*) vobj->feed.state.ptr;
+
+/* 1: node-switch (>0) or render-mode switch (-1) only */
+	int type = lua_type(ctx, 1);
+	if (type == LUA_TNUMBER){
+		int num = luaL_checknumber(ctx, 2);
+		if (num < 0){
+			arcan_frameserver_pushevent(fsrv, &(struct arcan_event){
+				.category = EVENT_TARGET,
+				.tgt.kind = TARGET_COMMAND_DEVICE_NODE,
+				.tgt.ioevs[0].iv = BADFD,
+				.tgt.ioevs[1].iv = 1,
+				.tgt.ioevs[2].iv = xlt_dev(luaL_optnumber(ctx, 2, DEVICE_INDIRECT))
+			});
+		}
+		else {
+			int fd = platform_video_cardhandle(num);
+			if (-1 == fd){
+				arcan_warning("target_devicehint(), invalid card index specified\n");
+				LUA_ETRACE("target_device", "invalid card index");
+				return 0;
+			}
+			arcan_frameserver_pushfd(fsrv, &(struct arcan_event){
+				.category = EVENT_TARGET, .tgt.kind = TARGET_COMMAND_DEVICE_NODE,
+				.tgt.ioevs[0].iv = 0, .tgt.ioevs[1].iv = 1,
+				.tgt.ioevs[2].iv = xlt_dev(luaL_optnumber(ctx, 2, DEVICE_INDIRECT))
+			}, fd);
+		}
+	}
+	else if (type == LUA_TSTRING){
+/* empty string is allowed for !force (disable alt-conn) */
+		const char* cpath = luaL_checkstring(ctx, 1);
+		bool force = luaL_optbnumber(ctx, 2, false);
+		struct arcan_event outev = {
+			.category = EVENT_TARGET, .tgt.kind = TARGET_COMMAND_DEVICE_NODE,
+			.tgt.ioevs[0].iv = BADFD,
+			.tgt.ioevs[2].iv = force ? 2 : 4
+		};
+		if (force && strlen(cpath) == 0)
+			arcan_fatal("target_devicehint(), forced migration connpath len == 0\n");
+		snprintf(outev.tgt.message, COUNT_OF(outev.tgt.message), "%s", cpath);
+		arcan_frameserver_pushevent(fsrv, &outev);
+	}
+	else
+		arcan_fatal("target_devicehint");
+
+	LUA_ETRACE("target_devicehint", NULL);
+	return 0;
+}
+
 static int targetdisphint(lua_State* ctx)
 {
 	LUA_TRACE("target_displayhint");
@@ -9331,6 +9417,7 @@ static const luaL_Reg tgtfuns[] = {
 {"target_flags",               targetflags              },
 {"target_graphmode",           targetgraph              },
 {"target_displayhint",         targetdisphint           },
+{"target_devicehint",          targetdevhint            },
 {"target_fonthint",            targetfonthint           },
 {"target_seek",                targetseek               },
 {"target_parent",              targetparent             },
@@ -9662,6 +9749,9 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"DISPLAY_OFF", ADPMS_OFF},
 {"DISPLAY_SUSPEND", ADPMS_SUSPEND},
 {"DISPLAY_ON", ADPMS_ON},
+{"DEVICE_INDIRECT", DEVICE_INDIRECT},
+{"DEVICE_DIRECT", DEVICE_DIRECT},
+{"DEVICE_LOST", DEVICE_LOST},
 {"RENDERTARGET_NOSCALE", RENDERTARGET_NOSCALE},
 {"RENDERTARGET_SCALE", RENDERTARGET_SCALE},
 {"RENDERTARGET_NODETACH", RENDERTARGET_NODETACH},

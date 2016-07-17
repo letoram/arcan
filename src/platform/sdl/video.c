@@ -69,6 +69,11 @@ void platform_video_restore_external()
 		sdl.canvasw, sdl.canvash, sizeof(av_pixel), sdl.sdlarg);
 }
 
+int platform_video_cardhandle(int cardn)
+{
+	return -1;
+}
+
 void* platform_video_gfxsym(const char* sym)
 {
 	return SDL_GL_GetProcAddress(sym);

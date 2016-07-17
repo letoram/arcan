@@ -160,7 +160,7 @@ enum {
  * Each open output device, can be shared between displays
  */
 struct dev_node {
-	int fd;
+	int fd, rnode;
 	bool master;
 	int refc;
 	uint32_t crtc_alloc;
@@ -183,6 +183,7 @@ enum disp_state {
  * Multiple- device nodes (i.e. cards) is currently untested
  * and thus only partially implemented due to lack of hardware
  */
+static const int MAX_NODES = 1;
 static struct dev_node nodes[1];
 
 /*
@@ -417,6 +418,14 @@ static int setup_buffers(struct dispout* d)
 		d->buffer.esurf, d->device->context);
 
 	return 0;
+}
+
+int platform_video_cardhandle(int cardn)
+{
+	if (cardn < 0 || cardn > MAX_NODES)
+		return -1;
+
+	return nodes[cardn].rnode;
 }
 
 bool platform_video_set_mode(platform_display_id disp, platform_mode_id mode)
@@ -873,6 +882,7 @@ static int setup_node(struct dev_node* node, const char* path, int fd)
 		" or use ARCAN_VIDEO_DEVICE environment.\n");
 
 	memset(node, '\0', sizeof(struct dev_node));
+	node->rnode = -1;
 	if (!path && fd == -1)
 		return -1;
 	else if (!path)
@@ -895,15 +905,16 @@ static int setup_node(struct dev_node* node, const char* path, int fd)
 	if (!node->gbm){
 		arcan_warning("egl-dri(), couldn't create gbm device on node.\n");
 		close(node->fd);
+		if (node->rnode >= 0)
+			close(node->rnode);
+		node->rnode = -1;
 		node->fd = -1;
 		return -1;
 	}
 
 /*
- * this is a hack until we find a better way to derive a handle to a
- * matching render node from the gbm connection, and then use
- * TARGET_COMMAND_DEVICE_NODE with FD passing to force this to a
- * running client (or inherit in environment)
+ * this is a hack until we find a better way to derive a handle to a matching
+ * render node from the gbm connection, and then use TARGET_COMMAND_DEVICE_NODE
  */
 	const char cpath[] = "/dev/dri/card";
 	char pbuf[24] = "/dev/dri/renderD128";
@@ -913,6 +924,7 @@ static int setup_node(struct dev_node* node, const char* path, int fd)
 		snprintf(pbuf, 24, "/dev/dri/renderD%d", (int)(ind + 128));
 	}
 	setenv("ARCAN_RENDER_NODE", pbuf, 1);
+	node->rnode = open(pbuf, O_RDWR | FD_CLOEXEC);
 
 	static const EGLint context_attribs[] = {
 		EGL_CONTEXT_CLIENT_VERSION, 2,
@@ -1019,6 +1031,9 @@ static int setup_node(struct dev_node* node, const char* path, int fd)
 
 reset_node:
 	close(node->fd);
+	if (node->rnode >= 0)
+		close(node->rnode);
+	node->rnode = -1;
 	node->fd = -1;
 	gbm_device_destroy(node->gbm);
 	node->gbm = NULL;

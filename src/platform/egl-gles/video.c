@@ -153,6 +153,11 @@ bool PLATFORM_SYMBOL(_video_set_mode)(
 	return disp == 0 && mode == 0;
 }
 
+int PLATFORM_SYMBOL(_video_cardhandle)(int cardn)
+{
+	return -1;
+}
+
 bool PLATFORM_SYMBOL(_video_display_edid)(platform_display_id did,
 	char** out, size_t* sz)
 {
