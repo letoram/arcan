@@ -201,6 +201,11 @@ void platform_video_setsynch(const char* arg)
 	}
 }
 
+int platform_video_cardhandle(int cardn)
+{
+	return -1;
+}
+
 void platform_event_samplebase(int devid, float xyz[3])
 {
 }

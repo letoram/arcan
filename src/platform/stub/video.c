@@ -72,6 +72,11 @@ void platform_video_synch(uint64_t tick_count, float fract,
 		post();
 }
 
+int platform_video_cardhandle(int cardn)
+{
+	return -1;
+}
+
 const char** platform_video_synchopts()
 {
 	return (const char**) synchopts;

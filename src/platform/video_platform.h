@@ -276,6 +276,11 @@ int64_t platform_video_output_handle(
 bool platform_video_map_handle(struct storage_info_t*, int64_t inh);
 
 /*
+ * retrieve a descriptor for a client- render resource connected to the
+ * specified card-index, or -1 if no such handle exists. */
+int platform_video_cardhandle(int cardn);
+
+/*
  * triggers the actual rendering and is responsible for applying whatever
  * synchronization strategy that is currently active, and to run the related
  * benchmark costs trigger functions (bench_register_cost,bench_register_frame)

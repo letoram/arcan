@@ -180,6 +180,11 @@ struct monitor_mode PLATFORM_SYMBOL(_video_dimensions)()
 	return res;
 }
 
+int PLATFORM_SYMBOL(_video_cardhandle)(int cardn)
+{
+	return -1;
+}
+
 int64_t PLATFORM_SYMBOL(_video_output_handle)(
 	struct storage_info_t* store, enum status_handle* status)
 {

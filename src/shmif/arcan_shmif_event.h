@@ -385,7 +385,8 @@ enum ARCAN_TARGET_COMMAND {
  * intended use.
  * ioev[0].iv = handle (or BADFD)
  * ioev[1].iv =
- *              1: switch render node, handle is a reference to the new node.
+ *              1: switch render node, handle is a reference to the new node
+ *                 or -1 to indicate render mode switch
  *              2: switch local connection:
  *                 message field will contain new _CONNPATH otherwise
  *                 connection primitive will be passed as handle.
