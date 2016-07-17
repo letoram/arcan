@@ -402,7 +402,8 @@ enum ARCAN_TARGET_COMMAND {
  *                 for internal processing and do not need scanout capable
  *                 memory
  *              1: direct, output handles should be of a type that can be used
- *                 as display scanout type (e.g. GBM_BO_USE_SCANOUT)
+ *                 as display scanout type (e.g. GBM_BO_USE_SCANOUT),
+ *              2; disabled, hardware acceleration is entirely lost
  */
 	TARGET_COMMAND_DEVICE_NODE,
 
