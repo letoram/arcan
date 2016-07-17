@@ -95,7 +95,7 @@ static struct {
 
 /* flag for rendering callbacks, should the frame be processed or not */
 	bool skipframe_a, skipframe_v, empty_v;
-	bool pause, in_3d;
+	bool in_3d;
 	bool hpassing_disabled;
 
 /* miliseconds per frame, 1/fps */
@@ -849,10 +849,9 @@ static bool libretro_setenv(unsigned cmd, void* data){
 		*((bool*) data) = true;
 	break;
 
-/* ignore for now */
 	case RETRO_ENVIRONMENT_SHUTDOWN:
-		retroctx.shmcont.addr->dms = true;
-		LOG("shutdown requested from lib.\n");
+		arcan_shmif_drop(&retroctx.shmcont);
+		exit(EXIT_SUCCESS);
 	break;
 
 	case RETRO_ENVIRONMENT_SET_VARIABLES:
@@ -1318,21 +1317,11 @@ static inline void targetev(arcan_event* ev)
 				enable_graphseg();
 		break;
 
-/* any event not being UNPAUSE is ignored, no frames are processed
- * and the core is allowed to sleep in between polls */
-		case TARGET_COMMAND_PAUSE:
-			retroctx.pause = true;
-		break;
-
 /* can safely assume there are no other events in the queue after this one,
  * more important for encode etc. that need to flush codecs */
 		case TARGET_COMMAND_EXIT:
+			arcan_shmif_drop(&retroctx.shmcont);
 			exit(EXIT_SUCCESS);
-		break;
-
-		case TARGET_COMMAND_UNPAUSE:
-			retroctx.pause = false;
-			reset_timing(false);
 		break;
 
 		case TARGET_COMMAND_DISPLAYHINT:
@@ -1357,7 +1346,7 @@ static inline void targetev(arcan_event* ev)
 		case TARGET_COMMAND_STEPFRAME:
 			if (tgt->ioevs[0].iv < 0);
 				else
-					while(tgt->ioevs[0].iv-- && retroctx.shmcont.addr->dms)
+					while(tgt->ioevs[0].iv--)
 						retroctx.run();
 		break;
 
@@ -1423,26 +1412,25 @@ static inline void targetev(arcan_event* ev)
 
 /* use labels etc. for trying to populate the context table we also process
  * requests to save state, shutdown, reset, plug/unplug input, here */
-static inline void flush_eventq(){
-	 arcan_event ev;
+static inline int flush_eventq(){
+	arcan_event ev;
+	int ps;
 
-	 do
-		while (arcan_shmif_poll(&retroctx.shmcont, &ev) > 0){
-			switch (ev.category){
-				case EVENT_IO:
-					ioev_ctxtbl(&(ev.io), ev.io.label);
-				break;
+	while ((ps = arcan_shmif_poll(&retroctx.shmcont, &ev)) > 0){
+		switch (ev.category){
+			case EVENT_IO:
+				ioev_ctxtbl(&(ev.io), ev.io.label);
+			break;
 
-				case EVENT_TARGET:
-					targetev(&ev);
+			case EVENT_TARGET:
+				targetev(&ev);
 
-				default:
-				break;
-			}
+			default:
+			break;
 		}
-/* Only pause if the DMS isn't released */
-		while (retroctx.shmcont.addr->dms &&
-			retroctx.pause && (arcan_timesleep(1), 1));
+	}
+
+	return ps;
 }
 
 void update_ntsc()
@@ -1911,9 +1899,6 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 	else if (!load_resource(resname ? resname : ""))
 		return EXIT_FAILURE;
 
-	snprintf((char*)outev.ext.message.data, msgsz, "loaded");
-	arcan_shmif_enqueue(&retroctx.shmcont, &outev);
-
 /* remixing, conversion functions for color formats... */
 	setup_av();
 
@@ -1926,10 +1911,6 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 
 /* some cores die on this kind of reset, retroctx.reset() e.g. NXengine
  * retro_reset() */
-
-/* since we might have requests to save state before we die, we use the
- * flush_eventq as an atexit */
-	atexit(flush_eventq);
 
 	if (retroctx.state_sz > 0)
 		retroctx.rollback_state = malloc(retroctx.state_sz);
@@ -1954,11 +1935,7 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		.ext.message = "hidden"
 	});
 
-	while (retroctx.shmcont.addr->dms){
-/* since pause and other timing anomalies are part of the eventq flush,
- * take care of it outside of frame frametime measurements */
-		flush_eventq();
-
+	while (flush_eventq() != -1){
 		if (retroctx.skipmode >= TARGET_SKIP_FASTFWD)
 			libretro_skipnframes(retroctx.skipmode -
 				TARGET_SKIP_FASTFWD + 1, true);

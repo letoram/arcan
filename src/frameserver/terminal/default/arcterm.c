@@ -1037,6 +1037,7 @@ static void targetev(arcan_tgtevent* ev)
 	case TARGET_COMMAND_RESET:
 		term.last_shmask = 0;
 		tsm_vte_hard_reset(term.vte);
+		printf("got reset, degree? %d\n", ev->ioevs[0].iv);
 	break;
 
 	case TARGET_COMMAND_BCHUNK_IN:
@@ -1061,7 +1062,7 @@ static void targetev(arcan_tgtevent* ev)
 #ifdef TTF_SUPPORT
 		int fd = BADFD;
 		if (ev->ioevs[1].iv == 1)
-			fd = ev->ioevs[0].iv; //dup(ev->ioevs[0].iv);
+			fd = ev->ioevs[0].iv;
 
 		switch(ev->ioevs[3].iv){
 		case -1: break;
@@ -1124,7 +1125,7 @@ static void targetev(arcan_tgtevent* ev)
 /* switch cursor kind on changes to 4 in ioevs[2] */
 		if (dev){
 			if (!arcan_shmif_resize(&term.acon, ev->ioevs[0].iv, ev->ioevs[1].iv))
-				LOG("resize to (%d * %d( failed\n", ev->ioevs[0].iv, ev->ioevs[1].iv);
+				LOG("resize to (%d * %d) failed\n", ev->ioevs[0].iv, ev->ioevs[1].iv);
 			update_screensize(true);
 		}
 
@@ -1225,8 +1226,9 @@ static bool check_pasteboard()
 {
 	arcan_event ev;
 	bool rv = false;
+	int pv = 0;
 
-	while (arcan_shmif_poll(&term.clip_in, &ev) > 0){
+	while ((pv = arcan_shmif_poll(&term.clip_in, &ev)) > 0){
 		if (ev.category != EVENT_TARGET)
 			continue;
 
@@ -1244,6 +1246,9 @@ static bool check_pasteboard()
 		break;
 		}
 	}
+
+	if (pv == -1)
+		arcan_shmif_drop(&term.clip_in);
 
 	return rv;
 }
@@ -1343,8 +1348,9 @@ static void main_loop()
 	int ptyfd = shl_pty_get_fd(term.pty);
 	int timeout = -1;
 	int flushc = 0, last_estate = 0;
+	int pv = 0;
 
-	while(term.acon.addr->dms){
+	while(pv != -1){
 		int pc = 2;
 		struct pollfd fds[3] = {
 			{ .fd = ptyfd, .events = pollev},
@@ -1371,7 +1377,7 @@ static void main_loop()
 
 		if (sv != 0){
 			if (fds[1].revents & POLLIN){
-				while (arcan_shmif_poll(&term.acon, &ev) > 0){
+				while ((pv = arcan_shmif_poll(&term.acon, &ev) > 0)){
 					event_dispatch(&ev);
 				}
 				dispatch = true;

@@ -269,8 +269,7 @@ int main(int argc, char** argv)
 
 #ifdef ENABLE_FSRV_GAME
 	if (strcmp(fsrvmode, "game") == 0)
-		return launch_mode("game", afsrv_game,
-			SEGID_GAME, SHMIF_MANUAL_PAUSE, argstr);
+		return launch_mode("game", afsrv_game, SEGID_GAME, 0, argstr);
 #endif
 
 #ifdef ENABLE_FSRV_AVFEED

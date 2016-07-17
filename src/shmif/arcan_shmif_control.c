@@ -269,6 +269,15 @@ static struct {
 
 static void* guard_thread(void* gstruct);
 
+static inline bool parent_alive(struct shmif_hidden* gs)
+{
+/* based on the idea that init inherits an orphaned process, return getppid()
+ * != 1; won't work for hijack targets that double fork, and we don't have
+ * the means for an inhertied connection right now (though a reasonable
+ * possibility) */
+	return kill(gs->guard.parent, 0) != -1;
+}
+
 static void spawn_guardthread(struct arcan_shmif_cont* d)
 {
 	struct shmif_hidden* hgs = d->priv;
@@ -441,7 +450,10 @@ static enum shmif_migrate_status fallback_migrate(struct arcan_shmif_cont* c)
 /* sleep - retry connect loop */
 	enum shmif_migrate_status sv;
 	int step = 0;
-	if (c->priv->flags & SHMIF_NOAUTO_RECONNECT)
+
+/* parent can pull dms explicitly */
+	if ((c->priv->flags & SHMIF_NOAUTO_RECONNECT) ||
+		parent_alive(c->priv) || c->priv->output)
 		return SHMIF_MIGRATE_NOCON;
 
 /* we force CONNECT_LOOP style behavior here */
@@ -486,7 +498,7 @@ reset:
 	bool noks = false;
 	int rv = 0;
 
-/* difference between dms and ks are that the dms is pulled by the shared
+/* difference between dms and ks is that the dms is pulled by the shared
  * memory interface and process management, killswitch from the event queues */
 	struct arcan_evctx* ctx = &priv->inev;
 	volatile uint8_t* ks = (volatile uint8_t*) ctx->synch.killswitch;
@@ -662,7 +674,7 @@ checkfd:
 		rv = 1;
 	}
 	else if (c->addr->dms == 0){
-		fallback_migrate(c);
+		rv = fallback_migrate(c) == SHMIF_MIGRATE_OK ? 0 : -1;
 		goto done;
 	}
 
@@ -955,15 +967,6 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey,
 
 end:
 	return res;
-}
-
-static inline bool parent_alive(struct shmif_hidden* gs)
-{
-/* based on the idea that init inherits an orphaned process, return getppid()
- * != 1; won't work for hijack targets that double fork, and we don't have
- * the means for an inhertied connection right now (though a reasonable
- * possibility) */
-	return kill(gs->guard.parent, 0) != -1;
 }
 
 static void setup_avbuf(struct arcan_shmif_cont* res)
@@ -1708,6 +1711,9 @@ enum shmif_migrate_status arcan_shmif_migrate(
 		arcan_shmif_mapav(ret.addr, ret.priv->vbuf, ret.priv->vbuf_cnt,
 			ret.w * ret.h * sizeof(shmif_pixel), ret.priv->abuf, ret.priv->abuf_cnt,
 			ret.abufsize);
+
+		arcan_shmif_setevqs(ret.addr, ret.esem,
+		&ret.priv->inev, &ret.priv->outev, false);
 
 		ret.vidp = ret.priv->vbuf[0];
 		ret.audp = ret.priv->abuf[0];
