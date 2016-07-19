@@ -924,7 +924,7 @@ static int setup_node(struct dev_node* node, const char* path, int fd)
 		snprintf(pbuf, 24, "/dev/dri/renderD%d", (int)(ind + 128));
 	}
 	setenv("ARCAN_RENDER_NODE", pbuf, 1);
-	node->rnode = open(pbuf, O_RDWR | FD_CLOEXEC);
+	node->rnode = open(pbuf, O_RDWR | O_CLOEXEC);
 
 	static const EGLint context_attribs[] = {
 		EGL_CONTEXT_CLIENT_VERSION, 2,
