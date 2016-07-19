@@ -83,7 +83,7 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-nvidia")
 	list(APPEND INCLUDE_DIRS ${GBMKMS_INCLUDE_DIRS})
 	list(APPEND VIDEO_LIBRARIES ${EGL_LIBRARIES} ${GBMKMS_LIBRARIES})
 	list(APPEND HEADLESS_LIBRARIES ${EGL_LIBRARIES})
-	list(APPEND HEADLESS_PLATFORM ${PLATFORM_ROOT}/egl-dri/stream_headless.c)
+#	list(APPEND HEADLESS_PLATFORM ${PLATFORM_ROOT}/egl-dri/stream_headless.c)
 	set(VIDEO_PLATFORM_SOURCES
 		${PLATFORM_ROOT}/egl-nvidia/video.c
 		${PLATFORM_ROOT}/egl-nvidia/egl.c
@@ -113,7 +113,7 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-dri")
 	list(APPEND INCLUDE_DIRS ${GBMKMS_INCLUDE_DIRS})
 	set(VIDEO_PLATFORM_SOURCES ${PLATFORM_ROOT}/egl-dri/video.c)
 	set(HEADLESS_PLATFORM ${PLATFORM_ROOT}/egl-dri/video_rnode.c)
-	set(LWA_PLATFORM_STR "dri-rnodes")
+	set(LWA_PLATFORM_STR "egl-dri-rnode")
 
 #
 # only option on OSX/Windows currently, would also work for

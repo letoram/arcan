@@ -32,8 +32,8 @@
  THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef _HAVE_ARCAN_SHMIF_INTEROP
-#define _HAVE_ARCAN_SHMIF_INTEROP
+#ifndef HAVE_ARCAN_SHMIF_INTEROP
+#define HAVE_ARCAN_SHMIF_INTEROP
 
 /*
  * Version number works as tag and guard- bytes in the shared memory page, it
@@ -155,5 +155,36 @@ bool arg_lookup(struct arg_arr* arr, const char* val,
 	unsigned short ind, const char** found);
 
 void arg_cleanup(struct arg_arr*);
+
+/*
+ * Part of auxiliary library, as it pulls in more dependencies and boiler-plate
+ * for setting up accelerated graphics
+ */
+#ifdef WANT_ARCAN_SHMIF_HELPER
+/*
+ * Uses lookupfun to get the function pointers needed, writes back matching
+ * EGLNativeDisplayType into *display and tags *con as accelerated.
+ * Can be called multiple times as response to DEVICE_NODE calls.
+ */
+	bool arcan_shmifext_headless_egl(struct arcan_shmif_cont* con,
+		void** display, void*(*lookupfun)(void*, const char*), void* tag);
+
+/*
+ * Placeholder awaiting VK support
+ */
+	bool arcan_shmifext_headless_vk(struct arcan_shmif_cont* con,
+		void** display, void*(*lookupfun)(void*, const char*), void* tag);
+
+/*
+ * Similar behavior to signalhandle, but any conversion from the texture id
+ * in [tex_id] is handled internally in accordance with the last _headless_egl
+ * call on [con]. Context refers to the EGLContext where [tex_id] is valid
+ */
+	unsigned arcan_shmifext_eglsignal(struct arcan_shmif_cont*,
+		uintptr_t context, int mask, uintptr_t tex_id, ...);
+
+	unsigned arcan_shmifext_vksignal(struct arcan_shmif_cont*,
+		uintptr_t context, int mask, uintptr_t tex_id, ...);
 #endif
 
+#endif

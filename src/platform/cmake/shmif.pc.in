@@ -6,7 +6,7 @@ includedir=${prefix}/include/arcan/shmif
 Name: Arcan-shmif
 Description: Arcan Shared Memory Interface Library
 URL: http://arcan-fe.com
-Libs: -L${libdir} -larcan_shmif
+Libs: -L${libdir} -larcan_shmif -larcan_shmif_ext
 Cflags: -I${includedir}
 Version:@VERSION@
 Requires:

@@ -30,6 +30,7 @@
 
 #include "../agp/glfun.h"
 
+#define WANT_ARCAN_SHMIF_HELPER
 #include "arcan_shmif.h"
 #include "arcan_math.h"
 #include "arcan_general.h"
