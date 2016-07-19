@@ -27,6 +27,7 @@
 #include <pthread.h>
 
 #include "arcan_shmif.h"
+#include "shmif_privext.h"
 
 #include <signal.h>
 #include <sys/mman.h>
@@ -1058,6 +1059,13 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 
 	res.priv = malloc(sizeof(struct shmif_hidden));
 	memset(res.priv, '\0', sizeof(struct shmif_hidden));
+	res.privext = malloc(sizeof(struct shmif_ext_hidden));
+	*res.privext = (struct shmif_ext_hidden){
+		.cleanup = NULL,
+		.active_fd = -1,
+		.pending_fd = -1
+	};
+
 	*res.priv = gs;
 	res.priv->alive = true;
 
@@ -1344,15 +1352,22 @@ void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 	sem_close(inctx->vsem);
 
 /* guard thread will clean up on its own */
+	free(inctx->priv->alt_conn);
+	if (inctx->privext->cleanup)
+		inctx->privext->cleanup(inctx);
+
+	if (inctx->privext->active_fd != -1)
+		close(inctx->privext->active_fd);
+	if (inctx->privext->pending_fd != -1)
+		close(inctx->privext->pending_fd);
+
 	if (gstr->guard.active){
 		gstr->guard.active = false;
 	}
 /* no guard thread for this context */
-	else{
-		free(inctx->priv->alt_conn);
+	else
 		free(inctx->priv);
-	}
-
+	free(inctx->privext);
 	munmap(inctx->addr, inctx->shmsize);
 	memset(inctx, '\0', sizeof(struct arcan_shmif_cont));
 }
@@ -1365,8 +1380,8 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 		return false;
 
 	if (!arg->addr->dms){
-		if (SHMIF_MIGRATE_OK != fallback_migrate(arg));
-		return false;
+		if (SHMIF_MIGRATE_OK != fallback_migrate(arg))
+			return false;
 	}
 
 /* wait for any outstanding v/asynch */

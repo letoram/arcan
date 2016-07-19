@@ -192,25 +192,22 @@ static void sigusr_acq(int sign, siginfo_t* info, void* ctx)
 	int s_errn = errno;
 	if (write(gstate.sigpipe[1], &vt_acq, 1) == 1)
 		;
-	write(STDOUT_FILENO, &vt_acq, 1);
 	errno = s_errn;
 }
 
 static void sigusr_rel(int sign, siginfo_t* info, void* ctx)
 {
 	int s_errn = errno;
-	if (write(gstate.sigpipe[1], &vt_rel, 1) == 1)
+	if (write(gstate.sigpipe[1], &vt_rel, 1))
 		;
-	write(STDOUT_FILENO, &vt_rel, 1);
 	errno = s_errn;
 }
 
 static void sigusr_term(int sign, siginfo_t* info, void* ctx)
 {
 	int s_errn = errno;
-	if (write(gstate.sigpipe[1], &vt_trm, 1) == 1)
+	if (write(gstate.sigpipe[1], &vt_trm, 1))
 		;
-	write(STDOUT_FILENO, &vt_trm, 1);
 	errno = s_errn;
 }
 

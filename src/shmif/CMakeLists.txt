@@ -11,6 +11,8 @@
 # Targets:
 # arcan_shmif
 # arcan_shmif_int
+# arcan_shmif_ext
+# arcan_shmif_intext
 #
 # Installs: (if ARCAN_SOURCE_DIR is not set)
 #
@@ -44,6 +46,14 @@ set (SHMIF_SOURCES
 	${ASD}/platform/posix/shmemop.c
 )
 
+if (LWA_PLATFORM_STR AND IS_DIRECTORY "${ASD}/shmif/${LWA_PLATFORM_STR}" AND
+	EXISTS "${ASD}/shmif/${LWA_PLATFORM_STR}/${LWA_PLATFORM_STR}.c")
+	set (SHMIF_EXT_SOURCES "${ASD}/shmif/${LWA_PLATFORM_STR}/${LWA_PLATFORM_STR}.c")
+
+else()
+	set (SHMIF_EXT_SOURCES "${ASD}/shmif/stub/stub.c")
+endif()
+
 if (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
 	set(SHMIF_PLATFORM
 		${ASD}/platform/posix/warning.c
@@ -65,8 +75,6 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 		${ASD}/platform/darwin/sem.c
 		${ASD}/platform/posix/fdpassing.c
 	)
-elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
-# missing at the moment
 else()
 	message(FATAL_ERROR "attempted to build arcan-shmif on an unsupported OS/platform")
 endif()
@@ -78,9 +86,16 @@ set_property(SOURCE ${ASD}/platform/posix/fdpassing.c
 
 add_library(arcan_shmif_int STATIC ${SHMIF_SOURCES} ${SHMIF_PLATFORM})
 add_library(arcan_shmif SHARED ${SHMIF_SOURCES} ${SHMIF_PLATFORM})
+add_library(arcan_shmif_intext STATIC ${SHMIF_EXT_SOURCES})
+add_library(arcan_shmif_ext SHARED ${SHMIF_EXT_SOURCES})
 
 target_link_libraries(arcan_shmif PRIVATE ${STDLIB})
 target_link_libraries(arcan_shmif_int PRIVATE ${STDLIB})
+target_link_libraries(arcan_shmif_ext PRIVATE ${STDLIB} ${HEADLESS_LIBRARIES})
+target_link_libraries(arcan_shmif_intext PRIVATE ${STDLIB} ${HEADLESS_LIBRARIES})
+
+target_include_directories(arcan_shmif_ext PRIVATE ${INCLUDE_DIRS})
+target_include_directories(arcan_shmif_intext PRIVATE ${INCLUDE_DIRS})
 
 # note that we enable fpic for the static here as some
 # subdirectores need to pull it in as part of building a shared library
@@ -101,6 +116,18 @@ set_target_properties(arcan_shmif PROPERTIES
 	SOVERSION ${ASHMIF_MAJOR}.${ASHMIF_MINOR}
 )
 
+set_target_properties(arcan_shmif_ext PROPERTIES
+	COMPILE_FLAGS -fPIC
+	OUTPUT_NAME arcan_shmif_ext
+	VERSION ${ASHMIF_MAJOR}.${ASHMIF_MINOR}
+)
+
+set_target_properties(arcan_shmif_intext PROPERTIES
+	COMPILE_FLAGS -fPIC
+	OUTPUT_NAME arcan_shmif_ext
+	VERSION ${ASHMIF_MAJOR}.${ASHMIF_MINOR}
+)
+
 set(ARCAN_SHMIF_INCLUDE_DIR ${ASD}/shmif PARENT_SCOPE)
 set(ARCAN_SHMIF_LIBRARY arcan_shmif_int ${ASHMIF_STDLIB} PARENT_SCOPE)
 
@@ -108,7 +135,7 @@ target_include_directories(arcan_shmif_int PRIVATE ${ASD}/shmif)
 target_include_directories(arcan_shmif PRIVATE ${ASD}/shmif)
 
 if (NOT ARCAN_SOURCE_DIR)
-	install(TARGETS arcan_shmif arcan_shmif_int
+	install(TARGETS arcan_shmif arcan_shmif_int arcan_shmif_ext arcan_shmif_intext
 		LIBRARY DESTINATION ${ASHMIF_INSTPATH}
 		ARCHIVE DESTINATION ${ASHMIF_INSTPATH}
 	)

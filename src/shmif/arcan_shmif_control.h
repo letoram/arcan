@@ -259,7 +259,7 @@ enum arcan_shmif_sigmask {
 };
 
 struct arcan_shmif_cont;
-struct shmif_hidden;
+struct shmif_ext_hidden;
 struct arcan_shmif_page;
 
 typedef enum arcan_shmif_sigmask(
@@ -451,6 +451,10 @@ unsigned arcan_shmif_signal(struct arcan_shmif_cont*, enum arcan_shmif_sigmask);
  * Signal a video transfer that is based on buffer sharing rather than on data
  * in the shmpage. Otherwise it behaves like [arcan_shmif_signal] but with a
  * possible reserved variadic argument for future use.
+ *
+ * If included with DEFINED(WANT_ARCAN_SHMIF_HELPER) and linked with
+ * arcan_shmif_ext, abstract support functions for setup and passing are
+ * provided (arcan_shmifext_***)
  */
 unsigned arcan_shmif_signalhandle(struct arcan_shmif_cont* ctx,
 	enum arcan_shmif_sigmask,	int handle, size_t stride, int format, ...);
@@ -569,6 +573,7 @@ struct arcan_shmif_cont {
  * and related data).
  */
 	struct shmif_hidden* priv;
+	struct shmif_ext_hidden* privext;
 };
 
 enum rhint_mask {

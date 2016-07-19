@@ -42,7 +42,7 @@ endif()
 # static base version, manually mantained
 set(MAJOR_VERSION 0)
 set(MINOR_VERSION 5)
-set(PATCH_LEVEL 0)
+set(PATCH_LEVEL 1)
 set(VERSION ${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_LEVEL})
 set(PLATFORM_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/platform)
 set(ENGINE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/engine)
@@ -115,7 +115,7 @@ option(NO_FSRV "Disable building/launching frameservers" OFF)
 option(STATIC_SQLITE3 "Use SQLite3 Amalgamation" OFF)
 option(ENABLE_LED "Build with LED controller support in core" OFF)
 option(ENABLE_LTO "Build with Link-Time Optimization enabled" OFF)
-option(ENABLE_LWA "Build LWA client (arcan-in-arcan)" OFF)
+option(ENABLE_LWA "Build LWA client (arcan-in-arcan)" ON)
 option(ENABLE_SIMD "Build with SIMD vector instruction set support" ON)
 option(ENABLE_SIMD_ALIGNED "Assert that SIMD data sources are 16-byte aligned" OFF)
 
@@ -482,7 +482,7 @@ elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 	set(PKGCONFIG_DIR lib/pkgconfig)
 
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
-	message(FATAL_ERROR "Windows no longer supported")
+	message(FATAL_ERROR "Windows no longer supported (rollback to 0.4)")
 #
 #	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/CMakeLists.Windows)
 #
