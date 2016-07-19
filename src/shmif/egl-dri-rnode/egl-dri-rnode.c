@@ -85,7 +85,7 @@ bool arcan_shmifext_headless_egl(struct arcan_shmif_cont* con,
 	else if (!con->privext->internal){
 		const char* nodestr = getenv("ARCAN_RENDER_NODE") ?
 			getenv("ARCAN_RENDER_NODE") : "/dev/dri/renderD128";
-		dfd = open(nodestr, O_RDWR | FD_CLOEXEC);
+		dfd = open(nodestr, O_RDWR | O_CLOEXEC);
 	}
 /* mode-switch is no-op in init here, but we still may need
  * to update function pointers due to possible context changes */
