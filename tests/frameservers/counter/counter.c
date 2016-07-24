@@ -25,9 +25,16 @@ int main(int argc, char** argv)
 	uint8_t step_g = 0;
 	uint8_t step_b = 255;
 
+	int frames = 0;
 	while(running){
-	for (size_t row = 0; row < cont.addr->h; row++)
-		for (size_t col = 0; col < cont.addr->w; col++)
+	if (frames++ > 1000){
+		arcan_shmif_resize(&cont, 128 + (rand() % 1024), 128 + (rand() % 1024));
+		frames = 0;
+		printf("resize\n");
+	}
+
+	for (size_t row = 0; row < cont.h; row++)
+		for (size_t col = 0; col < cont.w; col++)
 			cont.vidp[ row * cont.addr->w + col ] = SHMIF_RGBA(step_r, step_g, step_b, 0xff);
 			step_r++;
 			step_g += step_r == 255;
