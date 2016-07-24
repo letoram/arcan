@@ -449,6 +449,8 @@ static void update_screensize(bool clear)
 		shl_pty_resize(term.pty, cols, rows);
 		tsm_screen_resize(term.screen, cols, rows);
 	}
+	else
+		return;
 
 	while (atomic_load(&term.acon.addr->vready))
 		;
@@ -1124,6 +1126,8 @@ static void targetev(arcan_tgtevent* ev)
 
 /* switch cursor kind on changes to 4 in ioevs[2] */
 		if (dev){
+			LOG("resize to (%d * %d) from %d %d)\n", ev->ioevs[0].iv, ev->ioevs[1].iv,
+				term.acon.w, term.acon.h);
 			if (!arcan_shmif_resize(&term.acon, ev->ioevs[0].iv, ev->ioevs[1].iv))
 				LOG("resize to (%d * %d) failed\n", ev->ioevs[0].iv, ev->ioevs[1].iv);
 			update_screensize(true);
