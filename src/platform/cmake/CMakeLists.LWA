@@ -1,6 +1,5 @@
 #
 # Expects:
-#  HEADLESS_PLATFORM (or FATAL)
 #  PLATFORM_ROOT
 #
 # Defines:
@@ -79,10 +78,9 @@ add_executable(arcan_lwa
 	${AGP_SOURCES}
 	${LWA_PLATFORM}
 	${PLATFORM_ROOT}/arcan/video.c
-	${HEADLESS_SOURCES}
 )
 
-add_dependencies(arcan_lwa arcan_shmif_int openal_lwa)
+add_dependencies(arcan_lwa arcan_shmif_int arcan_shmif_intext openal_lwa)
 if(STATIC_FREETYPE)
 	add_dependencies(arcan_lwa Freetype)
 endif()
@@ -90,8 +88,6 @@ endif()
 target_compile_definitions(arcan_lwa PRIVATE
 	ARCAN_LWA
 	${ARCAN_DEFINITIONS}
-	WITH_HEADLESS_MAIN
-	HEADLESS_PLATFORM=\"${HEADLESS_PLATFORM}\"
 )
 
 if(STATIC_FREETYPE)
@@ -106,8 +102,9 @@ target_link_libraries(arcan_lwa
 	${ARCAN_LIBRARIES}
 	${AGP_LIBRARIES}
 	${LWA_LIBRARIES}
-	${HEADLESS_LIBRARIES}
+	${VIDEO_LIBRARIES}
 	arcan_shmif_int
+	arcan_shmif_intext
 )
 
 if (ARCAN_LNK_FLAGS)

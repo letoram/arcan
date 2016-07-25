@@ -531,7 +531,7 @@ set_property(SOURCE engine/arcan_lua.c engine/arcan_main.c
 )
 
 if (EXISTS ${EXTERNAL_SRC_DIR}/git/openal)
-	if(ENABLE_LWA AND HEADLESS_PLATFORM)
+	if(ENABLE_LWA AND LWA_PLATFORM_STR)
 		amsg("\n${CL_WHT}-- Stage 3, LWA Build${CL_RST}")
 		include(platform/cmake/CMakeLists.LWA)
 	else()

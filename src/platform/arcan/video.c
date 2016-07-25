@@ -7,8 +7,6 @@
  * to us although they only work with the agp readback approach currently.
  */
 
-#define PLATFORM_SUFFIX lwa
-
 #include <stdint.h>
 #include <stdbool.h>
 #include <unistd.h>
@@ -16,14 +14,14 @@
 #include <sys/types.h>
 #include <poll.h>
 #include <setjmp.h>
+#include <math.h>
+
 extern jmp_buf arcanmain_recover_state;
 
 #include "../video_platform.h"
+#include "../agp/glfun.h"
 
-#define WITH_HEADLESS
-#include HEADLESS_PLATFORM
-
-/* 2. interpose and map to shm */
+#define WANT_ARCAN_SHMIF_HELPER
 #include "arcan_shmif.h"
 #include "arcan_math.h"
 #include "arcan_general.h"
@@ -31,6 +29,11 @@ extern jmp_buf arcanmain_recover_state;
 #include "arcan_event.h"
 #include "arcan_videoint.h"
 #include "arcan_renderfun.h"
+
+#define EGL_EGLEXT_PROTOTYPES
+#define MESA_EGL_NO_X11_HEADERS
+#include <EGL/egl.h>
+#include <EGL/eglext.h>
 
 static char* synchopts[] = {
 	"parent", "display server controls synchronisation",
@@ -79,14 +82,6 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 {
 	static bool first_init = true;
 
-	if (getenv("ARCAN_VIDEO_NO_FDPASS"))
-		nopass = true;
-
-	if (width == 0 || height == 0){
-		width = 640;
-		height = 480;
-	}
-
 	for (size_t i = 0; i < MAX_DISPLAYS; i++)
 		disp[i].id = i;
 
@@ -94,14 +89,33 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 /* we send our own register events, so set empty type */
 		disp[0].conn = arcan_shmif_open(0, 0, &shmarg);
 		if (disp[0].conn.addr == NULL){
-			arcan_warning("couldn't connect to parent\n");
+			arcan_warning("video setup failed : couldn't connect to parent\n");
 			return false;
 		}
 
-/* empty dimensions will be ignored, chances are we'll get a displayhint */
+/* setup requires shmif connection as we might get metadata that way */
+	enum shmifext_setup_status status;
+	if ((status = arcan_shmifext_headless_setup(&disp[0].conn,
+		arcan_shmifext_headless_defaults())) != SHMIFEXT_OK){
+		arcan_warning("headless graphics setup failed, code: %d\n", status);
+		arcan_shmif_drop(&disp[0].conn);
+		return false;
+	}
+
+/* empty dimensions will retain what the connection was setup for, though some
+ * arcan setups still don't preset- good values for an external connection
+ * point, so clamp */
 		disp[0].conn.hints = SHMIF_RHINT_ORIGO_LL;
-		if (!arcan_shmif_resize_ext( &disp[0].conn, width, height,
-			(struct shmif_resize_ext){.abuf_sz = 1, .abuf_cnt = 8, .vbuf_cnt = 1})){
+		size_t dw = width ? width : disp[0].conn.w;
+		if (dw < 320)
+			dw < 320;
+		size_t dh = height ? height : disp[0].conn.h;
+		if (dh < 200)
+			dh < 200;
+
+		if (!arcan_shmif_resize_ext( &disp[0].conn, dw, dh,
+			(struct shmif_resize_ext){.abuf_sz = 1, .abuf_cnt = 8, .vbuf_cnt = 1}
+		)){
 			arcan_warning("couldn't set shm dimensions (%d, %d)\n", width, height);
 			return false;
 		}
@@ -122,15 +136,16 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 		disp[0].focused = true;
 		first_init = false;
 	}
-	else {
+	else if (width && height){
 		if (!arcan_shmif_resize( &disp[0].conn, width, height )){
 			arcan_warning("couldn't set shm dimensions (%d, %d)\n", width, height);
 			return false;
 		}
 	}
 
-	/*
- * currently, we actually never de-init this
+/*
+ * currently, we actually never de-init this, just generate a nonsense hash-id
+ * before we get a better (signatures etc.) solution
  */
 	unsigned long h = 5381;
 	const char* str = title;
@@ -147,13 +162,7 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	snprintf(ev.ext.registr.title,
 		COUNT_OF(ev.ext.registr.title), "%s", title);
 	arcan_shmif_enqueue(&disp[0].conn, &ev);
-/*
- * for actual authentication, when crypto is added in 0.6 with support
- * for Ed/Curve25519/Sha3, the register process will use a challenge in
- * the shmif that we'll sign with an appl- stored public key and a local
- * install- ID.
- */
-	return lwa_video_init(width, height, bpp, fs, frames, title);
+	return true;
 }
 
 /*
@@ -161,7 +170,9 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
  */
 void platform_video_shutdown()
 {
-	lwa_video_shutdown();
+	for (size_t i=0; i < MAX_DISPLAYS; i++)
+		if (disp[i].conn.addr)
+			arcan_shmif_drop(&disp[i].conn);
 }
 
 bool platform_video_display_edid(platform_display_id did,
@@ -174,17 +185,17 @@ bool platform_video_display_edid(platform_display_id did,
 
 void platform_video_prepare_external()
 {
-	lwa_video_prepare_external();
+/* comes with switching in AGP, should give us card- switching
+ * as well (and will be used as test case for that) */
 }
 
 void platform_video_restore_external()
 {
-	lwa_video_restore_external();
 }
 
 void* platform_video_gfxsym(const char* sym)
 {
-	return lwa_video_gfxsym(sym);
+	return eglGetProcAddress(sym);
 }
 
 void platform_video_setsynch(const char* arg)
@@ -221,33 +232,7 @@ static const char* arcan_envopts[] = {
 
 const char** platform_video_envopts()
 {
-	static const char** cache;
-	static bool env_init;
-
-	if (!env_init){
-		const char** buf = lwa_video_envopts();
-		const char** wrk = buf;
-		ssize_t count = sizeof(arcan_envopts)/sizeof(arcan_envopts[0]);
-
-		while (*wrk++)
-			count++;
-
-		cache = malloc(sizeof(char*) * (count + 1));
-		cache[count] = NULL;
-		wrk = buf;
-
-		count = 0;
-		while(*wrk)
-			cache[count++] = *wrk++;
-
-		wrk = arcan_envopts;
-		while(*wrk)
-			cache[count++] = *wrk++;
-
-		env_init = true;
-	}
-
-	return cache;
+	return arcan_envopts;
 }
 
 const char** platform_input_envopts()
@@ -391,7 +376,7 @@ void platform_video_query_displays()
 
 bool platform_video_map_handle(struct storage_info_t* store, int64_t handle)
 {
-	return lwa_video_map_handle(store, handle);
+	return false;
 }
 
 /*
@@ -401,19 +386,6 @@ bool platform_video_map_handle(struct storage_info_t* store, int64_t handle)
  */
 static void stub()
 {
-}
-
-/*
- * open question in regards to handle passing is the granulairty for
- * using handle- passing as a mechanism when we are looking at subs.
- * allocated to a display when that feature is working.
- */
-static void synch_hpassing(struct display* disp,
-	struct storage_info_t* vs, int handle, enum status_handle status)
-{
-	arcan_shmif_signalhandle(&disp->conn, SHMIF_SIGVID,
-		handle, vs->vinf.text.stride, vs->vinf.text.format);
-	close(handle);
 }
 
 static void synch_copy(struct display* disp, struct storage_info_t* vs)
@@ -429,13 +401,24 @@ static void synch_copy(struct display* disp, struct storage_info_t* vs)
 void platform_video_synch(uint64_t tick_count, float fract,
 	video_synchevent pre, video_synchevent post)
 {
-	lwa_video_synch(tick_count, fract, pre, stub);
+	if (pre)
+		pre();
 
-	static int64_t last_frametime;
-	if (0 == last_frametime)
-		last_frametime = arcan_timemillis();
+	unsigned long long frametime = arcan_timemillis();
 
-	bool sleep = true;
+	size_t platform_nupd;
+	arcan_bench_register_cost(arcan_vint_refresh(fract, &platform_nupd));
+
+/* actually needed here or handle content will be broken */
+	glFlush();
+
+	unsigned long long ts = arcan_timemillis();
+	if (ts < frametime){
+		frametime = (unsigned long long)-1 - frametime + ts;
+	}
+	else
+		frametime = ts - frametime;
+
 	for (size_t i = 0; i < MAX_DISPLAYS; i++){
 		if (!(disp[i].dirty || (platform_nupd && disp[i].visible)))
 			continue;
@@ -448,27 +431,29 @@ void platform_video_synch(uint64_t tick_count, float fract,
 		struct storage_info_t* vs = disp[i].vstore ?
 			disp[i].vstore : arcan_vint_world();
 
-		int handle = nopass ? -1 :
-			lwa_video_output_handle(vs, &status);
-
-		if (handle == -1 || status < 0)
+		if (-1 == arcan_shmifext_eglsignal(&disp[i].conn, 0,
+			SHMIF_SIGVID, vs->vinf.text.glid)){
 			synch_copy(&disp[i], vs);
-		else
-			synch_hpassing(&disp[i], vs, handle, status);
-		sleep = false;
+		}
 	}
 
+	unsigned long long synchtime = arcan_timemillis();
+	if (synchtime < ts){
+		synchtime = (unsigned long long)-1 - synchtime + ts;
+	}
+	else
+		synchtime = synchtime - ts;
+
 /*
- * we should implement a mapping for TARGET_COMMAND_FRAMESKIP or so and use to
- * set virtual display timings. ioev[0] => mode, [1] => prewake, [2] =>
- * preaudio, 3/4 for desired jitter (testing / simulation)
+ * missing synchronization strategy setting here entirely, this
+ * is just based on an assumed ~16ish max delay using the rendertime
  */
-	if (sleep){
+	if (frametime + synchtime < 16){
 		struct pollfd pfd = {
 			.fd = disp[0].conn.epipe,
 			.events = POLLIN | POLLERR | POLLHUP | POLLNVAL
 		};
-		poll(&pfd, 1, 16);
+		poll(&pfd, 1, 16 - frametime - synchtime);
 	}
 
 	if (post)

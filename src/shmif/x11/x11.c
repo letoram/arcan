@@ -14,12 +14,6 @@ enum shmifext_setup_status arcan_shmifext_headless_setup(
 	return SHMIFEXT_NO_API;
 }
 
-void* arcan_shmifext_headless_lookup(
-	struct arcan_shmif_cont* con, const char* fun)
-{
-	return NULL;
-}
-
 bool arcan_shmifext_headless_egl(struct arcan_shmif_cont* con,
 	void** display, void*(*lookupfun)(void*, const char*), void* tag)
 {

@@ -5,56 +5,27 @@
 #
 # Defines:
 #  INPUT_PLATFORM - Video/Input are rather tightly connected
-#  HEADLESS_PLATFORM
-#  HEADLESS_SOURCES - additional symbols #include HEADLESS_PLATFORM might need
-#  HEADLESS_LIBRARIES
+#  LWA_PLATFORM_STR - Will also be built into shmif_ext
 #  VIDEO_LIBRARIES
 #
 # Modifies:
 #  INCLUDE_DIRS
 #
 
-if (VIDEO_PLATFORM STREQUAL "x11" OR VIDEO_PLATFORM STREQUAL "x11-headless")
-	if (NOT INPUT_PLATFORM)
-		set(INPUT_PLATFORM "x11")
-	endif()
-
-	add_definitions(-DWITH_X11)
-
-	if (VIDEO_PLATFORM STREQUAL "x11-headless")
-		set(VIDEO_PLATFORM "x11")
-		add_definitions(-DWITH_HEADLESS_MAIN)
-	endif()
-
-	find_package(X11 REQUIRED QUIET)
-
-	list(APPEND INCLUDE_DIRS
-		${X11_INCLUDE_DIRS}
-		${CMAKE_CURRENT_SOURCE_DIR}/frameserver
-	)
-
-	list(APPEND VIDEO_LIBRARIES ${X11_LIBRARIES})
-	list(APPEND HEADLESS_LIBRARIES ${X11_LIBRARIES})
-
-	set(LWA_PLATFORM_STR "x11-headless")
-	set(HEADLESS_PLATFORM ${PLATFORM_ROOT}/x11/video.c)
-	set(VIDEO_PLATFORM_SOURCES ${PLATFORM_ROOT}/x11/video.c)
 
 # legacy platform for weaker platforms that don't have/support KMS
-elseif(VIDEO_PLATFORM STREQUAL "egl-gles")
+if(VIDEO_PLATFORM STREQUAL "egl-gles")
 	if (NOT INPUT_PLATFORM)
 		set(INPUT_PLATFORM "evdev")
 	endif()
 
 	find_package(EGL REQUIRED QUIET)
-	set(HEADLESS_PLATFORM ${PLATFORM_ROOT}/egl-gles/video.c)
 
 	if (GLES2_BCM_IMPLEMENTATION)
 		message("broadcom (BCM) GLES implementation found, set BCM_ROOT to bad dir to disable")
 		list(APPEND ARCAN_DEFINITIONS WITH_BCM)
 		set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/platform/egl-gles/video.c
 			APPEND PROPERTY COMPILE_FLAGS -fgnu89-inline)
-		set(LWA_PLATFORM_STR "broken")
 	endif()
 
 	list(APPEND INCLUDE_DIRS
@@ -62,6 +33,7 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-gles")
 		${EGL_INCLUDE_DIRS}
 	)
 
+	set(LWA_PLATFORM_STR "stub")
 	set(VIDEO_PLATFORM_SOURCES ${PLATFORM_ROOT}/egl-gles/video.c)
 	list(APPEND VIDEO_LIBRARIES ${EGL_LIBRARIES})
 
@@ -82,15 +54,13 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-nvidia")
 
 	list(APPEND INCLUDE_DIRS ${GBMKMS_INCLUDE_DIRS})
 	list(APPEND VIDEO_LIBRARIES ${EGL_LIBRARIES} ${GBMKMS_LIBRARIES})
-	list(APPEND HEADLESS_LIBRARIES ${EGL_LIBRARIES})
-#	list(APPEND HEADLESS_PLATFORM ${PLATFORM_ROOT}/egl-dri/stream_headless.c)
+	set(LWA_PLATFORM_STR "stub")
 	set(VIDEO_PLATFORM_SOURCES
 		${PLATFORM_ROOT}/egl-nvidia/video.c
 		${PLATFORM_ROOT}/egl-nvidia/egl.c
 		${PLATFORM_ROOT}/egl-nvidia/kms.c
 		${PLATFORM_ROOT}/egl-nvidia/utils.c
 	)
-	set(LWA_PLATFORM_STR "broken")
 #
 # will hopefully become the default on BSDs/linux
 #
@@ -106,13 +76,8 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-dri")
 		${EGL_LIBRARIES}
 		${GBMKMS_LIBRARIES}
 	)
-	list(APPEND HEADLESS_LIBRARIES
-		${EGL_LIBRARIES}
-		${GBMKMS_LIBRARIES}
-	)
 	list(APPEND INCLUDE_DIRS ${GBMKMS_INCLUDE_DIRS})
 	set(VIDEO_PLATFORM_SOURCES ${PLATFORM_ROOT}/egl-dri/video.c)
-	set(HEADLESS_PLATFORM ${PLATFORM_ROOT}/egl-dri/video_rnode.c)
 	set(LWA_PLATFORM_STR "egl-dri-rnode")
 
 #
@@ -131,19 +96,13 @@ elseif (VIDEO_PLATFORM STREQUAL "sdl")
 	list(APPEND VIDEO_LIBRARIES ${SDL_LIBRARY})
 	set(VIDEO_PLATFORM_SOURCES ${PLATFORM_ROOT}/sdl/video.c)
 
-# headless with SDL requires OS specific hacks
-	set(LWA_PLATFORM_STR "x11-headless")
 	if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 		set(LWA_PLATFORM_STR "darwin")
-		set(HEADLESS_PLATFORM ${PLATFORM_ROOT}/darwin/video.c)
-	elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
-		set(LWA_PLATFORM_STR "not found")
 	else()
+		set(LWA_PLATFORM_STR "x11")
 		FIND_PACKAGE(X11 REQUIRED QUIET)
-		set(HEADLESS_PLATFORM ${PLATFORM_ROOT}/x11/video.c)
-		set(HEADLESS_LIBRARIES ${X11_LIBRARIES})
+		set(VIDEO_LIBRARIES ${VIDEO_LIBRARIES} ${X11_LIBRARIES})
 		list(APPEND INCLUDE_DIRS ${X11_INCLUDE_DIRS})
-		set(LWA_PLATFORM_STR "x11-headless")
 	endif()
 
 else()

@@ -12,6 +12,7 @@ enum state_fl {
 };
 
 struct shmif_ext_int;
+
 struct shmif_ext_hidden {
 /* optional hook for freeing */
 	void (*cleanup)(struct arcan_shmif_cont*);

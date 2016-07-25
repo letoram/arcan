@@ -157,34 +157,80 @@ bool arg_lookup(struct arg_arr* arr, const char* val,
 void arg_cleanup(struct arg_arr*);
 
 /*
- * Part of auxiliary library, as it pulls in more dependencies and boiler-plate
+ * Part of auxiliary library, pulls in more dependencies and boiler-plate
  * for setting up accelerated graphics
  */
 #ifdef WANT_ARCAN_SHMIF_HELPER
+
+/*
+ * Maintain both context and display setup. This is for cases where you don't
+ * want to set up EGL or similar support yourself. For cases where you want to
+ * do the EGL setup except for the NativeDisplay part, use _headless_egl.
+ *
+ * [Warning] stick to either _headless_setup OR _headless(_egl, vk), don't mix
+ *
+ */
+enum shmifext_setup_status {
+	SHHIFEXT_UNKNOWN = 0,
+	SHMIFEXT_NO_API,
+	SHMIFEXT_NO_DISPLAY,
+	SHMIFEXT_NO_EGL,
+	SHMIFEXT_NO_CONFIG,
+	SHMIFEXT_NO_CONTEXT,
+	SHMIFEXT_OK
+};
+
+enum shmifext_api {
+	API_OPENGL = 0,
+	API_GLES,
+	API_VHK
+};
+
+struct arcan_shmifext_setup {
+	uint8_t red, green, blue, alpha, depth;
+	uint8_t api, major, minor;
+};
+
+struct arcan_shmifext_setup arcan_shmifext_headless_defaults();
+
+enum shmifext_setup_status arcan_shmifext_headless_setup(
+	struct arcan_shmif_cont* con,
+	struct arcan_shmifext_setup arg);
+
+/*
+ * for use with the shmifext_headless_setup approach, try and find the
+ * requested symbol within the context of the accelerated graphics backend
+ */
+void* arcan_shmifext_headless_lookup(
+	struct arcan_shmif_cont* con, const char*);
+
 /*
  * Uses lookupfun to get the function pointers needed, writes back matching
  * EGLNativeDisplayType into *display and tags *con as accelerated.
  * Can be called multiple times as response to DEVICE_NODE calls.
  */
-	bool arcan_shmifext_headless_egl(struct arcan_shmif_cont* con,
-		void** display, void*(*lookupfun)(void*, const char*), void* tag);
+bool arcan_shmifext_headless_egl(struct arcan_shmif_cont* con,
+	void** display, void*(*lookupfun)(void*, const char*), void* tag);
 
 /*
  * Placeholder awaiting VK support
  */
-	bool arcan_shmifext_headless_vk(struct arcan_shmif_cont* con,
-		void** display, void*(*lookupfun)(void*, const char*), void* tag);
+bool arcan_shmifext_headless_vk(struct arcan_shmif_cont* con,
+	void** display, void*(*lookupfun)(void*, const char*), void* tag);
 
 /*
  * Similar behavior to signalhandle, but any conversion from the texture id
  * in [tex_id] is handled internally in accordance with the last _headless_egl
  * call on [con]. Context refers to the EGLContext where [tex_id] is valid
+ *
+ * Returns -1 on handle- generation/passing failure, otherwise the number
+ * of miliseconds (clamped to INT_MAX) that elapsed from signal to ack.
  */
-	unsigned arcan_shmifext_eglsignal(struct arcan_shmif_cont*,
-		uintptr_t context, int mask, uintptr_t tex_id, ...);
+int arcan_shmifext_eglsignal(struct arcan_shmif_cont*,
+	uintptr_t context, int mask, uintptr_t tex_id, ...);
 
-	unsigned arcan_shmifext_vksignal(struct arcan_shmif_cont*,
-		uintptr_t context, int mask, uintptr_t tex_id, ...);
+int arcan_shmifext_vksignal(struct arcan_shmif_cont*,
+	uintptr_t context, int mask, uintptr_t tex_id, ...);
 #endif
 
 #endif

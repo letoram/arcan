@@ -86,13 +86,13 @@ set_property(SOURCE ${ASD}/platform/posix/fdpassing.c
 
 add_library(arcan_shmif_int STATIC ${SHMIF_SOURCES} ${SHMIF_PLATFORM})
 add_library(arcan_shmif SHARED ${SHMIF_SOURCES} ${SHMIF_PLATFORM})
-add_library(arcan_shmif_intext STATIC ${SHMIF_EXT_SOURCES})
 add_library(arcan_shmif_ext SHARED ${SHMIF_EXT_SOURCES})
+add_library(arcan_shmif_intext SHARED ${SHMIF_EXT_SOURCES})
 
 target_link_libraries(arcan_shmif PRIVATE ${STDLIB})
 target_link_libraries(arcan_shmif_int PRIVATE ${STDLIB})
-target_link_libraries(arcan_shmif_ext PRIVATE ${STDLIB} ${HEADLESS_LIBRARIES})
-target_link_libraries(arcan_shmif_intext PRIVATE ${STDLIB} ${HEADLESS_LIBRARIES})
+target_link_libraries(arcan_shmif_ext PRIVATE ${STDLIB} ${VIDEO_LIBRARIES})
+target_link_libraries(arcan_shmif_intext PRIVATE ${STDLIB} ${VIDEO_LIBRARIES})
 
 target_include_directories(arcan_shmif_ext PRIVATE ${INCLUDE_DIRS})
 target_include_directories(arcan_shmif_intext PRIVATE ${INCLUDE_DIRS})
