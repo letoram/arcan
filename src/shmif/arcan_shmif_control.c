@@ -1147,7 +1147,6 @@ static void* guard_thread(void* gs)
 	}
 
 done:
-	free(gstr);
 	return NULL;
 }
 
