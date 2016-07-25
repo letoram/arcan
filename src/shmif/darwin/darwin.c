@@ -2,6 +2,12 @@
 #include "../arcan_shmif.h"
 #include "../shmif_privext.h"
 
+#include <fcntl.h>
+#include <dlfcn.h>
+
+#include <OpenGL/OpenGL.h>
+#include <OpenGL/GL.h>
+
 struct arcan_shmifext_setup arcan_shmifext_headless_defaults()
 {
 	return (struct arcan_shmifext_setup){};
@@ -11,13 +17,50 @@ enum shmifext_setup_status arcan_shmifext_headless_setup(
 	struct arcan_shmif_cont* con,
 	struct arcan_shmifext_setup arg)
 {
-	return SHMIFEXT_NO_API;
+	CGLPixelFormatObj pix;
+	CGLError errorCode;
+	GLint num;
+
+	CGLPixelFormatAttribute attributes[4] = {
+		kCGLPFAAccelerated,
+		kCGLPFAOpenGLProfile,
+		(CGLPixelFormatAttribute) kCGLOGLPVersion_Legacy,
+		(CGLPixelFormatAttribute) 0
+	};
+
+	if (arg.major == 3){
+		attributes[2] = (CGLPixelFormatAttribute) kCGLOGLPVersion_3_2_Core;
+	}
+	else if (arg.major > 3){
+		return SHMIFEXT_NO_API;
+	}
+
+	static CGLContextObj context;
+
+	errorCode = CGLChoosePixelFormat( attributes, &pix, &num );
+  errorCode = CGLCreateContext( pix, NULL, &context );
+	CGLDestroyPixelFormat( pix );
+  errorCode = CGLSetCurrentContext( context );
+
+/*
+ * no double buffering,
+ * we let the parent transfer process act as the limiting clock.
+ */
+	GLint si = 0;
+	CGLSetParameter(context, kCGLCPSwapInterval, &si);
+
+	return SHMIFEXT_OK;
 }
 
 void* arcan_shmifext_headless_lookup(
-	struct arcan_shmif_cont* con, const char* fun)
+	struct arcan_shmif_cont* con, const char* sym)
 {
-	return NULL;
+	static void* dlh = NULL;
+  if (NULL == dlh)
+    dlh = dlopen("/System/Library/Frameworks/"
+			"OpenGL.framework/Versions/Current/OpenGL", RTLD_LAZY);
+
+  return dlh ? dlsym(dlh, sym) : NULL;
 }
 
 bool arcan_shmifext_headless_egl(struct arcan_shmif_cont* con,
