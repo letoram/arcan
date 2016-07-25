@@ -1126,8 +1126,6 @@ static void targetev(arcan_tgtevent* ev)
 
 /* switch cursor kind on changes to 4 in ioevs[2] */
 		if (dev){
-			LOG("resize to (%d * %d) from %d %d)\n", ev->ioevs[0].iv, ev->ioevs[1].iv,
-				term.acon.w, term.acon.h);
 			if (!arcan_shmif_resize(&term.acon, ev->ioevs[0].iv, ev->ioevs[1].iv))
 				LOG("resize to (%d * %d) failed\n", ev->ioevs[0].iv, ev->ioevs[1].iv);
 			update_screensize(true);
@@ -1381,10 +1379,12 @@ static void main_loop()
 
 		if (sv != 0){
 			if (fds[1].revents & POLLIN){
-				while ((pv = arcan_shmif_poll(&term.acon, &ev) > 0)){
+				while ((pv = arcan_shmif_poll(&term.acon, &ev)) > 0){
 					event_dispatch(&ev);
 				}
 				dispatch = true;
+				if (-1 == pv)
+					return;
 			}
 /* fail on upstream event */
 			else if (fds[1].revents)

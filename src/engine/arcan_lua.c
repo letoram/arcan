@@ -6242,7 +6242,7 @@ static int targetdevhint(lua_State* ctx)
 	arcan_frameserver* fsrv = (arcan_frameserver*) vobj->feed.state.ptr;
 
 /* 1: node-switch (>0) or render-mode switch (-1) only */
-	int type = lua_type(ctx, 1);
+	int type = lua_type(ctx, 2);
 	if (type == LUA_TNUMBER){
 		int num = luaL_checknumber(ctx, 2);
 		if (num < 0){
@@ -6270,12 +6270,12 @@ static int targetdevhint(lua_State* ctx)
 	}
 	else if (type == LUA_TSTRING){
 /* empty string is allowed for !force (disable alt-conn) */
-		const char* cpath = luaL_checkstring(ctx, 1);
+		const char* cpath = luaL_checkstring(ctx, 2);
 		bool force = luaL_optbnumber(ctx, 2, false);
 		struct arcan_event outev = {
 			.category = EVENT_TARGET, .tgt.kind = TARGET_COMMAND_DEVICE_NODE,
 			.tgt.ioevs[0].iv = BADFD,
-			.tgt.ioevs[2].iv = force ? 2 : 4
+			.tgt.ioevs[1].iv = force ? 2 : 4
 		};
 		if (force && strlen(cpath) == 0)
 			arcan_fatal("target_devicehint(), forced migration connpath len == 0\n");
