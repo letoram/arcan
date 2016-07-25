@@ -195,7 +195,7 @@ void platform_video_restore_external()
 
 void* platform_video_gfxsym(const char* sym)
 {
-	return eglGetProcAddress(sym);
+	return arcan_shmifext_headless_lookup(&disp[0].conn, sym);
 }
 
 void platform_video_setsynch(const char* arg)
