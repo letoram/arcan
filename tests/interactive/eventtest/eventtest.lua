@@ -100,7 +100,7 @@ function translate_str(iotbl)
 	table.insert(translatetbl, string.format("dev(%d:%d)[mod %s] => %s, %s, %s, %s",
 		iotbl.devid, iotbl.subid,
 		table.concat(decode_modifiers(iotbl.modifiers),","),
-		iotbl.keysym, iotbl.active,
+		iotbl.keysym, iotbl.active and "press" or "release",
 		symtable[iotbl.keysym] and symtable[iotbl.keysym] or "_nil",
 		iotbl.utf8)
 	);

@@ -13,15 +13,25 @@
 #include "arcan_general.h"
 #include "arcan_event.h"
 
+void platform_event_samplebase(int devid, float xyz[3])
+{
+}
+
 arcan_errc platform_event_analogstate(int devid, int axisid,
 	int* lower_bound, int* upper_bound, int* deadzone,
 	int* kernel_size, enum ARCAN_ANALOGFILTER_KIND* mode)
 {
-    return ARCAN_OK;
+    return ARCAN_ERRC_NO_SUCH_OBJECT;
 }
 
 void platform_event_analogall(bool enable, bool mouse)
 {
+}
+
+enum PLATFORM_EVENT_CAPABILITIES platform_input_capabilities()
+{
+	return ACAP_TRANSLATED | ACAP_MOUSE | ACAP_TOUCH |
+		ACAP_POSITION | ACAP_ORIENTATION;
 }
 
 void platform_event_analogfilter(int devid,
@@ -34,7 +44,7 @@ void platform_event_process(arcan_evctx* ctx)
 {
 }
 
-void platform_event_keyrepeat(arcan_evctx* ctx, unsigned int rate)
+void platform_event_keyrepeat(arcan_evctx* ctx, int* rate, int* del)
 {
 }
 
