@@ -6,7 +6,7 @@
  * library for setting up headless display, and passing handles
  * handling render-node transfer
  */
-#define HAVE_ARCAN_SHMIF_HELPER
+#define WANT_ARCAN_SHMIF_HELPER
 #include "../arcan_shmif.h"
 #include "../shmif_privext.h"
 
@@ -32,6 +32,13 @@ static PFNEGLDESTROYIMAGEKHRPROC destroy_image;
 struct shmif_ext_hidden_int {
 	struct gbm_device* dev;
 	bool nopass;
+
+	int type;
+	struct {
+		EGLContext context;
+		EGLDisplay* display;
+		EGLSurface surface;
+	};
 };
 
 static void check_functions(void*(*lookup)(void*, const char*), void* tag)
@@ -62,6 +69,115 @@ static void gbm_drop(struct arcan_shmif_cont* con)
 	}
 	free(con->privext->internal);
 	con->privext->internal = NULL;
+}
+
+struct arcan_shmifext_setup arcan_shmifext_headless_defaults()
+{
+	int major = getenv("AGP_GL_MAJOR") ?
+		strtoul(getenv("AGP_GL_MAJOR"), NULL, 10) : 2;
+
+	int minor= getenv("AGP_GL_MINOR") ?
+		strtoul(getenv("AGP_GL_MINOR"), NULL, 10) : 1;
+
+	return (struct arcan_shmifext_setup){
+		.red = 8, .green = 8, .blue = 8,
+		.alpha = 0, .depth = 0,
+		.api = API_OPENGL,
+		.major = 2, .minor = 1
+	};
+}
+
+static void* lookup(void* tag, const char* sym)
+{
+	return eglGetProcAddress(sym);
+}
+
+void* arcan_shmifext_headless_lookup(
+	struct arcan_shmif_cont* con, const char* fun)
+{
+	return eglGetProcAddress(fun);
+}
+
+enum shmifext_setup_status arcan_shmifext_headless_setup(
+	struct arcan_shmif_cont* con,
+	struct arcan_shmifext_setup arg)
+{
+	int type;
+	switch (arg.api){
+	case API_OPENGL:
+		if (!eglBindAPI(EGL_OPENGL_API))
+			return SHMIFEXT_NO_API;
+		type = EGL_OPENGL_BIT;
+	break;
+	case API_GLES:
+		if (!eglBindAPI(EGL_OPENGL_ES_API))
+			return SHMIFEXT_NO_API;
+		type = EGL_OPENGL_ES2_BIT;
+	break;
+	case API_VHK:
+	default:
+/* won't have working code here for a while, first need a working AGP_
+ * implementation that works with normal Arcan. Then there's the usual
+ * problem with getting access to a handle, for EGLStreams it should
+ * work, but with GBM? KRH VKCube has some intel- only hack */
+		return SHMIFEXT_NO_API;
+	break;
+	};
+
+	void* display;
+	if (!arcan_shmifext_headless_egl(con, &display, lookup, NULL))
+		return SHMIFEXT_NO_DISPLAY;
+
+	struct shmif_ext_hidden_int* ctx = con->privext->internal;
+	ctx->display = eglGetDisplay((EGLNativeDisplayType) display);
+	if (!ctx->display)
+		return SHMIFEXT_NO_DISPLAY;
+
+	if (!eglInitialize(ctx->display, NULL, NULL))
+		return SHMIFEXT_NO_EGL;
+
+	const EGLint attribs[] = {
+		EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+		EGL_RENDERABLE_TYPE, type,
+		EGL_RED_SIZE, arg.red,
+		EGL_GREEN_SIZE, arg.green,
+		EGL_BLUE_SIZE, arg.blue,
+		EGL_ALPHA_SIZE, arg.alpha,
+		EGL_DEPTH_SIZE, arg.depth,
+		EGL_NONE
+	};
+
+	EGLint nc, cc;
+
+	if (!eglGetConfigs(ctx->display, NULL, 0, &nc))
+		return SHMIFEXT_NO_CONFIG;
+
+	if (0 == nc)
+		return SHMIFEXT_NO_CONFIG;
+
+	EGLConfig cfg;
+	if (!eglChooseConfig(ctx->display, attribs, &cfg, 1, &nc) || nc < 1)
+		return SHMIFEXT_NO_CONFIG;
+
+	EGLint cas[] = {EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE,
+		EGL_NONE, EGL_NONE, EGL_NONE, EGL_NONE};
+
+	if (arg.major){
+		cas[2] = EGL_CONTEXT_MAJOR_VERSION_KHR;
+		cas[3] = arg.major;
+		cas[4] = EGL_CONTEXT_MINOR_VERSION_KHR;
+		cas[5] = arg.minor;
+	}
+
+	ctx->context = eglCreateContext(ctx->display, cfg, EGL_NO_CONTEXT, cas);
+
+	if (!ctx->context){
+		ctx->display = NULL;
+		return SHMIFEXT_NO_CONTEXT;
+	}
+
+	eglMakeCurrent(ctx->display, EGL_NO_SURFACE, EGL_NO_SURFACE, ctx->context);
+	return SHMIFEXT_OK;
 }
 
 bool arcan_shmifext_headless_egl(struct arcan_shmif_cont* con,
@@ -117,48 +233,53 @@ bool arcan_shmifext_headless_egl(struct arcan_shmif_cont* con,
 }
 
 bool arcan_shmifext_headless_vk(struct arcan_shmif_cont* con,
-	void** display, void*(*lookupfun)(const char*), void* tag)
+	void** display, void*(*lookupfun)(void*, const char*), void* tag)
 {
 	return false;
 }
 
-unsigned arcan_shmifext_eglsignal(struct arcan_shmif_cont* con,
-	uintptr_t context, int mask, uintptr_t tex_id, ...)
+int arcan_shmifext_eglsignal(struct arcan_shmif_cont* con,
+	uintptr_t display, int mask, uintptr_t tex_id, ...)
 {
-	if (!con || !con->addr || !con->privext->internal || !create_image)
-		return 0;
+	if (!con || !con->addr || !con->privext->internal || !create_image ||
+		con->privext->internal->nopass)
+		return -1;
 
 /* missing: check nofdpass (or mask bit) and switch to synch_
  * readback and normal signalling */
+	EGLDisplay* dpy = display == 0 ?
+		con->privext->internal->display : (EGLDisplay*) display;
 
-	EGLImageKHR image = create_image(con->privext->internal->dev,
-		(EGLContext) context,
+	if (!dpy)
+		return -1;
+
+	EGLImageKHR image = create_image(dpy, eglGetCurrentContext(),
 		EGL_GL_TEXTURE_2D_KHR, (EGLClientBuffer)(tex_id), NULL
-		);
+	);
 
 	if (!image)
-		return 0;
+		return -1;
 
 	int fourcc, nplanes;
-	if (!query_image_format(con->privext->internal->dev,
-		image, &fourcc, &nplanes, NULL))
-		return 0;
+	if (!query_image_format(dpy, image, &fourcc, &nplanes, NULL))
+		return -1;
 
 /* currently unsupported */
 	if (nplanes != 1)
-		return 0;
+		return -1;
 
 	EGLint stride;
 	int fd;
-	if (!export_dmabuf(con->privext->internal->dev, image, &fd, &stride, NULL))
-		return 0;
+	if (!export_dmabuf(dpy, image, &fd, &stride, NULL))
+		return -1;
 
 	unsigned res = arcan_shmif_signalhandle(con, mask, fd, stride, fourcc);
-	destroy_image(con->privext->internal->dev, image);
-	return res;
+	destroy_image(dpy, image);
+	close(fd);
+	return res > INT_MAX ? INT_MAX : res;
 }
 
-unsigned arcan_shmifext_vksignal(struct arcan_shmif_cont* con,
+signed arcan_shmifext_vksignal(struct arcan_shmif_cont* con,
 	uintptr_t context, int mask, uintptr_t tex_id, ...)
 {
 	return 0;

@@ -21,7 +21,16 @@
 #include <fcntl.h>
 #include <inttypes.h>
 
+#ifdef FRAMESERVER_LIBRETRO_3D
+#ifdef ENABLE_RETEXTURE
+#include "retexture.h"
+#endif
+#include "video_platform.h"
+#include "platform.h"
+#define WANT_ARCAN_SHMIF_HELPER
+#endif
 #include <arcan_shmif.h>
+
 #include <arcan_namespace.h>
 #include <arcan_resource.h>
 #include <sys/stat.h>
@@ -36,14 +45,6 @@
 
 #include "font_8x8.h"
 #include "resampler/speex_resampler.h"
-
-#ifdef FRAMESERVER_LIBRETRO_3D
-#ifdef ENABLE_RETEXTURE
-#include "retexture.h"
-#endif
-#include "video_platform.h"
-#include "platform.h"
-#endif
 
 #ifndef MAX_PORTS
 #define MAX_PORTS 4
@@ -96,7 +97,6 @@ static struct {
 /* flag for rendering callbacks, should the frame be processed or not */
 	bool skipframe_a, skipframe_v, empty_v;
 	bool in_3d;
-	bool hpassing_disabled;
 
 /* miliseconds per frame, 1/fps */
 	double mspf;
@@ -176,7 +176,7 @@ static struct {
 #ifdef FRAMESERVER_LIBRETRO_3D
 	struct retro_hw_render_callback hwctx;
 	struct agp_rendertarget* rtgt;
-	int last_handle;
+	bool got_3dframe;
 	struct storage_info_t vstore;
 #endif
 
@@ -199,9 +199,6 @@ static struct {
 	.prewake = 10,
 	.preaudiogen = 1,
 	.skipmode = TARGET_SKIP_AUTO
-#ifdef FRAMESERVER_LIBRETRO_3D
-	,.last_handle = -1
-#endif
 };
 
 /* render statistics unto *vidp, at the very end of this .c file */
@@ -269,10 +266,26 @@ static bool write_handle(const void* const data,
 	return rv;
 }
 
+#ifdef FRAMESERVER_LIBRETRO_3D
+static void readback_fallback()
+{
+	struct storage_info_t store = retroctx.vstore;
+	store.vinf.text.raw = retroctx.shmcont.vidp;
+	agp_activate_rendertarget(NULL);
+	agp_readback_synchronous(&store);
+}
+#endif
+
 static void resize_shmpage(int neww, int newh, bool first)
 {
 /* present error message, synch then terminate.
  * setting a tiny valid buffer size will get the system preferred */
+#ifdef FRAMESERVER_LIBRETRO_3D
+	if (retroctx.rtgt){
+		retroctx.shmcont.hints = SHMIF_RHINT_ORIGO_LL;
+	}
+#endif
+
 	if (!arcan_shmif_resize_ext(&retroctx.shmcont, neww, newh,
 		(struct shmif_resize_ext){
 			.abuf_sz = retroctx.def_abuf_sz,
@@ -284,7 +297,6 @@ static void resize_shmpage(int neww, int newh, bool first)
 
 #ifdef FRAMESERVER_LIBRETRO_3D
 	if (retroctx.rtgt){
-		retroctx.shmcont.hints = SHMIF_RHINT_ORIGO_LL;
 		agp_activate_rendertarget(NULL);
 		agp_resize_rendertarget(retroctx.rtgt, neww, newh);
 		if (!getenv("GAME_NORESET"))
@@ -490,8 +502,7 @@ static void libretro_vidcb(const void* data, unsigned width,
 /* the shmpage size will be larger than the possible values for width / height,
  * so if we have a mismatch, just change the shared dimensions and toggle
  * resize flag */
-	if (outw != retroctx.shmcont.addr->w || outh !=
-		retroctx.shmcont.addr->h){
+	if (outw != retroctx.shmcont.addr->w || outh != retroctx.shmcont.addr->h){
 		resize_shmpage(outw, outh, false);
 	}
 
@@ -503,32 +514,8 @@ static void libretro_vidcb(const void* data, unsigned width,
 /* method one, just read color attachment */
 	if (retroctx.in_3d){
 /* it seems like tons of cores doesn't actually set this correctly */
-		if (1 || data == RETRO_HW_FRAME_BUFFER_VALID){
-			struct storage_info_t store = retroctx.vstore;
-			store.vinf.text.raw = retroctx.shmcont.vidp;
-
-/* if the underlying LWA platform supports zero-copy handle passing, use that */
-			if (!retroctx.hpassing_disabled){
-				enum status_handle status;
-				retroctx.last_handle = platform_video_output_handle(&retroctx.vstore, &status);
-
-				if (status != READY_TRANSFER){
-					LOG("3d(), couldn't get output handle -- direct handle passing "
-					"disabled.\n");
-					retroctx.hpassing_disabled = true;
-					retroctx.last_handle = -1;
-				}
-
-				return;
-			}
-/* or fallback to synchronous expensive readback */
-			else{
-				agp_activate_rendertarget(NULL);
-				agp_readback_synchronous(&store);
-			}
-		}
-		else
-			return;
+		retroctx.got_3dframe = 1 || data == RETRO_HW_FRAME_BUFFER_VALID;
+		return;
 	}
 	else
 #endif
@@ -1337,11 +1324,6 @@ static inline void targetev(arcan_event* ev)
 			retroctx.set_ioport(tgt->ioevs[0].iv, tgt->ioevs[1].iv);
 		break;
 
-		case TARGET_COMMAND_BUFFER_FAIL:
-			retroctx.hpassing_disabled = true;
-			LOG("parent requested that we stop try sending buffer handles\n");
-		break;
-
 /* should also emit a corresponding event back with the current framenumber */
 		case TARGET_COMMAND_STEPFRAME:
 			if (tgt->ioevs[0].iv < 0);
@@ -1526,15 +1508,27 @@ static inline long long add_jitter(int num)
  * into the shmpage
  */
 #ifdef FRAMESERVER_LIBRETRO_3D
-static void* get_gfxsym(const char* symname)
+/*
+ * legacy from agp_* functions, mostly just to make symbols resolve
+ */
+void* platform_video_gfxsym(const char* sym)
 {
-	void* ret = platform_video_gfxsym(symname);
-#ifdef _DEBUG
-	if (!ret)
-		LOG("(GL) couldn't resolve %s\n", symname);
-#endif
-	return ret;
+	return arcan_shmifext_headless_lookup(&retroctx.shmcont, sym);
 }
+
+struct monitor_mode platform_video_dimensions()
+{
+	return (struct monitor_mode){
+		.width = 640,
+		.height = 480
+	};
+}
+
+bool platform_video_map_handle(struct storage_info_t* store, int64_t handle)
+{
+	return false;
+}
+
 static uintptr_t get_framebuffer()
 {
 	uintptr_t tgt, col, depth;
@@ -1556,21 +1550,17 @@ static void setup_3dcore(struct retro_hw_render_callback* ctx)
  * cheat with some envvars as the agp_ interface because it was not designed
  * to handle these sort of 'someone else decides which version to use'
  */
+	struct arcan_shmifext_setup setup = arcan_shmifext_headless_defaults();
 	if (ctx->context_type == RETRO_HW_CONTEXT_OPENGL_CORE){
-		char tmpbuf[8];
-		snprintf(tmpbuf, 8, "%d", ctx->version_major);
-		setenv("AGP_GL_MAJOR", tmpbuf, 0);
-		snprintf(tmpbuf, 8, "%d", ctx->version_minor);
-		setenv("AGP_GL_MINOR", tmpbuf, 0);
-		LOG("Switching to GL CORE context (%d, %d)\n",
-			ctx->version_major, ctx->version_minor);
+		setup.major = ctx->version_major;
+		setup.minor = ctx->version_minor;
 	}
-/* we just want a dummy window with a valid openGL context
- * bound and then set up a FBO with the proper dimensions,
- * when things are working, just use a 2x2 window and minimize */
-	if (!platform_video_init(640, 480, 32, false, true, "libretro")){
-		LOG("Couldn't setup OpenGL context\n");
-		exit(1);
+	enum shmifext_setup_status status;
+	if ((status = arcan_shmifext_headless_setup(
+		&retroctx.shmcont, setup)) != SHMIFEXT_OK){
+		LOG("couldn't setup 3D context, code: %d, giving up.\n", status);
+		arcan_shmif_drop(&retroctx.shmcont);
+		exit(EXIT_FAILURE);
 	}
 
 	agp_init();
@@ -1594,7 +1584,7 @@ static void setup_3dcore(struct retro_hw_render_callback* ctx)
 #endif
 
 	ctx->get_current_framebuffer = get_framebuffer;
-	ctx->get_proc_address = (retro_hw_get_proc_address_t) get_gfxsym;
+	ctx->get_proc_address = (retro_hw_get_proc_address_t) platform_video_gfxsym;
 
 	memcpy(&retroctx.hwctx, ctx,
 		sizeof(struct retro_hw_render_callback));
@@ -1783,10 +1773,6 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 
 	if (arg_lookup(args, "resource", 0, &val))
 		resname = strdup(val);
-
-	if (getenv("ARCAN_VIDEO_NO_FDPASS")){
-		retroctx.hpassing_disabled = true;
-	}
 
 	if ((val = getenv("GAME_ABUFC"))){
 		uint8_t bufc = strtoul(val, NULL, 10);
@@ -1994,19 +1980,22 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		if (!retroctx.empty_v){
 			long long elapsed = add_jitter(retroctx.jitterstep);
 #ifdef FRAMESERVER_LIBRETRO_3D
-			if (-1 != retroctx.last_handle){
-				elapsed += arcan_shmif_signalhandle(&retroctx.shmcont,
-					SHMIF_SIGVID,
-					retroctx.last_handle,
-					retroctx.vstore.vinf.text.stride,
-					retroctx.vstore.vinf.text.format
-				);
-				close(retroctx.last_handle);
-				retroctx.last_handle = -1;
+			if (retroctx.got_3dframe){
+				int handlestatus = arcan_shmifext_eglsignal(&retroctx.shmcont, 0,
+					SHMIF_SIGVID, retroctx.vstore.vinf.text.glid);
+				if (handlestatus >= 0)
+					elapsed += handlestatus;
+				else{
+					readback_fallback();
+					elapsed += arcan_shmif_signal(&retroctx.shmcont, SHMIF_SIGVID);
+				}
+				retroctx.got_3dframe = false;
 			}
+/* note the dangling else */
 			else
 #endif
 			elapsed += arcan_shmif_signal(&retroctx.shmcont, SHMIF_SIGVID);
+
 			retroctx.transfercost = elapsed;
 			if (retroctx.sync_data)
 				retroctx.sync_data->mark_transfer(retroctx.sync_data,

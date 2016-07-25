@@ -125,10 +125,6 @@
 #include "../agp/glfun.h"
 #include "arcan_event.h"
 
-#ifndef PLATFORM_SUFFIX
-#define PLATFORM_SUFFIX platform
-#endif
-
 /*
  * extensions needed for buffer passing
  */
