@@ -1053,7 +1053,7 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 			ctx->queue_mask = EVENT_EXTERNAL;
 		}
 		else {
-			ctx->segid = SEGID_MEDIA;
+			ctx->segid = SEGID_UNKNOWN;
 			ctx->aid = arcan_audio_feed(
 			(arcan_afunc_cb) arcan_frameserver_audioframe_direct, ctx, &errc);
 			ctx->sz_audb  = 0;
