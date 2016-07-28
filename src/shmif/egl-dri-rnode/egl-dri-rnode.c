@@ -36,7 +36,7 @@ struct shmif_ext_hidden_int {
 	int type;
 	struct {
 		EGLContext context;
-		EGLDisplay* display;
+		EGLDisplay display;
 		EGLSurface surface;
 	};
 };
@@ -217,18 +217,38 @@ bool arcan_shmifext_headless_egl(struct arcan_shmif_cont* con,
 	con->privext->cleanup = gbm_drop;
 
 /* finally open device */
-	con->privext->internal = malloc(sizeof(struct shmif_ext_hidden_int));
-	con->privext->internal->nopass = getenv("ARCAN_VIDEO_NO_FDPASS") ?
-		true : false;
-	if (NULL == (con->privext->internal->dev = gbm_create_device(dfd))){
-		free(con->privext->internal);
-		close(dfd);
-		con->privext->internal = NULL;
-		return false;
+	if (!con->privext->internal){
+		con->privext->internal = malloc(sizeof(struct shmif_ext_hidden_int));
+		con->privext->internal->nopass = getenv("ARCAN_VIDEO_NO_FDPASS") ?
+			true : false;
+		if (NULL == (con->privext->internal->dev = gbm_create_device(dfd))){
+			free(con->privext->internal);
+			close(dfd);
+			con->privext->internal = NULL;
+			return false;
+		}
 	}
 
 	*display = (void*) (con->privext->internal->dev);
 	check_functions(lookup, tag);
+	return true;
+}
+
+bool arcan_shmifext_egl_meta(struct arcan_shmif_cont* con,
+	uintptr_t* display, uintptr_t* surface, uintptr_t* context)
+{
+	if (!con || !con->privext || !con->privext->internal ||
+		!con->privext->internal->display)
+		return false;
+
+	struct shmif_ext_hidden_int* ctx = con->privext->internal;
+	if (display)
+		*display = (uintptr_t) ctx->display;
+	if (surface)
+		*surface = (uintptr_t) ctx->surface;
+	if (context)
+		*context = (uintptr_t) ctx->context;
+
 	return true;
 }
 
