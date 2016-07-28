@@ -408,7 +408,8 @@ static bool pause_evh(struct arcan_shmif_cont* c,
 		return true;
 
 	bool rv = true;
-	if (ev->tgt.kind == TARGET_COMMAND_UNPAUSE)
+	if (ev->tgt.kind == TARGET_COMMAND_UNPAUSE ||
+		ev->tgt.kind == TARGET_COMMAND_RESET)
 		priv->paused = false;
 	else if (ev->tgt.kind == TARGET_COMMAND_EXIT){
 		priv->alive = false;

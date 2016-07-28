@@ -152,6 +152,7 @@ static struct {
  *    on the cache. Dynamic switching isn't supported currently. */
 	struct arg_arr* inargs;
 	struct core_variable* varset;
+	struct arcan_event ident;
 	bool optdirty;
 
 /* for skipmode = TARGET_SKIP_ROLLBACK,
@@ -192,7 +193,7 @@ static struct {
 	bool (*serialize)(void*, size_t);
 	bool (*deserialize)(const void*, size_t);
 	void (*set_ioport)(unsigned, unsigned);
-} retroctx = {
+} retro = {
 	.abuf_cnt = 12,
 	.def_abuf_sz = 1,
 	.vbuf_cnt = 3,
@@ -269,8 +270,8 @@ static bool write_handle(const void* const data,
 #ifdef FRAMESERVER_LIBRETRO_3D
 static void readback_fallback()
 {
-	struct storage_info_t store = retroctx.vstore;
-	store.vinf.text.raw = retroctx.shmcont.vidp;
+	struct storage_info_t store = retro.vstore;
+	store.vinf.text.raw = retro.shmcont.vidp;
 	agp_activate_rendertarget(NULL);
 	agp_readback_synchronous(&store);
 }
@@ -281,45 +282,45 @@ static void resize_shmpage(int neww, int newh, bool first)
 /* present error message, synch then terminate.
  * setting a tiny valid buffer size will get the system preferred */
 #ifdef FRAMESERVER_LIBRETRO_3D
-	if (retroctx.rtgt){
-		retroctx.shmcont.hints = SHMIF_RHINT_ORIGO_LL;
+	if (retro.rtgt){
+		retro.shmcont.hints = SHMIF_RHINT_ORIGO_LL;
 	}
 #endif
 
-	if (!arcan_shmif_resize_ext(&retroctx.shmcont, neww, newh,
+	if (!arcan_shmif_resize_ext(&retro.shmcont, neww, newh,
 		(struct shmif_resize_ext){
-			.abuf_sz = retroctx.def_abuf_sz,
-			.abuf_cnt = retroctx.abuf_cnt,
-			.vbuf_cnt = retroctx.vbuf_cnt})){
+			.abuf_sz = retro.def_abuf_sz,
+			.abuf_cnt = retro.abuf_cnt,
+			.vbuf_cnt = retro.vbuf_cnt})){
 		LOG("resizing shared memory page failed\n");
 		exit(1);
 	}
 
 #ifdef FRAMESERVER_LIBRETRO_3D
-	if (retroctx.rtgt){
+	if (retro.rtgt){
 		agp_activate_rendertarget(NULL);
-		agp_resize_rendertarget(retroctx.rtgt, neww, newh);
+		agp_resize_rendertarget(retro.rtgt, neww, newh);
 		if (!getenv("GAME_NORESET"))
-			retroctx.hwctx.context_reset();
+			retro.hwctx.context_reset();
 		shmif_pixel px = RGBA(0x44, 0x44, 0x44, 0xff);
 
 		for (int i = 0; i < 2; i++){
-			shmif_pixel* out = retroctx.shmcont.vidp;
-			for (int y = 0; y < retroctx.shmcont.h; y++)
-				for (int x = 0; x < retroctx.shmcont.w; x++)
+			shmif_pixel* out = retro.shmcont.vidp;
+			for (int y = 0; y < retro.shmcont.h; y++)
+				for (int x = 0; x < retro.shmcont.w; x++)
 					*out++ = px;
-			arcan_shmif_signal(&retroctx.shmcont, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
+			arcan_shmif_signal(&retro.shmcont, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
 		}
 	}
 #endif
 
-	if (retroctx.sync_data)
-		retroctx.sync_data->cont_switch(retroctx.sync_data, &retroctx.shmcont);
+	if (retro.sync_data)
+		retro.sync_data->cont_switch(retro.sync_data, &retro.shmcont);
 
 /* will be reallocated if needed and not set so just free and unset */
-	if (retroctx.ntsc_imb){
-		free(retroctx.ntsc_imb);
-		retroctx.ntsc_imb = NULL;
+	if (retro.ntsc_imb){
+		free(retro.ntsc_imb);
+		retro.ntsc_imb = NULL;
 	}
 }
 
@@ -327,27 +328,27 @@ static void resize_shmpage(int neww, int newh, bool first)
  * while still making sure the other frameskipping options are working */
 static void process_frames(int nframes, bool overrv, bool overra)
 {
-	bool cv = retroctx.skipframe_v;
-	bool ca = retroctx.skipframe_a;
+	bool cv = retro.skipframe_v;
+	bool ca = retro.skipframe_a;
 
 	if (overrv)
-		retroctx.skipframe_v = true;
+		retro.skipframe_v = true;
 
 	if (overra)
-		retroctx.skipframe_a = true;
+		retro.skipframe_a = true;
 
 	while(nframes--)
-		retroctx.run();
+		retro.run();
 
-	if (retroctx.skipmode <= TARGET_SKIP_ROLLBACK){
-		retroctx.serialize(retroctx.rollback_state +
-			(retroctx.rollback_front * retroctx.state_sz), retroctx.state_sz);
-		retroctx.rollback_front = (retroctx.rollback_front + 1)
-			% retroctx.rollback_window;
+	if (retro.skipmode <= TARGET_SKIP_ROLLBACK){
+		retro.serialize(retro.rollback_state +
+			(retro.rollback_front * retro.state_sz), retro.state_sz);
+		retro.rollback_front = (retro.rollback_front + 1)
+			% retro.rollback_window;
 	}
 
-	retroctx.skipframe_v = cv;
-	retroctx.skipframe_a = ca;
+	retro.skipframe_v = cv;
+	retro.skipframe_a = ca;
 }
 
 #define RGB565(b, g, r) ((uint16_t)(((uint8_t)(r) >> 3) << 11) | \
@@ -360,15 +361,15 @@ static void push_ntsc(unsigned width, unsigned height,
 
 /* only draw on every other line, so we can easily mix or
  * blend interleaved (or just duplicate) */
-	snes_ntsc_blit(retroctx.ntscctx, ntsc_imb, width, 0,
+	snes_ntsc_blit(retro.ntscctx, ntsc_imb, width, 0,
 		width, height, outp, linew * 2);
 
 /* this might be a possible test-case for running two shmif
  * connections and let the compositor do interlacing management */
 	assert(ARCAN_SHMPAGE_VCHANNELS == 4);
 	for (int row = 1; row < height * 2; row += 2)
-		memcpy(& ((char*) retroctx.shmcont.vidp)[row * linew],
-			&((char*) retroctx.shmcont.vidp)[(row-1) * linew], linew);
+		memcpy(& ((char*) retro.shmcont.vidp)[row * linew],
+			&((char*) retro.shmcont.vidp)[(row-1) * linew], linew);
 }
 
 /* better distribution for conversion (white is white ..) */
@@ -387,8 +388,8 @@ static const uint8_t rgb565_lut6[] = {
 static void libretro_rgb565_rgba(const uint16_t* data, shmif_pixel* outp,
 	unsigned width, unsigned height, size_t pitch)
 {
-	uint16_t* interm = retroctx.ntsc_imb;
-	retroctx.colorspace = "RGB565->RGBA";
+	uint16_t* interm = retro.ntsc_imb;
+	retro.colorspace = "RGB565->RGBA";
 
 /* with NTSC on, the input format is already correct */
 	for (int y = 0; y < height; y++){
@@ -398,7 +399,7 @@ static void libretro_rgb565_rgba(const uint16_t* data, shmif_pixel* outp,
 			uint8_t g = rgb565_lut6[ (val & 0x07e0) >> 5  ];
 			uint8_t b = rgb565_lut5[ (val & 0x001f)       ];
 
-			if (retroctx.ntscconv)
+			if (retro.ntscconv)
 				*interm++ = RGB565(r, g, b);
 			else
 				*outp++ = RGBA(r, g, b, 0xff);
@@ -406,8 +407,8 @@ static void libretro_rgb565_rgba(const uint16_t* data, shmif_pixel* outp,
 		data += pitch >> 1;
 	}
 
-	if (retroctx.ntscconv)
-		push_ntsc(width, height, retroctx.ntsc_imb, outp);
+	if (retro.ntscconv)
+		push_ntsc(width, height, retro.ntsc_imb, outp);
 
 	return;
 }
@@ -416,14 +417,14 @@ static void libretro_xrgb888_rgba(const uint32_t* data, uint32_t* outp,
 	unsigned width, unsigned height, size_t pitch)
 {
 	assert( (uintptr_t)data % 4 == 0 );
-	retroctx.colorspace = "XRGB888->RGBA";
+	retro.colorspace = "XRGB888->RGBA";
 
-	uint16_t* interm = retroctx.ntsc_imb;
+	uint16_t* interm = retro.ntsc_imb;
 
 	for (int y = 0; y < height; y++){
 		for (int x = 0; x < width; x++){
 			uint8_t* quad = (uint8_t*) (data + x);
-			if (retroctx.ntscconv)
+			if (retro.ntscconv)
 				*interm++ = RGB565(quad[2], quad[1], quad[0]);
 			else
 				*outp++ = RGBA(quad[2], quad[1], quad[0], 0xff);
@@ -432,15 +433,15 @@ static void libretro_xrgb888_rgba(const uint32_t* data, uint32_t* outp,
 		data += pitch >> 2;
 	}
 
-	if (retroctx.ntscconv)
-		push_ntsc(width, height, retroctx.ntsc_imb, outp);
+	if (retro.ntscconv)
+		push_ntsc(width, height, retro.ntsc_imb, outp);
 }
 
 static void libretro_rgb1555_rgba(const uint16_t* data, uint32_t* outp,
 	unsigned width, unsigned height, size_t pitch, bool postfilter)
 {
-	uint16_t* interm = retroctx.ntsc_imb;
-	retroctx.colorspace = "RGB1555->RGBA";
+	uint16_t* interm = retro.ntsc_imb;
+	retro.colorspace = "RGB1555->RGBA";
 
 	unsigned dh = height >= ARCAN_SHMPAGE_MAXH ? ARCAN_SHMPAGE_MAXH : height;
 	unsigned dw =  width >= ARCAN_SHMPAGE_MAXW ? ARCAN_SHMPAGE_MAXW : width;
@@ -462,7 +463,7 @@ static void libretro_rgb1555_rgba(const uint16_t* data, uint32_t* outp,
 	}
 
 	if (postfilter)
-		push_ntsc(width, height, retroctx.ntsc_imb, outp);
+		push_ntsc(width, height, retro.ntsc_imb, outp);
 }
 
 
@@ -472,21 +473,21 @@ static void libretro_vidcb(const void* data, unsigned width,
 {
 	testcounter++;
 
-	if (retroctx.in_3d && !data)
+	if (retro.in_3d && !data)
 		;
-	else if (!data || retroctx.skipframe_v){
-		retroctx.empty_v = true;
+	else if (!data || retro.skipframe_v){
+		retro.empty_v = true;
 		return;
 	}
 	else
-		retroctx.empty_v = false;
+		retro.empty_v = false;
 
 /* width / height can be changed without notice, so we have to be ready for the
  * fact that the cost of conversion can suddenly move outside the allowed
  * boundaries, then NTSC is ignored (or if we have 3d/hw source) */
 	unsigned outw = width;
 	unsigned outh = height;
-	bool ntscconv = retroctx.ntscconv && data != RETRO_HW_FRAME_BUFFER_VALID;
+	bool ntscconv = retro.ntscconv && data != RETRO_HW_FRAME_BUFFER_VALID;
 
 	if (ntscconv && SNES_NTSC_OUT_WIDTH(width)<= ARCAN_SHMPAGE_MAXW
 		&& height * 2 <= ARCAN_SHMPAGE_MAXH){
@@ -502,131 +503,131 @@ static void libretro_vidcb(const void* data, unsigned width,
 /* the shmpage size will be larger than the possible values for width / height,
  * so if we have a mismatch, just change the shared dimensions and toggle
  * resize flag */
-	if (outw != retroctx.shmcont.addr->w || outh != retroctx.shmcont.addr->h){
+	if (outw != retro.shmcont.addr->w || outh != retro.shmcont.addr->h){
 		resize_shmpage(outw, outh, false);
 	}
 
-	if (ntscconv && !retroctx.ntsc_imb){
-		retroctx.ntsc_imb = malloc(sizeof(uint16_t) * outw * outh);
+	if (ntscconv && !retro.ntsc_imb){
+		retro.ntsc_imb = malloc(sizeof(uint16_t) * outw * outh);
 	}
 
 #ifdef FRAMESERVER_LIBRETRO_3D
 /* method one, just read color attachment */
-	if (retroctx.in_3d){
+	if (retro.in_3d){
 /* it seems like tons of cores doesn't actually set this correctly */
-		retroctx.got_3dframe = 1 || data == RETRO_HW_FRAME_BUFFER_VALID;
+		retro.got_3dframe = 1 || data == RETRO_HW_FRAME_BUFFER_VALID;
 		return;
 	}
 	else
 #endif
 
 /* lastly, convert / blit, this will possibly clip */
-	if (retroctx.converter)
-		retroctx.converter(data, retroctx.shmcont.vidp, width,
+	if (retro.converter)
+		retro.converter(data, retro.shmcont.vidp, width,
 			height, pitch, ntscconv);
 }
 
 static void do_preaudio()
 {
-	if (retroctx.preaudiogen == 0)
+	if (retro.preaudiogen == 0)
 		return;
 
-	retroctx.skipframe_v = true;
-	retroctx.skipframe_a = false;
+	retro.skipframe_v = true;
+	retro.skipframe_a = false;
 
-	int afc = retroctx.aframecount;
-	int vfc = retroctx.vframecount;
+	int afc = retro.aframecount;
+	int vfc = retro.vframecount;
 
-	for (int i = 0; i < retroctx.preaudiogen; i++)
-		retroctx.run();
+	for (int i = 0; i < retro.preaudiogen; i++)
+		retro.run();
 
-	retroctx.skipframe_v = false;
-	retroctx.aframecount = afc;
-	retroctx.vframecount = vfc;
+	retro.skipframe_v = false;
+	retro.aframecount = afc;
+	retro.vframecount = vfc;
 }
 
 static void libretro_skipnframes(unsigned count, bool fastfwd)
 {
-	retroctx.skipframe_v = true;
-	retroctx.skipframe_a = fastfwd;
+	retro.skipframe_v = true;
+	retro.skipframe_a = fastfwd;
 
-	long long afc = retroctx.aframecount;
+	long long afc = retro.aframecount;
 
 	for (int i = 0; i < count; i++)
-		retroctx.run();
+		retro.run();
 
 	if (fastfwd){
-		retroctx.aframecount = afc;
-		retroctx.frameskips += count;
+		retro.aframecount = afc;
+		retro.frameskips += count;
 	}
 	else
-		retroctx.vframecount += count;
+		retro.vframecount += count;
 
-	retroctx.skipframe_a = false;
-	retroctx.skipframe_v = false;
+	retro.skipframe_a = false;
+	retro.skipframe_v = false;
 }
 
 static void reset_timing(bool newstate)
 {
-	retroctx.basetime = arcan_timemillis();
+	retro.basetime = arcan_timemillis();
 	do_preaudio();
-	retroctx.vframecount = 1;
-	retroctx.aframecount = 1;
-	retroctx.frameskips  = 0;
+	retro.vframecount = 1;
+	retro.aframecount = 1;
+	retro.frameskips  = 0;
 	if (!newstate){
-		retroctx.rebasecount++;
+		retro.rebasecount++;
 	}
 
 /* since we can't be certain about our current vantage point...*/
-	if (newstate && retroctx.skipmode <= TARGET_SKIP_ROLLBACK &&
-		retroctx.state_sz > 0){
-		retroctx.rollback_window = (TARGET_SKIP_ROLLBACK - retroctx.skipmode) + 1;
-		if (retroctx.rollback_window > 10)
-			retroctx.rollback_window = 10;
+	if (newstate && retro.skipmode <= TARGET_SKIP_ROLLBACK &&
+		retro.state_sz > 0){
+		retro.rollback_window = (TARGET_SKIP_ROLLBACK - retro.skipmode) + 1;
+		if (retro.rollback_window > 10)
+			retro.rollback_window = 10;
 
-			free(retroctx.rollback_state);
-			retroctx.rollback_state = malloc(retroctx.state_sz * retroctx.rollback_window);
-			retroctx.rollback_front = 0;
+			free(retro.rollback_state);
+			retro.rollback_state = malloc(retro.state_sz * retro.rollback_window);
+			retro.rollback_front = 0;
 
-			retroctx.serialize(retroctx.rollback_state, retroctx.state_sz);
-			for (int i=1; i < retroctx.rollback_window - 1; i++)
-				memcpy(retroctx.rollback_state + (i*retroctx.state_sz),
-					retroctx.rollback_state, retroctx.state_sz);
+			retro.serialize(retro.rollback_state, retro.state_sz);
+			for (int i=1; i < retro.rollback_window - 1; i++)
+				memcpy(retro.rollback_state + (i*retro.state_sz),
+					retro.rollback_state, retro.state_sz);
 
-			LOG("setting input rollback (%d)\n", retroctx.rollback_window);
+			LOG("setting input rollback (%d)\n", retro.rollback_window);
 	}
 }
 
 static void libretro_audscb(int16_t left, int16_t right)
 {
-	if (retroctx.skipframe_a)
+	if (retro.skipframe_a)
 		return;
 
-	retroctx.aframecount++;
+	retro.aframecount++;
 
 /* can happen if we skip a lot and never transfer */
-	if (retroctx.audbuf_ofs + 2 < retroctx.audbuf_sz >> 1){
-		retroctx.in_audb[retroctx.audbuf_ofs++] = left;
-		retroctx.in_audb[retroctx.audbuf_ofs++] = right;
+	if (retro.audbuf_ofs + 2 < retro.audbuf_sz >> 1){
+		retro.in_audb[retro.audbuf_ofs++] = left;
+		retro.in_audb[retro.audbuf_ofs++] = right;
 	}
 }
 
 static size_t libretro_audcb(const int16_t* data, size_t nframes)
 {
-	if (retroctx.skipframe_a)
+	if (retro.skipframe_a)
 		return nframes;
 
-	retroctx.aframecount += nframes;
+	retro.aframecount += nframes;
 
 /* local buffer overflow, shouldn't happen.. */
-	if ((retroctx.audbuf_ofs << 1) +
-		(nframes << 1) + (nframes << 2) > retroctx.audbuf_sz )
+	if ((retro.audbuf_ofs << 1) +
+		(nframes << 1) + (nframes << 2) > retro.audbuf_sz )
 		return nframes;
 
 /* 2 bytes per sample, 2 channels */
 /* audbuf is in int16_t and ofs used as index */
-	memcpy(&retroctx.in_audb[retroctx.audbuf_ofs], data, nframes << 2);
-	retroctx.audbuf_ofs += nframes << 1;
+	memcpy(&retro.in_audb[retro.audbuf_ofs], data, nframes << 2);
+	retro.audbuf_ofs += nframes << 1;
 
 	return nframes;
 }
@@ -637,14 +638,14 @@ static void libretro_pollcb(){}
 
 static const char* lookup_varset( const char* key )
 {
-	struct core_variable* var = retroctx.varset;
+	struct core_variable* var = retro.varset;
 	char buf[ strlen(key) + sizeof("core_") + 1];
 	sprintf(buf, "core_%s", key);
 	const char* val = NULL;
 
 /* we have an initial preset, only update if dirty,
  * note: this might not be necessary anymore, test and drop */
-	if (arg_lookup(retroctx.inargs, buf, 0, &val)){
+	if (arg_lookup(retro.inargs, buf, 0, &val)){
 		if (var)
 			while(var->key){
 				if (var->updated && strcmp(var->key, key) == 0){
@@ -672,7 +673,7 @@ static const char* lookup_varset( const char* key )
  * so this is just a complement to launch arguments */
 static void update_corearg(int code, const char* value)
 {
-	struct core_variable* var = retroctx.varset;
+	struct core_variable* var = retro.varset;
 	while (var && var->key && code--)
 		var++;
 
@@ -694,15 +695,15 @@ static void update_varset( struct retro_variable* data )
 	size_t msgsz = COUNT_OF(outev.ext.coreopt.data);
 
 /* reset current varset */
-	if (retroctx.varset){
-		while (retroctx.varset[count].key){
-			free((char*)retroctx.varset[count].key);
-			free((char*)retroctx.varset[count].value);
+	if (retro.varset){
+		while (retro.varset[count].key){
+			free((char*)retro.varset[count].key);
+			free((char*)retro.varset[count].value);
 			count++;
 		}
 
-		free(retroctx.varset);
-		retroctx.varset = NULL;
+		free(retro.varset);
+		retro.varset = NULL;
 		count = 0;
 	}
 
@@ -714,12 +715,12 @@ static void update_varset( struct retro_variable* data )
 		return;
 
 	count++;
-	retroctx.varset = malloc( sizeof(struct core_variable) * count);
-	memset(retroctx.varset, '\0', sizeof(struct core_variable) * count);
+	retro.varset = malloc( sizeof(struct core_variable) * count);
+	memset(retro.varset, '\0', sizeof(struct core_variable) * count);
 
 	count = 0;
 	while ( data[count].key ){
-		retroctx.varset[count].key = strdup(data[count].key);
+		retro.varset[count].key = strdup(data[count].key);
 		outev.ext.coreopt.index = count;
 
 /* parse, grab the first argument and keep in table,
@@ -752,11 +753,11 @@ static void update_varset( struct retro_variable* data )
 /* key */
 			outev.ext.coreopt.type = 0;
 			snprintf((char*)outev.ext.coreopt.data, msgsz, "%s", data[count].key);
-			arcan_shmif_enqueue(&retroctx.shmcont, &outev);
+			arcan_shmif_enqueue(&retro.shmcont, &outev);
 /* description */
 			outev.ext.coreopt.type = 1;
 			snprintf((char*)outev.ext.coreopt.data, msgsz, "%s", workbeg);
-			arcan_shmif_enqueue(&retroctx.shmcont, &outev);
+			arcan_shmif_enqueue(&retro.shmcont, &outev);
 
 /* each option */
 startarg:
@@ -769,11 +770,11 @@ startarg:
 					*workend++ = '\0';
 
 				if (!gotval && (gotval = true))
-					retroctx.varset[count].value = strdup(workbeg);
+					retro.varset[count].value = strdup(workbeg);
 
 				outev.ext.coreopt.type = 2;
 				snprintf((char*)outev.ext.coreopt.data, msgsz, "%s", workbeg);
-				arcan_shmif_enqueue(&retroctx.shmcont, &outev);
+				arcan_shmif_enqueue(&retro.shmcont, &outev);
 
 				goto startarg;
 			}
@@ -782,7 +783,7 @@ startarg:
 			if (curv){
 				outev.ext.coreopt.type = 3;
 				snprintf((char*)outev.ext.coreopt.data, msgsz, "%s", curv);
-				arcan_shmif_enqueue(&retroctx.shmcont, &outev);
+				arcan_shmif_enqueue(&retro.shmcont, &outev);
 			}
 
 step:
@@ -804,7 +805,7 @@ static struct retro_log_callback log_cb = {
 static bool libretro_setenv(unsigned cmd, void* data){
 	bool rv = true;
 
-	if (!retroctx.shmcont.addr)
+	if (!retro.shmcont.addr)
 		return false;
 
 	switch (cmd){
@@ -813,22 +814,22 @@ static bool libretro_setenv(unsigned cmd, void* data){
 		switch ( *(enum retro_pixel_format*) data ){
 		case RETRO_PIXEL_FORMAT_0RGB1555:
 			LOG("pixel format set to RGB1555\n");
-			retroctx.converter = (pixconv_fun) libretro_rgb1555_rgba;
+			retro.converter = (pixconv_fun) libretro_rgb1555_rgba;
 		break;
 
 		case RETRO_PIXEL_FORMAT_RGB565:
 			LOG("pixel format set to RGB565\n");
-			retroctx.converter = (pixconv_fun) libretro_rgb565_rgba;
+			retro.converter = (pixconv_fun) libretro_rgb565_rgba;
 		break;
 
 		case RETRO_PIXEL_FORMAT_XRGB8888:
 			LOG("pixel format set to XRGB8888\n");
-			retroctx.converter = (pixconv_fun) libretro_xrgb888_rgba;
+			retro.converter = (pixconv_fun) libretro_xrgb888_rgba;
 		break;
 
 		default:
 			LOG("unknown pixelformat encountered (%d).\n", *(unsigned*)data);
-			retroctx.converter = NULL;
+			retro.converter = NULL;
 		}
 	break;
 
@@ -837,7 +838,7 @@ static bool libretro_setenv(unsigned cmd, void* data){
 	break;
 
 	case RETRO_ENVIRONMENT_SHUTDOWN:
-		arcan_shmif_drop(&retroctx.shmcont);
+		arcan_shmif_drop(&retro.shmcont);
 		exit(EXIT_SUCCESS);
 	break;
 
@@ -862,17 +863,17 @@ static bool libretro_setenv(unsigned cmd, void* data){
 	break;
 
 	case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE:
-		rv = retroctx.optdirty;
+		rv = retro.optdirty;
 		if (data)
 			*(bool*)data = rv;
-		retroctx.optdirty = false;
+		retro.optdirty = false;
 	break;
 
 	case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY:
-		*((const char**) data) = retroctx.syspath;
-		rv = retroctx.syspath != NULL;
+		*((const char**) data) = retro.syspath;
+		rv = retro.syspath != NULL;
 		LOG("system directory set to (%s).\n",
-			retroctx.syspath ? retroctx.syspath : "MISSING");
+			retro.syspath ? retro.syspath : "MISSING");
 	break;
 
 	case RETRO_ENVIRONMENT_SET_FRAME_TIME_CALLBACK:
@@ -891,7 +892,7 @@ static bool libretro_setenv(unsigned cmd, void* data){
 	break;
 
 	case RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME:
-		retroctx.res_empty = true;
+		retro.res_empty = true;
 	break;
 
 	case RETRO_ENVIRONMENT_SET_KEYBOARD_CALLBACK:
@@ -955,10 +956,10 @@ static inline int16_t map_analog_axis(unsigned port, unsigned ind, unsigned id)
 	ind += id;
 	assert(ind < MAX_AXES);
 
-	return (int16_t) retroctx.input_ports[port].axes[ind];
+	return (int16_t) retro.input_ports[port].axes[ind];
 }
 
-/* use the context-tables from retroctx in combination with dev / ind / ... to
+/* use the context-tables from retro in combination with dev / ind / ... to
  * figure out what to return, this table is populated in flush_eventq(). */
 static inline int16_t libretro_inputmain(unsigned port, unsigned dev,
 	unsigned ind, unsigned id){
@@ -987,17 +988,17 @@ static inline int16_t libretro_inputmain(unsigned port, unsigned dev,
 
 	switch (dev){
 		case RETRO_DEVICE_JOYPAD:
-			return (int16_t) retroctx.input_ports[port].buttons[id];
+			return (int16_t) retro.input_ports[port].buttons[id];
 		break;
 
 		case RETRO_DEVICE_KEYBOARD:
 			if (id < RETROK_LAST)
-				rv |= retroctx.kbdtbl[id];
+				rv |= retro.kbdtbl[id];
 		break;
 
 		case RETRO_DEVICE_MOUSE:
 			if (port == 1) port = 0;
-			inp = &retroctx.input_ports[port];
+			inp = &retro.input_ports[port];
 			switch (id){
 				case RETRO_DEVICE_ID_MOUSE_LEFT:
 					return inp->buttons[ inp->cursor_btns[0] ];
@@ -1020,38 +1021,38 @@ static inline int16_t libretro_inputmain(unsigned port, unsigned dev,
 		case RETRO_DEVICE_LIGHTGUN:
 			switch (id){
 				case RETRO_DEVICE_ID_LIGHTGUN_X:
-					return (int16_t) retroctx.input_ports[port].axes[
-						retroctx.input_ports[port].cursor_x
+					return (int16_t) retro.input_ports[port].axes[
+						retro.input_ports[port].cursor_x
 					];
 
 				case RETRO_DEVICE_ID_LIGHTGUN_Y:
-					return (int16_t) retroctx.input_ports[port].axes[
-						retroctx.input_ports[port].cursor_y
+					return (int16_t) retro.input_ports[port].axes[
+						retro.input_ports[port].cursor_y
 					];
 
 				case RETRO_DEVICE_ID_LIGHTGUN_TRIGGER:
-					return (int16_t) retroctx.input_ports[port].buttons[
-						retroctx.input_ports[port].cursor_btns[0]
+					return (int16_t) retro.input_ports[port].buttons[
+						retro.input_ports[port].cursor_btns[0]
 					];
 
 				case RETRO_DEVICE_ID_LIGHTGUN_CURSOR:
-					return (int16_t) retroctx.input_ports[port].buttons[
-						retroctx.input_ports[port].cursor_btns[1]
+					return (int16_t) retro.input_ports[port].buttons[
+						retro.input_ports[port].cursor_btns[1]
 					];
 
 				case RETRO_DEVICE_ID_LIGHTGUN_START:
-					return (int16_t) retroctx.input_ports[port].buttons[
-					retroctx.input_ports[port].cursor_btns[2]
+					return (int16_t) retro.input_ports[port].buttons[
+					retro.input_ports[port].cursor_btns[2]
 				];
 
 					case RETRO_DEVICE_ID_LIGHTGUN_TURBO:
-					return (int16_t) retroctx.input_ports[port].buttons[
-					retroctx.input_ports[port].cursor_btns[3]
+					return (int16_t) retro.input_ports[port].buttons[
+					retro.input_ports[port].cursor_btns[3]
 				];
 
 				case RETRO_DEVICE_ID_LIGHTGUN_PAUSE:
-					return (int16_t) retroctx.input_ports[port].buttons[
-					retroctx.input_ports[port].cursor_btns[4]
+					return (int16_t) retro.input_ports[port].buttons[
+					retro.input_ports[port].cursor_btns[4]
 				];
 		}
 		break;
@@ -1071,7 +1072,7 @@ static inline int16_t libretro_inputmain(unsigned port, unsigned dev,
 static void enable_graphseg()
 {
 	struct arcan_shmif_cont cont =
-		arcan_shmif_acquire(&retroctx.shmcont,
+		arcan_shmif_acquire(&retro.shmcont,
 			NULL, SEGID_DEBUG, SHMIF_DISABLE_GUARD);
 
 	if (!cont.addr){
@@ -1086,11 +1087,11 @@ static void enable_graphseg()
 
 	struct arcan_shmif_cont* pcont = malloc(sizeof(struct arcan_shmif_cont));
 
-	if (retroctx.sync_data)
-		retroctx.sync_data->free(&retroctx.sync_data);
+	if (retro.sync_data)
+		retro.sync_data->free(&retro.sync_data);
 
 	*pcont = cont;
-	retroctx.sync_data = setup_synch_graph(pcont, false);
+	retro.sync_data = setup_synch_graph(pcont, false);
 }
 
 static int16_t libretro_inputstate(unsigned port, unsigned dev,
@@ -1171,7 +1172,7 @@ static void default_map(arcan_ioevent* ioev)
 		}
 
 		if (-1 != button && -1 != port){
-			retroctx.input_ports[
+			retro.input_ports[
 				port].buttons[button] = ioev->input.translated.active;
 		}
 	}
@@ -1179,7 +1180,7 @@ static void default_map(arcan_ioevent* ioev)
 		int port_number = ioev->devid % MAX_PORTS;
 		int button_number = ioev->subid % MAX_BUTTONS;
 		int button = remaptbl[button_number];
-		retroctx.input_ports[
+		retro.input_ports[
 			port_number].buttons[button] = ioev->input.digital.active;
 	}
 }
@@ -1197,10 +1198,10 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 		return default_map(ioev);
 	}
 
-	if (!retroctx.dirty_input && retroctx.sync_data)
-		retroctx.sync_data->mark_input(retroctx.sync_data, arcan_timemillis());
+	if (!retro.dirty_input && retro.sync_data)
+		retro.sync_data->mark_input(retro.sync_data, arcan_timemillis());
 
-	retroctx.dirty_input = true;
+	retro.dirty_input = true;
 
 	signed value = ioev->datatype == EVENT_IDATATYPE_TRANSLATED ?
 		ioev->input.translated.active : ioev->input.digital.active;
@@ -1216,8 +1217,10 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 		}
 		else if (1 == sscanf(subtype, "AXIS%d", &axis) && axis > 0
 			&& axis <= MAX_AXES){
-			retroctx.input_ports[ind-1].axes[ axis - 1 ] =
-				ioev->input.analog.axisval[0];
+			retro.input_ports[ind-1].axes[ axis - 1 ] =
+				ioev->input.analog.gotrel ?
+				ioev->input.analog.axisval[0] :
+				ioev->input.analog.axisval[1];
 		}
 		else if ( strcmp(subtype, "UP") == 0 )
 			button = RETRO_DEVICE_ID_JOYPAD_UP;
@@ -1233,24 +1236,24 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 			button = RETRO_DEVICE_ID_JOYPAD_START;
 		else;
 		if (button >= 0)
-			retroctx.input_ports[ind-1].buttons[button] = value;
+			retro.input_ports[ind-1].buttons[button] = value;
 	}
 	else if (ioev->datatype == EVENT_IDATATYPE_TRANSLATED){
 		if (ioev->input.translated.keysym < RETROK_LAST)
-			retroctx.kbdtbl[ioev->input.translated.keysym] = value;
+			retro.kbdtbl[ioev->input.translated.keysym] = value;
 	}
 }
 
 static void toggle_ntscfilter(int toggle)
 {
-	if (retroctx.ntscconv && toggle == 0){
-		free(retroctx.ntsc_imb);
-		retroctx.ntsc_imb = NULL;
-		retroctx.ntscconv = false;
+	if (retro.ntscconv && toggle == 0){
+		free(retro.ntsc_imb);
+		retro.ntsc_imb = NULL;
+		retro.ntscconv = false;
 	}
-	else if (!retroctx.ntscconv && toggle == 1) {
+	else if (!retro.ntscconv && toggle == 1) {
 /* malloc etc. happens in resize */
-		retroctx.ntscconv = true;
+		retro.ntscconv = true;
 	}
 }
 
@@ -1259,7 +1262,22 @@ static inline void targetev(arcan_event* ev)
 	arcan_tgtevent* tgt = &ev->tgt;
 	switch (tgt->kind){
 		case TARGET_COMMAND_RESET:
-			retroctx.reset();
+		switch(tgt->ioevs[0].iv){
+		case 0:
+		case 1:
+			retro.reset();
+		break;
+		case 2:
+		case 3:
+/* send coreargs too */
+			if (retro.sync_data){
+				retro.sync_data->free(&retro.sync_data);
+				retro.sync_data = NULL;
+			}
+			arcan_shmif_enqueue(&retro.shmcont, &retro.ident);
+			reset_timing(true);
+		break;
+		}
 		break;
 
 		case TARGET_COMMAND_GRAPHMODE:
@@ -1267,10 +1285,10 @@ static inline void targetev(arcan_event* ev)
 				toggle_ntscfilter(tgt->ioevs[1].iv - 1);
 			}
 			else if (tgt->ioevs[0].iv == 3){
-				retroctx.ntscvals[0] = tgt->ioevs[1].fv;
-				retroctx.ntscvals[1] = tgt->ioevs[2].fv;
-				retroctx.ntscvals[2] = tgt->ioevs[3].fv;
-				retroctx.ntscvals[3] = tgt->ioevs[4].fv;
+				retro.ntscvals[0] = tgt->ioevs[1].fv;
+				retro.ntscvals[1] = tgt->ioevs[2].fv;
+				retro.ntscvals[2] = tgt->ioevs[3].fv;
+				retro.ntscvals[3] = tgt->ioevs[4].fv;
 				update_ntsc();
 			}
 		break;
@@ -1286,12 +1304,12 @@ static inline void targetev(arcan_event* ev)
  * -n 1..abs(n) random)
  */
 		case TARGET_COMMAND_FRAMESKIP:
-			retroctx.skipmode    = tgt->ioevs[0].iv;
-			retroctx.prewake     = tgt->ioevs[1].iv;
-			retroctx.preaudiogen = tgt->ioevs[2].iv;
-			retroctx.audbuf_ofs  = 0;
-			retroctx.jitterstep  = tgt->ioevs[3].iv;
-			retroctx.jitterxfer  = tgt->ioevs[4].iv;
+			retro.skipmode    = tgt->ioevs[0].iv;
+			retro.prewake     = tgt->ioevs[1].iv;
+			retro.preaudiogen = tgt->ioevs[2].iv;
+			retro.audbuf_ofs  = 0;
+			retro.jitterstep  = tgt->ioevs[3].iv;
+			retro.jitterxfer  = tgt->ioevs[4].iv;
 			reset_timing(true);
 		break;
 
@@ -1307,7 +1325,7 @@ static inline void targetev(arcan_event* ev)
 /* can safely assume there are no other events in the queue after this one,
  * more important for encode etc. that need to flush codecs */
 		case TARGET_COMMAND_EXIT:
-			arcan_shmif_drop(&retroctx.shmcont);
+			arcan_shmif_drop(&retro.shmcont);
 			exit(EXIT_SUCCESS);
 		break;
 
@@ -1316,12 +1334,12 @@ static inline void targetev(arcan_event* ev)
 		break;
 
 		case TARGET_COMMAND_COREOPT:
-			retroctx.optdirty = true;
+			retro.optdirty = true;
 			update_corearg(tgt->code, tgt->message);
 		break;
 
 		case TARGET_COMMAND_SETIODEV:
-			retroctx.set_ioport(tgt->ioevs[0].iv, tgt->ioevs[1].iv);
+			retro.set_ioport(tgt->ioevs[0].iv, tgt->ioevs[1].iv);
 		break;
 
 /* should also emit a corresponding event back with the current framenumber */
@@ -1329,17 +1347,17 @@ static inline void targetev(arcan_event* ev)
 			if (tgt->ioevs[0].iv < 0);
 				else
 					while(tgt->ioevs[0].iv--)
-						retroctx.run();
+						retro.run();
 		break;
 
 /* store / rewind operate on the last FD set through FDtransfer */
 		case TARGET_COMMAND_STORE:
 		{
-			size_t dstsize = retroctx.serialize_size();
+			size_t dstsize = retro.serialize_size();
 			void* buf;
 			if (dstsize && ( buf = malloc( dstsize ) )){
 
-				if ( retroctx.serialize(buf, dstsize) ){
+				if ( retro.serialize(buf, dstsize) ){
 					write_handle( buf, dstsize, ev->tgt.ioevs[0].iv, true );
 				} else
 					LOG("serialization failed.\n");
@@ -1353,7 +1371,7 @@ static inline void targetev(arcan_event* ev)
 
 		case TARGET_COMMAND_RESTORE:
 		{
-			ssize_t dstsize = retroctx.serialize_size();
+			ssize_t dstsize = retro.serialize_size();
 			size_t ntc = dstsize;
 			void* buf;
 
@@ -1373,7 +1391,7 @@ static inline void targetev(arcan_event* ev)
 			}
 
 			if (ntc == 0){
-				retroctx.deserialize( buf, dstsize );
+				retro.deserialize( buf, dstsize );
 				reset_timing(true);
 			}
 			else
@@ -1398,7 +1416,7 @@ static inline int flush_eventq(){
 	arcan_event ev;
 	int ps;
 
-	while ((ps = arcan_shmif_poll(&retroctx.shmcont, &ev)) > 0){
+	while ((ps = arcan_shmif_poll(&retro.shmcont, &ev)) > 0){
 		switch (ev.category){
 			case EVENT_IO:
 				ioev_ctxtbl(&(ev.io), ev.io.label);
@@ -1419,31 +1437,31 @@ void update_ntsc()
 {
 	static bool init;
 	if (!init){
-		retroctx.ntsc_opts = snes_ntsc_rgb;
-		retroctx.ntscctx = malloc(sizeof(snes_ntsc_t));
-		snes_ntsc_init(retroctx.ntscctx, &retroctx.ntsc_opts);
+		retro.ntsc_opts = snes_ntsc_rgb;
+		retro.ntscctx = malloc(sizeof(snes_ntsc_t));
+		snes_ntsc_init(retro.ntscctx, &retro.ntsc_opts);
 		init = true;
 	}
 
 	snes_ntsc_update_setup(
-		retroctx.ntscctx, &retroctx.ntsc_opts,
-		retroctx.ntscvals[0], retroctx.ntscvals[1],
-		retroctx.ntscvals[2], retroctx.ntscvals[3]);
+		retro.ntscctx, &retro.ntsc_opts,
+		retro.ntscvals[0], retro.ntscvals[1],
+		retro.ntscvals[2], retro.ntscvals[3]);
 }
 
 /* return true if we're in synch (may sleep),
  * return false if we're lagging behind */
-static inline bool retroctx_sync()
+static inline bool retro_sync()
 {
 	long long int timestamp = arcan_timemillis();
-	retroctx.vframecount++;
+	retro.vframecount++;
 
 /* only skip (at most) 1 frame */
-	if (retroctx.skipframe_v || retroctx.empty_v)
+	if (retro.skipframe_v || retro.empty_v)
 		return true;
 
-	long long int now  = timestamp - retroctx.basetime;
-	long long int next = floor( (double)retroctx.vframecount * retroctx.mspf );
+	long long int now  = timestamp - retro.basetime;
+	long long int next = floor( (double)retro.vframecount * retro.mspf );
 	int left = next - now;
 
 /* ntpd, settimeofday, wonky OS etc. or some massive stall, disqualify
@@ -1462,23 +1480,23 @@ static inline bool retroctx_sync()
 	}
 
 /* more than half a frame behind? skip */
-	if ( retroctx.skipmode != TARGET_SKIP_AUTO)
+	if ( retro.skipmode != TARGET_SKIP_AUTO)
 		return true;
 
-	if (left < -0.5 * retroctx.mspf){
-		if (retroctx.sync_data)
-			retroctx.sync_data->mark_drop(retroctx.sync_data, timestamp);
+	if (left < -0.5 * retro.mspf){
+		if (retro.sync_data)
+			retro.sync_data->mark_drop(retro.sync_data, timestamp);
 		LOG("frameskip: at(%lld), next: (%lld), "
 			"deviation: (%d)\n", now, next, left);
-		retroctx.frameskips++;
+		retro.frameskips++;
 		return false;
 	}
 
 /* since we have to align the transfer with the parent, and it's better to
  * under- than overshoot- a deadline in that respect, prewake tries to
  * compensate lightly for scheduling jitter etc. */
-	if (left > retroctx.prewake){
-		arcan_timesleep( left - retroctx.prewake );
+	if (left > retro.prewake){
+		arcan_timesleep( left - retro.prewake );
 	}
 
 	return true;
@@ -1513,7 +1531,7 @@ static inline long long add_jitter(int num)
  */
 void* platform_video_gfxsym(const char* sym)
 {
-	return arcan_shmifext_headless_lookup(&retroctx.shmcont, sym);
+	return arcan_shmifext_headless_lookup(&retro.shmcont, sym);
 }
 
 struct monitor_mode platform_video_dimensions()
@@ -1533,14 +1551,14 @@ static uintptr_t get_framebuffer()
 {
 	uintptr_t tgt, col, depth;
 
-	if (!retroctx.rtgt){
-		agp_empty_vstore(&retroctx.vstore,
-			retroctx.shmcont.addr->w, retroctx.shmcont.addr->h);
-		retroctx.rtgt = agp_setup_rendertarget(
-			&retroctx.vstore, RENDERTARGET_COLOR_DEPTH_STENCIL);
+	if (!retro.rtgt){
+		agp_empty_vstore(&retro.vstore,
+			retro.shmcont.addr->w, retro.shmcont.addr->h);
+		retro.rtgt = agp_setup_rendertarget(
+			&retro.vstore, RENDERTARGET_COLOR_DEPTH_STENCIL);
 	}
 
-	agp_rendertarget_ids(retroctx.rtgt, &tgt, &col, &depth);
+	agp_rendertarget_ids(retro.rtgt, &tgt, &col, &depth);
 	return tgt;
 }
 
@@ -1556,15 +1574,16 @@ static void setup_3dcore(struct retro_hw_render_callback* ctx)
 		setup.minor = ctx->version_minor;
 	}
 	enum shmifext_setup_status status;
+	setup.depth = 1;
 	if ((status = arcan_shmifext_headless_setup(
-		&retroctx.shmcont, setup)) != SHMIFEXT_OK){
+		&retro.shmcont, setup)) != SHMIFEXT_OK){
 		LOG("couldn't setup 3D context, code: %d, giving up.\n", status);
-		arcan_shmif_drop(&retroctx.shmcont);
+		arcan_shmif_drop(&retro.shmcont);
 		exit(EXIT_FAILURE);
 	}
 
 	agp_init();
-	retroctx.in_3d = true;
+	retro.in_3d = true;
 
 #ifdef FRAMSESERVER_LIBRETRO_3D_RETEXTURE
 	exit(1); /* not ready */
@@ -1580,13 +1599,13 @@ static void setup_3dcore(struct retro_hw_render_callback* ctx)
 		.kind = ARCAN_EVENT(SEGREQ)
 	};
 
-	arcan_event_enqueue(&retroctx.shmcont.outev, &ev);
+	arcan_event_enqueue(&retro.shmcont.outev, &ev);
 #endif
 
 	ctx->get_current_framebuffer = get_framebuffer;
 	ctx->get_proc_address = (retro_hw_get_proc_address_t) platform_video_gfxsym;
 
-	memcpy(&retroctx.hwctx, ctx,
+	memcpy(&retro.hwctx, ctx,
 		sizeof(struct retro_hw_render_callback));
 }
 #endif
@@ -1594,17 +1613,17 @@ static void setup_3dcore(struct retro_hw_render_callback* ctx)
 static void map_lretrofun()
 {
 /* map normal functions that will be called repeatedly */
-	retroctx.run = (void(*)()) libretro_requirefun("retro_run");
-	retroctx.reset = (void(*)()) libretro_requirefun("retro_reset");
-	retroctx.load_game = (bool(*)(const struct retro_game_info* game))
+	retro.run = (void(*)()) libretro_requirefun("retro_run");
+	retro.reset = (void(*)()) libretro_requirefun("retro_reset");
+	retro.load_game = (bool(*)(const struct retro_game_info* game))
 		libretro_requirefun("retro_load_game");
-	retroctx.serialize = (bool(*)(void*, size_t))
+	retro.serialize = (bool(*)(void*, size_t))
 		libretro_requirefun("retro_serialize");
-	retroctx.set_ioport = (void(*)(unsigned,unsigned))
+	retro.set_ioport = (void(*)(unsigned,unsigned))
 		libretro_requirefun("retro_set_controller_port_device");
-	retroctx.deserialize = (bool(*)(const void*, size_t))
+	retro.deserialize = (bool(*)(const void*, size_t))
 		libretro_requirefun("retro_unserialize");
-	retroctx.serialize_size = (size_t(*)())
+	retro.serialize_size = (size_t(*)())
 		libretro_requirefun("retro_serialize_size");
 
 /* setup callbacks */
@@ -1629,16 +1648,16 @@ static bool load_resource(const char* resname)
 	size_t logbuf_sz = sizeof(logbuf);
 
 /* rather ugly -- core actually requires file-path */
-	if (retroctx.sysinfo.need_fullpath){
+	if (retro.sysinfo.need_fullpath){
 		LOG("core(%s), core requires fullpath, resolved to (%s).\n",
-			retroctx.sysinfo.library_name, resname );
+			retro.sysinfo.library_name, resname );
 
-		retroctx.gameinfo.data = NULL;
-		retroctx.gameinfo.path = strdup( resname );
-		retroctx.gameinfo.size = 0;
+		retro.gameinfo.data = NULL;
+		retro.gameinfo.path = strdup( resname );
+		retro.gameinfo.size = 0;
 	}
 	else {
-		retroctx.gameinfo.path = strdup( resname );
+		retro.gameinfo.path = strdup( resname );
 		data_source res = arcan_open_resource(resname);
 		map_region map = arcan_map_resource(&res, true);
 		if (!map.ptr){
@@ -1647,14 +1666,14 @@ static bool load_resource(const char* resname)
 			LOG("%s\n", logbuf);
 			return false;
 		}
-		retroctx.gameinfo.data = map.ptr;
-		retroctx.gameinfo.size = map.sz;
+		retro.gameinfo.data = map.ptr;
+		retro.gameinfo.size = map.sz;
 	}
 
 	snprintf(logbuf, logbuf_sz, "loading game...");
 	log_msg(logbuf, true);
 
-	if ( retroctx.load_game( &retroctx.gameinfo ) == false ){
+	if ( retro.load_game( &retro.gameinfo ) == false ){
 		snprintf(logbuf, logbuf_sz, "loading failed");
 		log_msg(logbuf, true);
 		return false;
@@ -1667,43 +1686,43 @@ static void setup_av()
 {
 /* load the game, and if that fails, give up */
 #ifdef FRAMESERVER_LIBRETRO_3D
-	if (retroctx.hwctx.context_reset)
-		retroctx.hwctx.context_reset();
+	if (retro.hwctx.context_reset)
+		retro.hwctx.context_reset();
 #endif
 
 	( (void(*)(struct retro_system_av_info*))
-		libretro_requirefun("retro_get_system_av_info"))(&retroctx.avinfo);
+		libretro_requirefun("retro_get_system_av_info"))(&retro.avinfo);
 
 /* setup frameserver, synchronization etc. */
-	assert(retroctx.avinfo.timing.fps > 1);
-	assert(retroctx.avinfo.timing.sample_rate > 1);
-	retroctx.mspf = ( 1000.0 * (1.0 / retroctx.avinfo.timing.fps) );
+	assert(retro.avinfo.timing.fps > 1);
+	assert(retro.avinfo.timing.sample_rate > 1);
+	retro.mspf = ( 1000.0 * (1.0 / retro.avinfo.timing.fps) );
 
 /* estimate buffer size to store one frame */
-	retroctx.aframesz = (float)ARCAN_SHMIF_SAMPLERATE /
-		retroctx.avinfo.timing.fps *
+	retro.aframesz = (float)ARCAN_SHMIF_SAMPLERATE /
+		retro.avinfo.timing.fps *
 		ARCAN_SHMIF_SAMPLE_SIZE * ARCAN_SHMIF_ACHANNELS * 2;
-	LOG("audioframe size: %f b\n", retroctx.aframesz);
+	LOG("audioframe size: %f b\n", retro.aframesz);
 
-	retroctx.ntscconv = false;
+	retro.ntscconv = false;
 
 	LOG("video timing: %f fps (%f ms), audio samplerate: %f Hz\n",
-		(float)retroctx.avinfo.timing.fps, (float)retroctx.mspf,
-		(float)retroctx.avinfo.timing.sample_rate);
+		(float)retro.avinfo.timing.fps, (float)retro.mspf,
+		(float)retro.avinfo.timing.sample_rate);
 
 	LOG("setting up resampler, %f => %d.\n",
-		(float)retroctx.avinfo.timing.sample_rate, ARCAN_SHMIF_SAMPLERATE);
+		(float)retro.avinfo.timing.sample_rate, ARCAN_SHMIF_SAMPLERATE);
 
 	int errc;
-	retroctx.resampler = speex_resampler_init(ARCAN_SHMIF_ACHANNELS,
-		retroctx.avinfo.timing.sample_rate, ARCAN_SHMIF_SAMPLERATE, 5, &errc);
+	retro.resampler = speex_resampler_init(ARCAN_SHMIF_ACHANNELS,
+		retro.avinfo.timing.sample_rate, ARCAN_SHMIF_SAMPLERATE, 5, &errc);
 
 /*
  * just prepare some (overly) large audio resampling buffers
  */
-	retroctx.audbuf_sz = retroctx.avinfo.timing.sample_rate * 4;
-	retroctx.in_audb = malloc(retroctx.audbuf_sz);
-	retroctx.out_audb = malloc(retroctx.audbuf_sz);
+	retro.audbuf_sz = retro.avinfo.timing.sample_rate * 4;
+	retro.in_audb = malloc(retro.audbuf_sz);
+	retro.out_audb = malloc(retro.audbuf_sz);
 }
 
 static void setup_input()
@@ -1711,20 +1730,20 @@ static void setup_input()
 /* setup standard device remapping tables, these can be changed
  * by the calling process with a corresponding target event. */
 	for (int i = 0; i < MAX_PORTS; i++){
-		retroctx.input_ports[i].cursor_x = 0;
-		retroctx.input_ports[i].cursor_y = 1;
-		retroctx.input_ports[i].cursor_btns[0] = 0;
-		retroctx.input_ports[i].cursor_btns[1] = 1;
-		retroctx.input_ports[i].cursor_btns[2] = 2;
-		retroctx.input_ports[i].cursor_btns[3] = 3;
-		retroctx.input_ports[i].cursor_btns[4] = 4;
+		retro.input_ports[i].cursor_x = 0;
+		retro.input_ports[i].cursor_y = 1;
+		retro.input_ports[i].cursor_btns[0] = 0;
+		retro.input_ports[i].cursor_btns[1] = 1;
+		retro.input_ports[i].cursor_btns[2] = 2;
+		retro.input_ports[i].cursor_btns[3] = 3;
+		retro.input_ports[i].cursor_btns[4] = 4;
 	}
 
-	retroctx.state_sz = retroctx.serialize_size();
-	arcan_shmif_enqueue(&retroctx.shmcont, &(struct arcan_event){
+	retro.state_sz = retro.serialize_size();
+	arcan_shmif_enqueue(&retro.shmcont, &(struct arcan_event){
 		.category = EVENT_EXTERNAL,
 		.ext.kind = ARCAN_EVENT(STATESIZE),
-		.ext.stateinf.size = retroctx.state_sz
+		.ext.stateinf.size = retro.state_sz
 	});
 }
 
@@ -1760,9 +1779,9 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		return EXIT_FAILURE;
 	}
 
-	retroctx.converter = (pixconv_fun) libretro_rgb1555_rgba;
-	retroctx.inargs = args;
-	retroctx.shmcont = *cont;
+	retro.converter = (pixconv_fun) libretro_rgb1555_rgba;
+	retro.inargs = args;
+	retro.shmcont = *cont;
 
 	const char* libname = NULL;
 	const char* resname = NULL;
@@ -1776,16 +1795,16 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 
 	if ((val = getenv("GAME_ABUFC"))){
 		uint8_t bufc = strtoul(val, NULL, 10);
-		retroctx.abuf_cnt = bufc > 0 && bufc < 16 ? bufc : 8;
+		retro.abuf_cnt = bufc > 0 && bufc < 16 ? bufc : 8;
 	}
 
 	if ((val = getenv("GAME_VBUFC"))){
 		uint8_t bufc = strtoul(val, NULL, 10);
-		retroctx.abuf_cnt = bufc > 0 && bufc <= 4 ? bufc : 1;
+		retro.abuf_cnt = bufc > 0 && bufc <= 4 ? bufc : 1;
 	}
 
 	if ((val = getenv("GAME_ABUFSZ")))
-		retroctx.def_abuf_sz = strtoul(val, NULL, 10);
+		retro.def_abuf_sz = strtoul(val, NULL, 10);
 
 /* system directory doesn't really match any of arcan namespaces,
  * provide some kind of global-  user overridable way */
@@ -1798,7 +1817,7 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 
 /* some cores (mednafen-psx, ..) currently breaks on relative paths,
  * so resolve to absolute one for the time being */
-	retroctx.syspath = realpath(spath, NULL);
+	retro.syspath = realpath(spath, NULL);
 
 /* set if we only want to dump status about the core, info etc.  (which
  * incidentally was then moved to yet another format to parse and manage as
@@ -1850,37 +1869,33 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		return EXIT_FAILURE;
 
 	((void(*)(struct retro_system_info*))
-	 libretro_requirefun("retro_get_system_info"))(&retroctx.sysinfo);
+	 libretro_requirefun("retro_get_system_info"))(&retro.sysinfo);
 
 	if (info_only){
 		fprintf(stdout, "arcan_frameserver(info)\nlibrary:%s\n"
 			"version:%s\nextensions:%s\n/arcan_frameserver(info)",
-			retroctx.sysinfo.library_name, retroctx.sysinfo.library_version,
-			retroctx.sysinfo.valid_extensions);
+			retro.sysinfo.library_name, retro.sysinfo.library_version,
+			retro.sysinfo.valid_extensions);
 		return EXIT_FAILURE;
 	}
 
 	LOG("libretro(%s), version %s loaded. Accepted extensions: %s\n",
-		retroctx.sysinfo.library_name, retroctx.sysinfo.library_version,
-		retroctx.sysinfo.valid_extensions);
+		retro.sysinfo.library_name, retro.sysinfo.library_version,
+		retro.sysinfo.valid_extensions);
 
 /* map functions to context structure */
 /* send some information on what core is actually loaded etc. */
-	arcan_event outev = {
-		.category = EVENT_EXTERNAL,
-		.ext.kind = ARCAN_EVENT(IDENT)
-	};
-
-	size_t msgsz = COUNT_OF(outev.ext.message.data);
-	snprintf((char*)outev.ext.message.data, msgsz, "%s %s",
-		retroctx.sysinfo.library_name, retroctx.sysinfo.library_version);
-	arcan_shmif_enqueue(&retroctx.shmcont, &outev);
+	retro.ident.ext.kind = ARCAN_EVENT(IDENT);
+	size_t msgsz = COUNT_OF(retro.ident.ext.message.data);
+	snprintf((char*)retro.ident.ext.message.data, msgsz, "%s %s",
+		retro.sysinfo.library_name, retro.sysinfo.library_version);
+	arcan_shmif_enqueue(&retro.shmcont, &retro.ident);
 
 /* map the functions we need during runtime */
 	map_lretrofun();
 
 /* load / start */
-	if (!resname && retroctx.res_empty)
+	if (!resname && retro.res_empty)
 		;
 	else if (!load_resource(resname ? resname : ""))
 		return EXIT_FAILURE;
@@ -1893,20 +1908,20 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 
 /* since we're 'guaranteed' to get at least one input callback each run(),
  * call, we multiplex parent event processing as well */
-	outev.ext.framestatus.framenumber = 0;
+	arcan_event outev = {.ext.framestatus.framenumber = 0};
 
-/* some cores die on this kind of reset, retroctx.reset() e.g. NXengine
+/* some cores die on this kind of reset, retro.reset() e.g. NXengine
  * retro_reset() */
 
-	if (retroctx.state_sz > 0)
-		retroctx.rollback_state = malloc(retroctx.state_sz);
+	if (retro.state_sz > 0)
+		retro.rollback_state = malloc(retro.state_sz);
 
 /* basetime is used as epoch for all other timing calculations, run
  * an initial frame because sometimes first run can introduce a large stall */
-	retroctx.skipframe_v = retroctx.skipframe_a = true;
-	retroctx.run();
-	retroctx.skipframe_v = retroctx.skipframe_a = false;
-	retroctx.basetime = arcan_timemillis();
+	retro.skipframe_v = retro.skipframe_a = true;
+	retro.run();
+	retro.skipframe_v = retro.skipframe_a = false;
+	retro.basetime = arcan_timemillis();
 
 /* pre-audio is a last- resort to work around buffering size issues
  * in audio layers -- run one or more frames of emulation, ignoring
@@ -1915,31 +1930,31 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 	long long int start, stop;
 
 /* don't want the UI to draw a mouse cursor in this window */
-	arcan_shmif_enqueue(&retroctx.shmcont, &(struct arcan_event){
+	arcan_shmif_enqueue(&retro.shmcont, &(struct arcan_event){
 		.category = EVENT_EXTERNAL,
 		.ext.kind = ARCAN_EVENT(CURSORHINT),
 		.ext.message = "hidden"
 	});
 
 	while (flush_eventq() != -1){
-		if (retroctx.skipmode >= TARGET_SKIP_FASTFWD)
-			libretro_skipnframes(retroctx.skipmode -
+		if (retro.skipmode >= TARGET_SKIP_FASTFWD)
+			libretro_skipnframes(retro.skipmode -
 				TARGET_SKIP_FASTFWD + 1, true);
 
-		else if (retroctx.skipmode >= TARGET_SKIP_STEP)
-			libretro_skipnframes(retroctx.skipmode -
+		else if (retro.skipmode >= TARGET_SKIP_STEP)
+			libretro_skipnframes(retro.skipmode -
 				TARGET_SKIP_STEP + 1, false);
 
-		else if (retroctx.skipmode <= TARGET_SKIP_ROLLBACK &&
-			retroctx.dirty_input){
+		else if (retro.skipmode <= TARGET_SKIP_ROLLBACK &&
+			retro.dirty_input){
 /* last entry will always be the current front */
-			retroctx.deserialize(retroctx.rollback_state +
-				retroctx.state_sz * retroctx.rollback_front, retroctx.state_sz);
+			retro.deserialize(retro.rollback_state +
+				retro.state_sz * retro.rollback_front, retro.state_sz);
 
 /* rollback to desired "point", run frame (which will consume input)
  * then roll forward to next video frame */
-			process_frames(retroctx.rollback_window - 1, true, true);
-			retroctx.dirty_input = false;
+			process_frames(retro.rollback_window - 1, true, true);
+			retro.dirty_input = false;
 		}
 
 		testcounter = 0;
@@ -1947,20 +1962,20 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 /* add jitter, jitterstep, framecost etc. are used for debugging /
  * testing by adding delays at various key synchronization points */
 		start = arcan_timemillis();
-			add_jitter(retroctx.jitterstep);
+			add_jitter(retro.jitterstep);
 			process_frames(1, false, false);
 		stop = arcan_timemillis();
-		retroctx.framecost = stop - start;
-		if (retroctx.sync_data){
-			retroctx.sync_data->mark_start(retroctx.sync_data, start);
-			retroctx.sync_data->mark_stop(retroctx.sync_data, stop);
+		retro.framecost = stop - start;
+		if (retro.sync_data){
+			retro.sync_data->mark_start(retro.sync_data, start);
+			retro.sync_data->mark_stop(retro.sync_data, stop);
 		}
 
 /* Some FE applications need a grasp of "where" we are frame-wise,
  * particularly for single-stepping etc. */
 		outev.ext.kind = ARCAN_EVENT(FRAMESTATUS);
 		outev.ext.framestatus.framenumber++;
-		arcan_shmif_enqueue(&retroctx.shmcont, &outev);
+		arcan_shmif_enqueue(&retro.shmcont, &outev);
 
 #ifdef _DEBUG
 		if (testcounter != 1){
@@ -1972,67 +1987,67 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 #endif
 
 /* if we start lagging behind on frametime, try selectively skipping frames */
-		retroctx.skipframe_a = false;
-		retroctx.skipframe_v = !retroctx_sync();
+		retro.skipframe_a = false;
+		retro.skipframe_v = !retro_sync();
 
 /* begin with synching video, as it is the one with the biggest deadline
  * penalties and the cost for resampling can be enough if we are close */
-		if (!retroctx.empty_v){
-			long long elapsed = add_jitter(retroctx.jitterstep);
+		if (!retro.empty_v){
+			long long elapsed = add_jitter(retro.jitterstep);
 #ifdef FRAMESERVER_LIBRETRO_3D
-			if (retroctx.got_3dframe){
-				int handlestatus = arcan_shmifext_eglsignal(&retroctx.shmcont, 0,
-					SHMIF_SIGVID, retroctx.vstore.vinf.text.glid);
+			if (retro.got_3dframe){
+				int handlestatus = arcan_shmifext_eglsignal(&retro.shmcont, 0,
+					SHMIF_SIGVID, retro.vstore.vinf.text.glid);
 				if (handlestatus >= 0)
 					elapsed += handlestatus;
 				else{
 					readback_fallback();
-					elapsed += arcan_shmif_signal(&retroctx.shmcont, SHMIF_SIGVID);
+					elapsed += arcan_shmif_signal(&retro.shmcont, SHMIF_SIGVID);
 				}
-				retroctx.got_3dframe = false;
+				retro.got_3dframe = false;
 			}
 /* note the dangling else */
 			else
 #endif
-			elapsed += arcan_shmif_signal(&retroctx.shmcont, SHMIF_SIGVID);
+			elapsed += arcan_shmif_signal(&retro.shmcont, SHMIF_SIGVID);
 
-			retroctx.transfercost = elapsed;
-			if (retroctx.sync_data)
-				retroctx.sync_data->mark_transfer(retroctx.sync_data,
-					stop, retroctx.transfercost);
+			retro.transfercost = elapsed;
+			if (retro.sync_data)
+				retro.sync_data->mark_transfer(retro.sync_data,
+					stop, retro.transfercost);
 		}
 
-		if(retroctx.audbuf_ofs){
-			spx_uint32_t inc = retroctx.audbuf_ofs >> 1; /* per channel, 2 chan */
-			spx_uint32_t left = retroctx.audbuf_sz;
-			retroctx.audbuf_ofs = 0;
-			speex_resampler_process_interleaved_int(retroctx.resampler,
-				retroctx.in_audb, &inc, retroctx.out_audb, &left);
+		if(retro.audbuf_ofs){
+			spx_uint32_t inc = retro.audbuf_ofs >> 1; /* per channel, 2 chan */
+			spx_uint32_t left = retro.audbuf_sz;
+			retro.audbuf_ofs = 0;
+			speex_resampler_process_interleaved_int(retro.resampler,
+				retro.in_audb, &inc, retro.out_audb, &left);
 
 			left *= sizeof(shmif_asample) * ARCAN_SHMIF_ACHANNELS;
-			uint8_t* inb = (uint8_t*) retroctx.out_audb;
-			size_t bufsz = retroctx.shmcont.abufsize;
+			uint8_t* inb = (uint8_t*) retro.out_audb;
+			size_t bufsz = retro.shmcont.abufsize;
 
 			while (left){
-				uint8_t* outb = (uint8_t*) retroctx.shmcont.audp;
-				size_t limit = retroctx.shmcont.abufsize - retroctx.shmcont.abufused;
+				uint8_t* outb = (uint8_t*) retro.shmcont.audp;
+				size_t limit = retro.shmcont.abufsize - retro.shmcont.abufused;
 
 				if (left >= limit){
-					memcpy(&outb[retroctx.shmcont.abufused], inb, limit);
+					memcpy(&outb[retro.shmcont.abufused], inb, limit);
 					left -= limit;
 					inb += limit;
-					retroctx.shmcont.abufused = retroctx.shmcont.abufsize;
-					arcan_shmif_signal(&retroctx.shmcont, SHMIF_SIGAUD);
+					retro.shmcont.abufused = retro.shmcont.abufsize;
+					arcan_shmif_signal(&retro.shmcont, SHMIF_SIGAUD);
 				}
 				else{
-					memcpy(&outb[retroctx.shmcont.abufused], inb, left);
-					retroctx.shmcont.abufused += left;
+					memcpy(&outb[retro.shmcont.abufused], inb, left);
+					retro.shmcont.abufused += left;
 					break;
 				}
 			}
 		}
 
-		if (retroctx.sync_data)
+		if (retro.sync_data)
 				push_stats();
 	}
 	return EXIT_SUCCESS;
@@ -2040,28 +2055,28 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 
 static void log_msg(char* msg, bool flush)
 {
-	draw_box(&retroctx.shmcont, 0, 0,
-		retroctx.shmcont.w, retroctx.shmcont.h,
+	draw_box(&retro.shmcont, 0, 0,
+		retro.shmcont.w, retro.shmcont.h,
 		RGBA(0x00, 0x00, 0x00, 0xff)
 	);
 
 	int dw, dh;
-	int sw = retroctx.shmcont.w;
+	int sw = retro.shmcont.w;
 
 /* clip string */
 	char* mendp = msg + strlen(msg) + 1;
 	do {
 		*mendp = '\0';
-		text_dimensions(&retroctx.shmcont, msg, &dw, &dh);
+		text_dimensions(&retro.shmcont, msg, &dw, &dh);
 		mendp--;
 	} while (dw > sw && mendp > msg);
 
 /* center */
-	draw_text(&retroctx.shmcont, msg,
-		0.5 * (sw - dw), 0.5 * (retroctx.shmcont.h - dh), 0xffffffff);
+	draw_text(&retro.shmcont, msg,
+		0.5 * (sw - dw), 0.5 * (retro.shmcont.h - dh), 0xffffffff);
 
 	if (flush)
-		arcan_shmif_signal(&retroctx.shmcont, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
+		arcan_shmif_signal(&retro.shmcont, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
 }
 
 static void push_stats()
@@ -2075,22 +2090,22 @@ static void push_stats()
 		"(A,V - A/V) %lld, %lld - %lld\n"
 		"Real (Hz): %f\n"
 		"cost,wake,xfer: %d, %d, %d ms \n",
-		(char*)retroctx.sysinfo.library_name,
-		(char*)retroctx.sysinfo.library_version,
-		(char*)retroctx.colorspace,
-		(float)retroctx.avinfo.timing.fps,
-		(float)retroctx.avinfo.timing.sample_rate,
-		retroctx.skipmode, retroctx.preaudiogen,
-		retroctx.jitterstep, retroctx.jitterxfer,
-		retroctx.aframecount, retroctx.vframecount,
-		retroctx.aframecount / retroctx.vframecount,
-		1000.0f * (float)retroctx.aframecount /
-			(float)(timestamp - retroctx.basetime),
-		retroctx.framecost, retroctx.prewake, retroctx.transfercost
+		(char*)retro.sysinfo.library_name,
+		(char*)retro.sysinfo.library_version,
+		(char*)retro.colorspace,
+		(float)retro.avinfo.timing.fps,
+		(float)retro.avinfo.timing.sample_rate,
+		retro.skipmode, retro.preaudiogen,
+		retro.jitterstep, retro.jitterxfer,
+		retro.aframecount, retro.vframecount,
+		retro.aframecount / retro.vframecount,
+		1000.0f * (float)retro.aframecount /
+			(float)(timestamp - retro.basetime),
+		retro.framecost, retro.prewake, retro.transfercost
 	);
 
-	if (!retroctx.sync_data->update(
-		retroctx.sync_data, retroctx.mspf, scratch)){
-		retroctx.sync_data->free(&retroctx.sync_data);
+	if (!retro.sync_data->update(
+		retro.sync_data, retro.mspf, scratch)){
+		retro.sync_data->free(&retro.sync_data);
 	}
 }
