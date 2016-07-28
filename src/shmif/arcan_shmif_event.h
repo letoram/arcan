@@ -789,8 +789,26 @@ typedef union arcan_ioevent_data {
 		uint8_t active;
 	} digital;
 
+/*
+ * Packing in this field is poor due to legacy.
+ * axisval[] works on the basis of 'just forwarding whatever we can find'
+ * where [nvalues] determine the number of values used, with ordering
+ * manipulated with the [gotrel] field.
+ *
+ * [if gotrel is set]
+ * nvalues = 1: [0] relative sample
+ * nvalues = 2: [0] relative sample, [1] absolute sample
+ * nvalues = 3; same as [2], with 'unknown' sample data in [3]
+ * nvalues = 4; same as [2] but an extra axes (2D sources) in [3,4]
+ *
+ * [if gotrel is not set, the order between relative and absolute are changed]
+ *
+ * A convention for mouse cursors is to EITHER split into two samples on subid
+ * 0 (x) and 1 (y), or use subid (2) with all 4 samples filled out. The point
+ * of that is that we still lack serialization and force a 'largest struct wins'
+ * scenario, meaning that a sample consumes unreasonable memory sizes
+ */
 	struct {
-/* axis- values are first relative then absolute if set */
 		int8_t gotrel;
 		uint8_t idcount;
 		uint8_t nvalues;

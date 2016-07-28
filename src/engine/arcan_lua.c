@@ -841,12 +841,7 @@ void arcan_lua_adopt(struct arcan_luactx* ctx)
 			arcan_video_getobject(ids[count]) != NULL){
 			lua_pushvid(ctx, vobj->cellid);
 			lua_pushstring(ctx, fsrvtos(fsrv->segid));
-
-			if (strlen(fsrv->title) > 0)
-				lua_pushstring(ctx, fsrv->title);
-			else
-				lua_pushstring(ctx, "_untitled");
-
+			lua_pushstring(ctx, fsrv->title);
 			lua_pushvid(ctx, fsrv->parent.vid);
 			lua_pushboolean(ctx, count < n_fsrv-1);
 
@@ -859,21 +854,16 @@ void arcan_lua_adopt(struct arcan_luactx* ctx)
 /* send register event again so adoption imposed handler might map
  * to related archetype, then follow up with resized to underlying
  * format. Other state restoration has to be handled by fsrv itself */
-			arcan_event regev = {
-				.category = EVENT_EXTERNAL,
-				.ext.kind = EVENT_EXTERNAL_REGISTER,
-				.ext.registr.kind = fsrv->segid,
-				.ext.registr.guid[0] = fsrv->guid[0],
-				.ext.registr.guid[1] = fsrv->guid[1]
-			};
+				arcan_event_enqueue(arcan_event_defaultctx(), &(struct arcan_event){
+					.category = EVENT_EXTERNAL,
+					.ext.kind = EVENT_EXTERNAL_REGISTER,
+					.ext.registr.kind = fsrv->segid,
+					.ext.registr.guid[0] = fsrv->guid[0],
+					.ext.registr.guid[1] = fsrv->guid[1]
+				});
 
-			arcan_event_enqueue(arcan_event_defaultctx(), &regev);
-
-			jmp_buf out;
-			if (0 != setjmp(out))
-				goto jmpout;
-			arcan_frameserver_enter(fsrv, out);
-				arcan_event rezev = {
+/* fake a resize event that corresponds to the last negotiated state */
+				arcan_event_enqueue(arcan_event_defaultctx(), &(struct arcan_event){
 					.category = EVENT_FSRV,
 					.fsrv.kind = EVENT_FSRV_RESIZED,
 					.fsrv.width = fsrv->desc.width,
@@ -881,15 +871,20 @@ void arcan_lua_adopt(struct arcan_luactx* ctx)
 					.fsrv.video = fsrv->vid,
 					.fsrv.audio = fsrv->aid,
 					.fsrv.otag = fsrv->tag,
-					.fsrv.glsource = fsrv->shm.ptr->hints & SHMIF_RHINT_ORIGO_LL
-				};
-			arcan_event_enqueue(arcan_event_defaultctx(), &rezev);
-/* NOTE: currently not sending a soft reset event to frameserver, but
- * might be useful to do so with ioev[0] set to 2 */
-			arcan_frameserver_leave();
-		}
+					.fsrv.glsource = fsrv->desc.hints & SHMIF_RHINT_ORIGO_LL
+				});
 
-jmpout:
+/* the RESET event to the affected frameserver, though it could be used as a
+ * DoS oracly, there are so many timing channels that are necessary that it
+ * doesn't really aid much by hiding the fact, but it can help a cooperative
+ * process enough that it is worth the tradeoff */
+				arcan_frameserver_pushevent(fsrv, &(struct arcan_event){
+					.category = EVENT_TARGET,
+					.tgt.kind = TARGET_COMMAND_RESET,
+					.tgt.ioevs[0].iv = 2
+				});
+			}
+
 			lua_pop(ctx, 1);
 		}
 
@@ -10051,7 +10046,7 @@ static inline const char* fsrvtos(enum ARCAN_SEGID ink)
 	case SEGID_NETWORK_SERVER: return "network-server";
 	case SEGID_NETWORK_CLIENT: return "network-client";
 	case SEGID_CURSOR: return "cursor";
-	case SEGID_TERMINAL: return "shell";
+	case SEGID_TERMINAL: return "terminal";
 	case SEGID_POPUP: return "popup";
 	case SEGID_ICON: return "icon";
 	case SEGID_REMOTING: return "remoting";

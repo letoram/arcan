@@ -152,6 +152,7 @@ struct {
 	struct arcan_shmif_cont acon;
 	struct arcan_shmif_cont clip_in;
 	struct arcan_shmif_cont clip_out;
+	struct arcan_event last_ident;
 } term = {
 	.cell_w = 8,
 	.cell_h = 8,
@@ -169,6 +170,10 @@ struct {
 	.hint = TTF_HINTING_NONE
 #endif
 };
+
+/* additional state synch that needs negotiation and may need to be
+ * re-built in the event of a RESET request */
+static void queue_requests(bool clipboard, bool clock, bool ident);
 
 /* to be able to update the cursor cell with other information */
 static int draw_cbt(struct tsm_screen* screen, uint32_t ch,
@@ -495,13 +500,11 @@ static void str_callback(struct tsm_vte* vte, enum tsm_vte_group group,
 		return;
 
 	if ((msg[0] == '0' || msg[0] == '1' || msg[0] == '2') && msg[1] == ';'){
-		arcan_event outev = {
-			.ext.kind = ARCAN_EVENT(IDENT),
-			.category = EVENT_EXTERNAL
-		};
-		size_t lim=sizeof(outev.ext.message.data)/sizeof(outev.ext.message.data[1]);
-		snprintf((char*)outev.ext.message.data, lim, "%s", &msg[2]);
-		arcan_shmif_enqueue(&term.acon, &outev);
+		arcan_event* ev = &term.last_ident;
+		ev->ext.kind = ARCAN_EVENT(IDENT);
+		size_t lim=sizeof(ev->ext.message.data)/sizeof(ev->ext.message.data[1]);
+		snprintf((char*)ev->ext.message.data, lim, "%s", &msg[2]);
+		arcan_shmif_enqueue(&term.acon, ev);
 	}
 	else
 		LOG("ignoring unknown OSC sequence (%s)\n", msg);
@@ -1038,8 +1041,20 @@ static void targetev(arcan_tgtevent* ev)
 
 	case TARGET_COMMAND_RESET:
 		term.last_shmask = 0;
-		tsm_vte_hard_reset(term.vte);
-		printf("got reset, degree? %d\n", ev->ioevs[0].iv);
+		switch(ev->ioevs[0].iv){
+		case 0:
+		case 1:
+ /* normal request, we have no distinction between soft and hard */
+			tsm_vte_hard_reset(term.vte);
+		break;
+		case 2:
+		case 3:
+			queue_requests(true, true, true);
+			arcan_shmif_drop(&term.clip_in);
+			arcan_shmif_drop(&term.clip_out);
+		break;
+		}
+		term.dirty = DIRTY_PENDING_FULL;
 	break;
 
 	case TARGET_COMMAND_BCHUNK_IN:
@@ -1272,6 +1287,34 @@ static void probe_font(TTF_Font* font,
 
 	if (h > *dh)
 		*dh = h;
+}
+
+static void queue_requests(bool clipboard, bool clock, bool ident)
+{
+/* immediately request a clipboard for cut operations (none received ==
+ * running appl doesn't care about cut'n'paste/drag'n'drop support). */
+/* and send a timer that will be used for cursor blinking when active */
+	if (clipboard)
+	arcan_shmif_enqueue(&term.acon, &(struct arcan_event){
+		.category = EVENT_EXTERNAL,
+		.ext.kind = ARCAN_EVENT(SEGREQ),
+		.ext.segreq.width = 1,
+		.ext.segreq.height = 1,
+		.ext.segreq.kind = SEGID_CLIPBOARD,
+		.ext.segreq.id = 0xfeedface
+	});
+
+/* and a 1s. timer for blinking cursor */
+	if (clock)
+	arcan_shmif_enqueue(&term.acon, &(struct arcan_event){
+		.category = EVENT_EXTERNAL,
+		.ext.kind = ARCAN_EVENT(CLOCKREQ),
+		.ext.clock.rate = 12,
+		.ext.clock.id = 0xabcdef00,
+	});
+
+	if (ident && term.last_ident.ext.kind != 0)
+		arcan_shmif_enqueue(&term.acon, &term.last_ident);
 }
 
 /*
@@ -1665,25 +1708,8 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 
 	update_screensize(false);
 
-/* immediately request a clipboard for cut operations (none received ==
- * running appl doesn't care about cut'n'paste/drag'n'drop support). */
-/* and send a timer that will be used for cursor blinking when active */
-	arcan_shmif_enqueue(&term.acon, &(struct arcan_event){
-		.category = EVENT_EXTERNAL,
-		.ext.kind = ARCAN_EVENT(SEGREQ),
-		.ext.segreq.width = 1,
-		.ext.segreq.height = 1,
-		.ext.segreq.kind = SEGID_CLIPBOARD,
-		.ext.segreq.id = 0xfeedface
-	});
-
-/* and a 1s. timer for blinking cursor */
-	arcan_shmif_enqueue(&term.acon, &(struct arcan_event){
-		.category = EVENT_EXTERNAL,
-		.ext.kind = ARCAN_EVENT(CLOCKREQ),
-		.ext.clock.rate = 12,
-		.ext.clock.id = 0xabcdef00,
-	});
+/* clipboard, timer callbacks, no IDENT */
+	queue_requests(true, true, false);
 
 /* show the current cell dimensions to help limit resize requests */
 	send_cell_sz();

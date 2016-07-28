@@ -22,7 +22,7 @@
 -- @note: accept_target is context sensitive. This means that calling
 -- it outside a frameserver event-handler, or when there is no pending
 -- segment_request event, is a terminal state transition.
--- @note: Possible segkind values are: "multimedia", "cursor", "shell",
+-- @note: Possible segkind values are: "multimedia", "cursor", "terminal",
 -- "popup", "icon", "remoting", "game", "hmd-l", "hmd-r", "hmd-sbs-lr",
 -- "vm", "application", "clipboard", "browser", "encoder", "titlebar",
 -- "sensor", "debug", "accessibility", "unknown".
