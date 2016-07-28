@@ -52,6 +52,12 @@ enum shmifext_setup_status arcan_shmifext_headless_setup(
 	return SHMIFEXT_OK;
 }
 
+bool arcan_shmifext_egl_meta(struct arcan_shmif_cont* con,
+	uintptr_t* display, uintptr_t* surface, uintptr_t* context)
+{
+	return false;
+}
+
 void* arcan_shmifext_headless_lookup(
 	struct arcan_shmif_cont* con, const char* sym)
 {

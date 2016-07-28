@@ -207,10 +207,18 @@ void* arcan_shmifext_headless_lookup(
 /*
  * Uses lookupfun to get the function pointers needed, writes back matching
  * EGLNativeDisplayType into *display and tags *con as accelerated.
- * Can be called multiple times as response to DEVICE_NODE calls.
+ * Can be called multiple times as response to DEVICE_NODE calls or to
+ * retrieve the display associated with con
  */
 bool arcan_shmifext_headless_egl(struct arcan_shmif_cont* con,
 	void** display, void*(*lookupfun)(void*, const char*), void* tag);
+
+/*
+ * For the corner cases where you need access to the display/surface/context
+ * but don't want to detract from the _headless_setup
+ */
+bool arcan_shmifext_egl_meta(struct arcan_shmif_cont* con,
+	uintptr_t* display, uintptr_t* surface, uintptr_t* context);
 
 /*
  * Placeholder awaiting VK support
