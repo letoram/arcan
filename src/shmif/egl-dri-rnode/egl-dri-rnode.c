@@ -176,7 +176,8 @@ enum shmifext_setup_status arcan_shmifext_headless_setup(
 		return SHMIFEXT_NO_CONTEXT;
 	}
 
-	eglMakeCurrent(ctx->display, EGL_NO_SURFACE, EGL_NO_SURFACE, ctx->context);
+	ctx->surface = EGL_NO_SURFACE;
+	eglMakeCurrent(ctx->display, ctx->surface, ctx->surface, ctx->context);
 	return SHMIFEXT_OK;
 }
 

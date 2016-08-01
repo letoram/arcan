@@ -1298,6 +1298,9 @@ unsigned arcan_shmif_signal(struct arcan_shmif_cont* ctx,
 	if (!ctx || !ctx->addr)
 		return 0;
 
+	if (!ctx->vidp)
+		return 0;
+
 /* to protect against some callers being stuck in a 'just signal
  * as a means of draining buffers' */
 	if (!ctx->addr->dms){
