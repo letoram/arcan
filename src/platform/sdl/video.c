@@ -23,7 +23,11 @@ static struct {
 	SDL_Surface* screen;
 	int sdlarg;
 	size_t canvasw, canvash;
+	size_t draww, drawh, drawx, drawy;
+	arcan_vobj_id vid;
+	size_t blackframes;
 	uint64_t last;
+	float txcos[8];
 } sdl;
 
 static char* synchopts[] = {
@@ -97,11 +101,27 @@ void platform_video_synch(uint64_t tick_count, float fract,
 	if (pre)
 		pre();
 
+	arcan_vobject* vobj = arcan_video_getobject(sdl.vid);
+
 	size_t nd;
 	arcan_bench_register_cost( arcan_vint_refresh(fract, &nd) );
+	agp_shader_id shid = agp_default_shader(BASIC_2D);
 
 	agp_activate_rendertarget(NULL);
-	arcan_vint_drawrt(arcan_vint_world(), 0, 0, sdl.canvasw, sdl.canvash);
+	if (sdl.blackframes){
+		agp_rendertarget_clear();
+		sdl.blackframes--;
+	}
+
+	if (vobj->program > 0)
+		shid = vobj->program;
+
+	agp_activate_vstore(sdl.vid == ARCAN_VIDEO_WORLDID ?
+		arcan_vint_world() : vobj->vstore);
+
+	agp_shader_activate(shid);
+
+	agp_draw_vobj(sdl.drawx, sdl.drawy, sdl.draww, sdl.drawh, sdl.txcos, NULL);
 	arcan_vint_drawcursor(false);
 
 	SDL_GL_SwapBuffers();
@@ -214,7 +234,28 @@ struct monitor_mode platform_video_dimensions()
 bool platform_video_map_display(arcan_vobj_id id, platform_display_id disp,
 	enum blitting_hint hint)
 {
-	return false; /* no multidisplay /redirectable output support */
+	if (disp != 0)
+		return false;
+
+	arcan_vobject* vobj = arcan_video_getobject(id);
+	if (vobj && vobj->vstore->txmapped != TXSTATE_TEX2D){
+		arcan_warning("platform_video_map_display(), attempted to map a "
+			"video object with an invalid backing store");
+		return false;
+	}
+
+	arcan_vint_applyhint(vobj, hint,
+			vobj->txcos ? vobj->txcos :
+			(vobj->vstore == arcan_vint_world() ?
+				arcan_video_display.mirror_txcos :
+				arcan_video_display.default_txcos),
+		sdl.txcos,
+		&sdl.drawx, &sdl.drawy,
+		&sdl.draww, &sdl.drawh,
+		&sdl.blackframes
+	);
+	sdl.vid = id;
+	return true;
 }
 
 bool platform_video_display_id(platform_display_id id,
@@ -273,6 +314,8 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 
 	sdl.canvasw = width;
 	sdl.canvash = height;
+	sdl.draww = width;
+	sdl.drawh = height;
 
 	arcan_warning("Notice: [SDL] Video Info: %i, %i, hardware acceleration: %s, "
 		"window manager: %s, MSAA: %i\n",
@@ -320,6 +363,9 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 		return false;
 
 	glViewport(0, 0, width, height);
+	sdl.vid = ARCAN_VIDEO_WORLDID;
+	memcpy(sdl.txcos, arcan_video_display.default_txcos, sizeof(float) * 8);
+
 	sdl.last = arcan_frametime();
 	return true;
 }

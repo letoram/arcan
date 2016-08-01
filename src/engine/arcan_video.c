@@ -453,6 +453,72 @@ void arcan_vint_drawrt(struct storage_info_t* vs, int x, int y, int w, int h)
 	agp_deactivate_vstore();
 }
 
+void arcan_vint_applyhint(arcan_vobject* src, enum blitting_hint hint,
+	float* txin, float* txout,
+	size_t* outx, size_t* outy,
+	size_t* outw, size_t* outh, size_t* blackframes)
+{
+	memcpy(txout, txin, sizeof(float) * 8);
+
+	if (hint & HINT_ROTATE_CW_90){
+		txout[0] = txin[2];
+		txout[1] = txin[3];
+		txout[2] = txin[4];
+		txout[3] = txin[5];
+		txout[4] = txin[6];
+		txout[5] = txin[7];
+		txout[6] = txin[0];
+		txout[7] = txin[1];
+	}
+
+	if (hint & HINT_ROTATE_CCW_90){
+		txout[0] = txin[6];
+		txout[1] = txin[7];
+		txout[2] = txin[0];
+		txout[3] = txin[1];
+		txout[4] = txin[2];
+		txout[5] = txin[3];
+		txout[6] = txin[4];
+		txout[7] = txin[5];
+	}
+
+	if (hint & HINT_YFLIP){
+		txout[0] = txout[6];
+		txout[1] = txout[7];
+		txout[2] = txout[4];
+		txout[3] = txout[5];
+		txout[4] = txout[2];
+		txout[5] = txout[3];
+		txout[6] = txout[0];
+		txout[7] = txout[1];
+	}
+
+	if (hint & HINT_CROP){
+		ssize_t diffw = *outw - src->vstore->w;
+		ssize_t diffh = *outh - src->vstore->h;
+		if (diffw < 0){
+			*outx = -1 * diffw;
+		}
+		else{
+			*outw = src->vstore->w;
+			*outx = diffw >> 1;
+		}
+
+		if (diffh < 0){
+			*outy = -1 * diffh;
+		}
+		else{
+			*outh = src->vstore->h;
+			*outy = diffh >> 1;
+		}
+	}
+	else {
+		*outx = *outy = 0;
+	}
+
+	*blackframes = 3;
+}
+
 void arcan_vint_drawcursor(bool erase)
 {
 	if (!arcan_video_display.cursor.vstore)

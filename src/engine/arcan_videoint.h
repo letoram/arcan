@@ -418,6 +418,15 @@ struct rendertarget* arcan_vint_findrt(arcan_vobject* vobj);
 void arcan_vint_drawrt(struct storage_info_t*, int x, int y, int w, int h);
 
 /*
+ * [may be] used by the video platform layer to share the normal hinting
+ * settings between implementations
+ */
+void arcan_vint_applyhint(arcan_vobject* src, enum blitting_hint hint,
+	float* txcos_in, float* txcos_out,
+	size_t* out_x, size_t* out_y,
+	size_t* out_w, size_t* out_h, size_t* blackframes);
+
+/*
  * used by the video platform layer for "accelerated" cursor drawing,
  * meaning that !erase draws using the backing store set as the cursor
  * and erase draws using the current attached rendertarget

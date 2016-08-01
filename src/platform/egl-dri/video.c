@@ -1901,68 +1901,11 @@ bool platform_video_map_display(
 
 	d->display.primary = hint & HINT_FL_PRIMARY;
 	memcpy(d->txcos, txcos, sizeof(float) * 8);
+	arcan_vint_applyhint(vobj, hint,
+		txcos, d->txcos, &d->dispx, &d->dispy, &d->dispw, &d->disph,
+		&d->display.blackframes
+	);
 
-	if (hint & HINT_ROTATE_CW_90){
-		d->txcos[0] = txcos[2];
-		d->txcos[1] = txcos[3];
-		d->txcos[2] = txcos[4];
-		d->txcos[3] = txcos[5];
-		d->txcos[4] = txcos[6];
-		d->txcos[5] = txcos[7];
-		d->txcos[6] = txcos[0];
-		d->txcos[7] = txcos[1];
-	}
-
-	if (hint & HINT_ROTATE_CCW_90){
-		d->txcos[0] = txcos[6];
-		d->txcos[1] = txcos[7];
-		d->txcos[2] = txcos[0];
-		d->txcos[3] = txcos[1];
-		d->txcos[4] = txcos[2];
-		d->txcos[5] = txcos[3];
-		d->txcos[6] = txcos[4];
-		d->txcos[7] = txcos[5];
-	}
-
-	if (hint & HINT_YFLIP){
-		d->txcos[0] = d->txcos[6];
-		d->txcos[1] = d->txcos[7];
-		d->txcos[2] = d->txcos[4];
-		d->txcos[3] = d->txcos[5];
-		d->txcos[4] = d->txcos[2];
-		d->txcos[5] = d->txcos[3];
-		d->txcos[6] = d->txcos[0];
-		d->txcos[7] = d->txcos[1];
-	}
-
-	if (hint & HINT_CROP){
-		ssize_t diffw = d->display.mode->hdisplay - vobj->vstore->w;
-		ssize_t diffh = d->display.mode->vdisplay - vobj->vstore->h;
-		if (diffw < 0){
-			d->dispw = d->display.mode->hdisplay;
-			d->dispx = -1 * diffw;
-		}
-		else{
-			d->dispw = vobj->vstore->w;
-			d->dispx = diffw >> 1;
-		}
-
-		if (diffh < 0){
-			d->disph = d->display.mode->vdisplay;
-			d->dispy = -1 * diffh;
-		}
-		else{
-			d->disph = vobj->vstore->h;
-			d->dispy = diffh >> 1;
-		}
-	}
-	else {
-		d->dispw = d->display.mode->hdisplay;
-		d->disph = d->display.mode->vdisplay;
-		d->dispx = d->dispy = 0;
-	}
-
-	d->display.blackframes = 3;
 	d->hint = hint;
 
 /*
