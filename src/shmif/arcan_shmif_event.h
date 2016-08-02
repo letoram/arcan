@@ -828,9 +828,6 @@ typedef union arcan_ioevent_data {
 	} status;
 
 	struct {
-/* local index for translated devices, last bit signifies
- * X- compliant keysyms */
-		uint8_t devid;
 /* pressed or not */
 		uint8_t active;
 /* bitmask of key_modifiers */
