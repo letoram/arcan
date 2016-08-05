@@ -138,24 +138,27 @@ void arcan_frameserver_dropshared(arcan_frameserver* src)
 		arcan_warning("BUG -- arcan_frameserver_free(), munmap failed: %s\n",
 			strerror(errno));
 
-	shm_unlink( src->shm.key );
+	if (src->shm.key){
+		shm_unlink( src->shm.key );
 
 /* step 2, semaphore handles */
-	size_t slen = strlen(src->shm.key) + 1;
-	if (slen > 1){
-		char work[slen];
-		snprintf(work, slen, "%s", src->shm.key);
-		slen -= 2;
-		work[slen] = 'v';
-		sem_unlink(work); sem_close(src->vsync);
-		work[slen] = 'a';
-		sem_unlink(work); sem_close(src->async);
-		work[slen] = 'e';
-		sem_unlink(work); sem_close(src->esync);
+		size_t slen = strlen(src->shm.key) + 1;
+		if (slen > 1){
+			char work[slen];
+			snprintf(work, slen, "%s", src->shm.key);
+			slen -= 2;
+			work[slen] = 'v';
+			sem_unlink(work); sem_close(src->vsync);
+			work[slen] = 'a';
+			sem_unlink(work); sem_close(src->async);
+			work[slen] = 'e';
+			sem_unlink(work); sem_close(src->esync);
+			arcan_mem_free(src->shm.key);
+		}
 	}
-	close(src->shm.handle);
+	if (-1 != src->shm.handle)
+		close(src->shm.handle);
 	src->shm.ptr = NULL;
-	arcan_mem_free(src->shm.key);
 }
 
 void arcan_frameserver_killchild(arcan_frameserver* src)
@@ -1151,8 +1154,12 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 	}
 
-	shmalloc(ctx, false, NULL, -1);
-
+	if (!shmalloc(ctx, false, NULL, -1)){
+		arcan_warning("posix/frameserver.c() shmalloc failed\n");
+		close(sockp[0]);
+		close(sockp[1]);
+		return ARCAN_ERRC_UNACCEPTED_STATE;
+	}
 	ctx->launchedtime = arcan_frametime();
 
 /*

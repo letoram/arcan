@@ -229,7 +229,7 @@ static bool arcan_frameserver_control_chld(arcan_frameserver* src){
 arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst,
 	arcan_event* ev)
 {
-	if (!dst || !ev)
+	if (!dst || !ev || !dst->outqueue.back)
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
 	TRAMP_GUARD(ARCAN_ERRC_UNACCEPTED_STATE, dst);
@@ -613,7 +613,7 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe FFUNC_HEAD
  * format. Audio will keep on buffering until overflow.
  */
 	else if (cmd == FFUNC_READBACK){
-		if (!src->shm.ptr->vready){
+		if (src->shm.ptr && !src->shm.ptr->vready){
 			memcpy(src->vbufs[0], buf, buf_sz);
 			if (src->ofs_audb){
 				memcpy(src->abufs[0], src->audb, src->ofs_audb);
@@ -1013,6 +1013,8 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 	struct frameserver_envp setup)
 {
 	arcan_errc errc;
+	if (!ctx)
+		return;
 
 	if (setup.use_builtin){
 /* "game" (or rather, interactive mode) treats a single pair of
