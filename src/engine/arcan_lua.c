@@ -6765,6 +6765,13 @@ static int targetaccept(lua_State* ctx)
 	);
 	luactx.last_segreq = NULL;
 
+	if (!newref){
+		lua_pushvid(ctx, ARCAN_EID);
+		lua_pushvid(ctx, ARCAN_EID);
+		LUA_ETRACE("accept_target", "couldn't allocate frameserver");
+		return 2;
+	}
+
 	lua_pushvid(ctx, newref->vid);
 	lua_pushvid(ctx, newref->aid);
 	trace_allocation(ctx, "subseg", newref->vid);
