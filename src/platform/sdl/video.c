@@ -102,6 +102,10 @@ void platform_video_synch(uint64_t tick_count, float fract,
 		pre();
 
 	arcan_vobject* vobj = arcan_video_getobject(sdl.vid);
+	if (!vobj){
+		sdl.vid = ARCAN_VIDEO_WORLDID;
+		vobj = arcan_video_getobject(ARCAN_VIDEO_WORLDID);
+	}
 
 	size_t nd;
 	arcan_bench_register_cost( arcan_vint_refresh(fract, &nd) );

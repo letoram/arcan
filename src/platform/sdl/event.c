@@ -508,7 +508,6 @@ void platform_event_process(arcan_evctx* ctx)
 			newevent.io.datatype = EVENT_IDATATYPE_TRANSLATED;
 			newevent.io.devkind  = EVENT_IDEVKIND_KEYBOARD;
 			newevent.io.input.translated.active = true;
-			newevent.io.input.translated.devid = event.key.which;
 			newevent.io.input.translated.keysym = event.key.keysym.sym;
 			newevent.io.input.translated.modifiers = event.key.keysym.mod;
 			newevent.io.input.translated.scancode = event.key.keysym.scancode;
@@ -522,7 +521,6 @@ void platform_event_process(arcan_evctx* ctx)
 			newevent.io.datatype = EVENT_IDATATYPE_TRANSLATED;
 			newevent.io.devkind  = EVENT_IDEVKIND_KEYBOARD;
 			newevent.io.input.translated.active = false;
-			newevent.io.input.translated.devid = event.key.which;
 			newevent.io.input.translated.keysym = event.key.keysym.sym;
 			newevent.io.input.translated.modifiers = event.key.keysym.mod;
 			newevent.io.input.translated.scancode = event.key.keysym.scancode;
