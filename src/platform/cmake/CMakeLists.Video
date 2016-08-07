@@ -46,6 +46,9 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-nvidia")
 	endif()
 
 	find_package(EGL REQUIRED QUIET)
+#
+# Only want the KMS part, not the GBM
+#
 	set(IGNORE_GBM true)
 	find_package(GBMKMS REQUIRED QUIET)
 
