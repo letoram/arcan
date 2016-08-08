@@ -1252,7 +1252,7 @@ static bool check_pasteboard()
 		arcan_tgtevent* tev = &ev.tgt;
 		switch(tev->kind){
 		case TARGET_COMMAND_MESSAGE:
-			shl_pty_write(term.pty, tev->message, strlen(tev->message));
+			tsm_vte_paste(term.vte, tev->message, strlen(tev->message));
 			rv = true;
 		break;
 		case TARGET_COMMAND_EXIT:
@@ -1483,15 +1483,12 @@ static void dump_help()
 		" rows        \t n_rows    \t specify initial surface width\n"
 	  " cols        \t n_cols    \t specify initial surface height\n"
 		" ppcm        \t density   \t specify output display pixel density\n"
-		" bgr         \t rv(0..255)\t background red channel\n"
-		" bgg         \t rv(0..255)\t background green channel\n"
-		" bgb         \t rv(0..255)\t background blue channel\n"
 		" bgalpha     \t rv(0..255)\t background opacity (default: 255, opaque)\n"
-		" fgr         \t rv(0..255)\t foreground red channel\n"
-		" fgg         \t rv(0..255)\t foreground green channel\n"
-		" fgb         \t rv(0..255)\t foreground blue channel\n"
-		" ccr,ccg,ccb \t rv(0..255)\t cursor color\n"
-		" clr,clg,clb \t rv(0..255)\t cursor alternate (locked) state color\n"
+		" bgc         \t r,g,b     \t background color \n"
+		" fgc         \t r,g,b     \t foreground color \n"
+		" ci          \t ind,r,g,b \t override palette at index\n"
+		" cc          \t r,g,b     \t cursor color\n"
+		" cl          \t r,g,b     \t cursor alternate (locked) state color\n"
 		" cursor      \t name      \t set cursor (block, frame, halfblock,\n"
 		"             \t           \t underline, vertical)\n"
 		" login       \t [user]    \t login (optional: user, only works for root)\n"
@@ -1514,6 +1511,12 @@ static void sighuph(int num)
 		term.pty = (shl_pty_close(term.pty), NULL);
 }
 
+static int parse_color(const char* inv, uint8_t outv[4])
+{
+	return scanf(inv, "%"SCNu8",%"SCNu8",%"SCNu8",%"SCNu8,
+		&outv[0], &outv[1], &outv[2], &outv[3]);
+}
+
 int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 {
 	const char* val;
@@ -1525,7 +1528,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		dump_help();
 		return EXIT_FAILURE;
 	}
-	uint8_t ccol[3] = {0, 255, 0};
+	uint8_t ccol[4] = {0, 255, 0};
 	int initw = term.cell_w * term.rows;
 	int inith = term.cell_h * term.cols;
 
@@ -1538,12 +1541,18 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		if (isnan(term.ppcm) || isinf(term.ppcm) || !(term.ppcm > 0))
 			term.ppcm = ARCAN_SHMPAGE_DEFAULT_PPCM;
 	}
+
+/* old color- setting arguments (**r, **g, **b) kept around for legacy */
 	if (arg_lookup(args, "fgr", 0, &val))
 		term.fgc[0] = strtoul(val, NULL, 10);
 	if (arg_lookup(args, "fgg", 0, &val))
 		term.fgc[1] = strtoul(val, NULL, 10);
 	if (arg_lookup(args, "fgb", 0, &val))
 		term.fgc[2] = strtoul(val, NULL, 10);
+	if (arg_lookup(args, "fgc", 0, &val)){
+		if (parse_color(val, ccol) == 3)
+			term.fgc[0] = ccol[0]; term.fgc[1] = ccol[1]; term.fgc[2] = ccol[2];
+	}
 
 	if (arg_lookup(args, "bgr", 0, &val))
 		term.bgc[0] = strtoul(val, NULL, 10);
@@ -1551,6 +1560,10 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		term.bgc[1] = strtoul(val, NULL, 10);
 	if (arg_lookup(args, "bgb", 0, &val))
 		term.bgc[2] = strtoul(val, NULL, 10);
+	if (arg_lookup(args, "bgc", 0, &val)){
+		if (parse_color(val, ccol) == 3)
+			term.bgc[0] = ccol[0]; term.bgc[1] = ccol[1]; term.bgc[2] = ccol[2];
+	}
 
 	bool ccol_upd = false;
 	if (arg_lookup(args, "ccr", 0, &val)){
@@ -1565,6 +1578,8 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		ccol[2] = strtoul(val, NULL, 10);
 		ccol_upd = true;
 	}
+	if (arg_lookup(args, "cc", 0, &val))
+		ccol_upd = parse_color(val, ccol) == 3;
 
 	if (ccol_upd)
 		term.ccol = SHMIF_RGBA(ccol[0], ccol[1], ccol[2], 0xff);
@@ -1582,7 +1597,8 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		ccol[2] = strtoul(val, NULL, 10);
 		ccol_upd = true;
 	}
-
+	if (arg_lookup(args, "cc", 0, &val))
+		ccol_upd = parse_color(val, ccol) == 3;
 	if (ccol_upd)
 		term.clcol = SHMIF_RGBA(ccol[0], ccol[1], ccol[2], 0xff);
 
@@ -1642,6 +1658,12 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	if (arg_lookup(args, "palette", 0, &val))
 		tsm_vte_set_palette(term.vte, val);
 
+	int ind = 0;
+	while(arg_lookup(args, "ci", ind++, &val)){
+		if (4 == parse_color(val, ccol))
+			tsm_vte_set_color(term.vte, ccol[0], &ccol[1]);
+	}
+
 	gen_symtbl();
 	term.acon = *con;
 	term.acon.hints = SHMIF_RHINT_SUBREGION;
@@ -1651,8 +1673,10 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		return EXIT_FAILURE;
 	}
 
-	shmif_pixel bgc = SHMIF_RGBA(term.bgc[0],
-		term.bgc[1], term.bgc[2], term.alpha);
+	shmif_pixel bgc = SHMIF_RGBA(term.bgc[0],term.bgc[1],term.bgc[2], term.alpha);
+	tsm_vte_set_color(term.vte, VTE_COLOR_BACKGROUND, term.bgc);
+	tsm_vte_set_color(term.vte, VTE_COLOR_FOREGROUND, term.fgc);
+
 	for (size_t i = 0; i < initw*inith; i++)
 		term.acon.vidp[i] = bgc;
 	arcan_shmif_signal(&term.acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
@@ -1663,18 +1687,6 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
  * purposes like setting window title, changing palette, and for hackish
  * integration with shell */
 	tsm_set_strhandler(term.vte, str_callback, 256, NULL);
-
-	struct tsm_screen_attr attr = {
-		.fccode = -1,
-		.bccode = -1,
-		.fr = term.fgc[0],
-		.fg = term.fgc[1],
-		.fb = term.fgc[2],
-		.br = term.bgc[0],
-		.bg = term.bgc[1],
-		.bb = term.bgc[2]
-	};
-	tsm_screen_set_def_attr(term.screen, &attr);
 
 /* find /bin/login or /usr/bin/login, keep env. as some may want
  * to forward an ARCAN_CONNPATH in order to draw / control */

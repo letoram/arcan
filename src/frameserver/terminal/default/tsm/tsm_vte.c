@@ -143,6 +143,7 @@ const static int MOUSE_PROTO = MOUSE_SGR | MOUSE_X10 | MOUSE_RXVT;
 #define FLAG_BACKGROUND_COLOR_ERASE_MODE	0x00008000 /* Set background color on erase (bce) */
 #define FLAG_PREPEND_ESCAPE			0x00010000 /* Prepend escape character to next output */
 #define FLAG_TITE_INHIBIT_MODE			0x00020000 /* Prevent switching to alternate screen buffer */
+#define FLAG_PASTE_BRACKET 0x00040000 /* Bracketed Paste mode */
 
 struct vte_saved_state {
 	unsigned int cursor_x;
@@ -184,7 +185,7 @@ struct tsm_vte {
 	int csi_argv[CSI_ARG_MAX];
 	unsigned int csi_flags;
 
-	uint8_t (*palette)[3];
+	uint8_t palette[VTE_COLOR_NUM][3];
 	struct tsm_screen_attr def_attr;
 	struct tsm_screen_attr cattr;
 	unsigned int flags;
@@ -203,114 +204,92 @@ struct tsm_vte {
 	unsigned int alt_cursor_y;
 };
 
-enum vte_color {
-	COLOR_BLACK,
-	COLOR_RED,
-	COLOR_GREEN,
-	COLOR_YELLOW,
-	COLOR_BLUE,
-	COLOR_MAGENTA,
-	COLOR_CYAN,
-	COLOR_LIGHT_GREY,
-	COLOR_DARK_GREY,
-	COLOR_LIGHT_RED,
-	COLOR_LIGHT_GREEN,
-	COLOR_LIGHT_YELLOW,
-	COLOR_LIGHT_BLUE,
-	COLOR_LIGHT_MAGENTA,
-	COLOR_LIGHT_CYAN,
-	COLOR_WHITE,
-	COLOR_FOREGROUND,
-	COLOR_BACKGROUND,
-	COLOR_NUM
+static uint8_t color_palette[VTE_COLOR_NUM][3] = {
+	[VTE_COLOR_BLACK]         = {   0,   0,   0 }, /* black */
+	[VTE_COLOR_RED]           = { 205,   0,   0 }, /* red */
+	[VTE_COLOR_GREEN]         = {   0, 205,   0 }, /* green */
+	[VTE_COLOR_YELLOW]        = { 205, 205,   0 }, /* yellow */
+	[VTE_COLOR_BLUE]          = {   0,   0, 238 }, /* blue */
+	[VTE_COLOR_MAGENTA]       = { 205,   0, 205 }, /* magenta */
+	[VTE_COLOR_CYAN]          = {   0, 205, 205 }, /* cyan */
+	[VTE_COLOR_LIGHT_GREY]    = { 229, 229, 229 }, /* light grey */
+	[VTE_COLOR_DARK_GREY]     = { 127, 127, 127 }, /* dark grey */
+	[VTE_COLOR_LIGHT_RED]     = { 255,   0,   0 }, /* light red */
+	[VTE_COLOR_LIGHT_GREEN]   = {   0, 255,   0 }, /* light green */
+	[VTE_COLOR_LIGHT_YELLOW]  = { 255, 255,   0 }, /* light yellow */
+	[VTE_COLOR_LIGHT_BLUE]    = {  92,  92, 255 }, /* light blue */
+	[VTE_COLOR_LIGHT_MAGENTA] = { 255,   0, 255 }, /* light magenta */
+	[VTE_COLOR_LIGHT_CYAN]    = {   0, 255, 255 }, /* light cyan */
+	[VTE_COLOR_WHITE]         = { 255, 255, 255 }, /* white */
+
+	[VTE_COLOR_FOREGROUND]    = { 229, 229, 229 }, /* light grey */
+	[VTE_COLOR_BACKGROUND]    = {   0,   0,   0 }, /* black */
 };
 
-static uint8_t color_palette[COLOR_NUM][3] = {
-	[COLOR_BLACK]         = {   0,   0,   0 }, /* black */
-	[COLOR_RED]           = { 205,   0,   0 }, /* red */
-	[COLOR_GREEN]         = {   0, 205,   0 }, /* green */
-	[COLOR_YELLOW]        = { 205, 205,   0 }, /* yellow */
-	[COLOR_BLUE]          = {   0,   0, 238 }, /* blue */
-	[COLOR_MAGENTA]       = { 205,   0, 205 }, /* magenta */
-	[COLOR_CYAN]          = {   0, 205, 205 }, /* cyan */
-	[COLOR_LIGHT_GREY]    = { 229, 229, 229 }, /* light grey */
-	[COLOR_DARK_GREY]     = { 127, 127, 127 }, /* dark grey */
-	[COLOR_LIGHT_RED]     = { 255,   0,   0 }, /* light red */
-	[COLOR_LIGHT_GREEN]   = {   0, 255,   0 }, /* light green */
-	[COLOR_LIGHT_YELLOW]  = { 255, 255,   0 }, /* light yellow */
-	[COLOR_LIGHT_BLUE]    = {  92,  92, 255 }, /* light blue */
-	[COLOR_LIGHT_MAGENTA] = { 255,   0, 255 }, /* light magenta */
-	[COLOR_LIGHT_CYAN]    = {   0, 255, 255 }, /* light cyan */
-	[COLOR_WHITE]         = { 255, 255, 255 }, /* white */
+static uint8_t color_palette_solarized[VTE_COLOR_NUM][3] = {
+	[VTE_COLOR_BLACK]         = {   7,  54,  66 }, /* black */
+	[VTE_COLOR_RED]           = { 220,  50,  47 }, /* red */
+	[VTE_COLOR_GREEN]         = { 133, 153,   0 }, /* green */
+	[VTE_COLOR_YELLOW]        = { 181, 137,   0 }, /* yellow */
+	[VTE_COLOR_BLUE]          = {  38, 139, 210 }, /* blue */
+	[VTE_COLOR_MAGENTA]       = { 211,  54, 130 }, /* magenta */
+	[VTE_COLOR_CYAN]          = {  42, 161, 152 }, /* cyan */
+	[VTE_COLOR_LIGHT_GREY]    = { 238, 232, 213 }, /* light grey */
+	[VTE_COLOR_DARK_GREY]     = {   0,  43,  54 }, /* dark grey */
+	[VTE_COLOR_LIGHT_RED]     = { 203,  75,  22 }, /* light red */
+	[VTE_COLOR_LIGHT_GREEN]   = {  88, 110, 117 }, /* light green */
+	[VTE_COLOR_LIGHT_YELLOW]  = { 101, 123, 131 }, /* light yellow */
+	[VTE_COLOR_LIGHT_BLUE]    = { 131, 148, 150 }, /* light blue */
+	[VTE_COLOR_LIGHT_MAGENTA] = { 108, 113, 196 }, /* light magenta */
+	[VTE_COLOR_LIGHT_CYAN]    = { 147, 161, 161 }, /* light cyan */
+	[VTE_COLOR_WHITE]         = { 253, 246, 227 }, /* white */
 
-	[COLOR_FOREGROUND]    = { 229, 229, 229 }, /* light grey */
-	[COLOR_BACKGROUND]    = {   0,   0,   0 }, /* black */
+	[VTE_COLOR_FOREGROUND]    = { 238, 232, 213 }, /* light grey */
+	[VTE_COLOR_BACKGROUND]    = {   7,  54,  66 }, /* black */
 };
 
-static uint8_t color_palette_solarized[COLOR_NUM][3] = {
-	[COLOR_BLACK]         = {   7,  54,  66 }, /* black */
-	[COLOR_RED]           = { 220,  50,  47 }, /* red */
-	[COLOR_GREEN]         = { 133, 153,   0 }, /* green */
-	[COLOR_YELLOW]        = { 181, 137,   0 }, /* yellow */
-	[COLOR_BLUE]          = {  38, 139, 210 }, /* blue */
-	[COLOR_MAGENTA]       = { 211,  54, 130 }, /* magenta */
-	[COLOR_CYAN]          = {  42, 161, 152 }, /* cyan */
-	[COLOR_LIGHT_GREY]    = { 238, 232, 213 }, /* light grey */
-	[COLOR_DARK_GREY]     = {   0,  43,  54 }, /* dark grey */
-	[COLOR_LIGHT_RED]     = { 203,  75,  22 }, /* light red */
-	[COLOR_LIGHT_GREEN]   = {  88, 110, 117 }, /* light green */
-	[COLOR_LIGHT_YELLOW]  = { 101, 123, 131 }, /* light yellow */
-	[COLOR_LIGHT_BLUE]    = { 131, 148, 150 }, /* light blue */
-	[COLOR_LIGHT_MAGENTA] = { 108, 113, 196 }, /* light magenta */
-	[COLOR_LIGHT_CYAN]    = { 147, 161, 161 }, /* light cyan */
-	[COLOR_WHITE]         = { 253, 246, 227 }, /* white */
+static uint8_t color_palette_solarized_black[VTE_COLOR_NUM][3] = {
+	[VTE_COLOR_BLACK]         = {   0,   0,   0 }, /* black */
+	[VTE_COLOR_RED]           = { 220,  50,  47 }, /* red */
+	[VTE_COLOR_GREEN]         = { 133, 153,   0 }, /* green */
+	[VTE_COLOR_YELLOW]        = { 181, 137,   0 }, /* yellow */
+	[VTE_COLOR_BLUE]          = {  38, 139, 210 }, /* blue */
+	[VTE_COLOR_MAGENTA]       = { 211,  54, 130 }, /* magenta */
+	[VTE_COLOR_CYAN]          = {  42, 161, 152 }, /* cyan */
+	[VTE_COLOR_LIGHT_GREY]    = { 238, 232, 213 }, /* light grey */
+	[VTE_COLOR_DARK_GREY]     = {   0,  43,  54 }, /* dark grey */
+	[VTE_COLOR_LIGHT_RED]     = { 203,  75,  22 }, /* light red */
+	[VTE_COLOR_LIGHT_GREEN]   = {  88, 110, 117 }, /* light green */
+	[VTE_COLOR_LIGHT_YELLOW]  = { 101, 123, 131 }, /* light yellow */
+	[VTE_COLOR_LIGHT_BLUE]    = { 131, 148, 150 }, /* light blue */
+	[VTE_COLOR_LIGHT_MAGENTA] = { 108, 113, 196 }, /* light magenta */
+	[VTE_COLOR_LIGHT_CYAN]    = { 147, 161, 161 }, /* light cyan */
+	[VTE_COLOR_WHITE]         = { 253, 246, 227 }, /* white */
 
-	[COLOR_FOREGROUND]    = { 238, 232, 213 }, /* light grey */
-	[COLOR_BACKGROUND]    = {   7,  54,  66 }, /* black */
+	[VTE_COLOR_FOREGROUND]    = { 238, 232, 213 }, /* light grey */
+	[VTE_COLOR_BACKGROUND]    = {   0,   0,   0 }, /* black */
 };
 
-static uint8_t color_palette_solarized_black[COLOR_NUM][3] = {
-	[COLOR_BLACK]         = {   0,   0,   0 }, /* black */
-	[COLOR_RED]           = { 220,  50,  47 }, /* red */
-	[COLOR_GREEN]         = { 133, 153,   0 }, /* green */
-	[COLOR_YELLOW]        = { 181, 137,   0 }, /* yellow */
-	[COLOR_BLUE]          = {  38, 139, 210 }, /* blue */
-	[COLOR_MAGENTA]       = { 211,  54, 130 }, /* magenta */
-	[COLOR_CYAN]          = {  42, 161, 152 }, /* cyan */
-	[COLOR_LIGHT_GREY]    = { 238, 232, 213 }, /* light grey */
-	[COLOR_DARK_GREY]     = {   0,  43,  54 }, /* dark grey */
-	[COLOR_LIGHT_RED]     = { 203,  75,  22 }, /* light red */
-	[COLOR_LIGHT_GREEN]   = {  88, 110, 117 }, /* light green */
-	[COLOR_LIGHT_YELLOW]  = { 101, 123, 131 }, /* light yellow */
-	[COLOR_LIGHT_BLUE]    = { 131, 148, 150 }, /* light blue */
-	[COLOR_LIGHT_MAGENTA] = { 108, 113, 196 }, /* light magenta */
-	[COLOR_LIGHT_CYAN]    = { 147, 161, 161 }, /* light cyan */
-	[COLOR_WHITE]         = { 253, 246, 227 }, /* white */
+static uint8_t color_palette_solarized_white[VTE_COLOR_NUM][3] = {
+	[VTE_COLOR_BLACK]         = {   7,  54,  66 }, /* black */
+	[VTE_COLOR_RED]           = { 220,  50,  47 }, /* red */
+	[VTE_COLOR_GREEN]         = { 133, 153,   0 }, /* green */
+	[VTE_COLOR_YELLOW]        = { 181, 137,   0 }, /* yellow */
+	[VTE_COLOR_BLUE]          = {  38, 139, 210 }, /* blue */
+	[VTE_COLOR_MAGENTA]       = { 211,  54, 130 }, /* magenta */
+	[VTE_COLOR_CYAN]          = {  42, 161, 152 }, /* cyan */
+	[VTE_COLOR_LIGHT_GREY]    = { 238, 232, 213 }, /* light grey */
+	[VTE_COLOR_DARK_GREY]     = {   0,  43,  54 }, /* dark grey */
+	[VTE_COLOR_LIGHT_RED]     = { 203,  75,  22 }, /* light red */
+	[VTE_COLOR_LIGHT_GREEN]   = {  88, 110, 117 }, /* light green */
+	[VTE_COLOR_LIGHT_YELLOW]  = { 101, 123, 131 }, /* light yellow */
+	[VTE_COLOR_LIGHT_BLUE]    = { 131, 148, 150 }, /* light blue */
+	[VTE_COLOR_LIGHT_MAGENTA] = { 108, 113, 196 }, /* light magenta */
+	[VTE_COLOR_LIGHT_CYAN]    = { 147, 161, 161 }, /* light cyan */
+	[VTE_COLOR_WHITE]         = { 253, 246, 227 }, /* white */
 
-	[COLOR_FOREGROUND]    = { 238, 232, 213 }, /* light grey */
-	[COLOR_BACKGROUND]    = {   0,   0,   0 }, /* black */
-};
-
-static uint8_t color_palette_solarized_white[COLOR_NUM][3] = {
-	[COLOR_BLACK]         = {   7,  54,  66 }, /* black */
-	[COLOR_RED]           = { 220,  50,  47 }, /* red */
-	[COLOR_GREEN]         = { 133, 153,   0 }, /* green */
-	[COLOR_YELLOW]        = { 181, 137,   0 }, /* yellow */
-	[COLOR_BLUE]          = {  38, 139, 210 }, /* blue */
-	[COLOR_MAGENTA]       = { 211,  54, 130 }, /* magenta */
-	[COLOR_CYAN]          = {  42, 161, 152 }, /* cyan */
-	[COLOR_LIGHT_GREY]    = { 238, 232, 213 }, /* light grey */
-	[COLOR_DARK_GREY]     = {   0,  43,  54 }, /* dark grey */
-	[COLOR_LIGHT_RED]     = { 203,  75,  22 }, /* light red */
-	[COLOR_LIGHT_GREEN]   = {  88, 110, 117 }, /* light green */
-	[COLOR_LIGHT_YELLOW]  = { 101, 123, 131 }, /* light yellow */
-	[COLOR_LIGHT_BLUE]    = { 131, 148, 150 }, /* light blue */
-	[COLOR_LIGHT_MAGENTA] = { 108, 113, 196 }, /* light magenta */
-	[COLOR_LIGHT_CYAN]    = { 147, 161, 161 }, /* light cyan */
-	[COLOR_WHITE]         = { 253, 246, 227 }, /* white */
-
-	[COLOR_FOREGROUND]    = {   7,  54,  66 }, /* black */
-	[COLOR_BACKGROUND]    = { 238, 232, 213 }, /* light grey */
+	[VTE_COLOR_FOREGROUND]    = {   7,  54,  66 }, /* black */
+	[VTE_COLOR_BACKGROUND]    = { 238, 232, 213 }, /* light grey */
 };
 
 static uint8_t (*get_palette(struct tsm_vte *vte))[3]
@@ -345,8 +324,8 @@ static void to_rgb(struct tsm_vte *vte, struct tsm_screen_attr *attr)
 		/* bold causes light colors */
 		if (attr->bold && code < 8)
 			code += 8;
-		if (code >= COLOR_NUM)
-			code = COLOR_FOREGROUND;
+		if (code >= VTE_COLOR_NUM)
+			code = VTE_COLOR_FOREGROUND;
 
 		attr->fr = vte->palette[code][0];
 		attr->fg = vte->palette[code][1];
@@ -355,8 +334,8 @@ static void to_rgb(struct tsm_vte *vte, struct tsm_screen_attr *attr)
 
 	code = attr->bccode;
 	if (code >= 0) {
-		if (code >= COLOR_NUM)
-			code = COLOR_BACKGROUND;
+		if (code >= VTE_COLOR_NUM)
+			code = VTE_COLOR_BACKGROUND;
 
 		attr->br = vte->palette[code][0];
 		attr->bg = vte->palette[code][1];
@@ -404,9 +383,10 @@ int tsm_vte_new(struct tsm_vte **out, struct tsm_screen *con,
 	vte->con = con;
 	vte->write_cb = write_cb;
 	vte->data = data;
-	vte->palette = get_palette(vte);
-	vte->def_attr.fccode = COLOR_FOREGROUND;
-	vte->def_attr.bccode = COLOR_BACKGROUND;
+	uint8_t* palette = (uint8_t*) get_palette(vte);
+	memcpy(vte->palette, palette, 3 * VTE_COLOR_NUM);
+	vte->def_attr.fccode = VTE_COLOR_FOREGROUND;
+	vte->def_attr.bccode = VTE_COLOR_BACKGROUND;
 	to_rgb(vte, &vte->def_attr);
 
 	ret = tsm_utf8_mach_new(&vte->mach);
@@ -451,15 +431,30 @@ void tsm_vte_unref(struct tsm_vte *vte)
 }
 
 SHL_EXPORT
-int tsm_vte_set_palette(struct tsm_vte *vte, const char *palette)
+void tsm_vte_set_color(struct tsm_vte *vte,
+	enum vte_color ind, const uint8_t rgb[3])
+{
+	if (ind >= VTE_COLOR_NUM || ind < 0)
+		return;
+
+	vte->palette[ind][0] = rgb[0];
+	vte->palette[ind][1] = rgb[1];
+	vte->palette[ind][2] = rgb[2];
+
+	to_rgb(vte, &vte->def_attr);
+	to_rgb(vte, &vte->cattr);
+}
+
+SHL_EXPORT
+int tsm_vte_set_palette(struct tsm_vte *vte, const char *pstr)
 {
 	char *tmp = NULL;
 
 	if (!vte)
 		return -EINVAL;
 
-	if (palette) {
-		tmp = strdup(palette);
+	if (pstr) {
+		tmp = strdup(pstr);
 		if (!tmp)
 			return -ENOMEM;
 	}
@@ -467,9 +462,10 @@ int tsm_vte_set_palette(struct tsm_vte *vte, const char *palette)
 	free(vte->palette_name);
 	vte->palette_name = tmp;
 
-	vte->palette = get_palette(vte);
-	vte->def_attr.fccode = COLOR_FOREGROUND;
-	vte->def_attr.bccode = COLOR_BACKGROUND;
+	uint8_t* palette = (uint8_t*) get_palette(vte);
+	memcpy(vte->palette, palette, 3 * VTE_COLOR_NUM);
+	vte->def_attr.fccode = VTE_COLOR_FOREGROUND;
+	vte->def_attr.bccode = VTE_COLOR_BACKGROUND;
 
 	to_rgb(vte, &vte->def_attr);
 	memcpy(&vte->cattr, &vte->def_attr, sizeof(vte->cattr));
@@ -692,6 +688,20 @@ static void mouse_wr(struct tsm_vte *vte,
 
 	if (nw && nw < 32)
 		vte_write(vte, buf, nw);
+}
+
+SHL_EXPORT
+void tsm_vte_paste(struct tsm_vte *vte, const char *u8, size_t len)
+{
+	if (vte->flags & FLAG_PASTE_BRACKET){
+		vte_write(vte, "\e[200~", 6);
+	}
+
+	vte_write(vte, u8, len);
+
+	if (vte->flags & FLAG_PASTE_BRACKET){
+		vte_write(vte, "\e[201~", 6);
+	}
 }
 
 SHL_EXPORT
@@ -1183,106 +1193,106 @@ static void csi_attribute(struct tsm_vte *vte)
 			vte->cattr.inverse = 0;
 			break;
 		case 30:
-			vte->cattr.fccode = COLOR_BLACK;
+			vte->cattr.fccode = VTE_COLOR_BLACK;
 			break;
 		case 31:
-			vte->cattr.fccode = COLOR_RED;
+			vte->cattr.fccode = VTE_COLOR_RED;
 			break;
 		case 32:
-			vte->cattr.fccode = COLOR_GREEN;
+			vte->cattr.fccode = VTE_COLOR_GREEN;
 			break;
 		case 33:
-			vte->cattr.fccode = COLOR_YELLOW;
+			vte->cattr.fccode = VTE_COLOR_YELLOW;
 			break;
 		case 34:
-			vte->cattr.fccode = COLOR_BLUE;
+			vte->cattr.fccode = VTE_COLOR_BLUE;
 			break;
 		case 35:
-			vte->cattr.fccode = COLOR_MAGENTA;
+			vte->cattr.fccode = VTE_COLOR_MAGENTA;
 			break;
 		case 36:
-			vte->cattr.fccode = COLOR_CYAN;
+			vte->cattr.fccode = VTE_COLOR_CYAN;
 			break;
 		case 37:
-			vte->cattr.fccode = COLOR_LIGHT_GREY;
+			vte->cattr.fccode = VTE_COLOR_LIGHT_GREY;
 			break;
 		case 39:
 			copy_fcolor(&vte->cattr, &vte->def_attr);
 			break;
 		case 40:
-			vte->cattr.bccode = COLOR_BLACK;
+			vte->cattr.bccode = VTE_COLOR_BLACK;
 			break;
 		case 41:
-			vte->cattr.bccode = COLOR_RED;
+			vte->cattr.bccode = VTE_COLOR_RED;
 			break;
 		case 42:
-			vte->cattr.bccode = COLOR_GREEN;
+			vte->cattr.bccode = VTE_COLOR_GREEN;
 			break;
 		case 43:
-			vte->cattr.bccode = COLOR_YELLOW;
+			vte->cattr.bccode = VTE_COLOR_YELLOW;
 			break;
 		case 44:
-			vte->cattr.bccode = COLOR_BLUE;
+			vte->cattr.bccode = VTE_COLOR_BLUE;
 			break;
 		case 45:
-			vte->cattr.bccode = COLOR_MAGENTA;
+			vte->cattr.bccode = VTE_COLOR_MAGENTA;
 			break;
 		case 46:
-			vte->cattr.bccode = COLOR_CYAN;
+			vte->cattr.bccode = VTE_COLOR_CYAN;
 			break;
 		case 47:
-			vte->cattr.bccode = COLOR_LIGHT_GREY;
+			vte->cattr.bccode = VTE_COLOR_LIGHT_GREY;
 			break;
 		case 49:
 			copy_bcolor(&vte->cattr, &vte->def_attr);
 			break;
 		case 90:
-			vte->cattr.fccode = COLOR_DARK_GREY;
+			vte->cattr.fccode = VTE_COLOR_DARK_GREY;
 			break;
 		case 91:
-			vte->cattr.fccode = COLOR_LIGHT_RED;
+			vte->cattr.fccode = VTE_COLOR_LIGHT_RED;
 			break;
 		case 92:
-			vte->cattr.fccode = COLOR_LIGHT_GREEN;
+			vte->cattr.fccode = VTE_COLOR_LIGHT_GREEN;
 			break;
 		case 93:
-			vte->cattr.fccode = COLOR_LIGHT_YELLOW;
+			vte->cattr.fccode = VTE_COLOR_LIGHT_YELLOW;
 			break;
 		case 94:
-			vte->cattr.fccode = COLOR_LIGHT_BLUE;
+			vte->cattr.fccode = VTE_COLOR_LIGHT_BLUE;
 			break;
 		case 95:
-			vte->cattr.fccode = COLOR_LIGHT_MAGENTA;
+			vte->cattr.fccode = VTE_COLOR_LIGHT_MAGENTA;
 			break;
 		case 96:
-			vte->cattr.fccode = COLOR_LIGHT_CYAN;
+			vte->cattr.fccode = VTE_COLOR_LIGHT_CYAN;
 			break;
 		case 97:
-			vte->cattr.fccode = COLOR_WHITE;
+			vte->cattr.fccode = VTE_COLOR_WHITE;
 			break;
 		case 100:
-			vte->cattr.bccode = COLOR_DARK_GREY;
+			vte->cattr.bccode = VTE_COLOR_DARK_GREY;
 			break;
 		case 101:
-			vte->cattr.bccode = COLOR_LIGHT_RED;
+			vte->cattr.bccode = VTE_COLOR_LIGHT_RED;
 			break;
 		case 102:
-			vte->cattr.bccode = COLOR_LIGHT_GREEN;
+			vte->cattr.bccode = VTE_COLOR_LIGHT_GREEN;
 			break;
 		case 103:
-			vte->cattr.bccode = COLOR_LIGHT_YELLOW;
+			vte->cattr.bccode = VTE_COLOR_LIGHT_YELLOW;
 			break;
 		case 104:
-			vte->cattr.bccode = COLOR_LIGHT_BLUE;
+			vte->cattr.bccode = VTE_COLOR_LIGHT_BLUE;
 			break;
 		case 105:
-			vte->cattr.bccode = COLOR_LIGHT_MAGENTA;
+			vte->cattr.bccode = VTE_COLOR_LIGHT_MAGENTA;
 			break;
 		case 106:
-			vte->cattr.bccode = COLOR_LIGHT_CYAN;
+			vte->cattr.bccode = VTE_COLOR_LIGHT_CYAN;
 			break;
 		case 107:
-			vte->cattr.bccode = COLOR_WHITE;
+			vte->cattr.bccode = VTE_COLOR_WHITE;
 			break;
 		case 38:
 			/* fallthrough */
@@ -1622,6 +1632,9 @@ static void csi_mode(struct tsm_vte *vte, bool set)
 				tsm_screen_move_to(vte->con, vte->alt_cursor_x,
 						   vte->alt_cursor_y);
 			}
+			continue;
+		case 2004: /* Bracketed paste mode, pref.postf.paste with \e[200~ \e[201~ */
+			set_reset_flag(vte, set, FLAG_PASTE_BRACKET);
 			continue;
 		default:
 			llog_debug(vte, "unknown DEC %set-Mode %d",
