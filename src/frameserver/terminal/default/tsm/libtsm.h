@@ -301,6 +301,28 @@ enum tsm_vte_modifier {
 	TSM_LOGO_MASK		= (1 << 4),
 };
 
+enum vte_color {
+	VTE_COLOR_BLACK = 0,
+	VTE_COLOR_RED,
+	VTE_COLOR_GREEN,
+	VTE_COLOR_YELLOW,
+	VTE_COLOR_BLUE,
+	VTE_COLOR_MAGENTA,
+	VTE_COLOR_CYAN,
+	VTE_COLOR_LIGHT_GREY,
+	VTE_COLOR_DARK_GREY,
+	VTE_COLOR_LIGHT_RED,
+	VTE_COLOR_LIGHT_GREEN,
+	VTE_COLOR_LIGHT_YELLOW,
+	VTE_COLOR_LIGHT_BLUE,
+	VTE_COLOR_LIGHT_MAGENTA,
+	VTE_COLOR_LIGHT_CYAN,
+	VTE_COLOR_WHITE,
+	VTE_COLOR_FOREGROUND,
+	VTE_COLOR_BACKGROUND,
+	VTE_COLOR_NUM
+};
+
 /* keep in sync with TSM_INPUT_INVALID */
 #define TSM_VTE_INVALID 0xffffffff
 
@@ -327,6 +349,8 @@ void tsm_vte_ref(struct tsm_vte *vte);
 void tsm_vte_unref(struct tsm_vte *vte);
 
 int tsm_vte_set_palette(struct tsm_vte *vte, const char *palette);
+void tsm_vte_set_color(struct tsm_vte *vte,
+	enum vte_color ind, const uint8_t rgb[3]);
 
 void tsm_vte_reset(struct tsm_vte *vte);
 void tsm_vte_hard_reset(struct tsm_vte *vte);
@@ -336,6 +360,7 @@ bool tsm_vte_handle_keyboard(struct tsm_vte *vte, uint32_t keysym,
 			     uint32_t unicode);
 void tsm_vte_mouse_button(struct tsm_vte *vte, int index, bool press, int mods);
 void tsm_vte_mouse_motion(struct tsm_vte *vte, int x, int y, int mods);
+void tsm_vte_paste(struct tsm_vte *vte, const char *u8, size_t len);
 
 /** @} */
 
