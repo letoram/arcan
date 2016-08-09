@@ -9,7 +9,8 @@ set (MINOR_VERSION 1 )
 set (PATCH_LEVEL 5 )
 set (VERSION ${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_LEVEL})
 
-if (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
+if (${CMAKE_SYSTEM_NAME} MATCHES "BSD" OR ${CMAKE_SYSTEM_NAME} MATCHES
+	"DragonFly")
 	add_definitions( -DLUA_USE_POSIX )
 	set (LIBRARIES
 		m
@@ -60,4 +61,3 @@ set (SOURCES
 
 add_library(lua51 STATIC ${SOURCES})
 target_link_libraries(lua51 ${LIBRARIES})
-

@@ -54,7 +54,7 @@ else()
 	set (SHMIF_EXT_SOURCES "${ASD}/shmif/stub/stub.c")
 endif()
 
-if (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
+if (BSD_BUILD)
 	set(SHMIF_PLATFORM
 		${ASD}/platform/posix/warning.c
 		${ASD}/platform/posix/time.c

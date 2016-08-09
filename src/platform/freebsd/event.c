@@ -401,12 +401,18 @@ void platform_event_process(arcan_evctx* ctx)
 		{ .fd = evctx.mouse.fd, .events = POLLIN }
 	};
 
-	while (poll(infd, 2, 0) > 0){
-		if (infd[0].revents == POLLIN)
+	bool okst = true;
+	while (okst && poll(infd, 2, 0) > 0){
+		okst = false;
+		if (infd[0].revents == POLLIN){
 			do_keyb(ctx, &evctx.keyb);
+			okst = true;
+		};
 
-		if (infd[1].revents == POLLIN)
+		if (infd[1].revents == POLLIN){
 			do_mouse(ctx, &evctx.mouse);
+			okst = true;
+		}
 	}
 }
 
@@ -480,6 +486,19 @@ void platform_event_init(arcan_evctx* ctx)
  * when testing from a remote shell */
 	evctx.keyb.fd = STDIN_FILENO;
 
+/* 7-bit scancode, 7 bit + MSB as active.  problem is that we need to do the
+ * translation ourselves because the driver can't output both scancodes and
+ * translated values, which would break cases where we need to forward scancode,
+ * like in VMs
+ */
+	if (getenv("ARCAN_INPUT_KEYMAPS")){
+		load_keymap(&evctx.keyb, getenv("ARCAN_INPUT_KEYMAPS"));
+	}
+	else{
+		arcan_fatal("platform/freebsd: no keymap defined! set "
+			"ARCAN_INPUT_KEYMAPS=/usr/share/syscons/keymap/???.kbd");
+	}
+
 	if (getenv("ARCAN_INPUT_IGNORETTY")){
 		evctx.tty = -1;
 		return;
@@ -496,15 +515,6 @@ void platform_event_init(arcan_evctx* ctx)
 	raw.c_iflag &= ~(BRKINT);
 	raw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
 	tcsetattr(evctx.tty, TCSAFLUSH, &raw);
-
-/* 7-bit scancode, 7 bit + MSB as active.  problem is that we need to do the
- * translation ourselves because the driver can't output both scancodes and
- * translated values, which would break cases where we need to forward scancode,
- * like in VMs
- */
-	if (getenv("ARCAN_INPUT_KEYMAPS")){
-		load_keymap(&evctx.keyb, getenv("ARCAN_INPUT_KEYMAPS"));
-	}
 
 	evctx.mouse.fd = open("/dev/sysmouse", O_RDWR);
 	if (-1 != evctx.mouse.fd){

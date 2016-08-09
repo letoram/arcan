@@ -335,7 +335,9 @@ include(${PLATFORM_ROOT}/cmake/CMakeLists.AGP)
 include(${PLATFORM_ROOT}/cmake/CMakeLists.Video)
 set(EXTMAKE_CMD make)
 
-if (${CMAKE_SYSTEM_NAME} MATCHES "BSD")
+# for the statically- linked external dependencies, we need to hint where
+# we need the gmake rather than make system
+if (${CMAKE_SYSTEM_NAME} MATCHES "BSD" OR ${CMAKE_SYSTEM_NAME}} MATCHES "DragonFly")
 set(BSD_BUILD TRUE)
 set(EXTMAKE_CMD gmake)
 endif()
@@ -474,8 +476,8 @@ unset(PFT)
 # ,fsrv, shmif]_SOURCES, add a global definition for PLATFORM_HEADER add any
 # OS- specific definitions to ARCAN_LIBRARIES, set OS_DYLIB_EXTENSION
 #
-if (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
-	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/CMakeLists.FreeBSD)
+if (BSD_BUILD)
+	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/CMakeLists.BSD)
 	set(ENGINE_BUILDTAG ${ENGINE_BUILDTAG}-fbsd)
 	set(PKGCONFIG_DIR libdata/pkgconfig)
 
@@ -495,7 +497,7 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 	set(PKGCONFIG_DIR lib/pkgconfig)
 
 else()
-	message(FATAL_ERROR "${CLB_RED}Unsupported OS detected, abandon ship!${CL_RST}")
+	message(FATAL_ERROR "${CLB_RED}Unsupported OS(${CMAKE_SYSTEM_NAME}) detected, abandon ship!${CL_RST}")
 endif()
 
 amsg("\n${CL_WHT}---- Configuration results:${CL_RST}")
