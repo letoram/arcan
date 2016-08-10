@@ -470,8 +470,7 @@ void arcan_vint_applyhint(arcan_vobject* src, enum blitting_hint hint,
 		txout[6] = txin[0];
 		txout[7] = txin[1];
 	}
-
-	if (hint & HINT_ROTATE_CCW_90){
+	else if (hint & HINT_ROTATE_CCW_90){
 		txout[0] = txin[6];
 		txout[1] = txin[7];
 		txout[2] = txin[0];
@@ -483,14 +482,16 @@ void arcan_vint_applyhint(arcan_vobject* src, enum blitting_hint hint,
 	}
 
 	if (hint & HINT_YFLIP){
-		txout[0] = txout[6];
-		txout[1] = txout[7];
-		txout[2] = txout[4];
-		txout[3] = txout[5];
-		txout[4] = txout[2];
-		txout[5] = txout[3];
-		txout[6] = txout[0];
-		txout[7] = txout[1];
+		float flipb[8];
+		memcpy(flipb, txout, sizeof(float) * 8);
+		txout[0] = flipb[6];
+		txout[1] = flipb[7];
+		txout[2] = flipb[4];
+		txout[3] = flipb[5];
+		txout[4] = flipb[2];
+		txout[5] = flipb[3];
+		txout[6] = flipb[0];
+		txout[7] = flipb[1];
 	}
 
 	if (hint & HINT_CROP){
