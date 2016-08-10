@@ -128,6 +128,10 @@ void platform_video_synch(uint64_t tick_count, float fract,
 	agp_draw_vobj(sdl.drawx, sdl.drawy, sdl.draww, sdl.drawh, sdl.txcos, NULL);
 	arcan_vint_drawcursor(false);
 
+/*
+ * NOTE: heuristic fix-point for direct- mapping dedicated source for
+ * low latency here when we fix up internal syncing paths.
+ */
 	SDL_GL_SwapBuffers();
 
 /* With dynamic, we run an artificial vsync if the time between swaps
@@ -242,22 +246,36 @@ bool platform_video_map_display(arcan_vobj_id id, platform_display_id disp,
 		return false;
 
 	arcan_vobject* vobj = arcan_video_getobject(id);
+	bool isrt = arcan_vint_findrt(vobj) != NULL;
+
 	if (vobj && vobj->vstore->txmapped != TXSTATE_TEX2D){
 		arcan_warning("platform_video_map_display(), attempted to map a "
 			"video object with an invalid backing store");
 		return false;
 	}
 
-	arcan_vint_applyhint(vobj, hint,
-			vobj->txcos ? vobj->txcos :
-			(vobj->vstore == arcan_vint_world() ?
-				arcan_video_display.mirror_txcos :
-				arcan_video_display.default_txcos),
-		sdl.txcos,
+/*
+ * The constant problem of what are we drawing and how are we drawing it
+ * (rts were initially used for 3d models, vobjs were drawin with inverted ys
+ * and world normally etc. a huge mess)
+ */
+	if (isrt){
+		arcan_vint_applyhint(vobj, hint, vobj->txcos ? vobj->txcos :
+			arcan_video_display.mirror_txcos, sdl.txcos,
+			&sdl.drawx, &sdl.drawy,
+			&sdl.draww, &sdl.drawh,
+			&sdl.blackframes);
+	}
+/* direct VOBJ mapping, prepared for indirect drawying so flip yhint */
+	else {
+		arcan_vint_applyhint(vobj,
+		(hint & HINT_YFLIP) ? (hint & (~HINT_YFLIP)) : (hint | HINT_YFLIP),
+		vobj->txcos ? vobj->txcos : arcan_video_display.default_txcos, sdl.txcos,
 		&sdl.drawx, &sdl.drawy,
 		&sdl.draww, &sdl.drawh,
-		&sdl.blackframes
-	);
+		&sdl.blackframes);
+	}
+
 	sdl.vid = id;
 	return true;
 }
