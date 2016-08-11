@@ -518,10 +518,19 @@ const char* platform_event_devlabel(int devid)
 static void map_window(struct arcan_shmif_cont* seg, arcan_evctx* ctx,
 	int kind, const char* key)
 {
+
+/* encoder should really be mapped as an avfeed- type frameserver,
+ * maintain it in a 'pending' slot, enqueue some notification and
+ * let alloc_target() handle it */
 	if (kind == SEGID_ENCODER){
 		arcan_warning("(FIXME) SEGID_ENCODER type not yet supported.\n");
 		return;
 	}
+
+/*
+ * we encode all our IDs (except clipboard) with the internal VID and
+ * connected to a rendertarget slot, so re-use that fact.
+ */
 
 	struct display* base = NULL;
 	size_t i = 0;
