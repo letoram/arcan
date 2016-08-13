@@ -224,7 +224,20 @@ pid_t shl_pty_open(struct shl_pty **out,
 	pty->fn_input = fn_input;
 	pty->fn_input_data = fn_input_data;
 
+#if defined(__APPLE__) || defined(__linux__)
 	fd = posix_openpt(O_RDWR | O_NOCTTY | O_CLOEXEC | O_NONBLOCK);
+#else
+	fd = posix_openpt(O_RDWR | O_NOCTTY);
+	if (fd != -1){
+		int flags = fcntl(fd, F_GETFL);
+		if (-1 != flags)
+			fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+		flags = fcntl(fd, F_GETFD);
+		if (-1 != flags)
+			fcntl(fd, F_SETFD, flags | O_CLOEXEC);
+	}
+#endif
+
 	if (fd < 0)
 		return -errno;
 

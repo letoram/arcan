@@ -434,7 +434,8 @@ SHL_EXPORT
 void tsm_vte_set_color(struct tsm_vte *vte,
 	enum vte_color ind, const uint8_t rgb[3])
 {
-	if (ind >= VTE_COLOR_NUM || ind < 0)
+
+	if (ind >= VTE_COLOR_NUM || (int)ind < 0)
 		return;
 
 	vte->palette[ind][0] = rgb[0];

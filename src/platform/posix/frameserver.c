@@ -793,7 +793,7 @@ send_key:
  * small chance here that a malicious client could manipulate the descriptor in
  * such a way as to block, retry a short while.
  */
-	int flags = fcntl(tgt->dpipe, F_GETFL, 0);
+	int flags = fcntl(tgt->dpipe, F_GETFL);
 	fcntl(tgt->dpipe, F_SETFL, flags | O_NONBLOCK);
 	while (rtc && ntw){
 		ssize_t rc = write(tgt->dpipe, tgt->sockinbuf + wofs, ntw);

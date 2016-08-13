@@ -454,8 +454,6 @@ static void update_screensize(bool clear)
 		shl_pty_resize(term.pty, cols, rows);
 		tsm_screen_resize(term.screen, cols, rows);
 	}
-	else
-		return;
 
 	while (atomic_load(&term.acon.addr->vready))
 		;
