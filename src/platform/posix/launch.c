@@ -41,7 +41,7 @@ static char* add_interpose(struct arcan_strarr* libs, struct arcan_strarr* envv)
 {
 	char* interp = NULL;
 	size_t lib_sz = 0;
-#ifdef DARWIN
+#ifdef __APPLE__
 	char basestr[] = "DYLD_INSERT_LIBRARIES=";
 #else
 	char basestr[] = "LD_PRELOAD=";
