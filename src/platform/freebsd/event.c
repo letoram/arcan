@@ -21,6 +21,8 @@
 
 #include <termios.h>
 #include <ctype.h>
+#include <signal.h>
+#include <errno.h>
 
 #include "arcan_shmif.h"
 #include "arcan_math.h"
@@ -31,9 +33,10 @@
  * TODO:
  * 1. handle multiple keyboards with individual maps
  *  . keyboard repeat tracking (emit release), modifier subtable
- * 2. mouse devices
- * 3. trackpad / touch devices (synaptic?)
- * 4. joystick devices w/ analog filtering
+ *    downside is that we essentially need to implement usbhid
+ * 2. trackpad / touch devices (synaptic?)
+ * 3. joystick devices w/ analog filtering
+ * 4. filtering for mouse axes too
  * 5. device hotplug detection
  * 6. vtswitching (can be copied from evdev)
  */
@@ -89,22 +92,38 @@ struct devnode {
 		} keyb;
 		struct {
 			int base[2];
-			int mode;
+			int buttons;
+			int mx, my;
+			mousemode_t mode;
+			mousehw_t hw;
 		} mouse;
 	};
 };
 
 static struct {
 	struct termios ttystate;
-	struct devnode keyb, mouse;
+	struct devnode keyb, mdev;
 	int tty;
-} evctx;
+	int sigpipe[2];
+} evctx = {
+	.tty = -1,
+	.sigpipe = {-1, -1}
+};
 
 static char* accents[] = {
 	"dgra", "dacu", "dcir", "dtil", "dmac", "dbre", "ddot", "duml",
 	"ddia", "dsla", "drin", "dced", "dapo", "ddac", "dogo", "dcar",
 	NULL
 };
+
+static const char vt_trm = 'z';
+static void sigusr_term(int sign, siginfo_t* info, void* ctx)
+{
+	int s_errn = errno;
+	if (write(evctx.sigpipe[1], &vt_trm, 1))
+		;
+	errno = s_errn;
+}
 
 static bool next_tok(char* str, char** tok, size_t* cofs, size_t* out)
 {
@@ -143,10 +162,11 @@ static struct bsdk_ent bsdk_lut[] = {
 	{.tok = "nop"},
 	{.key =  0, .tok = "nul"}, {.key =  1, .tok = "soh"}, {.key =  2, .tok = "stx"},
 	{.key =  3, .tok = "etx"}, {.key =  4, .tok = "eot"}, {.key =  5, .tok = "enq"},
-	{.key =  6, .tok = "ack"}, {.key =  7, .tok = "bel"}, {.key =  8, .tok =  "bs"},
-	{.key =  9, .tok = "tab"}, {.key = 10, .tok =  "lf"}, {.key = 11, .tok =  "vt"},
+	{.key =  6, .tok = "ack"}, {.key =  7, .tok = "bel"}, {.key =  8, .tok =  "bs", .sym = 8},
+	{.key =  9, .tok = "ht", .sym = 9}, {.key = 10, .tok =  "lf"}, {.key = 11, .tok =  "vt"},
 	{.key = 12, .tok =  "ff"}, {.key = 13, .tok =  "cr"}, {.key = 14, .tok =  "so"},
-	{.key = 15, .tok =  "si"}, {.key = 16, .tok = "dle"}, {.key = 17, .tok = "dc1"},
+	{.key = 15, .tok =  "si"},
+	{.key = 16, .tok = "dle"}, {.key = 17, .tok = "dc1"},
 	{.key = 18, .tok = "dc2"}, {.key = 19, .tok = "dc3"}, {.key = 20, .tok = "dc4"},
 	{.key = 21, .tok = "nak"}, {.key = 22, .tok = "syn"}, {.key = 23, .tok = "etb"},
 	{.key = 24, .tok = "can"}, {.key = 25, .tok =  "em"}, {.key = 26, .tok = "sub"},
@@ -336,15 +356,159 @@ static void do_touchp(arcan_evctx* ctx, struct devnode* node)
 /* see man psm and the MOUSE_SYN_GETHWINFO etc. for synaptics */
 }
 
+static inline void check_btn(arcan_evctx* ctx,
+	int oldstate, int newstate, int fl, int ind)
+{
+	if (!((oldstate & fl) ^ (newstate & fl)))
+		return;
+
+	arcan_event ev = {
+	.category = EVENT_IO,
+	.io = {
+		.kind = EVENT_IO_BUTTON,
+		.subid = MBTN_LEFT_IND + ind,
+		.datatype = EVENT_IDATATYPE_DIGITAL,
+			.devkind = EVENT_IDEVKIND_MOUSE,
+			.input = { .digital = { .active = (oldstate & fl) } }
+	}};
+	arcan_event_enqueue(ctx, &ev);
+}
+
+static void wheel_ev(arcan_evctx* ctx, int idofs, int val)
+{
+	arcan_event aev = {
+		.category = EVENT_IO,
+		.io = {
+			.kind = EVENT_IO_AXIS_MOVE,
+			.datatype = EVENT_IDATATYPE_ANALOG,
+			.devkind = EVENT_IDEVKIND_MOUSE,
+			.subid = 2 + idofs,
+			.input = {
+				.analog = {
+					.nvalues = 1,
+					.gotrel = true,
+					.axisval = {val}
+				}
+			},
+		},
+	};
+	arcan_event_enqueue(ctx, &aev);
+
+	arcan_event dev = {
+		.category = EVENT_IO,
+			.io = {
+				.kind = EVENT_IO_BUTTON,
+/* sysmouse descriptions says add byte 6, 7 and treat as signed but
+ * from the mice I had to test with, down triggered 127 and up triggered 1 */
+				.subid = MBTN_WHEEL_UP_IND + (val > 0 &&
+					val <= 126 ? 1 : 0) + (idofs * 2),
+				.datatype = EVENT_IDATATYPE_DIGITAL,
+				.devkind = EVENT_IDEVKIND_MOUSE,
+				.input = {
+					.digital = {
+						.active = true
+					}
+				}
+			}
+	};
+	arcan_event_enqueue(ctx, &dev);
+	dev.io.input.digital.active = false;
+	arcan_event_enqueue(ctx, &dev);
+}
+
 static void do_mouse(arcan_evctx* ctx, struct devnode* node)
 {
-/* mode 0(byte1..6), 1:
- * 8 bytes:
- * byte 1:  bit 2 (LMB, 0 press), 1 (MMB), 0 (LMB)
- * byte 2, 4: (add together) for int16_t range (x)
- * byte 3, 5: (add together) for int16_t range (y)
- * byte 6, 7: (add lower 7 bits together) for Zv (so btn 4/5)
- * byte 8: (lower 7 bits, button 4..10) */
+	size_t pkt_sz = node->mouse.mode.packetsize;
+	uint8_t buf[pkt_sz];
+	arcan_event outev = {
+		.category = EVENT_IO,
+		.io = { .label = "mouse", .devkind = EVENT_IDEVKIND_MOUSE }
+	};
+
+/* another option here would be to aggregate the motion events at least
+ * to lessen the impact of a pile-up casade from suspend or similar */
+	while (read(node->fd, buf, pkt_sz) == pkt_sz){
+		int buttons, dx, dy, wheel_h, wheel_v;
+		buttons = dx = dy = wheel_h = wheel_v = 0;
+
+/* mouse.h seems to be the better source of documentation for deciphering */
+		if (pkt_sz >= 5){
+			buttons = (~buf[0] & 0x07);
+			dx =  ((int8_t)buf[1] + (int8_t)buf[3]);
+			dy = -((int8_t)buf[2] + (int8_t)buf[4]);
+		}
+
+/* append the values to the button mask (but shifted, so do the same with
+ * the constant value for it to work. The reason is so that we can do a
+ * simple cmp on each mouse sample to know if we need to recheck individual
+ * buttons */
+		if (pkt_sz >= 8){
+			wheel_v = (int8_t)buf[5]+(int8_t)buf[6];
+			buttons |= (buf[7] & MOUSE_SYS_EXTBUTTONS) << 3;
+		}
+/*
+ * 	seen this protocol somewhere but havn't anything to test with that
+ * 	actually activates it, so keep as a note for now
+		if (pkt_sz >= 16){
+			dx =  ((int16_t)((buf[ 8] << 9) | (buf[ 9] << 2)) >> 2);
+			dy = -((int16_t)((buf[10] << 9) | (buf[11] << 2)) >> 2);
+			wheel_v = -((int16_t)((buf[12] << 9) | (buf[13] << 2)) >> 2);
+			wheel_h =  ((int16_t)((buf[14] << 9) | (buf[15] << 2)) >> 2);
+		}
+ */
+
+/* our own input model has its problems too, absolute vs relative,
+ * separate events or grouped together, always %2 events or only on
+ * change, the interface is not particularly pretty */
+		if (dx || dy){
+			node->mouse.mx += dx;
+			outev.io.datatype = EVENT_IDATATYPE_ANALOG;
+			outev.io.kind = EVENT_IO_AXIS_MOVE;
+			outev.io.input.analog.gotrel = true;
+			outev.io.subid = 0;
+			outev.io.input.analog.axisval[0] = node->mouse.mx;
+			outev.io.input.analog.axisval[1] = dx;
+			outev.io.input.analog.nvalues = 2;
+			arcan_event_enqueue(ctx, &outev);
+
+			node->mouse.my += dy;
+			outev.io.datatype = EVENT_IDATATYPE_ANALOG;
+			outev.io.kind = EVENT_IO_AXIS_MOVE;
+			outev.io.input.analog.gotrel = true;
+			outev.io.subid = 1;
+			outev.io.input.analog.axisval[0] = node->mouse.my;
+			outev.io.input.analog.axisval[1] = dy;
+			outev.io.input.analog.nvalues = 2;
+			arcan_event_enqueue(ctx, &outev);
+		}
+
+/* unfortunately we get a packed state table rather than changes-only,
+ * so we have to extract and check each one. sysmouse uses 1 to indicate
+ * released, we use that to indicate pressed */
+		buttons = ~buttons;
+
+		if (buttons != node->mouse.buttons){
+			check_btn(ctx, node->mouse.buttons, buttons, MOUSE_SYS_BUTTON1UP, 0);
+			check_btn(ctx, node->mouse.buttons, buttons, MOUSE_SYS_BUTTON2UP, 1);
+			check_btn(ctx, node->mouse.buttons, buttons, MOUSE_SYS_BUTTON3UP, 2);
+/* 3,4 and 5,6 are wheel digitals */
+			check_btn(ctx, node->mouse.buttons, buttons, MOUSE_SYS_BUTTON4UP << 3, 7);
+			check_btn(ctx, node->mouse.buttons, buttons, MOUSE_SYS_BUTTON5UP << 3, 8);
+			check_btn(ctx, node->mouse.buttons, buttons, MOUSE_SYS_BUTTON6UP << 3, 9);
+			check_btn(ctx, node->mouse.buttons, buttons, MOUSE_SYS_BUTTON7UP << 3,10);
+			check_btn(ctx, node->mouse.buttons, buttons, MOUSE_SYS_BUTTON8UP << 3,11);
+			check_btn(ctx, node->mouse.buttons, buttons, MOUSE_SYS_BUTTON9UP << 3,12);
+			check_btn(ctx, node->mouse.buttons, buttons, MOUSE_SYS_BUTTON10UP <<3,13);
+			node->mouse.buttons = buttons;
+		}
+
+/* this has to be split into three events: [press+release] and analog axis */
+		if (wheel_v)
+			wheel_ev(ctx, 0, wheel_v);
+
+		if (wheel_h)
+			wheel_ev(ctx, 1, wheel_h);
+ 	}
 }
 
 static void do_keyb(arcan_evctx* ctx, struct devnode* node)
@@ -364,6 +528,7 @@ static void do_keyb(arcan_evctx* ctx, struct devnode* node)
 			.devkind = EVENT_IDEVKIND_KEYBOARD
 		}
 	};
+
 	ev.io.input.translated.scancode = code;
 	ev.io.subid = code;
 	ev.io.input.translated.active = (n & 0x80) == 0;
@@ -396,11 +561,13 @@ void platform_event_process(arcan_evctx* ctx)
  *    set scancode, subid (dup. code), modifier-states, sym, utf8
  * 5. enqueue event.
  */
-	struct pollfd infd[2] = {
+	struct pollfd infd[3] = {
 		{ .fd = evctx.tty, .events = POLLIN },
-		{ .fd = evctx.mouse.fd, .events = POLLIN }
+		{ .fd = evctx.mdev.fd, .events = POLLIN },
+		{ .fd = evctx.sigpipe[0], .events = POLLIN }
 	};
 
+/* allow one "sweep" */
 	bool okst = true;
 	while (okst && poll(infd, 2, 0) > 0){
 		okst = false;
@@ -410,10 +577,25 @@ void platform_event_process(arcan_evctx* ctx)
 		};
 
 		if (infd[1].revents == POLLIN){
-			do_mouse(ctx, &evctx.mouse);
+			do_mouse(ctx, &evctx.mdev);
 			okst = true;
 		}
+
+		if (infd[2].revents == POLLIN){
+			char ch;
+			if (1 == read(infd[2].fd, &ch, 1))
+				switch(ch){
+				case vt_trm:
+					arcan_event_enqueue(arcan_event_defaultctx(), &(struct arcan_event){
+						.category = EVENT_SYSTEM,
+						.sys.kind = EVENT_SYSTEM_EXIT,
+						.sys.errcode = EXIT_SUCCESS
+					});
+				break;
+				}
+		}
 	}
+
 }
 
 void platform_event_samplebase(int devid, float xyz[3])
@@ -508,20 +690,78 @@ void platform_event_init(arcan_evctx* ctx)
 	tcgetattr(evctx.tty, &evctx.ttystate);
 	ioctl(evctx.tty, KDSETMODE, KD_GRAPHICS);
 
-	if (-1 == ioctl(evctx.keyb.fd, KDSKBMODE, K_CODE)){
+	if (-1 == ioctl(evctx.keyb.fd, KDSKBMODE, K_RAW)){
 		arcan_warning("couldn't set code input mode\n");
 	}
 	struct termios raw = evctx.ttystate;
-	raw.c_iflag &= ~(BRKINT);
-	raw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
+	cfmakeraw(&raw);
 	tcsetattr(evctx.tty, TCSAFLUSH, &raw);
 
-	evctx.mouse.fd = open("/dev/sysmouse", O_RDWR);
-	if (-1 != evctx.mouse.fd){
-		ioctl(evctx.mouse.fd, MOUSE_SETLEVEL, 1);
-		evctx.mouse.type = mouse;
+	evctx.mdev.fd = open("/dev/sysmouse", O_RDWR);
+	if (-1 != evctx.mdev.fd){
+		int level = 1;
+		if (-1 == ioctl(evctx.mdev.fd, MOUSE_SETLEVEL, &level)){
+			close(evctx.mdev.fd);
+			evctx.mdev.fd = -1;
+			arcan_warning("no acceptable mouse protocol found for sysmouse %d, %s\n",
+				errno, strerror(errno));
+			goto sigset;
+		}
+		if (-1 == ioctl(evctx.mdev.fd, MOUSE_GETMODE, &evctx.mdev.mouse.mode)){
+			close(evctx.mdev.fd);
+			arcan_warning("couldn't get mousemode from /dev/sysmouse\n");
+			evctx.mdev.fd = -1;
+			goto sigset;
+		}
+		if (evctx.mdev.mouse.mode.protocol != MOUSE_PROTO_SYSMOUSE ||
+			evctx.mdev.mouse.mode.packetsize < 0){
+			close(evctx.mdev.fd);
+			evctx.mdev.fd = -1;
+			arcan_warning("unexpected mouse protocol state\n");
+			goto sigset;
+		}
+		int flags = fcntl(evctx.mdev.fd, F_GETFL);
+		if (-1 == fcntl(evctx.mdev.fd, F_SETFL, flags | O_NONBLOCK)){
+			close(evctx.mdev.fd);
+			evctx.mdev.fd = -1;
+			arcan_warning("couldn't set non-blocking mouse device\n");
+			goto sigset;
+		}
 	}
-/* signal handler for VT switch */
+
+sigset:
+/* use a pipe to handle TERM / VT switching */
+	if (0 != pipe(evctx.sigpipe)){
+		arcan_fatal("couldn't create signalling pipe, code: %d, reason: %s\n",
+			errno, strerror(errno));
+
+		fcntl(evctx.sigpipe[0], F_SETFD, FD_CLOEXEC);
+		fcntl(evctx.sigpipe[1], F_SETFD, FD_CLOEXEC);
+		struct sigaction er_sh = {.sa_handler = SIG_IGN};
+		sigaction(SIGINT, &er_sh, NULL);
+		er_sh.sa_handler = NULL;
+		er_sh.sa_sigaction = sigusr_term;
+		er_sh.sa_flags = SA_RESTART;
+		sigaction(SIGTERM, &er_sh, NULL);
+	}
+/* ignore VT switching for now, more pressing matters to fix first
+		struct vt_mode mode = {
+			.mode = VT_PROCESS,
+			.acqsig = SIGUSR1,
+			.relsig = SIGUSR2
+		};
+		gstate.sigpipe_p.fd = gstate.sigpipe[0];
+		gstate.sigpipe_p.events = POLLIN;
+
+		er_sh.sa_handler = NULL;
+		er_sh.sa_sigaction = sigusr_acq;
+		er_sh.sa_flags = SA_SIGINFO;
+		sigaction(SIGUSR1, &er_sh, NULL);
+
+		er_sh.sa_sigaction = sigusr_rel;
+		sigaction(SIGUSR2, &er_sh, NULL);
+		ioctl(gstate.tty, VT_SETMODE, &mode);
+*/
 }
 
 void platform_event_reset(arcan_evctx* ctx)
