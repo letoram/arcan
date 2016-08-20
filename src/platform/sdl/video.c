@@ -386,7 +386,7 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 
 	glViewport(0, 0, width, height);
 	sdl.vid = ARCAN_VIDEO_WORLDID;
-	memcpy(sdl.txcos, arcan_video_display.default_txcos, sizeof(float) * 8);
+	memcpy(sdl.txcos, arcan_video_display.mirror_txcos, sizeof(float) * 8);
 
 	sdl.last = arcan_frametime();
 	return true;
