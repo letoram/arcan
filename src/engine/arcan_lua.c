@@ -5079,6 +5079,60 @@ static int videocanvasrsz(lua_State* ctx)
 	LUA_ETRACE("resize_video_canvas", NULL, 0);
 }
 
+static int videodispgamma(lua_State* ctx)
+{
+	LUA_TRACE("video_displaygamma");
+	platform_display_id id = luaL_checknumber(ctx, 1);
+
+/* set */
+	if (lua_gettop(ctx) > 1){
+		luaL_checktype(ctx, 2, LUA_TTABLE);
+		int values = lua_rawlen(ctx, 2);
+		if (values == 0 || values % 3 != 0){
+			arcan_fatal("video_displaygamma(), broken ramp table"
+				"(%d should be > 0 and divisible by 3)\n", values);
+		}
+
+		uint16_t* ramps = arcan_alloc_mem(values * sizeof(uint16_t),
+			ARCAN_MEM_VSTRUCT, ARCAN_MEM_TEMPORARY | ARCAN_MEM_BZERO,
+			ARCAN_MEMALIGN_NATURAL
+		);
+
+		for (size_t i = 0; i < values; i++){
+			lua_rawgeti(ctx, 2, i+1);
+			float num = lua_tonumber(ctx, -1);
+			lua_pop(ctx, 1);
+			ramps[i] = ((num < 0.0 ? 0.0 : num) > 1.0 ? 1.0 : num) * 65535;
+		}
+
+		values /= 3;
+		lua_pushboolean(ctx, platform_video_set_display_gamma(id,
+			values, &ramps[0 * values], &ramps[1 * values], &ramps[2 * values]));
+			LUA_ETRACE("video_displaygamma", NULL, 1);
+	}
+/* get */
+	else {
+		size_t nramps;
+		uint16_t* outb;
+
+		if (!platform_video_get_display_gamma(id, &nramps, &outb))
+			LUA_ETRACE("video_displaygamma", NULL, 0);
+
+/* push as planar table of floats */
+		lua_createtable(ctx, nramps * 3, 0);
+		int top = lua_gettop(ctx);
+		for (size_t i = 0; i < nramps * 3; i++){
+			lua_pushnumber(ctx, i+1);
+			lua_pushnumber(ctx, (float)outb[i] / 65535.0f);
+			lua_rawset(ctx, top);
+		}
+
+		LUA_ETRACE("video_displaygamma", NULL, 1);
+	}
+
+	LUA_ETRACE("video_displaygamma", NULL, 0);
+}
+
 static int videodispdescr(lua_State* ctx)
 {
 	LUA_TRACE("video_displaydescr");
@@ -9347,6 +9401,7 @@ static const luaL_Reg vidsysfuns[] = {
 {"resize_video_canvas",              videocanvasrsz },
 {"video_displaymodes",               videodisplay   },
 {"video_displaydescr",               videodispdescr },
+{"video_displaygamma",               videodispgamma },
 {"map_video_display",                videomapping   },
 {"video_display_state",              videodpms      },
 {"video_3dorder",                    v3dorder       },

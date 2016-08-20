@@ -136,6 +136,18 @@ void platform_video_setsynch(const char* arg)
 	}
 }
 
+bool platform_video_set_display_gamma(platform_display_id did,
+	size_t n_ramps, uint16_t* r, uint16_t* g, uint16_t* b)
+{
+	return false;
+}
+
+bool platform_video_get_display_gamma(platform_display_id did,
+	size_t* n_ramps, uint16_t** outb)
+{
+	return false;
+}
+
 void platform_video_query_displays()
 {
 }

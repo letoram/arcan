@@ -384,6 +384,18 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 		post();
 }
 
+bool PLATFORM_SYMBOL(_video_set_display_gamma)(platform_display_id did,
+	size_t n_ramps, uint16_t* r, uint16_t* g, uint16_t* b)
+{
+	return false;
+}
+
+bool PLATFORM_SYMBOL(_video_get_display_gamma)(platform_display_id did,
+	size_t* n_ramps, uint16_t** outb)
+{
+	return false;
+}
+
 const char** PLATFORM_SYMBOL(_video_synchopts) ()
 {
 	return (const char**) egl_synchopts;
