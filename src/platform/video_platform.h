@@ -362,6 +362,34 @@ bool platform_video_set_mode(
 	platform_display_id, platform_mode_id mode_id);
 
 /*
+ * update the gamma ramps for the specified display.
+ *
+ * returns [true] if the [did] and [r,g,b] channels are valid, the
+ * underlying display accepts gamma ramps and [n_ramps] size corresponds
+ * to the size of the ramps a _get call would yield.
+ *
+ * practical use-case is thus to first call platform_video_get_display_gamma,
+ * modify the returned ramps, call platform_video_set_display_gamma and
+ * then free the buffer from _get_.
+ */
+bool platform_video_set_display_gamma(platform_display_id did,
+	size_t n_ramps, uint16_t* r, uint16_t* g, uint16_t* b);
+
+/*
+ * get the current gamma ramps for the specified display.
+ *
+ * return [true] if the [did] is valid, the underlying display
+ * supports gamma ramps and enough memory exist to allocate output storage.
+ *
+ * [outb] will be set to a dynamically allocated buffer of 3*n_ramps,
+ * with the ramps for each channel in a planar format (r, then g, then b).
+ *
+ * [Caller takes responsibility for deallocation]
+ */
+bool platform_video_get_display_gamma(platform_display_id did,
+	size_t* n_ramps, uint16_t** outb);
+
+/*
  * set or query the display power management state.
  * ADPMS_IGNORE => return current state,
  * other options change the current state of monitors connected to a display
