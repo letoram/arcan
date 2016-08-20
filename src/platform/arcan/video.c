@@ -175,6 +175,18 @@ void platform_video_shutdown()
 			arcan_shmif_drop(&disp[i].conn);
 }
 
+bool platform_video_set_display_gamma(platform_display_id did,
+	size_t n_ramps, uint16_t* r, uint16_t* g, uint16_t* b)
+{
+	return false;
+}
+
+bool platform_video_get_display_gamma(platform_display_id did,
+	size_t* n_ramps, uint16_t** outb)
+{
+	return false;
+}
+
 bool platform_video_display_edid(platform_display_id did,
 	char** out, size_t* sz)
 {

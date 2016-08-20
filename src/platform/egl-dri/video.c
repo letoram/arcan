@@ -57,14 +57,9 @@
  * before etc.), discard when we miss deadline, drm_vblank_relative,
  * drm_vblank_secondary - also try synch strategy on a per display basis.
  *
- * 5. Launching children that use video_rnode has no good way for deciding
- * which node to use (we're talking load balancing and conversion costs
- * between GPUs that don't share backing store), so we currently just assume
- * there is some sense to the name/node allocation scheme relative to the
- * device in question and forward that.
+ * 5. DRMs Atomic- modesetting support is currently not used
  *
- * Instead of using an ENV for the NODE, we could use the MIGRATE descriptor
- * hinted at in (2) to kill two birds with one stone.
+ * 6. egl-nvidia bits about streams should be merged after [5]
  */
 
 /*
@@ -209,6 +204,8 @@ struct dispout {
 		char* edid_blob;
 		size_t blob_sz;
 		size_t blackframes;
+		size_t gamma_size;
+		uint16_t* orig_gamma;
 	} display;
 
 /* v-store mapping, with texture blitting options and possibly mapping hint */
@@ -479,10 +476,78 @@ bool platform_video_set_mode(platform_display_id disp, platform_mode_id mode)
 	return true;
 }
 
+bool platform_video_set_display_gamma(platform_display_id did,
+	size_t n_ramps, uint16_t* r, uint16_t* g, uint16_t* b)
+{
+	struct dispout* d = get_display(did);
+	if (!d)
+		return false;
+
+	drmModeCrtc* inf = drmModeGetCrtc(d->device->fd, d->display.crtc);
+
+	if (!inf)
+		return false;
+
+	int rv = -1;
+	if (inf->gamma_size > 0 && n_ramps == inf->gamma_size){
+/* first time we get called, saved trhe original gamma for the display
+ * so that we can restore it when the display gets deallocated */
+		if (!d->display.orig_gamma){
+			if (!platform_video_get_display_gamma(did,
+				&d->display.gamma_size, &d->display.orig_gamma)){
+				drmModeFreeCrtc(inf);
+				return false;
+			}
+		}
+		rv = drmModeCrtcSetGamma(d->device->fd, d->display.crtc, n_ramps, r, g, b);
+	}
+
+	drmModeFreeCrtc(inf);
+	return rv == 0;
+}
+
+bool platform_video_get_display_gamma(platform_display_id did,
+	size_t* n_ramps, uint16_t** outb)
+{
+	struct dispout* d = get_display(did);
+	if (!d || !n_ramps)
+		return false;
+
+	drmModeCrtc* inf = drmModeGetCrtc(d->device->fd, d->display.crtc);
+	if (!inf)
+		return false;
+
+	if (inf->gamma_size <= 0){
+		drmModeFreeCrtc(inf);
+		return false;
+	}
+
+	*n_ramps = inf->gamma_size;
+	uint16_t* ramps = malloc(*n_ramps * 3 * sizeof(uint16_t));
+	if (!ramps){
+		drmModeFreeCrtc(inf);
+		return false;
+	}
+
+	bool rv = true;
+	memset(ramps, '\0', *n_ramps * 3 * sizeof(uint16_t));
+	if (drmModeCrtcGetGamma(d->device->fd, d->display.crtc, *n_ramps,
+		&ramps[0], &ramps[*n_ramps], &ramps[2 * *n_ramps])){
+		free(ramps);
+		rv = false;
+	}
+	*outb = ramps;
+	drmModeFreeCrtc(inf);
+	return rv;
+}
+
 bool platform_video_display_edid(platform_display_id did,
 	char** out, size_t* sz)
 {
 	struct dispout* d = get_display(did);
+	if (!d)
+		return false;
+
 	*out = NULL;
 	*sz = 0;
 
@@ -1443,6 +1508,16 @@ static void disable_display(struct dispout* d, bool dealloc)
 	}
 
 	if (dealloc){
+		if (d->display.orig_gamma){
+			drmModeCrtcSetGamma(d->device->fd, d->display.crtc,
+				d->display.gamma_size, d->display.orig_gamma,
+				&d->display.orig_gamma[1*d->display.gamma_size],
+				&d->display.orig_gamma[2*d->display.gamma_size]
+			);
+			free(d->display.orig_gamma);
+			d->display.orig_gamma = NULL;
+		}
+
 		drmModeFreeConnector(d->display.con);
 		d->display.con = NULL;
 
