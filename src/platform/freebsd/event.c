@@ -116,7 +116,7 @@ static char* accents[] = {
 	NULL
 };
 
-static const char vt_trm = 'z';
+static const int vt_trm = 'z';
 static void sigusr_term(int sign, siginfo_t* info, void* ctx)
 {
 	int s_errn = errno;
@@ -588,7 +588,7 @@ void platform_event_process(arcan_evctx* ctx)
 			char ch;
 			if (1 == read(infd[2].fd, &ch, 1))
 				switch(ch){
-				case vt_trm:
+				case 'z':
 					arcan_event_enqueue(arcan_event_defaultctx(), &(struct arcan_event){
 						.category = EVENT_SYSTEM,
 						.sys.kind = EVENT_SYSTEM_EXIT,
