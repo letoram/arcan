@@ -203,8 +203,6 @@ void arcan_frameserver_killchild(arcan_frameserver* src)
 	pthread_attr_t nanny_attr;
 	pthread_attr_init(&nanny_attr);
 	pthread_attr_setdetachstate(&nanny_attr, PTHREAD_CREATE_DETACHED);
-	pthread_attr_setstacksize(&nanny_attr,
-		PTHREAD_STACK_MIN < (1024*4) ? (1024*4) : PTHREAD_STACK_MIN);
 	*pidptr = src->child;
 
 	pthread_t nanny;
@@ -375,8 +373,15 @@ static bool sockpair_alloc(int* dst, size_t n, bool cloexec)
 	}
 	else {
 		for (size_t i = 0; i < n; i++){
-			if (cloexec)
-				fcntl(dst[i], F_SETFD, FD_CLOEXEC);
+			int flags = fcntl(dst[i], F_GETFL);
+			if (-1 != flags)
+				fcntl(dst[i], F_SETFL, flags | O_NONBLOCK);
+
+			if (cloexec){
+				flags = fcntl(dst[i], F_GETFD);
+				if (-1 != flags)
+					fcntl(dst[i], F_SETFD, flags | O_CLOEXEC);
+			}
 #ifdef __APPLE__
  			int val = 1;
 			setsockopt(dst[i], SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(int));

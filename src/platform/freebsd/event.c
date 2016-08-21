@@ -237,7 +237,7 @@ static struct bsdkey decode_tok(char* tok)
 
 	if (tok[0] == '\''){
 		res.u8[0] = tok[1];
-		res.sym = res.u8[0];
+		res.sym = tolower(res.u8[0]);
 	}
 /* the manpage says unicode or unicode as hex, but nothing about the
  * actual encoding format, and some maps really give iso-8859-1 output
@@ -536,9 +536,12 @@ static void do_keyb(arcan_evctx* ctx, struct devnode* node)
 /* it's safe to index based on modifier even though it's lagging behind
  * here as all state fields repeat the same modifer */
 	struct bsdkey* key = &evctx.keyb.keyb.lut[mod_to_ind(node->keyb.mods)][code];
+	struct bsdkey* okey = &evctx.keyb.keyb.lut[0][code];
+
+/* the symbols are taken from their non-modified state */
 
 	memcpy(ev.io.input.translated.utf8, key->u8, 5);
-	ev.io.input.translated.keysym = key->sym;
+	ev.io.input.translated.keysym = okey->sym;
 	if ((n & 0x80) == 0)
 		node->keyb.mods |= key->modmask;
 	else

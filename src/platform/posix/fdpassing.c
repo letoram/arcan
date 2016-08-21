@@ -52,11 +52,6 @@ bool arcan_pushhandle(file_handle source, int channel)
 		fcntl(source, F_SETFD, FD_CLOEXEC);
 	}
 
-#ifdef __APPLE__
-int set = 1;
-setsockopt(channel, SOL_SOCKET, SO_NOSIGPIPE, (void *)&set, sizeof(int));
-
-#endif
 	int rv = sendmsg(channel, &msg, MSG_DONTWAIT | MSG_NOSIGNAL);
 	return rv >= 0;
 }
@@ -71,7 +66,7 @@ file_handle arcan_fetchhandle(int sockin_fd, bool block)
 	struct cmsgbuf {
 		struct cmsghdr hdr;
 		int fd[1];
-	} msgbuf;
+	} msgbuf = {.fd[0] = -1};
 
 	struct iovec nothing_ptr = {
 		.iov_base = &empty,

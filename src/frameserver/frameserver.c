@@ -274,7 +274,7 @@ int main(int argc, char** argv)
 
 #ifdef ENABLE_FSRV_AVFEED
 	if (strcmp(fsrvmode, "avfeed") == 0)
-		return launch_mode("avfeed", afsrv_avfeed, SEGID_MEDIA, 0, argstr);
+		return launch_mode("avfeed", afsrv_avfeed, SEGID_MEDIA, SHMIF_DISABLE_GUARD, argstr);
 #endif
 
 /*
