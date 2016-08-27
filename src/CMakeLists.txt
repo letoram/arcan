@@ -113,7 +113,6 @@ option(DISABLE_JIT "Don't use the luajit-5.1 VM (if found)" OFF)
 option(DISABLE_HIJACK "Disable building hijack libraries" ON)
 option(NO_FSRV "Disable building/launching frameservers" OFF)
 option(STATIC_SQLITE3 "Use SQLite3 Amalgamation" OFF)
-option(ENABLE_LED "Build with LED controller support in core" OFF)
 option(ENABLE_LTO "Build with Link-Time Optimization enabled" OFF)
 option(ENABLE_LWA "Build LWA client (arcan-in-arcan)" ON)
 option(ENABLE_SIMD "Build with SIMD vector instruction set support" ON)
@@ -140,7 +139,6 @@ amsg("${CL_YEL}\t-DSTATIC_OPENAL=${CL_GRN}[Off|On]${CL_RST} - In-source OpenAL, 
 amsg("${CL_YEL}\t-DSTATIC_FREETYPE=${CL_GRN}[Off|On]${CL_RST} In-source Freetype")
 amsg("")
 amsg("${CL_WHT}Optional engine flags:${CL_RST}")
-amsg("${CL_YEL}\t-DENABLE_LED=${CL_GRN}[On|Off]${CL_RST} - Build with LED controller support in core")
 amsg("${CL_YEL}\t-DENABLE_LWA=${CL_GRN}[Off|On]${CL_RST} - Build LWA Arcan client (nesting support)")
 amsg("${CL_YEL}\t-DDISABLE_JIT=${CL_GRN}[Off|On]${CL_RST} - Don't Link with luajit51 (even if found)")
 amsg("${CL_YEL}\t-DNO_FSRV=${CL_GRN}[Off|On]${CL_RST} - Build Arcan without support for frameservers")
@@ -452,10 +450,6 @@ if (ENABLE_SIMD AND SSE_FOUND)
 
 	set_property(SOURCE engine/arcan_math_simd.c
 		APPEND PROPERTY COMPILE_FLAGS -msse3)
-endif()
-
-if (ENABLE_LED)
-	list(APPEND ARCAN_NOLWA_DEFINITIONS ARCAN_LED)
 endif()
 
 if (LUA51_JIT)

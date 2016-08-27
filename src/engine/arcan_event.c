@@ -35,12 +35,13 @@
 #include "arcan_general.h"
 #include "arcan_video.h"
 #include "arcan_audio.h"
-
+#include "arcan_db.h"
 #include "arcan_shmif.h"
 #include "arcan_event.h"
 
 #include "arcan_frameserver.h"
 
+extern struct arcan_dbh* dbhandle;
 typedef struct queue_cell queue_cell;
 
 static arcan_event eventbuf[ARCAN_EVENT_QUEUE_LIM];
@@ -454,6 +455,25 @@ static void pack_rec_event(const struct arcan_event* const outev)
 		fclose(record_out);
 		record_out = NULL;
 	}
+}
+
+void arcan_event_blacklist(const char* idstr)
+{
+/* idstr comes from a trusted context, won't exceed stack size */
+	char buf[strlen(idstr) + sizeof("bl_")];
+	snprintf(buf, COUNT_OF(buf), "bl_%s", idstr);
+	arcan_db_appl_kv(dbhandle, "arcan", "bl_", "block");
+}
+
+bool arcan_event_blacklisted(const char* idstr)
+{
+/* idstr comes from a trusted context, won't exceed stack size */
+	char buf[strlen(idstr) + sizeof("bl_")];
+	snprintf(buf, COUNT_OF(buf), "bl_%s", idstr);
+	char* res = arcan_db_appl_val(dbhandle, "arcan", "bl_");
+	bool rv = res && strcmp(res, "block") == 0;
+	arcan_mem_free(res);
+	return rv;
 }
 
 static void inject_scheduled(arcan_evctx* ctx)

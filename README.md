@@ -15,6 +15,8 @@ roadmap, changelogs and so on, please refer to the
 [arcan-wiki](https://github.com/letoram/arcan/wiki) and to the
 [website](https://arcan-fe.com).
 
+For getting in touch with developers, try #arcan on Freenode IRC.
+
 Getting Started
 =====
 The rest of this readme is directed towards developers. As an end- user,
@@ -60,12 +62,24 @@ of these dependencies statically, e.g.
       -DSTATIC_SQLITE3=ON -DSTATIC_OPENAL=ON -DSTATIC_FREETYPE=ON ../src
      make -j 12
 
-LWA support is also disabled in the build configuration above. LWA stands for
-lightweight arcan and provides a specialized build (arcan\_lwa) that uses the
-arcan shared memory interface as an audio/video/input platform, allowing one
-instance of arcan to act as a display server for others. It is a somewhat more
-complex build in that it pulls down and builds a specialized/patched version
-of OpenAL.
+There are also a number of optional dependencies that introduce additional
+features and device support, e.g. libusb1, tesseract, vncserver, ffmpeg.
+
+This will produce a set of binaries including some or all of the following:
+
+     arcan : main binary
+		 arcan_db : execution whitelist and key/value store manipulation
+		 arcan_lwa : lightweight arcan, uses another arcan instance for a/v/i/o
+		 arcan_frameserver : chainloader for afsrv_*
+		 afsrv_avfeed : for testing / prototyping
+		 afsrv_decode : used for media decoding
+		 afsrv_remoting : used to connect to external remote desktop services
+		 afsrv_encode : used to encode or serve streaming video
+		 afsrv_game : libretro- frontend implementation
+		 afsrv_terminal : terminal emulator
+		 afsrv_net : experimental networking support
+		 libahijack_* : LD_PRELOADable library for allowing external programs
+		                to connect and communicate with arcan
 
 You can then test the build with:
 
@@ -86,8 +100,35 @@ One is to try out some of the more complex appls, like the desktop environment,
     arcan -p /my/home /path/to/checkout/durden
 
 note that it's the durden subdirectory in the git, not the root. The reason
-for the different sdtart path (-p /my/home) is to give read-only access to
+for the different start path (-p /my/home) is to give read-only access to
 the appl for the built-in resource browser.
+
+You will also find a range of demo and testing scripts and frameservers in the
+tests subfolder, along with example implementations of the scripting exercises
+found on the wiki.
+
+Directories and Namespacing
+=====
+To cover most conceivable setups and needs, the configuration of where to
+look for files and folders is a complex one and can be controlled with a number
+of environment variables and command line switches. A suggested simple layout
+(for e.g. using durden) is as follows:
+
+    1. main binaries installed to /usr/local or /usr depending on distribution
+
+    2. an .arcan subdirectory in your homedir, with an 'appl' and a 'resources'
+		   subdirectory.
+
+	  3. symlinks in your resources folder to documents, images etc. you want to
+		   be able to access.
+
+	  4. the 'durden' subfolder of the durden git repository into the 'appl'
+		   directory
+
+If you then run, for instance, 'arcan durden' it should pick that appl from
+the appl folder, and allow it readable access to the contents of the resources
+subdirectory. For more refined information, check the wiki on namespacing,
+and the arcan.1 manpage.
 
 Database
 =====
@@ -130,7 +171,7 @@ It can be cumbersome to set up database entries to just test something.
 Frameservers is a way of separating sensitive or crash-prone functions from
 the main engine for purposes such as running games or playing back video.
 
-In a default installation, they are prefixed with afsrv_ [game, encode,
+In a default installation, they are prefixed with afsrv\_ [game, encode,
 decode, ...] and while they are best managed from the appl itself, you can
 run them from the terminal as well. Which ones that are available depend on
 the dependencies that were available at build time, but for starting a
@@ -165,7 +206,7 @@ The git-tree has the following structure:
 				tools/ -- database tools, keymap conversion
         shmif/ -- engine<->frameserver IPC
 
-    tests/ -- (fairly incomplete, development focus target now)
+    tests/ -- (much work to be done here still)
           api_coverage -- dynamically populated with contents from doc/
           benchmark -- scripts to pinpoint bottlenecks, driver problems etc.
           interactive -- quick/messy tests that are thrown together during
