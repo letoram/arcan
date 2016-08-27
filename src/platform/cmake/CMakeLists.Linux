@@ -60,15 +60,20 @@ set_property(SOURCE ${PLATFORM_PATH}/fdpassing.c
 set_property(SOURCE ${PLATFORM_PATH}/fdpassing.c
 	APPEND PROPERTY COMPILE_DEFINITIONS NONBLOCK_RECV)
 
-if (ENABLE_LED)
-	FIND_PACKAGE(libusb-1.0 REQUIRED)
-
+# not 'required' but enabled support for additional LED controllers,
+# and in the near future, additional device support
+FIND_PACKAGE(libusb-1.0)
+if(LIBUSB_1_FOUND)
+	amsg("${CL_YEL} USB Support (LED devices, ...) detected${CL_RST}")
+	set(ARCAN_DEFINITIONS ${ARCAN_DEFINITIONS} USB_SUPPORT)
 	LIST(APPEND ARCAN_LIBRARIES ${LIBUSB_1_LIBRARIES})
 	LIST(APPEND INCLUDE_DIRS ${LIBUSB_1_INCLUDE_DIR})
 	LIST(APPEND PLATFORM_SOURCES
 		${EXTERNAL_SRC_DIR}/hidapi/hid.c
 		${EXTERNAL_SRC_DIR}/hidapi/hidapi.h
 	)
+else()
+	amsg("${CL_YEL} No USB (libusb) support found ${CL_RST}")
 endif()
 
 set(LWA_PLATFORM ${ARCAN_PLATFORM})

@@ -45,11 +45,7 @@
 #include "arcan_frameserver.h"
 #include "arcan_lua.h"
 #include "video_platform.h"
-
-#ifdef ARCAN_LED
 #include "arcan_led.h"
-#endif
-
 #include "arcan_db.h"
 #include "arcan_videoint.h"
 
@@ -65,8 +61,6 @@ struct {
 	uint64_t tick_count;
 } settings = {0};
 
-bool stderr_redirected = false;
-bool stdout_redirected = false;
 struct arcan_dbh* dbhandle;
 
 /*
@@ -178,7 +172,7 @@ printf("Usage: arcan [-whfmWMOqspBtHbdgaSV] applname "
 
 	vplatform_usage();
 
-/* built-in envopts for _event.c */
+/* built-in envopts for _event.c, should really be moved there */
 	printf("Input platform environment variables:\n");
 	printf("\tARCAN_EVENT_RECORD=file - record input-layer events to file\n");
 	printf("\tARCAN_EVENT_REPLAY=file - playback previous input recording\n");
@@ -382,20 +376,17 @@ int MAIN_REDIR(int argc, char* argv[])
 	break;
 	case 'g' :
 		debuglevel++;
+/* There's no guarantee this will have any actual effect on randomness, due to
+ * the vague definition in the standard. It's merely a 'ok did we accidentally
+ * get a dependency to a lib that actually uses rand for something serious, and
+ * can we murder it?'. The only deterministic seed- random we 'need' is to
+ * shake the vid/aid base between restarts to discourage script writers from
+ * assuming a relationship between *id values. If this flag affects
+ * 'invalid-vid' called style terminal state transitions, it's time to bring
+ * out the axe. */
 		srand(0xdeadbeef);
 		break;
 	break;
-	case '1' :
-		stdout_redirected = true;
-		if (freopen(optarg, "a", stdout) == NULL)
-			;
-		break;
-	case '2' :
-		stderr_redirected = true;
-		if (freopen(optarg, "a", stderr) == NULL)
-			;
-		break;
-
 	default:
 		break;
 	}
@@ -437,7 +428,14 @@ int MAIN_REDIR(int argc, char* argv[])
 	}
 
 	if (!arcan_verify_namespaces(false)){
-		arcan_warning("namespace verification failed, status:\n");
+		arcan_warning("\x1b[32m Couldn't verify filesystem namespaces.\x1b[39m\n");
+/* with debuglevel, we have separate reporting. */
+		if (!debuglevel){
+			arcan_warning("\x1b[33m Look through the following list and note the entries marked "
+				"broken, \ncheck the manpage for config and environment variables or "
+				" try the -p <path> and -d <path/to/database> arguments.\x1b[39m\n");
+			arcan_verify_namespaces(true);
+		}
 		goto error;
 	}
 
@@ -583,11 +581,8 @@ int MAIN_REDIR(int argc, char* argv[])
 
 /* setup device polling, cleanup, ... */
 	arcan_evctx* evctx = arcan_event_defaultctx();
-	arcan_event_init(evctx, process_event);
-
-#ifdef ARCAN_LED
 	arcan_led_init();
-#endif
+	arcan_event_init(evctx, process_event);
 
 	if (hookscript){
 		char* tmphook = arcan_expand_resource(hookscript, RESOURCE_APPL_SHARED);
@@ -723,7 +718,10 @@ int MAIN_REDIR(int argc, char* argv[])
 	bool done = false;
 	int exit_code = EXIT_FAILURE;
 
-/* Main loop */
+/* Main loop, this is slated for restructuring so that scheduling and
+ * synchronization happens in a more thought out manner, that can prioritize
+ * certain objects and run some tasks when the displays and rendering is
+ * blocked */
 	for(;;){
 		arcan_video_pollfeed();
 		arcan_audio_refresh();
@@ -735,9 +733,7 @@ int MAIN_REDIR(int argc, char* argv[])
 
 	free(hookscript);
 	arcan_lua_callvoidfun(settings.lua, "shutdown", false, NULL);
-#ifdef ARCAN_LED
 	arcan_led_shutdown();
-#endif
 	arcan_event_deinit(evctx);
 	arcan_video_shutdown();
 	arcan_mem_free(dbfname);

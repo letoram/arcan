@@ -78,6 +78,12 @@ set (LWA_PLATFORM_SOURCES
 
 set(LWA_PLATFORM ${ARCAN_PLATFORM})
 
+#
+# Input platform is actually a default from the graphics platform.
+# There are only linuxes and BSDs supported by the egl-dri video platform
+# and therefore the default is evdev. For Free, Dragon and OpenBSD we
+# want a different input layer at least.
+#
 if(${INPUT_PLATFORM} STREQUAL "evdev")
 	SET(INPUT_PLATFORM freebsd)
 endif()
