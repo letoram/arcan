@@ -20,6 +20,7 @@ void ARCAN_SDL_UpdateRects(SDL_Surface* screen,
 	int numrects, SDL_Rect* rects);
 int ARCAN_SDL_UpperBlit(SDL_Surface* src, const SDL_Rect* srcrect,
 	SDL_Surface *dst, SDL_Rect *dstrect);
+void ARCAN_SDL_WM_SetCaption(const char* title, const char* icon);
 void ARCAN_SDL_GL_SwapBuffers();
 void ARCAN_glFinish();
 void ARCAN_glFlush();

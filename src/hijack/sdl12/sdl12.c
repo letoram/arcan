@@ -3,7 +3,6 @@
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -28,8 +27,6 @@
 #include <SDL/SDL.h>
 #include "sdl12.h"
 
-#include "util/resampler/speex_resampler.h"
-
 #define clamp(a,min,max) (((a)>(max))?(max):(((a)<(min))?(min):(a)))
 
 static SDL_PixelFormat PixelFormat_RGBA888 = {
@@ -45,20 +42,10 @@ struct hijack_fwdtbl forwardtbl = {0};
 
 static struct {
 /* audio */
-	float attenuation;
-	uint16_t samplerate;
-	uint8_t channels;
-	uint16_t format;
-
-/* resampling / audio transfer (likely to come from a
- * different thread than the rendering one) */
-	SpeexResamplerState* resampler;
-	int16_t* encabuf;
-	int encabuf_ofs;
-	size_t encabuf_sz;
 	SDL_mutex* abuf_synch;
-
 	unsigned sourcew, sourceh;
+	size_t source_abuf_sz;
+	size_t source_rate;
 
 /* merging event pairs to single mouse motion events */
 	int lastmx;
@@ -112,9 +99,9 @@ static struct {
 
 		.update_vector = true,
 		.point_size = 1.0,
-		.line_size  = 1.0
+		.line_size  = 1.0,
+		.source_abuf_sz = 1024,
 };
-
 
 static inline void trace(const char* msg, ...)
 {
@@ -130,112 +117,39 @@ static inline void trace(const char* msg, ...)
 
 static void(*acbfun)(void*, uint8_t*, int) = NULL;
 
-/* Note; we always let the target application DRIVE the playback,
- * we may, however, copy the output data in order
- * for it to be available for analysis / recording, etc.
- *
- * (parent) -> (attenuation request) -> [target: we're here] alters
- * audio buffers in situ to reflect attenuation,
- * resamples output into shared memory buffer (unless full) -> (
- * parent) -> drops audio or pushes it to whatever is monitoring.
- */
-
-/* convert, attenuate (0..1), buffer copy to parent,
- * can't be certain about correctly aligned input --
- * branch-predict + any decent -O step + intrisics
- * should reduce this to barely nothing though */
-static inline int process_sample(uint8_t* stream, float attenuate)
-{
-	int counter = 1;
-
-	for (int i = 0; i < global.channels; i++){
-		int16_t tmp_a;
-		uint16_t tmp_b;
-
-		switch (global.format){
-			case AUDIO_U8:
-				*stream = (uint8_t)( (float) *stream * attenuate);
-				global.encabuf[global.encabuf_ofs++] = ((*stream) << 8) - 0x7ff;
-
-				if (global.channels == 1){
-					global.encabuf[global.encabuf_ofs] =
-						global.encabuf[global.encabuf_ofs - 1];
-					global.encabuf_ofs++;
-				}
-			break;
-
-			case AUDIO_S8:
-				*stream = (int8_t)( (float) *((int8_t*)stream) * attenuate);
-			break;
-
-			case AUDIO_U16:
-				memcpy(&tmp_b, stream, 2);
-
-				tmp_a = tmp_b - 32768;
-				global.encabuf[global.encabuf_ofs++] = tmp_a;
-				if (global.channels == 1)
-					global.encabuf[global.encabuf_ofs++] = tmp_a;
-
-				tmp_b = (int16_t) ((float) tmp_b * global.attenuation);
-				memcpy(stream, &tmp_b, 2);
-				counter = 2;
-			break;
-
-			case AUDIO_S16:
-				memcpy(&tmp_a, stream, 2);
-				global.encabuf[global.encabuf_ofs++] = tmp_a;
-
-				if (global.channels == 1)
-					global.encabuf[global.encabuf_ofs++] = tmp_a;
-
-				tmp_a = (int16_t) ((float) tmp_a * global.attenuation);
-				memcpy(stream, &tmp_a, 2);
-				counter = 2;
-			break;
-
-			default:
-				fprintf(stderr, "hijack process sample; Big Endian"
-					"	not supported by this hijack library");
-				abort();
-		}
-
-/* buffer overrun, throw away */
-		if (global.encabuf_ofs * 2 >= global.encabuf_sz){
-			trace("process_sample failed, overflow (%d vs %d)\n",
-				global.encabuf_ofs * 2, global.encabuf_sz);
-			global.encabuf_ofs = 0;
-		}
-
-		stream += counter;
-	}
-
-	return counter * global.channels;
-}
-
-static void audiocb(void *userdata, uint8_t *stream, int len)
+static void audiocb(void* userdata, uint8_t* buf, int len)
 {
 	trace("SDL audio callback\n");
-	if (!acbfun)
+	if (!acbfun || len == 0)
 		return;
 
-/* let the "real" part of the process populate */
-	acbfun(userdata, stream, len);
-
+/* if the caller keep on filling even though the connection is terminated */
 	if (!global.abuf_synch){
 		return;
 	}
 
-/* apply attenuation, convert to s16 2ch and add to global buffer */
-	int ofs = 0;
+/* let the "real" driver deal with timing */
+	acbfun(userdata, buf, len);
 
+	size_t inlen = len;
 	SDL_mutexP(global.abuf_synch);
-	if (global.encabuf_ofs + 4 < global.encabuf_sz){
-		while (ofs < len)
-			ofs += process_sample(stream + ofs, global.attenuation);
-	}
-	SDL_mutexV(global.abuf_synch);
+	while (inlen){
+		size_t ntw = global.shared.abufsize - global.shared.abufused;
+		if (ntw > inlen)
+			ntw = inlen;
 
-	trace("samples converted, @ %d\n", ofs);
+		memcpy(&global.shared.audb[global.shared.abufused], buf, ntw);
+		inlen -= ntw;
+		buf += ntw;
+		global.shared.abufused += ntw;
+
+/* usually we synch left-over transfers with VID */
+		if (!inlen || global.shared.abufused == global.shared.abufsize){
+			arcan_shmif_signal(&global.shared, SHMIF_SIGAUD);
+		}
+	}
+
+	SDL_mutexV(global.abuf_synch);
 }
 
 SDL_GrabMode ARCAN_SDL_WM_GrabInput(SDL_GrabMode mode)
@@ -272,7 +186,13 @@ void ARCAN_target_shmsize(int w, int h, int bpp)
 	global.sourcew = w;
 	global.sourceh = h;
 
-	if (!	arcan_shmif_resize( &(global.shared), w, h) )
+	if (!	arcan_shmif_resize_ext( &(global.shared), w, h,
+		(struct shmif_resize_ext){
+			.abuf_sz = global.source_abuf_sz,
+			.abuf_cnt = 65536 / global.source_abuf_sz,
+			.vbuf_cnt = 2,
+			.samplerate = global.source_rate
+	}))
 		exit(EXIT_FAILURE);
 
 	trace("resize/fill\n");
@@ -287,36 +207,31 @@ int ARCAN_SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
 	trace("SDL_OpenAudio( %d, %d, %d )\n",
 		obtained->freq, obtained->channels, obtained->format);
 
+/* sneaky thing 1. mess around with the desired/obtained combo
+ * so SDL will be forced to do some conversions for us */
 	acbfun = desired->callback;
 	desired->callback = audiocb;
-
+	desired->channels = ARCAN_SHMIF_ACHANNELS;
+	desired->format = AUDIO_S16;
 	int rc = forwardtbl.sdl_openaudio(desired, obtained);
+	global.abuf_synch = SDL_CreateMutex();
+	if (!obtained)
+		return rc;
 
-	SDL_AudioSpec* res = obtained != NULL ? obtained : desired;
+/* A before V or V before A problem, fake the desired size and let V drive */
+	global.source_abuf_sz = obtained->size;
+	global.source_rate = obtained->freq;
 
-	global.samplerate= res->freq;
-	global.channels  = res->channels;
-	global.format = res->format;
-	global.attenuation = 1.0;
-
-	if (global.encabuf)
-		global.encabuf = (free(global.encabuf), NULL);
-	else {
-		global.abuf_synch = SDL_CreateMutex();
-	}
-
-	if (global.resampler)
-		global.resampler = (speex_resampler_destroy(global.resampler), NULL);
-
-	global.encabuf_sz = 120 * 1024;
-	global.encabuf = malloc(global.encabuf_sz);
-
-	if (global.samplerate != ARCAN_SHMIF_SAMPLERATE){
-		int errc;
-		global.resampler = speex_resampler_init(ARCAN_SHMIF_ACHANNELS,
-			global.samplerate, ARCAN_SHMIF_SAMPLERATE, 5, &errc);
-	}
-
+	if (global.shared.vidp)
+		arcan_shmif_resize_ext( &(global.shared),
+			global.shared.w, global.shared.h,
+			(struct shmif_resize_ext){
+				.abuf_sz = global.source_abuf_sz,
+				.abuf_cnt = 65536 / global.source_abuf_sz,
+				.samplerate = obtained->freq,
+				.vbuf_cnt = -1
+			}
+		);
 	return rc;
 }
 
@@ -326,6 +241,15 @@ SDL_Surface* ARCAN_SDL_CreateRGBSurface(Uint32 flags,
 	trace("SDL_CreateRGBSurface(%d, %d, %d, %d)\n", flags, width, height, depth);
 	return forwardtbl.sdl_creatergbsurface(flags, width,
 		height, depth, Rmask, Gmask, Bmask, Amask);
+}
+
+void ARCAN_SDL_WM_SetCaption(const char* title, const char* icon)
+{
+	struct arcan_event ev = {0};
+	size_t lim=sizeof(ev.ext.message.data)/sizeof(ev.ext.message.data[0]);
+	ev.ext.kind = ARCAN_EVENT(IDENT);
+	snprintf((char*)ev.ext.message.data, lim, "%s", title ? title : "");
+	arcan_shmif_enqueue(&global.shared, &ev);
 }
 
 /*
@@ -339,7 +263,7 @@ SDL_Surface* ARCAN_SDL_SetVideoMode(int w, int h, int ncps, Uint32 flags)
 
 	if (!global.shared.addr){
 		struct arg_arr* args;
-		global.shared = arcan_shmif_open(SEGID_GAME, SHMIF_ACQUIRE_FATALFAIL, &args);
+		global.shared = arcan_shmif_open(SEGID_GAME, SHMIF_ACQUIRE_FATALFAIL,&args);
 	}
 
 	SDL_Surface* res = forwardtbl.sdl_setvideomode(w, h, ncps, flags);
@@ -462,12 +386,8 @@ void process_targetevent(unsigned kind, arcan_tgtevent* ev)
 			}
 		break;
 		case TARGET_COMMAND_EXIT:
+/* FIXME: this should be done way more gracefully */
 			exit(0);
-		break;
-
-		case TARGET_COMMAND_ATTENUATE:
-			global.attenuation = ev->ioevs[0].fv > 1.0 ? 1.0 :
-				( ev->ioevs[0].fv < 0.0 ? 0.0 : ev->ioevs[0].fv);
 		break;
 	}
 }
@@ -521,8 +441,7 @@ int ARCAN_SDL_PollEvent(SDL_Event* inev)
 		run_event(&ev);
 	}
 
-/* strip away a few events related to fullscreen,
- * I/O grabs etc. */
+/* strip away a few events related to fullscreen, I/O grabs etc. */
 	int evs;
 	if ( (evs = forwardtbl.sdl_pollevent(&gevent) ) )
 	{
@@ -533,34 +452,6 @@ int ARCAN_SDL_PollEvent(SDL_Event* inev)
 	}
 
 	return evs;
-}
-
-static void push_audio()
-{
-	if (global.abuf_synch && global.encabuf_ofs > 0){
-		SDL_mutexP(global.abuf_synch);
-
-			if (global.samplerate == ARCAN_SHMIF_SAMPLERATE){
-				memcpy(global.shared.audp, global.encabuf,
-					global.encabuf_ofs * sizeof(int16_t));
-			} else {
-				spx_uint32_t outc  = global.shared.abufsize;
-/*first number of bytes, then after process..., number of samples */
-				spx_uint32_t nsamp = global.encabuf_ofs >> 1;
-
-				speex_resampler_process_interleaved_int(global.resampler,
-					(const spx_int16_t*) global.encabuf, &nsamp,
-					(spx_int16_t*) global.shared.audp, &outc);
-				if (outc)
-					global.shared.abufused +=
-						outc * ARCAN_SHMIF_ACHANNELS * sizeof(uint16_t);
-
-				arcan_shmif_signal(&global.shared, SHMIF_SIGAUD);
-			}
-
-		global.encabuf_ofs = 0;
-		SDL_mutexV(global.abuf_synch);
-	}
 }
 
 static bool cmpfmt(SDL_PixelFormat* a, SDL_PixelFormat* b){
@@ -593,22 +484,18 @@ static void copysurface(SDL_Surface* src){
 	}
 
 	global.shared.addr->hints = SHMIF_RHINT_ORIGO_UL;
-	push_audio();
 	arcan_shmif_signal(&global.shared, SHMIF_SIGVID);
 }
 
-/* NON-GL SDL applications (unfortunately, moreso for 1.3
- * which is not handled at all currently)
+/* NON-GL SDL applications
  * have a lot of different entry-points to actually blit,
- * there's perhaps some low level SDL hack to do this,
+ * (there's perhaps some low level SDL hack to do this)
+ *
  * the options are a few;
  * a. blits using UpdateRect/UpdateRects/Blit(UpperBlit)
  * b. direct raw manipulation of the display surface
  * c. double buffered
  * along with overlaysurfaces etc. etc.
- *
- * In addition these can be multicontext/multiwindow,
- * we don't concern ourselves with those currently.
  *
  * -- we can catch
  * (a) by looking for calls that uses the surface allocated through videomode,
@@ -635,9 +522,8 @@ void ARCAN_SDL_UpdateRect(SDL_Surface* screen,
 	Sint32 x, Sint32 y, Uint32 w, Uint32 h){
 	forwardtbl.sdl_updaterect(screen, x, y, w, h);
 
-	if (!global.doublebuffered &&
-		screen == global.mainsrfc)
-			copysurface(screen);
+	if (!global.doublebuffered && screen == global.mainsrfc)
+		copysurface(screen);
 }
 
 void ARCAN_SDL_UpdateRects(SDL_Surface* screen, int numrects, SDL_Rect* rects){
@@ -666,15 +552,20 @@ int ARCAN_SDL_UpperBlit(SDL_Surface* src, const SDL_Rect* srcrect,
 #define RGB565(r, g, b) ((uint16_t)(((uint8_t)(r) >> 3) << 11) \
 	| (((uint8_t)(g) >> 2) << 5) | ((uint8_t)(b) >> 3))
 
+/*
+ * This was written a long time ago, a better approach would be somthing similar
+ * to what is done in the SDL2 backend - force drawing into a FBO and use the
+ * shmif-ext functions to try buffer passing with readback as a fallback
+ */
 void ARCAN_SDL_GL_SwapBuffers()
 {
 	trace("CopySurface(GL:pre)\n");
-/* here's a nasty little GL thing, readPixels can only be with
- * origo in lower-left rather than up, so we need to swap Y,
- * on the other hand, with the amount of data involved here
- * (minimize memory bw- use at all time),
- * we want to flip in the main- app using the texture coordinates,
- * hence the glsource flag */
+
+/* here's a nasty little GL thing, readPixels can only be with origo in
+ * lower-left rather than up, so we need to swap Y, on the other hand, with the
+ * amount of data involved here (minimize memory bw- use at all time), we want
+ * to flip in the main- app using the texture coordinates, hence the glsource
+ * flag */
 	if (!(global.shared.addr->hints & SHMIF_RHINT_ORIGO_LL)){
 		trace("Toggle GL surface support");
 		global.shared.addr->hints = SHMIF_RHINT_ORIGO_LL;
@@ -682,22 +573,19 @@ void ARCAN_SDL_GL_SwapBuffers()
 	}
 
 	glReadBuffer(GL_BACK_LEFT);
-/*
- * the assumption as to the performance impact of this is that
- * if it is aligned to the buffer swap, we're at a point in most engines
- * targeted (so no AAA) where there will be a natural pause
- * which masquerades much of the readback overhead, initial measurements
- * did not see a worthwhile performance
- * increase when using PBOs. The 2D-in-GL edgecase could probably get
- * an additional boost by patching glTexImage2D- class functions
- * triggering on ortographic projection and texture dimensions
- */
 
+/*
+ * the assumption as to the performance impact of this is that if it is aligned
+ * to the buffer swap, we're at a point in most engines targeted (so no AAA)
+ * where there will be a natural pause which masquerades much of the readback
+ * overhead, initial measurements did not see a worthwhile performance increase
+ * when using PBOs. The 2D-in-GL edgecase could probably get an additional
+ * boost by patching glTexImage2D- class functions triggering on ortographic
+ * projection and texture dimensions
+ */
 	glReadPixels(0, 0, global.sourcew, global.sourceh,
 		GL_RGBA, GL_UNSIGNED_BYTE, global.shared.vidp);
 	trace("buffer read (%d, %d)\n", global.sourcew, global.sourceh);
-
-	push_audio();
 
 	arcan_shmif_signal(&global.shared, SHMIF_SIGVID);
 	trace("CopySurface(GL:post)\n");
@@ -712,7 +600,11 @@ void ARCAN_SDL_GL_SwapBuffers()
 		global.update_vector = false;
 	}
 
-/*	 forwardtbl.sdl_swapbuffers(); */
+/*
+ * with X running, we leave a dangling black window, but may need to be kept
+ * active is the caller is using the back buffer for something..
+ * forwardtbl.sdl_swapbuffers()
+ */
 }
 
 void ARCAN_glFinish()

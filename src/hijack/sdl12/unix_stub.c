@@ -47,19 +47,6 @@ void ARCAN_SDL_GL_SwapBuffers();
 void ARCAN_glFinish();
 void ARCAN_glFlush();
 
-#ifdef ENABLE_X11_HIJACK
-int ARCAN_XNextEvent(Display* disp, XEvent* ev);
-int ARCAN_XPeekEvent(Display* disp, XEvent* ev);
-Bool ARCAN_XGetEventData(Display* display, XGenericEventCookie* event);
-void ARCAN_glXSwapBuffers (Display *dpy, GLXDrawable drawable);
-Bool ARCAN_XQueryPointer(Display* display, Window w,
-	Window* root_return, Window* child_return, int* rxret,
-	int* ryret, int* wxret, int* wyret, unsigned* maskret);
-int ARCAN_XCheckIfEvent(Display *display, XEvent *event_return,
-	Bool (*predicate)(Display*, XEvent*, XPointer), XPointer arg);
-Bool ARCAN_XFilterEvent(XEvent* ev, Window m);
-#endif
-
 /* quick debugging hack */
 static char* lastsym;
 
@@ -150,26 +137,15 @@ void build_forwardtbl()
 	forwardtbl.glFlush     = lookupsym("glFlush", ARCAN_glFlush, true);
 	forwardtbl.glFinish    = lookupsym("glFinish", ARCAN_glFinish, true);
 
-#ifdef ENABLE_X11_HIJACK
-	forwardtbl.glXSwapBuffers = lookupsym("glXSwapBuffers", ARCAN_glXSwapBuffers, true);
-	forwardtbl.glXGetProcAddress = lookupsym("glXGetProcAddressARB", ARCAN_glxGetProcAddr, true);
-	forwardtbl.XNextEvent = lookupsym("XNextEvent", ARCAN_XNextEvent, true);
-	forwardtbl.XPeekEvent = lookupsym("XPeekEvent", ARCAN_XPeekEvent, true);
-	forwardtbl.XQueryPointer = lookupsym("XQueryPointer", ARCAN_XQueryPointer, true);
-	forwardtbl.XGetEventData = lookupsym("XGetEventData", ARCAN_XGetEventData, true);
-	forwardtbl.XCheckIfEvent = lookupsym("XCheckIfEvent", ARCAN_XCheckIfEvent, true);
-	forwardtbl.XFilterEvent  = lookupsym("XFilterEvent", ARCAN_XFilterEvent, true);
-#endif
-
 /* SDL_mixer hijack, might not be present */
 	forwardtbl.audioproxy = lookupsym("Mix_Volume", NULL, false);
 }
 
 __attribute__((constructor))
 static void hijack_init(void){
-/* force an SDL video driver with a known behavior */
+/* force an SDL audio/video driver with a known behavior */
 	setenv("SDL_VIDEODRIVER", "dummy", 0);
-	setenv("SDL_AUDIODRIVER", "alsa", 0);
+	setenv("SDL_AUDIODRIVER", "dummy", 0);
 	build_forwardtbl();
 }
 
@@ -229,6 +205,12 @@ void SDL_GL_SwapBuffers()
 {
 	lastsym = "SDL_GL_SwapBuffers";
 	ARCAN_SDL_GL_SwapBuffers();
+}
+
+void SDL_WM_SetCaption(const char* title, const char* icon)
+{
+	lastsym = "SDL_WM_SetCaption";
+	ARCAN_SDL_WM_SetCaption(title, icon);
 }
 
 void SDL_UpdateRects(SDL_Surface* screen, int numrects, SDL_Rect* rects){
