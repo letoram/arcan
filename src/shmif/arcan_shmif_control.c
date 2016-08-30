@@ -985,13 +985,23 @@ static void setup_avbuf(struct arcan_shmif_cont* res)
 	res->priv->vbuf_ind = 0;
 	atomic_store(&res->addr->vpending, 0);
 	atomic_store(&res->addr->apending, 0);
-	res->abufused = 0;
+	res->abufused = res->abufpos = 0;
 	res->abufsize = atomic_load(&res->addr->abufsize);
+	res->abufcount = res->abufsize / sizeof(shmif_asample);
+	res->abuf_cnt = res->priv->abuf_cnt;
+	res->samplerate = atomic_load(&res->addr->audiorate);
+	if (0 == res->samplerate)
+		res->samplerate = ARCAN_SHMIF_SAMPLERATE;
 
 	arcan_shmif_mapav(res->addr,
 		res->priv->vbuf, res->priv->vbuf_cnt, res->w*res->h*sizeof(shmif_pixel),
 		res->priv->abuf, res->priv->abuf_cnt, res->abufsize
 	);
+
+/*
+ * NOTE, this means that every time we remap/rebuffer, the previous
+ * A/V state is lost on our side, no matter if we're changing A, V or A/V.
+ */
 	res->vidp = res->priv->vbuf[0];
 	res->audp = res->priv->abuf[0];
 }
@@ -1267,8 +1277,13 @@ static bool step_a(struct arcan_shmif_cont* ctx)
 	struct shmif_hidden* priv = ctx->priv;
 	bool lock = false;
 
+	if (ctx->abufpos)
+		ctx->abufused = ctx->abufpos * sizeof(shmif_asample);
+
 	if (ctx->abufused == 0)
 		return false;
+
+	printf("synch/swap audbp %d\n", priv->abuf_ind);
 
 /* atomic, set [pending, used] -> flag */
 	int pending = atomic_fetch_or_explicit(&ctx->addr->apending,
@@ -1283,7 +1298,7 @@ static bool step_a(struct arcan_shmif_cont* ctx)
 	priv->abuf_ind++;
 	if (priv->abuf_ind == priv->abuf_cnt)
 		priv->abuf_ind = 0;
-	ctx->abufused = 0;
+	ctx->abufused = ctx->abufpos = 0;
 	ctx->audp = priv->abuf[priv->abuf_ind];
 	lock = priv->abuf_cnt == 1 || (pending & (1 << priv->abuf_ind));
 
@@ -1304,7 +1319,7 @@ unsigned arcan_shmif_signal(struct arcan_shmif_cont* ctx,
 /* to protect against some callers being stuck in a 'just signal
  * as a means of draining buffers' */
 	if (!ctx->addr->dms){
-		ctx->abufused = 0;
+		ctx->abufused = ctx->abufpos = 0;
 		fallback_migrate(ctx);
 		return 0;
 	}
@@ -1376,7 +1391,8 @@ void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 }
 
 static bool shmif_resize(struct arcan_shmif_cont* arg,
-	unsigned width, unsigned height, size_t abufsz, int vidc, int audc)
+	unsigned width, unsigned height,
+	size_t abufsz, int vidc, int audc, int samplerate)
 {
 	if (!arg->addr || !arcan_shmif_integrity_check(arg) ||
 	width > PP_SHMPAGE_MAXW || height > PP_SHMPAGE_MAXH)
@@ -1414,6 +1430,13 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 /* synchronize hints as _ORIGO_LL and similar changes only synch
  * on resize */
 	atomic_store(&arg->addr->hints, arg->hints);
+
+	if (samplerate < 0)
+		atomic_store(&arg->addr->audiorate, arg->samplerate);
+	else if (samplerate == 0)
+		atomic_store(&arg->addr->audiorate, ARCAN_SHMIF_SAMPLERATE);
+	else
+		atomic_store(&arg->addr->audiorate, samplerate);
 
 /* need strict ordering across procss boundaries here, first desired
  * dimensions, buffering etc. THEN resize request flag */
@@ -1479,13 +1502,14 @@ bool arcan_shmif_resize_ext(struct arcan_shmif_cont* arg,
 	unsigned width, unsigned height, struct shmif_resize_ext ext)
 {
 	return shmif_resize(arg, width, height,
-		ext.abuf_sz, ext.vbuf_cnt, ext.abuf_cnt);
+		ext.abuf_sz, ext.vbuf_cnt, ext.abuf_cnt, ext.samplerate);
 }
 
 bool arcan_shmif_resize(struct arcan_shmif_cont* arg,
 	unsigned width, unsigned height)
 {
-	return shmif_resize(arg, width, height, arg->addr->abufsize, -1, -1);
+	return shmif_resize(arg, width, height,
+		arg->addr->abufsize, -1, -1, -1);
 }
 
 shmif_trigger_hook arcan_shmif_signalhook(struct arcan_shmif_cont* cont,
@@ -1687,7 +1711,7 @@ enum shmif_migrate_status arcan_shmif_migrate(
 	size_t h = atomic_load(&cont->addr->h);
 
 	if (!shmif_resize(&ret, w, h, cont->abufsize,
-		cont->priv->vbuf_cnt, cont->priv->abuf_cnt)){
+		cont->priv->vbuf_cnt, cont->priv->abuf_cnt, cont->samplerate)){
 		arcan_shmif_drop(&ret);
 		return SHMIF_MIGRATE_TRANSFER_FAIL;
 	}

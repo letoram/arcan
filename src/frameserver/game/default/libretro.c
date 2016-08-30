@@ -44,7 +44,6 @@
 #include "libretro.h"
 
 #include "font_8x8.h"
-#include "resampler/speex_resampler.h"
 
 #ifndef MAX_PORTS
 #define MAX_PORTS 4
@@ -134,12 +133,6 @@ static struct {
 	struct arcan_shmif_cont shmcont;
 	int graphmode;
 
-/* need to resample as speex don't manage buffering internally */
-	int16_t* in_audb, (* out_audb);
-	size_t audbuf_sz;
-	off_t audbuf_ofs;
-	SpeexResamplerState* resampler;
-
 /* libretro states / function pointers */
 	struct retro_system_info sysinfo;
 	struct retro_game_info gameinfo;
@@ -205,7 +198,6 @@ static struct {
 /* render statistics unto *vidp, at the very end of this .c file */
 static void update_ntsc();
 static void push_stats();
-static void log_msg(char* msg, bool flush);
 
 #ifdef FRAMESERVER_LIBRETRO_3D
 static void setup_3dcore(struct retro_hw_render_callback*);
@@ -279,8 +271,9 @@ static void readback_fallback()
 
 static void resize_shmpage(int neww, int newh, bool first)
 {
-/* present error message, synch then terminate.
- * setting a tiny valid buffer size will get the system preferred */
+	if (retro.shmcont.abufpos)
+		arcan_shmif_signal(&retro.shmcont, SHMIF_SIGAUD);
+
 #ifdef FRAMESERVER_LIBRETRO_3D
 	if (retro.rtgt){
 		retro.shmcont.hints = SHMIF_RHINT_ORIGO_LL;
@@ -289,7 +282,8 @@ static void resize_shmpage(int neww, int newh, bool first)
 
 	if (!arcan_shmif_resize_ext(&retro.shmcont, neww, newh,
 		(struct shmif_resize_ext){
-			.abuf_sz = retro.def_abuf_sz,
+			.abuf_sz = 1024,
+			.samplerate = retro.avinfo.timing.sample_rate,
 			.abuf_cnt = retro.abuf_cnt,
 			.vbuf_cnt = retro.vbuf_cnt})){
 		LOG("resizing shared memory page failed\n");
@@ -569,6 +563,9 @@ static void libretro_skipnframes(unsigned count, bool fastfwd)
 
 static void reset_timing(bool newstate)
 {
+	arcan_shmif_enqueue(&retro.shmcont, &(arcan_event){
+		.tgt.kind = ARCAN_EVENT(FLUSHAUD)
+	});
 	retro.basetime = arcan_timemillis();
 	do_preaudio();
 	retro.vframecount = 1;
@@ -604,11 +601,11 @@ static void libretro_audscb(int16_t left, int16_t right)
 		return;
 
 	retro.aframecount++;
+	retro.shmcont.audp[retro.shmcont.abufpos++] = SHMIF_AINT16(left);
+	retro.shmcont.audp[retro.shmcont.abufpos++] = SHMIF_AINT16(right);
 
-/* can happen if we skip a lot and never transfer */
-	if (retro.audbuf_ofs + 2 < retro.audbuf_sz >> 1){
-		retro.in_audb[retro.audbuf_ofs++] = left;
-		retro.in_audb[retro.audbuf_ofs++] = right;
+	if (retro.shmcont.abufpos >= retro.shmcont.abufcount){
+		arcan_shmif_signal(&retro.shmcont, SHMIF_SIGAUD);
 	}
 }
 
@@ -617,18 +614,33 @@ static size_t libretro_audcb(const int16_t* data, size_t nframes)
 	if (retro.skipframe_a)
 		return nframes;
 
+/* from FRAMES to SAMPLES */
+	size_t left = nframes * 2;
+
+	while (left){
+		size_t bfree = retro.shmcont.abufcount - retro.shmcont.abufpos;
+		bool flush = false;
+		size_t ntw;
+
+		if (left > bfree){
+			ntw = bfree;
+			flush = true;
+		}
+		else {
+			ntw = left;
+			flush = false;
+		}
+
+/* this is in BYTES not SAMPLES or FRAMES */
+		memcpy(&retro.shmcont.audp[retro.shmcont.abufpos], data, ntw * 2);
+		left -= ntw;
+		data += ntw;
+		retro.shmcont.abufpos += ntw;
+		if (flush)
+			arcan_shmif_signal(&retro.shmcont, SHMIF_SIGAUD);
+	}
+
 	retro.aframecount += nframes;
-
-/* local buffer overflow, shouldn't happen.. */
-	if ((retro.audbuf_ofs << 1) +
-		(nframes << 1) + (nframes << 2) > retro.audbuf_sz )
-		return nframes;
-
-/* 2 bytes per sample, 2 channels */
-/* audbuf is in int16_t and ofs used as index */
-	memcpy(&retro.in_audb[retro.audbuf_ofs], data, nframes << 2);
-	retro.audbuf_ofs += nframes << 1;
-
 	return nframes;
 }
 
@@ -1307,7 +1319,6 @@ static inline void targetev(arcan_event* ev)
 			retro.skipmode    = tgt->ioevs[0].iv;
 			retro.prewake     = tgt->ioevs[1].iv;
 			retro.preaudiogen = tgt->ioevs[2].iv;
-			retro.audbuf_ofs  = 0;
 			retro.jitterstep  = tgt->ioevs[3].iv;
 			retro.jitterxfer  = tgt->ioevs[4].iv;
 			reset_timing(true);
@@ -1662,7 +1673,6 @@ static bool load_resource(const char* resname)
 		map_region map = arcan_map_resource(&res, true);
 		if (!map.ptr){
 			snprintf(logbuf, logbuf_sz, "couldn't map (%s)", resname?resname:"");
-			log_msg(logbuf, true);
 			LOG("%s\n", logbuf);
 			return false;
 		}
@@ -1670,16 +1680,7 @@ static bool load_resource(const char* resname)
 		retro.gameinfo.size = map.sz;
 	}
 
-	snprintf(logbuf, logbuf_sz, "loading game...");
-	log_msg(logbuf, true);
-
-	if ( retro.load_game( &retro.gameinfo ) == false ){
-		snprintf(logbuf, logbuf_sz, "loading failed");
-		log_msg(logbuf, true);
-		return false;
-	}
-
-	return true;
+	return retro.load_game(&retro.gameinfo);
 }
 
 static void setup_av()
@@ -1698,31 +1699,11 @@ static void setup_av()
 	assert(retro.avinfo.timing.sample_rate > 1);
 	retro.mspf = ( 1000.0 * (1.0 / retro.avinfo.timing.fps) );
 
-/* estimate buffer size to store one frame */
-	retro.aframesz = (float)ARCAN_SHMIF_SAMPLERATE /
-		retro.avinfo.timing.fps *
-		ARCAN_SHMIF_SAMPLE_SIZE * ARCAN_SHMIF_ACHANNELS * 2;
-	LOG("audioframe size: %f b\n", retro.aframesz);
-
 	retro.ntscconv = false;
 
 	LOG("video timing: %f fps (%f ms), audio samplerate: %f Hz\n",
 		(float)retro.avinfo.timing.fps, (float)retro.mspf,
 		(float)retro.avinfo.timing.sample_rate);
-
-	LOG("setting up resampler, %f => %d.\n",
-		(float)retro.avinfo.timing.sample_rate, ARCAN_SHMIF_SAMPLERATE);
-
-	int errc;
-	retro.resampler = speex_resampler_init(ARCAN_SHMIF_ACHANNELS,
-		retro.avinfo.timing.sample_rate, ARCAN_SHMIF_SAMPLERATE, 5, &errc);
-
-/*
- * just prepare some (overly) large audio resampling buffers
- */
-	retro.audbuf_sz = retro.avinfo.timing.sample_rate * 4;
-	retro.in_audb = malloc(retro.audbuf_sz);
-	retro.out_audb = malloc(retro.audbuf_sz);
 }
 
 static void setup_input()
@@ -1835,23 +1816,12 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		LOG("Loading core (%s) with resource (%s)\n", libname ?
 			libname : "missing arg.", resname ? resname : "missing resarg.");
 
-	char logbuf[128] = {0};
-	size_t logbuf_sz = sizeof(logbuf);
-
-	resize_shmpage(320, 240, true);
-
-	if (snprintf(logbuf, logbuf_sz, "loading(%s)", libname) >= logbuf_sz)
-		logbuf[logbuf_sz-1] = '\0';
-	log_msg(logbuf, true);
-
 /* map up functions and test version */
 	lastlib = dlopen(libname, RTLD_LAZY);
 	if (!globallib)
 		globallib = dlopen(NULL, RTLD_LAZY);
 
 	if (!lastlib){
-		snprintf(logbuf, logbuf_sz, "Couldn't open (%s), giving up.\n", libname);
-		log_msg(logbuf, true);
 		LOG("couldn't open library (%s), giving up.\n", libname);
 		exit(EXIT_FAILURE);
 	}
@@ -1883,7 +1853,12 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		retro.sysinfo.library_name, retro.sysinfo.library_version,
 		retro.sysinfo.valid_extensions);
 
+	resize_shmpage(retro.avinfo.geometry.base_width,
+		retro.avinfo.geometry.base_height, true);
+
 /* map functions to context structure */
+   unsigned base_height;   /* Nominal video height of game. */
+
 /* send some information on what core is actually loaded etc. */
 	retro.ident.ext.kind = ARCAN_EVENT(IDENT);
 	size_t msgsz = COUNT_OF(retro.ident.ext.message.data);
@@ -2017,66 +1992,10 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 					stop, retro.transfercost);
 		}
 
-		if(retro.audbuf_ofs){
-			spx_uint32_t inc = retro.audbuf_ofs >> 1; /* per channel, 2 chan */
-			spx_uint32_t left = retro.audbuf_sz;
-			retro.audbuf_ofs = 0;
-			speex_resampler_process_interleaved_int(retro.resampler,
-				retro.in_audb, &inc, retro.out_audb, &left);
-
-			left *= sizeof(shmif_asample) * ARCAN_SHMIF_ACHANNELS;
-			uint8_t* inb = (uint8_t*) retro.out_audb;
-			size_t bufsz = retro.shmcont.abufsize;
-
-			while (left){
-				uint8_t* outb = (uint8_t*) retro.shmcont.audp;
-				size_t limit = retro.shmcont.abufsize - retro.shmcont.abufused;
-
-				if (left >= limit){
-					memcpy(&outb[retro.shmcont.abufused], inb, limit);
-					left -= limit;
-					inb += limit;
-					retro.shmcont.abufused = retro.shmcont.abufsize;
-					arcan_shmif_signal(&retro.shmcont, SHMIF_SIGAUD);
-				}
-				else{
-					memcpy(&outb[retro.shmcont.abufused], inb, left);
-					retro.shmcont.abufused += left;
-					break;
-				}
-			}
-		}
-
 		if (retro.sync_data)
 				push_stats();
 	}
 	return EXIT_SUCCESS;
-}
-
-static void log_msg(char* msg, bool flush)
-{
-	draw_box(&retro.shmcont, 0, 0,
-		retro.shmcont.w, retro.shmcont.h,
-		RGBA(0x00, 0x00, 0x00, 0xff)
-	);
-
-	int dw, dh;
-	int sw = retro.shmcont.w;
-
-/* clip string */
-	char* mendp = msg + strlen(msg) + 1;
-	do {
-		*mendp = '\0';
-		text_dimensions(&retro.shmcont, msg, &dw, &dh);
-		mendp--;
-	} while (dw > sw && mendp > msg);
-
-/* center */
-	draw_text(&retro.shmcont, msg,
-		0.5 * (sw - dw), 0.5 * (retro.shmcont.h - dh), 0xffffffff);
-
-	if (flush)
-		arcan_shmif_signal(&retro.shmcont, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
 }
 
 static void push_stats()

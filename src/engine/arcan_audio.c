@@ -316,15 +316,18 @@ arcan_errc arcan_audio_setup(bool nosound)
 
 /* don't supported repeated calls without shutting down in between */
 	if (current_acontext && !current_acontext->context) {
-
+		ALCint attrs[] = {
+			ALC_FREQUENCY, ARCAN_SHMIF_SAMPLERATE,
+			0
+		};
 /* unfortunately, the pretty poorly thought out alcOpenDevice/alcCreateContext
  * doesn't allow you to create a nosound or debug/testing audio device
  * (or for that matter, enumerate without an extension, seriously..)
  * so to avoid yet another codepath, we'll just set the listenerGain to 0 */
 #ifdef ARCAN_LWA
-		current_acontext->context = alcCreateContext(alcOpenDevice("arcan"), NULL);
+		current_acontext->context = alcCreateContext(alcOpenDevice("arcan"), attrs);
 #else
-		current_acontext->context = alcCreateContext(alcOpenDevice(NULL), NULL);
+		current_acontext->context = alcCreateContext(alcOpenDevice(NULL), attrs);
 #endif
 		alcMakeContextCurrent(current_acontext->context);
 
@@ -721,7 +724,7 @@ int arcan_audio_findstreambufslot(arcan_aobj_id id)
 	return aobj ? find_freebufferind(aobj, true) : -1;
 }
 
-static void arcan_astream_refill(arcan_aobj* current)
+static void astream_refill(arcan_aobj* current)
 {
 	arcan_event newevent = {
 		.category = EVENT_AUDIO,
@@ -823,7 +826,7 @@ void arcan_aid_refresh(arcan_aobj_id aid)
 {
 	struct arcan_aobj* obj = arcan_audio_getobj(aid);
  	if (obj)
-		arcan_astream_refill(obj);
+		astream_refill(obj);
 }
 
 char** arcan_audio_capturelist()
@@ -955,12 +958,13 @@ arcan_aobj_id arcan_audio_capturefeed(const char* dev)
 	return ARCAN_EID;
 }
 
-void arcan_audio_refresh()
+size_t arcan_audio_refresh()
 {
 	if (!current_acontext->context || !current_acontext->al_active)
-		return;
+		return 0;
 
 	arcan_aobj* current = current_acontext->first;
+	size_t rv = 0;
 
 	while(current){
 		if (
@@ -968,11 +972,16 @@ void arcan_audio_refresh()
 			current->kind == AOBJ_FRAMESTREAM ||
 			current->kind == AOBJ_CAPTUREFEED
 		)
-			arcan_astream_refill(current);
+			astream_refill(current);
 
 		_wrap_alError(current, "audio_refresh()");
+		if (current->used)
+			rv++;
+
 		current = current->next;
 	}
+
+	return rv;
 }
 
 static inline bool step_transform(arcan_aobj* obj)
