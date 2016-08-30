@@ -1283,8 +1283,6 @@ static bool step_a(struct arcan_shmif_cont* ctx)
 	if (ctx->abufused == 0)
 		return false;
 
-	printf("synch/swap audbp %d\n", priv->abuf_ind);
-
 /* atomic, set [pending, used] -> flag */
 	int pending = atomic_fetch_or_explicit(&ctx->addr->apending,
 		1 << priv->abuf_ind, memory_order_release);
