@@ -822,8 +822,9 @@ send_key:
 	arcan_errc errc;
 	tgt->aid = arcan_audio_feed((arcan_afunc_cb)
 		arcan_frameserver_audioframe_direct, tgt, &errc);
-	tgt->sz_audb = 1024 * 64;
-	tgt->audb = malloc(tgt->sz_audb);
+	tgt->sz_audb = 0;
+	tgt->ofs_audb = 0;
+	tgt->audb = NULL;
 
 	return FRV_NOFRAME;
 }
@@ -1014,7 +1015,7 @@ arcan_frameserver* arcan_frameserver_listen_external(const char* key, int fd)
 	return res;
 }
 
-static size_t default_sz = 4096;
+ size_t default_sz = 512;
 size_t arcan_frameserver_default_abufsize(size_t new_sz)
 {
 	size_t res = default_sz;
@@ -1035,6 +1036,7 @@ bool arcan_frameserver_resize(struct arcan_frameserver* s)
 	size_t abufsz = atomic_load(&shmpage->abufsize);
 	size_t vbufc = atomic_load(&shmpage->vpending);
 	size_t abufc = atomic_load(&shmpage->apending);
+	size_t samplerate = atomic_load(&shmpage->audiorate);
 	vbufc = vbufc > FSRV_MAX_VBUFC ? FSRV_MAX_VBUFC : vbufc;
 	abufc = abufc > FSRV_MAX_ABUFC ? FSRV_MAX_ABUFC : abufc;
 	vbufc = vbufc == 0 ? 1 : vbufc;
@@ -1048,6 +1050,13 @@ bool arcan_frameserver_resize(struct arcan_frameserver* s)
  */
 	if (abufsz < default_sz)
 		abufsz = default_sz;
+
+/*
+ * pending the same audio refactoring, we just assume the audio layer
+ * accepts whatever samplerate and resamples itself if absolutely necessary
+ */
+	if (samplerate)
+		s->desc.samplerate = samplerate;
 
 /* shrink number of video buffers if we don't fit */
 	size_t shmsz;

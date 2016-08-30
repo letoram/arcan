@@ -43,7 +43,6 @@
 #include <stddef.h>
 #include <signal.h>
 #include <errno.h>
-#include <pthread.h>
 #include <ctype.h>
 #include <setjmp.h>
 #include <dlfcn.h>

@@ -65,18 +65,16 @@ arcan_errc arcan_audio_suspend();
 arcan_errc arcan_audio_resume();
 
 /*
- * Some audio transformations (pitch, gain, ...) need a clock
- * to work, this tick is usually tied to the same slot in the video
- * subsystem.
+ * Process the list of active audio object and adjust time- based transforms,
+ * e.g. changing pitch or volume.
  */
 void arcan_audio_tick(uint8_t ntt);
 
 /*
- * Similarly to video refresh, the audio counterpart may need to
- * refill / de- en- queue buffers at a higher rate than the tick
- * clock would allow.
+ * Process the list of active streaming audio sources and dequeue/refill
+ * buffers as needed. Returns the number of sources with active buffers.
  */
-void arcan_audio_refresh();
+size_t arcan_audio_refresh();
 
 arcan_errc arcan_audio_shutdown();
 

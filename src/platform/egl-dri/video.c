@@ -60,6 +60,10 @@
  * 5. DRMs Atomic- modesetting support is currently not used
  *
  * 6. egl-nvidia bits about streams should be merged after [5]
+ *
+ * 7. "always" headless mode of operation build-time for processing
+ *    jobs and other situations where wer don't need the full monty. Would
+ *    best be done with [1]
  */
 
 /*
@@ -114,6 +118,7 @@
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_video.h"
+#include "arcan_audio.h"
 #include "arcan_videoint.h"
 
 #include "arcan_shmif.h"
@@ -127,7 +132,7 @@ static PFNEGLCREATEIMAGEKHRPROC eglCreateImageKHR;
 static PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES;
 
 /*
- * real heuristics scheduled for 0.5.1, see .5 at top
+ * real heuristics scheduled for 0.5.x, see .4 at top
  */
 static char* egl_synchopts[] = {
 	"default", "double buffered, Display controls refresh",
@@ -1741,11 +1746,20 @@ void flush_display_events(int timeout)
 	int pending = 1;
 	struct dispout* d;
 
+/* Until we have a decent 'conductor' for managing synchronization for
+ * all the different audio/video/input producers and consumers, keep
+ * on processing audio input while we wait for displays to finish synch.
+ *
+ * Until we have support for Atomic modesetting, we don't have reliable
+ * Vsync notification (**censored**), so we have to give up sooner or later.
+ */
+	unsigned long long start = arcan_timemillis();
+	size_t naud = arcan_audio_refresh();
+	int period = (timeout > 0 ? (naud > 0 ? 2 : timeout) : timeout);
+
 	drmEventContext evctx = {
 			.version = DRM_EVENT_CONTEXT_VERSION,
 			.page_flip_handler = page_flip_handler
-/* also possible to get access to vblank here (vblank_handler) for when we
- * implement actual synching strategies */
 	};
 	do{
 /* for multiple cards, extend this pollset */
@@ -1754,14 +1768,20 @@ void flush_display_events(int timeout)
 			.events = POLLIN | POLLERR | POLLHUP
 		};
 
-		int rv = poll(&fds, 1, timeout);
+		int rv = poll(&fds, 1, period);
 		if (-1 == rv){
 			if (errno == EINTR || errno == EAGAIN)
 				continue;
 			arcan_fatal("platform/egl-dri() - poll on device failed.\n");
 		}
-		else if (0 == rv)
+		else if (0 == rv){
+			unsigned long long now = arcan_timemillis();
+			if (naud && timeout && now > start && now - start < timeout){
+				naud = arcan_audio_refresh();
+				continue;
+			}
 			return;
+		}
 
 		if (fds.revents & (POLLHUP | POLLERR))
 			arcan_warning("platform/egl-dri() - display broken/recovery missing.\n");
@@ -1802,7 +1822,7 @@ void platform_video_synch(uint64_t tick_count, float fract,
 	while (egl_dri.destroy_pending > 0){
 		while( (d = get_display(i++)) )
 			disable_display(d, true);
-		flush_display_events(16);
+		flush_display_events(8);
 		i = 0;
 	}
 
@@ -1812,7 +1832,8 @@ void platform_video_synch(uint64_t tick_count, float fract,
 	arcan_bench_register_cost( arcan_vint_refresh(fract, &nd) );
 
 	static int last_nd;
-	if (nd || last_nd){
+	bool update = nd || last_nd;
+	if (update){
 		while ( (d = get_display(i++)) ){
 			if (d->state == DISP_MAPPED && d->buffer.in_flip == 0)
 				update_display(d);
@@ -1820,9 +1841,11 @@ void platform_video_synch(uint64_t tick_count, float fract,
 	}
 	last_nd = nd;
 
-/* still use VSYNC as limiter until we migrate to a more sane event driven
- * source pool where more steps can be event driven */
-	flush_display_events(16);
+/*
+ * still use an artifical delay / timeout here, see previous notes about the
+ * need for a real 'conductor' with synchronization- strategy support
+ */
+	flush_display_events(update ? 16 : 8);
 
 	if (post)
 		post();
@@ -1837,7 +1860,7 @@ void platform_video_shutdown()
 		for(size_t i = 0; i < MAX_DISPLAYS; i++){
 			disable_display(&displays[i], true);
 		}
-		flush_display_events(16);
+		flush_display_events(17);
 	} while (egl_dri.destroy_pending && rc-- > 0);
 
 	for (size_t i = 0; i < sizeof(nodes)/sizeof(nodes[0]); i++){

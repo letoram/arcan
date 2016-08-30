@@ -98,26 +98,21 @@ static const int ARCAN_SHMIF_QUEUE_SZ = PP_QUEUE_SZ;
 #endif
 
 /*
- * ALWAYS interleaved
+ * ALWAYS interleaved. for later quality work, all the video/audio
+ * buffer format tuning and indirection macros will be moved to separate
+ * selectable profile headers, and the packing macros will be redone
+ * using C11 type-generic macros.
  */
 typedef AUDIO_SAMPLE_TYPE shmif_asample;
 static const int ARCAN_SHMIF_SAMPLERATE = 48000;
 static const int ARCAN_SHMIF_ACHANNELS = 2;
-static const int ARCAN_SHMIF_SAMPLE_SIZE = sizeof(shmif_asample);
 
-/*
- * Both SHMIF_AFLOAT / SHMIF_AINT16 macros and expansion to later support
- * a static configurable format / packing (and the similar version for
- * SHMIF_RGBA, ...) would probably benefit from a reimplementation as C11
- * type generic macros (are there any tricks to get these to expand on
- * variadic as well in order to satisfy channels and downmixing)
- */
 #ifndef SHMIF_AFLOAT
 #define SHMIF_AFLOAT(X) ( (int16_t) ((X) * 32767.0) ) /* sacrifice -32768 */
 #endif
 
 #ifndef SHMIF_AINT16
-#define SHMIF_AINT16(X) ( (int16_t) ((X))
+#define SHMIF_AINT16(X) ( (int16_t) ((X)) )
 #endif
 
 /*
@@ -424,11 +419,15 @@ bool arcan_shmif_resize(struct arcan_shmif_cont*,
  * Extended version of resize that supports requesting more audio / video
  * buffers for better swap/synch control. abuf_cnt and vbuf_cnt are limited
  * to the constants ARCAN_SHMIF_
+ * [PLACEHOLDER] Samplerate can be something different than
+ * ARCAN_SHMIF_SAMPLERATE, but this is currently ignored until audio monitoring,
+ * mixing and recording has been reworked to account for different samplerates.
  */
 struct shmif_resize_ext {
 	size_t abuf_sz;
-	int abuf_cnt;
-	int vbuf_cnt;
+	ssize_t abuf_cnt;
+	ssize_t vbuf_cnt;
+	ssize_t samplerate;
 };
 
 bool arcan_shmif_resize_ext(struct arcan_shmif_cont*,
@@ -498,16 +497,30 @@ struct arcan_shmif_cont {
  * aliasing is not recommended, especially important if (default)
  * connection-crash recovery-reconnect is enabled as the address >may< be
  * changed. If that is a concern, define a handler using the shmif_resetfunc */
-  shmif_pixel* vidp;
-	shmif_asample* audp;
-	uint16_t abufused;
-	uint16_t abufsize;
+  union {
+		shmif_pixel* vidp;
+		uint8_t* vidb;
+	};
+	union {
+		shmif_asample* audp;
+		uint8_t* audb;
+	};
+
 /*
  * This cookie is set/kept to some implementation defined value
  * and will be verified during integrity_check. It is placed here
  * to quickly detect overflows in video or audio management.
  */
 	int16_t oflow_cookie;
+
+/* use EITHER [audp, abufpos, abufcount] OR [audb, abufused, abufsize]
+ * to populate the current audio buffer depending on if you are working on
+ * SAMPLES or BYTES. abufpos != 0 will assume the latter */
+	uint16_t abufused, abufpos;
+	uint16_t abufsize, abufcount;
+
+/* updated on resize, provided to get feedback on an extended resize */
+	uint8_t abuf_cnt;
 
 /*
  * the event handle is provided and used for signal event delivery
@@ -536,6 +549,13 @@ struct arcan_shmif_cont {
  * bytes and pitch a row length in pixels.
  */
 	size_t w, h, stride, pitch;
+
+/*
+ * defaults to ARCAN_SHMIF_SAMPLERATE but may be renegotiated as part
+ * of an extended resize. A deviation between the constant samplerate
+ * and the negotiated one will likely lead to resampling server-side.
+ */
+	size_t samplerate;
 
 /*
  * Presentation hints:
@@ -584,10 +604,10 @@ enum rhint_mask {
 
 struct arcan_shmif_page {
 /*
- * These will be statically set to the ARCAN_VERSION_MAJOR and
- * ARCAN_VERSION_MAJOR defines, a mismatch will cause the integrity_check to
- * fail and both sides may decide to terminate. Thus, they also act as a header
- * guard.
+ * These will be statically set to the ARCAN_VERSION_MAJOR, ARCAN_VERSION_MAJOR
+ * defines, a mismatch will cause the integrity_check to fail and both sides
+ * may decide to terminate. Thus, they also act as a header guard. A more
+ * precise guard value is found in [cookie].
  */
 	int8_t major;
 	int8_t minor;
@@ -683,6 +703,13 @@ struct arcan_shmif_page {
  * synch is less than the negotiated abufsize, audio artifacts may be heard.
  */
 	volatile _Atomic uint_least16_t abufsize;
+
+/*
+ * [FSRV-SET (resize), ARCAN-ACK]
+ * Desired buffer samplerate, 0 maps back to ARCAN_SHMIF_SAMPLERATE that
+ * should be tuned for the underlying audio system at build-time.
+ */
+	volatile _Atomic uint_least32_t audiorate;
 
 /*
  * [FSRV-OR-ARCAN-SET]
