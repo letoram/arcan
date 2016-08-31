@@ -7,6 +7,8 @@ if (X11_FOUND)
 
 	set(HIJACK_LIBSTRING "${HIJACK_LIBSTRING}x " PARENT_SCOPE)
 	add_library(ahijack_x11 SHARED ${X_SOURCES})
+	set_property(TARGET ahijack_x11 APPEND PROPERTY COMPILE_DEFINITIONS
+		WANT_X_FUNCTIONS WANT_GLX_FUNCTIONS)
 	target_include_directories(ahijack_x11 PRIVATE ${X11_INCLUDE_DIR} ${FSRV_ROOT})
 	target_link_libraries(ahijack_x11 arcan_shmif_int arcan_shmif_intext)
 	install(TARGETS ahijack_x11 DESTINATION lib)

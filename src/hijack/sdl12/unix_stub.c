@@ -43,9 +43,6 @@ void ARCAN_SDL_UpdateRects(SDL_Surface* screen,
 	int numrects, SDL_Rect* rects);
 int ARCAN_SDL_UpperBlit(SDL_Surface* src, const SDL_Rect* srcrect,
 	SDL_Surface *dst, SDL_Rect *dstrect);
-void ARCAN_SDL_GL_SwapBuffers();
-void ARCAN_glFinish();
-void ARCAN_glFlush();
 
 /* quick debugging hack */
 static char* lastsym;
@@ -120,7 +117,6 @@ void build_forwardtbl()
 	forwardtbl.sdl_pollevent = lookupsym("SDL_PollEvent",ARCAN_SDL_PollEvent, true);
 	forwardtbl.sdl_waitevent = lookupsym("SDL_WaitEvent", ARCAN_SDL_WaitEvent, true);
 	forwardtbl.sdl_pushevent = lookupsym("SDL_PushEvent",NULL, true);
-	forwardtbl.sdl_swapbuffers = lookupsym("SDL_GL_SwapBuffers",ARCAN_SDL_GL_SwapBuffers, true);
 	forwardtbl.sdl_flip = lookupsym("SDL_Flip",ARCAN_SDL_Flip, true);
 	forwardtbl.sdl_iconify = lookupsym("SDL_WM_IconifyWindow", NULL, true);
 	forwardtbl.sdl_updaterect = lookupsym("SDL_UpdateRect", ARCAN_SDL_UpdateRect, true);
@@ -134,8 +130,6 @@ void build_forwardtbl()
 
 	forwardtbl.glLineWidth = lookupsym("glLineWidth", NULL, true);
 	forwardtbl.glPointSize = lookupsym("glPointSize", NULL, true);
-	forwardtbl.glFlush     = lookupsym("glFlush", ARCAN_glFlush, true);
-	forwardtbl.glFinish    = lookupsym("glFinish", ARCAN_glFinish, true);
 
 /* SDL_mixer hijack, might not be present */
 	forwardtbl.audioproxy = lookupsym("Mix_Volume", NULL, false);
@@ -201,12 +195,6 @@ SDL_Surface* SDL_CreateRGBSurface(Uint32 flags, int width, int height, int depth
 	return ARCAN_SDL_CreateRGBSurface(flags, width, height, depth, Rmask, Gmask, Bmask, Amask);
 }
 
-void SDL_GL_SwapBuffers()
-{
-	lastsym = "SDL_GL_SwapBuffers";
-	ARCAN_SDL_GL_SwapBuffers();
-}
-
 void SDL_WM_SetCaption(const char* title, const char* icon)
 {
 	lastsym = "SDL_WM_SetCaption";
@@ -231,102 +219,3 @@ int SDL_WM_ToggleFullscreen(SDL_Surface* screen){
 DECLSPEC int SDLCALL SDL_UpperBlit(SDL_Surface *src, SDL_Rect *srcrect, SDL_Surface *dst, SDL_Rect *dstrect){
 	return ARCAN_SDL_UpperBlit(src, srcrect, dst, dstrect);
 }
-
-void glFinish()
-{
-	ARCAN_glFinish();
-}
-
-void glFlush()
-{
-	ARCAN_glFlush();
-}
-
-#ifdef ENABLE_X11_HIJACK
-void glXSwapBuffers(Display *dpy, GLXDrawable drawable)
-{
-	lastsym = "glXSwapBuffers";
-	return ARCAN_glXSwapBuffers(dpy, drawable);
-}
-
-void* ARCAN_glxGetProcAddr(const GLubyte* symbol)
-{
-	struct symentry* syment = find_symbol((char*)symbol);
-
-	if (syment)
-		return (syment->bounce ? syment->bounce : syment->ptr);
-
-/* s'ppose the calls are to flush lookup errors or something.. */
-	dlerror(); dlerror();
-	void* rv = dlsym(NULL, (const char*) symbol);
-
-	dlerror();
-	return rv;
-}
-
-int XNextEvent(Display* disp, XEvent* ev)
-{
-	lastsym = "XNextEvent";
-	return forwardtbl.XNextEvent(disp, ev);
-}
-
-int XPeekEvent(Display* disp, XEvent* ev)
-{
-	lastsym = "XPeekEvent";
-	return forwardtbl.XPeekEvent(disp, ev);
-}
-
-void* glxGetProcAddress(const GLubyte* msg)
-{
-	lastsym = "glxGetProcAddress";
-	return ARCAN_glxGetProcAddr(msg);
-}
-
-void* glxGetProcAddressARB(const GLubyte* msg)
-{
-	lastsym = "glxGetProcAddressARB";
-	return ARCAN_glxGetProcAddr(msg);
-}
-
-Bool XQueryPointer(Display* display, Window w, Window* root_return, Window* child_return, int* rxret, int* ryret, int* wxret, int* wyret, unsigned* maskret)
-{
-	lastsym = "XQueryPointer";
-	return ARCAN_XQueryPointer(display, w, root_return, child_return, rxret, ryret, wxret, wyret, maskret);
-}
-
-Bool XGetEventData(Display* display, XGenericEventCookie* event)
-{
-	lastsym = "XGetEventData";
-	return ARCAN_XGetEventData(display, event);
-}
-
-Bool XCheckIfEvent(Display *display, XEvent *event_return, Bool (*predicate)(), XPointer arg)
-{
-	lastsym = "XCheckIfEvent";
-	return ARCAN_XCheckIfEvent(display, event_return, predicate, arg);
-}
-
-Bool XFilterEvent(XEvent* ev, Window m)
-{
-	return ARCAN_XFilterEvent(ev, m);
-}
-
-#endif
-
-#ifdef ENABLE_WINE_HIJACK
-void* wine_dlsym(void* handle, const char* symbol, char* error, size_t errorsize)
-{
-	const char* err();
-	struct symentry* syment = find_symbol(symbol);
-
-	if (syment){
-		return (syment->bounce ? syment->bounce : syment->ptr);
-	} else;
-
-/* s'ppose the calls are to flush lookup errors or something.. */
-	dlerror(); dlerror();
-	void* rv = dlsym(handle, symbol);
-	dlerror();
-	return rv;
-}
-#endif

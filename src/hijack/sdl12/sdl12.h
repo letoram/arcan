@@ -22,8 +22,6 @@ int ARCAN_SDL_UpperBlit(SDL_Surface* src, const SDL_Rect* srcrect,
 	SDL_Surface *dst, SDL_Rect *dstrect);
 void ARCAN_SDL_WM_SetCaption(const char* title, const char* icon);
 void ARCAN_SDL_GL_SwapBuffers();
-void ARCAN_glFinish();
-void ARCAN_glFlush();
 void build_forwardtbl();
 
 struct hijack_fwdtbl {
@@ -48,8 +46,6 @@ struct hijack_fwdtbl {
 	int (*sdl_starteventloop)(Uint32);
 	void (*glLineWidth)(float);
 	void (*glPointSize)(float);
-	void (*glFinish)(void);
-	void (*glFlush)(void);
 };
 
 #endif

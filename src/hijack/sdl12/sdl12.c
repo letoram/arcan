@@ -21,8 +21,16 @@
 #include <signal.h>
 #include <arcan_shmif.h>
 
+#ifdef ENABLE_OPENGL
+#define AGP_ENABLE_UNPURE 1
+#include "video_platform.h"
+#include "platform.h"
 #define GL_GLEXT_PROTOTYPES 1
 #include <SDL/SDL_opengl.h>
+#ifndef GL_DRAW_FRAMEBUFFER
+#define GL_DRAW_FRAMEBUFFER 0x8CA9
+#endif
+#endif
 
 #include <SDL/SDL.h>
 #include "sdl12.h"
@@ -62,9 +70,10 @@ static struct {
 	SDL_Surface* mainsrfc;
 	SDL_PixelFormat desfmt;
 
-/* for GL surfaces only */
-	unsigned pbo_ind;
-	unsigned rb_pbos[2];
+#ifdef ENABLE_OPENGL
+	struct agp_rendertarget* rtgt;
+	struct storage_info_t vstore;
+#endif
 
 /* specialized hack for vector graphics, a better approach would be to implement
  * a geometry buffering scheme (requires different SHM sizes though)
@@ -252,13 +261,139 @@ void ARCAN_SDL_WM_SetCaption(const char* title, const char* icon)
 	arcan_shmif_enqueue(&global.shared, &ev);
 }
 
+#ifdef ENABLE_OPENGL
 /*
- * certain events might be filtered as well, since the subject needs to be
- * tricked to belive that it is active/in focus/...  even though it is not
+ * We need to hook this one too in order to handle OPENGL (otherwise the
+ * dummy driver will just mask our flags)
  */
+static SDL_Surface* (*dummy_videomode)(
+	void*, SDL_Surface*, int, int, int, Uint32);
+
+SDL_Surface* ARCAN_DUMMY_SetVideoMode(void* this, SDL_Surface* cur,
+	int w, int h, int bpp, Uint32 flags)
+{
+	SDL_Surface* res = dummy_videomode(this, cur, w, h, bpp, flags);
+	res->flags = flags;
+	return res;
+}
+
+static void bind_framebuffer(GLenum tgt, GLuint fbo)
+{
+	if (tgt == GL_DRAW_FRAMEBUFFER && fbo == 0){
+		uintptr_t tgt;
+		agp_rendertarget_ids(global.rtgt, &tgt, NULL, 0);
+		glBindFramebufferEXT(tgt, tgt);
+	}
+	else
+		glBindFramebufferEXT(tgt, tgt);
+}
+
+static int load_library(void* this, const char* path)
+{
+	trace("GL_LoadLibrary");
+/* already have you loaded as a dep to this lib so no need */
+	return 1;
+}
+
+/* legacy from agp_* functions, since it's only FBO management we
+ * really need, it could be pulled from the SDL2 driver instead to
+ * make things a little easier */
+void* platform_video_gfxsym(const char* sym)
+{
+	return arcan_shmifext_headless_lookup(&global.shared, sym);
+}
+
+struct monitor_mode platform_video_dimensions()
+{
+	return (struct monitor_mode){
+		.width = 640,
+		.height = 480
+	};
+}
+
+bool platform_video_map_handle(struct storage_info_t* store, int64_t handle)
+{
+	return false;
+}
+
+static void* get_proc_addr(void* this, const char* proc)
+{
+/* Most symbols we can treat as normal, but since we don't have the option
+ * of modifying GL library behavior - we can't really get decent control of
+ * how backbuffers are mapped etc. So we abuse the FBO mechanism to make
+ * sure that we are always drawing to our FBO. */
+	if (!proc)
+		return NULL;
+
+	trace("getProcAddress(%s)", proc);
+
+	if (strcmp(proc, "glBindFramebuffer") == 0 ||
+		strcmp(proc, "glBindFramebufferARB") == 0 ||
+		strcmp(proc, "glBindFramebufferEXT") == 0){
+		return bind_framebuffer;
+	}
+
+	return arcan_shmifext_headless_lookup(&global.shared, proc);
+}
+
+static int get_attr(void* this, SDL_GLattr attr, int* val)
+{
+	trace("getAttribute");
+	return 0;
+}
+
+static int make_current(void* this)
+{
+	trace("glMakeCurrent");
+	return 0;
+}
+
+static void swap_buffers(void* this)
+{
+	trace("glSwapBuffers");
+/* now we can do buffer passing or readback */
+	glFlush();
+	uintptr_t display;
+  if (!arcan_shmifext_egl_meta(&global.shared, &display, NULL, NULL))
+		return;
+
+	if (arcan_shmifext_eglsignal(&global.shared, display,
+		SHMIF_SIGVID, global.vstore.vinf.text.glid) >= 0)
+		return;
+
+	struct storage_info_t store = global.vstore;
+	store.vinf.text.raw = global.shared.vidp;
+	agp_activate_rendertarget(NULL);
+	agp_readback_synchronous(&store);
+
+	arcan_shmif_signal(&global.shared, SHMIF_SIGVID);
+}
+
+struct sysvideo {
+	char* name;
+	void* initptr;
+	void* listmodes;
+	SDL_Surface *(*SetVideoMode)(void*, SDL_Surface *current,
+				int width, int height, int bpp, Uint32 flags);
+	void* ignore[6];
+	SDL_VideoInfo info;
+	void* ignore2[15];
+
+/* need to patch these too, and make sure that attempts at binding
+ * 0- FBO actually gets our default readback */
+	int (*GL_LoadLibrary)(void*, const char *path);
+	void* (*GL_GetProcAddress)(void*, const char *proc);
+	int (*GL_GetAttribute)(void*, SDL_GLattr attrib, int* value);
+	int (*GL_MakeCurrent)(void*);
+	void (*GL_SwapBuffers)(void*);
+};
+
+#endif
+
 SDL_Surface* ARCAN_SDL_SetVideoMode(int w, int h, int ncps, Uint32 flags)
 {
 	trace("SDL_SetVideoMode(%d, %d, %d, %d)\n", w, h, ncps, flags);
+	SDL_Surface* res;
 	global.gotsdl = true;
 
 	if (!global.shared.addr){
@@ -266,10 +401,65 @@ SDL_Surface* ARCAN_SDL_SetVideoMode(int w, int h, int ncps, Uint32 flags)
 		global.shared = arcan_shmif_open(SEGID_GAME, SHMIF_ACQUIRE_FATALFAIL,&args);
 	}
 
-	SDL_Surface* res = forwardtbl.sdl_setvideomode(w, h, ncps, flags);
+#ifdef ENABLE_OPENGL
+	if (!(flags & SDL_OPENGL))
+		goto nogl;
+
+	global.shared.hints = SHMIF_RHINT_ORIGO_LL;
+	global.glsource = true;
+
+/*
+ * Time for some surgery - the DUMMY video driver that we force is good
+ * enough to build an environment to satisfy normal 2D drawing, but not
+ * OpenGL, since it strips us of those flags and don't provide an entry
+ * point to work with.
+ *
+ * there's no direct interface to access current_video where all little
+ * pointers are BUT we can find it through SDL_GetVideoInfo which gives
+ * us a known offset into it that's been stable for long enough :-)
+ *
+ * The other option, that was used in the past, required us to be using
+ * the x11 video driver, and have an active server, which is disgusting
+ * so we need to do something almost as bad...
+ *
+ * Asuming the structure satisfy our assumptions, patch the table to use
+ * a version of VideoMode for dummy that restores the flags.
+ * This was not part of the K&R book but at least we don't have to walk
+ * the stack...
+ */
+	uintptr_t thespot = (uintptr_t) SDL_GetVideoInfo();
+
+	if (thespot && thespot >= offsetof(struct sysvideo, info)){
+		struct sysvideo* driver = (void*)(thespot-offsetof(struct sysvideo, info));
+
+		if (0 == write(STDOUT_FILENO, driver, 0) &&
+			memcmp(driver->name, "dummy", 5) == 0){
+				dummy_videomode = driver->SetVideoMode;
+				driver->SetVideoMode = ARCAN_DUMMY_SetVideoMode;
+				driver->GL_LoadLibrary = load_library;
+				driver->GL_GetProcAddress = get_proc_addr;
+				driver->GL_GetAttribute = get_attr;
+				driver->GL_MakeCurrent = make_current;
+				driver->GL_SwapBuffers = swap_buffers;
+
+/* so instead of stealing the SDL_GL symbols directly, we patch the dummy
+ * driver to include our little modifications. */
+
+/* setup a surfaceless EGL context, map extensions and create a FBO that
+ * will work as our substitute for the back-buffer */
+				arcan_shmifext_headless_setup(&global.shared,
+					arcan_shmifext_headless_defaults());
+				agp_init();
+				agp_empty_vstore(&global.vstore, w, h);
+				global.rtgt = agp_setup_rendertarget(
+					&global.vstore, RENDERTARGET_COLOR_DEPTH_STENCIL);
+				agp_activate_rendertarget(global.rtgt);
+		}
+	}
+#endif
+nogl:
+	res = forwardtbl.sdl_setvideomode(w, h, ncps, flags);
 	global.doublebuffered = ((flags & SDL_DOUBLEBUF) > 0);
-	global.glsource = ((flags & SDL_OPENGL) > 0);
-	global.shared.addr->hints = global.glsource & SHMIF_RHINT_ORIGO_LL;
 
 	if ( (flags & SDL_FULLSCREEN) > 0) {
 /* oh no you don't */
@@ -544,77 +734,4 @@ int ARCAN_SDL_UpperBlit(SDL_Surface* src, const SDL_Rect* srcrect,
 			copysurface(dst);
 
 	return rv;
-}
-
-/*
- * The OpenGL case is easier, but perhaps a bit pricier ..
- */
-#define RGB565(r, g, b) ((uint16_t)(((uint8_t)(r) >> 3) << 11) \
-	| (((uint8_t)(g) >> 2) << 5) | ((uint8_t)(b) >> 3))
-
-/*
- * This was written a long time ago, a better approach would be somthing similar
- * to what is done in the SDL2 backend - force drawing into a FBO and use the
- * shmif-ext functions to try buffer passing with readback as a fallback
- */
-void ARCAN_SDL_GL_SwapBuffers()
-{
-	trace("CopySurface(GL:pre)\n");
-
-/* here's a nasty little GL thing, readPixels can only be with origo in
- * lower-left rather than up, so we need to swap Y, on the other hand, with the
- * amount of data involved here (minimize memory bw- use at all time), we want
- * to flip in the main- app using the texture coordinates, hence the glsource
- * flag */
-	if (!(global.shared.addr->hints & SHMIF_RHINT_ORIGO_LL)){
-		trace("Toggle GL surface support");
-		global.shared.addr->hints = SHMIF_RHINT_ORIGO_LL;
-		ARCAN_target_shmsize(global.sourcew, global.sourceh, 4);
-	}
-
-	glReadBuffer(GL_BACK_LEFT);
-
-/*
- * the assumption as to the performance impact of this is that if it is aligned
- * to the buffer swap, we're at a point in most engines targeted (so no AAA)
- * where there will be a natural pause which masquerades much of the readback
- * overhead, initial measurements did not see a worthwhile performance increase
- * when using PBOs. The 2D-in-GL edgecase could probably get an additional
- * boost by patching glTexImage2D- class functions triggering on ortographic
- * projection and texture dimensions
- */
-	glReadPixels(0, 0, global.sourcew, global.sourceh,
-		GL_RGBA, GL_UNSIGNED_BYTE, global.shared.vidp);
-	trace("buffer read (%d, %d)\n", global.sourcew, global.sourceh);
-
-	arcan_shmif_signal(&global.shared, SHMIF_SIGVID);
-	trace("CopySurface(GL:post)\n");
-
-/*
- * can't be done in the target event handler as it might be
- * in a different thread and thus GL context
- */
-	if (global.update_vector){
-		forwardtbl.glPointSize(global.point_size);
-		forwardtbl.glLineWidth(global.line_size);
-		global.update_vector = false;
-	}
-
-/*
- * with X running, we leave a dangling black window, but may need to be kept
- * active is the caller is using the back buffer for something..
- * forwardtbl.sdl_swapbuffers()
- */
-}
-
-void ARCAN_glFinish()
-{
-	trace("glFinish()\n");
-	forwardtbl.glFinish();
-}
-
-void ARCAN_glFlush()
-{
-	trace("glFlush()\n");
-	forwardtbl.glFlush();
 }
