@@ -1,11 +1,43 @@
-#define WANT_ARCAN_SHMIF_HELPER
+/*
+ * This library maps the common X* symbols to corresponding arcan_shmif calls
+ * or stubs. It's intended for 'quick and dirty' legacy workarounds in cases
+ * where a VM may be too cumbersome. Most functions are stubs, and filled out
+ * as needed over time - the aim is not a complete implementation, but just
+ * enough for some side-cases, e.g. when xcb/X/GLX comes as a parasitic
+ * dependency rather than a desired one.
+ *
+ * Milestone 1 < glxgears >
+ *  [*] First Contact (i.e. draws to the default size window)
+ *  [ ] Proper context create / destroy / tracking
+ *  [ ] CreateWindow tracking
+ *  [ ] Input (XSyms for rotating etc.)
+ *
+ * Milestone 2 < some trivial GDK application >
+ *  [ ] Respond and forward resize events
+ *  [ ] Mouse
+ *
+ * Milestone 3 < Notepad in WINE >
+ *  [ ] Subwindows -> Subsegments (popups as example)
+ *  [ ] Paste Buffers
+ *
+ * Then lets see if we ever take this further or just laugh it off...
+ */
 #include <arcan_shmif.h>
-#define TRACE(...) {fprintf(stderr, __VA_ARGS__); fprintf(stderr, "\n");}
+//#define TRACE(...) {fprintf(stderr, __VA_ARGS__); fprintf(stderr, "\n");}
+#define TRACE(...)
+
+#ifdef WANT_GLX_FUNCTIONS
+
+#define AGP_ENABLE_UNPURE 1
+#include "video_platform.h"
+#include "platform.h"
 
 #define MESA_EGL_NO_X11_HEADERS
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include <GL/gl.h>
+
+#endif
 
 typedef unsigned long int XID;
 typedef unsigned long int Atom;
@@ -15,15 +47,6 @@ typedef unsigned long int Atom;
  * glx- dynamically. GLEW is often built to do that.
  */
 /* #define GRAB_DLFCN */
-
-/*
- * This library maps the common X* symbols to corresponding arcan_shmif calls
- * or stubs. It's intended for 'quick and dirty' legacy workarounds in cases
- * where a VM may be too cumbersome. Most functions are stubs, and filled out
- * as needed over time - the aim is not a complete implementation, but just
- * enough for some side-cases, e.g. when xcb/X/GLX comes as a parasitic
- * dependency rather than a desired one.
- */
 
 #ifdef WANT_X_FUNCTIONS
 /*
@@ -46,6 +69,19 @@ typedef unsigned long Time;
 typedef char* XPointer;
 
 typedef struct Display Display;
+
+typedef struct {
+	Visual* visual;
+	VisualID visualid;
+	int screen;
+	int depth;
+	int class;
+	unsigned long red_mask;
+	unsigned long green_mask;
+	unsigned long blue_mask;
+	int colormap_size;
+	int bits_per_rgb;
+} XVisualInfo;
 
 typedef struct {
 	int func;
@@ -155,12 +191,12 @@ struct Display {
 	char* xdef;
 /* just for some illusion of safety */
 	uint8_t pad[256];
+	XVisualInfo vi;
 	struct arcan_shmif_cont con;
 	bool gl;
 #ifdef WANT_GLX_FUNCTIONS
-	EGLDisplay display;
-	EGLDisplay context;
-	int fbo;
+	struct agp_rendertarget* rtgt;
+	struct storage_info_t vstore;
 #endif
 };
 
@@ -253,19 +289,6 @@ typedef union XEvent {
 typedef XKeyEvent XKeyPressedEvent;
 typedef XKeyEvent XKeyReleasedEvent;
 
-typedef struct {
-	Visual* visual;
-	VisualID visualid;
-	int screen;
-	int depth;
-	int class;
-	unsigned long red_mask;
-	unsigned long green_mask;
-	unsigned long blue_mask;
-	int colormap_size;
-	int bits_per_rgb;
-} XVisualInfo;
-
 KeySym XLookupKeysym(XKeyEvent* event, int index)
 {
 	TRACE("XLookupKeysym");
@@ -290,8 +313,29 @@ Display* XOpenDisplay(char* name)
 	dscr->dpy.screens = &dscr->scr;
 	dscr->dpy.nscr = 1;
 	dscr->dpy.defscr = 0;
+	dscr->dpy.maj = 11;
+	dscr->dpy.min = 7;
+	dscr->dpy.vend = "Org.X";
+	dscr->dpy.disp_name = "Display";
 	dscr->scr.dpy = &dscr->dpy;
+	dscr->scr.root = 0;
+	dscr->scr.ndepths = 1;
+	dscr->scr.root_depth = 32;
+	dscr->scr.white = 0xffffff;
+	dscr->scr.black = 0x000000;
 
+/* we provide one display, one screen, one visual - deal with it */
+	dscr->dpy.vi.visualid = 127; /* whatever */
+	dscr->dpy.vi.screen = 0;
+	dscr->dpy.vi.depth = 32;
+	dscr->dpy.vi.class = 4;
+	dscr->dpy.vi.red_mask = 0xff0000;
+	dscr->dpy.vi.green_mask = 0x00ff00;
+	dscr->dpy.vi.blue_mask = 0x0000ff;
+	dscr->dpy.vi.colormap_size = 8;
+
+/* setup one connection, that gives us our first window,
+ * although it is not currently mapped */
 	struct arg_arr* arr;
 	dscr->dpy.con = arcan_shmif_open(SEGID_APPLICATION, 0, &arr);
 	if (!dscr->dpy.con.addr){
@@ -321,10 +365,25 @@ Window XCreateWindow(Display* dpy, Window win, int x, int y,
 	XSetWindowAttributes* attributes)
 {
 	TRACE("XCreateWindow(%d * %d @ %d, %d)", width, height, x, y);
+	arcan_shmif_resize(&dpy->con, width, height);
+
 /* request a new one on the segment associated with the display,
  * this will be set in pending state with the Window ID used for the
  * request, and when activated, set the width/height to what was requested */
 	return counter++;
+}
+
+Bool XRRQueryExtension(Display* dpy, int* ev_base_ret, int* err_base_ret)
+{
+	TRACE("XRRQueryExtension");
+	return false;
+}
+
+Bool XQueryExtension(Display* dpy, char* name, int *major_opc,
+	int* first_event_ret, int* first_error_ret)
+{
+	TRACE("XQueryExtension(%s)\n", name ? name : "");
+	return false;
 }
 
 Window XCreateSimpleWindow(Display* dpy, Window parent, int x, int y,
@@ -368,6 +427,30 @@ int XMapWindow(Display* dpy, Window win)
 	return 1;
 }
 
+XVisualInfo* XGetVisualInfo(Display* dpy,
+	long vinfo_mask, XVisualInfo* tmpl, int* nret)
+{
+	TRACE("XGetVisualInfo");
+	if (tmpl->screen == 0){
+		XVisualInfo* vi = malloc(sizeof(XVisualInfo));
+		if (!vi){
+			if (nret)
+				*nret = 0;
+				return NULL;
+		}
+
+		if (nret)
+			*nret = 1;
+		*vi = dpy->vi;
+		return vi;
+	}
+	else if (nret){
+		*nret = 0;
+	}
+
+	return NULL;
+}
+
 void XSetNormalHints(Display* dpy, Window win, XSizeHints* hints)
 {
 	TRACE("XSetNormalHints");
@@ -394,6 +477,15 @@ Atom XInternAtom(Display* dpy, char* name, bool exists)
 	return 0;
 }
 
+int XInternAtoms(Display* display, char** names, int count, Bool exists,
+	Atom* atoms_return)
+{
+	TRACE("XInternAtoms");
+	for (size_t i = 0; i < count; i++)
+		atoms_return[i] = XInternAtom(display, names[i], exists);
+	return 0;
+}
+
 int XPending(Display* dpy)
 {
 	TRACE("XPending");
@@ -406,16 +498,10 @@ int XParseGeometry(char* geom, int* x, int* y, unsigned int* w, unsigned int* h)
 	return 0;
 }
 
-/* Painful list of functions .. add as needed.
- * Likely suspects (normal trace of something):
- * XVisualIDFromVisual, XDisplayName, XQueryPointer, XFilterEvent,
- * XCheckIfEvent, XGetEventData,
- * XStoreName (window title), XCreateWindow, XCreateSimpleWindow,
- * XSetStandardProperties, XClearWindo,
- * XClearArea, XDestroyWindow, XCloseDisplay,
- * XLookupString, XLookupKeysym,
- * XGetGeometry, XGetVisualInfo, XVisualIDFromVisual
- */
+void XSelectInput(Display* dpy, Window wnd, long event_mask)
+{
+	TRACE("Input Mask (%ld)", event_mask);
+}
 
 /* GDK expose some simple calls we could wrap too,
  * _x11_get_default_display, x11_display_get_xdisplay, _lookup_visual,
@@ -561,7 +647,13 @@ GLXContext glXCreateContext(Display* dpy,
 		&dpy->con, arcan_shmifext_headless_defaults()))
 		return 0;
 
-	return 1;
+	agp_init();
+	agp_empty_vstore(&dpy->vstore, dpy->con.w, dpy->con.h);
+	dpy->rtgt = agp_setup_rendertarget(
+		&dpy->vstore, RENDERTARGET_COLOR_DEPTH_STENCIL);
+	agp_activate_rendertarget(dpy->rtgt);
+
+	return (GLXContext) 1;
 }
 
 GLXPixmap glXCreateGLXPixmap(Display* dpy, XVisualInfo* vis, Pixmap pixmap)
@@ -768,7 +860,9 @@ const char* glXQueryExtensionsString(Display* dpy, int screen)
 	if (!dpy || !dpy->con.addr)
 		return NULL;
 
-	return eglQueryString(dpy->display, EGL_EXTENSIONS);
+	uintptr_t edisp;
+	arcan_shmifext_egl_meta(&dpy->con, &edisp, NULL, NULL);
+	return eglQueryString((EGLDisplay) edisp, EGL_EXTENSIONS);
 }
 
 const char* glXQueryServerString(Display* dpy, int screen, int name)
@@ -802,9 +896,21 @@ void glXSelectEvent(Display* dpy, GLXDrawable draw, unsigned long mask)
 void glXSwapBuffers(Display* dpy, GLXDrawable draw)
 {
 	TRACE("glXSwapBuffers");
-/*
- * map to arcan_shmifext_eglsignal(con, get context
- */
+	uintptr_t display;
+  if (!arcan_shmifext_egl_meta(&dpy->con, &display, NULL, NULL))
+		return;
+
+	glFlush();
+	if (arcan_shmifext_eglsignal(&dpy->con, display,
+		SHMIF_SIGVID, dpy->vstore.vinf.text.glid) >= 0)
+		return;
+
+	struct storage_info_t store = dpy->vstore;
+	store.vinf.text.raw = dpy->con.vidp;
+	agp_activate_rendertarget(NULL);
+	agp_readback_synchronous(&store);
+
+	arcan_shmif_signal(&dpy->con, SHMIF_SIGVID);
 }
 
 void glXUseXFont(Font font, int first, int count, int listb)
