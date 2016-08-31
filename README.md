@@ -32,10 +32,9 @@ Compiling
 =====
 There are a lot of build options for fine-grained control over your arcan
 build. In this section we will just provide the bare essentials for a build
-on Linux, BSD or OSX (windows can cheat with using the prebuilt installer
-binaries) and you can check out the relevant sections in the wiki for more
-detailed documentation on specialized build environments, e.g. an X.org-free
-KMS/DRM. (https://github.com/letoram/arcan.wiki/linux-egl)
+on Linux, BSD or OSX. and you can check out the relevant sections in the wiki
+for more detailed documentation on specialized build environments, e.g. an
+X.org-free KMS/DRM. (https://github.com/letoram/arcan.wiki/linux-egl)
 
 For starters, the easiest approach is to do the following:
 
@@ -60,13 +59,6 @@ of these dependencies statically, e.g.
       -DSTATIC_SQLITE3=ON -DSTATIC_OPENAL=ON -DSTATIC_FREETYPE=ON ../src
      make -j 12
 
-LWA support is also disabled in the build configuration above. LWA stands for
-lightweight arcan and provides a specialized build (arcan\_lwa) that uses the
-arcan shared memory interface as an audio/video/input platform, allowing one
-instance of arcan to act as a display server for others. It is a somewhat more
-complex build in that it pulls down and builds a specialized/patched version
-of OpenAL.
-
 You can then test the build with:
 
      ./arcan -p ../data/resources/ ../data/appl/welcome
@@ -78,6 +70,13 @@ the engine will try and search in the default 'applbase', which varies with
 OS, but typically something like /usr/local/share/arcan/appl or to the current
 user: /path/to/home/.arcan/appl
 
+Other binaries that (may) be produced, depending on configuration, are
+arcan\_lwa, a specialized build of arcan that can connect to other arcan
+instances and use it as a display server, a number of files prefixed as afsrv\_
+which are dedicated video decoders, encoders etc. split out from the main
+engine for future privilege separation and sandboxing, with arcan\_frameserver
+acting as a chain-loader. These are binaries managed by arcan itself.
+
 Now what?
 One is to try out some of the more complex appls, like the desktop environment,
 'durden'. Clone the repo:
@@ -85,9 +84,30 @@ One is to try out some of the more complex appls, like the desktop environment,
     git clone https://github.com/letoram/durden.git
     arcan -p /my/home /path/to/checkout/durden
 
-note that it's the durden subdirectory in the git, not the root. The reason
-for the different sdtart path (-p /my/home) is to give read-only access to
+Note that it's the durden subdirectory in the git, not the root. The reason
+for the different start path (-p /my/home) is to give read-only access to
 the appl for the built-in resource browser.
+
+The set of applications that can connect to arcan and use it as a display
+server is rather limited. There are specialized back-end patches for QEmu/KVM
+maintained as a separate repository ( https://github.com/letoram/qemu.git )
+and for SDL2 ( https://github.com/letoram/SDL2.git ) that may help with
+compatibility, and if you build with -DDISABLE_HIJACK=OFF additional pre-loadable
+libraries (LD_PRELOAD=libahijack_sdl12.so:libahijack_x11.so) may be used to
+get some edge cases working. The libretro project ( http://www.libretro.com )
+also provide 'cores' (emulators, games and applications ported to a custom API)
+where most should run natively in arcan, though the quality of the 3D support
+in cores built for that may vary.
+
+For more practical uses of Arcan/Durden, the various frameservers also provide
+a terminal emulator, a video player (albeit a primitive one) and VNC access.
+
+The reason for the special treatment of these targets is that they are all
+rather good for testing and tuning the engine and for driving the design work
+forward. Reaching a high standard for the engine itself takes priority over
+implementing support for the various display server protocols out there, or
+the even more distant option of implementing more preload hijacks or native
+toolkit backends.
 
 Database
 =====
@@ -141,6 +161,8 @@ libretro core for instance:
 or video playback:
 
     ARCAN_ARG=file=/path/to/moviefile.mkv afsrv_decode
+
+but they are all best managed from the engine and its respective scripts.
 
 Filesystem Layout
 =====
