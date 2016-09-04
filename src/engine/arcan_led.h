@@ -44,7 +44,7 @@ bool arcan_led_rgb(uint8_t device, int8_t led, uint8_t, uint8_t g, uint8_t b);
  * 'r' (ind) - switch_subled_r
  * 'g' (ind) - switch_subled_g
  * 'b' (ind) - switch_subled_b
- * 'a' (ind) - switch_subled_rgba
+ * 'a' (ind) - switch_subled_[all]
  * 'i' (val) - set intensity (0 = off, 255 = full),
  *             implementation expected to normalize
  * 'o'       - deregistered, write end will be closed. */

@@ -93,7 +93,7 @@ static int find_free_ind()
 
 static struct led_controller* get_device(uint8_t devind)
 {
-	if ((ctrl_mask & devind) == 0)
+	if ((ctrl_mask & (1 << devind)) == 0)
 		return NULL;
 
 	return &controllers[devind];
@@ -192,7 +192,7 @@ bool arcan_led_remove(uint8_t device)
 #ifdef USB_SUPPORT
 		if (leddev->handle)
 			hid_close(leddev->handle);
-#endif	
+#endif
 	break;
 	}
 	ctrl_mask &= ~(1 << device);
