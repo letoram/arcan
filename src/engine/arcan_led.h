@@ -4,51 +4,65 @@
  * Reference: http://arcan-fe.com
  */
 
-#ifdef ARCAN_LED
-#ifndef _HAVE_ARCAN_LED
-#define _HAVE_ARCAN_LED
+#ifndef HAVE_ARCAN_LED
+#define HAVE_ARCAN_LED
 
-/* Only tested with (1) ultimarc pac-drive,
- * might be trivial to included more devices, but nothing to test with :/
- * at least added decent entry points so it should be easy to fix.
- */
-typedef struct {
+struct led_capabilities {
 	int nleds;
 	bool variable_brightness;
 	bool rgb;
-} led_capabilities;
+};
 
-/* Basic foreplay, any USB initialization needed, scanning for controllers,
- * can be called multiple times (rescan) ... */
+/* Initiate a rescan for supported LED controllers, can potentially
+ * be called multiple times, both from the platform layer (though some
+ * LED types there should be handled dynamically */
 void arcan_led_init();
-
-/* try to forcibly load a specific LED controller
- * returns index if successfull, -1 otherwise. */
-int arcan_led_forcecontroller(int vid, int pid);
 
 /* Get the current number of controllers, use to set specific leds */
 unsigned int arcan_led_controllers();
 
-/* Set a specific lamp (or negative index, all of them)
+/* Set a specific led (or negative index, all of them)
  * to whatever is a fullbright state for that device */
 bool arcan_led_set(uint8_t device, int8_t led);
 
-/* Clear a specific lamp (or negative index, all of them)
+/* Clear a specific led (or negative index, all of them)
  * to whatever is a fullbright state for that device */
 bool arcan_led_clear(uint8_t device, int8_t led);
 
-/* Set a specific lamp to a specific intensity */
+/* Set a specific led to a specific intensity */
 bool arcan_led_intensity(uint8_t device, int8_t led, uint8_t intensity);
 
-/* Set a specific lamp to a specific rgb */
+/* Set a specific led to a specific rgb */
 bool arcan_led_rgb(uint8_t device, int8_t led, uint8_t, uint8_t g, uint8_t b);
 
-/* Return how many leds are supported by a specific device */
-led_capabilities arcan_led_capabilities(uint8_t device);
+/* Used internally by the platform- layers for handling additional devices,
+ * uses a simple pipe- protocol for updating. Initial state is always clear.
+ * Returns device ID or -1 on failure.
+ * cmd_ch is expected to be a non-blocking writable descriptor
+ * 2-byte protocol (cmd, val):
+ * [255 ind means apply to all]
+ * 'r' (ind) - switch_subled_r
+ * 'g' (ind) - switch_subled_g
+ * 'b' (ind) - switch_subled_b
+ * 'a' (ind) - switch_subled_[all]
+ * 'i' (val) - set intensity (0 = off, 255 = full),
+ *             implementation expected to normalize
+ * 'o'       - deregistered, write end will be closed. */
+int8_t arcan_led_register(int cmd_ch, const char* label,
+	struct led_capabilities);
 
-/* Free any USB resources lingering around,
- * might (might) be needed when launching a target externally that makes
- * direct use of the same usb device. */
+/*
+ * Applicable to a LED controller that has been registered through
+ * arcan_led_register, returns true if it was successfully removed.
+ */
+bool arcan_led_remove(uint8_t device);
+
+/* Return the set of capabilities that a specific led device supports */
+struct led_capabilities arcan_led_capabilities(uint8_t device);
+
+/*
+ * Free any USB resources lingering around, might (might) be needed when
+ * launching a target externally that makes direct use of the same usb device.
+ */
 void arcan_led_shutdown();
-#endif
 #endif

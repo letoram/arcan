@@ -82,13 +82,10 @@
 #include "arcan_event.h"
 #include "arcan_db.h"
 #include "arcan_frameserver.h"
+#include "arcan_led.h"
 
 #define arcan_luactx lua_State
 #include "arcan_lua.h"
-
-#ifndef ARCAN_LUA_LED
-#include "arcan_led.h"
-#endif
 
 /*
  * tradeoff (extra branch + loss in precision vs. assymetry and UB)
@@ -3147,16 +3144,15 @@ static int loadmovie(lua_State* ctx)
 	LUA_ETRACE("load_movie", NULL, 2);
 }
 
-#ifdef ARCAN_LED
 static int n_leds(lua_State* ctx)
 {
 	LUA_TRACE("controller_leds");
 
 	uint8_t id = luaL_checkint(ctx, 1);
-	led_capabilities cap = arcan_led_capabilities(id);
+	struct led_capabilities cap = arcan_led_capabilities(id);
 
 	lua_pushnumber(ctx, cap.nleds);
-	LUA_ETRACE("controller_leds", NULL, 2);
+	LUA_ETRACE("controller_leds", NULL, 1);
 }
 
 static int led_intensity(lua_State* ctx)
@@ -3199,7 +3195,6 @@ static int setled(lua_State* ctx)
 
 	LUA_ETRACE("set_led", NULL, 2);
 }
-#endif
 
 /* NOTE: a currently somewhat serious yet unhandled issue concerns what to do
  * with events fires from objects that no longer exist, e.g. the case with
@@ -3590,20 +3585,29 @@ static void display_reset(lua_State* ctx, arcan_event* ev)
 #endif
 }
 
-static void display_added(lua_State* ctx, platform_display_id id)
+static void display_added(lua_State* ctx, arcan_event* ev)
 {
 	if (!grabapplfunction(ctx, "display_state", sizeof("display_state")-1))
 		return;
 
 	LUA_TRACE("_display_state (add)");
 	lua_pushstring(ctx, "added");
-	lua_pushnumber(ctx, id);
+	lua_pushnumber(ctx, ev->vid.displayid);
 
-	wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: display state");
+	lua_createtable(ctx, 0, 2);
+	int top = lua_gettop(ctx);
+	lua_pushstring(ctx, "ledctrl");
+	lua_pushnumber(ctx, ev->vid.ledctrl);
+	lua_rawset(ctx, top);
+	lua_pushstring(ctx, "ledind");
+	lua_pushnumber(ctx, ev->vid.ledid);
+	lua_rawset(ctx, top);
+
+	wraperr(ctx, lua_pcall(ctx, 3, 0, 0), "event loop: display state");
 	LUA_TRACE("");
 }
 
-static void display_removed(lua_State* ctx, platform_display_id id)
+static void display_removed(lua_State* ctx, arcan_event* ev)
 {
 	if (!grabapplfunction(ctx, "display_state", sizeof("display_state")-1))
 		return;
@@ -3611,7 +3615,7 @@ static void display_removed(lua_State* ctx, platform_display_id id)
 	LUA_TRACE("_display_state (remove)");
 	lua_pushstring(ctx, "removed");
 
-	lua_pushnumber(ctx, id);
+	lua_pushnumber(ctx, ev->vid.displayid);
 	wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: display state");
 	LUA_TRACE("");
 }
@@ -3723,6 +3727,7 @@ static const char* kindstr(int num)
 	case EVENT_IDEVKIND_MOUSE: return "mouse";
 	case EVENT_IDEVKIND_GAMEDEV: return "game";
 	case EVENT_IDEVKIND_TOUCHDISP: return "touch";
+	case EVENT_IDEVKIND_LEDCTRL: return "led";
 	default:
 		return "broken";
 	}
@@ -3763,6 +3768,8 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		break;
 
 		case EVENT_IO_STATUS:
+/* FIXME: assume LED controller count may have changed and just update that
+ * value, that interface was designed way back when */
 			lua_pushstring(ctx, "status");
 			lua_rawset(ctx, top);
 			tblnum(ctx, "devid", ev->io.devid, top);
@@ -4208,7 +4215,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 	else if (ev->category == EVENT_VIDEO){
 
 		if (ev->vid.kind == EVENT_VIDEO_DISPLAY_ADDED){
-			display_added(ctx, ev->vid.displayid);
+			display_added(ctx, ev);
 			return;
 		}
 		else if (ev->vid.kind == EVENT_VIDEO_DISPLAY_RESET){
@@ -4216,7 +4223,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			return;
 		}
 		else if (ev->vid.kind == EVENT_VIDEO_DISPLAY_REMOVED){
-			display_removed(ctx, ev->vid.displayid);
+			display_removed(ctx, ev);
 			return;
 		}
 
@@ -9376,12 +9383,10 @@ static const luaL_Reg iofuns[] = {
 {"toggle_mouse_grab",   mousegrab        },
 {"input_capabilities",  inputcap         },
 {"input_samplebase",    inputbase        },
-#ifdef ARCAN_LED
 {"set_led",             setled           },
 {"led_intensity",       led_intensity    },
 {"set_led_rgb",         led_rgb          },
 {"controller_leds",     n_leds           },
-#endif
 {"inputanalog_filter",  inputfilteranalog},
 {"inputanalog_query",   inputanalogquery},
 {"inputanalog_toggle",  inputanalogtoggle},
@@ -9589,11 +9594,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"MOUSE_BTNLEFT", 1},
 {"MOUSE_BTNMIDDLE", 2},
 {"MOUSE_BTNRIGHT", 3},
-#ifdef ARCAN_LED
 {"LEDCONTROLLERS", arcan_led_controllers()},
-#else
-{"LEDCONTROLLERS", 0},
-#endif
 {"KEY_CONFIG", DVT_CONFIG},
 {"KEY_TARGET", DVT_TARGET},
 {"NOW", 0},

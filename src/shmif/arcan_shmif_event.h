@@ -690,6 +690,7 @@ enum ARCAN_EVENT_IDEVKIND {
 	EVENT_IDEVKIND_MOUSE,
 	EVENT_IDEVKIND_GAMEDEV,
 	EVENT_IDEVKIND_TOUCHDISP,
+	EVENT_IDEVKIND_LEDCTRL,
 	EVENT_IDEVKIND_STATUS,
 	EVENT_IDEVKIND_ULIM = INT_MAX
 };
@@ -891,6 +892,8 @@ typedef struct {
 			int flags;
 			float vppcm;
 			int displayid;
+			int ledctrl;
+			int ledid;
 		};
 		int slot;
 	};
