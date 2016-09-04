@@ -48,10 +48,6 @@
  *  The number of failure modes for this one is quite high, especially
  *  when OOM on one card but not the other. Still, pretty cool feature ;-)
  *
- * 3. Backlight support by improving the old murky _led codebase,
- *    note that the backlight interface seems to be *double facepalm*
- *    sysfs again
- *
  * 4. Advanced synchronization options (swap-interval, synch directly to
  * front buffer, swap-with-tear, pre-render then wake / move cursor just
  * before etc.), discard when we miss deadline, drm_vblank_relative,
@@ -120,10 +116,11 @@
 #include "arcan_video.h"
 #include "arcan_audio.h"
 #include "arcan_videoint.h"
-
+#include "arcan_led.h"
 #include "arcan_shmif.h"
 #include "../agp/glfun.h"
 #include "arcan_event.h"
+#include "libbacklight.h"
 
 /*
  * extensions needed for buffer passing
@@ -132,7 +129,7 @@ static PFNEGLCREATEIMAGEKHRPROC eglCreateImageKHR;
 static PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES;
 
 /*
- * real heuristics scheduled for 0.5.x, see .4 at top
+ * real heuristics scheduled for 0.5.3, see .5 at top
  */
 static char* egl_synchopts[] = {
 	"default", "double buffered, Display controls refresh",
@@ -150,7 +147,7 @@ static char* egl_envopts[] = {
 enum {
 	DEFAULT,
 	ENDM
-}	synchopt;
+} synchopt;
 
 /*
  * Each open output device, can be shared between displays
@@ -159,6 +156,7 @@ struct dev_node {
 	int fd, rnode;
 	bool master;
 	int refc;
+	int card_id;
 	uint32_t crtc_alloc;
 	struct gbm_device* gbm;
 
@@ -219,6 +217,12 @@ struct dispout {
 	_Alignas(16) float projection[16];
 	_Alignas(16) float txcos[8];
 
+/* backlight is "a bit" quirky, we register a custom led controller that
+ * is processed while we're synching- where the subleds correspond to the
+ * displayid of the display */
+	struct backlight* backlight;
+	long backlight_brightness;
+
 	enum blitting_hint hint;
 	enum disp_state state;
 	platform_display_id id;
@@ -228,7 +232,11 @@ static struct {
 	struct dispout* last_display;
 	size_t canvasw, canvash;
 	int destroy_pending;
-} egl_dri;
+	int ledid, ledind, ledch;
+	int ledpair[2];
+} egl_dri = {
+	.ledind = 255
+};
 
 #ifndef MAX_DISPLAYS
 #define MAX_DISPLAYS 16
@@ -243,6 +251,7 @@ static struct dispout* allocate_display(struct dev_node* node)
 			displays[i].device = node;
 			displays[i].id = i;
 			displays[i].display.primary = false;
+
 			node->refc++;
 			displays[i].state = DISP_KNOWN;
 			return &displays[i];
@@ -754,45 +763,6 @@ static void drm_mode_flag(FILE* dst, unsigned val)
 
 	if (val > 0){
 		fprintf(dst, "/unknown(%d)", (int) val);
-	}
-}
-
-static void drm_mode_scale(FILE* fpek, int val)
-{
-	switch (val){
-	case DRM_MODE_SCALE_FULLSCREEN:
-		fprintf(fpek, "fullscreen");
-	break;
-
-	case DRM_MODE_SCALE_ASPECT:
-		fprintf(fpek, "fit aspect");
-	break;
-
-	default:
-		fprintf(fpek, "unknown");
-	}
-}
-
-static void drm_mode_encoder(FILE* fpek, int val)
-{
-	switch(val){
-	case DRM_MODE_ENCODER_NONE:
-		fputs("none", fpek);
-	break;
-	case DRM_MODE_ENCODER_DAC:
-		fputs("dac", fpek);
-	break;
-	case DRM_MODE_ENCODER_TMDS:
-		fputs("tmds", fpek);
-	break;
-	case DRM_MODE_ENCODER_LVDS:
-		fputs("lvds", fpek);
-	break;
-	case DRM_MODE_ENCODER_TVDAC:
-		fputs("tvdac", fpek);
-	break;
-	default:
-		fputs("unknown", fpek);
 	}
 }
 
@@ -1418,11 +1388,21 @@ void platform_video_query_displays()
 				break;
 			d->display.con = con;
 			d->display.con_id = d->display.con->connector_id;
-
+			d->backlight = backlight_init(NULL,
+				d->device->card_id, d->display.con->connector_type,
+				d->display.con->connector_type_id
+			);
+			if (d->backlight)
+				d->backlight_brightness = backlight_get_brightness(d->backlight);
+/* register as a new LED controller, if FDs become a bit
+ * of an issue, we could try share one big controller for all
+ * displays */
 			arcan_event ev = {
 				.category = EVENT_VIDEO,
 				.vid.kind = EVENT_VIDEO_DISPLAY_ADDED,
-				.vid.displayid = d->id
+				.vid.displayid = d->id,
+				.vid.ledctrl = egl_dri.ledid,
+				.vid.ledid = d->id
 			};
 			arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 			continue; /* don't want to free con */
@@ -1435,7 +1415,9 @@ void platform_video_query_displays()
 				arcan_event ev = {
 					.category = EVENT_VIDEO,
 					.vid.kind = EVENT_VIDEO_DISPLAY_REMOVED,
-					.vid.displayid = id
+					.vid.displayid = id,
+					.vid.ledctrl = egl_dri.ledid,
+					.vid.ledid = d->id
 				};
 				arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 			}
@@ -1531,6 +1513,12 @@ static void disable_display(struct dispout* d, bool dealloc)
 
 		d->device = NULL;
 		d->state = DISP_UNUSED;
+
+		if (d->backlight){
+			backlight_set_brightness(d->backlight, d->backlight_brightness);
+			backlight_destroy(d->backlight);
+			d->backlight = NULL;
+		}
 	}
 	else
 		d->state = DISP_EXTSUSP;
@@ -1572,6 +1560,40 @@ void* platform_video_gfxsym(const char* sym)
 	return eglGetProcAddress(sym);
 }
 
+static void do_led(struct dispout* disp, uint8_t val)
+{
+	if (disp && disp->backlight){
+		float lvl = (float) val / 255.0;
+		float max_brightness = backlight_get_max_brightness(disp->backlight);
+		backlight_set_brightness(disp->backlight, lvl * max_brightness);
+	}
+}
+
+/* read-end of ledpair pipe is in nonblocking, so just run through
+ * it and update the corresponding backlights */
+static void flush_leds()
+{
+	if (egl_dri.ledid < 0)
+		return;
+
+	uint8_t buf[2];
+	while (2 == read(egl_dri.ledpair[0], buf, 2)){
+		switch (buf[0]){
+		case 'r': egl_dri.ledch = 1; egl_dri.ledind = buf[1]; break;
+		case 'g': egl_dri.ledch = 2; egl_dri.ledind = buf[1]; break;
+		case 'b': egl_dri.ledch = 3; egl_dri.ledind = buf[1]; break;
+		case 'a': egl_dri.ledch = 0; egl_dri.ledind = buf[1]; break;
+		case 'i':
+			if (egl_dri.ledind != 255)
+				do_led(get_display(egl_dri.ledind), buf[1]);
+			else
+				for (size_t i = 0; i < MAX_DISPLAYS; i++)
+					do_led(get_display(i), buf[1]);
+		break;
+		}
+	}
+}
+
 bool platform_video_init(uint16_t w, uint16_t h,
 	uint8_t bpp, bool fs, bool frames, const char* title)
 {
@@ -1602,7 +1624,7 @@ retry_card:
 			if (getenv("ARCAN_VIDEO_DEVICE"))
 				goto cleanup;
 		}
-
+		nodes[0].card_id = n-1;
 		free(device);
 
 		if (0 == rc)
@@ -1669,6 +1691,13 @@ retry_card:
 		goto cleanup;
 	}
 
+	d->backlight = backlight_init(NULL,
+		d->device->card_id, d->display.con->connector_type,
+		d->display.con->connector_type_id
+	);
+	if (d->backlight)
+		d->backlight_brightness = backlight_get_brightness(d->backlight);
+
 /*
  * requested canvas does not always match display
  */
@@ -1681,20 +1710,47 @@ retry_card:
 	d->state = DISP_MAPPED;
 	rv = true;
 
+	if (pipe(egl_dri.ledpair) != -1){
+		egl_dri.ledid = arcan_led_register(egl_dri.ledpair[1],
+			"backlight", (struct led_capabilities){
+			.nleds = MAX_DISPLAYS,
+			.variable_brightness = true,
+			.rgb = false
+		});
+
+/* prepare the pipe-pair to be non-block and close-on-exit */
+		if (-1 == egl_dri.ledid){
+			close(egl_dri.ledpair[0]);
+			close(egl_dri.ledpair[1]);
+			egl_dri.ledpair[0] = egl_dri.ledpair[1] = -1;
+		}
+		else{
+			for (size_t i = 0; i < 2; i++){
+				int flags = fcntl(egl_dri.ledpair[i], F_GETFL);
+				if (-1 != flags)
+					fcntl(egl_dri.ledpair[i], F_SETFL, flags | O_NONBLOCK);
+
+				flags = fcntl(egl_dri.ledpair[i], F_GETFD);
+				if (-1 != flags)
+					fcntl(egl_dri.ledpair[i], F_SETFD, flags | O_CLOEXEC);
+			}
+		}
+	}
+
 /*
  * send a first 'added' event for display tracking as the primary / connected
  * display will not show up in the rescan
  */
 	arcan_event ev = {
 		.category = EVENT_VIDEO,
-		.vid.kind = EVENT_VIDEO_DISPLAY_ADDED
+		.vid.kind = EVENT_VIDEO_DISPLAY_ADDED,
+		.vid.ledctrl = egl_dri.ledid
 	};
 	arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 	platform_video_query_displays();
 
 cleanup:
 	sigaction(SIGSEGV, &old_sh, NULL);
-
 	return rv;
 }
 
@@ -1845,6 +1901,7 @@ void platform_video_synch(uint64_t tick_count, float fract,
  * still use an artifical delay / timeout here, see previous notes about the
  * need for a real 'conductor' with synchronization- strategy support
  */
+	flush_leds();
 	flush_display_events(update ? 16 : 8);
 
 	if (post)

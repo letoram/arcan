@@ -78,6 +78,20 @@ void arcan_event_clearmask(struct arcan_evctx*);
 void arcan_event_setmask(struct arcan_evctx*, unsigned mask);
 
 /*
+ * It may be the case that a user wants to make sure the event layer ignores
+ * certain devices (in constrast to the _BLOCKED state that is also possible)
+ * or that some engine parts, like LED drivers, wants to instruct the
+ * platform layer that a certain device is accounted for. To do that, we
+ * maintain a blacklist as part of the protected 'arcan' key/value database
+ * namespace, though the platform-event implementation need to explicitly
+ * respect it.
+ *
+ * For USB- devices, idstr is a snprintf("%d:%d", (int)vid, (int)pid)
+ */
+void arcan_event_blacklist(const char* idstr);
+bool arcan_event_blacklisted(const char* idstr);
+
+/*
  * [DANGEROUS]
  * Lock and sweep the event queue to alter all events in category where
  * memcmp((ev+r_ofs), cmpbuf, r_b) match and then write w_b from buf to

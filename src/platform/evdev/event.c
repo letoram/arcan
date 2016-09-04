@@ -34,6 +34,7 @@
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_event.h"
+#include "arcan_led.h"
 #include "arcan_video.h"
 #include "arcan_videoint.h"
 #include "keycode_xlate.h"
@@ -918,6 +919,8 @@ static void got_device(struct arcan_evctx* ctx, int fd, const char* path)
 	bool mouse_ax = false;
 	bool mouse_btn = false;
 	bool joystick_btn = false;
+	bool gotled = false;
+	struct led_capabilities ledcap = {0};
 
 	if (1){
 	size_t bpl = sizeof(long) * 8;
@@ -955,6 +958,7 @@ static void got_device(struct arcan_evctx* ctx, int fd, const char* path)
 		case EV_SYN:
 		break;
 		case EV_LED:
+			printf("got led!\n");
 		break;
 		case EV_SND:
 		break;
