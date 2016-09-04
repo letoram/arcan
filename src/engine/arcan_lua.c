@@ -3586,20 +3586,29 @@ static void display_reset(lua_State* ctx, arcan_event* ev)
 #endif
 }
 
-static void display_added(lua_State* ctx, platform_display_id id)
+static void display_added(lua_State* ctx, arcan_event* ev)
 {
 	if (!grabapplfunction(ctx, "display_state", sizeof("display_state")-1))
 		return;
 
 	LUA_TRACE("_display_state (add)");
 	lua_pushstring(ctx, "added");
-	lua_pushnumber(ctx, id);
+	lua_pushnumber(ctx, ev->vid.displayid);
 
-	wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: display state");
+	lua_createtable(ctx, 0, 2);
+	int top = lua_gettop(ctx);
+	lua_pushstring(ctx, "ledctrl");
+	lua_pushnumber(ctx, ev->vid.ledctrl);
+	lua_rawset(ctx, top);
+	lua_pushstring(ctx, "ledind");
+	lua_pushnumber(ctx, ev->vid.ledid);
+	lua_rawset(ctx, top);
+
+	wraperr(ctx, lua_pcall(ctx, 3, 0, 0), "event loop: display state");
 	LUA_TRACE("");
 }
 
-static void display_removed(lua_State* ctx, platform_display_id id)
+static void display_removed(lua_State* ctx, arcan_event* ev)
 {
 	if (!grabapplfunction(ctx, "display_state", sizeof("display_state")-1))
 		return;
@@ -3607,7 +3616,7 @@ static void display_removed(lua_State* ctx, platform_display_id id)
 	LUA_TRACE("_display_state (remove)");
 	lua_pushstring(ctx, "removed");
 
-	lua_pushnumber(ctx, id);
+	lua_pushnumber(ctx, ev->vid.displayid);
 	wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: display state");
 	LUA_TRACE("");
 }
@@ -3761,7 +3770,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 
 		case EVENT_IO_STATUS:
 /* FIXME: assume LED controller count may have changed and just update that
- * value */
+ * value, that interface was designed way back when */
 			lua_pushstring(ctx, "status");
 			lua_rawset(ctx, top);
 			tblnum(ctx, "devid", ev->io.devid, top);
@@ -4207,7 +4216,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 	else if (ev->category == EVENT_VIDEO){
 
 		if (ev->vid.kind == EVENT_VIDEO_DISPLAY_ADDED){
-			display_added(ctx, ev->vid.displayid);
+			display_added(ctx, ev);
 			return;
 		}
 		else if (ev->vid.kind == EVENT_VIDEO_DISPLAY_RESET){
@@ -4215,7 +4224,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			return;
 		}
 		else if (ev->vid.kind == EVENT_VIDEO_DISPLAY_REMOVED){
-			display_removed(ctx, ev->vid.displayid);
+			display_removed(ctx, ev);
 			return;
 		}
 

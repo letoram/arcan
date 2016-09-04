@@ -892,6 +892,8 @@ typedef struct {
 			int flags;
 			float vppcm;
 			int displayid;
+			int ledctrl;
+			int ledid;
 		};
 		int slot;
 	};
