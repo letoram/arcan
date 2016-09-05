@@ -9824,6 +9824,7 @@ static inline const char* fsrvtos(enum ARCAN_SEGID ink)
 	case SEGID_TITLEBAR: return "titlebar";
 	case SEGID_SENSOR: return "sensor";
 	case SEGID_DEBUG: return "debug";
+	case SEGID_WIDGET: return "widget";
 	case SEGID_ACCESSIBILITY: return "accessibility";
 	case SEGID_CLIPBOARD_PASTE: return "clipboard-paste";
 	case SEGID_UNKNOWN: return "unknown";

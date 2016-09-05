@@ -175,6 +175,13 @@ enum ARCAN_SEGID {
  */
 	SEGID_CLIPBOARD_PASTE,
 
+/*
+ * [UNIQUE] Not expected to have subwindows, no advanced input, no clipboards
+ * but rather a semi-interactive data source that can be rendered and managed
+ * outside the normal window flow.
+ */
+	SEGID_WIDGET,
+
 /* Can always be terminated without risk, may be stored as part of debug format
  * in terms of unexpected termination etc. */
 	SEGID_DEBUG,
@@ -456,6 +463,18 @@ enum ARCAN_TARGET_COMMAND {
  * ioev[4].cv = ISO-639-2, Alpha 3 code for language + \'0'
  */
 	TARGET_COMMAND_GEOHINT,
+
+/*
+ * geometrical constraints, while-as DISPLAYHINT events convey how the
+ * target will be presented, the OUTPUT hints provide an estimate of the
+ * capabilities. Shmif will track these properties internally and use
+ * it to control _resize commands, but it is not assumed that the client
+ * is cooperating.
+ * ioev[0].iv = max_width,
+ * ioev[1].iv = max_height,
+ * ioev[2].iv = rate (Hz, 0 for dynamic)
+ */
+	TARGET_COMMAND_OUTPUTHINT,
 
 /*
  * Specialized output hinting, considered deprecated. To be replaced with
