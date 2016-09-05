@@ -126,8 +126,7 @@ static void forcecontroller(int vid, int pid,
 
 #ifdef USB_SUPPORT
 /* blacklist here so that the event platform does not try to fight us */
-
-	controllers[ind].handle = hid_open(vid, pid, NULL);
+	controllers[ind].handle = hid_open(id, pid, NULL);
 	controllers[ind].type = type;
 	controllers[ind].caps = caps;
 #else
@@ -158,15 +157,16 @@ int8_t arcan_led_register(int cmd_ch, const char* label,
 	if (-1 == id)
 		return -1;
 
-	arcan_event_enqueue(arcan_event_defaultctx(),
-		&(struct arcan_event){
+	arcan_event ev = {
 		.category = EVENT_IO,
 		.io.kind = EVENT_IO_STATUS,
 		.io.devkind = EVENT_IDEVKIND_STATUS,
 		.io.devid = id,
 		.io.input.status.devkind = EVENT_IDEVKIND_LEDCTRL,
 		.io.input.status.action = EVENT_IDEV_ADDED
-	});
+	};
+	snprintf(ev.io.label, COUNT_OF(ev.io.label), "%s", label);
+	arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 
 	ctrl_mask |= 1 << id;
 	controllers[id].devid = id;
