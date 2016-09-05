@@ -104,7 +104,7 @@ static const char* envopts[] = {
  */
 #define MAX_DEVICES 256
 
-struct arcan_devnode;
+struct devnode;
 #include "device_db.h"
 
 struct axis_opts {
@@ -132,12 +132,17 @@ static struct {
 	unsigned period, delay;
 
 	unsigned short mouseid;
-	struct arcan_devnode* nodes;
+	struct devnode* nodes;
 
 	struct pollfd* pollset;
+
+/* because of the 1:1 mapping between polling- entry and led entry, we
+ * split the pollset and the polling to two calls. The underlying buffer
+ * is allocated as 2*sz_nodes */
+	struct pollfd* ledset;
 } iodev = {0};
 
-struct arcan_devnode {
+struct devnode {
 	int handle;
 
 /* NULL&size terminated, with chain-block set of the previous one could not
@@ -168,11 +173,10 @@ struct arcan_devnode {
 		} cursor;
 		struct {
 			unsigned state;
-			bool numlock;
-			bool capslock;
-			bool scrolllock;
 		} keyboard;
 	};
+/* because in this universe, pretty much any normal input device can
+ * also have a touch display. */
 	struct {
 		bool active;
 		bool pending;
@@ -182,6 +186,14 @@ struct arcan_devnode {
 		int size;
 		int ind;
 	} touch;
+
+/* and also possible act as a LED controller */
+	struct {
+		bool gotled;
+		int ctrlid;
+		int fds[2];
+		int mask[LED_CNT];
+	} led;
 };
 
 static const char vt_acq = 'x';
@@ -219,7 +231,7 @@ static void got_device(struct arcan_evctx* ctx, int fd, const char*);
  * have a dynamic set of devices. For this reason, we split the 16 bit space
  * into < MAX_DEVICES and >= MAX_DEVICES and a device a can be accessed by
  * either id */
-static struct arcan_devnode* lookup_devnode(int devid)
+static struct devnode* lookup_devnode(int devid)
 {
 	if (devid <= 0)
 		devid = iodev.mouseid;
@@ -397,7 +409,7 @@ static void set_analogstate(struct axis_opts* dst,
 
 static struct axis_opts* find_axis(int devid, unsigned axisid, bool* outn)
 {
-	struct arcan_devnode* node = lookup_devnode(devid);
+	struct devnode* node = lookup_devnode(devid);
 	*outn = node != NULL;
 
 	if (!node)
@@ -449,7 +461,7 @@ arcan_errc platform_event_analogstate(int devid, int axisid,
 
 void platform_event_analogall(bool enable, bool mouse)
 {
-	struct arcan_devnode* node = lookup_devnode(iodev.mouseid);
+	struct devnode* node = lookup_devnode(iodev.mouseid);
 	if (!node)
 		return;
 
@@ -562,7 +574,7 @@ static void process_pending(struct arcan_evctx* ctx)
 	}
 }
 
-static void disconnect(struct arcan_evctx* ctx, struct arcan_devnode* node)
+static void disconnect(struct arcan_evctx* ctx, struct devnode* node)
 {
 	struct arcan_event addev = {
 		.category = EVENT_IO,
@@ -582,8 +594,15 @@ static void disconnect(struct arcan_evctx* ctx, struct arcan_devnode* node)
 			free(node->path);
 			node->path = NULL;
 			node->handle = -1;
-			iodev.pollset[i].fd = -1;
 			iodev.pollset[i].events = iodev.pollset[i].revents = 0;
+			if (node->led.gotled){
+				iodev.ledset[i].fd = iodev.pollset[i].fd = -1;
+				iodev.ledset[i].events = iodev.ledset[i].revents = 0;
+				node->led.gotled = false;
+				arcan_led_remove(node->led.ctrlid);
+				close(node->led.fds[0]);
+				close(node->led.fds[1]);
+			}
 			iodev.n_devs--;
 			break;
 		}
@@ -686,7 +705,7 @@ void platform_event_process(struct arcan_evctx* ctx)
 
 void platform_event_samplebase(int devid, float xyz[3])
 {
-	struct arcan_devnode* node = lookup_devnode(devid);
+	struct devnode* node = lookup_devnode(devid);
 	if (!node || node->type != DEVNODE_MOUSE)
 		return;
 
@@ -824,7 +843,7 @@ static char* to_utf8(uint16_t utf16, uint8_t out[4])
 	return (char*) out;
 }
 
-static void map_axes(int fd, size_t bitn, struct arcan_devnode* node)
+static void map_axes(int fd, size_t bitn, struct devnode* node)
 {
 	unsigned long bits[ bit_count(ABS_MAX) ];
 
@@ -869,9 +888,94 @@ static void map_axes(int fd, size_t bitn, struct arcan_devnode* node)
 		}
 }
 
+/*
+ * setup/register/prepare led- controller handler
+ */
+static void setup_led(struct devnode* dst, size_t bitn, int fd)
+{
+	unsigned long bits[ bit_count(LED_MAX) ];
+	if (-1 == ioctl(fd, EVIOCGBIT(bitn, LED_MAX), bits))
+		return;
+
+	size_t count = 0;
+	for (size_t i = 0; i < LED_MAX; i++){
+		if (bit_isset(bits, i))
+			count++;
+	}
+	if (!count)
+		return;
+
+/* FIXME: setup descriptor pair for grabbing the commands,
+ * and a part to the platform process that checks the descriptors */
+}
+
+static int alloc_node_slot(const char* path)
+{
+/* pre-existing? close old node and replace with this one, happens
+ * when we race and the device appears and reappears and we just need
+ * to reference a new inode */
+	int hole = -1;
+
+	for (size_t i = 0; i < iodev.sz_nodes; i++){
+		if (-1 == hole && iodev.nodes[i].handle < 0){
+			hole = i;
+			continue;
+		}
+
+/* or collision with existing? we use file-path for this. index
+ * stays the same and got_device will still register so don't have
+ * to consider leak for ledset */
+		if (iodev.nodes[i].path && strcmp(iodev.nodes[i].path, path) == 0){
+			close(iodev.nodes[i].handle);
+			iodev.n_devs--;
+			return i;
+		}
+	}
+
+/* no empty slot, grow pollsets and node tracking */
+	if (hole == -1){
+		size_t new_cnt = iodev.sz_nodes + 8;
+		struct devnode* nn = realloc(
+			iodev.nodes, sizeof(struct devnode) * new_cnt);
+		if (!nn)
+			return -1;
+		iodev.nodes = nn;
+		memset(nn + iodev.sz_nodes, '\0', sizeof(struct devnode) * 8);
+		for (size_t i = iodev.sz_nodes; i < new_cnt; i++)
+			iodev.nodes[i].handle = BADFD;
+
+/* pollset size is actually twice the number of nodes to allow a
+ * 'mirror address' for a possible led- or other special device ref.
+ * (say sound...) */
+		struct pollfd* np = realloc(iodev.pollset,
+			2 * sizeof(struct pollfd) * new_cnt);
+
+		if (!np)
+			return -1;
+
+		size_t grow_sz = sizeof(struct pollfd) * 8;
+/* move the led-fds so they don't get overwritten */
+		memmove(&np[iodev.sz_nodes], &np[iodev.sz_nodes + 8], grow_sz);
+/* clear the new memory */
+		memset(&np[1*iodev.sz_nodes], '\0', grow_sz);
+		memset(&np[2*iodev.sz_nodes], '\0', grow_sz);
+		for (size_t i = iodev.sz_nodes; i < new_cnt; i++){
+			np[i].fd = BADFD;
+			np[i+iodev.sz_nodes].fd = BADFD;
+		}
+
+/* update pointers, set hole to the first new entry */
+		iodev.pollset = np;
+		hole = iodev.sz_nodes;
+		iodev.sz_nodes = new_cnt;
+		iodev.ledset = &np[new_cnt];
+	}
+	return hole;
+}
+
 static void got_device(struct arcan_evctx* ctx, int fd, const char* path)
 {
-	struct arcan_devnode node = {
+	struct devnode node = {
 		.handle = fd
 	};
 
@@ -919,10 +1023,8 @@ static void got_device(struct arcan_evctx* ctx, int fd, const char* path)
 	bool mouse_ax = false;
 	bool mouse_btn = false;
 	bool joystick_btn = false;
-	bool gotled = false;
-	struct led_capabilities ledcap = {0};
+	int add_led = -1;
 
-	if (1){
 	size_t bpl = sizeof(long) * 8;
 	size_t nbits = ((EV_MAX)-1) / bpl + 1;
 	long prop[ nbits ];
@@ -958,7 +1060,7 @@ static void got_device(struct arcan_evctx* ctx, int fd, const char* path)
 		case EV_SYN:
 		break;
 		case EV_LED:
-			printf("got led!\n");
+			add_led = bit;
 		break;
 		case EV_SND:
 		break;
@@ -997,53 +1099,15 @@ static void got_device(struct arcan_evctx* ctx, int fd, const char* path)
 		node.type = eh.type;
 	}
 
-/* pre-existing? close old node and replace with this one */
-	int hole = -1;
-
-	for (size_t i = 0; i < iodev.sz_nodes; i++){
-		if (-1 == hole && iodev.nodes[i].handle <= 0){
-			hole = i;
-			continue;
-		}
-
-/* or collision with existing? we use file-path for this */
-		if (iodev.nodes[i].path && strcmp(iodev.nodes[i].path, path) == 0){
-				close(iodev.nodes[i].handle);
-
-			iodev.nodes[i].handle = fd;
-			iodev.pollset[i].fd = fd;
-			iodev.pollset[i].events = POLLIN | POLLERR | POLLHUP;
-
-			return;
-		}
-	}
-
-/* no empty slot, grow pollsets and node tracking */
-	if (hole == -1){
-		size_t new_sz = iodev.sz_nodes + 8;
-		struct arcan_devnode* nn = realloc(
-			iodev.nodes, sizeof(struct arcan_devnode) * new_sz);
-		if (!nn)
-			goto cleanup;
-		iodev.nodes = nn;
-		memset(nn + iodev.sz_nodes, '\0', sizeof(struct arcan_devnode) * 8);
-		for (size_t i = iodev.sz_nodes; i < new_sz; i++)
-			iodev.nodes[i].handle = BADFD;
-
-		struct pollfd* np = realloc(iodev.pollset, sizeof(struct pollfd) * new_sz);
-		if (!np)
-			goto cleanup;
-
-		memset(np + iodev.sz_nodes, '\0', sizeof(struct pollfd) * 8);
-		for (size_t i = iodev.sz_nodes; i < new_sz; i++)
-			np[i].fd = BADFD;
-
-		iodev.pollset = np;
-		hole = iodev.sz_nodes;
-		iodev.sz_nodes = new_sz;
-	}
-
 /* finally added */
+	int hole = alloc_node_slot(path);
+	if (-1 == hole){
+		if (log_verbose)
+			arcan_warning("input: dropped %s due to errors during scan.\n", path);
+		close(fd);
+		return;
+	}
+
 	iodev.n_devs++;
 	node.path = strdup(path);
 	iodev.pollset[hole].fd = fd;
@@ -1062,16 +1126,15 @@ static void got_device(struct arcan_evctx* ctx, int fd, const char* path)
 		sizeof(addev.io.label[0]), "%s", node.label);
 	arcan_event_enqueue(ctx, &addev);
 
+/* had to defer led device creation until now because we didn't
+ * know if there's a slot for it or not */
+/*	setup_led(&node, bit, fd); */
+
 	if (log_verbose)
 		arcan_warning("input: (%s:%s) added as type: %s\n",
 			path, node.label, lookup_type(node.type));
 
 	return;
-	}
-cleanup:
-	if (log_verbose)
-		arcan_warning("input: dropped %s due to errors during scan.\n", path);
-	close(fd);
 }
 
 #undef bit_isset
@@ -1144,7 +1207,7 @@ static void update_state(int code, bool state, unsigned* statev)
 }
 
 static void defhandler_kbd(struct arcan_evctx* out,
-	struct arcan_devnode* node)
+	struct devnode* node)
 {
 	struct input_event inev[64];
 	ssize_t evs = read(node->handle, &inev, sizeof(inev));
@@ -1214,7 +1277,7 @@ static void defhandler_kbd(struct arcan_evctx* out,
 }
 
 static void flush_pending(struct arcan_evctx* ctx,
-	struct arcan_devnode* node)
+	struct devnode* node)
 {
 	arcan_event newev = {
 		.category = EVENT_IO,
@@ -1240,7 +1303,7 @@ static void flush_pending(struct arcan_evctx* ctx,
 }
 
 static void decode_mt(struct arcan_evctx* ctx,
-	struct arcan_devnode* node, int code, int val)
+	struct devnode* node, int code, int val)
 {
 /* there are multiple protocols and mappings for this that we don't
  * account for here, move it to a toch event with the basic information
@@ -1298,7 +1361,7 @@ static void decode_mt(struct arcan_evctx* ctx,
 }
 
 static void decode_hat(struct arcan_evctx* ctx,
-	struct arcan_devnode* node, int ind, int val)
+	struct devnode* node, int ind, int val)
 {
 	arcan_event newev = {
 		.category = EVENT_IO,
@@ -1349,7 +1412,7 @@ static void decode_hat(struct arcan_evctx* ctx,
 }
 
 static void defhandler_game(struct arcan_evctx* ctx,
-	struct arcan_devnode* node)
+	struct devnode* node)
 {
 	struct input_event inev[64];
 	ssize_t evs = read(node->handle, &inev, sizeof(inev));
@@ -1447,7 +1510,7 @@ static inline short code_to_mouse(int code)
 }
 
 static void defhandler_mouse(struct arcan_evctx* ctx,
-	struct arcan_devnode* node)
+	struct devnode* node)
 {
 	struct input_event inev[64];
 
@@ -1547,7 +1610,7 @@ static void defhandler_mouse(struct arcan_evctx* ctx,
 }
 
 static void defhandler_null(struct arcan_evctx* out,
-	struct arcan_devnode* node)
+	struct devnode* node)
 {
 	char nbuf[256];
 	ssize_t evs = read(node->handle, nbuf, sizeof(nbuf));
@@ -1559,7 +1622,7 @@ static void defhandler_null(struct arcan_evctx* out,
 
 const char* platform_event_devlabel(int devid)
 {
-	struct arcan_devnode* node = lookup_devnode(devid);
+	struct devnode* node = lookup_devnode(devid);
 	if (!node)
 		return "bad devid";
 
@@ -1663,7 +1726,7 @@ void platform_event_deinit(struct arcan_evctx* ctx)
 	for (size_t i = 0; i < iodev.n_devs; i++)
 		if (iodev.nodes[i].handle > 0){
 			close(iodev.nodes[i].handle);
-			memset(&iodev.nodes[i], '\0', sizeof(struct arcan_devnode));
+			memset(&iodev.nodes[i], '\0', sizeof(struct devnode));
 		}
 
 	iodev.n_devs = 0;
@@ -1672,7 +1735,7 @@ void platform_event_deinit(struct arcan_evctx* ctx)
 
 void platform_device_lock(int devind, bool state)
 {
-	struct arcan_devnode* node = lookup_devnode(devind);
+	struct devnode* node = lookup_devnode(devind);
 	if (!node || !node->handle)
 		return;
 
