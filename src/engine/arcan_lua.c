@@ -3620,6 +3620,22 @@ static void display_removed(lua_State* ctx, arcan_event* ev)
 	LUA_TRACE("");
 }
 
+/*
+ * need to intercept and redefine some of the target_ functions
+ * to work for _lwa to arcan behavior
+ */
+#ifdef ARCAN_LWA
+
+void arcan_lwa_subseg_ev(uintptr_t cb_tag, arcan_event* ev)
+{
+/*
+ * translate / map events as per normal
+ */
+}
+
+struct subseg_output;
+bool platform_lwa_targetevent(struct subseg_output*, arcan_event* ev);
+#endif
 static inline bool tgtevent(arcan_vobj_id dst, arcan_event ev)
 {
 	vfunc_state* state = arcan_video_feedstate(dst);
@@ -3628,6 +3644,11 @@ static inline bool tgtevent(arcan_vobj_id dst, arcan_event ev)
 		arcan_frameserver* fsrv = (arcan_frameserver*) state->ptr;
 		return arcan_frameserver_pushevent( fsrv, &ev ) == ARCAN_OK;
 	}
+#ifdef ARCAN_LWA
+	else if (state && state->tag == ARCAN_TAG_LWA && state->ptr){
+		return platform_lwa_targetevent(state->ptr, &ev);
+	}
+#endif
 
 	return false;
 }
@@ -7702,6 +7723,97 @@ static int feedtarget(lua_State* ctx)
 	LUA_ETRACE("define_feedtarget", NULL, 1);
 }
 
+#ifdef ARCAN_LWA
+static const struct{const char* msg; enum ARCAN_SEGID val;} seglut[] = {
+	{.msg = "cursor", .val = SEGID_CURSOR},
+	{.msg = "popup", .val = SEGID_POPUP},
+	{.msg = "icon", .val = SEGID_ICON},
+	{.msg = "clipboard", .val = SEGID_CLIPBOARD},
+	{.msg = "titlebar", .val = SEGID_TITLEBAR},
+	{.msg = "debug", .val = SEGID_DEBUG},
+	{.msg = "widget", .val = SEGID_WIDGET},
+	{.msg = "accessibility", .val = SEGID_ACCESSIBILITY}
+};
+
+enum ARCAN_SEGID str_to_segid(const char* str)
+{
+	for (size_t i = 0; i < COUNT_OF(seglut); i++)
+		if (strcmp(seglut[i].msg, str) == 0)
+			return seglut[i].val;
+
+	return SEGID_UNKNOWN;
+}
+
+bool platform_lwa_allocbind_feed(arcan_vobj_id rtgt,
+	enum ARCAN_SEGID type, uintptr_t cbtag);
+
+static int arcanset(lua_State* ctx)
+{
+	LUA_TRACE("define_arcantarget");
+
+/* for storage -  will eventually be swapped for the active shmif connection */
+	arcan_vobject* dvobj;
+	arcan_vobj_id did = luaL_checkvid(ctx, 1, &dvobj);
+	if (dvobj->vstore->txmapped != TXSTATE_TEX2D)
+		arcan_fatal("define_arcantarget(), first argument "
+			"must have a texture- based store.");
+
+/* need to specify purpose, only a subset of IDs are "allowed" though the
+ * actual enforcement is in the target_accept (default: not) in the server */
+	enum ARCAN_SEGID type = str_to_segid(luaL_checkstring(ctx, 2));
+	if (type == SEGID_UNKNOWN)
+		arcan_fatal("define_arcantarget(), second argument "
+			"(segid) could not be matched.");
+
+/* currently ONLY allow table, we actually want this for static content
+ * too though, so in later revisions, accept a version with just [did, type,
+ * callback]) */
+	luaL_checktype(ctx, 3, LUA_TTABLE);
+	int rc = 0;
+	int nvids = lua_rawlen(ctx, 3);
+
+	if (nvids <= 0)
+		arcan_fatal("define_arcantarget(), sources must "
+			"consist of a table with >= 1 valid vids.");
+
+	int pollrate = luaL_checkint(ctx, 4);
+	intptr_t ref = find_lua_callback(ctx);
+	if (LUA_NOREF == ref)
+		arcan_fatal("define_arcantarget(), no event handler provided");
+
+/* bind rt to have something to use as readback / update trigger */
+	if (ARCAN_OK != arcan_video_setuprendertarget(did, 0,
+		pollrate, false, RENDERTARGET_COLOR))
+	{
+		arcan_warning("define_recordtarget(), setup rendertarget failed.\n");
+		lua_pushboolean(ctx, false);
+		LUA_ETRACE("define_arcantarget", NULL, 1);
+	}
+
+	for (size_t i = 0; i < nvids; i++){
+		lua_rawgeti(ctx, 3, i+1);
+		arcan_vobj_id setvid = luavid_tovid( lua_tointeger(ctx, -1) );
+		lua_pop(ctx, 1);
+
+		if (setvid == ARCAN_VIDEO_WORLDID)
+			arcan_fatal("recordset(), using WORLDID as a direct source is "
+				"not permitted, create a null_surface and use image_sharestorage. ");
+
+		arcan_video_attachtorendertarget(did, setvid, true);
+	}
+
+	lua_pushboolean(ctx, platform_lwa_allocbind_feed(did, type, ref));
+	LUA_ETRACE("define_arcantarget", NULL, 1);
+}
+#else
+static int arcanset(lua_State* ctx)
+{
+	LUA_TRACE("define_arcantarget");
+	arcan_warning("define_arcantarget() is only valid in LWA");
+	LUA_ETRACE("define_arcantarget", NULL, 0);
+}
+#endif
+
 static int recordset(lua_State* ctx)
 {
 	LUA_TRACE("define_recordtarget");
@@ -9190,6 +9302,7 @@ static const luaL_Reg tgtfuns[] = {
 {"define_calctarget",          procset                  },
 {"define_feedtarget",          feedtarget               },
 {"define_nulltarget",          nulltarget               },
+{"define_arcantarget",         arcanset                 },
 {"rendertarget_forceupdate",   rendertargetforce        },
 {"rendertarget_vids",          rendertarget_vids        },
 {"recordtarget_gain",          recordgain               },

@@ -6,10 +6,10 @@
  * Multiple displays are simulated when we explicitly get a subsegment pushed
  * to us although they only work with the agp readback approach currently.
  */
-
 #include <stdint.h>
 #include <stdbool.h>
 #include <unistd.h>
+#include <strings.h>
 #include <stdio.h>
 #include <sys/types.h>
 #include <poll.h>
@@ -65,6 +65,13 @@ static struct monitor_mode mmodes[] = {
 
 #define MAX_DISPLAYS 8
 
+struct subseg_output {
+	int id;
+	bool pending;
+	uintptr_t cbtag;
+	struct arcan_shmif_cont con;
+};
+
 struct display {
 	struct arcan_shmif_cont conn;
 	bool mapped, visible, focused, dirty;
@@ -72,7 +79,11 @@ struct display {
 	struct storage_info_t* vstore;
 	float ppcm;
 	int id;
-} disp[MAX_DISPLAYS];
+
+/* only used for first display */
+	uint8_t subseg_alloc;
+	struct subseg_output sub[8];
+} disp[MAX_DISPLAYS] = {0};
 
 static struct arg_arr* shmarg;
 static bool nopass;
@@ -577,6 +588,136 @@ static void map_window(struct arcan_shmif_cont* seg, arcan_evctx* ctx,
 	arcan_event_enqueue(ctx, &ev);
 }
 
+void arcan_lwa_subseg_ev(uintptr_t, arcan_event*);
+
+enum arcan_ffunc_rv arcan_lwa_ffunc FFUNC_HEAD
+{
+	struct subseg_output* outptr = state.ptr;
+/* we don't care about the guard part here since the data goes low->
+ * high-priv and not the other way around */
+
+	if (cmd == FFUNC_DESTROY){
+		arcan_shmif_drop(&outptr->con);
+		outptr->id = 0;
+		outptr->pending = false;
+		for (size_t i = 0; i < 8; i++)
+			if (outptr == &disp[0].sub[i]){
+				disp[0].subseg_alloc &= ~(1 << i);
+				break;
+			}
+/* don't need to free outptr as it's from the displays- structure */
+		return 0;
+	}
+
+	if (cmd == FFUNC_ADOPT){
+/* we don't support adopt, so will be dropped */
+		return 0;
+	}
+
+/* drain events to scripting layer, don't care about DMS here */
+	if (cmd == FFUNC_TICK){
+		struct arcan_event inev;
+		while (arcan_shmif_poll(&outptr->con, &inev) > 0)
+			arcan_lwa_subseg_ev(outptr->cbtag, &inev);
+		return 0;
+	}
+
+/*
+ * FIXME: we need some way to set the pointer for the readback output
+ * backing store to be buf so we can avoid this copy using the normal
+ * signalling mechanisms, abusing the record target is not efficient.
+ */
+	if (cmd == FFUNC_READBACK){
+		arcan_shmif_signal(&outptr->con, SHMIF_SIGVID);
+	}
+
+/* special cases, how do we mark ourselves as invisible for popup,
+ * or set our position relative to parent? */
+	return FRV_NOFRAME;
+}
+
+/*
+ * Generate a subsegment request on the primary segment, bind and
+ * add that as the feed-recipient to the recordtarget defined in [rtgt].
+ * will fail immediately if we are out of free subsegments.
+ *
+ * To avoid callbacks or additional multiplex- copies, expect the
+ * lwa_subseg_eventdrain(uintptr_t tag, arcan_event*) function to
+ * exist.
+ */
+bool platform_lwa_allocbind_feed(arcan_vobj_id rtgt,
+	enum ARCAN_SEGID type, uintptr_t cbtag)
+{
+	arcan_vobject* vobj = arcan_video_getobject(rtgt);
+	if (!vobj || !vobj->vstore)
+		return false;
+
+	if (disp[0].subseg_alloc == 255)
+		return false;
+
+	int ind = ffs(~disp[0].subseg_alloc)-1;
+	disp[0].sub[ind].pending = true;
+	disp[0].sub[ind].id = 0xcafe + ind;
+
+	arcan_shmif_enqueue(&disp[0].conn, &(struct arcan_event){
+		.category = EVENT_EXTERNAL,
+		.ext.kind = ARCAN_EVENT(SEGREQ),
+		.ext.segreq.width = vobj->vstore->w,
+		.ext.segreq.height = vobj->vstore->h,
+		.ext.segreq.kind = type,
+		.ext.segreq.id = disp[0].sub[ind].id
+	});
+
+	arcan_video_alterfeed(rtgt, FFUNC_LWA,
+			(vfunc_state){.tag = cbtag, .ptr = &disp[0].sub[ind]});
+	return true;
+}
+
+bool platform_lwa_targetevent(struct subseg_output* tgt, arcan_event* ev)
+{
+/* selectively covert certain events, like target_displayhint
+ * to indicate visibility - opted for this kind of contextual reuse
+ * rather than more functions to track */
+	return false;
+}
+
+static bool scan_subseg(arcan_tgtevent* ev, bool ok)
+{
+/* 0 is cookie, 1 should be 0, 2 carries type */
+/* if !ok, mark as free, if ok - mark as enabled and map */
+	int ind = -1;
+	if (ev->ioevs[1].iv != 0)
+		return false;
+
+	for (size_t i = 0; i < 8; i++){
+		if (disp[0].sub[i].id == ev->ioevs[0].iv){
+			ind = i;
+			break;
+		}
+	}
+	if (-1 == ind)
+		return false;
+
+	if (!ok){
+		disp[0].sub[ind].pending = false;
+		disp[0].subseg_alloc &= ~(1 << ind);
+		arcan_warning("lwa - parent rejected subsegment with id %d\n", ind);
+		return false;
+	}
+
+	disp[0].sub[ind].con = arcan_shmif_acquire(&disp[0].conn,
+		NULL, disp[0].sub[ind].id, 0);
+	disp[0].sub[ind].pending = false;
+	if (!disp[0].sub[ind].con.vidp){
+		arcan_warning("lwa - failed during mapping\n");
+		disp[0].subseg_alloc &= ~(1 << ind);
+		return false;
+	}
+
+	arcan_warning("accepted pending");
+	return true;
+}
+
 /*
  * return true if the segment has expired
  */
@@ -595,15 +736,19 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
  * We use subsegments forced from the parent- side as an analog for
  * hotplug displays, giving developers a testbed for a rather hard
  * feature and at the same time get to evaluate the API.
- * Other enhancements would be to let alloc_surface+flag for rendertargets
- * act as newseg request and map the new rendertarget to that segment.
  *
- * Note: we don't handle SEGID_CLIPBOARD_PASTE yet, as these come as DISPLAY_
- * ADDED we can hook them up to default handlers matching kind as the caller
- * is allowed to change anyhow.
+ * For subsegment IDs that match a pending request, with special
+ * treatment for the DND/PASTE cases.
 */
 		case TARGET_COMMAND_NEWSEGMENT:
-			map_window(&d->conn, ctx, ev.tgt.ioevs[0].iv, ev.tgt.message);
+			if (d == &disp[0]){
+				if (!scan_subseg(&ev.tgt, true))
+					map_window(&d->conn, ctx, ev.tgt.ioevs[0].iv, ev.tgt.message);
+			}
+		break;
+
+		case TARGET_COMMAND_REQFAIL:
+			scan_subseg(&ev.tgt, false);
 		break;
 
 /*
