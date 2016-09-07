@@ -27,6 +27,10 @@
 #include "arcan_3dbase.h"
 #include "arcan_ffunc_lut.h"
 
+#ifdef ARCAN_LWA
+extern enum arcan_ffunc_rv arcan_lwa_ffunc FFUNC_HEAD;
+#endif
+
 /*
  * will be allocated / initialized once
  */
@@ -82,6 +86,11 @@ void arcan_ffunc_initlut()
 	f_lut[FFUNC_3DOBJ] = arcan_ffunc_3dobj;
 	f_lut[FFUNC_SOCKVER] = arcan_frameserver_socketverify;
 	f_lut[FFUNC_SOCKPOLL] = arcan_frameserver_socketpoll;
+#ifdef ARCAN_LWA
+	f_lut[FFUNC_LWA] = arcan_lwa_ffunc;
+#else
+	f_lut[FFUNC_LWA] = fatal_ffunc;
+#endif
 
 	mprotect(f_lut, system_page_size, PROT_READ);
 }
