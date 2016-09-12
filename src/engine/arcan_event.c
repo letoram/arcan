@@ -38,6 +38,7 @@
 #include "arcan_db.h"
 #include "arcan_shmif.h"
 #include "arcan_event.h"
+#include "arcan_led.h"
 
 #include "arcan_frameserver.h"
 
@@ -732,6 +733,35 @@ void arcan_event_init(arcan_evctx* ctx, arcan_event_handler drain)
 	ctx->drain = drain;
 	platform_event_init(ctx);
 	epoch = arcan_timemillis();
+}
+
+void arcan_led_removed(int devid)
+{
+	arcan_event_enqueue(arcan_event_defaultctx(),
+		&(struct arcan_event){
+		.category = EVENT_IO,
+		.io.kind = EVENT_IO_STATUS,
+		.io.devkind = EVENT_IDEVKIND_STATUS,
+		.io.devid = devid,
+		.io.input.status.devkind = EVENT_IDEVKIND_LEDCTRL,
+		.io.input.status.action = EVENT_IDEV_REMOVED
+	});
+}
+
+void arcan_led_added(int devid, int refdev, const char* label)
+{
+	arcan_event ev = {
+		.category = EVENT_IO,
+		.io.kind = EVENT_IO_STATUS,
+		.io.devkind = EVENT_IDEVKIND_STATUS,
+		.io.devid = devid,
+		.io.input.status.devref = refdev,
+		.io.input.status.domain = 1,
+		.io.input.status.devkind = EVENT_IDEVKIND_LEDCTRL,
+		.io.input.status.action = EVENT_IDEV_ADDED
+	};
+	snprintf(ev.io.label, COUNT_OF(ev.io.label), "%s", label);
+	arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 }
 
 extern void platform_device_lock(int lockdev, bool lockstate);

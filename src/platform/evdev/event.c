@@ -271,6 +271,14 @@ static bool identify(int fd, const char* path,
 		return false;
 	}
 
+/*
+ * first, check if any other subsystem knows about this one and ignore if so
+ */
+	if (arcan_led_known(nodeid.vendor, nodeid.product)){
+		arcan_led_init();
+		return false;
+	}
+
 /* didn't find much on how unique eviocguniq actually was, nor common lengths
  * or what not so just mix them in a buffer, hash and let unsigned overflow
  * modulo take us down to 16bit */
@@ -1128,7 +1136,8 @@ static void got_device(struct arcan_evctx* ctx, int fd, const char* path)
 
 /* had to defer led device creation until now because we didn't
  * know if there's a slot for it or not */
-/*	setup_led(&node, bit, fd); */
+	if (add_led != -1)
+		setup_led(&node, add_led, fd);
 
 	if (log_verbose)
 		arcan_warning("input: (%s:%s) added as type: %s\n",
@@ -1624,10 +1633,9 @@ const char* platform_event_devlabel(int devid)
 {
 	struct devnode* node = lookup_devnode(devid);
 	if (!node)
-		return "bad devid";
+		return NULL;
 
-	return strlen(node->label) == 0 ?
-		"no identifier" : node->label;
+	return node->label;
 }
 
 /* ajax @ xorg-dev ml, [PATCH] linux: Prefer ioctl(KDSKBMUTE), ... */

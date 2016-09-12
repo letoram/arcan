@@ -3148,11 +3148,21 @@ static int n_leds(lua_State* ctx)
 {
 	LUA_TRACE("controller_leds");
 
-	uint8_t id = luaL_checkint(ctx, 1);
-	struct led_capabilities cap = arcan_led_capabilities(id);
+	int id = luaL_optint(ctx, 1, -1);
+	if (id == -1){
+		uint64_t ccont = arcan_led_controllers();
+		lua_pushnumber(ctx, log2(ccont));
+		lua_pushnumber(ctx, (ccont & 0x00000000ffffffff) >> 00);
+		lua_pushnumber(ctx, (ccont & 0xffffffff00000000) >> 32);
+		LUA_ETRACE("controller_leds", NULL, 1);
+	}
+
+	struct led_capabilities cap = arcan_led_capabilities((uint8_t)id);
 
 	lua_pushnumber(ctx, cap.nleds);
-	LUA_ETRACE("controller_leds", NULL, 1);
+	lua_pushboolean(ctx, cap.variable_brightness);
+	lua_pushboolean(ctx, cap.rgb);
+	LUA_ETRACE("controller_leds", NULL, 3);
 }
 
 static int led_intensity(lua_State* ctx)
@@ -3160,7 +3170,7 @@ static int led_intensity(lua_State* ctx)
 	LUA_TRACE("led_intensity");
 
 	uint8_t id = luaL_checkint(ctx, 1);
-	int8_t led = luaL_checkint(ctx, 2);
+	int16_t led = luaL_checkint(ctx, 2);
 	uint8_t intensity = luaL_checkint(ctx, 3);
 
 	lua_pushnumber(ctx,
@@ -3174,12 +3184,13 @@ static int led_rgb(lua_State* ctx)
 	LUA_TRACE("set_led_rgb");
 
 	uint8_t id = luaL_checkint(ctx, 1);
-	int8_t led = luaL_checkint(ctx, 2);
-	uint8_t r  = luaL_checkint(ctx, 3);
-	uint8_t g  = luaL_checkint(ctx, 4);
-	uint8_t b  = luaL_checkint(ctx, 5);
+	int16_t led = luaL_checkint(ctx, 2);
+	uint8_t r = luaL_checkint(ctx, 3);
+	uint8_t g = luaL_checkint(ctx, 4);
+	uint8_t b = luaL_checkint(ctx, 5);
+	bool buf = luaL_optbnumber(ctx, 6, false);
 
-	lua_pushnumber(ctx, arcan_led_rgb(id, led, r, g, b));
+	lua_pushnumber(ctx, arcan_led_rgb(id, led, r, g, b, buf));
 	LUA_ETRACE("set_led_rgb", NULL, 1);
 }
 
@@ -3189,11 +3200,9 @@ static int setled(lua_State* ctx)
 
 	int id = luaL_checkint(ctx, 1);
 	int num = luaL_checkint(ctx, 2);
-	int state = luaL_checkint(ctx, 3);
-
-	lua_pushnumber(ctx, state ? arcan_led_set(id, num):arcan_led_clear(id, num));
-
-	LUA_ETRACE("set_led", NULL, 2);
+	int state = luaL_optbnumber(ctx, 3, true) ? 255 : 0;
+	lua_pushnumber(ctx, arcan_led_intensity(id, num, state));
+	LUA_ETRACE("set_led", NULL, 1);
 }
 
 /* NOTE: a currently somewhat serious yet unhandled issue concerns what to do
@@ -3754,6 +3763,17 @@ static const char* kindstr(int num)
 	}
 }
 
+static const char* domain_str(int num)
+{
+	switch(num){
+	case 0:	return "platform"; break;
+	case 1: return "led"; break;
+	default:
+	return "unknown-report";
+	break;
+	}
+}
+
 /*
  * emit input() call based on a arcan_event, uses a separate format and
  * translation to make it easier for the user to modify. This is a rather ugly
@@ -3788,18 +3808,23 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			tblnum(ctx, "y", ev->io.input.touch.y, top);
 		break;
 
-		case EVENT_IO_STATUS:
-/* FIXME: assume LED controller count may have changed and just update that
- * value, that interface was designed way back when */
+		case EVENT_IO_STATUS:{
+			const char* lbl = platform_event_devlabel(ev->io.devid);
 			lua_pushstring(ctx, "status");
 			lua_rawset(ctx, top);
 			tblnum(ctx, "devid", ev->io.devid, top);
 			tblnum(ctx, "subid", ev->io.subid, top);
+			if (lbl)
+				tblstr(ctx, "extlabel", lbl, top);
+
 			tblstr(ctx, "devkind", kindstr(ev->io.input.status.devkind), top);
-			tblstr(ctx, "label", platform_event_devlabel(ev->io.devid), top);
+			tblstr(ctx, "label", ev->io.label, top);
+			tblnum(ctx, "devref", ev->io.input.status.devref, top);
+			tblstr(ctx, "domain", domain_str(ev->io.input.status.domain), top);
 			tblstr(ctx, "action", (ev->io.input.status.action == EVENT_IDEV_ADDED ?
 				"added" : (ev->io.input.status.action == EVENT_IDEV_REMOVED ?
 					"removed" : "blocked")), top);
+		}
 		break;
 
 		case EVENT_IO_AXIS_MOVE:
@@ -9707,7 +9732,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"MOUSE_BTNLEFT", 1},
 {"MOUSE_BTNMIDDLE", 2},
 {"MOUSE_BTNRIGHT", 3},
-{"LEDCONTROLLERS", arcan_led_controllers()},
+/* DEPRECATE */ {"LEDCONTROLLERS", arcan_led_controllers()},
 {"KEY_CONFIG", DVT_CONFIG},
 {"KEY_TARGET", DVT_TARGET},
 {"NOW", 0},
