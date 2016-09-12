@@ -232,7 +232,8 @@ static struct {
 	struct dispout* last_display;
 	size_t canvasw, canvash;
 	int destroy_pending;
-	int ledid, ledind, ledch;
+	int ledid, ledind;
+	uint8_t ledval[3];
 	int ledpair[2];
 } egl_dri = {
 	.ledind = 255
@@ -1578,14 +1579,21 @@ static void flush_leds()
 
 	uint8_t buf[2];
 	while (2 == read(egl_dri.ledpair[0], buf, 2)){
-		switch (buf[0]){
-		case 'r': egl_dri.ledch = 1; egl_dri.ledind = buf[1]; break;
-		case 'g': egl_dri.ledch = 2; egl_dri.ledind = buf[1]; break;
-		case 'b': egl_dri.ledch = 3; egl_dri.ledind = buf[1]; break;
-		case 'a': egl_dri.ledch = 0; egl_dri.ledind = buf[1]; break;
-		case 'i':
+		switch (tolower(buf[0])){
+		case 'A': egl_dri.ledind = 255; break;
+		case 'a': egl_dri.ledind = buf[1]; break;
+		case 'r': egl_dri.ledval[0] = buf[1]; break;
+		case 'g': egl_dri.ledval[1] = buf[1]; break;
+		case 'b': egl_dri.ledval[2] = buf[1]; break;
+		case 'i': egl_dri.ledval[0] = egl_dri.ledval[1]=egl_dri.ledval[2]=buf[1];
+		case 'c':
+/*
+ * don't expose an RGB capable backlight (are there such displays out there?
+ * the other option would be to weight the gamma channel of the ramps but if
+ * someone wants that behavior it is probably better to change all the ramps
+ */
 			if (egl_dri.ledind != 255)
-				do_led(get_display(egl_dri.ledind), buf[1]);
+				do_led(get_display(egl_dri.ledind), egl_dri.ledval[0]);
 			else
 				for (size_t i = 0; i < MAX_DISPLAYS; i++)
 					do_led(get_display(i), buf[1]);
@@ -1711,7 +1719,7 @@ retry_card:
 	rv = true;
 
 	if (pipe(egl_dri.ledpair) != -1){
-		egl_dri.ledid = arcan_led_register(egl_dri.ledpair[1],
+		egl_dri.ledid = arcan_led_register(egl_dri.ledpair[1], -1,
 			"backlight", (struct led_capabilities){
 			.nleds = MAX_DISPLAYS,
 			.variable_brightness = true,

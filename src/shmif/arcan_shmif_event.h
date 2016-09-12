@@ -845,6 +845,8 @@ typedef union arcan_ioevent_data {
 /* match ARCAN_IDEV_STATUS */
 		uint8_t action;
 		uint8_t devkind;
+		uint16_t devref;
+		uint8_t domain;
 	} status;
 
 	struct {

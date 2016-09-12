@@ -1,7 +1,13 @@
 -- set_led_rgb
 -- @short: Set the specific R,G,B values for an individual LED on a specific controller.
--- @inargs: controlid, ledid, r, g, b
+-- @inargs: controlid, ledid, r, g, b, *buffer*
+-- @outarg: bool
 -- @group: iodev
 -- @cfunction: led_rgb
--- @note: incomplete
-
+-- @longdescr: Set the color value of an individual led on a known led controller and
+-- returns -1 if the *controlid* does not exist, if *ledid* is not a valid index,
+-- if the *controlid* backed device lacks the r,g,b capability.
+-- A return of 0 means that the update failed as it would block the device. This
+-- can happen if many led update queries are being pushed to a slow device.
+-- If the optional boolean *buffer* is set, the request may be queued and the queue
+-- will not dispatch until a non-buffered update is called.

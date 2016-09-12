@@ -2,18 +2,28 @@
  * Copyright 2003-2016, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
- * Description: LED controller interface, originally just written
- * as a hack to get ultimarc- style controller working and has since been
- * expanded to allow platform- layer to register custom controllers
- * to handle things like laptop display backlight
+ * Description: LED controller interface,
+ *
+ * By defining LED_STANDALONE it can be built separately from the
+ * main engine to allow other projects to just re-use the LED control
+ * interface.
+ *
+ * Setting the 'ext_led' database config value to a path name pointing
+ * to an existing named pipe will have the engine map that as an
+ * external led controller that speaks the protocol mentioned in the
+ * header.
  */
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <string.h>
+#include <errno.h>
 
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #ifdef USB_SUPPORT
 #include <hidapi/hidapi.h>
@@ -21,11 +31,15 @@
 	typedef struct hid_device hid_device;
 #endif
 
+#include "arcan_led.h"
+#ifndef LED_STANDALONE
 #include "arcan_math.h"
 #include "arcan_general.h"
-#include "arcan_led.h"
-#include "arcan_shmif.h"
-#include "arcan_event.h"
+#include "arcan_db.h"
+#else
+#define COUNT_OF(x) \
+	((sizeof(x)/sizeof(0[x])) / ((size_t)(!(sizeof(x) % sizeof(0[x])))))
+#endif
 
 /* to add more device types,
  * 1. patch in the type in the controller_types enum.
@@ -35,7 +49,7 @@
  * 3. modify the places marked as PROTOCOL INSERTION POINT
  */
 enum controller_types {
-	ULTIMARC_PACDRIVE = 1,
+	PACDRIVE = 1,
 	ARCAN_LEDCTRL = 2
 };
 
@@ -43,11 +57,15 @@ struct led_controller {
 	enum controller_types type;
 	struct led_capabilities caps;
 	uint64_t devid;
+	int errc;
 
 	union {
-	hid_device* handle;
-	int fd;
+		hid_device* handle;
+		int fd;
 	};
+
+/* some need a big table, others do fine with a simple bitmask */
+	uint32_t table[256];
 	uint16_t ledmask;
 };
 
@@ -55,22 +73,37 @@ struct usb_ent {
 	uint16_t vid, pid;
 	enum controller_types type;
 	struct led_capabilities caps;
+	char label[16];
 };
 
 /* one of the C fuglyness, static const struct led_capabilities paccap would
  * still yield that the initialization is not constant */
 #define paccap { .variable_brightness = false, .rgb = false, .nleds = 32 }
+
+/*
+ * nleds is just max, not all of these will map due to layout variations
+ * that don't necessarily (?) has a different vid/pid pair
+ */
 static const struct usb_ent usb_tbl[] =
 {
-	{.vid = 0xd209, .pid = 0x1500, .type = ULTIMARC_PACDRIVE, .caps = paccap},
-	{.vid = 0xd209, .pid = 0x1501, .type = ULTIMARC_PACDRIVE, .caps = paccap},
-	{.vid = 0xd209, .pid = 0x1502, .type = ULTIMARC_PACDRIVE, .caps = paccap},
-	{.vid = 0xd209, .pid = 0x1503, .type = ULTIMARC_PACDRIVE, .caps = paccap},
-	{.vid = 0xd209, .pid = 0x1504, .type = ULTIMARC_PACDRIVE, .caps = paccap},
-	{.vid = 0xd209, .pid = 0x1505, .type = ULTIMARC_PACDRIVE, .caps = paccap},
-	{.vid = 0xd209, .pid = 0x1506, .type = ULTIMARC_PACDRIVE, .caps = paccap},
-	{.vid = 0xd209, .pid = 0x1507, .type = ULTIMARC_PACDRIVE, .caps = paccap},
-	{.vid = 0xd209, .pid = 0x1508, .type = ULTIMARC_PACDRIVE, .caps = paccap}
+	{.vid = 0xd209, .pid = 0x1500, .type = PACDRIVE,
+		.caps = paccap, .label = "Pacdrive"},
+	{.vid = 0xd209, .pid = 0x1501, .type = PACDRIVE,
+		.caps = paccap, .label = "Pacdrive"},
+	{.vid = 0xd209, .pid = 0x1502, .type = PACDRIVE,
+		.caps = paccap, .label = "Pacdrive"},
+	{.vid = 0xd209, .pid = 0x1503, .type = PACDRIVE,
+		.caps = paccap, .label = "Pacdrive"},
+	{.vid = 0xd209, .pid = 0x1504, .type = PACDRIVE,
+		.caps = paccap, .label = "Pacdrive"},
+	{.vid = 0xd209, .pid = 0x1505, .type = PACDRIVE,
+		.caps = paccap, .label = "Pacdrive"},
+	{.vid = 0xd209, .pid = 0x1506, .type = PACDRIVE,
+		.caps = paccap, .label = "Pacdrive"},
+	{.vid = 0xd209, .pid = 0x1507, .type = PACDRIVE,
+		.caps = paccap, .label = "Pacdrive"},
+	{.vid = 0xd209, .pid = 0x1508, .type = PACDRIVE,
+		.caps = paccap, .label = "Pacdrive"}
 };
 #undef paccap
 
@@ -83,6 +116,11 @@ static struct led_controller controllers[MAX_LED_CONTROLLERS] = {0};
 static uint64_t ctrl_mask;
 static int n_controllers = 0;
 
+#ifndef LED_STANDALONE
+static int fifo_out = -1;
+extern struct arcan_dbh* dbhandle;
+#endif
+
 static int find_free_ind()
 {
 	for (size_t i = 0; i < MAX_LED_CONTROLLERS; i++)
@@ -93,7 +131,8 @@ static int find_free_ind()
 
 static struct led_controller* get_device(uint8_t devind)
 {
-	if ((ctrl_mask & (1 << devind)) == 0)
+	if (devind > MAX_LED_CONTROLLERS ||
+		(ctrl_mask & (1 << devind)) == 0)
 		return NULL;
 
 	return &controllers[devind];
@@ -111,62 +150,48 @@ static struct led_controller* find_devid(uint64_t devid)
 	return NULL;
 }
 
-static void forcecontroller(int vid, int pid,
-	enum controller_types type, struct led_capabilities caps)
+static void forcecontroller(const struct usb_ent* ent)
 {
 	int ind = find_free_ind();
 	if (-1 == ind)
 		return;
 
-	uint64_t devid = ((vid & 0xffff) << 16) | (pid & 0xffff);
+/* the USB standard doesn't mandate a serial number (facepalm)
+ * and hidraw doesn't really have something akin to an instance id */
+
+	uint64_t devid = ((ent->vid & 0xffff) << 16) | (ent->pid & 0xffff);
 /* other option would be to close and reopen the device as an attempt
  * to reset to a possibly safer state */
 	if (find_devid(devid))
 		return;
 
 #ifdef USB_SUPPORT
-/* blacklist here so that the event platform does not try to fight us */
-	controllers[ind].handle = hid_open(id, pid, NULL);
-	controllers[ind].type = type;
-	controllers[ind].caps = caps;
+	controllers[ind].handle = hid_open(ent->vid, ent->pid, NULL);
+	controllers[ind].type = ent->type;
+	controllers[ind].caps = ent->caps;
+	if (controllers[ind].handle == NULL)
+		return;
+
+/* PROTOCOL_INSERTION_POINT */
+	switch(ent->type){
+	default:
+	break;
+	}
 #else
 	return;
 #endif
 
-	if (controllers[ind].handle == NULL)
-		return;
-
-	arcan_event_enqueue(arcan_event_defaultctx(),
-		&(struct arcan_event){
-		.category = EVENT_IO,
-		.io.kind = EVENT_IO_STATUS,
-		.io.devkind = EVENT_IDEVKIND_STATUS,
-		.io.devid = ind,
-		.io.input.status.devkind = EVENT_IDEVKIND_LEDCTRL,
-		.io.input.status.action = EVENT_IDEV_ADDED
-	});
-
 	ctrl_mask |= 1 << ind;
 	n_controllers++;
+	arcan_led_added(ind, -1, ent->label);
 }
 
-int8_t arcan_led_register(int cmd_ch, const char* label,
-	struct led_capabilities caps)
+int8_t arcan_led_register(int cmd_ch, int devref,
+	const char* label, struct led_capabilities caps)
 {
 	int8_t id = find_free_ind();
 	if (-1 == id)
 		return -1;
-
-	arcan_event ev = {
-		.category = EVENT_IO,
-		.io.kind = EVENT_IO_STATUS,
-		.io.devkind = EVENT_IDEVKIND_STATUS,
-		.io.devid = id,
-		.io.input.status.devkind = EVENT_IDEVKIND_LEDCTRL,
-		.io.input.status.action = EVENT_IDEV_ADDED
-	};
-	snprintf(ev.io.label, COUNT_OF(ev.io.label), "%s", label);
-	arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 
 	ctrl_mask |= 1 << id;
 	controllers[id].devid = id;
@@ -174,8 +199,30 @@ int8_t arcan_led_register(int cmd_ch, const char* label,
 	controllers[id].type = ARCAN_LEDCTRL;
 	controllers[id].ledmask = 0;
 	controllers[id].caps = caps;
+	controllers[id].errc = 0;
+
 	n_controllers++;
+	arcan_led_added(id, devref, label);
 	return id;
+}
+
+static int write_leddev(int dev, int fd, uint8_t* buf, size_t sz)
+{
+	int rv;
+	while ((rv = write(fd, buf, sz)) == -1){
+		if (errno == EAGAIN)
+			return 0;
+
+		if (errno == EPIPE){
+			arcan_led_remove(dev);
+			return -1;
+		}
+	}
+
+	if (rv == sz)
+		return 1;
+
+	return 0;
 }
 
 bool arcan_led_remove(uint8_t device)
@@ -186,7 +233,6 @@ bool arcan_led_remove(uint8_t device)
 
 	switch(leddev->type){
 	case ARCAN_LEDCTRL:
-		write(leddev->fd, (char[]){'o', '\0'}, 2);
 	break;
 	default:
 #ifdef USB_SUPPORT
@@ -197,97 +243,66 @@ bool arcan_led_remove(uint8_t device)
 	}
 	ctrl_mask &= ~(1 << device);
 	n_controllers--;
-	arcan_event_enqueue(arcan_event_defaultctx(),
-		&(struct arcan_event){
-		.category = EVENT_IO,
-		.io.kind = EVENT_IO_STATUS,
-		.io.devkind = EVENT_IDEVKIND_STATUS,
-		.io.devid = device,
-		.io.input.status.devkind = EVENT_IDEVKIND_LEDCTRL,
-		.io.input.status.action = EVENT_IDEV_REMOVED
-	});
+	leddev->handle = NULL;
+	arcan_led_removed(device);
+
 	return true;
+}
+
+bool arcan_led_known(uint16_t vid, uint16_t pid)
+{
+	for (size_t i = 0; i < COUNT_OF(usb_tbl); i++)
+		if (usb_tbl[i].vid == vid && usb_tbl[i].pid == pid)
+			return true;
+
+	return false;
 }
 
 void arcan_led_init()
 {
+#ifndef LED_STANDALONE
+/* see if we should look for an external named pipe to act as a LED ctrlr */
+	char* kv = arcan_db_appl_val(dbhandle, "arcan", "ext_led");
+	struct stat statv;
+	if (-1 == fifo_out && kv && -1 != stat(kv,&statv) && S_ISFIFO(statv.st_mode)){
+		arcan_warning("arcan_led(), trying to map %s (config arcan:ext_led)"
+			" as a LED controller\n", kv);
+		fifo_out = open(kv, O_NONBLOCK | O_WRONLY);
+		if (-1 == fifo_out)
+			arcan_warning("arcan_led(), couldn't map FIFO (%s), ignored\n", kv);
+		else {
+			arcan_led_register(fifo_out, -1, "(fifo)", (struct led_capabilities){
+			.nleds = 255, .variable_brightness = true, .rgb = true});
+		}
+	}
+	free(kv);
+#endif
+
 	for (size_t i = 0; i < sizeof(usb_tbl) / sizeof(usb_tbl[0]); i++)
-		forcecontroller(usb_tbl[i].vid,
-			usb_tbl[i].pid, usb_tbl[i].type, usb_tbl[i].caps);
+		forcecontroller(&usb_tbl[i]);
 }
 
-unsigned int arcan_led_controllers()
+uint64_t arcan_led_controllers()
 {
-	return n_controllers;
+	return ctrl_mask;
 }
 
-static void ultimarc_update(struct led_controller* ctrl)
+static void ultimarc_update(uint8_t device, struct led_controller* ctrl)
 {
-/*
- * These should really be moved outside the core engine as well when
- * we have a more thought out way of dealing with normal usb devices
- * (being the added/removed + queuing and buffering + multiple-
- * device sensor fusion) as the current approach is rather hackish
- */
 #ifdef USB_SUPPORT
 	uint8_t dbuf[] = {
 		0x00, 0x00, 0xdd, (char)ctrl->ledmask, (char)(ctrl->ledmask >> 8) & 0xff};
-	hid_write(ctrl->handle, dbuf, sizeof(dbuf) / sizeof(dbuf[0]));
+	int val = hid_write(ctrl->handle, dbuf, sizeof(dbuf) / sizeof(dbuf[0]));
+	if (-1 == val){
+		ctrl->errc++;
+		if (ctrl->errc > 10){
+			arcan_led_remove(device);
+		}
+	}
 #endif
 }
 
-bool arcan_led_set(uint8_t device, int8_t led)
-{
-	unsigned char dbuf[5] = {0};
-	struct led_controller* leddev = get_device(device);
-	if (!leddev)
-		return false;
-
-	leddev->ledmask |= (led < 0 ? 0xffff : 1 << led);
-/* PROTOCOL INSERTION POINT */
-	switch (controllers[device].type) {
-	case ULTIMARC_PACDRIVE:
-		ultimarc_update(leddev);
-	break;
-	case ARCAN_LEDCTRL:
-		write(leddev->fd, (char[]){'a', led < 0 ? 255 : led, 'i', 255}, 4);
-	break;
-	default:
-		arcan_warning("Warning: arcan_led_set(), "
-			"unknown LED controller type: %i\n", controllers[device].type);
-		return false;
-	}
-	return true;
-}
-
-bool arcan_led_clear(uint8_t device, int8_t led)
-{
-	bool rv = false;
-	unsigned char dbuf[5] = {0};
-	struct led_controller* leddev = get_device(device);
-	if (!leddev)
-		return false;
-
-	leddev->ledmask = led < 0 ? 0x000 : leddev->ledmask & ~(1 << led);
-
-/* PROTOCOL INSERTION POINT */
-	switch (leddev->type) {
-	case ULTIMARC_PACDRIVE:
-		ultimarc_update(leddev);
-	break;
-	case ARCAN_LEDCTRL:
-		write(leddev->fd, (char[]){'a', led < 0 ? 255 : led, 'i', 0}, 4);
-	break;
-	default:
-		arcan_warning("Warning: arcan_led_unset(), "
-			"unknown LED controller type: %i\n", controllers[device].type);
-		return false;
-	}
-
-	return true;
-}
-
-bool arcan_led_intensity(uint8_t device, int8_t led, uint8_t intensity)
+int arcan_led_intensity(uint8_t device, int16_t led, uint8_t intensity)
 {
 	bool rv = false;
 	struct led_controller* leddev = get_device(device);
@@ -300,13 +315,24 @@ bool arcan_led_intensity(uint8_t device, int8_t led, uint8_t intensity)
 		return false;
 
 	if (!leddev->caps.variable_brightness)
-		return (intensity > 0 ?
-			arcan_led_set(device, led) : arcan_led_clear(device, led));
+		intensity = intensity > 0 ? 255 : 0;
 
 /* PROTOCOL INSERTION POINT */
 	switch (controllers[device].type) {
 	case ARCAN_LEDCTRL:
-		write(leddev->fd, (char[]){'a', di, 'i', intensity}, 4);
+		if (led < 0)
+			return write_leddev(device, leddev->fd, (uint8_t[]){
+				'A', '\0', 'i', intensity}, 4);
+		else
+			return write_leddev(device, leddev->fd, (uint8_t[]){
+				'a', (uint8_t)led, 'i', intensity}, 4);
+	break;
+	case PACDRIVE:
+		if (intensity)
+			leddev->ledmask |= 1 << led;
+		else
+			leddev->ledmask &= ~(1 << led);
+		ultimarc_update(device, leddev);
 	break;
 	default:
 		arcan_warning("Warning: arcan_led_intensity(), unknown LED / "
@@ -317,30 +343,33 @@ bool arcan_led_intensity(uint8_t device, int8_t led, uint8_t intensity)
 	return true;
 }
 
-bool arcan_led_rgb(uint8_t device, int8_t led, uint8_t r, uint8_t g, uint8_t b)
+int arcan_led_rgb(uint8_t device,
+	int16_t led, uint8_t r, uint8_t g, uint8_t b, bool buffer)
 {
-	bool rv = false;
 	struct led_controller* leddev = get_device(device);
-	if (!leddev)
-		return false;
-
-	uint8_t di = led < 0 ? 255 : led;
-	if ( (di != 255 && di > leddev->caps.nleds) || !leddev->caps.rgb)
-		return false;
+	if (!leddev || !leddev->caps.rgb || led > (int)leddev->caps.nleds)
+		return -1;
 
 	switch (leddev->type){
-	case ARCAN_LEDCTRL:
-		write(leddev->fd, (char[]){
-			'r', di, 'i', r,
-			'g', di, 'i', g,
-			'b', di, 'i', b}, 6
-		);
+	case ARCAN_LEDCTRL:{
+		int v;
+		if (led < 0)
+			v = write_leddev(device, leddev->fd, (uint8_t[]){'A', '\0'}, 2);
+		else
+			v = write_leddev(device, leddev->fd, (uint8_t[]){'a', (uint8_t)led}, 2);
+
+		if (1 == v)
+			return write_leddev(device, leddev->fd, (uint8_t[]){
+				'r', r, 'g', g, 'b', b, 'c', buffer ? 255 : 0}, 8);
+		else
+			return v;
+	}
+	break;
 	default:
 		arcan_warning("Warning: arcan_led_rgb(), unknown LED / unsupported mode"
 			"	for device type: %i\n", leddev->type);
-		return false;
+		return -1;
 	}
-	return true;
 }
 
 struct led_capabilities arcan_led_capabilities(uint8_t device)
@@ -354,24 +383,30 @@ struct led_capabilities arcan_led_capabilities(uint8_t device)
 
 void arcan_led_shutdown()
 {
-
 	for (int i = 0; i < MAX_LED_CONTROLLERS && n_controllers > 0; i++)
 		if ((ctrl_mask & (1 << i)) > 0){
 			n_controllers--;
 			switch(controllers[i].type){
-				case ULTIMARC_PACDRIVE:
+				case PACDRIVE:
 #ifdef USB_SUPPORT
 					hid_close(controllers[i].handle);
 #endif
 				break;
 				case ARCAN_LEDCTRL:{
-					char cmd = 'o';
-					write(controllers[i].fd, &cmd, 1);
+					write(controllers[i].fd, (char[]){'o', '\0'}, 2);
 					close(controllers[i].fd);
 				}
 				break;
 			}
 		}
+
+#ifndef LED_STANDALONE
+	if (fifo_out != -1){
+		write(fifo_out, (char[]){'o', '\0'}, 2);
+		close(fifo_out);
+		fifo_out = -1;
+	}
+#endif
 
 	ctrl_mask = 0;
 }
