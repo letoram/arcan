@@ -307,7 +307,6 @@ int arcan_led_intensity(uint8_t device, int16_t led, uint8_t intensity)
 	bool rv = false;
 	struct led_controller* leddev = get_device(device);
 	uint8_t di = led < 0 ? 255 : led;
-
 	if (!leddev)
 		return false;
 
@@ -322,10 +321,10 @@ int arcan_led_intensity(uint8_t device, int16_t led, uint8_t intensity)
 	case ARCAN_LEDCTRL:
 		if (led < 0)
 			return write_leddev(device, leddev->fd, (uint8_t[]){
-				'A', '\0', 'i', intensity}, 4);
+				'A', '\0', 'i', intensity, 'c', '\0'}, 6);
 		else
 			return write_leddev(device, leddev->fd, (uint8_t[]){
-				'a', (uint8_t)led, 'i', intensity}, 4);
+				'a', (uint8_t)led, 'i', intensity, 'c', '\0'}, 6);
 	break;
 	case PACDRIVE:
 		if (intensity)

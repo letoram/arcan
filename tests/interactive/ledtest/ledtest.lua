@@ -25,11 +25,11 @@ function ledtest_clock_pulse(src, status)
 		for k,v in pairs(leds) do
 			for i=1,v[2] do
 				if (v[4]) then -- rgb
-					set_led_rgb(v[1], i, math.random(255), math.random(255), math.random(255));
+					set_led_rgb(v[1], i-1, math.random(255), math.random(255), math.random(255));
 				elseif (v[3]) then
-					led_intensity(v[1], i, math.random(255));
+					led_intensity(v[1], i-1, math.random(255));
 				else
-					set_led(v[1], i, math.random(0, 1));
+					set_led(v[1], i-1, math.random(0, 1));
 				end
 			end
 		end
