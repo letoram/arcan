@@ -4,14 +4,6 @@
  * Reference: http://arcan-fe.com
  */
 
-/*
- * a lot of the filtering here is copied of platform/sdl/event.c, as it is
- * scheduled for deprecation, we've not bothered designing an interface for the
- * axis bits to be shared. For future refactoring, the basic signalling
- * processing, e.g. determining device orientation from 3-sensor + Kalman,
- * user-configurable analog filters on noisy devices etc. should be generalized
- * and put in a shared directory, and re-used for other input platforms.
- */
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -135,11 +127,6 @@ static struct {
 	struct devnode* nodes;
 
 	struct pollfd* pollset;
-
-/* because of the 1:1 mapping between polling- entry and led entry, we
- * split the pollset and the polling to two calls. The underlying buffer
- * is allocated as 2*sz_nodes */
-	struct pollfd* ledset;
 } iodev = {0};
 
 struct devnode {
@@ -191,8 +178,8 @@ struct devnode {
 	struct {
 		bool gotled;
 		int ctrlid;
+		int ind;
 		int fds[2];
-		int mask[LED_CNT];
 	} led;
 };
 
@@ -604,8 +591,9 @@ static void disconnect(struct arcan_evctx* ctx, struct devnode* node)
 			node->handle = -1;
 			iodev.pollset[i].events = iodev.pollset[i].revents = 0;
 			if (node->led.gotled){
-				iodev.ledset[i].fd = iodev.pollset[i].fd = -1;
-				iodev.ledset[i].events = iodev.ledset[i].revents = 0;
+				iodev.pollset[i+iodev.sz_nodes].fd = -1;
+				iodev.pollset[i+iodev.sz_nodes].events =
+					iodev.pollset[i+iodev.sz_nodes].revents = 0;
 				node->led.gotled = false;
 				arcan_led_remove(node->led.ctrlid);
 				close(node->led.fds[0]);
@@ -614,6 +602,40 @@ static void disconnect(struct arcan_evctx* ctx, struct devnode* node)
 			iodev.n_devs--;
 			break;
 		}
+}
+
+static void do_led(struct devnode* node)
+{
+	if (!node->led.gotled){
+		arcan_warning("evdev(), pollset corruption? POLLIN on node without LED\n");
+		return;
+	}
+
+	uint8_t buf[2];
+	bool set = false;
+
+	while (2 == read(node->led.fds[0], buf, 2)){
+		switch (tolower(buf[0])){
+		case 'A': node->led.ind = -1; break;
+		case 'a': node->led.ind = buf[1]; break;
+/* not registered as a RGB led */
+		case 'r': break;
+		case 'g': break;
+		case 'b': break;
+		case 'i': set = buf[1] > 0; break;
+		case 'c':
+			if (node->led.ind == -1){
+				for (size_t i = 0; i < LED_MAX; i++)
+					write(node->handle, &(struct input_event){.type = EV_LED,
+						.code = i, .value = set}, sizeof(struct input_event));
+			}
+			else {
+				write(node->handle, &(struct input_event){.type = EV_LED,
+					.code = node->led.ind, .value = set}, sizeof(struct input_event));
+			}
+		break;
+		}
+	}
 }
 
 void platform_event_process(struct arcan_evctx* ctx)
@@ -683,11 +705,16 @@ void platform_event_process(struct arcan_evctx* ctx)
 		}
 	}
 
-	int nr = poll(iodev.pollset, iodev.sz_nodes, 0);
+	int nr = poll(iodev.pollset, iodev.sz_nodes * 2, 0);
 	if (nr <= 0)
 		return;
 
 	for (size_t i = 0; i < iodev.sz_nodes; i++){
+/* recall, sz_nodes is half the count, i + sz_nodes = alt-dev index */
+		if (iodev.pollset[i+iodev.sz_nodes].revents & POLLIN){
+			do_led(&iodev.nodes[i]);
+		}
+
 		if (0 == iodev.pollset[i].revents)
 			continue;
 
@@ -910,11 +937,39 @@ static void setup_led(struct devnode* dst, size_t bitn, int fd)
 		if (bit_isset(bits, i))
 			count++;
 	}
+
 	if (!count)
 		return;
 
-/* FIXME: setup descriptor pair for grabbing the commands,
- * and a part to the platform process that checks the descriptors */
+	if (pipe(dst->led.fds) == -1)
+		return;
+
+	for (size_t i = 0; i < 2; i++){
+		int flags = fcntl(dst->led.fds[i], F_GETFL);
+		if (-1 != flags)
+			fcntl(dst->led.fds[i], F_SETFL, flags | O_NONBLOCK);
+		flags = fcntl(dst->led.fds[i], F_GETFD);
+		if (-1 != flags)
+			fcntl(dst->led.fds[i], F_SETFD, flags | O_CLOEXEC);
+	}
+
+	char ledname[16];
+	snprintf(ledname, 16, "%d_led", dst->devnum);
+	dst->led.ctrlid = arcan_led_register(dst->led.fds[1], dst->devnum, ledname,
+		(struct led_capabilities){ .nleds = LED_MAX,
+			.variable_brightness = false, .rgb = false }
+	);
+	if (-1 == dst->led.ctrlid){
+		close(dst->led.fds[0]);
+		close(dst->led.fds[1]);
+		dst->led.fds[0] = dst->led.fds[1] = -1;
+		return;
+	}
+	dst->led.gotled = true;
+/* reset */
+	for (size_t i = 0; i < LED_MAX; i++)
+		write(dst->handle, &(struct input_event){.type = EV_LED,
+			.code = i, .value = 0}, sizeof(struct input_event));
 }
 
 static int alloc_node_slot(const char* path)
@@ -949,42 +1004,42 @@ static int alloc_node_slot(const char* path)
 			return -1;
 		iodev.nodes = nn;
 		memset(nn + iodev.sz_nodes, '\0', sizeof(struct devnode) * 8);
-		for (size_t i = iodev.sz_nodes; i < new_cnt; i++)
+		for (size_t i = iodev.sz_nodes; i < new_cnt; i++){
 			iodev.nodes[i].handle = BADFD;
+			iodev.nodes[i].led.fds[0] = iodev.nodes[i].led.fds[1] = BADFD;
+		}
 
 /* pollset size is actually twice the number of nodes to allow a
  * 'mirror address' for a possible led- or other special device ref.
  * (say sound...) */
-		struct pollfd* np = realloc(iodev.pollset,
-			2 * sizeof(struct pollfd) * new_cnt);
-
-		if (!np)
+		struct pollfd* newset = malloc(2 * sizeof(struct pollfd) * new_cnt);
+		if (!newset)
 			return -1;
 
-		size_t grow_sz = sizeof(struct pollfd) * 8;
-/* move the led-fds so they don't get overwritten */
-		memmove(&np[iodev.sz_nodes], &np[iodev.sz_nodes + 8], grow_sz);
-/* clear the new memory */
-		memset(&np[1*iodev.sz_nodes], '\0', grow_sz);
-		memset(&np[2*iodev.sz_nodes], '\0', grow_sz);
-		for (size_t i = iodev.sz_nodes; i < new_cnt; i++){
-			np[i].fd = BADFD;
-			np[i+iodev.sz_nodes].fd = BADFD;
+		free(iodev.pollset);
+		for (size_t i = 0; i < new_cnt; i++){
+			memset(&newset[i], '\0', sizeof(struct pollfd));
+			memset(&newset[i+new_cnt], '\0', sizeof(struct pollfd));
+			newset[i].events = POLLIN | POLLERR | POLLHUP;
+			newset[i].fd = iodev.nodes[i].handle;
+			newset[i+new_cnt].events = POLLIN;
+			newset[i+new_cnt].fd = iodev.nodes[i].led.fds[0];
 		}
 
 /* update pointers, set hole to the first new entry */
-		iodev.pollset = np;
+		iodev.pollset = newset;
 		hole = iodev.sz_nodes;
 		iodev.sz_nodes = new_cnt;
-		iodev.ledset = &np[new_cnt];
 	}
+
 	return hole;
 }
 
 static void got_device(struct arcan_evctx* ctx, int fd, const char* path)
 {
 	struct devnode node = {
-		.handle = fd
+		.handle = fd,
+		.led.fds = {BADFD, BADFD}
 	};
 
 	struct stat fdstat;
@@ -1120,8 +1175,7 @@ static void got_device(struct arcan_evctx* ctx, int fd, const char* path)
 	node.path = strdup(path);
 	iodev.pollset[hole].fd = fd;
 	iodev.pollset[hole].events = POLLIN | POLLERR | POLLHUP;
-	iodev.nodes[hole] = node;
-
+	iodev.pollset[hole + iodev.sz_nodes].fd = BADFD;
 	struct arcan_event addev = {
 		.category = EVENT_IO,
 		.io.kind = EVENT_IO_STATUS,
@@ -1135,9 +1189,16 @@ static void got_device(struct arcan_evctx* ctx, int fd, const char* path)
 	arcan_event_enqueue(ctx, &addev);
 
 /* had to defer led device creation until now because we didn't
- * know if there's a slot for it or not */
-	if (add_led != -1)
+ * know if there's a slot for it or not, the pollset actually is
+ * twice the expected size, one for the main device and one for
+ * the possible led controller */
+	if (add_led != -1){
 		setup_led(&node, add_led, fd);
+		if (node.led.gotled){
+			iodev.pollset[hole+iodev.sz_nodes].fd = node.led.fds[0];
+		}
+	}
+	iodev.nodes[hole] = node;
 
 	if (log_verbose)
 		arcan_warning("input: (%s:%s) added as type: %s\n",
@@ -1846,7 +1907,7 @@ void platform_event_init(arcan_evctx* ctx)
 		gstate.mute = true;
 	}
 
-if (gstate.sigpipe[0] == -1)
+	if (gstate.sigpipe[0] == -1)
 		setup_signals();
 	log_verbose = getenv("ARCAN_INPUT_VERBOSE");
 
