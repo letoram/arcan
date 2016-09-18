@@ -32,6 +32,7 @@ static PFNEGLDESTROYIMAGEKHRPROC destroy_image;
 struct shmif_ext_hidden_int {
 	struct gbm_device* dev;
 	bool nopass;
+	int fd;
 
 	int type;
 	struct {
@@ -67,6 +68,10 @@ static void gbm_drop(struct arcan_shmif_cont* con)
  */
 		con->privext->internal->dev = NULL;
 	}
+
+	if (-1 != con->privext->internal->fd)
+		close(con->privext->internal->fd);
+
 	free(con->privext->internal);
 	con->privext->internal = NULL;
 }
@@ -220,6 +225,11 @@ bool arcan_shmifext_headless_egl(struct arcan_shmif_cont* con,
 /* finally open device */
 	if (!con->privext->internal){
 		con->privext->internal = malloc(sizeof(struct shmif_ext_hidden_int));
+		if (!con->privext->internal)
+			return false;
+
+		memset(con->privext->internal, '\0', sizeof(struct shmif_ext_hidden_int));
+		con->privext->internal->fd = -1;
 		con->privext->internal->nopass = getenv("ARCAN_VIDEO_NO_FDPASS") ?
 			true : false;
 		if (NULL == (con->privext->internal->dev = gbm_create_device(dfd))){
@@ -296,7 +306,11 @@ int arcan_shmifext_eglsignal(struct arcan_shmif_cont* con,
 
 	unsigned res = arcan_shmif_signalhandle(con, mask, fd, stride, fourcc);
 	destroy_image(dpy, image);
-	close(fd);
+
+	if (con->privext->internal->fd != -1){
+		close(con->privext->internal->fd);
+	}
+	con->privext->internal->fd = fd;
 	return res > INT_MAX ? INT_MAX : res;
 }
 

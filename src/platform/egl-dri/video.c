@@ -126,6 +126,7 @@
  * extensions needed for buffer passing
  */
 static PFNEGLCREATEIMAGEKHRPROC eglCreateImageKHR;
+static PFNEGLDESTROYIMAGEKHRPROC eglDestroyImageKHR;
 static PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES;
 
 /*
@@ -591,7 +592,10 @@ bool platform_video_specify_mode(
 static bool map_extensions()
 {
 	eglCreateImageKHR = (PFNEGLCREATEIMAGEKHRPROC)
-	eglGetProcAddress("eglCreateImageKHR");
+		eglGetProcAddress("eglCreateImageKHR");
+
+	eglDestroyImageKHR = (PFNEGLDESTROYIMAGEKHRPROC)
+		eglGetProcAddress("eglDestroyImageKHR");
 
 	glEGLImageTargetTexture2DOES = (PFNGLEGLIMAGETARGETTEXTURE2DOESPROC)
 		eglGetProcAddress("glEGLImageTargetTexture2DOES");
@@ -1260,11 +1264,16 @@ bool platform_video_map_handle(
  * has not been verified if MESA- implementation of eglCreateImageKHR etc.
  * treats this as trusted in respect to the buffer or not, otherwise this is a
  * possibly source for crashes etc. and I see no good way for verifying the
- * buffer manually. The whole procedure is rather baffling, why can't I as DRM
- * master use the preexisting notification interfaces to be signalled of
- * buffers and metadata, and enumerate which ones have been allocated and by
- * whom, but instead rely on yet another layer of IPC primitives.
+ * buffer manually.
  */
+
+	if (0 != dst->vinf.text.tag){
+		eglDestroyImageKHR(nodes[0].display, (EGLImageKHR) dst->vinf.text.tag);
+		dst->vinf.text.tag = 0;
+	}
+
+	if (-1 == handle)
+		return false;
 
 /*
  * in addition, we actually need to know which render-node this
@@ -1288,6 +1297,7 @@ bool platform_video_map_handle(
  * EGLImage -> gbm_bo -> glTexture2D with EGL_NATIVE_PIXMAP_KHR */
 	agp_activate_vstore(dst);
 	glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, img);
+	dst->vinf.text.tag = (uintptr_t) img;
 	agp_deactivate_vstore(dst);
 
 	return true;
