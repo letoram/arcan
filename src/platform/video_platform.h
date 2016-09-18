@@ -167,7 +167,7 @@ struct storage_info_t {
  * (implies s_raw / raw / source are useless) */
 			int format;
 			size_t stride;
-
+			uintptr_t tag;
 		} text;
 
 		struct {
@@ -505,7 +505,7 @@ void agp_activate_vstore(struct storage_info_t* backing);
 
 /*
  * Explicitly deactivate vstore, after this state of the specified backing
- * store can be consideired undefined.
+ * store can be considered undefined.
  */
 void agp_deactivate_vstore();
 
