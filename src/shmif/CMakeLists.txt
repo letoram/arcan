@@ -11,7 +11,9 @@
 # Targets:
 # arcan_shmif
 # arcan_shmif_int
+# arcan_shmif_tui
 # arcan_shmif_ext
+# arcan_shmif_tuiext
 # arcan_shmif_intext
 #
 # Installs: (if ARCAN_SOURCE_DIR is not set)
@@ -84,18 +86,36 @@ set_property(SOURCE ${ASD}/platform/posix/fdpassing.c
 set_property(SOURCE ${ASD}/platform/posix/fdpassing.c
 	APPEND PROPERTY COMPILE_DEFINITIONS NONBLOCK_RECV)
 
+#
+# FIXME:
+# We should have a linker script here that filters out all the non-TUI defined
+# symbols so we don't collide with programs linking TSM* (however unlikely)
+#
+set(SHMIF_TUI_SOURCES
+	${ASD}/shmif/tui/tui.c
+	${ASD}/shmif/tui/tsm_screen.c
+	${ASD}/shmif/tui/tsm_unicode.c
+	${ASD}/shmif/tui/shl_htable.c
+	${ASD}/shmif/tui/wcwidth.c
+)
+
 add_library(arcan_shmif_int STATIC ${SHMIF_SOURCES} ${SHMIF_PLATFORM})
 add_library(arcan_shmif SHARED ${SHMIF_SOURCES} ${SHMIF_PLATFORM})
 add_library(arcan_shmif_ext SHARED ${SHMIF_EXT_SOURCES})
 add_library(arcan_shmif_intext SHARED ${SHMIF_EXT_SOURCES})
+add_library(arcan_shmif_tuiext SHARED ${SHMIF_TUI_SOURCES})
+add_library(arcan_shmif_tui STATIC ${SHMIF_TUI_SOURCES})
 
 target_link_libraries(arcan_shmif PRIVATE ${STDLIB})
 target_link_libraries(arcan_shmif_int PRIVATE ${STDLIB})
 target_link_libraries(arcan_shmif_ext PRIVATE ${STDLIB} ${VIDEO_LIBRARIES})
 target_link_libraries(arcan_shmif_intext PRIVATE ${STDLIB} ${VIDEO_LIBRARIES})
+target_link_libraries(arcan_shmif_tuiext PRIVATE ${STDLIB})
 
 target_include_directories(arcan_shmif_ext PRIVATE ${INCLUDE_DIRS})
 target_include_directories(arcan_shmif_intext PRIVATE ${INCLUDE_DIRS})
+target_include_directories(arcan_shmif_tui PRIVATE ${INCLUDE_DIRS} ${ASD}/frameserver)
+target_include_directories(arcan_shmif_tuiext PRIVATE ${INCLUDE_DIRS} ${ASD}/frameserver)
 
 # note that we enable fpic for the static here as some
 # subdirectores need to pull it in as part of building a shared library
@@ -125,6 +145,12 @@ set_target_properties(arcan_shmif_ext PROPERTIES
 set_target_properties(arcan_shmif_intext PROPERTIES
 	COMPILE_FLAGS -fPIC
 	OUTPUT_NAME arcan_shmif_ext
+	VERSION ${ASHMIF_MAJOR}.${ASHMIF_MINOR}
+)
+
+set_target_properties(arcan_shmif_tuiext PROPERTIES
+	COMPILE_FLAGS -fPIC
+	OUTPUT_NAME arcan_shmif_tui
 	VERSION ${ASHMIF_MAJOR}.${ASHMIF_MINOR}
 )
 
