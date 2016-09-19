@@ -3,10 +3,10 @@ exec_prefix=${prefix}
 libdir=${prefix}/lib
 includedir=${prefix}/include/arcan/shmif
 
-Name: arcan-shmif
-Description: Arcan Interface Library
+Name: arcan-shmif-ext
+Description: Arcan Extended Interface Library
 URL: http://arcan-fe.com
-Libs: -L${libdir} -larcan_shmif
+Libs: -L${libdir} -larcan_shmif_ext
 Cflags: -I${includedir}
 Version:@VERSION@
-Requires:
+Requires: arcan-shmif

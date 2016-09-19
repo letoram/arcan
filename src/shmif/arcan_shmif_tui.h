@@ -54,6 +54,8 @@
  * custom attribute that just forwards blitting to the caller in order to
  * support embedding graphics etc. It would also allow the terminal emulator
  * etc. to add sixel- support.
+ *
+ * >> See tests/frameservers/tui_test for a template/example of use. <<
  */
 
 enum tui_cursors {
@@ -82,27 +84,109 @@ struct tui_settings {
 	enum tui_cursors cursor;
 };
 
+struct tui_context;
+
+/*
+ * fill in the events you want to handle, will be dispaced during process
+ */
 struct tui_cbcfg {
-/* LABEL input,
- * MOUSE motion
- * DIRINPUT
- * UTF8 input,
- * OTHERIO,
- * statexfer,
- * bchunk,
- * vpaste,
- * apaste,
- * textpaste,
- * RESIZED */
+/*
+ * an explicit label- input has been sent (rising edge only)
+ */
+	void (*input_label)(struct tui_context*, const char* label, void*);
+
+/*
+ * mouse motion, may not always be enabled depending on mouse- management
+ * flag switch (user-controlled between select/copy/paste and normal)
+ */
+	void (*input_mouse)(struct tui_context*,
+		bool relative, int x, int y, uint16_t button_mask, void*);
+
+/*
+ * single UTF8- character
+ */
+	void (*input_utf8)(struct tui_context*, const char* u8, size_t len, void*);
+
+/*
+ * other KEY where we are uncertain about origin, filled on a best-effort
+ * (should be last-line of defence after label->utf8->mouse->[key]
+ */
+	void (*input_key)(struct tui_context*,
+		bool active, uint32_t xkeysym, uint32_t ucs4, uint16_t subid);
+
+/*
+ * other input- that wasn't handled in the other callbacks
+ */
+	void (*input_misc)(struct tui_context*, const arcan_ioevent*, void*);
+
+/*
+ * state transfer, [input=true] if we should receive a state-block that was
+ * previously saved or [input=false] if we should store. dup+thread+write or
+ * write to use or ignore (closed after call)
+ */
+	void (*state)(struct tui_context*, bool input, int fd, void*);
+
+/*
+ * request to send or receive a binary chunk, [input=true,size=0] for streams
+ * of unknown size, [input=false] then size is 'recommended' upper limit, if set.
+ */
+	void (*bchunk)(struct tui_context*, bool input, uint64_t size, int fd, void*);
+
+/*
+ * one video frame has been pasted, accessible during call lifespan
+ */
+	void (*vpaste)(struct tui_context*,
+		shmif_pixel*, size_t w, size_t h, size_t stride, void*);
+
+/*
+ * paste-action, audio stream block [channels interleaved]
+ */
+	void (*apaste)(struct tui_context*,
+		shmif_asample*, size_t n_samples, size_t frequency, size_t nch, void*);
+
+/*
+ * events that wasn't covered by the TUI internal event loop that might
+ * be of interest to the outer connection / management
+ */
+	void (*raw_event)(struct tui_context*, arcan_event*, void*);
+
+/*
+ * periodic parent-driven clock
+ */
+	void (*tick)(struct tui_context*, void*);
+
+/*
+ * pasted a block of text, continuous flag notes if there are more to come
+ */
+	void (*utf8)(struct tui_context*,
+		const uint8_t* str, size_t len, bool cont, void*);
+
+/*
+ * the underlying size has changed, expressed in both pixels and rows/columns
+ */
+	void (*resized)(struct tui_context*,
+		size_t neww, size_t newh, size_t col, size_t row, void*);
+
+/*
+ * appended last to any invoked callback
+ */
 	void* tag;
 };
 
 struct tui_settings arcan_tui_defaults();
 
 /*
+ * use the contents of arg_arr to modify the defaults in tui_settings
+ */
+void arcan_tui_apply_arg(struct tui_settings*, struct arg_arr*);
+
+/*
  * takes control over an existing connection, it is imperative that no ident-
  * or event processing has been done, so [con] should come straight from a
  * normal arcan_shmif_open call.
+ *
+ * settings, cfg and con will all be copied to an internal tracker,
+ * if (return) !null, the contents of con is undefined
  */
 struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 	const struct tui_settings* set, const struct tui_cbcfg* cfg, ...);
@@ -132,10 +216,24 @@ uint64_t arcan_tui_process(
 	struct tui_context** contexts, size_t n_contexts,
 	int* fdset, size_t fdset_sz, int timeout, int* errc);
 
+/*
+ * If the TUI- managed connection is marked as dirty, synch the
+ * relevant regions and return (handles multiple- contexts)
+ */
 void arcan_tui_refresh(
 	struct tui_context** contexts, size_t n_contexts);
 
-void arcan_tui_enqueue(struct tui_context*, arcan_event*);
+/*
+ * Explicitly invalidate the context, next refresh will likely
+ * redraw fully. Should only be needed in exceptional cases
+ */
+void arcan_tui_invalidate(struct tui_context*);
+
+/*
+ * get temporary access to the current state of the TUI/context,
+ * returned pointer is undefined between calls to process/refresh
+ */
+struct arcan_shmif_cont* arcan_tui_acon(struct tui_context*);
 
 /*
  * The rest are just renamed / remapped arcan_tui_ calls from libtsm-

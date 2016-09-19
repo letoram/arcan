@@ -16,9 +16,26 @@ find_library(ARCAN_SHMIF_LIBRARY
 		/usr/lib
 )
 
+find_library(ARCAN_SHMIF_EXT_LIBRARY
+	NAMES arcan_shmif_ext
+		PATH_SUFFIXES arcan
+	PATHS
+		/usr/local/lib
+		/usr/lib
+)
+
+find_library(ARCAN_SHMIF_TUI_LIBRARY
+	NAMES arcan_shmif_tui
+		PATH_SUFFIXES arcan
+	PATHS
+		/usr/local/lib
+		/usr/lib
+)
+
 add_library(arcan_shmif STATIC IMPORTED)
 find_library(ARCAN_SHMIF_LIBRARY_PATH arcan_shmif HINTS "${CMAKE_CURRENT_LIST_DIR}/../../")
 set_target_properties(arcan_shmif PROPERTIES IMPORTED_LOCATION "${ARCAN_SHMIF_LIBRARY_PATH}")
+set(ARCAN_SHMIF_LIBRARIES ${ARCAN_SHMIF_LIBRARY} ${ARCAN_SHMIF_EXT_LIBRARY} ${ARCAN_SHMIF_TUI_LIBRARY})
 
 FIND_PACKAGE_HANDLE_STANDARD_ARGS(arcan_shmif
 	REQUIRED_VARS ARCAN_SHMIF_LIBRARY ARCAN_SHMIF_INCLUDE_DIR
