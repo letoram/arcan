@@ -7,6 +7,14 @@
  * different/faster font-rendering/text-support.
  */
 
+/*
+ * MISSING: mapping events (test against tui_test.c),
+ * - main event loop isn't right
+ * - testing
+ * - migrate terminal to use lib
+ * - switch font management method default
+ */
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -134,7 +142,7 @@ struct tui_context {
 
 /* additional state synch that needs negotiation and may need to be
  * re-built in the event of a RESET request */
-void queue_requests(struct tui_context* tui,
+static void queue_requests(struct tui_context* tui,
 	bool clipboard, bool clock, bool ident);
 
 /* to be able to update the cursor cell with other information */
@@ -1155,25 +1163,6 @@ static bool check_pasteboard(struct tui_context* tui)
 	return rv;
 }
 
-#ifdef TTF_SUPPORT
-static void probe_font(struct tui_context* tui,
-	TTF_Font* font, const char* msg, size_t* dw, size_t* dh)
-{
-	TTF_Color fg = {.r = 0xff, .g = 0xff, .b = 0xff};
-	int w = *dw, h = *dh;
-	TTF_SizeUTF8(font, msg, &w, &h, TTF_STYLE_BOLD | TTF_STYLE_UNDERLINE);
-
-/* SizeUTF8 does not give the right dimensions for all hinting */
-	if (tui->hint == TTF_HINTING_RGB)
-		w++;
-
-	if (w > *dw)
-		*dw = w;
-
-	if (h > *dh)
-		*dh = h;
-}
-
 static void queue_requests(struct tui_context* tui,
 	bool clipboard, bool clock, bool ident)
 {
@@ -1201,6 +1190,25 @@ static void queue_requests(struct tui_context* tui,
 
 	if (ident && tui->last_ident.ext.kind != 0)
 		arcan_shmif_enqueue(&tui->acon, &tui->last_ident);
+}
+
+#ifdef TTF_SUPPORT
+static void probe_font(struct tui_context* tui,
+	TTF_Font* font, const char* msg, size_t* dw, size_t* dh)
+{
+	TTF_Color fg = {.r = 0xff, .g = 0xff, .b = 0xff};
+	int w = *dw, h = *dh;
+	TTF_SizeUTF8(font, msg, &w, &h, TTF_STYLE_BOLD | TTF_STYLE_UNDERLINE);
+
+/* SizeUTF8 does not give the right dimensions for all hinting */
+	if (tui->hint == TTF_HINTING_RGB)
+		w++;
+
+	if (w > *dw)
+		*dw = w;
+
+	if (h > *dh)
+		*dh = h;
 }
 
 /*
@@ -1270,6 +1278,19 @@ static bool setup_font(int fd, size_t font_sz, int mode)
 	return true;
 }
 #endif
+
+/*
+ * get temporary access to the current state of the TUI/context,
+ * returned pointer is undefined between calls to process/refresh
+ */
+struct arcan_shmif_cont* arcan_tui_acon(struct tui_context* c)
+{
+	if (!c)
+		return NULL;
+
+	return &c->acon;
+}
+
 
 uint64_t arcan_tui_process(
 	struct tui_context** contexts, size_t n_contexts,
@@ -1405,8 +1426,19 @@ uint64_t arcan_tui_process(
 
 void arcan_tui_destroy(struct tui_context* tui)
 {
-/* FIXME: _drop on segments in order, then reset members and free,
- * also run tsm_utf8_mach_free */
+	if (!tui)
+		return;
+
+	if (tui->clip_in.vidp)
+		arcan_shmif_drop(&tui->clip_in);
+
+	if (tui->clip_out.vidp)
+		arcan_shmif_drop(&tui->clip_out);
+
+	arcan_shmif_drop(&tui->acon);
+	tsm_utf8_mach_free(tui->ucsconv);
+	memset(tui, '\0', sizeof(struct tui_context));
+	free(tui);
 }
 
 struct tui_settings arcan_tui_defaults()
@@ -1422,6 +1454,11 @@ struct tui_settings arcan_tui_defaults()
 		.ppcm = ARCAN_SHMPAGE_DEFAULT_PPCM,
 		.hint = TTF_HINTING_NONE
 	};
+}
+
+void arcan_tui_apply_arg(struct tui_settings* cfg, struct arg_arr* arg)
+{
+/* FIXME: pluck the relevant parsing from _terminal.c */
 }
 
 struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,

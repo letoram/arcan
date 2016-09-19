@@ -30,3 +30,6 @@ avlat/ is the software- setup for latency and buffering testing,
 migrant/ will connect to the normal CONNPATH, render a number of frames
  in one color channel, migrate or voluntarily pull its *dms and on
  successful reconnection, switch active color channel
+
+tui_test/ attempts to use the shmif_tui library to create a text-
+ based user interface

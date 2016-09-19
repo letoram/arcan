@@ -1,4 +1,4 @@
-#
+
 # This is used by the main arcan build system to define the shmif platform
 # and install targets, but also for some external projects that need to
 # do an in-source build of shmif- and its platform (automated build/
@@ -39,6 +39,7 @@ set (SHMIF_HEADERS
 	${ASD}/shmif/arcan_shmif_control.h
 	${ASD}/shmif/arcan_shmif_interop.h
 	${ASD}/shmif/arcan_shmif_event.h
+	${ASD}/shmif/arcan_shmif_tui.h
 	${ASD}/shmif/arcan_shmif.h
 )
 
@@ -161,7 +162,7 @@ target_include_directories(arcan_shmif_int PRIVATE ${ASD}/shmif)
 target_include_directories(arcan_shmif PRIVATE ${ASD}/shmif)
 
 if (NOT ARCAN_SOURCE_DIR)
-	install(TARGETS arcan_shmif arcan_shmif_int arcan_shmif_ext arcan_shmif_intext
+	install(TARGETS arcan_shmif arcan_shmif_int arcan_shmif_ext arcan_shmif_intext arcan_shmif_tuiext
 		LIBRARY DESTINATION ${ASHMIF_INSTPATH}
 		ARCHIVE DESTINATION ${ASHMIF_INSTPATH}
 	)
