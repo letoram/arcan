@@ -74,7 +74,6 @@ enum dirty_state {
 struct tui_context {
 /* terminal / state control */
 	struct tsm_screen* screen;
-	struct tui_cbcfg cfg;
 	struct tsm_utf8_mach* ucsconv;
 
 	unsigned flags;
@@ -100,6 +99,7 @@ struct tui_context {
 
 /* mouse selection management */
 	int mouse_x, mouse_y;
+	uint32_t mouse_btnmask;
 	int lm_x, lm_y;
 	int bsel_x, bsel_y;
 	bool in_select;
@@ -138,6 +138,9 @@ struct tui_context {
 	struct arcan_shmif_cont clip_in;
 	struct arcan_shmif_cont clip_out;
 	struct arcan_event last_ident;
+
+/* caller- event handlers */
+	struct tui_cbcfg handlers;
 };
 
 /* additional state synch that needs negotiation and may need to be
@@ -435,40 +438,16 @@ static void move_up(struct tui_context* tui)
 {
 	if (tui->scroll_lock)
 		page_up(tui);
-/*
-  FIXME: input forward
-	else if (tsm_vte_handle_keyboard(tui->vte, xkb_key_up, 0, 0, 0))
-		tui->dirty |= DIRTY_PENDING;
- */
+	else if (tui->handlers.input_label)
+		tui->handlers.input_label(tui, "up", tui->handlers.tag);
 }
 
 static void move_down(struct tui_context* tui)
 {
 	if (tui->scroll_lock)
 		page_down(tui);
-
-/* FIXME: input forward
-	if (tsm_vte_handle_keyboard(tui->vte, xkb_key_down, 0, 0, 0))
-		tui->dirty |= DIRTY_PENDING;
- */
-}
-
-/* in tsm< typically mapped to ctrl+ arrow but we allow external rebind */
-static void move_left(struct tui_context* tui)
-{
-/*
- * FIXME: input forward
-	if (tsm_vte_handle_keyboard(tui->vte, xkb_key_left, 0, 0, 0))
-		tui->dirty |= DIRTY_PENDING;
- */
-}
-
-static void move_right(struct tui_context* tui)
-{
-/* FIXME: input forward
-	if (tsm_vte_handle_keyboard(tui->vte, xkb_key_right, 0, 0, 0))
-		tui->dirty |= DIRTY_PENDING;
- */
+	else if (tui->handlers.input_label)
+		tui->handlers.input_label(tui, "down", tui->handlers.tag);
 }
 
 static void select_begin(struct tui_context* tui)
@@ -628,8 +607,6 @@ static const struct lent labels[] = {
 	{"page_down", page_down},
 	{"up", move_up},
 	{"down", move_down},
-	{"left", move_left},
-	{"right", move_right},
 	{"mouse_forward", mouse_forward},
 	{"select_at", select_at},
 	{"select_row", select_row},
@@ -703,17 +680,15 @@ static void ioev_ctxtbl(struct tui_context* tui,
 		if (sym >= 300 && sym <= 314)
 			return;
 
-/*
- * FIXME: INPUT CALLBACK
- * if utf8- values have been supplied, use them!
 		if (ioev->input.translated.utf8[0]){
 			size_t len = 0;
 			while (len < 5 && ioev->input.translated.utf8[len]) len++;
-			shl_pty_write(tui->pty, (char*)ioev->input.translated.utf8, len);
-			shl_pty_dispatch(tui->pty);
+
+			if (tui->handlers.input_utf8)
+				tui->handlers.input_utf8(tui, (const char*)ioev->input.translated.utf8,
+					len, tui->handlers.tag);
 			return;
 		}
-*/
 
 /* otherwise try to hack something together,
  * possible that we should maintain an XKB translation table here
@@ -732,11 +707,12 @@ static void ioev_ctxtbl(struct tui_context* tui,
 		if (sym && sym < sizeof(symtbl_out) / sizeof(symtbl_out[0]))
 			sym = symtbl_out[ioev->input.translated.keysym];
 
-/* FIXME: forward input,
- * sym,
- * mask,
- * subid, ...
- */
+		if (tui->handlers.input_key)
+			tui->handlers.input_key(tui, sym,
+				ioev->input.translated.scancode,
+				ioev->input.translated.modifiers,
+				ioev->subid, tui->handlers.tag
+			);
 	}
 	else if (ioev->devkind == EVENT_IDEVKIND_MOUSE){
 		if (ioev->datatype == EVENT_IDATATYPE_ANALOG){
@@ -746,13 +722,9 @@ static void ioev_ctxtbl(struct tui_context* tui,
 				int yv = ioev->input.analog.axisval[0];
 				tui->mouse_y = yv / tui->cell_h;
 
-/* FIXME: forward input
-				if (tui->mouse_forward){
-					tsm_vte_mouse_motion(tui->vte,
-						tui->mouse_x, tui->mouse_y, tui->last_shmask);
-					return;
-				}
- */
+				if (tui->mouse_forward && tui->handlers.input_mouse)
+					tui->handlers.input_mouse(tui, false, tui->mouse_x, tui->mouse_y,
+						tui->mouse_btnmask, tui->handlers.tag);
 
 				if (!tui->in_select)
 					return;
@@ -788,13 +760,15 @@ static void ioev_ctxtbl(struct tui_context* tui,
 /* press? press-point tsm_screen_selection_start,
  * release and press-tile ~= release_tile? copy */
 		else if (ioev->datatype == EVENT_IDATATYPE_DIGITAL){
-/* FIXME: FORWARD INPUT
-			if (tui->mouse_forward){
-				tsm_vte_mouse_button(tui->vte,
-					ioev->subid,ioev->input.digital.active,tui->last_shmask);
-				return;
+			if (ioev->subid){
+				if (ioev->input.digital.active)
+					tui->mouse_btnmask |=  (1 << (ioev->subid-1));
+				else
+					tui->mouse_btnmask &= ~(1 << (ioev->subid-1));
 			}
- */
+			if (tui->mouse_forward && tui->handlers.input_mouse)
+				tui->handlers.input_mouse(tui, false, tui->mouse_x, tui->mouse_y,
+					tui->mouse_btnmask, tui->handlers.tag);
 
 			if (ioev->flags & ARCAN_IOFL_GESTURE){
 				if (strcmp(ioev->label, "dblclick") == 0){
@@ -860,6 +834,8 @@ static void ioev_ctxtbl(struct tui_context* tui,
 				tui->dirty |= DIRTY_PENDING;
 			}
 		}
+		else if (tui->handlers.input_misc)
+			tui->handlers.input_misc(tui, ioev, tui->handlers.tag);
 	}
 }
 
@@ -884,13 +860,11 @@ static void update_screensize(struct tui_context* tui, bool clear)
 		tui->cols = cols;
 		tui->rows = rows;
 
-/*
- * actual resize, we can assume that we are not in signal
- * state as shmif_ will block on that
- *
- * FIXME: CALLBACK, ORDER?
- */
 		tsm_screen_resize(tui->screen, cols, rows);
+
+		if (tui->handlers.resized)
+			tui->handlers.resized(tui,
+				tui->acon.w, tui->acon.h, cols, rows, tui->handlers.tag);
 	}
 
 	while (atomic_load(&tui->acon.addr->vready))
@@ -932,10 +906,8 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 		switch(ev->ioevs[0].iv){
 		case 0:
 		case 1:
- /* normal request, we have no distinction between soft and hard
-	* FIXME: FORWARD
-			tsm_vte_hard_reset(tui->vte);
-	*/
+			if (tui->handlers.reset)
+				tui->handlers.reset(tui, ev->ioevs[0].iv, tui->handlers.tag);
 		break;
 		case 2:
 		case 3:
@@ -949,10 +921,11 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 
 	case TARGET_COMMAND_BCHUNK_IN:
 	case TARGET_COMMAND_BCHUNK_OUT:
-/* FIXME: FORWARD
- * map ioev[0].iv to some reachable known path in
- * the terminal namespace, don't forget to dupe as it
- * will be on next event */
+		if (tui->handlers.bchunk)
+			tui->handlers.bchunk(tui, ev->kind == TARGET_COMMAND_BCHUNK_IN,
+				ev->ioevs[1].iv | (ev->ioevs[2].iv << 31),
+				ev->ioevs[0].iv, tui->handlers.tag
+			);
 	break;
 
 	case TARGET_COMMAND_SEEKCONTENT:
@@ -1078,10 +1051,14 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 
 /* we use draw_cbt so that dirty region will be updated accordingly */
 	case TARGET_COMMAND_STEPFRAME:
-		if (ev->ioevs[1].iv == 1 && tui->focus){
-			tui->inact_timer++;
-			tui->cursor_off = tui->inact_timer > 1 ? !tui->cursor_off : false;
-			tui->dirty |= DIRTY_PENDING;
+		if (ev->ioevs[1].iv == 1){
+			if (tui->focus){
+				tui->inact_timer++;
+				tui->cursor_off = tui->inact_timer > 1 ? !tui->cursor_off : false;
+				tui->dirty |= DIRTY_PENDING;
+			}
+			if (tui->handlers.tick)
+				tui->handlers.tick(tui, tui->handlers.tag);
 		}
 		else{
 			if (!tui->cursor_off && tui->focus){
@@ -1098,11 +1075,11 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 		}
 	break;
 
-/* problem:
- *  1. how to grab and pack shell environment?
- *  2. kill shell, spawn new using unpacked environment */
 	case TARGET_COMMAND_STORE:
 	case TARGET_COMMAND_RESTORE:
+		if (tui->handlers.state)
+			tui->handlers.state(tui, ev->kind == TARGET_COMMAND_RESTORE,
+				ev->ioevs[0].iv, tui->handlers.tag);
 	break;
 
 	case TARGET_COMMAND_EXIT:
@@ -1110,6 +1087,8 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 	break;
 
 	default:
+		if (tui->handlers.raw_event)
+			tui->handlers.raw_event(tui, ev, tui->handlers.tag);
 	break;
 	}
 }
@@ -1143,9 +1122,9 @@ static bool check_pasteboard(struct tui_context* tui)
 		arcan_tgtevent* tev = &ev.tgt;
 		switch(tev->kind){
 		case TARGET_COMMAND_MESSAGE:
-/* FIXME: FORWARD
-			tsm_vte_paste(tui->vte, tev->message, strlen(tev->message));
- */
+			if (tui->handlers.utf8)
+				tui->handlers.utf8(tui, (const uint8_t*) tev->message,
+					strlen(tev->message), tev->ioevs[0].iv, tui->handlers.tag);
 			rv = true;
 		break;
 		case TARGET_COMMAND_EXIT:
@@ -1462,7 +1441,8 @@ void arcan_tui_apply_arg(struct tui_settings* cfg, struct arg_arr* arg)
 }
 
 struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
-	const struct tui_settings* set, const struct tui_cbcfg* cbs, ...)
+	const struct tui_settings* set, const struct tui_cbcfg* cbs,
+	size_t cbs_sz, ...)
 {
 	const char* val;
 #ifdef TTF_SUPPORT
@@ -1476,6 +1456,19 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 		free(res);
 		return NULL;
 	}
+
+/*
+ * due to handlers being default NULL, all fields are void* / fptr*
+ * (and we assume sizeof(void*) == sizeof(fptr*) which is somewhat
+ * sketchy, but if that's a concern, subtract the offset of tag),
+ * and we force the caller to provide its perceived size of the
+ * struct we can expand the interface without breaking old clients
+ */
+	if (cbs_sz > sizeof(struct tui_cbcfg) || cbs_sz % sizeof(void*) != 0){
+		fprintf(stderr, "arcan_shmif_tui(), caller provided bad size field\n");
+		return NULL;
+	}
+	memcpy(&res->handlers, cbs, cbs_sz);
 
 	res->focus = true;
 	res->font_fd[0] = BADFD;

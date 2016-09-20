@@ -239,8 +239,9 @@ enum ARCAN_TARGET_COMMAND {
  * protocol carried within is implementation- defined. It is used for advanced
  * cut/paste or transfer operations, possibly with zero-copy mechanisms like
  * memfd.
- * ioevs[0].iv, lower-32 bits of the expected size (if possible)
- * ioevs[1].iv, upper-32 bits of the expected size
+ * ioevs[0].iv will carry the file descriptor
+ * ioevs[1].iv, lower-32 bits of the expected size (if possible)
+ * ioevs[2].iv, upper-32 bits of the expected size
  */
 	TARGET_COMMAND_BCHUNK_IN,
 	TARGET_COMMAND_BCHUNK_OUT,

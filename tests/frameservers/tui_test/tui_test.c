@@ -29,10 +29,10 @@ static void on_mouse(struct tui_context* c,
 		x, y, button_mask, (int) relative);
 }
 
-static void on_key(struct tui_context* c, bool active,
-	uint32_t xkeysym, uint32_t ucs4, uint16_t subid)
+static void on_key(struct tui_context* c, uint32_t xkeysym,
+	uint8_t scancode, uint8_t mods, uint16_t subid, void* t)
 {
-	trace("unknown_key(%"PRIu32",%"PRIu32",%"PRIu16")", xkeysym, ucs4, subid);
+	trace("unknown_key(%"PRIu32",%"PRIu8",%"PRIu16")", xkeysym, scancode, subid);
 }
 
 static void on_u8(struct tui_context* c, const char* u8, size_t len, void* t)
@@ -70,7 +70,7 @@ static void on_apaste(struct tui_context* c,
 	trace("on_apaste(%zu @ %zu:%zu)", n_samples, frequency, nch);
 }
 
-static void on_raw(struct tui_context* c, arcan_event* ev, void* t)
+static void on_raw(struct tui_context* c, arcan_tgtevent* ev, void* t)
 {
 	trace("on-raw(%s)", arcan_shmif_eventstr(ev, NULL, 0));
 }
@@ -121,7 +121,7 @@ int main(int argc, char** argv)
  * still get access to its internal reference at will */
 	struct tui_settings cfg = arcan_tui_defaults();
 	arcan_tui_apply_arg(&cfg, aarr);
-	struct tui_context* tui = arcan_tui_setup(&con, &cfg, &cbcfg);
+	struct tui_context* tui = arcan_tui_setup(&con, &cfg, &cbcfg, sizeof(cbcfg));
 
 	if (!tui){
 		fprintf(stderr, "failed to setup TUI connection\n");
