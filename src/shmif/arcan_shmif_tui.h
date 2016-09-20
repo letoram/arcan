@@ -91,6 +91,10 @@ struct tui_context;
  */
 struct tui_cbcfg {
 /*
+ * appended last to any invoked callback
+ */
+	void* tag;
+/*
  * an explicit label- input has been sent (rising edge only)
  */
 	void (*input_label)(struct tui_context*, const char* label, void*);
@@ -111,8 +115,8 @@ struct tui_cbcfg {
  * other KEY where we are uncertain about origin, filled on a best-effort
  * (should be last-line of defence after label->utf8->mouse->[key]
  */
-	void (*input_key)(struct tui_context*,
-		bool active, uint32_t xkeysym, uint32_t ucs4, uint16_t subid);
+	void (*input_key)(struct tui_context*, uint32_t symest,
+		uint8_t scancode, uint8_t mods, uint16_t subid, void* tag);
 
 /*
  * other input- that wasn't handled in the other callbacks
@@ -148,7 +152,7 @@ struct tui_cbcfg {
  * events that wasn't covered by the TUI internal event loop that might
  * be of interest to the outer connection / management
  */
-	void (*raw_event)(struct tui_context*, arcan_event*, void*);
+	void (*raw_event)(struct tui_context*, arcan_tgtevent*, void*);
 
 /*
  * periodic parent-driven clock
@@ -168,9 +172,15 @@ struct tui_cbcfg {
 		size_t neww, size_t newh, size_t col, size_t row, void*);
 
 /*
- * appended last to any invoked callback
+ * only reset levels that should require action on behalf of the caller are
+ * being forwarded, this currently excludes > 1
  */
-	void* tag;
+	void (*reset)(struct tui_context*, int level, void*);
+
+/*
+ * add new callbacks here as needed, since the setup requires a sizeof of
+ * this struct as an argument, we get some light indirect versioning
+ */
 };
 
 struct tui_settings arcan_tui_defaults();
@@ -189,7 +199,9 @@ void arcan_tui_apply_arg(struct tui_settings*, struct arg_arr*);
  * if (return) !null, the contents of con is undefined
  */
 struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
-	const struct tui_settings* set, const struct tui_cbcfg* cfg, ...);
+	const struct tui_settings* set, const struct tui_cbcfg* cfg,
+	size_t cfg_sz, ...
+);
 
 void arcan_tui_destroy(struct tui_context*);
 
