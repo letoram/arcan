@@ -5,7 +5,9 @@
 #include <arcan_shmif.h>
 #include <arcan_shmif_tui.h>
 #include <inttypes.h>
+#include <stdarg.h>
 
+#define TRACE_ENABLE
 static inline void trace(const char* msg, ...)
 {
 #ifdef TRACE_ENABLE
@@ -72,12 +74,14 @@ static void on_apaste(struct tui_context* c,
 
 static void on_raw(struct tui_context* c, arcan_tgtevent* ev, void* t)
 {
-	trace("on-raw(%s)", arcan_shmif_eventstr(ev, NULL, 0));
+/* not the clean way to do it (new struct, memcpy) but this is for debugging */
+	trace("on-raw(%s)", arcan_shmif_eventstr((arcan_event*)
+		((char*) ev - offsetof(arcan_event, tgt)), NULL, 0));
 }
 
 static void on_tick(struct tui_context* c, void* t)
 {
-	trace("[tick]");
+/* ignore this, rather noise:	trace("[tick]"); */
 }
 
 static void on_utf8_paste(struct tui_context* c,
@@ -121,6 +125,10 @@ int main(int argc, char** argv)
  * still get access to its internal reference at will */
 	struct tui_settings cfg = arcan_tui_defaults();
 	arcan_tui_apply_arg(&cfg, aarr);
+	arcan_shmif_enqueue(&con, &(arcan_event){
+		.ext.kind = ARCAN_EVENT(IDENT),
+		.ext.message = {"tui_test"}
+	});
 	struct tui_context* tui = arcan_tui_setup(&con, &cfg, &cbcfg, sizeof(cbcfg));
 
 	if (!tui){
@@ -133,11 +141,14 @@ int main(int argc, char** argv)
  * loop, and add own descriptors to monitor (then the return value
  * needs to be checked for data or be closed down
  */
+	int inf = STDIN_FILENO;
 	while (1){
-		int errc = 0;
-		arcan_tui_process(&tui, 1, NULL, 0, -1, &errc);
-		if (errc != TUI_ERRC_OK)
-			break;
+		struct tui_process_res res = arcan_tui_process(&tui, 1, &inf, 1, -1);
+		if (res.errc == TUI_ERRC_OK){
+			arcan_tui_refresh(&tui, 1);
+		}
+		if (res.ok)
+			fgetc(stdin);
 	}
 
 	arcan_tui_destroy(tui);

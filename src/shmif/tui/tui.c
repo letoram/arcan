@@ -3,7 +3,7 @@
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  * Description: text-user interface support library derived from the work on
- * the afsrv_terminal frameserver. Could use a refactor cleanup,
+ * the afsrv_cfg->nal frameserver. Could use a refactor cleanup,
  * different/faster font-rendering/text-support.
  */
 
@@ -11,7 +11,7 @@
  * MISSING: mapping events (test against tui_test.c),
  * - main event loop isn't right
  * - testing
- * - migrate terminal to use lib
+ * - migrate cfg->nal to use lib
  * - switch font management method default
  */
 
@@ -72,7 +72,7 @@ enum dirty_state {
 };
 
 struct tui_context {
-/* terminal / state control */
+/* cfg->nal / state control */
 	struct tsm_screen* screen;
 	struct tsm_utf8_mach* ucsconv;
 
@@ -366,7 +366,7 @@ static void update_screen(struct tui_context* tui)
 	if (tui->inactive)
 		return;
 
-/* "always" erase previous cursor, except when terminal screen state explicitly
+/* "always" erase previous cursor, except when cfg->nal screen state explicitly
  * say that cursor drawing should be turned off */
 	draw_cbt(tui, tui->cvalue, tui->cursor_x, tui->cursor_y,
 		&tui->cattr, 0, false, false);
@@ -397,11 +397,6 @@ static void update_screen(struct tui_context* tui)
 
 	draw_cbt(tui, tui->cvalue, tui->cursor_x, tui->cursor_y,
 		&tui->cattr, 0, !tui->cursor_off, false);
-}
-
-void arcan_tui_invalidate(struct tui_context* tui)
-{
-	tui->dirty |= DIRTY_PENDING;
 }
 
 static void page_up(struct tui_context* tui)
@@ -803,7 +798,7 @@ static void ioev_ctxtbl(struct tui_context* tui,
 					tui->last_dbl_y = tui->mouse_y;
 				}
 				else if (strcmp(ioev->label, "click") == 0){
-/* forward to terminal? */
+/* forward to cfg->nal? */
 				}
 				return;
 			}
@@ -1093,26 +1088,33 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 	}
 }
 
-static void event_dispatch(struct tui_context* tui, arcan_event* ev)
-{
-	switch (ev->category){
-	case EVENT_IO:
-		ioev_ctxtbl(tui, &(ev->io), ev->io.label);
-	break;
-
-	case EVENT_TARGET:
-		targetev(tui, &ev->tgt);
-	break;
-
-	default:
-	break;
-	}
-}
-
-static bool check_pasteboard(struct tui_context* tui)
+static void event_dispatch(struct tui_context* tui)
 {
 	arcan_event ev;
-	bool rv = false;
+	int pv;
+
+	while ((pv = arcan_shmif_poll(&tui->acon, &ev)) > 0){
+		switch (ev.category){
+		case EVENT_IO:
+			ioev_ctxtbl(tui, &(ev.io), ev.io.label);
+		break;
+
+		case EVENT_TARGET:
+			targetev(tui, &ev.tgt);
+		break;
+
+		default:
+		break;
+		}
+	}
+
+	if (pv == -1)
+		arcan_shmif_drop(&tui->acon);
+}
+
+static void check_pasteboard(struct tui_context* tui)
+{
+	arcan_event ev;
 	int pv = 0;
 
 	while ((pv = arcan_shmif_poll(&tui->clip_in, &ev)) > 0){
@@ -1125,11 +1127,10 @@ static bool check_pasteboard(struct tui_context* tui)
 			if (tui->handlers.utf8)
 				tui->handlers.utf8(tui, (const uint8_t*) tev->message,
 					strlen(tev->message), tev->ioevs[0].iv, tui->handlers.tag);
-			rv = true;
 		break;
 		case TARGET_COMMAND_EXIT:
 			arcan_shmif_drop(&tui->clip_in);
-			return false;
+			return;
 		break;
 		default:
 		break;
@@ -1138,8 +1139,6 @@ static bool check_pasteboard(struct tui_context* tui)
 
 	if (pv == -1)
 		arcan_shmif_drop(&tui->clip_in);
-
-	return rv;
 }
 
 static void queue_requests(struct tui_context* tui,
@@ -1270,33 +1269,32 @@ struct arcan_shmif_cont* arcan_tui_acon(struct tui_context* c)
 	return &c->acon;
 }
 
-
-uint64_t arcan_tui_process(
+struct tui_process_res arcan_tui_process(
 	struct tui_context** contexts, size_t n_contexts,
-	int* fdset, size_t fdset_sz, int timeout, int* errc)
+	int* fdset, size_t fdset_sz, int timeout)
 {
-	arcan_event ev;
+	struct tui_process_res res = {0};
 	uint64_t rdy_mask = 0;
 
 	if (fdset_sz + n_contexts == 0){
-		*errc = TUI_ERRC_BAD_ARG;
-		return 0;
+		res.errc = TUI_ERRC_BAD_ARG;
+		return res;
 	}
 
 	if ((n_contexts && !contexts) || (fdset_sz && !fdset)){
-		*errc = TUI_ERRC_BAD_ARG;
-		return 0;
+		res.errc = TUI_ERRC_BAD_ARG;
+		return res;
 	}
 
 	if (n_contexts > 32 || fdset_sz > 32){
-		return 0;
-		*errc = TUI_ERRC_BAD_ARG;
+		res.errc = TUI_ERRC_BAD_ARG;
+		return res;
 	}
 
-/* From each context, we need the relevant tui->acon.epipe to poll on,
- * along with the entries from the fdset that would require us to mask-
- * populate and return. This structure is not entirely cheap to set up
- * so there might be value in caching it somewhere between runs */
+/* From each context, we need the relevant tui->acon.epipe to poll on, along
+ * with the entries from the fdset that would require us to mask- populate and
+ * return. This structure is not entirely cheap to set up so there might be
+ * value in caching it somewhere between runs */
 	short pollev = POLLIN | POLLERR | POLLNVAL | POLLHUP;
 	struct pollfd fds[fdset_sz + (n_contexts * 2)];
 
@@ -1326,81 +1324,70 @@ uint64_t arcan_tui_process(
 		};
 	}
 
-	int flushc = 0, last_estate = 0;
-	int pv = 0;
-	int pc = 2;
-
-/* if we've received a clipboard for paste- operations
-	if (tui->clip_in.vidp){
-		fds[2].fd = tui->clip_in.epipe;
-		pc = 3;
-	}
- */
-
-/* try to balance latency and responsiveness in the case of saturation
-	int sv, tv;
-	if (last_estate == -EAGAIN)
-		tv = 0;
-	else if (atomic_load(&tui->acon.addr->vready) && tui->dirty)
-		tv = 4;
-	else
-		tv = -1;
-	sv = poll(fds, pc, tv);
-	bool dispatch = last_estate == -EAGAIN;
-	if (sv != 0){
-		if (fds[1].revents & POLLIN){
-			while ((pv = arcan_shmif_poll(&tui->acon, &ev)) > 0){
-				event_dispatch(&ev);
+/* pollset is packed as [n_contexts] [caller-supplied] */
+	int sv = poll(fds, ofs, timeout);
+	size_t nc = 0;
+	for (size_t i = 0; i < fdset_ofs && sv; i++){
+		if (fds[i].revents){
+			sv--;
+			if (clip_mask & (i << 1))
+				check_pasteboard(contexts[nc]);
+			else {
+				event_dispatch(contexts[nc]);
+				nc++;
 			}
-			dispatch = true;
-			if (-1 == pv)
-				return;
 		}
- */
-/* fail on upstream event
-		else if (fds[1].revents)
-			break;
-		else if (pc == 3 && (fds[2].revents & POLLIN))
-			dispatch |= check_pasteboard(tui);
-
- fail on the terminal descriptor
-		if (fds[0].revents & POLLIN)
-			dispatch = true;
-		else if (fds[0].revents)
-			break;
 	}
- */
 
-/* need some limiter here so we won't completely stall if the terminal
- * gets spammed (running find / or cat on huge file are good testcases)
-	while ( (last_estate = shl_pty_dispatch(tui->pty)) == -EAGAIN &&
-		(atomic_load(&tui->acon.addr->vready) || flushc++ < 10))
-	;
+/* sweep second batch. caller supplied descriptor set,
+ * mark the ones that are broken or with data */
+	for (size_t i = fdset_ofs; i < ofs && sv; i++)
+		if (fds[i].revents){
+			sv--;
+			if (fds[i].revents != POLLERR)
+				res.ok |= 1 << (i - fdset_ofs);
+			else
+				res.bad |= 1 << (i - fdset_ofs);
+		}
 
-	flushc = 0;
-	if (atomic_load(&tui->acon.addr->vready)){
-		*errno = 0;
-		return rdy_mask;
-	};
+/* only run an update now if we've not got one pending */
+	for (size_t i = 0; i < n_contexts; i++){
+		if (!atomic_load(&contexts[i]->acon.addr->vready))
+			update_screen(contexts[i]);
+	}
 
+	return res;
+}
+
+void arcan_tui_refresh(
+	struct tui_context** contexts, size_t n_contexts)
+{
+	if (!n_contexts || !contexts || !contexts[0])
+		return;
+
+	for (size_t i = 0; i < n_contexts; i++){
+		struct tui_context* tui = contexts[i];
+		if (tui->dirty & DIRTY_UPDATED){
+			tui->dirty = DIRTY_NONE;
+			arcan_shmif_signal(&tui->acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
+			tui->last = arcan_timemillis();
+
+/* set invalid synch region until redraw changes that */
+			tui->acon.dirty.x1 = tui->acon.w;
+			tui->acon.dirty.x2 = 0;
+			tui->acon.dirty.y1 = tui->acon.h;
+			tui->acon.dirty.y2 = 0;
+		}
+	}
+}
+
+void arcan_tui_invalidate(struct tui_context* tui)
+{
+	if (!tui)
+		return;
+
+	tui->dirty |= DIRTY_PENDING_FULL;
 	update_screen(tui);
- */
-
-/* we don't synch explicitly, hence the vready check above
-	if (tui->dirty & DIRTY_UPDATED){
-		tui->dirty = DIRTY_NONE;
-		arcan_shmif_signal(&tui->acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
-		tui->last = arcan_timemillis();
- set invalid synch region until redraw changes that
-		tui->acon.dirty.x1 = tui->acon.w;
-		tui->acon.dirty.x2 = 0;
-		tui->acon.dirty.y1 = tui->acon.h;
-		tui->acon.dirty.y2 = 0;
-	}
-*/
-
-	*errc = 0;
-	return rdy_mask;
 }
 
 void arcan_tui_destroy(struct tui_context* tui)
@@ -1435,9 +1422,118 @@ struct tui_settings arcan_tui_defaults()
 	};
 }
 
-void arcan_tui_apply_arg(struct tui_settings* cfg, struct arg_arr* arg)
+static int parse_color(const char* inv, uint8_t outv[4])
 {
-/* FIXME: pluck the relevant parsing from _terminal.c */
+	return scanf(inv, "%"SCNu8",%"SCNu8",%"SCNu8",%"SCNu8,
+		&outv[0], &outv[1], &outv[2], &outv[3]);
+}
+
+void arcan_tui_apply_arg(struct tui_settings* cfg, struct arg_arr* args)
+{
+	const char* val;
+	uint8_t ccol[4] = {0x00, 0x00, 0x00, 0xff};
+/* old color- setting arguments (**r, **g, **b) kept around for legacy */
+	if (arg_lookup(args, "fgr", 0, &val))
+		cfg->fgc[0] = strtoul(val, NULL, 10);
+	if (arg_lookup(args, "fgg", 0, &val))
+		cfg->fgc[1] = strtoul(val, NULL, 10);
+	if (arg_lookup(args, "fgb", 0, &val))
+		cfg->fgc[2] = strtoul(val, NULL, 10);
+	if (arg_lookup(args, "fgc", 0, &val)){
+		if (parse_color(val, ccol) == 3)
+			cfg->fgc[0] = ccol[0]; cfg->fgc[1] = ccol[1]; cfg->fgc[2] = ccol[2];
+	}
+
+	if (arg_lookup(args, "bgr", 0, &val))
+		cfg->bgc[0] = strtoul(val, NULL, 10);
+	if (arg_lookup(args, "bgg", 0, &val))
+		cfg->bgc[1] = strtoul(val, NULL, 10);
+	if (arg_lookup(args, "bgb", 0, &val))
+		cfg->bgc[2] = strtoul(val, NULL, 10);
+	if (arg_lookup(args, "bgc", 0, &val)){
+		if (parse_color(val, ccol) == 3)
+			cfg->bgc[0] = ccol[0]; cfg->bgc[1] = ccol[1]; cfg->bgc[2] = ccol[2];
+	}
+
+	bool ccol_upd = false;
+	if (arg_lookup(args, "ccr", 0, &val)){
+		ccol[0] = strtoul(val, NULL, 10);
+		ccol_upd = true;
+	}
+	if (arg_lookup(args, "ccg", 0, &val)){
+		ccol[1] = strtoul(val, NULL, 10);
+		ccol_upd = true;
+	}
+	if (arg_lookup(args, "ccb", 0, &val)){
+		ccol[2] = strtoul(val, NULL, 10);
+		ccol_upd = true;
+	}
+	if (arg_lookup(args, "cc", 0, &val))
+		ccol_upd = parse_color(val, ccol) == 3;
+
+	if (ccol_upd)
+		cfg->ccol = SHMIF_RGBA(ccol[0], ccol[1], ccol[2], 0xff);
+	ccol_upd = false;
+
+	if (arg_lookup(args, "clr", 0, &val)){
+		ccol[0] = strtoul(val, NULL, 10);
+		ccol_upd = true;
+	}
+	if (arg_lookup(args, "clg", 0, &val)){
+		ccol[1] = strtoul(val, NULL, 10);
+		ccol_upd = true;
+	}
+	if (arg_lookup(args, "clb", 0, &val)){
+		ccol[2] = strtoul(val, NULL, 10);
+		ccol_upd = true;
+	}
+	if (arg_lookup(args, "cc", 0, &val))
+		ccol_upd = parse_color(val, ccol) == 3;
+	if (ccol_upd)
+		cfg->clcol = SHMIF_RGBA(ccol[0], ccol[1], ccol[2], 0xff);
+
+	if (arg_lookup(args, "cursor", 0, &val)){
+		const char** cur = curslbl;
+	while(*cur){
+		if (strcmp(*cur, val) == 0){
+			cfg->cursor = (cur - curslbl);
+			break;
+		}
+		cur++;
+	 }
+	}
+
+	if (arg_lookup(args, "bgalpha", 0, &val))
+		cfg->alpha = strtoul(val, NULL, 10);
+#ifdef TTF_SUPPORT
+	size_t sz = cfg->cell_h;
+
+	if (arg_lookup(args, "font_hint", 0, &val)){
+		if (strcmp(val, "light") == 0)
+			cfg->hint = TTF_HINTING_LIGHT;
+		else if (strcmp(val, "mono") == 0)
+			cfg->hint = TTF_HINTING_MONO;
+		else if (strcmp(val, "normal") == 0)
+			cfg->hint = TTF_HINTING_NORMAL;
+		else if (strcmp(val, "subpixel") == 0)
+			cfg->hint = TTF_HINTING_RGB;
+	}
+
+	if (arg_lookup(args, "font_sz", 0, &val))
+		sz = strtoul(val, NULL, 10);
+	if (arg_lookup(args, "font", 0, &val)){
+		int fd = open(val, O_RDONLY | O_CLOEXEC);
+		setup_font(fd, sz, 0);
+/* fallback font for missing glyphs */
+		if (fd != -1 && arg_lookup(args,"font_fb", 0, &val)){
+			fd = open(val, O_RDONLY | O_CLOEXEC);
+			setup_font(fd, sz, 1);
+		}
+	}
+	else
+		LOG("no font specified, using built-in fallback.");
+#endif
+
 }
 
 struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,

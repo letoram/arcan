@@ -224,9 +224,14 @@ enum tui_process_errc {
  *  TUI_ERRC_BAD_FD - then the mask will show bad descriptors
  *  TUI_ERRC_BAD_CTX - then the mask will show bad contexts
  */
-uint64_t arcan_tui_process(
+struct tui_process_res {
+	uint32_t ok;
+	uint32_t bad;
+	int errc;
+};
+struct tui_process_res arcan_tui_process(
 	struct tui_context** contexts, size_t n_contexts,
-	int* fdset, size_t fdset_sz, int timeout, int* errc);
+	int* fdset, size_t fdset_sz, int timeout);
 
 /*
  * If the TUI- managed connection is marked as dirty, synch the
