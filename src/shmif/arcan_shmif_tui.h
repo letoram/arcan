@@ -36,6 +36,7 @@
 #define _HAVE_ARCAN_SHMIF_TUI
 
 /*
+ *                                [THREAD UNSAFE]
  * Support functions for building a text-based user interfaces that draws using
  * Arcan. One of its primary uses is acting as the rendering backend for the
  * terminal emulator, but is useful for building other TUIs without all the
@@ -44,20 +45,29 @@
  * and resize protocol propagation.
  *
  * It covers all the boiler-plate needed for features like live migration,
- * dynamic font switching, select/copy/paste, binary blob transfers etc.
+ * dynamic font switching, select/copy/paste, binary blob transfers, mapping
+ * subwindows etc.
  *
  * It is based on libtsms screen and unicode handling, which unfortunately
  * pulls in a shl_htable implementation that is LGPL2.1+, meaning that we
  * also degrade to LGPL until that component has been replaced.
  *
- * A very interesting venue to explore here would be to tag cells with a
- * custom attribute that just forwards blitting to the caller in order to
- * support embedding graphics etc. It would also allow the terminal emulator
- * etc. to add sixel- support.
- *
  * >> See tests/frameservers/tui_test for a template/example of use. <<
+ *
+ * This library attempts to eventually become a stable ABI, avoid exposing
+ * the most volatile shmif_ structure (arcan_event) or raw offsets into
+ * con.addr
+ *
+ * Missing:
+ * [ ] serialized- API that wraps and serializes callbacks back to a queue
+ *     so that it can fit into callback driven software without getting a
+ *     'nested callbacks' mess.
+ *
+ * [ ] abstract component helpers for things like popup-select style windows
+ *
+ * [ ] Normal "Curses" rendering- backend to not break term- compatibility
+ *     for programs reworked to use this interface
  */
-
 enum tui_cursors {
 	CURSOR_BLOCK = 0,
 	CURSOR_HALFBLOCK,
@@ -82,6 +92,7 @@ struct tui_settings {
 	const char* font_fn;
 	const char* font_fb_fn;
 	enum tui_cursors cursor;
+	bool mouse_fwd;
 };
 
 struct tui_context;
@@ -94,6 +105,12 @@ struct tui_cbcfg {
  * appended last to any invoked callback
  */
 	void* tag;
+
+/*
+ * pointer to NULL- terminated list of input labels that should be
+ * announced on connection setup
+ */
+	const char** label_table;
 /*
  * an explicit label- input has been sent (rising edge only)
  */
@@ -176,6 +193,39 @@ struct tui_cbcfg {
  * being forwarded, this currently excludes > 1
  */
 	void (*reset)(struct tui_context*, int level, void*);
+
+/*
+ * comparable to a locale switch (which the backend obviously cannot perform
+ * without introducing subtle bugs like . -> , without the caller knowing,
+ * but with more detail.
+ *
+ * check ISO-3166-1 for a3_country, ISO-639-2 for a3_language
+ */
+	void (*geohint)(struct tui_context*, float lat, float longitude, float elev,
+		const char* a3_country, const char* a3_language, void*);
+
+/*
+ * [RESERVED, NOT_IMPLEMENTED]
+ * for cells that have been written with the CUSTOM_DRAW attribute,
+ * this function will be triggered whenever such a cell should be updated
+ *
+ * [vidp] will be aligned to the upper-left corner of the cell. The number
+ * of horizontal pixels will be [px_w] * [cols] (the possibility of multiple
+ * CUSTOM_DRAW cells on a row). cell_w = px_w / cols, cell_h = px_h.
+ * Add [pitch] to [vidp] to increment row.
+ *
+ * Note that [cols] may cover several cells on the same row
+ */
+	void (*draw_call)(struct tui_context*, shmif_pixel* vidp,
+		size_t px_w, size_t px_h, size_t cols, size_t pitch, void*);
+
+/*
+ * A new subwindow has arrived, map it using arcan_shmif_acquire:
+ * arcan_shmif_cont newc = arcan_shmif_acquire(acon, NULL, SEGID_your_type, 0);
+ * and then run the normal _tui setup for event management etc.
+ */
+	void (*subwindow)(struct tui_context*,
+		enum ARCAN_SEGID type, uint32_t id, struct arcan_shmif_cont* cont, void*);
 
 /*
  * add new callbacks here as needed, since the setup requires a sizeof of
@@ -264,7 +314,8 @@ enum tui_flags {
 	TUI_INVERSE = 8,
 	TUI_HIDE_CURSOR = 16,
 	TUI_FIXED_POS = 32,
-	TUI_ALTERNATE = 64
+	TUI_ALTERNATE = 64,
+	TUI_CUSTOM_DRAW = 128,
 };
 
 struct tui_screen_attr {
@@ -284,32 +335,122 @@ struct tui_screen_attr {
 	unsigned int blink : 1; /* blinking character */
 };
 
+/*
+ * try to send the contents of utf8_msg, careful with length of this
+ * string as it will be split into ~64b chunks that each consume an
+ * event-queue slot, and may therefore stall for long periods of time.
+ *
+ * if mouse_fwd mode has been enabled (by user or in the _tui_setup),
+ * this is the only way to send data to the pasteboard.
+ *
+ * will fail if the pasteboard has been disabled (by user).
+ */
+bool arcan_tui_paste(struct tui_context*, const char* utf8_msg);
+
+/*
+ * update title or identity
+ */
+void arcan_tui_ident(struct tui_context*, const char* ident);
+
+/*
+ * Send a new request for a subwindow with life-span that depends on
+ * the main connection. The subwindows don't survive migration, if that
+ * is needed for the data that should be contained -- setup a new full
+ * connection.
+ */
+void arcan_tui_request_subwnd(struct tui_context*, uint32_t id);
+
 /* clear cells to default state, if protect toggle is set,
  * cells marked with a protected attribute will be ignored */
 void arcan_tui_erase_screen(struct tui_context*, bool protect);
 void arcan_tui_erase_region(struct tui_context*,
 	size_t x1, size_t y1, size_t x2, size_t y2, bool protect);
-void arcan_tui_refinc(struct tui_context*);
-void arcan_tui_refdec(struct tui_context*);
-void arcan_tui_defattr(struct tui_context*, struct tui_screen_attr*);
-void arcan_tui_write(struct tui_context*, uint32_t ucode, struct tui_screen_attr*);
-bool arcan_tui_writeu8(struct tui_context*, uint8_t* u8, size_t, struct tui_screen_attr*);
+
+/*
+ * insert a new UCS4* (tsm uses an internal format with a hash-table for
+ * metadata, but UCS4 is acceptable right now) at the current cursor position
+ * with the specified attribute mask.
+ */
+void arcan_tui_write(struct tui_context*,
+	uint32_t ucode, struct tui_screen_attr*);
+
+/*
+ * similar to insert UCS4*, but takes a utf8- string and converts it before
+ * mapping to corresponding UCS4* inserts. Thus, _tui_write should be preferred
+ */
+bool arcan_tui_writeu8(struct tui_context*,
+	uint8_t* u8, size_t, struct tui_screen_attr*);
+
+/*
+ * retrieve the current cursor position into the [x:col] and [y:row] field
+ */
 void arcan_tui_cursorpos(struct tui_context*, size_t* x, size_t* y);
+
+/*
+ * reset state-tracking, scrollback buffers, ...
+ */
 void arcan_tui_reset(struct tui_context*);
+
+/*
+ * modify the current flags/state bitmask with the values of tui_flags ( |= )
+ */
 void arcan_tui_set_flags(struct tui_context*, enum tui_flags);
+
+/*
+ * modify the current flags/state bitmask and unset the values of tui (& ~)
+ */
 void arcan_tui_reset_flags(struct tui_context*, enum tui_flags);
+
+/*
+ * mark the current cursor position as a tabstop
+ */
 void arcan_tui_set_tabstop(struct tui_context*);
-void arcan_tui_reset(struct tui_context*);
+
+/*
+ * insert [n] number of empty lines with the default attributes
+ * (amounts to a loop of _write calls)
+ */
 void arcan_tui_insert_lines(struct tui_context*, size_t);
+
+/*
+ * CR / LF
+ */
+void arcan_tui_newline(struct tui_context*);
+
+/*
+ * remove [n] number of lines
+ */
 void arcan_tui_delete_lines(struct tui_context*, size_t);
+
+/*
+ * insert [n] number of empty characters
+ * (amounts to a loop of _write calls with the default attributes)
+ */
 void arcan_tui_insert_chars(struct tui_context*, size_t);
 void arcan_tui_delete_chars(struct tui_context*, size_t);
+
+/*
+ * move cursor [n] tab-stops positions forward or backwards
+ */
 void arcan_tui_tab_right(struct tui_context*, size_t);
 void arcan_tui_tab_left(struct tui_context*, size_t);
+
+/*
+ * scroll the window [n] lines up or down in the scrollback buffer
+ */
 void arcan_tui_scroll_up(struct tui_context*, size_t);
 void arcan_tui_scroll_down(struct tui_context*, size_t);
+
+/*
+ * remove the tabstop at the current position
+ */
 void arcan_tui_reset_tabstop(struct tui_context*);
 void arcan_tui_reset_all_tabstops(struct tui_context*);
+
+/*
+ * move the cursor either absolutely or a number of steps,
+ * optionally by also scrolling the scrollback buffer
+ */
 void arcan_tui_move_to(struct tui_context*, size_t x, size_t y);
 void arcan_tui_move_up(struct tui_context*, size_t num, bool scroll);
 void arcan_tui_move_down(struct tui_context*, size_t num, bool scroll);
@@ -317,6 +458,12 @@ void arcan_tui_move_left(struct tui_context*, size_t);
 void arcan_tui_move_right(struct tui_context*, size_t);
 void arcan_tui_move_line_end(struct tui_context*);
 void arcan_tui_move_line_home(struct tui_context*);
-void arcan_tui_newline(struct tui_context*);
 int arcan_tui_set_margins(struct tui_context*, size_t top, size_t bottom);
+
+/*
+ * override the default attributes that apply to resets etc.
+ */
+void arcan_tui_defattr(struct tui_context*, struct tui_screen_attr*);
+void arcan_tui_refinc(struct tui_context*);
+void arcan_tui_refdec(struct tui_context*);
 #endif

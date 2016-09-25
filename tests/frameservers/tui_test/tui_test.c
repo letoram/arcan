@@ -42,6 +42,7 @@ static void on_u8(struct tui_context* c, const char* u8, size_t len, void* t)
 	uint8_t buf[5] = {0};
 	memcpy(buf, u8, len >= 5 ? 4 : len);
 	trace("utf8-input: %s", buf);
+	arcan_tui_writeu8(c, buf, len, NULL);
 }
 
 static void on_misc(struct tui_context* c, const arcan_ioevent* ev, void* t)
@@ -99,13 +100,28 @@ static void on_resize(struct tui_context* c,
 int main(int argc, char** argv)
 {
 	struct arg_arr* aarr;
-	struct arcan_shmif_cont con = arcan_shmif_open(
-		SEGID_TERMINAL, SHMIF_ACQUIRE_FATALFAIL, &aarr);
+	struct arcan_shmif_cont con = arcan_shmif_open_ext(
+		SHMIF_ACQUIRE_FATALFAIL, &aarr, (struct shmif_open_ext){
+			.type = SEGID_TERMINAL,
+			.title = "tui_test",
+			.ident = ""
+		}, sizeof(struct shmif_open_ext)
+	);
+
+/*
+ * custom bindable button events that will be exposed to the server
+ * on connect, overdoing this may get you stalled, ignored or killed
+ */
+	const char* labels[] = {
+		"TEST_INPUT",
+		NULL
+	};
 
 /*
  * only the ones that are relevant needs to be filled
  */
 	struct tui_cbcfg cbcfg = {
+		.label_table = labels,
 		.input_label = on_label,
 		.input_mouse = on_mouse,
 		.input_utf8 = on_u8,
@@ -125,10 +141,6 @@ int main(int argc, char** argv)
  * still get access to its internal reference at will */
 	struct tui_settings cfg = arcan_tui_defaults();
 	arcan_tui_apply_arg(&cfg, aarr);
-	arcan_shmif_enqueue(&con, &(arcan_event){
-		.ext.kind = ARCAN_EVENT(IDENT),
-		.ext.message = {"tui_test"}
-	});
 	struct tui_context* tui = arcan_tui_setup(&con, &cfg, &cbcfg, sizeof(cbcfg));
 
 	if (!tui){
@@ -141,14 +153,18 @@ int main(int argc, char** argv)
  * loop, and add own descriptors to monitor (then the return value
  * needs to be checked for data or be closed down
  */
+
+/* STDIN is just an example, but there is likely a small set of sources
+ * you want to react to data on that will match updates well */
 	int inf = STDIN_FILENO;
 	while (1){
 		struct tui_process_res res = arcan_tui_process(&tui, 1, &inf, 1, -1);
 		if (res.errc == TUI_ERRC_OK){
 			arcan_tui_refresh(&tui, 1);
+			if (res.ok)
+				fgetc(stdin);
+			break;
 		}
-		if (res.ok)
-			fgetc(stdin);
 	}
 
 	arcan_tui_destroy(tui);

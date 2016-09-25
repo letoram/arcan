@@ -563,6 +563,7 @@ struct lent {
 };
 
 #ifdef TTF_SUPPORT
+static const int badfd = -1;
 static bool setup_font(struct tui_context* tui,
 	int fd, size_t font_sz, int mode);
 
@@ -1070,6 +1071,14 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 		}
 	break;
 
+	case TARGET_COMMAND_GEOHINT:
+		if (tui->handlers.geohint)
+			tui->handlers.geohint(tui, ev->ioevs[0].fv, ev->ioevs[1].fv,
+				ev->ioevs[2].fv, (char*) ev->ioevs[3].cv,
+				(char*) ev->ioevs[4].cv, tui->handlers.tag
+			);
+	break;
+
 	case TARGET_COMMAND_STORE:
 	case TARGET_COMMAND_RESTORE:
 		if (tui->handlers.state)
@@ -1192,7 +1201,8 @@ static void probe_font(struct tui_context* tui,
 /*
  * modes supported now is 0 (default), 1 (append)
  */
-static bool setup_font(int fd, size_t font_sz, int mode)
+static bool setup_font(struct tui_context* tui,
+	int fd, size_t font_sz, int mode)
 {
 	TTF_Font* font;
 
@@ -1250,7 +1260,7 @@ static bool setup_font(int fd, size_t font_sz, int mode)
 
 	if (old_font){
 		TTF_CloseFont(old_font);
-		update_screensize(false);
+		update_screensize(tui, false);
 	}
 
 	return true;
@@ -1352,7 +1362,8 @@ struct tui_process_res arcan_tui_process(
 
 /* only run an update now if we've not got one pending */
 	for (size_t i = 0; i < n_contexts; i++){
-		if (!atomic_load(&contexts[i]->acon.addr->vready))
+		if (contexts[i]->acon.addr &&
+			!atomic_load(&contexts[i]->acon.addr->vready))
 			update_screen(contexts[i]);
 	}
 
@@ -1418,7 +1429,8 @@ struct tui_settings arcan_tui_defaults()
 		.ccol = SHMIF_RGBA(0x00, 0xaa, 0x00, 0xff),
 		.clcol = SHMIF_RGBA(0xaa, 0xaa, 0x00, 0xff),
 		.ppcm = ARCAN_SHMPAGE_DEFAULT_PPCM,
-		.hint = TTF_HINTING_NONE
+		.hint = TTF_HINTING_NONE,
+		.mouse_fwd = true
 	};
 }
 
@@ -1506,7 +1518,6 @@ void arcan_tui_apply_arg(struct tui_settings* cfg, struct arg_arr* args)
 	if (arg_lookup(args, "bgalpha", 0, &val))
 		cfg->alpha = strtoul(val, NULL, 10);
 #ifdef TTF_SUPPORT
-	size_t sz = cfg->cell_h;
 
 	if (arg_lookup(args, "font_hint", 0, &val)){
 		if (strcmp(val, "light") == 0)
@@ -1520,15 +1531,11 @@ void arcan_tui_apply_arg(struct tui_settings* cfg, struct arg_arr* args)
 	}
 
 	if (arg_lookup(args, "font_sz", 0, &val))
-		sz = strtoul(val, NULL, 10);
+		cfg->font_sz = strtoul(val, NULL, 10);
 	if (arg_lookup(args, "font", 0, &val)){
-		int fd = open(val, O_RDONLY | O_CLOEXEC);
-		setup_font(fd, sz, 0);
-/* fallback font for missing glyphs */
-		if (fd != -1 && arg_lookup(args,"font_fb", 0, &val)){
-			fd = open(val, O_RDONLY | O_CLOEXEC);
-			setup_font(fd, sz, 1);
-		}
+		cfg->font_fn = strdup(val);
+		if (arg_lookup(args, "font_fb", 0, &val))
+			cfg->font_fb_fn = strdup(val);
 	}
 	else
 		LOG("no font specified, using built-in fallback.");
@@ -1579,6 +1586,17 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 	memcpy(res->fgc, set->fgc, 3);
 	res->hint = set->hint;
 	res->ppcm = set->ppcm;
+	res->mouse_forward = set->mouse_fwd;
+
+	if (set->font_fn){
+		int fd = open(val, O_RDONLY | O_CLOEXEC);
+		setup_font(res, fd, res->font_sz, 0);
+/* fallback font for missing glyphs */
+		if (fd != -1 && set->font_fb_fn){
+			fd = open(val, O_RDONLY | O_CLOEXEC);
+			setup_font(res, fd, res->font_sz, 1);
+		}
+	}
 
 	res->acon = *con;
 	res->acon.hints = SHMIF_RHINT_SUBREGION;
@@ -1645,7 +1663,8 @@ void arcan_tui_write(struct tui_context* c, uint32_t ucode,
 	struct tui_screen_attr* attr)
 {
 	if (c)
-	tsm_screen_write(c->screen, ucode, (struct tsm_screen_attr*) attr);
+		tsm_screen_write(c->screen, ucode,
+			attr ? (struct tsm_screen_attr*) attr : &c->cattr);
 }
 
 bool arcan_tui_writeu8(struct tui_context* c,
@@ -1750,7 +1769,6 @@ void arcan_tui_reset_tabstop(struct tui_context* c)
 	if (c)
 	tsm_screen_reset_tabstop(c->screen);
 }
-
 
 void arcan_tui_reset_all_tabstops(struct tui_context* c)
 {
