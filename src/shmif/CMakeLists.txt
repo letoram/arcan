@@ -100,6 +100,10 @@ set(SHMIF_TUI_SOURCES
 	${ASD}/shmif/tui/wcwidth.c
 )
 
+if (FREETYPE_LIBRARIES)
+	list(APPEND SHMIF_TUI_SOURCES ${ASD}/engine/arcan_ttf.c)
+endif()
+
 add_library(arcan_shmif_int STATIC ${SHMIF_SOURCES} ${SHMIF_PLATFORM})
 add_library(arcan_shmif SHARED ${SHMIF_SOURCES} ${SHMIF_PLATFORM})
 add_library(arcan_shmif_ext SHARED ${SHMIF_EXT_SOURCES})
@@ -107,16 +111,24 @@ add_library(arcan_shmif_intext SHARED ${SHMIF_EXT_SOURCES})
 add_library(arcan_shmif_tuiext SHARED ${SHMIF_TUI_SOURCES})
 add_library(arcan_shmif_tui STATIC ${SHMIF_TUI_SOURCES})
 
+if (FREETYPE_LIBRARIES)
+	target_compile_definitions(arcan_shmif_tui PRIVATE TTF_SUPPORT SHMIF_TTF)
+	target_compile_definitions(arcan_shmif_tuiext PRIVATE TTF_SUPPORT SHMIF_TTF)
+endif()
+
 target_link_libraries(arcan_shmif PRIVATE ${STDLIB})
 target_link_libraries(arcan_shmif_int PRIVATE ${STDLIB})
 target_link_libraries(arcan_shmif_ext PRIVATE ${STDLIB} ${VIDEO_LIBRARIES})
 target_link_libraries(arcan_shmif_intext PRIVATE ${STDLIB} ${VIDEO_LIBRARIES})
-target_link_libraries(arcan_shmif_tuiext PRIVATE ${STDLIB} arcan_shmif)
+target_link_libraries(arcan_shmif_tui PRIVATE ${STDLIB} ${FREETYPE_LIBRARIES})
+target_link_libraries(arcan_shmif_tuiext PRIVATE ${STDLIB} arcan_shmif ${FREETYPE_LIBRARIES})
 
 target_include_directories(arcan_shmif_ext PRIVATE ${INCLUDE_DIRS})
 target_include_directories(arcan_shmif_intext PRIVATE ${INCLUDE_DIRS})
-target_include_directories(arcan_shmif_tui PRIVATE ${INCLUDE_DIRS} ${ASD}/frameserver)
-target_include_directories(arcan_shmif_tuiext PRIVATE ${INCLUDE_DIRS} ${ASD}/frameserver)
+target_include_directories(arcan_shmif_tui PRIVATE
+	${INCLUDE_DIRS} ${ASD}/frameserver ${ASD}/shmif)
+target_include_directories(arcan_shmif_tuiext PRIVATE
+	${INCLUDE_DIRS} ${ASD}/frameserver ${ASD}/shmif)
 
 # note that we enable fpic for the static here as some
 # subdirectores need to pull it in as part of building a shared library

@@ -102,7 +102,9 @@ enum ARCAN_SEGID {
 /* External Connection, non-interactive data source */
 	SEGID_MEDIA,
 
-/* Sensitive, varying privilege level, event- driven */
+/* Used to only be used for regular TERMINAL emulation, but now also applies
+ * to text-user interfaces like the ones that use TUI. May be needed for the
+ * appl to select monospace fonts to send when doing an external connection. */
 	SEGID_TERMINAL,
 
 /* External client connection, A/V/latency sensitive */
@@ -471,8 +473,8 @@ enum ARCAN_TARGET_COMMAND {
  * geometrical constraints, while-as DISPLAYHINT events convey how the
  * target will be presented, the OUTPUT hints provide an estimate of the
  * capabilities. Shmif will track these properties internally and use
- * it to control _resize commands, but it is not assumed that the client
- * is cooperating.
+ * it to limit _resize commands (but server does not assume that the client
+ * is cooperating).
  * ioev[0].iv = max_width,
  * ioev[1].iv = max_height,
  * ioev[2].iv = rate (Hz, 0 for dynamic)
@@ -634,7 +636,7 @@ enum ARCAN_EVENT_EXTERNAL {
 
 /* [ONCE]
  * Specify the requested subtype of a segment, along with a descriptive UTF-8
- * string (application title or similar) and a caller- selected 64-bit UUID.
+ * string (application title or similar) and a caller- selected 128-bit UUID.
 
  * The UUID is an unmanaged identifier namespace where the caller or
  * surrounding system tries to avoid collsions. The ID is primarily intended

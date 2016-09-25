@@ -315,6 +315,24 @@ struct arcan_shmif_cont arcan_shmif_open(
 	enum ARCAN_SEGID type, enum ARCAN_FLAGS flags, struct arg_arr**);
 
 /*
+ * Similar to resize_ext, developed to work around some shortcomings
+ * in the initial version without breaking ABI. Adds some improvements
+ * to the register/connect approach.
+ *
+ * use like shmif_open, but pass a prefilled struct like below,
+ * along with its sizeof(struct smif_open_ext)
+ */
+struct shmif_open_ext {
+	enum ARCAN_SEGID type;
+	const char* title;
+	const char* ident;
+	uint64_t guid[2];
+};
+struct arcan_shmif_cont arcan_shmif_open_ext(
+	enum ARCAN_FLAGS flags, struct arg_arr**,
+	struct shmif_open_ext, size_t ext_sz);
+
+/*
  * This is used to make a non-authoritative connection using
  * a domain- socket as a connection point (as specified by the
  * connpath and optional connkey).

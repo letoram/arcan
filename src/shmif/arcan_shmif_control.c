@@ -34,6 +34,11 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 
+#ifndef COUNT_OF
+#define COUNT_OF(x) \
+	((sizeof(x)/sizeof(0[x])) / ((size_t)(!(sizeof(x) % sizeof(0[x])))))
+#endif
+
 /*
  * a bit clunky, but some scenarios that we want debug-builds but without the
  * debug logging spam for external projects, and others where we want to
@@ -168,21 +173,21 @@ const char* arcan_shmif_eventstr(arcan_event* aev, char* dbuf, size_t dsz)
 
 	int cat_ind = ilog2(aev->category);
 
-	if (cat_ind < 1 || cat_ind > sizeof(cat_xlt) / sizeof(cat_xlt[0]))
+	if (cat_ind < 1 || cat_ind > COUNT_OF(cat_xlt))
 		return NULL;
 
 	const char* evstr;
 	switch(aev->category){
 	case EVENT_TARGET:
-		evstr = aev->tgt.kind > sizeof(tgt_cmd_xlt)/sizeof(tgt_cmd_xlt[0])
+		evstr = aev->tgt.kind > COUNT_OF(tgt_cmd_xlt)
 			? "overflow/broken" : tgt_cmd_xlt[aev->ext.kind];
 	break;
 	case EVENT_FSRV:
-		evstr = aev->fsrv.kind > sizeof(fsrv_cmd_xlt)/sizeof(fsrv_cmd_xlt[0])
+		evstr = aev->fsrv.kind > COUNT_OF(fsrv_cmd_xlt)
 			? "" : fsrv_cmd_xlt[aev->fsrv.kind];
 	break;
 	case EVENT_EXTERNAL:
-		evstr = aev->ext.kind > sizeof(ext_cmd_xlt)/sizeof(ext_cmd_xlt[0])
+		evstr = aev->ext.kind > COUNT_OF(ext_cmd_xlt)
 			? "overflow/broken" : ext_cmd_xlt[aev->ext.kind];
 		break;
 	default:
@@ -889,7 +894,7 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey,
 	struct sockaddr_un dst = {
 		.sun_family = AF_UNIX
 	};
-	size_t lim = sizeof(dst.sun_path) / sizeof(dst.sun_path[0]);
+	size_t lim = COUNT_OF(dst.sun_path);
 
 	if (!connpath){
 		DLOG("arcan_shmif_connect(), missing connpath, giving up.\n");
@@ -1139,8 +1144,7 @@ static void* guard_thread(void* gs)
 			pthread_mutex_lock(&gstr->guard.synch);
 			*(gstr->guard.dms) = false;
 
-			for (size_t i = 0; i < sizeof(gstr->guard.semset) /
-					sizeof(gstr->guard.semset[0]); i++)
+			for (size_t i = 0; i < COUNT_OF(gstr->guard.semset); i++)
 				if (gstr->guard.semset[i])
 					arcan_sem_post(gstr->guard.semset[i]);
 
@@ -1772,8 +1776,8 @@ enum shmif_migrate_status arcan_shmif_migrate(
 	return SHMIF_MIGRATE_OK;
 }
 
-struct arcan_shmif_cont arcan_shmif_open(
-	enum ARCAN_SEGID type, enum ARCAN_FLAGS flags, struct arg_arr** outarg)
+struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
+	struct arg_arr** outarg, struct shmif_open_ext ext, size_t ext_sz)
 {
 	struct arcan_shmif_cont ret = {0};
 	file_handle dpipe;
@@ -1805,7 +1809,35 @@ struct arcan_shmif_cont arcan_shmif_open(
 	}
 
 	fcntl(dpipe, F_SETFD, FD_CLOEXEC);
-	ret = arcan_shmif_acquire(NULL, keyfile, type, flags);
+
+/* to differentiate between the calls that come from old shmif_open and
+ * the newer extended version, we add the little quirk that ext_sz is 0 */
+	if (ext_sz > 0){
+/* we want manual control over the REGISTER message */
+		ret = arcan_shmif_acquire(NULL, keyfile, 0, flags);
+		struct arcan_event ev = {
+			.category = EVENT_EXTERNAL,
+			.ext.kind = ARCAN_EVENT(REGISTER),
+			.ext.registr = {
+				.kind = ext.type,
+				.guid = {ext.guid[0], ext.guid[1]}
+			}
+		};
+		if (ext.title)
+			snprintf(ev.ext.registr.title,
+				COUNT_OF(ev.ext.registr.title), "%s", ext.title);
+		arcan_shmif_enqueue(&ret, &ev);
+
+		if (ext.ident){
+			ev.ext.kind = ARCAN_EVENT(IDENT);
+			snprintf((char*)ev.ext.message.data,
+				COUNT_OF(ev.ext.message.data), "%s", ext.ident);
+			arcan_shmif_enqueue(&ret, &ev);
+		}
+	}
+	else
+		ret = arcan_shmif_acquire(NULL, keyfile, ext.type, flags);
+
 	if (outarg){
 		if (resource)
 			*outarg = arg_unpack(resource);
@@ -1827,4 +1859,11 @@ fail:
 	if (flags & SHMIF_ACQUIRE_FATALFAIL)
 		exit(EXIT_FAILURE);
 	return ret;
+}
+
+struct arcan_shmif_cont arcan_shmif_open(
+	enum ARCAN_SEGID type, enum ARCAN_FLAGS flags, struct arg_arr** outarg)
+{
+	return arcan_shmif_open_ext(flags, outarg,
+		(struct shmif_open_ext){.type = type}, 0);
 }
