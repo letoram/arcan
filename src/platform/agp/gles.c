@@ -129,21 +129,21 @@ void agp_shader_source(enum SHADER_TYPES type,
 	const char** vert, const char** frag)
 {
 	switch(type){
-		case BASIC_2D:
-			case BASIC_3D:
-			*vert = defvprg;
-			*frag = deffprg;
-		break;
+	case BASIC_2D:
+		case BASIC_3D:
+		*vert = defvprg;
+		*frag = deffprg;
+	break;
 
-		case COLOR_2D:
-			*vert = defcvprg;
-			*frag = defcfprg;
-		break;
+	case COLOR_2D:
+		*vert = defcvprg;
+		*frag = defcfprg;
+	break;
 
-		default:
-			*vert = NULL;
-			*frag = NULL;
-		break;
+	default:
+		*vert = NULL;
+		*frag = NULL;
+	break;
 	}
 }
 
@@ -327,9 +327,9 @@ struct stream_meta agp_stream_prepare(struct storage_info_t* s,
 		agp_deactivate_vstore();
 	break;
 
+/* see notes in gl21.c */
 	case STREAM_HANDLE:
-		mout.state = platform_video_map_handle(
-			s, meta.handle); /* see notes in gl21.c */
+		mout.state = platform_video_map_handle(s, meta.handle);
 	break;
 	}
 

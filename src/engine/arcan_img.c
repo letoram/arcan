@@ -151,7 +151,7 @@ arcan_errc arcan_pkm_raw(const uint8_t* inbuf, size_t inbuf_sz,
 	meta->pwidth = pwidth;
 	meta->pheight = pheight;
 	meta->c_size = (pwidth * pheight) >> 1;
- 	*outw = width;
+	*outw = width;
 	*outh = height;
 
 	return ARCAN_OK;
@@ -184,18 +184,18 @@ arcan_errc arcan_dds_raw(const uint8_t* inbuf, size_t inbuf_sz,
 /* read DDSD */
 /* alloc outbuf as DDSIMAGEDATA */
 /* check FourCC from DDSD for supported formats;
-   FOURCC_DXT1,3,5 (factor 2, 4, 4 as CR)
-	 something weird with dwLinearSize?
-	 check mipmapcount (linearsize * factor from fourCC)
-	 now we have raw-data
-	 FOURCC DXT1 only gives RGB, no alpha channel
-	 DXT1 has a block size of 8, otherwise 16
-	 foreach mipmap level;
-			(1, 1 dimension if 0 0,
-			glCompressedTexImage(level, formatv, cw, ch, 0,
-				(cw+3)/4 * (ch+3)/4 * blocksize)
-			slide buffer offset with size
-			shift down width / height
+ * FOURCC_DXT1,3,5 (factor 2, 4, 4 as CR)
+ * something weird with dwLinearSize?
+ * check mipmapcount (linearsize * factor from fourCC)
+ * now we have raw-data
+ * FOURCC DXT1 only gives RGB, no alpha channel
+ * DXT1 has a block size of 8, otherwise 16
+ * foreach mipmap level;
+ *  (1, 1 dimension if 0 0,
+ *  glCompressedTexImage(level, formatv, cw, ch, 0,
+ *  (cw+3)/4 * (ch+3)/4 * blocksize)
+ *  slide buffer offset with size
+ *  shift down width / height
 */
 #else
 	return ARCAN_ERRC_UNSUPPORTED_FORMAT;
@@ -223,8 +223,8 @@ arcan_errc arcan_img_decode(const char* hint, char* inbuf, size_t inbuf_sz,
 	if (len >= 3){
 		if (strcasecmp(hint + (len - 3), "PNG") == 0 ||
 			strcasecmp(hint + (len - 3), "JPG") == 0 ||
-			(len == 4 && strcasecmp(hint + (len - 4), "JPEG") == 0))
-		{
+			(len == 4 && strcasecmp(hint + (len - 4), "JPEG") == 0)
+		){
 			int outf;
 			int w, h;
 /* three things to note here,

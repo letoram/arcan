@@ -81,7 +81,7 @@ arcan_targetid arcan_db_addtarget(struct arcan_dbh* dbh,
 	);
 
 arcan_configid arcan_db_addconfig(struct arcan_dbh* dbh,
-	arcan_targetid,	const char* identifier, const char* argv[],
+	arcan_targetid, const char* identifier, const char* argv[],
 	size_t nargs);
 #endif
 

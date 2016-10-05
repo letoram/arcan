@@ -121,7 +121,7 @@ char* arcan_expand_resource(const char* label, enum arcan_namespaces space)
 
 	char cbuf[ len_1 + len_2 + 2 ];
 	memcpy(cbuf, namespaces.paths[space_ind], len_2);
- 	cbuf[len_2] = '/';
+	cbuf[len_2] = '/';
 	memcpy(&cbuf[len_2 + (label[0] == '/' ? 0 : 1)], label, len_1+1);
 
 	return strdup(cbuf);

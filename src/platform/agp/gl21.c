@@ -180,7 +180,7 @@ static void pbo_stream(struct storage_info_t* s,
 	av_pixel* obuf = buf;
 
 /* note, explicitly replace with a simd unaligned version */
- 	if ( ((uintptr_t)ptr % 16) == 0 && ((uintptr_t)buf % 16) == 0	)
+	if ( ((uintptr_t)ptr % 16) == 0 && ((uintptr_t)buf % 16) == 0	)
 		memcpy(ptr, buf, ntc * sizeof(av_pixel));
 	else
 		for (size_t i = 0; i < ntc; i++)
@@ -192,7 +192,7 @@ static void pbo_stream(struct storage_info_t* s,
 		ptr = s->vinf.text.raw;
 		s->update_ts = arcan_timemillis();
 
- 		if ( ((uintptr_t)ptr % 16) == 0 && ((uintptr_t)buf % 16) == 0	)
+		if ( ((uintptr_t)ptr % 16) == 0 && ((uintptr_t)buf % 16) == 0	)
 			memcpy(ptr, buf, ntc * sizeof(av_pixel));
 		else
 			for (size_t i = 0; i < ntc; i++)
@@ -202,7 +202,7 @@ static void pbo_stream(struct storage_info_t* s,
 	glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
 
 	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, s->w, s->h,
-			GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, 0);
+		GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, 0);
 
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 	agp_deactivate_vstore();
@@ -259,8 +259,8 @@ static inline void setup_unpack_pbo(struct storage_info_t* s, void* buf)
 	agp_activate_vstore(s);
 	glGenBuffers(1, &s->vinf.text.wid);
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, s->vinf.text.wid);
-		glBufferData(GL_PIXEL_UNPACK_BUFFER,
-			s->w * s->h * sizeof(av_pixel) , buf, GL_STREAM_DRAW);
+	glBufferData(GL_PIXEL_UNPACK_BUFFER,
+		s->w * s->h * sizeof(av_pixel) , buf, GL_STREAM_DRAW);
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 	agp_deactivate_vstore();
 }
@@ -415,8 +415,7 @@ void agp_request_readback(struct storage_info_t* store)
 
 	glBindTexture(GL_TEXTURE_2D, store->vinf.text.glid);
 	glBindBuffer(GL_PIXEL_PACK_BUFFER, store->vinf.text.rid);
-		glGetTexImage(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT,
-			GL_UNSIGNED_BYTE, NULL);
+	glGetTexImage(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, NULL);
 	glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 	glBindTexture(GL_TEXTURE_2D, 0);
 }

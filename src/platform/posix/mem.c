@@ -99,7 +99,7 @@ struct mempool_meta {
  * ARCAN_MEM_MODELDATA =>
  *  - similar to VBUFFER but smaller allocation blocks
  *
- *	ARCAN_MEM_THREADCTX =>
+ * ARCAN_MEM_THREADCTX =>
  *   - few allocations (should correlate to number of threads)
  *   - assumed shorter life-span
  *   - guard pages separate each allocation

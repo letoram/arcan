@@ -55,7 +55,7 @@ static bool alloc_fbo(struct agp_rendertarget* dst, bool retry)
 
 /* need a Z buffer in the offscreen rendering but don't want
  * bo store it, so setup a renderbuffer */
-		if (dst->mode > RENDERTARGET_COLOR) {
+		if (dst->mode > RENDERTARGET_COLOR){
 			glGenRenderbuffers(1, &dst->depth);
 
 /* could use GL_DEPTH_COMPONENT only if we'd know that there
@@ -263,15 +263,15 @@ void agp_rendertarget_clear()
 void agp_pipeline_hint(enum pipeline_mode mode)
 {
 	switch (mode){
-		case PIPELINE_2D:
-			glDisable(GL_CULL_FACE);
-			glDisable(GL_DEPTH_TEST);
-		break;
+	case PIPELINE_2D:
+		glDisable(GL_CULL_FACE);
+		glDisable(GL_DEPTH_TEST);
+	break;
 
-		case PIPELINE_3D:
-			glEnable(GL_DEPTH_TEST);
-			glClear(GL_DEPTH_BUFFER_BIT);
-		break;
+	case PIPELINE_3D:
+		glEnable(GL_DEPTH_TEST);
+		glClear(GL_DEPTH_BUFFER_BIT);
+	break;
 	}
 }
 
@@ -443,12 +443,12 @@ void agp_disable_stencil()
 	glDisable(GL_STENCIL_TEST);
 }
 
-static float ident[] =
- {1.0, 0.0, 0.0, 0.0,
-  0.0, 1.0, 0.0, 0.0,
-  0.0, 0.0, 1.0, 0.0,
-  0.0, 0.0, 0.0, 1.0};
-
+static float ident[] = {
+	1.0, 0.0, 0.0, 0.0,
+	0.0, 1.0, 0.0, 0.0,
+	0.0, 0.0, 1.0, 0.0,
+	0.0, 0.0, 0.0, 1.0
+};
 
 void agp_blendstate(enum arcan_blendfunc mode)
 {
@@ -486,7 +486,7 @@ void agp_draw_vobj(float x1, float y1, float x2, float y2,
 		x1, y1,
 		x2, y1,
 		x2, y2,
-	 	x1, y2
+		x1, y2
 	};
 	bool settex = false;
 

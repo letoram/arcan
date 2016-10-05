@@ -319,7 +319,7 @@ arcan_errc platform_event_analogstate(int devid, int axisid,
 	int* lower_bound, int* upper_bound, int* deadzone,
 	int* kernel_size, enum ARCAN_ANALOGFILTER_KIND* mode)
 {
-    return ARCAN_ERRC_NO_SUCH_OBJECT;
+	return ARCAN_ERRC_NO_SUCH_OBJECT;
 }
 
 void platform_event_analogall(bool enable, bool mouse)
@@ -598,7 +598,6 @@ void platform_event_process(arcan_evctx* ctx)
 				}
 		}
 	}
-
 }
 
 void platform_event_samplebase(int devid, float xyz[3])

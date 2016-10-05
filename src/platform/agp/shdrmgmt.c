@@ -359,7 +359,7 @@ agp_shader_id agp_shader_build(const char* tag, const char* geom,
 		cur->locations[i] = -1;
 
 	if (build_shader(tag, &cur->prg_container, &cur->obj_vertex,
-			&cur->obj_fragment, vert, frag) == false)
+		&cur->obj_fragment, vert, frag) == false)
 		return ARCAN_EID;
 
 	cur->label    = strdup(tag);
@@ -378,7 +378,7 @@ agp_shader_id agp_shader_build(const char* tag, const char* geom,
 		cur->locations[i] = glGetUniformLocation(cur->prg_container, symtbl[i]);
 #ifdef SHADER_DEBUG
 		if(cur->locations[i] != -1)
-				arcan_warning("agp_shader_build(%s)(%d), "
+			arcan_warning("agp_shader_build(%s)(%d), "
 				"resolving uniform: %s to %i\n", tag, i, symtbl[i], cur->locations[i]);
 #endif
 	}

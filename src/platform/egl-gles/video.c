@@ -80,12 +80,12 @@ static bool alloc_bcm_wnd(uint16_t* w, uint16_t* h)
 	DISPMANX_DISPLAY_HANDLE_T disp;
 	DISPMANX_UPDATE_HANDLE_T upd;
 
-  uint32_t dw;
-  uint32_t dh;
+	uint32_t dw;
+	uint32_t dh;
 
-  if (graphics_get_display_size(0, &dw, &dh) < 0){
+	if (graphics_get_display_size(0, &dw, &dh) < 0){
 		return false;
-  }
+	}
 
 	VC_RECT_T ddst = {
 		.x = 0,
@@ -129,7 +129,8 @@ static bool alloc_bcm_wnd(uint16_t* w, uint16_t* h)
 		DISPMANX_PROTECTION_NONE,
 		&av,
 		0 /* clamp */,
-		DISPMANX_NO_ROTATE);
+		DISPMANX_NO_ROTATE
+	);
 
 	static EGL_DISPMANX_WINDOW_T wnd;
 	wnd.element = elem;
@@ -407,7 +408,7 @@ void PLATFORM_SYMBOL(_video_shutdown) ()
 {
 	eglDestroyContext(egl.disp, egl.ctx);
 	eglDestroySurface(egl.disp, egl.surf);
-  eglTerminate(egl.disp);
+	eglTerminate(egl.disp);
 }
 
 void PLATFORM_SYMBOL(_video_minimize) () {}

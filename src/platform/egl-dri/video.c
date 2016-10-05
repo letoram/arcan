@@ -1062,7 +1062,7 @@ static int setup_node(struct dev_node* node, const char* path, int fd)
  * setup, comes when more of the stack is up and running
  */
 	node->context = eglCreateContext(node->display, node->config,
-			EGL_NO_CONTEXT, context_attribs);
+		EGL_NO_CONTEXT, context_attribs);
 	if (node->context == NULL) {
 		arcan_warning("egl-dri() -- couldn't create a context.\n");
 		goto reset_node;

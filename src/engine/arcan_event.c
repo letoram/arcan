@@ -220,9 +220,9 @@ int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src)
 
 static inline int queue_used(arcan_evctx* dq)
 {
-int rv = *(dq->front) > *(dq->back) ? dq->eventbuf_sz -
-*(dq->front) + *(dq->back) : *(dq->back) - *(dq->front);
-return rv;
+	int rv = *(dq->front) > *(dq->back) ? dq->eventbuf_sz -
+	*(dq->front) + *(dq->back) : *(dq->back) - *(dq->front);
+	return rv;
 }
 
 void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
@@ -767,5 +767,5 @@ void arcan_led_added(int devid, int refdev, const char* label)
 extern void platform_device_lock(int lockdev, bool lockstate);
 void arcan_device_lock(int lockdev, bool lockstate)
 {
-    platform_device_lock(lockdev, lockstate);
+	platform_device_lock(lockdev, lockstate);
 }

@@ -485,32 +485,30 @@ arcan_errc arcan_audio_rebuild(arcan_aobj_id id)
 {
 	arcan_aobj* aobj = arcan_audio_getobj(id);
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+	if (!aobj || aobj->alid == AL_NONE)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
-	if (aobj && aobj->alid != AL_NONE) {
-		alSourceStop(aobj->alid);
-		_wrap_alError(NULL, "audio_rebuild(stop)");
+	alSourceStop(aobj->alid);
+	_wrap_alError(NULL, "audio_rebuild(stop)");
 
-		int n;
-		while(alGetSourcei(aobj->alid, AL_BUFFERS_PROCESSED, &n), n > 0){
-			unsigned buffer = 0;
-			alSourceUnqueueBuffers(aobj->alid, 1, &buffer);
-			int bufferind = find_bufferind(aobj, buffer);
-			if (bufferind >= 0){
-				aobj->streambufmask[bufferind] = false;
-				aobj->used--;
-			}
+	int n;
+	while(alGetSourcei(aobj->alid, AL_BUFFERS_PROCESSED, &n), n > 0){
+		unsigned buffer = 0;
+		alSourceUnqueueBuffers(aobj->alid, 1, &buffer);
+		int bufferind = find_bufferind(aobj, buffer);
+		if (bufferind >= 0){
+			aobj->streambufmask[bufferind] = false;
+			aobj->used--;
 		}
-
-		alDeleteSources(1, &aobj->alid);
-		alGenSources(1, &aobj->alid);
-		alSourcef(aobj->alid, AL_GAIN, aobj->gain);
-
-		_wrap_alError(NULL, "audio_rebuild(recreate)");
-
-		rv = ARCAN_OK;
 	}
 
-	return rv;
+	alDeleteSources(1, &aobj->alid);
+	alGenSources(1, &aobj->alid);
+	alSourcef(aobj->alid, AL_GAIN, aobj->gain);
+
+	_wrap_alError(NULL, "audio_rebuild(recreate)");
+
+	return ARCAN_OK;
 }
 
 enum aobj_kind arcan_audio_kind(arcan_aobj_id id)
@@ -562,10 +560,12 @@ arcan_errc arcan_audio_pause(arcan_aobj_id id)
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 
 	if (dobj && dobj->alid != AL_NONE) {
-/*		int processed;
-		alGetSourcei(dobj->alid, AL_BUFFERS_PROCESSED, &processed);
-		alSourceUnqueueBuffers(dobj->alid, 1, (unsigned int*) &processed);
-		dobj->used -= processed; */
+/*
+ * int processed;
+ * alGetSourcei(dobj->alid, AL_BUFFERS_PROCESSED, &processed);
+ * alSourceUnqueueBuffers(dobj->alid, 1, (unsigned int*) &processed);
+ * dobj->used -= processed;
+ */
 		alSourceStop(dobj->alid);
 		_wrap_alError(dobj, "audio_pause(get/unqueue/stop)");
 		dobj->active = false;
@@ -774,7 +774,7 @@ static void astream_refill(arcan_aobj* current)
 				current->used++;
 			}
 			else if (rv == ARCAN_ERRC_NOTREADY)
-        goto playback;
+				goto playback;
 			else
 				goto cleanup;
 		}
@@ -825,7 +825,7 @@ cleanup:
 void arcan_aid_refresh(arcan_aobj_id aid)
 {
 	struct arcan_aobj* obj = arcan_audio_getobj(aid);
- 	if (obj)
+	if (obj)
 		astream_refill(obj);
 }
 

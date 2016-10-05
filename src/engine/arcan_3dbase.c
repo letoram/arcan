@@ -84,8 +84,8 @@ typedef struct {
 } arcan_3dmodel;
 
 static void build_hplane(point min, point max, point step,
-						 float** verts, unsigned** indices, float** txcos,
-						 size_t* nverts, size_t* nindices)
+	float** verts, unsigned** indices, float** txcos,
+	size_t* nverts, size_t* nindices)
 {
 	point delta = {
 		.x = max.x - min.x,
@@ -118,18 +118,18 @@ static void build_hplane(point min, point max, point step,
 	*indices = arcan_alloc_mem(sizeof(unsigned) * (*nverts) * 3 * 2,
 			ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_PAGE);
 
-		for (size_t x = 0; x < nx-1; x++)
-			for (size_t z = 0; z < nz-1; z++){
-				(*indices)[vofs++] = GETVERT(x, z);
-				(*indices)[vofs++] = GETVERT(x, z+1);
-				(*indices)[vofs++] = GETVERT(x+1, z+1);
-				tofs++;
+	for (size_t x = 0; x < nx-1; x++)
+		for (size_t z = 0; z < nz-1; z++){
+			(*indices)[vofs++] = GETVERT(x, z);
+			(*indices)[vofs++] = GETVERT(x, z+1);
+			(*indices)[vofs++] = GETVERT(x+1, z+1);
+			tofs++;
 
-				(*indices)[vofs++] = GETVERT(x, z);
-				(*indices)[vofs++] = GETVERT(x+1, z+1);
-				(*indices)[vofs++] = GETVERT(x+1, z);
-				tofs++;
-			}
+			(*indices)[vofs++] = GETVERT(x, z);
+			(*indices)[vofs++] = GETVERT(x+1, z+1);
+			(*indices)[vofs++] = GETVERT(x+1, z);
+			tofs++;
+		}
 
 	*nindices = vofs;
 }
@@ -583,24 +583,24 @@ arcan_vobj_id arcan_3d_buildbox(float w, float h, float d, size_t nmaps)
 	newmodel->geometry->store.n_triangles = 2 * 6;
 
 	float verts[] = {
- 		 w, h, d,  -w,  h,  d,  -w, -h,  d,   w, -h,  d,
-	 	 w, h, d,   w, -h,  d,   w, -h, -d,   w,  h, -d,
-	 	 w, h, d,   w,  h, -d,  -w,  h, -d,  -w,  h,  d,
+		 w, h, d,  -w,  h,  d,  -w, -h,  d,   w, -h,  d,
+		 w, h, d,   w, -h,  d,   w, -h, -d,   w,  h, -d,
+		 w, h, d,   w,  h, -d,  -w,  h, -d,  -w,  h,  d,
 		-w, h, d,  -w,  h, -d,  -w, -h, -d,  -w, -h,  d,
-	  -w,-h,-d,   w, -h, -d,   w, -h,  d,  -w, -h,  d,
-	   w,-h,-d,  -w, -h, -d,  -w,  h, -d,   w,  h, -d
+		-w,-h,-d,   w, -h, -d,   w, -h,  d,  -w, -h,  d,
+		 w,-h,-d,  -w, -h, -d,  -w,  h, -d,   w,  h, -d
 	};
 	newmodel->geometry->store.verts = arcan_alloc_fillmem(verts, sizeof(verts),
 		ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_SIMD);
 	newmodel->geometry->store.n_vertices = sizeof(verts) / sizeof(verts[0]) / 3;
 
 	float normals[] = {
-		0, 0, 1,  0, 0, 1,  0, 0, 1,  0, 0, 1,
-		1, 0, 0,  1, 0, 0,  1, 0, 0,  1, 0, 0,
-		0, 1, 0,  0, 1, 0,  0, 1, 0,  0, 1, 0,
+		 0, 0, 1,  0, 0, 1,  0, 0, 1,  0, 0, 1,
+		 1, 0, 0,  1, 0, 0,  1, 0, 0,  1, 0, 0,
+		 0, 1, 0,  0, 1, 0,  0, 1, 0,  0, 1, 0,
 		-1, 0, 0,-1, 0, 0, -1, 0, 0, -1, 0, 0,
-		0,-1, 0,  0,-1, 0,  0,-1, 0,  0,-1, 0,
-		0, 0,-1,  0, 0,-1,  0, 0,-1,  0, 0,-1
+		 0,-1, 0,  0,-1, 0,  0,-1, 0,  0,-1, 0,
+		 0, 0,-1,  0, 0,-1,  0, 0,-1,  0, 0,-1
 	};
 	newmodel->geometry->store.normals = arcan_alloc_fillmem(
 		normals, sizeof(normals), ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_SIMD);
@@ -642,7 +642,8 @@ arcan_vobj_id arcan_3d_buildbox(float w, float h, float d, size_t nmaps)
 }
 
 arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx,float maxz,
-	float y, float wdens, float ddens, size_t nmaps){
+	float y, float wdens, float ddens, size_t nmaps)
+{
 	vfunc_state state = {.tag = ARCAN_TAG_3DOBJ};
 	arcan_vobj_id rv = ARCAN_EID;
 	img_cons empty = {0};
@@ -949,7 +950,7 @@ arcan_errc arcan_3d_infinitemodel(arcan_vobj_id id, bool state)
 {
 	arcan_vobject* vobj = arcan_video_getobject(id);
 	if (!vobj)
-	 return ARCAN_ERRC_NO_SUCH_OBJECT;
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
 	if (vobj->feed.state.tag != ARCAN_TAG_3DOBJ)
 		return ARCAN_ERRC_UNACCEPTED_STATE;

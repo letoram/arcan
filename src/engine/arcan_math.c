@@ -69,11 +69,12 @@ void translate_matrix(float* m, float xt, float yt, float zt)
 	m[15] = m[3] * xt + m[7] * yt + m[11]* zt + m[15];
 }
 
-static float midentity[] =
- {1.0, 0.0, 0.0, 0.0,
-  0.0, 1.0, 0.0, 0.0,
-  0.0, 0.0, 1.0, 0.0,
-  0.0, 0.0, 0.0, 1.0};
+static float midentity[] = {
+	1.0, 0.0, 0.0, 0.0,
+	0.0, 1.0, 0.0, 0.0,
+	0.0, 0.0, 1.0, 0.0,
+	0.0, 0.0, 0.0, 1.0
+};
 
 void identity_matrix(float* m)
 {
@@ -156,10 +157,8 @@ void build_projection_matrix(float* m,
 }
 
 int project_matrix(float objx, float objy, float objz,
-		   const float modelMatrix[16],
-		   const float projMatrix[16],
-		   const int viewport[4],
-		   float *winx, float *winy, float *winz)
+			const float modelMatrix[16], const float projMatrix[16],
+			const int viewport[4], float *winx, float *winy, float *winz)
 {
 	_Alignas(16) float in[4];
 	_Alignas(16) float out[4];
@@ -200,7 +199,7 @@ int pinpoly(int nvert, float *vertx, float *verty, float testx, float testy)
 	for (i = 0, j = nvert-1; i < nvert; j = i++) {
 		if ( ((verty[i]>testy) != (verty[j]>testy)) &&
 			(testx < (vertx[j]-vertx[i]) * (testy-verty[i]) /
-			 (verty[j]-verty[i]) + vertx[i]) )
+			(verty[j]-verty[i]) + vertx[i]) )
 			c = !c;
 	}
 	return c;
@@ -209,7 +208,7 @@ int pinpoly(int nvert, float *vertx, float *verty, float testx, float testy)
 vector build_vect_polar(const float phi, const float theta)
 {
 	vector res = {.x = sinf(phi) * cosf(theta),
-        .y = sinf(phi) * sinf(theta), .z = sinf(phi)};
+		.y = sinf(phi) * sinf(theta), .z = sinf(phi)};
 	return res;
 }
 
@@ -307,7 +306,7 @@ vector norm_vector(vector invect){
 quat inv_quat(quat src)
 {
 	quat res = {.x = -src.x, .y = -src.y, .z = -src.z, .w = src.w };
-    return res;
+	return res;
 }
 
 float len_quat(quat src)
@@ -421,7 +420,7 @@ vector interp_3d_linear(vector sv, vector ev, float fract)
 {
 	vector res;
 	res.x = sv.x + (ev.x - sv.x) * fract;
-	res.y	= sv.y + (ev.y - sv.y) * fract;
+	res.y = sv.y + (ev.y - sv.y) * fract;
 	res.z = sv.z + (ev.z - sv.z) * fract;
 	return res;
 }
@@ -530,7 +529,8 @@ static inline quat slerp_quatfl(quat a, quat b, float fact, bool r360)
 	if (sth > 0.005f){
 		weight_a = sin( (1.0f - fact) * th) / sth;
 		weight_b = sin( fact * th   )       / sth;
-	} else {
+	}
+	else {
 /* small steps, only linear */
 		weight_a = 1.0f - fact;
 		weight_b = fact;
@@ -607,7 +607,7 @@ float* matr_quatf(quat a, float* dmatr)
 }
 
 /*
- * Plocked from MESA
+ * Plucked from MESA
  */
 bool matr_invf(const float* restrict m, float* restrict out)
 {
@@ -616,19 +616,19 @@ bool matr_invf(const float* restrict m, float* restrict out)
 
 	inv[0] =
 		m[5]  * m[10] * m[15] -
- 		m[5]  * m[11] * m[14] -
+		m[5]  * m[11] * m[14] -
 		m[9]  * m[6]  * m[15] +
 		m[9]  * m[7]  * m[14] +
 		m[13] * m[6]  * m[11] -
 		m[13] * m[7]  * m[10];
 
 	inv[4] =
-	 -m[4]  * m[10] * m[15] +
-		m[4]  * m[11] * m[14] +
-		m[8]  * m[6]  * m[15] -
-		m[8]  * m[7]  * m[14] -
-		m[12] * m[6]  * m[11] +
-		m[12] * m[7]  * m[10];
+		-m[4] * m[10] * m[15] +
+		 m[4]  * m[11] * m[14] +
+		 m[8]  * m[6]  * m[15] -
+		 m[8]  * m[7]  * m[14] -
+		 m[12] * m[6]  * m[11] +
+		 m[12] * m[7]  * m[10];
 
 	inv[8] =
 		m[4]  * m[9]  * m[15] -
@@ -640,7 +640,7 @@ bool matr_invf(const float* restrict m, float* restrict out)
 
 	inv[12] =
 		-m[4]  * m[9]  * m[14] +
- 		 m[4]  * m[10] * m[13] +
+		 m[4]  * m[10] * m[13] +
 		 m[8]  * m[5]  * m[14] -
 		 m[8]  * m[6]  * m[13] -
 		 m[12] * m[5]  * m[10] +
@@ -648,11 +648,11 @@ bool matr_invf(const float* restrict m, float* restrict out)
 
 	inv[1] =
 		-m[1] * m[10] * m[15] +
-		m[1]  * m[11] * m[14] +
-		m[9]  * m[2]  * m[15] -
-		m[9]  * m[3]  * m[14] -
-		m[13] * m[2]  * m[11] +
-		m[13] * m[3]  * m[10];
+		 m[1]  * m[11] * m[14] +
+		 m[9]  * m[2]  * m[15] -
+		 m[9]  * m[3]  * m[14] -
+		 m[13] * m[2]  * m[11] +
+		 m[13] * m[3]  * m[10];
 
 	inv[5] =
 		m[0]  * m[10] * m[15] -
@@ -663,12 +663,12 @@ bool matr_invf(const float* restrict m, float* restrict out)
 		m[12] * m[3]  * m[10];
 
 	inv[9] =
-	 -m[0]  * m[9]  * m[15] +
-		m[0]  * m[11] * m[13] +
-		m[8]  * m[1]  * m[15] -
-		m[8]  * m[3]  * m[13] -
-		m[12] * m[1]  * m[11] +
-		m[12] * m[3]  * m[9];
+		-m[0]  * m[9]  * m[15] +
+		 m[0]  * m[11] * m[13] +
+		 m[8]  * m[1]  * m[15] -
+		 m[8]  * m[3]  * m[13] -
+		 m[12] * m[1]  * m[11] +
+		 m[12] * m[3]  * m[9];
 
 	inv[13] =
 		m[0]  * m[9] * m[14] -
@@ -687,12 +687,12 @@ bool matr_invf(const float* restrict m, float* restrict out)
 		m[13] * m[3] * m[6];
 
 	inv[6] =
-	 -m[0]  * m[6] * m[15] +
-		m[0]  * m[7] * m[14] +
-	  m[4]  * m[2] * m[15] -
-		m[4]  * m[3] * m[14] -
-		m[12] * m[2] * m[7] +
-		m[12] * m[3] * m[6];
+		-m[0]  * m[6] * m[15] +
+		 m[0]  * m[7] * m[14] +
+		 m[4]  * m[2] * m[15] -
+		 m[4]  * m[3] * m[14] -
+		 m[12] * m[2] * m[7] +
+		 m[12] * m[3] * m[6];
 
 	inv[10] =
 		m[0]  * m[5] * m[15] -
@@ -704,19 +704,19 @@ bool matr_invf(const float* restrict m, float* restrict out)
 
 	inv[14] =
 		-m[0] * m[5] * m[14] +
-		m[0]  * m[6] * m[13] +
-		m[4]  * m[1] * m[14] -
-		m[4]  * m[2] * m[13] -
-		m[12] * m[1] * m[6] +
-		m[12] * m[2] * m[5];
+		 m[0]  * m[6] * m[13] +
+		 m[4]  * m[1] * m[14] -
+		 m[4]  * m[2] * m[13] -
+		 m[12] * m[1] * m[6] +
+		 m[12] * m[2] * m[5];
 
 	inv[3] =
-	 -m[1] * m[6] * m[11] +
-		m[1] * m[7] * m[10] +
-		m[5] * m[2] * m[11] -
-		m[5] * m[3] * m[10] -
- 		m[9] * m[2] * m[7] +
-		m[9] * m[3] * m[6];
+		-m[1] * m[6] * m[11] +
+		 m[1] * m[7] * m[10] +
+		 m[5] * m[2] * m[11] -
+		 m[5] * m[3] * m[10] -
+		 m[9] * m[2] * m[7] +
+		 m[9] * m[3] * m[6];
 
 	inv[7] =
 		m[0] * m[6] * m[11] -
@@ -728,11 +728,11 @@ bool matr_invf(const float* restrict m, float* restrict out)
 
 	inv[11] =
 		-m[0] * m[5] * m[11] +
-		m[0] * m[7] * m[9] +
-		m[4] * m[1] * m[11] -
-		m[4] * m[3] * m[9] -
-		m[8] * m[1] * m[7] +
-		m[8] * m[3] * m[5];
+		 m[0] * m[7] * m[9] +
+		 m[4] * m[1] * m[11] -
+		 m[4] * m[3] * m[9] -
+		 m[8] * m[1] * m[7] +
+		 m[8] * m[3] * m[5];
 
 	inv[15] =
 		m[0] * m[5] * m[10] -
@@ -836,7 +836,7 @@ bool frustum_point(const float frustum[6][4],
 {
 	for (int i = 0; i < 6; i++)
 		if (frustum[i][0] * x +
-			  frustum[i][1] * y +
+				frustum[i][1] * y +
 				frustum[i][2] * z +
 				frustum[i][3] <= 0.0f)
 			return false;

@@ -386,16 +386,16 @@ void arcan_led_shutdown()
 		if ((ctrl_mask & (1 << i)) > 0){
 			n_controllers--;
 			switch(controllers[i].type){
-				case PACDRIVE:
+			case PACDRIVE:
 #ifdef USB_SUPPORT
-					hid_close(controllers[i].handle);
+				hid_close(controllers[i].handle);
 #endif
-				break;
-				case ARCAN_LEDCTRL:{
-					write(controllers[i].fd, (char[]){'o', '\0'}, 2);
-					close(controllers[i].fd);
-				}
-				break;
+			break;
+			case ARCAN_LEDCTRL:{
+				write(controllers[i].fd, (char[]){'o', '\0'}, 2);
+				close(controllers[i].fd);
+			}
+			break;
 			}
 		}
 

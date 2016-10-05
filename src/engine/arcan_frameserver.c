@@ -385,9 +385,9 @@ enum arcan_ffunc_rv arcan_frameserver_emptyframe FFUNC_HEAD
 		case FFUNC_POLL:
 			if (tgt->shm.ptr->resized){
 				tick_control(tgt, false);
-        if (tgt->shm.ptr && tgt->shm.ptr->vready){
+				if (tgt->shm.ptr && tgt->shm.ptr->vready){
 					arcan_frameserver_leave();
-        	return FRV_GOTFRAME;
+					return FRV_GOTFRAME;
 				}
 			}
 
@@ -539,7 +539,7 @@ enum arcan_ffunc_rv arcan_frameserver_feedcopy FFUNC_HEAD
  * wants to resize segments used for recording */
 		if (!arcan_frameserver_control_chld(src)){
 			arcan_frameserver_leave();
-   		return FRV_NOFRAME;
+			return FRV_NOFRAME;
 		}
 
 /* only push an update when the target is ready and the
