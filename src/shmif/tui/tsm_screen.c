@@ -148,6 +148,14 @@ static void inc_age(struct tsm_screen *con)
 	}
 }
 
+void tsm_screen_inc_age(struct tsm_screen *con)
+{
+	if (!++con->age_cnt) {
+		con->age_reset = 1;
+		++con->age_cnt;
+	}
+}
+
 static struct cell *get_cursor_cell(struct tsm_screen *con)
 {
 	unsigned int cur_x, cur_y;

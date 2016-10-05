@@ -63,6 +63,8 @@
  *     so that it can fit into callback driven software without getting a
  *     'nested callbacks' mess.
  *
+ * [ ] linenoise- integration
+ *
  * [ ] abstract component helpers for things like popup-select style windows
  *
  * [ ] Normal "Curses" rendering- backend to not break term- compatibility
@@ -89,13 +91,27 @@ struct tui_settings {
 	int hint;
 	size_t font_sz;
 	size_t cell_w, cell_h;
+
+/* either using strings or pre-opened fonts, the latter case is when*/
 	const char* font_fn;
 	const char* font_fb_fn;
+	int font_fds[2];
 	enum tui_cursors cursor;
 	bool mouse_fwd;
 };
 
 struct tui_context;
+
+/*
+ * match the labelhint structure in shmif_event
+ */
+struct tui_labelent {
+	char label[16];
+	char initial[16];
+	char descr[58];
+	uint16_t subb;
+	uint8_t idatatype;
+};
 
 /*
  * fill in the events you want to handle, will be dispaced during process
@@ -107,14 +123,32 @@ struct tui_cbcfg {
 	void* tag;
 
 /*
- * pointer to NULL- terminated list of input labels that should be
- * announced on connection setup
+ * Called when the label-list has been invalidated and during first
+ * return true if [dstlbl] was successfully set.
+ * [lang/country] correspond to the last known GEOHINT.
+ * if NULL, that information is not used.
  */
-	const char** label_table;
+	bool (*query_label)(struct tui_context*,
+		size_t ind, const char* country, const char* lang,
+		struct tui_labelent* dstlbl);
+
 /*
- * an explicit label- input has been sent (rising edge only)
+ * an explicit label- input has been sent,
+ * return true if the label is consumed (no further processing)
  */
-	void (*input_label)(struct tui_context*, const char* label, void*);
+	bool (*input_label)(struct tui_context*,
+		const char* label, bool active, void*);
+
+/*
+ * an explicit analog- label input has been sent,
+ * [n] number of samples in [smpls]
+ * [rel] set if relative some previous or device/datatype specific pos
+ * [datatype] see shmif_event.h, to get type
+ */
+	bool (*input_alabel)(struct tui_context*,
+		const char* label, const int16_t* smpls,
+		size_t n, bool rel, uint8_t datatype, void*
+	);
 
 /*
  * mouse motion, may not always be enabled depending on mouse- management
@@ -236,9 +270,13 @@ struct tui_cbcfg {
 struct tui_settings arcan_tui_defaults();
 
 /*
- * use the contents of arg_arr to modify the defaults in tui_settings
+ * Use the contents of [arg_arr] and/or [tui_model:may be NULL] to modify the
+ * defaults in tui_settings. This might duplicate descriptors into the target
+ * settings structures that will be taken control of by the tui_setup call.
+ * Manually cleanup if _apply_arg is not forwarded to _tui_setup.
  */
-void arcan_tui_apply_arg(struct tui_settings*, struct arg_arr*);
+void arcan_tui_apply_arg(struct tui_settings*,
+	struct arg_arr*, struct tui_context*);
 
 /*
  * takes control over an existing connection, it is imperative that no ident-
@@ -271,8 +309,8 @@ enum tui_process_errc {
  * returns a bitmask with the active descriptors, always provide and
  * check [errc], if:
  *  TUI_ERRC_BAD_ARG - missing contexts/fdset or too many contexts/sets
- *  TUI_ERRC_BAD_FD - then the mask will show bad descriptors
- *  TUI_ERRC_BAD_CTX - then the mask will show bad contexts
+ *  TUI_ERRC_BAD_FD - then the .bad field will show bad descriptors
+ *  TUI_ERRC_BAD_CTX - then the .ok field will show bad contexts
  */
 struct tui_process_res {
 	uint32_t ok;
@@ -356,7 +394,7 @@ void arcan_tui_ident(struct tui_context*, const char* ident);
  * Send a new request for a subwindow with life-span that depends on
  * the main connection. The subwindows don't survive migration, if that
  * is needed for the data that should be contained -- setup a new full
- * connection.
+ * connection. May be needed to inherit font settings to subsegments.
  */
 void arcan_tui_request_subwnd(struct tui_context*, uint32_t id);
 
@@ -365,6 +403,17 @@ void arcan_tui_request_subwnd(struct tui_context*, uint32_t id);
 void arcan_tui_erase_screen(struct tui_context*, bool protect);
 void arcan_tui_erase_region(struct tui_context*,
 	size_t x1, size_t y1, size_t x2, size_t y2, bool protect);
+void arcan_tui_erase_sb(struct tui_context*);
+
+/*
+ * helpers that match erase_region + invalidate + cursporpos
+ */
+void arcan_tui_erase_cursor_to_screen(struct tui_context*, bool protect);
+void arcan_tui_erase_screen_to_cursor(struct tui_context*, bool protect);
+void arcan_tui_erase_cursor_to_end(struct tui_context*, bool protect);
+void arcan_tui_erase_home_to_cursor(struct tui_context*, bool protect);
+void arcan_tui_erase_current_line(struct tui_context*, bool protect);
+void arcan_tui_erase_chars(struct tui_context*, size_t n);
 
 /*
  * insert a new UCS4* (tsm uses an internal format with a hash-table for
@@ -385,6 +434,31 @@ bool arcan_tui_writeu8(struct tui_context*,
  * retrieve the current cursor position into the [x:col] and [y:row] field
  */
 void arcan_tui_cursorpos(struct tui_context*, size_t* x, size_t* y);
+
+/*
+ * lock input handling and switch to a libreadline (actually linenoise)
+ * style management, will trigger callbacks on completion- and cancel- when
+ * the control is returned.
+ *
+ * completion is called (line == NULL if error or user cancelled, otherwise
+ * callee assumes responsibility of heap-allocated line).
+ *
+ * hints is
+ */
+struct tui_completions {
+	size_t len;
+	char** cvec;
+};
+
+/*
+void arcan_tui_readline(struct tui_context*,
+	void(*completion)(struct tui_context*, const char* line),
+	size_t n_lines,
+	size_t max
+);
+ */
+/* hints, freehints, completion */
+
 
 /*
  * reset state-tracking, scrollback buffers, ...

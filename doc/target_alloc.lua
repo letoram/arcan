@@ -39,6 +39,9 @@
 -- invoke target_alloc again with the same key from within the callback handler.
 -- @note: for honoring explicit requests from a frameserver regarding new
 -- subsegments, use the accept_target function.
+-- @note: When a 'connected' event has been received, many applications
+-- expect a displayhint event before being able to proceed (with information
+-- about the current surface dimensions and density).
 -- @group: targetcontrol
 -- @cfunction: targetalloc
 -- @related: define_recordtarget, accept_target

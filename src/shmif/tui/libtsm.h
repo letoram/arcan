@@ -242,6 +242,7 @@ void tsm_screen_erase_region(struct tsm_screen *con,
 				 unsigned int x_to,
 				 unsigned int y_to,
 				 bool protect);
+void tsm_screen_inc_age(struct tsm_screen *con);
 void tsm_screen_erase_cursor_to_end(struct tsm_screen *con,
 				    bool protect);
 void tsm_screen_erase_home_to_cursor(struct tsm_screen *con,
