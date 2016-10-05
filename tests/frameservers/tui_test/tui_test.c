@@ -19,9 +19,28 @@ static inline void trace(const char* msg, ...)
 #endif
 }
 
-static void on_label(struct tui_context* c, const char* label, void* t)
+static bool query_label(struct tui_context* ctx,
+	size_t ind, const char* country, const char* lang,
+	struct tui_labelent* dstlbl)
+{
+	trace("query_label(%zu for %s:%s)\n",
+		ind, country ? country : "unknown(country)",
+		lang ? lang : "unknown(language)");
+
+	return false;
+}
+
+static bool on_label(struct tui_context* c, const char* label, bool act, void* t)
 {
 	trace("label(%s)", label);
+	return true;
+}
+
+static bool on_alabel(struct tui_context* c, const char* label,
+		const int16_t* smpls, size_t n, bool rel, uint8_t datatype, void* t)
+{
+	trace("a-label(%s)", label);
+	return false;
 }
 
 static void on_mouse(struct tui_context* c,
@@ -97,32 +116,32 @@ static void on_resize(struct tui_context* c,
 	trace("resize(%zu(%zu),%zu(%zu))", neww, col, newh, row);
 }
 
+static void on_subwindow(struct tui_context* c,
+	enum ARCAN_SEGID type, uint32_t id, struct arcan_shmif_cont* cont, void* tag)
+{
+/* this is a fun one, so we run each window in its own process.. */
+
+	fork();
+}
+
 int main(int argc, char** argv)
 {
 	struct arg_arr* aarr;
 	struct arcan_shmif_cont con = arcan_shmif_open_ext(
 		SHMIF_ACQUIRE_FATALFAIL, &aarr, (struct shmif_open_ext){
-			.type = SEGID_TERMINAL,
+			.type = SEGID_TUI,
 			.title = "tui_test",
-			.ident = ""
+			.ident = "tui_ident"
 		}, sizeof(struct shmif_open_ext)
 	);
-
-/*
- * custom bindable button events that will be exposed to the server
- * on connect, overdoing this may get you stalled, ignored or killed
- */
-	const char* labels[] = {
-		"TEST_INPUT",
-		NULL
-	};
 
 /*
  * only the ones that are relevant needs to be filled
  */
 	struct tui_cbcfg cbcfg = {
-		.label_table = labels,
+		.query_label = query_label,
 		.input_label = on_label,
+		.input_alabel = on_alabel,
 		.input_mouse = on_mouse,
 		.input_utf8 = on_u8,
 		.input_key = on_key,
@@ -134,13 +153,14 @@ int main(int argc, char** argv)
 		.raw_event = on_raw,
 		.tick = on_tick,
 		.utf8 = on_utf8_paste,
-		.resized = on_resize
+		.resized = on_resize,
+		.subwindow = on_subwindow
 	};
 
 /* even though we handle over management of con to TUI, we can
  * still get access to its internal reference at will */
 	struct tui_settings cfg = arcan_tui_defaults();
-	arcan_tui_apply_arg(&cfg, aarr);
+	arcan_tui_apply_arg(&cfg, aarr, NULL);
 	struct tui_context* tui = arcan_tui_setup(&con, &cfg, &cbcfg, sizeof(cbcfg));
 
 	if (!tui){
@@ -163,8 +183,9 @@ int main(int argc, char** argv)
 			arcan_tui_refresh(&tui, 1);
 			if (res.ok)
 				fgetc(stdin);
-			break;
 		}
+		else
+			break;
 	}
 
 	arcan_tui_destroy(tui);

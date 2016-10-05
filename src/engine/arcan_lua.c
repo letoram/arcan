@@ -1100,6 +1100,7 @@ static inline void tblbool(lua_State* ctx, char* k, bool v, int top){
 }
 
 static const char flt_alpha[] = "abcdefghijklmnopqrstuvwxyz-_";
+static const char flt_chunkfn[] = "abcdefhijklmnopqrstuvwxyz1234567890;";
 static const char flt_alphanum[] = "abcdefghijklmnopqrstuvwyz-0123456789-_";
 static const char flt_Alphanum[] = "abcdefghijklmnopqrstuvwyz-0123456789-_"
 "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -1122,8 +1123,10 @@ static inline void fltpush(char* dst, char ulim,
 			pos++;
 		}
 
-		if (!found)
-			*dst++ = replch;
+		if (!found){
+			if (replch)
+				*dst++ = replch;
+		}
 		else
 			*dst++ = *inmsg;
 		inmsg++;
@@ -4060,7 +4063,21 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				tblnum(ctx, "acquired", ev->ext.framestatus.acquired, top);
 				tblnum(ctx, "fhint", ev->ext.framestatus.fhint, top);
 			break;
-
+			case EVENT_EXTERNAL_BCHUNKSTATE:
+				tblstr(ctx, "kind", "bchunkstate", top);
+				tblnum(ctx, "size", ev->ext.bchunk.size, top);
+				tblbool(ctx, "input", ev->ext.bchunk.input, top);
+				tblbool(ctx, "stream", ev->ext.bchunk.stream, top);
+				if (ev->ext.bchunk.extensions[0] == 0)
+					tblbool(ctx, "disable", true, top);
+				else if (ev->ext.bchunk.extensions[0] == '*')
+					tblbool(ctx, "wildcard", true, top);
+				else{
+					fltpush(mcbuf, COUNT_OF(ev->ext.bchunk.extensions),
+						(char*)ev->ext.bchunk.extensions, flt_chunkfn, '\0');
+					tblstr(ctx, "extensions", mcbuf, top);
+				}
+			break;
 			case EVENT_EXTERNAL_STREAMINFO:
 				fltpush(mcbuf, COUNT_OF(ev->ext.streaminf.langid),
 					(char*)ev->ext.streaminf.langid, flt_Alpha, '?');
@@ -4138,15 +4155,16 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			case EVENT_EXTERNAL_REGISTER:{
 				if (fsrv->segid != SEGID_UNKNOWN &&
 					ev->ext.registr.kind != fsrv->segid){
-					lua_settop(ctx, reset);
-					return;
+					ev->ext.registr.kind = fsrv->segid;
 				}
-				int id = ev->ext.registr.kind;
-				if (id == SEGID_NETWORK_CLIENT || id == SEGID_NETWORK_SERVER){
-					arcan_warning("client (%d) attempted to register a reserved (%d) "
-						"type which is not permitted.\n", fsrv->segid, id);
-					lua_settop(ctx, reset);
-					return;
+				else if (fsrv->segid == SEGID_UNKNOWN){
+					int id = ev->ext.registr.kind;
+					if (id == SEGID_NETWORK_CLIENT || id == SEGID_NETWORK_SERVER){
+						arcan_warning("client (%d) attempted to register a reserved (%d) "
+							"type which is not permitted.\n", fsrv->segid, id);
+						lua_settop(ctx, reset);
+						return;
+					}
 				}
 
 				tblstr(ctx, "kind", "registered", top);
@@ -9947,6 +9965,7 @@ static inline const char* fsrvtos(enum ARCAN_SEGID ink)
 	case SEGID_NETWORK_CLIENT: return "network-client";
 	case SEGID_CURSOR: return "cursor";
 	case SEGID_TERMINAL: return "terminal";
+	case SEGID_TUI: return "tui";
 	case SEGID_POPUP: return "popup";
 	case SEGID_ICON: return "icon";
 	case SEGID_REMOTING: return "remoting";

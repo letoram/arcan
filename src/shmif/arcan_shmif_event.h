@@ -102,9 +102,7 @@ enum ARCAN_SEGID {
 /* External Connection, non-interactive data source */
 	SEGID_MEDIA,
 
-/* Used to only be used for regular TERMINAL emulation, but now also applies
- * to text-user interfaces like the ones that use TUI. May be needed for the
- * appl to select monospace fonts to send when doing an external connection. */
+/* Specifically used to indicate a terminal- emulator connection */
 	SEGID_TERMINAL,
 
 /* External client connection, A/V/latency sensitive */
@@ -184,6 +182,13 @@ enum ARCAN_SEGID {
  */
 	SEGID_WIDGET,
 
+/*
+ * Used by the shmif_tui support library to indicate a monospaced text user
+ * interface, with known behavior for cut/paste (drag/drop), state transfers,
+ * resize response, font switching, ...
+ */
+	SEGID_TUI,
+
 /* Can always be terminated without risk, may be stored as part of debug format
  * in terms of unexpected termination etc. */
 	SEGID_DEBUG,
@@ -244,6 +249,7 @@ enum ARCAN_TARGET_COMMAND {
  * ioevs[0].iv will carry the file descriptor
  * ioevs[1].iv, lower-32 bits of the expected size (if possible)
  * ioevs[2].iv, upper-32 bits of the expected size
+ * message field will carry extension or other type identifier string.
  */
 	TARGET_COMMAND_BCHUNK_IN,
 	TARGET_COMMAND_BCHUNK_OUT,
@@ -290,7 +296,7 @@ enum ARCAN_TARGET_COMMAND {
  */
 	TARGET_COMMAND_SEEKCONTENT,
 
-/* [UNIQUE/AGGREGATE]
+/* [UNIQUE/AGGREGATE/ACTIVATION]
  * This event hints towards current display properties or desired display
  * properties.
  *
@@ -622,8 +628,8 @@ enum ARCAN_EVENT_EXTERNAL {
 
 /*
  * [UNIQUE]
- * Hint about local content state in regards to viewport or window position
- * relative to available uses the content substructure.
+ * Hints that indicate there is scrolling/panning contents and the estimated
+ * range and position of the currently active viewport.
  */
 	EVENT_EXTERNAL_CONTENT,
 
@@ -660,6 +666,14 @@ enum ARCAN_EVENT_EXTERNAL {
  * Uses the 'clock' substructure.
  */
 	EVENT_EXTERNAL_CLOCKREQ,
+
+/*
+ * Update an estimate on how the connection will hand bchunk transfers.
+ * Uses the 'bchunk' substructure.
+ * This MAY prompt actions in the running appl, e.g. showing a file- open/
+ * /save dialog.
+ */
+	EVENT_EXTERNAL_BCHUNKSTATE,
 
 	EVENT_EXTERNAL_ULIM = INT_MAX
 };
@@ -1103,6 +1117,24 @@ typedef struct arcan_extevent {
 			uint8_t dynamic, once;
 			uint32_t id;
 		} clock;
+
+/*
+ * Used with the BCHUNKSTATE event for hinting to the server that the
+ * application wants to- or is capable of- receiving or writing bchunkdata.
+ * (size)      - (input == 0, estimation of upper limit or 0 if unknown)
+ * (input)     - !0 if it is for input (open/read)
+ * (stream)    - !0 if a streaming data store is acceptable or it needs to be
+ *               seekable / mappable
+ * (extensions)- 7-bit ASCII filtered to alnum with ; separation between
+ *               accepted extensions. * for wildcard support or empty [0]='\0'
+ *               to indicate no-support for input/output.
+ */
+	struct {
+		uint64_t size;
+		uint8_t input;
+		uint8_t stream;
+		uint8_t extensions[68];
+	} bchunk;
 
 /*
  * Indicate that the connection supports abstract input labels, along

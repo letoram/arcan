@@ -7,14 +7,6 @@
  * different/faster font-rendering/text-support.
  */
 
-/*
- * MISSING: mapping events (test against tui_test.c),
- * - main event loop isn't right
- * - testing
- * - migrate cfg->nal to use lib
- * - switch font management method default
- */
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -42,6 +34,7 @@
 
 #include "libtsm.h"
 #include "libtsm_int.h"
+#include "linenoise.h"
 
 #include "util/font_8x8.h"
 
@@ -115,7 +108,6 @@ struct tui_context {
 	int last_dbl_x,last_dbl_y;
 	int rows;
 	int cols;
-	int last_shmask;
 	int cell_w, cell_h, pad_w, pad_h;
 
 	uint8_t fgc[3];
@@ -434,7 +426,7 @@ static void move_up(struct tui_context* tui)
 	if (tui->scroll_lock)
 		page_up(tui);
 	else if (tui->handlers.input_label)
-		tui->handlers.input_label(tui, "up", tui->handlers.tag);
+		tui->handlers.input_label(tui, "up", NULL, tui->handlers.tag);
 }
 
 static void move_down(struct tui_context* tui)
@@ -442,7 +434,7 @@ static void move_down(struct tui_context* tui)
 	if (tui->scroll_lock)
 		page_down(tui);
 	else if (tui->handlers.input_label)
-		tui->handlers.input_label(tui, "down", tui->handlers.tag);
+		tui->handlers.input_label(tui, "down", NULL, tui->handlers.tag);
 }
 
 static void select_begin(struct tui_context* tui)
@@ -614,6 +606,9 @@ static void expose_labels(struct tui_context* tui)
 {
 	const struct lent* cur = labels;
 
+/*
+ * NOTE: We do not currently expose a descriptor or suggested default
+ */
 	while(cur->lbl){
 		arcan_event ev = {
 			.category = EVENT_EXTERNAL,
@@ -642,14 +637,19 @@ static bool consume_label(struct tui_context* tui,
 		cur++;
 	}
 
-	return false;
+	bool res = false;
+	if (tui->handlers.input_label){
+		res |= tui->handlers.input_label(tui, label, true, tui->handlers.tag);
+		res |= tui->handlers.input_label(tui, label, false, tui->handlers.tag);
+	}
+
+	return res;
 }
 
 static void ioev_ctxtbl(struct tui_context* tui,
 	arcan_ioevent* ioev, const char* label)
 {
 /* keyboard input */
-	int shmask = 0;
 	tui->last = 0;
 
 	if (ioev->datatype == EVENT_IDATATYPE_TRANSLATED){
@@ -676,35 +676,20 @@ static void ioev_ctxtbl(struct tui_context* tui,
 		if (sym >= 300 && sym <= 314)
 			return;
 
-		if (ioev->input.translated.utf8[0]){
-			size_t len = 0;
-			while (len < 5 && ioev->input.translated.utf8[len]) len++;
-
+		int len = 0;
+		while (len < 5 && ioev->input.translated.utf8[len]) len++;
+		if (ioev->input.translated.utf8[0] && tui->handlers.input_utf8){
 			if (tui->handlers.input_utf8)
-				tui->handlers.input_utf8(tui, (const char*)ioev->input.translated.utf8,
-					len, tui->handlers.tag);
+				tui->handlers.input_utf8(tui,
+					(const char*)ioev->input.translated.utf8,
+					len, tui->handlers.tag
+				);
 			return;
 		}
 
-/* otherwise try to hack something together,
- * possible that we should maintain an XKB translation table here
- * instead as we have little actual options .. */
-		shmask |= ((ioev->input.translated.modifiers &
-			(ARKMOD_RSHIFT | ARKMOD_LSHIFT)) > 0) * TSM_SHIFT_MASK;
-		shmask |= ((ioev->input.translated.modifiers &
-			(ARKMOD_LCTRL | ARKMOD_RCTRL)) > 0) * TSM_CONTROL_MASK;
-		shmask |= ((ioev->input.translated.modifiers &
-			(ARKMOD_LALT | ARKMOD_RALT)) > 0) * TSM_ALT_MASK;
-		shmask |= ((ioev->input.translated.modifiers &
-			(ARKMOD_LMETA | ARKMOD_RMETA)) > 0) * TSM_LOGO_MASK;
-		shmask |= ((ioev->input.translated.modifiers & ARKMOD_NUM) > 0) * TSM_LOCK_MASK;
-		tui->last_shmask = shmask;
-
-		if (sym && sym < sizeof(symtbl_out) / sizeof(symtbl_out[0]))
-			sym = symtbl_out[ioev->input.translated.keysym];
-
 		if (tui->handlers.input_key)
-			tui->handlers.input_key(tui, sym,
+			tui->handlers.input_key(tui,
+				sym,
 				ioev->input.translated.scancode,
 				ioev->input.translated.modifiers,
 				ioev->subid, tui->handlers.tag
@@ -856,11 +841,10 @@ static void update_screensize(struct tui_context* tui, bool clear)
 		tui->cols = cols;
 		tui->rows = rows;
 
-		tsm_screen_resize(tui->screen, cols, rows);
-
 		if (tui->handlers.resized)
 			tui->handlers.resized(tui,
 				tui->acon.w, tui->acon.h, cols, rows, tui->handlers.tag);
+		tsm_screen_resize(tui->screen, cols, rows);
 	}
 
 	while (atomic_load(&tui->acon.addr->vready))
@@ -876,7 +860,6 @@ static void update_screensize(struct tui_context* tui, bool clear)
 	tui->dirty |= DIRTY_PENDING_FULL;
 	update_screen(tui);
 }
-
 
 static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 {
@@ -898,7 +881,6 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 	break;
 
 	case TARGET_COMMAND_RESET:
-		tui->last_shmask = 0;
 		switch(ev->ioevs[0].iv){
 		case 0:
 		case 1:
@@ -972,7 +954,6 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 		bool update = false;
 		if (!(ev->ioevs[2].iv & 128)){
 			if (ev->ioevs[2].iv & 2){
-				tui->last_shmask = 0;
 				tui->inactive = true;
 			}
 			else if (tui->inactive){
@@ -984,7 +965,6 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 			if (ev->ioevs[2].iv & 4){
 				tui->focus = false;
 				if (!tui->cursor_off){
-					tui->last_shmask = 0;
 					tui->cursor_off = true;
 					tui->dirty |= DIRTY_PENDING;
 				}
@@ -1440,8 +1420,10 @@ static int parse_color(const char* inv, uint8_t outv[4])
 		&outv[0], &outv[1], &outv[2], &outv[3]);
 }
 
-void arcan_tui_apply_arg(struct tui_settings* cfg, struct arg_arr* args)
+void arcan_tui_apply_arg(struct tui_settings* cfg,
+	struct arg_arr* args, struct tui_context* src)
 {
+/* FIXME: if src is set, copy settings from there (and dup descriptors) */
 	const char* val;
 	uint8_t ccol[4] = {0x00, 0x00, 0x00, 0xff};
 /* old color- setting arguments (**r, **g, **b) kept around for legacy */
@@ -1540,7 +1522,6 @@ void arcan_tui_apply_arg(struct tui_settings* cfg, struct arg_arr* args)
 	else
 		LOG("no font specified, using built-in fallback.");
 #endif
-
 }
 
 struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
@@ -1587,6 +1568,7 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 	res->hint = set->hint;
 	res->ppcm = set->ppcm;
 	res->mouse_forward = set->mouse_fwd;
+	res->acon = *con;
 
 	if (set->font_fn){
 		int fd = open(val, O_RDONLY | O_CLOEXEC);
@@ -1598,7 +1580,25 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 		}
 	}
 
-	res->acon = *con;
+/* wait for the first displayhint before moving on */
+	if (0 == res->acon.w){
+		arcan_event ev;
+		while(1){
+			if (0 == arcan_shmif_wait(&res->acon, &ev)){
+				free(res);
+				return NULL;
+			}
+			if (ev.category == EVENT_TARGET &&
+				ev.tgt.kind == TARGET_COMMAND_DISPLAYHINT && ev.tgt.ioevs[0].iv){
+				arcan_shmif_resize(&res->acon, ev.tgt.ioevs[0].iv, ev.tgt.ioevs[1].iv);
+				res->ppcm = ev.tgt.ioevs[4].fv;
+				if (res->ppcm * res->ppcm < 0.001)
+					res->ppcm = ARCAN_SHMPAGE_DEFAULT_PPCM;
+				break;
+			}
+		}
+ 	}
+
 	res->acon.hints = SHMIF_RHINT_SUBREGION;
 	if (0 != tsm_utf8_mach_new(&res->ucsconv)){
 		free(res);
@@ -1630,15 +1630,27 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 
 void arcan_tui_erase_screen(struct tui_context* c, bool protect)
 {
-	if (c)
-	tsm_screen_erase_screen(c->screen, protect);
+	if (c){
+		tsm_screen_inc_age(c->screen);
+		tsm_screen_erase_screen(c->screen, protect);
+	}
 }
 
 void arcan_tui_erase_region(struct tui_context* c,
 	size_t x1, size_t y1, size_t x2, size_t y2, bool protect)
 {
-	if (c)
-	tsm_screen_erase_region(c->screen, x1, y1, x2, y2, protect);
+	if (c){
+		tsm_screen_inc_age(c->screen);
+		tsm_screen_erase_region(c->screen, x1, y1, x2, y2, protect);
+	}
+}
+
+void arcan_tui_erase_sb(struct tui_context* c)
+{
+	if (c){
+		tsm_screen_inc_age(c->screen);
+		tsm_screen_clear_sb(c->screen);
+	}
 }
 
 void arcan_tui_refinc(struct tui_context* c)
@@ -1667,6 +1679,15 @@ void arcan_tui_write(struct tui_context* c, uint32_t ucode,
 			attr ? (struct tsm_screen_attr*) attr : &c->cattr);
 }
 
+void arcan_tui_ident(struct tui_context* c, const char* ident)
+{
+	arcan_event* ev = &c->last_ident;
+	ev->ext.kind = ARCAN_EVENT(IDENT);
+	size_t lim = sizeof(ev->ext.message.data)/sizeof(ev->ext.message.data[1]);
+	snprintf((char*)ev->ext.message.data, lim, "%s", ident);
+	arcan_shmif_enqueue(&c->acon, ev);
+}
+
 bool arcan_tui_writeu8(struct tui_context* c,
 	uint8_t* u8, size_t len, struct tui_screen_attr* attr)
 {
@@ -1685,17 +1706,68 @@ bool arcan_tui_writeu8(struct tui_context* c,
 
 void arcan_tui_cursorpos(struct tui_context* c, size_t* x, size_t* y)
 {
-	if (!(c && x && y))
+	if (!c)
 		return;
 
-	*x = tsm_screen_get_cursor_x(c->screen);
-	*x = tsm_screen_get_cursor_y(c->screen);
+	if (x)
+		*x = tsm_screen_get_cursor_x(c->screen);
+
+	if (y)
+		*y = tsm_screen_get_cursor_y(c->screen);
 }
 
 void arcan_tui_reset(struct tui_context* c)
 {
 	tsm_utf8_mach_reset(c->ucsconv);
 	tsm_screen_reset(c->screen);
+}
+
+void arcan_tui_erase_cursor_to_screen(struct tui_context* c, bool protect)
+{
+	if (c){
+		tsm_screen_inc_age(c->screen);
+		tsm_screen_erase_cursor_to_screen(c->screen, protect);
+	}
+}
+
+void arcan_tui_erase_screen_to_cursor(struct tui_context* c, bool protect)
+{
+	if (c){
+		tsm_screen_inc_age(c->screen);
+		tsm_screen_erase_screen_to_cursor(c->screen, protect);
+	}
+}
+
+void arcan_tui_erase_cursor_to_end(struct tui_context* c, bool protect)
+{
+	if (c){
+		tsm_screen_inc_age(c->screen);
+		tsm_screen_erase_cursor_to_end(c->screen, protect);
+	}
+}
+
+void arcan_tui_erase_home_to_cursor(struct tui_context* c, bool protect)
+{
+	if (c){
+		tsm_screen_inc_age(c->screen);
+		tsm_screen_erase_home_to_cursor(c->screen, protect);
+	}
+}
+
+void arcan_tui_erase_current_line(struct tui_context* c, bool protect)
+{
+	if (c){
+		tsm_screen_inc_age(c->screen);
+		tsm_screen_erase_current_line(c->screen, protect);
+	}
+}
+
+void arcan_tui_erase_chars(struct tui_context* c, size_t num)
+{
+	if (c){
+		tsm_screen_inc_age(c->screen);
+		tsm_screen_erase_chars(c->screen, num);
+	}
 }
 
 void arcan_tui_set_flags(struct tui_context* c, enum tui_flags flags)
