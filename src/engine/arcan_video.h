@@ -126,12 +126,12 @@ ARCAN_TAG_TEXT      = 2,/* specialized form of RAWOBJECT                      */
 ARCAN_TAG_FRAMESERV = 3,/* got a connection to an external
 													 resource (frameserver)                             */
 ARCAN_TAG_ASYNCIMGLD= 4,/* intermediate state, means that getimage is still
-											     loading, don't touch objects in this state         */
+													 loading, don't touch objects in this state         */
 ARCAN_TAG_ASYNCIMGRD= 5,/* when asynch loader is finished, ready to collect   */
 
 /* Only 3D - related tags after this, order dependent! */
 ARCAN_TAG_3DOBJ     = 6,/* got a corresponding entry in arcan_3dbase, ffunc is
-												   used to control the behavior of the 3d part        */
+													 used to control the behavior of the 3d part        */
 ARCAN_TAG_3DCAMERA  = 7,/* set after using camtag,
 													 only usable on NONE/IMAGE                          */
 ARCAN_TAG_CUSTOMPROC= 8, /* used in Lua specific contexts, calctarget etc.    */

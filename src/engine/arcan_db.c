@@ -88,7 +88,7 @@ static const char* ddls[] = {
 	DDL_TGT_ARGV, DDL_CFG_ARGV,
 	DDL_TGT_KV,   DDL_CFG_KV,
 	DDL_TGT_ENV,  DDL_CFG_ENV,
- 	DDL_TGT_LIBS
+	DDL_TGT_LIBS
 };
 
 #define DI_INSARG_TARGET "INSERT INTO target_argv(target, arg) VALUES(?, ?);"
@@ -439,7 +439,7 @@ struct arcan_strarr arcan_db_config_argv(struct arcan_dbh* dbh,arcan_configid id
 {
 	static const char dql[] = "SELECT arg FROM config_argv WHERE "
 		"config = ? ORDER BY argnum ASC;";
- 	sqlite3_stmt* stmt;
+	sqlite3_stmt* stmt;
 	sqlite3_prepare_v2(dbh->dbh, dql, sizeof(dql)-1, &stmt, NULL);
 	sqlite3_bind_int(stmt, 1, id);
 
@@ -450,7 +450,7 @@ struct arcan_strarr arcan_db_target_argv(struct arcan_dbh* dbh,arcan_targetid id
 {
 	static const char dql[] = "SELECT arg FROM target_argv WHERE "
 		"target = ? ORDER BY argnum ASC;";
- 	sqlite3_stmt* stmt;
+	sqlite3_stmt* stmt;
 	sqlite3_prepare_v2(dbh->dbh, dql, sizeof(dql)-1, &stmt, NULL);
 	sqlite3_bind_int(stmt, 1, id);
 
@@ -788,7 +788,7 @@ char* arcan_db_getvalue(struct arcan_dbh* dbh,
 	if (tgt == DVT_APPL){
 		sqlite3_prepare_v2(dbh->dbh, dbh->akv_get, dbh->akv_get_sz, &stmt, NULL);
 	}
- 	else {
+	else {
 		sqlite3_prepare_v2(dbh->dbh, qry, qry_sz, &stmt, NULL);
 		sqlite3_bind_text(stmt, 1, key, -1, SQLITE_STATIC);
 		sqlite3_bind_int(stmt, 2, id);

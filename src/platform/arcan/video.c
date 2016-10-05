@@ -669,7 +669,7 @@ bool platform_lwa_allocbind_feed(arcan_vobj_id rtgt,
 	});
 
 	arcan_video_alterfeed(rtgt, FFUNC_LWA,
-			(vfunc_state){.tag = cbtag, .ptr = &disp[0].sub[ind]});
+		(vfunc_state){.tag = cbtag, .ptr = &disp[0].sub[ind]});
 	return true;
 }
 
@@ -767,7 +767,7 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
  */
 		case TARGET_COMMAND_DISPLAYHINT:
 			if (ev.tgt.ioevs[0].iv && ev.tgt.ioevs[1].iv){
-				arcan_event_enqueue(ctx, &(arcan_event) {
+				arcan_event_enqueue(ctx, &(arcan_event){
 					.category = EVENT_VIDEO,
 					.vid.kind = EVENT_VIDEO_DISPLAY_RESET,
 					.vid.source = -1,

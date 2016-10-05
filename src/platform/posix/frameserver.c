@@ -254,7 +254,7 @@ bool arcan_frameserver_validchild(arcan_frameserver* src){
 		return false;
 	}
 	else
-	 	return true;
+		return true;
 }
 
 arcan_errc arcan_frameserver_pushfd(
@@ -495,7 +495,7 @@ static bool shmalloc(arcan_frameserver* ctx,
 	int rc = ftruncate(shmfd, ctx->shm.shmsize);
 	if (-1 == rc){
 		arcan_warning("arcan_frameserver_spawn_server(unix) -- allocating"
-		"	(%d) shared memory failed (%d).\n", ctx->shm.shmsize, errno);
+		" (%d) shared memory failed (%d).\n", ctx->shm.shmsize, errno);
 		goto fail;
 	}
 
@@ -519,7 +519,7 @@ fail:
 /* tiny race condition SIGBUS window here */
 	arcan_frameserver_enter(ctx, out);
 		memset(shmpage, '\0', ctx->shm.shmsize);
-	 	shmpage->dms = true;
+		shmpage->dms = true;
 		shmpage->parent = getpid();
 		shmpage->major = ASHMIF_VERSION_MAJOR;
 		shmpage->minor = ASHMIF_VERSION_MINOR;
@@ -613,7 +613,7 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 		newseg->aid = arcan_audio_feed((arcan_afunc_cb)
 			arcan_frameserver_audioframe_direct, newseg, &errc);
 
- 	newseg->desc = vinfo;
+	newseg->desc = vinfo;
 	newseg->source = ctx->source ? strdup(ctx->source) : NULL;
 	newseg->vid = newvid;
 	newseg->parent.vid = ctx->vid;
@@ -843,56 +843,56 @@ enum arcan_ffunc_rv arcan_frameserver_socketpoll FFUNC_HEAD
 
 /* wait for connection, then unlink directory node and switch to verify. */
 	switch (cmd){
-		case FFUNC_POLL:
-			if (!fd_avail(tgt->dpipe, &term)){
-				if (term)
-					arcan_frameserver_free(tgt);
+	case FFUNC_POLL:
+		if (!fd_avail(tgt->dpipe, &term)){
+			if (term)
+				arcan_frameserver_free(tgt);
 
-				return FRV_NOFRAME;
-			}
+			return FRV_NOFRAME;
+		}
 
-			int insock = accept(tgt->dpipe, NULL, NULL);
-			if (-1 == insock)
-				return FRV_NOFRAME;
+		int insock = accept(tgt->dpipe, NULL, NULL);
+		if (-1 == insock)
+			return FRV_NOFRAME;
 
-			arcan_video_alterfeed(tgt->vid, FFUNC_SOCKVER, state);
+		arcan_video_alterfeed(tgt->vid, FFUNC_SOCKVER, state);
 
 /* hand over responsibility for the dpipe to the event layer */
-			arcan_event adopt = {
-				.category = EVENT_FSRV,
-				.fsrv.kind = EVENT_FSRV_EXTCONN,
-				.fsrv.descriptor = tgt->dpipe,
-				.fsrv.otag = tgt->tag,
-				.fsrv.video = tgt->vid
-			};
-			tgt->dpipe = insock;
+		arcan_event adopt = {
+			.category = EVENT_FSRV,
+			.fsrv.kind = EVENT_FSRV_EXTCONN,
+			.fsrv.descriptor = tgt->dpipe,
+			.fsrv.otag = tgt->tag,
+			.fsrv.video = tgt->vid
+		};
+		tgt->dpipe = insock;
 
-			snprintf(adopt.fsrv.ident, sizeof(adopt.fsrv.ident)/
-				sizeof(adopt.fsrv.ident[0]), "%s", tgt->sockkey);
+		snprintf(adopt.fsrv.ident, sizeof(adopt.fsrv.ident)/
+			sizeof(adopt.fsrv.ident[0]), "%s", tgt->sockkey);
 
-			arcan_event_enqueue(arcan_event_defaultctx(), &adopt);
+		arcan_event_enqueue(arcan_event_defaultctx(), &adopt);
 
-			free(tgt->sockaddr);
-			free(tgt->sockkey);
-			tgt->sockaddr = tgt->sockkey = NULL;
+		free(tgt->sockaddr);
+		free(tgt->sockkey);
+		tgt->sockaddr = tgt->sockkey = NULL;
 
-			return arcan_frameserver_socketverify(
-				cmd, buf, buf_sz, width, height, mode, state, tgt->vid);
+		return arcan_frameserver_socketverify(
+			cmd, buf, buf_sz, width, height, mode, state, tgt->vid);
 		break;
 
 /* socket is closed in frameserver_destroy */
-		case FFUNC_DESTROY:
-			if (tgt->sockaddr){
-				close(tgt->dpipe);
-				free(tgt->sockkey);
-				unlink(tgt->sockaddr);
-				free(tgt->sockaddr);
-				tgt->sockaddr = NULL;
-			}
+	case FFUNC_DESTROY:
+		if (tgt->sockaddr){
+			close(tgt->dpipe);
+			free(tgt->sockkey);
+			unlink(tgt->sockaddr);
+			free(tgt->sockaddr);
+			tgt->sockaddr = NULL;
+		}
 
-			arcan_frameserver_free(tgt);
-		default:
-		break;
+		arcan_frameserver_free(tgt);
+	default:
+	break;
 	}
 
 	return FRV_NOFRAME;
@@ -1015,7 +1015,7 @@ arcan_frameserver* arcan_frameserver_listen_external(const char* key, int fd)
 	return res;
 }
 
- size_t default_sz = 512;
+size_t default_sz = 512;
 size_t arcan_frameserver_default_abufsize(size_t new_sz)
 {
 	size_t res = default_sz;
@@ -1107,10 +1107,10 @@ bool arcan_frameserver_resize(struct arcan_frameserver* s)
 #else
 	munmap(src->ptr, src->shmsize);
 	src->ptr = mmap(NULL, shmsz, PROT_READ|PROT_WRITE, MAP_SHARED,src->handle,0);
-  if (MAP_FAILED == src->ptr){
-  	src->ptr = NULL;
+	if (MAP_FAILED == src->ptr){
+		src->ptr = NULL;
 		arcan_warning("frameserver_resize() failed, reason: %s\n", strerror(errno));
-  	goto fail;
+		goto fail;
 	}
 #endif
 	}
@@ -1156,7 +1156,7 @@ done:
 }
 
 arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
-	struct frameserver_envp* setup)
+	struct frameserver_envp* setup, arcan_event** prequeue)
 {
 	if (ctx == NULL)
 		return ARCAN_ERRC_BAD_ARGUMENT;

@@ -292,7 +292,7 @@ static bool identify(int fd, const char* path,
 		for (size_t i = 0; i < llen; i++)
 			hash  = ((hash << 5) + hash) + path[i];
 
-	 	buf[11] ^= nodeid.vendor >> 8;
+		buf[11] ^= nodeid.vendor >> 8;
 		buf[10] ^= nodeid.vendor;
 		buf[9] ^= nodeid.product >> 8;
 		buf[8] ^= nodeid.product;
@@ -693,9 +693,9 @@ void platform_event_process(struct arcan_evctx* ctx)
  * approach is that video_restore_external sends a reset event to the display
  * entry point. The other option of enqeueing release- events had the problem
  * of introducing multiple- release events. */
-					break;
+				break;
 			}
-			else {
+			else{
 				arcan_event_enqueue(arcan_event_defaultctx(), &(struct arcan_event){
 					.category = EVENT_SYSTEM,
 					.sys.kind = EVENT_SYSTEM_EXIT,
@@ -769,23 +769,24 @@ void platform_event_keyrepeat(struct arcan_evctx* ctx, int* period, int* delay)
 		upd = true;
 	}
 
-	if (upd){
-		for (size_t i = 0; i < iodev.sz_nodes; i++)
-			if (iodev.nodes[i].type == DEVNODE_KEYBOARD){
-				struct input_event ev = {
-					.type = EV_REP,
-					.code = REP_DELAY,
-					.value = *delay
-				};
-				if (-1 == write(iodev.nodes[i].handle,&ev,sizeof(struct input_event)))
-					arcan_warning("linux/event: keydelay fail (%s)\n", strerror(errno));
+	if (!upd)
+		return;
 
-				ev.code = REP_PERIOD;
-				ev.value = *period;
-				if (-1 == write(iodev.nodes[i].handle,&ev,sizeof(struct input_event)))
-					arcan_warning("linux/event: keyrepeat fail (%s)\n", strerror(errno));
-			}
-	}
+	for (size_t i = 0; i < iodev.sz_nodes; i++)
+		if (iodev.nodes[i].type == DEVNODE_KEYBOARD){
+			struct input_event ev = {
+				.type = EV_REP,
+				.code = REP_DELAY,
+				.value = *delay
+			};
+			if (-1 == write(iodev.nodes[i].handle,&ev,sizeof(struct input_event)))
+				arcan_warning("linux/event: keydelay fail (%s)\n", strerror(errno));
+
+			ev.code = REP_PERIOD;
+			ev.value = *period;
+			if (-1 == write(iodev.nodes[i].handle,&ev,sizeof(struct input_event)))
+				arcan_warning("linux/event: keyrepeat fail (%s)\n", strerror(errno));
+		}
 }
 
 static const char* lookup_type(int val)
@@ -901,7 +902,8 @@ static void map_axes(int fd, size_t bitn, struct devnode* node)
 
 	node->game.adata = arcan_alloc_mem(
 		sizeof(struct axis_opts) * node->game.axes,
-		ARCAN_MEM_BINDING, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
+		ARCAN_MEM_BINDING, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL
+	);
 
 	size_t ac = 0;
 
