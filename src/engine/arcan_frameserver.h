@@ -173,6 +173,8 @@ struct frameserver_envp {
 	bool use_builtin;
 	bool custom_feed;
 	int init_w, init_h;
+	size_t prequeue_sz;
+	arcan_event** prequeue_events;
 
 	union {
 		struct {
