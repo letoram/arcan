@@ -1,7 +1,3 @@
-/*
- * simple skeleton for using TUI, useful as template to
- * only have to deal with a minimum of boilerplate
- */
 #include <arcan_shmif.h>
 #include <arcan_shmif_tui.h>
 #include <inttypes.h>
@@ -287,6 +283,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 
 	tsm_vte_set_color(term.vte, VTE_COLOR_BACKGROUND, cfg.bgc);
 	tsm_vte_set_color(term.vte, VTE_COLOR_FOREGROUND, cfg.fgc);
+	LOG("set fgc: %d, %d, %d\n", cfg.fgc[0], cfg.fgc[1], cfg.fgc[2]);
 
 /*
  * and lastly, spawn the pseudo-terminal
