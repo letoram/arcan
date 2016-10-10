@@ -598,6 +598,10 @@ static const struct lent labels[] = {
 	{"select_at", select_at},
 	{"select_row", select_row},
 	{"scroll_lock", scroll_lock},
+#ifdef TTF_SUPPORT
+	{"inc_font_sz", inc_fontsz},
+	{"dec_font_sz", dec_fontsz},
+#endif
 	{NULL, NULL}
 };
 
@@ -1184,7 +1188,6 @@ static bool setup_font(struct tui_context* tui,
 	int fd, size_t font_sz, int mode)
 {
 	TTF_Font* font;
-
 	if (font_sz <= 0)
 		font_sz = tui->font_sz;
 
@@ -1198,8 +1201,11 @@ static bool setup_font(struct tui_context* tui,
 	size_t sf_sz = font_sf + ((font_sf * tui->ppcm / 28.346566f) - font_sf);
 
 	font = TTF_OpenFontFD(fd, sf_sz);
-	if (!font)
+	if (!font){
+		LOG("failed to open font from descriptor (%d), "
+			"with size: %zu\n", fd, font_sz);
 		return false;
+	}
 
 	TTF_SetFontHinting(font, tui->hint);
 
@@ -1520,6 +1526,12 @@ void arcan_tui_apply_arg(struct tui_settings* cfg,
 	}
 	else
 		LOG("no font specified, using built-in fallback.");
+
+	if (arg_lookup(args, "ppcm", 0, &val)){
+		float ppcm = strtof(val, NULL);
+		if (isfinite(ppcm) && ppcm > ARCAN_SHMPAGE_DEFAULT_PPCM * 0.5)
+			cfg->ppcm = ppcm;
+	}
 #endif
 }
 
@@ -1527,7 +1539,6 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 	const struct tui_settings* set, const struct tui_cbcfg* cbs,
 	size_t cbs_sz, ...)
 {
-	const char* val;
 #ifdef TTF_SUPPORT
 	TTF_Init();
 #endif
@@ -1570,12 +1581,24 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 	res->acon = *con;
 
 	if (set->font_fn){
-		int fd = open(val, O_RDONLY | O_CLOEXEC);
-		setup_font(res, fd, res->font_sz, 0);
+		int fd = open(set->font_fn, O_RDONLY | O_CLOEXEC);
+		if (-1 == fd){
+			LOG("failed to open preset font (%s), reason: %s\n",
+				set->font_fn, strerror(errno));
+		}
+		else{
+			setup_font(res, fd, res->font_sz, 0);
+		}
 /* fallback font for missing glyphs */
 		if (fd != -1 && set->font_fb_fn){
-			fd = open(val, O_RDONLY | O_CLOEXEC);
-			setup_font(res, fd, res->font_sz, 1);
+			fd = open(set->font_fn, O_RDONLY | O_CLOEXEC);
+			if (-1 == fd){
+				LOG("failed to open falback font (%s), reason: %s\n",
+					set->font_fn, strerror(errno));
+			}
+			else {
+				setup_font(res, fd, res->font_sz, 1);
+			}
 		}
 	}
 
