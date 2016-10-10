@@ -36,10 +36,10 @@
 #include "libtsm_int.h"
 #include "linenoise.h"
 
+/*
+ * really need to be replaced with something less awful
+ */
 #include "util/font_8x8.h"
-
-#define DEFINE_XKB
-#include "util/xsymconv.h"
 
 /*
  * For font support, we should have more (especially faster/less complicated)
@@ -261,8 +261,7 @@ static int draw_cb(struct tsm_screen* screen, uint32_t id,
 	const struct tsm_screen_attr* attr, tsm_age_t age, void* data)
 {
 	struct tui_context* tui = data;
-	return
-	draw_cbt((struct tui_context*) data, *ch, x, y, attr, age,
+	return draw_cbt((struct tui_context*) data, *ch, x, y, attr, age,
 		!(tui->flags & TSM_SCREEN_HIDE_CURSOR), len == 0);
 }
 
@@ -948,7 +947,7 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 		bool dev =
 			(ev->ioevs[0].iv && ev->ioevs[1].iv) &&
 			(abs(ev->ioevs[0].iv - tui->acon.addr->w) > 0 ||
-			 abs(ev->ioevs[1].iv - tui->acon.addr->h) > 0);
+			abs(ev->ioevs[1].iv - tui->acon.addr->h) > 0);
 
 /* visibility change */
 		bool update = false;
@@ -1434,7 +1433,7 @@ void arcan_tui_apply_arg(struct tui_settings* cfg,
 	if (arg_lookup(args, "fgb", 0, &val))
 		cfg->fgc[2] = strtoul(val, NULL, 10);
 	if (arg_lookup(args, "fgc", 0, &val)){
-		if (parse_color(val, ccol) == 3)
+		if (parse_color(val, ccol) >= 3)
 			cfg->fgc[0] = ccol[0]; cfg->fgc[1] = ccol[1]; cfg->fgc[2] = ccol[2];
 	}
 
@@ -1445,7 +1444,7 @@ void arcan_tui_apply_arg(struct tui_settings* cfg,
 	if (arg_lookup(args, "bgb", 0, &val))
 		cfg->bgc[2] = strtoul(val, NULL, 10);
 	if (arg_lookup(args, "bgc", 0, &val)){
-		if (parse_color(val, ccol) == 3)
+		if (parse_color(val, ccol) >= 3)
 			cfg->bgc[0] = ccol[0]; cfg->bgc[1] = ccol[1]; cfg->bgc[2] = ccol[2];
 	}
 
@@ -1463,7 +1462,7 @@ void arcan_tui_apply_arg(struct tui_settings* cfg,
 		ccol_upd = true;
 	}
 	if (arg_lookup(args, "cc", 0, &val))
-		ccol_upd = parse_color(val, ccol) == 3;
+		ccol_upd = parse_color(val, ccol) >= 3;
 
 	if (ccol_upd)
 		cfg->ccol = SHMIF_RGBA(ccol[0], ccol[1], ccol[2], 0xff);
@@ -1488,13 +1487,13 @@ void arcan_tui_apply_arg(struct tui_settings* cfg,
 
 	if (arg_lookup(args, "cursor", 0, &val)){
 		const char** cur = curslbl;
-	while(*cur){
-		if (strcmp(*cur, val) == 0){
-			cfg->cursor = (cur - curslbl);
-			break;
+		while(*cur){
+			if (strcmp(*cur, val) == 0){
+				cfg->cursor = (cur - curslbl);
+				break;
+			}
+			cur++;
 		}
-		cur++;
-	 }
 	}
 
 	if (arg_lookup(args, "bgalpha", 0, &val))
@@ -1597,7 +1596,7 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 				break;
 			}
 		}
- 	}
+	}
 
 	res->acon.hints = SHMIF_RHINT_SUBREGION;
 	if (0 != tsm_utf8_mach_new(&res->ucsconv)){

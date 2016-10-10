@@ -151,7 +151,7 @@ void arcan_video_fontdefaults(file_handle* fd, int* pt_sz, int* hint)
 
 static void update_style(struct text_format* dst, struct font_entry* font)
 {
-	if (!font){
+	if (!font || !font->chain.data[0]){
 		arcan_warning("renderfun(), tried to update from broken font\n");
 		return;
 	}

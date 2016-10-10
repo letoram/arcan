@@ -222,6 +222,12 @@ static void setup_shell(struct arg_arr* argarr, char* const args[])
 	exit(EXIT_FAILURE);
 }
 
+static int parse_color(const char* inv, uint8_t outv[4])
+{
+	return scanf(inv, "%"SCNu8",%"SCNu8",%"SCNu8",%"SCNu8,
+		&outv[0], &outv[1], &outv[2], &outv[3]);
+}
+
 int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 {
 /*
@@ -229,6 +235,9 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
  * actually use. So binary chunk transfers, video/audio paste, geohint etc.
  * are all ignored and disabled
  */
+	if (!con)
+		return EXIT_FAILURE;
+
 	struct tui_cbcfg cbcfg = {
 		.query_label = query_label,
 		.input_label = on_label,
@@ -238,6 +247,10 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		.utf8 = on_utf8_paste,
 		.resized = on_resize
 	};
+
+/* no prenegotiated setup */
+	if (!con->w)
+		arcan_shmif_resize(con, 640, 480);
 
 	struct tui_settings cfg = arcan_tui_defaults();
 	arcan_tui_apply_arg(&cfg, args, NULL);
@@ -250,7 +263,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 
 /*
  * now we have the display server connection and the abstract screen,
- * setup / bind a terminal and the related state machine
+ * configure the terinal state machine
  */
 	if (tsm_vte_new(&term.vte, term.screen, write_callback,
 		NULL /* write_cb_data */, tsm_log, NULL /* tsm_log_data */) < 0){
@@ -262,23 +275,23 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	if (arg_lookup(args, "palette", 0, &val))
 		tsm_vte_set_palette(term.vte, val);
 
-/* FIXME: COLOR
 	int ind = 0;
+	uint8_t ccol[4];
 	while(arg_lookup(args, "ci", ind++, &val)){
 		if (4 == parse_color(val, ccol))
 			tsm_vte_set_color(term.vte, ccol[0], &ccol[1]);
 	}
- */
 	tsm_set_strhandler(term.vte, str_callback, 256, NULL);
 
 	signal(SIGHUP, sighuph);
 
-/* ??
-	tsm_vte_set_color(term.vte, VTE_COLOR_BACKGROUND, term.bgc);
-	tsm_vte_set_color(term.vte, VTE_COLOR_FOREGROUND, term.fgc);
+	tsm_vte_set_color(term.vte, VTE_COLOR_BACKGROUND, cfg.bgc);
+	tsm_vte_set_color(term.vte, VTE_COLOR_FOREGROUND, cfg.fgc);
+
+/*
+ * and lastly, spawn the pseudo-terminal
  */
 
-/* special case handling for "login" argument, this requires root */
 	term.child = shl_pty_open(&term.pty, read_callback, NULL, 1, 1);
 	if (term.child < 0){
 		LOG("couldn't spawn child termainl.\n");
@@ -288,6 +301,8 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 /* we're inside child */
 	if (term.child == 0){
 		char* const argv[] = {get_shellenv(), "-i", NULL};
+
+/* special case handling for "login", this requires root */
 		if (arg_lookup(args, "login", 0, &val)){
 			struct stat buf;
 			char* argv[] = {NULL, "-p", NULL};
@@ -306,6 +321,9 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	}
 
 	int inf = shl_pty_get_fd(term.pty);
+	shl_pty_dispatch(term.pty);
+	arcan_tui_refresh(&term.screen, 1);
+
 	while (1){
 		struct tui_process_res res = arcan_tui_process(&term.screen, 1, &inf, 1,-1);
 		if (res.errc == TUI_ERRC_OK){

@@ -1156,7 +1156,7 @@ done:
 }
 
 arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
-	struct frameserver_envp* setup, arcan_event** prequeue)
+	struct frameserver_envp* setup)
 {
 	if (ctx == NULL)
 		return ARCAN_ERRC_BAD_ARGUMENT;
