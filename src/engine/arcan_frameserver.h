@@ -172,6 +172,8 @@ typedef struct arcan_frameserver arcan_frameserver;
 struct frameserver_envp {
 	bool use_builtin;
 	bool custom_feed;
+	bool preserve_env;
+
 	int init_w, init_h;
 
 	union {
