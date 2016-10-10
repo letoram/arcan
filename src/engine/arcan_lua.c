@@ -3040,6 +3040,9 @@ static int launchavfeed(lua_State* ctx)
 		.args.builtin.resource = expbuf[0]
 	};
 
+	if (strcmp(modearg, "terminal") == 0)
+		args.preserve_env = true;
+
 	if ( fsrv_ok && arcan_frameserver_spawn_server(mvctx, &args) == ARCAN_OK )
 	{
 		mvctx->tag = ref;

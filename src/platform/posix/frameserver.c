@@ -955,7 +955,8 @@ static void append_env(struct arcan_strarr* darr,
 		"LD_LIBRARY_PATH"
 	};
 
-/* growarr is set to FATALFAIL internally */
+/* growarr is set to FATALFAIL internally, this should be changed
+ * when refactoring _mem and replacing strdup to properly handle OOM */
 	while(darr->count + n_spaces + 1 > darr->limit)
 		arcan_mem_growarr(darr);
 
@@ -1243,7 +1244,21 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 				NULL
 			};
 
-			execve(argv[0], argv, arr.data);
+/* OVERRIDE/INHERIT rather than REPLACE environment (terminal, ...) */
+			if (setup->preserve_env){
+				for (size_t i = 0; i < arr.count;	i++){
+					if (!(arr.data[i] || arr.data[i][0]))
+						continue;
+
+					char* val = strchr(arr.data[i], '=');
+					*val++ = '\0';
+					setenv(arr.data[i], val, 1);
+				}
+				execv(argv[0], argv);
+			}
+			else
+				execve(argv[0], argv, arr.data);
+
 			arcan_warning("arcan_frameserver_spawn_server() failed: %s, %s\n",
 				strerror(errno), argv[0]);
 				;
