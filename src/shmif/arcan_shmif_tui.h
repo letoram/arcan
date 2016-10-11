@@ -67,6 +67,8 @@
  *
  * [ ] abstract component helpers for things like popup-select style windows
  *
+ * [ ] query label callback not yet used
+ *
  * [ ] Normal "Curses" rendering- backend to not break term- compatibility
  *     for programs reworked to use this interface
  */
@@ -164,11 +166,11 @@ struct tui_cbcfg {
 /*
  * single UTF8- character
  */
-	void (*input_utf8)(struct tui_context*, const char* u8, size_t len, void*);
+	bool (*input_utf8)(struct tui_context*, const char* u8, size_t len, void*);
 
 /*
  * other KEY where we are uncertain about origin, filled on a best-effort
- * (should be last-line of defence after label->utf8->mouse->[key]
+ * (should be last-line of defence after label->utf8|sym->mouse->[key]
  */
 	void (*input_key)(struct tui_context*, uint32_t symest,
 		uint8_t scancode, uint8_t mods, uint16_t subid, void* tag);

@@ -31,6 +31,7 @@
 
 #include "../arcan_shmif.h"
 #include "../arcan_shmif_tui.h"
+#include "../arcan_shmif_tuisym.h"
 
 #include "libtsm.h"
 #include "libtsm_int.h"
@@ -80,6 +81,7 @@ struct tui_context {
 /* size in font pt */
 #endif
 	size_t font_sz;
+	int font_sz_delta;
 	int hint;
 	int font_fd[2];
 	float ppcm;
@@ -391,58 +393,62 @@ static void update_screen(struct tui_context* tui)
 		&tui->cattr, 0, !tui->cursor_off, false);
 }
 
-static void page_up(struct tui_context* tui)
+static bool page_up(struct tui_context* tui)
 {
 	tsm_screen_sb_up(tui->screen, tui->rows);
 	tui->sbofs += tui->rows;
 	tui->dirty |= DIRTY_PENDING;
+	return true;
 }
 
-static void page_down(struct tui_context* tui)
+static bool page_down(struct tui_context* tui)
 {
 	tsm_screen_sb_down(tui->screen, tui->rows);
 	tui->sbofs -= tui->rows;
 	tui->sbofs = tui->sbofs < 0 ? 0 : tui->sbofs;
 	tui->dirty |= DIRTY_PENDING;
+	return true;
 }
 
-static void scroll_up(struct tui_context* tui)
+static bool scroll_up(struct tui_context* tui)
 {
 	tsm_screen_sb_up(tui->screen, 1);
 	tui->sbofs += 1;
 	tui->dirty |= DIRTY_PENDING;
+	return true;
 }
 
-static void scroll_down(struct tui_context* tui)
+static bool scroll_down(struct tui_context* tui)
 {
 	tsm_screen_sb_down(tui->screen, 1);
 	tui->sbofs -= 1;
 	tui->sbofs = tui->sbofs < 0 ? 0 : tui->sbofs;
 	tui->dirty |= DIRTY_PENDING;
+	return true;
 }
 
-static void move_up(struct tui_context* tui)
+static bool move_up(struct tui_context* tui)
 {
-	if (tui->scroll_lock)
+	if (tui->scroll_lock){
 		page_up(tui);
+		return true;
+	}
 	else if (tui->handlers.input_label)
-		tui->handlers.input_label(tui, "up", NULL, tui->handlers.tag);
+		return tui->handlers.input_label(tui, "UP", NULL, tui->handlers.tag);
+
+	return false;
 }
 
-static void move_down(struct tui_context* tui)
+static bool move_down(struct tui_context* tui)
 {
-	if (tui->scroll_lock)
+	if (tui->scroll_lock){
 		page_down(tui);
+		return true;
+	}
 	else if (tui->handlers.input_label)
-		tui->handlers.input_label(tui, "down", NULL, tui->handlers.tag);
-}
+		return tui->handlers.input_label(tui, "DOWN", NULL, tui->handlers.tag);
 
-static void select_begin(struct tui_context* tui)
-{
-	tsm_screen_selection_start(tui->screen,
-		tsm_screen_get_cursor_x(tui->screen),
-		tsm_screen_get_cursor_y(tui->screen)
-	);
+	return false;
 }
 
 #include "util/utf8.c"
@@ -516,12 +522,7 @@ static void select_copy(struct tui_context* tui)
 	free(sel);
 }
 
-static void select_cancel(struct tui_context* tui)
-{
-	tsm_screen_selection_reset(tui->screen);
-}
-
-static void select_at(struct tui_context* tui)
+static bool select_at(struct tui_context* tui)
 {
 	tsm_screen_selection_reset(tui->screen);
 	unsigned sx, sy, ex, ey;
@@ -537,9 +538,10 @@ static void select_at(struct tui_context* tui)
 	}
 
 	tui->in_select = false;
+	return true;
 }
 
-static void select_row(struct tui_context* tui)
+static bool select_row(struct tui_context* tui)
 {
 	tsm_screen_selection_reset(tui->screen);
 	tsm_screen_selection_start(tui->screen, 0, tui->cursor_y);
@@ -547,11 +549,12 @@ static void select_row(struct tui_context* tui)
 	select_copy(tui);
 	tui->dirty |= DIRTY_PENDING;
 	tui->in_select = false;
+	return true;
 }
 
 struct lent {
 	const char* lbl;
-	void(*ptr)(struct tui_context*);
+	bool(*ptr)(struct tui_context*);
 };
 
 #ifdef TTF_SUPPORT
@@ -559,21 +562,25 @@ static const int badfd = -1;
 static bool setup_font(struct tui_context* tui,
 	int fd, size_t font_sz, int mode);
 
-void inc_fontsz(struct tui_context* tui)
+bool inc_fontsz(struct tui_context* tui)
 {
-	tui->font_sz += 2;
-	setup_font(tui, badfd, tui->font_sz, 0);
+	tui->font_sz_delta += 2;
+	setup_font(tui, badfd, 0, 0);
+	return true;
 }
 
-void dec_fontsz(struct tui_context* tui)
+bool dec_fontsz(struct tui_context* tui)
 {
 	if (tui->font_sz > 8)
-		tui->font_sz -= 2;
-	setup_font(tui, badfd, tui->font_sz, 0);
+		tui->font_sz_delta -= 2;
+	if (tui->font_sz_delta < 0)
+		tui->font_sz_delta = 0;
+	setup_font(tui, badfd, 0, 0);
+	return true;
 }
 #endif
 
-static void scroll_lock(struct tui_context* tui)
+static bool scroll_lock(struct tui_context* tui)
 {
 	tui->scroll_lock = !tui->scroll_lock;
 	if (!tui->scroll_lock){
@@ -581,27 +588,29 @@ static void scroll_lock(struct tui_context* tui)
 		tsm_screen_sb_reset(tui->screen);
 		tui->dirty |= DIRTY_PENDING;
 	}
+	return true;
 }
 
-static void mouse_forward(struct tui_context* tui)
+static bool mouse_forward(struct tui_context* tui)
 {
 	tui->mouse_forward = !tui->mouse_forward;
+	return true;
 }
 
 static const struct lent labels[] = {
-	{"line_up", scroll_up},
-	{"line_down", scroll_down},
-	{"page_up", page_up},
-	{"page_down", page_down},
-	{"up", move_up},
-	{"down", move_down},
-	{"mouse_forward", mouse_forward},
-	{"select_at", select_at},
-	{"select_row", select_row},
-	{"scroll_lock", scroll_lock},
+	{"LINE_UP", scroll_up},
+	{"LINE_DOWN", scroll_down},
+	{"PAGE_UP", page_up},
+	{"PAGE_DOWN", page_down},
+	{"UP", move_up},
+	{"DOWN", move_down},
+	{"MOUSE_FORWARD", mouse_forward},
+	{"SELECT_AT", select_at},
+	{"SELECT_ROW", select_row},
+	{"SCROLL_LOCK", scroll_lock},
 #ifdef TTF_SUPPORT
-	{"inc_font_sz", inc_fontsz},
-	{"dec_font_sz", dec_fontsz},
+	{"INC_FONT_SZ", inc_fontsz},
+	{"DEC_FONT_SZ", dec_fontsz},
 #endif
 	{NULL, NULL}
 };
@@ -635,8 +644,7 @@ static bool consume_label(struct tui_context* tui,
 
 	while(cur->lbl){
 		if (strcmp(label, cur->lbl) == 0){
-			cur->ptr(tui);
-			return true;
+			return cur->ptr(tui);
 		}
 		cur++;
 	}
@@ -658,6 +666,7 @@ static void ioev_ctxtbl(struct tui_context* tui,
 
 	if (ioev->datatype == EVENT_IDATATYPE_TRANSLATED){
 		bool pressed = ioev->input.translated.active;
+		tui->modifiers = ioev->input.translated.modifiers;
 		if (!pressed)
 			return;
 
@@ -675,23 +684,60 @@ static void ioev_ctxtbl(struct tui_context* tui,
 			tui->dirty |= DIRTY_PENDING;
 		}
 
-/* ignore the meta keys as we already treat them in modifiers */
+/* modifiers doesn't get set for the symbol itself which is a problem
+ * for when we want to forward modifier data to another handler like mbtn */
 		int sym = ioev->input.translated.keysym;
+		switch(sym){
+		case TUIK_LSHIFT:
+			tui->modifiers |= ARKMOD_LSHIFT;
+		break;
+		case TUIK_RSHIFT:
+			tui->modifiers |= ARKMOD_RSHIFT;
+		break;
+		case TUIK_LCTRL:
+			tui->modifiers |= ARKMOD_LCTRL;
+		break;
+		case TUIK_RCTRL:
+			tui->modifiers |= ARKMOD_RCTRL;
+		break;
+		case TUIK_LMETA:
+			tui->modifiers |= ARKMOD_LMETA;
+		break;
+		case TUIK_RMETA:
+			tui->modifiers |= ARKMOD_RMETA;
+		default:
+		break;
+		}
+
 		if (sym >= 300 && sym <= 314)
 			return;
 
+/* check the incoming utf8 if it's valid, if so forward and if the handler
+ * consumed the value, leave the function */
 		int len = 0;
-		while (len < 5 && ioev->input.translated.utf8[len]) len++;
-		if (ioev->input.translated.utf8[0] && tui->handlers.input_utf8){
-			if (tui->handlers.input_utf8)
-				tui->handlers.input_utf8(tui,
-					(const char*)ioev->input.translated.utf8,
-					len, tui->handlers.tag
-				);
-			return;
+		bool valid = true;
+		uint32_t codepoint = 0, state = 0;
+		while (len < 5 && ioev->input.translated.utf8[len]){
+			if (UTF8_REJECT == utf8_decode(&state, &codepoint,
+				ioev->input.translated.utf8[len])){
+				valid = false;
+				break;
+			}
+			len++;
 		}
 
-		tui->modifiers = ioev->input.translated.modifiers;
+/* disallow the private-use area */
+		if ((codepoint >= 0xe000 && codepoint <= 0xf8ff))
+			valid = false;
+
+		if (valid && ioev->input.translated.utf8[0] && tui->handlers.input_utf8){
+			if (tui->handlers.input_utf8 && tui->handlers.input_utf8(tui,
+					(const char*)ioev->input.translated.utf8,
+					len, tui->handlers.tag))
+				return;
+		}
+
+/* othereise, forward as much of the key as we know */
 		if (tui->handlers.input_key)
 			tui->handlers.input_key(tui,
 				sym,
@@ -753,8 +799,10 @@ static void ioev_ctxtbl(struct tui_context* tui,
 					tui->mouse_btnmask &= ~(1 << (ioev->subid-1));
 			}
 			if (tui->mouse_forward && tui->handlers.input_mouse_button)
-				tui->handlers.input_mouse_button(tui, false, tui->mouse_x,
-					tui->mouse_y, tui->mouse_btnmask, tui->modifiers, tui->handlers.tag);
+				tui->handlers.input_mouse_button(tui, tui->mouse_x,
+					tui->mouse_y, ioev->subid, ioev->input.digital.active,
+					tui->modifiers, tui->handlers.tag
+				);
 
 			if (ioev->flags & ARCAN_IOFL_GESTURE){
 				if (strcmp(ioev->label, "dblclick") == 0){
@@ -1193,6 +1241,7 @@ static bool setup_font(struct tui_context* tui,
 	TTF_Font* font;
 	if (font_sz <= 0)
 		font_sz = tui->font_sz;
+	font_sz += tui->font_sz_delta;
 
 	int modeind = mode >= 1 ? 1 : 0;
 

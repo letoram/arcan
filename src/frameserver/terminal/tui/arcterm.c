@@ -29,22 +29,6 @@ static inline void trace(const char* msg, ...)
 #endif
 }
 
-static bool query_label(struct tui_context* ctx,
-	size_t ind, const char* country, const char* lang,
-	struct tui_labelent* dstlbl)
-{
-/* FIXME: populate with real labels */
-	return false;
-}
-
-static bool on_label(struct tui_context* c,
-	const char* label, bool active, void* t)
-{
-	trace("label(%s)", label);
-/* FIXME: scan and run */
-	return false;
-}
-
 static void dump_help()
 {
 	fprintf(stdout, "Environment variables: \nARCAN_CONNPATH=path_to_server\n"
@@ -94,14 +78,16 @@ static void sighuph(int num)
 static void on_mouse_motion(struct tui_context* c,
 	bool relative, int x, int y, int modifiers, void* t)
 {
-	trace("mouse(%d:%d, mods:%d, rel: %d",
+	trace("mouse motion(%d:%d, mods:%d, rel: %d",
 		x, y, modifiers, (int) relative);
+
 }
 
 static void on_mouse_button(struct tui_context* c,
 	int last_x, int last_y, int button, bool active, int modifiers, void* t)
 {
-
+	trace("mouse button(%d:%d - @%d,%d (mods: %d)\n",
+		button, (int)active, last_x, last_y, modifiers);
 }
 
 static void on_key(struct tui_context* c, uint32_t keysym,
@@ -109,16 +95,17 @@ static void on_key(struct tui_context* c, uint32_t keysym,
 {
 	trace("on_key(%"PRIu32",%"PRIu8",%"PRIu16")", keysym, scancode, subid);
 	tsm_vte_handle_keyboard(term.vte,
-		keysym, keysym, mods, subid);
+		keysym, isascii(keysym) ? keysym : 0, mods, subid);
 }
 
-static void on_u8(struct tui_context* c, const char* u8, size_t len, void* t)
+static bool on_u8(struct tui_context* c, const char* u8, size_t len, void* t)
 {
 	uint8_t buf[5] = {0};
 	trace("utf8-input: %s", u8);
 	memcpy(buf, u8, len >= 5 ? 4 : len);
 	shl_pty_write(term.pty, (char*) buf, len);
 	shl_pty_dispatch(term.pty);
+	return true;
 }
 
 static void on_utf8_paste(struct tui_context* c,
@@ -131,8 +118,8 @@ static void on_utf8_paste(struct tui_context* c,
 static void on_resize(struct tui_context* c,
 	size_t neww, size_t newh, size_t col, size_t row, void* t)
 {
-	shl_pty_resize(term.pty, col, row);
 	trace("resize(%zu(%zu),%zu(%zu))", neww, col, newh, row);
+	shl_pty_resize(term.pty, col, row);
 }
 
 static void read_callback(struct shl_pty* pty,
@@ -240,8 +227,6 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		return EXIT_FAILURE;
 
 	struct tui_cbcfg cbcfg = {
-		.query_label = query_label,
-		.input_label = on_label,
 		.input_mouse_motion = on_mouse_motion,
 		.input_mouse_button = on_mouse_button,
 		.input_utf8 = on_u8,
