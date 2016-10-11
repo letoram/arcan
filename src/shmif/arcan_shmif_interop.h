@@ -189,6 +189,10 @@ enum shmifext_api {
 struct arcan_shmifext_setup {
 	uint8_t red, green, blue, alpha, depth;
 	uint8_t api, major, minor;
+	uint64_t flags;
+	uint64_t mask;
+/* workaround for versioning snafu with _setup not taking sizeof(...) */
+	uint64_t reserved[8];
 };
 
 struct arcan_shmifext_setup arcan_shmifext_headless_defaults();

@@ -165,13 +165,25 @@ enum shmifext_setup_status arcan_shmifext_headless_setup(
 		return SHMIFEXT_NO_CONFIG;
 
 	EGLint cas[] = {EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE,
-		EGL_NONE, EGL_NONE, EGL_NONE, EGL_NONE};
+		EGL_NONE, EGL_NONE, EGL_NONE, EGL_NONE, EGL_NONE, EGL_NONE,
+		EGL_NONE, EGL_NONE, EGL_NONE};
 
+	int ofs = 2;
 	if (arg.major){
-		cas[2] = EGL_CONTEXT_MAJOR_VERSION_KHR;
-		cas[3] = arg.major;
-		cas[4] = EGL_CONTEXT_MINOR_VERSION_KHR;
-		cas[5] = arg.minor;
+		cas[ofs++] = EGL_CONTEXT_MAJOR_VERSION_KHR;
+		cas[ofs++] = arg.major;
+		cas[ofs++] = EGL_CONTEXT_MINOR_VERSION_KHR;
+		cas[ofs++] = arg.minor;
+	}
+
+	if (arg.mask){
+		cas[ofs++] = EGL_CONTEXT_OPENGL_PROFILE_MASK_KHR;
+		cas[ofs++] = arg.mask;
+	}
+
+	if (arg.flags){
+		cas[ofs++] = EGL_CONTEXT_FLAGS_KHR;
+		cas[ofs++] = arg.flags;
 	}
 
 	ctx->context = eglCreateContext(ctx->display, cfg, EGL_NO_CONTEXT, cas);
