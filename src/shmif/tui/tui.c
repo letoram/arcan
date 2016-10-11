@@ -109,6 +109,7 @@ struct tui_context {
 	int rows;
 	int cols;
 	int cell_w, cell_h, pad_w, pad_h;
+	int modifiers;
 
 	uint8_t fgc[3];
 	uint8_t bgc[3];
@@ -690,6 +691,7 @@ static void ioev_ctxtbl(struct tui_context* tui,
 			return;
 		}
 
+		tui->modifiers = ioev->input.translated.modifiers;
 		if (tui->handlers.input_key)
 			tui->handlers.input_key(tui,
 				sym,
@@ -706,9 +708,9 @@ static void ioev_ctxtbl(struct tui_context* tui,
 				int yv = ioev->input.analog.axisval[0];
 				tui->mouse_y = yv / tui->cell_h;
 
-				if (tui->mouse_forward && tui->handlers.input_mouse)
-					tui->handlers.input_mouse(tui, false, tui->mouse_x, tui->mouse_y,
-						tui->mouse_btnmask, tui->handlers.tag);
+				if (tui->mouse_forward && tui->handlers.input_mouse_motion)
+					tui->handlers.input_mouse_motion(tui, false,
+						tui->mouse_x, tui->mouse_y, tui->modifiers, tui->handlers.tag);
 
 				if (!tui->in_select)
 					return;
@@ -750,9 +752,9 @@ static void ioev_ctxtbl(struct tui_context* tui,
 				else
 					tui->mouse_btnmask &= ~(1 << (ioev->subid-1));
 			}
-			if (tui->mouse_forward && tui->handlers.input_mouse)
-				tui->handlers.input_mouse(tui, false, tui->mouse_x, tui->mouse_y,
-					tui->mouse_btnmask, tui->handlers.tag);
+			if (tui->mouse_forward && tui->handlers.input_mouse_button)
+				tui->handlers.input_mouse_button(tui, false, tui->mouse_x,
+					tui->mouse_y, tui->mouse_btnmask, tui->modifiers, tui->handlers.tag);
 
 			if (ioev->flags & ARCAN_IOFL_GESTURE){
 				if (strcmp(ioev->label, "dblclick") == 0){
@@ -884,6 +886,7 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 	break;
 
 	case TARGET_COMMAND_RESET:
+		tui->modifiers = 0;
 		switch(ev->ioevs[0].iv){
 		case 0:
 		case 1:

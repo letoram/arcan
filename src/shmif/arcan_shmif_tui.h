@@ -151,11 +151,15 @@ struct tui_cbcfg {
 	);
 
 /*
- * mouse motion, may not always be enabled depending on mouse- management
- * flag switch (user-controlled between select/copy/paste and normal)
+ * mouse motion/button, may not always be enabled depending on mouse-
+ * management flag switch (user-controlled between select/copy/paste and
+ * normal)
  */
-	void (*input_mouse)(struct tui_context*,
-		bool relative, int x, int y, uint16_t button_mask, void*);
+	void (*input_mouse_motion)(struct tui_context*,
+		bool relative, int x, int y, int modifiers, void*);
+
+	void (*input_mouse_button)(struct tui_context*,
+		int last_x, int last_y, int button, bool active, int modifiers, void*);
 
 /*
  * single UTF8- character

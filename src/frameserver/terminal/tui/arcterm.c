@@ -91,12 +91,17 @@ static void sighuph(int num)
 		term.pty = (shl_pty_close(term.pty), NULL);
 }
 
-static void on_mouse(struct tui_context* c,
-	bool relative, int x, int y, uint16_t button_mask, void* t)
+static void on_mouse_motion(struct tui_context* c,
+	bool relative, int x, int y, int modifiers, void* t)
 {
-	trace("mouse(%d:%d, mask:%"PRIu16", rel: %d",
-		x, y, button_mask, (int) relative);
-/* FIXME: missing */
+	trace("mouse(%d:%d, mods:%d, rel: %d",
+		x, y, modifiers, (int) relative);
+}
+
+static void on_mouse_button(struct tui_context* c,
+	int last_x, int last_y, int button, bool active, int modifiers, void* t)
+{
+
 }
 
 static void on_key(struct tui_context* c, uint32_t keysym,
@@ -237,7 +242,8 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	struct tui_cbcfg cbcfg = {
 		.query_label = query_label,
 		.input_label = on_label,
-		.input_mouse = on_mouse,
+		.input_mouse_motion = on_mouse_motion,
+		.input_mouse_button = on_mouse_button,
 		.input_utf8 = on_u8,
 		.input_key = on_key,
 		.utf8 = on_utf8_paste,

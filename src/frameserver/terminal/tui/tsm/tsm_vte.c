@@ -1676,7 +1676,7 @@ static void csi_dsr(struct tsm_vte *vte)
 static void do_csi(struct tsm_vte *vte, uint32_t data)
 {
 	int num, upper, lower;
-	size_t x, y;
+	int x, y;
 	bool protect;
 
 	if (vte->csi_argc < CSI_ARG_MAX)
