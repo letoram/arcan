@@ -22,6 +22,8 @@
 
 static bool db_init = false;
 
+#define DB_VERSION_NUM "3"
+
 #define DDL_TARGET "CREATE TABLE target ("\
 	"tgtid INTEGER PRIMARY KEY,"\
 	"tag STRING NOT NULL,"\
@@ -133,6 +135,8 @@ struct arcan_dbh {
 	sqlite3_stmt* transaction;
 };
 
+static void setup_ddl(struct arcan_dbh* dbh);
+
 /*
  * any query that just returns a list of strings,
  * pack into a dbres (or append to an existing one)
@@ -226,6 +230,11 @@ void arcan_db_dropappl(struct arcan_dbh* dbh, const char* appl)
 	snprintf(dropbuf, sizeof(dropbuf), "%s%s;", dropqry, appl);
 
 	db_void_query(dbh, dropbuf, true);
+
+/* special case, reset version fields etc. */
+	if (strcmp(appl, "arcan") == 0){
+		arcan_db_appl_kv(dbh, "arcan", "dbversion", DB_VERSION_NUM);
+	}
 }
 
 static void sqliteexit()
@@ -952,7 +961,7 @@ char* arcan_db_appl_val(struct arcan_dbh* dbh,
 static void setup_ddl(struct arcan_dbh* dbh)
 {
 	create_appl_group(dbh, "arcan");
-	arcan_db_appl_kv(dbh, "arcan", "dbversion", "3");
+	arcan_db_appl_kv(dbh, "arcan", "dbversion", DB_VERSION_NUM);
 
 	for (size_t i = 0; i < sizeof(ddls)/sizeof(ddls[0]); i++)
 		db_void_query(dbh, ddls[i], false);
