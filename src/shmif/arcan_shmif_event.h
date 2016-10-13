@@ -233,6 +233,8 @@ enum ARCAN_TARGET_COMMAND {
  * a relative amount of frames to process or rollback
  * ioevs[0].iv represents the number of frames,
  * ioevs[1].iv can contain an ID (see CLOCKREQ)
+ * ioevs[2].uiv (on CLOCKREQ) 0 or seconds (NTP- jan 1900 64-bit format)
+ * ioevs[3].uiv (on CLOCKREQ) fractional second ( - " - ) in GEOHINT- tz
  */
 	TARGET_COMMAND_STEPFRAME,
 
@@ -463,7 +465,9 @@ enum ARCAN_TARGET_COMMAND {
  * ioev[0].iv = BADFD or descriptor of font to use
  * ioev[1].iv = type describing font in [0]:
  *  0 : default, off
- *  1 : TTF ( True Type ), other values are invalid/reserved for now.
+ *  1 : TTF ( True Type )
+ *  2 : OTF ( Open TYpe )
+ * Other values are invalid/reserved for now
  * ioev[2].fv = desired normal font size in mm, <= 0, unchanged from current
  * ioev[3].iv = hinting: 0, off. 1, monochromatic, 2. light, 3. medium,
  *  -1 (unchanged), 0: off, 1..16 (implementation defined, recommendation
@@ -483,7 +487,9 @@ enum ARCAN_TARGET_COMMAND {
  * ioev[1].fv = GPS(long)
  * ioev[2].fv = GPS(elev)
  * ioev[3].cv = ISO-3166-1 Alpha 3 code for country + \'0'
- * ioev[4].cv = ISO-639-2, Alpha 3 code for language + \'0'
+ * ioev[4].cv = ISO-639-2, Alpha 3 code for language (spoken) + \'0'
+ * ioev[5].cv = ISO-639-2, Alpha 3 code for language (written) + \'0'
+ * ioev[6].iv = timezone
  */
 	TARGET_COMMAND_GEOHINT,
 

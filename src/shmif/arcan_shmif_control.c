@@ -224,7 +224,8 @@ struct shmif_hidden {
 	uint8_t abuf_ind, abuf_cnt;
 	shmif_asample* abuf[ARCAN_SHMIF_ABUFC_LIM];
 
-	bool output, alive, paused;
+	struct arcan_shmif_initial initial;
+	bool valid_initial, output, alive, paused;
 	char* alt_conn;
 
 	enum ARCAN_FLAGS flags;
@@ -366,7 +367,7 @@ static void consume(struct arcan_shmif_cont* c)
 
 /*
  * special rules for compacting DISPLAYHINT events,
- * where we keep w/h (if set) but overwrite hint/rgb/ppcm
+ * where we keep w/h (if set) but overwrite hint/rgb/density
  */
 static inline void merge_dh(arcan_event* new, arcan_event* old)
 {
@@ -389,6 +390,7 @@ static inline void merge_dh(arcan_event* new, arcan_event* old)
 static bool scan_disp_event(struct arcan_evctx* c, struct arcan_event* old)
 {
 	uint8_t cur = *c->front;
+
 	while (cur != *c->back){
 		struct arcan_event* ev = &c->eventbuf[cur];
 		if (ev->category == EVENT_TARGET && ev->tgt.kind == old->tgt.kind){
@@ -594,7 +596,7 @@ checkfd:
  * overridden with something in the queue, use this mechanism. Cannot be applied
  * to descriptor- carrying events as more state tracking is needed. */
 			case TARGET_COMMAND_DISPLAYHINT:
-				if (scan_disp_event(ctx, dst))
+				if (!priv->valid_initial && scan_disp_event(ctx, dst))
 					goto reset;
 			break;
 
@@ -698,13 +700,39 @@ done:
 	return *ks || noks ? rv : -1;
 }
 
+static void drop_initial(struct arcan_shmif_cont* c)
+{
+	if (!(c && c->priv && c->priv->valid_initial))
+		return;
+	struct arcan_shmif_initial* init = &c->priv->initial;
+
+	if (-1 != init->render_node){
+		close(init->render_node);
+		init->render_node = -1;
+	}
+
+	for (size_t i = 0; i < COUNT_OF(init->fonts); i++)
+		if (-1 != init->fonts[i].fd){
+			close(init->fonts[i].fd);
+			init->fonts[i].fd = -1;
+		}
+
+	c->priv->valid_initial = false;
+}
+
 int arcan_shmif_poll(struct arcan_shmif_cont* c, struct arcan_event* dst)
 {
+	if (c && c->priv->valid_initial)
+		drop_initial(c);
+
 	return process_events(c, dst, false, false);
 }
 
 int arcan_shmif_wait(struct arcan_shmif_cont* c, struct arcan_event* dst)
 {
+	if (c && c->priv->valid_initial)
+		drop_initial(c);
+
 	return process_events(c, dst, true, false) > 0;
 }
 
@@ -714,6 +742,9 @@ int arcan_shmif_enqueue(struct arcan_shmif_cont* c,
 	assert(c);
 	if (!c->addr)
 		return 0;
+
+	if (c && c->priv->valid_initial)
+		drop_initial(c);
 
 	if (!c->addr->dms || !c->priv->alive){
 		fallback_migrate(c);
@@ -1359,6 +1390,9 @@ void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 	if (!inctx || !inctx->priv)
 		return;
 
+	if (inctx->priv->valid_initial)
+		drop_initial(inctx);
+
 	if (inctx->addr)
 		inctx->addr->dms = false;
 
@@ -1676,6 +1710,47 @@ bool arg_lookup(struct arg_arr* arr, const char* val,
 	return false;
 }
 
+int arcan_shmif_dupfd(int fd, int dstnum, bool blocking)
+{
+	int rfd = -1;
+	if (-1 == fd)
+		return -1;
+
+	if (dstnum > 0)
+		while (-1 == (rfd = dup2(fd, dstnum)) && errno == EINTR){}
+
+	if (-1 == rfd)
+		while (-1 == (rfd = dup(fd)) && errno == EINTR){}
+
+	if (-1 == rfd)
+		return -1;
+
+/* unless F_SETLKW, EINTR is not an issue */
+	int flags;
+	if (!blocking){
+		flags = fcntl(rfd, F_GETFL);
+		if (-1 != flags)
+			fcntl(rfd, F_SETFL, flags | O_NONBLOCK);
+	}
+
+	flags = fcntl(rfd, F_GETFD);
+	if (-1 != flags)
+		fcntl(rfd, F_SETFD, flags | O_CLOEXEC);
+
+	return rfd;
+}
+
+size_t arcan_shmif_initial(struct arcan_shmif_cont* cont,
+	struct arcan_shmif_initial** out)
+{
+	if (!out || !cont || !cont->priv->valid_initial)
+		return 0;
+
+	*out = &cont->priv->initial;
+
+	return sizeof(struct arcan_shmif_initial);
+}
+
 enum shmif_migrate_status arcan_shmif_migrate(
 	struct arcan_shmif_cont* cont, const char* newpath, const char* key)
 {
@@ -1776,6 +1851,89 @@ enum shmif_migrate_status arcan_shmif_migrate(
 	return SHMIF_MIGRATE_OK;
 }
 
+static void wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
+{
+	arcan_event ev;
+	struct arcan_shmif_initial def = {
+		.country = {'G', 'B', 'R', 0},
+		.lang = {'E', 'N', 'G', 0},
+		.text_lang = {'E', 'N', 'G', 0},
+		.latitude = 51.48,
+		.longitude = 0.001475,
+		.render_node = -1,
+		.fonts = {
+			{.fd = -1}, {.fd = -1}, {.fd = -1}, {.fd = -1}
+		}
+	};
+
+	size_t w = 640;
+	size_t h = 480;
+	size_t font_ind = 0;
+
+	while (arcan_shmif_wait(cont, &ev)){
+		if (ev.category != EVENT_TARGET)
+			continue;
+
+		switch (ev.tgt.kind){
+		case TARGET_COMMAND_ACTIVATE:
+			cont->priv->valid_initial = true;
+			if (resize)
+				arcan_shmif_resize(cont, w, h);
+			return;
+		break;
+		case TARGET_COMMAND_DISPLAYHINT:
+			if (ev.tgt.ioevs[0].iv)
+				w = ev.tgt.ioevs[0].iv;
+			if (ev.tgt.ioevs[1].iv)
+				h = ev.tgt.ioevs[1].iv;
+			if (ev.tgt.ioevs[4].fv > 0)
+				def.density = ev.tgt.ioevs[4].fv;
+		break;
+		case TARGET_COMMAND_OUTPUTHINT:
+			if (ev.tgt.ioevs[0].iv)
+				def.display_width_px = ev.tgt.ioevs[0].iv;
+			if (ev.tgt.ioevs[1].iv)
+				def.display_height_px = ev.tgt.ioevs[1].iv;
+		break;
+		case TARGET_COMMAND_DEVICE_NODE:
+/* alt-con will be updated automatically, due to normal wait handler */
+			if (ev.tgt.ioevs[0].iv != -1)
+				def.render_node = arcan_shmif_dupfd(
+					ev.tgt.ioevs[0].iv, def.render_node, true);
+		break;
+		case TARGET_COMMAND_FONTHINT:
+			def.fonts[font_ind].hinting = ev.tgt.ioevs[3].iv;
+			def.fonts[font_ind].size_mm = ev.tgt.ioevs[2].fv;
+			if (font_ind < 3){
+				if (ev.tgt.ioevs[0].iv != -1){
+					def.fonts[font_ind].fd = arcan_shmif_dupfd(
+						ev.tgt.ioevs[0].iv, def.fonts[font_ind].fd, true);
+				}
+				if (ev.tgt.ioevs[4].iv && -1 != def.fonts[font_ind].fd)
+					font_ind++;
+			}
+		break;
+		case TARGET_COMMAND_GEOHINT:
+			def.latitude = ev.tgt.ioevs[0].fv;
+			def.longitude = ev.tgt.ioevs[1].fv;
+			def.elevation = ev.tgt.ioevs[2].fv;
+			if (ev.tgt.ioevs[3].cv[0])
+				memcpy(def.country, ev.tgt.ioevs[3].cv, 3);
+			if (ev.tgt.ioevs[4].cv[0])
+				memcpy(def.lang, ev.tgt.ioevs[3].cv, 3);
+			if (ev.tgt.ioevs[5].cv[0])
+				memcpy(def.text_lang, ev.tgt.ioevs[4].cv, 3);
+			break;
+		default:
+		break;
+		}
+	}
+
+	cont->priv->valid_initial = true;
+	arcan_shmif_drop(cont);
+	return;
+}
+
 struct arcan_shmif_cont arcan_shmif_open(
 	enum ARCAN_SEGID type, enum ARCAN_FLAGS flags, struct arg_arr** outarg)
 {
@@ -1825,6 +1983,7 @@ struct arcan_shmif_cont arcan_shmif_open(
 		ret.priv->alt_conn = strdup(conn_src);
 
 	free(keyfile);
+	wait_for_activation(&ret, !(flags & SHMIF_NOACTIVATE_RESIZE));
 	return ret;
 
 fail:
