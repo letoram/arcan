@@ -319,6 +319,8 @@ static struct {
 
 extern char* _n_strdup(const char* instr, const char* alt);
 static inline const char* fsrvtos(enum ARCAN_SEGID ink);
+static bool tgtevent(arcan_vobj_id dst, arcan_event ev);
+static void do_preroll(lua_State* ctx, intptr_t ref, arcan_vobj_id vid);
 
 static inline char* colon_escape(char* in)
 {
@@ -3043,14 +3045,32 @@ static int launchavfeed(lua_State* ctx)
 	if (strcmp(modearg, "terminal") == 0)
 		args.preserve_env = true;
 
-	if ( fsrv_ok && arcan_frameserver_spawn_server(mvctx, &args) == ARCAN_OK )
-	{
+	if ( fsrv_ok && arcan_frameserver_spawn_server(mvctx, &args) == ARCAN_OK ){
 		mvctx->tag = ref;
-
 		arcan_video_objectopacity(mvctx->vid, 0.0, 0);
+
+/* immediately run the event handler */
+		do_preroll(ctx, ref, mvctx->vid);
+
+		if (ref != (intptr_t) LUA_NOREF){
+			lua_rawgeti(ctx, LUA_REGISTRYINDEX, ref);
+			lua_pushvid(ctx, mvctx->vid);
+			lua_newtable(ctx);
+			int top = lua_gettop(ctx);
+			tblstr(ctx, "kind", "preroll", top);
+			wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "frameserver_event");
+		}
+
+/* then prepare the return values */
 		lua_pushvid(ctx, mvctx->vid);
 		trace_allocation(ctx, "launch_avfeed", mvctx->vid);
 		lua_pushaid(ctx, mvctx->aid);
+
+/* and wake-up the client */
+		tgtevent(mvctx->vid, (arcan_event){
+			.category = EVENT_TARGET,
+			.tgt.kind = TARGET_COMMAND_ACTIVATE
+		});
 	}
 	else {
 		free(mvctx);
@@ -3632,6 +3652,23 @@ static void display_removed(lua_State* ctx, arcan_event* ev)
 	LUA_TRACE("");
 }
 
+static void do_preroll(lua_State* ctx, intptr_t ref, arcan_vobj_id vid)
+{
+	if (ref != (intptr_t) LUA_NOREF){
+		lua_rawgeti(ctx, LUA_REGISTRYINDEX, ref);
+		lua_pushvid(ctx, vid);
+		lua_newtable(ctx);
+		int top = lua_gettop(ctx);
+		tblstr(ctx, "kind", "preroll", top);
+		wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "frameserver_event");
+	}
+
+	tgtevent(vid, (arcan_event){
+		.category = EVENT_TARGET,
+		.tgt.kind = TARGET_COMMAND_ACTIVATE
+	});
+}
+
 /*
  * need to intercept and redefine some of the target_ functions
  * to work for _lwa to arcan behavior
@@ -3974,6 +4011,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 
 	}
 	else if (ev->category == EVENT_EXTERNAL){
+		bool preroll = false;
 		char mcbuf[sizeof(ev->ext.message.data)+1];
 /* need to jump through a few hoops to get hold of the possible callback */
 		arcan_vobject* vobj = arcan_video_getobject(ev->ext.source);
@@ -3983,200 +4021,204 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		int reset = lua_gettop(ctx);
 		size_t extmsg_sz = COUNT_OF(ev->ext.message.data);
 		arcan_frameserver* fsrv = vobj->feed.state.ptr;
+		if (fsrv->tag == LUA_NOREF)
+			return;
 
-		if (fsrv->tag != LUA_NOREF){
-			intptr_t dst_cb = fsrv->tag;
-			lua_rawgeti(ctx, LUA_REGISTRYINDEX, dst_cb);
-			lua_pushvid(ctx, ev->ext.source);
+		intptr_t dst_cb = fsrv->tag;
+		lua_rawgeti(ctx, LUA_REGISTRYINDEX, dst_cb);
+		lua_pushvid(ctx, ev->ext.source);
 
-			lua_newtable(ctx);
-			int top = lua_gettop(ctx);
-			switch (ev->ext.kind){
-			case EVENT_EXTERNAL_IDENT:
-				tblstr(ctx, "kind", "ident", top);
-				slim_utf8_push(mcbuf, extmsg_sz, (char*)ev->ext.message.data);
-				tblstr(ctx, "message", mcbuf, top);
-			break;
-			case EVENT_EXTERNAL_COREOPT:
-				tblstr(ctx, "kind", "coreopt", top);
-				tblnum(ctx, "slot", ev->ext.coreopt.index, top);
-				slim_utf8_push(mcbuf, extmsg_sz-1, (char*)ev->ext.coreopt.data);
-				tblstr(ctx, "argument", mcbuf, top);
-				if (ev->ext.coreopt.type == 0)
-					tblstr(ctx, "type", "key", top);
-				else if (ev->ext.coreopt.type == 1)
-					tblstr(ctx, "type", "description", top);
-				else if (ev->ext.coreopt.type == 2)
-					tblstr(ctx, "type", "value", top);
-				else if (ev->ext.coreopt.type == 3)
-					tblstr(ctx, "type", "current", top);
-				else {
-					lua_settop(ctx, reset);
-					return;
-				}
-			break;
-			case EVENT_EXTERNAL_CLOCKREQ:
+		lua_newtable(ctx);
+		int top = lua_gettop(ctx);
+		switch (ev->ext.kind){
+		case EVENT_EXTERNAL_IDENT:
+			tblstr(ctx, "kind", "ident", top);
+			slim_utf8_push(mcbuf, extmsg_sz, (char*)ev->ext.message.data);
+			tblstr(ctx, "message", mcbuf, top);
+		break;
+		case EVENT_EXTERNAL_COREOPT:
+			tblstr(ctx, "kind", "coreopt", top);
+			tblnum(ctx, "slot", ev->ext.coreopt.index, top);
+			slim_utf8_push(mcbuf, extmsg_sz-1, (char*)ev->ext.coreopt.data);
+			tblstr(ctx, "argument", mcbuf, top);
+			if (ev->ext.coreopt.type == 0)
+				tblstr(ctx, "type", "key", top);
+			else if (ev->ext.coreopt.type == 1)
+				tblstr(ctx, "type", "description", top);
+			else if (ev->ext.coreopt.type == 2)
+				tblstr(ctx, "type", "value", top);
+			else if (ev->ext.coreopt.type == 3)
+				tblstr(ctx, "type", "current", top);
+			else {
+				lua_settop(ctx, reset);
+				return;
+			}
+		break;
+		case EVENT_EXTERNAL_CLOCKREQ:
 /* check frameserver flags and see if we are set to autoclock, then only
  * forward the once events and have others just update the frameserver
  * statetable */
-				tblstr(ctx, "kind", "clock", top);
-				tblbool(ctx, "dynamic", ev->ext.clock.dynamic, top);
-				tblbool(ctx, "once", ev->ext.clock.once, top);
-				tblnum(ctx, "value", ev->ext.clock.rate, top);
-				if (ev->ext.clock.once)
-					tblnum(ctx, "id", ev->ext.clock.id, top);
-			break;
-			case EVENT_EXTERNAL_CONTENT:
-				tblstr(ctx, "kind", "content_state", top);
-				tblnum(ctx, "rel_x", (float)ev->ext.content.x_pos, top);
-				tblnum(ctx, "rel_y", (float)ev->ext.content.y_pos, top);
-				tblnum(ctx, "x_size", (float)ev->ext.content.x_sz, top);
-				tblnum(ctx, "y_size", (float)ev->ext.content.y_sz, top);
-			break;
-			case EVENT_EXTERNAL_VIEWPORT:
-				tblstr(ctx, "kind", "viewport", top);
-				push_view(ctx, &ev->ext, fsrv, top);
-			break;
-			case EVENT_EXTERNAL_CURSORHINT:
-				fltpush(mcbuf, extmsg_sz, (char*)ev->ext.message.data, flt_alpha, '?');
-				tblstr(ctx, "cursor", mcbuf, top);
-				tblstr(ctx, "kind", "cursorhint", top);
-			break;
-			case EVENT_EXTERNAL_ALERT:
-				tblstr(ctx, "kind", "alert", top);
-				if (0)
-			case EVENT_EXTERNAL_MESSAGE:
-					tblstr(ctx, "kind", "message", top);
-				slim_utf8_push(mcbuf, extmsg_sz, (char*)ev->ext.message.data);
-				tblbool(ctx, "multipart", ev->ext.message.multipart != 0, top);
-				tblstr(ctx, "message", mcbuf, top);
-			break;
-			case EVENT_EXTERNAL_FAILURE:
-				tblstr(ctx, "kind", "failure", top);
-				slim_utf8_push(mcbuf, extmsg_sz, (char*)ev->ext.message.data);
-				tblstr(ctx, "message", mcbuf, top);
-			break;
-			case EVENT_EXTERNAL_FRAMESTATUS:
-				tblstr(ctx, "kind", "framestatus", top);
-				tblnum(ctx, "frame", ev->ext.framestatus.framenumber, top);
-				tblnum(ctx, "pts", ev->ext.framestatus.pts, top);
-				tblnum(ctx, "acquired", ev->ext.framestatus.acquired, top);
-				tblnum(ctx, "fhint", ev->ext.framestatus.fhint, top);
-			break;
+			tblstr(ctx, "kind", "clock", top);
+			tblbool(ctx, "dynamic", ev->ext.clock.dynamic, top);
+			tblbool(ctx, "once", ev->ext.clock.once, top);
+			tblnum(ctx, "value", ev->ext.clock.rate, top);
+			if (ev->ext.clock.once)
+				tblnum(ctx, "id", ev->ext.clock.id, top);
+		break;
+		case EVENT_EXTERNAL_CONTENT:
+			tblstr(ctx, "kind", "content_state", top);
+			tblnum(ctx, "rel_x", (float)ev->ext.content.x_pos, top);
+			tblnum(ctx, "rel_y", (float)ev->ext.content.y_pos, top);
+			tblnum(ctx, "x_size", (float)ev->ext.content.x_sz, top);
+			tblnum(ctx, "y_size", (float)ev->ext.content.y_sz, top);
+		break;
+		case EVENT_EXTERNAL_VIEWPORT:
+			tblstr(ctx, "kind", "viewport", top);
+			push_view(ctx, &ev->ext, fsrv, top);
+		break;
+		case EVENT_EXTERNAL_CURSORHINT:
+			fltpush(mcbuf, extmsg_sz, (char*)ev->ext.message.data, flt_alpha, '?');
+			tblstr(ctx, "cursor", mcbuf, top);
+			tblstr(ctx, "kind", "cursorhint", top);
+		break;
+		case EVENT_EXTERNAL_ALERT:
+			tblstr(ctx, "kind", "alert", top);
+			if (0)
+		case EVENT_EXTERNAL_MESSAGE:
+				tblstr(ctx, "kind", "message", top);
+			slim_utf8_push(mcbuf, extmsg_sz, (char*)ev->ext.message.data);
+			tblbool(ctx, "multipart", ev->ext.message.multipart != 0, top);
+			tblstr(ctx, "message", mcbuf, top);
+		break;
+		case EVENT_EXTERNAL_FAILURE:
+			tblstr(ctx, "kind", "failure", top);
+			slim_utf8_push(mcbuf, extmsg_sz, (char*)ev->ext.message.data);
+			tblstr(ctx, "message", mcbuf, top);
+		break;
+		case EVENT_EXTERNAL_FRAMESTATUS:
+			tblstr(ctx, "kind", "framestatus", top);
+			tblnum(ctx, "frame", ev->ext.framestatus.framenumber, top);
+			tblnum(ctx, "pts", ev->ext.framestatus.pts, top);
+			tblnum(ctx, "acquired", ev->ext.framestatus.acquired, top);
+			tblnum(ctx, "fhint", ev->ext.framestatus.fhint, top);
+		break;
+		case EVENT_EXTERNAL_STREAMINFO:
+			fltpush(mcbuf, COUNT_OF(ev->ext.streaminf.langid),
+				(char*)ev->ext.streaminf.langid, flt_Alpha, '?');
+			tblstr(ctx, "kind", "streaminfo", top);
+			tblstr(ctx, "lang", mcbuf, top);
+			tblnum(ctx, "streamid", ev->ext.streaminf.streamid, top);
+			tblstr(ctx, "type",
+				streamtype(ev->ext.streaminf.datakind),top);
+		break;
+		case EVENT_EXTERNAL_STREAMSTATUS:
+			tblstr(ctx, "kind", "streamstatus", top);
+			fltpush(mcbuf, COUNT_OF(ev->ext.streamstat.timestr),
+				(char*)ev->ext.streamstat.timestr, flt_num, '?');
+			tblstr(ctx, "ctime", mcbuf, top);
+			fltpush(mcbuf, COUNT_OF(ev->ext.streamstat.timelim),
+				(char*)ev->ext.streamstat.timelim, flt_num, '?');
+			tblstr(ctx, "endtime", mcbuf, top);
+			tblnum(ctx,"completion",ev->ext.streamstat.completion,top);
+			tblnum(ctx, "frameno", ev->ext.streamstat.frameno, top);
+			tblnum(ctx,"streaming",
+				ev->ext.streamstat.streaming!=0,top);
+		break;
 
-			case EVENT_EXTERNAL_STREAMINFO:
-				fltpush(mcbuf, COUNT_OF(ev->ext.streaminf.langid),
-					(char*)ev->ext.streaminf.langid, flt_Alpha, '?');
-				tblstr(ctx, "kind", "streaminfo", top);
-				tblstr(ctx, "lang", mcbuf, top);
-				tblnum(ctx, "streamid", ev->ext.streaminf.streamid, top);
-				tblstr(ctx, "type",
-					streamtype(ev->ext.streaminf.datakind),top);
-			break;
+		case EVENT_EXTERNAL_CURSORINPUT:
+			tblstr(ctx, "kind", "cursor_input", top);
+			tblnum(ctx, "id", ev->ext.cursor.id, top);
+			tblnum(ctx, "x", ev->ext.cursor.x, top);
+			tblnum(ctx, "y", ev->ext.cursor.y, top);
+			tblbool(ctx, "button_1", ev->ext.cursor.buttons[0], top);
+			tblbool(ctx, "button_2", ev->ext.cursor.buttons[1], top);
+			tblbool(ctx, "button_3", ev->ext.cursor.buttons[2], top);
+			tblbool(ctx, "button_4", ev->ext.cursor.buttons[3], top);
+			tblbool(ctx, "button_5", ev->ext.cursor.buttons[4], top);
+		break;
 
-			case EVENT_EXTERNAL_STREAMSTATUS:
-				tblstr(ctx, "kind", "streamstatus", top);
-				fltpush(mcbuf, COUNT_OF(ev->ext.streamstat.timestr),
-					(char*)ev->ext.streamstat.timestr, flt_num, '?');
-				tblstr(ctx, "ctime", mcbuf, top);
-				fltpush(mcbuf, COUNT_OF(ev->ext.streamstat.timelim),
-					(char*)ev->ext.streamstat.timelim, flt_num, '?');
-				tblstr(ctx, "endtime", mcbuf, top);
-				tblnum(ctx,"completion",ev->ext.streamstat.completion,top);
-				tblnum(ctx, "frameno", ev->ext.streamstat.frameno, top);
-				tblnum(ctx,"streaming",
-					ev->ext.streamstat.streaming!=0,top);
-			break;
-
-			case EVENT_EXTERNAL_CURSORINPUT:
-				tblstr(ctx, "kind", "cursor_input", top);
-				tblnum(ctx, "id", ev->ext.cursor.id, top);
-				tblnum(ctx, "x", ev->ext.cursor.x, top);
-				tblnum(ctx, "y", ev->ext.cursor.y, top);
-				tblbool(ctx, "button_1", ev->ext.cursor.buttons[0], top);
-				tblbool(ctx, "button_2", ev->ext.cursor.buttons[1], top);
-				tblbool(ctx, "button_3", ev->ext.cursor.buttons[2], top);
-				tblbool(ctx, "button_4", ev->ext.cursor.buttons[3], top);
-				tblbool(ctx, "button_5", ev->ext.cursor.buttons[4], top);
-			break;
-
-			case EVENT_EXTERNAL_KEYINPUT:
-				tblstr(ctx, "kind", "key_input", top);
-				tblnum(ctx, "id", ev->ext.cursor.id, top);
-				tblnum(ctx, "keysym", ev->ext.key.keysym, top);
-				tblbool(ctx, "active", ev->ext.key.active, top);
-			break;
+		case EVENT_EXTERNAL_KEYINPUT:
+			tblstr(ctx, "kind", "key_input", top);
+			tblnum(ctx, "id", ev->ext.cursor.id, top);
+			tblnum(ctx, "keysym", ev->ext.key.keysym, top);
+			tblbool(ctx, "active", ev->ext.key.active, top);
+		break;
 
 /* special semantics for segreq */
-			case EVENT_EXTERNAL_SEGREQ:
-				return emit_segreq(ctx, &ev->ext);
-			break;
-			case EVENT_EXTERNAL_LABELHINT:{
-				const char* idt = lookup_idatatype(ev->ext.labelhint.idatatype);
-				if (!idt){
-					lua_settop(ctx, reset);
-					return;
-				}
-				slim_utf8_push(mcbuf,
-					COUNT_OF(ev->ext.labelhint.descr),
-					(char*)ev->ext.labelhint.descr
-				);
-				snprintf(fsrv->title, COUNT_OF(fsrv->title), "%s", mcbuf);
-				tblstr(ctx, "description", mcbuf, top);
-				tblstr(ctx, "kind", "input_label", top);
-				fltpush(mcbuf, COUNT_OF(ev->ext.labelhint.label),
-					ev->ext.labelhint.label, flt_Alphanum, '?');
-				tblstr(ctx, "labelhint", mcbuf, top);
-				fltpush(mcbuf, COUNT_OF(ev->ext.labelhint.initial),
-					ev->ext.labelhint.initial, flt_Alphanum, '?');
-				tblstr(ctx, "initial", mcbuf, top);
-				tblstr(ctx, "datatype", idt, top);
+		case EVENT_EXTERNAL_SEGREQ:
+			return emit_segreq(ctx, &ev->ext);
+		break;
+		case EVENT_EXTERNAL_LABELHINT:{
+			const char* idt = lookup_idatatype(ev->ext.labelhint.idatatype);
+			if (!idt){
+				lua_settop(ctx, reset);
+				return;
 			}
-			break;
-			case EVENT_EXTERNAL_STATESIZE:
-				tblstr(ctx, "kind", "state_size", top);
-				tblnum(ctx, "state_size", ev->ext.stateinf.size, top);
-				tblnum(ctx, "typeid", ev->ext.stateinf.type, top);
-			break;
-			case EVENT_EXTERNAL_REGISTER:{
-				if (fsrv->segid != SEGID_UNKNOWN &&
-					ev->ext.registr.kind != fsrv->segid){
-					lua_settop(ctx, reset);
-					return;
-				}
-				int id = ev->ext.registr.kind;
-				if (id == SEGID_NETWORK_CLIENT || id == SEGID_NETWORK_SERVER){
-					arcan_warning("client (%d) attempted to register a reserved (%d) "
-						"type which is not permitted.\n", fsrv->segid, id);
-					lua_settop(ctx, reset);
-					return;
-				}
-
-				tblstr(ctx, "kind", "registered", top);
-				tblstr(ctx, "segkind", fsrvtos(ev->ext.registr.kind), top);
-				slim_utf8_push(mcbuf,
-					COUNT_OF(ev->ext.registr.title), (char*)ev->ext.registr.title);
-					snprintf(fsrv->title, COUNT_OF(fsrv->title), "%s", mcbuf);
-				tblstr(ctx, "title", mcbuf, top);
-
-				size_t dsz;
-				char* b64 = (char*) arcan_base64_encode(
-					(uint8_t*)&ev->ext.registr.guid[0], 16, &dsz, 0);
-				tblstr(ctx, "guid", b64, top);
-				arcan_mem_free(b64);
-			}
-			break;
-		 	default:
-				tblstr(ctx, "kind", "unknown", top);
-				tblnum(ctx, "kind_num", ev->ext.kind, top);
-			}
-
-			luactx.cb_source_tag  = ev->ext.source;
-			luactx.cb_source_kind = CB_SOURCE_FRAMESERVER;
-			wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event_external");
-
-			luactx.cb_source_kind = CB_SOURCE_NONE;
+			slim_utf8_push(mcbuf,
+				COUNT_OF(ev->ext.labelhint.descr),
+				(char*)ev->ext.labelhint.descr
+			);
+			snprintf(fsrv->title, COUNT_OF(fsrv->title), "%s", mcbuf);
+			tblstr(ctx, "description", mcbuf, top);
+			tblstr(ctx, "kind", "input_label", top);
+			fltpush(mcbuf, COUNT_OF(ev->ext.labelhint.label),
+				ev->ext.labelhint.label, flt_Alphanum, '?');
+			tblstr(ctx, "labelhint", mcbuf, top);
+			fltpush(mcbuf, COUNT_OF(ev->ext.labelhint.initial),
+				ev->ext.labelhint.initial, flt_Alphanum, '?');
+			tblstr(ctx, "initial", mcbuf, top);
+			tblstr(ctx, "datatype", idt, top);
 		}
+		break;
+		case EVENT_EXTERNAL_STATESIZE:
+			tblstr(ctx, "kind", "state_size", top);
+			tblnum(ctx, "state_size", ev->ext.stateinf.size, top);
+			tblnum(ctx, "typeid", ev->ext.stateinf.type, top);
+		break;
+		case EVENT_EXTERNAL_REGISTER:{
+			if (fsrv->segid != SEGID_UNKNOWN &&
+				ev->ext.registr.kind != fsrv->segid){
+				lua_settop(ctx, reset);
+				return;
+			}
+			int id = ev->ext.registr.kind;
+			if (id == SEGID_NETWORK_CLIENT || id == SEGID_NETWORK_SERVER){
+				arcan_warning("client (%d) attempted to register a reserved (%d) "
+					"type which is not permitted.\n", fsrv->segid, id);
+				lua_settop(ctx, reset);
+				return;
+			}
+			if (fsrv->segid == SEGID_UNKNOWN){
+				fsrv->segid = id;
+				preroll = true;
+			}
+			tblstr(ctx, "kind", "registered", top);
+			tblstr(ctx, "segkind", fsrvtos(ev->ext.registr.kind), top);
+			slim_utf8_push(mcbuf,
+				COUNT_OF(ev->ext.registr.title), (char*)ev->ext.registr.title);
+				snprintf(fsrv->title, COUNT_OF(fsrv->title), "%s", mcbuf);
+			tblstr(ctx, "title", mcbuf, top);
+
+			size_t dsz;
+			char* b64 = (char*) arcan_base64_encode(
+				(uint8_t*)&ev->ext.registr.guid[0], 16, &dsz, 0);
+			tblstr(ctx, "guid", b64, top);
+			arcan_mem_free(b64);
+		}
+		break;
+	 	default:
+			tblstr(ctx, "kind", "unknown", top);
+			tblnum(ctx, "kind_num", ev->ext.kind, top);
+		}
+
+		luactx.cb_source_tag  = ev->ext.source;
+		luactx.cb_source_kind = CB_SOURCE_FRAMESERVER;
+		wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event_external");
+		luactx.cb_source_kind = CB_SOURCE_NONE;
+
+/* special: external connection + connected->registered sequence finished */
+		if (preroll)
+			do_preroll(ctx, fsrv->tag, ev->ext.source);
 	}
 	else if (ev->category == EVENT_FSRV){
 		intptr_t dst_cb = 0;
@@ -4243,6 +4285,12 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			}
 			break;
 
+/* for extconn: connected -> registered -> preroll (last chance to
+ * prepare target events before activation message is sent) */
+			case EVENT_FSRV_PREROLL:
+				tblstr(ctx, "kind", "preroll", top);
+			break;
+
 			case EVENT_FSRV_RESIZED :
 				tblstr(ctx, "kind", "resized", top);
 				tblnum(ctx, "width", ev->fsrv.width, top);
@@ -4259,6 +4307,14 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		lua_rawgeti(ctx, LUA_REGISTRYINDEX, dst_cb);
 		lua_replace(ctx, 1);
 		wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "frameserver_event");
+
+		if (ev->fsrv.kind == EVENT_FSRV_PREROLL){
+			tgtevent(ev->fsrv.video, (arcan_event){
+				.category = EVENT_TARGET,
+				.tgt.kind = TARGET_COMMAND_ACTIVATE
+			});
+		}
+
 		luactx.cb_source_kind = CB_SOURCE_NONE;
 	}
 	else if (ev->category == EVENT_VIDEO){
@@ -6911,6 +6967,10 @@ static int targetlaunch(lua_State* ctx)
 
 	if (intarget){
 		arcan_video_objectopacity(intarget->vid, 0.0, 0);
+
+/* same as with launch_avfeed, invoke the event handler with the
+ * preroll event as a means for queueing up initial states */
+		do_preroll(ctx, ref, intarget->vid);
 		lua_pushvid(ctx, intarget->vid);
 		lua_pushaid(ctx, intarget->aid);
 		trace_allocation(ctx, "launch", intarget->vid);
@@ -7606,6 +7666,11 @@ static int spawn_recfsrv(lua_State* ctx,
  */
 	if (naids > 1)
 		arcan_frameserver_avfeed_mixer(mvctx, naids, aidlocks);
+
+	tgtevent(did, (arcan_event){
+		.category = EVENT_TARGET,
+		.tgt.kind = TARGET_COMMAND_ACTIVATE
+	});
 
 	return 0;
 }
@@ -8788,13 +8853,17 @@ cleanup:
 	LUA_ETRACE("save_screenshot", NULL, 0);
 }
 
-static bool lua_launch_fsrv(lua_State* ctx,
+static bool launch_fsrv_net(lua_State* ctx,
 	struct frameserver_envp* args, intptr_t callback)
 {
 	arcan_frameserver* intarget = arcan_frameserver_alloc();
 	intarget->tag = callback;
 
 	if (fsrv_ok && arcan_frameserver_spawn_server(intarget, args) == ARCAN_OK){
+		tgtevent(intarget->vid, (arcan_event){
+			.category = EVENT_TARGET,
+			.tgt.kind = TARGET_COMMAND_ACTIVATE
+		});
 		lua_pushvid(ctx, intarget->vid);
 		trace_allocation(ctx, "net", intarget->vid);
 		return true;
@@ -8817,7 +8886,7 @@ static int net_listen(lua_State* ctx)
 		.args.builtin.mode = "net-srv",
 		.args.builtin.resource = "mode=server"
 	};
-	lua_launch_fsrv(ctx, &args, ref);
+	launch_fsrv_net(ctx, &args, ref);
 
 	LUA_ETRACE("net_listen", NULL, 1);
 }
@@ -8845,7 +8914,7 @@ static int net_discover(lua_State* ctx)
 			.args.builtin.resource = tmpstr
 		};
 
-		lua_launch_fsrv(ctx, &args, ref);
+		launch_fsrv_net(ctx, &args, ref);
 		arcan_mem_free(tmpstr);
 	}
 	else
@@ -8856,7 +8925,7 @@ static int net_discover(lua_State* ctx)
 			.args.builtin.resource = "mode=client:discover"
 		};
 
-		lua_launch_fsrv(ctx, &args, ref);
+		launch_fsrv_net(ctx, &args, ref);
 	}
 
 	LUA_ETRACE("net_discover", NULL, 1);
@@ -8889,7 +8958,7 @@ static int net_open(lua_State* ctx)
 		.args.builtin.resource = instr
 	};
 
-	lua_launch_fsrv(ctx, &args, ref);
+	launch_fsrv_net(ctx, &args, ref);
 
 	free(instr);
 	free(workstr);
@@ -9969,6 +10038,7 @@ static inline const char* fsrvtos(enum ARCAN_SEGID ink)
 	case SEGID_ACCESSIBILITY: return "accessibility";
 	case SEGID_CLIPBOARD_PASTE: return "clipboard-paste";
 	case SEGID_UNKNOWN: return "unknown";
+	case SEGID_TUI: return "tui";
 	case SEGID_LIM: break;
 	}
 	return "";
