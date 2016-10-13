@@ -72,13 +72,20 @@ enum ARCAN_EVENT_CATEGORY {
  * there will be a mask to queuetransfer+enqueue in ARCAN that will react
  * based on SEGID type (statetransfer for TITLEBAR, no..).
  *
- * Special flags (not enforced yet, will be after hardening phase) :
+ * Special flags (all not enforced yet, will be after hardening phase) :
  * [INPUT] data from server to client
  * [LOCKSTEP] signalling may block indefinitely, appl- controlled
  * [UNIQUE] only one per connection
  * [DESCRIPTOR_PASSING] for target commands where ioev[0] may be populated
  * with a descriptor. shmif_control retains ownership and may close after
  * it has been consumed, so continued use need to be dup:ed.
+ *
+ * [PREROLL, ACTIVATION] -
+ * Preroll / activation is hidden by the shmif implementation and keeps a new
+ * connection (not recovery/reset) in an event blocking/ pending state
+ * until an activation event is received. This is to make sure that some events
+ * that define client rendering properties, like language, dimensions etc. is
+ * available from the start and is used to fill out the shmif_cont.
  */
 enum ARCAN_SEGID {
 /*
@@ -102,7 +109,7 @@ enum ARCAN_SEGID {
 /* External Connection, non-interactive data source */
 	SEGID_MEDIA,
 
-/* Sensitive, varying privilege level, event- driven */
+/* Specifically used to indicate a terminal- emulator connection */
 	SEGID_TERMINAL,
 
 /* External client connection, A/V/latency sensitive */
@@ -138,7 +145,10 @@ enum ARCAN_SEGID {
 	SEGID_HMD_R,
 
 /*
- * [LOCKSTEP, UNIQUE] Popup-window, use with viewport hints
+ * [LOCKSTEP] Popup-window, use with viewport hints to specify
+ * parent-relative positioning. Messages from this segment can provide
+ * server- initiated rendering, with \t to switch from left align- to
+ * right align, and single - as group separator.
  */
 	SEGID_POPUP,
 
@@ -147,7 +157,9 @@ enum ARCAN_SEGID {
  */
 	SEGID_ICON,
 
-/* [UNIQUE] Visual titlebar style, actual text content can be per segment */
+/* [UNIQUE] Visual titlebar style for CSD, actual text contents is still
+ * server-side rendered and provided as message on this segment or through
+ * IDENT messages */
 	SEGID_TITLEBAR,
 
 /* [UNIQUE] User- provided cursor, competes with CURSORHINT event. */
@@ -181,6 +193,13 @@ enum ARCAN_SEGID {
  * outside the normal window flow.
  */
 	SEGID_WIDGET,
+
+/*
+ * Used by the shmif_tui support library to indicate a monospaced text user
+ * interface, with known behavior for cut/paste (drag/drop), state transfers,
+ * resize response, font switching, ...
+ */
+	SEGID_TUI,
 
 /* Can always be terminated without risk, may be stored as part of debug format
  * in terms of unexpected termination etc. */
@@ -239,6 +258,10 @@ enum ARCAN_TARGET_COMMAND {
  * protocol carried within is implementation- defined. It is used for advanced
  * cut/paste or transfer operations, possibly with zero-copy mechanisms like
  * memfd.
+ * ioevs[0].iv will carry the file descriptor
+ * ioevs[1].iv, lower-32 bits of the expected size (if possible)
+ * ioevs[2].iv, upper-32 bits of the expected size
+ * message field will carry extension or other type identifier string.
  */
 	TARGET_COMMAND_BCHUNK_IN,
 	TARGET_COMMAND_BCHUNK_OUT,
@@ -285,7 +308,7 @@ enum ARCAN_TARGET_COMMAND {
  */
 	TARGET_COMMAND_SEEKCONTENT,
 
-/* [UNIQUE/AGGREGATE]
+/* [PREROLL/UNIQUE/AGGREGATE]
  * This event hints towards current display properties or desired display
  * properties.
  *
@@ -321,8 +344,7 @@ enum ARCAN_TARGET_COMMAND {
  */
 	TARGET_COMMAND_DISPLAYHINT,
 
-/*
- * Hint input/device mapping (device-type, input-port),
+/* Hint input/device mapping (device-type, input-port),
  * primarily used for gaming / legacy applications.
  * ioevs[0].iv = device_type,
  * ioevs[1].iv = input_port
@@ -387,7 +409,7 @@ enum ARCAN_TARGET_COMMAND {
 	TARGET_COMMAND_BUFFER_FAIL,
 
 /*
- * [DESCRIPTOR_PASSING]
+ * [PREROLL/DESCRIPTOR_PASSING]
  * Provide a handle to a specific device node, the [1].iv determines type and
  * intended use.
  * ioev[0].iv = handle (or BADFD)
@@ -435,7 +457,7 @@ enum ARCAN_TARGET_COMMAND {
 	TARGET_COMMAND_MESSAGE,
 
 /*
- * [DESCRIPTOR_PASSING]
+ * [PREROLL/DESCRIPTOR_PASSING]
  * A hint in regards to how text rendering should be managed in relation to
  * the display regarding filtering, font, and sizing decision.
  * ioev[0].iv = BADFD or descriptor of font to use
@@ -455,6 +477,7 @@ enum ARCAN_TARGET_COMMAND {
 	TARGET_COMMAND_FONTHINT,
 
 /*
+ * [PREROLL]
  * A hint to active positioning and localization settings
  * ioev[0].fv = GPS(lat)
  * ioev[1].fv = GPS(long)
@@ -465,11 +488,12 @@ enum ARCAN_TARGET_COMMAND {
 	TARGET_COMMAND_GEOHINT,
 
 /*
+ * [PREROLL]
  * geometrical constraints, while-as DISPLAYHINT events convey how the
  * target will be presented, the OUTPUT hints provide an estimate of the
  * capabilities. Shmif will track these properties internally and use
- * it to control _resize commands, but it is not assumed that the client
- * is cooperating.
+ * it to limit _resize commands (but server does not assume that the client
+ * is cooperating).
  * ioev[0].iv = max_width,
  * ioev[1].iv = max_height,
  * ioev[2].iv = rate (Hz, 0 for dynamic)
@@ -477,13 +501,13 @@ enum ARCAN_TARGET_COMMAND {
 	TARGET_COMMAND_OUTPUTHINT,
 
 /*
- * Specialized output hinting, considered deprecated. To be replaced with
- * graphmode in game/hijack where it still has any use.
+ * [ACTIVATION/INTERNAL]
+ * Used to indicate the end of the preroll state. _open (and only _open) is
+ * blocking until this command has been received. It is used to populate the
+ * shmif_cont with strong UI dominant properties, like density, font, ...
  */
-	TARGET_COMMAND_VECTOR_LINEWIDTH,
-	TARGET_COMMAND_VECTOR_POINTSIZE,
-	TARGET_COMMAND_NTSCFILTER,
-	TARGET_COMMAND_NTSCFILTER_ARGS,
+	TARGET_COMMAND_ACTIVATE,
+
 	TARGET_COMMAND_LIMIT = INT_MAX
 };
 
@@ -580,7 +604,7 @@ enum ARCAN_EVENT_EXTERNAL {
 /*
  * Used to indicated that some external entity tries to provide input data
  * (e.g. a vnc client connected to an encode frameserver) uses the key and
- * cursor substructure.
+ * cursor substructure, not the full range of ioevents.
  */
 	EVENT_EXTERNAL_KEYINPUT,
 	EVENT_EXTERNAL_CURSORINPUT,
@@ -617,8 +641,8 @@ enum ARCAN_EVENT_EXTERNAL {
 
 /*
  * [UNIQUE]
- * Hint about local content state in regards to viewport or window position
- * relative to available uses the content substructure.
+ * Hints that indicate there is scrolling/panning contents and the estimated
+ * range and position of the currently active viewport.
  */
 	EVENT_EXTERNAL_CONTENT,
 
@@ -631,7 +655,7 @@ enum ARCAN_EVENT_EXTERNAL {
 
 /* [ONCE]
  * Specify the requested subtype of a segment, along with a descriptive UTF-8
- * string (application title or similar) and a caller- selected 64-bit UUID.
+ * string (application title or similar) and a caller- selected 128-bit UUID.
 
  * The UUID is an unmanaged identifier namespace where the caller or
  * surrounding system tries to avoid collsions. The ID is primarily intended
@@ -655,6 +679,14 @@ enum ARCAN_EVENT_EXTERNAL {
  * Uses the 'clock' substructure.
  */
 	EVENT_EXTERNAL_CLOCKREQ,
+
+/*
+ * Update an estimate on how the connection will hand bchunk transfers.
+ * Uses the 'bchunk' substructure.
+ * This MAY prompt actions in the running appl, e.g. showing a file- open/
+ * /save dialog.
+ */
+	EVENT_EXTERNAL_BCHUNKSTATE,
 
 	EVENT_EXTERNAL_ULIM = INT_MAX
 };
@@ -800,7 +832,8 @@ enum ARCAN_EVENT_FSRV {
 	EVENT_FSRV_RESIZED,
 	EVENT_FSRV_TERMINATED,
 	EVENT_FSRV_DROPPEDFRAME,
-	EVENT_FSRV_DELIVEREDFRAME
+	EVENT_FSRV_DELIVEREDFRAME,
+	EVENT_FSRV_PREROLL
 };
 /* -- end internal -- */
 
@@ -1098,6 +1131,24 @@ typedef struct arcan_extevent {
 			uint8_t dynamic, once;
 			uint32_t id;
 		} clock;
+
+/*
+ * Used with the BCHUNKSTATE event for hinting to the server that the
+ * application wants to- or is capable of- receiving or writing bchunkdata.
+ * (size)      - (input == 0, estimation of upper limit or 0 if unknown)
+ * (input)     - !0 if it is for input (open/read)
+ * (stream)    - !0 if a streaming data store is acceptable or it needs to be
+ *               seekable / mappable
+ * (extensions)- 7-bit ASCII filtered to alnum with ; separation between
+ *               accepted extensions. * for wildcard support or empty [0]='\0'
+ *               to indicate no-support for input/output.
+ */
+	struct {
+		uint64_t size;
+		uint8_t input;
+		uint8_t stream;
+		uint8_t extensions[68];
+	} bchunk;
 
 /*
  * Indicate that the connection supports abstract input labels, along

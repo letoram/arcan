@@ -34,6 +34,11 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 
+#ifndef COUNT_OF
+#define COUNT_OF(x) \
+	((sizeof(x)/sizeof(0[x])) / ((size_t)(!(sizeof(x) % sizeof(0[x])))))
+#endif
+
 /*
  * a bit clunky, but some scenarios that we want debug-builds but without the
  * debug logging spam for external projects, and others where we want to
@@ -95,10 +100,8 @@ static const char* tgt_cmd_xlt[] = {
 	"MESSAGE",
 	"FONTHINT",
 	"GEOHINT",
-	"VECTOR_LINEWIDTH",
-	"VECTOR_POINTSIZE",
-	"NTSCFILTER",
-	"NTSCFILTER_ARGS"
+	"OUTPUTHINT",
+	"ACTIVATE"
 };
 
 static const char* ext_cmd_xlt[] = {
@@ -121,7 +124,8 @@ static const char* ext_cmd_xlt[] = {
 	"LABELHINT",
 	"REGISTER",
 	"ALERT",
-	"CLOCKREQ"
+	"CLOCKREQ",
+	"BCHUNKSTATE"
 };
 
 static const char* fsrv_cmd_xlt[] = {
@@ -168,21 +172,21 @@ const char* arcan_shmif_eventstr(arcan_event* aev, char* dbuf, size_t dsz)
 
 	int cat_ind = ilog2(aev->category);
 
-	if (cat_ind < 1 || cat_ind > sizeof(cat_xlt) / sizeof(cat_xlt[0]))
+	if (cat_ind < 1 || cat_ind > COUNT_OF(cat_xlt))
 		return NULL;
 
 	const char* evstr;
 	switch(aev->category){
 	case EVENT_TARGET:
-		evstr = aev->tgt.kind > sizeof(tgt_cmd_xlt)/sizeof(tgt_cmd_xlt[0])
+		evstr = aev->tgt.kind > COUNT_OF(tgt_cmd_xlt)
 			? "overflow/broken" : tgt_cmd_xlt[aev->ext.kind];
 	break;
 	case EVENT_FSRV:
-		evstr = aev->fsrv.kind > sizeof(fsrv_cmd_xlt)/sizeof(fsrv_cmd_xlt[0])
+		evstr = aev->fsrv.kind > COUNT_OF(fsrv_cmd_xlt)
 			? "" : fsrv_cmd_xlt[aev->fsrv.kind];
 	break;
 	case EVENT_EXTERNAL:
-		evstr = aev->ext.kind > sizeof(ext_cmd_xlt)/sizeof(ext_cmd_xlt[0])
+		evstr = aev->ext.kind > COUNT_OF(ext_cmd_xlt)
 			? "overflow/broken" : ext_cmd_xlt[aev->ext.kind];
 		break;
 	default:
@@ -889,7 +893,7 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey,
 	struct sockaddr_un dst = {
 		.sun_family = AF_UNIX
 	};
-	size_t lim = sizeof(dst.sun_path) / sizeof(dst.sun_path[0]);
+	size_t lim = COUNT_OF(dst.sun_path);
 
 	if (!connpath){
 		DLOG("arcan_shmif_connect(), missing connpath, giving up.\n");
@@ -1139,10 +1143,10 @@ static void* guard_thread(void* gs)
 			pthread_mutex_lock(&gstr->guard.synch);
 			*(gstr->guard.dms) = false;
 
-			for (size_t i = 0; i < sizeof(gstr->guard.semset) /
-					sizeof(gstr->guard.semset[0]); i++)
+			for (size_t i = 0; i < COUNT_OF(gstr->guard.semset); i++){
 				if (gstr->guard.semset[i])
 					arcan_sem_post(gstr->guard.semset[i]);
+			}
 
 			pthread_mutex_unlock(&gstr->guard.synch);
 			sleep(5);

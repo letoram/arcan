@@ -18,8 +18,10 @@
 #include <pthread.h>
 #include <semaphore.h>
 
+#ifndef COUNT_OF
 #define COUNT_OF(x) \
 	((sizeof(x)/sizeof(0[x])) / ((size_t)(!(sizeof(x) % sizeof(0[x])))))
+#endif
 
 typedef int pipe_handle;
 typedef int file_handle;
