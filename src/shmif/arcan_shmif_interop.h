@@ -47,10 +47,10 @@
 #define LOG(...) (fprintf(stderr, __VA_ARGS__))
 #endif
 
-#define SHMIF_PT_SIZE(ppcm, sz_mm) (\
+#define SHMIF_PT_SIZE(ppcm, sz_mm) ((size_t)(\
 	(((double)(sz_mm)) / 0.0352778) * \
 	(((double)(ppcm)) / 28.346566) \
-)
+))
 
 /*
  * For porting the shmpage interface, these functions need to be implemented

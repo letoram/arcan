@@ -289,7 +289,6 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 
 				case EVENT_EXTERNAL_REGISTER:
 					if (tgt->segid == SEGID_UNKNOWN){
-						tgt->segid = inev.ext.registr.kind;
 /* 0.6/CRYPTO - need actual signature authentication here */
 						tgt->guid[0] = inev.ext.registr.guid[0];
 						tgt->guid[1] = inev.ext.registr.guid[1];

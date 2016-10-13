@@ -1743,7 +1743,7 @@ int arcan_shmif_dupfd(int fd, int dstnum, bool blocking)
 size_t arcan_shmif_initial(struct arcan_shmif_cont* cont,
 	struct arcan_shmif_initial** out)
 {
-	if (!out || !cont || !cont->priv->valid_initial)
+	if (!out || !cont || !cont->priv || !cont->priv->valid_initial)
 		return 0;
 
 	*out = &cont->priv->initial;
@@ -1861,6 +1861,7 @@ static void wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
 		.latitude = 51.48,
 		.longitude = 0.001475,
 		.render_node = -1,
+		.density = ARCAN_SHMPAGE_DEFAULT_PPCM,
 		.fonts = {
 			{.fd = -1}, {.fd = -1}, {.fd = -1}, {.fd = -1}
 		}
@@ -1879,6 +1880,7 @@ static void wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
 			cont->priv->valid_initial = true;
 			if (resize)
 				arcan_shmif_resize(cont, w, h);
+			cont->priv->initial = def;
 			return;
 		break;
 		case TARGET_COMMAND_DISPLAYHINT:
@@ -1886,7 +1888,7 @@ static void wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
 				w = ev.tgt.ioevs[0].iv;
 			if (ev.tgt.ioevs[1].iv)
 				h = ev.tgt.ioevs[1].iv;
-			if (ev.tgt.ioevs[4].fv > 0)
+			if (ev.tgt.ioevs[4].fv > 0.0001)
 				def.density = ev.tgt.ioevs[4].fv;
 		break;
 		case TARGET_COMMAND_OUTPUTHINT:
@@ -1923,7 +1925,8 @@ static void wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
 				memcpy(def.lang, ev.tgt.ioevs[3].cv, 3);
 			if (ev.tgt.ioevs[5].cv[0])
 				memcpy(def.text_lang, ev.tgt.ioevs[4].cv, 3);
-			break;
+			def.timezone = ev.tgt.ioevs[5].iv;
+		break;
 		default:
 		break;
 		}

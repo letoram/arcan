@@ -633,7 +633,7 @@ struct arcan_shmif_initial {
 		int fd;
 		int type;
 		int hinting;
-		size_t size_mm;
+		float size_mm;
 	} fonts[4];
 
 /* output display density and LED- layout hint for subpixel hinting */
@@ -643,12 +643,16 @@ struct arcan_shmif_initial {
 /* maximum display output dimensions */
 	size_t display_width_px;
 	size_t display_height_px;
+	uint16_t rate;
 
 	uint8_t lang[4], country[4], text_lang[4];
 	float latitude, longitude, elevation;
 
 /* device to use for 3D acceleration */
 	int render_node;
+
+/* UTC + */
+	int timezone;
 };
 
 enum rhint_mask {
