@@ -280,7 +280,8 @@ enum arcan_cb_source {
 	CB_SOURCE_NONE        = 0,
 	CB_SOURCE_FRAMESERVER = 1,
 	CB_SOURCE_IMAGE       = 2,
-	CB_SOURCE_TRANSFORM   = 3
+	CB_SOURCE_TRANSFORM   = 3,
+	CB_SOURCE_PREROLL     = 4
 };
 
 struct nonblock_io {
@@ -320,7 +321,8 @@ static struct {
 extern char* _n_strdup(const char* instr, const char* alt);
 static inline const char* fsrvtos(enum ARCAN_SEGID ink);
 static bool tgtevent(arcan_vobj_id dst, arcan_event ev);
-static void do_preroll(lua_State* ctx, intptr_t ref, arcan_vobj_id vid);
+static void do_preroll(lua_State* ctx, intptr_t ref,
+	arcan_vobj_id vid, arcan_aobj_id aid);
 
 static inline char* colon_escape(char* in)
 {
@@ -3050,16 +3052,7 @@ static int launchavfeed(lua_State* ctx)
 		arcan_video_objectopacity(mvctx->vid, 0.0, 0);
 
 /* immediately run the event handler */
-		do_preroll(ctx, ref, mvctx->vid);
-
-		if (ref != (intptr_t) LUA_NOREF){
-			lua_rawgeti(ctx, LUA_REGISTRYINDEX, ref);
-			lua_pushvid(ctx, mvctx->vid);
-			lua_newtable(ctx);
-			int top = lua_gettop(ctx);
-			tblstr(ctx, "kind", "preroll", top);
-			wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "frameserver_event");
-		}
+		do_preroll(ctx, ref, mvctx->vid, mvctx->aid);
 
 /* then prepare the return values */
 		lua_pushvid(ctx, mvctx->vid);
@@ -3652,7 +3645,8 @@ static void display_removed(lua_State* ctx, arcan_event* ev)
 	LUA_TRACE("");
 }
 
-static void do_preroll(lua_State* ctx, intptr_t ref, arcan_vobj_id vid)
+static void do_preroll(lua_State* ctx, intptr_t ref,
+	arcan_vobj_id vid, arcan_aobj_id aid)
 {
 	if (ref != (intptr_t) LUA_NOREF){
 		lua_rawgeti(ctx, LUA_REGISTRYINDEX, ref);
@@ -3660,7 +3654,10 @@ static void do_preroll(lua_State* ctx, intptr_t ref, arcan_vobj_id vid)
 		lua_newtable(ctx);
 		int top = lua_gettop(ctx);
 		tblstr(ctx, "kind", "preroll", top);
-		wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "frameserver_event");
+		tblnum(ctx, "source_audio", aid, top);
+		luactx.cb_source_tag = vid;
+		wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "frameserver_event(preroll)");
+		luactx.cb_source_kind = CB_SOURCE_PREROLL;
 	}
 
 	tgtevent(vid, (arcan_event){
@@ -4218,7 +4215,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 
 /* special: external connection + connected->registered sequence finished */
 		if (preroll)
-			do_preroll(ctx, fsrv->tag, ev->ext.source);
+			do_preroll(ctx, fsrv->tag, ev->ext.source, fsrv->aid);
 	}
 	else if (ev->category == EVENT_FSRV){
 		intptr_t dst_cb = 0;
@@ -5915,7 +5912,7 @@ static void wraperr(lua_State* ctx, int errc, const char* src)
 		return;
 
 	const char* mesg = luactx.in_panic ? "Lua VM state broken, panic" :
-		luaL_optstring(ctx, 1, "unknown");
+		luaL_optstring(ctx, -1, "unknown");
 /*
  * currently unused, pending refactor of arcan_warning
 	int severity = luaL_optnumber(ctx, 2, 0);
@@ -6970,7 +6967,7 @@ static int targetlaunch(lua_State* ctx)
 
 /* same as with launch_avfeed, invoke the event handler with the
  * preroll event as a means for queueing up initial states */
-		do_preroll(ctx, ref, intarget->vid);
+		do_preroll(ctx, ref, intarget->vid, intarget->aid);
 		lua_pushvid(ctx, intarget->vid);
 		lua_pushaid(ctx, intarget->aid);
 		trace_allocation(ctx, "launch", intarget->vid);
