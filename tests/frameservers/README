@@ -27,6 +27,8 @@ avlat/ is the software- setup for latency and buffering testing,
  to any digital input event, printing CSV timings for synch.
  Audio is a simple sine-wave managed in a separate thread.
 
+initial/ connects and dumps the initial state set during the preroll phase.
+
 migrant/ will connect to the normal CONNPATH, render a number of frames
  in one color channel, migrate or voluntarily pull its *dms and on
  successful reconnection, switch active color channel

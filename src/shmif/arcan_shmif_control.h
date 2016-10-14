@@ -256,6 +256,7 @@ enum arcan_shmif_sigmask {
 struct arcan_shmif_cont;
 struct shmif_ext_hidden;
 struct arcan_shmif_page;
+struct arcan_shmif_initial;
 
 typedef enum arcan_shmif_sigmask(
 	*shmif_trigger_hook)(struct arcan_shmif_cont*);
@@ -296,7 +297,17 @@ enum ARCAN_FLAGS {
  * is to only permit migration of the primary segment as there are
  * further client considerations when secondary segments run in different
  * threads along with the problem if subsegment requests are rejected */
-	SHMIF_MIGRATE_SUBSEGMENTS = 128
+	SHMIF_MIGRATE_SUBSEGMENTS = 128,
+
+/*
+ * When a connection is initiated, a number of events are gathered until
+ * the connection is activated (see arcan_shmif_initial) to determine
+ * costly properties in advance. By default, this also sets the initial
+ * size of the segment. Set this flag during connection if this behavior
+ * would be ignored/overridden by a manual- "data-source controlled"
+ * size.
+ */
+	SHMIF_NOACTIVATE_RESIZE = 256
 };
 
 /*
@@ -331,6 +342,24 @@ struct shmif_open_ext {
 struct arcan_shmif_cont arcan_shmif_open_ext(
 	enum ARCAN_FLAGS flags, struct arg_arr**,
 	struct shmif_open_ext, size_t ext_sz);
+
+/*
+ * arcan_shmif_initial can be used to access initial configured
+ * settings (see struct arcan_shmif_initial for details). These values
+ * are only valid AFTER a successful call to arcan_shmif_open and ONLY
+ * until the first _enqeue, _poll or _wait call.
+ *
+ * REMEMBER to arcan_shmif_dupfd() on the fonts and render-nodes you
+ * want to keep and use as they will be closed, or set the fields to
+ * -1 to indicate that you take responsibility.
+ *
+ * RETURNS the number of bytes in struct (should == sizeof(struct
+ * arcan_shmif_initial, if larger, your code is using dated headers)
+ * or 0,NULL on failure (bad _cont or _enqueue/ _poll/_wait has been
+ * called).
+ */
+size_t arcan_shmif_initial(struct arcan_shmif_cont*,
+	struct arcan_shmif_initial**);
 
 /*
  * This is used to make a non-authoritative connection using
@@ -612,6 +641,36 @@ struct arcan_shmif_cont {
  */
 	struct shmif_hidden* priv;
 	struct shmif_ext_hidden* privext;
+};
+
+struct arcan_shmif_initial {
+/* pre-configured primary font and possible fallback, remember to convert
+ * to point size to account for density (interop macro
+ * SHMIF_PT_SIZE(ppcm, sz_mm) */
+	struct {
+		int fd;
+		int type;
+		int hinting;
+		float size_mm;
+	} fonts[4];
+
+/* output display density and LED- layout hint for subpixel hinting */
+	float density;
+	int rgb_layout;
+
+/* maximum display output dimensions */
+	size_t display_width_px;
+	size_t display_height_px;
+	uint16_t rate;
+
+	uint8_t lang[4], country[4], text_lang[4];
+	float latitude, longitude, elevation;
+
+/* device to use for 3D acceleration */
+	int render_node;
+
+/* UTC + */
+	int timezone;
 };
 
 enum rhint_mask {

@@ -41,12 +41,16 @@
  * during _integrity_check
  */
 #define ASHMIF_VERSION_MAJOR 0
-#define ASHMIF_VERSION_MINOR 7
+#define ASHMIF_VERSION_MINOR 9
 
 #ifndef LOG
 #define LOG(...) (fprintf(stderr, __VA_ARGS__))
 #endif
 
+#define SHMIF_PT_SIZE(ppcm, sz_mm) ((size_t)(\
+	(((double)(sz_mm)) / 0.0352778) * \
+	(((double)(ppcm)) / 28.346566) \
+))
 
 /*
  * For porting the shmpage interface, these functions need to be implemented
@@ -155,6 +159,16 @@ bool arg_lookup(struct arg_arr* arr, const char* val,
 	unsigned short ind, const char** found);
 
 void arg_cleanup(struct arg_arr*);
+
+/*
+ * Duplicates a descriptor and set safe flags (e.g. CLOEXEC)
+ * if [dstnum] is <= 0, it will ATTEMPT to duplicate to the specific number,
+ * (though NOT GUARANTEED).
+ *
+ * Returns a valid descriptor or -1 on error (with errno set according
+ * to the dup() call family.
+ */
+int arcan_shmif_dupfd(int fd, int dstnum, bool blocking);
 
 /*
  * Part of auxiliary library, pulls in more dependencies and boiler-plate
