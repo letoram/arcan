@@ -466,7 +466,7 @@ enum ARCAN_TARGET_COMMAND {
  * ioev[1].iv = type describing font in [0]:
  *  0 : default, off
  *  1 : TTF ( True Type )
- *  2 : OTF ( Open TYpe )
+ *  2 : OTF ( Open Type )
  * Other values are invalid/reserved for now
  * ioev[2].fv = desired normal font size in mm, <= 0, unchanged from current
  * ioev[3].iv = hinting: 0, off. 1, monochromatic, 2. light, 3. medium,

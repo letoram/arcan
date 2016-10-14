@@ -5,6 +5,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <pwd.h>
+#include <ctype.h>
 
 #include "tsm/libtsm.h"
 #include "tsm/shl-pty.h"
@@ -36,9 +37,6 @@ static void dump_help()
 		"Accepted packed_args:\n"
 		"    key      \t   value   \t   description\n"
 		"-------------\t-----------\t-----------------\n"
-		" rows        \t n_rows    \t specify initial surface width\n"
-	  " cols        \t n_cols    \t specify initial surface height\n"
-		" ppcm        \t density   \t specify output display pixel density\n"
 		" bgalpha     \t rv(0..255)\t background opacity (default: 255, opaque)\n"
 		" bgc         \t r,g,b     \t background color \n"
 		" fgc         \t r,g,b     \t foreground color \n"
@@ -49,12 +47,6 @@ static void dump_help()
 		"             \t           \t underline, vertical)\n"
 		" login       \t [user]    \t login (optional: user, only works for root)\n"
 		" palette     \t name      \t use built-in palette (below)\n"
-#ifdef TTF_SUPPORT
-		" font        \t ttf-file  \t render using font specified by ttf-file\n"
-		" font_fb     \t ttf-file  \t use other font for missing glyphs\n"
-		" font_sz     \t px        \t set font rendering size (may alter cellsz))\n"
-		" font_hint   \t hintval   \t hint to font renderer (light, mono, subpixel, none)\n"
-#endif
 		"Built-in palettes:\n"
 		"default, solarized, solarized-black, solarized-white\n"
 		"---------\t-----------\t----------------\n"
@@ -119,7 +111,8 @@ static void on_resize(struct tui_context* c,
 	size_t neww, size_t newh, size_t col, size_t row, void* t)
 {
 	trace("resize(%zu(%zu),%zu(%zu))", neww, col, newh, row);
-	shl_pty_resize(term.pty, col, row);
+	if (term.pty)
+		shl_pty_resize(term.pty, col, row);
 }
 
 static void read_callback(struct shl_pty* pty,
@@ -235,10 +228,6 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		.resized = on_resize
 	};
 
-/* no prenegotiated setup */
-	if (!con->w)
-		arcan_shmif_resize(con, 640, 480);
-
 	struct tui_settings cfg = arcan_tui_defaults();
 	arcan_tui_apply_arg(&cfg, args, NULL);
 	term.screen = arcan_tui_setup(con, &cfg, &cbcfg, sizeof(cbcfg));
@@ -280,7 +269,9 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
  * and lastly, spawn the pseudo-terminal
  */
 
-	term.child = shl_pty_open(&term.pty, read_callback, NULL, 1, 1);
+	size_t rows = 0, cols = 0;
+	arcan_tui_dimensions(term.screen, &rows, &cols);
+	term.child = shl_pty_open(&term.pty, read_callback, NULL, cols, rows);
 	if (term.child < 0){
 		LOG("couldn't spawn child termainl.\n");
 		return EXIT_FAILURE;

@@ -989,7 +989,7 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 /* unit conversion again, we get the size in cm, truetype wrapper takes pt,
  * (at 0.03527778 cm/pt), then update_font will take ppcm into account */
 		float npx = setup_font(tui, fd, ev->ioevs[2].fv > 0 ?
-			ev->ioevs[2].fv / 0.0352778 : 0, ev->ioevs[4].iv);
+			SHMIF_PT_SIZE(tui->ppcm, ev->ioevs[2].fv) : 0, ev->ioevs[4].iv);
 
 		update_screensize(tui, false);
 #endif
@@ -1249,10 +1249,7 @@ static bool setup_font(struct tui_context* tui,
 	if (BADFD == fd)
 		fd = tui->font_fd[modeind];
 
-	float font_sf = font_sz;
-	size_t sf_sz = font_sf + ((font_sf * tui->ppcm / 28.346566f) - font_sf);
-
-	font = TTF_OpenFontFD(fd, sf_sz);
+	font = TTF_OpenFontFD(fd, font_sz);
 	if (!font){
 		LOG("failed to open font from descriptor (%d), "
 			"with size: %zu\n", fd, font_sz);
@@ -1557,28 +1554,6 @@ void arcan_tui_apply_arg(struct tui_settings* cfg,
 	if (arg_lookup(args, "bgalpha", 0, &val))
 		cfg->alpha = strtoul(val, NULL, 10);
 #ifdef TTF_SUPPORT
-
-	if (arg_lookup(args, "font_hint", 0, &val)){
-		if (strcmp(val, "light") == 0)
-			cfg->hint = TTF_HINTING_LIGHT;
-		else if (strcmp(val, "mono") == 0)
-			cfg->hint = TTF_HINTING_MONO;
-		else if (strcmp(val, "normal") == 0)
-			cfg->hint = TTF_HINTING_NORMAL;
-		else if (strcmp(val, "subpixel") == 0)
-			cfg->hint = TTF_HINTING_RGB;
-	}
-
-	if (arg_lookup(args, "font_sz", 0, &val))
-		cfg->font_sz = strtoul(val, NULL, 10);
-	if (arg_lookup(args, "font", 0, &val)){
-		cfg->font_fn = strdup(val);
-		if (arg_lookup(args, "font_fb", 0, &val))
-			cfg->font_fb_fn = strdup(val);
-	}
-	else
-		LOG("no font specified, using built-in fallback.");
-
 	if (arg_lookup(args, "ppcm", 0, &val)){
 		float ppcm = strtof(val, NULL);
 		if (isfinite(ppcm) && ppcm > ARCAN_SHMPAGE_DEFAULT_PPCM * 0.5)
@@ -1594,6 +1569,12 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 #ifdef TTF_SUPPORT
 	TTF_Init();
 #endif
+
+	struct arcan_shmif_initial* init;
+	if (sizeof(struct arcan_shmif_initial) != arcan_shmif_initial(con, &init)){
+		LOG("initial structure size mismatch, out-of-synch header/shmif lib\n");
+		return NULL;
+	}
 
 	struct tui_context* res = malloc(sizeof(struct tui_context));
 	memset(res, '\0', sizeof(struct tui_context));
@@ -1611,15 +1592,18 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
  * struct we can expand the interface without breaking old clients
  */
 	if (cbs_sz > sizeof(struct tui_cbcfg) || cbs_sz % sizeof(void*) != 0){
-		fprintf(stderr, "arcan_shmif_tui(), caller provided bad size field\n");
+		LOG("arcan_shmif_tui(), caller provided bad size field\n");
 		return NULL;
 	}
 	memcpy(&res->handlers, cbs, cbs_sz);
 
 	res->focus = true;
+	res->ppcm = init->density;
+
 	res->font_fd[0] = BADFD;
 	res->font_fd[1] = BADFD;
 	res->font_sz = set->font_sz;
+
 	res->ccol = set->ccol;
 	res->clcol = set->clcol;
 	res->alpha = set->alpha;
@@ -1628,72 +1612,40 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 	memcpy(res->bgc, set->bgc, 3);
 	memcpy(res->fgc, set->fgc, 3);
 	res->hint = set->hint;
-	res->ppcm = set->ppcm;
 	res->mouse_forward = set->mouse_fwd;
 	res->acon = *con;
 
-	if (set->font_fn){
-		int fd = open(set->font_fn, O_RDONLY | O_CLOEXEC);
-		if (-1 == fd){
-			LOG("failed to open preset font (%s), reason: %s\n",
-				set->font_fn, strerror(errno));
-		}
-		else{
-			setup_font(res, fd, res->font_sz, 0);
-		}
-/* fallback font for missing glyphs */
-		if (fd != -1 && set->font_fb_fn){
-			fd = open(set->font_fn, O_RDONLY | O_CLOEXEC);
-			if (-1 == fd){
-				LOG("failed to open falback font (%s), reason: %s\n",
-					set->font_fn, strerror(errno));
-			}
-			else {
-				setup_font(res, fd, res->font_sz, 1);
-			}
-		}
-	}
-
-/* wait for the first displayhint before moving on */
-	if (0 == res->acon.w){
-		arcan_event ev;
-		while(1){
-			if (0 == arcan_shmif_wait(&res->acon, &ev)){
-				free(res);
-				return NULL;
-			}
-			if (ev.category == EVENT_TARGET &&
-				ev.tgt.kind == TARGET_COMMAND_DISPLAYHINT && ev.tgt.ioevs[0].iv){
-				arcan_shmif_resize(&res->acon, ev.tgt.ioevs[0].iv, ev.tgt.ioevs[1].iv);
-				res->ppcm = ev.tgt.ioevs[4].fv;
-				if (res->ppcm * res->ppcm < 0.001)
-					res->ppcm = ARCAN_SHMPAGE_DEFAULT_PPCM;
-				break;
-			}
-		}
-	}
-
 	res->acon.hints = SHMIF_RHINT_SUBREGION;
+
+	if (init->fonts[0].fd != BADFD){
+		res->hint = init->fonts[0].hinting;
+		res->font_sz = SHMIF_PT_SIZE(res->ppcm, init->fonts[0].size_mm);
+		setup_font(res, init->fonts[0].fd, res->font_sz, 0);
+		init->fonts[0].fd = -1;
+		LOG("arcan_shmif_tui(), built-in font provided, size: %zu\n", res->font_sz);
+
+		if (init->fonts[1].fd != BADFD){
+			setup_font(res, init->fonts[1].fd, res->font_sz, 1);
+			init->fonts[1].fd = -1;
+		}
+	}
 	if (0 != tsm_utf8_mach_new(&res->ucsconv)){
 		free(res);
 		return NULL;
 	}
 
-	shmif_pixel bgc = SHMIF_RGBA(
-		set->bgc[0], set->bgc[1], set->bgc[2], set->alpha);
-	for (size_t i = 0; i < con->w * con->h; i++)
-		res->acon.vidp[i] = bgc;
-	arcan_shmif_signal(&res->acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
-
 	expose_labels(res);
 	tsm_screen_set_max_sb(res->screen, 1000);
 
-	update_screensize(res, false);
 /* clipboard, timer callbacks, no IDENT */
 	queue_requests(res, true, true, false);
 
 /* show the current cell dimensions to help limit resize requests */
 	send_cell_sz(res);
+
+	update_screensize(res, false);
+	res->handlers.resized(res, res->acon.w, res->acon.h,
+		res->cols, res->rows, res->handlers.tag);
 
 	return res;
 }
@@ -1794,6 +1746,15 @@ void arcan_tui_reset(struct tui_context* c)
 {
 	tsm_utf8_mach_reset(c->ucsconv);
 	tsm_screen_reset(c->screen);
+}
+
+void arcan_tui_dimensions(struct tui_context* c, size_t* rows, size_t* cols)
+{
+	if (rows)
+		*rows = c->rows;
+
+	if (cols)
+		*cols = c->cols;
 }
 
 void arcan_tui_erase_cursor_to_screen(struct tui_context* c, bool protect)

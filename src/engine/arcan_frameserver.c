@@ -1070,7 +1070,12 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 				ARCAN_MEM_ABUFFER, 0, ARCAN_MEMALIGN_PAGE);
 			ctx->queue_mask = EVENT_EXTERNAL;
 		}
-		else {
+		else if (strcmp(setup.args.builtin.mode, "terminal") == 0){
+			ctx->segid = SEGID_TERMINAL;
+			goto defcfg;
+		}
+		else{
+defcfg:
 			ctx->segid = SEGID_UNKNOWN;
 			ctx->aid = arcan_audio_feed(
 			(arcan_afunc_cb) arcan_frameserver_audioframe_direct, ctx, &errc);
@@ -1113,4 +1118,11 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 		ctx->vbufs, ctx->vbuf_cnt, setup.init_w*setup.init_h*sizeof(shmif_pixel),
 		ctx->abufs, ctx->abuf_cnt, 65536
 	);
+
+	if (ctx->segid != SEGID_UNKNOWN){
+		arcan_event_enqueue(arcan_event_defaultctx(), &(arcan_event){
+			.category = EVENT_FSRV,
+			.fsrv.kind = EVENT_FSRV_PREROLL,
+		});
+	}
 }
