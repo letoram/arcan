@@ -541,6 +541,11 @@ void arcan_tui_move_line_home(struct tui_context*);
 int arcan_tui_set_margins(struct tui_context*, size_t top, size_t bottom);
 
 /*
+ * retrieve the current dimensions (same as accessible through _resize)
+ */
+void arcan_tui_dimensions(struct tui_context*, size_t* rows, size_t* cols);
+
+/*
  * override the default attributes that apply to resets etc.
  */
 void arcan_tui_defattr(struct tui_context*, struct tui_screen_attr*);

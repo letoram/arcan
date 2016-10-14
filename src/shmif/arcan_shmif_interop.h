@@ -48,7 +48,7 @@
 #endif
 
 #define SHMIF_PT_SIZE(ppcm, sz_mm) ((size_t)(\
-	(((double)(sz_mm)) / 0.0352778) * \
+	(((double)(sz_mm)) / 0.352778) * \
 	(((double)(ppcm)) / 28.346566) \
 ))
 

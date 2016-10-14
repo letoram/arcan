@@ -743,9 +743,6 @@ int arcan_shmif_enqueue(struct arcan_shmif_cont* c,
 	if (!c->addr)
 		return 0;
 
-	if (c && c->priv->valid_initial)
-		drop_initial(c);
-
 	if (!c->addr->dms || !c->priv->alive){
 		fallback_migrate(c);
 		return 0;
@@ -1903,6 +1900,8 @@ static void wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
 				def.render_node = arcan_shmif_dupfd(
 					ev.tgt.ioevs[0].iv, def.render_node, true);
 		break;
+/* not 100% correct - won't reset if font+font-append+font
+ * pattern is set but not really a valid use */
 		case TARGET_COMMAND_FONTHINT:
 			def.fonts[font_ind].hinting = ev.tgt.ioevs[3].iv;
 			def.fonts[font_ind].size_mm = ev.tgt.ioevs[2].fv;
@@ -1910,9 +1909,8 @@ static void wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
 				if (ev.tgt.ioevs[0].iv != -1){
 					def.fonts[font_ind].fd = arcan_shmif_dupfd(
 						ev.tgt.ioevs[0].iv, def.fonts[font_ind].fd, true);
-				}
-				if (ev.tgt.ioevs[4].iv && -1 != def.fonts[font_ind].fd)
 					font_ind++;
+				}
 			}
 		break;
 		case TARGET_COMMAND_GEOHINT:

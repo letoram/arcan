@@ -321,8 +321,6 @@ static struct {
 extern char* _n_strdup(const char* instr, const char* alt);
 static inline const char* fsrvtos(enum ARCAN_SEGID ink);
 static bool tgtevent(arcan_vobj_id dst, arcan_event ev);
-static void do_preroll(lua_State* ctx, intptr_t ref,
-	arcan_vobj_id vid, arcan_aobj_id aid);
 
 static inline char* colon_escape(char* in)
 {
@@ -3058,19 +3056,10 @@ static int launchavfeed(lua_State* ctx)
 		mvctx->tag = ref;
 		arcan_video_objectopacity(mvctx->vid, 0.0, 0);
 
-/* immediately run the event handler */
-		do_preroll(ctx, ref, mvctx->vid, mvctx->aid);
-
 /* then prepare the return values */
 		lua_pushvid(ctx, mvctx->vid);
 		trace_allocation(ctx, "launch_avfeed", mvctx->vid);
 		lua_pushaid(ctx, mvctx->aid);
-
-/* and wake-up the client */
-		tgtevent(mvctx->vid, (arcan_event){
-			.category = EVENT_TARGET,
-			.tgt.kind = TARGET_COMMAND_ACTIVATE
-		});
 	}
 	else {
 		free(mvctx);
@@ -4240,10 +4229,18 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			do_preroll(ctx, fsrv->tag, ev->ext.source, fsrv->aid);
 	}
 	else if (ev->category == EVENT_FSRV){
-		intptr_t dst_cb = 0;
-		if (!arcan_video_getobject(ev->fsrv.video))
+		arcan_vobject* vobj = arcan_video_getobject(ev->fsrv.video);
+		if (!vobj || vobj->feed.state.tag != ARCAN_TAG_FRAMESERV)
 			return;
 
+		arcan_frameserver* fsrv = vobj->feed.state.ptr;
+		if (LUA_NOREF == fsrv->tag)
+			return;
+
+		if (ev->fsrv.kind == EVENT_FSRV_PREROLL){
+			do_preroll(ctx, fsrv->tag, fsrv->vid, fsrv->aid);
+			return;
+		}
 /*
  * placeholder slot for adding the callback function reference
  */
@@ -4255,89 +4252,51 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 
 		tblnum(ctx, "source_audio", ev->fsrv.audio, top);
 
-		dst_cb = ev->fsrv.otag;
-		if (LUA_NOREF == dst_cb){
-			lua_settop(ctx, 0);
-			return;
-		}
-
 		switch(ev->fsrv.kind){
 		case EVENT_FSRV_TERMINATED :
 			tblstr(ctx, "kind", "terminated", top);
 		break;
-
+		case EVENT_FSRV_PREROLL:
+		break;
 		case EVENT_FSRV_DELIVEREDFRAME :
 			tblstr(ctx, "kind", "frame", top);
 			tblnum(ctx, "pts", ev->fsrv.pts, top);
 			tblnum(ctx, "number", ev->fsrv.counter, top);
 		break;
-
 		case EVENT_FSRV_DROPPEDFRAME :
 			tblstr(ctx, "kind", "dropped_frame", top);
 			tblnum(ctx, "pts", ev->fsrv.pts, top);
 			tblnum(ctx, "number", ev->fsrv.counter, top);
 		break;
-
-/*
- * to work around connection point problems where the script
- * may want to rate-limit or not, the default is that the underlying
- * frameserver_listen_external pushes an EXTCONN as soon as a
- * connection is initiated. This transfers ownership of resources
- * (name + descriptor) to the event that we MUST handle here.
- *
- * If we receive such an event:
- * 1. save resources (name+descriptor) in global ctx.
- * 2. invoke callback
- * 3.  [ in target_alloc, check if there is a pending resource,
- *       and the key matches, re-use and remove from ctx]
- * 4. post-callback, check the context and if the resources
- *    are still there, free
- */
-			case EVENT_FSRV_EXTCONN :{
-				char msgbuf[COUNT_OF(ev->fsrv.ident)+1];
-				tblstr(ctx, "kind", "connected", top);
-				slim_utf8_push(msgbuf, COUNT_OF(msgbuf), ev->fsrv.ident);
-				tblstr(ctx, "key", msgbuf, top);
-				luactx.pending_socket_label = strdup(msgbuf);
-				luactx.pending_socket_descr = ev->fsrv.descriptor;
-				adopt_check = true;
-			}
-			break;
-
-/* for extconn: connected -> registered -> preroll (last chance to
- * prepare target events before activation message is sent) */
-			case EVENT_FSRV_PREROLL:
-				tblstr(ctx, "kind", "preroll", top);
-			break;
-
-			case EVENT_FSRV_RESIZED :
-				tblstr(ctx, "kind", "resized", top);
-				tblnum(ctx, "width", ev->fsrv.width, top);
-				tblnum(ctx, "height", ev->fsrv.height, top);
+		case EVENT_FSRV_EXTCONN :{
+			char msgbuf[COUNT_OF(ev->fsrv.ident)+1];
+			tblstr(ctx, "kind", "connected", top);
+			slim_utf8_push(msgbuf, COUNT_OF(msgbuf), ev->fsrv.ident);
+			tblstr(ctx, "key", msgbuf, top);
+			luactx.pending_socket_label = strdup(msgbuf);
+			luactx.pending_socket_descr = ev->fsrv.descriptor;
+			adopt_check = true;
+		}
+		break;
+		case EVENT_FSRV_RESIZED :
+			tblstr(ctx, "kind", "resized", top);
+			tblnum(ctx, "width", ev->fsrv.width, top);
+			tblnum(ctx, "height", ev->fsrv.height, top);
 
 /* mirrored is incorrect but can't drop it for legacy reasons */
-				tblbool(ctx, "mirrored", ev->fsrv.glsource, top);
-				tblbool(ctx, "origo_ll", ev->fsrv.glsource, top);
-			break;
+			tblbool(ctx, "mirrored", ev->fsrv.glsource, top);
+			tblbool(ctx, "origo_ll", ev->fsrv.glsource, top);
+		break;
 		}
 
 		luactx.cb_source_tag = ev->fsrv.video;
 		luactx.cb_source_kind = CB_SOURCE_FRAMESERVER;
-		lua_rawgeti(ctx, LUA_REGISTRYINDEX, dst_cb);
-		lua_replace(ctx, 1);
-		wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "frameserver_event");
-
-		if (ev->fsrv.kind == EVENT_FSRV_PREROLL){
-			tgtevent(ev->fsrv.video, (arcan_event){
-				.category = EVENT_TARGET,
-				.tgt.kind = TARGET_COMMAND_ACTIVATE
-			});
-		}
-
+			lua_rawgeti(ctx, LUA_REGISTRYINDEX, fsrv->tag);
+			lua_replace(ctx, 1);
+			wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "frameserver_event");
 		luactx.cb_source_kind = CB_SOURCE_NONE;
 	}
 	else if (ev->category == EVENT_VIDEO){
-
 		if (ev->vid.kind == EVENT_VIDEO_DISPLAY_ADDED){
 			display_added(ctx, ev);
 			return;
@@ -6989,7 +6948,6 @@ static int targetlaunch(lua_State* ctx)
 
 /* same as with launch_avfeed, invoke the event handler with the
  * preroll event as a means for queueing up initial states */
-		do_preroll(ctx, ref, intarget->vid, intarget->aid);
 		lua_pushvid(ctx, intarget->vid);
 		lua_pushaid(ctx, intarget->aid);
 		trace_allocation(ctx, "launch", intarget->vid);
@@ -9842,7 +9800,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 	lua_pushnumber(ctx, ppcm);
 	lua_setglobal(ctx, "VPPCM");
 
-	lua_pushnumber(ctx, 0.0352778);
+	lua_pushnumber(ctx, 0.352778);
 	lua_setglobal(ctx, "FONT_PT_SZ");
 
 	arcan_lua_setglobalstr(ctx, "GL_VERSION", agp_ident());
