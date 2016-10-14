@@ -564,7 +564,7 @@ static void libretro_skipnframes(unsigned count, bool fastfwd)
 static void reset_timing(bool newstate)
 {
 	arcan_shmif_enqueue(&retro.shmcont, &(arcan_event){
-		.tgt.kind = ARCAN_EVENT(FLUSHAUD)
+		.ext.kind = ARCAN_EVENT(FLUSHAUD)
 	});
 	retro.basetime = arcan_timemillis();
 	do_preaudio();

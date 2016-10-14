@@ -72,13 +72,20 @@ enum ARCAN_EVENT_CATEGORY {
  * there will be a mask to queuetransfer+enqueue in ARCAN that will react
  * based on SEGID type (statetransfer for TITLEBAR, no..).
  *
- * Special flags (not enforced yet, will be after hardening phase) :
+ * Special flags (all not enforced yet, will be after hardening phase) :
  * [INPUT] data from server to client
  * [LOCKSTEP] signalling may block indefinitely, appl- controlled
  * [UNIQUE] only one per connection
  * [DESCRIPTOR_PASSING] for target commands where ioev[0] may be populated
  * with a descriptor. shmif_control retains ownership and may close after
  * it has been consumed, so continued use need to be dup:ed.
+ *
+ * [PREROLL, ACTIVATION] -
+ * Preroll / activation is hidden by the shmif implementation and keeps a new
+ * connection (not recovery/reset) in an event blocking/ pending state
+ * until an activation event is received. This is to make sure that some events
+ * that define client rendering properties, like language, dimensions etc. is
+ * available from the start and is used to fill out the shmif_cont.
  */
 enum ARCAN_SEGID {
 /*
@@ -138,7 +145,10 @@ enum ARCAN_SEGID {
 	SEGID_HMD_R,
 
 /*
- * [LOCKSTEP, UNIQUE] Popup-window, use with viewport hints
+ * [LOCKSTEP] Popup-window, use with viewport hints to specify
+ * parent-relative positioning. Messages from this segment can provide
+ * server- initiated rendering, with \t to switch from left align- to
+ * right align, and single - as group separator.
  */
 	SEGID_POPUP,
 
@@ -147,7 +157,9 @@ enum ARCAN_SEGID {
  */
 	SEGID_ICON,
 
-/* [UNIQUE] Visual titlebar style, actual text content can be per segment */
+/* [UNIQUE] Visual titlebar style for CSD, actual text contents is still
+ * server-side rendered and provided as message on this segment or through
+ * IDENT messages */
 	SEGID_TITLEBAR,
 
 /* [UNIQUE] User- provided cursor, competes with CURSORHINT event. */
@@ -221,6 +233,8 @@ enum ARCAN_TARGET_COMMAND {
  * a relative amount of frames to process or rollback
  * ioevs[0].iv represents the number of frames,
  * ioevs[1].iv can contain an ID (see CLOCKREQ)
+ * ioevs[2].uiv (on CLOCKREQ) 0 or seconds (NTP- jan 1900 64-bit format)
+ * ioevs[3].uiv (on CLOCKREQ) fractional second ( - " - ) in GEOHINT- tz
  */
 	TARGET_COMMAND_STEPFRAME,
 
@@ -296,7 +310,7 @@ enum ARCAN_TARGET_COMMAND {
  */
 	TARGET_COMMAND_SEEKCONTENT,
 
-/* [UNIQUE/AGGREGATE/ACTIVATION]
+/* [PREROLL/UNIQUE/AGGREGATE]
  * This event hints towards current display properties or desired display
  * properties.
  *
@@ -332,8 +346,7 @@ enum ARCAN_TARGET_COMMAND {
  */
 	TARGET_COMMAND_DISPLAYHINT,
 
-/*
- * Hint input/device mapping (device-type, input-port),
+/* Hint input/device mapping (device-type, input-port),
  * primarily used for gaming / legacy applications.
  * ioevs[0].iv = device_type,
  * ioevs[1].iv = input_port
@@ -398,7 +411,7 @@ enum ARCAN_TARGET_COMMAND {
 	TARGET_COMMAND_BUFFER_FAIL,
 
 /*
- * [DESCRIPTOR_PASSING]
+ * [PREROLL/DESCRIPTOR_PASSING]
  * Provide a handle to a specific device node, the [1].iv determines type and
  * intended use.
  * ioev[0].iv = handle (or BADFD)
@@ -446,13 +459,15 @@ enum ARCAN_TARGET_COMMAND {
 	TARGET_COMMAND_MESSAGE,
 
 /*
- * [DESCRIPTOR_PASSING]
+ * [PREROLL/DESCRIPTOR_PASSING]
  * A hint in regards to how text rendering should be managed in relation to
  * the display regarding filtering, font, and sizing decision.
  * ioev[0].iv = BADFD or descriptor of font to use
  * ioev[1].iv = type describing font in [0]:
  *  0 : default, off
- *  1 : TTF ( True Type ), other values are invalid/reserved for now.
+ *  1 : TTF ( True Type )
+ *  2 : OTF ( Open TYpe )
+ * Other values are invalid/reserved for now
  * ioev[2].fv = desired normal font size in mm, <= 0, unchanged from current
  * ioev[3].iv = hinting: 0, off. 1, monochromatic, 2. light, 3. medium,
  *  -1 (unchanged), 0: off, 1..16 (implementation defined, recommendation
@@ -466,16 +481,20 @@ enum ARCAN_TARGET_COMMAND {
 	TARGET_COMMAND_FONTHINT,
 
 /*
+ * [PREROLL]
  * A hint to active positioning and localization settings
  * ioev[0].fv = GPS(lat)
  * ioev[1].fv = GPS(long)
  * ioev[2].fv = GPS(elev)
  * ioev[3].cv = ISO-3166-1 Alpha 3 code for country + \'0'
- * ioev[4].cv = ISO-639-2, Alpha 3 code for language + \'0'
+ * ioev[4].cv = ISO-639-2, Alpha 3 code for language (spoken) + \'0'
+ * ioev[5].cv = ISO-639-2, Alpha 3 code for language (written) + \'0'
+ * ioev[6].iv = timezone
  */
 	TARGET_COMMAND_GEOHINT,
 
 /*
+ * [PREROLL]
  * geometrical constraints, while-as DISPLAYHINT events convey how the
  * target will be presented, the OUTPUT hints provide an estimate of the
  * capabilities. Shmif will track these properties internally and use
@@ -488,13 +507,13 @@ enum ARCAN_TARGET_COMMAND {
 	TARGET_COMMAND_OUTPUTHINT,
 
 /*
- * Specialized output hinting, considered deprecated. To be replaced with
- * graphmode in game/hijack where it still has any use.
+ * [ACTIVATION/INTERNAL]
+ * Used to indicate the end of the preroll state. _open (and only _open) is
+ * blocking until this command has been received. It is used to populate the
+ * shmif_cont with strong UI dominant properties, like density, font, ...
  */
-	TARGET_COMMAND_VECTOR_LINEWIDTH,
-	TARGET_COMMAND_VECTOR_POINTSIZE,
-	TARGET_COMMAND_NTSCFILTER,
-	TARGET_COMMAND_NTSCFILTER_ARGS,
+	TARGET_COMMAND_ACTIVATE,
+
 	TARGET_COMMAND_LIMIT = INT_MAX
 };
 
@@ -591,7 +610,7 @@ enum ARCAN_EVENT_EXTERNAL {
 /*
  * Used to indicated that some external entity tries to provide input data
  * (e.g. a vnc client connected to an encode frameserver) uses the key and
- * cursor substructure.
+ * cursor substructure, not the full range of ioevents.
  */
 	EVENT_EXTERNAL_KEYINPUT,
 	EVENT_EXTERNAL_CURSORINPUT,
@@ -819,7 +838,8 @@ enum ARCAN_EVENT_FSRV {
 	EVENT_FSRV_RESIZED,
 	EVENT_FSRV_TERMINATED,
 	EVENT_FSRV_DROPPEDFRAME,
-	EVENT_FSRV_DELIVEREDFRAME
+	EVENT_FSRV_DELIVEREDFRAME,
+	EVENT_FSRV_PREROLL
 };
 /* -- end internal -- */
 

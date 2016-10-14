@@ -33,6 +33,10 @@
 #include "vncserver.h"
 #endif
 
+#ifdef HAVE_OCR
+void ocr_serv_run(struct arg_arr* args, struct arcan_shmif_cont cont);
+#endif
+
 /* don't build / link to older versions */
 #if LIBAVCODEC_VERSION_MAJOR < 54
 	extern char* dated_ffmpeg_refused_old_build[-1];
