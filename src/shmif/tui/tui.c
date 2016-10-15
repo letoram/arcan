@@ -32,6 +32,7 @@
 #include "../arcan_shmif.h"
 #include "../arcan_shmif_tui.h"
 #include "../arcan_shmif_tuisym.h"
+#include "arcan_ttf.h"
 
 #include "libtsm.h"
 #include "libtsm_int.h"
@@ -47,16 +48,6 @@
  * font engines here. Right now, the options are simply TTF_ via freetype or
  * going to an 8x8 built-in ugly thing.
  */
-#ifdef TTF_SUPPORT
-#include "arcan_ttf.h"
-#else
-#define TTF_HINTING_NORMAL  3
-#define TTF_HINTING_LIGHT  2
-#define TTF_HINTING_MONO   1
-#define TTF_HINTING_NONE   0
-#define TTF_HINTING_RGB 4
-#define TTF_HINTING_VRGB 5
-#endif
 
 enum dirty_state {
 	DIRTY_NONE = 0,
@@ -76,10 +67,9 @@ struct tui_context {
 
 /* font rendering / tracking - we support one main that defines cell size
  * and one secondary that can be used for alternative glyphs */
-#ifdef TTF_SUPPORT
 	TTF_Font* font[2];
+
 /* size in font pt */
-#endif
 	size_t font_sz;
 	int font_sz_delta;
 	int hint;
@@ -223,7 +213,6 @@ static void draw_ch_u8(struct tui_context* tui,
 	);
 }
 
-#ifdef TTF_SUPPORT
 static void draw_ch(struct tui_context* tui,
 	uint32_t ch, int base_x, int base_y, uint8_t fg[4], uint8_t bg[4],
 	bool bold, bool underline, bool italic)
@@ -245,7 +234,6 @@ static void draw_ch(struct tui_context* tui,
 		ch, &xs, fg, bg, true, false, prem, &adv, &ind
 	);
 }
-#endif
 
 static void send_cell_sz(struct tui_context* tui)
 {
@@ -334,21 +322,17 @@ static int draw_cbt(struct tui_context* tui,
 		return 0;
 	}
 
-#ifdef TTF_SUPPORT
 	if (!tui->font[0]){
-#endif
 	size_t u8_sz = tsm_ucs4_get_width(ch) + 1;
 	uint8_t u8_ch[u8_sz];
 	size_t nch = tsm_ucs4_to_utf8(ch, (char*) u8_ch);
 	u8_ch[u8_sz-1] = '\0';
 		draw_ch_u8(tui, u8_ch, x1, y1, dfg, dbg,
 			attr->bold, attr->underline, attr->italic);
-#ifdef TTF_SUPPORT
 	}
 	else
 		draw_ch(tui, ch, x1, y1, dfg, dbg,
 			attr->bold, attr->underline, attr->italic);
-#endif
 
 	return 0;
 }
@@ -557,7 +541,6 @@ struct lent {
 	bool(*ptr)(struct tui_context*);
 };
 
-#ifdef TTF_SUPPORT
 static const int badfd = -1;
 static bool setup_font(struct tui_context* tui,
 	int fd, size_t font_sz, int mode);
@@ -578,7 +561,6 @@ bool dec_fontsz(struct tui_context* tui)
 	setup_font(tui, badfd, 0, 0);
 	return true;
 }
-#endif
 
 static bool scroll_lock(struct tui_context* tui)
 {
@@ -608,10 +590,8 @@ static const struct lent labels[] = {
 	{"SELECT_AT", select_at},
 	{"SELECT_ROW", select_row},
 	{"SCROLL_LOCK", scroll_lock},
-#ifdef TTF_SUPPORT
 	{"INC_FONT_SZ", inc_fontsz},
 	{"DEC_FONT_SZ", dec_fontsz},
-#endif
 	{NULL, NULL}
 };
 
@@ -972,7 +952,6 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 	break;
 
 	case TARGET_COMMAND_FONTHINT:{
-#ifdef TTF_SUPPORT
 		int fd = BADFD;
 		if (ev->ioevs[1].iv == 1)
 			fd = ev->ioevs[0].iv;
@@ -992,7 +971,6 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 			SHMIF_PT_SIZE(tui->ppcm, ev->ioevs[2].fv) : 0, ev->ioevs[4].iv);
 
 		update_screensize(tui, false);
-#endif
 	}
 	break;
 
@@ -1043,14 +1021,12 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 /* currently ignoring field [3], RGB layout as freetype with
  * subpixel hinting builds isn't default / tested properly here */
 
-#ifdef TTF_SUPPORT
 		if (ev->ioevs[4].fv > 0 && fabs(ev->ioevs[4].fv - tui->ppcm) > 0.01){
 			float sf = tui->ppcm / ev->ioevs[4].fv;
 			tui->ppcm = ev->ioevs[4].fv;
 			setup_font(tui, BADFD, 0, 0);
 			update = true;
 		}
-#endif
 
 		if (update)
 			tui->dirty = DIRTY_PENDING_FULL;
@@ -1213,7 +1189,6 @@ static void queue_requests(struct tui_context* tui,
 		arcan_shmif_enqueue(&tui->acon, &tui->last_ident);
 }
 
-#ifdef TTF_SUPPORT
 static void probe_font(struct tui_context* tui,
 	TTF_Font* font, const char* msg, size_t* dw, size_t* dh)
 {
@@ -1299,7 +1274,6 @@ static bool setup_font(struct tui_context* tui,
 
 	return true;
 }
-#endif
 
 /*
  * get temporary access to the current state of the TUI/context,
@@ -1553,22 +1527,18 @@ void arcan_tui_apply_arg(struct tui_settings* cfg,
 
 	if (arg_lookup(args, "bgalpha", 0, &val))
 		cfg->alpha = strtoul(val, NULL, 10);
-#ifdef TTF_SUPPORT
 	if (arg_lookup(args, "ppcm", 0, &val)){
 		float ppcm = strtof(val, NULL);
 		if (isfinite(ppcm) && ppcm > ARCAN_SHMPAGE_DEFAULT_PPCM * 0.5)
 			cfg->ppcm = ppcm;
 	}
-#endif
 }
 
 struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 	const struct tui_settings* set, const struct tui_cbcfg* cbs,
 	size_t cbs_sz, ...)
 {
-#ifdef TTF_SUPPORT
 	TTF_Init();
-#endif
 
 	struct arcan_shmif_initial* init;
 	if (sizeof(struct arcan_shmif_initial) != arcan_shmif_initial(con, &init)){

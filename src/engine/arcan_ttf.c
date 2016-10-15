@@ -35,7 +35,6 @@
 #include FT_BITMAP_H
 #include FT_TRUETYPE_IDS_H
 #include FT_LCD_FILTER_H
-#define ARCAN_TTF
 
 #if defined(SHMIF_TTF)
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
@@ -43,10 +42,7 @@
 
 #include "external/stb_image_resize.h"
 
-#if defined(SHMIF_TTF) || defined(ARCAN_TTF)
 #include "arcan_shmif.h"
-#endif
-
 #include "arcan_ttf.h"
 
 /* FIXME: Right now we assume the gray-scale renderer Freetype is using
@@ -227,9 +223,6 @@ int TTF_Init( void )
 			static unsigned char gweights[] = {0x1a, 0x43, 0x56, 0x43, 0x1a};
 			FT_Library_SetLcdFilterWeights(library, gweights);
 		}
-		else
-			arcan_warning("FT_Library_SetLcdFilter(%d), No Subpixel hinting "
-				"available\n", errc);
 	}
 	if ( status == 0 ) {
 		++TTF_initialized;
@@ -271,8 +264,6 @@ static int ft_sizeind(FT_Face face, float ys)
 	if (-1 != ind){
 		int errc = FT_Select_Size(face, ind);
 		if (0 != errc){
-			arcan_warning("FT_Select_Size failed (%d)"
-				"for face on fixed font\n", errc);
 			ind = -1;
 		}
 	}
@@ -518,10 +509,8 @@ static FT_Error Load_Glyph( TTF_Font* font, uint32_t ch,
 		(FT_LOAD_DEFAULT | FT_LOAD_COLOR | FT_LOAD_TARGET_(font->hinting))
 		 & (~FT_LOAD_NO_BITMAP));
 
-	if( error ) {
-		arcan_warning("load_glyph() failed: %d\n", error);
+	if( error )
 		return error;
-	}
 
 	/* Get our glyph shortcuts */
 	glyph = face->glyph;
@@ -1222,8 +1211,6 @@ int TTF_SizeUNICODEchain(TTF_Font **font, size_t n,
  * and clean rewrite. The 'direct' rendering mode in FreeType comes to
  * mind
  */
-#if defined(SHMIF_TTF) || defined(ARCAN_TTF)
-
 static inline av_pixel pack_pixel_bg(uint8_t fg[4], uint8_t bg[4], uint8_t a)
 {
 	if (0 == a)
@@ -1531,7 +1518,6 @@ bool TTF_RenderUTF8chain(PIXEL* dst, size_t width, size_t height,
 
 	return true;
 }
-#endif
 
 int TTF_GetFontStyle( const TTF_Font* font )
 {

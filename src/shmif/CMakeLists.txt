@@ -98,30 +98,48 @@ set(SHMIF_TUI_SOURCES
 	${ASD}/shmif/tui/tsm_unicode.c
 	${ASD}/shmif/tui/shl_htable.c
 	${ASD}/shmif/tui/wcwidth.c
+	${ASD}/engine/arcan_ttf.c
 )
 
-if (FREETYPE_LIBRARIES)
-	list(APPEND SHMIF_TUI_SOURCES ${ASD}/engine/arcan_ttf.c)
-endif()
+set_property(SOURCE ${ASD}/engine/arcan_ttf.c
+	APPEND PROPERTY COMPILE_DEFINITIONS SHMIF_TTF)
+
+set(TARGET_LIST arcan_shmif arcan_shmif_int arcan_shmif_ext arcan_shmif_intext arcan_shmif_tui)
 
 add_library(arcan_shmif_int STATIC ${SHMIF_SOURCES} ${SHMIF_PLATFORM})
 add_library(arcan_shmif SHARED ${SHMIF_SOURCES} ${SHMIF_PLATFORM})
 add_library(arcan_shmif_ext SHARED ${SHMIF_EXT_SOURCES})
 add_library(arcan_shmif_intext SHARED ${SHMIF_EXT_SOURCES})
-add_library(arcan_shmif_tuiext SHARED ${SHMIF_TUI_SOURCES})
-add_library(arcan_shmif_tui STATIC ${SHMIF_TUI_SOURCES})
 
-if (FREETYPE_LIBRARIES)
-	target_compile_definitions(arcan_shmif_tui PRIVATE TTF_SUPPORT SHMIF_TTF)
-	target_compile_definitions(arcan_shmif_tuiext PRIVATE TTF_SUPPORT SHMIF_TTF)
+# somewhat messy, if the engine is building a static freetype version we should
+# use that one and provide a tui to match, but we should also try and provide a
+# dynamic one.
+if (STATIC_FREETYPE)
+	add_library(arcan_shmif_tui STATIC ${SHMIF_TUI_SOURCES})
+	target_link_libraries(arcan_shmif_tui PRIVATE ${STDLIB} ${FREETYPE_DEFAULT_LIBRARIES})
+	find_package(Freetype QUIET)
+	if (FREETYPE_FOUND)
+		add_library(arcan_shmif_tuiext SHARED ${SHMIF_TUI_SOURCES})
+		target_link_libraries(arcan_shmif_tuiext PRIVATE ${STDLIB} arcan_shmif ${FREETYPE_LIBRARIES})
+		set_target_properties(arcan_shmif_tuiext PROPERTIES
+			COMPILE_FLAGS -fPIC
+			OUTPUT_NAME arcan_shmif_tui
+			VERSION ${ASHMIF_MAJOR}.${ASHMIF_MINOR}
+		)
+		set(TARGET_LIST ${TARGET_LIST} arcan_shmif_tuiext)
+	else()
+		amsg("${CL_YEL}only static freetype found, dynamic shmif_tui disabled ${CL_RST}")
+	endif()
+else()
+	add_library(arcan_shmif_tui SHARED ${SHMIF_TUI_SOURCES})
+	target_link_libraries(arcan_shmif_tui PRIVATE ${STDLIB} arcan_shmif ${FREETYPE_LIBRARIES})
+	set_target_properties(arcan_shmif_tui PROPERTIES VERSION ${ASHMIF_MAJOR}.${ASHMIF_MINOR})
 endif()
 
 target_link_libraries(arcan_shmif PRIVATE ${STDLIB})
 target_link_libraries(arcan_shmif_int PRIVATE ${STDLIB})
 target_link_libraries(arcan_shmif_ext PRIVATE ${STDLIB} ${VIDEO_LIBRARIES})
 target_link_libraries(arcan_shmif_intext PRIVATE ${STDLIB} ${VIDEO_LIBRARIES})
-target_link_libraries(arcan_shmif_tui PRIVATE ${STDLIB} ${FREETYPE_LIBRARIES})
-target_link_libraries(arcan_shmif_tuiext PRIVATE ${STDLIB} arcan_shmif ${FREETYPE_LIBRARIES})
 
 target_include_directories(arcan_shmif_ext PRIVATE ${INCLUDE_DIRS})
 target_include_directories(arcan_shmif_intext PRIVATE ${INCLUDE_DIRS})
@@ -161,12 +179,6 @@ set_target_properties(arcan_shmif_intext PROPERTIES
 	VERSION ${ASHMIF_MAJOR}.${ASHMIF_MINOR}
 )
 
-set_target_properties(arcan_shmif_tuiext PROPERTIES
-	COMPILE_FLAGS -fPIC
-	OUTPUT_NAME arcan_shmif_tui
-	VERSION ${ASHMIF_MAJOR}.${ASHMIF_MINOR}
-)
-
 set(ARCAN_SHMIF_INCLUDE_DIR ${ASD}/shmif PARENT_SCOPE)
 set(ARCAN_SHMIF_LIBRARY arcan_shmif_int ${ASHMIF_STDLIB} PARENT_SCOPE)
 
@@ -174,7 +186,7 @@ target_include_directories(arcan_shmif_int PRIVATE ${ASD}/shmif)
 target_include_directories(arcan_shmif PRIVATE ${ASD}/shmif)
 
 if (NOT ARCAN_SOURCE_DIR)
-	install(TARGETS arcan_shmif arcan_shmif_int arcan_shmif_ext arcan_shmif_intext arcan_shmif_tuiext
+	install(TARGETS ${TARGET_LIST}
 		LIBRARY DESTINATION ${ASHMIF_INSTPATH}
 		ARCHIVE DESTINATION ${ASHMIF_INSTPATH}
 	)

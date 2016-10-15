@@ -113,6 +113,8 @@ option(DISABLE_JIT "Don't use the luajit-5.1 VM (if found)" OFF)
 option(DISABLE_HIJACK "Disable building hijack libraries" ON)
 option(NO_FSRV "Disable building/launching frameservers" OFF)
 option(STATIC_SQLITE3 "Use SQLite3 Amalgamation" OFF)
+option(STATIC_FREETYPE "Use static Freetype (external/git folder)" OFF)
+option(STATIC_OPENAL "Use static OpenAL (external/git folder)" OFF)
 option(ENABLE_LTO "Build with Link-Time Optimization enabled" OFF)
 option(ENABLE_LWA "Build LWA client (arcan-in-arcan)" ON)
 option(ENABLE_SIMD "Build with SIMD vector instruction set support" ON)
@@ -250,7 +252,6 @@ set (CMAKE_EXTERNAL_DEFS
 )
 
 if (EXISTS ${EXTERNAL_SRC_DIR}/git/freetype AND STATIC_FREETYPE)
-	set(STATIC_FREETYPE ON)
 	amsg("${CL_YEL}Building Freetype static from external/git mirror${CL_RST}")
 	find_package(PNG QUIET)
 	if (PNG_FOUND)
@@ -277,19 +278,24 @@ if (EXISTS ${EXTERNAL_SRC_DIR}/git/freetype AND STATIC_FREETYPE)
 		-DWITH_PNG=${PNG_EXT_STATE}
 	)
 	if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-		set(FREETYPE_LIBRARY "${CMAKE_CURRENT_BINARY_DIR}/lib/libfreetyped.a")
+		set(FREETYPE_STATIC_LIBRARY "${CMAKE_CURRENT_BINARY_DIR}/lib/libfreetyped.a")
 	else()
-		set(FREETYPE_LIBRARY "${CMAKE_CURRENT_BINARY_DIR}/lib/libfreetype.a")
+		set(FREETYPE_STATIC_LIBRARY "${CMAKE_CURRENT_BINARY_DIR}/lib/libfreetype.a")
 	endif()
 
-	set(FREETYPE_INCLUDE_DIRS "${CMAKE_CURRENT_BINARY_DIR}/include/freetype2")
-	set(FREETYPE_LIBRARIES
-		${FREETYPE_LIBRARY}
+	set(FREETYPE_STATIC_INCLUDE_DIRS "${CMAKE_CURRENT_BINARY_DIR}/include/freetype2")
+	set(FREETYPE_DEFAULT_LIBRARIES
+		${FREETYPE_STATIC_LIBRARY}
 		${PNG_LIBRARIES}
 	)
+	set(FREETYPE_DEFAULT_INCLUDE_DIRS "${CMAKE_CURRENT_BINARY_DIR}/include/freetype2")
 	list(APPEND MAIN_DEPS Freetype)
 else()
+# need this maneuver to deal with the combination of
+# static:arcan,arcan_lwa,arcan_shmif_tui] but also [dynamic:arcan_shmif_tui]
 	find_package(Freetype REQUIRED QUIET)
+	set(FREETYPE_DEFAULT_LIBRARIES ${FREETYPE_LIBRARIES})
+	set(FREETYPE_DEFAULT_INCLUDE_DIRS ${FREETYPE_INCLUDE_DIRS})
 endif()
 
 # need the separation here to not confuse openAL here with
@@ -390,7 +396,7 @@ endif()
 LIST (APPEND
 	ARCAN_LIBRARIES
 	openctm
-	${FREETYPE_LIBRARIES}
+	${FREETYPE_DEFAULT_LIBRARIES}
 	${LUA_LIBRARIES}
 	${SQLITE3_LIBRARIES}
 )
@@ -399,7 +405,7 @@ LIST (APPEND
 	INCLUDE_DIRS
 	${LUA_INCLUDE_DIR}
 	${OPENAL_INCLUDE_DIR}
-	${FREETYPE_INCLUDE_DIRS}
+	${FREETYPE_DEFAULT_INCLUDE_DIRS}
 	${SQLITE3_INCLUDE_DIR}
 	${CMAKE_CURRENT_SOURCE_DIR}/platform
 	${EXTERNAL_SRC_DIR}

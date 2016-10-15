@@ -140,11 +140,10 @@ int TTF_SizeUNICODEchain(TTF_Font **font, size_t n,
 
 /* This compilation unit is re-used by some frameservers as well,
  * in order to not mix and match types we need some trickery */
-#if defined(SHMIF_TTF) || defined(ARCAN_TTF)
 #ifdef SHMIF_TTF
 #define PIXEL shmif_pixel
 #define PACK(R, G, B, A) SHMIF_RGBA(R, G, B, A)
-#elif defined(ARCAN_TTF)
+#else
 #define PIXEL av_pixel
 #define PACK(R, G, B, A) RGBA(R, G, B, A)
 #endif
@@ -179,7 +178,6 @@ bool TTF_RenderUNICODEglyph(PIXEL* dst,
 	bool usebg, bool use_kerning, int style,
 	int* advance, unsigned* prev_index
 );
-#endif
 
 /* Close an opened font file */
 void TTF_CloseFont(TTF_Font *font);

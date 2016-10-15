@@ -71,11 +71,13 @@ int tsm_utf8_mach_feed(struct tsm_utf8_mach *mach, char c);
 uint32_t tsm_utf8_mach_get(struct tsm_utf8_mach *mach);
 void tsm_utf8_mach_reset(struct tsm_utf8_mach *mach);
 
-/* TSM screen */
+/* TSM screen
 
 void tsm_screen_set_opts(struct tsm_screen *scr, unsigned int opts);
 void tsm_screen_reset_opts(struct tsm_screen *scr, unsigned int opts);
 unsigned int tsm_screen_get_opts(struct tsm_screen *scr);
+
+ */
 
 /* available character sets */
 
