@@ -45,16 +45,14 @@
  * often used sequences, too. Feel free to add further.
  */
 
+#include "arcan_shmif.h"
+#include "arcan_shmif_tui.h"
+#include "arcan_shmif_tuisym.h"
 #include <errno.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <stdarg.h>
 #include "libtsm.h"
 #include "libtsm_int.h"
 #include "shl_llog.h"
-
-#include "xkbcommon-keysyms.h"
-
 #define LLOG_SUBSYSTEM "tsm_vte"
 
 /* Input parser states */
@@ -146,12 +144,12 @@ const static int MOUSE_PROTO = MOUSE_SGR | MOUSE_X10 | MOUSE_RXVT;
 #define FLAG_PASTE_BRACKET 0x00040000 /* Bracketed Paste mode */
 
 struct vte_saved_state {
-	unsigned int cursor_x;
-	unsigned int cursor_y;
-	unsigned int mouse_x;
-	unsigned int mouse_y;
+	size_t cursor_x;
+	size_t cursor_y;
+	size_t mouse_x;
+	size_t mouse_y;
 	enum mouse_data mouse_state;
-	struct tsm_screen_attr cattr;
+	struct tui_screen_attr cattr;
 	tsm_vte_charset **gl;
 	tsm_vte_charset **gr;
 	bool wrap_mode;
@@ -169,7 +167,7 @@ struct tsm_vte {
 	char *colbuf;
 
 	void *llog_data;
-	struct tsm_screen *con;
+	struct tui_context *con;
 	tsm_vte_write_cb write_cb;
 	void *data;
 	char *palette_name;
@@ -186,8 +184,8 @@ struct tsm_vte {
 	unsigned int csi_flags;
 
 	uint8_t palette[VTE_COLOR_NUM][3];
-	struct tsm_screen_attr def_attr;
-	struct tsm_screen_attr cattr;
+	struct tui_screen_attr def_attr;
+	struct tui_screen_attr cattr;
 	unsigned int flags;
 
 	tsm_vte_charset **gl;
@@ -200,8 +198,8 @@ struct tsm_vte {
 	tsm_vte_charset *g3;
 
 	struct vte_saved_state saved_state;
-	unsigned int alt_cursor_x;
-	unsigned int alt_cursor_y;
+	size_t alt_cursor_x;
+	size_t alt_cursor_y;
 };
 
 static uint8_t color_palette[VTE_COLOR_NUM][3] = {
@@ -315,7 +313,7 @@ static uint8_t (*get_palette(struct tsm_vte *vte))[3]
  * be called before passing the attribute to the console layer so the console
  * layer can always work with RGB values and does not have to care for color
  * codes. */
-static void to_rgb(struct tsm_vte *vte, struct tsm_screen_attr *attr)
+static void to_rgb(struct tsm_vte *vte, struct tui_screen_attr *attr)
 {
 	int8_t code;
 
@@ -343,8 +341,8 @@ static void to_rgb(struct tsm_vte *vte, struct tsm_screen_attr *attr)
 	}
 }
 
-static void copy_fcolor(struct tsm_screen_attr *dest,
-			const struct tsm_screen_attr *src)
+static void copy_fcolor(struct tui_screen_attr *dest,
+			const struct tui_screen_attr *src)
 {
 	dest->fccode = src->fccode;
 	dest->fr = src->fr;
@@ -352,8 +350,8 @@ static void copy_fcolor(struct tsm_screen_attr *dest,
 	dest->fb = src->fb;
 }
 
-static void copy_bcolor(struct tsm_screen_attr *dest,
-			const struct tsm_screen_attr *src)
+static void copy_bcolor(struct tui_screen_attr *dest,
+			const struct tui_screen_attr *src)
 {
 	dest->bccode = src->bccode;
 	dest->br = src->br;
@@ -362,7 +360,7 @@ static void copy_bcolor(struct tsm_screen_attr *dest,
 }
 
 SHL_EXPORT
-int tsm_vte_new(struct tsm_vte **out, struct tsm_screen *con,
+int tsm_vte_new(struct tsm_vte **out, struct tui_context *con,
 		tsm_vte_write_cb write_cb, void *data,
 		tsm_log_t log, void *log_data)
 {
@@ -394,10 +392,10 @@ int tsm_vte_new(struct tsm_vte **out, struct tsm_screen *con,
 		goto err_free;
 
 	tsm_vte_reset(vte);
-	tsm_screen_erase_screen(vte->con, false);
+	arcan_tui_erase_screen(vte->con, false);
 
 	llog_debug(vte, "new vte object");
-	tsm_screen_ref(vte->con);
+	arcan_tui_refinc(vte->con);
 	*out = vte;
 	return 0;
 
@@ -425,7 +423,7 @@ void tsm_vte_unref(struct tsm_vte *vte)
 		return;
 
 	llog_debug(vte, "destroying vte object");
-	tsm_screen_unref(vte->con);
+	arcan_tui_refdec(vte->con);
 	tsm_utf8_mach_free(vte->mach);
 	free(vte);
 }
@@ -471,8 +469,8 @@ int tsm_vte_set_palette(struct tsm_vte *vte, const char *pstr)
 	to_rgb(vte, &vte->def_attr);
 	memcpy(&vte->cattr, &vte->def_attr, sizeof(vte->cattr));
 
-	tsm_screen_set_def_attr(vte->con, &vte->def_attr);
-	tsm_screen_erase_screen(vte->con, false);
+	arcan_tui_defattr(vte->con, &vte->def_attr);
+	arcan_tui_erase_screen(vte->con, false);
 
 	return 0;
 }
@@ -549,7 +547,7 @@ static void vte_write_debug(struct tsm_vte *vte, const char *u8, size_t len,
 static void write_console(struct tsm_vte *vte, tsm_symbol_t sym)
 {
 	to_rgb(vte, &vte->cattr);
-	tsm_screen_write(vte->con, sym, &vte->cattr);
+	arcan_tui_write(vte->con, sym, &vte->cattr);
 }
 
 static void reset_state(struct tsm_vte *vte)
@@ -577,8 +575,8 @@ static void reset_state(struct tsm_vte *vte)
 
 static void save_state(struct tsm_vte *vte)
 {
-	vte->saved_state.cursor_x = tsm_screen_get_cursor_x(vte->con);
-	vte->saved_state.cursor_y = tsm_screen_get_cursor_y(vte->con);
+	arcan_tui_cursorpos(vte->con,
+		&vte->saved_state.cursor_x, &vte->saved_state.cursor_y);
 	vte->saved_state.cattr = vte->cattr;
 	vte->saved_state.gl = vte->gl;
 	vte->saved_state.gr = vte->gr;
@@ -589,30 +587,30 @@ static void save_state(struct tsm_vte *vte)
 
 static void restore_state(struct tsm_vte *vte)
 {
-	tsm_screen_move_to(vte->con, vte->saved_state.cursor_x,
+	arcan_tui_move_to(vte->con, vte->saved_state.cursor_x,
 			       vte->saved_state.cursor_y);
 	vte->cattr = vte->saved_state.cattr;
 	to_rgb(vte, &vte->cattr);
 	if (vte->flags & FLAG_BACKGROUND_COLOR_ERASE_MODE)
-		tsm_screen_set_def_attr(vte->con, &vte->cattr);
+		arcan_tui_defattr(vte->con, &vte->cattr);
 	vte->gl = vte->saved_state.gl;
 	vte->gr = vte->saved_state.gr;
 	vte->mstate = vte->saved_state.mouse_state;
 
 	if (vte->saved_state.wrap_mode) {
 		vte->flags |= FLAG_AUTO_WRAP_MODE;
-		tsm_screen_set_flags(vte->con, TSM_SCREEN_AUTO_WRAP);
+		arcan_tui_set_flags(vte->con, TUI_AUTO_WRAP);
 	} else {
 		vte->flags &= ~FLAG_AUTO_WRAP_MODE;
-		tsm_screen_reset_flags(vte->con, TSM_SCREEN_AUTO_WRAP);
+		arcan_tui_reset_flags(vte->con, TUI_AUTO_WRAP);
 	}
 
 	if (vte->saved_state.origin_mode) {
 		vte->flags |= FLAG_ORIGIN_MODE;
-		tsm_screen_set_flags(vte->con, TSM_SCREEN_REL_ORIGIN);
+		arcan_tui_set_flags(vte->con, TUI_REL_ORIGIN);
 	} else {
 		vte->flags &= ~FLAG_ORIGIN_MODE;
-		tsm_screen_reset_flags(vte->con, TSM_SCREEN_REL_ORIGIN);
+		arcan_tui_reset_flags(vte->con, TUI_REL_ORIGIN);
 	}
 }
 
@@ -634,8 +632,8 @@ void tsm_vte_reset(struct tsm_vte *vte)
 	vte->flags |= FLAG_SEND_RECEIVE_MODE;
 	vte->flags |= FLAG_AUTO_WRAP_MODE;
 	vte->flags |= FLAG_BACKGROUND_COLOR_ERASE_MODE;
-	tsm_screen_reset(vte->con);
-	tsm_screen_set_flags(vte->con, TSM_SCREEN_AUTO_WRAP);
+	arcan_tui_reset(vte->con);
+	arcan_tui_set_flags(vte->con, TUI_AUTO_WRAP);
 
 	tsm_utf8_mach_reset(vte->mach);
 	vte->state = STATE_GROUND;
@@ -650,7 +648,7 @@ void tsm_vte_reset(struct tsm_vte *vte)
 
 	memcpy(&vte->cattr, &vte->def_attr, sizeof(vte->cattr));
 	to_rgb(vte, &vte->cattr);
-	tsm_screen_set_def_attr(vte->con, &vte->def_attr);
+	arcan_tui_defattr(vte->con, &vte->def_attr);
 
 	reset_state(vte);
 }
@@ -659,9 +657,9 @@ SHL_EXPORT
 void tsm_vte_hard_reset(struct tsm_vte *vte)
 {
 	tsm_vte_reset(vte);
-	tsm_screen_erase_screen(vte->con, false);
-	tsm_screen_clear_sb(vte->con);
-	tsm_screen_move_to(vte->con, 0, 0);
+	arcan_tui_erase_screen(vte->con, false);
+	arcan_tui_erase_sb(vte->con);
+	arcan_tui_move_to(vte->con, 0, 0);
 }
 
 static void mouse_wr(struct tsm_vte *vte,
@@ -712,6 +710,7 @@ void tsm_vte_mouse_motion(struct tsm_vte *vte, int x, int y, int mods)
 		y == vte->saved_state.mouse_y)
 			return;
 
+/* convert mouse state mask to match protocol */
 	int mc = 0;
 	mc |= (mods & TSM_SHIFT_MASK)   ? 1 : 0;
 	mc |= (mods & TSM_ALT_MASK)     ? 2 : 0;
@@ -786,24 +785,24 @@ static void do_execute(struct tsm_vte *vte, uint32_t ctrl)
 		break;
 	case 0x08: /* BS */
 		/* Move cursor one position left */
-		tsm_screen_move_left(vte->con, 1);
+		arcan_tui_move_left(vte->con, 1);
 		break;
 	case 0x09: /* HT */
 		/* Move to next tab stop or end of line */
-		tsm_screen_tab_right(vte->con, 1);
+		arcan_tui_tab_right(vte->con, 1);
 		break;
 	case 0x0a: /* LF */
 	case 0x0b: /* VT */
 	case 0x0c: /* FF */
 		/* Line feed or newline (CR/NL mode) */
 		if (vte->flags & FLAG_LINE_FEED_NEW_LINE_MODE)
-			tsm_screen_newline(vte->con);
+			arcan_tui_newline(vte->con);
 		else
-			tsm_screen_move_down(vte->con, 1, true);
+			arcan_tui_move_down(vte->con, 1, true);
 		break;
 	case 0x0d: /* CR */
 		/* Move cursor to left margin */
-		tsm_screen_move_line_home(vte->con);
+		arcan_tui_move_line_home(vte->con);
 		break;
 	case 0x0e: /* SO */
 		/* Map G1 character set into GL */
@@ -838,19 +837,19 @@ static void do_execute(struct tsm_vte *vte, uint32_t ctrl)
 		break;
 	case 0x84: /* IND */
 		/* Move down one row, perform scroll-up if needed */
-		tsm_screen_move_down(vte->con, 1, true);
+		arcan_tui_move_down(vte->con, 1, true);
 		break;
 	case 0x85: /* NEL */
 		/* CR/NL with scroll-up if needed */
-		tsm_screen_newline(vte->con);
+		arcan_tui_newline(vte->con);
 		break;
 	case 0x88: /* HTS */
 		/* Set tab stop at current position */
-		tsm_screen_set_tabstop(vte->con);
+		arcan_tui_set_tabstop(vte->con);
 		break;
 	case 0x8d: /* RI */
 		/* Move up one row, perform scroll-down if needed */
-		tsm_screen_move_up(vte->con, 1, true);
+		arcan_tui_move_up(vte->con, 1, true);
 		break;
 	case 0x8e: /* SS2 */
 		/* Temporarily map G2 into GL for next char only */
@@ -1065,19 +1064,19 @@ static void do_esc(struct tsm_vte *vte, uint32_t data)
 	switch (data) {
 	case 'D': /* IND */
 		/* Move down one row, perform scroll-up if needed */
-		tsm_screen_move_down(vte->con, 1, true);
+		arcan_tui_move_down(vte->con, 1, true);
 		break;
 	case 'E': /* NEL */
 		/* CR/NL with scroll-up if needed */
-		tsm_screen_newline(vte->con);
+		arcan_tui_newline(vte->con);
 		break;
 	case 'H': /* HTS */
 		/* Set tab stop at current position */
-		tsm_screen_set_tabstop(vte->con);
+		arcan_tui_set_tabstop(vte->con);
 		break;
 	case 'M': /* RI */
 		/* Move up one row, perform scroll-down if needed */
-		tsm_screen_move_up(vte->con, 1, true);
+		arcan_tui_move_up(vte->con, 1, true);
 		break;
 	case 'N': /* SS2 */
 		/* Temporarily map G2 into GL for next char only */
@@ -1361,7 +1360,7 @@ static void csi_attribute(struct tsm_vte *vte)
 
 	to_rgb(vte, &vte->cattr);
 	if (vte->flags & FLAG_BACKGROUND_COLOR_ERASE_MODE)
-		tsm_screen_set_def_attr(vte->con, &vte->cattr);
+		arcan_tui_defattr(vte->con, &vte->cattr);
 }
 
 static void csi_soft_reset(struct tsm_vte *vte)
@@ -1436,11 +1435,11 @@ static void csi_mode(struct tsm_vte *vte, bool set)
 				set_reset_flag(vte, set,
 					       FLAG_INSERT_REPLACE_MODE);
 				if (set)
-					tsm_screen_set_flags(vte->con,
-						TSM_SCREEN_INSERT_MODE);
+					arcan_tui_set_flags(vte->con,
+						TUI_INSERT_MODE);
 				else
-					tsm_screen_reset_flags(vte->con,
-						TSM_SCREEN_INSERT_MODE);
+					arcan_tui_reset_flags(vte->con,
+						TUI_INSERT_MODE);
 				continue;
 			case 12: /* SRM */
 				set_reset_flag(vte, set,
@@ -1494,29 +1493,29 @@ static void csi_mode(struct tsm_vte *vte, bool set)
 		case 5: /* DECSCNM */
 			set_reset_flag(vte, set, FLAG_INVERSE_SCREEN_MODE);
 			if (set)
-				tsm_screen_set_flags(vte->con,
-						TSM_SCREEN_INVERSE);
+				arcan_tui_set_flags(vte->con,
+						TUI_INVERSE);
 			else
-				tsm_screen_reset_flags(vte->con,
-						TSM_SCREEN_INVERSE);
+				arcan_tui_reset_flags(vte->con,
+						TUI_INVERSE);
 			continue;
 		case 6: /* DECOM */
 			set_reset_flag(vte, set, FLAG_ORIGIN_MODE);
 			if (set)
-				tsm_screen_set_flags(vte->con,
-						TSM_SCREEN_REL_ORIGIN);
+				arcan_tui_set_flags(vte->con,
+						TUI_REL_ORIGIN);
 			else
-				tsm_screen_reset_flags(vte->con,
-						TSM_SCREEN_REL_ORIGIN);
+				arcan_tui_reset_flags(vte->con,
+						TUI_REL_ORIGIN);
 			continue;
 		case 7: /* DECAWN */
 			set_reset_flag(vte, set, FLAG_AUTO_WRAP_MODE);
 			if (set)
-				tsm_screen_set_flags(vte->con,
-						TSM_SCREEN_AUTO_WRAP);
+				arcan_tui_set_flags(vte->con,
+						TUI_AUTO_WRAP);
 			else
-				tsm_screen_reset_flags(vte->con,
-						TSM_SCREEN_AUTO_WRAP);
+				arcan_tui_reset_flags(vte->con,
+						TUI_AUTO_WRAP);
 			continue;
 		case 8: /* DECARM */
 			set_reset_flag(vte, set, FLAG_AUTO_REPEAT_MODE);
@@ -1568,11 +1567,11 @@ static void csi_mode(struct tsm_vte *vte, bool set)
 		case 25: /* DECTCEM */
 			set_reset_flag(vte, set, FLAG_TEXT_CURSOR_MODE);
 			if (set)
-				tsm_screen_reset_flags(vte->con,
-						TSM_SCREEN_HIDE_CURSOR);
+				arcan_tui_reset_flags(vte->con,
+						TUI_HIDE_CURSOR);
 			else
-				tsm_screen_set_flags(vte->con,
-						TSM_SCREEN_HIDE_CURSOR);
+				arcan_tui_set_flags(vte->con,
+						TUI_HIDE_CURSOR);
 			continue;
 		case 42: /* DECNRCM */
 			set_reset_flag(vte, set, FLAG_NATIONAL_CHARSET_MODE);
@@ -1582,23 +1581,23 @@ static void csi_mode(struct tsm_vte *vte, bool set)
 				continue;
 
 			if (set)
-				tsm_screen_set_flags(vte->con,
-						     TSM_SCREEN_ALTERNATE);
+				arcan_tui_set_flags(vte->con,
+						     TUI_ALTERNATE);
 			else
-				tsm_screen_reset_flags(vte->con,
-						       TSM_SCREEN_ALTERNATE);
+				arcan_tui_reset_flags(vte->con,
+						       TUI_ALTERNATE);
 			continue;
 		case 1047: /* Alternate screen buffer with post-erase */
 			if (vte->flags & FLAG_TITE_INHIBIT_MODE)
 				continue;
 
 			if (set) {
-				tsm_screen_set_flags(vte->con,
-						     TSM_SCREEN_ALTERNATE);
+				arcan_tui_set_flags(vte->con,
+						     TUI_ALTERNATE);
 			} else {
-				tsm_screen_erase_screen(vte->con, false);
-				tsm_screen_reset_flags(vte->con,
-						       TSM_SCREEN_ALTERNATE);
+				arcan_tui_erase_screen(vte->con, false);
+				arcan_tui_reset_flags(vte->con,
+						       TUI_ALTERNATE);
 			}
 			continue;
 		case 1048: /* Set/Reset alternate-screen buffer cursor */
@@ -1606,12 +1605,10 @@ static void csi_mode(struct tsm_vte *vte, bool set)
 				continue;
 
 			if (set) {
-				vte->alt_cursor_x =
-					tsm_screen_get_cursor_x(vte->con);
-				vte->alt_cursor_y =
-					tsm_screen_get_cursor_y(vte->con);
+					arcan_tui_cursorpos(vte->con,
+						&vte->alt_cursor_x, &vte->alt_cursor_y);
 			} else {
-				tsm_screen_move_to(vte->con, vte->alt_cursor_x,
+				arcan_tui_move_to(vte->con, vte->alt_cursor_x,
 						   vte->alt_cursor_y);
 			}
 			continue;
@@ -1620,17 +1617,15 @@ static void csi_mode(struct tsm_vte *vte, bool set)
 				continue;
 
 			if (set) {
-				vte->alt_cursor_x =
-					tsm_screen_get_cursor_x(vte->con);
-				vte->alt_cursor_y =
-					tsm_screen_get_cursor_y(vte->con);
-				tsm_screen_set_flags(vte->con,
-						     TSM_SCREEN_ALTERNATE);
-				tsm_screen_erase_screen(vte->con, false);
+				arcan_tui_cursorpos(vte->con,
+					&vte->alt_cursor_x, &vte->alt_cursor_y);
+				arcan_tui_set_flags(vte->con,
+						     TUI_ALTERNATE);
+				arcan_tui_erase_screen(vte->con, false);
 			} else {
-				tsm_screen_reset_flags(vte->con,
-						       TSM_SCREEN_ALTERNATE);
-				tsm_screen_move_to(vte->con, vte->alt_cursor_x,
+				arcan_tui_reset_flags(vte->con,
+						       TUI_ALTERNATE);
+				arcan_tui_move_to(vte->con, vte->alt_cursor_x,
 						   vte->alt_cursor_y);
 			}
 			continue;
@@ -1664,14 +1659,13 @@ static void csi_dev_attr(struct tsm_vte *vte)
 static void csi_dsr(struct tsm_vte *vte)
 {
 	char buf[64];
-	unsigned int x, y, len;
+	size_t x, y, len;
 
 	if (vte->csi_argv[0] == 5) {
 		vte_write(vte, "\e[0n", 4);
 	} else if (vte->csi_argv[0] == 6) {
-		x = tsm_screen_get_cursor_x(vte->con);
-		y = tsm_screen_get_cursor_y(vte->con);
-		len = snprintf(buf, sizeof(buf), "\e[%u;%uR", x+1, y+1);
+		arcan_tui_cursorpos(vte->con, &x, &y);
+		len = snprintf(buf, sizeof(buf), "\e[%zu;%zuR", x+1, y+1);
 		if (len >= sizeof(buf))
 			vte_write(vte, "\e[0;0R", 6);
 		else
@@ -1681,7 +1675,8 @@ static void csi_dsr(struct tsm_vte *vte)
 
 static void do_csi(struct tsm_vte *vte, uint32_t data)
 {
-	int num, x, y, upper, lower;
+	int num, upper, lower;
+	int x, y;
 	bool protect;
 
 	if (vte->csi_argc < CSI_ARG_MAX)
@@ -1693,45 +1688,44 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 		num = vte->csi_argv[0];
 		if (num <= 0)
 			num = 1;
-		tsm_screen_move_up(vte->con, num, false);
+		arcan_tui_move_up(vte->con, num, false);
 		break;
 	case 'B': /* CUD */
 		/* move cursor down */
 		num = vte->csi_argv[0];
 		if (num <= 0)
 			num = 1;
-		tsm_screen_move_down(vte->con, num, false);
+		arcan_tui_move_down(vte->con, num, false);
 		break;
 	case 'C': /* CUF */
 		/* move cursor forward */
 		num = vte->csi_argv[0];
 		if (num <= 0)
 			num = 1;
-		tsm_screen_move_right(vte->con, num);
+		arcan_tui_move_right(vte->con, num);
 		break;
 	case 'D': /* CUB */
 		/* move cursor backward */
 		num = vte->csi_argv[0];
 		if (num <= 0)
 			num = 1;
-		tsm_screen_move_left(vte->con, num);
+		arcan_tui_move_left(vte->con, num);
 		break;
 	case 'd': /* VPA */
 		/* Vertical Line Position Absolute */
 		num = vte->csi_argv[0];
 		if (num <= 0)
 			num = 1;
-		x = tsm_screen_get_cursor_x(vte->con);
-		tsm_screen_move_to(vte->con, x, num - 1);
+		arcan_tui_cursorpos(vte->con, &x, NULL);
+		arcan_tui_move_to(vte->con, x, num - 1);
 		break;
 	case 'e': /* VPR */
 		/* Vertical Line Position Relative */
 		num = vte->csi_argv[0];
 		if (num <= 0)
 			num = 1;
-		x = tsm_screen_get_cursor_x(vte->con);
-		y = tsm_screen_get_cursor_y(vte->con);
-		tsm_screen_move_to(vte->con, x, y + num);
+		arcan_tui_cursorpos(vte->con, &x, &y);
+		arcan_tui_move_to(vte->con, x, y + num);
 		break;
 	case 'H': /* CUP */
 	case 'f': /* HVP */
@@ -1742,15 +1736,15 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 		y = vte->csi_argv[1];
 		if (y <= 0)
 			y = 1;
-		tsm_screen_move_to(vte->con, y - 1, x - 1);
+		arcan_tui_move_to(vte->con, y - 1, x - 1);
 		break;
 	case 'G': /* CHA */
 		/* Cursor Character Absolute */
 		num = vte->csi_argv[0];
 		if (num <= 0)
 			num = 1;
-		y = tsm_screen_get_cursor_y(vte->con);
-		tsm_screen_move_to(vte->con, num - 1, y);
+		arcan_tui_cursorpos(vte->con, &x, &y);
+		arcan_tui_move_to(vte->con, num - 1, y);
 		break;
 	case 'J':
 		if (vte->csi_flags & CSI_WHAT)
@@ -1759,13 +1753,13 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 			protect = false;
 
 		if (vte->csi_argv[0] <= 0)
-			tsm_screen_erase_cursor_to_screen(vte->con,
+			arcan_tui_erase_cursor_to_screen(vte->con,
 							      protect);
 		else if (vte->csi_argv[0] == 1)
-			tsm_screen_erase_screen_to_cursor(vte->con,
+			arcan_tui_erase_screen_to_cursor(vte->con,
 							      protect);
 		else if (vte->csi_argv[0] == 2)
-			tsm_screen_erase_screen(vte->con, protect);
+			arcan_tui_erase_screen(vte->con, protect);
 		else
 			llog_debug(vte, "unknown parameter to CSI-J: %d",
 				   vte->csi_argv[0]);
@@ -1776,12 +1770,15 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 		else
 			protect = false;
 
+/*CTE: con, x, y, size_x - 1, cursor_y, protect) */
 		if (vte->csi_argv[0] <= 0)
-			tsm_screen_erase_cursor_to_end(vte->con, protect);
+			arcan_tui_erase_cursor_to_end(vte->con, protect);
 		else if (vte->csi_argv[0] == 1)
-			tsm_screen_erase_home_to_cursor(vte->con, protect);
+/* HTC: 0, cursor_y, cursor_x, cursor_y, protet) */
+			arcan_tui_erase_home_to_cursor(vte->con, protect);
 		else if (vte->csi_argv[0] == 2)
-			tsm_screen_erase_current_line(vte->con, protect);
+/* CL: 0, y, size_x - 1, y, protect */
+			arcan_tui_erase_current_line(vte->con, protect);
 		else
 			llog_debug(vte, "unknown parameter to CSI-K: %d",
 				   vte->csi_argv[0]);
@@ -1791,7 +1788,7 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 		num = vte->csi_argv[0];
 		if (num <= 0)
 			num = 1;
-		tsm_screen_erase_chars(vte->con, num);
+		arcan_tui_erase_chars(vte->con, num);
 		break;
 	case 'm':
 		csi_attribute(vte);
@@ -1828,7 +1825,7 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 		lower = vte->csi_argv[1];
 		if (lower < 0)
 			lower = 0;
-		tsm_screen_set_margins(vte->con, upper, lower);
+		arcan_tui_set_margins(vte->con, upper, lower);
 		break;
 	case 'c': /* DA */
 		/* device attributes */
@@ -1839,22 +1836,22 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 		num = vte->csi_argv[0];
 		if (num <= 0)
 			num = 1;
-		tsm_screen_insert_lines(vte->con, num);
+		arcan_tui_insert_lines(vte->con, num);
 		break;
 	case 'M': /* DL */
 		/* delete lines */
 		num = vte->csi_argv[0];
 		if (num <= 0)
 			num = 1;
-		tsm_screen_delete_lines(vte->con, num);
+		arcan_tui_delete_lines(vte->con, num);
 		break;
 	case 'g': /* TBC */
 		/* tabulation clear */
 		num = vte->csi_argv[0];
 		if (num <= 0)
-			tsm_screen_reset_tabstop(vte->con);
+			arcan_tui_reset_tabstop(vte->con);
 		else if (num == 3)
-			tsm_screen_reset_all_tabstops(vte->con);
+			arcan_tui_reset_all_tabstops(vte->con);
 		else
 			llog_debug(vte, "invalid parameter %d to TBC CSI", num);
 		break;
@@ -1863,28 +1860,28 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 		num = vte->csi_argv[0];
 		if (num <= 0)
 			num = 1;
-		tsm_screen_insert_chars(vte->con, num);
+		arcan_tui_insert_chars(vte->con, num);
 		break;
 	case 'P': /* DCH */
 		/* delete characters */
 		num = vte->csi_argv[0];
 		if (num <= 0)
 			num = 1;
-		tsm_screen_delete_chars(vte->con, num);
+		arcan_tui_delete_chars(vte->con, num);
 		break;
 	case 'Z': /* CBT */
 		/* cursor horizontal backwards tab */
 		num = vte->csi_argv[0];
 		if (num <= 0)
 			num = 1;
-		tsm_screen_tab_left(vte->con, num);
+		arcan_tui_tab_left(vte->con, num);
 		break;
 	case 'I': /* CHT */
 		/* cursor horizontal forward tab */
 		num = vte->csi_argv[0];
 		if (num <= 0)
 			num = 1;
-		tsm_screen_tab_right(vte->con, num);
+		arcan_tui_tab_right(vte->con, num);
 		break;
 	case 'n': /* DSR */
 		/* device status reports */
@@ -1895,14 +1892,14 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 		num = vte->csi_argv[0];
 		if (num <= 0)
 			num = 1;
-		tsm_screen_scroll_up(vte->con, num);
+		arcan_tui_scroll_up(vte->con, num);
 		break;
 	case 'T': /* SD */
 		/* scroll down */
 		num = vte->csi_argv[0];
 		if (num <= 0)
 			num = 1;
-		tsm_screen_scroll_down(vte->con, num);
+		arcan_tui_scroll_down(vte->con, num);
 		break;
 	default:
 		llog_debug(vte, "unhandled CSI sequence %c", data);
@@ -2462,165 +2459,143 @@ bool tsm_vte_handle_keyboard(struct tsm_vte *vte, uint32_t keysym,
 	 * keyboard layout.
 	 * But if no ascii-sym is found, we still use the real keysym. */
 	sym = ascii;
-	if (sym == XKB_KEY_NoSymbol)
+	if (!sym)
 		sym = keysym;
 
 	if (mods & TSM_CONTROL_MASK) {
 		switch (sym) {
-		case XKB_KEY_2:
-		case XKB_KEY_space:
+		case TUIK_2:
+		case TUIK_SPACE:
 			vte_write(vte, "\x00", 1);
 			return true;
-		case XKB_KEY_a:
-		case XKB_KEY_A:
+		case TUIK_A:
 			vte_write(vte, "\x01", 1);
 			return true;
-		case XKB_KEY_b:
-		case XKB_KEY_B:
+		case TUIK_B:
 			vte_write(vte, "\x02", 1);
 			return true;
-		case XKB_KEY_c:
-		case XKB_KEY_C:
+		case TUIK_C:
 			vte_write(vte, "\x03", 1);
 			return true;
-		case XKB_KEY_d:
-		case XKB_KEY_D:
+		case TUIK_D:
 			vte_write(vte, "\x04", 1);
 			return true;
-		case XKB_KEY_e:
-		case XKB_KEY_E:
+		case TUIK_E:
 			vte_write(vte, "\x05", 1);
 			return true;
-		case XKB_KEY_f:
-		case XKB_KEY_F:
+		case TUIK_F:
 			vte_write(vte, "\x06", 1);
 			return true;
-		case XKB_KEY_g:
-		case XKB_KEY_G:
+		case TUIK_G:
 			vte_write(vte, "\x07", 1);
 			return true;
-		case XKB_KEY_h:
-		case XKB_KEY_H:
+		case TUIK_H:
 			vte_write(vte, "\x08", 1);
 			return true;
-		case XKB_KEY_i:
-		case XKB_KEY_I:
+		case TUIK_I:
 			vte_write(vte, "\x09", 1);
 			return true;
-		case XKB_KEY_j:
-		case XKB_KEY_J:
+		case TUIK_J:
 			vte_write(vte, "\x0a", 1);
 			return true;
-		case XKB_KEY_k:
-		case XKB_KEY_K:
+		case TUIK_K:
 			vte_write(vte, "\x0b", 1);
 			return true;
-		case XKB_KEY_l:
-		case XKB_KEY_L:
+		case TUIK_L:
 			vte_write(vte, "\x0c", 1);
 			return true;
-		case XKB_KEY_m:
-		case XKB_KEY_M:
+		case TUIK_M:
 			vte_write(vte, "\x0d", 1);
 			return true;
-		case XKB_KEY_n:
-		case XKB_KEY_N:
+		case TUIK_N:
 			vte_write(vte, "\x0e", 1);
 			return true;
-		case XKB_KEY_o:
-		case XKB_KEY_O:
+		case TUIK_O:
 			vte_write(vte, "\x0f", 1);
 			return true;
-		case XKB_KEY_p:
-		case XKB_KEY_P:
+		case TUIK_P:
 			vte_write(vte, "\x10", 1);
 			return true;
-		case XKB_KEY_q:
-		case XKB_KEY_Q:
+		case TUIK_Q:
 			vte_write(vte, "\x11", 1);
 			return true;
-		case XKB_KEY_r:
-		case XKB_KEY_R:
+		case TUIK_R:
 			vte_write(vte, "\x12", 1);
 			return true;
-		case XKB_KEY_s:
-		case XKB_KEY_S:
+		case TUIK_S:
 			vte_write(vte, "\x13", 1);
 			return true;
-		case XKB_KEY_t:
-		case XKB_KEY_T:
+		case TUIK_T:
 			vte_write(vte, "\x14", 1);
 			return true;
-		case XKB_KEY_u:
-		case XKB_KEY_U:
+		case TUIK_U:
 			vte_write(vte, "\x15", 1);
 			return true;
-		case XKB_KEY_v:
-		case XKB_KEY_V:
+		case TUIK_V:
 			vte_write(vte, "\x16", 1);
 			return true;
-		case XKB_KEY_w:
-		case XKB_KEY_W:
+		case TUIK_W:
 			vte_write(vte, "\x17", 1);
 			return true;
-		case XKB_KEY_x:
-		case XKB_KEY_X:
+		case TUIK_X:
 			vte_write(vte, "\x18", 1);
 			return true;
-		case XKB_KEY_y:
-		case XKB_KEY_Y:
+		case TUIK_Y:
 			vte_write(vte, "\x19", 1);
 			return true;
-		case XKB_KEY_z:
-		case XKB_KEY_Z:
+		case TUIK_Z:
 			vte_write(vte, "\x1a", 1);
 			return true;
-		case XKB_KEY_3:
-		case XKB_KEY_bracketleft:
-		case XKB_KEY_braceleft:
+		case TUIK_3:
+		case TUIK_KP_LEFTBRACE:
 			vte_write(vte, "\x1b", 1);
 			return true;
-		case XKB_KEY_4:
-		case XKB_KEY_backslash:
-		case XKB_KEY_bar:
+		case TUIK_4:
+		case TUIK_BACKSLASH:
 			vte_write(vte, "\x1c", 1);
 			return true;
-		case XKB_KEY_5:
-		case XKB_KEY_bracketright:
-		case XKB_KEY_braceright:
+		case TUIK_5:
+		case TUIK_KP_RIGHTBRACE:
 			vte_write(vte, "\x1d", 1);
 			return true;
-		case XKB_KEY_6:
-		case XKB_KEY_grave:
-		case XKB_KEY_asciitilde:
+		case TUIK_6:
+		case TUIK_GRAVE:
 			vte_write(vte, "\x1e", 1);
 			return true;
-		case XKB_KEY_7:
-		case XKB_KEY_slash:
-		case XKB_KEY_question:
+		case TUIK_7:
+		case TUIK_SLASH:
 			vte_write(vte, "\x1f", 1);
 			return true;
-		case XKB_KEY_8:
+		case TUIK_8:
 			vte_write(vte, "\x7f", 1);
 			return true;
 		}
 	}
 
+/* NOTE: arcan >typically< (this varies between platform ,but ideally) does NOT
+ * deal with numlock as a valid state (or caps lock for that matter). Such
+ * state is up to the running set of scripts to maintain. Therefore, the
+ * translation here ACT as numlock and is always in its "special keys" mode and
+ * the numbers should be provided in the UTF8 field rather than as state
+ * dependent keysyms */
 	switch (keysym) {
-		case XKB_KEY_BackSpace:
+		case TUIK_BACKSPACE:
 			vte_write(vte, "\x08", 1);
 			return true;
-		case XKB_KEY_Tab:
-		case XKB_KEY_KP_Tab:
+		case TUIK_TAB:
 			vte_write(vte, "\x09", 1);
 			return true;
-		case XKB_KEY_ISO_Left_Tab:
+/*
+ * Some X keysyms that we don't have access to:
+ * LINEFEED, LeftTab
+		case TUIK_ISO_Left_Tab:
 			vte_write(vte, "\e[Z", 3);
 			return true;
-		case XKB_KEY_Linefeed:
+		case TUIK_RETURN:
 			vte_write(vte, "\x0a", 1);
 			return true;
-		case XKB_KEY_Clear:
+*/
+		case TUIK_CLEAR:
 			vte_write(vte, "\x0b", 1);
 			return true;
 		/*
@@ -2628,7 +2603,7 @@ bool tsm_vte_handle_keyboard(struct tsm_vte *vte, uint32_t keysym,
 		       there is no simple way on modern keyboards to send XON
 		       again. If someone wants this, we can re-eanble it and set
 		       some flag.
-		case XKB_KEY_Pause:
+		case TUIK_Pause:
 			vte_write(vte, "\x13", 1);
 			return true;
 		*/
@@ -2637,192 +2612,125 @@ bool tsm_vte_handle_keyboard(struct tsm_vte *vte, uint32_t keysym,
 		       the specs say but it is not used today the way most
 		       users would expect so we disable it. If someone wants
 		       this, we can re-enable it and set some flag.
-		case XKB_KEY_Scroll_Lock:
+		case TUIK_Scroll_Lock:
 			vte_write(vte, "\x14", 1);
 			return true;
 		*/
-		case XKB_KEY_Sys_Req:
+		case TUIK_SYSREQ:
 			vte_write(vte, "\x15", 1);
 			return true;
-		case XKB_KEY_Escape:
+		case TUIK_ESCAPE:
 			vte_write(vte, "\x1b", 1);
 			return true;
-		case XKB_KEY_KP_Enter:
+		case TUIK_KP_ENTER:
 			if (vte->flags & FLAG_KEYPAD_APPLICATION_MODE) {
 				vte_write(vte, "\eOM", 3);
 				return true;
 			}
 			/* fallthrough */
-		case XKB_KEY_Return:
+		case TUIK_RETURN:
 			if (vte->flags & FLAG_LINE_FEED_NEW_LINE_MODE)
 				vte_write(vte, "\x0d\x0a", 2);
 			else
 				vte_write(vte, "\x0d", 1);
 			return true;
-		case XKB_KEY_Find:
+		case TUIK_HOME:
+		case TUIK_KP_7:
 			vte_write(vte, "\e[1~", 4);
 			return true;
-		case XKB_KEY_Insert:
+		case TUIK_INSERT:
+		case TUIK_KP_0:
 			vte_write(vte, "\e[2~", 4);
 			return true;
-		case XKB_KEY_Delete:
+		case TUIK_DELETE:
+		case TUIK_KP_PERIOD:
 			vte_write(vte, "\e[3~", 4);
 			return true;
-		case XKB_KEY_Select:
+		case TUIK_END:
+		case TUIK_KP_1:
 			vte_write(vte, "\e[4~", 4);
 			return true;
-		case XKB_KEY_Page_Up:
-		case XKB_KEY_KP_Page_Up:
+		case TUIK_PAGEUP:
+		case TUIK_KP_9:
 			vte_write(vte, "\e[5~", 4);
 			return true;
-		case XKB_KEY_KP_Page_Down:
-		case XKB_KEY_Page_Down:
+		case TUIK_PAGEDOWN:
+		case TUIK_KP_3:
 			vte_write(vte, "\e[6~", 4);
 			return true;
-		case XKB_KEY_Up:
-		case XKB_KEY_KP_Up:
+		case TUIK_UP:
+		case TUIK_KP_8:
 			if (vte->flags & FLAG_CURSOR_KEY_MODE)
 				vte_write(vte, "\eOA", 3);
 			else
 				vte_write(vte, "\e[A", 3);
 			return true;
-		case XKB_KEY_Down:
-		case XKB_KEY_KP_Down:
+		case TUIK_DOWN:
+		case TUIK_KP_2:
 			if (vte->flags & FLAG_CURSOR_KEY_MODE)
 				vte_write(vte, "\eOB", 3);
 			else
 				vte_write(vte, "\e[B", 3);
 			return true;
-		case XKB_KEY_Right:
-		case XKB_KEY_KP_Right:
+		case TUIK_RIGHT:
+		case TUIK_KP_6:
 			if (vte->flags & FLAG_CURSOR_KEY_MODE)
 				vte_write(vte, "\eOC", 3);
 			else
 				vte_write(vte, "\e[C", 3);
 			return true;
-		case XKB_KEY_Left:
-		case XKB_KEY_KP_Left:
+		case TUIK_LEFT:
+		case TUIK_KP_4:
 			if (vte->flags & FLAG_CURSOR_KEY_MODE)
 				vte_write(vte, "\eOD", 3);
 			else
 				vte_write(vte, "\e[D", 3);
 			return true;
-		case XKB_KEY_KP_Insert:
-		case XKB_KEY_KP_0:
-			if (vte->flags & FLAG_KEYPAD_APPLICATION_MODE)
-				vte_write(vte, "\eOp", 3);
-			else
-				vte_write(vte, "0", 1);
-			return true;
-		case XKB_KEY_KP_1:
-			if (vte->flags & FLAG_KEYPAD_APPLICATION_MODE)
-				vte_write(vte, "\eOq", 3);
-			else
-				vte_write(vte, "1", 1);
-			return true;
-		case XKB_KEY_KP_2:
-			if (vte->flags & FLAG_KEYPAD_APPLICATION_MODE)
-				vte_write(vte, "\eOr", 3);
-			else
-				vte_write(vte, "2", 1);
-			return true;
-		case XKB_KEY_KP_3:
-			if (vte->flags & FLAG_KEYPAD_APPLICATION_MODE)
-				vte_write(vte, "\eOs", 3);
-			else
-				vte_write(vte, "3", 1);
-			return true;
-		case XKB_KEY_KP_4:
-			if (vte->flags & FLAG_KEYPAD_APPLICATION_MODE)
-				vte_write(vte, "\eOt", 3);
-			else
-				vte_write(vte, "4", 1);
-			return true;
-		case XKB_KEY_KP_5:
+		case TUIK_KP_5:
 			if (vte->flags & FLAG_KEYPAD_APPLICATION_MODE)
 				vte_write(vte, "\eOu", 3);
 			else
 				vte_write(vte, "5", 1);
 			return true;
-		case XKB_KEY_KP_6:
-			if (vte->flags & FLAG_KEYPAD_APPLICATION_MODE)
-				vte_write(vte, "\eOv", 3);
-			else
-				vte_write(vte, "6", 1);
-			return true;
-		case XKB_KEY_KP_7:
-			if (vte->flags & FLAG_KEYPAD_APPLICATION_MODE)
-				vte_write(vte, "\eOw", 3);
-			else
-				vte_write(vte, "7", 1);
-			return true;
-		case XKB_KEY_KP_8:
-			if (vte->flags & FLAG_KEYPAD_APPLICATION_MODE)
-				vte_write(vte, "\eOx", 3);
-			else
-				vte_write(vte, "8", 1);
-			return true;
-		case XKB_KEY_KP_9:
-			if (vte->flags & FLAG_KEYPAD_APPLICATION_MODE)
-				vte_write(vte, "\eOy", 3);
-			else
-				vte_write(vte, "9", 1);
-			return true;
-		case XKB_KEY_KP_Subtract:
+		case TUIK_KP_MINUS:
 			if (vte->flags & FLAG_KEYPAD_APPLICATION_MODE)
 				vte_write(vte, "\eOm", 3);
 			else
 				vte_write(vte, "-", 1);
 			return true;
-		case XKB_KEY_KP_Separator:
-			if (vte->flags & FLAG_KEYPAD_APPLICATION_MODE)
-				vte_write(vte, "\eOl", 3);
-			else
-				vte_write(vte, ",", 1);
-			return true;
-		case XKB_KEY_KP_Delete:
-		case XKB_KEY_KP_Decimal:
-			if (vte->flags & FLAG_KEYPAD_APPLICATION_MODE)
-				vte_write(vte, "\eOn", 3);
-			else
-				vte_write(vte, ".", 1);
-			return true;
-		case XKB_KEY_KP_Equal:
-		case XKB_KEY_KP_Divide:
+		case TUIK_KP_EQUALS:
+		case TUIK_KP_DIVIDE:
 			if (vte->flags & FLAG_KEYPAD_APPLICATION_MODE)
 				vte_write(vte, "\eOj", 3);
 			else
 				vte_write(vte, "/", 1);
 			return true;
-		case XKB_KEY_KP_Multiply:
+		case TUIK_KP_MULTIPLY:
 			if (vte->flags & FLAG_KEYPAD_APPLICATION_MODE)
 				vte_write(vte, "\eOo", 3);
 			else
 				vte_write(vte, "*", 1);
 			return true;
-		case XKB_KEY_KP_Add:
+		case TUIK_KP_PLUS:
 			if (vte->flags & FLAG_KEYPAD_APPLICATION_MODE)
 				vte_write(vte, "\eOk", 3);
 			else
 				vte_write(vte, "+", 1);
 			return true;
-		case XKB_KEY_Home:
-		case XKB_KEY_KP_Home:
-			if (vte->flags & FLAG_CURSOR_KEY_MODE)
-				vte_write(vte, "\eOH", 3);
-			else
-				vte_write(vte, "\e[H", 3);
-			return true;
-		case XKB_KEY_End:
-		case XKB_KEY_KP_End:
+/*
+		case TUIK_End:
+		case TUIK_KP_End:
 			if (vte->flags & FLAG_CURSOR_KEY_MODE)
 				vte_write(vte, "\eOF", 3);
 			else
 				vte_write(vte, "\e[F", 3);
 			return true;
-		case XKB_KEY_KP_Space:
+*/
+/*
+		case TUIK_KP_Space:
 			vte_write(vte, " ", 1);
 			return true;
+*/
 		/* TODO: check what to transmit for functions keys when
 		 * shift/ctrl etc. are pressed. Every terminal behaves
 		 * differently here which is really weird.
@@ -2830,136 +2738,84 @@ bool tsm_vte_handle_keyboard(struct tsm_vte *vte, uint32_t keysym,
 		 * keys. However, such mappings should rather be done via
 		 * xkb-configurations and we should instead add a flags argument
 		 * to the CSIs as some of the keys here already do. */
-		case XKB_KEY_F1:
-		case XKB_KEY_KP_F1:
+		case TUIK_F1:
 			if (mods & TSM_SHIFT_MASK)
 				vte_write(vte, "\e[23~", 5);
 			else
 				vte_write(vte, "\eOP", 3);
 			return true;
-		case XKB_KEY_F2:
-		case XKB_KEY_KP_F2:
+		case TUIK_F2:
 			if (mods & TSM_SHIFT_MASK)
 				vte_write(vte, "\e[24~", 5);
 			else
 				vte_write(vte, "\eOQ", 3);
 			return true;
-		case XKB_KEY_F3:
-		case XKB_KEY_KP_F3:
+		case TUIK_F3:
 			if (mods & TSM_SHIFT_MASK)
 				vte_write(vte, "\e[25~", 5);
 			else
 				vte_write(vte, "\eOR", 3);
 			return true;
-		case XKB_KEY_F4:
-		case XKB_KEY_KP_F4:
+		case TUIK_F4:
 			if (mods & TSM_SHIFT_MASK)
 				//vte_write(vte, "\e[1;2S", 6);
 				vte_write(vte, "\e[26~", 5);
 			else
 				vte_write(vte, "\eOS", 3);
 			return true;
-		case XKB_KEY_F5:
+		case TUIK_F5:
 			if (mods & TSM_SHIFT_MASK)
 				//vte_write(vte, "\e[15;2~", 7);
 				vte_write(vte, "\e[28~", 5);
 			else
 				vte_write(vte, "\e[15~", 5);
 			return true;
-		case XKB_KEY_F6:
+		case TUIK_F6:
 			if (mods & TSM_SHIFT_MASK)
 				//vte_write(vte, "\e[17;2~", 7);
 				vte_write(vte, "\e[29~", 5);
 			else
 				vte_write(vte, "\e[17~", 5);
 			return true;
-		case XKB_KEY_F7:
+		case TUIK_F7:
 			if (mods & TSM_SHIFT_MASK)
 				//vte_write(vte, "\e[18;2~", 7);
 				vte_write(vte, "\e[31~", 5);
 			else
 				vte_write(vte, "\e[18~", 5);
 			return true;
-		case XKB_KEY_F8:
+		case TUIK_F8:
 			if (mods & TSM_SHIFT_MASK)
 				//vte_write(vte, "\e[19;2~", 7);
 				vte_write(vte, "\e[32~", 5);
 			else
 				vte_write(vte, "\e[19~", 5);
 			return true;
-		case XKB_KEY_F9:
+		case TUIK_F9:
 			if (mods & TSM_SHIFT_MASK)
 				//vte_write(vte, "\e[20;2~", 7);
 				vte_write(vte, "\e[33~", 5);
 			else
 				vte_write(vte, "\e[20~", 5);
 			return true;
-		case XKB_KEY_F10:
+		case TUIK_F10:
 			if (mods & TSM_SHIFT_MASK)
 				//vte_write(vte, "\e[21;2~", 7);
 				vte_write(vte, "\e[34~", 5);
 			else
 				vte_write(vte, "\e[21~", 5);
 			return true;
-		case XKB_KEY_F11:
+		case TUIK_F11:
 			if (mods & TSM_SHIFT_MASK)
 				vte_write(vte, "\e[23;2~", 7);
 			else
 				vte_write(vte, "\e[23~", 5);
 			return true;
-		case XKB_KEY_F12:
+		case TUIK_F12:
 			if (mods & TSM_SHIFT_MASK)
 				vte_write(vte, "\e[24;2~", 7);
 			else
 				vte_write(vte, "\e[24~", 5);
-			return true;
-		case XKB_KEY_F13:
-			if (mods & TSM_SHIFT_MASK)
-				vte_write(vte, "\e[25;2~", 7);
-			else
-				vte_write(vte, "\e[25~", 5);
-			return true;
-		case XKB_KEY_F14:
-			if (mods & TSM_SHIFT_MASK)
-				vte_write(vte, "\e[26;2~", 7);
-			else
-				vte_write(vte, "\e[26~", 5);
-			return true;
-		case XKB_KEY_F15:
-			if (mods & TSM_SHIFT_MASK)
-				vte_write(vte, "\e[28;2~", 7);
-			else
-				vte_write(vte, "\e[28~", 5);
-			return true;
-		case XKB_KEY_F16:
-			if (mods & TSM_SHIFT_MASK)
-				vte_write(vte, "\e[29;2~", 7);
-			else
-				vte_write(vte, "\e[29~", 5);
-			return true;
-		case XKB_KEY_F17:
-			if (mods & TSM_SHIFT_MASK)
-				vte_write(vte, "\e[31;2~", 7);
-			else
-				vte_write(vte, "\e[31~", 5);
-			return true;
-		case XKB_KEY_F18:
-			if (mods & TSM_SHIFT_MASK)
-				vte_write(vte, "\e[32;2~", 7);
-			else
-				vte_write(vte, "\e[32~", 5);
-			return true;
-		case XKB_KEY_F19:
-			if (mods & TSM_SHIFT_MASK)
-				vte_write(vte, "\e[33;2~", 7);
-			else
-				vte_write(vte, "\e[33~", 5);
-			return true;
-		case XKB_KEY_F20:
-			if (mods & TSM_SHIFT_MASK)
-				vte_write(vte, "\e[34;2~", 7);
-			else
-				vte_write(vte, "\e[34~", 5);
 			return true;
 	}
 
@@ -2980,10 +2836,14 @@ bool tsm_vte_handle_keyboard(struct tsm_vte *vte, uint32_t keysym,
 				val = '?';
 			}
 			vte_write_raw(vte, &val, 1);
-		} else {
+		}
+/*
+		this should already be handled in arcan- vte
+		else {
 			len = tsm_ucs4_to_utf8(tsm_symbol_make(unicode), u8);
 			vte_write_raw(vte, u8, len);
 		}
+ */
 		return true;
 	}
 
