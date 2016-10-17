@@ -100,6 +100,10 @@ struct tui_settings {
 	int font_fds[2];
 	enum tui_cursors cursor;
 	bool mouse_fwd;
+
+/* simulate refresh-rate to balance
+ * throughput, responsiveness, power consumption */
+	int refresh_rate;
 };
 
 struct tui_context;
@@ -330,8 +334,10 @@ struct tui_process_res arcan_tui_process(
 /*
  * If the TUI- managed connection is marked as dirty, synch the
  * relevant regions and return (handles multiple- contexts)
+ *
+ * returns a bitmask over the contexts that were updated
  */
-void arcan_tui_refresh(
+uint64_t arcan_tui_refresh(
 	struct tui_context** contexts, size_t n_contexts);
 
 /*

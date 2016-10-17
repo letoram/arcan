@@ -12,7 +12,7 @@
 -- set to no change with TD_HINT_IGNORE.
 -- If the optional *displaytbl* is set and is a table, the fields 'ppcm' and
 -- 'subpixel_layout' are expected to be present.
--- If the optional *displaytbl* is set to WORLDID, the display informationfor
+-- If the optional *displaytbl* is set to WORLDID, the display information for
 -- the primary display will be used.
 -- @group: targetcontrol
 -- @note: width/height that exceeds the static compile-time limitations of
