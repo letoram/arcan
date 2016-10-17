@@ -76,7 +76,6 @@ struct tui_context {
 	int font_fd[2];
 	float ppcm;
 	enum dirty_state dirty;
-	int64_t last;
 
 /* if we receive a label set in mouse events, we switch to a different
  * interpreteation where drag, click, dblclick, wheelup, wheeldown work */
@@ -641,9 +640,6 @@ static bool consume_label(struct tui_context* tui,
 static void ioev_ctxtbl(struct tui_context* tui,
 	arcan_ioevent* ioev, const char* label)
 {
-/* keyboard input */
-	tui->last = 0;
-
 	if (ioev->datatype == EVENT_IDATATYPE_TRANSLATED){
 		bool pressed = ioev->input.translated.active;
 		tui->modifiers = ioev->input.translated.modifiers;
@@ -1362,11 +1358,20 @@ struct tui_process_res arcan_tui_process(
 	for (size_t i = fdset_ofs; i < ofs && sv; i++)
 		if (fds[i].revents){
 			sv--;
-			if (fds[i].revents != POLLERR)
+			if (fds[i].revents == POLLIN)
 				res.ok |= 1 << (i - fdset_ofs);
 			else
 				res.bad |= 1 << (i - fdset_ofs);
 		}
+
+	return res;
+}
+
+uint64_t arcan_tui_refresh(
+	struct tui_context** contexts, size_t n_contexts)
+{
+	if (!n_contexts || !contexts || !contexts[0])
+		return 0;
 
 /* only run an update now if we've not got one pending */
 	for (size_t i = 0; i < n_contexts; i++){
@@ -1375,29 +1380,27 @@ struct tui_process_res arcan_tui_process(
 			update_screen(contexts[i]);
 	}
 
-	return res;
-}
+	uint64_t upd_mask = 0;
 
-void arcan_tui_refresh(
-	struct tui_context** contexts, size_t n_contexts)
-{
-	if (!n_contexts || !contexts || !contexts[0])
-		return;
-
-	for (size_t i = 0; i < n_contexts; i++){
+/* update screen will flag things dirty, time to synch the ones that
+ * are -- though we don't block */
+	for (size_t i = 0; i < n_contexts && i < 64; i++){
 		struct tui_context* tui = contexts[i];
 		if (tui->dirty & DIRTY_UPDATED){
 			tui->dirty = DIRTY_NONE;
 			arcan_shmif_signal(&tui->acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
-			tui->last = arcan_timemillis();
 
 /* set invalid synch region until redraw changes that */
 			tui->acon.dirty.x1 = tui->acon.w;
 			tui->acon.dirty.x2 = 0;
 			tui->acon.dirty.y1 = tui->acon.h;
 			tui->acon.dirty.y2 = 0;
+
+			upd_mask |= 1 << i;
 		}
 	}
+
+	return upd_mask;
 }
 
 void arcan_tui_invalidate(struct tui_context* tui)

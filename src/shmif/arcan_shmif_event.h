@@ -503,6 +503,8 @@ enum ARCAN_TARGET_COMMAND {
  * ioev[0].iv = max_width,
  * ioev[1].iv = max_height,
  * ioev[2].iv = rate (Hz, 0 for dynamic)
+ * ieov[3].iv = min_width,
+ * ioev[4].iv = min_height
  */
 	TARGET_COMMAND_OUTPUTHINT,
 

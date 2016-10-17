@@ -16,9 +16,19 @@ static struct {
 	struct shl_pty* pty;
 	size_t cursor_x, cursor_y;
 	pid_t child;
+
+/* toggle whenever something has happened that should mandate a disp-synch */
+	int inp_dirty;
 } term;
 
-#define TRACE_ENABLE
+/*
+ * unless there's been explicit keyboard input, defer display updates until
+ * at least this amount of miliseconds have elapsed. This is used to balance
+ * the latency-v-power-consumption-v-data-propagation problems.
+ */
+#define REFRESH_TIMEOUT 10
+
+/*#define TRACE_ENABLE*/
 static inline void trace(const char* msg, ...)
 {
 #ifdef TRACE_ENABLE
@@ -88,6 +98,7 @@ static void on_key(struct tui_context* c, uint32_t keysym,
 	trace("on_key(%"PRIu32",%"PRIu8",%"PRIu16")", keysym, scancode, subid);
 	tsm_vte_handle_keyboard(term.vte,
 		keysym, isascii(keysym) ? keysym : 0, mods, subid);
+	term.inp_dirty = 1;
 }
 
 static bool on_u8(struct tui_context* c, const char* u8, size_t len, void* t)
@@ -97,6 +108,7 @@ static bool on_u8(struct tui_context* c, const char* u8, size_t len, void* t)
 	memcpy(buf, u8, len >= 5 ? 4 : len);
 	shl_pty_write(term.pty, (char*) buf, len);
 	shl_pty_dispatch(term.pty);
+	term.inp_dirty = 1;
 	return true;
 }
 
@@ -105,6 +117,7 @@ static void on_utf8_paste(struct tui_context* c,
 {
 	trace("utf8-paste(%s):%d", str, (int) cont);
 	tsm_vte_paste(term.vte, (char*)str, len);
+	term.inp_dirty = 1;
 }
 
 static void on_resize(struct tui_context* c,
@@ -113,6 +126,7 @@ static void on_resize(struct tui_context* c,
 	trace("resize(%zu(%zu),%zu(%zu))", neww, col, newh, row);
 	if (term.pty)
 		shl_pty_resize(term.pty, col, row);
+	term.inp_dirty = 1;
 }
 
 static void read_callback(struct shl_pty* pty,
@@ -302,16 +316,19 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	int inf = shl_pty_get_fd(term.pty);
 	shl_pty_dispatch(term.pty);
 	arcan_tui_refresh(&term.screen, 1);
+	int ts = arcan_timemillis();
 
 	while (1){
-		struct tui_process_res res = arcan_tui_process(&term.screen, 1, &inf, 1,-1);
-		if (res.errc == TUI_ERRC_OK){
-			if (res.ok)
-				shl_pty_dispatch(term.pty);
-			arcan_tui_refresh(&term.screen, 1);
+		struct tui_process_res res = arcan_tui_process(&term.screen, 1, &inf, 1, -1);
+		if (res.errc < TUI_ERRC_OK || res.bad)
+				break;
+
+		shl_pty_dispatch(term.pty);
+
+		if (arcan_timemillis() - ts > REFRESH_TIMEOUT){
+			if (arcan_tui_refresh(&term.screen, 1))
+				ts = arcan_timemillis();
 		}
-		else
-			break;
 	}
 
 /* might have been destroyed already, just in case */

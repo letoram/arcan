@@ -2636,7 +2636,10 @@ bool tsm_vte_handle_keyboard(struct tsm_vte *vte, uint32_t keysym,
 			return true;
 		case TUIK_HOME:
 		case TUIK_KP_7:
-			vte_write(vte, "\e[1~", 4);
+			if (vte->flags & FLAG_CURSOR_KEY_MODE)
+				vte_write(vte, "\eOH", 3);
+			else
+				vte_write(vte, "\e[H", 3);
 			return true;
 		case TUIK_INSERT:
 		case TUIK_KP_0:
@@ -2648,7 +2651,10 @@ bool tsm_vte_handle_keyboard(struct tsm_vte *vte, uint32_t keysym,
 			return true;
 		case TUIK_END:
 		case TUIK_KP_1:
-			vte_write(vte, "\e[4~", 4);
+			if (vte->flags & FLAG_CURSOR_KEY_MODE)
+				vte_write(vte, "\eOF", 3);
+			else
+				vte_write(vte, "\e[F", 3);
 			return true;
 		case TUIK_PAGEUP:
 		case TUIK_KP_9:
@@ -2717,21 +2723,11 @@ bool tsm_vte_handle_keyboard(struct tsm_vte *vte, uint32_t keysym,
 			else
 				vte_write(vte, "+", 1);
 			return true;
-/*
-		case TUIK_End:
-		case TUIK_KP_End:
-			if (vte->flags & FLAG_CURSOR_KEY_MODE)
-				vte_write(vte, "\eOF", 3);
-			else
-				vte_write(vte, "\e[F", 3);
-			return true;
-*/
-/*
-		case TUIK_KP_Space:
+/*		case TUIK_KP_Space:
 			vte_write(vte, " ", 1);
 			return true;
-*/
-		/* TODO: check what to transmit for functions keys when
+ */
+	/* TODO: check what to transmit for functions keys when
 		 * shift/ctrl etc. are pressed. Every terminal behaves
 		 * differently here which is really weird.
 		 * We now map F4 to F14 if shift is pressed and so on for all

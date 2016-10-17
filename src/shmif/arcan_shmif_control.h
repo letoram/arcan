@@ -347,7 +347,7 @@ struct arcan_shmif_cont arcan_shmif_open_ext(
  * arcan_shmif_initial can be used to access initial configured
  * settings (see struct arcan_shmif_initial for details). These values
  * are only valid AFTER a successful call to arcan_shmif_open and ONLY
- * until the first _enqeue, _poll or _wait call.
+ * until the first _poll or _wait call.
  *
  * REMEMBER to arcan_shmif_dupfd() on the fonts and render-nodes you
  * want to keep and use as they will be closed, or set the fields to

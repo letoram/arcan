@@ -6277,6 +6277,15 @@ static int targetdisphint(lua_State* ctx)
 			ppcm = 10.0f * ((float)lw / (float)phy_w);
 		phy_w = mmode.width;
 		phy_lay = layout_tonum(mmode.subpixel);
+		tgtevent(tgt, (arcan_event){
+			.category = EVENT_TARGET,
+			.tgt.kind = TARGET_COMMAND_OUTPUTHINT,
+			.tgt.ioevs[0].iv = mmode.width,
+			.tgt.ioevs[1].iv = mmode.height,
+			.tgt.ioevs[2].iv = mmode.refresh,
+			.tgt.ioevs[3].iv = 32,
+			.tgt.ioevs[4].iv = 32
+		});
 	}
 	else if (type == LUA_TTABLE){
 		float nv = intblfloat(ctx, 5, "ppcm");
@@ -6285,6 +6294,33 @@ static int targetdisphint(lua_State* ctx)
 		else {
 			arcan_warning("target_displahint(), display table provided "
 				"but with broken / bad ppcm field, ignoring\n");
+		}
+
+		int width = intblint(ctx, 5, "width");
+		int height = intblint(ctx, 5, "height");
+		int refresh = intblint(ctx, 5, "refresh");
+		int minw = intblint(ctx, 5, "min_width");
+		int minh = intblint(ctx, 5, "min_height");
+
+		if (-1 == refresh)
+			refresh = 60;
+
+		if (-1 == minw)
+			minw = 32;
+
+		if (-1 == minh)
+			minh = 32;
+
+		if (width > 0 && height > 0){
+			tgtevent(tgt, (arcan_event){
+				.category = EVENT_TARGET,
+				.tgt.kind = TARGET_COMMAND_OUTPUTHINT,
+				.tgt.ioevs[0].iv = width,
+				.tgt.ioevs[1].iv = height,
+				.tgt.ioevs[2].iv = refresh,
+				.tgt.ioevs[3].iv = minw,
+				.tgt.ioevs[4].iv = minh
+			});
 		}
 
 		phy_lay = layout_tonum(intblstr(ctx, 5, "subpixel_layout"));
@@ -6305,7 +6341,6 @@ static int targetdisphint(lua_State* ctx)
 		.tgt.ioevs[3].iv = phy_lay,
 		.tgt.ioevs[4].fv = ppcm
 	};
-
 	tgtevent(tgt, ev);
 
 	LUA_ETRACE("target_displayhint", NULL, 0);

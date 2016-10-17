@@ -45,7 +45,7 @@
  * redefine the logging macro for shmif- only.
  */
 #ifdef _DEBUG
-#ifdef _DEBUG_NOLOG
+#ifndef _DEBUG_NOLOG
 #define DLOG(...)
 #endif
 
@@ -557,12 +557,13 @@ checkfd:
 			priv->pev.fd = arcan_fetchhandle(c->epipe, blocking);
 
 		if (priv->pev.gotev){
-			LOG("(shmif) waiting for descriptor from %d parent (%d)\n",
-				c->epipe, priv->pev.fd);
+			LOG("(shmif) waiting for descriptor from %d parent (%d:%d)\n",
+				c->epipe, priv->pev.fd, blocking);
 			if (priv->pev.fd != BADFD){
 				fd_event(c, dst);
 				rv = 1;
 			}
+			else if (blocking){ LOG("(shmif) blocking fd wait failed, %s\n", strerror(errno));}
 			goto done;
 		}
 	} while (priv->pev.gotev && *ks && c->addr->dms);
@@ -1387,6 +1388,7 @@ void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 	if (!inctx || !inctx->priv)
 		return;
 
+	LOG("dropping, dms status: %d\n", inctx->addr->dms);
 	if (inctx->priv->valid_initial)
 		drop_initial(inctx);
 
@@ -1869,11 +1871,14 @@ static void wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
 	size_t font_ind = 0;
 
 	while (arcan_shmif_wait(cont, &ev)){
-		if (ev.category != EVENT_TARGET)
+		LOG("event: %s\n", arcan_shmif_eventstr(&ev, NULL, 0));
+		if (ev.category != EVENT_TARGET){
 			continue;
+		}
 
 		switch (ev.tgt.kind){
 		case TARGET_COMMAND_ACTIVATE:
+			LOG("activation()\n");
 			cont->priv->valid_initial = true;
 			if (resize)
 				arcan_shmif_resize(cont, w, h);
@@ -1887,18 +1892,22 @@ static void wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
 				h = ev.tgt.ioevs[1].iv;
 			if (ev.tgt.ioevs[4].fv > 0.0001)
 				def.density = ev.tgt.ioevs[4].fv;
+			LOG("displayhint (%d, %d, %f)()\n", w, h, def.density);
 		break;
 		case TARGET_COMMAND_OUTPUTHINT:
 			if (ev.tgt.ioevs[0].iv)
 				def.display_width_px = ev.tgt.ioevs[0].iv;
 			if (ev.tgt.ioevs[1].iv)
 				def.display_height_px = ev.tgt.ioevs[1].iv;
+			LOG("outputhint (%d, %d)()\n", def.display_width_px, def.display_height_px);
 		break;
 		case TARGET_COMMAND_DEVICE_NODE:
 /* alt-con will be updated automatically, due to normal wait handler */
-			if (ev.tgt.ioevs[0].iv != -1)
+			if (ev.tgt.ioevs[0].iv != -1){
+				LOG("render target device node: %d\n", ev.tgt.ioevs[0].iv);
 				def.render_node = arcan_shmif_dupfd(
 					ev.tgt.ioevs[0].iv, def.render_node, true);
+			}
 		break;
 /* not 100% correct - won't reset if font+font-append+font
  * pattern is set but not really a valid use */
@@ -1906,6 +1915,7 @@ static void wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
 			def.fonts[font_ind].hinting = ev.tgt.ioevs[3].iv;
 			def.fonts[font_ind].size_mm = ev.tgt.ioevs[2].fv;
 			if (font_ind < 3){
+				LOG("font_hint(%d)\n");
 				if (ev.tgt.ioevs[0].iv != -1){
 					def.fonts[font_ind].fd = arcan_shmif_dupfd(
 						ev.tgt.ioevs[0].iv, def.fonts[font_ind].fd, true);
@@ -1930,6 +1940,7 @@ static void wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
 		}
 	}
 
+	LOG("never got activate, connection died\n");
 	cont->priv->valid_initial = true;
 	arcan_shmif_drop(cont);
 	return;
@@ -1968,6 +1979,9 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 	}
 
 	fcntl(dpipe, F_SETFD, FD_CLOEXEC);
+	int eflags = fcntl(dpipe, F_GETFL);
+	if (eflags & O_NONBLOCK)
+		fcntl(dpipe, F_SETFL, eflags & (~O_NONBLOCK));
 
 /* to differentiate between the calls that come from old shmif_open and
  * the newer extended version, we add the little quirk that ext_sz is 0 */
