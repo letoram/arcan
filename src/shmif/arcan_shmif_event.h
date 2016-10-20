@@ -146,20 +146,25 @@ enum ARCAN_SEGID {
 
 /*
  * [LOCKSTEP] Popup-window, use with viewport hints to specify
- * parent-relative positioning. Messages from this segment can provide
- * server- initiated rendering, with \t to switch from left align- to
- * right align, and single - as group separator.
+ * parent-relative positioning. Labelhints on this message can be used
+ * to send a textual representation for server-side rendering with a
+ * descr used to carry a subprotocol:
+ * '-' to indicate a separate group
+ * '*' prefix to indicate the presence of a sublevel
+ * '_' prefix to indicate inactive entry.
  */
 	SEGID_POPUP,
 
 /*
- * [UNIQUE] Used for statusbar style visual alert / identifcation
+ * [UNIQUE] Used for statusbar style visual alert / identification
  */
 	SEGID_ICON,
 
 /* [UNIQUE] Visual titlebar style for CSD, actual text contents is still
  * server-side rendered and provided as message on this segment or through
- * IDENT messages */
+ * IDENT messages. Server-side rendering of global menus can also be
+ * enabled here by indicating labelhints (and then attaching popups when
+ * the label input arrives) */
 	SEGID_TITLEBAR,
 
 /* [UNIQUE] User- provided cursor, competes with CURSORHINT event. */

@@ -127,6 +127,8 @@ if (STATIC_FREETYPE)
 			VERSION ${ASHMIF_MAJOR}.${ASHMIF_MINOR}
 		)
 		set(TARGET_LIST ${TARGET_LIST} arcan_shmif_tuiext)
+		target_include_directories(arcan_shmif_tuiext PRIVATE
+			${INCLUDE_DIRS} ${ASD}/frameserver ${ASD}/shmif)
 	else()
 		amsg("${CL_YEL}only static freetype found, dynamic shmif_tui disabled ${CL_RST}")
 	endif()
@@ -144,8 +146,6 @@ target_link_libraries(arcan_shmif_intext PRIVATE ${STDLIB} ${VIDEO_LIBRARIES})
 target_include_directories(arcan_shmif_ext PRIVATE ${INCLUDE_DIRS})
 target_include_directories(arcan_shmif_intext PRIVATE ${INCLUDE_DIRS})
 target_include_directories(arcan_shmif_tui PRIVATE
-	${INCLUDE_DIRS} ${ASD}/frameserver ${ASD}/shmif)
-target_include_directories(arcan_shmif_tuiext PRIVATE
 	${INCLUDE_DIRS} ${ASD}/frameserver ${ASD}/shmif)
 
 # note that we enable fpic for the static here as some
