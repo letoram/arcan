@@ -4230,7 +4230,25 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 	}
 	else if (ev->category == EVENT_FSRV){
 		arcan_vobject* vobj = arcan_video_getobject(ev->fsrv.video);
-		if (!vobj || vobj->feed.state.tag != ARCAN_TAG_FRAMESERV)
+		if (!vobj)
+			return;
+
+/* the backing frameserver is already free:d at this point */
+		if (ev->fsrv.kind == EVENT_FSRV_TERMINATED){
+			if (ev->fsrv.otag == LUA_NOREF)
+				return;
+			lua_rawgeti(ctx, LUA_REGISTRYINDEX, ev->fsrv.otag);
+			lua_pushvid(ctx, ev->fsrv.video);
+			lua_newtable(ctx);
+			int top = lua_gettop(ctx);
+			tblstr(ctx, "kind", "terminated", top);
+			luactx.cb_source_kind = CB_SOURCE_FRAMESERVER;
+			wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "frameserver_event");
+			luactx.cb_source_kind = CB_SOURCE_NONE;
+			return;
+		}
+
+		if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV)
 			return;
 
 		arcan_frameserver* fsrv = vobj->feed.state.ptr;
@@ -4254,7 +4272,6 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 
 		switch(ev->fsrv.kind){
 		case EVENT_FSRV_TERMINATED :
-			tblstr(ctx, "kind", "terminated", top);
 		break;
 		case EVENT_FSRV_PREROLL:
 		break;
