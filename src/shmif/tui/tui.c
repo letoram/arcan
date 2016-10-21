@@ -975,8 +975,8 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
  * parent should be running crop shader anyhow */
 		bool dev =
 			(ev->ioevs[0].iv && ev->ioevs[1].iv) &&
-			(abs(ev->ioevs[0].iv - tui->acon.addr->w) > 0 ||
-			abs(ev->ioevs[1].iv - tui->acon.addr->h) > 0);
+			(abs(ev->ioevs[0].iv - tui->acon.w) > 0 ||
+			abs(ev->ioevs[1].iv - tui->acon.h) > 0);
 
 /* visibility change */
 		bool update = false;
@@ -1616,7 +1616,7 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 /* show the current cell dimensions to help limit resize requests */
 	send_cell_sz(res);
 
-	update_screensize(res, false);
+	update_screensize(res, true);
 	res->handlers.resized(res, res->acon.w, res->acon.h,
 		res->cols, res->rows, res->handlers.tag);
 
