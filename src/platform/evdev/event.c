@@ -626,12 +626,14 @@ static void do_led(struct devnode* node)
 		case 'c':
 			if (node->led.ind == -1){
 				for (size_t i = 0; i < LED_MAX; i++)
-					write(node->handle, &(struct input_event){.type = EV_LED,
-						.code = i, .value = set}, sizeof(struct input_event));
+					if (-1 == write(node->handle, &(struct input_event){.type = EV_LED,
+						.code = i, .value = set}, sizeof(struct input_event)))
+						arcan_warning("platform/evdev: failed to write to led device\n");
 			}
 			else {
-				write(node->handle, &(struct input_event){.type = EV_LED,
-					.code = node->led.ind, .value = set}, sizeof(struct input_event));
+				if (-1 == write(node->handle, &(struct input_event){.type = EV_LED,
+					.code = node->led.ind, .value = set}, sizeof(struct input_event)))
+					arcan_warning("platform/evdev: failed to write to led device\n");
 			}
 		break;
 		}
@@ -969,9 +971,11 @@ static void setup_led(struct devnode* dst, size_t bitn, int fd)
 	}
 	dst->led.gotled = true;
 /* reset */
-	for (size_t i = 0; i < LED_MAX; i++)
-		write(dst->handle, &(struct input_event){.type = EV_LED,
-			.code = i, .value = 0}, sizeof(struct input_event));
+	for (size_t i = 0; i < LED_MAX; i++){
+		if (-1 == write(dst->handle, &(struct input_event){.type = EV_LED,
+			.code = i, .value = 0}, sizeof(struct input_event)))
+			arcan_warning("platform/evdev(), error sending reset to led device\n");
+	}
 }
 
 static int alloc_node_slot(const char* path)

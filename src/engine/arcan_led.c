@@ -392,7 +392,8 @@ void arcan_led_shutdown()
 #endif
 			break;
 			case ARCAN_LEDCTRL:{
-				write(controllers[i].fd, (char[]){'o', '\0'}, 2);
+				if (-1 == write(controllers[i].fd, (char[]){'o', '\0'}, 2))
+					arcan_warning("arcan_led_shutdown(), error sending shutdown\n");
 				close(controllers[i].fd);
 			}
 			break;
@@ -401,7 +402,8 @@ void arcan_led_shutdown()
 
 #ifndef LED_STANDALONE
 	if (fifo_out != -1){
-		write(fifo_out, (char[]){'o', '\0'}, 2);
+		if (-1 == write(fifo_out, (char[]){'o', '\0'}, 2))
+			arcan_warning("arcan_led_shutdown(), error sending shutdown\n");
 		close(fifo_out);
 		fifo_out = -1;
 	}

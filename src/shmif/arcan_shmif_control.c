@@ -188,7 +188,7 @@ const char* arcan_shmif_eventstr(arcan_event* aev, char* dbuf, size_t dsz)
 	case EVENT_EXTERNAL:
 		evstr = aev->ext.kind > COUNT_OF(ext_cmd_xlt)
 			? "overflow/broken" : ext_cmd_xlt[aev->ext.kind];
-		break;
+	break;
 	default:
 		evstr = "UNKNOWN";
 	}
@@ -1871,14 +1871,12 @@ static void wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
 	size_t font_ind = 0;
 
 	while (arcan_shmif_wait(cont, &ev)){
-		LOG("event: %s\n", arcan_shmif_eventstr(&ev, NULL, 0));
 		if (ev.category != EVENT_TARGET){
 			continue;
 		}
 
 		switch (ev.tgt.kind){
 		case TARGET_COMMAND_ACTIVATE:
-			LOG("activation()\n");
 			cont->priv->valid_initial = true;
 			if (resize)
 				arcan_shmif_resize(cont, w, h);
@@ -1892,19 +1890,16 @@ static void wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
 				h = ev.tgt.ioevs[1].iv;
 			if (ev.tgt.ioevs[4].fv > 0.0001)
 				def.density = ev.tgt.ioevs[4].fv;
-			LOG("displayhint (%d, %d, %f)()\n", w, h, def.density);
 		break;
 		case TARGET_COMMAND_OUTPUTHINT:
 			if (ev.tgt.ioevs[0].iv)
 				def.display_width_px = ev.tgt.ioevs[0].iv;
 			if (ev.tgt.ioevs[1].iv)
 				def.display_height_px = ev.tgt.ioevs[1].iv;
-			LOG("outputhint (%d, %d)()\n", def.display_width_px, def.display_height_px);
 		break;
 		case TARGET_COMMAND_DEVICE_NODE:
 /* alt-con will be updated automatically, due to normal wait handler */
 			if (ev.tgt.ioevs[0].iv != -1){
-				LOG("render target device node: %d\n", ev.tgt.ioevs[0].iv);
 				def.render_node = arcan_shmif_dupfd(
 					ev.tgt.ioevs[0].iv, def.render_node, true);
 			}
@@ -1915,7 +1910,6 @@ static void wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
 			def.fonts[font_ind].hinting = ev.tgt.ioevs[3].iv;
 			def.fonts[font_ind].size_mm = ev.tgt.ioevs[2].fv;
 			if (font_ind < 3){
-				LOG("font_hint(%d)\n");
 				if (ev.tgt.ioevs[0].iv != -1){
 					def.fonts[font_ind].fd = arcan_shmif_dupfd(
 						ev.tgt.ioevs[0].iv, def.fonts[font_ind].fd, true);

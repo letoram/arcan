@@ -1676,7 +1676,7 @@ static void csi_dsr(struct tsm_vte *vte)
 static void do_csi(struct tsm_vte *vte, uint32_t data)
 {
 	int num, upper, lower;
-	int x, y;
+	size_t x, y;
 	bool protect;
 
 	if (vte->csi_argc < CSI_ARG_MAX)
@@ -1711,14 +1711,15 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 			num = 1;
 		arcan_tui_move_left(vte->con, num);
 		break;
-	case 'd': /* VPA */
+	case 'd':{ /* VPA */
 		/* Vertical Line Position Absolute */
 		num = vte->csi_argv[0];
 		if (num <= 0)
 			num = 1;
-		arcan_tui_cursorpos(vte->con, &x, NULL);
+		arcan_tui_cursorpos(vte->con, &x, &y);
 		arcan_tui_move_to(vte->con, x, num - 1);
 		break;
+	}
 	case 'e': /* VPR */
 		/* Vertical Line Position Relative */
 		num = vte->csi_argv[0];

@@ -36,7 +36,6 @@
 
 #include "libtsm.h"
 #include "libtsm_int.h"
-#include "linenoise.h"
 
 /*
  * really need to be replaced with something less awful
