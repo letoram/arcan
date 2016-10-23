@@ -1386,7 +1386,8 @@ uint64_t arcan_tui_refresh(
  * are -- though we don't block */
 	for (size_t i = 0; i < n_contexts && i < 64; i++){
 		struct tui_context* tui = contexts[i];
-		if (tui->dirty & DIRTY_UPDATED){
+		if ((tui->dirty & DIRTY_UPDATED) &&
+			!atomic_load(&contexts[i]->acon.addr->vready)){
 			tui->dirty = DIRTY_NONE;
 			arcan_shmif_signal(&tui->acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
 
