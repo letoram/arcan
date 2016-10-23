@@ -761,7 +761,7 @@ void tsm_vte_mouse_button(struct tsm_vte *vte, int index, bool press, int mods)
 
 static void send_primary_da(struct tsm_vte *vte)
 {
-	vte_write(vte, "\e[?60;1;6;9;15c", 17);
+	vte_write(vte, "\e[?60;1;6;9;15c", 16);
 }
 
 /* execute control character (C0 or C1) */

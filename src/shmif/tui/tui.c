@@ -730,13 +730,6 @@ static void ioev_ctxtbl(struct tui_context* tui,
 				int yv = ioev->input.analog.axisval[0];
 				tui->mouse_y = yv / tui->cell_h;
 
-				if (tui->mouse_forward && tui->handlers.input_mouse_motion)
-					tui->handlers.input_mouse_motion(tui, false,
-						tui->mouse_x, tui->mouse_y, tui->modifiers, tui->handlers.tag);
-
-				if (!tui->in_select)
-					return;
-
 				bool upd = false;
 				if (tui->mouse_x != tui->lm_x){
 					tui->lm_x = tui->mouse_x;
@@ -746,6 +739,17 @@ static void ioev_ctxtbl(struct tui_context* tui,
 					tui->lm_y = tui->mouse_y;
 					upd = true;
 				}
+
+				if (tui->mouse_forward && tui->handlers.input_mouse_motion){
+					if (upd)
+					tui->handlers.input_mouse_motion(tui, false,
+						tui->mouse_x, tui->mouse_y, tui->modifiers, tui->handlers.tag);
+					return;
+				}
+
+				if (!tui->in_select)
+					return;
+
 /* we use the upper / lower regions as triggers for scrollback + selection,
  * with a magnitude based on how far "off" we are */
 				if (yv < 0.3 * tui->cell_h)
@@ -774,11 +778,13 @@ static void ioev_ctxtbl(struct tui_context* tui,
 				else
 					tui->mouse_btnmask &= ~(1 << (ioev->subid-1));
 			}
-			if (tui->mouse_forward && tui->handlers.input_mouse_button)
+			if (tui->mouse_forward && tui->handlers.input_mouse_button){
 				tui->handlers.input_mouse_button(tui, tui->mouse_x,
 					tui->mouse_y, ioev->subid, ioev->input.digital.active,
 					tui->modifiers, tui->handlers.tag
 				);
+				return;
+			}
 
 			if (ioev->flags & ARCAN_IOFL_GESTURE){
 				if (strcmp(ioev->label, "dblclick") == 0){
