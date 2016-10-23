@@ -21,14 +21,6 @@ static struct {
 	int inp_dirty;
 } term;
 
-/*
- * unless there's been explicit keyboard input, defer display updates until
- * at least this amount of miliseconds have elapsed. This is used to balance
- * the latency-v-power-consumption-v-data-propagation problems.
- */
-#define REFRESH_TIMEOUT 10
-
-/*#define TRACE_ENABLE*/
 static inline void trace(const char* msg, ...)
 {
 #ifdef TRACE_ENABLE
@@ -82,7 +74,8 @@ static void on_mouse_motion(struct tui_context* c,
 {
 	trace("mouse motion(%d:%d, mods:%d, rel: %d",
 		x, y, modifiers, (int) relative);
-
+	if (!relative)
+		tsm_vte_mouse_motion(term.vte, x, y, modifiers);
 }
 
 static void on_mouse_button(struct tui_context* c,
@@ -90,6 +83,7 @@ static void on_mouse_button(struct tui_context* c,
 {
 	trace("mouse button(%d:%d - @%d,%d (mods: %d)\n",
 		button, (int)active, last_x, last_y, modifiers);
+	tsm_vte_mouse_button(term.vte, button, active, modifiers);
 }
 
 static void on_key(struct tui_context* c, uint32_t keysym,
@@ -243,6 +237,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	};
 
 	struct tui_settings cfg = arcan_tui_defaults();
+	cfg.mouse_fwd = false;
 	arcan_tui_apply_arg(&cfg, args, NULL);
 	term.screen = arcan_tui_setup(con, &cfg, &cbcfg, sizeof(cbcfg));
 
