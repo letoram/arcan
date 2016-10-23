@@ -1322,11 +1322,11 @@ struct tui_process_res arcan_tui_process(
 			.events = pollev
 		};
 		if (contexts[i]->clip_in.vidp){
+			clip_mask |= 1 << ofs;
 			fds[ofs++] = (struct pollfd){
 				.fd = contexts[i]->clip_in.epipe,
 				.events = pollev
 			};
-			clip_mask |= 1 << ofs;
 		}
 	}
 /* return condition to take responsibility for multiplexing */
