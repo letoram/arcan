@@ -2026,7 +2026,8 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 		ret.priv->alt_conn = strdup(conn_src);
 
 	free(keyfile);
-	wait_for_activation(&ret, !(flags & SHMIF_NOACTIVATE_RESIZE));
+	if (ext.type > 0)
+		wait_for_activation(&ret, !(flags & SHMIF_NOACTIVATE_RESIZE));
 	return ret;
 
 fail:
