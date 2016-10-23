@@ -320,6 +320,10 @@ enum ARCAN_FLAGS {
  * If no arguments could be unpacked, *arg_arr will be set to NULL.
  * If type is set to 0, no REGISTER event will be sent and you will
  * need to send one manually.
+ *
+ * If the [type] is not set, the connection will not wait for
+ * activation and the initial function will not provide anything
+ * useful.
  */
 struct arg_arr;
 struct arcan_shmif_cont arcan_shmif_open(

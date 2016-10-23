@@ -92,87 +92,89 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	bool fs, bool frames, const char* title)
 {
 	static bool first_init = true;
+/* can happen in the context of suspend/resume etc. */
+	if (!first_init)
+		return true;
 
 	for (size_t i = 0; i < MAX_DISPLAYS; i++)
 		disp[i].id = i;
 
-	if (first_init){
-/* we send our own register events, so set empty type */
-		disp[0].conn = arcan_shmif_open(0, 0, &shmarg);
-		if (disp[0].conn.addr == NULL){
-			arcan_warning("video setup failed : couldn't connect to parent\n");
-			return false;
-		}
-
-/* setup requires shmif connection as we might get metadata that way */
-	enum shmifext_setup_status status;
-	if ((status = arcan_shmifext_headless_setup(&disp[0].conn,
-		arcan_shmifext_headless_defaults())) != SHMIFEXT_OK){
-		arcan_warning("headless graphics setup failed, code: %d\n", status);
-		arcan_shmif_drop(&disp[0].conn);
-		return false;
-	}
-
-/* empty dimensions will retain what the connection was setup for, though some
- * arcan setups still don't preset- good values for an external connection
- * point, so clamp */
-		disp[0].conn.hints = SHMIF_RHINT_ORIGO_LL;
-		size_t dw = width ? width : disp[0].conn.w;
-		if (dw < 320)
-			dw < 320;
-		size_t dh = height ? height : disp[0].conn.h;
-		if (dh < 200)
-			dh < 200;
-
-		if (!arcan_shmif_resize_ext( &disp[0].conn, dw, dh,
-			(struct shmif_resize_ext){.abuf_sz = 1, .abuf_cnt = 8, .vbuf_cnt = 1}
-		)){
-			arcan_warning("couldn't set shm dimensions (%d, %d)\n", width, height);
-			return false;
-		}
-
-/* we provide our own cursor that is blended in the output */
-		arcan_shmif_enqueue(&disp[0].conn, &(struct arcan_event){
-			.category = EVENT_EXTERNAL,
-			.ext.kind = ARCAN_EVENT(CURSORHINT),
-			.ext.message = "hidden"
-		});
-
-/* disp[0] always start out mapped / enabled and we'll use the
- * current world unless overridden */
-		disp[0].mapped = true;
-		disp[0].ppcm = ARCAN_SHMPAGE_DEFAULT_PPCM;
-		disp[0].dpms = ADPMS_ON;
-		disp[0].visible = true;
-		disp[0].focused = true;
-		first_init = false;
-	}
-	else if (width && height){
-		if (!arcan_shmif_resize( &disp[0].conn, width, height )){
-			arcan_warning("couldn't set shm dimensions (%d, %d)\n", width, height);
-			return false;
-		}
-	}
-
 /*
- * currently, we actually never de-init this, just generate a nonsense hash-id
- * before we get a better (signatures etc.) solution
+ * temporary measure for generating the guid, just based on title as
+ * we have an initial order problem with _applname not necessarily accesible
  */
 	unsigned long h = 5381;
 	const char* str = title;
 	for (; *str; str++)
 		h = (h << 5) + h + *str;
 
+	struct arg_arr* shmarg;
+	disp[0].conn = arcan_shmif_open_ext(0, &shmarg, (struct shmif_open_ext){
+		.type = SEGID_LWA, .title = title, .guid = {h, 0}
+	}, sizeof(struct shmif_open_ext));
+
+	if (!disp[0].conn.addr){
+		arcan_warning("lwa_video_init(), couldn't connect. Check ARCAN_CONNPATH and"
+			" make sure a normal arcan instance is running\n");
+		return false;
+	}
+
+	struct arcan_shmif_initial* init;
+	if (sizeof(struct arcan_shmif_initial) != arcan_shmif_initial(
+		&disp[0].conn, &init)){
+		arcan_warning("lwa_video_init(), initial structure size mismatch, "
+			"out-of-synch header/shmif lib\n");
+		return NULL;
+	}
+
+	enum shmifext_setup_status status;
+	if ((status = arcan_shmifext_headless_setup(&disp[0].conn,
+		arcan_shmifext_headless_defaults())) != SHMIFEXT_OK){
+		arcan_warning("lwa_video_init(), couldn't setup headless graphics\n"
+			"\t error code: %d\n", status);
+		arcan_shmif_drop(&disp[0].conn);
+		return false;
+	}
+
 	arcan_shmif_setprimary(SHMIF_INPUT, &disp[0].conn);
-	struct arcan_event ev = {
+
+/*
+ * switch rendering mode since our coordinate system differs
+ */
+	disp[0].conn.hints = SHMIF_RHINT_ORIGO_LL;
+	arcan_shmif_resize(&disp[0].conn, disp[0].conn.w, disp[0].conn.h);
+
+/*
+ * map the provided initial values to match width/height, density,
+ * font size and so on.
+ */
+	if (init->fonts[0].fd != -1){
+		arcan_video_defaultfont("arcan-default", init->fonts[0].fd, SHMIF_PT_SIZE(
+			init->density, init->fonts[0].size_mm), init->fonts[0].hinting, 0);
+		init->fonts[0].fd = -1;
+
+		if (init->fonts[1].fd != -1){
+			arcan_video_defaultfont("arcan-default", init->fonts[1].fd,
+				SHMIF_PT_SIZE(init->density, init->fonts[1].size_mm),
+				init->fonts[1].hinting, 1
+			);
+			init->fonts[1].fd = -1;
+		}
+	}
+	disp[0].mapped = true;
+	disp[0].ppcm = init->density;
+	disp[0].dpms = ADPMS_ON;
+	disp[0].visible = true;
+	disp[0].focused = true;
+
+/* we provide our own cursor that is blended in the output */
+	arcan_shmif_enqueue(&disp[0].conn, &(struct arcan_event){
 		.category = EVENT_EXTERNAL,
-		.ext.kind = ARCAN_EVENT(REGISTER),
-		.ext.registr.kind = SEGID_LWA,
-		.ext.registr.guid = {h, 0}
-	};
-	snprintf(ev.ext.registr.title,
-		COUNT_OF(ev.ext.registr.title), "%s", title);
-	arcan_shmif_enqueue(&disp[0].conn, &ev);
+		.ext.kind = ARCAN_EVENT(CURSORHINT),
+		.ext.message = "hidden"
+	});
+
+	first_init = false;
 	return true;
 }
 
