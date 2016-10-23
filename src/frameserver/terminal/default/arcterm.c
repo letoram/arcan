@@ -282,7 +282,6 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 /*
  * and lastly, spawn the pseudo-terminal
  */
-
 	size_t rows = 0, cols = 0;
 	arcan_tui_dimensions(term.screen, &rows, &cols);
 	term.child = shl_pty_open(&term.pty, read_callback, NULL, cols, rows);
@@ -316,19 +315,18 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	int inf = shl_pty_get_fd(term.pty);
 	shl_pty_dispatch(term.pty);
 	arcan_tui_refresh(&term.screen, 1);
-	int ts = arcan_timemillis();
 
 	while (1){
 		struct tui_process_res res = arcan_tui_process(&term.screen, 1, &inf, 1, -1);
 		if (res.errc < TUI_ERRC_OK || res.bad)
 				break;
 
-		shl_pty_dispatch(term.pty);
+/* arbitrary cut-off point, too high and something like find / will stall,
+ * too low, and we'll get dirty updates. */
+		int flushc = 10;
+		while(shl_pty_dispatch(term.pty) == -EAGAIN && flushc--){}
 
-		if (arcan_timemillis() - ts > REFRESH_TIMEOUT){
-			if (arcan_tui_refresh(&term.screen, 1))
-				ts = arcan_timemillis();
-		}
+		arcan_tui_refresh(&term.screen, 1);
 	}
 
 /* might have been destroyed already, just in case */
