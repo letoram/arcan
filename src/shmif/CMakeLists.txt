@@ -4,7 +4,7 @@
 # do an in-source build of shmif- and its platform (automated build/
 # test systems etc) without a full installation.
 #
-# Defines:
+# defines:
 # ARCAN_SHMIF_INCLUDE_DIR
 # ARCAN_SHMIF_LIBRARY (set to arcan_shmif_int)
 #
@@ -51,8 +51,11 @@ set (SHMIF_SOURCES
 
 if (LWA_PLATFORM_STR AND IS_DIRECTORY "${ASD}/shmif/${LWA_PLATFORM_STR}" AND
 	EXISTS "${ASD}/shmif/${LWA_PLATFORM_STR}/${LWA_PLATFORM_STR}.c")
-	set (SHMIF_EXT_SOURCES "${ASD}/shmif/${LWA_PLATFORM_STR}/${LWA_PLATFORM_STR}.c")
-
+	set (SHMIF_EXT_SOURCES
+		"${ASD}/shmif/${LWA_PLATFORM_STR}/${LWA_PLATFORM_STR}.c"
+		${AGP_SOURCES}
+		${PLATFORM_ROOT}/posix/mem.c
+	)
 else()
 	set (SHMIF_EXT_SOURCES "${ASD}/shmif/stub/stub.c")
 endif()
@@ -140,8 +143,10 @@ endif()
 
 target_link_libraries(arcan_shmif PRIVATE ${STDLIB})
 target_link_libraries(arcan_shmif_int PRIVATE ${STDLIB})
-target_link_libraries(arcan_shmif_ext PRIVATE ${STDLIB} ${VIDEO_LIBRARIES})
-target_link_libraries(arcan_shmif_intext PRIVATE ${STDLIB} ${VIDEO_LIBRARIES})
+target_link_libraries(arcan_shmif_ext PRIVATE ${STDLIB} ${VIDEO_LIBRARIES}
+	${AGP_LIBRARIES} ${HEADLESS_LIBRARIES})
+target_link_libraries(arcan_shmif_intext PRIVATE ${STDLIB} ${AGP_LIBRARIES}
+	${VIDEO_LIBRARIES} ${HEADLESS_LIBRARIES})
 
 target_include_directories(arcan_shmif_ext PRIVATE ${INCLUDE_DIRS})
 target_include_directories(arcan_shmif_intext PRIVATE ${INCLUDE_DIRS})
@@ -168,13 +173,13 @@ set_target_properties(arcan_shmif PROPERTIES
 )
 
 set_target_properties(arcan_shmif_ext PROPERTIES
-	COMPILE_FLAGS -fPIC
+	COMPILE_FLAGS "-fPIC -DHEADLESS_NOARCAN"
 	OUTPUT_NAME arcan_shmif_ext
 	VERSION ${ASHMIF_MAJOR}.${ASHMIF_MINOR}
 )
 
 set_target_properties(arcan_shmif_intext PROPERTIES
-	COMPILE_FLAGS -fPIC
+	COMPILE_FLAGS "-fPIC -DHEADLESS_NOARCAN"
 	OUTPUT_NAME arcan_shmif_ext
 	VERSION ${ASHMIF_MAJOR}.${ASHMIF_MINOR}
 )

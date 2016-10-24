@@ -14,7 +14,9 @@
 #define MAP_PREFIX
 #include "glfun.h"
 
+#ifndef MAP
 #define MAP(X) ( platform_video_gfxsym(X) )
+#endif
 
 void agp_gl_ext_init()
 {
@@ -64,7 +66,6 @@ glGetAttribLocation = MAP("glGetAttribLocation");
 glDeleteProgram = MAP("glDeleteProgram");
 glCreateShader = MAP("glCreateShader");
 glActiveTexture = MAP("glActiveTexture");
-
-#endif
-#endif
 }
+#endif
+#endif

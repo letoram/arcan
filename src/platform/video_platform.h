@@ -451,6 +451,7 @@ void platform_video_shutdown();
  * initial state-machine setup needed by gl.
  */
 void agp_init();
+void agp_gl_ext_init();
 
 /*
  * lower 16 bits: index

@@ -1579,7 +1579,8 @@ static void setup_3dcore(struct retro_hw_render_callback* ctx)
  * cheat with some envvars as the agp_ interface because it was not designed
  * to handle these sort of 'someone else decides which version to use'
  */
-	struct arcan_shmifext_setup setup = arcan_shmifext_headless_defaults();
+	struct arcan_shmifext_setup setup = arcan_shmifext_headless_defaults(
+		&retro.shmcont);
 	if (ctx->context_type == RETRO_HW_CONTEXT_OPENGL_CORE){
 		setup.major = ctx->version_major;
 		setup.minor = ctx->version_minor;

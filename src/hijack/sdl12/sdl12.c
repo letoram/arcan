@@ -448,7 +448,7 @@ SDL_Surface* ARCAN_SDL_SetVideoMode(int w, int h, int ncps, Uint32 flags)
 /* setup a surfaceless EGL context, map extensions and create a FBO that
  * will work as our substitute for the back-buffer */
 				arcan_shmifext_headless_setup(&global.shared,
-					arcan_shmifext_headless_defaults());
+					arcan_shmifext_headless_defaults(&global.shared));
 				agp_init();
 				agp_empty_vstore(&global.vstore, w, h);
 				global.rtgt = agp_setup_rendertarget(

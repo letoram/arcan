@@ -644,7 +644,7 @@ GLXContext glXCreateContext(Display* dpy,
 		return 0;
 
 	if (SHMIFEXT_OK != arcan_shmifext_headless_setup(
-		&dpy->con, arcan_shmifext_headless_defaults()))
+		&dpy->con, arcan_shmifext_headless_defaults(&dpy->con)))
 		return 0;
 
 	agp_init();

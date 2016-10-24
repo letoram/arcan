@@ -17,7 +17,8 @@ struct shmif_ext_hidden_int {
 	Window wnd;
 };
 
-struct arcan_shmifext_setup arcan_shmifext_headless_defaults()
+struct arcan_shmifext_setup arcan_shmifext_headless_defaults(
+	struct arcan_shmif_cont* con)
 {
 return (struct arcan_shmifext_setup){
 	.red = 8, .green = 8, .blue = 8,
@@ -91,6 +92,11 @@ enum shmifext_setup_status arcan_shmifext_headless_setup(
 
 bool arcan_shmifext_headless_egl(struct arcan_shmif_cont* con,
 	void** display, void*(*lookupfun)(void*, const char*), void* tag)
+{
+	return false;
+}
+
+bool arcan_shmifext_make_current(struct arcan_shmif_cont* con)
 {
 	return false;
 }

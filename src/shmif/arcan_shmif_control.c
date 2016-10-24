@@ -1388,7 +1388,6 @@ void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 	if (!inctx || !inctx->priv)
 		return;
 
-	LOG("dropping, dms status: %d\n", inctx->addr->dms);
 	if (inctx->priv->valid_initial)
 		drop_initial(inctx);
 

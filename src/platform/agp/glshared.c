@@ -193,8 +193,6 @@ struct agp_rendertarget* agp_setup_rendertarget(struct storage_info_t* vstore,
 	return r;
 }
 
-extern void agp_gl_ext_init();
-
 void agp_init()
 {
 	agp_gl_ext_init();
@@ -238,6 +236,9 @@ void agp_drop_rendertarget(struct agp_rendertarget* tgt)
 void agp_activate_rendertarget(struct agp_rendertarget* tgt)
 {
 	size_t w, h;
+#ifdef HEADLESS_NOARCAN
+	glBindFramebuffer(GL_FRAMEBUFFER, tgt ? tgt->fbo : 0);
+#else
 	struct monitor_mode mode = platform_video_dimensions();
 
 	if (!tgt){
@@ -253,6 +254,7 @@ void agp_activate_rendertarget(struct agp_rendertarget* tgt)
 
 	glScissor(0, 0, w, h);
 	glViewport(0, 0, w, h);
+#endif
 }
 
 void agp_rendertarget_clear()
@@ -538,9 +540,12 @@ static void toggle_debugstates(float* modelview)
 void agp_rendertarget_ids(struct agp_rendertarget* rtgt, uintptr_t* tgt,
 	uintptr_t* col, uintptr_t* depth)
 {
-	*tgt = rtgt->fbo;
-	*col = rtgt->store->vinf.text.glid;
-	*depth = rtgt->depth;
+	if (tgt)
+		*tgt = rtgt->fbo;
+	if (col)
+		*col = rtgt->store->vinf.text.glid;
+	if (depth)
+		*depth = rtgt->depth;
 }
 
 void agp_submit_mesh(struct mesh_storage_t* base, enum agp_mesh_flags fl)

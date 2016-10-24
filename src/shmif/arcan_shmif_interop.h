@@ -63,9 +63,9 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <semaphore.h>
-	typedef int file_handle;
-	typedef pid_t process_handle;
-	typedef sem_t* sem_handle;
+typedef int file_handle;
+typedef pid_t process_handle;
+typedef sem_t* sem_handle;
 
 long long int arcan_timemillis(void);
 int arcan_sem_post(sem_handle sem);
@@ -205,11 +205,14 @@ struct arcan_shmifext_setup {
 	uint8_t api, major, minor;
 	uint64_t flags;
 	uint64_t mask;
+	uint8_t builtin_fbo;
 /* workaround for versioning snafu with _setup not taking sizeof(...) */
-	uint64_t reserved[8];
+	uint8_t uintfl_reserve[7];
+	uint64_t reserved[7];
 };
 
-struct arcan_shmifext_setup arcan_shmifext_headless_defaults();
+struct arcan_shmifext_setup arcan_shmifext_headless_defaults(
+	struct arcan_shmif_cont* con);
 
 enum shmifext_setup_status arcan_shmifext_headless_setup(
 	struct arcan_shmif_cont* con,
@@ -239,6 +242,28 @@ bool arcan_shmifext_egl_meta(struct arcan_shmif_cont* con,
 	uintptr_t* display, uintptr_t* surface, uintptr_t* context);
 
 /*
+ * Similar to extracting the display, surface, context and manually
+ * making it the current eglContext. If the setup has been called with
+ * builtin- FBO, it will also manage allocating and resizing FBO.
+ */
+bool arcan_shmifext_make_current(struct arcan_shmif_cont* con);
+
+/*
+ * Free and destroy an associated context and internal buffers,
+ * in order to stop using the connection for accelerated drawing,
+ * or to rebuild- a little later without destroying the connection
+ */
+bool arcan_shmifext_headless_drop(struct arcan_shmif_cont* con);
+
+/*
+ * If headless setup uses a built-in FBO configuration, this function can be
+ * used to extract the opaque handles from it. These are only valid when the
+ * context is active (_make_current).
+ */
+bool arcan_shmifext_gl_handles(struct arcan_shmif_cont* con,
+	uintptr_t* frame, uintptr_t* color, uintptr_t* depth);
+
+/*
  * Placeholder awaiting VK support
  */
 bool arcan_shmifext_headless_vk(struct arcan_shmif_cont* con,
@@ -247,11 +272,19 @@ bool arcan_shmifext_headless_vk(struct arcan_shmif_cont* con,
 /*
  * Similar behavior to signalhandle, but any conversion from the texture id
  * in [tex_id] is handled internally in accordance with the last _headless_egl
- * call on [con]. Context refers to the EGLContext where [tex_id] is valid
+ * call on [con]. Context refers to the EGLContext where [tex_id] is valid.
+ *
+ * If (tex_id is SHMIFEXT_BUILTIN and context was setup with FBO management,
+ * the color attachment for the active FBO will be transferred).
+ *
+ * Note: if the eglsignal operation cannot be transferred, either because
+ * handle passing has been disabled or a fitting format could not be done,
+ * the buffer will be translated by readback into the shared memory interface.
  *
  * Returns -1 on handle- generation/passing failure, otherwise the number
  * of miliseconds (clamped to INT_MAX) that elapsed from signal to ack.
  */
+#define SHMIFEXT_BUILTIN ((uintptr_t)-1)
 int arcan_shmifext_eglsignal(struct arcan_shmif_cont*,
 	uintptr_t context, int mask, uintptr_t tex_id, ...);
 

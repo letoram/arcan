@@ -8,7 +8,8 @@
 #include <OpenGL/OpenGL.h>
 #include <OpenGL/GL.h>
 
-struct arcan_shmifext_setup arcan_shmifext_headless_defaults()
+struct arcan_shmifext_setup arcan_shmifext_headless_defaults(
+	struct arcan_shmif_cont* con)
 {
 	return (struct arcan_shmifext_setup){};
 }
@@ -50,6 +51,11 @@ enum shmifext_setup_status arcan_shmifext_headless_setup(
 	CGLSetParameter(context, kCGLCPSwapInterval, &si);
 
 	return SHMIFEXT_OK;
+}
+
+bool arcan_shmifext_make_current(struct arcan_shmif_cont* con)
+{
+	return false;
 }
 
 bool arcan_shmifext_egl_meta(struct arcan_shmif_cont* con,
