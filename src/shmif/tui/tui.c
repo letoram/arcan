@@ -392,19 +392,34 @@ static bool page_down(struct tui_context* tui)
 	return true;
 }
 
+static int mod_to_scroll(int mods, int screenh)
+{
+	int rv = 1;
+	if (mods & ARKMOD_LSHIFT)
+		rv = screenh >> 1;
+	if (mods & ARKMOD_RSHIFT)
+		rv += screenh >> 1;
+	if (mods & ARKMOD_LCTRL)
+		rv += screenh >> 1;
+	if (mods & ARKMOD_RCTRL)
+		rv += screenh >> 1;
+	return rv;
+}
+
 static bool scroll_up(struct tui_context* tui)
 {
-
-	tsm_screen_sb_up(tui->screen, 1);
-	tui->sbofs += 1;
+	int nf = mod_to_scroll(tui->modifiers, tui->rows);
+	tsm_screen_sb_up(tui->screen, nf);
+	tui->sbofs += nf;
 	tui->dirty |= DIRTY_PENDING;
 	return true;
 }
 
 static bool scroll_down(struct tui_context* tui)
 {
-	tsm_screen_sb_down(tui->screen, 1);
-	tui->sbofs -= 1;
+	int nf = mod_to_scroll(tui->modifiers, tui->rows);
+	tsm_screen_sb_down(tui->screen, nf);
+	tui->sbofs -= nf;
 	tui->sbofs = tui->sbofs < 0 ? 0 : tui->sbofs;
 	tui->dirty |= DIRTY_PENDING;
 	return true;
@@ -414,6 +429,16 @@ static bool move_up(struct tui_context* tui)
 {
 	if (tui->scroll_lock){
 		page_up(tui);
+		return true;
+	}
+	else if (tui->modifiers & (TUIK_LMETA | TUIK_RMETA)){
+		if (tui->modifiers & (TUIK_LSHIFT | TUIK_RSHIFT))
+			page_up(tui);
+		else{
+			tsm_screen_sb_up(tui->screen, 1);
+			tui->sbofs += 1;
+			tui->dirty |= DIRTY_PENDING;
+		}
 		return true;
 	}
 	else if (tui->handlers.input_label)
@@ -426,6 +451,16 @@ static bool move_down(struct tui_context* tui)
 {
 	if (tui->scroll_lock){
 		page_down(tui);
+		return true;
+	}
+	else if (tui->modifiers & (TUIK_LMETA | TUIK_RMETA)){
+		if (tui->modifiers & (TUIK_LSHIFT | TUIK_RSHIFT))
+			page_up(tui);
+		else{
+			tsm_screen_sb_down(tui->screen, 1);
+			tui->sbofs -= 1;
+			tui->dirty |= DIRTY_PENDING;
+		}
 		return true;
 	}
 	else if (tui->handlers.input_label)
@@ -637,12 +672,42 @@ static bool consume_label(struct tui_context* tui,
 	return res;
 }
 
+static int update_mods(int mods, int sym, bool pressed)
+{
+	if (pressed)
+	switch(sym){
+	case TUIK_LSHIFT: return mods | ARKMOD_LSHIFT;
+	case TUIK_RSHIFT: return mods | ARKMOD_RSHIFT;
+	case TUIK_LCTRL: return mods | ARKMOD_LCTRL;
+	case TUIK_RCTRL: return mods | ARKMOD_RCTRL;
+	case TUIK_COMPOSE:
+	case TUIK_LMETA: return mods | ARKMOD_LMETA;
+	case TUIK_RMETA: return mods | ARKMOD_RMETA;
+	default:
+		return mods;
+	}
+	else
+	switch(sym){
+	case TUIK_LSHIFT: return mods & (~ARKMOD_LSHIFT);
+	case TUIK_RSHIFT: return mods & (~ARKMOD_RSHIFT);
+	case TUIK_LCTRL: return mods & (~ARKMOD_LCTRL);
+	case TUIK_RCTRL: return mods & (~ARKMOD_RCTRL);
+	case TUIK_COMPOSE:
+	case TUIK_LMETA: return mods & (~ARKMOD_LMETA);
+	case TUIK_RMETA: return mods & (~ARKMOD_RMETA);
+	default:
+		return mods;
+	}
+}
+
 static void ioev_ctxtbl(struct tui_context* tui,
 	arcan_ioevent* ioev, const char* label)
 {
 	if (ioev->datatype == EVENT_IDATATYPE_TRANSLATED){
 		bool pressed = ioev->input.translated.active;
-		tui->modifiers = ioev->input.translated.modifiers;
+		int sym = ioev->input.translated.keysym;
+		int oldm = tui->modifiers;
+		tui->modifiers = update_mods(tui->modifiers, sym, pressed);
 		if (!pressed)
 			return;
 
@@ -654,39 +719,17 @@ static void ioev_ctxtbl(struct tui_context* tui,
 		if (label[0] && consume_label(tui, ioev, label))
 			return;
 
-		if (tui->sbofs != 0){
+/* modifiers doesn't get set for the symbol itself which is a problem
+ * for when we want to forward modifier data to another handler like mbtn */
+		if (sym >= 300 && sym <= 314)
+			return;
+
+/* reset scrollback on normal input */
+		if (oldm == tui->modifiers && tui->sbofs != 0){
 			tui->sbofs = 0;
 			tsm_screen_sb_reset(tui->screen);
 			tui->dirty |= DIRTY_PENDING;
 		}
-
-/* modifiers doesn't get set for the symbol itself which is a problem
- * for when we want to forward modifier data to another handler like mbtn */
-		int sym = ioev->input.translated.keysym;
-		switch(sym){
-		case TUIK_LSHIFT:
-			tui->modifiers |= ARKMOD_LSHIFT;
-		break;
-		case TUIK_RSHIFT:
-			tui->modifiers |= ARKMOD_RSHIFT;
-		break;
-		case TUIK_LCTRL:
-			tui->modifiers |= ARKMOD_LCTRL;
-		break;
-		case TUIK_RCTRL:
-			tui->modifiers |= ARKMOD_RCTRL;
-		break;
-		case TUIK_LMETA:
-			tui->modifiers |= ARKMOD_LMETA;
-		break;
-		case TUIK_RMETA:
-			tui->modifiers |= ARKMOD_RMETA;
-		default:
-		break;
-		}
-
-		if (sym >= 300 && sym <= 314)
-			return;
 
 /* check the incoming utf8 if it's valid, if so forward and if the handler
  * consumed the value, leave the function */
@@ -828,7 +871,6 @@ static void ioev_ctxtbl(struct tui_context* tui,
 			if (ioev->subid == MBTN_WHEEL_UP_IND){
 				if (ioev->input.digital.active)
 					scroll_up(tui);
-				}
 			}
 			else if (ioev->subid == MBTN_WHEEL_DOWN_IND){
 				if (ioev->input.digital.active)
@@ -999,6 +1041,7 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 	/* selection change */
 			if (ev->ioevs[2].iv & 4){
 				tui->focus = false;
+				tui->modifiers = 0;
 				if (!tui->cursor_off){
 					tui->cursor_off = true;
 					tui->dirty |= DIRTY_PENDING;
@@ -1396,8 +1439,7 @@ uint64_t arcan_tui_refresh(
 		if ((tui->dirty & DIRTY_UPDATED) &&
 			!atomic_load(&contexts[i]->acon.addr->vready)){
 			tui->dirty = DIRTY_NONE;
-			arcan_shmif_signal(&tui->acon, SHMIF_SIGVID);
-			/*| SHMIF_SIGBLK_NONE); */
+			arcan_shmif_signal(&tui->acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
 
 /* set invalid synch region until redraw changes that */
 			tui->acon.dirty.x1 = tui->acon.w;

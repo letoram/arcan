@@ -16,9 +16,6 @@ static struct {
 	struct shl_pty* pty;
 	size_t cursor_x, cursor_y;
 	pid_t child;
-
-/* toggle whenever something has happened that should mandate a disp-synch */
-	int inp_dirty;
 } term;
 
 static inline void trace(const char* msg, ...)
@@ -92,7 +89,6 @@ static void on_key(struct tui_context* c, uint32_t keysym,
 	trace("on_key(%"PRIu32",%"PRIu8",%"PRIu16")", keysym, scancode, subid);
 	tsm_vte_handle_keyboard(term.vte,
 		keysym, isascii(keysym) ? keysym : 0, mods, subid);
-	term.inp_dirty = 1;
 }
 
 static bool on_u8(struct tui_context* c, const char* u8, size_t len, void* t)
@@ -102,7 +98,6 @@ static bool on_u8(struct tui_context* c, const char* u8, size_t len, void* t)
 	memcpy(buf, u8, len >= 5 ? 4 : len);
 	shl_pty_write(term.pty, (char*) buf, len);
 	shl_pty_dispatch(term.pty);
-	term.inp_dirty = 1;
 	return true;
 }
 
@@ -111,7 +106,6 @@ static void on_utf8_paste(struct tui_context* c,
 {
 	trace("utf8-paste(%s):%d", str, (int) cont);
 	tsm_vte_paste(term.vte, (char*)str, len);
-	term.inp_dirty = 1;
 }
 
 static void on_resize(struct tui_context* c,
@@ -120,7 +114,6 @@ static void on_resize(struct tui_context* c,
 	trace("resize(%zu(%zu),%zu(%zu))", neww, col, newh, row);
 	if (term.pty)
 		shl_pty_resize(term.pty, col, row);
-	term.inp_dirty = 1;
 }
 
 static void read_callback(struct shl_pty* pty,
@@ -320,16 +313,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 				break;
 
 		while(shl_pty_dispatch(term.pty) == -EAGAIN){}
-
-		if (arcan_timemillis() - last > 12 || term.inp_dirty){
-			arcan_tui_refresh(&term.screen, 1);
-			last = arcan_timemillis();
-			delay = -1;
-			term.inp_dirty = 0;
-		}
-		else{
-			delay = 10 - arcan_timemillis() - last;
-		}
+		arcan_tui_refresh(&term.screen, 1);
 	}
 
 /* might have been destroyed already, just in case */
