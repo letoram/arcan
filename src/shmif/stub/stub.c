@@ -2,7 +2,8 @@
 #include "../arcan_shmif.h"
 #include "../shmif_privext.h"
 
-struct arcan_shmifext_setup arcan_shmifext_headless_defaults()
+struct arcan_shmifext_setup arcan_shmifext_headless_defaults(
+	struct arcan_shmif_cont* con)
 {
 	return (struct arcan_shmifext_setup){};
 }
@@ -18,6 +19,11 @@ void* arcan_shmifext_headless_lookup(
 	struct arcan_shmif_cont* con, const char* fun)
 {
 	return NULL;
+}
+
+bool arcan_shmifext_make_current(struct arcan_shmif_cont* con)
+{
+	return false;
 }
 
 bool arcan_shmifext_headless_egl(struct arcan_shmif_cont* con,
