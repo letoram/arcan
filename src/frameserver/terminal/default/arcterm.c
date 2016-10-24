@@ -272,7 +272,6 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 
 	tsm_vte_set_color(term.vte, VTE_COLOR_BACKGROUND, cfg.bgc);
 	tsm_vte_set_color(term.vte, VTE_COLOR_FOREGROUND, cfg.fgc);
-	LOG("set fgc: %d, %d, %d\n", cfg.fgc[0], cfg.fgc[1], cfg.fgc[2]);
 
 /*
  * and lastly, spawn the pseudo-terminal
@@ -311,17 +310,26 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	shl_pty_dispatch(term.pty);
 	arcan_tui_refresh(&term.screen, 1);
 
+	int delay = -1;
+	long last = arcan_timemillis();
 	while (1){
-		struct tui_process_res res = arcan_tui_process(&term.screen, 1, &inf, 1, -1);
+		struct tui_process_res res = arcan_tui_process(
+			&term.screen, 1, &inf, 1, delay);
+
 		if (res.errc < TUI_ERRC_OK || res.bad)
 				break;
 
-/* arbitrary cut-off point, too high and something like find / will stall,
- * too low, and we'll get dirty updates. */
-		int flushc = 10;
-		while(shl_pty_dispatch(term.pty) == -EAGAIN && flushc--){}
+		while(shl_pty_dispatch(term.pty) == -EAGAIN){}
 
-		arcan_tui_refresh(&term.screen, 1);
+		if (arcan_timemillis() - last > 12 || term.inp_dirty){
+			arcan_tui_refresh(&term.screen, 1);
+			last = arcan_timemillis();
+			delay = -1;
+			term.inp_dirty = 0;
+		}
+		else{
+			delay = 10 - arcan_timemillis() - last;
+		}
 	}
 
 /* might have been destroyed already, just in case */
