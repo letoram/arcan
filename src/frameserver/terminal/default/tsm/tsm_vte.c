@@ -1676,7 +1676,7 @@ static void csi_dsr(struct tsm_vte *vte)
 static void do_csi(struct tsm_vte *vte, uint32_t data)
 {
 	int num, upper, lower;
-	size_t x, y;
+	int x, y;
 	bool protect;
 
 	if (vte->csi_argc < CSI_ARG_MAX)
@@ -1716,18 +1716,23 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 		num = vte->csi_argv[0];
 		if (num <= 0)
 			num = 1;
-		arcan_tui_cursorpos(vte->con, &x, &y);
+		size_t cx, cy;
+		arcan_tui_cursorpos(vte->con, &cx, &cy);
+		x = cx; y = cy;
 		arcan_tui_move_to(vte->con, x, num - 1);
 		break;
 	}
-	case 'e': /* VPR */
+	case 'e':{ /* VPR */
 		/* Vertical Line Position Relative */
 		num = vte->csi_argv[0];
 		if (num <= 0)
 			num = 1;
-		arcan_tui_cursorpos(vte->con, &x, &y);
+		size_t cx, cy;
+		arcan_tui_cursorpos(vte->con, &cx, &cy);
+		x = cx; y = cy;
 		arcan_tui_move_to(vte->con, x, y + num);
-		break;
+	break;
+	}
 	case 'H': /* CUP */
 	case 'f': /* HVP */
 		/* position cursor */
@@ -1739,14 +1744,17 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 			y = 1;
 		arcan_tui_move_to(vte->con, y - 1, x - 1);
 		break;
-	case 'G': /* CHA */
+	case 'G':{ /* CHA */
 		/* Cursor Character Absolute */
 		num = vte->csi_argv[0];
 		if (num <= 0)
 			num = 1;
-		arcan_tui_cursorpos(vte->con, &x, &y);
+		size_t cx, cy;
+		arcan_tui_cursorpos(vte->con, &cx, &cy);
+		x = cx; y = cy;
 		arcan_tui_move_to(vte->con, num - 1, y);
-		break;
+	break;
+	}
 	case 'J':
 		if (vte->csi_flags & CSI_WHAT)
 			protect = true;
