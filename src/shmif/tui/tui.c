@@ -394,6 +394,7 @@ static bool page_down(struct tui_context* tui)
 
 static bool scroll_up(struct tui_context* tui)
 {
+
 	tsm_screen_sb_up(tui->screen, 1);
 	tui->sbofs += 1;
 	tui->dirty |= DIRTY_PENDING;
@@ -827,6 +828,7 @@ static void ioev_ctxtbl(struct tui_context* tui,
 			if (ioev->subid == MBTN_WHEEL_UP_IND){
 				if (ioev->input.digital.active)
 					scroll_up(tui);
+				}
 			}
 			else if (ioev->subid == MBTN_WHEEL_DOWN_IND){
 				if (ioev->input.digital.active)
@@ -1394,7 +1396,8 @@ uint64_t arcan_tui_refresh(
 		if ((tui->dirty & DIRTY_UPDATED) &&
 			!atomic_load(&contexts[i]->acon.addr->vready)){
 			tui->dirty = DIRTY_NONE;
-			arcan_shmif_signal(&tui->acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
+			arcan_shmif_signal(&tui->acon, SHMIF_SIGVID);
+			/*| SHMIF_SIGBLK_NONE); */
 
 /* set invalid synch region until redraw changes that */
 			tui->acon.dirty.x1 = tui->acon.w;
