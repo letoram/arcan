@@ -18,7 +18,7 @@ static struct {
 	pid_t child;
 
 /* toggle whenever something has happened that should mandate a disp-synch */
-	int inp_dirty;
+	bool alive;
 } term;
 
 static inline void trace(const char* msg, ...)
@@ -30,6 +30,17 @@ static inline void trace(const char* msg, ...)
 	va_end( args);
 	fprintf(stderr, "\n");
 #endif
+}
+
+static bool pump_pty()
+{
+	int rv = shl_pty_dispatch(term.pty);
+	if (rv == -ENODEV){
+		term.alive = false;
+	}
+	else if (rv == -EAGAIN)
+		return true;
+	return false;
 }
 
 static void dump_help()
@@ -92,7 +103,6 @@ static void on_key(struct tui_context* c, uint32_t keysym,
 	trace("on_key(%"PRIu32",%"PRIu8",%"PRIu16")", keysym, scancode, subid);
 	tsm_vte_handle_keyboard(term.vte,
 		keysym, isascii(keysym) ? keysym : 0, mods, subid);
-	term.inp_dirty = 1;
 }
 
 static bool on_u8(struct tui_context* c, const char* u8, size_t len, void* t)
@@ -100,9 +110,9 @@ static bool on_u8(struct tui_context* c, const char* u8, size_t len, void* t)
 	uint8_t buf[5] = {0};
 	trace("utf8-input: %s", u8);
 	memcpy(buf, u8, len >= 5 ? 4 : len);
-	shl_pty_write(term.pty, (char*) buf, len);
-	shl_pty_dispatch(term.pty);
-	term.inp_dirty = 1;
+	if (shl_pty_write(term.pty, (char*) buf, len) < 0)
+		term.alive = false;
+	pump_pty();
 	return true;
 }
 
@@ -111,7 +121,6 @@ static void on_utf8_paste(struct tui_context* c,
 {
 	trace("utf8-paste(%s):%d", str, (int) cont);
 	tsm_vte_paste(term.vte, (char*)str, len);
-	term.inp_dirty = 1;
 }
 
 static void on_resize(struct tui_context* c,
@@ -120,7 +129,6 @@ static void on_resize(struct tui_context* c,
 	trace("resize(%zu(%zu),%zu(%zu))", neww, col, newh, row);
 	if (term.pty)
 		shl_pty_resize(term.pty, col, row);
-	term.inp_dirty = 1;
 }
 
 static void read_callback(struct shl_pty* pty,
@@ -307,11 +315,12 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		return EXIT_FAILURE;
 	}
 
+	term.alive = true;
 	int inf = shl_pty_get_fd(term.pty);
-	shl_pty_dispatch(term.pty);
+	pump_pty();
 	arcan_tui_refresh(&term.screen, 1);
 
-	while (1){
+	while (term.alive){
 		struct tui_process_res res = arcan_tui_process(&term.screen, 1, &inf, 1, -1);
 		if (res.errc < TUI_ERRC_OK || res.bad)
 				break;
@@ -319,7 +328,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 /* arbitrary cut-off point, too high and something like find / will stall,
  * too low, and we'll get dirty updates. */
 		int flushc = 10;
-		while(shl_pty_dispatch(term.pty) == -EAGAIN && flushc--){}
+		while(pump_pty() && flushc--){}
 
 		arcan_tui_refresh(&term.screen, 1);
 	}
