@@ -199,10 +199,11 @@ static void cursor_at(struct tui_context* tui,
 	}
 }
 
+/*
+ * Fallback font rendering, ignores properties (bold, ...)
+ */
 static void draw_ch_u8(struct tui_context* tui,
-	uint8_t u8_ch[5],
-	int base_x, int base_y, uint8_t fg[4], uint8_t bg[4],
-	bool bold, bool underline, bool italic)
+	uint8_t u8_ch[5], int base_x, int base_y, uint8_t fg[4], uint8_t bg[4])
 {
 	u8_ch[1] = '\0';
 	draw_text_bg(&tui->acon, (const char*) u8_ch, base_x, base_y,
@@ -211,26 +212,57 @@ static void draw_ch_u8(struct tui_context* tui,
 	);
 }
 
+static void apply_attrs(struct tui_context* tui,
+	int base_x, int base_y, uint8_t fg[4], const struct tsm_screen_attr* attr)
+{
+/*
+ * We cheat with underline / strikethrough and just go relative to cell
+ */
+	if (attr->underline){
+		int n_lines = (int)(tui->cell_h * 0.05) | 1;
+		draw_box(&tui->acon, base_x, base_y + tui->cell_h - n_lines,
+			tui->cell_w, n_lines, SHMIF_RGBA(fg[0], fg[1], fg[2], fg[3]));
+	}
+
+	if (attr->strikethrough){
+		int n_lines = (int)(tui->cell_h * 0.05) | 1;
+		draw_box(&tui->acon, base_x, (tui->cell_h >> 1) - (n_lines >> 1),
+			tui->cell_w, n_lines, SHMIF_RGBA(fg[0], fg[1], fg[2], fg[3]));
+	}
+}
+
 static void draw_ch(struct tui_context* tui,
 	uint32_t ch, int base_x, int base_y, uint8_t fg[4], uint8_t bg[4],
-	bool bold, bool underline, bool italic)
+	const struct tsm_screen_attr* attr)
 {
+	int prem = TTF_STYLE_NORMAL;
+	prem |= TTF_STYLE_ITALIC * attr->italic;
+	prem |= TTF_STYLE_BOLD * attr->bold;
+
+/*
+ * Should really maintain a glyph-cache here as well, using
+ * ch + selected parts of attr as index and invalidate in the
+ * normal font update functions
+ */
 	draw_box(&tui->acon, base_x, base_y, tui->cell_w, tui->cell_h,
-		SHMIF_RGBA(bg[0], bg[1], bg[2], bg[3]));
+			SHMIF_RGBA(bg[0], bg[1], bg[2], bg[3]));
 
-	int prem = TTF_STYLE_NORMAL | (TTF_STYLE_UNDERLINE * underline);
-	prem |= TTF_STYLE_ITALIC * italic;
-	prem |= (bold ? TTF_STYLE_BOLD : TTF_STYLE_NORMAL);
-
+/* This one is incredibly costly as a deviation in style regarding
+ * bold/italic can invalidate the glyph-cache. Ideally, this should
+ * be sorted in tsm_screen */
+	TTF_SetFontStyle(tui->font[0], prem);
 	unsigned xs = 0, ind = 0;
 	int adv = 0;
 
-	TTF_RenderUNICODEglyph(
+	if (!TTF_RenderUNICODEglyph(
 		&tui->acon.vidp[base_y * tui->acon.pitch + base_x],
 		tui->cell_w, tui->cell_h, tui->acon.pitch,
 		tui->font, tui->font[1] ? 2 : 1,
 		ch, &xs, fg, bg, true, false, prem, &adv, &ind
-	);
+	)){
+	}
+
+	apply_attrs(tui, base_x, base_y, fg, attr);
 }
 
 static void send_cell_sz(struct tui_context* tui)
@@ -277,6 +309,11 @@ static int draw_cbt(struct tui_context* tui,
 		dfg[3] = 0xff;
 	}
 
+	if (attr->faint){
+		fgc[0] >>= 1; fgc[1] >>= 1; fgc[2] >>= 1;
+		bgc[0] >>= 1; bgc[1] >>= 1; bgc[2] >>= 1;
+	}
+
 	int x2 = x1 + tui->cell_w;
 	int y2 = y1 + tui->cell_h;
 
@@ -298,16 +335,20 @@ static int draw_cbt(struct tui_context* tui,
 
 	tui->dirty |= DIRTY_UPDATED;
 
-	draw_box(&tui->acon, x1, y1, tui->cell_w, tui->cell_h,
-		SHMIF_RGBA(bgc[0], bgc[1], bgc[2], tui->alpha));
-
 /* quick erase if nothing more is needed */
 	if (empty){
-		if (attr->inverse)
-	draw_box(&tui->acon, x1, y1, tui->cell_w, tui->cell_h,
-		SHMIF_RGBA(fgc[0], fgc[1], fgc[2], tui->alpha));
+		if (attr->inverse){
+			draw_box(&tui->acon, x1, y1, tui->cell_w, tui->cell_h,
+				SHMIF_RGBA(fgc[0], fgc[1], fgc[2], tui->alpha));
+			apply_attrs(tui, x1, y1, bgc, attr);
+		}
+		else{
+			draw_box(&tui->acon, x1, y1, tui->cell_w, tui->cell_h,
+				SHMIF_RGBA(bgc[0], bgc[1], bgc[2], tui->alpha));
+			apply_attrs(tui, x1, y1, fgc, attr);
+		}
 
-	if (!match_cursor)
+		if (!match_cursor)
 			return 0;
 		else
 			ch = 0x00000008;
@@ -325,12 +366,10 @@ static int draw_cbt(struct tui_context* tui,
 	uint8_t u8_ch[u8_sz];
 	size_t nch = tsm_ucs4_to_utf8(ch, (char*) u8_ch);
 	u8_ch[u8_sz-1] = '\0';
-		draw_ch_u8(tui, u8_ch, x1, y1, dfg, dbg,
-			attr->bold, attr->underline, attr->italic);
+		draw_ch_u8(tui, u8_ch, x1, y1, dfg, dbg);
 	}
 	else
-		draw_ch(tui, ch, x1, y1, dfg, dbg,
-			attr->bold, attr->underline, attr->italic);
+		draw_ch(tui, ch, x1, y1, dfg, dbg, attr);
 
 	return 0;
 }
