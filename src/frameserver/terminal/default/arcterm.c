@@ -14,7 +14,6 @@ static struct {
 	struct tui_context* screen;
 	struct tsm_vte* vte;
 	struct shl_pty* pty;
-	size_t cursor_x, cursor_y;
 	pid_t child;
 
 /* toggle whenever something has happened that should mandate a disp-synch */
@@ -135,7 +134,6 @@ static void read_callback(struct shl_pty* pty,
 	void* data, char* u8, size_t len)
 {
 	tsm_vte_input(term.vte, u8, len);
-	arcan_tui_cursorpos(term.screen, &term.cursor_x, &term.cursor_y);
 }
 
 static void write_callback(struct tsm_vte* vte,
@@ -289,7 +287,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	arcan_tui_dimensions(term.screen, &rows, &cols);
 	term.child = shl_pty_open(&term.pty, read_callback, NULL, cols, rows);
 	if (term.child < 0){
-		LOG("couldn't spawn child termainl.\n");
+		LOG("couldn't spawn child terminal.\n");
 		return EXIT_FAILURE;
 	}
 
@@ -317,7 +315,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 
 	term.alive = true;
 	int inf = shl_pty_get_fd(term.pty);
-	pump_pty();
+	while(pump_pty()){}
 	arcan_tui_refresh(&term.screen, 1);
 
 	while (term.alive){

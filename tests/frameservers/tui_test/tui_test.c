@@ -44,10 +44,9 @@ static bool on_alabel(struct tui_context* c, const char* label,
 }
 
 static void on_mouse(struct tui_context* c,
-	bool relative, int x, int y, uint16_t button_mask, void* t)
+	bool relative, int x, int y, int modifiers, void* t)
 {
-	trace("mouse(%d:%d, mask:%"PRIu16", rel: %d",
-		x, y, button_mask, (int) relative);
+	trace("mouse(%d:%d, mods:%d, rel: %d", x, y, modifiers, (int) relative);
 }
 
 static void on_key(struct tui_context* c, uint32_t xkeysym,
@@ -56,12 +55,13 @@ static void on_key(struct tui_context* c, uint32_t xkeysym,
 	trace("unknown_key(%"PRIu32",%"PRIu8",%"PRIu16")", xkeysym, scancode, subid);
 }
 
-static void on_u8(struct tui_context* c, const char* u8, size_t len, void* t)
+static bool on_u8(struct tui_context* c, const char* u8, size_t len, void* t)
 {
 	uint8_t buf[5] = {0};
 	memcpy(buf, u8, len >= 5 ? 4 : len);
 	trace("utf8-input: %s", buf);
 	arcan_tui_writeu8(c, buf, len, NULL);
+	return true;
 }
 
 static void on_misc(struct tui_context* c, const arcan_ioevent* ev, void* t)
@@ -142,7 +142,7 @@ int main(int argc, char** argv)
 		.query_label = query_label,
 		.input_label = on_label,
 		.input_alabel = on_alabel,
-		.input_mouse = on_mouse,
+		.input_mouse_motion = on_mouse,
 		.input_utf8 = on_u8,
 		.input_key = on_key,
 		.input_misc = on_misc,
