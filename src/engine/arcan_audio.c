@@ -610,6 +610,25 @@ static inline void reset_chain(arcan_aobj* dobj)
 	dobj->transform = NULL;
 }
 
+arcan_errc arcan_audio_getgain(arcan_aobj_id id, float* gain)
+{
+	if (id == ARCAN_EID){
+		if (gain)
+			*gain = current_acontext->def_gain;
+		return ARCAN_OK;
+	}
+
+	arcan_aobj* dobj = arcan_audio_getobj(id);
+
+	if (!dobj)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+
+	if (gain)
+		*gain = dobj->gain;
+
+	return ARCAN_OK;
+}
+
 arcan_errc arcan_audio_setgain(arcan_aobj_id id, float gain, uint16_t time)
 {
 	if (id == ARCAN_EID){
