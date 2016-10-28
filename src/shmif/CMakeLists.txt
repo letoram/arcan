@@ -117,6 +117,7 @@ add_library(arcan_shmif_intext SHARED ${SHMIF_EXT_SOURCES})
 # somewhat messy, if the engine is building a static freetype version we should
 # use that one and provide a tui to match, but we should also try and provide a
 # dynamic one.
+if (SHMIF_TUI)
 if (STATIC_FREETYPE)
 	add_library(arcan_shmif_tui STATIC ${SHMIF_TUI_SOURCES})
 	target_link_libraries(arcan_shmif_tui PRIVATE ${STDLIB} ${FREETYPE_DEFAULT_LIBRARIES})
@@ -131,7 +132,7 @@ if (STATIC_FREETYPE)
 		)
 		set(TARGET_LIST ${TARGET_LIST} arcan_shmif_tuiext)
 		target_include_directories(arcan_shmif_tuiext PRIVATE
-			${INCLUDE_DIRS} ${ASD}/frameserver ${ASD}/shmif)
+			${INCLUDE_DIRS} ${ASD}/frameserver ${ASD}/engine ${ASD}/shmif)
 	else()
 		amsg("${CL_YEL}only static freetype found, dynamic shmif_tui disabled ${CL_RST}")
 	endif()
@@ -139,6 +140,10 @@ else()
 	add_library(arcan_shmif_tui SHARED ${SHMIF_TUI_SOURCES})
 	target_link_libraries(arcan_shmif_tui PRIVATE ${STDLIB} arcan_shmif ${FREETYPE_LIBRARIES})
 	set_target_properties(arcan_shmif_tui PROPERTIES VERSION ${ASHMIF_MAJOR}.${ASHMIF_MINOR})
+endif()
+
+target_include_directories(arcan_shmif_tui PRIVATE
+	${INCLUDE_DIRS} ${ASD}/frameserver ${ASD}/shmif ${ASD}/engine)
 endif()
 
 target_link_libraries(arcan_shmif PRIVATE ${STDLIB})
@@ -150,8 +155,6 @@ target_link_libraries(arcan_shmif_intext PRIVATE ${STDLIB} ${AGP_LIBRARIES}
 
 target_include_directories(arcan_shmif_ext PRIVATE ${INCLUDE_DIRS})
 target_include_directories(arcan_shmif_intext PRIVATE ${INCLUDE_DIRS})
-target_include_directories(arcan_shmif_tui PRIVATE
-	${INCLUDE_DIRS} ${ASD}/frameserver ${ASD}/shmif)
 
 # note that we enable fpic for the static here as some
 # subdirectores need to pull it in as part of building a shared library
