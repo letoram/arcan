@@ -521,6 +521,7 @@ amsg("${CL_YEL}Lua     \t${CLB_GRN}${LUA_TAG}${LUA_TAG_MODE}${CL_RST}${CL_RST}")
 amsg("\n${CL_WHT}-- Stage 2, Frameservers / Hijack${CLT_RST}")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
+set(SHMIF_TUI true)
 add_subdirectory(shmif)
 include_directories(${ARCAN_SHMIF_INCLUDE_DIR})
 

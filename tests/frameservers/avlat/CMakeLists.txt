@@ -18,7 +18,6 @@ add_definitions(
 include_directories(${ARCAN_SHMIF_INCLUDE_DIR})
 
 SET(LIBRARIES
-				#	rt
 	pthread
 	m
 	${ARCAN_SHMIF_LIBRARY}
