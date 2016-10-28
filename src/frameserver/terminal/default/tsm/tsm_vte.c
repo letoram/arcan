@@ -571,6 +571,8 @@ static void reset_state(struct tsm_vte *vte)
 	vte->saved_state.cattr.inverse = 0;
 	vte->saved_state.cattr.protect = 0;
 	vte->saved_state.cattr.blink = 0;
+	vte->saved_state.cattr.strikethrough = 0;
+	vte->saved_state.cattr.custom = 0;
 }
 
 static void save_state(struct tsm_vte *vte)
@@ -1161,10 +1163,16 @@ static void csi_attribute(struct tsm_vte *vte)
 			vte->cattr.underline = 0;
 			vte->cattr.inverse = 0;
 			vte->cattr.blink = 0;
+			vte->cattr.faint = 0;
+			vte->cattr.italic = 0;
+			vte->cattr.strikethrough = 0;
 			break;
 		case 1:
 			vte->cattr.bold = 1;
-			break;
+		break;
+		case 2:
+			vte->cattr.faint = 1;
+		break;
 		case 3:
 			vte->cattr.italic = 1;
 		break;
@@ -1179,6 +1187,7 @@ static void csi_attribute(struct tsm_vte *vte)
 			break;
 		case 22:
 			vte->cattr.bold = 0;
+			vte->cattr.faint = 0;
 			break;
 		case 23:
 			vte->cattr.italic = 0;
@@ -1712,24 +1721,26 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 		arcan_tui_move_left(vte->con, num);
 		break;
 	case 'd':{ /* VPA */
-		size_t cx, cy;
 		/* Vertical Line Position Absolute */
 		num = vte->csi_argv[0];
 		if (num <= 0)
 			num = 1;
+		size_t cx, cy;
 		arcan_tui_cursorpos(vte->con, &cx, &cy);
-		arcan_tui_move_to(vte->con, cx, num - 1);
+		x = cx; y = cy;
+		arcan_tui_move_to(vte->con, x, num - 1);
 		break;
 	}
 	case 'e':{ /* VPR */
-		size_t cx, cy;
 		/* Vertical Line Position Relative */
 		num = vte->csi_argv[0];
 		if (num <= 0)
 			num = 1;
+		size_t cx, cy;
 		arcan_tui_cursorpos(vte->con, &cx, &cy);
-		arcan_tui_move_to(vte->con, cx, cy + num);
-		break;
+		x = cx; y = cy;
+		arcan_tui_move_to(vte->con, x, y + num);
+	break;
 	}
 	case 'H': /* CUP */
 	case 'f': /* HVP */
@@ -1743,13 +1754,14 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 		arcan_tui_move_to(vte->con, y - 1, x - 1);
 		break;
 	case 'G':{ /* CHA */
-		size_t cx, cy;
 		/* Cursor Character Absolute */
 		num = vte->csi_argv[0];
 		if (num <= 0)
 			num = 1;
+		size_t cx, cy;
 		arcan_tui_cursorpos(vte->con, &cx, &cy);
-		arcan_tui_move_to(vte->con, num - 1, cy);
+		x = cx; y = cy;
+		arcan_tui_move_to(vte->con, num - 1, y);
 	break;
 	}
 	case 'J':

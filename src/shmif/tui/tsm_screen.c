@@ -1071,7 +1071,7 @@ void tsm_screen_sb_page_down(struct tsm_screen *con, unsigned int num)
 SHL_EXPORT
 void tsm_screen_sb_reset(struct tsm_screen *con)
 {
-	if (!con)
+	if (!con || !con->sb_pos)
 		return;
 
 	inc_age(con);
@@ -2102,7 +2102,7 @@ tsm_age_t tsm_screen_draw(struct tsm_screen *con, tsm_screen_draw_cb draw_cb,
 {
 	unsigned int i, j, k;
 	struct line *iter, *line = NULL;
-	struct cell *cell;
+	struct cell *cell, empty;
 	struct tsm_screen_attr attr;
 	int ret, warned = 0;
 	const uint32_t *ch;
@@ -2113,6 +2113,8 @@ tsm_age_t tsm_screen_draw(struct tsm_screen *con, tsm_screen_draw_cb draw_cb,
 
 	if (!con || !draw_cb)
 		return 0;
+
+	cell_init(con, &empty);
 
 	/* push each character into rendering pipeline */
 
@@ -2160,7 +2162,10 @@ tsm_age_t tsm_screen_draw(struct tsm_screen *con, tsm_screen_draw_cb draw_cb,
 		}
 
 		for (j = 0; j < con->size_x; ++j) {
-			cell = &line->cells[j];
+			if (j < line->size)
+				cell = &line->cells[j];
+			else
+				cell = &empty;
 			memcpy(&attr, &cell->attr, sizeof(attr));
 
 			if (con->sel_active) {
