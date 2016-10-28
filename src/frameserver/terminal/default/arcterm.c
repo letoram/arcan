@@ -14,8 +14,10 @@ static struct {
 	struct tui_context* screen;
 	struct tsm_vte* vte;
 	struct shl_pty* pty;
-	size_t cursor_x, cursor_y;
 	pid_t child;
+
+/* toggle whenever something has happened that should mandate a disp-synch */
+	bool alive;
 } term;
 
 static inline void trace(const char* msg, ...)
@@ -27,6 +29,17 @@ static inline void trace(const char* msg, ...)
 	va_end( args);
 	fprintf(stderr, "\n");
 #endif
+}
+
+static bool pump_pty()
+{
+	int rv = shl_pty_dispatch(term.pty);
+	if (rv == -ENODEV){
+		term.alive = false;
+	}
+	else if (rv == -EAGAIN)
+		return true;
+	return false;
 }
 
 static void dump_help()
@@ -96,8 +109,9 @@ static bool on_u8(struct tui_context* c, const char* u8, size_t len, void* t)
 	uint8_t buf[5] = {0};
 	trace("utf8-input: %s", u8);
 	memcpy(buf, u8, len >= 5 ? 4 : len);
-	shl_pty_write(term.pty, (char*) buf, len);
-	shl_pty_dispatch(term.pty);
+	if (shl_pty_write(term.pty, (char*) buf, len) < 0)
+		term.alive = false;
+	pump_pty();
 	return true;
 }
 
@@ -120,7 +134,6 @@ static void read_callback(struct shl_pty* pty,
 	void* data, char* u8, size_t len)
 {
 	tsm_vte_input(term.vte, u8, len);
-	arcan_tui_cursorpos(term.screen, &term.cursor_x, &term.cursor_y);
 }
 
 static void write_callback(struct tsm_vte* vte,
@@ -265,6 +278,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 
 	tsm_vte_set_color(term.vte, VTE_COLOR_BACKGROUND, cfg.bgc);
 	tsm_vte_set_color(term.vte, VTE_COLOR_FOREGROUND, cfg.fgc);
+	LOG("set fgc: %d, %d, %d\n", cfg.fgc[0], cfg.fgc[1], cfg.fgc[2]);
 
 /*
  * and lastly, spawn the pseudo-terminal
@@ -273,7 +287,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	arcan_tui_dimensions(term.screen, &rows, &cols);
 	term.child = shl_pty_open(&term.pty, read_callback, NULL, cols, rows);
 	if (term.child < 0){
-		LOG("couldn't spawn child termainl.\n");
+		LOG("couldn't spawn child terminal.\n");
 		return EXIT_FAILURE;
 	}
 
@@ -299,20 +313,21 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		return EXIT_FAILURE;
 	}
 
+	term.alive = true;
 	int inf = shl_pty_get_fd(term.pty);
-	shl_pty_dispatch(term.pty);
+	while(pump_pty()){}
 	arcan_tui_refresh(&term.screen, 1);
 
-	int delay = -1;
-	long last = arcan_timemillis();
-	while (1){
-		struct tui_process_res res = arcan_tui_process(
-			&term.screen, 1, &inf, 1, delay);
-
+	while (term.alive){
+		struct tui_process_res res = arcan_tui_process(&term.screen, 1, &inf, 1, -1);
 		if (res.errc < TUI_ERRC_OK || res.bad)
 				break;
 
-		while(shl_pty_dispatch(term.pty) == -EAGAIN){}
+/* arbitrary cut-off point, too high and something like find / will stall,
+ * too low, and we'll get dirty updates. */
+		int flushc = 10;
+		while(pump_pty() && flushc--){}
+
 		arcan_tui_refresh(&term.screen, 1);
 	}
 
