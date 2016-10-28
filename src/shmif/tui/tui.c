@@ -1074,7 +1074,7 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 			}
 			else if (tui->inactive){
 				tui->inactive = false;
-				update = true;
+				tui->dirty |= DIRTY_PENDING;
 			}
 
 	/* selection change */
@@ -1110,11 +1110,8 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 			float sf = tui->ppcm / ev->ioevs[4].fv;
 			tui->ppcm = ev->ioevs[4].fv;
 			setup_font(tui, BADFD, 0, 0);
-			update = true;
-		}
-
-		if (update)
 			tui->dirty = DIRTY_PENDING_FULL;
+		}
 	}
 	break;
 
@@ -1456,41 +1453,39 @@ struct tui_process_res arcan_tui_process(
 	return res;
 }
 
-uint64_t arcan_tui_refresh(
-	struct tui_context** contexts, size_t n_contexts)
+int arcan_tui_refresh(struct tui_context* tui)
 {
-	if (!n_contexts || !contexts || !contexts[0])
-		return 0;
-
-/* only run an update now if we've not got one pending */
-	for (size_t i = 0; i < n_contexts; i++){
-		if (contexts[i]->acon.addr &&
-			!atomic_load(&contexts[i]->acon.addr->vready))
-			update_screen(contexts[i]);
+	if (!tui || !tui->acon.addr){
+		errno = EINVAL;
+		return -1;
 	}
 
-	uint64_t upd_mask = 0;
+	if (atomic_load(&tui->acon.addr->vready)){
+		errno = EAGAIN;
+		return -1;
+	}
 
-/* update screen will flag things dirty, time to synch the ones that
- * are -- though we don't block */
-	for (size_t i = 0; i < n_contexts && i < 64; i++){
-		struct tui_context* tui = contexts[i];
-		if ((tui->dirty & DIRTY_UPDATED) &&
-			!atomic_load(&contexts[i]->acon.addr->vready)){
-			tui->dirty = DIRTY_NONE;
-			arcan_shmif_signal(&tui->acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
+	update_screen(tui);
 
-/* set invalid synch region until redraw changes that */
-			tui->acon.dirty.x1 = tui->acon.w;
-			tui->acon.dirty.x2 = 0;
-			tui->acon.dirty.y1 = tui->acon.h;
-			tui->acon.dirty.y2 = 0;
-
-			upd_mask |= 1 << i;
+	if (tui->dirty & DIRTY_UPDATED){
+		if (atomic_load(&tui->acon.addr->vready)){
+			errno = EAGAIN;
+			return -1;
 		}
+		arcan_shmif_signal(&tui->acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
+
+/* set invalid synch region until redraw changes that, the dirty
+ * buffer gets copied during signal so no problem there */
+		tui->acon.dirty.x1 = tui->acon.w;
+		tui->acon.dirty.x2 = 0;
+		tui->acon.dirty.y1 = tui->acon.h;
+		tui->acon.dirty.y2 = 0;
+		tui->dirty = DIRTY_NONE;
+
+		return 1;
 	}
 
-	return upd_mask;
+	return 0;
 }
 
 void arcan_tui_invalidate(struct tui_context* tui)

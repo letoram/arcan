@@ -332,13 +332,14 @@ struct tui_process_res arcan_tui_process(
 	int* fdset, size_t fdset_sz, int timeout);
 
 /*
- * If the TUI- managed connection is marked as dirty, synch the
- * relevant regions and return (handles multiple- contexts)
- *
- * returns a bitmask over the contexts that were updated
+ * Update and synch the specified context.
+ * Returns:
+ *  1 on success
+ *  0 on state-ok but no need to sync
+ * -1 and errno (:EAGAIN) if the connection is already busy synching
+ * -1 and errno (:EINVAL) if the connection is broken
  */
-uint64_t arcan_tui_refresh(
-	struct tui_context** contexts, size_t n_contexts);
+int arcan_tui_refresh(struct tui_context*);
 
 /*
  * Explicitly invalidate the context, next refresh will likely

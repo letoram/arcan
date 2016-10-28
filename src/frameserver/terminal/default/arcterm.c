@@ -316,10 +316,11 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	term.alive = true;
 	int inf = shl_pty_get_fd(term.pty);
 	while(pump_pty()){}
-	arcan_tui_refresh(&term.screen, 1);
+	arcan_tui_refresh(term.screen);
 
+	int delay = -1;
 	while (term.alive){
-		struct tui_process_res res = arcan_tui_process(&term.screen, 1, &inf, 1, -1);
+		struct tui_process_res res = arcan_tui_process(&term.screen, 1, &inf, 1, delay);
 		if (res.errc < TUI_ERRC_OK || res.bad)
 				break;
 
@@ -328,7 +329,8 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		int flushc = 10;
 		while(pump_pty() && flushc--){}
 
-		arcan_tui_refresh(&term.screen, 1);
+/* the magic 8 value should be positioned as something like display-synch / 2 */
+		delay = arcan_tui_refresh(term.screen) < 0 && errno == EAGAIN ? 8 : -1;
 	}
 
 /* might have been destroyed already, just in case */
