@@ -746,6 +746,14 @@ struct arcan_shmif_page {
  */
 	uint64_t cookie;
 
+/* [ARCAN-SET]
+ * Reserved for now, will be used to reduce the amount of _INPUT events with
+ * ANALOG/IDEVKIND:MOUSE and instead just update these fields with the latest
+ * sampled value. An accessor function will handle the migration between the
+ * event-driven and memory mapped model.
+ */
+	volatile _Atomic uint_least16_t cursor_x, cursor_y, cursor_r, cursor_ry;
+
 /*
  * [ARCAN-SET (parent), FSRV-SET (child)]
  * Uses the event model provded in shmif/arcan_event and tightly couples
@@ -801,9 +809,18 @@ struct arcan_shmif_page {
 /*
  * [ARCAN-SET]
  * Set during segment initalization, provides some identifier to determine
- * if the parent process is still allowed (used internally by GUARDTHREAD).
+ * if the parent process is still alive (used internally by GUARDTHREAD).
  * Can also be updated in relation to a RESET event.
  */
 	process_handle parent;
+
+/*
+ * [ARCAN-SET]
+ * Set once during initilization, and will be zero/NULL for most connection.
+ * The intended use is to provide a mechanism for further engine segmentation
+ * and for more complex data sources. A prime example is the hmdsupport tool.
+ */
+	volatile uint32_t apad, apad_type;
+	void* adata;
 };
 #endif
