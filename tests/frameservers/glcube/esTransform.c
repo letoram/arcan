@@ -46,8 +46,8 @@
 
 #define PI 3.1415926535897932384626433832795f
 
-void ESUTIL_API
-esScale(ESMatrix *result, GLfloat sx, GLfloat sy, GLfloat sz)
+void
+esScale(ESMatrix *result, float sx, float sy, float sz)
 {
     result->m[0][0] *= sx;
     result->m[0][1] *= sx;
@@ -65,8 +65,8 @@ esScale(ESMatrix *result, GLfloat sx, GLfloat sy, GLfloat sz)
     result->m[2][3] *= sz;
 }
 
-void ESUTIL_API
-esTranslate(ESMatrix *result, GLfloat tx, GLfloat ty, GLfloat tz)
+void
+esTranslate(ESMatrix *result, float tx, float ty, float tz)
 {
     result->m[3][0] += (result->m[0][0] * tx + result->m[1][0] * ty + result->m[2][0] * tz);
     result->m[3][1] += (result->m[0][1] * tx + result->m[1][1] * ty + result->m[2][1] * tz);
@@ -74,20 +74,20 @@ esTranslate(ESMatrix *result, GLfloat tx, GLfloat ty, GLfloat tz)
     result->m[3][3] += (result->m[0][3] * tx + result->m[1][3] * ty + result->m[2][3] * tz);
 }
 
-void ESUTIL_API
-esRotate(ESMatrix *result, GLfloat angle, GLfloat x, GLfloat y, GLfloat z)
+void
+esRotate(ESMatrix *result, float angle, float x, float y, float z)
 {
-   GLfloat sinAngle, cosAngle;
-   GLfloat mag = sqrtf(x * x + y * y + z * z);
-      
+   float sinAngle, cosAngle;
+   float mag = sqrtf(x * x + y * y + z * z);
+
    sinAngle = sinf ( angle * PI / 180.0f );
    cosAngle = cosf ( angle * PI / 180.0f );
    if ( mag > 0.0f )
    {
-      GLfloat xx, yy, zz, xy, yz, zx, xs, ys, zs;
-      GLfloat oneMinusCos;
+      float xx, yy, zz, xy, yz, zx, xs, ys, zs;
+      float oneMinusCos;
       ESMatrix rotMat;
-   
+
       x /= mag;
       y /= mag;
       z /= mag;
@@ -106,7 +106,7 @@ esRotate(ESMatrix *result, GLfloat angle, GLfloat x, GLfloat y, GLfloat z)
       rotMat.m[0][0] = (oneMinusCos * xx) + cosAngle;
       rotMat.m[0][1] = (oneMinusCos * xy) - zs;
       rotMat.m[0][2] = (oneMinusCos * zx) + ys;
-      rotMat.m[0][3] = 0.0F; 
+      rotMat.m[0][3] = 0.0F;
 
       rotMat.m[1][0] = (oneMinusCos * xy) + zs;
       rotMat.m[1][1] = (oneMinusCos * yy) + cosAngle;
@@ -116,7 +116,7 @@ esRotate(ESMatrix *result, GLfloat angle, GLfloat x, GLfloat y, GLfloat z)
       rotMat.m[2][0] = (oneMinusCos * zx) - ys;
       rotMat.m[2][1] = (oneMinusCos * yz) + xs;
       rotMat.m[2][2] = (oneMinusCos * zz) + cosAngle;
-      rotMat.m[2][3] = 0.0F; 
+      rotMat.m[2][3] = 0.0F;
 
       rotMat.m[3][0] = 0.0F;
       rotMat.m[3][1] = 0.0F;
@@ -127,7 +127,7 @@ esRotate(ESMatrix *result, GLfloat angle, GLfloat x, GLfloat y, GLfloat z)
    }
 }
 
-void ESUTIL_API
+void
 esFrustum(ESMatrix *result, float left, float right, float bottom, float top, float nearZ, float farZ)
 {
     float       deltaX = right - left;
@@ -157,18 +157,18 @@ esFrustum(ESMatrix *result, float left, float right, float bottom, float top, fl
 }
 
 
-void ESUTIL_API 
+void
 esPerspective(ESMatrix *result, float fovy, float aspect, float nearZ, float farZ)
 {
-   GLfloat frustumW, frustumH;
-   
+   float frustumW, frustumH;
+
    frustumH = tanf( fovy / 360.0f * PI ) * nearZ;
    frustumW = frustumH * aspect;
 
    esFrustum( result, -frustumW, frustumW, -frustumH, frustumH, nearZ, farZ );
 }
 
-void ESUTIL_API
+void
 esOrtho(ESMatrix *result, float left, float right, float bottom, float top, float nearZ, float farZ)
 {
     float       deltaX = right - left;
@@ -191,7 +191,7 @@ esOrtho(ESMatrix *result, float left, float right, float bottom, float top, floa
 }
 
 
-void ESUTIL_API
+void
 esMatrixMultiply(ESMatrix *result, ESMatrix *srcA, ESMatrix *srcB)
 {
     ESMatrix    tmp;
@@ -204,17 +204,17 @@ esMatrixMultiply(ESMatrix *result, ESMatrix *srcA, ESMatrix *srcB)
 						(srcA->m[i][2] * srcB->m[2][0]) +
 						(srcA->m[i][3] * srcB->m[3][0]) ;
 
-		tmp.m[i][1] =	(srcA->m[i][0] * srcB->m[0][1]) + 
+		tmp.m[i][1] =	(srcA->m[i][0] * srcB->m[0][1]) +
 						(srcA->m[i][1] * srcB->m[1][1]) +
 						(srcA->m[i][2] * srcB->m[2][1]) +
 						(srcA->m[i][3] * srcB->m[3][1]) ;
 
-		tmp.m[i][2] =	(srcA->m[i][0] * srcB->m[0][2]) + 
+		tmp.m[i][2] =	(srcA->m[i][0] * srcB->m[0][2]) +
 						(srcA->m[i][1] * srcB->m[1][2]) +
 						(srcA->m[i][2] * srcB->m[2][2]) +
 						(srcA->m[i][3] * srcB->m[3][2]) ;
 
-		tmp.m[i][3] =	(srcA->m[i][0] * srcB->m[0][3]) + 
+		tmp.m[i][3] =	(srcA->m[i][0] * srcB->m[0][3]) +
 						(srcA->m[i][1] * srcB->m[1][3]) +
 						(srcA->m[i][2] * srcB->m[2][3]) +
 						(srcA->m[i][3] * srcB->m[3][3]) ;
@@ -223,7 +223,7 @@ esMatrixMultiply(ESMatrix *result, ESMatrix *srcA, ESMatrix *srcB)
 }
 
 
-void ESUTIL_API
+void
 esMatrixLoadIdentity(ESMatrix *result)
 {
     memset(result, 0x0, sizeof(ESMatrix));

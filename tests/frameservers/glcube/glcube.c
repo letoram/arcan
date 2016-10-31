@@ -28,11 +28,20 @@
 #include <arcan_shmif.h>
 #include <inttypes.h>
 
-#define GL_GLEXT_PROTOTYPES 1
+#ifdef __APPLE__
+#include <OpenGL/gl.h>
+#include <OpenGL/glext.h>
+#else
+#ifdef GLES2
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
-#include <EGL/egl.h>
-#include <EGL/eglext.h>
+#elif GLES3
+#include <GLES3/gl3.h>
+#include <GLES3/gl3ext.h>
+#else
+#include <GL/gl.h>
+#endif
+#endif
 
 #include "esUtil.h"
 
@@ -48,7 +57,7 @@ static int init_gl(void)
 	GLuint vertex_shader, fragment_shader;
 	GLint ret;
 
-	static const GLfloat vVertices[] = {
+	static const float vVertices[] = {
 			// front
 			-1.0f, -1.0f, +1.0f,
 			+1.0f, -1.0f, +1.0f,
@@ -81,7 +90,7 @@ static int init_gl(void)
 			+1.0f, -1.0f, +1.0f,
 	};
 
-	static const GLfloat vColors[] = {
+	static const float vColors[] = {
 			// front
 			0.0f,  0.0f,  1.0f, // blue
 			1.0f,  0.0f,  1.0f, // magenta
@@ -114,7 +123,7 @@ static int init_gl(void)
 			1.0f,  0.0f,  1.0f  // magenta
 	};
 
-	static const GLfloat vNormals[] = {
+	static const float vNormals[] = {
 			// front
 			+0.0f, +0.0f, +1.0f, // forward
 			+0.0f, +0.0f, +1.0f, // forward
@@ -290,7 +299,7 @@ static void draw(struct arcan_shmif_cont* con, uint32_t i)
 	esRotate(&modelview, 45.0f - (0.5f * i), 0.0f, 1.0f, 0.0f);
 	esRotate(&modelview, 10.0f + (0.15f * i), 0.0f, 0.0f, 1.0f);
 
-	GLfloat aspect = (GLfloat)(con->w) / (GLfloat)(con->h);
+	float aspect = (float)(con->w) / (float)(con->h);
 
 	ESMatrix projection;
 	esMatrixLoadIdentity(&projection);
@@ -370,8 +379,6 @@ static bool pump_connection(struct arcan_shmif_cont* con, int* i)
 	case TARGET_COMMAND_DISPLAYHINT:
 		if (ev.tgt.ioevs[0].iv && ev.tgt.ioevs[1].iv &&
 			(ev.tgt.ioevs[0].iv != con->w || ev.tgt.ioevs[1].iv != con->h)){
-			printf("got displayhint: %"PRIxPTR" %d, %d\n", (uintptr_t) con, ev.tgt.ioevs[0].iv,
-				ev.tgt.ioevs[1].iv);
 			arcan_shmif_resize(con, ev.tgt.ioevs[0].iv, ev.tgt.ioevs[1].iv);
 		}
 	break;
@@ -388,19 +395,34 @@ static bool pump_connection(struct arcan_shmif_cont* con, int* i)
 
 int main(int argc, char *argv[])
 {
-	struct arcan_shmif_cont* con1 = setup_connection();
-	struct arcan_shmif_cont* con2 = setup_connection();
+	int n_conn = 1;
 
-	if (!con1 || !con2)
-		return EXIT_FAILURE;
+	struct arcan_shmif_cont* con[n_conn];
+	int state[n_conn];
 
-	int s1 = 0, s2 = 100;
-	while( pump_connection(con1, &s1) && pump_connection(con2, &s2) ){
-		printf("s1: %d @ (%zu * %zu), s2: (%d %zu * %zu)\n", s1, con1->w, con1->h,
-			s2, con2->w, con2->h);
+	for (size_t i = 0; i < n_conn; i++){
+		con[i] = setup_connection();
+		if (!con[i]){
+			fprintf(stderr, "couldn't setup connection (%zu)\n", i);
+			return EXIT_FAILURE;
+		}
+		state[i] = rand() % 10000;
 	}
 
-	arcan_shmif_drop(con1);
-	arcan_shmif_drop(con2);
+	while(1){
+		for (size_t i = 0; i < n_conn; i++){
+			if (!pump_connection(con[i], &state[i])){
+				fprintf(stderr, "connection (%zu) failed\n", i);
+				goto out;
+			}
+			printf("(%zu) @ (%zu * %zu)\n", i, con[i]->w, con[i]->h);
+		}
+	}
+
+out:
+	for (size_t i = 0; i < n_conn; i++){
+		arcan_shmif_drop(con[i]);
+	}
+
 	return EXIT_SUCCESS;
 }

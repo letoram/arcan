@@ -50,6 +50,15 @@ enum shmifext_setup_status arcan_shmifext_headless_setup(
 	GLint si = 0;
 	CGLSetParameter(context, kCGLCPSwapInterval, &si);
 
+	struct shmif_ext_hidden_int* ctx = con->privext->internal;
+
+	if (arg.builtin_fbo){
+		agp_empty_vstore(&ctx->vstore, con->w, con->h);
+		ctx->rtgt = agp_setup_rendertarget(
+			&ctx->vstore, arg.depth > 0 ? RENDERTARGET_COLOR_DEPTH_STENCIL :
+				RENDERTARGET_COLOR);
+	}
+
 	return SHMIFEXT_OK;
 }
 
@@ -90,6 +99,10 @@ bool arcan_shmifext_headless_vk(struct arcan_shmif_cont* con,
 int arcan_shmifext_eglsignal(struct arcan_shmif_cont* con,
 	uintptr_t display, int mask, uintptr_t tex_id, ...)
 {
+	if (!con || !con->addr || !con->privext || !con->privext->internal)
+		return -1;
+
+
 	return -1;
 }
 
@@ -98,3 +111,41 @@ int arcan_shmifext_vksignal(struct arcan_shmif_cont* con,
 {
 	return -1;
 }
+
+/*
+ * workaround for some namespace pollution
+ */
+#include <mach/mach_time.h>
+
+bool platform_video_map_handle(
+	struct storage_info_t* dst, int64_t handle)
+{
+	return false;
+}
+
+void arcan_warning(const char* msg, ...)
+{
+}
+
+void arcan_fatal(const char* msg, ...)
+{
+}
+
+unsigned long long int arcan_timemillis()
+{
+	uint64_t time = mach_absolute_time();
+	static double sf;
+
+	if (!sf){
+		mach_timebase_info_data_t info;
+		kern_return_t ret = mach_timebase_info(&info);
+		if (ret == 0)
+			sf = (double)info.numer / (double)info.denom;
+		else{
+			sf = 1.0;
+		}
+	}
+	return ( (double)time * sf) / 1000000;
+}
+
+

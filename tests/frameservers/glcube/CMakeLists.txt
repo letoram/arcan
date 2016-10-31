@@ -29,5 +29,7 @@ SET(SOURCES
 	${PROJECT_NAME}.c
 )
 
+FIND_PACKAGE(OpenGL REQUIRED)
+
 add_executable(${PROJECT_NAME} ${SOURCES} ${SHMIF_SOURCES})
-target_link_libraries(${PROJECT_NAME} ${LIBRARIES} GL EGL)
+target_link_libraries(${PROJECT_NAME} ${LIBRARIES} ${OPENGL_gl_LIBRARY})
