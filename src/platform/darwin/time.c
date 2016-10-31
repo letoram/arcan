@@ -16,7 +16,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-long long int arcan_timemillis()
+unsigned long long int arcan_timemillis()
 {
 	uint64_t time = mach_absolute_time();
 	static double sf;
