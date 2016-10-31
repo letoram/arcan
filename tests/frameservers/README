@@ -35,3 +35,5 @@ migrant/ will connect to the normal CONNPATH, render a number of frames
 
 tui_test/ attempts to use the shmif_tui library to create a text-
  based user interface
+
+glcube/ a quick port of robclark/kmscube

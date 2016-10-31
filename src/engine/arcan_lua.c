@@ -7610,8 +7610,8 @@ static int spawn_recfsrv(lua_State* ctx,
 	size_t vbuf_sz = args.init_w * args.init_h * sizeof(shmif_pixel);
 /*
  * chicken and egg, need the size to map the buffer and need the buffer
- * to map the size -- but not really, _mapav won't read/write. This is
- * safe as long as an implementation of _mapav matches the one in posix/shmop
+ * to map the size -- but not really, _mapav won't read/write if the
+ * incoming pointer is NULL.
  */
 	mvctx->shm.shmsize = arcan_shmif_mapav(
 		(struct arcan_shmif_page*) &args, NULL, 1, vbuf_sz, NULL, 1, 32768);

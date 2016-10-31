@@ -27,7 +27,6 @@
 #define WANT_ARCAN_SHMIF_HELPER
 #include <arcan_shmif.h>
 
-/*
 #define GL_GLEXT_PROTOTYPES 1
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
@@ -42,10 +41,9 @@ static struct {
 	GLuint vbo;
 	GLuint positionsoffset, colorsoffset, normalsoffset;
 } gl;
-*/
+
 static int init_gl(void)
 {
-/*
 	GLuint vertex_shader, fragment_shader;
 	GLint ret;
 
@@ -149,6 +147,7 @@ static int init_gl(void)
 	};
 
 	static const char *vertex_shader_source =
+			"#version 120\n"
 			"uniform mat4 modelviewMatrix;      \n"
 			"uniform mat4 modelviewprojectionMatrix;\n"
 			"uniform mat3 normalMatrix;         \n"
@@ -173,7 +172,7 @@ static int init_gl(void)
 			"}                                  \n";
 
 	static const char *fragment_shader_source =
-			"precision mediump float;           \n"
+			"#version 120\n"
 			"                                   \n"
 			"varying vec4 vVaryingColor;        \n"
 			"                                   \n"
@@ -181,7 +180,6 @@ static int init_gl(void)
 			"{                                  \n"
 			"    gl_FragColor = vVaryingColor;  \n"
 			"}                                  \n";
-
 
 	vertex_shader = glCreateShader(GL_VERTEX_SHADER);
 
@@ -275,16 +273,13 @@ static int init_gl(void)
 	glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 0, (const GLvoid *)(intptr_t)gl.colorsoffset);
 	glEnableVertexAttribArray(2);
 
-*/
 	return 0;
 }
 static void draw(struct arcan_shmif_cont* con, uint32_t i)
 {
-/*
 	ESMatrix modelview;
-*/
 	/* clear the color buffer */
-	/*glViewport(0, 0, con->w, con->h);
+	glViewport(0, 0, con->w, con->h);
 	glClearColor(0.5, 0.5, 0.5, 1.0);
 	glClear(GL_COLOR_BUFFER_BIT);
 
@@ -324,7 +319,7 @@ static void draw(struct arcan_shmif_cont* con, uint32_t i)
 	glDrawArrays(GL_TRIANGLE_STRIP, 8, 4);
 	glDrawArrays(GL_TRIANGLE_STRIP, 12, 4);
 	glDrawArrays(GL_TRIANGLE_STRIP, 16, 4);
-	glDrawArrays(GL_TRIANGLE_STRIP, 20, 4); */
+	glDrawArrays(GL_TRIANGLE_STRIP, 20, 4);
 }
 
 /*
@@ -354,10 +349,10 @@ static struct arcan_shmif_cont* setup_connection()
 /* activate / switch to this context */
 	arcan_shmifext_make_current(&con);
 	init_gl();
-	/*
+
 	glClearColor(0.5, 0.5, 0.5, 1.0);
 	glClear(GL_COLOR_BUFFER_BIT);
-	glFlush(); */
+	glFlush();
 	arcan_shmifext_eglsignal(&con, 0, SHMIF_SIGVID, SHMIFEXT_BUILTIN);
 
 	return res;
@@ -381,7 +376,7 @@ static void pump_connection(struct arcan_shmif_cont* con)
 		}
 
 		draw(con, i++);
-/*		glFlush(); */
+		glFlush();
 		arcan_shmifext_eglsignal(con, 0, SHMIF_SIGVID, SHMIFEXT_BUILTIN);
 	}
 }
