@@ -1,14 +1,8 @@
-/*
- * No copyright claimed, Public Domain
- */
+#ifndef HAVE_GLFUN
+#define HAVE_GLFUN
 
 /*
- * Cherry- picked OpenGL functions used by glshared/gl21 and possible
- * other GL- related functions. It should be populated by the corresponding
- * gl%w*%d%d.c file.
- *
- * For new agp/ entries that uses GL, expand and mark which agp file
- * that is involved.
+ * No copyright claimed, Public Domain
  */
 
 #ifdef __APPLE__
@@ -25,105 +19,118 @@
 #define GL_DEPTH_STENCIL_ATTACHMENT GL_STENCIL_ATTACHMENT
 #endif
 
-static void glDrawBuffer(){}
-static void glReadBuffer(){}
-
 #elif GLES3
 #include <GLES3/gl3.h>
 #include <GLES3/gl3ext.h>
 
 #else
 
-#ifdef __WINDOWS
-
-#define NO_SDL_GLEXT
-#include <SDL_opengl.h>
-#include "glext.h"
-
-#else
-
-#define glActiveTexture glActiveTextureIGNORE
 #include <GL/gl.h>
 #include "glext.h"
-#undef glActiveTexture
+
+#endif
 #endif
 
-#ifndef MAP_PREFIX
-#define MAP_PREFIX extern
-#endif
+/*
+ * To work with the extension wrangling problem and all the other headaches
+ * with multiple GL libraries, switching GL library at runtime for
+ * multiple-GPUs, we package all the functions we need in a struct that is
+ * instanced per GPU/vendor.
+ */
+struct agp_fenv {
+/* PBOs / transfers */
+	void (*draw_buffer) (GLenum);
+	void (*read_buffer) (GLenum);
+	void (*delete_buffers) (GLsizei, const GLuint*);
+	GLboolean (*unmap_buffer) (GLenum);
+	void (*gen_buffers) (GLsizei, GLuint*);
+	void (*buffer_data) (GLenum, GLsizeiptr, const GLvoid*, GLenum);
+	void (*bind_buffer) (GLenum, GLuint);
+	void* (*map_buffer) (GLenum, GLenum);
 
-MAP_PREFIX PFNGLDELETEBUFFERSPROC glDeleteBuffers;
-MAP_PREFIX PFNGLUNMAPBUFFERPROC glUnmapBuffer;
-MAP_PREFIX PFNGLGENBUFFERSPROC glGenBuffers;
-MAP_PREFIX PFNGLBUFFERDATAPROC glBufferData;
-MAP_PREFIX PFNGLBINDBUFFERPROC glBindBuffer;
-MAP_PREFIX PFNGLGENFRAMEBUFFERSPROC glGenFramebuffers;
-MAP_PREFIX PFNGLBINDFRAMEBUFFERPROC glBindFramebuffer;
-MAP_PREFIX PFNGLFRAMEBUFFERTEXTURE2DPROC glFramebufferTexture2D;
-MAP_PREFIX PFNGLBINDRENDERBUFFERPROC glBindRenderbuffer;
-MAP_PREFIX PFNGLRENDERBUFFERSTORAGEPROC glRenderbufferStorage;
-MAP_PREFIX PFNGLFRAMEBUFFERRENDERBUFFERPROC glFramebufferRenderbuffer;
-MAP_PREFIX PFNGLCHECKFRAMEBUFFERSTATUSPROC glCheckFramebufferStatus;
-MAP_PREFIX PFNGLDELETEFRAMEBUFFERSPROC glDeleteFramebuffers;
-MAP_PREFIX PFNGLDELETERENDERBUFFERSPROC glDeleteRenderbuffers;
-MAP_PREFIX PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray;
-MAP_PREFIX PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer;
-MAP_PREFIX PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray;
-MAP_PREFIX PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray;
-MAP_PREFIX PFNGLUNIFORM1IPROC glUniform1i;
-MAP_PREFIX PFNGLUNIFORM1FPROC glUniform1f;
-MAP_PREFIX PFNGLUNIFORM2FPROC glUniform2f;
-MAP_PREFIX PFNGLUNIFORM3FPROC glUniform3f;
-MAP_PREFIX PFNGLUNIFORM4FPROC glUniform4f;
-MAP_PREFIX PFNGLUNIFORMMATRIX4FVPROC glUniformMatrix4fv;
-MAP_PREFIX PFNGLCREATEPROGRAMPROC glCreateProgram;
-MAP_PREFIX PFNGLUSEPROGRAMPROC glUseProgram;
-MAP_PREFIX PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation;
-MAP_PREFIX PFNGLGETATTRIBLOCATIONPROC glGetAttributeLocation;
-MAP_PREFIX PFNGLDELETEPROGRAMPROC glDeleteProgram;
-MAP_PREFIX PFNGLDELETESHADERPROC glDeleteShader;
-MAP_PREFIX PFNGLSHADERSOURCEPROC glShaderSource;
-MAP_PREFIX PFNGLCOMPILESHADERPROC glCompileShader;
-MAP_PREFIX PFNGLGETSHADERIVPROC glGetShaderiv;
-MAP_PREFIX PFNGLGETSHADERINFOLOGPROC glGetShaderInfoLog;
-MAP_PREFIX PFNGLATTACHSHADERPROC glAttachShader;
-MAP_PREFIX PFNGLLINKPROGRAMPROC glLinkProgram;
-MAP_PREFIX PFNGLGETPROGRAMIVPROC glGetProgramiv;
-MAP_PREFIX PFNGLGENRENDERBUFFERSPROC glGenRenderbuffers;
-MAP_PREFIX PFNGLMAPBUFFERARBPROC glMapBuffer;
-MAP_PREFIX PFNGLGETATTRIBLOCATIONPROC glGetAttribLocation;
-MAP_PREFIX PFNGLDELETEPROGRAMPROC glDeleteProgram;
-MAP_PREFIX PFNGLCREATESHADERPROC glCreateShader;
-MAP_PREFIX PFNGLACTIVETEXTUREPROC glActiveTexture;
+/* FBOs */
+	void (*gen_framebuffers) (GLsizei, GLuint*);
+	void (*bind_framebuffer) (GLenum, GLuint);
+	void (*framebuffer_texture_2d) (GLenum, GLenum, GLenum, GLuint, GLint);
+	void (*bind_renderbuffer) (GLenum, GLuint);
+	void (*renderbuffer_storage) (GLenum, GLenum, GLsizei, GLsizei);
+	void (*framebuffer_renderbuffer) (GLenum, GLenum, GLenum, GLuint);
+	GLenum (*check_framebuffer) (GLenum);
+	void (*delete_framebuffers) (GLsizei, const GLuint*);
+	void (*gen_renderbuffers)(GLsizei, GLuint*);
+	void (*delete_renderbuffers) (GLsizei, const GLuint*);
 
-/* part of 1.1 (i.e. all openGL libs), ignored
-MAP_PREFIX PFNGLBINDTEXTUREEXTPROC glBindTexture;
-MAP_PREFIX PFNGLDELETETEXTURESEXTPROC glDeleteTextures;
-MAP_PREFIX PFNGLTEXSUBIMAGE2DEXTPROC glTexSubImage2D;
-MAP_PREFIX PFNGLGETTEXTUREIMAGEEXTPROC glGetTexImage;
-MAP_PREFIX glDrawBuffer;
-MAP_PREFIX glReadBuffer;
-MAP_PREFIX glEnable;
-MAP_PREFIX glBlendFunc;
-MAP_PREFIX glDisable;
-MAP_PREFIX glFrontFace;
-MAP_PREFIX glCullFace;
-MAP_PREFIX glClearColor;
-MAP_PREFIX glHint;
-MAP_PREFIX glScissor;
-MAP_PREFIX glViewport;
-MAP_PREFIX glActiveTexture;
-MAP_PREFIX glTexParameteri;
-MAP_PREFIX glTexImage2D;
-MAP_PREFIX glClearStencil;
-MAP_PREFIX glColorMask;
-MAP_PREFIX glStencilFunc;
-MAP_PREFIX glStencilOp;
-MAP_PREFIX glDisable;
-MAP_PREFIX glDrawArrays;
-MAP_PREFIX glDepthMask;
-MAP_PREFIX glDrawElements;
-MAP_PREFIX glReadPixels;
-*/
-#endif
+/* VAs */
+	void (*enable_vertex_attrarray) (GLuint);
+	void (*vertex_attrpointer) (GLuint, GLint, GLenum, GLboolean, GLsizei, const GLvoid*);
+	void (*disable_vertex_attrarray) (GLuint);
+
+/* Shader Uniforms */
+	void (*unif_1i)(GLint, GLint);
+	void (*unif_1f)(GLint, GLfloat);
+	void (*unif_2f)(GLint, GLfloat, GLfloat);
+	void (*unif_3f)(GLint, GLfloat, GLfloat, GLfloat);
+	void (*unif_4f)(GLint, GLfloat, GLfloat, GLfloat, GLfloat);
+	void (*unif_m4fv)(GLint, GLsizei, GLboolean, const GLfloat *);
+	GLint (*get_attr_loc) (GLuint, const GLchar*);
+	GLint (*get_uniform_loc) (GLuint, const GLchar*);
+
+/* Shader Management */
+	GLuint (*create_program) (void);
+	void (*use_program) (GLuint);
+	void (*delete_program) (GLuint);
+	GLuint (*create_shader) (GLenum);
+	void (*delete_shader) (GLuint);
+	void (*shader_source) (GLuint, GLsizei, const GLchar**, const GLint*);
+	void (*compile_shader) (GLuint);
+	void (*shader_log) (GLuint, GLsizei, GLsizei*, GLchar*);
+	void (*get_shader_iv) (GLuint, GLenum, GLint*);
+	void (*attach_shader) (GLuint, GLuint);
+	void (*link_program) (GLuint);
+	void (*get_program_iv) (GLuint, GLenum, GLint*);
+
+/* Texturing */
+	void (*gen_textures) (GLsizei, GLuint*);
+	void (*active_texture) (GLenum);
+	void (*bind_texture) (GLenum, GLuint);
+	void (*delete_textures) (GLsizei, const GLuint*);
+	void (*tex_subimage_2d) (GLenum,
+		GLint, GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, const GLvoid*);
+	void (*tex_image_2d) (GLenum,
+		GLint, GLint, GLsizei, GLsizei, GLint, GLenum, GLenum, const GLvoid*);
+	void (*tex_param_i) (GLenum, GLenum, GLint);
+	void (*generate_mipmap) (GLenum);
+
+/* Data Ops */
+	void (*get_tex_image) (GLenum, GLint, GLenum, GLenum, GLvoid*);
+	void (*read_pixels) (GLint, GLint, GLsizei, GLsizei, GLenum, GLenum,GLvoid*);
+	void (*pixel_storei) (GLenum, GLint);
+
+/* State Management */
+	void (*enable) (GLenum);
+	void (*disable) (GLenum);
+	void (*clear) (GLenum);
+
+/* Drawing, Blending, Stenciling */
+	void (*front_face) (GLenum);
+	void (*cull_face) (GLenum);
+	void (*blend_func) (GLenum, GLenum);
+	void (*clear_color) (GLfloat, GLfloat, GLfloat, GLfloat);
+	void (*hint) (GLenum, GLenum);
+	void (*scissor) (GLint, GLint, GLsizei, GLsizei);
+	void (*viewport) (GLint, GLint, GLsizei, GLsizei);
+	void (*clear_stencil) (GLint);
+	void (*color_mask) (GLboolean, GLboolean, GLboolean, GLboolean);
+	void (*stencil_func) (GLenum, GLint, GLuint);
+	void (*stencil_op) (GLenum, GLenum, GLenum);
+	void (*draw_arrays) (GLenum, GLint, GLsizei);
+	void (*draw_elements) (GLenum, GLsizei, GLenum, const GLvoid*);
+	void (*depth_mask) (GLboolean);
+};
+
+struct agp_fenv* agp_env();
+void agp_setenv(struct agp_fenv* dst);
+
+void agp_glinit_fenv(struct agp_fenv* dst,
+	void*(*lookup)(void* tag, const char* sym, bool req), void* tag);
 #endif

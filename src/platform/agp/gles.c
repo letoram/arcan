@@ -150,14 +150,15 @@ void agp_shader_source(enum SHADER_TYPES type,
 #ifdef GLES3
 static void pbo_alloc_write(struct storage_info_t* store)
 {
+	struct agp_fenv* env = agp_env();
 	GLuint pboid;
-	glGenBuffers(1, &pboid);
+	env->gen_buffers(1, &pboid);
 	store->vinf.text.wid = pboid;
 
-	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pboid);
-	glBufferData(GL_PIXEL_UNPACK_BUFFER,
+	env->bind_buffer(GL_PIXEL_UNPACK_BUFFER, pboid);
+	env->buffer_data(GL_PIXEL_UNPACK_BUFFER,
 		store->w * store->h * store->bpp, NULL, GL_STREAM_READ);
-	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+	env->bind_buffer(GL_PIXEL_UNPACK_BUFFER, 0);
 }
 #endif
 
@@ -215,9 +216,10 @@ static void default_release(void* tag)
 #ifdef GLES3
 	if (!tag)
 		return;
+	struct agp_fenv* env = agp_env();
 
-	glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
-	glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+	env->unmap_buffer(GL_PIXEL_PACK_BUFFER);
+	env->bind_buffer(GL_PIXEL_PACK_BUFFER, 0);
 #endif
 }
 
@@ -235,12 +237,13 @@ void agp_drop_vstore(struct storage_info_t* s)
 	if (!s)
 		return;
 
-	glDeleteTextures(1, &s->vinf.text.glid);
+	struct agp_fenv* env = agp_env();
+	env->delete_textures(1, &s->vinf.text.glid);
 	s->vinf.text.glid = 0;
 
 #ifdef GLES3
 	if (GL_NONE != s->vinf.text.wid)
-		glDeleteBuffers(1, &s->vinf.text.wid);
+		env->delete_buffers(1, &s->vinf.text.wid);
 #endif
 
 	memset(s, '\0', sizeof(struct storage_info_t));
@@ -252,6 +255,7 @@ void agp_resize_vstore(struct storage_info_t* s, size_t w, size_t h)
 	s->h = h;
 	s->bpp = sizeof(av_pixel);
 	size_t new_sz = w * h * s->bpp;
+	struct agp_fenv* env = agp_env();
 
 /* some cases the vstore can have been "secretly" resized to
  * the new dimensions, common case is resize in a frameserver that
@@ -268,7 +272,7 @@ void agp_resize_vstore(struct storage_info_t* s, size_t w, size_t h)
 
 #ifdef GLES3
 	if (s->vinf.text.wid){
-		glDeleteBuffers(1, &s->vinf.text.wid);
+		env->delete_buffers(1, &s->vinf.text.wid);
 		pbo_alloc_write(s);
 	}
 #endif
@@ -294,6 +298,7 @@ struct stream_meta agp_stream_prepare(struct storage_info_t* s,
 		struct stream_meta meta, enum stream_type type)
 {
 	struct stream_meta mout = meta;
+	struct agp_fenv* env = agp_env();
 	mout.state = true;
 
 	switch(type){
@@ -322,7 +327,7 @@ struct stream_meta agp_stream_prepare(struct storage_info_t* s,
 	case STREAM_RAW_DIRECT:
 	case STREAM_RAW_DIRECT_SYNCHRONOUS:
 	agp_activate_vstore(s);
-		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, s->w, s->h,
+		env->tex_subimage_2d(GL_TEXTURE_2D, 0, 0, 0, s->w, s->h,
 			GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, meta.buf);
 		agp_deactivate_vstore();
 	break;

@@ -1,5 +1,4 @@
-/*
- * Copyright 2014-2016, Björn Ståhl
+/* Copyright 2014-2016, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -8,64 +7,253 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <stddef.h>
+#include <string.h>
 
-#include PLATFORM_HEADER
-
-#define MAP_PREFIX
 #include "glfun.h"
 
-#ifndef MAP
-#define MAP(X) ( platform_video_gfxsym(X) )
-#endif
+static struct agp_fenv* cenv;
 
-void agp_gl_ext_init()
+struct agp_fenv* agp_env()
 {
-#ifndef __APPLE__
-#if defined(GLES2) || defined(GLES3)
-#else
-glDeleteBuffers = MAP("glDeleteBuffers");
-glUnmapBuffer = MAP("glUnmapBuffer");
-glGenBuffers = MAP("glGenBuffers");
-glBufferData = MAP("glBufferData");
-glBindBuffer = MAP("glBindBuffer");
-glGenFramebuffers = MAP("glGenFramebuffers");
-glBindFramebuffer = MAP("glBindFramebuffer");
-glFramebufferTexture2D = MAP("glFramebufferTexture2D");
-glBindRenderbuffer = MAP("glBindRenderbuffer");
-glRenderbufferStorage = MAP("glRenderbufferStorage");
-glFramebufferRenderbuffer = MAP("glFramebufferRenderbuffer");
-glCheckFramebufferStatus = MAP("glCheckFramebufferStatus");
-glDeleteFramebuffers = MAP("glDeleteFramebuffers");
-glDeleteRenderbuffers = MAP("glDeleteRenderbuffers");
-glEnableVertexAttribArray = MAP("glEnableVertexAttribArray");
-glVertexAttribPointer = MAP("glVertexAttribPointer");
-glDisableVertexAttribArray = MAP("glDisableVertexAttribArray");
-glEnableVertexAttribArray = MAP("glEnableVertexAttribArray");
-glUniform1i = MAP("glUniform1i");
-glUniform1f = MAP("glUniform1f");
-glUniform2f = MAP("glUniform2f");
-glUniform3f = MAP("glUniform3f");
-glUniform4f = MAP("glUniform4f");
-glUniformMatrix4fv = MAP("glUniformMatrix4fv");
-glCreateProgram = MAP("glCreateProgram");
-glUseProgram = MAP("glUseProgram");
-glGetUniformLocation = MAP("glGetUniformLocation");
-glGetAttribLocation = MAP("glGetAttribLocation");
-glDeleteProgram = MAP("glDeleteProgram");
-glDeleteShader = MAP("glDeleteShader");
-glShaderSource = MAP("glShaderSource");
-glCompileShader = MAP("glCompileShader");
-glGetShaderiv = MAP("glGetShaderiv");
-glGetShaderInfoLog = MAP("glGetShaderInfoLog");
-glAttachShader = MAP("glAttachShader");
-glLinkProgram = MAP("glLinkProgram");
-glGetProgramiv = MAP("glGetProgramiv");
-glGenRenderbuffers = MAP("glGenRenderbuffers");
-glMapBuffer = MAP("glMapBuffer");
-glGetAttribLocation = MAP("glGetAttribLocation");
-glDeleteProgram = MAP("glDeleteProgram");
-glCreateShader = MAP("glCreateShader");
-glActiveTexture = MAP("glActiveTexture");
+	return cenv;
 }
-#endif
-#endif
+
+void agp_setenv(struct agp_fenv* dst)
+{
+	cenv = dst;
+}
+
+void agp_glinit_fenv(struct agp_fenv* dst,
+	void*(*lookup)(void* tag, const char* sym, bool req), void* tag)
+{
+/* missing: AGP_STATIC/COMPILE-TIME build */
+	memset(dst, '\0', sizeof(struct agp_fenv));
+
+#define lookup(tag, sym) lookup(tag, sym, true)
+
+/* match the table and order in glfun.h, forego the use of the PFN...
+ * as we need even the "abi-bound" 1.x functions dynamically loaded for the
+ * possibility of loading/unloading GL libraries at runtime */
+	dst->draw_buffer =
+		(void(*)(GLenum))
+			lookup(tag, "glDrawBuffer");
+	dst->read_buffer =
+		(void(*)(GLenum))
+			lookup(tag, "glReadBuffer");
+	dst->delete_buffers =
+		(void(*)(GLsizei, const GLuint*))
+			lookup(tag, "glDeleteBuffers");
+	dst->unmap_buffer =
+		(GLboolean(*)(GLenum))
+			lookup(tag, "glUnmapBuffer");
+	dst->gen_buffers =
+		(void(*)(GLsizei, GLuint*))
+			lookup(tag, "glGenBuffers");
+	dst->buffer_data =
+		(void(*)(GLenum, GLsizeiptr, const GLvoid*, GLenum))
+			lookup(tag, "glBufferData");
+	dst->bind_buffer =
+		(void(*)(GLenum, GLuint))
+			lookup(tag, "glBindBuffer");
+	dst->map_buffer =
+		(void*(*)(GLenum, GLenum))
+			lookup(tag, "glMapBuffer");
+
+/* FBOs */
+	dst->gen_framebuffers =
+		(void (*)(GLsizei, GLuint*)) lookup(tag, "glGenFramebuffers");
+	dst->bind_framebuffer =
+		(void (*)(GLenum, GLuint)) lookup(tag, "glBindFramebuffer");
+	dst->framebuffer_texture_2d = (void (*)
+		(GLenum, GLenum, GLenum, GLuint, GLint)) lookup(tag, "glFramebufferTexture2D");
+	dst->bind_renderbuffer =
+		(void (*)(GLenum, GLuint)) lookup(tag, "glBindRenderbuffer");
+	dst->renderbuffer_storage =
+		(void (*)(GLenum, GLenum, GLsizei, GLsizei)) lookup(tag, "glRenderbufferStorage");
+
+	dst->framebuffer_renderbuffer =
+		(void (*)(GLenum, GLenum, GLenum, GLuint)) lookup(tag, "glFramebufferRenderbuffer");
+	dst->check_framebuffer =
+		(GLenum (*)(GLenum)) lookup(tag, "glCheckFramebufferStatus");
+	dst->delete_framebuffers =
+		(void (*)(GLsizei, const GLuint*)) lookup(tag, "glDeleteFramebuffers");
+	dst->gen_renderbuffers =
+		(void (*)(GLsizei, GLuint*)) lookup(tag, "glGenRenderbuffers");
+	dst->delete_renderbuffers =
+		(void (*)(GLsizei, const GLuint*)) lookup(tag, "glDeleteRenderbuffers");
+
+/* VAs */
+	dst->enable_vertex_attrarray =
+		(void (*)(GLuint))
+			lookup(tag, "glEnableVertexAttribArray");
+	dst->vertex_attrpointer =
+		(void (*)(GLuint, GLint, GLenum, GLboolean, GLsizei, const GLvoid*))
+			lookup(tag, "glVertexAttribPointer");
+	dst->disable_vertex_attrarray =
+		(void (*)(GLuint))
+			lookup(tag, "glDisableVertexAttribArray");
+
+/* Shader Uniforms */
+	dst->unif_1i =
+		(void (*)(GLint, GLint))
+			lookup(tag, "glUniform1i");
+	dst->unif_1f =
+		(void (*)(GLint, GLfloat))
+			lookup(tag, "glUniform1f");
+	dst->unif_2f =
+		(void (*)(GLint, GLfloat, GLfloat))
+			lookup(tag, "glUniform2f");
+	dst->unif_3f =
+		(void (*)(GLint, GLfloat, GLfloat, GLfloat))
+			lookup(tag, "glUniform3f");
+	dst->unif_4f =
+		(void (*)(GLint, GLfloat, GLfloat, GLfloat, GLfloat))
+			lookup(tag, "glUniform4f");
+	dst->unif_m4fv =
+		(void (*)(GLint, GLsizei, GLboolean, const GLfloat *))
+			lookup(tag, "glUniformMatrix4fv");
+	dst->get_attr_loc =
+		(GLint (*)(GLuint, const GLchar*))
+			lookup(tag, "glGetAttribLocation");
+	dst->get_uniform_loc =
+		(GLint (*)(GLuint, const GLchar*))
+			lookup(tag, "glGetUniformLocation");
+
+
+/* Shader Management */
+	dst->create_program =
+		(GLuint(*)(void))
+			lookup(tag, "glCreateProgram");
+	dst->use_program =
+		(void(*)(GLuint))
+			lookup(tag, "glUseProgram");
+	dst->delete_program =
+		(void(*)(GLuint))
+			lookup(tag, "glDeleteProgram");
+	dst->create_shader =
+		(GLuint(*)(GLenum))
+			lookup(tag, "glCreateShader");
+	dst->delete_shader =
+		(void(*)(GLuint))
+			lookup(tag, "glDeleteShader");
+	dst->shader_source =
+		(void(*)(GLuint, GLsizei, const GLchar**, const GLint*))
+			lookup(tag, "glShaderSource");
+	dst->compile_shader =
+		(void(*)(GLuint))
+			lookup(tag, "glCompileShader");
+	dst->shader_log =
+		(void(*)(GLuint, GLsizei, GLsizei*, GLchar*))
+			lookup(tag, "glGetShaderInfoLog");
+	dst->get_shader_iv =
+		(void(*)(GLuint, GLenum, GLint*))
+			lookup(tag, "glGetShaderiv");
+	dst->attach_shader =
+		(void(*)(GLuint, GLuint))
+			lookup(tag, "glAttachShader");
+	dst->link_program =
+		(void(*)(GLuint))
+			lookup(tag, "glLinkProgram");
+	dst->get_program_iv =
+		(void(*)(GLuint, GLenum, GLint*))
+			lookup(tag, "glGetProgramiv");
+
+/* Texturing */
+	dst->gen_textures =
+		(void(*)(GLsizei, GLuint*))
+			lookup(tag, "glGenTextures");
+	dst->active_texture =
+		(void (*)(GLenum))
+			lookup(tag, "glActiveTexture");
+	dst->bind_texture =
+		(void (*)(GLenum, GLuint))
+			lookup(tag, "glBindTexture");
+	dst->delete_textures =
+		(void (*)(GLsizei, const GLuint*))
+			lookup(tag, "glDeleteTextures");
+	dst->tex_subimage_2d = (void (*)(GLenum,
+		GLint, GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, const GLvoid*))
+			lookup(tag, "glTexSubImage2D");
+	dst->tex_image_2d =	(void (*)(GLenum,
+		GLint, GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, const GLvoid*))
+			lookup(tag, "glTexImage2D");
+	dst->tex_param_i =
+		(void (*)(GLenum, GLenum, GLint))
+			lookup(tag, "glTexParameteri");
+	dst->generate_mipmap =
+		(void (*)(GLenum))
+			lookup(tag, "glGenerateMipmap");
+
+/* Data Retrieval */
+	dst->get_tex_image =
+		(void (*)(GLenum, GLint, GLenum, GLenum, GLvoid*))
+			lookup(tag, "glGetTexImage");
+	dst->read_pixels =
+		(void (*)(GLint, GLint, GLsizei, GLsizei, GLenum, GLenum,GLvoid*))
+			lookup(tag, "glReadPixels");
+	dst->pixel_storei =
+		(void (*)(GLenum, GLint))
+			lookup(tag, "glPixelStorei");
+
+/* State Management */
+	dst->enable =
+		(void (*)(GLenum))
+			lookup(tag, "glEnable");
+	dst->disable =
+		(void (*)(GLenum))
+			lookup(tag, "glDisable");
+	dst->clear =
+		(void (*)(GLenum))
+			lookup(tag, "glClear");
+
+/* Drawing, Blending, Stenciling */
+	dst->front_face =
+		(void(*)(GLenum))
+			lookup(tag, "glFrontFace");
+	dst->cull_face =
+		(void(*)(GLenum))
+			lookup(tag, "glCullFace");
+	dst->blend_func =
+		(void(*)(GLenum, GLenum))
+			lookup(tag, "glBlendFunc");
+	dst->clear_color =
+		(void(*)(GLfloat, GLfloat, GLfloat, GLfloat))
+			lookup(tag, "glClearColor");
+	dst->hint =
+		(void(*)(GLenum, GLenum))
+			lookup(tag, "glHint");
+	dst->scissor =
+		(void(*)(GLint, GLint, GLsizei, GLsizei))
+			lookup(tag, "glScissor");
+	dst->viewport =
+		(void(*)(GLint, GLint, GLsizei, GLsizei))
+			lookup(tag, "glViewport");
+	dst->clear_stencil =
+		(void(*)(GLint))
+			lookup(tag, "glClearStencil");
+	dst->color_mask =
+		(void(*)(GLboolean, GLboolean, GLboolean, GLboolean))
+			lookup(tag, "glColorMask");
+	dst->stencil_func =
+		(void(*)(GLenum, GLint, GLuint))
+			lookup(tag, "glStencilFunc");
+	dst->stencil_op =
+		(void(*)(GLenum, GLenum, GLenum))
+			lookup(tag, "glStencilOp");
+	dst->draw_arrays =
+		(void(*)(GLenum, GLint, GLsizei))
+			lookup(tag, "glDrawArrays");
+	dst->draw_elements =
+		(void(*)(GLenum, GLsizei, GLenum, const GLvoid*))
+			lookup(tag, "glDrawElements");
+	dst->depth_mask =
+		(void(*)(GLboolean))
+			lookup(tag, "glDepthMask");
+
+#undef lookup
+
+
+	if (!cenv)
+		cenv = dst;
+}
