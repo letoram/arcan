@@ -19,6 +19,38 @@ const char* msub_to_lbl(int ind)
 	}
 }
 
+static void dump_eof(int fd)
+{
+	FILE* fin = fdopen(dup(fd), "r");
+	if (!fin)
+		return;
+
+	char inb[1024];
+	while(1){
+		char* buf = fgets(inb, 1024, fin);
+		if (!buf)
+			break;
+		printf("read: %s\n", buf);
+	}
+
+	fclose(fin);
+}
+
+static void write_eof(int fd)
+{
+	FILE* fout = fdopen(dup(fd), "w");
+	if (!fout)
+		return;
+
+	int i = 0;
+	while(1){
+		if (fprintf(fout, "%d\n", i++) < 0)
+			break;
+	}
+
+	fclose(fout);
+}
+
 int main(int argc, char** argv)
 {
 	int id = SEGID_APPLICATION;
@@ -42,20 +74,31 @@ int main(int argc, char** argv)
 
 	struct arcan_shmif_cont cont = arcan_shmif_open(
 		id, SHMIF_ACQUIRE_FATALFAIL, &aarr);
+	printf("open\n");
 
 	arcan_event ev;
 
-	arcan_shmif_resize(&cont, 320, 200);
+/* just send garbage so the correct events are being propagated */
 	arcan_shmif_signal(&cont, SHMIF_SIGVID);
-
+	printf("loop\n");
 	while (arcan_shmif_wait(&cont, &ev)){
-		if (ev.category == EVENT_TARGET)
-		switch (ev.tgt.kind){
-		case TARGET_COMMAND_EXIT:
-			return EXIT_SUCCESS;
-		break;
-		default:
-		break;
+		printf(" I think: %d, %d I got : %d\n", TARGET_COMMAND_BCHUNK_IN, TARGET_COMMAND_BCHUNK_OUT, ev.tgt.kind);
+		if (ev.category == EVENT_TARGET){
+			switch (ev.tgt.kind){
+			case TARGET_COMMAND_BCHUNK_IN:
+				printf("bchunk in\n");
+				dump_eof(ev.tgt.ioevs[0].iv);
+			break;
+			case TARGET_COMMAND_BCHUNK_OUT:
+				printf("bchunk out\n");
+				write_eof(ev.tgt.ioevs[0].iv);
+			break;
+			case TARGET_COMMAND_EXIT:
+				return EXIT_SUCCESS;
+			default:
+				printf("event: %s\n", arcan_shmif_eventstr(&ev, NULL, 0));
+			break;
+			}
 		}
 		else if (ev.category == EVENT_IO){
 			switch (ev.io.datatype){
