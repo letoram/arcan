@@ -26,6 +26,7 @@
 
 #define WANT_ARCAN_SHMIF_HELPER
 #include <arcan_shmif.h>
+#include <inttypes.h>
 
 #define GL_GLEXT_PROTOTYPES 1
 #include <GLES2/gl2.h>
@@ -333,7 +334,6 @@ static struct arcan_shmif_cont* setup_connection()
 	struct arcan_shmif_cont con = arcan_shmif_open(SEGID_GAME,
 		SHMIF_ACQUIRE_FATALFAIL, &aarr);
 	struct arcan_shmif_cont* res = malloc(sizeof(struct arcan_shmif_cont));
-	*res = con;
 
 /* just give us render-node,depths,etc. based on what the connection wants */
 	struct arcan_shmifext_setup defs = arcan_shmifext_headless_defaults(&con);
@@ -355,39 +355,52 @@ static struct arcan_shmif_cont* setup_connection()
 	glFlush();
 	arcan_shmifext_eglsignal(&con, 0, SHMIF_SIGVID, SHMIFEXT_BUILTIN);
 
+	*res = con;
 	return res;
 }
 
-static void pump_connection(struct arcan_shmif_cont* con)
+static bool pump_connection(struct arcan_shmif_cont* con, int* i)
 {
-	int i = 0, ps = 0;
-	arcan_shmifext_make_current(con);
+	arcan_event ev;
+	int ps = arcan_shmif_poll(con, &ev);
+	if (ps < 0)
+		return false;
 
-	while (ps >= 0){
-		arcan_event ev;
-		while (arcan_shmif_poll(con, &ev) > 0){
-			switch (ev.tgt.kind){
-			case TARGET_COMMAND_DISPLAYHINT:
-/* update to handle resizing */
-			break;
-			default:
-			break;
-			}
+	switch (ev.tgt.kind){
+	case TARGET_COMMAND_DISPLAYHINT:
+		if (ev.tgt.ioevs[0].iv && ev.tgt.ioevs[1].iv &&
+			(ev.tgt.ioevs[0].iv != con->w || ev.tgt.ioevs[1].iv != con->h)){
+			printf("got displayhint: %"PRIxPTR" %d, %d\n", (uintptr_t) con, ev.tgt.ioevs[0].iv,
+				ev.tgt.ioevs[1].iv);
+			arcan_shmif_resize(con, ev.tgt.ioevs[0].iv, ev.tgt.ioevs[1].iv);
 		}
-
-		draw(con, i++);
-		glFlush();
-		arcan_shmifext_eglsignal(con, 0, SHMIF_SIGVID, SHMIFEXT_BUILTIN);
+	break;
+	default:
+	break;
 	}
+
+	arcan_shmifext_make_current(con);
+	draw(con, (*i)++);
+	glFlush();
+	arcan_shmifext_eglsignal(con, 0, SHMIF_SIGVID, SHMIFEXT_BUILTIN);
+	return true;
 }
 
 int main(int argc, char *argv[])
 {
-	struct arcan_shmif_cont* con = setup_connection();
-	if (!con)
+	struct arcan_shmif_cont* con1 = setup_connection();
+	struct arcan_shmif_cont* con2 = setup_connection();
+
+	if (!con1 || !con2)
 		return EXIT_FAILURE;
 
-	pump_connection(con);
-	arcan_shmif_drop(con);
+	int s1 = 0, s2 = 100;
+	while( pump_connection(con1, &s1) && pump_connection(con2, &s2) ){
+		printf("s1: %d @ (%zu * %zu), s2: (%d %zu * %zu)\n", s1, con1->w, con1->h,
+			s2, con2->w, con2->h);
+	}
+
+	arcan_shmif_drop(con1);
+	arcan_shmif_drop(con2);
 	return EXIT_SUCCESS;
 }
