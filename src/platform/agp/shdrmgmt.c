@@ -172,34 +172,35 @@ static void setv(GLint loc, enum shdrutype kind, void* val,
 	arcan_warning("[shader], location(%d), kind(%s:%d), id(%s), program(%s)\n",
 			loc, symtbl[kind], kind, id, program);
 #endif
+	struct agp_fenv* env = agp_env();
 
 /* add more as needed, just match the current shader_envts */
 	switch (kind){
 	case shdrbool:
 	case shdrint:
-	glUniform1i(loc, *(GLint*) val);
+		env->unif_1i(loc, *(GLint*) val);
 	break;
 
 	case shdrfloat :
-	glUniform1f(loc, ((GLfloat*) val)[0]);
+	env->unif_1f(loc, ((GLfloat*) val)[0]);
 	break;
 
 	case shdrvec2 :
-	glUniform2f(loc, ((GLfloat*) val)[0], ((GLfloat*) val)[1]);
+	env->unif_2f(loc, ((GLfloat*) val)[0], ((GLfloat*) val)[1]);
 	break;
 
 	case shdrvec3 :
-	glUniform3f(loc, ((GLfloat*) val)[0], ((GLfloat*) val)[1],
+	env->unif_3f(loc, ((GLfloat*) val)[0], ((GLfloat*) val)[1],
 	((GLfloat*) val)[2]);
 	break;
 
 	case shdrvec4  :
-	glUniform4f(loc, ((GLfloat*) val)[0], ((GLfloat*) val)[1],
+	env->unif_4f(loc, ((GLfloat*) val)[0], ((GLfloat*) val)[1],
 	((GLfloat*) val)[2], ((GLfloat*) val)[3]);
 	break;
 
 	case shdrmat4x4:
-	glUniformMatrix4fv(loc, 1, false, (GLfloat*) val);
+	env->unif_m4fv(loc, 1, false, (GLfloat*) val);
 	break;
 	}
 }
@@ -212,7 +213,7 @@ int agp_shader_activate(agp_shader_id shid)
  	if (shid != shdr_global.active_prg){
 		struct shader_cont* cur = &shdr_global.slots[SHADER_INDEX(shid)];
 		if (SHADER_INDEX(shdr_global.active_prg) != SHADER_INDEX(shid))
-			glUseProgram(cur->prg_container);
+			agp_env()->use_program(cur->prg_container);
 
  		shdr_global.active_prg = shid;
 
@@ -372,10 +373,11 @@ agp_shader_id agp_shader_build(const char* tag, const char* geom,
 #endif
 
 /* preset global symbol mappings */
-	glUseProgram(cur->prg_container);
+	struct agp_fenv* env = agp_env();
+	env->use_program(cur->prg_container);
 	for (size_t i = 0; i < global_lim; i++){
 		assert(symtbl[i] != NULL);
-		cur->locations[i] = glGetUniformLocation(cur->prg_container, symtbl[i]);
+		cur->locations[i] = env->get_uniform_loc(cur->prg_container, symtbl[i]);
 #ifdef SHADER_DEBUG
 		if(cur->locations[i] != -1)
 			arcan_warning("agp_shader_build(%s)(%d), "
@@ -385,7 +387,7 @@ agp_shader_id agp_shader_build(const char* tag, const char* geom,
 
 /* same treatment for attributes */
 	for (size_t i = 0; i < sizeof(attrsymtbl) / sizeof(attrsymtbl[0]); i++){
-		cur->attributes[i] = glGetAttribLocation(cur->prg_container, attrsymtbl[i]);
+		cur->attributes[i] = env->get_attr_loc(cur->prg_container, attrsymtbl[i]);
 #ifdef SHADER_DEBUG
 	if (cur->attributes[i] != -1)
 		arcan_warning("agp_shader_build(%s)(%d), "
@@ -397,7 +399,7 @@ agp_shader_id agp_shader_build(const char* tag, const char* geom,
 
 /* revert to last used program! */
 	if (shdr_global.active_prg != BROKEN_SHADER){
-		glUseProgram(shdr_global.slots[
+		env->use_program(shdr_global.slots[
 			SHADER_INDEX(shdr_global.active_prg)].prg_container);
 	}
 
@@ -504,7 +506,7 @@ void agp_shader_forceunif(const char* label, enum shdrutype type, void* value)
 				"persistant shader uniform (%s:%i=>%i), ignored.\n", label, loc, type);
 	}
 	else {
-		loc = glGetUniformLocation(slot->prg_container, label);
+		loc = agp_env()->get_uniform_loc(slot->prg_container, label);
 		*current = arcan_alloc_mem(sizeof(struct shaderv),
 			ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 		(*current)->label = strdup(label);
@@ -527,25 +529,28 @@ void agp_shader_forceunif(const char* label, enum shdrutype type, void* value)
 }
 
 static void kill_shader(GLuint* dprg, GLuint* vprg, GLuint* fprg){
+	struct agp_fenv* env = agp_env();
 	if (*dprg)
-		glDeleteProgram(*dprg);
+		env->delete_program(*dprg);
 
 	if (*vprg)
-		glDeleteShader(*vprg);
+		env->delete_shader(*vprg);
 
 	if (*fprg)
-		glDeleteShader(*fprg);
+		env->delete_shader(*fprg);
 
 	*dprg = *vprg = *fprg = 0;
 }
 
 static bool build_shunit(GLint stage, const char* prg, GLuint* dprg)
 {
-	*dprg = glCreateShader(stage);
-	glShaderSource(*dprg, 1, &prg, NULL);
-	glCompileShader(*dprg);
+	struct agp_fenv* env = agp_env();
+
+	*dprg = env->create_shader(stage);
+	env->shader_source(*dprg, 1, &prg, NULL);
+	env->compile_shader(*dprg);
 	GLint status = 0;
-	glGetShaderiv(*dprg, GL_COMPILE_STATUS, &status);
+	env->get_shader_iv(*dprg, GL_COMPILE_STATUS, &status);
 	return status != GL_FALSE;
 }
 
@@ -554,7 +559,7 @@ static void dump_shaderlog(const char* label, const char* stage, GLuint prg)
 	char buf[1024];
 	int rlen = -1;
 
-	glGetShaderInfoLog(prg, 1024, &rlen, buf);
+	agp_env()->shader_log(prg, 1024, &rlen, buf);
 	if (rlen){
 		arcan_warning("Warning: Couldn't compile shader (%s:%s)\n\t message:%s\n",
 			label, stage, buf);
@@ -564,6 +569,7 @@ static void dump_shaderlog(const char* label, const char* stage, GLuint prg)
 static bool build_shader(const char* label, GLuint* dprg,
 	GLuint* vprg, GLuint* fprg, const char* vprogram, const char* fprogram)
 {
+	struct agp_fenv* env = agp_env();
 	bool failed = false;
 
 #ifdef DEBUG
@@ -584,29 +590,29 @@ static bool build_shader(const char* label, GLuint* dprg,
  * and uniforms and if they map to the same location, we know something is
  * broken and that it's not our fault.
  */
-	*dprg = glCreateProgram();
-	glAttachShader(*dprg, *fprg);
-	glAttachShader(*dprg, *vprg);
-	glLinkProgram(*dprg);
+	*dprg = env->create_program();
+	env->attach_shader(*dprg, *fprg);
+	env->attach_shader(*dprg, *vprg);
+	env->link_program(*dprg);
 
 	int lstat = 0;
-	glGetProgramiv(*dprg, GL_LINK_STATUS, &lstat);
+	env->get_program_iv(*dprg, GL_LINK_STATUS, &lstat);
 
 	if (GL_FALSE == lstat){
 		failed = true;
 		dump_shaderlog(label, "link", *dprg);
 	}
 	else {
-		glUseProgram(*dprg);
-		int loc = glGetUniformLocation(*dprg, "map_tu0");
+		env->use_program(*dprg);
+		int loc = env->get_uniform_loc(*dprg, "map_tu0");
 		GLint val = 0;
 
 		if (loc >= 0)
-			glUniform1i(loc, val);
+			env->unif_1i(loc, val);
 
-		loc = glGetUniformLocation(*dprg, "map_diffuse");
+		loc = env->get_uniform_loc(*dprg, "map_diffuse");
 		if (loc >= 0)
-			glUniform1i(loc, val);
+			env->unif_1i(loc, val);
 	}
 
 	return !failed;

@@ -11,6 +11,7 @@
 #include <assert.h>
 #include <string.h>
 #include <unistd.h>
+#include <dlfcn.h>
 
 #include "glfun.h"
 
@@ -43,30 +44,31 @@ struct agp_rendertarget
 
 static bool alloc_fbo(struct agp_rendertarget* dst, bool retry)
 {
-	glGenFramebuffers(1, &dst->fbo);
+	struct agp_fenv* env = agp_env();
+	env->gen_framebuffers(1, &dst->fbo);
 
 /* need both stencil and depth buffer, but we don't need the data from them */
-	glBindFramebuffer(GL_FRAMEBUFFER, dst->fbo);
+	env->bind_framebuffer(GL_FRAMEBUFFER, dst->fbo);
 
 	if (dst->mode > RENDERTARGET_DEPTH)
 	{
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+		env->framebuffer_texture_2d(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
 			GL_TEXTURE_2D, dst->store->vinf.text.glid, 0);
 
 /* need a Z buffer in the offscreen rendering but don't want
  * bo store it, so setup a renderbuffer */
 		if (dst->mode > RENDERTARGET_COLOR){
-			glGenRenderbuffers(1, &dst->depth);
+			env->gen_renderbuffers(1, &dst->depth);
 
 /* could use GL_DEPTH_COMPONENT only if we'd know that there
  * wouldn't be any clipping in the active rendertarget */
 			if (!retry){
-				glBindRenderbuffer(GL_RENDERBUFFER, dst->depth);
-				glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8,
+				env->bind_renderbuffer(GL_RENDERBUFFER, dst->depth);
+				env->renderbuffer_storage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8,
 					dst->store->w, dst->store->h);
-				glBindRenderbuffer(GL_RENDERBUFFER, 0);
-				glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
-					GL_RENDERBUFFER, dst->depth);
+				env->bind_renderbuffer(GL_RENDERBUFFER, 0);
+				env->framebuffer_renderbuffer(GL_FRAMEBUFFER,
+					GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, dst->depth);
 			}
 		}
 	}
@@ -98,18 +100,18 @@ static bool alloc_fbo(struct agp_rendertarget* dst, bool retry)
 /* generate ID etc. special path for TXSTATE_DEPTH */
 		agp_update_vstore(store, true);
 
-		glDrawBuffer(GL_NONE);
-		glReadBuffer(GL_NONE);
+		env->draw_buffer(GL_NONE);
+		env->read_buffer(GL_NONE);
 
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
-			GL_TEXTURE_2D, store->vinf.text.glid, 0);
+		env->framebuffer_texture_2d(GL_FRAMEBUFFER,
+			GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, store->vinf.text.glid, 0);
 	}
 
 /* basic error handling / status checking
  * may be possible that we should cache this in the
  * rendertarget and only call when / if something changes as
  * it's not certain that drivers won't stall the pipeline on this */
-	GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+	GLenum status = env->check_framebuffer(GL_FRAMEBUFFER);
 	if (status != GL_FRAMEBUFFER_COMPLETE){
 		arcan_warning("FBO support broken, couldn't create basic FBO:\n");
 		switch(status){
@@ -142,15 +144,15 @@ static bool alloc_fbo(struct agp_rendertarget* dst, bool retry)
 		}
 
 		if (dst->fbo != GL_NONE)
-			glDeleteFramebuffers(1,&dst->fbo);
+			env->delete_framebuffers(1,&dst->fbo);
 		if (dst->depth != GL_NONE)
-			glDeleteRenderbuffers(1,&dst->depth);
+			env->delete_renderbuffers(1,&dst->depth);
 
 		dst->fbo = dst->depth = GL_NONE;
 		return false;
 	}
 
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	env->bind_framebuffer(GL_FRAMEBUFFER, 0);
 	return true;
 }
 
@@ -193,23 +195,40 @@ struct agp_rendertarget* agp_setup_rendertarget(struct storage_info_t* vstore,
 	return r;
 }
 
+static void* lookup_fun(void* tag, const char* sym, bool req)
+{
+	dlerror();
+	void* res = dlsym(RTLD_DEFAULT, sym);
+	if (dlerror() != NULL && req){
+		arcan_fatal("agp lookup(%s) failed, missing req. symbol.\n", sym);
+	}
+	return res;
+}
+
+static struct agp_fenv defenv;
 void agp_init()
 {
-	agp_gl_ext_init();
+	struct agp_fenv* env = agp_env();
 
-	glEnable(GL_SCISSOR_TEST);
-	glDisable(GL_DEPTH_TEST);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	glFrontFace(GL_CW);
-	glCullFace(GL_BACK);
+/* platform layer has not set the function environment */
+	if (!env){
+		agp_glinit_fenv(&defenv, lookup_fun, NULL);
+		env = &defenv;
+	}
+
+	env->enable(GL_SCISSOR_TEST);
+	env->disable(GL_DEPTH_TEST);
+	env->blend_func(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	env->front_face(GL_CW);
+	env->cull_face(GL_BACK);
 
 #if defined(GL_MULTISAMPLE) && !defined(HEADLESS_NOARCAN)
 	if (arcan_video_display.msasamples)
-		glEnable(GL_MULTISAMPLE);
+		env->enable(GL_MULTISAMPLE);
 #endif
 
-	glEnable(GL_BLEND);
-	glClearColor(0.0, 0.0, 0.0, 1.0f);
+	env->enable(GL_BLEND);
+	env->clear_color(0.0, 0.0, 0.0, 1.0f);
 
 /*
  * -- Removed as they were causing trouble with NVidia GPUs (white line outline
@@ -225,9 +244,10 @@ void agp_drop_rendertarget(struct agp_rendertarget* tgt)
 {
 	if (!tgt)
 		return;
+	struct agp_fenv* env = agp_env();
 
-	glDeleteFramebuffers(1,&tgt->fbo);
-	glDeleteRenderbuffers(1,&tgt->depth);
+	env->delete_framebuffers(1,&tgt->fbo);
+	env->delete_renderbuffers(1,&tgt->depth);
 	tgt->fbo = GL_NONE;
 	tgt->depth = GL_NONE;
 	arcan_mem_free(tgt);
@@ -236,43 +256,46 @@ void agp_drop_rendertarget(struct agp_rendertarget* tgt)
 void agp_activate_rendertarget(struct agp_rendertarget* tgt)
 {
 	size_t w, h;
+	struct agp_fenv* env = agp_env();
+
 #ifdef HEADLESS_NOARCAN
-	glBindFramebuffer(GL_FRAMEBUFFER, tgt ? tgt->fbo : 0);
+	env->bind_framebuffer(GL_FRAMEBUFFER, tgt ? tgt->fbo : 0);
 #else
 	struct monitor_mode mode = platform_video_dimensions();
 
 	if (!tgt){
 		w = mode.width;
 		h = mode.height;
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		env->bind_framebuffer(GL_FRAMEBUFFER, 0);
 	}
 	else {
 		w = tgt->store->w;
 		h = tgt->store->h;
-		glBindFramebuffer(GL_FRAMEBUFFER, tgt->fbo);
+		env->bind_framebuffer(GL_FRAMEBUFFER, tgt->fbo);
 	}
 
-	glScissor(0, 0, w, h);
-	glViewport(0, 0, w, h);
+	env->scissor(0, 0, w, h);
+	env->viewport(0, 0, w, h);
 #endif
 }
 
 void agp_rendertarget_clear()
 {
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	agp_env()->clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }
 
 void agp_pipeline_hint(enum pipeline_mode mode)
 {
+	struct agp_fenv* env = agp_env();
 	switch (mode){
 	case PIPELINE_2D:
-		glDisable(GL_CULL_FACE);
-		glDisable(GL_DEPTH_TEST);
+		env->disable(GL_CULL_FACE);
+		env->disable(GL_DEPTH_TEST);
 	break;
 
 	case PIPELINE_3D:
-		glEnable(GL_DEPTH_TEST);
-		glClear(GL_DEPTH_BUFFER_BIT);
+		env->enable(GL_DEPTH_TEST);
+		env->clear(GL_DEPTH_BUFFER_BIT);
 	break;
 	}
 }
@@ -283,7 +306,7 @@ void agp_null_vstore(struct storage_info_t* store)
 		store->txmapped != TXSTATE_TEX2D || store->vinf.text.glid == GL_NONE)
 		return;
 
-	glDeleteTextures(1, &store->vinf.text.glid);
+	agp_env()->delete_textures(1, &store->vinf.text.glid);
 	store->vinf.text.glid = GL_NONE;
 }
 
@@ -300,6 +323,7 @@ void agp_resize_rendertarget(
 		return;
 
 	struct storage_info_t* os = tgt->store;
+	struct agp_fenv* env = agp_env();
 
 /* we inplace- modify, want the refcounter intact */
 	agp_null_vstore(os);
@@ -308,8 +332,8 @@ void agp_resize_rendertarget(
 	os->vinf.text.s_raw = 0;
 	agp_empty_vstore(os, neww, newh);
 
-	glDeleteFramebuffers(1,&tgt->fbo);
-	glDeleteRenderbuffers(1,&tgt->depth);
+	env->delete_framebuffers(1,&tgt->fbo);
+	env->delete_renderbuffers(1,&tgt->depth);
 	tgt->fbo = GL_NONE;
 	tgt->depth = GL_NONE;
 	alloc_fbo(tgt, false);
@@ -318,10 +342,11 @@ void agp_resize_rendertarget(
 void agp_activate_vstore_multi(struct storage_info_t** backing, size_t n)
 {
 	char buf[] = {'m', 'a', 'p', '_', 't', 'u', 0, 0, 0};
+	struct agp_fenv* env = agp_env();
 
 	for (int i = 0; i < n && i < 99; i++){
-		glActiveTexture(GL_TEXTURE0 + i);
-		glBindTexture(GL_TEXTURE_2D, backing[i]->vinf.text.glid);
+		env->active_texture(GL_TEXTURE0 + i);
+		env->bind_texture(GL_TEXTURE_2D, backing[i]->vinf.text.glid);
 		if (i < 10)
 			buf[6] = '0' + i;
 		else{
@@ -331,34 +356,35 @@ void agp_activate_vstore_multi(struct storage_info_t** backing, size_t n)
 		agp_shader_forceunif(buf, shdrint, &i);
 	}
 
-	glActiveTexture(GL_TEXTURE0);
+	env->active_texture(GL_TEXTURE0);
 }
 
 void agp_update_vstore(struct storage_info_t* s, bool copy)
 {
+	struct agp_fenv* env = agp_env();
 	if (s->txmapped == TXSTATE_OFF)
 		return;
 
 	FLAG_DIRTY();
 
 	if (!copy)
-		glBindTexture(GL_TEXTURE_2D, s->vinf.text.glid);
+		env->bind_texture(GL_TEXTURE_2D, s->vinf.text.glid);
 	else{
 		if (GL_NONE == s->vinf.text.glid)
-			glGenTextures(1, &s->vinf.text.glid);
+			env->gen_textures(1, &s->vinf.text.glid);
 
 /* for the launch_resume and resize states, were we'd push a new
  * update	but have multiple references */
 		if (s->refcount == 0)
 			s->refcount = 1;
 
-		glBindTexture(GL_TEXTURE_2D, s->vinf.text.glid);
+		env->bind_texture(GL_TEXTURE_2D, s->vinf.text.glid);
 	}
 
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, s->txu == ARCAN_VTEX_REPEAT ?
-		GL_REPEAT : GL_CLAMP_TO_EDGE);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, s->txv == ARCAN_VTEX_REPEAT ?
-		GL_REPEAT : GL_CLAMP_TO_EDGE);
+	env->tex_param_i(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,
+		s->txu == ARCAN_VTEX_REPEAT ? GL_REPEAT : GL_CLAMP_TO_EDGE);
+	env->tex_param_i(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,
+		s->txv == ARCAN_VTEX_REPEAT ? GL_REPEAT : GL_CLAMP_TO_EDGE);
 
 	int filtermode = s->filtermode & (~ARCAN_VFILTER_MIPMAP);
 	bool mipmap = s->filtermode & ARCAN_VFILTER_MIPMAP;
@@ -369,42 +395,42 @@ void agp_update_vstore(struct storage_info_t* s, bool copy)
 	if (copy){
 #ifndef GL_GENERATE_MIPMAP
 		if (mipmap)
-			glGenerateMipmap(GL_TEXTURE_2D);
+			env->generate_mipmap(GL_TEXTURE_2D);
 #else
-			glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, mipmap);
+			env->tex_param_i(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, mipmap);
 #endif
 	}
 
 	switch (filtermode){
 	case ARCAN_VFILTER_NONE:
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		env->tex_param_i(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		env->tex_param_i(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	break;
 
 	case ARCAN_VFILTER_LINEAR:
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		env->tex_param_i(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		env->tex_param_i(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	break;
 
 	case ARCAN_VFILTER_BILINEAR:
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		env->tex_param_i(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		env->tex_param_i(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	break;
 
 	case ARCAN_VFILTER_TRILINEAR:
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+		env->tex_param_i(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
 			GL_LINEAR_MIPMAP_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		env->tex_param_i(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	break;
 	}
 
 	if (copy){
 		s->update_ts = arcan_timemillis();
 		if (s->txmapped == TXSTATE_DEPTH)
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, s->w, s->h, 0,
+			env->tex_image_2d(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, s->w, s->h, 0,
 				GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE, 0);
 		else
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, s->w, s->h,
+			env->tex_image_2d(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, s->w, s->h,
 				0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, s->vinf.text.raw);
 	}
 
@@ -491,6 +517,7 @@ void agp_draw_vobj(float x1, float y1, float x2, float y2,
 		x1, y2
 	};
 	bool settex = false;
+	struct agp_fenv* env = agp_env();
 
 	agp_shader_envv(MODELVIEW_MATR,
 		model ? (void*) model : ident, sizeof(float) * 16);
@@ -500,40 +527,41 @@ void agp_draw_vobj(float x1, float y1, float x2, float y2,
 	GLint attrindt = agp_shader_vattribute_loc(ATTRIBUTE_TEXCORD);
 
 	if (attrindv != -1){
-		glEnableVertexAttribArray(attrindv);
-		glVertexAttribPointer(attrindv, 2, GL_FLOAT, GL_FALSE, 0, verts);
+		env->enable_vertex_attrarray(attrindv);
+		env->vertex_attrpointer(attrindv, 2, GL_FLOAT, GL_FALSE, 0, verts);
 
 		if (txcos && attrindt != -1){
 			settex = true;
-			glEnableVertexAttribArray(attrindt);
-			glVertexAttribPointer(attrindt, 2, GL_FLOAT, GL_FALSE, 0, txcos);
+			env->enable_vertex_attrarray(attrindt);
+			env->vertex_attrpointer(attrindt, 2, GL_FLOAT, GL_FALSE, 0, txcos);
 		}
 
-		glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+		env->draw_arrays(GL_TRIANGLE_FAN, 0, 4);
 
 		if (settex)
-			glDisableVertexAttribArray(attrindt);
+			env->disable_vertex_attrarray(attrindt);
 
-		glDisableVertexAttribArray(attrindv);
+		env->disable_vertex_attrarray(attrindv);
 	}
 }
 
 static void toggle_debugstates(float* modelview)
 {
+	struct agp_fenv* env = agp_env();
 	if (modelview){
 		float white[3] = {1.0, 1.0, 1.0};
-		glDepthMask(GL_FALSE);
-		glDisable(GL_DEPTH_TEST);
-		glEnableVertexAttribArray(ATTRIBUTE_VERTEX);
+		env->depth_mask(GL_FALSE);
+		env->disable(GL_DEPTH_TEST);
+		env->enable_vertex_attrarray(ATTRIBUTE_VERTEX);
 		agp_shader_activate(agp_default_shader(COLOR_2D));
 		agp_shader_envv(MODELVIEW_MATR, modelview, sizeof(float) * 16);
 		agp_shader_forceunif("obj_col", shdrvec3, (void*) white);
 	}
 	else{
 		agp_shader_activate(agp_default_shader(COLOR_2D));
-		glEnable(GL_DEPTH_TEST);
-		glDepthMask(GL_TRUE);
-		glDisableVertexAttribArray(ATTRIBUTE_VERTEX);
+		env->enable(GL_DEPTH_TEST);
+		env->depth_mask(GL_TRUE);
+		env->disable_vertex_attrarray(ATTRIBUTE_VERTEX);
 	}
 }
 
@@ -551,6 +579,7 @@ void agp_rendertarget_ids(struct agp_rendertarget* rtgt, uintptr_t* tgt,
 void agp_submit_mesh(struct mesh_storage_t* base, enum agp_mesh_flags fl)
 {
 /* make sure the current program actually uses the attributes from the mesh */
+	struct agp_fenv* env = agp_env();
 	int attribs[3] = {
 		agp_shader_vattribute_loc(ATTRIBUTE_VERTEX),
 		agp_shader_vattribute_loc(ATTRIBUTE_NORMAL),
@@ -559,54 +588,54 @@ void agp_submit_mesh(struct mesh_storage_t* base, enum agp_mesh_flags fl)
 
 	if (fl & MESH_FACING_BOTH){
 		if ((fl & MESH_FACING_BACK) == 0){
-			glEnable(GL_CULL_FACE);
-			glCullFace(GL_BACK);
+			env->enable(GL_CULL_FACE);
+			env->cull_face(GL_BACK);
 		}
 		else if ((fl & MESH_FACING_FRONT) == 0){
-			glEnable(GL_CULL_FACE);
-			glCullFace(GL_FRONT);
+			env->enable(GL_CULL_FACE);
+			env->cull_face(GL_FRONT);
 		}
 		else
-			glDisable(GL_CULL_FACE);
+			env->disable(GL_CULL_FACE);
 	}
 
 	if (attribs[0] == -1)
 		return;
 	else {
-		glEnableVertexAttribArray(attribs[0]);
-		glVertexAttribPointer(attribs[0], 3, GL_FLOAT, GL_FALSE, 0, base->verts);
+		env->enable_vertex_attrarray(attribs[0]);
+		env->vertex_attrpointer(attribs[0], 3, GL_FLOAT, GL_FALSE, 0, base->verts);
 	}
 
 	if (attribs[1] != -1 && base->normals){
-		glEnableVertexAttribArray(attribs[1]);
-		glVertexAttribPointer(attribs[1], 3, GL_FLOAT, GL_FALSE,0, base->normals);
+		env->enable_vertex_attrarray(attribs[1]);
+		env->vertex_attrpointer(attribs[1], 3, GL_FLOAT, GL_FALSE,0, base->normals);
 	}
 	else
 		attribs[1] = -1;
 
 	if (attribs[2] != -1 && base->txcos){
-		glEnableVertexAttribArray(attribs[2]);
-		glVertexAttribPointer(attribs[2], 2, GL_FLOAT, GL_FALSE, 0, base->txcos);
+		env->enable_vertex_attrarray(attribs[2]);
+		env->vertex_attrpointer(attribs[2], 2, GL_FLOAT, GL_FALSE, 0, base->txcos);
 	}
 	else
 		attribs[2] = -1;
 
 		if (base->type == AGP_MESH_TRISOUP){
 			if (base->indices)
-				glDrawElements(GL_TRIANGLES, base->n_indices,
+				env->draw_elements(GL_TRIANGLES, base->n_indices,
 					GL_UNSIGNED_INT, base->indices);
 			else
-				glDrawArrays(GL_TRIANGLES, 0, base->n_vertices);
+				env->draw_arrays(GL_TRIANGLES, 0, base->n_vertices);
 		}
 		else if (base->type == AGP_MESH_POINTCLOUD){
-			glEnable(GL_VERTEX_PROGRAM_POINT_SIZE);
-			glDrawArrays(GL_POINTS, 0, base->n_vertices);
-			glDisable(GL_VERTEX_PROGRAM_POINT_SIZE);
+			env->enable(GL_VERTEX_PROGRAM_POINT_SIZE);
+			env->draw_arrays(GL_POINTS, 0, base->n_vertices);
+			env->disable(GL_VERTEX_PROGRAM_POINT_SIZE);
 		}
 
 		for (size_t i = 0; i < sizeof(attribs) / sizeof(attribs[0]); i++)
 			if (attribs[i] != -1)
-				glDisableVertexAttribArray(attribs[i]);
+				env->disable_vertex_attrarray(attribs[i]);
 }
 
 /*
@@ -619,19 +648,20 @@ void agp_invalidate_mesh(struct mesh_storage_t* bs)
 
 void agp_activate_vstore(struct storage_info_t* s)
 {
-	glBindTexture(GL_TEXTURE_2D, s->vinf.text.glid);
+	agp_env()->bind_texture(GL_TEXTURE_2D, s->vinf.text.glid);
 }
 
 void agp_deactivate_vstore()
 {
-	glBindTexture(GL_TEXTURE_2D, 0);
+	agp_env()->bind_texture(GL_TEXTURE_2D, 0);
 }
 
 void agp_save_output(size_t w, size_t h, av_pixel* dst, size_t dsz)
 {
-	glReadBuffer(GL_FRONT);
+	struct agp_fenv* env = agp_env();
+	env->read_buffer(GL_FRONT);
 	assert(w * h * sizeof(av_pixel) == dsz);
 
-	glReadPixels(0, 0, w, h, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, dst);
+	env->read_pixels(0, 0, w, h, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, dst);
 }
 

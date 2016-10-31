@@ -123,43 +123,47 @@ const char* agp_shader_language()
 
 static void set_pixel_store(size_t w, struct stream_meta const meta)
 {
-	glPixelStorei(GL_UNPACK_SKIP_ROWS, meta.y1);
-	glPixelStorei(GL_UNPACK_SKIP_PIXELS, meta.x1);
-	glPixelStorei(GL_UNPACK_ROW_LENGTH, w);
+	struct agp_fenv* env = agp_env();
+	env->pixel_storei(GL_UNPACK_SKIP_ROWS, meta.y1);
+	env->pixel_storei(GL_UNPACK_SKIP_PIXELS, meta.x1);
+	env->pixel_storei(GL_UNPACK_ROW_LENGTH, w);
 }
 
 static void reset_pixel_store()
 {
-	glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
-	glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
-	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+	struct agp_fenv* env = agp_env();
+	env->pixel_storei(GL_UNPACK_SKIP_ROWS, 0);
+	env->pixel_storei(GL_UNPACK_SKIP_PIXELS, 0);
+	env->pixel_storei(GL_UNPACK_ROW_LENGTH, 0);
 }
 
 void agp_readback_synchronous(struct storage_info_t* dst)
 {
 	if (!(dst->txmapped == TXSTATE_TEX2D) || !dst->vinf.text.raw)
 		return;
+	struct agp_fenv* env = agp_env();
 
-	glBindTexture(GL_TEXTURE_2D, dst->vinf.text.glid);
-	glGetTexImage(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT,
-		GL_UNSIGNED_BYTE, dst->vinf.text.raw);
+	env->bind_texture(GL_TEXTURE_2D, dst->vinf.text.glid);
+	env->get_tex_image(GL_TEXTURE_2D, 0,
+		GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, dst->vinf.text.raw);
 	dst->update_ts = arcan_timemillis();
-	glBindTexture(GL_TEXTURE_2D, 0);
+	env->bind_texture(GL_TEXTURE_2D, 0);
 }
 
 void agp_drop_vstore(struct storage_info_t* s)
 {
 	if (!s)
 		return;
+	struct agp_fenv* env = agp_env();
 
-	glDeleteTextures(1, &s->vinf.text.glid);
+	env->delete_textures(1, &s->vinf.text.glid);
 	s->vinf.text.glid = 0;
 
 	if (GL_NONE != s->vinf.text.rid)
-		glDeleteBuffers(1, &s->vinf.text.rid);
+		env->delete_buffers(1, &s->vinf.text.rid);
 
 	if (GL_NONE != s->vinf.text.wid)
-		glDeleteBuffers(1, &s->vinf.text.wid);
+		env->delete_buffers(1, &s->vinf.text.wid);
 
 	if (s->vinf.text.tag)
 		platform_video_map_handle(s, -1);
@@ -169,10 +173,12 @@ static void pbo_stream(struct storage_info_t* s,
 	av_pixel* buf, struct stream_meta* meta, bool synch)
 {
 	agp_activate_vstore(s);
-	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, s->vinf.text.wid);
+	struct agp_fenv* env = agp_env();
+
+	env->bind_buffer(GL_PIXEL_UNPACK_BUFFER, s->vinf.text.wid);
 	size_t ntc = s->w * s->h;
 
-	av_pixel* ptr = glMapBuffer(GL_PIXEL_UNPACK_BUFFER,GL_WRITE_ONLY);
+	av_pixel* ptr = env->map_buffer(GL_PIXEL_UNPACK_BUFFER,GL_WRITE_ONLY);
 
 	if (!ptr)
 		return;
@@ -199,12 +205,12 @@ static void pbo_stream(struct storage_info_t* s,
 				*ptr++ = *buf++;
 	}
 
-	glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+	env->unmap_buffer(GL_PIXEL_UNPACK_BUFFER);
 
-	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, s->w, s->h,
+	env->tex_subimage_2d(GL_TEXTURE_2D, 0, 0, 0, s->w, s->h,
 		GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, 0);
 
-	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+	env->bind_buffer(GL_PIXEL_UNPACK_BUFFER, 0);
 	agp_deactivate_vstore();
 }
 
@@ -212,13 +218,14 @@ static void pbo_stream(struct storage_info_t* s,
 static void pbo_stream_sub(struct storage_info_t* s,
 	av_pixel* buf, struct stream_meta* meta, bool synch)
 {
+	struct agp_fenv* env = agp_env();
 	if ( (float)(meta->w * meta->h) / (s->w * s->h) > 0.5)
 		return pbo_stream(s, buf, meta, synch);
 
 	agp_activate_vstore(s);
 	size_t row_sz = meta->w * sizeof(av_pixel);
 	set_pixel_store(s->w, *meta);
-	glTexSubImage2D(GL_TEXTURE_2D, 0, meta->x1, meta->y1, meta->w, meta->h,
+	env->tex_subimage_2d(GL_TEXTURE_2D, 0, meta->x1, meta->y1, meta->w, meta->h,
 		GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, buf);
 	reset_pixel_store();
 	agp_deactivate_vstore(s);
@@ -256,12 +263,13 @@ glBindBuffer(GL_PIXEL_UNPACK_BUFFER, s->vinf.text.wid);
 
 static inline void setup_unpack_pbo(struct storage_info_t* s, void* buf)
 {
+	struct agp_fenv* env = agp_env();
 	agp_activate_vstore(s);
-	glGenBuffers(1, &s->vinf.text.wid);
-	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, s->vinf.text.wid);
-	glBufferData(GL_PIXEL_UNPACK_BUFFER,
+	env->gen_buffers(1, &s->vinf.text.wid);
+	env->bind_buffer(GL_PIXEL_UNPACK_BUFFER, s->vinf.text.wid);
+	env->buffer_data(GL_PIXEL_UNPACK_BUFFER,
 		s->w * s->h * sizeof(av_pixel) , buf, GL_STREAM_DRAW);
-	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+	env->bind_buffer(GL_PIXEL_UNPACK_BUFFER, 0);
 	agp_deactivate_vstore();
 }
 
@@ -282,6 +290,7 @@ static void alloc_buffer(struct storage_info_t* s)
 struct stream_meta agp_stream_prepare(struct storage_info_t* s,
 		struct stream_meta meta, enum stream_type type)
 {
+	struct agp_fenv* env = agp_env();
 	struct stream_meta res = meta;
 	res.state = true;
 	res.type = type;
@@ -315,12 +324,12 @@ struct stream_meta agp_stream_prepare(struct storage_info_t* s,
 
 		if (meta.dirty){
 			set_pixel_store(s->w, meta);
-			glTexSubImage2D(GL_TEXTURE_2D, 0, meta.x1, meta.y1, meta.w, meta.h,
-				GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, meta.buf);
+			env->tex_subimage_2d(GL_TEXTURE_2D, 0, meta.x1, meta.y1,
+				meta.w, meta.h, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, meta.buf);
 			reset_pixel_store();
 		}
 		else
-			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, s->w, s->h,
+			env->tex_subimage_2d(GL_TEXTURE_2D, 0, 0, 0, s->w, s->h,
 				GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, meta.buf);
 		agp_deactivate_vstore();
 	break;
@@ -339,12 +348,13 @@ struct stream_meta agp_stream_prepare(struct storage_info_t* s,
 
 void agp_stream_release(struct storage_info_t* s, struct stream_meta meta)
 {
+	struct agp_fenv* env = agp_env();
 	if (meta.dirty)
 		pbo_stream_sub(s, s->vinf.text.raw, &meta, false);
 	else
 		pbo_stream(s, s->vinf.text.raw, &meta, false);
-	glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
-	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, GL_NONE);
+	env->unmap_buffer(GL_PIXEL_UNPACK_BUFFER);
+	env->bind_buffer(GL_PIXEL_UNPACK_BUFFER, GL_NONE);
 }
 
 void agp_stream_commit(struct storage_info_t* s, struct stream_meta meta)
@@ -354,38 +364,42 @@ void agp_stream_commit(struct storage_info_t* s, struct stream_meta meta)
 static void pbo_alloc_read(struct storage_info_t* store)
 {
 	GLuint pboid;
-	glGenBuffers(1, &pboid);
+	struct agp_fenv* env = agp_env();
+	env->gen_buffers(1, &pboid);
 	store->vinf.text.rid = pboid;
 
-	glBindBuffer(GL_PIXEL_PACK_BUFFER, pboid);
-	glBufferData(GL_PIXEL_PACK_BUFFER,
+	env->bind_buffer(GL_PIXEL_PACK_BUFFER, pboid);
+	env->buffer_data(GL_PIXEL_PACK_BUFFER,
 		store->w * store->h * store->bpp, NULL, GL_STREAM_COPY);
-	glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+	env->bind_buffer(GL_PIXEL_PACK_BUFFER, 0);
 }
 
 static void pbo_alloc_write(struct storage_info_t* store)
 {
 	GLuint pboid;
-	glGenBuffers(1, &pboid);
+	struct agp_fenv* env = agp_env();
+	env->gen_buffers(1, &pboid);
 	store->vinf.text.wid = pboid;
 
-	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pboid);
-	glBufferData(GL_PIXEL_UNPACK_BUFFER,
+	env->bind_buffer(GL_PIXEL_UNPACK_BUFFER, pboid);
+	env->buffer_data(GL_PIXEL_UNPACK_BUFFER,
 		store->w * store->h * store->bpp, NULL, GL_STREAM_DRAW);
-	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+	env->bind_buffer(GL_PIXEL_UNPACK_BUFFER, 0);
 }
 
 static void default_release(void* tag)
 {
 	if (!tag)
 		return;
+	struct agp_fenv* env = agp_env();
 
-	glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
-	glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+	env->unmap_buffer(GL_PIXEL_PACK_BUFFER);
+	env->bind_buffer(GL_PIXEL_PACK_BUFFER, 0);
 }
 
 void agp_resize_vstore(struct storage_info_t* s, size_t w, size_t h)
 {
+	struct agp_fenv* env = agp_env();
 	s->w = w;
 	s->h = h;
 	s->bpp = sizeof(av_pixel);
@@ -393,12 +407,12 @@ void agp_resize_vstore(struct storage_info_t* s, size_t w, size_t h)
 	alloc_buffer(s);
 
 	if (s->vinf.text.wid){
-		glDeleteBuffers(1, &s->vinf.text.wid);
+		env->delete_buffers(1, &s->vinf.text.wid);
 		pbo_alloc_write(s);
 	}
 
 	if (s->vinf.text.rid){
-		glDeleteBuffers(1, &s->vinf.text.rid);
+		env->delete_buffers(1, &s->vinf.text.rid);
 		pbo_alloc_read(s);
 	}
 
@@ -409,19 +423,21 @@ void agp_request_readback(struct storage_info_t* store)
 {
 	if (!store || store->txmapped != TXSTATE_TEX2D)
 		return;
+	struct agp_fenv* env = agp_env();
 
 	if (!store->vinf.text.rid)
 		pbo_alloc_read(store);
 
-	glBindTexture(GL_TEXTURE_2D, store->vinf.text.glid);
-	glBindBuffer(GL_PIXEL_PACK_BUFFER, store->vinf.text.rid);
-	glGetTexImage(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, NULL);
-	glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
-	glBindTexture(GL_TEXTURE_2D, 0);
+	env->bind_texture(GL_TEXTURE_2D, store->vinf.text.glid);
+	env->bind_buffer(GL_PIXEL_PACK_BUFFER, store->vinf.text.rid);
+	env->get_tex_image(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, NULL);
+	env->bind_buffer(GL_PIXEL_PACK_BUFFER, 0);
+	env->bind_texture(GL_TEXTURE_2D, 0);
 }
 
 struct asynch_readback_meta agp_poll_readback(struct storage_info_t* store)
 {
+	struct agp_fenv* env = agp_env();
 	struct asynch_readback_meta res = {
 	.release = default_release
 	};
@@ -430,12 +446,12 @@ struct asynch_readback_meta agp_poll_readback(struct storage_info_t* store)
 		store->vinf.text.rid == GL_NONE)
 		return res;
 
-	glBindBuffer(GL_PIXEL_PACK_BUFFER, store->vinf.text.rid);
+	env->bind_buffer(GL_PIXEL_PACK_BUFFER, store->vinf.text.rid);
 
 	res.w = store->w;
 	res.h = store->h;
 	res.tag = (void*) 0xdeadbeef;
-	res.ptr = (av_pixel*) glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_WRITE);
+	res.ptr = (av_pixel*) env->map_buffer(GL_PIXEL_PACK_BUFFER, GL_READ_WRITE);
 
 	return res;
 }
