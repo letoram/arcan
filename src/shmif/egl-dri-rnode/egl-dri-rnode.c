@@ -11,6 +11,7 @@
 #include "../arcan_shmif.h"
 #include "../shmif_privext.h"
 #include "video_platform.h"
+#include "agp/glfun.h"
 
 #define EGL_EGLEXT_PROTOTYPES
 #define GL_GLEXT_PROTOTYPES
@@ -27,16 +28,19 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+/*
+ * note: should be moved into the agp_fenv
+ */
 static PFNEGLCREATEIMAGEKHRPROC create_image;
 static PFNEGLEXPORTDMABUFIMAGEQUERYMESAPROC query_image_format;
 static PFNEGLEXPORTDMABUFIMAGEMESAPROC export_dmabuf;
 static PFNEGLDESTROYIMAGEKHRPROC destroy_image;
 
-
 struct shmif_ext_hidden_int {
 	struct gbm_device* dev;
 	struct agp_rendertarget* rtgt;
 	struct storage_info_t vstore;
+	struct agp_fenv fenv;
 	bool nopass;
 	int fd;
 
@@ -64,7 +68,7 @@ bool platform_video_map_handle(struct storage_info_t* store, int64_t handle)
 	return false;
 }
 
-static void check_functions(void*(*lookup)(void*, const char*), void* tag)
+static bool check_functions(void*(*lookup)(void*, const char*), void* tag)
 {
 	create_image = (PFNEGLCREATEIMAGEKHRPROC)
 		lookup(tag, "eglCreateImageKHR");
@@ -74,6 +78,7 @@ static void check_functions(void*(*lookup)(void*, const char*), void* tag)
 		lookup(tag, "eglExportDMABUFImageQueryMESA");
 	export_dmabuf = (PFNEGLEXPORTDMABUFIMAGEMESAPROC)
 		lookup(tag, "eglExportDMABUFImageMESA");
+	return create_image && destroy_image && query_image_format && export_dmabuf;
 }
 
 static void gbm_drop(struct arcan_shmif_cont* con)
@@ -104,6 +109,7 @@ static void gbm_drop(struct arcan_shmif_cont* con)
 
 	free(con->privext->internal);
 	con->privext->internal = NULL;
+	con->privext->cleanup = NULL;
 }
 
 struct arcan_shmifext_setup arcan_shmifext_headless_defaults(
@@ -135,6 +141,11 @@ void* arcan_shmifext_headless_lookup(
 	return eglGetProcAddress(fun);
 }
 
+static void* lookup_fenv(void* tag, const char* sym, bool req)
+{
+	return eglGetProcAddress(sym);
+}
+
 enum shmifext_setup_status arcan_shmifext_headless_setup(
 	struct arcan_shmif_cont* con,
 	struct arcan_shmifext_setup arg)
@@ -161,8 +172,6 @@ enum shmifext_setup_status arcan_shmifext_headless_setup(
 	break;
 	};
 
-	agp_init();
-
 	void* display;
 	if (!arcan_shmifext_headless_egl(con, &display, lookup, NULL))
 		return SHMIFEXT_NO_DISPLAY;
@@ -174,6 +183,8 @@ enum shmifext_setup_status arcan_shmifext_headless_setup(
 
 	if (!eglInitialize(ctx->display, NULL, NULL))
 		return SHMIFEXT_NO_EGL;
+
+	agp_glinit_fenv(&ctx->fenv, lookup_fenv, NULL);
 
 	const EGLint attribs[] = {
 		EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
@@ -270,7 +281,9 @@ bool arcan_shmifext_headless_egl(struct arcan_shmif_cont* con,
 
 	int dfd = -1;
 
-/* case for switching to another node */
+/* case for switching to another node, we're still missing a way to extract the
+ * 'real' library paths to the GL implementation and to the EGL implementation
+ * for dynamic- GPU switching */
 	if (con->privext->pending_fd != -1){
 		if (-1 != con->privext->active_fd){
 			close(con->privext->active_fd);
@@ -287,10 +300,8 @@ bool arcan_shmifext_headless_egl(struct arcan_shmif_cont* con,
 	}
 /* mode-switch is no-op in init here, but we still may need
  * to update function pointers due to possible context changes */
-	else {
-		check_functions(lookup, tag);
-		return true;
-	}
+	else
+		return check_functions(lookup, tag);
 
 	if (-1 == dfd)
 		return false;
@@ -301,23 +312,26 @@ bool arcan_shmifext_headless_egl(struct arcan_shmif_cont* con,
 /* finally open device */
 	if (!con->privext->internal){
 		con->privext->internal = malloc(sizeof(struct shmif_ext_hidden_int));
-		if (!con->privext->internal)
+		if (!con->privext->internal){
+			gbm_drop(con);
 			return false;
+		}
 
 		memset(con->privext->internal, '\0', sizeof(struct shmif_ext_hidden_int));
 		con->privext->internal->fd = -1;
 		con->privext->internal->nopass = getenv("ARCAN_VIDEO_NO_FDPASS") ?
 			true : false;
 		if (NULL == (con->privext->internal->dev = gbm_create_device(dfd))){
-			free(con->privext->internal);
-			close(dfd);
-			con->privext->internal = NULL;
+			gbm_drop(con);
 			return false;
 		}
 	}
 
+	if (!check_functions(lookup, tag)){
+		gbm_drop(con);
+		return false;
+	}
 	*display = (void*) (con->privext->internal->dev);
-	check_functions(lookup, tag);
 	return true;
 }
 
@@ -336,7 +350,6 @@ bool arcan_shmifext_egl_meta(struct arcan_shmif_cont* con,
 	if (context)
 		*context = (uintptr_t) ctx->context;
 
-
 	return true;
 }
 
@@ -348,6 +361,7 @@ bool arcan_shmifext_make_current(struct arcan_shmif_cont* con)
 
 	struct shmif_ext_hidden_int* ctx = con->privext->internal;
 
+	agp_setenv(&ctx->fenv);
 	eglMakeCurrent(ctx->display, ctx->surface, ctx->surface, ctx->context);
 	if (ctx->rtgt){
 		if (ctx->vstore.w != con->w || ctx->vstore.h != con->h){
@@ -357,7 +371,7 @@ bool arcan_shmifext_make_current(struct arcan_shmif_cont* con)
 		agp_activate_rendertarget(ctx->rtgt);
 	}
 
-	return false;
+	return true;
 }
 
 bool arcan_shmifext_headless_vk(struct arcan_shmif_cont* con,
