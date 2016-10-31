@@ -141,7 +141,29 @@ char** arcan_audio_capturelist();
  * unless there's a monitor attached
  */
 arcan_aobj_id arcan_audio_capturefeed(const char* identifier);
+
+/*
+ * update the gain value for a source either immediately (time == 0)
+ * or gradually over [time] ticks. Multiple calls with [time > 0] will
+ * queue additional transformations. A single call with [time == 0] will
+ * always reset any current chain.
+ *
+ * calling setgain on [id == 0] will change the default value for
+ * new sources, and the [time] argument will be ignored.
+ */
 arcan_errc arcan_audio_setgain(arcan_aobj_id id, float gain, uint16_t time);
+
+/*
+ * Retrieve the current gain value (and, if possible, the target)
+ * and store in [cgain] (if !NULL)
+ *
+ * calling getgain on [id == 0] will retrieve the global default for
+ * new sources.
+ *
+ * If the function fails (retv != ARCAN_OK), [cgain] and [dgain] will be
+ * left unchanged.
+ */
+arcan_errc arcan_audio_getgain(arcan_aobj_id id, float* cgain);
 
 /*
  * This function is used similarly to the collapse/adopt style

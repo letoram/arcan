@@ -2082,10 +2082,22 @@ static int gain(lua_State* ctx)
 	LUA_TRACE("audio_gain");
 
 	arcan_aobj_id id = luaL_checkaid(ctx, 1);
-	float gain = luaL_checknumber(ctx, 2);
-	uint16_t time = luaL_optint(ctx, 3, 0);
-	arcan_audio_setgain(id, gain, time);
+
+	if (lua_type(ctx, 2) != LUA_TNIL){
+		float gain = luaL_checknumber(ctx, 2);
+		uint16_t time = luaL_optint(ctx, 3, 0);
+		arcan_audio_setgain(id, gain, time);
+	}
+
+	float dgain;
+	if (ARCAN_OK == arcan_audio_getgain(id, &dgain)){
+		lua_pushnumber(ctx, dgain);
+		LUA_ETRACE("audio_gain", NULL, 1);
+		return 1;
+	}
+
 	LUA_ETRACE("audio_gain", NULL, 0);
+	return 0;
 }
 
 static int abufsz(lua_State* ctx)
