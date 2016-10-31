@@ -161,6 +161,8 @@ enum shmifext_setup_status arcan_shmifext_headless_setup(
 	break;
 	};
 
+	agp_init();
+
 	void* display;
 	if (!arcan_shmifext_headless_egl(con, &display, lookup, NULL))
 		return SHMIFEXT_NO_DISPLAY;
