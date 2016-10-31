@@ -8,16 +8,19 @@
 -- yield nil or a string representing a line or null-terminated buffer
 -- contents.  If the open operation fails for any reason, blocktbl will be nil.
 -- Calls to write will yield the number of character successfully written
--- (should ideally be #res but short-writes are possible).
+-- (should ideally be #res but short-writes are possible). The blocktable will
+-- contain (read,close) or (write,close) methods. Close is called on garbage
+-- collect unless explicitly closed in beforehand.
 -- @note: If *res* begins with a '<' character, the input will be created as a
 -- named pipe (fifo) and the fifo will be restricted to the APPL_TEMP namespace.
 -- @note: blocktbl methods: (read-mode: read, close)
+-- @note: if *res* points to a valid frameserver connection, an unnamed pipe
+-- pair will be created and sent to target as a _BCHUNK_(IN) or (OUT) event
 -- (write-mode: write, close)
 -- @note: the corresponding file-descriptor will be closed upon
 -- garbage collection or by calling the table- method close.
--- @note: the write-mode is primarily intended for debugging corner cases,
--- write-mode opens are restricted to APPL_TEMP namespace and res should be
--- non-existing.
+-- @note: For filesystem backed *res* destinations, the restrictions of the
+-- APPL_TEMP namespace applies.
 -- @group: resource
 -- @cfunction: opennonblock
 -- @related:

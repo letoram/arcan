@@ -659,6 +659,56 @@ static void dump_stack(lua_State* ctx)
 	arcan_warning("\n");
 }
 
+static arcan_aobj_id luaaid_toaid(lua_Number innum)
+{
+	return (arcan_aobj_id) innum;
+}
+
+static arcan_vobj_id luavid_tovid(lua_Number innum)
+{
+	arcan_vobj_id res = ARCAN_VIDEO_WORLDID;
+
+	if (innum != ARCAN_EID && innum != ARCAN_VIDEO_WORLDID)
+		res = (arcan_vobj_id) innum - luactx.lua_vidbase;
+	else if (innum != res)
+		res = ARCAN_EID;
+
+	return res;
+}
+
+static lua_Number vid_toluavid(arcan_vobj_id innum)
+{
+	if (innum != ARCAN_EID && innum != ARCAN_VIDEO_WORLDID)
+		innum += luactx.lua_vidbase;
+
+	return (double) innum;
+}
+
+static arcan_vobj_id luaL_checkvid(
+		lua_State* ctx, int num, arcan_vobject** dptr)
+{
+	arcan_vobj_id lnum = luaL_checknumber(ctx, num);
+	arcan_vobj_id res = luavid_tovid( lnum );
+	if (dptr){
+		*dptr = arcan_video_getobject(res);
+		if (!(*dptr))
+			arcan_fatal("invalid VID requested (%"PRIxVOBJ")\n", res);
+	}
+
+#ifdef _DEBUG
+	arcan_vobject* vobj = arcan_video_getobject(res);
+
+	if (vobj && FL_TEST(vobj, FL_FROZEN))
+		frozen_warning(ctx, vobj);
+
+	if (!vobj)
+		arcan_fatal("Bad VID requested (%"PRIxVOBJ") at index (%d)\n", lnum, num);
+#endif
+
+	return res;
+}
+
+
 /*
  * A more optimized approach than this one would be to track when the globals
  * change for C<->LUA related transfer functions and just have
@@ -930,6 +980,60 @@ static int zapresource(lua_State* ctx)
 	LUA_ETRACE("zap_resource", NULL, 1);
 }
 
+static int opennonblock_tgt(lua_State* ctx, bool wr)
+{
+	arcan_vobject* vobj;
+	arcan_vobj_id vid = luaL_checkvid(ctx, 1, &vobj);
+	arcan_frameserver* fsrv = vobj->feed.state.ptr;
+
+	if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV)
+		arcan_fatal("open_nonblock(tgt), target must be a valid frameserver.\n");
+
+	int outp[2];
+	if (-1 == pipe(outp)){
+		arcan_warning("open_nonblock(tgt), pipe-pair creation failed: %d\n", errno);
+		return 0;
+	}
+
+/* WRITE mode = 'INPUT' in the client space */
+	int dst = wr ? outp[0] : outp[1];
+	int src = wr ? outp[1] : outp[0];
+
+/* in any scenario where this would fail, "blocking" behavior is acceptable */
+	int flags = fcntl(src, F_GETFL);
+	if (-1 != flags)
+		fcntl(src, F_SETFL, flags | O_NONBLOCK);
+
+	if (ARCAN_OK != arcan_frameserver_pushfd(fsrv, &(struct arcan_event){
+		.category = EVENT_TARGET,
+		.tgt.kind = wr ? TARGET_COMMAND_BCHUNK_IN : TARGET_COMMAND_BCHUNK_OUT,
+		.tgt.message = "stream"}, dst)
+	){
+		close(dst);
+		close(src);
+		return 0;
+	}
+	close(dst);
+
+	struct nonblock_io* conn = arcan_alloc_mem(sizeof(struct nonblock_io),
+			ARCAN_MEM_BINDING, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
+
+	if (!conn){
+		close(src);
+		return 0;
+	}
+
+	conn->fd = src;
+	conn->pending = NULL;
+
+	uintptr_t* dp = lua_newuserdata(ctx, sizeof(uintptr_t));
+	*dp = (uintptr_t) conn;
+	luaL_getmetatable(ctx, wr ? "nonblockIOw" : "nonblockIOr");
+	lua_setmetatable(ctx, -2);
+
+	return 1;
+}
+
 static int opennonblock(lua_State* ctx)
 {
 	LUA_TRACE("open_nonblock");
@@ -939,6 +1043,11 @@ static int opennonblock(lua_State* ctx)
 	bool fifo = false, ignerr = false;
 	char* path;
 	int fd;
+
+	if (lua_type(ctx, 1) == LUA_TNUMBER){
+		int rv = opennonblock_tgt(ctx, wrmode);
+		LUA_ETRACE("open_nonblock(), ", NULL, rv);
+	}
 
 	const char* str = luaL_checkstring(ctx, 1);
 	if (str[0] == '<'){
@@ -1275,11 +1384,15 @@ static int nbio_write(lua_State* ctx)
 	if (-1 == iw->fd && iw->pending)
 		iw->fd = open(iw->pending, O_NONBLOCK | O_WRONLY | O_CLOEXEC);
 
-	while (len - of){
+/* non-block, so don't allow too many attempts */
+	int retc = 10;
+	while (retc && (len - of)){
 		size_t nw = write(iw->fd, buf + of, len - of);
 		if (-1 == nw){
-			if (errno == EAGAIN || errno == EINTR)
+			if (errno == EAGAIN || errno == EINTR){
+				retc--;
 				continue;
+			}
 			else{
 				close(iw->fd);
 				iw->fd = -1;
@@ -1328,55 +1441,6 @@ void arcan_lua_setglobalint(lua_State* ctx, const char* key, int val)
 {
 	lua_pushnumber(ctx, val);
 	lua_setglobal(ctx, key);
-}
-
-static inline arcan_aobj_id luaaid_toaid(lua_Number innum)
-{
-	return (arcan_aobj_id) innum;
-}
-
-static inline arcan_vobj_id luavid_tovid(lua_Number innum)
-{
-	arcan_vobj_id res = ARCAN_VIDEO_WORLDID;
-
-	if (innum != ARCAN_EID && innum != ARCAN_VIDEO_WORLDID)
-		res = (arcan_vobj_id) innum - luactx.lua_vidbase;
-	else if (innum != res)
-		res = ARCAN_EID;
-
-	return res;
-}
-
-static inline lua_Number vid_toluavid(arcan_vobj_id innum)
-{
-	if (innum != ARCAN_EID && innum != ARCAN_VIDEO_WORLDID)
-		innum += luactx.lua_vidbase;
-
-	return (double) innum;
-}
-
-static inline arcan_vobj_id luaL_checkvid(
-		lua_State* ctx, int num, arcan_vobject** dptr)
-{
-	arcan_vobj_id lnum = luaL_checknumber(ctx, num);
-	arcan_vobj_id res = luavid_tovid( lnum );
-	if (dptr){
-		*dptr = arcan_video_getobject(res);
-		if (!(*dptr))
-			arcan_fatal("invalid VID requested (%"PRIxVOBJ")\n", res);
-	}
-
-#ifdef _DEBUG
-	arcan_vobject* vobj = arcan_video_getobject(res);
-
-	if (vobj && FL_TEST(vobj, FL_FROZEN))
-		frozen_warning(ctx, vobj);
-
-	if (!vobj)
-		arcan_fatal("Bad VID requested (%"PRIxVOBJ") at index (%d)\n", lnum, num);
-#endif
-
-	return res;
 }
 
 static int rawclose(lua_State* ctx)
