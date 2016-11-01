@@ -129,10 +129,10 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 
 	enum shmifext_setup_status status;
 	struct arcan_shmifext_setup defs =
-		arcan_shmifext_headless_defaults(&disp[0].conn);
+		arcan_shmifext_defaults(&disp[0].conn);
 	defs.builtin_fbo = false;
 	if ((status =
-		arcan_shmifext_headless_setup(&disp[0].conn, defs)) != SHMIFEXT_OK){
+		arcan_shmifext_setup(&disp[0].conn, defs)) != SHMIFEXT_OK){
 		arcan_warning("lwa_video_init(), couldn't setup headless graphics\n"
 			"\t error code: %d\n", status);
 		arcan_shmif_drop(&disp[0].conn);
@@ -223,7 +223,7 @@ void platform_video_restore_external()
 
 void* platform_video_gfxsym(const char* sym)
 {
-	return arcan_shmifext_headless_lookup(&disp[0].conn, sym);
+	return arcan_shmifext_lookup(&disp[0].conn, sym);
 }
 
 void platform_video_setsynch(const char* arg)

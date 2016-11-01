@@ -179,9 +179,9 @@ int arcan_shmif_dupfd(int fd, int dstnum, bool blocking);
 /*
  * Maintain both context and display setup. This is for cases where you don't
  * want to set up EGL or similar support yourself. For cases where you want to
- * do the EGL setup except for the NativeDisplay part, use _headless_egl.
+ * do the EGL setup except for the NativeDisplay part, use _egl.
  *
- * [Warning] stick to either _headless_setup OR _headless(_egl, vk), don't mix
+ * [Warning] stick to either _setup OR (_egl, vk), don't mix
  *
  */
 enum shmifext_setup_status {
@@ -212,18 +212,18 @@ struct arcan_shmifext_setup {
 	uint64_t reserved[7];
 };
 
-struct arcan_shmifext_setup arcan_shmifext_headless_defaults(
+struct arcan_shmifext_setup arcan_shmifext_defaults(
 	struct arcan_shmif_cont* con);
 
-enum shmifext_setup_status arcan_shmifext_headless_setup(
+enum shmifext_setup_status arcan_shmifext_setup(
 	struct arcan_shmif_cont* con,
 	struct arcan_shmifext_setup arg);
 
 /*
- * for use with the shmifext_headless_setup approach, try and find the
+ * for use with the shmifext_setup approach, try and find the
  * requested symbol within the context of the accelerated graphics backend
  */
-void* arcan_shmifext_headless_lookup(
+void* arcan_shmifext_lookup(
 	struct arcan_shmif_cont* con, const char*);
 
 /*
@@ -232,12 +232,12 @@ void* arcan_shmifext_headless_lookup(
  * Can be called multiple times as response to DEVICE_NODE calls or to
  * retrieve the display associated with con
  */
-bool arcan_shmifext_headless_egl(struct arcan_shmif_cont* con,
+bool arcan_shmifext_egl(struct arcan_shmif_cont* con,
 	void** display, void*(*lookupfun)(void*, const char*), void* tag);
 
 /*
  * For the corner cases where you need access to the display/surface/context
- * but don't want to detract from the _headless_setup
+ * but don't want to detract from the _setup
  */
 bool arcan_shmifext_egl_meta(struct arcan_shmif_cont* con,
 	uintptr_t* display, uintptr_t* surface, uintptr_t* context);
@@ -254,7 +254,7 @@ bool arcan_shmifext_make_current(struct arcan_shmif_cont* con);
  * in order to stop using the connection for accelerated drawing,
  * or to rebuild- a little later without destroying the connection
  */
-bool arcan_shmifext_headless_drop(struct arcan_shmif_cont* con);
+bool arcan_shmifext_drop(struct arcan_shmif_cont* con);
 
 /*
  * If headless setup uses a built-in FBO configuration, this function can be
@@ -267,12 +267,12 @@ bool arcan_shmifext_gl_handles(struct arcan_shmif_cont* con,
 /*
  * Placeholder awaiting VK support
  */
-bool arcan_shmifext_headless_vk(struct arcan_shmif_cont* con,
+bool arcan_shmifext_vk(struct arcan_shmif_cont* con,
 	void** display, void*(*lookupfun)(void*, const char*), void* tag);
 
 /*
  * Similar behavior to signalhandle, but any conversion from the texture id
- * in [tex_id] is handled internally in accordance with the last _headless_egl
+ * in [tex_id] is handled internally in accordance with the last _egl
  * call on [con]. Context refers to the EGLContext where [tex_id] is valid.
  *
  * If (tex_id is SHMIFEXT_BUILTIN and context was setup with FBO management,

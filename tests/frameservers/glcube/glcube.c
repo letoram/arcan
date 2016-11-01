@@ -345,10 +345,10 @@ static struct arcan_shmif_cont* setup_connection()
 	struct arcan_shmif_cont* res = malloc(sizeof(struct arcan_shmif_cont));
 
 /* just give us render-node,depths,etc. based on what the connection wants */
-	struct arcan_shmifext_setup defs = arcan_shmifext_headless_defaults(&con);
+	struct arcan_shmifext_setup defs = arcan_shmifext_defaults(&con);
 
 /* try to set it up */
-	enum shmifext_setup_status status = arcan_shmifext_headless_setup(&con, defs);
+	enum shmifext_setup_status status = arcan_shmifext_setup(&con, defs);
 
 	if (status != SHMIFEXT_OK){
 		printf("couldn't setup headless-GL, error: %d\n", status);
