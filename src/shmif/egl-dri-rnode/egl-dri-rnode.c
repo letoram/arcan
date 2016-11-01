@@ -387,7 +387,6 @@ int arcan_shmifext_eglsignal(struct arcan_shmif_cont* con,
 		return -1;
 
 	struct shmif_ext_hidden_int* ctx = con->privext->internal;
-	struct storage_info_t vstore = {0};
 
 	EGLDisplay* dpy = display == 0 ?
 		con->privext->internal->display : (EGLDisplay*) display;
@@ -439,9 +438,25 @@ int arcan_shmifext_eglsignal(struct arcan_shmif_cont* con,
  * somehow be able to mark/pin our output buffer for safe readback
  */
 fallback:
-	vstore.vinf.text.raw = (void*) con->vidp;
-	agp_activate_rendertarget(NULL);
-	agp_readback_synchronous(&vstore);
+	if (1){
+	struct storage_info_t vstore = {
+		.w = con->w,
+		.h = con->h,
+		.txmapped = TXSTATE_TEX2D,
+		.vinf.text = {
+			.glid = tex_id,
+			.raw = (void*) con->vidp
+		},
+	};
+
+	if (ctx->rtgt){
+		agp_activate_rendertarget(NULL);
+		agp_readback_synchronous(&vstore);
+		agp_activate_rendertarget(ctx->rtgt);
+	}
+	else
+		agp_readback_synchronous(&vstore);
+	}
 	res = arcan_shmif_signal(con, mask);
 	return res > INT_MAX ? INT_MAX : res;
 }
