@@ -1,6 +1,7 @@
 #define WANT_ARCAN_SHMIF_HELPER
 #include "../arcan_shmif.h"
 #include "../shmif_privext.h"
+#include "agp/glfun.h"
 
 #include <fcntl.h>
 #include <dlfcn.h>
@@ -8,10 +9,45 @@
 #include <OpenGL/OpenGL.h>
 #include <OpenGL/GL.h>
 
+struct shmif_ext_hidden_int {
+	struct agp_rendertarget* rtgt;
+	struct storage_info_t vstore;
+	struct agp_fenv fenv;
+	CGLContextObj context;
+};
+
 struct arcan_shmifext_setup arcan_shmifext_headless_defaults(
 	struct arcan_shmif_cont* con)
 {
-	return (struct arcan_shmifext_setup){};
+	return (struct arcan_shmifext_setup){
+		.red = 8, .green = 8, .blue = 8, .depth = 16,
+		.api = API_OPENGL,
+		.builtin_fbo = true,
+		.major = 2, .minor = 1
+	};
+}
+
+static void* lookup_fenv(void* tag, const char* sym, bool req)
+{
+	return arcan_shmifext_headless_lookup(NULL, sym);
+}
+
+bool arcan_shmifext_headless_drop(struct arcan_shmif_cont* con)
+{
+	if (!con || !con->privext || !con->privext->internal)
+		return false;
+
+	struct shmif_ext_hidden_int* in = con->privext->internal;
+	con->privext->internal = NULL;
+
+	if (in->rtgt){
+		agp_drop_rendertarget(in->rtgt);
+		agp_drop_vstore(&in->vstore);
+	}
+  CGLDestroyContext(in->context);
+
+	free(in);
+	return true;
 }
 
 enum shmifext_setup_status arcan_shmifext_headless_setup(
@@ -19,15 +55,30 @@ enum shmifext_setup_status arcan_shmifext_headless_setup(
 	struct arcan_shmifext_setup arg)
 {
 	CGLPixelFormatObj pix;
-	CGLError errorCode;
+	CGLError errc;
 	GLint num;
 
-	CGLPixelFormatAttribute attributes[4] = {
+	CGLPixelFormatAttribute attributes[] = {
 		kCGLPFAAccelerated,
 		kCGLPFAOpenGLProfile,
 		(CGLPixelFormatAttribute) kCGLOGLPVersion_Legacy,
-		(CGLPixelFormatAttribute) 0
+		(CGLPixelFormatAttribute) 0,
+		kCGLPFAColorSize, 24,
+		kCGLPFADepthSize, arg.depth,
+		(CGLPixelFormatAttribute) 0, /* supersample */
+		(CGLPixelFormatAttribute) 0,
 	};
+
+	if (arg.supersample)
+		attributes[8] = kCGLPFASupersample;
+
+	switch(arg.api){
+	case API_OPENGL:
+	break;
+	default:
+		return SHMIFEXT_NO_API;
+	break;
+	}
 
 	if (arg.major == 3){
 		attributes[2] = (CGLPixelFormatAttribute) kCGLOGLPVersion_3_2_Core;
@@ -36,41 +87,81 @@ enum shmifext_setup_status arcan_shmifext_headless_setup(
 		return SHMIFEXT_NO_API;
 	}
 
-	static CGLContextObj context;
+	errc = CGLChoosePixelFormat( attributes, &pix, &num );
+	if (!pix)
+		return SHMIFEXT_NO_CONFIG;
 
-	errorCode = CGLChoosePixelFormat( attributes, &pix, &num );
-  errorCode = CGLCreateContext( pix, NULL, &context );
+	struct shmif_ext_hidden_int* ictx = malloc(sizeof(
+		struct shmif_ext_hidden_int));
+
+	if (!ictx){
+		CGLDestroyPixelFormat(pix);
+		return SHMIFEXT_NO_CONFIG;
+	}
+	memset(ictx, '\0', sizeof(struct shmif_ext_hidden_int));
+
+  errc = CGLCreateContext( pix, NULL, &ictx->context );
 	CGLDestroyPixelFormat( pix );
-  errorCode = CGLSetCurrentContext( context );
+	if (!ictx->context){
+		free(ictx);
+		return SHMIFEXT_NO_CONTEXT;
+	}
+  errc = CGLSetCurrentContext(ictx->context);
 
 /*
  * no double buffering,
  * we let the parent transfer process act as the limiting clock.
  */
 	GLint si = 0;
-	CGLSetParameter(context, kCGLCPSwapInterval, &si);
+	CGLSetParameter(ictx->context, kCGLCPSwapInterval, &si);
 
-	struct shmif_ext_hidden_int* ctx = con->privext->internal;
+	agp_glinit_fenv(&ictx->fenv, lookup_fenv, NULL);
 
 	if (arg.builtin_fbo){
-		agp_empty_vstore(&ctx->vstore, con->w, con->h);
-		ctx->rtgt = agp_setup_rendertarget(
-			&ctx->vstore, arg.depth > 0 ? RENDERTARGET_COLOR_DEPTH_STENCIL :
+		agp_empty_vstore(&ictx->vstore, con->w, con->h);
+		ictx->rtgt = agp_setup_rendertarget(
+			&ictx->vstore, arg.depth > 0 ? RENDERTARGET_COLOR_DEPTH_STENCIL :
 				RENDERTARGET_COLOR);
 	}
-
+	con->privext->internal = ictx;
 	return SHMIFEXT_OK;
 }
 
 bool arcan_shmifext_make_current(struct arcan_shmif_cont* con)
 {
-	return false;
+	if (!con || !con->addr || !con->privext || !con->privext->internal)
+		return false;
+
+	struct shmif_ext_hidden_int* ctx = con->privext->internal;
+	agp_setenv(&ctx->fenv);
+	CGLSetCurrentContext(con->privext->internal->context);
+	if (ctx->rtgt){
+		if (ctx->vstore.w != con->w || ctx->vstore.h != con->h){
+			agp_activate_rendertarget(NULL);
+			agp_resize_rendertarget(ctx->rtgt, con->w, con->h);
+		}
+		agp_activate_rendertarget(ctx->rtgt);
+	}
+
+	return true;
 }
 
 bool arcan_shmifext_egl_meta(struct arcan_shmif_cont* con,
 	uintptr_t* display, uintptr_t* surface, uintptr_t* context)
 {
-	return false;
+	if (!con || !con->addr || !con->privext || !con->privext->internal)
+		return false;
+
+	if (context)
+		*context = (uintptr_t) con->privext->internal->context;
+
+	if (display)
+		*display = 0;
+
+	if (surface)
+		*surface = 0;
+
+	return true;
 }
 
 void* arcan_shmifext_headless_lookup(
@@ -101,9 +192,31 @@ int arcan_shmifext_eglsignal(struct arcan_shmif_cont* con,
 {
 	if (!con || !con->addr || !con->privext || !con->privext->internal)
 		return -1;
+	struct shmif_ext_hidden_int* ctx = con->privext->internal;
 
+	if (tex_id == SHMIFEXT_BUILTIN)
+		tex_id = ctx->vstore.vinf.text.glid;
 
-	return -1;
+	struct storage_info_t vstore = {
+		.w = con->w,
+		.h = con->h,
+		.txmapped = TXSTATE_TEX2D,
+		.vinf.text = {
+			.glid = tex_id,
+			.raw = (void*) con->vidp
+		},
+	};
+
+	if (ctx->rtgt){
+		agp_activate_rendertarget(NULL);
+		agp_readback_synchronous(&vstore);
+		agp_activate_rendertarget(ctx->rtgt);
+	}
+	else
+		agp_readback_synchronous(&vstore);
+
+	unsigned res = arcan_shmif_signal(con, mask);
+	return res > INT_MAX ? INT_MAX : res;
 }
 
 int arcan_shmifext_vksignal(struct arcan_shmif_cont* con,
