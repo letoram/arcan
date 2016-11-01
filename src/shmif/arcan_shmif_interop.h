@@ -206,8 +206,9 @@ struct arcan_shmifext_setup {
 	uint64_t flags;
 	uint64_t mask;
 	uint8_t builtin_fbo;
+	uint8_t supersample;
 /* workaround for versioning snafu with _setup not taking sizeof(...) */
-	uint8_t uintfl_reserve[7];
+	uint8_t uintfl_reserve[6];
 	uint64_t reserved[7];
 };
 

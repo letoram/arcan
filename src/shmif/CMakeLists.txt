@@ -149,9 +149,9 @@ endif()
 target_link_libraries(arcan_shmif PRIVATE ${STDLIB})
 target_link_libraries(arcan_shmif_int PRIVATE ${STDLIB})
 target_link_libraries(arcan_shmif_ext PRIVATE ${STDLIB} ${VIDEO_LIBRARIES}
-	${AGP_LIBRARIES} ${HEADLESS_LIBRARIES})
+	${AGP_LIBRARIES} ${HEADLESS_LIBRARIES} arcan_shmif)
 target_link_libraries(arcan_shmif_intext PRIVATE ${STDLIB} ${AGP_LIBRARIES}
-	${VIDEO_LIBRARIES} ${HEADLESS_LIBRARIES})
+	${VIDEO_LIBRARIES} ${HEADLESS_LIBRARIES} arcan_shmif)
 
 target_include_directories(arcan_shmif_ext PRIVATE ${INCLUDE_DIRS})
 target_include_directories(arcan_shmif_intext PRIVATE ${INCLUDE_DIRS})
