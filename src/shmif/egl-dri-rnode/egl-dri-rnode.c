@@ -112,7 +112,7 @@ static void gbm_drop(struct arcan_shmif_cont* con)
 	con->privext->cleanup = NULL;
 }
 
-struct arcan_shmifext_setup arcan_shmifext_headless_defaults(
+struct arcan_shmifext_setup arcan_shmifext_defaults(
 	struct arcan_shmif_cont* con)
 {
 	int major = getenv("AGP_GL_MAJOR") ?
@@ -135,7 +135,7 @@ static void* lookup(void* tag, const char* sym)
 	return eglGetProcAddress(sym);
 }
 
-void* arcan_shmifext_headless_lookup(
+void* arcan_shmifext_lookup(
 	struct arcan_shmif_cont* con, const char* fun)
 {
 	return eglGetProcAddress(fun);
@@ -146,7 +146,7 @@ static void* lookup_fenv(void* tag, const char* sym, bool req)
 	return eglGetProcAddress(sym);
 }
 
-enum shmifext_setup_status arcan_shmifext_headless_setup(
+enum shmifext_setup_status arcan_shmifext_setup(
 	struct arcan_shmif_cont* con,
 	struct arcan_shmifext_setup arg)
 {
@@ -173,7 +173,7 @@ enum shmifext_setup_status arcan_shmifext_headless_setup(
 	};
 
 	void* display;
-	if (!arcan_shmifext_headless_egl(con, &display, lookup, NULL))
+	if (!arcan_shmifext_egl(con, &display, lookup, NULL))
 		return SHMIFEXT_NO_DISPLAY;
 
 	struct shmif_ext_hidden_int* ctx = con->privext->internal;
@@ -252,7 +252,7 @@ enum shmifext_setup_status arcan_shmifext_headless_setup(
 	return SHMIFEXT_OK;
 }
 
-bool arcan_shmifext_headless_drop(struct arcan_shmif_cont* con)
+bool arcan_shmifext_drop(struct arcan_shmif_cont* con)
 {
 	if (!con || !con->privext || !con->privext->internal ||
 		!con->privext->internal->display)
@@ -273,7 +273,7 @@ bool arcan_shmifext_gl_handles(struct arcan_shmif_cont* con,
 	return true;
 }
 
-bool arcan_shmifext_headless_egl(struct arcan_shmif_cont* con,
+bool arcan_shmifext_egl(struct arcan_shmif_cont* con,
 	void** display, void*(*lookup)(void*, const char*), void* tag)
 {
 	if (!lookup || !con || !con->addr || !display)
@@ -374,7 +374,7 @@ bool arcan_shmifext_make_current(struct arcan_shmif_cont* con)
 	return true;
 }
 
-bool arcan_shmifext_headless_vk(struct arcan_shmif_cont* con,
+bool arcan_shmifext_vk(struct arcan_shmif_cont* con,
 	void** display, void*(*lookupfun)(void*, const char*), void* tag)
 {
 	return false;

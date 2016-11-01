@@ -1542,7 +1542,7 @@ static inline long long add_jitter(int num)
  */
 void* platform_video_gfxsym(const char* sym)
 {
-	return arcan_shmifext_headless_lookup(&retro.shmcont, sym);
+	return arcan_shmifext_lookup(&retro.shmcont, sym);
 }
 
 struct monitor_mode platform_video_dimensions()
@@ -1579,16 +1579,14 @@ static void setup_3dcore(struct retro_hw_render_callback* ctx)
  * cheat with some envvars as the agp_ interface because it was not designed
  * to handle these sort of 'someone else decides which version to use'
  */
-	struct arcan_shmifext_setup setup = arcan_shmifext_headless_defaults(
-		&retro.shmcont);
+	struct arcan_shmifext_setup setup = arcan_shmifext_defaults(&retro.shmcont);
 	if (ctx->context_type == RETRO_HW_CONTEXT_OPENGL_CORE){
 		setup.major = ctx->version_major;
 		setup.minor = ctx->version_minor;
 	}
 	enum shmifext_setup_status status;
 	setup.depth = 1;
-	if ((status = arcan_shmifext_headless_setup(
-		&retro.shmcont, setup)) != SHMIFEXT_OK){
+	if ((status = arcan_shmifext_setup(&retro.shmcont, setup)) != SHMIFEXT_OK){
 		LOG("couldn't setup 3D context, code: %d, giving up.\n", status);
 		arcan_shmif_drop(&retro.shmcont);
 		exit(EXIT_FAILURE);

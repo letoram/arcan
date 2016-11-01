@@ -17,7 +17,7 @@ struct shmif_ext_hidden_int {
 	Window wnd;
 };
 
-struct arcan_shmifext_setup arcan_shmifext_headless_defaults(
+struct arcan_shmifext_setup arcan_shmifext_defaults(
 	struct arcan_shmif_cont* con)
 {
 return (struct arcan_shmifext_setup){
@@ -40,13 +40,13 @@ if (!con->privext->internal)
 	con->privext->internal = NULL;
 }
 
-void* arcan_shmifext_headless_lookup(
+void* arcan_shmifext_lookup(
 	struct arcan_shmif_cont* con, const char* fun)
 {
 	return glXGetProcAddress((const GLubyte*) fun);
 }
 
-enum shmifext_setup_status arcan_shmifext_headless_setup(
+enum shmifext_setup_status arcan_shmifext_setup(
 	struct arcan_shmif_cont* con,
 	struct arcan_shmifext_setup arg)
 {
@@ -90,7 +90,7 @@ enum shmifext_setup_status arcan_shmifext_headless_setup(
 	return SHMIFEXT_OK;
 }
 
-bool arcan_shmifext_headless_egl(struct arcan_shmif_cont* con,
+bool arcan_shmifext_egl(struct arcan_shmif_cont* con,
 	void** display, void*(*lookupfun)(void*, const char*), void* tag)
 {
 	return false;
@@ -101,7 +101,7 @@ bool arcan_shmifext_make_current(struct arcan_shmif_cont* con)
 	return false;
 }
 
-bool arcan_shmifext_headless_vk(struct arcan_shmif_cont* con,
+bool arcan_shmifext_vk(struct arcan_shmif_cont* con,
 	void** display, void*(*lookupfun)(void*, const char*), void* tag)
 {
 	return false;

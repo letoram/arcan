@@ -16,7 +16,7 @@ struct shmif_ext_hidden_int {
 	CGLContextObj context;
 };
 
-struct arcan_shmifext_setup arcan_shmifext_headless_defaults(
+struct arcan_shmifext_setup arcan_shmifext_defaults(
 	struct arcan_shmif_cont* con)
 {
 	return (struct arcan_shmifext_setup){
@@ -29,10 +29,10 @@ struct arcan_shmifext_setup arcan_shmifext_headless_defaults(
 
 static void* lookup_fenv(void* tag, const char* sym, bool req)
 {
-	return arcan_shmifext_headless_lookup(NULL, sym);
+	return arcan_shmifext_lookup(NULL, sym);
 }
 
-bool arcan_shmifext_headless_drop(struct arcan_shmif_cont* con)
+bool arcan_shmifext_drop(struct arcan_shmif_cont* con)
 {
 	if (!con || !con->privext || !con->privext->internal)
 		return false;
@@ -50,7 +50,7 @@ bool arcan_shmifext_headless_drop(struct arcan_shmif_cont* con)
 	return true;
 }
 
-enum shmifext_setup_status arcan_shmifext_headless_setup(
+enum shmifext_setup_status arcan_shmifext_setup(
 	struct arcan_shmif_cont* con,
 	struct arcan_shmifext_setup arg)
 {
@@ -164,7 +164,7 @@ bool arcan_shmifext_egl_meta(struct arcan_shmif_cont* con,
 	return true;
 }
 
-void* arcan_shmifext_headless_lookup(
+void* arcan_shmifext_lookup(
 	struct arcan_shmif_cont* con, const char* sym)
 {
 	static void* dlh = NULL;
@@ -175,13 +175,13 @@ void* arcan_shmifext_headless_lookup(
   return dlh ? dlsym(dlh, sym) : NULL;
 }
 
-bool arcan_shmifext_headless_egl(struct arcan_shmif_cont* con,
+bool arcan_shmifext_egl(struct arcan_shmif_cont* con,
 	void** display, void*(*lookupfun)(void*, const char*), void* tag)
 {
 	return false;
 }
 
-bool arcan_shmifext_headless_vk(struct arcan_shmif_cont* con,
+bool arcan_shmifext_vk(struct arcan_shmif_cont* con,
 	void** display, void*(*lookupfun)(void*, const char*), void* tag)
 {
 	return false;
