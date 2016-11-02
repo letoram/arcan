@@ -75,6 +75,7 @@ enum shmifext_setup_status arcan_shmifext_setup(
 
 	struct shmif_ext_hidden_int* ctx = con->privext->internal =
 		malloc(sizeof(struct shmif_ext_hidden_int));
+	memset(ctx, '\0', sizeof(struct shmif_ext_hidden_int));
 
 	if (!con->privext->internal)
 		return SHMIFEXT_NO_DISPLAY;
