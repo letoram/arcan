@@ -127,6 +127,10 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 		return NULL;
 	}
 
+/*
+ * we want to do our own output texture handling since it depends on
+ * how the arcan-space display is actually mapped
+ */
 	enum shmifext_setup_status status;
 	struct arcan_shmifext_setup defs =
 		arcan_shmifext_defaults(&disp[0].conn);
@@ -459,10 +463,8 @@ void platform_video_synch(uint64_t tick_count, float fract,
 		struct storage_info_t* vs = disp[i].vstore ?
 			disp[i].vstore : arcan_vint_world();
 
-		if (-1 == arcan_shmifext_eglsignal(&disp[i].conn, 0,
-			SHMIF_SIGVID, vs->vinf.text.glid)){
-			synch_copy(&disp[i], vs);
-		}
+		arcan_shmifext_signal(&disp[i].conn, 0,
+			SHMIF_SIGVID, vs->vinf.text.glid);
 	}
 
 	unsigned long long synchtime = arcan_timemillis();

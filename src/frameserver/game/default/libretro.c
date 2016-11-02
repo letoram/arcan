@@ -169,9 +169,7 @@ static struct {
 
 #ifdef FRAMESERVER_LIBRETRO_3D
 	struct retro_hw_render_callback hwctx;
-	struct agp_rendertarget* rtgt;
 	bool got_3dframe;
-	struct storage_info_t vstore;
 #endif
 
 /* parent uses an event->push model for input, libretro uses a poll one, so
@@ -259,25 +257,14 @@ static bool write_handle(const void* const data,
 	return rv;
 }
 
-#ifdef FRAMESERVER_LIBRETRO_3D
-static void readback_fallback()
-{
-	struct storage_info_t store = retro.vstore;
-	store.vinf.text.raw = retro.shmcont.vidp;
-	agp_activate_rendertarget(NULL);
-	agp_readback_synchronous(&store);
-}
-#endif
-
 static void resize_shmpage(int neww, int newh, bool first)
 {
 	if (retro.shmcont.abufpos)
 		arcan_shmif_signal(&retro.shmcont, SHMIF_SIGAUD);
 
 #ifdef FRAMESERVER_LIBRETRO_3D
-	if (retro.rtgt){
+	if (retro.in_3d)
 		retro.shmcont.hints = SHMIF_RHINT_ORIGO_LL;
-	}
 #endif
 
 	if (!arcan_shmif_resize_ext(&retro.shmcont, neww, newh,
@@ -291,21 +278,11 @@ static void resize_shmpage(int neww, int newh, bool first)
 	}
 
 #ifdef FRAMESERVER_LIBRETRO_3D
-	if (retro.rtgt){
-		agp_activate_rendertarget(NULL);
-		agp_resize_rendertarget(retro.rtgt, neww, newh);
-		if (!getenv("GAME_NORESET"))
-			retro.hwctx.context_reset();
-		shmif_pixel px = RGBA(0x44, 0x44, 0x44, 0xff);
+	if (retro.in_3d)
+		arcan_shmifext_make_current(&retro.shmcont);
 
-		for (int i = 0; i < 2; i++){
-			shmif_pixel* out = retro.shmcont.vidp;
-			for (int y = 0; y < retro.shmcont.h; y++)
-				for (int x = 0; x < retro.shmcont.w; x++)
-					*out++ = px;
-			arcan_shmif_signal(&retro.shmcont, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
-		}
-	}
+	if (!getenv("GAME_NORESET") && retro.hwctx.context_reset)
+		retro.hwctx.context_reset();
 #endif
 
 	if (retro.sync_data)
@@ -1528,14 +1505,6 @@ static inline long long add_jitter(int num)
 	return stop - start;
 }
 
-/*
- * A selected few cores need a fully working GL context and then
- * emit the output as an FBO. We currently lack a good way of
- * sharing the output texture with the parent process, so
- * we initialize a dumb "1x1" window with the FBO being our
- * desired output resolution, and then doing a readback
- * into the shmpage
- */
 #ifdef FRAMESERVER_LIBRETRO_3D
 /*
  * legacy from agp_* functions, mostly just to make symbols resolve
@@ -1545,31 +1514,10 @@ void* platform_video_gfxsym(const char* sym)
 	return arcan_shmifext_lookup(&retro.shmcont, sym);
 }
 
-struct monitor_mode platform_video_dimensions()
-{
-	return (struct monitor_mode){
-		.width = 640,
-		.height = 480
-	};
-}
-
-bool platform_video_map_handle(struct storage_info_t* store, int64_t handle)
-{
-	return false;
-}
-
 static uintptr_t get_framebuffer()
 {
-	uintptr_t tgt, col, depth;
-
-	if (!retro.rtgt){
-		agp_empty_vstore(&retro.vstore,
-			retro.shmcont.addr->w, retro.shmcont.addr->h);
-		retro.rtgt = agp_setup_rendertarget(
-			&retro.vstore, RENDERTARGET_COLOR_DEPTH_STENCIL);
-	}
-
-	agp_rendertarget_ids(retro.rtgt, &tgt, &col, &depth);
+	uintptr_t tgt = 0;
+	arcan_shmifext_gl_handles(&retro.shmcont, &tgt, NULL, NULL);
 	return tgt;
 }
 
@@ -1592,25 +1540,7 @@ static void setup_3dcore(struct retro_hw_render_callback* ctx)
 		exit(EXIT_FAILURE);
 	}
 
-	agp_init();
 	retro.in_3d = true;
-
-#ifdef FRAMSESERVER_LIBRETRO_3D_RETEXTURE
-	exit(1); /* not ready */
-	arcan_retexture_init(NULL, false);
-
-/*
- * allocate an input and an output segment and map up, the socket file
- * descriptors will just be ignored here as the main thread will be used to
- * pump the queues and the shared memory segments will be used to push data
- */
-	arcan_event ev = {
-		.category = EVENT_EXTERNAL,
-		.kind = ARCAN_EVENT(SEGREQ)
-	};
-
-	arcan_event_enqueue(&retro.shmcont.outev, &ev);
-#endif
 
 	ctx->get_current_framebuffer = get_framebuffer;
 	ctx->get_proc_address = (retro_hw_get_proc_address_t) platform_video_gfxsym;
@@ -1970,14 +1900,10 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 			long long elapsed = add_jitter(retro.jitterstep);
 #ifdef FRAMESERVER_LIBRETRO_3D
 			if (retro.got_3dframe){
-				int handlestatus = arcan_shmifext_eglsignal(&retro.shmcont, 0,
-					SHMIF_SIGVID, retro.vstore.vinf.text.glid);
+				int handlestatus = arcan_shmifext_signal(&retro.shmcont,
+					0, SHMIF_SIGVID, SHMIFEXT_BUILTIN);
 				if (handlestatus >= 0)
 					elapsed += handlestatus;
-				else{
-					readback_fallback();
-					elapsed += arcan_shmif_signal(&retro.shmcont, SHMIF_SIGVID);
-				}
 				retro.got_3dframe = false;
 			}
 /* note the dangling else */
