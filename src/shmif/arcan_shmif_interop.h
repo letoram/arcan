@@ -273,24 +273,21 @@ bool arcan_shmifext_vk(struct arcan_shmif_cont* con,
 /*
  * Similar behavior to signalhandle, but any conversion from the texture id
  * in [tex_id] is handled internally in accordance with the last _egl
- * call on [con]. Context refers to the EGLContext where [tex_id] is valid.
+ * call on [con]. The context where tex_id is valid should already be
+ * active.
+ *
+ * Display corresponds to the EGLDisplay where tex_id is valid, or
+ * 0 if the shmif_cont is managing the context.
  *
  * If (tex_id is SHMIFEXT_BUILTIN and context was setup with FBO management,
  * the color attachment for the active FBO will be transferred).
- *
- * Note: if the eglsignal operation cannot be transferred, either because
- * handle passing has been disabled or a fitting format could not be done,
- * the buffer will be translated by readback into the shared memory interface.
  *
  * Returns -1 on handle- generation/passing failure, otherwise the number
  * of miliseconds (clamped to INT_MAX) that elapsed from signal to ack.
  */
 #define SHMIFEXT_BUILTIN ((uintptr_t)-1)
-int arcan_shmifext_eglsignal(struct arcan_shmif_cont*,
-	uintptr_t context, int mask, uintptr_t tex_id, ...);
-
-int arcan_shmifext_vksignal(struct arcan_shmif_cont*,
-	uintptr_t context, int mask, uintptr_t tex_id, ...);
+int arcan_shmifext_signal(struct arcan_shmif_cont*,
+	uintptr_t display, int mask, uintptr_t tex_id, ...);
 #endif
 
 #endif

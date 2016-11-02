@@ -166,7 +166,7 @@ bool arcan_shmifext_vk(struct arcan_shmif_cont* con,
 	return false;
 }
 
-int arcan_shmifext_eglsignal(struct arcan_shmif_cont* con,
+int arcan_shmifext_signal(struct arcan_shmif_cont* con,
 	uintptr_t display, int mask, uintptr_t tex_id, ...)
 {
 	if (!con || !con->privext || !con->privext->internal)
@@ -207,12 +207,6 @@ int arcan_shmifext_eglsignal(struct arcan_shmif_cont* con,
 
 	unsigned res = arcan_shmif_signal(con, mask);
 	return res > INT_MAX ? INT_MAX : res;
-}
-
-int arcan_shmifext_vksignal(struct arcan_shmif_cont* con,
-	uintptr_t display, int mask, uintptr_t tex_id, ...)
-{
-	return -1;
 }
 
 bool platform_video_map_handle(struct storage_info_t* store, int64_t handle)

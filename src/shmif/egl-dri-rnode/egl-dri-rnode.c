@@ -374,13 +374,7 @@ bool arcan_shmifext_make_current(struct arcan_shmif_cont* con)
 	return true;
 }
 
-bool arcan_shmifext_vk(struct arcan_shmif_cont* con,
-	void** display, void*(*lookupfun)(void*, const char*), void* tag)
-{
-	return false;
-}
-
-int arcan_shmifext_eglsignal(struct arcan_shmif_cont* con,
+int arcan_shmifext_signal(struct arcan_shmif_cont* con,
 	uintptr_t display, int mask, uintptr_t tex_id, ...)
 {
 	if (!con || !con->addr || !con->privext || !con->privext->internal)
@@ -459,10 +453,4 @@ fallback:
 	}
 	res = arcan_shmif_signal(con, mask);
 	return res > INT_MAX ? INT_MAX : res;
-}
-
-signed arcan_shmifext_vksignal(struct arcan_shmif_cont* con,
-	uintptr_t context, int mask, uintptr_t tex_id, ...)
-{
-	return 0;
 }
