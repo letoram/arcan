@@ -51,6 +51,9 @@ struct arcan_frameserver_meta {
 	uint8_t channels;
 	uint16_t vfthresh;
 
+/* subprotocol area */
+	size_t apad;
+
 /* statistics for tracking performance / timing */
 	bool callback_framestate;
 	unsigned long long framecount;

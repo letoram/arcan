@@ -28,7 +28,9 @@ static struct {
 	size_t blackframes;
 	uint64_t last;
 	float txcos[8];
-} sdl;
+} sdl = {
+	.blackframes = 2
+};
 
 static char* synchopts[] = {
 	"dynamic", "herustic driven balancing latency, performance and utilization",

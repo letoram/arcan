@@ -857,9 +857,9 @@ typedef union arcan_ioevent_data {
 
 /*
  * Packing in this field is poor due to legacy.
- * axisval[] works on the basis of 'just forwarding whatever we can find'
- * where [nvalues] determine the number of values used, with ordering
- * manipulated with the [gotrel] field.
+ * axisval[] works on the basis of 'just forwarding whatever we can find' where
+ * [nvalues] determine the number of values used, with ordering manipulated
+ * with the [gotrel] field.
  *
  * [if gotrel is set]
  * nvalues = 1: [0] relative sample
@@ -872,11 +872,12 @@ typedef union arcan_ioevent_data {
  * A convention for mouse cursors is to EITHER split into two samples on subid
  * 0 (x) and 1 (y), or use subid (2) with all 4 samples filled out. The point
  * of that is that we still lack serialization and force a 'largest struct wins'
- * scenario, meaning that a sample consumes unreasonable memory sizes
+ * scenario, meaning that a sample consumes unreasonable memory sizes. There is
+ * also the option for ONE mouse device to be mapped directly into the shmif
+ * page directly without going through the event queue.
  */
 	struct {
 		int8_t gotrel;
-		uint8_t idcount;
 		uint8_t nvalues;
 		int16_t axisval[4];
 	} analog;
@@ -896,17 +897,18 @@ typedef union arcan_ioevent_data {
 	} status;
 
 	struct {
+/* possible utf8- match, if known, received events should
+ * prefer these, if set. "waste" 1 byte to protect cascade from
+ * missing \0 */
+		uint8_t utf8[5];
 /* pressed or not */
 		uint8_t active;
-/* bitmask of key_modifiers */
-		uint16_t modifiers;
-/* possible utf8- match, if known, received events should
- * prefer these, if set. */
-		uint8_t utf8[5];
-/* depending on devid, SDL or X keysym */
-		uint16_t keysym;
 /* propagated device code, for identification and troubleshooting */
 		uint8_t scancode;
+/* depending on devid, SDL or X keysym */
+		uint32_t keysym;
+/* bitmask of key_modifiers */
+		uint16_t modifiers;
 	} translated;
 
 } arcan_ioevent_data;
@@ -940,7 +942,7 @@ typedef struct {
 
 /* relative to connection start, for scheduling future I/O without
  * risking a saturated event-queue or latency blocks from signal */
-	uint32_t pts;
+	uint64_t pts;
 	arcan_ioevent_data input;
 } arcan_ioevent;
 
@@ -1336,7 +1338,7 @@ typedef enum {
 	ARKMOD_NUM   = 0x1000,
 	ARKMOD_CAPS  = 0x2000,
 	ARKMOD_MODE  = 0x4000,
-	ARKMOD_RESERVED = 0x8000,
+	ARKMOD_REPEAT= 0x8000,
 	ARKMOD_LIMIT = INT_MAX
 } key_modifiers;
 
