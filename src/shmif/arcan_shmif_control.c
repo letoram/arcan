@@ -1708,6 +1708,67 @@ bool arg_lookup(struct arg_arr* arr, const char* val,
 	return false;
 }
 
+bool arcan_shmif_acquireloop(struct arcan_shmif_cont* c,
+	struct arcan_event* acqev, struct arcan_event** evpool, ssize_t* evpool_sz)
+{
+	if (!c || !acqev || !evpool || !evpool_sz)
+		return false;
+
+/* preallocate a buffer "large enough", some unreasonable threshold */
+	size_t ul = 512;
+	*evpool = malloc(sizeof(struct arcan_event) * ul);
+	if (!*evpool)
+		return false;
+
+	*evpool_sz = 0;
+	while (arcan_shmif_wait(c, acqev) && ul--){
+/* event to buffer? */
+		if (acqev->category != EVENT_TARGET ||
+			(acqev->tgt.kind != TARGET_COMMAND_NEWSEGMENT &&
+			acqev->tgt.kind != TARGET_COMMAND_REQFAIL)){
+/* dup- copy the descriptor so it doesn't get freed in shmif_wait */
+			if (arcan_shmif_descrevent(acqev)){
+				acqev->tgt.ioevs[0].iv =
+					arcan_shmif_dupfd(acqev->tgt.ioevs[0].iv, -1, true);
+			}
+			*evpool[*evpool_sz++] = *acqev;
+		}
+		else
+			return true;
+	}
+
+/* broken pool */
+	*evpool_sz = -1;
+	free(evpool);
+	return false;
+}
+
+bool arcan_shmif_descrevent(struct arcan_event* ev)
+{
+	if (!ev)
+		return false;
+
+	if (ev->category != EVENT_TARGET)
+		return false;
+
+	int list[] = {
+		TARGET_COMMAND_STORE,
+		TARGET_COMMAND_RESTORE,
+		TARGET_COMMAND_DEVICE_NODE,
+		TARGET_COMMAND_FONTHINT,
+		TARGET_COMMAND_BCHUNK_IN,
+		TARGET_COMMAND_BCHUNK_OUT
+	};
+
+	for (size_t i = 0; i < COUNT_OF(list); i++){
+		if (ev->tgt.kind == list[i] &&
+			ev->tgt.ioevs[0].iv != BADFD)
+				return true;
+	}
+
+	return false;
+}
+
 int arcan_shmif_dupfd(int fd, int dstnum, bool blocking)
 {
 	int rfd = -1;

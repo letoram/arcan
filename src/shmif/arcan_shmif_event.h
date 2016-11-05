@@ -261,6 +261,7 @@ enum ARCAN_TARGET_COMMAND {
 	TARGET_COMMAND_RESTORE,
 
 /*
+ * [DESCRIPTOR_PASSING]
  * Similar to store/store, but used to indicate that the data source and binary
  * protocol carried within is implementation- defined. It is used for advanced
  * cut/paste or transfer operations, possibly with zero-copy mechanisms like
