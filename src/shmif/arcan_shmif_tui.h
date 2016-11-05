@@ -63,11 +63,18 @@
  *     so that it can fit into callback driven software without getting a
  *     'nested callbacks' mess.
  *
- * [ ] linenoise- integration
+ * [ ] mapping file-open/file-save bchunk events
+ *
+ * [ ] readline- like API for completion and data input, with the same
+ *     default keybindings
  *
  * [ ] abstract component helpers for things like popup-select style windows
  *
+ * [ ] color palette management and switching
+ *
  * [ ] query label callback not yet used
+ *
+ * [ ] better bitmapped font implementation
  *
  * [ ] Normal "Curses" rendering- backend to not break term- compatibility
  *     for programs reworked to use this interface
@@ -81,20 +88,25 @@ enum tui_cursors {
 	CURSOR_END
 };
 
+enum tui_color_group {
+	TUI_COL_BG,
+	TUI_COL_FG,
+	TUI_COL_CURSOR,
+	TUI_COL_ALTCURSOR
+};
+
 /* grab the default values from arcan_tui_defaults, change if needed
  * (some will also change dynamically) and pass to the _setup routine */
 
 struct tui_settings {
-	uint8_t bgc[3], fgc[3];
+	uint8_t bgc[3], fgc[3], cc[3], clc[4];
 	uint8_t alpha;
-	shmif_pixel ccol;
-	shmif_pixel clcol;
 	float ppcm;
 	int hint;
 	size_t font_sz;
 	size_t cell_w, cell_h;
 
-/* either using strings or pre-opened fonts, the latter case is when*/
+/* either using strings or pre-opened fonts */
 	const char* font_fn;
 	const char* font_fb_fn;
 	int font_fds[2];
@@ -475,6 +487,11 @@ void arcan_tui_readline(struct tui_context*,
  */
 /* hints, freehints, completion */
 
+void arcan_tui_update_color(struct tui_context* tui,
+	enum tui_color_group group, const uint8_t rgb[3]);
+
+void arcan_tui_get_color(struct tui_context* tui,
+	enum tui_color_group group, uint8_t rgb[3]);
 
 /*
  * reset state-tracking, scrollback buffers, ...

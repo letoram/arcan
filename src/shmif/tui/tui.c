@@ -101,9 +101,7 @@ struct tui_context {
 	int cell_w, cell_h, pad_w, pad_h;
 	int modifiers;
 
-	uint8_t fgc[3];
-	uint8_t bgc[3];
-	shmif_pixel ccol, clcol;
+	uint8_t fgc[3], bgc[3], clc[3], cc[3];
 
 /* store a copy of the state where the cursor is */
 	struct tsm_screen_attr cattr;
@@ -357,7 +355,9 @@ static int draw_cbt(struct tui_context* tui,
 	if (match_cursor){
 		tui->cattr = *attr;
 		tui->cvalue = ch;
-		cursor_at(tui, x, y, tui->scroll_lock ? tui->clcol : tui->ccol, true);
+		cursor_at(tui, x, y, tui->scroll_lock ?
+			SHMIF_RGBA(tui->clc[0], tui->clc[1], tui->clc[2], 0xff) :
+			SHMIF_RGBA(tui->cc[0], tui->cc[1], tui->cc[2], 0xff), true);
 		return 0;
 	}
 
@@ -1522,17 +1522,55 @@ struct tui_settings arcan_tui_defaults()
 		.alpha = 0xff,
 		.bgc = {0x00, 0x00, 0x00},
 		.fgc = {0xff, 0xff, 0xff},
-		.ccol = SHMIF_RGBA(0x00, 0xaa, 0x00, 0xff),
-		.clcol = SHMIF_RGBA(0xaa, 0xaa, 0x00, 0xff),
+		.cc = {0x00, 0xaa, 0x00},
+		.clc = {0xaa, 0xaa, 0x00},
 		.ppcm = ARCAN_SHMPAGE_DEFAULT_PPCM,
 		.hint = TTF_HINTING_NONE,
 		.mouse_fwd = true
 	};
 }
 
+static uint8_t* grp_to_cptr(struct tui_context* tui, enum tui_color_group grp)
+{
+	switch (grp){
+	case TUI_COL_BG:
+		return tui->bgc;
+	break;
+	case TUI_COL_FG:
+		return tui->fgc;
+	break;
+	case TUI_COL_CURSOR:
+		return tui->cc;
+	break;
+	case TUI_COL_ALTCURSOR:
+		return tui->clc;
+	break;
+	default:
+	return NULL;
+	}
+}
+
+void arcan_tui_get_color(struct tui_context* tui,
+	enum tui_color_group group, uint8_t rgb[3])
+{
+	uint8_t* src = grp_to_cptr(tui, group);
+	if (src)
+		memcpy(rgb, src, 3);
+}
+
+void arcan_tui_update_color(struct tui_context* tui,
+	enum tui_color_group group, const uint8_t rgb[3])
+{
+	uint8_t* dst = grp_to_cptr(tui, group);
+	if (dst){
+		tui->dirty |= DIRTY_PENDING_FULL;
+		memcpy(dst, rgb, 3);
+	}
+}
+
 static int parse_color(const char* inv, uint8_t outv[4])
 {
-	return scanf(inv, "%"SCNu8",%"SCNu8",%"SCNu8",%"SCNu8,
+	return sscanf(inv, "%"SCNu8",%"SCNu8",%"SCNu8",%"SCNu8,
 		&outv[0], &outv[1], &outv[2], &outv[3]);
 }
 
@@ -1542,65 +1580,26 @@ void arcan_tui_apply_arg(struct tui_settings* cfg,
 /* FIXME: if src is set, copy settings from there (and dup descriptors) */
 	const char* val;
 	uint8_t ccol[4] = {0x00, 0x00, 0x00, 0xff};
-/* old color- setting arguments (**r, **g, **b) kept around for legacy */
-	if (arg_lookup(args, "fgr", 0, &val))
-		cfg->fgc[0] = strtoul(val, NULL, 10);
-	if (arg_lookup(args, "fgg", 0, &val))
-		cfg->fgc[1] = strtoul(val, NULL, 10);
-	if (arg_lookup(args, "fgb", 0, &val))
-		cfg->fgc[2] = strtoul(val, NULL, 10);
-	if (arg_lookup(args, "fgc", 0, &val)){
-		if (parse_color(val, ccol) >= 3)
+
+	if (arg_lookup(args, "fgc", 0, &val))
+		if (parse_color(val, ccol) >= 3){
 			cfg->fgc[0] = ccol[0]; cfg->fgc[1] = ccol[1]; cfg->fgc[2] = ccol[2];
-	}
+		}
 
-	if (arg_lookup(args, "bgr", 0, &val))
-		cfg->bgc[0] = strtoul(val, NULL, 10);
-	if (arg_lookup(args, "bgg", 0, &val))
-		cfg->bgc[1] = strtoul(val, NULL, 10);
-	if (arg_lookup(args, "bgb", 0, &val))
-		cfg->bgc[2] = strtoul(val, NULL, 10);
-	if (arg_lookup(args, "bgc", 0, &val)){
-		if (parse_color(val, ccol) >= 3)
+	if (arg_lookup(args, "bgc", 0, &val))
+		if (parse_color(val, ccol) >= 3){
 			cfg->bgc[0] = ccol[0]; cfg->bgc[1] = ccol[1]; cfg->bgc[2] = ccol[2];
-	}
+		}
 
-	bool ccol_upd = false;
-	if (arg_lookup(args, "ccr", 0, &val)){
-		ccol[0] = strtoul(val, NULL, 10);
-		ccol_upd = true;
-	}
-	if (arg_lookup(args, "ccg", 0, &val)){
-		ccol[1] = strtoul(val, NULL, 10);
-		ccol_upd = true;
-	}
-	if (arg_lookup(args, "ccb", 0, &val)){
-		ccol[2] = strtoul(val, NULL, 10);
-		ccol_upd = true;
-	}
 	if (arg_lookup(args, "cc", 0, &val))
-		ccol_upd = parse_color(val, ccol) >= 3;
+		if (parse_color(val, ccol) >= 3){
+			cfg->cc[0] = ccol[0]; cfg->cc[1] = ccol[1]; cfg->cc[2] = ccol[2];
+		}
 
-	if (ccol_upd)
-		cfg->ccol = SHMIF_RGBA(ccol[0], ccol[1], ccol[2], 0xff);
-	ccol_upd = false;
-
-	if (arg_lookup(args, "clr", 0, &val)){
-		ccol[0] = strtoul(val, NULL, 10);
-		ccol_upd = true;
-	}
-	if (arg_lookup(args, "clg", 0, &val)){
-		ccol[1] = strtoul(val, NULL, 10);
-		ccol_upd = true;
-	}
-	if (arg_lookup(args, "clb", 0, &val)){
-		ccol[2] = strtoul(val, NULL, 10);
-		ccol_upd = true;
-	}
-	if (arg_lookup(args, "cc", 0, &val))
-		ccol_upd = parse_color(val, ccol) == 3;
-	if (ccol_upd)
-		cfg->clcol = SHMIF_RGBA(ccol[0], ccol[1], ccol[2], 0xff);
+	if (arg_lookup(args, "clc", 0, &val))
+		if (parse_color(val, ccol) >= 3){
+			cfg->clc[0] = ccol[0]; cfg->clc[1] = ccol[1]; cfg->clc[2] = ccol[2];
+		}
 
 	if (arg_lookup(args, "cursor", 0, &val)){
 		const char** cur = curslbl;
@@ -1662,11 +1661,11 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 	res->font_fd[1] = BADFD;
 	res->font_sz = set->font_sz;
 
-	res->ccol = set->ccol;
-	res->clcol = set->clcol;
 	res->alpha = set->alpha;
 	res->cell_w = set->cell_w;
 	res->cell_h = set->cell_h;
+	memcpy(res->cc, set->cc, 3);
+	memcpy(res->clc, set->clc, 3);
 	memcpy(res->bgc, set->bgc, 3);
 	memcpy(res->fgc, set->fgc, 3);
 	res->hint = set->hint;
