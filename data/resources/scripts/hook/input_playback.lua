@@ -43,7 +43,7 @@ if (open_rawresource(fname)) then
 
 		if (tbl[2] == "mouse") then
 			ntbl.kind = "analog";
-			ntbl.source = "mouse";
+			ntbl.mouse = true;
 			ntbl.samples = {
 				tonumber(tbl[5]),
 				tonumber(tbl[6])

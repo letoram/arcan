@@ -80,12 +80,12 @@ static void* nanny_thread(void* arg)
 }
 
 static size_t shmpage_size(size_t w, size_t h,
-	size_t vbufc, size_t abufc, int abufsz)
+	size_t vbufc, size_t abufc, int abufsz, size_t apad)
 {
 #ifdef ARCAN_SHMIF_OVERCOMMIT
 	return ARCAN_SHMPAGE_START_SZ;
 #else
-	return sizeof(struct arcan_shmif_page) + 64 +
+	return sizeof(struct arcan_shmif_page) + apad + 64 +
 		abufc * abufsz + (abufc * 64) +
 		vbufc * w * h * sizeof(shmif_pixel) + (vbufc * 64);
 #endif
@@ -552,7 +552,7 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	if (!newseg)
 		return NULL;
 
-	newseg->shm.shmsize = shmpage_size(hintw, hinth, 1, 1, 65535);
+	newseg->shm.shmsize = shmpage_size(hintw, hinth, 1, 1, 65535, 0);
 
 	if (!shmalloc(newseg, false, NULL, -1)){
 		arcan_frameserver_free(newseg);
@@ -1062,7 +1062,7 @@ bool arcan_frameserver_resize(struct arcan_frameserver* s)
 /* shrink number of video buffers if we don't fit */
 	size_t shmsz;
 	do{
-		shmsz = shmpage_size(w, h, vbufc, abufc, abufsz);
+		shmsz = shmpage_size(w, h, vbufc, abufc, abufsz, s->desc.apad);
 	} while (shmsz > ARCAN_SHMPAGE_MAX_SZ && vbufc-- > 1);
 
 /* initial sanity check */

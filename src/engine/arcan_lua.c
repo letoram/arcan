@@ -319,10 +319,10 @@ static struct {
 } luactx = {0};
 
 extern char* _n_strdup(const char* instr, const char* alt);
-static inline const char* fsrvtos(enum ARCAN_SEGID ink);
+static const char* fsrvtos(enum ARCAN_SEGID ink);
 static bool tgtevent(arcan_vobj_id dst, arcan_event ev);
 
-static inline char* colon_escape(char* in)
+static char* colon_escape(char* in)
 {
 	char* instr = in;
 	while(*instr){
@@ -380,7 +380,7 @@ static void dump_call_trace(lua_State* ctx)
 }
 
 /* slightly more flexible argument management, just find the first callback */
-static inline intptr_t find_lua_callback(lua_State* ctx)
+static intptr_t find_lua_callback(lua_State* ctx)
 {
 	int nargs = lua_gettop(ctx);
 
@@ -393,7 +393,7 @@ static inline intptr_t find_lua_callback(lua_State* ctx)
 	return (intptr_t) LUA_NOREF;
 }
 
-static inline int find_lua_type(lua_State* ctx, int type, int ofs)
+static int find_lua_type(lua_State* ctx, int type, int ofs)
 {
 	int nargs = lua_gettop(ctx);
 
@@ -580,12 +580,12 @@ static void frozen_warning(lua_State* ctx, arcan_vobject* vobj)
 }
 #endif
 
-static inline arcan_vobj_id luaL_checkaid(lua_State* ctx, int num)
+static arcan_vobj_id luaL_checkaid(lua_State* ctx, int num)
 {
 	return luaL_checknumber(ctx, num);
 }
 
-static inline void lua_pushvid(lua_State* ctx, arcan_vobj_id id)
+static void lua_pushvid(lua_State* ctx, arcan_vobj_id id)
 {
 	if (id != ARCAN_EID && id != ARCAN_VIDEO_WORLDID)
 		id += luactx.lua_vidbase;
@@ -593,7 +593,7 @@ static inline void lua_pushvid(lua_State* ctx, arcan_vobj_id id)
 	lua_pushnumber(ctx, (double) id);
 }
 
-static inline void lua_pushaid(lua_State* ctx, arcan_aobj_id id)
+static void lua_pushaid(lua_State* ctx, arcan_aobj_id id)
 {
 	lua_pushnumber(ctx, id);
 }
@@ -740,7 +740,7 @@ static bool grabapplfunction(lua_State* ctx,
 /* the places in _lua.c that calls this function should probably have a better
  * handover as this incurs additional and almost always unnecessary strlen
  * calls */
-static inline const char* intblstr(lua_State* ctx, int ind, const char* field)
+static const char* intblstr(lua_State* ctx, int ind, const char* field)
 {
 	lua_getfield(ctx, ind, field);
 	const char* rv = lua_tostring(ctx, -1);
@@ -748,7 +748,7 @@ static inline const char* intblstr(lua_State* ctx, int ind, const char* field)
 	return rv;
 }
 
-static inline float intblfloat(lua_State* ctx, int ind, const char* field)
+static float intblfloat(lua_State* ctx, int ind, const char* field)
 {
 	lua_getfield(ctx, ind, field);
 	float rv = lua_tonumber(ctx, -1);
@@ -756,7 +756,7 @@ static inline float intblfloat(lua_State* ctx, int ind, const char* field)
 	return rv;
 }
 
-static inline int intblint(lua_State* ctx, int ind, const char* field)
+static int intblint(lua_State* ctx, int ind, const char* field)
 {
 	lua_getfield(ctx, ind, field);
 	int rv = lua_tointeger(ctx, -1);
@@ -764,7 +764,7 @@ static inline int intblint(lua_State* ctx, int ind, const char* field)
 	return rv;
 }
 
-static inline bool intblbool(lua_State* ctx, int ind, const char* field)
+static bool intblbool(lua_State* ctx, int ind, const char* field)
 {
 	lua_getfield(ctx, ind, field);
 	bool rv = lua_toboolean(ctx, -1);
@@ -772,7 +772,7 @@ static inline bool intblbool(lua_State* ctx, int ind, const char* field)
 	return rv;
 }
 
-static inline char* findresource(const char* arg, enum arcan_namespaces space)
+static char* findresource(const char* arg, enum arcan_namespaces space)
 {
 	char* res = arcan_find_resource(arg, space, ARES_FILE);
 /* since this is invoked extremely frequently and is involved in file-system
@@ -1183,7 +1183,7 @@ static char* chop(char* str)
 	return str;
 }
 
-static inline int funtable(lua_State* ctx, uint32_t kind){
+static int funtable(lua_State* ctx, uint32_t kind){
 	lua_newtable(ctx);
 	int top = lua_gettop(ctx);
 	lua_pushstring(ctx, "kind");
@@ -1193,20 +1193,20 @@ static inline int funtable(lua_State* ctx, uint32_t kind){
 	return top;
 }
 
-static inline void tblstr(lua_State* ctx, const char* k,
+static void tblstr(lua_State* ctx, const char* k,
 	const char* v, int top){
 	lua_pushstring(ctx, k);
 	lua_pushstring(ctx, v);
 	lua_rawset(ctx, top);
 }
 
-static inline void tblnum(lua_State* ctx, char* k, double v, int top){
+static void tblnum(lua_State* ctx, char* k, double v, int top){
 	lua_pushstring(ctx, k);
 	lua_pushnumber(ctx, v);
 	lua_rawset(ctx, top);
 }
 
-static inline void tblbool(lua_State* ctx, char* k, bool v, int top){
+static void tblbool(lua_State* ctx, char* k, bool v, int top){
 	lua_pushstring(ctx, k);
 	lua_pushboolean(ctx, v);
 	lua_rawset(ctx, top);
@@ -1221,7 +1221,7 @@ static const char flt_Alpha[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ-_"
 	"abcdefghijklmnopqrstuvwxyz";
 static const char flt_num[] = "0123456789_-";
 
-static inline void fltpush(char* dst, char ulim,
+static void fltpush(char* dst, char ulim,
 	char* inmsg, const char* fltch, char replch)
 {
 	while (*inmsg && ulim--){
@@ -1256,7 +1256,7 @@ static inline void fltpush(char* dst, char ulim,
  */
 #include "../frameserver/util/utf8.c"
 
-static inline void slim_utf8_push(char* dst, int ulim, char* inmsg)
+static void slim_utf8_push(char* dst, int ulim, char* inmsg)
 {
 	uint32_t state = 0;
 	uint32_t codepoint = 0;
@@ -1306,7 +1306,7 @@ static int push_resstr(lua_State* ctx, struct nonblock_io* ib, off_t ofs)
 	return 1;
 }
 
-static inline size_t bufcheck(lua_State* ctx, struct nonblock_io* ib)
+static size_t bufcheck(lua_State* ctx, struct nonblock_io* ib)
 {
 	size_t in_sz = COUNT_OF(luactx.rawres.buf);
 
@@ -1990,7 +1990,7 @@ static int maxorderimage(lua_State* ctx)
 	LUA_ETRACE("max_current_image_order", NULL, 1);
 }
 
-static inline void massopacity(lua_State* ctx,
+static void massopacity(lua_State* ctx,
 	float val, const char* caller)
 {
 	int time = luaL_optint(ctx, 3, 0);
@@ -3357,7 +3357,7 @@ static int contextusage(lua_State* ctx)
 /*
  * trused -> untrused
  */
-static inline void get_utf8(const char* instr, uint8_t dst[5])
+static void get_utf8(const char* instr, uint8_t dst[5])
 {
 	if (!instr){
 		dst[0] = dst[1] = dst[2] = dst[3] = dst[4] = 0;
@@ -3368,10 +3368,94 @@ static inline void get_utf8(const char* instr, uint8_t dst[5])
 	memcpy(dst, instr, len <= 4 ? len : 4);
 }
 
-/* there is a slight API inconsistency here in that we had (iotbl, vid)
- * in the first few versions while other functions tend to lead with vid,
- * which causes some confusion. So we check whethere the table argument is first
- * or second, and extract accordingly, so both will work */
+static int targetmessage(lua_State* ctx)
+{
+	LUA_TRACE("message_target");
+	int vidind, tblind;
+
+/* same ordering issue as target_input, since this function was broken
+ * out of it and _input still redirects here based on type */
+	if (lua_type(ctx, 1) == LUA_TNUMBER){
+		vidind = 1;
+		tblind = 2;
+	} else {
+		tblind = 1;
+		vidind = 2;
+	}
+
+	arcan_vobj_id vid = luaL_checkvid(ctx, vidind, NULL);
+	vfunc_state* vstate = arcan_video_feedstate(vid);
+
+	if (!vstate || vstate->tag != ARCAN_TAG_FRAMESERV){
+		lua_pushnumber(ctx, -1);
+		LUA_ETRACE("message_target", "dst not a frameserver", 1);
+	}
+	arcan_frameserver* fsrv = vstate->ptr;
+
+	arcan_event ev = {
+		.category = EVENT_TARGET,
+		.tgt.kind = TARGET_COMMAND_MESSAGE
+	};
+
+	const char* msg = luaL_checkstring(ctx, tblind);
+
+/* "strlen" + validate the entire message */
+	uint32_t state = 0, codepoint = 0, len = 0;
+	while(msg[len])
+		if (UTF8_REJECT == utf8_decode(&state, &codepoint,(uint8_t)(msg[len++]))){
+			lua_pushnumber(ctx, -1);
+			LUA_ETRACE("message_target", "invalid utf-8", 1);
+		}
+
+	if (state != UTF8_ACCEPT){
+		lua_pushnumber(ctx, -1);
+		LUA_ETRACE("message_trarget", "truncated utf-8", 1);
+	}
+
+/* pack in multipart '\0' */
+	size_t msgsz = COUNT_OF(ev.tgt.message) - 1;
+	while (len > msgsz){
+		size_t i, lastok = 0;
+		state = 0;
+/* search for the offset */
+		for (i = 0; i < msgsz && i < len; i++){
+			if (UTF8_ACCEPT == utf8_decode(&state, &codepoint, (uint8_t)(msg[i])))
+				lastok = i;
+		}
+/* rewind if we split on the wrong point */
+		if (i != lastok)
+			i = lastok;
+
+/* copy into buffer and forward */
+		memcpy(ev.tgt.message, msg, i);
+		ev.tgt.message[i] = '\0';
+		if (!arcan_frameserver_pushevent(fsrv, &ev)){
+			lua_pushnumber(ctx, len);
+			LUA_ETRACE("message_target", "truncation", 1);
+		}
+
+/* and step forward in our buffer */
+		len -= i;
+		msg += i;
+	}
+
+	if (len){
+		memcpy(ev.tgt.message, msg, len);
+		ev.tgt.message[len] = '\0';
+		if (!arcan_frameserver_pushevent(fsrv, &ev)){
+			lua_pushnumber(ctx, len);
+			LUA_ETRACE("message_target", "truncation", 1);
+		}
+	}
+
+	lua_pushnumber(ctx, 0);
+	LUA_ETRACE("message_target", NULL, 1);
+}
+
+/* there is a slight API inconsistency here in that we had (iotbl, vid) in the
+ * first few versions while other functions tend to lead with vid, which causes
+ * some confusion. So we check whethere the table argument is first or second,
+ * and extract accordingly, so both will work */
 static int targetinput(lua_State* ctx)
 {
 	LUA_TRACE("target_input/input_target");
@@ -3386,6 +3470,9 @@ static int targetinput(lua_State* ctx)
 		vidind = 2;
 	}
 
+	if (lua_type(ctx, tblind) == LUA_TSTRING)
+		return targetmessage(ctx);
+
 	arcan_vobj_id vid = luaL_checkvid(ctx, vidind, NULL);
 	vfunc_state* vstate = arcan_video_feedstate(vid);
 	if (!vstate || vstate->tag != ARCAN_TAG_FRAMESERV){
@@ -3393,72 +3480,11 @@ static int targetinput(lua_State* ctx)
 		LUA_ETRACE("target_input/input_target", "dst not a frameserver", 1);
 	}
 
-	if (lua_type(ctx, tblind) == LUA_TSTRING){
-		arcan_event ev = {
-			.category = EVENT_TARGET,
-			.tgt.kind = TARGET_COMMAND_MESSAGE,
-		};
-
-/* validate UTF8 */
-		const char* msg = luaL_checkstring(ctx, tblind);
-		uint32_t state = 0, codepoint = 0, len = 0;
-		while(msg[len])
-			if (UTF8_REJECT == utf8_decode(&state, &codepoint,(uint8_t)(msg[len++])))
-				goto fail;
-
-/* truncated? */
-		if (state != UTF8_ACCEPT){
-fail:
-			lua_pushnumber(ctx, false);
-			LUA_ETRACE("target_input/input_target", "invalid UTF-8 sequence", 1);
-		}
-
-/*
- * multipart / split - this is NOT a good way to achieve it as WHEN the
- * outgoing queue gets saturated, we currently fail 'silently' but that will be
- * changed. When that occurs, we risk partial truncation with this apporach as
- * we can't block on outqueue due to DoS. The correct solution then would be to
- * queue all here, then pushevent_multi -> ack or nack -> error propagation.
- */
-		size_t msgsz = COUNT_OF(ev.tgt.message) - 1;
-		while (len > msgsz){
-			size_t i, lastok = 0;
-			state = 0;
-			for (i = 0; i < msgsz; i++){
-				if (UTF8_ACCEPT == utf8_decode(&state, &codepoint, (uint8_t)(msg[i])))
-					lastok = i;
-			}
-/* if we split on the wrong point */
-			if (i != lastok){
-				i = lastok;
-/* and this should never happen */
-				if (0 == i)
-					goto fail;
-			}
-
-			memcpy(ev.tgt.message, msg, i);
-			ev.tgt.message[i] = '\0';
-			arcan_frameserver_pushevent(vstate->ptr, &ev);
-			len -= i;
-			msg += i;
-		}
-
-		if (len){
-			snprintf(ev.tgt.message, msgsz, "%s", msg);
-			arcan_frameserver_pushevent(vstate->ptr, &ev);
-		}
-
-		lua_pushboolean(ctx, true);
-		return 1;
-	}
-
 	luaL_checktype(ctx, tblind, LUA_TTABLE);
 	arcan_event ev = {.io.kind = 0, .category = EVENT_IO };
-/* populate all arguments */
-	const char* kindlbl = intblstr(ctx, tblind, "kind");
-	if (kindlbl == NULL)
-		goto kinderr;
 
+/* NOTE: there's no validation that the label actual match earlier labelhints
+ * or, if the gesture flag is set, that it match the defined gestures */
 	ev.io.flags = (intblbool(ctx, tblind, "gesture") * 0xff)&ARCAN_IOFL_GESTURE;
 	const char* label = intblstr(ctx, tblind, "label");
 	if (label){
@@ -3470,20 +3496,41 @@ fail:
 		*dst = '\0';
 	}
 	ev.io.pts = intblint(ctx, tblind, "pts");
+	ev.io.devid = intblint(ctx, tblind, "devid");
+	ev.io.subid = intblint(ctx, tblind, "subid");
+
+/* The lookup here is complicated both due to the excessive input model
+ * and due to legacy / backward compatibility. The approach is to first
+ * grab the universal- required/optional field. Then figure out if this
+ * should emulate a mouse device or not (if mouse-analog and devid == 0
+ * it is safe to just update the mmio- in the shmif instead). Then scan
+ * for boolean- flags for type and FALLBACK to string-compare */
+	bool mouse = intblbool(ctx, tblind, "mouse");
+	if (mouse)
+		ev.io.devkind = EVENT_IDEVKIND_MOUSE;
+
+	if (intblbool(ctx, tblind, "analog"))
+		goto analog;
+
+	if (intblbool(ctx, tblind, "touch"))
+		goto touch;
+
+	if (intblbool(ctx, tblind, "digital"))
+		goto digital;
+
+	const char* kindlbl = intblstr(ctx, tblind, "kind");
+	if (kindlbl == NULL)
+		goto kinderr;
 
 	if ( strcmp( kindlbl, "analog") == 0 ){
-		const char* srcstr = intblstr(ctx, tblind, "source");
-
+analog:
 		ev.io.kind = EVENT_IO_AXIS_MOVE;
-		bool mouse = srcstr && strcmp( srcstr, "mouse") == 0;
-		ev.io.devkind = mouse ? EVENT_IDEVKIND_MOUSE : EVENT_IDEVKIND_GAMEDEV;
-		ev.io.devid = intblint(ctx, tblind, "devid");
-		ev.io.subid = intblint(ctx, tblind, "subid");
-		ev.io.input.analog.gotrel = mouse ? intblbool(
-			ctx, tblind, "relative") : false;
+		if (ev.io.devkind != EVENT_IDEVKIND_MOUSE)
+			ev.io.devkind = EVENT_IDEVKIND_GAMEDEV;
+		ev.io.input.analog.gotrel = intblbool(ctx, tblind, "relative");
 		ev.io.datatype = EVENT_IDATATYPE_ANALOG;
 
-	/*  sweep the samples subtable, add as many as present (or possible) */
+/* sweep the samples subtable, add as many as present (or possible) */
 		lua_getfield(ctx, tblind, "samples");
 		if (lua_type(ctx, -1) != LUA_TTABLE){
 			arcan_warning("target_input(), no samples provided for target input\n");
@@ -3497,15 +3544,14 @@ fail:
 				lua_rawgeti(ctx, -1, i+1);
 				ev.io.input.analog.axisval[i] = lua_tointeger(ctx, -1);
 				lua_pop(ctx, 1);
-			}
+		}
 		ev.io.input.analog.nvalues = naxiss;
 	}
 	else if (strcmp(kindlbl, "touch") == 0){
+touch:
 		ev.io.kind = EVENT_IO_TOUCH;
 		ev.io.devkind = EVENT_IDEVKIND_TOUCHDISP;
 		ev.io.datatype = EVENT_IDATATYPE_TOUCH;
-		ev.io.devid = intblint(ctx, tblind, "devid");
-		ev.io.subid = intblint(ctx, tblind, "subid");
 		ev.io.input.touch.active = intblint(ctx, tblind, "active");
 		ev.io.input.touch.x = intblint(ctx, tblind, "x");
 		ev.io.input.touch.y = intblint(ctx, tblind, "y");
@@ -3513,6 +3559,7 @@ fail:
 		ev.io.input.touch.size = intblfloat(ctx, tblind, "size");
 	}
 	else if (strcmp(kindlbl, "digital") == 0){
+digital:
 		if (intblbool(ctx, tblind, "translated")){
 			ev.io.kind = EVENT_IO_BUTTON;
 			ev.io.devkind = EVENT_IDEVKIND_KEYBOARD;
@@ -3521,19 +3568,14 @@ fail:
 			ev.io.input.translated.scancode = intblint(ctx, tblind, "number");
 			ev.io.input.translated.keysym = intblint(ctx, tblind, "keysym");
 			ev.io.input.translated.modifiers = intblint(ctx, tblind,"modifiers");
-			ev.io.devid = intblint(ctx, tblind, "devid");
-			ev.io.subid = intblint(ctx, tblind, "subid");
 			get_utf8(intblstr(ctx, tblind, "utf8"), ev.io.input.translated.utf8);
 		}
 		else {
-			const char* tblsrc = intblstr(ctx, tblind, "source");
-			ev.io.devkind = tblsrc && strcmp(tblsrc, "mouse") == 0 ?
-				EVENT_IDEVKIND_MOUSE : EVENT_IDEVKIND_GAMEDEV;
+			if (ev.io.devkind != EVENT_IDEVKIND_MOUSE)
+				ev.io.devkind = EVENT_IDEVKIND_GAMEDEV;
 			ev.io.datatype = EVENT_IDATATYPE_DIGITAL;
 			ev.io.kind = EVENT_IO_BUTTON;
 			ev.io.input.digital.active= intblbool(ctx, tblind, "active");
-			ev.io.devid = intblint(ctx, tblind, "devid");
-			ev.io.subid = intblint(ctx, tblind, "subid");
 		}
 	}
 	else {
@@ -3544,8 +3586,8 @@ kinderr:
 		return 1;
 	}
 
-	arcan_frameserver_pushevent( (arcan_frameserver*) vstate->ptr, &ev );
-	lua_pushnumber(ctx, true);
+	lua_pushnumber(ctx, ARCAN_OK ==
+		arcan_frameserver_pushevent( (arcan_frameserver*) vstate->ptr, &ev ));
 	LUA_ETRACE("target_input/input_target", NULL, 1);
 }
 
@@ -3754,7 +3796,7 @@ void arcan_lwa_subseg_ev(uintptr_t cb_tag, arcan_event* ev)
 struct subseg_output;
 bool platform_lwa_targetevent(struct subseg_output*, arcan_event* ev);
 #endif
-static inline bool tgtevent(arcan_vobj_id dst, arcan_event ev)
+static bool tgtevent(arcan_vobj_id dst, arcan_event ev)
 {
 	vfunc_state* state = arcan_video_feedstate(dst);
 
@@ -4698,7 +4740,7 @@ static int linkimage(lua_State* ctx)
 	LUA_ETRACE("link_image", NULL, 1);
 }
 
-static inline int pushprop(lua_State* ctx,
+static int pushprop(lua_State* ctx,
 	surface_properties prop, unsigned short zv)
 {
 	lua_createtable(ctx, 0, 11);
@@ -8704,7 +8746,7 @@ static int inputfilteranalog(lua_State* ctx)
 	LUA_ETRACE("inputanalog_filter", NULL, 0);
 }
 
-static inline void tblanalogenum(lua_State* ctx, int ttop,
+static void tblanalogenum(lua_State* ctx, int ttop,
 	enum ARCAN_ANALOGFILTER_KIND mode)
 {
 	switch (mode){
@@ -9069,7 +9111,7 @@ static int net_open(lua_State* ctx)
 	LUA_ETRACE("net_open", NULL, 1);
 }
 
-static inline arcan_frameserver* luaL_checknet(lua_State* ctx,
+static arcan_frameserver* luaL_checknet(lua_State* ctx,
 	bool server, arcan_vobject** dvobj, const char* prefix)
 {
 	arcan_vobject* vobj;
@@ -9477,6 +9519,7 @@ static const luaL_Reg tgtfuns[] = {
 {"input_target",               targetinput              },
 {"suspend_target",             targetsuspend            },
 {"resume_target",              targetresume             },
+{"message_target",             targetmessage            },
 {"accept_target",              targetaccept             },
 {"pacify_target",              targetpacify             },
 {"stepframe_target",           targetstepframe          },
@@ -9971,7 +10014,7 @@ static const char* const vobj_flags(arcan_vobject* src)
 	return fbuf;
 }
 
-static inline char* lut_filtermode(enum arcan_vfilter_mode mode)
+static char* lut_filtermode(enum arcan_vfilter_mode mode)
 {
 	mode = mode & (~ARCAN_VFILTER_MIPMAP);
 	switch(mode){
@@ -9984,7 +10027,7 @@ static inline char* lut_filtermode(enum arcan_vfilter_mode mode)
 	return "[missing filter]";
 }
 
-static inline char* lut_imageproc(enum arcan_imageproc_mode mode)
+static char* lut_imageproc(enum arcan_imageproc_mode mode)
 {
 	switch(mode){
 	case IMAGEPROC_NORMAL: return "normal";
@@ -9993,7 +10036,7 @@ static inline char* lut_imageproc(enum arcan_imageproc_mode mode)
 	return "[missing proc]";
 }
 
-static inline char* lut_scale(enum arcan_vimage_mode mode)
+static char* lut_scale(enum arcan_vimage_mode mode)
 {
 	switch(mode){
 	case ARCAN_VIMAGE_NOPOW2    : return "nopow2";
@@ -10002,7 +10045,7 @@ static inline char* lut_scale(enum arcan_vimage_mode mode)
 	return "[missing scale]";
 }
 
-static inline char* lut_framemode(enum arcan_framemode mode)
+static char* lut_framemode(enum arcan_framemode mode)
 {
 	switch(mode){
 	case ARCAN_FRAMESET_SPLIT        : return "split";
@@ -10011,7 +10054,7 @@ static inline char* lut_framemode(enum arcan_framemode mode)
 	return "[missing framemode]";
 }
 
-static inline char* lut_clipmode(enum arcan_clipmode mode)
+static char* lut_clipmode(enum arcan_clipmode mode)
 {
 	switch(mode){
 	case ARCAN_CLIP_OFF     : return "disabled";
@@ -10021,7 +10064,7 @@ static inline char* lut_clipmode(enum arcan_clipmode mode)
 	return "[missing clipmode]";
 }
 
-static inline char* lut_blendmode(enum arcan_blendfunc func)
+static char* lut_blendmode(enum arcan_blendfunc func)
 {
 	switch(func){
 	case BLEND_NONE     : return "disabled";
@@ -10041,7 +10084,7 @@ static inline char* lut_blendmode(enum arcan_blendfunc func)
  * we cover that case, but still need to go through the headache
  * of splitting
  */
-static inline void fprintf_float(FILE* dst,
+static void fprintf_float(FILE* dst,
 	const char* pre, float in, const char* post)
 {
 	float intp, fractp;
@@ -10055,7 +10098,7 @@ static inline void fprintf_float(FILE* dst,
 		fprintf(dst, "%s%d.%d%s", pre, (int)intp, abs((int)fractp), post);
 }
 
-static inline char* lut_txmode(int txmode)
+static char* lut_txmode(int txmode)
 {
 	switch (txmode){
 	case ARCAN_VTEX_REPEAT:
@@ -10067,7 +10110,7 @@ static inline char* lut_txmode(int txmode)
 	}
 }
 
-static inline char* lut_kind(arcan_vobject* src)
+static char* lut_kind(arcan_vobject* src)
 {
 	if (src->feed.state.tag == ARCAN_TAG_IMAGE)
 		return src->vstore->txmapped ? "textured" : "single color";
@@ -10090,7 +10133,7 @@ static inline char* lut_kind(arcan_vobject* src)
  *
  * If that is a concern, add an escape routine for all [[%s]] patterns.
  */
-static inline void dump_props(FILE* dst, surface_properties props)
+static void dump_props(FILE* dst, surface_properties props)
 {
 	fprintf_float(dst, "props.position = {", props.position.x, ", ");
 	fprintf_float(dst, "", props.position.y, ", ");
@@ -10107,13 +10150,13 @@ static inline void dump_props(FILE* dst, surface_properties props)
 	fprintf_float(dst, "props.opacity = ", props.opa, ";\n");
 }
 
-static inline int qused(struct arcan_evctx* dq)
+static int qused(struct arcan_evctx* dq)
 {
 	return *(dq->front) > *(dq->back) ? dq->eventbuf_sz -
 	*(dq->front) + *(dq->back) : *(dq->back) - *(dq->front);
 }
 
-static inline const char* fsrvtos(enum ARCAN_SEGID ink)
+static const char* fsrvtos(enum ARCAN_SEGID ink)
 {
 	switch(ink){
 	case SEGID_LWA: return "lightweight arcan";
@@ -10179,7 +10222,7 @@ static void fput_luasafe_str(FILE* dst, const char* str)
 	fputc('"', dst);
 }
 
-static inline void dump_vstate(FILE* dst, arcan_vobject* vobj)
+static void dump_vstate(FILE* dst, arcan_vobject* vobj)
 {
 	if (!vobj->feed.state.ptr || vobj->feed.state.tag != ARCAN_TAG_FRAMESERV)
 		return;
@@ -10211,7 +10254,7 @@ fprintf(dst,
 	fprintf(dst, "};\n");
 }
 
-static inline void dump_vobject(FILE* dst, arcan_vobject* src)
+static void dump_vobject(FILE* dst, arcan_vobject* src)
 {
 	char* mask = maskstr(src->mask);
 

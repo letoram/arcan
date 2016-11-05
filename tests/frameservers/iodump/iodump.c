@@ -82,7 +82,6 @@ int main(int argc, char** argv)
 	arcan_shmif_signal(&cont, SHMIF_SIGVID);
 	printf("loop\n");
 	while (arcan_shmif_wait(&cont, &ev)){
-		printf(" I think: %d, %d I got : %d\n", TARGET_COMMAND_BCHUNK_IN, TARGET_COMMAND_BCHUNK_OUT, ev.tgt.kind);
 		if (ev.category == EVENT_TARGET){
 			switch (ev.tgt.kind){
 			case TARGET_COMMAND_BCHUNK_IN:
@@ -92,6 +91,9 @@ int main(int argc, char** argv)
 			case TARGET_COMMAND_BCHUNK_OUT:
 				printf("bchunk out\n");
 				write_eof(ev.tgt.ioevs[0].iv);
+			break;
+			case TARGET_COMMAND_MESSAGE:
+				printf("message: %s\n", ev.tgt.message);
 			break;
 			case TARGET_COMMAND_EXIT:
 				return EXIT_SUCCESS;
