@@ -270,19 +270,31 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	tsm_vte_set_color(term.vte, VTE_COLOR_BACKGROUND, cfg.bgc);
 	tsm_vte_set_color(term.vte, VTE_COLOR_FOREGROUND, cfg.fgc);
 
+	bool recolor = false;
 	const char* val;
-	if (arg_lookup(args, "palette", 0, &val))
+	if (arg_lookup(args, "palette", 0, &val)){
 		tsm_vte_set_palette(term.vte, val);
+		recolor = true;
+	}
 
 	int ind = 0;
 	uint8_t ccol[4];
 	while(arg_lookup(args, "ci", ind++, &val)){
+		recolor = true;
 		if (4 == parse_color(val, ccol))
 			tsm_vte_set_color(term.vte, ccol[0], &ccol[1]);
 	}
 	tsm_set_strhandler(term.vte, str_callback, 256, NULL);
 
 	signal(SIGHUP, sighuph);
+
+	if (recolor){
+		uint8_t fgc[3], bgc[3];
+		tsm_vte_get_color(term.vte, VTE_COLOR_BACKGROUND, bgc);
+		tsm_vte_get_color(term.vte, VTE_COLOR_FOREGROUND, fgc);
+		arcan_tui_update_color(term.screen, TUI_COL_BG, bgc);
+		arcan_tui_update_color(term.screen, TUI_COL_FG, fgc);
+	}
 
 /*
  * and lastly, spawn the pseudo-terminal
