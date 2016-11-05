@@ -98,6 +98,67 @@ int arcan_shmif_poll(struct arcan_shmif_cont*, struct arcan_event* dst);
 int arcan_shmif_wait(struct arcan_shmif_cont*, struct arcan_event* dst);
 
 /*
+ * When integrating with libraries assuming that a window can be created
+ * synchronously, there is a problem with what to do with events that are
+ * incoming while waiting for the accept- or reject to our request.
+ *
+ * The easiest approach is to simply skip forwarding events until we receive
+ * the proper reply since windows allocations typically come during some init/
+ * setup phase or as low-frequent event response. Thep problem with this is
+ * that any events in between will be dropped.
+ *
+ * The other option is to buffer events, and then flush them out,
+ * essentially creating an additional event-queue. This works EXCEPT for the
+ * cases where there are events that require file descriptor transfers.
+ *
+ * This function implements this buffering indefinitely (or until OOM),
+ * dup:ing/saving descriptors while waiting and forcing the caller to cleanup.
+ *
+ * The correct use of this function is as follows:
+ * (send SEGREQ event)
+ *
+ * struct arcan_event acq_event;
+ * struct arcan_event* evpool = NULL;
+ *
+ * if (arcan_shmif_acquireloop(cont, &acq_event, &evpool, &evpool_sz){
+ * 	we have a valid segment
+ *   acq_event is valid, arcan_shmif_acquire(...);
+ * }
+ * else {
+ * 	if (!evpool){
+ *    OOM
+ * 	}
+ * 	if (evpool_sz < 0){
+ *  	shmif-state broken, only option is to terminate the connection
+ *  	arcan_shmif_drop(cont);
+ *  	return;
+ * 	}
+ *	the segment request failed
+ *}
+ *
+ * cleanup
+ * for (size_t i = 0; i < evpool_sz; i++){
+ *  forward_event(&evpool[i]);
+ *  if (arcan_shmif_descrevent(&evpool[i]) &&
+ *  	evpool[i].tgt.ioev[0].iv != -1)
+ *  		close(evpool[i].tgt.ioev[0].iv);
+ * }
+ *
+ * free(evpool);
+ *
+ * Be sure to check the cookie of the acq_event in the case of a
+ * TARGET_COMMAND_NEWSEGMENT as the server might have tried to preemptively
+ * psuh a new subsegment (clipboard management, output, ...)
+ */
+bool arcan_shmif_acquireloop(struct arcan_shmif_cont*,
+	struct arcan_event*, struct arcan_event**, ssize_t*);
+
+/*
+ * returns true if the provided event carries a file descriptor
+ */
+bool arcan_shmif_descrevent(struct arcan_event*);
+
+/*
  * Try and enqueue the element to the queue. If the context is set to lossless,
  * enqueue may block, sleep (or spinlock).
  *
