@@ -262,6 +262,14 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		return EXIT_FAILURE;
 	}
 
+/*
+ * forward the colors defined in tui (where we only really track
+ * forground and background, though tui should have a defined palette
+ * for the normal groups when the other bits are in place
+ */
+	tsm_vte_set_color(term.vte, VTE_COLOR_BACKGROUND, cfg.bgc);
+	tsm_vte_set_color(term.vte, VTE_COLOR_FOREGROUND, cfg.fgc);
+
 	const char* val;
 	if (arg_lookup(args, "palette", 0, &val))
 		tsm_vte_set_palette(term.vte, val);
@@ -275,10 +283,6 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	tsm_set_strhandler(term.vte, str_callback, 256, NULL);
 
 	signal(SIGHUP, sighuph);
-
-	tsm_vte_set_color(term.vte, VTE_COLOR_BACKGROUND, cfg.bgc);
-	tsm_vte_set_color(term.vte, VTE_COLOR_FOREGROUND, cfg.fgc);
-	LOG("set fgc: %d, %d, %d\n", cfg.fgc[0], cfg.fgc[1], cfg.fgc[2]);
 
 /*
  * and lastly, spawn the pseudo-terminal

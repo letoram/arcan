@@ -152,6 +152,8 @@ void tsm_vte_unref(struct tsm_vte *vte);
 int tsm_vte_set_palette(struct tsm_vte *vte, const char *palette);
 void tsm_vte_set_color(struct tsm_vte *vte,
 	enum vte_color ind, const uint8_t rgb[3]);
+void tsm_vte_get_color(struct tsm_vte *vte,
+	enum vte_color ind, uint8_t *rgb);
 
 void tsm_vte_reset(struct tsm_vte *vte);
 void tsm_vte_hard_reset(struct tsm_vte *vte);
