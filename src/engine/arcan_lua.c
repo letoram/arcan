@@ -46,6 +46,7 @@
 #include <ctype.h>
 #include <setjmp.h>
 #include <dlfcn.h>
+#include <pthread.h>
 
 #include <string.h>
 #include <fcntl.h>
@@ -8926,11 +8927,46 @@ static void dump_raw(FILE* dst, av_pixel* buf,
 	arcan_mem_free(interim);
 }
 
+struct pthr_imgwr {
+	FILE* dst;
+	int fmt;
+	size_t dw, dh;
+	av_pixel* databuf;
+};
+
+static void* pthr_imgwr(void* arg)
+{
+	struct pthr_imgwr* job = arg;
+	switch(job->fmt){
+	case OUTFMT_PNG:
+		arcan_img_outpng(job->dst, job->databuf, job->dw, job->dh, false);
+	break;
+
+	case OUTFMT_PNG_FLIP:
+		arcan_img_outpng(job->dst, job->databuf, job->dw, job->dh, true);
+	break;
+
+/* flip is assumed in the raw formats */
+	case OUTFMT_RAW8:
+	case OUTFMT_RAW24:
+	case OUTFMT_RAW32:
+		dump_raw(job->dst, job->databuf, job->dw, job->dh, job->fmt);
+	break;
+	}
+
+	fclose(job->dst);
+	arcan_mem_free(job->databuf);
+	arcan_mem_free(job);
+
+	return NULL;
+}
+
 static int screenshot(lua_State* ctx)
 {
 	LUA_TRACE("save_screenshot");
 
 	av_pixel* databuf = NULL;
+	struct pthr_imgwr* job = NULL;
 	size_t bufs;
 
 	struct monitor_mode mode = platform_video_dimensions();
@@ -8941,6 +8977,10 @@ static int screenshot(lua_State* ctx)
 	arcan_vobj_id sid = ARCAN_EID;
 
 	enum outfmt_screenshot fmt = luaL_optnumber(ctx, 2, OUTFMT_PNG);
+	if (fmt != OUTFMT_PNG && fmt != OUTFMT_PNG_FLIP &&
+		fmt != OUTFMT_RAW8 && fmt != OUTFMT_RAW24 && fmt != OUTFMT_RAW32)
+		arcan_fatal("save_screenshot(), invalid/uknown format: %d\n", fmt);
+
 	bool local = luaL_optbnumber(ctx, 4, false);
 
 	if (luaL_optnumber(ctx, 3, ARCAN_EID) != ARCAN_EID){
@@ -8959,40 +8999,54 @@ static int screenshot(lua_State* ctx)
 		LUA_ETRACE("save_screenshot", NULL, 0);
 	}
 
+/* Note: we assume TOCTU- free APPL_TEMP, done twice here as _find
+ * returns nothing if it doesn't exist */
 	char* fname = arcan_find_resource(resstr, RESOURCE_APPL_TEMP, ARES_FILE);
 	if (fname){
 		arcan_warning("save_screeenshot() -- refusing to "
 			"overwrite existing file.\n");
 		goto cleanup;
 	}
-
 	fname = arcan_expand_resource(resstr, RESOURCE_APPL_TEMP);
-	FILE* dst = fopen(fname, "wb");
-
-	if (dst)
-		switch(fmt){
-		case OUTFMT_PNG:
-			arcan_img_outpng(dst, databuf, dw, dh, false);
-		break;
-
-		case OUTFMT_PNG_FLIP:
-			arcan_img_outpng(dst, databuf, dw, dh, true);
-		break;
-
-/* flip is assumed in the raw formats */
-		case OUTFMT_RAW8:
-		case OUTFMT_RAW24:
-		case OUTFMT_RAW32:
-			dump_raw(dst, databuf, dw, dh, fmt);
-		break;
-		default:
-			arcan_fatal("save_screenshot(), invalid/uknown format: %d\n", fmt);
-		}
-	else
-		arcan_warning("save_screenshot() -- couldn't save to (%s).\n", fname);
-
-cleanup:
+	int infd = open(fname, O_WRONLY | O_CLOEXEC | O_CREAT, S_IRUSR | S_IWUSR);
+	if (-1 == infd){
+		arcan_warning("save_screenshot(%s) failed, %s.\n", fname, strerror(errno));
 		arcan_mem_free(fname);
+		goto cleanup;
+	}
+	arcan_mem_free(fname);
+
+	job = arcan_alloc_mem(sizeof(struct pthr_imgwr), ARCAN_MEM_VSTRUCT,
+		ARCAN_MEM_TEMPORARY | ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_NATURAL);
+
+	if (!job){
+		close(infd);
+		goto cleanup;
+	}
+
+/* recall, if fdopen fails -- descriptor is still open */
+	job->dst = fdopen(infd, "wb");
+	if (!job->dst){
+		close(infd);
+		goto cleanup;
+	}
+	job->dw = dw;
+	job->dh = dh;
+	job->fmt = fmt;
+	job->databuf = databuf;
+
+/* detach as we don't want to find / join later */
+	pthread_attr_t jattr;
+	pthread_t pthr;
+	pthread_attr_init(&jattr);
+	pthread_attr_setdetachstate(&jattr, PTHREAD_CREATE_DETACHED);
+	pthread_create(&pthr, NULL, pthr_imgwr, (void*) job);
+
+	LUA_ETRACE("save_screenshot", "couldn't setup file or thread", 0);
+
+/* otherwise thread cleans up at exit */
+cleanup:
+		arcan_mem_free(job);
 		arcan_mem_free(databuf);
 
 	LUA_ETRACE("save_screenshot", NULL, 0);
