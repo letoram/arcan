@@ -9,6 +9,7 @@ if (GAME_SOURCES)
 		${FSRV_PLATFORM}
 		${GAME_SOURCES}
 	)
+	add_sanitizers(afsrv_game)
 	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}game " PARENT_SCOPE)
 	target_compile_definitions(afsrv_game PRIVATE
 		ENABLE_FSRV_GAME

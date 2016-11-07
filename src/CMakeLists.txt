@@ -31,6 +31,8 @@ set(SHARED_PERMISSIONS_DIR OWNER_WRITE OWNER_READ GROUP_WRITE
 include(ExternalProject)
 include(CheckIncludeFiles)
 
+find_package(Sanitizers REQUIRED)
+
 if (CMAKE_COLOR_MAKEFILE)
 	include(CMakeColor)
 endif()
@@ -108,7 +110,6 @@ endif()
 set(AGPPLATFORM_STR "gl21, gles2, gles3, stub")
 
 # we can remove some of this cruft when 'buntu LTS gets ~3.0ish
-option(ENABLE_ASAN "Build with Address-Sanitizer, (gcc >= 4.8, clang >= 3.1)" OFF)
 option(DISABLE_JIT "Don't use the luajit-5.1 VM (if found)" OFF)
 option(DISABLE_HIJACK "Disable building hijack libraries" ON)
 option(NO_FSRV "Disable building/launching frameservers" OFF)
@@ -127,8 +128,6 @@ amsg("${CL_YEL}\t-DAGP_PLATFORM=${CL_GRN}${AGPPLATFORM_STR}${CL_RST}")
 amsg("")
 amsg("${CL_WHT}Cmake Options:${CL_RST}")
 amsg("${CL_YEL}\t-DCMAKE_BUILD_TYPE=${CL_GRN}[Debug|Release|Profile|DebugTrace]")
-amsg("${CL_YEL}\t-DENABLE_ASAN=${CL_GRN}[Off|On]${CL_RST} - Build with Address Sanitizer enabled")
-amsg("${CL_YEL}\t\t-DASAN_TYPE= - specifiy sanitizer (varies with compiler)")
 amsg("${CL_YEL}\t-DENABLE_SIMD=${CL_GRN}[On|Off]${CL_RST} - Enable SIMD optimized instructions")
 # amsg("    -DENABLE_PBO=[Appl-path] : Profile-based Optimization prepass with appl")
 # amsg("                               as optimization profile.")
@@ -210,16 +209,8 @@ if (CMAKE_BUILD_TYPE STREQUAL "DebugTrace")
 	add_definitions(-g -D_DEBUG -DTRACE_ENABLE)
 endif (CMAKE_BUILD_TYPE STREQUAL "DebugTrace")
 
-if (ENABLE_ASAN)
-	if (ASAN_TYPE)
-		set(CMAKE_C_FLAGS "-fsanitize=${ASAN_TYPE} ${CMAKE_C_FLAGS}")
-	else()
-		set(CMAKE_C_FLAGS "-fsanitize=address ${CMAKE_C_FLAGS}")
-	endif()
-endif (ENABLE_ASAN)
-
 if (ENABLE_LTO)
-	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -flto")
+	add_compile_options(-flto)
 endif()
 
 if (NOT VIDEO_PLATFORM)
@@ -564,6 +555,7 @@ add_executable(arcan
 	${AGP_SOURCES}
  	${PLATFORM_SOURCES}
 )
+add_sanitizers(arcan)
 
 if (${FRAMESERVER_MODESTRING})
 string(STRIP ${FRAMESERVER_MODESTRING} FRAMESERVER_MODESTRING)
@@ -600,6 +592,7 @@ endif()
 # and execute them.
 #
 add_executable(arcan_db ${ARCANDB_SOURCES})
+add_sanitizers(arcan_db)
 target_link_libraries(arcan_db ${STDLIB} ${SQLITE3_LIBRARIES})
 target_include_directories(arcan_db PRIVATE ${INCLUDE_DIRS})
 target_compile_definitions(arcan_db PRIVATE ARCAN_DB_STANDALONE)

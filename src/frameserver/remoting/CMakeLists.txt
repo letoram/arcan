@@ -9,6 +9,7 @@ if (REMOTING_SOURCES)
 		${FSRV_PLATFORM}
 		${REMOTING_SOURCES}
 	)
+	add_sanitizers(afsrv_remoting)
 	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}remoting " PARENT_SCOPE)
 	target_compile_definitions(afsrv_remoting PRIVATE
 		ENABLE_FSRV_REMOTING

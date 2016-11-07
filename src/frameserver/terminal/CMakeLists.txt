@@ -9,6 +9,7 @@ if (TERMINAL_SOURCES)
 		${FSRV_PLATFORM}
 		${TERMINAL_SOURCES}
 	)
+	add_sanitizers(afsrv_terminal)
 	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}terminal " PARENT_SCOPE)
 	target_compile_definitions(afsrv_terminal PRIVATE
 		ENABLE_FSRV_TERMINAL

@@ -9,6 +9,7 @@ if (DECODE_SOURCES)
 		${FSRV_PLATFORM}
 		${DECODE_SOURCES}
 	)
+	add_sanitizers(afsrv_decode)
 	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}decode " PARENT_SCOPE)
 	target_compile_definitions(afsrv_decode PRIVATE
 		ENABLE_FSRV_DECODE
