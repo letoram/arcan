@@ -268,8 +268,9 @@ struct arcan_shmifext_setup {
 	uint64_t mask;
 	uint8_t builtin_fbo;
 	uint8_t supersample;
+	uint8_t stencil;
 /* workaround for versioning snafu with _setup not taking sizeof(...) */
-	uint8_t uintfl_reserve[6];
+	uint8_t uintfl_reserve[5];
 	uint64_t reserved[7];
 };
 
@@ -346,7 +347,7 @@ bool arcan_shmifext_vk(struct arcan_shmif_cont* con,
  * Returns -1 on handle- generation/passing failure, otherwise the number
  * of miliseconds (clamped to INT_MAX) that elapsed from signal to ack.
  */
-#define SHMIFEXT_BUILTIN ((uintptr_t)-1)
+#define SHMIFEXT_BUILTIN (~(uintptr_t)0)
 int arcan_shmifext_signal(struct arcan_shmif_cont*,
 	uintptr_t display, int mask, uintptr_t tex_id, ...);
 #endif
