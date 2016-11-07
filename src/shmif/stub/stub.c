@@ -15,6 +15,16 @@ enum shmifext_setup_status arcan_shmifext_setup(
 	return SHMIFEXT_NO_API;
 }
 
+bool arcan_shmifext_drop_context(struct arcan_shmif_cont* con)
+{
+	return false;
+}
+
+bool arcan_shmifext_drop_context(struct arcan_shmif_cont* con)
+{
+	return arcan_shmifext_drop(con);
+}
+
 void* arcan_shmifext_lookup(
 	struct arcan_shmif_cont* con, const char* fun)
 {

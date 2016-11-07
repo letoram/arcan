@@ -152,12 +152,12 @@ void agp_readback_synchronous(struct storage_info_t* dst)
 
 void agp_drop_vstore(struct storage_info_t* s)
 {
-	if (!s)
+	if (!s || s->vinf.text.glid == GL_NONE)
 		return;
 	struct agp_fenv* env = agp_env();
 
 	env->delete_textures(1, &s->vinf.text.glid);
-	s->vinf.text.glid = 0;
+	s->vinf.text.glid = GL_NONE;
 
 	if (GL_NONE != s->vinf.text.rid)
 		env->delete_buffers(1, &s->vinf.text.rid);

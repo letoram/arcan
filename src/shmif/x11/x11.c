@@ -36,7 +36,7 @@ struct arcan_shmifext_setup arcan_shmifext_defaults(
 
 static void x11_drop(struct arcan_shmif_cont* con)
 {
-if (!con->privext->internal)
+	if (!con->privext->internal)
 		return;
 
 	struct shmif_ext_hidden_int* in = con->privext->internal;
@@ -53,6 +53,19 @@ if (!con->privext->internal)
 
 	free(con->privext->internal);
 	con->privext->internal = NULL;
+}
+
+bool arcan_shmifext_drop(struct arcan_shmif_cont* con)
+{
+	if (!con || !con->privext || !con->privext->internal)
+		return false;
+	x11_drop(con);
+	return true;
+}
+
+bool arcan_shmifext_drop_context(struct arcan_shmif_cont* con)
+{
+	return arcan_shmifext_drop(con);
 }
 
 void* arcan_shmifext_lookup(

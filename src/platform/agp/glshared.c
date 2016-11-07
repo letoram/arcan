@@ -425,6 +425,7 @@ void agp_update_vstore(struct storage_info_t* s, bool copy)
 	}
 
 	if (copy){
+		env->pixel_storei(GL_UNPACK_ROW_LENGTH, 0);
 		s->update_ts = arcan_timemillis();
 		if (s->txmapped == TXSTATE_DEPTH)
 			env->tex_image_2d(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, s->w, s->h, 0,
@@ -442,7 +443,7 @@ void agp_update_vstore(struct storage_info_t* s, bool copy)
 	}
 #endif
 
-	glBindTexture(GL_TEXTURE_2D, 0);
+	env->bind_texture(GL_TEXTURE_2D, 0);
 }
 
 void agp_prepare_stencil()
@@ -450,25 +451,27 @@ void agp_prepare_stencil()
 /* toggle stenciling, reset into zero, draw parent bounding area to
  * stencil only,redraw parent into stencil, draw new object
  * then disable stencil. */
-	glEnable(GL_STENCIL_TEST);
-	glDisable(GL_BLEND);
-	glClearStencil(0);
-	glClear(GL_STENCIL_BUFFER_BIT);
-	glColorMask(0, 0, 0, 0);
-	glStencilFunc(GL_ALWAYS, 1, 1);
-	glStencilOp(GL_REPLACE, GL_REPLACE, GL_REPLACE);
+	struct agp_fenv* env = agp_env();
+	env->enable(GL_STENCIL_TEST);
+	env->disable(GL_BLEND);
+	env->clear_stencil(0);
+	env->clear(GL_STENCIL_BUFFER_BIT);
+	env->color_mask(0, 0, 0, 0);
+	env->stencil_func(GL_ALWAYS, 1, 1);
+	env->stencil_op(GL_REPLACE, GL_REPLACE, GL_REPLACE);
 }
 
 void agp_activate_stencil()
 {
-	glColorMask(1, 1, 1, 1);
-	glStencilFunc(GL_EQUAL, 1, 1);
-	glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+	struct agp_fenv* env = agp_env();
+	env->color_mask(1, 1, 1, 1);
+	env->stencil_func(GL_EQUAL, 1, 1);
+	env->stencil_op(GL_KEEP, GL_KEEP, GL_KEEP);
 }
 
 void agp_disable_stencil()
 {
-	glDisable(GL_STENCIL_TEST);
+	agp_env()->disable(GL_STENCIL_TEST);
 }
 
 static float ident[] = {
@@ -480,26 +483,27 @@ static float ident[] = {
 
 void agp_blendstate(enum arcan_blendfunc mode)
 {
+	struct agp_fenv* env = agp_env();
 	if (mode == BLEND_NONE){
-		glDisable(GL_BLEND);
+		env->disable(GL_BLEND);
 		return;
 	}
 
-	glEnable(GL_BLEND);
+	env->enable(GL_BLEND);
 
 	switch (mode){
 	case BLEND_NONE: /* -dumb compiler- */
 	case BLEND_FORCE:
 	case BLEND_NORMAL:
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		env->blend_func(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	break;
 
 	case BLEND_MULTIPLY:
-		glBlendFunc(GL_DST_COLOR, GL_ONE_MINUS_SRC_ALPHA);
+		env->blend_func(GL_DST_COLOR, GL_ONE_MINUS_SRC_ALPHA);
 	break;
 
 	case BLEND_ADD:
-		glBlendFunc(GL_ONE, GL_ONE);
+		env->blend_func(GL_ONE, GL_ONE);
 	break;
 
 	default:

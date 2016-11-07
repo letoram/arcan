@@ -611,6 +611,7 @@ static bool select_row(struct tui_context* tui)
 
 struct lent {
 	const char* lbl;
+	const char* descr;
 	bool(*ptr)(struct tui_context*);
 };
 
@@ -652,19 +653,26 @@ static bool mouse_forward(struct tui_context* tui)
 	return true;
 }
 
+/*
+ * Some things missing in labelhint that we'll keep to .5.3,
+ * 1. descriptions does not match geohint language
+ * 2. we do not expose a default binding and the labelhint initial field
+ *    should have its typing reworked (uint16 mods + uint16 sym)
+ * 3. we do not use subid indexing
+ */
 static const struct lent labels[] = {
-	{"LINE_UP", scroll_up},
-	{"LINE_DOWN", scroll_down},
-	{"PAGE_UP", page_up},
-	{"PAGE_DOWN", page_down},
-	{"UP", move_up},
-	{"DOWN", move_down},
-	{"MOUSE_FORWARD", mouse_forward},
-	{"SELECT_AT", select_at},
-	{"SELECT_ROW", select_row},
-	{"SCROLL_LOCK", scroll_lock},
-	{"INC_FONT_SZ", inc_fontsz},
-	{"DEC_FONT_SZ", dec_fontsz},
+	{"LINE_UP", "Scroll 1 row up", scroll_up},
+	{"LINE_DOWN", "Scroll 1 row down", scroll_down},
+	{"PAGE_UP", "Scroll one page up", page_up},
+	{"PAGE_DOWN", "Scroll one page down", page_down},
+	{"COPY_AT", "Copy word at cursor", select_at},
+	{"COPY_ROW", "Copy cursor row", select_row},
+	{"MOUSE_FORWARD", "Toggle mouse forwarding", mouse_forward},
+	{"SCROLL_LOCK", "Arrow- keys to pageup/down", scroll_lock},
+	{"UP", "(scroll-lock) page up, UP keysym", move_up},
+	{"DOWN", "(scroll-lock) page down, DOWN keysym", move_up},
+	{"INC_FONT_SZ", "Font size +1 pt", inc_fontsz},
+	{"DEC_FONT_SZ", "Font size -1 pt", dec_fontsz},
 	{NULL, NULL}
 };
 
@@ -673,7 +681,7 @@ static void expose_labels(struct tui_context* tui)
 	const struct lent* cur = labels;
 
 /*
- * NOTE: We do not currently expose a descriptor or suggested default
+ * NOTE: We do not currently expose a suggested default
  */
 	while(cur->lbl){
 		arcan_event ev = {
