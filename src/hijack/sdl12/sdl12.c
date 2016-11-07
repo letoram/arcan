@@ -300,7 +300,7 @@ static int load_library(void* this, const char* path)
  * make things a little easier */
 void* platform_video_gfxsym(const char* sym)
 {
-	return arcan_shmifext_headless_lookup(&global.shared, sym);
+	return arcan_shmifext_lookup(&global.shared, sym);
 }
 
 struct monitor_mode platform_video_dimensions()
@@ -333,7 +333,7 @@ static void* get_proc_addr(void* this, const char* proc)
 		return bind_framebuffer;
 	}
 
-	return arcan_shmifext_headless_lookup(&global.shared, proc);
+	return arcan_shmifext_lookup(&global.shared, proc);
 }
 
 static int get_attr(void* this, SDL_GLattr attr, int* val)
@@ -357,7 +357,7 @@ static void swap_buffers(void* this)
   if (!arcan_shmifext_egl_meta(&global.shared, &display, NULL, NULL))
 		return;
 
-	if (arcan_shmifext_eglsignal(&global.shared, display,
+	if (arcan_shmifext_signal(&global.shared, display,
 		SHMIF_SIGVID, global.vstore.vinf.text.glid) >= 0)
 		return;
 
@@ -447,8 +447,8 @@ SDL_Surface* ARCAN_SDL_SetVideoMode(int w, int h, int ncps, Uint32 flags)
 
 /* setup a surfaceless EGL context, map extensions and create a FBO that
  * will work as our substitute for the back-buffer */
-				arcan_shmifext_headless_setup(&global.shared,
-					arcan_shmifext_headless_defaults(&global.shared));
+				arcan_shmifext_setup(&global.shared,
+					arcan_shmifext_defaults(&global.shared));
 				agp_init();
 				agp_empty_vstore(&global.vstore, w, h);
 				global.rtgt = agp_setup_rendertarget(
