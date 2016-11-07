@@ -30,7 +30,7 @@ arcan_errc arcan_img_decode(const char* hint, char* inbuf, size_t inbuf_sz,
 
 /*
  * take the contents of [inbuf] and unpack/[vflip],
- * then encode as PNG and write to [dst].
+ * then encode as PNG and write to [dst]. [dst] is kept open.
  */
 arcan_errc arcan_img_outpng(FILE* dst,
 	av_pixel* inbuf, size_t inw, size_t inh, bool vflip);
