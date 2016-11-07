@@ -90,16 +90,15 @@ static void gbm_drop(struct arcan_shmif_cont* con)
 
 	if (in->dev){
 /* this will actually free the gbm- resources as well */
+		if (in->rtgt){
+			agp_drop_rendertarget(in->rtgt);
+			agp_drop_vstore(&in->vstore);
+		}
 		if (in->managed){
 			eglMakeCurrent(in->display,
 				EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
 			eglDestroyContext(in->display, in->context);
 			eglTerminate(in->display);
-		}
-		if (in->rtgt){
-			agp_drop_rendertarget(in->rtgt);
-			agp_drop_vstore(&in->vstore);
-
 		}
 		con->privext->internal->dev = NULL;
 	}
@@ -123,7 +122,7 @@ struct arcan_shmifext_setup arcan_shmifext_defaults(
 
 	return (struct arcan_shmifext_setup){
 		.red = 8, .green = 8, .blue = 8,
-		.alpha = 0, .depth = 0,
+		.alpha = 1, .depth = 16,
 		.api = API_OPENGL,
 		.builtin_fbo = true,
 		.major = 2, .minor = 1
@@ -151,6 +150,13 @@ enum shmifext_setup_status arcan_shmifext_setup(
 	struct arcan_shmifext_setup arg)
 {
 	int type;
+	struct shmif_ext_hidden_int* ctx = con->privext->internal;
+
+	if (ctx && ctx->display){
+		arcan_shmifext_make_current(con);
+		return SHMIFEXT_OK;
+	}
+
 	switch (arg.api){
 	case API_OPENGL:
 		if (!eglBindAPI(EGL_OPENGL_API))
@@ -176,15 +182,13 @@ enum shmifext_setup_status arcan_shmifext_setup(
 	if (!arcan_shmifext_egl(con, &display, lookup, NULL))
 		return SHMIFEXT_NO_DISPLAY;
 
-	struct shmif_ext_hidden_int* ctx = con->privext->internal;
+	ctx = con->privext->internal;
 	ctx->display = eglGetDisplay((EGLNativeDisplayType) display);
 	if (!ctx->display)
 		return SHMIFEXT_NO_DISPLAY;
 
 	if (!eglInitialize(ctx->display, NULL, NULL))
 		return SHMIFEXT_NO_EGL;
-
-	agp_glinit_fenv(&ctx->fenv, lookup_fenv, NULL);
 
 	const EGLint attribs[] = {
 		EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
@@ -212,6 +216,8 @@ enum shmifext_setup_status arcan_shmifext_setup(
 	EGLint cas[] = {EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE,
 		EGL_NONE, EGL_NONE, EGL_NONE, EGL_NONE, EGL_NONE, EGL_NONE,
 		EGL_NONE, EGL_NONE, EGL_NONE};
+
+	agp_glinit_fenv(&ctx->fenv, lookup_fenv, NULL);
 
 	int ofs = 2;
 	if (arg.major){
@@ -249,6 +255,7 @@ enum shmifext_setup_status arcan_shmifext_setup(
 				RENDERTARGET_COLOR);
 	}
 
+	arcan_shmifext_make_current(con);
 	return SHMIFEXT_OK;
 }
 
