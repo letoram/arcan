@@ -269,9 +269,11 @@ struct arcan_shmifext_setup {
 	uint8_t builtin_fbo;
 	uint8_t supersample;
 	uint8_t stencil;
+	uint8_t no_context;
 /* workaround for versioning snafu with _setup not taking sizeof(...) */
-	uint8_t uintfl_reserve[5];
-	uint64_t reserved[7];
+	uint8_t uintfl_reserve[4];
+	uint64_t shared_context;
+	uint64_t reserved[6];
 };
 
 struct arcan_shmifext_setup arcan_shmifext_defaults(
@@ -312,11 +314,16 @@ bool arcan_shmifext_egl_meta(struct arcan_shmif_cont* con,
 bool arcan_shmifext_make_current(struct arcan_shmif_cont* con);
 
 /*
- * Free and destroy an associated context and internal buffers,
- * in order to stop using the connection for accelerated drawing,
- * or to rebuild- a little later without destroying the connection
+ * Free and destroy an associated context, display and internal buffers
+ * in order to stop using the connection for accelerated drawing.
  */
 bool arcan_shmifext_drop(struct arcan_shmif_cont* con);
+
+/*
+ * Similar to arcan_shmifext_drop, except the display and device connection
+ * is kept alive, intended to build a new context with _setup later
+ */
+bool arcan_shmifext_drop_context(struct arcan_shmif_cont* con);
 
 /*
  * If headless setup uses a built-in FBO configuration, this function can be

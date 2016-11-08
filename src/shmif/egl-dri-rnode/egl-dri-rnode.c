@@ -125,7 +125,8 @@ struct arcan_shmifext_setup arcan_shmifext_defaults(
 		.alpha = 1, .depth = 16,
 		.api = API_OPENGL,
 		.builtin_fbo = true,
-		.major = 2, .minor = 1
+		.major = 2, .minor = 1,
+		.shared_context = (uint64_t) EGL_NO_CONTEXT
 	};
 }
 
@@ -151,22 +152,20 @@ enum shmifext_setup_status arcan_shmifext_setup(
 {
 	int type;
 	struct shmif_ext_hidden_int* ctx = con->privext->internal;
-
-	if (ctx && ctx->display){
-		arcan_shmifext_make_current(con);
-		return SHMIFEXT_OK;
-	}
+	EGLint nc, cc;
 
 	switch (arg.api){
 	case API_OPENGL:
-		if (!eglBindAPI(EGL_OPENGL_API))
+		if ((ctx && ctx->display) || eglBindAPI(EGL_OPENGL_API))
+			type = EGL_OPENGL_BIT;
+		else
 			return SHMIFEXT_NO_API;
-		type = EGL_OPENGL_BIT;
 	break;
 	case API_GLES:
-		if (!eglBindAPI(EGL_OPENGL_ES_API))
+		if ((ctx && ctx->display) || eglBindAPI(EGL_OPENGL_ES_API))
+			type = EGL_OPENGL_ES2_BIT;
+		else
 			return SHMIFEXT_NO_API;
-		type = EGL_OPENGL_ES2_BIT;
 	break;
 	case API_VHK:
 	default:
@@ -177,6 +176,20 @@ enum shmifext_setup_status arcan_shmifext_setup(
 		return SHMIFEXT_NO_API;
 	break;
 	};
+	const EGLint attribs[] = {
+		EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+		EGL_RENDERABLE_TYPE, type,
+		EGL_RED_SIZE, arg.red,
+		EGL_GREEN_SIZE, arg.green,
+		EGL_BLUE_SIZE, arg.blue,
+		EGL_ALPHA_SIZE, arg.alpha,
+		EGL_DEPTH_SIZE, arg.depth,
+		EGL_NONE
+	};
+
+	if (ctx && ctx->display){
+		goto context_only;
+	}
 
 	void* display;
 	if (!arcan_shmifext_egl(con, &display, lookup, NULL))
@@ -190,19 +203,10 @@ enum shmifext_setup_status arcan_shmifext_setup(
 	if (!eglInitialize(ctx->display, NULL, NULL))
 		return SHMIFEXT_NO_EGL;
 
-	const EGLint attribs[] = {
-		EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
-		EGL_RENDERABLE_TYPE, type,
-		EGL_RED_SIZE, arg.red,
-		EGL_GREEN_SIZE, arg.green,
-		EGL_BLUE_SIZE, arg.blue,
-		EGL_ALPHA_SIZE, arg.alpha,
-		EGL_DEPTH_SIZE, arg.depth,
-		EGL_NONE
-	};
+	if (arg.no_context)
+		return SHMIFEXT_OK;
 
-	EGLint nc, cc;
-
+context_only:
 	if (!eglGetConfigs(ctx->display, NULL, 0, &nc))
 		return SHMIFEXT_NO_CONFIG;
 
@@ -237,10 +241,17 @@ enum shmifext_setup_status arcan_shmifext_setup(
 		cas[ofs++] = arg.flags;
 	}
 
-	ctx->context = eglCreateContext(ctx->display, cfg, EGL_NO_CONTEXT, cas);
+/* ignore if this function was called without destroying the old context */
+	bool context_reuse = false;
+	if (!ctx->context){
+		ctx->context = eglCreateContext(ctx->display, cfg,
+			(EGLContext) arg.shared_context, cas);
+	}
+	else
+		context_reuse = true;
 
 	if (!ctx->context){
-		ctx->display = NULL;
+		int errc = eglGetError();
 		return SHMIFEXT_NO_CONTEXT;
 	}
 
@@ -249,6 +260,11 @@ enum shmifext_setup_status arcan_shmifext_setup(
 	eglMakeCurrent(ctx->display, ctx->surface, ctx->surface, ctx->context);
 
 	if (arg.builtin_fbo){
+		if (context_reuse){
+			agp_drop_vstore(&ctx->vstore);
+			agp_drop_rendertarget(ctx->rtgt);
+			memset(&ctx->vstore, '\0', sizeof(struct storage_info_t));
+		}
 		agp_empty_vstore(&ctx->vstore, con->w, con->h);
 		ctx->rtgt = agp_setup_rendertarget(
 			&ctx->vstore, arg.depth > 0 ? RENDERTARGET_COLOR_DEPTH_STENCIL :
@@ -266,6 +282,25 @@ bool arcan_shmifext_drop(struct arcan_shmif_cont* con)
 		return false;
 
 	gbm_drop(con);
+	return true;
+}
+
+bool arcan_shmifext_drop_context(struct arcan_shmif_cont* con)
+{
+	if (!con || !con->privext || !con->privext->internal ||
+		!con->privext->internal->display)
+		return false;
+
+	struct shmif_ext_hidden_int* ctx = con->privext->internal;
+	agp_drop_vstore(&ctx->vstore);
+
+	if (ctx->context){
+		eglMakeCurrent(ctx->display,
+			EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+		eglDestroyContext(ctx->display, ctx->context);
+		ctx->context = EGL_NO_CONTEXT;
+	}
+
 	return true;
 }
 

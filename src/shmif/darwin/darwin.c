@@ -52,6 +52,11 @@ bool arcan_shmifext_drop(struct arcan_shmif_cont* con)
 	return true;
 }
 
+bool arcan_shmifext_drop_context(struct arcan_shmif_cont* con)
+{
+	return arcan_shmifext_drop(con);
+}
+
 enum shmifext_setup_status arcan_shmifext_setup(
 	struct arcan_shmif_cont* con,
 	struct arcan_shmifext_setup arg)

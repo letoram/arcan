@@ -258,7 +258,7 @@ struct shmif_hidden {
 		bool active;
 		sem_handle semset[3];
 		process_handle parent;
-		volatile uint8_t* dms;
+		volatile uint8_t* _Atomic volatile dms;
 		pthread_mutex_t synch;
 		void (*exitf)(int val);
 	} guard;
@@ -1091,7 +1091,6 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 
 	struct shmif_hidden gs = {
 		.guard = {
-			.dms = (uint8_t*) &res.addr->dms,
 			.semset = { res.asem, res.vsem, res.esem },
 			.parent = res.addr->parent,
 			.exitf = exitf
@@ -1100,6 +1099,8 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 		.pev = {.fd = BADFD},
 		.pseg = {.epipe = BADFD},
 	};
+
+	atomic_store(&gs.guard.dms, (uint8_t*) &res.addr->dms);
 
 	res.priv = malloc(sizeof(struct shmif_hidden));
 	memset(res.priv, '\0', sizeof(struct shmif_hidden));
@@ -1165,12 +1166,13 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 static void* guard_thread(void* gs)
 {
 	struct shmif_hidden* gstr = gs;
-	*(gstr->guard.dms) = true;
 
 	while (gstr->guard.active){
 		if (!parent_alive(gstr)){
+			volatile uint8_t* dms;
 			pthread_mutex_lock(&gstr->guard.synch);
-			*(gstr->guard.dms) = false;
+			if ((dms = atomic_load(&gstr->guard.dms)))
+				*dms = false;
 
 			for (size_t i = 0; i < COUNT_OF(gstr->guard.semset); i++){
 				if (gstr->guard.semset[i])
@@ -1414,6 +1416,7 @@ void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 		close(inctx->privext->pending_fd);
 
 	if (gstr->guard.active){
+		atomic_store(&gstr->guard.dms, NULL);
 		gstr->guard.active = false;
 	}
 /* no guard thread for this context */
@@ -1519,7 +1522,7 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 			return false;
 		}
 
-		gs->guard.dms = &arg->addr->dms;
+		atomic_store(&gs->guard.dms, (uint8_t*) &arg->addr->dms);
 		pthread_mutex_unlock(&gs->guard.synch);
 	}
 
@@ -1731,7 +1734,7 @@ bool arcan_shmif_acquireloop(struct arcan_shmif_cont* c,
 				acqev->tgt.ioevs[0].iv =
 					arcan_shmif_dupfd(acqev->tgt.ioevs[0].iv, -1, true);
 			}
-			*evpool[*evpool_sz++] = *acqev;
+			(*evpool)[(*evpool_sz)++] = *acqev;
 		}
 		else
 			return true;
@@ -1740,6 +1743,7 @@ bool arcan_shmif_acquireloop(struct arcan_shmif_cont* c,
 /* broken pool */
 	*evpool_sz = -1;
 	free(evpool);
+	*evpool = NULL;
 	return false;
 }
 
