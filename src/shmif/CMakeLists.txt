@@ -113,6 +113,7 @@ add_library(arcan_shmif_int STATIC ${SHMIF_SOURCES} ${SHMIF_PLATFORM})
 add_library(arcan_shmif SHARED ${SHMIF_SOURCES} ${SHMIF_PLATFORM})
 add_library(arcan_shmif_ext SHARED ${SHMIF_EXT_SOURCES})
 add_library(arcan_shmif_intext SHARED ${SHMIF_EXT_SOURCES})
+add_sanitizers(arcan_shmif_int arcan_shmif arcan_shmif_ext arcan_shmif_intext)
 
 # somewhat messy, if the engine is building a static freetype version we should
 # use that one and provide a tui to match, but we should also try and provide a

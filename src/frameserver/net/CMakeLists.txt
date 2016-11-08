@@ -9,6 +9,7 @@ if (NET_SOURCES)
 		${FSRV_PLATFORM}
 		${NET_SOURCES}
 	)
+	add_sanitizers(afsrv_net)
 	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}net " PARENT_SCOPE)
 	target_compile_definitions(afsrv_net PRIVATE
 		ENABLE_FSRV_NET

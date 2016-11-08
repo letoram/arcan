@@ -9,6 +9,7 @@ if (AVFEED_SOURCES)
 		${FSRV_PLATFORM}
 		${AVFEED_SOURCES}
 	)
+	add_sanitizers(afsrv_avfeed)
 	set(FRAMESERVER_MODESTRING "${FRAMESERVER_MODESTRING}avfeed " PARENT_SCOPE)
 	target_compile_definitions(afsrv_avfeed PRIVATE
 		ENABLE_FSRV_AVFEED

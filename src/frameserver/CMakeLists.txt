@@ -49,6 +49,7 @@ endforeach()
 # it is also used to track descriptor / environment leaks from the parent
 #
 add_executable(arcan_frameserver frameserver.c)
+add_sanitizers(arcan_frameserver)
 target_compile_definitions(arcan_frameserver PRIVATE AFSRV_CHAINLOADER)
 install(TARGETS arcan_frameserver DESTINATION bin)
 amsg("${CL_YEL}Frameservers:${CL_GRN} ${FRAMESERVER_MODESTRING}${CL_RST}")
