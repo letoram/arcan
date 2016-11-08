@@ -643,8 +643,8 @@ GLXContext glXCreateContext(Display* dpy,
 	if (!dpy || !dpy->con.addr)
 		return 0;
 
-	if (SHMIFEXT_OK != arcan_shmifext_headless_setup(
-		&dpy->con, arcan_shmifext_headless_defaults(&dpy->con)))
+	if (SHMIFEXT_OK != arcan_shmifext_setup(
+		&dpy->con, arcan_shmifext_defaults(&dpy->con)))
 		return 0;
 
 	agp_init();
@@ -785,7 +785,7 @@ void* glXGetProcAddress(const char* proc)
 {
 	TRACE("glXGetProcAddress(%s)", proc ? proc : "no proc");
 	struct arcan_shmif_cont* con = arcan_shmif_primary(SHMIF_INPUT);
-	return arcan_shmifext_headless_lookup(con, proc);
+	return arcan_shmifext_lookup(con, proc);
 }
 
 void* glXGetProcAddressARB(const char* proc)
@@ -901,7 +901,7 @@ void glXSwapBuffers(Display* dpy, GLXDrawable draw)
 		return;
 
 	glFlush();
-	if (arcan_shmifext_eglsignal(&dpy->con, display,
+	if (arcan_shmifext_signal(&dpy->con, display,
 		SHMIF_SIGVID, dpy->vstore.vinf.text.glid) >= 0)
 		return;
 
