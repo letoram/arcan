@@ -952,6 +952,15 @@ static void update_screensize(struct tui_context* tui, bool clear)
 	LOG("update screensize (%d * %d), (%d * %d)\n",
 		cols, rows, (int)tui->acon.w, (int)tui->acon.h);
 
+	shmif_pixel col = SHMIF_RGBA(
+		tui->bgc[0],tui->bgc[1],tui->bgc[2],tui->alpha);
+
+	while (atomic_load(&tui->acon.addr->vready))
+		;
+
+	if (clear)
+		draw_box(&tui->acon, 0, 0, tui->acon.w, tui->acon.h, col);
+
 	tui->pad_w = tui->acon.w - (cols * tui->cell_w);
 	tui->pad_h = tui->acon.h - (rows * tui->cell_h);
 
@@ -972,18 +981,8 @@ static void update_screensize(struct tui_context* tui, bool clear)
 		tsm_screen_resize(tui->screen, cols, rows);
 	}
 
-	while (atomic_load(&tui->acon.addr->vready))
-		;
-
-	shmif_pixel col = SHMIF_RGBA(
-		tui->bgc[0],tui->bgc[1],tui->bgc[2],tui->alpha);
-
-	if (clear)
-		draw_box(&tui->acon, 0, 0, tui->acon.w, tui->acon.h, col);
-
 /* will enforce full redraw, and full redraw will also update padding */
 	tui->dirty |= DIRTY_PENDING_FULL;
-	update_screen(tui);
 }
 
 static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
