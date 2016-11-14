@@ -3964,6 +3964,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			const char* lbl = platform_event_devlabel(ev->io.devid);
 			lua_pushstring(ctx, "status");
 			lua_rawset(ctx, top);
+			tblbool(ctx, "status", true, top);
 			tblnum(ctx, "devid", ev->io.devid, top);
 			tblnum(ctx, "subid", ev->io.subid, top);
 			if (lbl)
