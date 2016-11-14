@@ -233,6 +233,12 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	if (!con)
 		return EXIT_FAILURE;
 
+	const char* val;
+	if (arg_lookup(args, "help", 0, &val)){
+		dump_help();
+		return EXIT_SUCCESS;
+	}
+
 	struct tui_cbcfg cbcfg = {
 		.input_mouse_motion = on_mouse_motion,
 		.input_mouse_button = on_mouse_button,
@@ -271,7 +277,6 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	tsm_vte_set_color(term.vte, VTE_COLOR_FOREGROUND, cfg.fgc);
 
 	bool recolor = false;
-	const char* val;
 	if (arg_lookup(args, "palette", 0, &val)){
 		tsm_vte_set_palette(term.vte, val);
 		recolor = true;
