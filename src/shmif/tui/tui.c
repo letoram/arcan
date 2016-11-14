@@ -617,7 +617,7 @@ struct lent {
 
 static const int badfd = -1;
 static bool setup_font(struct tui_context* tui,
-	int fd, size_t font_sz, int mode);
+	int fd, float font_sz, int mode);
 
 bool inc_fontsz(struct tui_context* tui)
 {
@@ -1059,8 +1059,8 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 
 /* unit conversion again, we get the size in cm, truetype wrapper takes pt,
  * (at 0.03527778 cm/pt), then update_font will take ppcm into account */
-		float npx = setup_font(tui, fd, ev->ioevs[2].fv > 0 ?
-			SHMIF_PT_SIZE(tui->ppcm, ev->ioevs[2].fv) : 0, ev->ioevs[4].iv);
+		float npx = setup_font(tui, fd,
+			ev->ioevs[2].fv > 0 ? ev->ioevs[2].fv : 0, ev->ioevs[4].iv);
 
 		update_screensize(tui, false);
 	}
@@ -1299,12 +1299,14 @@ static void probe_font(struct tui_context* tui,
 
 /*
  * modes supported now is 0 (default), 1 (append)
+ * font size specified in mm, will be converted to 1/72 inch pt as per
+ * the current displayhint density in pixels-per-centimeter.
  */
 static bool setup_font(struct tui_context* tui,
-	int fd, size_t font_sz, int mode)
+	int fd, float font_sz, int mode)
 {
 	TTF_Font* font;
-	if (font_sz <= 0)
+	if (!(font_sz > 0))
 		font_sz = tui->font_sz;
 	font_sz += tui->font_sz_delta;
 
@@ -1314,10 +1316,11 @@ static bool setup_font(struct tui_context* tui,
 	if (BADFD == fd)
 		fd = tui->font_fd[modeind];
 
-	font = TTF_OpenFontFD(fd, font_sz);
+	size_t pt_size = SHMIF_PT_SIZE(tui->ppcm, font_sz) + tui->font_sz_delta;
+	font = TTF_OpenFontFD(fd, pt_size);
 	if (!font){
 		LOG("failed to open font from descriptor (%d), "
-			"with size: %zu\n", fd, font_sz);
+			"with size: %f\n", fd, font_sz);
 		return false;
 	}
 
@@ -1684,7 +1687,7 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 
 	if (init->fonts[0].fd != BADFD){
 		res->hint = init->fonts[0].hinting;
-		res->font_sz = SHMIF_PT_SIZE(res->ppcm, init->fonts[0].size_mm);
+		res->font_sz = init->fonts[0].size_mm;
 		setup_font(res, init->fonts[0].fd, res->font_sz, 0);
 		init->fonts[0].fd = -1;
 		LOG("arcan_shmif_tui(), built-in font provided, size: %zu\n", res->font_sz);

@@ -47,9 +47,10 @@
 #define LOG(...) (fprintf(stderr, __VA_ARGS__))
 #endif
 
+/* pt size as 1/72th inch */
 #define SHMIF_PT_SIZE(ppcm, sz_mm) ((size_t)(\
-	(((double)(sz_mm)) / 0.352778) * \
-	(((double)(ppcm)) / 28.346566) \
+	(((double)(sz_mm)) /  0.352778) * \
+	(((double)(ppcm))  / 28.346566) \
 ))
 
 /*
