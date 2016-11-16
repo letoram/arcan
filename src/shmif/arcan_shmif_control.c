@@ -307,13 +307,13 @@ static void spawn_guardthread(struct arcan_shmif_cont* d)
 uint64_t arcan_shmif_cookie()
 {
 	uint64_t base = sizeof(struct arcan_event) + sizeof(struct arcan_shmif_page);
-	base += (uint64_t)offsetof(struct arcan_shmif_page, cookie)  <<  8;
-	base += (uint64_t)offsetof(struct arcan_shmif_page, resized) << 16;
-	base += (uint64_t)offsetof(struct arcan_shmif_page, aready)  << 24;
-	base += (uint64_t)offsetof(struct arcan_shmif_page, abufused)<< 32;
-	base += (uint64_t)offsetof(struct arcan_shmif_page, childevq.front) << 40;
-	base += (uint64_t)offsetof(struct arcan_shmif_page, childevq.back) << 48;
-	base += (uint64_t)offsetof(struct arcan_shmif_page, parentevq.front) << 56;
+	base |= (uint64_t)offsetof(struct arcan_shmif_page, cookie)  <<  8;
+	base |= (uint64_t)offsetof(struct arcan_shmif_page, resized) << 16;
+	base |= (uint64_t)offsetof(struct arcan_shmif_page, aready)  << 24;
+	base |= (uint64_t)offsetof(struct arcan_shmif_page, abufused)<< 32;
+	base |= (uint64_t)offsetof(struct arcan_shmif_page, childevq.front) << 40;
+	base |= (uint64_t)offsetof(struct arcan_shmif_page, childevq.back) << 48;
+	base |= (uint64_t)offsetof(struct arcan_shmif_page, parentevq.front) << 56;
 	return base;
 }
 

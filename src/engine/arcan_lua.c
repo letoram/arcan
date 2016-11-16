@@ -3764,12 +3764,20 @@ static void display_removed(lua_State* ctx, arcan_event* ev)
 static void do_preroll(lua_State* ctx, intptr_t ref,
 	arcan_vobj_id vid, arcan_aobj_id aid)
 {
+	vfunc_state* state = arcan_video_feedstate(vid);
+	if (!state || state->tag != ARCAN_TAG_FRAMESERV || !state->ptr){
+		arcan_warning("attempt to preroll a bad/non-fsrv backed vid\n");
+		return;
+	}
+	arcan_frameserver* fsrv = state->ptr;
+
 	if (ref != (intptr_t) LUA_NOREF){
 		lua_rawgeti(ctx, LUA_REGISTRYINDEX, ref);
 		lua_pushvid(ctx, vid);
 		lua_newtable(ctx);
 		int top = lua_gettop(ctx);
 		tblstr(ctx, "kind", "preroll", top);
+		tblstr(ctx, "segkind", fsrvtos(fsrv->segid), top);
 		tblnum(ctx, "source_audio", aid, top);
 		luactx.cb_source_tag = vid;
 		wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "frameserver_event(preroll)");
@@ -10236,6 +10244,9 @@ static const char* fsrvtos(enum ARCAN_SEGID ink)
 	case SEGID_ENCODER: return "encoder";
 	case SEGID_TITLEBAR: return "titlebar";
 	case SEGID_SENSOR: return "sensor";
+	case SEGID_SERVICE: return "service";
+	case SEGID_BRIDGE_X11: return "bridge-x11";
+	case SEGID_BRIDGE_WAYLAND: return "bridge-wayland";
 	case SEGID_DEBUG: return "debug";
 	case SEGID_WIDGET: return "widget";
 	case SEGID_ACCESSIBILITY: return "accessibility";
