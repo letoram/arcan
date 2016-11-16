@@ -103,6 +103,7 @@ enum tsm_vte_modifier {
 };
 
 enum vte_color {
+	VTE_COLOR_INVAL = -1,
 	VTE_COLOR_BLACK = 0,
 	VTE_COLOR_RED,
 	VTE_COLOR_GREEN,

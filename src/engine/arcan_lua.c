@@ -3430,8 +3430,9 @@ static int targetmessage(lua_State* ctx)
 /* copy into buffer and forward */
 		memcpy(ev.tgt.message, msg, i);
 		ev.tgt.message[i] = '\0';
-		if (!arcan_frameserver_pushevent(fsrv, &ev)){
+		if (ARCAN_OK != arcan_frameserver_pushevent(fsrv, &ev)){
 			lua_pushnumber(ctx, len);
+			arcan_warning("message truncation\n");
 			LUA_ETRACE("message_target", "truncation", 1);
 		}
 
@@ -3443,7 +3444,7 @@ static int targetmessage(lua_State* ctx)
 	if (len){
 		memcpy(ev.tgt.message, msg, len);
 		ev.tgt.message[len] = '\0';
-		if (!arcan_frameserver_pushevent(fsrv, &ev)){
+		if (ARCAN_OK != arcan_frameserver_pushevent(fsrv, &ev)){
 			lua_pushnumber(ctx, len);
 			LUA_ETRACE("message_target", "truncation", 1);
 		}
