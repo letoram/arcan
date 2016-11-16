@@ -206,9 +206,24 @@ enum ARCAN_SEGID {
  */
 	SEGID_TUI,
 
+/*
+ * Used in order to indicate system service integration, exposed as a control
+ * panel, tray or desktop style icon that expose abstract/simplified information
+ * and a control interface to the respective service.
+ */
+	SEGID_SERVICE,
+
+/*
+ * Used to indicate a protocol bridge and root windows (where applicable and no
+ * other segtype or subsegtype- can be spawned).
+ */
+	SEGID_BRIDGE_X11,
+	SEGID_BRIDGE_WAYLAND,
+
 /* Can always be terminated without risk, may be stored as part of debug format
  * in terms of unexpected termination etc. */
-	SEGID_DEBUG,
+	SEGID_DEBUG = 255,
+
 	SEGID_LIM = INT_MAX
 };
 
