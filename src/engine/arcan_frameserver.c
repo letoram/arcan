@@ -267,7 +267,12 @@ static void push_buffer(arcan_frameserver* src,
 
 /* Need to do this check here as-well as in the regular frameserver tick control
  * because the backing store might have changed somehwere else. */
-	if (src->desc.width != store->w || src->desc.height != store->h){
+	if (src->desc.width != store->w || src->desc.height != store->h ||
+		src->desc.hints != src->desc.pending_hints){
+		src->desc.hints = src->desc.pending_hints;
+		store->vinf.text.glformat = (src->desc.hints & SHMIF_RHINT_IGNORE_ALPHA) ||
+			src->flags.no_alpha_copy ? GL_NOALPHA_PIXEL_FORMAT : GL_PIXEL_FORMAT;
+
 		arcan_video_resizefeed(src->vid, src->desc.width, src->desc.height);
 		arcan_event rezev = {
 			.category = EVENT_FSRV,
@@ -306,37 +311,18 @@ static void push_buffer(arcan_frameserver* src,
 		goto commit_mask;
 	}
 
-/* no-alpha flag was rather dumb, should've been done shader-side but now it is
- * kept due to legacy problems that would appear if removed */
-	if (src->flags.no_alpha_copy){
-		stream = agp_stream_prepare(store, stream, STREAM_RAW);
-		if (!stream.buf)
-			goto commit_mask;
-
-		av_pixel* wbuf = stream.buf;
-
-		size_t np = store->w * store->h;
-		for (size_t i = 0; i < np; i++){
-			av_pixel px = *buf++;
-			*wbuf++ = RGBA_FULLALPHA_REPACK(px);
-		}
-
-		agp_stream_release(store, stream);
-	}
-	else{
-		stream.buf = buf;
+	stream.buf = buf;
 /* validate, fallback to fullsynch if we get bad values */
-		if (dirty){
-			stream.x1 = dirty->x1; stream.w = dirty->x2 - dirty->x1;
-			stream.y1 = dirty->y1; stream.h = dirty->y2 - dirty->y1;
-			stream.dirty = /* unsigned but int prom. */
-				(dirty->x2 - dirty->x1 > 0 && stream.w <= store->w) &&
-				(dirty->y2 - dirty->y1 > 0 && stream.h <= store->h);
-		}
-		stream = agp_stream_prepare(store, stream, explicit ?
-			STREAM_RAW_DIRECT_SYNCHRONOUS : (
-				src->flags.local_copy ? STREAM_RAW_DIRECT_COPY : STREAM_RAW_DIRECT));
+	if (dirty){
+		stream.x1 = dirty->x1; stream.w = dirty->x2 - dirty->x1;
+		stream.y1 = dirty->y1; stream.h = dirty->y2 - dirty->y1;
+		stream.dirty = /* unsigned but int prom. */
+			(dirty->x2 - dirty->x1 > 0 && stream.w <= store->w) &&
+			(dirty->y2 - dirty->y1 > 0 && stream.h <= store->h);
 	}
+	stream = agp_stream_prepare(store, stream, explicit ?
+		STREAM_RAW_DIRECT_SYNCHRONOUS : (
+			src->flags.local_copy ? STREAM_RAW_DIRECT_COPY : STREAM_RAW_DIRECT));
 
 	agp_stream_commit(store, stream);
 commit_mask:

@@ -1124,7 +1124,7 @@ bool arcan_frameserver_resize(struct arcan_frameserver* s)
 	atomic_store(&shmpage->h, h);
 	s->desc.width = w;
 	s->desc.height = h;
-	s->desc.hints = atomic_load(&shmpage->hints);
+	s->desc.pending_hints = atomic_load(&shmpage->hints);
 	s->vbuf_cnt = vbufc;
 	s->abuf_cnt = abufc;
 

@@ -46,7 +46,11 @@ typedef VIDEO_PIXEL_TYPE av_pixel;
 #define OUT_DEPTH_A 0
 
 #ifndef GL_PIXEL_FORMAT
-#define GL_PIXEL_FORMAT GL_RGBA
+#define GL_PIXEL_FORMAT 6408 /* GL_RGBA */
+#endif
+
+#ifndef GL_NOALPHA_PIXEL_FORMAT
+#define GL_NOALPHA_PIXEL_FORMAT 6407 /* GL_RGB */
 #endif
 
 #define GL_PIXEL_HDEF_FORMAT GL_PIXEL_FORMAT
