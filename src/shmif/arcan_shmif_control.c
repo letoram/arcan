@@ -1396,6 +1396,12 @@ void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 	if (inctx->addr)
 		inctx->addr->dms = false;
 
+	if (inctx == primary.input)
+		primary.input = NULL;
+
+	if (inctx == primary.output)
+		primary.output = NULL;
+
 	struct shmif_hidden* gstr = inctx->priv;
 
 	close(inctx->epipe);
