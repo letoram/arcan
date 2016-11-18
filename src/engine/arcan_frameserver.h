@@ -41,7 +41,7 @@ struct arcan_frameserver_meta {
 	uint16_t width;
 	uint16_t height;
 	char bpp;
-	int hints;
+	int hints, pending_hints;
 
 /* primarily for feedcopy */
 	uint32_t synch_ts;

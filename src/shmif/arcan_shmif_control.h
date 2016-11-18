@@ -611,6 +611,7 @@ struct arcan_shmif_cont {
 /*
  * Presentation hints:
  * SHMIF_RHINT_ORIGO_UL (or LL),
+ * SHMIF_RHINT_IGNORE_ALPHA
  * SHMIF_RHINT_SUBREGION (only synch dirty region below)
  * If MULTIPLE video buffers are used, the SUBREGION applies to BOTH.
  */
@@ -680,7 +681,8 @@ struct arcan_shmif_initial {
 enum rhint_mask {
 	SHMIF_RHINT_ORIGO_UL = 0,
 	SHMIF_RHINT_ORIGO_LL = 1,
-	SHMIF_RHINT_SUBREGION = 2
+	SHMIF_RHINT_SUBREGION = 2,
+	SHMIF_RHINT_IGNORE_ALPHA = 4
 };
 
 struct arcan_shmif_page {
@@ -752,7 +754,8 @@ struct arcan_shmif_page {
  * sampled value. An accessor function will handle the migration between the
  * event-driven and memory mapped model.
  */
-	volatile _Atomic uint_least16_t cursor_x, cursor_y, cursor_r, cursor_ry;
+	volatile _Atomic uint_least8_t cursor_state;
+	volatile _Atomic uint_least16_t cursor_x, cursor_y, cursor_rx, cursor_ry;
 
 /*
  * [ARCAN-SET (parent), FSRV-SET (child)]
