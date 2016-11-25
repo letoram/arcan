@@ -126,6 +126,7 @@ struct agp_fenv {
 	void (*draw_arrays) (GLenum, GLint, GLsizei);
 	void (*draw_elements) (GLenum, GLsizei, GLenum, const GLvoid*);
 	void (*depth_mask) (GLboolean);
+	void (*flush) ();
 };
 
 struct agp_fenv* agp_env();

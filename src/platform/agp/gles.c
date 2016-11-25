@@ -324,11 +324,19 @@ struct stream_meta agp_stream_prepare(struct storage_info_t* s,
 	}
 	break;
 
+/* resynch: drop PBOs and GLid, alloc / upload and rebuild possible PBOs */
+	case STREAM_EXT_RESYNCH:
+		agp_null_vstore(s);
+		agp_update_vstore(s, true);
+	break;
+
 	case STREAM_RAW_DIRECT:
 	case STREAM_RAW_DIRECT_SYNCHRONOUS:
 	agp_activate_vstore(s);
 		env->tex_subimage_2d(GL_TEXTURE_2D, 0, 0, 0, s->w, s->h,
-			GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, meta.buf);
+			s->vinf.text.s_fmt ? s->vinf.text.s_fmt : GL_PIXEL_FORMAT,
+			GL_UNSIGNED_BYTE, meta.buf
+		);
 		agp_deactivate_vstore();
 	break;
 

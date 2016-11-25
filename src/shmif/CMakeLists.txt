@@ -19,7 +19,7 @@
 # Installs: (if ARCAN_SOURCE_DIR is not set)
 #
 set(ASHMIF_MAJOR 0)
-set(ASHMIF_MINOR 9)
+set(ASHMIF_MINOR 10)
 
 if (ARCAN_SOURCE_DIR)
 	set(ASD ${ARCAN_SOURCE_DIR})
@@ -119,28 +119,36 @@ add_sanitizers(arcan_shmif_int arcan_shmif arcan_shmif_ext arcan_shmif_intext)
 # use that one and provide a tui to match, but we should also try and provide a
 # dynamic one.
 if (SHMIF_TUI)
-if (STATIC_FREETYPE)
-	add_library(arcan_shmif_tui STATIC ${SHMIF_TUI_SOURCES})
-	target_link_libraries(arcan_shmif_tui PRIVATE ${STDLIB} ${FREETYPE_DEFAULT_LIBRARIES})
-	find_package(Freetype QUIET)
-	if (FREETYPE_FOUND)
-		add_library(arcan_shmif_tuiext SHARED ${SHMIF_TUI_SOURCES})
-		target_link_libraries(arcan_shmif_tuiext PRIVATE ${STDLIB} arcan_shmif ${FREETYPE_LIBRARIES})
-		set_target_properties(arcan_shmif_tuiext PROPERTIES
-			COMPILE_FLAGS -fPIC
-			OUTPUT_NAME arcan_shmif_tui
-			VERSION ${ASHMIF_MAJOR}.${ASHMIF_MINOR}
-		)
-		set(TARGET_LIST ${TARGET_LIST} arcan_shmif_tuiext)
-		target_include_directories(arcan_shmif_tuiext PRIVATE
-			${INCLUDE_DIRS} ${ASD}/frameserver ${ASD}/engine ${ASD}/shmif)
+	set(TUI_LIBRARIES arcan_shmif)
+	if (STATIC_FREETYPE)
+		add_library(arcan_shmif_tui STATIC ${SHMIF_TUI_SOURCES})
+		target_link_libraries(arcan_shmif_tui PRIVATE ${STDLIB} ${FREETYPE_DEFAULT_LIBRARIES})
+		find_package(Freetype QUIET)
+		if (FREETYPE_FOUND)
+			add_library(arcan_shmif_tuiext SHARED ${SHMIF_TUI_SOURCES})
+			target_link_libraries(arcan_shmif_tuiext PRIVATE
+				${STDLIB} ${FREETYPE_LIBRARIES} ${TUI_LIBRARIES})
+			set_target_properties(arcan_shmif_tuiext PROPERTIES
+				COMPILE_FLAGS -fPIC
+				OUTPUT_NAME arcan_shmif_tui
+				VERSION ${ASHMIF_MAJOR}.${ASHMIF_MINOR}
+			)
+			set(TARGET_LIST ${TARGET_LIST} arcan_shmif_tuiext)
+			target_include_directories(arcan_shmif_tuiext PRIVATE
+				${INCLUDE_DIRS} ${ASD}/frameserver ${ASD}/engine ${ASD}/shmif)
+		else()
+			amsg("${CL_YEL}only static freetype found, dynamic/accel shmif_tui disabled ${CL_RST}")
+		endif()
 	else()
-		amsg("${CL_YEL}only static freetype found, dynamic shmif_tui disabled ${CL_RST}")
-	endif()
-else()
-	add_library(arcan_shmif_tui SHARED ${SHMIF_TUI_SOURCES})
-	target_link_libraries(arcan_shmif_tui PRIVATE ${STDLIB} arcan_shmif ${FREETYPE_LIBRARIES})
-	set_target_properties(arcan_shmif_tui PROPERTIES VERSION ${ASHMIF_MAJOR}.${ASHMIF_MINOR})
+		if (SHMIF_TUI_ACCEL)
+			set(TUI_LIBRARIES arcan_shmif arcan_shmif_ext)
+		endif()
+		add_library(arcan_shmif_tui SHARED ${SHMIF_TUI_SOURCES})
+		target_link_libraries(arcan_shmif_tui PRIVATE ${STDLIB} ${TUI_LIBRARIES} ${FREETYPE_LIBRARIES})
+		set_target_properties(arcan_shmif_tui PROPERTIES VERSION ${ASHMIF_MAJOR}.${ASHMIF_MINOR})
+		if (SHMIF_TUI_ACCEL)
+			target_compile_definitions(arcan_shmif_tui PRIVATE ENABLE_GPU)
+		endif()
 endif()
 
 target_include_directories(arcan_shmif_tui PRIVATE

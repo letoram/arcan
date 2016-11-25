@@ -521,11 +521,13 @@ enum ARCAN_TARGET_COMMAND {
  * capabilities. Shmif will track these properties internally and use
  * it to limit _resize commands (but server does not assume that the client
  * is cooperating).
+ *
  * ioev[0].iv = max_width,
  * ioev[1].iv = max_height,
  * ioev[2].iv = rate (Hz, 0 for dynamic)
  * ieov[3].iv = min_width,
- * ioev[4].iv = min_height
+ * ioev[4].iv = min_height,
+ * ioev[5].iv = output_id
  */
 	TARGET_COMMAND_OUTPUTHINT,
 
@@ -881,7 +883,7 @@ typedef union arcan_ioevent_data {
  * nvalues = 1: [0] relative sample
  * nvalues = 2: [0] relative sample, [1] absolute sample
  * nvalues = 3; same as [2], with 'unknown' sample data in [3]
- * nvalues = 4; same as [2] but an extra axes (2D sources) in [3,4]
+ * nvalues = 4; same as [2] but an extra axis (2D sources) in [3,4]
  *
  * [if gotrel is not set, the order between relative and absolute are changed]
  *
@@ -1173,6 +1175,15 @@ typedef struct arcan_extevent {
  * (extensions)- 7-bit ASCII filtered to alnum with ; separation between
  *               accepted extensions. * for wildcard support or empty [0]='\0'
  *               to indicate no-support for input/output.
+ *
+ *               It is also possible to advertise support for special data-
+ *               formats from the following list:
+ *                "arcan_gamma", ASCII encoded gamma ramp tables (\n separate):
+ *                               display_id:n_fields\n
+ *                               r_1 (0..1, float)
+ *                               ..n
+ *                               g_1 (0..1, float)
+ *                               ..n
  */
 	struct {
 		uint64_t size;

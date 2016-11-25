@@ -29,6 +29,10 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
+#ifdef ENABLE_GPU
+#define WANT_ARCAN_SHMIF_HELPER
+#endif
+
 #include "../arcan_shmif.h"
 #include "../arcan_shmif_tui.h"
 #include "../arcan_shmif_tuisym.h"
@@ -63,6 +67,10 @@ struct tui_context {
 	unsigned flags;
 	bool focus, inactive;
 	int inact_timer;
+
+#ifdef ENABLE_GPU
+	bool is_accel;
+#endif
 
 /* font rendering / tracking - we support one main that defines cell size
  * and one secondary that can be used for alternative glyphs */
@@ -1482,6 +1490,21 @@ int arcan_tui_refresh(struct tui_context* tui)
 			errno = EAGAIN;
 			return -1;
 		}
+
+/* if we are built with GPU offloading support and nothing has happened
+ * to our accelerated connection, synch, otherwise fallback and retry */
+#ifdef ENABLE_GPU
+retry:
+	if (tui->is_accel){
+		if (-1 == arcan_shmifext_signal(&tui->acon, 0,
+			SHMIF_SIGVID | SHMIF_SIGBLK_NONE, SHMIFEXT_BUILTIN)){
+				arcan_shmifext_drop(&tui->acon);
+				tui->is_accel = false;
+			goto retry;
+		}
+	}
+		else
+#endif
 		arcan_shmif_signal(&tui->acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
 
 /* set invalid synch region until redraw changes that, the dirty
@@ -1596,6 +1619,11 @@ void arcan_tui_apply_arg(struct tui_settings* cfg,
 			cfg->fgc[0] = ccol[0]; cfg->fgc[1] = ccol[1]; cfg->fgc[2] = ccol[2];
 		}
 
+#ifdef ENABLE_GPU
+	if (arg_lookup(args, "accel", 0, &val))
+		cfg->prefer_accel = true;
+#endif
+
 	if (arg_lookup(args, "bgc", 0, &val))
 		if (parse_color(val, ccol) >= 3){
 			cfg->bgc[0] = ccol[0]; cfg->bgc[1] = ccol[1]; cfg->bgc[2] = ccol[2];
@@ -1644,6 +1672,8 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 	}
 
 	struct tui_context* res = malloc(sizeof(struct tui_context));
+	if (!res)
+		return NULL;
 	memset(res, '\0', sizeof(struct tui_context));
 
 	if (tsm_screen_new(&res->screen, tsm_log, res) < 0){
@@ -1713,6 +1743,18 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 	update_screensize(res, true);
 	res->handlers.resized(res, res->acon.w, res->acon.h,
 		res->cols, res->rows, res->handlers.tag);
+
+#ifdef ENABLE_GPU
+	if (set->prefer_accel){
+		struct arcan_shmifext_setup setup = arcan_shmifext_defaults(con);
+		setup.builtin_fbo = false;
+		setup.vidp_pack = true;
+		if (arcan_shmifext_setup(con, setup) == SHMIFEXT_OK){
+			LOG("arcan_shmif_tui(), accelerated connection established");
+			res->is_accel = true;
+		}
+	}
+#endif
 
 	return res;
 }

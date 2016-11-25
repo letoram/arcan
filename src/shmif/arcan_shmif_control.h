@@ -470,15 +470,13 @@ bool arcan_shmif_resize(struct arcan_shmif_cont*,
  * Extended version of resize that supports requesting more audio / video
  * buffers for better swap/synch control. abuf_cnt and vbuf_cnt are limited
  * to the constants ARCAN_SHMIF_
- * [PLACEHOLDER] Samplerate can be something different than
- * ARCAN_SHMIF_SAMPLERATE, but this is currently ignored until audio monitoring,
- * mixing and recording has been reworked to account for different samplerates.
  */
 struct shmif_resize_ext {
 	size_t abuf_sz;
 	ssize_t abuf_cnt;
 	ssize_t vbuf_cnt;
 	ssize_t samplerate;
+	int32_t meta;
 };
 
 bool arcan_shmif_resize_ext(struct arcan_shmif_cont*,
@@ -753,8 +751,11 @@ struct arcan_shmif_page {
  * ANALOG/IDEVKIND:MOUSE and instead just update these fields with the latest
  * sampled value. An accessor function will handle the migration between the
  * event-driven and memory mapped model.
+ *
+ * The plan is to use cursor_state LSB to indicate mapped support,
+ * and the rest of cursor_state as button bitmask.
  */
-	volatile _Atomic uint_least8_t cursor_state;
+	volatile _Atomic uint_least16_t cursor_state;
 	volatile _Atomic uint_least16_t cursor_x, cursor_y, cursor_rx, cursor_ry;
 
 /*

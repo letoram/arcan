@@ -146,8 +146,7 @@ struct storage_info_t {
 	union {
 		struct {
 /* ID number connecting to AGP */
-			unsigned glid;
-			uint64_t glformat;
+			unsigned glid, glid_back;
 
 /* used for PBO transfers */
 			unsigned rid, wid;
@@ -155,6 +154,7 @@ struct storage_info_t {
 /* intermediate storage for reconstructing lost context */
 			uint32_t s_raw;
 			av_pixel*  raw;
+			uint64_t s_fmt;
 
 /* may need to propagate vpts state */
 			uint64_t vpts;
@@ -537,7 +537,7 @@ enum vstore_hint
 	VSTORE_HINT_LODEF = 2,
 	VSTORE_HINT_LODEF_NOALPHA = 3,
 	VSTORE_HINT_HIDEF = 4,
-	VSTORE_HINT_HIDEF_NOALPHA = 5,
+	VSTORE_HINT_HIDEF_NOALPHA = 5
 };
 void agp_empty_vstoreext(struct storage_info_t* backing,
 	size_t w, size_t h, enum vstore_hint);
@@ -571,6 +571,7 @@ enum stream_type {
 	STREAM_RAW_DIRECT,
 	STREAM_RAW_DIRECT_COPY,
 	STREAM_RAW_DIRECT_SYNCHRONOUS,
+	STREAM_EXT_RESYNCH,
 	STREAM_HANDLE
 };
 
@@ -600,6 +601,9 @@ struct stream_meta {
  *
  *  - RAW_DIRECT_SYNCHRONOUS: block and copy meta.buf.
  *                pro: guarantee of content state, con: stalls pipeline
+ *
+ *  - EXT_RESYNCH: vstore- is externally managed in terms of buffers,
+ *                and contents have been invalidated (resize)
  *
  *  - RAW_HANDLE: handle contains reference to opaque backing store.
  *                pro: possibly the fastest, covers more formats
@@ -720,6 +724,13 @@ enum rendertarget_mode {
 struct agp_rendertarget;
 struct agp_rendertarget* agp_setup_rendertarget(struct storage_info_t*,
 	enum rendertarget_mode mode);
+
+/*
+ * Switch the color attachment to that of another vstore. Will return the old
+ * vstore or NULL if [vstore] or [tgt] are invalid.
+ */
+struct storage_info_t* agp_rendertarget_swap(
+	struct agp_rendertarget* tgt, struct storage_info_t* vstore);
 
 #ifdef AGP_ENABLE_UNPURE
 /*
