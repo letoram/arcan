@@ -116,6 +116,9 @@ struct tui_settings {
 /* simulate refresh-rate to balance
  * throughput, responsiveness, power consumption */
 	int refresh_rate;
+
+/* try and use accelerated rendering / handle passing */
+	bool prefer_accel;
 };
 
 struct tui_context;

@@ -41,7 +41,7 @@
  * during _integrity_check
  */
 #define ASHMIF_VERSION_MAJOR 0
-#define ASHMIF_VERSION_MINOR 9
+#define ASHMIF_VERSION_MINOR 10
 
 #ifndef LOG
 #define LOG(...) (fprintf(stderr, __VA_ARGS__))
@@ -233,6 +233,25 @@ void arg_cleanup(struct arg_arr*);
 int arcan_shmif_dupfd(int fd, int dstnum, bool blocking);
 
 /*
+ * Used as helper to avoid dealing with all of the permutations of
+ * devkind == EVENT_IDEVKIND_MOUSE for subid (0). If >true< the status of
+ * out_x and out_y have changed since last time (these are also used for
+ * state tracking so be consistent with both out_x and out_y).
+ *
+ * static int mx, my;
+ * ...
+ * if (arcan_shmif_mousestate(con, &mx, &my, true, event_if_applicable)){
+ *  new mouse motion detected
+ * }
+ *
+ * This function takes care of tracking multiple kinds of packing formats,
+ * converting absolute-relative and negotiating relative- input if that is
+ * desired, along with switching to MMIO- cursor forwarding, if possible.
+ */
+bool arcan_shmif_mousestate(struct arcan_shmif_cont* con,
+	int* out_x, int* out_y, bool relative, struct arcan_event* feed);
+
+/*
  * Part of auxiliary library, pulls in more dependencies and boiler-plate
  * for setting up accelerated graphics
  */
@@ -271,10 +290,17 @@ struct arcan_shmifext_setup {
 	uint8_t supersample;
 	uint8_t stencil;
 	uint8_t no_context;
-/* workaround for versioning snafu with _setup not taking sizeof(...) */
-	uint8_t uintfl_reserve[4];
 	uint64_t shared_context;
-	uint64_t reserved[6];
+
+/* mutually exclusive with builtin_fbo, shmifext_signal will take
+ * one extra argument (in-fmt) and stream vidp- into color buffer */
+	uint8_t vidp_pack;
+	uint32_t vidp_infmt;
+
+/* workaround for versioning snafu with _setup not taking sizeof(...) */
+	uint8_t uintfl_reserve[6];
+
+	uint64_t reserved[4];
 };
 
 struct arcan_shmifext_setup arcan_shmifext_defaults(
@@ -349,8 +375,9 @@ bool arcan_shmifext_vk(struct arcan_shmif_cont* con,
  * Display corresponds to the EGLDisplay where tex_id is valid, or
  * 0 if the shmif_cont is managing the context.
  *
- * If (tex_id is SHMIFEXT_BUILTIN and context was setup with FBO management,
- * the color attachment for the active FBO will be transferred).
+ * If tex_id is SHMIFEXT_BUILTIN and context was setup with FBO management OR
+ * with vidp- texture streaming, the color attachment for the active FBO or
+ * texture will be transferred).
  *
  * Returns -1 on handle- generation/passing failure, otherwise the number
  * of miliseconds (clamped to INT_MAX) that elapsed from signal to ack.

@@ -250,6 +250,9 @@ void agp_glinit_fenv(struct agp_fenv* dst,
 	dst->depth_mask =
 		(void(*)(GLboolean))
 			lookup(tag, "glDepthMask");
+	dst->flush =
+		(void(*)(void))
+			lookup(tag, "glFlush");
 
 #undef lookup
 

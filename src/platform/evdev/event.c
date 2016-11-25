@@ -1332,6 +1332,7 @@ static void defhandler_kbd(struct arcan_evctx* out,
  * drivers or failed mode-setting. */
 		if (inev[i].value == 2){
 			if (iodev.period){
+				newev.io.input.translated.modifiers |= ARKMOD_REPEAT;
 				newev.io.input.translated.active = false;
 				arcan_event_enqueue(out, &newev);
 				newev.io.input.translated.active = true;

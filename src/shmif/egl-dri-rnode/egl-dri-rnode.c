@@ -39,7 +39,9 @@ static PFNEGLDESTROYIMAGEKHRPROC destroy_image;
 struct shmif_ext_hidden_int {
 	struct gbm_device* dev;
 	struct agp_rendertarget* rtgt;
-	struct storage_info_t vstore;
+
+/* with the gbm- buffer passing, we pretty much need double-buf */
+	struct storage_info_t buf_a, buf_b, (* current);
 	struct agp_fenv fenv;
 	bool nopass;
 	int fd;
@@ -81,6 +83,13 @@ static bool check_functions(void*(*lookup)(void*, const char*), void* tag)
 	return create_image && destroy_image && query_image_format && export_dmabuf;
 }
 
+static void zap_vstore(struct storage_info_t* vstore)
+{
+	free(vstore->vinf.text.raw);
+	vstore->vinf.text.raw = NULL;
+	vstore->vinf.text.s_raw = 0;
+}
+
 static void gbm_drop(struct arcan_shmif_cont* con)
 {
 	if (!con->privext->internal)
@@ -92,7 +101,10 @@ static void gbm_drop(struct arcan_shmif_cont* con)
 /* this will actually free the gbm- resources as well */
 		if (in->rtgt){
 			agp_drop_rendertarget(in->rtgt);
-			agp_drop_vstore(&in->vstore);
+			agp_drop_vstore(&in->buf_a);
+			agp_drop_vstore(&in->buf_b);
+			zap_vstore(&in->buf_a);
+			zap_vstore(&in->buf_b);
 		}
 		if (in->managed){
 			eglMakeCurrent(in->display,
@@ -259,16 +271,29 @@ context_only:
 	ctx->managed = true;
 	eglMakeCurrent(ctx->display, ctx->surface, ctx->surface, ctx->context);
 
-	if (arg.builtin_fbo){
+	if (arg.builtin_fbo || arg.vidp_pack){
 		if (context_reuse){
-			agp_drop_vstore(&ctx->vstore);
-			agp_drop_rendertarget(ctx->rtgt);
-			memset(&ctx->vstore, '\0', sizeof(struct storage_info_t));
+			agp_drop_vstore(&ctx->buf_a); zap_vstore(&ctx->buf_a);
+			agp_drop_vstore(&ctx->buf_b); zap_vstore(&ctx->buf_b);
+
+			if (arg.builtin_fbo)
+				agp_drop_rendertarget(ctx->rtgt);
 		}
-		agp_empty_vstore(&ctx->vstore, con->w, con->h);
-		ctx->rtgt = agp_setup_rendertarget(
-			&ctx->vstore, arg.depth > 0 ? RENDERTARGET_COLOR_DEPTH_STENCIL :
-				RENDERTARGET_COLOR);
+
+		agp_empty_vstore(&ctx->buf_a, con->w, con->h);
+		agp_empty_vstore(&ctx->buf_b, con->w, con->h);
+		ctx->current = &ctx->buf_a;
+
+		if (arg.builtin_fbo)
+			ctx->rtgt = agp_setup_rendertarget(
+				ctx->current, arg.depth > 0 ?
+					RENDERTARGET_COLOR_DEPTH_STENCIL : RENDERTARGET_COLOR
+			);
+
+		if (arg.vidp_pack){
+			ctx->buf_a.vinf.text.s_fmt =
+				ctx->buf_b.vinf.text.s_fmt = arg.vidp_infmt;
+		}
 	}
 
 	arcan_shmifext_make_current(con);
@@ -292,7 +317,8 @@ bool arcan_shmifext_drop_context(struct arcan_shmif_cont* con)
 		return false;
 
 	struct shmif_ext_hidden_int* ctx = con->privext->internal;
-	agp_drop_vstore(&ctx->vstore);
+	agp_drop_vstore(&ctx->buf_a); zap_vstore(&ctx->buf_a);
+	agp_drop_vstore(&ctx->buf_b); zap_vstore(&ctx->buf_b);
 
 	if (ctx->context){
 		eglMakeCurrent(ctx->display,
@@ -405,8 +431,10 @@ bool arcan_shmifext_make_current(struct arcan_shmif_cont* con)
 
 	agp_setenv(&ctx->fenv);
 	eglMakeCurrent(ctx->display, ctx->surface, ctx->surface, ctx->context);
+
+/* need to resize both potential rendertarget destinations */
 	if (ctx->rtgt){
-		if (ctx->vstore.w != con->w || ctx->vstore.h != con->h){
+		if (ctx->current->w != con->w || ctx->current->h != con->h){
 			agp_activate_rendertarget(NULL);
 			agp_resize_rendertarget(ctx->rtgt, con->w, con->h);
 		}
@@ -428,10 +456,44 @@ int arcan_shmifext_signal(struct arcan_shmif_cont* con,
 		con->privext->internal->display : (EGLDisplay*) display;
 
 	if (tex_id == SHMIFEXT_BUILTIN){
-		if (ctx->managed)
-			tex_id = ctx->vstore.vinf.text.glid;
-		else
+		if (!ctx->managed)
 			return -1;
+
+/* vidp- to texture streaming, rather than FBO indirection */
+		if (!ctx->rtgt){
+			enum stream_type type = STREAM_RAW_DIRECT_SYNCHRONOUS;
+/*			!(mask & SHMIF_SIGBLK_NONE) ?
+				STREAM_RAW_DIRECT_SYNCHRONOUS : STREAM_RAW_DIRECT; */
+
+/* mark this so the backing GLID / PBOs gets reallocated */
+			if (ctx->current->w != con->w || ctx->current->h != con->h)
+				type = STREAM_EXT_RESYNCH;
+
+/* bpp/format are set during the shmifext_setup */
+			ctx->current->w = con->w;
+			ctx->current->h = con->h;
+			ctx->current->vinf.text.raw = con->vidp;
+			ctx->current->vinf.text.s_raw = con->w * con->h * sizeof(shmif_pixel);
+
+/* we ignore the dirty- updates here due to the double buffering */
+			struct stream_meta stream = {.buf = NULL};
+			stream.buf = con->vidp;
+			stream = agp_stream_prepare(ctx->current, stream, type);
+			agp_stream_commit(ctx->current, stream);
+			ctx->current->vinf.text.raw = NULL;
+			struct agp_fenv* env = agp_env();
+			env->flush();
+		}
+
+/* swap out the color attachment so we don't render to the shared buffer */
+		tex_id = ctx->current->vinf.text.glid;
+		struct storage_info_t* prev = ctx->current;
+		ctx->current = (ctx->current == &ctx->buf_a ? &ctx->buf_b : &ctx->buf_a);
+		if (ctx->rtgt){
+			struct storage_info_t* a = agp_rendertarget_swap(ctx->rtgt, ctx->current);
+			if (a)
+				*prev = *a;
+		}
 	}
 
 	if (!dpy)
