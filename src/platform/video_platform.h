@@ -155,6 +155,7 @@ struct storage_info_t {
 			uint32_t s_raw;
 			av_pixel*  raw;
 			uint64_t s_fmt;
+			uint64_t d_fmt;
 
 /* may need to propagate vpts state */
 			uint64_t vpts;
@@ -726,21 +727,12 @@ struct agp_rendertarget* agp_setup_rendertarget(struct storage_info_t*,
 	enum rendertarget_mode mode);
 
 /*
- * Switch the color attachment to that of another vstore. Will return the old
- * vstore or NULL if [vstore] or [tgt] are invalid.
- */
-struct storage_info_t* agp_rendertarget_swap(
-	struct agp_rendertarget* tgt, struct storage_info_t* vstore);
-
-#ifdef AGP_ENABLE_UNPURE
-/*
  * Break the opaqueness somewhat by exposing underlying handles, primarily for
  * frameservers that explicitly need to use GL and where we want to re-use the
  * underlying code.
  */
 void agp_rendertarget_ids(struct agp_rendertarget*, uintptr_t* tgt,
 	uintptr_t* col, uintptr_t* depth);
-#endif
 
 /*
  * Drop and rebuild the current backing store, along with possible transfer

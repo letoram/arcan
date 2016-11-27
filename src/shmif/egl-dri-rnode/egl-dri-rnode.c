@@ -38,7 +38,7 @@ static PFNEGLDESTROYIMAGEKHRPROC destroy_image;
 
 struct shmif_ext_hidden_int {
 	struct gbm_device* dev;
-	struct agp_rendertarget* rtgt;
+	struct agp_rendertarget* rtgt_a, (* rtgt_b), (* rtgt_cur);
 
 /* with the gbm- buffer passing, we pretty much need double-buf */
 	struct storage_info_t buf_a, buf_b, (* current);
@@ -59,7 +59,7 @@ struct shmif_ext_hidden_int {
  * These are spilled over from AGP, and ideally, we should just
  * separate those references or linker-script erase them as they are
  * not needed here
- */
+*/
 void* platform_video_gfxsym(const char* sym)
 {
 	return eglGetProcAddress(sym);
@@ -99,12 +99,14 @@ static void gbm_drop(struct arcan_shmif_cont* con)
 
 	if (in->dev){
 /* this will actually free the gbm- resources as well */
-		if (in->rtgt){
-			agp_drop_rendertarget(in->rtgt);
+		if (in->rtgt_cur){
+			agp_drop_rendertarget(in->rtgt_a);
+			agp_drop_rendertarget(in->rtgt_b);
 			agp_drop_vstore(&in->buf_a);
 			agp_drop_vstore(&in->buf_b);
 			zap_vstore(&in->buf_a);
 			zap_vstore(&in->buf_b);
+			in->rtgt_cur;
 		}
 		if (in->managed){
 			eglMakeCurrent(in->display,
@@ -136,7 +138,7 @@ struct arcan_shmifext_setup arcan_shmifext_defaults(
 		.red = 8, .green = 8, .blue = 8,
 		.alpha = 1, .depth = 16,
 		.api = API_OPENGL,
-		.builtin_fbo = true,
+		.builtin_fbo = 2,
 		.major = 2, .minor = 1,
 		.shared_context = (uint64_t) EGL_NO_CONTEXT
 	};
@@ -276,19 +278,29 @@ context_only:
 			agp_drop_vstore(&ctx->buf_a); zap_vstore(&ctx->buf_a);
 			agp_drop_vstore(&ctx->buf_b); zap_vstore(&ctx->buf_b);
 
-			if (arg.builtin_fbo)
-				agp_drop_rendertarget(ctx->rtgt);
+			if (arg.builtin_fbo){
+				agp_drop_rendertarget(ctx->rtgt_a);
+				agp_drop_rendertarget(ctx->rtgt_b);
+			}
 		}
 
 		agp_empty_vstore(&ctx->buf_a, con->w, con->h);
 		agp_empty_vstore(&ctx->buf_b, con->w, con->h);
 		ctx->current = &ctx->buf_a;
 
-		if (arg.builtin_fbo)
-			ctx->rtgt = agp_setup_rendertarget(
+		if (arg.builtin_fbo){
+			ctx->rtgt_a = agp_setup_rendertarget(
 				ctx->current, arg.depth > 0 ?
 					RENDERTARGET_COLOR_DEPTH_STENCIL : RENDERTARGET_COLOR
 			);
+			if (arg.builtin_fbo > 1){
+				ctx->rtgt_b = agp_setup_rendertarget(
+					ctx->current, arg.depth > 0 ?
+						RENDERTARGET_COLOR_DEPTH_STENCIL : RENDERTARGET_COLOR
+				);
+			}
+			ctx->rtgt_cur = ctx->rtgt_a;
+		}
 
 		if (arg.vidp_pack){
 			ctx->buf_a.vinf.text.s_fmt =
@@ -334,10 +346,10 @@ bool arcan_shmifext_gl_handles(struct arcan_shmif_cont* con,
 	uintptr_t* frame, uintptr_t* color, uintptr_t* depth)
 {
 	if (!con || !con->privext || !con->privext->internal ||
-		!con->privext->internal->display || !con->privext->internal->rtgt)
+		!con->privext->internal->display || !con->privext->internal->rtgt_cur)
 		return false;
 
-	agp_rendertarget_ids(con->privext->internal->rtgt, frame, color, depth);
+	agp_rendertarget_ids(con->privext->internal->rtgt_cur, frame, color, depth);
 	return true;
 }
 
@@ -433,12 +445,14 @@ bool arcan_shmifext_make_current(struct arcan_shmif_cont* con)
 	eglMakeCurrent(ctx->display, ctx->surface, ctx->surface, ctx->context);
 
 /* need to resize both potential rendertarget destinations */
-	if (ctx->rtgt){
+	if (ctx->rtgt_cur){
 		if (ctx->current->w != con->w || ctx->current->h != con->h){
 			agp_activate_rendertarget(NULL);
-			agp_resize_rendertarget(ctx->rtgt, con->w, con->h);
+			agp_resize_rendertarget(ctx->rtgt_a, con->w, con->h);
+			if (ctx->rtgt_b)
+				agp_resize_rendertarget(ctx->rtgt_b, con->w, con->h);
 		}
-		agp_activate_rendertarget(ctx->rtgt);
+		agp_activate_rendertarget(ctx->rtgt_cur);
 	}
 
 	return true;
@@ -459,11 +473,9 @@ int arcan_shmifext_signal(struct arcan_shmif_cont* con,
 		if (!ctx->managed)
 			return -1;
 
-/* vidp- to texture streaming, rather than FBO indirection */
-		if (!ctx->rtgt){
+/* vidp- to texture upload, rather than FBO indirection */
+		if (!ctx->rtgt_cur){
 			enum stream_type type = STREAM_RAW_DIRECT_SYNCHRONOUS;
-/*			!(mask & SHMIF_SIGBLK_NONE) ?
-				STREAM_RAW_DIRECT_SYNCHRONOUS : STREAM_RAW_DIRECT; */
 
 /* mark this so the backing GLID / PBOs gets reallocated */
 			if (ctx->current->w != con->w || ctx->current->h != con->h)
@@ -482,18 +494,29 @@ int arcan_shmifext_signal(struct arcan_shmif_cont* con,
 			agp_stream_commit(ctx->current, stream);
 			ctx->current->vinf.text.raw = NULL;
 			struct agp_fenv* env = agp_env();
+
+/* With MESA/amd, this seemed unavoidable or the extracted img won't be in
+ * a synchronized state. Preferably we'd have another interface to do the
+ * texture through */
 			env->flush();
 		}
 
-/* swap out the color attachment so we don't render to the shared buffer */
 		tex_id = ctx->current->vinf.text.glid;
-		struct storage_info_t* prev = ctx->current;
-		ctx->current = (ctx->current == &ctx->buf_a ? &ctx->buf_b : &ctx->buf_a);
-		if (ctx->rtgt){
-			struct storage_info_t* a = agp_rendertarget_swap(ctx->rtgt, ctx->current);
-			if (a)
-				*prev = *a;
+
+/*
+ * Swap active rendertarget (if one exists) or there's a possible data-race(?)
+ * where server-side has the color attachment bound and drawing when we update
+ */
+		if (ctx->rtgt_cur){
+			struct agp_rendertarget* next =
+				ctx->rtgt_cur == ctx->rtgt_a && ctx->rtgt_b ? ctx->rtgt_b : ctx->rtgt_a;
+			if (next != ctx->rtgt_cur){
+				ctx->rtgt_cur = next;
+				arcan_shmifext_make_current(con);
+			}
 		}
+		else
+			ctx->current = (ctx->current == &ctx->buf_a ? &ctx->buf_b : &ctx->buf_a);
 	}
 
 	if (!dpy)
@@ -547,10 +570,10 @@ fallback:
 		},
 	};
 
-	if (ctx->rtgt){
+	if (ctx->rtgt_cur){
 		agp_activate_rendertarget(NULL);
 		agp_readback_synchronous(&vstore);
-		agp_activate_rendertarget(ctx->rtgt);
+		agp_activate_rendertarget(ctx->rtgt_cur);
 	}
 	else
 		agp_readback_synchronous(&vstore);

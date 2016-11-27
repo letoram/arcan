@@ -286,13 +286,15 @@ struct arcan_shmifext_setup {
 	uint8_t api, major, minor;
 	uint64_t flags;
 	uint64_t mask;
+
+/* 0 for self-managed fbo, 1 for single-buffered, 2 for double-buffer(default)*/
 	uint8_t builtin_fbo;
 	uint8_t supersample;
 	uint8_t stencil;
 	uint8_t no_context;
 	uint64_t shared_context;
 
-/* mutually exclusive with builtin_fbo, shmifext_signal will take
+/* mutually exclusive to builtin_fbo, shmifext_signal will take
  * one extra argument (in-fmt) and stream vidp- into color buffer */
 	uint8_t vidp_pack;
 	uint32_t vidp_infmt;

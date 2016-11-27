@@ -161,6 +161,7 @@ void agp_empty_vstore(struct storage_info_t* vs, size_t w, size_t h)
 	size_t sz = w * h * sizeof(av_pixel);
 	vs->vinf.text.s_raw = sz;
 	vs->vinf.text.s_fmt = GL_PIXEL_FORMAT;
+	vs->vinf.text.d_fmt = GL_PIXEL_FORMAT;
 	vs->vinf.text.raw = arcan_alloc_mem(
 		vs->vinf.text.s_raw,
 		ARCAN_MEM_VBUFFER, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE
@@ -194,25 +195,6 @@ struct agp_rendertarget* agp_setup_rendertarget(struct storage_info_t* vstore,
 
 	alloc_fbo(r, false);
 	return r;
-}
-
-struct storage_info_t* agp_rendertarget_swap(
-	struct agp_rendertarget* tgt, struct storage_info_t* vstore)
-{
-	if (!tgt || !vstore ||
-		vstore->txmapped != TXSTATE_TEX2D || !vstore->vinf.text.glid)
-			return NULL;
-
-	struct agp_fenv* env = agp_env();
-	struct storage_info_t* vs = tgt->store;
-
-	agp_activate_rendertarget(tgt);
-	env->framebuffer_texture_2d(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-		GL_TEXTURE_2D, vstore->vinf.text.glid, 0);
-	tgt->store = vstore;
-	agp_activate_rendertarget(NULL);
-
-	return vs;
 }
 
 static void* lookup_fun(void* tag, const char* sym, bool req)
@@ -451,8 +433,10 @@ void agp_update_vstore(struct storage_info_t* s, bool copy)
 			env->tex_image_2d(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, s->w, s->h, 0,
 				GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE, 0);
 		else
-			env->tex_image_2d(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, s->w, s->h,
-				0, s->vinf.text.s_fmt ? s->vinf.text.s_fmt : GL_PIXEL_FORMAT,
+			env->tex_image_2d(GL_TEXTURE_2D, 0,
+				s->vinf.text.d_fmt ? s->vinf.text.d_fmt : GL_PIXEL_FORMAT,
+				s->w, s->h, 0,
+				s->vinf.text.s_fmt ? s->vinf.text.s_fmt : GL_PIXEL_FORMAT,
 				GL_UNSIGNED_BYTE, s->vinf.text.raw
 			);
 	}

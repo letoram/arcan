@@ -1,4 +1,4 @@
-/*
+EWP/*
  Arcan Shared Memory Interface, Event Namespace
  Copyright (c) 2014-2016, Bjorn Stahl
  All rights reserved.
@@ -1249,8 +1249,6 @@ typedef struct arcan_extevent {
  *	(invisible)      - hint that the current content segment backing store
  *	                   contains no information that is visibly helpful
  *  (relx, rely)     - positioning HINT relative to parent- (x,y >= 1)
- *  viewid           - (reserved and not currently in use)
- *                     for supporting multiple windows on the same segment
  *
  *  viewports may become invalidated on shrinking resize, though
  *  border- properties for still-valid areas are retained.
@@ -1260,8 +1258,7 @@ typedef struct arcan_extevent {
 			uint32_t parent;
 			uint8_t border[4];
 			uint8_t invisible;
-			uint16_t rel_x, rel_y;
-			uint8_t viewid;
+			int16_t rel_x, rel_y;
 		} viewport;
 
 /*
