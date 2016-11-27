@@ -1,0 +1,31 @@
+Compatibility Strategy:
+
+Arcan as a display server is protocol-less. There is an highly volatile API
+for segmenting the server into multiple-processes and a selection of in-house
+maintained backends that use this API to connect, draw and retrieve input.
+
+This means that with new versions, new updates to this API will need a full
+recompile to existing backends in order to remain usable, meaning that they
+should be updated 'in lockstep' with the main engine. This makes the API unfit
+- by design - for use by other projects, with the exception of the TUI library
+that is intended for 3rd party use.
+
+The maintained backends and their repositories are:
+
+SDL2:
+https://github.com/letoram/SDL2.git
+( may need to explicitly specify SDL_VIDEODRIVER=arcan SDL_AUDIORIVER=arcan )
+
+Xarcan:
+https://github.com/letoram/xarcan.git
+( see the README for compilation instructions )
+
+QEmu
+https://github.com/letoram/QEMU.git
+(	activated with the -display arcan argument )
+
+In order to allow clients and toolkits written for other APIs and protocols
+to be used, we also have bridging tools that are given special consideration.
+
+The maintained bridging tools are:
+Waybridge (src/tools/waybridge)

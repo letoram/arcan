@@ -11,30 +11,27 @@ security, debuggability and performance -- guided by a principle of least
 surprise in terms of API design.
 
 For more details about capabilities, design, goals, current development,
-roadmap, changelogs and so on, please refer to the
-[arcan-wiki](https://github.com/letoram/arcan/wiki) and to the
-[website](https://arcan-fe.com).
+roadmap, changelogs, notes on contributing and so on, please refer to the
+[arcan-wiki](https://github.com/letoram/arcan/wiki).
+
+There is also a [website](https://arcan-fe.com) that collects other links,
+announcements, releases, videos / presentations and so on.
+
+For developer contact, check out the IRC channel #arcan on irc.freenode.net.
 
 Getting Started
 =====
-The rest of this readme is directed towards developers. As an end- user,
-you would probably do best to wait for- or encourage- the development
-applications that uses this project as a backend, or at the very least-
-wait until it is available as a package in your favorite distribution.
-
-For developers, the first step is, of course, getting the engine
-up and running (see building, below).
-
-After that is done, there is a set of challenges and exercises in the wiki
-to help you get a feel for the API, navigating documentation and so on.
+The rest of this readme is directed towards developers or very advanced end-
+users as there is no real work or priority being placed on wrapping/packaging
+the project and all its pieces at this stage.
 
 Compiling
 =====
-There are a lot of build options for fine-grained control over your arcan
+There are a lot of build options for fine-grained control over your Arcan
 build. In this section we will just provide the bare essentials for a build
 on Linux, BSD or OSX. and you can check out the relevant sections in the wiki
 for more detailed documentation on specialized build environments, e.g. an
-X.org-free KMS/DRM. (https://github.com/letoram/arcan.wiki/linux-egl)
+X.org-free KMS/DRM. (https://github.com/letoram/arcan/wiki/linux-egl)
 
 For starters, the easiest approach is to do the following:
 
@@ -45,9 +42,9 @@ For starters, the easiest approach is to do the following:
      cmake -DCMAKE_BUILD_TYPE="Debug" -DVIDEO_PLATFORM=sdl ../src
      make -j 12
 
-The required dependencies for this build is cmake for compilation, and then
-libsdl1.2, openal, opengl and freetype. There is also support for building some
-of these dependencies statically, e.g.
+The required dependencies for this build are: cmake for compilation,
+libsdl1.2, openal-soft, opengl and freetype. There is also support
+for building some of these dependencies statically:
 
      git clone https://github.com/letoram/arcan.git
      cd arcan/external/git
@@ -66,66 +63,129 @@ You can then test the build with:
 Which tells us to use shared resources from the ../data/resources directory,
 and launch an application that resides as ../data/appl/welcome. If this path
 isn't specified relative to current path (./ or ../) or absolute (/path/to),
-the engine will try and search in the default 'applbase', which varies with
-OS, but typically something like /usr/local/share/arcan/appl or to the current
-user: /path/to/home/.arcan/appl
+the engine will try and search in the default 'applbase'. This path varies
+with the OS, but is typically something like /usr/local/share/arcan/appl
+or to the current user: /path/to/home/.arcan/appl
 
-Other binaries that (may) be produced, depending on configuration, are
-arcan\_lwa, a specialized build of arcan that can connect to other arcan
-instances and use it as a display server, a number of files prefixed as afsrv\_
-which are dedicated video decoders, encoders etc. split out from the main
-engine for future privilege separation and sandboxing, with arcan\_frameserver
-acting as a chain-loader. These are binaries managed by arcan itself.
+The 'recommended' setup is to have a .arcan folder in your user home directory
+with a resources and appl subdirectory. Symlink/bind-mount the data you want
+accessible into the .arcan/resources path, and have the runable appls in
+.arcan/appl.
 
-Now what?
-One is to try out some of the more complex appls, like the desktop environment,
-'durden'. Clone the repo:
+Other Tools
+====
+
+Depending on build-time configuration and dependencies, a number of other
+binaries may also have been produced. The particularly relevant ones are:
+
+arcan\_lwa: specialized build that connects/renders to an existing Arcan
+instance, similar in some ways to Xnest or ephyr.
+
+arcan\_frameserver: a chainloader used to setup/configure the environment
+for the individual frameservers.
+
+Frameservers are an important part of the engine. They can be considered
+specialized or privileged separate processes for offloading or isolating
+sensitive and bug-prone tasks like parsing and decoding media files. One
+frameserver implements a single 'archetype' out of the set (decode, net,
+encode, remoting, terminal, game, avfeed). The running appl- scripts can
+then use these to implement features like desktop sharing, accessibility
+tools, screen recorders, etc. with a uniform interface for system-access
+policies and granular sandboxing controls.
+
+afsrv\_terminal: the default terminal emulator implementation.
+
+afsrv\_decode: media decoding and rendering implementation, default version
+uses libvlc.
+
+afsrv\_encode: used for transforming/recording/streaming media.
+
+afsrv\_net: (experimental/broken) used for negotiating/discovering
+local networking services.
+
+afsrv\_remoting: client-side for bridging with remote desktop style protocols,
+with the default using VNC.
+
+afsrv\_game: implementation of the [libretro](http://libretro.com) API that
+allows you to run a large number of game engines and emulators.
+
+afsrv\_avfeed: custom skeleton for testing/ quick- wrapping some A/V device.
+
+Appls to try
+====
+
+With the engine built, and the welcome- test appl running, what to do now?
+That depends on your fancy. For appl- development you have some basic scripting
+tutorials and introduction documentation on the wiki.
+
+For desktop environment use, there are two usable ones available right now,
+'durden' and 'prio'. 'Durden' is a complex take on a tiling window manager
+such as Xmonad or i3. 'Prio' is a refinement of the 'Rio' window manager that
+is present as part.
+
+You also have [senseye](https://github.com/letoram/senseye/wiki), which is an
+advanced data visualization, debugging and reverse engineering research- tool.
+
+To try out durden or prio:
 
     git clone https://github.com/letoram/durden.git
-    arcan -p /my/home /path/to/checkout/durden
+    arcan -p /my/home /path/to/checkout/durden/durden
+
+    git clone https://github.com/letoram/prio.git
+		arcan -p /my/home /path/to/checkout/prio
+
+The basic format for starting is arcan:
+    [engine arguments] applname [appl arguments]
 
 Note that it's the durden subdirectory in the git, not the root. The reason
 for the different start path (-p /my/home) is to give read-only access to
-the appl for the built-in resource browser.
+the appl for the built-in resource browser. It is possible that (depending
+on platform, time of day, the use of bastard devices like KVMs etc.) the
+detected resolution is wrong. You can explicitly override that for now by
+using -w desiredwidth -h desiredheight as arguments to the engine.
 
+For details on configuring and using durden or prio, please refer to the
+respective README.md provided in each git. There are also demonstration
+videos on the [youtube-channel](https://www.youtube.com/user/arcanfrontend).
+
+Compatibility
+====
 The set of applications that can connect to arcan and use it as a display
-server is rather limited. There are specialized back-end patches for QEmu/KVM
-maintained as a separate repository ( https://github.com/letoram/qemu.git )
-and for SDL2 ( https://github.com/letoram/SDL2.git ) that may help with
-compatibility, and if you build with -DDISABLE_HIJACK=OFF additional pre-loadable
-libraries (LD_PRELOAD=libahijack_sdl12.so:libahijack_x11.so) may be used to
-get some edge cases working. The libretro project ( http://www.libretro.com )
-also provide 'cores' (emulators, games and applications ported to a custom API)
-where most should run natively in arcan, though the quality of the 3D support
-in cores built for that may vary.
+server is rather limited. There are specialized back-end patches for some
+projects, like SDL2, QEmu and Xorg that you can build and use. Please see
+external/compat.README for more information.
 
-For more practical uses of Arcan/Durden, the various frameservers also provide
-a terminal emulator, a video player (albeit a primitive one) and VNC access.
+There is also an alpha- quality Wayland implementation that is enabled as
+a separate protocol bridge tool. This can be found in tools/waybridge but
+first, checkout the tools/waybridge/README.md file.
 
-The reason for the special treatment of these targets is that they are all
-rather good for testing and tuning the engine and for driving the design work
-forward. Reaching a high standard for the engine itself takes priority over
-implementing support for the various display server protocols out there, or
-the even more distant option of implementing more preload hijacks or native
-toolkit backends.
+Lastly, there is also the option of using hijack (LD\_PRELOAD and similar
+mechanisms) for hacky ways to access legacy software. You can enable this
+with the build-time -DDISABLE\_HIJACK=OFF and get access to an SDL1.2 lib
+and an Xlib (extremely incomplete, only really useful when there's a dep-
+endency that is accidental rather than actually necessary). These will be
+built as libahijack\_sdl12.so and libahijack\_x11.so.
 
 Database
 =====
 
-Among the output binaries is one called arcan\_db. It is a tool that
-can be used to manipulate the sqlite- database that the engine requires
-for some features, e.g. application specific key/value store for settings,
-but also for whitelisting execution.
+Among the output binaries is one called arcan\_db. It is a tool that can be
+used to manipulate the sqlite- database that the engine requires for some
+features, e.g. application specific key/value store for settings, but also for
+whitelisting execution.
 
 An early design decision was that the Lua VM configuration should be very
-restrictive -- no arbitrary creation / deletion of files, no arbitrary execution
-etc. The database tool is used to specify explicitly permitted execution that
-should not be modifable from the context of the running arcan application.
+restrictive -- no arbitrary creation / deletion of files, no arbitrary
+execution etc. The database tool is used to specify explicitly permitted
+execution that should not be modifable from the context of the running arcan
+application.
 
 The following example attempts to illustrate how this works:
 
         arcan_db db.sqlite add_target example_app /some/binary -some -args
         arcan_db db.sqlite add_config example_app more_args -yes -why -not
+        arcan_db add_target mycore RETRO [ARCAN_RESOURCEPATH]/.cores/core.so
+				arcan_db add_config mycore myconfig RETRO [ARCAN_RESOURCEPATH]/.assets/somefile
 
 An arcan application should now be able to:
 
@@ -150,13 +210,13 @@ It can be cumbersome to set up database entries to just test something.
 Frameservers is a way of separating sensitive or crash-prone functions from
 the main engine for purposes such as running games or playing back video.
 
-In a default installation, they are prefixed with afsrv_ [game, encode,
+In a default installation, they are prefixed with afsrv\_ [game, encode,
 decode, ...] and while they are best managed from the appl itself, you can
 run them from the terminal as well. Which ones that are available depend on
 the dependencies that were available at build time, but for starting a
 libretro core for instance:
 
-    ARCAN_ARG=core=/path/to/core:resource=/path/to/resourcefile afsrv_game
+    ARCAN_ARG=core=/path/to/core:resource=/path/to/resourcefile afsrv\_game
 
 or video playback:
 
@@ -184,7 +244,7 @@ The git-tree has the following structure:
         frameserver/ -- individual frameservers and support functions
         hijack/ -- interpositioning libraries for different data sources
         platform/ -- os/audio/video/etc. interfacing
-				tools/ -- database tools, keymap conversion
+				tools/ -- database tools, keymap conversion, protocol/device bridges
         shmif/ -- engine<->frameserver IPC
 
     tests/ -- (fairly incomplete, development focus target now)
