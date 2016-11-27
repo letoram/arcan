@@ -3826,40 +3826,20 @@ static bool tgtevent(arcan_vobj_id dst, arcan_event ev)
 static void push_view(lua_State* ctx, struct arcan_extevent* ev,
 	struct arcan_frameserver* fsrv, int top)
 {
-	lua_pushstring(ctx, "view");
-	lua_newtable(ctx);
-	int top2 = lua_gettop(ctx);
-	lua_pushnumber(ctx, 1);
-	lua_pushnumber(ctx, ev->viewport.x);
-	lua_rawset(ctx, top2);
-	lua_pushnumber(ctx, 2);
-	lua_pushnumber(ctx, ev->viewport.y);
-	lua_rawset(ctx, top2);
-	lua_pushnumber(ctx, 3);
-/* fake clamp to protect against user doing div/0 on bad data */
-	float ul = ev->viewport.x + ev->viewport.w;
-	ul = ul > 1.0 ? 1.0 : ul;
-	ul = ul < ev->viewport.x ? ev->viewport.x + 0.01 : ul;
-	lua_pushnumber(ctx, ul);
-	lua_rawset(ctx, top2);
-	lua_pushnumber(ctx, 4);
-	ul = ev->viewport.y + ev->viewport.h;
-	ul = ul > 1.0 ? 1.0 : ul;
-	ul = ul < ev->viewport.y ? ev->viewport.y + 0.01 : ul;
-	lua_pushnumber(ctx, ul);
-	lua_rawset(ctx, top2);
-	lua_rawset(ctx, top);
 	tblbool(ctx, "invisible", ev->viewport.invisible != 0, top);
+	tblnum(ctx, "rel_order", ev->viewport.rel_z, top);
+	tblnum(ctx, "rel_x", ev->viewport.rel_x, top);
+	tblnum(ctx, "rel_y", ev->viewport.rel_y, top);
+
 	lua_pushstring(ctx, "border");
 	lua_createtable(ctx, 4, 0);
-	top2 = lua_gettop(ctx);
+	int top2 = lua_gettop(ctx);
 	for (size_t i = 0; i < 4; i++){
 		lua_pushnumber(ctx, i+1);
 		lua_pushnumber(ctx, ev->viewport.border[i]);
 		lua_rawset(ctx, top2);
 	}
 	lua_rawset(ctx, top);
-	tblnum(ctx, "id", ev->viewport.viewid, top);
 
 /* translate to vid namespace if it matches a valid frameserver segment,
  * not a sensitive operation as it only affects window positioning */
