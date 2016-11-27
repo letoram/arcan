@@ -353,8 +353,6 @@ struct stream_meta agp_stream_prepare(struct storage_info_t* s,
 
 	case STREAM_RAW_DIRECT_COPY:
 		alloc_buffer(s);
-	break;
-
 	case STREAM_RAW_DIRECT:
 		if (!s->vinf.text.wid)
 			setup_unpack_pbo(s, meta.buf);
