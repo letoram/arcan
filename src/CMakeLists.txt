@@ -433,6 +433,8 @@ list (APPEND SOURCES
 	engine/arcan_db.h
 	engine/arcan_frameserver.h
 	engine/arcan_frameserver.c
+	platform/platform.h
+	platform/video_platform.h
 )
 
 # database tool is sqlite3 + libc so less need to work
