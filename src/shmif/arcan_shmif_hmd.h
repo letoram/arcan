@@ -1,6 +1,14 @@
 /*
  Arcan Shared Memory Interface, HMD metadata
 
+ Friendly Warning:
+ This is an extended internal sub-protocol only used for segmenting the
+ engine into multiple processes. It relies on data-types not defined in
+ the rest of shmif and is therefore wholly unsitable for inclusion or
+ use in code elsewhere.
+ */
+
+/*
  Copyright (c) 2016, Bjorn Stahl
  All rights reserved.
 
@@ -35,7 +43,8 @@
 #ifndef HAVE_ARCAN_SHMIF_HMD
 #define HAVE_ARCAN_SHMIF_HMD
 
-#define HMD_VERSION_0_1
+#define HMD_VERSION 0x1000
+#define ATYPE_HMD 0xcafe
 
 /*
  * This structure is mapped into the adata area. It can be verified
@@ -124,6 +133,24 @@ struct hmd_meta {
 	float distortion[4];
 	float abberation[4];
 };
+
+/*
+ * BSD checksum, from BSD sum. We calculate this to get lock-free updates which
+ * staying away from atomic/reordering (since there's no atomic 64- byte type
+ * anyhow). The added gain is that when metadata is synched and we're in a
+ * partial update, the failed checksum means there is new data on the way
+ * anyhow.
+ */
+static inline uint16_t hmd_checksum(uint8_t* buf, size_t len)
+{
+	uint16_t res = 0;
+	for (size_t i = 0; i < len; i++){
+		if (res & 1)
+			res |= 0x10000;
+		res = ((res >> 1) + buf[i]) & 0xffff;
+	}
+	return res;
+}
 
 struct hmd_limb {
 /* CONSUMER-SET: don't bother updating, won't be used. */

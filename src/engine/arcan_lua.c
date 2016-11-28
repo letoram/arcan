@@ -84,6 +84,7 @@
 #include "arcan_db.h"
 #include "arcan_frameserver.h"
 #include "arcan_led.h"
+#include "arcan_hmd.h"
 
 #define arcan_luactx lua_State
 #include "arcan_lua.h"
@@ -3231,6 +3232,34 @@ static int loadmovie(lua_State* ctx)
 	arcan_mem_free(fname);
 
 	LUA_ETRACE("load_movie", NULL, 2);
+}
+
+static int hmd_setup(lua_State* ctx)
+{
+	LUA_TRACE("hmd_setup");
+	const char* opts = luaL_optstring(ctx, 1, NULL);
+	intptr_t ref = find_lua_callback(ctx);
+	if (ref == (intptr_t) LUA_NOREF){
+		arcan_fatal("hmd_setup(), no event callback handler provided\n");
+	}
+
+	char* kv = arcan_db_appl_val(dbhandle, "arcan", "ext_hmd");
+	if (!kv){
+		arcan_warning("hmd_setup(), no hmd- provider set. "
+			"Run arcan_db add_appl_kv arcan ext_hmd path/to/hmdbridge\n"
+			"A default one can be found in src/tools/hmdbridge"
+		);
+		LUA_ETRACE("hmd_setup", "no_ext_hmd", 0);
+	}
+	free(kv);
+
+/* we can ignore the context- here since we run everything from the
+ * callback and use it as a normal frameserver when it exposes new VIDs,
+ * and those VIDs can be used for shutdown */
+	lua_pushboolean(ctx, arcan_hmd_setup(kv,
+		opts, arcan_event_defaultctx(), ref) != NULL);
+
+	LUA_ETRACE("hmd_setup", NULL, 1);
 }
 
 static int n_leds(lua_State* ctx)
@@ -9787,6 +9816,7 @@ static const luaL_Reg iofuns[] = {
 {"led_intensity",       led_intensity    },
 {"set_led_rgb",         led_rgb          },
 {"controller_leds",     n_leds           },
+{"hmd_setup",           hmd_setup        },
 {"inputanalog_filter",  inputfilteranalog},
 {"inputanalog_query",   inputanalogquery},
 {"inputanalog_toggle",  inputanalogtoggle},
