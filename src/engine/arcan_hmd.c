@@ -49,7 +49,7 @@ struct arcan_hmd_ctx {
  */
 
 struct arcan_hmd_ctx* arcan_hmd_setup(const char* hmdbridge,
-	const char* bridge_arg, struct arcan_evctx* evctx)
+	const char* bridge_arg, struct arcan_evctx* evctx, uintptr_t tag)
 {
 /*
  * 1. build a frameserver envp with the data for the hmdbridge and

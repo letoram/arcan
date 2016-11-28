@@ -14,13 +14,16 @@
  * events which covers the _vid mapping of the associated null_surface device
  * that will have its object- space position and orientation mapped and
  * continously updated prior to rendering and to ticks.
+ *
+ * The [tag] provided will be added to relevant events, primarily for VM
+ * mapping (Lua, ...)
  */
 struct arcan_hmd_ctx;
 struct arcan_hmd_ctx* arcan_hmd_setup(const char* hmdbridge,
-	const char* bridge_arg, struct arcan_evctx* evctx);
+	const char* bridge_arg, struct arcan_evctx* evctx, uintptr_t tag);
 
 /*
- * Try and force- reset the devices bound to the platform controller
+ * Try and force- reset the devices bound to the platform controller.
  */
 arcan_errc arcan_hmd_reset(struct arcan_hmd_ctx*);
 
