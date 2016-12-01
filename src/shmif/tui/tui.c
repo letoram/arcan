@@ -382,11 +382,11 @@ static int draw_cbt(struct tui_context* tui,
 	return 0;
 }
 
-static void update_screen(struct tui_context* tui)
+static void update_screen(struct tui_context* tui, bool ign_inact)
 {
 /* don't redraw while we have an update pending or when we
  * are in an invisible state */
-	if (tui->inactive)
+	if (tui->inactive && !ign_inact)
 		return;
 
 /* "always" erase previous cursor, except when cfg->nal screen state explicitly
@@ -991,6 +991,7 @@ static void update_screensize(struct tui_context* tui, bool clear)
 
 /* will enforce full redraw, and full redraw will also update padding */
 	tui->dirty |= DIRTY_PENDING_FULL;
+	update_screen(tui, true);
 }
 
 static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
@@ -1074,8 +1075,6 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 	break;
 
 	case TARGET_COMMAND_DISPLAYHINT:{
-/* be conservative in responding to resize,
- * parent should be running crop shader anyhow */
 		bool dev =
 			(ev->ioevs[0].iv && ev->ioevs[1].iv) &&
 			(abs((int)ev->ioevs[0].iv - (int)tui->acon.w) > 0 ||
@@ -1090,6 +1089,7 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 			else if (tui->inactive){
 				tui->inactive = false;
 				tui->dirty |= DIRTY_PENDING;
+				update_screen(tui, false);
 			}
 
 	/* selection change */
@@ -1483,7 +1483,7 @@ int arcan_tui_refresh(struct tui_context* tui)
 		return -1;
 	}
 
-	update_screen(tui);
+	update_screen(tui, false);
 
 	if (tui->dirty & DIRTY_UPDATED){
 		if (atomic_load(&tui->acon.addr->vready)){
@@ -1527,7 +1527,7 @@ void arcan_tui_invalidate(struct tui_context* tui)
 		return;
 
 	tui->dirty |= DIRTY_PENDING_FULL;
-	update_screen(tui);
+	update_screen(tui, false);
 }
 
 void arcan_tui_destroy(struct tui_context* tui)
