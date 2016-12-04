@@ -1,27 +1,35 @@
 static void surf_destroy(struct wl_client* cl, struct wl_resource* res)
 {
 	trace("surf_destroy()");
+	struct bridge_surf* surf = wl_resource_get_user_data(res);
+	if (surf->acon && &surf->cl->acon != surf->acon){
+		arcan_shmif_drop(surf->acon);
+		surf->acon = NULL;
+	}
+
+	free(surf);
+	wl_resource_destroy(res);
 }
 
+/*
+ * Buffer now belongs to surface
+ */
 static void surf_attach(struct wl_client* cl, struct wl_resource* res,
 	struct wl_resource* buf, int32_t x, int32_t y)
 {
 	trace("surf_attach(%d, %d)", (int)x, (int)y);
-	struct bridge_surface* surf = wl_resource_get_user_data(res);
+	struct bridge_surf* surf = wl_resource_get_user_data(res);
 	surf->buf = buf;
 }
 
+/*
+ * Similar to the X damage stuff, just grow.
+ */
 static void surf_damage(struct wl_client* cl, struct wl_resource* res,
 	int32_t x, int32_t y, int32_t w, int32_t h)
 {
-/* FIXME:
- * track the extent of the damage here (we don't do multiple damage
- * regions, the test- set we ran on showed that damage often fell into
- * the damage(small subset) or the entire buffer so there's no mechanism
- * in shmif- for tracking multiple regions (though not difficult, only
- * tedious)
- */
 	trace("surf_damage(%d+%d, %d+%d)", (int)x, (int)w, (int)y, (int)h);
+//	struct bridge_surf* surf = wl_resource_get_user_data(res);
 }
 
 static void surf_frame(
@@ -45,7 +53,7 @@ static void surf_inputreg(struct wl_client* cl,
 static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 {
 	trace("surf_commit(xxx)");
-	struct bridge_surface* surf = wl_resource_get_user_data(res);
+	struct bridge_surf* surf = wl_resource_get_user_data(res);
 	EGLint dfmt;
 	if (!surf->buf || !surf->cl || !surf->cl->acon.vidp)
 		return;
@@ -53,6 +61,15 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 	if (query_buffer && query_buffer(wl.display,
 		surf->buf, EGL_TEXTURE_FORMAT, &dfmt)){
 		trace("surf_commit(egl)");
+
+/* for this case, we need to defer the release of a buffer, chances are we run
+ * into a live-locking problem as the server will keep the buffer and use it as
+ * long as the client doesn't send another, but from what I could tell this is
+ * supposed to be double buffered
+ *
+ *	 wl_buffer_send_release(surf->buf);
+ */
+
 /* Now we can format the buffer through the normal signal_handle.
  *
  * this is done through repeated calls to query wayland buffer to get
@@ -70,6 +87,16 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 				uint32_t h = wl_shm_buffer_get_height(buf);
 				void* data = wl_shm_buffer_get_data(buf);
 
+/* The server API is way too unfinished to dare doing a 1-thread-1-client
+ * thing. We could've just forked out (shmif has no problems with that as
+ * long as you don't double fork) and ran one of those per client but the
+ * EGLDisplay approach seem to break that for us, probably worth a try if
+ * the main-thread stalls start to hurt */
+			while (surf->cl->acon.addr->vready){}
+
+			if (surf->cl->acon.w != w || surf->cl->acon.h != h)
+				arcan_shmif_resize(&surf->cl->acon, w, h);
+
 /*
  * FIXME: For the accelerated handle passing, we offload the cost of
  * translating to GL textures here. Enable by doing a shmifext_setup on
@@ -82,22 +109,20 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
  * Then trick the shmifext_signal by modifying vidp temporarily to
  * pointing to the buffer properties extracted from wl_shm_buffer*
  */
-			if (surf->cl->acon.w != w || surf->cl->acon.h != h)
-				arcan_shmif_resize(&surf->cl->acon, w, h);
 
 /*
- * FIXME: Depending on format, we may need to repack here (which stings
- * like a *******
+ * It is impossible to avoid a repack stage here, even if the color formats
+ * happen to match. The reason is (and I might misunderstand because
+ * documentation is not a thing) that I can't control which offset a buffer
+ * is mapped at so the stream-to-gl-and-handle-pass approach is better here.
  */
 			memcpy(surf->cl->acon.vidp, data, w * h * sizeof(shmif_pixel));
 
-/* need another deferred option if we're not finished synchronizing,
- * i.e. if surf->cl->acon.vidp.vready or not
- */
-			arcan_shmif_signal(&surf->cl->acon, SHMIF_SIGVID);
+			arcan_shmif_signal(&surf->cl->acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
+			wl_buffer_send_release(surf->buf);
 		}
 	}
-	wl_buffer_send_release(surf->buf);
+
 }
 
 static void surf_transform(struct wl_client* cl,
