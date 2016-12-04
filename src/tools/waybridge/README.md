@@ -17,10 +17,10 @@ XDG\_RUNTIME\_DIR for both Waybridge and for any Wayland clients you wish to
 connect to the point.
 
          mkdir build
-				 cd build
-				 cmake ../
-				 make
-				 XDG_RUNTIME_DIR=/tmp arcan-wayland
+         cd build
+         cmake ../
+         make
+         XDG_RUNTIME_DIR=/tmp arcan-wayland
 
 Limitations
 ====
@@ -35,24 +35,20 @@ TODO
 - [ ] Milestone 1, basics
   - [x] Boilerplate-a-plenty
   - [ ] 1:1 client to bridge mapping
-	- [ ] \*:1 client to bridge mapping
+    - [ ] \*:1 client to bridge mapping
   - [ ] Seat
-	     - [ ] Keyboard
-			 - [ ] Mouse
-			 - [ ] Touch
-	- [ ] shm to GL texture mapping
-	- [ ] Shell
-	     - [ ] Qt- applications working
-			 - [ ] SDL2 applications working
-			 - [ ] MPV working
-			 - [ ] Other relevant wayland capable backends? retroarch?
-  - [ ] Drm
+    - [ ] Keyboard
+    - [ ] Mouse
+    - [ ] Touch
+    - [ ] shm to GL texture mapping
+  - [ ] Shell
+    - [ ] Qt- applications working
+    - [ ] SDL2 applications working
+    - [ ] MPV working
+    - [ ] Other relevant wayland capable backends? retroarch?
+  - [ ] EGL/drm
+
 - [ ] Milestone 2, (z)xdg-shell
-       - [ ] Window Controls (maximize, minimze, drag)
-			 - [ ] Popups / Tooltip placement
-			 - [ ] Rotate surface / Input Translation
-	- [ ] Milestone 3
-	     - [ ] Xwayland
-			 - [ ] Test-suite
-			 - [ ] platform/wayland client backend
-			 - [ ] magic way to find PA/ALSA clients and map to contexts
+- [ ] Milestone 3, funky things
+  - [ ] Multithreaded client processing
+  - [ ] Dynamic Keyboard Translation table generation

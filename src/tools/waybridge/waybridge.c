@@ -1,7 +1,7 @@
 /*
  * Copyright 2016, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
- * Reference: http://arcan-fe.com
+ * Reference: https://github.com/letoram/arcan/wiki/wayland.md
  */
 
 #define WANT_ARCAN_SHMIF_HELPER
@@ -23,49 +23,6 @@ static inline void trace(const char* msg, ...)
 	fflush(stderr);
 }
 
-struct bridge_client {
-	struct arcan_shmif_cont acon;
-	struct arcan_shmif_cont cursor;
-
-	struct wl_client* client;
-	struct wl_resource* keyboard;
-	struct wl_resource* pointer;
-	struct wl_resource* touch;
-	struct wl_list link;
-};
-
-struct bridge_surface {
-	struct wl_resource* res;
-	struct wl_resource* buf;
-	struct wl_resource* frame_cb;
-
-	int sstate;
-	int x, y, glid;
-	struct bridge_client* cl;
-	struct wl_list link;
-	struct wl_listener on_destroy;
-};
-
-struct bridge_pool {
-	struct wl_resource* res;
-	void* mem;
-	size_t size;
-	unsigned refc;
-	int fd;
-};
-
-static struct {
-	EGLDisplay display;
-	struct wl_list cl, surf;
-	struct wl_display* disp;
-	struct arcan_shmif_initial init;
-	struct arcan_shmif_cont control;
-} wl;
-
-/*
- * xkbdkeyboard
- */
-
 /*
  * EGL- details needed for handle translation
  */
@@ -73,39 +30,55 @@ typedef void (*PFNGLEGLIMAGETARGETTEXTURE2DOESPROC) (EGLenum, EGLImage);
 static PFNEGLQUERYWAYLANDBUFFERWL query_buffer;
 static PFNEGLBINDWAYLANDDISPLAYWL bind_display;
 static PFNGLEGLIMAGETARGETTEXTURE2DOESPROC img_tgt_text;
+static struct bridge_client* find_client(struct wl_client* cl);
+
 /* static PFNEGLGETPLATFORMDISPLAYEXTPROC get_platform_display; */
 
 /*
- * Welcome to callback hell
+ * For tracking allocations in arcan, spit into bitmapped groups allocated/set
+ * on startup. Allocation policy is first free slot, though no compaction
+ * between groups. Doing it this way makes thread-group assignments etc.
+ * easier if that ever becomes a need.
  */
-#include "surf.c"
-static struct wl_surface_interface surf_if = {
-	.destroy = surf_destroy,
-	.attach = surf_attach,
-	.damage = surf_damage,
-	.frame = surf_frame,
-	.set_opaque_region = surf_opaque,
-	.set_input_region = surf_inputreg,
-	.commit = surf_commit,
-	.set_buffer_transform = surf_transform,
-	.set_buffer_scale = surf_scale,
-  .damage_buffer = surf_damage
+static const size_t N_GROUP_SLOTS = sizeof(long long int) * 8;
+struct conn_group {
+	long long int alloc;
+
+/* 2 padding for the wl server socket and bridge- connection */
+	struct pollfd* pg;
+	struct bridge_client* cl;
 };
 
+static struct {
+	size_t n_groups;
+	struct conn_group* groups;
+	unsigned client_limit, client_count;
+
+	EGLDisplay display;
+	struct wl_display* disp;
+	struct arcan_shmif_initial init;
+	struct arcan_shmif_cont control;
+	bool alive;
+} wl;
+
 /*
- * an issue here is of course that we don't have a 1:1 mapping between
- * shmif connections and surfaces. When we get a new client, we request
- * a shmif-connection, then we have to wait for a surface that fits the
- * role so we can associate shmifcont.tag(surface). We can almost assume
- * everyone wants a mouse cursor and a popup, so we can request one each
- * of those and just keep it dormant as a subseg.
+ * Welcome to callback hell where it is allowed to #include code sin because
+ * the cost in sanity to figure out what goes where and how and when in this
+ * tangled ball of snakes and doxygen is just not worth the mental damage.
+ *
+ * This whole API should've just been designed in C++, it's evident that
+ * the language has much better capacity for handling it than C ever will.
+ *
+ * This is how UAF vulns with call-into-libc 'sploits are born
  */
-void send_client_input(struct bridge_client* cl, arcan_ioevent* ev)
+#include "boilerplate.c"
+
+static void send_client_input(struct bridge_client* cl, arcan_ioevent* ev)
 {
 	if (ev->devkind == EVENT_IDEVKIND_TOUCHDISP){
 	}
 	else if (ev->devkind == EVENT_IDEVKIND_MOUSE){
-		trace("mouse input..");
+/* wl_mouse_blabla */
 	}
 	else if (ev->datatype == EVENT_IDATATYPE_TRANSLATED){
 /* wl_keyboard_send_enter,
@@ -119,13 +92,14 @@ void send_client_input(struct bridge_client* cl, arcan_ioevent* ev)
 		;
 }
 
-static void flush_events(struct bridge_client* cl)
+static void flush_client_events(struct bridge_client* cl)
 {
 	struct arcan_event ev;
-
 	while (arcan_shmif_poll(&cl->acon, &ev) > 0){
-		if (ev.category == EVENT_IO)
+		if (ev.category == EVENT_IO){
 			send_client_input(cl, &ev.io);
+			continue;
+		}
 		else if (ev.category != EVENT_TARGET)
 			continue;
 		switch(ev.tgt.kind){
@@ -144,316 +118,150 @@ static void flush_events(struct bridge_client* cl)
 	}
 }
 
+static bool flush_bridge_events(struct arcan_shmif_cont* con)
+{
+	struct arcan_event ev;
+	while (arcan_shmif_poll(con, &ev) > 0){
+		if (ev.category == EVENT_TARGET){
+		switch (ev.tgt.kind){
+		case TARGET_COMMAND_EXIT:
+			return false;
+		default:
+		break;
+		}
+		}
+	}
+	return true;
+}
+
+/*
+ * Will allocate / open new as needed, divide clients into groups of 64
+ * (so bitmasked) for both structure tracking and for fd-polling for ev
+ * flush
+ */
 static struct bridge_client* find_client(struct wl_client* cl)
 {
-	struct bridge_client* res;
-	wl_list_for_each(res, &wl.cl, link){
-		if (res->client == cl)
-			return res;
-	}
-	res = malloc(sizeof(struct bridge_client));
-	memset(res, '\0', sizeof(struct bridge_client));
+	struct bridge_client* res = NULL;
 
-/* this can impose a stall with connection rate limiting and so
- * on, so there might be a value in either pre-allocating connections
- * or running it as a connection-thread */
-	trace("allocating new client\n");
-	res->acon = arcan_shmif_open(SEGID_BRIDGE_WAYLAND, 0, NULL);
-	res->client = cl;
-	if (!res->acon.addr){
-		free(res);
+/* traverse each group, check the fields for the set bits for match */
+	for (size_t i = 0; i < wl.n_groups; i++){
+		long long int mask = wl.groups[i].alloc;
+		while (mask){
+			long long int ind = ffs(mask);
+			if (!ind)
+				continue;
+
+			ind--;
+			if (wl.groups[i].cl[ind].client == cl)
+				return &wl.groups[i].cl[ind];
+			mask &= ~(1 << ind);
+		}
+	}
+
+	if (wl.client_limit == wl.client_count)
 		return NULL;
-	}
 
-/* might be useful to pre-queue for the cursor subsegment here,
- * rather than deferring etc. */
-	wl_list_insert(&wl.cl, &res->link);
+/* find first group with a free slot and alloc into it */
+	for (size_t i = 0; i < wl.n_groups; i++){
+		long long int ind = ffs(~wl.groups[i].alloc);
+		if (0 == ind)
+			continue;
+
+/* connect/allocate
+ * this can impose a stall with connection rate limiting and so on, so there
+ * might be a value in either pre-allocating connections or running it as a
+ * connection-thread
+ */
+		trace("allocating new client (%zu:%lld)\n", i, ind);
+		ind--;
+		res = &wl.groups[i].cl[ind];
+		memset(res, '\0', sizeof(struct bridge_client));
+
+		res->acon = arcan_shmif_open(SEGID_BRIDGE_WAYLAND, 0, NULL);
+		if (!res->acon.vidp)
+			return NULL;
+
+/*
+ * pretty much always need to be ready for damaged surfaces so enable now
+ */
+		res->client = cl;
+		res->acon.hints = SHMIF_RHINT_SUBREGION;
+		res->group = i;
+		res->slot = ind;
+		arcan_shmif_resize(&res->acon, res->acon.w, res->acon.h);
+		wl.groups[i].pg[ind].fd = res->acon.epipe;
+		wl.groups[i].alloc |= 1 << ind;
+		wl.client_count++;
+	}
 
 	return res;
 }
 
-static void comp_surf_delete(struct wl_resource* res)
+static void destroy_client(struct bridge_client* cl)
 {
-	trace("destroy compositor surface\n");
-	struct bridge_surface* surf = wl_resource_get_user_data(res);
-	if (!surf)
+	if (!cl)
 		return;
 
-	if (surf->cl){
-		arcan_shmif_drop(&surf->cl->acon);
-	}
-
-	wl_list_remove(&surf->link);
-	free(surf);
+	wl.client_count--;
+	arcan_shmif_drop(&cl->acon);
+	wl.groups[cl->group].alloc &= ~(1 << cl->slot);
+	wl.groups[cl->group].pg[cl->slot].fd = -1;
+	wl.groups[cl->group].pg[cl->slot].revents = 0;
+	memset(&wl.groups[cl->group].cl[cl->slot],
+		'\0', sizeof(struct bridge_client));
 }
 
-static void comp_surf_create(struct wl_client *client,
-	struct wl_resource *res, uint32_t id)
+static bool prepare_groups(size_t cl_limit, int ctrlfd, int wlfd,
+	size_t* nfd, struct pollfd** pfd, struct bridge_client** bcd)
 {
-	trace("create compositor surface(%"PRIu32")", id);
-/* we need to defer this and make a subsegment connection unless
- * the client has not consumed its primary one */
-	struct bridge_surface* new_surf = malloc(sizeof(struct bridge_surface));
-	memset(new_surf, '\0', sizeof(struct bridge_surface));
-	new_surf->cl = find_client(client);
-	if (!new_surf->cl){
-		wl_resource_post_error(res, WL_SHM_ERROR_INVALID_FD, "out of memory\n");
-		free(new_surf);
-		return;
-	}
-
-	new_surf->res = wl_resource_create(client, &wl_surface_interface,
-		wl_resource_get_version(res), id);
-
-	wl_resource_set_implementation(new_surf->res,
-		&surf_if, new_surf, comp_surf_delete);
-
-	wl_list_insert(&wl.surf, &new_surf->link);
-}
-
-#include "region.c"
-static struct wl_region_interface region_if = {
-	.destroy = region_destroy,
-	.add = region_add,
-	.subtract = region_sub
-};
-static void comp_create_reg(struct wl_client *client,
-	struct wl_resource *resource, uint32_t id)
-{
-	trace("create region");
-	struct wl_resource* region = wl_resource_create(client,
-		&wl_region_interface, wl_resource_get_version(resource), id);
-	wl_resource_set_implementation(region, &region_if, NULL, NULL);
-}
-
-static struct wl_compositor_interface compositor_if = {
-	.create_surface = comp_surf_create,
-	.create_region = comp_create_reg,
-};
-
-static void shm_buf_create(struct wl_client* client,
-	struct wl_resource* res, uint32_t id, int32_t offset,
-	int32_t width, int32_t height, int32_t stride, uint32_t format)
-{
-	trace("wl_shm_buf_create(%d*%d)", (int) width, (int) height);
-/*
- * struct bridge_surface* surf = wl_resource_get_user_data(res);
- */
+	wl.n_groups = (cl_limit == 0 ? 1 : cl_limit / N_GROUP_SLOTS +
+		!!(cl_limit % N_GROUP_SLOTS) * N_GROUP_SLOTS);
 
 /*
-	wayland_buffer_create_resource(client,
-		wl_resource_get_version(resource), id, buffer);
+ * allocate the tracking structures in advance to fit the maximum number
+ * of clients (or default to 64) and then prepare indices to match.
  */
+	size_t nelem = wl.n_groups * N_GROUP_SLOTS;
+	wl.groups = malloc(sizeof(struct conn_group) * wl.n_groups);
+	if (!wl.groups)
+		return false;
 
- /* wld_buffer_add_destructor(buffer, reference->destructor */
-}
+	for (size_t i = 0; i < wl.n_groups; i++)
+		wl.groups[i] = (struct conn_group){};
 
-static void shm_buf_destroy(struct wl_client* client,
-	struct wl_resource* res)
-{
-	trace("shm_buf_destroy");
-	wl_resource_destroy(res);
-}
+	*pfd = malloc(sizeof(struct pollfd) * nelem + 2);
+	if (!*pfd)
+		return false;
 
-static void shm_buf_resize(struct wl_client* client,
-	struct wl_resource* res, int32_t size)
-{
-	trace("shm_buf_resize(%d)", (int) size);
-	struct bridge_pool* pool = wl_resource_get_user_data(res);
-	void* data = mmap(NULL, size, PROT_READ, MAP_SHARED, pool->fd, 0);
-	if (data == MAP_FAILED){
-		wl_resource_post_error(res,WL_SHM_ERROR_INVALID_FD,
-			"couldn't remap shm_buf (%s)", strerror(errno));
-	}
-	else {
-		munmap(pool->mem, pool->size);
-		pool->mem = data;
-		pool->size = size;
-	}
-}
-
-static struct wl_shm_pool_interface shm_pool_if = {
-	.create_buffer = shm_buf_create,
-	.destroy = shm_buf_destroy,
-	.resize = shm_buf_resize,
-};
-
-static void destroy_pool_res(struct wl_resource* res)
-{
-	struct bridge_pool* pool = wl_resource_get_user_data(res);
-	pool->refc--;
-	if (!pool->refc){
-		munmap(pool->mem, pool->size);
-		free(pool);
-	}
-}
-
-static void create_pool(struct wl_client* client,
-	struct wl_resource* res, uint32_t id, int32_t fd, int32_t size)
-{
-	trace("wl_shm_create_pool(%d)", id);
-	struct bridge_pool* pool = malloc(sizeof(struct bridge_pool));
-	if (!pool){
-		wl_resource_post_error(res, WL_SHM_ERROR_INVALID_FD,
-			"out of memory\n");
-		close(fd);
-		return;
-	}
-	*pool = (struct bridge_pool){};
-
-	pool->res = wl_resource_create(client,
-		&wl_shm_pool_interface, wl_resource_get_version(res), id);
-	if (!pool->res){
-		wl_resource_post_no_memory(res);
-		free(pool);
-		close(fd);
-		return;
+	*bcd = malloc(sizeof(struct bridge_client) * nelem);
+	if (!bcd){
+		free(*pfd);
+		*pfd = NULL;
+		return false;
 	}
 
-	wl_resource_set_implementation(pool->res,
-		&shm_pool_if, pool, &destroy_pool_res);
-
-	pool->mem = mmap(NULL, size, PROT_READ, MAP_SHARED, fd, 0);
-	if (pool->mem == MAP_FAILED){
-		wl_resource_post_error(res, WL_SHM_ERROR_INVALID_FD,
-			"couldn't mmap: %s\n", strerror(errno));
-		wl_resource_destroy(pool->res);
-		free(pool);
-		close(fd);
-	}
-	else {
-		pool->size = size;
-		pool->refc = 1;
-		pool->fd = fd;
-	}
-}
-
-static void bind_output(struct wl_client* client,
-	void* data, uint32_t version, uint32_t id)
-{
-	trace("bind_output");
-	struct wl_resource* resource = wl_resource_create(client,
-		&wl_output_interface, version, id);
-	if (!resource){
-		wl_client_post_no_memory(client);
-		return;
+/* generate group indices */
+	for (size_t i = 0; i < wl.n_groups; i++){
+		wl.groups[i] = (struct conn_group){
+			.cl = &(*bcd)[i*N_GROUP_SLOTS],
+			.pg = &(*pfd)[2+i*N_GROUP_SLOTS]
+		};
 	}
 
-/* convert the initial display info from x, y to mm using ppcm */
-	wl_output_send_geometry(resource, 0, 0,
-		(float)wl.init.display_width_px / wl.init.density * 10.0,
-		(float)wl.init.display_height_px / wl.init.density * 10.0,
-		0, /* init.fonts[0] hinting should work */
-		"unknown", "unknown",
-		0
-	);
-
-	wl_output_send_mode(resource, WL_OUTPUT_MODE_CURRENT,
-		wl.init.display_width_px, wl.init.display_height_px, wl.init.rate);
-
-	if (version >= 2)
-		wl_output_send_done(resource);
-}
-
-static struct wl_shm_interface shm_if = {
-	.create_pool = create_pool
-};
-
-static void bind_shm(struct wl_client* client,
-	void* data, uint32_t version, uint32_t id)
-{
-	struct wl_resource* res = wl_resource_create(client,
-		&wl_shm_interface, version, id);
-	wl_resource_set_implementation(res, &shm_if, NULL, NULL);
-	wl_shm_send_format(res, WL_SHM_FORMAT_XRGB8888);
-	wl_shm_send_format(res, WL_SHM_FORMAT_ARGB8888);
-}
-
-#include "seat.c"
-static struct wl_seat_interface seat_if = {
-	.get_pointer = seat_pointer,
-	.get_keyboard = seat_keyboard,
-	.get_touch = seat_touch
-};
-
-static void bind_comp(struct wl_client *client,
-	void *data, uint32_t version, uint32_t id)
-{
-	trace("wl_bind(compositor %d:%d)", version, id);
-	struct wl_resource* res = wl_resource_create(client,
-		&wl_compositor_interface, version, id);
-	wl_resource_set_implementation(res, &compositor_if, NULL, NULL);
-}
-
-static void bind_seat(struct wl_client *client,
-	void *data, uint32_t version, uint32_t id)
-{
-	trace("wl_bind(seat %d:%d)", version, id);
-	struct wl_resource* res = wl_resource_create(client,
-		&wl_seat_interface, version, id);
-	wl_resource_set_implementation(res, &seat_if, NULL, NULL);
-	wl_seat_send_capabilities(res, WL_SEAT_CAPABILITY_POINTER |
-		WL_SEAT_CAPABILITY_KEYBOARD | WL_SEAT_CAPABILITY_TOUCH);
-}
-
-#include "shell.c"
-static struct wl_shell_surface_interface ssurf_if = {
-	.pong = ssurf_pong,
-	.move = ssurf_move,
-	.resize = ssurf_resize,
-	.set_toplevel = ssurf_toplevel,
-	.set_transient = ssurf_transient,
-	.set_fullscreen = ssurf_fullscreen,
-	.set_popup = ssurf_popup,
-	.set_maximized = ssurf_maximized,
-	.set_title = ssurf_title,
-	.set_class = ssurf_class
-};
-
-void wl_shell_get_surf(struct wl_client* client,
-	struct wl_resource* res, uint32_t id, struct wl_resource* surf_res)
-{
-	trace("get shell surface");
-	struct bridge_surface* surf = malloc(sizeof(struct bridge_surface));
-	if (!surf){
-		wl_resource_post_no_memory(res);
-		return;
-	}
-	*surf = (struct bridge_surface){};
-
-	surf->res = wl_resource_create(client,
-		&wl_shell_surface_interface, wl_resource_get_version(res), id);
-	if (!surf->res){
-		free(surf);
-		wl_resource_post_no_memory(res);
-		return;
+/* and default polling flags */
+	*nfd = nelem + 2;
+	for (size_t i = 0; i < nelem+2; i++){
+		(*pfd)[i] = (struct pollfd){
+			.events = POLLIN | POLLERR | POLLHUP,
+			.fd = -1
+		};
 	}
 
-/* FIXME: it's likely here we have enough information to reliably
- * wait for a segment or subsegment to represent the window, but with
- * the API at hand, it seems impossible to do without blocking everything
- * (especially with EGL surfaces ...)
- *
- * What we want to do is spin a thread per client and have the usual
- * defer/buffer while wating for asynch subseg reply
- */
+	(*pfd)[0].fd = ctrlfd;
+	(*pfd)[1].fd = wlfd;
+	wl.client_limit = cl_limit ? cl_limit : wl.n_groups * N_GROUP_SLOTS;
 
-	wl_resource_set_implementation(surf->res, &ssurf_if, surf, &ssurf_free);
-//	surf->on_destroy.notify = &ssurf_destroy;
-//	wl_resource_add_destroy_listener(surf->res, &surf->on_destroy);
-}
-
-static const struct wl_shell_interface shell_if = {
-	.get_shell_surface = wl_shell_get_surf
-};
-
-static void bind_shell(struct wl_client* client,
-	void *data, uint32_t version, uint32_t id)
-{
-	trace("wl_bind(shell %d:%d)", version, id);
-	struct wl_resource* res = wl_resource_create(client,
-		&wl_shell_interface, version, id);
-	wl_resource_set_implementation(res, &shell_if, NULL, NULL);
+	return true;
 }
 
 static int show_use(const char* msg, const char* arg)
@@ -489,9 +297,28 @@ int main(int argc, char* argv[])
 		.egl = 0
 	};
 
+	wl.n_groups = 4;
+
 	for (size_t i = 1; i < argc; i++){
 		if (strcmp(argv[i], "-egl") == 0){
 			shm_egl = true;
+		}
+		else if (strcmp(argv[i], "-layout") == 0){
+/* missing */
+		}
+		else if (strcmp(argv[i], "-dir") == 0){
+			if (i == argc-1){
+				return show_use("missing path to runtime dir", "");
+			}
+			i++;
+			setenv("XDG_RUNTIME_DIR", argv[i], 1);
+		}
+		else if (strcmp(argv[i], "-max-cl") == 0){
+			if (i < argc-1){
+				return show_use("missing client limit argument", "");
+			}
+			i++;
+			wl.client_limit = strtoul(argv[i], NULL, 10);
 		}
 		else if (strcmp(argv[i], "-wl-egl") == 0)
 			protocols.egl = 1;
@@ -517,11 +344,9 @@ int main(int argc, char* argv[])
 
 /*
  * Will need to do some argument parsing here:
- * 1. runtime dir (override XDG_RUNTIME_DIR)
  * 2. limit to number of active connections
  * 3. default keyboard layout to provide (can possibly scan the dir
  *    and try to map to GEOHINT from the arcan_shmif_initial)
- * 4. allow shm- only mode with explicit copies.
  */
 	if (!getenv("XDG_RUNTIME_DIR")){
 		fprintf(stderr, "Missing environment: XDG_RUNTIME_DIR\n");
@@ -571,18 +396,6 @@ int main(int argc, char* argv[])
 		}
 	}
 
-/*
- * The decision to not murder xkb but rather make it worse by spreading
- * it everywhere, running out of /facepalm -- when even android does it
- * better, you're really in for a treat.
- */
-	wl_list_init(&wl.cl);
-	wl_list_init(&wl.surf);
-
-/*
- * FIXME: need a user config- way to set which interfaces should be
- * enabled and which should be disabled
- */
 	wl_display_add_socket_auto(wl.disp);
 	if (protocols.compositor)
 		wl_global_create(wl.disp, &wl_compositor_interface,
@@ -605,35 +418,46 @@ int main(int argc, char* argv[])
 	struct wl_event_loop* loop = wl_display_get_event_loop(wl.disp);
 	trace("wl_display() finished");
 
-	while(1){
-/* FIXME multiplex on conn and shmif-fd and poll
- * int fd = wl_event_loop_get_fd(loop);
- */
-		wl_event_loop_dispatch(loop, 0);
-		wl_display_flush_clients(wl.disp);
-/* wl_signal_init(..) */
+	wl.alive = true;
 
-		arcan_event ev;
-		while (arcan_shmif_poll(&wl.control, &ev) > 0){
-			if (ev.category == EVENT_TARGET){
-				switch (ev.tgt.kind){
-/* bridge has been reassigned to another output */
-				case TARGET_COMMAND_OUTPUTHINT:
-					wl.init.display_width_px = ev.tgt.ioevs[0].iv;
-					wl.init.display_height_px = ev.tgt.ioevs[1].iv;
+/*
+ * init polling settings, allocate group storage etc. what may seem
+ * weird here is the pfd/bcd bit - we partition clients into groups
+ * in order to easier move the thread-groups around.
+ */
+	size_t nfd;
+	struct pollfd* pfd;
+	struct bridge_client* bcd;
+	if (!prepare_groups(wl.client_limit,
+		wl.control.epipe, wl_event_loop_get_fd(loop), &nfd, &pfd, &bcd))
+		goto out;
+
+	while(wl.alive){
+		int sv = poll(pfd, nfd, -1);
+		if (pfd[0].revents){
+			sv--;
+			if (!flush_bridge_events(&wl.control))
 				break;
-				case TARGET_COMMAND_EXIT:
-					goto out;
-				default:
-				break;
-				}
+		}
+
+		if (pfd[1].revents){
+			sv--;
+			wl_event_loop_dispatch(loop, 0);
+		}
+
+		for (size_t i = 2; i < nfd && sv; i++){
+			if (pfd[i].revents){
+				flush_client_events(&bcd[i-2]);
+				sv--;
 			}
 		}
 
+		wl_display_flush_clients(wl.disp);
 	}
 
 out:
 	wl_display_destroy(wl.disp);
+	arcan_shmif_drop(&wl.control);
 
 	return EXIT_SUCCESS;
 }
