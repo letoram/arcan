@@ -1,14 +1,17 @@
 static void comp_surf_delete(struct wl_resource* res)
 {
-	trace("destroy compositor surface\n");
+	trace("destroy compositor surface");
 	struct bridge_surf* surf = wl_resource_get_user_data(res);
 	if (!surf)
 		return;
 
-	if (surf->acon && surf->acon){
-		arcan_shmif_drop(surf->acon);
-		surf->acon = NULL;
+	surf->cookie = 0xbad1dea;
+	if (surf->acon == &surf->cl->acon){
+		surf->cl->got_primary = 0;
+/* FIXME: viewport hint this one to invisible */
 	}
+	else
+		arcan_shmif_drop(surf->acon);
 
 	free(surf);
 }
@@ -28,6 +31,7 @@ static void comp_surf_create(struct wl_client *client,
 		free(new_surf);
 		return;
 	}
+	new_surf->cookie = 0xfeedface;
 
 /*
  * NOTE:

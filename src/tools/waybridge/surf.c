@@ -1,14 +1,7 @@
 static void surf_destroy(struct wl_client* cl, struct wl_resource* res)
 {
-	trace("surf_destroy()");
-	struct bridge_surf* surf = wl_resource_get_user_data(res);
-	if (surf->acon && &surf->cl->acon != surf->acon){
-		arcan_shmif_drop(surf->acon);
-		surf->acon = NULL;
-	}
-
-	free(surf);
-	wl_resource_destroy(res);
+	trace("surf_destroy(%"PRIxPTR")", (uintptr_t) res);
+/* should I do this or will the lib? wl_resource_destroy(res); */
 }
 
 /*
@@ -55,8 +48,22 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 	trace("surf_commit(xxx)");
 	struct bridge_surf* surf = wl_resource_get_user_data(res);
 	EGLint dfmt;
-	if (!surf->buf || !surf->cl || !surf->cl->acon.vidp)
+
+	if (surf->cookie != 0xfeedface){
+		trace("surf_commit() UAF on surface in commit");
 		return;
+	}
+
+	if (!surf->buf){
+		trace("surf_commit() surface lacks buffer");
+		return;
+	}
+
+	if (!surf->cl || !surf->acon){
+		trace("surf_commit() surface doesn't have an arcan connection");
+		wl_buffer_send_release(surf->buf);
+		return;
+	}
 
 	if (query_buffer && query_buffer(wl.display,
 		surf->buf, EGL_TEXTURE_FORMAT, &dfmt)){
@@ -92,10 +99,10 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
  * long as you don't double fork) and ran one of those per client but the
  * EGLDisplay approach seem to break that for us, probably worth a try if
  * the main-thread stalls start to hurt */
-			while (surf->cl->acon.addr->vready){}
+			while (surf->acon->addr->vready){}
 
-			if (surf->cl->acon.w != w || surf->cl->acon.h != h)
-				arcan_shmif_resize(&surf->cl->acon, w, h);
+			if (surf->acon->w != w || surf->acon->h != h)
+				arcan_shmif_resize(surf->acon, w, h);
 
 /*
  * FIXME: For the accelerated handle passing, we offload the cost of
@@ -116,9 +123,9 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
  * documentation is not a thing) that I can't control which offset a buffer
  * is mapped at so the stream-to-gl-and-handle-pass approach is better here.
  */
-			memcpy(surf->cl->acon.vidp, data, w * h * sizeof(shmif_pixel));
+			memcpy(surf->acon->vidp, data, w * h * sizeof(shmif_pixel));
 
-			arcan_shmif_signal(&surf->cl->acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
+			arcan_shmif_signal(surf->acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
 			wl_buffer_send_release(surf->buf);
 		}
 	}

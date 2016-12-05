@@ -22,6 +22,13 @@ connect to the point.
          make
          XDG_RUNTIME_DIR=/tmp arcan-wayland
 
+Issues to Investigate(tm)
+====
+At the moment, EGL/drm is stuck on what seems like a bug in Mesa. If we
+bind the bridge to a render-node, a client will get somewhere in the nasty
+backtrace to (drm\_handle\_device) - the reference to /dev/dri/card128 rather
+than /dev/dri/renderD128.
+
 Limitations
 ====
 There are a number of arcan features that do not have a corresponding
