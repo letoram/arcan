@@ -5,25 +5,6 @@ static void ssurf_pong(struct wl_client *client,
 	trace("pong (%"PRIu32")", serial);
 }
 
-/*
- * misunderstanding something with the signal- etc. infrastructure
- * since enabling this part would be crashing
- * static void ssurf_destroy(struct wl_listener* l, void* data)
-{
-	trace("shell surf destroy()");
-	struct bridge_surf* surf = wl_container_of(l, surf, on_destroy);
-	wl_resource_destroy(surf->res);
-}
- */
-
-static void ssurf_free(struct wl_resource* res)
-{
-	trace("shell surf free()");
-	struct bridge_surf* surf = wl_resource_get_user_data(res);
-/* the difference between destroy listener and free here? */
-	free(surf);
-}
-
 static void ssurf_move(struct wl_client *client,
 	struct wl_resource *resource, struct wl_resource *seat, uint32_t serial)
 {

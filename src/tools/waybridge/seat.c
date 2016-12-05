@@ -2,6 +2,8 @@ static void cursor_set(struct wl_client* cl, struct wl_resource* res,
 	uint32_t serial, struct wl_resource* surf_res, int32_t hot_x, int32_t hot_y)
 {
 	trace("cursor_set");
+	struct bridge_surf* surf = wl_resource_get_user_data(surf_res);
+	surf->type = SURF_CURSOR;
 }
 
 static void cursor_release(struct wl_client* cl, struct wl_resource* res)

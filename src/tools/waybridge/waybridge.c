@@ -172,7 +172,7 @@ static struct bridge_client* find_client(struct wl_client* cl)
  * might be a value in either pre-allocating connections or running it as a
  * connection-thread
  */
-		trace("allocating new client (%zu:%lld)\n", i, ind);
+		trace("allocating new client (%zu:%lld)", i, ind);
 		ind--;
 		res = &wl.groups[i].cl[ind];
 		memset(res, '\0', sizeof(struct bridge_client));
@@ -202,6 +202,7 @@ static void destroy_client(struct bridge_client* cl)
 	if (!cl)
 		return;
 
+	trace("destroy client");
 	wl.client_count--;
 	arcan_shmif_drop(&cl->acon);
 	wl.groups[cl->group].alloc &= ~(1 << cl->slot);
@@ -389,7 +390,7 @@ int main(int argc, char* argv[])
 		uintptr_t display;
 		arcan_shmifext_egl_meta(&wl.control, &display, NULL, NULL);
 		wl.display = eglGetDisplay((EGLDisplay)display);
-		if (!bind_display(wl.display, wl.disp)){
+		if (!bind_display((EGLDisplay)display, wl.disp)){
 			fprintf(stderr, "(eglBindWaylandDisplaYWL) failed\n");
 			arcan_shmif_drop(&wl.control);
 			return EXIT_FAILURE;

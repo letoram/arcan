@@ -1,6 +1,7 @@
 struct bridge_client {
 	struct arcan_shmif_cont acon;
 	struct arcan_shmif_cont cursor;
+	int got_primary;
 
 	struct wl_client* client;
 	struct wl_resource* keyboard;
@@ -11,6 +12,7 @@ struct bridge_client {
 };
 
 enum surf_type {
+	SURF_UNKNOWN = 0,
 	SURF_SHELL,
 	SURF_CURSOR
 };
@@ -26,6 +28,7 @@ struct bridge_surf {
 
 	int sstate;
 	int x, y;
+	int cookie;
 
 	struct bridge_client* cl;
 	struct wl_list link;
@@ -51,7 +54,7 @@ static struct wl_surface_interface surf_if = {
 	.commit = surf_commit,
 	.set_buffer_transform = surf_transform,
 	.set_buffer_scale = surf_scale,
-  .damage_buffer = surf_damage
+	.damage_buffer = surf_damage
 };
 
 #include "region.c"
