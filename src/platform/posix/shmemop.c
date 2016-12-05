@@ -14,7 +14,7 @@ uintptr_t arcan_shmif_mapav(
 {
 /* now we are in bat county */
 	uint8_t* wbuf = (uint8_t*)addr + sizeof(struct arcan_shmif_page);
-	if (addr)
+	if (addr && vbuf)
 		wbuf += addr->apad;
 
 	for (size_t i = 0; i < abufc; i++){
