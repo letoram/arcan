@@ -1,4 +1,6 @@
 struct bridge_client {
+	struct wl_listener l_destr;
+
 	struct arcan_shmif_cont acon;
 	struct arcan_shmif_cont cursor;
 	int got_primary;
