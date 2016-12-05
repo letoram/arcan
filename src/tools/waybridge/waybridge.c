@@ -134,6 +134,26 @@ static bool flush_bridge_events(struct arcan_shmif_cont* con)
 	return true;
 }
 
+static void destroy_client(struct wl_listener* l, void* data)
+{
+	struct bridge_client* cl;
+	cl = wl_container_of(l, cl, l_destr);
+
+	if (!cl || !(wl.groups[cl->group].alloc & (1 << cl->slot))){
+		trace("destroy_client(), struct doesn't match bitmap");
+		return;
+	}
+
+	trace("destroy client()");
+	wl.client_count--;
+	arcan_shmif_drop(&cl->acon);
+	wl.groups[cl->group].alloc &= ~(1 << cl->slot);
+	wl.groups[cl->group].pg[cl->slot].fd = -1;
+	wl.groups[cl->group].pg[cl->slot].revents = 0;
+	memset(&wl.groups[cl->group].cl[cl->slot],
+		'\0', sizeof(struct bridge_client));
+}
+
 /*
  * Will allocate / open new as needed, divide clients into groups of 64
  * (so bitmasked) for both structure tracking and for fd-polling for ev
@@ -188,28 +208,15 @@ static struct bridge_client* find_client(struct wl_client* cl)
 		res->acon.hints = SHMIF_RHINT_SUBREGION;
 		res->group = i;
 		res->slot = ind;
+		res->l_destr.notify = destroy_client;
 		arcan_shmif_resize(&res->acon, res->acon.w, res->acon.h);
 		wl.groups[i].pg[ind].fd = res->acon.epipe;
 		wl.groups[i].alloc |= 1 << ind;
 		wl.client_count++;
+		wl_client_add_destroy_listener(cl, &res->l_destr);
 	}
 
 	return res;
-}
-
-static void destroy_client(struct bridge_client* cl)
-{
-	if (!cl)
-		return;
-
-	trace("destroy client");
-	wl.client_count--;
-	arcan_shmif_drop(&cl->acon);
-	wl.groups[cl->group].alloc &= ~(1 << cl->slot);
-	wl.groups[cl->group].pg[cl->slot].fd = -1;
-	wl.groups[cl->group].pg[cl->slot].revents = 0;
-	memset(&wl.groups[cl->group].cl[cl->slot],
-		'\0', sizeof(struct bridge_client));
 }
 
 static bool prepare_groups(size_t cl_limit, int ctrlfd, int wlfd,
@@ -398,6 +405,7 @@ int main(int argc, char* argv[])
 	}
 
 	wl_display_add_socket_auto(wl.disp);
+
 	if (protocols.compositor)
 		wl_global_create(wl.disp, &wl_compositor_interface,
 			protocols.compositor, NULL, &bind_comp);
