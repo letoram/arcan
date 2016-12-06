@@ -775,7 +775,7 @@ int afsrv_encode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 			break;
 
 			default:
-				return EXIT_SUCCESS;
+			break;
 			}
 		}
 	}

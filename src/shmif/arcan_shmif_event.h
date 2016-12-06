@@ -1248,6 +1248,7 @@ typedef struct arcan_extevent {
  *                     shmif_page segment_token
  *	(invisible)      - hint that the current content segment backing store
  *	                   contains no information that is visibly helpful
+ *	(layhint)        - placeholder for anchoring and sizing information
  *  (relx, rely)     - positioning HINT relative to parent-
  *  relz             - relative parent ordering hint (+- #segments)
  *
@@ -1259,6 +1260,7 @@ typedef struct arcan_extevent {
 			uint32_t parent;
 			uint8_t border[4];
 			uint8_t invisible;
+			uint8_t layhint;
 			int16_t rel_x, rel_y;
 			int8_t rel_z;
 		} viewport;

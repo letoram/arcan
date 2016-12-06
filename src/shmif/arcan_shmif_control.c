@@ -2010,6 +2010,11 @@ static void wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
 	return;
 }
 
+static bool is_output_segment(enum ARCAN_SEGID segid)
+{
+	return (segid == SEGID_ENCODER || segid == SEGID_CLIPBOARD_PASTE);
+}
+
 struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 	struct arg_arr** outarg, struct shmif_open_ext ext, size_t ext_sz)
 {
@@ -2090,7 +2095,7 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 		ret.priv->alt_conn = strdup(conn_src);
 
 	free(keyfile);
-	if (ext.type > 0)
+	if (ext.type > 0 && !is_output_segment(ext.type))
 		wait_for_activation(&ret, !(flags & SHMIF_NOACTIVATE_RESIZE));
 	return ret;
 
