@@ -4101,7 +4101,8 @@ static inline void setup_surf(struct rendertarget* dst,
 }
 
 static inline void draw_colorsurf(struct rendertarget* dst,
-	surface_properties prop, arcan_vobject* src, float r, float g, float b)
+	surface_properties prop, arcan_vobject* src,
+	float r, float g, float b, float* txcos)
 {
 	float cval[3] = {r, g, b};
 /* having to do = NULL here to avoid warnings is a prime example where
@@ -4110,9 +4111,8 @@ static inline void draw_colorsurf(struct rendertarget* dst,
 
 	setup_surf(dst, &prop, src, &mvm);
 	agp_shader_forceunif("obj_col", shdrvec3, (void*) &cval);
-	agp_draw_vobj(-prop.scale.x,
-		-prop.scale.y, prop.scale.x,
-		prop.scale.y, NULL, mvm);
+	agp_draw_vobj(-prop.scale.x, -prop.scale.y,
+		prop.scale.x, prop.scale.y, txcos, mvm);
 }
 
 static inline void draw_texsurf(struct rendertarget* dst,
@@ -4121,8 +4121,8 @@ static inline void draw_texsurf(struct rendertarget* dst,
 	float* mvm = NULL;
 	setup_surf(dst, &prop, src, &mvm);
 
-	agp_draw_vobj(-prop.scale.x, -prop.scale.y, prop.scale.x,
-		prop.scale.y, txcos, mvm);
+	agp_draw_vobj(-prop.scale.x, -prop.scale.y,
+		prop.scale.x, prop.scale.y, txcos, mvm);
 }
 
 static void ffunc_process(arcan_vobject* dst, int cookie)
@@ -4210,7 +4210,7 @@ static inline void populate_stencil(struct rendertarget* tgt,
 	if (celem->clip == ARCAN_CLIP_SHALLOW){
 		surface_properties pprops = empty_surface();
 		arcan_resolve_vidprop(celem->parent, fract, &pprops);
-		draw_colorsurf(tgt, pprops, celem->parent, 1.0, 1.0, 1.0);
+		draw_colorsurf(tgt, pprops, celem->parent, 1.0, 1.0, 1.0, NULL);
 	}
 	else
 /* deep -> draw all objects that aren't clipping to parent,
@@ -4220,10 +4220,10 @@ static inline void populate_stencil(struct rendertarget* tgt,
 			arcan_resolve_vidprop(celem->parent, fract, &pprops);
 
 			if (celem->parent->clip == ARCAN_CLIP_OFF)
-				draw_colorsurf(tgt, pprops, celem->parent, 1.0, 1.0, 1.0);
+				draw_colorsurf(tgt, pprops, celem->parent, 1.0, 1.0, 1.0, NULL);
 
 			else if (celem->parent->clip == ARCAN_CLIP_SHALLOW){
-				draw_colorsurf(tgt, pprops, celem->parent, 1.0, 1.0, 1.0);
+				draw_colorsurf(tgt, pprops, celem->parent, 1.0, 1.0, 1.0, NULL);
 				break;
 			}
 
@@ -4448,7 +4448,7 @@ static size_t process_rendertarget(struct rendertarget* tgt, float fract)
 
 		if (elem->vstore->txmapped == TXSTATE_OFF && elem->program != 0)
 			draw_colorsurf(tgt, dprops, elem, elem->vstore->vinf.col.r,
-				elem->vstore->vinf.col.g, elem->vstore->vinf.col.b);
+				elem->vstore->vinf.col.g, elem->vstore->vinf.col.b, *dstcos);
 		else if (elem->vstore->txmapped == TXSTATE_TEX2D)
 			draw_texsurf(tgt, dprops, elem, *dstcos);
 		else

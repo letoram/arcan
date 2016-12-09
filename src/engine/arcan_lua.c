@@ -5717,6 +5717,7 @@ static int imagecolor(lua_State* ctx)
 	vobj->vstore->vinf.col.r = (float)cred / 255.0f;
 	vobj->vstore->vinf.col.g = (float)cgrn / 255.0f;
 	vobj->vstore->vinf.col.b = (float)cblu / 255.0f;
+	FLAG_DIRTY(vobj);
 
 	lua_pushboolean(ctx, true);
 	LUA_ETRACE("image_color", NULL, 1);
