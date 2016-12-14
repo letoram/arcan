@@ -1109,6 +1109,7 @@ defcfg:
 		arcan_event_enqueue(arcan_event_defaultctx(), &(arcan_event){
 			.category = EVENT_FSRV,
 			.fsrv.kind = EVENT_FSRV_PREROLL,
+			.fsrv.video = ctx->vid
 		});
 	}
 }
