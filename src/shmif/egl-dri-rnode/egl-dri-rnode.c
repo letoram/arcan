@@ -135,7 +135,7 @@ struct arcan_shmifext_setup arcan_shmifext_defaults(
 		strtoul(getenv("AGP_GL_MINOR"), NULL, 10) : 1;
 
 	return (struct arcan_shmifext_setup){
-		.red = 8, .green = 8, .blue = 8,
+		.red = 1, .green = 1, .blue = 1,
 		.alpha = 1, .depth = 16,
 		.api = API_OPENGL,
 		.builtin_fbo = 2,
@@ -237,22 +237,24 @@ context_only:
 
 	agp_glinit_fenv(&ctx->fenv, lookup_fenv, NULL);
 
-	int ofs = 2;
-	if (arg.major){
-		cas[ofs++] = EGL_CONTEXT_MAJOR_VERSION_KHR;
-		cas[ofs++] = arg.major;
-		cas[ofs++] = EGL_CONTEXT_MINOR_VERSION_KHR;
-		cas[ofs++] = arg.minor;
-	}
+	int ofs = 0;
+	if (arg.api != API_GLES){
+		if (arg.major){
+			cas[ofs++] = EGL_CONTEXT_MAJOR_VERSION_KHR;
+			cas[ofs++] = arg.major;
+			cas[ofs++] = EGL_CONTEXT_MINOR_VERSION_KHR;
+			cas[ofs++] = arg.minor;
+		}
 
-	if (arg.mask){
-		cas[ofs++] = EGL_CONTEXT_OPENGL_PROFILE_MASK_KHR;
-		cas[ofs++] = arg.mask;
-	}
+		if (arg.mask){
+			cas[ofs++] = EGL_CONTEXT_OPENGL_PROFILE_MASK_KHR;
+			cas[ofs++] = arg.mask;
+		}
 
-	if (arg.flags){
-		cas[ofs++] = EGL_CONTEXT_FLAGS_KHR;
-		cas[ofs++] = arg.flags;
+		if (arg.flags){
+			cas[ofs++] = EGL_CONTEXT_FLAGS_KHR;
+			cas[ofs++] = arg.flags;
+		}
 	}
 
 /* ignore if this function was called without destroying the old context */

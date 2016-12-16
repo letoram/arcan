@@ -505,7 +505,7 @@ unsigned arcan_shmif_signal(struct arcan_shmif_cont*, enum arcan_shmif_sigmask);
  * provided (arcan_shmifext_***)
  */
 unsigned arcan_shmif_signalhandle(struct arcan_shmif_cont* ctx,
-	enum arcan_shmif_sigmask,	int handle, size_t stride, int format, ...);
+	enum arcan_shmif_sigmask mask, int handle, size_t stride, int format, ...);
 
 /*
  * Support function to set/unset the primary access segment (one slot for
