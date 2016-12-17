@@ -351,6 +351,14 @@ bool arcan_shmifext_drop_context(struct arcan_shmif_cont* con)
 	return true;
 }
 
+int arcan_shmifext_dev(struct arcan_shmif_cont* con)
+{
+    if (!con || !con->privext || !con->privext->internal)
+        return -1;
+
+    return con->privext->internal->fd;
+}
+
 bool arcan_shmifext_gl_handles(struct arcan_shmif_cont* con,
 	uintptr_t* frame, uintptr_t* color, uintptr_t* depth)
 {

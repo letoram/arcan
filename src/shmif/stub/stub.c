@@ -20,6 +20,11 @@ bool arcan_shmifext_drop_context(struct arcan_shmif_cont* con)
 	return false;
 }
 
+int arcan_shmifext_dev(struct arcan_shmif_cont* con)
+{
+    return -1;
+}
+
 bool arcan_shmifext_drop_context(struct arcan_shmif_cont* con)
 {
 	return arcan_shmifext_drop(con);

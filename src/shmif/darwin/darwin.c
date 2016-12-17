@@ -182,6 +182,18 @@ bool arcan_shmifext_egl_meta(struct arcan_shmif_cont* con,
 	return true;
 }
 
+bool arcan_shmifext_gltex_handle(struct arcan_shmif_cont* con,
+   uintptr_t display, uintptr_t tex_id,
+	 int* dhandle, size_t* dstride, int* dfmt)
+{
+	return false;
+}
+
+int arcan_shmifext_dev(struct arcan_shmif_cont* con)
+{
+    return -1;
+}
+
 void* arcan_shmifext_lookup(
 	struct arcan_shmif_cont* con, const char* sym)
 {
