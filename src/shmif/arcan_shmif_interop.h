@@ -369,6 +369,17 @@ bool arcan_shmifext_vk(struct arcan_shmif_cont* con,
 	void** display, void*(*lookupfun)(void*, const char*), void* tag);
 
 /*
+ * Run the platform specific dance to convert a gl texture ID to a passable
+ * descriptor (shmif_signalhandle), note that only one texture should be 'in
+ * flight' (on both sides) at any one time, and calling this a second time
+ * invalidates the resources used by the last passed one.
+ */
+bool arcan_shmifext_gltex_handle(
+	struct arcan_shmif_cont* con,
+	uintptr_t display, uintptr_t tex_id,
+	int* dhandle, size_t* dstride, int* dfmt);
+
+/*
  * Similar behavior to signalhandle, but any conversion from the texture id
  * in [tex_id] is handled internally in accordance with the last _egl
  * call on [con]. The context where tex_id is valid should already be

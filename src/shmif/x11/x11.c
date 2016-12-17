@@ -151,6 +151,13 @@ bool arcan_shmifext_egl(struct arcan_shmif_cont* con,
 	return false;
 }
 
+bool arcan_shmifext_gltex_handle(struct arcan_shmif_cont* con,
+   uintptr_t display, uintptr_t tex_id,
+	 int* dhandle, size_t* dstride, int* dfmt)
+{
+	return false;
+}
+
 bool arcan_shmifext_make_current(struct arcan_shmif_cont* con)
 {
 	if (!con || !con->privext || !con->privext->internal)

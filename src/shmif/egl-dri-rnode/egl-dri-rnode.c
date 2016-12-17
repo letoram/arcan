@@ -44,6 +44,7 @@ struct shmif_ext_hidden_int {
 	struct storage_info_t buf_a, buf_b, (* current);
 	struct agp_fenv fenv;
 	bool nopass;
+	EGLImage image;
 	int fd;
 
 	int type;
@@ -108,17 +109,23 @@ static void gbm_drop(struct arcan_shmif_cont* con)
 			zap_vstore(&in->buf_b);
 			in->rtgt_cur;
 		}
+		if (in->image){
+			destroy_image(in->display, in->image);
+		}
 		if (in->managed){
 			eglMakeCurrent(in->display,
 				EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
 			eglDestroyContext(in->display, in->context);
 			eglTerminate(in->display);
 		}
-		con->privext->internal->dev = NULL;
+		in->dev = NULL;
 	}
 
-	if (-1 != con->privext->internal->fd)
-		close(con->privext->internal->fd);
+	if (-1 != in->fd){
+		close(in->fd);
+		in->fd = -1;
+	}
+
 
 	free(con->privext->internal);
 	con->privext->internal = NULL;
@@ -460,6 +467,50 @@ bool arcan_shmifext_make_current(struct arcan_shmif_cont* con)
 	return true;
 }
 
+bool arcan_shmifext_gltex_handle(struct arcan_shmif_cont* con,
+   uintptr_t display, uintptr_t tex_id,
+	 int* dhandle, size_t* dstride, int* dfmt)
+{
+	if (!con || !con->addr || !con->privext || !con->privext->internal)
+		return -1;
+
+	struct shmif_ext_hidden_int* ctx = con->privext->internal;
+
+	EGLDisplay* dpy = display == 0 ?
+		con->privext->internal->display : (EGLDisplay*) display;
+
+	if (ctx->image){
+		destroy_image(dpy, ctx->image);
+		close(ctx->fd);
+		ctx->fd = -1;
+	}
+
+	ctx->image = create_image(dpy, eglGetCurrentContext(),
+		EGL_GL_TEXTURE_2D_KHR, (EGLClientBuffer)(tex_id), NULL);
+
+	if (!ctx->image)
+		return false;
+
+	int fourcc, nplanes;
+	if (!query_image_format(dpy, ctx->image, &fourcc, &nplanes, NULL))
+		return false;
+
+/* currently unsupported */
+	if (nplanes != 1)
+		return false;
+
+	EGLint stride;
+	if (!export_dmabuf(dpy, ctx->image, dhandle, &stride, NULL)|| stride < 0){
+		destroy_image(dpy, ctx->image);
+		return false;
+	}
+
+	*dfmt = fourcc;
+	*dstride = stride;
+	ctx->fd = *dhandle;
+	return true;
+}
+
 int arcan_shmifext_signal(struct arcan_shmif_cont* con,
 	uintptr_t display, int mask, uintptr_t tex_id, ...)
 {
@@ -527,33 +578,14 @@ int arcan_shmifext_signal(struct arcan_shmif_cont* con,
 	if (con->privext->internal->nopass || !create_image)
 		goto fallback;
 
-	EGLImageKHR image = create_image(dpy, eglGetCurrentContext(),
-		EGL_GL_TEXTURE_2D_KHR, (EGLClientBuffer)(tex_id), NULL
-	);
+	int fd, fourcc;
+	size_t stride;
 
-	if (!image)
-		goto fallback;
-
-	int fourcc, nplanes;
-	if (!query_image_format(dpy, image, &fourcc, &nplanes, NULL))
-		goto fallback;
-
-/* currently unsupported */
-	if (nplanes != 1)
-		goto fallback;
-
-	EGLint stride;
-	int fd;
-	if (!export_dmabuf(dpy, image, &fd, &stride, NULL))
+	if (!arcan_shmifext_gltex_handle(con, display, tex_id, &fd, &stride, &fourcc))
 		goto fallback;
 
 	unsigned res = arcan_shmif_signalhandle(con, mask, fd, stride, fourcc);
-	destroy_image(dpy, image);
 
-	if (con->privext->internal->fd != -1){
-		close(con->privext->internal->fd);
-	}
-	con->privext->internal->fd = fd;
 	return res > INT_MAX ? INT_MAX : res;
 
 /*
