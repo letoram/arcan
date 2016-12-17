@@ -27,6 +27,10 @@ set(SHARED_PERMISSIONS
 set(SHARED_PERMISSIONS_DIR OWNER_WRITE OWNER_READ GROUP_WRITE
 	GROUP_READ WORLD_EXECUTE WORLD_READ)
 
+set(ARCAN_DEFINITIONS
+	IPC_DEFAULT_PERM=0700
+)
+
 # another hack to strip noisy / useless data away from message() abuse
 include(ExternalProject)
 include(CheckIncludeFiles)

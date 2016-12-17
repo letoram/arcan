@@ -288,7 +288,7 @@ static bool findshmkey(arcan_frameserver* ctx, int* dfd){
 		snprintf(playbuf, sizeof(playbuf), pattern, selfpid % 1000, rand() % 1000);
 
 		pb_ofs = strlen(playbuf) - 1;
-		*dfd = shm_open(playbuf, O_CREAT | O_RDWR | O_EXCL, 0700);
+		*dfd = shm_open(playbuf, O_CREAT | O_RDWR | O_EXCL, IPC_DEFAULT_PERM);
 
 /*
  * with EEXIST, we happened to have a name collision, it is unlikely, but may
@@ -308,7 +308,7 @@ static bool findshmkey(arcan_frameserver* ctx, int* dfd){
 		}
 
 		playbuf[pb_ofs] = 'v';
-		ctx->vsync = sem_open(playbuf, O_CREAT | O_EXCL, 0700, 0);
+		ctx->vsync = sem_open(playbuf, O_CREAT | O_EXCL, IPC_DEFAULT_PERM, 0);
 
 		if (SEM_FAILED == ctx->vsync){
 			playbuf[pb_ofs] = 'm'; shm_unlink(playbuf);
@@ -319,7 +319,7 @@ static bool findshmkey(arcan_frameserver* ctx, int* dfd){
 		}
 
 		playbuf[pb_ofs] = 'a';
-		ctx->async = sem_open(playbuf, O_CREAT | O_EXCL, 0700, 0);
+		ctx->async = sem_open(playbuf, O_CREAT | O_EXCL, IPC_DEFAULT_PERM, 0);
 
 		if (SEM_FAILED == ctx->async){
 			playbuf[pb_ofs] = 'v'; sem_unlink(playbuf); sem_close(ctx->vsync);
@@ -331,7 +331,7 @@ static bool findshmkey(arcan_frameserver* ctx, int* dfd){
 		}
 
 		playbuf[pb_ofs] = 'e';
-		ctx->esync = sem_open(playbuf, O_CREAT | O_EXCL, 0700, 1);
+		ctx->esync = sem_open(playbuf, O_CREAT | O_EXCL, IPC_DEFAULT_PERM, 1);
 		if (SEM_FAILED == ctx->esync){
 			playbuf[pb_ofs] = 'a'; sem_unlink(playbuf); sem_close(ctx->async);
 			playbuf[pb_ofs] = 'v'; sem_unlink(playbuf); sem_close(ctx->vsync);
