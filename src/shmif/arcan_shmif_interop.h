@@ -380,6 +380,12 @@ bool arcan_shmifext_gltex_handle(
 	int* dhandle, size_t* dstride, int* dfmt);
 
 /*
+ * Retrieve a file-handle to the device that is currently used for the
+ * acceleration, or -1 if it is unavailable.
+ */
+int arcan_shmifext_dev(struct arcan_shmif_cont* con);
+
+/*
  * Similar behavior to signalhandle, but any conversion from the texture id
  * in [tex_id] is handled internally in accordance with the last _egl
  * call on [con]. The context where tex_id is valid should already be

@@ -134,6 +134,11 @@ enum shmifext_setup_status arcan_shmifext_setup(
 	return SHMIFEXT_OK;
 }
 
+int arcan_shmifext_dev(struct arcan_shmif_cont* con)
+{
+    return -1;
+}
+
 bool arcan_shmifext_gl_handles(struct arcan_shmif_cont* con,
 	uintptr_t* frame, uintptr_t* color, uintptr_t* depth)
 {
