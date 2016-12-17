@@ -258,6 +258,7 @@ struct shmif_hidden {
 		bool active;
 		sem_handle semset[3];
 		process_handle parent;
+		int parent_fd;
 		volatile uint8_t* _Atomic volatile dms;
 		pthread_mutex_t synch;
 		void (*exitf)(int val);
@@ -281,7 +282,31 @@ static inline bool parent_alive(struct shmif_hidden* gs)
  * != 1; won't work for hijack targets that double fork, and we don't have
  * the means for an inhertied connection right now (though a reasonable
  * possibility) */
-	return kill(gs->guard.parent, 0) != -1;
+	if (-1 != kill(gs->guard.parent, 0))
+		return true;
+
+/* for nonauth/processes, it is not this simple. We don't want to ping/pong
+ * over the socket as we don't know the state, and a timestamp and timeout
+ * is not a good idea. Checking the proc/pid relies on /proc being available
+ * which we don't want to rely on. Left is to try and peek */
+	if (errno == EPERM){
+		unsigned char ch;
+
+/* nothing we can do, if the server crashes at a synch-point, we may lock */
+		if (-1 == gs->guard.parent_fd)
+			return true;
+
+	printf("deal with perm\n");
+/* try to peek a byte and hope that will tell us the connection status */
+		if (-1 == recv(gs->guard.parent_fd, &ch, 1, MSG_PEEK | MSG_DONTWAIT) &&
+			(errno == EBADF || errno == ENOTCONN || errno == ENOTSOCK))
+			return false;
+
+		return true;
+	}
+
+	printf("eperm\n");
+	return false;
 }
 
 static void spawn_guardthread(struct arcan_shmif_cont* d)
@@ -1093,6 +1118,7 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 		.guard = {
 			.semset = { res.asem, res.vsem, res.esem },
 			.parent = res.addr->parent,
+			.parent_fd = -1,
 			.exitf = exitf
 		},
 		.flags = flags,
@@ -1839,6 +1865,7 @@ enum shmif_migrate_status arcan_shmif_migrate(
 	struct arcan_shmif_cont ret =
 		arcan_shmif_acquire(NULL, keyfile, cont->priv->type, cont->priv->flags);
 	ret.epipe = dpipe;
+	ret.priv->guard.parent_fd = dpipe;
 
 	if (!ret.addr){
 		close(dpipe);
