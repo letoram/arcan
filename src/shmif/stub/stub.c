@@ -54,6 +54,13 @@ int arcan_shmifext_signal(struct arcan_shmif_cont* con,
 	return -1;
 }
 
+bool arcan_shmifext_gltex_handle(struct arcan_shmif_cont* con,
+   uintptr_t display, uintptr_t tex_id,
+	 int* dhandle, size_t* dstride, int* dfmt)
+{
+	return false;
+}
+
 bool arcan_shmifext_egl_meta(struct arcan_shmif_cont* con,
 	uintptr_t* display, uintptr_t* surface, uintptr_t* context)
 {
