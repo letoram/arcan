@@ -44,8 +44,9 @@ struct shmif_ext_hidden_int {
 	struct storage_info_t buf_a, buf_b, (* current);
 	struct agp_fenv fenv;
 	bool nopass;
+
 	EGLImage image;
-	int fd;
+	int dmabuf;
 
 	int type;
 	struct {
@@ -121,11 +122,10 @@ static void gbm_drop(struct arcan_shmif_cont* con)
 		in->dev = NULL;
 	}
 
-	if (-1 != in->fd){
-		close(in->fd);
-		in->fd = -1;
+	if (-1 != in->dmabuf){
+		close(in->dmabuf);
+		in->dmabuf = -1;
 	}
-
 
 	free(con->privext->internal);
 	con->privext->internal = NULL;
@@ -356,7 +356,7 @@ int arcan_shmifext_dev(struct arcan_shmif_cont* con)
     if (!con || !con->privext || !con->privext->internal)
         return -1;
 
-    return con->privext->internal->fd;
+    return con->privext->active_fd;
 }
 
 bool arcan_shmifext_gl_handles(struct arcan_shmif_cont* con,
@@ -415,7 +415,7 @@ bool arcan_shmifext_egl(struct arcan_shmif_cont* con,
 		}
 
 		memset(con->privext->internal, '\0', sizeof(struct shmif_ext_hidden_int));
-		con->privext->internal->fd = -1;
+		con->privext->internal->dmabuf = -1;
 		con->privext->internal->nopass = getenv("ARCAN_VIDEO_NO_FDPASS") ?
 			true : false;
 		if (NULL == (con->privext->internal->dev = gbm_create_device(dfd))){
@@ -428,6 +428,8 @@ bool arcan_shmifext_egl(struct arcan_shmif_cont* con,
 		gbm_drop(con);
 		return false;
 	}
+
+	con->privext->active_fd = dfd;
 	*display = (void*) (con->privext->internal->dev);
 	return true;
 }
@@ -489,8 +491,8 @@ bool arcan_shmifext_gltex_handle(struct arcan_shmif_cont* con,
 
 	if (ctx->image){
 		destroy_image(dpy, ctx->image);
-		close(ctx->fd);
-		ctx->fd = -1;
+		close(ctx->dmabuf);
+		ctx->dmabuf = -1;
 	}
 
 	ctx->image = create_image(dpy, eglGetCurrentContext(),
@@ -515,7 +517,7 @@ bool arcan_shmifext_gltex_handle(struct arcan_shmif_cont* con,
 
 	*dfmt = fourcc;
 	*dstride = stride;
-	ctx->fd = *dhandle;
+	ctx->dmabuf = *dhandle;
 	return true;
 }
 
