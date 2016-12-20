@@ -381,9 +381,11 @@ bool arcan_shmifext_gltex_handle(
 
 /*
  * Retrieve a file-handle to the device that is currently used for the
- * acceleration, or -1 if it is unavailable.
+ * acceleration, or -1 if it is unavailable. if [outdev] is !NULL, it will
+ * be set to point to a platform specific device structure. Outside very
+ * specialized uses (Xarcan), this should be ignored.
  */
-int arcan_shmifext_dev(struct arcan_shmif_cont* con);
+int arcan_shmifext_dev(struct arcan_shmif_cont* con, uintptr_t* outdev);
 
 /*
  * Similar behavior to signalhandle, but any conversion from the texture id

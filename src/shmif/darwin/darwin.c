@@ -1,4 +1,4 @@
-#define WANT_ARCAN_SHMIF_HELPER
+define WANT_ARCAN_SHMIF_HELPER
 #define AGP_ENABLE_UNPURE
 
 #include "../arcan_shmif.h"
@@ -189,9 +189,12 @@ bool arcan_shmifext_gltex_handle(struct arcan_shmif_cont* con,
 	return false;
 }
 
-int arcan_shmifext_dev(struct arcan_shmif_cont* con)
+int arcan_shmifext_dev(struct arcan_shmif_cont* con, uintptr_t* dev)
 {
-    return -1;
+	if (dev)
+		*dev = 0;
+
+	return -1;
 }
 
 void* arcan_shmifext_lookup(

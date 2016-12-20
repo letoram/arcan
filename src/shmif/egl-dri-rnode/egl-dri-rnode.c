@@ -351,12 +351,15 @@ bool arcan_shmifext_drop_context(struct arcan_shmif_cont* con)
 	return true;
 }
 
-int arcan_shmifext_dev(struct arcan_shmif_cont* con)
+int arcan_shmifext_dev(struct arcan_shmif_cont* con, uintptr_t* dev)
 {
-    if (!con || !con->privext || !con->privext->internal)
-        return -1;
+	if (!con || !con->privext || !con->privext->internal)
+		return -1;
 
-    return con->privext->active_fd;
+	if (dev)
+		*dev = (uintptr_t) con->privext->internal->dev;
+
+  return con->privext->active_fd;
 }
 
 bool arcan_shmifext_gl_handles(struct arcan_shmif_cont* con,
