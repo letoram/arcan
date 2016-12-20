@@ -1,6 +1,6 @@
 -- launch_target
 -- @short: Setup and launch an external program.
--- @inargs: target, configuration, *mode*, *handler*, *argstr*
+-- @inargs: target, configuration, *mode*, *handler(sourcevid,statustbl)*, *argstr*
 -- @outargs: *vid* or *rcode, timev*
 -- @longdescr: Launch Target uses the database to build an execution environment
 -- for the specific tuple (target, configuration). The mode can be set to either
@@ -11,7 +11,7 @@
 -- with *handler* will be used to receive events connected with the new
 -- frameserver, and the returned *vid* handle can be used to control and
 -- communicate with the frameserver. The notes section below covers events
--- realted to this callback.
+-- related to this callback.
 --
 -- if (LAUNCH_EXTERNAL) is set, arcan will minimize its execution and resource
 -- footprint and wait for the specified program to finish executing. The return
@@ -29,11 +29,18 @@
 -- not specified, it will be forced to 'default') or the configuration
 -- does not support the requested mode, BADID will be returned.
 --
--- @note: Possible statustbl.kind values: "resized", "ident", "coreopt",
--- "message", "failure", "framestatus", "streaminfo", "streamstatus",
--- "cursor_input", "key_input", "segment_request", "state_size",
--- "viewport", "alert", "content_state", "resource_status", "registered",
--- "unknown"
+-- @note: Possible statustbl.kind values: "preroll", "resized", "ident",
+-- "coreopt", "message", "failure", "framestatus", "streaminfo",
+-- "streamstatus", "cursor_input", "key_input", "segment_request",
+-- "state_size", "viewport", "alert", "content_state", "resource_status",
+-- "registered", "clock", "cursor", "bchunkstate", "unknown"
+--
+-- @note: "preroll" {segkind, source_audio} is an initial state where
+-- the resources for the target have been reserved, and it is possible to
+-- run some actions on the target to set up desired initial state, and valid
+-- actions here are currently:
+-- target\_displayhint, target\_outputhint, target\_fonthint,
+-- target\_geohint.
 --
 -- @note: "resized" {width, height, origo_ll} the underlying storage
 -- has changed dimensions. If origo_ll is set, the source data is stored
@@ -41,7 +48,9 @@
 -- look into ref:image_set_txcos_default
 --
 -- @note: "message" {message, multipart} - generic text message (UTF-8) that
--- terminates when multipart is set to false.
+-- terminates when multipart is set to false. This mechanism is primarily for
+-- customized hacks or, on special subsegments such as titlebar or popup, to
+-- provide a textual representation of the contents.
 --
 -- @note: "framestatus" {frame,pts,acquired,fhint} - metadata about the last
 -- delivered frame.
@@ -58,7 +67,7 @@
 -- @note: "failure" {message} - some internal operation has failed, non-terminal
 -- error indication.
 --
--- @note: "cursor_input" {id, x, y, button_n} - hint that there is a local
+-- @note: "cursor" {id, x, y, button_n} - hint that there is a local
 -- visible cursor at the specific position (local coordinate system)
 --
 -- @note: "key_input" {id, keysym, active} - frameserver would like to
@@ -100,6 +109,14 @@
 -- drag-right, drag-left-right, rotate-cw, rotate-ccw, normal-tag, diag-ur,
 -- diag-ll, drag-diag, datafield, move, typefield, forbidden, help and
 -- vertical-datafield.
+--
+-- @note: "bchunkstate" {size, input, stream, disable, wildcard, extensions} -
+-- indicates that the frameserver is willing / capable of receiving (input=true)
+-- or sending binary data. It also indicates size (if applicable) and if the data
+-- can be processed in a streaming fashion or not. If *disable* is set, previous
+-- announced bchunkstate capabilities are cancelled. If wildcard is set, the
+-- frameserver do not care about type information, otherwise an extensions field
+-- is provided with a ; separated list of extensions.
 --
 -- @note: "registered", {kind, title} - notice that the underlying engine
 -- has completed negotiating with the frameserver.
