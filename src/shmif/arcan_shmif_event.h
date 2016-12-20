@@ -1151,7 +1151,7 @@ typedef struct arcan_extevent {
  * STEPFRAME events. if once is set, it is interpreted as a hint to register as
  * a separate / independent timer.
  * (once) - & !0 > 0, fire once or use as periodic timer
- * (rate) - if once is set, relative to last tick otherwise every n ticks
+ * (rate) - if once is set, relative to last tick otherwise every n ticks.
  * (id)   - caller specified ID that will be used in stepframe reply
  * (dynamic) - set to !0 if it should be hooked to video frame delivery rather
  *             than an approximate monotonic clock
@@ -1175,16 +1175,7 @@ typedef struct arcan_extevent {
  * (extensions)- 7-bit ASCII filtered to alnum with ; separation between
  *               accepted extensions. * for wildcard support or empty [0]='\0'
  *               to indicate no-support for input/output.
- *
- *               It is also possible to advertise support for special data-
- *               formats from the following list:
- *                "arcan_gamma", ASCII encoded gamma ramp tables (\n separate):
- *                               display_id:n_fields\n
- *                               r_1 (0..1, float)
- *                               ..n
- *                               g_1 (0..1, float)
- *                               ..n
- */
+  */
 	struct {
 		uint64_t size;
 		uint8_t input;

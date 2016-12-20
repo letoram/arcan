@@ -470,13 +470,45 @@ bool arcan_shmif_resize(struct arcan_shmif_cont*,
  * Extended version of resize that supports requesting more audio / video
  * buffers for better swap/synch control. abuf_cnt and vbuf_cnt are limited
  * to the constants ARCAN_SHMIF_
+ *
+ * [meta] is used for extended / privileged data transfered and is specified
+ * as a bitmask of the following flags:
+ */
+enum shmif_ext_meta {
+	SHMIF_META_NONE = 0,
+
+/*
+ * apad/apad_type region is reserved for extended color management, with
+ * normal SHMIF_SIGVID operation synchronizing updates, server side updating
+ * the structure with valid values, and client modifying
+ */
+	SHMIF_META_CM = 2,
+
+/*
+ * The video buffers will be switched to represent a 16-bit Float(
+ * R16,G16,B16,A16) format for HDR content and tone-mapping or HDR output
+ * is expected of the arcan instance.
+ */
+	SHMIF_META_HDRF16 = 4,
+
+/*
+ * This is reserved and not completely fleshed out yet,
+ * but will switch the semantics of the video buffer to represent a texture
+ * map, and the apad/apad_type to carry a GPU friendly triangle format
+ */
+	SHMIF_META_VOBJ = 8
+
+};
+/*
+ * The acknowledged mask is reflected in cont->extack, and may subsequently
+ * affect apad and apad_type in the addr-> substructure as well.
  */
 struct shmif_resize_ext {
 	size_t abuf_sz;
 	ssize_t abuf_cnt;
 	ssize_t vbuf_cnt;
 	ssize_t samplerate;
-	int32_t meta;
+	uint32_t meta;
 };
 
 bool arcan_shmif_resize_ext(struct arcan_shmif_cont*,
@@ -548,6 +580,7 @@ struct arcan_shmif_cont {
  * changed. If that is a concern, define a handler using the shmif_resetfunc */
   union {
 		shmif_pixel* vidp;
+		float* floatp;
 		uint8_t* vidb;
 	};
 	union {
@@ -578,10 +611,9 @@ struct arcan_shmif_cont {
 	file_handle epipe;
 
 /*
- * Maintain a connection to the shared memory handle in order
- * to handle resizing (on platforms that support it, otherwise
- * define ARCAN_SHMIF_OVERCOMMIT which will only recalc pointers
- * on resize
+ * Maintain a connection to the shared memory handle in order to handle
+ * resizing (on platforms that support it, otherwise define
+ * ARCAN_SHMIF_OVERCOMMIT which will only recalc pointers on resize
  */
 	file_handle shmh;
 	size_t shmsize;
@@ -600,9 +632,19 @@ struct arcan_shmif_cont {
 	size_t w, h, stride, pitch;
 
 /*
+ * acknowledged extended attributes in response to an shmif_resize_ext
+ * request. Affects addr->apad and addr->apad_type as well.
+ *
+ * Read only, SYNCH ON EXT_RESIZE
+ */
+	uint32_t extack;
+
+/*
  * defaults to ARCAN_SHMIF_SAMPLERATE but may be renegotiated as part
  * of an extended resize. A deviation between the constant samplerate
  * and the negotiated one will likely lead to resampling server-side.
+ *
+ * Read only, SYNCH ON EXT_RESIZE
  */
 	size_t samplerate;
 
@@ -612,6 +654,8 @@ struct arcan_shmif_cont {
  * SHMIF_RHINT_IGNORE_ALPHA
  * SHMIF_RHINT_SUBREGION (only synch dirty region below)
  * If MULTIPLE video buffers are used, the SUBREGION applies to BOTH.
+ *
+ * Modifications SYNCH ON RESIZE
  */
 	uint8_t hints;
 
@@ -680,7 +724,16 @@ enum rhint_mask {
 	SHMIF_RHINT_ORIGO_UL = 0,
 	SHMIF_RHINT_ORIGO_LL = 1,
 	SHMIF_RHINT_SUBREGION = 2,
-	SHMIF_RHINT_IGNORE_ALPHA = 4
+	SHMIF_RHINT_IGNORE_ALPHA = 4,
+
+/*
+ * For shmif- vidp transfers, the source color space defaults to linear-RGB
+ * and for non-desktop, non-color sensitive applications, that is the more
+ * common.
+ * Setting this flag indicates that the source colorspace is in sR
+ * is in sRGB
+ */
+	SHMIF_RHINT_CSPACE_SRGB = 8,
 };
 
 struct arcan_shmif_page {

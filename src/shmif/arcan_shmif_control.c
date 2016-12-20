@@ -2031,6 +2031,7 @@ static void wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
 		}
 	}
 
+	printf("die waiting\n");
 	LOG("never got activate, connection died\n");
 	cont->priv->valid_initial = true;
 	arcan_shmif_drop(cont);

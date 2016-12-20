@@ -134,8 +134,11 @@ enum shmifext_setup_status arcan_shmifext_setup(
 	return SHMIFEXT_OK;
 }
 
-int arcan_shmifext_dev(struct arcan_shmif_cont* con)
+int arcan_shmifext_dev(struct arcan_shmif_cont* con, uintptr_t* dev)
 {
+	if (dev)
+		*dev = 0;
+
     return -1;
 }
 
