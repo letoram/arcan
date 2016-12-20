@@ -19,14 +19,24 @@ announcements, releases, videos / presentations and so on.
 
 For developer contact, check out the IRC channel #arcan on irc.freenode.net.
 
-Getting Started
-=====
+# Table of Contents
+1. [Getting Started](#started)
+    1. [Compiling](#compiling)
+2. [Compatibility](#compatibility)
+3. [Other Tools](#tools)
+4. [Appls to Try](#appls)
+5. [Database Configuration](#database)
+6. [Git layout](#gitlayout)
+
+Getting Started <a name="started"></a>
+====
+
 The rest of this readme is directed towards developers or very advanced end-
 users as there is no real work or priority being placed on wrapping/packaging
 the project and all its pieces at this stage.
 
 Compiling
-=====
+----
 There are a lot of build options for fine-grained control over your Arcan
 build. In this section we will just provide the bare essentials for a build
 on Linux, BSD or OSX. and you can check out the relevant sections in the wiki
@@ -72,7 +82,25 @@ with a resources and appl subdirectory. Symlink/bind-mount the data you want
 accessible into the .arcan/resources path, and have the runable appls in
 .arcan/appl.
 
-Other Tools
+Compatibility
+====
+The set of applications that can connect to arcan and use it as a display
+server is rather limited. There are specialized back-end patches for some
+projects, like SDL2, QEmu and Xorg that you can build and use. Please see
+external/compat.README for more information.
+
+There is also an alpha- quality Wayland implementation that is enabled as
+a separate protocol bridge tool. This can be found in tools/waybridge but
+first, checkout the tools/waybridge/README.md file.
+
+Lastly, there is also the option of using hijack (LD\_PRELOAD and similar
+mechanisms) for hacky ways to access legacy software. You can enable this
+with the build-time -DDISABLE\_HIJACK=OFF and get access to an SDL1.2 lib
+and an Xlib (extremely incomplete, only really useful when there's a dep-
+endency that is accidental rather than actually necessary). These will be
+built as libahijack\_sdl12.so and libahijack\_x11.so.
+
+Other Tools<a name="tools"></a>
 ====
 
 Depending on build-time configuration and dependencies, a number of other
@@ -111,20 +139,27 @@ allows you to run a large number of game engines and emulators.
 
 afsrv\_avfeed: custom skeleton for testing/ quick- wrapping some A/V device.
 
-Appls to try
+Appls to try<a name="appls"></a>
 ====
 
-With the engine built, and the welcome- test appl running, what to do now?
+With the engine built, and the welcome- test appl running, what to try next?
 That depends on your fancy. For appl- development you have some basic scripting
 tutorials and introduction documentation on the wiki.
 
 For desktop environment use, there are two usable ones available right now,
-'durden' and 'prio'. 'Durden' is a complex take on a tiling window manager
-such as Xmonad or i3. 'Prio' is a refinement of the 'Rio' window manager that
-is present as part.
+'durden' and 'prio'. 'Durden' is an attempt at evolving a complete, customizable,
+heavily integrated approach to the keyboard dominant management/use style promoted
+by tiling window managers like Xmonad or i3.
 
-You also have [senseye](https://github.com/letoram/senseye/wiki), which is an
-advanced data visualization, debugging and reverse engineering research- tool.
+'Prio' is instead a much simpler skeleton for a composable desktop where third
+party providers can be set to be responsible for different parts of the UI. Its
+window management model is an homage to the 'Rio' system used as part of the
+Plan9 operating system.
+
+Demonstrating how more advanced applications can be built, there is also
+[senseye](https://github.com/letoram/senseye/wiki), which is an research- level
+data visualization, debugging and reverse engineering tool - but senseye is likely
+to only be of use to those few that have an unhealthy interest in such areas.
 
 To try out durden or prio:
 
@@ -148,27 +183,8 @@ For details on configuring and using durden or prio, please refer to the
 respective README.md provided in each git. There are also demonstration
 videos on the [youtube-channel](https://www.youtube.com/user/arcanfrontend).
 
-Compatibility
-====
-The set of applications that can connect to arcan and use it as a display
-server is rather limited. There are specialized back-end patches for some
-projects, like SDL2, QEmu and Xorg that you can build and use. Please see
-external/compat.README for more information.
-
-There is also an alpha- quality Wayland implementation that is enabled as
-a separate protocol bridge tool. This can be found in tools/waybridge but
-first, checkout the tools/waybridge/README.md file.
-
-Lastly, there is also the option of using hijack (LD\_PRELOAD and similar
-mechanisms) for hacky ways to access legacy software. You can enable this
-with the build-time -DDISABLE\_HIJACK=OFF and get access to an SDL1.2 lib
-and an Xlib (extremely incomplete, only really useful when there's a dep-
-endency that is accidental rather than actually necessary). These will be
-built as libahijack\_sdl12.so and libahijack\_x11.so.
-
 Database
 =====
-
 Among the output binaries is one called arcan\_db. It is a tool that can be
 used to manipulate the sqlite- database that the engine requires for some
 features, e.g. application specific key/value store for settings, but also for
@@ -204,8 +220,6 @@ The second example would execute the program in the background, expect it to
 be able to handle the engine shmif- API for audio/video/input cooperatively
 or through an interposition library.
 
-Frameservers
-=====
 It can be cumbersome to set up database entries to just test something.
 Frameservers is a way of separating sensitive or crash-prone functions from
 the main engine for purposes such as running games or playing back video.
@@ -224,7 +238,7 @@ or video playback:
 
 but they are all best managed from the engine and its respective scripts.
 
-Filesystem Layout
+Filesystem Layout<a name="gitlayout"></a>
 =====
 The git-tree has the following structure:
 
