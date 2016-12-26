@@ -195,6 +195,25 @@ void platform_video_shutdown()
 			arcan_shmif_drop(&disp[i].conn);
 }
 
+size_t platform_video_displays(platform_display_id* dids, size_t* lim)
+{
+	size_t rv = 0;
+
+	for (size_t i = 0; i < MAX_DISPLAYS; i++){
+		if (!disp[i].conn.vidp)
+			continue;
+
+		if (dids && lim && *lim < rv)
+			dids[rv] = disp[i].id;
+		rv++;
+	}
+
+	if (lim)
+		*lim = MAX_DISPLAYS;
+
+	return rv;
+}
+
 bool platform_video_set_display_gamma(platform_display_id did,
 	size_t n_ramps, uint16_t* r, uint16_t* g, uint16_t* b)
 {

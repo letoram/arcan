@@ -1,10 +1,10 @@
 /*
- Arcan Shared Memory Interface, HMD metadata
+ Arcan Shared Memory Interface, Extended Mapping
 
  Friendly Warning:
- This is an extended internal sub-protocol only used for segmenting the
+ These are extended internal sub-protocols only used for segmenting the
  engine into multiple processes. It relies on data-types not defined in
- the rest of shmif and is therefore wholly unsitable for inclusion or
+ the rest of shmif and is therefore wholly unsuitable for inclusion or
  use in code elsewhere.
  */
 
@@ -40,18 +40,65 @@
  THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef HAVE_ARCAN_SHMIF_HMD
-#define HAVE_ARCAN_SHMIF_HMD
+#ifndef HAVE_ARCAN_SHMIF_SUBPROTO
+#define HAVE_ARCAN_SHMIF_SUBPROTO
+
+/*
+ * BSD checksum, from BSD sum. We calculate this to get lock-free updates which
+ * staying away from atomic/reordering (since there's no atomic 64- byte type
+ * anyhow). The added gain is that when metadata is synched and we're in a
+ * partial update, the failed checksum means there is new data on the way
+ * anyhow.
+ */
+static inline uint16_t subp_checksum(uint8_t* buf, size_t len)
+{
+	uint16_t res = 0;
+	for (size_t i = 0; i < len; i++){
+		if (res & 1)
+			res |= 0x10000;
+		res = ((res >> 1) + buf[i]) & 0xffff;
+	}
+	return res;
+}
+
+struct arcan_shmif_hdr16f;
+struct arcan_shmif_vector;
+
+struct ramp_block {
+	uint8_t format;
+	size_t plane_size;
+
+	union {
+		uint16_t* rplane;
+		uint16_t* gplane;
+		uint16_t* bplane;
+	} fmt_a;
+
+	uint16_t checksum;
+};
+
+struct arcan_shmif_ramp {
+/* PRODUCER SET, CONSUMER CLEAR */
+	_Atomic uint_least8_t dirty_in;
+
+/* CONSUMER SET, PRODUCER CLEAR */
+	_Atomic uint_least8_t dirty_out;
+
+/* PRODUCER INIT */
+	uint8_t n_blocks;
+
+/* PRODUCER INIT, CONSUMER_UPDATE */
+	struct ramp_block **ramp_in;
+	struct ramp_block **ramp_out;
+};
 
 #define HMD_VERSION 0x1000
-#define ATYPE_HMD 0xcafe
 
 /*
  * This structure is mapped into the adata area. It can be verified
  * if the apad value match the size and the apad_type matches the
  * SHMIF_APAD_HMD constant.
  */
-
 enum avatar_limbs {
 	PERSON = 0, /* abstract for global positioning */
 	NECK,
@@ -133,24 +180,6 @@ struct hmd_meta {
 	float distortion[4];
 	float abberation[4];
 };
-
-/*
- * BSD checksum, from BSD sum. We calculate this to get lock-free updates which
- * staying away from atomic/reordering (since there's no atomic 64- byte type
- * anyhow). The added gain is that when metadata is synched and we're in a
- * partial update, the failed checksum means there is new data on the way
- * anyhow.
- */
-static inline uint16_t hmd_checksum(uint8_t* buf, size_t len)
-{
-	uint16_t res = 0;
-	for (size_t i = 0; i < len; i++){
-		if (res & 1)
-			res |= 0x10000;
-		res = ((res >> 1) + buf[i]) & 0xffff;
-	}
-	return res;
-}
 
 struct hmd_limb {
 /* CONSUMER-SET: don't bother updating, won't be used. */

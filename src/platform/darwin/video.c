@@ -192,6 +192,15 @@ bool PLATFORM_SYMBOL(_video_display_edid)(platform_display_id did,
 	return false;
 }
 
+size_t PLATFORM_SYMBOL(_video_displays)(platform_display_id* dids, size_t* lim)
+{
+	if (dids && lim && *lim > 0){
+		dids[0] = 0;
+	}
+
+	return 1;
+}
+
 void* PLATFORM_SYMBOL(_video_gfxsym)(const char* sym)
 {
 	static void* dlh = NULL;

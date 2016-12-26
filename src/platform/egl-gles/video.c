@@ -354,6 +354,15 @@ const char* PLATFORM_SYMBOL(_video_capstr)()
 	return capstr;
 }
 
+size_t PLATFORM_SYMBOL(_video_displays)(platform_display_id* dids, size_t* lim)
+{
+	if (dids && lim && *lim > 0){
+		dids[0] = 0;
+	}
+
+	return 1;
+}
+
 int64_t PLATFORM_SYMBOL(_output_handle)(
 	struct storage_info_t* store, enum status_handle* status)
 {

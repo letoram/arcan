@@ -160,6 +160,15 @@ const char** platform_video_envopts()
 	return (const char**) envopts;
 }
 
+size_t platform_video_displays(platform_display_id* dids, size_t* lim)
+{
+	if (dids && lim && *lim > 0){
+		dids[0] = 0;
+	}
+
+	return 1;
+}
+
 void platform_video_setsynch(const char* arg)
 {
 	int ind = 0;

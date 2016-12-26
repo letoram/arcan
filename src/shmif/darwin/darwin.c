@@ -1,4 +1,4 @@
-define WANT_ARCAN_SHMIF_HELPER
+#define WANT_ARCAN_SHMIF_HELPER
 #define AGP_ENABLE_UNPURE
 
 #include "../arcan_shmif.h"
