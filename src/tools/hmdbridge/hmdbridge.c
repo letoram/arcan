@@ -19,7 +19,7 @@
  */
 #include <arcan_shmif.h>
 #include "arcan_math.h"
-#include <arcan_shmif_hmd.h>
+#include <arcan_shmif_sub.h>
 #include <hidapi/hidapi.h>
 #include <pthread.h>
 
@@ -89,12 +89,12 @@ int main(int argc, char** argv)
 		return EXIT_FAILURE;
 	}
 
-	if (!con.addr->apad || con.addr->apad_type != ATYPE_HMD){
-		fprintf(stderr, "shmif context does not support HMD metadata\n");
+	struct arcan_shmif_hmd* hmd = arcan_shmif_substruct(&con, SHMIF_META_HMD).hmd;
+	if (!hmd){
+		fprintf(stderr, "couldn't retrieve HMD substructure\n");
 		return EXIT_FAILURE;
 	}
 
-	struct arcan_shmif_hmd* hmd = con.addr->adata;
 	if (hmd->version != HMD_VERSION){
 		fprintf(stderr, "header/shmif-hmd version mismatch (in: %d, want: %d)\n",
 			hmd->version, HMD_VERSION);
