@@ -429,6 +429,25 @@ static int setup_buffers(struct dispout* d)
 	return 0;
 }
 
+size_t platform_video_displays(platform_display_id* dids, size_t* lim)
+{
+	size_t rv = 0;
+
+	for (size_t i = 0; i < MAX_DISPLAYS; i++){
+		if (displays[i].state == DISP_UNUSED)
+			continue;
+
+		if (dids && lim && *lim < rv)
+			dids[rv] = i;
+		rv++;
+	}
+
+	if (lim)
+		*lim = MAX_DISPLAYS;
+
+	return rv;
+}
+
 int platform_video_cardhandle(int cardn)
 {
 	if (cardn < 0 || cardn > MAX_NODES)

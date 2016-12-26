@@ -157,6 +157,15 @@ bool platform_video_set_mode(platform_display_id disp, platform_mode_id mode)
 	return disp == 0 && mode == 0;
 }
 
+size_t platform_video_displays(platform_display_id* dids, size_t* lim)
+{
+	if (dids && lim && *lim > 0){
+		dids[0] = 0;
+	}
+
+	return 1;
+}
+
 struct monitor_mode* platform_video_query_modes(
 	platform_display_id id, size_t* count)
 {

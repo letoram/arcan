@@ -381,6 +381,13 @@ bool platform_video_set_display_gamma(platform_display_id did,
 	size_t n_ramps, uint16_t* r, uint16_t* g, uint16_t* b);
 
 /*
+ * Return the dynamic count of available displays, and [if set], their
+ * respective values in [dids] limited by [lim].
+ * [lim] will be updated with the upper limit of displays (if applicable).
+ */
+size_t platform_video_displays(platform_display_id* dids, size_t* lim);
+
+/*
  * get the current gamma ramps for the specified display.
  *
  * return [true] if the [did] is valid, the underlying display
