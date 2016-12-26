@@ -65,6 +65,7 @@ struct arcan_shmif_hdr16f;
 struct arcan_shmif_vector;
 
 struct ramp_block {
+	bool output;
 	uint8_t format;
 	size_t plane_size;
 
@@ -74,14 +75,15 @@ struct ramp_block {
 		uint16_t* bplane;
 	} fmt_a;
 
+	uint8_t edid[128];
 	uint16_t checksum;
 };
 
 struct arcan_shmif_ramp {
-/* PRODUCER SET, CONSUMER CLEAR */
+/* BITMASK, PRODUCER SET, CONSUMER CLEAR */
 	_Atomic uint_least8_t dirty_in;
 
-/* CONSUMER SET, PRODUCER CLEAR */
+/* BITMASK, CONSUMER SET, PRODUCER CLEAR */
 	_Atomic uint_least8_t dirty_out;
 
 /* PRODUCER INIT */
@@ -92,6 +94,12 @@ struct arcan_shmif_ramp {
 	struct ramp_block **ramp_out;
 };
 
+/*
+ * To avoid namespace collisions, the detailed HMD structure relies
+ * on having access to the definitions in arcan_math.h from the core
+ * engine code.
+ */
+#ifdef HAVE_ARCAN_MATH
 #define HMD_VERSION 0x1000
 
 /*
@@ -228,5 +236,5 @@ struct arcan_shmif_hmd {
 /* PRODUCER UPDATE (see struct definition) */
 	struct hmd_limb limbs[];
 };
-
+#endif
 #endif

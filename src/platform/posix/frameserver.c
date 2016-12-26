@@ -1038,9 +1038,23 @@ bool arcan_frameserver_resize(struct arcan_frameserver* s)
 	size_t vbufc = atomic_load(&shmpage->vpending);
 	size_t abufc = atomic_load(&shmpage->apending);
 	size_t samplerate = atomic_load(&shmpage->audiorate);
+	unsigned aproto = atomic_load(&shmpage->apad_type);
+
 	vbufc = vbufc > FSRV_MAX_VBUFC ? FSRV_MAX_VBUFC : vbufc;
 	abufc = abufc > FSRV_MAX_ABUFC ? FSRV_MAX_ABUFC : abufc;
 	vbufc = vbufc == 0 ? 1 : vbufc;
+
+/*
+ * Determine if we should switch/ enable privileged subprotocols
+ * This requires the metamask to be updated (which can be done at
+ * the preroll or register stage)
+ */
+	bool reset_proto = false;
+	size_t apad_sz = s->desc.aproto;
+	if (aproto != s->desc.aproto && (aproto & s->metamask)){
+		apad_sz = arcan_frameserver_protosize(s, aproto);
+		reset_proto = true;
+	}
 
 /*
  * you can potentially have a really big audiobuffer (or well, quite a few 64k
@@ -1062,7 +1076,7 @@ bool arcan_frameserver_resize(struct arcan_frameserver* s)
 /* shrink number of video buffers if we don't fit */
 	size_t shmsz;
 	do{
-		shmsz = shmpage_size(w, h, vbufc, abufc, abufsz, s->desc.apad);
+		shmsz = shmpage_size(w, h, vbufc, abufc, abufsz, apad_sz);
 	} while (shmsz > ARCAN_SHMPAGE_MAX_SZ && vbufc-- > 1);
 
 /* initial sanity check */
@@ -1142,6 +1156,11 @@ bool arcan_frameserver_resize(struct arcan_frameserver* s)
 	shmpage->vpending = s->vbuf_cnt;
 	state = true;
 
+/* realize the sub-protocol */
+	if (reset_proto){
+		arcan_frameserver_setproto(s, aproto);
+		atomic_store(&shmpage->apad_type, aproto);
+	}
 	goto done;
 
 fail:

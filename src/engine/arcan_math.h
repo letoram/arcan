@@ -2,8 +2,8 @@
  * No copyright claimed, Public Domain
  */
 
-#ifndef _HAVE_ARCAN_MATH
-#define _HAVE_ARCAN_MATH
+#ifndef HAVE_ARCAN_MATH
+#define HAVE_ARCAN_MATH
 
 #define EPSILON 0.000001f
 #define DEG2RAD(X) (X * M_PI / 180)

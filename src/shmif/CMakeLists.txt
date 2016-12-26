@@ -40,6 +40,7 @@ set (SHMIF_HEADERS
 	${ASD}/shmif/arcan_shmif_interop.h
 	${ASD}/shmif/arcan_shmif_event.h
 	${ASD}/shmif/arcan_shmif_tui.h
+	${ASD}/shmif/arcan_shmif_sub.h
 	${ASD}/shmif/arcan_shmif.h
 )
 
