@@ -30,6 +30,7 @@ include_directories(
 	${ARCAN_SHMIF_INCLUDE_DIR}
 	${ARCAN_ROOT_DIR}/src/engine
 	${ARCAN_ROOT_DIR}/src/shmif
+	${ARCAN_ROOT_DIR}/external
 )
 
 SET(LIBRARIES
@@ -51,6 +52,7 @@ endif()
 
 set(SOURCES
 	hmdbridge.c
+	ahrs.c
 	${ARCAN_ROOT_DIR}/src/engine/arcan_math.c
 	${ARCAN_ROOT_DIR}/external/hidapi/hid.c
 	${ARCAN_ROOT_DIR}/external/hidapi/hidapi.h
