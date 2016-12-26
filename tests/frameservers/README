@@ -18,6 +18,10 @@ clockreq/ needs the corresponding clockreq appl in interactive running
  (use clockreq as connection path) and tests both the builtin clock
  handler for monotonic event delivery and for timers.
 
+gamma/ is used for testing sub-structure negotiation for exposing display
+ metadata and (optional) control/manipulation and safe-guards against
+ broken table updates.
+
 iodump/ will print out text representations for received input events
  to standard output, working as a simple debugging tool for I/O translation
  and routing.
