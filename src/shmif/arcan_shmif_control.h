@@ -493,14 +493,21 @@ enum shmif_ext_meta {
 
 /*
  * This is reserved and not completely fleshed out yet,
- * but will switch the semantics of the video buffer to represent a texture
- * map, and the apad/apad_type to carry a GPU friendly triangle format
+ * but will switch the semantics of the video buffer area to represent a
+ * texture-maps + GPU friendly packing format - with the apad area to
+ * define metadata.
  */
-	SHMIF_META_VOBJ = 8
+	SHMIF_META_VOBJ = 8,
 
+/*
+ * This contains the meta for one complete avatar tracking + display
+ * The common case for this is for a tool like the hmdserver to provide
+ * data.
+ */
+	SHMIF_META_HMD = 16
 };
 /*
- * The acknowledged mask is reflected in cont->extack, and may subsequently
+ * The acknowledged mask is reflected in cont->adata, and may subsequently
  * affect apad and apad_type in the addr-> substructure as well.
  */
 struct shmif_resize_ext {
@@ -511,8 +518,34 @@ struct shmif_resize_ext {
 	uint32_t meta;
 };
 
+/*
+ * Forward declarations of the current sub- structures, and a union of
+ * the safe / known return pointers in order to avoid explicit casting
+ */
+struct arcan_shmif_hmd;
+struct arcan_shmif_ramp;
+struct arcan_shmif_hdr16f;
+struct arcan_shmif_vector;
+union shmif_ext_substruct {
+	struct arcan_shmif_hmd* hmd;
+	struct arcan_shmif_ramp* cramp;
+	struct arcan_shmif_hdr16f* hdr;
+	struct arcan_shmif_vector* vector;
+};
+
+/*
+ * Extract a valid sub-structure from the context. This should have been
+ * negotiated with an extended resize request in advance, and need to be
+ * re- extracted in the event of an extended meta renegotiation, a reset
+ * or a migration. The safest pattern is to simply call when the data is
+ * needed and never cache.
+ */
+union shmif_ext_substruct arcan_shmif_substruct(
+	struct arcan_shmif_cont*, enum shmif_ext_meta);
+
 bool arcan_shmif_resize_ext(struct arcan_shmif_cont*,
 	unsigned width, unsigned height, struct shmif_resize_ext);
+
 /*
  * Unmap memory, release semaphores and related resources
  */
@@ -637,7 +670,7 @@ struct arcan_shmif_cont {
  *
  * Read only, SYNCH ON EXT_RESIZE
  */
-	uint32_t extack;
+	uint32_t adata;
 
 /*
  * defaults to ARCAN_SHMIF_SAMPLERATE but may be renegotiated as part
@@ -721,17 +754,37 @@ struct arcan_shmif_initial {
 };
 
 enum rhint_mask {
+/*
+ * Indicate if the buffer is to be treated as having its y=0 in the upper-
+ * left corner of an imaginary screen, or in the lower-left. The default is
+ * upper left, but many 3D accelerated drawing systems use the other form.
+ */
 	SHMIF_RHINT_ORIGO_UL = 0,
 	SHMIF_RHINT_ORIGO_LL = 1,
+
+/*
+ * Indicate that only a smaller portion of the buffer actually needs to
+ * be updated. It is still up to the server to decide what will actually
+ * be synched however, as it may not have access to a cached backing store
+ * in which to blit the subregion.
+ */
 	SHMIF_RHINT_SUBREGION = 2,
+
+/*
+ * Indicate that the contents of the alpha channel must be ignored or the
+ * output will not look as inteded. This is typical when the data source
+ * comes from a context that leaves the alpha channel in a 0- state and
+ * the client do not want to waste cycles repacking.
+ */
 	SHMIF_RHINT_IGNORE_ALPHA = 4,
 
 /*
  * For shmif- vidp transfers, the source color space defaults to linear-RGB
  * and for non-desktop, non-color sensitive applications, that is the more
  * common.
- * Setting this flag indicates that the source colorspace is in sR
- * is in sRGB
+ * Setting this flag indicates that the source colorspace is in sRB format
+ * and that the engine should pick shaders and blending algorithms that can
+ * take this non-linearyity into account
  */
 	SHMIF_RHINT_CSPACE_SRGB = 8,
 };
@@ -872,12 +925,12 @@ struct arcan_shmif_page {
 	process_handle parent;
 
 /*
- * [ARCAN-SET]
+ * [FSRV-OR-ARCAN-SET]
+ * Possibly changed during an extended resize
  * Set once during initilization, and will be zero/NULL for most connection.
  * The intended use is to provide a mechanism for further engine segmentation
  * and for more complex data sources. A prime example is the hmdsupport tool.
  */
-	volatile uint32_t apad, apad_type;
-	void* adata;
+	volatile _Atomic uint32_t apad, apad_type;
 };
 #endif

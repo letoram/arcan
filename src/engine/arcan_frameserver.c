@@ -23,6 +23,7 @@
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_shmif.h"
+#include "arcan_shmif_sub.h"
 #include "arcan_event.h"
 #include "arcan_video.h"
 #include "arcan_videoint.h"
@@ -807,6 +808,71 @@ static inline void emit_droppedframe(arcan_frameserver* src,
 	};
 
 	arcan_event_enqueue(arcan_event_defaultctx(), &deliv);
+}
+
+size_t arcan_frameserver_protosize(arcan_frameserver* ctx, unsigned proto)
+{
+	size_t tot = 0;
+
+/*
+ * Complicated, as there might be a number of different displays with
+ * different lut formats, edid size etc.
+ *
+ * Cheap/lossy Formula:
+ *  2(get/set) * (max_displays * (max_lut_size + edid(128) + structs))
+ *
+ * Other nasty bit is that the device mapping isn't exposed directly,
+ * it's the user- controlled parts of the engine that has to provide
+ * the actual tables to use.
+ */
+	if (proto & SHMIF_META_CM){
+		size_t pfc = platform_video_displays(NULL, NULL);
+		platform_display_id ids[pfc];
+		platform_video_displays(ids, &pfc);
+	}
+
+	if (proto & SHMIF_META_HDRF16){
+/* nothing now, possibly reserved for tone-mapping */
+	}
+
+	if (proto & SHMIF_META_VOBJ){
+/* nothing now, somewhat pesky in that we need a limit on ops */
+	}
+
+	if (proto & SHMIF_META_HMD){
+		tot += sizeof(struct arcan_shmif_hmd);
+	}
+
+	return tot;
+}
+
+void arcan_frameserver_setproto(arcan_frameserver* ctx, unsigned proto)
+{
+/* safety check final offsets etc. against ctx->desc.apad */
+	if (proto & SHMIF_META_CM){
+/* correctly map and then reset */
+	}
+	else
+		ctx->desc.aext.gamma = NULL;
+
+	if (proto & SHMIF_META_HDRF16){
+/* shouldn't "need" anything here right now */
+	}
+	else
+		ctx->desc.aext.hdr = NULL;
+
+	if (proto & SHMIF_META_VOBJ){
+	}
+	else
+		ctx->desc.aext.vector = NULL;
+
+	if (proto & SHMIF_META_HMD){
+
+	}
+	else
+		ctx->desc.aext.hmd = NULL;
+
+	ctx->desc.aproto = proto;
 }
 
 /*

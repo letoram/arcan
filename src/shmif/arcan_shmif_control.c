@@ -231,6 +231,8 @@ struct shmif_hidden {
 	enum ARCAN_FLAGS flags;
 	int type;
 
+	enum shmif_ext_meta atype;
+
 	struct arcan_evctx inev;
 	struct arcan_evctx outev;
 
@@ -1035,6 +1037,7 @@ static void setup_avbuf(struct arcan_shmif_cont* res)
 	res->h = atomic_load(&res->addr->h);
 	res->stride = res->w * ARCAN_SHMPAGE_VCHANNELS;
 	res->pitch = res->w;
+	res->priv->atype = atomic_load(&res->addr->apad_type);
 
 	res->priv->vbuf_cnt = atomic_load(&res->addr->vpending);
 	res->priv->abuf_cnt = atomic_load(&res->addr->apending);
@@ -1292,6 +1295,17 @@ void arcan_shmif_setevqs(struct arcan_shmif_page* dst,
 	outq->eventbuf_sz = PP_QUEUE_SZ;
 }
 
+union shmif_ext_substruct arcan_shmif_substruct(
+	struct arcan_shmif_cont* ctx, enum shmif_ext_meta meta)
+{
+	union shmif_ext_substruct sub = {0};
+/*
+ * Incomplete, the check of meta against ctx and the retrieval of the
+ * actual pointer have not been finalized
+ */
+	return sub;
+}
+
 unsigned arcan_shmif_signalhandle(struct arcan_shmif_cont* ctx,
 	enum arcan_shmif_sigmask mask, int handle, size_t stride, int format, ...)
 {
@@ -1461,7 +1475,8 @@ void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 
 static bool shmif_resize(struct arcan_shmif_cont* arg,
 	unsigned width, unsigned height,
-	size_t abufsz, int vidc, int audc, int samplerate)
+	size_t abufsz, int vidc, int audc, int samplerate,
+	int adata)
 {
 	if (!arg->addr || !arcan_shmif_integrity_check(arg) ||
 	width > PP_SHMPAGE_MAXW || height > PP_SHMPAGE_MAXH)
@@ -1499,6 +1514,7 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 /* synchronize hints as _ORIGO_LL and similar changes only synch
  * on resize */
 	atomic_store(&arg->addr->hints, arg->hints);
+	atomic_store(&arg->addr->apad_type, adata);
 
 	if (samplerate < 0)
 		atomic_store(&arg->addr->audiorate, arg->samplerate);
@@ -1571,14 +1587,14 @@ bool arcan_shmif_resize_ext(struct arcan_shmif_cont* arg,
 	unsigned width, unsigned height, struct shmif_resize_ext ext)
 {
 	return shmif_resize(arg, width, height,
-		ext.abuf_sz, ext.vbuf_cnt, ext.abuf_cnt, ext.samplerate);
+		ext.abuf_sz, ext.vbuf_cnt, ext.abuf_cnt, ext.samplerate, ext.meta);
 }
 
 bool arcan_shmif_resize(struct arcan_shmif_cont* arg,
 	unsigned width, unsigned height)
 {
 	return shmif_resize(arg, width, height,
-		arg->addr->abufsize, -1, -1, -1);
+		arg->addr->abufsize, -1, -1, -1, 0);
 }
 
 shmif_trigger_hook arcan_shmif_signalhook(struct arcan_shmif_cont* cont,
@@ -1883,8 +1899,8 @@ enum shmif_migrate_status arcan_shmif_migrate(
 	size_t w = atomic_load(&cont->addr->w);
 	size_t h = atomic_load(&cont->addr->h);
 
-	if (!shmif_resize(&ret, w, h, cont->abufsize,
-		cont->priv->vbuf_cnt, cont->priv->abuf_cnt, cont->samplerate)){
+	if (!shmif_resize(&ret, w, h, cont->abufsize, cont->priv->vbuf_cnt,
+		cont->priv->abuf_cnt, cont->samplerate, cont->priv->atype)){
 		arcan_shmif_drop(&ret);
 		return SHMIF_MIGRATE_TRANSFER_FAIL;
 	}
@@ -2031,7 +2047,6 @@ static void wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
 		}
 	}
 
-	printf("die waiting\n");
 	LOG("never got activate, connection died\n");
 	cont->priv->valid_initial = true;
 	arcan_shmif_drop(cont);

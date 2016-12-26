@@ -51,8 +51,16 @@ struct arcan_frameserver_meta {
 	uint8_t channels;
 	uint16_t vfthresh;
 
-/* subprotocol area */
+/* subprotocol area, these will all be directly memory mapped,
+ * so access need to happen in a shm- criticial section */
 	size_t apad;
+	unsigned aproto;
+	struct {
+		struct arcan_shmif_ramps* gamma;
+		struct arcan_shmif_hmd* hmd;
+		struct arcan_shmif_vector* vector;
+		struct arcan_shmif_hdr* hdr;
+	} aext;
 
 /* statistics for tracking performance / timing */
 	bool callback_framestate;
@@ -89,6 +97,9 @@ struct arcan_frameserver {
 	char clientkey[PP_SHMPAGE_SHMKEYLIM];
 	off_t sockrofs;
 	char* sockaddr, (* sockkey);
+
+/* list of permitted meta- protocols for this connection */
+	unsigned metamask;
 
 	struct {
 		bool alive;
@@ -256,6 +267,25 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver*, arcan_event*);
 void arcan_frameserver_pollevent(arcan_frameserver*, arcan_evctx*);
 
 /*
+ * Attempt to retrieve a copy of the current LUT-ramps for a specific
+ * display index, returns false if the client has not requested extended
+ * metadata, true otherwise.
+ */
+bool arcan_frameserver_getramps(
+	arcan_frameserver*, int index, float* table, size_t* ch_sz);
+
+/*
+ * Attempt to update a specific display index with new ramps and
+ * (optional) edid metadata block.
+ *
+ * Returns false if the client has not requested extended display
+ * metadata, true otherwise.
+ */
+bool arcan_frameserver_setramps(
+	arcan_frameserver*, int index, float* table, size_t ch_sz,
+	uint8_t* edid, size_t edid_sz);
+
+/*
  * Symbol should only be used by the backend to reach OS specific
  * implementations (_unix.c / win32 )
  */
@@ -319,6 +349,19 @@ bool arcan_frameserver_validchild(arcan_frameserver* ctx);
  * contents of the struct will be reset)
  */
 void arcan_frameserver_killchild(arcan_frameserver* ctx);
+
+/*
+ * Provide a size calculation for the specified subprotocol in the context
+ * of a specific frameserver. 0 if unknown protocol or not applicable.
+ */
+size_t arcan_frameserver_protosize(arcan_frameserver* ctx, unsigned proto);
+
+/*
+ * [PLATFORM-ONLY]
+ * Prepare the necessary metadata for a specific sub-protocol, should
+ * only originate from a platform implementation of the resize handler.
+ */
+void arcan_frameserver_setproto(arcan_frameserver* ctx, unsigned proto);
 
 /*
  * Release any shared memory resources associated with the frameserver
