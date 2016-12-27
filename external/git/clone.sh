@@ -9,6 +9,7 @@ while [ -h "$SOURCE" ]; do
 done
 DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
 
-git clone http://luajit.org/git/luajit-2.0.git $DIR/luajit
-git clone git://git.sv.nongnu.org/freetype/freetype2.git $DIR/freetype
-git clone git://repo.or.cz/openal-soft.git $DIR/openal
+git clone http://luajit.org/git/luajit-2.0.git "$DIR/luajit"
+git clone git://git.sv.nongnu.org/freetype/freetype2.git "$DIR/freetype"
+git clone git://repo.or.cz/openal-soft.git "$DIR/openal"
+git -C "$DIR/openal" am "../0001-adding-arcan-shmif-support.patch"
