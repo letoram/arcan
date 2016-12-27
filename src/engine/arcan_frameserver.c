@@ -112,6 +112,8 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 	}
 
 	jmp_buf buf;
+	char msg[32] = "SIGBUS on free";
+
 	if (0 != setjmp(buf))
 		goto out;
 
@@ -161,6 +163,7 @@ out:
 		.fsrv.audio = src->aid,
 		.fsrv.otag = src->tag
 	};
+	memcpy(&sevent.fsrv.message, msg, 32);
 	arcan_event_enqueue(arcan_event_defaultctx(), &sevent);
 
 /* we don't reset state here for once as the

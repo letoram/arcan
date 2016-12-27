@@ -1262,16 +1262,19 @@ static void slim_utf8_push(char* dst, int ulim, char* inmsg)
 {
 	uint32_t state = 0;
 	uint32_t codepoint = 0;
+	size_t i = 0;
 
-	for (size_t i = 0; inmsg[i] != '\0', i < ulim; i++){
+	for (; inmsg[i] != '\0', i < ulim; i++){
 		dst[i] = inmsg[i];
 
 		if (utf8_decode(&state, &codepoint, (uint8_t)(inmsg[i])) == UTF8_REJECT)
 			goto out;
 	}
 
-	if (state == UTF8_ACCEPT)
+	if (state == UTF8_ACCEPT){
+		dst[i] = '\0';
 		return;
+	}
 
 /* for broken state, just ignore. The other options would be 'warn' (will spam)
  * or to truncate (might in some cases be prefered). */
@@ -3950,9 +3953,12 @@ static const char* domain_str(int num)
  * and costly step in the whole chain, planned to switch into a more optimized
  * less string- damaged approach around the hardening stage.
  */
+#define MSGBUF_UTF8(X) slim_utf8_push(msgbuf, COUNT_OF((X))-1, (char*)(X))
+#define FLTPUSH(X,Y,Z) fltpush(msgbuf, COUNT_OF((X))-1, (char*)((X)), Y, Z)
 void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 {
 	bool adopt_check = false;
+	char msgbuf[sizeof(arcan_event)+1];
 
 	if (ev->category == EVENT_IO && grabapplfunction(ctx, "input", 5)){
 		int top = funtable(ctx, ev->io.kind);
@@ -4143,14 +4149,12 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 	}
 	else if (ev->category == EVENT_EXTERNAL){
 		bool preroll = false;
-		char mcbuf[sizeof(ev->ext.message.data)+1];
 /* need to jump through a few hoops to get hold of the possible callback */
 		arcan_vobject* vobj = arcan_video_getobject(ev->ext.source);
 		if (!vobj || vobj->feed.state.tag != ARCAN_TAG_FRAMESERV)
 			return;
 
 		int reset = lua_gettop(ctx);
-		size_t extmsg_sz = COUNT_OF(ev->ext.message.data);
 		arcan_frameserver* fsrv = vobj->feed.state.ptr;
 		if (fsrv->tag == LUA_NOREF)
 			return;
@@ -4164,14 +4168,14 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		switch (ev->ext.kind){
 		case EVENT_EXTERNAL_IDENT:
 			tblstr(ctx, "kind", "ident", top);
-			slim_utf8_push(mcbuf, extmsg_sz, (char*)ev->ext.message.data);
-			tblstr(ctx, "message", mcbuf, top);
+			MSGBUF_UTF8(ev->ext.message.data);
+			tblstr(ctx, "message", msgbuf, top);
 		break;
 		case EVENT_EXTERNAL_COREOPT:
 			tblstr(ctx, "kind", "coreopt", top);
 			tblnum(ctx, "slot", ev->ext.coreopt.index, top);
-			slim_utf8_push(mcbuf, extmsg_sz-1, (char*)ev->ext.coreopt.data);
-			tblstr(ctx, "argument", mcbuf, top);
+			MSGBUF_UTF8(ev->ext.message.data);
+			tblstr(ctx, "argument", msgbuf, top);
 			if (ev->ext.coreopt.type == 0)
 				tblstr(ctx, "type", "key", top);
 			else if (ev->ext.coreopt.type == 1)
@@ -4208,8 +4212,8 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			push_view(ctx, &ev->ext, fsrv, top);
 		break;
 		case EVENT_EXTERNAL_CURSORHINT:
-			fltpush(mcbuf, extmsg_sz, (char*)ev->ext.message.data, flt_alpha, '?');
-			tblstr(ctx, "cursor", mcbuf, top);
+			FLTPUSH(ev->ext.message.data, flt_alpha, '?');
+			tblstr(ctx, "cursor", msgbuf, top);
 			tblstr(ctx, "kind", "cursorhint", top);
 		break;
 		case EVENT_EXTERNAL_ALERT:
@@ -4217,14 +4221,14 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			if (0)
 		case EVENT_EXTERNAL_MESSAGE:
 				tblstr(ctx, "kind", "message", top);
-			slim_utf8_push(mcbuf, extmsg_sz, (char*)ev->ext.message.data);
+			MSGBUF_UTF8(ev->ext.message.data);
 			tblbool(ctx, "multipart", ev->ext.message.multipart != 0, top);
-			tblstr(ctx, "message", mcbuf, top);
+			tblstr(ctx, "message", msgbuf, top);
 		break;
 		case EVENT_EXTERNAL_FAILURE:
 			tblstr(ctx, "kind", "failure", top);
-			slim_utf8_push(mcbuf, extmsg_sz, (char*)ev->ext.message.data);
-			tblstr(ctx, "message", mcbuf, top);
+			MSGBUF_UTF8(ev->ext.message.data);
+			tblstr(ctx, "message", msgbuf, top);
 		break;
 		case EVENT_EXTERNAL_FRAMESTATUS:
 			tblstr(ctx, "kind", "framestatus", top);
@@ -4234,22 +4238,19 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			tblnum(ctx, "fhint", ev->ext.framestatus.fhint, top);
 		break;
 		case EVENT_EXTERNAL_STREAMINFO:
-			fltpush(mcbuf, COUNT_OF(ev->ext.streaminf.langid),
-				(char*)ev->ext.streaminf.langid, flt_Alpha, '?');
+			FLTPUSH(ev->ext.streaminf.langid, flt_Alpha, '?');
 			tblstr(ctx, "kind", "streaminfo", top);
-			tblstr(ctx, "lang", mcbuf, top);
+			tblstr(ctx, "lang", msgbuf, top);
 			tblnum(ctx, "streamid", ev->ext.streaminf.streamid, top);
 			tblstr(ctx, "type",
 				streamtype(ev->ext.streaminf.datakind),top);
 		break;
 		case EVENT_EXTERNAL_STREAMSTATUS:
 			tblstr(ctx, "kind", "streamstatus", top);
-			fltpush(mcbuf, COUNT_OF(ev->ext.streamstat.timestr),
-				(char*)ev->ext.streamstat.timestr, flt_num, '?');
-			tblstr(ctx, "ctime", mcbuf, top);
-			fltpush(mcbuf, COUNT_OF(ev->ext.streamstat.timelim),
-				(char*)ev->ext.streamstat.timelim, flt_num, '?');
-			tblstr(ctx, "endtime", mcbuf, top);
+			FLTPUSH(ev->ext.streamstat.timestr, flt_num, '?');
+			tblstr(ctx, "ctime", msgbuf, top);
+			FLTPUSH(ev->ext.streamstat.timelim, flt_num, '?');
+			tblstr(ctx, "endtime", msgbuf, top);
 			tblnum(ctx,"completion",ev->ext.streamstat.completion,top);
 			tblnum(ctx, "frameno", ev->ext.streamstat.frameno, top);
 			tblnum(ctx,"streaming",
@@ -4285,19 +4286,14 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				lua_settop(ctx, reset);
 				return;
 			}
-			slim_utf8_push(mcbuf,
-				COUNT_OF(ev->ext.labelhint.descr),
-				(char*)ev->ext.labelhint.descr
-			);
-			snprintf(fsrv->title, COUNT_OF(fsrv->title), "%s", mcbuf);
-			tblstr(ctx, "description", mcbuf, top);
+			MSGBUF_UTF8(ev->ext.labelhint.descr);
+			snprintf(fsrv->title, COUNT_OF(fsrv->title), "%s", msgbuf);
+			tblstr(ctx, "description", msgbuf, top);
 			tblstr(ctx, "kind", "input_label", top);
-			fltpush(mcbuf, COUNT_OF(ev->ext.labelhint.label),
-				ev->ext.labelhint.label, flt_Alphanum, '?');
-			tblstr(ctx, "labelhint", mcbuf, top);
-			fltpush(mcbuf, COUNT_OF(ev->ext.labelhint.initial),
-				ev->ext.labelhint.initial, flt_Alphanum, '?');
-			tblstr(ctx, "initial", mcbuf, top);
+			FLTPUSH(ev->ext.labelhint.label, flt_Alphanum, '?');
+			tblstr(ctx, "labelhint", msgbuf, top);
+			FLTPUSH(ev->ext.labelhint.initial, flt_Alphanum, '?');
+			tblstr(ctx, "initial", msgbuf, top);
 			tblstr(ctx, "datatype", idt, top);
 		}
 		break;
@@ -4311,9 +4307,8 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			else if (ev->ext.bchunk.extensions[0] == '*')
 				tblbool(ctx, "wildcard", true, top);
 			else{
-				fltpush(mcbuf, COUNT_OF(ev->ext.bchunk.extensions),
-					(char*)ev->ext.bchunk.extensions, flt_chunkfn, '\0');
-				tblstr(ctx, "extensions", mcbuf, top);
+				FLTPUSH(ev->ext.bchunk.extensions, flt_chunkfn, '\0');
+				tblstr(ctx, "extensions", msgbuf, top);
 			}
 		break;
 		case EVENT_EXTERNAL_STATESIZE:
@@ -4341,10 +4336,9 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			}
 			tblstr(ctx, "kind", "registered", top);
 			tblstr(ctx, "segkind", fsrvtos(ev->ext.registr.kind), top);
-			slim_utf8_push(mcbuf,
-				COUNT_OF(ev->ext.registr.title), (char*)ev->ext.registr.title);
-				snprintf(fsrv->title, COUNT_OF(fsrv->title), "%s", mcbuf);
-			tblstr(ctx, "title", mcbuf, top);
+			MSGBUF_UTF8(ev->ext.registr.title);
+			snprintf(fsrv->title, COUNT_OF(fsrv->title), "%s", msgbuf);
+			tblstr(ctx, "title", msgbuf, top);
 
 			size_t dsz;
 			char* b64 = (char*) arcan_base64_encode(
@@ -4380,6 +4374,8 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			lua_newtable(ctx);
 			int top = lua_gettop(ctx);
 			tblstr(ctx, "kind", "terminated", top);
+			MSGBUF_UTF8(ev->fsrv.message);
+			tblstr(ctx, "last_words", msgbuf, top);
 			luactx.cb_source_kind = CB_SOURCE_FRAMESERVER;
 			wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "frameserver_event");
 			luactx.cb_source_kind = CB_SOURCE_NONE;
@@ -4426,7 +4422,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		case EVENT_FSRV_EXTCONN :{
 			char msgbuf[COUNT_OF(ev->fsrv.ident)+1];
 			tblstr(ctx, "kind", "connected", top);
-			slim_utf8_push(msgbuf, COUNT_OF(msgbuf), ev->fsrv.ident);
+			MSGBUF_UTF8(ev->fsrv.ident);
 			tblstr(ctx, "key", msgbuf, top);
 			luactx.pending_socket_label = strdup(msgbuf);
 			luactx.pending_socket_descr = ev->fsrv.descriptor;
@@ -4535,6 +4531,8 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 	else if (ev->category == EVENT_AUDIO)
 		;
 }
+#undef FLTPUSH
+#undef MSGBUF_UTF8
 
 static int imageparent(lua_State* ctx)
 {
@@ -6448,7 +6446,7 @@ static int targetdisphint(lua_State* ctx)
 		if (nv > 10)
 			ppcm = nv;
 		else {
-			arcan_warning("target_displahint(), display table provided "
+			arcan_warning("target_displayhint(), display table provided "
 				"but with broken / bad ppcm field, ignoring\n");
 		}
 
