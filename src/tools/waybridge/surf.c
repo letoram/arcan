@@ -74,8 +74,8 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
  * long as the client doesn't send another, but from what I could tell this is
  * supposed to be double buffered
  *
- *	 wl_buffer_send_release(surf->buf);
  */
+		wl_buffer_send_release(surf->buf);
 
 /* Now we can format the buffer through the normal signal_handle.
  *

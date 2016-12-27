@@ -54,7 +54,11 @@ static uint64_t ent_alloc_mask;
 static struct dev_ent dev_tbl[] =
 {
 #ifdef PSVR
-	psvr_ent_tbl
+	{
+		.init = psvr_init,
+		.sample = psvr_sample,
+		.control = psvr_control
+	}
 #endif
 };
 

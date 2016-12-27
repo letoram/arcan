@@ -6,7 +6,7 @@ static void comp_surf_delete(struct wl_resource* res)
 		return;
 
 	surf->cookie = 0xbad1dea;
-	if (surf->acon == &surf->cl->acon){
+	if (surf->acon == arcan_shmif_primary(SHMIF_INPUT)){
 		surf->cl->got_primary = 0;
 /* FIXME: viewport hint this one to invisible */
 	}

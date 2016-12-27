@@ -14,5 +14,3 @@ static void region_sub(struct wl_client* client, struct wl_resource* res,
 {
 	trace("region_subtrace");
 }
-
-

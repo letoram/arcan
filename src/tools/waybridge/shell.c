@@ -11,7 +11,6 @@ void shell_getsurf(struct wl_client* client,
 		return;
 	}
 
-/* FIXME: move type promotion vs. subseg allocation to a shared function */
 	if (!surf->cl->got_primary){
 		trace("shell_surface assigned as primary");
 		surf->type = SURF_SHELL;
