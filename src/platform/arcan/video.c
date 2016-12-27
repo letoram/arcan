@@ -307,8 +307,13 @@ bool platform_video_specify_mode(platform_display_id id,
 	if (!(id < MAX_DISPLAYS && disp[id].conn.addr))
 		return false;
 
-	return (mode.width > 0 && mode.height > 0 &&
-		arcan_shmif_resize(&disp[id].conn, mode.width, mode.height));
+	if (!mode.width || !mode.height || !arcan_shmif_lock(&disp[id].conn))
+		return false;
+
+	bool rz = arcan_shmif_resize(&disp[id].conn, mode.width, mode.height);
+	arcan_shmif_unlock(&disp[id].conn);
+
+	return rz;
 }
 
 struct monitor_mode platform_video_dimensions()
@@ -330,12 +335,7 @@ bool platform_video_set_mode(platform_display_id id, platform_mode_id newmode)
 	if (!mode)
 		return false;
 
-	if (!(id < MAX_DISPLAYS && disp[id].conn.addr))
-		return false;
-
-	return arcan_shmif_resize(&disp[id].conn, mode->width, mode->height);
-
-	return false;
+	return platform_video_specify_mode(id, *mode);
 }
 
 static bool check_store(platform_display_id id)
@@ -344,7 +344,8 @@ static bool check_store(platform_display_id id)
 		disp[id].vstore : arcan_vint_world());
 
 	if (vs->w != disp[id].conn.w || vs->h != disp[id].conn.h){
-		if (!arcan_shmif_resize(&disp[id].conn, vs->w, vs->h)){
+		if (!platform_video_specify_mode(id,
+			(struct monitor_mode){.width = vs->w, .height = vs->h})){
 			arcan_warning("platform_video_map_display(), attempt to switch "
 				"display output mode to match backing store failed.\n");
 			return false;
