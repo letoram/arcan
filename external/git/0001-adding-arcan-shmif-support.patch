@@ -33,7 +33,7 @@ new file mode 100644
 index 0000000..edf26d4
 --- /dev/null
 +++ b/Alc/backends/arcan.c
-@@ -0,0 +1,267 @@
+@@ -0,0 +1,266 @@
 +/**
 + * OpenAL cross platform audio library
 + * Copyright (C) 2010 by Chris Robinson
@@ -148,7 +148,6 @@ index 0000000..edf26d4
 +    }
 +
 +/* it's not entirely safe to do this here */
-+    printf("frame size: %zu, UpdateSize: %zu\n", frame_sz, device->UpdateSize);
 +    while(!self->killNow && device->Connected)
 +    {
 +        if(altimespec_get(&now, AL_TIME_UTC) != AL_TIME_UTC)
@@ -310,9 +309,9 @@ index 04795b3..795ad81 100644
  ALCbackendFactory *ALCwaveBackendFactory_getFactory(void);
  ALCbackendFactory *ALCloopbackFactory_getFactory(void);
 +ALCbackendFactory *ALCarcanBackendFactory_getFactory(void);
- 
+
  ALCbackend *create_backend_wrapper(ALCdevice *device, const BackendFuncs *funcs, ALCbackend_Type type);
- 
+
 diff --git a/CMakeLists.txt b/CMakeLists.txt
 index 7a02a48..8d090ab 100644
 --- a/CMakeLists.txt
@@ -322,13 +321,13 @@ index 7a02a48..8d090ab 100644
  SET(HAVE_OPENSL     0)
  SET(HAVE_WAVE       0)
 +SET(HAVE_ARCAN      0)
- 
+
  # Check for SSE support
  OPTION(ALSOFT_REQUIRE_SSE "Require SSE support" OFF)
 @@ -1104,6 +1105,22 @@ IF(ALSOFT_BACKEND_WAVE)
      SET(BACKENDS  "${BACKENDS} WaveFile,")
  ENDIF()
- 
+
 +OPTION(ALSOFT_REQUIRE_ARCAN "Require ARCAN backend" OFF)
 +
 +IF(ALSOFT_REQUIRE_ARCAN)
@@ -347,7 +346,7 @@ index 7a02a48..8d090ab 100644
 +
  # This is always available
  SET(BACKENDS  "${BACKENDS} Null")
- 
+
 diff --git a/OpenAL32/Include/alMain.h b/OpenAL32/Include/alMain.h
 index 837e108..c2f5149 100644
 --- a/OpenAL32/Include/alMain.h
@@ -358,9 +357,9 @@ index 837e108..c2f5149 100644
  void alc_qsa_probe(enum DevProbe type);
 +ALCboolean alc_arcan_init(BackendFuncs *func_list);
 +void alc_arcan_probe(enum DevProbe type);
- 
+
  struct ALCbackend;
- 
+
 diff --git a/config.h.in b/config.h.in
 index a06c203..9086e65 100644
 --- a/config.h.in
@@ -368,13 +367,13 @@ index a06c203..9086e65 100644
 @@ -38,6 +38,9 @@
  /* Define if we have the OSS backend */
  #cmakedefine HAVE_OSS
- 
+
 +/* Define if we have the ARCAN backend */
 +#cmakedefine HAVE_ARCAN
 +
  /* Define if we have the Solaris backend */
  #cmakedefine HAVE_SOLARIS
- 
--- 
+
+--
 2.7.4
 
