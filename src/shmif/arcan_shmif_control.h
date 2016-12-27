@@ -581,6 +581,14 @@ struct arcan_shmif_cont* arcan_shmif_primary(enum arcan_shmif_type);
 void arcan_shmif_setprimary( enum arcan_shmif_type, struct arcan_shmif_cont*);
 
 /*
+ * Enable/Lock a mutex tied to the segment. This is primarily to protect when
+ * the segment is accessed in separate threads and you need to run a resize
+ * negotiation.
+ */
+bool arcan_shmif_lock(struct arcan_shmif_cont*);
+bool arcan_shmif_unlock(struct arcan_shmif_cont*);
+
+/*
  * update the failure callback associated with a context- remapping due to
  * a connection failure. Although ->vidp and ->audp may be correct, there are
  * no guarantees and any aliases to these buffers should be updated in the
@@ -932,5 +940,12 @@ struct arcan_shmif_page {
  * and for more complex data sources. A prime example is the hmdsupport tool.
  */
 	volatile _Atomic uint32_t apad, apad_type;
+
+/*
+ * [FSRV-SET-ON-DMS/EXIT]
+ * Short user-readable utf8- message to indicate a possible reason for a
+ * crash, failure or otherwise unexpected termination
+ */
+	const char last_words[32];
 };
 #endif
