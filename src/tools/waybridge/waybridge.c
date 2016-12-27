@@ -35,7 +35,7 @@ static struct bridge_client* find_client(struct wl_client* cl);
 /* static PFNEGLGETPLATFORMDISPLAYEXTPROC get_platform_display; */
 
 /*
- * For tracking allocations in arcan, spit into bitmapped groups allocated/set
+ * For tracking allocations in arcan, split into bitmapped groups allocated/set
  * on startup. Allocation policy is first free slot, though no compaction
  * between groups. Doing it this way makes thread-group assignments etc.
  * easier if that ever becomes a need.
@@ -95,6 +95,7 @@ static void send_client_input(struct bridge_client* cl, arcan_ioevent* ev)
 static void flush_client_events(struct bridge_client* cl)
 {
 	struct arcan_event ev;
+
 	while (arcan_shmif_poll(&cl->acon, &ev) > 0){
 		if (ev.category == EVENT_IO){
 			send_client_input(cl, &ev.io);
@@ -104,10 +105,13 @@ static void flush_client_events(struct bridge_client* cl)
 			continue;
 		switch(ev.tgt.kind){
 		case TARGET_COMMAND_EXIT:
+/* if type: popup, send_popup_done */
 			trace("shmif-> kill client");
 		break;
 		case TARGET_COMMAND_DISPLAYHINT:
 			trace("shmif-> target update visibility or size");
+/* if selection status change, send_surface enter/leave */
+/* if type: wl_shell, send _send_configure */
 		break;
 		case TARGET_COMMAND_OUTPUTHINT:
 			trace("shmif-> target update configuration");
@@ -172,7 +176,7 @@ static struct bridge_client* find_client(struct wl_client* cl)
 				continue;
 
 			ind--;
-			if (wl.groups[i].cl[ind].client == cl)
+			if ((void*) wl.groups[i].cl[ind].client == cl)
 				return &wl.groups[i].cl[ind];
 			mask &= ~(1 << ind);
 		}
@@ -304,8 +308,6 @@ int main(int argc, char* argv[])
 		.output = 2,
 		.egl = 0
 	};
-
-	wl.n_groups = 4;
 
 	for (size_t i = 1; i < argc; i++){
 		if (strcmp(argv[i], "-egl") == 0){

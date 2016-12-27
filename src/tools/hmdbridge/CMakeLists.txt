@@ -16,6 +16,7 @@ endif()
 add_definitions(
 	-Wall
 	-D__UNIX
+	-DPSVR
 	-DPOSIX_C_SOURCE
 	-DGNU_SOURCE
   -Wno-unused-but-set-variable
