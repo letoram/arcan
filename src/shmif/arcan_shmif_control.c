@@ -301,7 +301,6 @@ static inline bool parent_alive(struct shmif_hidden* gs)
 		if (-1 == gs->guard.parent_fd)
 			return true;
 
-	printf("deal with perm\n");
 /* try to peek a byte and hope that will tell us the connection status */
 		if (-1 == recv(gs->guard.parent_fd, &ch, 1, MSG_PEEK | MSG_DONTWAIT) &&
 			(errno == EBADF || errno == ENOTCONN || errno == ENOTSOCK))
@@ -310,7 +309,6 @@ static inline bool parent_alive(struct shmif_hidden* gs)
 		return true;
 	}
 
-	printf("eperm\n");
 	return false;
 }
 
