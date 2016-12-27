@@ -170,7 +170,7 @@ const char* arcan_shmif_eventstr(arcan_event* aev, char* dbuf, size_t dsz)
 		dsz = sizeof(evbuf);
 	}
 
-	int cat_ind = ilog2(aev->category);
+	unsigned cat_ind = ilog2(aev->category);
 
 	if (cat_ind < 1 || cat_ind > COUNT_OF(cat_xlt))
 		return NULL;
@@ -235,6 +235,9 @@ struct shmif_hidden {
 
 	struct arcan_evctx inev;
 	struct arcan_evctx outev;
+
+	int lock_refc;
+	pthread_mutex_t lock;
 
 /* during automatic pause, we want displayhint and fonthint events to queue and
  * aggregate so we can return immediately on release, this pattern can be
@@ -795,8 +798,9 @@ int arcan_shmif_enqueue(struct arcan_shmif_cont* c,
 	}
 
 	ctx->eventbuf[*ctx->back] = *src;
-	if (src->category == 0)
+	if (!src->category)
 		ctx->eventbuf[*ctx->back].category = EVENT_EXTERNAL;
+
 	FORCE_SYNCH();
 	*ctx->back = (*ctx->back + 1) % ctx->eventbuf_sz;
 
@@ -868,7 +872,7 @@ map_fail:
 	}
 
 /* parent suggested a different size from the start, need to remap */
-	if (dst->addr->segment_size != ARCAN_SHMPAGE_START_SZ){
+	if (dst->addr->segment_size != (size_t) ARCAN_SHMPAGE_START_SZ){
 		DLOG("arcan_frameserver(getshm) -- different initial size, remapping.\n");
 		size_t sz = dst->addr->segment_size;
 		munmap(dst->addr, ARCAN_SHMPAGE_START_SZ);
@@ -919,7 +923,7 @@ map_fail:
 int arcan_shmif_resolve_connpath(const char* key,
 	char* dbuf, size_t dbuf_sz)
 {
-	int len;
+	size_t len;
 #ifdef __LINUX
 	if (ARCAN_SHMIF_PREFIX[0] == '\0'){
 		len = 1+snprintf(dbuf+1, dbuf_sz-1, "%s%s", &ARCAN_SHMIF_PREFIX[1], key);
@@ -1181,6 +1185,8 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 
 	setup_avbuf(&res);
 
+	pthread_mutex_init(&res.priv->lock, NULL);
+
 /* local flag that hints at different synchronization work */
 	if (type == SEGID_ENCODER || type == SEGID_CLIPBOARD_PASTE){
 		((struct shmif_hidden*)res.priv)->output = true;
@@ -1209,6 +1215,7 @@ static void* guard_thread(void* gs)
 			}
 
 			pthread_mutex_unlock(&gstr->guard.synch);
+			pthread_mutex_destroy(&gstr->guard.synch);
 			sleep(5);
 			DLOG("frameserver::guard_thread -- couldn't shut"
 				"	down gracefully, exiting.\n");
@@ -1430,6 +1437,8 @@ void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 	if (!inctx || !inctx->priv)
 		return;
 
+	pthread_mutex_lock(&inctx->priv->lock);
+
 	if (inctx->priv->valid_initial)
 		drop_initial(inctx);
 
@@ -1451,6 +1460,25 @@ void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 	sem_close(inctx->esem);
 	sem_close(inctx->vsem);
 
+/*
+ * recall, as per posix: an implementation is required to allow
+ * object-destroy immediately after object-unlock
+ */
+#ifdef ARCAN_SHMIF_THREADSAFE_QUEUE
+	if (inctx->inev.synch.init){
+		inctx->inev.synch.init = false;
+		pthread_mutex_lock(&inctx->inev.synch.lock);
+		pthread_mutex_unlock(&inctx->inev.synch.lock);
+		pthread_mutex_destroy(&inctx->inev.synch.lock);
+	}
+	if (inctx->outev.synch.init){
+		inctx->outev.synch.init = false;
+		pthread_mutex_lock(&inctx->outev.synch.lock);
+		pthread_mutex_unlock(&inctx->outev.synch.lock);
+		pthread_mutex_destroy(&inctx->outev.synch.lock);
+	}
+#endif
+
 /* guard thread will clean up on its own */
 	free(inctx->priv->alt_conn);
 	if (inctx->privext->cleanup)
@@ -1460,6 +1488,13 @@ void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 		close(inctx->privext->active_fd);
 	if (inctx->privext->pending_fd != -1)
 		close(inctx->privext->pending_fd);
+
+	if (inctx->priv->lock_refc > 0){
+		LOG("arcan_shmif_drop(), caller destroyed a segment with active locks,"
+			"this will likely result in undefined behavior.\n");
+	}
+	pthread_mutex_unlock(&inctx->priv->lock);
+	pthread_mutex_destroy(&inctx->priv->lock);
 
 	if (gstr->guard.active){
 		atomic_store(&gstr->guard.dms, NULL);
@@ -1559,7 +1594,9 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 	if (arg->shmsize != arg->addr->segment_size){
 		size_t new_sz = arg->addr->segment_size;
 		struct shmif_hidden* gs = arg->priv;
-		pthread_mutex_lock(&gs->guard.synch);
+
+		if (gs->guard.active)
+			pthread_mutex_lock(&gs->guard.synch);
 
 		munmap(arg->addr, arg->shmsize);
 		arg->shmsize = new_sz;
@@ -1571,7 +1608,8 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 		}
 
 		atomic_store(&gs->guard.dms, (uint8_t*) &arg->addr->dms);
-		pthread_mutex_unlock(&gs->guard.synch);
+		if (gs->guard.active)
+			pthread_mutex_unlock(&gs->guard.synch);
 	}
 
 /*
@@ -1615,7 +1653,8 @@ shmif_trigger_hook arcan_shmif_signalhook(struct arcan_shmif_cont* cont,
 		priv->audio_hook = hook;
 		priv->audio_hook_data = data;
 	}
-	else;
+	else
+		;
 
 	return rv;
 }
@@ -1795,6 +1834,30 @@ bool arcan_shmif_acquireloop(struct arcan_shmif_cont* c,
 	return false;
 }
 
+bool arcan_shmif_lock(struct arcan_shmif_cont* ctx)
+{
+	if (!ctx || !ctx->addr)
+		return false;
+
+	if (-1 == pthread_mutex_lock(&ctx->priv->lock))
+		return false;
+
+	ctx->priv->lock_refc++;
+	return true;
+}
+
+bool arcan_shmif_unlock(struct arcan_shmif_cont* ctx)
+{
+	if (!ctx || !ctx->addr || ctx->priv->lock_refc == 0)
+		return false;
+
+	if (-1 == pthread_mutex_unlock(&ctx->priv->lock))
+		return false;
+
+	ctx->priv->lock_refc--;
+	return true;
+}
+
 bool arcan_shmif_descrevent(struct arcan_event* ev)
 {
 	if (!ev)
@@ -1803,7 +1866,7 @@ bool arcan_shmif_descrevent(struct arcan_event* ev)
 	if (ev->category != EVENT_TARGET)
 		return false;
 
-	int list[] = {
+	unsigned list[] = {
 		TARGET_COMMAND_STORE,
 		TARGET_COMMAND_RESTORE,
 		TARGET_COMMAND_DEVICE_NODE,
@@ -1867,9 +1930,6 @@ enum shmif_migrate_status arcan_shmif_migrate(
 {
 	if (!cont || !cont->addr || !newpath)
 		return SHMIF_MIGRATE_BADARG;
-
-	enum ARCAN_FLAGS flags = 0;
-	bool active;
 
 	file_handle dpipe;
 	char* keyfile = arcan_shmif_connect(newpath, key, &dpipe);
@@ -2014,7 +2074,7 @@ static void wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
 /* alt-con will be updated automatically, due to normal wait handler */
 			if (ev.tgt.ioevs[0].iv != -1){
 				def.render_node = arcan_shmif_dupfd(
-					ev.tgt.ioevs[0].iv, def.render_node, true);
+					ev.tgt.ioevs[0].iv, -1, true);
 			}
 		break;
 /* not 100% correct - won't reset if font+font-append+font
@@ -2025,7 +2085,7 @@ static void wait_for_activation(struct arcan_shmif_cont* cont, bool resize)
 			if (font_ind < 3){
 				if (ev.tgt.ioevs[0].iv != -1){
 					def.fonts[font_ind].fd = arcan_shmif_dupfd(
-						ev.tgt.ioevs[0].iv, def.fonts[font_ind].fd, true);
+						ev.tgt.ioevs[0].iv, -1, true);
 					font_ind++;
 				}
 			}
@@ -2085,7 +2145,7 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 		goto fail;
 	}
 
-	if (!keyfile){
+	if (!keyfile || -1 == dpipe){
 		LOG("shmif_open() - No valid connection key found, giving up.\n");
 		goto fail;
 	}
@@ -2100,6 +2160,11 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 	if (ext_sz > 0){
 /* we want manual control over the REGISTER message */
 		ret = arcan_shmif_acquire(NULL, keyfile, 0, flags);
+		if (!ret.priv){
+			close(dpipe);
+			return ret;
+		}
+
 		struct arcan_event ev = {
 			.category = EVENT_EXTERNAL,
 			.ext.kind = ARCAN_EVENT(REGISTER),
@@ -2120,8 +2185,13 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 			arcan_shmif_enqueue(&ret, &ev);
 		}
 	}
-	else
+	else{
 		ret = arcan_shmif_acquire(NULL, keyfile, ext.type, flags);
+		if (!ret.priv){
+			close(dpipe);
+			return ret;
+		}
+	}
 
 	if (outarg){
 		if (resource)
@@ -2131,8 +2201,9 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 	}
 
 	ret.epipe = dpipe;
-	if (-1 == ret.epipe)
+	if (-1 == ret.epipe){
 		DLOG("shmif_open() - Could not retrieve event- pipe from parent.\n");
+	}
 
 	if (conn_src)
 		ret.priv->alt_conn = strdup(conn_src);

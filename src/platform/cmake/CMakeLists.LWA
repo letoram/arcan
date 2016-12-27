@@ -18,16 +18,7 @@
 # resampling (already here) and basic mixing (already here) and get rid
 # of the licensing pollution and overhead.
 #
-SET (ALPATCHES
-	${EXTERNAL_SRC_DIR}/patches/openal/0001-adding-arcan-shmif-support.patch
-	${EXTERNAL_SRC_DIR}/patches/openal/0002-arcan-shmif-backend-working.patch
-)
-#
-# Note the || echo "" on the PATCH_COMMAND line, it was added to have
-# cmake IGNORE the return status of the git am command as when the patches
-# have been applied the first time, they are erroneously added AGAIN IF you
-# do a make clean && make.
-#
+
 ExternalProject_Add(openal_lwa
 	SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/openal_lwa
 	GIT_REPOSITORY "${EXTERNAL_SRC_DIR}/git/openal"
@@ -56,8 +47,10 @@ ExternalProject_Add(openal_lwa
 		-DALSOFT_DLOPEN=OFF
 		-DALSOFT_UTILS=OFF
 		-DALSOFT_CONFIG=OFF
+		-DALSOFT_TESTS=OFF
 		-DARCAN_SHMIF_LIB=$<TARGET_FILE:arcan_shmif_int>
 		-DARCAN_SHMIF_PATH=${CMAKE_CURRENT_SOURCE_DIR}/shmif
+		-DARCAN_SHMIF_PLATFORM_HEADER=${CMAKE_CURRENT_SOURCE_DIR}/platform/platform.h
 )
 
 ExternalProject_Get_Property(openal_lwa SOURCE_DIR)

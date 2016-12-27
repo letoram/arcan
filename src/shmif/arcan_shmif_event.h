@@ -1010,6 +1010,7 @@ typedef struct {
 		};
 	};
 
+	uint8_t message[32];
 	int64_t video;
 	intptr_t otag;
 } arcan_fsrvevent;
