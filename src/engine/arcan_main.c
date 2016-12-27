@@ -299,6 +299,12 @@ static void appl_user_warning(const char* name, const char* err_msg)
 	}
 }
 
+static void fatal_shutdown()
+{
+	arcan_audio_shutdown();
+	arcan_video_shutdown();
+}
+
 /*
  * needed to be able to shift entry points on a per- target basis in cmake
  * (lwa/normal/sdl and other combinations all mess around with main as an entry
@@ -564,12 +570,12 @@ int MAIN_REDIR(int argc, char* argv[])
 		arcan_fatal("Video platform initialization failed\n");
 	}
 
-/* defined in warning.c for arcan_fatal, we avoid the use of an
- * atexit() as this can be routed through abort() or similar
- * functions but some video platforms are extremely volatile
- * if we don't initiate a shutdown (egl-dri for one) */
+/* defined in warning.c for arcan_fatal, we avoid the use of an atexit() as
+ * this can be routed through abort() or similar functions but some video
+ * platforms are extremely volatile if we don't initiate a shutdown (egl-dri
+ * for one) */
 	extern void(*arcan_fatal_hook)(void);
-	arcan_fatal_hook = arcan_video_shutdown;
+	arcan_fatal_hook = fatal_shutdown;
 
 	errno = 0;
 /* grab audio, (possible to live without) */
@@ -691,12 +697,8 @@ int MAIN_REDIR(int argc, char* argv[])
 
 	char* msg = arcan_lua_main(settings.lua, inp, inp_file);
 	if (msg != NULL){
-#ifdef ARCAN_LUA_NOCOLOR
-		arcan_warning("\nParsing error in %s:\n%s\n", arcan_appl_id(), msg);
-#else
 		arcan_warning("\n\x1b[1mParsing error in (\x1b[33m%s\x1b[39m):\n"
 			"\x1b[35m%s\x1b[22m\x1b[39m\n\n", arcan_appl_id(), msg);
-#endif
 		goto error;
 	}
 	free(msg);
@@ -735,6 +737,7 @@ int MAIN_REDIR(int argc, char* argv[])
 	arcan_lua_callvoidfun(settings.lua, "shutdown", false, NULL);
 	arcan_led_shutdown();
 	arcan_event_deinit(evctx);
+	arcan_audio_shutdown();
 	arcan_video_shutdown();
 	arcan_mem_free(dbfname);
 	if (dbhandle)
@@ -754,6 +757,7 @@ error:
 
 	arcan_event_deinit(evctx);
 	arcan_mem_free(dbfname);
+	arcan_audio_shutdown();
 	arcan_video_shutdown();
 
 	return EXIT_FAILURE;
