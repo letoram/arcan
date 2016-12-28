@@ -43,7 +43,7 @@ struct shmif_ext_hidden_int {
 /* with the gbm- buffer passing, we pretty much need double-buf */
 	struct storage_info_t buf_a, buf_b, (* current);
 	struct agp_fenv fenv;
-	bool nopass;
+	bool nopass, swap;
 
 	EGLImage image;
 	int dmabuf;
@@ -298,11 +298,14 @@ context_only:
 		ctx->current = &ctx->buf_a;
 
 		if (arg.builtin_fbo){
+			ctx->swap = arg.builtin_fbo == 3;
+
 			ctx->rtgt_a = agp_setup_rendertarget(
-				ctx->current, arg.depth > 0 ?
-					RENDERTARGET_COLOR_DEPTH_STENCIL : RENDERTARGET_COLOR
+				ctx->current, (arg.depth > 0 ?
+					RENDERTARGET_COLOR_DEPTH_STENCIL : RENDERTARGET_COLOR) |
+					(ctx->swap ? RENDERTARGET_DOUBLEBUFFER : 0)
 			);
-			if (arg.builtin_fbo > 1){
+			if (arg.builtin_fbo == 2){
 				ctx->rtgt_b = agp_setup_rendertarget(
 					ctx->current, arg.depth > 0 ?
 						RENDERTARGET_COLOR_DEPTH_STENCIL : RENDERTARGET_COLOR
@@ -578,8 +581,9 @@ int arcan_shmifext_signal(struct arcan_shmif_cont* con,
 				ctx->rtgt_cur == ctx->rtgt_a && ctx->rtgt_b ? ctx->rtgt_b : ctx->rtgt_a;
 			if (next != ctx->rtgt_cur){
 				ctx->rtgt_cur = next;
-				arcan_shmifext_make_current(con);
 			}
+			tex_id = agp_rendertarget_swap(ctx->rtgt_cur);
+			arcan_shmifext_make_current(con);
 		}
 		else
 			ctx->current = (ctx->current == &ctx->buf_a ? &ctx->buf_b : &ctx->buf_a);
