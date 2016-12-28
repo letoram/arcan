@@ -146,7 +146,10 @@ struct storage_info_t {
 	union {
 		struct {
 /* ID number connecting to AGP */
-			unsigned glid, glid_back;
+			unsigned glid;
+
+/* bitmap used for tracking which GPUs and contexts we are bound to */
+			uint32_t affinity;
 
 /* used for PBO transfers */
 			unsigned rid, wid;
@@ -720,7 +723,8 @@ enum rendertarget_mode {
 	RENDERTARGET_DEPTH = 0,
 	RENDERTARGET_COLOR = 1,
 	RENDERTARGET_COLOR_DEPTH = 2,
-	RENDERTARGET_COLOR_DEPTH_STENCIL = 3
+	RENDERTARGET_COLOR_DEPTH_STENCIL = 3,
+	RENDERTARGET_DOUBLEBUFFER = 4
 };
 
 /*
@@ -753,6 +757,21 @@ void agp_resize_rendertarget(struct agp_rendertarget*,
  * null, rendertarget based rendering will be disabled.
  */
 void agp_activate_rendertarget(struct agp_rendertarget*);
+void agp_drop_rendertarget(struct agp_rendertarget*);
+
+/*
+ * Swap out the color attachment in the rendertarget between front/back,
+ * this only has an effect if the mode of the rendertarget has the DOUBLEBUFFER
+ * bit set.
+ * Returns the last color attachment ID used
+ */
+unsigned agp_rendertarget_swap(struct agp_rendertarget*);
+
+/*
+ * Drop the rendertarget bound resources, this covers a possible DOUBLEBUFFER
+ * backbuffer, but not the main vstore that was associated with the target.
+ * That one has to be tracked and destroyed manually.
+ */
 void agp_drop_rendertarget(struct agp_rendertarget*);
 
 /*

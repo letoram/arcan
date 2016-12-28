@@ -200,11 +200,15 @@ void agp_drop_vstore(struct storage_info_t* s)
 	env->delete_textures(1, &s->vinf.text.glid);
 	s->vinf.text.glid = GL_NONE;
 
-	if (GL_NONE != s->vinf.text.rid)
+	if (GL_NONE != s->vinf.text.rid){
 		env->delete_buffers(1, &s->vinf.text.rid);
+		s->vinf.text.rid = GL_NONE;
+	}
 
-	if (GL_NONE != s->vinf.text.wid)
+	if (GL_NONE != s->vinf.text.wid){
 		env->delete_buffers(1, &s->vinf.text.wid);
+		s->vinf.text.wid = GL_NONE;
+	}
 
 	if (s->vinf.text.tag)
 		platform_video_map_handle(s, -1);

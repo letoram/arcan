@@ -287,8 +287,12 @@ struct arcan_shmifext_setup {
 	uint64_t flags;
 	uint64_t mask;
 
-/* 0 for self-managed fbo, 1 for single-buffered, 2 for double-buffer(default)*/
+/* 0 for self-managed fbo
+ * 1 for single-buffered (likely to flicker)
+ * 2 for double-buffer(default), flipping rendertargets
+ * 3 for double-buffer, attachment-swapping one rendertarget */
 	uint8_t builtin_fbo;
+
 	uint8_t supersample;
 	uint8_t stencil;
 	uint8_t no_context;

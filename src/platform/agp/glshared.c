@@ -40,24 +40,52 @@ struct agp_rendertarget
 
 	enum rendertarget_mode mode;
 	struct storage_info_t* store;
+
+	bool front_active;
+	struct storage_info_t* store_back;
 };
+
+unsigned agp_rendertarget_swap(struct agp_rendertarget* dst)
+{
+	struct agp_fenv* env = agp_env();
+
+	if (!dst || !dst->store || !dst->store_back)
+		return 0;
+
+	int rid = dst->front_active ?
+		(dst->store_back->vinf.text.glid) :
+		(dst->store->vinf.text.glid);
+
+	int did = dst->front_active ?
+		(dst->store->vinf.text.glid) :
+		(dst->store_back->vinf.text.glid);
+
+		env->bind_framebuffer(GL_FRAMEBUFFER, dst->fbo);
+	dst->front_active = !dst->front_active;
+	env->framebuffer_texture_2d(GL_FRAMEBUFFER,
+		GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,did, 0);
+	env->bind_framebuffer(GL_FRAMEBUFFER, 0);
+
+	return rid;
+}
 
 static bool alloc_fbo(struct agp_rendertarget* dst, bool retry)
 {
 	struct agp_fenv* env = agp_env();
 	env->gen_framebuffers(1, &dst->fbo);
+	int mode = dst->mode & (~RENDERTARGET_DOUBLEBUFFER);
 
 /* need both stencil and depth buffer, but we don't need the data from them */
 	env->bind_framebuffer(GL_FRAMEBUFFER, dst->fbo);
 
-	if (dst->mode > RENDERTARGET_DEPTH)
+	if (mode > RENDERTARGET_DEPTH)
 	{
 		env->framebuffer_texture_2d(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
 			GL_TEXTURE_2D, dst->store->vinf.text.glid, 0);
 
 /* need a Z buffer in the offscreen rendering but don't want
  * bo store it, so setup a renderbuffer */
-		if (dst->mode > RENDERTARGET_COLOR){
+		if (mode > RENDERTARGET_COLOR){
 			env->gen_renderbuffers(1, &dst->depth);
 
 /* could use GL_DEPTH_COMPONENT only if we'd know that there
@@ -79,9 +107,6 @@ static bool alloc_fbo(struct agp_rendertarget* dst, bool retry)
 		size_t h = dst->store->h;
 
 		agp_drop_vstore(dst->store);
-
-		dst->store = arcan_alloc_mem(sizeof(struct storage_info_t),
-			ARCAN_MEM_VSTRUCT, 0, ARCAN_MEMALIGN_NATURAL);
 
 		struct storage_info_t* store = dst->store;
 
@@ -160,8 +185,13 @@ void agp_empty_vstore(struct storage_info_t* vs, size_t w, size_t h)
 {
 	size_t sz = w * h * sizeof(av_pixel);
 	vs->vinf.text.s_raw = sz;
-	vs->vinf.text.s_fmt = GL_PIXEL_FORMAT;
-	vs->vinf.text.d_fmt = GL_PIXEL_FORMAT;
+
+/* this is to allow an override of s_fmt and still handle reset */
+	if (vs->vinf.text.s_fmt == 0)
+		vs->vinf.text.s_fmt = GL_PIXEL_FORMAT;
+	if (vs->vinf.text.d_fmt == 0)
+		vs->vinf.text.d_fmt = GL_PIXEL_FORMAT;
+
 	vs->vinf.text.raw = arcan_alloc_mem(
 		vs->vinf.text.s_raw,
 		ARCAN_MEM_VBUFFER, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE
@@ -184,14 +214,25 @@ void agp_empty_vstoreext(struct storage_info_t* vs,
 	agp_empty_vstore(vs, w, h);
 }
 
-struct agp_rendertarget* agp_setup_rendertarget(struct storage_info_t* vstore,
-	enum rendertarget_mode m)
+struct agp_rendertarget* agp_setup_rendertarget(
+	struct storage_info_t* vstore, enum rendertarget_mode m)
 {
 	struct agp_rendertarget* r = arcan_alloc_mem(sizeof(struct agp_rendertarget),
 		ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 
 	r->store = vstore;
 	r->mode = m;
+
+/* need this tracking because there's no external memory management for _back */
+	r->front_active = true;
+
+	if (m & RENDERTARGET_DOUBLEBUFFER){
+		r->store_back = arcan_alloc_mem(sizeof(struct storage_info_t),
+			ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
+		r->store_back->vinf.text.s_fmt = vstore->vinf.text.s_fmt;
+		r->store_back->vinf.text.d_fmt = vstore->vinf.text.d_fmt;
+		agp_empty_vstore(r->store_back, vstore->w, vstore->h);
+	}
 
 	alloc_fbo(r, false);
 	return r;
@@ -312,6 +353,17 @@ void agp_null_vstore(struct storage_info_t* store)
 	store->vinf.text.glid = GL_NONE;
 }
 
+static void erase_store(struct storage_info_t* os)
+{
+	if (!os)
+		return;
+
+	agp_null_vstore(os);
+	arcan_mem_free(os->vinf.text.raw);
+	os->vinf.text.raw = NULL;
+	os->vinf.text.s_raw = 0;
+}
+
 void agp_resize_rendertarget(
 	struct agp_rendertarget* tgt, size_t neww, size_t newh)
 {
@@ -324,16 +376,16 @@ void agp_resize_rendertarget(
 	if (tgt->store->w == neww && tgt->store->h == newh)
 		return;
 
-	struct storage_info_t* os = tgt->store;
+	erase_store(tgt->store);
+	erase_store(tgt->store_back);
+
 	struct agp_fenv* env = agp_env();
 
-/* we inplace- modify, want the refcounter intact */
-	agp_null_vstore(os);
-	arcan_mem_free(os->vinf.text.raw);
-	os->vinf.text.raw = NULL;
-	os->vinf.text.s_raw = 0;
-	agp_empty_vstore(os, neww, newh);
+	agp_empty_vstore(tgt->store, neww, newh);
+	if (tgt->store_back)
+		agp_empty_vstore(tgt->store_back, neww, newh);
 
+/* we inplace- modify, want the refcounter intact */
 	env->delete_framebuffers(1,&tgt->fbo);
 	env->delete_renderbuffers(1,&tgt->depth);
 	tgt->fbo = GL_NONE;
