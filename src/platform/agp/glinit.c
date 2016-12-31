@@ -206,6 +206,9 @@ void agp_glinit_fenv(struct agp_fenv* dst,
 	dst->clear =
 		(void (*)(GLenum))
 			lookup(tag, "glClear");
+	dst->get_integer_v =
+		(void (*)(GLenum, GLint*))
+			lookup(tag, "glGetIntegerv");
 
 /* Drawing, Blending, Stenciling */
 	dst->front_face =

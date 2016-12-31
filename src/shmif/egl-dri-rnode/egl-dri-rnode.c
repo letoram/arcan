@@ -41,7 +41,7 @@ struct shmif_ext_hidden_int {
 	struct agp_rendertarget* rtgt_a, (* rtgt_b), (* rtgt_cur);
 
 /* with the gbm- buffer passing, we pretty much need double-buf */
-	struct storage_info_t buf_a, buf_b, (* current);
+	struct storage_info_t buf_a, buf_b, (* buf_cur);
 	struct agp_fenv fenv;
 	bool nopass, swap;
 
@@ -295,23 +295,28 @@ context_only:
 
 		agp_empty_vstore(&ctx->buf_a, con->w, con->h);
 		agp_empty_vstore(&ctx->buf_b, con->w, con->h);
-		ctx->current = &ctx->buf_a;
+		ctx->buf_cur = &ctx->buf_a;
 
+/*
+ * mode 3 : 1 FBO, swap attachments.
+ * mode 2 : 2 FBOs, swap active.
+ */
 		if (arg.builtin_fbo){
 			ctx->swap = arg.builtin_fbo == 3;
 
 			ctx->rtgt_a = agp_setup_rendertarget(
-				ctx->current, (arg.depth > 0 ?
+				ctx->buf_cur, (arg.depth > 0 ?
 					RENDERTARGET_COLOR_DEPTH_STENCIL : RENDERTARGET_COLOR) |
 					(ctx->swap ? RENDERTARGET_DOUBLEBUFFER : 0)
 			);
 			if (arg.builtin_fbo == 2){
 				ctx->rtgt_b = agp_setup_rendertarget(
-					ctx->current, arg.depth > 0 ?
+					ctx->buf_cur, arg.depth > 0 ?
 						RENDERTARGET_COLOR_DEPTH_STENCIL : RENDERTARGET_COLOR
 				);
 			}
 			ctx->rtgt_cur = ctx->rtgt_a;
+			agp_activate_rendertarget(ctx->rtgt_cur);
 		}
 
 		if (arg.vidp_pack){
@@ -458,6 +463,30 @@ bool arcan_shmifext_egl_meta(struct arcan_shmif_cont* con,
 	return true;
 }
 
+void arcan_shmifext_bind(struct arcan_shmif_cont* con)
+{
+/* need to resize both potential rendertarget destinations */
+	if (!con || !con->privext || !con->privext->internal ||
+		!con->privext->internal->display)
+		return;
+
+	struct shmif_ext_hidden_int* ctx = con->privext->internal;
+
+/* for the vidp- as scratch, upload texture and send mode, the
+ * resize is actually handled just prior to upload, not here */
+	if (ctx->rtgt_cur){
+		if (ctx->buf_cur->w != con->w || ctx->buf_cur->h != con->h){
+			agp_activate_rendertarget(NULL);
+
+			agp_resize_rendertarget(ctx->rtgt_a, con->w, con->h);
+			if (ctx->rtgt_b)
+				agp_resize_rendertarget(ctx->rtgt_b, con->w, con->h);
+		}
+
+		agp_activate_rendertarget(ctx->rtgt_cur);
+	}
+}
+
 bool arcan_shmifext_make_current(struct arcan_shmif_cont* con)
 {
 	if (!con || !con->privext || !con->privext->internal ||
@@ -468,17 +497,7 @@ bool arcan_shmifext_make_current(struct arcan_shmif_cont* con)
 
 	agp_setenv(&ctx->fenv);
 	eglMakeCurrent(ctx->display, ctx->surface, ctx->surface, ctx->context);
-
-/* need to resize both potential rendertarget destinations */
-	if (ctx->rtgt_cur){
-		if (ctx->current->w != con->w || ctx->current->h != con->h){
-			agp_activate_rendertarget(NULL);
-			agp_resize_rendertarget(ctx->rtgt_a, con->w, con->h);
-			if (ctx->rtgt_b)
-				agp_resize_rendertarget(ctx->rtgt_b, con->w, con->h);
-		}
-		agp_activate_rendertarget(ctx->rtgt_cur);
-	}
+	arcan_shmifext_bind(con);
 
 	return true;
 }
@@ -538,60 +557,68 @@ int arcan_shmifext_signal(struct arcan_shmif_cont* con,
 	EGLDisplay* dpy = display == 0 ?
 		con->privext->internal->display : (EGLDisplay*) display;
 
+	if (!dpy)
+		return -1;
+
 	if (tex_id == SHMIFEXT_BUILTIN){
 		if (!ctx->managed)
 			return -1;
 
-/* vidp- to texture upload, rather than FBO indirection */
 		if (!ctx->rtgt_cur){
 			enum stream_type type = STREAM_RAW_DIRECT_SYNCHRONOUS;
 
+/* vidp- to texture upload, rather than FBO indirection, but only
+ * if handle passing is still working */
+		if (con->privext->internal->nopass)
+			goto fallback;
+
 /* mark this so the backing GLID / PBOs gets reallocated */
-			if (ctx->current->w != con->w || ctx->current->h != con->h)
+			if (ctx->buf_cur->w != con->w || ctx->buf_cur->h != con->h)
 				type = STREAM_EXT_RESYNCH;
 
 /* bpp/format are set during the shmifext_setup */
-			ctx->current->w = con->w;
-			ctx->current->h = con->h;
-			ctx->current->vinf.text.raw = con->vidp;
-			ctx->current->vinf.text.s_raw = con->w * con->h * sizeof(shmif_pixel);
+			ctx->buf_cur->w = con->w;
+			ctx->buf_cur->h = con->h;
+			ctx->buf_cur->vinf.text.raw = con->vidp;
+			ctx->buf_cur->vinf.text.s_raw = con->w * con->h * sizeof(shmif_pixel);
 
 /* we ignore the dirty- updates here due to the double buffering */
 			struct stream_meta stream = {.buf = NULL};
 			stream.buf = con->vidp;
-			stream = agp_stream_prepare(ctx->current, stream, type);
-			agp_stream_commit(ctx->current, stream);
-			ctx->current->vinf.text.raw = NULL;
+			stream = agp_stream_prepare(ctx->buf_cur, stream, type);
+			agp_stream_commit(ctx->buf_cur, stream);
+			ctx->buf_cur->vinf.text.raw = NULL;
 			struct agp_fenv* env = agp_env();
 
-/* With MESA/amd, this seemed unavoidable or the extracted img won't be in
- * a synchronized state. Preferably we'd have another interface to do the
- * texture through */
+/* With MESA/amd, this seemed unavoidable or the extracted img won't be in a
+ * synchronized state. Preferably we'd have another interface to do the texture
+ * through */
 			env->flush();
 		}
 
-		tex_id = ctx->current->vinf.text.glid;
+		tex_id = ctx->buf_cur->vinf.text.glid;
 
 /*
  * Swap active rendertarget (if one exists) or there's a possible data-race(?)
  * where server-side has the color attachment bound and drawing when we update
  */
 		if (ctx->rtgt_cur){
-			struct agp_rendertarget* next =
-				ctx->rtgt_cur == ctx->rtgt_a && ctx->rtgt_b ? ctx->rtgt_b : ctx->rtgt_a;
-			if (next != ctx->rtgt_cur){
-				ctx->rtgt_cur = next;
-			}
+
+/* IF the rendertarget is double-buffered, swap the buffers and get the ID of
+ * the last FRONT. IF we have double- rendertargets, swap the destination */
 			tex_id = agp_rendertarget_swap(ctx->rtgt_cur);
-			arcan_shmifext_make_current(con);
+			if (ctx->rtgt_b)
+				ctx->rtgt_cur = ctx->rtgt_cur==ctx->rtgt_a ? ctx->rtgt_b : ctx->rtgt_a;
 		}
 		else
-			ctx->current = (ctx->current == &ctx->buf_a ? &ctx->buf_b : &ctx->buf_a);
+			ctx->buf_cur = (ctx->buf_cur == &ctx->buf_a ? &ctx->buf_b : &ctx->buf_a);
 	}
 
-	if (!dpy)
-		return -1;
-
+/*
+ * IF we don't have the extension for GBM- style buffer swapping, or the server
+ * has told us that the handle we're receiving don't work - go with a readback
+ * to vidp. Can happen with multiple incompatible GPUs.
+ */
 	if (con->privext->internal->nopass || !create_image)
 		goto fallback;
 

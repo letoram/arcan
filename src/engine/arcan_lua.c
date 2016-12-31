@@ -6598,12 +6598,16 @@ static int targetseek(lua_State* ctx)
 }
 
 enum target_flags {
-	TARGET_FLAG_SYNCHRONOUS = 0,
+	TARGET_FLAG_SYNCHRONOUS = 1,
 	TARGET_FLAG_NO_ALPHA_UPLOAD,
 	TARGET_FLAG_VERBOSE,
 	TARGET_FLAG_VSTORE_SYNCH,
 	TARGET_FLAG_AUTOCLOCK,
 	TARGET_FLAG_NO_BUFFERPASS,
+	TARGET_FLAG_ALLOW_CM,
+	TARGET_FLAG_ALLOW_HDRF16,
+	TARGET_FLAG_ALLOW_LDEF,
+	TARGET_FLAG_ALLOW_VOBJ,
 	TARGET_FLAG_ENDM
 };
 
@@ -6642,6 +6646,34 @@ static void updateflag(arcan_vobj_id vid, enum target_flags flag, bool toggle)
 
 	case TARGET_FLAG_NO_BUFFERPASS:
 		fsrv->vstream.dead = toggle;
+	break;
+
+	case TARGET_FLAG_ALLOW_CM:
+		if (toggle)
+			fsrv->metamask |= SHMIF_META_CM;
+		else
+			fsrv->metamask &= ~SHMIF_META_CM;
+	break;
+
+	case TARGET_FLAG_ALLOW_HDRF16:
+		if (toggle)
+			fsrv->metamask |= SHMIF_META_HDRF16;
+		else
+			fsrv->metamask &= ~SHMIF_META_HDRF16;
+	break;
+
+	case TARGET_FLAG_ALLOW_LDEF:
+		if (toggle)
+			fsrv->metamask |= SHMIF_META_LDEF;
+		else
+			fsrv->metamask &= ~SHMIF_META_LDEF;
+	break;
+
+	case TARGET_FLAG_ALLOW_VOBJ:
+		if (toggle)
+			fsrv->metamask |= SHMIF_META_VOBJ;
+		else
+			fsrv->metamask &= ~SHMIF_META_VOBJ;
 	break;
 
 	case TARGET_FLAG_ENDM:
@@ -9935,6 +9967,10 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"TARGET_VERBOSE", TARGET_FLAG_VERBOSE},
 {"TARGET_AUTOCLOCK", TARGET_FLAG_AUTOCLOCK},
 {"TARGET_NOBUFFERPASS", TARGET_FLAG_NO_BUFFERPASS},
+{"TARGET_ALLOWCM", TARGET_FLAG_ALLOW_CM},
+{"TARGET_ALLOWHDR", TARGET_FLAG_ALLOW_HDRF16},
+{"TARGET_ALLOWLODEF", TARGET_FLAG_ALLOW_LDEF},
+{"TARGET_ALLOWVECTOR", TARGET_FLAG_ALLOW_VOBJ},
 {"DISPLAY_STANDBY", ADPMS_STANDBY},
 {"DISPLAY_OFF", ADPMS_OFF},
 {"DISPLAY_SUSPEND", ADPMS_SUSPEND},
