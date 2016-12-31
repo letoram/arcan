@@ -110,6 +110,7 @@ struct agp_fenv {
 	void (*enable) (GLenum);
 	void (*disable) (GLenum);
 	void (*clear) (GLenum);
+	void (*get_integer_v)(GLenum, GLint*);
 
 /* Drawing, Blending, Stenciling */
 	void (*front_face) (GLenum);

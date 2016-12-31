@@ -49,22 +49,34 @@ unsigned agp_rendertarget_swap(struct agp_rendertarget* dst)
 {
 	struct agp_fenv* env = agp_env();
 
-	if (!dst || !dst->store || !dst->store_back)
-		return 0;
+	if (!dst || !dst->store || !dst->store_back){
+		return dst->store ? dst->store->vinf.text.glid : 0;
+	}
 
+	GLint cfbo;
+
+/* switch rendertarget if we're not already there */
+	env->get_integer_v(GL_DRAW_FRAMEBUFFER_BINDING, &cfbo);
+	if (dst->fbo != cfbo)
+		env->bind_framebuffer(GL_FRAMEBUFFER, dst->fbo);
+
+/* we return the one that was used up to this point */
 	int rid = dst->front_active ?
 		(dst->store_back->vinf.text.glid) :
 		(dst->store->vinf.text.glid);
 
+/* and attach the one that was not used */
 	int did = dst->front_active ?
 		(dst->store->vinf.text.glid) :
 		(dst->store_back->vinf.text.glid);
 
-		env->bind_framebuffer(GL_FRAMEBUFFER, dst->fbo);
 	dst->front_active = !dst->front_active;
 	env->framebuffer_texture_2d(GL_FRAMEBUFFER,
 		GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,did, 0);
-	env->bind_framebuffer(GL_FRAMEBUFFER, 0);
+
+/* and switch back to the old rendertarget */
+	if (dst->fbo != cfbo)
+		env->bind_framebuffer(GL_FRAMEBUFFER, cfbo);
 
 	return rid;
 }

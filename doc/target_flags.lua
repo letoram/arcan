@@ -21,14 +21,32 @@
 -- @note: flag: TARGET_AUTOCLOCK is on by default and provides a
 -- standardd implementation for some of the autoclock requests that
 -- are then filtered and not forwarded to the eventhandler.
--- @note: flag: TARGET_VERBOSE emits additional data about delivered
--- or dropped frames.
+-- @note: flag: TARGET_VERBOSE is off by default. Turning it on
+-- will emit additional data about delivered or dropped frames.
 -- @note: flag: TARGET_NOBUFFERPASS applies to plaforms where accelerated
 -- buffer passing is supported. This can be disabled statically/globally
 -- through a platform specific environment variable, and dynamically by setting
 -- this flag. The default behavior is to allow buffer passing, but if the
 -- graphics (agp) layer gets an invalid buffer, this flag is automatically set
 -- to true.
+-- @note: flag: TARGET_ALLOWCM allows a client to send/receive color
+-- lookup tables for one or several displays. You still need to explicitly
+-- specify when- and which tables- are to be sent or retrieved via the
+-- ref:video_displaygamma call. The event handler will indicate when
+-- gamma tables have been updated.
+-- @note: flag: TARGET_ALLOWLODEF allows a client to treat its video buffers
+-- in half-depth mode. Similar to TARGET_ALLOWHDR, this means that more
+-- advanced features than compositing (accessing / manipulating store,
+-- direct-feed share and so on) should be avoided.
+-- @note: flag: TARGET_ALLOWHDR allows a client to treat its video buffers
+-- in f16-mode. This is an advanced graphics format for working with sources
+-- that has a dynamic range. Most graphics applications becomes more costly,
+-- compositing multiple sources on a fixed-range display.
+-- @note: flag: TARGET_ALLOWVECTOR allows a client to treat its video buffers
+-- in vector mode. This converts the contents of its buffers to work as
+-- textures, and metadata for specifying content in a GPU friendly triangle-
+-- soup format. Like with allow-lodef/hdr, this will not work well with
+-- feedtargets or directly accessing storage.
 -- @group: targetcontrol
 -- @cfunction: targetflags
 -- @related:

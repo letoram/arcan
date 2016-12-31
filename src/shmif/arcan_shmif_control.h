@@ -504,7 +504,12 @@ enum shmif_ext_meta {
  * The common case for this is for a tool like the hmdserver to provide
  * data.
  */
-	SHMIF_META_HMD = 16
+	SHMIF_META_HMD = 16,
+
+/*
+ * Similar to HDR16, but switch to half-size mode (R8G8B8A8 -> RGB565)
+ */
+	SHMIF_META_LDEF = 32
 };
 /*
  * The acknowledged mask is reflected in cont->adata, and may subsequently
@@ -790,11 +795,11 @@ enum rhint_mask {
  * For shmif- vidp transfers, the source color space defaults to linear-RGB
  * and for non-desktop, non-color sensitive applications, that is the more
  * common.
- * Setting this flag indicates that the source colorspace is in sRB format
+ * Setting this flag indicates that the source colorspace is in sRGB format
  * and that the engine should pick shaders and blending algorithms that can
  * take this non-linearyity into account
  */
-	SHMIF_RHINT_CSPACE_SRGB = 8,
+	SHMIF_RHINT_CSPACE_SRGB = 8
 };
 
 struct arcan_shmif_page {

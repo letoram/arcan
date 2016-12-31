@@ -225,7 +225,12 @@ struct shmif_hidden {
 	shmif_asample* abuf[ARCAN_SHMIF_ABUFC_LIM];
 
 	struct arcan_shmif_initial initial;
-	bool valid_initial, output, alive, paused;
+
+	bool valid_initial : 1;
+	bool output : 1;
+	bool alive : 1;
+	bool paused : 1;
+
 	char* alt_conn;
 
 	enum ARCAN_FLAGS flags;

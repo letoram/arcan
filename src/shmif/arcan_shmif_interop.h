@@ -373,6 +373,11 @@ bool arcan_shmifext_vk(struct arcan_shmif_cont* con,
 	void** display, void*(*lookupfun)(void*, const char*), void* tag);
 
 /*
+ * Set the rendertarget contained in the extended context as active.
+ */
+	void arcan_shmifext_bind(struct arcan_shmif_cont* con);
+
+/*
  * Run the platform specific dance to convert a gl texture ID to a passable
  * descriptor (shmif_signalhandle), note that only one texture should be 'in
  * flight' (on both sides) at any one time, and calling this a second time
