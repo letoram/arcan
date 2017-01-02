@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2016, Björn Ståhl
+ * Copyright 2014-2017, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  * Description: Platform that draws to an arcan display server using the shmif.
@@ -15,6 +15,7 @@
 #include <poll.h>
 #include <setjmp.h>
 #include <math.h>
+#include <stdatomic.h>
 
 extern jmp_buf arcanmain_recover_state;
 
@@ -212,6 +213,19 @@ size_t platform_video_displays(platform_display_id* dids, size_t* lim)
 		*lim = MAX_DISPLAYS;
 
 	return rv;
+}
+
+bool platform_video_auth(int cardn, unsigned token)
+{
+	if (cardn < MAX_DISPLAYS && disp[cardn].conn.addr){
+		disp[cardn].conn.hints |= SHMIF_RHINT_AUTH_TOK;
+		atomic_store(&disp[cardn].conn.addr->vpts, token);
+		arcan_shmif_resize(&disp[cardn].conn,
+			disp[cardn].conn.w, disp[cardn].conn.h);
+		disp[cardn].conn.hints &= ~SHMIF_RHINT_AUTH_TOK;
+		return true;
+	}
+	return false;
 }
 
 bool platform_video_set_display_gamma(platform_display_id did,

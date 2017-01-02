@@ -75,6 +75,11 @@ void* platform_video_gfxsym(const char* sym)
 	return eglGetProcAddress(sym);
 }
 
+bool platform_video_auth(int cardn, unsigned token)
+{
+	return false;
+}
+
 void platform_video_minimize()
 {
 }

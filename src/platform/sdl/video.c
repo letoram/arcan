@@ -75,6 +75,11 @@ void platform_video_restore_external()
 		sdl.canvasw, sdl.canvash, sizeof(av_pixel), sdl.sdlarg);
 }
 
+bool platform_video_auth(int cardn, unsigned token)
+{
+	return false;
+}
+
 int platform_video_cardhandle(int cardn)
 {
 	return -1;

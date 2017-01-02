@@ -149,7 +149,7 @@ int arcan_shmif_wait(struct arcan_shmif_cont*, struct arcan_event* dst);
  *
  * Be sure to check the cookie of the acq_event in the case of a
  * TARGET_COMMAND_NEWSEGMENT as the server might have tried to preemptively
- * psuh a new subsegment (clipboard management, output, ...)
+ * push a new subsegment (clipboard management, output, ...)
  */
 bool arcan_shmif_acquireloop(struct arcan_shmif_cont*,
 	struct arcan_event*, struct arcan_event**, ssize_t*);
@@ -224,7 +224,7 @@ void arg_cleanup(struct arg_arr*);
 
 /*
  * Duplicates a descriptor and set safe flags (e.g. CLOEXEC)
- * if [dstnum] is <= 0, it will ATTEMPT to duplicate to the specific number,
+ * if [dstnum] is >= 0, it will ATTEMPT to duplicate to the specific number,
  * (though NOT GUARANTEED).
  *
  * Returns a valid descriptor or -1 on error (with errno set according
@@ -394,7 +394,8 @@ bool arcan_shmifext_gltex_handle(
  * be set to point to a platform specific device structure. Outside very
  * specialized uses (Xarcan), this should be ignored.
  */
-int arcan_shmifext_dev(struct arcan_shmif_cont* con, uintptr_t* outdev);
+int arcan_shmifext_dev(
+	struct arcan_shmif_cont* con, uintptr_t* outdev, bool clone);
 
 /*
  * Similar behavior to signalhandle, but any conversion from the texture id

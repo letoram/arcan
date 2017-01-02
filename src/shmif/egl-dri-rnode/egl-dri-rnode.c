@@ -23,6 +23,7 @@
 #include <drm_fourcc.h>
 #include <xf86drm.h>
 #include <gbm.h>
+#include <stdatomic.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -359,7 +360,23 @@ bool arcan_shmifext_drop_context(struct arcan_shmif_cont* con)
 	return true;
 }
 
-int arcan_shmifext_dev(struct arcan_shmif_cont* con, uintptr_t* dev)
+static void authenticate_fd(struct arcan_shmif_cont* con, int fd)
+{
+/* is it a render node or a real device? */
+	struct stat nodestat;
+	if (0 == fstat(fd, &nodestat) && !(nodestat.st_rdev & 0x80)){
+		unsigned magic;
+		drmGetMagic(fd, &magic);
+		atomic_store(&con->addr->vpts, magic);
+		con->hints |= SHMIF_RHINT_AUTH_TOK;
+		arcan_shmif_resize(con, con->w, con->h);
+		con->hints &= ~SHMIF_RHINT_AUTH_TOK;
+		magic = atomic_load(&con->addr->vpts);
+	}
+}
+
+int arcan_shmifext_dev(struct arcan_shmif_cont* con,
+	uintptr_t* dev, bool clone)
 {
 	if (!con || !con->privext || !con->privext->internal)
 		return -1;
@@ -367,7 +384,14 @@ int arcan_shmifext_dev(struct arcan_shmif_cont* con, uintptr_t* dev)
 	if (dev)
 		*dev = (uintptr_t) con->privext->internal->dev;
 
-  return con->privext->active_fd;
+	if (clone){
+		int fd = arcan_shmif_dupfd(con->privext->active_fd, -1, true);
+		if (-1 != fd)
+			authenticate_fd(con, fd);
+		return fd;
+	}
+	else
+	  return con->privext->active_fd;
 }
 
 bool arcan_shmifext_gl_handles(struct arcan_shmif_cont* con,
@@ -395,10 +419,14 @@ bool arcan_shmifext_egl(struct arcan_shmif_cont* con,
 	if (con->privext->pending_fd != -1){
 		if (-1 != con->privext->active_fd){
 			close(con->privext->active_fd);
+			con->privext->active_fd = -1;
 			gbm_drop(con);
 		}
-		else
-			dfd = con->privext->active_fd;
+		dfd = con->privext->pending_fd;
+		con->privext->pending_fd = -1;
+	}
+	else if (-1 != con->privext->active_fd){
+		dfd = con->privext->active_fd;
 	}
 /* or first setup without a pending_fd */
 	else if (!con->privext->internal){
@@ -416,6 +444,8 @@ bool arcan_shmifext_egl(struct arcan_shmif_cont* con,
 
 /* special cleanup to deal with gbm_device abstraction */
 	con->privext->cleanup = gbm_drop;
+	con->privext->active_fd = dfd;
+	authenticate_fd(con, dfd);
 
 /* finally open device */
 	if (!con->privext->internal){
@@ -440,7 +470,6 @@ bool arcan_shmifext_egl(struct arcan_shmif_cont* con,
 		return false;
 	}
 
-	con->privext->active_fd = dfd;
 	*display = (void*) (con->privext->internal->dev);
 	return true;
 }

@@ -448,6 +448,9 @@ enum ARCAN_TARGET_COMMAND {
  *              4: hint alternative connection, will not be forwarded but
  *                 tracked internally to use as a different connection path
  *                 on parent failure. Uses message field.
+ *              5: reply to a request for privileged device access,
+ *                 this is special magic used for bridging DRI2 and will
+ *                 weaken security.
  *
  * for [1].iv == 1:
  *
@@ -457,6 +460,10 @@ enum ARCAN_TARGET_COMMAND {
  *              1: direct, output handles should be of a type that can be used
  *                 as display scanout type (e.g. GBM_BO_USE_SCANOUT),
  *              2; disabled, hardware acceleration is entirely lost
+ *
+ * for [1].iv == 5:
+ *
+ * ioev[2].iv = 0: (unsigned) corresponds to a drm authentication token
  */
 	TARGET_COMMAND_DEVICE_NODE,
 
@@ -536,6 +543,15 @@ enum ARCAN_TARGET_COMMAND {
  * Used to indicate the end of the preroll state. _open (and only _open) is
  * blocking until this command has been received. It is used to populate the
  * shmif_cont with strong UI dominant properties, like density, font, ...
+ *
+ * It is also used as part of a transition to an extended context request,
+ * i.e. shmifext_open(...) where device access is privileged. This is needed
+ * for some platforms when we can't operate from a lesser-privileged device
+ * access ('render-node').
+ *
+ * ioev[0].iv = lower 32-bit of user access token
+ * ioev[1].iv = higher 32-bit of user access token
+ * This token can be used to re-authenticate in the event of a server crash
  */
 	TARGET_COMMAND_ACTIVATE,
 
@@ -646,11 +662,11 @@ enum ARCAN_EVENT_EXTERNAL {
  * user-readable string suggesting what kind of cursor image that could be
  * used. Uses the messagefield and the effect is implementation defined, though
  * suggested labels are:
- * [default, wait, select-inv, select, up, down, left-right, drag-up-down,
- * drag-up, drag-down, drag-left, drag-right, drag-left-right, rotate-cw,
- * rotate-ccw, normal-tag, diag-ur, diag-ll, drag-diag, datafield,
- * move, typefield, forbidden, help, vertical-datafield, drag-drop,
- * drag-reject, hidden-abs, hidden-rel ]
+ * [default, wait, select-inv, select, up, down, left-right, up-down,
+ * drag-up-down, drag-up, drag-down, drag-left, drag-right, drag-left-right,
+ * rotate-cw, rotate-ccw, normal-tag, diag-ur, diag-ll, drag-diag, datafield,
+ * move, typefield, forbidden, help, hand, vertical-datafield, drag-drop,
+ * drag-reject, hidden, hidden-abs, hidden-rel ]
  *
  * The only mandated cursorhints are 'hidden-abs', 'hidden-rel' which
  * indicate the preferred type of cursor events when it comes to coordinates.
@@ -688,7 +704,7 @@ enum ARCAN_EVENT_EXTERNAL {
  * Specify the requested subtype of a segment, along with a descriptive UTF-8
  * string (application title or similar) and a caller- selected 128-bit UUID.
 
- * The UUID is an unmanaged identifier namespace where the caller or
+ * he UUID is an unmanaged identifier namespace where the caller or
  * surrounding system tries to avoid collsions. The ID is primarily intended
  * for recalling user-interface (not security- related) properties (window
  * dimensions, ...).
@@ -720,390 +736,390 @@ enum ARCAN_EVENT_EXTERNAL {
 	EVENT_EXTERNAL_BCHUNKSTATE,
 
 	EVENT_EXTERNAL_ULIM = INT_MAX
-};
-
-/*
- * Skipmode are synchronization hints for how A/V/I synch
- * should be compensated for (if possible), uses ioval[0].iv
- */
-enum ARCAN_TARGET_SKIPMODE {
-/* Discard V frames if the period time will be overshot */
-	TARGET_SKIP_AUTO =  0,
-/* Never discard frames, prefer period to (period*2) time oscillation */
-	TARGET_SKIP_NONE = -1,
-/* Reverse- playback state */
-	TARGET_SKIP_REVERSE  = -2,
-/* Rollback video to (abs(v+TARGET_SKIP_ROLLBACK)+1) frames, apply
- * input then simulate forward */
-	TARGET_SKIP_ROLLBACK = -3,
-/* Single- stepping clock, stepframe events drive transfers */
-	TARGET_SKIP_STEP = 1,
-/* Only process every v-TARGET_SKIP_FASTWD+1 frames */
-	TARGET_SKIP_FASTFWD  = 10,
-	TARGET_SKIP_ULIM = INT_MAX
-};
-
-/*
- * Basic input event type grouping,
- * CATEGORY  => IO (used for masking, queuetransfer etc.)
- * KIND      => determines substructure
- * IDEVKIND  => hints at device origin (should rarely matter)
- * IDATATYPE => usually redundant against KIND, reserved for future tuning
- */
-enum ARCAN_EVENT_IO {
-	EVENT_IO_BUTTON = 0,
-	EVENT_IO_AXIS_MOVE,
-	EVENT_IO_TOUCH,
-	EVENT_IO_STATUS,
-	EVENT_IO_ULIM = INT_MAX
-};
-
-/* subid on a IDATATYPE = DIGITAL on IDEVKIND = MOUSE */
-enum ARCAN_MBTN_IMAP {
-	MBTN_LEFT_IND = 1,
-	MBTN_RIGHT_IND,
-	MBTN_MIDDLE_IND,
-	MBTN_WHEEL_UP_IND,
-	MBTN_WHEEL_DOWN_IND
-};
-
-enum ARCAN_EVENT_IDEVKIND {
-	EVENT_IDEVKIND_KEYBOARD = 0,
-	EVENT_IDEVKIND_MOUSE,
-	EVENT_IDEVKIND_GAMEDEV,
-	EVENT_IDEVKIND_TOUCHDISP,
-	EVENT_IDEVKIND_LEDCTRL,
-	EVENT_IDEVKIND_STATUS,
-	EVENT_IDEVKIND_ULIM = INT_MAX
-};
-
-enum ARCAN_IDEV_STATUS {
-	EVENT_IDEV_ADDED = 0,
-	EVENT_IDEV_REMOVED,
-	EVENT_IDEV_BLOCKED
-};
-
-enum ARCAN_EVENT_IDATATYPE {
-	EVENT_IDATATYPE_ANALOG = 0,
-	EVENT_IDATATYPE_DIGITAL,
-	EVENT_IDATATYPE_TRANSLATED,
-	EVENT_IDATATYPE_TOUCH,
-	EVENT_IDATATYPE_ULIM = INT_MAX
-};
-
-/*
- * Used by networking frameserver only, the enable mask is bound
- * to that archetype and cannot be initiated by a non-auth connection
- */
-enum ARCAN_EVENT_NET {
-/* -- events from frameserver -- */
-/* connection was forcibly broken / terminated */
-	EVENT_NET_BROKEN,
-
-/* new client connected, assumed non-authenticated
- * (state transfers etc. prohibited) */
-	EVENT_NET_CONNECTED,
-
-/* established client disconnected */
-	EVENT_NET_DISCONNECTED,
-
-/* used when initiating a connection that timed out */
-	EVENT_NET_NORESPONSE,
-
-/* used for frameserver launched in discover mode (query external
- * list server or using local broadcast) */
-	EVENT_NET_DISCOVERED,
-
-/* -- events to frameserver -- */
-	EVENT_NET_CONNECT,
-	EVENT_NET_DISCONNECT,
-	EVENT_NET_AUTHENTICATE,
-/* events to/from frameserver */
-	EVENT_NET_CUSTOMMSG,
-	EVENT_NET_INPUTEVENT,
-	EVENT_NET_STATEREQ,
-	EVENT_NET_ULIM = INT_MAX
-};
-
-/*
- * The following enumerations and subtypes are slated for removal here as they
- * only refer to engine- internal events. Currently, the structures and types
- * are re-used with an explicit filter-copy step (frameserver_queuetransfer).
- * Attempting to use them from an external source will get the connection
- * terminated.
- *
- * -- begin internal --
- */
-enum ARCAN_EVENT_VIDEO {
-	EVENT_VIDEO_EXPIRE,
-	EVENT_VIDEO_CHAIN_OVER,
-	EVENT_VIDEO_DISPLAY_RESET,
-	EVENT_VIDEO_DISPLAY_ADDED,
-	EVENT_VIDEO_DISPLAY_REMOVED,
-	EVENT_VIDEO_ASYNCHIMAGE_LOADED,
-	EVENT_VIDEO_ASYNCHIMAGE_FAILED
-};
-
-enum ARCAN_EVENT_SYSTEM {
-	EVENT_SYSTEM_EXIT = 0,
-};
-
-enum ARCAN_EVENT_AUDIO {
-	EVENT_AUDIO_PLAYBACK_FINISHED = 0,
-	EVENT_AUDIO_PLAYBACK_ABORTED,
-	EVENT_AUDIO_BUFFER_UNDERRUN,
-	EVENT_AUDIO_PITCH_TRANSFORMATION_FINISHED,
-	EVENT_AUDIO_GAIN_TRANSFORMATION_FINISHED,
-	EVENT_AUDIO_OBJECT_GONE,
-	EVENT_AUDIO_INVALID_OBJECT_REFERENCED
-};
-
-enum ARCAN_EVENT_FSRV {
-	EVENT_FSRV_EXTCONN,
-	EVENT_FSRV_RESIZED,
-	EVENT_FSRV_TERMINATED,
-	EVENT_FSRV_DROPPEDFRAME,
-	EVENT_FSRV_DELIVEREDFRAME,
-	EVENT_FSRV_PREROLL
-};
-/* -- end internal -- */
-
-typedef union arcan_ioevent_data {
-	struct {
-		uint8_t active;
-	} digital;
-
-/*
- * Packing in this field is poor due to legacy.
- * axisval[] works on the basis of 'just forwarding whatever we can find' where
- * [nvalues] determine the number of values used, with ordering manipulated
- * with the [gotrel] field.
- *
- * [if gotrel is set]
- * nvalues = 1: [0] relative sample
- * nvalues = 2: [0] relative sample, [1] absolute sample
- * nvalues = 3; same as [2], with 'unknown' sample data in [3]
- * nvalues = 4; same as [2] but an extra axis (2D sources) in [3,4]
- *
- * [if gotrel is not set, the order between relative and absolute are changed]
- *
- * A convention for mouse cursors is to EITHER split into two samples on subid
- * 0 (x) and 1 (y), or use subid (2) with all 4 samples filled out. The point
- * of that is that we still lack serialization and force a 'largest struct wins'
- * scenario, meaning that a sample consumes unreasonable memory sizes. There is
- * also the option for ONE mouse device to be mapped directly into the shmif
- * page directly without going through the event queue.
- */
-	struct {
-		int8_t gotrel;
-		uint8_t nvalues;
-		int16_t axisval[4];
-	} analog;
-
-	struct {
-		uint8_t active;
-		int16_t x, y;
-		float pressure, size;
-	} touch;
-
-	struct {
-/* match ARCAN_IDEV_STATUS */
-		uint8_t action;
-		uint8_t devkind;
-		uint16_t devref;
-		uint8_t domain;
-	} status;
-
-	struct {
-/* possible utf8- match, if known, received events should
- * prefer these, if set. "waste" 1 byte to protect cascade from
- * missing \0 */
-		uint8_t utf8[5];
-/* pressed or not */
-		uint8_t active;
-/* propagated device code, for identification and troubleshooting */
-		uint8_t scancode;
-/* depending on devid, SDL or X keysym */
-		uint32_t keysym;
-/* bitmask of key_modifiers */
-		uint16_t modifiers;
-	} translated;
-
-} arcan_ioevent_data;
-
-enum ARCAN_EVENT_IOFLAG {
-/* Possibly used by mouse, touch, gamedev  etc. where some implementation
- * defined gesture descriptions comes in label, suggested values follow
- * the google terminology (gestures-touch-mechanics):
- * touch, dbltouch, click, dblclick, drag, swipe, fling, press, release,
- * drag, drop, openpinch, closepinch, rotate.
- * n- finger variations will fire an event each, subid gives index.
- */
-	ARCAN_IOFL_GESTURE = 1
-};
-
-typedef struct {
-	enum ARCAN_EVENT_IO kind;
-	enum ARCAN_EVENT_IDEVKIND devkind;
-	enum ARCAN_EVENT_IDATATYPE datatype;
-	char label[16];
-	uint8_t flags;
-
-	union{
-	struct {
-		uint16_t devid;
-		uint16_t subid;
-	};
-	uint16_t id[2];
-	uint32_t iid;
 	};
 
-/* relative to connection start, for scheduling future I/O without
- * risking a saturated event-queue or latency blocks from signal */
-	uint64_t pts;
-	arcan_ioevent_data input;
-} arcan_ioevent;
+	/*
+	 * Skipmode are synchronization hints for how A/V/I synch
+	 * should be compensated for (if possible), uses ioval[0].iv
+	 */
+	enum ARCAN_TARGET_SKIPMODE {
+	/* Discard V frames if the period time will be overshot */
+		TARGET_SKIP_AUTO =  0,
+	/* Never discard frames, prefer period to (period*2) time oscillation */
+		TARGET_SKIP_NONE = -1,
+	/* Reverse- playback state */
+		TARGET_SKIP_REVERSE  = -2,
+	/* Rollback video to (abs(v+TARGET_SKIP_ROLLBACK)+1) frames, apply
+	 * input then simulate forward */
+		TARGET_SKIP_ROLLBACK = -3,
+	/* Single- stepping clock, stepframe events drive transfers */
+		TARGET_SKIP_STEP = 1,
+	/* Only process every v-TARGET_SKIP_FASTWD+1 frames */
+		TARGET_SKIP_FASTFWD  = 10,
+		TARGET_SKIP_ULIM = INT_MAX
+	};
 
-/*
- * internal engine only
- */
-typedef struct {
-	enum ARCAN_EVENT_VIDEO kind;
+	/*
+	 * Basic input event type grouping,
+	 * CATEGORY  => IO (used for masking, queuetransfer etc.)
+	 * KIND      => determines substructure
+	 * IDEVKIND  => hints at device origin (should rarely matter)
+	 * IDATATYPE => usually redundant against KIND, reserved for future tuning
+	 */
+	enum ARCAN_EVENT_IO {
+		EVENT_IO_BUTTON = 0,
+		EVENT_IO_AXIS_MOVE,
+		EVENT_IO_TOUCH,
+		EVENT_IO_STATUS,
+		EVENT_IO_ULIM = INT_MAX
+	};
 
-	int64_t source;
+	/* subid on a IDATATYPE = DIGITAL on IDEVKIND = MOUSE */
+	enum ARCAN_MBTN_IMAP {
+		MBTN_LEFT_IND = 1,
+		MBTN_RIGHT_IND,
+		MBTN_MIDDLE_IND,
+		MBTN_WHEEL_UP_IND,
+		MBTN_WHEEL_DOWN_IND
+	};
 
-	union {
+	enum ARCAN_EVENT_IDEVKIND {
+		EVENT_IDEVKIND_KEYBOARD = 0,
+		EVENT_IDEVKIND_MOUSE,
+		EVENT_IDEVKIND_GAMEDEV,
+		EVENT_IDEVKIND_TOUCHDISP,
+		EVENT_IDEVKIND_LEDCTRL,
+		EVENT_IDEVKIND_STATUS,
+		EVENT_IDEVKIND_ULIM = INT_MAX
+	};
+
+	enum ARCAN_IDEV_STATUS {
+		EVENT_IDEV_ADDED = 0,
+		EVENT_IDEV_REMOVED,
+		EVENT_IDEV_BLOCKED
+	};
+
+	enum ARCAN_EVENT_IDATATYPE {
+		EVENT_IDATATYPE_ANALOG = 0,
+		EVENT_IDATATYPE_DIGITAL,
+		EVENT_IDATATYPE_TRANSLATED,
+		EVENT_IDATATYPE_TOUCH,
+		EVENT_IDATATYPE_ULIM = INT_MAX
+	};
+
+	/*
+	 * Used by networking frameserver only, the enable mask is bound
+	 * to that archetype and cannot be initiated by a non-auth connection
+	 */
+	enum ARCAN_EVENT_NET {
+	/* -- events from frameserver -- */
+	/* connection was forcibly broken / terminated */
+		EVENT_NET_BROKEN,
+
+	/* new client connected, assumed non-authenticated
+	 * (state transfers etc. prohibited) */
+		EVENT_NET_CONNECTED,
+
+	/* established client disconnected */
+		EVENT_NET_DISCONNECTED,
+
+	/* used when initiating a connection that timed out */
+		EVENT_NET_NORESPONSE,
+
+	/* used for frameserver launched in discover mode (query external
+	 * list server or using local broadcast) */
+		EVENT_NET_DISCOVERED,
+
+	/* -- events to frameserver -- */
+		EVENT_NET_CONNECT,
+		EVENT_NET_DISCONNECT,
+		EVENT_NET_AUTHENTICATE,
+	/* events to/from frameserver */
+		EVENT_NET_CUSTOMMSG,
+		EVENT_NET_INPUTEVENT,
+		EVENT_NET_STATEREQ,
+		EVENT_NET_ULIM = INT_MAX
+	};
+
+	/*
+	 * The following enumerations and subtypes are slated for removal here as they
+	 * only refer to engine- internal events. Currently, the structures and types
+	 * are re-used with an explicit filter-copy step (frameserver_queuetransfer).
+	 * Attempting to use them from an external source will get the connection
+	 * terminated.
+	 *
+	 * -- begin internal --
+	 */
+	enum ARCAN_EVENT_VIDEO {
+		EVENT_VIDEO_EXPIRE,
+		EVENT_VIDEO_CHAIN_OVER,
+		EVENT_VIDEO_DISPLAY_RESET,
+		EVENT_VIDEO_DISPLAY_ADDED,
+		EVENT_VIDEO_DISPLAY_REMOVED,
+		EVENT_VIDEO_ASYNCHIMAGE_LOADED,
+		EVENT_VIDEO_ASYNCHIMAGE_FAILED
+	};
+
+	enum ARCAN_EVENT_SYSTEM {
+		EVENT_SYSTEM_EXIT = 0,
+	};
+
+	enum ARCAN_EVENT_AUDIO {
+		EVENT_AUDIO_PLAYBACK_FINISHED = 0,
+		EVENT_AUDIO_PLAYBACK_ABORTED,
+		EVENT_AUDIO_BUFFER_UNDERRUN,
+		EVENT_AUDIO_PITCH_TRANSFORMATION_FINISHED,
+		EVENT_AUDIO_GAIN_TRANSFORMATION_FINISHED,
+		EVENT_AUDIO_OBJECT_GONE,
+		EVENT_AUDIO_INVALID_OBJECT_REFERENCED
+	};
+
+	enum ARCAN_EVENT_FSRV {
+		EVENT_FSRV_EXTCONN,
+		EVENT_FSRV_RESIZED,
+		EVENT_FSRV_TERMINATED,
+		EVENT_FSRV_DROPPEDFRAME,
+		EVENT_FSRV_DELIVEREDFRAME,
+		EVENT_FSRV_PREROLL
+	};
+	/* -- end internal -- */
+
+	typedef union arcan_ioevent_data {
 		struct {
-			int16_t width;
-			int16_t height;
-			int flags;
-			float vppcm;
-			int displayid;
-			int ledctrl;
-			int ledid;
+			uint8_t active;
+		} digital;
+
+	/*
+	 * Packing in this field is poor due to legacy.
+	 * axisval[] works on the basis of 'just forwarding whatever we can find' where
+	 * [nvalues] determine the number of values used, with ordering manipulated
+	 * with the [gotrel] field.
+	 *
+	 * [if gotrel is set]
+	 * nvalues = 1: [0] relative sample
+	 * nvalues = 2: [0] relative sample, [1] absolute sample
+	 * nvalues = 3; same as [2], with 'unknown' sample data in [3]
+	 * nvalues = 4; same as [2] but an extra axis (2D sources) in [3,4]
+	 *
+	 * [if gotrel is not set, the order between relative and absolute are changed]
+	 *
+	 * A convention for mouse cursors is to EITHER split into two samples on subid
+	 * 0 (x) and 1 (y), or use subid (2) with all 4 samples filled out. The point
+	 * of that is that we still lack serialization and force a 'largest struct wins'
+	 * scenario, meaning that a sample consumes unreasonable memory sizes. There is
+	 * also the option for ONE mouse device to be mapped directly into the shmif
+	 * page directly without going through the event queue.
+	 */
+		struct {
+			int8_t gotrel;
+			uint8_t nvalues;
+			int16_t axisval[4];
+		} analog;
+
+		struct {
+			uint8_t active;
+			int16_t x, y;
+			float pressure, size;
+		} touch;
+
+		struct {
+	/* match ARCAN_IDEV_STATUS */
+			uint8_t action;
+			uint8_t devkind;
+			uint16_t devref;
+			uint8_t domain;
+		} status;
+
+		struct {
+	/* possible utf8- match, if known, received events should
+	 * prefer these, if set. "waste" 1 byte to protect cascade from
+	 * missing \0 */
+			uint8_t utf8[5];
+	/* pressed or not */
+			uint8_t active;
+	/* propagated device code, for identification and troubleshooting */
+			uint8_t scancode;
+	/* depending on devid, SDL or X keysym */
+			uint32_t keysym;
+	/* bitmask of key_modifiers */
+			uint16_t modifiers;
+		} translated;
+
+	} arcan_ioevent_data;
+
+	enum ARCAN_EVENT_IOFLAG {
+	/* Possibly used by mouse, touch, gamedev  etc. where some implementation
+	 * defined gesture descriptions comes in label, suggested values follow
+	 * the google terminology (gestures-touch-mechanics):
+	 * touch, dbltouch, click, dblclick, drag, swipe, fling, press, release,
+	 * drag, drop, openpinch, closepinch, rotate.
+	 * n- finger variations will fire an event each, subid gives index.
+	 */
+		ARCAN_IOFL_GESTURE = 1
+	};
+
+	typedef struct {
+		enum ARCAN_EVENT_IO kind;
+		enum ARCAN_EVENT_IDEVKIND devkind;
+		enum ARCAN_EVENT_IDATATYPE datatype;
+		char label[16];
+		uint8_t flags;
+
+		union{
+		struct {
+			uint16_t devid;
+			uint16_t subid;
 		};
-		int slot;
-	};
-
-	intptr_t data;
-} arcan_vevent;
-
-/*
- * internal engine only
- */
-typedef struct {
-	enum ARCAN_EVENT_FSRV kind;
-
-	union {
-		struct {
-			int32_t audio;
-			size_t width, height;
-			size_t c_abuffer, c_vbuffer;
-			size_t l_abuffer, l_vbuffer;
-			int8_t glsource;
-			uint64_t pts;
-			uint64_t counter;
+		uint16_t id[2];
+		uint32_t iid;
 		};
-		struct {
-			char ident[32];
-			int64_t descriptor;
+
+	/* relative to connection start, for scheduling future I/O without
+	 * risking a saturated event-queue or latency blocks from signal */
+		uint64_t pts;
+		arcan_ioevent_data input;
+	} arcan_ioevent;
+
+	/*
+	 * internal engine only
+	 */
+	typedef struct {
+		enum ARCAN_EVENT_VIDEO kind;
+
+		int64_t source;
+
+		union {
+			struct {
+				int16_t width;
+				int16_t height;
+				int flags;
+				float vppcm;
+				int displayid;
+				int ledctrl;
+				int ledid;
+			};
+			int slot;
 		};
-	};
 
-	uint8_t message[32];
-	int64_t video;
-	intptr_t otag;
-} arcan_fsrvevent;
+		intptr_t data;
+	} arcan_vevent;
 
-/*
- * internal engine only
- */
-typedef struct {
-	enum ARCAN_EVENT_AUDIO kind;
+	/*
+	 * internal engine only
+	 */
+	typedef struct {
+		enum ARCAN_EVENT_FSRV kind;
 
-	int32_t source;
-	uintptr_t* data;
-} arcan_aevent;
+		union {
+			struct {
+				int32_t audio;
+				size_t width, height;
+				size_t c_abuffer, c_vbuffer;
+				size_t l_abuffer, l_vbuffer;
+				int8_t glsource;
+				uint64_t pts;
+				uint64_t counter;
+			};
+			struct {
+				char ident[32];
+				int64_t descriptor;
+			};
+		};
 
-/*
- * internal engine only
- */
-typedef struct arcan_sevent {
-	enum ARCAN_EVENT_SYSTEM kind;
-	int errcode;
-	union {
-		struct {
-			uint32_t hitag, lotag;
-		} tagv;
-		struct {
-			char* dyneval_msg;
-		} mesg;
-		char message[64];
-	};
-} arcan_sevent;
+		uint8_t message[32];
+		int64_t video;
+		intptr_t otag;
+	} arcan_fsrvevent;
 
-/*
- * Biggest substructure, primarily due to discovery which needs
- * to cover both destination address, public key to use and ident-hint.
- */
-typedef struct arcan_netevent{
-	enum ARCAN_EVENT_NET kind;
-/* tagged in queuetransfer */
-	uint64_t source;
+	/*
+	 * internal engine only
+	 */
+	typedef struct {
+		enum ARCAN_EVENT_AUDIO kind;
 
-	union {
-		struct {
-/* public 25519 key, will be mapped to/from base64 at borders,
- * private key is only ever transmitted during setup as env-arg */
-			char key[32];
-/* text indicator of a subservice in ident packages */
-			char ident[8];
-/* max ipv6 textual representation, 39 + strsep + port */
-			char addr[45];
-		} host;
+		int32_t source;
+		uintptr_t* data;
+	} arcan_aevent;
 
-/* match size of host as we'd pad otherwise */
-		char message[93];
-	};
+	/*
+	 * internal engine only
+	 */
+	typedef struct arcan_sevent {
+		enum ARCAN_EVENT_SYSTEM kind;
+		int errcode;
+		union {
+			struct {
+				uint32_t hitag, lotag;
+			} tagv;
+			struct {
+				char* dyneval_msg;
+			} mesg;
+			char message[64];
+		};
+	} arcan_sevent;
 
-	uint8_t connid;
-} arcan_netevent;
+	/*
+	 * Biggest substructure, primarily due to discovery which needs
+	 * to cover both destination address, public key to use and ident-hint.
+	 */
+	typedef struct arcan_netevent{
+		enum ARCAN_EVENT_NET kind;
+	/* tagged in queuetransfer */
+		uint64_t source;
 
-typedef struct arcan_tgtevent {
-	enum ARCAN_TARGET_COMMAND kind;
-	union {
-		uint32_t uiv;
-		int32_t iv;
-		float fv;
-		uint8_t cv[4];
-	} ioevs[6];
+		union {
+			struct {
+	/* public 25519 key, will be mapped to/from base64 at borders,
+	 * private key is only ever transmitted during setup as env-arg */
+				char key[32];
+	/* text indicator of a subservice in ident packages */
+				char ident[8];
+	/* max ipv6 textual representation, 39 + strsep + port */
+				char addr[45];
+			} host;
 
-	int code;
-	char message[78];
-} arcan_tgtevent;
+	/* match size of host as we'd pad otherwise */
+			char message[93];
+		};
 
-typedef struct arcan_extevent {
-	enum ARCAN_EVENT_EXTERNAL kind;
-	int64_t source;
+		uint8_t connid;
+	} arcan_netevent;
 
-	union {
-/*
- * For events that set one or multiple short messages:
- * MESSAGE, IDENT, CURSORHINT, ALERT
- * Only MESSAGE and ALERT type has any multipart meaning
- * (data) - UTF-8 (complete, valid)
- * (multipart) - !0 (more to come, terminated with 0)
- */
-		struct {
-			uint8_t data[78];
-			uint8_t multipart;
-		} message;
+	typedef struct arcan_tgtevent {
+		enum ARCAN_TARGET_COMMAND kind;
+		union {
+			uint32_t uiv;
+			int32_t iv;
+			float fv;
+			uint8_t cv[4];
+		} ioevs[6];
 
-/*
- * For user-toggleable options that can be persistantly tracked,
- * per segment related key/value store
- * (index) - setting index
- * (type)  - setting type, 0: key, 1: description, 2: value, 3: current value
+		int code;
+		char message[78];
+	} arcan_tgtevent;
+
+	typedef struct arcan_extevent {
+		enum ARCAN_EVENT_EXTERNAL kind;
+		int64_t source;
+
+		union {
+	/*
+	 * For events that set one or multiple short messages:
+	 * MESSAGE, IDENT, CURSORHINT, ALERT
+	 * Only MESSAGE and ALERT type has any multipart meaning
+	 * (data) - UTF-8 (complete, valid)
+	 * (multipart) - !0 (more to come, terminated with 0)
+	 */
+			struct {
+				uint8_t data[78];
+				uint8_t multipart;
+			} message;
+
+	/*
+	 * For user-toggleable options that can be persistantly tracked,
+	 * per segment related key/value store
+	 * (index) - setting index
+	 * (type)  - setting type, 0: key, 1: description, 2: value, 3: current value,
  * (data)  - UTF-8 encoded, type specific value. Limitations on key are similar
  *           to arcan database key (see arcan_db man)
  */
@@ -1227,10 +1243,9 @@ typedef struct arcan_extevent {
 		} streaminf;
 
 /*
- * The viewport is an advanced feature that can map multiple subwindows
- * on the same surface, but also indicate that the source is trying to
- * provide its own decorations or content indicators and the actual
- * dimensions of these (so that the running appl can decide what to show).
+ * The viewport hint is used to provide additional information about
+ * different regions of a segment, possible decorations, hierarchical
+ * relations, anchoring and ordering.
  *
  *  (x+w), (y+h)     - position and cliped against actual surface dimensions
  *  (borderpx)[tlrd] - indicate if there is a border area and its thickness

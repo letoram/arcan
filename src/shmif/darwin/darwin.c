@@ -189,7 +189,8 @@ bool arcan_shmifext_gltex_handle(struct arcan_shmif_cont* con,
 	return false;
 }
 
-int arcan_shmifext_dev(struct arcan_shmif_cont* con, uintptr_t* dev)
+int arcan_shmifext_dev(struct arcan_shmif_cont* con,
+	uintptr_t* dev, bool clone)
 {
 	if (dev)
 		*dev = 0;
