@@ -799,7 +799,14 @@ enum rhint_mask {
  * and that the engine should pick shaders and blending algorithms that can
  * take this non-linearyity into account
  */
-	SHMIF_RHINT_CSPACE_SRGB = 8
+	SHMIF_RHINT_CSPACE_SRGB = 8,
+
+/*
+ * Used internally with shmifext_setup for the cases where we need to
+ * authenticate against the rendering subsystem. This is a no-op on many
+ * platforms. (ab)uses the VPTS field to exchange cookies.
+ */
+	SHMIF_RHINT_AUTH_TOK = 16
 };
 
 struct arcan_shmif_page {
@@ -926,6 +933,8 @@ struct arcan_shmif_page {
 /*
  * [FSRV-OR-ARCAN-SET]
  * Timestamp hint for presentation of a video frame (using synch-to-video)
+ * Also used as negotiation for RHINT_TOKEN_AUTH used by shmifext_setup
+ * internally.
  */
 	volatile _Atomic uint_least64_t vpts;
 

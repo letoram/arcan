@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2016, Björn Ståhl
+ * Copyright 2014-2017, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -265,6 +265,11 @@ bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 
 	agp_init();
 	return true;
+}
+
+bool PLATFORM_SYMBOL(_video_auth)(int cardn, unsigned token)
+{
+	return false;
 }
 
 void PLATFORM_SYMBOL(_video_setsynch)(const char* arg)

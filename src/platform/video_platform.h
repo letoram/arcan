@@ -221,6 +221,12 @@ bool platform_video_init(uint16_t w, uint16_t h,
 void platform_video_recovery();
 
 /*
+ * Register token as an authenticated primitive for the device connected to
+ * cardn
+ */
+bool platform_video_auth(int cardn, unsigned token);
+
+/*
  * Release / free as much resource as possible while still being able to
  * resume operations later. This is used for suspend/resume style behavior
  * when switching virtual terminals or when going into powersave- states.

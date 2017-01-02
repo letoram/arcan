@@ -1,5 +1,5 @@
 /*
- * copyright 2014-2016, björn ståhl
+ * copyright 2014-2017, björn ståhl
  * license: 3-clause bsd, see copying file in arcan source repository.
  * reference: http://arcan-fe.com
  */
@@ -142,6 +142,7 @@ static char* egl_envopts[] = {
 	"ARCAN_VIDEO_CONNECTOR=conn_ind", "primary display connector (invalid lists)",
 	"ARCAN_VIDEO_DRM_MASTER", "fail if drmMaster can't be obtained",
 	"ARCAN_VIDEO_WAIT_CONNECTOR", "loop until an active connector is found",
+	"ARCAN_VIDEO_ALLOW_AUTH", "allow clients to auth against master (insecure)",
 	NULL
 };
 
@@ -1943,6 +1944,18 @@ void platform_video_synch(uint64_t tick_count, float fract,
 
 	if (post)
 		post();
+}
+
+bool platform_video_auth(int cardn, unsigned token)
+{
+	if (!getenv("ARCAN_VIDEO_ALLOW_AUTH"))
+		return false;
+
+	int fd = platform_video_cardhandle(cardn);
+	if (fd != -1)
+		return drmAuthMagic(fd, token);
+	else
+		return false;
 }
 
 void platform_video_shutdown()

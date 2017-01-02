@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2016, Björn Ståhl
+ * Copyright 2014-2017, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -141,6 +141,11 @@ struct monitor_mode PLATFORM_SYMBOL(_video_dimensions)()
 		.phy_height = darwin.mdisph
 	};
 	return res;
+}
+
+bool PLATFORM_SYMBOL(_video_auth)(int cardn, unsigned token)
+{
+	return false;
 }
 
 bool PLATFORM_SYMBOL(_video_map_handle)(

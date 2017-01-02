@@ -72,6 +72,11 @@ void platform_video_synch(uint64_t tick_count, float fract,
 		post();
 }
 
+bool platform_video_auth(int cardn, unsigned token)
+{
+	return false;
+}
+
 int platform_video_cardhandle(int cardn)
 {
 	return -1;

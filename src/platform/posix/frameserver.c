@@ -1142,6 +1142,17 @@ bool arcan_frameserver_resize(struct arcan_frameserver* s)
 	s->vbuf_cnt = vbufc;
 	s->abuf_cnt = abufc;
 
+/* authenticate if needed */
+	if (s->desc.pending_hints & SHMIF_RHINT_AUTH_TOK){
+		unsigned token = atomic_load(&shmpage->vpts);
+		s->desc.pending_hints &= ~SHMIF_RHINT_AUTH_TOK;
+		atomic_store(&shmpage->hints, s->desc.pending_hints);
+
+/* MULTI/GPU NOTE: need to look at the primary- GPU for this fsrv */
+		if (!platform_video_auth(0, token))
+			goto fail;
+	}
+
 /* remap pointers */
 	shmpage->segment_size = arcan_shmif_mapav(shmpage,
 		s->vbufs, s->vbuf_cnt, w * h * sizeof(shmif_pixel),
