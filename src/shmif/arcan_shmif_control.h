@@ -961,5 +961,12 @@ struct arcan_shmif_page {
  * crash, failure or otherwise unexpected termination
  */
 	char last_words[32];
+
+/*
+ * Begin of apad/apad_type negotiated block. For the actual calculations here,
+ * look inside engine/arcan_frameserver.c for setproto, and in platform for
+ * the shmemop.c implementation.
+ */
+	uint8_t adata[];
 };
 #endif

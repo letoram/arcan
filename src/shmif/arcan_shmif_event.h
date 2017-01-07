@@ -1239,7 +1239,7 @@ enum ARCAN_EVENT_EXTERNAL {
 		struct {
 			uint8_t streamid; /* key used to tell the decoder to switch */
 			uint8_t datakind; /* 0: audio, 1: video, 2: text, 3: overlay */
-			uint8_t langid[3]; /* country code */
+			uint8_t langid[4]; /* country code */
 		} streaminf;
 
 /*
