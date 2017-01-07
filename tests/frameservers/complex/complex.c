@@ -41,7 +41,7 @@ static void got_icon(struct arcan_shmif_cont* cont)
 
 	uint8_t gv = 0;
 	draw_box(cont, 0, 0, cont->w, cont->h, SHMIF_RGBA(0, 128, 0, 255));
-	arcan_shmif_signal(cont, SHMIF_SIGVID | SHMIF_SIGBLK_ONCE);
+	arcan_shmif_signal(cont, SHMIF_SIGVID);
 
 	arcan_event ev;
 	while (arcan_shmif_wait(cont, &ev)){
@@ -168,7 +168,7 @@ static void got_cursor(struct arcan_shmif_cont* cont)
 	char buf[256];
 
 	draw_box(cont, 0, 0, cont->w, cont->h, SHMIF_RGBA(255, 255, 0, 255));
-	arcan_shmif_signal(cont, SHMIF_SIGVID | SHMIF_SIGBLK_ONCE);
+	arcan_shmif_signal(cont, SHMIF_SIGVID);
 
 	while (arcan_shmif_wait(cont, &ev)){
 		printf("cursor.(%s)\n", arcan_shmif_eventstr(&ev, buf, sizeof(buf)));

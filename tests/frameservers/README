@@ -14,6 +14,10 @@ counter-rcv/ used as a recipient for feedcopy or recordtarget
  hooked up to a counter as a provider, checks for dropped or corrupted
  frames
 
+selfdestr/ shuts down after approx 5 seconds, to test how various
+ scripts handle termination while something else is active, like
+ the global menu or binding bar in durden
+
 clockreq/ needs the corresponding clockreq appl in interactive running
  (use clockreq as connection path) and tests both the builtin clock
  handler for monotonic event delivery and for timers.
