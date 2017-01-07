@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2016, Björn Ståhl
+ * Copyright 2003-2017, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -813,9 +813,18 @@ static inline void emit_droppedframe(arcan_frameserver* src,
 	arcan_event_enqueue(arcan_event_defaultctx(), &deliv);
 }
 
-size_t arcan_frameserver_protosize(arcan_frameserver* ctx, unsigned proto)
+size_t arcan_frameserver_protosize(arcan_frameserver* ctx,
+	unsigned proto, struct arcan_shmif_ofstbl* dofs)
 {
 	size_t tot = 0;
+	if (!proto || !dofs){
+		if (dofs)
+			*dofs = (struct arcan_shmif_ofstbl){};
+		return 0;
+	}
+
+	tot += sizeof(struct arcan_shmif_ofstbl);
+	tot += tot % sizeof(uintptr_t);
 
 /*
  * Complicated, as there might be a number of different displays with
@@ -824,53 +833,105 @@ size_t arcan_frameserver_protosize(arcan_frameserver* ctx, unsigned proto)
  * Cheap/lossy Formula:
  *  2(get/set) * (max_displays * (max_lut_size + edid(128) + structs))
  *
- * Other nasty bit is that the device mapping isn't exposed directly,
- * it's the user- controlled parts of the engine that has to provide
- * the actual tables to use.
+ *
+ * Other nasty bit is that the device mapping isn't exposed directly, it's the
+ * user- controlled parts of the engine that has to provide the actual tables
+ * to use. On top of that, there's the situation where displays are hotplugged
+ * and/or moved between ports.
+ *
+ * Doesn't make much sense saving a few k however
  */
 	if (proto & SHMIF_META_CM){
-		size_t pfc = platform_video_displays(NULL, NULL);
-		platform_display_id ids[pfc];
-		platform_video_displays(ids, &pfc);
+		size_t lim;
+		dofs->ofs_ramp = dofs->sz_ramp = tot;
+		platform_video_displays(NULL, &lim);
+		tot += sizeof(struct arcan_shmif_ramp) + 2 *
+			lim * sizeof(struct ramp_block) * 1024 * 3 * sizeof(float);
+		tot += tot % sizeof(uintptr_t);
+		dofs->sz_ramp = tot - dofs->sz_ramp;
 	}
+	else {
+		dofs->ofs_ramp = dofs->sz_ramp = 0;
+	};
 
 	if (proto & SHMIF_META_HDRF16){
 /* nothing now, possibly reserved for tone-mapping */
 	}
+	dofs->ofs_hdr = dofs->sz_hdr = 0;
 
 	if (proto & SHMIF_META_VOBJ){
-/* nothing now, somewhat pesky in that we need a limit on ops */
+/* nothing now, somewhat pesky in that we need a limit on ops and an
+ * ops specifier as part of the request (?) */
 	}
+	dofs->ofs_vector = dofs->sz_vector = 0;
 
 	if (proto & SHMIF_META_HMD){
+		dofs->ofs_hmd = dofs->sz_hmd = tot;
 		tot += sizeof(struct arcan_shmif_hmd);
+		tot += sizeof(struct hmd_limb) * LIMB_LIM;
+		tot += tot % sizeof(uintptr_t);
+		dofs->sz_hmd = tot - dofs->sz_hmd;
 	}
+	else
+		dofs->sz_hmd = dofs->ofs_hmd = 0;
 
 	return tot;
 }
 
-void arcan_frameserver_setproto(arcan_frameserver* ctx, unsigned proto)
+/*
+ * reset the fields of the adata- struct due to a negotiation
+ */
+void arcan_frameserver_setproto(arcan_frameserver* ctx,
+	unsigned proto, struct arcan_shmif_ofstbl* aofs)
 {
-/* safety check final offsets etc. against ctx->desc.apad */
+	if (!ctx || !aofs)
+		return;
+
+	memset(&ctx->desc.aext, '\0', sizeof(ctx->desc.aext));
+	ctx->desc.aofs = *aofs;
+
+	if (!proto)
+		return;
+
+/* first, use the baseadr and the offset table to relocate the struct-
+ * pointers in the desc.aext structure */
+	uintptr_t base = (uintptr_t)
+		(((struct arcan_shmif_page*) ctx->shm.ptr)->adata);
+	struct arcan_shmif_ofstbl* dst = (struct arcan_shmif_ofstbl*) base;
+	*dst = *aofs;
+
+	size_t ofs = 0;
+
 	if (proto & SHMIF_META_CM){
-/* correctly map and then reset */
+		size_t lim;
+		ctx->desc.aext.gamma = (struct arcan_shmif_ramps*)(base + aofs->ofs_ramp);
+		memset(ctx->desc.aext.gamma, '\0', aofs->sz_ramp);
+/* we don't actually fill out the data here yet, the scripts need to tell
+ * us explicitly which outputs that should be presented and in which order */
 	}
 	else
 		ctx->desc.aext.gamma = NULL;
 
 	if (proto & SHMIF_META_HDRF16){
 /* shouldn't "need" anything here right now */
+		ctx->desc.aext.hdr = (struct arcan_shmif_hdr*)(base + aofs->ofs_hdr);
+		memset(ctx->desc.aext.hdr, '\0', aofs->sz_hdr);
 	}
 	else
 		ctx->desc.aext.hdr = NULL;
 
 	if (proto & SHMIF_META_VOBJ){
+		ctx->desc.aext.vector =
+			(struct arcan_shmif_vector*)(base + aofs->ofs_vector);
+		memset(ctx->desc.aext.vector, '\0', aofs->sz_vector);
 	}
 	else
 		ctx->desc.aext.vector = NULL;
 
 	if (proto & SHMIF_META_HMD){
-
+		ctx->desc.aext.hmd =
+			(struct arcan_shmif_hmd*)(base + aofs->ofs_hmd);
+		memset(ctx->desc.aext.hmd, '\0', aofs->sz_hmd);
 	}
 	else
 		ctx->desc.aext.hmd = NULL;

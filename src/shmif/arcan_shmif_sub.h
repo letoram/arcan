@@ -9,7 +9,7 @@
  */
 
 /*
- Copyright (c) 2016, Bjorn Stahl
+ Copyright (c) 2016-2017, Bjorn Stahl
  All rights reserved.
 
  Redistribution and use in source and binary forms,
@@ -44,11 +44,11 @@
 #define HAVE_ARCAN_SHMIF_SUBPROTO
 
 /*
- * BSD checksum, from BSD sum. We calculate this to get lock-free updates which
+ * BSD checksum, from BSD sum. We calculate this to get lock-free updates while
  * staying away from atomic/reordering (since there's no atomic 64- byte type
  * anyhow). The added gain is that when metadata is synched and we're in a
  * partial update, the failed checksum means there is new data on the way
- * anyhow.
+ * anyhow or something more sinister is afoot.
  */
 static inline uint16_t subp_checksum(uint8_t* buf, size_t len)
 {
@@ -61,22 +61,45 @@ static inline uint16_t subp_checksum(uint8_t* buf, size_t len)
 	return res;
 }
 
-struct arcan_shmif_hdr16f;
-struct arcan_shmif_vector;
+/*
+ * Marks the beginning of the offset table that is set if subprotocols
+ * have been activated. Used internally by the resize- function. The
+ * strict copy is kept server-side.
+ */
+struct arcan_shmif_ofstbl {
+	union {
+	struct {
+		uint32_t ofs_ramp, sz_ramp;
+		uint32_t ofs_hmd, sz_hmd;
+		uint32_t ofs_hdr, sz_hdr;
+		uint32_t ofs_vector, sz_vector;
+	};
+	uint32_t offsets[32];
+	};
+};
 
+struct arcan_shmif_hdr16f {
+	int unused;
+};
+struct arcan_shmif_vector {
+	int unused;
+};
+
+/*
+ * a crutch with this approach is that we need to relocate when mapping in the
+ * resize handler, though the _shmifsub_getramp/setramp functions will mitigate
+ * this.
+ */
 struct ramp_block {
 	bool output;
 	uint8_t format;
 	size_t plane_size;
 
-	union {
-		uint16_t* rplane;
-		uint16_t* gplane;
-		uint16_t* bplane;
-	} fmt_a;
-
 	uint8_t edid[128];
 	uint16_t checksum;
+
+/* 3 * plane_size */
+	uint16_t planes[0];
 };
 
 struct arcan_shmif_ramp {
@@ -90,9 +113,14 @@ struct arcan_shmif_ramp {
 	uint8_t n_blocks;
 
 /* PRODUCER INIT, CONSUMER_UPDATE */
-	struct ramp_block **ramp_in;
-	struct ramp_block **ramp_out;
+	struct ramp_block ramps[];
 };
+
+bool arcan_shmifsub_getramp(
+	struct arcan_shmif_cont* cont, size_t ind, struct ramp_block* out);
+
+bool arcan_shmifsub_setramp(
+	struct arcan_shmif_cont* cont, size_t ind, struct ramp_block* in);
 
 /*
  * To avoid namespace collisions, the detailed HMD structure relies

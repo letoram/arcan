@@ -55,6 +55,11 @@ struct arcan_frameserver_meta {
  * so access need to happen in a shm- criticial section */
 	size_t apad;
 	unsigned aproto;
+
+/* relative addr->adata */
+	struct arcan_shmif_ofstbl aofs;
+
+/* resolved / updated on renegotiation */
 	struct {
 		struct arcan_shmif_ramps* gamma;
 		struct arcan_shmif_hmd* hmd;
@@ -351,17 +356,21 @@ bool arcan_frameserver_validchild(arcan_frameserver* ctx);
 void arcan_frameserver_killchild(arcan_frameserver* ctx);
 
 /*
- * Provide a size calculation for the specified subprotocol in the context
- * of a specific frameserver. 0 if unknown protocol or not applicable.
+ * Provide a size calculation for the specified subprotocol in the context of a
+ * specific frameserver. 0 if unknown protocol or not applicable.  The dofs
+ * structure will be populated with the detailed offsets and sizes, which
+ * should be passed to setproto if the change could be applied.
  */
-size_t arcan_frameserver_protosize(arcan_frameserver* ctx, unsigned proto);
+size_t arcan_frameserver_protosize(arcan_frameserver* ctx,
+	unsigned proto, struct arcan_shmif_ofstbl* dofs);
 
 /*
  * [PLATFORM-ONLY]
  * Prepare the necessary metadata for a specific sub-protocol, should
  * only originate from a platform implementation of the resize handler.
  */
-void arcan_frameserver_setproto(arcan_frameserver* ctx, unsigned proto);
+void arcan_frameserver_setproto(arcan_frameserver* ctx,
+	unsigned proto, struct arcan_shmif_ofstbl* ofsets);
 
 /*
  * Release any shared memory resources associated with the frameserver

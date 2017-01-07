@@ -55,5 +55,6 @@
 #include "arcan_shmif_interop.h"
 #include "arcan_shmif_event.h"
 #include "arcan_shmif_control.h"
+#include "arcan_shmif_sub.h"
 
 #endif

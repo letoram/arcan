@@ -171,6 +171,9 @@ size_t platform_video_displays(platform_display_id* dids, size_t* lim)
 		dids[0] = 0;
 	}
 
+	if (lim)
+		*lim = 1;
+
 	return 1;
 }
 

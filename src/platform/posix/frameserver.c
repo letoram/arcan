@@ -1051,8 +1051,10 @@ bool arcan_frameserver_resize(struct arcan_frameserver* s)
  */
 	bool reset_proto = false;
 	size_t apad_sz = s->desc.aproto;
+	struct arcan_shmif_ofstbl apend = {};
+
 	if (aproto != s->desc.aproto && (aproto & s->metamask)){
-		apad_sz = arcan_frameserver_protosize(s, aproto);
+		apad_sz = arcan_frameserver_protosize(s, aproto, &apend);
 		reset_proto = true;
 	}
 
@@ -1169,7 +1171,7 @@ bool arcan_frameserver_resize(struct arcan_frameserver* s)
 
 /* realize the sub-protocol */
 	if (reset_proto){
-		arcan_frameserver_setproto(s, aproto);
+		arcan_frameserver_setproto(s, aproto, &apend);
 		atomic_store(&shmpage->apad_type, aproto);
 	}
 	goto done;
