@@ -1487,6 +1487,9 @@ arcan_errc arcan_video_resize_canvas(size_t neww, size_t newh)
 		current_context->stdoutp.art = agp_setup_rendertarget(
 			current_context->world.vstore,
 			RENDERTARGET_COLOR_DEPTH_STENCIL
+#ifdef ARCAN_LWA
+			| RENDERTARGET_DOUBLEBUFFER
+#endif
 		);
 	}
 	else
@@ -4510,6 +4513,11 @@ arcan_errc arcan_video_forceread(arcan_vobj_id sid, bool local,
 	}
 
 	return ARCAN_OK;
+}
+
+struct agp_rendertarget* arcan_vint_worldrt()
+{
+	return current_context->stdoutp.art;
 }
 
 struct storage_info_t* arcan_vint_world()

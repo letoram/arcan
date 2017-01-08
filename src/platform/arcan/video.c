@@ -26,6 +26,7 @@ extern jmp_buf arcanmain_recover_state;
 #include "arcan_shmif.h"
 #include "arcan_math.h"
 #include "arcan_general.h"
+#include "arcan_audio.h"
 #include "arcan_video.h"
 #include "arcan_event.h"
 #include "arcan_videoint.h"
@@ -75,11 +76,11 @@ struct subseg_output {
 
 struct display {
 	struct arcan_shmif_cont conn;
-	bool mapped, visible, focused, dirty;
+	bool mapped, visible, focused, nopass;
 	enum dpms_state dpms;
 	struct storage_info_t* vstore;
 	float ppcm;
-	int id;
+	int id, dirty;
 
 /* only used for first display */
 	uint8_t subseg_alloc;
@@ -87,7 +88,6 @@ struct display {
 } disp[MAX_DISPLAYS] = {0};
 
 static struct arg_arr* shmarg;
-static bool nopass;
 
 bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	bool fs, bool frames, const char* title)
@@ -97,8 +97,10 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	if (!first_init)
 		return true;
 
-	for (size_t i = 0; i < MAX_DISPLAYS; i++)
+	for (size_t i = 0; i < MAX_DISPLAYS; i++){
 		disp[i].id = i;
+		disp[i].nopass = getenv("ARCAN_VIDEO_NO_FDPASS") != NULL;
+	}
 
 /*
  * temporary measure for generating the guid, just based on title as
@@ -133,9 +135,9 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
  * how the arcan-space display is actually mapped
  */
 	enum shmifext_setup_status status;
-	struct arcan_shmifext_setup defs =
-		arcan_shmifext_defaults(&disp[0].conn);
+	struct arcan_shmifext_setup defs = arcan_shmifext_defaults(&disp[0].conn);
 	defs.builtin_fbo = false;
+
 	if ((status =
 		arcan_shmifext_setup(&disp[0].conn, defs)) != SHMIFEXT_OK){
 		arcan_warning("lwa_video_init(), couldn't setup headless graphics\n"
@@ -145,6 +147,7 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	}
 
 	arcan_shmif_setprimary(SHMIF_INPUT, &disp[0].conn);
+	arcan_shmifext_make_current(&disp[0].conn);
 
 /*
  * switch rendering mode since our coordinate system differs
@@ -321,10 +324,14 @@ bool platform_video_specify_mode(platform_display_id id,
 	if (!(id < MAX_DISPLAYS && disp[id].conn.addr))
 		return false;
 
-	if (!mode.width || !mode.height || !arcan_shmif_lock(&disp[id].conn))
+	if (!mode.width || !mode.height ||
+		(mode.height == disp[id].conn.w && mode.height == disp[id].conn.h) ||
+		!arcan_shmif_lock(&disp[id].conn))
 		return false;
 
 	bool rz = arcan_shmif_resize(&disp[id].conn, mode.width, mode.height);
+
+	disp[id].dirty = 2;
 	arcan_shmif_unlock(&disp[id].conn);
 
 	return rz;
@@ -423,7 +430,7 @@ bool platform_video_map_display(arcan_vobj_id vid, platform_display_id id,
 
 	disp[id].vstore->refcount++;
 	disp[id].mapped = true;
-	disp[id].dirty = true;
+	disp[id].dirty = 2;
 
 	return true;
 }
@@ -454,6 +461,8 @@ static void stub()
 {
 }
 
+extern struct agp_rendertarget* arcan_vint_worldrt();
+
 static void synch_copy(struct display* disp, struct storage_info_t* vs)
 {
 	check_store(disp->id);
@@ -474,6 +483,7 @@ void platform_video_synch(uint64_t tick_count, float fract,
 
 	size_t platform_nupd;
 	arcan_bench_register_cost(arcan_vint_refresh(fract, &platform_nupd));
+	agp_activate_rendertarget(NULL);
 
 /* actually needed here or handle content will be broken */
 	glFlush();
@@ -492,13 +502,23 @@ void platform_video_synch(uint64_t tick_count, float fract,
 		if (!disp[i].mapped || disp[i].dpms != ADPMS_ON)
 			continue;
 
+/*
+ * This is incorrect for a number of reasons. The synch output should either
+ * be a readback target or double-buffered rendertarget. This does not take
+ * texture coordinates or other vstore properties into account.
+ */
 		enum status_handle status;
-		disp[i].dirty = false;
-		struct storage_info_t* vs = disp[i].vstore ?
-			disp[i].vstore : arcan_vint_world();
-
-		arcan_shmifext_signal(&disp[i].conn, 0,
-			SHMIF_SIGVID, vs->vinf.text.glid);
+		if (disp[i].dirty)
+			disp[i].dirty--;
+		if (disp[i].vstore || disp[i].nopass){
+			synch_copy(&disp[i], disp[i].vstore ?
+				disp[i].vstore : arcan_vint_world());
+		}
+		else {
+			unsigned col = agp_rendertarget_swap(arcan_vint_worldrt());
+			if (!disp[i].dirty)
+				arcan_shmifext_signal(&disp[i].conn, 0, SHMIF_SIGVID, col);
+		}
 	}
 
 	unsigned long long synchtime = arcan_timemillis();
@@ -579,6 +599,7 @@ const char* platform_event_devlabel(int devid)
  * either long (seconds+) or short (empty outevq and frames but no
  * response).
  */
+
 static void map_window(struct arcan_shmif_cont* seg, arcan_evctx* ctx,
 	int kind, const char* key)
 {
@@ -615,7 +636,7 @@ static void map_window(struct arcan_shmif_cont* seg, arcan_evctx* ctx,
 	base->ppcm = ARCAN_SHMPAGE_DEFAULT_PPCM;
 	base->dpms = ADPMS_ON;
 	base->visible = true;
-	base->dirty = true;
+	base->dirty = 2;
 
 	arcan_event ev = {
 		.category = EVENT_VIDEO,
@@ -792,6 +813,10 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
 			scan_subseg(&ev.tgt, false);
 		break;
 
+		case TARGET_COMMAND_BUFFER_FAIL:
+			d->nopass = true;
+		break;
+
 /*
  * Depends on active synchronization strategy, could also be used with a
  * 'every tick' timer to synch clockrate to server or have a single-frame
@@ -823,7 +848,7 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
 			if (!(ev.tgt.ioevs[2].iv & 128)){
 				bool vss = !((ev.tgt.ioevs[2].iv & 2) > 0);
 				if (vss && !d->visible){
-					d->dirty = true;
+					d->dirty = 2;
 				}
 				d->visible = vss;
 				d->focused = !((ev.tgt.ioevs[2].iv & 4) > 0);
@@ -870,10 +895,6 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
 				.vid.width = ev.tgt.ioevs[3].iv
 			});
 		}
-		break;
-
-		case TARGET_COMMAND_BUFFER_FAIL:
-			nopass = true;
 		break;
 
 /*
