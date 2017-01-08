@@ -79,6 +79,17 @@ static void* lookup_fun(void* tag, const char* sym, bool req)
 	return glXGetProcAddress((const GLubyte*) sym);
 }
 
+oid arcan_shmifext_swap_context(
+	struct arcan_shmif_cont* con, unsigned context)
+{
+}
+
+unsigned arcan_shmifext_add_context(
+	struct arcan_shmif_cont* con, struct arcan_shmifext_setup arg)
+{
+	return 0;
+}
+
 enum shmifext_setup_status arcan_shmifext_setup(
 	struct arcan_shmif_cont* con,
 	struct arcan_shmifext_setup arg)
@@ -132,6 +143,10 @@ enum shmifext_setup_status arcan_shmifext_setup(
 	}
 
 	return SHMIFEXT_OK;
+}
+
+void arcan_shmifext_bufferfail(struct arcan_shmif_cont* cont, bool fl)
+{
 }
 
 int arcan_shmifext_dev(struct arcan_shmif_cont* con,

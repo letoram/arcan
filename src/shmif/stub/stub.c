@@ -57,6 +57,21 @@ bool arcan_shmifext_vk(struct arcan_shmif_cont* con,
 	return false;
 }
 
+void arcan_shmifext_swap_context(
+	struct arcan_shmif_cont* con, unsigned context)
+{
+}
+
+unsigned arcan_shmifext_add_context(
+	struct arcan_shmif_cont* con, struct arcan_shmifext_setup arg)
+{
+	return 0;
+}
+
+void arcan_shmifext_bufferfail(struct arcan_shmif_cont* cont, bool fl)
+{
+}
+
 int arcan_shmifext_signal(struct arcan_shmif_cont* con,
 	uintptr_t display, int mask, uintptr_t tex_id, ...)
 {
