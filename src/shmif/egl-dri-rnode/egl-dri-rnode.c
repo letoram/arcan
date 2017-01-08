@@ -29,6 +29,8 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+_Thread_local static struct arcan_shmif_cont* active_context;
+
 /*
  * note: should be moved into the agp_fenv
  */
@@ -49,13 +51,16 @@ struct shmif_ext_hidden_int {
 	EGLImage image;
 	int dmabuf;
 
+/* need to account for multiple contexts being created on the same setup */
+	uint64_t ctx_alloc;
+	EGLContext alt_contexts[64];
+
 	int type;
-	struct {
-		bool managed;
-		EGLContext context;
-		EGLDisplay display;
-		EGLSurface surface;
-	};
+	bool managed;
+	EGLContext context;
+	unsigned context_ind;
+	EGLDisplay display;
+	EGLSurface surface;
 };
 
 /*
@@ -117,7 +122,8 @@ static void gbm_drop(struct arcan_shmif_cont* con)
 		if (in->managed){
 			eglMakeCurrent(in->display,
 				EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-			eglDestroyContext(in->display, in->context);
+			if (in->context)
+				eglDestroyContext(in->display, in->context);
 			eglTerminate(in->display);
 		}
 		in->dev = NULL;
@@ -148,7 +154,7 @@ struct arcan_shmifext_setup arcan_shmifext_defaults(
 		.api = API_OPENGL,
 		.builtin_fbo = 2,
 		.major = 2, .minor = 1,
-		.shared_context = (uint64_t) EGL_NO_CONTEXT
+		.shared_context = 0
 	};
 }
 
@@ -168,67 +174,59 @@ static void* lookup_fenv(void* tag, const char* sym, bool req)
 	return eglGetProcAddress(sym);
 }
 
-enum shmifext_setup_status arcan_shmifext_setup(
-	struct arcan_shmif_cont* con,
-	struct arcan_shmifext_setup arg)
+static bool get_egl_context(
+	struct shmif_ext_hidden_int* ctx, unsigned ind, EGLContext* dst)
 {
-	int type;
-	struct shmif_ext_hidden_int* ctx = con->privext->internal;
-	EGLint nc, cc;
+	if (ind >= 64)
+		return false;
 
-	switch (arg.api){
-	case API_OPENGL:
-		if ((ctx && ctx->display) || eglBindAPI(EGL_OPENGL_API))
-			type = EGL_OPENGL_BIT;
-		else
+	if (!ctx->managed || !((1 << ind) & ctx->ctx_alloc))
+		return false;
+
+	*dst = ctx->alt_contexts[(1 << ind)-1];
+	return true;
+}
+
+static enum shmifext_setup_status add_context(
+	struct shmif_ext_hidden_int* ctx, struct arcan_shmifext_setup* arg,
+	unsigned* ind)
+{
+/* make sure the shmifext has been setup */
+	int type;
+	EGLint nc;
+	switch(arg->api){
+		case API_OPENGL: type = EGL_OPENGL_BIT; break;
+		case API_GLES: type = EGL_OPENGL_ES2_BIT; break;
+		default:
 			return SHMIFEXT_NO_API;
-	break;
-	case API_GLES:
-		if ((ctx && ctx->display) || eglBindAPI(EGL_OPENGL_ES_API))
-			type = EGL_OPENGL_ES2_BIT;
-		else
-			return SHMIFEXT_NO_API;
-	break;
-	case API_VHK:
-	default:
-/* won't have working code here for a while, first need a working AGP_
- * implementation that works with normal Arcan. Then there's the usual
- * problem with getting access to a handle, for EGLStreams it should
- * work, but with GBM? KRH VKCube has some intel- only hack */
-		return SHMIFEXT_NO_API;
-	break;
-	};
+		break;
+	}
+
 	const EGLint attribs[] = {
 		EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
 		EGL_RENDERABLE_TYPE, type,
-		EGL_RED_SIZE, arg.red,
-		EGL_GREEN_SIZE, arg.green,
-		EGL_BLUE_SIZE, arg.blue,
-		EGL_ALPHA_SIZE, arg.alpha,
-		EGL_DEPTH_SIZE, arg.depth,
+		EGL_RED_SIZE, arg->red,
+		EGL_GREEN_SIZE, arg->green,
+		EGL_BLUE_SIZE, arg->blue,
+		EGL_ALPHA_SIZE, arg->alpha,
+		EGL_DEPTH_SIZE, arg->depth,
 		EGL_NONE
 	};
 
-	if (ctx && ctx->display){
-		goto context_only;
+/* find first free */
+	size_t i = 0;
+	bool found = false;
+	for (; i < 64; i++){
+		if (!(ctx->ctx_alloc & (1 << i)))
+			found = true;
+			break;
 	}
 
-	void* display;
-	if (!arcan_shmifext_egl(con, &display, lookup, NULL))
-		return SHMIFEXT_NO_DISPLAY;
+/* common for GL applications to treat 0 as no context, so we do the same, have
+ * to add/subtract 1 from the index (or just XOR with a cookie */
+	if (!found)
+		return SHMIFEXT_OUT_OF_MEMORY;
 
-	ctx = con->privext->internal;
-	ctx->display = eglGetDisplay((EGLNativeDisplayType) display);
-	if (!ctx->display)
-		return SHMIFEXT_NO_DISPLAY;
-
-	if (!eglInitialize(ctx->display, NULL, NULL))
-		return SHMIFEXT_NO_EGL;
-
-	if (arg.no_context)
-		return SHMIFEXT_OK;
-
-context_only:
 	if (!eglGetConfigs(ctx->display, NULL, 0, &nc))
 		return SHMIFEXT_NO_CONFIG;
 
@@ -246,54 +244,135 @@ context_only:
 	agp_glinit_fenv(&ctx->fenv, lookup_fenv, NULL);
 
 	int ofs = 0;
-	if (arg.api != API_GLES){
-		if (arg.major){
+	if (arg->api != API_GLES){
+		if (arg->major){
 			cas[ofs++] = EGL_CONTEXT_MAJOR_VERSION_KHR;
-			cas[ofs++] = arg.major;
+			cas[ofs++] = arg->major;
 			cas[ofs++] = EGL_CONTEXT_MINOR_VERSION_KHR;
-			cas[ofs++] = arg.minor;
+			cas[ofs++] = arg->minor;
 		}
 
-		if (arg.mask){
+		if (arg->mask){
 			cas[ofs++] = EGL_CONTEXT_OPENGL_PROFILE_MASK_KHR;
-			cas[ofs++] = arg.mask;
+			cas[ofs++] = arg->mask;
 		}
 
-		if (arg.flags){
+		if (arg->flags){
 			cas[ofs++] = EGL_CONTEXT_FLAGS_KHR;
-			cas[ofs++] = arg.flags;
+			cas[ofs++] = arg->flags;
 		}
 	}
 
-/* ignore if this function was called without destroying the old context */
-	bool context_reuse = false;
-	if (!ctx->context){
-		ctx->context = eglCreateContext(ctx->display, cfg,
-			(EGLContext) arg.shared_context, cas);
-	}
-	else
-		context_reuse = true;
+	EGLContext sctx = NULL;
+	if (arg->shared_context)
+		get_egl_context(ctx, arg->shared_context, &sctx);
 
-	if (!ctx->context){
-		int errc = eglGetError();
+	ctx->alt_contexts[(1 << i)-1] =
+		eglCreateContext(ctx->display, cfg, sctx, cas);
+	if (!ctx->alt_contexts[i << i])
 		return SHMIFEXT_NO_CONTEXT;
+
+	ctx->ctx_alloc |= 1 << i;
+	*ind = i+1;
+	return SHMIFEXT_OK;
+}
+
+unsigned arcan_shmifext_add_context(
+	struct arcan_shmif_cont* con, struct arcan_shmifext_setup arg)
+{
+	if (!con || !con->privext || !con->privext->internal ||
+		!con->privext->internal->display)
+			return 0;
+
+	struct shmif_ext_hidden_int* ctx = con->privext->internal;
+
+	unsigned res;
+	if (SHMIFEXT_OK != add_context(ctx, &arg, &res)){
+		return 0;
 	}
 
-	ctx->surface = EGL_NO_SURFACE;
-	ctx->managed = true;
+	return res;
+}
+
+void arcan_shmifext_swap_context(
+	struct arcan_shmif_cont* con, unsigned context)
+{
+	if (!con || !con->privext || !con->privext->internal ||
+		!con->privext->internal->display || context > 64 || !context)
+			return;
+
+	context--;
+
+	struct shmif_ext_hidden_int* ctx = con->privext->internal;
+	EGLContext egl_ctx;
+
+	if (!get_egl_context(ctx, context, &egl_ctx))
+		return;
+
+	ctx->context_ind = context;
+	ctx->context = egl_ctx;
 	eglMakeCurrent(ctx->display, ctx->surface, ctx->surface, ctx->context);
+}
+
+enum shmifext_setup_status arcan_shmifext_setup(
+	struct arcan_shmif_cont* con,
+	struct arcan_shmifext_setup arg)
+{
+	struct shmif_ext_hidden_int* ctx = con->privext->internal;
+	enum shmifext_setup_status res;
+
+	if (ctx && ctx->display)
+		return SHMIFEXT_ALREADY_SETUP;
+
+	switch (arg.api){
+	case API_OPENGL:
+		if (!((ctx && ctx->display) || eglBindAPI(EGL_OPENGL_API)))
+			return SHMIFEXT_NO_API;
+	break;
+	case API_GLES:
+		if (!((ctx && ctx->display) || eglBindAPI(EGL_OPENGL_ES_API)))
+			return SHMIFEXT_NO_API;
+	break;
+	case API_VHK:
+	default:
+/* won't have working code here for a while, first need a working AGP_
+ * implementation that works with normal Arcan. Then there's the usual
+ * problem with getting access to a handle, for EGLStreams it should
+ * work, but with GBM? KRH VKCube has some intel- only hack */
+		return SHMIFEXT_NO_API;
+	break;
+	};
+
+	void* display;
+	if (!arcan_shmifext_egl(con, &display, lookup, NULL))
+		return SHMIFEXT_NO_DISPLAY;
+
+	ctx = con->privext->internal;
+	ctx->display = eglGetDisplay((EGLNativeDisplayType) display);
+	if (!ctx->display)
+		return SHMIFEXT_NO_DISPLAY;
+
+	if (!eglInitialize(ctx->display, NULL, NULL))
+		return SHMIFEXT_NO_EGL;
+
+	if (arg.no_context)
+		return SHMIFEXT_OK;
+
+/* we have egl and a display, build a config/context and set it as the
+ * current default context for this shmif-connection */
+	ctx->managed = true;
+	unsigned ind;
+	res = add_context(ctx, &arg, &ind);
+
+	if (SHMIFEXT_OK != res)
+		return res;
+
+	arcan_shmifext_swap_context(con, ind);
+	ctx->surface = EGL_NO_SURFACE;
+
+	active_context = con;
 
 	if (arg.builtin_fbo || arg.vidp_pack){
-		if (context_reuse){
-			agp_drop_vstore(&ctx->buf_a); zap_vstore(&ctx->buf_a);
-			agp_drop_vstore(&ctx->buf_b); zap_vstore(&ctx->buf_b);
-
-			if (arg.builtin_fbo){
-				agp_drop_rendertarget(ctx->rtgt_a);
-				agp_drop_rendertarget(ctx->rtgt_b);
-			}
-		}
-
 		agp_empty_vstore(&ctx->buf_a, con->w, con->h);
 		agp_empty_vstore(&ctx->buf_b, con->w, con->h);
 		ctx->buf_cur = &ctx->buf_a;
@@ -336,6 +415,21 @@ bool arcan_shmifext_drop(struct arcan_shmif_cont* con)
 		!con->privext->internal->display)
 		return false;
 
+	struct shmif_ext_hidden_int* ctx = con->privext->internal;
+
+	eglMakeCurrent(ctx->display,
+		EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+
+	for (size_t i = 0; i < 64 && ctx->ctx_alloc; i++){
+		if ((ctx->ctx_alloc & ((1<<i)))){
+			ctx->ctx_alloc &= ~(1 << i);
+			eglDestroyContext(ctx->display, ctx->alt_contexts[i]);
+			ctx->alt_contexts[i] = NULL;
+		}
+	}
+
+	ctx->context = NULL;
+	active_context = NULL;
 	gbm_drop(con);
 	return true;
 }
@@ -346,17 +440,24 @@ bool arcan_shmifext_drop_context(struct arcan_shmif_cont* con)
 		!con->privext->internal->display)
 		return false;
 
-	struct shmif_ext_hidden_int* ctx = con->privext->internal;
-	agp_drop_vstore(&ctx->buf_a); zap_vstore(&ctx->buf_a);
-	agp_drop_vstore(&ctx->buf_b); zap_vstore(&ctx->buf_b);
+/* might be a different context in TLS, so switch first */
+	struct arcan_shmif_cont* old = active_context;
+	if (active_context != con)
+		arcan_shmifext_make_current(con);
 
+	struct shmif_ext_hidden_int* ctx = con->privext->internal;
+
+/* it's the caller's responsibility to switch in a new ctx, but right
+ * now, we're in a state where managed = true, though there's no context */
 	if (ctx->context){
 		eglMakeCurrent(ctx->display,
 			EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
 		eglDestroyContext(ctx->display, ctx->context);
-		ctx->context = EGL_NO_CONTEXT;
+		ctx->context = NULL;
 	}
 
+/* and restore */
+	arcan_shmifext_make_current(old);
 	return true;
 }
 
@@ -373,6 +474,15 @@ static void authenticate_fd(struct arcan_shmif_cont* con, int fd)
 		con->hints &= ~SHMIF_RHINT_AUTH_TOK;
 		magic = atomic_load(&con->addr->vpts);
 	}
+}
+
+void arcan_shmifext_bufferfail(struct arcan_shmif_cont* con, bool st)
+{
+	if (!con || !con->privext || !con->privext->internal)
+		return;
+
+		con->privext->internal->nopass =
+			getenv("ARCAN_VIDEO_NO_FDPASS") ? 1 : st;
 }
 
 int arcan_shmifext_dev(struct arcan_shmif_cont* con,
@@ -500,10 +610,12 @@ void arcan_shmifext_bind(struct arcan_shmif_cont* con)
 		return;
 
 	struct shmif_ext_hidden_int* ctx = con->privext->internal;
-
+	if (active_context != con){
+		arcan_shmifext_make_current(con);
+	}
 /* for the vidp- as scratch, upload texture and send mode, the
  * resize is actually handled just prior to upload, not here */
-	if (ctx->rtgt_cur){
+	else if (ctx->rtgt_cur){
 		if (ctx->buf_cur->w != con->w || ctx->buf_cur->h != con->h){
 			agp_activate_rendertarget(NULL);
 
@@ -524,8 +636,11 @@ bool arcan_shmifext_make_current(struct arcan_shmif_cont* con)
 
 	struct shmif_ext_hidden_int* ctx = con->privext->internal;
 
-	agp_setenv(&ctx->fenv);
-	eglMakeCurrent(ctx->display, ctx->surface, ctx->surface, ctx->context);
+	if (active_context != con){
+		agp_setenv(&ctx->fenv);
+		eglMakeCurrent(ctx->display, ctx->surface, ctx->surface, ctx->context);
+		active_context = con;
+	}
 	arcan_shmifext_bind(con);
 
 	return true;

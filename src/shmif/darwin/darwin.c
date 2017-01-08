@@ -57,6 +57,17 @@ bool arcan_shmifext_drop_context(struct arcan_shmif_cont* con)
 	return arcan_shmifext_drop(con);
 }
 
+void arcan_shmifext_swap_context(
+	struct arcan_shmif_cont* con, unsigned context)
+{
+}
+
+unsigned arcan_shmifext_add_context(
+	struct arcan_shmif_cont* con, struct arcan_shmifext_setup arg)
+{
+	return 0;
+}
+
 enum shmifext_setup_status arcan_shmifext_setup(
 	struct arcan_shmif_cont* con,
 	struct arcan_shmifext_setup arg)
@@ -196,6 +207,10 @@ int arcan_shmifext_dev(struct arcan_shmif_cont* con,
 		*dev = 0;
 
 	return -1;
+}
+
+void arcan_shmifext_bufferfail(struct arcan_shmif_cont* cont, bool fl)
+{
 }
 
 void* arcan_shmifext_lookup(

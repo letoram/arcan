@@ -272,6 +272,8 @@ enum shmifext_setup_status {
 	SHMIFEXT_NO_EGL,
 	SHMIFEXT_NO_CONFIG,
 	SHMIFEXT_NO_CONTEXT,
+	SHMIFEXT_ALREADY_SETUP,
+	SHMIFEXT_OUT_OF_MEMORY,
 	SHMIFEXT_OK
 };
 
@@ -322,6 +324,23 @@ enum shmifext_setup_status arcan_shmifext_setup(
  */
 void* arcan_shmifext_lookup(
 	struct arcan_shmif_cont* con, const char*);
+
+/*
+ * Sometimes, multiple contexts, possibly bound to different threads, are
+ * needed. _setup creates one context, and this function can be added to
+ * create additional ones.
+ *
+ * Returns 0 or a reference to use for shmifext_swap_context calls
+ */
+unsigned arcan_shmifext_add_context(
+	struct arcan_shmif_cont* con, struct arcan_shmifext_setup arg);
+
+/*
+ * Swap the current underlying context to use for _make_current calls.
+ * the [context] argument comes from _add_context, though the first (_setup)
+ * one will always be 1 */
+void arcan_shmifext_swap_context(
+	struct arcan_shmif_cont* con, unsigned context);
 
 /*
  * Uses lookupfun to get the function pointers needed, writes back matching
@@ -375,7 +394,14 @@ bool arcan_shmifext_vk(struct arcan_shmif_cont* con,
 /*
  * Set the rendertarget contained in the extended context as active.
  */
-	void arcan_shmifext_bind(struct arcan_shmif_cont* con);
+void arcan_shmifext_bind(struct arcan_shmif_cont* con);
+
+/*
+ * Update the internal buffer-fail to slow readback fallback resulting from a
+ * failed attempt to pass an accelerated buffer. This should be called in
+ * response to a BUFFER_FAIL event.
+ */
+void arcan_shmifext_bufferfail(struct arcan_shmif_cont*, bool);
 
 /*
  * Run the platform specific dance to convert a gl texture ID to a passable
