@@ -650,29 +650,35 @@ enum ARCAN_EVENT_EXTERNAL {
 
 /*
  * Used to indicated that some external entity tries to provide input data
- * (e.g. a vnc client connected to an encode frameserver) uses the key and
- * cursor substructure, not the full range of ioevents.
+ * (e.g. a vnc client connected to an encode frameserver or cursor warping on
+ * a CURSOR subsegment) uses the key and cursor substructure, not the full range
+ * of ioevents.
  */
 	EVENT_EXTERNAL_KEYINPUT,
 	EVENT_EXTERNAL_CURSORINPUT,
 
 /*
  * [UNIQUE]
- * Hint how the cursor is to be rendered; i.e. if it's locally defined or a
- * user-readable string suggesting what kind of cursor image that could be
- * used. Uses the messagefield and the effect is implementation defined, though
- * suggested labels are:
- * [default, wait, select-inv, select, up, down, left-right, up-down,
- * drag-up-down, drag-up, drag-down, drag-left, drag-right, drag-left-right,
- * rotate-cw, rotate-ccw, normal-tag, diag-ur, diag-ll, drag-diag, datafield,
- * move, typefield, forbidden, help, hand, vertical-datafield, drag-drop,
- * drag-reject, hidden, hidden-abs, hidden-rel ]
+ * Hint which cursor representation to use; This complements the CURSOR
+ * subsegment type (for entirely custom drawn cursors). If a CURSOR subsegment
+ * exist, CURSORHINTs should be routed through that, otherwise it is valid to
+ * switch cursors on any segment.
  *
- * The only mandated cursorhints are 'hidden-abs', 'hidden-rel' which
- * indicate the preferred type of cursor events when it comes to coordinates.
- * It may also be used by the appl- to alter window- local cursor locking
- * behavior. If a CURSOR subsegment has been accepted, it will be used for
- * drawing instead.
+ * For legacy reasons, this uses the message field though the cursor name is
+ * implementation defined. Suggested labels are:
+ *
+ * [wait, select-inv, select, up, down, left-right, up-down, drag-up-down,
+ * drag-up, drag-down, drag-left, drag-right, drag-left-right, rotate-cw,
+ * rotate-ccw, normal-tag, diag-ur, diag-ll, drag-diag, datafield, move,
+ * typefield, forbidden, help, hand, vertical-datafield, drag-drop,
+ * drag-reject]
+ *
+ * The reserved/special names are:
+ * 'default' : revert to CURSOR subsegment contents or system default
+ * 'hidden'  : don't show/draw the cursor at all
+ * 'hidden-rel' : no visual change, but try to provide/bias relative samples
+ * 'hidden-abs' : no visual change, but try to provide/bias absolute samples
+ * 'hidden-hot:x:y' : for CURSOR subsegment, define the hotspot
  */
 	EVENT_EXTERNAL_CURSORHINT,
 

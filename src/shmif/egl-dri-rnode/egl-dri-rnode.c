@@ -31,6 +31,8 @@
 
 _Thread_local static struct arcan_shmif_cont* active_context;
 
+static struct agp_fenv agp_fenv;
+
 /*
  * note: should be moved into the agp_fenv
  */
@@ -45,7 +47,6 @@ struct shmif_ext_hidden_int {
 
 /* with the gbm- buffer passing, we pretty much need double-buf */
 	struct storage_info_t buf_a, buf_b, (* buf_cur);
-	struct agp_fenv fenv;
 	bool nopass, swap;
 
 	EGLImage image;
@@ -241,8 +242,6 @@ static enum shmifext_setup_status add_context(
 		EGL_NONE, EGL_NONE, EGL_NONE, EGL_NONE, EGL_NONE, EGL_NONE,
 		EGL_NONE, EGL_NONE, EGL_NONE};
 
-	agp_glinit_fenv(&ctx->fenv, lookup_fenv, NULL);
-
 	int ofs = 0;
 	if (arg->api != API_GLES){
 		if (arg->major){
@@ -354,6 +353,16 @@ enum shmifext_setup_status arcan_shmifext_setup(
 
 	if (!eglInitialize(ctx->display, NULL, NULL))
 		return SHMIFEXT_NO_EGL;
+
+/*
+ * this is likely not the best way to keep it if we try to run multiple
+ * segments on different GPUs with different GL implementations, if/when
+ * that becomes a problem, move to a context specific one
+ */
+	if (!agp_fenv.draw_buffer){
+		agp_glinit_fenv(&agp_fenv, lookup_fenv, NULL);
+		agp_setenv(&agp_fenv);
+	}
 
 	if (arg.no_context)
 		return SHMIFEXT_OK;
@@ -637,7 +646,6 @@ bool arcan_shmifext_make_current(struct arcan_shmif_cont* con)
 	struct shmif_ext_hidden_int* ctx = con->privext->internal;
 
 	if (active_context != con){
-		agp_setenv(&ctx->fenv);
 		eglMakeCurrent(ctx->display, ctx->surface, ctx->surface, ctx->context);
 		active_context = con;
 	}
