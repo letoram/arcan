@@ -1155,7 +1155,9 @@ bool arcan_frameserver_resize(struct arcan_frameserver* s)
 			goto fail;
 	}
 
-/* remap pointers */
+/* remap pointers, paddng need to be updated first as shmif_mapav
+ * uses that as a side-channel and we don't want to change the interface */
+	atomic_store(&shmpage->apad, apad_sz);
 	shmpage->segment_size = arcan_shmif_mapav(shmpage,
 		s->vbufs, s->vbuf_cnt, w * h * sizeof(shmif_pixel),
 		s->abufs, s->abuf_cnt, abufsz);

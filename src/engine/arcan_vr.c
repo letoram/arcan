@@ -31,15 +31,15 @@
 
 #define FRAMESERVER_PRIVATE
 #include "arcan_frameserver.h"
-#include "arcan_hmd.h"
+#include "arcan_vr.h"
 
-struct arcan_hmd_ctx {
+struct arcan_vr_ctx {
 	arcan_evctx* ctx;
 	arcan_frameserver* connection;
 };
 
 /*
- * static void hmd_tick(struct arcan_hmd_ctx* ctx)
+ * static void vr_tick(struct arcan_vr_ctx* ctx)
  * {
  *   check for changes in the capability mask, on arrival,
  *   create a new null object and attach to the connection one
@@ -48,11 +48,11 @@ struct arcan_hmd_ctx {
  * }
  */
 
-struct arcan_hmd_ctx* arcan_hmd_setup(const char* hmdbridge,
+struct arcan_vr_ctx* arcan_vr_setup(const char* vrbridge,
 	const char* bridge_arg, struct arcan_evctx* evctx, uintptr_t tag)
 {
 /*
- * 1. build a frameserver envp with the data for the hmdbridge and
+ * 1. build a frameserver envp with the data for the vrbridge and
  *    enough room to fit the added metadata.
  *
  * 2. build a null-object to act as control and mapping for tick etc.
@@ -63,7 +63,7 @@ struct arcan_hmd_ctx* arcan_hmd_setup(const char* hmdbridge,
 	return NULL;
 }
 
-arcan_errc arcan_hmd_reset(struct arcan_hmd_ctx* ctx)
+arcan_errc arcan_vr_reset(struct arcan_vr_ctx* ctx)
 {
 /*
  * enqueue a reset event on the ctx
@@ -71,7 +71,7 @@ arcan_errc arcan_hmd_reset(struct arcan_hmd_ctx* ctx)
 	return ARCAN_ERRC_NOT_IMPLEMENTED;
 }
 
-arcan_errc arcan_hmd_camtag(struct arcan_hmd_ctx* ctx,
+arcan_errc arcan_vr_camtag(struct arcan_vr_ctx* ctx,
 	arcan_vobj_id left, arcan_vobj_id right)
 {
 /*
@@ -85,7 +85,7 @@ arcan_errc arcan_hmd_camtag(struct arcan_hmd_ctx* ctx,
  * the camtagged rendertargets. The output data is formatted planar:
  * plane-1[x, y, z] plane-2[s, t] with n_elems in each plane.
  */
-arcan_errc arcan_hmd_distortion(struct arcan_hmd_ctx* ctx,
+arcan_errc arcan_vr_distortion(struct arcan_vr_ctx* ctx,
 	float* out_left, float* l_elems, uint8_t* out_right, size_t* r_elems)
 {
 /*
@@ -95,16 +95,16 @@ arcan_errc arcan_hmd_distortion(struct arcan_hmd_ctx* ctx,
 	return ARCAN_ERRC_NOT_IMPLEMENTED;
 }
 
-arcan_errc arcan_hmd_displaydata(struct arcan_hmd_ctx* ctx,
-	struct hmd_meta* dst)
+arcan_errc arcan_vr_displaydata(struct arcan_vr_ctx* ctx,
+	struct vr_meta* dst)
 {
 /*
- * copy out from the hmd structure
+ * copy out from the vr structure
  */
 	return ARCAN_ERRC_NOT_IMPLEMENTED;
 }
 
-arcan_errc arcan_hmd_shutdown(struct arcan_hmd_ctx* ctx)
+arcan_errc arcan_vr_shutdown(struct arcan_vr_ctx* ctx)
 {
 /*
  * enqueue an EXIT_ command on the connection, enqueue on evctx

@@ -84,7 +84,7 @@
 #include "arcan_db.h"
 #include "arcan_frameserver.h"
 #include "arcan_led.h"
-#include "arcan_hmd.h"
+#include "arcan_vr.h"
 
 #define arcan_luactx lua_State
 #include "arcan_lua.h"
@@ -3237,32 +3237,32 @@ static int loadmovie(lua_State* ctx)
 	LUA_ETRACE("load_movie", NULL, 2);
 }
 
-static int hmd_setup(lua_State* ctx)
+static int vr_setup(lua_State* ctx)
 {
-	LUA_TRACE("hmd_setup");
+	LUA_TRACE("vr_setup");
 	const char* opts = luaL_optstring(ctx, 1, NULL);
 	intptr_t ref = find_lua_callback(ctx);
 	if (ref == (intptr_t) LUA_NOREF){
-		arcan_fatal("hmd_setup(), no event callback handler provided\n");
+		arcan_fatal("vr_setup(), no event callback handler provided\n");
 	}
 
-	char* kv = arcan_db_appl_val(dbhandle, "arcan", "ext_hmd");
+	char* kv = arcan_db_appl_val(dbhandle, "arcan", "ext_vr");
 	if (!kv){
-		arcan_warning("hmd_setup(), no hmd- provider set. "
-			"Run arcan_db add_appl_kv arcan ext_hmd path/to/hmdbridge\n"
-			"A default one can be found in src/tools/hmdbridge"
+		arcan_warning("vr_setup(), no vr- provider set. "
+			"Run arcan_db add_appl_kv arcan ext_vr  path/to/vrbridge\n"
+			"A default one can be found in src/tools/vrbridge"
 		);
-		LUA_ETRACE("hmd_setup", "no_ext_hmd", 0);
+		LUA_ETRACE("vr_setup", "no_ext_vr", 0);
 	}
 	free(kv);
 
 /* we can ignore the context- here since we run everything from the
  * callback and use it as a normal frameserver when it exposes new VIDs,
  * and those VIDs can be used for shutdown */
-	lua_pushboolean(ctx, arcan_hmd_setup(kv,
+	lua_pushboolean(ctx, arcan_vr_setup(kv,
 		opts, arcan_event_defaultctx(), ref) != NULL);
 
-	LUA_ETRACE("hmd_setup", NULL, 1);
+	LUA_ETRACE("vr_setup", NULL, 1);
 }
 
 static int n_leds(lua_State* ctx)
@@ -5321,17 +5321,96 @@ static int videocanvasrsz(lua_State* ctx)
 	LUA_ETRACE("resize_video_canvas", NULL, 0);
 }
 
+static bool push_fsrv_ramp(arcan_frameserver* dst, lua_State* src,
+	int index, size_t n)
+{
+	float* ramps = arcan_alloc_mem(n * sizeof(float),
+			ARCAN_MEM_VSTRUCT, ARCAN_MEM_TEMPORARY | ARCAN_MEM_BZERO,
+			ARCAN_MEMALIGN_NATURAL);
+
+	size_t edid_sz = 0;
+	uint8_t* edid_buf = NULL;
+
+	for (size_t i = 0; i < n; i++){
+		lua_rawgeti(src, 2, i+1);
+		ramps[i] = lua_tonumber(src, -1);
+		lua_pop(src, 1);
+	}
+
+	lua_getfield(src, 2, "edid");
+	edid_buf = (uint8_t*) lua_tolstring(src, -1, &edid_sz);
+	lua_pop(src, 1);
+
+	jmp_buf tramp;
+	if (0 != setjmp(tramp)){
+		free(ramps);
+		return false;
+	}
+
+	arcan_frameserver_enter(dst, tramp);
+	bool rv = arcan_frameserver_setramps(dst,index,ramps,n,edid_buf,edid_sz);
+	arcan_frameserver_leave();
+	return rv;
+}
+
+static int pull_fsrv_ramp(lua_State* dst, arcan_frameserver* src, int ind)
+{
+	jmp_buf tramp;
+	if (0 != setjmp(tramp)){
+		return 0;
+	}
+
+	arcan_frameserver_enter(src, tramp);
+	bool rv = arcan_frameserver_getramps(src,ind,NULL,NULL);
+	arcan_frameserver_leave();
+	return 0;
+}
+
+static int fsrv_gamma(lua_State* ctx, arcan_vobject* fsrv_dst)
+{
+	if (fsrv_dst->feed.state.tag != ARCAN_TAG_FRAMESERV)
+		arcan_fatal("video_displaygamma(), tried to set gamma on a vobj with "
+			"no valid frameserver backing");
+
+/* fsrv-set? */
+	if (lua_type(ctx, 2) == LUA_TTABLE){
+		int values = lua_rawlen(ctx, 2);
+		if (values <= 0 || values % 3 != 0){
+			arcan_fatal("video_displaygamma(), broken ramp table"
+				"(%d should be > 0 and divisible by 3)\n", values);
+		}
+
+/* separate path for a frameserver destination */
+		lua_pushboolean(ctx, push_fsrv_ramp(
+			fsrv_dst->feed.state.ptr, ctx, luaL_optint(ctx, 3, 0), values));
+		LUA_ETRACE("video_displaygamma", NULL, 1);
+	}
+/* fsrv get */
+	else {
+		int rv = pull_fsrv_ramp(ctx,
+			fsrv_dst->feed.state.ptr, luaL_optint(ctx, 2, 0));
+		LUA_ETRACE("video_displaygamma", NULL, rv);
+	}
+}
+
 static int videodispgamma(lua_State* ctx)
 {
 	LUA_TRACE("video_displaygamma");
+	arcan_vobject* fsrv_dst = NULL;
 
-	uint64_t id = luaL_checknumber(ctx, 1);
+/* separate "to frameserver instead of display?" path: */
+	int64_t id = luaL_checknumber(ctx, 1);
+	if (id != ARCAN_EID && id !=
+		ARCAN_VIDEO_WORLDID && id > luactx.lua_vidbase){
+		fsrv_dst = arcan_video_getobject(id-luactx.lua_vidbase);
+		if (fsrv_dst)
+			return fsrv_gamma(ctx, fsrv_dst);
+	}
 
-/* set */
 	if (lua_gettop(ctx) > 1){
 		luaL_checktype(ctx, 2, LUA_TTABLE);
 		int values = lua_rawlen(ctx, 2);
-		if (values == 0 || values % 3 != 0){
+		if (values <= 0 || values % 3 != 0){
 			arcan_fatal("video_displaygamma(), broken ramp table"
 				"(%d should be > 0 and divisible by 3)\n", values);
 		}
@@ -5351,7 +5430,8 @@ static int videodispgamma(lua_State* ctx)
 		values /= 3;
 		lua_pushboolean(ctx, platform_video_set_display_gamma(id,
 			values, &ramps[0 * values], &ramps[1 * values], &ramps[2 * values]));
-			LUA_ETRACE("video_displaygamma", NULL, 1);
+
+		LUA_ETRACE("video_displaygamma", NULL, 1);
 	}
 /* get */
 	else {
@@ -9858,7 +9938,7 @@ static const luaL_Reg iofuns[] = {
 {"led_intensity",       led_intensity    },
 {"set_led_rgb",         led_rgb          },
 {"controller_leds",     n_leds           },
-{"hmd_setup",           hmd_setup        },
+{"vr_setup",            vr_setup         },
 {"inputanalog_filter",  inputfilteranalog},
 {"inputanalog_query",   inputanalogquery},
 {"inputanalog_toggle",  inputanalogtoggle},

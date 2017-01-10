@@ -1,4 +1,4 @@
-PROJECT( arcan_hmd )
+PROJECT( arcan_vr )
 cmake_minimum_required(VERSION 2.8.0 FATAL_ERROR)
 
 find_package(PkgConfig)
@@ -52,7 +52,7 @@ else()
 endif()
 
 set(SOURCES
-	hmdbridge.c
+	vrbridge.c
 	ahrs.c
 	psvr.c
 	${ARCAN_ROOT_DIR}/src/engine/arcan_math.c

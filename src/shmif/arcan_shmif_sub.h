@@ -65,13 +65,13 @@ static inline uint16_t subp_checksum(uint8_t* buf, size_t len)
  * Forward declarations of the current sub- structures, and a union of
  * the safe / known return pointers in order to avoid explicit casting
  */
-struct arcan_shmif_hmd;
+struct arcan_shmif_vr;
 struct arcan_shmif_ramp;
 struct arcan_shmif_hdr16f;
 struct arcan_shmif_vector;
 
 union shmif_ext_substruct {
-	struct arcan_shmif_hmd* hmd;
+	struct arcan_shmif_vr* vr;
 	struct arcan_shmif_ramp* cramp;
 	struct arcan_shmif_hdr16f* hdr;
 	struct arcan_shmif_vector* vector;
@@ -96,7 +96,7 @@ struct arcan_shmif_ofstbl {
 	union {
 	struct {
 		uint32_t ofs_ramp, sz_ramp;
-		uint32_t ofs_hmd, sz_hmd;
+		uint32_t ofs_vr, sz_vr;
 		uint32_t ofs_hdr, sz_hdr;
 		uint32_t ofs_vector, sz_vector;
 	};
@@ -157,17 +157,17 @@ bool arcan_shmifsub_setramp(
 	struct arcan_shmif_cont* cont, size_t ind, struct ramp_block* in);
 
 /*
- * To avoid namespace collisions, the detailed HMD structure relies
+ * To avoid namespace collisions, the detailed VR structure relies
  * on having access to the definitions in arcan_math.h from the core
  * engine code.
  */
 #ifdef HAVE_ARCAN_MATH
-#define HMD_VERSION 0x1000
+#define VR_VERSION 0x1000
 
 /*
  * This structure is mapped into the adata area. It can be verified
  * if the apad value match the size and the apad_type matches the
- * SHMIF_APAD_HMD constant.
+ * SHMIF_APAD_VR constant.
  */
 enum avatar_limbs {
 	PERSON = 0, /* abstract for global positioning */
@@ -224,7 +224,7 @@ enum avatar_limbs {
 /*
  * Special TARGET_COMMAND... handling:
  * BCHUNKSTATE:
- *  extension 'arcan_hmd_distort' for distortion mesh packed as native
+ *  extension 'arcan_vr_distort' for distortion mesh packed as native
  *  floats with a header indicating elements then elements*[X,Y,Z],elements*[S,T]
  *
  * IO- events are used to activate haptics
@@ -233,7 +233,7 @@ enum avatar_limbs {
 /*
  * The standard lens parameters
  */
-struct hmd_meta {
+struct vr_meta {
 /* pixels */
 	unsigned hres;
 	unsigned vres;
@@ -251,7 +251,7 @@ struct hmd_meta {
 	float abberation[4];
 };
 
-struct hmd_limb {
+struct vr_limb {
 /* CONSUMER-SET: don't bother updating, won't be used. */
 	bool ignored;
 
@@ -280,7 +280,7 @@ struct hmd_limb {
 /*
  * 0 <= (page_sz) - offset_of(limb) - limb_lim*sizeof(struct) limb
  */
-struct arcan_shmif_hmd {
+struct arcan_shmif_vr {
 /* CONSUMER SET (activation) */
 	size_t page_sz;
 	uint8_t version;
@@ -293,10 +293,10 @@ struct arcan_shmif_hmd {
 	_Atomic uint_least8_t ready;
 
 /* PRODUCER INIT */
-	struct hmd_meta meta;
+	struct vr_meta meta;
 
 /* PRODUCER UPDATE (see struct definition) */
-	struct hmd_limb limbs[];
+	struct vr_limb limbs[];
 };
 #endif
 #endif

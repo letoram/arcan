@@ -1,15 +1,12 @@
--- hmd_setup
--- @short: Launch the HMD bridge for VR device support
+-- vr_setup
+-- @short: Launch the VR bridge for VR device support
 -- @inargs: *optargs*, callback
 -- @outargs:
--- @longdescr: HMD support is managed through an external service
+-- @longdescr: VR support is managed through an external service
 -- launched through this function. In principle, it works like a
 -- normal frameserver with some special semantics and a different
 -- engine code path for event interpretation and so on.
--- HMD is here used in its more abstract form to cover not only
--- a display used for AR or VR itself, but also for all the additional
--- devices whose lifecycle is bound to the device.
---
+-- VR, as used here, covers are large assortment of devices.
 -- These devices include, but are not limited to:
 -- Haptic Gloves, Haptic Suites, Eye/Gaze Trackers, Positional Devices,
 -- Inside/Out trackers, and Motion Capture Systems. They may expose
@@ -17,12 +14,12 @@
 --
 -- The framework provided here is launched and controlled with this
 -- function, with other system changes delivered through the status
--- table. For this system to work, the auxiliary 'hmdbridge' tool needs
+-- table. For this system to work, the auxiliary 'vrbridge' tool needs
 -- to be built (not in the default engine compilation path), and the
 -- binary explicitly added to the 'arcan' appl namespace of the active
 -- database.
 --
--- arcan_db add_appl_kv arcan ext_hmd /path/to/hmdbridge
+-- arcan_db add_appl_kv arcan ext_vr /path/to/vrbridge
 --
 -- The *optargs* is a normal arcan_arg packed string (key=value:key2)
 -- with bridge- specific arguments (for now). The 'test' argument
@@ -46,7 +43,7 @@
 -- for limb_added, the following subfields will be present:
 -- id, haptics (subtable), type and the source argument will refer
 -- to a newly created fully qualified 3d model possibly linked together
--- into an hmd_setup instance specific avatar. The abstract avatar
+-- into an vr_setup instance specific avatar. The abstract avatar
 -- root object will also be sent as a limb_added event.
 --
 -- distortion_left, distortion_right will also be sent as 3d models
@@ -70,17 +67,17 @@
 -- unreliable.
 --
 -- @group: iodev
--- @cfunction: hmd_setup
+-- @cfunction: vr_setup
 -- @flags: experimental
 -- @related:
 function main()
 #ifdef MAIN
-	hmd_setup("test", function(source, status)
+	vr_setup("test", function(source, status)
 		print(status.kind)
 	end);
 #endif
 
 #ifdef ERROR1
-	hmd_setup();
+	vr_setup();
 #endif
 end

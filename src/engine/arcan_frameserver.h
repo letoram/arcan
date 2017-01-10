@@ -62,7 +62,7 @@ struct arcan_frameserver_meta {
 /* resolved / updated on renegotiation */
 	struct {
 		struct arcan_shmif_ramps* gamma;
-		struct arcan_shmif_hmd* hmd;
+		struct arcan_shmif_vr* vr;
 		struct arcan_shmif_vector* vector;
 		struct arcan_shmif_hdr* hdr;
 	} aext;
@@ -277,7 +277,7 @@ void arcan_frameserver_pollevent(arcan_frameserver*, arcan_evctx*);
  * metadata, true otherwise.
  */
 bool arcan_frameserver_getramps(
-	arcan_frameserver*, int index, float* table, size_t* ch_sz);
+	arcan_frameserver*, int index, float** table, size_t* ch_sz);
 
 /*
  * Attempt to update a specific display index with new ramps and
