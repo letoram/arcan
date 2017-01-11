@@ -1,6 +1,6 @@
 -- accept_target
 -- @short: accept a pending target request for a new segment
--- @inargs: *setw*, *seth*
+-- @inargs: *setw*, *seth*, *handler*
 -- @outargs:
 -- @longdescr: A connected frameserver is provided with one segment
 -- by default, but additional ones can be requested. If that happens,
@@ -19,6 +19,9 @@
 -- perform a resize to ignore these values, but it saves a possible
 -- displayhint->resize cycle with the 1-2 frame latency that would
 -- impose.
+-- The optional argument *handler* sets the event handler for the
+-- new segment, but can also be changed with calls to
+-- ref:target_updatehandler.
 -- @note: accept_target is context sensitive. This means that calling
 -- it outside a frameserver event-handler, or when there is no pending
 -- segment_request event, is a terminal state transition.
@@ -31,8 +34,10 @@
 -- cannot starve the serving arcan process. See the 'recursive_evil'
 -- security test case for more detail.
 -- @note: Subsegments are always bound to the primary segment,
--- this means that attempts at complex hierarchies (main- window
--- with a popup window with a titlebar with an icon is not possible).
+-- this means that attempts at complex hierarchies, such as a main-
+-- window with a popup window with a titlebar with an icon is not
+-- possible directly, though viewport hints can be used to describe
+-- such relations.
 -- @group: targetcontrol
 -- @cfunction: targetaccept
 -- @related: target_alloc

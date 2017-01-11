@@ -5324,7 +5324,8 @@ static int videocanvasrsz(lua_State* ctx)
 static int videodispgamma(lua_State* ctx)
 {
 	LUA_TRACE("video_displaygamma");
-	platform_display_id id = luaL_checknumber(ctx, 1);
+
+	uint64_t id = luaL_checknumber(ctx, 1);
 
 /* set */
 	if (lua_gettop(ctx) > 1){
@@ -6919,8 +6920,14 @@ static int targetaccept(lua_State* ctx)
 	if (!luactx.last_segreq)
 		arcan_fatal("accept_target(), only permitted inside a segment_request.\n");
 
-	uint16_t w = luaL_optnumber(ctx, 1, luactx.last_segreq->segreq.width);
-	uint16_t h = luaL_optnumber(ctx, 2, luactx.last_segreq->segreq.height);
+	uint16_t w = luactx.last_segreq->segreq.width;
+	uint16_t h = luactx.last_segreq->segreq.height;
+
+	if (lua_isnumber(ctx, 1))
+		w = lua_tonumber(ctx, 1);
+
+	if (lua_isnumber(ctx, 2))
+		h = lua_tonumber(ctx, 2);
 
 	vfunc_state* state = arcan_video_feedstate(luactx.last_segreq->source);
 	arcan_frameserver* newref = arcan_frameserver_spawn_subsegment(
@@ -6935,6 +6942,8 @@ static int targetaccept(lua_State* ctx)
 		lua_pushvid(ctx, ARCAN_EID);
 		LUA_ETRACE("accept_target", "couldn't allocate frameserver", 2);
 	}
+
+	newref->tag = find_lua_callback(ctx);
 
 	lua_pushvid(ctx, newref->vid);
 	lua_pushvid(ctx, newref->aid);
@@ -9781,6 +9790,8 @@ static const luaL_Reg imgfuns[] = {
 {"pick_items",               pick               },
 {"image_surface_initial_properties", getimageinitprop   },
 {"image_surface_resolve_properties", getimageresolveprop},
+{"image_surface_resolve", getimageresolveprop},
+{"image_surface_initial", getimageinitprop},
 {NULL, NULL}
 };
 #undef EXT_MAPTBL_IMAGE
