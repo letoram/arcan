@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2016, Björn Ståhl
+ * Copyright 2012-2017, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -1303,17 +1303,6 @@ void arcan_shmif_setevqs(struct arcan_shmif_page* dst,
 	outq->front = &dst->parentevq.front;
 	outq->back  = &dst->parentevq.back;
 	outq->eventbuf_sz = PP_QUEUE_SZ;
-}
-
-union shmif_ext_substruct arcan_shmif_substruct(
-	struct arcan_shmif_cont* ctx, enum shmif_ext_meta meta)
-{
-	union shmif_ext_substruct sub = {0};
-/*
- * Incomplete, the check of meta against ctx and the retrieval of the
- * actual pointer have not been finalized
- */
-	return sub;
 }
 
 unsigned arcan_shmif_signalhandle(struct arcan_shmif_cont* ctx,

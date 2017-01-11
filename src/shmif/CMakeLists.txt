@@ -48,6 +48,7 @@ set (SHMIF_SOURCES
 	${SHMIF_HEADERS}
 	${ASD}/shmif/arcan_shmif_control.c
 	${ASD}/platform/posix/shmemop.c
+	${ASD}/shmif/arcan_shmif_sub.c
 )
 
 if (LWA_PLATFORM_STR AND IS_DIRECTORY "${ASD}/shmif/${LWA_PLATFORM_STR}" AND
