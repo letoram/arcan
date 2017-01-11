@@ -62,6 +62,32 @@ static inline uint16_t subp_checksum(uint8_t* buf, size_t len)
 }
 
 /*
+ * Forward declarations of the current sub- structures, and a union of
+ * the safe / known return pointers in order to avoid explicit casting
+ */
+struct arcan_shmif_hmd;
+struct arcan_shmif_ramp;
+struct arcan_shmif_hdr16f;
+struct arcan_shmif_vector;
+
+union shmif_ext_substruct {
+	struct arcan_shmif_hmd* hmd;
+	struct arcan_shmif_ramp* cramp;
+	struct arcan_shmif_hdr16f* hdr;
+	struct arcan_shmif_vector* vector;
+};
+
+/*
+ * Extract a valid sub-structure from the context. This should have been
+ * negotiated with an extended resize request in advance, and need to be
+ * re- extracted in the event of an extended meta renegotiation, a reset
+ * or a migration. The safest pattern is to simply call when the data is
+ * needed and never cache.
+ */
+union shmif_ext_substruct arcan_shmif_substruct(
+	struct arcan_shmif_cont* ctx, enum shmif_ext_meta meta);
+
+/*
  * Marks the beginning of the offset table that is set if subprotocols
  * have been activated. Used internally by the resize- function. The
  * strict copy is kept server-side.
@@ -115,6 +141,14 @@ struct arcan_shmif_ramp {
 /* PRODUCER INIT, CONSUMER_UPDATE */
 	struct ramp_block ramps[];
 };
+
+/*
+ * retrieve the metadata on the current ramp-block,
+ * returns the number of ramps (or -1 if no data could be retrieved)
+ * nd [optionally] display EDID
+ */
+ssize_t arcan_shmifsub_rampmeta(struct arcan_shmif_cont* cont,
+	uint8_t** out_edid, size_t* edid_sz);
 
 bool arcan_shmifsub_getramp(
 	struct arcan_shmif_cont* cont, size_t ind, struct ramp_block* out);

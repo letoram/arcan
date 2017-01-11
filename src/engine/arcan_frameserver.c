@@ -845,8 +845,10 @@ size_t arcan_frameserver_protosize(arcan_frameserver* ctx,
 		size_t lim;
 		dofs->ofs_ramp = dofs->sz_ramp = tot;
 		platform_video_displays(NULL, &lim);
+
+/* WARNING: the max_lut_size is not actually used / retrieved here */
 		tot += sizeof(struct arcan_shmif_ramp) + 2 *
-			lim * sizeof(struct ramp_block) * 1024 * 3 * sizeof(float);
+			lim * (sizeof(struct ramp_block) + 1024 * 3 * sizeof(float));
 		tot += tot % sizeof(uintptr_t);
 		dofs->sz_ramp = tot - dofs->sz_ramp;
 	}

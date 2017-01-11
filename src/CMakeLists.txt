@@ -437,6 +437,7 @@ list (APPEND SOURCES
 	engine/arcan_db.h
 	engine/arcan_frameserver.h
 	engine/arcan_frameserver.c
+	shmif/arcan_shmif_sub.c
 	engine/arcan_hmd.h
 	engine/arcan_hmd.c
 	platform/platform.h
