@@ -387,10 +387,10 @@ static bool check_store(platform_display_id id)
 bool platform_video_map_display(arcan_vobj_id vid, platform_display_id id,
 	enum blitting_hint hint)
 {
-	if (id > MAX_DISPLAYS)
+	if (id > MAX_DISPLAYS || id != (platform_display_id) ARCAN_VIDEO_WORLDID)
 		return false;
 
-	if (disp[id].vstore){
+	if (id < MAX_DISPLAYS && disp[id].vstore){
 		arcan_vint_drop_vstore(disp[id].vstore);
 		disp[id].vstore = NULL;
 	}
@@ -400,6 +400,7 @@ bool platform_video_map_display(arcan_vobj_id vid, platform_display_id id,
 	if (vid == ARCAN_VIDEO_WORLDID){
 		disp[id].conn.hints = SHMIF_RHINT_ORIGO_LL;
 		disp[id].vstore = arcan_vint_world();
+		return true;
 	}
 	else if (vid == ARCAN_EID)
 		return true;
