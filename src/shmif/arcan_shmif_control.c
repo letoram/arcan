@@ -532,7 +532,7 @@ static int process_events(struct arcan_shmif_cont* c,
 	struct arcan_event* dst, bool blocking, bool upret)
 {
 reset:
-	if (!c || !dst || !c->addr || !c->priv->alive)
+	if (!c || !dst || !c->addr || !c->priv || !c->priv->alive)
 		return -1;
 
 	struct shmif_hidden* priv = c->priv;
@@ -756,7 +756,7 @@ static void drop_initial(struct arcan_shmif_cont* c)
 
 int arcan_shmif_poll(struct arcan_shmif_cont* c, struct arcan_event* dst)
 {
-	if (c && c->priv->valid_initial)
+	if (c && c->priv && c->priv->valid_initial)
 		drop_initial(c);
 
 	return process_events(c, dst, false, false);
@@ -764,7 +764,7 @@ int arcan_shmif_poll(struct arcan_shmif_cont* c, struct arcan_event* dst)
 
 int arcan_shmif_wait(struct arcan_shmif_cont* c, struct arcan_event* dst)
 {
-	if (c && c->priv->valid_initial)
+	if (c && c->priv && c->priv->valid_initial)
 		drop_initial(c);
 
 	return process_events(c, dst, true, false) > 0;
