@@ -867,15 +867,15 @@ size_t arcan_frameserver_protosize(arcan_frameserver* ctx,
 	}
 	dofs->ofs_vector = dofs->sz_vector = 0;
 
-	if (proto & SHMIF_META_HMD){
-		dofs->ofs_hmd = dofs->sz_hmd = tot;
-		tot += sizeof(struct arcan_shmif_hmd);
-		tot += sizeof(struct hmd_limb) * LIMB_LIM;
+	if (proto & SHMIF_META_VR){
+		dofs->ofs_vr = dofs->sz_vr = tot;
+		tot += sizeof(struct arcan_shmif_vr);
+		tot += sizeof(struct vr_limb) * LIMB_LIM;
 		tot += tot % sizeof(uintptr_t);
-		dofs->sz_hmd = tot - dofs->sz_hmd;
+		dofs->sz_vr = tot - dofs->sz_vr;
 	}
 	else
-		dofs->sz_hmd = dofs->ofs_hmd = 0;
+		dofs->sz_vr = dofs->ofs_vr = 0;
 
 	return tot;
 }
@@ -930,16 +930,34 @@ void arcan_frameserver_setproto(arcan_frameserver* ctx,
 	else
 		ctx->desc.aext.vector = NULL;
 
-	if (proto & SHMIF_META_HMD){
-		ctx->desc.aext.hmd =
-			(struct arcan_shmif_hmd*)(base + aofs->ofs_hmd);
-		memset(ctx->desc.aext.hmd, '\0', aofs->sz_hmd);
+	if (proto & SHMIF_META_VR){
+		ctx->desc.aext.vr =
+			(struct arcan_shmif_vr*)(base + aofs->ofs_vr);
+		memset(ctx->desc.aext.vr, '\0', aofs->sz_vr);
 	}
 	else
-		ctx->desc.aext.hmd = NULL;
+		ctx->desc.aext.vr = NULL;
 
 	ctx->desc.aproto = proto;
 }
+
+bool arcan_frameserver_getramps(
+	arcan_frameserver* src, int index, float** table, size_t* ch_sz)
+{
+	if (!ch_sz || !table)
+		return false;
+
+
+	return false;
+}
+
+bool arcan_frameserver_setramps(
+	arcan_frameserver* src, int index, float* table, size_t ch_sz,
+	uint8_t* edid, size_t edid_sz)
+{
+	return false;
+}
+
 
 /*
  * This is a legacy- feed interface and doesn't reflect how the shmif audio

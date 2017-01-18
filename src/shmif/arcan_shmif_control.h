@@ -504,7 +504,7 @@ enum shmif_ext_meta {
  * The common case for this is for a tool like the hmdserver to provide
  * data.
  */
-	SHMIF_META_HMD = 16,
+	SHMIF_META_VR = 16,
 
 /*
  * Similar to HDR16, but switch to half-size mode (R8G8B8A8 -> RGB565)

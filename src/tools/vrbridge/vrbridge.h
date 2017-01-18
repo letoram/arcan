@@ -1,5 +1,5 @@
-#ifndef HAVE_HMDBRIDGE
-#define HAVE_HMDBRIDGE
+#ifndef HAVE_VRBRIDGE
+#define HAVE_VRBRIDGE
 
 enum ctrl_cmd {
 	SHUTDOWN = 0,
@@ -25,11 +25,10 @@ struct dev_ent {
 	vr_sampler_fptr sample;
 	vr_control_fptr control;
 
-	struct hmd_meta meta;
 	void* tag;
 	pthread_t runner;
 };
 
-struct hmd_limb* hmdbridge_alloc_limb(struct dev_ent*, enum avatar_limbs);
+struct vr_limb* vrbridge_alloc_limb(struct dev_ent*, enum avatar_limbs);
 
 #endif

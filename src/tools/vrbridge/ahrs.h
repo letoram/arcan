@@ -6,7 +6,7 @@
 
 /*
  * An interesting exploration here would be to use the skeleton model from the
- * hmd- structure where the mapped joints will have a sensor each, and to feed
+ * vr- structure where the mapped joints will have a sensor each, and to feed
  * this into a Kalman filter that uses a human- tuned inverse-kinematics model
  * for prediction
  */

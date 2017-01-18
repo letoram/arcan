@@ -2,9 +2,9 @@
  * Copyright 2016, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
- * Description: HMD interfacing tool
+ * Description: VR interfacing tool
  *
- * This tool implements the producer side of the shmif- extension for HMD-
+ * This tool implements the producer side of the shmif- extension for VR-
  * related data. Though it currently host the drivers itself, the hope is to be
  * able to outsource that work and plug-in whatever happens when/if Khronos
  * manages to clean up the VR framework mess.
@@ -21,13 +21,14 @@
  * the safest to provide multiple implementations of the same limb, and have
  * the consumer discard or sensor-fuse.
  */
-#include <arcan_shmif.h>
+#include <stdbool.h>
 #include "arcan_math.h"
-#include <arcan_shmif_sub.h>
+#include <arcan_shmif.h>
 #include <hidapi/hidapi.h>
 #include <pthread.h>
 #include <stdatomic.h>
-#include "hmdbridge.h"
+
+#include "vrbridge.h"
 
 #ifdef PSVR
 #include "psvr.h"
@@ -71,7 +72,7 @@ static bool init_device(struct dev_ent* ent)
 }
 
 static size_t device_rescan(
-	struct arcan_shmif_cont* cont, struct arcan_shmif_hmd* hmd)
+	struct arcan_shmif_cont* cont, struct arcan_shmif_vr* vr)
 {
 /*
  * Limb allocation -> own thread. Can update without any other synchronization
@@ -85,7 +86,7 @@ static size_t device_rescan(
 			continue;
 
 		if (init_device(&dev_tbl[i])){
-			fprintf(stdout, "hmdbridge:rescan() - found %s\n", dev_tbl[i].label);
+			fprintf(stdout, "vrbridge:rescan() - found %s\n", dev_tbl[i].label);
 			ent_alloc_mask |= 1 << i;
 			count++;
 		}
@@ -103,15 +104,15 @@ int main(int argc, char** argv)
 		return EXIT_FAILURE;
 	}
 
-	struct arcan_shmif_hmd* hmd = arcan_shmif_substruct(&con, SHMIF_META_HMD).hmd;
-	if (!hmd){
-		fprintf(stderr, "couldn't retrieve HMD substructure\n");
+	struct arcan_shmif_vr* vr  = arcan_shmif_substruct(&con, SHMIF_META_VR).vr;
+	if (!vr){
+		fprintf(stderr, "couldn't retrieve VR substructure\n");
 		return EXIT_FAILURE;
 	}
 
-	if (hmd->version != HMD_VERSION){
-		fprintf(stderr, "header/shmif-hmd version mismatch (in: %d, want: %d)\n",
-			hmd->version, HMD_VERSION);
+	if (vr->version != VR_VERSION){
+		fprintf(stderr, "header/shmif-vr version mismatch (in: %d, want: %d)\n",
+			vr->version, VR_VERSION);
 		return EXIT_FAILURE;
 	}
 
@@ -123,23 +124,23 @@ int main(int argc, char** argv)
  */
 
 /*
- * allocate- a test-hmd setup with nonsens parameters to be able to run
- * the entire chain from engine<->hmdbridge<->avatar
+ * allocate- a test-vr setup with nonsens parameters to be able to run
+ * the entire chain from engine<->vrbridge<->avatar
  */
 	if (arg_lookup(arg, "test", 0, NULL)){
-		fprintf(stderr, "hmdbridge:setup(test), not implemented\n");
+		fprintf(stderr, "vrbridge:setup(test), not implemented\n");
 		return EXIT_FAILURE;
 	}
 	else {
-		while (device_rescan(&con, hmd) == 0){
-			fprintf(stderr, "hmdbridge:setup() - "
+		while (device_rescan(&con, vr) == 0){
+			fprintf(stderr, "vrbridge:setup() - "
 				"no controllers found, sleep/rescan\n");
 			sleep(5);
 		}
 	}
 
 /*
- * Some HMD devices found, since each device is ran in its own thread we simply
+ * Some VR devices found, since each device is ran in its own thread we simply
  * sleep and rescan on request from the server
  */
 	arcan_event ev;

@@ -438,8 +438,8 @@ list (APPEND SOURCES
 	engine/arcan_frameserver.h
 	engine/arcan_frameserver.c
 	shmif/arcan_shmif_sub.c
-	engine/arcan_hmd.h
-	engine/arcan_hmd.c
+	engine/arcan_vr.h
+	engine/arcan_vr.c
 	platform/platform.h
 	platform/video_platform.h
 )
