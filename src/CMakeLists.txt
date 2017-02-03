@@ -300,6 +300,7 @@ if (EXISTS ${EXTERNAL_SRC_DIR}/git/openal AND STATIC_OPENAL)
 	amsg("${CL_YEL}Building OpenAL static from external/git mirror${CL_RST}")
 	ExternalProject_Add(OpenAL
 		SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/openal
+		BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/openal_static
 		UPDATE_COMMAND ""
 		GIT_REPOSITORY "${EXTERNAL_SRC_DIR}/git/openal"
 		${EXTERNAL_DEFS}
@@ -315,7 +316,7 @@ if (EXISTS ${EXTERNAL_SRC_DIR}/git/openal AND STATIC_OPENAL)
 		-DALSOFT_BACKEND_WINMM=OFF
 	)
 	set(OPENAL_LIBRARY
-		"${CMAKE_CURRENT_BINARY_DIR}/lib/libopenal.a"
+		"${CMAKE_CURRENT_BINARY_DIR}/openal_static/libopenal.a"
 	)
 	set(OPENAL_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/include/AL")
 	list(APPEND MAIN_DEPS OpenAL)

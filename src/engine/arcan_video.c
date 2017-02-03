@@ -1738,7 +1738,7 @@ arcan_errc arcan_video_shareglstore(arcan_vobj_id sid, arcan_vobj_id did)
 		if (!dst->txcos)
 			dst->txcos = arcan_alloc_mem(8 * sizeof(float),
 				ARCAN_MEM_VSTRUCT, 0, ARCAN_MEMALIGN_SIMD);
-			memcpy(dst->txcos, src->txcos, sizeof(float) * 8);
+		memcpy(dst->txcos, src->txcos, sizeof(float) * 8);
 	}
 	else if (dst->txcos){
 		arcan_mem_free(dst->txcos);
@@ -4178,10 +4178,10 @@ static void ffunc_process(arcan_vobject* dst, int cookie)
 static void poll_list(arcan_vobject_litem* current, int cookie)
 {
 	while(current && current->elem){
-	arcan_vobject* celem = current->elem;
+		arcan_vobject* celem = current->elem;
 
-	if (celem->feed.ffunc)
-		ffunc_process(celem, cookie);
+		if (celem->feed.ffunc)
+			ffunc_process(celem, cookie);
 
 		current = current->next;
 	}
@@ -4459,8 +4459,8 @@ static size_t process_rendertarget(struct rendertarget* tgt, float fract)
 			;
 		pc++;
 
-	if (clipped)
-		agp_disable_stencil();
+		if (clipped)
+			agp_disable_stencil();
 
 		current = current->next;
 	}
