@@ -79,7 +79,7 @@ static void* lookup_fun(void* tag, const char* sym, bool req)
 	return glXGetProcAddress((const GLubyte*) sym);
 }
 
-oid arcan_shmifext_swap_context(
+void arcan_shmifext_swap_context(
 	struct arcan_shmif_cont* con, unsigned context)
 {
 }
