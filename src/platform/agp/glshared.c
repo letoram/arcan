@@ -694,22 +694,22 @@ void agp_submit_mesh(struct mesh_storage_t* base, enum agp_mesh_flags fl)
 	else
 		attribs[2] = -1;
 
-		if (base->type == AGP_MESH_TRISOUP){
-			if (base->indices)
-				env->draw_elements(GL_TRIANGLES, base->n_indices,
-					GL_UNSIGNED_INT, base->indices);
-			else
-				env->draw_arrays(GL_TRIANGLES, 0, base->n_vertices);
-		}
-		else if (base->type == AGP_MESH_POINTCLOUD){
-			env->enable(GL_VERTEX_PROGRAM_POINT_SIZE);
-			env->draw_arrays(GL_POINTS, 0, base->n_vertices);
-			env->disable(GL_VERTEX_PROGRAM_POINT_SIZE);
-		}
+	if (base->type == AGP_MESH_TRISOUP){
+		if (base->indices)
+			env->draw_elements(GL_TRIANGLES, base->n_indices,
+				GL_UNSIGNED_INT, base->indices);
+		else
+			env->draw_arrays(GL_TRIANGLES, 0, base->n_vertices);
+	}
+	else if (base->type == AGP_MESH_POINTCLOUD){
+		env->enable(GL_VERTEX_PROGRAM_POINT_SIZE);
+		env->draw_arrays(GL_POINTS, 0, base->n_vertices);
+		env->disable(GL_VERTEX_PROGRAM_POINT_SIZE);
+	}
 
-		for (size_t i = 0; i < sizeof(attribs) / sizeof(attribs[0]); i++)
-			if (attribs[i] != -1)
-				env->disable_vertex_attrarray(attribs[i]);
+	for (size_t i = 0; i < sizeof(attribs) / sizeof(attribs[0]); i++)
+		if (attribs[i] != -1)
+			env->disable_vertex_attrarray(attribs[i]);
 }
 
 /*

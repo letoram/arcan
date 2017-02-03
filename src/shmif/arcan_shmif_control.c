@@ -1679,7 +1679,7 @@ static char* strrep(char* dst, char key, char repl)
 			dst++;
 		}
 
-		return src;
+	return src;
 }
 
 struct arg_arr* arg_unpack(const char* resource)
