@@ -286,6 +286,7 @@ static int show_use(const char* msg, const char* arg)
 "\t-no-shell       disable the shell protocol\n"
 "\t-no-shm         disable the shm protocol\n"
 "\t-no-seat        disable the seat protocol\n"
+"\t-no-xdg         disable the xdg protocol\n"
 "\t-no-output      disable the output protocol\n");
 	return EXIT_FAILURE;
 }
@@ -299,14 +300,15 @@ int main(int argc, char* argv[])
  * field here, and then command-line argument passing to disable said protocol.
  */
 	struct {
-		int compositor, shell, shm, seat, output, egl;
+		int compositor, shell, shm, seat, output, egl, xdg;
 	} protocols = {
 		.compositor = 3,
 		.shell = 1,
 		.shm = 1,
 		.seat = 4,
 		.output = 2,
-		.egl = 0
+		.egl = 0,
+		.xdg = 6
 	};
 
 	for (size_t i = 1; i < argc; i++){
@@ -342,6 +344,8 @@ int main(int argc, char* argv[])
 			protocols.seat = 0;
 		else if (strcmp(argv[i], "-no-output") == 0)
 			protocols.output = 0;
+		else if (strcmp(argv[i], "-no-xdg") == 0)
+			protocols.xdg = 0;
 		else
 			return show_use("unknown argument", argv[i]);
 	}
@@ -425,6 +429,9 @@ int main(int argc, char* argv[])
 	if (protocols.output)
 		wl_global_create(wl.disp, &wl_output_interface,
 			protocols.output, NULL, &bind_output);
+	if (protocols.xdg)
+		wl_global_create(wl.disp, &zxdg_shell_v6_interface,
+			protocols.xdg, NULL, &bind_xdg);
 
 	struct wl_event_loop* loop = wl_display_get_event_loop(wl.disp);
 	trace("wl_display() finished");

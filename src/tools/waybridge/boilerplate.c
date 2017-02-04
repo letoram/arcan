@@ -103,4 +103,51 @@ static const struct wl_shell_interface shell_if = {
 	.get_shell_surface = shell_getsurf
 };
 
+#include "wayland-xdg-shell-unstable-v6-server-protocol.h"
+#include "xdg_positioner.c"
+static struct zxdg_positioner_v6_interface xdgpos_if = {
+	.set_size = xdgpos_size,
+	.set_anchor_rect = xdgpos_anchor_rect,
+	.set_anchor = xdgpos_anchor,
+	.set_gravity = xdgpos_gravity,
+	.set_constraint_adjustment = xdgpos_consadj,
+	.set_offset = xdgpos_offset
+};
+
+#include "xdg_popup.c"
+static struct zxdg_popup_v6_interface xdgpop_if = {
+	.grab = xdgpop_grab
+};
+
+#include "xdg_toplevel.c"
+static struct zxdg_toplevel_v6_interface xdgtop_if = {
+	.set_parent = xdgtop_setparent,
+	.set_title = xdgtop_title,
+	.set_app_id = xdgtop_appid,
+	.show_window_menu = xdgtop_wndmenu,
+	.move = xdgtop_move,
+	.resize = xdgtop_resize,
+	.set_max_size = xdgtop_set_max,
+	.set_min_size = xdgtop_set_min,
+	.set_maximized = xdgtop_maximize,
+	.unset_maximized = xdgtop_demaximize,
+	.set_fullscreen = xdgtop_fullscreen,
+	.unset_fullscreen = xdgtop_unset_fullscreen,
+	.set_minimized = xdgtop_minimize
+};
+
+#include "xdg_ssurf.c"
+static struct zxdg_surface_v6_interface xdgsurf_if = {
+	.get_toplevel = xdgsurf_toplevel,
+	.get_popup = xdgsurf_getpopup,
+	.set_window_geometry = xdgsurf_set_geometry,
+	.ack_configure = xdgsurf_ackcfg,
+};
+
+#include "xdg_shell.c"
+static const struct zxdg_shell_v6_interface xdgshell_if = {
+	.get_xdg_surface = xdg_getsurf,
+	.create_positioner = xdg_createpos,
+};
+
 #include "bondage.c"

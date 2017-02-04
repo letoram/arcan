@@ -1,10 +1,10 @@
 PROJECT( arcan-wayland )
 cmake_minimum_required(VERSION 2.8.0 FATAL_ERROR)
 
-find_package(PkgConfig)
-pkg_check_modules(PKG_WAYLAND_SERVER REQUIRED wayland-server)
-find_path(WAYLAND_SERVER_INCLUDE_DIR wayland-server.h ${PKG_WAYLAND_SERVER_INCLUDE_DIRS})
-find_library(WAYLAND_SERVER_LIBRARIES wayland-server PATHS ${PKG_WAYLAND_SERVER_LIBRARY_DIRS})
+set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
+include(Wayland)
+find_package(Wayland)
+find_package(WaylandProtocols REQUIRED)
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
 	add_definitions(-D_DEBUG)
@@ -16,6 +16,11 @@ else()
 	find_package(arcan_shmif REQUIRED WITH_EXT)
 endif()
 
+include_directories(
+	${ARCAN_SHMIF_INCLUDE_DIR}
+	${WAYLAND_SERVER_INCLUDE_DIRS}
+	${CMAKE_CURRENT_BINARY_DIR}
+)
 add_definitions(
 	-Wall
 	-D__UNIX
@@ -26,7 +31,15 @@ add_definitions(
 	-std=gnu11 # shmif-api requires this
 )
 
-include_directories(${ARCAN_SHMIF_INCLUDE_DIR} ${WAYLAND_SERVER_INCLUDE_DIR})
+# copied from Cloudef/wlc/protos
+set(PROTOCOLS "${WAYLANDPROTOCOLS_PATH}/unstable/xdg-shell/xdg-shell-unstable-v6")
+foreach(proto ${PROTOCOLS})
+   get_filename_component(base ${proto} NAME)
+   wayland_add_protocol_server(src "${proto}.xml" ${base})
+   list(APPEND sources ${src})
+endforeach()
+set_source_files_properties(${sources} PROPERTIES GENERATED ON)
+add_library(wlprot STATIC ${sources})
 
 SET(LIBRARIES
 	pthread
@@ -35,6 +48,7 @@ SET(LIBRARIES
 	${ARCAN_SHMIF_LIBRARY}
 	${ARCAN_SHMIF_EXT_LIBRARY}
 	${WAYLAND_SERVER_LIBRARIES}
+	wlprot
 )
 
 SET(SOURCES

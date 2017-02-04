@@ -37,6 +37,15 @@ static void bind_shell(struct wl_client* client,
 	wl_resource_set_implementation(res, &shell_if, NULL, NULL);
 }
 
+static void bind_xdg(struct wl_client* client,
+	void *data, uint32_t version, uint32_t id)
+{
+	trace("wl_bind(xdg %d:%d)", version, id);
+	struct wl_resource* res = wl_resource_create(client,
+		&zxdg_shell_v6_interface, version, id);
+	wl_resource_set_implementation(res, &xdgshell_if, NULL, NULL);
+}
+
 static void bind_output(struct wl_client* client,
 	void* data, uint32_t version, uint32_t id)
 {
