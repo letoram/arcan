@@ -1,0 +1,5 @@
+Ltui is a patched version of the normal lua command-line interpreter that adds
+the TUI- C bindings in order to run the tui related tests and examples.
+
+Both the tool and the bindings are in an early alpha stage and shouldn't
+be considered for anything other than curiosity at the moment.
