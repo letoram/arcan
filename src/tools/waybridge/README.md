@@ -24,10 +24,18 @@ connect to the point.
 
 Issues to Investigate(tm)
 ====
-At the moment, EGL/drm is stuck on what seems like a bug in Mesa. If we
-bind the bridge to a render-node, a client will get somewhere in the nasty
-backtrace to (drm\_handle\_device) - the reference to /dev/dri/card128 rather
-than /dev/dri/renderD128.
+
+1. Mesa picks the wrong render-node
+At the moment, EGL/drm is stuck on what seems like a bug in Mesa. If we bind
+the bridge to a render-node, a client will get somewhere in the nasty backtrace
+to (drm\_handle\_device) - the reference to /dev/dri/card128 rather than
+/dev/dri/renderD128. A quick hack around this bug is to simply create the
+render-node under the name mesa is looking for.
+
+2. Mesa picks the wrong shm format
+This seems to have popped up recently, some mesa build erroneously pick
+0x34325258 as the shm format for llvmpipe fallback (ARGB), which seems to be
+wrong (the two 'must' formats are encoded as 0, 1)
 
 Limitations
 ====
@@ -41,21 +49,21 @@ TODO
 ====
 - [ ] Milestone 1, basics
   - [x] Boilerplate-a-plenty
-  - [ ] 1:1 client to bridge mapping
-    - [ ] \*:1 client to bridge mapping
+  - [x] 1:1 client to bridge mapping
+    - [x] \*:1 client to bridge mapping
   - [ ] Seat
     - [ ] Keyboard
     - [ ] Mouse
     - [ ] Touch
     - [ ] shm to GL texture mapping
-  - [ ] Shell
+  -  ] Shell
     - [ ] Qt- applications working
     - [ ] SDL2 applications working
     - [ ] MPV working
     - [ ] Other relevant wayland capable backends? retroarch?
   - [ ] EGL/drm
 
-- [ ] Milestone 2, (z)xdg-shell
+- [ ] Milestone 2, (z)xdg-shell (full, not just boilerplate)
 - [ ] Milestone 3, funky things
   - [ ] Multithreaded client processing
   - [ ] Dynamic Keyboard Translation table generation

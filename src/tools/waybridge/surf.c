@@ -16,7 +16,7 @@ static void surf_attach(struct wl_client* cl, struct wl_resource* res,
 }
 
 /*
- * Similar to the X damage stuff, just grow.
+ * Similar to the X damage stuff, just grow the synch region for shm repacking
  */
 static void surf_damage(struct wl_client* cl, struct wl_resource* res,
 	int32_t x, int32_t y, int32_t w, int32_t h)
@@ -65,6 +65,7 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 		return;
 	}
 
+	while (surf->acon->addr->vready){}
 	if (query_buffer && query_buffer(wl.display,
 		surf->buf, EGL_TEXTURE_FORMAT, &dfmt)){
 		trace("surf_commit(egl)");
@@ -99,7 +100,6 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
  * long as you don't double fork) and ran one of those per client but the
  * EGLDisplay approach seem to break that for us, probably worth a try if
  * the main-thread stalls start to hurt */
-			while (surf->acon->addr->vready){}
 
 			if (surf->acon->w != w || surf->acon->h != h)
 				arcan_shmif_resize(surf->acon, w, h);
@@ -115,19 +115,16 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
  *
  * Then trick the shmifext_signal by modifying vidp temporarily to
  * pointing to the buffer properties extracted from wl_shm_buffer*
- */
-
-/*
- * It is impossible to avoid a repack stage here, even if the color formats
- * happen to match. The reason is (and I might misunderstand because
- * documentation is not a thing) that I can't control which offset a buffer
- * is mapped at so the stream-to-gl-and-handle-pass approach is better here.
+ *
+ * The other option is to implement the shm.c fully, and on the create_buffer
+ * call, return the current base / offsets (along with the possible
+ * resize_ext dance to get the right number of buffers, offsets etc.)
  */
 			memcpy(surf->acon->vidp, data, w * h * sizeof(shmif_pixel));
-
-			arcan_shmif_signal(surf->acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
-			wl_buffer_send_release(surf->buf);
 		}
+
+		arcan_shmif_signal(surf->acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
+		wl_buffer_send_release(surf->buf);
 	}
 
 }

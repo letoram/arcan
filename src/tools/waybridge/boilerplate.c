@@ -30,6 +30,7 @@ struct bridge_surf {
 
 	int sstate;
 	int x, y;
+	int hint_w, hint_h;
 	int cookie;
 
 	struct bridge_client* cl;
@@ -70,11 +71,6 @@ static struct wl_region_interface region_if = {
 static struct wl_compositor_interface compositor_if = {
 	.create_surface = comp_surf_create,
 	.create_region = comp_create_reg,
-};
-
-#include "shm.c"
-static struct wl_shm_interface shm_if = {
-	.create_pool = create_pool
 };
 
 #include "seat.c"

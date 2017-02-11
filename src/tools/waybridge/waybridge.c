@@ -1,5 +1,5 @@
 /*
- * Copyright 2016, Björn Ståhl
+ * Copyright 2016-2017, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: https://github.com/letoram/arcan/wiki/wayland.md
  */
@@ -13,6 +13,13 @@
 #include <errno.h>
 #include <poll.h>
 
+/*
+ * NOTE: The distinction between client/surface is incomplete here and doesn't
+ * yield the right polling / routing behavior. The find_client and poll-slot
+ * allocation approach need to be reworked so that both clients and
+ * (sub)surfaces gets proper allocation. This means that the client flush-
+ * thing should really be switched to handle a surface.
+ */
 static inline void trace(const char* msg, ...)
 {
 	va_list args;
@@ -78,7 +85,7 @@ static void send_client_input(struct bridge_client* cl, arcan_ioevent* ev)
 	if (ev->devkind == EVENT_IDEVKIND_TOUCHDISP){
 	}
 	else if (ev->devkind == EVENT_IDEVKIND_MOUSE){
-/* wl_mouse_blabla */
+/* wl_mouse_ (send_button, send_axis, send_enter, send_leave) */
 	}
 	else if (ev->datatype == EVENT_IDATATYPE_TRANSLATED){
 /* wl_keyboard_send_enter,
@@ -110,8 +117,11 @@ static void flush_client_events(struct bridge_client* cl)
 		break;
 		case TARGET_COMMAND_DISPLAYHINT:
 			trace("shmif-> target update visibility or size");
-/* if selection status change, send_surface enter/leave */
-/* if type: wl_shell, send _send_configure */
+			if (ev.tgt.ioevs[0].iv && ev.tgt.ioevs[1].iv){
+			}
+
+/* if selection status change, send wl_surface_
+ * if type: wl_shell, send _send_configure */
 		break;
 		case TARGET_COMMAND_OUTPUTHINT:
 			trace("shmif-> target update configuration");
@@ -308,7 +318,7 @@ int main(int argc, char* argv[])
 		.seat = 4,
 		.output = 2,
 		.egl = 0,
-		.xdg = 6
+		.xdg = 1
 	};
 
 	for (size_t i = 1; i < argc; i++){
@@ -419,8 +429,7 @@ int main(int argc, char* argv[])
 		wl_global_create(wl.disp, &wl_shell_interface,
 			protocols.shell, NULL, &bind_shell);
 	if (protocols.shm){
-		wl_global_create(wl.disp, &wl_shm_interface,
-			protocols.shm, NULL, &bind_shm);
+/* NOTE: register additional formats? */
 		wl_display_init_shm(wl.disp);
 	}
 	if (protocols.seat)

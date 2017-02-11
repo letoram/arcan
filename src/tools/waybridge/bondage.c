@@ -1,3 +1,4 @@
+/*
 static void bind_shm(struct wl_client* client,
 	void* data, uint32_t version, uint32_t id)
 {
@@ -7,6 +8,7 @@ static void bind_shm(struct wl_client* client,
 	wl_shm_send_format(res, WL_SHM_FORMAT_XRGB8888);
 	wl_shm_send_format(res, WL_SHM_FORMAT_ARGB8888);
 }
+ */
 
 static void bind_comp(struct wl_client *client,
 	void *data, uint32_t version, uint32_t id)
