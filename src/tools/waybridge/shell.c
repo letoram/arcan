@@ -19,7 +19,6 @@ void shell_getsurf(struct wl_client* client,
 	}
 	else{
 /* FIXME: we need to do the whole - spin and wait for subseq request */
-		wl_resource_post_no_memory(res);
 	}
 
 	wl_resource_set_implementation(ssurf_res, &ssurf_if, surf, NULL);

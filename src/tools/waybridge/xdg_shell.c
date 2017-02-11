@@ -23,6 +23,7 @@ void xdg_getsurf(struct wl_client* client,
 	}
 
 	wl_resource_set_implementation(xdgsurf_res, &xdgsurf_if, surf, NULL);
+	zxdg_surface_v6_send_configure(xdgsurf_res, wl_display_next_serial(wl.disp));
 }
 
 void xdg_createpos(struct wl_client* client, struct wl_resource* res,

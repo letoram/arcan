@@ -80,6 +80,8 @@ static void ssurf_title(struct wl_client* client,
 {
 	trace("title(%s)", title ? title : "no title");
 	struct bridge_surf* surf = wl_resource_get_user_data(resource);
+	if (!surf->acon)
+		return;
 
 	arcan_event ev = {
 		.ext.kind = ARCAN_EVENT(IDENT)
