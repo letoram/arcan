@@ -518,37 +518,23 @@ static bool move_down(struct tui_context* tui)
 
 #include "util/utf8.c"
 
-static void select_copy(struct tui_context* tui)
+static bool push_msg(struct tui_context* tui, const char* sel, size_t len)
 {
-	char* sel = NULL;
 /*
  * there are more advanced clipboard options to be used when
  * we have the option of exposing other devices using a fuse- vfs
  * in: /vdev/istream, /vdev/vin, /vdev/istate
  * out: /vdev/ostream, /dev/vout, /vdev/vstate, /vdev/dsp
  */
-	if (!tui->clip_out.vidp)
-		return;
+	if (!tui->clip_out.vidp || !sel || !len)
+		return false;
 
-/* the selection routine here seems very wonky, assume the complexity comes
- * from char.conv and having to consider scrollback */
-	ssize_t len = tsm_screen_selection_copy(tui->screen, &sel);
-	if (!sel || len <= 1)
-		return;
-
-	len--;
 	arcan_event msgev = {
 		.ext.kind = ARCAN_EVENT(MESSAGE)
 	};
 
-/* empty cells gets marked as NULL, but that would cut the copy short */
-	for (size_t i = 0; i < len; i++){
-		if (sel[i] == '\0')
-			sel[i] = ' ';
-	}
-
 	uint32_t state = 0, codepoint = 0;
-	char* outs = sel;
+	const char* outs = sel;
 	size_t maxlen = sizeof(msgev.ext.message.data) - 1;
 
 /* utf8- point aligned against block size */
@@ -561,7 +547,7 @@ static void select_copy(struct tui_context* tui)
 
 			if (i != lastok){
 				if (0 == i)
-					return;
+					return false;
 			}
 		}
 
@@ -583,7 +569,33 @@ static void select_copy(struct tui_context* tui)
 		msgev.ext.message.multipart = 0;
 		arcan_shmif_enqueue(&tui->clip_out, &msgev);
 	}
+	return true;
+}
 
+bool arcan_tui_copy(struct tui_context* tui, const char* utf8_msg)
+{
+	return push_msg(tui, utf8_msg, strlen(utf8_msg));
+}
+
+static void select_copy(struct tui_context* tui)
+{
+	char* sel = NULL;
+
+/* the selection routine here seems very wonky, assume the complexity comes
+ * from char.conv and having to consider scrollback */
+	ssize_t len = tsm_screen_selection_copy(tui->screen, &sel);
+	if (!sel || len <= 1)
+		return;
+
+	len--;
+
+/* empty cells gets marked as NULL, but that would cut the copy short */
+	for (size_t i = 0; i < len; i++){
+		if (sel[i] == '\0')
+			sel[i] = ' ';
+	}
+
+	push_msg(tui, sel, len);
 	free(sel);
 }
 

@@ -418,7 +418,7 @@ static int refresh(lua_State* L)
 
 static int valid_flag(lua_State* L, int ind)
 {
-
+	return 0;
 }
 
 /* map to the screen attribute bitfield */
@@ -482,11 +482,11 @@ static int setident(lua_State* L)
 	return 0;
 }
 
-static int setpaste(lua_State* L)
+static int setcopy(lua_State* L)
 {
 	TUI_UDATA;
 	const char* pstr = luaL_optstring(L, 1, "");
-	lua_pushboolean(L, arcan_tui_paste(ib->tui, pstr));
+	lua_pushboolean(L, arcan_tui_copy(ib->tui, pstr));
 	return 1;
 }
 
@@ -535,6 +535,7 @@ static int reset(lua_State* L)
 {
 	TUI_UDATA;
 	arcan_tui_reset(ib->tui);
+	return 0;
 }
 
 #undef TUI_UDATA
@@ -576,7 +577,8 @@ void tui_lua_expose(lua_State* L)
 	REGISTER("change_ident", setident);
 	REGISTER("mouse_forward", setmouse);
 	REGISTER("set_attr", setattr);
-	REGISTER("reset", setreset);
+	REGISTER("reset", reset);
+	REGISTER("to_clipboard", setcopy);
 
 	lua_pop(L, 1);
 }
