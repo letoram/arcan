@@ -3,7 +3,6 @@
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -1080,8 +1079,8 @@ static void setup_avbuf(struct arcan_shmif_cont* res)
 struct arcan_shmif_cont arcan_shmif_acquire(
 	struct arcan_shmif_cont* parent,
 	const char* shmkey,
-	enum ARCAN_SEGID type,
-	enum ARCAN_FLAGS flags, ...)
+	int type,
+	int flags, ...)
 {
 	struct arcan_shmif_cont res = {
 		.vidp = NULL
@@ -1306,7 +1305,7 @@ void arcan_shmif_setevqs(struct arcan_shmif_page* dst,
 }
 
 unsigned arcan_shmif_signalhandle(struct arcan_shmif_cont* ctx,
-	enum arcan_shmif_sigmask mask, int handle, size_t stride, int format, ...)
+	int mask, int handle, size_t stride, int format, ...)
 {
 	if (!arcan_pushhandle(handle, ctx->epipe))
 		return 0;
