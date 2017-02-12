@@ -406,8 +406,9 @@ enum shmif_migrate_status arcan_shmif_migrate(
 struct arcan_shmif_cont arcan_shmif_acquire(
 	struct arcan_shmif_cont* parent, /* should only be NULL internally */
 	const char* shmkey,    /* provided in ENV or from shmif_connect below */
-	enum ARCAN_SEGID type, /* archetype, defined in shmif_event.h */
-	enum ARCAN_FLAGS flags, ...
+	int type, /* (enum ARCAN_SEGID) archetype, in shmif_event.h */
+	int flags, /* (enum ARCAN_FLAGS) */
+	...
 );
 
 /*
@@ -548,9 +549,12 @@ unsigned arcan_shmif_signal(struct arcan_shmif_cont*, enum arcan_shmif_sigmask);
  * If included with DEFINED(WANT_ARCAN_SHMIF_HELPER) and linked with
  * arcan_shmif_ext, abstract support functions for setup and passing are
  * provided (arcan_shmifext_***)
+ *
+ * mask matches (enum arfcan_shmif_sigmask) but can't enforce the type here
+ * because of VA_ARGS + enum with -fshort-enums can yield UB
  */
 unsigned arcan_shmif_signalhandle(struct arcan_shmif_cont* ctx,
-	enum arcan_shmif_sigmask mask, int handle, size_t stride, int format, ...);
+	int mask, int handle, size_t stride, int format, ...);
 
 /*
  * Support function to set/unset the primary access segment (one slot for
