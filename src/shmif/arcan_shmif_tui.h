@@ -402,6 +402,7 @@ struct tui_screen_attr {
 	unsigned int faint : 1;
 	unsigned int strikethrough : 1;
 	unsigned int custom : 1;
+	uint32_t custom_id;
 };
 
 /*
@@ -414,7 +415,7 @@ struct tui_screen_attr {
  *
  * will fail if the pasteboard has been disabled (by user).
  */
-bool arcan_tui_paste(struct tui_context*, const char* utf8_msg);
+bool arcan_tui_copy(struct tui_context*, const char* utf8_msg);
 
 /*
  * update title or identity
