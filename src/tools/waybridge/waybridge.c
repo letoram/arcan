@@ -53,7 +53,7 @@ struct conn_group {
 
 /* 2 padding for the wl server socket and bridge- connection */
 	struct pollfd* pg;
-	struct bridge_client* cl;
+	struct bridge_slot* slot;
 };
 
 static struct {
@@ -66,6 +66,8 @@ static struct {
 	struct arcan_shmif_initial init;
 	struct arcan_shmif_cont control;
 	bool alive;
+
+	int global_pending;
 } wl;
 
 /*
@@ -119,6 +121,10 @@ static void flush_client_events(struct bridge_client* cl)
 			trace("shmif-> target update visibility or size");
 			if (ev.tgt.ioevs[0].iv && ev.tgt.ioevs[1].iv){
 			}
+		case TARGET_COMMAND_REQFAIL:
+		break;
+		case TARGET_COMMAND_NEWSEGMENT:
+		break;
 
 /* if selection status change, send wl_surface_
  * if type: wl_shell, send _send_configure */
@@ -129,6 +135,45 @@ static void flush_client_events(struct bridge_client* cl)
 		default:
 		break;
 		}
+	}
+}
+
+/*
+ * this is the more complicated step in the entire process, i.e.  pseudo-asynch
+ * resource allocation between the two and the decision if that should be
+ * deferred or not.
+ * Paths:
+ *  1. fork-em-up, each client gets its own process upon client creation
+ *  2. block-em-up, all clients suffer when a surface is created
+ *  3. asynch-em-up, a client is removed from the event-loop until the
+ *     corresponding segment request has been managed.
+ */
+static void request_surface(
+	struct bridge_client* cl, struct surface_request* req)
+{
+	trace("requesting-segment");
+	struct arcan_event acqev = {0};
+
+	req->dispatch(req, &acqev);
+	return;
+	static uint32_t alloc_id = 0xbabe;
+	arcan_shmif_enqueue(&cl->acon, &(struct arcan_event){
+		.ext.kind = ARCAN_EVENT(SEGREQ),
+		.ext.segreq.kind = req->segid,
+		.ext.segreq.id = alloc_id
+	});
+	struct arcan_event* pqueue;
+	ssize_t pqueue_sz;
+
+	if (arcan_shmif_acquireloop(&cl->acon, &acqev, &pqueue, &pqueue_sz)){
+		if (req->dispatch)
+			req->dispatch(req, &acqev);
+	}
+	else
+		req->dispatch(req, NULL);
+
+	if (pqueue_sz > 0){
+		printf("flush / free events\n");
 	}
 }
 
@@ -148,6 +193,23 @@ static bool flush_bridge_events(struct arcan_shmif_cont* con)
 	return true;
 }
 
+static bool alloc_group_id(int type, int* groupid, int* slot, int fd)
+{
+	for (size_t i = 0; i < wl.n_groups; i++){
+		long long int ind = ffs(~wl.groups[i].alloc);
+		if (0 == ind)
+			continue;
+
+		ind--;
+		wl.groups[i].alloc |= 1 << ind;
+		wl.groups[i].pg[ind].fd = fd;
+		*groupid = i;
+		*slot = ind;
+		return true;
+	}
+	return false;
+}
+
 static void destroy_client(struct wl_listener* l, void* data)
 {
 	struct bridge_client* cl;
@@ -164,8 +226,7 @@ static void destroy_client(struct wl_listener* l, void* data)
 	wl.groups[cl->group].alloc &= ~(1 << cl->slot);
 	wl.groups[cl->group].pg[cl->slot].fd = -1;
 	wl.groups[cl->group].pg[cl->slot].revents = 0;
-	memset(&wl.groups[cl->group].cl[cl->slot],
-		'\0', sizeof(struct bridge_client));
+	wl.groups[cl->group].slot[cl->slot] = (struct bridge_slot){};
 }
 
 /*
@@ -186,8 +247,11 @@ static struct bridge_client* find_client(struct wl_client* cl)
 				continue;
 
 			ind--;
-			if ((void*) wl.groups[i].cl[ind].client == cl)
-				return &wl.groups[i].cl[ind];
+			if (wl.groups[i].slot[ind].type == SLOT_TYPE_CLIENT){
+				if (wl.groups[i].slot[ind].client.client == cl)
+					return &wl.groups[i].slot[ind].client;
+			}
+
 			mask &= ~(1 << ind);
 		}
 	}
@@ -195,46 +259,49 @@ static struct bridge_client* find_client(struct wl_client* cl)
 	if (wl.client_limit == wl.client_count)
 		return NULL;
 
-/* find first group with a free slot and alloc into it */
-	for (size_t i = 0; i < wl.n_groups; i++){
-		long long int ind = ffs(~wl.groups[i].alloc);
-		if (0 == ind)
-			continue;
-
-/* connect/allocate
- * this can impose a stall with connection rate limiting and so on, so there
- * might be a value in either pre-allocating connections or running it as a
- * connection-thread
+	trace("connecting new bridge client");
+/*	if (0 == fork()){
+		cl->forked = true;
+		wl.alive = false;
+	}
  */
-		trace("allocating new client (%zu:%lld)", i, ind);
-		ind--;
-		res = &wl.groups[i].cl[ind];
-		memset(res, '\0', sizeof(struct bridge_client));
+	struct arcan_shmif_cont con = arcan_shmif_open(SEGID_BRIDGE_WAYLAND, 0, NULL);
+	if (!con.addr){
+		free(res);
+		return NULL;
+	}
 
-		res->acon = arcan_shmif_open(SEGID_BRIDGE_WAYLAND, 0, NULL);
-		if (!res->acon.vidp)
-			return NULL;
+/* find first group with a free slot and alloc into it */
+	int group, ind;
+	if (!alloc_group_id(SLOT_TYPE_CLIENT, &group, &ind, con.epipe)){
+		trace("couldn't allocate bridge client slot");
+		arcan_shmif_drop(&con);
+		free(res);
+		return NULL;
+	}
+
+	trace("new client assigned to (%d:%d)", group, ind);
+	res = &wl.groups[group].slot[ind].client;
+	*res = (struct bridge_client){};
 
 /*
  * pretty much always need to be ready for damaged surfaces so enable now
  */
-		res->client = cl;
-		res->acon.hints = SHMIF_RHINT_SUBREGION;
-		res->group = i;
-		res->slot = ind;
-		res->l_destr.notify = destroy_client;
-		arcan_shmif_resize(&res->acon, res->acon.w, res->acon.h);
-		wl.groups[i].pg[ind].fd = res->acon.epipe;
-		wl.groups[i].alloc |= 1 << ind;
-		wl.client_count++;
-		wl_client_add_destroy_listener(cl, &res->l_destr);
-	}
+	res->acon = con;
+	res->client = cl;
+	res->acon.hints = SHMIF_RHINT_SUBREGION;
+	res->group = group;
+	res->slot = ind;
+	res->l_destr.notify = destroy_client;
+	arcan_shmif_resize(&res->acon, res->acon.w, res->acon.h);
+	wl.client_count++;
+	wl_client_add_destroy_listener(cl, &res->l_destr);
 
 	return res;
 }
 
 static bool prepare_groups(size_t cl_limit, int ctrlfd, int wlfd,
-	size_t* nfd, struct pollfd** pfd, struct bridge_client** bcd)
+	size_t* nfd, struct pollfd** pfd, struct bridge_slot** bcd)
 {
 	wl.n_groups = (cl_limit == 0 ? 1 : cl_limit / N_GROUP_SLOTS +
 		!!(cl_limit % N_GROUP_SLOTS) * N_GROUP_SLOTS);
@@ -255,7 +322,7 @@ static bool prepare_groups(size_t cl_limit, int ctrlfd, int wlfd,
 	if (!*pfd)
 		return false;
 
-	*bcd = malloc(sizeof(struct bridge_client) * nelem);
+	*bcd = malloc(sizeof(struct bridge_slot) * nelem);
 	if (!bcd){
 		free(*pfd);
 		*pfd = NULL;
@@ -265,7 +332,7 @@ static bool prepare_groups(size_t cl_limit, int ctrlfd, int wlfd,
 /* generate group indices */
 	for (size_t i = 0; i < wl.n_groups; i++){
 		wl.groups[i] = (struct conn_group){
-			.cl = &(*bcd)[i*N_GROUP_SLOTS],
+			.slot = &(*bcd)[i*N_GROUP_SLOTS],
 			.pg = &(*pfd)[2+i*N_GROUP_SLOTS]
 		};
 	}
@@ -290,8 +357,8 @@ static int show_use(const char* msg, const char* arg)
 {
 	fprintf(stdout, "%s%s", msg, arg ? arg : "");
 	fprintf(stdout, "Use: waybridge [arguments]\n"
-"\t-egl            pass shm- buffers as gl textures\n"
-"\t-wl-egl         enable wayland egl/drm support\n"
+"\t-shm-egl        pass shm- buffers as gl textures\n"
+"\t-no-egl         disable the wayland-egl extensions\n"
 "\t-no-compositor  disable the compositor protocol\n"
 "\t-no-shell       disable the shell protocol\n"
 "\t-no-shm         disable the shm protocol\n"
@@ -317,12 +384,12 @@ int main(int argc, char* argv[])
 		.shm = 1,
 		.seat = 4,
 		.output = 2,
-		.egl = 0,
+		.egl = 1,
 		.xdg = 1
 	};
 
 	for (size_t i = 1; i < argc; i++){
-		if (strcmp(argv[i], "-egl") == 0){
+		if (strcmp(argv[i], "-shm-egl") == 0){
 			shm_egl = true;
 		}
 		else if (strcmp(argv[i], "-layout") == 0){
@@ -342,8 +409,8 @@ int main(int argc, char* argv[])
 			i++;
 			wl.client_limit = strtoul(argv[i], NULL, 10);
 		}
-		else if (strcmp(argv[i], "-wl-egl") == 0)
-			protocols.egl = 1;
+		else if (strcmp(argv[i], "-no-egl") == 0)
+			protocols.egl = 0;
 		else if (strcmp(argv[i], "-no-compositor") == 0)
 			protocols.compositor = 0;
 		else if (strcmp(argv[i], "-no-shell") == 0)
@@ -410,11 +477,16 @@ int main(int argc, char* argv[])
 			return EXIT_FAILURE;
 		}
 
+/*
+ * note: the device node matching is part of the bind_display action and the
+ * server, so it might be possible to do the GPU swap for new clients on
+ * DEVICEHINT by rebinding or by eglUnbindWaylandDisplayWL
+ */
 		uintptr_t display;
 		arcan_shmifext_egl_meta(&wl.control, &display, NULL, NULL);
 		wl.display = eglGetDisplay((EGLDisplay)display);
 		if (!bind_display((EGLDisplay)display, wl.disp)){
-			fprintf(stderr, "(eglBindWaylandDisplaYWL) failed\n");
+			fprintf(stderr, "(eglBindWaylandDisplayWL) failed\n");
 			arcan_shmif_drop(&wl.control);
 			return EXIT_FAILURE;
 		}
@@ -454,7 +526,7 @@ int main(int argc, char* argv[])
  */
 	size_t nfd;
 	struct pollfd* pfd;
-	struct bridge_client* bcd;
+	struct bridge_slot* bcd;
 	if (!prepare_groups(wl.client_limit,
 		wl.control.epipe, wl_event_loop_get_fd(loop), &nfd, &pfd, &bcd))
 		goto out;
@@ -467,18 +539,43 @@ int main(int argc, char* argv[])
 				break;
 		}
 
+		for (size_t i = 2; i < nfd && sv; i++){
+			if (pfd[i].revents){
+				if (bcd[i-2].type == SLOT_TYPE_CLIENT){
+					flush_client_events(&bcd[i-2].client);
+				}
+				sv--;
+			}
+		}
+
+/*
+ * If a client is created here, we can retrieve the actual connection here (and
+ * not the epoll fd) with wl_client_get_fd and we can then add / remove the
+ * client from the event loop with wl_event_loop_get_fd and that's just an
+ * epoll-fd. We can remove the client from the epoll-fd with epoll_ctl(fd,
+ * EPOLL_CTL_DEL, clfd, NULL); All that is left is to find a way to notice when
+ * a client clients and break out of the loop somehow. Oh well, good old
+ * setjmp.
+ */
 		if (pfd[1].revents){
 			sv--;
 			wl_event_loop_dispatch(loop, 0);
 		}
 
-		for (size_t i = 2; i < nfd && sv; i++){
-			if (pfd[i].revents){
-				flush_client_events(&bcd[i-2]);
-				sv--;
-			}
-		}
-
+/*
+ * When we have clients with pending segment requests, we
+ * can't use the normal flush mechanism for clients with requests
+ * pending.
+ *
+ * Instead, we can iterate this ourselves and simply go:
+ * list = wl_display_get_client_list;
+ * wl_client* client, *next;
+ * wl_list_for_each_safe(client, next, &list, link){
+ *  lookup-client
+ *  check if pending, then wait
+ * 	ret = wl_conenection_flush(client->connection);
+ * }
+ */
 		wl_display_flush_clients(wl.disp);
 	}
 

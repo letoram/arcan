@@ -11,17 +11,6 @@ void xdg_getsurf(struct wl_client* client,
 		return;
 	}
 
-	if (!surf->cl->got_primary){
-		trace("xdg_surface assigned as primary");
-		surf->type = SURF_SHELL;
-		surf->acon = &surf->cl->acon;
-		surf->cl->got_primary = 1;
-	}
-	else{
-/* FIXME: we need to do the whole - spin and wait for subseq request */
-		wl_resource_post_no_memory(res);
-	}
-
 	wl_resource_set_implementation(xdgsurf_res, &xdgsurf_if, surf, NULL);
 	zxdg_surface_v6_send_configure(xdgsurf_res, wl_display_next_serial(wl.disp));
 }

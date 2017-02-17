@@ -1,17 +1,9 @@
 static void comp_surf_delete(struct wl_resource* res)
 {
 	trace("destroy compositor surface");
-	struct bridge_surf* surf = wl_resource_get_user_data(res);
+	struct comp_surf* surf = wl_resource_get_user_data(res);
 	if (!surf)
 		return;
-
-	surf->cookie = 0xbad1dea;
-	if (surf->acon == arcan_shmif_primary(SHMIF_INPUT)){
-		surf->cl->got_primary = 0;
-/* FIXME: viewport hint this one to invisible */
-	}
-	else
-		arcan_shmif_drop(surf->acon);
 
 	free(surf);
 }
@@ -21,26 +13,36 @@ static void comp_surf_create(struct wl_client *client,
 {
 	trace("create compositor surface(%"PRIu32")", id);
 
-/* we need to defer this and make a subsegment connection unless
- * the client has not consumed its primary one */
-	struct bridge_surf* new_surf = malloc(sizeof(struct bridge_surf));
-	memset(new_surf, '\0', sizeof(struct bridge_surf));
-	new_surf->cl = find_client(client);
-	if (!new_surf->cl){
+/* If the client doesn't already exist, now is the time we make the first
+ * connection. Then we just accept that the surface is created, and defer
+ * any real management until the surface is promoted to a role we can fwd */
+	struct bridge_client* cl = find_client(client);
+	if (!cl){
 		wl_resource_post_error(res, WL_SHM_ERROR_INVALID_FD, "out of memory\n");
-		free(new_surf);
 		return;
 	}
-	new_surf->cookie = 0xfeedface;
 
-/*
- * NOTE:
- * if the primary connection doesn't have a surface using it, that one should
- * be assigned to the first created - otherwise, we need to go into the whole
- * segreq-wait thing.
- */
-	new_surf->res = wl_resource_create(client, &wl_surface_interface,
-		wl_resource_get_version(res), id);
+	if (cl->forked)
+		return;
+
+/* the container for the useless- surface, we'll just hold it until
+ * an actual shell- etc. surface is created */
+	struct comp_surf* new_surf = malloc(sizeof(struct comp_surf));
+	if (!new_surf){
+		wl_resource_post_no_memory(res);
+		free(new_surf);
+	}
+	*new_surf = (struct comp_surf){
+		.client = cl
+	};
+
+	new_surf->res = wl_resource_create(client,
+		&wl_surface_interface, wl_resource_get_version(res), id);
+
+	if (!new_surf->res){
+		wl_resource_post_no_memory(res);
+		free(new_surf);
+	}
 
 	wl_resource_set_implementation(new_surf->res,
 		&surf_if, new_surf, comp_surf_delete);

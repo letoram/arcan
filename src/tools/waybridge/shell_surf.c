@@ -58,7 +58,7 @@ static void ssurf_maximized(struct wl_client *client,
 	struct wl_resource *resource, struct wl_resource *output)
 {
 	trace("surf_maximize()\n");
-	struct bridge_surf* surf = wl_resource_get_user_data(resource);
+	struct comp_surf* surf = wl_resource_get_user_data(resource);
 	if (!surf)
 		return;
 
@@ -79,16 +79,14 @@ static void ssurf_title(struct wl_client* client,
 	struct wl_resource* resource, const char* title)
 {
 	trace("title(%s)", title ? title : "no title");
-	struct bridge_surf* surf = wl_resource_get_user_data(resource);
-	if (!surf->acon)
-		return;
+	struct comp_surf* surf = wl_resource_get_user_data(resource);
 
 	arcan_event ev = {
 		.ext.kind = ARCAN_EVENT(IDENT)
 	};
 	size_t lim = sizeof(ev.ext.message.data)/sizeof(ev.ext.message.data[1]);
 	snprintf((char*)ev.ext.message.data, lim, "%s", title);
-	arcan_shmif_enqueue(surf->acon, &ev);
+	arcan_shmif_enqueue(&surf->acon, &ev);
 }
 
 static void ssurf_class(struct wl_client *client,
