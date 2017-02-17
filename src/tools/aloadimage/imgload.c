@@ -15,11 +15,12 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/resource.h>
+#include <sys/prctl.h>
 #include <sys/wait.h>
 #include <errno.h>
 #include <fcntl.h>
 
-#ifdef USE_SECCMP
+#ifdef ENABLE_SECCOMP
 	#include <seccomp.h>
 #endif
 
@@ -33,7 +34,7 @@ bool imgload_spawn(struct arcan_shmif_cont* con, struct img_state* tgt)
  * finished to look less memory hungry */
 	if (tgt->out)
 		munmap((void*)tgt->out, tgt->buf_lim);
-	tgt->buf_lim = MAX_IMAGE_BUFFER_SIZE * 1024 * 1024;
+	tgt->buf_lim = image_size_limit_mb * 1024 * 1024;
 	tgt->out = mmap(NULL, tgt->buf_lim,
 		PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
 	if (!tgt->out)
@@ -74,23 +75,6 @@ bool imgload_spawn(struct arcan_shmif_cont* con, struct img_state* tgt)
 		fclose(stdout);
 	}
 
-/* hopefully we can pledge/seccmp the reset, but we should only need
- * exit/malloc(mmap, sbrk) at this stage */
-	setrlimit(RLIMIT_CORE, &(struct rlimit){});
-	setrlimit(RLIMIT_FSIZE, &(struct rlimit){});
-	setrlimit(RLIMIT_NOFILE, &(struct rlimit){});
-	setrlimit(RLIMIT_NPROC, &(struct rlimit){});
-#ifdef USE_SECCMP
-	prctl(PR_SET_NO_NEW_PRIVS, 1);
-	prctl(PR_SET_DUMPABLE, 0);
-	scmp_filter_ctx flt = seccomp_init(SCMP_ACT_KILL);
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(mmap));
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(brk));
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(exit));
-	seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(rt_sigreturn));
-	seccomp_load(flt);
-#endif
-
 /* drop shm-con so that it's not around anymore - owning the parser won't grant
  * us direct access to the shm- connection and with the syscalls eliminated, it
  * can't be re-opened */
@@ -101,11 +85,52 @@ bool imgload_spawn(struct arcan_shmif_cont* con, struct img_state* tgt)
 		memset(con, '\0', sizeof(struct arcan_shmif_cont));
 	}
 
+/* someone might've needed to be careless and run as root, if they fail, well
+ * they fail, it's added safety - not a guarantee */
+	setgid(65534);
+	setuid(65534);
+
+
+/* set some limits that will make things worse even if we don't have seccmp */
+	setrlimit(RLIMIT_CORE, &(struct rlimit){});
+	setrlimit(RLIMIT_FSIZE, &(struct rlimit){});
+	setrlimit(RLIMIT_NOFILE, &(struct rlimit){});
+	setrlimit(RLIMIT_NPROC, &(struct rlimit){});
+
+#ifdef ENABLE_SECCOMP
+	if (!disable_syscall_flt){
+		prctl(PR_SET_NO_NEW_PRIVS, 1);
+		prctl(PR_SET_DUMPABLE, 0);
+		scmp_filter_ctx flt = seccomp_init(SCMP_ACT_KILL);
+		seccomp_rule_add(flt, SCMP_ACT_ALLOW, SCMP_SYS(mmap), 0);
+		seccomp_rule_add(flt, SCMP_ACT_ALLOW, SCMP_SYS(brk), 0);
+		seccomp_rule_add(flt, SCMP_ACT_ALLOW, SCMP_SYS(exit), 0);
+		seccomp_rule_add(flt, SCMP_ACT_ALLOW, SCMP_SYS(fstat), 0);
+		seccomp_rule_add(flt, SCMP_ACT_ALLOW, SCMP_SYS(read), 0);
+		seccomp_rule_add(flt, SCMP_ACT_ALLOW, SCMP_SYS(munmap), 0);
+		seccomp_rule_add(flt, SCMP_ACT_ALLOW, SCMP_SYS(lseek), 0);
+		seccomp_rule_add(flt, SCMP_ACT_ALLOW, SCMP_SYS(exit_group), 0);
+//	seccomp_rule_add(flt, SCMP_ACT_ALLOW, SCMP_SYS(rt_sigreturn), 0);
+		seccomp_load(flt);
+	}
+#endif
+
 /* now we're in the dangerous part, stbi_load_from_file - though the source is
- * just mmapped, we need to return the decoded buffer somehow.  There is
- * STBI_MALLOC that could be overridden, pointed to our shared memory region,
- * track offset of result and add that to our return-write, or waste a memcpy.
- * The wasteful approach is a lot easier, so go with that. */
+ * just a filestream, we need to return the decoded buffer somehow. STBI may
+ * need intermediate allocations and we can't really tell, so unfortunately we
+ * waste an extra memcpy.
+ *
+ * Decent optimizations needed here and not in place now:
+ * 1. custom 'upper limit' malloc so we can drop the mmap/brk/munmap syscalls
+ * 2. patch stbi- to use a separate allocator for our output buffer so
+ *    that the decode writes directly to tgt->out->buf, saving us a
+ *    memcpy.
+ * 3. pre-mmaping file and using stbi-load-from-memory could drop the
+ *    fstat/read/lseek syscalls as well.
+ *
+ * The custom allocator will likely also be needed for this to work in a
+ * multithreaded setting.
+ */
 	int dw, dh;
 	uint8_t* buf = stbi_load_from_file(inf, &dw, &dh, NULL, 4);
 	if (buf){
@@ -147,6 +172,7 @@ bool imgload_poll(struct img_state* tgt)
 		return true;
 	}
 
+	printf("poll to broken: %d\n", sc);
 	tgt->broken = sc != EXIT_SUCCESS;
 	tgt->proc = 0;
 	tgt->out->x = tgt->out->y = 0;

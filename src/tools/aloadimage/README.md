@@ -31,11 +31,16 @@ connection point (where you point the ARCAN\_CONNPATH environment variable)
 
 Status
 ======
-  [x] Basic controls
-  [x] Multithreaded background loading
-  [x] Playlist
-  [ ] sRGB <-> Linear controls
-  [ ] FP16 format support
-  [ ] GPU acceleration toggle
-  [ ] Per image transformations (rotate, flip, skew, ...)
-  [ ] Internationalization
+ - [x] Basic controls
+ - [x] Multiprocess/sandboxed parsing
+   - [x] Expiration timer
+	 - [x] Upper memory consumption cap (no gzip bombing)
+	 - [x] Seccmp- style syscall filtering
+ - [x] Playlist
+   - [x] Read/load-ahead
+ - [ ] Drag/zoom/pan controls
+ - [ ] sRGB <-> Linear controls
+ - [ ] Full-chain FP16 format support
+ - [ ] GPU acceleration toggle
+ - [ ] Per image transformations (rotate, flip, skew, ...)
+ - [ ] Internationalization

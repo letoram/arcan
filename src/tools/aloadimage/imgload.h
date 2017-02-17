@@ -1,7 +1,13 @@
 /*
  * some insane mapping size (mb), just overcommit and truncate
  */
-#define MAX_IMAGE_BUFFER_SIZE 32
+extern int image_size_limit_mb;
+
+/*
+ * if we happen to link with libcs or parsers that break the current
+ * set of filters, it helps setting this to help figure things out
+ */
+extern bool disable_syscall_flt;
 
 /* mmaped block for write-out */
 struct img_data {
@@ -17,6 +23,7 @@ struct img_state {
 /* SETUP_SET */
 	const char* fname;
 	bool is_stdin;
+	int life;
 
 /* SETUP_GET */
 	bool broken;
