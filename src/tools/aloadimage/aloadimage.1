@@ -1,0 +1,73 @@
+.\" groff -man -Tascii aloadimage.1
+.TH arcan 1 "January 2017" aloadimage "User manual"
+.SH NAME
+aloadimage \- load images into an arcan window
+.SH SYNOPSIS
+.B aclip [global_options] file ...
+
+.SH DESCRIPTION
+\fIaloadimage\fR displays images in an arcan window. Each image is parsed in a
+separate and sandboxed process. If multiple images are provided, a certain
+number of items will be decoded in advance.
+
+.SH OPTIONS
+.IP "\fB\-l, \-\-loop\fR"
+When the playlist reaches the end, it will loop back from the beginning
+rather than shutting down.
+
+.IP "\fB\-t, \-\-step\-time\fR"
+Set the playlist automatic stepping time (default: 0, manual control).
+
+.IP "\fB\-b, \-\-block-input\fR"
+Ignore all keyboard and mouse input.
+
+.IP "\fB\-d, \-\-display\fR \fIconnpath\fR"
+By default, the ARCAN_CONNPATH environment is used in order to find an arcan
+instance to connect to. This argument ignores that in favor for the connpath
+argument.
+
+.IP "\fB-m, \-\-limit\-mem\fR \fIlimit(mb)\fR"
+Limit the maximum decoded memory sized allowed for eaching loading process.
+
+.IP "\fB-T, \-\-timeout\fR \fItimeout(seconds)\fR"
+Stop/kill a worker process if it fails to decode an image within a certain
+number of seconds.
+
+.IP "\FB-r, \-\-readahead\fR \fIlimit(count)\fR"
+Set the readahead limit for worker processes preloading playlist contents.
+
+.IP "\fX\-x, \-\-no\-sysflt\fR
+aloadimage may be built with syscall filtering for worker processes. This may
+break image loading in some environments/libc implementations and may therefore
+need to be disabled.
+
+.IP "\fB\-h, \-\-help\fR"
+Show a brief summary of commands and usage.
+
+.SH LIMITATIONS
+
+Advanced rendering configuration options are still not available. Other than
+scaled blitting, there are no filter controls, no orientation transforms.
+
+Color space selection options like sRGB are missing, as is support for
+accelerated buffer transfers via OpenGL and native HDR transfers.
+
+These will be fixed (in time).
+
+.SH ENVIRONMENT
+.TP
+.SM
+\fBARCAN_CONNPATH\fR
+Name of the connection point to use when connecting to arcan.
+.TP
+.SM
+\fBARCAN_CONNKEY\fR
+Key to use for authenticating againgst the connection path.
+
+.SH COPYRIGHT
+Copyright  ©  2017 Bjorn Stahl. 3-clause BSD licensed. This is free software:
+you are free  to  change and redistribute it. There is NO WARRANTY,
+to the extent permitted by law.
+
+.SH AUTHOR
+Bjorn Stahl <contact at arcan-fe dot com>
