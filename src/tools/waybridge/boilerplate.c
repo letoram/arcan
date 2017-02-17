@@ -1,17 +1,30 @@
-struct bridge_client {
-	struct wl_listener l_destr;
+/*
+ * while we wait for external surfaces, we need to keep the handle around
+ */
+struct surface_request {
+	uint32_t id;
+	int segid;
+	struct comp_surf* source;
+	struct wl_resource* target;
+	void* assoc;
+	struct bridge_client* client;
+	void (*dispatch)(struct surface_request*, struct arcan_event*);
+};
 
+struct bridge_client {
 	struct arcan_shmif_cont acon;
-	struct arcan_shmif_cont cursor;
-	int got_primary;
+	struct wl_listener l_destr;
 
 	struct wl_client* client;
 	struct wl_resource* keyboard;
 	struct wl_resource* pointer;
 	struct wl_resource* touch;
 
+	bool forked;
 	int group, slot;
 };
+
+static void request_surface(struct bridge_client* cl, struct surface_request*);
 
 enum surf_type {
 	SURF_UNKNOWN = 0,
@@ -19,13 +32,21 @@ enum surf_type {
 	SURF_CURSOR
 };
 
-struct bridge_surf {
+struct comp_surf {
+	struct bridge_client* client;
 	struct wl_resource* res;
+	struct arcan_shmif_cont acon;
 	struct wl_resource* buf;
-	struct wl_resource* frame_cb;
-	struct arcan_shmif_cont* acon;
+	int cookie;
+};
 
-/* track if we've become a cursor, shell surface or what */
+/*
+struct bridge_surf {
+	struct arcan_shmif_cont acon;
+
+	struct wl_resource* res;
+	struct wl_resource* frame_cb;
+
 	enum surf_type type;
 
 	int sstate;
@@ -36,6 +57,26 @@ struct bridge_surf {
 	struct bridge_client* cl;
 	struct wl_list link;
 	struct wl_listener on_destroy;
+};
+*/
+
+/*
+ * this is to share the tracking / allocation code between both clients and
+ * surfaces and possible other wayland resources that results in a 1:1 mapping
+ * to an arcan connection that needs to have its event loop flushed.
+ *
+ * The layout in the structures is so the first member (can't be bad) resolve
+ * to the same type of structure.
+ */
+#define SLOT_TYPE_CLIENT 1
+#define SLOT_TYPE_SURFACE 2
+struct bridge_slot {
+	int type;
+	union {
+		struct arcan_shmif_cont con;
+		struct bridge_client client;
+		struct comp_surf surface;
+	};
 };
 
 struct bridge_pool {

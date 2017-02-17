@@ -11,7 +11,7 @@ static void surf_attach(struct wl_client* cl, struct wl_resource* res,
 	struct wl_resource* buf, int32_t x, int32_t y)
 {
 	trace("surf_attach(%d, %d)", (int)x, (int)y);
-	struct bridge_surf* surf = wl_resource_get_user_data(res);
+	struct comp_surf* surf = wl_resource_get_user_data(res);
 	surf->buf = buf;
 }
 
@@ -46,7 +46,7 @@ static void surf_inputreg(struct wl_client* cl,
 static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 {
 	trace("surf_commit(xxx)");
-	struct bridge_surf* surf = wl_resource_get_user_data(res);
+	struct comp_surf* surf = wl_resource_get_user_data(res);
 	EGLint dfmt;
 
 	if (surf->cookie != 0xfeedface){
@@ -59,13 +59,13 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 		return;
 	}
 
-	if (!surf->cl || !surf->acon){
+	if (!surf->client || !surf->acon.addr){
 		trace("surf_commit() surface doesn't have an arcan connection");
 		wl_buffer_send_release(surf->buf);
 		return;
 	}
 
-	while (surf->acon->addr->vready){}
+	while (surf->acon.addr->vready){}
 	if (query_buffer && query_buffer(wl.display,
 		surf->buf, EGL_TEXTURE_FORMAT, &dfmt)){
 		trace("surf_commit(egl)");
@@ -101,8 +101,8 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
  * EGLDisplay approach seem to break that for us, probably worth a try if
  * the main-thread stalls start to hurt */
 
-			if (surf->acon->w != w || surf->acon->h != h)
-				arcan_shmif_resize(surf->acon, w, h);
+			if (surf->acon.w != w || surf->acon.h != h)
+				arcan_shmif_resize(&surf->acon, w, h);
 
 /*
  * FIXME: For the accelerated handle passing, we offload the cost of
@@ -120,10 +120,10 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
  * call, return the current base / offsets (along with the possible
  * resize_ext dance to get the right number of buffers, offsets etc.)
  */
-			memcpy(surf->acon->vidp, data, w * h * sizeof(shmif_pixel));
+			memcpy(surf->acon.vidp, data, w * h * sizeof(shmif_pixel));
 		}
 
-		arcan_shmif_signal(surf->acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
+		arcan_shmif_signal(&surf->acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
 		wl_buffer_send_release(surf->buf);
 	}
 
