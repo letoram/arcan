@@ -773,7 +773,7 @@ int arcan_shmif_enqueue(struct arcan_shmif_cont* c,
 	const struct arcan_event* const src)
 {
 	assert(c);
-	if (!c->addr)
+	if (!c || !c->addr)
 		return 0;
 
 	if (!c->addr->dms || !c->priv->alive){
