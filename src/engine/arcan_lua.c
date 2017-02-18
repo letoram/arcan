@@ -2212,6 +2212,14 @@ static int buildshader(lua_State* ctx)
 	LUA_ETRACE("build_shader", NULL, 1);
 }
 
+static int deleteshader(lua_State* ctx)
+{
+	LUA_TRACE("delete_shader");
+	int sid = abs((int)luaL_checknumber(ctx, 1));
+	lua_pushboolean(ctx, agp_shader_destroy(sid));
+	LUA_ETRACE("delete_shader", NULL, 1);
+}
+
 static int sharestorage(lua_State* ctx)
 {
 	LUA_TRACE("image_sharestorage");
@@ -4151,14 +4159,15 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		bool preroll = false;
 /* need to jump through a few hoops to get hold of the possible callback */
 		arcan_vobject* vobj = arcan_video_getobject(ev->ext.source);
-		if (!vobj || vobj->feed.state.tag != ARCAN_TAG_FRAMESERV)
+		if (!vobj || vobj->feed.state.tag != ARCAN_TAG_FRAMESERV){
 			return;
+		}
 
 		int reset = lua_gettop(ctx);
 		arcan_frameserver* fsrv = vobj->feed.state.ptr;
-		if (fsrv->tag == LUA_NOREF)
+		if (fsrv->tag == LUA_NOREF){
 			return;
-
+		}
 		intptr_t dst_cb = fsrv->tag;
 		lua_rawgeti(ctx, LUA_REGISTRYINDEX, dst_cb);
 		lua_pushvid(ctx, ev->ext.source);
@@ -8437,74 +8446,65 @@ static int timestamp(lua_State* ctx)
 	LUA_ETRACE("benchmark_timestamp", NULL, 1);
 }
 
+struct modent {
+	int v;
+	const char s[8];
+};
+static struct modent modtable[] =
+{
+	{.v = ARKMOD_LSHIFT, .s = "lshift"},
+	{.v = ARKMOD_RSHIFT, .s = "rshift"},
+	{.v = ARKMOD_LALT,   .s = "lalt"},
+	{.v = ARKMOD_RALT,   .s = "ralt"},
+	{.v = ARKMOD_LCTRL,  .s = "lctrl"},
+	{.v = ARKMOD_RCTRL,  .s = "rctrl"},
+	{.v = ARKMOD_LMETA,  .s = "lmeta"},
+	{.v = ARKMOD_RMETA,  .s = "rmeta"},
+	{.v = ARKMOD_NUM,    .s = "num"},
+	{.v = ARKMOD_CAPS,   .s = "caps"},
+	{.v = ARKMOD_MODE,   .s = "mode"}
+};
+
 static int decodemod(lua_State* ctx)
 {
 	LUA_TRACE("decode_modifiers");
 
 	int modval = luaL_checkint(ctx, 1);
+	if (lua_type(ctx, 2) == LUA_TSTRING){
+		char lim[COUNT_OF(modtable) * 9 + 1];
+		char* dst = lim;
+		char prepch = '_';
+		const char* luastr = luaL_checkstring(ctx, 2);
+		if (luastr[0])
+			prepch = luastr[0];
+
+		bool prep = false;
+		for (int i = 0; i < COUNT_OF(modtable); i++){
+			if (modval & modtable[i].v){
+				if (prep)
+					*dst++ = prepch;
+				const char* lbl = modtable[i].s;
+				while (*lbl)
+					*dst++ = *lbl++;
+				prep = true;
+			}
+		}
+
+		*dst = '\0';
+		lua_pushstring(ctx, lim);
+
+		LUA_ETRACE("decode_modifiers", NULL, 1);
+	}
 
 	lua_createtable(ctx, 10, 0);
 	int top = lua_gettop(ctx);
-
 	int count = 1;
-	if ((modval & ARKMOD_LSHIFT) > 0){
-		lua_pushnumber(ctx, count++);
-		lua_pushstring(ctx, "lshift");
-		lua_rawset(ctx, top);
-	}
-
-	if ((modval & ARKMOD_RSHIFT) > 0){
-		lua_pushnumber(ctx, count++);
-		lua_pushstring(ctx, "rshift");
-		lua_rawset(ctx, top);
-	}
-
-	if ((modval & ARKMOD_LALT) > 0){
-		lua_pushnumber(ctx, count++);
-		lua_pushstring(ctx, "lalt");
-		lua_rawset(ctx, top);
-	}
-
-	if ((modval & ARKMOD_RALT) > 0){
-		lua_pushnumber(ctx, count++);
-		lua_pushstring(ctx, "ralt");
-		lua_rawset(ctx, top);
-	}
-
-	if ((modval & ARKMOD_LCTRL) > 0){
-		lua_pushnumber(ctx, count++);
-		lua_pushstring(ctx, "lctrl");
-		lua_rawset(ctx, top);
-	}
-
-	if ((modval & ARKMOD_RCTRL) > 0){
-		lua_pushnumber(ctx, count++);
-		lua_pushstring(ctx, "rctrl");
-		lua_rawset(ctx, top);
-	}
-
-	if ((modval & ARKMOD_LMETA) > 0){
-		lua_pushnumber(ctx, count++);
-		lua_pushstring(ctx, "lmeta");
-		lua_rawset(ctx, top);
-	}
-
-	if ((modval & ARKMOD_RMETA) > 0){
-		lua_pushnumber(ctx, count++);
-		lua_pushstring(ctx, "rmeta");
-		lua_rawset(ctx, top);
-	}
-
-	if ((modval & ARKMOD_NUM) > 0){
-		lua_pushnumber(ctx, count++);
-		lua_pushstring(ctx, "num");
-		lua_rawset(ctx, top);
-	}
-
-	if ((modval & ARKMOD_CAPS) > 0){
-		lua_pushnumber(ctx, count++);
-		lua_pushstring(ctx, "caps");
-		lua_rawset(ctx, top);
+	for (int i = 0; i < COUNT_OF(modtable); i++){
+		if (modval & modtable[i].v){
+			lua_pushnumber(ctx, count++);
+			lua_pushstring(ctx, modtable[i].s);
+			lua_rawset(ctx, top);
+		}
 	}
 
 	LUA_ETRACE("decode_modifiers", NULL, 1);
@@ -8611,7 +8611,12 @@ static int shader_ugroup(lua_State* ctx)
 	LUA_TRACE("shader_ugroup");
 	agp_shader_id shid = lua_type(ctx, 1) == LUA_TSTRING ?
 		agp_shader_lookup(luaL_checkstring(ctx, 1)) : luaL_checknumber(ctx, 1);
-	lua_pushnumber(ctx, agp_shader_addgroup(shid));
+	agp_shader_id newgrp = agp_shader_addgroup(shid);
+	if (BROKEN_SHADER == newgrp){
+		LUA_ETRACE("shader_ugroup", NULL, 0);
+	}
+	else
+		lua_pushnumber(ctx, newgrp);
 	LUA_ETRACE("shader_ugroup", NULL, 1);
 }
 
@@ -9962,6 +9967,7 @@ static const luaL_Reg vidsysfuns[] = {
 {"video_display_state",              videodpms      },
 {"video_3dorder",                    v3dorder       },
 {"build_shader",                     buildshader    },
+{"delete_shader",                    deleteshader   },
 {"valid_vid",                        validvid       },
 {"video_synchronization",            videosynch     },
 {"shader_uniform",                   shader_uniform },

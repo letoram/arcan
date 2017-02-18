@@ -1269,8 +1269,17 @@ static void update_state(int code, bool state, unsigned* statev)
 	case K_RCTRL:
 		modifier = ARKMOD_RCTRL;
 	break;
+	case K_LMETA:
+		modifier = ARKMOD_LMETA;
+	break;
+	case K_RMETA:
+		modifier = ARKMOD_RMETA;
+	break;
 	case K_CAPSLOCK:
 		modifier = ARKMOD_CAPS;
+	break;
+	case K_COMPOSE:
+		modifier = ARKMOD_MODE;
 	break;
 	default:
 		return;
