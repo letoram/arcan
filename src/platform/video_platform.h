@@ -46,11 +46,11 @@ typedef VIDEO_PIXEL_TYPE av_pixel;
 #define OUT_DEPTH_A 0
 
 #ifndef GL_PIXEL_FORMAT
-#define GL_PIXEL_FORMAT 6408 /* GL_RGBA */
+#define GL_PIXEL_FORMAT 0x1908 /* GL_RGBA */
 #endif
 
 #ifndef GL_NOALPHA_PIXEL_FORMAT
-#define GL_NOALPHA_PIXEL_FORMAT 6407 /* GL_RGB */
+#define GL_NOALPHA_PIXEL_FORMAT 0x1907 /* GL_RGB */
 #endif
 
 #define GL_PIXEL_HDEF_FORMAT GL_PIXEL_FORMAT
@@ -315,6 +315,9 @@ typedef uint32_t platform_mode_id;
 
 struct monitor_mode {
 	platform_mode_id id;
+
+/* coordinate system UL origo */
+	size_t x, y;
 
 /* scanout resolution */
 	size_t width;
@@ -874,7 +877,8 @@ agp_shader_id agp_shader_build(const char* tag, const char* geom,
 /*
  * Drop the specified shader and mark as re-usable (destroy on invalid ID
  * should return false here). States local to shid should be considered
- * undefined after this.
+ * undefined after this. If the shid points to a uniform subgroup rather than
+ * the default (GROUP_INDEX(shid) == 0), only that subgroup will be destroyed.
  */
 bool agp_shader_destroy(agp_shader_id shid);
 

@@ -205,6 +205,78 @@ static void setv(GLint loc, enum shdrutype kind, void* val,
 	}
 }
 
+static void destroy_shader(struct shader_cont* cur)
+{
+	if (!cur->label)
+		return;
+
+	free( cur->label );
+	free( cur->vertex );
+	free( cur->fragment );
+
+	kill_shader(&cur->prg_container, &cur->obj_vertex, &cur->obj_fragment);
+	cur->prg_container = cur->obj_vertex = cur->obj_fragment;
+
+	for (size_t j = 0; j < cur->ugroups.limit; j++){
+		struct shaderv* first = cur->ugroups.cdata[j];
+		while (first){
+			struct shaderv* last = first;
+			free(first->label);
+			first = first->next;
+			memset(last, 0, sizeof(struct shaderv));
+			arcan_mem_free(last);
+		}
+	}
+
+/* since we've manually free:ed the first member, we do not call
+ * arcan_mem_freearr here as that would be a double-free, just free
+ * the array */
+	arcan_mem_free(cur->ugroups.data);
+	memset(cur, 0, sizeof(struct shader_cont));
+}
+
+bool agp_shader_destroy(agp_shader_id shid)
+{
+/* don't permit removing default shaders */
+	if (!agp_shader_valid(shid) ||
+		shid == agp_default_shader(BASIC_2D) ||
+		shid == agp_default_shader(BASIC_3D) ||
+		shid == agp_default_shader(COLOR_2D))
+		return false;
+
+	struct shader_cont* cur = &shdr_global.slots[SHADER_INDEX(shid)];
+
+/* destroy the whole shader or just a ugroup? */
+	if (GROUP_INDEX(shid) == 0){
+		destroy_shader(cur);
+		return true;
+	}
+
+/* just ugroup, first bound-check and then step/free */
+	uint16_t ind = GROUP_INDEX(shid);
+	if (ind >= cur->ugroups.limit){
+		printf("attempted delete of bad index: %d\n", ind);
+		return false;
+	}
+
+	struct shaderv* sv = cur->ugroups.cdata[ind];
+	if (!sv){
+		printf("attempted destroy of empty group\n");
+		return false;
+	}
+
+	cur->ugroups.count--;
+	while(sv){
+		struct shaderv* last = sv;
+		free(sv->label);
+		sv = sv->next;
+		memset(last, 0, sizeof(struct shaderv));
+		arcan_mem_free(last);
+	}
+	cur->ugroups.cdata[ind] = NULL;
+	return true;
+}
+
 int agp_shader_activate(agp_shader_id shid)
 {
 	if (!agp_shader_valid(shid))
@@ -237,12 +309,13 @@ int agp_shader_activate(agp_shader_id shid)
 		}
 
 /* activate any persistant values */
-		if (cur->ugroups.count < GROUP_INDEX(shid)){
-			arcan_warning("attempt to activate shader with broken group index\n");
+		if (cur->ugroups.limit < GROUP_INDEX(shid)){
+			arcan_warning("attempt to activate shader(%d)(%d) failed: "
+				"broken group\n", (int)SHADER_INDEX(shid),(int)GROUP_INDEX(shid));
 			return -1;
 		}
-
 		struct shaderv* current = cur->ugroups.cdata[GROUP_INDEX(shid)];
+
 		while (current){
 			setv(current->loc, current->type, (void*) current->data,
 				current->label, cur->label);
@@ -339,7 +412,7 @@ agp_shader_id agp_shader_build(const char* tag, const char* geom,
 		free(cur->label);
 
 /* drop all uniform groups */
-		for (size_t i = 0; i < cur->ugroups.count; i++){
+		for (size_t i = 0; i < cur->ugroups.limit; i++){
 			struct shaderv* first = cur->ugroups.cdata[i];
 			while (first){
 				struct shaderv* last = first;
@@ -403,14 +476,7 @@ agp_shader_id agp_shader_build(const char* tag, const char* geom,
 			SHADER_INDEX(shdr_global.active_prg)].prg_container);
 	}
 
-/* first time, we'll have initialize and reserve the primary group
- * can be done here as no custom uniforms will have been set yet */
-	if (cur->ugroups.limit - cur->ugroups.count == 0){
-		arcan_mem_growarr(&cur->ugroups);
-		if (cur->ugroups.count == 0)
-			cur->ugroups.count = 1;
-	}
-
+	agp_shader_addgroup(dstind);
 	return (uint32_t)dstind;
 }
 
@@ -446,24 +512,50 @@ int agp_shader_envv(enum agp_shader_envts slot, void* value, size_t size)
 	return rv;
 }
 
+static int find_hole(struct shader_cont* shdr)
+{
+	for (size_t i = 0; i < shdr->ugroups.limit; i++)
+		if (!shdr->ugroups.cdata[i])
+			return i;
+	return -1;
+}
+
 agp_shader_id agp_shader_addgroup(agp_shader_id shid)
 {
 	if (!agp_shader_valid(shid))
 		return BROKEN_SHADER;
 
+/* note: _build should've been invoked AT LEAST once before this point,
+ * (considering it's part of _video_init, that isn't much of a stretch) */
 	struct shader_cont* cur = &shdr_global.slots[SHADER_INDEX(shid)];
+
+	if (cur->ugroups.count >= 65535)
+		return BROKEN_SHADER;
+
 	if (cur->ugroups.limit - cur->ugroups.count == 0)
 		arcan_mem_growarr(&cur->ugroups);
 
-/* note: _build should've been invoked AT LEAST once before this point,
- * (considering it's part of _video_init, that isn't much of a stretch) */
-	uint16_t group_ind = cur->ugroups.count++;
+/* note: normal allocation pattern is typically build_shader, allocate
+ * a group of uniforms and then very rarely delete or grow without a
+ * full reset. So we do a costly linear search if only the 'guessed'
+ * slot has left us with holes */
+	int dsti = -1;
+	if (!cur->ugroups.cdata[cur->ugroups.count])
+		dsti = cur->ugroups.count;
+	else
+		dsti = find_hole(cur);
 
-	struct shaderv** chain = (struct shaderv**)
-		&cur->ugroups.cdata[group_ind];
+/* shouldn't happen, count will hit 65535 and stay there */
+	if (-1 == dsti){
+		printf("wtf broken\n");
+		return BROKEN_SHADER;
+	}
 
-/* duplicate the chain from the first group */
+	cur->ugroups.count++;
+
+	struct shaderv** chain = (struct shaderv**) &cur->ugroups.cdata[dsti];
 	struct shaderv* mgroup = cur->ugroups.cdata[GROUP_INDEX(shid)];
+
 	while(mgroup){
 		*chain = arcan_alloc_mem(sizeof(struct shaderv),
 			ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
@@ -474,7 +566,7 @@ agp_shader_id agp_shader_addgroup(agp_shader_id shid)
 		mgroup = mgroup->next;
 	}
 
-	return SHADER_ID(SHADER_INDEX(shid), group_ind);
+	return SHADER_ID(SHADER_INDEX(shid), dsti);
 }
 
 int agp_shader_vattribute_loc(enum shader_vertex_attributes attr)
@@ -627,33 +719,7 @@ void agp_shader_flush()
 {
 	for (size_t i = 0; i < sizeof(shdr_global.slots)
 		/ sizeof(shdr_global.slots[0]); i++){
-		struct shader_cont* cur = shdr_global.slots + i;
-		if (cur->label == NULL)
-			continue;
-
-		free( cur->label );
-		free( cur->vertex );
-		free( cur->fragment );
-
-		kill_shader(&cur->prg_container, &cur->obj_vertex, &cur->obj_fragment);
-		cur->prg_container = cur->obj_vertex = cur->obj_fragment;
-
-		for (size_t j = 0; j < cur->ugroups.count; j++){
-			struct shaderv* first = cur->ugroups.cdata[j];
-			while (first){
-				struct shaderv* last = first;
-				free(first->label);
-				first = first->next;
-				memset(last, 0, sizeof(struct shaderv));
-				arcan_mem_free(last);
-			}
-		}
-
-/* since we've manually free:ed the first member, we do not call
- * arcan_mem_freearr here as that would be a double-free, just free
- * the array */
-		arcan_mem_free(cur->ugroups.data);
-		memset(cur, 0, sizeof(struct shader_cont));
+		destroy_shader(&shdr_global.slots[i]);
 	}
 
 	shdr_global.ofs = 0;

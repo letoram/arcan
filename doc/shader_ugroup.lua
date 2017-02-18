@@ -1,7 +1,7 @@
 -- shader_ugroup
 -- @short: Allocate a uniform group inside a shader
 -- @inargs: shid
--- @outargs: shid
+-- @outargs: out_shid or nil
 -- @longdescr: All shaders have a default group of shaders that the
 -- ref:shader_uniform function applies to. In many cases, however, one might
 -- want to have multiple objects that uses the same shader but with a slightly
@@ -11,11 +11,14 @@
 -- for all shader related calls but has its lifecycle to the shader it was
 -- derived from. Any forced uniform at the time of group creation will
 -- be copied from the group associated with the specified shid.
+-- There's a finite amount of uniform group slots available to each shader,
+-- and if the provided *shid* is invalid or there are not enough free group
+-- slots left in the shader, the *out_shid* will be nil.
 -- @note: Though it is bad form to ever rely in the specific value of
 -- a shid, shaders that are derived typically have a value > 65535.
 -- @group: vidsys
 -- @cfunction: shader_ugroup
--- @related:
+-- @related: build_shader, delete_shader
 function main()
 #ifdef MAIN
 	local frag = [[

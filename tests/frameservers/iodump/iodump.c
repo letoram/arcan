@@ -116,13 +116,12 @@ int main(int argc, char** argv)
 
 				break;
 				case EVENT_IDATATYPE_ANALOG:
-					printf("(%s)[%s(%d):%d] rel: %s, v(%d:%d){%d, %d, %d, %d}\n",
+					printf("(%s)[%s(%d):%d] rel: %s, v(%d){%d, %d, %d, %d}\n",
 						ev.io.label,
 						ev.io.devkind == EVENT_IDEVKIND_MOUSE ? "mouse" : "analog",
 						ev.io.devid, ev.io.subid,
 						ev.io.input.analog.gotrel ? "yes" : "no",
 						(int)ev.io.input.analog.nvalues,
-						(int)ev.io.input.analog.idcount,
 						(int)ev.io.input.analog.axisval[0],
 						(int)ev.io.input.analog.axisval[1],
 						(int)ev.io.input.analog.axisval[2],

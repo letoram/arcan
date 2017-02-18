@@ -20,7 +20,8 @@
 -- called _uniforms_ (see ref:shader_uniform for details) along
 -- with a number of built in ones (see the notes below).
 -- If the contents of the supplied *vertex_program* or *fragment_program*
--- could not be interpreted, the returned *shader_id* will be nil.
+-- could not be interpreted, or there was insufficient shader slots left
+-- to create another one, the returned *shader_id* will be nil.
 -- To associate a successfully built shader to a vid, see ref:image_shader.
 -- @note: For GLSL120, reserved attributes are:
 -- modelview (mat4), projection (mat4), texturem (mat4).
@@ -30,7 +31,7 @@
 -- obj_output_sz (vec2, current w/h), obj_storage_sz (vec2, texture
 -- storage w/h).
 -- @group: vidsys
--- @related: shader_uniform, image_shader
+-- @related: shader_uniform, image_shader, shader_ugroup, delete_shader
 -- @cfunction: buildshader
 -- @flags:
 
