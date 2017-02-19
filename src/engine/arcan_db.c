@@ -20,6 +20,12 @@
 #include "arcan_general.h"
 #include "arcan_db.h"
 
+#ifdef ARCAN_DB_STANDALONE
+const char* ARCAN_TBL = "arcan";
+#else
+extern const char* ARCAN_TBL;
+#endif
+
 static bool db_init = false;
 
 #define DB_VERSION_NUM "3"
@@ -232,8 +238,8 @@ void arcan_db_dropappl(struct arcan_dbh* dbh, const char* appl)
 	db_void_query(dbh, dropbuf, true);
 
 /* special case, reset version fields etc. */
-	if (strcmp(appl, "arcan") == 0){
-		arcan_db_appl_kv(dbh, "arcan", "dbversion", DB_VERSION_NUM);
+	if (strcmp(appl, ARCAN_TBL) == 0){
+		arcan_db_appl_kv(dbh, ARCAN_TBL, "dbversion", DB_VERSION_NUM);
 	}
 }
 
@@ -960,8 +966,8 @@ char* arcan_db_appl_val(struct arcan_dbh* dbh,
 
 static void setup_ddl(struct arcan_dbh* dbh)
 {
-	create_appl_group(dbh, "arcan");
-	arcan_db_appl_kv(dbh, "arcan", "dbversion", DB_VERSION_NUM);
+	create_appl_group(dbh, ARCAN_TBL);
+	arcan_db_appl_kv(dbh, ARCAN_TBL, "dbversion", DB_VERSION_NUM);
 
 	for (size_t i = 0; i < sizeof(ddls)/sizeof(ddls[0]); i++)
 		db_void_query(dbh, ddls[i], false);
@@ -982,7 +988,7 @@ static bool dbh_integrity_check(struct arcan_dbh* dbh){
 
 /* check for descriptor table, missing?
  * that means we have a first- version database, push upgrade */
-	char* valstr = arcan_db_appl_val(dbh, "arcan", "dbversion");
+	char* valstr = arcan_db_appl_val(dbh, ARCAN_TBL, "dbversion");
 	unsigned vnum = valstr ? strtoul(valstr, NULL, 10) : 0;
 
 	switch (vnum){

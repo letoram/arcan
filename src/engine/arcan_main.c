@@ -74,6 +74,11 @@ jmp_buf arcanmain_recover_state;
  * default, probed / replaced on some systems
  */
 extern int system_page_size;
+#ifdef ARCAN_LWA
+const char* ARCAN_TBL = "arcan_lwa";
+#else
+const char* ARCAN_TBL = "arcan";
+#endif
 
 static const struct option longopts[] = {
 	{ "help",         no_argument,       NULL, '?'},
@@ -527,7 +532,7 @@ int MAIN_REDIR(int argc, char* argv[])
 /* either use previous explicit dimensions (if found and cached)
  * or revert to platform default or store last */
 	if (-1 == width){
-		char* dbw = arcan_db_appl_val(dbhandle, "arcan", "width");
+		char* dbw = arcan_db_appl_val(dbhandle, ARCAN_TBL, "width");
 		if (dbw){
 			width = (uint16_t) strtoul(dbw, NULL, 10);
 			arcan_mem_free(dbw);
@@ -538,11 +543,11 @@ int MAIN_REDIR(int argc, char* argv[])
 	else{
 		char buf[6] = {0};
 		snprintf(buf, sizeof(buf), "%d", width);
-		arcan_db_appl_kv(dbhandle, "arcan", "width", buf);
+		arcan_db_appl_kv(dbhandle, ARCAN_TBL, "width", buf);
 	}
 
 	if (-1 == height){
-		char* dbh = arcan_db_appl_val(dbhandle, "arcan", "height");
+		char* dbh = arcan_db_appl_val(dbhandle, ARCAN_TBL, "height");
 		if (dbh){
 			height = (uint16_t) strtoul(dbh, NULL, 10);
 			arcan_mem_free(dbh);
@@ -553,7 +558,7 @@ int MAIN_REDIR(int argc, char* argv[])
 	else{
 		char buf[6] = {0};
 		snprintf(buf, sizeof(buf), "%d", height);
-		arcan_db_appl_kv(dbhandle, "arcan", "height", buf);
+		arcan_db_appl_kv(dbhandle, ARCAN_TBL, "height", buf);
 	}
 
 	arcan_video_default_scalemode(scalemode);
