@@ -6698,6 +6698,7 @@ enum target_flags {
 	TARGET_FLAG_ALLOW_HDRF16,
 	TARGET_FLAG_ALLOW_LDEF,
 	TARGET_FLAG_ALLOW_VOBJ,
+	TARGET_FLAG_ALLOW_INPUT,
 	TARGET_FLAG_ENDM
 };
 
@@ -6764,6 +6765,13 @@ static void updateflag(arcan_vobj_id vid, enum target_flags flag, bool toggle)
 			fsrv->metamask |= SHMIF_META_VOBJ;
 		else
 			fsrv->metamask &= ~SHMIF_META_VOBJ;
+	break;
+
+	case TARGET_FLAG_ALLOW_INPUT:
+		if (toggle)
+			fsrv->queue_mask |= EVENT_IO;
+		else
+			fsrv->queue_mask &= ~EVENT_IO;
 	break;
 
 	case TARGET_FLAG_ENDM:
@@ -10068,6 +10076,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"TARGET_ALLOWHDR", TARGET_FLAG_ALLOW_HDRF16},
 {"TARGET_ALLOWLODEF", TARGET_FLAG_ALLOW_LDEF},
 {"TARGET_ALLOWVECTOR", TARGET_FLAG_ALLOW_VOBJ},
+{"TARGET_ALLOWINPUT", TARGET_FLAG_ALLOW_INPUT},
 {"DISPLAY_STANDBY", ADPMS_STANDBY},
 {"DISPLAY_OFF", ADPMS_OFF},
 {"DISPLAY_SUSPEND", ADPMS_SUSPEND},
