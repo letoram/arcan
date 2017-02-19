@@ -19,7 +19,7 @@ index 1690c9f..88d2312 100644
 +++ b/Alc/ALc.c
 @@ -101,7 +101,9 @@ static struct BackendInfo BackendList[] = {
  #ifdef HAVE_OPENSL
-     { "opensl", NULL, alc_opensl_init, alc_opensl_deinit, alc_opensl_probe, EmptyFuncs },
+     { "opensl", ALCopenslBackendFactory_getFactory, NULL, NULL, NULL, EmptyFuncs },
  #endif
 -
 +#ifdef HAVE_ARCAN
@@ -318,9 +318,9 @@ index 9417740..7c47705 100644
  ALCbackendFactory *ALCwaveBackendFactory_getFactory(void);
  ALCbackendFactory *ALCloopbackFactory_getFactory(void);
 +ALCbackendFactory *ALCarcanBackendFactory_getFactory(void);
- 
+
  ALCbackend *create_backend_wrapper(ALCdevice *device, const BackendFuncs *funcs, ALCbackend_Type type);
- 
+
 diff --git a/CMakeLists.txt b/CMakeLists.txt
 index 839bf18..6463bbc 100644
 --- a/CMakeLists.txt
@@ -330,13 +330,13 @@ index 839bf18..6463bbc 100644
  SET(HAVE_OPENSL     0)
  SET(HAVE_WAVE       0)
 +SET(HAVE_ARCAN      0)
- 
+
  # Check for SSE support
  OPTION(ALSOFT_REQUIRE_SSE "Require SSE support" OFF)
 @@ -1106,6 +1107,22 @@ IF(ALSOFT_BACKEND_WAVE)
      SET(BACKENDS  "${BACKENDS} WaveFile,")
  ENDIF()
- 
+
 +OPTION(ALSOFT_REQUIRE_ARCAN "Require ARCAN backend" OFF)
 +
 +IF(ALSOFT_REQUIRE_ARCAN)
@@ -355,7 +355,7 @@ index 839bf18..6463bbc 100644
 +
  # This is always available
  SET(BACKENDS  "${BACKENDS} Null")
- 
+
 diff --git a/OpenAL32/Include/alMain.h b/OpenAL32/Include/alMain.h
 index 5a5c392..c81be42 100644
 --- a/OpenAL32/Include/alMain.h
@@ -366,9 +366,9 @@ index 5a5c392..c81be42 100644
  void alc_qsa_probe(enum DevProbe type);
 +ALCboolean alc_arcan_init(BackendFuncs *func_list);
 +void alc_arcan_probe(enum DevProbe type);
- 
+
  struct ALCbackend;
- 
+
 diff --git a/config.h.in b/config.h.in
 index 4f22e5c..b78ad30 100644
 --- a/config.h.in
@@ -376,13 +376,13 @@ index 4f22e5c..b78ad30 100644
 @@ -35,6 +35,9 @@
  /* Define if we have the OSS backend */
  #cmakedefine HAVE_OSS
- 
+
 +/* Define if we have the ARCAN backend */
 +#cmakedefine HAVE_ARCAN
 +
  /* Define if we have the Solaris backend */
  #cmakedefine HAVE_SOLARIS
- 
--- 
+
+--
 2.7.4
 

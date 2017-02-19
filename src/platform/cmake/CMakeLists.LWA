@@ -23,6 +23,7 @@ ExternalProject_Add(openal_lwa
 	SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/openal_lwa
 	BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/openal_lwa_static
 	GIT_REPOSITORY "${EXTERNAL_SRC_DIR}/git/openal"
+	GIT_TAG "patched_al"
 	${EXTERNAL_DEFS}
 	${CMAKE_EXTERNAL_DEFS}
 		-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
@@ -73,7 +74,7 @@ add_executable(arcan_lwa
 	${PLATFORM_ROOT}/arcan/video.c
 )
 
-add_dependencies(arcan_lwa arcan_shmif_int arcan_shmif_intext openal_lwa)
+add_dependencies(arcan_lwa arcan_shmif_int arcan_shmif_intext openal_lwa ${MAIN_DEPS})
 if(STATIC_FREETYPE)
 	add_dependencies(arcan_lwa Freetype)
 endif()
