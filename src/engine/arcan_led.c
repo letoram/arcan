@@ -258,11 +258,15 @@ bool arcan_led_known(uint16_t vid, uint16_t pid)
 	return false;
 }
 
+#ifndef LED_STANDALONE
+extern const char* ARCAN_TBL;
+#endif
+
 void arcan_led_init()
 {
 #ifndef LED_STANDALONE
 /* see if we should look for an external named pipe to act as a LED ctrlr */
-	char* kv = arcan_db_appl_val(dbhandle, "arcan", "ext_led");
+	char* kv = arcan_db_appl_val(dbhandle, ARCAN_TBL, "ext_led");
 	struct stat statv;
 	if (-1 == fifo_out && kv && -1 != stat(kv,&statv) && S_ISFIFO(statv.st_mode)){
 		arcan_warning("arcan_led(), trying to map %s (config arcan:ext_led)"

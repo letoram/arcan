@@ -277,6 +277,7 @@ static const int DEVICE_DIRECT = CONST_DEVICE_DIRECT;
 static const int DEVICE_LOST = CONST_DEVICE_LOST;
 
 extern struct arcan_dbh* dbhandle;
+extern const char* ARCAN_TBL;
 
 enum arcan_cb_source {
 	CB_SOURCE_NONE        = 0,
@@ -3254,7 +3255,7 @@ static int vr_setup(lua_State* ctx)
 		arcan_fatal("vr_setup(), no event callback handler provided\n");
 	}
 
-	char* kv = arcan_db_appl_val(dbhandle, "arcan", "ext_vr");
+	char* kv = arcan_db_appl_val(dbhandle, ARCAN_TBL, "ext_vr");
 	if (!kv){
 		arcan_warning("vr_setup(), no vr- provider set. "
 			"Run arcan_db add_appl_kv arcan ext_vr  path/to/vrbridge\n"
