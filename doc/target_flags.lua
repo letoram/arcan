@@ -47,6 +47,11 @@
 -- textures, and metadata for specifying content in a GPU friendly triangle-
 -- soup format. Like with allow-lodef/hdr, this will not work well with
 -- feedtargets or directly accessing storage.
+-- @note: flag: TARGET_ALLOWINPUT allows a client to access the EVENT_IO
+-- group. This can be used for input injection, with all the dangers that
+-- entails so it should be used very restrictively and obviously not from
+-- a non-authoritative (target_alloc instead of launch_target) connection
+-- if input manipulation is considered a threat.
 -- @group: targetcontrol
 -- @cfunction: targetflags
 -- @related:
