@@ -838,7 +838,8 @@ enum agp_mesh_flags {
 	MESH_FACING_BACK    = 2,
 	MESH_FACING_BOTH    = 3,
 	MESH_FACING_NODEPTH = 4,
-	MESH_DEBUG_GEOMETRY = 8
+	MESH_DEBUG_GEOMETRY = 8,
+	MESH_FILL_LINE      = 16
 };
 
 /*
@@ -944,5 +945,10 @@ const char* agp_shader_symtype(enum agp_shader_envts env);
  * Update the uniform value of the currently bound shader and uniform group
  */
 void agp_shader_forceunif(const char* label, enum shdrutype type, void* value);
+
+struct agp_render_options {
+	int line_width;
+};
+void agp_render_options(struct agp_render_options);
 
 #endif

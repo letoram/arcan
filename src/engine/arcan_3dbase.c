@@ -12,6 +12,7 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <string.h>
+#include <stdarg.h>
 
 #include <assert.h>
 
@@ -33,6 +34,7 @@ struct camtag_data {
 	_Alignas(16) vector wpos;
 	float near;
 	float far;
+	float line_width;
 	enum agp_mesh_flags flags;
 };
 
@@ -395,12 +397,15 @@ arcan_vobject_litem* arcan_3d_refresh(arcan_vobj_id camtag,
 	if (!camobj || camobj->feed.state.tag != ARCAN_TAG_3DCAMERA)
 		return cell;
 
-	agp_pipeline_hint(PIPELINE_3D);
-
 	struct camtag_data* camera = camobj->feed.state.ptr;
 	float _Alignas(16) matr[16];
 	float _Alignas(16) dmatr[16];
 	float _Alignas(16) omatr[16];
+
+	agp_pipeline_hint(PIPELINE_3D);
+	agp_render_options((struct agp_render_options){
+		.line_width = camera->line_width
+	});
 
 	surface_properties dprop;
 	arcan_resolve_vidprop(camobj, fract, &dprop);
@@ -1051,9 +1056,11 @@ arcan_errc arcan_3d_baseorient(arcan_vobj_id dst,
 }
 
 arcan_errc arcan_3d_camtag(arcan_vobj_id vid,
-	float near, float far, float ar, float fov, bool front, bool back)
+	float near, float far, float ar, float fov, enum agp_mesh_flags flags, ...)
 {
 	arcan_vobject* vobj = arcan_video_getobject(vid);
+	va_list vl;
+	va_start(vl, flags);
 
 	if (vobj->feed.state.ptr)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
@@ -1065,20 +1072,20 @@ arcan_errc arcan_3d_camtag(arcan_vobj_id vid,
 
 	camobj->near = near;
 	camobj->far = far;
-	build_projection_matrix(camobj->projection, near, far, ar, fov);
-
-/* we cull the inverse */
-	if (front && back)
-		camobj->flags = MESH_FACING_BOTH;
-	else if (front)
-		camobj->flags = MESH_FACING_FRONT;
+	camobj->flags = flags;
+	if (flags & MESH_FILL_LINE){
+		camobj->line_width = va_arg(vl, double);
+	}
 	else
-		camobj->flags = MESH_FACING_BACK;
+		camobj->line_width = 1.0;
+
+	build_projection_matrix(camobj->projection, near, far, ar, fov);
 
 	vfunc_state state = {.tag = ARCAN_TAG_3DCAMERA, .ptr = camobj};
 	arcan_video_alterfeed(vid, FFUNC_3DOBJ, state);
 
 	FL_SET(vobj, FL_FULL3D);
 
+	va_end(vl);
 	return ARCAN_OK;
 }

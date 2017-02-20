@@ -346,11 +346,16 @@ void agp_pipeline_hint(enum pipeline_mode mode)
 	case PIPELINE_2D:
 		env->disable(GL_CULL_FACE);
 		env->disable(GL_DEPTH_TEST);
+		env->depth_mask(GL_FALSE);
+		env->line_width(1.0);
+		env->polygon_mode(GL_FRONT_AND_BACK, GL_FILL);
 	break;
 
 	case PIPELINE_3D:
 		env->enable(GL_DEPTH_TEST);
+		env->depth_mask(GL_TRUE);
 		env->clear(GL_DEPTH_BUFFER_BIT);
+		env->model_flags = 0;
 	break;
 	}
 }
@@ -650,29 +655,20 @@ void agp_rendertarget_ids(struct agp_rendertarget* rtgt, uintptr_t* tgt,
 		*depth = rtgt->depth;
 }
 
-void agp_submit_mesh(struct mesh_storage_t* base, enum agp_mesh_flags fl)
+void agp_render_options(struct agp_render_options opts)
 {
-/* make sure the current program actually uses the attributes from the mesh */
+	struct agp_fenv* env = agp_env();
+	env->line_width(opts.line_width);
+}
+
+static void setup_transfer(struct mesh_storage_t* base, enum agp_mesh_flags fl)
+{
 	struct agp_fenv* env = agp_env();
 	int attribs[3] = {
 		agp_shader_vattribute_loc(ATTRIBUTE_VERTEX),
 		agp_shader_vattribute_loc(ATTRIBUTE_NORMAL),
 		agp_shader_vattribute_loc(ATTRIBUTE_TEXCORD)
 	};
-
-	if (fl & MESH_FACING_BOTH){
-		if ((fl & MESH_FACING_BACK) == 0){
-			env->enable(GL_CULL_FACE);
-			env->cull_face(GL_BACK);
-		}
-		else if ((fl & MESH_FACING_FRONT) == 0){
-			env->enable(GL_CULL_FACE);
-			env->cull_face(GL_FRONT);
-		}
-		else
-			env->disable(GL_CULL_FACE);
-	}
-
 	if (attribs[0] == -1)
 		return;
 	else {
@@ -710,6 +706,62 @@ void agp_submit_mesh(struct mesh_storage_t* base, enum agp_mesh_flags fl)
 	for (size_t i = 0; i < sizeof(attribs) / sizeof(attribs[0]); i++)
 		if (attribs[i] != -1)
 			env->disable_vertex_attrarray(attribs[i]);
+}
+
+static void setup_culling(enum agp_mesh_flags fl)
+{
+	struct agp_fenv* env = agp_env();
+
+	if (fl & MESH_FACING_BOTH){
+		if ((fl & MESH_FACING_BACK) == 0){
+			env->enable(GL_CULL_FACE);
+			env->cull_face(GL_BACK);
+		}
+		else if ((fl & MESH_FACING_FRONT) == 0){
+			env->enable(GL_CULL_FACE);
+			env->cull_face(GL_FRONT);
+		}
+		else
+			env->disable(GL_CULL_FACE);
+	}
+}
+
+void agp_submit_mesh(struct mesh_storage_t* base, enum agp_mesh_flags fl)
+{
+/* make sure the current program actually uses the attributes from the mesh */
+	struct agp_fenv* env = agp_env();
+
+	if (fl != env->model_flags){
+		if (fl & MESH_FILL_LINE){
+			if (fl == MESH_FACING_BOTH){
+				env->polygon_mode(GL_FRONT_AND_BACK, GL_LINE);
+			}
+			else {
+/* proper wireframe with culling requires higher level GL, barycentric coords
+ * or Z prepass and then depth testing */
+				setup_culling(fl);
+				env->polygon_mode(GL_FRONT_AND_BACK, GL_FILL);
+				env->color_mask(false, false, false, false);
+				setup_transfer(base, fl);
+
+				env->polygon_mode(GL_FRONT_AND_BACK, GL_LINE);
+				env->color_mask(true, true, true, true);
+				env->depth_func(GL_LESS);
+				setup_transfer(base, fl);
+
+				env->polygon_mode(GL_FRONT_AND_BACK, GL_FILL);
+				return;
+			}
+		}
+		else{
+			env->polygon_mode(GL_FRONT_AND_BACK, GL_FILL);
+			setup_culling(fl);
+		}
+
+		env->model_flags = fl;
+	}
+
+	setup_transfer(base, fl);
 }
 
 /*

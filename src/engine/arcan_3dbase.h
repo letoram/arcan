@@ -26,9 +26,13 @@ struct arcan_vobject_litem* arcan_3d_refresh(arcan_vobj_id camtag,
  *
  * this can only be applied on objects that does not have any other
  * extended feature (frameserver, async-img, ..)
+ *
+ * If [flags] has the MESH_FILL_LINE attribute set, the line-width that
+ * will be used when the camera is processing the pipeline is treated as
+ * the FIRST va_arg.
  */
 arcan_errc arcan_3d_camtag(arcan_vobj_id parent,
-	float near, float far, float ar, float fov, bool front, bool back);
+	float near, float far, float ar, float fov, enum agp_mesh_flags flags, ...);
 
 /*
  * Generate a finalized model within the range [minx..maxx, 0, minz..maxz],
