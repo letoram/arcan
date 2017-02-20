@@ -22,8 +22,11 @@
 typedef VIDEO_PIXEL_TYPE av_pixel;
 
 #ifndef RGBA
-#define RGBA(r, g, b, a)( ((uint32_t)(a) << 24) | ((uint32_t) (b) << 16) |\
-((uint32_t) (g) << 8) | ((uint32_t) (r)) )
+#define RGBA(r, g, b, a)(\
+((uint32_t) (a) << 24) |\
+((uint32_t) (r) << 16) |\
+((uint32_t) (g) <<  8) |\
+((uint32_t) (b)))
 #endif
 
 /*
@@ -45,23 +48,36 @@ typedef VIDEO_PIXEL_TYPE av_pixel;
 #define OUT_DEPTH_B 8
 #define OUT_DEPTH_A 0
 
+/*
+ * for BE, need to change the packing macros ins shmif as well. These
+ * should be set / probed or expanded from the build- system and not here
 #ifndef GL_PIXEL_FORMAT
-#define GL_PIXEL_FORMAT 0x1908 /* GL_RGBA */
+#define GL_PIXEL_FORMAT 0x1908
 #endif
 
 #ifndef GL_NOALPHA_PIXEL_FORMAT
-#define GL_NOALPHA_PIXEL_FORMAT 0x1907 /* GL_RGB */
+#define GL_NOALPHA_PIXEL_FORMAT 0x1907
+#endif
+ */
+#ifndef GL_PIXEL_FORMAT
+#define GL_PIXEL_FORMAT 0x80E1
+#endif
+
+/*
+ * Different from GL_PIXEL_FORMAT as BGRA is not a valid FBO format
+ */
+#ifndef GL_STORE_PIXEL_FORMAT
+#define GL_STORE_PIXEL_FORMAT 0x1908
+#endif
+
+#ifndef GL_NOALPHA_PIXEL_FORMAT
+#define GL_NOALPHA_PIXEL_FORMAT 0x1907
 #endif
 
 #define GL_PIXEL_HDEF_FORMAT GL_PIXEL_FORMAT
 #define RGBA_HDEF(r, g, b, a) RGBA(\
 	(uint8_t)((r) * 255.0f), (uint8_t)((g) * 255.0f), \
 	(uint8_t)((b) * 255.0f), (uint8_t)((a) * 255.0f))
-
-#endif
-#ifndef RGBA_FULLALPHA_REPACK
-#define RGBA_FULLALPHA_REPACK(inv)(	RGBA( ((inv) & 0x000000ff), \
-(((inv) & 0x0000ff00) >> 8), (((inv) & 0x00ff0000) >> 16), 0xff) )
 #endif
 
 #define GL_PIXEL_LDEF_FORMAT GL_PIXEL_FORMAT
@@ -70,9 +86,9 @@ typedef VIDEO_PIXEL_TYPE av_pixel;
 static inline void RGBA_DECOMP(av_pixel val, uint8_t* r,
 	uint8_t* g, uint8_t* b, uint8_t* a)
 {
-	*r = (val & 0x000000ff);
+	*b = (val & 0x000000ff);
 	*g = (val & 0x0000ff00) >>  8;
-	*b = (val & 0x00ff0000) >> 16;
+	*r = (val & 0x00ff0000) >> 16;
 	*a = (val & 0xff000000) >> 24;
 }
 #endif

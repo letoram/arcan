@@ -85,11 +85,11 @@ bool imgload_spawn(struct arcan_shmif_cont* con, struct img_state* tgt)
 		memset(con, '\0', sizeof(struct arcan_shmif_cont));
 	}
 
-/* someone might've needed to be careless and run as root, if they fail, well
- * they fail, it's added safety - not a guarantee */
+/* someone might've needed to be careless and run as root. Now we have the file
+ * so that shouldn't matter. If these call fail, they fail - it's added safety,
+ * not a guarantee. */
 	setgid(65534);
 	setuid(65534);
-
 
 /* set some limits that will make things worse even if we don't have seccmp */
 	setrlimit(RLIMIT_CORE, &(struct rlimit){});
@@ -130,11 +130,24 @@ bool imgload_spawn(struct arcan_shmif_cont* con, struct img_state* tgt)
  *
  * The custom allocator will likely also be needed for this to work in a
  * multithreaded setting.
+ *
+ * the repacking is done to make sure that the channel-order matches the shmif
+ * format as we don't have controls for specifying that in stbi- right now
  */
 	int dw, dh;
-	uint8_t* buf = stbi_load_from_file(inf, &dw, &dh, NULL, 4);
+	shmif_pixel* buf = (shmif_pixel*)
+		stbi_load_from_file(inf, &dw, &dh, NULL, sizeof(shmif_pixel));
+	shmif_pixel* out = (shmif_pixel*)
+		tgt->out->buf;
 	if (buf){
-		memcpy((void*) tgt->out->buf, buf, dw * dh * 4);
+		for (size_t i = dw * dh; i > 0; i--){
+			uint8_t r = ((*buf) & 0x000000ff);
+			uint8_t g = ((*buf) & 0x0000ff00) >> 8;
+			uint8_t b = ((*buf) & 0x00ff0000) >> 16;
+			uint8_t a = ((*buf) & 0xff000000) >> 24;
+			buf++;
+			*out++ = SHMIF_RGBA(r, g, b, a);
+		}
 		tgt->out->w = dw;
 		tgt->out->h = dh;
 		tgt->out->buf_sz = dw * dh * 4;

@@ -275,7 +275,7 @@ static void push_buffer(arcan_frameserver* src,
 		src->desc.hints != src->desc.pending_hints){
 		src->desc.hints = src->desc.pending_hints;
 		store->vinf.text.d_fmt = (src->desc.hints & SHMIF_RHINT_IGNORE_ALPHA) ||
-			src->flags.no_alpha_copy ? GL_NOALPHA_PIXEL_FORMAT : GL_PIXEL_FORMAT;
+			src->flags.no_alpha_copy ? GL_NOALPHA_PIXEL_FORMAT : GL_STORE_PIXEL_FORMAT;
 
 		arcan_video_resizefeed(src->vid, src->desc.width, src->desc.height);
 		arcan_event rezev = {
