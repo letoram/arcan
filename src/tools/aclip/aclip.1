@@ -1,0 +1,85 @@
+.\" groff -man -Tascii aclip.1
+.TH arcan 1 "February 2017" aclip "User manual"
+.SH NAME
+aclip \- command line interface to Arcan clipboards
+.SH SYNOPSIS
+.B aclip [OPTIONS]
+
+.SH DESCRIPTION
+This tool is used to input- and/or monitor- an arcan connection point that
+accepts clipboards.
+
+.SH OPTIONS
+.IP "\fB\-m, \-\-monitor\fR"
+Continously monitor the clipboard for new entries and forward them to
+standard output.
+
+.IP "\fB\-e, \-\-exec\fR \fIcmd\fR"
+Execute and pipe data to 'cmd' instead of stdout whenever a paste operation
+is received on the clipboard in monitor mode (-m).
+
+.IP "\fB\-s, \-\-separator\fR \fIsep\fR"
+Override the separator that should be used between discrete monitor entries
+from double-linefeed(default) to a user-defined string. This is used in -m
+mode but ignored if -e used used at the same time.
+
+.IP "\fB\-l, \-\-loop\fR \fIcount\fR"
+Set a limit of discrete pastes that should be received from the clipboard
+in monitor-mode before shutting down.
+
+.IP "\fB\-d, \-\-display\fR \fIconnpath\fR"
+By default, the ARCAN_CONNPATH environment is used in order to find an
+arcan instance to connect to. This argument ignores that in favor for
+the connpath argument.
+
+.IP "\fB\-h, \-\-help\fR"
+Show a brief summary of commands and usage.
+
+.SH EXAMPLES
+
+.PP
+This examples places "hi there" on the clipboard.
+
+.B echo "hi there" | aclip -p durden -i
+
+.PP
+Forward one clipboard entry to the selection buffer of an xserver using
+the xclip tool.
+
+.B aclip -m 1 | xclip
+
+.SH LIMITATIONS
+The appl that arcan is running must expose a connection point, and explicitly
+allow clipboard and/or clipboard-paste primary segments to connect. This is
+usually not added by default due to the security implications it might have.
+
+Additional constraints may also have been placed on this connection point.
+One common constraint is to only allow one active monitor or input connection.
+Other constraints may be disabled input or disabled monitoring.
+
+Consult the documentation for the appl you are using to get more information
+on what applies to your particular scenario.
+
+All inputs and outputs need to be valid UTF-8 or they will likely be silently
+filtered. The tool is still young and few of the clipboard features offered by
+Arcan are exposed yet, this means that right now, only adding text to a
+clipboard, and monitoring the clipboard for entries actually work. Managing
+binary blobs, audio and video streams will be added in the near future.
+
+.SH ENVIRONMENT
+.TP
+.SM
+\fBARCAN_CONNPATH\fR
+Name of the connection point to use when connecting to arcan.
+.TP
+.SM
+\fBARCAN_CONNKEY\fR
+Key to use for authenticating againgst the connection path.
+
+.SH COPYRIGHT
+Copyright  ©  2017 Bjorn Stahl. 3-clause BSD licensed. This is free software:
+you are free  to  change and redistribute it. There is NO WARRANTY,
+to the extent permitted by law.
+
+.SH AUTHOR
+Bjorn Stahl <contact at arcan-fe dot com>
