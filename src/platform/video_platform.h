@@ -284,23 +284,6 @@ void* platform_video_gfxsym(const char* sym);
 void platform_video_setsynch(const char* strat);
 
 /*
- * attempt to generate a handle that can be passed to an external process, this
- * is primarily used by arcan-in-arcan and frameservers that need to send a
- * buffer onwards.
- *
- * status outputs:
- */
-enum status_handle {
-	ERROR_UNSUPPORTED = -1, /* platform cannot handle buffer transfers */
-  ERROR_BADSTORE = -2, /* store is not in a suitable format */
-  READY_REUSE = 0, /* previous handle still valid */
-  READY_TRANSFER = 1, /* new- handle to be transferred */
-  READY_TRANSFERRED = 2 /* transfered using side-channel */
-};
-int64_t platform_video_output_handle(
-	struct storage_info_t* store, enum status_handle* status);
-
-/*
  * take the received handle and associate it with the specified backing store.
  */
 bool platform_video_map_handle(struct storage_info_t*, int64_t inh);

@@ -32,10 +32,15 @@ extern jmp_buf arcanmain_recover_state;
 #include "arcan_videoint.h"
 #include "arcan_renderfun.h"
 
-#define EGL_EGLEXT_PROTOTYPES
 #define MESA_EGL_NO_X11_HEADERS
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
+
+#ifdef EGL_DMA_BUF
+static PFNEGLCREATEIMAGEKHRPROC eglCreateImageKHR;
+static PFNEGLDESTROYIMAGEKHRPROC eglDestroyImageKHR;
+static PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES;
+#endif
 
 static char* synchopts[] = {
 	"parent", "display server controls synchronisation",
@@ -177,6 +182,17 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	disp[0].dpms = ADPMS_ON;
 	disp[0].visible = true;
 	disp[0].focused = true;
+
+#ifdef EGL_DMA_BUF
+	eglCreateImageKHR = (PFNEGLCREATEIMAGEKHRPROC)
+		eglGetProcAddress("eglCreateImageKHR");
+
+	eglDestroyImageKHR = (PFNEGLDESTROYIMAGEKHRPROC)
+		eglGetProcAddress("eglDestroyImageKHR");
+
+	glEGLImageTargetTexture2DOES = (PFNGLEGLIMAGETARGETTEXTURE2DOESPROC)
+		eglGetProcAddress("glEGLImageTargetTexture2DOES");
+#endif
 
 /* we provide our own cursor that is blended in the output */
 	arcan_shmif_enqueue(&disp[0].conn, &(struct arcan_event){
@@ -448,8 +464,66 @@ void platform_video_query_displays()
 {
 }
 
-bool platform_video_map_handle(struct storage_info_t* store, int64_t handle)
+/*
+ * Need to do this manually here so that when we run nested, we are still able
+ * to import data from clients that give us buffers. When/ if we implement the
+ * same mechanism on OSX, Windows and Android, the code should probably be
+ * moved to another shared platform path
+ */
+bool platform_video_map_handle(struct storage_info_t* dst, int64_t handle)
 {
+#ifdef EGL_DMA_BUF
+	EGLint attrs[] = {
+		EGL_DMA_BUF_PLANE0_FD_EXT,
+		handle,
+		EGL_DMA_BUF_PLANE0_PITCH_EXT,
+		dst->vinf.text.stride,
+		EGL_DMA_BUF_PLANE0_OFFSET_EXT,
+		0,
+		EGL_WIDTH,
+		dst->w,
+		EGL_HEIGHT,
+		dst->h,
+		EGL_LINUX_DRM_FOURCC_EXT,
+		dst->vinf.text.format,
+		EGL_NONE
+	};
+
+	if (!eglCreateImageKHR || !glEGLImageTargetTexture2DOES)
+		return false;
+
+	uintptr_t display;
+	arcan_shmifext_egl_meta(&disp[0].conn, &display, NULL, NULL);
+
+	if (0 != dst->vinf.text.tag){
+	eglDestroyImageKHR((EGLDisplay) display, (EGLImageKHR) dst->vinf.text.tag);
+		dst->vinf.text.tag = 0;
+	}
+
+	if (-1 == handle)
+		return false;
+
+	EGLImageKHR img = eglCreateImageKHR(
+		(EGLDisplay) display,
+		EGL_NO_CONTEXT,
+		EGL_LINUX_DMA_BUF_EXT,
+		(EGLClientBuffer)NULL, attrs
+	);
+
+	if (img == EGL_NO_IMAGE_KHR){
+		arcan_warning("could not import EGL buffer (%zu * %zu), "
+			"stride: %d, format: %d from %d\n", dst->w, dst->h,
+		 dst->vinf.text.stride, dst->vinf.text.format,handle
+		);
+		return false;
+	}
+
+	agp_activate_vstore(dst);
+	glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, img);
+	dst->vinf.text.tag = (uintptr_t) img;
+	agp_deactivate_vstore(dst);
+	return true;
+#endif
 	return false;
 }
 
@@ -508,7 +582,6 @@ void platform_video_synch(uint64_t tick_count, float fract,
  * be a readback target or double-buffered rendertarget. This does not take
  * texture coordinates or other vstore properties into account.
  */
-		enum status_handle status;
 		if (disp[i].dirty)
 			disp[i].dirty--;
 		if (disp[i].vstore || disp[i].nopass){

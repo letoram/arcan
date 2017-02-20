@@ -368,12 +368,6 @@ size_t PLATFORM_SYMBOL(_video_displays)(platform_display_id* dids, size_t* lim)
 	return 1;
 }
 
-int64_t PLATFORM_SYMBOL(_output_handle)(
-	struct storage_info_t* store, enum status_handle* status)
-{
-	return -1;
-}
-
 void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 	video_synchevent pre, video_synchevent post)
 {

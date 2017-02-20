@@ -154,13 +154,6 @@ bool PLATFORM_SYMBOL(_video_map_handle)(
 	return false;
 }
 
-int64_t PLATFORM_SYMBOL(_video_output_handle)(
-	struct storage_info_t* store, enum status_handle* status)
-{
-	*status = ERROR_UNSUPPORTED;
-	return -1;
-}
-
 bool PLATFORM_SYMBOL(_video_specify_mode)(platform_display_id id,
 	struct monitor_mode mode)
 {
