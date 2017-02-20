@@ -743,7 +743,8 @@ int afsrv_encode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 					return EXIT_FAILURE;
 				else{
 					recctx.ccontext   = sws_getContext(
-						recctx.shmcont.addr->w, recctx.shmcont.addr->h, AV_PIX_FMT_RGBA,
+						recctx.shmcont.addr->w, recctx.shmcont.addr->h,
+							SHMIF_RGBA(0,0,255,0) == 0xff ? AV_PIX_FMT_BGRA : AV_PIX_FMT_RGBA,
 						recctx.shmcont.addr->w, recctx.shmcont.addr->h, AV_PIX_FMT_YUV420P,
 						SWS_FAST_BILINEAR, NULL, NULL, NULL
 					);
