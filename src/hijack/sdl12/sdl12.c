@@ -99,9 +99,9 @@ static struct {
 			.Bmask = 0x0000ff00,
 			.Amask = 0x000000ff
 	#else
-			.Rmask = 0x000000ff,
+			.Bmask = 0x000000ff,
 			.Gmask = 0x0000ff00,
-			.Bmask = 0x00ff0000,
+			.Rmask = 0x00ff0000,
 			.Amask = 0xff000000
 	#endif
 		},

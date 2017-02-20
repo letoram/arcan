@@ -106,7 +106,7 @@ arcan_errc arcan_img_outpng(FILE* dst,
 
 av_pixel* arcan_img_repack(uint32_t* inbuf, size_t inw, size_t inh)
 {
-	if (sizeof(av_pixel) == 4 && RGBA(0xff, 0xaa, 0x77, 0x55) != 0x5577aaff)
+	if (sizeof(av_pixel) == 4 && RGBA(0x00, 0x00, 0xff, 0x00) == 0x00ff0000)
 		return (av_pixel*) inbuf;
 
 	av_pixel* imgbuf = arcan_alloc_mem(sizeof(av_pixel) * inw * inh,
@@ -120,7 +120,7 @@ av_pixel* arcan_img_repack(uint32_t* inbuf, size_t inw, size_t inh)
 	for (size_t count = inw * inh; count > 0; count--){
 		uint32_t val = *in_work++;
 		*work++ = RGBA(
-			(val & 0x000000ff),
+ 			((val & 0x000000ff) >> 0),
 			((val & 0x0000ff00) >> 8),
 			((val & 0x00ff0000) >> 16),
 			((val & 0xff000000) >> 24)
@@ -246,10 +246,6 @@ arcan_errc arcan_img_decode(const char* hint, char* inbuf, size_t inbuf_sz,
 				*outh = h;
 				return ARCAN_OK;
 			}
-		}
-		else if (strcasecmp(hint + (len - 3), "JPG") == 0 ||
-			(len >= 4 && strcasecmp(hint + (len - 4), "JPEG") == 0)){
-//			arcan_warning("use libjpeg(turbo)");
 		}
 		else if (strcasecmp(hint + (len - 3), "PKM") == 0){
 			return arcan_pkm_raw((uint8_t*)inbuf, inbuf_sz,

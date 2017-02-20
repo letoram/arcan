@@ -202,7 +202,7 @@ void agp_empty_vstore(struct storage_info_t* vs, size_t w, size_t h)
 	if (vs->vinf.text.s_fmt == 0)
 		vs->vinf.text.s_fmt = GL_PIXEL_FORMAT;
 	if (vs->vinf.text.d_fmt == 0)
-		vs->vinf.text.d_fmt = GL_PIXEL_FORMAT;
+		vs->vinf.text.d_fmt = GL_STORE_PIXEL_FORMAT;
 
 	vs->vinf.text.raw = arcan_alloc_mem(
 		vs->vinf.text.s_raw,
@@ -498,7 +498,7 @@ void agp_update_vstore(struct storage_info_t* s, bool copy)
 				GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE, 0);
 		else
 			env->tex_image_2d(GL_TEXTURE_2D, 0,
-				s->vinf.text.d_fmt ? s->vinf.text.d_fmt : GL_PIXEL_FORMAT,
+				s->vinf.text.d_fmt ? s->vinf.text.d_fmt : GL_STORE_PIXEL_FORMAT,
 				s->w, s->h, 0,
 				s->vinf.text.s_fmt ? s->vinf.text.s_fmt : GL_PIXEL_FORMAT,
 				GL_UNSIGNED_BYTE, s->vinf.text.raw

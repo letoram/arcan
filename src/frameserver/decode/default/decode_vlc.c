@@ -71,11 +71,18 @@ static unsigned video_setup(void** ctx, char* chroma, unsigned* width,
 	unsigned rv = 1;
 	decctx.got_video = true;
 
-	chroma[0] = 'R';
-	chroma[1] = 'G';
-	chroma[2] = 'B';
-	chroma[3] = 'A';
-
+	if (SHMIF_RGBA(0x00, 0x00, 0xff, 0x00) == 0xff){
+		chroma[0] = 'B';
+		chroma[1] = 'G';
+		chroma[2] = 'R';
+		chroma[3] = 'A';
+	}
+	else {
+		chroma[0] = 'R';
+		chroma[1] = 'G';
+		chroma[2] = 'B';
+		chroma[3] = 'A';
+	}
 	*pitches = *width * 4;
 
 	if (!arcan_shmif_resize_ext(&decctx.shmcont, *width, *height,

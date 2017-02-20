@@ -168,17 +168,20 @@ static const float shmif_ppcm_default = ARCAN_SHMPAGE_DEFAULT_PPCM;
 
 typedef VIDEO_PIXEL_TYPE shmif_pixel;
 #ifndef SHMIF_RGBA
-#define SHMIF_RGBA(r, g, b, a)( ((uint32_t)(a) << 24) | ((uint32_t) (b) << 16)\
-| ((uint32_t) (g) << 8) | ((uint32_t) (r)) )
+#define SHMIF_RGBA(r, g, b, a)(\
+((uint32_t) (a) << 24) |\
+((uint32_t) (r) << 16) |\
+((uint32_t) (g) << 8)  |\
+((uint32_t) (b)) )
 #endif
 
 #ifndef SHMIF_RGBA_DECOMP
 static inline void SHMIF_RGBA_DECOMP(shmif_pixel val,
 	uint8_t* r, uint8_t* g, uint8_t* b, uint8_t* a)
 {
-	*r = (val & 0x000000ff);
+	*b = (val & 0x000000ff);
 	*g = (val & 0x0000ff00) >>  8;
-	*b = (val & 0x00ff0000) >> 16;
+	*r = (val & 0x00ff0000) >> 16;
 	*a = (val & 0xff000000) >> 24;
 }
 #endif
@@ -785,7 +788,7 @@ enum rhint_mask {
  * authenticate against the rendering subsystem. This is a no-op on many
  * platforms. (ab)uses the VPTS field to exchange cookies.
  */
-	SHMIF_RHINT_AUTH_TOK = 16
+	SHMIF_RHINT_AUTH_TOK = 16,
 };
 
 struct arcan_shmif_page {

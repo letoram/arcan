@@ -205,7 +205,6 @@ static void set_active(struct draw_state* ds)
 	}
 	else {
 		if (ds->source_size){
-			printf("size to: %d.%d\n", ds->cur->out->w, ds->cur->out->h);
 			arcan_shmif_resize(ds->con, ds->cur->out->w, ds->cur->out->h);
 			set_ident(ds->con, "", ds->cur->fname);
 		}
