@@ -12,6 +12,7 @@
 
 pthread_mutex_t paste_lock;
 _Atomic int alive;
+char* stdout_sep = "";
 
 static void paste(struct arcan_shmif_cont* out, char* msg, bool cont)
 {
@@ -105,47 +106,49 @@ static void* cout_thread(void* inarg)
 	struct arcan_shmif_cont* con = inarg;
 	FILE* inf = con->user;
 
-	struct arcan_event outev;
 	char buf[4096];
 
 	while (!feof(inf)){
 		char* out = fgets(buf, sizeof(buf), inf);
-		if (!out)
-			if (!paste(con, out, false))
-				break;
+		if (out)
+			paste(con, out, false);
 	}
 
-end:
 	atomic_fetch_add(&alive, -1);
-	arcan shmif_drop(con);
+	arcan_shmif_drop(con);
 	return NULL;
 }
 
 static const struct option longopts[] = {
-	{ "help",         no_argument,       NULL, '?'},
-/*	{ "X-display",    required_argument, NULL, 'X'}, */
-/*  { "x-display",    required_argument, NULL, 'x'}, */
+	{ "help",         no_argument,       NULL, 'h'},
 /*	{ "video-out",    required_argument, NULL, 'v'}, */
 /*	{ "audio-out",    required_argument, NULL, 'a'}, */
 /*  { "binary-out",   required_argument, NULL, 'w'}, */
   { "input",        no_argument,       NULL, 'i'},
   { "output",       no_argument,       NULL, 'o'},
+	{ "monitor",      no_argument,       NULL, 'm'},
+	{ "exec",         required_argument, NULL, 'e'},
+	{ "separator",    required_argument, NULL, 's'},
+	{ "loop",         required_argument, NULL, 'l'},
+	{ "display",      required_argument, NULL, 'd'},
 	{ NULL,           no_argument,       NULL,  0 }
 };
 
 static void usage()
 {
-printf("Usage: aclip [-?io] "
-"-?\t--help        \tthis text\n"
-"-h\t--input       \tsend paste data from stdin\n"
+printf("Usage: aclip [-hime:s:l:] "
+"-h    \t--help         \tthis text\n"
+"-i    \t--input        \tread UTF-8 from standard input and copy to clipboard\n"
+"-m    \t--monitor      \tlisten for new items appearing on the clipboard and write to stdout\n"
+"-e arg\t--exec arg     \texecute [arg] and pipe data there instead of stdout (inside -m)\n"
+"-s arg\t--separator arg\twrite [arg] to output stream as separator (inside -m, not -e)\n"
+"-l arg\t--loop         \texit after [arg] discrete paste operations (inside -m)\n"
+"-d arg\t--display arg  \tuse [arg] as connection path istead of ARCAN_CONNPATH env\n"
 /*
-"-v\t--video-out   \tsave pasted video data as .n.png or - for stdout\n"
-"-a\t--audio-out   \tsave pasted audio data as .wav or - for stdout\n"
-"-X\t--X-display   \tbridge X clipboards (r/w can use multiple times)\n"
-"-x\t--x-display   \tbridge X clipboards (r only, can use multiple times)\n"
-*/
-"-f\t--fullscreen  \ttoggle fullscreen mode ON (default: off)\n"
-"-m\t--conservative\ttoggle conservative memory management (default: off)\n");
+"-v\t--video-out   \tsave pasted video data as .num.png or - for stdout\n"
+"-a\t--audio-out   \tsave pasted audio data as .num.wav or - for stdout\n"
+"-b\t--binary-out  \tsave pasted binary data as .num.bin or - for stdout\n"
+*/);
 }
 
 int main(int argc, char** argv)
@@ -158,16 +161,18 @@ int main(int argc, char** argv)
 	bool use_stdout = false;
 
 	int ch;
-	while((ch = getopt_long(argc, argv, "?w:v:a:ioX:", longopts, NULL)) >= 0)
+	while((ch = getopt_long(argc, argv, "hw:v:a:ime:s:l:d:", longopts, NULL)) >= 0)
 	switch(ch){
-	case '?' : usage(); return EXIT_SUCCESS;
+	case 'h' : usage(); return EXIT_SUCCESS;
 	case 'w' : /* on binary output paste, save into folder */ break;
 	case 'v' : /* on video output paste, save as basename.n.png */ break;
 	case 'a' : /* on audio output paste, save as wav(fn) */ break;
 	case 'i' : use_stdin = true; break;
-	case 'o' : use_stdout = true; break;
-	case 'X' : /* add X server at display strtoul(optarg, NULL, 10);
- possibly delegate to xclip to avoid dealing with "that" */ break;
+	case 'm' : use_stdout = true; break;
+	case 'e' : break;
+	case 'd' : break;
+	case 'l' : break;
+	case 's' : stdout_sep = strdup(optarg ? optarg : ""); break;
 	default:
 		break;
 	}
@@ -179,28 +184,42 @@ int main(int argc, char** argv)
 
 	pthread_mutex_init(&paste_lock, NULL);
 
-	if (use_stdin)
-		clip_in = arcan_shmif_open(SEGID_CLIPBOARD_PASTE, 0, &aarr);
-	if (clip_in.addr){
-	clip_in.user = (void*) stdin;
-	atomic_fetch_add(&alive, 1);
+	if (use_stdin){
+		clip_in = arcan_shmif_open(SEGID_CLIPBOARD, 0, &aarr);
+		if (!clip_in.addr){
+			fprintf(stderr, "failed to connect/open clipboard in input- mode\n");
+			return EXIT_FAILURE;
+		}
+
+		clip_in.user = (void*) stdin;
+		atomic_fetch_add(&alive, 1);
 		if (0 != pthread_create(&thr, &thr_attr, cin_thread, (void*)&clip_in)){
 			arcan_shmif_drop(&clip_in);
 			atomic_fetch_add(&alive, -1);
 		}
+		else
+			fprintf(stderr, "failed to spawn clipboard input- thread\n");
 	}
 
-	if (use_stdout)
-		clip_out = arcan_shmif_open(SEGID_CLIPBOARD, 0, &aarr);
-	if (clip_out.addr){
+	if (use_stdout){
+		clip_out = arcan_shmif_open(SEGID_CLIPBOARD_PASTE, 0, &aarr);
+		if (!clip_out.addr){
+			fprintf(stderr, "failed to connect/open clipboard in monitor mode\n");
+			return EXIT_FAILURE;
+		}
+
 		atomic_fetch_add(&alive, 1);
 		if (0 != pthread_create(&thr, &thr_attr, cout_thread, (void*)&clip_in)){
 			arcan_shmif_drop(&clip_in);
 			atomic_fetch_add(&alive, -1);
 		}
+		else
+			fprintf(stderr, "failed to spawn clipboard monitor thread\n");
 	}
 
 	pthread_attr_destroy(&thr_attr);
+
+/* should really have a less ugly primitive here .. pipe? */
 	while (atomic_load(&alive) > 0)
 		sleep(1);
 

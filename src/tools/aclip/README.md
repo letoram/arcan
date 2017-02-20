@@ -17,7 +17,7 @@ pkgconfig or by explicitly pointing cmake to the
 Notes
 =====
 The appl arcan runs must also explicitly expose a connection point which
-accepts a SEGID_CLIPBOARD as the primary segment type (which no normal window
+accepts a SEGID\_CLIPBOARD as the primary segment type (which no normal window
 would).
 
 In durden, for instance, this needs to be explicitly enabled as it can be used
@@ -31,6 +31,8 @@ in terms of resource consumption and connection setup.
 
 TODO
 ====
+- [ ] exec mode
+- [ ] \0 separation in injection
 - [ ] audio support
 - [ ] video support
 - [ ] binary blob support
