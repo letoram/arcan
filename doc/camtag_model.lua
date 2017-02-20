@@ -1,6 +1,6 @@
 -- camtag_model
 -- @short: Set VID as perspective and (possible) recipient of a 3D pipeline.
--- @inargs: dstvid, *near*, *far*, *fov*, *aspect*, *front*, *back*
+-- @inargs: dstvid, *near*, *far*, *fov*, *aspect*, *front*, *back*, *linew*
 -- @outargs:
 -- @longdescr: In order to activate 3D rendering, one or several cameras need to
 -- be defined. Any VID can be used for this purpose. The optional arguments
@@ -9,6 +9,10 @@
 -- The optional arguments *front* and *back* define which faces that should be
 -- drawn (i.e. triangels facing towards the camera, away from the camera or
 -- all triangels).
+-- The optional *linew* argument is primarily used for debugging or wireframe
+-- rendering where you need control over the wireframe line width. If you set it,
+-- the camera pipeline will be processed with wireframe drawing only, though
+-- culling settings still apply.
 -- @note: It is possible to camtag a rendertarget, which will define the default
 -- behavior for that pass, allowing for off-screen 3D rendering for effects
 -- such as shadows.

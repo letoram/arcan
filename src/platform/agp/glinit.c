@@ -232,6 +232,12 @@ void agp_glinit_fenv(struct agp_fenv* dst,
 	dst->viewport =
 		(void(*)(GLint, GLint, GLsizei, GLsizei))
 			lookup(tag, "glViewport");
+	dst->polygon_mode =
+		(void(*)(GLenum, GLenum))
+			lookup(tag, "glPolygonMode");
+	dst->line_width =
+		(void(*)(GLfloat))
+			lookup(tag, "glLineWidth");
 	dst->clear_stencil =
 		(void(*)(GLint))
 			lookup(tag, "glClearStencil");
@@ -253,12 +259,14 @@ void agp_glinit_fenv(struct agp_fenv* dst,
 	dst->depth_mask =
 		(void(*)(GLboolean))
 			lookup(tag, "glDepthMask");
+	dst->depth_func =
+		(void(*)(GLenum func))
+			lookup(tag, "glDepthFunc");
 	dst->flush =
 		(void(*)(void))
 			lookup(tag, "glFlush");
 
 #undef lookup
-
 
 	if (!cenv)
 		cenv = dst;

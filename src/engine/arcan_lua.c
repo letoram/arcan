@@ -4978,8 +4978,20 @@ static int camtag(lua_State* ctx)
 	ar = luaL_optnumber(ctx, 5, ar);
 	bool front = luaL_optbnumber(ctx, 6, true);
 	bool back  = luaL_optbnumber(ctx, 7, false);
+	float linew = 1.0;
 
-	arcan_errc rv = arcan_3d_camtag(id, nv, fv, ar, fov, front, back);
+	enum agp_mesh_flags flags = 0;
+	if (lua_type(ctx, 8) == LUA_TNUMBER){
+		linew = luaL_checknumber(ctx, 8);
+		flags |= MESH_FILL_LINE;
+	}
+
+	if (front)
+		flags |= MESH_FACING_FRONT;
+	if (back)
+		flags |= MESH_FACING_BACK;
+
+	arcan_errc rv = arcan_3d_camtag(id, nv, fv, ar, fov, flags, linew);
 
 	lua_pushboolean(ctx, rv == ARCAN_OK);
 	LUA_ETRACE("camtag_model", NULL, 1);

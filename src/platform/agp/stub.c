@@ -257,3 +257,6 @@ void agp_shader_rebuild_all()
 {
 }
 
+void agp_render_options(struct agp_render_options)
+{
+}
