@@ -559,16 +559,16 @@ static void reset_timing(bool newstate)
 		if (retro.rollback_window > 10)
 			retro.rollback_window = 10;
 
-			free(retro.rollback_state);
-			retro.rollback_state = malloc(retro.state_sz * retro.rollback_window);
-			retro.rollback_front = 0;
+		free(retro.rollback_state);
+		retro.rollback_state = malloc(retro.state_sz * retro.rollback_window);
+		retro.rollback_front = 0;
 
-			retro.serialize(retro.rollback_state, retro.state_sz);
-			for (int i=1; i < retro.rollback_window - 1; i++)
-				memcpy(retro.rollback_state + (i*retro.state_sz),
-					retro.rollback_state, retro.state_sz);
+		retro.serialize(retro.rollback_state, retro.state_sz);
+		for (int i=1; i < retro.rollback_window - 1; i++)
+			memcpy(retro.rollback_state + (i*retro.state_sz),
+				retro.rollback_state, retro.state_sz);
 
-			LOG("setting input rollback (%d)\n", retro.rollback_window);
+		LOG("setting input rollback (%d)\n", retro.rollback_window);
 	}
 }
 
