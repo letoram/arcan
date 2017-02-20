@@ -277,6 +277,7 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 					tgt->vstream.handle = arcan_fetchhandle(tgt->dpipe, false);
 					tgt->vstream.stride = inev.ext.bstream.pitch;
 					tgt->vstream.format = inev.ext.bstream.format;
+					continue;
 				break;
 
 /* for autoclocking, only one-fire events are forwarded if flag has been set */
