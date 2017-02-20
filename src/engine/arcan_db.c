@@ -966,8 +966,10 @@ char* arcan_db_appl_val(struct arcan_dbh* dbh,
 
 static void setup_ddl(struct arcan_dbh* dbh)
 {
-	create_appl_group(dbh, ARCAN_TBL);
-	arcan_db_appl_kv(dbh, ARCAN_TBL, "dbversion", DB_VERSION_NUM);
+	create_appl_group(dbh, "arcan");
+	create_appl_group(dbh, "arcan_lwa");
+	arcan_db_appl_kv(dbh, "arcan", "dbversion", DB_VERSION_NUM);
+	arcan_db_appl_kv(dbh, "arcan_lwa", "dbversion", DB_VERSION_NUM);
 
 	for (size_t i = 0; i < sizeof(ddls)/sizeof(ddls[0]); i++)
 		db_void_query(dbh, ddls[i], false);
