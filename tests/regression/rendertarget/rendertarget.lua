@@ -44,6 +44,8 @@ function rendertarget()
 
 -- scaled being updated on a tick basis 'manually'
 -- normal being updated on a tick basis automatically
+	push_video_context();
+	pop_video_context();
 end
 
 local in_world = true;

@@ -1,4 +1,4 @@
-This cover simple rendering a 3d plane that is displaced
-in a vertex shader to an FBO and then drawing as normal
-to the output screen. It covers camera setup, plane tesselation
-and wireframe rendering mode.
+This cover simple rendering a 3d plane that is displaced in a vertex shader to
+an FBO and then drawing as normal to the output screen. It covers camera setup,
+plane tesselation, wireframe rendering mode, fbo- clear color and wireframe
+linewidth.

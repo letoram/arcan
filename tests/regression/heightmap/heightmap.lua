@@ -26,6 +26,7 @@ void main(){
 ]];
 
 function heightmap()
+	bgc = fill_surface(VRESW, VRESH, 127, 0, 127);
 	fbo = alloc_surface(0.5 * VRESW, 0.5 * VRESH);
 	vid = build_3dplane(-2, -2, 2, 2, 0, 0.05, 0.05, 1);
 	hmap = random_surface(64, 64);
@@ -36,15 +37,15 @@ function heightmap()
 	local shid = build_shader(vshader, fshader, "hmap");
 	shader_uniform(shid, "ampl", "f", 1.0);
 	image_shader(vid, shid);
-
 	define_rendertarget(fbo, {vid},
 		RENDERTARGET_DETACH, RENDERTARGET_NOSCALE, -1, RENDERTARGET_FULL);
+	image_color(fbo, 0, 0, 0, 0);
+	show_image(bgc);
 	local camera = null_surface(1, 1);
 	scale3d_model(camera, 1.0, -1.0, 1.0);
 	move3d_model(vid, 0.0, -0.2, 0.0);
 	rendertarget_attach(fbo, camera, RENDERTARGET_DETACH);
 	camtag_model(camera, 0.01, 100.0, 45.0, 1.33, true, false, 4);
-
 	blend_image(fbo, 1.0, 2);
 end
 
