@@ -368,6 +368,7 @@ static int show_use(const char* msg)
 #ifdef ENABLE_SECCOMP
 "-X    \t--no-sysflt   \tDisable seccomp- syscall filtering\n"
 #endif
+"-S    \t--server-size \tScale to fit server- suggested window size\n"
 "-d str\t--display     \tSet/override the display server connection path\n");
 	return EXIT_FAILURE;
 }
@@ -403,6 +404,7 @@ static const struct option longopts[] = {
 	{"limit-mem", required_argument, NULL, 'm'},
 	{"readahead", required_argument, NULL, 'r'},
 	{"no-sysflt", no_argument, NULL, 'X'},
+	{"server-size", no_argument, NULL, 'S'},
 	{"display", no_argument, NULL, 'd'}
 };
 
@@ -422,7 +424,7 @@ int main(int argc, char** argv)
 
 	int ch;
 	while((ch = getopt_long(argc, argv,
-		"ht:bd:T:m:r:X", longopts, NULL)) >= 0)
+		"ht:bd:T:m:r:XS", longopts, NULL)) >= 0)
 		switch(ch){
 		case 'h' : return show_use(""); break;
 		case 't' : ds.init_timer = strtoul(optarg, NULL, 10); break;
@@ -433,6 +435,7 @@ int main(int argc, char** argv)
 		case 'm' : image_size_limit_mb = strtoul(optarg, NULL, 10); break;
 		case 'r' : ds.wnd_lim = strtoul(optarg, NULL, 10); break;
 		case 'X' : disable_syscall_flt = true; break;
+		case 'S' : ds.source_size = false; break;
 		default:
 			fprintf(stderr, "unknown/ignored option: %c\n", ch);
 		break;

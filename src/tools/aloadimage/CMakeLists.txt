@@ -26,6 +26,10 @@ else()
 	message("No pkg-config found, disabling seccomp")
 endif()
 
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+	add_definitions(-D__APPLE__)
+endif()
+
 add_definitions(
 	-Wall
   -Wno-unused-function
