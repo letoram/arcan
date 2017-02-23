@@ -7,4 +7,4 @@ We cover:
 3. canvas resize (default world rendertarget)
 4. rendertarget noclear
 5. dynamic attach to rendertarget
-
+6. context stack pop / restore

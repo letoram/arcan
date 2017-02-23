@@ -13,6 +13,14 @@ specific key-value store, but also for controlling which programs (targets) and
 which set of arguments (configuration) that are allowed to be launched
 by an application using Arcan.
 
+It is also used to manage some configuration options for the arcan instance
+itself. Such options are stored under the reserved appl names "arcan" and
+"arcan_lwa" respectively.
+
+It is also used to manage some configuration options for the arcan instance
+itself. Such options are stored under the reserved appl names "arcan" and
+"arcan_lwa" respectively.
+
 .SH COMMAND
 .IP "\fBadd_target\fR \fIname\fR \fIbfrm\fB \fIexecutable\fR \fIargv\fR"
 Create a new target or update values for a pre-existing ones. The \fIname\fR
@@ -72,18 +80,18 @@ Delete the specific target and all associated configurations, environment
 library and key/value pairs.
 
 .SH SCRIPTING MODE
-To assist when using this program as a database interface for a script,
-a single dash can be specified instead of the command. In that case, the
-program will process line- separated input from STDIN where each
-element is separated with a tab character. The command format is
-otherwise the same as regular usage. In addition, the program
-will output 'OK' or 'FAIL' to stderr in response to each command
-(while stdout will contained the more detailed error description).
+To assist when using this program as a database interface for a script, a
+single dash can be specified instead of the command. In that case, the program
+will process line- separated input from STDIN where each element is separated
+with a tab character. The command format is otherwise the same as regular
+usage. In addition, the program will output 'OK' or 'FAIL' to stderr in
+response to each command (while stdout will contained the more detailed error
+description).
 
 .SH BINARY FORMATS
-The currently suport binary formats are \fBBIN\fR, \fBLWA\fR and \fBRETRO\fR.
-Binary format specifies how the new process will be created when launching
-a target/configuration pair.
+The currently supported binary formats are \fBBIN\fR, \fBLWA\fR and
+\fBRETRO\fR. Binary format specifies how the new process will be created when
+launching a target/configuration pair.
 
 For \fBBIN\fR, the argv, envv and libs are treated with expanding namespaces.
 This means that all entries will have [ARCAN_XXXPATH] fields being replaced with
@@ -126,7 +134,7 @@ used and a list of files (with permissions) in applpath and
 resourcepath might also be relevant.
 
 .SH COPYRIGHT
-Copyright  ©  2014-2016  Bjorn Stahl. License 3-clause BSD. This is free software:
+Copyright  ©  2014-2017  Bjorn Stahl. License 3-clause BSD. This is free software:
 you are free  to  change  and  redistribute  it. There is NO WARRANTY,
 to the extent permitted by law.
 
