@@ -1020,11 +1020,10 @@ enum ARCAN_EVENT_EXTERNAL {
 			struct {
 				int32_t audio;
 				size_t width, height;
-				size_t c_abuffer, c_vbuffer;
-				size_t l_abuffer, l_vbuffer;
 				int8_t glsource;
 				uint64_t pts;
 				uint64_t counter;
+				uint8_t message[32];
 			};
 			struct {
 				char ident[32];
@@ -1032,7 +1031,6 @@ enum ARCAN_EVENT_EXTERNAL {
 			};
 		};
 
-		uint8_t message[32];
 		int64_t video;
 		intptr_t otag;
 	} arcan_fsrvevent;
@@ -1362,6 +1360,7 @@ typedef struct arcan_event {
 		arcan_fsrvevent fsrv;
 		arcan_extevent ext;
 		arcan_netevent net;
+		uint8_t min_sz[128];
 	};
 } arcan_event;
 
