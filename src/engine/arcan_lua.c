@@ -5809,10 +5809,21 @@ static int imagecolor(lua_State* ctx)
 	uint8_t cred = abs((int)luaL_checknumber(ctx, 2));
 	uint8_t cgrn = abs((int)luaL_checknumber(ctx, 3));
 	uint8_t cblu = abs((int)luaL_checknumber(ctx, 4));
+	uint8_t alpha = abs((int)luaL_optnumber(ctx, 5, 255));
 
-	if (!vobj || vobj->vstore->txmapped){
-		lua_pushboolean(ctx, false);
-		LUA_ETRACE("image_color", "invalid image state", 1);
+	if (vobj->vstore->txmapped){
+		struct rendertarget* rtgt = arcan_vint_findrt(vobj);
+		if (rtgt){
+			agp_rendertarget_clearcolor(rtgt->art,
+				(float)cred / 255.0f, (float)cgrn / 255.0f,
+				(float)cblu / 255.0f, (float)alpha / 255.0f);
+			lua_pushboolean(ctx, true);
+			LUA_ETRACE("image_color", NULL, 1);
+		}
+		else {
+			lua_pushboolean(ctx, false);
+			LUA_ETRACE("image_color", "invalid image state", 1);
+		}
 	}
 
 	vobj->vstore->vinf.col.r = (float)cred / 255.0f;

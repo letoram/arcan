@@ -257,6 +257,11 @@ void agp_shader_rebuild_all()
 {
 }
 
+void agp_rendertarget_clearcolor(
+	struct agp_rendertarget* tgt, float r, float g, float b, float a)
+{
+}
+
 void agp_render_options(struct agp_render_options)
 {
 }

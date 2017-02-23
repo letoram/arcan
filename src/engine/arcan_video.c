@@ -353,11 +353,11 @@ static void reallocate_gl_context(struct arcan_video_context* context)
 				if (current->vstore->txmapped != TXSTATE_OFF)
 					agp_update_vstore(current->vstore, true);
 
-			arcan_frameserver* movie = current->feed.state.ptr;
-			if (current->feed.state.tag == ARCAN_TAG_FRAMESERV && movie){
-				arcan_audio_rebuild(movie->aid);
-				arcan_frameserver_resume(movie);
-				arcan_audio_play(movie->aid, false, 0.0);
+			arcan_frameserver* fsrv = current->feed.state.ptr;
+			if (current->feed.state.tag == ARCAN_TAG_FRAMESERV && fsrv){
+				arcan_frameserver_flush(fsrv);
+				arcan_frameserver_resume(fsrv);
+				arcan_audio_play(fsrv->aid, false, 0.0);
 			}
 		}
 }
@@ -5084,7 +5084,7 @@ void arcan_video_shutdown()
 	agp_shader_flush();
 	deallocate_gl_context(current_context, true, NULL);
 	arcan_video_reset_fontcache();
-	agp_rendertarget_clear(NULL);
+	agp_rendertarget_clear();
 	TTF_Quit();
 	platform_video_shutdown();
 }

@@ -732,7 +732,7 @@ enum rendertarget_mode {
 	RENDERTARGET_COLOR = 1,
 	RENDERTARGET_COLOR_DEPTH = 2,
 	RENDERTARGET_COLOR_DEPTH_STENCIL = 3,
-	RENDERTARGET_DOUBLEBUFFER = 4
+	RENDERTARGET_DOUBLEBUFFER = 4,
 };
 
 /*
@@ -786,6 +786,12 @@ void agp_drop_rendertarget(struct agp_rendertarget*);
  * reset the currently bound rendertarget output buffer
  */
 void agp_rendertarget_clear();
+
+/*
+ * change the clear color of the rendertarget from the default RGBA(0,0,0,1)
+ */
+void agp_rendertarget_clearcolor(
+	struct agp_rendertarget*, float, float, float, float);
 
 enum agp_mesh_type {
 	AGP_MESH_TRISOUP,

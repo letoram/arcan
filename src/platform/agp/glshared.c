@@ -37,6 +37,7 @@ struct agp_rendertarget
 {
 	GLuint fbo;
 	GLuint depth;
+	float clearcol[4];
 
 	enum rendertarget_mode mode;
 	struct storage_info_t* store;
@@ -234,6 +235,7 @@ struct agp_rendertarget* agp_setup_rendertarget(
 
 	r->store = vstore;
 	r->mode = m;
+	r->clearcol[3] = 1.0;
 
 /* need this tracking because there's no external memory management for _back */
 	r->front_active = true;
@@ -322,11 +324,14 @@ void agp_activate_rendertarget(struct agp_rendertarget* tgt)
 		w = mode.width;
 		h = mode.height;
 		env->bind_framebuffer(GL_FRAMEBUFFER, 0);
+		env->clear_color(0, 0, 0, 1);
 	}
 	else {
 		w = tgt->store->w;
 		h = tgt->store->h;
 		env->bind_framebuffer(GL_FRAMEBUFFER, tgt->fbo);
+		env->clear_color(tgt->clearcol[0],
+			tgt->clearcol[1], tgt->clearcol[2], tgt->clearcol[3]);
 	}
 
 	env->scissor(0, 0, w, h);
@@ -780,6 +785,17 @@ void agp_activate_vstore(struct storage_info_t* s)
 void agp_deactivate_vstore()
 {
 	agp_env()->bind_texture(GL_TEXTURE_2D, 0);
+}
+
+void agp_rendertarget_clearcolor(
+	struct agp_rendertarget* tgt, float r, float g, float b, float a)
+{
+	if (!tgt)
+		return;
+	tgt->clearcol[0] = r;
+	tgt->clearcol[1] = g;
+	tgt->clearcol[2] = b;
+	tgt->clearcol[3] = a;
 }
 
 void agp_save_output(size_t w, size_t h, av_pixel* dst, size_t dsz)
