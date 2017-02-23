@@ -15,7 +15,11 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/resource.h>
+#include <signal.h>
+#ifdef __APPLE__
+#else
 #include <sys/prctl.h>
+#endif
 #include <sys/wait.h>
 #include <errno.h>
 #include <fcntl.h>
