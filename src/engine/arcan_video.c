@@ -279,7 +279,9 @@ static void deallocate_gl_context(struct arcan_video_context* context,
 
 /* only non-persistant objects will have their GL objects removed immediately
  * but not for the cases where we share store with the world */
-			else if (!FL_TEST(current, FL_PRSIST) && current->vstore != safe_store)
+			else if (
+				!FL_TEST(current, FL_PRSIST) && !FL_TEST(current, FL_RTGT) &&
+				current->vstore != safe_store)
 				agp_null_vstore(current->vstore);
 		}
 	}
@@ -1971,6 +1973,7 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did,
 		int ind = current_context->n_rtargets++;
 		struct rendertarget* dst = &current_context->rtargets[ ind ];
 
+		FL_SET(vobj, FL_RTGT);
 		FL_SET(dst, TGTFL_ALIVE);
 		dst->color = vobj;
 		dst->camtag = ARCAN_EID;

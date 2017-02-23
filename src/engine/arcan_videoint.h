@@ -94,8 +94,10 @@ enum vobj_flags {
 	FL_ORDOFS = 16,
 	FL_PRSIST = 32,
 	FL_FULL3D = 64, /* switch to a quaternion- based orientation scheme */
+	FL_RTGT   = 128,
 #ifdef _DEBUG
-	FL_FROZEN = 128
+	FL_FROZEN = 256
+#else
 #endif
 };
 
