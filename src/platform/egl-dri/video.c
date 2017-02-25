@@ -1505,7 +1505,8 @@ static void disable_display(struct dispout* d, bool dealloc)
 		d->buffer.next_fb = 0;
 	}
 
-	gbm_surface_destroy(d->buffer.surface);
+	if (d->buffer.surface)
+		gbm_surface_destroy(d->buffer.surface);
 	d->buffer.surface = NULL;
 
 	d->device->crtc_alloc &= ~(1 << d->display.crtc);
