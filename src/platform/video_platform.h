@@ -191,6 +191,7 @@ struct storage_info_t {
  * (implies s_raw / raw / source are useless) */
 			int format;
 			size_t stride;
+			int64_t handle;
 			uintptr_t tag;
 		} text;
 

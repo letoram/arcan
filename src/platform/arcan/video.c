@@ -496,8 +496,12 @@ bool platform_video_map_handle(struct storage_info_t* dst, int64_t handle)
 	arcan_shmifext_egl_meta(&disp[0].conn, &display, NULL, NULL);
 
 	if (0 != dst->vinf.text.tag){
-	eglDestroyImageKHR((EGLDisplay) display, (EGLImageKHR) dst->vinf.text.tag);
+		eglDestroyImageKHR((EGLDisplay) display, (EGLImageKHR) dst->vinf.text.tag);
 		dst->vinf.text.tag = 0;
+		if (handle != dst->vinf.text.handle){
+			close(dst->vinf.text.handle);
+		}
+		dst->vinf.text.handle = -1;
 	}
 
 	if (-1 == handle)
@@ -515,12 +519,14 @@ bool platform_video_map_handle(struct storage_info_t* dst, int64_t handle)
 			"stride: %d, format: %d from %d\n", dst->w, dst->h,
 		 dst->vinf.text.stride, dst->vinf.text.format,handle
 		);
+		close(handle);
 		return false;
 	}
 
 	agp_activate_vstore(dst);
 	glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, img);
 	dst->vinf.text.tag = (uintptr_t) img;
+	dst->vinf.text.handle = handle;
 	agp_deactivate_vstore(dst);
 	return true;
 #endif

@@ -197,6 +197,9 @@ void agp_drop_vstore(struct storage_info_t* s)
 		return;
 	struct agp_fenv* env = agp_env();
 
+	if (s->vinf.text.tag)
+		platform_video_map_handle(s, -1);
+
 	env->delete_textures(1, &s->vinf.text.glid);
 	s->vinf.text.glid = GL_NONE;
 
@@ -209,9 +212,6 @@ void agp_drop_vstore(struct storage_info_t* s)
 		env->delete_buffers(1, &s->vinf.text.wid);
 		s->vinf.text.wid = GL_NONE;
 	}
-
-	if (s->vinf.text.tag)
-		platform_video_map_handle(s, -1);
 }
 
 static void pbo_stream(struct storage_info_t* s,

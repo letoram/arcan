@@ -1257,6 +1257,9 @@ retry:
 	return 0;
 }
 
+/* This interface is insufficient for dealing multi-planar formats and
+ * individual plane updates. Something to worry about when we have a test
+ * set that actually works for that usecase.. */
 bool platform_video_map_handle(
 	struct storage_info_t* dst, int64_t handle)
 {
@@ -1286,10 +1289,19 @@ bool platform_video_map_handle(
  * possibly source for crashes etc. and I see no good way for verifying the
  * buffer manually.
  */
-
 	if (0 != dst->vinf.text.tag){
 		eglDestroyImageKHR(nodes[0].display, (EGLImageKHR) dst->vinf.text.tag);
 		dst->vinf.text.tag = 0;
+
+/*
+ * Usage note, this goes against what the spec says - but from what it seems
+ * like in mesa, we leak one handle per connection without this, and if we
+ * close every time, the driver live-locks.
+ */
+		if (handle != dst->vinf.text.handle){
+			close(dst->vinf.text.handle);
+		}
+		dst->vinf.text.handle = -1;
 	}
 
 	if (-1 == handle)
@@ -1310,6 +1322,7 @@ bool platform_video_map_handle(
 			"stride: %d, format: %d from %d\n", dst->w, dst->h,
 		 dst->vinf.text.stride, dst->vinf.text.format,handle
 		);
+		close(handle);
 		return false;
 	}
 
@@ -1318,6 +1331,7 @@ bool platform_video_map_handle(
 	agp_activate_vstore(dst);
 	glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, img);
 	dst->vinf.text.tag = (uintptr_t) img;
+	dst->vinf.text.handle = handle;
 	agp_deactivate_vstore(dst);
 
 	return true;

@@ -293,19 +293,26 @@ static void push_buffer(arcan_frameserver* src,
 		explicit = true;
 	}
 
-	if (src->vstream.handle && !src->vstream.dead){
-		stream.handle = src->vstream.handle;
-		store->vinf.text.stride = src->vstream.stride;
-		store->vinf.text.format = src->vstream.format;
-		stream = agp_stream_prepare(store, stream, STREAM_HANDLE);
-
+	if (-1 != src->vstream.handle){
+		bool failev = src->vstream.dead;
+		if (!failev){
+			stream.handle = src->vstream.handle;
+			store->vinf.text.stride = src->vstream.stride;
+			store->vinf.text.format = src->vstream.format;
+			stream = agp_stream_prepare(store, stream, STREAM_HANDLE);
+			failev = !stream.state;
+		}
 /* buffer passing failed, mark that as an unsupported mode for some reason, log
  * and send back to client to revert to shared memory and extra copies */
-		if (!stream.state){
+		if (failev){
 			arcan_event ev = {
 				.category = EVENT_TARGET,
 				.tgt.kind = TARGET_COMMAND_BUFFER_FAIL
 			};
+
+/* handle format should be abstracted to platform, but right now it is just
+ * mapped as a file-descriptor, if iostreams or windows is reintroduced, this
+ * will need to be fixed */
 			arcan_event_enqueue(&src->outqueue, &ev);
 			src->vstream.dead = true;
 		}
@@ -1143,6 +1150,7 @@ arcan_frameserver* arcan_frameserver_alloc()
 	res->flags.autoclock = true;
 	res->parent.vid = ARCAN_EID;
 	res->desc.samplerate = ARCAN_SHMIF_SAMPLERATE;
+	res->vstream.handle = BADFD;
 
 /* these are statically defined right now, but we may want to make them
  * configurable in the future to possibly utilize other accelerated resampling
