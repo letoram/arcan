@@ -239,6 +239,12 @@ const char* platform_video_capstr()
 	return "skeleton driver, no capabilities";
 }
 
+static void* lookup(void* tag, const char* sym, bool req)
+{
+	return eglGetProcAddress(sym);
+}
+
+struct agp_fenv* env;
 bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	bool fs, bool frames, const char* capt)
 {
@@ -249,6 +255,9 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	SetMode(drmFd, &planeID, &d_width, &d_height);
 	eglDpy = GetEglDisplay(eglDevice, drmFd);
 	eglSurface = SetUpEgl(eglDpy, planeID, d_width, d_height);
+
+	if (!env)
+		env = agp_alloc_fenv(lookup, NULL);
 
 	return true;
 }

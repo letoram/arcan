@@ -470,12 +470,28 @@ void platform_video_shutdown();
  */
 
 /*
- * Some underlying implementations need to allocate handles / contexts etc. as
- * an extension to what platform_video_init has already done, typically the
- * initial state-machine setup needed by gl.
+ * These are just opaque structures used to contain the R/O function pointers
+ * that the corresponding agp implementation needs access to. The setup is a
+ * bit convoluted as there are some interdependencies between the video
+ * platform and the agp platform, particularly in the case with multi-vendor
+ * supplied libraries for accelerated functions.
+ *
+ * Only the video platform implementation should concern itself with these
+ * functions, with the 'worst case' being the streaming update of a vstore with
+ * multi-GPU affinity.
+ */
+struct agp_fenv* agp_alloc_fenv(
+	void*(lookup)(void* tag, const char* sym, bool req), void* tag);
+
+struct agp_fenv* agp_env();
+void agp_setenv(struct agp_fenv*);
+void agp_dropenv(struct agp_fenv*);
+
+/*
+ * Resets the state machine for the graphics platform to the 'default'.
+ * If there's no fenv- allocated or set, one will be setup and initialized.
  */
 void agp_init();
-void agp_gl_ext_init();
 
 /*
  * lower 16 bits: index
@@ -743,6 +759,7 @@ enum rendertarget_mode {
  * mode.
  */
 struct agp_rendertarget;
+struct agp_fenv;
 struct agp_rendertarget* agp_setup_rendertarget(struct storage_info_t*,
 	enum rendertarget_mode mode);
 

@@ -38,6 +38,7 @@
  * instanced per GPU/vendor.
  */
 struct agp_fenv {
+	int cookie;
 /* PBOs / transfers */
 	void (*draw_buffer) (GLenum);
 	void (*read_buffer) (GLenum);
@@ -135,9 +136,6 @@ struct agp_fenv {
 /* state tracking */
 	int model_flags;
 };
-
-struct agp_fenv* agp_env();
-void agp_setenv(struct agp_fenv* dst);
 
 void agp_glinit_fenv(struct agp_fenv* dst,
 	void*(*lookup)(void* tag, const char* sym, bool req), void* tag);

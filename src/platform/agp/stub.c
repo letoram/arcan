@@ -94,10 +94,6 @@ struct asynch_readback_meta agp_poll_readback(struct storage_info_t* t)
 	return res;
 }
 
-void agp_gl_ext_init()
-{
-}
-
 void agp_empty_vstore(struct storage_info_t* vs, size_t w, size_t h)
 {
 }

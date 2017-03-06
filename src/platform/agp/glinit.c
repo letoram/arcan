@@ -29,6 +29,7 @@ void agp_glinit_fenv(struct agp_fenv* dst,
 {
 /* missing: AGP_STATIC/COMPILE-TIME build */
 	memset(dst, '\0', sizeof(struct agp_fenv));
+	dst->cookie = 0xfeedface;
 
 #define lookup(tag, sym) lookup(tag, sym, true)
 
