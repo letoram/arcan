@@ -263,10 +263,38 @@ static void* lookup_fun(void* tag, const char* sym, bool req)
 }
 
 static struct agp_fenv defenv;
+struct agp_fenv* agp_alloc_fenv(
+	void*(lookup)(void* tag, const char* sym, bool req), void* tag)
+{
+	struct agp_fenv* fenv = arcan_alloc_mem(
+		sizeof(struct agp_fenv),
+		ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL
+	);
+
+/* FIXME:
+ * need a WRITELOCK flag to the allocation and calls to writelock afterwards */
+	agp_glinit_fenv(fenv, lookup ? lookup : lookup_fun, tag);
+	if (!agp_env())
+		agp_setenv(fenv);
+
+	return fenv;
+}
+
+void agp_dropenv(struct agp_fenv* env)
+{
+	if (!env || env->cookie != 0xfeedface){
+		arcan_warning("agp_dropenv() - code issue: called on bad/broken fenv\n");
+		return;
+	}
+	env->cookie = 0xdeadbeef;
+	arcan_mem_free(env);
+	if (agp_env() == env)
+		agp_setenv(NULL);
+}
+
 void agp_init()
 {
 	struct agp_fenv* env = agp_env();
-
 /* platform layer has not set the function environment */
 	if (!env){
 		agp_glinit_fenv(&defenv, lookup_fun, NULL);

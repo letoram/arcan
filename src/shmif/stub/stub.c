@@ -15,11 +15,6 @@ enum shmifext_setup_status arcan_shmifext_setup(
 	return SHMIFEXT_NO_API;
 }
 
-bool arcan_shmifext_drop_context(struct arcan_shmif_cont* con)
-{
-	return false;
-}
-
 int arcan_shmifext_dev(struct arcan_shmif_cont* con,
 	uintptr_t* dev, bool clone)
 {
@@ -29,9 +24,20 @@ int arcan_shmifext_dev(struct arcan_shmif_cont* con,
 	return -1;
 }
 
+bool platform_video_map_handle(struct storage_info_t* store, int64_t handle)
+{
+	return false;
+}
+
+bool arcan_shmifext_gl_handles(struct arcan_shmif_cont* con,
+	uintptr_t* frame, uintptr_t* color, uintptr_t* depth)
+{
+	return false;
+}
+
 bool arcan_shmifext_drop_context(struct arcan_shmif_cont* con)
 {
-	return arcan_shmifext_drop(con);
+	return false;
 }
 
 void* arcan_shmifext_lookup(
