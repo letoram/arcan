@@ -534,11 +534,11 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 
 		if (arg_lookup(args, "width", 0, &val))
 			desw = strtoul(val, NULL, 10);
-			desw = (desw > 0 && desw < ARCAN_SHMPAGE_MAXW) ? desw : 0;
+		desw = (desw > 0 && desw < ARCAN_SHMPAGE_MAXW) ? desw : 0;
 
 		if (arg_lookup(args, "height", 0, &val))
 			desh = strtoul(val, NULL, 10);
-			desh = (desh > 0 && desh < ARCAN_SHMPAGE_MAXH) ? desh : 0;
+		desh = (desh > 0 && desh < ARCAN_SHMPAGE_MAXH) ? desh : 0;
 
 		media = find_capture_device(devind, desw, desh, fps);
 	}

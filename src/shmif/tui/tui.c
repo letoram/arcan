@@ -542,8 +542,8 @@ static bool push_msg(struct tui_context* tui, const char* sel, size_t len)
 		size_t i, lastok = 0;
 		state = 0;
 		for (i = 0; i <= maxlen - 1; i++){
-		if (UTF8_ACCEPT == utf8_decode(&state, &codepoint, (uint8_t)(sel[i])))
-			lastok = i;
+			if (UTF8_ACCEPT == utf8_decode(&state, &codepoint, (uint8_t)(sel[i])))
+				lastok = i;
 
 			if (i != lastok){
 				if (0 == i)

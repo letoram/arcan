@@ -217,11 +217,11 @@ static enum shmifext_setup_status add_context(
 /* find first free */
 	size_t i = 0;
 	bool found = false;
-	for (; i < 64; i++){
-		if (!(ctx->ctx_alloc & (1 << i)))
+	for (; i < 64; i++)
+		if (!(ctx->ctx_alloc & (1 << i))){
 			found = true;
 			break;
-	}
+		}
 
 /* common for GL applications to treat 0 as no context, so we do the same, have
  * to add/subtract 1 from the index (or just XOR with a cookie */
@@ -490,8 +490,8 @@ void arcan_shmifext_bufferfail(struct arcan_shmif_cont* con, bool st)
 	if (!con || !con->privext || !con->privext->internal)
 		return;
 
-		con->privext->internal->nopass =
-			getenv("ARCAN_VIDEO_NO_FDPASS") ? 1 : st;
+	con->privext->internal->nopass =
+		getenv("ARCAN_VIDEO_NO_FDPASS") ? 1 : st;
 }
 
 int arcan_shmifext_dev(struct arcan_shmif_cont* con,
