@@ -195,6 +195,28 @@ struct egl_env {
 	PFNEGLSWAPINTERVALPROC swap_interval;
 };
 
+static void map_ext_functions(struct egl_env* denv,
+	void*(lookup)(void* tag, const char* sym, bool req), void* tag);
+
+static void* lookup(void* tag, const char* sym, bool req)
+{
+	dlerror();
+	void* res = dlsym(tag ? tag : RTLD_DEFAULT, sym);
+	if (dlerror() != NULL && req){
+		arcan_fatal("agp lookup(%s) failed, missing req. symbol.\n", sym);
+	}
+	return res;
+}
+
+static void* lookup_call(void* tag, const char* sym, bool req)
+{
+	PFNEGLGETPROCADDRESSPROC getproc = tag;
+	void* res = getproc(sym);
+	if (!res && req)
+		arcan_fatal("agp lookup(%s) failed, missing req. symbol.\n", sym);
+	return res;
+}
+
 /*
  * real heuristics scheduled for 0.5.3, see .5 at top
  */
@@ -542,6 +564,11 @@ static int setup_buffers_gbm(struct dispout* d)
 	SET_SEGV_MSG("libgbm(), creating scanout buffer"
 		" failed catastrophically.\n")
 
+	if (!d->device->eglenv.create_image){
+		map_ext_functions(&d->device->eglenv,
+			lookup_call, d->device->eglenv.get_proc_address);
+	}
+
 #ifdef HDEF_10BIT
 	d->buffer.surface = gbm_surface_create(d->device->gbm,
 		d->display.mode->hdisplay, d->display.mode->vdisplay,
@@ -756,7 +783,7 @@ bool platform_video_specify_mode(
  * wise men at Khronos decided that you should also verify them against a list
  * of strings, and of course write the parser yourself.
  */
-static void map_functions(struct egl_env* denv,
+static void map_ext_functions(struct egl_env* denv,
 	void*(lookup)(void* tag, const char* sym, bool req), void* tag)
 {
 /* Mapping dma_buf */
@@ -788,7 +815,11 @@ static void map_functions(struct egl_env* denv,
 		lookup(tag, "eglStreamConsumerOutputEXT", false);
 	denv->create_stream_producer_surface = (PFNEGLCREATESTREAMPRODUCERSURFACEKHRPROC)
 		lookup(tag, "eglCreateStreamProducerSurfaceKHR", false);
+}
 
+static void map_functions(struct egl_env* denv,
+	void*(lookup)(void* tag, const char* sym, bool req), void* tag)
+{
 /* basic EGL */
 	denv->destroy_surface =
 		(PFNEGLDESTROYSURFACEPROC) lookup(tag, "eglDestroySurface", true);
@@ -1246,16 +1277,6 @@ static bool setup_node(struct dev_node* node)
 	return true;
 }
 
-static void* lookup(void* tag, const char* sym, bool req)
-{
-	dlerror();
-	void* res = dlsym(tag ? tag : RTLD_DEFAULT, sym);
-	if (dlerror() != NULL && req){
-		arcan_fatal("agp lookup(%s) failed, missing req. symbol.\n", sym);
-	}
-	return res;
-}
-
 /*
  * We have a circular dependency problem here "kind of": we need to know what
  * driver to pick in order to setup EGL for the node, but there is also an Egl
@@ -1267,6 +1288,7 @@ static void* lookup(void* tag, const char* sym, bool req)
 static int setup_node_egl(struct dev_node* node, const char* lib, int fd)
 {
 	map_functions(&node->eglenv, lookup, NULL);
+	map_ext_functions(&node->eglenv, lookup_call, node->eglenv.get_proc_address);
 	if (!node->eglenv.query_devices){
 		arcan_warning("egl-dri(streams) - couldn't find extensions/functions");
 		return -1;
@@ -1309,8 +1331,22 @@ static int setup_node_egl(struct dev_node* node, const char* lib, int fd)
 			EGL_PLATFORM_DEVICE_EXT, node->egldev, attribs);
 		return 0;
 	}
+	node->fd = fd;
 
 	return -1;
+}
+
+static void cleanup_node_gbm(struct dev_node* node)
+{
+	if (node->fd >= 0)
+		close(node->fd);
+	if (node->rnode >= 0)
+		close(node->rnode);
+	node->rnode = -1;
+	node->fd = -1;
+	if (node->gbm)
+		gbm_device_destroy(node->gbm);
+	node->gbm = NULL;
 }
 
 static int setup_node_gbm(struct dev_node* node,
@@ -1318,9 +1354,9 @@ static int setup_node_gbm(struct dev_node* node,
 {
 	SET_SEGV_MSG("libdrm(), open device failed (check permissions) "
 		" or use ARCAN_VIDEO_DEVICE environment.\n");
-	map_functions(&node->eglenv, lookup, NULL);
 
 	memset(node, '\0', sizeof(struct dev_node));
+	map_functions(&node->eglenv, lookup, NULL);
 	node->rnode = -1;
 	if (!path && fd == -1)
 		return -1;
@@ -1343,11 +1379,7 @@ static int setup_node_gbm(struct dev_node* node,
 
 	if (!node->gbm){
 		arcan_warning("egl-dri(), couldn't create gbm device on node.\n");
-		close(node->fd);
-		if (node->rnode >= 0)
-			close(node->rnode);
-		node->rnode = -1;
-		node->fd = -1;
+		cleanup_node_gbm(node);
 		return -1;
 	}
 
@@ -1368,16 +1400,7 @@ static int setup_node_gbm(struct dev_node* node,
 	}
 	setenv("ARCAN_RENDER_NODE", pbuf, 1);
 	node->rnode = open(pbuf, O_RDWR | O_CLOEXEC);
-
-	close(node->fd);
-	if (node->rnode >= 0)
-		close(node->rnode);
-	node->rnode = -1;
-	node->fd = -1;
-	gbm_device_destroy(node->gbm);
-	node->gbm = NULL;
-
-	return -1;
+	return 0;
 }
 
 /*
@@ -1979,28 +2002,21 @@ retry_card:
  * that we'll have config-file templates that just maps the config into the
  * database as the reserved 'arcan' appl_kv store, and use that to specify
  * device, method and lib */
-		nodes[0].fd = fd;
 		if (-1 == setup_node_gbm(&nodes[0], device, NULL, fd)
 			&& -1 == setup_node_egl(&nodes[0], NULL, fd)){
-			arcan_warning("egl-dri(), couldn't find a buffer mechanism for device");
+				arcan_warning("egl-dri(), couldn't find a buffer mechanism for device\n");
 			if (getenv("ARCAN_VIDEO_DEVICE"))
 				goto cleanup;
 		}
 
-		int rc = setup_node(&nodes[0]);
-		if (rc != 0){
+		if (!setup_node(&nodes[0])){
 			arcan_warning("egl-dri() - setup on %s failed\n", device);
 			if (getenv("ARCAN_VIDEO_DEVICE"))
 				goto cleanup;
 		}
 		nodes[0].card_id = n-1;
 		free(device);
-
-		if (0 == rc)
-			break;
-
-		if (-2 == rc)
-			goto cleanup;
+		break;
 	}
 
 	if (-1 == drmSetMaster(nodes[0].fd)){
