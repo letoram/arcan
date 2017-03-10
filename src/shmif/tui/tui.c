@@ -76,8 +76,8 @@ struct tui_context {
  * and one secondary that can be used for alternative glyphs */
 	TTF_Font* font[2];
 
-/* size in font pt */
-	size_t font_sz;
+/* size in mm */
+	float font_sz;
 	int font_sz_delta;
 	int hint;
 	int font_fd[2];
@@ -1731,7 +1731,7 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 		res->font_sz = init->fonts[0].size_mm;
 		setup_font(res, init->fonts[0].fd, res->font_sz, 0);
 		init->fonts[0].fd = -1;
-		LOG("arcan_shmif_tui(), built-in font provided, size: %zu\n", res->font_sz);
+		LOG("arcan_shmif_tui(), built-in font provided, size: %f\n", res->font_sz);
 
 		if (init->fonts[1].fd != BADFD){
 			setup_font(res, init->fonts[1].fd, res->font_sz, 1);
