@@ -103,7 +103,8 @@ struct tui_settings {
 	uint8_t alpha;
 	float ppcm;
 	int hint;
-	size_t font_sz;
+
+	float font_sz; /* mm */
 	size_t cell_w, cell_h;
 
 /* either using strings or pre-opened fonts */
