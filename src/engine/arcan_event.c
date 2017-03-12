@@ -621,7 +621,13 @@ void arcan_event_deinit(arcan_evctx* ctx)
 		playback_ofs = 0;
 	}
 
+/*
+ * Actually resetting the contents of the event queue is no longer a part of
+ * the eventqueue as it would introduce possible event-loss in the cases where
+ * we have an interrupt-driven event-deinit (VT switching) which would result
+ * in events being silently dropped.
 	eventfront = eventback = 0;
+ */
 }
 
 #ifdef _DEBUG
