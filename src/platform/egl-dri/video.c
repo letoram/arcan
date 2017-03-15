@@ -740,6 +740,7 @@ bool platform_video_set_mode(platform_display_id disp, platform_mode_id mode)
 	if (d->display.mode == &d->display.con->modes[mode])
 		return true;
 
+	d->display.reset_mode = true;
 	d->display.mode = &d->display.con->modes[mode];
 	build_orthographic_matrix(d->projection,
 		0, d->display.mode->hdisplay, d->display.mode->vdisplay, 0, 0, 1);
@@ -1517,7 +1518,10 @@ static int setup_node_gbm(struct dev_node* node,
 	SET_SEGV_MSG("libdrm(), open device failed (check permissions) "
 		" or use ARCAN_VIDEO_DEVICE environment.\n");
 
+	if (!node->eglenv.get_proc_address)
+		node->eglenv.get_proc_address = (PFNEGLGETPROCADDRESSPROC) eglGetProcAddress;
 	map_functions(&node->eglenv, lookup, NULL);
+	map_ext_functions(&node->eglenv, lookup_call, node->eglenv.get_proc_address);
 	node->rnode = -1;
 	if (!path && fd == -1)
 		return -1;
@@ -2631,9 +2635,6 @@ static void page_flip_handler(int fd, unsigned int frame,
 	unsigned int sec, unsigned int usec, void* data)
 {
 	struct dispout* d = data;
-	if (!IS_GBM_DISPLAY(d->device)){
-		printf("in page flip\n");
-	}
 
 	d->buffer.in_flip = 0;
 
