@@ -32,13 +32,14 @@ extern jmp_buf arcanmain_recover_state;
 #include "arcan_videoint.h"
 #include "arcan_renderfun.h"
 
-#define MESA_EGL_NO_X11_HEADERS
-#include <EGL/egl.h>
-#include <EGL/eglext.h>
+#include "../EGL/egl.h"
+#include "../EGL/eglext.h"
 
 #ifdef EGL_DMA_BUF
+typedef void* GLeglImageOES;
 static PFNEGLCREATEIMAGEKHRPROC eglCreateImageKHR;
 static PFNEGLDESTROYIMAGEKHRPROC eglDestroyImageKHR;
+typedef void (EGLAPIENTRY* PFNGLEGLIMAGETARGETTEXTURE2DOESPROC)(GLenum target, GLeglImageOES image);
 static PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES;
 #endif
 
