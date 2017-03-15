@@ -38,33 +38,6 @@ if(VIDEO_PLATFORM STREQUAL "egl-gles")
 	list(APPEND VIDEO_LIBRARIES ${EGL_LIBRARIES})
 
 #
-# NVidia EGLStreams version of egl-dri, needs to be built without GBM
-#
-elseif(VIDEO_PLATFORM STREQUAL "egl-nvidia")
-	if (NOT INPUT_PLATFORM)
-		set(INPUT_PLATFORM "evdev")
-	endif()
-
-	find_package(EGL REQUIRED QUIET)
-#
-# Only want the KMS part, not the GBM
-#
-	set(IGNORE_GBM true)
-	find_package(GBMKMS REQUIRED QUIET)
-
-	set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/platform/egl-dri/video.c
-		APPEND PROPERTY COMPILE_DEFINITIONS EGL_STREAMS)
-
-	list(APPEND INCLUDE_DIRS ${GBMKMS_INCLUDE_DIRS})
-	list(APPEND VIDEO_LIBRARIES ${EGL_LIBRARIES} ${GBMKMS_LIBRARIES})
-	set(LWA_PLATFORM_STR "stub")
-	set(VIDEO_PLATFORM_SOURCES
-		${PLATFORM_ROOT}/egl-nvidia/video.c
-		${PLATFORM_ROOT}/egl-nvidia/egl.c
-		${PLATFORM_ROOT}/egl-nvidia/kms.c
-		${PLATFORM_ROOT}/egl-nvidia/utils.c
-	)
-#
 # will hopefully become the default on BSDs/linux
 #
 elseif(VIDEO_PLATFORM STREQUAL "egl-dri")
