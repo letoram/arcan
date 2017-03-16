@@ -223,6 +223,11 @@ static const int ARCAN_SHMPAGE_START_SZ = PP_SHMPAGE_MAXSZ;
 static const int ARCAN_SHMPAGE_START_SZ = PP_SHMPAGE_STARTSZ;
 #endif
 
+#ifndef PP_SHMPAGE_ALIGN
+#define PP_SHMPAGE_ALIGN 64
+#endif
+static const int ARCAN_SHMPAGE_ALIGN = PP_SHMPAGE_ALIGN;
+
 /*
  * Two primary transfer operation types, from the perspective of the
  * main arcan application (i.e. normally frameservers feed INPUT but
@@ -451,10 +456,15 @@ void arcan_shmif_setevqs(struct arcan_shmif_page*,
  * should be considered invalid during/after a call to shmif_resize and the
  * function will internally rebuild these structures.
  *
- * This function is not thread-safe -- While a resize is pending, none of the
- * other operations (drop, signal, en/de- queue) are safe.  If events are
+ * THIS FUNCTION IS NOT THREAD SAFE -- While a resize is pending, none of the
+ * other operations (drop, signal, en/de- queue) are safe. If events are
  * managed on a separate thread, these should be treated in mutual exclusion
- * with the size operation.
+ * with the size operation. This means that the pointers in the shmcont may be
+ * relocated, so keeping around aliases are dangerous. This can be tricky in a
+ * common case with multiple producer threads (a, v) and another event thread
+ * that reacts with a resize upon an event.
+ *
+ * arcan_shmif_lock/unlock can be used as a convenience non-reentrant mutex.
  *
  * There are four possible outcomes here:
  * a. resize fails, dimensions exceed hard-coded limits.
