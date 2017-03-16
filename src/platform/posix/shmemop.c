@@ -1,10 +1,10 @@
 #include <stdint.h>
 #include "arcan_shmif.h"
 
-static inline void* align64(uint8_t* inptr)
+static inline void* alignv(uint8_t* inptr, size_t align_sz)
 {
-	return (void*) (((uintptr_t)inptr % 64 != 0) ?
-		inptr + 64 - ((uintptr_t) inptr % 64) : inptr);
+	return (void*) (((uintptr_t)inptr % align_sz != 0) ?
+		inptr + align_sz - ((uintptr_t) inptr % align_sz) : inptr);
 }
 
 uintptr_t arcan_shmif_mapav(
@@ -18,16 +18,18 @@ uintptr_t arcan_shmif_mapav(
 		wbuf += addr->apad;
 
 	for (size_t i = 0; i < abufc; i++){
-			wbuf = align64(wbuf);
+			wbuf = alignv(wbuf, ARCAN_SHMPAGE_ALIGN);
 			if (abuf)
 				abuf[i] = abuf_sz ? (shmif_asample*) wbuf : NULL;
 			wbuf += abuf_sz;
 	}
 
 	for (size_t i = 0; i < vbufc; i++){
-			wbuf = align64(wbuf);
-			if (vbuf)
-				vbuf[i] = vbuf_sz ? (shmif_pixel*) align64(wbuf) : NULL;
+			wbuf = alignv(wbuf, ARCAN_SHMPAGE_ALIGN);
+			if (vbuf){
+				vbuf[i] = vbuf_sz ?
+					(shmif_pixel*) alignv(wbuf, ARCAN_SHMPAGE_ALIGN) : NULL;
+			}
 			wbuf += vbuf_sz;
 		}
 
