@@ -20,7 +20,7 @@
 #include "xsymconv.h"
 
 static struct {
-	const char* pass;
+	const char* pass[2];
 	pthread_mutex_t outsync;
 	rfbScreenInfoPtr server;
 	struct arcan_shmif_cont shmcont;
@@ -88,14 +88,9 @@ static enum rfbNewClientAction server_newclient(rfbClientPtr cl)
 static void vnc_serv_deltaupd()
 {
 /*
- * FIXME: subdivide image into a dynamic set of tiles,
- * maintain a backbuffer, compare each tile center (and shared corners)
- * for changes, if change detected, scan outwards until match found.
- * Mark each rect-region as modified.
- *
- * One possible representation for this is to use a display-sized 1byte grid,
- * where you scan like a regular image, and the value represents the next
- * coordinate distance. It's quicker but perhaps not as effective ..
+ * We're missing a delta- function here, the reason it isn't implemented
+ * yet is that we want the feature to be part of the server- shmif side
+ * as it can be made more efficiently there.
  */
 	rfbMarkRectAsModified(vncctx.server, 0, 0,
 		vncctx.shmcont.addr->w, vncctx.shmcont.addr->h);
@@ -115,7 +110,6 @@ void vnc_serv_run(struct arg_arr* args, struct arcan_shmif_cont cont)
 	const char* tmpstr;
 
 	arg_lookup(args, "name", 0, &name);
-	arg_lookup(args, "pass", 0, &vncctx.pass);
 
 	if (arg_lookup(args, "port", 0, &tmpstr)){
 		port = strtoul(tmpstr, NULL, 10);
@@ -134,9 +128,11 @@ void vnc_serv_run(struct arg_arr* args, struct arcan_shmif_cont cont)
  * permitFileTransfer, maxFd, authPasswd, ...
  */
 
-/*
- * FIXME: missing password auth
- */
+	if (arg_lookup(args, "pass", 0, &vncctx.pass[0]) && vncctx.pass[0][0] != '\0'){
+		vncctx.server->passwordCheck = rfbCheckPasswordByList;
+		vncctx.server->authPasswdData = (void*)vncctx.pass;
+	}
+
 	vncctx.server->frameBuffer = (char*) vncctx.shmcont.vidp;
 	vncctx.server->desktopName = name;
 	vncctx.server->alwaysShared = TRUE;
@@ -144,6 +140,40 @@ void vnc_serv_run(struct arg_arr* args, struct arcan_shmif_cont cont)
 	vncctx.server->newClientHook = server_newclient;
 	vncctx.server->kbdAddEvent = server_key;
 	vncctx.server->port = port;
+
+	if (SHMIF_RGBA(0xff, 0x00, 0x00, 0x00) == 0xff000000)
+		vncctx.server->serverFormat.redShift = 24;
+	else if (SHMIF_RGBA(0xff, 0x00, 0x00, 0x00) == 0x00ff0000)
+		vncctx.server->serverFormat.redShift = 16;
+	else if (SHMIF_RGBA(0xff, 0x00, 0x00, 0x00) == 0x0000ff00)
+		vncctx.server->serverFormat.redShift = 8;
+	else
+		vncctx.server->serverFormat.redShift = 0;
+
+	if (SHMIF_RGBA(0x00, 0xff, 0x00, 0x00) == 0xff000000)
+		vncctx.server->serverFormat.greenShift = 24;
+	else if (SHMIF_RGBA(0x00, 0xff, 0x00, 0x00) == 0x00ff0000)
+		vncctx.server->serverFormat.greenShift = 16;
+	else if (SHMIF_RGBA(0x00, 0xff, 0x00, 0x00) == 0x0000ff00)
+		vncctx.server->serverFormat.greenShift = 8;
+	else
+		vncctx.server->serverFormat.greenShift = 0;
+
+	if (SHMIF_RGBA(0x00, 0x00, 0xff, 0x00) == 0xff000000)
+		vncctx.server->serverFormat.blueShift = 24;
+	else if (SHMIF_RGBA(0x00, 0x00, 0xff, 0x00) == 0x00ff0000)
+		vncctx.server->serverFormat.blueShift = 16;
+	else if (SHMIF_RGBA(0x00, 0x00, 0xff, 0x00) == 0x0000ff00)
+		vncctx.server->serverFormat.blueShift = 8;
+	else
+		vncctx.server->serverFormat.blueShift = 0;
+
+	vncctx.server->serverFormat.redShift =
+		SHMIF_RGBA(0xff, 0x00, 0x00, 0x00) == 0xff000000 ? 24 : 0;
+	vncctx.server->serverFormat.greenShift =
+		SHMIF_RGBA(0x00, 0xff, 0x00, 0x00) == 0x00ff0000 ? 16 : 8;
+	vncctx.server->serverFormat.blueShift =
+		SHMIF_RGBA(0x00, 0x00, 0xff, 0x00) == 0x0000ff00 ? 8 : 16;
 
 /*
  * other hooks;

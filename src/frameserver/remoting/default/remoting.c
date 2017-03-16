@@ -1,11 +1,13 @@
 /*
  * Arcan Remoting reference Frameserver
- * Copyright 2014-2016, Björn Ståhl
+ * Copyright 2014-2017, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  * Depends: libvncserver (GPLv2)
+ * Description: This is a 'quick and dirty' default implementation of a
+ * remoting client, it's not very feature complete and only covers the RFB
+ * protocol for now.
  */
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -36,8 +38,6 @@
  * missing:
  *  cut and paste (GotXCutTextProc), sending receiving files
  *  connecting through incoming descriptor
- *  partial updates
- *  polling / multi
  *  labels
  *  xvb -> force reset (extension)
  *  ExtendedDesktopSize -> respond to displayhints with SetDesktopSize
@@ -69,12 +69,7 @@ static rfbBool client_resize(struct _rfbClient* client)
 	int neww = client->width;
 	int newh = client->height;
 
-	vncctx.depth = client->format.bitsPerPixel / 8;
-	client->updateRect.x = 0;
-	client->updateRect.y = 0;
-	client->updateRect.w = neww;
-	client->updateRect.h = newh;
-	client->format.bitsPerPixel = 32;
+	vncctx.shmcont.hints = SHMIF_RHINT_SUBREGION | SHMIF_RHINT_IGNORE_ALPHA;
 
 	if (!arcan_shmif_resize(&vncctx.shmcont, neww, newh)){
 		LOG("client requested a resize outside "
@@ -84,28 +79,60 @@ static rfbBool client_resize(struct _rfbClient* client)
 	else
 		LOG("client resize to %d, %d\n", neww, newh);
 
+	vncctx.depth = client->format.bitsPerPixel / 8;
+	client->updateRect.x = 0;
+	client->updateRect.y = 0;
+	client->updateRect.w = neww;
+	client->updateRect.h = newh;
+	client->format.bitsPerPixel = 32;
+
+/* figure out "native" channel position and shift mask */
+	if (SHMIF_RGBA(0xff, 0x00, 0x00, 0x00) == 0xff000000)
+		client->format.redShift = 24;
+	else if (SHMIF_RGBA(0xff, 0x00, 0x00, 0x00) == 0x00ff0000)
+		client->format.redShift = 16;
+	else if (SHMIF_RGBA(0xff, 0x00, 0x00, 0x00) == 0x0000ff00)
+		client->format.redShift = 8;
+	else
+		client->format.redShift = 0;
+
+	if (SHMIF_RGBA(0x00, 0xff, 0x00, 0x00) == 0xff000000)
+		client->format.greenShift = 24;
+	else if (SHMIF_RGBA(0x00, 0xff, 0x00, 0x00) == 0x00ff0000)
+		client->format.greenShift = 16;
+	else if (SHMIF_RGBA(0x00, 0xff, 0x00, 0x00) == 0x0000ff00)
+		client->format.greenShift = 8;
+	else
+		client->format.greenShift = 0;
+
+	if (SHMIF_RGBA(0x00, 0x00, 0xff, 0x00) == 0xff000000)
+		client->format.blueShift = 24;
+	else if (SHMIF_RGBA(0x00, 0x00, 0xff, 0x00) == 0x00ff0000)
+		client->format.blueShift = 16;
+	else if (SHMIF_RGBA(0x00, 0x00, 0xff, 0x00) == 0x0000ff00)
+		client->format.blueShift = 8;
+	else
+		client->format.blueShift = 0;
+
 	client->frameBuffer = (uint8_t*) vncctx.shmcont.vidp;
 	SetFormatAndEncodings(client);
 	return true;
 }
 
-/*
- * updates server->client is checked by maintaining a statistical selection;
- * corners, center-point, sides at an arbitrary tile size.
- * (so for a 640x480 screen at a tile-size of 16, we use ~10800 samples
- * vs. 307200 per frame. If this is too little to detect relevant changes,
- * we dynamically select tiles for higher samplerates based on previous
- * validations. ( less than 1% of the samples needed for say, 25Hz)
- * x--x--x
- * |  |  |
- * x--x--x
- * |  |  |
- * x--x--x
- *
- */
-
 static void client_update(rfbClient* client, int x, int y, int w, int h)
 {
+	if (!vncctx.dirty || x < vncctx.shmcont.dirty.x1)
+		vncctx.shmcont.dirty.x1 = x;
+
+	if (!vncctx.dirty || y < vncctx.shmcont.dirty.y1)
+		vncctx.shmcont.dirty.y1 = y;
+
+	if (!vncctx.dirty || (x+w) > vncctx.shmcont.dirty.x2)
+		vncctx.shmcont.dirty.x2 = x + w;
+
+	if (!vncctx.dirty || (y+h) > vncctx.shmcont.dirty.y2)
+		vncctx.shmcont.dirty.y2 = y + h;
+
 	vncctx.dirty = true;
 }
 
@@ -337,19 +364,13 @@ int afsrv_remoting(struct arcan_shmif_cont* con, struct arg_arr* args)
 	short pollev = POLLIN | poller;
 
 	while (true){
-/* no obvious way to make vncclient set full alpha channel without modifying
- * source code, and that means pulling it in and patching in the build system,
- * so for now, take the suboptimal "flip alpha on" */
 		if (vncctx.dirty){
 			vncctx.dirty = false;
-			shmif_pixel* avp = vncctx.shmcont.vidp;
-			size_t ntc = vncctx.shmcont.pitch * vncctx.shmcont.h;
-
-			if (vncctx.forcealpha)
-			for (size_t i = 0; i < ntc; i++)
-				avp[i] |= RGBA(0x00, 0x00, 0x00, 0xff);
-
 			arcan_shmif_signal(&vncctx.shmcont, SHMIF_SIGVID);
+			vncctx.shmcont.dirty.x1 = 0;
+			vncctx.shmcont.dirty.y1 = 0;
+			vncctx.shmcont.dirty.x2 = vncctx.shmcont.w;
+			vncctx.shmcont.dirty.y2 = vncctx.shmcont.h;
 		}
 
 		struct pollfd fds[2] = {
