@@ -1032,8 +1032,8 @@ bool arcan_frameserver_resize(struct arcan_frameserver* s)
 	struct arcan_shmif_page* shmpage = s->shm.ptr;
 
 /* local copy so we don't fall victim for TOCTU */
-	size_t w = shmpage->w;
-	size_t h = shmpage->h;
+	size_t w = atomic_load(&shmpage->w);
+	size_t h = atomic_load(&shmpage->h);
 	size_t abufsz = atomic_load(&shmpage->abufsize);
 	size_t vbufc = atomic_load(&shmpage->vpending);
 	size_t abufc = atomic_load(&shmpage->apending);
@@ -1155,7 +1155,7 @@ bool arcan_frameserver_resize(struct arcan_frameserver* s)
 			goto fail;
 	}
 
-/* remap pointers, paddng need to be updated first as shmif_mapav
+/* remap pointers, padding need to be updated first as shmif_mapav
  * uses that as a side-channel and we don't want to change the interface */
 	atomic_store(&shmpage->apad, apad_sz);
 	shmpage->segment_size = arcan_shmif_mapav(shmpage,
@@ -1178,9 +1178,15 @@ bool arcan_frameserver_resize(struct arcan_frameserver* s)
 	}
 	goto done;
 
+/* couldn't resize, restore contents. this shouldn't be "needed" but is a
+ * protection for clients that erroneously use .addr->** rather than the
+ * context-local copy */
 fail:
-	shmpage->vpending = 0;
-	shmpage->apending = 0;
+	atomic_store(&shmpage->abufsize, abufsz);
+	atomic_store(&shmpage->apending, s->abuf_cnt);
+	atomic_store(&shmpage->vpending, s->vbuf_cnt);
+	atomic_store(&shmpage->w, s->desc.width);
+	atomic_store(&shmpage->h, s->desc.height);
 	shmpage->resized = -1;
 
 done:

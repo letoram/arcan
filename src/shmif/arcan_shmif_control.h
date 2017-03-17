@@ -199,11 +199,9 @@ static inline void SHMIF_RGBA_DECOMP(shmif_pixel val,
 #endif
 
 /*
- * This is calculated through MAXW*MAXH*sizeof(shmif_pixel) + sizeof
- * struct + sizeof event*PP_QUEUE_SIZE*2 + PP_AUDIOBUF_SZ with alignment.
- * (too bad constexpr isn't part of C11)
- * It is primarily of concern when OVERCOMMIT build is used where it isn't
- * possible to resize dynamically.
+ * This is to constrain a single segment from consuming too much memory,
+ * though it also plays a big role in OVERCOMMIT builds where single segment
+ * size is fixed and will always consume this amount.
  */
 #ifndef PP_SHMPAGE_MAXSZ
 #define PP_SHMPAGE_MAXSZ 48294400
