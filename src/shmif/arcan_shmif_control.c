@@ -1577,6 +1577,12 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 		return false;
 	}
 
+/* resized failed, old settings still in effect */
+	if (arg->addr->resized == -1){
+		arg->addr->resized = 0;
+		return false;
+	}
+
 /*
  * the guard struct, if present, has another thread running that may trigger
  * the dms. BUT now the dms may be relocated so we must lock guard and update
