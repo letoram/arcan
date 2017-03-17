@@ -449,6 +449,35 @@ void arcan_tui_erase_current_line(struct tui_context*, bool protect);
 void arcan_tui_erase_chars(struct tui_context*, size_t n);
 
 /*
+ * Create an additional screen up to a fixed limit of 32.
+ * Returns the new screen index (0 <= n <= 31) or -1 if all screen
+ * slots have been allocated.
+ */
+int arcan_tui_alloc_screen(struct tui_context*);
+
+/*
+ * Switch active screen to [ind], return status indicates success/fail.
+ * This will impose a render/block+synch operation.
+ * Index [0] will always refer to the default screen.
+ * If no screen exists at the specified [ind], the call will fail.
+ */
+bool arcan_tui_switch_screen(struct tui_context*, unsigned ind);
+
+/*
+ * Delete the screen specified by [ind], return status indicates success/fail.
+ * Index [0] is guaranteed to always exist and cannot be deleted.
+ * If the screen that is to be deleted is the same as the screen that is
+ * active, index [0] will be activated first.
+ * If no screen exists at the specified [ind], the call will fail.
+ */
+bool arcan_tui_delete_screen(struct tui_context*, unsigned ind);
+
+/*
+ * Get the screen allocation bitmap
+ */
+uint32_t arcan_tui_screens(struct tui_context*);
+
+/*
  * insert a new UCS4* (tsm uses an internal format with a hash-table for
  * metadata, but UCS4 is acceptable right now) at the current cursor position
  * with the specified attribute mask.
