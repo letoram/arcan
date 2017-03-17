@@ -7,9 +7,9 @@ against maliciously crafted input sources.
 
 The primary purpose is to provide an arcan- specific replacement for
 xloadimage, and to serve as a testing ground for advanced image output such as
-full HDR- paths. The secondary purpose is to create the image- loading worker
+full HDR- paths. The secondary purpose is to craft the image- loading worker
 pool to be secure and efficient enough to act as a building block for other
-components in the arcan umbrella.
+components within the Arcan umbrella.
 
 For more detailed instructions, see the manpage.
 
@@ -38,7 +38,7 @@ Status
 	 - [x] Seccmp- style syscall filtering
  - [x] Playlist
    - [x] Read/load-ahead
- - [ ] Drag/zoom/pan controls
+ - [ ] Drag/zoom/pan input
  - [ ] sRGB <-> Linear controls
  - [ ] Full-chain FP16 format support
  - [ ] GPU acceleration toggle

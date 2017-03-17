@@ -8,6 +8,10 @@ else()
 	find_package(arcan_shmif REQUIRED)
 endif()
 
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+	add_definitions(-DDEBUG)
+endif()
+
 SET(LIBRARIES
 	m
 	${ARCAN_SHMIF_LIBRARY}

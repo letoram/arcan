@@ -8,18 +8,22 @@
 #include <arcan_shmif_tuisym.h>
 #include <unistd.h>
 #include <getopt.h>
+#include <stdarg.h>
 #include "imgload.h"
 
+static void progress_report(float progress);
+#define STBIR_PROGRESS_REPORT(val) progress_report(val)
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
 #include "stb_image_resize.h"
 
 int image_size_limit_mb = 64;
 bool disable_syscall_flt = false;
+static struct draw_state* last_ds;
 
 struct draw_state {
 	shmif_pixel pad_col;
 	struct arcan_shmif_cont* con;
-	bool source_size, loop, stdin_pending, loaded;
+	bool stdin_pending, loaded;
 	struct img_state* playlist;
 	struct img_state* cur;
 	int pl_ind, pl_size;
@@ -29,7 +33,20 @@ struct draw_state {
 	int step_timer, init_timer;
 	int out_w, out_h;
 	bool non_interactive;
+	bool aspect_ratio;
+	bool source_size;
+	bool loop;
 };
+
+void debug_message(const char* msg, ...)
+{
+#ifdef DEBUG
+	va_list args;
+	va_start( args, msg );
+		vfprintf(stderr,  msg, args );
+	va_end( args);
+#endif
+}
 
 /*
  * caller guarantee:
@@ -49,8 +66,8 @@ static void blit(struct arcan_shmif_cont* dst,
 	}
 
 /* scale to fit or something more complex? */
-	int dw = dst->w ?
-		(dst->w > dst->w ? dst->w : dst->w) : dst->w;
+	int dw = state->out_w ?
+		(dst->w > state->out_h ? state->out_h : dst->h) : dst->w;
 	int dh = state->out_h ?
 		(dst->h > state->out_h ? state->out_h : dst->h) : dst->h;
 
@@ -62,11 +79,23 @@ static void blit(struct arcan_shmif_cont* dst,
 	int pad_h = dst->h - dh;
 	int src_stride = src->w * 4;
 
+/* early out, no transform */
+	if (dst->w == src->w && dst->h == src->h && !src->x && !src->y){
+		debug_message("full-blit[%d*%d]\n", (int)dst->w, (int)dst->h);
+		for (size_t row = 0; row < dst->h; row++)
+			memcpy(&dst->vidp[row*dst->pitch],
+				&src->buf[row*src_stride], src_stride);
+		goto done;
+	}
+
 /* stretch-blit for zoom in/out or pan */
+	debug_message("blit[%d+%d*%d+%d] -> [%d,%d]:pad(%d,%d)\n",
+		(int)src->w, (int)src->x, (int)src->h, (int)src->y,
+		(int)dw, (int)dh, pad_w, pad_h);
 	stbir_resize_uint8(
 		&src->buf[src->y * src_stride + src->x],
 		src->w - src->x, src->h - src->y,
-		src_stride, dst->vidb, dw, dh, dst->stride, 4
+		src_stride, dst->vidb, dw, dh, dst->stride, sizeof(shmif_pixel)
 	);
 
 /* pad with color */
@@ -83,7 +112,8 @@ static void blit(struct arcan_shmif_cont* dst,
 			*vidp++ = state->pad_col;
 	}
 
-	arcan_shmif_signal(dst, SHMIF_SIGVID);
+done:
+	arcan_shmif_signal(dst, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
 }
 
 static void set_ident(struct arcan_shmif_cont* out,
@@ -97,7 +127,25 @@ static void set_ident(struct arcan_shmif_cont* out,
 		str += len - lim - 1;
 
 	snprintf((char*)ev.ext.message.data, lim, "%s%s", prefix, str);
+	debug_message("new ident: %s%s\n", prefix, str);
 	arcan_shmif_enqueue(out, &ev);
+}
+
+static void progress_report(float state)
+{
+	static float last_state;
+	if (state < 1.0){
+		char msgbuf[16];
+		if (state - last_state > 0.1){
+			last_state = state;
+			snprintf(msgbuf, 16, "resizing(%.2d%%) ", (int)(state*100));
+			set_ident(last_ds->con, msgbuf, last_ds->cur->fname);
+		}
+	}
+	else {
+		last_state = 0.0;
+		set_ident(last_ds->con, "", last_ds->cur->fname);
+	}
 }
 
 /* sweep O(n) slots for pending loads as we want to reel them in immediately
@@ -108,10 +156,10 @@ static void poll_pl(struct draw_state* ds, int step)
 	{
 		if (ds->playlist[i].out && ds->playlist[i].proc){
 			if (imgload_poll(&ds->playlist[i])){
-				ds->wnd_pending--;
 				if (ds->playlist[i].is_stdin)
 					ds->stdin_pending = false;
 				ds->playlist[i].life = 0;
+				ds->wnd_pending--;
 			}
 /* tick the timeout timer (if one has been set) and kill the worker if it
  * takes too long */
@@ -145,6 +193,8 @@ static bool try_dispatch(struct draw_state* ds, int ind)
 				ds->stdin_pending = true;
 			ds->wnd_pending++;
 			ds->playlist[ind].life = ds->timeout;
+			debug_message("queued %s[%d], pending: %d\n",
+				ds->playlist[ind].fname,  ind, ds->wnd_pending);
 			return true;
 		}
 	}
@@ -169,12 +219,14 @@ static struct img_state* set_playlist_pos(struct draw_state* ds, int i)
 
 /* FIXME: we should drop 'n' outdated slots */
 
-/* fill up new worker slots */
+/* fill up new worker slots, but ONLY if the current index has been loaded
+ * to prevent the queue from stalling the next desired item */
 	ds->pl_ind = i;
 	do {
 		try_dispatch(ds, i);
 		i = (i + 1) % ds->pl_size;
-	} while (ds->wnd_pending < ds->wnd_lim && i != ds->pl_ind);
+	} while (ds->playlist[ds->pl_ind].out &&
+		ds->wnd_pending < ds->wnd_lim && i != ds->pl_ind);
 
 	return &ds->playlist[ds->pl_ind];
 }
@@ -201,13 +253,26 @@ static void set_active(struct draw_state* ds)
 
 	ds->loaded = true;
 	if (ds->cur->broken){
-		set_ident(ds->con, "failed: ", ds->cur->fname);
+		set_ident(ds->con, (char*)ds->cur->msg, ds->cur->fname);
 	}
+/* Source buffer determines window size. A caveat with this approach is
+ * that though the maxw/maxh may fit, there might not be enough permitted
+ * memory service side. In those cases, /2 the dimensions until a resize
+ * is accepted */
 	else {
 		if (ds->source_size){
-			arcan_shmif_resize(ds->con, ds->cur->out->w, ds->cur->out->h);
-			set_ident(ds->con, "", ds->cur->fname);
+			size_t dw = ds->cur->out->w;
+			size_t dh = ds->cur->out->h;
+
+			while (dh && dh && !arcan_shmif_resize(ds->con, dw, dh)){
+				debug_message("resize to %zu*%zu rejected, trying %zu*%zu\n",
+					dw, dh, dw >> 1, dh >> 1);
+				dw >>= 1;
+				dh >>= 1;
+			}
+			debug_message("resized window to %zu*%zu\n", dw, dh);
 		}
+		set_ident(ds->con, "", ds->cur->fname);
 		blit(ds->con, (struct img_data*) ds->cur->out, ds);
 	}
 }
@@ -215,14 +280,12 @@ static void set_active(struct draw_state* ds)
 static bool step_next(struct draw_state* state)
 {
 	state->cur = set_playlist_pos(state, state->pl_ind + 1);
-	set_active(state);
 	return true;
 }
 
 static bool step_prev(struct draw_state* state)
 {
 	state->cur = set_playlist_pos(state, state->pl_ind - 1);
-	set_active(state);
 	return true;
 }
 
@@ -259,12 +322,19 @@ static bool pl_toggle(struct draw_state* state)
 	return false;
 }
 
+static bool aspect_ratio(struct draw_state* state)
+{
+	state->aspect_ratio = !state->aspect_ratio;
+	return true;
+}
+
 static const struct lent labels[] = {
-	{"PREV", "Step to previous entry in playlist", "LEFT", TUIK_LEFT, step_prev},
-	{"NEXT", "Step to next entry in playlist", "RIGHT", TUIK_RIGHT, step_next},
+	{"PREV", "Step to previous entry in playlist", "LEFT", TUIK_H, step_prev},
+	{"NEXT", "Step to next entry in playlist", "RIGHT", TUIK_L, step_next},
 	{"PL_TOGGLE", "Toggle playlist stepping on/off", "SPACE", TUIK_SPACE, pl_toggle},
 	{"SOURCE_SIZE", "Resize the window to fit image size", "Z", TUIK_F5, source_size},
 	{"SERVER_SIZE", "Use the recommended connection size", "M", TUIK_F6, server_size},
+	{"ASPECT_TOGGLE", "Maintain aspect ratio", "A", TUIK_TAB, aspect_ratio},
 	{"ZOOM_IN", "Increment the scale factor (integer)", "+", TUIK_F1, zoom_in},
 	{"ZOOM_OUT", "Decrement the scale factor (integer)", "-", TUIK_F2, zoom_out},
 	{NULL, NULL}
@@ -328,10 +398,9 @@ static bool dispatch_event(
 		switch(ev->tgt.kind){
 		case TARGET_COMMAND_DISPLAYHINT:
 			if (ev->tgt.ioevs[0].iv && ev->tgt.ioevs[1].iv){
-				ds->out_w = ev->tgt.ioevs[0].iv;
-				ds->out_h = ev->tgt.ioevs[1].iv;
 				if (!ds->source_size)
-					return arcan_shmif_resize(con, ds->out_w, ds->out_h);
+					return arcan_shmif_resize(con,
+						ev->tgt.ioevs[0].iv, ev->tgt.ioevs[1].iv);
 				}
 		break;
 		case TARGET_COMMAND_STEPFRAME:
@@ -365,6 +434,7 @@ static int show_use(const char* msg)
 "-r num\t--readahead   \tSet the upper playlist preload limit\n"
 "-t sec\t--step-time   \tSet playlist step time (~seconds)\n"
 "-T sec\t--timeout     \tSet worker kill- timeout\n"
+"-a    \t--aspect      \tMaintain aspect ratio when scaling\n"
 #ifdef ENABLE_SECCOMP
 "-X    \t--no-sysflt   \tDisable seccomp- syscall filtering\n"
 #endif
@@ -405,7 +475,8 @@ static const struct option longopts[] = {
 	{"readahead", required_argument, NULL, 'r'},
 	{"no-sysflt", no_argument, NULL, 'X'},
 	{"server-size", no_argument, NULL, 'S'},
-	{"display", no_argument, NULL, 'd'}
+	{"display", no_argument, NULL, 'd'},
+	{"aspect", no_argument, NULL, 'a'}
 };
 
 int main(int argc, char** argv)
@@ -421,17 +492,19 @@ int main(int argc, char** argv)
 		.pad_col = SHMIF_RGBA(32, 32, 32, 255),
 		.playlist = playlist
 	};
+	last_ds = &ds;
 
 	int ch;
 	while((ch = getopt_long(argc, argv,
 		"ht:bd:T:m:r:XS", longopts, NULL)) >= 0)
 		switch(ch){
 		case 'h' : return show_use(""); break;
-		case 't' : ds.init_timer = strtoul(optarg, NULL, 10); break;
+		case 't' : ds.init_timer = strtoul(optarg, NULL, 10) * 5; break;
 		case 'b' : ds.non_interactive = true; break;
 		case 'd' : setenv("ARCAN_CONNPATH", optarg, 10); break;
-		case 'T' : ds.timeout = strtoul(optarg, NULL, 10); break;
+		case 'T' : ds.timeout = strtoul(optarg, NULL, 10) * 5; break;
 		case 'l' : ds.loop = true; break;
+		case 'a' : ds.aspect_ratio = true; break;
 		case 'm' : image_size_limit_mb = strtoul(optarg, NULL, 10); break;
 		case 'r' : ds.wnd_lim = strtoul(optarg, NULL, 10); break;
 		case 'X' : disable_syscall_flt = true; break;
@@ -458,24 +531,24 @@ int main(int argc, char** argv)
 
 /* connect while the workers are busy */
 	struct arcan_shmif_cont cont = arcan_shmif_open(
-		SEGID_APPLICATION, SHMIF_ACQUIRE_FATALFAIL, NULL);
+		SEGID_MEDIA, SHMIF_ACQUIRE_FATALFAIL, NULL);
 	ds.con = &cont;
 	blit(&cont, NULL, &ds);
 
-/* 1s. timer for automatic stepping and load/poll */
+/* 200ms timer for automatic stepping and load/poll, if this value is
+ * changed, do trhe same for the multipliers to init_timer and timeout */
 	arcan_shmif_enqueue(&cont, &(struct arcan_event){
 		.ext.kind = ARCAN_EVENT(CLOCKREQ),
-		.ext.clock.rate = 25,
+		.ext.clock.rate = 5,
 		.ext.clock.id = 0xfeed
 	});
 
-	ds.out_w = cont.w;
-	ds.out_h = cont.h;
 	while (ds.cur && cont.addr){
 		if (!ds.loaded){
 			if (imgload_poll(ds.cur)){
-				ds.wnd_pending--;
 				ds.loaded = true;
+				debug_message("loaded: %s, pending: %d/%d\n",
+					ds.cur->fname, (int)ds.wnd_pending, (int)ds.wnd_lim);
 				set_active(&ds);
 			}
 			else
