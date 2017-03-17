@@ -23,7 +23,7 @@
 #include <sys/wait.h>
 #include <errno.h>
 #include <fcntl.h>
-
+#include <ctype.h>
 #ifdef ENABLE_SECCOMP
 	#include <seccomp.h>
 #endif
@@ -138,6 +138,7 @@ bool imgload_spawn(struct arcan_shmif_cont* con, struct img_state* tgt)
  * the repacking is done to make sure that the channel-order matches the shmif
  * format as we don't have controls for specifying that in stbi- right now
  */
+
 	int dw, dh;
 	shmif_pixel* buf = (shmif_pixel*)
 		stbi_load_from_file(inf, &dw, &dh, NULL, sizeof(shmif_pixel));
@@ -155,8 +156,14 @@ bool imgload_spawn(struct arcan_shmif_cont* con, struct img_state* tgt)
 		tgt->out->w = dw;
 		tgt->out->h = dh;
 		tgt->out->buf_sz = dw * dh * 4;
+		tgt->out->msg[0] = '\0';
 		tgt->out->ready = true;
 		exit(EXIT_SUCCESS);
+	}
+	else{
+		size_t i = 0;
+		for (; i < sizeof(tgt->out->msg) && stbi__g_failure_reason[i]; i++)
+			tgt->out->msg[i] = stbi__g_failure_reason[i];
 	}
 	exit(EXIT_FAILURE);
 }
@@ -172,6 +179,7 @@ bool imgload_poll(struct img_state* tgt)
 /* failed */
 	if (rc == -1){
 		tgt->broken = true;
+		snprintf((char*)tgt->msg, sizeof(tgt->msg), "(%s)", strerror(errno));
 		return true;
 	}
 
@@ -185,12 +193,28 @@ bool imgload_poll(struct img_state* tgt)
 		munmap((void*)tgt->out, tgt->buf_lim);
 		tgt->proc = 0;
 		tgt->out = NULL;
+		snprintf((char*)tgt->msg, sizeof(tgt->msg), "(overflow)");
 		tgt->broken = true;
 		return true;
 	}
 
-	printf("poll to broken: %d\n", sc);
-	tgt->broken = sc != EXIT_SUCCESS;
+/* copy+filter error message on failure */
+	if (sc != EXIT_SUCCESS){
+		size_t i = 0, j = 0;
+		uint8_t ch;
+		while (j < sizeof(tgt->msg)-1 &&
+			i < sizeof(tgt->out->msg) && (ch = tgt->out->msg[i])){
+			if (isprint(ch))
+				tgt->msg[j++] = ch;
+			i++;
+		}
+		debug_message("%s failed, (reason: %s)\n", tgt->fname, tgt->msg);
+		tgt->broken = true;
+		munmap((void*)tgt->out, tgt->buf_lim);
+		tgt->out = NULL;
+		tgt->buf_lim = 0;
+		return true;
+	}
 	tgt->proc = 0;
 	tgt->out->x = tgt->out->y = 0;
 
@@ -209,9 +233,11 @@ bool imgload_poll(struct img_state* tgt)
 	if (0 == munmap((void*) end, ntr))
 		tgt->buf_lim -= ntr;
 
+	debug_message("%s loaded (total: %zu, max: %zu, remove: %zu\n",
+		tgt->fname, out_sz, tgt->buf_lim, ntr);
+
 	return true;
 }
-
 /*
  * reset the contents of imgload so that it can be used for a new imgload_spawn
  * only run after imgload_poll has returned true once.
@@ -219,6 +245,7 @@ bool imgload_poll(struct img_state* tgt)
 void imgload_reset(struct img_state* tgt)
 {
 	if (tgt->proc){
+		debug_message("reset on living source, killing: %s\n", tgt->fname);
 		kill(tgt->proc, SIGKILL);
 		while (-1 == waitpid(tgt->proc, NULL, 0) && errno == EINTR){}
 		tgt->proc = 0;
