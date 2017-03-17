@@ -64,6 +64,9 @@ struct tui_context {
 	struct tsm_screen* screen;
 	struct tsm_utf8_mach* ucsconv;
 
+	struct tsm_screen* screens[32];
+	uint32_t screen_alloc;
+
 	unsigned flags;
 	bool focus, inactive;
 	int inact_timer;
@@ -998,6 +1001,7 @@ static void update_screensize(struct tui_context* tui, bool clear)
 		if (tui->handlers.resized)
 			tui->handlers.resized(tui,
 				tui->acon.w, tui->acon.h, cols, rows, tui->handlers.tag);
+
 		tsm_screen_resize(tui->screen, cols, rows);
 	}
 
@@ -1669,6 +1673,54 @@ void arcan_tui_apply_arg(struct tui_settings* cfg,
 		if (isfinite(ppcm) && ppcm > ARCAN_SHMPAGE_DEFAULT_PPCM * 0.5)
 			cfg->ppcm = ppcm;
 	}
+}
+
+int arcan_tui_alloc_screen(struct tui_context* ctx)
+{
+	int ind = ffs(~ctx->screen_alloc);
+	if (0 == ind)
+		return -1;
+
+	if (0 != tsm_screen_new(&ctx->screens[ind], tsm_log, ctx))
+		return -1;
+
+	ctx->screen_alloc |= 1 << ind;
+	return ind;
+}
+
+bool arcan_tui_switch_screen(struct tui_context* ctx, unsigned ind)
+{
+	if (ind > 31 || !(ctx->screen_alloc & (1 << ind)))
+		return false;
+
+	if (ctx->screens[ind] == ctx->screen)
+		return true;
+
+	ctx->screen = ctx->screens[ind];
+	ctx->age = 0;
+	ctx->age = tsm_screen_draw(ctx->screen, draw_cb, ctx);
+
+	return true;
+}
+
+bool arcan_tui_delete_screen(struct tui_context* ctx, unsigned ind)
+{
+	if (ind > 31 || !(ctx->screen_alloc & (1 << ind) || ind == 0))
+		return false;
+
+	if (ctx->screen == ctx->screens[ind])
+		arcan_tui_switch_screen(ctx, 0);
+
+	ctx->screen_alloc &= ~(1 << ind);
+	tsm_screen_unref(ctx->screens[ind]);
+	ctx->screens[ind] = NULL;
+
+	return true;
+}
+
+uint32_t arcan_tui_screens(struct tui_context* ctx)
+{
+	return ctx->screen_alloc;
 }
 
 struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
