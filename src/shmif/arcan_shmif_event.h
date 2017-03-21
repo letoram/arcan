@@ -696,6 +696,7 @@ enum ARCAN_EVENT_EXTERNAL {
  * [UNIQUE]
  * Hints that indicate there is scrolling/panning contents and the estimated
  * range and position of the currently active viewport.
+ * Uses the content substructure.
  */
 	EVENT_EXTERNAL_CONTENT,
 
@@ -710,7 +711,7 @@ enum ARCAN_EVENT_EXTERNAL {
  * Specify the requested subtype of a segment, along with a descriptive UTF-8
  * string (application title or similar) and a caller- selected 128-bit UUID.
 
- * he UUID is an unmanaged identifier namespace where the caller or
+ * The UUID is an unmanaged identifier namespace where the caller or
  * surrounding system tries to avoid collsions. The ID is primarily intended
  * for recalling user-interface (not security- related) properties (window
  * dimensions, ...).
@@ -1190,7 +1191,10 @@ enum ARCAN_EVENT_EXTERNAL {
  * Used with the BCHUNKSTATE event for hinting to the server that the
  * application wants to- or is capable of- receiving or writing bchunkdata.
  * (size)      - (input == 0, estimation of upper limit or 0 if unknown)
- * (input)     - !0 if it is for input (open/read)
+ * (input)     - set to !0 to indicate that the support is for open/read,
+ * (hint)      - set to 0 to indicate that the state- support it immediate,
+ *               e.g. an open/save dialog. set to 1 to hint that the bchunk-
+ *               support indicates capability.
  * (stream)    - !0 if a streaming data store is acceptable or it needs to be
  *               seekable / mappable
  * (extensions)- 7-bit ASCII filtered to alnum with ; separation between
@@ -1200,6 +1204,7 @@ enum ARCAN_EVENT_EXTERNAL {
 	struct {
 		uint64_t size;
 		uint8_t input;
+		uint8_t hint;
 		uint8_t stream;
 		uint8_t extensions[68];
 	} bchunk;

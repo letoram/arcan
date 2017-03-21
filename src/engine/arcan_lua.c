@@ -4309,6 +4309,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		break;
 		case EVENT_EXTERNAL_BCHUNKSTATE:
 			tblstr(ctx, "kind", "bchunkstate", top);
+			tblbool(ctx, "hint", ev->ext.bchunk.hint != 0, top);
 			tblnum(ctx, "size", ev->ext.bchunk.size, top);
 			tblbool(ctx, "input", ev->ext.bchunk.input, top);
 			tblbool(ctx, "stream", ev->ext.bchunk.stream, top);
