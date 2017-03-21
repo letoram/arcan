@@ -1,16 +1,17 @@
 -- launch_decode
 -- @short: Launch a video decoding frameserver
--- @inargs: resstr, [optarg], callback
+-- @inargs: resstr, [optarg], callback(source,status)
 -- @outargs: vid, aid
 -- @longdescr: Spawn a new video decoding frameserver in a separate process
 -- and request that resstr should be opened and decoded. If *optarg* is not
 -- set to an argument string to pass to the decode frameserver, the second
--- argument to load_movie will be the callback function.
+-- argument to launch_decode will be the callback function.
+-- The possible contents of the status argument to the *callback* function
+-- are described in ref:launch_target.
 -- @note: resstr can also be device:, capture: and stream: arguments.
--- @note: for details on optarg, see the man page for arcan_frameserver_decode
+-- @note: for details on optarg, see the man page for afsrv_decode or run
+-- it without any arguments from the command-line.
 -- @group: targetcontrol
--- @cfunction: loadmovie
---- @group: targetcontrol
 -- @cfunction: loadmovie
 -- @related:
 function main()

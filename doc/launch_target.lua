@@ -110,13 +110,13 @@
 -- diag-ll, drag-diag, datafield, move, typefield, forbidden, help and
 -- vertical-datafield.
 --
--- @note: "bchunkstate" {size, input, stream, disable, wildcard, extensions} -
--- indicates that the frameserver is willing / capable of receiving (input=true)
--- or sending binary data. It also indicates size (if applicable) and if the data
--- can be processed in a streaming fashion or not. If *disable* is set, previous
--- announced bchunkstate capabilities are cancelled. If wildcard is set, the
--- frameserver do not care about type information, otherwise an extensions field
--- is provided with a ; separated list of extensions.
+-- @note: "bchunkstate" {size, input, stream, disable, wildcard, extensions, hint} -
+-- indicates that the frameserver wants to [hint=true] or is capable of [hint=false]
+-- of receiving (input=true) or sending binary data. It also indicates size (if
+-- applicable) and if the data can be processed in a streaming fashion or not.
+-- If *disable* is set, previous announced bchunkstate capabilities are cancelled.
+-- If wildcard is set, the frameserver do not care about type information, otherwise
+-- an extensions field is provided with a ; separated list of extensions.
 --
 -- @note: "registered", {kind, title} - notice that the underlying engine
 -- has completed negotiating with the frameserver.
