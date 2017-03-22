@@ -26,6 +26,11 @@ gamma/ is used for testing sub-structure negotiation for exposing display
  metadata and (optional) control/manipulation and safe-guards against
  broken table updates.
 
+ioinject/ will attempt to simulate event injection by pressing random keys.
+This requires that the running appl explicitly enables it for the specific
+connection with the target_flags call. The eventtest interactive test
+enables this through the 'eventinjection' connection point.
+
 iodump/ will print out text representations for received input events
  to standard output, working as a simple debugging tool for I/O translation
  and routing.

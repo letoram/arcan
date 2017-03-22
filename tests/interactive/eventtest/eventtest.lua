@@ -49,6 +49,17 @@ function eventtest()
 		end
 	end
 
+-- setup a connection point that allows a single event injector
+	local vid = target_alloc("eventinject",
+	function(source, status)
+		if (status.kind == "input") then
+			eventtest_input(status);
+		else
+			print("non-IO event on eventinject connection point:", status.kind);
+		end
+	end);
+	target_flags(vid, TARGET_ALLOWINPUT);
+
 -- enable analog events
 	inputanalog_toggle(1);
 end
