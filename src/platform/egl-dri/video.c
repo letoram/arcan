@@ -22,7 +22,7 @@
  *  a. create an agp- function that synchs raw / s_raw for all objects
  *     (readback into buffers etc).
  *
- *  b. reset hadle passing failure state for all frameservers,
+ *  b. reset handle passing failure state for all frameservers,
  *     send a MIGRATE event with descriptor, indicating that those who use
  *     a certain render node need to switch / rebuild. This would work
  *     recursively for arcan_lwa.
@@ -43,7 +43,10 @@
  *     buffer mechanisms mismatch)
  *
  *  f. Some hook when new agp shaders are built so that we can compile/
- *     assign for each GPU.
+ *     assign for each GPU or handle the odd case where a shader fails on
+ *     one GPU and works on another.
+ *
+ *  g. fix all functions that reference card[0] and use card[n]
  *
  *  The number of failure modes for this one is quite high, especially
  *  when OOM on one card but not the other. Still, pretty cool feature ;-)
@@ -56,6 +59,9 @@
  * 6. "always" headless mode of operation build-time for processing
  *    jobs and other situations where wer don't need the full monty. Would
  *    best be done with [1]
+ *
+ * 7. native cursor to dedicated plane mapping, extend map_display calls
+ *    to handle mulitple layers.
  */
 
 /*
@@ -468,6 +474,33 @@ static void disable_display(struct dispout*, bool);
  * blit, will take the mapped objects and schedule buffer transfer
  */
 static void update_display(struct dispout*);
+
+static void release_card(size_t i)
+{
+	if (0 >= nodes[i].fd)
+		return;
+
+	if (nodes[i].context != EGL_NO_CONTEXT){
+		nodes[i].eglenv.destroy_context(nodes[i].display, nodes[i].context);
+		nodes[i].context = EGL_NO_CONTEXT;
+	}
+
+	if (IS_GBM_DISPLAY(&nodes[i])){
+		gbm_device_destroy(nodes[i].gbm);
+	}
+	else {
+	}
+
+	if (nodes[i].master)
+		drmDropMaster(nodes[i].fd);
+	close(nodes[i].fd);
+
+	nodes[i].fd = -1;
+	if (nodes[i].display != EGL_NO_DISPLAY){
+		nodes[i].eglenv.terminate(nodes[i].display);
+		nodes[i].display = EGL_NO_DISPLAY;
+	}
+}
 
 /* naive approach, unless env is set, just scan /dev/dri/card* and
  * grab the first one present that also results in a working gbm
@@ -2446,8 +2479,13 @@ bool platform_video_init(uint16_t w, uint16_t h,
 
 	int n = 0, fd;
 	char* device = NULL;
+	bool forced_node = getenv("ARCAN_RENDER_NODE") != NULL;
+
 	while(1){
 retry_card:
+		if (!forced_node)
+			unsetenv("ARCAN_RENDER_NODE");
+
 		grab_card(n++, &device, &fd);
 		if (!device && -1 == fd)
 			goto cleanup;
@@ -2460,6 +2498,7 @@ retry_card:
  * database as the reserved 'arcan' appl_kv store, and use that to specify
  * device, method and lib */
 		int status = -1;
+
 		if (getenv("ARCAN_VIDEO_EGL_DEVICE"))
 			status = setup_node_egl(&nodes[0], NULL, fd);
 		else
@@ -2530,8 +2569,11 @@ retry_card:
 			"ARCAN_VIDEO_CONNECTOR specified but couldn't configure display.\n" :
 			"setup_kms(), card found but no working/connected display.\n");
 
-		if (!getenv("ARCAN_VIDEO_DEVICE"))
+/* try grabbing card again at the next index */
+		if (!getenv("ARCAN_VIDEO_DEVICE")){
+			release_card(0);
 			goto retry_card;
+		}
 
 		dump_connectors(stdout, &nodes[0], true);
 		goto cleanup;
@@ -2791,25 +2833,8 @@ void platform_video_shutdown()
 		flush_display_events(17);
 	} while (egl_dri.destroy_pending && rc-- > 0);
 
-	for (size_t i = 0; i < sizeof(nodes)/sizeof(nodes[0]); i++){
-		if (0 >= nodes[i].fd)
-			continue;
-
-		nodes[i].eglenv.destroy_context(nodes[i].display, nodes[i].context);
-
-		if (IS_GBM_DISPLAY(&nodes[i])){
-			gbm_device_destroy(nodes[i].gbm);
-		}
-		else {
-		}
-
-		if (nodes[0].master)
-			drmDropMaster(nodes[0].fd);
-		close(nodes[i].fd);
-
-		nodes[i].fd = -1;
-		nodes[i].eglenv.terminate(nodes[i].display);
-	}
+	for (size_t i = 0; i < sizeof(nodes)/sizeof(nodes[0]); i++)
+		release_card(i);
 }
 
 void platform_video_setsynch(const char* arg)
