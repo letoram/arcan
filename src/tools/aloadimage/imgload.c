@@ -6,7 +6,8 @@
  * Bad assumption with a 4 bpp fixed output format (needs revision for
  * float,...) and needs a wider range of sandbox- format supports. If/ when
  * good enough, this can be re-worked into main arcan to replace the _img
- * functions in the main pipeline.
+ * functions in the main pipeline (though split decode/setup further to
+ * account for OSX-like anti-fork() bs).
  */
 #include <arcan_shmif.h>
 #include <unistd.h>
@@ -32,7 +33,7 @@
 #include "stb_image.h"
 #include "imgload.h"
 
-bool imgload_spawn(struct arcan_shmif_cont* con, struct img_state* tgt)
+bool imgload_spawn(struct arcan_shmif_cont* con, struct img_state* tgt, int p)
 {
 /* pre-alloc the upper limit for the return- image, we'll munmap when
  * finished to look less memory hungry */
@@ -57,9 +58,13 @@ bool imgload_spawn(struct arcan_shmif_cont* con, struct img_state* tgt)
 		return true;
 
 /* start with the most risk- prone, original fopen */
-	FILE* inf = (tgt->is_stdin? stdin : fopen(tgt->fname, "r"));
-	if (!inf)
-		exit(EXIT_FAILURE);
+	FILE* inf;
+	if (-1 != tgt->fd)
+		inf = fdopen(tgt->fd, "r");
+	else if (tgt->is_stdin)
+		inf = stdin;
+	else
+		inf = fopen(tgt->fname, "r");
 
 /* close the parent pipes in the safest way possible, if that fails, accept UB
  * and kill the streams (other option would be replacing with memstreams) */
@@ -79,6 +84,9 @@ bool imgload_spawn(struct arcan_shmif_cont* con, struct img_state* tgt)
 		fclose(stdout);
 	}
 
+	if (p)
+		nice(p);
+
 /* drop shm-con so that it's not around anymore - owning the parser won't grant
  * us direct access to the shm- connection and with the syscalls eliminated, it
  * can't be re-opened */
@@ -89,11 +97,27 @@ bool imgload_spawn(struct arcan_shmif_cont* con, struct img_state* tgt)
 		memset(con, '\0', sizeof(struct arcan_shmif_cont));
 	}
 
+/* There is a possiblity of other descriptors being leaked here, e.g. fonts or
+ * other playlist items that were retrieved from shmif as cloexec does not
+ * apply to fork. The non-portable option would be to dup into 1 and then
+ * closefrom(2). The 'correct' option would be to track and manually close.
+ *
+ * Now, we accept the risk of the contents of other descriptors being
+ * accessible from the sandbox, though the more serious configurations (seccmp)
+ * should block out most means to do anything as long as a descriptor defined
+ * playlist item doesn't come from a file.
+ *
+ * It is also possible to leak some information as a lot of the memory pages of
+ * our parent, env, copy of stack etc. Hence why the sandbox should not have any
+ * write channel (though cache- timing invalidation style side channel
+ * communication is also a possibility).
+ */
+
 /* someone might've needed to be careless and run as root. Now we have the file
  * so that shouldn't matter. If these call fail, they fail - it's added safety,
  * not a guarantee. */
-	setgid(65534);
-	setuid(65534);
+	if (-1 == setgid(65534)){}
+	if (-1 == setuid(65534)){}
 
 /* set some limits that will make things worse even if we don't have seccmp */
 	setrlimit(RLIMIT_CORE, &(struct rlimit){});
@@ -138,7 +162,6 @@ bool imgload_spawn(struct arcan_shmif_cont* con, struct img_state* tgt)
  * the repacking is done to make sure that the channel-order matches the shmif
  * format as we don't have controls for specifying that in stbi- right now
  */
-
 	int dw, dh;
 	shmif_pixel* buf = (shmif_pixel*)
 		stbi_load_from_file(inf, &dw, &dh, NULL, sizeof(shmif_pixel));
