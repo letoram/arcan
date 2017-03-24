@@ -23,6 +23,7 @@ struct img_data {
 struct img_state {
 /* SETUP_SET */
 	const char* fname;
+	int fd;
 	bool is_stdin;
 	int life;
 
@@ -40,10 +41,12 @@ void debug_message(const char*, ...);
  * fork() into an img- loader process that builds/populates img_state.
  * only keep one [is_stdin=true] pending at a time (else they fight eachother)
  *
+ * the [prio_d] can be used to set the priority of the new process
+ *
  * returns false if we couldn't spawn a new process
  * (out of memory, file descriptors or pids)
  */
-bool imgload_spawn(struct arcan_shmif_cont* con, struct img_state* tgt);
+bool imgload_spawn(struct arcan_shmif_cont*, struct img_state*, int prio_d);
 
 /*
  * Check if [tgt] has finished working, set timeout to wait/kill if the task

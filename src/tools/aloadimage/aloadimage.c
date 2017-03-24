@@ -12,31 +12,48 @@
 #include "imgload.h"
 
 static void progress_report(float progress);
+#define AR_EPSILON 0.001
 #define STBIR_PROGRESS_REPORT(val) progress_report(val)
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
 #include "stb_image_resize.h"
 
+/*
+ * shared global state with imgloader in liu of a config- call for now
+ */
 int image_size_limit_mb = 64;
 bool disable_syscall_flt = false;
-static struct draw_state* last_ds;
 
+/*
+ * all the context needed for one window, could theoretically be used
+ * for multiple windows with different playlists etc. but not much point
+ */
 struct draw_state {
-	shmif_pixel pad_col;
 	struct arcan_shmif_cont* con;
-	bool stdin_pending, loaded;
-	struct img_state* playlist;
-	struct img_state* cur;
-	int pl_ind, pl_size;
-	int timeout;
-	int wnd_lim, wnd_pending, wnd_act;
-	int wnd_prev, wnd_next;
-	int step_timer, init_timer;
+
+/* blitting controls */
+	shmif_pixel pad_col;
 	int out_w, out_h;
-	bool non_interactive;
 	bool aspect_ratio;
 	bool source_size;
+
+/* loading/ resource management state */
+	int wnd_lim, wnd_fwd, wnd_pending, wnd_act;
+	int wnd_prev, wnd_next;
+	int timeout;
+	bool stdin_pending, loaded;
+
+/* playlist related state */
+	struct img_state* playlist;
+	int pl_ind, pl_size;
+	int step_timer, init_timer;
+	bool step_block;
+
+/* user- navigation related states */
+	bool block_input;
 	bool loop;
 };
+
+static struct draw_state* last_ds;
 
 void debug_message(const char* msg, ...)
 {
@@ -65,11 +82,41 @@ static void blit(struct arcan_shmif_cont* dst,
 		return;
 	}
 
+/* resize to match? _resize call to current output size is safe */
+	if (state->source_size){
+		size_t dw = src->w;
+		size_t dh = src->h;
+
+		while (dh && dh && !arcan_shmif_resize(dst, dw, dh)){
+			debug_message("resize to %zu*%zu rejected, trying %zu*%zu\n",
+			dw, dh, dw >> 1, dh >> 1);
+			dw >>= 1;
+			dh >>= 1;
+		}
+	}
+/* safe: shmif_resize on <= 0 and <= 0 would fail without changing dst->w,h */
+	int dw = dst->w;
+	int dh = dst->h;
+
 /* scale to fit or something more complex? */
-	int dw = state->out_w ?
-		(dst->w > state->out_h ? state->out_h : dst->h) : dst->w;
-	int dh = state->out_h ?
-		(dst->h > state->out_h ? state->out_h : dst->h) : dst->h;
+	float ar = (float)src->w / (float)src->h;
+	if (state->out_w && state->out_h &&
+		state->out_w <= dw && state->out_h <= dh){
+		dw = state->out_w;
+		dh = state->out_h;
+	}
+
+/* reduce to fit aspect? */
+	float new_ar = (float)dw / (float)dh;
+	if (state->aspect_ratio && fabs(new_ar - ar) > AR_EPSILON){
+/* bias against the dominant axis */
+		debug_message("blit[adjust %f] %d*%d -> ", ar, dw, dh);
+		float wr = src->w / dst->w;
+		float hr = src->h / dst->h;
+		dw = hr > wr ? dst->h * ar : dst->w;
+		dh = hr < wr ? dst->w / ar : dst->h;
+		debug_message("%d*%d\n", dw, dh);
+	}
 
 /* sanity check */
 	if (src->buf_sz != src->w * src->h * 4)
@@ -80,7 +127,8 @@ static void blit(struct arcan_shmif_cont* dst,
 	int src_stride = src->w * 4;
 
 /* early out, no transform */
-	if (dst->w == src->w && dst->h == src->h && !src->x && !src->y){
+	if (dw == dst->w && dh == dst->h &&
+		src->w == dst->w && src->h == dst->h){
 		debug_message("full-blit[%d*%d]\n", (int)dst->w, (int)dst->h);
 		for (size_t row = 0; row < dst->h; row++)
 			memcpy(&dst->vidp[row*dst->pitch],
@@ -88,7 +136,7 @@ static void blit(struct arcan_shmif_cont* dst,
 		goto done;
 	}
 
-/* stretch-blit for zoom in/out or pan */
+/* FIXME: stretch-blit/transform for zoom in/out or pan */
 	debug_message("blit[%d+%d*%d+%d] -> [%d,%d]:pad(%d,%d)\n",
 		(int)src->w, (int)src->x, (int)src->h, (int)src->y,
 		(int)dw, (int)dh, pad_w, pad_h);
@@ -102,7 +150,7 @@ static void blit(struct arcan_shmif_cont* dst,
 	for (int y = 0; y < dh; y++){
 		shmif_pixel* vidp = dst->vidp + y * dst->pitch;
 		for (int x = dw; x < dst->w; x++)
-			vidp[x] = 0;
+			vidp[x] = state->pad_col;
 	}
 
 /* pad last few rows */
@@ -131,6 +179,10 @@ static void set_ident(struct arcan_shmif_cont* out,
 	arcan_shmif_enqueue(out, &ev);
 }
 
+/*
+ * last_ds state is needed as this is mapped into the STB- code that
+ * provides no other interface, just callback with value, no ctx.
+ */
 static void progress_report(float state)
 {
 	static float last_state;
@@ -138,97 +190,221 @@ static void progress_report(float state)
 		char msgbuf[16];
 		if (state - last_state > 0.1){
 			last_state = state;
-			snprintf(msgbuf, 16, "resizing(%.2d%%) ", (int)(state*100));
-			set_ident(last_ds->con, msgbuf, last_ds->cur->fname);
+			snprintf(msgbuf, 16, "scale(%.2d%%) ", (int)(state*100));
+			set_ident(last_ds->con, msgbuf, last_ds->playlist[last_ds->pl_ind].fname);
 		}
 	}
-	else {
+	else{
+		set_ident(last_ds->con, "", last_ds->playlist[last_ds->pl_ind].fname);
 		last_state = 0.0;
-		set_ident(last_ds->con, "", last_ds->cur->fname);
 	}
+}
+
+static bool update_item(struct draw_state* ds, struct img_state* i, int step)
+{
+	if (imgload_poll(i)){
+		if (i->is_stdin)
+			ds->stdin_pending = false;
+
+		i->life = 0;
+		ds->wnd_pending--;
+
+/* OK poll result is just that it's finished, not that it succeeded */
+		if (!i->broken){
+			debug_message("worker (%s) finished\n", i->fname);
+			ds->wnd_act++;
+			return true;
+		}
+	}
+	else if (step && i->life > 0){
+		i->life--;
+		if (!i->life){
+			debug_message("worker (%s) timed out\n", i->fname);
+			imgload_reset(i);
+			ds->wnd_pending--;
+			i->life = -1;
+		}
+	}
+	return false;
 }
 
 /* sweep O(n) slots for pending loads as we want to reel them in immediately
  * to keep the active number of zombies down and shrink our own memory alloc */
-static void poll_pl(struct draw_state* ds, int step)
+static bool poll_pl(struct draw_state* ds, int step)
 {
-	for (size_t i = 0; i < ds->pl_size && ds->wnd_pending; i++)
-	{
-		if (ds->playlist[i].out && ds->playlist[i].proc){
-			if (imgload_poll(&ds->playlist[i])){
-				if (ds->playlist[i].is_stdin)
-					ds->stdin_pending = false;
-				ds->playlist[i].life = 0;
-				ds->wnd_pending--;
-			}
-/* tick the timeout timer (if one has been set) and kill the worker if it
- * takes too long */
-			else if (step && ds->playlist[i].life > 0){
-				ds->playlist[i].life--;
-				if (!ds->playlist[i].life && !ds->playlist[i].out->ready){
-					fprintf(stderr, "worker (%s) timed out\n", ds->playlist[i].fname);
-					imgload_reset(&ds->playlist[i]);
-					ds->playlist[i].life = -1;
-				}
-			}
-		}
+	bool update = false;
+	for (size_t i = 0; i < ds->pl_size && ds->wnd_pending; i++){
+		struct img_state* is = &ds->playlist[i];
+		if (is->proc)
+			update |= update_item(ds, is, step);
 	}
+
+/* special treatment for the currently selected index, have a retry timer
+ * on failure, update ident with current load status */
+	struct img_state* cur = &ds->playlist[ds->pl_ind];
+	if (!ds->loaded && (cur->broken || (cur->out && cur->out->ready))){
+		set_ident(ds->con, (char*) cur->msg, cur->fname);
+		ds->loaded = update = true;
+	}
+	else {
+/* progress ident is updated in callback, scheduling is done in set_pl_pos */
+	}
+
+	return update;
 }
 
-/* spawn a new worker if:
- *  1. one isn't active on the slot
- *  2. slot isn't stdin or slot is stdin but there's no stdin- working
- *  3. slot hasn't timed out before
- */
-static bool try_dispatch(struct draw_state* ds, int ind)
+/* used to spawn a new worker process */
+static bool try_dispatch(struct draw_state* ds, int ind, int prio_d)
 {
-	if ((!ds->playlist[ind].out && ds->playlist[ind].life >= 0) ||
-		(!ds->playlist[ind].out->ready && ds->playlist[ind].proc)){
+/* already loaded and acknowledged? */
+	if (ds->playlist[ind].out && ds->playlist[ind].life >= 0)
+		return false;
 
+/* or stdin- slot one is already being loaded from standard input */
 		if (ds->playlist[ind].is_stdin && ds->stdin_pending)
 		return false;
 
-		if (imgload_spawn(ds->con, &ds->playlist[ind])){
-			if (ds->playlist[ind].is_stdin)
-				ds->stdin_pending = true;
-			ds->wnd_pending++;
-			ds->playlist[ind].life = ds->timeout;
+/* NOTE: we don't care if the entry has previously been marked as broken,
+ * the specified input may have appeared or permissions might have changed */
+
+/* all done, spawn */
+	if (imgload_spawn(ds->con, &ds->playlist[ind], prio_d)){
+		if (ds->playlist[ind].is_stdin)
+			ds->stdin_pending = true;
+		ds->wnd_pending++;
+		ds->playlist[ind].life = ds->timeout;
 			debug_message("queued %s[%d], pending: %d\n",
-				ds->playlist[ind].fname,  ind, ds->wnd_pending);
-			return true;
-		}
+			ds->playlist[ind].fname,  ind, ds->wnd_pending);
+		return true;
 	}
+	else
+		debug_message("imgload_spawn failed on [%d]\n", ind);
 
 	return false;
 }
 
-static struct img_state* set_playlist_pos(struct draw_state* ds, int i)
+static void reset_slot(struct draw_state* ds, int ind)
 {
-	poll_pl(ds, 0);
+	if (ind >= 0 && ind < ds->pl_size && ds->playlist[ind].out){
+		if (ds->playlist[ind].proc)
+			ds->wnd_pending--;
+		else if (!ds->playlist[ind].broken)
+			ds->wnd_act--;
+		imgload_reset(&ds->playlist[ind]);
+		ds->playlist[ind].life = -1;
+	}
+}
+
+static void clean_queue(struct draw_state* ds)
+{
+/* scan horizon to determine the number of entries to drop, assumptions from
+ * caller is that we're in a state where entries actually need to be dropped */
+	size_t fwd = ds->pl_ind;
+	size_t ntr = ds->wnd_fwd;
+
+/* A special case to consider: when we step backwards in playlist and exceeds
+ * the window, that'll cause the window to grow outside bounds.  This is
+ * accepted (for now) on the motivation that the forward direction is more
+ * important and is the expected use-case. To change this, simply take
+ * step- direction into account. */
+	while (ntr){
+		if (!ds->playlist[fwd].out)
+			if (!ds->playlist[fwd].broken)
+				break;
+		ntr--;
+		fwd = fwd + 1;
+		if (fwd == ds->pl_size){
+			if (ds->loop)
+				fwd = 0;
+			else {
+				ntr = 0;
+			}
+		}
+	}
+	debug_message("clean_queue(%zu)\n", ntr);
+
+	if (!ntr)
+		return;
+
+/* find oldest item */
+	size_t back = ds->pl_ind > 0 ? ds->pl_ind - 1 : ds->pl_size - 1;
+	while (ds->playlist[back].out || ds->playlist[back].broken)
+		back = back > 0 ? back - 1 : ds->pl_size - 1;
+
+/* and start the purge */
+	while (ntr){
+		if (ds->playlist[back].out){
+			debug_message("unloading tail@%zu (%s), left: %zu\n",
+				back, ds->playlist[back].fname, ntr);
+			reset_slot(ds, back);
+			ntr--;
+		}
+		back = (back + 1) % ds->pl_size;
+	}
+}
+
+static bool set_playlist_pos(struct draw_state* ds, int new_i)
+{
+	size_t pos;
 
 /* range-check, if we don't loop, return to start */
-	if (i < 0)
-		i = ds->pl_size-1;
+	if (new_i < 0)
+		new_i = ds->pl_size-1;
 
-	if (i >= ds->pl_size){
-		if (ds->loop)
-			i = 0;
-		else
-			return NULL;
+	if (new_i >= ds->pl_size){
+		if (ds->loop){
+			debug_message("looping");
+			new_i = 0;
+		}
+		else{
+			arcan_shmif_drop(ds->con);
+			return false;
+		}
 	}
 
-/* FIXME: we should drop 'n' outdated slots */
+/* if we land outside the previous window, full-reset everything */
+	if (ds->wnd_lim && abs(new_i - ds->pl_ind) > ds->wnd_lim){
+		for (size_t i = 0; i < ds->pl_size; i++)
+			reset_slot(ds, i);
+		ds->wnd_act = 0;
+		ds->wnd_pending = 0;
+	}
 
-/* fill up new worker slots, but ONLY if the current index has been loaded
- * to prevent the queue from stalling the next desired item */
-	ds->pl_ind = i;
-	do {
-		try_dispatch(ds, i);
-		i = (i + 1) % ds->pl_size;
-	} while (ds->playlist[ds->pl_ind].out &&
-		ds->wnd_pending < ds->wnd_lim && i != ds->pl_ind);
+/* first dispatch the currently requested slot at normal priority */
+	ds->pl_ind = new_i;
+	struct img_state* cur = &ds->playlist[ds->pl_ind];
+	if (!cur->out){
+		debug_message("single load (%s)\n", cur->fname);
+		try_dispatch(ds, ds->pl_ind, 0);
+	}
 
-	return &ds->playlist[ds->pl_ind];
+/* if we overshoot or are at capacity, start flushing out */
+	if (ds->wnd_lim && ds->pl_size > ds->wnd_lim &&
+		ds->wnd_pending + ds->wnd_act >= ds->wnd_lim){
+		clean_queue(ds);
+	}
+
+/* and then fill up with lesser priority, note that there is a slight degrade
+ * if we step from the currently loaded into one that is pending as the
+ * priority for that one, though the effect should be minimal enough to not
+ * bothering with renicing */
+	pos = (new_i + 1) % ds->pl_size;
+	while (pos != new_i &&
+		(ds->wnd_act + ds->wnd_pending < ds->wnd_lim || !ds->wnd_lim)){
+		debug_message("attempt to queue (%s)\n", ds->playlist[pos].fname);
+		try_dispatch(ds, pos, 1);
+		pos = (pos + 1) % ds->pl_size;
+	}
+
+	debug_message("position set to (%d, act: %d/%d, pending: %d)\n",
+		ds->pl_ind, ds->wnd_act, ds->wnd_lim, ds->wnd_pending);
+
+	for (size_t i = 0; i < ds->pl_size; i++)
+		debug_message("%c ", i == ds->pl_ind ? '*' :
+			(ds->playlist[i].out ? 'o' : 'x'));
+	debug_message("\n");
+
+	return true;
 }
 
 struct lent {
@@ -239,53 +415,15 @@ struct lent {
 	bool(*ptr)(struct draw_state*);
 };
 
-static void set_active(struct draw_state* ds)
-{
-	if (!ds || !ds->cur){
-		set_ident(ds->con, "missing playlist item", "");
-		return;
-	}
-
-	if (ds->cur->proc){
-		ds->loaded = false;
-		return;
-	}
-
-	ds->loaded = true;
-	if (ds->cur->broken){
-		set_ident(ds->con, (char*)ds->cur->msg, ds->cur->fname);
-	}
-/* Source buffer determines window size. A caveat with this approach is
- * that though the maxw/maxh may fit, there might not be enough permitted
- * memory service side. In those cases, /2 the dimensions until a resize
- * is accepted */
-	else {
-		if (ds->source_size){
-			size_t dw = ds->cur->out->w;
-			size_t dh = ds->cur->out->h;
-
-			while (dh && dh && !arcan_shmif_resize(ds->con, dw, dh)){
-				debug_message("resize to %zu*%zu rejected, trying %zu*%zu\n",
-					dw, dh, dw >> 1, dh >> 1);
-				dw >>= 1;
-				dh >>= 1;
-			}
-			debug_message("resized window to %zu*%zu\n", dw, dh);
-		}
-		set_ident(ds->con, "", ds->cur->fname);
-		blit(ds->con, (struct img_data*) ds->cur->out, ds);
-	}
-}
-
 static bool step_next(struct draw_state* state)
 {
-	state->cur = set_playlist_pos(state, state->pl_ind + 1);
+	set_playlist_pos(state, state->pl_ind + 1);
 	return true;
 }
 
 static bool step_prev(struct draw_state* state)
 {
-	state->cur = set_playlist_pos(state, state->pl_ind - 1);
+	set_playlist_pos(state, state->pl_ind - 1);
 	return true;
 }
 
@@ -307,18 +445,9 @@ static bool server_size(struct draw_state* state)
 		return false;
 }
 
-static bool zoom_out(struct draw_state* state)
-{
-	return true;
-}
-
-static bool zoom_in(struct draw_state* state)
-{
-	return true;
-}
-
 static bool pl_toggle(struct draw_state* state)
 {
+	state->step_block = !state->step_block;
 	return false;
 }
 
@@ -329,14 +458,16 @@ static bool aspect_ratio(struct draw_state* state)
 }
 
 static const struct lent labels[] = {
-	{"PREV", "Step to previous entry in playlist", "LEFT", TUIK_H, step_prev},
-	{"NEXT", "Step to next entry in playlist", "RIGHT", TUIK_L, step_next},
+	{"PREV", "Step to previous entry in playlist", "H", TUIK_H, step_prev},
+	{"NEXT", "Step to next entry in playlist", "L", TUIK_L, step_next},
 	{"PL_TOGGLE", "Toggle playlist stepping on/off", "SPACE", TUIK_SPACE, pl_toggle},
-	{"SOURCE_SIZE", "Resize the window to fit image size", "Z", TUIK_F5, source_size},
-	{"SERVER_SIZE", "Use the recommended connection size", "M", TUIK_F6, server_size},
-	{"ASPECT_TOGGLE", "Maintain aspect ratio", "A", TUIK_TAB, aspect_ratio},
-	{"ZOOM_IN", "Increment the scale factor (integer)", "+", TUIK_F1, zoom_in},
-	{"ZOOM_OUT", "Decrement the scale factor (integer)", "-", TUIK_F2, zoom_out},
+	{"SOURCE_SIZE", "Resize the window to fit image size", "F5", TUIK_F5, source_size},
+	{"SERVER_SIZE", "Use the recommended connection size", "F6", TUIK_F6, server_size},
+	{"ASPECT_TOGGLE", "Maintain aspect ratio", "TAB", TUIK_TAB, aspect_ratio},
+/*
+ * "ZOOM_IN", "Increment the scale factor (integer)", "F1", TUIK_F1, zoom_in},
+	{"ZOOM_OUT", "Decrement the scale factor (integer)", "F2", TUIK_F2, zoom_out},
+ */
 	{NULL, NULL}
 };
 
@@ -370,7 +501,7 @@ static bool dispatch_event(
 	struct arcan_shmif_cont* con, struct arcan_event* ev, struct draw_state* ds)
 {
 	if (ev->category == EVENT_IO){
-		if (ds->non_interactive)
+		if (ds->block_input)
 			return false;
 
 /* drag/zoom/pan/... */
@@ -382,35 +513,46 @@ static bool dispatch_event(
 				return false;
 
 			const struct lent* lent = find_label(ev->io.label);
-			if (lent)
-				return lent->ptr(ds);
+			if (lent){
+				if (lent->ptr(ds)){
+					debug_message("dirty from [digital] input\n");
+					return true;
+				}
+			}
 		}
 		else if (ev->io.datatype == EVENT_IDATATYPE_TRANSLATED){
 			if (!ev->io.input.translated.active)
 				return false;
 			const struct lent* lent = ev->io.label[0] ?
 				find_label(ev->io.label) : find_sym(ev->io.input.translated.keysym);
-			if (lent)
-				return lent->ptr(ds);
+			if (lent && lent->ptr(ds)){
+				debug_message("dirty from [translated] input\n");
+				return true;
+			}
 		}
 	}
 	else if (ev->category == EVENT_TARGET)
 		switch(ev->tgt.kind){
 		case TARGET_COMMAND_DISPLAYHINT:
-			if (ev->tgt.ioevs[0].iv && ev->tgt.ioevs[1].iv){
-				if (!ds->source_size)
-					return arcan_shmif_resize(con,
-						ev->tgt.ioevs[0].iv, ev->tgt.ioevs[1].iv);
+			if (ev->tgt.ioevs[0].iv && ev->tgt.ioevs[1].iv &&
+				(ev->tgt.ioevs[0].iv != con->w || ev->tgt.ioevs[1].iv != con->h)){
+				if (!ds->source_size && arcan_shmif_resize(
+					con, ev->tgt.ioevs[0].iv, ev->tgt.ioevs[1].iv)){
+						debug_message("server requested [%d*%d] vs. current [%d*%d]\n",
+							ev->tgt.ioevs[0].iv, ev->tgt.ioevs[1].iv, con->w, con->h);
+						return true;
 				}
+			}
 		break;
 		case TARGET_COMMAND_STEPFRAME:
 			if (ev->tgt.ioevs[1].iv == 0xfeed)
 				poll_pl(ds, 1);
 
-			if (ds->step_timer > 0){
+			if (ds->step_timer > 0 && !ds->step_block){
 				if (ds->step_timer == 0){
 					ds->step_timer = ds->init_timer;
-					ds->cur = set_playlist_pos(ds, ds->pl_ind + 1);
+					set_playlist_pos(ds, ds->pl_ind + 1);
+					return true;
 				}
 			}
 		break;
@@ -427,19 +569,22 @@ static bool dispatch_event(
 static int show_use(const char* msg)
 {
 	printf("Usage: aloadimage [options] file1 .. filen\n"
-"-h    \t--help        \tthis text\n"
-"-l    \t--loop        \tStep back to file1 after reaching filen in playlist\n"
-"-m num\t--limit-mem   \tSet loader process memory limit to [num] MB\n"
-"-b    \t--block-input \tIgnore keyboard and mouse input\n"
-"-r num\t--readahead   \tSet the upper playlist preload limit\n"
-"-t sec\t--step-time   \tSet playlist step time (~seconds)\n"
-"-T sec\t--timeout     \tSet worker kill- timeout\n"
+"Basic Use:\n"
+"-h    \t--help        \tThis text\n"
 "-a    \t--aspect      \tMaintain aspect ratio when scaling\n"
+"-S    \t--server-size \tScale to fit server- suggested window size\n"
+"-l    \t--loop        \tStep back to [file1] after reaching [filen] in playlist\n"
+"-t sec\t--step-time   \tSet playlist step time (~seconds)\n"
+"-b    \t--block-input \tIgnore keyboard and mouse input\n"
+"-d str\t--display     \tSet/override the display server connection path\n"
+"Tuning:\n"
+"-m num\t--limit-mem   \tSet loader process memory limit to [num] MB\n"
+"-r num\t--readahead   \tSet the playlist window queue size\n"
+"-T sec\t--timeout     \tSet unresponsive worker kill- timeout\n"
 #ifdef ENABLE_SECCOMP
 "-X    \t--no-sysflt   \tDisable seccomp- syscall filtering\n"
 #endif
-"-S    \t--server-size \tScale to fit server- suggested window size\n"
-"-d str\t--display     \tSet/override the display server connection path\n");
+	);
 	return EXIT_FAILURE;
 }
 
@@ -468,6 +613,7 @@ static void expose_labels(struct arcan_shmif_cont* con)
 static const struct option longopts[] = {
 	{"help", no_argument, NULL, 'h'},
 	{"loop", no_argument, NULL, 'l'},
+	{"interactive", no_argument, NULL, 'i'},
 	{"step-time", required_argument, NULL, 't'},
 	{"block-input", no_argument, NULL, 'b'},
 	{"timeout", required_argument, NULL, 'T'},
@@ -476,7 +622,7 @@ static const struct option longopts[] = {
 	{"no-sysflt", no_argument, NULL, 'X'},
 	{"server-size", no_argument, NULL, 'S'},
 	{"display", no_argument, NULL, 'd'},
-	{"aspect", no_argument, NULL, 'a'}
+	{"aspect", no_argument, NULL, 'a'},
 };
 
 int main(int argc, char** argv)
@@ -495,15 +641,19 @@ int main(int argc, char** argv)
 	last_ds = &ds;
 
 	int ch;
+	bool interactive = false;
+
 	while((ch = getopt_long(argc, argv,
-		"ht:bd:T:m:r:XS", longopts, NULL)) >= 0)
+		"ihlt:bd:T:m:r:XSd:a", longopts, NULL)) >= 0)
 		switch(ch){
 		case 'h' : return show_use(""); break;
 		case 't' : ds.init_timer = strtoul(optarg, NULL, 10) * 5; break;
-		case 'b' : ds.non_interactive = true; break;
+		case 'b' : ds.block_input = true; break;
 		case 'd' : setenv("ARCAN_CONNPATH", optarg, 10); break;
 		case 'T' : ds.timeout = strtoul(optarg, NULL, 10) * 5; break;
 		case 'l' : ds.loop = true; break;
+		case 'f' : ds.wnd_fwd = strtoul(optarg, NULL, 10); break;
+		case 'i' : /* interactive = true; */ break;
 		case 'a' : ds.aspect_ratio = true; break;
 		case 'm' : image_size_limit_mb = strtoul(optarg, NULL, 10); break;
 		case 'r' : ds.wnd_lim = strtoul(optarg, NULL, 10); break;
@@ -518,22 +668,47 @@ int main(int argc, char** argv)
 /* parse opts and update ds accordingly */
 	for (int i = optind; i < argc; i++){
 		playlist[ds.pl_size] = (struct img_state){
+			.fd = -1,
 			.fname = argv[i],
 			.is_stdin = strcmp(argv[i], "-") == 0
 		};
 		ds.pl_size++;
 	}
-	if (ds.pl_size == 0)
+
+/* sanity- clamp */
+	if (ds.wnd_lim)
+		ds.wnd_fwd = ds.wnd_lim > 2 ? ds.wnd_lim - 2 : 2;
+
+	if (ds.pl_size == 0 && !interactive)
 		return show_use("no images found");
 
-/* dispatch workers */
-	ds.cur = set_playlist_pos(&ds, 0);
+/* FIXME:
+ *  on interactive, burn a playlist slot for whatever action the UI may
+ *  perform, and if there's nothing else in the playlist, pick a special loop
+ *  that only reacts on paste and bchunks. Also announce the extensions we
+ *  support.
+ */
 
-/* connect while the workers are busy */
-	struct arcan_shmif_cont cont = arcan_shmif_open(
-		SEGID_MEDIA, SHMIF_ACQUIRE_FATALFAIL, NULL);
+/*
+ * FIXME:
+ *  we are missing aarr- based arugment parsing
+ */
+	struct arcan_shmif_cont cont = arcan_shmif_open_ext(
+		SHMIF_ACQUIRE_FATALFAIL, NULL, (struct shmif_open_ext){
+			.type = SEGID_MEDIA,
+			.title = "aloadimage",
+			.ident = ""
+		}, sizeof(struct shmif_open_ext)
+	);
+
 	ds.con = &cont;
-	blit(&cont, NULL, &ds);
+
+/* signal now so that some window managers can relayout and possibly
+ * hint about new sizes, potentially saving us a reblit */
+	arcan_shmif_signal(&cont, SHMIF_SIGVID);
+
+/* dispatch workers */
+	set_playlist_pos(&ds, 0);
 
 /* 200ms timer for automatic stepping and load/poll, if this value is
  * changed, do trhe same for the multipliers to init_timer and timeout */
@@ -543,31 +718,28 @@ int main(int argc, char** argv)
 		.ext.clock.id = 0xfeed
 	});
 
-	while (ds.cur && cont.addr){
-		if (!ds.loaded){
-			if (imgload_poll(ds.cur)){
-				ds.loaded = true;
-				debug_message("loaded: %s, pending: %d/%d\n",
-					ds.cur->fname, (int)ds.wnd_pending, (int)ds.wnd_lim);
-				set_active(&ds);
-			}
-			else
-				set_ident(&cont, "loading: ", ds.cur->fname);
-		}
-		poll_pl(&ds, 0);
+	arcan_event ev;
 
-/* Block for one event, then flush out any burst. Blit on any change */
-		arcan_event ev;
-		if (!arcan_shmif_wait(&cont, &ev))
-			break;
+/* Block for one event (our timer helps with that), then flush out any
+ * burst. Blit on any change */
+	while (cont.addr && arcan_shmif_wait(&cont, &ev)){
 		bool dirty = dispatch_event(&cont, &ev, &ds);
 		while(arcan_shmif_poll(&cont, &ev) > 0)
 			dirty |= dispatch_event(&cont, &ev, &ds);
-		poll_pl(&ds, 0);
+		dirty |= poll_pl(&ds, 0);
 
-		if (dirty && ds.cur && ds.cur->out && ds.cur->out->ready){
-			blit(&cont, (struct img_data*) ds.cur->out, &ds);
+/* blit and update title as playlist position might have changed, or
+ * some other metadata we present as part of the ident/title */
+		struct img_state* cur = &ds.playlist[ds.pl_ind];
+		if (dirty && !cur->broken && cur->out && cur->out->ready){
+			set_ident(ds.con, "", cur->fname);
+			blit(&cont, (struct img_data*) cur->out, &ds);
 		}
 	}
+
+/* reset the entire playlist so leak detection is useful */
+	for (size_t i = 0; i < ds.pl_size; i++)
+		imgload_reset(&ds.playlist[i]);
+
 	return EXIT_SUCCESS;
 }
