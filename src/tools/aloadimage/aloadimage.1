@@ -1,5 +1,5 @@
 .\" groff -man -Tascii aloadimage.1
-.TH arcan 1 "January 2017" aloadimage "User manual"
+.TH arcan 1 "March 2017" aloadimage "User manual"
 .SH NAME
 aloadimage \- load images into an arcan window
 .SH SYNOPSIS
@@ -11,6 +11,13 @@ separate and sandboxed process. If multiple images are provided, a certain
 number of items will be decoded in advance.
 
 .SH OPTIONS
+.IP "\fB\-a, \-\-aspect\fR" When forced to scale in order to fit source
+image into output window, maintain source image aspect radio and pad with
+a background color.
+
+.IP "\FB-S, \-\-server\-size\fR"
+Scale source imagery to fit server- suggested content size.
+
 .IP "\fB\-l, \-\-loop\fR"
 When the playlist reaches the end, it will loop back from the beginning
 rather than shutting down.
@@ -26,40 +33,30 @@ By default, the ARCAN_CONNPATH environment is used in order to find an arcan
 instance to connect to. This argument ignores that in favor for the connpath
 argument.
 
+.IP "\fB\-p, \-\-padcol\fR \fr,g,b,a\fR"
+When running in a scalemode where source size != destination size and output
+window cannot be resized, the default behavior is to center image and pad the
+sides. This argument can override the default colors with the restriction that
+all four channels should be provided and only decimal encoding in the range
+0-255 is accepted.
+
 .IP "\fB-m, \-\-limit\-mem\fR \fIlimit(mb)\fR"
 Limit the maximum decoded memory sized allowed for eaching loading process.
-
-.IP "\fB-T, \-\-timeout\fR \fItimeout(seconds)\fR"
-Stop/kill a worker process if it fails to decode an image within a certain
-number of seconds.
 
 .IP "\FB-r, \-\-readahead\fR \fIlimit(count)\fR"
 Set the readahead limit for worker processes preloading playlist contents.
 
-.IP "\FB-S, \-\-server\-size\fR"
-Scale source imagery to fit server- suggested content size.
+.IP "\fB-T, \-\-timeout\fR \fItimeout(seconds)\fR"
+Stop/kill a worker process if it fails to decode an image within a certain
+number of seconds.
 
 .IP "\fX\-x, \-\-no\-sysflt\fR"
 aloadimage may be built with syscall filtering for worker processes. This may
 break image loading in some environments/libc implementations and may therefore
 need to be disabled.
 
-.IP "\fa, \-\-aspect\fR"
-Try to maintain the aspect ratio when an image needs to be scaled to fit the
-negotiated window output dimensions.
-
 .IP "\fB\-h, \-\-help\fR"
 Show a brief summary of commands and usage.
-
-.SH LIMITATIONS
-
-Advanced rendering configuration options are still not available. Other than
-scaled blitting, there are no filter controls, no orientation transforms.
-
-Color space selection options like sRGB are missing, as is support for
-accelerated buffer transfers via OpenGL and native HDR transfers.
-
-These will be fixed (in time).
 
 .SH ENVIRONMENT
 .TP
