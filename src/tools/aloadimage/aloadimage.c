@@ -7,6 +7,7 @@
 #include <arcan_shmif.h>
 #include <arcan_shmif_tuisym.h>
 #include <unistd.h>
+#include <inttypes.h>
 #include <getopt.h>
 #include <stdarg.h>
 #include "imgload.h"
@@ -65,11 +66,6 @@ void debug_message(const char* msg, ...)
 #endif
 }
 
-/*
- * caller guarantee:
- * h-y > 0 && w-x > 0
- * state->w <= out_w && state->h <= out_h
- */
 static void blit(struct arcan_shmif_cont* dst,
 	const struct img_data* const src, const struct draw_state* const state)
 {
@@ -136,6 +132,9 @@ static void blit(struct arcan_shmif_cont* dst,
 		goto done;
 	}
 
+	int pad_pre_x = pad_w >> 1;
+	int pad_pre_y = pad_h >> 1;
+
 /* FIXME: stretch-blit/transform for zoom in/out or pan */
 	debug_message("blit[%d+%d*%d+%d] -> [%d,%d]:pad(%d,%d)\n",
 		(int)src->w, (int)src->x, (int)src->h, (int)src->y,
@@ -143,21 +142,32 @@ static void blit(struct arcan_shmif_cont* dst,
 	stbir_resize_uint8(
 		&src->buf[src->y * src_stride + src->x],
 		src->w - src->x, src->h - src->y,
-		src_stride, dst->vidb, dw, dh, dst->stride, sizeof(shmif_pixel)
+		src_stride,
+		(uint8_t*) &dst->vidp[pad_pre_y * dst->pitch + pad_pre_x],
+		dw, dh, dst->stride, sizeof(shmif_pixel)
 	);
 
-/* pad with color */
-	for (int y = 0; y < dh; y++){
+/* pad beginning / end rows */
+	for (int y = 0; y < pad_pre_y; y++){
 		shmif_pixel* vidp = dst->vidp + y * dst->pitch;
-		for (int x = dw; x < dst->w; x++)
+		for (int x = 0; x < dst->w; x++)
 			vidp[x] = state->pad_col;
 	}
 
-/* pad last few rows */
-	for (int y = dh; y < dst->h; y++){
+	for (int y = pad_pre_y + dh; y < dst->h; y++){
 		shmif_pixel* vidp = dst->vidp + y * dst->pitch;
 		for (int x = 0; x < dst->w; x++)
-			*vidp++ = state->pad_col;
+			vidp[x] = state->pad_col;
+	}
+
+/* pad with color */
+	for (int y = pad_pre_y; y < pad_pre_y + dh; y++){
+		shmif_pixel* vidp = dst->vidp + y * dst->pitch;
+		for (int x = 0; x < pad_pre_x; x++)
+			vidp[x] = state->pad_col;
+
+		for (int x = pad_pre_x + dw; x < dst->w; x++)
+			vidp[x] = state->pad_col;
 	}
 
 done:
@@ -570,17 +580,18 @@ static int show_use(const char* msg)
 {
 	printf("Usage: aloadimage [options] file1 .. filen\n"
 "Basic Use:\n"
-"-h    \t--help        \tThis text\n"
-"-a    \t--aspect      \tMaintain aspect ratio when scaling\n"
-"-S    \t--server-size \tScale to fit server- suggested window size\n"
-"-l    \t--loop        \tStep back to [file1] after reaching [filen] in playlist\n"
-"-t sec\t--step-time   \tSet playlist step time (~seconds)\n"
-"-b    \t--block-input \tIgnore keyboard and mouse input\n"
-"-d str\t--display     \tSet/override the display server connection path\n"
+"-h     \t--help        \tThis text\n"
+"-a     \t--aspect      \tMaintain aspect ratio when scaling\n"
+"-S     \t--server-size \tScale to fit server- suggested window size\n"
+"-l     \t--loop        \tStep back to [file1] after reaching [filen] in playlist\n"
+"-t sec \t--step-time   \tSet playlist step time (~seconds)\n"
+"-b     \t--block-input \tIgnore keyboard and mouse input\n"
+"-d str \t--display     \tSet/override the display server connection path\n"
+"-p rgba\t--padcol      \tSet the padding color, like -p 127,127,127,255\n"
 "Tuning:\n"
-"-m num\t--limit-mem   \tSet loader process memory limit to [num] MB\n"
-"-r num\t--readahead   \tSet the playlist window queue size\n"
-"-T sec\t--timeout     \tSet unresponsive worker kill- timeout\n"
+"-m num \t--limit-mem   \tSet loader process memory limit to [num] MB\n"
+"-r num \t--readahead   \tSet the playlist window queue size\n"
+"-T sec \t--timeout     \tSet unresponsive worker kill- timeout\n"
 #ifdef ENABLE_SECCOMP
 "-X    \t--no-sysflt   \tDisable seccomp- syscall filtering\n"
 #endif
@@ -619,6 +630,7 @@ static const struct option longopts[] = {
 	{"timeout", required_argument, NULL, 'T'},
 	{"limit-mem", required_argument, NULL, 'm'},
 	{"readahead", required_argument, NULL, 'r'},
+	{"padcol", required_argument, NULL, 'p'},
 	{"no-sysflt", no_argument, NULL, 'X'},
 	{"server-size", no_argument, NULL, 'S'},
 	{"display", no_argument, NULL, 'd'},
@@ -644,15 +656,22 @@ int main(int argc, char** argv)
 	bool interactive = false;
 
 	while((ch = getopt_long(argc, argv,
-		"ihlt:bd:T:m:r:XSd:a", longopts, NULL)) >= 0)
+		"p:ihlt:bd:T:m:r:XSd:a", longopts, NULL)) >= 0)
 		switch(ch){
 		case 'h' : return show_use(""); break;
 		case 't' : ds.init_timer = strtoul(optarg, NULL, 10) * 5; break;
 		case 'b' : ds.block_input = true; break;
-		case 'd' : setenv("ARCAN_CONNPATH", optarg, 10); break;
+		case 'd' : setenv("ARCAN_CONNPATH", optarg, 1); break;
 		case 'T' : ds.timeout = strtoul(optarg, NULL, 10) * 5; break;
 		case 'l' : ds.loop = true; break;
 		case 'f' : ds.wnd_fwd = strtoul(optarg, NULL, 10); break;
+		case 'p' : {
+			uint8_t outv[4] = {0, 0, 0, 255};
+			if (sscanf(optarg, "%"SCNu8",%"SCNu8",%"SCNu8",%"SCNu8,
+				&outv[0], &outv[1], &outv[2], &outv[3])){
+					ds.pad_col = SHMIF_RGBA(outv[0], outv[1], outv[2], outv[3]);
+			}
+		} break;
 		case 'i' : /* interactive = true; */ break;
 		case 'a' : ds.aspect_ratio = true; break;
 		case 'm' : image_size_limit_mb = strtoul(optarg, NULL, 10); break;
