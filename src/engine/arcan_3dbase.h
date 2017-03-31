@@ -115,6 +115,24 @@ arcan_errc arcan_3d_meshshader(arcan_vobj_id dst,
 arcan_errc arcan_3d_addmesh(arcan_vobj_id dst,
 	data_source resource, unsigned nmaps);
 
+/*
+ * Add a trisoup as a mesh to an unfinalized model and set it to
+ * consume [nmaps] from the frameset associated with [dst].
+ *
+ * The model takes over memory control for the pointers it has been
+ * passed and are treated as heap-allocated via the arcan_alloc_mem
+ * class of functions.
+ *
+ * [vertices] are mandatory (non-null) with n_vertices > 0 while
+ * the other attributes are optional.
+ */
+arcan_errc arcan_3d_addraw(arcan_vobj_id dst,
+	float* vertices, size_t n_vertices,
+	unsigned* indices, size_t n_indices,
+	float* txcos, float* normals,
+	unsigned nmaps
+);
+
 /* [Destructive Transform]
  * Apply the specified roll / pitch / yaw transform to the vertices of [dst]
  */
