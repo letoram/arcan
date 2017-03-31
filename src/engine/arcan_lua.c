@@ -4829,28 +4829,109 @@ static int scale3dverts(lua_State* ctx)
 	LUA_ETRACE("scale_3dvertices", NULL, 0);
 }
 
+/*
+ * treat the top entry of the stack as an n-indexed array of values that should
+ * be converted into a newly allocated/ tightly packed unsigned array
+ */
+static bool stack_to_uiarray(lua_State* ctx,
+	int memtype, unsigned** dst, size_t* n)
+{
+	size_t nval = lua_rawlen(ctx, -1);
+	if (0 == nval)
+		return false;
+
+	*dst = arcan_alloc_mem(
+		nval * sizeof(unsigned), memtype, 0, ARCAN_MEMALIGN_NATURAL);
+
+	unsigned* out = *dst;
+	for (size_t i = 0; i < nval; i++){
+		lua_rawgeti(ctx, -1, i+1);
+		*out++ = (unsigned) lua_tointeger(ctx, -1);
+		lua_pop(ctx, 1);
+	}
+
+	return true;
+}
+
+static bool stack_to_farray(lua_State* ctx,
+	int memtype, float** dst, size_t* n)
+{
+	size_t nval = lua_rawlen(ctx, -1);
+	if (0 == nval)
+		return false;
+
+	*dst = arcan_alloc_mem(
+		nval * sizeof(float), memtype, 0, ARCAN_MEMALIGN_NATURAL);
+
+	float* out = *dst;
+	for (size_t i = 0; i < nval; i++){
+		lua_rawgeti(ctx, -1, i+1);
+		(*dst)[(*n)++] = (float) luaL_checknumber(ctx, -1);
+		lua_pop(ctx, 1);
+	}
+
+	return true;
+}
+
 static int loadmesh(lua_State* ctx)
 {
 	LUA_TRACE("add_3dmesh");
 
 	arcan_vobj_id did = luaL_checkvid(ctx, 1, NULL);
 	int nmaps = abs((int)luaL_optnumber(ctx, 3, 1));
-	char* path = findresource(luaL_checkstring(ctx, 2), DEFAULT_USERMASK);
+	if (lua_type(ctx, 2) == LUA_TTABLE){
+		float* verts, (* normals), (* txcos);
+		unsigned* indices = NULL;
+		size_t n_verts, n_indices, n_normals, n_txcos;
+		verts = normals = txcos = NULL;
+		n_verts = n_indices = n_normals = n_txcos = 0;
 
-	if (path){
-			data_source indata = arcan_open_resource(path);
-			if (indata.fd != BADFD){
-				arcan_errc rv = arcan_3d_addmesh(did, indata, nmaps);
-				if (rv != ARCAN_OK)
-					arcan_warning("loadmesh(%s) -- "
-						"Couldn't add mesh to (%d)\n", path, did);
-				arcan_release_resource(&indata);
-			}
+		if ((lua_getfield(ctx, 2, "vertices"), lua_type(ctx, -1)) != LUA_TTABLE)
+			arcan_fatal("");
+		stack_to_farray(ctx, ARCAN_MEM_MODELDATA, &verts, &n_verts);
+		lua_pop(ctx, 1);
 
+		if ((lua_getfield(ctx, 2, "indices"), lua_type(ctx, -1)) == LUA_TTABLE &&
+			!stack_to_uiarray(ctx, ARCAN_MEM_MODELDATA, &indices, &n_indices))
+			;
+		lua_pop(ctx, 1);
+
+		if ((lua_getfield(ctx, 2, "normals"), lua_type(ctx, -1)) == LUA_TTABLE &&
+			!stack_to_farray(ctx, ARCAN_MEM_MODELDATA,  &normals, &n_normals))
+			;
+		lua_pop(ctx, 1);
+
+		if ((lua_getfield(ctx, 2, "txcos"), lua_type(ctx, -1)) == LUA_TTABLE &&
+			!stack_to_farray(ctx, ARCAN_MEM_MODELDATA, &txcos, &n_txcos))
+		lua_pop(ctx, 1);
+
+		if (ARCAN_OK != arcan_3d_addraw(did, verts, n_verts,
+			indices, n_indices, txcos, normals, nmaps)){
+			lua_pushboolean(ctx, false);
+		}
+		else
+			lua_pushboolean(ctx, true);
+	}
+	else if (lua_type(ctx, 2) == LUA_TSTRING){
+		char* path = findresource(luaL_checkstring(ctx, 2), DEFAULT_USERMASK);
+		data_source indata = arcan_open_resource(path);
+		if (indata.fd != BADFD){
+			arcan_errc rv = arcan_3d_addmesh(did, indata, nmaps);
+			if (rv != ARCAN_OK)
+				arcan_warning("loadmesh(%s) -- "
+					"Couldn't add mesh to (%d)\n", path, did);
+			arcan_release_resource(&indata);
+			lua_pushboolean(ctx, false);
+		}
+		else
+			lua_pushboolean(ctx, true);
 		arcan_mem_free(path);
 	}
+	else {
+		arcan_fatal("add_3dmesh(), invalid type (str or tbl) in resource arg\n");
+	}
 
-	LUA_ETRACE("add_3dmesh", NULL, 0);
+	LUA_ETRACE("add_3dmesh", NULL, 1);
 }
 
 static int attrtag(lua_State* ctx)

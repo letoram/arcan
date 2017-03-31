@@ -585,7 +585,6 @@ arcan_vobj_id arcan_3d_buildbox(float w, float h, float d, size_t nmaps)
 	newmodel->geometry->store.type = AGP_MESH_TRISOUP;
 	newmodel->geometry->nmaps = nmaps;
 	newmodel->geometry->complete = true;
-	newmodel->geometry->store.n_triangles = 2 * 6;
 
 	float verts[] = {
 		 w, h, d,  -w,  h,  d,  -w, -h,  d,   w, -h,  d,
@@ -692,7 +691,6 @@ arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx,float maxz,
 	build_hplane(minp, maxp, step, &dst->store.verts, &dst->store.indices,
 		&dst->store.txcos, &dst->store.n_vertices, &dst->store.n_indices);
 
-	dst->store.n_triangles = newmodel->geometry->store.n_indices / 3;
 	arcan_video_allocframes(rv, 1, ARCAN_FRAMESET_SPLIT);
 
 /* though we do know the bounding box and shouldn't need to calculate
@@ -724,7 +722,7 @@ static void loadmesh(struct geometry* dst, CTMcontext* ctx)
 {
 /* figure out dimensions */
 	dst->store.n_vertices = ctmGetInteger(ctx, CTM_VERTEX_COUNT);
-	dst->store.n_triangles = ctmGetInteger(ctx, CTM_TRIANGLE_COUNT);
+	size_t n_triangles = ctmGetInteger(ctx, CTM_TRIANGLE_COUNT);
 	unsigned uvmaps = ctmGetInteger(ctx, CTM_UV_MAP_COUNT);
 	unsigned vrtsize = dst->store.n_vertices * 3 * sizeof(float);
 
@@ -742,7 +740,7 @@ static void loadmesh(struct geometry* dst, CTMcontext* ctx)
 
 /* lots of memory to be saved, so worth the trouble */
 	if (indices){
-		dst->store.n_indices = dst->store.n_triangles * 3;
+		dst->store.n_indices = n_triangles * 3;
 		uint32_t* buf = arcan_alloc_mem( dst->store.n_indices * sizeof(unsigned),
 			ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_PAGE);
 
@@ -832,6 +830,46 @@ static void* threadloader(void* arg)
 	arcan_mem_free(threadarg);
 
 	return NULL;
+}
+
+arcan_errc arcan_3d_addraw(arcan_vobj_id dst,
+	float* vertices, size_t n_vertices,
+	unsigned* indices, size_t n_indices,
+	float* txcos, float* normals,
+	unsigned nmaps)
+{
+	arcan_vobject* vobj = arcan_video_getobject(dst);
+
+	if (!vobj)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+
+	arcan_3dmodel* model = vobj->feed.state.ptr;
+
+	if (vobj->feed.state.tag != ARCAN_TAG_3DOBJ ||
+		model->flags.complete == true)
+		return ARCAN_ERRC_UNACCEPTED_STATE;
+
+/* find last elem and add */
+	struct geometry** nextslot = &(model->geometry);
+	while (*nextslot)
+		nextslot = &((*nextslot)->next);
+
+	*nextslot = arcan_alloc_mem(sizeof(struct geometry),
+		ARCAN_MEM_VTAG, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
+	struct geometry* dg = *nextslot;
+
+	if (!dg)
+		return ARCAN_ERRC_OUT_OF_SPACE;
+
+	dg->nmaps = nmaps;
+	dg->store.type = AGP_MESH_TRISOUP;
+	dg->store.verts = vertices;
+	dg->store.indices = indices;
+	dg->store.normals = normals;
+	dg->store.n_vertices = n_vertices;
+	dg->store.n_indices = n_indices;
+
+	return ARCAN_OK;
 }
 
 arcan_errc arcan_3d_addmesh(arcan_vobj_id dst,

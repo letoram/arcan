@@ -52,7 +52,7 @@ function picktest()
 	my = 0;
 
 	camera = null_surface(1, 1);
-	camtag_model(camera, 0.01, 100.0, 45.0, 1.33, nil, 1, 1);
+	camtag_model(camera, 0.01, 100.0, 45.0, 1.33, 1, 1);
 	image_tracetag(camera, "camera");
 	forward3d_model(camera, -10.0);
 

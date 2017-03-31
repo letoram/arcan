@@ -824,9 +824,7 @@ struct mesh_storage_t
 	unsigned* indices;
 
 	size_t n_vertices;
-	size_t n_elements;
 	size_t n_indices;
-	size_t n_triangles;
 
 	enum agp_mesh_type type;
 
