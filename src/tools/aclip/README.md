@@ -22,7 +22,8 @@ would).
 
 In durden, for instance, this needs to be explicitly enabled as it can be used
 to monitor and manipulate global clipboard activity, which should be avoided if
-that is crucial to your threat model.
+that is crucial to your threat model. It can be controlled through the
+global/config/system/clipboard bridge menu path.
 
 Another quirk, due to design/API limitations in arcan, a paste-operation relies
 on an outbound connection, and these are only defined as subsegments (there
@@ -31,8 +32,6 @@ in terms of resource consumption and connection setup.
 
 TODO
 ====
-- [ ] exec mode
-- [ ] \0 separation in injection
 - [ ] audio support
 - [ ] video support
 - [ ] binary blob support
