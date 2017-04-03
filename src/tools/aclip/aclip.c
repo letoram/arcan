@@ -5,14 +5,11 @@
  * Description: Clipboard Integration tool
  */
 #include <arcan_shmif.h>
-#include <pthread.h>
-#include <stdatomic.h>
 #include <getopt.h>
+#include <signal.h>
 #include "utf8.c"
 
-pthread_mutex_t paste_lock;
-_Atomic int alive;
-char* stdout_sep = "";
+static char* separator = "";
 
 static void paste(struct arcan_shmif_cont* out, char* msg, bool cont)
 {
@@ -22,8 +19,6 @@ static void paste(struct arcan_shmif_cont* out, char* msg, bool cont)
 
 	if (!out || !out->vidp || !msg)
 		return;
-
-	pthread_mutex_lock(&paste_lock);
 
 /* split into message size blocks, align backwards so full UTF8
  * seqs are passed, else server may dismiss or kill us */
@@ -42,7 +37,7 @@ static void paste(struct arcan_shmif_cont* out, char* msg, bool cont)
 
 			if (i != lastok){
 				if (0 == i)
-					goto out;
+					return;
 			}
 		}
 
@@ -64,164 +59,242 @@ static void paste(struct arcan_shmif_cont* out, char* msg, bool cont)
 		msgev.ext.message.multipart = cont;
 		arcan_shmif_enqueue(out, &msgev);
 	}
-
-out:
-	pthread_mutex_unlock(&paste_lock);
 }
 
-static void* cin_thread(void* inarg)
+static bool write_ev(arcan_event* ev, FILE* outf)
 {
-	struct arcan_shmif_cont* con = inarg;
-	FILE* out = con->user;
-	bool running = true;
+/* if it's a continuation, we can't write the separator yet, just find the
+ * end of the buffer or where the string was truncated and terminated */
+	if (ev->tgt.ioevs[0].iv != 0){
+		size_t i = 0;
+		for (; i < sizeof(ev->tgt.message); i++)
+			if (ev->tgt.message[i] == '\0')
+				break;
+		if (i == 0)
+			return false;
+		if (i == sizeof(ev->tgt.message))
+			i++;
+		fwrite(ev->tgt.message, i, 1, outf);
+		return false;
+	}
+	else{
+		fprintf(outf, "%s%s", ev->tgt.message, separator);
+		fflush(outf);
+		return true;
+	}
+}
 
-	arcan_event ev;
-	int pv = 0;
+static int dispatch_event_outf(arcan_event* ev, FILE* outf)
+{
+	switch (ev->tgt.kind){
+	case TARGET_COMMAND_MESSAGE:
+		if (write_ev(ev, outf))
+			return 1;
+	break;
+	case TARGET_COMMAND_NEWSEGMENT:
+/* if we explicitly receive a new paste board due to some incoming stream */
+	break;
+	case TARGET_COMMAND_BCHUNK_IN:
+	break;
+	case TARGET_COMMAND_BCHUNK_OUT:
+/* incoming binary blob, fd in ioevs[0].iv */
+	break;
+	case TARGET_COMMAND_STEPFRAME:
+/* need to distinguish if we are an output segment or not, in the latter
+ * case, we just received a raw video buffer to work with */
+	break;
+	case TARGET_COMMAND_EXIT:
+		return -1;
+	break;
+	default:
+	break;
+	}
+	return 0;
+}
 
-	while (running && (pv = arcan_shmif_wait(con, &ev)) > 0){
-		if (ev.category != EVENT_TARGET)
-			continue;
+static int dispatch_event_outcmd(struct arcan_event* ev, const char* cmd)
+{
+	static FILE* outf;
 
-		arcan_tgtevent* tev = &ev.tgt;
-		switch(tev->kind){
-		case TARGET_COMMAND_MESSAGE:
-			fprintf(out, "%s%s", tev->message, !tev->ioevs[0].iv?"\n":"");
-		break;
-/* the bchunk, stepframe, ... should be added here if we have bin-out path */
-		case TARGET_COMMAND_EXIT:
-			running = false;
-		break;
-		default:
-		break;
+	switch(ev->tgt.kind){
+	case TARGET_COMMAND_MESSAGE:{
+		if (!outf && !(outf = popen(cmd, "w")))
+			return -1;
+		write_ev(ev, outf);
+		if (ev->tgt.ioevs[0].iv == 0){
+			fclose(outf);
+			outf = NULL;
+			return 1;
 		}
 	}
-
-	atomic_fetch_add(&alive, -1);
-	arcan_shmif_drop(con);
-	return NULL;
-}
-
-static void* cout_thread(void* inarg)
-{
-	struct arcan_shmif_cont* con = inarg;
-	FILE* inf = con->user;
-
-	char buf[4096];
-
-	while (!feof(inf)){
-		char* out = fgets(buf, sizeof(buf), inf);
-		if (out)
-			paste(con, out, false);
+	break;
+	case TARGET_COMMAND_EXIT:
+		return -1;
+	break;
+	default:
+	break;
 	}
-
-	atomic_fetch_add(&alive, -1);
-	arcan_shmif_drop(con);
-	return NULL;
+	return 0;
 }
 
 static const struct option longopts[] = {
 	{ "help",         no_argument,       NULL, 'h'},
-/*	{ "video-out",    required_argument, NULL, 'v'}, */
-/*	{ "audio-out",    required_argument, NULL, 'a'}, */
-/*  { "binary-out",   required_argument, NULL, 'w'}, */
-  { "input",        no_argument,       NULL, 'i'},
-  { "output",       no_argument,       NULL, 'o'},
-	{ "monitor",      no_argument,       NULL, 'm'},
+	{ "in",           no_argument,       NULL, 'i'},
+	{ "in-data",      required_argument, NULL, 'I'},
+	{ "out",          no_argument,       NULL, 'o'},
 	{ "exec",         required_argument, NULL, 'e'},
-	{ "separator",    required_argument, NULL, 's'},
+	{ "separator",    required_argument, NULL, 'p'},
 	{ "loop",         required_argument, NULL, 'l'},
 	{ "display",      required_argument, NULL, 'd'},
+	{ "silent",       no_argument,       NULL, 's'},
 	{ NULL,           no_argument,       NULL,  0 }
 };
 
 static void usage()
 {
-printf("Usage: aclip [-hime:s:l:] "
+printf("Usage: aclip [-hioe:s:l:d:]\n"
 "-h    \t--help         \tthis text\n"
-"-i    \t--input        \tread UTF-8 from standard input and copy to clipboard\n"
-"-m    \t--monitor      \tlisten for new items appearing on the clipboard and write to stdout\n"
-"-e arg\t--exec arg     \texecute [arg] and pipe data there instead of stdout (inside -m)\n"
-"-s arg\t--separator arg\twrite [arg] to output stream as separator (inside -m, not -e)\n"
-"-l arg\t--loop         \texit after [arg] discrete paste operations (inside -m)\n"
+"-i    \t--in           \tread/validate UTF-8 from standard input and copy to clipboard\n"
+"-I arg\t--in-data arg  \tread/validate UTF-8 and copy to clipboard\n"
+"-o    \t--out          \tflush received pastes to stdout\n"
+"-e arg\t--exec arg     \tpopen [arg] on received pastes and flush to its stdin\n"
+"-p arg\t--separator arg\ttreat [arg] as paste- separator separator (-l >= 0)\n"
+"-l arg\t--loop arg     \texit after [arg] discrete paste operations (-0, never exit)\n"
+"-s    \t--silent       \tclose stdout and fork into background\n"
 "-d arg\t--display arg  \tuse [arg] as connection path istead of ARCAN_CONNPATH env\n"
-/*
-"-v\t--video-out   \tsave pasted video data as .num.png or - for stdout\n"
-"-a\t--audio-out   \tsave pasted audio data as .num.wav or - for stdout\n"
-"-b\t--binary-out  \tsave pasted binary data as .num.bin or - for stdout\n"
-*/);
+);
 }
 
 int main(int argc, char** argv)
 {
-	struct arg_arr* aarr;
-	struct arcan_shmif_cont clip_out = {0};
-	struct arcan_shmif_cont clip_in = {0};
+	int loop_counter = -1;
 
-	bool use_stdin = false;
-	bool use_stdout = false;
+	if (argc == 1){
+		usage();
+		return EXIT_FAILURE;
+	}
+
+	bool use_stdin = false, use_stdout = false, silence = false;
+	char* exec_cmd = NULL, (* copy_arg) = NULL;
 
 	int ch;
-	while((ch = getopt_long(argc, argv, "hw:v:a:ime:s:l:d:", longopts, NULL)) >= 0)
+	while((ch = getopt_long(argc, argv, "hisI:oe:p:l:d:", longopts, NULL)) >= 0)
 	switch(ch){
 	case 'h' : usage(); return EXIT_SUCCESS;
-	case 'w' : /* on binary output paste, save into folder */ break;
-	case 'v' : /* on video output paste, save as basename.n.png */ break;
-	case 'a' : /* on audio output paste, save as wav(fn) */ break;
 	case 'i' : use_stdin = true; break;
-	case 'm' : use_stdout = true; break;
-	case 'e' : break;
-	case 'd' : break;
-	case 'l' : break;
-	case 's' : stdout_sep = strdup(optarg ? optarg : ""); break;
+	case 'o' : use_stdout = true; break;
+	case 's' : silence = true; break;
+	case 'I' : {
+		if (copy_arg)
+			free(copy_arg);
+		copy_arg = strdup(optarg);
+	}
+	break;
+	case 'e' : {
+		if (exec_cmd)
+			free(exec_cmd);
+		exec_cmd = strdup(optarg);
+	}
+	break;
+	case 'd' : setenv("ARCAN_CONNPATH", optarg, 1); break;
+	case 'l' : loop_counter = strtoul(optarg, NULL, 10); break;
+	case 'p' : separator = strdup(optarg ? optarg : ""); break;
 	default:
 		break;
 	}
 
-	pthread_attr_t thr_attr;
-	pthread_t thr;
-	pthread_attr_init(&thr_attr);
-	pthread_attr_setdetachstate(&thr_attr, PTHREAD_CREATE_DETACHED);
+	if (!use_stdin && !use_stdout && !copy_arg){
+		fprintf(stderr, "neither [-i], [-I arg] nor [-o] specified.\n");
+		usage();
+		return EXIT_FAILURE;
+	}
 
-	pthread_mutex_init(&paste_lock, NULL);
+/* Something of an inconvenience right now, in order to get access to a proper
+ * pasteboard (full A/V support) we need a non-output primary segment through
+ * which that request can be pushed. If we get one, we can just switch the
+ * struct that processes paste- output though. */
+	struct arcan_shmif_cont con = arcan_shmif_open_ext(
+		SHMIF_ACQUIRE_FATALFAIL, NULL, (struct shmif_open_ext){
+		.type = SEGID_CLIPBOARD,
+		.title = "",
+		.ident = ""
+	}, sizeof(struct shmif_open_ext));
+	arcan_shmif_signal(&con, SHMIF_SIGVID);
 
+	if (signal(SIGCHLD, SIG_IGN) == SIG_ERR){
+		fprintf(stderr, "ign on sigchld failed\n");
+		return EXIT_FAILURE;
+	}
+
+	if (silence){
+		fclose(stdout);
+		if (fork() != 0)
+			return EXIT_SUCCESS;
+	}
+
+/*
+ * Two little "gotcha's" here, one is that a lot of the event handler / resource
+ * allocation schemes are actually deferred until the first transfer signal.
+ * The other is a possible race: _drop pulls the 'dms' and the client is
+ * considered dead. Whatever is pending on the event queue at the moment will
+ * never be processed and our paste- message gets lost, so we want synch-
+ * delivery here. See the approach in drop_exit at the end.
+ */
+	if (copy_arg){
+		paste(&con, copy_arg, false);
+	}
+
+/* "worst" case, both input and output - fork, block-read from stdin and put to
+ * output queue. cont can be shared in this corner case as the parent will still
+ * be alive due to the in/out event-queue separation. */
+	bool drop_exit = true;
+	if (use_stdin && use_stdout){
+		pid_t pv = fork();
+		if (pv > 0){
+			use_stdin = false;
+		}
+		else if (pv == 0){
+			use_stdout = false;
+			drop_exit = false;
+		}
+	}
+
+/* block/flush stdin and split into paste- messages */
+	arcan_event ev;
 	if (use_stdin){
-		clip_in = arcan_shmif_open(SEGID_CLIPBOARD, 0, &aarr);
-		if (!clip_in.addr){
-			fprintf(stderr, "failed to connect/open clipboard in input- mode\n");
-			return EXIT_FAILURE;
+		char buf[sizeof(ev.ext.message.data) * 4];
+		while(!feof(stdin) && !ferror(stdin)){
+			size_t ntr = fread(buf, 1, sizeof(buf)-1, stdin);
+			buf[ntr] = '\0';
+			if (ntr && ntr < sizeof(buf)-1)
+				paste(&con, buf, !(feof(stdin) || ferror(stdin)));
 		}
-
-		clip_in.user = (void*) stdin;
-		atomic_fetch_add(&alive, 1);
-		if (0 != pthread_create(&thr, &thr_attr, cin_thread, (void*)&clip_in)){
-			arcan_shmif_drop(&clip_in);
-			atomic_fetch_add(&alive, -1);
-		}
-		else
-			fprintf(stderr, "failed to spawn clipboard input- thread\n");
 	}
 
+/* normal event loop and trigger when complete messages are received */
 	if (use_stdout){
-		clip_out = arcan_shmif_open(SEGID_CLIPBOARD_PASTE, 0, &aarr);
-		if (!clip_out.addr){
-			fprintf(stderr, "failed to connect/open clipboard in monitor mode\n");
-			return EXIT_FAILURE;
+		while(arcan_shmif_wait(&con, &ev) > 0){
+			if (ev.category == EVENT_TARGET){
+				int sv = exec_cmd ?
+					dispatch_event_outcmd(&ev, exec_cmd) :
+					dispatch_event_outf(&ev, stdout);
+				if (-1 == sv || (1 == sv && loop_counter == 1))
+					break;
+				if (loop_counter > 0)
+					loop_counter--;
+			}
 		}
-
-		atomic_fetch_add(&alive, 1);
-		if (0 != pthread_create(&thr, &thr_attr, cout_thread, (void*)&clip_in)){
-			arcan_shmif_drop(&clip_in);
-			atomic_fetch_add(&alive, -1);
-		}
-		else
-			fprintf(stderr, "failed to spawn clipboard monitor thread\n");
 	}
 
-	pthread_attr_destroy(&thr_attr);
-
-/* should really have a less ugly primitive here .. pipe? */
-	while (atomic_load(&alive) > 0)
-		sleep(1);
+/* defer the drop call until the eventqueue is empty, not a very pretty
+ * solution but this is a rather fringe use-case (connect, queue one
+ * event, shutdown) to play out in an asynch setting */
+	if (drop_exit){
+		while (con.addr && con.addr->dms &&
+			con.addr->parentevq.front != con.addr->parentevq.back)
+			arcan_shmif_signal(&con, SHMIF_SIGVID);
+		arcan_shmif_drop(&con);
+	}
 
 	return EXIT_SUCCESS;
 }

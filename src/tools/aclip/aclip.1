@@ -6,31 +6,40 @@ aclip \- command line interface to Arcan clipboards
 .B aclip [OPTIONS]
 
 .SH DESCRIPTION
-This tool is used to input- and/or monitor- an arcan connection point that
-accepts clipboards.
+This tool is used to send input to- and/or monitor- an arcan connection point
+that accepts clipboards as a primary connection, which is an indicator of
+a clipboard manager. It is up to the running set of scripts that controls
+the connection point to determine if this is permitted or not, but
+the 'safe default' is rejecting such connections. See 'Limitations' below.
 
 .SH OPTIONS
-.IP "\fB\-m, \-\-monitor\fR"
-Continously monitor the clipboard for new entries and forward them to
-standard output.
+.IP "\fB\-i, \-\-in\fR"
+Read valid UTF-8 input from standard input and forward to the clipboard.
 
-.IP "\fB\-e, \-\-exec\fR \fIcmd\fR"
-Execute and pipe data to 'cmd' instead of stdout whenever a paste operation
-is received on the clipboard in monitor mode (-m).
+.IP "\fB\-I, \-\-in-data \fIdatastr\fR"
+Forward the contents of the datastr argument to the clipboard.
 
-.IP "\fB\-s, \-\-separator\fR \fIsep\fR"
-Override the separator that should be used between discrete monitor entries
-from double-linefeed(default) to a user-defined string. This is used in -m
-mode but ignored if -e used used at the same time.
+.IP "\fB\-o, \-\-out\fR"
+Enable output mode, sending incoming clipboard entries (by default) to stdout.
+
+.IP "\fB\-e \-\-exec \fIexecstr\fR"
+For each new clipboard entry, run (popen) execstr in a subshell, where the
+entry contents will be available on stdin.
+
+.IP "\fB\-p, \-\-separator \fIsepstr\fR"
+(in -o mode) Append sepstr argument after each incoming clipboard entry.
 
 .IP "\fB\-l, \-\-loop\fR \fIcount\fR"
-Set a limit of discrete pastes that should be received from the clipboard
-in monitor-mode before shutting down.
+(in -o mode) Set a limit of new entries that should be received from the
+clipboard. If count is set to '0', the program will loop indefinitely.
+
+.IP "\fQ\-s, \-\-silent\fR"
+Close stdout and fork into background (so best use with -e or -i/-I, not just -o)
 
 .IP "\fB\-d, \-\-display\fR \fIconnpath\fR"
 By default, the ARCAN_CONNPATH environment is used in order to find an
-arcan instance to connect to. This argument ignores that in favor for
-the connpath argument.
+arcan instance to connect to. This argument overrides the environment
+with the connpath argument.
 
 .IP "\fB\-h, \-\-help\fR"
 Show a brief summary of commands and usage.
@@ -38,15 +47,21 @@ Show a brief summary of commands and usage.
 .SH EXAMPLES
 
 .PP
-This examples places "hi there" on the clipboard.
+This examples places 'hi there' on the clipboard.
 
-.B echo "hi there" | aclip -p durden -i
+.B echo -n 'hi there' | aclip -p durden -i
 
 .PP
-Forward one clipboard entry to the selection buffer of an xserver using
-the xclip tool.
+Keep the X selection buffer synched to the latest received clipboard entry.
 
-.B aclip -m 1 | xclip
+.B aclip -o -l 0 -s -e xclip
+
+.PP
+Terminate after three completed clipboard entries. each new entry, spawn the
+"tee" command that appends to a log with the custom '||' string to separate
+between elements.
+
+.B aclip -l 0 -o -p "||" -e "tee -a >> log"
 
 .SH LIMITATIONS
 The appl that arcan is running must expose a connection point, and explicitly
@@ -55,7 +70,8 @@ usually not added by default due to the security implications it might have.
 
 Additional constraints may also have been placed on this connection point.
 One common constraint is to only allow one active monitor or input connection.
-Other constraints may be disabled input or disabled monitoring.
+Other constraints may be read- or write- only access or ignoring write-
+operations that is longer than a certain cutoff value.
 
 Consult the documentation for the appl you are using to get more information
 on what applies to your particular scenario.
