@@ -55,8 +55,8 @@
 -- @note: "framestatus" {frame,pts,acquired,fhint} - metadata about the last
 -- delivered frame.
 --
--- @note: "terminated" - the underlying process has died, no new data or events
--- will be received.
+-- @note: "terminated" (last_words) - the underlying process has died,
+-- no new data or events will be received.
 --
 -- @note: "streaminfo" {lang, streamid, type} - supports switching between
 -- multiple datasources.
@@ -118,8 +118,16 @@
 -- If wildcard is set, the frameserver do not care about type information, otherwise
 -- an extensions field is provided with a ; separated list of extensions.
 --
--- @note: "registered", {kind, title} - notice that the underlying engine
+-- @note: "registered", {kind, title, guid} - notice that the underlying engine
 -- has completed negotiating with the frameserver.
+--
+-- @note: "ramp_update", {index} - for clients that have been allowed access to
+-- the color ramp subprotocol, this event will be triggered for each mapped ramp
+-- index. For more information on this system, see ref:video_displaygamma
+--
+-- @note: The initial states goes through the following transitions:
+-- "connected" (only on target_alloc, not launch_target) -> "registered" ->
+-- "preroll" -> "resized" -> [most events possible] -> "terminated"
 --
 -- @group: targetcontrol
 -- @alias: target_launch

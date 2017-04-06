@@ -75,6 +75,7 @@
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_shmif.h"
+#include "arcan_shmif_sub.h"
 #include "arcan_video.h"
 #include "arcan_videoint.h"
 #include "arcan_renderfun.h"
@@ -4420,6 +4421,10 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		break;
 		case EVENT_FSRV_PREROLL:
 		break;
+		case EVENT_FSRV_GAMMARAMP:
+			tblstr(ctx, "kind", "ramp_update", top);
+			tblnum(ctx, "index", ev->fsrv.counter, top);
+		break;
 		case EVENT_FSRV_DELIVEREDFRAME :
 			tblstr(ctx, "kind", "frame", top);
 			tblnum(ctx, "pts", ev->fsrv.pts, top);
@@ -5428,31 +5433,35 @@ static int videocanvasrsz(lua_State* ctx)
 static bool push_fsrv_ramp(arcan_frameserver* dst, lua_State* src,
 	int index, size_t n)
 {
-	float* ramps = arcan_alloc_mem(n * sizeof(float),
-			ARCAN_MEM_VSTRUCT, ARCAN_MEM_TEMPORARY | ARCAN_MEM_BZERO,
-			ARCAN_MEMALIGN_NATURAL);
+	float ramps[SHMIF_CMRAMP_PLIM*SHMIF_CMRAMP_ULIM];
+	size_t ch_sz[SHMIF_CMRAMP_PLIM] = {0};
 
 	size_t edid_sz = 0;
 	uint8_t* edid_buf = NULL;
+	size_t i = 0;
 
-	for (size_t i = 0; i < n; i++){
+/* this format still only accepts one plane, though the limitation is
+ * only in lua land and the egl-dri platform at the moment */
+	for (; i < n && i < SHMIF_CMRAMP_ULIM; i++){
 		lua_rawgeti(src, 2, i+1);
 		ramps[i] = lua_tonumber(src, -1);
 		lua_pop(src, 1);
 	}
 
+/* setting/forcing/faking edid is still optional */
 	lua_getfield(src, 2, "edid");
 	edid_buf = (uint8_t*) lua_tolstring(src, -1, &edid_sz);
 	lua_pop(src, 1);
 
 	jmp_buf tramp;
 	if (0 != setjmp(tramp)){
-		free(ramps);
 		return false;
 	}
 
+	ch_sz[0] = i;
 	arcan_frameserver_enter(dst, tramp);
-	bool rv = arcan_frameserver_setramps(dst,index,ramps,n,edid_buf,edid_sz);
+	bool rv = arcan_frameserver_setramps(dst,
+		index, ramps, i, ch_sz, edid_buf, edid_sz);
 	arcan_frameserver_leave();
 	return rv;
 }
@@ -5464,8 +5473,12 @@ static int pull_fsrv_ramp(lua_State* dst, arcan_frameserver* src, int ind)
 		return 0;
 	}
 
+	size_t ch_pos[SHMIF_CMRAMP_PLIM];
+	float tblbuf[SHMIF_CMRAMP_ULIM];
+
 	arcan_frameserver_enter(src, tramp);
-	bool rv = arcan_frameserver_getramps(src,ind,NULL,NULL);
+	bool rv = arcan_frameserver_getramps(src,ind,tblbuf,sizeof(tblbuf),ch_pos);
+	arcan_warning("FIXME, grabbed new ramps on index [n]\n");
 	arcan_frameserver_leave();
 	return 0;
 }

@@ -65,6 +65,7 @@ struct arcan_frameserver_meta {
 		struct arcan_shmif_vr* vr;
 		struct arcan_shmif_vector* vector;
 		struct arcan_shmif_hdr* hdr;
+		uint8_t gamma_mask;
 	} aext;
 
 /* statistics for tracking performance / timing */
@@ -275,20 +276,38 @@ void arcan_frameserver_pollevent(arcan_frameserver*, arcan_evctx*);
  * Attempt to retrieve a copy of the current LUT-ramps for a specific
  * display index, returns false if the client has not requested extended
  * metadata, true otherwise.
+ *
+ * REQUIRED: fsrv-ctx with negotiated CM subproto, LOCK-CALL
  */
-bool arcan_frameserver_getramps(
-	arcan_frameserver*, int index, float** table, size_t* ch_sz);
+bool arcan_frameserver_getramps(arcan_frameserver*,
+	size_t index,
+	float* table, size_t table_sz,
+	size_t* ch_sz
+);
 
 /*
- * Attempt to update a specific display index with new ramps and
- * (optional) edid metadata block.
+ * Attempt to update a specific display index with new ramps and an (optional)
+ * edid metadata block.
  *
- * Returns false if the client has not requested extended display
- * metadata, true otherwise.
+ * table is a packed array of values in [0..1] (will be mapped or filtered into
+ * the range and precision expected by the device) and ch_sz describes how many
+ * elements of the table should be assigned to each LUT plane
+ *
+ * Returns false if the client has not requested extended display metadata,
+ * true otherwise.
+ *
+ * EXPECTS:
+ * COUNT_OF(ch_sz) = SHMIF_CMRAMP_PLIM,
+ * SIZE_OF(table) = SUM_OF(ch_sz) <= SHMIF_CMRAMP_ULIM
+ *
+ * REQUIRED: fsrv-ctx with negotiated CM subproto, LOCK-CALL
  */
-bool arcan_frameserver_setramps(
-	arcan_frameserver*, int index, float* table, size_t ch_sz,
-	uint8_t* edid, size_t edid_sz);
+bool arcan_frameserver_setramps(arcan_frameserver*,
+	size_t index,
+	float* table, size_t table_sz,
+	size_t ch_sz[],
+	uint8_t* edid, size_t edid_sz
+);
 
 /*
  * Symbol should only be used by the backend to reach OS specific
