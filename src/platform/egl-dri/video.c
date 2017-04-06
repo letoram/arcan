@@ -109,6 +109,10 @@
 #define EGL_DRM_MASTER_FD_EXT 0x333C
 #endif
 
+#if !defined(EGL_CONSUMER_AUTO_ACQUIRE_EXT)
+#define EGL_CONSUMER_AUTO_ACQUIRE_EXT 0x332B
+#endif
+
 #if !defined(EGL_DRM_FLIP_EVENT_DATA_NV)
 #define EGL_DRM_FLIP_EVENT_DATA_NV 0x33E
 #endif
@@ -624,6 +628,8 @@ static int setup_buffers_stream(struct dispout* d)
 	};
 
 	EGLint stream_attrs[] = {
+		EGL_STREAM_FIFO_LENGTH_KHR, 1,
+		EGL_CONSUMER_AUTO_ACQUIRE_EXT, EGL_FALSE,
  		EGL_NONE
  	};
 
