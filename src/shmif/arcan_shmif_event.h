@@ -887,7 +887,8 @@ enum ARCAN_EVENT_EXTERNAL {
 		EVENT_FSRV_TERMINATED,
 		EVENT_FSRV_DROPPEDFRAME,
 		EVENT_FSRV_DELIVEREDFRAME,
-		EVENT_FSRV_PREROLL
+		EVENT_FSRV_PREROLL,
+		EVENT_FSRV_GAMMARAMP
 	};
 	/* -- end internal -- */
 
@@ -1405,8 +1406,8 @@ struct arcan_evctx {
 
 /* offsets into the eventbuf queue, parent will always
  * % ARCAN_SHMPAGE_QUEUE_SZ to prevent nasty surprises */
-	volatile uint8_t* front;
-	volatile uint8_t* back;
+	volatile uint8_t* volatile front;
+	volatile uint8_t* volatile back;
 
 	int8_t local;
 

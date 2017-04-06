@@ -112,20 +112,31 @@ struct arcan_shmif_vector {
 };
 
 /*
- * a crutch with this approach is that we need to relocate when mapping in the
- * resize handler, though the _shmifsub_getramp/setramp functions will mitigate
- * this.
+ * Though it might seem that this information gets lost on a resize request,
+ * that is only true if the substructure set changes. Otherwise it's part of
+ * the base that gets copied over.
  */
+
+/*
+ * the number of maximum crtcs/planes with support for lut- tables
+ */
+#define SHMIF_CMRAMP_PLIM 4
+
+/*
+ * the maximum number of entries per plane, the list
+ */
+#define SHMIF_CMRAMP_ULIM 1024
+
 struct ramp_block {
 	bool output;
 	uint8_t format;
-	size_t plane_size;
+	size_t plane_sizes[SHMIF_CMRAMP_PLIM];
 
 	uint8_t edid[128];
 	uint16_t checksum;
 
-/* 3 * plane_size */
-	uint16_t planes[0];
+/* SHMIF_CMRAMP_PLIM * SHMIF_CMRAMP_ULIM[with plane_size[n] tight packed */
+	float planes[0];
 };
 
 struct arcan_shmif_ramp {
@@ -139,8 +150,11 @@ struct arcan_shmif_ramp {
 	uint8_t n_blocks;
 
 /* PRODUCER INIT, CONSUMER_UPDATE */
-	struct ramp_block ramps[];
+	struct ramp_block ramps[0];
 };
+
+#define SHMIF_CMRAMP_RVA(X)(sizeof(struct ramp_block) * (X) *\
+	SHMIF_CMRAMP_PLIM * SHMIF_CMRAMP_ULIM)
 
 /*
  * retrieve the metadata on the current ramp-block,

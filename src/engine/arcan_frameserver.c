@@ -838,15 +838,16 @@ size_t arcan_frameserver_protosize(arcan_frameserver* ctx,
  * different lut formats, edid size etc.
  *
  * Cheap/lossy Formula:
- *  2(get/set) * (max_displays * (max_lut_size + edid(128) + structs))
- *
+ *  max_displays * (max_lut_size + edid(128) + structs)
  *
  * Other nasty bit is that the device mapping isn't exposed directly, it's the
  * user- controlled parts of the engine that has to provide the actual tables
  * to use. On top of that, there's the situation where displays are hotplugged
- * and/or moved between ports.
+ * and/or moved between ports and that we might want to control virtual/
+ * simulated/remote displays and just take advantage of an external clients
+ * color management capabilities.
  *
- * Doesn't make much sense saving a few k however
+ * TL:DR - Doesn't make much sense saving a few k here.
  */
 	if (proto & SHMIF_META_CM){
 		size_t lim;
@@ -854,9 +855,10 @@ size_t arcan_frameserver_protosize(arcan_frameserver* ctx,
 		platform_video_displays(NULL, &lim);
 
 /* WARNING: the max_lut_size is not actually used / retrieved here */
-		tot += sizeof(struct arcan_shmif_ramp) + 2 *
-			lim * (sizeof(struct ramp_block) + 1024 * 3 * sizeof(float));
-		tot += tot % sizeof(uintptr_t);
+		tot += sizeof(struct arcan_shmif_ramp) * sizeof(struct ramp_block) +
+			SHMIF_CMRAMP_ULIM * SHMIF_CMRAMP_PLIM * sizeof(float) * lim;
+		if (tot % sizeof(uintptr_t) != 0)
+			tot += tot % sizeof(uintptr_t);
 		dofs->sz_ramp = tot - dofs->sz_ramp;
 	}
 	else {
@@ -878,7 +880,8 @@ size_t arcan_frameserver_protosize(arcan_frameserver* ctx,
 		dofs->ofs_vr = dofs->sz_vr = tot;
 		tot += sizeof(struct arcan_shmif_vr);
 		tot += sizeof(struct vr_limb) * LIMB_LIM;
-		tot += tot % sizeof(uintptr_t);
+		if (tot % sizeof(uintptr_t) != 0)
+			tot += tot % sizeof(uintptr_t);
 		dofs->sz_vr = tot - dofs->sz_vr;
 	}
 	else
@@ -948,23 +951,48 @@ void arcan_frameserver_setproto(arcan_frameserver* ctx,
 	ctx->desc.aproto = proto;
 }
 
-bool arcan_frameserver_getramps(
-	arcan_frameserver* src, int index, float** table, size_t* ch_sz)
+bool arcan_frameserver_getramps(arcan_frameserver* src,
+	size_t index, float* table, size_t table_sz, size_t* ch_sz)
 {
-	if (!ch_sz || !table)
+	if (!ch_sz || !table || !src || !src->desc.aext.gamma)
 		return false;
 
+/* RAMP_INDEX_RVA(X) + (uintptr_t) src->desc.aext.gamma puts us at the
+ * address for the ramp at the specified ind. Then we check the planes
+ * and use plane_sizes[] to fill in the table */
 
+/* [ for each ramp ]
+ * 1. copy the ramp data to a local buffer
+ * 2. verify the checksum
+ * 3. if dirty bit is set, clear dity bit
+ */
 	return false;
 }
 
-bool arcan_frameserver_setramps(
-	arcan_frameserver* src, int index, float* table, size_t ch_sz,
+/*
+ * Used to update a specific client's perception of a specific ramp,
+ * the index must be < (ramp_limit-1) which is a platform defined static
+ * upper limit of supported number of displays and ramps.
+ */
+bool arcan_frameserver_setramps(arcan_frameserver* src,
+	size_t index,
+	float* table, size_t table_sz,
+	size_t ch_sz[],
 	uint8_t* edid, size_t edid_sz)
 {
+	if (!ch_sz || !table || !src || !src->desc.aext.gamma)
+		return false;
+
+/* if still marked as dirty, don't update.
+ * 0. update the index..
+ * 1. [optionally update the edid]
+ * 2. copy the ramp data into the output,
+ * 3. update the checksum,
+ * 4. optionally update the did
+ * 5. update the mask
+ */
 	return false;
 }
-
 
 /*
  * This is a legacy- feed interface and doesn't reflect how the shmif audio
@@ -1084,20 +1112,24 @@ static void tick_control(arcan_frameserver* src, bool tick)
 	vfunc_state cstate = *arcan_video_feedstate(src->vid);
 	arcan_video_alterfeed(src->vid, FFUNC_VFRAME, cstate);
 
+/*
+ * Check if the dirty- mask for the ramp- subproto has changed
+ */
+	if (src->desc.aproto & SHMIF_META_CM){
+	}
+
 leave:
 /* want the event to be queued after resize so the possible reaction (i.e.
  * redraw + synch) aligns with pending resize */
 	if (!fail && tick){
 		if (0 >= --src->clock.left){
-			arcan_event ev = {
+			src->clock.left = src->clock.start;
+			arcan_frameserver_pushevent(src, &(struct arcan_event){
 				.category = EVENT_TARGET,
 				.tgt.kind = TARGET_COMMAND_STEPFRAME,
 				.tgt.ioevs[0].iv = 1,
 				.tgt.ioevs[1].iv = 1
-			};
-
-			src->clock.left = src->clock.start;
-			arcan_frameserver_pushevent(src, &ev);
+			});
 		}
 	}
 }
