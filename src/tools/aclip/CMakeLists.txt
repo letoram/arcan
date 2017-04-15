@@ -35,4 +35,4 @@ set(SOURCES
 add_executable(${PROJECT_NAME} ${SOURCES})
 target_link_libraries(${PROJECT_NAME} ${LIBRARIES})
 install(TARGETS ${PROJECT_NAME} DESTINATION bin)
-install(FILES ${CMAKE_CURRENT_SOURCE_SDIR}/aclip.1 DESTINATION man)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/aclip.1 DESTINATION man)
