@@ -914,7 +914,7 @@ static bool event_process_disp(arcan_evctx* ctx, struct display* d)
  */
 		case TARGET_COMMAND_DISPLAYHINT:
 			if (ev.tgt.ioevs[0].iv && ev.tgt.ioevs[1].iv){
-				arcan_event_enqueue(ctx, &(arcan_event){
+				arcan_event_denqueue(ctx, &(arcan_event){
 					.category = EVENT_VIDEO,
 					.vid.kind = EVENT_VIDEO_DISPLAY_RESET,
 					.vid.source = -1,
