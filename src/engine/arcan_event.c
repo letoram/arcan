@@ -155,6 +155,17 @@ void arcan_event_setmask(arcan_evctx* ctx, uint32_t mask)
 	ctx->mask_cat_inp = mask;
 }
 
+int arcan_event_denqueue(arcan_evctx* ctx, const struct arcan_event* const src)
+{
+	if (ctx->drain){
+		arcan_event ev = *src;
+		ctx->drain(&ev, 1);
+		return ARCAN_OK;
+	}
+	else
+		return arcan_event_enqueue(ctx, src);
+}
+
 /*
  * enqueue to current context considering input-masking, unless label is set,
  * assign one based on what kind of event it is This function has a similar

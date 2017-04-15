@@ -66,6 +66,12 @@ void arcan_event_queuetransfer(
  */
 int arcan_event_enqueue(struct arcan_evctx*, const struct arcan_event* const);
 
+/*
+ * if the event context has a drain function, forward the event straight to
+ * the drain, if not, act as a normal arcan_event_enqueue.
+ */
+int arcan_event_denqueue(struct arcan_evctx*, const struct arcan_event* const);
+
 /* global clock, milisecond resolution relative to epoch set during start */
 int64_t arcan_frametime();
 

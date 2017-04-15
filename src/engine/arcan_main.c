@@ -237,8 +237,6 @@ static void postframe()
 
 static void process_event(arcan_event* ev, int drain)
 {
-	if (drain)
-		arcan_warning("event-queue saturation, drain performed\n");
 	arcan_lua_pushevent(settings.lua, ev);
 }
 
