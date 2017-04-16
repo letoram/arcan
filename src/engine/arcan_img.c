@@ -209,7 +209,6 @@ void arcan_img_init()
 		return;
 
 	initialized = true;
-	stbi__init_zdefaults();
 }
 
 arcan_errc arcan_img_decode(const char* hint, char* inbuf, size_t inbuf_sz,
