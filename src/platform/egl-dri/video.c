@@ -629,7 +629,7 @@ static int setup_buffers_stream(struct dispout* d)
 
 	EGLint stream_attrs[] = {
 		EGL_STREAM_FIFO_LENGTH_KHR, 1,
-		EGL_CONSUMER_AUTO_ACQUIRE_EXT, EGL_FALSE,
+//		EGL_CONSUMER_AUTO_ACQUIRE_EXT, EGL_FALSE,
  		EGL_NONE
  	};
 
