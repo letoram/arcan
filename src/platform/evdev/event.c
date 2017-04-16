@@ -590,6 +590,7 @@ static void disconnect(struct arcan_evctx* ctx, struct devnode* node)
 			node->path = NULL;
 			node->handle = -1;
 			iodev.pollset[i].events = iodev.pollset[i].revents = 0;
+			iodev.pollset[i].fd = -1;
 			if (node->led.gotled){
 				iodev.pollset[i+iodev.sz_nodes].fd = -1;
 				iodev.pollset[i+iodev.sz_nodes].events =
@@ -717,7 +718,7 @@ void platform_event_process(struct arcan_evctx* ctx)
 			do_led(&iodev.nodes[i]);
 		}
 
-		if (0 == iodev.pollset[i].revents)
+		if (iodev.pollset[i].fd == -1 || 0 == iodev.pollset[i].revents)
 			continue;
 
 /* !POLLIN, then something is wrong, remove the node */
