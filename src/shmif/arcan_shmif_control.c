@@ -1628,8 +1628,9 @@ bool arcan_shmif_resize_ext(struct arcan_shmif_cont* arg,
 bool arcan_shmif_resize(struct arcan_shmif_cont* arg,
 	unsigned width, unsigned height)
 {
-	return shmif_resize(arg, width, height,
-		arg->addr->abufsize, -1, -1, -1, 0);
+	return arg->addr ?
+		shmif_resize(arg, width, height, arg->addr->abufsize, -1, -1, -1, 0) :
+		false;
 }
 
 shmif_trigger_hook arcan_shmif_signalhook(struct arcan_shmif_cont* cont,
