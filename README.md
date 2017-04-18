@@ -139,6 +139,21 @@ allows you to run a large number of game engines and emulators.
 
 afsrv\_avfeed: custom skeleton for testing/ quick- wrapping some A/V device.
 
+Inside the tools directory, there are a number of additional tools that
+are built separately. These are:
+
+aclip: clipboard manager / CLI integration
+
+aloadimage: sandboxed image loader
+
+shmmon: shmif- dump/inspection tool
+
+waybridge: wayland client support
+
+leddec: example of an external LED controller
+
+vrbridge: add support for virtual-reality related hardware
+
 Appls to try<a name="appls"></a>
 ====
 
