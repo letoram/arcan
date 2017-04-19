@@ -331,8 +331,6 @@ static void dump_event(struct arcan_event ev)
 	break;
 	}
 	}
-	else
-		printf("[unknown-category]\n");
 }
 
 static void dump_snapshot(struct arcan_shmif_page* page, int qlim)
@@ -386,6 +384,9 @@ static void dump_snapshot(struct arcan_shmif_page* page, int qlim)
 		else if (cur == page->childevq.back)
 			state = "B";
 
+		if (page->childevq.evqueue[cur].category == 0)
+			continue;
+
 		printf("%s\t[%d] ", state, (int) cur);
 		dump_event(page->childevq.evqueue[cur]);
 		if (cur == 0)
@@ -404,6 +405,9 @@ static void dump_snapshot(struct arcan_shmif_page* page, int qlim)
 			state = "F";
 		else if (cur == page->parentevq.back)
 			state = "B";
+
+		if (page->childevq.evqueue[cur].category == 0)
+			continue;
 
 		printf("%s\t[%d] ", state, (int) cur);
 		dump_event(page->parentevq.evqueue[cur]);
