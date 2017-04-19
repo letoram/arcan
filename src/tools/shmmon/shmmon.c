@@ -55,34 +55,84 @@ static void dump_event(struct arcan_event ev)
 				ev.ext.streaminf.langid[2], ev.ext.streaminf.langid[3]);
 		break;
 		case EVENT_EXTERNAL_STATESIZE:
+			printf("STATESIZE(size: %"PRIu32", type: %"PRIu32")\n",
+				ev.ext.stateinf.size, ev.ext.stateinf.type);
 		break;
 		case EVENT_EXTERNAL_FLUSHAUD:
+			printf("FLUSHAUD()\n");
 		break;
 		case EVENT_EXTERNAL_SEGREQ:
+			printf("SEGREQ(id: %"PRIu32", dimensions: %"PRIu16"*%"PRIu16"+"
+				"%"PRId16",%"PRId16", kind: %d)\n",
+				ev.ext.segreq.id, ev.ext.segreq.width, ev.ext.segreq.height,
+				ev.ext.segreq.xofs, ev.ext.segreq.yofs, ev.ext.segreq.kind);
 		break;
 		case EVENT_EXTERNAL_KEYINPUT:
+			printf("CURSORINP(id: %"PRIu32", %"PRIu32",%"PRIu32", %d%d%d%d%d)\n",
+				ev.ext.cursor.id, ev.ext.cursor.x, ev.ext.cursor.y,
+				ev.ext.cursor.buttons[0], ev.ext.cursor.buttons[1],
+				ev.ext.cursor.buttons[2], ev.ext.cursor.buttons[3],
+				ev.ext.cursor.buttons[4]);
 		break;
 		case EVENT_EXTERNAL_CURSORINPUT:
+			printf("KEYINP(id: %"PRIu8", %"PRIu32", %"PRIu8")\n",
+				ev.ext.key.id, ev.ext.key.keysym, ev.ext.key.active);
 		break;
 		case EVENT_EXTERNAL_CURSORHINT:
+			printf("CURSORHINT(%s)\n", ev.ext.message.data);
 		break;
 		case EVENT_EXTERNAL_VIEWPORT:
+			printf("VIEWPORT(parent: %"PRIu32"@+%"PRId16",%"PRId16","
+				"border: %d,%d,%d,%d invisible: %d, anchor: %d+%d,%d z: %d)\n",
+				ev.ext.viewport.parent,
+				ev.ext.viewport.rel_x, ev.ext.viewport.rel_y,
+				(int)ev.ext.viewport.border[0], (int)ev.ext.viewport.border[1],
+				(int)ev.ext.viewport.border[2], (int)ev.ext.viewport.border[3],
+				(int)ev.ext.viewport.invisible,
+				(int)ev.ext.viewport.layhint,
+				(int)ev.ext.viewport.rel_x, (int)ev.ext.viewport.rel_y,
+				(int)ev.ext.viewport.rel_z
+			);
 		break;
 		case EVENT_EXTERNAL_CONTENT:
+			printf("CONTENT(x: %f/%f, y: %f/%f)\n",
+				ev.ext.content.x_pos, ev.ext.content.x_sz,
+				ev.ext.content.y_pos, ev.ext.content.y_sz);
 		break;
 		case EVENT_EXTERNAL_LABELHINT:
+			printf("LABELHINT(label: %.16s, default: %.16s, descr: %.58s, "
+				"i-alias: %d, i-type: %d)\n",
+				ev.ext.labelhint.label, ev.ext.labelhint.initial,
+				ev.ext.labelhint.descr, ev.ext.labelhint.subv,
+				ev.ext.labelhint.idatatype);
 		break;
 		case EVENT_EXTERNAL_REGISTER:
+			printf("REGISTER(title: %.64s, kind: %d, %"PRIx64":%"PRIx64")\n",
+				ev.ext.registr.title, ev.ext.registr.kind,
+				ev.ext.registr.guid[0], ev.ext.registr.guid[1]);
 		break;
 		case EVENT_EXTERNAL_ALERT:
 			printf("ALERT(%s):%d\n",
 				(char*)ev.ext.message.data, ev.ext.message.multipart);
 		break;
 		case EVENT_EXTERNAL_CLOCKREQ:
+			printf("CLOCKREQ(rate: %"PRIu32", id: %"PRIu32", "
+				"dynamic: %"PRIu8", once: %"PRIu8")\n",
+				ev.ext.clock.rate, ev.ext.clock.id,
+				ev.ext.clock.dynamic, ev.ext.clock.once);
 		break;
 		case EVENT_EXTERNAL_BCHUNKSTATE:
+			printf("BCHUNKSTATE(size: %"PRIu64", hint: %"PRIu8", input: %"PRIu8
+			", stream: %"PRIu8" ext: %.68s)\n",
+				ev.ext.bchunk.size, ev.ext.bchunk.hint, ev.ext.bchunk.input,
+				ev.ext.bchunk.stream, ev.ext.bchunk.extensions);
 		break;
 		case EVENT_EXTERNAL_STREAMSTATUS:
+			printf("STREAMSTATUS(#%"PRIu32" %.9s / %.9s, comp: %f, streaming: %"PRIu8
+				")\n", ev.ext.streamstat.frameno,
+				(char*)ev.ext.streamstat.timestr,
+				(char*)ev.ext.streamstat.timelim,
+				ev.ext.streamstat.completion, ev.ext.streamstat.streaming);
 		break;
 		default:
 			printf("UNKNOWN(!)\n");
