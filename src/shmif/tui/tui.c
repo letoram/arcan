@@ -1880,11 +1880,16 @@ void arcan_tui_write(struct tui_context* c, uint32_t ucode,
 
 void arcan_tui_ident(struct tui_context* c, const char* ident)
 {
-	arcan_event* ev = &c->last_ident;
-	ev->ext.kind = ARCAN_EVENT(IDENT);
-	size_t lim = sizeof(ev->ext.message.data)/sizeof(ev->ext.message.data[1]);
-	snprintf((char*)ev->ext.message.data, lim, "%s", ident);
-	arcan_shmif_enqueue(&c->acon, ev);
+	arcan_event nev = {
+		.ext.kind = ARCAN_EVENT(IDENT)
+	};
+
+	size_t lim = sizeof(nev.ext.message.data)/sizeof(nev.ext.message.data[1]);
+	snprintf((char*)nev.ext.message.data, lim, "%s", ident);
+
+	if (memcmp(&c->last_ident, &nev, sizeof(arcan_event)) != 0)
+		arcan_shmif_enqueue(&c->acon, &nev);
+	c->last_ident = nev;
 }
 
 bool arcan_tui_writeu8(struct tui_context* c,
