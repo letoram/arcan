@@ -1882,12 +1882,6 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 			retro.sync_data->mark_stop(retro.sync_data, stop);
 		}
 
-/* Some FE applications need a grasp of "where" we are frame-wise,
- * particularly for single-stepping etc. */
-		outev.ext.kind = ARCAN_EVENT(FRAMESTATUS);
-		outev.ext.framestatus.framenumber++;
-		arcan_shmif_enqueue(&retro.shmcont, &outev);
-
 #ifdef _DEBUG
 		if (testcounter != 1){
 			static bool countwarn = 0;
