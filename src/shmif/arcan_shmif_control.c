@@ -600,11 +600,15 @@ checkfd:
 		}
 	} while (priv->pev.gotev && *ks && c->addr->dms);
 
-/* atomic increment of front -> event enqueued, memset is technically
- * superflous but helps showing event queue consumption in debugging */
+/* atomic increment of front -> event enqueued */
 	if (*ctx->front != *ctx->back){
 		*dst = ctx->eventbuf[ *ctx->front ];
-		memset(&ctx->eventbuf[ *ctx->front ], '\0', sizeof(arcan_event));
+
+/*
+ * It's safe to memset here for added paranoia, but doesn't really protect
+ * against much of interest. Not resetting helps debugging on the other hand
+ * memset(&ctx->eventbuf[ *ctx->front ], '\0', sizeof(arcan_event));
+ */
 		*ctx->front = (*ctx->front + 1) % ctx->eventbuf_sz;
 
 /* Unless mask is set, paused won't be changed so that is ok. This has the
