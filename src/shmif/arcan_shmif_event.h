@@ -616,7 +616,7 @@ enum ARCAN_EVENT_EXTERNAL {
 
 /*
  * Decode playback discovered additional substreams that can be selected or
- * switched between.  Uses the streaminf substructure.
+ * switched between. Uses the streaminf substructure.
  */
 	EVENT_EXTERNAL_STREAMINFO,
 
@@ -631,6 +631,7 @@ enum ARCAN_EVENT_EXTERNAL {
  * [UNIQUE]
  * hint that serialization operations (STORE / RESTORE) are possible and how
  * much buffer data / which transfer limits that apply.
+ * Uses the stateinf substructure.
  */
 	EVENT_EXTERNAL_STATESIZE,
 
