@@ -308,6 +308,15 @@ static bool identify(int fd, const char* path,
 	for (size_t i = 0; i < sizeof(buf); i++)
 		hash = ((hash << 5) + hash) + buf[i];
 
+/* scan for collisions, if there is one, random and repeat. We lose
+ * repeatability but don't risk collision-disconnect spam */
+	for (ssize_t i = 0; i < iodev.sz_nodes; i++)
+		if (hash == iodev.nodes[i].devnum){
+			hash = rand() % 65535;
+			i = -1;
+			continue;
+		}
+
 /* 16-bit clamp is legacy in the scripting layer */
 	unsigned short devnum = hash;
 	if (devnum < MAX_DEVICES)
@@ -601,7 +610,6 @@ static void disconnect(struct arcan_evctx* ctx, struct devnode* node)
 				close(node->led.fds[1]);
 			}
 			iodev.n_devs--;
-			break;
 		}
 }
 
