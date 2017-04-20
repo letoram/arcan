@@ -30,6 +30,7 @@ SET(LIBRARIES
 
 set(SOURCES
 	shmmon.c
+	parse-edid.c
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES})
