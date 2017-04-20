@@ -65,7 +65,7 @@ struct arcan_frameserver_meta {
 		struct arcan_shmif_vr* vr;
 		struct arcan_shmif_vector* vector;
 		struct arcan_shmif_hdr* hdr;
-		uint8_t gamma_mask;
+		uint8_t gamma_map;
 	} aext;
 
 /* statistics for tracking performance / timing */
