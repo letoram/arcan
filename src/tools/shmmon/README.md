@@ -4,6 +4,10 @@ This tool is a simple shmif- debugging aid. You either hand it a descriptor
 or a path to where one might be found (os-specific) and it will periodically
 sample the contents of the page and dump to command-line output.
 
+Licensing
+====
+The EDID parser was lifted from the EDS project, see COPYING.eds.
+
 Building
 ====
 The build needs access to the arcan-shmif either detected through the normal
@@ -25,9 +29,9 @@ to that kind of data, the client will need to be proxied.
 
 Status
 ======
-[ ] Basic Metadata
+[x] Basic Metadata
 [ ] Subsegment- tracking
-[ ] Subprotocol support
+[x] Subprotocol support
 [ ] Semaphore control
 [ ] TUI-based UI
 [ ] System mode (/proc or cooperation with arcan)
