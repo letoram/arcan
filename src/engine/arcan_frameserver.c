@@ -831,7 +831,8 @@ size_t arcan_frameserver_protosize(arcan_frameserver* ctx,
 	}
 
 	tot += sizeof(struct arcan_shmif_ofstbl);
-	tot += tot % sizeof(uintptr_t);
+	if (tot % sizeof(struct arcan_shmif_ofstbl) != 0)
+		tot += tot - (tot % sizeof(uintptr_t));
 
 /*
  * Complicated, as there might be a number of different displays with
@@ -857,14 +858,14 @@ size_t arcan_frameserver_protosize(arcan_frameserver* ctx,
 /* WARNING: the max_lut_size is not actually used / retrieved here */
 		tot += sizeof(struct arcan_shmif_ramp) * sizeof(struct ramp_block) +
 			SHMIF_CMRAMP_ULIM * SHMIF_CMRAMP_PLIM * sizeof(float) * lim;
-		if (tot % sizeof(uintptr_t) != 0)
-			tot += tot % sizeof(uintptr_t);
 		dofs->sz_ramp = tot - dofs->sz_ramp;
 	}
 	else {
 		dofs->ofs_ramp = dofs->sz_ramp = 0;
 	};
 
+	if (tot % sizeof(uintptr_t) != 0)
+		tot += tot - (tot % sizeof(uintptr_t));
 	if (proto & SHMIF_META_HDRF16){
 /* nothing now, possibly reserved for tone-mapping */
 	}
@@ -880,13 +881,13 @@ size_t arcan_frameserver_protosize(arcan_frameserver* ctx,
 		dofs->ofs_vr = dofs->sz_vr = tot;
 		tot += sizeof(struct arcan_shmif_vr);
 		tot += sizeof(struct vr_limb) * LIMB_LIM;
-		if (tot % sizeof(uintptr_t) != 0)
-			tot += tot % sizeof(uintptr_t);
 		dofs->sz_vr = tot - dofs->sz_vr;
 	}
 	else
 		dofs->sz_vr = dofs->ofs_vr = 0;
 
+	if (tot % sizeof(uintptr_t) != 0)
+		tot += tot - (tot % sizeof(uintptr_t));
 	return tot;
 }
 
@@ -1116,6 +1117,13 @@ static void tick_control(arcan_frameserver* src, bool tick)
  * Check if the dirty- mask for the ramp- subproto has changed
  */
 	if (src->desc.aproto & SHMIF_META_CM){
+/*
+		uint8_t in_map = atomic_load(&src->desc.aext.gamma->dirty_out);
+		uint8_t m_diff = src->desc.aext.gamma_map;
+		if (m_diff){
+
+		}
+ */
 	}
 
 leave:

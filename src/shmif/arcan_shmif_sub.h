@@ -50,7 +50,7 @@
  * partial update, the failed checksum means there is new data on the way
  * anyhow or something more sinister is afoot.
  */
-static inline uint16_t subp_checksum(uint8_t* buf, size_t len)
+static inline uint16_t subp_checksum(const uint8_t* const buf, size_t len)
 {
 	uint16_t res = 0;
 	for (size_t i = 0; i < len; i++){
@@ -123,12 +123,13 @@ struct arcan_shmif_vector {
 #define SHMIF_CMRAMP_PLIM 4
 
 /*
- * the maximum number of entries per plane, the list
+ * the maximum number of entries for each plane, the mapping function server
+ * side may be forced to resample this according to the display, table format
+ * and so on.
  */
 #define SHMIF_CMRAMP_ULIM 1024
 
 struct ramp_block {
-	bool output;
 	uint8_t format;
 	size_t plane_sizes[SHMIF_CMRAMP_PLIM];
 
@@ -146,7 +147,7 @@ struct arcan_shmif_ramp {
 /* BITMASK, CONSUMER SET, PRODUCER CLEAR */
 	_Atomic uint_least8_t dirty_out;
 
-/* PRODUCER INIT */
+/* PRODUCER INIT, will be %2, first _in the _out */
 	uint8_t n_blocks;
 
 /* PRODUCER INIT, CONSUMER_UPDATE */
