@@ -1170,7 +1170,16 @@ bool arcan_frameserver_resize(struct arcan_frameserver* s)
 	if (reset_proto){
 		arcan_frameserver_setproto(s, aproto, &apend);
 		atomic_store(&shmpage->apad_type, aproto);
+		arcan_event_enqueue(arcan_event_defaultctx(),
+			&(struct arcan_event){
+				.category = EVENT_FSRV,
+				.fsrv.kind = EVENT_FSRV_APROTO,
+				.fsrv.video = s->vid,
+				.fsrv.aproto = aproto,
+				.fsrv.otag = s->tag,
+			});
 	}
+
 	goto done;
 
 /* couldn't resize, restore contents. this shouldn't be "needed" but is a

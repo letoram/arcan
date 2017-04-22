@@ -16,24 +16,38 @@ union shmif_ext_substruct arcan_shmif_substruct(
 
 	uintptr_t base = (uintptr_t) &ctx->addr->adata;
 
-	struct arcan_shmif_ofstbl* ofsets =
+	struct arcan_shmif_ofstbl* aofs =
 		(struct arcan_shmif_ofstbl*) &ctx->addr->adata;
 
-/* 1. fill in the offsets */
+	if (aofs->sz_ramp)
+		sub.cramp = (struct arcan_shmif_ramp*)(base + aofs->ofs_ramp);
+
+	if (aofs->sz_vr)
+		sub.vr = (struct arcan_shmif_vr*)(base + aofs->ofs_vr);
+
+	if (aofs->sz_hdr)
+		sub.hdr = (struct arcan_shmif_hdr16f*)(base + aofs->ofs_hdr);
+
+	if (aofs->sz_vector)
+		sub.vector = (struct arcan_shmif_vector*)(base + aofs->ofs_vector);
 
 	return sub;
 }
 
 bool arcan_shmifsub_getramp(
-	struct arcan_shmif_cont* cont, size_t ind, struct ramp_block* out)
+	struct arcan_shmif_cont* cont, size_t ind, struct ramp_block** out)
 {
 	struct arcan_shmif_ramp* hdr = arcan_shmif_substruct(
 		cont, SHMIF_META_CM).cramp;
 
-/* 2. return the right position */
-
-	if (!hdr)
+	if (!hdr || hdr->magic != ARCAN_SHMIF_RAMPMAGIC)
 		return false;
+
+/* decode and validate */
+
+/* allocate, copy */
+
+/* mark as read */
 
 	return false;
 }

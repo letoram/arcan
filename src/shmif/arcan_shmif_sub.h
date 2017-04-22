@@ -131,16 +131,22 @@ struct arcan_shmif_vector {
 
 struct ramp_block {
 	uint8_t format;
+
+/* checksum covers edid + plane-data */
+	uint16_t checksum;
+
 	size_t plane_sizes[SHMIF_CMRAMP_PLIM];
 
 	uint8_t edid[128];
-	uint16_t checksum;
 
 /* SHMIF_CMRAMP_PLIM * SHMIF_CMRAMP_ULIM[with plane_size[n] tight packed */
 	float planes[0];
 };
 
+#define ARCAN_SHMIF_RAMPMAGIC 0xfafafa10
 struct arcan_shmif_ramp {
+	uint32_t magic;
+
 /* BITMASK, PRODUCER SET, CONSUMER CLEAR */
 	_Atomic uint_least8_t dirty_in;
 
@@ -165,9 +171,19 @@ struct arcan_shmif_ramp {
 ssize_t arcan_shmifsub_rampmeta(struct arcan_shmif_cont* cont,
 	uint8_t** out_edid, size_t* edid_sz);
 
+/*
+ * retrieve/validate the ramp at index [ind] and mark as read returns false if
+ * the ramp couldn't be retrieved. returns true and sets *out to a
+ * heap-allocated block that the caller assumes control over.
+ */
 bool arcan_shmifsub_getramp(
-	struct arcan_shmif_cont* cont, size_t ind, struct ramp_block* out);
+	struct arcan_shmif_cont* cont, size_t ind, struct ramp_block** out);
 
+/*
+ * update the ramp at index [ind] and mark as updated.
+ * returns false if the ramp couldn't be set (missing permissions or
+ * index out of bounds), true if it was successfully updated.
+ */
 bool arcan_shmifsub_setramp(
 	struct arcan_shmif_cont* cont, size_t ind, struct ramp_block* in);
 

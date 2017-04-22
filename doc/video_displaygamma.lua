@@ -12,7 +12,9 @@
 -- subprotocol and has been granted permissions to synch such tables by
 -- setting the permission bit through ref:target_flags TARGET_ALLOWCM. In this
 -- case, *tbl* may also contain an 'edid' key with the display ID, and the
--- optional *index* (default=0) display subindex will be used.
+-- optional *index* (default=0) display subindex will be used. Clients that enable
+-- this feature will trigger the 'proto_change' event and may start generating
+-- 'ramp_update' events in the event of suggested ramp updates.
 --
 -- If the optional *tbl* argument is not set, the gamma tables will be queried,
 -- and returned as a number-indexed table with the individual channels

@@ -4421,6 +4421,14 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		break;
 		case EVENT_FSRV_PREROLL:
 		break;
+		case EVENT_FSRV_APROTO:
+			tblstr(ctx, "kind", "proto_change", top);
+			tblbool(ctx, "cm", (ev->fsrv.aproto & SHMIF_META_CM) > 0, top);
+			tblbool(ctx, "hdrf16", (ev->fsrv.aproto & SHMIF_META_HDRF16) > 0, top);
+			tblbool(ctx, "ldef", (ev->fsrv.aproto & SHMIF_META_LDEF) > 0, top);
+			tblbool(ctx, "vobj", (ev->fsrv.aproto & SHMIF_META_VOBJ) > 0, top);
+			tblbool(ctx, "vr", (ev->fsrv.aproto & SHMIF_META_VR) > 0, top);
+		break;
 		case EVENT_FSRV_GAMMARAMP:
 			tblstr(ctx, "kind", "ramp_update", top);
 			tblnum(ctx, "index", ev->fsrv.counter, top);
@@ -5453,6 +5461,8 @@ static bool push_fsrv_ramp(arcan_frameserver* dst, lua_State* src,
 	edid_buf = (uint8_t*) lua_tolstring(src, -1, &edid_sz);
 	lua_pop(src, 1);
 
+/* since we're working with the frameserver- shmpage directly,
+ * we need the guard region to handle SIGBUS */
 	jmp_buf tramp;
 	if (0 != setjmp(tramp)){
 		return false;
