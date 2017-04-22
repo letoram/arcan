@@ -61,7 +61,7 @@ struct arcan_frameserver_meta {
 
 /* resolved / updated on renegotiation */
 	struct {
-		struct arcan_shmif_ramps* gamma;
+		struct arcan_shmif_ramp* gamma;
 		struct arcan_shmif_vr* vr;
 		struct arcan_shmif_vector* vector;
 		struct arcan_shmif_hdr* hdr;

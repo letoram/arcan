@@ -854,6 +854,7 @@ size_t arcan_frameserver_protosize(arcan_frameserver* ctx,
 		size_t lim;
 		dofs->ofs_ramp = dofs->sz_ramp = tot;
 		platform_video_displays(NULL, &lim);
+		lim *= 2; /* both in and out */
 
 /* WARNING: the max_lut_size is not actually used / retrieved here */
 		tot += sizeof(struct arcan_shmif_ramp) * sizeof(struct ramp_block) +
@@ -917,10 +918,15 @@ void arcan_frameserver_setproto(arcan_frameserver* ctx,
 
 	if (proto & SHMIF_META_CM){
 		size_t lim;
-		ctx->desc.aext.gamma = (struct arcan_shmif_ramps*)(base + aofs->ofs_ramp);
+		ctx->desc.aext.gamma = (struct arcan_shmif_ramp*)(base + aofs->ofs_ramp);
 		memset(ctx->desc.aext.gamma, '\0', aofs->sz_ramp);
+		platform_video_displays(NULL, &lim);
+		lim *= 2; /* both in and out */
+		ctx->desc.aext.gamma->magic = ARCAN_SHMIF_RAMPMAGIC;
+		ctx->desc.aext.gamma->n_blocks = lim;
 /* we don't actually fill out the data here yet, the scripts need to tell
- * us explicitly which outputs that should be presented and in which order */
+ * us explicitly which outputs that should be presented and in which order,
+ * that's done in the setramps/getramps */
 	}
 	else
 		ctx->desc.aext.gamma = NULL;
@@ -978,21 +984,51 @@ bool arcan_frameserver_getramps(arcan_frameserver* src,
 bool arcan_frameserver_setramps(arcan_frameserver* src,
 	size_t index,
 	float* table, size_t table_sz,
-	size_t ch_sz[],
+	size_t ch_sz[SHMIF_CMRAMP_PLIM],
 	uint8_t* edid, size_t edid_sz)
 {
 	if (!ch_sz || !table || !src || !src->desc.aext.gamma)
 		return false;
 
-/* if still marked as dirty, don't update.
- * 0. update the index..
- * 1. [optionally update the edid]
- * 2. copy the ramp data into the output,
- * 3. update the checksum,
- * 4. optionally update the did
- * 5. update the mask
- */
-	return false;
+	size_t lim;
+	platform_video_displays(NULL, &lim);
+
+	if (index >= lim)
+		return false;
+
+/* prepare a local copy and throw it in there */
+	struct {
+		struct ramp_block block;
+		uint8_t plane_lim[SHMIF_CMRAMP_PLIM * SHMIF_CMRAMP_ULIM];
+	} data_out = {0};
+	memcpy(data_out.block.plane_sizes, ch_sz, sizeof(size_t)*SHMIF_CMRAMP_PLIM);
+
+/* first the actual samples */
+	size_t pdata_sz = SHMIF_CMRAMP_PLIM * SHMIF_CMRAMP_ULIM;
+	if (pdata_sz > table_sz)
+		pdata_sz = table_sz;
+	memcpy(data_out.plane_lim, table, pdata_sz);
+
+/* EDID block is optional, full == 0 to indicate disabled */
+	size_t edid_bsz = sizeof(src->desc.aext.gamma->ramps[index].edid);
+	if (edid && edid_sz == edid_bsz)
+		memcpy(src->desc.aext.gamma->ramps[index].edid, edid, edid_bsz);
+
+	struct ramp_block* dst_block = (struct ramp_block*)
+		((uintptr_t) src->desc.aext.gamma->ramps + SHMIF_CMRAMP_RVA(index));
+
+/* checksum only applies to edid+planedata */
+	data_out.block.checksum = subp_checksum(
+		(uint8_t*)data_out.block.edid,
+		edid_bsz + SHMIF_CMRAMP_PLIM * SHMIF_CMRAMP_ULIM);
+
+/* flush- to buffer */
+	memcpy(dst_block, &data_out, sizeof(data_out));
+
+/* and set the magic bit */
+	atomic_fetch_or(&src->desc.aext.gamma->dirty_in, 1 << index);
+
+	return true;
 }
 
 /*

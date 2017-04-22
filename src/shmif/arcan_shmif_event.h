@@ -889,6 +889,7 @@ enum ARCAN_EVENT_EXTERNAL {
 		EVENT_FSRV_DROPPEDFRAME,
 		EVENT_FSRV_DELIVEREDFRAME,
 		EVENT_FSRV_PREROLL,
+		EVENT_FSRV_APROTO,
 		EVENT_FSRV_GAMMARAMP
 	};
 	/* -- end internal -- */
@@ -1031,6 +1032,9 @@ enum ARCAN_EVENT_EXTERNAL {
 			struct {
 				char ident[32];
 				int64_t descriptor;
+			};
+			struct {
+				int aproto;
 			};
 		};
 

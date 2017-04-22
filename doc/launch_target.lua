@@ -33,7 +33,7 @@
 -- "coreopt", "message", "failure", "framestatus", "streaminfo",
 -- "streamstatus", "cursor_input", "key_input", "segment_request",
 -- "state_size", "viewport", "alert", "content_state", "resource_status",
--- "registered", "clock", "cursor", "bchunkstate", "unknown"
+-- "registered", "clock", "cursor", "bchunkstate", "proto_update", "unknown"
 --
 -- @note: "preroll" {segkind, source_audio} is an initial state where
 -- the resources for the target have been reserved, and it is possible to
@@ -120,6 +120,10 @@
 --
 -- @note: "registered", {kind, title, guid} - notice that the underlying engine
 -- has completed negotiating with the frameserver.
+--
+-- @note: "proto_update", {cm, vr, hdrf16, ldr, vobj} - the set of negotiated
+-- subprotocols has changed, each member is a boolean indicating if the subprotocol
+-- is available or not.
 --
 -- @note: "ramp_update", {index} - for clients that have been allowed access to
 -- the color ramp subprotocol, this event will be triggered for each mapped ramp

@@ -365,10 +365,14 @@ static void decode_apad(void* apad, size_t apad_sz)
 	if (ofsets.sz_ramp){
 		struct arcan_shmif_ramp rblock;
 		memcpy(&rblock, (void*)(apad_base + ofsets.ofs_ramp), sizeof(struct arcan_shmif_ramp));
-		printf("color-mgmt (blocks: %"PRIu8"):\n\tdirty-in:", rblock.n_blocks);
+		if (rblock.magic != ARCAN_SHMIF_RAMPMAGIC){
+			printf("color-mgmt MAGIC MISMATCH (%"PRIx32" vs %"PRIx32")\n", rblock.magic, ARCAN_SHMIF_RAMPMAGIC);
+		}
+
+		printf("color-mgmt (blocks: %"PRIu8"):\n\tdirty-in: ", rblock.n_blocks);
 		for (size_t i = 0; i < 8; i++)
 			putc( ((i << 1) & rblock.dirty_in) > 0 ? '1' : '0', stdout);
-		printf("\n\tdirty-out:");
+		printf("\n\tdirty-out: ");
 		for (size_t i = 0; i < 8; i++)
 			putc( ((i << 1) & rblock.dirty_in) > 0 ? '1' : '0', stdout);
 
@@ -384,7 +388,8 @@ static void decode_apad(void* apad, size_t apad_sz)
 			uintptr_t ramp_rva = apad_base + ofsets.ofs_ramp + SHMIF_CMRAMP_RVA(i);
 			memcpy(&disp_block, (void*)(ramp_rva), sizeof(disp_block));
 			bool edid_data = false;
-			uint16_t checksum = subp_checksum((uint8_t*)&disp_block, sizeof(disp_block));
+			uint16_t checksum = subp_checksum(
+				(uint8_t*)disp_block.block.edid, 128 + SHMIF_CMRAMP_PLIM * SHMIF_CMRAMP_ULIM);
 			if (disp_block.block.checksum != checksum){
 				printf("[%zu] - checksum mismatch (%"PRIu16" != %"PRIu16")\n",
 					i, checksum, disp_block.block.checksum);
@@ -392,9 +397,9 @@ static void decode_apad(void* apad, size_t apad_sz)
 			}
 
 			printf("[%zu] - format: %"PRIu8" sizes: \n", i, disp_block.block.format);
-			for (size_t i = 0; i < SHMIF_CMRAMP_ULIM; i++)
-				printf("%zu%s", disp_block.block.plane_sizes[i],
-					i == SHMIF_CMRAMP_ULIM-1? ", " : "");
+			for (size_t j = 0; i < SHMIF_CMRAMP_PLIM; i++)
+				printf("\t[%zu][%zu] %zu bytes\n", i, j,
+					disp_block.block.plane_sizes[j]);
 
 			for (size_t i = 0; i < 128; i++)
 				if (disp_block.block.edid[i] != 0){
@@ -402,7 +407,7 @@ static void decode_apad(void* apad, size_t apad_sz)
 				}
 
 			if (edid_data){
-				printf("[%zu] DID contents:\n", i);
+				printf("[%zu] EDID contents:\n", i);
 				parse_edid(disp_block.block.edid);
 			}
 		}
