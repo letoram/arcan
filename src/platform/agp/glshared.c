@@ -33,6 +33,17 @@
 #define GL_VERTEX_PROGRAM_POINT_SIZE GL_NONE
 #endif
 
+/*
+ * Workaround for missing GL_DRAW_FRAMEBUFFER_BINDING
+ */
+#if defined(GLES2) || defined(GLES3)
+	#define BIND_FRAMEBUFFER(X) { st_last_fbo = (X);\
+		env->bind_framebuffer(GL_FRAMEBUFFER, (X)); }
+GLuint st_last_fbo;
+#else
+	#define BIND_FRAMEBUFFER(X) env->bind_framebuffer(GL_FRAMEBUFFER, (X))
+#endif
+
 struct agp_rendertarget
 {
 	GLuint fbo;
@@ -57,9 +68,14 @@ unsigned agp_rendertarget_swap(struct agp_rendertarget* dst)
 	GLint cfbo;
 
 /* switch rendertarget if we're not already there */
+#if defined(GLES2) || defined(GLES3)
+	cfbo = st_last_fbo;
+#else
 	env->get_integer_v(GL_DRAW_FRAMEBUFFER_BINDING, &cfbo);
+#endif
+
 	if (dst->fbo != cfbo)
-		env->bind_framebuffer(GL_FRAMEBUFFER, dst->fbo);
+		BIND_FRAMEBUFFER(dst->fbo);
 
 /* we return the one that was used up to this point */
 	int rid = dst->front_active ?
@@ -77,7 +93,7 @@ unsigned agp_rendertarget_swap(struct agp_rendertarget* dst)
 
 /* and switch back to the old rendertarget */
 	if (dst->fbo != cfbo)
-		env->bind_framebuffer(GL_FRAMEBUFFER, cfbo);
+		BIND_FRAMEBUFFER(cfbo);
 
 	return rid;
 }
@@ -89,7 +105,7 @@ static bool alloc_fbo(struct agp_rendertarget* dst, bool retry)
 	int mode = dst->mode & (~RENDERTARGET_DOUBLEBUFFER);
 
 /* need both stencil and depth buffer, but we don't need the data from them */
-	env->bind_framebuffer(GL_FRAMEBUFFER, dst->fbo);
+	BIND_FRAMEBUFFER(dst->fbo);
 
 	if (mode > RENDERTARGET_DEPTH)
 	{
@@ -190,7 +206,7 @@ static bool alloc_fbo(struct agp_rendertarget* dst, bool retry)
 		return false;
 	}
 
-	env->bind_framebuffer(GL_FRAMEBUFFER, 0);
+	BIND_FRAMEBUFFER(0);
 	return true;
 }
 
@@ -344,20 +360,20 @@ void agp_activate_rendertarget(struct agp_rendertarget* tgt)
 	struct agp_fenv* env = agp_env();
 
 #ifdef HEADLESS_NOARCAN
-	env->bind_framebuffer(GL_FRAMEBUFFER, tgt ? tgt->fbo : 0);
+	BIND_FRAMEBUFFER(tgt?tgt->fbo:0);
 #else
 	struct monitor_mode mode = platform_video_dimensions();
 
 	if (!tgt){
 		w = mode.width;
 		h = mode.height;
-		env->bind_framebuffer(GL_FRAMEBUFFER, 0);
+		BIND_FRAMEBUFFER(0);
 		env->clear_color(0, 0, 0, 1);
 	}
 	else {
 		w = tgt->store->w;
 		h = tgt->store->h;
-		env->bind_framebuffer(GL_FRAMEBUFFER, tgt->fbo);
+		BIND_FRAMEBUFFER(tgt->fbo);
 		env->clear_color(tgt->clearcol[0],
 			tgt->clearcol[1], tgt->clearcol[2], tgt->clearcol[3]);
 	}
@@ -380,8 +396,10 @@ void agp_pipeline_hint(enum pipeline_mode mode)
 		env->disable(GL_CULL_FACE);
 		env->disable(GL_DEPTH_TEST);
 		env->depth_mask(GL_FALSE);
+#if !defined(GLES2) && !defined(GLES3)
 		env->line_width(1.0);
 		env->polygon_mode(GL_FRONT_AND_BACK, GL_FILL);
+#endif
 	break;
 
 	case PIPELINE_3D:
@@ -535,7 +553,9 @@ void agp_update_vstore(struct storage_info_t* s, bool copy)
 	}
 
 	if (copy){
+#if !defined(GLES2) && !defined(GLES3)
 		env->pixel_storei(GL_UNPACK_ROW_LENGTH, 0);
+#endif
 		s->update_ts = arcan_timemillis();
 		if (s->txmapped == TXSTATE_DEPTH)
 			env->tex_image_2d(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, s->w, s->h, 0,
@@ -773,12 +793,15 @@ void agp_submit_mesh(struct mesh_storage_t* base, enum agp_mesh_flags fl)
 	if (fl != env->model_flags){
 		if (fl & MESH_FILL_LINE){
 			if (fl == MESH_FACING_BOTH){
+#if !defined(GLES2) && !defined(GLES3)
 				env->polygon_mode(GL_FRONT_AND_BACK, GL_LINE);
+#endif
 			}
 			else {
 /* proper wireframe with culling requires higher level GL, barycentric coords
  * or Z prepass and then depth testing */
 				setup_culling(fl);
+#if !defined(GLES2) && !defined(GLES3)
 				env->polygon_mode(GL_FRONT_AND_BACK, GL_FILL);
 				env->color_mask(false, false, false, false);
 				setup_transfer(base, fl);
@@ -787,13 +810,17 @@ void agp_submit_mesh(struct mesh_storage_t* base, enum agp_mesh_flags fl)
 				env->color_mask(true, true, true, true);
 				env->depth_func(GL_LESS);
 				setup_transfer(base, fl);
-
 				env->polygon_mode(GL_FRONT_AND_BACK, GL_FILL);
+#else
+/* no wireframe support for GLES */
+#endif
 				return;
 			}
 		}
 		else{
+#if !defined(GLES2) && !defined(GLES3)
 			env->polygon_mode(GL_FRONT_AND_BACK, GL_FILL);
+#endif
 			setup_culling(fl);
 		}
 

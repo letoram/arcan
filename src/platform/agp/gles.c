@@ -14,6 +14,8 @@
 #include <assert.h>
 #include <string.h>
 
+#include "glfun.h"
+
 #include "../video_platform.h"
 #include "../platform.h"
 
@@ -198,10 +200,12 @@ void glDrawBuffer(GLint mode)
 
 void agp_readback_synchronous(struct storage_info_t* dst)
 {
+	arcan_warning("agp(gles) - readbacks not supported\n");
 }
 
 void agp_request_readback(struct storage_info_t* store)
 {
+	arcan_warning("agp(gles) - readbacks not supported\n");
 }
 
 struct asynch_readback_meta argp_buffer_readback_asynchronous(
