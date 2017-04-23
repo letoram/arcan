@@ -1,9 +1,0 @@
-Leddec is a simple PoC for an external FIFO based LED controller.
-
-To enable, simply create a FIFO (global namespace), e.g.
-mkfifo /tmp/led
-
-and then set the corresponding key:
-arcan_db add_appl_kv arcan ext_led /tmp/led
-
-run leddec /tmp/led and then arcan with some appl that uses the led functionality
