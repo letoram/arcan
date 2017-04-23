@@ -9,9 +9,24 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <fcntl.h>
+#include <poll.h>
+#include <arcan_shmif.h>
+
+static struct arcan_shmif_cont con;
+static bool con_dirty;
 
 static void commit(int led, uint8_t rv, uint8_t gv, uint8_t bv, bool buf)
 {
+	if (con.addr){
+		if (-1 == led){
+			for (size_t i = 0; i < 256; i++)
+				con.vidp[i] = SHMIF_RGBA(rv, gv, bv, 255);
+		}
+		else if (led < 256 && led >= 0)
+			con.vidp[led] = SHMIF_RGBA(rv, gv, bv, 255);
+		con_dirty = true;
+	}
+
 	printf("%d(%d, %d, %d)%s", led,
 		(int) rv, (int) gv, (int) bv, buf ? "+" : "=\n");
 }
@@ -21,6 +36,12 @@ int main(int argc, char** argv)
 	if (2 != argc){
 		printf("usage: leddec /path/to/ledpipe (fifo)\n");
 		return EXIT_FAILURE;
+	}
+
+	if (getenv("ARCAN_CONNPATH")){
+		con = arcan_shmif_open(SEGID_MEDIA, 0, NULL);
+		if (con.addr)
+			arcan_shmif_resize(&con, 256, 1);
 	}
 
 	int fd = open(argv[1], O_RDONLY);
@@ -52,6 +73,18 @@ int main(int argc, char** argv)
 		default:
 			printf("\ndata corruption (%d, %d)\n", (int)buf[0], (int)buf[1]);
 		break;
+		}
+
+/* only synch when we've flushed the incoming buffer */
+		if (con_dirty){
+			struct pollfd pfd = {
+				.fd = fd,
+				.events = POLLIN
+			};
+			if (0 == poll(&pfd, 1, 0)){
+				con_dirty = false;
+				arcan_shmif_signal(&con, SHMIF_SIGVID);
+			}
 		}
 	}
 
