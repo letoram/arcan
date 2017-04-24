@@ -100,3 +100,7 @@ else()
 	message(FATAL_ERROR
 "${CLB_WHT}No video platform defined${CLB_RST}, see -DVIDEO_PLATFORM=xx above${CL_RST}.")
 endif()
+
+if (NOT ENABLE_LWA)
+	set(LWA_PLATFORM_STR "stub")
+endif()

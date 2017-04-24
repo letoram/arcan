@@ -35,21 +35,31 @@ union shmif_ext_substruct arcan_shmif_substruct(
 }
 
 bool arcan_shmifsub_getramp(
-	struct arcan_shmif_cont* cont, size_t ind, struct ramp_block** out)
+	struct arcan_shmif_cont* cont, size_t ind, struct ramp_block* out)
 {
 	struct arcan_shmif_ramp* hdr = arcan_shmif_substruct(
 		cont, SHMIF_META_CM).cramp;
 
-	if (!hdr || hdr->magic != ARCAN_SHMIF_RAMPMAGIC)
+	if (!hdr || hdr->magic != ARCAN_SHMIF_RAMPMAGIC || ind > (hdr->n_blocks >> 1))
 		return false;
 
 /* decode and validate */
+	struct ramp_block tmp;
+	memcpy(&tmp, &hdr->ramps[ind], sizeof(struct ramp_block));
+	uint16_t checksum = subp_checksum(
+		tmp.edid, sizeof(tmp.edid) + SHMIF_CMRAMP_UPLIM);
 
-/* allocate, copy */
+	if (checksum != tmp.checksum)
+		return false;
 
-/* mark as read */
+	if (out)
+		memcpy(out, &tmp, sizeof(struct ramp_block));
 
-	return false;
+/* mark as read, this doesn't really affect the synch- in itself (that's
+ * what the checksum is for), but as a hint */
+	atomic_fetch_and(&hdr->dirty_in, ~(1<<ind));
+
+	return true;
 }
 
 bool arcan_shmifsub_setramp(
@@ -58,8 +68,16 @@ bool arcan_shmifsub_setramp(
 	struct arcan_shmif_ramp* hdr = arcan_shmif_substruct(
 		cont, SHMIF_META_CM).cramp;
 
-	if (!hdr)
+	if (!in || !hdr || ind >= (hdr->n_blocks >> 1))
 		return false;
 
-	return false;
+/* update checksum, write and set dirty bit */
+	in->checksum = subp_checksum(
+		in->edid, sizeof(in->edid) + SHMIF_CMRAMP_UPLIM);
+
+	memcpy(&hdr->ramps[ind*2], in, sizeof(struct ramp_block));
+
+	atomic_fetch_or(&hdr->dirty_out, 1<<ind);
+
+	return true;
 }

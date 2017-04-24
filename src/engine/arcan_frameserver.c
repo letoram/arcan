@@ -857,8 +857,8 @@ size_t arcan_frameserver_protosize(arcan_frameserver* ctx,
 		lim *= 2; /* both in and out */
 
 /* WARNING: the max_lut_size is not actually used / retrieved here */
-		tot += sizeof(struct arcan_shmif_ramp) * sizeof(struct ramp_block) +
-			SHMIF_CMRAMP_ULIM * SHMIF_CMRAMP_PLIM * sizeof(float) * lim;
+		tot += sizeof(struct arcan_shmif_ramp) +
+			sizeof(struct ramp_block) * lim;
 		dofs->sz_ramp = tot - dofs->sz_ramp;
 	}
 	else {
@@ -964,16 +964,48 @@ bool arcan_frameserver_getramps(arcan_frameserver* src,
 	if (!ch_sz || !table || !src || !src->desc.aext.gamma)
 		return false;
 
-/* RAMP_INDEX_RVA(X) + (uintptr_t) src->desc.aext.gamma puts us at the
- * address for the ramp at the specified ind. Then we check the planes
- * and use plane_sizes[] to fill in the table */
+	struct arcan_shmif_ramp* hdr = src->desc.aext.gamma;
+	if (!hdr || hdr->magic != ARCAN_SHMIF_RAMPMAGIC)
+		return false;
 
-/* [ for each ramp ]
- * 1. copy the ramp data to a local buffer
- * 2. verify the checksum
- * 3. if dirty bit is set, clear dity bit
- */
-	return false;
+/* note, we can't rely on the page block counter as the source isn't trusted to
+ * set/manage that information, rely on the requirement that display- index set
+ * size is constant */
+	size_t lim;
+	platform_video_displays(NULL, &lim);
+
+	if (index >= lim)
+		return false;
+
+/* only allow ramp-retrieval once and only for one that is marked dirty */
+	if (!(hdr->dirty_out & (1 << index)))
+		return false;
+
+/* we always ignore EDID, that one is read/only */
+	struct ramp_block block;
+	memcpy(&block, &hdr->ramps[index * 2], sizeof(struct ramp_block));
+
+	uint16_t checksum = subp_checksum(
+		block.edid, sizeof(block.edid) + SHMIF_CMRAMP_UPLIM);
+
+/* Checksum verification failed, either this has been done deliberately and
+ * we're in a bit of a situation since there's no strong mechanism for the
+ * caller to know this is the reason and that we need to wait and recheck.
+ * If we revert the tracking-bit, the event updates will be correct again,
+ * but we are introducing a 'sortof' event-queue storm of 1 event/tick.
+ *
+ * The decision, for now, is to take that risk and let the ratelimit+kill
+ * action happen in the scripting layer. */
+
+	src->desc.aext.gamma_map &= ~(1 << index);
+	if (checksum != block.checksum)
+		return false;
+
+	memcpy(table, block.planes,
+		table_sz < SHMIF_CMRAMP_UPLIM ? table_sz : SHMIF_CMRAMP_UPLIM);
+
+	atomic_fetch_and(&hdr->dirty_out, ~(1<<index));
+	return true;
 }
 
 /*
@@ -996,34 +1028,35 @@ bool arcan_frameserver_setramps(arcan_frameserver* src,
 	if (index >= lim)
 		return false;
 
+/* verify that we fit */
+	size_t sum = 0;
+	for (size_t i = 0; i < SHMIF_CMRAMP_PLIM; i++){
+		sum += ch_sz[i];
+	}
+	if (sum > SHMIF_CMRAMP_UPLIM)
+		return false;
+
 /* prepare a local copy and throw it in there */
-	struct {
-		struct ramp_block block;
-		uint8_t plane_lim[SHMIF_CMRAMP_PLIM * SHMIF_CMRAMP_ULIM];
-	} data_out = {0};
-	memcpy(data_out.block.plane_sizes, ch_sz, sizeof(size_t)*SHMIF_CMRAMP_PLIM);
+	struct ramp_block block = {0};
+	memcpy(block.plane_sizes, ch_sz, sizeof(size_t)*SHMIF_CMRAMP_PLIM);
 
 /* first the actual samples */
-	size_t pdata_sz = SHMIF_CMRAMP_PLIM * SHMIF_CMRAMP_ULIM;
+	size_t pdata_sz = SHMIF_CMRAMP_UPLIM;
 	if (pdata_sz > table_sz)
 		pdata_sz = table_sz;
-	memcpy(data_out.plane_lim, table, pdata_sz);
+	memcpy(block.planes, table, pdata_sz);
 
 /* EDID block is optional, full == 0 to indicate disabled */
 	size_t edid_bsz = sizeof(src->desc.aext.gamma->ramps[index].edid);
 	if (edid && edid_sz == edid_bsz)
 		memcpy(src->desc.aext.gamma->ramps[index].edid, edid, edid_bsz);
 
-	struct ramp_block* dst_block = (struct ramp_block*)
-		((uintptr_t) src->desc.aext.gamma->ramps + SHMIF_CMRAMP_RVA(index));
-
 /* checksum only applies to edid+planedata */
-	data_out.block.checksum = subp_checksum(
-		(uint8_t*)data_out.block.edid,
-		edid_bsz + SHMIF_CMRAMP_PLIM * SHMIF_CMRAMP_ULIM);
+	block.checksum = subp_checksum(
+		(uint8_t*)block.edid, edid_bsz + SHMIF_CMRAMP_UPLIM);
 
 /* flush- to buffer */
-	memcpy(dst_block, &data_out, sizeof(data_out));
+	memcpy(&src->desc.aext.gamma->ramps[index], &block, sizeof(block));
 
 /* and set the magic bit */
 	atomic_fetch_or(&src->desc.aext.gamma->dirty_in, 1 << index);
@@ -1150,19 +1183,26 @@ static void tick_control(arcan_frameserver* src, bool tick)
 	arcan_video_alterfeed(src->vid, FFUNC_VFRAME, cstate);
 
 /*
- * Check if the dirty- mask for the ramp- subproto has changed
+ * Check if the dirty- mask for the ramp- subproto has changed, enqueue the
+ * ones that havn't been retrieved (hence the local map) as ramp-update events.
+ * There's no copy- and mark as read, that has to be done from the next layer.
  */
+leave:
 	if (src->desc.aproto & SHMIF_META_CM){
-/*
 		uint8_t in_map = atomic_load(&src->desc.aext.gamma->dirty_out);
-		uint8_t m_diff = src->desc.aext.gamma_map;
-		if (m_diff){
-
+		for (size_t i = 0; i < 8; i++){
+			if ((in_map & (1 << i)) && !(src->desc.aext.gamma_map & (1 << i))){
+				arcan_event_enqueue(arcan_event_defaultctx(), &(arcan_event){
+					.category = EVENT_FSRV,
+					.fsrv.kind = EVENT_FSRV_GAMMARAMP,
+					.fsrv.counter = i,
+					.fsrv.video = src->vid
+				});
+				src->desc.aext.gamma_map |= 1 << i;
+			}
 		}
- */
 	}
 
-leave:
 /* want the event to be queued after resize so the possible reaction (i.e.
  * redraw + synch) aligns with pending resize */
 	if (!fail && tick){
