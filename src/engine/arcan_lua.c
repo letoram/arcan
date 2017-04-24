@@ -5441,7 +5441,7 @@ static int videocanvasrsz(lua_State* ctx)
 static bool push_fsrv_ramp(arcan_frameserver* dst, lua_State* src,
 	int index, size_t n)
 {
-	float ramps[SHMIF_CMRAMP_PLIM*SHMIF_CMRAMP_ULIM];
+	float ramps[SHMIF_CMRAMP_UPLIM] = {0};
 	size_t ch_sz[SHMIF_CMRAMP_PLIM] = {0};
 
 	size_t edid_sz = 0;
@@ -5450,7 +5450,7 @@ static bool push_fsrv_ramp(arcan_frameserver* dst, lua_State* src,
 
 /* this format still only accepts one plane, though the limitation is
  * only in lua land and the egl-dri platform at the moment */
-	for (; i < n && i < SHMIF_CMRAMP_ULIM; i++){
+	for (; i < n && i < SHMIF_CMRAMP_UPLIM; i++){
 		lua_rawgeti(src, 2, i+1);
 		ramps[i] = lua_tonumber(src, -1);
 		lua_pop(src, 1);
@@ -5484,12 +5484,25 @@ static int pull_fsrv_ramp(lua_State* dst, arcan_frameserver* src, int ind)
 	}
 
 	size_t ch_pos[SHMIF_CMRAMP_PLIM];
-	float tblbuf[SHMIF_CMRAMP_ULIM];
+	float tblbuf[SHMIF_CMRAMP_UPLIM];
 
+/* the Lua API currently only handles single planes */
 	arcan_frameserver_enter(src, tramp);
 	bool rv = arcan_frameserver_getramps(src,ind,tblbuf,sizeof(tblbuf),ch_pos);
-	arcan_warning("FIXME, grabbed new ramps on index [n]\n");
 	arcan_frameserver_leave();
+
+	if (rv && ch_pos[0]){
+		size_t nr = ch_pos[0] > SHMIF_CMRAMP_UPLIM ? SHMIF_CMRAMP_UPLIM:ch_pos[0];
+		lua_createtable(dst, nr, 0);
+		int top = lua_gettop(dst);
+		for (size_t i = 0; i < nr; i++){
+			lua_pushnumber(dst, i + 1);
+			lua_pushnumber(dst, tblbuf[i]);
+			lua_rawset(dst, top);
+		}
+		return 1;
+	}
+
 	return 0;
 }
 
@@ -10748,7 +10761,6 @@ local restbl = {\n\
 \t\twidth = %d,\n\
 \t\theight = %d,\n\
 \t\tconservative = %d,\n\
-\t\tmsasamples = %d,\n\
 \t\tticks = %lld,\n\
 \t\tdefault_vitemlim = %d,\n\
 \t\timageproc = %d,\n\
@@ -10758,7 +10770,7 @@ local restbl = {\n\
 \tvcontexts = {};\
 };\n\
 ", (int)mmode.width, (int)mmode.height, disp->conservative ? 1 : 0,
-	(int)disp->msasamples, (long long int)disp->c_ticks,
+	(long long int)disp->c_ticks,
 	(int)disp->default_vitemlim,
 	(int)disp->imageproc, (int)disp->scalemode, (int)disp->filtermode);
 

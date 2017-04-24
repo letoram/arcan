@@ -121,13 +121,7 @@ struct arcan_shmif_vector {
  * the number of maximum crtcs/planes with support for lut- tables
  */
 #define SHMIF_CMRAMP_PLIM 4
-
-/*
- * the maximum number of entries for each plane, the mapping function server
- * side may be forced to resample this according to the display, table format
- * and so on.
- */
-#define SHMIF_CMRAMP_ULIM 1024
+#define SHMIF_CMRAMP_UPLIM 4096
 
 struct ramp_block {
 	uint8_t format;
@@ -139,8 +133,10 @@ struct ramp_block {
 
 	uint8_t edid[128];
 
-/* SHMIF_CMRAMP_PLIM * SHMIF_CMRAMP_ULIM[with plane_size[n] tight packed */
-	float planes[0];
+/* plane_sizes determines consumed size and mapping, color information
+ * can be retrieved from edid (assume RGB and let plane_sizes determine
+ * planar or interleaved if no edid). */
+	float planes[SHMIF_CMRAMP_UPLIM];
 };
 
 #define ARCAN_SHMIF_RAMPMAGIC 0xfafafa10
@@ -164,20 +160,13 @@ struct arcan_shmif_ramp {
 	SHMIF_CMRAMP_PLIM * SHMIF_CMRAMP_ULIM)
 
 /*
- * retrieve the metadata on the current ramp-block,
- * returns the number of ramps (or -1 if no data could be retrieved)
- * nd [optionally] display EDID
- */
-ssize_t arcan_shmifsub_rampmeta(struct arcan_shmif_cont* cont,
-	uint8_t** out_edid, size_t* edid_sz);
-
-/*
- * retrieve/validate the ramp at index [ind] and mark as read returns false if
- * the ramp couldn't be retrieved. returns true and sets *out to a
- * heap-allocated block that the caller assumes control over.
+ * retrieve/flag-read the ramp at index [ind], and store a copy of
+ * its contents into [out] (if !NULL).
+ * Returns false if the index is out of bounds (SHMIF_CMRAMP_PLANE)
+ * or the contents failed checksum test.
  */
 bool arcan_shmifsub_getramp(
-	struct arcan_shmif_cont* cont, size_t ind, struct ramp_block** out);
+	struct arcan_shmif_cont* cont, size_t ind, struct ramp_block* out);
 
 /*
  * update the ramp at index [ind] and mark as updated.
