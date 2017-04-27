@@ -58,6 +58,9 @@ elseif(VIDEO_PLATFORM STREQUAL "egl-dri")
 	if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 		list(APPEND VIDEO_PLATFORM_SOURCES
 				${PLATFORM_ROOT}/egl-dri/libbacklight.c)
+	else()
+		list(APPEND VIDEO_PLATFORM_SOURCES
+				${PLATFORM_ROOT}/stub/libbacklight.c)
 	endif()
 	set(LWA_PLATFORM_STR "egl-dri-rnode")
 
