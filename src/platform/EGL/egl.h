@@ -36,7 +36,7 @@ extern "C" {
 ** Khronos $Revision$ on $Date$
 */
 
-#include <EGL/eglplatform.h>
+#include "eglplatform.h"
 
 /* Generated on date 20170301 */
 
