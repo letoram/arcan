@@ -1,34 +1,29 @@
-void xdgsurf_defer_handler(
-	struct surface_request* req, struct arcan_event* ev)
+bool xdgsurf_defer_handler(
+	struct surface_request* req, struct arcan_shmif_cont* con)
 {
-	if (!ev || ev->tgt.kind == TARGET_COMMAND_REQFAIL){
+	if (!con){
 		wl_resource_post_no_memory(req->target);
-		return;
-	}
-
-	struct arcan_shmif_cont cont = arcan_shmif_acquire(
-		&req->client->acon, NULL, SEGID_APPLICATION, 0);
-	if (!cont.addr){
-		wl_resource_post_no_memory(req->target);
+		return false;
 	}
 
 	struct wl_resource* toplevel = wl_resource_create(req->client->client,
 		&zxdg_toplevel_v6_interface, wl_resource_get_version(req->target), req->id);
 
 	if (!toplevel){
-		arcan_shmif_drop(&cont);
 		wl_resource_post_no_memory(req->target);
-		return;
+		return false;
 	}
+
 	struct comp_surf* surf = wl_resource_get_user_data(req->target);
 	wl_resource_set_implementation(toplevel, &xdgtop_if, surf, NULL);
-	surf->acon = cont;
+	surf->acon = *con;
 	surf->cookie = 0xfeedface;
 
 	struct wl_array states;
 	wl_array_init(&states);
 	zxdg_toplevel_v6_send_configure(toplevel, surf->acon.w, surf->acon.h, &states);
 	wl_array_release(&states);
+	return true;
 }
 
 void xdgsurf_toplevel(struct wl_client* cl, struct wl_resource* res,
@@ -36,12 +31,16 @@ void xdgsurf_toplevel(struct wl_client* cl, struct wl_resource* res,
 {
 	trace("xdgsurf_toplevel");
 	struct comp_surf* surf = wl_resource_get_user_data(res);
+
+/* though it is marked as 'defered' here, chances are that the request
+ * function will just return with the surface immediately */
 	request_surface(surf->client, &(struct surface_request){
 		.segid = SEGID_APPLICATION,
 		.target = res,
 		.id = id,
 		.dispatch = xdgsurf_defer_handler,
-		.client = surf->client
+		.client = surf->client,
+		.source = surf
 	});
 }
 
@@ -57,7 +56,8 @@ void xdgsurf_getpopup(struct wl_client* cl, struct wl_resource* res,
 void xdgsurf_set_geometry(struct wl_client* cl, struct wl_resource* res,
 	int32_t x, int32_t y, int32_t width, int32_t height)
 {
-	trace("xdgsurf_setgeom");
+	trace("xdgsurf_setgeom(%"PRIu32"+%"PRIu32", "PRIu32"+%"PRIu32"",
+		x, width, y, height);
 }
 
 void xdgsurf_ackcfg(struct wl_client* cl, struct wl_resource* res,

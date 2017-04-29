@@ -1,16 +1,8 @@
 /*
- * while we wait for external surfaces, we need to keep the handle around
+ * From every wayland subprotocol that needs to allocate a surface,
+ * this structure needs to be filled and sent to the request_surface
+ * call.
  */
-struct surface_request {
-	uint32_t id;
-	int segid;
-	struct comp_surf* source;
-	struct wl_resource* target;
-	void* assoc;
-	struct bridge_client* client;
-	void (*dispatch)(struct surface_request*, struct arcan_event*);
-};
-
 struct bridge_client {
 	struct arcan_shmif_cont acon;
 	struct wl_listener l_destr;
@@ -24,41 +16,45 @@ struct bridge_client {
 	int group, slot;
 };
 
-static void request_surface(struct bridge_client* cl, struct surface_request*);
-
-enum surf_type {
-	SURF_UNKNOWN = 0,
-	SURF_SHELL,
-	SURF_CURSOR
+struct acon_tag {
+	int group, slot;
 };
+
+struct surface_request {
+/* local identifier, only for personal tracking */
+	uint32_t id;
+
+/* the type of the segment that should be requested */
+	int segid;
+
+/* the tracking resource and mapping between all little types */
+	struct comp_surf* source;
+	struct wl_resource* target;
+	struct bridge_client* client;
+
+/* custom 'shove it in here' reference */
+	void* tag;
+
+/* callback that will be triggered with the result, [srf] will be NULL if the
+ * request failed. Return [true] if you accept responsibility of the shmif_cont
+ * (will be added to the group/slot allocation and normal I/O multiplexation)
+ * or [false] if the surface is not needed anymore. */
+	bool (*dispatch)(struct surface_request*, struct arcan_shmif_cont* srf);
+};
+
+static bool request_surface(struct bridge_client* cl, struct surface_request*);
 
 struct comp_surf {
 	struct bridge_client* client;
 	struct wl_resource* res;
 	struct arcan_shmif_cont acon;
 	struct wl_resource* buf;
+
+/* return [true] if the event was consumed and shouldn't be processed by the
+ * default handler */
+	bool (*dispatch)(struct comp_surf*, struct arcan_event* ev);
 	int cookie;
 };
-
-/*
-struct bridge_surf {
-	struct arcan_shmif_cont acon;
-
-	struct wl_resource* res;
-	struct wl_resource* frame_cb;
-
-	enum surf_type type;
-
-	int sstate;
-	int x, y;
-	int hint_w, hint_h;
-	int cookie;
-
-	struct bridge_client* cl;
-	struct wl_list link;
-	struct wl_listener on_destroy;
-};
-*/
 
 /*
  * this is to share the tracking / allocation code between both clients and
@@ -75,7 +71,7 @@ struct bridge_slot {
 	union {
 		struct arcan_shmif_cont con;
 		struct bridge_client client;
-		struct comp_surf surface;
+		struct comp_surf* surface;
 	};
 };
 

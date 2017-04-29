@@ -23,6 +23,19 @@ connect to the point.
          make
          XDG_RUNTIME_DIR=/tmp arcan-wayland
 
+Hacking
+====
+The code has a somewhat odd structure:
+
+				 waybridge.c - setup and allocation/routing
+				 boilerplate.c - structures and tables
+         shmifevmap.c - translate from arcan -> bridge/client/surfaces
+
+Then each separate wayland protocol and subprotocol gets its own .c file for
+the part that responds to client events, but also intercepts some events
+destined for shmifevmap. See also the part in the CMakeLists.txt that takes
+unstable protocols and generate implementation files.
+
 Ongoing Issues
 ====
 1. Mesa picks the wrong render-node
@@ -61,14 +74,20 @@ TODO
     - [ ] Keyboard
     - [ ] Mouse
     - [ ] Touch
-    - [ ] shm to GL texture mapping
-  - [ ] Shell
-    - [ ] Qt- applications working
-    - [ ] SDL2 applications working
-    - [ ] MPV working
-    - [ ] Other relevant wayland capable backends? retroarch?
+  - [ ] Mouse Cursor
+	- [ ] Popup
   - [ ] EGL/drm
-- [ ] Milestone 2, (z)xdg-shell (full, not just boilerplate)
+- [ ] Milestone 2
+    - [ ] Positioners
+		- [ ] Cut and Paste
+    - [ ] Full XDG-shell (not just boilerplate)
+		- [ ] Application-test suite and automated tests (SDL, QT, GTK, ...)]
 - [ ] Milestone 3, funky things
-  - [ ] Multiprocess client processing
+  - [ ] SHM to GL texture mapping
+	- [ ] Transforms (Rotations/Scaling)
+  - [ ] Multithread/multiprocess client processing
   - [ ] Dynamic Keyboard Translation table generation
+	- [ ] Benchmarking/Inspection tools
+	- [ ] Sandboxing
+	- [ ] Migration/Reset/Crash-Recover
+	- [ ] Drag and Drop
