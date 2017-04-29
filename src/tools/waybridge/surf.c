@@ -1,7 +1,21 @@
 static void surf_destroy(struct wl_client* cl, struct wl_resource* res)
 {
 	trace("surf_destroy(%"PRIxPTR")", (uintptr_t) res);
-/* should I do this or will the lib? wl_resource_destroy(res); */
+/* should I do this or will the lib? wl_resource_destroy(res);?
+ * we need to deregister surfaces that have been assigned group and slot */
+	struct comp_surf* surf = wl_resource_get_user_data(res);
+
+/* We might get create->destroy on a surface that doesn't have a connection,
+ * so this might not always be set. If it is, we also need to free up the
+ * tag and deregister the poll/etc. tracking */
+	if (surf->acon.addr){
+		arcan_shmif_drop(&surf->acon);
+		struct acon_tag* tag = surf->acon.user;
+		reset_group_slot(tag->group, tag->slot);
+		tag->group = tag->slot = -1;
+		surf->acon.user = NULL;
+		free(tag);
+	}
 }
 
 /*
