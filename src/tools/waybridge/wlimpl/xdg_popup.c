@@ -15,8 +15,13 @@ static inline void
 zxdg_popup_v6_send_popup_done(struct wl_resource *resource_)
  */
 
-void xdgpop_grab(struct wl_client *cl, struct wl_resource *res,
-	struct wl_resource* seat, uint32_t serial)
+static void xdgpop_grab(struct wl_client *cl,
+	struct wl_resource *res, struct wl_resource* seat, uint32_t serial)
 {
 	trace("xdgpop_grab");
+}
+
+static void xdgpop_destroy(struct wl_client* cl, struct wl_resource* res)
+{
+	trace("xdgpop_destroy");
 }

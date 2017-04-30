@@ -30,11 +30,12 @@ The code has a somewhat odd structure:
 				 waybridge.c - setup and allocation/routing
 				 boilerplate.c - structures and tables
          shmifevmap.c - translate from arcan -> bridge/client/surfaces
+				 wlimpl/* - subprotocol function implementations
 
-Then each separate wayland protocol and subprotocol gets its own .c file for
-the part that responds to client events, but also intercepts some events
-destined for shmifevmap. See also the part in the CMakeLists.txt that takes
-unstable protocols and generate implementation files.
+Some subprotocol implementations (those that call request\_surface)
+also attach separate event handlers that override the mapping done in
+shmifevmap.c. See also the part in the CMakeLists.txt that takes unstable
+protocols and generate implementation files.
 
 Ongoing Issues
 ====
@@ -64,6 +65,16 @@ scripts arcan is running. There are also some features where the translation
 is not entirely compatible. Such incompatibilities/limitations are tracked
 separately in the [arcan wiki](https://github.com/letoram/arcan/wiki/wayland).
 
+XWayland
+====
+Though XWayland support will be enabled at some point, though it will likely
+just derive from the implementation WLC has. instead, A separate
+[Xarcan](https://github.com/letoram/xarcan) implementation is maintained for a
+number of resons, such as better controls of how/ and which/ features gets
+translated (matters when looking into sharing, display-hw synch, segmentation,
+...), for performance (going xwayland -> arcan-wayland -> arcan has some costly
+friction in translation).
+
 TODO
 ====
 - [ ] Milestone 1, basics
@@ -82,6 +93,7 @@ TODO
 		- [ ] Cut and Paste
     - [ ] Full XDG-shell (not just boilerplate)
 		- [ ] Application-test suite and automated tests (SDL, QT, GTK, ...)]
+		- [ ] XWayland (WLC- level)
 - [ ] Milestone 3, funky things
   - [ ] SHM to GL texture mapping
 	- [ ] Transforms (Rotations/Scaling)

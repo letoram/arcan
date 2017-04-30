@@ -47,6 +47,7 @@ static bool request_surface(struct bridge_client* cl, struct surface_request*);
 struct comp_surf {
 	struct bridge_client* client;
 	struct wl_resource* res;
+	struct wl_resource* shell_res;
 	struct arcan_shmif_cont acon;
 	struct wl_resource* buf;
 
@@ -83,7 +84,7 @@ struct bridge_pool {
 	int fd;
 };
 
-#include "surf.c"
+#include "wlimpl/surf.c"
 static struct wl_surface_interface surf_if = {
 	.destroy = surf_destroy,
 	.attach = surf_attach,
@@ -97,27 +98,43 @@ static struct wl_surface_interface surf_if = {
 	.damage_buffer = surf_damage
 };
 
-#include "region.c"
+#include "wlimpl/region.c"
 static struct wl_region_interface region_if = {
 	.destroy = region_destroy,
 	.add = region_add,
 	.subtract = region_sub
 };
 
-#include "comp.c"
+#include "wlimpl/comp.c"
 static struct wl_compositor_interface compositor_if = {
 	.create_surface = comp_surf_create,
 	.create_region = comp_create_reg,
 };
 
-#include "seat.c"
+#include "wlimpl/subcomp.c"
+static struct wl_subcompositor_interface subcomp_if = {
+	.destroy = subcomp_destroy,
+	.get_subsurface = subcomp_subsurf
+};
+
+#include "wlimpl/subsurf.c"
+static struct wl_subsurface_interface subsurf_if = {
+	.destroy = subsurf_destroy,
+	.set_position = subsurf_position, /*cl, res, i32 x, i32 y */
+	.place_above = subsurf_placeabove, /* cl, res, res_sib */
+	.place_below = subsurf_placebelow, /* cl, res, res_sib */
+	.set_sync = subsurf_setsync,
+	.set_desync = subsurf_setdesync
+};
+
+#include "wlimpl/seat.c"
 static struct wl_seat_interface seat_if = {
 	.get_pointer = seat_pointer,
 	.get_keyboard = seat_keyboard,
 	.get_touch = seat_touch
 };
 
-#include "shell_surf.c"
+#include "wlimpl/shell_surf.c"
 static struct wl_shell_surface_interface ssurf_if = {
 	.pong = ssurf_pong,
 	.move = ssurf_move,
@@ -131,14 +148,15 @@ static struct wl_shell_surface_interface ssurf_if = {
 	.set_class = ssurf_class
 };
 
-#include "shell.c"
+#include "wlimpl/shell.c"
 static const struct wl_shell_interface shell_if = {
 	.get_shell_surface = shell_getsurf
 };
 
 #include "wayland-xdg-shell-unstable-v6-server-protocol.h"
-#include "xdg_positioner.c"
+#include "wlimpl/xdg_positioner.c"
 static struct zxdg_positioner_v6_interface xdgpos_if = {
+	.destroy = xdgpos_destroy,
 	.set_size = xdgpos_size,
 	.set_anchor_rect = xdgpos_anchor_rect,
 	.set_anchor = xdgpos_anchor,
@@ -147,13 +165,15 @@ static struct zxdg_positioner_v6_interface xdgpos_if = {
 	.set_offset = xdgpos_offset
 };
 
-#include "xdg_popup.c"
+#include "wlimpl/xdg_popup.c"
 static struct zxdg_popup_v6_interface xdgpop_if = {
+	.destroy = xdgpop_destroy,
 	.grab = xdgpop_grab
 };
 
-#include "xdg_toplevel.c"
+#include "wlimpl/xdg_toplevel.c"
 static struct zxdg_toplevel_v6_interface xdgtop_if = {
+	.destroy = xdgtop_destroy,
 	.set_parent = xdgtop_setparent,
 	.set_title = xdgtop_title,
 	.set_app_id = xdgtop_appid,
@@ -169,18 +189,21 @@ static struct zxdg_toplevel_v6_interface xdgtop_if = {
 	.set_minimized = xdgtop_minimize
 };
 
-#include "xdg_ssurf.c"
+#include "wlimpl/xdg_ssurf.c"
 static struct zxdg_surface_v6_interface xdgsurf_if = {
+	.destroy = xdgsurf_destroy,
 	.get_toplevel = xdgsurf_toplevel,
 	.get_popup = xdgsurf_getpopup,
 	.set_window_geometry = xdgsurf_set_geometry,
 	.ack_configure = xdgsurf_ackcfg,
 };
 
-#include "xdg_shell.c"
+#include "wlimpl/xdg_shell.c"
 static const struct zxdg_shell_v6_interface xdgshell_if = {
 	.get_xdg_surface = xdg_getsurf,
 	.create_positioner = xdg_createpos,
+	.pong = xdg_pong,
+	.destroy = xdg_destroy
 };
 
 #include "bondage.c"

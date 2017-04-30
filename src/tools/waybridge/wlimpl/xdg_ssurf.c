@@ -1,4 +1,20 @@
-bool xdgsurf_defer_handler(
+static bool xdgsurf_shmifev_handler(
+	struct comp_surf* surf, struct arcan_event* ev)
+{
+	if (ev->category == EVENT_TARGET)
+		switch (ev->tgt.kind){
+		case TARGET_COMMAND_EXIT:
+			zxdg_toplevel_v6_send_close(surf->shell_res);
+			return true;
+		break;
+		default:
+		break;
+		}
+
+	return false;
+}
+
+static bool xdgsurf_defer_handler(
 	struct surface_request* req, struct arcan_shmif_cont* con)
 {
 	if (!con){
@@ -18,6 +34,8 @@ bool xdgsurf_defer_handler(
 	wl_resource_set_implementation(toplevel, &xdgtop_if, surf, NULL);
 	surf->acon = *con;
 	surf->cookie = 0xfeedface;
+	surf->shell_res = toplevel;
+	surf->dispatch = xdgsurf_shmifev_handler;
 
 	struct wl_array states;
 	wl_array_init(&states);
@@ -26,8 +44,8 @@ bool xdgsurf_defer_handler(
 	return true;
 }
 
-void xdgsurf_toplevel(struct wl_client* cl, struct wl_resource* res,
-	uint32_t id)
+static void xdgsurf_toplevel(
+	struct wl_client* cl, struct wl_resource* res, uint32_t id)
 {
 	trace("xdgsurf_toplevel");
 	struct comp_surf* surf = wl_resource_get_user_data(res);
@@ -44,7 +62,7 @@ void xdgsurf_toplevel(struct wl_client* cl, struct wl_resource* res,
 	});
 }
 
-void xdgsurf_getpopup(struct wl_client* cl, struct wl_resource* res,
+static void xdgsurf_getpopup(struct wl_client* cl, struct wl_resource* res,
 	uint32_t id, struct wl_resource* parent, struct wl_resource* positioner)
 {
 	trace("xdgsurf_getpopup");
@@ -53,15 +71,21 @@ void xdgsurf_getpopup(struct wl_client* cl, struct wl_resource* res,
 /* hints about the window visible size sans dropshadows and things like that,
  * but since it doesn't carry information about decorations (titlebar, ...)
  * we can't actually use this for a viewport hint */
-void xdgsurf_set_geometry(struct wl_client* cl, struct wl_resource* res,
-	int32_t x, int32_t y, int32_t width, int32_t height)
+static void xdgsurf_set_geometry(struct wl_client* cl,
+	struct wl_resource* res, int32_t x, int32_t y, int32_t width, int32_t height)
 {
 	trace("xdgsurf_setgeom(%"PRIu32"+%"PRIu32", "PRIu32"+%"PRIu32"",
 		x, width, y, height);
 }
 
-void xdgsurf_ackcfg(struct wl_client* cl, struct wl_resource* res,
-	uint32_t serial)
+static void xdgsurf_ackcfg(
+	struct wl_client* cl, struct wl_resource* res, uint32_t serial)
 {
 	trace("xdgsurf_ackcfg");
+}
+
+static void xdgsurf_destroy(
+	struct wl_client* cl, struct wl_resource* res)
+{
+	trace("xdgsurf_destroy");
 }
