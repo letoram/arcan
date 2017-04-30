@@ -99,7 +99,7 @@ static bool alloc_group_id(int type, int* groupid, int* slot, int fd)
 		ind--;
 		wl.groups[i].alloc |= 1 << ind;
 		wl.groups[i].pg[ind].fd = fd;
-		wl.groups[i].slot[ind].type = type;
+		wl.groups[i].slot[ind+2].type = type;
 		*groupid = i;
 		*slot = ind;
 		return true;
@@ -329,7 +329,7 @@ static bool prepare_groups(size_t cl_limit, int ctrlfd, int wlfd,
 	for (size_t i = 0; i < wl.n_groups; i++)
 		wl.groups[i] = (struct conn_group){};
 
-	*pfd = malloc(sizeof(struct pollfd) * nelem + 2);
+	*pfd = malloc(sizeof(struct pollfd) * (nelem + 2));
 	if (!*pfd)
 		return false;
 
@@ -350,7 +350,7 @@ static bool prepare_groups(size_t cl_limit, int ctrlfd, int wlfd,
 
 /* and default polling flags */
 	*nfd = nelem + 2;
-	for (size_t i = 0; i < nelem+2; i++){
+	for (size_t i = 0; i < *nfd; i++){
 		(*pfd)[i] = (struct pollfd){
 			.events = POLLIN | POLLERR | POLLHUP,
 			.fd = -1
@@ -368,17 +368,19 @@ static int show_use(const char* msg, const char* arg)
 {
 	fprintf(stdout, "%s%s", msg, arg ? arg : "");
 	fprintf(stdout, "Use: waybridge [arguments]\n"
-"\t-shm-egl        pass shm- buffers as gl textures\n"
-"\t-no-egl         disable the wayland-egl extensions\n"
-"\t-no-compositor  disable the compositor protocol\n"
-"\t-no-shell       disable the shell protocol\n"
-"\t-no-shm         disable the shm protocol\n"
-"\t-no-seat        disable the seat protocol\n"
-"\t-no-xdg         disable the xdg protocol\n"
-"\t-no-output      disable the output protocol\n"
-"\t-layout lay     set keyboard layout to <lay>\n"
-"\t-dir dir        override XDG_RUNTIME_DIR with <dir>\n"
-"\t-max-cl lim     limit the amount of concurrent clients to <lim>\n");
+"\t-shm-egl          pass shm- buffers as gl textures\n"
+"\t-no-egl           disable the wayland-egl extensions\n"
+"\t-no-compositor    disable the compositor protocol\n"
+"\t-no-subcompositor disable the sub-compositor protocol\n"
+"\t-no-subsurface    disable the sub-surface protocol\n"
+"\t-no-shell         disable the shell protocol\n"
+"\t-no-shm           disable the shm protocol\n"
+"\t-no-seat          disable the seat protocol\n"
+"\t-no-xdg           disable the xdg protocol\n"
+"\t-no-output        disable the output protocol\n"
+"\t-layout lay       set keyboard layout to <lay>\n"
+"\t-dir dir          override XDG_RUNTIME_DIR with <dir>\n"
+"\t-max-cl lim       limit the amount of concurrent clients to <lim>\n");
 	return EXIT_FAILURE;
 }
 
@@ -391,7 +393,7 @@ int main(int argc, char* argv[])
  * field here, and then command-line argument passing to disable said protocol.
  */
 	struct {
-		int compositor, shell, shm, seat, output, egl, xdg;
+		int compositor, shell, shm, seat, output, egl, xdg, subcomp;
 	} protocols = {
 		.compositor = 3,
 		.shell = 1,
@@ -399,7 +401,8 @@ int main(int argc, char* argv[])
 		.seat = 4,
 		.output = 2,
 		.egl = 1,
-		.xdg = 1
+		.xdg = 1,
+		.subcomp = 1
 	};
 
 	for (size_t i = 1; i < argc; i++){
@@ -437,6 +440,8 @@ int main(int argc, char* argv[])
 			protocols.output = 0;
 		else if (strcmp(argv[i], "-no-xdg") == 0)
 			protocols.xdg = 0;
+		else if (strcmp(argv[i], "-no-subcompositor") == 0)
+			protocols.subcomp = 0;
 		else
 			return show_use("unknown argument (%s)\n", argv[i]);
 	}
@@ -533,6 +538,9 @@ int main(int argc, char* argv[])
 	if (protocols.xdg)
 		wl_global_create(wl.disp, &zxdg_shell_v6_interface,
 			protocols.xdg, NULL, &bind_xdg);
+	if (protocols.subcomp)
+		wl_global_create(wl.disp, &wl_subcompositor_interface,
+			protocols.subcomp, NULL, &bind_subcomp);
 
 	struct wl_event_loop* loop = wl_display_get_event_loop(wl.disp);
 	trace("wl_display() finished");

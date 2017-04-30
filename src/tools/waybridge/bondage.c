@@ -16,6 +16,10 @@ static void bind_comp(struct wl_client *client,
 	trace("wl_bind(compositor %d:%d)", version, id);
 	struct wl_resource* res = wl_resource_create(client,
 		&wl_compositor_interface, version, id);
+	if (!res){
+		wl_client_post_no_memory(client);
+		return;
+	}
 	wl_resource_set_implementation(res, &compositor_if, NULL, NULL);
 }
 
@@ -25,6 +29,10 @@ static void bind_seat(struct wl_client *client,
 	trace("wl_bind(seat %d:%d)", version, id);
 	struct wl_resource* res = wl_resource_create(client,
 		&wl_seat_interface, version, id);
+	if (!res){
+		wl_client_post_no_memory(client);
+		return;
+	}
 	wl_resource_set_implementation(res, &seat_if, NULL, NULL);
 	wl_seat_send_capabilities(res, WL_SEAT_CAPABILITY_POINTER |
 		WL_SEAT_CAPABILITY_KEYBOARD | WL_SEAT_CAPABILITY_TOUCH);
@@ -36,6 +44,10 @@ static void bind_shell(struct wl_client* client,
 	trace("wl_bind(shell %d:%d)", version, id);
 	struct wl_resource* res = wl_resource_create(client,
 		&wl_shell_interface, version, id);
+	if (!res){
+		wl_client_post_no_memory(client);
+		return;
+	}
 	wl_resource_set_implementation(res, &shell_if, NULL, NULL);
 }
 
@@ -45,7 +57,24 @@ static void bind_xdg(struct wl_client* client,
 	trace("wl_bind(xdg %d:%d)", version, id);
 	struct wl_resource* res = wl_resource_create(client,
 		&zxdg_shell_v6_interface, version, id);
+	if (!res){
+		wl_client_post_no_memory(client);
+		return;
+	}
 	wl_resource_set_implementation(res, &xdgshell_if, NULL, NULL);
+}
+
+static void bind_subcomp(struct wl_client* client,
+	void* data, uint32_t version, uint32_t id)
+{
+	trace("wl_bind(subcomp %d:%d)", version, id);
+	struct wl_resource* res = wl_resource_create(client,
+		&wl_subcompositor_interface, version, id);
+	if (!res){
+		wl_client_post_no_memory(client);
+		return;
+	}
+	wl_resource_set_implementation(res, &subcomp_if, NULL, NULL);
 }
 
 static void bind_output(struct wl_client* client,

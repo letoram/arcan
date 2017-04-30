@@ -9,11 +9,11 @@ static void surf_destroy(struct wl_client* cl, struct wl_resource* res)
  * so this might not always be set. If it is, we also need to free up the
  * tag and deregister the poll/etc. tracking */
 	if (surf->acon.addr){
-		arcan_shmif_drop(&surf->acon);
 		struct acon_tag* tag = surf->acon.user;
 		reset_group_slot(tag->group, tag->slot);
 		tag->group = tag->slot = -1;
 		surf->acon.user = NULL;
+		arcan_shmif_drop(&surf->acon);
 		free(tag);
 	}
 }
