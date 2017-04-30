@@ -268,7 +268,8 @@ static struct bridge_client* find_client(struct wl_client* cl)
  * simply treat each 'surface' as a bridge- connection, but it would break
  * the option to track origin. */
 	struct arcan_shmif_cont con = arcan_shmif_open(SEGID_BRIDGE_WAYLAND, 0, NULL);
-	if (con.addr){
+	if (!con.addr){
+		trace("failed to open segid-bridge-wayland connection to arcan server");
 		free(res);
 		return NULL;
 	}
