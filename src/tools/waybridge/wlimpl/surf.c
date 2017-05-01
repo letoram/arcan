@@ -1,8 +1,6 @@
 static void surf_destroy(struct wl_client* cl, struct wl_resource* res)
 {
 	trace("surf_destroy(%"PRIxPTR")", (uintptr_t) res);
-/* should I do this or will the lib? wl_resource_destroy(res);?
- * we need to deregister surfaces that have been assigned group and slot */
 	struct comp_surf* surf = wl_resource_get_user_data(res);
 
 /* We might get create->destroy on a surface that doesn't have a connection,
@@ -10,6 +8,7 @@ static void surf_destroy(struct wl_client* cl, struct wl_resource* res)
  * tag and deregister the poll/etc. tracking */
 	if (surf->acon.addr){
 		struct acon_tag* tag = surf->acon.user;
+		trace("deregister-surface (%d:%d)\n", tag->group, tag->slot);
 		reset_group_slot(tag->group, tag->slot);
 		tag->group = tag->slot = -1;
 		surf->acon.user = NULL;
@@ -42,9 +41,12 @@ static void surf_damage(struct wl_client* cl, struct wl_resource* res,
 static void surf_frame(
 	struct wl_client* cl, struct wl_resource* res, uint32_t cb)
 {
-	trace("surf_damage()");
+	trace("surf_frame()");
 }
 
+/*
+ * IGNORE, shmif doesn't split up into regions like this
+ */
 static void surf_opaque(struct wl_client* cl,
 	struct wl_resource* res, struct wl_resource* reg)
 {
@@ -79,7 +81,14 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 		return;
 	}
 
+/*
+ * Avoid tearing due to the SIGBLK_NONE, the other option would be to actually
+ * block (if we multithread/multiprocess the client) or to schedule/defer this
+ * processing until we get an unlock event (can be implemented client/lib side
+ * through a kqueue- trigger) and then do the corresponding release.
+ */
 	while (surf->acon.addr->vready){}
+
 	if (query_buffer && query_buffer(wl.display,
 		surf->buf, EGL_TEXTURE_FORMAT, &dfmt)){
 		trace("surf_commit(egl)");

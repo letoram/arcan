@@ -120,9 +120,9 @@ static struct wl_subcompositor_interface subcomp_if = {
 #include "wlimpl/subsurf.c"
 static struct wl_subsurface_interface subsurf_if = {
 	.destroy = subsurf_destroy,
-	.set_position = subsurf_position, /*cl, res, i32 x, i32 y */
-	.place_above = subsurf_placeabove, /* cl, res, res_sib */
-	.place_below = subsurf_placebelow, /* cl, res, res_sib */
+	.set_position = subsurf_position,
+	.place_above = subsurf_placeabove,
+	.place_below = subsurf_placebelow,
 	.set_sync = subsurf_setsync,
 	.set_desync = subsurf_setdesync
 };
