@@ -44,19 +44,25 @@ static void reset_group_slot(int group, int slot);
  * Each group [64 bitmap] has a number of slots, and corresponding
  * poll struct entries.
  */
-static const size_t N_GROUP_SLOTS = sizeof(long long int) * 8;
+static const size_t N_GROUP_SLOTS = 64;
 struct conn_group {
-	long long int alloc;
+	long long alloc;
 
-/* 2 padding for the wl server socket and bridge- connection */
+/* pgroup is the actual allocation, rest is offset-maps */
+	struct pollfd* pgroup;
+
+	struct pollfd* wayland;
+	struct pollfd* arcan;
+
+/* split bridge_slot and pollfd just to be able to have them on the same
+ * indice, but be able to throw everyhthing at poll */
 	struct pollfd* pg;
-	struct bridge_slot* slot;
+	struct bridge_slot* slots;
 };
 
 static struct {
 	size_t n_groups;
 	struct conn_group* groups;
-	unsigned client_limit, client_count;
 
 	EGLDisplay display;
 	struct wl_display* disp;
@@ -89,17 +95,29 @@ static struct {
  * can cover either a surface or a client-control connection. Simply an
  * allocation bitmap, a type indicator and union structure.
  */
+
+/*
+ * ffs for uint64_t just debruijn for 32 + chessprogramming magic
+ */
+static uint64_t find_set64(uint64_t bmap)
+{
+	return __builtin_ffsll(bmap);
+}
+
 static bool alloc_group_id(int type, int* groupid, int* slot, int fd)
 {
 	for (size_t i = 0; i < wl.n_groups; i++){
-		long long int ind = ffs(~wl.groups[i].alloc);
+	uint64_t ind = find_set64(~wl.groups[i].alloc);
 		if (0 == ind)
 			continue;
 
+/* go from counter to offset */
 		ind--;
+
+/* mark as allocated and store */
 		wl.groups[i].alloc |= 1 << ind;
 		wl.groups[i].pg[ind].fd = fd;
-		wl.groups[i].slot[ind+2].type = type;
+		wl.groups[i].slots[ind].type = type;
 		*groupid = i;
 		*slot = ind;
 		return true;
@@ -112,7 +130,7 @@ static void reset_group_slot(int group, int slot)
 	wl.groups[group].alloc &= ~(1 << slot);
 	wl.groups[group].pg[slot].fd = -1;
 	wl.groups[group].pg[slot].revents = 0;
-	wl.groups[group].slot[slot] = (struct bridge_slot){};
+	wl.groups[group].slots[slot] = (struct bridge_slot){};
 }
 
 /*
@@ -186,7 +204,7 @@ static bool request_surface(
  * poll -> [group, ind] -> default event handler for type ->
  * [if SURFACE]:comp_surf(dispatch) */
 			else{
-				wl.groups[group].slot[ind].surface = req->source;
+				wl.groups[group].slots[ind].surface = req->source;
 			}
 		}
 	}
@@ -217,7 +235,6 @@ static void destroy_client(struct wl_listener* l, void* data)
 	}
 
 	trace("destroy client()");
-	wl.client_count--;
 	arcan_shmif_drop(&cl->acon);
 	reset_group_slot(cl->group, cl->slot);
 }
@@ -235,25 +252,22 @@ static struct bridge_client* find_client(struct wl_client* cl)
 
 /* traverse each group, check the fields for the set bits for match */
 	for (size_t i = 0; i < wl.n_groups; i++){
-		long long int mask = wl.groups[i].alloc;
+		uint64_t mask = wl.groups[i].alloc;
 		while (mask){
-			long long int ind = ffs(mask);
+			uint64_t ind = find_set64(mask);
 			if (!ind)
 				continue;
 
 			ind--;
 
-			if (wl.groups[i].slot[ind].type == SLOT_TYPE_CLIENT){
-				if (wl.groups[i].slot[ind].client.client == cl)
-					return &wl.groups[i].slot[ind].client;
+			if (wl.groups[i].slots[ind].type == SLOT_TYPE_CLIENT){
+				if (wl.groups[i].slots[ind].client.client == cl)
+					return &wl.groups[i].slots[ind].client;
 			}
 
 			mask &= ~(1 << ind);
 		}
 	}
-
-	if (wl.client_limit == wl.client_count)
-		return NULL;
 
 	trace("connecting new bridge client");
 /*
@@ -294,7 +308,7 @@ static struct bridge_client* find_client(struct wl_client* cl)
  * connection, we can't simply ignore connecting at this stage.
  */
 	trace("new client assigned to (%d:%d)", group, ind);
-	res = &wl.groups[group].slot[ind].client;
+	res = &wl.groups[group].slots[ind].client;
 	*res = (struct bridge_client){};
 
 /*
@@ -305,63 +319,57 @@ static struct bridge_client* find_client(struct wl_client* cl)
 	res->group = group;
 	res->slot = ind;
 	res->l_destr.notify = destroy_client;
-	wl.client_count++;
 	wl_client_add_destroy_listener(cl, &res->l_destr);
 
 	return res;
 }
 
-static bool prepare_groups(size_t cl_limit, int ctrlfd, int wlfd,
-	size_t* nfd, struct pollfd** pfd, struct bridge_slot** bcd)
+/*
+ * no point in a graceful recover for this particular set of allocations
+ */
+static void OUT_OF_MEMORY(const char* msg)
 {
-	wl.n_groups = (cl_limit == 0 ? 1 : cl_limit / N_GROUP_SLOTS +
-		!!(cl_limit % N_GROUP_SLOTS) * N_GROUP_SLOTS);
+	fprintf(stderr, "%s\n", msg ? msg : "");
+	exit(EXIT_FAILURE);
+}
 
 /*
- * allocate the tracking structures in advance to fit the maximum number
- * of clients (or default to 64) and then prepare indices to match.
+ * we pair [arcan-wayland-clients] into groups of long-long-int slots
+ * (matching allocation bitmap)
  */
-	size_t nelem = wl.n_groups * N_GROUP_SLOTS;
-	wl.groups = malloc(sizeof(struct conn_group) * wl.n_groups);
-	if (!wl.groups)
-		return false;
+static struct conn_group* prepare_groups(size_t count)
+{
+	struct conn_group* groups =
+		malloc(sizeof(struct conn_group) * count);
 
-	for (size_t i = 0; i < wl.n_groups; i++)
-		wl.groups[i] = (struct conn_group){};
+	if (!groups)
+		OUT_OF_MEMORY("prepare_groups");
 
-	*pfd = malloc(sizeof(struct pollfd) * (nelem + 2));
-	if (!*pfd)
-		return false;
+	memset(groups, '\0', sizeof(struct conn_group) * count);
+	for (size_t i = 0; i < count; i++){
+		groups[i].pgroup = malloc(sizeof(struct pollfd) * (N_GROUP_SLOTS+2));
+		groups[i].slots = malloc(sizeof(struct bridge_slot) * N_GROUP_SLOTS);
 
-	*bcd = malloc(sizeof(struct bridge_slot) * nelem);
-	if (!bcd){
-		free(*pfd);
-		*pfd = NULL;
-		return false;
+		if (!groups[i].pgroup || !groups[i].slots)
+			OUT_OF_MEMORY("group/slot alloc");
+
+		groups[i].pg = &groups[i].pgroup[2];
+		groups[i].wayland = &groups[i].pgroup[0];
+		groups[i].arcan = &groups[i].pgroup[1];
+
+		for (size_t j = 0; j < N_GROUP_SLOTS+2; j++){
+			groups[i].pgroup[j] = (struct pollfd){
+				.events = POLLIN | POLLERR | POLLHUP,
+				.fd = -1
+			};
+		}
+
+		for (size_t j = 0; j < N_GROUP_SLOTS; j++){
+			groups[i].slots[j] = (struct bridge_slot){};
+		}
 	}
 
-/* generate group indices */
-	for (size_t i = 0; i < wl.n_groups; i++){
-		wl.groups[i] = (struct conn_group){
-			.slot = &(*bcd)[i*N_GROUP_SLOTS],
-			.pg = &(*pfd)[2+i*N_GROUP_SLOTS]
-		};
-	}
-
-/* and default polling flags */
-	*nfd = nelem + 2;
-	for (size_t i = 0; i < *nfd; i++){
-		(*pfd)[i] = (struct pollfd){
-			.events = POLLIN | POLLERR | POLLHUP,
-			.fd = -1
-		};
-	}
-
-	(*pfd)[0].fd = ctrlfd;
-	(*pfd)[1].fd = wlfd;
-	wl.client_limit = cl_limit ? cl_limit : wl.n_groups * N_GROUP_SLOTS;
-
-	return true;
+	return groups;
 }
 
 static int show_use(const char* msg, const char* arg)
@@ -379,9 +387,63 @@ static int show_use(const char* msg, const char* arg)
 "\t-no-xdg           disable the xdg protocol\n"
 "\t-no-output        disable the output protocol\n"
 "\t-layout lay       set keyboard layout to <lay>\n"
-"\t-dir dir          override XDG_RUNTIME_DIR with <dir>\n"
-"\t-max-cl lim       limit the amount of concurrent clients to <lim>\n");
+"\t-dir dir          override XDG_RUNTIME_DIR with <dir>\n");
 	return EXIT_FAILURE;
+}
+
+static bool process_group(struct conn_group* group)
+{
+	int sv = poll(group->pgroup, N_GROUP_SLOTS+2, -1);
+
+/*
+ * If a client is created here, we can retrieve the actual connection here (and
+ * not the epoll fd) with wl_client_get_fd and we can then add / remove the
+ * client from the event loop with wl_event_loop_get_fd and that's just an
+ * epoll-fd. We can remove the client from the epoll-fd with epoll_ctl(fd,
+ * EPOLL_CTL_DEL, clfd, NULL) All that is left is to find a way to notice when
+ * a client connects and break out of the loop somehow. Oh well, good old
+ * setjmp.
+ */
+	if (group->wayland && group->wayland->revents){
+		wl_event_loop_dispatch(
+			wl_display_get_event_loop(wl.disp), 0);
+		sv--;
+	}
+
+	if (group->arcan && group->arcan->revents){
+		flush_bridge_events(&wl.control);
+		sv--;
+	}
+
+	for (size_t i = 0; i < N_GROUP_SLOTS && sv > 0; i++){
+		if (group->pg[i].revents){
+			sv--;
+			switch(group->slots[i].type){
+			case SLOT_TYPE_CLIENT:
+				flush_client_events(&group->slots[i].client, NULL, 0);
+			break;
+			case SLOT_TYPE_SURFACE:
+				flush_surface_events(group->slots[i].surface);
+			break;
+			}
+		}
+	}
+
+/*
+ * When we have clients with pending segment requests, we can't use the normal
+ * flush mechanism for clients with requests pending.
+ *
+ * Instead, we can iterate this ourselves and simply go:
+ * list = wl_display_get_client_list;
+ * wl_client* client, *next;
+ * wl_list_for_each_safe(client, next, &list, link){
+ *  lookup-client
+ *  check if pending, then wait
+ * 	ret = wl_conenection_flush(client->connection);
+ * }
+ */
+	wl_display_flush_clients(wl.disp);
+	return true;
 }
 
 int main(int argc, char* argv[])
@@ -419,13 +481,6 @@ int main(int argc, char* argv[])
 			i++;
 			setenv("XDG_RUNTIME_DIR", argv[i], 1);
 		}
-		else if (strcmp(argv[i], "-max-cl") == 0){
-			if (i < argc-1){
-				return show_use("missing client limit argument", "");
-			}
-			i++;
-			wl.client_limit = strtoul(argv[i], NULL, 10);
-		}
 		else if (strcmp(argv[i], "-no-egl") == 0)
 			protocols.egl = 0;
 		else if (strcmp(argv[i], "-no-compositor") == 0)
@@ -457,6 +512,13 @@ int main(int argc, char* argv[])
 		return EXIT_FAILURE;
 	}
 
+/*
+ * The reason for running a control connection is to get access to the initial
+ * state in terms of display, output etc. so we can answer those requests from
+ * a client BEFORE actually allocating connections for each client. This makes
+ * the multiplexing etc. a bit more annoying since we steer away from epoll or
+ * kqueue or other OS specific multiplexation mechanisms.
+ */
 	wl.control = arcan_shmif_open(SEGID_BRIDGE_WAYLAND, SHMIF_ACQUIRE_FATALFAIL, &aarr);
 	struct arcan_shmif_initial* init;
 	arcan_shmif_initial(&wl.control, &init);
@@ -542,81 +604,23 @@ int main(int argc, char* argv[])
 		wl_global_create(wl.disp, &wl_subcompositor_interface,
 			protocols.subcomp, NULL, &bind_subcomp);
 
-	struct wl_event_loop* loop = wl_display_get_event_loop(wl.disp);
 	trace("wl_display() finished");
 
 	wl.alive = true;
 
 /*
- * init polling settings, allocate group storage etc. what may seem
- * weird here is the pfd/bcd bit - we partition clients into groups
- * that can later be split out into separate thread dispatches or
- * processes.
+ * This is just a temporary / ugly "64 restriction" in that this is how many
+ * clients and surfaces we run per group. When a group is completely full, it's
+ * time to slice of a new thread/process and continue there - but that's
+ * something to worry about when we have all the features in place.
  */
-	size_t nfd;
-	struct pollfd* pfd;
-	struct bridge_slot* bcd;
-	if (!prepare_groups(wl.client_limit,
-		wl.control.epipe, wl_event_loop_get_fd(loop), &nfd, &pfd, &bcd))
-		goto out;
+	wl.groups = prepare_groups(1);
+	wl.n_groups = 1;
+	wl.groups[0].wayland->fd = wl_event_loop_get_fd(wl_display_get_event_loop(wl.disp));
+	wl.groups[0].arcan->fd = wl.control.epipe;
 
-	while(wl.alive){
-		int sv = poll(pfd, nfd, -1);
-		if (pfd[0].revents){
-			sv--;
-			if (!flush_bridge_events(&wl.control))
-				break;
-		}
+	while(wl.alive && process_group(&wl.groups[0])){}
 
-/*
- * If a client is created here, we can retrieve the actual connection here (and
- * not the epoll fd) with wl_client_get_fd and we can then add / remove the
- * client from the event loop with wl_event_loop_get_fd and that's just an
- * epoll-fd. We can remove the client from the epoll-fd with epoll_ctl(fd,
- * EPOLL_CTL_DEL, clfd, NULL) All that is left is to find a way to notice when
- * a client connects and break out of the loop somehow. Oh well, good old
- * setjmp.
- */
-		if (pfd[1].revents){
-			sv--;
-			wl_event_loop_dispatch(loop, 0);
-		}
-
-/* the +2 -2 everywhere is just that pollset also has room for bridge
- * connection and epoll-fd, not particularly pretty but not a priority to
- * refactor either. */
-		for (size_t i = 2; i < nfd && sv; i++){
-			if (pfd[i].revents){
-				if (bcd[i-2].type == SLOT_TYPE_CLIENT){
-					trace("client event\n");
-					flush_client_events(&bcd[i-2].client, NULL, 0);
-				}
-				else if (bcd[i-2].type == SLOT_TYPE_SURFACE){
-					trace("surface event\n");
-					flush_surface_events(bcd[i-2].surface);
-				}
-				sv--;
-			}
-		}
-
-/*
- * When we have clients with pending segment requests, we
- * can't use the normal flush mechanism for clients with requests
- * pending.
- *
- * Instead, we can iterate this ourselves and simply go:
- * list = wl_display_get_client_list;
- * wl_client* client, *next;
- * wl_list_for_each_safe(client, next, &list, link){
- *  lookup-client
- *  check if pending, then wait
- * 	ret = wl_conenection_flush(client->connection);
- * }
- */
-		wl_display_flush_clients(wl.disp);
-	}
-
-out:
 	wl_display_destroy(wl.disp);
 	arcan_shmif_drop(&wl.control);
 
