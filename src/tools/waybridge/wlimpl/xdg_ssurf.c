@@ -3,6 +3,20 @@ static bool xdgsurf_shmifev_handler(
 {
 	if (ev->category == EVENT_TARGET)
 		switch (ev->tgt.kind){
+/* resize? or focus change? */
+		case TARGET_COMMAND_DISPLAYHINT:{
+			int w = ev->tgt.ioevs[0].iv;
+			int h = ev->tgt.ioevs[1].iv;
+			if (w && h && (w != surf->acon.w || h != surf->acon.h)){
+				struct wl_array states;
+				trace("xdg_surface(request resize to %d*%d)", w, h);
+				wl_array_init(&states);
+				zxdg_toplevel_v6_send_configure(surf->shell_res, w, h, &states);
+				wl_array_release(&states);
+			}
+		}
+		return true;
+		break;
 		case TARGET_COMMAND_EXIT:
 			zxdg_toplevel_v6_send_close(surf->shell_res);
 			return true;
