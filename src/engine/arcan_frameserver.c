@@ -249,8 +249,10 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst,
 #define MSG_NOSIGNAL 0
 #endif
 
-/* this has the effect of a ping message, when we have moved event
- * passing to the socket, the data will be mixed in here */
+/*
+ * Since the support for multiplexing on semaphores is limited at best,
+ * we also have the option of pinging the socket as a possible wakeup.
+ */
 	arcan_pushhandle(-1, dst->dpipe);
 	arcan_frameserver_leave();
 	return rv;
@@ -491,6 +493,14 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
  * so set monitor flags and wake up */
 		atomic_store_explicit(&shmpage->vready, 0, memory_order_release);
 		arcan_sem_post( tgt->vsync );
+		if (tgt->desc.hints & SHMIF_RHINT_VSIGNAL_EV){
+			arcan_frameserver_pushevent(tgt, &(struct arcan_event){
+				.category = EVENT_TARGET,
+				.tgt.kind = TARGET_COMMAND_STEPFRAME,
+				.tgt.ioevs[0].iv = 1,
+				.tgt.ioevs[1].iv = 0
+			});
+		}
 
 		do_aud = (atomic_load(&tgt->shm.ptr->aready) > 0 &&
 			atomic_load(&tgt->shm.ptr->apending) > 0);
