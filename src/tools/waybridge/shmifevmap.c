@@ -37,6 +37,13 @@ static void flush_surface_events(struct comp_surf* surf)
 		case TARGET_COMMAND_DISPLAYHINT:
 		break;
 
+		case TARGET_COMMAND_STEPFRAME:
+			if (!surf->hidden && surf->frame_callback){
+				wl_callback_send_done(surf->frame_callback, surf->cb_id);
+				surf->frame_callback = NULL;
+			}
+		break;
+
 /* in the 'generic' case, there's litle we can do that match
  * 'EXIT' behavior. It's up to the shell-subprotocols to swallow
  * the event and map to the correct surface teardown. */

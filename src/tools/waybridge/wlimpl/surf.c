@@ -38,10 +38,37 @@ static void surf_damage(struct wl_client* cl, struct wl_resource* res,
 //	struct bridge_surf* surf = wl_resource_get_user_data(res);
 }
 
+/*
+ * The client wants this object to be signalled when it is time to produce a
+ * new frame. There's a few options:
+ * - CLOCKREQ and attach it to frame
+ * - signal immediately, but defer if we're invisible and wait for DISPLAYHINT.
+ * - set a FUTEX/KQUEUE to monitor the segment vready flag, and when
+ *   that triggers, send the signal.
+ */
 static void surf_frame(
 	struct wl_client* cl, struct wl_resource* res, uint32_t cb)
 {
 	trace("surf_frame()");
+	struct comp_surf* surf = wl_resource_get_user_data(res);
+
+/* spec doesn't say how many callbacks we should permit */
+	if (surf->frame_callback){
+		wl_resource_post_no_memory(res);
+		return;
+	}
+
+	struct wl_resource* cbres = wl_resource_create(
+		cl, &wl_callback_interface, 1, cb);
+
+	if (!cbres){
+		wl_resource_post_no_memory(res);
+		return;
+	}
+
+	wl_resource_set_implementation(cbres, NULL, NULL, NULL);
+	surf->frame_callback = cbres;
+	surf->cb_id = cb;
 }
 
 /*

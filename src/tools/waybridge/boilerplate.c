@@ -50,7 +50,10 @@ struct comp_surf {
 	struct wl_resource* shell_res;
 	struct arcan_shmif_cont acon;
 	struct wl_resource* buf;
+	struct wl_resource* frame_callback;
 
+	bool hidden, focused;
+	uint32_t cb_id;
 /* return [true] if the event was consumed and shouldn't be processed by the
  * default handler */
 	bool (*dispatch)(struct comp_surf*, struct arcan_event* ev);
