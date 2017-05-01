@@ -13,7 +13,8 @@ static bool shellsurf_shmifev_handler(
 					surf->shell_res, WL_SHELL_SURFACE_RESIZE_NONE, w, h);
 			}
 		}
-		return true;
+/* use the default handler for surface callback */
+		return false;
 		break;
 		case TARGET_COMMAND_EXIT:
 /* do we send destroy on the surface instead? */

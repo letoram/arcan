@@ -174,7 +174,7 @@ static bool request_surface(
 		else{
 			struct arcan_shmif_cont cont =
 				arcan_shmif_acquire(&cl->acon, NULL, req->segid, 0);
-			cont.hints = SHMIF_RHINT_SUBREGION;
+			cont.hints = SHMIF_RHINT_SUBREGION | SHMIF_RHINT_VSIGNAL_EV;
 			arcan_shmif_resize(&cont, cont.w, cont.h);
 			struct acon_tag* tag = malloc(sizeof(struct acon_tag));
 			cont.user = tag;

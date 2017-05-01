@@ -15,7 +15,8 @@ static bool xdgsurf_shmifev_handler(
 				wl_array_release(&states);
 			}
 		}
-		return true;
+/* use the default- handler for focus and surface callback */
+		return false;
 		break;
 		case TARGET_COMMAND_EXIT:
 			zxdg_toplevel_v6_send_close(surf->shell_res);
