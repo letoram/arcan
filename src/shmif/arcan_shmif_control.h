@@ -797,6 +797,14 @@ enum rhint_mask {
  * platforms. (ab)uses the VPTS field to exchange cookies.
  */
 	SHMIF_RHINT_AUTH_TOK = 16,
+
+/*
+ * Used for cases where it is not wise to block on the signal- semaphore
+ * and instead get a STEPFRAME event when the buffer transfer was finished.
+ * This increases the load on the incoming eventqueue, so should be avoided
+ * if possible.
+ */
+	SHMIF_RHINT_VSIGNAL_EV = 32
 };
 
 struct arcan_shmif_page {
