@@ -96,9 +96,6 @@ static struct {
  * allocation bitmap, a type indicator and union structure.
  */
 
-/*
- * ffs for uint64_t just debruijn for 32 + chessprogramming magic
- */
 static uint64_t find_set64(uint64_t bmap)
 {
 	return __builtin_ffsll(bmap);
@@ -182,8 +179,6 @@ static bool request_surface(
 			struct acon_tag* tag = malloc(sizeof(struct acon_tag));
 			cont.user = tag;
 			*tag = (struct acon_tag){};
-			tag->group = group;
-			tag->slot = ind;
 
 /* allocate a pollslot for the new surface, and set its event dispatch
  * to match what the request wanted */
@@ -193,18 +188,24 @@ static bool request_surface(
 				reset_group_slot(group, ind);
 				free(cont.user);
 			}
-			else if(!req->dispatch(req, &cont)){
+			else {
+				trace("new surface assigned to (%d:%d)\n", group, ind);
+				tag->group = group;
+				tag->slot = ind;
+				if(!req->dispatch(req, &cont)){
+					trace("surface request dispatcher rejected surface\n");
 /* caller doesn't want the surface anymore? */
-				arcan_shmif_drop(&cont);
-				reset_group_slot(group, ind);
-				free(cont.user);
-			}
+					arcan_shmif_drop(&cont);
+					reset_group_slot(group, ind);
+					free(cont.user);
+				}
 /* everything went well, hook up the last reference, the other paths
  * will come from the wayland-socket dispatch and from the:
  * poll -> [group, ind] -> default event handler for type ->
  * [if SURFACE]:comp_surf(dispatch) */
-			else{
-				wl.groups[group].slots[ind].surface = req->source;
+				else{
+					wl.groups[group].slots[ind].surface = req->source;
+				}
 			}
 		}
 	}
@@ -234,7 +235,7 @@ static void destroy_client(struct wl_listener* l, void* data)
 		return;
 	}
 
-	trace("destroy client()");
+	trace("destroy client(%d:%d)", cl->group, cl->slot);
 	arcan_shmif_drop(&cl->acon);
 	reset_group_slot(cl->group, cl->slot);
 }
