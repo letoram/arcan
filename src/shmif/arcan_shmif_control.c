@@ -398,8 +398,10 @@ static void consume(struct arcan_shmif_cont* c)
 }
 
 /*
- * special rules for compacting DISPLAYHINT events,
- * where we keep w/h (if set) but overwrite hint/rgb/density
+ * Rules for compacting DISPLAYHINT events
+ *  1. If dimensions have changed [!0], use new values
+ *  2. Always use new hint state
+ *  3. If density has changed [> 0], use new value
  */
 static inline void merge_dh(arcan_event* new, arcan_event* old)
 {
@@ -409,14 +411,16 @@ static inline void merge_dh(arcan_event* new, arcan_event* old)
 	if (!new->tgt.ioevs[1].iv)
 		new->tgt.ioevs[1].iv = old->tgt.ioevs[1].iv;
 
+/*
 	if ((new->tgt.ioevs[2].iv & 128))
 		new->tgt.ioevs[2].iv = old->tgt.ioevs[2].iv;
-
-	if (!(new->tgt.ioevs[4].fv > 0))
-		new->tgt.ioevs[4].fv = old->tgt.ioevs[4].fv;
+ */
 
 	if (new->tgt.ioevs[3].iv < 0)
 		new->tgt.ioevs[3].iv = old->tgt.ioevs[3].iv;
+
+	if (!(new->tgt.ioevs[4].fv > 0))
+		new->tgt.ioevs[4].fv = old->tgt.ioevs[4].fv;
 }
 
 static bool scan_disp_event(struct arcan_evctx* c, struct arcan_event* old)
