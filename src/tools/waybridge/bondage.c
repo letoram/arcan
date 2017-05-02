@@ -33,7 +33,13 @@ static void bind_seat(struct wl_client *client,
 		wl_client_post_no_memory(client);
 		return;
 	}
-	wl_resource_set_implementation(res, &seat_if, NULL, NULL);
+
+	struct bridge_client* cl = find_client(client);
+	if (!cl){
+		wl_client_post_no_memory(client);
+	}
+
+	wl_resource_set_implementation(res, &seat_if, cl, NULL);
 	wl_seat_send_capabilities(res, WL_SEAT_CAPABILITY_POINTER |
 		WL_SEAT_CAPABILITY_KEYBOARD | WL_SEAT_CAPABILITY_TOUCH);
 }
@@ -88,6 +94,12 @@ static void bind_output(struct wl_client* client,
 		return;
 	}
 
+	struct bridge_client* cl = find_client(client);
+	if (!cl){
+		wl_client_post_no_memory(client);
+	}
+
+	cl->output = resource;
 /* convert the initial display info from x, y to mm using ppcm */
 	wl_output_send_geometry(resource, 0, 0,
 		(float)wl.init.display_width_px / wl.init.density * 10.0,
