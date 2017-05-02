@@ -1,3 +1,5 @@
+#define STEP_SERIAL() ( wl_display_next_serial(wl.disp) )
+
 /*
  * From every wayland subprotocol that needs to allocate a surface,
  * this structure needs to be filled and sent to the request_surface
@@ -11,6 +13,7 @@ struct bridge_client {
 	struct wl_resource* keyboard;
 	struct wl_resource* pointer;
 	struct wl_resource* touch;
+	struct wl_resource* output; /* only 1 atm */
 
 	bool forked;
 	int group, slot;
@@ -44,6 +47,14 @@ struct surface_request {
 
 static bool request_surface(struct bridge_client* cl, struct surface_request*);
 
+struct surf_state {
+	bool hidden : 1;
+	bool unfocused : 1;
+	bool maximized : 1;
+	bool minimized : 1;
+	bool drag_resize : 1;
+};
+
 struct comp_surf {
 	struct bridge_client* client;
 	struct wl_resource* res;
@@ -52,13 +63,19 @@ struct comp_surf {
 	struct wl_resource* buf;
 	struct wl_resource* frame_callback;
 
-	bool hidden, focused;
+	int pointer_pending;
+	struct surf_state states;
 	uint32_t cb_id;
 /* return [true] if the event was consumed and shouldn't be processed by the
  * default handler */
 	bool (*dispatch)(struct comp_surf*, struct arcan_event* ev);
 	int cookie;
 };
+
+static bool displayhint_handler(struct comp_surf* surf,
+	struct arcan_tgtevent* tev);
+
+static void try_frame_callback(struct comp_surf* surf);
 
 /*
  * this is to share the tracking / allocation code between both clients and

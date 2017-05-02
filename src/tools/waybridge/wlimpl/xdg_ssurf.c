@@ -3,20 +3,43 @@ static bool xdgsurf_shmifev_handler(
 {
 	if (ev->category == EVENT_TARGET)
 		switch (ev->tgt.kind){
-/* resize? or focus change? */
+
 		case TARGET_COMMAND_DISPLAYHINT:{
-			int w = ev->tgt.ioevs[0].iv;
-			int h = ev->tgt.ioevs[1].iv;
-			if (w && h && (w != surf->acon.w || h != surf->acon.h)){
+/* update state tracking first */
+			bool changed = displayhint_handler(surf, &ev->tgt);
+
+/* and then, if something has changed, send the configure event */
+			int w = ev->tgt.ioevs[0].iv ? ev->tgt.ioevs[0].iv : surf->acon.w;
+			int h = ev->tgt.ioevs[1].iv ? ev->tgt.ioevs[1].iv : surf->acon.h;
+			if (changed || (w && h && (w != surf->acon.w || h != surf->acon.h))){
 				struct wl_array states;
 				trace("xdg_surface(request resize to %d*%d)", w, h);
 				wl_array_init(&states);
+				uint32_t* sv;
+				if (surf->states.maximized){
+					sv = wl_array_add(&states, sizeof(uint32_t));
+					*sv = ZXDG_TOPLEVEL_V6_STATE_MAXIMIZED;
+				}
+
+				if (surf->states.drag_resize){
+					sv = wl_array_add(&states, sizeof(uint32_t));
+					*sv = ZXDG_TOPLEVEL_V6_STATE_RESIZING;
+				}
+
+				if (!surf->states.unfocused){
+					sv = wl_array_add(&states, sizeof(uint32_t));
+					*sv = ZXDG_TOPLEVEL_V6_STATE_ACTIVATED;
+				}
+
 				zxdg_toplevel_v6_send_configure(surf->shell_res, w, h, &states);
 				wl_array_release(&states);
+				changed = true;
 			}
+
+			if (changed)
+				try_frame_callback(surf);
 		}
-/* use the default- handler for focus and surface callback */
-		return false;
+		return true;
 		break;
 		case TARGET_COMMAND_EXIT:
 			zxdg_toplevel_v6_send_close(surf->shell_res);
