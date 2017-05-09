@@ -12,6 +12,7 @@
 #include <sys/mman.h>
 #include <errno.h>
 #include <poll.h>
+#include <assert.h>
 
 static inline void trace(const char* msg, ...)
 {
@@ -26,12 +27,14 @@ static inline void trace(const char* msg, ...)
 /*
  * EGL- details needed for handle translation
  */
+struct comp_surf;
 typedef void (*PFNGLEGLIMAGETARGETTEXTURE2DOESPROC) (EGLenum, EGLImage);
 static PFNEGLQUERYWAYLANDBUFFERWL query_buffer;
 static PFNEGLBINDWAYLANDDISPLAYWL bind_display;
 static PFNGLEGLIMAGETARGETTEXTURE2DOESPROC img_tgt_text;
 static struct bridge_client* find_client(struct wl_client* cl);
 static void reset_group_slot(int group, int slot);
+static void destroy_comp_surf(struct comp_surf* surf);
 
 /* static PFNEGLGETPLATFORMDISPLAYEXTPROC get_platform_display; */
 
@@ -46,7 +49,7 @@ static void reset_group_slot(int group, int slot);
  */
 static const size_t N_GROUP_SLOTS = 64;
 struct conn_group {
-	long long alloc;
+	unsigned long long alloc;
 
 /* pgroup is the actual allocation, rest is offset-maps */
 	struct pollfd* pgroup;
@@ -112,11 +115,18 @@ static bool alloc_group_id(int type, int* groupid, int* slot, int fd)
 		ind--;
 
 /* mark as allocated and store */
+		trace("alloc_to(%d : %d)\n", i, ind);
 		wl.groups[i].alloc |= 1 << ind;
 		wl.groups[i].pg[ind].fd = fd;
 		wl.groups[i].slots[ind].type = type;
 		*groupid = i;
 		*slot = ind;
+#if 1
+	for (size_t j = 0; j < sizeof(wl.groups[i].alloc)*8; j++){
+		fprintf(stderr, "%c", (1 << j) & wl.groups[i].alloc ? 'x' : 'o');
+	}
+	fprintf(stderr, "\n");
+#endif
 		return true;
 	}
 	return false;
@@ -128,6 +138,14 @@ static void reset_group_slot(int group, int slot)
 	wl.groups[group].pg[slot].fd = -1;
 	wl.groups[group].pg[slot].revents = 0;
 	wl.groups[group].slots[slot] = (struct bridge_slot){};
+
+#if 1
+	for (size_t i = 0; i < sizeof(wl.groups[group].alloc)*8; i++){
+		fprintf(stderr, "%c", (1 << i) & wl.groups[group].alloc ? 'x' : 'o');
+	}
+	fprintf(stderr, "\n");
+#endif
+
 }
 
 /*
@@ -185,7 +203,6 @@ static bool request_surface(
 			if (!alloc_group_id(SLOT_TYPE_SURFACE, &group, &ind, cont.epipe)){
 				req->dispatch(req, NULL);
 				arcan_shmif_drop(&cont);
-				reset_group_slot(group, ind);
 				free(cont.user);
 			}
 			else {
@@ -204,6 +221,7 @@ static bool request_surface(
  * poll -> [group, ind] -> default event handler for type ->
  * [if SURFACE]:comp_surf(dispatch) */
 				else{
+					cl->refc++;
 					wl.groups[group].slots[ind].surface = req->source;
 				}
 			}
@@ -221,6 +239,25 @@ static bool request_surface(
 	return true;
 }
 
+static void destroy_comp_surf(struct comp_surf* surf)
+{
+	if (!surf)
+		return;
+
+	if (surf->acon.addr){
+		struct acon_tag* tag = surf->acon.user;
+		trace("deregister-surface (%d:%d)\n", tag->group, tag->slot);
+		reset_group_slot(tag->group, tag->slot);
+		surf->client->refc--;
+		surf->acon.user = NULL;
+		arcan_shmif_drop(&surf->acon);
+		free(tag);
+	}
+
+	memset(surf, '\0', sizeof(struct comp_surf));
+	free(surf);
+}
+
 /*
  * deallocate the group/slot assigned to a client, and drop its
  * corresponding arcan-shmif connection.
@@ -236,7 +273,10 @@ static void destroy_client(struct wl_listener* l, void* data)
 	}
 
 	trace("destroy client(%d:%d)", cl->group, cl->slot);
+
 	arcan_shmif_drop(&cl->acon);
+	assert(!cl->cursor.addr);
+	assert(!cl->popup.addr);
 	reset_group_slot(cl->group, cl->slot);
 }
 
@@ -424,7 +464,8 @@ static bool process_group(struct conn_group* group)
 				flush_client_events(&group->slots[i].client, NULL, 0);
 			break;
 			case SLOT_TYPE_SURFACE:
-				flush_surface_events(group->slots[i].surface);
+				if (group->slots[i].surface)
+					flush_surface_events(group->slots[i].surface);
 			break;
 			}
 		}
@@ -481,6 +522,14 @@ int main(int argc, char* argv[])
 			}
 			i++;
 			setenv("XDG_RUNTIME_DIR", argv[i], 1);
+		}
+		else if (strcmp(argv[i], "-egl-device") == 0){
+			if (i == argc-1){
+				fprintf(stderr, "missing egl device argument\n");
+				return EXIT_FAILURE;
+			}
+			i++;
+			setenv("ARCAN_RENDER_NODE", argv[i], 1);
 		}
 		else if (strcmp(argv[i], "-no-egl") == 0)
 			protocols.egl = 0;

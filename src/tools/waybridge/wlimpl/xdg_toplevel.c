@@ -11,7 +11,14 @@ static void xdgtop_title(
 	struct wl_client* cl, struct wl_resource* res, const char* title)
 {
 	trace("xdgtop_title");
-	/* just update the ident */
+	struct comp_surf* surf = wl_resource_get_user_data(res);
+
+	arcan_event ev = {
+		.ext.kind = ARCAN_EVENT(IDENT)
+	};
+	size_t lim = sizeof(ev.ext.message.data)/sizeof(ev.ext.message.data[1]);
+	snprintf((char*)ev.ext.message.data, lim, "%s", title);
+	arcan_shmif_enqueue(&surf->acon, &ev);
 }
 
 static void xdgtop_appid(

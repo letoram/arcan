@@ -7,6 +7,8 @@
  */
 struct bridge_client {
 	struct arcan_shmif_cont acon;
+	struct arcan_shmif_cont cursor, popup;
+
 	struct wl_listener l_destr;
 
 	struct wl_client* client;
@@ -17,6 +19,7 @@ struct bridge_client {
 
 	bool forked;
 	int group, slot;
+	int refc;
 };
 
 struct acon_tag {

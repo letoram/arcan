@@ -1,10 +1,11 @@
 PROJECT( arcan-wayland )
 cmake_minimum_required(VERSION 2.8.0 FATAL_ERROR)
 
-set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
+set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../../platform/cmake/modules)
 include(Wayland)
 find_package(Wayland)
 find_package(WaylandProtocols REQUIRED)
+find_package(Sanitizers REQUIRED)
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
 	add_definitions(-D_DEBUG)
@@ -57,3 +58,4 @@ SET(SOURCES
 
 add_executable(${PROJECT_NAME} ${SOURCES})
 target_link_libraries(${PROJECT_NAME} ${LIBRARIES})
+add_sanitizers(${PROJECT_NAME})
