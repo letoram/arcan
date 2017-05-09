@@ -1,11 +1,14 @@
 static bool xdgsurf_shmifev_handler(
 	struct comp_surf* surf, struct arcan_event* ev)
 {
+	if (!surf->shell_res)
+		return true;
+
 	if (ev->category == EVENT_TARGET)
 		switch (ev->tgt.kind){
 
 		case TARGET_COMMAND_DISPLAYHINT:{
-/* update state tracking first */
+		/* update state tracking first */
 			bool changed = displayhint_handler(surf, &ev->tgt);
 
 /* and then, if something has changed, send the configure event */
@@ -104,6 +107,11 @@ static void xdgsurf_getpopup(struct wl_client* cl, struct wl_resource* res,
 	uint32_t id, struct wl_resource* parent, struct wl_resource* positioner)
 {
 	trace("xdgsurf_getpopup");
+
+/* "theoretically" we could've used the SEGID_POPUP etc. type when
+ * requesting the surface, BUT there's nothing stopping the client from
+ * taking a toplevel surface and promoting to a popup or menu, so this
+ * distinction is pointless. */
 }
 
 /* hints about the window visible size sans dropshadows and things like that,
@@ -126,4 +134,6 @@ static void xdgsurf_destroy(
 	struct wl_client* cl, struct wl_resource* res)
 {
 	trace("xdgsurf_destroy");
+	struct comp_surf* surf = wl_resource_get_user_data(res);
+	surf->shell_res = NULL;
 }

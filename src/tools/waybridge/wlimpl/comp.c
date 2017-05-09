@@ -5,7 +5,7 @@ static void comp_surf_delete(struct wl_resource* res)
 	if (!surf)
 		return;
 
-	free(surf);
+	destroy_comp_surf(surf);
 }
 
 static void comp_surf_create(struct wl_client *client,
