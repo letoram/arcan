@@ -116,7 +116,7 @@ struct agp_fenv {
 /* Drawing, Blending, Stenciling */
 	void (*front_face) (GLenum);
 	void (*cull_face) (GLenum);
-	void (*blend_func) (GLenum, GLenum);
+	void (*blend_func_separate) (GLenum, GLenum, GLenum, GLenum);
 	void (*clear_color) (GLfloat, GLfloat, GLfloat, GLfloat);
 	void (*hint) (GLenum, GLenum);
 	void (*scissor) (GLint, GLint, GLsizei, GLsizei);
@@ -135,6 +135,7 @@ struct agp_fenv {
 
 /* state tracking */
 	int model_flags;
+	GLenum blend_src_alpha, blend_dst_alpha;
 };
 
 void agp_glinit_fenv(struct agp_fenv* dst,

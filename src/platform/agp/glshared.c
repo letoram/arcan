@@ -319,7 +319,7 @@ void agp_init()
 
 	env->enable(GL_SCISSOR_TEST);
 	env->disable(GL_DEPTH_TEST);
-	env->blend_func(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	env->blend_func_separate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE,GL_ONE);
 	env->front_face(GL_CW);
 	env->cull_face(GL_BACK);
 
@@ -358,6 +358,16 @@ void agp_activate_rendertarget(struct agp_rendertarget* tgt)
 {
 	size_t w, h;
 	struct agp_fenv* env = agp_env();
+	if (!tgt || !(tgt->mode & RENDERTARGET_RETAIN_ALPHA)){
+		env->blend_src_alpha = GL_ONE;
+		env->blend_dst_alpha = GL_ONE;
+		agp_blendstate(BLEND_NORMAL);
+	}
+	else {
+		env->blend_src_alpha = GL_SRC_ALPHA;
+		env->blend_dst_alpha = GL_ONE_MINUS_SRC_ALPHA;
+	}
+	agp_blendstate(BLEND_NORMAL);
 
 #ifdef HEADLESS_NOARCAN
 	BIND_FRAMEBUFFER(tgt?tgt->fbo:0);
@@ -618,6 +628,7 @@ static float ident[] = {
 void agp_blendstate(enum arcan_blendfunc mode)
 {
 	struct agp_fenv* env = agp_env();
+
 	if (mode == BLEND_NONE){
 		env->disable(GL_BLEND);
 		return;
@@ -629,15 +640,24 @@ void agp_blendstate(enum arcan_blendfunc mode)
 	case BLEND_NONE: /* -dumb compiler- */
 	case BLEND_FORCE:
 	case BLEND_NORMAL:
-		env->blend_func(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		env->blend_func_separate(
+			GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA,
+			env->blend_src_alpha, env->blend_dst_alpha
+		);
 	break;
 
 	case BLEND_MULTIPLY:
-		env->blend_func(GL_DST_COLOR, GL_ONE_MINUS_SRC_ALPHA);
+		env->blend_func_separate(
+			GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA,
+			env->blend_src_alpha, env->blend_dst_alpha
+		);
 	break;
 
 	case BLEND_ADD:
-		env->blend_func(GL_ONE, GL_ONE);
+		env->blend_func_separate(
+			GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA,
+			env->blend_src_alpha, env->blend_dst_alpha
+		);
 	break;
 
 	default:
