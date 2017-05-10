@@ -55,6 +55,8 @@
  * front buffer, swap-with-tear, pre-render then wake / move cursor just
  * before etc.), discard when we miss deadline, drm_vblank_relative,
  * drm_vblank_secondary - also try synch strategy on a per display basis.
+ * this also means being able to account for different refresh rates and
+ * synch- methods.
  *
  * 6. "always" headless mode of operation build-time for processing
  *    jobs and other situations where wer don't need the full monty. Would
@@ -237,7 +239,9 @@ static void* lookup_call(void* tag, const char* sym, bool req)
  * real heuristics scheduled for 0.5.3, see .5 at top
  */
 static char* egl_synchopts[] = {
-	"default", "double buffered, Display controls refresh",
+	"default", "Display controls refresh",
+	"fast", "Clients refresh during display synch",
+	"conservative", "Load regulates refresh",
 	NULL
 };
 
@@ -253,7 +257,9 @@ static char* egl_envopts[] = {
 };
 
 enum {
-	DEFAULT,
+	DEFAULT = 0,
+	FAST,
+	CONSERVATIVE,
 	ENDM
 } synchopt;
 
@@ -2699,6 +2705,13 @@ static void page_flip_handler(int fd, unsigned int frame,
 	}
 }
 
+/*
+ * Real synchronization work is in this function. Go through all mapped
+ * displays and wait for any pending events to finish, or the specified
+ * timeout(ms) to elapse.
+ */
+extern void amain_clock_pulse(int nticks);
+extern void amain_process_event(arcan_event* ev, int drain);
 static void flush_display_events(int timeout)
 {
 	int pending = 1;
@@ -2710,15 +2723,38 @@ static void flush_display_events(int timeout)
  * on processing audio input while we wait for displays to finish synch.
  */
 	unsigned long long start = arcan_timemillis();
-	size_t naud = arcan_audio_refresh();
-	int period = (timeout > 0 ? (naud > 0 ? 2 : timeout) : timeout);
+
+/*
+ * First sweep the audio sources to figure out if we have any streaming
+ * ones that we should take into account so that they don't run out during
+ * vsync.
+ */
+	size_t naud = synchopt == CONSERVATIVE ? 0 : arcan_audio_refresh();
+
+/*
+ * the polling timeout depends on our synch- strategy, if we have any
+ * dynamic content providers to take into account - we should take the
+ * vysnc- time to sweep that list.
+ */
+	int period;
+	if (timeout > 0 && naud > 0){
+		period = 4; /* arbitrary, should MOVE TO DATABASE */
+	}
+	else
+		period = timeout;
 
 	drmEventContext evctx = {
 			.version = DRM_EVENT_CONTEXT_VERSION,
 			.page_flip_handler = page_flip_handler
 	};
+
+/*
+ * NOTE: recent versions of DRM has added support to let us know which
+ * CRTC actually provided a synch signal. When this is more wide-spread,
+ * we should really switch to that kind of a system.
+ */
 	do{
-/* for multiple cards, extend this pollset */
+/* MULTICARD> for multiple cards, extend this pollset */
 		struct pollfd fds = {
 			.fd = nodes[0].fd,
 			.events = POLLIN | POLLERR | POLLHUP
@@ -2730,22 +2766,47 @@ static void flush_display_events(int timeout)
 				continue;
 			arcan_fatal("platform/egl-dri() - poll on device failed.\n");
 		}
+/* IF we timeout, just continue with a new render pass as we might be dealing
+ * with a fault driver or an EGLStreams device that doesn't support drm-vsynch
+ * integration */
 		else if (0 == rv){
 			unsigned long long now = arcan_timemillis();
-			if (naud && timeout && now > start && now - start < timeout){
-				naud = arcan_audio_refresh();
+			if (timeout && now > start && now - start < timeout){
+				if (naud)
+					naud = arcan_audio_refresh();
+
+/* for FAST we burn cycles by keeping the event processing, the scripting layer
+ * and client transfers while we are synchronizing outputs - we just don't send
+ * to display */
+				if (synchopt == FAST){
+					arcan_video_pollfeed();
+					arcan_event_process(arcan_event_defaultctx(), amain_clock_pulse);
+					if (!arcan_event_feed(
+						arcan_event_defaultctx(), amain_process_event, NULL))
+						return;
+				}
+
+/* clamp the period so we don't exceed the timeout */
+				now = arcan_timemillis();
+				if (now - start < period)
+					period = now - start;
 				continue;
 			}
 			return;
 		}
 
-		if (fds.revents & (POLLHUP | POLLERR))
+/* If we get HUP on a card we have open, it is basically as bad as a fatal
+ * state, unless - we support hotplugging multi-GPUs, then that decision needs
+ * to be re-evaluated as it is essentially a drop_card + drop all displays */
+			if (fds.revents & (POLLHUP | POLLERR))
 			arcan_warning("platform/egl-dri() - display broken/recovery missing.\n");
 		else
 			drmHandleEvent(nodes[0].fd, &evctx);
 
-/* with this approach we only force- synch on primary displays,
- * as we don't want to be throttled by lower- clocked secondary displays */
+/* There is a special property here, 'PRIMARY'. The displays with this property
+ * set are being used for synch, with the rest - we just accept the possibility
+ * of tearing or ignore that display for another frame (extremes like 60Hz
+ * display main and a 30Hz secondary output) */
 		int i = 0;
 		pending = 0;
 		while((d = get_display(i++)))
@@ -2767,25 +2828,25 @@ void platform_video_synch(uint64_t tick_count, float fract,
 	if (pre)
 		pre();
 
-	size_t nd;
-	struct dispout* d;
-	static unsigned long long last_synch;
-
 /*
- * there are some conditions to when it is safe to destroy a display or not,
- * and with multiple queued buffers, we need to wait for the queue to flush
+ * Destruction of hotplugged displays are deferred to this stage as it is hard
+ * to know when it is actually safe to do in other places in the pipeline.
+ * Wait until the queued transfers to a display have been finished before it is
+ * put down.
  */
 	int i = 0;
+	struct dispout* d;
 	while (egl_dri.destroy_pending > 0){
 		while( (d = get_display(i++)) )
 			disable_display(d, true);
-		flush_display_events(8);
+		flush_display_events(16);
 		i = 0;
 	}
 
-/* at this stage, the contents of all RTs have been synched, with nd == 0,
+/* At this stage, the contents of all RTs have been synched, with nd == 0,
  * nothing has changed from what was draw last time - but since we normally run
  * double buffered it is easier to synch the same contents in both buffers */
+	size_t nd;
 	arcan_bench_register_cost( arcan_vint_refresh(fract, &nd) );
 
 	static int last_nd;
@@ -2798,6 +2859,11 @@ void platform_video_synch(uint64_t tick_count, float fract,
 	}
 	last_nd = nd;
 
+/*
+ * The LEDs that are mapped as backlights via the internal pipe-led protocol
+ * needs to be flushed separately, here is a decent time to get that out of
+ * the way.
+ */
 	flush_leds();
 
 /*
@@ -2806,6 +2872,7 @@ void platform_video_synch(uint64_t tick_count, float fract,
  * all displays report VSYNCH, some may need a simulated clock. We use poll
  * for that.
  */
+	static unsigned long long last_synch;
 	int lim = 16 - (arcan_timemillis() - last_synch);
 	if (lim < 0)
 		lim = 0;
@@ -3005,9 +3072,18 @@ static void draw_display(struct dispout* d)
 			arcan_vint_world() : vobj->vstore);
 	}
 
+/*
+ * This is an ugly sinner, due to the whole 'anything can be mapped as anything'
+ * with a lot of potential candidates being in non scanout- capable memory, we
+ * pay > a lot < for first drawing into a RT, drawing this RT unto the EGLDisplay
+ * and then swapping the EGLDisplay. A full copy (and allocated buffer) could be
+ * avoided if we a. accept no shaders on WORLDID, b. only do this for RTs or
+ * WORLDID, c. transformations are simple position or 90-deg.rotations
+ */
 	agp_shader_activate(shid);
 	agp_shader_envv(PROJECTION_MATR, d->projection, sizeof(float)*16);
 	agp_draw_vobj(0, 0, d->dispw, d->disph, d->txcos, NULL);
+
 /*
  * another rough corner case, if we have a store that is not world ID but
  * shared with different texture coordinates (to extend display), we need to

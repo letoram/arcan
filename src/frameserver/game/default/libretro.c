@@ -259,8 +259,10 @@ static bool write_handle(const void* const data,
 
 static void resize_shmpage(int neww, int newh, bool first)
 {
-	if (retro.shmcont.abufpos)
-		arcan_shmif_signal(&retro.shmcont, SHMIF_SIGAUD);
+	if (retro.shmcont.abufpos){
+		LOG("resize(), force flush %zu samples\n", (size_t)retro.shmcont.abufpos);
+		arcan_shmif_signal(&retro.shmcont, SHMIF_SIGAUD | SHMIF_SIGBLK_NONE);
+	}
 
 #ifdef FRAMESERVER_LIBRETRO_3D
 	if (retro.in_3d)
@@ -275,6 +277,10 @@ static void resize_shmpage(int neww, int newh, bool first)
 			.vbuf_cnt = retro.vbuf_cnt})){
 		LOG("resizing shared memory page failed\n");
 		exit(1);
+	}
+	else {
+		LOG("requested resize to (%d * %d), %d 1k audio buffers, "
+				"%d video buffers\n", neww, newh, retro.abuf_cnt, retro.vbuf_cnt);
 	}
 
 #ifdef FRAMESERVER_LIBRETRO_3D
@@ -582,7 +588,8 @@ static void libretro_audscb(int16_t left, int16_t right)
 	retro.shmcont.audp[retro.shmcont.abufpos++] = SHMIF_AINT16(right);
 
 	if (retro.shmcont.abufpos >= retro.shmcont.abufcount){
-		arcan_shmif_signal(&retro.shmcont, SHMIF_SIGAUD);
+		long long elapsed = arcan_shmif_signal(&retro.shmcont, SHMIF_SIGAUD | SHMIF_SIGBLK_NONE);
+		LOG("audio buffer synch cost (%lld) ms\n", elapsed);
 	}
 }
 
@@ -613,8 +620,10 @@ static size_t libretro_audcb(const int16_t* data, size_t nframes)
 		left -= ntw;
 		data += ntw;
 		retro.shmcont.abufpos += ntw;
-		if (flush)
-			arcan_shmif_signal(&retro.shmcont, SHMIF_SIGAUD);
+		if (flush){
+			long long elapsed = arcan_shmif_signal(&retro.shmcont, SHMIF_SIGAUD | SHMIF_SIGBLK_NONE);
+			LOG("audio buffer synch cost (%lld) ms\n", elapsed);
+		}
 	}
 
 	retro.aframecount += nframes;
@@ -1456,34 +1465,38 @@ static inline bool retro_sync()
  * DEBUGSTALL for the normal timing thing, or even switching 3d settings */
 	static int checked;
 
-	if (abs(left) > 200){
-		if (checked == 0){
-			checked = getenv("ARCAN_FRAMESERVER_DEBUGSTALL") ? -1 : 1;
+/*
+ * a jump this large (+- 10 frames) indicate some kind of problem with timing
+ * or insanely slow emulation/rendering - nothing we can do about that except
+ * try and resynch
+ */
+	if (retro.skipmode == TARGET_SKIP_AUTO){
+		if (left < -200 || left > 200){
+			if (checked == 0){
+				checked = getenv("ARCAN_FRAMESERVER_DEBUGSTALL") ? -1 : 1;
+			}
+			else if (checked == 1){
+				LOG("frameskip stall (%d ms deviation) - detected, resetting timers.\n", left);
+				reset_timing(false);
+			}
+			return true;
 		}
-		else if (checked == 1){
-			LOG("frameskip stall detected, resetting timers.\n");
-			reset_timing(false);
+
+		if (left < -0.5 * retro.mspf){
+			if (retro.sync_data)
+				retro.sync_data->mark_drop(retro.sync_data, timestamp);
+			LOG("frameskip: at(%lld), next: (%lld), "
+				"deviation: (%d)\n", now, next, left);
+			retro.frameskips++;
+			return false;
 		}
-		return true;
-	}
-
-/* more than half a frame behind? skip */
-	if ( retro.skipmode != TARGET_SKIP_AUTO)
-		return true;
-
-	if (left < -0.5 * retro.mspf){
-		if (retro.sync_data)
-			retro.sync_data->mark_drop(retro.sync_data, timestamp);
-		LOG("frameskip: at(%lld), next: (%lld), "
-			"deviation: (%d)\n", now, next, left);
-		retro.frameskips++;
-		return false;
 	}
 
 /* since we have to align the transfer with the parent, and it's better to
  * under- than overshoot- a deadline in that respect, prewake tries to
  * compensate lightly for scheduling jitter etc. */
 	if (left > retro.prewake){
+		LOG("sleep %d ms\n", left - retro.prewake);
 		arcan_timesleep( left - retro.prewake );
 	}
 
@@ -1672,15 +1685,11 @@ static void dump_help()
 		" info    \t           \t load core, print information and quit\n"
 		" syspath \t path      \t set core system path\n"
 		" resource\t filename  \t resource file to load with core\n"
-		"---------\t-----------\t-----------------\n"
-	);
-	fprintf(stdout, "ENVIRONMENT VARIABLES:\n"
-		"   key        \t   value   \t   description:\n"
-		"--------------\t-----------\t-----------------\n"
-		" GAME_ABUFC   \t 1..16 (8) \t number of audio buffers\n"
-		" GAME_ABUFSZ  \t bytes (1) \t size of each audio buffer, 1 = probe\n"
-		" GAME_VBUFC   \t 1..4 (1)  \t number of video buffers\n"
-		" GAME_NORESET \t           \t (3d) set to disable context reset calls\n"
+		" vbufc   \t num       \t (1) 1..4 - number of video buffers\n"
+		" abufc   \t num       \t (8) 1..16 - number of audio buffers\n"
+		" abufsz  \t num       \t audio buffer size in bytes (default = probe)\n"
+    " noreset \t           \t (3D) disable context reset calls\n"
+    "---------\t-----------\t-----------------\n"
 	);
 }
 
@@ -1708,18 +1717,19 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 	if (arg_lookup(args, "resource", 0, &val))
 		resname = strdup(val);
 
-	if ((val = getenv("GAME_ABUFC"))){
+	if (arg_lookup(args, "abufc", 0, &val)){
 		uint8_t bufc = strtoul(val, NULL, 10);
 		retro.abuf_cnt = bufc > 0 && bufc < 16 ? bufc : 8;
 	}
 
-	if ((val = getenv("GAME_VBUFC"))){
+	if (arg_lookup(args, "vbufc", 0, &val)){
 		uint8_t bufc = strtoul(val, NULL, 10);
-		retro.abuf_cnt = bufc > 0 && bufc <= 4 ? bufc : 1;
+		retro.vbuf_cnt = bufc > 0 && bufc <= 4 ? bufc : 1;
 	}
 
-	if ((val = getenv("GAME_ABUFSZ")))
+	if (arg_lookup(args, "abufsz", 0, &val)){
 		retro.def_abuf_sz = strtoul(val, NULL, 10);
+	}
 
 /* system directory doesn't really match any of arcan namespaces,
  * provide some kind of global-  user overridable way */
@@ -1891,10 +1901,6 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		}
 #endif
 
-/* if we start lagging behind on frametime, try selectively skipping frames */
-		retro.skipframe_a = false;
-		retro.skipframe_v = !retro_sync();
-
 /* begin with synching video, as it is the one with the biggest deadline
  * penalties and the cost for resampling can be enough if we are close */
 		if (!retro.empty_v){
@@ -1906,17 +1912,23 @@ int	afsrv_game(struct arcan_shmif_cont* cont, struct arg_arr* args)
 				if (handlestatus >= 0)
 					elapsed += handlestatus;
 				retro.got_3dframe = false;
+				LOG("3d-video transfer cost (%lld)\n", elapsed);
 			}
 /* note the dangling else */
 			else
 #endif
-			elapsed += arcan_shmif_signal(&retro.shmcont, SHMIF_SIGVID);
+			elapsed += arcan_shmif_signal(&retro.shmcont, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
 
 			retro.transfercost = elapsed;
+			LOG("video transfer cost (%lld)\n", elapsed);
 			if (retro.sync_data)
 				retro.sync_data->mark_transfer(retro.sync_data,
 					stop, retro.transfercost);
 		}
+
+/* sleep / synch / skipframes */
+		retro.skipframe_a = false;
+		retro.skipframe_v = !retro_sync();
 
 		if (retro.sync_data)
 				push_stats();

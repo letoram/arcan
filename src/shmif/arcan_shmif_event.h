@@ -1404,6 +1404,7 @@ struct arcan_evctx {
 
 /* only used for local queues */
 	uint32_t state_fl;
+	int exit_code;
 	void (*drain)(arcan_event*, int);
 	uint8_t eventbuf_sz;
 

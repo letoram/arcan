@@ -235,12 +235,16 @@ static void postframe()
 	arcan_bench_register_frame();
 }
 
-static void process_event(arcan_event* ev, int drain)
+/*
+ * HACK: this is not marked as static right now, it is used by the egl-dri
+ * platform pending a refactor of the whole main-loop / synch work
+ */
+void amain_process_event(arcan_event* ev, int drain)
 {
 	arcan_lua_pushevent(settings.lua, ev);
 }
 
-static void on_clock_pulse(int nticks)
+void amain_clock_pulse(int nticks)
 {
 	settings.tick_count += nticks;
 /* priority is always in maintaining logical clock and event processing */
@@ -591,7 +595,7 @@ int MAIN_REDIR(int argc, char* argv[])
 /* setup device polling, cleanup, ... */
 	arcan_evctx* evctx = arcan_event_defaultctx();
 	arcan_led_init();
-	arcan_event_init(evctx, process_event);
+	arcan_event_init(evctx, amain_process_event);
 
 	if (hookscript){
 		char* tmphook = arcan_expand_resource(hookscript, RESOURCE_APPL_SHARED);
@@ -730,8 +734,8 @@ int MAIN_REDIR(int argc, char* argv[])
 	for(;;){
 		arcan_video_pollfeed();
 		arcan_audio_refresh();
-		float frag = arcan_event_process(evctx, on_clock_pulse);
-		if (!arcan_event_feed(evctx, process_event, &exit_code))
+		float frag = arcan_event_process(evctx, amain_clock_pulse);
+		if (!arcan_event_feed(evctx, amain_process_event, &exit_code))
 			break;
 		platform_video_synch(settings.tick_count, frag, preframe, postframe);
 	}

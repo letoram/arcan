@@ -177,7 +177,8 @@ int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src)
 {
 /* early-out mask-filter, these are only ever used to silently
  * discard input / output (only operate on head and tail of ringbuffer) */
-	if (!src || (src->category & ctx->mask_cat_inp) || (ctx->state_fl & 1) > 0)
+	if (!src || (src->category & ctx->mask_cat_inp)
+		|| (ctx->state_fl & EVSTATE_DEAD) > 0)
 		return ARCAN_OK;
 
 /* One big caveat with this approach is the possibility of feedback loop with
@@ -189,7 +190,7 @@ int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src)
  if (((*ctx->back + 1) % ctx->eventbuf_sz) == *ctx->front){
 		if (ctx->drain){
 /* very rare / impossible, but safe-guard against future bad code */
-			if ((ctx->state_fl & 2) > 0){
+			if ((ctx->state_fl & EVSTATE_IN_DRAIN) > 0){
 				arcan_event ev = *src;
 				ctx->drain(&ev, 1);
 			}
@@ -197,9 +198,9 @@ int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src)
  * than data corruption and unpredictable states -- this can theoretically
  * have us return a broken 'custom' error code from some script */
 			else {
-				ctx->state_fl |= 2;
+				ctx->state_fl |= EVSTATE_IN_DRAIN;
 					arcan_event_feed(ctx, ctx->drain, NULL);
-				ctx->state_fl &= ~2;
+				ctx->state_fl &= ~EVSTATE_IN_DRAIN;
 			}
 		}
 		else
@@ -671,6 +672,13 @@ static void sig_rtfuzz_b(int v)
 bool arcan_event_feed(struct arcan_evctx* ctx,
 	arcan_event_handler hnd, int* exit_code)
 {
+/* dead, but we weren't able to deal with it last time */
+	if ((ctx->state_fl & EVSTATE_DEAD)){
+		if (exit_code)
+			*exit_code = ctx->exit_code;
+		return false;
+	}
+
 	while (*ctx->front != *ctx->back){
 /* slide, we forego _poll to cut down on one copy */
 		arcan_event* ev = &ctx->eventbuf[ *(ctx->front) ];
@@ -687,7 +695,8 @@ bool arcan_event_feed(struct arcan_evctx* ctx,
 /* this event category is never propagated to the scripting engine itself */
 			case EVENT_SYSTEM:
 				if (ev->sys.kind == EVENT_SYSTEM_EXIT){
-					ctx->state_fl |= 1;
+					ctx->state_fl |= EVSTATE_DEAD;
+					ctx->exit_code = ev->sys.errcode;
 					if (exit_code) *exit_code = ev->sys.errcode;
 					break;
 				}
@@ -696,7 +705,7 @@ bool arcan_event_feed(struct arcan_evctx* ctx,
 			break;
 		}
 	}
-	return (ctx->state_fl & 1) == 0;
+	return (ctx->state_fl & EVSTATE_DEAD) == 0;
 }
 
 extern void platform_event_init(arcan_evctx* ctx);
