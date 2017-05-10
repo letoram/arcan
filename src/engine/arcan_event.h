@@ -13,6 +13,12 @@
 
 struct arcan_evctx;
 
+enum evctx_states {
+	EVSTATE_OK = 0,
+	EVSTATE_DEAD = 1,
+	EVSTATE_IN_DRAIN = 2
+};
+
 /*
  * Retrieve the default (internally static) event context
  */
