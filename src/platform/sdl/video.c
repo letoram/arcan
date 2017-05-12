@@ -120,6 +120,9 @@ void platform_video_synch(uint64_t tick_count, float fract,
 	if (vobj->program > 0)
 		shid = vobj->program;
 
+	agp_shader_envv(PROJECTION_MATR,
+		arcan_video_display.window_projection, sizeof(float)*16);
+
 	agp_activate_vstore(sdl.vid == ARCAN_VIDEO_WORLDID ?
 		arcan_vint_world() : vobj->vstore);
 
