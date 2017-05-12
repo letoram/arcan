@@ -159,7 +159,9 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
  * switch rendering mode since our coordinate system differs
  */
 	disp[0].conn.hints = SHMIF_RHINT_ORIGO_LL;
-	arcan_shmif_resize(&disp[0].conn, disp[0].conn.w, disp[0].conn.h);
+	arcan_shmif_resize(&disp[0].conn,
+		width > 0 ? width : disp[0].conn.w,
+		height > 0 ? height : disp[0].conn.h);
 
 /*
  * map the provided initial values to match width/height, density,
