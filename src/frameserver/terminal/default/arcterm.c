@@ -219,7 +219,7 @@ static void setup_shell(struct arg_arr* argarr, char* const args[])
 
 static int parse_color(const char* inv, uint8_t outv[4])
 {
-	return scanf(inv, "%"SCNu8",%"SCNu8",%"SCNu8",%"SCNu8,
+	return sscanf(inv, "%"SCNu8",%"SCNu8",%"SCNu8",%"SCNu8,
 		&outv[0], &outv[1], &outv[2], &outv[3]);
 }
 
