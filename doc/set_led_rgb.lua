@@ -4,10 +4,11 @@
 -- @outarg: bool
 -- @group: iodev
 -- @cfunction: led_rgb
--- @longdescr: Set the color value of an individual led on a known led controller and
+-- @longdescr: Set the color value of an individual LED on a known LED controller and
 -- returns -1 if the *controlid* does not exist, if *ledid* is not a valid index,
--- if the *controlid* backed device lacks the r,g,b capability.
+-- if the *controlid* backed device lacks the r,g,b capability. A negative *ledid*
+-- will result in the value being set for all LEDs associated with the device.
 -- A return of 0 means that the update failed as it would block the device. This
--- can happen if many led update queries are being pushed to a slow device.
+-- can happen if many LED update queries are being pushed to a slow device.
 -- If the optional boolean *buffer* is set, the request may be queued and the queue
 -- will not dispatch until a non-buffered update is called.

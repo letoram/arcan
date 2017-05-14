@@ -67,6 +67,10 @@ struct led_controller {
 /* some need a big table, others do fine with a simple bitmask */
 	uint32_t table[256];
 	uint16_t ledmask;
+
+/* for FIFOs, we may need to try open the path during writes */
+	char* path;
+	bool no_close;
 };
 
 struct usb_ent {
@@ -117,7 +121,6 @@ static uint64_t ctrl_mask;
 static int n_controllers = 0;
 
 #ifndef LED_STANDALONE
-static int fifo_out = -1;
 extern struct arcan_dbh* dbhandle;
 #endif
 
@@ -200,22 +203,35 @@ int8_t arcan_led_register(int cmd_ch, int devref,
 	controllers[id].ledmask = 0;
 	controllers[id].caps = caps;
 	controllers[id].errc = 0;
+	controllers[id].no_close = false;
 
 	n_controllers++;
 	arcan_led_added(id, devref, label);
 	return id;
 }
 
-static int write_leddev(int dev, int fd, uint8_t* buf, size_t sz)
+static int write_leddev(
+	struct led_controller* dev, int ind, uint8_t* buf, size_t sz)
 {
 	int rv;
-	while ((rv = write(fd, buf, sz)) == -1){
+
+	if (-1 == dev->fd){
+		dev->fd = open(dev->path, O_NONBLOCK | O_WRONLY);
+		if (-1 == dev->fd)
+			return 0;
+	}
+
+	while ((rv = write(dev->fd, buf, sz)) == -1){
 		if (errno == EAGAIN)
 			return 0;
 
 		if (errno == EPIPE){
-			arcan_led_remove(dev);
-			return -1;
+			if (!dev->no_close){
+				arcan_led_remove(ind);
+				return -1;
+			}
+			else
+				break;
 		}
 	}
 
@@ -260,26 +276,52 @@ bool arcan_led_known(uint16_t vid, uint16_t pid)
 
 #ifndef LED_STANDALONE
 extern const char* ARCAN_TBL;
+static bool register_fifo(char* path, int ind)
+{
+	if (ind < 0 || ind > 99)
+		return false;
+
+/* label will only be used for the event to the scripting layer, no ref */
+	char buf[ sizeof("(led-fifo 10)") ];
+	snprintf(buf, sizeof(buf), "(led-fifo %d)", ind);
+	int ledid = arcan_led_register(-1, -1, buf,
+		(struct led_capabilities){
+			.nleds = 255,
+			.variable_brightness = true,
+			.rgb = true
+		}
+	);
+
+/* delete- protect the LED so we won't close on EPIPE */
+	if (-1 != ledid){
+		controllers[ledid].no_close = true;
+		controllers[ledid].path = path;
+		return true;
+	}
+	return false;
+}
 #endif
 
 void arcan_led_init()
 {
+
+/* register up to 10 custom LED devices that follow our FIFO protocol.
+ * leddev- takes control over appl_val dynamic string ownership */
 #ifndef LED_STANDALONE
-/* see if we should look for an external named pipe to act as a LED ctrlr */
 	char* kv = arcan_db_appl_val(dbhandle, ARCAN_TBL, "ext_led");
-	struct stat statv;
-	if (-1 == fifo_out && kv && -1 != stat(kv,&statv) && S_ISFIFO(statv.st_mode)){
-		arcan_warning("arcan_led(), trying to map %s (config arcan:ext_led)"
-			" as a LED controller\n", kv);
-		fifo_out = open(kv, O_NONBLOCK | O_WRONLY);
-		if (-1 == fifo_out)
-			arcan_warning("arcan_led(), couldn't map FIFO (%s), ignored\n", kv);
-		else {
-			arcan_led_register(fifo_out, -1, "(fifo)", (struct led_capabilities){
-			.nleds = 255, .variable_brightness = true, .rgb = true});
+	if (kv && register_fifo(kv, 1)){
+		char work[sizeof("ext_led_1")];
+
+		for (size_t i = 2; i < 10; i++){
+			snprintf(work, sizeof(work), "ext_led_%zu", i);
+			kv = arcan_db_appl_val(dbhandle, ARCAN_TBL, work);
+			if (!kv || !register_fifo(kv, i)){
+				free(kv);
+			}
 		}
 	}
-	free(kv);
+	else
+		free(kv);
 #endif
 
 	for (size_t i = 0; i < sizeof(usb_tbl) / sizeof(usb_tbl[0]); i++)
@@ -324,10 +366,10 @@ int arcan_led_intensity(uint8_t device, int16_t led, uint8_t intensity)
 	switch (controllers[device].type) {
 	case ARCAN_LEDCTRL:
 		if (led < 0)
-			return write_leddev(device, leddev->fd, (uint8_t[]){
+			return write_leddev(leddev, device, (uint8_t[]){
 				'A', '\0', 'i', intensity, 'c', '\0'}, 6);
 		else
-			return write_leddev(device, leddev->fd, (uint8_t[]){
+			return write_leddev(leddev, device, (uint8_t[]){
 				'a', (uint8_t)led, 'i', intensity, 'c', '\0'}, 6);
 	break;
 	case PACDRIVE:
@@ -357,12 +399,12 @@ int arcan_led_rgb(uint8_t device,
 	case ARCAN_LEDCTRL:{
 		int v;
 		if (led < 0)
-			v = write_leddev(device, leddev->fd, (uint8_t[]){'A', '\0'}, 2);
+			v = write_leddev(leddev, device, (uint8_t[]){'A', '\0'}, 2);
 		else
-			v = write_leddev(device, leddev->fd, (uint8_t[]){'a', (uint8_t)led}, 2);
+			v = write_leddev(leddev, device, (uint8_t[]){'a', (uint8_t)led}, 2);
 
 		if (1 == v)
-			return write_leddev(device, leddev->fd, (uint8_t[]){
+			return write_leddev(leddev, device, (uint8_t[]){
 				'r', r, 'g', g, 'b', b, 'c', buffer ? 255 : 0}, 8);
 		else
 			return v;
@@ -399,19 +441,12 @@ void arcan_led_shutdown()
 				if (-1 == write(controllers[i].fd, (char[]){'o', '\0'}, 2))
 					arcan_warning("arcan_led_shutdown(), error sending shutdown\n");
 				close(controllers[i].fd);
+				free(controllers[i].path);
+				controllers[i].path = NULL;
 			}
 			break;
 			}
 		}
-
-#ifndef LED_STANDALONE
-	if (fifo_out != -1){
-		if (-1 == write(fifo_out, (char[]){'o', '\0'}, 2))
-			arcan_warning("arcan_led_shutdown(), error sending shutdown\n");
-		close(fifo_out);
-		fifo_out = -1;
-	}
-#endif
 
 	ctrl_mask = 0;
 }

@@ -119,7 +119,12 @@
 -- an extensions field is provided with a ; separated list of extensions.
 --
 -- @note: "registered", {kind, title, guid} - notice that the underlying engine
--- has completed negotiating with the frameserver.
+-- has completed negotiating with the frameserver and it identified its primary
+-- segment as 'kind', which can be one of the following: "lightweight arcan",
+-- "multimedia", "terminal", "tui", "popup", "icon", "remoting", "game", "hmd-l",
+-- "hmd-r", "hmd-sbs-lr", "vm", "application", "clipboard",
+-- "browser", "encoder", "titlebar", "sensor", "service", "bridge-x11",
+-- "bridge-wayland", "debug", "widget"
 --
 -- @note: "proto_update", {cm, vr, hdrf16, ldr, vobj} - the set of negotiated
 -- subprotocols has changed, each member is a boolean indicating if the subprotocol
