@@ -5,9 +5,6 @@
 -- led controller (id, > 0) to state (1: on, not1: off).
 -- @group: iodev
 -- @cfunction: setled
--- @note: this feature can be disabled at compile-time,
--- if the set_led global symbol is undefined, it has
--- been explicitly disabled.
 -- @related: led_intensity, set_led_rgb, controlled_leds
 function main()
 #ifdef MAIN

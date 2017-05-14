@@ -25,10 +25,10 @@
 -- @note: accept_target is context sensitive. This means that calling
 -- it outside a frameserver event-handler, or when there is no pending
 -- segment_request event, is a terminal state transition.
--- @note: Possible segkind values are: "multimedia", "cursor", "terminal",
--- "popup", "icon", "remoting", "game", "hmd-l", "hmd-r", "hmd-sbs-lr",
--- "vm", "application", "clipboard", "browser", "encoder", "titlebar",
--- "sensor", "debug", "accessibility", "unknown".
+-- @note: Possible segkind values for a subsegment are: "multimedia",
+-- "cursor", "terminal", "popup", "icon", "remoting", "game", "hmd-l",
+-- "hmd-r", "hmd-sbs-lr", "vm", "application", "clipboard", "browser",
+-- "encoder", "titlebar", "sensor", "debug", "accessibility".
 -- @note: The number of permitted segments etc. should be limited
 -- by available vids and other resources so that a malicious client
 -- cannot starve the serving arcan process. See the 'recursive_evil'
