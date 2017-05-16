@@ -288,7 +288,7 @@ bool platform_video_map_display(arcan_vobj_id id, platform_display_id disp,
  */
 	if (isrt){
 		arcan_vint_applyhint(vobj, hint, vobj->txcos ? vobj->txcos :
-			arcan_video_display.mirror_txcos, sdl.txcos,
+			arcan_video_display.default_txcos, sdl.txcos,
 			&sdl.drawx, &sdl.drawy,
 			&sdl.draww, &sdl.drawh,
 			&sdl.blackframes);
