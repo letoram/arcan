@@ -770,6 +770,7 @@ void arcan_led_removed(int devid)
 		.io.kind = EVENT_IO_STATUS,
 		.io.devkind = EVENT_IDEVKIND_STATUS,
 		.io.devid = devid,
+		.io.input.status.domain = 1,
 		.io.input.status.devkind = EVENT_IDEVKIND_LEDCTRL,
 		.io.input.status.action = EVENT_IDEV_REMOVED
 	});
