@@ -118,6 +118,7 @@ struct tui_context {
 	struct tsm_screen_attr cattr;
 	uint32_t cvalue;
 	bool cursor_off;
+	long cursor_period;
 	enum tui_cursors cursor;
 
 	uint8_t alpha;
@@ -137,8 +138,7 @@ struct tui_context {
 
 /* additional state synch that needs negotiation and may need to be
  * re-built in the event of a RESET request */
-static void queue_requests(struct tui_context* tui,
-	bool clipboard, bool clock, bool ident);
+static void queue_requests(struct tui_context* tui, bool clipboard, bool ident);
 
 /* to be able to update the cursor cell with other information */
 static int draw_cbt(struct tui_context* tui,
@@ -1039,7 +1039,7 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 		break;
 		case 2:
 		case 3:
-			queue_requests(tui, true, true, true);
+			queue_requests(tui, true, true);
 			arcan_shmif_drop(&tui->clip_in);
 			arcan_shmif_drop(&tui->clip_out);
 		break;
@@ -1171,18 +1171,20 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 /* we use draw_cbt so that dirty region will be updated accordingly */
 	case TARGET_COMMAND_STEPFRAME:
 		if (ev->ioevs[1].iv == 1){
-			if (tui->focus){
-				tui->inact_timer++;
-				tui->cursor_off = tui->inact_timer > 1 ? !tui->cursor_off : false;
-				tui->dirty |= DIRTY_PENDING;
+			if (tui->cursor_period){
+				if (tui->focus){
+					tui->inact_timer++;
+					tui->cursor_off = tui->inact_timer > 1 ? !tui->cursor_off : false;
+					tui->dirty |= DIRTY_PENDING;
+				}
+				if (tui->handlers.tick)
+						tui->handlers.tick(tui, tui->handlers.tag);
 			}
-			if (tui->handlers.tick)
-				tui->handlers.tick(tui, tui->handlers.tag);
-		}
-		else{
-			if (!tui->cursor_off && tui->focus){
-				tui->cursor_off = true;
-				tui->dirty |= DIRTY_PENDING;
+			else{
+				if (!tui->cursor_off && tui->focus){
+					tui->cursor_off = true;
+					tui->dirty |= DIRTY_PENDING;
+				}
 			}
 		}
 		if (tui->in_select && tui->scrollback != 0){
@@ -1273,8 +1275,7 @@ static void check_pasteboard(struct tui_context* tui)
 		arcan_shmif_drop(&tui->clip_in);
 }
 
-static void queue_requests(struct tui_context* tui,
-	bool clipboard, bool clock, bool ident)
+static void queue_requests(struct tui_context* tui, bool clipboard, bool ident)
 {
 /* immediately request a clipboard for cut operations (none received ==
  * running appl doesn't care about cut'n'paste/drag'n'drop support). */
@@ -1290,11 +1291,11 @@ static void queue_requests(struct tui_context* tui,
 	});
 
 /* and a 1s. timer for blinking cursor */
-	if (clock)
+	if (tui->cursor_period > 0)
 	arcan_shmif_enqueue(&tui->acon, &(struct arcan_event){
 		.category = EVENT_EXTERNAL,
 		.ext.kind = ARCAN_EVENT(CLOCKREQ),
-		.ext.clock.rate = 12,
+		.ext.clock.rate = tui->cursor_period,
 		.ext.clock.id = 0xabcdef00,
 	});
 
@@ -1575,7 +1576,8 @@ struct tui_settings arcan_tui_defaults()
 		.clc = {0xaa, 0xaa, 0x00},
 		.ppcm = ARCAN_SHMPAGE_DEFAULT_PPCM,
 		.hint = TTF_HINTING_NONE,
-		.mouse_fwd = true
+		.mouse_fwd = true,
+		.cursor_period = 12
 	};
 }
 
@@ -1655,6 +1657,10 @@ void arcan_tui_apply_arg(struct tui_settings* cfg,
 			cfg->clc[0] = ccol[0]; cfg->clc[1] = ccol[1]; cfg->clc[2] = ccol[2];
 		}
 
+	if (arg_lookup(args, "blink", 0, &val)){
+		cfg->cursor_period = strtol(val, NULL, 10);
+	}
+
 	if (arg_lookup(args, "cursor", 0, &val)){
 		const char** cur = curslbl;
 		while(*cur){
@@ -1727,8 +1733,10 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 	const struct tui_settings* set, const struct tui_cbcfg* cbs,
 	size_t cbs_sz, ...)
 {
-	TTF_Init();
+	if (!set || !con || !cbs)
+		return NULL;
 
+	TTF_Init();
 	struct arcan_shmif_initial* init;
 	if (sizeof(struct arcan_shmif_initial) != arcan_shmif_initial(con, &init)){
 		LOG("initial structure size mismatch, out-of-synch header/shmif lib\n");
@@ -1775,7 +1783,7 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 	res->hint = set->hint;
 	res->mouse_forward = set->mouse_fwd;
 	res->acon = *con;
-
+	res->cursor_period = set->cursor_period;
 	res->acon.hints = SHMIF_RHINT_SUBREGION;
 
 	if (init->fonts[0].fd != BADFD){
@@ -1799,7 +1807,7 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 	tsm_screen_set_max_sb(res->screen, 1000);
 
 /* clipboard, timer callbacks, no IDENT */
-	queue_requests(res, true, true, false);
+	queue_requests(res, true, false);
 
 /* show the current cell dimensions to help limit resize requests */
 	send_cell_sz(res);
