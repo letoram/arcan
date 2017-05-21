@@ -120,6 +120,9 @@ struct tui_settings {
 
 /* try and use accelerated rendering / handle passing */
 	bool prefer_accel;
+
+/* number of 25Hz ticks between blink-in/blink-off */
+	unsigned cursor_period;
 };
 
 struct tui_context;

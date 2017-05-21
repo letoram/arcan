@@ -57,6 +57,7 @@ static void dump_help()
 		" cl          \t r,g,b     \t cursor alternate (locked) state color\n"
 		" cursor      \t name      \t set cursor (block, frame, halfblock,\n"
 		"             \t           \t underline, vertical)\n"
+		" blink       \t ticks     \t set blink period, 0 to disable (default: 12)\n"
 		" login       \t [user]    \t login (optional: user, only works for root)\n"
 		" palette     \t name      \t use built-in palette (below)\n"
 		"Built-in palettes:\n"
