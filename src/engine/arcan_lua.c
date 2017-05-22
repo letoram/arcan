@@ -3250,7 +3250,12 @@ static int loadmovie(lua_State* ctx)
 static int vr_setup(lua_State* ctx)
 {
 	LUA_TRACE("vr_setup");
-	const char* opts = luaL_optstring(ctx, 1, NULL);
+	const char* opts = NULL;
+
+	if (lua_type(ctx, 1) == LUA_TSTRING){
+		opts = luaL_checkstring(ctx, 1);
+	}
+
 	intptr_t ref = find_lua_callback(ctx);
 	if (ref == (intptr_t) LUA_NOREF){
 		arcan_fatal("vr_setup(), no event callback handler provided\n");

@@ -1233,7 +1233,9 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 		append_env(&arr,
 			(char*) setup->args.builtin.resource, "3", ctx->shm.key);
 	else
-		append_env(setup->args.external.envv, "", "3", ctx->shm.key);
+		append_env(setup->args.external.envv,
+			setup->args.external.resource ?
+			setup->args.external.resource : "", "3", ctx->shm.key);
 
 	pid_t child = fork();
 	if (child) {

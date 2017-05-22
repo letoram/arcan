@@ -182,7 +182,7 @@ bool arcan_shmifsub_setramp(
  * engine code.
  */
 #ifdef HAVE_ARCAN_MATH
-#define VR_VERSION 0x1000
+#define VR_VERSION 0x1
 
 /*
  * This structure is mapped into the adata area. It can be verified
@@ -302,7 +302,6 @@ struct vr_limb {
  */
 struct arcan_shmif_vr {
 /* CONSUMER SET (activation) */
-	size_t page_sz;
 	uint8_t version;
 	uint8_t limb_lim;
 

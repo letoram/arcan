@@ -37,6 +37,9 @@ enum arcan_ffunc {
 /* platform/arcan/video.c */
 	FFUNC_LWA,
 
+/* arcan_vr.c */
+	FFUNC_VR,
+
 /* defined in frameserver.h, implemented in platform */
 	FFUNC_SOCKVER,
 	FFUNC_SOCKPOLL
