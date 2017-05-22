@@ -26,6 +26,7 @@
 #include "arcan_lua.h"
 #include "arcan_3dbase.h"
 #include "arcan_ffunc_lut.h"
+#include "arcan_vr.h"
 
 #ifdef ARCAN_LWA
 extern enum arcan_ffunc_rv arcan_lwa_ffunc FFUNC_HEAD;
@@ -86,6 +87,8 @@ void arcan_ffunc_initlut()
 	f_lut[FFUNC_3DOBJ] = arcan_ffunc_3dobj;
 	f_lut[FFUNC_SOCKVER] = arcan_frameserver_socketverify;
 	f_lut[FFUNC_SOCKPOLL] = arcan_frameserver_socketpoll;
+	f_lut[FFUNC_VR] = arcan_vr_ffunc;
+
 #ifdef ARCAN_LWA
 	f_lut[FFUNC_LWA] = arcan_lwa_ffunc;
 #else

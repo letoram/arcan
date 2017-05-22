@@ -21,6 +21,7 @@
 
 #include "arcan_math.h"
 #include "arcan_general.h"
+#include "arcan_db.h"
 #include "arcan_shmif.h"
 #include "arcan_shmif_sub.h"
 #include "arcan_event.h"
@@ -48,19 +49,55 @@ struct arcan_vr_ctx {
  * }
  */
 
+extern struct arcan_dbh* dbhandle;
+extern const char* ARCAN_TBL;
 struct arcan_vr_ctx* arcan_vr_setup(const char* vrbridge,
 	const char* bridge_arg, struct arcan_evctx* evctx, uintptr_t tag)
 {
+	char* kv = arcan_db_appl_val(dbhandle, ARCAN_TBL, "ext_vr");
+	if (!kv)
+		return NULL;
+
 /*
- * 1. build a frameserver envp with the data for the vrbridge and
- *    enough room to fit the added metadata.
- *
- * 2. build a null-object to act as control and mapping for tick etc.
- *    set the ffunc- to match an exposed ffunc here (also present in _lut)
- *
- * 3. enqueue an event on evctx to tell of the new device
+ * build a frameserver context and envp with the data for the vrbridge
+ * and with the subprotocol permissions enabled
  */
-	return NULL;
+	arcan_frameserver* mvctx = arcan_frameserver_alloc();
+	if (!mvctx){
+		free(kv);
+		return NULL;
+	}
+	mvctx->metamask |= SHMIF_META_VR | SHMIF_META_VOBJ;
+
+	struct arcan_strarr arr_argv = {0}, arr_env = {0};
+	arcan_mem_growarr(&arr_argv);
+	arr_argv.data[0] = strdup(kv);
+
+	struct frameserver_envp args = {
+		.use_builtin = false,
+		.args.external.fname = kv,
+		.args.external.envv = &arr_env,
+		.args.external.argv = &arr_argv,
+		.args.external.resource = strdup(bridge_arg)
+	};
+	if (ARCAN_OK != arcan_frameserver_spawn_server(mvctx, &args)){
+		free(kv);
+		arcan_mem_freearr(&arr_argv);
+		arcan_mem_freearr(&arr_env);
+		arcan_mem_free(mvctx);
+		return NULL;
+	}
+
+	mvctx->tag = tag;
+	arcan_mem_freearr(&arr_argv);
+	arcan_mem_freearr(&arr_env);
+
+/*
+ * set a custom FFUNC that handles the polling / mapping behavior
+ * is it custom_feed?
+ *
+ */
+	return (struct arcan_vr_ctx*) mvctx;
 }
 
 arcan_errc arcan_vr_reset(struct arcan_vr_ctx* ctx)
@@ -69,6 +106,20 @@ arcan_errc arcan_vr_reset(struct arcan_vr_ctx* ctx)
  * enqueue a reset event on the ctx
  */
 	return ARCAN_ERRC_NOT_IMPLEMENTED;
+}
+
+/*
+ * This ffunc is a simplified version of the arcan_frameserver_emptyframe
+ * where we also check limb updates and synch position / head tracking
+ */
+enum arcan_ffunc_rv arcan_vr_ffunc FFUNC_HEAD
+{
+	arcan_frameserver* tgt = state.ptr;
+	if (!tgt || state.tag != ARCAN_TAG_FRAMESERV)
+		return FRV_NOFRAME;
+
+	return arcan_frameserver_nullfeed(cmd, buf, buf_sz, width,
+		height, mode, state, srcid);
 }
 
 arcan_errc arcan_vr_camtag(struct arcan_vr_ctx* ctx,

@@ -209,6 +209,7 @@ struct frameserver_envp {
 			char* fname;
 			struct arcan_strarr* argv;
 			struct arcan_strarr* envv;
+			char* resource;
 		} external;
 
 	} args;

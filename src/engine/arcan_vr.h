@@ -22,6 +22,8 @@ struct arcan_vr_ctx;
 struct arcan_vr_ctx* arcan_vr_setup(const char* vrbridge,
 	const char* bridge_arg, struct arcan_evctx* evctx, uintptr_t tag);
 
+enum arcan_ffunc_rv arcan_vr_ffunc FFUNC_HEAD;
+
 /*
  * Try and force- reset the devices bound to the platform controller.
  */

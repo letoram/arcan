@@ -961,6 +961,8 @@ void arcan_frameserver_setproto(arcan_frameserver* ctx,
 		ctx->desc.aext.vr =
 			(struct arcan_shmif_vr*)(base + aofs->ofs_vr);
 		memset(ctx->desc.aext.vr, '\0', aofs->sz_vr);
+		ctx->desc.aext.vr->version = VR_VERSION;
+		ctx->desc.aext.vr->limb_lim = LIMB_LIM;
 	}
 	else
 		ctx->desc.aext.vr = NULL;
