@@ -190,7 +190,7 @@ bool arcan_shmifsub_setramp(
  * SHMIF_APAD_VR constant.
  */
 enum avatar_limbs {
-	PERSON = 0, /* abstract for global positioning */
+	PERSON = 1, /* abstract for global positioning */
 	NECK,
 	L_EYE,
 	R_EYE,
@@ -238,17 +238,10 @@ enum avatar_limbs {
 	R_KNEE,
 	L_ANKLE,
 	R_ANKLE,
+	L_TOOL,
+	R_TOOL,
 	LIMB_LIM
 };
-
-/*
- * Special TARGET_COMMAND... handling:
- * BCHUNKSTATE:
- *  extension 'arcan_vr_distort' for distortion mesh packed as native
- *  floats with a header indicating elements then elements*[X,Y,Z],elements*[S,T]
- *
- * IO- events are used to activate haptics
- */
 
 /*
  * The standard lens parameters

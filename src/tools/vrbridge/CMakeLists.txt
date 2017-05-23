@@ -55,6 +55,7 @@ set(SOURCES
 	vrbridge.c
 	ahrs.c
 	psvr.c
+	test.c
 	${ARCAN_ROOT_DIR}/src/engine/arcan_math.c
 	${ARCAN_ROOT_DIR}/external/hidapi/hid.c
 	${ARCAN_ROOT_DIR}/external/hidapi/hidapi.h
