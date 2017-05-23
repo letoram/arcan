@@ -246,8 +246,13 @@ static void destroy_comp_surf(struct comp_surf* surf)
 
 	if (surf->acon.addr){
 		struct acon_tag* tag = surf->acon.user;
-		trace("deregister-surface (%d:%d)\n", tag->group, tag->slot);
-		reset_group_slot(tag->group, tag->slot);
+		if (tag){
+			trace("deregister-surface (%d:%d)\n", tag->group, tag->slot);
+			reset_group_slot(tag->group, tag->slot);
+		}
+		else {
+			trace("dropping unbound shmif-connection\n");
+		}
 		surf->client->refc--;
 		surf->acon.user = NULL;
 		arcan_shmif_drop(&surf->acon);
@@ -502,7 +507,7 @@ int main(int argc, char* argv[])
 		.compositor = 3,
 		.shell = 1,
 		.shm = 1,
-		.seat = 4,
+		.seat = 5,
 		.output = 2,
 		.egl = 1,
 		.xdg = 1,

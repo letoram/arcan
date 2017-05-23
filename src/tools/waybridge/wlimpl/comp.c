@@ -1,11 +1,14 @@
 static void comp_surf_delete(struct wl_resource* res)
 {
 	trace("destroy compositor surface");
-	struct comp_surf* surf = wl_resource_get_user_data(res);
+/*
+ * note that this already happens in surface destroy
+ * struct comp_surf* surf = wl_resource_get_user_data(res);
 	if (!surf)
 		return;
 
 	destroy_comp_surf(surf);
+ */
 }
 
 static void comp_surf_create(struct wl_client *client,

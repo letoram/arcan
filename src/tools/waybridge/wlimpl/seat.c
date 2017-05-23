@@ -34,6 +34,7 @@ static bool pointer_handler(
 		return false;
 	}
 
+	trace("seat pointer paired with SEGID_CURSOR\n");
 	req->client->pointer = ptr_res;
 	wl_resource_set_implementation(ptr_res, &pointer_if, req->target, NULL);
 	return true;
