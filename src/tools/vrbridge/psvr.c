@@ -1,5 +1,7 @@
-#include <arcan_shmif.h>
+#include <stdint.h>
+#include <stdbool.h>
 #include "arcan_math.h"
+#include <arcan_shmif.h>
 #include <arcan_shmif_sub.h>
 #include <hidapi/hidapi.h>
 #include <pthread.h>
@@ -21,12 +23,9 @@ void psvr_sample(struct dev_ent* dev)
 {
 }
 
-bool psvr_init(struct dev_ent* ent)
+bool psvr_init(struct dev_ent* ent,
+	struct arcan_shmif_vr* vr, struct arg_arr* arg)
 {
-	if (dev){
-/* allocate limb for head, if we don't get one - easy job */
-		return true;
-	}
 	return false;
 }
 
