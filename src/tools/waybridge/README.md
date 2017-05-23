@@ -27,17 +27,21 @@ Hacking
 ====
 The code has a somewhat odd structure:
 
-				 waybridge.c - setup and allocation/routing
-				 boilerplate.c - structures and tables
-         shmifevmap.c - translate from arcan -> bridge/client/surfaces
-				 wlimpl/* - subprotocol function implementations
+    waybridge.c - setup and allocation/routing
+    boilerplate.c - structures and tables
+    shmifevmap.c - translate from arcan -> bridge/client/surfaces
+    wlimpl/* - subprotocol function implementations
 
 Some subprotocol implementations (those that call request\_surface)
 also attach separate event handlers that override the mapping done in
 shmifevmap.c. See also the part in the CMakeLists.txt that takes unstable
 protocols and generate implementation files.
 
-Ongoing Issues
+The main paths to follow to get some kind of comprehension of what is going
+on is how surfaces are allocated and how the surface allocation request are
+propagated.
+
+Notes and Issues
 ====
 1. Mesa picks the wrong render-node
 At the moment, EGL/drm is stuck on what seems like a bug in Mesa. If we bind
@@ -51,12 +55,6 @@ ARCAN\_VIDEO\_ALLOW\_AUTH environment set and start waybridge with
 ARCAN\_RENDER\_NODE pointing to the card device arcan uses. This will push the
 privilege level of waybridge to be on par with arcan.
 
-2. Mesa picks the wrong shm format
-This seems to have popped up recently, some mesa build erroneously pick
-0x34325258 as the shm format for llvmpipe fallback (ARGB), which seems to be
-wrong (the two 'must' formats are encoded as 0, 1). Patches are on the mailing-
-list.
-
 Limitations
 ====
 There are a number of arcan features that do not have a corresponding
@@ -67,13 +65,13 @@ separately in the [arcan wiki](https://github.com/letoram/arcan/wiki/wayland).
 
 XWayland
 ====
-Though XWayland support will be enabled at some point, though it will likely
-just derive from the implementation WLC has. instead, A separate
+XWayland support will be enabled at some point, though it will likely just
+derive from the implementation WLC has. instead, A separate
 [Xarcan](https://github.com/letoram/xarcan) implementation is maintained for a
 number of resons, such as better controls of how/ and which/ features gets
 translated (matters when looking into sharing, display-hw synch, segmentation,
 ...), for performance (going xwayland -> arcan-wayland -> arcan has some costly
-friction in translation).
+friction in translation that is not worth paying for).
 
 TODO
 ====
@@ -86,20 +84,21 @@ TODO
     - [ ] Mouse
     - [ ] Touch
   - [ ] Mouse Cursor
-	- [ ] Popup
+  - [ ] Popup
   - [ ] EGL/drm
 - [ ] Milestone 2
     - [ ] Positioners
-		- [ ] Cut and Paste
+    - [ ] Cut and Paste
     - [ ] Full XDG-shell (not just boilerplate)
-		- [ ] Application-test suite and automated tests (SDL, QT, GTK, ...)]
-		- [ ] XWayland (WLC- level)
+    - [ ] Application-test suite and automated tests (SDL, QT, GTK, ...)]
+    - [ ] XWayland (WLC- level)
+    - [ ] Output Rotation / Scaling
 - [ ] Milestone 3, funky things
   - [ ] SHM to GL texture mapping
-	- [ ] Transforms (Rotations/Scaling)
+  - [ ] Transforms (Rotations/Scaling)
   - [ ] Multithread/multiprocess client processing
   - [ ] Dynamic Keyboard Translation table generation
-	- [ ] Benchmarking/Inspection tools
-	- [ ] Sandboxing
-	- [ ] Migration/Reset/Crash-Recover
-	- [ ] Drag and Drop
+  - [ ] Benchmarking/Inspection tools
+  - [ ] Sandboxing
+  - [ ] Migration/Reset/Crash-Recover
+  - [ ] Drag and Drop

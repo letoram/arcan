@@ -136,9 +136,8 @@ static void flush_client_events(
 			continue;
 		switch(ev.tgt.kind){
 		case TARGET_COMMAND_EXIT:
-/* this means killing off all resources associated with a client */
-			wl_client_destroy(cl->client);
-			trace("shmif-> kill client");
+/*		wl_client_destroy(cl->client);
+			trace("shmif-> kill client"); */
 		break;
 		case TARGET_COMMAND_DISPLAYHINT:
 			trace("shmif-> target update visibility or size");

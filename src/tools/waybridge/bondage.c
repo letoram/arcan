@@ -39,6 +39,9 @@ static void bind_seat(struct wl_client *client,
 		wl_client_post_no_memory(client);
 	}
 
+	if (version > 2)
+		wl_seat_send_name(res, "seat0");
+
 	wl_resource_set_implementation(res, &seat_if, cl, NULL);
 	wl_seat_send_capabilities(res, WL_SEAT_CAPABILITY_POINTER |
 		WL_SEAT_CAPABILITY_KEYBOARD | WL_SEAT_CAPABILITY_TOUCH);
