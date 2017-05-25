@@ -1077,7 +1077,8 @@ bool arcan_frameserver_resize(struct arcan_frameserver* s)
 	} while (shmsz > ARCAN_SHMPAGE_MAX_SZ && vbufc-- > 1);
 
 /* initial sanity check */
-	if (shmsz > ARCAN_SHMPAGE_MAX_SZ)
+	if (shmsz > ARCAN_SHMPAGE_MAX_SZ || (s->max_w && w > s->max_w) ||
+		(s->max_h && h > s->max_h))
 		goto fail;
 
 /* no remapping required, resize effect is insignificant or impossible */
