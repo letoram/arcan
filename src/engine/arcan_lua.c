@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2016, Björn Ståhl
+ * Copyright 2003-2017, Björn Ståhl
  * License: GPLv2+, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -6846,6 +6846,7 @@ enum target_flags {
 	TARGET_FLAG_ALLOW_LDEF,
 	TARGET_FLAG_ALLOW_VOBJ,
 	TARGET_FLAG_ALLOW_INPUT,
+	TARGET_FLAG_LIMIT_SIZE,
 	TARGET_FLAG_ENDM
 };
 
@@ -6921,6 +6922,10 @@ static void updateflag(arcan_vobj_id vid, enum target_flags flag, bool toggle)
 			fsrv->queue_mask &= ~EVENT_IO;
 	break;
 
+/* handle elsewhere */
+	case TARGET_FLAG_LIMIT_SIZE:
+	break;
+
 	case TARGET_FLAG_ENDM:
 	break;
 	}
@@ -6934,8 +6939,30 @@ static int targetflags(lua_State* ctx)
 	enum target_flags flag = luaL_checknumber(ctx, 2);
 	if (flag < TARGET_FLAG_SYNCHRONOUS || flag >= TARGET_FLAG_ENDM)
 		arcan_fatal("target_flags() unknown flag value (%d)\n", flag);
- 	bool toggle = luaL_optbnumber(ctx, 3, 1);
-	updateflag(tgt, flag, toggle);
+
+/* Limit size is somewhat special in that it takes dimensions, not a flag size.
+ * Using this function for this particular purpose is somewhat odd, but
+ * contextually a better fit than display- or output hint as this is not
+ * something that will be propagated to the client. */
+
+	if (flag == TARGET_FLAG_LIMIT_SIZE){
+		vfunc_state* state = arcan_video_feedstate(tgt);
+		size_t max_w = luaL_checknumber(ctx, 3);
+		size_t max_h = luaL_checknumber(ctx, 4);
+		if (!(state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr)){
+			arcan_warning("updateflag() vid(%"PRIxVOBJ") is not "
+				"connected to a frameserver\n", tgt);
+		}
+		else {
+			arcan_frameserver* s = (arcan_frameserver*) state->ptr;
+			s->max_w = max_w;
+			s->max_h = max_h;
+		}
+	}
+	else {
+	 	bool toggle = luaL_optbnumber(ctx, 3, 1);
+		updateflag(tgt, flag, toggle);
+	}
 	LUA_ETRACE("target_flags", NULL, 0);
 }
 
@@ -10224,6 +10251,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"TARGET_ALLOWLODEF", TARGET_FLAG_ALLOW_LDEF},
 {"TARGET_ALLOWVECTOR", TARGET_FLAG_ALLOW_VOBJ},
 {"TARGET_ALLOWINPUT", TARGET_FLAG_ALLOW_INPUT},
+{"TARGET_LIMITSIZE", TARGET_FLAG_LIMIT_SIZE},
 {"DISPLAY_STANDBY", ADPMS_STANDBY},
 {"DISPLAY_OFF", ADPMS_OFF},
 {"DISPLAY_SUSPEND", ADPMS_SUSPEND},

@@ -36,6 +36,11 @@ enum arcan_frameserver_kinds {
 	ARCAN_HIJACKLIB
 };
 
+/*
+ * This substructure is a cache of the negotiated state, i.e.
+ * the server side view of the agreed upon use and limits of
+ * the contents of the shared memory page.
+ */
 struct arcan_frameserver_meta {
 /* video */
 	uint16_t width;
@@ -97,6 +102,13 @@ struct arcan_frameserver {
 	file_handle dpipe;
 
 	process_handle child;
+
+/*
+ * dynamic limits set on a resize request in order to let other
+ * parts set restrictions on dimension changes, i.e. not permit
+ * a mouse cursor to be max_w*maxh_h etc.
+ */
+	size_t max_w, max_h;
 
 /* used for connections negotiated via socket (sockout_fd) */
 	char sockinbuf[PP_SHMPAGE_SHMKEYLIM];
