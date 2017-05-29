@@ -301,7 +301,7 @@ struct arcan_shmif_vr {
 /* PRODUCER MODIFY */
 	_Atomic uint_least64_t limb_mask;
 
-/* PRODUCER SET */
+/* PRODUCER SET/CONSUMER CLEAR */
 	_Atomic uint_least8_t ready;
 
 /* PRODUCER INIT */

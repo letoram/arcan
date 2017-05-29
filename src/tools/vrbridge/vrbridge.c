@@ -19,18 +19,31 @@
 #include "psvr.h"
 #endif
 
+static volatile bool in_init = true;
 struct limb_runner {
 	struct arcan_shmif_vr* vr;
 	struct vr_limb* limb;
-	unsigned limb_ind;
+	struct dev_ent* dev;
+	uint8_t limb_ind;
 };
+unsigned long long epoch;
 
 static void* limb_runner(void* arg)
 {
-	struct dev_ent* meta = arg;
-	while (meta->alive){
-/* expected to block until limb has been updated */
-		meta->sample(meta);
+	struct limb_runner* meta = arg;
+
+	while (in_init);
+
+	while (meta->dev->alive){
+/* expected to block until limb has been updated, the timestamp is when
+ * sampling was requested, not when the sample was retrieved */
+		unsigned long long timestamp = arcan_timemillis() - epoch;
+		meta->dev->sample(meta->dev, meta->limb, meta->limb_ind);
+		uint16_t checksum = subp_checksum(
+			(uint8_t*)meta->limb, sizeof(struct vr_limb)-sizeof(uint16_t));
+		atomic_store(&meta->limb->timestamp, timestamp);
+		atomic_store(&meta->limb->checksum, checksum);
+		atomic_fetch_or(&meta->vr->ready, 1 << meta->limb_ind);
 	}
 
 	return NULL;
@@ -88,9 +101,43 @@ static size_t device_rescan(struct arcan_shmif_vr* vr, struct arg_arr* arg)
 	return count;
 }
 
-struct vr_limb* vrbridge_alloc_limb(struct dev_ent* dev, enum avatar_limbs limb)
+static uint64_t find_set64(uint64_t bmap)
 {
-	return NULL;
+	return __builtin_ffsll(bmap);
+}
+
+struct vr_limb* vrbridge_alloc_limb(
+	struct dev_ent* dev, enum avatar_limbs limb, unsigned id)
+{
+	static bool limbs[LIMB_LIM];
+	if (limbs[limb])
+		return NULL;
+
+	struct limb_runner* thctx = malloc(sizeof(struct limb_runner));
+	if (!thctx)
+		return NULL;
+
+	struct arcan_shmif_vr* vr = arcan_shmif_substruct(
+		arcan_shmif_primary(SHMIF_INPUT), SHMIF_META_VR).vr;
+
+	uint64_t ind = find_set64(vr->limb_mask);
+	atomic_fetch_or(&vr->limb_mask, ind);
+	limbs[limb] = true;
+
+	pthread_attr_t nanny_attr;
+	pthread_attr_init(&nanny_attr);
+	pthread_attr_setdetachstate(&nanny_attr, PTHREAD_CREATE_DETACHED);
+
+	pthread_t nanny;
+	if (0 != pthread_create(&nanny, &nanny_attr, limb_runner, thctx)){
+		free(thctx);
+		limbs[limb] = false;
+		return NULL;
+	}
+
+	pthread_attr_destroy(&nanny_attr);
+
+	return &vr->limbs[ind];
 }
 
 int main(int argc, char** argv)
@@ -112,6 +159,7 @@ int main(int argc, char** argv)
 		fprintf(stderr, "couldn't setup arcan connection\n");
 		return EXIT_FAILURE;
 	}
+	arcan_shmif_setprimary(SHMIF_INPUT, &con);
 
 /* still need to explicitly say that we want this protocol */
 	arcan_shmif_resize_ext(&con, con.w, con.h, (struct shmif_resize_ext){
@@ -159,8 +207,11 @@ int main(int argc, char** argv)
  * sleep and rescan on request from the server
  */
 	arcan_event ev;
-	bool running = true;
-	while (running && arcan_shmif_wait(&con, &ev) > 0){
+	in_init = false;
+	epoch = arcan_timemillis();
+	vr->ready = true;
+
+	while (arcan_shmif_wait(&con, &ev) > 0){
 		if (ev.category == EVENT_TARGET)
 		switch (ev.tgt.kind){
 		case TARGET_COMMAND_EXIT:

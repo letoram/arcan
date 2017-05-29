@@ -19,7 +19,7 @@ static hid_device* dev;
  * modes, then a big blob parser for extracting sensor data
  */
 
-void psvr_sample(struct dev_ent* dev)
+void psvr_sample(struct dev_ent* dev, struct vr_limb* limb, unsigned id)
 {
 }
 
@@ -29,6 +29,6 @@ bool psvr_init(struct dev_ent* ent,
 	return false;
 }
 
-void psvr_control(struct dev_ent* ent, enum ctrl_cmd cmd, int id)
+void psvr_control(struct dev_ent* ent, enum ctrl_cmd cmd)
 {
 }

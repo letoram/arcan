@@ -9,10 +9,42 @@ enum ctrl_cmd {
 
 struct dev_ent;
 
-typedef void(*vr_sampler_fptr)(struct dev_ent*);
+/*
+ * used by the different drivers during the init stage, request allocation and
+ * binding of a limb to the specific device. Returns a pointer to the limb
+ * structure that the driver is allowed to populate, or NULL if the limb has
+ * already been reserved by another driver.
+ */
+struct vr_limb* vrbridge_alloc_limb(
+	struct dev_ent*, enum avatar_limbs, unsigned id);
+
+/*
+ * import/pluck from the platform- source tree
+ */
+long long int arcan_timemillis();
+void arcan_timesleep(unsigned long);
+
+/*
+ * The different driver callbacks:
+ *  sample -> Block until the driver has retreived a sample for the
+ *            referenced limb, each limb can run in its own thread.
+ */
+typedef void(*vr_sampler_fptr)(struct dev_ent*, struct vr_limb*, unsigned id);
+
+/*
+ * Return true if the device was successfully initalized and should
+ * be treated as active. This is the opportunity for a driver to call
+ * vrbridge_alloc_limb
+ */
 typedef bool(*vr_init_fptr)(struct dev_ent*,
 	struct arcan_shmif_vr* vr, struct arg_arr*);
-typedef void(*vr_control_fptr)(struct dev_ent*, enum ctrl_cmd, int id);
+
+/*
+ * Control commands, like suspend/resume or enable/disable display
+ * (if the driver support such features, meaning that other paths like
+ * DKMS/dri doesn't work for this device)
+ */
+typedef void(*vr_control_fptr)(struct dev_ent*, enum ctrl_cmd);
 
 struct driver_state;
 struct dev_ent {
@@ -27,7 +59,5 @@ struct dev_ent {
 
 	struct driver_state* state;
 };
-
-struct vr_limb* vrbridge_alloc_limb(struct dev_ent*, enum avatar_limbs);
 
 #endif
