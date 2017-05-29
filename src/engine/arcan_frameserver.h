@@ -26,16 +26,6 @@ enum arcan_playstate {
 	ARCAN_PAUSED = 3
 };
 
-enum arcan_frameserver_kinds {
-	ARCAN_FRAMESERVER_INPUT,
-	ARCAN_FRAMESERVER_OUTPUT,
-	ARCAN_FRAMESERVER_INTERACTIVE,
-	ARCAN_FRAMESERVER_AVFEED,
-	ARCAN_FRAMESERVER_NETCL,
-	ARCAN_FRAMESERVER_NETSRV,
-	ARCAN_HIJACKLIB
-};
-
 /*
  * This substructure is a cache of the negotiated state, i.e.
  * the server side view of the agreed upon use and limits of
@@ -111,6 +101,7 @@ struct arcan_frameserver {
 	size_t max_w, max_h;
 
 /* used for connections negotiated via socket (sockout_fd) */
+	mode_t sockmode;
 	char sockinbuf[PP_SHMPAGE_SHMKEYLIM];
 	char clientkey[PP_SHMPAGE_SHMKEYLIM];
 	off_t sockrofs;

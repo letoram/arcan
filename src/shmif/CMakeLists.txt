@@ -15,6 +15,7 @@
 # arcan_shmif_ext
 # arcan_shmif_tuiext
 # arcan_shmif_intext
+# arcan_shmif_server
 #
 # Installs: (if ARCAN_SOURCE_DIR is not set)
 #
@@ -107,6 +108,11 @@ set(SHMIF_TUI_SOURCES
 	${ASD}/engine/arcan_ttf.c
 )
 
+set(SHMIF_SERVER_SOURCES
+	${ASD}/shmif/arcan_shmif_server.c
+	${ASD}/platform/posix/frameserver.c
+)
+
 set_property(SOURCE ${ASD}/engine/arcan_ttf.c
 	APPEND PROPERTY COMPILE_DEFINITIONS SHMIF_TTF)
 
@@ -116,7 +122,10 @@ add_library(arcan_shmif_int STATIC ${SHMIF_SOURCES} ${SHMIF_PLATFORM})
 add_library(arcan_shmif SHARED ${SHMIF_SOURCES} ${SHMIF_PLATFORM})
 add_library(arcan_shmif_ext SHARED ${SHMIF_EXT_SOURCES})
 add_library(arcan_shmif_intext SHARED ${SHMIF_EXT_SOURCES})
-add_sanitizers(arcan_shmif_int arcan_shmif arcan_shmif_ext arcan_shmif_intext)
+add_library(arcan_shmif_server SHARED ${SHMIF_SERVER_SOURCES})
+
+add_sanitizers(arcan_shmif_int arcan_shmif arcan_shmif_ext arcan_shmif_intext
+	arcan_shmif_server)
 
 # somewhat messy, if the engine is building a static freetype version we should
 # use that one and provide a tui to match, but we should also try and provide a
@@ -164,9 +173,11 @@ target_link_libraries(arcan_shmif_ext PRIVATE ${STDLIB} ${VIDEO_LIBRARIES}
 	${AGP_LIBRARIES} ${HEADLESS_LIBRARIES} arcan_shmif)
 target_link_libraries(arcan_shmif_intext PRIVATE ${STDLIB} ${AGP_LIBRARIES}
 	${VIDEO_LIBRARIES} ${HEADLESS_LIBRARIES} arcan_shmif)
+target_link_libraries(arcan_shmif_server PRIVATE ${STDLIB})
 
 target_include_directories(arcan_shmif_ext PRIVATE ${INCLUDE_DIRS})
 target_include_directories(arcan_shmif_intext PRIVATE ${INCLUDE_DIRS})
+target_include_directories(arcan_shmif_server PRIVATE ${INCLUDE_DIRS} ${ASD}/shmif ${ASD}/engine)
 
 # note that we enable fpic for the static here as some
 # subdirectores need to pull it in as part of building a shared library
@@ -196,6 +207,12 @@ set_target_properties(arcan_shmif_ext PROPERTIES
 set_target_properties(arcan_shmif_intext PROPERTIES
 	COMPILE_FLAGS "-fPIC -DHEADLESS_NOARCAN"
 	OUTPUT_NAME arcan_shmif_ext
+	VERSION ${ASHMIF_MAJOR}.${ASHMIF_MINOR}
+)
+
+set_target_properties(arcan_shmif_server PROPERTIES
+	COMPILE_FLAGS "-fPIC"
+	OUTPUT_NAME arcan_shmif_server
 	VERSION ${ASHMIF_MAJOR}.${ASHMIF_MINOR}
 )
 

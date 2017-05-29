@@ -185,25 +185,6 @@ static void default_adoph(arcan_frameserver* tgt, arcan_vobj_id id)
 	tgt->vid = id;
 }
 
-/* won't do anything on windows */
-void arcan_frameserver_dropsemaphores_keyed(char* key)
-{
-	char* work = strdup(key);
-		work[ strlen(work) - 1] = 'v';
-		arcan_sem_unlink(NULL, work);
-		work[strlen(work) - 1] = 'a';
-		arcan_sem_unlink(NULL, work);
-		work[strlen(work) - 1] = 'e';
-		arcan_sem_unlink(NULL, work);
-	arcan_mem_free(work);
-}
-
-void arcan_frameserver_dropsemaphores(arcan_frameserver* src){
-	if (src && src->shm.key && src->shm.ptr){
-		arcan_frameserver_dropsemaphores_keyed(src->shm.key);
-	}
-}
-
 static bool arcan_frameserver_control_chld(arcan_frameserver* src){
 /* bunch of terminating conditions -- frameserver messes with the structure to
  * provoke a vulnerability, frameserver dying or timing out, ... */
@@ -1279,6 +1260,7 @@ arcan_frameserver* arcan_frameserver_alloc()
 	res->parent.vid = ARCAN_EID;
 	res->desc.samplerate = ARCAN_SHMIF_SAMPLERATE;
 	res->vstream.handle = BADFD;
+	res->sockmode = IPC_DEFAULT_PERM;
 
 /* these are statically defined right now, but we may want to make them
  * configurable in the future to possibly utilize other accelerated resampling
