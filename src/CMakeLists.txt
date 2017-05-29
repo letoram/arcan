@@ -65,7 +65,7 @@ endif()
 if (NOT DEFINED ENGINE_BUILDTAG)
 	find_package(Git)
 	if (GIT_FOUND)
-		execute_process(COMMAND ${GIT_EXECUTABLE} describe --always
+		execute_process(COMMAND ${GIT_EXECUTABLE} describe --always --tags
 			WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 			RESULT_VARIABLE EXIT_CODE
 			OUTPUT_VARIABLE GIT_VERSION
