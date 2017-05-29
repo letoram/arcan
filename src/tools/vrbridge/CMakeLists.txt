@@ -42,13 +42,32 @@ SET(LIBRARIES
 )
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-find_package(libusb-1.0 REQUIRED)
-set(LIBRARIES ${LIBRARIES} ${LIBUSB_1_LIBRARIES})
-include_directories(${LIBUSB_1_INCLUDE_DIR})
+	find_package(libusb-1.0 REQUIRED)
+	set(PLATFORM_SOURCES
+		${ARCAN_ROOT_DIR}/external/hidapi/hid.c
+		${ARCAN_ROOT_DIR}/src/platform/posix/time.c
+	)
+	set(LIBRARIES ${LIBRARIES} ${LIBUSB_1_LIBRARIES})
+	include_directories(${LIBUSB_1_INCLUDE_DIR})
+
+elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+	set(PLATFORM_SOURCES
+		${ARCAN_ROOT_DIR}/external/hidapi/hid_darwin.c
+		${ARCAN_ROOT_DIR}/src/platform/darwin/time.c
+	)
+
 elseif (${CMAKE_SYSTEM_NAME} MATCHES "BSD" OR ${CMAKE_SYSTEM_NAME}} MATCHES "DragonFly")
 	add_definitions(-DLIBUSB_BSD)
 	set(LIBRARIES ${LIBRARIES} usb usbhid)
+	set(PLATFORM_SOURCES
+		${ARCAN_ROOT_DIR}/src/platform/posix/time.c
+		${ARCAN_ROOT_DIR}/external/hidapi/hid.c
+	)
 else()
+	set(PLATFORM_SOURCES
+		${ARCAN_ROOT_DIR}/external/hidapi/hid.c
+		${ARCAN_ROOT_DIR}/src/platform/posix/time.c
+	)
 endif()
 
 set(SOURCES
@@ -57,8 +76,7 @@ set(SOURCES
 	psvr.c
 	test.c
 	${ARCAN_ROOT_DIR}/src/engine/arcan_math.c
-	${ARCAN_ROOT_DIR}/external/hidapi/hid.c
-	${ARCAN_ROOT_DIR}/external/hidapi/hidapi.h
+	${PLATFORM_SOURCES}
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES})
