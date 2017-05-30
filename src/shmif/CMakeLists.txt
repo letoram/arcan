@@ -49,7 +49,6 @@ set (SHMIF_HEADERS
 set (SHMIF_SOURCES
 	${SHMIF_HEADERS}
 	${ASD}/shmif/arcan_shmif_control.c
-	${ASD}/platform/posix/shmemop.c
 	${ASD}/shmif/arcan_shmif_sub.c
 )
 
@@ -66,6 +65,7 @@ endif()
 
 if (BSD_BUILD)
 	set(SHMIF_PLATFORM
+Y		${ASD}/platform/posix/shmemop.c
 		${ASD}/platform/posix/warning.c
 		${ASD}/platform/posix/time.c
 		${ASD}/platform/posix/sem.c
@@ -73,6 +73,7 @@ if (BSD_BUILD)
 	)
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 	set(SHMIF_PLATFORM
+		${ASD}/platform/posix/shmemop.c
 		${ASD}/platform/posix/warning.c
 		${ASD}/platform/posix/time.c
 		${ASD}/platform/posix/sem.c
@@ -80,6 +81,7 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 	)
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 	set(SHMIF_PLATFORM
+		${ASD}/platform/posix/shmemop.c
 		${ASD}/platform/posix/warning.c
 		${ASD}/platform/darwin/time.c
 		${ASD}/platform/darwin/sem.c
@@ -111,6 +113,7 @@ set(SHMIF_TUI_SOURCES
 set(SHMIF_SERVER_SOURCES
 	${ASD}/shmif/arcan_shmif_server.c
 	${ASD}/platform/posix/frameserver.c
+	${ASD}/shmif/arcan_shmif_control.c
 )
 
 set_property(SOURCE ${ASD}/engine/arcan_ttf.c
@@ -122,7 +125,7 @@ add_library(arcan_shmif_int STATIC ${SHMIF_SOURCES} ${SHMIF_PLATFORM})
 add_library(arcan_shmif SHARED ${SHMIF_SOURCES} ${SHMIF_PLATFORM})
 add_library(arcan_shmif_ext SHARED ${SHMIF_EXT_SOURCES})
 add_library(arcan_shmif_intext SHARED ${SHMIF_EXT_SOURCES})
-add_library(arcan_shmif_server SHARED ${SHMIF_SERVER_SOURCES})
+add_library(arcan_shmif_server SHARED ${SHMIF_SERVER_SOURCES} ${SHMIF_PLATFORM})
 
 add_sanitizers(arcan_shmif_int arcan_shmif arcan_shmif_ext arcan_shmif_intext
 	arcan_shmif_server)
@@ -173,11 +176,11 @@ target_link_libraries(arcan_shmif_ext PRIVATE ${STDLIB} ${VIDEO_LIBRARIES}
 	${AGP_LIBRARIES} ${HEADLESS_LIBRARIES} arcan_shmif)
 target_link_libraries(arcan_shmif_intext PRIVATE ${STDLIB} ${AGP_LIBRARIES}
 	${VIDEO_LIBRARIES} ${HEADLESS_LIBRARIES} arcan_shmif)
-target_link_libraries(arcan_shmif_server PRIVATE ${STDLIB})
+target_link_libraries(arcan_shmif_server PRIVATE ${STDLIB} arcan_shmif_ext)
 
 target_include_directories(arcan_shmif_ext PRIVATE ${INCLUDE_DIRS})
 target_include_directories(arcan_shmif_intext PRIVATE ${INCLUDE_DIRS})
-target_include_directories(arcan_shmif_server PRIVATE ${INCLUDE_DIRS} ${ASD}/shmif ${ASD}/engine)
+target_include_directories(arcan_shmif_server PRIVATE ${INCLUDE_DIRS})
 
 # note that we enable fpic for the static here as some
 # subdirectores need to pull it in as part of building a shared library
@@ -221,6 +224,7 @@ set(ARCAN_SHMIF_LIBRARY arcan_shmif_int ${ASHMIF_STDLIB} PARENT_SCOPE)
 
 target_include_directories(arcan_shmif_int PRIVATE ${ASD}/shmif)
 target_include_directories(arcan_shmif PRIVATE ${ASD}/shmif)
+target_include_directories(arcan_shmif_server PRIVATE ${ASD}/shmif)
 
 if (NOT ARCAN_SOURCE_DIR)
 	install(TARGETS ${TARGET_LIST}
