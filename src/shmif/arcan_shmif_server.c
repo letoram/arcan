@@ -26,6 +26,11 @@ BADSYM(arcan_event_enqueue)
 BADSYM(arcan_fetch_namespace)
 BADSYM(arcan_video_alterfeed)
 
+char** arcan_expand_namespaces(char** inargs)
+{
+	return inargs;
+}
+
 arcan_frameserver* arcan_frameserver_alloc(){
 	return NULL;
 }

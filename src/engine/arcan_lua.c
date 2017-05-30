@@ -7375,11 +7375,19 @@ static int targetlaunch(lua_State* ctx)
 		}
 
 		int retc = EXIT_FAILURE;
+		if (arcan_video_prepare_external() == false){
+			arcan_warning("Warning, arcan_target_launch_external(), "
+				"couldn't push current context, aborting launch.\n");
+			goto cleanup;
+		}
+
 		unsigned long tv = arcan_target_launch_external(
 			exec, &argv, &env, &libs, &retc);
 		lua_pushnumber(ctx, retc);
 		lua_pushnumber(ctx, tv);
 		rc = 2;
+		arcan_video_restore_external();
+
 		goto cleanup;
 	}
 
