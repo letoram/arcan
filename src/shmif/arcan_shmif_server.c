@@ -21,7 +21,6 @@ struct arcan_aobj;
 #define BADSYM(X) void X (){ exit(1); }
 BADSYM(arcan_audio_feed)
 BADSYM(arcan_audio_stop)
-BADSYM(arcan_closefrom)
 BADSYM(arcan_event_defaultctx)
 BADSYM(arcan_event_enqueue)
 BADSYM(arcan_fetch_namespace)
@@ -58,10 +57,16 @@ bool platform_video_auth(int cardn, unsigned token)
 	return false;
 }
 
-BADSYM(arcan_frameserver_configure)
-BADSYM(arcan_frameserver_enter)
-BADSYM(arcan_frameserver_leave)
-BADSYM(arcan_frameserver_setproto)
+void arcan_frameserver_configure(arcan_frameserver* ctx,
+	struct frameserver_envp setup)
+{
+}
+
+void arcan_frameserver_setproto(arcan_frameserver* ctx,
+	unsigned proto, struct arcan_shmif_ofstbl* aofs)
+{
+}
+
 BADSYM(arcan_frametime)
 BADSYM(arcan_video_addfobject)
 BADSYM(arcan_video_deleteobject)
