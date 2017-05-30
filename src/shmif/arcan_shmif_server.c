@@ -9,9 +9,62 @@
  * For that reason, we need to define some types that will actually
  * never really be used here, pending refactoring of the whole thing.
  */
-struct arcan_aobj;
 typedef int shm_handle;
+struct arcan_aobj;
 #include "arcan_frameserver.h"
+
+/*
+ * stub- symbols to cut down on linking problems. These also act as
+ * a map for refactoring platform/posix/frameserver to encourage
+ * better separation
+ */
+#define BADSYM(X) void X (){ exit(1); }
+BADSYM(arcan_audio_feed)
+BADSYM(arcan_audio_stop)
+BADSYM(arcan_closefrom)
+BADSYM(arcan_event_defaultctx)
+BADSYM(arcan_event_enqueue)
+BADSYM(arcan_fetch_namespace)
+BADSYM(arcan_video_alterfeed)
+
+arcan_frameserver* arcan_frameserver_alloc(){
+	return NULL;
+}
+
+arcan_errc arcan_frameserver_audioframe_direct(struct arcan_aobj* aobj,
+	arcan_aobj_id id, unsigned buffer, bool cont, void* tag)
+{
+	return 0;
+}
+
+arcan_errc arcan_frameserver_free(arcan_frameserver* ctx)
+{
+	return 0;
+}
+
+size_t arcan_frameserver_protosize(arcan_frameserver* ctx,
+	unsigned proto, struct arcan_shmif_ofstbl* dofs)
+{
+	return 0;
+}
+
+arcan_errc arcan_frameserver_pushevent(arcan_frameserver* ctx, arcan_event* ev)
+{
+	return 0;
+}
+
+bool platform_video_auth(int cardn, unsigned token)
+{
+	return false;
+}
+
+BADSYM(arcan_frameserver_configure)
+BADSYM(arcan_frameserver_enter)
+BADSYM(arcan_frameserver_leave)
+BADSYM(arcan_frameserver_setproto)
+BADSYM(arcan_frametime)
+BADSYM(arcan_video_addfobject)
+BADSYM(arcan_video_deleteobject)
 
 /*
  * wrap the normal structure as we need to pass it to the platform
@@ -66,6 +119,7 @@ bool shmifsrv_frameserver_tick(struct shmifsrv_client* con)
  * shmifsrv_client_validchild
  * shmifsrv_client_free on fail (though we just return false here)
  */
+	return false;
 }
 
 enum shmifsrv_status shmifsrv_poll(struct shmifsrv_client* con)
@@ -91,4 +145,5 @@ void shmifsrv_enqueue_events(struct shmifsrv_client* srv,
 
 int shmifsrv_monotonic_tick()
 {
+	return 0;
 }
