@@ -83,12 +83,6 @@ unsigned long arcan_target_launch_external(const char* fname,
 	struct arcan_strarr* argv, struct arcan_strarr* envv,
 	struct arcan_strarr* libs, int* exitc)
 {
-	if (arcan_video_prepare_external() == false){
-		arcan_warning("Warning, arcan_target_launch_external(), "
-			"couldn't push current context, aborting launch.\n");
-		return 0;
-	}
-
 	add_interpose(libs, envv);
 	pid_t child = fork();
 
@@ -101,8 +95,6 @@ unsigned long arcan_target_launch_external(const char* fname,
 		}
 		else
 			*exitc = EXIT_FAILURE;
-
-		arcan_video_restore_external();
 
 		unsigned long ticks = arcan_timemillis();
 		return arcan_timemillis() - ticks;
