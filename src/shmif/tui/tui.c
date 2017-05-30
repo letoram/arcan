@@ -1426,6 +1426,15 @@ struct tui_process_res arcan_tui_process(
 		return res;
 	}
 
+	for (size_t i = 0; i < n_contexts; i++)
+		if (!contexts[i]->acon.addr)
+			res.bad |= 1 << i;
+
+	if (res.bad){
+		res.errc = TUI_ERRC_BAD_ARG;
+		return res;
+	}
+
 /* From each context, we need the relevant tui->acon.epipe to poll on, along
  * with the entries from the fdset that would require us to mask- populate and
  * return. This structure is not entirely cheap to set up so there might be
