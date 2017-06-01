@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2016, Björn Ståhl
+ * Copyright 2014-2017, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -122,14 +122,85 @@ static bool fd_avail(int fd, bool* term)
 	return false;
 }
 
+bool arcan_frameserver_destroy(arcan_frameserver* src)
+{
+	if (!src)
+		return false;
+
+	if (!src->flags.alive)
+		return false;
+
+	struct arcan_shmif_page* shmpage = src->shm.ptr;
+
+	jmp_buf buf;
+	if (0 != setjmp(buf))
+		goto out;
+
+	arcan_frameserver_enter(src, buf);
+/* be nice and say that you'll be dropped off */
+	if (shmpage){
+		arcan_event exev = {
+			.category = EVENT_TARGET,
+			.tgt.kind = TARGET_COMMAND_EXIT
+		};
+		arcan_frameserver_pushevent(src, &exev);
+
+/* and flick any other switch that might keep the child locked, since it's
+ * common with multi- thread producer, etc. dms triggers guard/thread if it's
+ * there, no need to do for esync since we already pushed an event */
+		shmpage->dms = false;
+		shmpage->vready = false;
+		shmpage->aready = false;
+		arcan_sem_post( src->vsync );
+		arcan_sem_post( src->async );
+	}
+
+/* if BUS happens during _enter, the handler will take
+ * care of dropping shared and shutting down so no problem here */
+	arcan_frameserver_dropshared(src);
+	arcan_frameserver_leave();
+
+/* non-auth trigger nanny thread */
+out:
+	arcan_frameserver_killchild(src);
+	src->child = BROKEN_PROCESS_HANDLE;
+	src->flags.alive = false;
+
+/* possible mixing audio buffer */
+	arcan_mem_free(src->audb);
+
+/* we don't reset state as the data might be useful in core dumps */
+	src->watch_const = 0xdead;
+
+/* might be in a listening / pending state, close the pipe */
+	if (BADFD != src->dpipe){
+		close(src->dpipe);
+		src->dpipe = BADFD;
+	}
+
+	arcan_mem_free(src);
+	return true;
+}
+
 void arcan_frameserver_dropshared(arcan_frameserver* src)
 {
 	if (!src)
 		return;
 
-	if (src->dpipe){
+	if (src->dpipe != BADFD){
 		close(src->dpipe);
-		src->dpipe = -1;
+		src->dpipe = BADFD;
+	}
+
+	if (src->sockaddr){
+		unlink(src->sockaddr);
+		arcan_mem_free(src->sockaddr);
+		src->sockaddr = NULL;
+	}
+
+	if (src->sockkey){
+		arcan_mem_free(src->sockkey);
+		src->sockkey = NULL;
 	}
 
 	struct arcan_shmif_page* shmpage = src->shm.ptr;
@@ -158,6 +229,7 @@ void arcan_frameserver_dropshared(arcan_frameserver* src)
 	}
 	if (-1 != src->shm.handle)
 		close(src->shm.handle);
+
 	src->shm.ptr = NULL;
 }
 
@@ -299,11 +371,11 @@ static bool findshmkey(arcan_frameserver* ctx, int* dfd, mode_t mode){
 	const char pattern[] = "/arcan_%i_%im";
 	const char* errmsg = NULL;
 
-	char playbuf[sizeof(pattern) + 8];
+	char playbuf[sizeof(pattern) + 10];
 
 	while (retrycount){
 /* not a security mechanism, just light "avoid stepping on my own toes" */
-		snprintf(playbuf, sizeof(playbuf), pattern, selfpid % 1000, rand() % 1000);
+		snprintf(playbuf, sizeof(playbuf), pattern, selfpid % 1000, rand() % 100000);
 
 		pb_ofs = strlen(playbuf) - 1;
 		*dfd = shm_open(playbuf, O_CREAT | O_RDWR | O_EXCL, mode);
@@ -412,7 +484,7 @@ static bool sockpair_alloc(int* dst, size_t n, bool cloexec)
 
 /*
  * even if we have a preset listening socket, we run through the routine to
- * generate unlink- target etc. still
+ * generate unlink- target etc.
  */
 static bool setup_socket(arcan_frameserver* ctx, int shmfd,
 	const char* optkey, int optdesc)
@@ -475,7 +547,11 @@ static bool setup_socket(arcan_frameserver* ctx, int shmfd,
 			return false;
 		}
 
-		fchmod(fd, ARCAN_SHM_UMASK);
+/*
+ * Classic permission problem, though it is also not guaranteed portable,
+ * hence why we also have the option of an authentication key.
+ */
+		fchmod(fd, ctx->sockmode);
 		listen(fd, 5);
 #ifdef __APPLE__
 		int val = 1;
@@ -488,7 +564,7 @@ static bool setup_socket(arcan_frameserver* ctx, int shmfd,
  * other options (readlink on proc) or F_GETPATH are unportable
  * (and in the case of readlink .. /facepalm) */
 	ctx->sockaddr = strdup(addr.sun_path);
-	ctx->sockkey = strdup(optkey);
+	ctx->sockkey = optkey ? strdup(optkey) : NULL;
 	return true;
 }
 
@@ -550,6 +626,41 @@ fail:
 
 	return true;
 }
+
+struct arcan_frameserver* arcan_frameserver_alloc()
+{
+	arcan_frameserver* res = arcan_alloc_mem(sizeof(arcan_frameserver),
+		ARCAN_MEM_VTAG, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
+
+	res->watch_const = 0xfeed;
+
+	res->dpipe = BADFD;
+
+	res->playstate = ARCAN_PLAYING;
+	res->flags.alive = true;
+	res->flags.autoclock = true;
+	res->parent.vid = ARCAN_EID;
+	res->desc.samplerate = ARCAN_SHMIF_SAMPLERATE;
+	res->vstream.handle = BADFD;
+	res->sockmode = S_IRWXU;
+
+/* these are statically defined right now, but we may want to make them
+ * configurable in the future to possibly utilize other accelerated resampling
+ * etc. */
+	res->desc.channels = ARCAN_SHMIF_ACHANNELS;
+
+/* not used for any serious identification purpose, just to prevent / help
+ * detect developer errors */
+	res->cookie = (uint32_t) random();
+
+/* shm- related settings are deferred as this is called previous to mapping
+ * (spawn_subsegment / spawn_server) so setting up the eventqueues with
+ * killswitches have to be done elsewhere
+ */
+
+	return res;
+}
+
 
 /*
  * Allocate a new segment (shmalloc), inherit the relevant tracking members
@@ -710,98 +821,45 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	return newseg;
 }
 
-/*
- * When we are in this callback state, it means that there's a VID connected to
- * a frameserver that is waiting for a non-authorative connection. (Pending
- * state), to monitor for suspicious activity, maintain a counter here and/or
- * add a timeout and propagate a "frameserver terminated" session [not
- * implemented].
- *
- * Note that we dont't track the PID of the client here, as the implementation
- * for passing credentials over sockets is exotic (BSD vs Linux etc.) so part
- * of the 'non-authoritative' bit is that the server won't kill-signal or check
- * if pid is still alive in this mode.
- *
- * (listen) -> socketpoll (connection) -> socketverify -> (key ? wait) -> ok ->
- * send connection data, set emptyframe.
- *
- */
-static bool memcmp_nodep(const void* s1, const void* s2, size_t n)
+int arcan_frameserver_socketauth(struct arcan_frameserver* tgt)
 {
-	const uint8_t* p1 = s1;
-	const uint8_t* p2 = s2;
-
-	volatile uint8_t diffv = 0;
-
-	while (n--){
-		diffv |= *p1++ ^ *p2++;
-	}
-
-	return !(diffv != 0);
-}
-
-enum arcan_ffunc_rv arcan_frameserver_socketverify FFUNC_HEAD
-{
-	arcan_frameserver* tgt = state.ptr;
-	char ch = '\n';
-	bool term;
+	char ch;
 	size_t ntw;
-
 /*
  * We want this code-path exercised no matter what, so if the caller specified
  * that the first connection should be accepted no mater what, immediately
  * continue.
  */
-	switch (cmd){
-	case FFUNC_POLL:
-		if (tgt->clientkey[0] == '\0')
-			goto send_key;
 
-/*
- * We need to read one byte at a time, until we've reached LF or
- * PP_SHMPAGE_SHMKEYLIM as after the LF the socket may be used for other things
- * (e.g. event serialization)
- */
-		if (!fd_avail(tgt->dpipe, &term)){
-			if (term)
-				arcan_frameserver_free(tgt);
-			return FRV_NOFRAME;
+reread:
+	if (!tgt->clientkey[0])
+		goto send_key;
+
+	if (-1 == read(tgt->dpipe, &ch, 1)){
+		errno = EAGAIN;
+		return -1;
+	}
+
+/* Got key submit, if we get an authentication fail, we still tear down the
+ * connection and leave it to the script to open a connection again. This means
+ * that strcmp will effectively not become an oracle as we'll align to vsync
+ * and jitter from tons of activity - but the scripts can also take different
+ * action */
+	if ('\0' == ch){
+		if (strncmp(tgt->clientkey, tgt->sockinbuf, PP_SHMPAGE_SHMKEYLIM) != 0){
+			errno = EBADF;
+			return -1;
 		}
-
-		if (-1 == read(tgt->dpipe, &ch, 1))
-			return FRV_NOFRAME;
-
-		if (ch == '\n'){
-/* 0- pad to max length */
-			memset(tgt->sockinbuf + tgt->sockrofs, '\0',
-				PP_SHMPAGE_SHMKEYLIM - tgt->sockrofs);
-
-/* alternative memcmp to not be used as a timing oracle */
-			if (memcmp_nodep(tgt->sockinbuf, tgt->clientkey, PP_SHMPAGE_SHMKEYLIM))
-				goto send_key;
-
-			arcan_warning("platform/frameserver.c(), key verification failed on %"
-				PRIxVOBJ", received: %s\n", tgt->vid, tgt->sockinbuf);
-			arcan_frameserver_free(tgt);
-			return FRV_NOFRAME;
-		}
-		else
-			tgt->sockinbuf[tgt->sockrofs++] = ch;
-
+	}
+/* don't fail on early out, just continue "checking" */
+	else {
+		tgt->sockinbuf[tgt->sockrofs] = ch;
+		tgt->sockrofs = tgt->sockrofs + 1;
 		if (tgt->sockrofs >= PP_SHMPAGE_SHMKEYLIM){
-			arcan_warning("platform/frameserver.c(), socket "
-				"verify failed on %"PRIxVOBJ", terminating.\n", tgt->vid);
-			arcan_frameserver_free(tgt);
+			errno = EBADF;
+			return -1;
 		}
-		return FRV_NOFRAME;
-
-	case FFUNC_DESTROY:
-		if (tgt->sockaddr)
-			unlink(tgt->sockaddr);
-
-	default:
-		return FRV_NOFRAME;
-	break;
+		goto reread;
 	}
 
 /* switch to resize polling default handler */
@@ -814,10 +872,8 @@ send_key:
 
 /*
  * small chance here that a malicious client could manipulate the descriptor in
- * such a way as to block, retry a short while.
+ * such a way as to block, retry a short while and then just give up/kill
  */
-	int flags = fcntl(tgt->dpipe, F_GETFL);
-	fcntl(tgt->dpipe, F_SETFL, flags | O_NONBLOCK);
 	while (rtc && ntw){
 		ssize_t rc = write(tgt->dpipe, tgt->sockinbuf + wofs, ntw);
 		if (-1 == rc){
@@ -831,89 +887,39 @@ send_key:
 	}
 
 	if (rtc <= 0){
-		arcan_frameserver_free(tgt);
-		return FRV_NOFRAME;
+		errno = EBADF;
+		return -1;
 	}
-
-	arcan_video_alterfeed(tgt->vid, FFUNC_NULLFRAME, state);
-
-	arcan_errc errc;
-	tgt->aid = arcan_audio_feed((arcan_afunc_cb)
-		arcan_frameserver_audioframe_direct, tgt, &errc);
-	tgt->sz_audb = 0;
-	tgt->ofs_audb = 0;
-	tgt->audb = NULL;
-
-	return FRV_NOFRAME;
+	return 0;
 }
 
-enum arcan_ffunc_rv arcan_frameserver_socketpoll FFUNC_HEAD
+int arcan_frameserver_socketpoll(struct arcan_frameserver* tgt)
 {
-	arcan_frameserver* tgt = state.ptr;
-	struct arcan_shmif_page* shmpage = tgt->shm.ptr;
+/* if we're not in a pending state, just return normal. */
 	bool term;
-
-	if (state.tag != ARCAN_TAG_FRAMESERV || !shmpage){
-		arcan_warning("platform/posix/frameserver.c:socketpoll, called with"
-			" invalid source tag, investigate.\n");
-		return FRV_NOFRAME;
+	if (!fd_avail(tgt->dpipe, &term)){
+		if (term){
+			errno = EBADF;
+			return -1;
+		}
+		errno = EAGAIN;
+		return -1;
 	}
 
-/* wait for connection, then unlink directory node and switch to verify. */
-	switch (cmd){
-	case FFUNC_POLL:
-		if (!fd_avail(tgt->dpipe, &term)){
-			if (term)
-				arcan_frameserver_free(tgt);
-
-			return FRV_NOFRAME;
-		}
-
-		int insock = accept(tgt->dpipe, NULL, NULL);
-		if (-1 == insock)
-			return FRV_NOFRAME;
-
-		arcan_video_alterfeed(tgt->vid, FFUNC_SOCKVER, state);
-
-/* hand over responsibility for the dpipe to the event layer */
-		arcan_event adopt = {
-			.category = EVENT_FSRV,
-			.fsrv.kind = EVENT_FSRV_EXTCONN,
-			.fsrv.descriptor = tgt->dpipe,
-			.fsrv.otag = tgt->tag,
-			.fsrv.video = tgt->vid
-		};
-		tgt->dpipe = insock;
-
-		snprintf(adopt.fsrv.ident, sizeof(adopt.fsrv.ident)/
-			sizeof(adopt.fsrv.ident[0]), "%s", tgt->sockkey);
-
-		arcan_event_enqueue(arcan_event_defaultctx(), &adopt);
-
-		free(tgt->sockaddr);
-		free(tgt->sockkey);
-		tgt->sockaddr = tgt->sockkey = NULL;
-
-		return arcan_frameserver_socketverify(
-			cmd, buf, buf_sz, width, height, mode, state, tgt->vid);
-		break;
-
-/* socket is closed in frameserver_destroy */
-	case FFUNC_DESTROY:
-		if (tgt->sockaddr){
-			close(tgt->dpipe);
-			free(tgt->sockkey);
-			unlink(tgt->sockaddr);
-			free(tgt->sockaddr);
-			tgt->sockaddr = NULL;
-		}
-
-		arcan_frameserver_free(tgt);
-	default:
-	break;
+	int newfd = accept(tgt->dpipe, NULL, NULL);
+	int oldfd = tgt->dpipe;
+	if (-1 == newfd){
+		errno = EAGAIN;
+		return -1;
 	}
 
-	return FRV_NOFRAME;
+	int flags = fcntl(tgt->dpipe, F_GETFL);
+	fcntl(newfd, F_SETFL, flags | O_NONBLOCK);
+
+	free(tgt->sockaddr);
+	tgt->sockaddr = NULL;
+	tgt->dpipe = newfd;
+	return oldfd;
 }
 
 /*
@@ -1000,14 +1006,19 @@ static void append_env(struct arcan_strarr* darr,
 	darr->data[step] = NULL;
 }
 
-arcan_frameserver* arcan_frameserver_listen_external(const char* key, int fd)
+arcan_frameserver* arcan_frameserver_listen_external(
+	const char* key, const char* pw, int fd, mode_t mode)
 {
 	arcan_frameserver* res = arcan_frameserver_alloc();
+	res->sockmode = mode;
 	if (!shmalloc(res, true, key, fd)){
 		arcan_warning("arcan_frameserver_listen_external(), shared memory"
 			" setup failed\n");
 		return NULL;
 	}
+
+	if (pw)
+		strncpy(res->clientkey, pw, PP_SHMPAGE_SHMKEYLIM-1);
 
 /*
  * start with a default / empty fobject (so all image_ operations still work)
@@ -1245,6 +1256,9 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
  * context of fork, we prepare the str_arr in *setup along with all envs needed
  * for the two to find eachother. The descriptor used for passing socket etc.
  * is inherited and duped to a fix position and possible leaked fds are closed.
+ * On systems where this is a bad idea(tm), define the closefrom function to
+ * nop. It's a safeguard against propagation from bad libs, not a feature that
+ * is relied upon.
  */
 	struct arcan_strarr arr = {0};
 	const char* source;

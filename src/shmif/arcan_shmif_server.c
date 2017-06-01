@@ -31,10 +31,6 @@ char** arcan_expand_namespaces(char** inargs)
 	return inargs;
 }
 
-arcan_frameserver* arcan_frameserver_alloc(){
-	return NULL;
-}
-
 arcan_errc arcan_frameserver_audioframe_direct(struct arcan_aobj* aobj,
 	arcan_aobj_id id, unsigned buffer, bool cont, void* tag)
 {

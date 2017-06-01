@@ -4716,6 +4716,13 @@ static int origoofs(lua_State* ctx)
 	LUA_ETRACE("image_origo_offset", NULL, 0);
 }
 
+static int imagetess(lua_State* ctx)
+{
+	LUA_TRACE("image_tesselation");
+	arcan_vobj_id sid = luaL_checkvid(ctx, 1, NULL);
+	LUA_ETRACE("image_tesselation", NULL, 0);
+}
+
 static int orderinherit(lua_State* ctx)
 {
 	LUA_TRACE("image_inherit_order");
@@ -7228,18 +7235,17 @@ static int targetalloc(lua_State* ctx)
 	LUA_TRACE("target_alloc");
 	int cb_ind = 2;
 	char* pw = NULL;
-	size_t pwlen = 0;
 
 	if (lua_type(ctx, 2) == LUA_TSTRING){
 		pw = (char*) luaL_checkstring(ctx, 2);
-		pwlen = strlen(pw);
+		size_t pwlen = strlen(pw);
 		if (pwlen > PP_SHMPAGE_SHMKEYLIM-1){
 			arcan_warning(
 				"target_alloc(), requested passkey length (%d) exceeds "
 				"built-in threshold (%d characters) and will be truncated .\n",
 				pwlen, pw);
 
-			pwlen = PP_SHMPAGE_SHMKEYLIM-1;
+			pw[PP_SHMPAGE_SHMKEYLIM-1] = '\0';
 		}
 		else
 			cb_ind = 3;
@@ -7297,12 +7303,12 @@ static int targetalloc(lua_State* ctx)
 		if (luactx.pending_socket_label &&
 			strcmp(key, luactx.pending_socket_label) == 0){
 			newref = arcan_frameserver_listen_external(
-				key, luactx.pending_socket_descr);
+				key, pw, luactx.pending_socket_descr, ARCAN_SHM_UMASK);
 			arcan_mem_free(luactx.pending_socket_label);
 			luactx.pending_socket_label = NULL;
 		}
 		else
-			newref = arcan_frameserver_listen_external(key, -1);
+			newref = arcan_frameserver_listen_external(key, pw, -1, ARCAN_SHM_UMASK);
 
 		if (!newref){
 			LUA_ETRACE("target_alloc", "couldn't listen on external", 0);
@@ -7321,9 +7327,6 @@ static int targetalloc(lua_State* ctx)
 	}
 
 	newref->tag = ref;
-
-	if (pw)
-		memcpy(newref->clientkey, pw, pwlen);
 
 	lua_pushvid(ctx, newref->vid);
 	lua_pushaid(ctx, newref->aid);
@@ -8839,7 +8842,7 @@ static int shader_uniform(lua_State* ctx)
 		label = "unknown";
 
 	if (fmtstr[0] == 'b'){
-		int fmt = luaL_checknumber(ctx, abase) != 0;
+		int fmt = luaL_checkbnumber(ctx, abase) != 0;
 		agp_shader_forceunif(label, shdrbool, &fmt);
 	} else if (fmtstr[0] == 'i'){
 		int fmt = luaL_checknumber(ctx, abase);
@@ -10016,6 +10019,7 @@ static const luaL_Reg imgfuns[] = {
 {"image_active_frame",       activeframe        },
 {"image_origo_offset",       origoofs           },
 {"image_inherit_order",      orderinherit       },
+{"image_tesselation",        imagetess          },
 {"expire_image",             setlife            },
 {"reset_image_transform",    resettransform     },
 {"instant_image_transform",  instanttransform   },
