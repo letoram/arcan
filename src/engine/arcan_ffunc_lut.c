@@ -85,8 +85,8 @@ void arcan_ffunc_initlut()
 	f_lut[FFUNC_NULLFEED] = arcan_frameserver_nullfeed;
 	f_lut[FFUNC_LUA_PROC] = arcan_lua_proctarget;
 	f_lut[FFUNC_3DOBJ] = arcan_ffunc_3dobj;
-	f_lut[FFUNC_SOCKVER] = arcan_frameserver_socketverify;
-	f_lut[FFUNC_SOCKPOLL] = arcan_frameserver_socketpoll;
+	f_lut[FFUNC_SOCKVER] = arcan_frameserver_verifyffunc;
+	f_lut[FFUNC_SOCKPOLL] = arcan_frameserver_pollffunc;
 	f_lut[FFUNC_VR] = arcan_vr_ffunc;
 
 #ifdef ARCAN_LWA
