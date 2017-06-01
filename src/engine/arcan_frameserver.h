@@ -102,9 +102,13 @@ struct arcan_frameserver {
 
 /* used for connections negotiated via socket (sockout_fd) */
 	mode_t sockmode;
+/* key read-in buffer */
 	char sockinbuf[PP_SHMPAGE_SHMKEYLIM];
-	char clientkey[PP_SHMPAGE_SHMKEYLIM];
 	off_t sockrofs;
+/* key comparison buffer */
+	char clientkey[PP_SHMPAGE_SHMKEYLIM];
+/* linked address, passed through shmif_resolve_connpath to get the
+ * final string, to handle things like linux private socket namespace */
 	char* sockaddr, (* sockkey);
 
 /* list of permitted meta- protocols for this connection */
@@ -227,13 +231,6 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* dst,
 	struct frameserver_envp*);
 
 /*
- * Setup a frameserver that is idle until an external party connects
- * through a listening socket, then behaves as an avfeed- style
- * frameserver.
- */
-arcan_frameserver* arcan_frameserver_listen_external(const char* key, int fd);
-
-/*
  * Allocate shared and heap memory, reset all members to an
  * empty state and then enforce defaults, returns NULL on failure
  */
@@ -331,8 +328,8 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe FFUNC_HEAD;
 enum arcan_ffunc_rv arcan_frameserver_feedcopy FFUNC_HEAD;
 enum arcan_ffunc_rv arcan_frameserver_emptyframe FFUNC_HEAD;
 enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD;
-enum arcan_ffunc_rv arcan_frameserver_socketverify FFUNC_HEAD;
-enum arcan_ffunc_rv arcan_frameserver_socketpoll FFUNC_HEAD;
+enum arcan_ffunc_rv arcan_frameserver_verifyffunc FFUNC_HEAD;
+enum arcan_ffunc_rv arcan_frameserver_pollffunc FFUNC_HEAD;
 enum arcan_ffunc_rv arcan_frameserver_nullfeed FFUNC_HEAD;
 
 #endif

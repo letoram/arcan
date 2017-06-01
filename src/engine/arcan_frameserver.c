@@ -47,8 +47,6 @@
 	}
 #endif
 
-static uint64_t cookie;
-
 static inline void emit_deliveredframe(arcan_frameserver* src,
 	unsigned long long pts, unsigned long long framecount);
 static inline void emit_droppedframe(arcan_frameserver* src,
@@ -98,11 +96,9 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 	if (!src)
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
-	struct arcan_shmif_page* shmpage = (struct arcan_shmif_page*)
-		src->shm.ptr;
-
-	if (!src->flags.alive)
-		return ARCAN_ERRC_UNACCEPTED_STATE;
+	arcan_aobj_id aid = src->aid;
+	uintptr_t tag = src->tag;
+	arcan_vobj_id vid = src->vid;
 
 /* unhook audio monitors */
 	arcan_aobj_id* base = src->alocks;
@@ -110,66 +106,30 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 		arcan_audio_hookfeed(*base, NULL, NULL, NULL);
 		base++;
 	}
+	src->alocks = NULL;
 
-	jmp_buf buf;
+/* will free, so no UAF here */
+	if (!arcan_frameserver_destroy(src))
+		return ARCAN_ERRC_UNACCEPTED_STATE;
+
 	char msg[32] = "SIGBUS on free";
 
-	if (0 != setjmp(buf))
-		goto out;
-
-	arcan_frameserver_enter(src, buf);
-/* be nice and say that you'll be dropped off */
-	if (shmpage){
-		arcan_event exev = {
-			.category = EVENT_TARGET,
-			.tgt.kind = TARGET_COMMAND_EXIT
-		};
-		arcan_frameserver_pushevent(src, &exev);
-
-/* and flick any other switch that might keep the child locked */
-		shmpage->dms = false;
-		shmpage->vready = false;
-		shmpage->aready = false;
-		arcan_sem_post( src->vsync );
-		arcan_sem_post( src->async );
-	}
-/* if BUS happens during _enter, the handler will take
- * care of dropping shared */
-	arcan_frameserver_dropshared(src);
-	arcan_frameserver_leave();
-
-out:
-	arcan_audio_stop(src->aid);
-	arcan_frameserver_killchild(src);
-
-	src->child = BROKEN_PROCESS_HANDLE;
-	src->flags.alive = false;
-
+	arcan_audio_stop(aid);
 	vfunc_state emptys = {0};
-	arcan_mem_free(src->audb);
 
-	if (BADFD != src->dpipe){
-		close(src->dpipe);
-		src->dpipe = BADFD;
-	}
-
-	arcan_video_alterfeed(src->vid, FFUNC_NULL, emptys);
+	arcan_video_alterfeed(vid, FFUNC_NULL, emptys);
 
 	arcan_event sevent = {
 		.category = EVENT_FSRV,
 		.fsrv.kind = EVENT_FSRV_TERMINATED,
-		.fsrv.video = src->vid,
+		.fsrv.video = vid,
 		.fsrv.glsource = false,
-		.fsrv.audio = src->aid,
-		.fsrv.otag = src->tag
+		.fsrv.audio = aid,
+		.fsrv.otag = tag
 	};
 	memcpy(&sevent.fsrv.message, msg, 32);
 	arcan_event_enqueue(arcan_event_defaultctx(), &sevent);
 
-/* we don't reset state here for once as the
- * data might be useful in core dumps */
-	src->watch_const = 0xdead;
-	arcan_mem_free(src);
 	return ARCAN_OK;
 }
 
@@ -188,8 +148,9 @@ static void default_adoph(arcan_frameserver* tgt, arcan_vobj_id id)
 static bool arcan_frameserver_control_chld(arcan_frameserver* src){
 /* bunch of terminating conditions -- frameserver messes with the structure to
  * provoke a vulnerability, frameserver dying or timing out, ... */
-	bool alive = src->flags.alive && src->shm.ptr
-		&& src->shm.ptr->cookie == cookie && arcan_frameserver_validchild(src);
+	bool alive = src->flags.alive && src->shm.ptr &&
+		src->shm.ptr->cookie == arcan_shmif_cookie() &&
+		arcan_frameserver_validchild(src);
 
 /* subsegment may well be alive when the parent has just died, thus we need to
  * check the state of the parent and if it is dead, clean up just the same,
@@ -350,6 +311,112 @@ enum arcan_ffunc_rv arcan_frameserver_nullfeed FFUNC_HEAD
 
 no_out:
 	arcan_frameserver_leave();
+	return FRV_NOFRAME;
+}
+
+enum arcan_ffunc_rv arcan_frameserver_pollffunc FFUNC_HEAD
+{
+	arcan_frameserver* tgt = state.ptr;
+	struct arcan_shmif_page* shmpage = tgt->shm.ptr;
+	bool term;
+
+	if (state.tag != ARCAN_TAG_FRAMESERV || !shmpage){
+		arcan_warning("platform/posix/frameserver.c:socketpoll, called with"
+			" invalid source tag, investigate.\n");
+		return FRV_NOFRAME;
+	}
+
+/* wait for connection, then unlink directory node and switch to verify. */
+	switch (cmd){
+	case FFUNC_POLL:{
+		int sc = arcan_frameserver_socketpoll(tgt);
+		if (sc == -1){
+/* will yield terminate, close the socket etc. and propagate the event */
+			if (errno == EBADF){
+				arcan_frameserver_free(tgt);
+			}
+			return FRV_NOFRAME;
+		}
+
+		arcan_video_alterfeed(tgt->vid, FFUNC_SOCKVER, state);
+
+/* this is slightly special, we want to allow the option to re-use the
+ * listening point descriptor to avoid some problems from the bind/accept stage
+ * that could cause pending connections to time out etc. even though the
+ * scripting layer wants to reuse the connection point. To deal with this
+ * problem, we keep the domain socket open (sc) and forward to the scripting
+ * layer so that it may use it as an argument to listen_external (or close it).
+ * */
+		arcan_event adopt = {
+			.category = EVENT_FSRV,
+			.fsrv.kind = EVENT_FSRV_EXTCONN,
+			.fsrv.descriptor = sc,
+			.fsrv.otag = tgt->tag,
+			.fsrv.video = tgt->vid
+		};
+		snprintf(adopt.fsrv.ident, sizeof(adopt.fsrv.ident)/
+			sizeof(adopt.fsrv.ident[0]), "%s", tgt->sockkey);
+
+		arcan_event_enqueue(arcan_event_defaultctx(), &adopt);
+
+		return arcan_frameserver_verifyffunc(
+			cmd, buf, buf_sz, width, height, mode, state, tgt->vid);
+	}
+	break;
+
+/* socket is closed in frameserver_destroy */
+	case FFUNC_DESTROY:
+		arcan_frameserver_free(tgt);
+	break;
+	default:
+	break;
+	}
+
+	return FRV_NOFRAME;
+}
+
+enum arcan_ffunc_rv arcan_frameserver_verifyffunc FFUNC_HEAD
+{
+	arcan_frameserver* tgt = state.ptr;
+	char ch = '\n';
+	bool term;
+	size_t ntw;
+
+	switch (cmd){
+/* authentication runs one byte at a time over a call barrier, the function
+ * will process the entire key even when they start mismatching. LTO could
+ * still try and optimize this and become a timing oracle, but havn't been able
+ * to. */
+	case FFUNC_POLL:
+		while (-1 == arcan_frameserver_socketauth(tgt)){
+			if (errno == EBADF){
+				arcan_frameserver_free(tgt);
+				return FRV_NOFRAME;
+			}
+			else if (errno == EWOULDBLOCK){
+				return FRV_NOFRAME;
+			}
+		}
+/* connection is authenticated, switch feed to the normal 'null until
+ * first refresh' and try it. */
+		arcan_video_alterfeed(tgt->vid, FFUNC_NULLFRAME, state);
+		arcan_errc errc;
+		tgt->aid = arcan_audio_feed((arcan_afunc_cb)
+			arcan_frameserver_audioframe_direct, tgt, &errc);
+		tgt->sz_audb = 0;
+		tgt->ofs_audb = 0;
+		tgt->audb = NULL;
+/* no point in trying the frame- poll this round, the odds of the other side
+ * preempting us, mapping and populating the buffer etc. are not realistic */
+		return FRV_NOFRAME;
+	break;
+	case FFUNC_DESTROY:
+		arcan_frameserver_free(tgt);
+	break;
+	default:
+	break;
+	}
+
 	return FRV_NOFRAME;
 }
 
@@ -1240,43 +1307,6 @@ arcan_errc arcan_frameserver_flush(arcan_frameserver* fsrv)
 	arcan_audio_rebuild(fsrv->aid);
 
 	return ARCAN_OK;
-}
-
-arcan_frameserver* arcan_frameserver_alloc()
-{
-	arcan_frameserver* res = arcan_alloc_mem(sizeof(arcan_frameserver),
-		ARCAN_MEM_VTAG, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
-
-	if (!cookie)
-		cookie = arcan_shmif_cookie();
-
-	res->watch_const = 0xfeed;
-
-	res->dpipe = BADFD;
-
-	res->playstate = ARCAN_PLAYING;
-	res->flags.alive = true;
-	res->flags.autoclock = true;
-	res->parent.vid = ARCAN_EID;
-	res->desc.samplerate = ARCAN_SHMIF_SAMPLERATE;
-	res->vstream.handle = BADFD;
-	res->sockmode = IPC_DEFAULT_PERM;
-
-/* these are statically defined right now, but we may want to make them
- * configurable in the future to possibly utilize other accelerated resampling
- * etc. */
-	res->desc.channels = ARCAN_SHMIF_ACHANNELS;
-
-/* not used for any serious identification purpose,
- * just to prevent / help detect developer errors */
-	res->cookie = (uint32_t) random();
-
-/* shm- related settings are deferred as this is called previous to mapping
- * (spawn_subsegment / spawn_server) so setting up the eventqueues with
- * killswitches have to be done elsewhere
- */
-
-	return res;
 }
 
 void arcan_frameserver_configure(arcan_frameserver* ctx,
