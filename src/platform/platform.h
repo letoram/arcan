@@ -13,6 +13,7 @@
 #define HAVE_PLATFORM_HEADER
 
 #include "video_platform.h"
+#include "fsrv_platform.h"
 
 #define BADFD -1
 #include <pthread.h>
@@ -88,64 +89,6 @@ struct arcan_frameserver* arcan_target_launch_internal(
  * and which ones that resolve to valid and existing executables)
  */
 const char* arcan_frameserver_atypes();
-
-/*
- * disconnect, clean up resources, free. The connection should be considered
- * alive (not just _alloc call) or it will return false. State of *src is
- * undefined after this call (will be free:d)
- */
-bool arcan_frameserver_destroy(struct arcan_frameserver* src);
-
-/*
- * create a frameserver context and fill in sane defaults.
- */
-struct arcan_frameserver* arcan_frameserver_alloc();
-
-/*
- * Setup a frameserver that is idle until an external party connects through a
- * listening socket using [key], then behaves as an avfeed- style frameserver.
- * The optional [auth] requires an authentication password before permitting a
- * client to connect. Set [fd] to something other than BADFD(-1) if you have a
- * prepared socket to use (typically in the case of adoption handover during
- * pending listen).
- *
- * To process the resulting arcan_frameserver context, you should first
- * periodically run arcan_frameserver_socketpoll() until it returns 0 or
- * -1 with EBADF as errno. On EBADF, the connection point has been consumed
- * and you need to re-allocate.
- *
- * Afterwards, even if you didn't set an auth- key, you should repeat the
- * process with arcan_frameserver_socketauth(), with the same kind of error
- * handling.
- *
- * When both these steps have been completed successfully, the frameserver
- * is up and running to the point where normal event processing is working.
- */
-struct arcan_frameserver* arcan_frameserver_listen_external(
-	const char* key, const char* auth, int fd, mode_t mode);
-
-/*
- * Used with a pending external connection where the socket has been bound
- * but no connections have been accepted yet. Will return -1 and set errno
- * to:
- *
- * EBADF - socket died or connection error, explicit restart required
- * EAGAIN - no client, try again later.
- *
- * or 0 and set src->dpipe in the case of a successful connection..
- */
-int arcan_frameserver_socketpoll(struct arcan_frameserver* src);
-
-/*
- * Wait for an (optional) key based authentication session has been passed,
- * upon completed authentication, this function will send the necessary
- * shm-mapping primitives. Return 0 on completion, or -1 and set errno to:
- *
- * EBADF - socket died or authentication error, explicit restart required
- * EAGAIN - need more data to authenticate, try again later.
- *
- */
-int arcan_frameserver_socketauth(struct arcan_frameserver* src);
 
 /* estimated time-waster in milisecond resolution, little reason for this
  * to be exact, but undershooting rather than overshooting is important */

@@ -27,9 +27,9 @@ enum arcan_playstate {
 };
 
 /*
- * This substructure is a cache of the negotiated state, i.e.
- * the server side view of the agreed upon use and limits of
- * the contents of the shared memory page.
+ * This substructure is a cache of the negotiated state, i.e.  the server side
+ * view of the agreed upon use and limits of the contents of the shared memory
+ * page.
  */
 struct arcan_frameserver_meta {
 /* video */
@@ -79,24 +79,27 @@ struct frameserver_audsrc {
 };
 
 struct arcan_frameserver {
-/* video / audio properties used */
+/* negotiated state cache */
 	struct arcan_frameserver_meta desc;
+
+/* mapped to point into shmpage */
 	struct arcan_evctx inqueue, outqueue;
 	int queue_mask;
 
 /* original resource, needed for reloading */
 	char* source;
 
+/* signaling primitives */
 	sem_handle vsync, async, esync;
-
 	file_handle dpipe;
 
+/* if we spawn child, track if it is alive */
 	process_handle child;
 
 /*
- * dynamic limits set on a resize request in order to let other
- * parts set restrictions on dimension changes, i.e. not permit
- * a mouse cursor to be max_w*maxh_h etc.
+ * dynamic limits set on a resize request in order to let other parts set
+ * restrictions on dimension changes, i.e. not permit a mouse cursor to be
+ * max_w*maxh_h etc.
  */
 	size_t max_w, max_h;
 
@@ -114,6 +117,7 @@ struct arcan_frameserver {
 /* list of permitted meta- protocols for this connection */
 	unsigned metamask;
 
+/* special transfer state flags */
 	struct {
 		bool alive;
 		bool pbo;
@@ -140,6 +144,7 @@ struct arcan_frameserver {
 		arcan_vobj_id vid;
 	} parent;
 
+/* for recording output where we need to mix multiple audio sources */
 	struct {
 		unsigned n_aids;
 		size_t max_bufsz;
@@ -152,6 +157,7 @@ struct arcan_frameserver {
 	int64_t launchedtime;
 	unsigned vfcount;
 
+/* per segment identification cookie */
 	uint32_t cookie;
 
 /* state tracking for accelerated buffer sharing, populated by handle
@@ -169,7 +175,8 @@ struct arcan_frameserver {
 	off_t ofs_audb, ofs_audp;
 	uint8_t* audb;
 
-/* trackable members to help scriping engine recover on script failure */
+/* trackable members to help scriping engine recover on script failure,
+ * populated through allocation or during queuetransfer */
 	char title[64];
 	enum ARCAN_SEGID segid;
 	uint64_t guid[2];
@@ -178,13 +185,15 @@ struct arcan_frameserver {
  * to fsrv->tag) needed to correlate callback in script engine with event */
 	intptr_t tag;
 
+/* need to keep the handle around to allow remapping */
+	shm_handle shm;
+
 /* precalc offsets into mapped shmpage, calculated at resize */
-	shmif_pixel* vbufs[FSRV_MAX_VBUFC];
-	size_t vbuf_cnt;
-	shmif_asample* abufs[FSRV_MAX_ABUFC];
 	size_t abuf_cnt;
 	size_t abuf_sz;
-	shm_handle shm;
+	size_t vbuf_cnt;
+	shmif_pixel* vbufs[FSRV_MAX_VBUFC];
+	shmif_asample* abufs[FSRV_MAX_ABUFC];
 
 /* above pointers are all placed so that if they overflow they should hit this
  * canary -- use for watchpoint in debugging integrity- check for release */
@@ -194,8 +203,7 @@ struct arcan_frameserver {
 /* refactor out when time permits */
 typedef struct arcan_frameserver arcan_frameserver;
 
-/* contains both structures for managing movie- playback,
- * both video and audio support functions */
+/* cover initial launch arguments */
 struct frameserver_envp {
 	bool use_builtin;
 	bool custom_feed;
@@ -231,12 +239,6 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* dst,
 	struct frameserver_envp*);
 
 /*
- * Allocate shared and heap memory, reset all members to an
- * empty state and then enforce defaults, returns NULL on failure
- */
-arcan_frameserver* arcan_frameserver_alloc();
-
-/*
  * Playback control, temporarly disable buffering / synchronizing.
  * should be used in conjunction with an encoded pause event.
  */
@@ -251,14 +253,6 @@ arcan_errc arcan_frameserver_resume(arcan_frameserver*);
  * transferred (e.g. stdin) fd will always be closed in this function.
  */
 arcan_errc arcan_frameserver_pushfd(arcan_frameserver*, arcan_event*, int fd);
-
-/*
- * Allocate a new frameserver segment, bind it to the same process
- * and communicate the necessary IPC arguments (key etc.) using
- * the pre-existing eventqueue of the frameserver controlled by (ctx)
- */
-arcan_frameserver* arcan_frameserver_spawn_subsegment(
-	arcan_frameserver* ctx, enum ARCAN_SEGID, int hintw, int hinth, int tag);
 
 /*
  * Take the argument event and add it to the event queue of the target,
@@ -376,36 +370,8 @@ bool arcan_frameserver_validchild(arcan_frameserver* ctx);
 void arcan_frameserver_killchild(arcan_frameserver* ctx);
 
 /*
- * Provide a size calculation for the specified subprotocol in the context of a
- * specific frameserver. 0 if unknown protocol or not applicable.  The dofs
- * structure will be populated with the detailed offsets and sizes, which
- * should be passed to setproto if the change could be applied.
- */
-size_t arcan_frameserver_protosize(arcan_frameserver* ctx,
-	unsigned proto, struct arcan_shmif_ofstbl* dofs);
-
-/*
- * [PLATFORM-ONLY]
- * Prepare the necessary metadata for a specific sub-protocol, should
- * only originate from a platform implementation of the resize handler.
- */
-void arcan_frameserver_setproto(arcan_frameserver* ctx,
-	unsigned proto, struct arcan_shmif_ofstbl* ofsets);
-
-/*
- * Release any shared memory resources associated with the frameserver
- */
-void arcan_frameserver_dropshared(arcan_frameserver* ctx);
-
-/*
- * PROCEED WITH EXTREME CAUTION, _configure,
- * _spawn, _free etc. are among the more complicated functions
- * in the entire project, any changes should be thoroughly tested for
- * regressions.
- *
- * part of the spawn_server that is shared between
- * the unix and the win32 implementations,
- * assumes that shared memory, semaphores etc. are already in place.
+ * Take an allocated frameserver context and realise the settings
+ * in setup on it.
  */
 void arcan_frameserver_configure(arcan_frameserver* ctx,
 	struct frameserver_envp setup);
@@ -418,17 +384,11 @@ arcan_errc arcan_frameserver_free(arcan_frameserver*);
  * by the other side that forces us to setup a fallback point in the
  * case of signals e.g. SIGBUS (due to truncate-on-fd).
  */
-#include <setjmp.h>
 #define TRAMP_GUARD(ERRC, fsrv){\
 	jmp_buf tramp;\
 	if (0 != setjmp(tramp))\
 		return ERRC;\
 	arcan_frameserver_enter(fsrv, tramp);\
 }
-
-void arcan_frameserver_enter(struct arcan_frameserver*, jmp_buf ctx);
-void arcan_frameserver_leave();
-
-size_t arcan_frameserver_default_abufsize(size_t new_sz);
 
 #endif

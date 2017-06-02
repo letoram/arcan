@@ -26,6 +26,11 @@ BADSYM(arcan_event_enqueue)
 BADSYM(arcan_fetch_namespace)
 BADSYM(arcan_video_alterfeed)
 
+/*
+ * no namespaces to expand in the server library, just return the
+ * unmodified version. Here's a decent place for custom namespace
+ * expansion.
+ */
 char** arcan_expand_namespaces(char** inargs)
 {
 	return inargs;
@@ -130,6 +135,9 @@ bool shmifsrv_frameserver_tick(struct shmifsrv_client* con)
 
 enum shmifsrv_status shmifsrv_poll(struct shmifsrv_client* con)
 {
+/*
+ * check resize flag, process autoclock (see autoclock frame)
+ */
 	return 0;
 }
 

@@ -59,7 +59,6 @@ static inline void emit_droppedframe(arcan_frameserver* src,
  * various feedfunctions and should not need to be triggered elsewhere.
  */
 static void tick_control(arcan_frameserver*, bool);
-bool arcan_frameserver_resize(arcan_frameserver*);
 
 static void autoclock_frame(arcan_frameserver* tgt)
 {
@@ -878,146 +877,6 @@ static inline void emit_droppedframe(arcan_frameserver* src,
 	arcan_event_enqueue(arcan_event_defaultctx(), &deliv);
 }
 
-size_t arcan_frameserver_protosize(arcan_frameserver* ctx,
-	unsigned proto, struct arcan_shmif_ofstbl* dofs)
-{
-	size_t tot = 0;
-	if (!proto || !dofs){
-		if (dofs)
-			*dofs = (struct arcan_shmif_ofstbl){};
-		return 0;
-	}
-
-	tot += sizeof(struct arcan_shmif_ofstbl);
-	if (tot % sizeof(struct arcan_shmif_ofstbl) != 0)
-		tot += tot - (tot % sizeof(uintptr_t));
-
-/*
- * Complicated, as there might be a number of different displays with
- * different lut formats, edid size etc.
- *
- * Cheap/lossy Formula:
- *  max_displays * (max_lut_size + edid(128) + structs)
- *
- * Other nasty bit is that the device mapping isn't exposed directly, it's the
- * user- controlled parts of the engine that has to provide the actual tables
- * to use. On top of that, there's the situation where displays are hotplugged
- * and/or moved between ports and that we might want to control virtual/
- * simulated/remote displays and just take advantage of an external clients
- * color management capabilities.
- *
- * TL:DR - Doesn't make much sense saving a few k here.
- */
-	if (proto & SHMIF_META_CM){
-		size_t lim;
-		dofs->ofs_ramp = dofs->sz_ramp = tot;
-		platform_video_displays(NULL, &lim);
-		lim *= 2; /* both in and out */
-
-/* WARNING: the max_lut_size is not actually used / retrieved here */
-		tot += sizeof(struct arcan_shmif_ramp) +
-			sizeof(struct ramp_block) * lim;
-		dofs->sz_ramp = tot - dofs->sz_ramp;
-	}
-	else {
-		dofs->ofs_ramp = dofs->sz_ramp = 0;
-	};
-
-	if (tot % sizeof(uintptr_t) != 0)
-		tot += tot - (tot % sizeof(uintptr_t));
-	if (proto & SHMIF_META_HDRF16){
-/* nothing now, possibly reserved for tone-mapping */
-	}
-	dofs->ofs_hdr = dofs->sz_hdr = 0;
-
-	if (proto & SHMIF_META_VOBJ){
-/* nothing now, somewhat pesky in that we need a limit on ops and an
- * ops specifier as part of the request (?) */
-	}
-	dofs->ofs_vector = dofs->sz_vector = 0;
-
-	if (proto & SHMIF_META_VR){
-		dofs->ofs_vr = dofs->sz_vr = tot;
-		tot += sizeof(struct arcan_shmif_vr);
-		tot += sizeof(struct vr_limb) * LIMB_LIM;
-		dofs->sz_vr = tot - dofs->sz_vr;
-	}
-	else
-		dofs->sz_vr = dofs->ofs_vr = 0;
-
-	if (tot % sizeof(uintptr_t) != 0)
-		tot += tot - (tot % sizeof(uintptr_t));
-	return tot;
-}
-
-/*
- * reset the fields of the adata- struct due to a negotiation
- */
-void arcan_frameserver_setproto(arcan_frameserver* ctx,
-	unsigned proto, struct arcan_shmif_ofstbl* aofs)
-{
-	if (!ctx || !aofs)
-		return;
-
-	memset(&ctx->desc.aext, '\0', sizeof(ctx->desc.aext));
-	ctx->desc.aofs = *aofs;
-
-	if (!proto)
-		return;
-
-/* first, use the baseadr and the offset table to relocate the struct-
- * pointers in the desc.aext structure */
-	uintptr_t base = (uintptr_t)
-		(((struct arcan_shmif_page*) ctx->shm.ptr)->adata);
-	struct arcan_shmif_ofstbl* dst = (struct arcan_shmif_ofstbl*) base;
-	*dst = *aofs;
-
-	size_t ofs = 0;
-
-	if (proto & SHMIF_META_CM){
-		size_t lim;
-		ctx->desc.aext.gamma = (struct arcan_shmif_ramp*)(base + aofs->ofs_ramp);
-		memset(ctx->desc.aext.gamma, '\0', aofs->sz_ramp);
-		platform_video_displays(NULL, &lim);
-		lim *= 2; /* both in and out */
-		ctx->desc.aext.gamma->magic = ARCAN_SHMIF_RAMPMAGIC;
-		ctx->desc.aext.gamma->n_blocks = lim;
-/* we don't actually fill out the data here yet, the scripts need to tell
- * us explicitly which outputs that should be presented and in which order,
- * that's done in the setramps/getramps */
-	}
-	else
-		ctx->desc.aext.gamma = NULL;
-
-	if (proto & SHMIF_META_HDRF16){
-/* shouldn't "need" anything here right now */
-		ctx->desc.aext.hdr = (struct arcan_shmif_hdr*)(base + aofs->ofs_hdr);
-		memset(ctx->desc.aext.hdr, '\0', aofs->sz_hdr);
-	}
-	else
-		ctx->desc.aext.hdr = NULL;
-
-	if (proto & SHMIF_META_VOBJ){
-		ctx->desc.aext.vector =
-			(struct arcan_shmif_vector*)(base + aofs->ofs_vector);
-		memset(ctx->desc.aext.vector, '\0', aofs->sz_vector);
-	}
-	else
-		ctx->desc.aext.vector = NULL;
-
-	if (proto & SHMIF_META_VR){
-		ctx->desc.aext.vr =
-			(struct arcan_shmif_vr*)(base + aofs->ofs_vr);
-		memset(ctx->desc.aext.vr, '\0', aofs->sz_vr);
-		ctx->desc.aext.vr->version = VR_VERSION;
-		ctx->desc.aext.vr->limb_lim = LIMB_LIM;
-	}
-	else
-		ctx->desc.aext.vr = NULL;
-
-	ctx->desc.aproto = proto;
-}
-
 bool arcan_frameserver_getramps(arcan_frameserver* src,
 	size_t index, float* table, size_t table_sz, size_t* ch_sz)
 {
@@ -1228,9 +1087,19 @@ static void tick_control(arcan_frameserver* src, bool tick)
 	with switching buffer strategies (valid buffer in one size, failed because
 	size over reach with other strategy, so now there's a failure mechanism.
  */
-	if (!arcan_frameserver_resize(src))
+	int rzc = arcan_frameserver_resynch(src);
+	if (rzc <= 0)
 		goto leave;
-
+	else if (rzc == 2){
+		arcan_event_enqueue(arcan_event_defaultctx(),
+			&(struct arcan_event){
+				.category = EVENT_FSRV,
+				.fsrv.kind = EVENT_FSRV_APROTO,
+				.fsrv.video = src->vid,
+				.fsrv.aproto = src->desc.aproto,
+				.fsrv.otag = src->tag,
+			});
+	}
 	fail = false;
 
 /*

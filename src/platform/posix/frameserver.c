@@ -16,6 +16,7 @@
 #include <assert.h>
 #include <pthread.h>
 #include <poll.h>
+#include <setjmp.h>
 
 #include <sys/types.h>
 #include <sys/select.h>
@@ -35,7 +36,6 @@
 #include <arcan_event.h>
 #include <arcan_video.h>
 #include <arcan_audio.h>
-#include "arcan_audioint.h"
 #include <arcan_frameserver.h>
 
 #define INCR(X, C) ( ( (X) = ( (X) + 1) % (C)) )
@@ -46,6 +46,25 @@
 		__sync_synchronize();\
 	}
 #endif
+
+static size_t default_abuf_sz = 512;
+static size_t default_disp_lim = 8;
+
+/*
+ * Provide a size calculation for the specified subprotocol in the context of a
+ * specific frameserver. 0 if unknown protocol or not applicable.  The dofs
+ * structure will be populated with the detailed offsets and sizes, which
+ * should be passed to setproto if the change could be applied.
+ */
+static size_t arcan_frameserver_protosize(struct arcan_frameserver* ctx,
+	unsigned proto, struct arcan_shmif_ofstbl* dofs);
+
+/*
+ * Prepare the necessary metadata for a specific sub-protocol, should
+ * only originate from a platform implementation of the resize handler.
+ */
+static void arcan_frameserver_setproto(struct arcan_frameserver* ctx,
+	unsigned proto, struct arcan_shmif_ofstbl* ofsets);
 
 /* NOTE: maintaing pid_t for frameserver (or worse, for hijacked target)
  * should really be replaced by making sure they belong to the same process
@@ -206,7 +225,7 @@ void arcan_frameserver_dropshared(arcan_frameserver* src)
 	struct arcan_shmif_page* shmpage = src->shm.ptr;
 
 	if (shmpage && -1 == munmap((void*) shmpage, src->shm.shmsize))
-		arcan_warning("BUG -- arcan_frameserver_free(), munmap failed: %s\n",
+		arcan_warning("BUG -- frameserver_dropshared(), munmap failed: %s\n",
 			strerror(errno));
 
 	if (src->shm.key){
@@ -661,6 +680,76 @@ struct arcan_frameserver* arcan_frameserver_alloc()
 	return res;
 }
 
+size_t arcan_frameserver_protosize(arcan_frameserver* ctx,
+	unsigned proto, struct arcan_shmif_ofstbl* dofs)
+{
+	size_t tot = 0;
+	if (!proto || !dofs){
+		if (dofs)
+			*dofs = (struct arcan_shmif_ofstbl){};
+		return 0;
+	}
+
+	tot += sizeof(struct arcan_shmif_ofstbl);
+	if (tot % sizeof(struct arcan_shmif_ofstbl) != 0)
+		tot += tot - (tot % sizeof(uintptr_t));
+
+/*
+ * Complicated, as there might be a number of different displays with
+ * different lut formats, edid size etc.
+ *
+ * Cheap/lossy Formula:
+ *  max_displays * (max_lut_size + edid(128) + structs)
+ *
+ * Other nasty bit is that the device mapping isn't exposed directly, it's the
+ * user- controlled parts of the engine that has to provide the actual tables
+ * to use. On top of that, there's the situation where displays are hotplugged
+ * and/or moved between ports and that we might want to control virtual/
+ * simulated/remote displays and just take advantage of an external clients
+ * color management capabilities.
+ *
+ * TL:DR - Doesn't make much sense saving a few k here.
+ */
+	if (proto & SHMIF_META_CM){
+		size_t lim = default_disp_lim;
+		dofs->ofs_ramp = dofs->sz_ramp = tot;
+		lim *= 2; /* both in and out */
+
+/* WARNING: the max_lut_size is not actually used / retrieved here */
+		tot += sizeof(struct arcan_shmif_ramp) +
+			sizeof(struct ramp_block) * lim;
+		dofs->sz_ramp = tot - dofs->sz_ramp;
+	}
+	else {
+		dofs->ofs_ramp = dofs->sz_ramp = 0;
+	};
+
+	if (tot % sizeof(uintptr_t) != 0)
+		tot += tot - (tot % sizeof(uintptr_t));
+	if (proto & SHMIF_META_HDRF16){
+/* nothing now, possibly reserved for tone-mapping */
+	}
+	dofs->ofs_hdr = dofs->sz_hdr = 0;
+
+	if (proto & SHMIF_META_VOBJ){
+/* nothing now, somewhat pesky in that we need a limit on ops and an
+ * ops specifier as part of the request (?) */
+	}
+	dofs->ofs_vector = dofs->sz_vector = 0;
+
+	if (proto & SHMIF_META_VR){
+		dofs->ofs_vr = dofs->sz_vr = tot;
+		tot += sizeof(struct arcan_shmif_vr);
+		tot += sizeof(struct vr_limb) * LIMB_LIM;
+		dofs->sz_vr = tot - dofs->sz_vr;
+	}
+	else
+		dofs->sz_vr = dofs->ofs_vr = 0;
+
+	if (tot % sizeof(uintptr_t) != 0)
+		tot += tot - (tot % sizeof(uintptr_t));
+	return tot;
+}
 
 /*
  * Allocate a new segment (shmalloc), inherit the relevant tracking members
@@ -669,7 +758,7 @@ struct arcan_frameserver* arcan_frameserver_alloc()
  * an ident on the socket.
  */
 arcan_frameserver* arcan_frameserver_spawn_subsegment(
-	arcan_frameserver* ctx, enum ARCAN_SEGID segid, int hintw, int hinth, int tag)
+	arcan_frameserver* ctx, int segid, int hintw, int hinth, int tag)
 {
 	if (!ctx || ctx->flags.alive == false)
 		return NULL;
@@ -684,24 +773,10 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	newseg->shm.shmsize = shmpage_size(hintw, hinth, 1, 1, 65535, 0);
 
 	if (!shmalloc(newseg, false, NULL, -1)){
-		arcan_frameserver_free(newseg);
+		arcan_mem_free(newseg);
 		return NULL;
 	}
 	struct arcan_shmif_page* shmpage = newseg->shm.ptr;
-
-	img_cons cons = {.w = hintw , .h = hinth, .bpp = ARCAN_SHMPAGE_VCHANNELS};
-	vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = newseg};
-	struct arcan_frameserver_meta vinfo = {
-		.width = hintw,
-		.height = hinth,
-		.bpp = sizeof(av_pixel)
-	};
-	arcan_vobj_id newvid = arcan_video_addfobject(FFUNC_VFRAME, state, cons, 0);
-
-	if (newvid == ARCAN_EID){
-		arcan_frameserver_free(newseg);
-		return NULL;
-	}
 
 	size_t abufc = 0;
 	size_t abufsz = 0;
@@ -718,7 +793,7 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 
 	jmp_buf out;
 	if (0 != setjmp(out)){
-		arcan_frameserver_free(newseg);
+		arcan_frameserver_destroy(newseg);
 		return NULL;
 	}
 
@@ -728,7 +803,7 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 		shmpage->vpending = 1;
 		shmpage->abufsize = abufsz;
 		shmpage->apending = abufc;
-		shmpage->segment_token = ((uint32_t) newvid) ^ ctx->cookie;
+		shmpage->segment_token = (uint32_t) ctx->cookie++;
 	arcan_frameserver_leave(ctx);
 
 /*
@@ -738,13 +813,12 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
  * attach monitors and synch audio transfers to video.
  */
 	arcan_errc errc;
-	if (segid != SEGID_ENCODER)
-		newseg->aid = arcan_audio_feed((arcan_afunc_cb)
-			arcan_frameserver_audioframe_direct, newseg, &errc);
-
-	newseg->desc = vinfo;
+	newseg->desc = (struct arcan_frameserver_meta){
+		.width = hintw,
+		.height = hinth,
+		.bpp = sizeof(av_pixel)
+	};
 	newseg->source = ctx->source ? strdup(ctx->source) : NULL;
-	newseg->vid = newvid;
 	newseg->parent.vid = ctx->vid;
 	newseg->parent.ptr = (void*) ctx;
 
@@ -757,10 +831,7 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
  */
 	int sockp[4] = {-1, -1};
 	if (!sockpair_alloc(sockp, 1, true)){
-		arcan_audio_stop(newseg->aid);
-		arcan_frameserver_free(newseg);
-		arcan_video_deleteobject(newvid);
-
+		arcan_frameserver_destroy(newseg);
 		return NULL;
 	}
 
@@ -786,7 +857,7 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	newseg->vbuf_cnt = 1;
 	newseg->abuf_cnt = abufc;
 	shmpage->segment_size = arcan_shmif_mapav(shmpage,
-		newseg->vbufs, 1, cons.w * cons.h * sizeof(shmif_pixel),
+		newseg->vbufs, 1, hintw * hinth * sizeof(shmif_pixel),
 		newseg->abufs, abufc, abufsz
 	);
 	newseg->abuf_sz = abufsz;
@@ -1045,18 +1116,95 @@ arcan_frameserver* arcan_frameserver_listen_external(
 	return res;
 }
 
-size_t default_sz = 512;
+/*
+ * reset the fields of the adata- struct due to a negotiation
+ */
+static void arcan_frameserver_setproto(arcan_frameserver* ctx,
+	unsigned proto, struct arcan_shmif_ofstbl* aofs)
+{
+	if (!ctx || !aofs)
+		return;
+
+	memset(&ctx->desc.aext, '\0', sizeof(ctx->desc.aext));
+	ctx->desc.aofs = *aofs;
+
+	if (!proto)
+		return;
+
+/* first, use the baseadr and the offset table to relocate the struct-
+ * pointers in the desc.aext structure */
+	uintptr_t base = (uintptr_t)
+		(((struct arcan_shmif_page*) ctx->shm.ptr)->adata);
+	struct arcan_shmif_ofstbl* dst = (struct arcan_shmif_ofstbl*) base;
+	*dst = *aofs;
+
+	size_t ofs = 0;
+
+	if (proto & SHMIF_META_CM){
+		size_t lim = default_disp_lim;
+		ctx->desc.aext.gamma = (struct arcan_shmif_ramp*)(base + aofs->ofs_ramp);
+		memset(ctx->desc.aext.gamma, '\0', aofs->sz_ramp);
+/* just some magic value in terms of screen limits unless we've been
+ * provided with one */
+		lim = lim ? lim : 4;
+		lim *= 2; /* both in and out */
+		ctx->desc.aext.gamma->magic = ARCAN_SHMIF_RAMPMAGIC;
+		ctx->desc.aext.gamma->n_blocks = lim;
+/* we don't actually fill out the data here yet, the scripts need to tell
+ * us explicitly which outputs that should be presented and in which order,
+ * that's done in the setramps/getramps */
+	}
+	else
+		ctx->desc.aext.gamma = NULL;
+
+	if (proto & SHMIF_META_HDRF16){
+/* shouldn't "need" anything here right now */
+		ctx->desc.aext.hdr = (struct arcan_shmif_hdr*)(base + aofs->ofs_hdr);
+		memset(ctx->desc.aext.hdr, '\0', aofs->sz_hdr);
+	}
+	else
+		ctx->desc.aext.hdr = NULL;
+
+	if (proto & SHMIF_META_VOBJ){
+		ctx->desc.aext.vector =
+			(struct arcan_shmif_vector*)(base + aofs->ofs_vector);
+		memset(ctx->desc.aext.vector, '\0', aofs->sz_vector);
+	}
+	else
+		ctx->desc.aext.vector = NULL;
+
+	if (proto & SHMIF_META_VR){
+		ctx->desc.aext.vr =
+			(struct arcan_shmif_vr*)(base + aofs->ofs_vr);
+		memset(ctx->desc.aext.vr, '\0', aofs->sz_vr);
+		ctx->desc.aext.vr->version = VR_VERSION;
+		ctx->desc.aext.vr->limb_lim = LIMB_LIM;
+	}
+	else
+		ctx->desc.aext.vr = NULL;
+
+	ctx->desc.aproto = proto;
+}
+
 size_t arcan_frameserver_default_abufsize(size_t new_sz)
 {
-	size_t res = default_sz;
+	size_t res = default_abuf_sz;
 	if (new_sz > 0)
-		default_sz = new_sz;
+		default_abuf_sz = new_sz;
 	return res;
 }
 
-bool arcan_frameserver_resize(struct arcan_frameserver* s)
+size_t arcan_frameserver_display_limit(size_t new_sz)
 {
-	bool state = false;
+	size_t res = default_disp_lim;
+	if (new_sz)
+		default_disp_lim = new_sz;
+	return res;
+}
+
+int arcan_frameserver_resynch(struct arcan_frameserver* s)
+{
+	int state = 0;
 	shm_handle* src = &s->shm;
 	struct arcan_shmif_page* shmpage = s->shm.ptr;
 
@@ -1089,8 +1237,8 @@ bool arcan_frameserver_resize(struct arcan_frameserver* s)
  * Currently, we can't know this and there's a pending audio subsystem refactor
  * to remedy this (kindof) but for now, just have it as a user controlled var.
  */
-	if (abufsz < default_sz)
-		abufsz = default_sz;
+	if (abufsz < default_abuf_sz)
+		abufsz = default_abuf_sz;
 
 /*
  * pending the same audio refactoring, we just assume the audio layer
@@ -1194,21 +1342,15 @@ bool arcan_frameserver_resize(struct arcan_frameserver* s)
 	shmpage->abufsize = abufsz;
 	shmpage->apending = s->abuf_cnt;
 	shmpage->vpending = s->vbuf_cnt;
-	state = true;
 
 /* realize the sub-protocol */
 	if (reset_proto){
 		arcan_frameserver_setproto(s, aproto, &apend);
 		atomic_store(&shmpage->apad_type, aproto);
-		arcan_event_enqueue(arcan_event_defaultctx(),
-			&(struct arcan_event){
-				.category = EVENT_FSRV,
-				.fsrv.kind = EVENT_FSRV_APROTO,
-				.fsrv.video = s->vid,
-				.fsrv.aproto = aproto,
-				.fsrv.otag = s->tag,
-			});
+		state = 2;
 	}
+	else
+		state = 1;
 
 	goto done;
 
@@ -1222,6 +1364,7 @@ fail:
 	atomic_store(&shmpage->w, s->desc.width);
 	atomic_store(&shmpage->h, s->desc.height);
 	shmpage->resized = -1;
+	state = -1;
 
 done:
 /* barrier + signal */
