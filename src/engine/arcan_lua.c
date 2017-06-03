@@ -939,7 +939,7 @@ void arcan_lua_adopt(struct arcan_luactx* ctx)
  * DoS oracly, there are so many timing channels that are necessary that it
  * doesn't really aid much by hiding the fact, but it can help a cooperative
  * process enough that it is worth the tradeoff */
-				arcan_frameserver_pushevent(fsrv, &(struct arcan_event){
+				platform_fsrv_pushevent(fsrv, &(struct arcan_event){
 					.category = EVENT_TARGET,
 					.tgt.kind = TARGET_COMMAND_RESET,
 					.tgt.ioevs[0].iv = 2
@@ -1008,7 +1008,7 @@ static int opennonblock_tgt(lua_State* ctx, bool wr)
 	if (-1 != flags)
 		fcntl(src, F_SETFL, flags | O_NONBLOCK);
 
-	if (ARCAN_OK != arcan_frameserver_pushfd(fsrv, &(struct arcan_event){
+	if (ARCAN_OK != platform_fsrv_pushfd(fsrv, &(struct arcan_event){
 		.category = EVENT_TARGET,
 		.tgt.kind = wr ? TARGET_COMMAND_BCHUNK_IN : TARGET_COMMAND_BCHUNK_OUT,
 		.tgt.message = "stream"}, dst)
@@ -2127,7 +2127,7 @@ static int abufsz(lua_State* ctx)
 		new_sz += new_sz % (sizeof(shmif_asample) * ARCAN_SHMIF_ACHANNELS);
 	}
 
-	lua_pushnumber(ctx, arcan_frameserver_default_abufsize(new_sz));
+	lua_pushnumber(ctx, platform_fsrv_default_abufsize(new_sz));
 	LUA_ETRACE("audio_buffer_size", NULL, 1);
 }
 
@@ -3070,7 +3070,7 @@ static int targetsuspend(lua_State* ctx)
 	if (!rsusp)
 		arcan_frameserver_pause(fsrv);
 
-	arcan_frameserver_pushevent(fsrv, &ev);
+	platform_fsrv_pushevent(fsrv, &ev);
 	LUA_ETRACE("suspend_target", NULL, 0);
 }
 
@@ -3097,7 +3097,7 @@ static int targetresume(lua_State* ctx)
 	if (!rsusp)
 		arcan_frameserver_resume(fsrv);
 
-	arcan_frameserver_pushevent(fsrv, &ev);
+	platform_fsrv_pushevent(fsrv, &ev);
 
 	LUA_ETRACE("resume_target", NULL, 0);
 }
@@ -3113,6 +3113,11 @@ static int launchavfeed(lua_State* ctx)
 {
 	LUA_TRACE("launch_avfeed");
 
+/* early out if fsrv- support is disabled */
+	if (!fsrv_ok){
+		LUA_ETRACE("launch_avfeed", NULL, 0);
+	}
+
 	const char* argstr = luaL_optstring(ctx, 1, "");
 	const char* modearg = "avfeed";
 	if (argstr != NULL)
@@ -3120,9 +3125,11 @@ static int launchavfeed(lua_State* ctx)
 
 	const char* modestr = arcan_frameserver_atypes();
 
+/* the argstr can use the [ARCAN_] way of expanding namespaces */
 	char* expbuf[2] = {strdup(argstr), NULL};
 	arcan_expand_namespaces(expbuf);
 
+/* only permit a certain set of build-time defined modes */
 	if (strstr(modestr, modearg) == NULL){
 		arcan_warning("launch_avfeed(), requested mode (%s) missing from "
 			"detected and allowed frameserver archetypes (%s), rejected.\n",
@@ -3132,7 +3139,6 @@ static int launchavfeed(lua_State* ctx)
 	}
 
 	intptr_t ref = find_lua_callback(ctx);
-	arcan_frameserver* mvctx = arcan_frameserver_alloc();
 
 	struct frameserver_envp args = {
 		.use_builtin = true,
@@ -3143,23 +3149,20 @@ static int launchavfeed(lua_State* ctx)
 	if (strcmp(modearg, "terminal") == 0)
 		args.preserve_env = true;
 
-	if ( fsrv_ok && arcan_frameserver_spawn_server(mvctx, &args) == ARCAN_OK ){
-		mvctx->tag = ref;
-		arcan_video_objectopacity(mvctx->vid, 0.0, 0);
-
-/* then prepare the return values */
-		lua_pushvid(ctx, mvctx->vid);
-		trace_allocation(ctx, "launch_avfeed", mvctx->vid);
-		lua_pushaid(ctx, mvctx->aid);
-	}
-	else {
-		free(mvctx);
-		lua_pushvid(ctx, ARCAN_EID);
-		lua_pushvid(ctx, ARCAN_EID);
-	}
-
+	struct arcan_frameserver* mvctx = platform_launch_fork(&args, ref);
 /* internal so no need to free memarr */
 	free(expbuf[1]);
+
+	if (!mvctx){
+		lua_pushvid(ctx, ARCAN_EID);
+		lua_pushaid(ctx, ARCAN_EID);
+		LUA_ETRACE("launch_aveed", "failed to launch/fork", 2);
+	}
+
+	trace_allocation(ctx, "launch_avfeed", mvctx->vid);
+	arcan_video_objectopacity(mvctx->vid, 0.0, 0);
+	lua_pushvid(ctx, mvctx->vid);
+	lua_pushaid(ctx, mvctx->aid);
 
 	LUA_ETRACE("launch_avfeed", NULL, 2);
 }
@@ -3167,6 +3170,10 @@ static int launchavfeed(lua_State* ctx)
 static int loadmovie(lua_State* ctx)
 {
 	LUA_TRACE("load_movie");
+
+	if (!fsrv_ok){
+		LUA_ETRACE("load_movie", "frameservers build-time blocked", 0);
+	}
 
 	const char* farg = luaL_checkstring(ctx, 1);
 
@@ -3199,25 +3206,22 @@ static int loadmovie(lua_State* ctx)
 		"	specified.\n", fname);
 		LUA_ETRACE("load_movie", "couldn't resolve resource", 0);
 	}
-	else{
-		if (!special){
-			size_t flen = strlen(fname);
-			size_t fnlen = flen + optlen + 8;
-			char msg[fnlen];
-			msg[fnlen-1] = 0;
 
-			colon_escape(fname);
+	if (!special){
+		size_t flen = strlen(fname);
+		size_t fnlen = flen + optlen + 8;
+		char msg[fnlen];
+		msg[fnlen-1] = 0;
 
-			if (optlen > 0)
-				snprintf(msg, fnlen-1, "%s:file=%s", argstr, fname);
-			else
-				snprintf(msg, fnlen-1, "file=%s", fname);
+		colon_escape(fname);
 
-			fname = strdup(msg);
-		}
+		if (optlen > 0)
+			snprintf(msg, fnlen-1, "%s:file=%s", argstr, fname);
+		else
+			snprintf(msg, fnlen-1, "file=%s", fname);
+
+		fname = strdup(msg);
 	}
-
-	arcan_frameserver* mvctx = arcan_frameserver_alloc();
 
 	struct frameserver_envp args = {
 		.use_builtin = true,
@@ -3228,20 +3232,16 @@ static int loadmovie(lua_State* ctx)
 	arcan_vobj_id vid = ARCAN_EID;
 	arcan_aobj_id aid = ARCAN_EID;
 
-	if ( fsrv_ok && arcan_frameserver_spawn_server(mvctx, &args) == ARCAN_OK )
-	{
-		mvctx->tag = ref;
+	struct arcan_frameserver* mvctx = platform_launch_fork(&args, ref);
+	if (mvctx){
 		arcan_video_objectopacity(mvctx->vid, 0.0, 0);
 		vid = mvctx->vid;
 		aid = mvctx->aid;
 	}
-	else
-		arcan_mem_free(mvctx);
 
 	lua_pushvid(ctx, vid);
 	lua_pushaid(ctx, aid);
 	trace_allocation(ctx, "load_movie", mvctx->vid);
-
 	arcan_mem_free(fname);
 
 	LUA_ETRACE("load_movie", NULL, 2);
@@ -3477,7 +3477,7 @@ static int targetmessage(lua_State* ctx)
 /* copy into buffer and forward */
 		memcpy(ev.tgt.message, msg, i);
 		ev.tgt.message[i] = '\0';
-		if (ARCAN_OK != arcan_frameserver_pushevent(fsrv, &ev)){
+		if (ARCAN_OK != platform_fsrv_pushevent(fsrv, &ev)){
 			lua_pushnumber(ctx, len);
 			arcan_warning("message truncation\n");
 			LUA_ETRACE("message_target", "truncation", 1);
@@ -3491,7 +3491,7 @@ static int targetmessage(lua_State* ctx)
 	if (len){
 		memcpy(ev.tgt.message, msg, len);
 		ev.tgt.message[len] = '\0';
-		if (ARCAN_OK != arcan_frameserver_pushevent(fsrv, &ev)){
+		if (ARCAN_OK != platform_fsrv_pushevent(fsrv, &ev)){
 			lua_pushnumber(ctx, len);
 			LUA_ETRACE("message_target", "truncation", 1);
 		}
@@ -3636,7 +3636,7 @@ kinderr:
 	}
 
 	lua_pushnumber(ctx, ARCAN_OK ==
-		arcan_frameserver_pushevent( (arcan_frameserver*) vstate->ptr, &ev ));
+		platform_fsrv_pushevent( (arcan_frameserver*) vstate->ptr, &ev ));
 	LUA_ETRACE("target_input/input_target", NULL, 1);
 }
 
@@ -3859,7 +3859,7 @@ static bool tgtevent(arcan_vobj_id dst, arcan_event ev)
 
 	if (state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr){
 		arcan_frameserver* fsrv = (arcan_frameserver*) state->ptr;
-		return arcan_frameserver_pushevent( fsrv, &ev ) == ARCAN_OK;
+		return platform_fsrv_pushevent( fsrv, &ev ) == ARCAN_OK;
 	}
 #ifdef ARCAN_LWA
 	else if (state && state->tag == ARCAN_TAG_LWA && state->ptr){
@@ -5481,10 +5481,10 @@ static bool push_fsrv_ramp(arcan_frameserver* dst, lua_State* src,
 	}
 
 	ch_sz[0] = i;
-	arcan_frameserver_enter(dst, tramp);
+	platform_fsrv_enter(dst, tramp);
 	bool rv = arcan_frameserver_setramps(dst,
 		index, ramps, i, ch_sz, edid_buf, edid_sz);
-	arcan_frameserver_leave();
+	platform_fsrv_leave();
 	return rv;
 }
 
@@ -5499,9 +5499,9 @@ static int pull_fsrv_ramp(lua_State* dst, arcan_frameserver* src, int ind)
 	float tblbuf[SHMIF_CMRAMP_UPLIM];
 
 /* the Lua API currently only handles single planes */
-	arcan_frameserver_enter(src, tramp);
+	platform_fsrv_enter(src, tramp);
 	bool rv = arcan_frameserver_getramps(src,ind,tblbuf,sizeof(tblbuf),ch_pos);
-	arcan_frameserver_leave();
+	platform_fsrv_leave();
 
 	if (rv && ch_pos[0]){
 		size_t nr = ch_pos[0] > SHMIF_CMRAMP_UPLIM ? SHMIF_CMRAMP_UPLIM:ch_pos[0];
@@ -6567,11 +6567,11 @@ static int targetfonthint(lua_State* ctx)
 	};
 
 	if (fd != BADFD){
-		lua_pushboolean(ctx, arcan_frameserver_pushfd(fsrv, &outev, fd));
+		lua_pushboolean(ctx, platform_fsrv_pushfd(fsrv, &outev, fd));
 		close(fd);
 	}
 	else{
-		lua_pushboolean(ctx, ARCAN_OK == arcan_frameserver_pushevent(fsrv, &outev));
+		lua_pushboolean(ctx, ARCAN_OK == platform_fsrv_pushevent(fsrv, &outev));
 	}
 
 	LUA_ETRACE("target_fonthint", NULL, 1);
@@ -6605,7 +6605,7 @@ static int targetdevhint(lua_State* ctx)
 	if (type == LUA_TNUMBER){
 		int num = luaL_checknumber(ctx, 2);
 		if (num < 0){
-			arcan_frameserver_pushevent(fsrv, &(struct arcan_event){
+			platform_fsrv_pushevent(fsrv, &(struct arcan_event){
 				.category = EVENT_TARGET,
 				.tgt.kind = TARGET_COMMAND_DEVICE_NODE,
 				.tgt.ioevs[0].iv = BADFD,
@@ -6619,7 +6619,7 @@ static int targetdevhint(lua_State* ctx)
 				arcan_warning("target_devicehint(), invalid card index specified\n");
 				LUA_ETRACE("target_device", "invalid card index", 0);
 			}
-			arcan_frameserver_pushfd(fsrv, &(struct arcan_event){
+			platform_fsrv_pushfd(fsrv, &(struct arcan_event){
 				.category = EVENT_TARGET, .tgt.kind = TARGET_COMMAND_DEVICE_NODE,
 				.tgt.ioevs[0].iv = 0, .tgt.ioevs[1].iv = 1,
 				.tgt.ioevs[2].iv = xlt_dev(luaL_optnumber(ctx, 2, DEVICE_INDIRECT))
@@ -6638,7 +6638,7 @@ static int targetdevhint(lua_State* ctx)
 		if (force && strlen(cpath) == 0)
 			arcan_fatal("target_devicehint(), forced migration connpath len == 0\n");
 		snprintf(outev.tgt.message, COUNT_OF(outev.tgt.message), "%s", cpath);
-		arcan_frameserver_pushevent(fsrv, &outev);
+		platform_fsrv_pushevent(fsrv, &outev);
 	}
 	else
 		arcan_fatal("target_devicehint");
@@ -7051,10 +7051,10 @@ static int targetbond(lua_State* ctx)
 
 	arcan_event ev = {.category = EVENT_TARGET, .tgt.kind = TARGET_COMMAND_STORE};
 
-	arcan_frameserver_pushfd(fsrv_a, &ev, pair[0]);
+	platform_fsrv_pushfd(fsrv_a, &ev, pair[0]);
 
 	ev.tgt.kind = TARGET_COMMAND_RESTORE;
-	arcan_frameserver_pushfd(fsrv_b, &ev, pair[1]);
+	platform_fsrv_pushfd(fsrv_b, &ev, pair[1]);
 
 	close(pair[0]);
 	close(pair[1]);
@@ -7092,7 +7092,7 @@ static int targetrestore(lua_State* ctx)
 		.tgt.kind = TARGET_COMMAND_RESTORE
 	};
 	arcan_frameserver* fsrv = (arcan_frameserver*) state->ptr;
-	lua_pushboolean(ctx, ARCAN_OK == arcan_frameserver_pushfd(fsrv, &ev, fd));
+	lua_pushboolean(ctx, ARCAN_OK == platform_fsrv_pushfd(fsrv, &ev, fd));
 	close(fd);
 
 	LUA_ETRACE("restore_target", NULL, 1);
@@ -7171,7 +7171,7 @@ static int targetsnapshot(lua_State* ctx)
 	arcan_event ev = {
 		.category = EVENT_TARGET, .tgt.kind = TARGET_COMMAND_STORE
 	};
-	lua_pushboolean(ctx, arcan_frameserver_pushfd(fsrv, &ev, fd));
+	lua_pushboolean(ctx, platform_fsrv_pushfd(fsrv, &ev, fd));
 	close(fd);
 	LUA_ETRACE("snapshot_target", NULL, 1);
 }
@@ -7214,7 +7214,7 @@ static arcan_frameserver* spawn_subsegment(
 	}
 
 	arcan_frameserver* res =
-		arcan_frameserver_spawn_subsegment(parent, segid, w, h, reqid);
+		platform_fsrv_spawn_subsegment(parent, segid, w, h, reqid);
 
 	if (!res){
 		arcan_video_deleteobject(newvid);
@@ -7332,9 +7332,8 @@ static int targetalloc(lua_State* ctx)
 				"length (%d) should be , 0 < n < 31\n", keylen);
 
 /*
- * if we are in the handler of a target_alloc call,
- * and a new one is issued, the connection-point will be re-used
- * without closing / unlinking.
+ * if we are in the handler of a target_alloc call, and a new one is issued,
+ * the connection-point will be re-used without closing / unlinking.
  */
 		for (const char* pos = key; *pos; pos++)
 			if (!isalnum(*pos) && *pos != '_' && *pos != '-')
@@ -7343,13 +7342,14 @@ static int targetalloc(lua_State* ctx)
 
 		if (luactx.pending_socket_label &&
 			strcmp(key, luactx.pending_socket_label) == 0){
-			newref = arcan_frameserver_listen_external(
-				key, pw, luactx.pending_socket_descr, ARCAN_SHM_UMASK);
+			newref = platform_launch_listen_external(
+				key, pw, luactx.pending_socket_descr, ARCAN_SHM_UMASK, ref);
 			arcan_mem_free(luactx.pending_socket_label);
 			luactx.pending_socket_label = NULL;
 		}
 		else
-			newref = arcan_frameserver_listen_external(key, pw, -1, ARCAN_SHM_UMASK);
+			newref = platform_launch_listen_external(
+				key, pw, -1, ARCAN_SHM_UMASK, ref);
 
 		if (!newref){
 			LUA_ETRACE("target_alloc", "couldn't listen on external", 0);
@@ -7368,17 +7368,15 @@ static int targetalloc(lua_State* ctx)
 				"contain a frameserver\n.");
 	}
 
-	if (newref){
-		newref->tag = ref;
-		lua_pushvid(ctx, newref->vid);
-		lua_pushaid(ctx, newref->aid);
-		trace_allocation(ctx, "target", newref->vid);
-	}
-	else {
+	if (!newref){
 		lua_pushvid(ctx, ARCAN_EID);
 		lua_pushaid(ctx, ARCAN_EID);
+		LUA_ETRACE("target_alloc", NULL, 2);
 	}
 
+	lua_pushvid(ctx, newref->vid);
+	lua_pushaid(ctx, newref->aid);
+	trace_allocation(ctx, "target", newref->vid);
 	LUA_ETRACE("target_alloc", NULL, 2);
 }
 
@@ -7388,6 +7386,9 @@ static int targetlaunch(lua_State* ctx)
 	arcan_configid cid = BAD_CONFIG;
 	size_t rc = 0;
 	int lmode;
+
+	if (!fsrv_ok){
+	}
 
 	if (lua_type(ctx, 1) == LUA_TSTRING){
 		cid = arcan_db_configid(dbhandle, arcan_db_targetid(dbhandle,
@@ -7446,7 +7447,7 @@ static int targetlaunch(lua_State* ctx)
 	switch (bfmt){
 	case BFRM_BIN:
 	case BFRM_SHELL:
-		intarget = arcan_target_launch_internal(exec, &argv, &env, &libs);
+		intarget = platform_launch_internal(exec, &argv, &env, &libs, ref);
 	break;
 
 	case BFRM_LWA:
@@ -7465,8 +7466,6 @@ static int targetlaunch(lua_State* ctx)
 		}
 
 /* retro want a specific format where core=exec:resource=argv[1] */
-		intarget = arcan_frameserver_alloc();
-		intarget->tag = ref;
 		struct frameserver_envp args = {
 			.use_builtin = true,
 			.args.builtin.mode = "game"
@@ -7487,11 +7486,7 @@ static int targetlaunch(lua_State* ctx)
 			argstr = NULL;
 
 		args.args.builtin.resource = argstr;
-
-		if (!fsrv_ok||arcan_frameserver_spawn_server(intarget, &args) != ARCAN_OK){
-			arcan_frameserver_free(intarget);
-			intarget = NULL;
-		}
+		intarget = platform_launch_fork(&args, ref);
 		free(argstr);
 		free(expbuf[0]);
 		free(expbuf[1]);
@@ -7502,19 +7497,21 @@ static int targetlaunch(lua_State* ctx)
 			"binary format encountered.\n");
 	}
 
+/*
+ * update accounting, so that it's possible to know if one exec- target
+ * is prone to failure (user- visible signs that it is misconfigured)
+ */
+	arcan_db_launch_status(dbhandle, cid, intarget != NULL);
+
 	if (intarget){
 		arcan_video_objectopacity(intarget->vid, 0.0, 0);
-
 /* same as with launch_avfeed, invoke the event handler with the
  * preroll event as a means for queueing up initial states */
 		lua_pushvid(ctx, intarget->vid);
 		lua_pushaid(ctx, intarget->aid);
 		trace_allocation(ctx, "launch", intarget->vid);
-		arcan_db_launch_status(dbhandle, cid, true);
 		rc = 2;
 	}
-	else
-		arcan_db_launch_status(dbhandle, cid, false);
 
 cleanup:
 	arcan_mem_freearr(&argv);
@@ -8092,64 +8089,44 @@ static int spawn_recfsrv(lua_State* ctx,
 	arcan_aobj_id* aidlocks,
 	const char* argl, const char* resf)
 {
-	arcan_frameserver* mvctx = arcan_frameserver_alloc();
+	if (!fsrv_ok)
+		return 0;
+
 	arcan_vobject* dobj = arcan_video_getobject(did);
 
-	mvctx->vid  = did;
-
-	/* in order to stay backward compatible API wise,
- * the load_movie with function callback will always need to specify
- * loop condition. (or we can switch to heuristic stack management) */
+	intptr_t tag = 0;
 	if (lua_isfunction(ctx, 9) && !lua_iscfunction(ctx, 9)){
 		lua_pushvalue(ctx, 9);
-		mvctx->tag = luaL_ref(ctx, LUA_REGISTRYINDEX);
+		tag = luaL_ref(ctx, LUA_REGISTRYINDEX);
 	}
 
 	struct frameserver_envp args = {
 		.use_builtin = true,
-		.custom_feed = true,
+		.custom_feed = did,
 		.args.builtin.mode = "encode",
 		.args.builtin.resource = argl,
 		.init_w = dobj->vstore->w,
 		.init_h = dobj->vstore->h
 	};
 
-	size_t vbuf_sz = args.init_w * args.init_h * sizeof(shmif_pixel);
-/*
- * chicken and egg, need the size to map the buffer and need the buffer
- * to map the size -- but not really, _mapav won't read/write if the
- * incoming pointer is NULL.
- */
-	mvctx->shm.shmsize = arcan_shmif_mapav(
-		(struct arcan_shmif_page*) &args, NULL, 1, vbuf_sz, NULL, 1, 32768);
-
 /* we use a special feed function meant to flush audiobuffer +
  * a single video frame for encoding */
+	struct arcan_frameserver* mvctx = platform_launch_fork(&args, tag);
+	if (!mvctx){
+		return 0;
+	}
+
 	vfunc_state fftag = {
 		.tag = ARCAN_TAG_FRAMESERV,
 		.ptr = mvctx
 	};
 	arcan_video_alterfeed(did, FFUNC_AVFEED, fftag);
 
-	if (!fsrv_ok||arcan_frameserver_spawn_server(mvctx, &args) != ARCAN_OK){
-		free(mvctx);
-		return 0;
-	}
-
-/* we define the size of the recording to be that of the storage
- * of the rendertarget vid, this should be allocated through fill_surface */
-	struct arcan_shmif_page* shmpage = mvctx->shm.ptr;
-	shmpage->w = dobj->vstore->w;
-	shmpage->h = dobj->vstore->h;
-
-	arcan_shmif_mapav(shmpage, mvctx->vbufs, 1, vbuf_sz, mvctx->abufs, 1, 32768);
-	shmpage->abufsize = 32768;
-
 /* pushing the file descriptor signals the frameserver to start receiving
  * (and use the proper dimensions), it is permitted to close and push another
  * one to the same session, with special treatment for "dumb" resource names
  * or streaming sessions */
-	int fd = 0;
+	int fd = BADFD;
 
 /* currently we allow null- files and failed lookups to be pushed for legacy
  * reasons as the trigger for the frameserver to started recording was when
@@ -8172,11 +8149,11 @@ static int spawn_recfsrv(lua_State* ctx,
 		arcan_mem_free(fn);
 	}
 
-	if (fd){
+	if (fd != BADFD){
 		arcan_event ev = {
 			.category = EVENT_TARGET, .tgt.kind = TARGET_COMMAND_STORE
 		};
-		lua_pushboolean(ctx, arcan_frameserver_pushfd(mvctx, &ev, fd));
+		lua_pushboolean(ctx, platform_fsrv_pushfd(mvctx, &ev, fd));
 		close(fd);
 	}
 
@@ -9436,23 +9413,24 @@ cleanup:
 static bool lua_launch_fsrv(lua_State* ctx,
 	struct frameserver_envp* args, intptr_t callback)
 {
-	arcan_frameserver* intarget = arcan_frameserver_alloc();
-	intarget->tag = callback;
-
-	if (fsrv_ok && arcan_frameserver_spawn_server(intarget, args) == ARCAN_OK){
-		tgtevent(intarget->vid, (arcan_event){
-			.category = EVENT_TARGET,
-			.tgt.kind = TARGET_COMMAND_ACTIVATE
-		});
-		lua_pushvid(ctx, intarget->vid);
-		trace_allocation(ctx, "net", intarget->vid);
-		return true;
-	}
-	else {
+	if (!fsrv_ok){
 		lua_pushvid(ctx, ARCAN_EID);
-		free(intarget);
 		return false;
 	}
+
+	struct arcan_frameserver* ref = platform_launch_fork(args, callback);
+	if (!ref){
+		lua_pushvid(ctx, ARCAN_EID);
+		return false;
+	}
+
+	tgtevent(ref->vid, (arcan_event){
+		.category = EVENT_TARGET,
+		.tgt.kind = TARGET_COMMAND_ACTIVATE
+	});
+	lua_pushvid(ctx, ref->vid);
+	trace_allocation(ctx, "net", ref->vid);
+	return true;
 }
 
 static int net_listen(lua_State* ctx)
@@ -9635,7 +9613,7 @@ static int net_pushcl(lua_State* ctx)
 		arcan_sem_post(srv->vsync);
 
 		outev.tgt.kind = TARGET_COMMAND_STEPFRAME;
-		arcan_frameserver_pushevent(srv, &outev);
+		platform_fsrv_pushevent(srv, &outev);
 		lua_pushvid(ctx, srv->vid);
 		trace_allocation(ctx, "net_sub", srv->vid);
 		srv->tag = ref;
@@ -9658,7 +9636,7 @@ static int net_pushcl(lua_State* ctx)
  * deltaframes in load/store operations. this also requires that the
  * capabilities of the target actually allows for save-states,
  * by default, they don't. */
-	arcan_frameserver_pushevent(fsrv, &outev);
+	platform_fsrv_pushevent(fsrv, &outev);
 
 	LUA_ETRACE("net_push", NULL, 0);
 }
@@ -9696,7 +9674,7 @@ static int net_pushsrv(lua_State* ctx)
 
 		const char* msg = luaL_checkstring(ctx, 2);
 		snprintf(outev.net.message, out_sz, "%s", msg);
-		arcan_frameserver_pushevent(fsrv, &outev);
+		platform_fsrv_pushevent(fsrv, &outev);
 	}
 	else
 		arcan_fatal("net_pushsrv() -- "
@@ -9720,7 +9698,7 @@ static int net_accept(lua_State* ctx)
 			"allowed for accept call\n");
 
 	arcan_event outev = {.category = EVENT_NET, .net.connid = domain};
-	arcan_frameserver_pushevent(fsrv, &outev);
+	platform_fsrv_pushevent(fsrv, &outev);
 
 	LUA_ETRACE("net_accept", NULL, 0);
 }
@@ -9741,7 +9719,7 @@ static int net_disconnect(lua_State* ctx)
 		.net.connid = domain
 	};
 
-	arcan_frameserver_pushevent(fsrv, &outev);
+	platform_fsrv_pushevent(fsrv, &outev);
 
 	LUA_ETRACE("net_disconnect", NULL, 0);
 }
@@ -9764,7 +9742,7 @@ static int net_authenticate(lua_State* ctx)
 		.net.kind = EVENT_NET_AUTHENTICATE,
 		.net.connid = domain
 	};
-	arcan_frameserver_pushevent(fsrv, &outev);
+	platform_fsrv_pushevent(fsrv, &outev);
 
 	LUA_ETRACE("net_authenticate", NULL, 0);
 }

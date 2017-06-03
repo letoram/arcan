@@ -121,7 +121,14 @@ set(SHMIF_SERVER_SOURCES
 set_property(SOURCE ${ASD}/engine/arcan_ttf.c
 	APPEND PROPERTY COMPILE_DEFINITIONS SHMIF_TTF)
 
-set(TARGET_LIST arcan_shmif arcan_shmif_int arcan_shmif_ext arcan_shmif_intext arcan_shmif_tui)
+set(TARGET_LIST
+	arcan_shmif
+	arcan_shmif_int
+	arcan_shmif_ext
+	arcan_shmif_intext
+	arcan_shmif_tui
+	arcan_shmif_server
+)
 
 add_library(arcan_shmif_int STATIC ${SHMIF_SOURCES} ${SHMIF_PLATFORM})
 add_library(arcan_shmif SHARED ${SHMIF_SOURCES} ${SHMIF_PLATFORM})

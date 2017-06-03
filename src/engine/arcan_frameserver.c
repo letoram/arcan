@@ -84,7 +84,7 @@ static void autoclock_frame(arcan_frameserver* tgt)
 			.tgt.ioevs[0].iv = delta / tgt->clock.start,
 			.tgt.ioevs[1].iv = 1
 		};
-		arcan_frameserver_pushevent(tgt, &ev);
+		platform_fsrv_pushevent(tgt, &ev);
 	}
 	else
 		tgt->clock.left -= delta;
@@ -108,7 +108,7 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 	src->alocks = NULL;
 
 /* will free, so no UAF here */
-	if (!arcan_frameserver_destroy(src))
+	if (!platform_fsrv_destroy(src))
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
 	char msg[32] = "SIGBUS on free";
@@ -149,7 +149,7 @@ static bool arcan_frameserver_control_chld(arcan_frameserver* src){
  * provoke a vulnerability, frameserver dying or timing out, ... */
 	bool alive = src->flags.alive && src->shm.ptr &&
 		src->shm.ptr->cookie == arcan_shmif_cookie() &&
-		arcan_frameserver_validchild(src);
+		platform_fsrv_validchild(src);
 
 /* subsegment may well be alive when the parent has just died, thus we need to
  * check the state of the parent and if it is dead, clean up just the same,
@@ -169,34 +169,6 @@ static bool arcan_frameserver_control_chld(arcan_frameserver* src){
 	}
 
 	return true;
-}
-
-arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst,
-	arcan_event* ev)
-{
-	if (!dst || !ev || !dst->outqueue.back)
-		return ARCAN_ERRC_NO_SUCH_OBJECT;
-
-	TRAMP_GUARD(ARCAN_ERRC_UNACCEPTED_STATE, dst);
-
-	arcan_errc rv = dst->flags.alive && (dst->shm.ptr && dst->shm.ptr->dms) ?
-		arcan_event_enqueue(&dst->outqueue, ev) : ARCAN_ERRC_UNACCEPTED_STATE;
-
-#ifndef MSG_DONTWAIT
-#define MSG_DONTWAIT 0
-#endif
-
-#ifndef MSG_NOSIGNAL
-#define MSG_NOSIGNAL 0
-#endif
-
-/*
- * Since the support for multiplexing on semaphores is limited at best,
- * we also have the option of pinging the socket as a possible wakeup.
- */
-	arcan_pushhandle(-1, dst->dpipe);
-	arcan_frameserver_leave();
-	return rv;
 }
 
 static void push_buffer(arcan_frameserver* src,
@@ -309,7 +281,7 @@ enum arcan_ffunc_rv arcan_frameserver_nullfeed FFUNC_HEAD
 		arcan_frameserver_free(tgt);
 
 no_out:
-	arcan_frameserver_leave();
+	platform_fsrv_leave();
 	return FRV_NOFRAME;
 }
 
@@ -328,7 +300,7 @@ enum arcan_ffunc_rv arcan_frameserver_pollffunc FFUNC_HEAD
 /* wait for connection, then unlink directory node and switch to verify. */
 	switch (cmd){
 	case FFUNC_POLL:{
-		int sc = arcan_frameserver_socketpoll(tgt);
+		int sc = platform_fsrv_socketpoll(tgt);
 		if (sc == -1){
 /* will yield terminate, close the socket etc. and propagate the event */
 			if (errno == EBADF){
@@ -387,7 +359,7 @@ enum arcan_ffunc_rv arcan_frameserver_verifyffunc FFUNC_HEAD
  * still try and optimize this and become a timing oracle, but havn't been able
  * to. */
 	case FFUNC_POLL:
-		while (-1 == arcan_frameserver_socketauth(tgt)){
+		while (-1 == platform_fsrv_socketauth(tgt)){
 			if (errno == EBADF){
 				arcan_frameserver_free(tgt);
 				return FRV_NOFRAME;
@@ -432,7 +404,7 @@ enum arcan_ffunc_rv arcan_frameserver_emptyframe FFUNC_HEAD
 			if (tgt->shm.ptr->resized){
 				tick_control(tgt, false);
 				if (tgt->shm.ptr && tgt->shm.ptr->vready){
-					arcan_frameserver_leave();
+					platform_fsrv_leave();
 					return FRV_GOTFRAME;
 				}
 			}
@@ -457,7 +429,7 @@ enum arcan_ffunc_rv arcan_frameserver_emptyframe FFUNC_HEAD
 		break;
 	}
 
-	arcan_frameserver_leave();
+	platform_fsrv_leave();
 	return FRV_NOFRAME;
 }
 
@@ -541,7 +513,7 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 		atomic_store_explicit(&shmpage->vready, 0, memory_order_release);
 		arcan_sem_post( tgt->vsync );
 		if (tgt->desc.hints & SHMIF_RHINT_VSIGNAL_EV){
-			arcan_frameserver_pushevent(tgt, &(struct arcan_event){
+			platform_fsrv_pushevent(tgt, &(struct arcan_event){
 				.category = EVENT_TARGET,
 				.tgt.kind = TARGET_COMMAND_STEPFRAME,
 				.tgt.ioevs[0].iv = 1,
@@ -559,7 +531,7 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
   }
 
 no_out:
-	arcan_frameserver_leave();
+	platform_fsrv_leave();
 
 /* we need to defer the fake invocation here to not mess with
  * the signal- guard */
@@ -592,7 +564,7 @@ enum arcan_ffunc_rv arcan_frameserver_feedcopy FFUNC_HEAD
 /* done differently since we don't care if the frameserver
  * wants to resize segments used for recording */
 		if (!arcan_frameserver_control_chld(src)){
-			arcan_frameserver_leave();
+			platform_fsrv_leave();
 			return FRV_NOFRAME;
 		}
 
@@ -620,7 +592,7 @@ enum arcan_ffunc_rv arcan_frameserver_feedcopy FFUNC_HEAD
 			src->shm.ptr->vpts = me->vstore->vinf.text.vpts;
 			src->shm.ptr->vready = true;
 			FORCE_SYNCH();
-			arcan_frameserver_pushevent(src, &ev);
+			platform_fsrv_pushevent(src, &ev);
 		}
 
 		if (src->flags.autoclock && src->clock.frame)
@@ -631,7 +603,7 @@ enum arcan_ffunc_rv arcan_frameserver_feedcopy FFUNC_HEAD
 	}
 
 leave:
-	arcan_frameserver_leave();
+	platform_fsrv_leave();
 	return FRV_NOFRAME;
 }
 
@@ -687,7 +659,7 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe FFUNC_HEAD
 			};
 
 			src->shm.ptr->vready = true;
-			arcan_frameserver_pushevent(src, &ev);
+			platform_fsrv_pushevent(src, &ev);
 
 			if (src->desc.callback_framestate)
 				emit_deliveredframe(src, 0, src->desc.framecount++);
@@ -701,7 +673,7 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe FFUNC_HEAD
 			;
 
 no_out:
-	arcan_frameserver_leave();
+	platform_fsrv_leave();
 	return FRV_NOFRAME;
 }
 
@@ -1011,13 +983,13 @@ arcan_errc arcan_frameserver_audioframe_direct(arcan_aobj* aobj,
 
 /* sanity check, untrusted source */
 	if (ind >= src->abuf_cnt || ind < 0){
-		arcan_frameserver_leave(src);
+		platform_fsrv_leave(src);
 		return ARCAN_ERRC_NOTREADY;
 	}
 
 	if (0 == amask || ((1<<ind)&amask) == 0){
 		atomic_store_explicit(&src->shm.ptr->aready, 0, memory_order_release);
-		arcan_frameserver_leave(src);
+		platform_fsrv_leave(src);
 		arcan_sem_post(src->async);
 		return ARCAN_ERRC_NOTREADY;
 	}
@@ -1043,7 +1015,7 @@ arcan_errc arcan_frameserver_audioframe_direct(arcan_aobj* aobj,
 /* check for cont and > 1, wait for signal.. else release */
 	if (!cont){
 		atomic_store_explicit(&src->shm.ptr->aready, 0, memory_order_release);
-		arcan_frameserver_leave(src);
+		platform_fsrv_leave(src);
 		arcan_sem_post(src->async);
 	}
 
@@ -1087,7 +1059,7 @@ static void tick_control(arcan_frameserver* src, bool tick)
 	with switching buffer strategies (valid buffer in one size, failed because
 	size over reach with other strategy, so now there's a failure mechanism.
  */
-	int rzc = arcan_frameserver_resynch(src);
+	int rzc = platform_fsrv_resynch(src);
 	if (rzc <= 0)
 		goto leave;
 	else if (rzc == 2){
@@ -1137,7 +1109,7 @@ leave:
 	if (!fail && tick){
 		if (0 >= --src->clock.left){
 			src->clock.left = src->clock.start;
-			arcan_frameserver_pushevent(src, &(struct arcan_event){
+			platform_fsrv_pushevent(src, &(struct arcan_event){
 				.category = EVENT_TARGET,
 				.tgt.kind = TARGET_COMMAND_STEPFRAME,
 				.tgt.ioevs[0].iv = 1,
@@ -1176,107 +1148,4 @@ arcan_errc arcan_frameserver_flush(arcan_frameserver* fsrv)
 	arcan_audio_rebuild(fsrv->aid);
 
 	return ARCAN_OK;
-}
-
-void arcan_frameserver_configure(arcan_frameserver* ctx,
-	struct frameserver_envp setup)
-{
-	arcan_errc errc;
-	if (!ctx)
-		return;
-
-	if (setup.use_builtin){
-/* "game" (or rather, interactive mode) treats a single pair of
- * videoframe+audiobuffer each transfer, minimising latency is key. */
-		if (strcmp(setup.args.builtin.mode, "game") == 0){
-			ctx->aid = arcan_audio_feed((arcan_afunc_cb)
-				arcan_frameserver_audioframe_direct, ctx, &errc);
-
-			ctx->segid = SEGID_GAME;
-			ctx->sz_audb  = 0;
-			ctx->ofs_audb = 0;
-			ctx->segid = SEGID_GAME;
-			ctx->audb = NULL;
-			ctx->queue_mask = EVENT_EXTERNAL;
-		}
-
-/* network client needs less in terms of buffering etc. but instead a
- * different signalling mechanism for flushing events */
-		else if (strcmp(setup.args.builtin.mode, "net-cl") == 0){
-			ctx->segid = SEGID_NETWORK_CLIENT;
-			ctx->queue_mask = EVENT_EXTERNAL | EVENT_NET;
-		}
-		else if (strcmp(setup.args.builtin.mode, "net-srv") == 0){
-			ctx->segid = SEGID_NETWORK_SERVER;
-			ctx->queue_mask = EVENT_EXTERNAL | EVENT_NET;
-		}
-
-/* record instead operates by maintaining up-to-date local buffers,
- * then letting the frameserver sample whenever necessary */
-		else if (strcmp(setup.args.builtin.mode, "encode") == 0){
-			ctx->segid = SEGID_ENCODER;
-/* we don't know how many audio feeds are actually monitored to produce the
- * output, thus not how large the intermediate buffer should be to
- * safely accommodate them all */
-			ctx->sz_audb = 65535;
-			ctx->audb = arcan_alloc_mem(ctx->sz_audb,
-				ARCAN_MEM_ABUFFER, 0, ARCAN_MEMALIGN_PAGE);
-			ctx->queue_mask = EVENT_EXTERNAL;
-		}
-		else if (strcmp(setup.args.builtin.mode, "terminal") == 0){
-			ctx->segid = SEGID_TERMINAL;
-			goto defcfg;
-		}
-		else{
-defcfg:
-			ctx->segid = SEGID_UNKNOWN;
-			ctx->aid = arcan_audio_feed(
-			(arcan_afunc_cb) arcan_frameserver_audioframe_direct, ctx, &errc);
-			ctx->sz_audb  = 0;
-			ctx->ofs_audb = 0;
-			ctx->audb = NULL;
-			ctx->queue_mask = EVENT_EXTERNAL;
-		}
-	}
-/* hijack works as a 'process parasite' inside the rendering pipeline of other
- * projects, either through a generic fallback library or for specialized "per-
- * target" (in order to minimize size and handle 32/64 switching
- * parent-vs-child relations */
-	else{
-		ctx->aid = arcan_audio_feed((arcan_afunc_cb)
-			arcan_frameserver_audioframe_direct, ctx, &errc);
-		ctx->segid = SEGID_UNKNOWN;
-		ctx->queue_mask = EVENT_EXTERNAL;
-
-/* local-side buffering only used for recording/mixing now */
-		ctx->sz_audb = 0;
-		ctx->ofs_audb = 0;
-		ctx->audb = NULL;
-	}
-
-/* two separate queues for passing events back and forth between main program
- * and frameserver, set the buffer pointers to the relevant offsets in
- * backend_shmpage */
-	arcan_shmif_setevqs(ctx->shm.ptr,
-		ctx->esync, &(ctx->inqueue), &(ctx->outqueue), true);
-	ctx->inqueue.synch.killswitch = (void*) ctx;
-	ctx->outqueue.synch.killswitch = (void*) ctx;
-
-	struct arcan_shmif_page* shmpage = ctx->shm.ptr;
-	shmpage->w = setup.init_w;
-	shmpage->h = setup.init_h;
-
-	ctx->vbuf_cnt = ctx->abuf_cnt = 1;
-	arcan_shmif_mapav(shmpage,
-		ctx->vbufs, ctx->vbuf_cnt, setup.init_w*setup.init_h*sizeof(shmif_pixel),
-		ctx->abufs, ctx->abuf_cnt, 65536
-	);
-
-	if (ctx->segid != SEGID_UNKNOWN){
-		arcan_event_enqueue(arcan_event_defaultctx(), &(arcan_event){
-			.category = EVENT_FSRV,
-			.fsrv.kind = EVENT_FSRV_PREROLL,
-			.fsrv.video = ctx->vid
-		});
-	}
 }

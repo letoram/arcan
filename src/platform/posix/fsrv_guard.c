@@ -48,7 +48,7 @@ static void bus_handler(int signo)
 	siglongjmp(recover, 1);
 }
 
-void arcan_frameserver_enter(struct arcan_frameserver* m, jmp_buf out)
+void platform_fsrv_enter(struct arcan_frameserver* m, jmp_buf out)
 {
 	static bool initialized;
 
@@ -60,7 +60,7 @@ void arcan_frameserver_enter(struct arcan_frameserver* m, jmp_buf out)
 
 	if (sigsetjmp(recover, 1)){
 		arcan_warning("(posix/fsrv_guard) DoS attempt from client.\n");
-		arcan_frameserver_dropshared(tag);
+		platform_fsrv_dropshared(tag);
 		tag = NULL;
 		longjmp(out, -1);
 	}
@@ -68,7 +68,7 @@ void arcan_frameserver_enter(struct arcan_frameserver* m, jmp_buf out)
 	tag = m;
 }
 
-void arcan_frameserver_leave()
+void platform_fsrv_leave()
 {
 	tag = NULL;
 }

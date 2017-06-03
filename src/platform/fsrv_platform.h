@@ -18,19 +18,30 @@
  * pending listen).
  *
  * To process the resulting arcan_frameserver context, you should first
- * periodically run arcan_frameserver_socketpoll() until it returns 0 or
+ * periodically run platform_fsrv_socketpoll() until it returns 0 or
  * -1 with EBADF as errno. On EBADF, the connection point has been consumed
  * and you need to re-allocate.
  *
  * Afterwards, even if you didn't set an auth- key, you should repeat the
- * process with arcan_frameserver_socketauth(), with the same kind of error
+ * process with platform_fsrv_socketauth(), with the same kind of error
  * handling.
  *
  * When both these steps have been completed successfully, the frameserver
  * is up and running to the point where normal event processing is working.
  */
-struct arcan_frameserver* arcan_frameserver_listen_external(
-	const char* key, const char* auth, int fd, mode_t mode);
+struct arcan_event;
+struct arcan_frameserver* platform_fsrv_listen_external(
+	const char* key, const char* auth, int fd, mode_t mode, uintptr_t tag);
+
+/*
+ * Build a frameserver context that can be used either in-process or forwarded
+ * to a new process. Note that this will only prepare the context and resources
+ * not control how connection primitives are transmitted, hence why the client
+ * end of the socket is passed in [clsocket].
+ */
+struct arcan_frameserver* platform_fsrv_spawn_server(
+	int segid, size_t w, size_t h, uintptr_t tag, int* clsocket
+);
 
 /*
  * perform a resynchronization (resize) operation where negotiated buffer
@@ -42,16 +53,16 @@ struct arcan_frameserver* arcan_frameserver_listen_external(
  * 1 - backing store was resized / remapped
  * 2 - subprotocol state was reset
  */
-int arcan_frameserver_resynch(struct arcan_frameserver* src);
+int platform_fsrv_resynch(struct arcan_frameserver* src);
 
 /*
  * Allocate a new frameserver segment, bind it to the same process
  * and communicate the necessary IPC arguments (key etc.) using
  * the pre-existing eventqueue of the frameserver controlled by (ctx)
  */
-struct arcan_frameserver* arcan_frameserver_spawn_subsegment(
+struct arcan_frameserver* platform_fsrv_spawn_subsegment(
 	struct arcan_frameserver* ctx, int ARCAN_SEGID,
-	int hintw, int hinth, int tag);
+	size_t hintw, size_t hinth, uintptr_t tag);
 
 /*
  * Used with a pending external connection where the socket has been bound
@@ -63,7 +74,7 @@ struct arcan_frameserver* arcan_frameserver_spawn_subsegment(
  *
  * or 0 and set src->dpipe in the case of a successful connection..
  */
-int arcan_frameserver_socketpoll(struct arcan_frameserver* src);
+int platform_fsrv_socketpoll(struct arcan_frameserver* src);
 
 /*
  * Wait until an (optional) key based authentication session has been passed.
@@ -75,7 +86,7 @@ int arcan_frameserver_socketpoll(struct arcan_frameserver* src);
  * EBADF - socket died or authentication error, explicit restart required
  * EAGAIN - need more data to authenticate, try again later.
  */
-int arcan_frameserver_socketauth(struct arcan_frameserver* src);
+int platform_fsrv_socketauth(struct arcan_frameserver* src);
 
 /*
  * Act as a criticial section, with jmp_buf being invocated on significant
@@ -83,15 +94,15 @@ int arcan_frameserver_socketauth(struct arcan_frameserver* src);
  * memory parts of _frameserver internals.
  */
 #include <setjmp.h>
-void arcan_frameserver_enter(struct arcan_frameserver*, jmp_buf ctx);
-void arcan_frameserver_leave();
+void platform_fsrv_enter(struct arcan_frameserver*, jmp_buf ctx);
+void platform_fsrv_leave();
 
 /*
  * disconnect, clean up resources, free. The connection should be considered
  * alive (not just _alloc call) or it will return false. State of *src is
  * undefined after this call (will be free:d)
  */
-bool arcan_frameserver_destroy(struct arcan_frameserver* src);
+bool platform_fsrv_destroy(struct arcan_frameserver* src);
 
 /*
  * Allocate shared and heap memory, reset all members to an empty state and
@@ -99,22 +110,41 @@ bool arcan_frameserver_destroy(struct arcan_frameserver* src);
  * this yourself, the _listen_external, spawn_subsegment and simiar functions
  * do this for you.
  */
-struct arcan_frameserver* arcan_frameserver_alloc();
+struct arcan_frameserver* platform_fsrv_alloc();
+
+/*
+ * copy the supplied event to outgoing queue of the frameserver. If the event
+ * is also bound to a file descriptor, the platform_fsrv_pushfd function
+ * should be used in stead.
+ */
+int platform_fsrv_pushevent(struct arcan_frameserver*, struct arcan_event*);
+
+/*
+ * Determine if the connected end is still alive or not,
+ * this is treated as a poll -> state transition
+ */
+bool platform_fsrv_validchild(struct arcan_frameserver*);
+
+/*
+ * similar to pushevent, but used when there is a descriptor that should be
+ * paired with the event.
+ */
+int platform_fsrv_pushfd(struct arcan_frameserver*, struct arcan_event*, int);
 
 /*
  * Update the static / shared default audio buffer size that is provided if
  * the client doesn't request a specific one. Returns the previous value.
  */
-size_t arcan_frameserver_default_abufsize(size_t new_sz);
+size_t platform_fsrv_default_abufsize(size_t new_sz);
 
 /*
  * Update the number of permitted displays for frameservers that have been
  * given access to the color ramp subprotocol.
  */
-size_t arcan_frameserver_display_limit(size_t new_sz);
+size_t platform_fsrv_display_limit(size_t new_sz);
 
 /*
  * Release any shared memory resources associated with the frameserver
  */
-void arcan_frameserver_dropshared(struct arcan_frameserver* ctx);
+void platform_fsrv_dropshared(struct arcan_frameserver* ctx);
 #endif
