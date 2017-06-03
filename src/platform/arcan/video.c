@@ -95,6 +95,13 @@ struct display {
 
 static struct arg_arr* shmarg;
 
+static struct {
+	uint64_t magic;
+	volatile uint8_t resize_pending;
+} primary_udata = {
+	.magic = 0xfeedface
+};
+
 bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	bool fs, bool frames, const char* title)
 {
@@ -152,6 +159,7 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 		return false;
 	}
 
+	disp[0].conn.user = &primary_udata;
 	arcan_shmif_setprimary(SHMIF_INPUT, &disp[0].conn);
 	arcan_shmifext_make_current(&disp[0].conn);
 
@@ -343,15 +351,19 @@ bool platform_video_specify_mode(platform_display_id id,
 	if (!(id < MAX_DISPLAYS && disp[id].conn.addr))
 		return false;
 
+	primary_udata.resize_pending = 1;
+
 	if (!mode.width || !mode.height ||
 		(mode.height == disp[id].conn.w && mode.height == disp[id].conn.h) ||
-		!arcan_shmif_lock(&disp[id].conn))
+		!arcan_shmif_lock(&disp[id].conn)){
 		return false;
+	}
 
 	bool rz = arcan_shmif_resize(&disp[id].conn, mode.width, mode.height);
 
 	disp[id].dirty = 2;
 	arcan_shmif_unlock(&disp[id].conn);
+	primary_udata.resize_pending = 0;
 
 	return rz;
 }
@@ -565,19 +577,21 @@ void platform_video_synch(uint64_t tick_count, float fract,
 
 	unsigned long long frametime = arcan_timemillis();
 
+	for (size_t i = 0; i < MAX_DISPLAYS; i++){
+		if (disp[i].dirty)
+			FLAG_DIRTY(NULL);
+	}
+
 	size_t platform_nupd;
 	arcan_bench_register_cost(arcan_vint_refresh(fract, &platform_nupd));
 	agp_activate_rendertarget(NULL);
 
+	if (!platform_nupd){
+		goto pollout;
+	}
+
 /* actually needed here or handle content will be broken */
 	glFlush();
-
-	unsigned long long ts = arcan_timemillis();
-	if (ts < frametime){
-		frametime = (unsigned long long)-1 - frametime + ts;
-	}
-	else
-		frametime = ts - frametime;
 
 	for (size_t i = 0; i < MAX_DISPLAYS; i++){
 		if (!(disp[i].dirty || (platform_nupd && disp[i].visible)))
@@ -604,23 +618,21 @@ void platform_video_synch(uint64_t tick_count, float fract,
 		}
 	}
 
-	unsigned long long synchtime = arcan_timemillis();
-	if (synchtime < ts){
-		synchtime = (unsigned long long)-1 - synchtime + ts;
-	}
-	else
-		synchtime = synchtime - ts;
+	unsigned long long synchtime;
+
+pollout:
+	synchtime = arcan_timemillis() - frametime;
 
 /*
  * missing synchronization strategy setting here entirely, this
  * is just based on an assumed ~16ish max delay using the rendertime
  */
-	if (frametime + synchtime < 16){
+	if (synchtime < 16){
 		struct pollfd pfd = {
 			.fd = disp[0].conn.epipe,
 			.events = POLLIN | POLLERR | POLLHUP | POLLNVAL
 		};
-		poll(&pfd, 1, 16 - frametime - synchtime);
+		poll(&pfd, 1, 16 - synchtime);
 	}
 
 	if (post)
