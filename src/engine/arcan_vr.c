@@ -62,40 +62,33 @@ struct arcan_vr_ctx* arcan_vr_setup(const char* vrbridge,
  * build a frameserver context and envp with the data for the vrbridge
  * and with the subprotocol permissions enabled
  */
-	arcan_frameserver* mvctx = arcan_frameserver_alloc();
-	if (!mvctx){
-		free(kv);
-		return NULL;
-	}
-	mvctx->metamask |= SHMIF_META_VR | SHMIF_META_VOBJ;
 
 	struct arcan_strarr arr_argv = {0}, arr_env = {0};
 	arcan_mem_growarr(&arr_argv);
 	arr_argv.data[0] = strdup(kv);
 
 	struct frameserver_envp args = {
+		.metamask = SHMIF_META_VR | SHMIF_META_VOBJ,
 		.use_builtin = false,
 		.args.external.fname = kv,
 		.args.external.envv = &arr_env,
 		.args.external.argv = &arr_argv,
 		.args.external.resource = strdup(bridge_arg)
 	};
-	if (ARCAN_OK != arcan_frameserver_spawn_server(mvctx, &args)){
-		free(kv);
-		arcan_mem_freearr(&arr_argv);
-		arcan_mem_freearr(&arr_env);
-		arcan_mem_free(mvctx);
-		return NULL;
-	}
 
-	mvctx->tag = tag;
+	struct arcan_frameserver* mvctx = platform_launch_fork(&args, tag);
 	arcan_mem_freearr(&arr_argv);
 	arcan_mem_freearr(&arr_env);
+	free(args.args.external.resource);
+
+	if (!mvctx){
+		free(kv);
+		return NULL;
+	}
 
 /*
  * set a custom FFUNC that handles the polling / mapping behavior
  * is it custom_feed?
- *
  */
 	return (struct arcan_vr_ctx*) mvctx;
 }

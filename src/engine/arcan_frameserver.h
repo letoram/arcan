@@ -206,12 +206,19 @@ typedef struct arcan_frameserver arcan_frameserver;
 /* cover initial launch arguments */
 struct frameserver_envp {
 	bool use_builtin;
-	bool custom_feed;
+
+/* set to a valid vid to avoid allocation+feed setup */
+	long long custom_feed;
+
+/* should execute with a clean env or inherit existing? */
 	bool preserve_env;
 
 	int init_w, init_h;
 	size_t prequeue_sz;
 	arcan_event** prequeue_events;
+
+/* if we should have a specific set of enabled subprotocols from the start */
+	int metamask;
 
 	union {
 		struct {
@@ -305,13 +312,6 @@ bool arcan_frameserver_setramps(arcan_frameserver*,
 );
 
 /*
- * Symbol should only be used by the backend to reach OS specific
- * implementations (_unix.c / win32 )
- */
-void arcan_frameserver_dropsemaphores(arcan_frameserver*);
-void arcan_frameserver_dropsemaphores_keyed(char*);
-
-/*
  * Various transfer- and buffering schemes. These should not be mapped
  * into video- feedfunctions by themeselves, but managed through
  * the arcan_ffunc_lut.h
@@ -356,12 +356,6 @@ arcan_aobj_id source, float leftch, float rightch);
 arcan_errc arcan_frameserver_flush(arcan_frameserver* fsrv);
 
 /*
- * Determine if the connected end is still alive or not,
- * this is treated as a poll -> state transition
- */
-bool arcan_frameserver_validchild(arcan_frameserver* ctx);
-
-/*
  * Guarantee that any and all child processes associated or spawned
  * from the child connected will be terminated in as clean a
  * manner as possible (thus may not happen immediately although
@@ -379,6 +373,20 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 arcan_errc arcan_frameserver_free(arcan_frameserver*);
 
 /*
+ * helper functions that tie together the platform/.../frameserver.c
+ * with allocation, member matching, presets etc.
+ */
+arcan_frameserver* platform_launch_listen_external(
+	const char* key, const char* pw, int fd, mode_t mode, uintptr_t tag);
+
+struct arcan_frameserver* platform_launch_fork(
+	struct frameserver_envp* setup, uintptr_t tag);
+
+arcan_frameserver* platform_launch_internal(const char* fname,
+	struct arcan_strarr* argv, struct arcan_strarr* envv,
+	struct arcan_strarr* libs, uintptr_t tag);
+
+/*
  * Working against the mapped shared memory page is a critical section,
  * there are corner cases and DoS opportunities that could be exploited
  * by the other side that forces us to setup a fallback point in the
@@ -388,7 +396,7 @@ arcan_errc arcan_frameserver_free(arcan_frameserver*);
 	jmp_buf tramp;\
 	if (0 != setjmp(tramp))\
 		return ERRC;\
-	arcan_frameserver_enter(fsrv, tramp);\
+	platform_fsrv_enter(fsrv, tramp);\
 }
 
 #endif

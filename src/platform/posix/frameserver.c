@@ -56,24 +56,27 @@ static size_t default_disp_lim = 8;
  * structure will be populated with the detailed offsets and sizes, which
  * should be passed to setproto if the change could be applied.
  */
-static size_t arcan_frameserver_protosize(struct arcan_frameserver* ctx,
+static size_t fsrv_protosize(struct arcan_frameserver* ctx,
 	unsigned proto, struct arcan_shmif_ofstbl* dofs);
 
 /*
  * Prepare the necessary metadata for a specific sub-protocol, should
  * only originate from a platform implementation of the resize handler.
  */
-static void arcan_frameserver_setproto(struct arcan_frameserver* ctx,
+static void fsrv_setproto(struct arcan_frameserver* ctx,
 	unsigned proto, struct arcan_shmif_ofstbl* ofsets);
+
+
+/*
+ * Spawn a guard thread that makes sure the process connected to src will
+ * be killed off.
+ */
+static void fsrv_killchild(arcan_frameserver* src);
 
 /* NOTE: maintaing pid_t for frameserver (or worse, for hijacked target)
  * should really be replaced by making sure they belong to the same process
  * group and first send a close signal to the group, and thereafter KILL */
 
-/* Dislike resorting to these kinds of antics, but it was among the cleaner
- * solutions given the portability constraints (OSX,Win32). Other solutions
- * are in the pipeline, we're essentially waiting for adoption rates to get
- * good for descriptor based pid handles. */
 static void* nanny_thread(void* arg)
 {
 	pid_t* pid = (pid_t*) arg;
@@ -110,6 +113,26 @@ static size_t shmpage_size(size_t w, size_t h,
 #endif
 }
 
+static void dropshared_keyed(char** key)
+{
+	if (!key || !(*key))
+		return;
+
+	char* work = *key;
+
+	shm_unlink(work);
+	size_t chpos = strlen(work) - 1;
+	work[chpos] = 'a';
+	arcan_sem_unlink(NULL, work);
+	work[chpos] = 'e';
+	arcan_sem_unlink(NULL, work);
+	work[chpos] = 'v';
+	arcan_sem_unlink(NULL, work);
+
+	arcan_mem_free(work);
+	*key = NULL;
+}
+
 /*
  * the rather odd structure we want for poll on the verify socket
  */
@@ -141,7 +164,7 @@ static bool fd_avail(int fd, bool* term)
 	return false;
 }
 
-bool arcan_frameserver_destroy(arcan_frameserver* src)
+bool platform_fsrv_destroy(arcan_frameserver* src)
 {
 	if (!src)
 		return false;
@@ -155,14 +178,14 @@ bool arcan_frameserver_destroy(arcan_frameserver* src)
 	if (0 != setjmp(buf))
 		goto out;
 
-	arcan_frameserver_enter(src, buf);
+	platform_fsrv_enter(src, buf);
 /* be nice and say that you'll be dropped off */
 	if (shmpage){
 		arcan_event exev = {
 			.category = EVENT_TARGET,
 			.tgt.kind = TARGET_COMMAND_EXIT
 		};
-		arcan_frameserver_pushevent(src, &exev);
+		platform_fsrv_pushevent(src, &exev);
 
 /* and flick any other switch that might keep the child locked, since it's
  * common with multi- thread producer, etc. dms triggers guard/thread if it's
@@ -176,12 +199,12 @@ bool arcan_frameserver_destroy(arcan_frameserver* src)
 
 /* if BUS happens during _enter, the handler will take
  * care of dropping shared and shutting down so no problem here */
-	arcan_frameserver_dropshared(src);
-	arcan_frameserver_leave();
+	platform_fsrv_dropshared(src);
+	platform_fsrv_leave();
 
 /* non-auth trigger nanny thread */
 out:
-	arcan_frameserver_killchild(src);
+	fsrv_killchild(src);
 	src->child = BROKEN_PROCESS_HANDLE;
 	src->flags.alive = false;
 
@@ -201,7 +224,7 @@ out:
 	return true;
 }
 
-void arcan_frameserver_dropshared(arcan_frameserver* src)
+void platform_fsrv_dropshared(arcan_frameserver* src)
 {
 	if (!src)
 		return;
@@ -222,55 +245,22 @@ void arcan_frameserver_dropshared(arcan_frameserver* src)
 		src->sockkey = NULL;
 	}
 
+
 	struct arcan_shmif_page* shmpage = src->shm.ptr;
 
 	if (shmpage && -1 == munmap((void*) shmpage, src->shm.shmsize))
 		arcan_warning("BUG -- frameserver_dropshared(), munmap failed: %s\n",
 			strerror(errno));
 
-	if (src->shm.key){
-		shm_unlink( src->shm.key );
+	dropshared_keyed(&src->shm.key);
 
-/* step 2, semaphore handles */
-		size_t slen = strlen(src->shm.key) + 1;
-		if (slen > 1){
-			char work[slen];
-			snprintf(work, slen, "%s", src->shm.key);
-			slen -= 2;
-			work[slen] = 'v';
-			sem_unlink(work); sem_close(src->vsync);
-			work[slen] = 'a';
-			sem_unlink(work); sem_close(src->async);
-			work[slen] = 'e';
-			sem_unlink(work); sem_close(src->esync);
-			arcan_mem_free(src->shm.key);
-		}
-	}
 	if (-1 != src->shm.handle)
 		close(src->shm.handle);
 
 	src->shm.ptr = NULL;
 }
 
-void arcan_frameserver_dropsemaphores_keyed(char* key)
-{
-	char* work = strdup(key);
-		work[ strlen(work) - 1] = 'v';
-		arcan_sem_unlink(NULL, work);
-		work[strlen(work) - 1] = 'a';
-		arcan_sem_unlink(NULL, work);
-		work[strlen(work) - 1] = 'e';
-		arcan_sem_unlink(NULL, work);
-	arcan_mem_free(work);
-}
-
-void arcan_frameserver_dropsemaphores(arcan_frameserver* src){
-	if (src && src->shm.key && src->shm.ptr){
-		arcan_frameserver_dropsemaphores_keyed(src->shm.key);
-	}
-}
-
-void arcan_frameserver_killchild(arcan_frameserver* src)
+static void fsrv_killchild(arcan_frameserver* src)
 {
 /* only "kill" main-segments and non-authoritative connections */
 	if (!src || src->parent.vid != ARCAN_EID || src->child <= 1)
@@ -320,7 +310,7 @@ void arcan_frameserver_killchild(arcan_frameserver* src)
 	pthread_attr_destroy(&nanny_attr);
 }
 
-bool arcan_frameserver_validchild(arcan_frameserver* src){
+bool platform_fsrv_validchild(arcan_frameserver* src){
 	int status;
 
 /* free (consequence of a delete call on the associated vid)
@@ -366,13 +356,13 @@ bool arcan_frameserver_validchild(arcan_frameserver* src){
 		return true;
 }
 
-arcan_errc arcan_frameserver_pushfd(
+int platform_fsrv_pushfd(
 	arcan_frameserver* fsrv, arcan_event* ev, int fd)
 {
 	if (!fsrv || fd == BADFD)
 		return ARCAN_ERRC_BAD_ARGUMENT;
 
-	arcan_frameserver_pushevent( fsrv, ev );
+	platform_fsrv_pushevent( fsrv, ev );
 	if (arcan_pushhandle(fd, fsrv->dpipe))
 		return ARCAN_OK;
 
@@ -607,7 +597,7 @@ static bool shmalloc(arcan_frameserver* ctx,
 * start with max, then truncate down to whatever is actually used */
 	int rc = ftruncate(shmfd, ctx->shm.shmsize);
 	if (-1 == rc){
-		arcan_warning("arcan_frameserver_spawn_server(unix) -- allocating"
+		arcan_warning("platform_fsrv_spawn_server(unix) -- allocating"
 		" (%d) shared memory failed (%d).\n", ctx->shm.shmsize, errno);
 		goto fail;
 	}
@@ -617,20 +607,24 @@ static bool shmalloc(arcan_frameserver* ctx,
 		NULL, ctx->shm.shmsize, PROT_READ | PROT_WRITE, MAP_SHARED, shmfd, 0);
 
 	if (MAP_FAILED == shmpage){
-		arcan_warning("arcan_frameserver_spawn_server(unix) -- couldn't "
+		arcan_warning("platform_fsrv_spawn_server(unix) -- couldn't "
 			"allocate shmpage\n");
-
 fail:
-		arcan_frameserver_dropsemaphores_keyed(ctx->shm.key);
+		dropshared_keyed(&ctx->shm.key);
 		return false;
 	}
 
+/* separate failure code here as the memory is still mapped */
 	jmp_buf out;
-	if (0 != setjmp(out))
-		goto fail;
+	if (0 != setjmp(out)){
+		munmap(shmpage, ctx->shm.shmsize);
+		ctx->shm.ptr = NULL;
+		dropshared_keyed(&ctx->shm.key);
+		return false;
+	}
 
 /* tiny race condition SIGBUS window here */
-	arcan_frameserver_enter(ctx, out);
+	platform_fsrv_enter(ctx, out);
 		memset(shmpage, '\0', ctx->shm.shmsize);
 		shmpage->dms = true;
 		shmpage->parent = getpid();
@@ -641,12 +635,12 @@ fail:
 		shmpage->vpending = 1;
 		shmpage->apending = 1;
 		ctx->shm.ptr = shmpage;
-	arcan_frameserver_leave(ctx);
+	platform_fsrv_leave(ctx);
 
 	return true;
 }
 
-struct arcan_frameserver* arcan_frameserver_alloc()
+struct arcan_frameserver* platform_fsrv_alloc()
 {
 	arcan_frameserver* res = arcan_alloc_mem(sizeof(arcan_frameserver),
 		ARCAN_MEM_VTAG, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
@@ -654,7 +648,7 @@ struct arcan_frameserver* arcan_frameserver_alloc()
 	res->watch_const = 0xfeed;
 
 	res->dpipe = BADFD;
-
+	res->queue_mask = EVENT_EXTERNAL;
 	res->playstate = ARCAN_PLAYING;
 	res->flags.alive = true;
 	res->flags.autoclock = true;
@@ -662,6 +656,7 @@ struct arcan_frameserver* arcan_frameserver_alloc()
 	res->desc.samplerate = ARCAN_SHMIF_SAMPLERATE;
 	res->vstream.handle = BADFD;
 	res->sockmode = S_IRWXU;
+	res->child = BROKEN_PROCESS_HANDLE;
 
 /* these are statically defined right now, but we may want to make them
  * configurable in the future to possibly utilize other accelerated resampling
@@ -680,7 +675,7 @@ struct arcan_frameserver* arcan_frameserver_alloc()
 	return res;
 }
 
-size_t arcan_frameserver_protosize(arcan_frameserver* ctx,
+static size_t fsrv_protosize(arcan_frameserver* ctx,
 	unsigned proto, struct arcan_shmif_ofstbl* dofs)
 {
 	size_t tot = 0;
@@ -752,37 +747,18 @@ size_t arcan_frameserver_protosize(arcan_frameserver* ctx,
 }
 
 /*
- * Allocate a new segment (shmalloc), inherit the relevant tracking members
- * from the parent, re-use the segment to notify the new key to be used, mark
- * the segment as pending and set a transitional feed-function that looks for
- * an ident on the socket.
+ * size, allocate and fill out the necessary members for a segment with
+ * the specific id, dimensions and tag
  */
-arcan_frameserver* arcan_frameserver_spawn_subsegment(
-	arcan_frameserver* ctx, int segid, int hintw, int hinth, int tag)
+static bool prepare_segment(struct arcan_frameserver* ctx,
+	int segid, size_t hintw, size_t hinth, bool named,
+	const char* optkey, int optdesc, uintptr_t tag)
 {
-	if (!ctx || ctx->flags.alive == false)
-		return NULL;
-
-	hintw = hintw <= 0 || hintw > ARCAN_SHMPAGE_MAXW ? 32 : hintw;
-	hinth = hinth <= 0 || hinth > ARCAN_SHMPAGE_MAXH ? 32 : hinth;
-
-	arcan_frameserver* newseg = arcan_frameserver_alloc();
-	if (!newseg)
-		return NULL;
-
-	newseg->shm.shmsize = shmpage_size(hintw, hinth, 1, 1, 65535, 0);
-
-	if (!shmalloc(newseg, false, NULL, -1)){
-		arcan_mem_free(newseg);
-		return NULL;
-	}
-	struct arcan_shmif_page* shmpage = newseg->shm.ptr;
-
 	size_t abufc = 0;
 	size_t abufsz = 0;
 
 /*
- * Normally, subsegments don't get any audiobuffers unless they recipient
+ * Normally, subsegments don't get any audiobuffers unless the recipient
  * ask for it during a resize/negotiation. We ignore this for the encoder
  * case as there's currently no negotiation protocol in place.
  */
@@ -791,36 +767,97 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 		abufsz = 65535;
 	}
 
+	ctx->shm.shmsize = shmpage_size(hintw, hinth, 1, abufc, abufsz, 0);
+
+	if (!shmalloc(ctx, named, optkey, optdesc))
+		return NULL;
+
+	struct arcan_shmif_page* shmpage = ctx->shm.ptr;
+
 	jmp_buf out;
 	if (0 != setjmp(out)){
-		arcan_frameserver_destroy(newseg);
+		platform_fsrv_destroy(ctx);
 		return NULL;
 	}
 
-	arcan_frameserver_enter(ctx, out);
+/* write the new settings to our shmalloced block */
+	platform_fsrv_enter(ctx, out);
 		shmpage->w = hintw;
 		shmpage->h = hinth;
 		shmpage->vpending = 1;
 		shmpage->abufsize = abufsz;
 		shmpage->apending = abufc;
 		shmpage->segment_token = (uint32_t) ctx->cookie++;
-	arcan_frameserver_leave(ctx);
+		shmpage->segment_size = arcan_shmif_mapav(shmpage,
+			ctx->vbufs, 1, hintw * hinth * sizeof(shmif_pixel),
+			ctx->abufs, abufc, abufsz
+		);
+	platform_fsrv_leave(ctx);
 
-/*
- * Currently, we're reserving a rather aggressive amount of memory for audio,
- * even though it's likely that (especially for multiple- segments) it will go
- * by unused. For arcan->frameserver data transfers we shouldn't have an AID,
- * attach monitors and synch audio transfers to video.
- */
-	arcan_errc errc;
-	newseg->desc = (struct arcan_frameserver_meta){
+	ctx->desc = (struct arcan_frameserver_meta){
 		.width = hintw,
 		.height = hinth,
 		.bpp = sizeof(av_pixel)
 	};
-	newseg->source = ctx->source ? strdup(ctx->source) : NULL;
+
+/*
+ * We monitor the same PID as parent, but for cases where we don't monitor
+ * parent (non-auth) we switch to using the socket as indicator.
+ */
+	ctx->launchedtime = arcan_timemillis();
+	ctx->flags.alive = true;
+	ctx->segid = segid;
+
+/*
+ * prepare A/V buffers, map up queue controls
+ */
+	ctx->vbuf_cnt = 1;
+	ctx->abuf_cnt = abufc;
+	ctx->abuf_sz = abufsz;
+	ctx->tag = tag;
+	arcan_shmif_setevqs(ctx->shm.ptr, ctx->esync,
+		&(ctx->inqueue), &(ctx->outqueue), true);
+	ctx->inqueue.synch.killswitch = (void*) ctx;
+	ctx->outqueue.synch.killswitch = (void*) ctx;
+
+	return ctx;
+}
+
+/*
+ * Allocate a new segment (shmalloc), inherit the relevant tracking members
+ * from the parent, re-use the segment to notify the new key to be used, mark
+ * the segment as pending and set a transitional feed-function that looks for
+ * an ident on the socket.
+ */
+struct arcan_frameserver* platform_fsrv_spawn_subsegment(
+	struct arcan_frameserver* ctx,
+	int segid, size_t hintw, size_t hinth, uintptr_t tag)
+{
+	if (!ctx || ctx->flags.alive == false)
+		return NULL;
+
+	hintw = hintw == 0 || hintw > ARCAN_SHMPAGE_MAXW ? 32 : hintw;
+	hinth = hinth == 0 || hinth > ARCAN_SHMPAGE_MAXH ? 32 : hinth;
+
+	arcan_frameserver* newseg = platform_fsrv_alloc();
+	if (!newseg)
+		return NULL;
+
+	if (!prepare_segment(newseg, segid, hintw, hinth, false, NULL, -1, tag)){
+		arcan_mem_free(newseg);
+		return NULL;
+	}
+
+/* minor parent relationship tracking */
+	if (ctx->source)
+		newseg->source = strdup(ctx->source);
 	newseg->parent.vid = ctx->vid;
 	newseg->parent.ptr = (void*) ctx;
+/*
+ * We monitor the same PID as parent, but for cases where we don't monitor
+ * parent (non-auth) we switch to using the socket as indicator.
+ */
+	newseg->child = ctx->child;
 
 /*
  * Transfer the new event socket along with the base-key that will be used to
@@ -831,41 +868,9 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
  */
 	int sockp[4] = {-1, -1};
 	if (!sockpair_alloc(sockp, 1, true)){
-		arcan_frameserver_destroy(newseg);
+		platform_fsrv_destroy(newseg);
 		return NULL;
 	}
-
-/*
- * We monitor the same PID as parent, but for cases where we don't monitor
- * parent (non-auth) we switch to using the socket as indicator.
- */
-	newseg->launchedtime = arcan_timemillis();
-	newseg->child = ctx->child;
-	newseg->flags.alive = true;
-
-/* NOTE: should we allow some segments to map events with other masks, or
- * should this be a separate command with a heavy warning? i.e.  allowing
- * EVENT_INPUT gives remote-control etc. options, with all the security
- * considerations that comes with it */
-	newseg->queue_mask = EVENT_EXTERNAL;
-	newseg->segid = segid;
-
-	newseg->sz_audb = 0;
-	newseg->ofs_audb = 0;
-	newseg->audb = NULL;
-
-	newseg->vbuf_cnt = 1;
-	newseg->abuf_cnt = abufc;
-	shmpage->segment_size = arcan_shmif_mapav(shmpage,
-		newseg->vbufs, 1, hintw * hinth * sizeof(shmif_pixel),
-		newseg->abufs, abufc, abufsz
-	);
-	newseg->abuf_sz = abufsz;
-
-	arcan_shmif_setevqs(newseg->shm.ptr, newseg->esync,
-		&(newseg->inqueue), &(newseg->outqueue), true);
-	newseg->inqueue.synch.killswitch = (void*) newseg;
-	newseg->outqueue.synch.killswitch = (void*) newseg;
 
 /*
  * We finally have a completed segment with all tracking, buffering etc.  in
@@ -874,6 +879,7 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
  */
 	newseg->dpipe = sockp[0];
 	arcan_pushhandle(sockp[1], ctx->dpipe);
+	close(sockp[1]);
 
 	arcan_event keyev = {
 		.category = EVENT_TARGET, .tgt.kind = TARGET_COMMAND_NEWSEGMENT
@@ -888,11 +894,38 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 		"%s", newseg->shm.key
 	);
 
-	arcan_frameserver_pushevent(ctx, &keyev);
+	platform_fsrv_pushevent(ctx, &keyev);
 	return newseg;
 }
 
-int arcan_frameserver_socketauth(struct arcan_frameserver* tgt)
+int platform_fsrv_pushevent(arcan_frameserver* dst, arcan_event* ev)
+{
+	if (!dst || !ev || !dst->outqueue.back)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+
+	TRAMP_GUARD(ARCAN_ERRC_UNACCEPTED_STATE, dst);
+
+	arcan_errc rv = dst->flags.alive && (dst->shm.ptr && dst->shm.ptr->dms) ?
+		arcan_event_enqueue(&dst->outqueue, ev) : ARCAN_ERRC_UNACCEPTED_STATE;
+
+#ifndef MSG_DONTWAIT
+#define MSG_DONTWAIT 0
+#endif
+
+#ifndef MSG_NOSIGNAL
+#define MSG_NOSIGNAL 0
+#endif
+
+/*
+ * Since the support for multiplexing on semaphores is limited at best,
+ * we also have the option of pinging the socket as a possible wakeup.
+ */
+	arcan_pushhandle(-1, dst->dpipe);
+	platform_fsrv_leave();
+	return rv;
+}
+
+int platform_fsrv_socketauth(struct arcan_frameserver* tgt)
 {
 	char ch;
 	size_t ntw;
@@ -964,7 +997,7 @@ send_key:
 	return 0;
 }
 
-int arcan_frameserver_socketpoll(struct arcan_frameserver* tgt)
+int platform_fsrv_socketpoll(struct arcan_frameserver* tgt)
 {
 /* if we're not in a pending state, just return normal. */
 	bool term;
@@ -994,132 +1027,9 @@ int arcan_frameserver_socketpoll(struct arcan_frameserver* tgt)
 }
 
 /*
- * expand-env pre-fork and make sure appropriate namespaces are present
- * and that there's enough room in the frameserver_envp for NULL term.
- * The caller will cleanup env with free_strarr.
- */
-static void append_env(struct arcan_strarr* darr,
-	char* argarg, char* sockmsg, char* conn)
-{
-/*
- * slightly unsure which ones we actually need to propagate, for now these go
- * through the chainloader so it is much less of an issue as most namespace
- * remapping features will go there, and arcterm need to configure the new
- * userenv anyhow.
- */
-	const char* spaces[] = {
-		getenv("PATH"),
-		getenv("CWD"),
-		getenv("HOME"),
-		getenv("LANG"),
-		getenv("ARCAN_FRAMESERVER_DEBUGSTALL"),
-		getenv("ARCAN_RENDER_NODE"),
-		getenv("ARCAN_VIDEO_NO_FDPASS"),
-		arcan_fetch_namespace(RESOURCE_APPL),
-		arcan_fetch_namespace(RESOURCE_APPL_TEMP),
-		arcan_fetch_namespace(RESOURCE_APPL_STATE),
-		arcan_fetch_namespace(RESOURCE_APPL_SHARED),
-		arcan_fetch_namespace(RESOURCE_SYS_DEBUG),
-		sockmsg,
-		argarg,
-		conn,
-		getenv("LD_LIBRARY_PATH")
-	};
-
-/* HARDENING / REFACTOR: we should NOT pass logdir here as it should
- * not be accessible due to exfiltration risk. We should setup the log-
- * entry here and inherit that descriptor as stderr instead!. For harder
- * sandboxing, we can also pass the directory descriptors here */
-	size_t n_spaces = sizeof(spaces) / sizeof(spaces[0]);
-	const char* keys[] = {
-		"PATH",
-		"CWD",
-		"HOME",
-		"LANG",
-		"ARCAN_FRAMESERVER_DEBUGSTALL",
-		"ARCAN_RENDER_NODE",
-		"ARCAN_VIDEO_NO_FDPASS",
-		"ARCAN_APPLPATH",
-		"ARCAN_APPLTEMPPATH",
-		"ARCAN_STATEPATH",
-		"ARCAN_RESOURCEPATH",
-		"ARCAN_FRAMESERVER_LOGDIR",
-		"ARCAN_SOCKIN_FD",
-		"ARCAN_ARG",
-		"ARCAN_SHMKEY",
-		"LD_LIBRARY_PATH"
-	};
-
-/* growarr is set to FATALFAIL internally, this should be changed
- * when refactoring _mem and replacing strdup to properly handle OOM */
-	while(darr->count + n_spaces + 1 > darr->limit)
-		arcan_mem_growarr(darr);
-
-	size_t max_sz = 0;
-	for (size_t i = 0; i < n_spaces; i++){
-		size_t len = spaces[i] ? strlen(spaces[i]) : 0;
-		max_sz = len > max_sz ? len : max_sz;
-	}
-
-	char convb[max_sz + sizeof("ARCAN_FRAMESERVER_LOGDIR=")];
-	size_t ofs = darr->count > 0 ? darr->count - 1 : 0;
-	size_t step = ofs;
-
-	for (size_t i = 0; i < n_spaces; i++){
-		if (spaces[i] && strlen(spaces[i]) &&
-			snprintf(convb, sizeof(convb), "%s=%s", keys[i], spaces[i])){
-			darr->data[step] = strdup(convb);
-			step++;
-		}
-	}
-
-	darr->count = step;
-	darr->data[step] = NULL;
-}
-
-arcan_frameserver* arcan_frameserver_listen_external(
-	const char* key, const char* pw, int fd, mode_t mode)
-{
-	arcan_frameserver* res = arcan_frameserver_alloc();
-	res->sockmode = mode;
-	if (!shmalloc(res, true, key, fd)){
-		arcan_warning("arcan_frameserver_listen_external(), shared memory"
-			" setup failed\n");
-		return NULL;
-	}
-
-	if (pw)
-		strncpy(res->clientkey, pw, PP_SHMPAGE_SHMKEYLIM-1);
-
-/*
- * start with a default / empty fobject (so all image_ operations still work)
- */
-	res->segid = SEGID_UNKNOWN;
-	res->launchedtime = arcan_timemillis();
-	res->child = BROKEN_PROCESS_HANDLE;
-	img_cons cons = {.w = 32, .h = 32, .bpp = 4};
-	vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = res};
-
-	res->vid = arcan_video_addfobject(FFUNC_SOCKPOLL, state, cons, 0);
-
-/*
- * audio setup is deferred until the connection has been acknowledged and
- * verified, but since this call yields a valid VID, we need to have the queues
- * in place.
- */
-	res->queue_mask = EVENT_EXTERNAL;
-	arcan_shmif_setevqs(res->shm.ptr, res->esync,
-		&(res->inqueue), &(res->outqueue), true);
-	res->inqueue.synch.killswitch = (void*) res;
-	res->outqueue.synch.killswitch = (void*) res;
-
-	return res;
-}
-
-/*
  * reset the fields of the adata- struct due to a negotiation
  */
-static void arcan_frameserver_setproto(arcan_frameserver* ctx,
+static void fsrv_setproto(arcan_frameserver* ctx,
 	unsigned proto, struct arcan_shmif_ofstbl* aofs)
 {
 	if (!ctx || !aofs)
@@ -1186,7 +1096,7 @@ static void arcan_frameserver_setproto(arcan_frameserver* ctx,
 	ctx->desc.aproto = proto;
 }
 
-size_t arcan_frameserver_default_abufsize(size_t new_sz)
+size_t platform_fsrv_default_abufsize(size_t new_sz)
 {
 	size_t res = default_abuf_sz;
 	if (new_sz > 0)
@@ -1194,7 +1104,7 @@ size_t arcan_frameserver_default_abufsize(size_t new_sz)
 	return res;
 }
 
-size_t arcan_frameserver_display_limit(size_t new_sz)
+size_t platform_fsrv_display_limit(size_t new_sz)
 {
 	size_t res = default_disp_lim;
 	if (new_sz)
@@ -1202,7 +1112,7 @@ size_t arcan_frameserver_display_limit(size_t new_sz)
 	return res;
 }
 
-int arcan_frameserver_resynch(struct arcan_frameserver* s)
+int platform_fsrv_resynch(struct arcan_frameserver* s)
 {
 	int state = 0;
 	shm_handle* src = &s->shm;
@@ -1227,7 +1137,7 @@ int arcan_frameserver_resynch(struct arcan_frameserver* s)
  * or register stage)
  */
 	struct arcan_shmif_ofstbl apend = {};
-	size_t apad_sz = arcan_frameserver_protosize(s, aproto, &apend);
+	size_t apad_sz = fsrv_protosize(s, aproto, &apend);
 	bool reset_proto = s->desc.aproto != aproto;
 
 /*
@@ -1345,7 +1255,7 @@ int arcan_frameserver_resynch(struct arcan_frameserver* s)
 
 /* realize the sub-protocol */
 	if (reset_proto){
-		arcan_frameserver_setproto(s, aproto, &apend);
+		fsrv_setproto(s, aproto, &apend);
 		atomic_store(&shmpage->apad_type, aproto);
 		state = 2;
 	}
@@ -1373,8 +1283,7 @@ done:
 	return state;
 }
 
-arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
-	struct frameserver_envp* setup)
+int platform_fsrv_prepare(struct arcan_frameserver* ctx, int* clsock)
 {
 	if (ctx == NULL)
 		return ARCAN_ERRC_BAD_ARGUMENT;
@@ -1392,110 +1301,63 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 		close(sockp[1]);
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 	}
+
 	ctx->launchedtime = arcan_frametime();
+	ctx->queue_mask = EVENT_EXTERNAL;
 
-/*
- * this warrants explaining - to avoid dynamic allocations in the asynch unsafe
- * context of fork, we prepare the str_arr in *setup along with all envs needed
- * for the two to find eachother. The descriptor used for passing socket etc.
- * is inherited and duped to a fix position and possible leaked fds are closed.
- * On systems where this is a bad idea(tm), define the closefrom function to
- * nop. It's a safeguard against propagation from bad libs, not a feature that
- * is relied upon.
- */
-	struct arcan_strarr arr = {0};
-	const char* source;
-	if (setup->use_builtin)
-		append_env(&arr,
-			(char*) setup->args.builtin.resource, "3", ctx->shm.key);
-	else
-		append_env(setup->args.external.envv,
-			setup->args.external.resource ?
-			setup->args.external.resource : "", "3", ctx->shm.key);
-
-	pid_t child = fork();
-	if (child) {
-		close(sockp[1]);
-
-		img_cons cons = {
-			.w = setup->init_w,
-			.h = setup->init_h,
-			.bpp = 4
-		};
-		vfunc_state state = {
-			.tag = ARCAN_TAG_FRAMESERV,
-			.ptr = ctx
-		};
-
-		ctx->source = strdup(setup->args.builtin.resource);
-
-		if (!ctx->vid)
-			ctx->vid = arcan_video_addfobject(FFUNC_NULLFRAME, state, cons, 0);
-
-		ctx->aid = ARCAN_EID;
+/* two separate queues for passing events back and forth between main program
+ * and frameserver, set the buffer pointers to the relevant offsets in
+ * backend_shmpage */
+	arcan_shmif_setevqs(ctx->shm.ptr,
+		ctx->esync, &(ctx->inqueue), &(ctx->outqueue), true);
+	ctx->inqueue.synch.killswitch = (void*) ctx;
+	ctx->outqueue.synch.killswitch = (void*) ctx;
 
 #ifdef __APPLE__
-		int val = 1;
-		setsockopt(sockp[0], SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(int));
+	int val = 1;
+	setsockopt(sockp[0], SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(int));
 #endif
-		fcntl(sockp[0], F_SETFD, FD_CLOEXEC);
+	fcntl(sockp[0], F_SETFD, FD_CLOEXEC);
+	*clsock = sockp[1];
 
-		ctx->dpipe = sockp[0];
-		ctx->child = child;
-
-		arcan_frameserver_configure(ctx, *setup);
-	}
-	else if (child == 0){
-		close(STDERR_FILENO+1);
-/* will also strip CLOEXEC */
-		dup2(sockp[1], STDERR_FILENO+1);
-		arcan_closefrom(STDERR_FILENO+2);
-
-/*
- * we need to mask this signal as when debugging parent process, GDB pushes
- * SIGINT to children, killing them and changing the behavior in the core
- * process
- */
-		sigaction(SIGPIPE, &(struct sigaction){
-			.sa_handler = SIG_IGN}, NULL);
-
-		if (setup->use_builtin){
-			char* argv[] = {
-				arcan_fetch_namespace(RESOURCE_SYS_BINS),
-				(char*) setup->args.builtin.mode,
-				NULL
-			};
-
-/* OVERRIDE/INHERIT rather than REPLACE environment (terminal, ...) */
-			if (setup->preserve_env){
-				for (size_t i = 0; i < arr.count;	i++){
-					if (!(arr.data[i] || arr.data[i][0]))
-						continue;
-
-					char* val = strchr(arr.data[i], '=');
-					*val++ = '\0';
-					setenv(arr.data[i], val, 1);
-				}
-				execv(argv[0], argv);
-			}
-			else
-				execve(argv[0], argv, arr.data);
-
-			arcan_warning("arcan_frameserver_spawn_server() failed: %s, %s\n",
-				strerror(errno), argv[0]);
-				;
-			exit(EXIT_FAILURE);
-		}
-/* non-frameserver executions (hijack libs, ...) */
-		else {
-			execve(setup->args.external.fname,
-				setup->args.external.argv->data, setup->args.external.envv->data);
-			exit(EXIT_FAILURE);
-		}
-	}
-	else /* -1 */
-		arcan_fatal("fork() failed, check ulimit or similar configuration issue.");
-
-	arcan_mem_freearr(&arr);
 	return ARCAN_OK;
+}
+
+struct arcan_frameserver* platform_fsrv_listen_external(
+	const char* key, const char* auth, int fd, mode_t mode, uintptr_t tag)
+{
+	arcan_frameserver* newseg = platform_fsrv_alloc();
+	newseg->sockmode = mode;
+	if (!prepare_segment(newseg, SEGID_UNKNOWN, 32, 32, true, key, fd, tag)){
+		arcan_mem_free(newseg);
+		return NULL;
+	}
+
+	if (auth)
+		strncpy(newseg->clientkey, auth, PP_SHMPAGE_SHMKEYLIM-1);
+	return newseg;
+}
+
+struct arcan_frameserver* platform_fsrv_spawn_server(
+	int segid, size_t w, size_t h, uintptr_t tag, int* childfd)
+{
+	arcan_frameserver* newseg = platform_fsrv_alloc();
+	if (!newseg)
+		return NULL;
+
+	if (!prepare_segment(newseg, segid, w, h, false, NULL, -1, tag)){
+		arcan_mem_free(newseg);
+		return NULL;
+	}
+
+	int sockp[4] = {-1, -1};
+	if (!sockpair_alloc(sockp, 1, true)){
+		platform_fsrv_destroy(newseg);
+		return NULL;
+	}
+
+	newseg->dpipe = sockp[0];
+	*childfd = sockp[1];
+
+	return newseg;
 }
