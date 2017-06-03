@@ -3,11 +3,11 @@
  */
 
 struct arcan_frameserver;
-int arcan_frameserver_enter(struct arcan_frameserver* m)
+int platform_fsrv_enter(struct arcan_frameserver* m)
 {
 	return 1;
 }
 
-void arcan_frameserver_leave()
+void platform_fsrv_leave()
 {
 }
