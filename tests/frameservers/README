@@ -49,4 +49,12 @@ migrant/ will connect to the normal CONNPATH, render a number of frames
 tui_test/ attempts to use the shmif_tui library to create a text-
  based user interface
 
+handover/ tests the handover feature by connecting, requesting a
+ handver subsegment and spawning that into a new process. This also
+ works as a stress- test as it will spawn/exec itself without limit.
+
+mousetest/ simply draw a mouse cursor at the last known coordinates.
+used to test the shmif- support function for tracking cursor state and
+for debugging coordinate translation issues
+
 glcube/ a quick port of robclark/kmscube
