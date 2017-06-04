@@ -358,7 +358,11 @@ static void fd_event(struct arcan_shmif_cont* c, struct arcan_event* dst)
  */
 	if (dst->category == EVENT_TARGET &&
 		dst->tgt.kind == TARGET_COMMAND_NEWSEGMENT){
-		c->priv->pseg.epipe = c->priv->pev.fd;
+/*
+ * forward the file descriptor as well so that, in the case of a HANDOVER,
+ * the parent process has enough information to forward into a new process.
+ */
+		dst->tgt.ioevs[0].iv = c->priv->pseg.epipe = c->priv->pev.fd;
 		c->priv->pev.fd = BADFD;
 		memcpy(c->priv->pseg.key, dst->tgt.message, sizeof(dst->tgt.message));
 	}

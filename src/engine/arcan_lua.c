@@ -7264,6 +7264,16 @@ static int targetaccept(lua_State* ctx)
 	}
 	newref->tag = find_lua_callback(ctx);
 
+/*
+ * special handling so that we don't get directly into a negotiated video or
+ * encode feed function
+ */
+	if (segid == SEGID_HANDOVER){
+		arcan_video_alterfeed(newref->vid, FFUNC_NULLFRAME, (vfunc_state){
+			.tag = ARCAN_TAG_FRAMESERV, .ptr = newref
+		});
+	}
+
 	lua_pushvid(ctx, newref->vid);
 	lua_pushvid(ctx, newref->aid);
 	trace_allocation(ctx, "subseg", newref->vid);
@@ -10611,6 +10621,7 @@ static const char* fsrvtos(enum ARCAN_SEGID ink)
 	case SEGID_WIDGET: return "widget";
 	case SEGID_ACCESSIBILITY: return "accessibility";
 	case SEGID_CLIPBOARD_PASTE: return "clipboard-paste";
+	case SEGID_HANDOVER: return "handover";
 	case SEGID_UNKNOWN: return "unknown";
 	case SEGID_LIM: break;
 	}

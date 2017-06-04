@@ -220,6 +220,16 @@ enum ARCAN_SEGID {
 	SEGID_BRIDGE_X11,
 	SEGID_BRIDGE_WAYLAND,
 
+/*
+ * Used as a forwarding primitive, meaning that the current connection will act
+ * as a mediator / router for a new connection, so the subsegment will not be a
+ * proper subsegment but internally promoted to a primary one. The management
+ * scripts should suspend the source segment if this is accepted, and keep it
+ * suspended until the new segment terminates. Other behavior should simply
+ * create a normal connection point and forward connection data there.
+ */
+	SEGID_HANDOVER,
+
 /* Can always be terminated without risk, may be stored as part of debug format
  * in terms of unexpected termination etc. */
 	SEGID_DEBUG = 255,

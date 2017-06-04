@@ -895,6 +895,13 @@ struct arcan_frameserver* platform_fsrv_spawn_subsegment(
 	);
 
 	platform_fsrv_pushevent(ctx, &keyev);
+
+	if (segid == SEGID_HANDOVER){
+		newseg->segid = SEGID_UNKNOWN;
+		newseg->parent.ptr = NULL;
+		newseg->parent.vid = ARCAN_EID;
+	}
+
 	return newseg;
 }
 
