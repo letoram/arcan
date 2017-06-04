@@ -13,69 +13,10 @@ typedef int shm_handle;
 struct arcan_aobj;
 #include "arcan_frameserver.h"
 
-/*
- * stub- symbols to cut down on linking problems. These also act as
- * a map for refactoring platform/posix/frameserver to encourage
- * better separation
- */
-#define BADSYM(X) void X (){ exit(1); }
-BADSYM(arcan_audio_feed)
-BADSYM(arcan_audio_stop)
-BADSYM(arcan_event_defaultctx)
-BADSYM(arcan_event_enqueue)
-BADSYM(arcan_fetch_namespace)
-BADSYM(arcan_video_alterfeed)
-
-/*
- * no namespaces to expand in the server library, just return the
- * unmodified version. Here's a decent place for custom namespace
- * expansion.
- */
-char** arcan_expand_namespaces(char** inargs)
-{
-	return inargs;
-}
-
-arcan_errc arcan_frameserver_audioframe_direct(struct arcan_aobj* aobj,
-	arcan_aobj_id id, unsigned buffer, bool cont, void* tag)
-{
-	return 0;
-}
-
-arcan_errc arcan_frameserver_free(arcan_frameserver* ctx)
-{
-	return 0;
-}
-
-size_t arcan_frameserver_protosize(arcan_frameserver* ctx,
-	unsigned proto, struct arcan_shmif_ofstbl* dofs)
-{
-	return 0;
-}
-
-arcan_errc arcan_frameserver_pushevent(arcan_frameserver* ctx, arcan_event* ev)
-{
-	return 0;
-}
-
 bool platform_video_auth(int cardn, unsigned token)
 {
 	return false;
 }
-
-void arcan_frameserver_configure(arcan_frameserver* ctx,
-	struct frameserver_envp setup)
-{
-}
-
-void arcan_frameserver_setproto(arcan_frameserver* ctx,
-	unsigned proto, struct arcan_shmif_ofstbl* aofs)
-{
-}
-
-BADSYM(arcan_frametime)
-BADSYM(arcan_video_addfobject)
-BADSYM(arcan_video_deleteobject)
 
 /*
  * wrap the normal structure as we need to pass it to the platform

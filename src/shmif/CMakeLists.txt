@@ -114,7 +114,6 @@ set(SHMIF_SERVER_SOURCES
 	${ASD}/shmif/arcan_shmif_server.c
 	${ASD}/platform/posix/frameserver.c
 	${ASD}/shmif/arcan_shmif_control.c
-	${ASD}/platform/posix/launch.c
 	${ASD}/platform/posix/fsrv_guard.c
 )
 
