@@ -227,6 +227,9 @@ arcan_frameserver* platform_launch_listen_external(
 	arcan_frameserver* res =
 		platform_fsrv_listen_external(key, pw, fd, mode, tag);
 
+	if (!res)
+		return NULL;
+
 	if (pw)
 		strncpy(res->clientkey, pw, PP_SHMPAGE_SHMKEYLIM-1);
 
@@ -241,6 +244,7 @@ arcan_frameserver* platform_launch_listen_external(
 	};
 	vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = res};
 
+	res->launchedtime = arcan_frametime();
 	res->vid = arcan_video_addfobject(FFUNC_SOCKPOLL, state, cons, 0);
 	if (res->vid == ARCAN_EID){
 		platform_fsrv_destroy(res);
@@ -273,6 +277,8 @@ struct arcan_frameserver* platform_launch_fork(
 
 	if (!ctx)
 		return NULL;
+
+	ctx->launchedtime = arcan_frametime();
 
 /* just map the frameserver archetypes to preset context configs, nowadays
  * these are rather minor - in much earlier versions it covered queues, thread

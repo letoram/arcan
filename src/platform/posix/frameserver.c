@@ -905,8 +905,17 @@ int platform_fsrv_pushevent(arcan_frameserver* dst, arcan_event* ev)
 
 	TRAMP_GUARD(ARCAN_ERRC_UNACCEPTED_STATE, dst);
 
-	arcan_errc rv = dst->flags.alive && (dst->shm.ptr && dst->shm.ptr->dms) ?
-		arcan_event_enqueue(&dst->outqueue, ev) : ARCAN_ERRC_UNACCEPTED_STATE;
+	if (!dst->flags.alive || !dst->shm.ptr || !dst->shm.ptr->dms)
+		return ARCAN_ERRC_UNACCEPTED_STATE;
+
+	struct arcan_evctx* ctx = &dst->outqueue;
+	if ( ((*ctx->back + 1) % ctx->eventbuf_sz) == *ctx->front)
+		return ARCAN_ERRC_UNACCEPTED_STATE;
+
+	ctx->eventbuf[*ctx->back] = *ev;
+
+	FORCE_SYNCH();
+	*ctx->back = (*ctx->back + 1) % ctx->eventbuf_sz;
 
 #ifndef MSG_DONTWAIT
 #define MSG_DONTWAIT 0
@@ -922,7 +931,7 @@ int platform_fsrv_pushevent(arcan_frameserver* dst, arcan_event* ev)
  */
 	arcan_pushhandle(-1, dst->dpipe);
 	platform_fsrv_leave();
-	return rv;
+	return ARCAN_OK;
 }
 
 int platform_fsrv_socketauth(struct arcan_frameserver* tgt)
@@ -1302,7 +1311,6 @@ int platform_fsrv_prepare(struct arcan_frameserver* ctx, int* clsock)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 	}
 
-	ctx->launchedtime = arcan_frametime();
 	ctx->queue_mask = EVENT_EXTERNAL;
 
 /* two separate queues for passing events back and forth between main program
