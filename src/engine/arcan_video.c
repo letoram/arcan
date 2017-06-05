@@ -177,6 +177,21 @@ void arcan_video_default_imageprocmode(enum arcan_imageproc_mode mode)
 	arcan_video_display.imageproc = mode;
 }
 
+struct rendertarget* arcan_vint_findrt_vstore(struct storage_info_t* st)
+{
+	if (!st)
+		return NULL;
+
+	for (size_t i = 0; i < current_context->n_rtargets && st; i++)
+		if (current_context->rtargets[i].color->vstore == st)
+			return &current_context->rtargets[i];
+
+	if (current_context->stdoutp.color &&
+		st == current_context->stdoutp.color->vstore)
+		return &current_context->stdoutp;
+	return NULL;
+}
+
 struct rendertarget* arcan_vint_findrt(arcan_vobject* vobj)
 {
 	for (size_t i = 0; i < current_context->n_rtargets && vobj; i++)
