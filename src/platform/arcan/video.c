@@ -418,11 +418,12 @@ static bool check_store(platform_display_id id)
 bool platform_video_map_display(arcan_vobj_id vid, platform_display_id id,
 	enum blitting_hint hint)
 {
-	if (id > MAX_DISPLAYS || id != (platform_display_id) ARCAN_VIDEO_WORLDID)
+	if (id > MAX_DISPLAYS)
 		return false;
 
 	if (id < MAX_DISPLAYS && disp[id].vstore){
-		arcan_vint_drop_vstore(disp[id].vstore);
+		if (disp[id].vstore != arcan_vint_world())
+			arcan_vint_drop_vstore(disp[id].vstore);
 		disp[id].vstore = NULL;
 	}
 
@@ -431,6 +432,7 @@ bool platform_video_map_display(arcan_vobj_id vid, platform_display_id id,
 	if (vid == ARCAN_VIDEO_WORLDID){
 		disp[id].conn.hints = SHMIF_RHINT_ORIGO_LL;
 		disp[id].vstore = arcan_vint_world();
+		disp[id].mapped = true;
 		return true;
 	}
 	else if (vid == ARCAN_EID)
@@ -600,16 +602,29 @@ void platform_video_synch(uint64_t tick_count, float fract,
 		if (!disp[i].mapped || disp[i].dpms != ADPMS_ON)
 			continue;
 
-/*
- * This is incorrect for a number of reasons. The synch output should either
- * be a readback target or double-buffered rendertarget. This does not take
- * texture coordinates or other vstore properties into account.
- */
 		if (disp[i].dirty)
 			disp[i].dirty--;
-		if (disp[i].vstore || disp[i].nopass){
-			synch_copy(&disp[i], disp[i].vstore ?
-				disp[i].vstore : arcan_vint_world());
+
+/*
+ * Features missing:
+ * - texture coordinates are not taken into account (would require RT
+ *   indirection, manual resampling during synch-copy or shmif- rework to allow
+ *   texture coordinates as part of signalling)
+ * - no post-processing shader, same problem as with texture coordinates
+ */
+		struct rendertarget* rtgt = arcan_vint_findrt_vstore(disp[i].vstore);
+
+		if (disp[i].nopass || (disp[i].vstore && !rtgt))
+			synch_copy(&disp[i], disp[i].vstore? disp[i].vstore:arcan_vint_world());
+		else if (disp[i].vstore){
+/* there are conditions where could go with synch- handle + passing, but
+ * with streaming sources we have no reliable way of knowing if its safe */
+			if (!rtgt)
+				synch_copy(&disp[i], disp[i].vstore);
+			else {
+				unsigned col = agp_rendertarget_swap(rtgt->art);
+				arcan_shmifext_signal(&disp[i].conn, 0, SHMIF_SIGVID, col);
+			}
 		}
 		else {
 			unsigned col = agp_rendertarget_swap(arcan_vint_worldrt());

@@ -411,6 +411,7 @@ void arcan_vint_joinasynch(arcan_vobject* img, bool emit, bool force);
  * its primary attachment (for ordering etc.)
  */
 struct rendertarget* arcan_vint_findrt(arcan_vobject* vobj);
+struct rendertarget* arcan_vint_findrt_vstore(struct storage_info_t* st);
 
 /*
  * used by the video platform layer, assume that storage_info_t points
