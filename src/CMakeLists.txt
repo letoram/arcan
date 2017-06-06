@@ -642,6 +642,11 @@ if (PKGCONFIG_DIR)
 		${CMAKE_CURRENT_BINARY_DIR}/arcan-shmif-tui.pc @ONLY)
 	install(FILES ${CMAKE_CURRENT_BINARY_DIR}/arcan-shmif-tui.pc
 		DESTINATION ${CMAKE_INSTALL_PREFIX}/${PKGCONFIG_DIR})
+
+	configure_file(${PLATFORM_ROOT}/cmake/shmif_srv.pc.in
+		${CMAKE_CURRENT_BINARY_DIR}/arcan-shmif-srv.pc @ONLY)
+	install(FILES ${CMAKE_CURRENT_BINARY_DIR}/arcan-shmif-srv.pc
+		DESTINATION ${CMAKE_INSTALL_PREFIX}/${PKGCONFIG_DIR})
 endif()
 
 #

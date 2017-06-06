@@ -1,0 +1,12 @@
+prefix=@CMAKE_INSTALL_PREFIX@
+exec_prefix=${prefix}
+libdir=${prefix}/lib
+includedir=${prefix}/include/arcan/shmif
+
+Name: arcan-shmif-server
+Description: Arcan Interface Library
+URL: http://arcan-fe.com
+Libs: -L${libdir} -larcan_shmif_server
+Cflags: -I${includedir}
+Version:@VERSION@
+Requires:
