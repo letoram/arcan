@@ -100,8 +100,7 @@ struct shmifsrv_client*
  * Setup a connection-less frameserver, meaning that all primitives and
  * allocation is passed through other means than
  */
-struct shmifsrv_client* shmifsrv_spawn_client(
-	struct shmifsrv_envp, int* statuscode);
+struct shmifsrv_client* shmifsrv_prepare_client();
 
 /*
  * Retrieve an I/O multiplexable handle for mixing into poll() rather
