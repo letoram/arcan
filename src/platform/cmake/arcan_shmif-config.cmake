@@ -32,9 +32,9 @@ find_library(ARCAN_SHMIF_TUI_LIBRARY
 		/usr/lib
 )
 
-find library(ARCAN_SHMIF_SERVER_LIBRARY
+find_library(ARCAN_SHMIF_SERVER_LIBRARY
 	NAMES arcan_shmif_server
-		PATH_SUFFXCES arcan
+		PATH_SUFFIXES arcan
 	PATHS
 		/usr/local/lib
 		/usr/lib
