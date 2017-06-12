@@ -285,7 +285,7 @@ struct vr_limb {
 			vector position;
 			vector forward;
 			quat orientation;
-			uint16_t checksum;
+			_Atomic uint16_t checksum;
 		};
 	};
 };
