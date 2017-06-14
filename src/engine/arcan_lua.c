@@ -4716,11 +4716,60 @@ static int origoofs(lua_State* ctx)
 	LUA_ETRACE("image_origo_offset", NULL, 0);
 }
 
+struct mesh_ud {
+	struct mesh_storage_t* mesh;
+	arcan_vobject* vobj;
+};
+
 static int imagetess(lua_State* ctx)
 {
 	LUA_TRACE("image_tesselation");
-	arcan_vobj_id sid = luaL_checkvid(ctx, 1, NULL);
-	LUA_ETRACE("image_tesselation", NULL, 0);
+	arcan_vobject* vobj;
+	arcan_vobj_id sid = luaL_checkvid(ctx, 1, &vobj);
+	int arg1 = lua_type(ctx, 2);
+	size_t s = 0;
+	size_t t = 0;
+
+/* either num, num, fun or fun - anything else is terminal */
+	if (arg1 == LUA_TNUMBER){
+		s = luaL_checknumber(ctx, 2);
+		t = luaL_checknumber(ctx, 3);
+		if (s > MAX_SURFACEW || t > MAX_SURFACEH)
+			arcan_fatal("image_tesselation(vid,s,t) illegal s or t value");
+	}
+	else if (arg1 != LUA_TFUNCTION)
+		arcan_fatal("image_tesselation(vid,num,num,*fun*) or (vid, *fun*)");
+	else if (lua_iscfunction(ctx, 2))
+		arcan_fatal("image_tesselation(fun), fun must be valid lua- function");
+
+	intptr_t ref = find_lua_callback(ctx);
+
+/* user want access? */
+	struct mesh_storage_t* ms;
+	if (LUA_NOREF == ref){
+		arcan_video_defineshape(sid, s, t, &ms);
+		lua_pushboolean(ctx, ms->verts != NULL || s == 1 || t == 1);
+	}
+	else {
+		arcan_video_defineshape(sid, s, t, &ms);
+		lua_pushboolean(ctx, ms->verts != NULL || s == 1 || t == 1);
+/* invoke callback for ms, when finished, empty the userdata store */
+		if (ms->verts){
+			lua_rawgeti(ctx, LUA_REGISTRYINDEX, ref);
+			struct mesh_ud* ud = lua_newuserdata(ctx, sizeof(struct mesh_ud));
+			memset(ud, '\0', sizeof(struct mesh_ud));
+			luaL_getmetatable(ctx, "meshAccess");
+			lua_setmetatable(ctx, -2);
+			lua_pushnumber(ctx, ms->n_vertices);
+			lua_pushnumber(ctx, ms->vertex_size);
+			ud->mesh = ms;
+			ud->vobj = vobj;
+			wraperr(ctx, lua_pcall(ctx, 3, 0, 0), "tessimage_cb");
+			ud->mesh = NULL;
+		}
+	}
+
+	LUA_ETRACE("image_tesselation", NULL, 1);
 }
 
 static int orderinherit(lua_State* ctx)
@@ -6291,7 +6340,7 @@ static void wraperr(lua_State* ctx, int errc, const char* src)
 		return;
 
 	const char* mesg = luactx.in_panic ? "Lua VM state broken, panic" :
-		luaL_optstring(ctx, 1, "unknown");
+		luaL_optstring(ctx, -1, "unknown");
 /*
  * currently unused, pending refactor of arcan_warning
  * int severity = luaL_optnumber(ctx, 2, 0);
@@ -7900,6 +7949,88 @@ static int procimage_get(lua_State* ctx)
 		lua_pushnumber(ctx, a);
 
 	LUA_ETRACE("procimage:get", NULL, nch);
+}
+
+static int meshaccess_vert(lua_State* ctx)
+{
+	LUA_TRACE("meshAccess:vertex");
+	struct mesh_ud* ud = luaL_checkudata(ctx, 1, "meshAccess");
+	size_t ind = luaL_checkint(ctx, 2);
+
+	if (!ud->mesh)
+		arcan_fatal("meshAccess:vertex called outside of valid scope");
+	if (ind > ud->mesh->n_vertices-1)
+		arcan_fatal("meshAccess:vertex called with OOB index %zu", ind);
+
+	int nargs = lua_gettop(ctx);
+	if (nargs == 2){
+		size_t retc = 0;
+		if (ud->mesh->vertex_size == 2){
+			lua_pushnumber(ctx, ud->mesh->verts[ind * 2 + 0]);
+			lua_pushnumber(ctx, ud->mesh->verts[ind * 2 + 1]);
+			LUA_ETRACE("meshAccess:vertex", NULL, 2);
+		}
+		else if (ud->mesh->vertex_size == 3){
+			lua_pushnumber(ctx, ud->mesh->verts[ind * 3 + 0]);
+			lua_pushnumber(ctx, ud->mesh->verts[ind * 3 + 1]);
+			lua_pushnumber(ctx, ud->mesh->verts[ind * 3 + 2]);
+			LUA_ETRACE("meshAccess:vertex", NULL, 3);
+		}
+		LUA_ETRACE("meshAccess:vertex", NULL, 0);
+	}
+	for (size_t i = 0; i < ud->mesh->vertex_size; i++){
+		ud->mesh->verts[
+			ind * ud->mesh->vertex_size + i] = luaL_checknumber(ctx, 3+i);
+	}
+	FLAG_DIRTY(ud->vobj);
+	LUA_ETRACE("meshAccess:vertex", NULL, 0);
+}
+
+static int meshaccess_normal(lua_State* ctx)
+{
+	LUA_TRACE("meshAccess:normal");
+	struct mesh_ud* ud = luaL_checkudata(ctx, 1, "meshAccess");
+	size_t ind = luaL_checkint(ctx, 2);
+
+	if (!ud->mesh)
+		arcan_fatal("meshAccess:vertex called outside of valid scope");
+	if (ind > ud->mesh->n_vertices-1)
+		arcan_fatal("meshAccess:vertex called with OOB index %zu", ind);
+
+	return 0;
+}
+
+static int meshaccess_texco(lua_State* ctx)
+{
+	LUA_TRACE("meshAccess:vertex");
+	struct mesh_ud* ud = luaL_checkudata(ctx, 1, "meshAccess");
+	size_t ind = luaL_checkint(ctx, 2);
+
+	if (!ud->mesh)
+		arcan_fatal("meshAccess:vertex called outside of valid scope");
+	if (ind > ud->mesh->n_vertices-1)
+		arcan_fatal("meshAccess:vertex called with OOB index %zu", ind);
+
+	return 0;
+}
+
+static int meshaccess_type(lua_State* ctx)
+{
+	LUA_TRACE("meshAccess:primitive_type");
+	struct mesh_ud* ud = luaL_checkudata(ctx, 1, "meshAccess");
+	int type = luaL_checkint(ctx, 2);
+
+	if (!ud->mesh)
+		arcan_fatal("meshAccess:vertex called outside of valid scope");
+
+	if (type == 0)
+		ud->mesh->type = AGP_MESH_TRISOUP;
+	else if (type == 1)
+		ud->mesh->type = AGP_MESH_POINTCLOUD;
+	else
+		ud->mesh->type = AGP_MESH_TRISOUP;
+
+	LUA_ETRACE("meshAccess:primitive_type", NULL, 0);
 }
 
 enum arcan_ffunc_rv arcan_lua_proctarget FFUNC_HEAD
@@ -10225,7 +10356,7 @@ static const luaL_Reg netfuns[] = {
 
 /*
  * METATABLE definitions
- *  [image] => used for calctargets
+ *  [calcImage] => used for calctargets
  */
 	luaL_newmetatable(ctx, "calcImage");
 	lua_pushvalue(ctx, -1);
@@ -10237,6 +10368,21 @@ static const luaL_Reg netfuns[] = {
 	lua_pushcfunction(ctx, procimage_lookup);
 	lua_setfield(ctx, -2, "frequency");
 	lua_pop(ctx, 1);
+
+/* [meshAccess] => used for accessing a mesh_storage */
+	luaL_newmetatable(ctx, "meshAccess");
+	lua_pushvalue(ctx, -1);
+	lua_setfield(ctx, -2, "__index");
+	lua_pushcfunction(ctx, meshaccess_vert);
+	lua_setfield(ctx, -2, "vertex");
+	lua_pushcfunction(ctx, meshaccess_normal);
+	lua_setfield(ctx, -2, "normal");
+	lua_pushcfunction(ctx, meshaccess_texco);
+	lua_setfield(ctx, -2, "texco");
+	lua_pushcfunction(ctx, meshaccess_texco);
+	lua_setfield(ctx, -2, "texture_coordinate");
+	lua_pushcfunction(ctx, meshaccess_type);
+	lua_setfield(ctx, -2, "primitive_type");
 
 	int top = lua_gettop(ctx);
 	extend_baseapi(ctx);

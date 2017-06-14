@@ -39,6 +39,8 @@
  */
 struct agp_fenv {
 	int cookie;
+	int mode;
+
 /* PBOs / transfers */
 	void (*draw_buffer) (GLenum);
 	void (*read_buffer) (GLenum);

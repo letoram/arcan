@@ -1291,6 +1291,15 @@ arcan_errc arcan_vint_attachobject(arcan_vobj_id id)
 	return rv;
 }
 
+arcan_errc arcan_vint_dropshape(arcan_vobject* vobj)
+{
+	if (!vobj->shape)
+		return ARCAN_OK;
+
+	agp_drop_mesh(vobj->shape);
+	return ARCAN_OK;
+}
+
 /* run through the chain and delete all occurences at ofs */
 static void swipe_chain(surface_transform* base, unsigned ofs, unsigned size)
 {
@@ -2980,6 +2989,7 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 	}
 
 	arcan_mem_free(vobj->tracetag);
+	arcan_vint_dropshape(vobj);
 
 /* lots of default values are assumed to be 0, so reset the
  * entire object to be sure. will help leak detectors as well */
@@ -3495,6 +3505,119 @@ static void emit_transform_event(arcan_vobj_id src,
 	};
 
 	arcan_event_enqueue(arcan_event_defaultctx(), &tagev);
+}
+
+/*
+ * fill out vertices / txcos, return number of elements to draw
+ */
+static struct mesh_storage_t tesselate_2d(size_t n_s, size_t n_t)
+{
+	struct mesh_storage_t res = {};
+
+	float step_s = 2.0 / (n_s-1);
+	float step_t = 2.0 / (n_t-1);
+
+/* use same buffer for both vertices and txcos, can't reuse the same values
+ * though initially similar, the user might want to modify */
+	float* vertices = arcan_alloc_mem(sizeof(float)*n_s*n_t*4,
+		ARCAN_MEM_MODELDATA, ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE);
+	float* txcos = &vertices[n_s*n_t*2];
+
+	if (!vertices)
+		return res;
+
+	unsigned* indices = arcan_alloc_mem(sizeof(unsigned)*(n_s-1)*(n_t-1)*6,
+		ARCAN_MEM_MODELDATA, ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE);
+
+	if (!indices){
+		arcan_mem_free(vertices);
+		return res;
+	}
+
+/* populate txco/vertices */
+	for (size_t y = 0; y < n_t; y++){
+		for (size_t x = 0; x < n_s; x++){
+			size_t ofs = (y * n_s + x) * 2;
+			txcos[ofs + 0] = vertices[ofs + 0] = (float)x * step_s - 1.0;
+			txcos[ofs + 1] = vertices[ofs + 1] = (float)y * step_t - 1.0;
+		}
+	}
+
+/* get the indices */
+	size_t ofs = 0;
+	#define GETVERT(X,Y)( ( (X) * n_s) + Y)
+	for (size_t y = 0; y < n_t-1; y++)
+		for (size_t x = 0; x < n_s-1; x++){
+		indices[ofs++] = GETVERT(x, y);
+		indices[ofs++] = GETVERT(x, y+1);
+		indices[ofs++] = GETVERT(x+1, y+1);
+		indices[ofs++] = GETVERT(x, y);
+		indices[ofs++] = GETVERT(x+1, y+1);
+		indices[ofs++] = GETVERT(x+1, y);
+	}
+
+	res.verts = vertices;
+	res.txcos = txcos;
+	res.indices = indices;
+	res.n_vertices = n_s * n_t;
+	res.vertex_size = 2;
+	res.n_indices = (n_s-1) * (n_t-1) * 6;
+	res.type = AGP_MESH_TRISOUP;
+
+	return res;
+}
+
+arcan_errc arcan_video_defineshape(arcan_vobj_id dst,
+	size_t n_s, size_t n_t, struct mesh_storage_t** store)
+{
+	arcan_vobject* vobj = arcan_video_getobject(dst);
+	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+	if (!vobj)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+
+	if (n_s == 0 || n_t == 0){
+		if (store)
+			*store = vobj->shape;
+		return ARCAN_OK;
+	}
+
+	if (vobj->shape || n_s == 1 || n_t == 1){
+		arcan_mem_free(vobj->shape->verts);
+		arcan_mem_free(vobj->shape->indices);
+		if (n_s == 1 || n_t == 1){
+			vobj->shape = NULL;
+			return ARCAN_OK;
+		}
+	}
+	else
+		vobj->shape = arcan_alloc_mem(sizeof(struct mesh_storage_t),
+			ARCAN_MEM_MODELDATA, ARCAN_MEM_BZERO |
+			ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_NATURAL
+		);
+
+	if (!vobj->shape){
+		if (store)
+			*store = NULL;
+		return ARCAN_ERRC_OUT_OF_SPACE;
+	}
+
+/* we now KNOW that s > 1 and t > 1, that shape is valid -
+ * time to build the mesh */
+	struct mesh_storage_t ns = tesselate_2d(n_s, n_t);
+	if (!ns.verts){
+		if (vobj->shape){
+			arcan_vint_dropshape(vobj);
+		}
+		if (store)
+			*store = NULL;
+		return ARCAN_ERRC_OUT_OF_SPACE;
+	}
+
+	*(vobj->shape) = ns;
+/* dirty- flag here if we support meshing into VBO */
+	if (store)
+		*store = vobj->shape;
+	return ARCAN_OK;
 }
 
 /* called whenever a cell in update has a time that reaches 0 */
@@ -4071,27 +4194,8 @@ static inline float time_ratio(arcan_tickv start, arcan_tickv stop)
 		(float)(stop - start) : 1.0;
 }
 
-static inline void setup_surf(struct rendertarget* dst,
-	surface_properties* prop, arcan_vobject* src, float** mv)
+static void update_shenv(arcan_vobject* src, surface_properties* prop)
 {
-	static float _Alignas(16) dmatr[16];
-
-	if (src->feed.state.tag == ARCAN_TAG_ASYNCIMGLD)
-		return;
-
-/* currently, we only cache the primary rendertarget */
-	if (src->valid_cache && dst == src->owner){
-		prop->scale.x *= src->origw * 0.5f;
-		prop->scale.y *= src->origh * 0.5f;
-		prop->position.x += prop->scale.x;
-		prop->position.y += prop->scale.y;
-		*mv = src->prop_matr;
-	}
-	else {
-		build_modelview(dmatr, dst->base, prop, src);
-		*mv = dmatr;
-	}
-
 	agp_shader_envv(OBJ_OPACITY, &prop->opa, sizeof(float));
 
 	float sz_i[2] = {src->origw, src->origh};
@@ -4122,6 +4226,47 @@ static inline void setup_surf(struct rendertarget* dst,
 	}
 }
 
+static inline void setup_surf(struct rendertarget* dst,
+	surface_properties* prop, arcan_vobject* src, float** mv)
+{
+/* just temporary storage/scratch */
+	static float _Alignas(16) dmatr[16];
+
+	if (src->feed.state.tag == ARCAN_TAG_ASYNCIMGLD)
+		return;
+
+/* currently, we only cache the primary rendertarget */
+	if (src->valid_cache && dst == src->owner){
+		prop->scale.x *= src->origw * 0.5f;
+		prop->scale.y *= src->origh * 0.5f;
+		prop->position.x += prop->scale.x;
+		prop->position.y += prop->scale.y;
+		*mv = src->prop_matr;
+	}
+	else {
+		build_modelview(dmatr, dst->base, prop, src);
+		*mv = dmatr;
+	}
+	update_shenv(src, prop);
+}
+
+/*
+ * this little workaround is mostly
+ */
+static inline void setup_shape_surf(struct rendertarget* dst,
+	surface_properties* prop, arcan_vobject* src, float** mv)
+{
+	static float _Alignas(16) dmatr[16];
+	surface_properties oldprop = *prop;
+	if (src->feed.state.tag == ARCAN_TAG_ASYNCIMGLD)
+		return;
+
+	build_modelview(dmatr, dst->base, prop, src);
+	*mv = dmatr;
+	scale_matrix(*mv, prop->scale.x, prop->scale.y, 1.0);
+	update_shenv(src, prop);
+}
+
 static inline void draw_colorsurf(struct rendertarget* dst,
 	surface_properties prop, arcan_vobject* src,
 	float r, float g, float b, float* txcos)
@@ -4137,14 +4282,35 @@ static inline void draw_colorsurf(struct rendertarget* dst,
 		prop.scale.x, prop.scale.y, txcos, mvm);
 }
 
+/*
+ * When we deal with multiple AGP implementations, it probably makes sense
+ * to move some of these steps to that layer, as there might be more backend
+ * specific ways that are faster (particularly for software that can have
+ * many fastpaths)
+ */
 static inline void draw_texsurf(struct rendertarget* dst,
 	surface_properties prop, arcan_vobject* src, float* txcos)
 {
 	float* mvm = NULL;
-	setup_surf(dst, &prop, src, &mvm);
-
-	agp_draw_vobj(-prop.scale.x, -prop.scale.y,
-		prop.scale.x, prop.scale.y, txcos, mvm);
+/*
+ * Shape is treated mostly as a simplified 3D model but with an ortographic
+ * projection and no hierarchy of meshes etc. we still need to switch to 3D
+ * mode so we get a depth buffer to work with as there might be vertex- stage Z
+ * displacement. This switch is slightly expensive (depth-buffer clear) though
+ * used for such fringe cases that it's only a problem when measured as such.
+ */
+	if (src->shape){
+		agp_pipeline_hint(PIPELINE_3D);
+		setup_shape_surf(dst, &prop, src, &mvm);
+		agp_shader_envv(MODELVIEW_MATR, mvm, sizeof(float) * 16);
+		agp_submit_mesh(src->shape, MESH_FACING_FRONT);
+		agp_pipeline_hint(PIPELINE_2D);
+	}
+	else {
+		setup_surf(dst, &prop, src, &mvm);
+		agp_draw_vobj(
+			-prop.scale.x, -prop.scale.y, prop.scale.x, prop.scale.y, txcos, mvm);
+	}
 }
 
 static void ffunc_process(arcan_vobject* dst, int cookie)

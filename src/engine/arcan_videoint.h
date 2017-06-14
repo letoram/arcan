@@ -199,7 +199,9 @@ typedef struct arcan_vobject {
 	enum vobj_flags flags;
 	uint16_t origw, origh;
 
+/* visual modifiers */
 	agp_shader_id program;
+	struct mesh_storage_t* shape;
 
 	struct {
 		enum arcan_ffunc ffunc;
@@ -209,6 +211,7 @@ typedef struct arcan_vobject {
 
 /* if NULL, a default mapping will be used */
 	float* txcos;
+	uint8_t tess_s, tess_t;
 	enum arcan_blendfunc blendmode;
 
 /* position */

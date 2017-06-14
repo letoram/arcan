@@ -7,7 +7,6 @@
 /* Optional build-time overrides for some defines to support higher bitdepth
  * full composition path, which adds quite some overhead. */
 
-
 #define OUT_DEPTH_R 10
 #define OUT_DEPTH_G 10
 #define OUT_DEPTH_B 10

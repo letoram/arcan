@@ -517,6 +517,7 @@ arcan_vobj_id arcan_3d_pointcloud(size_t count, size_t nmaps)
 	newmodel->geometry = arcan_alloc_mem(sizeof(struct geometry), ARCAN_MEM_VTAG,
 		ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 	newmodel->geometry->store.n_vertices = count;
+	newmodel->geometry->store.vertex_size = 3;
 	newmodel->geometry->nmaps = nmaps;
 	newmodel->geometry->store.verts = arcan_alloc_mem(sizeof(float) * count * 3,
 		ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_PAGE);
@@ -597,6 +598,7 @@ arcan_vobj_id arcan_3d_buildbox(float w, float h, float d, size_t nmaps)
 	newmodel->geometry->store.verts = arcan_alloc_fillmem(verts, sizeof(verts),
 		ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_SIMD);
 	newmodel->geometry->store.n_vertices = sizeof(verts) / sizeof(verts[0]) / 3;
+	newmodel->geometry->store.vertex_size = 3;
 
 	float normals[] = {
 		 0, 0, 1,  0, 0, 1,  0, 0, 1,  0, 0, 1,
@@ -620,6 +622,7 @@ arcan_vobj_id arcan_3d_buildbox(float w, float h, float d, size_t nmaps)
 	newmodel->geometry->store.indices = arcan_alloc_fillmem(
 		indices, sizeof(indices), ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_SIMD);
 	newmodel->geometry->store.n_vertices = sizeof(verts) / sizeof(verts[0]) / 3;
+	newmodel->geometry->store.vertex_size = 3;
 	newmodel->geometry->store.n_indices = 36;
 
 	float txcos[] = {
@@ -685,6 +688,7 @@ arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx,float maxz,
 	(*nextslot)->nmaps = nmaps;
 	newmodel->geometry = *nextslot;
 	newmodel->geometry->store.type = AGP_MESH_TRISOUP;
+	newmodel->geometry->store.vertex_size = 3;
 
 	struct geometry* dst = newmodel->geometry;
 
@@ -722,6 +726,7 @@ static void loadmesh(struct geometry* dst, CTMcontext* ctx)
 {
 /* figure out dimensions */
 	dst->store.n_vertices = ctmGetInteger(ctx, CTM_VERTEX_COUNT);
+	dst->store.vertex_size = 3;
 	size_t n_triangles = ctmGetInteger(ctx, CTM_TRIANGLE_COUNT);
 	unsigned uvmaps = ctmGetInteger(ctx, CTM_UV_MAP_COUNT);
 	unsigned vrtsize = dst->store.n_vertices * 3 * sizeof(float);
@@ -867,6 +872,7 @@ arcan_errc arcan_3d_addraw(arcan_vobj_id dst,
 	dg->store.indices = indices;
 	dg->store.normals = normals;
 	dg->store.n_vertices = n_vertices;
+	dg->store.vertex_size = 3;
 	dg->store.n_indices = n_indices;
 
 	return ARCAN_OK;
