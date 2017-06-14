@@ -599,6 +599,29 @@ arcan_errc arcan_video_setasframe(arcan_vobj_id dst,
 arcan_errc arcan_video_setactiveframe(arcan_vobj_id dst, unsigned fid);
 
 /*
+ * Convert the drawing primitive from a simple quad to a finer tesselated mesh
+ * where the individual vertices can be distorted, and behaves something in
+ * between of a 3D model and the 2D quad.
+ *
+ * Setting n_s = 1 OR n_t = 1 returns the object back into a normal quad with
+ * the default render-path. Setting n_s = 0 OR n_t = 0 will only retrieve the
+ * current backing store. Otherwise n_s * n_t vertices and indexed into a
+ * triangle soup. NOTE that this function ignores/prohibits the edge case of
+ * EITHER s OR t being 1 (no subdivisions in that axis).
+ *
+ * This will only work with a textured backing store (not the simplified single
+ * color version) and doesn't affect the overal behavior in terms of picking
+ * or other forms of collision detection and response, but stencil- based
+ * clipping will still apply.
+ *
+ * If [store] is provided, the engine assumes that the shape will be modfied.
+ * If the mesh is cached on the GPU side, such caches will be updated on the
+ * next draw-call.
+ */
+arcan_errc arcan_video_defineshape(arcan_vobj_id dst,
+	size_t n_s, size_t n_t, struct mesh_storage_t** store);
+
+/*
  * Specify automatic management of active frameset frame. If [mode] is
  * 0, automatic management is disabled. If [mode] is set to a number,
  * the frame will be cycled every abs(num) LOGICAL frames (tick).
@@ -680,6 +703,18 @@ arcan_vobj_id arcan_video_findstate(enum arcan_vobj_tags tag, void* ptr);
  * of the offline buffer and use that to assign a new glstore.
  */
 arcan_errc arcan_video_mipmapset(arcan_vobj_id id, bool state);
+
+/*
+ * Set the tesselation level for drawing the vobj. This is used when a
+ * normal quad is insufficient, which should be almost exclusively the
+ * fringe case where a vertex shader is used for 2D effects and a full
+ * 3D setup should be avoided.
+ *
+ * The subdivisions are uniformly applied to both axis on the plane,
+ * and values of 0 and 1 disables the feature and returns to normal 2D
+ * drawing. Custom texture coordinates will be linearly interpolated.
+ */
+arcan_errc arcan_video_tesselation(arcan_vobj_id, uint8_t subdivisions);
 
 arcan_errc arcan_video_setclip(arcan_vobj_id id, enum arcan_clipmode toggleon);
 arcan_errc arcan_video_tracetag(arcan_vobj_id id, const char* const message);

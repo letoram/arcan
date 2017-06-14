@@ -740,6 +740,15 @@ void agp_draw_vobj(float x1, float y1, float x2, float y2,
 	const float* txcos, const float* modelview);
 
 /*
+ * Similar to vobj, but instead of one screen aligned quad - use a discreet
+ * subdivision factor of s_s and s_t to provide a more finely tesselated model.
+ * This is primarily to feed the vertex shader stage with more vertices to work
+ * with, without going to the process of setting up a full 3D pipeline.
+ */
+void agp_draw_vobj_tess(float x1, float y1, float x2, float y2,
+	size_t nv_s, size_t nv_t, const float* txcos, const float* modelview);
+
+/*
  * Destination format for rendertargets. Note that we do not currently suport
  * floating point targets and that for some platforms, COLOR_DEPTH will map to
  * COLOR_DEPTH_STENCIL.
@@ -819,11 +828,16 @@ enum agp_mesh_type {
 
 struct mesh_storage_t
 {
+	uint8_t* shared_buffer;
+	size_t shared_buffer_sz;
+
 	float* verts;
 	float* txcos;
 	float* normals;
+	float* colors;
 	unsigned* indices;
 
+	size_t vertex_size;
 	size_t n_vertices;
 	size_t n_indices;
 
@@ -861,6 +875,11 @@ void agp_submit_mesh(struct mesh_storage_t*, enum agp_mesh_flags);
  * GPU- side cache might need to be updated.
  */
 void agp_invalidate_mesh(struct mesh_storage_t*);
+
+/*
+ * Free the resources tied to a mesh (buffers + GPU handles)
+ */
+void agp_drop_mesh(struct mesh_storage_t* s);
 
 /*
  * Get a copy of the current display output and save into the supplied buffer,

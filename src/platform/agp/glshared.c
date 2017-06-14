@@ -12,6 +12,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <dlfcn.h>
+#include <math.h>
 
 #include "glfun.h"
 
@@ -403,20 +404,26 @@ void agp_pipeline_hint(enum pipeline_mode mode)
 	struct agp_fenv* env = agp_env();
 	switch (mode){
 	case PIPELINE_2D:
-		env->disable(GL_CULL_FACE);
-		env->disable(GL_DEPTH_TEST);
-		env->depth_mask(GL_FALSE);
+		if (mode != env->mode){
+			env->mode = mode;
+			env->disable(GL_CULL_FACE);
+			env->disable(GL_DEPTH_TEST);
+			env->depth_mask(GL_FALSE);
 #if !defined(GLES2) && !defined(GLES3)
-		env->line_width(1.0);
-		env->polygon_mode(GL_FRONT_AND_BACK, GL_FILL);
+			env->line_width(1.0);
+			env->polygon_mode(GL_FRONT_AND_BACK, GL_FILL);
+		}
 #endif
 	break;
 
 	case PIPELINE_3D:
-		env->enable(GL_DEPTH_TEST);
-		env->depth_mask(GL_TRUE);
-		env->clear(GL_DEPTH_BUFFER_BIT);
-		env->model_flags = 0;
+		if (mode != env->mode){
+			env->mode = mode;
+			env->enable(GL_DEPTH_TEST);
+			env->depth_mask(GL_TRUE);
+			env->clear(GL_DEPTH_BUFFER_BIT);
+			env->model_flags = 0;
+		}
 	break;
 	}
 }
@@ -743,16 +750,18 @@ void agp_render_options(struct agp_render_options opts)
 static void setup_transfer(struct mesh_storage_t* base, enum agp_mesh_flags fl)
 {
 	struct agp_fenv* env = agp_env();
-	int attribs[3] = {
+	int attribs[4] = {
 		agp_shader_vattribute_loc(ATTRIBUTE_VERTEX),
 		agp_shader_vattribute_loc(ATTRIBUTE_NORMAL),
-		agp_shader_vattribute_loc(ATTRIBUTE_TEXCORD)
+		agp_shader_vattribute_loc(ATTRIBUTE_TEXCORD),
+		agp_shader_vattribute_loc(ATTRIBUTE_COLOR)
 	};
 	if (attribs[0] == -1)
 		return;
 	else {
 		env->enable_vertex_attrarray(attribs[0]);
-		env->vertex_attrpointer(attribs[0], 3, GL_FLOAT, GL_FALSE, 0, base->verts);
+		env->vertex_attrpointer(attribs[0],
+			base->vertex_size, GL_FLOAT, GL_FALSE, 0, base->verts);
 	}
 
 	if (attribs[1] != -1 && base->normals){
@@ -768,6 +777,12 @@ static void setup_transfer(struct mesh_storage_t* base, enum agp_mesh_flags fl)
 	}
 	else
 		attribs[2] = -1;
+	if (attribs[3] != -1 && base->colors){
+		env->enable_vertex_attrarray(attribs[3]);
+		env->vertex_attrpointer(attribs[3], 3, GL_FLOAT, GL_FALSE, 0, base->colors);
+	}
+	else
+		attribs[3] = -1;
 
 	if (base->type == AGP_MESH_TRISOUP){
 		if (base->indices)
@@ -877,6 +892,30 @@ void agp_rendertarget_clearcolor(
 	tgt->clearcol[1] = g;
 	tgt->clearcol[2] = b;
 	tgt->clearcol[3] = a;
+}
+
+void agp_drop_mesh(struct mesh_storage_t* s)
+{
+	if (!s)
+		return;
+
+	if (s->shared_buffer){
+		arcan_mem_free(s->shared_buffer);
+	}
+	else{
+		if (s->verts)
+			arcan_mem_free(s->verts);
+		if (s->txcos)
+			arcan_mem_free(s->txcos);
+		if (s->normals)
+			arcan_mem_free(s->normals);
+		if (s->colors)
+			arcan_mem_free(s->colors);
+		if (s->indices)
+			arcan_mem_free(s->indices);
+	}
+
+	memset(s, '\0', sizeof(struct mesh_storage_t));
 }
 
 void agp_save_output(size_t w, size_t h, av_pixel* dst, size_t dsz)
