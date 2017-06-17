@@ -10383,6 +10383,7 @@ static const luaL_Reg netfuns[] = {
 	lua_setfield(ctx, -2, "texture_coordinate");
 	lua_pushcfunction(ctx, meshaccess_type);
 	lua_setfield(ctx, -2, "primitive_type");
+	lua_pop(ctx, 1);
 
 	int top = lua_gettop(ctx);
 	extend_baseapi(ctx);
