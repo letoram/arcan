@@ -1648,7 +1648,7 @@ static bool lookup_drm_propval(int fd,
 
 	for (size_t i = 0; i < oprops->count_props; i++){
 		drmModePropertyPtr mprops = drmModeGetProperty(fd, oprops->props[i]);
-		if (!mprops || !mprops->name)
+		if (!mprops)
 			continue;
 
 		if (strcmp(name, mprops->name) == 0){
