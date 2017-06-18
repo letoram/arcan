@@ -1038,7 +1038,7 @@ static av_pixel* process_chain(struct rcell* root, arcan_vobject* dst,
 	if (dst){
 /* manually resize the local buffer so the video_resizefeed call won't
  * do dual agp_update_vstore synchs */
-		struct storage_info_t* s = dst->vstore;
+		struct agp_vstore* s = dst->vstore;
 
 		if (s->vinf.text.raw)
 			arcan_mem_free(s->vinf.text.raw);

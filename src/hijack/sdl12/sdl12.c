@@ -72,7 +72,7 @@ static struct {
 
 #ifdef ENABLE_OPENGL
 	struct agp_rendertarget* rtgt;
-	struct storage_info_t vstore;
+	struct agp_vstore vstore;
 #endif
 
 /* specialized hack for vector graphics, a better approach would be to implement
@@ -311,7 +311,7 @@ struct monitor_mode platform_video_dimensions()
 	};
 }
 
-bool platform_video_map_handle(struct storage_info_t* store, int64_t handle)
+bool platform_video_map_handle(struct agp_vstore* store, int64_t handle)
 {
 	return false;
 }
@@ -361,7 +361,7 @@ static void swap_buffers(void* this)
 		SHMIF_SIGVID, global.vstore.vinf.text.glid) >= 0)
 		return;
 
-	struct storage_info_t store = global.vstore;
+	struct agp_vstore store = global.vstore;
 	store.vinf.text.raw = global.shared.vidp;
 	agp_activate_rendertarget(NULL);
 	agp_readback_synchronous(&store);

@@ -145,7 +145,7 @@ typedef struct surface_transform {
 } surface_transform;
 
 struct frameset_store {
-	struct storage_info_t* frame;
+	struct agp_vstore* frame;
 	float txcos[8];
 };
 
@@ -194,7 +194,7 @@ typedef struct arcan_vobject {
 
 	};
 
-	struct storage_info_t* vstore;
+	struct agp_vstore* vstore;
 
 	enum vobj_flags flags;
 	uint16_t origw, origh;
@@ -278,7 +278,7 @@ struct arcan_video_display {
  * refreshes.
  */
 	struct {
-		struct storage_info_t* vstore;
+		struct agp_vstore* vstore;
 		int x, ox;
 		int y, oy;
 		size_t w;
@@ -364,7 +364,7 @@ arcan_vobject* arcan_video_newvobject(arcan_vobj_id* id);
  * up to the video layer. All cases that access s-> directly should be
  * manually inspected.
  */
-void arcan_vint_drop_vstore(struct storage_info_t* s);
+void arcan_vint_drop_vstore(struct agp_vstore* s);
 
 /* check if a pending readback is completed, and process it if it is. */
 void arcan_vint_pollreadback(struct rendertarget* rtgt);
@@ -390,7 +390,7 @@ void arcan_debug_tracetag_dump();
  * access to the current rendertarget backend store for primary rendertarget
  * used primarily by the video-platform layer
  */
-struct storage_info_t* arcan_vint_world();
+struct agp_vstore* arcan_vint_world();
 
 /*
  * generate the normal set of texture coordinates (should be CW:
@@ -414,14 +414,14 @@ void arcan_vint_joinasynch(arcan_vobject* img, bool emit, bool force);
  * its primary attachment (for ordering etc.)
  */
 struct rendertarget* arcan_vint_findrt(arcan_vobject* vobj);
-struct rendertarget* arcan_vint_findrt_vstore(struct storage_info_t* st);
+struct rendertarget* arcan_vint_findrt_vstore(struct agp_vstore* st);
 
 /*
- * used by the video platform layer, assume that storage_info_t points
+ * used by the video platform layer, assume that agp_vstore points
  * to the backing end of a rendertarget, and draw it to the bound output-rt
  * at the specified (x,y, x+w, y+h) position
  */
-void arcan_vint_drawrt(struct storage_info_t*, int x, int y, int w, int h);
+void arcan_vint_drawrt(struct agp_vstore*, int x, int y, int w, int h);
 
 /*
  * [may be] used by the video platform layer to share the normal hinting

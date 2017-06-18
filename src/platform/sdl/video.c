@@ -194,7 +194,7 @@ enum dpms_state platform_video_dpms(
 	return ADPMS_ON;
 }
 
-bool platform_video_map_handle(struct storage_info_t* dst, int64_t handle)
+bool platform_video_map_handle(struct agp_vstore* dst, int64_t handle)
 {
 	return false;
 }

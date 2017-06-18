@@ -150,7 +150,7 @@ void agp_shader_source(enum SHADER_TYPES type,
 }
 
 #ifdef GLES3
-static void pbo_alloc_write(struct storage_info_t* store)
+static void pbo_alloc_write(struct agp_vstore* store)
 {
 	struct agp_fenv* env = agp_env();
 	GLuint pboid;
@@ -198,18 +198,18 @@ void glDrawBuffer(GLint mode)
  *	glReadPixels(0, 0, width, height, GL_RGBA, GL_RGBA, dstbuf);
  */
 
-void agp_readback_synchronous(struct storage_info_t* dst)
+void agp_readback_synchronous(struct agp_vstore* dst)
 {
 	arcan_warning("agp(gles) - readbacks not supported\n");
 }
 
-void agp_request_readback(struct storage_info_t* store)
+void agp_request_readback(struct agp_vstore* store)
 {
 	arcan_warning("agp(gles) - readbacks not supported\n");
 }
 
 struct asynch_readback_meta argp_buffer_readback_asynchronous(
-	struct storage_info_t* dst, bool poll)
+	struct agp_vstore* dst, bool poll)
 {
 	struct asynch_readback_meta res = {0};
 	return res;
@@ -227,7 +227,7 @@ static void default_release(void* tag)
 #endif
 }
 
-struct asynch_readback_meta agp_poll_readback(struct storage_info_t* store)
+struct asynch_readback_meta agp_poll_readback(struct agp_vstore* store)
 {
 	struct asynch_readback_meta res = {
 	.release = default_release
@@ -236,7 +236,7 @@ struct asynch_readback_meta agp_poll_readback(struct storage_info_t* store)
 	return res;
 }
 
-void agp_drop_vstore(struct storage_info_t* s)
+void agp_drop_vstore(struct agp_vstore* s)
 {
 	if (!s)
 		return;
@@ -250,10 +250,10 @@ void agp_drop_vstore(struct storage_info_t* s)
 		env->delete_buffers(1, &s->vinf.text.wid);
 #endif
 
-	memset(s, '\0', sizeof(struct storage_info_t));
+	memset(s, '\0', sizeof(struct agp_vstore));
 }
 
-void agp_resize_vstore(struct storage_info_t* s, size_t w, size_t h)
+void agp_resize_vstore(struct agp_vstore* s, size_t w, size_t h)
 {
 	s->w = w;
 	s->h = h;
@@ -284,7 +284,7 @@ void agp_resize_vstore(struct storage_info_t* s, size_t w, size_t h)
 	agp_update_vstore(s, true);
 }
 
-static void alloc_buffer(struct storage_info_t* s)
+static void alloc_buffer(struct agp_vstore* s)
 {
 	if (s->vinf.text.s_raw != s->w * s->h * sizeof(av_pixel)){
 		arcan_mem_free(s->vinf.text.raw);
@@ -298,7 +298,7 @@ static void alloc_buffer(struct storage_info_t* s)
 	}
 }
 
-struct stream_meta agp_stream_prepare(struct storage_info_t* s,
+struct stream_meta agp_stream_prepare(struct agp_vstore* s,
 		struct stream_meta meta, enum stream_type type)
 {
 	struct stream_meta mout = meta;
@@ -353,10 +353,10 @@ struct stream_meta agp_stream_prepare(struct storage_info_t* s,
 	return mout;
 }
 
-void agp_stream_release(struct storage_info_t* s, struct stream_meta meta)
+void agp_stream_release(struct agp_vstore* s, struct stream_meta meta)
 {
 }
 
-void agp_stream_commit(struct storage_info_t* s, struct stream_meta meta)
+void agp_stream_commit(struct agp_vstore* s, struct stream_meta meta)
 {
 }

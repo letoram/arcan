@@ -240,7 +240,7 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
 				fset_ofs = (fset_ofs + 1) % vobj->frameset->n_frames;
 			}
 			else if (base->nmaps > 1){
-				struct storage_info_t* backing[base->nmaps];
+				struct agp_vstore* backing[base->nmaps];
 				for (size_t i = 0; i < base->nmaps; i++){
 					backing[i] = vobj->frameset->frames[fset_ofs].frame;
 					fset_ofs = (fset_ofs + 1) % vobj->frameset->n_frames;

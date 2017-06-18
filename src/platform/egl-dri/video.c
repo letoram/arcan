@@ -2064,7 +2064,7 @@ drop_disp:
 }
 
 static bool map_handle_gbm(
-	struct storage_info_t* dst, int64_t handle)
+	struct agp_vstore* dst, int64_t handle)
 {
 	if (!nodes[0].eglenv.create_image || !nodes[0].eglenv.image_target_texture2D)
 		return false;
@@ -2170,7 +2170,7 @@ static bool map_handle_gbm(
  * won't be sure of what src is, or dst, how much will actually be copied or
  * what happens to data in transit.
  */
-bool map_handle_stream(struct storage_info_t* dst, int64_t handle)
+bool map_handle_stream(struct agp_vstore* dst, int64_t handle)
 {
 /*
  * 1. eglCreateStreamFromFileDescriptorKHR(dpy, handle)
@@ -2193,7 +2193,7 @@ bool map_handle_stream(struct storage_info_t* dst, int64_t handle)
  * individual plane updates. Something to worry about when we have a test
  * set that actually works for that usecase.. */
 bool platform_video_map_handle(
-	struct storage_info_t* dst, int64_t handle)
+	struct agp_vstore* dst, int64_t handle)
 {
 /*
  * MULTIGPU:FAIL

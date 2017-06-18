@@ -172,7 +172,7 @@ static bool arcan_frameserver_control_chld(arcan_frameserver* src){
 }
 
 static void push_buffer(arcan_frameserver* src,
-	struct storage_info_t* store, struct arcan_shmif_region* dirty)
+	struct agp_vstore* store, struct arcan_shmif_region* dirty)
 {
 	struct stream_meta stream = {.buf = NULL};
 	bool explicit = src->flags.explicit;
@@ -497,7 +497,7 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 			&tgt->inqueue, tgt->queue_mask, 0.5, tgt->vid);
 
 		struct arcan_vobject* vobj = arcan_video_getobject(tgt->vid);
-		struct storage_info_t* dst_store = vobj->frameset ?
+		struct agp_vstore* dst_store = vobj->frameset ?
 			vobj->frameset->frames[vobj->frameset->index].frame : vobj->vstore;
 		struct arcan_shmif_region dirty = atomic_load(&shmpage->dirty);
 		push_buffer(tgt, dst_store,

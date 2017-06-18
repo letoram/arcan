@@ -121,7 +121,7 @@ const char* agp_shader_language()
 	return "GLSL120";
 }
 
-static void pbo_alloc_read(struct storage_info_t* store)
+static void pbo_alloc_read(struct agp_vstore* store)
 {
 	GLuint pboid;
 	struct agp_fenv* env = agp_env();
@@ -134,7 +134,7 @@ static void pbo_alloc_read(struct storage_info_t* store)
 	env->bind_buffer(GL_PIXEL_PACK_BUFFER, 0);
 }
 
-static void pbo_alloc_write(struct storage_info_t* store)
+static void pbo_alloc_write(struct agp_vstore* store)
 {
 	GLuint pboid;
 	struct agp_fenv* env = agp_env();
@@ -148,7 +148,7 @@ static void pbo_alloc_write(struct storage_info_t* store)
 }
 
 
-static void rebuild_pbo(struct storage_info_t* s)
+static void rebuild_pbo(struct agp_vstore* s)
 {
 	struct agp_fenv* env = agp_env();
 	if (s->vinf.text.wid){
@@ -178,7 +178,7 @@ static void reset_pixel_store()
 	env->pixel_storei(GL_UNPACK_ROW_LENGTH, 0);
 }
 
-void agp_readback_synchronous(struct storage_info_t* dst)
+void agp_readback_synchronous(struct agp_vstore* dst)
 {
 	if (!(dst->txmapped == TXSTATE_TEX2D) || !dst->vinf.text.raw)
 		return;
@@ -191,7 +191,7 @@ void agp_readback_synchronous(struct storage_info_t* dst)
 	env->bind_texture(GL_TEXTURE_2D, 0);
 }
 
-void agp_drop_vstore(struct storage_info_t* s)
+void agp_drop_vstore(struct agp_vstore* s)
 {
 	if (!s || s->vinf.text.glid == GL_NONE)
 		return;
@@ -214,7 +214,7 @@ void agp_drop_vstore(struct storage_info_t* s)
 	}
 }
 
-static void pbo_stream(struct storage_info_t* s,
+static void pbo_stream(struct agp_vstore* s,
 	av_pixel* buf, struct stream_meta* meta, bool synch)
 {
 	agp_activate_vstore(s);
@@ -262,7 +262,7 @@ static void pbo_stream(struct storage_info_t* s,
 }
 
 /* positions and offsets in meta have been verified in _frameserver */
-static void pbo_stream_sub(struct storage_info_t* s,
+static void pbo_stream_sub(struct agp_vstore* s,
 	av_pixel* buf, struct stream_meta* meta, bool synch)
 {
 	struct agp_fenv* env = agp_env();
@@ -310,7 +310,7 @@ glBindBuffer(GL_PIXEL_UNPACK_BUFFER, s->vinf.text.wid);
 #endif
 }
 
-static inline void setup_unpack_pbo(struct storage_info_t* s, void* buf)
+static inline void setup_unpack_pbo(struct agp_vstore* s, void* buf)
 {
 	struct agp_fenv* env = agp_env();
 	agp_activate_vstore(s);
@@ -322,7 +322,7 @@ static inline void setup_unpack_pbo(struct storage_info_t* s, void* buf)
 	agp_deactivate_vstore();
 }
 
-static void alloc_buffer(struct storage_info_t* s)
+static void alloc_buffer(struct agp_vstore* s)
 {
 	if (s->vinf.text.s_raw != s->w * s->h * sizeof(av_pixel)){
 		arcan_mem_free(s->vinf.text.raw);
@@ -336,7 +336,7 @@ static void alloc_buffer(struct storage_info_t* s)
 	}
 }
 
-struct stream_meta agp_stream_prepare(struct storage_info_t* s,
+struct stream_meta agp_stream_prepare(struct agp_vstore* s,
 		struct stream_meta meta, enum stream_type type)
 {
 	struct agp_fenv* env = agp_env();
@@ -405,7 +405,7 @@ struct stream_meta agp_stream_prepare(struct storage_info_t* s,
 	return res;
 }
 
-void agp_stream_release(struct storage_info_t* s, struct stream_meta meta)
+void agp_stream_release(struct agp_vstore* s, struct stream_meta meta)
 {
 	struct agp_fenv* env = agp_env();
 	if (meta.dirty)
@@ -416,7 +416,7 @@ void agp_stream_release(struct storage_info_t* s, struct stream_meta meta)
 	env->bind_buffer(GL_PIXEL_UNPACK_BUFFER, GL_NONE);
 }
 
-void agp_stream_commit(struct storage_info_t* s, struct stream_meta meta)
+void agp_stream_commit(struct agp_vstore* s, struct stream_meta meta)
 {
 }
 
@@ -430,7 +430,7 @@ static void default_release(void* tag)
 	env->bind_buffer(GL_PIXEL_PACK_BUFFER, 0);
 }
 
-void agp_resize_vstore(struct storage_info_t* s, size_t w, size_t h)
+void agp_resize_vstore(struct agp_vstore* s, size_t w, size_t h)
 {
 	struct agp_fenv* env = agp_env();
 	s->w = w;
@@ -443,7 +443,7 @@ void agp_resize_vstore(struct storage_info_t* s, size_t w, size_t h)
 	agp_update_vstore(s, true);
 }
 
-void agp_request_readback(struct storage_info_t* store)
+void agp_request_readback(struct agp_vstore* store)
 {
 	if (!store || store->txmapped != TXSTATE_TEX2D)
 		return;
@@ -459,7 +459,7 @@ void agp_request_readback(struct storage_info_t* store)
 	env->bind_texture(GL_TEXTURE_2D, 0);
 }
 
-struct asynch_readback_meta agp_poll_readback(struct storage_info_t* store)
+struct asynch_readback_meta agp_poll_readback(struct agp_vstore* store)
 {
 	struct agp_fenv* env = agp_env();
 	struct asynch_readback_meta res = {

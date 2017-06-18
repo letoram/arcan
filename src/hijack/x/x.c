@@ -196,7 +196,7 @@ struct Display {
 	bool gl;
 #ifdef WANT_GLX_FUNCTIONS
 	struct agp_rendertarget* rtgt;
-	struct storage_info_t vstore;
+	struct agp_vstore vstore;
 #endif
 };
 
@@ -905,7 +905,7 @@ void glXSwapBuffers(Display* dpy, GLXDrawable draw)
 		SHMIF_SIGVID, dpy->vstore.vinf.text.glid) >= 0)
 		return;
 
-	struct storage_info_t store = dpy->vstore;
+	struct agp_vstore store = dpy->vstore;
 	store.vinf.text.raw = dpy->con.vidp;
 	agp_activate_rendertarget(NULL);
 	agp_readback_synchronous(&store);

@@ -52,10 +52,10 @@ struct agp_rendertarget
 	float clearcol[4];
 
 	enum rendertarget_mode mode;
-	struct storage_info_t* store;
+	struct agp_vstore* store;
 
 	bool front_active;
-	struct storage_info_t* store_back;
+	struct agp_vstore* store_back;
 };
 
 unsigned agp_rendertarget_swap(struct agp_rendertarget* dst)
@@ -138,9 +138,9 @@ static bool alloc_fbo(struct agp_rendertarget* dst, bool retry)
 
 		agp_drop_vstore(dst->store);
 
-		struct storage_info_t* store = dst->store;
+		struct agp_vstore* store = dst->store;
 
-		memset(store, '\0', sizeof(struct storage_info_t));
+		memset(store, '\0', sizeof(struct agp_vstore));
 
 		store->txmapped   = TXSTATE_DEPTH;
 		store->txu        = ARCAN_VTEX_CLAMP;
@@ -211,7 +211,7 @@ static bool alloc_fbo(struct agp_rendertarget* dst, bool retry)
 	return true;
 }
 
-void agp_empty_vstore(struct storage_info_t* vs, size_t w, size_t h)
+void agp_empty_vstore(struct agp_vstore* vs, size_t w, size_t h)
 {
 	size_t sz = w * h * sizeof(av_pixel);
 	vs->vinf.text.s_raw = sz;
@@ -238,14 +238,14 @@ void agp_empty_vstore(struct storage_info_t* vs, size_t w, size_t h)
 	vs->vinf.text.s_raw = 0;
 }
 
-void agp_empty_vstoreext(struct storage_info_t* vs,
+void agp_empty_vstoreext(struct agp_vstore* vs,
 	size_t w, size_t h, enum vstore_hint hint)
 {
 	agp_empty_vstore(vs, w, h);
 }
 
 struct agp_rendertarget* agp_setup_rendertarget(
-	struct storage_info_t* vstore, enum rendertarget_mode m)
+	struct agp_vstore* vstore, enum rendertarget_mode m)
 {
 	struct agp_rendertarget* r = arcan_alloc_mem(sizeof(struct agp_rendertarget),
 		ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
@@ -258,7 +258,7 @@ struct agp_rendertarget* agp_setup_rendertarget(
 	r->front_active = true;
 
 	if (m & RENDERTARGET_DOUBLEBUFFER){
-		r->store_back = arcan_alloc_mem(sizeof(struct storage_info_t),
+		r->store_back = arcan_alloc_mem(sizeof(struct agp_vstore),
 			ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 		r->store_back->vinf.text.s_fmt = vstore->vinf.text.s_fmt;
 		r->store_back->vinf.text.d_fmt = vstore->vinf.text.d_fmt;
@@ -428,7 +428,7 @@ void agp_pipeline_hint(enum pipeline_mode mode)
 	}
 }
 
-void agp_null_vstore(struct storage_info_t* store)
+void agp_null_vstore(struct agp_vstore* store)
 {
 	if (!store ||
 		store->txmapped != TXSTATE_TEX2D || store->vinf.text.glid == GL_NONE)
@@ -438,7 +438,7 @@ void agp_null_vstore(struct storage_info_t* store)
 	store->vinf.text.glid = GL_NONE;
 }
 
-static void erase_store(struct storage_info_t* os)
+static void erase_store(struct agp_vstore* os)
 {
 	if (!os)
 		return;
@@ -478,7 +478,7 @@ void agp_resize_rendertarget(
 	alloc_fbo(tgt, false);
 }
 
-void agp_activate_vstore_multi(struct storage_info_t** backing, size_t n)
+void agp_activate_vstore_multi(struct agp_vstore** backing, size_t n)
 {
 	char buf[] = {'m', 'a', 'p', '_', 't', 'u', 0, 0, 0};
 	struct agp_fenv* env = agp_env();
@@ -498,7 +498,7 @@ void agp_activate_vstore_multi(struct storage_info_t** backing, size_t n)
 	env->active_texture(GL_TEXTURE0);
 }
 
-void agp_update_vstore(struct storage_info_t* s, bool copy)
+void agp_update_vstore(struct agp_vstore* s, bool copy)
 {
 	struct agp_fenv* env = agp_env();
 	if (s->txmapped == TXSTATE_OFF)
@@ -918,7 +918,7 @@ void agp_invalidate_mesh(struct agp_mesh_store* bs)
 {
 }
 
-void agp_activate_vstore(struct storage_info_t* s)
+void agp_activate_vstore(struct agp_vstore* s)
 {
 	agp_env()->bind_texture(GL_TEXTURE_2D, s->vinf.text.glid);
 }
