@@ -201,7 +201,7 @@ typedef struct arcan_vobject {
 
 /* visual modifiers */
 	agp_shader_id program;
-	struct mesh_storage_t* shape;
+	struct agp_mesh_store* shape;
 
 	struct {
 		enum arcan_ffunc ffunc;

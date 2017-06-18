@@ -163,11 +163,11 @@ void agp_draw_vobj(float x1, float y1,
 {
 }
 
-void agp_submit_mesh(struct mesh_storage_t* base, enum agp_mesh_flags fl)
+void agp_submit_mesh(struct agp_mesh_store* base, enum agp_mesh_flags fl)
 {
 }
 
-void agp_invalidate_mesh(struct mesh_storage_t* base)
+void agp_invalidate_mesh(struct agp_mesh_store* base)
 {
 }
 

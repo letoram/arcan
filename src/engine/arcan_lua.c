@@ -4725,7 +4725,7 @@ static int origoofs(lua_State* ctx)
 }
 
 struct mesh_ud {
-	struct mesh_storage_t* mesh;
+	struct agp_mesh_store* mesh;
 	arcan_vobject* vobj;
 };
 
@@ -4753,7 +4753,7 @@ static int imagetess(lua_State* ctx)
 	intptr_t ref = find_lua_callback(ctx);
 
 /* user want access? */
-	struct mesh_storage_t* ms;
+	struct agp_mesh_store* ms;
 	if (LUA_NOREF == ref){
 		arcan_video_defineshape(sid, s, t, &ms);
 		lua_pushboolean(ctx, ms->verts != NULL || s == 1 || t == 1);

@@ -42,7 +42,7 @@ struct geometry {
 	size_t nmaps;
 	agp_shader_id program;
 
-	struct mesh_storage_t store;
+	struct agp_mesh_store store;
 
 	bool complete;
 	bool threaded;

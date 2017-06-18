@@ -831,7 +831,7 @@ enum agp_mesh_type {
 	AGP_MESH_POINTCLOUD
 };
 
-struct mesh_storage_t
+struct agp_mesh_store
 {
 /*
  * set of one or more of the vertex attributes come from the same buffer, each
@@ -891,18 +891,18 @@ enum agp_mesh_flags {
  */
 const char* agp_ident();
 
-void agp_submit_mesh(struct mesh_storage_t*, enum agp_mesh_flags);
+void agp_submit_mesh(struct agp_mesh_store*, enum agp_mesh_flags);
 
 /*
  * Mark that the contents of the mesh has changed dynamically and that possible
  * GPU- side cache might need to be updated.
  */
-void agp_invalidate_mesh(struct mesh_storage_t*);
+void agp_invalidate_mesh(struct agp_mesh_store*);
 
 /*
  * Free the resources tied to a mesh (buffers + GPU handles)
  */
-void agp_drop_mesh(struct mesh_storage_t* s);
+void agp_drop_mesh(struct agp_mesh_store* s);
 
 /*
  * Get a copy of the current display output and save into the supplied buffer,

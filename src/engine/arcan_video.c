@@ -3510,9 +3510,9 @@ static void emit_transform_event(arcan_vobj_id src,
 /*
  * fill out vertices / txcos, return number of elements to draw
  */
-static struct mesh_storage_t tesselate_2d(size_t n_s, size_t n_t)
+static struct agp_mesh_store tesselate_2d(size_t n_s, size_t n_t)
 {
-	struct mesh_storage_t res = {};
+	struct agp_mesh_store res = {};
 
 	float step_s = 2.0 / (n_s-1);
 	float step_t = 2.0 / (n_t-1);
@@ -3568,7 +3568,7 @@ static struct mesh_storage_t tesselate_2d(size_t n_s, size_t n_t)
 }
 
 arcan_errc arcan_video_defineshape(arcan_vobj_id dst,
-	size_t n_s, size_t n_t, struct mesh_storage_t** store)
+	size_t n_s, size_t n_t, struct agp_mesh_store** store)
 {
 	arcan_vobject* vobj = arcan_video_getobject(dst);
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
@@ -3590,7 +3590,7 @@ arcan_errc arcan_video_defineshape(arcan_vobj_id dst,
 		}
 	}
 	else
-		vobj->shape = arcan_alloc_mem(sizeof(struct mesh_storage_t),
+		vobj->shape = arcan_alloc_mem(sizeof(struct agp_mesh_store),
 			ARCAN_MEM_MODELDATA, ARCAN_MEM_BZERO |
 			ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_NATURAL
 		);
@@ -3603,7 +3603,7 @@ arcan_errc arcan_video_defineshape(arcan_vobj_id dst,
 
 /* we now KNOW that s > 1 and t > 1, that shape is valid -
  * time to build the mesh */
-	struct mesh_storage_t ns = tesselate_2d(n_s, n_t);
+	struct agp_mesh_store ns = tesselate_2d(n_s, n_t);
 	if (!ns.verts){
 		if (vobj->shape){
 			arcan_vint_dropshape(vobj);

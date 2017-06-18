@@ -619,7 +619,7 @@ arcan_errc arcan_video_setactiveframe(arcan_vobj_id dst, unsigned fid);
  * gets invalidated.
  */
 arcan_errc arcan_video_defineshape(arcan_vobj_id dst,
-	size_t n_s, size_t n_t, struct mesh_storage_t** store);
+	size_t n_s, size_t n_t, struct agp_mesh_store** store);
 
 /*
  * Specify automatic management of active frameset frame. If [mode] is

@@ -747,7 +747,7 @@ void agp_render_options(struct agp_render_options opts)
 	env->line_width(opts.line_width);
 }
 
-static void setup_transfer(struct mesh_storage_t* base, enum agp_mesh_flags fl)
+static void setup_transfer(struct agp_mesh_store* base, enum agp_mesh_flags fl)
 {
 	struct agp_fenv* env = agp_env();
 	int attribs[] = {
@@ -861,7 +861,7 @@ static void setup_culling(enum agp_mesh_flags fl)
 	}
 }
 
-void agp_submit_mesh(struct mesh_storage_t* base, enum agp_mesh_flags fl)
+void agp_submit_mesh(struct agp_mesh_store* base, enum agp_mesh_flags fl)
 {
 /* make sure the current program actually uses the attributes from the mesh */
 	struct agp_fenv* env = agp_env();
@@ -914,7 +914,7 @@ void agp_submit_mesh(struct mesh_storage_t* base, enum agp_mesh_flags fl)
  * mark that the contents of the mesh has changed dynamically
  * and that possible GPU- side cache might need to be updated.
  */
-void agp_invalidate_mesh(struct mesh_storage_t* bs)
+void agp_invalidate_mesh(struct agp_mesh_store* bs)
 {
 }
 
@@ -939,7 +939,7 @@ void agp_rendertarget_clearcolor(
 	tgt->clearcol[3] = a;
 }
 
-void agp_drop_mesh(struct mesh_storage_t* s)
+void agp_drop_mesh(struct agp_mesh_store* s)
 {
 	if (!s)
 		return;
@@ -973,7 +973,7 @@ void agp_drop_mesh(struct mesh_storage_t* s)
 		}
 	}
 
-	memset(s, '\0', sizeof(struct mesh_storage_t));
+	memset(s, '\0', sizeof(struct agp_mesh_store));
 }
 
 void agp_save_output(size_t w, size_t h, av_pixel* dst, size_t dsz)
