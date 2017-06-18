@@ -143,7 +143,7 @@ static const char* video_tracetag(arcan_vobject* src)
 /* a default more-or-less empty context */
 static struct arcan_video_context* current_context = vcontext_stack;
 
-void arcan_vint_drop_vstore(struct storage_info_t* s)
+void arcan_vint_drop_vstore(struct agp_vstore* s)
 {
 	assert(s->refcount);
 	s->refcount--;
@@ -160,7 +160,7 @@ void arcan_vint_drop_vstore(struct storage_info_t* s)
 			if (s->vinf.text.source)
 				arcan_mem_free(s->vinf.text.source);
 
-			memset(s, '\0', sizeof(struct storage_info_t));
+			memset(s, '\0', sizeof(struct agp_vstore));
 		}
 
 		arcan_mem_free(s);
@@ -177,7 +177,7 @@ void arcan_video_default_imageprocmode(enum arcan_imageproc_mode mode)
 	arcan_video_display.imageproc = mode;
 }
 
-struct rendertarget* arcan_vint_findrt_vstore(struct storage_info_t* st)
+struct rendertarget* arcan_vint_findrt_vstore(struct agp_vstore* st)
 {
 	if (!st)
 		return NULL;
@@ -274,7 +274,7 @@ static void dropchild(arcan_vobject* parent, arcan_vobject* child)
  * or pause frameserver connections and (conservative) delete resources that can
  * be recreated later on. */
 static void deallocate_gl_context(struct arcan_video_context* context,
-	bool del, struct storage_info_t* safe_store)
+	bool del, struct agp_vstore* safe_store)
 {
 /* index (0) is always worldid */
 	for (size_t i = 1; i < context->vitem_limit; i++){
@@ -453,7 +453,7 @@ static void pop_transfer_persists(
 	}
 }
 
-void arcan_vint_drawrt(struct storage_info_t* vs, int x, int y, int w, int h)
+void arcan_vint_drawrt(struct agp_vstore* vs, int x, int y, int w, int h)
 {
 	_Alignas(16) float imatr[16];
 	identity_matrix(imatr);
@@ -663,7 +663,7 @@ void arcan_video_recoverexternal(bool pop, int* saved,
 	}
 
 	struct {
-		struct storage_info_t* gl_store;
+		struct agp_vstore* gl_store;
 		char* tracetag;
 		ffunc_ind ffunc;
 		vfunc_state state;
@@ -973,7 +973,7 @@ arcan_errc arcan_video_resampleobject(arcan_vobj_id vid,
 	arcan_video_objectscale(vid, 1.0, 1.0, 1.0, 0);
 
 /* readback so we can survive push/pop and restore external */
-	struct storage_info_t* dstore = vobj->vstore;
+	struct agp_vstore* dstore = vobj->vstore;
 	agp_readback_synchronous(dstore);
 
 	return ARCAN_OK;
@@ -1038,10 +1038,10 @@ void arcan_vint_mirrormapping(float* dst, float st, float tt)
 	dst[1] = tt;
 }
 
-static void populate_vstore(struct storage_info_t** vs)
+static void populate_vstore(struct agp_vstore** vs)
 {
 	*vs = arcan_alloc_mem(
-		sizeof(struct storage_info_t),
+		sizeof(struct agp_vstore),
 		ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO,
 		ARCAN_MEMALIGN_NATURAL
 	);
@@ -1606,7 +1606,7 @@ arcan_errc arcan_vint_getimage(const char* fname, arcan_vobject* dst,
 
 /* need to keep the identification string in order to rebuild
  * on a forced push/pop */
-	struct storage_info_t* dstframe = dst->vstore;
+	struct agp_vstore* dstframe = dst->vstore;
 	dstframe->vinf.text.source = strdup(fname);
 
 	enum arcan_vimage_mode desm = dst->vstore->scale;
@@ -1827,7 +1827,7 @@ arcan_vobj_id arcan_video_rawobject(av_pixel* buf,
 	if (!newvobj)
 		return ARCAN_EID;
 
-	struct storage_info_t* ds = newvobj->vstore;
+	struct agp_vstore* ds = newvobj->vstore;
 
 	ds->w = cons.w;
 	ds->h = cons.h;
@@ -2258,7 +2258,7 @@ static arcan_vobj_id arcan_video_setupfeed(
 	if (!newvobj || !ffunc)
 		return ARCAN_EID;
 
-	struct storage_info_t* vstor = newvobj->vstore;
+	struct agp_vstore* vstor = newvobj->vstore;
 /* preset */
 	newvobj->origw = cons.w;
 	newvobj->origh = cons.h;
@@ -4428,7 +4428,7 @@ void arcan_vint_bindmulti(arcan_vobject* elem, size_t ind)
 
 /* Build a temporary array of storage- info references for multi-
  * build. Note that this does not respect texture coordinates */
-	struct storage_info_t* elems[sz];
+	struct agp_vstore* elems[sz];
 
 	for (size_t i = 0; i < sz; i++, ind = (ind > 0 ? ind - 1 : sz - 1))
 		elems[i] = set->frames[ind].frame;
@@ -4674,7 +4674,7 @@ arcan_errc arcan_video_forceread(arcan_vobj_id sid, bool local,
  */
 
 	arcan_vobject* vobj = arcan_video_getobject(sid);
-	struct storage_info_t* dstore = vobj->vstore;
+	struct agp_vstore* dstore = vobj->vstore;
 
 	if (!vobj || !dstore)
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
@@ -4704,7 +4704,7 @@ struct agp_rendertarget* arcan_vint_worldrt()
 	return current_context->stdoutp.art;
 }
 
-struct storage_info_t* arcan_vint_world()
+struct agp_vstore* arcan_vint_world()
 {
 	return current_context->stdoutp.color->vstore;
 }
@@ -5289,7 +5289,7 @@ arcan_errc arcan_video_tracetag(arcan_vobj_id id, const char*const message)
 	return rv;
 }
 
-static void update_sourcedescr(struct storage_info_t* ds,
+static void update_sourcedescr(struct agp_vstore* ds,
 	struct arcan_rstrarg* data)
 {
 	assert(ds->vinf.text.kind != STORAGE_IMAGE_URI);
@@ -5330,7 +5330,7 @@ arcan_vobj_id arcan_video_renderstring(arcan_vobj_id src,
 	}
 
 	size_t maxw, maxh, w, h;
-	struct storage_info_t* ds;
+	struct agp_vstore* ds;
 	uint32_t dsz;
 
 	if (src == ARCAN_EID){

@@ -155,7 +155,7 @@ enum storage_source {
 	STORAGE_TEXTARRAY
 };
 
-struct storage_info_t {
+struct agp_vstore {
 	size_t refcount;
 	uint32_t update_ts;
 
@@ -292,7 +292,7 @@ void platform_video_setsynch(const char* strat);
 /*
  * take the received handle and associate it with the specified backing store.
  */
-bool platform_video_map_handle(struct storage_info_t*, int64_t inh);
+bool platform_video_map_handle(struct agp_vstore*, int64_t inh);
 
 /*
  * retrieve a descriptor for a client- render resource connected to the
@@ -547,7 +547,7 @@ const char* agp_backend_ident();
 /*
  * Set as currently active sampling buffer for other drawing commands
  */
-void agp_activate_vstore(struct storage_info_t* backing);
+void agp_activate_vstore(struct agp_vstore* backing);
 
 /*
  * Explicitly deactivate vstore, after this state of the specified backing
@@ -559,12 +559,12 @@ void agp_deactivate_vstore();
  * Drop the underlying ID mapping with a pending call to update_vstore, though
  * the application manually managed reallocation
  */
-void agp_null_vstore(struct storage_info_t* backing);
+void agp_null_vstore(struct agp_vstore* backing);
 
 /*
  * Setup an empty vstore backing with the specified dimensions
  */
-void agp_empty_vstore(struct storage_info_t* backing, size_t w, size_t h);
+void agp_empty_vstore(struct agp_vstore* backing, size_t w, size_t h);
 
 /*
  * Extended form to allow internal platform choice in format used,
@@ -580,27 +580,27 @@ enum vstore_hint
 	VSTORE_HINT_HIDEF = 4,
 	VSTORE_HINT_HIDEF_NOALPHA = 5
 };
-void agp_empty_vstoreext(struct storage_info_t* backing,
+void agp_empty_vstoreext(struct agp_vstore* backing,
 	size_t w, size_t h, enum vstore_hint);
 
 /*
  * Rebuild an existing vstore to handle a change in data source dimensions
  * without sharestorage- like operations breaking
  */
-void agp_resize_vstore(struct storage_info_t* backing, size_t w, size_t h);
+void agp_resize_vstore(struct agp_vstore* backing, size_t w, size_t h);
 
 /*
  * Deallocate all resources associated with a backing store.  Note that this
  * function DO NOT respect the reference counter field, that is the
  * responsibility of the caller. (engine uses vint_* for this purpose).
  */
-void agp_drop_vstore(struct storage_info_t* backing);
+void agp_drop_vstore(struct agp_vstore* backing);
 
 /*
  * Map multiple backing store devices sequentially across available texture
  * units.
  */
-void agp_activate_vstore_multi(struct storage_info_t** backing, size_t n);
+void agp_activate_vstore_multi(struct agp_vstore** backing, size_t n);
 
 /*
  * Prepare the specified backing store for streaming texture uploads. The
@@ -662,18 +662,18 @@ struct stream_meta {
  * In a dream world, there should be an option to take our shmif- vidp,
  * a synch fence and have driver map to opaque backing store.
  */
-struct stream_meta agp_stream_prepare(struct storage_info_t* store,
+struct stream_meta agp_stream_prepare(struct agp_vstore* store,
 	struct stream_meta base, enum stream_type type);
 
-void agp_stream_commit(struct storage_info_t*, struct stream_meta);
-void agp_stream_release(struct storage_info_t*, struct stream_meta);
+void agp_stream_commit(struct agp_vstore*, struct stream_meta);
+void agp_stream_release(struct agp_vstore*, struct stream_meta);
 
 /*
  * Synchronize a populated backing store with the underlying graphics layer.
  * [copy] is used to indicate if the backing contents should be updated,
  *        if set to false, only filtering and similar flags will be synched
  */
-void agp_update_vstore(struct storage_info_t*, bool copy);
+void agp_update_vstore(struct agp_vstore*, bool copy);
 
 enum pipeline_mode {
 	PIPELINE_2D,
@@ -690,7 +690,7 @@ void agp_pipeline_hint(enum pipeline_mode);
  * Synchronize the current backing store on-host buffer (i.e.
  * dstore->vinf.text.raw).
  */
-void agp_readback_synchronous(struct storage_info_t* dst);
+void agp_readback_synchronous(struct agp_vstore* dst);
 
 struct asynch_readback_meta {
 	av_pixel* ptr;
@@ -708,13 +708,13 @@ struct asynch_readback_meta {
  * In that case, [meta.ptr] will be !NULL and the caller is expected to:
  * meta.release(meta.tag); when finished using the contents of [meta.ptr]
  */
-struct asynch_readback_meta agp_poll_readback(struct storage_info_t*);
+struct asynch_readback_meta agp_poll_readback(struct agp_vstore*);
 
 /*
  * Initiate a new asynchronous readback.
  * if one is already pending, this is a no-operation.
  */
-void agp_request_readback(struct storage_info_t*);
+void agp_request_readback(struct agp_vstore*);
 
 /*
  * For clipping and similar operations where we want to
@@ -775,7 +775,7 @@ enum rendertarget_mode {
  */
 struct agp_rendertarget;
 struct agp_fenv;
-struct agp_rendertarget* agp_setup_rendertarget(struct storage_info_t*,
+struct agp_rendertarget* agp_setup_rendertarget(struct agp_vstore*,
 	enum rendertarget_mode mode);
 
 /*

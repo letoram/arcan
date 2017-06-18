@@ -13,7 +13,7 @@
 
 struct shmif_ext_hidden_int {
 	struct agp_rendertarget* rtgt;
-	struct storage_info_t vstore;
+	struct agp_vstore vstore;
 	struct agp_fenv fenv;
 	CGLContextObj context;
 };
@@ -246,7 +246,7 @@ int arcan_shmifext_signal(struct arcan_shmif_cont* con,
 	if (tex_id == SHMIFEXT_BUILTIN)
 		tex_id = ctx->vstore.vinf.text.glid;
 
-	struct storage_info_t vstore = {
+	struct agp_vstore vstore = {
 		.w = con->w,
 		.h = con->h,
 		.txmapped = TXSTATE_TEX2D,
@@ -274,7 +274,7 @@ int arcan_shmifext_signal(struct arcan_shmif_cont* con,
 #include <mach/mach_time.h>
 
 bool platform_video_map_handle(
-	struct storage_info_t* dst, int64_t handle)
+	struct agp_vstore* dst, int64_t handle)
 {
 	return false;
 }

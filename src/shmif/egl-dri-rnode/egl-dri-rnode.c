@@ -46,7 +46,7 @@ struct shmif_ext_hidden_int {
 	struct agp_rendertarget* rtgt_a, (* rtgt_b), (* rtgt_cur);
 
 /* with the gbm- buffer passing, we pretty much need double-buf */
-	struct storage_info_t buf_a, buf_b, (* buf_cur);
+	struct agp_vstore buf_a, buf_b, (* buf_cur);
 	bool nopass, swap;
 
 	EGLImage image;
@@ -74,7 +74,7 @@ void* platform_video_gfxsym(const char* sym)
 	return eglGetProcAddress(sym);
 }
 
-bool platform_video_map_handle(struct storage_info_t* store, int64_t handle)
+bool platform_video_map_handle(struct agp_vstore* store, int64_t handle)
 {
 	return false;
 }
@@ -92,7 +92,7 @@ static bool check_functions(void*(*lookup)(void*, const char*), void* tag)
 	return create_image && destroy_image && query_image_format && export_dmabuf;
 }
 
-static void zap_vstore(struct storage_info_t* vstore)
+static void zap_vstore(struct agp_vstore* vstore)
 {
 	free(vstore->vinf.text.raw);
 	vstore->vinf.text.raw = NULL;
@@ -790,7 +790,7 @@ int arcan_shmifext_signal(struct arcan_shmif_cont* con,
  */
 fallback:
 	if (1){
-	struct storage_info_t vstore = {
+	struct agp_vstore vstore = {
 		.w = con->w,
 		.h = con->h,
 		.txmapped = TXSTATE_TEX2D,

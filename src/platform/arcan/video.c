@@ -84,7 +84,7 @@ struct display {
 	struct arcan_shmif_cont conn;
 	bool mapped, visible, focused, nopass;
 	enum dpms_state dpms;
-	struct storage_info_t* vstore;
+	struct agp_vstore* vstore;
 	float ppcm;
 	int id, dirty;
 
@@ -392,7 +392,7 @@ bool platform_video_set_mode(platform_display_id id, platform_mode_id newmode)
 
 static bool check_store(platform_display_id id)
 {
-	struct storage_info_t* vs = (disp[id].vstore ?
+	struct agp_vstore* vs = (disp[id].vstore ?
 		disp[id].vstore : arcan_vint_world());
 
 	if (vs->w != disp[id].conn.w || vs->h != disp[id].conn.h){
@@ -487,7 +487,7 @@ void platform_video_query_displays()
  * same mechanism on OSX, Windows and Android, the code should probably be
  * moved to another shared platform path
  */
-bool platform_video_map_handle(struct storage_info_t* dst, int64_t handle)
+bool platform_video_map_handle(struct agp_vstore* dst, int64_t handle)
 {
 #ifdef EGL_DMA_BUF
 	EGLint attrs[] = {
@@ -561,10 +561,10 @@ static void stub()
 
 extern struct agp_rendertarget* arcan_vint_worldrt();
 
-static void synch_copy(struct display* disp, struct storage_info_t* vs)
+static void synch_copy(struct display* disp, struct agp_vstore* vs)
 {
 	check_store(disp->id);
-	struct storage_info_t store = *vs;
+	struct agp_vstore store = *vs;
 	store.vinf.text.raw = disp->conn.vidp;
 
 	agp_readback_synchronous(&store);

@@ -5964,7 +5964,7 @@ static int allocsurface(lua_State* ctx)
 		LUA_ETRACE("alloc_surface", "out of vobj-ids", 1);
 	}
 
-	struct storage_info_t* ds = vobj->vstore;
+	struct agp_vstore* ds = vobj->vstore;
 
 	if (quality == 0)
 		agp_empty_vstoreext(ds, w, h, noalpha ?

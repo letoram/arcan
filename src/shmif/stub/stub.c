@@ -24,7 +24,7 @@ int arcan_shmifext_dev(struct arcan_shmif_cont* con,
 	return -1;
 }
 
-bool platform_video_map_handle(struct storage_info_t* store, int64_t handle)
+bool platform_video_map_handle(struct agp_vstore* store, int64_t handle)
 {
 	return false;
 }

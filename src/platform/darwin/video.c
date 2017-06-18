@@ -149,7 +149,7 @@ bool PLATFORM_SYMBOL(_video_auth)(int cardn, unsigned token)
 }
 
 bool PLATFORM_SYMBOL(_video_map_handle)(
-	struct storage_info_t* dst, int64_t handle)
+	struct agp_vstore* dst, int64_t handle)
 {
 	return false;
 }

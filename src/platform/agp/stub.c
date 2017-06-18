@@ -57,49 +57,49 @@ const char** agp_envopts()
 	return env;
 }
 
-void agp_readback_synchronous(struct storage_info_t* dst)
+void agp_readback_synchronous(struct agp_vstore* dst)
 {
 }
 
-void agp_drop_vstore(struct storage_info_t* s)
+void agp_drop_vstore(struct agp_vstore* s)
 {
 }
 
-struct stream_meta agp_stream_prepare(struct storage_info_t* s,
+struct stream_meta agp_stream_prepare(struct agp_vstore* s,
 	struct stream_meta meta, enum stream_type type)
 {
 	struct stream_meta mout = {0};
 	return mout;
 }
 
-void agp_stream_release(struct storage_info_t* s)
+void agp_stream_release(struct agp_vstore* s)
 {
 }
 
-void agp_stream_commit(struct storage_info_t* s)
+void agp_stream_commit(struct agp_vstore* s)
 {
 }
 
-void agp_resize_vstore(struct storage_info_t* s, size_t w, size_t h)
+void agp_resize_vstore(struct agp_vstore* s, size_t w, size_t h)
 {
 }
 
-void agp_request_readback(struct storage_info_t* s)
+void agp_request_readback(struct agp_vstore* s)
 {
 }
 
-struct asynch_readback_meta agp_poll_readback(struct storage_info_t* t)
+struct asynch_readback_meta agp_poll_readback(struct agp_vstore* t)
 {
 	struct asynch_readback_meta res = {0};
 	return res;
 }
 
-void agp_empty_vstore(struct storage_info_t* vs, size_t w, size_t h)
+void agp_empty_vstore(struct agp_vstore* vs, size_t w, size_t h)
 {
 }
 
 void agp_setup_rendertarget(struct rendertarget* dst,
-	struct storage_info_t* vstore, enum rendertarget_mode m)
+	struct agp_vstore* vstore, enum rendertarget_mode m)
 {
 	dst->store = NULL;
 }
@@ -124,7 +124,7 @@ void agp_pipeline_hint(enum pipeline_mode mode)
 {
 }
 
-void agp_null_vstore(struct storage_info_t* store)
+void agp_null_vstore(struct agp_vstore* store)
 {
 }
 
@@ -133,11 +133,11 @@ void agp_resize_rendertarget(struct rendertarget* tgt,
 {
 }
 
-void agp_activate_vstore_multi(struct storage_info_t** backing, size_t n)
+void agp_activate_vstore_multi(struct agp_vstore** backing, size_t n)
 {
 }
 
-void agp_update_vstore(struct storage_info_t* s, bool copy)
+void agp_update_vstore(struct agp_vstore* s, bool copy)
 {
 	FLAG_DIRTY();
 }
@@ -171,7 +171,7 @@ void agp_invalidate_mesh(struct agp_mesh_store* base)
 {
 }
 
-void agp_activate_vstore(struct storage_info_t* s)
+void agp_activate_vstore(struct agp_vstore* s)
 {
 }
 

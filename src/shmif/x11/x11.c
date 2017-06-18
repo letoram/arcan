@@ -16,7 +16,7 @@ struct shmif_ext_hidden_int {
 	XVisualInfo* vi;
 	Display* display;
 	struct agp_rendertarget* rtgt;
-	struct storage_info_t vstore;
+	struct agp_vstore vstore;
 	struct agp_fenv fenv;
 	bool managed;
 	Window wnd;
@@ -232,7 +232,7 @@ int arcan_shmifext_signal(struct arcan_shmif_cont* con,
  *
  * right now, juse use the slow readback method
  */
-	struct storage_info_t vstore = {
+	struct agp_vstore vstore = {
 		.w = con->w,
 		.h = con->h,
 		.txmapped = TXSTATE_TEX2D,
@@ -254,7 +254,7 @@ int arcan_shmifext_signal(struct arcan_shmif_cont* con,
 	return res > INT_MAX ? INT_MAX : res;
 }
 
-bool platform_video_map_handle(struct storage_info_t* store, int64_t handle)
+bool platform_video_map_handle(struct agp_vstore* store, int64_t handle)
 {
 	return false;
 }
