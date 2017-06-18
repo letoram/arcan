@@ -92,6 +92,9 @@ void agp_glinit_fenv(struct agp_fenv* dst,
 	dst->vertex_attrpointer =
 		(void (*)(GLuint, GLint, GLenum, GLboolean, GLsizei, const GLvoid*))
 			lookup(tag, "glVertexAttribPointer");
+	dst->vertex_iattrpointer =
+		(void (*)(GLuint, GLint, GLenum, GLsizei, const GLvoid*))
+			lookup(tag, "glVertexAttribIPointer");
 	dst->disable_vertex_attrarray =
 		(void (*)(GLuint))
 			lookup(tag, "glDisableVertexAttribArray");

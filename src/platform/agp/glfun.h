@@ -66,6 +66,8 @@ struct agp_fenv {
 /* VAs */
 	void (*enable_vertex_attrarray) (GLuint);
 	void (*vertex_attrpointer) (GLuint, GLint, GLenum, GLboolean, GLsizei, const GLvoid*);
+	void (*vertex_iattrpointer) (GLuint, GLint, GLenum, GLsizei, const GLvoid*);
+
 	void (*disable_vertex_attrarray) (GLuint);
 
 /* Shader Uniforms */

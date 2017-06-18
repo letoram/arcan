@@ -614,9 +614,9 @@ arcan_errc arcan_video_setactiveframe(arcan_vobj_id dst, unsigned fid);
  * or other forms of collision detection and response, but stencil- based
  * clipping will still apply.
  *
- * If [store] is provided, the engine assumes that the shape will be modfied.
- * If the mesh is cached on the GPU side, such caches will be updated on the
- * next draw-call.
+ * If [store] is provided and you access / modify its contents, make sure to
+ * also set ->dirty = true so that any caching being done on the AGP level
+ * gets invalidated.
  */
 arcan_errc arcan_video_defineshape(arcan_vobj_id dst,
 	size_t n_s, size_t n_t, struct mesh_storage_t** store);
