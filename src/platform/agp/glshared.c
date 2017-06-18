@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2016, Björn Ståhl
+ * Copyright 2014-2017, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -689,7 +689,7 @@ void agp_draw_vobj(float x1, float y1, float x2, float y2,
 
 /* projection, scissor is set when activating rendertarget */
 	GLint attrindv = agp_shader_vattribute_loc(ATTRIBUTE_VERTEX);
-	GLint attrindt = agp_shader_vattribute_loc(ATTRIBUTE_TEXCORD);
+	GLint attrindt = agp_shader_vattribute_loc(ATTRIBUTE_TEXCORD0);
 
 	if (attrindv != -1){
 		env->enable_vertex_attrarray(attrindv);
@@ -750,11 +750,16 @@ void agp_render_options(struct agp_render_options opts)
 static void setup_transfer(struct mesh_storage_t* base, enum agp_mesh_flags fl)
 {
 	struct agp_fenv* env = agp_env();
-	int attribs[4] = {
+	int attribs[] = {
 		agp_shader_vattribute_loc(ATTRIBUTE_VERTEX),
 		agp_shader_vattribute_loc(ATTRIBUTE_NORMAL),
-		agp_shader_vattribute_loc(ATTRIBUTE_TEXCORD),
-		agp_shader_vattribute_loc(ATTRIBUTE_COLOR)
+		agp_shader_vattribute_loc(ATTRIBUTE_TEXCORD0),
+		agp_shader_vattribute_loc(ATTRIBUTE_COLOR),
+		agp_shader_vattribute_loc(ATTRIBUTE_TEXCORD1),
+		agp_shader_vattribute_loc(ATTRIBUTE_TANGENT),
+		agp_shader_vattribute_loc(ATTRIBUTE_BITANGENT),
+		agp_shader_vattribute_loc(ATTRIBUTE_JOINTS0),
+		agp_shader_vattribute_loc(ATTRIBUTE_WEIGHTS1)
 	};
 	if (attribs[0] == -1)
 		return;
@@ -777,12 +782,48 @@ static void setup_transfer(struct mesh_storage_t* base, enum agp_mesh_flags fl)
 	}
 	else
 		attribs[2] = -1;
+
 	if (attribs[3] != -1 && base->colors){
 		env->enable_vertex_attrarray(attribs[3]);
 		env->vertex_attrpointer(attribs[3], 3, GL_FLOAT, GL_FALSE, 0, base->colors);
 	}
 	else
 		attribs[3] = -1;
+
+	if (attribs[4] != -1 && base->txcos2){
+		env->enable_vertex_attrarray(attribs[4]);
+		env->vertex_attrpointer(attribs[4], 2, GL_FLOAT, GL_FALSE, 0, base->txcos2);
+	}
+	else
+		attribs[4] = -1;
+
+	if (attribs[5] != -1 && base->tangents){
+		env->enable_vertex_attrarray(attribs[5]);
+		env->vertex_attrpointer(attribs[5],4,GL_FLOAT,GL_FALSE,0,base->tangents);
+	}
+	else
+		attribs[5] = -1;
+
+	if (attribs[6] != -1 && base->bitangents){
+		env->enable_vertex_attrarray(attribs[6]);
+		env->vertex_attrpointer(attribs[6],4,GL_FLOAT,GL_FALSE,0,base->bitangents);
+	}
+	else
+		attribs[6] = -1;
+
+	if (attribs[7] != -1 && base->weights){
+		env->enable_vertex_attrarray(attribs[7]);
+		env->vertex_attrpointer(attribs[7], 4, GL_FLOAT, GL_FALSE, 0,base->weights);
+	}
+	else
+		attribs[7] = -1;
+
+	if (attribs[8] != -1 && base->joints){
+		env->enable_vertex_attrarray(attribs[8]);
+		env->vertex_iattrpointer(attribs[8], 4, GL_UNSIGNED_SHORT, 0, base->joints);
+	}
+	else
+		attribs[8] = -1;
 
 	if (base->type == AGP_MESH_TRISOUP){
 		if (base->indices)
@@ -824,6 +865,10 @@ void agp_submit_mesh(struct mesh_storage_t* base, enum agp_mesh_flags fl)
 {
 /* make sure the current program actually uses the attributes from the mesh */
 	struct agp_fenv* env = agp_env();
+
+/* ignore for now */
+	if (base->dirty)
+		base->dirty = false;
 
 	if (fl != env->model_flags){
 		if (fl & MESH_FILL_LINE){
@@ -899,20 +944,33 @@ void agp_drop_mesh(struct mesh_storage_t* s)
 	if (!s)
 		return;
 
-	if (s->shared_buffer){
+	uintptr_t targets[] = {
+		(uintptr_t) s->verts, (uintptr_t) s->txcos,
+		(uintptr_t) s->txcos2, (uintptr_t) s->normals,
+		(uintptr_t) s->colors, (uintptr_t) s->tangents,
+		(uintptr_t) s->bitangents, (uintptr_t) s->weights,
+		(uintptr_t) s->weights, (uintptr_t) s->joints,
+		(uintptr_t) s->indices
+	};
+
+	if (s->shared_buffer != NULL){
 		arcan_mem_free(s->shared_buffer);
+		uintptr_t base = (uintptr_t) s->shared_buffer;
+		uintptr_t end = base + s->shared_buffer_sz;
+
+		for (size_t i = 0; i < COUNT_OF(targets); i++){
+			if (targets[i] != (uintptr_t) NULL &&
+				(targets[i] < base || targets[i] >= end)){
+				arcan_mem_free((void*)targets[i]);
+			}
+		}
 	}
 	else{
-		if (s->verts)
-			arcan_mem_free(s->verts);
-		if (s->txcos)
-			arcan_mem_free(s->txcos);
-		if (s->normals)
-			arcan_mem_free(s->normals);
-		if (s->colors)
-			arcan_mem_free(s->colors);
-		if (s->indices)
-			arcan_mem_free(s->indices);
+		for (size_t i = 0; i < COUNT_OF(targets); i++){
+			if (targets[i] != (uintptr_t) NULL){
+				arcan_mem_free((void*)targets[i]);
+			}
+		}
 	}
 
 	memset(s, '\0', sizeof(struct mesh_storage_t));

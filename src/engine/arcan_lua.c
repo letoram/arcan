@@ -4379,8 +4379,15 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 	}
 	else if (ev->category == EVENT_FSRV){
 		arcan_vobject* vobj = arcan_video_getobject(ev->fsrv.video);
-		if (!vobj)
+
+/* this can happen if the frameserver has died and been enqueued but
+ * delete_image was called in between, in that case, we still want tod drop the
+ * reference. */
+		if (!vobj){
+			if (ev->fsrv.otag != LUA_NOREF)
+				luaL_unref(ctx, LUA_REGISTRYINDEX, ev->fsrv.otag);
 			return;
+		}
 
 /* the backing frameserver is already free:d at this point */
 		if (ev->fsrv.kind == EVENT_FSRV_TERMINATED){
@@ -4396,6 +4403,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			luactx.cb_source_kind = CB_SOURCE_FRAMESERVER;
 			wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "frameserver_event");
 			luactx.cb_source_kind = CB_SOURCE_NONE;
+			luaL_unref(ctx, LUA_REGISTRYINDEX, ev->fsrv.otag);
 			return;
 		}
 
@@ -4908,14 +4916,17 @@ static int scale3dverts(lua_State* ctx)
  * be converted into a newly allocated/ tightly packed unsigned array
  */
 static bool stack_to_uiarray(lua_State* ctx,
-	int memtype, unsigned** dst, size_t* n)
+	int memtype, unsigned** dst, size_t* n, size_t count)
 {
 	size_t nval = lua_rawlen(ctx, -1);
-	if (0 == nval)
+	if (0 == nval || (count && nval != count))
 		return false;
 
 	*dst = arcan_alloc_mem(
-		nval * sizeof(unsigned), memtype, 0, ARCAN_MEMALIGN_NATURAL);
+		nval*sizeof(unsigned), memtype, ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_NATURAL);
+
+	if (!(*dst))
+		return false;
 
 	unsigned* out = *dst;
 	for (size_t i = 0; i < nval; i++){
@@ -4928,14 +4939,17 @@ static bool stack_to_uiarray(lua_State* ctx,
 }
 
 static bool stack_to_farray(lua_State* ctx,
-	int memtype, float** dst, size_t* n)
+	int memtype, float** dst, size_t* n, size_t count)
 {
 	size_t nval = lua_rawlen(ctx, -1);
-	if (0 == nval)
+	if (0 == nval || (count && nval != count))
 		return false;
 
 	*dst = arcan_alloc_mem(
-		nval * sizeof(float), memtype, 0, ARCAN_MEMALIGN_NATURAL);
+		nval * sizeof(float), memtype, ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_NATURAL);
+
+	if (!(*dst))
+		return false;
 
 	float* out = *dst;
 	for (size_t i = 0; i < nval; i++){
@@ -4944,7 +4958,90 @@ static bool stack_to_farray(lua_State* ctx,
 		lua_pop(ctx, 1);
 	}
 
-	return true;
+	return (!count || *n == count);
+}
+
+static int rawmesh(lua_State* ctx, arcan_vobj_id did, int nmaps)
+{
+	const char* labels[6] = {
+		"normals", "txcos", "txcos_2", "tangents", "colors", "weights"};
+	size_t factors[6] = {3, 2, 2, 4, 4};
+	float* targets[6] = {NULL};
+	size_t sizes[6] = {0};
+	size_t n_vertices = 0, n_bones = 0, n_indices = 0;
+	float* vertices = NULL;
+	union {uint16_t* us; unsigned* u;} bones = {.us = NULL};
+	unsigned* indices = NULL;
+
+/*
+ * go with vertices, bones and indices separately
+ */
+	lua_getfield(ctx, 2, "vertices");
+	if (lua_type(ctx, -1) != LUA_TTABLE)
+		arcan_fatal("add_3dmesh(), required field 'vertices' missing");
+
+	if (!stack_to_farray(ctx, ARCAN_MEM_MODELDATA, &vertices, &n_vertices, 0)){
+		lua_pop(ctx, 1);
+		goto fail;
+	}
+	if (n_vertices == 0 || n_vertices % 3 != 0)
+		arcan_fatal(
+			"add_3dmesh(), invalid number of elements (%3=0) in vertices");
+
+	n_vertices /= 3;
+
+	lua_getfield(ctx, 2, "indices");
+	if (lua_type(ctx, -1) == LUA_TTABLE){
+		if (!stack_to_uiarray(ctx, ARCAN_MEM_MODELDATA, &indices, &n_indices, 0)){
+			arcan_warning("add_3dmesh(), couldn't unpack indices");
+			lua_pop(ctx, 1);
+			goto fail;
+		}
+	}
+	lua_pop(ctx, 1);
+
+/* hardcoded limit, and repack into other type - just to reuse stack_to */
+	lua_getfield(ctx, 2, "bones");
+	if (lua_type(ctx, -1) == LUA_TTABLE){
+		if (stack_to_uiarray(ctx,
+			ARCAN_MEM_MODELDATA, &bones.u, &n_bones, n_vertices * 4)){
+			uint16_t tmp[4] = {bones.u[0], bones.u[1], bones.u[2], bones.u[3]};
+			memcpy(bones.us, tmp, sizeof(uint16_t) * 4);
+		}
+	}
+
+/* NOTE: would be better to just allocate one big chunk buffer and
+ * map that into the structure etc. revisit this when full glTF2 is
+ * evaluated */
+	for (size_t i = 0; i < 6; i++){
+		lua_getfield(ctx, 2, labels[i]);
+		if (lua_type(ctx, -1) == LUA_TTABLE){
+			if (!stack_to_farray(ctx,
+				ARCAN_MEM_MODELDATA, &targets[i], &sizes[i], factors[i])){
+				arcan_warning("add_3dmesh(), couldn't unpack %s", labels[i]);
+				lua_pop(ctx, 1);
+				goto fail;
+			}
+		}
+		lua_pop(ctx, 1);
+	}
+
+	if (ARCAN_OK == arcan_3d_addraw(did, vertices, n_vertices,
+			indices, n_indices, targets[0], targets[1], targets[2],
+			targets[3], targets[4], bones.us, targets[5], nmaps)){
+			lua_pushboolean(ctx, true);
+	}
+else{
+fail:
+		for (size_t i = 0; i < 6; i++){
+			arcan_mem_free(targets[i]);
+		}
+		arcan_mem_free(bones.u);
+		arcan_mem_free(indices);
+		arcan_mem_free(vertices);
+		lua_pushboolean(ctx, false);
+	}
+	LUA_ETRACE("add_3dmesh", NULL, 1);
 }
 
 static int loadmesh(lua_State* ctx)
@@ -4953,57 +5050,24 @@ static int loadmesh(lua_State* ctx)
 
 	arcan_vobj_id did = luaL_checkvid(ctx, 1, NULL);
 	int nmaps = abs((int)luaL_optnumber(ctx, 3, 1));
-	if (lua_type(ctx, 2) == LUA_TTABLE){
-		float* verts, (* normals), (* txcos);
-		unsigned* indices = NULL;
-		size_t n_verts, n_indices, n_normals, n_txcos;
-		verts = normals = txcos = NULL;
-		n_verts = n_indices = n_normals = n_txcos = 0;
+	if (lua_type(ctx, 2) == LUA_TTABLE)
+		return rawmesh(ctx, did, nmaps);
+	if (lua_type(ctx, 2) != LUA_TSTRING)
+		arcan_fatal("add_3dmesh(), invalid resource type");
 
-		if ((lua_getfield(ctx, 2, "vertices"), lua_type(ctx, -1)) != LUA_TTABLE)
-			arcan_fatal("");
-		stack_to_farray(ctx, ARCAN_MEM_MODELDATA, &verts, &n_verts);
-		lua_pop(ctx, 1);
-
-		if ((lua_getfield(ctx, 2, "indices"), lua_type(ctx, -1)) == LUA_TTABLE &&
-			!stack_to_uiarray(ctx, ARCAN_MEM_MODELDATA, &indices, &n_indices))
-			;
-		lua_pop(ctx, 1);
-
-		if ((lua_getfield(ctx, 2, "normals"), lua_type(ctx, -1)) == LUA_TTABLE &&
-			!stack_to_farray(ctx, ARCAN_MEM_MODELDATA,  &normals, &n_normals))
-			;
-		lua_pop(ctx, 1);
-
-		if ((lua_getfield(ctx, 2, "txcos"), lua_type(ctx, -1)) == LUA_TTABLE &&
-			!stack_to_farray(ctx, ARCAN_MEM_MODELDATA, &txcos, &n_txcos))
-		lua_pop(ctx, 1);
-
-		if (ARCAN_OK != arcan_3d_addraw(did, verts, n_verts,
-			indices, n_indices, txcos, normals, nmaps)){
-			lua_pushboolean(ctx, false);
-		}
-		else
-			lua_pushboolean(ctx, true);
+	char* path = findresource(luaL_checkstring(ctx, 2), DEFAULT_USERMASK);
+	data_source indata = arcan_open_resource(path);
+	if (indata.fd != BADFD){
+		arcan_errc rv = arcan_3d_addmesh(did, indata, nmaps);
+		if (rv != ARCAN_OK)
+			arcan_warning("loadmesh(%s) -- "
+				"Couldn't add mesh to (%d)\n", path, did);
+		arcan_release_resource(&indata);
+		lua_pushboolean(ctx, false);
 	}
-	else if (lua_type(ctx, 2) == LUA_TSTRING){
-		char* path = findresource(luaL_checkstring(ctx, 2), DEFAULT_USERMASK);
-		data_source indata = arcan_open_resource(path);
-		if (indata.fd != BADFD){
-			arcan_errc rv = arcan_3d_addmesh(did, indata, nmaps);
-			if (rv != ARCAN_OK)
-				arcan_warning("loadmesh(%s) -- "
-					"Couldn't add mesh to (%d)\n", path, did);
-			arcan_release_resource(&indata);
-			lua_pushboolean(ctx, false);
-		}
-		else
-			lua_pushboolean(ctx, true);
-		arcan_mem_free(path);
-	}
-	else {
-		arcan_fatal("add_3dmesh(), invalid type (str or tbl) in resource arg\n");
-	}
+	else
+		lua_pushboolean(ctx, true);
+	arcan_mem_free(path);
 
 	LUA_ETRACE("add_3dmesh", NULL, 1);
 }
@@ -6483,13 +6547,18 @@ static int targethandler(lua_State* ctx)
 	arcan_vobject* vobj;
 	arcan_vobj_id id = luaL_checkvid(ctx, 1, &vobj);
 
+/* unreference the old one so we don't leak */
+	arcan_frameserver* fsrv = vobj->feed.state.ptr;
+	if (fsrv->tag != (intptr_t)LUA_NOREF){
+		luaL_unref(ctx, LUA_REGISTRYINDEX, fsrv->tag);
+	}
+
 	intptr_t ref = find_lua_callback(ctx);
 
 	if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV || !vobj->feed.state.ptr)
 		arcan_fatal("target_updatehandler(), specified vid (arg 1) not "
 			"associated with a frameserver.");
 
-	arcan_frameserver* fsrv = vobj->feed.state.ptr;
 	fsrv->tag = ref;
 
 #ifndef offsetof
@@ -7951,16 +8020,16 @@ static int procimage_get(lua_State* ctx)
 	LUA_ETRACE("procimage:get", NULL, nch);
 }
 
-static int meshaccess_vert(lua_State* ctx)
+static int meshaccess_verts(lua_State* ctx)
 {
-	LUA_TRACE("meshAccess:vertex");
+	LUA_TRACE("meshAccess:vertices");
 	struct mesh_ud* ud = luaL_checkudata(ctx, 1, "meshAccess");
 	size_t ind = luaL_checkint(ctx, 2);
 
 	if (!ud->mesh)
-		arcan_fatal("meshAccess:vertex called outside of valid scope");
+		arcan_fatal("meshAccess:vertices called outside of valid scope");
 	if (ind > ud->mesh->n_vertices-1)
-		arcan_fatal("meshAccess:vertex called with OOB index %zu", ind);
+		arcan_fatal("meshAccess:vertices called with OOB index %zu", ind);
 
 	int nargs = lua_gettop(ctx);
 	if (nargs == 2){
@@ -7968,50 +8037,116 @@ static int meshaccess_vert(lua_State* ctx)
 		if (ud->mesh->vertex_size == 2){
 			lua_pushnumber(ctx, ud->mesh->verts[ind * 2 + 0]);
 			lua_pushnumber(ctx, ud->mesh->verts[ind * 2 + 1]);
-			LUA_ETRACE("meshAccess:vertex", NULL, 2);
+			LUA_ETRACE("meshAccess:vertices", NULL, 2);
 		}
 		else if (ud->mesh->vertex_size == 3){
 			lua_pushnumber(ctx, ud->mesh->verts[ind * 3 + 0]);
 			lua_pushnumber(ctx, ud->mesh->verts[ind * 3 + 1]);
 			lua_pushnumber(ctx, ud->mesh->verts[ind * 3 + 2]);
-			LUA_ETRACE("meshAccess:vertex", NULL, 3);
+			LUA_ETRACE("meshAccess:vertices", NULL, 3);
 		}
-		LUA_ETRACE("meshAccess:vertex", NULL, 0);
+		LUA_ETRACE("meshAccess:vertices", NULL, 0);
 	}
 	for (size_t i = 0; i < ud->mesh->vertex_size; i++){
 		ud->mesh->verts[
 			ind * ud->mesh->vertex_size + i] = luaL_checknumber(ctx, 3+i);
 	}
+	ud->mesh->dirty = true;
 	FLAG_DIRTY(ud->vobj);
-	LUA_ETRACE("meshAccess:vertex", NULL, 0);
+	LUA_ETRACE("meshAccess:vertices", NULL, 0);
 }
 
-static int meshaccess_normal(lua_State* ctx)
+static int meshaccess_texcos(lua_State* ctx)
 {
-	LUA_TRACE("meshAccess:normal");
+	LUA_TRACE("meshAccess:texcos");
+	struct mesh_ud* ud = luaL_checkudata(ctx, 1, "meshAccess");
+	size_t ind = luaL_checkint(ctx, 2);
+	size_t group = luaL_checkint(ctx, 3);
+
+	if (group != 0 && group != 1)
+		arcan_fatal("meshAccess:texcos only valid group is 0 or 1");
+
+	if (!ud->mesh)
+		arcan_fatal("meshAccess:texcos called outside of valid scope");
+	if (ind > ud->mesh->n_vertices-1)
+		arcan_fatal("meshAccess:texcos called with OOB index %zu", ind);
+
+	float* dst = NULL;
+
+	if (group == 0){
+		if (!ud->mesh->txcos){
+			ud->mesh->txcos = arcan_alloc_mem(
+				ud->mesh->n_vertices * sizeof(float) * 2, ARCAN_MEM_MODELDATA,
+				ARCAN_MEM_NONFATAL | ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL
+			);
+			if (!ud->mesh->txcos)
+				LUA_ETRACE("meshAccess:texcos", "out of memory", 0);
+		}
+		dst = ud->mesh->txcos;
+	}
+	else{
+		if (!ud->mesh->txcos2){
+			ud->mesh->txcos2 = arcan_alloc_mem(
+				ud->mesh->n_vertices * sizeof(float) * 2, ARCAN_MEM_MODELDATA,
+				ARCAN_MEM_NONFATAL | ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL
+			);
+			if (!ud->mesh->txcos2)
+				LUA_ETRACE("meshAccess:texcos", "out of memory", 0);
+		}
+		dst = ud->mesh->txcos2;
+	}
+
+	int nargs = lua_gettop(ctx);
+	if (nargs == 3){
+		lua_pushnumber(ctx, dst[ind * 2 + 0]);
+		lua_pushnumber(ctx, dst[ind * 2 + 1]);
+		LUA_ETRACE("meshAccess:texcos", NULL, 2);
+	}
+
+	dst[ind * 2 + 0] = luaL_checknumber(ctx, 4);
+	dst[ind * 2 + 1] = luaL_checknumber(ctx, 5);
+	ud->mesh->dirty = true;
+	FLAG_DIRTY(ud->vobj);
+
+	LUA_ETRACE("meshAccess:vertices", NULL, 0);
+}
+
+static int meshaccess_colors(lua_State* ctx)
+{
+	LUA_TRACE("meshAccess:colors")
 	struct mesh_ud* ud = luaL_checkudata(ctx, 1, "meshAccess");
 	size_t ind = luaL_checkint(ctx, 2);
 
 	if (!ud->mesh)
-		arcan_fatal("meshAccess:vertex called outside of valid scope");
+		arcan_fatal("meshAccess:colors called outside of valid scope");
 	if (ind > ud->mesh->n_vertices-1)
-		arcan_fatal("meshAccess:vertex called with OOB index %zu", ind);
+		arcan_fatal("meshAccess:colors called with OOB index %zu", ind);
 
-	return 0;
-}
+	if (!ud->mesh->colors){
+		ud->mesh->colors = arcan_alloc_mem(
+			ud->mesh->n_vertices * sizeof(float) * 4, ARCAN_MEM_MODELDATA,
+				ARCAN_MEM_NONFATAL | ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL
+			);
+		if (!ud->mesh->colors)
+			LUA_ETRACE("meshAccess:colors", "out of memory", 0);
+	}
 
-static int meshaccess_texco(lua_State* ctx)
-{
-	LUA_TRACE("meshAccess:vertex");
-	struct mesh_ud* ud = luaL_checkudata(ctx, 1, "meshAccess");
-	size_t ind = luaL_checkint(ctx, 2);
+	int nargs = lua_gettop(ctx);
+	if (nargs == 2){
+		lua_pushnumber(ctx, ud->mesh->verts[ind * 4 + 0]);
+		lua_pushnumber(ctx, ud->mesh->verts[ind * 4 + 1]);
+		lua_pushnumber(ctx, ud->mesh->verts[ind * 4 + 2]);
+		lua_pushnumber(ctx, ud->mesh->verts[ind * 4 + 3]);
+		LUA_ETRACE("meshAccess:colors", NULL, 4);
+	}
 
-	if (!ud->mesh)
-		arcan_fatal("meshAccess:vertex called outside of valid scope");
-	if (ind > ud->mesh->n_vertices-1)
-		arcan_fatal("meshAccess:vertex called with OOB index %zu", ind);
-
-	return 0;
+	ud->mesh->colors[ind * 4 + 0] = luaL_checknumber(ctx, 3);
+	ud->mesh->colors[ind * 4 + 1] = luaL_checknumber(ctx, 4);
+	ud->mesh->colors[ind * 4 + 2] = luaL_checknumber(ctx, 5);
+	ud->mesh->colors[ind * 4 + 3] = luaL_checknumber(ctx, 6);
+	ud->mesh->dirty = true;
+	FLAG_DIRTY(ud->vobj);
+	LUA_ETRACE("meshAccess:colors", NULL, 0);
 }
 
 static int meshaccess_type(lua_State* ctx)
@@ -10373,14 +10508,14 @@ static const luaL_Reg netfuns[] = {
 	luaL_newmetatable(ctx, "meshAccess");
 	lua_pushvalue(ctx, -1);
 	lua_setfield(ctx, -2, "__index");
-	lua_pushcfunction(ctx, meshaccess_vert);
-	lua_setfield(ctx, -2, "vertex");
-	lua_pushcfunction(ctx, meshaccess_normal);
-	lua_setfield(ctx, -2, "normal");
-	lua_pushcfunction(ctx, meshaccess_texco);
-	lua_setfield(ctx, -2, "texco");
-	lua_pushcfunction(ctx, meshaccess_texco);
-	lua_setfield(ctx, -2, "texture_coordinate");
+	lua_pushcfunction(ctx, meshaccess_verts);
+	lua_setfield(ctx, -2, "vertices");
+	lua_pushcfunction(ctx, meshaccess_texcos);
+	lua_setfield(ctx, -2, "texcos");
+	lua_pushcfunction(ctx, meshaccess_texcos);
+	lua_setfield(ctx, -2, "texture_coordinates");
+	lua_pushcfunction(ctx, meshaccess_colors);
+	lua_setfield(ctx, -2, "colors");
 	lua_pushcfunction(ctx, meshaccess_type);
 	lua_setfield(ctx, -2, "primitive_type");
 	lua_pop(ctx, 1);

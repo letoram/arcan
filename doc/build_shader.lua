@@ -1,7 +1,7 @@
 -- build_shader
 -- @short: using
--- @inargs: vertex_program or nil, fragment_program or nil, label
--- @outargs: shader_id
+-- @inargs: string/nil:vertex_program, string/nil:fragment_program, string:label
+-- @outargs: uint:shader_id
 -- @longdescr: All video objects can have a series of processing/
 -- rendering instructions associated with them. These are platform
 -- dependent, and you can check (GL_VERSION, SHADER_LANGUAGE) for
@@ -24,12 +24,15 @@
 -- to create another one, the returned *shader_id* will be nil.
 -- To associate a successfully built shader to a vid, see ref:image_shader.
 -- @note: For GLSL120, reserved attributes are:
--- modelview (mat4), projection (mat4), texturem (mat4).
+-- vertex (vec4), normal (vec3), color (vec4), texcoord (vec2),
+-- texcoord1 (vec2), tangent (vec3), bitangent (vec3), joints (ivec4),
+-- weights (vec4)
 -- @note: For GLSL120, reserved uniforms are:
+-- modelview (mat4), projection (mat4), texturem (mat4),
 -- trans_move (float, 0.0 .. 1.0), trans_scale (float, 0.0 .. 1.0)
 -- trans_rotate (float, 0.0 .. 1.0), obj_input_sz (vec2, orig w/h)
 -- obj_output_sz (vec2, current w/h), obj_storage_sz (vec2, texture
--- storage w/h).
+-- storage w/h), obj_opacity(float, 0.0 .. 1.0).
 -- @group: vidsys
 -- @related: shader_uniform, image_shader, shader_ugroup, delete_shader
 -- @cfunction: buildshader

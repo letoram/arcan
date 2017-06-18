@@ -1,5 +1,5 @@
 /*
- * Copyright 2009-2016, Björn Ståhl
+ * Copyright 2009-2017, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -840,7 +840,10 @@ static void* threadloader(void* arg)
 arcan_errc arcan_3d_addraw(arcan_vobj_id dst,
 	float* vertices, size_t n_vertices,
 	unsigned* indices, size_t n_indices,
-	float* txcos, float* normals,
+	float* txcos, float* txcos2,
+	float* normals, float* tangents,
+	float* colors,
+	uint16_t bones[4], float weights[4],
 	unsigned nmaps)
 {
 	arcan_vobject* vobj = arcan_video_getobject(dst);
@@ -871,6 +874,15 @@ arcan_errc arcan_3d_addraw(arcan_vobj_id dst,
 	dg->store.verts = vertices;
 	dg->store.indices = indices;
 	dg->store.normals = normals;
+	dg->store.tangents = tangents;
+/* FIXME: spawn thread to calculate tangents if missing, and calculate
+ * bitangents after that - cprod(normal, tangent.wyz) * tangent.w
+ */
+	dg->store.txcos = txcos;
+	dg->store.txcos2 = txcos2;
+	dg->store.colors = colors;
+	dg->store.joints = bones;
+	dg->store.weights = weights;
 	dg->store.n_vertices = n_vertices;
 	dg->store.vertex_size = 3;
 	dg->store.n_indices = n_indices;

@@ -212,7 +212,12 @@ enum shader_vertex_attributes {
 	ATTRIBUTE_VERTEX,
 	ATTRIBUTE_NORMAL,
 	ATTRIBUTE_COLOR,
-	ATTRIBUTE_TEXCORD
+	ATTRIBUTE_TEXCORD0,
+	ATTRIBUTE_TEXCORD1,
+	ATTRIBUTE_TANGENT,
+	ATTRIBUTE_BITANGENT,
+	ATTRIBUTE_JOINTS0,
+	ATTRIBUTE_WEIGHTS1
 };
 
 /*
@@ -828,13 +833,28 @@ enum agp_mesh_type {
 
 struct mesh_storage_t
 {
+/*
+ * set of one or more of the vertex attributes come from the same buffer, each
+ * attribute will be tested for range against shared_buffer+ shared_buffer_sz
+ * when managing memory. If out-of-range, they are treated as a separate
+ * allocation.
+ */
 	uint8_t* shared_buffer;
 	size_t shared_buffer_sz;
 
+/*
+ * [ VERTEX ATTRIBUTES ]
+ * all these correspond to possible vertex attributes, NULL if not avaiable
+ */
 	float* verts;
 	float* txcos;
+	float* txcos2;
 	float* normals;
 	float* colors;
+	float* tangents;
+	float* bitangents;
+	float* weights;
+	uint16_t* joints;
 	unsigned* indices;
 
 	size_t vertex_size;
@@ -843,9 +863,12 @@ struct mesh_storage_t
 
 	enum agp_mesh_type type;
 
-/* opaque field used to store additional implementation defined tags, e.g. VBO
- * backing index etc. */
+/* opaque field used to store additional implementation defined tags,
+ * such as VBO backing index etc. */
 	uintptr_t opaque;
+
+/* set if the underlying buffers have changed and force a resynch (VBOs) */
+	bool dirty;
 };
 
 /*

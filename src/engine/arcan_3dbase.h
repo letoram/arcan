@@ -129,7 +129,10 @@ arcan_errc arcan_3d_addmesh(arcan_vobj_id dst,
 arcan_errc arcan_3d_addraw(arcan_vobj_id dst,
 	float* vertices, size_t n_vertices,
 	unsigned* indices, size_t n_indices,
-	float* txcos, float* normals,
+	float* txcos, float* txcos2,
+	float* normals, float* tangents,
+	float* colors,
+	uint16_t bones[4], float weights[4],
 	unsigned nmaps
 );
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2016, Björn Ståhl
+ * Copyright 2014-2017, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -109,11 +109,16 @@ static char* symtbl[TBLSIZE] = {
 	"timestamp"
 };
 
-static char* attrsymtbl[4] = {
+static char* attrsymtbl[9] = {
 	"vertex",
 	"normal",
 	"color",
-	"texcoord"
+	"texcoord",
+	"texcoord1",
+	"tangent",
+	"bitangent",
+	"joints",
+	"weights"
 };
 
 /* REFACTOR:
@@ -139,7 +144,7 @@ struct shader_cont {
 	GLuint prg_container, obj_vertex, obj_fragment;
 	GLint locations[sizeof(ofstbl) / sizeof(ofstbl[0])];
 /* match attrsymtbl */
-	GLint attributes[4];
+	GLint attributes[9];
 	struct arcan_strarr ugroups;
 };
 

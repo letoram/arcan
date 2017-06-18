@@ -1,11 +1,11 @@
 -- add_3dmesh
 -- @short: Load/build a mesh and attach to a model.
--- @inargs: dstmodel, source, *nmaps*
--- @outargs:
--- @longdescr: This function can be used to setup and attach a
--- mesh to an open model. If *source* is a string, it is treated
--- as a resource that will be passed through an internal model
--- loader (CTM format as of now).
+-- @inargs: vid:dstmodel, string/table:source
+-- @inargs: vid:dstmodel, string/table:source, uint:nmaps
+-- @outargs: uint:meshindex
+-- @longdescr: This function can be used to setup and attach a mesh to an open
+-- model. If *source* is a string, it is treated as a resource that will be
+-- passed through an internal model loader (CTM format as of now).
 --
 -- If *source* is a table, the following fields are expected:
 -- .vertices (indexed table) {x1, y1, z1, x2, y2, z2, ...}
@@ -14,24 +14,37 @@
 -- becomes #indices/3, otherwise the vertices field will be used
 -- directly.
 --
--- The optional field 'txcos' is used to define per vertex
--- texture coordinates and should thus match #txcos*nmaps/2 or
--- #txcos/2 for sharing the same set across all maps.
+-- If the 'txcos' field is provided, it is used to add an additional
+-- set of texture coordinates. It is expected to be #vertices/3*2 in size.
 --
--- The optional field 'normals' is used to provide per vertex
--- normals and should thus match #vertices and have matching
--- relative table position.
+-- If the 'txcos_2' field is provided, it is used to add an addition
+-- set of texture coordinates. It is expected to be #vertices/3*2 in size.
 --
--- The optional *nmaps* (default: 1) is used to specify how many
--- texture slots that should be assigned to the mesh, and there
--- should either be one set of texture coordinates for the entire
--- mesh or an amount that matches the number of desired slots.
+-- If the 'normals' field is provided, it is used to define per-vertex
+-- normals, and should match #vertices. It is expected to match #vertices.
 --
--- Slots are consumed from the global amount of slots in the
--- frameset attached to *dstmodel*. A correct model thus has
--- model(framesetsize) = mesh(0).nmaps + ... + mesh(n).nmaps
--- and will be divided based on the order the individual meshes
--- were added to the model.
+-- If the 'colors' field is provided, it is used to define per-vertex
+-- colors, and should match #vertices/3*4.
+--
+-- If the 'tangent' field is provided, it is used to define the
+-- tangent space to use, and the bitangents will be generated automatically.
+-- It should match #vertices/3*4.
+--
+-- If the 'joints' field is provided, it is expected to be #vertices/3*4
+-- uints that refer to a bone matrix uniform.
+--
+-- If the 'weights' field is provided, it is expected to be #vertices/3*4
+-- floats that weigh the different joint indices together.
+--
+-- If the *nmaps* argument is provided (default:1), it is used specify how many
+-- texture slots that should be assigned to the mesh, and there should either
+-- be one set of texture coordinates for the entire mesh or an amount that
+-- matches the number of desired slots.
+--
+-- Slots are consumed from the global amount of slots in the frameset attached
+-- to *dstmodel*. A correct model thus has model(framesetsize) = mesh(0).nmaps
+-- + ... + mesh(n).nmaps and will be divided based on the order the individual
+-- meshes were added to the model.
 -- @group: 3d
 -- @note: Nmaps is hard- limited to 8, matching the minimum
 -- of texture units according to the GLES2.0 standard.
