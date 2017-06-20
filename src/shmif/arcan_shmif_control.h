@@ -603,6 +603,16 @@ void arcan_shmif_resetfunc(struct arcan_shmif_cont*,
  */
 bool arcan_shmif_integrity_check(struct arcan_shmif_cont*);
 
+/*
+ * Check if audio and/or video buffers are pending or free,
+ *-1 : broken segment
+ * 0 : both are free
+ * 1 : video pending
+ * 2 : audio pending
+ * 3 : video and audio pending
+ */
+int arcan_shmif_signalstatus(struct arcan_shmif_cont*);
+
 struct arcan_shmif_region {
 	uint16_t x1,x2,y1,y2;
 };
