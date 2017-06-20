@@ -807,6 +807,9 @@ enum rhint_mask {
 	SHMIF_RHINT_VSIGNAL_EV = 32
 };
 
+struct arcan_shmif_page;
+
+#ifndef ARCAN_SHMIF_HIDEPAGE
 struct arcan_shmif_page {
 /*
  * These will be statically set to the ARCAN_VERSION_MAJOR, ARCAN_VERSION_MAJOR
@@ -967,4 +970,5 @@ struct arcan_shmif_page {
  */
 	uintptr_t adata[];
 };
+#endif
 #endif

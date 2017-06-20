@@ -32,8 +32,8 @@
  THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef _HAVE_ARCAN_SHMIF
-#define _HAVE_ARCAN_SHMIF
+#ifndef HAVE_ARCAN_SHMIF
+#define HAVE_ARCAN_SHMIF
 
 /*
  * This header pulls in all needed standard library headers, if that is
@@ -41,7 +41,7 @@
  * this toggle
  */
 
-#ifndef _ARCAN_SHMIF_NO_STDHDR
+#if !defined(ARCAN_SHMIF_NO_STDHDR) && !defined(__cplusplus)
 #include <limits.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -52,9 +52,20 @@
 #include <string.h>
 #endif
 
+/*
+ * Hide the memory layout details for C++ sources due to the _Atomic
+ * qualifier incompatibility f-up
+ */
+#ifdef __cplusplus
+#define ARCAN_SHMIF_HIDEPAGE
+#endif
+
 #include "arcan_shmif_interop.h"
 #include "arcan_shmif_event.h"
 #include "arcan_shmif_control.h"
+
+#ifndef __cplusplus
 #include "arcan_shmif_sub.h"
+#endif
 
 #endif
