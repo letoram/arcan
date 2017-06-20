@@ -186,7 +186,7 @@ struct arcan_frameserver {
 	intptr_t tag;
 
 /* need to keep the handle around to allow remapping */
-	shm_handle shm;
+	struct shm_handle shm;
 
 /* precalc offsets into mapped shmpage, calculated at resize */
 	size_t abuf_cnt;

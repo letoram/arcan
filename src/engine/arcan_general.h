@@ -57,13 +57,13 @@
 
 #include <semaphore.h>
 #include <getopt.h>
-typedef struct {
+struct shm_handle {
 	struct arcan_shmif_page* ptr;
 	int handle;
 	void* synch;
 	char* key;
 	size_t shmsize;
-} shm_handle;
+};
 
 typedef uint32_t arcan_tickv;
 
