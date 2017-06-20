@@ -1808,6 +1808,17 @@ bool arg_lookup(struct arg_arr* arr, const char* val,
 	return false;
 }
 
+int arcan_shmif_signalstatus(struct arcan_shmif_cont* c)
+{
+	if (!c || !c->addr || !c->addr->dms)
+		return -1;
+
+	int a = atomic_load(&c->addr->aready);
+	int v = atomic_load(&c->addr->vready);
+
+	return (a * 1) | (v * 1);
+}
+
 bool arcan_shmif_acquireloop(struct arcan_shmif_cont* c,
 	struct arcan_event* acqev, struct arcan_event** evpool, ssize_t* evpool_sz)
 {
