@@ -2197,13 +2197,17 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 		if (ext.title)
 			snprintf(ev.ext.registr.title,
 				COUNT_OF(ev.ext.registr.title), "%s", ext.title);
-		arcan_shmif_enqueue(&ret, &ev);
 
-		if (ext.ident){
-			ev.ext.kind = ARCAN_EVENT(IDENT);
-			snprintf((char*)ev.ext.message.data,
-				COUNT_OF(ev.ext.message.data), "%s", ext.ident);
+/* only register if the type is known */
+		if (ext.type != SEGID_UNKNOWN){
 			arcan_shmif_enqueue(&ret, &ev);
+
+			if (ext.ident){
+				ev.ext.kind = ARCAN_EVENT(IDENT);
+					snprintf((char*)ev.ext.message.data,
+					COUNT_OF(ev.ext.message.data), "%s", ext.ident);
+				arcan_shmif_enqueue(&ret, &ev);
+			}
 		}
 	}
 	else{
@@ -2230,7 +2234,7 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 		ret.priv->alt_conn = strdup(conn_src);
 
 	free(keyfile);
-	if (ext.type > 0 && !is_output_segment(ext.type))
+	if (ext.type>0 && !is_output_segment(ext.type) && !(flags & SHMIF_NOACTIVATE))
 		wait_for_activation(&ret, !(flags & SHMIF_NOACTIVATE_RESIZE));
 	return ret;
 
