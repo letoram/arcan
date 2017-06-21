@@ -296,7 +296,7 @@ enum ARCAN_FLAGS {
  * a _RESET event will be enqueued locally with ioev[0].iv == 3.
  * Subsegments will still be lost, and if the connection has been set-up
  * inherited+anonymous, this will still exit like normally. Set this
- * fal to disable RECONNECT attempts entirely. */
+ * flag to disable RECONNECT attempts entirely. */
 	SHMIF_NOAUTO_RECONNECT = 64,
 
 /* for use as flag input to shmif_migrate calls, the default behavior
@@ -313,7 +313,12 @@ enum ARCAN_FLAGS {
  * would be ignored/overridden by a manual- "data-source controlled"
  * size.
  */
-	SHMIF_NOACTIVATE_RESIZE = 256
+	SHMIF_NOACTIVATE_RESIZE = 256,
+
+/*
+ * Setting this flag disables the internal management preroll stage entirely
+ */
+	SHMIF_NOACTIVATE = 512
 };
 
 /*
