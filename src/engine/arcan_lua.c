@@ -3929,7 +3929,8 @@ static void emit_segreq(lua_State* ctx, struct arcan_extevent* ev)
 	if (luactx.last_segreq != NULL){
 		arcan_event rev = {
 			.category = EVENT_TARGET,
-			.tgt.kind = TARGET_COMMAND_REQFAIL
+			.tgt.kind = TARGET_COMMAND_REQFAIL,
+			.tgt.ioevs[0].iv = ev->segreq.id
 		};
 
 		tgtevent(ev->source, rev);
