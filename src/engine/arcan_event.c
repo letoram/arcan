@@ -11,6 +11,7 @@
 
 #include <stdlib.h>
 #include <unistd.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -759,7 +760,7 @@ void arcan_event_init(arcan_evctx* ctx, arcan_event_handler drain)
 
 	ctx->drain = drain;
 	platform_event_init(ctx);
-	epoch = arcan_timemillis();
+	epoch = arcan_timemillis() - ctx->c_ticks * ARCAN_TIMER_TICK;
 }
 
 void arcan_led_removed(int devid)
