@@ -54,6 +54,12 @@ struct shmifsrv_envp {
 	size_t init_h;
 };
 
+enum shmifsrv_status {
+	SHMIFSRV_OK = 1,
+	SHMIFSRV_INVALID_ARGUMENT = -1,
+	SHMIFSRV_OUT_OF_MEMORY = -2,
+};
+
 /*
  * Depending on underlying OS, there are a number of recoverable shared memory
  * related errors that can occur while reading/writing, but it is typically a
@@ -73,8 +79,12 @@ struct shmifsrv_envp {
  *     shmifsrv_audio
  *
  * shmifsrv_leave();
+ *
+ * only sensitive functions ([CRITICAL]) should be called within the
+ * _enter/_leave critical region. BEWARE that this function MAY temporarily
+ * modify the signal mask for some signals (e.g. SIGBUS).
  */
-bool shmifsrv_enter();
+bool shmifsrv_enter(struct shmifsrv_client*);
 void shmifsrv_leave();
 
 /*
@@ -91,16 +101,37 @@ struct shmifsrv_client*
  * [name](!NULL) an (optional) authentication key and the permission mask of
  * the target socket. The function returns a valid server context or NULL with
  * the reason for failure in statuscode.
+ *
+ * [fd, can be NULL] is a state tracking file descriptor in order to reopen
+ * the connection point after it having been consumed by a connection.
+ * Example:
+ *
+ * int fdstate = -1;
+ * int sc;
+ * struct shmifsrv_client* cl = shmifsrv_allocate_connpoint(
+ * 	"demo", NULL, S_IRWXU, &fdstate, &sc);
+ *
+ * if (!cl)
+ *    handle_allocation_error();
+ *
+ * ... poll [cl until connected] ..
+ * shmifsrv_allocate_connpoint("demo", NULL, S_IRWXU, &fdstate, &sc);
+ *
  */
 struct shmifsrv_client*
 	shmifsrv_allocate_connpoint(const char* name, const char* key,
-	mode_t permission, int* statuscode);
+	mode_t permission, int* fd, int* statuscode);
 
 /*
  * Setup a connection-less frameserver, meaning that all primitives and
- * allocation is passed through other means than
+ * allocation is passed through means that can be inherited via the client
+ * context itself, though it could also be used in the same process space.
+ *
+ * return NULL on failure, and, if provided, a shmifsrv_error status
+ * code.
  */
-struct shmifsrv_client* shmifsrv_prepare_client();
+struct shmifsrv_client* shmifsrv_spawn_client(
+	struct shmifsrv_envp env, int* clsocket, int* statuscode);
 
 /*
  * Retrieve an I/O multiplexable handle for mixing into poll() rather
@@ -115,71 +146,166 @@ int shmifsrv_client_handle(struct shmifsrv_client*);
  * Internally, it verifies that the shared resources are in a healthy
  * state, forwards client- managed timers and so on.
  */
-bool shmifsrv_frameserver_tick(struct shmifsrv_client*);
+void shmifsrv_tick(struct shmifsrv_client*);
 
 /*
- * Polling routine for pumping synchronization actions that are not aligned to
- * _tick. Can be used independently as part of a loop or as a reaction to
- * incoming data on the event descriptor.
+ * Polling routine for pumping synchronization actions and determining
+ * updating status. Should be called periodically, as part of the normal
+ * processing loop, at least once every shmifsrv_monotonic_tick()/
  */
-enum shmifsrv_status {
+enum shmifsrv_client_status {
+	CLIENT_DEAD = -1,
+	CLIENT_NOT_READY = 0,
 	CLIENT_VBUFFER_READY = 1,
-	CLIENT_ABUFFER_READY = 2,
-	CLIENT_RESYNCHED = 4,
-	CLIENT_WAITING = 8,
-	CLIENT_VERIFYING = 16,
-	CLIENT_DEAD
+	CLIENT_ABUFFER_READY = 2
 };
-enum shmifsrv_status shmifsrv_poll(struct shmifsrv_client*);
+int shmifsrv_poll(struct shmifsrv_client*);
+
+/*
+ * Free the resources associated with a shmifsrv_client. If this client has
+ * been created through shmifsrv_allocate_connpoint and is still in a listening
+ * state, the underlying descriptor won't be closed in order for the connpoint
+ * to be reused.
+ */
+void shmifsrv_free(struct shmifsrv_client*);
 
 /*
  * [CRITICAL]
- * Retrieve information on the saturation of each event queue.
+ * Add an event to the outgoing event-queue, will return false if the queue has
+ * been saturated (non-responsive client), true otherwise.
+ * arcan_shmif_descrevent() can be used to verify if there's supposed to be a
+ * descriptor coupled with the event.
+ *
+ * As a rule, only srv->client events carry descriptors (the exception is
+ * accelerated buffer passing) as the client isn't expected to be in a context
+ * where it can easily create descriptors to shareable resources (sandboxing)
+ * and as a means of closing paths where a client may attempt to starve the
+ * parent by filling descriptor tables. The descriptors passed can safely be
+ * closed afterwards.
  */
-void shmifsrv_queue_status(struct shmifsrv_client*,
-	size_t* in_queue, size_t* out_queue, size_t* queue_lim);
+bool shmifsrv_enqueue_event(
+	struct shmifsrv_client*, struct arcan_event*, int fd);
 
 /*
  * [CRITICAL]
- * Push events into the outgoing event-queue. Events that are paired with a
- * file-descriptor transfer should have the corresponding descriptors placed
- * into fds (will be kept open). Any overflows will silently overflow oldest
- * events in the queue, use queue_status function in advance if you don't have
- * any tracking of your own.
+ * Attempt to dequeue up to [limit] events from the ingoing event queue. Will
+ * return the numbers of actual events dequeued. This will perform no additional
+ * tracking or management, only raw event access. For assistance with state
+ * tracking, feed the events through shmifsrv_process_event.
  */
-void shmifsrv_enqueue_events(struct shmifsrv_client*,
-	struct arcan_event*, size_t n, int* fds, size_t nfds);
+size_t shmifsrv_dequeue_events(
+	struct shmifsrv_client*, struct arcan_event* newev, size_t limit);
+
+/*
+ * Handle some of the normal state-tracking events (e.g. CLOCKREQ,
+ * BUFFERSTREAM, FLUSHAUD). Returns true if the event was consumed and no
+ * further action is needed.
+ */
+bool shmifsrv_process_event(
+	struct shmifsrv_client*, struct arcan_event* ev);
+
+enum vbuffer_status {
+	VBUFFER_OUTPUT = -1,
+	VBUFFER_NODATA = 0,
+	VBUFFER_OKDATA,
+	VBUFFER_HANDLE
+};
+
+enum abuffer_status {
+	ABUFFER_NODATA = 0,
+	ABUFFER_OKDATA
+};
 
 struct shmifsrv_vbuffer {
+	int state;
 	shmif_pixel* buffer;
+	struct {
+		bool origo_ll : 1;
+		bool ignore_alpha : 1;
+		bool subregion : 1;
+		bool srgb : 1;
+		bool hwhandles : 1;
+	} flags;
+
 	size_t w, h, pitch, stride;
+
+/* desired presentation time since connection epoch, hint */
+	uint64_t vpts;
+
+/* only usedated with subregion : true */
+	struct arcan_shmif_region region;
+
+/* only used with hwhandles : true */
+	size_t formats[4];
+	int planes[4];
 };
 
 struct shmifsrv_abuffer {
+	int state;
 	shmif_asample* buffer;
 	size_t bytes;
+	size_t limit;
 	size_t samples;
 	size_t samplerate;
-	uint8_t chanels;
+	uint8_t channels;
 };
 
 /*
  * [CRITICAL]
- * access the current active video buffer slot in the client. If step is set,
- * the buffer is returned to the client.
+ * access the currently active video buffer slot in the client. If step is set,
+ * the buffer is returned to the client. The contents of the buffer are
+ * a reference to shared memory, and should thus be explicitly copied out
+ * before leaving critical. The buffer won't be unlocked until this function
+ * have been called with step.
  *
- * Audio and video buffers work differently. If a client has negotiated
- * multiple buffers, video will only ever pick the latest one to cut down on
- * latency. For audio, multiple small buffers that match the target device is
- * more important, so there may be many buffers available at any time.
+ * The [state] field of the returned structure will match vbuffer_status:
+ * VBUFFER_OUTPUT - segment is configured for output, don't use this function.
+ * VBUFFER_NODATA - nothing available.
+ * VBUFFER_OKDATA - buffer is updated.
+ * VBUFFER_HANDLE - accelerated opaque handle, descriptor field set.
+ *
+ * Video buffers can operate in two different modes, accelerated (opaque)
+ * handle passing and accelerated. This server library does not currently
+ * provide support functions for working with opaque handles.
  */
 struct shmifsrv_vbuffer shmifsrv_video(struct shmifsrv_client*, bool step);
-size_t shmifsrv_audio(struct shmifsrv_client*,
-	struct shmifsrv_abuffer*, bool step);
+
+/* [CRITICAL]
+ * Copy out the currently active audio buffer slot in the client. This works
+ * differently from the video transfer in that there is always an implied step
+ * and the current buffer will be written out to shmifsrv abuffer.
+ *
+ * The [state] field of the returned structure will match abuffer_status:
+ * ABUFFER_NODATA - nothing available.
+ * ABUFFER_OKDATA - buffer is updated.
+ *
+ * If [dst] is provided, and [dst_sz] is of sufficient size (can be changed
+ * during resize request), the destination copy buffer will be [dst] instead
+ * of a [shmifsrv-_client] stored one. The [buffer] field in the returned
+ * structure will match if provided.
+ */
+struct shmifsrv_abuffer shmifsrv_audio(
+	struct shmifsrv_client*, shmif_asample* dst, size_t dst_sz);
 
 /*
- * Helper, returns the number of monotonic ticks that has occured since
- * last time this function was called. Use to judge when to invoke shmifsrv_
- * frameserver_tick.
+ * [THREAD_UNSAFE]
+ * This is a helper function that returns the number of monotonic ticks
+ * since the last time this function was called. It is thus a global state
+ * shared by many clients, along with the optional time to next tick. The
+ * typical pattern is:
+ *  [start]
+ *   shmifsrv_monotonic_rebase();
+ *
+ *  [loop]
+ *   num = shmifsrv_monotonic_tick(NULL);
+ *   while (num-- > 0)
+ *   	each_client(cl){ shmifsrv_tick( cl )
  */
-int shmifsrv_monotonic_tick();
+int shmifsrv_monotonic_tick(int* left);
+
+/*
+ * [THREAD_UNSAFE]
+ * Explicitly rebase the shared clock counter due to a large stall,
+ * pause, global suspend action and so on.
+ */
+void shmifsrv_monotonic_rebase();

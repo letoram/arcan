@@ -1131,7 +1131,7 @@ size_t platform_fsrv_display_limit(size_t new_sz)
 int platform_fsrv_resynch(struct arcan_frameserver* s)
 {
 	int state = 0;
-	shm_handle* src = &s->shm;
+	struct shm_handle* src = &s->shm;
 	struct arcan_shmif_page* shmpage = s->shm.ptr;
 
 /* local copy so we don't fall victim for TOCTU */

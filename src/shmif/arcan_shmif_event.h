@@ -1420,8 +1420,10 @@ struct arcan_evctx {
 
 	arcan_event* eventbuf;
 
-/* offsets into the eventbuf queue, parent will always
- * % ARCAN_SHMPAGE_QUEUE_SZ to prevent nasty surprises */
+/* offsets into the eventbuf queue, parent will always % ARCAN_SHMPAGE_QUEUE_SZ
+ * to prevent nasty surprises. these were set before we had access to _Atomic
+ * in the standard fashion, and the codebase should be refactored to take that
+ * into account */
 	volatile uint8_t* volatile front;
 	volatile uint8_t* volatile back;
 

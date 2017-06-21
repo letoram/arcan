@@ -42,3 +42,6 @@ These are not expected to be particularly stable or easy to set up and use.
 regression/ for non-trivial bugs reported and fixed, and as a prelude
 to specific engine refactoring (flag all related APIs, make sure there
 are tests that cover the intended changes).
+
+core/ contains tests for the various core libraries, e.g. AGP, AEP and
+shmifsrv.
