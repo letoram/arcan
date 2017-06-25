@@ -231,10 +231,10 @@ static void drop_font_context (struct tui_font_ctx* ctx)
 static void switch_bitmap_font(
 	struct tui_font_ctx* ctx, size_t px, size_t* w, size_t* h)
 {
-	int dist = abs((int)px - ctx->active_font->sz);
+	int dist = abs((int)px - (int)ctx->active_font->sz);
 
 	for (size_t i = 0; i < ctx->n_fonts; i++){
-		int nd = abs((int)px-ctx->fonts[i].sz);
+		int nd = abs((int)px-(int)ctx->fonts[i].sz);
 		if (ctx->fonts[i].font && nd < dist){
 			dist = nd;
 			ctx->active_font = &ctx->fonts[i];
