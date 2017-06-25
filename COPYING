@@ -21,10 +21,7 @@ Basic Engine Components:
 engine/* 3-Claused BSD with exceptions / attribution as follows:
       /arcan_lua.c - GPLv2 as an artifical restriction
                      plan is to relicense as BSD with 1.0 release.
-
-      /arcan_ttf.* - special, Derived version from
-                     Sam Lantingas SDL_ttf (to be replaced with freetype-gl)
-
+      /arcan_ttf.* - Derived version from Sam Lantingas SDL_ttf (Zlib license)
       /arcan_math.c - public domain
       /arcan_math_simd.c - public domain
 
@@ -33,7 +30,6 @@ platform/agp/ 3-Clause BSD, Public Domain
 platform/arcan/ 3-Clause BSD
 platform/darwin/ 3-Clause BSD, Public Domain
 platform/stub/ Public Domain
-platform/win32/ NetBSD License, Public Domain, 3-Clause BSD
 platform/cmake/ individually licensed, picked from various projects
 
 frameserver/graphing/ 3-Clause BSD
@@ -42,11 +38,18 @@ frameserver/resampler 3-Clause BSD
 frameserver/shl Public Domain (David Herrmann)
 
 shmif/ 3-Clause BSD
+
+shmif/tui 3-Clause BSD, MIT, LGPLv2+(shl_hash)
+          Terminus Font, uses SIL OPEN FONT LICENSE 1.1 (scripts.sil.org/OFL)
+          Copyright 2012 Dimitar Toshkov Zhekov
+          Copyright 2013 Kim Silkebaekken, Nikolay Pavlov, Carl X Su
+
 hijack/ 3-Clause BSD, Public Domain
 doc/* and media files in data/resources CC-BY-30
+
 examples/ Public Domain
 tests/ Public Domain
-distr/scripts/
+distr/scripts/ Public Domain
 
 Specific Platforms:
  SDL: (dependency) SDL1.2, optional SDL-image, LGPL.

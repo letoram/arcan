@@ -387,7 +387,8 @@ static void consume(struct arcan_shmif_cont* c)
 
 	if (BADFD != c->priv->pev.fd){
 		close(c->priv->pev.fd);
-		LOG("(shmif) closing unhandled/ignored/dup:ed state descriptor\n");
+		LOG("(shmif) closing unhandled/ignored/dup:ed state descriptor (%d)\n",
+			c->priv->pev.fd);
 	}
 
 	if (BADFD != c->priv->pseg.epipe){

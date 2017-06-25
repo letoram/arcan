@@ -1,12 +1,10 @@
 /*
- * Copyright 2014-2016, Björn Ståhl
+ * Copyright 2014-2017, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  * Description: text-user interface support library derived from the work on
- * the afsrv_cfg->nal frameserver. Could use a refactor cleanup,
- * different/faster font-rendering/text-support.
+ * the afsrv_terminal frameserver.
  */
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -44,7 +42,7 @@
 /*
  * really need to be replaced with something less awful
  */
-#include "util/font_8x8.h"
+#include "tui_draw.h"
 
 /*
  * For font support, we should have more (especially faster/less complicated)
@@ -78,6 +76,8 @@ struct tui_context {
 /* font rendering / tracking - we support one main that defines cell size
  * and one secondary that can be used for alternative glyphs */
 	TTF_Font* font[2];
+	struct tui_font_ctx* font_bitmap;
+	bool force_bitmap;
 
 /* size in mm */
 	float font_sz;
@@ -206,19 +206,6 @@ static void cursor_at(struct tui_context* tui,
 	default:
 	break;
 	}
-}
-
-/*
- * Fallback font rendering, ignores properties (bold, ...)
- */
-static void draw_ch_u8(struct tui_context* tui,
-	uint8_t u8_ch[5], int base_x, int base_y, uint8_t fg[4], uint8_t bg[4])
-{
-	u8_ch[1] = '\0';
-	draw_text_bg(&tui->acon, (const char*) u8_ch, base_x, base_y,
-		SHMIF_RGBA(fg[0], fg[1], fg[2], fg[3]),
-		SHMIF_RGBA(bg[0], bg[1], bg[2], bg[3])
-	);
 }
 
 static void apply_attrs(struct tui_context* tui,
@@ -372,12 +359,12 @@ static int draw_cbt(struct tui_context* tui,
 		return 0;
 	}
 
-	if (!tui->font[0]){
-	size_t u8_sz = tsm_ucs4_get_width(ch) + 1;
-	uint8_t u8_ch[u8_sz];
-	size_t nch = tsm_ucs4_to_utf8(ch, (char*) u8_ch);
-	u8_ch[u8_sz-1] = '\0';
-		draw_ch_u8(tui, u8_ch, x1, y1, dfg, dbg);
+	if (tui->force_bitmap || !tui->font[0]){
+		draw_ch_u32(tui->font_bitmap,
+			&tui->acon, ch, x1, y1,
+			SHMIF_RGBA(dfg[0], dfg[1], dfg[2], dfg[3]),
+			SHMIF_RGBA(dbg[0], dbg[1], dbg[2], dbg[3])
+		);
 	}
 	else
 		draw_ch(tui, ch, x1, y1, dfg, dbg, attr);
@@ -519,8 +506,6 @@ static bool move_down(struct tui_context* tui)
 	return false;
 }
 
-#include "util/utf8.c"
-
 static bool push_msg(struct tui_context* tui, const char* sel, size_t len)
 {
 /*
@@ -638,14 +623,13 @@ struct lent {
 	bool(*ptr)(struct tui_context*);
 };
 
-static const int badfd = -1;
 static bool setup_font(struct tui_context* tui,
 	int fd, float font_sz, int mode);
 
 bool inc_fontsz(struct tui_context* tui)
 {
 	tui->font_sz_delta += 2;
-	setup_font(tui, badfd, 0, 0);
+	setup_font(tui, BADFD, 0, 0);
 	return true;
 }
 
@@ -653,9 +637,7 @@ bool dec_fontsz(struct tui_context* tui)
 {
 	if (tui->font_sz > 8)
 		tui->font_sz_delta -= 2;
-	if (tui->font_sz_delta < 0)
-		tui->font_sz_delta = 0;
-	setup_font(tui, badfd, 0, 0);
+	setup_font(tui, BADFD, 0, 0);
 	return true;
 }
 
@@ -1069,8 +1051,8 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 
 	case TARGET_COMMAND_FONTHINT:{
 		int fd = BADFD;
-		if (ev->ioevs[1].iv == 1)
-			fd = ev->ioevs[0].iv;
+		if (ev->ioevs[0].iv != BADFD)
+			fd = arcan_shmif_dupfd(ev->ioevs[0].iv, -1, true);
 
 		switch(ev->ioevs[3].iv){
 		case -1: break;
@@ -1322,25 +1304,105 @@ static void probe_font(struct tui_context* tui,
 }
 
 /*
+ * supporting mixing truetype and bitmap font rendering costs much
+ * more than it is worth, when/if we receive a bitmap font from con,
+ * just drop all truetype related resources.
+ */
+void drop_truetype(struct tui_context* tui)
+{
+	if (tui->font[0]){
+		TTF_CloseFont(tui->font[0]);
+		tui->font[0] = NULL;
+	}
+
+	if (tui->font_fd[0] != BADFD){
+		close(tui->font_fd[0]);
+		tui->font_fd[0] = BADFD;
+	}
+
+	if (tui->font_fd[1] != BADFD){
+		close(tui->font_fd[1]);
+		tui->font_fd[1] = BADFD;
+	}
+
+	if (tui->font[1]){
+		TTF_CloseFont(tui->font[1]);
+		tui->font[1] = NULL;
+	}
+}
+
+/*
+ * first try and open/probe the font descriptor as a bitmap font
+ * (header-probing is trivial)
+ */
+bool tryload(struct tui_context* tui, int fd, int mode, size_t px_sz)
+{
+	int work = dup(fd);
+	if (-1 == work)
+		return false;
+
+	FILE* fpek = fdopen(work, "r");
+	if (!fpek)
+		return false;
+
+	fseek(fpek, 0, SEEK_END);
+	size_t buf_sz = ftell(fpek);
+	fseek(fpek, 0, SEEK_SET);
+
+	uint8_t* buf = malloc(buf_sz);
+	if (!buf){
+		fclose(fpek);
+		return false;
+	}
+
+	bool rv = false;
+	if (1 == fread(buf, buf_sz, 1, fpek)){
+		rv = load_bitmap_font(tui->font_bitmap, buf, buf_sz, px_sz, mode == 1);
+	}
+	fclose(fpek);
+	return rv;
+}
+
+/*
  * modes supported now is 0 (default), 1 (append)
  * font size specified in mm, will be converted to 1/72 inch pt as per
  * the current displayhint density in pixels-per-centimeter.
  */
-static bool setup_font(struct tui_context* tui,
-	int fd, float font_sz, int mode)
+static bool setup_font(
+	struct tui_context* tui, int fd, float font_sz, int mode)
 {
-	TTF_Font* font;
+	TTF_Font* font = NULL;
+
 	if (!(font_sz > 0))
 		font_sz = tui->font_sz;
-	font_sz += tui->font_sz_delta;
+
+	size_t pt_size = SHMIF_PT_SIZE(tui->ppcm, font_sz) + tui->font_sz_delta;
+	size_t px_sz = ceilf((float)pt_size * 0.03527778 * tui->ppcm);
+	if (pt_size < 4)
+		pt_size = 4;
 
 	int modeind = mode >= 1 ? 1 : 0;
+
+	bool bmap_font = fd != BADFD ?
+		tryload(tui, fd, modeind, px_sz) : tui->font[0] == NULL;
 
 /* re-use last descriptor and change size or grab new */
 	if (BADFD == fd)
 		fd = tui->font_fd[modeind];
 
-	size_t pt_size = SHMIF_PT_SIZE(tui->ppcm, font_sz) + tui->font_sz_delta;
+/* TTF wants in pt, tui-bitmap fonts wants in px. We don't support
+ * mixing vector and bitmap fonts though */
+	if (bmap_font || tui->force_bitmap){
+		size_t w = 0, h = 0;
+		switch_bitmap_font(tui->font_bitmap, px_sz, &w, &h);
+		tui->cell_w = w;
+		tui->cell_h = h;
+		update_screensize(tui, false);
+		send_cell_sz(tui);
+		drop_truetype(tui);
+		return true;
+	}
+
 	font = TTF_OpenFontFD(fd, pt_size);
 	if (!font){
 		LOG("failed to open font from descriptor (%d), "
@@ -1586,7 +1648,8 @@ struct tui_settings arcan_tui_defaults()
 		.ppcm = ARCAN_SHMPAGE_DEFAULT_PPCM,
 		.hint = TTF_HINTING_NONE,
 		.mouse_fwd = true,
-		.cursor_period = 12
+		.cursor_period = 12,
+		.force_bitmap = false
 	};
 }
 
@@ -1688,6 +1751,9 @@ void arcan_tui_apply_arg(struct tui_settings* cfg,
 		if (isfinite(ppcm) && ppcm > ARCAN_SHMPAGE_DEFAULT_PPCM * 0.5)
 			cfg->ppcm = ppcm;
 	}
+
+	if (arg_lookup(args, "force_bitmap", 0, &val))
+		cfg->force_bitmap = true;
 }
 
 int arcan_tui_alloc_screen(struct tui_context* ctx)
@@ -1745,7 +1811,11 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 	if (!set || !con || !cbs)
 		return NULL;
 
+/*
+ * Threading notice - doesn't belong here
+ */
 	TTF_Init();
+
 	struct arcan_shmif_initial* init;
 	if (sizeof(struct arcan_shmif_initial) != arcan_shmif_initial(con, &init)){
 		LOG("initial structure size mismatch, out-of-synch header/shmif lib\n");
@@ -1781,6 +1851,7 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 	res->font_fd[0] = BADFD;
 	res->font_fd[1] = BADFD;
 	res->font_sz = set->font_sz;
+	res->font_bitmap = tui_draw_init(64);
 
 	res->alpha = set->alpha;
 	res->cell_w = set->cell_w;
@@ -1794,19 +1865,21 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 	res->acon = *con;
 	res->cursor_period = set->cursor_period;
 	res->acon.hints = SHMIF_RHINT_SUBREGION;
+	res->force_bitmap = set->force_bitmap;
 
-	if (init->fonts[0].fd != BADFD){
+	if (init->fonts[0].fd != BADFD && !res->force_bitmap){
 		res->hint = init->fonts[0].hinting;
 		res->font_sz = init->fonts[0].size_mm;
 		setup_font(res, init->fonts[0].fd, res->font_sz, 0);
-		init->fonts[0].fd = -1;
+		init->fonts[0].fd = BADFD;
 		LOG("arcan_shmif_tui(), built-in font provided, size: %f\n", res->font_sz);
 
 		if (init->fonts[1].fd != BADFD){
 			setup_font(res, init->fonts[1].fd, res->font_sz, 1);
-			init->fonts[1].fd = -1;
+			init->fonts[1].fd = BADFD;
 		}
 	}
+
 	if (0 != tsm_utf8_mach_new(&res->ucsconv)){
 		free(res);
 		return NULL;
