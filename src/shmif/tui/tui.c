@@ -1867,7 +1867,7 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 	res->acon.hints = SHMIF_RHINT_SUBREGION;
 	res->force_bitmap = set->force_bitmap;
 
-	if (init->fonts[0].fd != BADFD && !res->force_bitmap){
+	if (init->fonts[0].fd != BADFD){
 		res->hint = init->fonts[0].hinting;
 		res->font_sz = init->fonts[0].size_mm;
 		setup_font(res, init->fonts[0].fd, res->font_sz, 0);
