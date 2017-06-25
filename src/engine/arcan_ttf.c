@@ -280,8 +280,12 @@ TTF_Font* TTF_OpenFontIndexRW( FILE* src, int freesrc, int ptsize, long index )
 	FT_CharMap found;
 	int position, i;
 
+	if (!src)
+		return NULL;
+
 	if ( ! TTF_initialized ) {
 		TTF_SetError( "Library not initialized" );
+		fclose(src);
 		return NULL;
 	}
 
@@ -289,12 +293,14 @@ TTF_Font* TTF_OpenFontIndexRW( FILE* src, int freesrc, int ptsize, long index )
 	position = ftell(src);
 	if ( position < 0 ) {
 		TTF_SetError( "Can't seek in stream" );
+		fclose(src);
 		return NULL;
 	}
 
 	font = (TTF_Font*) malloc(sizeof *font);
 	if ( font == NULL ) {
 		TTF_SetError( "Out of memory" );
+		fclose(src);
 		return NULL;
 	}
 	memset(font, 0, sizeof(*font));
@@ -450,10 +456,13 @@ TTF_Font* TTF_OpenFontFD(int fd, int ptsize)
 	fseek(fstream, SEEK_SET, 0);
 	TTF_Font* res = TTF_OpenFontIndexRW(fstream, 1, ptsize, 0);
 
+/*
+ * TTF_Open*** takes on the responsibility of freeing here
 	if (!res)
 		fclose(fstream);
+ */
 
-	return res;
+	 return res;
 }
 
 static void Flush_Glyph( c_glyph* glyph )
