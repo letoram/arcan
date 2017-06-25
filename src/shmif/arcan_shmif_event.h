@@ -501,11 +501,7 @@ enum ARCAN_TARGET_COMMAND {
  * A hint in regards to how text rendering should be managed in relation to
  * the display regarding filtering, font, and sizing decision.
  * ioev[0].iv = BADFD or descriptor of font to use
- * ioev[1].iv = type describing font in [0]:
- *  0 : default, off
- *  1 : TTF ( True Type )
- *  2 : OTF ( Open Type )
- * Other values are invalid/reserved for now
+ * ioev[1].iv = DEPRECATED
  * ioev[2].fv = desired normal font size in mm, <= 0, unchanged from current
  * ioev[3].iv = hinting: 0, off. 1, monochromatic, 2. light, 3. medium,
  *  -1 (unchanged), 0: off, 1..16 (implementation defined, recommendation

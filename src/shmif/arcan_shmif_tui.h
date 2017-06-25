@@ -74,8 +74,6 @@
  *
  * [ ] query label callback not yet used
  *
- * [ ] better bitmapped font implementation
- *
  * [ ] Normal "Curses" rendering- backend to not break term- compatibility
  *     for programs reworked to use this interface
  */
@@ -123,6 +121,9 @@ struct tui_settings {
 
 /* number of 25Hz ticks between blink-in/blink-off */
 	unsigned cursor_period;
+
+/* force- disable the use of advanced font rendering */
+	bool force_bitmap;
 };
 
 struct tui_context;
@@ -552,7 +553,6 @@ void arcan_tui_set_tabstop(struct tui_context*);
 
 /*
  * insert [n] number of empty lines with the default attributes
- * (amounts to a loop of _write calls)
  */
 void arcan_tui_insert_lines(struct tui_context*, size_t);
 
