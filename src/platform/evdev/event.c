@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2016, Björn Ståhl
+ * Copyright 2014-2017, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -36,6 +36,16 @@
 #include <linux/kd.h>
 #include <signal.h>
 #include <sys/inotify.h>
+
+#ifdef HAVE_XKBCOMMON
+#include <xkbcommon/xkbcommon.h>
+#include <xkbcommon/xkbcommon-keysyms.h>
+#include <xkbcommon/xkbcommon-compose.h>
+/*
+ * shared between all event queues
+ */
+static struct xkb_context* xkb_context;
+#endif
 
 /*
  * scan / probe a node- dir (ENVV overridable)
@@ -86,6 +96,11 @@ static const char* envopts[] = {
 	"ARCAN_INPUT_TTYOVERRIDE", "Force a specific tty- device",
 	"ARCAN_INPUT_DISABLE_TTYPSWAP", "Disable tty- swapping signal handler",
 	"ARCAN_INPUT_VERBOSE", "_warning log() input node events",
+#ifdef HAVE_XKBCOMMON
+	"XKB_DEFAULT_LAYOUT=lang", "enable XKB translation maps for keyboards",
+	"XKB_DEFAULT_VARIANT=variant", "define XKB layout variant",
+	"XKB_DEFAULT_MODEL=pc101", "definine XKB keyboard model",
+#endif
 	NULL
 };
 
@@ -160,6 +175,10 @@ struct devnode {
 		} cursor;
 		struct {
 			unsigned state;
+#ifdef HAVE_XKBCOMMON
+			struct xkb_keymap* xkb_layout;
+			struct xkb_state* xkb_state;
+#endif
 		} keyboard;
 	};
 /* because in this universe, pretty much any normal input device can
@@ -609,6 +628,14 @@ static void disconnect(struct arcan_evctx* ctx, struct devnode* node)
 				close(node->led.fds[0]);
 				close(node->led.fds[1]);
 			}
+#ifdef HAVE_XKBCOMMON
+			if (node->type == DEVNODE_KEYBOARD && node->keyboard.xkb_state){
+				xkb_state_unref(node->keyboard.xkb_state);
+				xkb_keymap_unref(node->keyboard.xkb_layout);
+				node->keyboard.xkb_state = NULL;
+				node->keyboard.xkb_layout = NULL;
+			}
+#endif
 			iodev.n_devs--;
 		}
 }
@@ -1165,6 +1192,15 @@ static void got_device(struct arcan_evctx* ctx, int fd, const char* path)
 			node.type = DEVNODE_KEYBOARD;
 			node.keyboard.state = 0;
 
+#ifdef HAVE_XKBCOMMON
+			if (xkb_context){
+				node.keyboard.xkb_layout = xkb_keymap_new_from_names(
+					xkb_context, NULL, XKB_KEYMAP_COMPILE_NO_FLAGS);
+				if (node.keyboard.xkb_layout)
+					node.keyboard.xkb_state = xkb_state_new(node.keyboard.xkb_layout);
+			}
+#endif
+
 /* FIX: query current LED states and set corresponding states in the devnode */
 			struct kbd_repeat kbrv = {0};
 			ioctl(node.handle, KDKBDREP, &kbrv);
@@ -1333,8 +1369,11 @@ static void defhandler_kbd(struct arcan_evctx* out,
 		update_state(inev[i].code, inev[i].value != 0, &node->keyboard.state);
 /* possible checkpoint for adding other keyboard layout support here */
 		newev.io.subid = inev[i].code;
+
+/* default 'fallback' translation */
 		uint16_t code = lookup_character(inev[i].code, node->keyboard.state, true);
-		if (code) to_utf8(code, newev.io.input.translated.utf8);
+		if (code)
+			to_utf8(code, newev.io.input.translated.utf8);
 
 /* virtual terminal switching for press on LCTRL+LALT+Fn. should possibly have
  * more advanced config here to limit # of eligible devices and change
@@ -1345,6 +1384,27 @@ static void defhandler_kbd(struct arcan_evctx* out,
 			inev[i].code >= KEY_F1 && inev[i].code <= KEY_F10 && inev[i].value != 0){
 			ioctl(gstate.tty, VT_ACTIVATE, inev[i].code - KEY_F1 + 1);
 		}
+
+/* Feed layout statemachine, try to get a translation out of it. Since we
+ * don't have support for xkeyboard symbols, we either make due with the normal
+ * kernel keycode to SDL keysym or go with the keyboard layout and try to
+ * translate that into SDL. */
+#ifdef HAVE_XKBCOMMON
+		if (node->keyboard.xkb_state){
+			memset(newev.io.input.translated.utf8, '\0', 5);
+			if (inev[i].value == 0){
+				xkb_state_update_key(
+					node->keyboard.xkb_state, inev[i].code + 8, XKB_KEY_UP);
+			}
+			else if (inev[i].value == 1 || (inev[i].value == 2 && xkb_keymap_key_repeats(
+				node->keyboard.xkb_layout, inev[i].code+8))){
+				xkb_state_update_key(
+					node->keyboard.xkb_state, inev[i].code + 8, XKB_KEY_DOWN);
+					xkb_state_key_get_utf8(node->keyboard.xkb_state,
+						inev[i].code + 8, (char*) newev.io.input.translated.utf8, 5);
+			}
+		}
+#endif
 
 /* auto-repeat, may get even if we are not in this state because of broken
  * drivers or failed mode-setting. */
@@ -1915,6 +1975,10 @@ void platform_event_init(arcan_evctx* ctx)
 {
 	gstate.notify = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
 	init_keyblut();
+#ifdef HAVE_XKBCOMMON
+	if (!xkb_context && getenv("XKB_DEFAULT_LAYOUT"))
+		xkb_context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+#endif
 
 	gstate.tty = find_tty();
 

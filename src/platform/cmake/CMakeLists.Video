@@ -22,7 +22,7 @@ if(VIDEO_PLATFORM STREQUAL "egl-gles")
 	find_package(EGL REQUIRED QUIET)
 
 	if (GLES2_BCM_IMPLEMENTATION)
-		message("broadcom (BCM) GLES implementation found, set BCM_ROOT to bad dir to disable")
+		amsg("broadcom (BCM) GLES implementation found, set BCM_ROOT to bad dir to disable")
 		list(APPEND ARCAN_DEFINITIONS WITH_BCM)
 		set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/platform/egl-gles/video.c
 			APPEND PROPERTY COMPILE_FLAGS -fgnu89-inline)
@@ -107,3 +107,17 @@ endif()
 if (NOT ENABLE_LWA)
 	set(LWA_PLATFORM_STR "stub")
 endif()
+
+if (INPUT_PLATFORM STREQUAL "evdev")
+	find_package(XKB QUIET)
+	if (XKB_FOUND)
+		amsg("${CL_GRN}evdev: libxkbcommon found, enabling${CL_RST}")
+		set_property(SOURCE ${PLATFORM_ROOT}/evdev/event.c APPEND PROPERTY
+			COMPILE_DEFINITIONS HAVE_XKBCOMMON)
+		list(APPEND VIDEO_LIBRARIES ${XKB_LIBRARIES})
+		list(APPEND INCLUDE_DIRS ${XKB_INCLUDE_DIRS})
+	else()
+		amsg("${CL_YEL}evdev: libxkbcommon not found, disabling{CL_RST}")
+	endif()
+endif()
+
