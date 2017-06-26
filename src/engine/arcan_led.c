@@ -147,7 +147,7 @@ static struct led_controller* find_devid(uint64_t devid)
 		return NULL;
 
 	for (size_t i = 0; i < MAX_LED_CONTROLLERS; i++)
-		if ((ctrl_mask & (1 << i)) && controllers[i].devid == devid)
+		if ((ctrl_mask & ((size_t)1 << i)) && controllers[i].devid == devid)
 			return &controllers[i];
 
 	return NULL;
@@ -162,7 +162,8 @@ static void forcecontroller(const struct usb_ent* ent)
 /* the USB standard doesn't mandate a serial number (facepalm)
  * and hidraw doesn't really have something akin to an instance id */
 
-	uint64_t devid = ((ent->vid & 0xffff) << 16) | (ent->pid & 0xffff);
+	uint64_t devid = (
+		(uint64_t)(ent->vid & 0xffff) << 16) | ((uint64_t)ent->pid & 0xffff);
 /* other option would be to close and reopen the device as an attempt
  * to reset to a possibly safer state */
 	if (find_devid(devid))
