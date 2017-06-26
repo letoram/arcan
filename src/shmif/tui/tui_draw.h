@@ -89,6 +89,7 @@ static struct bitmap_font* open_psf2(
 	res->chsz = glyph_bytes;
 	res->w = w;
 	res->h = h;
+	res->n_glyphs = 0;
 
 	res->fontdata = (uint8_t*) &res->glyphs[unicodecount];
 	memcpy(res->fontdata, &buf[pos], glyphbuf_sz);
@@ -115,6 +116,7 @@ static struct bitmap_font* open_psf2(
 			return res;
 		}
 		else if (state == UTF8_ACCEPT){
+			res->glyphs[res->n_glyphs].hh = (struct UT_hash_handle){};
 			res->glyphs[res->n_glyphs].codepoint = codepoint;
 			res->glyphs[res->n_glyphs].data = &res->fontdata[glyph_bytes*ind];
 
