@@ -2575,6 +2575,7 @@ bool platform_video_init(uint16_t w, uint16_t h,
 
 	int n = 0, fd;
 	char* device = NULL;
+	char device_interim[64] = {0};
 	bool forced_node = getenv("ARCAN_RENDER_NODE") != NULL;
 
 	while(1){
@@ -2585,6 +2586,7 @@ retry_card:
 		grab_card(n++, &device, &fd);
 		if (!device && -1 == fd)
 			goto cleanup;
+		snprintf(device_interim, 64, "%s", device);
 
 /* we don't have a mechanism for specifying/pairing GL/EGL implementation with
  * a device for now, the general idea is that GLVnd should provide this
@@ -2625,7 +2627,7 @@ retry_card:
 		}
 		else
 			debug_print("couldn't get drmMaster on (%s): %s, trying to go on",
-				device, strerror(errno));
+				device_interim, strerror(errno));
 	}
 
 /*

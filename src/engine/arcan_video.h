@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2016, Björn Ståhl
+ * Copyright 2003-2017, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -438,14 +438,8 @@ struct renderline_meta {
 #endif
 
 arcan_vobj_id arcan_video_renderstring(arcan_vobj_id id,
-	struct arcan_rstrarg arg, int8_t line_spacing,
-	int8_t tab_spacing, unsigned int* tabs, unsigned int* lines,
-	struct renderline_meta** lineheights, arcan_errc* errc
-);
-
-void arcan_video_stringdimensions(const char* message, int8_t line_spacing,
-	int8_t tab_spacing, unsigned int* tabs, unsigned int* maxw,
-	unsigned int* maxh);
+	struct arcan_rstrarg arg, unsigned int* lines,
+	struct renderline_meta** lineheights, arcan_errc* errc);
 
 /*
  * Immediately erase the object and all its related resources.
@@ -636,6 +630,16 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, int readback,
 arcan_errc arcan_video_forceupdate(arcan_vobj_id vid);
 arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did,
 	arcan_vobj_id src, bool detach);
+
+/*
+ * Change the target density of the rendertarget associates with [src].  If
+ * [reraster] is set, all attached objects that have the rendertarget as the
+ * primary rendertarget will have its backing store rerasterized to reflect the
+ * new density, if possible (vector- defined source). If [rescale] is set, the
+ * transformation chain of affected objects will be rescaled to match.
+ */
+arcan_errc arcan_video_rendertargetdensity(
+	arcan_vobj_id src, float vppcm, float hppcm, bool reraster, bool rescale);
 
 /* Drop the any secondary attachments that the rendertarget backing of *did*
  * may have to *src*.

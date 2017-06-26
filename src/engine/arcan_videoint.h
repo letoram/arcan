@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2016, Björn Ståhl
+ * Copyright 2003-2017, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -79,6 +79,13 @@ struct rendertarget {
  * rects and sweep the codebase for FLAG_DIRTY
  */
 	size_t dirtyc;
+
+/*
+ * track density per rendertarget, this affects some video objects that gets
+ * attached in that they are rerasterized to match the properties of the new
+ * rtgt.
+ */
+	float hppcm, vppcm;
 
 /* each rendertarget can have one possible camera attached to it
  * which affects the 3d pipe. This is defaulted to BADID until

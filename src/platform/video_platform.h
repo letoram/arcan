@@ -745,15 +745,6 @@ void agp_draw_vobj(float x1, float y1, float x2, float y2,
 	const float* txcos, const float* modelview);
 
 /*
- * Similar to vobj, but instead of one screen aligned quad - use a discreet
- * subdivision factor of s_s and s_t to provide a more finely tesselated model.
- * This is primarily to feed the vertex shader stage with more vertices to work
- * with, without going to the process of setting up a full 3D pipeline.
- */
-void agp_draw_vobj_tess(float x1, float y1, float x2, float y2,
-	size_t nv_s, size_t nv_t, const float* txcos, const float* modelview);
-
-/*
  * Destination format for rendertargets. Note that we do not currently suport
  * floating point targets and that for some platforms, COLOR_DEPTH will map to
  * COLOR_DEPTH_STENCIL.
@@ -763,8 +754,10 @@ enum rendertarget_mode {
 	RENDERTARGET_COLOR = 1,
 	RENDERTARGET_COLOR_DEPTH = 2,
 	RENDERTARGET_COLOR_DEPTH_STENCIL = 3,
-	RENDERTARGET_DOUBLEBUFFER = 4,
-	RENDERTARGET_RETAIN_ALPHA = 8
+	RENDERTARGET_FLOAT = 4,
+	RENDERTARGET_DOUBLEBUFFER = 8,
+	RENDERTARGET_RETAIN_ALPHA = 16,
+	RENDERTARGET_MSAA = 32
 };
 
 /*
