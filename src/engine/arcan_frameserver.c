@@ -58,7 +58,7 @@ static inline void emit_droppedframe(arcan_frameserver* src,
  * require a recalculation of shared memory layout. These are used by the
  * various feedfunctions and should not need to be triggered elsewhere.
  */
-static void tick_control(arcan_frameserver*, bool);
+static bool tick_control(arcan_frameserver*, bool);
 
 static void autoclock_frame(arcan_frameserver* tgt)
 {
@@ -402,8 +402,7 @@ enum arcan_ffunc_rv arcan_frameserver_emptyframe FFUNC_HEAD
 	switch (cmd){
 		case FFUNC_POLL:
 			if (tgt->shm.ptr->resized){
-				tick_control(tgt, false);
-				if (tgt->shm.ptr && tgt->shm.ptr->vready){
+				if (tick_control(tgt, false) && tgt->shm.ptr && tgt->shm.ptr->vready){
 					platform_fsrv_leave();
 					return FRV_GOTFRAME;
 				}
@@ -485,7 +484,8 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 	break;
 
 	case FFUNC_TICK:
-		tick_control(tgt, true);
+		if (!tick_control(tgt, true))
+			goto no_out;
 	break;
 
 	case FFUNC_DESTROY:
@@ -1022,7 +1022,7 @@ arcan_errc arcan_frameserver_audioframe_direct(arcan_aobj* aobj,
 	return ARCAN_OK;
 }
 
-static void tick_control(arcan_frameserver* src, bool tick)
+static bool tick_control(arcan_frameserver* src, bool tick)
 {
 	bool fail = true;
 	if (!arcan_frameserver_control_chld(src) || !src || !src->shm.ptr ||
@@ -1089,7 +1089,7 @@ static void tick_control(arcan_frameserver* src, bool tick)
  * There's no copy- and mark as read, that has to be done from the next layer.
  */
 leave:
-	if (src->desc.aproto & SHMIF_META_CM){
+	if (!fail && src->desc.aproto & SHMIF_META_CM){
 		uint8_t in_map = atomic_load(&src->desc.aext.gamma->dirty_out);
 		for (size_t i = 0; i < 8; i++){
 			if ((in_map & (1 << i)) && !(src->desc.aext.gamma_map & (1 << i))){
@@ -1117,6 +1117,7 @@ leave:
 			});
 		}
 	}
+	return !fail;
 }
 
 arcan_errc arcan_frameserver_pause(arcan_frameserver* src)
