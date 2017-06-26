@@ -1405,7 +1405,7 @@ static bool setup_font(
 		return true;
 	}
 
-	font = TTF_OpenFontFD(fd, pt_size);
+	font = TTF_OpenFontFD(fd, pt_size, 72.0, 72.0);
 	if (!font){
 		LOG("failed to open font from descriptor (%d), "
 			"with size: %f\n", fd, font_sz);

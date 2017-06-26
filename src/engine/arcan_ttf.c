@@ -270,7 +270,8 @@ static int ft_sizeind(FT_Face face, float ys)
 	return ind;
 }
 
-TTF_Font* TTF_OpenFontIndexRW( FILE* src, int freesrc, int ptsize, long index )
+TTF_Font* TTF_OpenFontIndexRW( FILE* src, int freesrc, int ptsize,
+	uint16_t hdpi, uint16_t vdpi, long index )
 {
 	TTF_Font* font;
 	FT_Error error;
@@ -341,7 +342,7 @@ TTF_Font* TTF_OpenFontIndexRW( FILE* src, int freesrc, int ptsize, long index )
 /* Make sure that our font face is scalable (global metrics) */
 	if ( FT_IS_SCALABLE(face) ) {
 /* Set the character size and use default DPI (72) */
-		error = FT_Set_Char_Size( font->face, 0, emsize, 0, 0 );
+		error = FT_Set_Char_Size( font->face, 0, emsize, hdpi, vdpi);
 		if( error ) {
 			TTF_SetFTError( "Couldn't set font size", error );
 			TTF_CloseFont( font );
@@ -363,8 +364,8 @@ TTF_Font* TTF_OpenFontIndexRW( FILE* src, int freesrc, int ptsize, long index )
 	else {
 		int i = ft_sizeind(font->face, emsize);
 		if (-1 != i){
-			font->ascent = face->available_sizes[i].height;
-			font->descent = 0;
+			font->ascent = face->available_sizes[i].height * 0.5;
+			font->descent = face->available_sizes[i].height - font->ascent - 1;
 			font->height = face->available_sizes[i].height;
 	  	font->lineskip = FT_CEIL(font->ascent);
 	  	font->underline_offset = FT_FLOOR(face->underline_position);
@@ -412,28 +413,32 @@ TTF_Font* TTF_OpenFontIndexRW( FILE* src, int freesrc, int ptsize, long index )
 	return font;
 }
 
-TTF_Font* TTF_OpenFontRW( FILE* src, int freesrc, int ptsize )
+TTF_Font* TTF_OpenFontRW( FILE* src, int freesrc, int ptsize,
+	uint16_t hdpi, uint16_t vdpi)
 {
-	return TTF_OpenFontIndexRW(src, freesrc, ptsize, 0);
+	return TTF_OpenFontIndexRW(src, freesrc, ptsize, hdpi, vdpi, 0);
 }
 
-TTF_Font* TTF_OpenFontIndex( const char *file, int ptsize, long index )
+TTF_Font* TTF_OpenFontIndex( const char *file, int ptsize,
+	uint16_t hdpi, uint16_t vdpi, long index )
 {
 	FILE* rw = fopen(file, "r");
 	if (rw){
 	fcntl(fileno(rw), F_SETFD, FD_CLOEXEC);
 
-		return TTF_OpenFontIndexRW(rw, 1, ptsize, index);
+		return TTF_OpenFontIndexRW(rw, 1, ptsize, hdpi, vdpi, index);
 	}
 	return NULL;
 }
 
-TTF_Font* TTF_OpenFont( const char *file, int ptsize )
+TTF_Font* TTF_OpenFont( const char *file, int ptsize,
+	uint16_t hdpi, uint16_t vdpi)
 {
-	return TTF_OpenFontIndex(file, ptsize, 0);
+	return TTF_OpenFontIndex(file, ptsize, hdpi, vdpi, 0);
 }
 
-TTF_Font* TTF_OpenFontFD(int fd, int ptsize)
+TTF_Font* TTF_OpenFontFD(int fd, int ptsize,
+	uint16_t hdpi, uint16_t vdpi)
 {
 	if (-1 == fd)
 		return NULL;
@@ -454,7 +459,7 @@ TTF_Font* TTF_OpenFontFD(int fd, int ptsize)
  * handle this though by ft_read being explicit about position (but not
  * thread-safe) */
 	fseek(fstream, SEEK_SET, 0);
-	TTF_Font* res = TTF_OpenFontIndexRW(fstream, 1, ptsize, 0);
+	TTF_Font* res = TTF_OpenFontIndexRW(fstream, 1, ptsize, hdpi, vdpi, 0);
 
 /*
  * TTF_Open*** takes on the responsibility of freeing here
@@ -462,7 +467,7 @@ TTF_Font* TTF_OpenFontFD(int fd, int ptsize)
 		fclose(fstream);
  */
 
-	 return res;
+	return res;
 }
 
 static void Flush_Glyph( c_glyph* glyph )

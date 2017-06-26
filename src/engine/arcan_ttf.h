@@ -57,14 +57,17 @@ int TTF_Init(void);
  * Some .fon fonts will have several sizes embedded in the file, so the
  * point size becomes the index of choosing which size. If the value
  * is too high, the last indexed size will be the default. */
-TTF_Font* TTF_OpenFont(const char *file, int ptsize);
+TTF_Font* TTF_OpenFont(const char *file, int ptsize, uint16_t hdpi, uint16_t vdpi);
 
-TTF_Font* TTF_OpenFontIndex(const char *file, int ptsize, long index);
-TTF_Font* TTF_OpenFontRW(FILE* src, int freesrc, int ptsize);
-TTF_Font* TTF_OpenFontIndexRW(FILE* src, int freesrc, int ptsize, long index);
+TTF_Font* TTF_OpenFontIndex(const char *file, int ptsize,
+	uint16_t hdpi, uint16_t vdpi, long index);
+TTF_Font* TTF_OpenFontRW(FILE* src, int freesrc, int ptsize,
+	uint16_t hdpi, uint16_t vdpi);
+TTF_Font* TTF_OpenFontIndexRW(FILE* src, int freesrc, int ptsize,
+	uint16_t hdpi, uint16_t vdpi, long index);
 
 /* open font using a preexisting file descriptor, takes ownership of fd */
-TTF_Font* TTF_OpenFontFD(int fd, int ptsize);
+TTF_Font* TTF_OpenFontFD(int fd, int ptsize, uint16_t hdpi, uint16_t vdpi);
 
 /* Set and retrieve the font style */
 #define TTF_STYLE_NORMAL 0x00

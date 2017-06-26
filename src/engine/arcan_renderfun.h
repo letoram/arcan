@@ -1,5 +1,5 @@
 /*
- * Copyright 2008-2016, Björn Ståhl
+ * Copyright 2008-2017, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -30,13 +30,26 @@
  *                  cached fonts can be controlled with ARCAN_FONT_CACHE_LIMIT)
  * \#rrggbb (switch color, state persists between calls)
  * \t (insert tab)
+ * \T sz (insert tab, aligned to sz pt from base)
  * \n (insert newline)
  * \r (insert carriage return)
+ * \v sz (set line spacing to be sz rather than the font provided metric)
+ * \V undo \v
  * \b or \!b (switch bold on or off, state persists between calls)
  * \i or \!i (switch italic on or off, state persists between calls)
  * \u or \!u (switch underline on or off, state persists between calls)
  * \pfname (load and embedd image from fname into string, dimensions limited)
  * \Pfname,w,h (load and stretch image from fname into string)
+ *
+ * Underneath it all are two levels of caches, one for typefaces+size+density
+ * in each cached font there is one for glyphs.
+ * Density is treated as a global state and used has a hidden prefix for
+ * selecting typeface, so \ffont.ttf,16 can be different from \ffont.ttf,16 if
+ * arcan_renderfun_outputdensity has changed, as only switching the
+ * FT_Set_Char_Size(font, 0, size_pt, hdpi, vdpi) before rendering caused too
+ * many costly glyph cache invalidations. Since DPI is static and homogenous
+ * most of the time this only really matters in the arcan use case where
+ * per-rendertarget different densities is a thing.
  */
 
 #ifndef HAVE_RLINE_META
@@ -49,7 +62,7 @@ struct renderline_meta{
 #endif
 
 av_pixel* arcan_renderfun_renderfmtstr(const char* message,
-	arcan_vobj_id dst, int8_t line_spacing, int8_t tab_spacing, unsigned int* tabs,
+	arcan_vobj_id dst,
 	bool pot, unsigned int* n_lines, struct renderline_meta** lineheights,
 	size_t* dw, size_t* dh, uint32_t* d_sz,
 	size_t* maxw, size_t* maxh, bool norender
@@ -61,9 +74,8 @@ av_pixel* arcan_renderfun_renderfmtstr(const char* message,
  * interpreted as text only.
  */
 av_pixel* arcan_renderfun_renderfmtstr_extended(const char** message,
-	arcan_vobj_id dst, int8_t line_spacing, int8_t tab_spacing,
-	unsigned int* tabs, bool pot,
-	unsigned int* n_lines, struct renderline_meta** lineheights,
+	arcan_vobj_id dst,
+	bool pot, unsigned int* n_lines, struct renderline_meta** lineheights,
 	size_t* dw, size_t* dh, uint32_t* d_sz,
 	size_t* maxw, size_t* maxh, bool norender
 );
@@ -83,6 +95,13 @@ av_pixel* arcan_renderfun_renderfmtstr_extended(const char** message,
  */
 bool arcan_video_defaultfont(const char* ident,
 	file_handle fd, int sz, int hint, bool append);
+
+/*
+ * Change the target output density. This is a static global and affects
+ * all font operations (as output size = pt- size over density. Density
+ * is expressed in pixels per centimeter.
+ */
+void arcan_renderfun_outputdensity(float vppcm, float hppcm);
 
 /*
  * Retrieve the current font defaults for the fields that have their value

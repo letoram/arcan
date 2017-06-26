@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2016, Björn Ståhl
+ * Copyright 2003-2017, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -1847,6 +1847,64 @@ arcan_vobj_id arcan_video_rawobject(av_pixel* buf,
 	return rv;
 }
 
+arcan_errc arcan_video_rendertargetdensity(
+	arcan_vobj_id src, float vppcm, float hppcm, bool reraster, bool rescale)
+{
+/* sanity checks */
+	arcan_vobject* srcobj = arcan_video_getobject(src);
+	if (!srcobj)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+
+	struct rendertarget* rtgt = arcan_vint_findrt(srcobj);
+	if (!rtgt)
+		return ARCAN_ERRC_UNACCEPTED_STATE;
+
+	if (vppcm < EPSILON)
+		vppcm = rtgt->vppcm;
+
+	if (hppcm < EPSILON)
+		hppcm = rtgt->hppcm;
+
+	if (rtgt->vppcm == vppcm && rtgt->hppcm == hppcm)
+		return ARCAN_OK;
+
+/* reflect the new changes */
+	float sfx = hppcm / rtgt->hppcm;
+	float sfy = vppcm / rtgt->vppcm;
+
+	rtgt->vppcm = rtgt->hppcm;
+
+	struct arcan_vobject_litem* cent = rtgt->first;
+	while(cent){
+		struct arcan_vobject* vobj = cent->elem;
+		if (vobj->owner != rtgt){
+			cent = cent->next;
+			continue;
+		}
+
+/* for all vobj- that are attached to this rendertarget AND has it as
+ * primary, check if it is possible to rebuild a raster representation
+ * with more accurate density */
+		if (reraster){
+			if (vobj->feed.state.tag == ARCAN_TAG_TEXT){
+
+			}
+/* MISSING: ARCAN_TAG_VECTOR */
+		}
+		if (rescale){
+			float ox = (float)vobj->origw*vobj->current.scale.x;
+			float oy = (float)vobj->origh*vobj->current.scale.y;
+			rescale_origwh(vobj,
+					sfx / vobj->current.scale.x, sfy / vobj->current.scale.y);
+			invalidate_cache(vobj);
+		}
+		cent = cent->next;
+	}
+
+	FLAG_DIRTY(rtgt);
+	return ARCAN_OK;
+}
+
 arcan_errc arcan_video_detachfromrendertarget(arcan_vobj_id did,
 	arcan_vobj_id src)
 {
@@ -1885,7 +1943,6 @@ arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did,
 
 	if (FL_TEST(dstobj, FL_PRSIST) || FL_TEST(srcobj, FL_PRSIST))
 		return ARCAN_ERRC_UNACCEPTED_STATE;
-
 
 /* linear search for rendertarget matching the destination id */
 	for (size_t ind = 0; ind < current_context->n_rtargets; ind++){
@@ -1993,47 +2050,45 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did,
 	}
 
 /* hard-coded number of render-targets allowed */
-	if (current_context->n_rtargets < RENDERTARGET_LIMIT){
-		int ind = current_context->n_rtargets++;
-		struct rendertarget* dst = &current_context->rtargets[ ind ];
+	if (current_context->n_rtargets >= RENDERTARGET_LIMIT)
+		return ARCAN_ERRC_OUT_OF_SPACE;
 
-		FL_SET(vobj, FL_RTGT);
-		FL_SET(dst, TGTFL_ALIVE);
-		dst->color = vobj;
-		dst->camtag = ARCAN_EID;
-		dst->readback = readback;
-		dst->readcnt = abs(readback);
-		dst->refresh = refresh;
-		dst->refreshcnt = abs(refresh);
-		dst->art = agp_setup_rendertarget(vobj->vstore, format);
-		dst->order3d = arcan_video_display.order3d;
+	int ind = current_context->n_rtargets++;
+	struct rendertarget* dst = &current_context->rtargets[ ind ];
 
-		vobj->extrefc.attachments++;
-		trace("(setuprendertarget), (%d:%s) defined as rendertarget."
-			"attachments: %d\n", vobj->cellid, video_tracetag(vobj),
-			vobj->extrefc.attachments);
+	FL_SET(vobj, FL_RTGT);
+	FL_SET(dst, TGTFL_ALIVE);
+	dst->color = vobj;
+	dst->camtag = ARCAN_EID;
+	dst->readback = readback;
+	dst->readcnt = abs(readback);
+	dst->refresh = refresh;
+	dst->refreshcnt = abs(refresh);
+	dst->art = agp_setup_rendertarget(vobj->vstore, format);
+	dst->order3d = arcan_video_display.order3d;
+	dst->vppcm = dst->hppcm = 28.346456692913385;
+
+	vobj->extrefc.attachments++;
+	trace("(setuprendertarget), (%d:%s) defined as rendertarget."
+		"attachments: %d\n", vobj->cellid, video_tracetag(vobj),
+		vobj->extrefc.attachments);
 
 /* alter projection so the GL texture gets stored in the way
  * the images are rendered in normal mode, with 0,0 being upper left */
-		build_orthographic_matrix(dst->projection, 0, vobj->origw, 0,
-			vobj->origh, 0, 1);
-		identity_matrix(dst->base);
+	build_orthographic_matrix(
+		dst->projection, 0, vobj->origw, 0, vobj->origh, 0, 1);
+	identity_matrix(dst->base);
 
-		struct monitor_mode mode = platform_video_dimensions();
-		if (scale){
-			float xs = (float)vobj->vstore->w / (float)mode.width;
-			float ys = (float)vobj->vstore->h / (float)mode.height;
+	struct monitor_mode mode = platform_video_dimensions();
+	if (scale){
+		float xs = (float)vobj->vstore->w / (float)mode.width;
+		float ys = (float)vobj->vstore->h / (float)mode.height;
 
 /* since we may likely have a differently sized FBO, scale it */
-			scale_matrix(dst->base, xs, ys, 1.0);
-		}
-
-		rv = ARCAN_OK;
+		scale_matrix(dst->base, xs, ys, 1.0);
 	}
-	else
-		rv = ARCAN_ERRC_OUT_OF_SPACE;
 
-	return rv;
+	return ARCAN_OK;
 }
 
 arcan_errc arcan_video_setactiveframe(arcan_vobj_id dst, unsigned fid)
@@ -2313,9 +2368,8 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, size_t w, size_t h)
 	rescale_origwh(vobj,
 		sfx / vobj->current.scale.x, sfy / vobj->current.scale.y);
 
-/* "initial" base dimensions, important when dimensions
- * change for objects that have a shared storage elsewhere
- * but where scale differs. */
+/* "initial" base dimensions, important when dimensions change for objects that
+ * have a shared storage elsewhere but where scale differs. */
 	vobj->origw = w;
 	vobj->origh = h;
 
@@ -5317,9 +5371,8 @@ static void update_sourcedescr(struct agp_vstore* ds,
 }
 
 arcan_vobj_id arcan_video_renderstring(arcan_vobj_id src,
-	struct arcan_rstrarg data,
-	int8_t line_spacing, int8_t tab_spacing, unsigned int* tabs,
-	unsigned int* n_lines,struct renderline_meta** lineheights,arcan_errc* errc)
+	struct arcan_rstrarg data, unsigned int* n_lines,
+	struct renderline_meta** lineheights,arcan_errc* errc)
 {
 #define FAIL(CODE){ if (errc) *errc = CODE; return ARCAN_EID; }
 	arcan_vobject* vobj;
@@ -5333,13 +5386,17 @@ arcan_vobj_id arcan_video_renderstring(arcan_vobj_id src,
 	struct agp_vstore* ds;
 	uint32_t dsz;
 
+	struct rendertarget* dst = current_context->attachment ?
+		current_context->attachment : &current_context->stdoutp;
+	arcan_renderfun_outputdensity(dst->hppcm, dst->vppcm);
+
 	if (src == ARCAN_EID){
 		vobj = arcan_video_newvobject(&rv);
 		if (!vobj)
 			FAIL(ARCAN_ERRC_OUT_OF_SPACE);
 
-#define ARGLST src, line_spacing, tab_spacing, tabs, false, n_lines, \
-	lineheights, &w, &h, &dsz, &maxw, &maxh, false
+#define ARGLST src, false, n_lines, \
+lineheights, &w, &h, &dsz, &maxw, &maxh, false
 
 		ds = vobj->vstore;
 		av_pixel* rawdst = ds->vinf.text.raw;

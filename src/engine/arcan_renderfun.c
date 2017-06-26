@@ -1,5 +1,5 @@
 /*
- * Copyright 2008-2016, Björn Ståhl
+ * Copyright 2008-2017, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -48,6 +48,7 @@ struct font_entry {
 	struct font_entry_chain chain;
 	char* identifier;
 	size_t size;
+	float vdpi, hdpi;
 	uint8_t usecount;
 };
 
@@ -71,9 +72,13 @@ struct text_format {
 	char* endofs;
 
 /* metrics */
+	int lineheight;
 	int height;
 	int skip;
 	int ascent;
+
+/* metric- overrides */
+	size_t halign;
 
 /* whitespace management */
 	bool cr;
@@ -82,6 +87,11 @@ struct text_format {
 };
 
 static int default_hint = TTF_HINTING_NORMAL;
+static float default_vdpi = 72.0;
+static float default_hdpi = 72.0;
+
+#define PT_TO_HPX(PT)((float)(PT) * (1.0f / 72.0f) * default_hdpi)
+#define PT_TO_VPX(PT)((float)(PT) * (1.0f / 72.0f) * default_vdpi)
 
 static struct text_format last_style = {
 	.col = {0xff, 0xff, 0xff, 0xff},
@@ -103,19 +113,16 @@ static uint16_t nexthigher(uint16_t k)
 /*
  * This one is a mess,
  * (a) begin by splitting the input string into a linked list of data elements.
- * each element can EITHER modfiy to current cursor position OR represent
+ * each element can EITHER modfiy the current cursor position OR represent
  * a rendered surface.
-
  * (b) take the linked list, sweep through it and figure out which dimensions
  * it requires, allocate a corresponding storage object.
-
  * (c) sweep the list yet again, render to the storage object.
 */
 
-// TTF_FontHeight sets line-spacing.
+/* TTF_FontHeight sets line-spacing. */
 
 struct rcell {
-	bool surface;
 	unsigned int width;
 	unsigned int height;
 	int skipv;
@@ -147,6 +154,12 @@ void arcan_video_fontdefaults(file_handle* fd, int* pt_sz, int* hint)
 
 	if (hint)
 		*hint = default_hint;
+}
+
+void arcan_renderfun_outputdensity(float vppcm, float hppcm)
+{
+	default_hdpi = vppcm > EPSILON ? 2.54 * vppcm : 72.0;
+	default_vdpi = hppcm > EPSILON ? 2.54 * hppcm : 72.0;
 }
 
 static void update_style(struct text_format* dst, struct font_entry* font)
@@ -224,7 +237,9 @@ static struct font_entry* grab_font(const char* fname, size_t size)
 				matchf = &font_cache[i];
 			}
 
-			if (font_cache[i].size == size){
+			if (font_cache[i].size == size &&
+				fabs(font_cache[i].vdpi - default_vdpi) < EPSILON &&
+				fabs(font_cache[i].hdpi - default_hdpi) < EPSILON){
 				font_cache[i].usecount++;
 				font = &font_cache[i];
 				goto done;
@@ -244,7 +259,8 @@ static struct font_entry* grab_font(const char* fname, size_t size)
 		}
 		int count = 0;
 		for (size_t i = 0; i < matchf->chain.count; i++){
-			newch.data[count] = TTF_OpenFontFD(matchf->chain.fd[i], size);
+			newch.data[count] = TTF_OpenFontFD(
+				matchf->chain.fd[i], size, default_hdpi, default_vdpi);
 			newch.fd[count] = BADFD;
 			if (!newch.data[count]){
 				arcan_warning("grab font(), couldn't duplicate entire "
@@ -256,7 +272,7 @@ static struct font_entry* grab_font(const char* fname, size_t size)
 		newch.count = count;
 	}
 	else {
-		newch.data[0] = TTF_OpenFont(fname, size);
+		newch.data[0] = TTF_OpenFont(fname, size, default_hdpi, default_vdpi);
 		newch.fd[0] = BADFD;
 		if (newch.data[0])
 			newch.count = 1;
@@ -277,6 +293,8 @@ static struct font_entry* grab_font(const char* fname, size_t size)
 	font_cache[i].identifier = strdup(fname);
 	font_cache[i].usecount++;
 	font_cache[i].size = size;
+	font_cache[i].vdpi = default_vdpi;
+	font_cache[i].hdpi = default_hdpi;
 	font_cache[i].chain = newch;
 	font = &font_cache[i];
 
@@ -293,7 +311,7 @@ bool arcan_video_defaultfont(const char* ident,
 		return false;
 
 /* try to load */
-	TTF_Font* font = TTF_OpenFontFD(fd, sz);
+	TTF_Font* font = TTF_OpenFontFD(fd, sz, default_hdpi, default_vdpi);
 	if (!font)
 		return false;
 
@@ -370,14 +388,24 @@ static void text_loadimage(struct text_format* dst,
 	}
 
 	struct arcan_img_meta meta = {0};
-	uint32_t* imgbuf;
+	uint32_t* imgbuf; /* set in _decode */
 	size_t inw, inh;
 
 	arcan_errc rv = arcan_img_decode(infn, inmem.ptr,
 		inmem.sz, &imgbuf, &inw, &inh, &meta, false);
 
-/* stretchblit is assumed to deal with the edgecase of
- * w ^ h being 0 */
+	arcan_release_map(inmem);
+	arcan_release_resource(&inres);
+
+/* repace if the system format doesn't match */
+	if (imgbuf)
+		imgbuf = arcan_img_repack(imgbuf, inw, inh);
+
+	if (!imgbuf || rv != ARCAN_OK)
+		return;
+
+/* stretchblit is assumed to deal with the edgecase of w ^ h being 0 and
+ * chosing the correct value based on aspect ratio. */
 	if (cons.w > TEXT_EMBEDDEDICON_MAXW ||
 		(cons.w == 0 && inw > TEXT_EMBEDDEDICON_MAXW))
 		cons.w = TEXT_EMBEDDEDICON_MAXW;
@@ -386,24 +414,21 @@ static void text_loadimage(struct text_format* dst,
 		(cons.h == 0 && inh > TEXT_EMBEDDEDICON_MAXH))
 		cons.h = TEXT_EMBEDDEDICON_MAXH;
 
-	arcan_release_map(inmem);
-	arcan_release_resource(&inres);
-
-	if (imgbuf && rv == ARCAN_OK){
-		if ((cons.w != 0 && cons.h != 0) && (inw != cons.w || inh != cons.h)){
-			dst->surf.buf = arcan_alloc_mem(cons.w * cons.h * sizeof(av_pixel),
-				ARCAN_MEM_VBUFFER, ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE);
-			arcan_renderfun_stretchblit(
-				(char*)imgbuf, inw, inh, dst->surf.buf, cons.w, cons.h, false);
-			arcan_mem_free(imgbuf);
-			dst->surf.w = cons.w;
-			dst->surf.h = cons.h;
-		}
-		else {
-			dst->surf.w = inw;
-			dst->surf.h = inh;
-			dst->surf.buf = imgbuf;
-		}
+/* if blit to a specific size is requested, use that */
+	if ((cons.w != 0 && cons.h != 0) && (inw != cons.w || inh != cons.h)){
+		dst->surf.buf = arcan_alloc_mem(cons.w * cons.h * sizeof(av_pixel),
+			ARCAN_MEM_VBUFFER, ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE);
+		arcan_renderfun_stretchblit(
+			(char*)imgbuf, inw, inh, dst->surf.buf, cons.w, cons.h, false);
+		arcan_mem_free(imgbuf);
+		dst->surf.w = cons.w;
+		dst->surf.h = cons.h;
+	}
+/* otherwise just keep the entire buffer */
+	else {
+		dst->surf.w = inw;
+		dst->surf.h = inh;
+		dst->surf.buf = imgbuf;
 	}
 }
 #endif
@@ -528,6 +553,9 @@ static char* extract_image_simple(struct text_format* prev, char* base){
 			prev->imgcons.w = prev->surf.w;
 			prev->imgcons.h = prev->surf.h;
 		}
+		else
+			arcan_warning(
+				"arcan_video_renderstring(), couldn't load icon (%s)\n", wbase);
 
 		return base;
 	}
@@ -622,11 +650,6 @@ static struct text_format formatend(char* base, struct text_format prev,
 /* out of formatstring */
 		if (*base != '\\') { prev.endofs = base; break; }
 
-/* all the supported formatting characters;
- * b = bold, i = italic, u = underline, n = newline, r = carriage return,
- * t = tab ! = inverse (bold,italic,underline), #rrggbb = setcolor,
- * fpath,size = setfont, Pwidth,height,fname(, or NULL) extract
- * pwidth,height = embedd image (width, height optional) */
 	char cmd;
 
 retry:
@@ -635,23 +658,53 @@ retry:
 
 		switch (cmd){
 /* the ! prefix is a special case, meaning that we invert the next character */
-		case '!': inv = true; base--; *base = '\\'; goto retry; break;
-		case 't': prev.tab++; break;
-		case 'n': prev.newline++; break;
-		case 'r': prev.cr = true; break;
-		case 'u': prev.style = (inv ? prev.style & TTF_STYLE_UNDERLINE :
-				prev.style | TTF_STYLE_UNDERLINE); break;
-		case 'b': prev.style = (inv ? prev.style & !TTF_STYLE_BOLD :
-				prev.style | TTF_STYLE_BOLD); break;
-		case 'i': prev.style = (inv ? prev.style & !TTF_STYLE_ITALIC :
-				 prev.style | TTF_STYLE_ITALIC); break;
+		case '!':
+			inv = true;
+			base--; *base = '\\';
+			goto retry;
+		break;
+		case 't':
+			prev.tab++;
+		break;
+		case 'n':
+			prev.newline++;
+		break;
+		case 'r':
+			prev.cr = true;
+		break;
+		case 'u':
+			prev.style = (inv ?
+				prev.style & TTF_STYLE_UNDERLINE : prev.style | TTF_STYLE_UNDERLINE);
+		break;
+		case 'b':
+			prev.style = (inv ?
+				prev.style & !TTF_STYLE_BOLD : prev.style | TTF_STYLE_BOLD);
+		break;
+		case 'i': prev.style = (inv ?
+			prev.style & !TTF_STYLE_ITALIC : prev.style | TTF_STYLE_ITALIC);
+		break;
+		case 'v':
+		break;
+		case 'T':
+		break;
+		case 'H':
+		break;
+		case 'V':
+		break;
 #ifndef RENDERFUN_NOSUBIMAGE
-		case 'p': base = extract_image_simple(&prev, base); break;
-		case 'P': base = extract_image(&prev, base); break;
+		case 'p':
+			base = extract_image_simple(&prev, base);
+		break;
+		case 'P':
+			base = extract_image(&prev, base);
+		break;
 #endif
-		case '#': base = extract_color(&prev, base); break;
-		case 'f': base = extract_font(&prev, base); break;
-
+		case '#':
+			base = extract_color(&prev, base);
+		break;
+		case 'f':
+			base = extract_font(&prev, base);
+		break;
 		default:
 			arcan_warning("arcan_video_renderstring(), "
 				"unknown escape sequence: '\\%c' (%s)\n", *(base+1), orig);
@@ -722,7 +775,6 @@ static bool render_alloc(struct rcell* cnode,
 		return false;
 	}
 
-	cnode->surface = true;
 	cnode->data.surf.w = w;
 	cnode->data.surf.h = h;
 	cnode->ascent = style->ascent;
@@ -775,7 +827,7 @@ reset:
 
 static struct rcell* trystep(struct rcell* cnode, bool force)
 {
-	if (force || cnode->surface)
+	if (force || cnode->data.surf.buf)
 	cnode = cnode->next = arcan_alloc_mem(sizeof(struct rcell),
 		ARCAN_MEM_VSTRUCT, ARCAN_MEM_TEMPORARY | ARCAN_MEM_BZERO,
 		ARCAN_MEMALIGN_NATURAL
@@ -892,47 +944,29 @@ static unsigned int round_mult(unsigned num, unsigned int mult)
 	return remain ? num + mult - remain : num;
 }
 
-/*
- * tabs are messier still, for each format segment, there may be 'tabc' number
- * of tabsteps, these concern only the current text block and are thus
- * calculated from a fixed offset.  */
-static unsigned int get_tabofs(int offset, int tabc, int8_t tab_spacing,
-	unsigned int* tabs)
+static unsigned int get_tabofs(int offset, int tabc, int8_t tab_spacing)
 {
-	if (!tabs || *tabs == 0) /* tabc will always be >= 1 */
-		return tab_spacing ?
-			round_mult(offset, tab_spacing) + ((tabc - 1) * tab_spacing) : offset;
+	return PT_TO_HPX( tab_spacing ?
+			round_mult(offset, tab_spacing) + ((tabc - 1) * tab_spacing) : offset );
 
-/* find last matching tab pos first */
-	while (*tabs && *tabs < offset)
-		tabs++;
-
-/* matching tab found */
-	if (*tabs) {
-		offset = *tabs;
-		tabc--;
-	}
-
-	while (tabc--) {
-		if (*tabs)
-			offset = *tabs++;
-		else
-			offset += round_mult(offset, tab_spacing);
-/* out of defined tabs, pad with default spacing */
-
-	}
-
-	return offset;
+	return PT_TO_HPX(offset);
 }
 
 /*
  * should really have a fast blit path, but since font rendering is expected to
  * be mostly replaced/complemented with a mix of in-place rendering and proper
- * packing and vertex buffers in 0.6 or 0.5.1 we just leave it like this
+ * packing and vertex buffers in 0.7ish we just leave it like this
  */
-static inline void copy_rect(av_pixel* dst, struct rcell* surf,
-	int width, int height, int x, int y)
+static inline void copy_rect(av_pixel* dst, size_t dst_sz,
+	struct rcell* surf, int width, int height, int x, int y)
 {
+	uintptr_t high = (sizeof(av_pixel) * height * width);
+	if (high > dst_sz){
+		arcan_warning("arcan_video_renderstring():copy_rect OOB, %zu/%zu\n",
+			high, dst_sz);
+		return;
+	}
+
 	for (int row = 0; row < surf->data.surf.h && row < height - y; row++)
 		memcpy(
 			&dst[(y+row)*width+x],
@@ -945,7 +979,7 @@ static void cleanup_chain(struct rcell* root)
 {
 	while (root){
 		assert(root != (void*) 0xdeadbeef);
-		if (root->surface && root->data.surf.buf){
+		if (root->data.surf.buf){
 			arcan_mem_free(root->data.surf.buf);
 			root->data.surf.buf = (void*) 0xfeedface;
 		}
@@ -958,8 +992,7 @@ static void cleanup_chain(struct rcell* root)
 }
 
 static av_pixel* process_chain(struct rcell* root, arcan_vobject* dst,
-	size_t chainlines, bool norender,
-	int8_t line_spacing, int8_t tab_spacing, unsigned int* tabs, bool pot,
+	size_t chainlines, bool norender, bool pot,
 	unsigned int* n_lines, struct renderline_meta** lineheights, size_t* dw,
 	size_t* dh, uint32_t* d_sz, size_t* maxw, size_t* maxh)
 {
@@ -970,10 +1003,11 @@ static av_pixel* process_chain(struct rcell* root, arcan_vobject* dst,
 	int lineh = 0, fonth = 0, ascenth = 0;
 	int curw = 0;
 
-	bool fixed_spacing = true;
-	if (line_spacing == 0){
+	int line_spacing = 0;
+	bool fixed_spacing = false;
+/*	if (line_spacing == 0){
 		fixed_spacing = false;
-	}
+	} */
 
 /* note, linecount is overflow */
 	struct renderline_meta* lines = arcan_alloc_mem(sizeof(
@@ -982,8 +1016,11 @@ static av_pixel* process_chain(struct rcell* root, arcan_vobject* dst,
 	);
 
 /* (A) figure out visual constraints */
+	struct rcell* linestart = cnode;
+
 	while (cnode) {
-		if (cnode->surface && cnode->data.surf.buf) {
+/* data node */
+		if (cnode->data.surf.buf) {
 			if (!fixed_spacing)
 				line_spacing = cnode->skipv;
 
@@ -992,17 +1029,23 @@ static av_pixel* process_chain(struct rcell* root, arcan_vobject* dst,
 
 			if (cnode->ascent > ascenth){
 				ascenth = cnode->ascent;
+			}
+
+			if (cnode->height > fonth){
 				fonth = cnode->height;
 			}
 
+/* track dimensions, may want to use them later */
 			curw += cnode->data.surf.w;
 		}
+/* format node */
 		else {
-			if (cnode->data.format.cr)
+			if (cnode->data.format.cr){
 				curw = 0;
+			}
 
 			if (cnode->data.format.tab)
-				curw = get_tabofs(curw, cnode->data.format.tab, tab_spacing, tabs);
+				curw = get_tabofs(curw, cnode->data.format.tab, /* tab_spacing */ 0);
 
 			if (cnode->data.format.newline > 0)
 				for (int i = cnode->data.format.newline; i > 0; i--) {
@@ -1054,7 +1097,7 @@ static av_pixel* process_chain(struct rcell* root, arcan_vobject* dst,
 			ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE);
 	}
 
-	if (!raw)
+	if (!raw || !*d_sz)
 		return (cleanup_chain(root), raw);
 
 	memset(raw, '\0', *d_sz);
@@ -1063,13 +1106,13 @@ static av_pixel* process_chain(struct rcell* root, arcan_vobject* dst,
 	int line = 0;
 
 	while (cnode) {
-		if (cnode->surface && cnode->data.surf.buf) {
-			copy_rect(raw, cnode, *dw, *dh, curw, lines[line].ystart);
+		if (cnode->data.surf.buf) {
+			copy_rect(raw, *d_sz, cnode, *dw, *dh, curw, lines[line].ystart);
 			curw += cnode->data.surf.w;
 		}
 		else {
 			if (cnode->data.format.tab > 0)
-				curw = get_tabofs(curw, cnode->data.format.tab, tab_spacing, tabs);
+				curw = get_tabofs(curw, cnode->data.format.tab, /* tab_spacing */ 0);
 
 			if (cnode->data.format.cr)
 				curw = 0;
@@ -1096,8 +1139,7 @@ static av_pixel* process_chain(struct rcell* root, arcan_vobject* dst,
 }
 
 av_pixel* arcan_renderfun_renderfmtstr_extended(const char** msgarray,
-	arcan_vobj_id dstore, int8_t line_spacing, int8_t tab_spacing,
-	unsigned int* tabs, bool pot,
+	arcan_vobj_id dstore, bool pot,
 	unsigned int* n_lines, struct renderline_meta** lineheights, size_t* dw,
 	size_t* dh, uint32_t* d_sz, size_t* maxw, size_t* maxh, bool norender)
 {
@@ -1145,22 +1187,21 @@ av_pixel* arcan_renderfun_renderfmtstr_extended(const char** msgarray,
 
 /* append newline */
 	cur = cur->next = arcan_alloc_mem(
-			sizeof(struct rcell), ARCAN_MEM_VSTRUCT,
-			ARCAN_MEM_TEMPORARY | ARCAN_MEM_BZERO,
-			ARCAN_MEMALIGN_NATURAL
-		);
+		sizeof(struct rcell), ARCAN_MEM_VSTRUCT,
+		ARCAN_MEM_TEMPORARY | ARCAN_MEM_BZERO,
+		ARCAN_MEMALIGN_NATURAL
+	);
 	cur->data.format.newline = 1;
 
 	return process_chain(root, arcan_video_getobject(dstore),
-		acc+1, norender, line_spacing, tab_spacing, tabs, pot, n_lines,
+		acc+1, norender, pot, n_lines,
 		lineheights, dw, dh, d_sz, maxw, maxh
 	);
 }
 
 av_pixel* arcan_renderfun_renderfmtstr(const char* message,
 	arcan_vobj_id dstore,
-	int8_t line_spacing, int8_t tab_spacing, unsigned int* tabs, bool pot,
-	unsigned int* n_lines, struct renderline_meta** lineheights,
+	bool pot, unsigned int* n_lines, struct renderline_meta** lineheights,
 	size_t* dw, size_t* dh, uint32_t* d_sz,
 	size_t* maxw, size_t* maxh, bool norender)
 {
@@ -1185,9 +1226,8 @@ av_pixel* arcan_renderfun_renderfmtstr(const char* message,
 
 	if (chainlines > 0){
 		raw = process_chain(root, arcan_video_getobject(dstore),
-			chainlines, norender, line_spacing, tab_spacing,
-			tabs, pot, n_lines, lineheights, dw, dh, d_sz,
-			maxw, maxh
+			chainlines, norender, pot, n_lines, lineheights,
+			dw, dh, d_sz, maxw, maxh
 		);
 	}
 

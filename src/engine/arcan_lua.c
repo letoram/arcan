@@ -273,6 +273,8 @@ static const int RENDERTARGET_NOSCALE  = CONST_RENDERTARGET_NOSCALE;
 static const int RENDERFMT_COLOR = RENDERTARGET_COLOR;
 static const int RENDERFMT_DEPTH = RENDERTARGET_DEPTH;
 static const int RENDERFMT_FULL  = RENDERTARGET_COLOR_DEPTH_STENCIL;
+static const int RENDERFMT_FLOAT = RENDERTARGET_FLOAT;
+static const int RENDERFMT_MSAA = RENDERTARGET_MSAA;
 static const int DEVICE_INDIRECT = CONST_DEVICE_INDIRECT;
 static const int DEVICE_DIRECT = CONST_DEVICE_DIRECT;
 static const int DEVICE_LOST = CONST_DEVICE_LOST;
@@ -2431,7 +2433,7 @@ static int textdimensions(lua_State* ctx)
 	if (type == LUA_TSTRING){
 		const char* message = luaL_checkstring(ctx, 1);
 		arcan_renderfun_renderfmtstr(message, ARCAN_EID,
-			vspacing, tspacing, NULL, false, NULL, NULL,
+			false, NULL, NULL,
 			&width, &height, &sz, &maxw, &maxh, true
 		);
 	}
@@ -2451,7 +2453,7 @@ static int textdimensions(lua_State* ctx)
 
 /* note: the renderfmtstr_extended will free() on messages */
 		arcan_renderfun_renderfmtstr_extended((const char**)messages,
-			ARCAN_EID, vspacing, tspacing, NULL, false, NULL, NULL,
+			ARCAN_EID, false, NULL, NULL,
 			&width, &height, &sz, &maxw, &maxh, true
 		);
 	}
@@ -2480,8 +2482,6 @@ static int rendertext(lua_State* ctx)
 	}
 
 	type = lua_type(ctx, argpos);
-	int vspacing = luaL_optint(ctx, argpos+1, 0);
-	int tspacing = luaL_optint(ctx, argpos+2, 64);
 	unsigned int nlines = 0;
 	struct renderline_meta* lineheights = NULL;
 	arcan_errc errc;
@@ -2490,8 +2490,8 @@ static int rendertext(lua_State* ctx)
 		char* message = strdup(luaL_checkstring(ctx, argpos));
 		trace_allocation(ctx, "render_text", id);
 		id = arcan_video_renderstring(id, (struct arcan_rstrarg){
-			.multiple = false, .message = message}, vspacing, tspacing,
-			NULL, &nlines, &lineheights, &errc
+			.multiple = false, .message = message},
+			&nlines, &lineheights, &errc
 		);
 	}
 	else if (type == LUA_TTABLE){
@@ -2513,7 +2513,7 @@ static int rendertext(lua_State* ctx)
 
 		id = arcan_video_renderstring(id, (struct arcan_rstrarg){
 			.multiple = true, .array = messages},
-			vspacing, tspacing, NULL, &nlines, &lineheights, &errc);
+			&nlines, &lineheights, &errc);
 	}
 	else
 		arcan_fatal("render_text(), expected string or table\n");
@@ -7665,6 +7665,14 @@ static int rendertargetforce(lua_State* ctx)
 	if (lua_isnumber(ctx, 2)){
 		rtgt->refresh = luaL_checknumber(ctx, 2);
 		rtgt->refreshcnt = abs(rtgt->refresh);
+		if (vid == ARCAN_VIDEO_WORLDID){
+/* drop the vstore */
+			if (rtgt->refresh == 0){
+			}
+/* rebuild the vstore? */
+			else {
+			}
+		}
 
 		if (lua_isnumber(ctx, 3)){
 			rtgt->readback = luaL_checknumber(ctx, 3);
@@ -7717,12 +7725,21 @@ static int rendernoclear(lua_State* ctx)
 	LUA_ETRACE("rendertarget_noclear", NULL, 1);
 }
 
+static int renderreconf(lua_State* ctx)
+{
+	LUA_TRACE("rendertarget_reconfigure");
+	arcan_vobj_id did = luaL_checkvid(ctx, 1, NULL);
+	float hppcm = luaL_checknumber(ctx, 2);
+	float vppcm = luaL_checknumber(ctx, 3);
+	arcan_video_rendertargetdensity(did, vppcm, hppcm, true, true);
+	LUA_ETRACE("rendertarget_reconfigure", NULL, 0);
+}
+
 static int renderdetach(lua_State* ctx)
 {
 	LUA_TRACE("rendertarget_detach");
 	arcan_vobj_id did = luaL_checkvid(ctx, 1, NULL);
 	arcan_vobj_id sid = luaL_checkvid(ctx, 2, NULL);
-
 	arcan_video_detachfromrendertarget(did, sid);
 	LUA_ETRACE("rendertarget_detach", NULL, 0);
 }
@@ -10242,6 +10259,7 @@ static const luaL_Reg tgtfuns[] = {
 {"rendertarget_detach",        renderdetach             },
 {"rendertarget_attach",        renderattach             },
 {"rendertarget_noclear",       rendernoclear            },
+{"rendertarget_reconfigure",   renderreconf             },
 {"load_movie",                 loadmovie                },
 {"launch_decode",              loadmovie                },
 {"launch_avfeed",              launchavfeed             },
@@ -10592,6 +10610,8 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"RENDERTARGET_DETACH", RENDERTARGET_DETACH},
 {"RENDERTARGET_COLOR", RENDERFMT_COLOR},
 {"RENDERTARGET_DEPTH", RENDERFMT_DEPTH},
+{"RENDERTARGET_FLOAT", RENDERFMT_FLOAT},
+{"RENDERTARGET_MSAA", RENDERFMT_MSAA},
 {"RENDERTARGET_FULL", RENDERFMT_FULL},
 {"READBACK_MANUAL", 0},
 {"ROTATE_RELATIVE", CONST_ROTATE_RELATIVE},
@@ -10682,10 +10702,15 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 		arcan_lua_setglobalint(ctx, consttbl[i].key, consttbl[i].val);
 
 /* same problem as with VRESW, VRESH */
-	float ppcm = mode.width && mode.phy_width ?
+	float hppcm = mode.width && mode.phy_width ?
 		10 * ((float) mode.width / (float)mode.phy_width) : 38.4;
+	float vppcm = mode.height && mode.phy_height ?
+		10 * ((float) mode.height / (float)mode.phy_height) : 38.4;
 
-	lua_pushnumber(ctx, ppcm);
+	lua_pushnumber(ctx, hppcm);
+	lua_setglobal(ctx, "HPPCM");
+
+	lua_pushnumber(ctx, vppcm);
 	lua_setglobal(ctx, "VPPCM");
 
 	lua_pushnumber(ctx, 0.352778);
