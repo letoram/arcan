@@ -1194,7 +1194,7 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 	break;
 
 	case TARGET_COMMAND_EXIT:
-		exit(EXIT_SUCCESS);
+		arcan_shmif_drop(&tui->acon);
 	break;
 
 	default:
@@ -1359,6 +1359,8 @@ bool tryload(struct tui_context* tui, int fd, int mode, size_t px_sz)
 	if (1 == fread(buf, buf_sz, 1, fpek)){
 		rv = load_bitmap_font(tui->font_bitmap, buf, buf_sz, px_sz, mode == 1);
 	}
+
+	free(buf);
 	fclose(fpek);
 	return rv;
 }
@@ -1631,6 +1633,13 @@ void arcan_tui_destroy(struct tui_context* tui)
 
 	arcan_shmif_drop(&tui->acon);
 	tsm_utf8_mach_free(tui->ucsconv);
+	drop_truetype(tui);
+	drop_font_context(tui->font_bitmap);
+
+	for (size_t i = 0; i < 32; i++)
+		if (tui->screen)
+			tsm_screen_unref(tui->screen);
+
 	memset(tui, '\0', sizeof(struct tui_context));
 	free(tui);
 }

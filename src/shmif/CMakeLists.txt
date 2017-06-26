@@ -100,10 +100,12 @@ set_property(SOURCE ${ASD}/platform/posix/fdpassing.c
 #
 # FIXME:
 # We should have a linker script here that filters out all the non-TUI defined
-# symbols so we don't collide with programs linking TSM* (however unlikely)
+# symbols so we don't collide with programs linking TSM* (however unlikely).
+# Also, make the _ttf bits optional again (but explicit disable)
 #
 set(SHMIF_TUI_SOURCES
 	${ASD}/shmif/tui/tui.c
+	${ASD}/shmif/tui/tui_draw.h
 	${ASD}/shmif/tui/tsm_screen.c
 	${ASD}/shmif/tui/tsm_unicode.c
 	${ASD}/shmif/tui/shl_htable.c
