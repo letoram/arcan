@@ -199,7 +199,7 @@ static inline void process_mousemotion(arcan_evctx* ctx,
 		.io.datatype = EVENT_IDATATYPE_ANALOG,
 		.io.devkind  = EVENT_IDEVKIND_MOUSE,
 		.io.devid  = 0,
-		.io.input.analog.gotrel = true,
+		.io.input.analog.gotrel = false,
 		.io.input.analog.nvalues = 2
 	};
 
