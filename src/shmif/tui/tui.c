@@ -38,17 +38,7 @@
 
 #include "libtsm.h"
 #include "libtsm_int.h"
-
-/*
- * really need to be replaced with something less awful
- */
 #include "tui_draw.h"
-
-/*
- * For font support, we should have more (especially faster/less complicated)
- * font engines here. Right now, the options are simply TTF_ via freetype or
- * going to an 8x8 built-in ugly thing.
- */
 
 enum dirty_state {
 	DIRTY_NONE = 0,
@@ -1658,6 +1648,7 @@ struct tui_settings arcan_tui_defaults()
 		.hint = TTF_HINTING_NONE,
 		.mouse_fwd = true,
 		.cursor_period = 12,
+		.font_sz = 0.0416,
 		.force_bitmap = false
 	};
 }
@@ -1888,6 +1879,8 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 			init->fonts[1].fd = BADFD;
 		}
 	}
+	else
+		setup_font(res, BADFD, res->font_sz, 0);
 
 	if (0 != tsm_utf8_mach_new(&res->ucsconv)){
 		free(res);
