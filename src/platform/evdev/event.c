@@ -1731,8 +1731,8 @@ static void defhandler_mouse(struct arcan_evctx* ctx,
 					newev.io.datatype = EVENT_IDATATYPE_ANALOG;
 					newev.io.input.analog.gotrel = true;
 					newev.io.subid = 0;
-					newev.io.input.analog.axisval[0] = node->cursor.mx;
-					newev.io.input.analog.axisval[1] = samplev;
+					newev.io.input.analog.axisval[0] = samplev;
+					newev.io.input.analog.axisval[1] = node->cursor.mx;
 					newev.io.input.analog.nvalues = 2;
 
 					arcan_event_enqueue(ctx, &newev);
@@ -1747,8 +1747,8 @@ static void defhandler_mouse(struct arcan_evctx* ctx,
 					newev.io.datatype = EVENT_IDATATYPE_ANALOG;
 					newev.io.input.analog.gotrel = true;
 					newev.io.subid = 1;
-					newev.io.input.analog.axisval[0] = node->cursor.my;
-					newev.io.input.analog.axisval[1] = samplev;
+					newev.io.input.analog.axisval[0] = samplev;
+					newev.io.input.analog.axisval[1] = node->cursor.my;
 					newev.io.input.analog.nvalues = 2;
 
 					arcan_event_enqueue(ctx, &newev);

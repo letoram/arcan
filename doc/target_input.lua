@@ -32,14 +32,19 @@
 -- pressure (0..1, linear scale), size (px), x (px) and y (px)
 -- If *kind* is set to *analog* the required additional fields are:
 -- relative (true/_false_), samples (indexed table of up to 4 int16_t
--- ranged values). If *relative* is true, the order is (*rel_x*, *abs_x*,
--- *rel_y*, *abs_y*), otherwise the order is (*abs_x*, *rel_x*, *rel_y*,
--- *abs_y*).
---
+-- ranged values). These values are all the same for generic analog
+-- sources, such as game device axes.
 -- If *kind* is set to *analog* the possible additional fields are:
 -- *mouse* (true/_false_), indicate if the samples come from a cursor-
--- type device or not.
---
+-- type device or not. If so, the interpretation of sample values is
+-- more complicated as there is a large variability in how underlying
+-- device layers provide their samples. If *relative* is set tto true,
+-- the order is (*rel_x*, *abs_x*,  *rel_y*, *abs_y*), otherwise the
+-- order is (*abs_x*, *rel_x*, *rel_y*, *abs_y*). The reason for this is
+-- that the relative indicator shows the primary origin of the samples,
+-- while the other is a result of some state estimator and can therefore
+-- be less accurate. All permutations of relative, absolute, two samples
+-- or four samples need to be accounted for.
 -- If *kind* is set to *digital*, the required additional fields are:
 -- active (true/_false_), if the button is in a pressed state or not
 -- and the possible additional fields are:
