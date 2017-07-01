@@ -1,9 +1,10 @@
 --
--- Copyright 2014-2015, Björn Ståhl
+-- Copyright 2014-2017, Björn Ståhl
 -- License: 3-Clause BSD.
 -- Reference: http://arcan-fe.com
 --
--- all functions are prefixed with mouse_
+-- All functions are prefixed with mouse_ and ignores devid.
+-- This means we only support one global mouse cursor.
 --
 -- setup (takes control of vid):
 --  setup_native(vid, hs_x, hs_y) or
@@ -20,7 +21,8 @@
 --
 -- output:
 --  mouse_xy()
---
+--  mouse_rawxy() : "raw" last coordinates, ignoring hotspot
+---
 -- tuning:
 --  autohide() - true or false ; call to flip state, returns new state
 --  acceleration(x_scale_factor, y_scale_factor) ;
@@ -73,11 +75,29 @@ local mouse_handlers = {
 	rclick = {}
 };
 
+MOUSE_LABELLUT = {
+"left", "right", "middle", "wheel y+", "wheel y-", "wheel x+", "wheel -"
+};
+
+-- convention established mapping for forwarding to game/terminal/...
+MOUSE_LBUTTON = 1;
+MOUSE_RBUTTON = 2;
+MOUSE_MBUTTON = 3;
+MOUSE_WHEELPY = 4;
+MOUSE_WHEELNY = 5;
+MOUSE_WHEELPX = 6;
+MOUSE_WHEELNX = 7;
+MOUSE_AUXBTN  = 8; -- >= 8 really
+
 local mstate = {
 -- tables of event_handlers to check for match when
 	handlers = mouse_handlers,
 	eventtrace = false,
-	btns = {false, false, false, false, false},
+	blocked = false,
+	btns = {},
+	btns_clock = {},
+	btns_bounce = {},
+	btns_remap = {},
 	cur_over = {},
 	hover_track = {},
 	autohide = false,
@@ -102,6 +122,8 @@ local mstate = {
 	dev = 0,
 	x = 0,
 	y = 0,
+	rel_x = 0,
+	rel_y = 0,
 	min_x = 0,
 	min_y = 0,
 	max_x = VRESW,
@@ -110,16 +132,32 @@ local mstate = {
 	hotspot_y = 0,
 	scale_w = 1, -- scale factors for cursor drawing
 	scale_h = 1,
+	scale_i = true, -- force rounding to nearest integral factor
 };
 
+-- arbitrary "how many mouse buttons are there today", we just
+-- waste a few k to fill the 8-bit spectrum + the possible axis remap
+-- that the evdev platform does
 local cursors = {
 };
+
+for i=1,255 do
+	mstate.btns_remap[i] = i;
+	mstate.btns[i] = false;
+	mstate.btns_clock[i] = CLOCK;
+	mstate.btns_bounce[i] = 0;
+end
+
+mstate.btns_remap[256] = MOUSE_WHEELPY;
+mstate.btns_remap[257] = MOUSE_WHEELNY;
+mstate.btns_remap[258] = MOUSE_WHEELPX;
+mstate.btns_remap[259] = MOUSE_WHEELNX;
 
 local function lock_constrain()
 -- locking to surface is slightly odd in that we still need to return
 -- valid relative motion which may or may not come from a relative source
 -- and still handle constraints e.g. warp/clamp
-	if (mstate.lockvid) then
+	if (valid_vid(mstate.lockvid)) then
 		local props = image_surface_resolve_properties(mstate.lockvid);
 		local ul_x = props.x;
 		local ul_y = props.y;
@@ -181,8 +219,8 @@ local function mouse_cursorupd(x, y)
 	if (mstate.native) then
 		move_cursor(mstate.x, mstate.y);
 	else
-		move_image(mstate.cursor, mstate.x + mstate.x_ofs,
-			mstate.y + mstate.y_ofs);
+		local x, y = mouse_hotxy();
+		move_image(mstate.cursor, x + mstate.x_ofs, y + mstate.y_ofs);
 	end
 
 	return relx, rely;
@@ -211,8 +249,7 @@ local function def_reveal()
 		local seed = math.random(80) - 40;
 		order_image(surf, 65534);
 		local intime = math.random(50);
-		local mx, my = mouse_xy();
-		move_image(surf, mx, my);
+		move_image(surf, mstate.x, mstate.y);
 		nudge_image(surf, math.random(150) - 75,
 			math.random(150) - 75, intime);
 		expire_image(surf, intime);
@@ -257,7 +294,11 @@ local function linear_find_vid(table, vid, state)
 	end
 
 	for a,b in pairs(table) do
-		if (b:own(vid, state)) then
+		if (type(b.own) == "function") then
+			if (b:own(vid, state)) then
+				return b;
+			end
+		elseif b.own == vid then
 			return b;
 		end
 	end
@@ -313,10 +354,6 @@ function mouse_state()
 	return mstate;
 end
 
-function mouse_toxy(x, y, time)
--- disable all event handlers and visibly move cursor to position
-end
-
 function mouse_destroy()
 	mouse_handlers = {};
 	mouse_handlers.click = {};
@@ -367,7 +404,14 @@ function mouse_setup(cvid, clayer, pickdepth, cachepick, hidden)
 
 	mstate.cursor = null_surface(1, 1);
 	image_mask_set(mstate.cursor, MASK_UNPICKABLE);
-	mouse_add_cursor("default", cvid, 0, 0);
+	if (valid_vid(cvid)) then
+		mouse_add_cursor("default", cvid, 0, 0);
+		local props = image_surface_properties(cvid);
+		mstate.size = {props.width, props.height};
+	else
+		mstate.size = {32, 32};
+	end
+
 	mstate.rt = rt;
 	mouse_switch_cursor();
 
@@ -376,12 +420,9 @@ function mouse_setup(cvid, clayer, pickdepth, cachepick, hidden)
 	end
 
 	move_image(mstate.cursor, mstate.x, mstate.y);
-	local props = image_surface_properties(cvid);
-	mstate.size = {props.width, props.height};
-
 	mstate.pickdepth = pickdepth;
 	order_image(mstate.cursor, clayer);
-	image_mask_set(cvid, MASK_UNPICKABLE);
+	image_mask_set(mstate.cursor, MASK_UNPICKABLE);
 	if (cachepick) then
 		mouse_pickfun = cached_pick;
 	else
@@ -419,6 +460,29 @@ function mouse_setup_native(resimg, hs_x, hs_y)
 end
 
 --
+-- similar to absinput but try and block/mask event and hide/reveal triggers
+--
+function mouse_absinput_masked(x, y, nofwd)
+	mouse_hidemask(true);
+	mouse_absinput(x, y, nofwd);
+	mouse_hidemask(false);
+end
+
+function mouse_warp(x, y)
+	mstate.x = x;
+	mstate.y = y;
+	mstate.press_x = x;
+	mstate.press_y = y;
+
+	if (mstate.native) then
+		move_cursor(mstate.x, mstate.y);
+	else
+		local mx, my = mouse_hotxy();
+		move_image(mstate.cursor, mx + mstate.x_ofs, my + mstate.y_ofs);
+	end
+end
+
+--
 -- Some devices just give absolute movements, convert
 -- these to relative before moving on
 --
@@ -433,15 +497,14 @@ function mouse_absinput(x, y, nofwd)
 
 	mstate.x = x + (arx - rx);
 	mstate.y = y + (ary - ry);
-
 -- also need to constrain the relative coordinates when we clamp
 	local ulx, uly, lrx, lry = lock_constrain();
 
 	if (mstate.native) then
 		move_cursor(mstate.x, mstate.y);
 	else
-		move_image(mstate.cursor, mstate.x + mstate.x_ofs,
-			mstate.y + mstate.y_ofs);
+		local x, y = mouse_hotxy();
+		move_image(mstate.cursor, x + mstate.x_ofs, y + mstate.y_ofs);
 	end
 
 	if (not nofwd) then
@@ -456,6 +519,8 @@ end
 function mouse_lockto(vid, fun, warp, state)
 	local olv = mstate.lockvid;
 	local olf = mstate.lockfun;
+	local olw = mstate.warp;
+	local ols = mstate.lockstate;
 
 	if (valid_vid(vid)) then
 		mstate.lockvid = vid;
@@ -469,7 +534,17 @@ function mouse_lockto(vid, fun, warp, state)
 		mstate.warp = false;
 	end
 
-	return olv, olf;
+	return olv, olf, olw, ols;
+end
+
+function mouse_hotxy()
+	if (mstate.native) then
+		local x, y = cursor_position();
+		return x, y;
+	else
+		return (mstate.x - mstate.hotspot_x * mstate.scale_w),
+			(mstate.y - mstate.hotspot_y * mstate.scale_h);
+	end
 end
 
 function mouse_xy()
@@ -477,8 +552,7 @@ function mouse_xy()
 		local x, y = cursor_position();
 		return x, y;
 	else
-		local props = image_surface_resolve_properties(mstate.cursor);
-		return props.x, props.y;
+		return mstate.x, mstate.y;
 	end
 end
 
@@ -602,11 +676,11 @@ local function lmbhandler(hists, press)
 end
 
 local function mouse_lockh(relx, rely)
-	local x, y = mouse_xy();
 -- safeguard from deletions that don't clean up after themselves
 	if (not valid_vid(mstate.lockvid)) then
 		mouse_lockto();
 	elseif (mstate.lockfun) then
+		local x, y = mouse_xy();
 		mstate.lockfun(relx, rely, x, y, mstate.lockstate);
 	end
 end
@@ -615,9 +689,8 @@ local function mouse_btnlock(ind, active)
 	local x, y = mouse_xy();
 	if (not valid_vid(mstate.lockvid)) then
 		mouse_lockto(nil, nil);
-		if (mstate.lockfun) then
-			mstate.lockfun(x, y, 0, 0, ind, active);
-		end
+	elseif (mstate.lockfun) then
+			mstate.lockfun(0, 0, x, y, mstate.lockstate, ind, active);
 	end
 end
 
@@ -626,17 +699,29 @@ end
 -- button update at once for backwards compatibility.
 --
 function mouse_button_input(ind, active)
-	if (ind < 1 or ind > #mstate.btns) then
+	ind = mstate.btns_remap[ind];
+	if (not ind or mstate.btns[ind] == active) then
+		return;
+	end
+
+-- reject on debounce protection
+	if (active and mstate.btns_bounce[ind] > 0 and
+		CLOCK - mstate.btns_clock[ind] < mstate.btns_bounce[ind]) then
+		return;
+	end
+
+-- protect against shadow releases
+	if (mstate.btns[ind] == active) then
 		return;
 	end
 
 	if (mstate.lockvid) then
+		mstate.btns[ind] = active;
+		mstate.btns_clock[ind] = CLOCK;
 		return mouse_btnlock(ind, active);
 	end
 
-	local hists = mouse_pickfun(
-		mstate.x + mstate.hotspot_x,
-		mstate.y + mstate.hotspot_y, mstate.pickdepth, 1, mstate.rt);
+	local hists = mouse_pickfun(mstate.x, mstate.y, mstate.pickdepth, 1, mstate.rt);
 
 	if (DEBUGLEVEL > 2) then
 		local res = {}
@@ -666,8 +751,10 @@ function mouse_button_input(ind, active)
 		rmbhandler(hists, active);
 	end
 
-	mstate.in_handler = false;
 	mstate.btns[ind] = active;
+	mstate.btns_clock[ind] = CLOCK;
+
+	mstate.in_handler = false;
 end
 
 local function mbh(hists, state)
@@ -693,6 +780,63 @@ function mouse_reveal_hook(state)
 	else
 		mstate.reveal_hook = nil;
 	end
+end
+
+function mouse_over(vid)
+	for i,v in ipairs(mstate.cur_over) do
+		if (v == vid) then
+			return true;
+		end
+	end
+end
+
+local mid_c = 0;
+local mid_v = {0, 0};
+
+function mouse_iotbl_input(iotbl)
+	if (iotbl.digital) then
+		mouse_button_input(iotbl.subid, iotbl.active);
+		return;
+	end
+
+	if (iotbl.relative) then
+		if (iotbl.subid == 0) then
+			mouse_input(iotbl.samples[1], 0);
+		else
+			mouse_input(0, iotbl.samples[1]);
+		end
+	else
+		mid_v[iotbl.subid+1] = iotbl.samples[1];
+		mid_c = mid_c + 1;
+		if (mid_c == 2) then
+			mouse_absinput(mid_v[1], mid_v[2]);
+			mid_c = 0;
+		end
+	end
+end
+
+if (API_VERSION_MAJOR == 0 and API_VERSION_MINOR < 11) then
+mouse_iotbl_input = function(iotbl)
+	if (iotbl.digital) then
+		mouse_button_input(iotbl.subid, iotbl.active);
+		return;
+	end
+
+	if (iotbl.relative) then
+		if (iotbl.subid == 0) then
+			mouse_input(iotbl.samples[2], 0);
+		else
+			mouse_input(0, iotbl.samples[1]);
+		end
+	else
+		mid_v[iotbl.subid+1] = iotbl.samples[1];
+		mid_c = mid_c + 1;
+		if (mid_c == 2) then
+			mouse_absinput(mid_v[1], mid_v[2]);
+			mid_c = 0;
+		end
+	end
+end
 end
 
 function mouse_input(x, y, state, noinp)
@@ -809,7 +953,18 @@ function mouse_input(x, y, state, noinp)
 	mstate.in_handler = false;
 end
 
-mouse_motion = mouse_input;
+local mouse_input_ref = mouse_input;
+function mouse_block()
+	mouse_input = function() end
+	mstate.blocked = true;
+	mouse_hide();
+end
+
+function mouse_unblock()
+	mouse_input = mouse_input_ref;
+	mstate.blocked = false;
+	mouse_show();
+end
 
 --
 -- triggers callbacks in tbl when desired events are triggered.
@@ -831,6 +986,11 @@ function mouse_addlistener(tbl, events)
 	if (tbl.name == nil) then
 		warning(" -- mouse listener missing identifier -- ");
 		warning( debug.traceback() );
+		tbl.name = "__missing__";
+	end
+
+	if (DEBUGLEVEL > 2) then
+		warning(string.format("handler count: %d ", mouse_handlercount()));
 	end
 
 	for ind, val in ipairs(events) do
@@ -838,8 +998,7 @@ function mouse_addlistener(tbl, events)
 			linear_find(mstate.handlers[val], tbl) == nil and tbl[val] ~= nil) then
 			insert_unique(mstate.handlers[val], tbl);
 		elseif (tbl[val] ~= nil) then
-			warning("mouse_addlistener(), unknown event function: "
-				.. val ..".\n");
+			warning("mouse_addlistener(), unknown event function: " .. val);
 		end
 	end
 end
@@ -877,7 +1036,7 @@ function mouse_droplistener(tbl)
 	end
 end
 
-function mouse_add_cursor(label, img, hs_x, hs_y)
+function mouse_add_cursor(label, img, hs_x, hs_y, opts)
 	if (label == nil or type(label) ~= "string") then
 		if (valid_vid(img)) then
 			delete_image(img);
@@ -893,14 +1052,16 @@ function mouse_add_cursor(label, img, hs_x, hs_y)
 		return warning(string.format(
 			"mouse_add_cursor(%s), missing image", label));
 	end
+	opts = opts and opts or {};
 
 	local props = image_storage_properties(img);
 	cursors[label] = {
 		vid = img,
 		hotspot_x = hs_x,
 		hotspot_y = hs_y,
-		width = props.width,
-		height = props.height
+		width = opts.width and opts.width or props.width,
+		height = opts.height and opts.height or props.height,
+		shader = opts.shader
 	};
 end
 
@@ -916,12 +1077,22 @@ end
 function mouse_cursor_sf(fx, fy)
 	mstate.scale_w = fx and fx or 1.0;
 	mstate.scale_h = fy and fy or 1.0;
-	local new_w = mstate.size[1] * mstate.scale_w;
-	local new_h = mstate.size[2] * mstate.scale_h;
+	if (mstate.scale_i) then
+		local i, f = math.modf(mstate.scale_w);
+		mstate.scale_w = (f > 0.5)
+			and math.ceil(mstate.scale_w) or math.floor(mstate.scale_w);
+		i, f = math.modf(mstate.scale_h);
+		mstate.scale_h = (f > 0.5)
+			and math.ceil(mstate.scale_h) or math.floor(mstate.scale_h);
+		i, f = math.modf(mstate.scale_h);
+	end
+
+	local new_w = math.ceil(mstate.size[1] * mstate.scale_w);
+	local new_h = math.ceil(mstate.size[2] * mstate.scale_h);
 
 	if (mstate.native) then
 		resize_cursor(new_w, new_h);
-	else
+	elseif (valid_vid(mstate.cursor)) then
 		resize_image(mstate.cursor, new_w, new_h);
 	end
 end
@@ -935,10 +1106,14 @@ function mouse_custom_cursor(ct)
 	end
 	mstate.size = {ct.width, ct.height};
 	mouse_cursor_sf(mstate.scale_w, mstate.scale_h);
+	if (ct.shader) then
+		image_shader(mstate.cursor, ct.shader);
+	else
+		image_shader(mstate.cursor, "DEFAULT");
+	end
 
--- hotspot isn't scaled yet
-	local hsdx = mstate.hotspot_x - ct.hotspot_x;
-	local hsdy = mstate.hotspot_y - ct.hotspot_y;
+	local hsdx = mstate.scale_w * (mstate.hotspot_x - ct.hotspot_x);
+	local hsdy = mstate.scale_h * (mstate.hotspot_y - ct.hotspot_y);
 
 -- offset current position (as that might've triggered the event that
 -- incited the caller to switch cursor by the change in label
@@ -947,6 +1122,8 @@ function mouse_custom_cursor(ct)
 	mstate.y = mstate.y + hsdy;
 	mstate.hotspot_x = ct.hotspot_x;
 	mstate.hotspot_y = ct.hotspot_y;
+	mstate.active_label = "";
+	mstate.custom_cursor = ct;
 end
 
 function mouse_switch_cursor(label)
@@ -973,17 +1150,22 @@ function mouse_switch_cursor(label)
 	mouse_custom_cursor(ct);
 end
 
+function mouse_cursors()
+	return cursors;
+end
+
 function mouse_hide()
 	if (mstate.native) then
 		mouse_switch_cursor(nil);
 	else
 		instant_image_transform(mstate.cursor);
-		blend_image(mstate.cursor, 0.0, 20, INTERP_EXPOUT);
+		blend_image(mstate.cursor, 0.0,
+			mstate.revmask and 0 or 20, INTERP_EXPOUT);
 	end
 end
 
-function mouse_autohide()
-	mstate.autohide = not mstate.autohide;
+function mouse_autohide(state)
+	mstate.autohide = (state and state or not mstate.autohide);
 	return mstate.autohide;
 end
 
@@ -991,7 +1173,15 @@ function mouse_hidemask(st)
 	mstate.revmask = st;
 end
 
+function mouse_blocked()
+	return mstate.blocked;
+end
+
 function mouse_show()
+	if (mstate.blocked) then
+		return;
+	end
+
 	if (mstate.native) then
 		mouse_switch_cursor(mstate.active_label);
 	else
@@ -1069,6 +1259,45 @@ function mouse_querytarget(rt)
 	end
 end
 
+-- needed when we temporary want to undo custom cursor and locked
+-- target, but need to return to it shortly and don't trigger any of
+-- the usual events
+function mouse_state_save()
+	mstate.save = {
+		label = mstate.active_label,
+		lockvid = mstate.lockvid,
+		lockfun = mstate.lockfun,
+		lockwarp = mstate.warp,
+		lockstate = mstate.lockstate,
+		active_label = mstate.active_label,
+		custom_cursor = mstate.custom_cursor
+	};
+	mstate.save.x, mstate.save.y = mouse_xy();
+	mouse_lockto();
+	mstate.active_label = nil;
+	mouse_switch_cursor("default");
+end
+
+function mouse_state_restore(warp)
+	if (not mstate.save) then
+		return;
+	end
+	local save = mstate.save;
+	mstate.save = nil;
+
+	if (valid_vid(save.lockvid)) then
+		mouse_lockto(save.lockvid, save.lockfun, save.lockwarp, save.lockstate);
+	end
+
+	if (warp) then
+		mouse_absinput_masked(save.x, save.y, true);
+	end
+
+	if (save.custom_cursor) then
+		mouse_custom_cursor(save.custom_cursor);
+	end
+end
+
 -- vid will be the object that will be promoted to cursor order
 -- and used to indicate the selected region. it's drawing setup
 -- should match the desired behavior (so for pattern region rather
@@ -1088,9 +1317,11 @@ function mouse_select_begin(vid, constrain)
 		vid = vid,
 		hidden = mstate.hidden,
 		autodelete = {},
+		autohide = mstate.autohide,
 		lockvid = mstate.lockvid,
 		lockfun = mstate.lockfun
 	};
+	mstate.autohide = false;
 
 	mouse_show();
 -- just save any old constrain- vid and create a new one that match
@@ -1147,9 +1378,8 @@ function mouse_select_set(vid)
 		mouse_cursorupd(0, 0);
 		mstate.lockfun();
 	else
-		local mx, my = mouse_xy();
-		mstate.in_select.x = mx;
-		mstate.in_select.y = my;
+		mstate.in_select.x = mstate.x;
+		mstate.in_select.y = mstate.y;
 		mouse_cursorupd(0, 0);
 		mstate.lockfun();
 	end
@@ -1165,12 +1395,18 @@ function mouse_select_end(handler)
 		mouse_hide();
 	end
 
-	delete_image(mstate.lockvid);
+	if (valid_vid(mstate.lockvid)) then
+		delete_image(mstate.lockvid);
+	end
+
 	mstate.lockfun = mstate.in_select.lockfun;
 	mstate.lockvid = mstate.in_select.lockvid;
+	mstate.autohide = mstate.in_select.autohide;
 
 	for i,v in ipairs(mstate.in_select.autodelete) do
-		delete_image(v);
+		if (valid_vid(v)) then
+			delete_image(v);
+		end
 	end
 
 	if (handler) then
