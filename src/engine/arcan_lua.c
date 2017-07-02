@@ -273,7 +273,8 @@ static const int RENDERTARGET_NOSCALE  = CONST_RENDERTARGET_NOSCALE;
 static const int RENDERFMT_COLOR = RENDERTARGET_COLOR;
 static const int RENDERFMT_DEPTH = RENDERTARGET_DEPTH;
 static const int RENDERFMT_FULL  = RENDERTARGET_COLOR_DEPTH_STENCIL;
-static const int RENDERFMT_FLOAT = RENDERTARGET_FLOAT;
+static const int RENDERFMT_F16 = RENDERTARGET_F16;
+static const int RENDERFMT_F32 = RENDERTARGET_F32;
 static const int RENDERFMT_MSAA = RENDERTARGET_MSAA;
 static const int DEVICE_INDIRECT = CONST_DEVICE_INDIRECT;
 static const int DEVICE_DIRECT = CONST_DEVICE_DIRECT;
@@ -7796,10 +7797,15 @@ static int renderset(lua_State* ctx)
 			"RENDERTARGET_SCALE or RENDERTARGET_NOSCALE\n", scale);
 	}
 
-	if (nvids > 0){
-		arcan_video_setuprendertarget(did,
-			0, rate, scale == RENDERTARGET_SCALE, format);
+	bool ok = arcan_video_setuprendertarget(did,
+		0, rate, scale == RENDERTARGET_SCALE, format) == ARCAN_OK;
 
+	if (lua_type(ctx, 7) == LUA_TNUMBER && lua_type(ctx, 8) == LUA_TNUMBER){
+		arcan_video_rendertargetdensity(did,
+			luaL_checknumber(ctx, 7), luaL_checknumber(ctx, 8), false, false);
+	}
+
+	if (nvids > 0){
 		for (size_t i = 0; i < nvids; i++){
 			lua_rawgeti(ctx, 2, i+1);
 			arcan_vobj_id setvid = luavid_tovid( lua_tonumber(ctx, -1) );
@@ -7807,14 +7813,9 @@ static int renderset(lua_State* ctx)
 			arcan_video_attachtorendertarget(
 				did, setvid, detach == RENDERTARGET_DETACH);
 		}
+	}
 
-		LUA_ETRACE("define_rendertarget", NULL, 0);
-	}
-	else{
-		arcan_warning("renderset(%d, %d) - "
-		"	refusing to define empty renderset.\n");
-		LUA_ETRACE("define_rendertarget", "empty renderset", 0);
-	}
+	LUA_ETRACE("define_rendertarget", NULL, 0);
 }
 
 struct proctarget_src {
@@ -10612,7 +10613,8 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"RENDERTARGET_DETACH", RENDERTARGET_DETACH},
 {"RENDERTARGET_COLOR", RENDERFMT_COLOR},
 {"RENDERTARGET_DEPTH", RENDERFMT_DEPTH},
-{"RENDERTARGET_FLOAT", RENDERFMT_FLOAT},
+{"RENDERTARGET_F16", RENDERFMT_F16},
+{"RENDERTARGET_F32", RENDERFMT_F32},
 {"RENDERTARGET_MSAA", RENDERFMT_MSAA},
 {"RENDERTARGET_FULL", RENDERFMT_FULL},
 {"READBACK_MANUAL", 0},

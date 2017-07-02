@@ -416,6 +416,8 @@ void arcan_vint_mirrormapping(float* dst, float st, float tt);
  */
 void arcan_vint_joinasynch(arcan_vobject* img, bool emit, bool force);
 
+void arcan_vint_reraster(arcan_vobject* img, struct rendertarget*);
+
 /*
  * get the internal structure of the rendertarget that vobj has as
  * its primary attachment (for ordering etc.)

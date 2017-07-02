@@ -1133,6 +1133,8 @@ static av_pixel* process_chain(struct rcell* root, arcan_vobject* dst,
 
 	if (dst){
 		agp_resize_vstore(dst->vstore, *dw, *dh);
+		dst->vstore->vinf.text.hppcm = default_hdpi / 2.54;
+		dst->vstore->vinf.text.vppcm = default_vdpi / 2.54;
 	}
 
 	return (cleanup_chain(root), raw);

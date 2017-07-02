@@ -1205,6 +1205,37 @@ static bool detach_fromtarget(struct rendertarget* dst, arcan_vobject* src)
 	return true;
 }
 
+void arcan_vint_reraster(arcan_vobject* src, struct rendertarget* rtgt)
+{
+	struct agp_vstore* vs = src->vstore;
+
+/* unless the storage is eligible and the density is sufficiently different */
+	if (!
+		((vs->txmapped && (vs->vinf.text.kind ==
+		STORAGE_TEXT || vs->vinf.text.kind == STORAGE_TEXTARRAY)) &&
+		((fabs(vs->vinf.text.vppcm - rtgt->vppcm) > EPSILON ||
+		 fabs(vs->vinf.text.hppcm - rtgt->hppcm) > EPSILON)))
+	)
+		return;
+
+/*  in update sourcedescr we guarantee that any vinf that come here with
+ *  the TEXT | TEXTARRAY storage type will have a copy of the format string
+ *  that led to its creation. This allows us to just reraster into that */
+	size_t dw, dh, maxw, maxh;
+	uint32_t dsz;
+	if (vs->vinf.text.kind == STORAGE_TEXT)
+		arcan_renderfun_renderfmtstr(
+			vs->vinf.text.source, src->cellid,
+			false, NULL, NULL, &dw, &dh, &dsz, &maxw, &maxh, false
+		);
+	else {
+		arcan_renderfun_renderfmtstr_extended(
+			(const char**) vs->vinf.text.source_arr, src->cellid,
+			false, NULL, NULL, &dw, &dh, &dsz, &maxw, &maxh, false
+		);
+	}
+}
+
 static void attach_object(struct rendertarget* dst, arcan_vobject* src)
 {
 	arcan_vobject_litem* new_litem =
@@ -1268,6 +1299,15 @@ static void attach_object(struct rendertarget* dst, arcan_vobject* src)
 		trace("(attach) (%d:%s) attached to stdout, count: %d\n", src->cellid,
 		video_tracetag(src), src->extrefc.attachments);
 	}
+
+	struct agp_vstore* vs = src->vstore;
+
+/* IF the new attachment point has a different density than the previous,
+ * AND the source is of a vector source, RERASTER to match the new target. */
+	struct rendertarget* rtgt = current_context->attachment ?
+		current_context->attachment : &current_context->stdoutp;
+
+	arcan_vint_reraster(src, rtgt);
 }
 
 arcan_errc arcan_vint_attachobject(arcan_vobj_id id)
@@ -1287,15 +1327,6 @@ arcan_errc arcan_vint_attachobject(arcan_vobj_id id)
 	trace("(attach-eval-detach)\n");
 	if (src->extrefc.attachments)
 		detach_fromtarget(src->owner, src);
-
-	struct agp_vstore* vs = src->vstore;
-/* reraster on density change */
-	if ((vs->txmapped && (vs->vinf.text.kind ==
-		STORAGE_TEXT || vs->vinf.text.kind == STORAGE_TEXTARRAY)) &&
-		((fabs(vs->vinf.text.vppcm - rtgt->vppcm) > EPSILON ||
-		 fabs(vs->vinf.text.hppcm - rtgt->hppcm) > EPSILON))){
-			printf("reraster!\n");
-	}
 
 	trace("(attach-eval-attach)\n");
 	attach_object(rtgt, src);
@@ -1886,6 +1917,7 @@ arcan_errc arcan_video_rendertargetdensity(
 /* reflect the new changes */
 	float sfx = hppcm / rtgt->hppcm;
 	float sfy = vppcm / rtgt->vppcm;
+	arcan_renderfun_outputdensity(rtgt->hppcm, rtgt->vppcm);
 
 	rtgt->vppcm = vppcm;
 	rtgt->hppcm = hppcm;
@@ -1901,12 +1933,9 @@ arcan_errc arcan_video_rendertargetdensity(
 /* for all vobj- that are attached to this rendertarget AND has it as
  * primary, check if it is possible to rebuild a raster representation
  * with more accurate density */
-		if (reraster){
-			if (vobj->feed.state.tag == ARCAN_TAG_TEXT){
+		if (reraster)
+			arcan_vint_reraster(vobj, rtgt);
 
-			}
-/* MISSING: ARCAN_TAG_VECTOR */
-		}
 		if (rescale){
 			float ox = (float)vobj->origw*vobj->current.scale.x;
 			float oy = (float)vobj->origh*vobj->current.scale.y;
@@ -5429,9 +5458,9 @@ lineheights, &w, &h, &dsz, &maxw, &maxh, false
 			FAIL(ARCAN_ERRC_BAD_ARGUMENT);
 		}
 
-		ds->vinf.text.kind = STORAGE_TEXT;
 		ds->vinf.text.vppcm = dst->vppcm;
 		ds->vinf.text.hppcm = dst->hppcm;
+		ds->vinf.text.kind = STORAGE_TEXT;
 		ds->vinf.text.s_raw = dsz;
 		ds->w = w;
 		ds->h = h;
