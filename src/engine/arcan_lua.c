@@ -2486,6 +2486,7 @@ static int rendertext(lua_State* ctx)
 	struct renderline_meta* lineheights = NULL;
 	arcan_errc errc;
 
+/* old non-escaped, dangerous on user-supplied unfiltered strings */
 	if (type == LUA_TSTRING){
 		char* message = strdup(luaL_checkstring(ctx, argpos));
 		trace_allocation(ctx, "render_text", id);
@@ -2494,6 +2495,7 @@ static int rendertext(lua_State* ctx)
 			&nlines, &lineheights, &errc
 		);
 	}
+/* % 2 == 0 entries are treated as formats, % 2 == 1 as regular */
 	else if (type == LUA_TTABLE){
 		int nelems = lua_rawlen(ctx, argpos);
 		if (nelems == 0){
@@ -2536,7 +2538,7 @@ static int rendertext(lua_State* ctx)
 	}
 
 	if (lineheights)
-		free(lineheights);
+		arcan_mem_free(lineheights);
 
 	arcan_vobject* vobj = arcan_video_getobject(id);
 	if (vobj){

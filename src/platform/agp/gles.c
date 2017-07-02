@@ -236,23 +236,6 @@ struct asynch_readback_meta agp_poll_readback(struct agp_vstore* store)
 	return res;
 }
 
-void agp_drop_vstore(struct agp_vstore* s)
-{
-	if (!s)
-		return;
-
-	struct agp_fenv* env = agp_env();
-	env->delete_textures(1, &s->vinf.text.glid);
-	s->vinf.text.glid = 0;
-
-#ifdef GLES3
-	if (GL_NONE != s->vinf.text.wid)
-		env->delete_buffers(1, &s->vinf.text.wid);
-#endif
-
-	memset(s, '\0', sizeof(struct agp_vstore));
-}
-
 void agp_resize_vstore(struct agp_vstore* s, size_t w, size_t h)
 {
 	s->w = w;

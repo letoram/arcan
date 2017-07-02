@@ -179,6 +179,9 @@ struct agp_vstore {
 /* may need to propagate vpts state */
 			uint64_t vpts;
 
+/* for rerasterization */
+			float hppcm, vppcm;
+
 /* re- construction string may be used as factory in conservative memory
  * management model to recreate contents of raw */
 			enum storage_source kind;

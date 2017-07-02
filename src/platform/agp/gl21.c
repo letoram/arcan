@@ -191,29 +191,6 @@ void agp_readback_synchronous(struct agp_vstore* dst)
 	env->bind_texture(GL_TEXTURE_2D, 0);
 }
 
-void agp_drop_vstore(struct agp_vstore* s)
-{
-	if (!s || s->vinf.text.glid == GL_NONE)
-		return;
-	struct agp_fenv* env = agp_env();
-
-	if (s->vinf.text.tag)
-		platform_video_map_handle(s, -1);
-
-	env->delete_textures(1, &s->vinf.text.glid);
-	s->vinf.text.glid = GL_NONE;
-
-	if (GL_NONE != s->vinf.text.rid){
-		env->delete_buffers(1, &s->vinf.text.rid);
-		s->vinf.text.rid = GL_NONE;
-	}
-
-	if (GL_NONE != s->vinf.text.wid){
-		env->delete_buffers(1, &s->vinf.text.wid);
-		s->vinf.text.wid = GL_NONE;
-	}
-}
-
 static void pbo_stream(struct agp_vstore* s,
 	av_pixel* buf, struct stream_meta* meta, bool synch)
 {

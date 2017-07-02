@@ -150,12 +150,12 @@ void arcan_vint_drop_vstore(struct agp_vstore* s)
 
 	if (s->refcount == 0){
 		if (s->txmapped != TXSTATE_OFF && s->vinf.text.glid){
-			agp_drop_vstore(s);
-
 			if (s->vinf.text.raw){
 				arcan_mem_free(s->vinf.text.raw);
 				s->vinf.text.raw = NULL;
 			}
+
+			agp_drop_vstore(s);
 
 			if (s->vinf.text.source)
 				arcan_mem_free(s->vinf.text.source);
@@ -625,6 +625,7 @@ signed arcan_video_pushcontext()
 	current_context->world = empty_vobj;
 	current_context->stdoutp.refreshcnt = 1;
 	current_context->stdoutp.refresh = 1;
+	current_context->stdoutp.vppcm = current_context->stdoutp.hppcm = 28;
 	current_context->stdoutp.color = &current_context->world;
 	current_context->vitem_limit = arcan_video_display.default_vitemlim;
 	current_context->vitems_pool = arcan_alloc_mem(
@@ -1272,23 +1273,36 @@ static void attach_object(struct rendertarget* dst, arcan_vobject* src)
 arcan_errc arcan_vint_attachobject(arcan_vobj_id id)
 {
 	arcan_vobject* src = arcan_video_getobject(id);
-	arcan_errc rv = ARCAN_ERRC_BAD_RESOURCE;
 
-	if (src){
+	if (!src)
+		return ARCAN_ERRC_BAD_RESOURCE;
+
+	struct rendertarget* rtgt = current_context->attachment ?
+		current_context->attachment : &current_context->stdoutp;
+
+	if (rtgt == src->owner)
+		return ARCAN_OK;
+
 /* make sure that there isn't already one attached */
-		trace("(attach-eval-detach)\n");
-		if (src->extrefc.attachments)
-			detach_fromtarget(src->owner, src);
-		trace("(attach-eval-attach)\n");
-		attach_object(current_context->attachment ?
-			current_context->attachment : &current_context->stdoutp, src);
-		trace("(attach-eval-done)\n");
-		FLAG_DIRTY(src);
+	trace("(attach-eval-detach)\n");
+	if (src->extrefc.attachments)
+		detach_fromtarget(src->owner, src);
 
-		rv = ARCAN_OK;
+	struct agp_vstore* vs = src->vstore;
+/* reraster on density change */
+	if ((vs->txmapped && (vs->vinf.text.kind ==
+		STORAGE_TEXT || vs->vinf.text.kind == STORAGE_TEXTARRAY)) &&
+		((fabs(vs->vinf.text.vppcm - rtgt->vppcm) > EPSILON ||
+		 fabs(vs->vinf.text.hppcm - rtgt->hppcm) > EPSILON))){
+			printf("reraster!\n");
 	}
 
-	return rv;
+	trace("(attach-eval-attach)\n");
+	attach_object(rtgt, src);
+	trace("(attach-eval-done)\n");
+	FLAG_DIRTY(src);
+
+	return ARCAN_OK;
 }
 
 arcan_errc arcan_vint_dropshape(arcan_vobject* vobj)
@@ -1490,6 +1504,7 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	current_context->stdoutp.order3d = arcan_video_display.order3d;
 	current_context->stdoutp.refreshcnt = 1;
 	current_context->stdoutp.refresh = -1;
+	current_context->stdoutp.vppcm = current_context->stdoutp.hppcm;
 /*
  * By default, expected video output display matches canvas 1:1,
  * canvas can be explicitly resized and these two matrices will still
@@ -1872,7 +1887,8 @@ arcan_errc arcan_video_rendertargetdensity(
 	float sfx = hppcm / rtgt->hppcm;
 	float sfy = vppcm / rtgt->vppcm;
 
-	rtgt->vppcm = rtgt->hppcm;
+	rtgt->vppcm = vppcm;
+	rtgt->hppcm = hppcm;
 
 	struct arcan_vobject_litem* cent = rtgt->first;
 	while(cent){
@@ -5414,6 +5430,8 @@ lineheights, &w, &h, &dsz, &maxw, &maxh, false
 		}
 
 		ds->vinf.text.kind = STORAGE_TEXT;
+		ds->vinf.text.vppcm = dst->vppcm;
+		ds->vinf.text.hppcm = dst->hppcm;
 		ds->vinf.text.s_raw = dsz;
 		ds->w = w;
 		ds->h = h;
