@@ -843,6 +843,46 @@ static void setup_transfer(struct agp_mesh_store* base, enum agp_mesh_flags fl)
 			env->disable_vertex_attrarray(attribs[i]);
 }
 
+void agp_drop_vstore(struct agp_vstore* s)
+{
+	if (!s || s->vinf.text.glid == GL_NONE)
+		return;
+	struct agp_fenv* env = agp_env();
+
+	if (s->vinf.text.tag)
+		platform_video_map_handle(s, -1);
+
+	if (s->vinf.text.kind == STORAGE_TEXT){
+		arcan_mem_free(s->vinf.text.source);
+	}
+
+	if (s->vinf.text.kind == STORAGE_TEXTARRAY){
+		char** work = s->vinf.text.source_arr;
+		while(*work){
+			arcan_mem_free(*work);
+			work++;
+		}
+		arcan_mem_free(s->vinf.text.source_arr);
+	}
+
+	env->delete_textures(1, &s->vinf.text.glid);
+	s->vinf.text.glid = GL_NONE;
+
+	if (GL_NONE != s->vinf.text.rid){
+		env->delete_buffers(1, &s->vinf.text.rid);
+		s->vinf.text.rid = GL_NONE;
+	}
+
+#ifndef GLES2
+	if (GL_NONE != s->vinf.text.wid){
+		env->delete_buffers(1, &s->vinf.text.wid);
+		s->vinf.text.wid = GL_NONE;
+	}
+#endif
+
+	memset(s, '\0', sizeof(struct agp_vstore));
+}
+
 static void setup_culling(enum agp_mesh_flags fl)
 {
 	struct agp_fenv* env = agp_env();

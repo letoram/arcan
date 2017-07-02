@@ -1,18 +1,28 @@
 -- set_context_attachment
 -- @short: change the active attachment point for the current context
--- @inargs: *newty*
--- outargs: *vid*
+-- @inargs:
+-- @inargs: vid
+-- outargs: vid
 -- @longdescr: By default, every newly created object is attached to the
 -- world rendertarget that is refered to using WORLDID and newly created
 -- rendertargets explicitly adopts source objects and attaches to itself.
--- For later changes to a rendertarget, there are manual attach and detach
--- commands, but those become excessively verbose when a lot of new objects
--- are to be assigned to a rendertarget dynamically. For such purposes,
--- it is possible to change the default rendertarget for the current
--- context using this function.
+-- In later stages of the lifecycle, objects can also be dynamically
+-- attached and detached to one or more rendertargets
+-- via the ref:attach_rendertarget and ref:detach_rendertarget commands
+-- respectively. This may be overly verbose when many objects are to be
+-- created and bound to an existing rendertarget and for those cases,
+-- switching out the active context with this function is useful.
+-- @note: Another case where the default attachment is important is when
+-- different rendertargets have different target densities. Some objects
+-- like text or vector images will have a backing store that is tied to the
+-- density of its current primary attachment. By first having an implicit
+-- attachment to WORLDID only to switch with ref:attach_rendertarget will cause
+-- costly rerasterization which can be avoided with this function.
+-- @note: The attachment is defined per context, so if the context stack is
+-- switched using ref:push_video_context or ref:pop_video_context, the
+-- attachment point will switch as well.
 -- @note: providing a bad, missing or non-rt designated vid will
--- not change any default attachment state, only return the current
--- @note: the default attachment is local to every context.
+-- not change any default attachment state, only return the current one.
 -- @group: vidsys
 -- @cfunction: setdefattach
 -- @related:
@@ -40,9 +50,5 @@ function main()
 		show_image(b);
 		move_image(b, math.random(VRESW - 32), math.random(VRESH - 32), 500);
 	end
-#endif
-
-#ifdef ERROR1
-	set_context_attachment(BADID);
 #endif
 end
