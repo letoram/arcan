@@ -1225,19 +1225,21 @@ enum ARCAN_EVENT_EXTERNAL {
  * Indicate that the connection supports abstract input labels, along
  * with the expected data type (match EVENT_IDATATYPE_*)
  * (label)     - 7-bit ASCII filtered to alnum and _
- * (initial)   - suggested default sym (as 7-bit ASCII) to bind as
- *               alnum and _, matching the used symtable.lua
+ * (initial)   - suggested default sym from the table used in
+ *               arcan_shmif_tuisym.
  * (descr)     - short 8-bit UTF description, if localization is avail.
  *               also follow the language from the last GEOHINT
  * (subv)      - > 0, use subid as pseudonym for this label (reduce string use)
  * (idatatype) - match IDATATYPE enum of expected data
+ * (modifiers) - bitmap of desired modifiers (arkmod)
  */
 		struct {
 			char label[16];
-			char initial[16];
+			uint16_t initial;
 			char descr[58];
 			uint16_t subv;
 			uint8_t idatatype;
+			uint16_t modifiers;
 		} labelhint;
 
 /*

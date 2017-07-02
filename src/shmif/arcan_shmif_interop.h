@@ -41,7 +41,7 @@
  * during _integrity_check
  */
 #define ASHMIF_VERSION_MAJOR 0
-#define ASHMIF_VERSION_MINOR 10
+#define ASHMIF_VERSION_MINOR 11
 
 #ifndef LOG
 #define LOG(...) (fprintf(stderr, __VA_ARGS__))

@@ -27,7 +27,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
-#ifdef ENABLE_GPU
+#ifndef SHMIF_TUI_DISABLE_GPU
 #define WANT_ARCAN_SHMIF_HELPER
 #endif
 
@@ -59,7 +59,7 @@ struct tui_context {
 	bool focus, inactive;
 	int inact_timer;
 
-#ifdef ENABLE_GPU
+#ifndef SHMIF_TUI_DISABLE_GPU
 	bool is_accel;
 #endif
 
@@ -649,7 +649,7 @@ static bool mouse_forward(struct tui_context* tui)
 }
 
 /*
- * Some things missing in labelhint that we'll keep to .5.3,
+ * Some things missing in labelhint that we'll keep to later
  * 1. descriptions does not match geohint language
  * 2. we do not expose a default binding and the labelhint initial field
  *    should have its typing reworked (uint16 mods + uint16 sym)
@@ -1573,7 +1573,7 @@ int arcan_tui_refresh(struct tui_context* tui)
 
 /* if we are built with GPU offloading support and nothing has happened
  * to our accelerated connection, synch, otherwise fallback and retry */
-#ifdef ENABLE_GPU
+#ifndef SHMIF_TUI_DISABLE_GPU
 retry:
 	if (tui->is_accel){
 		if (-1 == arcan_shmifext_signal(&tui->acon, 0,
@@ -1900,7 +1900,7 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 	res->handlers.resized(res, res->acon.w, res->acon.h,
 		res->cols, res->rows, res->handlers.tag);
 
-#ifdef ENABLE_GPU
+#ifndef SHMIF_TUI_DISABLE_GPU
 	if (set->prefer_accel){
 		struct arcan_shmifext_setup setup = arcan_shmifext_defaults(con);
 		setup.builtin_fbo = false;
