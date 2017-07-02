@@ -1,7 +1,7 @@
 /*
  Arcan Shared Memory Interface
 
- Copyright (c) 2014-2016, Bjorn Stahl
+ Copyright (c) 2014-2017, Bjorn Stahl
  All rights reserved.
 
  Redistribution and use in source and binary forms,
@@ -74,8 +74,8 @@
  *
  * [ ] query label callback not yet used
  *
- * [ ] Normal "Curses" rendering- backend to not break term- compatibility
- *     for programs reworked to use this interface
+ * [ ] backends that implement NCurses and TurboVision
+ *
  */
 enum tui_cursors {
 	CURSOR_BLOCK = 0,
@@ -137,6 +137,7 @@ struct tui_labelent {
 	char descr[58];
 	uint16_t subb;
 	uint8_t idatatype;
+	uint16_t modifiers;
 };
 
 /*
@@ -406,6 +407,10 @@ struct tui_screen_attr {
 	unsigned int blink : 1; /* blinking character */
 	unsigned int faint : 1;
 	unsigned int strikethrough : 1;
+
+/* enable a different drawing path, trying to use the custom callback and
+ * accumulate as many continous cells as possible. the custom_id will be
+ * provided with the cell so that you can blit your own content. */
 	unsigned int custom : 1;
 	uint32_t custom_id;
 };

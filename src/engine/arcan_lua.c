@@ -4309,9 +4309,9 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			tblstr(ctx, "kind", "input_label", top);
 			FLTPUSH(ev->ext.labelhint.label, flt_Alphanum, '?');
 			tblstr(ctx, "labelhint", msgbuf, top);
-			FLTPUSH(ev->ext.labelhint.initial, flt_Alphanum, '?');
-			tblstr(ctx, "initial", msgbuf, top);
+			tblnum(ctx, "initial", ev->ext.labelhint.initial, top);
 			tblstr(ctx, "datatype", idt, top);
+			tblnum(ctx, "modifiers", ev->ext.labelhint.modifiers, top);
 		}
 		break;
 		case EVENT_EXTERNAL_BCHUNKSTATE:

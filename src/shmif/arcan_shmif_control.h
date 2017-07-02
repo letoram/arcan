@@ -704,9 +704,9 @@ struct arcan_shmif_cont {
  * SHMIF_RHINT_ORIGO_UL (or LL),
  * SHMIF_RHINT_IGNORE_ALPHA
  * SHMIF_RHINT_SUBREGION (only synch dirty region below)
- * If MULTIPLE video buffers are used, the SUBREGION applies to BOTH.
- *
- * Modifications SYNCH ON RESIZE
+ * SHMIF_RHINT_CSPACE_SRGB (non-linear color space)
+ * SHMIF_RHINT_AUTH_TOK
+ * SHMIF_RHINT_VSIGNAL_EV (get frame- delivery notification via STEPFRAME)
  */
 	uint8_t hints;
 
