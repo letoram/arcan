@@ -119,12 +119,13 @@ struct arcan_frameserver {
 
 /* special transfer state flags */
 	struct {
-		bool alive;
-		bool pbo;
-		bool explicit;
-		bool local_copy;
-		bool no_alpha_copy;
-		bool autoclock;
+		bool alive : 1;
+		bool pbo : 1;
+		bool explicit : 1;
+		bool local_copy : 1;
+		bool no_alpha_copy : 1;
+		bool autoclock : 1;
+		bool gpu_auth : 1;
 	} flags;
 
 /* if autoclock is set, track and use as metric for firing events */

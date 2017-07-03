@@ -13,7 +13,7 @@
 -- TARGET_VSTORE_SYNCH, TARGET_SYNCHRONOUS, TARGET_NOALPHA,
 -- TARGET_AUTOCLOCK, TARGET_VERBOSE, TARGET_NOBUFFERPASS, TARGET_ALLOWCM,
 -- TARGET_ALLOWLODEF, TARGET_ALLOWHDR, TARGET_ALLOWVECTOR, TARGET_ALLOWINPUT,
--- TARGET_FORCESIZE.
+-- TARGET_FORCESIZE, TARGET_ALLOWGPU.
 -- Optional *toggle* argument is by default set to on, to turn off a
 -- specific flag, set *toggle* to 0.
 -- @note: flag, TARGET_VSTORE_SYNCH makes sure that there is a local
@@ -61,6 +61,10 @@
 -- entails so it should be used very restrictively and obviously not from
 -- a non-authoritative (target_alloc instead of launch_target) connection
 -- if input manipulation is considered a threat.
+-- @note: flag: TARGET_ALLOWGPU allows a client to authenticate a platform
+-- specific token that can provide higher levels of GPU access than the
+-- implementation defined default. This is a security tradeoff as it may
+-- provide the client with access to read or modify private GPU state.
 -- @note: flag: TARGET_LIMITSIZE sets an upper limit to the dimensions that
 -- the client can negotiate. This is primarily to prevent accidental absurd
 -- behavior, such as 8192x8192 sized mouse cursors.

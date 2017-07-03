@@ -1250,7 +1250,7 @@ int platform_fsrv_resynch(struct arcan_frameserver* s)
 		atomic_store(&shmpage->hints, s->desc.pending_hints);
 
 /* MULTI/GPU NOTE: need to look at the primary- GPU for this fsrv */
-		if (!platform_video_auth(0, token))
+		if (!s->flags.gpu_auth || !platform_video_auth(0, token))
 			goto fail;
 	}
 
