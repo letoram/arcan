@@ -20,6 +20,7 @@ if(VIDEO_PLATFORM STREQUAL "egl-gles")
 	endif()
 
 	find_package(EGL REQUIRED QUIET)
+	add_definitions(-DSHMIF_TUI_DISABLE_GPU)
 
 	if (GLES2_BCM_IMPLEMENTATION)
 		amsg("broadcom (BCM) GLES implementation found, set BCM_ROOT to bad dir to disable")

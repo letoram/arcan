@@ -38,8 +38,8 @@
  * Workaround for missing GL_DRAW_FRAMEBUFFER_BINDING
  */
 #if defined(GLES2) || defined(GLES3)
-	#define BIND_FRAMEBUFFER(X) { st_last_fbo = (X);\
-		env->bind_framebuffer(GL_FRAMEBUFFER, (X)); }
+	#define BIND_FRAMEBUFFER(X) do { st_last_fbo = (X);\
+		env->bind_framebuffer(GL_FRAMEBUFFER, (X)); } while(0)
 GLuint st_last_fbo;
 #else
 	#define BIND_FRAMEBUFFER(X) env->bind_framebuffer(GL_FRAMEBUFFER, (X))
@@ -278,7 +278,7 @@ static void* lookup_fun(void* tag, const char* sym, bool req)
 	}
 	return res;
 }
-
+ 
 static struct agp_fenv defenv;
 struct agp_fenv* agp_alloc_fenv(
 	void*(lookup)(void* tag, const char* sym, bool req), void* tag)
@@ -412,8 +412,8 @@ void agp_pipeline_hint(enum pipeline_mode mode)
 #if !defined(GLES2) && !defined(GLES3)
 			env->line_width(1.0);
 			env->polygon_mode(GL_FRONT_AND_BACK, GL_FILL);
-		}
 #endif
+		}
 	break;
 
 	case PIPELINE_3D:

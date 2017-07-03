@@ -35,6 +35,11 @@ bool arcan_shmifext_gl_handles(struct arcan_shmif_cont* con,
 	return false;
 }
 
+bool arcan_shmifext_drop(struct arcan_shmif_cont* con)
+{
+	return false;
+}
+
 bool arcan_shmifext_drop_context(struct arcan_shmif_cont* con)
 {
 	return false;

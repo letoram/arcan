@@ -32,7 +32,7 @@ struct arcan_vobject_litem* arcan_3d_refresh(arcan_vobj_id camtag,
  * the FIRST va_arg.
  */
 arcan_errc arcan_3d_camtag(arcan_vobj_id parent,
-	float near, float far, float ar, float fov, enum agp_mesh_flags flags, ...);
+	float near, float far, float ar, float fov, int flags, ...);
 
 /*
  * Generate a finalized model within the range [minx..maxx, 0, minz..maxz],

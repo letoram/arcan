@@ -1112,7 +1112,7 @@ arcan_errc arcan_3d_baseorient(arcan_vobj_id dst,
 }
 
 arcan_errc arcan_3d_camtag(arcan_vobj_id vid,
-	float near, float far, float ar, float fov, enum agp_mesh_flags flags, ...)
+	float near, float far, float ar, float fov, int flags, ...)
 {
 	arcan_vobject* vobj = arcan_video_getobject(vid);
 	va_list vl;
