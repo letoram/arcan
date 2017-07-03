@@ -259,16 +259,26 @@ static bool alloc_fbo(struct agp_rendertarget* dst, bool retry)
 	return true;
 }
 
+/*
+ * In GL4.4 if we ever get to move to a less crippled version, this
+ * can just be replaced with the glClearTexture
+ */
 void agp_empty_vstore(struct agp_vstore* vs, size_t w, size_t h)
 {
+/*
+ * though the d_fmt may differ from s_fmt here, we treat s_fmt and
+ */
 	size_t sz = w * h * sizeof(av_pixel);
-	vs->vinf.text.s_raw = sz;
+	if (!vs->vinf.text.s_raw){
+		vs->vinf.text.s_raw = sz;
+	}
 
 /* this is to allow an override of s_fmt and still handle reset */
-	if (vs->vinf.text.s_fmt == 0)
+	if (vs->vinf.text.s_fmt == 0){
 		vs->vinf.text.s_fmt = GL_PIXEL_FORMAT;
 	if (vs->vinf.text.d_fmt == 0)
 		vs->vinf.text.d_fmt = GL_STORE_PIXEL_FORMAT;
+	}
 
 	vs->vinf.text.raw = arcan_alloc_mem(
 		vs->vinf.text.s_raw,
@@ -292,31 +302,44 @@ void agp_empty_vstoreext(struct agp_vstore* vs,
 	switch (hint){
 	case VSTORE_HINT_LODEF:
 		vs->vinf.text.d_fmt = GL_UNSIGNED_SHORT_5_6_5;
+		vs->vinf.text.s_fmt = GL_RGBA;
+		vs->vinf.text.s_type = GL_UNSIGNED_SHORT;
 	break;
 	case VSTORE_HINT_LODEF_NOALPHA:
 		vs->vinf.text.d_fmt = GL_UNSIGNED_SHORT_4_4_4_4;
+		vs->vinf.text.s_fmt = GL_RGB;
+		vs->vinf.text.s_type = GL_UNSIGNED_SHORT;
 	break;
 	case VSTORE_HINT_NORMAL:
-		vs->vinf.text.d_fmt = GL_STORE_PIXEL_FORMAT;
-	break;
 	case VSTORE_HINT_NORMAL_NOALPHA:
-		vs->vinf.text.d_fmt = GL_BGR;
+		vs->vinf.text.d_fmt = GL_STORE_PIXEL_FORMAT;
 	break;
 	case VSTORE_HINT_HIDEF:
 	case VSTORE_HINT_HIDEF_NOALPHA:
 		vs->vinf.text.d_fmt = GL_UNSIGNED_INT_10_10_10_2;
+		vs->vinf.text.s_type = GL_UNSIGNED_INT_10_10_10_2;
+		vs->vinf.text.s_fmt = GL_UNSIGNED_INT;
+		vs->vinf.text.s_raw = sizeof(unsigned) * w * h * 4;
 	break;
 	case VSTORE_HINT_F16:
 		vs->vinf.text.d_fmt = GL_RGB16F;
+		vs->vinf.text.s_type = GL_FLOAT;
+		vs->vinf.text.s_raw = w * h * sizeof(float) * 4;
 	break;
 	case VSTORE_HINT_F16_NOALPHA:
 		vs->vinf.text.d_fmt = GL_RGBA16F;
+		vs->vinf.text.s_type = GL_FLOAT;
+		vs->vinf.text.s_raw = w * h * sizeof(float) * 4;
 	break;
 	case VSTORE_HINT_F32:
 		vs->vinf.text.d_fmt = GL_RGBA32F;
+		vs->vinf.text.s_type = GL_FLOAT;
+		vs->vinf.text.s_raw = w * h * sizeof(float) * 4;
 	break;
 	case VSTORE_HINT_F32_NOALPHA:
 		vs->vinf.text.d_fmt = GL_RGB32F;
+		vs->vinf.text.s_type = GL_FLOAT;
+		vs->vinf.text.s_raw = w * h * sizeof(float) * 4;
 	break;
 	default:
 	break;
@@ -327,6 +350,11 @@ void agp_empty_vstoreext(struct agp_vstore* vs,
 	vs->w = w;
 	vs->h = h;
 	vs->bpp = sizeof(av_pixel);
+	vs->vinf.text.s_raw = vs->bpp * vs->w * vs->h;
+	vs->vinf.text.raw = arcan_alloc_mem(
+		vs->vinf.text.s_raw,
+		ARCAN_MEM_VBUFFER, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE
+	);
 	vs->txmapped = TXSTATE_TEX2D;
 
 	agp_update_vstore(vs, true);
@@ -370,7 +398,7 @@ static void* lookup_fun(void* tag, const char* sym, bool req)
 	}
 	return res;
 }
- 
+
 static struct agp_fenv defenv;
 struct agp_fenv* agp_alloc_fenv(
 	void*(lookup)(void* tag, const char* sym, bool req), void* tag)
@@ -679,7 +707,8 @@ void agp_update_vstore(struct agp_vstore* s, bool copy)
 				s->vinf.text.d_fmt ? s->vinf.text.d_fmt : GL_STORE_PIXEL_FORMAT,
 				s->w, s->h, 0,
 				s->vinf.text.s_fmt ? s->vinf.text.s_fmt : GL_PIXEL_FORMAT,
-				GL_UNSIGNED_BYTE, s->vinf.text.raw
+				s->vinf.text.s_type ? s->vinf.text.s_type : GL_UNSIGNED_BYTE,
+				s->vinf.text.raw
 			);
 	}
 

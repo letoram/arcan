@@ -146,11 +146,9 @@ struct agp_vstore {
 
 	union {
 		struct {
-/* ID number connecting to AGP */
+/* ID number connecting to AGP, this MAY be bound diretly to the glid
+ * of a specific context, or act as a reference into multiple contexts */
 			unsigned glid;
-
-/* bitmap used for tracking which GPUs and contexts we are bound to */
-			uint32_t affinity;
 
 /* used for PBO transfers */
 			unsigned rid, wid;
@@ -160,6 +158,7 @@ struct agp_vstore {
 			av_pixel*  raw;
 			uint64_t s_fmt;
 			uint64_t d_fmt;
+			unsigned s_type;
 
 /* may need to propagate vpts state */
 			uint64_t vpts;
