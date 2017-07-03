@@ -105,7 +105,7 @@ static void dump_event(struct arcan_event ev)
 				ev.ext.content.y_pos, ev.ext.content.y_sz);
 		break;
 		case EVENT_EXTERNAL_LABELHINT:
-			printf("LABELHINT(label: %.16s, default: %.16s, descr: %.58s, "
+			printf("LABELHINT(label: %.16s, default: %d, descr: %.58s, "
 				"i-alias: %d, i-type: %d)\n",
 				ev.ext.labelhint.label, ev.ext.labelhint.initial,
 				ev.ext.labelhint.descr, ev.ext.labelhint.subv,
@@ -380,7 +380,7 @@ static void decode_apad(void* apad, size_t apad_sz)
  * middle of an update, the checksum verification is here for that purpose */
 		struct {
 			struct ramp_block block;
-			uint8_t plane_lim[SHMIF_CMRAMP_PLIM*SHMIF_CMRAMP_ULIM];
+			uint8_t plane_lim[SHMIF_CMRAMP_PLIM*SHMIF_CMRAMP_UPLIM];
 		} disp_block;
 
 		printf("\ncolor-mgmt, blocks:\n");
@@ -389,7 +389,7 @@ static void decode_apad(void* apad, size_t apad_sz)
 			memcpy(&disp_block, (void*)(ramp_rva), sizeof(disp_block));
 			bool edid_data = false;
 			uint16_t checksum = subp_checksum(
-				(uint8_t*)disp_block.block.edid, 128 + SHMIF_CMRAMP_PLIM * SHMIF_CMRAMP_ULIM);
+				(uint8_t*)disp_block.block.edid, 128 + SHMIF_CMRAMP_PLIM * SHMIF_CMRAMP_UPLIM);
 			if (disp_block.block.checksum != checksum){
 				printf("[%zu] - checksum mismatch (%"PRIu16" != %"PRIu16")\n",
 					i, checksum, disp_block.block.checksum);
