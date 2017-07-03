@@ -54,11 +54,20 @@ static bool psf2_decode_header(
 	if (buf[0] != 0x72 || buf[1] != 0xb5 || buf[2] != 0x4a || buf[3] != 0x86)
 		return false;
 
-	*glyph_count = u32[4];
-	*glyph_bytes = u32[5];
-	*ofs = u32[2];
-	*w = u32[7];
-	*h = u32[6];
+	if (glyph_count)
+		*glyph_count = u32[4];
+
+	if (glyph_bytes)
+		*glyph_bytes = u32[5];
+
+	if (ofs)
+		*ofs = u32[2];
+
+	if (w)
+		*w = u32[7];
+
+	if (h)
+		*h = u32[6];
 
 	return true;
 }
@@ -158,6 +167,10 @@ static bool load_bitmap_font(struct tui_font_ctx* ctx,
 	uint8_t* buf, size_t buf_sz, size_t px_sz, bool merge)
 {
 	struct glyph_ent** ht = NULL;
+
+/* don't waste time with a font we can't decode */
+	if (!psf2_decode_header(buf, buf_sz, NULL, NULL, NULL, NULL, NULL))
+		return false;
 
 /* if not merge, delete all for this size slot */
 	if (!merge){
