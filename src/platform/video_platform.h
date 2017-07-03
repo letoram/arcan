@@ -29,20 +29,6 @@ typedef VIDEO_PIXEL_TYPE av_pixel;
 ((uint32_t) (b)))
 #endif
 
-/*
- * Just prepared for a low-def format, none is really active at the moment
- * but likely candidate is RGB565 in scenarios where we need to constrain
- * memory and bandwidth use.
- */
-#define RGBA_LOWDEF(r, g, b, a)( RGBA((r), (g), (b)) )
-
-/*
- * To change the internal representation, define these macros in some other
- * header that is forcibly included, or redefine through the build-system.
- */
-#ifdef HDEF_10BIT
-#include "video_platform_hdef.h"
-#else
 #define OUT_DEPTH_R 8
 #define OUT_DEPTH_G 8
 #define OUT_DEPTH_B 8
@@ -78,7 +64,6 @@ typedef VIDEO_PIXEL_TYPE av_pixel;
 #define RGBA_HDEF(r, g, b, a) RGBA(\
 	(uint8_t)((r) * 255.0f), (uint8_t)((g) * 255.0f), \
 	(uint8_t)((b) * 255.0f), (uint8_t)((a) * 255.0f))
-#endif
 
 #define GL_PIXEL_LDEF_FORMAT GL_PIXEL_FORMAT
 
@@ -577,11 +562,15 @@ void agp_empty_vstore(struct agp_vstore* backing, size_t w, size_t h);
 enum vstore_hint
 {
 	VSTORE_HINT_NORMAL = 0,
-	VSTORE_HINT_NOALPHA = 1,
+	VSTORE_HINT_NORMAL_NOALPHA = 1,
 	VSTORE_HINT_LODEF = 2,
 	VSTORE_HINT_LODEF_NOALPHA = 3,
 	VSTORE_HINT_HIDEF = 4,
-	VSTORE_HINT_HIDEF_NOALPHA = 5
+	VSTORE_HINT_HIDEF_NOALPHA = 5,
+	VSTORE_HINT_F16 = 6,
+	VSTORE_HINT_F16_NOALPHA = 7,
+	VSTORE_HINT_F32 = 8,
+	VSTORE_HINT_F32_NOALPHA = 9
 };
 void agp_empty_vstoreext(struct agp_vstore* backing,
 	size_t w, size_t h, enum vstore_hint);
@@ -756,12 +745,10 @@ enum rendertarget_mode {
 	RENDERTARGET_DEPTH = 0,
 	RENDERTARGET_COLOR = 1,
 	RENDERTARGET_COLOR_DEPTH = 2,
-	RENDERTARGET_COLOR_DEPTH_STENCIL = 3,
-	RENDERTARGET_F16 = 4,
-	RENDERTARGET_F32 = 8,
-	RENDERTARGET_DOUBLEBUFFER = 16,
-	RENDERTARGET_RETAIN_ALPHA = 32,
-	RENDERTARGET_MSAA = 64
+	RENDERTARGET_COLOR_DEPTH_STENCIL = 4,
+	RENDERTARGET_DOUBLEBUFFER = 8,
+	RENDERTARGET_RETAIN_ALPHA = 16,
+	RENDERTARGET_MSAA = 32
 };
 
 /*

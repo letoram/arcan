@@ -54,9 +54,12 @@ struct agp_fenv {
 /* FBOs */
 	void (*gen_framebuffers) (GLsizei, GLuint*);
 	void (*bind_framebuffer) (GLenum, GLuint);
+	void (*blit_framebuffer) (GLint, GLint, GLint, GLint,
+		GLint, GLint, GLint, GLint, GLbitfield, GLenum);
 	void (*framebuffer_texture_2d) (GLenum, GLenum, GLenum, GLuint, GLint);
 	void (*bind_renderbuffer) (GLenum, GLuint);
 	void (*renderbuffer_storage) (GLenum, GLenum, GLsizei, GLsizei);
+	void (*renderbuffer_storage_multisample) (GLenum, GLenum, GLsizei, GLsizei);
 	void (*framebuffer_renderbuffer) (GLenum, GLenum, GLenum, GLuint);
 	GLenum (*check_framebuffer) (GLenum);
 	void (*delete_framebuffers) (GLsizei, const GLuint*);
@@ -103,6 +106,8 @@ struct agp_fenv {
 		GLint, GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, const GLvoid*);
 	void (*tex_image_2d) (GLenum,
 		GLint, GLint, GLsizei, GLsizei, GLint, GLenum, GLenum, const GLvoid*);
+	void (*tex_image_2d_multisample) (
+		GLenum, GLsizei, GLint, GLsizei, GLsizei, GLboolean);
 	void (*tex_param_i) (GLenum, GLenum, GLint);
 	void (*generate_mipmap) (GLenum);
 

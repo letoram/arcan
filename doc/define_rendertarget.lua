@@ -21,7 +21,7 @@
 -- The optional *detach* argument can be set to either RENDERTARGET_DETACH
 -- or RENDERTARGET_NODETACH, and the default is RENDERTARGET_DETACH.
 -- For RENDERTARGET_DETACH, all members of *vtbl* are disconnected from
--- the main pipe line and only used when updating *dst*, while their
+-- the main pipeline and only used when updating *dst*, while their
 -- association is kept in RENDERTARGET_NODETACH.
 --
 -- The optional *scale* argument determine how the various output-relative
@@ -42,20 +42,21 @@
 --
 -- The optional *format* defines additional flags for the backing store of
 -- *dst*. Possible values are RENDERTARGET_COLOR (default),
--- RENDERTARGET_DEPTH, RENDERTARGET_FULL, RENDERTARGET_MULTISAMPLE and
--- RENDERTARGET_F16 and RENDERTARGET_F32. The difference between COLOR and FULL
--- is that a stencil buffer (for certain clipping operations) is not always
--- present in COLOR. DEPTH is a special case primarily used when only the
--- contents of the depth buffer is to be used. This operation converts the
--- backing store from having a textured backing to a DEPTH one and makes a lot
--- of other operations invalid. Its primary purpose is depth-buffer based 3D
--- effects (e.g. shadow mapping).
+-- RENDERTARGET_DEPTH, RENDERTARGET_FULL and RENDERTARGET_MULTISAMPLE.
+-- The difference between COLOR and FULL is that a stencil buffer (for certain
+-- clipping operations) is not always present in COLOR. DEPTH is a special case
+-- primarily used when only the contents of the depth buffer is to be used.
+-- This operation converts the backing store from having a textured backing to
+-- a DEPTH one and makes a lot of other operations invalid. Its primary purpose
+-- is depth-buffer based 3D effects (e.g. shadow mapping). Note that you can
+-- control the format of the output through ref:alloc_surface.
 --
--- FLOAT (F16, 32) and MULTISAMPLE are for special effects, HDR rendering and
--- higher quality 3D rendering. They impose restrictions on how the
--- renderpipeline will be used, and should therefore be considered advanced.
--- MULTISAMPLE requires separate samplers in the shader code, and with the
--- floating point formats you want to use the corresponding type when sampling.
+-- MULTISAMPLE is used for when you need higher quality rendering/anti-aliasing
+-- and comes at a high cost when the rendertarget is updated both from the
+-- process itself and from an additional internal sampling of the multisample
+-- buffer into the datastore pointed to by *dst*. It is also likely to
+-- break if you are running on weak/old hardware on a GLES2 level of
+-- acceleration.
 --
 -- @note: Using the same object or backing store for *dst* and as
 -- a member of *vtbl* results in undefined contents in *dst*.
