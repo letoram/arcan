@@ -113,6 +113,10 @@ static void drop_msaa(struct agp_rendertarget* dst)
 	dst->msaa_fbo = dst->msaa_depth = dst->msaa_color = GL_NONE;
 }
 
+#ifndef GL_TEXTURE_2D_MULTISAMPLE
+#define GL_TEXTURE_2D_MULTISAMPLE 0x9100
+#endif
+
 static bool alloc_fbo(struct agp_rendertarget* dst, bool retry)
 {
 	struct agp_fenv* env = agp_env();
@@ -295,6 +299,22 @@ void agp_empty_vstore(struct agp_vstore* vs, size_t w, size_t h)
 	vs->vinf.text.raw = 0;
 	vs->vinf.text.s_raw = 0;
 }
+
+#ifndef GL_RGB16F
+#define GL_RGB16F 0x881B
+#endif
+
+#ifndef GL_RGBA16F
+#define GL_RGBA16F 0x881A
+#endif
+
+#ifndef GL_RGBA32F
+#define GL_RGBA32F 0x8814
+#endif
+
+#ifndef GL_RGB32F
+#define GL_RGB32F 0x8815
+#endif
 
 void agp_empty_vstoreext(struct agp_vstore* vs,
 	size_t w, size_t h, enum vstore_hint hint)
