@@ -49,6 +49,11 @@ struct agp_rendertarget
 {
 	GLuint fbo;
 	GLuint depth;
+
+	GLuint msaa_fbo;
+	GLuint msaa_color;
+	GLuint msaa_depth;
+
 	float clearcol[4];
 
 	enum rendertarget_mode mode;
@@ -99,17 +104,60 @@ unsigned agp_rendertarget_swap(struct agp_rendertarget* dst)
 	return rid;
 }
 
+static void drop_msaa(struct agp_rendertarget* dst)
+{
+	struct agp_fenv* env = agp_env();
+	env->delete_framebuffers(1,&dst->msaa_fbo);
+	env->delete_renderbuffers(1,&dst->msaa_depth);
+	env->delete_textures(1,&dst->msaa_color);
+	dst->msaa_fbo = dst->msaa_depth = dst->msaa_color = GL_NONE;
+}
+
 static bool alloc_fbo(struct agp_rendertarget* dst, bool retry)
 {
 	struct agp_fenv* env = agp_env();
-	env->gen_framebuffers(1, &dst->fbo);
 	int mode = dst->mode & (~RENDERTARGET_DOUBLEBUFFER);
+
+/* recall this is actually OpenGL 3.0, so it's not at all certain
+ * that we will actually get it. Then we fallback 'gracefully' */
+	if (!env->renderbuffer_storage_multisample || !env->tex_image_2d_multisample){
+		dst->mode = (dst->mode & ~RENDERTARGET_MSAA);
+		dst->mode |= RENDERTARGET_COLOR_DEPTH_STENCIL;
+	}
+
+/*
+ * we need two FBOs, one for the MSAA pass and one to resolve into
+ */
+	if (mode == RENDERTARGET_MSAA){
+		env->gen_textures(1, &dst->msaa_color);
+		env->bind_texture(GL_TEXTURE_2D_MULTISAMPLE, dst->msaa_color);
+		env->tex_image_2d_multisample(GL_TEXTURE_2D_MULTISAMPLE, GL_RGB, 4,
+			dst->store->w, dst->store->h, GL_TRUE);
+		env->bind_texture(GL_TEXTURE_2D_MULTISAMPLE, 0);
+		env->gen_framebuffers(1, &dst->msaa_fbo);
+		env->gen_renderbuffers(1, &dst->msaa_depth);
+		BIND_FRAMEBUFFER(dst->msaa_fbo);
+		env->framebuffer_texture_2d(GL_FRAMEBUFFER,
+			GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D_MULTISAMPLE, dst->msaa_color, 0);
+		env->renderbuffer_storage_multisample(GL_RENDERBUFFER,
+			GL_DEPTH24_STENCIL8, dst->store->w, dst->store->h);
+		GLenum status = env->check_framebuffer(GL_FRAMEBUFFER);
+		if (status != GL_FRAMEBUFFER_COMPLETE){
+			arcan_warning("agp: couldn't create multisample FBO, falling back.\n");
+			drop_msaa(dst);
+			dst->mode = (dst->mode & ~RENDERTARGET_MSAA);
+			dst->mode |= RENDERTARGET_COLOR_DEPTH_STENCIL;
+		}
+	}
+
+	env->gen_framebuffers(1, &dst->fbo);
 
 /* need both stencil and depth buffer, but we don't need the data from them */
 	BIND_FRAMEBUFFER(dst->fbo);
 
 	if (mode > RENDERTARGET_DEPTH)
 	{
+
 		env->framebuffer_texture_2d(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
 			GL_TEXTURE_2D, dst->store->vinf.text.glid, 0);
 
@@ -241,7 +289,51 @@ void agp_empty_vstore(struct agp_vstore* vs, size_t w, size_t h)
 void agp_empty_vstoreext(struct agp_vstore* vs,
 	size_t w, size_t h, enum vstore_hint hint)
 {
-	agp_empty_vstore(vs, w, h);
+	switch (hint){
+	case VSTORE_HINT_LODEF:
+		vs->vinf.text.d_fmt = GL_UNSIGNED_SHORT_5_6_5;
+	break;
+	case VSTORE_HINT_LODEF_NOALPHA:
+		vs->vinf.text.d_fmt = GL_UNSIGNED_SHORT_4_4_4_4;
+	break;
+	case VSTORE_HINT_NORMAL:
+		vs->vinf.text.d_fmt = GL_STORE_PIXEL_FORMAT;
+	break;
+	case VSTORE_HINT_NORMAL_NOALPHA:
+		vs->vinf.text.d_fmt = GL_BGR;
+	break;
+	case VSTORE_HINT_HIDEF:
+	case VSTORE_HINT_HIDEF_NOALPHA:
+		vs->vinf.text.d_fmt = GL_UNSIGNED_INT_10_10_10_2;
+	break;
+	case VSTORE_HINT_F16:
+		vs->vinf.text.d_fmt = GL_RGB16F;
+	break;
+	case VSTORE_HINT_F16_NOALPHA:
+		vs->vinf.text.d_fmt = GL_RGBA16F;
+	break;
+	case VSTORE_HINT_F32:
+		vs->vinf.text.d_fmt = GL_RGBA32F;
+	break;
+	case VSTORE_HINT_F32_NOALPHA:
+		vs->vinf.text.d_fmt = GL_RGB32F;
+	break;
+	default:
+	break;
+	}
+
+/* note, the local source format is always the native shmif_pixel so that we
+ * don't break one of the many functions that was built on this assumption */
+	vs->w = w;
+	vs->h = h;
+	vs->bpp = sizeof(av_pixel);
+	vs->txmapped = TXSTATE_TEX2D;
+
+	agp_update_vstore(vs, true);
+
+	arcan_mem_free(vs->vinf.text.raw);
+	vs->vinf.text.raw = 0;
+	vs->vinf.text.s_raw = 0;
 }
 
 struct agp_rendertarget* agp_setup_rendertarget(
@@ -352,6 +444,11 @@ void agp_drop_rendertarget(struct agp_rendertarget* tgt)
 	env->delete_renderbuffers(1,&tgt->depth);
 	tgt->fbo = GL_NONE;
 	tgt->depth = GL_NONE;
+
+	if (tgt->msaa_fbo != GL_NONE){
+		drop_msaa(tgt);
+	}
+
 	arcan_mem_free(tgt);
 }
 

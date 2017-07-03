@@ -273,8 +273,6 @@ static const int RENDERTARGET_NOSCALE  = CONST_RENDERTARGET_NOSCALE;
 static const int RENDERFMT_COLOR = RENDERTARGET_COLOR;
 static const int RENDERFMT_DEPTH = RENDERTARGET_DEPTH;
 static const int RENDERFMT_FULL  = RENDERTARGET_COLOR_DEPTH_STENCIL;
-static const int RENDERFMT_F16 = RENDERTARGET_F16;
-static const int RENDERFMT_F32 = RENDERTARGET_F32;
 static const int RENDERFMT_MSAA = RENDERTARGET_MSAA;
 static const int DEVICE_INDIRECT = CONST_DEVICE_INDIRECT;
 static const int DEVICE_DIRECT = CONST_DEVICE_DIRECT;
@@ -5970,15 +5968,11 @@ static int allocsurface(lua_State* ctx)
 
 	struct agp_vstore* ds = vobj->vstore;
 
-	if (quality == 0)
-		agp_empty_vstoreext(ds, w, h, noalpha ?
-			VSTORE_HINT_NOALPHA : VSTORE_HINT_NORMAL);
-	else if (quality > 0)
-		agp_empty_vstoreext(ds, w, h, noalpha ?
-			VSTORE_HINT_HIDEF : VSTORE_HINT_HIDEF_NOALPHA);
-	else
-		agp_empty_vstoreext(ds, w, h, noalpha ?
-			VSTORE_HINT_LODEF : VSTORE_HINT_LODEF_NOALPHA);
+/* the quality levels are defined to have the noalpha as + 1 */
+	if (noalpha)
+		quality++;
+
+	agp_empty_vstoreext(ds, w, h, quality);
 
 	vobj->origw = w;
 	vobj->origh = h;
@@ -10613,8 +10607,6 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"RENDERTARGET_DETACH", RENDERTARGET_DETACH},
 {"RENDERTARGET_COLOR", RENDERFMT_COLOR},
 {"RENDERTARGET_DEPTH", RENDERFMT_DEPTH},
-{"RENDERTARGET_F16", RENDERFMT_F16},
-{"RENDERTARGET_F32", RENDERFMT_F32},
 {"RENDERTARGET_MSAA", RENDERFMT_MSAA},
 {"RENDERTARGET_FULL", RENDERFMT_FULL},
 {"READBACK_MANUAL", 0},
@@ -10642,8 +10634,11 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"BADID", ARCAN_EID},
 {"CLOCKRATE", ARCAN_TIMER_TICK},
 {"CLOCK", 0},
-{"ALLOC_LODEF", -1},
-{"ALLOC_HIDEF", 1},
+{"ALLOC_QUALITY_LOW", VSTORE_HINT_LODEF},
+{"ALLOC_QUALITY_NORMAL", VSTORE_HINT_NORMAL},
+{"ALLOC_QUALITY_HIGH", VSTORE_HINT_HIDEF},
+{"ALLOC_QUALITY_FLOAT16", VSTORE_HINT_F16},
+{"ALLOC_QUALITY_FLOAT32", VSTORE_HINT_F32},
 {"APPL_RESOURCE", RESOURCE_APPL},
 {"APPL_STATE_RESOURCE", RESOURCE_APPL_STATE},
 {"APPL_TEMP_RESOURCE",RESOURCE_APPL_TEMP},

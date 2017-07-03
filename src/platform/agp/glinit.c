@@ -1,4 +1,4 @@
-/* Copyright 2014-2016, Björn Ståhl
+/* Copyright 2014-2017, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -25,14 +25,15 @@ void agp_setenv(struct agp_fenv* dst)
 }
 
 void agp_glinit_fenv(struct agp_fenv* dst,
-	void*(*lookup)(void* tag, const char* sym, bool req), void* tag)
+	void*(*lookfun)(void* tag, const char* sym, bool req), void* tag)
 {
 /* missing: AGP_STATIC/COMPILE-TIME build */
 	memset(dst, '\0', sizeof(struct agp_fenv));
 	dst->cookie = 0xfeedface;
 	dst->mode = -1; /* invalid mode so the first switch will hit */
 
-#define lookup(tag, sym) lookup(tag, sym, true)
+#define lookup_opt(tag, sym) lookfun(tag, sym, false)
+#define lookup(tag, sym) lookfun(tag, sym, true)
 
 /* match the table and order in glfun.h, forego the use of the PFN...
  * as we need even the "abi-bound" 1.x functions dynamically loaded for the
@@ -76,6 +77,18 @@ void agp_glinit_fenv(struct agp_fenv* dst,
 
 	dst->framebuffer_renderbuffer =
 		(void (*)(GLenum, GLenum, GLenum, GLuint)) lookup(tag, "glFramebufferRenderbuffer");
+
+/* MSAA FBO is not supported until 3.0, so opt */
+	dst->renderbuffer_storage_multisample =
+		(void (*)(GLenum, GLenum, GLsizei, GLsizei))
+			lookup_opt(tag, "glRenderbufferStorageMultisample");
+
+	dst->tex_image_2d_multisample =
+		(void (*)(GLenum, GLsizei, GLint, GLsizei, GLsizei, GLboolean))
+			lookup_opt(tag, "glTexImage2DMultisample");
+
+	dst->blit_framebuffer = (GLvoid (*)(GLint, GLint, GLint, GLint,
+		GLint, GLint, GLint, GLint, GLbitfield, GLenum)) lookup(tag, "glBlitFramebuffer");
 	dst->check_framebuffer =
 		(GLenum (*)(GLenum)) lookup(tag, "glCheckFramebufferStatus");
 	dst->delete_framebuffers =
@@ -271,6 +284,7 @@ void agp_glinit_fenv(struct agp_fenv* dst,
 		(void(*)(void))
 			lookup(tag, "glFlush");
 
+#undef lookup_opt
 #undef lookup
 
 	if (!cenv)
