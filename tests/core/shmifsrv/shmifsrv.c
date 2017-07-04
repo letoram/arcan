@@ -81,7 +81,7 @@ int main(int argc, char** argv)
 /* let the monotonic clock drive timers etc. */
 		int ticks = shmifsrv_monotonic_tick(NULL);
 		while(ticks--)
-			shmifsrv_tick();
+			shmifsrv_tick(cl);
 	}
 
 	shmifsrv_free(cl);

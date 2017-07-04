@@ -146,6 +146,33 @@ static int dolibrary (lua_State *L, const char *name) {
   return report(L, docall(L, 1, 1));
 }
 
+/* dump argument stack, stack trace are shown only when --debug is set */
+static void dump_stack(lua_State* ctx)
+{
+	int top = lua_gettop(ctx);
+	printf("-- stack dump (%d)--\n", top);
+
+	for (size_t i = 1; i <= top; i++){
+		int t = lua_type(ctx, i);
+
+		switch (t){
+		case LUA_TBOOLEAN:
+			printf(lua_toboolean(ctx, i) ? "true" : "false");
+		break;
+		case LUA_TSTRING:
+			printf("%d\t'%s'\n", i, lua_tostring(ctx, i));
+			break;
+		case LUA_TNUMBER:
+			printf("%d\t%g\n", i, lua_tonumber(ctx, i));
+			break;
+		default:
+			printf("%d\t%s\n", i, lua_typename(ctx, t));
+			break;
+		}
+	}
+
+	printf("\n");
+}
 
 static const char *get_prompt (lua_State *L, int firstline) {
   const char *p;

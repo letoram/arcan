@@ -267,7 +267,7 @@ static char* egl_envopts[] = {
 	"ARCAN_VIDEO_CONNECTOR=conn_ind", "primary display connector",
 	"ARCAN_VIDEO_DUMP", "set to dump- output connectors and exit",
 	"ARCAN_VIDEO_DRM_MASTER", "fail hard if drmMaster can't be obtained",
-	"ARCAN_VIDEO_WAIT_CONNECTOR", "loop until an active connector is found"
+	"ARCAN_VIDEO_WAIT_CONNECTOR", "loop until an active connector is found",
 	NULL
 };
 
