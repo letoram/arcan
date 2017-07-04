@@ -80,7 +80,7 @@ static void dump_stack(lua_State* ctx)
 	lua_rawgeti(L, LUA_REGISTRYINDEX, meta->href);\
 	lua_getfield(L, -1, X);\
 	if (lua_type(L, -1) != LUA_TFUNCTION){\
-		lua_pop(L, 1);\
+		lua_pop(L, 2);\
 		return B;\
 	}\
 	lua_pushvalue(L, -2);
@@ -341,9 +341,12 @@ static int tui_open(lua_State* L)
 	if (!meta)
 		return 0;
 
+/* set the TUI api table to our metadata */
+	luaL_getmetatable(L, "tui_main");
+	lua_setmetatable(L, -2);
+
 /* modify connection options with table contents */
 	if (lua_type(L, 3) == LUA_TTABLE){
-
 	}
 
 /* error 1, couldn't connect - let the collector collect */
@@ -352,6 +355,9 @@ static int tui_open(lua_State* L)
 		lua_pop(L, 1);
 		return 0;
 	}
+
+/* reference the lua context as part of the tag that is tied to the
+ * shmif/tui context struct so we can reach lua from callbacks */
 	meta->lua = L;
 
 /* Hook up the tui/callbacks, these forward into a handler table
@@ -379,25 +385,27 @@ static int tui_open(lua_State* L)
 	struct tui_settings cfg = arcan_tui_defaults();
 	meta->href = LUA_REFNIL;
 
-/* modify the tui- setup with table options */
+/*
+ * get a reference to the callback table so we can extract it from
+ * shmif/tui callbacks and reach the right context/userdata
+ */
 	if (lua_type(L, 3) == LUA_TTABLE){
 		lua_getfield(L, 3, "handlers");
 		if (lua_type(L, -1) == LUA_TTABLE){
 			meta->href = luaL_ref(L, LUA_REGISTRYINDEX);
 		}
-		else
+		else{
 			lua_pop(L, 1);
+			return 0;
+		}
 	}
+
 	meta->tui = arcan_tui_setup(&meta->con, &cfg, &cbcfg, sizeof(cbcfg));
 	if (!meta->tui){
 		arcan_shmif_drop(&meta->con);
 		lua_pop(L, 1);
 		return 0;
 	}
-
-/* expose the builtin- functions, append handler hook table */
-	luaL_getmetatable(L, "tui_main");
-	lua_setmetatable(L, -2);
 
 	return 1;
 }
@@ -424,9 +432,9 @@ static int valid_flag(lua_State* L, int ind)
 /* map to the screen attribute bitfield */
 static int tui_index_get(lua_State* L)
 {
+	printf("index get\n");
 	TUI_UDATA;
 	int id;
-
 	if (lua_type(L, 1) == LUA_TSTRING && (id = valid_flag(L, 1))){
 
 	}
@@ -436,6 +444,7 @@ static int tui_index_get(lua_State* L)
 
 static int tui_index_set(lua_State* L)
 {
+	printf("index set\n");
 	TUI_UDATA;
 	int id;
 
@@ -564,9 +573,9 @@ void tui_lua_expose(lua_State* L)
 	lua_pop(L, 1);
 
 	luaL_newmetatable(L, "tui_main");
-	lua_pushcfunction(L, tui_index_get);
+	lua_pushvalue(L, -1); // tui_index_get);
 	lua_setfield(L, -2, "__index");
-	lua_pushcfunction(L, tui_index_set);
+	lua_pushvalue(L, -1); // tui_index_set);
 	lua_setfield(L, -2, "__newindex");
 	lua_pushcfunction(L, collect);
 	lua_setfield(L, -2, "__gc");

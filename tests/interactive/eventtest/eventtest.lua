@@ -120,13 +120,17 @@ function translate_str(iotbl)
 		table.remove(translatetbl, 1);
 	end
 
-	line = table.concat(translatetbl, [[\r\n]]);
+	local tbl = {""};
+	for k,v in ipairs(translatetbl) do
+		table.insert(tbl, v);
+		table.insert(tbl, [[\r\n]]);
+	end
 
 	if (translateimg) then
 		delete_image(translateimg);
 	end
 
-	translateimg = drawline(line, 12);
+	translateimg = render_text(tbl);
 	link_image(translateimg, translabel);
 	nudge_image(translateimg, 0, 20);
 	show_image(translateimg);

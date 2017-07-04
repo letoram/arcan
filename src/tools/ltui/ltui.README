@@ -3,3 +3,44 @@ the TUI- C bindings in order to run the tui related tests and examples.
 
 Both the tool and the bindings are in an early alpha stage and shouldn't
 be considered for anything other than curiosity at the moment.
+
+Examples and test scripts are in tests, build and run
+./ltui ../tests/scriptfile.lua
+
+Basic pattern of use:
+
+ tui_open("Hello World", "Untitled 1", {
+     handlers = {table of callbacks}
+ });
+
+Callbacks:
+ label : incomplete,
+ utf8(str) => consumed(true|false, 0|!0)
+ mouse_motion(x, y, modmask)
+ mouse_button(ind, active, x, y, modmask)
+ key(subid, keysym, scancode, modmask)
+ state_in(FILE)
+ state_out(FILE)
+ tick()
+ paste(utf, continuation)
+ resize(cols, rows, neww_px, newh_px)
+
+Global Functions:
+tui_open(title, ident, opttbl) => tui_table or nil
+tui_cattr => attr_table
+
+Table functions:
+refresh
+process
+change_ident
+mouse_forward
+reset
+to_clipboard(str) => true or false
+
+set_attr
+set_handlers
+
+Drawing Functions:
+
+opttable:
+ handler = callback table:
