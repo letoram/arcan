@@ -1,4 +1,5 @@
 /*
+ * we used to do this, now the helper in -server will suffice
 static void bind_shm(struct wl_client* client,
 	void* data, uint32_t version, uint32_t id)
 {
