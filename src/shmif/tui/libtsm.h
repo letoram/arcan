@@ -303,15 +303,6 @@ tsm_age_t tsm_screen_draw(struct tsm_screen *con, tsm_screen_draw_cb draw_cb,
 
 struct tsm_vte;
 
-/* keep in sync with shl_xkb_mods */
-enum tsm_vte_modifier {
-	TSM_SHIFT_MASK		= (1 << 0),
-	TSM_LOCK_MASK		= (1 << 1),
-	TSM_CONTROL_MASK	= (1 << 2),
-	TSM_ALT_MASK		= (1 << 3),
-	TSM_LOGO_MASK		= (1 << 4),
-};
-
 enum vte_color {
 	VTE_COLOR_BLACK = 0,
 	VTE_COLOR_RED,

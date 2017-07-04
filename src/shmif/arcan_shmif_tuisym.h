@@ -2,15 +2,31 @@
  * For compatibility / long-time legacy reasons, the keysym field of a
  * TRANSLATED input event in shmif corresponds to the SDL1.2 list of keysyms.
  *
- * This should be avoid if at all possible and instead use the more
- * abstract facility for registering custom input labels when UI related
- * keypresses are needed.
+ * Avoid using these directly/exclusively and instead use the more abstract
+ * label facility for registering custom inputs, though the inputs themselves
+ * may refer to symbol + modifier as part of the default binding.
  *
  * For actual input, the utf8 field should provide a unicode codepoint
- * corresponding to the current input.
+ * corresponding to the current desired symbol.
  */
 #ifndef TUIK_SYMS
 #define TUIK_SYMS
+
+/* bitmap derived from shmif_event, repeated here for namespace purity */
+typedef enum {
+	TUIM_NONE = 0x0000,
+	TUIM_LSHIFT = 0x0001,
+	TUIM_RSHIFT = 0x0002,
+	TUIM_LCTRL = 0x0040,
+	TUIM_RCTRL = 0x0080,
+	TUIM_LALT = 0x0100,
+	TUIM_RALT = 0x0200,
+	TUIM_ALT = 0x0300,
+	TUIM_LMETA = 0x0400,
+	TUIM_RMETA = 0x0800,
+	TUIM_META = 0x0c00,
+	TUIM_REPEAT = 0x8000,
+} key_modifiers;
 
 enum tuik_syms {
 	TUIK_UNKNOWN = 0,
