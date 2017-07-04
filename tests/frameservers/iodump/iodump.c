@@ -128,7 +128,7 @@ static void dump_event(struct arcan_event ev)
 				ev.ext.content.y_pos, ev.ext.content.y_sz);
 		break;
 		case EVENT_EXTERNAL_LABELHINT:
-			printf("LABELHINT(label: %.16s, default: %.16s, descr: %.58s, "
+			printf("LABELHINT(label: %.16s, default: %d, descr: %.58s, "
 				"i-alias: %d, i-type: %d)\n",
 				ev.ext.labelhint.label, ev.ext.labelhint.initial,
 				ev.ext.labelhint.descr, ev.ext.labelhint.subv,

@@ -157,7 +157,7 @@ struct arcan_shmif_ramp {
 };
 
 #define SHMIF_CMRAMP_RVA(X)(sizeof(struct ramp_block) * (X) *\
-	SHMIF_CMRAMP_PLIM * SHMIF_CMRAMP_ULIM)
+	SHMIF_CMRAMP_PLIM * SHMIF_CMRAMP_UPLIM)
 
 /*
  * retrieve/flag-read the ramp at index [ind], and store a copy of
