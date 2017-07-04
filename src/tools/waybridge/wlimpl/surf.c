@@ -41,6 +41,7 @@ static void surf_damage(struct wl_client* cl, struct wl_resource* res,
  * - signal immediately, but defer if we're invisible and wait for DISPLAYHINT.
  * - set a FUTEX/KQUEUE to monitor the segment vready flag, and when
  *   that triggers, send the signal.
+ * - enable the frame-feedback mode on shmif.
  */
 static void surf_frame(
 	struct wl_client* cl, struct wl_resource* res, uint32_t cb)

@@ -615,6 +615,14 @@ int main(int argc, char* argv[])
 		}
 
 /*
+ * This is a special case, if RENDER_NODE points to a card node, and arcan
+ * has been setup allowing clients to try and negotiate, this function will
+ * actually do the deed.
+ */
+		uintptr_t devnode;
+		arcan_shmifext_dev(&wl.control, &devnode, false);
+
+/*
  * note: the device node matching is part of the bind_display action and the
  * server, so it might be possible to do the GPU swap for new clients on
  * DEVICEHINT by rebinding or by eglUnbindWaylandDisplayWL

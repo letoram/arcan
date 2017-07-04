@@ -78,6 +78,13 @@ static bool xdgsurf_defer_handler(
 	surf->shell_res = toplevel;
 	surf->dispatch = xdgsurf_shmifev_handler;
 
+/* propagate this so the scripts have a chance of following the restrictions
+ * indicated by the protocol */
+	arcan_shmif_enqueue(&surf->acon, &(struct arcan_event){
+		.ext.kind = ARCAN_EVENT(MESSAGE),
+		.ext.message = {"shell:xdg_shell"}
+	});
+
 	struct wl_array states;
 	wl_array_init(&states);
 	zxdg_toplevel_v6_send_configure(toplevel, surf->acon.w, surf->acon.h, &states);

@@ -49,6 +49,11 @@ static bool shell_defer_handler(
 	surf->cookie = 0xfeedface;
 	surf->shell_res = ssurf;
 	surf->dispatch = shellsurf_shmifev_handler;
+	arcan_shmif_enqueue(&surf->acon, &(struct arcan_event){
+		.ext.kind = ARCAN_EVENT(MESSAGE),
+		.ext.message = {"shell:wl_shell"}
+	});
+
 	return true;
 }
 
