@@ -47,6 +47,7 @@ void agp_glinit_fenv(struct agp_fenv* dst,
 	dst->delete_buffers =
 		(void(*)(GLsizei, const GLuint*))
 			lookup(tag, "glDeleteBuffers");
+#if !defined(GLES2)
 	dst->unmap_buffer =
 		(GLboolean(*)(GLenum))
 			lookup(tag, "glUnmapBuffer");
@@ -62,7 +63,7 @@ void agp_glinit_fenv(struct agp_fenv* dst,
 	dst->map_buffer =
 		(void*(*)(GLenum, GLenum))
 			lookup(tag, "glMapBuffer");
-
+#endif
 /* FBOs */
 	dst->gen_framebuffers =
 		(void (*)(GLsizei, GLuint*)) lookup(tag, "glGenFramebuffers");
@@ -88,7 +89,7 @@ void agp_glinit_fenv(struct agp_fenv* dst,
 			lookup_opt(tag, "glTexImage2DMultisample");
 
 	dst->blit_framebuffer = (GLvoid (*)(GLint, GLint, GLint, GLint,
-		GLint, GLint, GLint, GLint, GLbitfield, GLenum)) lookup(tag, "glBlitFramebuffer");
+		GLint, GLint, GLint, GLint, GLbitfield, GLenum)) lookup_opt(tag, "glBlitFramebuffer");
 	dst->check_framebuffer =
 		(GLenum (*)(GLenum)) lookup(tag, "glCheckFramebufferStatus");
 	dst->delete_framebuffers =
@@ -107,7 +108,7 @@ void agp_glinit_fenv(struct agp_fenv* dst,
 			lookup(tag, "glVertexAttribPointer");
 	dst->vertex_iattrpointer =
 		(void (*)(GLuint, GLint, GLenum, GLsizei, const GLvoid*))
-			lookup(tag, "glVertexAttribIPointer");
+			lookup_opt(tag, "glVertexAttribIPointer");
 	dst->disable_vertex_attrarray =
 		(void (*)(GLuint))
 			lookup(tag, "glDisableVertexAttribArray");
@@ -204,9 +205,11 @@ void agp_glinit_fenv(struct agp_fenv* dst,
 			lookup(tag, "glGenerateMipmap");
 
 /* Data Retrieval */
+#if !defined(GLES3) && !defined(GLES2)
 	dst->get_tex_image =
 		(void (*)(GLenum, GLint, GLenum, GLenum, GLvoid*))
 			lookup(tag, "glGetTexImage");
+#endif
 	dst->read_pixels =
 		(void (*)(GLint, GLint, GLsizei, GLsizei, GLenum, GLenum,GLvoid*))
 			lookup(tag, "glReadPixels");
@@ -250,9 +253,14 @@ void agp_glinit_fenv(struct agp_fenv* dst,
 	dst->viewport =
 		(void(*)(GLint, GLint, GLsizei, GLsizei))
 			lookup(tag, "glViewport");
+
+#if !defined(GLES3) && !defined(GLES2)
 	dst->polygon_mode =
 		(void(*)(GLenum, GLenum))
 			lookup(tag, "glPolygonMode");
+#else
+/*	dst->polygon_mode = glPolygonModeES; */
+#endif
 	dst->line_width =
 		(void(*)(GLfloat))
 			lookup(tag, "glLineWidth");

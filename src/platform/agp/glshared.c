@@ -132,6 +132,8 @@ static bool alloc_fbo(struct agp_rendertarget* dst, bool retry)
 /*
  * we need two FBOs, one for the MSAA pass and one to resolve into
  */
+
+#if !defined(GLES2)
 	if (mode == RENDERTARGET_MSAA){
 		env->gen_textures(1, &dst->msaa_color);
 		env->bind_texture(GL_TEXTURE_2D_MULTISAMPLE, dst->msaa_color);
@@ -153,6 +155,7 @@ static bool alloc_fbo(struct agp_rendertarget* dst, bool retry)
 			dst->mode |= RENDERTARGET_COLOR_DEPTH_STENCIL;
 		}
 	}
+#endif
 
 	env->gen_framebuffers(1, &dst->fbo);
 
@@ -167,19 +170,18 @@ static bool alloc_fbo(struct agp_rendertarget* dst, bool retry)
 
 /* need a Z buffer in the offscreen rendering but don't want
  * bo store it, so setup a renderbuffer */
-		if (mode > RENDERTARGET_COLOR){
+		if (mode > RENDERTARGET_COLOR && !retry){
 			env->gen_renderbuffers(1, &dst->depth);
 
 /* could use GL_DEPTH_COMPONENT only if we'd know that there
  * wouldn't be any clipping in the active rendertarget */
-			if (!retry){
-				env->bind_renderbuffer(GL_RENDERBUFFER, dst->depth);
-				env->renderbuffer_storage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8,
-					dst->store->w, dst->store->h);
-				env->bind_renderbuffer(GL_RENDERBUFFER, 0);
-				env->framebuffer_renderbuffer(GL_FRAMEBUFFER,
-					GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, dst->depth);
-			}
+			env->bind_renderbuffer(GL_RENDERBUFFER, dst->depth);
+			env->renderbuffer_storage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8,
+				dst->store->w, dst->store->h);
+
+			env->framebuffer_renderbuffer(GL_FRAMEBUFFER,
+				GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, dst->depth);
+			env->bind_renderbuffer(GL_RENDERBUFFER, 0);
 		}
 	}
 	else {
@@ -321,12 +323,12 @@ void agp_empty_vstoreext(struct agp_vstore* vs,
 {
 	switch (hint){
 	case VSTORE_HINT_LODEF:
-		vs->vinf.text.d_fmt = GL_UNSIGNED_SHORT_5_6_5;
+		vs->vinf.text.d_fmt = GL_UNSIGNED_SHORT_4_4_4_4;
 		vs->vinf.text.s_fmt = GL_RGBA;
 		vs->vinf.text.s_type = GL_UNSIGNED_SHORT;
 	break;
 	case VSTORE_HINT_LODEF_NOALPHA:
-		vs->vinf.text.d_fmt = GL_UNSIGNED_SHORT_4_4_4_4;
+		vs->vinf.text.d_fmt = GL_UNSIGNED_SHORT_5_6_5;
 		vs->vinf.text.s_fmt = GL_RGB;
 		vs->vinf.text.s_type = GL_UNSIGNED_SHORT;
 	break;
@@ -334,6 +336,7 @@ void agp_empty_vstoreext(struct agp_vstore* vs,
 	case VSTORE_HINT_NORMAL_NOALPHA:
 		vs->vinf.text.d_fmt = GL_STORE_PIXEL_FORMAT;
 	break;
+#if !defined(GLES2) && !defined(GLES3)
 	case VSTORE_HINT_HIDEF:
 	case VSTORE_HINT_HIDEF_NOALPHA:
 		vs->vinf.text.d_fmt = GL_UNSIGNED_INT_10_10_10_2;
@@ -361,6 +364,7 @@ void agp_empty_vstoreext(struct agp_vstore* vs,
 		vs->vinf.text.s_type = GL_FLOAT;
 		vs->vinf.text.s_raw = w * h * sizeof(float) * 4;
 	break;
+#endif
 	default:
 	break;
 	}

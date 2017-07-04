@@ -380,15 +380,17 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 
 	static bool ld;
 
+/*
 	agp_activate_rendertarget(NULL);
 	arcan_vint_drawrt(arcan_vint_world(), 0, 0, egl.mdispw, egl.mdisph);
 
 	arcan_vint_drawcursor(true);
 	arcan_vint_drawcursor(false);
+*/
 #endif
-
+/*
 	eglSwapBuffers(egl.disp, egl.surf);
-
+ */
 	if (post)
 		post();
 }
