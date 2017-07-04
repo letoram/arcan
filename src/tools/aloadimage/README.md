@@ -48,7 +48,14 @@ Status
  - [ ] GPU acceleration toggle
  - [ ] Per image transformations (rotate, flip, ...)
  - [ ] Internationalization
+ - [ ] Announce extensions
  - [ ] Handle BCHUNKSTATE/drag'n'drop/paste
  - [ ] Stream-status/Content-position-hint
  - [ ] State support (save playlist, configuration)
  - [ ] Thumbnail mode
+ - [x] Basic Raster Images (via stbimage)
+ - [ ] Vector contents support
+   - [x] Load/Draw Simple SVG (need refactor, assumes endianness)
+   - [ ] Redraw / invalidate on DISPLAYHINT
+ - [ ] Animated GIF
+ - [ ] Expose command-line options as ARCAN\_ARG

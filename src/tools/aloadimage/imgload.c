@@ -29,6 +29,13 @@
 	#include <seccomp.h>
 #endif
 
+#define NANOSVG_IMPLEMENTATION
+#define NANOSVG_ALL_COLOR_KEYWORDS
+#define NSVG_RGB(r,g,b)( SHMIF_RGBA(r, g, b, 0x00) )
+#include "nanosvg.h"
+#define NANOSVGRAST_IMPLEMENTATION
+#include "nanosvgrast.h"
+
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 #include "imgload.h"
@@ -162,11 +169,37 @@ bool imgload_spawn(struct arcan_shmif_cont* con, struct img_state* tgt, int p)
  * the repacking is done to make sure that the channel-order matches the shmif
  * format as we don't have controls for specifying that in stbi- right now
  */
+
+/* peek on the first characters and see if we have xml/svg */
+	char hdr[8];
+	if (1 != fread(hdr, 8, 1, inf))
+		exit(EXIT_FAILURE);
+	if (strncmp(hdr, "<?xml", 5) == 0 || strncmp(hdr, "<svg", 4) == 0){
+		fseek(inf, 0, SEEK_SET);
+		NSVGimage* image = nsvgParseFromFile(inf, "px", tgt->density);
+		if (image){
+			size_t w = image->width;
+			size_t h = image->height;
+			struct NSVGrasterizer* rast = nsvgCreateRasterizer();
+			nsvgRasterize(rast, image,
+				0, 0, 1, tgt->out->buf, w, h, w * sizeof(shmif_pixel));
+			tgt->out->w = w;
+			tgt->out->h = h;
+			tgt->out->buf_sz = w * h * 4;
+			tgt->out->vector = true;
+			tgt->out->ready = true;
+			tgt->out->msg[0] = '\0';
+			exit(EXIT_SUCCESS);
+		}
+	}
+
+/* else just assume stbi- can handle it */
+	fseek(inf, 0, SEEK_SET);
+
 	int dw, dh;
 	shmif_pixel* buf = (shmif_pixel*)
 		stbi_load_from_file(inf, &dw, &dh, NULL, sizeof(shmif_pixel));
-	shmif_pixel* out = (shmif_pixel*)
-		tgt->out->buf;
+	shmif_pixel* out = (shmif_pixel*) tgt->out->buf;
 	if (buf){
 		for (size_t i = dw * dh; i > 0; i--){
 			uint8_t r = ((*buf) & 0x000000ff);

@@ -30,6 +30,7 @@ bool disable_syscall_flt = false;
  */
 struct draw_state {
 	struct arcan_shmif_cont* con;
+	float dpi;
 
 /* blitting controls */
 	shmif_pixel pad_col;
@@ -41,7 +42,7 @@ struct draw_state {
 	int wnd_lim, wnd_fwd, wnd_pending, wnd_act;
 	int wnd_prev, wnd_next;
 	int timeout;
-	bool stdin_pending, loaded;
+	bool stdin_pending, loaded, animated, vector;
 
 /* playlist related state */
 	struct img_state* playlist;
@@ -227,7 +228,7 @@ static bool update_item(struct draw_state* ds, struct img_state* i, int step)
 		}
 	}
 	else if (step && i->life > 0){
-		i->life--;
+//		i->life--;
 		if (!i->life){
 			debug_message("worker (%s) timed out\n", i->fname);
 			imgload_reset(i);
@@ -420,7 +421,6 @@ static bool set_playlist_pos(struct draw_state* ds, int new_i)
 struct lent {
 	const char* lbl;
 	const char* descr;
-	const char* def;
 	int defsym;
 	bool(*ptr)(struct draw_state*);
 };
@@ -468,12 +468,12 @@ static bool aspect_ratio(struct draw_state* state)
 }
 
 static const struct lent labels[] = {
-	{"PREV", "Step to previous entry in playlist", "H", TUIK_H, step_prev},
-	{"NEXT", "Step to next entry in playlist", "L", TUIK_L, step_next},
-	{"PL_TOGGLE", "Toggle playlist stepping on/off", "SPACE", TUIK_SPACE, pl_toggle},
-	{"SOURCE_SIZE", "Resize the window to fit image size", "F5", TUIK_F5, source_size},
-	{"SERVER_SIZE", "Use the recommended connection size", "F6", TUIK_F6, server_size},
-	{"ASPECT_TOGGLE", "Maintain aspect ratio", "TAB", TUIK_TAB, aspect_ratio},
+	{"PREV", "Step to previous entry in playlist", TUIK_H, step_prev},
+	{"NEXT", "Step to next entry in playlist", TUIK_L, step_next},
+	{"PL_TOGGLE", "Toggle playlist stepping on/off", TUIK_SPACE, pl_toggle},
+	{"SOURCE_SIZE", "Resize the window to fit image size", TUIK_F5, source_size},
+	{"SERVER_SIZE", "Use the recommended connection size", TUIK_F6, server_size},
+	{"ASPECT_TOGGLE", "Maintain aspect ratio", TUIK_TAB, aspect_ratio},
 /*
  * "ZOOM_IN", "Increment the scale factor (integer)", "F1", TUIK_F1, zoom_in},
 	{"ZOOM_OUT", "Decrement the scale factor (integer)", "F2", TUIK_F2, zoom_out},
@@ -606,15 +606,12 @@ static void expose_labels(struct arcan_shmif_cont* con)
 		arcan_event ev = {
 			.category = EVENT_EXTERNAL,
 			.ext.kind = ARCAN_EVENT(LABELHINT),
+			.ext.labelhint.initial = cur->defsym,
 			.ext.labelhint.idatatype = EVENT_IDATATYPE_DIGITAL
 		};
 			snprintf(ev.ext.labelhint.label,
 			sizeof(ev.ext.labelhint.label)/sizeof(ev.ext.labelhint.label[0]),
 			"%s", cur->lbl
-		);
-		snprintf(ev.ext.labelhint.initial,
-			sizeof(ev.ext.labelhint.initial)/sizeof(ev.ext.labelhint.initial[0]),
-			"%s", cur->def
 		);
 		cur++;
 		arcan_shmif_enqueue(con, &ev);
@@ -701,17 +698,6 @@ int main(int argc, char** argv)
 	if (ds.pl_size == 0 && !interactive)
 		return show_use("no images found");
 
-/* FIXME:
- *  on interactive, burn a playlist slot for whatever action the UI may
- *  perform, and if there's nothing else in the playlist, pick a special loop
- *  that only reacts on paste and bchunks. Also announce the extensions we
- *  support.
- */
-
-/*
- * FIXME:
- *  we are missing aarr- based arugment parsing
- */
 	struct arcan_shmif_cont cont = arcan_shmif_open_ext(
 		SHMIF_ACQUIRE_FATALFAIL, NULL, (struct shmif_open_ext){
 			.type = SEGID_MEDIA,
@@ -719,6 +705,11 @@ int main(int argc, char** argv)
 			.ident = ""
 		}, sizeof(struct shmif_open_ext)
 	);
+	struct arcan_shmif_initial* init;
+	arcan_shmif_initial(&cont, &init);
+	if (init && init->density > 0){
+		ds.dpi = init->density / 2.5;
+	}
 
 	ds.con = &cont;
 

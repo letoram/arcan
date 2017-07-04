@@ -11,7 +11,7 @@ extern bool disable_syscall_flt;
 
 /* mmaped block for write-out */
 struct img_data {
-	bool ready;
+	bool ready, animated, vector;
 	size_t buf_sz;
 	int w,h;
 	int x,y;
@@ -26,6 +26,7 @@ struct img_state {
 	int fd;
 	bool is_stdin;
 	int life;
+	float density;
 
 /* SETUP_GET */
 	bool broken;
