@@ -267,8 +267,7 @@ static char* egl_envopts[] = {
 	"ARCAN_VIDEO_CONNECTOR=conn_ind", "primary display connector",
 	"ARCAN_VIDEO_DUMP", "set to dump- output connectors and exit",
 	"ARCAN_VIDEO_DRM_MASTER", "fail hard if drmMaster can't be obtained",
-	"ARCAN_VIDEO_WAIT_CONNECTOR", "loop until an active connector is found",
-	"ARCAN_VIDEO_ALLOW_AUTH", "allow clients to auth against master (insecure)",
+	"ARCAN_VIDEO_WAIT_CONNECTOR", "loop until an active connector is found"
 	NULL
 };
 
@@ -2985,9 +2984,6 @@ void platform_video_synch(uint64_t tick_count, float fract,
 
 bool platform_video_auth(int cardn, unsigned token)
 {
-	if (!getenv("ARCAN_VIDEO_ALLOW_AUTH"))
-		return false;
-
 	int fd = platform_video_cardhandle(cardn);
 	if (fd != -1){
 		bool auth_ok = drmAuthMagic(fd, token);

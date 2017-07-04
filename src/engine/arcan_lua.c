@@ -6969,6 +6969,7 @@ enum target_flags {
 	TARGET_FLAG_ALLOW_LDEF,
 	TARGET_FLAG_ALLOW_VOBJ,
 	TARGET_FLAG_ALLOW_INPUT,
+	TARGET_FLAG_ALLOW_GPUAUTH,
 	TARGET_FLAG_LIMIT_SIZE,
 	TARGET_FLAG_ENDM
 };
@@ -7004,6 +7005,10 @@ static void updateflag(arcan_vobj_id vid, enum target_flags flag, bool toggle)
 
 	case TARGET_FLAG_AUTOCLOCK:
 		fsrv->flags.autoclock = toggle;
+	break;
+
+	case TARGET_FLAG_ALLOW_GPUAUTH:
+		fsrv->flags.gpu_auth = toggle;
 	break;
 
 	case TARGET_FLAG_NO_BUFFERPASS:
@@ -10593,6 +10598,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"TARGET_ALLOWLODEF", TARGET_FLAG_ALLOW_LDEF},
 {"TARGET_ALLOWVECTOR", TARGET_FLAG_ALLOW_VOBJ},
 {"TARGET_ALLOWINPUT", TARGET_FLAG_ALLOW_INPUT},
+{"TARGET_ALLOWGPU", TARGET_FLAG_ALLOW_GPUAUTH},
 {"TARGET_LIMITSIZE", TARGET_FLAG_LIMIT_SIZE},
 {"DISPLAY_STANDBY", ADPMS_STANDBY},
 {"DISPLAY_OFF", ADPMS_OFF},
