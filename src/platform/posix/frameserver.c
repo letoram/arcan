@@ -797,6 +797,8 @@ static bool prepare_segment(struct arcan_frameserver* ctx,
 	ctx->desc = (struct arcan_frameserver_meta){
 		.width = hintw,
 		.height = hinth,
+		.samplerate = ARCAN_SHMIF_SAMPLERATE,
+		.channels = ARCAN_SHMIF_ACHANNELS,
 		.bpp = sizeof(av_pixel)
 	};
 
