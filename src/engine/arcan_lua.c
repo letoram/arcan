@@ -3926,7 +3926,7 @@ static void emit_segreq(lua_State* ctx, struct arcan_extevent* ev)
 	luactx.cb_source_kind = CB_SOURCE_NONE;
 
 /* call into callback, if we have been consumed,
- * do nothing, otherwise issue a reject */
+ * do nothing, otherwise a reject */
 	if (luactx.last_segreq != NULL){
 		arcan_event rev = {
 			.category = EVENT_TARGET,
@@ -7380,7 +7380,7 @@ static int targetaccept(lua_State* ctx)
 
 	if (!newref){
 		lua_pushvid(ctx, ARCAN_EID);
-		lua_pushvid(ctx, ARCAN_EID);
+		lua_pushaid(ctx, ARCAN_EID);
 		LUA_ETRACE("accept_target", "couldn't allocate frameserver", 2);
 	}
 	newref->tag = find_lua_callback(ctx);
@@ -7396,7 +7396,8 @@ static int targetaccept(lua_State* ctx)
 	}
 
 	lua_pushvid(ctx, newref->vid);
-	lua_pushvid(ctx, newref->aid);
+	lua_pushaid(ctx, newref->aid);
+	luactx.last_segreq = NULL;
 	trace_allocation(ctx, "subseg", newref->vid);
 
 	LUA_ETRACE("accept_target", NULL, 2);
