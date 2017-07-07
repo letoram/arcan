@@ -1,13 +1,25 @@
 static void translate_input(struct comp_surf* cl, arcan_ioevent* ev)
 {
 	if (ev->devkind == EVENT_IDEVKIND_TOUCHDISP){
+		trace("touch\n");
 	}
 	else if (ev->devkind == EVENT_IDEVKIND_MOUSE){
+		trace("mouse\n");
+
 /* wl_mouse_ (send_button, send_axis, send_enter, send_leave) */
 	}
-	else if (ev->datatype == EVENT_IDATATYPE_TRANSLATED){
-/* wl_keyboard_send_key,
- * wl_keyboard_send_modifiers,
+	else if (ev->datatype ==
+		EVENT_IDATATYPE_TRANSLATED && cl->client && cl->client->keyboard){
+		trace("keyboard (%d:%d)\n", (int)ev->subid,
+			(int)ev->input.translated.scancode);
+		wl_keyboard_send_key(cl->client->keyboard,
+			wl_display_next_serial(wl.disp),
+			ev->pts,
+			ev->subid,
+			ev->input.translated.active /* WL_KEYBOARD_KEY_STATE_PRESSED == 1*/
+		);
+
+/* wl_keyboard_send_modifiers,
  * wl_keyboard_send_repeat_info */
 	}
 	else
@@ -60,9 +72,10 @@ static bool displayhint_handler(struct comp_surf* surf, struct arcan_tgtevent* e
 				wl_array_release(&states);
 			}
 
-/* we can't send enter for the pointer before we actually get an event
+/* We can't send enter for the pointer before we actually get an event
  * so that we know the local coordinates or at least the relative pos,
- * just track this here and send the enter on the first sample we get. */
+ * just track this here and send the enter on the first sample we get.
+ * The other option is to add a hack over MESSAGE for wayland clients */
 			if (surf->client->pointer){
       wl_pointer_send_enter(surf->client->pointer,STEP_SERIAL(),surf->res, 0, 0);
       surf->pointer_pending = 2;
@@ -136,6 +149,7 @@ static void flush_client_events(
 			continue;
 		switch(ev.tgt.kind){
 		case TARGET_COMMAND_EXIT:
+			trace("shmif-> kill client");
 /*		wl_client_destroy(cl->client);
 			trace("shmif-> kill client"); */
 		break;
@@ -152,11 +166,14 @@ static void flush_client_events(
  *     resubmit-request, fail: simulate _COMMAND_EXIT
  *     accept: update the resource reference
  */
+		break;
 		case TARGET_COMMAND_RESET:
 		break;
 		case TARGET_COMMAND_REQFAIL:
+			trace("request for surface (%d) was rejected\n", ev.tgt.ioevs[0].iv);
 		break;
 		case TARGET_COMMAND_NEWSEGMENT:
+			trace("new surface, deal with it\n");
 		break;
 
 /* if selection status change, send wl_surface_
@@ -175,6 +192,7 @@ static bool flush_bridge_events(struct arcan_shmif_cont* con)
 {
 	struct arcan_event ev;
 	while (arcan_shmif_poll(con, &ev) > 0){
+		trace("(bridge-event) %s\n", arcan_shmif_eventstr(&ev, NULL, 0));
 		if (ev.category == EVENT_TARGET){
 		switch (ev.tgt.kind){
 		case TARGET_COMMAND_EXIT:

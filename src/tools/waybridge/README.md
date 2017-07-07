@@ -80,7 +80,7 @@ TODO
   - [x] 1:1 client to bridge mapping
     - [x] \*:1 client to bridge mapping
   - [ ] Seat
-    - [ ] Keyboard
+    - [x] Keyboard
     - [ ] Mouse
     - [ ] Touch
   - [ ] Mouse Cursor

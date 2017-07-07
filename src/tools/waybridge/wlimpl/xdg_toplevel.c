@@ -34,7 +34,7 @@ static void xdgtop_appid(
 static void xdgtop_wndmenu(struct wl_client* cl, struct wl_resource* res,
 	struct wl_resource* seat, uint32_t serial, int32_t x, int32_t y)
 {
-	trace("xdgtop_wndmenu");
+	trace("xdgtop_wndmenu (%"PRId32", %"PRId32")", x, y);
 }
 
 /*
@@ -89,7 +89,7 @@ static void xdgtop_set_max(struct wl_client* cl,
 static void xdgtop_set_min(struct wl_client* cl,
 	struct wl_resource* res, int32_t width, int32_t height)
 {
-	trace("xdgtop_set_min");
+	trace("xdgtop_set_min (%"PRId32", %"PRId32")", width, height);
 }
 
 /*

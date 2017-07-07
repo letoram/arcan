@@ -29,6 +29,7 @@ struct acon_tag {
 struct surface_request {
 /* local identifier, only for personal tracking */
 	uint32_t id;
+	const char* trace;
 
 /* the type of the segment that should be requested */
 	int segid;

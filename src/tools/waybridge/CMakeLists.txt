@@ -6,6 +6,7 @@ include(Wayland)
 find_package(Wayland)
 find_package(WaylandProtocols REQUIRED)
 find_package(Sanitizers REQUIRED)
+find_package(XKB REQUIRED)
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
 	add_definitions(-D_DEBUG)
@@ -21,6 +22,7 @@ include_directories(
 	${ARCAN_SHMIF_INCLUDE_DIR}
 	${WAYLAND_SERVER_INCLUDE_DIRS}
 	${CMAKE_CURRENT_BINARY_DIR}
+	${XKB_INCLUDE_DIRS}
 )
 add_definitions(
 	-Wall
@@ -49,6 +51,7 @@ SET(LIBRARIES
 	${ARCAN_SHMIF_LIBRARY}
 	${ARCAN_SHMIF_EXT_LIBRARY}
 	${WAYLAND_SERVER_LIBRARIES}
+	${XKB_LIBRARIES}
 	wlprot
 )
 
