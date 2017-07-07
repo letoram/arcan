@@ -9,6 +9,10 @@ static bool xdgsurf_shmifev_handler(
 
 		case TARGET_COMMAND_DISPLAYHINT:{
 		/* update state tracking first */
+			trace("displayhint(%d, %d, %d, %d) = (%d*%d)",
+				ev->tgt.ioevs[0].iv, ev->tgt.ioevs[1].iv,
+				ev->tgt.ioevs[2].iv, ev->tgt.ioevs[3].iv, surf->acon.w, surf->acon.h);
+
 			bool changed = displayhint_handler(surf, &ev->tgt);
 
 /* and then, if something has changed, send the configure event */
@@ -59,6 +63,7 @@ static bool xdgsurf_defer_handler(
 	struct surface_request* req, struct arcan_shmif_cont* con)
 {
 	if (!con){
+		trace("xdgsurf:reqfail");
 		wl_resource_post_no_memory(req->target);
 		return false;
 	}
@@ -104,6 +109,7 @@ static void xdgsurf_toplevel(
 		.segid = SEGID_APPLICATION,
 		.target = res,
 		.id = id,
+		.trace = "xdg toplevel",
 		.dispatch = xdgsurf_defer_handler,
 		.client = surf->client,
 		.source = surf
@@ -127,7 +133,7 @@ static void xdgsurf_getpopup(struct wl_client* cl, struct wl_resource* res,
 static void xdgsurf_set_geometry(struct wl_client* cl,
 	struct wl_resource* res, int32_t x, int32_t y, int32_t width, int32_t height)
 {
-	trace("xdgsurf_setgeom(%"PRIu32"+%"PRIu32", "PRIu32"+%"PRIu32"",
+	trace("xdgsurf_setgeom(%"PRIu32"+%"PRIu32", %"PRIu32"+%"PRIu32")",
 		x, width, y, height);
 }
 

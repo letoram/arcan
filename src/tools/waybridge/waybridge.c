@@ -14,6 +14,10 @@
 #include <poll.h>
 #include <assert.h>
 
+#include <xkbcommon/xkbcommon.h>
+#include <xkbcommon/xkbcommon-keysyms.h>
+#include <xkbcommon/xkbcommon-compose.h>
+
 static inline void trace(const char* msg, ...)
 {
 	va_list args;
@@ -32,8 +36,36 @@ typedef void (*PFNGLEGLIMAGETARGETTEXTURE2DOESPROC) (EGLenum, EGLImage);
 static PFNEGLQUERYWAYLANDBUFFERWL query_buffer;
 static PFNEGLBINDWAYLANDDISPLAYWL bind_display;
 static PFNGLEGLIMAGETARGETTEXTURE2DOESPROC img_tgt_text;
+
+/*
+ * shared allocation functions, find_client takes a reference to a
+ * wl client and tries to locate its bridge_client structure, or alloc
+ * if it doesn't exist.
+ */
 static struct bridge_client* find_client(struct wl_client* cl);
+
+/*
+ * we use a slightly weird system of allocation groups and slots,
+ * where each group act as a "up to 64-" bitmap of bridged surfaces
+ * with the hope of using that as a structure to multiprocess and/or
+ * multithread
+ */
 static void reset_group_slot(int group, int slot);
+
+/*
+ * This is one of the ugliest things around, so the client is supposed to
+ * handle its own keymaps - why should it be easy for the compositor to know
+ * what the f is going on. Anyhow, the idea is that you take and compile an
+ * xkb- map, translate that to a simplified string, write that to a temporary
+ * file, grab a descriptor to that file, send it to the client and unlink. On
+ * linux, pretty much everything has access to proc.  This means /proc/pid/fd.
+ * This means that even if we would map this ro, a client can open a rw
+ * reference to this file. If we re-use this descriptor between multiple
+ * clients - they can corrupt eachothers maps. To get around this idiocy,
+ * we need to repeat this procedure for every client.
+ */
+static bool waybridge_instance_keymap(int* fd, int* fmt, size_t* sz);
+
 static void destroy_comp_surf(struct comp_surf* surf);
 
 /* static PFNEGLGETPLATFORMDISPLAYEXTPROC get_platform_display; */
@@ -104,6 +136,63 @@ static uint64_t find_set64(uint64_t bmap)
 	return __builtin_ffsll(bmap);
 }
 
+static char* load_keymap()
+{
+	trace("building keymap");
+	struct xkb_context* ctx = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+	if (!ctx)
+		return false;
+
+/* load the keymap, XKB_ environments will get the map */
+	struct xkb_keymap* map =
+		xkb_keymap_new_from_names(ctx, NULL, XKB_KEYMAP_COMPILE_NO_FLAGS);
+
+	if (!map){
+		xkb_context_unref(ctx);
+		return false;
+	}
+	char* keymap_str = xkb_map_get_as_string(map);
+	xkb_keymap_unref(map);
+	xkb_context_unref(ctx);
+	return keymap_str;
+}
+
+static bool waybridge_instance_keymap(int* out_fd, int* out_fmt, size_t* out_sz)
+{
+	static char* keymap;
+	if (!keymap)
+		keymap = load_keymap();
+
+	if (!keymap || !out_fd || !out_fmt || !out_sz)
+		return false;
+
+	trace("creating temporary keymap copy");
+
+	char* chfn = NULL;
+	if (-1 == asprintf(&chfn, "%s/wlbridge-kmap-XXXXXX",
+		getenv("XDG_RUNTIME_DIR") ? getenv("XDG_RUNTIME_DIR") : "."))
+			chfn = NULL;
+
+	int fd;
+	if (!chfn || (fd = mkstemp(chfn)) == -1){
+		trace("make tempmap failed");
+		free(chfn);
+		return false;
+	}
+	unlink(chfn);
+
+	*out_sz = strlen(keymap) + 1;
+	if (*out_sz != write(fd, keymap, *out_sz)){
+		trace("write keymap failed");
+		close(fd);
+	}
+
+	*out_fd = fd;
+	*out_fmt = WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1;
+
+	return true;
+}
+
 static bool alloc_group_id(int type, int* groupid, int* slot, int fd)
 {
 	for (size_t i = 0; i < wl.n_groups; i++){
@@ -168,10 +257,11 @@ static bool request_surface(
  * the request type is a CURSOR or a POPUP (both are possible in XDG).
  */
 	static uint32_t alloc_id = 0xbabe;
+	trace("segment-req source(%s) -> %d\n", req->trace, alloc_id);
 	arcan_shmif_enqueue(&cl->acon, &(struct arcan_event){
 		.ext.kind = ARCAN_EVENT(SEGREQ),
 		.ext.segreq.kind = req->segid,
-		.ext.segreq.id = alloc_id
+		.ext.segreq.id = alloc_id++
 	});
 	struct arcan_event* pqueue;
 	ssize_t pqueue_sz;

@@ -50,6 +50,7 @@ static void seat_pointer(struct wl_client* cl,
 		request_surface(bcl, &(struct surface_request){
 			.segid = SEGID_CURSOR,
 			.target = res,
+			.trace = "cursor",
 			.id = id,
 			.dispatch = pointer_handler,
 			.client = bcl
@@ -61,6 +62,7 @@ static void seat_pointer(struct wl_client* cl,
 
 static void kbd_release(struct wl_client* client, struct wl_resource* res)
 {
+	trace("kbd release");
 	wl_resource_destroy(res);
 }
 
@@ -77,16 +79,27 @@ static void seat_keyboard(struct wl_client* cl,
 	struct wl_resource* kbd = wl_resource_create(cl,
 		&wl_keyboard_interface, wl_resource_get_version(res), id);
 
+
 	if (!kbd){
 		wl_resource_post_no_memory(res);
 		return;
 	}
 
+	size_t sz;
+	int fd;
+	int fmt;
+	if (!waybridge_instance_keymap(&fd, &fmt, &sz)){
+		wl_resource_post_no_memory(res);
+		wl_resource_destroy(res);
+		return;
+	}
+
+/* we might also need to send repeat rate, that information isn't
+ * exported by arcan in any way, so might need to either add a side-channel
+ * or user setting */
 	bcl->keyboard = kbd;
 	wl_resource_set_implementation(kbd, &kbd_if, bcl, NULL);
-
-/* FIXME: need to send keyboard layout
- * 	wl_keyboard_send_keymap */
+	wl_keyboard_send_keymap(kbd, fmt, fd, sz);
 }
 
 static void seat_touch(struct wl_client* cl,
