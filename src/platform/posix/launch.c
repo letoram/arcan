@@ -349,6 +349,10 @@ struct arcan_frameserver* platform_launch_fork(
 		dup2(clsock, STDERR_FILENO+1);
 		arcan_closefrom(STDERR_FILENO+2);
 
+/* split out into a new process group */
+		if (setsid() == -1)
+			exit(EXIT_FAILURE);
+
 /*
  * we need to mask this signal as when debugging parent process, GDB pushes
  * SIGINT to children, killing them and changing the behavior in the core
