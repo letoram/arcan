@@ -67,7 +67,12 @@ struct comp_surf {
 	struct wl_resource* buf;
 	struct wl_resource* frame_callback;
 
+	size_t last_w, last_h;
+
+/* for mouse pointer, we need a surface accumulator */
 	int pointer_pending;
+	int acc_x, acc_y;
+
 	struct surf_state states;
 	uint32_t cb_id;
 /* return [true] if the event was consumed and shouldn't be processed by the

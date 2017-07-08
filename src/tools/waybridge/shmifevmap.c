@@ -3,7 +3,43 @@ static void translate_input(struct comp_surf* cl, arcan_ioevent* ev)
 	if (ev->devkind == EVENT_IDEVKIND_TOUCHDISP){
 		trace("touch\n");
 	}
-	else if (ev->devkind == EVENT_IDEVKIND_MOUSE){
+	else if (ev->devkind == EVENT_IDEVKIND_MOUSE && cl->client->pointer){
+		if (ev->datatype == EVENT_IDATATYPE_DIGITAL){
+			wl_pointer_send_button(cl->client->pointer, STEP_SERIAL(),
+				ev->pts, ev->subid, ev->input.digital.active);
+		}
+		else if (ev->datatype == EVENT_IDATATYPE_ANALOG){
+/* first sample, now we can send enter */
+
+			if (cl->pointer_pending == 1){
+				cl->pointer_pending = 2;
+				wl_pointer_send_enter(cl->client->pointer, STEP_SERIAL(), cl->res, 0, 0);
+			}
+/* both samples */
+			if (ev->subid == 2){
+				if (ev->input.analog.gotrel){
+					cl->acc_x += ev->input.analog.axisval[0];
+					cl->acc_y += ev->input.analog.axisval[2];
+					wl_pointer_send_motion(
+						cl->client->pointer, ev->pts, cl->acc_x, cl->acc_y);
+				}
+				else{
+					wl_pointer_send_motion(cl->client->pointer, ev->pts,
+						ev->input.analog.axisval[0], ev->input.analog.axisval[2]);
+				}
+			}
+/* one sample at a time, we need history */
+			else {
+				if (ev->input.analog.gotrel){
+				}
+				else {
+				}
+			}
+//wl_pointer_send_enter(surf->client->pointer,STEP_SERIAL(),surf->res, 0, 0);
+
+		}
+		else
+			;
 		trace("mouse\n");
 
 /* wl_mouse_ (send_button, send_axis, send_enter, send_leave) */
@@ -19,8 +55,7 @@ static void translate_input(struct comp_surf* cl, arcan_ioevent* ev)
 			ev->input.translated.active /* WL_KEYBOARD_KEY_STATE_PRESSED == 1*/
 		);
 
-/* wl_keyboard_send_modifiers,
- * wl_keyboard_send_repeat_info */
+/* FIXME:decode modifiers field and map to wl_keyboard_send_modifiers */
 	}
 	else
 		;
@@ -63,7 +98,7 @@ static bool displayhint_handler(struct comp_surf* surf, struct arcan_tgtevent* e
 
 /* alert the seat */
 	if (surf->states.unfocused != states.unfocused){
-		if (states.unfocused){
+		if (!states.unfocused){
 			if (surf->client->keyboard){
 				struct wl_array states;
 				get_keyboard_states(&states);
@@ -77,9 +112,8 @@ static bool displayhint_handler(struct comp_surf* surf, struct arcan_tgtevent* e
  * just track this here and send the enter on the first sample we get.
  * The other option is to add a hack over MESSAGE for wayland clients */
 			if (surf->client->pointer){
-      wl_pointer_send_enter(surf->client->pointer,STEP_SERIAL(),surf->res, 0, 0);
-      surf->pointer_pending = 2;
-//				surf->pointer_pending = 1;
+//
+      	surf->pointer_pending = 1;
 			}
 		}
 		else {

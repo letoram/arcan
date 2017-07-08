@@ -16,8 +16,8 @@ static bool xdgsurf_shmifev_handler(
 			bool changed = displayhint_handler(surf, &ev->tgt);
 
 /* and then, if something has changed, send the configure event */
-			int w = ev->tgt.ioevs[0].iv ? ev->tgt.ioevs[0].iv : surf->acon.w;
-			int h = ev->tgt.ioevs[1].iv ? ev->tgt.ioevs[1].iv : surf->acon.h;
+			int w = ev->tgt.ioevs[0].iv ? ev->tgt.ioevs[0].iv : 0;
+			int h = ev->tgt.ioevs[1].iv ? ev->tgt.ioevs[1].iv : 0;
 			if (changed || (w && h && (w != surf->acon.w || h != surf->acon.h))){
 				struct wl_array states;
 				trace("xdg_surface(request resize to %d*%d)", w, h);
@@ -87,7 +87,7 @@ static bool xdgsurf_defer_handler(
  * indicated by the protocol */
 	arcan_shmif_enqueue(&surf->acon, &(struct arcan_event){
 		.ext.kind = ARCAN_EVENT(MESSAGE),
-		.ext.message = {"shell:xdg_shell"}
+		.ext.message.data = {"shell:xdg_shell"}
 	});
 
 	struct wl_array states;
@@ -127,14 +127,28 @@ static void xdgsurf_getpopup(struct wl_client* cl, struct wl_resource* res,
  * distinction is pointless. */
 }
 
-/* hints about the window visible size sans dropshadows and things like that,
+/* Hints about the window visible size sans dropshadows and things like that,
  * but since it doesn't carry information about decorations (titlebar, ...)
- * we can't actually use this for a viewport hint */
+ * we can't actually use this for a full viewport hint. Still better than
+ * nothing and since we WM script need to take 'special ed' considerations
+ * for xdg- clients anyhow, go with that. */
 static void xdgsurf_set_geometry(struct wl_client* cl,
 	struct wl_resource* res, int32_t x, int32_t y, int32_t width, int32_t height)
 {
-	trace("xdgsurf_setgeom(%"PRIu32"+%"PRIu32", %"PRIu32"+%"PRIu32")",
-		x, width, y, height);
+	trace("xdgsurf_setgeom("
+		"%"PRIu32"+%"PRIu32", %"PRIu32"+%"PRIu32")", x, y, width, height);
+
+	struct comp_surf* surf = wl_resource_get_user_data(res);
+	arcan_shmif_enqueue(&surf->acon,
+		&(struct arcan_event){
+			.ext.kind = ARCAN_EVENT(VIEWPORT),
+			.ext.viewport = {
+				.x = x,
+				.y = y,
+				.w = width,
+				.h = height
+			}
+	});
 }
 
 static void xdgsurf_ackcfg(

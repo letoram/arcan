@@ -4,6 +4,12 @@
  * Reference: https://github.com/letoram/arcan/wiki/wayland.md
  */
 
+#ifndef COUNT_OF
+#define COUNT_OF(x) \
+	((sizeof(x)/sizeof(0[x])) / ((size_t)(!(sizeof(x) % sizeof(0[x])))))
+#endif
+
+#define _GNU_SOURCE /* because *sigh* */
 #define WANT_ARCAN_SHMIF_HELPER
 #include <arcan_shmif.h>
 #include <wayland-server.h>
@@ -13,6 +19,7 @@
 #include <errno.h>
 #include <poll.h>
 #include <assert.h>
+
 
 #include <xkbcommon/xkbcommon.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
