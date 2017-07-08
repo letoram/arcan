@@ -378,19 +378,26 @@ void PLATFORM_SYMBOL(_video_synch)(uint64_t tick_count, float fract,
 	size_t nd;
 	arcan_bench_register_cost( arcan_vint_refresh(fract, &nd) );
 
-	static bool ld;
-
 /*
-	agp_activate_rendertarget(NULL);
-	arcan_vint_drawrt(arcan_vint_world(), 0, 0, egl.mdispw, egl.mdisph);
-
-	arcan_vint_drawcursor(true);
-	arcan_vint_drawcursor(false);
-*/
-#endif
-/*
-	eglSwapBuffers(egl.disp, egl.surf);
+ * a dumb way to go about it, but this platform is not exactly a priority
  */
+	if (nd == 0){
+		arcan_timesleep(16);
+		goto out;
+	}
+
+	if (arcan_vint_worldrt()){
+		agp_activate_rendertarget(NULL);
+		arcan_vint_drawrt(arcan_vint_world(), 0, 0, egl.mdispw, egl.mdisph);
+
+		arcan_vint_drawcursor(true);
+		arcan_vint_drawcursor(false);
+	}
+
+	eglSwapBuffers(egl.disp, egl.surf);
+out:
+#endif
+
 	if (post)
 		post();
 }

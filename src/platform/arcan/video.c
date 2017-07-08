@@ -395,6 +395,9 @@ static bool check_store(platform_display_id id)
 	struct agp_vstore* vs = (disp[id].vstore ?
 		disp[id].vstore : arcan_vint_world());
 
+	if (!vs)
+		return false;
+
 	if (vs->w != disp[id].conn.w || vs->h != disp[id].conn.h){
 		if (!platform_video_specify_mode(id,
 			(struct monitor_mode){.width = vs->w, .height = vs->h})){
@@ -415,8 +418,8 @@ static bool check_store(platform_display_id id)
  * to cover all possible mapping modes, and a on-gpu rtarget- style blit
  * with extra buffer or partial synch and VIEWPORT events.
  */
-bool platform_video_map_display(arcan_vobj_id vid, platform_display_id id,
-	enum blitting_hint hint)
+bool platform_video_map_display(
+	arcan_vobj_id vid, platform_display_id id, enum blitting_hint hint)
 {
 	if (id > MAX_DISPLAYS)
 		return false;
@@ -430,6 +433,9 @@ bool platform_video_map_display(arcan_vobj_id vid, platform_display_id id,
 	disp[id].mapped = false;
 
 	if (vid == ARCAN_VIDEO_WORLDID){
+		if (!arcan_vint_world())
+			return false;
+
 		disp[id].conn.hints = SHMIF_RHINT_ORIGO_LL;
 		disp[id].vstore = arcan_vint_world();
 		disp[id].mapped = true;
@@ -558,8 +564,6 @@ bool platform_video_map_handle(struct agp_vstore* dst, int64_t handle)
 static void stub()
 {
 }
-
-extern struct agp_rendertarget* arcan_vint_worldrt();
 
 static void synch_copy(struct display* disp, struct agp_vstore* vs)
 {

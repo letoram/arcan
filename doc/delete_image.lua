@@ -8,7 +8,10 @@
 -- transition. The valid_vid function can be used as a last resort to
 -- to determine if a number maps to a valid vid or not, but is in many cases
 -- a sign of bad design.
--- @note: Trying to delete WORLDID is a terminal state transition.
+-- @note: In a LWA build, deleting WORLDID is a terminal state object. On
+-- other platforms it results in the default rendertarget being dropped.
+-- This can be used to save memory in some cases where rendering goes
+-- strictly through manually defined rendertargets.
 -- @note: If the underlying object is in an asynchronous load state,
 -- the load operation will be completed first.
 -- @group: image

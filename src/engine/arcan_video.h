@@ -652,6 +652,13 @@ arcan_errc arcan_video_alterreadback(arcan_vobj_id did, int readback);
 arcan_errc arcan_video_rendertarget_setnoclear(arcan_vobj_id did, bool value);
 
 /*
+ * Disables the WORLDID rendertarget processing and deallocates its store.
+ * This is for limited hardware platforms where we only want drawing on the
+ * default backbuffer or where we only want drawing on indirect rendertargets.
+ */
+void arcan_video_disable_worldid();
+
+/*
  * Switch default attachmentpoint from the normal WORLDID to a user-
  * specified one. If this rendertarget is deleted, the default attachment
  * reverts back to WORLDID. Same applies to new contexts. Persisted objects

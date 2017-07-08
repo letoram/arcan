@@ -535,8 +535,9 @@ no_out:
 
 /* we need to defer the fake invocation here to not mess with
  * the signal- guard */
-	if (do_aud)
+	if (do_aud){
 		arcan_aid_refresh(tgt->aid);
+	}
 
 	return rv;
 }
