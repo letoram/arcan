@@ -1,5 +1,5 @@
 PROJECT( arcan-wayland )
-cmake_minimum_required(VERSION 2.8.0 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.0.0 FATAL_ERROR)
 
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../../platform/cmake/modules)
 include(Wayland)
@@ -35,7 +35,12 @@ add_definitions(
 )
 
 # copied from Cloudef/wlc/protos
-set(PROTOCOLS "${WAYLANDPROTOCOLS_PATH}/unstable/xdg-shell/xdg-shell-unstable-v6")
+set(PROTOCOLS
+	"${WAYLANDPROTOCOLS_PATH}/unstable/xdg-shell/xdg-shell-unstable-v6"
+	"${WAYLANDPROTOCOLS_PATH}/unstable/linux-dmabuf/linux-dmabuf-unstable-v1"
+	"${WAYLANDPROTOCOLS_PATH}/unstable/pointer-constraints/pointer-constraints-unstable-v1"
+	"${WAYLANDPROTOCOLS_PATH}/unstable/idle-inhibit/idle-inhibit-unstable-v1"
+)
 foreach(proto ${PROTOCOLS})
    get_filename_component(base ${proto} NAME)
    wayland_add_protocol_server(src "${proto}.xml" ${base})
