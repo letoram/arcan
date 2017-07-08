@@ -2809,6 +2809,13 @@ static int deleteimage(lua_State* ctx)
 	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 	double srcid = luaL_checknumber(ctx, 1);
 
+#ifndef ARCAN_LWA
+	if (id == ARCAN_VIDEO_WORLDID){
+		arcan_video_disable_worldid();
+		LUA_ETRACE("delete_image", NULL, 0);
+	}
+#endif
+
 /* possibly long journey,
  * for a vid with a movie associated (or any feedfunc),
  * the feedfunc will be invoked with the cleanup cmd
@@ -5547,6 +5554,11 @@ static int videocanvasrsz(lua_State* ctx)
 		LUA_ETRACE("resize_video_canvas", NULL, 0);
 	}
 
+/*
+ * undo the effects of delete_image(WORLDID)
+ */
+	arcan_video_display.no_stdout = false;
+
 /* note that this actually creates a texture in WORLDID that
  * is larger than the other permitted max surface dimensions,
  * this may need to be restricted ( create -> share storage etc. ) */
@@ -7815,7 +7827,8 @@ static int renderset(lua_State* ctx)
 		}
 	}
 
-	LUA_ETRACE("define_rendertarget", NULL, 0);
+	lua_pushboolean(ctx, ok);
+	LUA_ETRACE("define_rendertarget", NULL, 1);
 }
 
 struct proctarget_src {

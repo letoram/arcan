@@ -107,28 +107,33 @@ void platform_video_synch(uint64_t tick_count, float fract,
 		vobj = arcan_video_getobject(ARCAN_VIDEO_WORLDID);
 	}
 
+/* special case, lost WORLDID, draw direct on GL context */
 	size_t nd;
-	arcan_bench_register_cost( arcan_vint_refresh(fract, &nd) );
-	agp_shader_id shid = agp_default_shader(BASIC_2D);
+	if (sdl.vid == ARCAN_VIDEO_WORLDID && !arcan_vint_worldrt()){
+		agp_activate_rendertarget(NULL);
+		arcan_bench_register_cost( arcan_vint_refresh(fract, &nd) );
+	}
+	else {
+		arcan_bench_register_cost( arcan_vint_refresh(fract, &nd) );
+		agp_shader_id shid = agp_default_shader(BASIC_2D);
+		agp_activate_rendertarget(NULL);
+		if (sdl.blackframes){
+			agp_rendertarget_clear();
+			sdl.blackframes--;
+		}
+		if (vobj->program > 0)
+			shid = vobj->program;
 
-	agp_activate_rendertarget(NULL);
-	if (sdl.blackframes){
-		agp_rendertarget_clear();
-		sdl.blackframes--;
+		agp_shader_envv(PROJECTION_MATR,
+			arcan_video_display.window_projection, sizeof(float)*16);
+
+		agp_activate_vstore(
+			sdl.vid == ARCAN_VIDEO_WORLDID ? arcan_vint_world() : vobj->vstore);
+
+		agp_shader_activate(shid);
+		agp_draw_vobj(sdl.drawx, sdl.drawy, sdl.draww, sdl.drawh, sdl.txcos, NULL);
 	}
 
-	if (vobj->program > 0)
-		shid = vobj->program;
-
-	agp_shader_envv(PROJECTION_MATR,
-		arcan_video_display.window_projection, sizeof(float)*16);
-
-	agp_activate_vstore(sdl.vid == ARCAN_VIDEO_WORLDID ?
-		arcan_vint_world() : vobj->vstore);
-
-	agp_shader_activate(shid);
-
-	agp_draw_vobj(sdl.drawx, sdl.drawy, sdl.draww, sdl.drawh, sdl.txcos, NULL);
 	arcan_vint_drawcursor(false);
 
 /*

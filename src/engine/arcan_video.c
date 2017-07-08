@@ -273,8 +273,8 @@ static void dropchild(arcan_vobject* parent, arcan_vobject* child)
 /* scan through each cell in use, and either deallocate / wrap with deleteobject
  * or pause frameserver connections and (conservative) delete resources that can
  * be recreated later on. */
-static void deallocate_gl_context(struct arcan_video_context* context,
-	bool del, struct agp_vstore* safe_store)
+static void deallocate_gl_context(
+	struct arcan_video_context* context, bool del, struct agp_vstore* safe_store)
 {
 /* index (0) is always worldid */
 	for (size_t i = 1; i < context->vitem_limit; i++){
@@ -458,6 +458,8 @@ void arcan_vint_drawrt(struct agp_vstore* vs, int x, int y, int w, int h)
 	_Alignas(16) float imatr[16];
 	identity_matrix(imatr);
 	agp_shader_activate(agp_default_shader(BASIC_2D));
+	if (!vs)
+		return;
 
 	agp_activate_vstore(vs);
 	agp_shader_envv(MODELVIEW_MATR, imatr, sizeof(float)*16);
@@ -1551,21 +1553,23 @@ arcan_errc arcan_video_resize_canvas(size_t neww, size_t newh)
 {
 	struct monitor_mode mode = platform_video_dimensions();
 
-	if (!current_context->world.vstore){
-		populate_vstore(&current_context->world.vstore);
-		current_context->world.vstore->filtermode &= ~ARCAN_VFILTER_MIPMAP;
-		agp_empty_vstore(current_context->world.vstore, neww, newh);
-		current_context->stdoutp.color = &current_context->world;
-		current_context->stdoutp.art = agp_setup_rendertarget(
-			current_context->world.vstore,
-			RENDERTARGET_COLOR_DEPTH_STENCIL
+	if (!arcan_video_display.no_stdout){
+		if (!current_context->world.vstore){
+			populate_vstore(&current_context->world.vstore);
+			current_context->world.vstore->filtermode &= ~ARCAN_VFILTER_MIPMAP;
+			agp_empty_vstore(current_context->world.vstore, neww, newh);
+			current_context->stdoutp.color = &current_context->world;
+			current_context->stdoutp.art = agp_setup_rendertarget(
+				current_context->world.vstore,
+				RENDERTARGET_COLOR_DEPTH_STENCIL
 #ifdef ARCAN_LWA
-			| RENDERTARGET_DOUBLEBUFFER
+				| RENDERTARGET_DOUBLEBUFFER
 #endif
-		);
+			);
+		}
+		else
+			agp_resize_rendertarget(current_context->stdoutp.art, neww, newh);
 	}
-	else
-		agp_resize_rendertarget(current_context->stdoutp.art, neww, newh);
 
 	build_orthographic_matrix(arcan_video_display.window_projection, 0,
 		mode.width, mode.height, 0, 0, 1);
@@ -2904,7 +2908,8 @@ static void drop_rtarget(arcan_vobject* vobj)
 			"remove rendertarget (%s)\n", vobj->tracetag);
 
 /* kill GPU resources */
-	agp_drop_rendertarget(dst->art);
+	if (dst->art)
+		agp_drop_rendertarget(dst->art);
 	dst->art = NULL;
 
 /* create a temporary copy of all the elements in the rendertarget */
@@ -4796,6 +4801,15 @@ arcan_errc arcan_video_forceread(arcan_vobj_id sid, bool local,
 	}
 
 	return ARCAN_OK;
+}
+
+void arcan_video_disable_worldid()
+{
+	if (current_context->stdoutp.art){
+		agp_drop_rendertarget(current_context->stdoutp.art);
+		current_context->stdoutp.art = NULL;
+	}
+	arcan_video_display.no_stdout = true;
 }
 
 struct agp_rendertarget* arcan_vint_worldrt()

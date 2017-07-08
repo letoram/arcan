@@ -15,6 +15,8 @@
 -- use resize_cursor if this behavior is an issue.
 -- @note: The global canvas size constants VRESW, VRESH will be changed
 -- accordingly.
+-- @note: If the canvas has previously been destroyed via delete_image(WORLID)
+-- this function will restore/reallocate it.
 -- @note: There are two major caveats with setting this property to large
 -- values. One is that the canvas is used as a primary rendering target
 -- that is then mapped to one or several output displays. There are, however,

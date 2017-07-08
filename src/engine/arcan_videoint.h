@@ -273,7 +273,7 @@ struct arcan_vobject_litem {
 typedef struct arcan_vobject_litem arcan_vobject_litem;
 
 struct arcan_video_display {
-	bool suspended, fullscreen, conservative, in_video;
+	bool suspended, fullscreen, conservative, in_video, no_stdout;
 
 	int dirty;
 	bool ignore_dirty;
@@ -398,6 +398,7 @@ void arcan_debug_tracetag_dump();
  * used primarily by the video-platform layer
  */
 struct agp_vstore* arcan_vint_world();
+struct agp_rendertarget* arcan_vint_worldrt();
 
 /*
  * generate the normal set of texture coordinates (should be CW:

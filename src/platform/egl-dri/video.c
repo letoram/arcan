@@ -5,65 +5,33 @@
  */
 
 /*
- * points to explore for this platform module:
+ * Possible enhancement path:
+ *  [1] rendertarget/texture to scanout
+ *      When a rendertarget is mapped to a display without shaders or
+ *      specialized texture coordinates, extract a dma-buf from the texture
+ *      and map that.
  *
- * 1. <Zero Connector mode> This one is quite heavy, due to the way EGL and
- * friends are integrated the current case with all displays being removed
- * isn't well supported. The best approach would probably be to treat as an
- * external_launch sort of situation or rebuild the EGL context with a
- * headless one in order for other features (sharing etc.) to remain working
- * and then switch when something is plugged in.
+ *  [2] external-source to scanout
+ *      When a store has been mapped using maphandle, re-use the handle to
+ *      also map as scanout directly. Saves a copy.
  *
- * 2. Multiple graphics cards and hotplugging graphics cards. Bonus points
- * for surviving VT switch, moving all displays to a new plugged GPU, VT
- * switch back and everything remapped correctly.
+ *  [3] rework configuration API
+ *      remove all environment variables, add a per-GPU path.
  *
- * Possibly approach is to do something like this:
- *  a. create an agp- function that synchs raw / s_raw for all objects
- *     (readback into buffers etc).
+ *  [4] allow multiple GPUs via [3]
+ *      make AGP GPU aware by adding an opaque ID that sets the current
+ *      AGP target.
  *
- *  b. reset handle passing failure state for all frameservers,
- *     send a MIGRATE event with descriptor, indicating that those who use
- *     a certain render node need to switch / rebuild. This would work
- *     recursively for arcan_lwa.
+ *  [5] allow all AGP assets to reflect to referenced GPUs
  *
- *  c. [shared output]
- *      ACPI- twiddle to shut down one GPU, activate the other, redo
- *      grab_card and build GL, and just rerun the mapping.
+ *  [6] switch all paths to use atomic-API, requires fresh kernels etc.
+ *      so will take a year or two before relevant
  *
- *     [different output]
- *      activate the other card and build GL, emitt a display reset event
- *      and do a new connector scan.
+ *  [7] move all AGP transfers to be fence-synched.
  *
- *  d. agp call to push all data back up, and possible erase if needed.
+ *  [8] zero-copy AGP streaming support on AMD devices with buffer pinning.
  *
- *  e. Need an extension to vstore_t to track GPU-ID affinity (which GPUs
- *     that the vstore has been activated on) and when there's a mismatch,
- *     synch/upload to the other GPU as well (or even readback-upload when
- *     buffer mechanisms mismatch)
- *
- *  f. Some hook when new agp shaders are built so that we can compile/
- *     assign for each GPU or handle the odd case where a shader fails on
- *     one GPU and works on another.
- *
- *  g. fix all functions that reference card[0] and use card[n]
- *
- *  The number of failure modes for this one is quite high, especially
- *  when OOM on one card but not the other. Still, pretty cool feature ;-)
- *
- * 4. Advanced synchronization options (swap-interval, synch directly to
- * front buffer, swap-with-tear, pre-render then wake / move cursor just
- * before etc.), discard when we miss deadline, drm_vblank_relative,
- * drm_vblank_secondary - also try synch strategy on a per display basis.
- * this also means being able to account for different refresh rates and
- * synch- methods.
- *
- * 6. "always" headless mode of operation build-time for processing
- *    jobs and other situations where wer don't need the full monty. Would
- *    best be done with [1]
- *
- * 7. native cursor to dedicated plane mapping, extend map_display calls
- *    to handle mulitple layers.
+ *  [9] EXL_EXT_platform_device for shmif on nvidia
  */
 
 /*
@@ -3125,6 +3093,7 @@ bool platform_video_map_display(
 		return false;
 	}
 
+/* normal object may have origo in UL, WORLDID FBO in LL */
 	float txcos[8];
 		memcpy(txcos, vobj && vobj->txcos ? vobj->txcos :
 			(vobj->vstore == arcan_vint_world() ?
