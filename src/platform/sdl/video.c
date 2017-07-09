@@ -140,7 +140,8 @@ void platform_video_synch(uint64_t tick_count, float fract,
  * NOTE: heuristic fix-point for direct- mapping dedicated source for
  * low latency here when we fix up internal syncing paths.
  */
-	SDL_GL_SwapBuffers();
+	if (nd)
+		SDL_GL_SwapBuffers();
 
 /* With dynamic, we run an artificial vsync if the time between swaps
  * become to low. This is a workaround for a driver issue spotted on
