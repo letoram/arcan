@@ -78,6 +78,7 @@ if (${VIDEO_PLATFORM} MATCHES "egl-dri")
 		APPEND PROPERTY COMPILE_DEFINITIONS EGL_DMA_BUF)
 endif()
 
+add_dependencies(openal_lwa arcan_shmif_int)
 add_dependencies(arcan_lwa arcan_shmif_int arcan_shmif_intext openal_lwa ${MAIN_DEPS})
 if(STATIC_FREETYPE)
 	add_dependencies(arcan_lwa Freetype)
