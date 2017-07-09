@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2016, Björn Ståhl
+ * Copyright 2014-2017, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  * Description:
@@ -21,37 +21,31 @@
 
 typedef VIDEO_PIXEL_TYPE av_pixel;
 
+/* GLES2/3 typically, doesn't support BGRA formats */
+#ifndef OPENGL
 #ifndef RGBA
 #define RGBA(r, g, b, a)(\
 ((uint32_t) (a) << 24) |\
-((uint32_t) (r) << 16) |\
+((uint32_t) (b) << 16) |\
 ((uint32_t) (g) <<  8) |\
-((uint32_t) (b)))
+((uint32_t) (r)))
 #endif
 
-#define OUT_DEPTH_R 8
-#define OUT_DEPTH_G 8
-#define OUT_DEPTH_B 8
-#define OUT_DEPTH_A 0
-
-/*
- * for BE, need to change the packing macros ins shmif as well. These
- * should be set / probed or expanded from the build- system and not here
 #ifndef GL_PIXEL_FORMAT
 #define GL_PIXEL_FORMAT 0x1908
 #endif
 
-#ifndef GL_NOALPHA_PIXEL_FORMAT
-#define GL_NOALPHA_PIXEL_FORMAT 0x1907
-#endif
- */
-#ifndef GL_PIXEL_FORMAT
-#define GL_PIXEL_FORMAT 0x80E1
+#ifndef RGBA_DECOMP
+static inline void RGBA_DECOMP(av_pixel val, uint8_t* r,
+	uint8_t* g, uint8_t* b, uint8_t* a)
+{
+	*r = (val & 0x000000ff);
+	*g = (val & 0x0000ff00) >>  8;
+	*b = (val & 0x00ff0000) >> 16;
+	*a = (val & 0xff000000) >> 24;
+}
 #endif
 
-/*
- * Different from GL_PIXEL_FORMAT as BGRA is not a valid FBO format
- */
 #ifndef GL_STORE_PIXEL_FORMAT
 #define GL_STORE_PIXEL_FORMAT 0x1908
 #endif
@@ -60,12 +54,35 @@ typedef VIDEO_PIXEL_TYPE av_pixel;
 #define GL_NOALPHA_PIXEL_FORMAT 0x1907
 #endif
 
-#define GL_PIXEL_HDEF_FORMAT GL_PIXEL_FORMAT
-#define RGBA_HDEF(r, g, b, a) RGBA(\
-	(uint8_t)((r) * 255.0f), (uint8_t)((g) * 255.0f), \
-	(uint8_t)((b) * 255.0f), (uint8_t)((a) * 255.0f))
+#else
+#ifndef RGBA
+#define RGBA(r, g, b, a)(\
+((uint32_t) (a) << 24) |\
+((uint32_t) (r) << 16) |\
+((uint32_t) (g) <<  8) |\
+((uint32_t) (b)))
+#endif
 
-#define GL_PIXEL_LDEF_FORMAT GL_PIXEL_FORMAT
+/*
+ * GL_BGRA8888
+ */
+#ifndef GL_PIXEL_FORMAT
+#define GL_PIXEL_FORMAT 0x80E1
+#endif
+
+/*
+ * GL_RGBA
+ */
+#ifndef GL_STORE_PIXEL_FORMAT
+#define GL_STORE_PIXEL_FORMAT 0x1908
+#endif
+
+/*
+ * GL_RGB
+ */
+#ifndef GL_NOALPHA_PIXEL_FORMAT
+#define GL_NOALPHA_PIXEL_FORMAT 0x1907
+#endif
 
 #ifndef RGBA_DECOMP
 static inline void RGBA_DECOMP(av_pixel val, uint8_t* r,
@@ -77,6 +94,13 @@ static inline void RGBA_DECOMP(av_pixel val, uint8_t* r,
 	*a = (val & 0xff000000) >> 24;
 }
 #endif
+
+#endif
+
+#define OUT_DEPTH_R 8
+#define OUT_DEPTH_G 8
+#define OUT_DEPTH_B 8
+#define OUT_DEPTH_A 0
 
 /*
  * For objects that are not opaque or invisible, a blending function can be
@@ -221,6 +245,24 @@ typedef long long arcan_vobj_id;
  */
 bool platform_video_init(uint16_t w, uint16_t h,
 	uint8_t bpp, bool fs, bool frames, const char* caption);
+
+enum platform_config_flags {
+	REQUIRE_DRM_MASTER = 1,
+	DISPLAYLESS_CONTEXT = 2,
+	EGL_BUFFER_MODE = 4,
+	GBM_BUFFER_MODE = 8,
+	DUMP_CONNECTORS = 16
+};
+struct platform_video_config;
+
+/*
+ * Begin a new opaque configuration
+ */
+struct platform_video_config* platform_video_build_config();
+void platform_video_add_gpu(
+	struct platform_video_config*, const char* device, int fd,
+		const char** libraries, int flags, const char* path, ...);
+void platform_video_release_config(struct platform_video_config*);
 
 /*
  * Sent as a trigger to notify that higher scripting levels have recovered

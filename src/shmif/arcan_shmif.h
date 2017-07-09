@@ -1,7 +1,7 @@
 /*
  Arcan Shared Memory Interface
 
- Copyright (c) 2014-2016, Bjorn Stahl
+ Copyright (c) 2014-2017, Bjorn Stahl
  All rights reserved.
 
  Redistribution and use in source and binary forms,
@@ -63,6 +63,7 @@
 #include "arcan_shmif_interop.h"
 #include "arcan_shmif_event.h"
 #include "arcan_shmif_control.h"
+#include "arcan_shmif_defs.h"
 
 #ifndef __cplusplus
 #include "arcan_shmif_sub.h"
