@@ -82,6 +82,27 @@ with a resources and appl subdirectory. Symlink/bind-mount the data you want
 accessible into the .arcan/resources path, and have the runable appls in
 .arcan/appl.
 
+A big note about compilation is how central the 'shmif' set of libraries are.
+These are used for all external tools, but are tied to the inner workings of
+your arcan build, and particularly the 'video' platform used. The short
+explanation as to why this is, is that there's no universal solution for which
+packing formats and so on it is that is the most efficient for all possible
+hardware combinations. Your needs on a low level are possible much different
+from on a higher level where there's another display system involved. While it
+is possible to account for such variations at runtime with some degree of
+uncertainty, the solution contributes to a huge state space explosion in a way
+that we don't have the resources to support, and it makes application
+development harder on both sides of the shmif- barrier. Therefore, the decision
+was made to have a 'native color format' and a 'native audio format' that
+is as hard-wired as 'endianness' is for CPUs. While builds are made out of
+source, one file, shmif/arcan\_shmif\_cfg.h, is generated during build time
+in the normal source tree. Therefore, trying out multiple builds from the
+same source checkout will likely result in wrong colors unless you rebuild
+everything that uses SHMIF. This is one of the reasons why SHMIF- is treated
+as an 'internal API' rather than some protocol or external API for others to
+use. This situation is subject to change, but there are no such plans in that
+direction at the moment.
+
 Compatibility
 ====
 The set of applications that can connect to arcan and use it as a display

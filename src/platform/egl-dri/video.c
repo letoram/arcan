@@ -59,6 +59,7 @@
 #include <glob.h>
 #include <ctype.h>
 #include <dlfcn.h>
+#include <inttypes.h>
 #include <sys/mman.h>
 
 #include <sys/types.h>

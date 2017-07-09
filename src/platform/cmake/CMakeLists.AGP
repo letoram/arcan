@@ -27,7 +27,7 @@ elseif (AGP_PLATFORM STREQUAL "gl21")
 	SET (AGP_LIBRARIES
 		${OPENGL_gl_LIBRARY}
 	)
-
+	add_definitions(-DOPENGL)
 	SET (AGP_SOURCES
 		${AGP_GL_SHARED}
 		${CMAKE_CURRENT_SOURCE_DIR}/platform/agp/gl21.c
