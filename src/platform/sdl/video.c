@@ -110,7 +110,8 @@ void platform_video_synch(uint64_t tick_count, float fract,
 /* special case, lost WORLDID, draw direct on GL context */
 	size_t nd;
 	if (sdl.vid == ARCAN_VIDEO_WORLDID && !arcan_vint_worldrt()){
-		agp_activate_rendertarget(NULL);
+		agp_shader_envv(PROJECTION_MATR,
+			arcan_video_display.default_projection, sizeof(float)*16);
 		arcan_bench_register_cost( arcan_vint_refresh(fract, &nd) );
 	}
 	else {
@@ -124,13 +125,17 @@ void platform_video_synch(uint64_t tick_count, float fract,
 		if (vobj->program > 0)
 			shid = vobj->program;
 
+		agp_shader_activate(shid);
 		agp_shader_envv(PROJECTION_MATR,
 			arcan_video_display.window_projection, sizeof(float)*16);
 
-		agp_activate_vstore(
-			sdl.vid == ARCAN_VIDEO_WORLDID ? arcan_vint_world() : vobj->vstore);
+		if (sdl.vid == ARCAN_VIDEO_WORLDID){
+			agp_activate_vstore(arcan_vint_world());
+		}
+		else{
+			agp_activate_vstore(vobj->vstore);
+		}
 
-		agp_shader_activate(shid);
 		agp_draw_vobj(sdl.drawx, sdl.drawy, sdl.draww, sdl.drawh, sdl.txcos, NULL);
 	}
 
@@ -272,8 +277,8 @@ struct monitor_mode platform_video_dimensions()
 	return res;
 }
 
-bool platform_video_map_display(arcan_vobj_id id, platform_display_id disp,
-	enum blitting_hint hint)
+bool platform_video_map_display(arcan_vobj_id id,
+	platform_display_id disp, enum blitting_hint hint)
 {
 	if (disp != 0)
 		return false;

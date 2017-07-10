@@ -15,6 +15,9 @@
 -- reduce effective framerate to the least common denominator of all primary
 -- flagged displays. The actual end-behavior is tied to the active synchronization
 -- strategy, which is platform-defined.
+-- @note: All sources are expected to have their Y coordinates inverted, with
+-- origo in LL rather than UL, which is the case with rendertargets by default
+-- but special consideration has to be taken for frameservers.
 -- @note: Vid referencing an object with a feed- function
 -- (recordtarget, frameserver, calctarget etc.) is a
 -- terminal state transition
