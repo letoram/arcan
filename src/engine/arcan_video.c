@@ -1554,7 +1554,7 @@ arcan_errc arcan_video_resize_canvas(size_t neww, size_t newh)
 	struct monitor_mode mode = platform_video_dimensions();
 
 	if (!arcan_video_display.no_stdout){
-		if (!current_context->world.vstore){
+		if (!current_context->world.vstore || !current_context->stdoutp.art){
 			populate_vstore(&current_context->world.vstore);
 			current_context->world.vstore->filtermode &= ~ARCAN_VFILTER_MIPMAP;
 			agp_empty_vstore(current_context->world.vstore, neww, newh);
@@ -1962,6 +1962,11 @@ arcan_errc arcan_video_detachfromrendertarget(arcan_vobj_id did,
 	if (!srcobj || !dstobj)
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
+	if (&current_context->stdoutp == srcobj->owner){
+		detach_fromtarget(&current_context->stdoutp, srcobj);
+		return ARCAN_OK;
+	}
+
 	for (size_t ind = 0; ind < current_context->n_rtargets; ind++){
 		if (current_context->rtargets[ind].color == dstobj &&
 			srcobj->owner != &current_context->rtargets[ind])
@@ -1992,6 +1997,17 @@ arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did,
 
 	if (FL_TEST(dstobj, FL_PRSIST) || FL_TEST(srcobj, FL_PRSIST))
 		return ARCAN_ERRC_UNACCEPTED_STATE;
+
+	if (current_context->stdoutp.color == dstobj){
+		if (srcobj->owner && detach)
+			detach_fromtarget(srcobj->owner, srcobj);
+
+/* try and detach (most likely fail) to make sure that we don't get duplicates*/
+		detach_fromtarget(&current_context->stdoutp, srcobj);
+		attach_object(&current_context->stdoutp, srcobj);
+
+		return ARCAN_OK;
+	}
 
 /* linear search for rendertarget matching the destination id */
 	for (size_t ind = 0; ind < current_context->n_rtargets; ind++){
@@ -4924,6 +4940,10 @@ unsigned arcan_vint_refresh(float fract, size_t* ndirty)
 		tgt->dirtyc += arcan_video_display.dirty;
 		transfc += steptgt(fract, tgt);
 	}
+
+/* reset the bound rendertarget, otherwise we may be in an undefined
+ * state if world isn't dirty or with pending transfers */
+	agp_activate_rendertarget(NULL);
 
 	current_context->stdoutp.dirtyc += arcan_video_display.dirty;
 	transfc += steptgt(fract, &current_context->stdoutp);
