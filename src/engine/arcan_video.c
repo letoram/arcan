@@ -2508,28 +2508,29 @@ arcan_vobj_id arcan_video_addfobject(
 arcan_errc arcan_video_scaletxcos(arcan_vobj_id id, float sfs, float sft)
 {
 	arcan_vobject* vobj = arcan_video_getobject(id);
-	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+	if (!vobj)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
-	if (vobj){
+	if (!vobj->txcos){
+		vobj->txcos = arcan_alloc_mem(8 * sizeof(float),
+			ARCAN_MEM_VSTRUCT, 0, ARCAN_MEMALIGN_SIMD);
 		if (!vobj->txcos)
-			vobj->txcos = arcan_alloc_mem(8 * sizeof(float),
-				ARCAN_MEM_VSTRUCT, 0, ARCAN_MEMALIGN_SIMD);
+			return ARCAN_ERRC_OUT_OF_SPACE;
 
 		arcan_vint_defaultmapping(vobj->txcos, 1.0, 1.0);
-		vobj->txcos[0] *= sfs;
-		vobj->txcos[1] *= sft;
-		vobj->txcos[2] *= sfs;
-		vobj->txcos[3] *= sft;
-		vobj->txcos[4] *= sfs;
-		vobj->txcos[5] *= sft;
-		vobj->txcos[6] *= sfs;
-		vobj->txcos[7] *= sft;
-
-		FLAG_DIRTY(vobj);
-		rv = ARCAN_OK;
 	}
 
-	return rv;
+	vobj->txcos[0] *= sfs;
+	vobj->txcos[1] *= sft;
+	vobj->txcos[2] *= sfs;
+	vobj->txcos[3] *= sft;
+	vobj->txcos[4] *= sfs;
+	vobj->txcos[5] *= sft;
+	vobj->txcos[6] *= sfs;
+	vobj->txcos[7] *= sft;
+
+	FLAG_DIRTY(vobj);
+	return ARCAN_OK;
 }
 
 
