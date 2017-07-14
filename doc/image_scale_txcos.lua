@@ -1,5 +1,5 @@
 -- image_scale_txcos
--- @short: Revert basic texture coordinates to the default, then apply two scale factors.
+-- @short: Multiply the current set of texture coordinates uniformly
 -- @inargs: vid, fact_s, fact_t
 -- @group: image
 -- @cfunction: scaletxcos
