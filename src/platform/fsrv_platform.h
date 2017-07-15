@@ -8,7 +8,7 @@
  */
 #ifndef HAVE_FSRV_PLATFORM_HEADER
 #define HAVE_FSRV_PLATFORM_HEADER
-
+#include <sys/stat.h>
 /*
  * Setup a frameserver that is idle until an external party connects through a
  * listening socket using [key], then behaves as an avfeed- style frameserver.
