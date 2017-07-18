@@ -63,6 +63,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
+#include "../arcan_shmif.h"
+#include "../arcan_shmif_tui.h"
 #include "libtsm.h"
 #include "libtsm_int.h"
 #include "shl_llog.h"
@@ -72,7 +74,7 @@
 struct cell {
 	tsm_symbol_t ch;
 	unsigned int width;
-	struct tsm_screen_attr attr;
+	struct tui_screen_attr attr;
 	tsm_age_t age;
 };
 
@@ -102,7 +104,7 @@ struct tsm_screen {
 	struct tsm_symbol_table *sym_table;
 
 	/* default attributes for new cells */
-	struct tsm_screen_attr def_attr;
+	struct tui_screen_attr def_attr;
 
 	/* ageing */
 	tsm_age_t age_cnt;
@@ -175,28 +177,8 @@ static void move_cursor(struct tsm_screen *con, unsigned int x, unsigned int y)
 {
 	struct cell *c;
 
-	/* if cursor is hidden, just move it */
-	if (con->flags & TSM_SCREEN_HIDE_CURSOR) {
-		con->cursor_x = x;
-		con->cursor_y = y;
-		return;
-	}
-
-	/* If cursor is visible, we have to mark the current and the new cell
-	 * as changed by resetting their age. We skip it if the cursor-position
-	 * didn't actually change. */
-
-	if (con->cursor_x == x && con->cursor_y == y)
-		return;
-
-	c = get_cursor_cell(con);
-	c->age = con->age_cnt;
-
 	con->cursor_x = x;
 	con->cursor_y = y;
-
-	c = get_cursor_cell(con);
-	c->age = con->age_cnt;
 }
 
 static void cell_init(struct tsm_screen *con, struct cell *cell)
@@ -272,7 +254,6 @@ static void link_to_scrollback(struct tsm_screen *con, struct line *line)
 {
 	struct line *tmp;
 
-	/* TODO: more sophisticated ageing */
 	con->age = con->age_cnt;
 
 	if (con->sb_max == 0) {
@@ -352,7 +333,6 @@ static void screen_scroll_up(struct tsm_screen *con, unsigned int num)
 	if (!num)
 		return;
 
-	/* TODO: more sophisticated ageing */
 	con->age = con->age_cnt;
 
 	max = con->margin_bottom + 1 - con->margin_top;
@@ -424,7 +404,6 @@ static void screen_scroll_down(struct tsm_screen *con, unsigned int num)
 	if (!num)
 		return;
 
-	/* TODO: more sophisticated ageing */
 	con->age = con->age_cnt;
 
 	max = con->margin_bottom + 1 - con->margin_top;
@@ -463,7 +442,7 @@ static void screen_scroll_down(struct tsm_screen *con, unsigned int num)
 
 static void screen_write(struct tsm_screen *con, unsigned int x,
 			  unsigned int y, tsm_symbol_t ch, unsigned int len,
-			  const struct tsm_screen_attr *attr)
+			  const struct tui_screen_attr *attr)
 {
 	struct line *line;
 	unsigned int i;
@@ -506,7 +485,6 @@ void tsm_screen_erase_region(struct tsm_screen *con,
 	unsigned int to;
 	struct line *line;
 
-	/* TODO: more sophisticated ageing */
 	con->age = con->age_cnt;
 
 	if (y_to >= con->size_y)
@@ -937,7 +915,6 @@ void tsm_screen_set_max_sb(struct tsm_screen *con,
 		return;
 
 	inc_age(con);
-	/* TODO: more sophisticated ageing */
 	con->age = con->age_cnt;
 
 	while (con->sb_count > max) {
@@ -980,7 +957,6 @@ void tsm_screen_clear_sb(struct tsm_screen *con)
 		return;
 
 	inc_age(con);
-	/* TODO: more sophisticated ageing */
 	con->age = con->age_cnt;
 
 	for (iter = con->sb_first; iter; ) {
@@ -1013,7 +989,6 @@ void tsm_screen_sb_up(struct tsm_screen *con, unsigned int num)
 		return;
 
 	inc_age(con);
-	/* TODO: more sophisticated ageing */
 	con->age = con->age_cnt;
 
 	while (num--) {
@@ -1037,7 +1012,6 @@ void tsm_screen_sb_down(struct tsm_screen *con, unsigned int num)
 		return;
 
 	inc_age(con);
-	/* TODO: more sophisticated ageing */
 	con->age = con->age_cnt;
 
 	while (num--) {
@@ -1075,7 +1049,6 @@ void tsm_screen_sb_reset(struct tsm_screen *con)
 		return;
 
 	inc_age(con);
-	/* TODO: more sophisticated ageing */
 	con->age = con->age_cnt;
 
 	con->sb_pos = NULL;
@@ -1083,7 +1056,7 @@ void tsm_screen_sb_reset(struct tsm_screen *con)
 
 SHL_EXPORT
 void tsm_screen_set_def_attr(struct tsm_screen *con,
-				 const struct tsm_screen_attr *attr)
+				 const struct tui_screen_attr *attr)
 {
 	if (!con || !attr)
 		return;
@@ -1134,12 +1107,6 @@ void tsm_screen_set_flags(struct tsm_screen *con, unsigned int flags)
 		con->lines = con->alt_lines;
 	}
 
-	if (!(old & TSM_SCREEN_HIDE_CURSOR) &&
-	    (flags & TSM_SCREEN_HIDE_CURSOR)) {
-		c = get_cursor_cell(con);
-		c->age = con->age_cnt;
-	}
-
 	if (!(old & TSM_SCREEN_INVERSE) && (flags & TSM_SCREEN_INVERSE))
 		con->age = con->age_cnt;
 }
@@ -1161,12 +1128,6 @@ void tsm_screen_reset_flags(struct tsm_screen *con, unsigned int flags)
 	if ((old & TSM_SCREEN_ALTERNATE) && (flags & TSM_SCREEN_ALTERNATE)) {
 		con->age = con->age_cnt;
 		con->lines = con->main_lines;
-	}
-
-	if ((old & TSM_SCREEN_HIDE_CURSOR) &&
-	    (flags & TSM_SCREEN_HIDE_CURSOR)) {
-		c = get_cursor_cell(con);
-		c->age = con->age_cnt;
 	}
 
 	if ((old & TSM_SCREEN_INVERSE) && (flags & TSM_SCREEN_INVERSE))
@@ -1232,7 +1193,7 @@ void tsm_screen_reset_all_tabstops(struct tsm_screen *con)
 
 SHL_EXPORT
 void tsm_screen_write(struct tsm_screen *con, tsm_symbol_t ch,
-			  const struct tsm_screen_attr *attr)
+			  const struct tui_screen_attr *attr)
 {
 	unsigned int last, len;
 
@@ -1263,7 +1224,8 @@ void tsm_screen_write(struct tsm_screen *con, tsm_symbol_t ch,
 		screen_scroll_up(con, 1);
 	}
 
-	screen_write(con, con->cursor_x, con->cursor_y, ch, len, attr);
+	screen_write(con,
+		con->cursor_x, con->cursor_y, ch, len, attr ? attr : &con->def_attr);
 	move_cursor(con, con->cursor_x + len, con->cursor_y);
 }
 
@@ -1514,7 +1476,6 @@ void tsm_screen_insert_lines(struct tsm_screen *con, unsigned int num)
 		return;
 
 	inc_age(con);
-	/* TODO: more sophisticated ageing */
 	con->age = con->age_cnt;
 
 	max = con->margin_bottom - con->cursor_y + 1;
@@ -1554,7 +1515,6 @@ void tsm_screen_delete_lines(struct tsm_screen *con, unsigned int num)
 		return;
 
 	inc_age(con);
-	/* TODO: more sophisticated ageing */
 	con->age = con->age_cnt;
 
 	max = con->margin_bottom - con->cursor_y + 1;
@@ -1591,7 +1551,6 @@ void tsm_screen_insert_chars(struct tsm_screen *con, unsigned int num)
 		return;
 
 	inc_age(con);
-	/* TODO: more sophisticated ageing */
 	con->age = con->age_cnt;
 
 	if (con->cursor_x >= con->size_x)
@@ -1624,7 +1583,6 @@ void tsm_screen_delete_chars(struct tsm_screen *con, unsigned int num)
 		return;
 
 	inc_age(con);
-	/* TODO: more sophisticated ageing */
 	con->age = con->age_cnt;
 
 	if (con->cursor_x >= con->size_x)
@@ -1828,7 +1786,6 @@ void tsm_screen_selection_reset(struct tsm_screen *con)
 		return;
 
 	inc_age(con);
-	/* TODO: more sophisticated ageing */
 	con->age = con->age_cnt;
 
 	con->sel_active = false;
@@ -1843,7 +1800,6 @@ void tsm_screen_selection_start(struct tsm_screen *con,
 		return;
 
 	inc_age(con);
-	/* TODO: more sophisticated ageing */
 	con->age = con->age_cnt;
 
 	con->sel_active = true;
@@ -1860,7 +1816,6 @@ void tsm_screen_selection_target(struct tsm_screen *con,
 		return;
 
 	inc_age(con);
-	/* TODO: more sophisticated ageing */
 	con->age = con->age_cnt;
 
 	selection_set(con, &con->sel_end, posx, posy);
@@ -2103,7 +2058,7 @@ tsm_age_t tsm_screen_draw(struct tsm_screen *con, tsm_screen_draw_cb draw_cb,
 	unsigned int i, j, k;
 	struct line *iter, *line = NULL;
 	struct cell *cell, empty;
-	struct tsm_screen_attr attr;
+	struct tui_screen_attr attr;
 	int ret, warned = 0;
 	const uint32_t *ch;
 	size_t len;
@@ -2181,17 +2136,9 @@ tsm_age_t tsm_screen_draw(struct tsm_screen *con, tsm_screen_draw_cb draw_cb,
 				}
 			}
 
-/*
- * ARCTERM edit -- don't draw cursor
-			if (k == cur_y + 1 && j == cur_x &&
-			    !(con->flags & TSM_SCREEN_HIDE_CURSOR))
-				attr.inverse = !attr.inverse;
-*/
-
-			/* TODO: do some more sophisticated inverse here. When
-			 * INVERSE mode is set, we should instead just select
-			 * inverse colors instead of switching background and
-			 * foreground */
+/* TODO: do some more sophisticated inverse here. When INVERSE mode is
+ * set, we should instead just select inverse colors instead of switching
+ * background and foreground */
 			if (con->flags & TSM_SCREEN_INVERSE)
 				attr.inverse = !attr.inverse;
 

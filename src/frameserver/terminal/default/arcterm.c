@@ -352,8 +352,8 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		int flushc = 10;
 		while(pump_pty() && flushc--){}
 
-/* the magic 8 value should be positioned as something like display-synch / 2 */
-		delay = arcan_tui_refresh(term.screen) < 0 && errno == EAGAIN ? 8 : -1;
+/* the magic 8 value should be positioned as something like display-synch * 1.5 */
+		delay = arcan_tui_refresh(term.screen) < 0 && errno == EAGAIN ? 24 : -1;
 	}
 
 /* might have been destroyed already, just in case */
