@@ -1,5 +1,5 @@
 /*
- Arcan Shared Memory Interface
+ Arcan Text-Oriented User Interface Library
 
  Copyright (c) 2014-2017, Bjorn Stahl
  All rights reserved.
@@ -32,50 +32,52 @@
  THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef _HAVE_ARCAN_SHMIF_TUI
-#define _HAVE_ARCAN_SHMIF_TUI
+#ifndef HAVE_ARCAN_SHMIF_TUI
+#define HAVE_ARCAN_SHMIF_TUI
 
 /*
- *                                [THREAD UNSAFE]
- * Support functions for building a text-based user interfaces that draws using
- * Arcan. One of its primary uses is acting as the rendering backend for the
- * terminal emulator, but is useful for building other TUIs without all the
- * complexity, overhead, latency and dependencies from the [terminal+shell+
- * program[curses]], which in many cases are quite considerable due to baudrate
- * and resize protocol propagation.
+ * [ABOUT]
+ * This is a library intended to make development of rich text-oriented user
+ * interfaces that are free from the legacy- cruft of terminal emulation
+ * protocols, with the intent of offering better system integration, lower
+ * latency, faster drawing and access to more features, and to take advantage
+ * of existing display servers and window managers. It is not intended to
+ * provide UI- components as such, only access to subsystems like input,
+ * drawing and storage- with a bias towards text output and keyboard input.
  *
- * It covers all the boiler-plate needed for features like live migration,
- * dynamic font switching, select/copy/paste, binary blob transfers, mapping
- * subwindows etc.
+ * [PORTABILITY]
+ *  In order to allow custom backends that use other IPC and drawing systems to
+ *  avoid a lock-in or dependency on Arcan, there is a separate
+ *  arcan_shmif_tuitypes.h as an intermediate step in order to be able to move
+ *  away from the shmif- dependency entirely. It contains the type mapping of
+ *  all opaque- structures provided herein.
  *
- * It is based on libtsms screen and unicode handling, which unfortunately
- * pulls in a shl_htable implementation that is LGPL2.1+, meaning that we
- * also degrade to LGPL until that component has been replaced.
+ * [STABILITY]
+ *  The majority of the interface exposed here in terms of enumerations and
+ *  types is mostly safe against breaking changes. To be extra careful, wait
+ *  until a mirror- repo @github.com/letoram/arcan-tui.git has been set up
+ *  and all the fields updated. This will likely coincide with the 0.5.3
+ *  release.
  *
- * >> See tests/frameservers/tui_test for a template/example of use. <<
+ * [THREAD SAFETY]
+ *  The main allocation and initial setup routines are not safe for
+ *  multithreaded use. Each individual context, however, should work both
+ *  in multithreaded- and multiprocess- (though other systems such as libc
+ *  memory allocation may not be) use.
  *
- * This library attempts to eventually become a stable ABI, avoid exposing
- * the most volatile shmif_ structure (arcan_event) or raw offsets into
- * con.addr
+ * [LICENSING / ACKNOWLEDGEMENTS]
+ *  The default implementation is built on a forked version of libTSM which
+ *  pulls in dependencies that make the final output LGPL2.1+. The intent
+ *  of the library and API itself is to be BSD licensed.
  *
- * Missing:
- * [ ] serialized- API that wraps and serializes callbacks back to a queue
- *     so that it can fit into callback driven software without getting a
- *     'nested callbacks' mess.
- *
- * [ ] mapping file-open/file-save bchunk events
- *
- * [ ] readline- like API for completion and data input, with the same
- *     default keybindings
- *
- * [ ] abstract component helpers for things like popup-select style windows
- *
- * [ ] color palette management and switching
- *
- * [ ] query label callback not yet used
- *
- * [ ] backends that implement NCurses and TurboVision
- *
+ * [MISSING/PENDING FEATURES]
+ *  [ ] Simple audio
+ *  [ ] Announce binary- file input and output- capabilities
+ *  [ ] Language bindings, readline like API
+ *  [ ] Argument- validation mode
+ *  [ ] Ontology for color names and palette definitions
+ *  [ ] External process- to window mapping
+ *  [ ] Translation that exposes the NCurses API
  */
 enum tui_cursors {
 	CURSOR_BLOCK = 0,
@@ -270,9 +272,8 @@ struct tui_cbcfg {
 		const char* a3_country, const char* a3_language, void*);
 
 /*
- * [RESERVED, NOT_IMPLEMENTED]
- * for cells that have been written with the CUSTOM_DRAW attribute,
- * this function will be triggered whenever such a cell should be updated
+ * for cells that have been written with the custom_id > 127 attribute.
+ * this function will be triggered whenever such a cell should be updated.
  *
  * [vidp] will be aligned to the upper-left corner of the cell. The number
  * of horizontal pixels will be [px_w] * [cols] (the possibility of multiple
@@ -391,8 +392,6 @@ enum tui_flags {
 };
 
 struct tui_screen_attr {
-	int8_t fccode; /* foreground color code or <0 for rgb */
-	int8_t bccode; /* background color code or <0 for rgb */
 	uint8_t fr; /* foreground red */
 	uint8_t fg; /* foreground green */
 	uint8_t fb; /* foreground blue */
@@ -408,11 +407,11 @@ struct tui_screen_attr {
 	unsigned int faint : 1;
 	unsigned int strikethrough : 1;
 
-/* enable a different drawing path, trying to use the custom callback and
- * accumulate as many continous cells as possible. the custom_id will be
- * provided with the cell so that you can blit your own content. */
-	unsigned int custom : 1;
-	uint32_t custom_id;
+/*  > 127: cell is used for a custom draw-call, will be used with -127
+ *         subtracted in custom draw callback.
+ * 0..127: act as a user-supplied type-id, will be drawn as normal but
+ *         can be queried for in selection buffers etc. */
+	uint8_t custom_id;
 };
 
 /*

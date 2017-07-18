@@ -150,6 +150,9 @@ struct vte_saved_state {
 	size_t mouse_y;
 	enum mouse_data mouse_state;
 	struct tui_screen_attr cattr;
+	int c_fgcode, c_bgcode;
+	int d_fgcode, d_bgcode;
+
 	tsm_vte_charset **gl;
 	tsm_vte_charset **gr;
 	bool wrap_mode;
@@ -186,6 +189,9 @@ struct tsm_vte {
 	uint8_t palette[VTE_COLOR_NUM][3];
 	struct tui_screen_attr def_attr;
 	struct tui_screen_attr cattr;
+	int c_fgcode, c_bgcode;
+	int d_fgcode, d_bgcode;
+
 	unsigned int flags;
 
 	tsm_vte_charset **gl;
@@ -313,50 +319,69 @@ static uint8_t (*get_palette(struct tsm_vte *vte))[3]
  * be called before passing the attribute to the console layer so the console
  * layer can always work with RGB values and does not have to care for color
  * codes. */
-static void to_rgb(struct tsm_vte *vte, struct tui_screen_attr *attr)
+static void to_rgb(struct tsm_vte *vte, bool defattr)
 {
-	int8_t code;
+	struct tui_screen_attr* attr = defattr ? &vte->def_attr : &vte->cattr;
+	int fgc = defattr ? vte->d_fgcode : vte->c_fgcode;
+	int bgc = defattr ? vte->d_bgcode : vte->c_bgcode;
 
-	code = attr->fccode;
-	if (code >= 0) {
+	if (fgc >= 0) {
 		/* bold causes light colors */
-		if (attr->bold && code < 8)
-			code += 8;
-		if (code >= VTE_COLOR_NUM)
-			code = VTE_COLOR_FOREGROUND;
+		if (attr->bold && fgc < 8)
+			fgc += 8;
+		if (fgc >= VTE_COLOR_NUM)
+			fgc = VTE_COLOR_FOREGROUND;
 
+		attr->fr = vte->palette[fgc][0];
+		attr->fg = vte->palette[fgc][1];
+		attr->fb = vte->palette[fgc][2];
+	}
+
+	if (bgc >= 0) {
+		if (bgc >= VTE_COLOR_NUM)
+			bgc = VTE_COLOR_BACKGROUND;
+
+		attr->br = vte->palette[bgc][0];
+		attr->bg = vte->palette[bgc][1];
+		attr->bb = vte->palette[bgc][2];
+	}
+}
+
+/*
+ * update fg or bg attribute field with the palette- lookup based on code
+ */
+static void set_rgb(struct tsm_vte* vte,
+	struct tui_screen_attr* attr, bool fg, int code)
+{
+	if (code >= VTE_COLOR_NUM)
+		code = VTE_COLOR_FOREGROUND;
+
+	if (attr == &vte->def_attr){
+		if (fg)
+			vte->d_fgcode = code;
+		else
+			vte->d_bgcode = code;
+	}
+	else {
+		if (fg)
+			vte->c_fgcode = code;
+		else
+			vte->c_bgcode = code;
+	}
+
+	if (code < 0)
+		return;
+
+	if (fg){
 		attr->fr = vte->palette[code][0];
 		attr->fg = vte->palette[code][1];
 		attr->fb = vte->palette[code][2];
 	}
-
-	code = attr->bccode;
-	if (code >= 0) {
-		if (code >= VTE_COLOR_NUM)
-			code = VTE_COLOR_BACKGROUND;
-
+	else{
 		attr->br = vte->palette[code][0];
 		attr->bg = vte->palette[code][1];
 		attr->bb = vte->palette[code][2];
 	}
-}
-
-static void copy_fcolor(struct tui_screen_attr *dest,
-			const struct tui_screen_attr *src)
-{
-	dest->fccode = src->fccode;
-	dest->fr = src->fr;
-	dest->fg = src->fg;
-	dest->fb = src->fb;
-}
-
-static void copy_bcolor(struct tui_screen_attr *dest,
-			const struct tui_screen_attr *src)
-{
-	dest->bccode = src->bccode;
-	dest->br = src->br;
-	dest->bg = src->bg;
-	dest->bb = src->bb;
 }
 
 SHL_EXPORT
@@ -383,9 +408,8 @@ int tsm_vte_new(struct tsm_vte **out, struct tui_context *con,
 	vte->data = data;
 	uint8_t* palette = (uint8_t*) get_palette(vte);
 	memcpy(vte->palette, palette, 3 * VTE_COLOR_NUM);
-	vte->def_attr.fccode = VTE_COLOR_FOREGROUND;
-	vte->def_attr.bccode = VTE_COLOR_BACKGROUND;
-	to_rgb(vte, &vte->def_attr);
+	set_rgb(vte, &vte->def_attr, true, VTE_COLOR_FOREGROUND);
+	set_rgb(vte, &vte->def_attr, false, VTE_COLOR_BACKGROUND);
 
 	ret = tsm_utf8_mach_new(&vte->mach);
 	if (ret)
@@ -440,8 +464,9 @@ void tsm_vte_set_color(struct tsm_vte *vte,
 	vte->palette[ind][1] = rgb[1];
 	vte->palette[ind][2] = rgb[2];
 
-	to_rgb(vte, &vte->def_attr);
-	to_rgb(vte, &vte->cattr);
+/*
+ * NOTE: this does not update the actual color on cattr/def_attr
+ */
 }
 
 SHL_EXPORT
@@ -475,10 +500,10 @@ int tsm_vte_set_palette(struct tsm_vte *vte, const char *pstr)
 
 	uint8_t* palette = (uint8_t*) get_palette(vte);
 	memcpy(vte->palette, palette, 3 * VTE_COLOR_NUM);
-	vte->def_attr.fccode = VTE_COLOR_FOREGROUND;
-	vte->def_attr.bccode = VTE_COLOR_BACKGROUND;
+	set_rgb(vte, &vte->def_attr, true, VTE_COLOR_FOREGROUND);
+	set_rgb(vte, &vte->def_attr, false, VTE_COLOR_BACKGROUND);
 
-	to_rgb(vte, &vte->def_attr);
+	to_rgb(vte, true);
 	memcpy(&vte->cattr, &vte->def_attr, sizeof(vte->cattr));
 
 	arcan_tui_defattr(vte->con, &vte->def_attr);
@@ -558,7 +583,7 @@ static void vte_write_debug(struct tsm_vte *vte, const char *u8, size_t len,
 /* write to console */
 static void write_console(struct tsm_vte *vte, tsm_symbol_t sym)
 {
-	to_rgb(vte, &vte->cattr);
+	to_rgb(vte, false);
 	arcan_tui_write(vte->con, sym, &vte->cattr);
 }
 
@@ -575,8 +600,14 @@ static void reset_state(struct tsm_vte *vte)
 	vte->saved_state.gl = &vte->g0;
 	vte->saved_state.gr = &vte->g1;
 
-	copy_fcolor(&vte->saved_state.cattr, &vte->def_attr);
-	copy_bcolor(&vte->saved_state.cattr, &vte->def_attr);
+	vte->saved_state.c_fgcode = vte->d_fgcode;
+	vte->saved_state.cattr.fr = vte->def_attr.fr;
+	vte->saved_state.cattr.fg = vte->def_attr.fg;
+	vte->saved_state.cattr.fb = vte->def_attr.fb;
+	vte->saved_state.c_bgcode = vte->d_bgcode;
+	vte->saved_state.cattr.br = vte->def_attr.br;
+	vte->saved_state.cattr.bg = vte->def_attr.bg;
+	vte->saved_state.cattr.bb = vte->def_attr.bb;
 	vte->saved_state.cattr.bold = 0;
 	vte->saved_state.cattr.italic = 0;
 	vte->saved_state.cattr.underline = 0;
@@ -584,7 +615,7 @@ static void reset_state(struct tsm_vte *vte)
 	vte->saved_state.cattr.protect = 0;
 	vte->saved_state.cattr.blink = 0;
 	vte->saved_state.cattr.strikethrough = 0;
-	vte->saved_state.cattr.custom = 0;
+	vte->saved_state.cattr.custom_id = 0;
 }
 
 static void save_state(struct tsm_vte *vte)
@@ -604,7 +635,7 @@ static void restore_state(struct tsm_vte *vte)
 	arcan_tui_move_to(vte->con, vte->saved_state.cursor_x,
 			       vte->saved_state.cursor_y);
 	vte->cattr = vte->saved_state.cattr;
-	to_rgb(vte, &vte->cattr);
+	to_rgb(vte, false);
 	if (vte->flags & FLAG_BACKGROUND_COLOR_ERASE_MODE)
 		arcan_tui_defattr(vte->con, &vte->cattr);
 	vte->gl = vte->saved_state.gl;
@@ -661,7 +692,7 @@ void tsm_vte_reset(struct tsm_vte *vte)
 	vte->g3 = &tsm_vte_unicode_upper;
 
 	memcpy(&vte->cattr, &vte->def_attr, sizeof(vte->cattr));
-	to_rgb(vte, &vte->cattr);
+	to_rgb(vte, false);
 	arcan_tui_defattr(vte->con, &vte->def_attr);
 
 	reset_state(vte);
@@ -1156,7 +1187,8 @@ static void do_esc(struct tsm_vte *vte, uint32_t data)
 static void csi_attribute(struct tsm_vte *vte)
 {
 	static const uint8_t bval[6] = { 0x00, 0x5f, 0x87, 0xaf, 0xd7, 0xff };
-	unsigned int i, code, val;
+	unsigned int i, val;
+	int code;
 	uint8_t cr = 0, cg = 0, cb = 0;
 
 	if (vte->csi_argc <= 1 && vte->csi_argv[0] == -1) {
@@ -1169,8 +1201,14 @@ static void csi_attribute(struct tsm_vte *vte)
 		case -1:
 			break;
 		case 0:
-			copy_fcolor(&vte->cattr, &vte->def_attr);
-			copy_bcolor(&vte->cattr, &vte->def_attr);
+			vte->c_fgcode = vte->d_fgcode;
+			vte->cattr.fr = vte->def_attr.fr;
+			vte->cattr.fg = vte->def_attr.fg;
+			vte->cattr.fb = vte->def_attr.fb;
+			vte->c_bgcode = vte->d_bgcode;
+			vte->cattr.br = vte->def_attr.br;
+			vte->cattr.bg = vte->def_attr.bg;
+			vte->cattr.bb = vte->def_attr.bb;
 			vte->cattr.bold = 0;
 			vte->cattr.underline = 0;
 			vte->cattr.inverse = 0;
@@ -1214,106 +1252,112 @@ static void csi_attribute(struct tsm_vte *vte)
 			vte->cattr.inverse = 0;
 			break;
 		case 30:
-			vte->cattr.fccode = VTE_COLOR_BLACK;
+			set_rgb(vte, &vte->cattr, true, VTE_COLOR_BLACK);
 			break;
 		case 31:
-			vte->cattr.fccode = VTE_COLOR_RED;
+			set_rgb(vte, &vte->cattr, true, VTE_COLOR_RED);
 			break;
 		case 32:
-			vte->cattr.fccode = VTE_COLOR_GREEN;
+			set_rgb(vte, &vte->cattr, true, VTE_COLOR_GREEN);
 			break;
 		case 33:
-			vte->cattr.fccode = VTE_COLOR_YELLOW;
+			set_rgb(vte, &vte->cattr, true, VTE_COLOR_YELLOW);
 			break;
 		case 34:
-			vte->cattr.fccode = VTE_COLOR_BLUE;
+			set_rgb(vte, &vte->cattr, true, VTE_COLOR_BLUE);
 			break;
 		case 35:
-			vte->cattr.fccode = VTE_COLOR_MAGENTA;
+			set_rgb(vte, &vte->cattr, true, VTE_COLOR_MAGENTA);
 			break;
 		case 36:
-			vte->cattr.fccode = VTE_COLOR_CYAN;
+			set_rgb(vte, &vte->cattr, true, VTE_COLOR_CYAN);
 			break;
 		case 37:
-			vte->cattr.fccode = VTE_COLOR_LIGHT_GREY;
+			set_rgb(vte, &vte->cattr, true, VTE_COLOR_LIGHT_GREY);
 			break;
 		case 39:
-			copy_fcolor(&vte->cattr, &vte->def_attr);
+			vte->c_fgcode = vte->d_fgcode;
+			vte->cattr.fr = vte->def_attr.fr;
+			vte->cattr.fg = vte->def_attr.fg;
+			vte->cattr.fb = vte->def_attr.fb;
 			break;
 		case 40:
-			vte->cattr.bccode = VTE_COLOR_BLACK;
+			set_rgb(vte, &vte->cattr, false, VTE_COLOR_BLACK);
 			break;
 		case 41:
-			vte->cattr.bccode = VTE_COLOR_RED;
+			set_rgb(vte, &vte->cattr, false, VTE_COLOR_RED);
 			break;
 		case 42:
-			vte->cattr.bccode = VTE_COLOR_GREEN;
+			set_rgb(vte, &vte->cattr, false, VTE_COLOR_GREEN);
 			break;
 		case 43:
-			vte->cattr.bccode = VTE_COLOR_YELLOW;
+			set_rgb(vte, &vte->cattr, false, VTE_COLOR_YELLOW);
 			break;
 		case 44:
-			vte->cattr.bccode = VTE_COLOR_BLUE;
+			set_rgb(vte, &vte->cattr, false, VTE_COLOR_BLUE);
 			break;
 		case 45:
-			vte->cattr.bccode = VTE_COLOR_MAGENTA;
+			set_rgb(vte, &vte->cattr, false, VTE_COLOR_MAGENTA);
 			break;
 		case 46:
-			vte->cattr.bccode = VTE_COLOR_CYAN;
+			set_rgb(vte, &vte->cattr, false, VTE_COLOR_CYAN);
 			break;
 		case 47:
-			vte->cattr.bccode = VTE_COLOR_LIGHT_GREY;
+			set_rgb(vte, &vte->cattr, false, VTE_COLOR_LIGHT_GREY);
 			break;
 		case 49:
-			copy_bcolor(&vte->cattr, &vte->def_attr);
+			vte->c_bgcode = vte->d_bgcode;
+			vte->cattr.br = vte->def_attr.br;
+			vte->cattr.bg = vte->def_attr.bg;
+			vte->cattr.bb = vte->def_attr.bb;
 			break;
 		case 90:
-			vte->cattr.fccode = VTE_COLOR_DARK_GREY;
+			set_rgb(vte, &vte->cattr, true, VTE_COLOR_DARK_GREY);
 			break;
 		case 91:
-			vte->cattr.fccode = VTE_COLOR_LIGHT_RED;
+			set_rgb(vte, &vte->cattr, true, VTE_COLOR_LIGHT_RED);
 			break;
 		case 92:
-			vte->cattr.fccode = VTE_COLOR_LIGHT_GREEN;
+			set_rgb(vte, &vte->cattr, true, VTE_COLOR_LIGHT_GREEN);
 			break;
 		case 93:
-			vte->cattr.fccode = VTE_COLOR_LIGHT_YELLOW;
+			set_rgb(vte, &vte->cattr, true, VTE_COLOR_LIGHT_YELLOW);
 			break;
 		case 94:
-			vte->cattr.fccode = VTE_COLOR_LIGHT_BLUE;
+			set_rgb(vte, &vte->cattr, true, VTE_COLOR_LIGHT_BLUE);
 			break;
 		case 95:
-			vte->cattr.fccode = VTE_COLOR_LIGHT_MAGENTA;
+			set_rgb(vte, &vte->cattr, true, VTE_COLOR_LIGHT_MAGENTA);
 			break;
 		case 96:
-			vte->cattr.fccode = VTE_COLOR_LIGHT_CYAN;
+			set_rgb(vte, &vte->cattr, true, VTE_COLOR_LIGHT_CYAN);
 			break;
 		case 97:
-			vte->cattr.fccode = VTE_COLOR_WHITE;
+			set_rgb(vte, &vte->cattr, true, VTE_COLOR_WHITE);
 			break;
 		case 100:
-			vte->cattr.bccode = VTE_COLOR_DARK_GREY;
+			set_rgb(vte, &vte->cattr, false, VTE_COLOR_DARK_GREY);
 			break;
 		case 101:
-			vte->cattr.bccode = VTE_COLOR_LIGHT_RED;
+			set_rgb(vte, &vte->cattr, false, VTE_COLOR_LIGHT_RED);
 			break;
 		case 102:
-			vte->cattr.bccode = VTE_COLOR_LIGHT_GREEN;
+			set_rgb(vte, &vte->cattr, false, VTE_COLOR_LIGHT_GREEN);
 			break;
 		case 103:
-			vte->cattr.bccode = VTE_COLOR_LIGHT_YELLOW;
+			set_rgb(vte, &vte->cattr, false, VTE_COLOR_LIGHT_YELLOW);
 			break;
 		case 104:
-			vte->cattr.bccode = VTE_COLOR_LIGHT_BLUE;
+			set_rgb(vte, &vte->cattr, false, VTE_COLOR_LIGHT_BLUE);
 			break;
 		case 105:
-			vte->cattr.bccode = VTE_COLOR_LIGHT_MAGENTA;
+			set_rgb(vte, &vte->cattr, false, VTE_COLOR_LIGHT_MAGENTA);
 			break;
 		case 106:
-			vte->cattr.bccode = VTE_COLOR_LIGHT_CYAN;
+			set_rgb(vte, &vte->cattr, false, VTE_COLOR_LIGHT_CYAN);
 			break;
 		case 107:
-			vte->cattr.bccode = VTE_COLOR_WHITE;
+			set_rgb(vte, &vte->cattr, false, VTE_COLOR_WHITE);
 			break;
 		case 38:
 			/* fallthrough */
@@ -1362,15 +1406,25 @@ static void csi_attribute(struct tsm_vte *vte)
 				break;
 			}
 			if (val == 38) {
-				vte->cattr.fccode = code;
-				vte->cattr.fr = cr;
-				vte->cattr.fg = cg;
-				vte->cattr.fb = cb;
+				vte->c_fgcode = code;
+				if (code >= 0){
+					set_rgb(vte, &vte->cattr, true, code);
+				}
+				else{
+					vte->cattr.fr = cr;
+					vte->cattr.fg = cg;
+					vte->cattr.fb = cb;
+				}
 			} else {
-				vte->cattr.bccode = code;
-				vte->cattr.br = cr;
-				vte->cattr.bg = cg;
-				vte->cattr.bb = cb;
+				vte->c_bgcode = code;
+				if (code >= 0){
+					set_rgb(vte, &vte->cattr, false, code);
+				}
+				else {
+					vte->cattr.br = cr;
+					vte->cattr.bg = cg;
+					vte->cattr.bb = cb;
+				}
 			}
 			break;
 		default:
@@ -1379,7 +1433,7 @@ static void csi_attribute(struct tsm_vte *vte)
 		}
 	}
 
-	to_rgb(vte, &vte->cattr);
+	to_rgb(vte, false);
 	if (vte->flags & FLAG_BACKGROUND_COLOR_ERASE_MODE)
 		arcan_tui_defattr(vte->con, &vte->cattr);
 }

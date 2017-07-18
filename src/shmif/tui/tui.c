@@ -3,7 +3,9 @@
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  * Description: text-user interface support library derived from the work on
- * the afsrv_terminal frameserver.
+ * the afsrv_terminal frameserver. Two separate builds need to be tested here,
+ * one from defining SIMPLE_RENDERING, and the other with SHMIF_TUI_DISABLE_GPU
+ * off along with the option of doing gpu- buffer transfers on.
  */
 #include <stdlib.h>
 #include <stdio.h>
@@ -34,7 +36,14 @@
 #include "../arcan_shmif.h"
 #include "../arcan_shmif_tui.h"
 #include "../arcan_shmif_tuisym.h"
+
+/*
+ * Dislike this sort of feature enable/disable, but the dependency and extra
+ * considerations from shaped text versus normal bitblt is worth it.
+ */
+#ifndef SIMPLE_RENDERING
 #include "arcan_ttf.h"
+#endif
 
 #include "libtsm.h"
 #include "libtsm_int.h"
@@ -47,13 +56,47 @@ enum dirty_state {
 	DIRTY_PENDING_FULL = 4
 };
 
+struct tui_cell {
+	uint32_t ch;
+	struct tui_screen_attr attr;
+
+#ifndef SIMPLE_RENDERING
+/* for performing picking when we have shaped rendering etc. */
+	uint16_t cell_ofs;
+#endif
+};
+
 struct tui_context {
 /* cfg->nal / state control */
 	struct tsm_screen* screen;
 	struct tsm_utf8_mach* ucsconv;
 
+/*
+ * allow a number of virtual screens for this context, these are allocated
+ * when one is explicitly called, and swaps out the drawing into the output
+ * context.
+ * TODO: allow multiple- screens to be mapped in order onto the same buffer.
+ */
 	struct tsm_screen* screens[32];
 	uint32_t screen_alloc;
+
+/* FRONT, BACK, CUSTOM ALIAS BASE. ONLY BASE IS AN ALLOCATION. used to quickly
+ * detect changes when it is time to update as a means of allowing smooth
+ * scrolling on single- line stepping and to cut down on possible processing
+ * latency for terminals. Custom is used as a scratch buffer in order to batch
+ * multiple cells with the same custom id together.
+ *
+ * the cell-buffers act as a cache for the draw-call cells with a front and a
+ * back in order to do more advanced heuristics. These are used to detect if
+ * scrolling has occured and to permit smooth scrolling, but also to get more
+ * efficient draw-calls for custom-tagged cells, for more advanced font
+ * rendering, to work around some of the quirks with tsms screen and get
+ * multi-threaded rendering going.
+ */
+	struct tui_cell* base;
+	struct tui_cell* front;
+	struct tui_cell* back;
+	struct tui_cell* custom;
 
 	unsigned flags;
 	bool focus, inactive;
@@ -65,51 +108,52 @@ struct tui_context {
 
 /* font rendering / tracking - we support one main that defines cell size
  * and one secondary that can be used for alternative glyphs */
+#ifndef SIMPLE_RENDERING
 	TTF_Font* font[2];
+#endif
 	struct tui_font_ctx* font_bitmap;
 	bool force_bitmap;
-
-/* size in mm */
-	float font_sz;
-	int font_sz_delta;
+	float font_sz; /* size in mm */
+	int font_sz_delta; /* user requested step, pt */
 	int hint;
 	int font_fd[2];
 	float ppcm;
 	enum dirty_state dirty;
 
-/* if we receive a label set in mouse events, we switch to a different
- * interpreteation where drag, click, dblclick, wheelup, wheeldown work */
-	bool gesture_support;
-
-/* mouse selection management */
+/* mouse and/or selection management */
 	int mouse_x, mouse_y;
 	uint32_t mouse_btnmask;
 	int lm_x, lm_y;
 	int bsel_x, bsel_y;
+	int last_dbl_x,last_dbl_y;
 	bool in_select;
 	int scrollback;
 	bool mouse_forward;
 	bool scroll_lock;
 
+/* if we receive a label set in mouse events, we switch to a different
+ * interpreteation where drag, click, dblclick, wheelup, wheeldown work */
+	bool gesture_support;
+
 /* tracking when to reset scrollback */
 	int sbofs;
 
 /* color, cursor and other drawing states */
-	int cursor_x, cursor_y;
-	int last_dbl_x,last_dbl_y;
 	int rows;
 	int cols;
 	int cell_w, cell_h, pad_w, pad_h;
 	int modifiers;
+	bool got_custom; /* track if we have any on-screen dynamic cells */
 
-	uint8_t fgc[3], bgc[3], clc[3], cc[3];
+	uint8_t fgc[3], bgc[3], clc[3];
 
-/* store a copy of the state where the cursor is */
-	struct tsm_screen_attr cattr;
-	uint32_t cvalue;
-	bool cursor_off;
-	long cursor_period;
-	enum tui_cursors cursor;
+	uint8_t cc[3]; /* cursor color */
+	int cursor_x, cursor_y; /* last cached position */
+	bool cursor_off; /* current blink state */
+	bool cursor_hard_off; /* user / state toggle */
+	bool cursor_upd; /* invalidation, need to draw- old / new */
+	long cursor_period; /* blink setting */
+	enum tui_cursors cursor; /* visual style */
 
 	uint8_t alpha;
 
@@ -130,10 +174,15 @@ struct tui_context {
  * re-built in the event of a RESET request */
 static void queue_requests(struct tui_context* tui, bool clipboard, bool ident);
 
-/* to be able to update the cursor cell with other information */
+/*
+ * main character drawing / blitting function,
+ * only called when updating cursor or as part of update_screen
+ */
 static int draw_cbt(struct tui_context* tui,
-	uint32_t ch, unsigned x, unsigned y, const struct tsm_screen_attr* attr,
-	tsm_age_t age, bool cstate, bool empty
+	uint32_t ch, unsigned row, unsigned col,
+	int xofs, int yofs, unsigned w, unsigned h,
+	const struct tui_screen_attr* attr,
+	bool empty
 );
 
 static void tsm_log(void* data, const char* file, int line,
@@ -153,19 +202,17 @@ const char* curslbl[] = {
 	NULL
 };
 
-static void cursor_at(struct tui_context* tui,
-	int x, int y, shmif_pixel ccol, bool active)
+static void cursor_at(struct tui_context* tui, int x, int y, shmif_pixel ccol)
 {
 	shmif_pixel* dst = tui->acon.vidp;
-	x *= tui->cell_w;
-	y *= tui->cell_h;
 
-/* first draw "original character" if it's not occluded */
-	if (tui->cursor_off || tui->cursor != CURSOR_BLOCK){
-		draw_cbt(tui, tui->cvalue, tui->cursor_x, tui->cursor_y,
-			&tui->cattr, 0, false, false);
+	if (tui->cursor_hard_off || tui->cursor_off || tui->cursor != CURSOR_BLOCK){
+		struct tui_cell* tc = &tui->back[tui->cursor_y * tui->cols + tui->cursor_x];
+
+		draw_cbt(tui, tc->ch, tui->cursor_y, tui->cursor_x, 0, 0,
+			tui->cell_w, tui->cell_h, &tc->attr, false);
 	}
-	if (tui->cursor_off)
+	if (tui->cursor_off || tui->cursor_hard_off)
 		return;
 
 	switch (tui->cursor){
@@ -173,7 +220,7 @@ static void cursor_at(struct tui_context* tui,
 		draw_box(&tui->acon, x, y, tui->cell_w, tui->cell_h, ccol);
 	break;
 	case CURSOR_HALFBLOCK:
-	draw_box(&tui->acon, x, y, tui->cell_w >> 1, tui->cell_h, ccol);
+		draw_box(&tui->acon, x, y, tui->cell_w >> 1, tui->cell_h, ccol);
 	break;
 	case CURSOR_FRAME:
 		for (int col = x; col < x + tui->cell_w; col++){
@@ -199,7 +246,7 @@ static void cursor_at(struct tui_context* tui,
 }
 
 static void apply_attrs(struct tui_context* tui,
-	int base_x, int base_y, uint8_t fg[4], const struct tsm_screen_attr* attr)
+	int base_x, int base_y, uint8_t fg[4], const struct tui_screen_attr* attr)
 {
 /*
  * We cheat with underline / strikethrough and just go relative to cell
@@ -217,9 +264,10 @@ static void apply_attrs(struct tui_context* tui,
 	}
 }
 
+#ifndef SIMPLE_RENDERING
 static void draw_ch(struct tui_context* tui,
 	uint32_t ch, int base_x, int base_y, uint8_t fg[4], uint8_t bg[4],
-	const struct tsm_screen_attr* attr)
+	const struct tui_screen_attr* attr)
 {
 	int prem = TTF_STYLE_NORMAL;
 	prem |= TTF_STYLE_ITALIC * attr->italic;
@@ -250,6 +298,7 @@ static void draw_ch(struct tui_context* tui,
 
 	apply_attrs(tui, base_x, base_y, fg, attr);
 }
+#endif
 
 static void send_cell_sz(struct tui_context* tui)
 {
@@ -263,29 +312,35 @@ static void send_cell_sz(struct tui_context* tui)
 	arcan_shmif_enqueue(&tui->acon, &ev);
 }
 
-static int draw_cb(struct tsm_screen* screen, uint32_t id,
+static int tsm_draw_callback(struct tsm_screen* screen, uint32_t id,
 	const uint32_t* ch, size_t len, unsigned width, unsigned x, unsigned y,
-	const struct tsm_screen_attr* attr, tsm_age_t age, void* data)
+	const struct tui_screen_attr* attr, tsm_age_t age, void* data)
 {
 	struct tui_context* tui = data;
-	return draw_cbt((struct tui_context*) data, *ch, x, y, attr, age,
-		!(tui->flags & TSM_SCREEN_HIDE_CURSOR), len == 0);
+
+	if (!(age && tui->age && age <= tui->age)){
+		size_t pos = y * tui->cols + x;
+		tui->front[pos].ch = *ch;
+		tui->front[pos].attr = *attr;
+		tui->dirty |= DIRTY_PENDING;
+	}
+
+	return 0;
 }
 
 static int draw_cbt(struct tui_context* tui,
-	uint32_t ch, unsigned x, unsigned y, const struct tsm_screen_attr* attr,
-	tsm_age_t age, bool cstate, bool empty)
-{
+	uint32_t ch, unsigned row, unsigned col,
+	int xofs, int yofs, unsigned w, unsigned h,
+	const struct tui_screen_attr* attr,
+	bool empty
+){
 	uint8_t fgc[4] = {attr->fr, attr->fg, attr->fb, 255};
 	uint8_t bgc[4] = {attr->br, attr->bg, attr->bb, tui->alpha};
 	uint8_t* dfg = fgc, (* dbg) = bgc;
-	int y1 = y * tui->cell_h;
-	int x1 = x * tui->cell_w;
+	int y1 = row * tui->cell_h + xofs;
+	int x1 = col * tui->cell_w + yofs;
 
-	if (x >= tui->cols || y >= tui->rows)
-		return 0;
-
-	if (age && tui->age && age <= tui->age)
+	if (col >= tui->cols || row >= tui->rows || x1 < 0 || y1 < 0)
 		return 0;
 
 	if (attr->inverse){
@@ -300,8 +355,8 @@ static int draw_cbt(struct tui_context* tui,
 		bgc[0] >>= 1; bgc[1] >>= 1; bgc[2] >>= 1;
 	}
 
-	int x2 = x1 + tui->cell_w;
-	int y2 = y1 + tui->cell_h;
+	int x2 = x1 + w;
+	int y2 = y1 + h;
 
 /* update dirty rectangle for synchronization */
 	if (x1 < tui->acon.dirty.x1)
@@ -313,15 +368,10 @@ static int draw_cbt(struct tui_context* tui,
 	if (y2 > tui->acon.dirty.y2)
 		tui->acon.dirty.y2 = y2;
 
-	bool match_cursor = false;
-	if (x == tui->cursor_x && y == tui->cursor_y){
-		if (!(tsm_screen_get_flags(tui->screen) & TSM_SCREEN_HIDE_CURSOR))
-			match_cursor = cstate;
-	}
-
 	tui->dirty |= DIRTY_UPDATED;
 
-/* quick erase if nothing more is needed */
+/* Quick erase if nothing more is needed. There should really be better palette
+ * management here to account for an inverse- palette instead */
 	if (empty){
 		if (attr->inverse){
 			draw_box(&tui->acon, x1, y1, tui->cell_w, tui->cell_h,
@@ -334,34 +384,64 @@ static int draw_cbt(struct tui_context* tui,
 			apply_attrs(tui, x1, y1, fgc, attr);
 		}
 
-		if (!match_cursor)
-			return 0;
-		else
-			ch = 0x00000008;
+		ch = 0x00000008;
 	}
 
-	if (match_cursor){
-		tui->cattr = *attr;
-		tui->cvalue = ch;
-		cursor_at(tui, x, y, tui->scroll_lock ?
-			SHMIF_RGBA(tui->clc[0], tui->clc[1], tui->clc[2], 0xff) :
-			SHMIF_RGBA(tui->cc[0], tui->cc[1], tui->cc[2], 0xff), true);
-		return 0;
-	}
-
-	if (tui->force_bitmap || !tui->font[0]){
+	if (
+#ifndef SIMPLE_RENDERING
+			tui->force_bitmap || !tui->font[0]
+#else
+			1
+#endif
+		){
 		draw_ch_u32(tui->font_bitmap,
 			&tui->acon, ch, x1, y1,
 			SHMIF_RGBA(dfg[0], dfg[1], dfg[2], dfg[3]),
 			SHMIF_RGBA(dbg[0], dbg[1], dbg[2], dbg[3])
 		);
 	}
+#ifndef SIMPLE_RENDERING
 	else
 		draw_ch(tui, ch, x1, y1, dfg, dbg, attr);
+#endif
 
 	return 0;
 }
 
+/*
+ * return true of [a] and [b] have the same members. custom_id is
+ * excluded from this comparison as those should always be treated
+ * separately
+ */
+static bool cell_match(struct tui_cell* ac, struct tui_cell* bc)
+{
+	struct tui_screen_attr* a = &ac->attr;
+	struct tui_screen_attr* b = &bc->attr;
+	return (
+		ac->ch == bc->ch &&
+		a->fr == b->fr &&
+		a->fg == b->fg &&
+		a->fb == b->fb &&
+		a->br == b->br &&
+		a->bg == b->bg &&
+		a->bb == b->bb &&
+		a->bold == b->bold &&
+		a->underline == b->underline &&
+		a->italic == b->italic &&
+		a->inverse == b->inverse &&
+		a->protect == b->protect &&
+		a->blink == b->blink &&
+		a->faint == b->faint &&
+		a->strikethrough == b->strikethrough
+	);
+}
+
+/*
+ * called on:
+ * update_screensize
+ * arcan_tui_refresh
+ * arcan_tui_invalidate
+ */
 static void update_screen(struct tui_context* tui, bool ign_inact)
 {
 /* don't redraw while we have an update pending or when we
@@ -369,14 +449,17 @@ static void update_screen(struct tui_context* tui, bool ign_inact)
 	if (tui->inactive && !ign_inact)
 		return;
 
-/* "always" erase previous cursor, except when cfg->nal screen state explicitly
- * say that cursor drawing should be turned off */
-	draw_cbt(tui, tui->cvalue, tui->cursor_x, tui->cursor_y,
-		&tui->cattr, 0, false, false);
-
+/* only blink cursor if its state has actually changed, since it can
+ * grow the invalidation region rather heavily */
+	if (tui->cursor_upd){
+		struct tui_cell* tc = &tui->back[tui->cursor_y * tui->cols + tui->cursor_x];
+		draw_cbt(tui, tc->ch, tui->cursor_y, tui->cursor_x, 0, 0,
+			tui->cell_w, tui->cell_h, &tc->attr, false);
+	}
 	tui->cursor_x = tsm_screen_get_cursor_x(tui->screen);
 	tui->cursor_y = tsm_screen_get_cursor_y(tui->screen);
 
+/* dirty will be set from screen draw */
 	if (tui->dirty & DIRTY_PENDING_FULL){
 		tui->acon.dirty.x1 = 0;
 		tui->acon.dirty.x2 = tui->acon.w;
@@ -394,12 +477,69 @@ static void update_screen(struct tui_context* tui, bool ign_inact)
 			draw_box(&tui->acon,
 				0, tui->acon.h-tui->pad_h-1, tui->acon.w, tui->pad_h+1, col);
 	}
+	else
+/* "always" erase previous cursor, except when cfg->nal screen state explicitly
+ * say that cursor drawing should be turned off */
+		;
 
-	tui->flags = tsm_screen_get_flags(tui->screen);
-	tui->age = tsm_screen_draw(tui->screen, draw_cb, tui);
+/* now it's time to blit, at an offset + block if we want smooth-scrolling (and
+ * not resetting the dirty flag) - shaping, for shaping / ligatures: then we
+ * need a stronger heuristic to step */
+	struct tui_cell* fpos = tui->front;
+	struct tui_cell* bpos = tui->back;
+	struct tui_cell* custom = tui->custom;
 
-	draw_cbt(tui, tui->cvalue, tui->cursor_x, tui->cursor_y,
-		&tui->cattr, 0, !tui->cursor_off, false);
+/* FIXME
+ * if shaping/ligatures/non-monospace is enabled, we treat this row by row,
+ * though this strategy is somewhat flawed if its word wrapped and we start
+ * on a new word. There's surely some harfbuzz- trick to this, but baby-steps */
+
+/* NORMAL drawing
+ * draw everything that is different and not marked as custom, track the start
+ * of every custom entry and sweep- seek- those separately */
+	size_t drawc = 0;
+	tui->got_custom = false;
+
+	if (tui->front){
+		for (size_t y = 0; y < tui->rows; y++)
+			for (size_t x = 0; x < tui->cols; x++){
+
+/* only update if the source position has changed, treat custom_id separate */
+				if (!(tui->dirty & DIRTY_PENDING_FULL) && cell_match(fpos, bpos)){
+				/* || tui->double_buffered */
+					fpos++, bpos++, custom++;
+					continue;
+				}
+
+/* this ensures the custom- ID buffer is updated, when we step through it
+ * in the custom step, the cells will be marked 0ed after use. since the
+ * custom cells may be updated whenever, the got_custom state is updated
+ * so DIRTY_PENDING doesn't get cleared at synch. */
+				if (fpos->attr.custom_id > 127){
+					*custom = *fpos;
+					fpos++, bpos++, custom++;
+					tui->got_custom = true;
+					continue;
+				}
+
+/* update the cell */
+				draw_cbt(tui, fpos->ch, y, x, 0, 0,
+					tui->cell_w, tui->cell_h, &fpos->attr, false);
+				drawc++;
+				*custom = *bpos = *fpos;
+
+				fpos++, bpos++, custom++;
+			}
+	}
+
+	if (tui->cursor_upd){
+		cursor_at(tui, tui->cursor_x * tui->cell_w, tui->cursor_y * tui->cell_h,
+			tui->scroll_lock ? SHMIF_RGBA(tui->clc[0], tui->clc[1], tui->clc[2],0xff):
+				SHMIF_RGBA(tui->cc[0], tui->cc[1], tui->cc[2], 0xff));
+		tui->cursor_upd = false;
+	}
+
+	tui->dirty &= ~(DIRTY_PENDING | DIRTY_PENDING_FULL);
 }
 
 static bool page_up(struct tui_context* tui)
@@ -798,7 +938,7 @@ static void ioev_ctxtbl(struct tui_context* tui,
 				return;
 		}
 
-/* othereise, forward as much of the key as we know */
+/* otherwise, forward as much of the key as we know */
 		if (tui->handlers.input_key)
 			tui->handlers.input_key(tui,
 				sym,
@@ -904,7 +1044,7 @@ static void ioev_ctxtbl(struct tui_context* tui,
 					tui->last_dbl_y = tui->mouse_y;
 				}
 				else if (strcmp(ioev->label, "click") == 0){
-/* forward to cfg->nal? */
+/* TODO: forward to cfg->nal? */
 				}
 				return;
 			}
@@ -938,6 +1078,25 @@ static void ioev_ctxtbl(struct tui_context* tui,
 		else if (tui->handlers.input_misc)
 			tui->handlers.input_misc(tui, ioev, tui->handlers.tag);
 	}
+}
+
+static void resize_cellbuffer(struct tui_context* tui)
+{
+	if (tui->base)
+		free(tui->base);
+
+	tui->base = NULL;
+
+	size_t buffer_sz = tui->rows * tui->cols * sizeof(struct tui_cell);
+	tui->base = malloc(buffer_sz * 3);
+	if (!tui->base){
+		LOG("couldn't allocate screen buffers buffer\n");
+		return;
+	}
+	memset(tui->base, '\0', buffer_sz);
+	tui->front = tui->base;
+	tui->back = &tui->base[tui->rows * tui->cols];
+	tui->custom = &tui->base[tui->rows * tui->cols * 2];
 }
 
 static void update_screensize(struct tui_context* tui, bool clear)
@@ -979,6 +1138,11 @@ static void update_screensize(struct tui_context* tui, bool clear)
 
 /* will enforce full redraw, and full redraw will also update padding */
 	tui->dirty |= DIRTY_PENDING_FULL;
+
+/* if we have TUI- based screen buffering for smooth-scrolling, double-buffered
+ * rendering and text shaping, that one needs to be rebuilt */
+	resize_cellbuffer(tui);
+
 	update_screen(tui, true);
 }
 
@@ -1086,6 +1250,7 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 				tui->modifiers = 0;
 				if (!tui->cursor_off){
 					tui->cursor_off = true;
+					tui->cursor_upd = true;
 					tui->dirty |= DIRTY_PENDING;
 				}
 			}
@@ -1094,6 +1259,7 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 				tui->inact_timer = 0;
 				if (tui->cursor_off){
 					tui->cursor_off = false;
+					tui->cursor_upd = true;
 					tui->dirty |= DIRTY_PENDING;
 				}
 			}
@@ -1140,13 +1306,16 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 		}
 	break;
 
-/* we use draw_cbt so that dirty region will be updated accordingly */
+/* only flag DIRTY_PENDING and let the normal screen-update actually bundle
+ * things together so that we don't risk burning an update/ synch just because
+ * the cursor started blinking. */
 	case TARGET_COMMAND_STEPFRAME:
 		if (ev->ioevs[1].iv == 1){
 			if (tui->cursor_period){
 				if (tui->focus){
 					tui->inact_timer++;
 					tui->cursor_off = tui->inact_timer > 1 ? !tui->cursor_off : false;
+					tui->cursor_upd = true;
 					tui->dirty |= DIRTY_PENDING;
 				}
 				if (tui->handlers.tick)
@@ -1155,6 +1324,7 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 			else{
 				if (!tui->cursor_off && tui->focus){
 					tui->cursor_off = true;
+					tui->cursor_upd = true;
 					tui->dirty |= DIRTY_PENDING;
 				}
 			}
@@ -1275,6 +1445,7 @@ static void queue_requests(struct tui_context* tui, bool clipboard, bool ident)
 		arcan_shmif_enqueue(&tui->acon, &tui->last_ident);
 }
 
+#ifndef SIMPLE_RENDERING
 static void probe_font(struct tui_context* tui,
 	TTF_Font* font, const char* msg, size_t* dw, size_t* dh)
 {
@@ -1320,6 +1491,7 @@ void drop_truetype(struct tui_context* tui)
 		tui->font[1] = NULL;
 	}
 }
+#endif
 
 /*
  * first try and open/probe the font descriptor as a bitmap font
@@ -1363,8 +1535,6 @@ bool tryload(struct tui_context* tui, int fd, int mode, size_t px_sz)
 static bool setup_font(
 	struct tui_context* tui, int fd, float font_sz, int mode)
 {
-	TTF_Font* font = NULL;
-
 	if (!(font_sz > 0))
 		font_sz = tui->font_sz;
 
@@ -1376,7 +1546,13 @@ static bool setup_font(
 	int modeind = mode >= 1 ? 1 : 0;
 
 	bool bmap_font = fd != BADFD ?
-		tryload(tui, fd, modeind, px_sz) : tui->font[0] == NULL;
+		tryload(tui, fd, modeind, px_sz) :
+#ifdef SIMPLE_RENDERING
+	false
+#else
+	tui->font[0] == NULL
+#endif
+	;
 
 /* re-use last descriptor and change size or grab new */
 	if (BADFD == fd)
@@ -1384,18 +1560,25 @@ static bool setup_font(
 
 /* TTF wants in pt, tui-bitmap fonts wants in px. We don't support
  * mixing vector and bitmap fonts though */
-	if (bmap_font || tui->force_bitmap){
+	if (
+#ifdef SIMPLE_RENDERING
+	1 ||
+#endif
+	bmap_font || tui->force_bitmap){
 		size_t w = 0, h = 0;
 		switch_bitmap_font(tui->font_bitmap, px_sz, &w, &h);
 		tui->cell_w = w;
 		tui->cell_h = h;
 		update_screensize(tui, false);
 		send_cell_sz(tui);
+#ifndef SIMPLE_RENDERING
 		drop_truetype(tui);
+#endif
 		return true;
 	}
 
-	font = TTF_OpenFontFD(fd, pt_size, 72.0, 72.0);
+#ifndef SIMPLE_RENDERING
+	TTF_Font* font = TTF_OpenFontFD(fd, pt_size, 72.0, 72.0);
 	if (!font){
 		LOG("failed to open font from descriptor (%d), "
 			"with size: %f\n", fd, font_sz);
@@ -1442,8 +1625,10 @@ static bool setup_font(
 		TTF_CloseFont(old_font);
 		update_screensize(tui, false);
 	}
-
 	return true;
+#else
+	return false;
+#endif
 }
 
 /*
@@ -1558,18 +1743,19 @@ int arcan_tui_refresh(struct tui_context* tui)
 		return -1;
 	}
 
+/* synch vscreen -> screen buffer */
+	tui->flags = tsm_screen_get_flags(tui->screen);
+	tui->age = tsm_screen_draw(tui->screen, tsm_draw_callback, tui);
+
 	if (atomic_load(&tui->acon.addr->vready)){
 		errno = EAGAIN;
 		return -1;
 	}
 
-	update_screen(tui, false);
+	if ((tui->dirty & DIRTY_PENDING) || (tui->dirty & DIRTY_PENDING_FULL))
+		update_screen(tui, false);
 
 	if (tui->dirty & DIRTY_UPDATED){
-		if (atomic_load(&tui->acon.addr->vready)){
-			errno = EAGAIN;
-			return -1;
-		}
 
 /* if we are built with GPU offloading support and nothing has happened
  * to our accelerated connection, synch, otherwise fallback and retry */
@@ -1583,7 +1769,7 @@ retry:
 			goto retry;
 		}
 	}
-		else
+	else
 #endif
 		arcan_shmif_signal(&tui->acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
 
@@ -1623,12 +1809,16 @@ void arcan_tui_destroy(struct tui_context* tui)
 
 	arcan_shmif_drop(&tui->acon);
 	tsm_utf8_mach_free(tui->ucsconv);
+#ifndef SIMPLE_RENDERING
 	drop_truetype(tui);
+#endif
 	drop_font_context(tui->font_bitmap);
 
+	free(tui->base);
+
 	for (size_t i = 0; i < 32; i++)
-		if (tui->screen)
-			tsm_screen_unref(tui->screen);
+		if (tui->screens[i])
+			tsm_screen_unref(tui->screens[i]);
 
 	memset(tui, '\0', sizeof(struct tui_context));
 	free(tui);
@@ -1645,7 +1835,7 @@ struct tui_settings arcan_tui_defaults()
 		.cc = {0x00, 0xaa, 0x00},
 		.clc = {0xaa, 0xaa, 0x00},
 		.ppcm = ARCAN_SHMPAGE_DEFAULT_PPCM,
-		.hint = TTF_HINTING_NONE,
+		.hint = 0,
 		.mouse_fwd = true,
 		.cursor_period = 12,
 		.font_sz = 0.0416,
@@ -1779,7 +1969,7 @@ bool arcan_tui_switch_screen(struct tui_context* ctx, unsigned ind)
 
 	ctx->screen = ctx->screens[ind];
 	ctx->age = 0;
-	ctx->age = tsm_screen_draw(ctx->screen, draw_cb, ctx);
+	ctx->age = tsm_screen_draw(ctx->screen, tsm_draw_callback, ctx);
 
 	return true;
 }
@@ -1814,7 +2004,9 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 /*
  * Threading notice - doesn't belong here
  */
+#ifndef SIMPLE_RENDERING
 	TTF_Init();
+#endif
 
 	struct arcan_shmif_initial* init;
 	if (sizeof(struct arcan_shmif_initial) != arcan_shmif_initial(con, &init)){
@@ -1918,7 +2110,6 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 /*
  * context- unwrap to screen and forward to tsm_screen
  */
-
 void arcan_tui_erase_screen(struct tui_context* c, bool protect)
 {
 	if (c){
@@ -1959,15 +2150,16 @@ void arcan_tui_refdec(struct tui_context* c)
 void arcan_tui_defattr(struct tui_context* c, struct tui_screen_attr* attr)
 {
 	if (c)
-	tsm_screen_set_def_attr(c->screen, (struct tsm_screen_attr*) attr);
+	tsm_screen_set_def_attr(c->screen, (struct tui_screen_attr*) attr);
 }
 
 void arcan_tui_write(struct tui_context* c, uint32_t ucode,
 	struct tui_screen_attr* attr)
 {
-	if (c)
-		tsm_screen_write(c->screen, ucode,
-			attr ? (struct tsm_screen_attr*) attr : &c->cattr);
+	if (c){
+		tsm_screen_write(c->screen, ucode, attr);
+		c->cursor_upd = true;
+	}
 }
 
 void arcan_tui_ident(struct tui_context* c, const char* ident)
@@ -2014,8 +2206,11 @@ void arcan_tui_cursorpos(struct tui_context* c, size_t* x, size_t* y)
 
 void arcan_tui_reset(struct tui_context* c)
 {
-	tsm_utf8_mach_reset(c->ucsconv);
-	tsm_screen_reset(c->screen);
+	if (c){
+		tsm_utf8_mach_reset(c->ucsconv);
+		tsm_screen_reset(c->screen);
+		c->cursor_upd = true;
+	}
 }
 
 void arcan_tui_dimensions(struct tui_context* c, size_t* rows, size_t* cols)
@@ -2077,14 +2272,24 @@ void arcan_tui_erase_chars(struct tui_context* c, size_t num)
 
 void arcan_tui_set_flags(struct tui_context* c, enum tui_flags flags)
 {
-	if (c)
-	tsm_screen_set_flags(c->screen, flags);
+	if (c){
+		if ((c->cursor_hard_off && !(flags & TUI_HIDE_CURSOR)) ||
+			(!c->cursor_hard_off && (flags & TUI_HIDE_CURSOR))){
+			c->cursor_hard_off = !c->cursor_hard_off;
+			c->cursor_upd = true;
+		}
+
+		tsm_screen_set_flags(c->screen, flags);
+	}
 }
 
 void arcan_tui_reset_flags(struct tui_context* c, enum tui_flags flags)
 {
-	if (c)
-	tsm_screen_reset_flags(c->screen, flags);
+	if (c){
+		c->cursor_hard_off = (flags & TUI_HIDE_CURSOR) > 0;
+		c->cursor_upd = true;
+		tsm_screen_reset_flags(c->screen, flags);
+	}
 }
 
 void arcan_tui_set_tabstop(struct tui_context* c)
@@ -2095,8 +2300,10 @@ void arcan_tui_set_tabstop(struct tui_context* c)
 
 void arcan_tui_insert_lines(struct tui_context* c, size_t n)
 {
-	if (c)
-	tsm_screen_insert_lines(c->screen, n);
+	if (c){
+		tsm_screen_insert_lines(c->screen, n);
+		c->cursor_upd = true;
+	}
 }
 
 void arcan_tui_delete_lines(struct tui_context* c, size_t n)
@@ -2107,38 +2314,50 @@ void arcan_tui_delete_lines(struct tui_context* c, size_t n)
 
 void arcan_tui_insert_chars(struct tui_context* c, size_t n)
 {
-	if (c)
-	tsm_screen_insert_chars(c->screen, n);
+	if (c){
+		c->cursor_upd = true;
+		tsm_screen_insert_chars(c->screen, n);
+	}
 }
 
 void arcan_tui_delete_chars(struct tui_context* c, size_t n)
 {
-	if (c)
-	tsm_screen_delete_chars(c->screen, n);
+	if (c){
+		c->cursor_upd = true;
+		tsm_screen_delete_chars(c->screen, n);
+	}
 }
 
 void arcan_tui_tab_right(struct tui_context* c, size_t n)
 {
-	if (c)
-	tsm_screen_tab_right(c->screen, n);
+	if (c){
+		tsm_screen_tab_right(c->screen, n);
+		c->cursor_upd = true;
+	}
 }
 
 void arcan_tui_tab_left(struct tui_context* c, size_t n)
 {
-	if (c)
-	tsm_screen_tab_left(c->screen, n);
+	if (c){
+		c->cursor_upd = true;
+		tsm_screen_tab_left(c->screen, n);
+	}
 }
 
 void arcan_tui_scroll_up(struct tui_context* c, size_t n)
 {
-	if (c)
-	tsm_screen_scroll_up(c->screen, n);
+	if (c){
+		c->cursor_upd = true;
+		tsm_screen_scroll_up(c->screen, n);
+	}
 }
 
 void arcan_tui_scroll_down(struct tui_context* c, size_t n)
 {
-	if (c)
-	tsm_screen_scroll_down(c->screen, n);
+	if (c){
+		c->cursor_upd = true;
+		tsm_screen_scroll_down(c->screen, n);
+	}
 }
 
 void arcan_tui_reset_tabstop(struct tui_context* c)
@@ -2155,55 +2374,71 @@ void arcan_tui_reset_all_tabstops(struct tui_context* c)
 
 void arcan_tui_move_to(struct tui_context* c, size_t x, size_t y)
 {
-	if (c)
-	tsm_screen_move_to(c->screen, x, y);
+	if (c){
+		c->cursor_upd = true;
+		tsm_screen_move_to(c->screen, x, y);
+	}
 }
 
 void arcan_tui_move_up(struct tui_context* c, size_t n, bool scroll)
 {
-	if (c)
-	tsm_screen_move_up(c->screen, n, scroll);
+	if (c){
+		c->cursor_upd = true;
+		tsm_screen_move_up(c->screen, n, scroll);
+	}
 }
 
 void arcan_tui_move_down(struct tui_context* c, size_t n, bool scroll)
 {
-	if (c)
-	tsm_screen_move_down(c->screen, n, scroll);
+	if (c){
+		c->cursor_upd = true;
+		tsm_screen_move_down(c->screen, n, scroll);
+	}
 }
 
 void arcan_tui_move_left(struct tui_context* c, size_t n)
 {
-	if (c)
-	tsm_screen_move_left(c->screen, n);
+	if (c){
+		c->cursor_upd = true;
+		tsm_screen_move_left(c->screen, n);
+	}
 }
 
 void arcan_tui_move_right(struct tui_context* c, size_t n)
 {
-	if (c)
-	tsm_screen_move_right(c->screen, n);
+	if (c){
+		c->cursor_upd = true;
+		tsm_screen_move_right(c->screen, n);
+	}
 }
 
 void arcan_tui_move_line_end(struct tui_context* c)
 {
-	if (c)
-	tsm_screen_move_line_end(c->screen);
+	if (c){
+		c->cursor_upd = true;
+		tsm_screen_move_line_end(c->screen);
+	}
 }
 
 void arcan_tui_move_line_home(struct tui_context* c)
 {
-	if (c)
-	tsm_screen_move_line_home(c->screen);
+	if (c){
+		c->cursor_upd = true;
+		tsm_screen_move_line_home(c->screen);
+	}
 }
 
 void arcan_tui_newline(struct tui_context* c)
 {
-	if (c)
-	tsm_screen_newline(c->screen);
+	if (c){
+		c->cursor_upd = true;
+		tsm_screen_newline(c->screen);
+	}
 }
 
 int arcan_tui_set_margins(struct tui_context* c, size_t top, size_t bottom)
 {
 	if (c)
-	return tsm_screen_set_margins(c->screen, top, bottom);
+		return tsm_screen_set_margins(c->screen, top, bottom);
 	return -EINVAL;
 }

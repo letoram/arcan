@@ -2,6 +2,7 @@
  * TSM - Main Header
  *
  * Copyright (c) 2011-2013 David Herrmann <dh.herrmann@gmail.com>
+ *               2016-2017 Bjorn Stahl <contact@arcan-fe.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining
  * a copy of this software and associated documentation files
@@ -36,32 +37,6 @@ extern "C" {
 #endif
 
 /**
- * @mainpage
- *
- * TSM is a Terminal-emulator State Machine. It implements all common DEC-VT100
- * to DEC-VT520 control codes and features. A state-machine is used to parse TTY
- * input and saved in a virtual screen. TSM does not provide any rendering,
- * glyph/font handling or anything more advanced. TSM is just a simple
- * state-machine for control-codes handling.
- * The main use-case for TSM are terminal-emulators. TSM has no dependencies
- * other than an ISO-C99 compiler and C-library. Any terminal emulator for any
- * window-environment or rendering-pipline can make use of TSM. However, TSM can
- * also be used for control-code validation, TTY-screen-capturing or other
- * advanced users of terminal escape-sequences.
- */
-
-/**
- * @defgroup misc Miscellaneous Definitions
- * Miscellaneous definitions
- *
- * This section contains several miscellaneous definitions of small helpers and
- * constants. These are shared between other parts of the API and have common
- * semantics/syntax.
- *
- * @{
- */
-
-/**
  * Logging Callback
  *
  * @data: user-provided data
@@ -77,13 +52,13 @@ extern "C" {
  * instead of such a function to disable logging.
  */
 typedef void (*tsm_log_t) (void *data,
-			   const char *file,
-			   int line,
-			   const char *func,
-			   const char *subs,
-			   unsigned int sev,
-			   const char *format,
-			   va_list args);
+	  const char *file,
+	  int line,
+	  const char *func,
+	  const char *subs,
+	  unsigned int sev,
+	  const char *format,
+	  va_list args);
 
 /** @} */
 
@@ -148,41 +123,43 @@ typedef uint_fast32_t tsm_age_t;
 #define TSM_SCREEN_AUTO_WRAP	0x02
 #define TSM_SCREEN_REL_ORIGIN	0x04
 #define TSM_SCREEN_INVERSE	0x08
-#define TSM_SCREEN_HIDE_CURSOR	0x10
 #define TSM_SCREEN_FIXED_POS	0x20
 #define TSM_SCREEN_ALTERNATE	0x40
 
-struct tsm_screen_attr {
-	int8_t fccode;			/* foreground color code or <0 for rgb */
-	int8_t bccode;			/* background color code or <0 for rgb */
-	uint8_t fr;			/* foreground red */
-	uint8_t fg;			/* foreground green */
-	uint8_t fb;			/* foreground blue */
-	uint8_t br;			/* background red */
-	uint8_t bg;			/* background green */
-	uint8_t bb;			/* background blue */
-	unsigned int bold : 1;		/* bold character */
-	unsigned int underline : 1;	/* underlined character */
-	unsigned int italic : 1;
-	unsigned int inverse : 1;	/* inverse colors */
-	unsigned int protect : 1;	/* cannot be erased */
-	unsigned int blink : 1;		/* blinking character */
-	unsigned int faint : 1;
-	unsigned int strikethrough : 1;
-	unsigned int custom : 1;
-	uint32_t custom_id;
-};
-
 typedef int (*tsm_screen_draw_cb) (struct tsm_screen *con,
-				   uint32_t id,
-				   const uint32_t *ch,
-				   size_t len,
-				   unsigned int width,
-				   unsigned int posx,
-				   unsigned int posy,
-				   const struct tsm_screen_attr *attr,
-				   tsm_age_t age,
-				   void *data);
+	uint32_t id,
+	const uint32_t *ch,
+	size_t len,
+	unsigned int width,
+	unsigned int posx,
+	unsigned int posy,
+	const struct tui_screen_attr *attr,
+	tsm_age_t age,
+	void *data
+);
+
+/*
+ * Customline covers reserved rows that the caller draw separately
+ * and are are ignored by the normal drawcalls. tsm_screen_insert_custom_lines
+ * are used to add them into the normal line-tracking. They will always yield
+ * draw-calls, they do not wrap
+ */
+typedef int (*tsm_screen_customline_cb) (struct tsm_screen *con,
+
+/* user-defined ID to help associating what to draw */
+	uint32_t id,
+	unsigned int row,
+/* if n' lines were added but only n-m lines are visible due to the current
+ * scrolling settings, the number of missing lines will be shown */
+	unsigned int ofs_top,
+	unsigned int ofs_bottom,
+
+/* the number of rows covered, >= 1, <= height */
+	size_t n_rows,
+
+/* user-tag */
+	void* data
+);
 
 int tsm_screen_new(struct tsm_screen **out, tsm_log_t log, void *log_data);
 void tsm_screen_ref(struct tsm_screen *con);
@@ -191,9 +168,9 @@ void tsm_screen_unref(struct tsm_screen *con);
 unsigned int tsm_screen_get_width(struct tsm_screen *con);
 unsigned int tsm_screen_get_height(struct tsm_screen *con);
 int tsm_screen_resize(struct tsm_screen *con, unsigned int x,
-		      unsigned int y);
+		unsigned int y);
 int tsm_screen_set_margins(struct tsm_screen *con,
-			   unsigned int top, unsigned int bottom);
+	  unsigned int top, unsigned int bottom);
 void tsm_screen_set_max_sb(struct tsm_screen *con, unsigned int max);
 void tsm_screen_clear_sb(struct tsm_screen *con);
 
@@ -204,7 +181,7 @@ void tsm_screen_sb_page_down(struct tsm_screen *con, unsigned int num);
 void tsm_screen_sb_reset(struct tsm_screen *con);
 
 void tsm_screen_set_def_attr(struct tsm_screen *con,
-			     const struct tsm_screen_attr *attr);
+		const struct tui_screen_attr *attr);
 void tsm_screen_reset(struct tsm_screen *con);
 void tsm_screen_set_flags(struct tsm_screen *con, unsigned int flags);
 void tsm_screen_reset_flags(struct tsm_screen *con, unsigned int flags);
@@ -218,7 +195,7 @@ void tsm_screen_reset_tabstop(struct tsm_screen *con);
 void tsm_screen_reset_all_tabstops(struct tsm_screen *con);
 
 void tsm_screen_write(struct tsm_screen *con, tsm_symbol_t ch,
-		      const struct tsm_screen_attr *attr);
+		const struct tui_screen_attr *attr);
 void tsm_screen_newline(struct tsm_screen *con);
 void tsm_screen_scroll_up(struct tsm_screen *con, unsigned int num);
 void tsm_screen_scroll_down(struct tsm_screen *con, unsigned int num);
@@ -227,7 +204,7 @@ void tsm_screen_move_to(struct tsm_screen *con, unsigned int x,
 void tsm_screen_move_up(struct tsm_screen *con, unsigned int num,
 			bool scroll);
 void tsm_screen_move_down(struct tsm_screen *con, unsigned int num,
-			  bool scroll);
+	 bool scroll);
 void tsm_screen_move_left(struct tsm_screen *con, unsigned int num);
 void tsm_screen_move_right(struct tsm_screen *con, unsigned int num);
 void tsm_screen_move_line_end(struct tsm_screen *con);
@@ -236,135 +213,52 @@ void tsm_screen_tab_right(struct tsm_screen *con, unsigned int num);
 void tsm_screen_tab_left(struct tsm_screen *con, unsigned int num);
 void tsm_screen_insert_lines(struct tsm_screen *con, unsigned int num);
 void tsm_screen_delete_lines(struct tsm_screen *con, unsigned int num);
+void tsm_screen_insert_custom_lines(struct tsm_screen *con, unsigned int num);
 void tsm_screen_insert_chars(struct tsm_screen *con, unsigned int num);
 void tsm_screen_delete_chars(struct tsm_screen *con, unsigned int num);
 void tsm_screen_erase_cursor(struct tsm_screen *con);
 void tsm_screen_erase_chars(struct tsm_screen *con, unsigned int num);
 void tsm_screen_erase_region(struct tsm_screen *con,
-				 unsigned int x_from,
-				 unsigned int y_from,
-				 unsigned int x_to,
-				 unsigned int y_to,
-				 bool protect);
+	 unsigned int x_from,
+	 unsigned int y_from,
+	 unsigned int x_to,
+	 unsigned int y_to,
+	 bool protect);
 void tsm_screen_inc_age(struct tsm_screen *con);
 void tsm_screen_erase_cursor_to_end(struct tsm_screen *con,
-				    bool protect);
+		bool protect);
 void tsm_screen_erase_home_to_cursor(struct tsm_screen *con,
-				     bool protect);
+		 bool protect);
 void tsm_screen_erase_current_line(struct tsm_screen *con,
-				   bool protect);
+	bool protect);
 void tsm_screen_erase_screen_to_cursor(struct tsm_screen *con,
-				       bool protect);
+	bool protect);
 void tsm_screen_erase_cursor_to_screen(struct tsm_screen *con,
-				       bool protect);
+	bool protect);
 void tsm_screen_erase_screen(struct tsm_screen *con, bool protect);
 
 void tsm_screen_selection_reset(struct tsm_screen *con);
 void tsm_screen_selection_start(struct tsm_screen *con,
-				unsigned int posx,
-				unsigned int posy);
+	unsigned int posx,
+	unsigned int posy);
 void tsm_screen_selection_target(struct tsm_screen *con,
-				 unsigned int posx,
-				 unsigned int posy);
+	 unsigned int posx,
+	 unsigned int posy);
 int tsm_screen_selection_copy(struct tsm_screen *con, char **out);
 
 /* returns: 0 on success, or -einval
  * starting from the character at x,y find the first and last
  * character in that word (using isspace as delimiter) */
 int tsm_screen_get_word(struct tsm_screen *con,
-								unsigned x, unsigned y,
-								unsigned *sx, unsigned *sy,
-								unsigned *ex, unsigned *ey);
+		unsigned x, unsigned y,
+		unsigned *sx, unsigned *sy,
+		unsigned *ex, unsigned *ey);
 
 /* returns: !0 if cell is empty */
 int tsm_screen_empty(struct tsm_screen *con, unsigned x, unsigned y);
 
-tsm_age_t tsm_screen_draw(struct tsm_screen *con, tsm_screen_draw_cb draw_cb,
-			  void *data);
-
-/** @} */
-
-/**
- * @defgroup vte State Machine
- * Virtual terminal emulation with state machine
- *
- * A TSM VTE object provides the terminal state machine. It takes input from the
- * application (which usually comes from a TTY/PTY from a client), parses it,
- * modifies the attach screen or returns data which has to be written back to
- * the client.
- *
- * Furthermore, VTE objects accept keyboard or mouse input from the application
- * which is interpreted compliant to DEV-VTs.
- *
- * @{
- */
-
-/* virtual terminal emulator */
-
-struct tsm_vte;
-
-enum vte_color {
-	VTE_COLOR_BLACK = 0,
-	VTE_COLOR_RED,
-	VTE_COLOR_GREEN,
-	VTE_COLOR_YELLOW,
-	VTE_COLOR_BLUE,
-	VTE_COLOR_MAGENTA,
-	VTE_COLOR_CYAN,
-	VTE_COLOR_LIGHT_GREY,
-	VTE_COLOR_DARK_GREY,
-	VTE_COLOR_LIGHT_RED,
-	VTE_COLOR_LIGHT_GREEN,
-	VTE_COLOR_LIGHT_YELLOW,
-	VTE_COLOR_LIGHT_BLUE,
-	VTE_COLOR_LIGHT_MAGENTA,
-	VTE_COLOR_LIGHT_CYAN,
-	VTE_COLOR_WHITE,
-	VTE_COLOR_FOREGROUND,
-	VTE_COLOR_BACKGROUND,
-	VTE_COLOR_NUM
-};
-
-/* keep in sync with TSM_INPUT_INVALID */
-#define TSM_VTE_INVALID 0xffffffff
-
-typedef void (*tsm_vte_write_cb) (struct tsm_vte *vte,
-				  const char *u8,
-				  size_t len,
-				  void *data);
-
-enum tsm_vte_group {
-	TSM_GROUP_FREE,
-	TSM_GROUP_OSC
-};
-
-typedef void (*tsm_str_cb) (struct tsm_vte *vte, enum tsm_vte_group group,
-	const char *u8, size_t len, bool crop, void* data);
-
-void tsm_set_strhandler(struct tsm_vte *vte,
-	tsm_str_cb cb, size_t limit, void* data);
-
-int tsm_vte_new(struct tsm_vte **out, struct tsm_screen *con,
-		tsm_vte_write_cb write_cb, void *data,
-		tsm_log_t log, void *log_data);
-void tsm_vte_ref(struct tsm_vte *vte);
-void tsm_vte_unref(struct tsm_vte *vte);
-
-int tsm_vte_set_palette(struct tsm_vte *vte, const char *palette);
-void tsm_vte_set_color(struct tsm_vte *vte,
-	enum vte_color ind, const uint8_t rgb[3]);
-
-void tsm_vte_reset(struct tsm_vte *vte);
-void tsm_vte_hard_reset(struct tsm_vte *vte);
-void tsm_vte_input(struct tsm_vte *vte, const char *u8, size_t len);
-bool tsm_vte_handle_keyboard(struct tsm_vte *vte, uint32_t keysym,
-			     uint32_t ascii, unsigned int mods,
-			     uint32_t unicode);
-void tsm_vte_mouse_button(struct tsm_vte *vte, int index, bool press, int mods);
-void tsm_vte_mouse_motion(struct tsm_vte *vte, int x, int y, int mods);
-void tsm_vte_paste(struct tsm_vte *vte, const char *u8, size_t len);
-
-/** @} */
+tsm_age_t tsm_screen_draw(
+	struct tsm_screen *con, tsm_screen_draw_cb draw_cb, void *data);
 
 #ifdef __cplusplus
 }
