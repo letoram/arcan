@@ -410,6 +410,7 @@ int tsm_vte_new(struct tsm_vte **out, struct tui_context *con,
 	memcpy(vte->palette, palette, 3 * VTE_COLOR_NUM);
 	set_rgb(vte, &vte->def_attr, true, VTE_COLOR_FOREGROUND);
 	set_rgb(vte, &vte->def_attr, false, VTE_COLOR_BACKGROUND);
+	memcpy(&vte->cattr, &vte->def_attr, sizeof(struct tui_screen_attr));
 
 	ret = tsm_utf8_mach_new(&vte->mach);
 	if (ret)
@@ -497,12 +498,10 @@ int tsm_vte_set_palette(struct tsm_vte *vte, const char *pstr)
 
 	free(vte->palette_name);
 	vte->palette_name = tmp;
-
 	uint8_t* palette = (uint8_t*) get_palette(vte);
 	memcpy(vte->palette, palette, 3 * VTE_COLOR_NUM);
 	set_rgb(vte, &vte->def_attr, true, VTE_COLOR_FOREGROUND);
 	set_rgb(vte, &vte->def_attr, false, VTE_COLOR_BACKGROUND);
-
 	to_rgb(vte, true);
 	memcpy(&vte->cattr, &vte->def_attr, sizeof(vte->cattr));
 
@@ -692,6 +691,8 @@ void tsm_vte_reset(struct tsm_vte *vte)
 	vte->g3 = &tsm_vte_unicode_upper;
 
 	memcpy(&vte->cattr, &vte->def_attr, sizeof(vte->cattr));
+	vte->c_fgcode = vte->d_fgcode;
+	vte->c_bgcode = vte->d_bgcode;
 	to_rgb(vte, false);
 	arcan_tui_defattr(vte->con, &vte->def_attr);
 
