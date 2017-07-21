@@ -300,6 +300,12 @@ static void draw_ch(struct tui_context* tui,
 }
 #endif
 
+static inline void flag_cursor(struct tui_context* c)
+{
+	c->cursor_upd = true;
+	c->dirty = DIRTY_PENDING;
+}
+
 static void send_cell_sz(struct tui_context* tui)
 {
 	arcan_event ev = {
@@ -1250,8 +1256,7 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 				tui->modifiers = 0;
 				if (!tui->cursor_off){
 					tui->cursor_off = true;
-					tui->cursor_upd = true;
-					tui->dirty |= DIRTY_PENDING;
+					flag_cursor(tui);
 				}
 			}
 			else{
@@ -1259,8 +1264,7 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 				tui->inact_timer = 0;
 				if (tui->cursor_off){
 					tui->cursor_off = false;
-					tui->cursor_upd = true;
-					tui->dirty |= DIRTY_PENDING;
+					flag_cursor(tui);
 				}
 			}
 		}
@@ -1315,8 +1319,7 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 				if (tui->focus){
 					tui->inact_timer++;
 					tui->cursor_off = tui->inact_timer > 1 ? !tui->cursor_off : false;
-					tui->cursor_upd = true;
-					tui->dirty |= DIRTY_PENDING;
+					flag_cursor(tui);
 				}
 				if (tui->handlers.tick)
 						tui->handlers.tick(tui, tui->handlers.tag);
@@ -1324,8 +1327,7 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 			else{
 				if (!tui->cursor_off && tui->focus){
 					tui->cursor_off = true;
-					tui->cursor_upd = true;
-					tui->dirty |= DIRTY_PENDING;
+					flag_cursor(tui);
 				}
 			}
 		}
@@ -1754,9 +1756,7 @@ int arcan_tui_refresh(struct tui_context* tui)
 
 	if ((tui->dirty & DIRTY_PENDING) || (tui->dirty & DIRTY_PENDING_FULL))
 		update_screen(tui, false);
-
 	if (tui->dirty & DIRTY_UPDATED){
-
 /* if we are built with GPU offloading support and nothing has happened
  * to our accelerated connection, synch, otherwise fallback and retry */
 #ifndef SHMIF_TUI_DISABLE_GPU
@@ -1955,6 +1955,12 @@ int arcan_tui_alloc_screen(struct tui_context* ctx)
 	if (0 != tsm_screen_new(&ctx->screens[ind], tsm_log, ctx))
 		return -1;
 
+	tsm_screen_set_def_attr(ctx->screens[ind],
+		&(struct tui_screen_attr){
+			.fr = ctx->fgc[0], .fg = ctx->fgc[1], .fb = ctx->fgc[2],
+			.br = ctx->bgc[0], .bg = ctx->bgc[1], .bb = ctx->bgc[2]
+	});
+
 	ctx->screen_alloc |= 1 << ind;
 	return ind;
 }
@@ -2080,6 +2086,11 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 	}
 
 	expose_labels(res);
+	tsm_screen_set_def_attr(res->screen,
+		&(struct tui_screen_attr){
+			.fr = res->fgc[0], .fg = res->fgc[1], .fb = res->fgc[2],
+			.br = res->bgc[0], .bg = res->bgc[1], .bb = res->bgc[2]
+	});
 	tsm_screen_set_max_sb(res->screen, 1000);
 
 /* clipboard, timer callbacks, no IDENT */
@@ -2158,7 +2169,7 @@ void arcan_tui_write(struct tui_context* c, uint32_t ucode,
 {
 	if (c){
 		tsm_screen_write(c->screen, ucode, attr);
-		c->cursor_upd = true;
+		flag_cursor(c);
 	}
 }
 
@@ -2209,7 +2220,7 @@ void arcan_tui_reset(struct tui_context* c)
 	if (c){
 		tsm_utf8_mach_reset(c->ucsconv);
 		tsm_screen_reset(c->screen);
-		c->cursor_upd = true;
+		flag_cursor(c);
 	}
 }
 
@@ -2276,7 +2287,7 @@ void arcan_tui_set_flags(struct tui_context* c, enum tui_flags flags)
 		if ((c->cursor_hard_off && !(flags & TUI_HIDE_CURSOR)) ||
 			(!c->cursor_hard_off && (flags & TUI_HIDE_CURSOR))){
 			c->cursor_hard_off = !c->cursor_hard_off;
-			c->cursor_upd = true;
+			flag_cursor(c);
 		}
 
 		tsm_screen_set_flags(c->screen, flags);
@@ -2287,7 +2298,7 @@ void arcan_tui_reset_flags(struct tui_context* c, enum tui_flags flags)
 {
 	if (c){
 		c->cursor_hard_off = (flags & TUI_HIDE_CURSOR) > 0;
-		c->cursor_upd = true;
+		flag_cursor(c);
 		tsm_screen_reset_flags(c->screen, flags);
 	}
 }
@@ -2302,7 +2313,7 @@ void arcan_tui_insert_lines(struct tui_context* c, size_t n)
 {
 	if (c){
 		tsm_screen_insert_lines(c->screen, n);
-		c->cursor_upd = true;
+		flag_cursor(c);
 	}
 }
 
@@ -2315,7 +2326,7 @@ void arcan_tui_delete_lines(struct tui_context* c, size_t n)
 void arcan_tui_insert_chars(struct tui_context* c, size_t n)
 {
 	if (c){
-		c->cursor_upd = true;
+		flag_cursor(c);
 		tsm_screen_insert_chars(c->screen, n);
 	}
 }
@@ -2323,7 +2334,7 @@ void arcan_tui_insert_chars(struct tui_context* c, size_t n)
 void arcan_tui_delete_chars(struct tui_context* c, size_t n)
 {
 	if (c){
-		c->cursor_upd = true;
+		flag_cursor(c);
 		tsm_screen_delete_chars(c->screen, n);
 	}
 }
@@ -2332,14 +2343,14 @@ void arcan_tui_tab_right(struct tui_context* c, size_t n)
 {
 	if (c){
 		tsm_screen_tab_right(c->screen, n);
-		c->cursor_upd = true;
+		flag_cursor(c);
 	}
 }
 
 void arcan_tui_tab_left(struct tui_context* c, size_t n)
 {
 	if (c){
-		c->cursor_upd = true;
+		flag_cursor(c);
 		tsm_screen_tab_left(c->screen, n);
 	}
 }
@@ -2347,7 +2358,7 @@ void arcan_tui_tab_left(struct tui_context* c, size_t n)
 void arcan_tui_scroll_up(struct tui_context* c, size_t n)
 {
 	if (c){
-		c->cursor_upd = true;
+		flag_cursor(c);
 		tsm_screen_scroll_up(c->screen, n);
 	}
 }
@@ -2355,7 +2366,7 @@ void arcan_tui_scroll_up(struct tui_context* c, size_t n)
 void arcan_tui_scroll_down(struct tui_context* c, size_t n)
 {
 	if (c){
-		c->cursor_upd = true;
+		flag_cursor(c);
 		tsm_screen_scroll_down(c->screen, n);
 	}
 }
@@ -2375,7 +2386,7 @@ void arcan_tui_reset_all_tabstops(struct tui_context* c)
 void arcan_tui_move_to(struct tui_context* c, size_t x, size_t y)
 {
 	if (c){
-		c->cursor_upd = true;
+		flag_cursor(c);
 		tsm_screen_move_to(c->screen, x, y);
 	}
 }
@@ -2383,7 +2394,7 @@ void arcan_tui_move_to(struct tui_context* c, size_t x, size_t y)
 void arcan_tui_move_up(struct tui_context* c, size_t n, bool scroll)
 {
 	if (c){
-		c->cursor_upd = true;
+		flag_cursor(c);
 		tsm_screen_move_up(c->screen, n, scroll);
 	}
 }
@@ -2391,7 +2402,7 @@ void arcan_tui_move_up(struct tui_context* c, size_t n, bool scroll)
 void arcan_tui_move_down(struct tui_context* c, size_t n, bool scroll)
 {
 	if (c){
-		c->cursor_upd = true;
+		flag_cursor(c);
 		tsm_screen_move_down(c->screen, n, scroll);
 	}
 }
@@ -2399,7 +2410,7 @@ void arcan_tui_move_down(struct tui_context* c, size_t n, bool scroll)
 void arcan_tui_move_left(struct tui_context* c, size_t n)
 {
 	if (c){
-		c->cursor_upd = true;
+		flag_cursor(c);
 		tsm_screen_move_left(c->screen, n);
 	}
 }
@@ -2407,7 +2418,7 @@ void arcan_tui_move_left(struct tui_context* c, size_t n)
 void arcan_tui_move_right(struct tui_context* c, size_t n)
 {
 	if (c){
-		c->cursor_upd = true;
+		flag_cursor(c);
 		tsm_screen_move_right(c->screen, n);
 	}
 }
@@ -2415,7 +2426,7 @@ void arcan_tui_move_right(struct tui_context* c, size_t n)
 void arcan_tui_move_line_end(struct tui_context* c)
 {
 	if (c){
-		c->cursor_upd = true;
+		flag_cursor(c);
 		tsm_screen_move_line_end(c->screen);
 	}
 }
@@ -2423,7 +2434,7 @@ void arcan_tui_move_line_end(struct tui_context* c)
 void arcan_tui_move_line_home(struct tui_context* c)
 {
 	if (c){
-		c->cursor_upd = true;
+		flag_cursor(c);
 		tsm_screen_move_line_home(c->screen);
 	}
 }
@@ -2431,7 +2442,7 @@ void arcan_tui_move_line_home(struct tui_context* c)
 void arcan_tui_newline(struct tui_context* c)
 {
 	if (c){
-		c->cursor_upd = true;
+		flag_cursor(c);
 		tsm_screen_newline(c->screen);
 	}
 }
