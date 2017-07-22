@@ -216,8 +216,21 @@ static void cursor_at(struct tui_context* tui, int x, int y, shmif_pixel ccol)
 		return;
 
 	switch (tui->cursor){
-	case CURSOR_BLOCK:
+/* other cursors gets their dirty state due to draw_cbt */
+	case CURSOR_BLOCK:{
+		int x2 = x + tui->cell_w;
+		int y2 = y + tui->cell_h;
+		if (x < tui->acon.dirty.x1)
+			tui->acon.dirty.x1 = x;
+		if (x2 > tui->acon.dirty.x2)
+			tui->acon.dirty.x2 = x2;
+		if (y < tui->acon.dirty.y1)
+			tui->acon.dirty.y1 = y;
+		if (y2 > tui->acon.dirty.y2)
+			tui->acon.dirty.y2 = y2;
+		tui->dirty |= DIRTY_UPDATED;
 		draw_box(&tui->acon, x, y, tui->cell_w, tui->cell_h, ccol);
+	}
 	break;
 	case CURSOR_HALFBLOCK:
 		draw_box(&tui->acon, x, y, tui->cell_w >> 1, tui->cell_h, ccol);
@@ -304,6 +317,8 @@ static inline void flag_cursor(struct tui_context* c)
 {
 	c->cursor_upd = true;
 	c->dirty = DIRTY_PENDING;
+	c->inact_timer = -4;
+	c->cursor_off = false;
 }
 
 static void send_cell_sz(struct tui_context* tui)
@@ -348,6 +363,10 @@ static int draw_cbt(struct tui_context* tui,
 
 	if (col >= tui->cols || row >= tui->rows || x1 < 0 || y1 < 0)
 		return 0;
+
+	if (row == tui->cursor_x && col == tui->cursor_y){
+		tui->cursor_upd = true;
+	}
 
 	if (attr->inverse){
 		dfg = bgc;
@@ -538,7 +557,7 @@ static void update_screen(struct tui_context* tui, bool ign_inact)
 			}
 	}
 
-	if (tui->cursor_upd){
+	if (tui->cursor_upd && !(tui->cursor_off | tui->cursor_hard_off) ){
 		cursor_at(tui, tui->cursor_x * tui->cell_w, tui->cursor_y * tui->cell_h,
 			tui->scroll_lock ? SHMIF_RGBA(tui->clc[0], tui->clc[1], tui->clc[2],0xff):
 				SHMIF_RGBA(tui->cc[0], tui->cc[1], tui->cc[2], 0xff));
@@ -1319,7 +1338,8 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 				if (tui->focus){
 					tui->inact_timer++;
 					tui->cursor_off = tui->inact_timer > 1 ? !tui->cursor_off : false;
-					flag_cursor(tui);
+					tui->cursor_upd = true;
+					tui->dirty |= DIRTY_PENDING;
 				}
 				if (tui->handlers.tick)
 						tui->handlers.tick(tui, tui->handlers.tag);
@@ -1796,7 +1816,7 @@ void arcan_tui_invalidate(struct tui_context* tui)
 	update_screen(tui, false);
 }
 
-void arcan_tui_destroy(struct tui_context* tui)
+void arcan_tui_destroy(struct tui_context* tui, const char* message)
 {
 	if (!tui)
 		return;
@@ -2284,11 +2304,10 @@ void arcan_tui_erase_chars(struct tui_context* c, size_t num)
 void arcan_tui_set_flags(struct tui_context* c, enum tui_flags flags)
 {
 	if (c){
-		if ((c->cursor_hard_off && !(flags & TUI_HIDE_CURSOR)) ||
-			(!c->cursor_hard_off && (flags & TUI_HIDE_CURSOR))){
-			c->cursor_hard_off = !c->cursor_hard_off;
+		bool oldv = c->cursor_hard_off;
+		c->cursor_hard_off = flags & TUI_HIDE_CURSOR;
+		if (oldv != c->cursor_hard_off)
 			flag_cursor(c);
-		}
 
 		tsm_screen_set_flags(c->screen, flags);
 	}
@@ -2297,8 +2316,10 @@ void arcan_tui_set_flags(struct tui_context* c, enum tui_flags flags)
 void arcan_tui_reset_flags(struct tui_context* c, enum tui_flags flags)
 {
 	if (c){
-		c->cursor_hard_off = (flags & TUI_HIDE_CURSOR) > 0;
-		flag_cursor(c);
+		if (flags & TUI_HIDE_CURSOR){
+			c->cursor_hard_off = false;
+			flag_cursor(c);
+		}
 		tsm_screen_reset_flags(c->screen, flags);
 	}
 }
