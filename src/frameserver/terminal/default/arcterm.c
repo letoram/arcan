@@ -359,7 +359,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 /* might have been destroyed already, just in case */
 	if (term.pty)
 		term.pty = (shl_pty_close(term.pty), NULL);
-	arcan_tui_destroy(term.screen);
+	arcan_tui_destroy(term.screen, NULL);
 
 	return EXIT_SUCCESS;
 }

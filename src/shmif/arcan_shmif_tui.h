@@ -130,15 +130,23 @@ struct tui_settings {
 
 struct tui_context;
 
-/*
- * match the labelhint structure in shmif_event
- */
 struct tui_labelent {
+/* 7-bit ascii reference string */
 	char label[16];
-	char initial[16];
+
+/* user-readable short description */
 	char descr[58];
-	uint16_t subb;
+
+/* button : 0
+ * axis-motion : 1
+ * touch : 2 */
 	uint8_t idatatype;
+
+/* match enum tuik_syms in _tuisyms.h */
+	uint16_t initial;
+/*optional alias- for label */
+	uint16_t subv;
+/* modifier-mask, from _tuisyms.h */
 	uint16_t modifiers;
 };
 
@@ -152,10 +160,13 @@ struct tui_cbcfg {
 	void* tag;
 
 /*
- * Called when the label-list has been invalidated and during first
- * return true if [dstlbl] was successfully set.
+ * Called when the label-list has been invalidated and during setup.
+ * return true if [dstlbl] was successfully set or false if there are no
+ * more label-inputs to register.
+ *
  * [lang/country] correspond to the last known GEOHINT.
- * if NULL, that information is not used.
+ * if NULL, that information is not used and som variant of english is
+ * assumed.
  */
 	bool (*query_label)(struct tui_context*,
 		size_t ind, const char* country, const char* lang,
@@ -323,7 +334,12 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 	size_t cfg_sz, ...
 );
 
-void arcan_tui_destroy(struct tui_context*);
+/*
+ * Destroy the tui context and the managed connection. [statuscode] should
+ * be EXIT_SUCCESS or EXIT_FAILURE, and [message] an optional user-readable
+ * string.
+ */
+void arcan_tui_destroy(struct tui_context*, const char* message);
 
 enum tui_process_errc {
 	TUI_ERRC_OK = 0,
