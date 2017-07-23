@@ -221,12 +221,11 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	bool fullscreen, bool frames, bool conservative, const char* caption);
 
 /*
- * Clear the display, deallocate all resources (fonts, shaders,
- * video objects), chain to platform_video_shutdown etc.
- * Note that this do not reset any attributes modified by the
- * the _default_ class functions.
+ * Clear the display, deallocate all resources (fonts, shaders, video objects),
+ * chain to platform_video_shutdown etc.  Note that this do not reset any
+ * attributes modified by the the _default_ class functions.
  */
-void arcan_video_shutdown();
+void arcan_video_shutdown(bool release_fsrv);
 
 /*
  * Push the current context, shut down the video display but in a way
