@@ -5384,20 +5384,54 @@ void arcan_video_restore_external()
 	arcan_video_popcontext();
 }
 
-extern void platform_video_shutdown();
-void arcan_video_shutdown()
+static void flag_ctxfsrv_dms(struct arcan_video_context* ctx)
 {
-	unsigned lastctxa, lastctxc = arcan_video_popcontext();
+	if (!ctx)
+		return;
 
+	for (size_t i = 1; i < ctx->vitem_limit; i++){
+		if (!FL_TEST(&(ctx->vitems_pool[i]), FL_INUSE))
+			continue;
+
+		arcan_vobject* current = &ctx->vitems_pool[i];
+		if (current->feed.state.tag ==
+			ARCAN_TAG_FRAMESERV && current->feed.state.ptr){
+			struct arcan_frameserver* fsrv = current->feed.state.ptr;
+			fsrv->flags.no_dms_free = true;
+		}
+	}
+}
+
+extern void platform_video_shutdown();
+void arcan_video_shutdown(bool release_fsrv)
+{
+/* subsystem active or not */
 	if (arcan_video_display.in_video == false)
 		return;
 
 	arcan_video_display.in_video = false;
 
-/* this will effectively make sure that all external launchers,
- * frameservers etc. gets killed off */
-	while ( lastctxc != (lastctxa = arcan_video_popcontext()) )
+/* This will effectively make sure that all external launchers, frameservers
+ * etc. gets killed off. If we should release frameservers, individually set
+ * their dms flag. */
+	if (!release_fsrv)
+		flag_ctxfsrv_dms(current_context);
+
+	unsigned lastctxa, lastctxc = arcan_video_popcontext();
+
+/* A bit ugly, the upper context slot gets reallocated on pop as a cheap way
+ * of letting the caller 'flush', but since we want to interleave with calls
+ * to flag_ctxfsrv_dms, we need to be a bit careful. This approach costs an
+ * extra full- iteration, but it's in the shutdown stage - the big time waste
+ * here is resetting screen resolution etc. */
+	if (!release_fsrv)
+		flag_ctxfsrv_dms(current_context);
+
+	while ( lastctxc != (lastctxa = arcan_video_popcontext()) ){
 		lastctxc = lastctxa;
+		if (lastctxc != lastctxa && !release_fsrv)
+			flag_ctxfsrv_dms(current_context);
+	}
 
 	agp_shader_flush();
 	deallocate_gl_context(current_context, true, NULL);

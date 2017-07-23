@@ -126,6 +126,7 @@ struct arcan_frameserver {
 		bool no_alpha_copy : 1;
 		bool autoclock : 1;
 		bool gpu_auth : 1;
+		bool no_dms_free : 1;
 	} flags;
 
 /* if autoclock is set, track and use as metric for firing events */

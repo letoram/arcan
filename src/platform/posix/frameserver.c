@@ -179,18 +179,31 @@ bool platform_fsrv_destroy(arcan_frameserver* src)
 		goto out;
 
 	platform_fsrv_enter(src, buf);
-/* be nice and say that you'll be dropped off */
-	if (shmpage){
-		arcan_event exev = {
-			.category = EVENT_TARGET,
-			.tgt.kind = TARGET_COMMAND_EXIT
-		};
-		platform_fsrv_pushevent(src, &exev);
 
-/* and flick any other switch that might keep the child locked, since it's
- * common with multi- thread producer, etc. dms triggers guard/thread if it's
- * there, no need to do for esync since we already pushed an event */
-		shmpage->dms = false;
+/*
+ * Clients have an auto-reconnect/crash-recovery mode if they have been
+ * provided with a recovery connection point. This will only be activated if
+ * there isn't a clean exit, i.e. TARGET_COMMAND_EXIT when the DMS gets pulled
+ * or the server process dies.
+ *
+ * Sometimes, you might want to activate this feature without actually exiting
+ * or at least not by SIGSEGV yourself. The 'no_dms_free' flag is used for
+ * that purpose.
+ */
+if (shmpage){
+		if (!src->flags.no_dms_free){
+			platform_fsrv_pushevent(src, &(struct arcan_event){
+				.category = EVENT_TARGET,
+				.tgt.kind = TARGET_COMMAND_EXIT
+			});
+			shmpage->dms = false;
+		}
+		else {
+			shmpage->childevq.front = shmpage->childevq.back;
+			shmpage->parentevq.front = shmpage->parentevq.back;
+			arcan_sem_post( src->esync );
+		}
+
 		shmpage->vready = false;
 		shmpage->aready = false;
 		arcan_sem_post( src->vsync );
