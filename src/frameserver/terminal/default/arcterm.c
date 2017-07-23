@@ -70,6 +70,7 @@ static void dump_help()
 		"             \t           \t underline, vertical)\n"
 		" blink       \t ticks     \t set blink period, 0 to disable (default: 12)\n"
 		" login       \t [user]    \t login (optional: user, only works for root)\n"
+		" min_upd     \t ms        \t wait at least [ms] between refreshes (default: 30)\n"
 		" palette     \t name      \t use built-in palette (below)\n"
 		"Built-in palettes:\n"
 		"default, solarized, solarized-black, solarized-white\n"
@@ -257,6 +258,12 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		return EXIT_SUCCESS;
 	}
 
+	int limit_flush = 30;
+	int cap_refresh = 30;
+
+	if (arg_lookup(args, "min_upd", 0, &val))
+		cap_refresh = strtol(val, NULL, 10);
+
 	struct tui_cbcfg cbcfg = {
 		.input_mouse_motion = on_mouse_motion,
 		.input_mouse_button = on_mouse_button,
@@ -367,8 +374,6 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
  */
 	int delay = -1;
 	unsigned long long last_frame = arcan_timemillis();
-	const int limit_flush = 24;
-	const int cap_refresh = 16;
 
 	while (term.alive){
 		struct tui_process_res res = arcan_tui_process(&term.screen,1,&inf,1,delay);
