@@ -16,7 +16,15 @@ static struct {
 	struct shl_pty* pty;
 	pid_t child;
 
-/* toggle whenever something has happened that should mandate a disp-synch */
+/* timestamp of last provided user input, reset each visible frame.
+ * useful for heuristics about the source of update, i.e. if we have a
+ * running command that keeps feeding the state machine, or we happen
+ * to have:
+ * user-input -> client_action -> state machine update
+ * as that is a strong synch indicator to have low input latency. */
+	bool uinput;
+
+/* graceful shutdown */
 	bool alive;
 } term;
 
@@ -31,6 +39,9 @@ static inline void trace(const char* msg, ...)
 #endif
 }
 
+/*
+ * process one round of PTY input, this is non-blocking
+ */
 static bool pump_pty()
 {
 	int rv = shl_pty_dispatch(term.pty);
@@ -85,8 +96,11 @@ static void on_mouse_motion(struct tui_context* c,
 {
 	trace("mouse motion(%d:%d, mods:%d, rel: %d",
 		x, y, modifiers, (int) relative);
-	if (!relative)
+
+	if (!relative){
 		tsm_vte_mouse_motion(term.vte, x, y, modifiers);
+		term.uinput = true;
+	}
 }
 
 static void on_mouse_button(struct tui_context* c,
@@ -95,6 +109,7 @@ static void on_mouse_button(struct tui_context* c,
 	trace("mouse button(%d:%d - @%d,%d (mods: %d)\n",
 		button, (int)active, last_x, last_y, modifiers);
 	tsm_vte_mouse_button(term.vte, button, active, modifiers);
+	term.uinput = true;
 }
 
 static void on_key(struct tui_context* c, uint32_t keysym,
@@ -103,6 +118,7 @@ static void on_key(struct tui_context* c, uint32_t keysym,
 	trace("on_key(%"PRIu32",%"PRIu8",%"PRIu16")", keysym, scancode, subid);
 	tsm_vte_handle_keyboard(term.vte,
 		keysym, isascii(keysym) ? keysym : 0, mods, subid);
+	term.uinput = true;
 }
 
 static bool on_u8(struct tui_context* c, const char* u8, size_t len, void* t)
@@ -112,7 +128,7 @@ static bool on_u8(struct tui_context* c, const char* u8, size_t len, void* t)
 	memcpy(buf, u8, len >= 5 ? 4 : len);
 	if (shl_pty_write(term.pty, (char*) buf, len) < 0)
 		term.alive = false;
-	pump_pty();
+	term.uinput = true;
 	return true;
 }
 
@@ -121,6 +137,7 @@ static void on_utf8_paste(struct tui_context* c,
 {
 	trace("utf8-paste(%s):%d", str, (int) cont);
 	tsm_vte_paste(term.vte, (char*)str, len);
+	term.uinput = true;
 }
 
 static void on_resize(struct tui_context* c,
@@ -262,7 +279,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 
 /*
  * now we have the display server connection and the abstract screen,
- * configure the terinal state machine
+ * configure the terminal state machine
  */
 	if (tsm_vte_new(&term.vte, term.screen, write_callback,
 		NULL /* write_cb_data */, tsm_log, NULL /* tsm_log_data */) < 0){
@@ -338,22 +355,45 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 
 	term.alive = true;
 	int inf = shl_pty_get_fd(term.pty);
-	while(pump_pty()){}
+
+/* first frame */
+	while(pump_pty()){};
 	arcan_tui_refresh(term.screen);
 
+/*
+ * timekeeping:
+ *  attempt refresh @60Hz, tick callback will drive _process forward - 30Hz if
+ *  we're being swamped with data (find /)
+ */
 	int delay = -1;
+	unsigned long long last_frame = arcan_timemillis();
+	const int limit_flush = 24;
+	const int cap_refresh = 16;
+
 	while (term.alive){
-		struct tui_process_res res = arcan_tui_process(&term.screen, 1, &inf, 1, delay);
+		struct tui_process_res res = arcan_tui_process(&term.screen,1,&inf,1,delay);
 		if (res.errc < TUI_ERRC_OK || res.bad)
 				break;
 
-/* arbitrary cut-off point, too high and something like find / will stall,
- * too low, and we'll get dirty updates. */
-		int flushc = 10;
-		while(pump_pty() && flushc--){}
+/* if the terminal is being swamped (find / for instance), try to keep at
+ * least a 30Hz refresh timer if we have no user input, normal 60Hz otherwise */
+		while(pump_pty() &&
+			arcan_timemillis() - last_frame < limit_flush && !term.uinput){};
 
-/* the magic 8 value should be positioned as something like display-synch * 1.5 */
-		delay = arcan_tui_refresh(term.screen) < 0 && errno == EAGAIN ? 24 : -1;
+/* in legacy terminal management, if we update too often, chances are that
+ * we'll get cursors jumping around in vim etc. */
+		if (arcan_timemillis() - last_frame < cap_refresh){
+			delay = cap_refresh - (arcan_timemillis() - last_frame);
+			continue;
+		}
+
+		int rc = arcan_tui_refresh(term.screen);
+		if (rc >= 0){
+			term.uinput = false;
+			last_frame = arcan_timemillis();
+		}
+		else if (rc == -1 && errno == EINVAL)
+			break;
 	}
 
 /* might have been destroyed already, just in case */
