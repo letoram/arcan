@@ -5,8 +5,8 @@
 -- are relative to the initial dimensions for the object in question,
 -- while function such as resize_image internally converts the absolute
 -- values to relative scale.
--- Interp can be set to one of the constants (INTERP_LINEAR,
--- INTERP_SINE, INTERP_EXPIN, INTERP_EXPOUT, INTERP_EXPINOUT).
+-- Interp can be set to one of the constants (INTERP_LINEAR, INTERP_SINE,
+-- INTERP_EXPIN, INTERP_EXPOUT, INTERP_EXPINOUT, INTERP_SMOOTHSTEP).
 -- @group: image
 -- @cfunction: scaleimage
 -- @related: resize_image

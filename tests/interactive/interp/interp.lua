@@ -6,6 +6,7 @@ function interp()
 	move_image(a, 100, 100, 50, INTERP_EXPINOUT);
 	move_image(a,   0,   0, 50, INTERP_SINE);
 	move_image(a, 100, 100, 50, INTERP_LINEAR);
+	move_image(a,   0,   0, 50, INTERP_SMOOTHSTEP);
 	show_image(a);
 
 	b = fill_surface(64, 64, 0, 0, 255);
@@ -16,6 +17,7 @@ function interp()
 	resize_image(b, 128, 128, 50, INTERP_EXPINOUT);
 	resize_image(b,   1,   1, 50, INTERP_SINE);
 	resize_image(b, 128, 128, 50, INTERP_LINEAR);
+	resize_image(b,   1,   1, 50, INTERP_SMOOTHSTEP);
 	show_image(b);
 
 	d = fill_surface(64, 64, 0, 255, 0);
@@ -26,4 +28,5 @@ function interp()
 	blend_image(d, 1.0, 50, INTERP_EXPINOUT);
 	blend_image(d,   0, 50, INTERP_SINE);
 	blend_image(d, 1.0, 50, INTERP_LINEAR);
+	blend_image(d,   0, 50, INTERP_SMOOTHSTEP);
 end

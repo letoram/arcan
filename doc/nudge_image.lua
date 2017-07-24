@@ -9,7 +9,7 @@
 -- calls will not have the same effect as each new position will
 -- be relative the current one rather than at the one at the end
 -- of the transformation.
--- Interp can be set to one of the constants (INTERP_LINEAR,
+-- Interp can be set to one of the constants (INTERP_LINEAR, INTERP_SMOOTHSTEP,
 -- INTERP_SINE, INTERP_EXPIN, INTERP_EXPOUT, INTERP_EXPINOUT).
 -- @group: image
 -- @cfunction: nudgeimage

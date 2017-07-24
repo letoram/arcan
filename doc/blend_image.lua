@@ -4,7 +4,8 @@
 -- @outargs:
 -- @longdescr: Changes the opacity of the selected VIDs either immediately (default) or by setting an optional *time* argument to a non-negative integer. This function either accepts single VIDs or a group of VIDs in a table (iteration will follow the behavior of pairs()
 -- Interp can be set to one of the constants (INTERP_LINEAR,
--- INTERP_SINE, INTERP_EXPIN, INTERP_EXPOUT, INTERP_EXPINOUT).
+-- INTERP_SINE, INTERP_EXPIN, INTERP_EXPOUT, INTERP_EXPINOUT,
+-- INTERP_SMOOTHSTEP).
 -- @note: VIDs with an opacity other than 0.0 (hidden) and 1.0 (opaque, visible) will be blended.
 -- @note: Values outside the allowed range will be clamped.
 -- @note: The blend behavior is dictated by the default global blendfunc value (src_alpha, 1-src_alpha) and can be overridden with force_image_blend(mode)
