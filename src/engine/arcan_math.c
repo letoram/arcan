@@ -416,6 +416,26 @@ float interp_1d_linear(float sv, float ev, float fract)
 	return sv + (ev - sv) * fract;
 }
 
+float interp_1d_smoothstep(float sv, float ev, float fract)
+{
+	float res = (fract - 0.1) / (0.9 - 0.1);
+	if (res < 0)
+		res = 0.0;
+	else if (res > 1.0)
+		res = 1.0;
+	res = res * res * (3.0 - 2.0 * res);
+	return sv + res * (ev - sv);
+}
+
+vector interp_3d_smoothstep(vector sv, vector ev, float fract)
+{
+	return (vector){
+		.x = interp_1d_smoothstep(sv.x, ev.x, fract),
+		.y = interp_1d_smoothstep(sv.y, ev.y, fract),
+		.z = interp_1d_smoothstep(sv.z, ev.z, fract)
+	};
+}
+
 vector interp_3d_linear(vector sv, vector ev, float fract)
 {
 	vector res;

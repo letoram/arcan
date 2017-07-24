@@ -104,11 +104,14 @@ float interp_1d_sine(float startv, float endv, float fract);
 float interp_1d_expout(float startv, float endv, float fract);
 float interp_1d_expin(float startv, float endv, float fract);
 float interp_1d_expinout(float startv, float endv, float fract);
+float interp_1d_smoothstep(float startv, float endv, float fract);
+
 vector interp_3d_linear(vector startv, vector stopv, float fract);
 vector interp_3d_sine(vector startv, vector endv, float fract);
 vector interp_3d_expout(vector startv, vector endv, float fract);
 vector interp_3d_expin(vector startv, vector endv, float fract);
 vector interp_3d_expinout(vector startv, vector endv, float fract);
+vector interp_3d_smoothstep(vector startv, vector endv, float fract);
 
 void update_view(orientation* dst, float roll, float pitch, float yaw);
 

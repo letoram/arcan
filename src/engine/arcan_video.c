@@ -68,6 +68,7 @@ static arcan_interp_3d_function lut_interp_3d[] = {
 	interp_3d_expin,
 	interp_3d_expout,
 	interp_3d_expinout,
+	interp_3d_smoothstep,
 };
 
 static arcan_interp_1d_function lut_interp_1d[] = {
@@ -75,7 +76,8 @@ static arcan_interp_1d_function lut_interp_1d[] = {
 	interp_1d_sine,
 	interp_1d_expin,
 	interp_1d_expout,
-	interp_1d_expinout
+	interp_1d_expinout,
+	interp_1d_smoothstep
 };
 
 struct arcan_video_display arcan_video_display = {
