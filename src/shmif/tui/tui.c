@@ -554,7 +554,6 @@ static void apply_scroll(struct tui_context* tui)
  * scroll down, +n
  * still update the front buffer, this may force characters to 'swap in'
  */
-	printf("scroll kuk\n");
 	tui->age = tsm_screen_draw(tui->screen, tsm_draw_callback, tui);
 	int step_sz = tui->scroll_backlog - tui->in_scroll > tui->smooth_thresh ?
 		tui->cell_h : tui->cell_h >> tui->smooth_scroll;
@@ -705,9 +704,11 @@ static bool page_up(struct tui_context* tui)
 
 static bool page_down(struct tui_context* tui)
 {
-	arcan_tui_scroll_down(tui, tui->rows);
-	tui->sbofs -= tui->rows;
-	tui->sbofs = tui->sbofs < 0 ? 0 : tui->sbofs;
+	if (tui->sbofs > 0){
+		tui->sbofs -= tui->rows;
+		tui->sbofs = tui->sbofs < 0 ? 0 : tui->sbofs;
+		arcan_tui_scroll_down(tui, tui->rows);
+	}
 	return true;
 }
 
@@ -736,10 +737,13 @@ static bool scroll_up(struct tui_context* tui)
 static bool scroll_down(struct tui_context* tui)
 {
 	int nf = mod_to_scroll(tui->modifiers, tui->rows);
-	arcan_tui_scroll_down(tui, nf);
-	tui->sbofs -= nf;
-	tui->sbofs = tui->sbofs < 0 ? 0 : tui->sbofs;
-	return true;
+	if (tui->sbofs > 0){
+		arcan_tui_scroll_down(tui, nf);
+		tui->sbofs -= nf;
+		tui->sbofs = tui->sbofs < 0 ? 0 : tui->sbofs;
+		return true;
+	}
+	return false;
 }
 
 static bool move_up(struct tui_context* tui)
@@ -1350,11 +1354,14 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 
 	case TARGET_COMMAND_SEEKCONTENT:
 		if (ev->ioevs[0].iv){ /* relative */
-			if (ev->ioevs[1].iv < 0)
+			if (ev->ioevs[1].iv < 0){
 				arcan_tui_scroll_up(tui, -1 * ev->ioevs[1].iv);
-			else
+				tui->sbofs -= ev->ioevs[1].iv;
+			}
+			else{
 				arcan_tui_scroll_down(tui, ev->ioevs[1].iv);
-			tui->sbofs += ev->ioevs[1].iv;
+				tui->sbofs += ev->ioevs[1].iv;
+			}
 			tui->dirty |= DIRTY_PENDING;
 		}
 	break;
