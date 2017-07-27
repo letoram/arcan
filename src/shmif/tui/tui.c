@@ -138,6 +138,16 @@ struct tui_context {
 /* tracking when to reset scrollback */
 	int sbofs;
 
+/* set at config-time, enables scrollback for normal- line operations,
+ * 0: disabled,
+ *>0: step-size, h >> n (+1 if 0)
+ */
+	unsigned smooth_scroll;
+	int scroll_backlog;
+	int in_scroll;
+	int scroll_px;
+	int smooth_thresh;
+
 /* color, cursor and other drawing states */
 	int rows;
 	int cols;
@@ -179,11 +189,7 @@ static void queue_requests(struct tui_context* tui, bool clipboard, bool ident);
  * only called when updating cursor or as part of update_screen
  */
 static int draw_cbt(struct tui_context* tui,
-	uint32_t ch, unsigned row, unsigned col,
-	int xofs, int yofs, unsigned w, unsigned h,
-	const struct tui_screen_attr* attr,
-	bool empty
-);
+	uint32_t ch, int x, int y, const struct tui_screen_attr* attr, bool empty);
 
 static void tsm_log(void* data, const char* file, int line,
 	const char* func, const char* subs, unsigned int sev,
@@ -206,12 +212,6 @@ static void cursor_at(struct tui_context* tui, int x, int y, shmif_pixel ccol)
 {
 	shmif_pixel* dst = tui->acon.vidp;
 
-	if (tui->cursor_hard_off || tui->cursor_off || tui->cursor != CURSOR_BLOCK){
-		struct tui_cell* tc = &tui->back[tui->cursor_y * tui->cols + tui->cursor_x];
-
-		draw_cbt(tui, tc->ch, tui->cursor_y, tui->cursor_x, 0, 0,
-			tui->cell_w, tui->cell_h, &tc->attr, false);
-	}
 	if (tui->cursor_off || tui->cursor_hard_off)
 		return;
 
@@ -258,6 +258,25 @@ static void cursor_at(struct tui_context* tui, int x, int y, shmif_pixel ccol)
 	}
 }
 
+/*
+ * this does not accurately consider double- buffered state
+ */
+static bool wait_vready(struct tui_context* tui, bool block)
+{
+/* The fastest option here would be to use the previously rastered buffers
+ * and just memmove or copy in the case of double buffering. The problem
+ * with that is that if there's custom- cells, these will 'lag behind'. */
+	if (!block){
+		if (atomic_load(&tui->acon.addr->vready))
+			return false;
+		return true;
+	}
+
+	while (atomic_load(&tui->acon.addr->vready))
+		;
+	return true;
+}
+
 static void apply_attrs(struct tui_context* tui,
 	int base_x, int base_y, uint8_t fg[4], const struct tui_screen_attr* attr)
 {
@@ -301,6 +320,12 @@ static void draw_ch(struct tui_context* tui,
 	unsigned xs = 0, ind = 0;
 	int adv = 0;
 
+/* FIXME:
+ * Special case, if base_y < 0 - we blit into a temporary buffer
+ * and do our line copies from there. The reason is that TTF_RenderUNICODEglyph
+ * is complicated enough, and the blit-partial case is not needed in Arcan.
+ * This gets worse with shaping rules..
+ */
 	if (!TTF_RenderUNICODEglyph(
 		&tui->acon.vidp[base_y * tui->acon.pitch + base_x],
 		tui->cell_w, tui->cell_h, tui->acon.pitch,
@@ -318,7 +343,6 @@ static inline void flag_cursor(struct tui_context* c)
 	c->cursor_upd = true;
 	c->dirty = DIRTY_PENDING;
 	c->inact_timer = -4;
-	c->cursor_off = false;
 }
 
 static void send_cell_sz(struct tui_context* tui)
@@ -350,38 +374,26 @@ static int tsm_draw_callback(struct tsm_screen* screen, uint32_t id,
 }
 
 static int draw_cbt(struct tui_context* tui,
-	uint32_t ch, unsigned row, unsigned col,
-	int xofs, int yofs, unsigned w, unsigned h,
-	const struct tui_screen_attr* attr,
-	bool empty
-){
+	uint32_t ch,int x1, int y1, const struct tui_screen_attr* attr,	bool empty)
+{
 	uint8_t fgc[4] = {attr->fr, attr->fg, attr->fb, 255};
 	uint8_t bgc[4] = {attr->br, attr->bg, attr->bb, tui->alpha};
 	uint8_t* dfg = fgc, (* dbg) = bgc;
-	int y1 = row * tui->cell_h + xofs;
-	int x1 = col * tui->cell_w + yofs;
-
-	if (col >= tui->cols || row >= tui->rows || x1 < 0 || y1 < 0)
-		return 0;
-
-	if (row == tui->cursor_x && col == tui->cursor_y){
-		tui->cursor_upd = true;
-	}
 
 	if (attr->inverse){
 		dfg = bgc;
 		dbg = fgc;
 		dbg[3] = tui->alpha;
 		dfg[3] = 0xff;
-	}
+	};
 
 	if (attr->faint){
 		fgc[0] >>= 1; fgc[1] >>= 1; fgc[2] >>= 1;
 		bgc[0] >>= 1; bgc[1] >>= 1; bgc[2] >>= 1;
 	}
 
-	int x2 = x1 + w;
-	int y2 = y1 + h;
+	int x2 = x1 + tui->cell_w;
+	int y2 = y1 + tui->cell_h;
 
 /* update dirty rectangle for synchronization */
 	if (x1 < tui->acon.dirty.x1)
@@ -422,12 +434,15 @@ static int draw_cbt(struct tui_context* tui,
 		draw_ch_u32(tui->font_bitmap,
 			&tui->acon, ch, x1, y1,
 			SHMIF_RGBA(dfg[0], dfg[1], dfg[2], dfg[3]),
-			SHMIF_RGBA(dbg[0], dbg[1], dbg[2], dbg[3])
+			SHMIF_RGBA(dbg[0], dbg[1], dbg[2], dbg[3]),
+			tui->cols * tui->cell_w,
+			tui->rows * tui->cell_h
 		);
 	}
 #ifndef SIMPLE_RENDERING
-	else
+	else{
 		draw_ch(tui, ch, x1, y1, dfg, dbg, attr);
+	}
 #endif
 
 	return 0;
@@ -462,6 +477,148 @@ static bool cell_match(struct tui_cell* ac, struct tui_cell* bc)
 }
 
 /*
+ * slightly more complicated to support smooth scrolling, draw n_rows and
+ * n_cols from front/back (assume no padding) synch means that front and back
+ * should be set to the same value after drawing and be used for 'dirty updates'
+ */
+static void draw_normal(struct tui_context* tui,
+	size_t n_rows, size_t n_cols,
+	struct tui_cell* front, struct tui_cell* back, struct tui_cell* custom,
+	int start_x, int start_y, bool synch)
+{
+	struct tui_cell* fpos = front;
+	struct tui_cell* bpos = back;
+	int cw = tui->cell_w;
+	int ch = tui->cell_h;
+/*
+ * KEEP AS A NOTE: shouldn't be needed after refactor
+	if (row == tui->cursor_x && col == tui->cursor_y){
+		tui->cursor_upd = true;
+	}
+ */
+
+	size_t drawc = 0;
+
+	for (size_t row = 0; row < n_rows; row++)
+		for (size_t col = 0; col < n_cols; col++){
+
+/* only update if the source position has changed, treat custom_id separate */
+			if (synch && !(tui->dirty & DIRTY_PENDING_FULL) && cell_match(fpos,bpos)){
+				/* || tui->double_buffered */
+				fpos++, bpos++, custom++;
+				continue;
+			}
+
+/* this ensures the custom- ID buffer is updated, when we step through it
+ * in the custom step, the cells will be marked 0ed after use. since the
+ * custom cells may be updated whenever, the got_custom state is updated
+ * so DIRTY_PENDING doesn't get cleared at synch. */
+			if (fpos->attr.custom_id > 127){
+				*custom = *fpos;
+				fpos++, bpos++, custom++;
+				tui->got_custom = true;
+				continue;
+			}
+
+/* update the cell */
+			draw_cbt(tui, fpos->ch,
+				col * cw + start_x, row * ch + start_y, &fpos->attr, false);
+			drawc++;
+
+			if (synch)
+				*custom = *bpos = *fpos;
+
+			fpos++, bpos++, custom++;
+		}
+/* FIXME: custom draw-call goes here */
+}
+
+static void clear_framebuffer(struct tui_context* tui)
+{
+	size_t npx = tui->acon.w * tui->acon.h;
+	shmif_pixel* dst = tui->acon.vidp;
+	while (npx--)
+		*dst++ = SHMIF_RGBA(tui->bgc[0], tui->bgc[1], tui->bgc[2], tui->alpha);
+}
+
+/*
+ * Used when smooth-scrolling, we know that the back buffer now contains our
+ * last "stable" view, then we scroll in from the front buffer as often we can.
+ * In order to not turn irresponsive, we can only do one- synch at a time here
+ * and just submit an EAGAIN to the caller.
+ * Caller should guarantee that scroll_backlog <= rows on screen
+ */
+static void apply_scroll(struct tui_context* tui)
+{
+/*
+ * scroll down, +n
+ * still update the front buffer, this may force characters to 'swap in'
+ */
+	printf("scroll kuk\n");
+	tui->age = tsm_screen_draw(tui->screen, tsm_draw_callback, tui);
+	int step_sz = tui->scroll_backlog - tui->in_scroll > tui->smooth_thresh ?
+		tui->cell_h : tui->cell_h >> tui->smooth_scroll;
+	if (step_sz == 0)
+		step_sz = 1;
+
+	if (tui->scroll_backlog > 0){
+
+		if (!tui->in_scroll){
+			tui->scroll_px = -step_sz;
+
+/* copy 'last' row on new front buffer into our hidden scrolling region,
+ * this needs to be done repeatedly as tsm_screen_draw may have changed */
+			memcpy(&tui->back[tui->rows * tui->cols],
+				&tui->front[(tui->rows - tui->scroll_backlog) * tui->cols],
+				sizeof(struct tui_cell) * tui->cols
+			);
+		}
+
+/* if we (in order to not go too slow on half / full page) need to jump
+ * larger steps, just do many small steps but without drawing / synching */
+
+		wait_vready(tui, true);
+
+		while(1){
+		tui->dirty = DIRTY_PENDING_FULL;
+		draw_normal(tui, tui->rows+1, tui->cols,
+			tui->back, tui->back, tui->custom, 0, tui->scroll_px, false);
+		arcan_shmif_signal(&tui->acon, SHMIF_SIGVID);
+
+/* retain correct step-size so we don't get a bias against cell size */
+		tui->scroll_px -= step_sz;
+		if (tui->scroll_px <= -tui->cell_h){
+			if (tui->scroll_backlog - tui->in_scroll - 1){
+				tui->scroll_px += tui->cell_h;
+				tui->in_scroll++;
+
+/* 1. move/scroll the related cells */
+			memmove(tui->back, &tui->back[tui->cols],
+				sizeof(struct tui_cell) * tui->cols * tui->rows);
+
+/* 2. copy MORE and more to account for the fact that the contents may
+ * be modified by the client going back and modifying the lines we are
+ * scrolling (even make may do this apparently) */
+				memcpy(
+					&tui->back[(tui->rows - tui->in_scroll) * tui->cols],
+					&tui->front[(tui->rows - tui->scroll_backlog) * tui->cols],
+						sizeof(struct tui_cell) * tui->cols * (tui->in_scroll + 1));
+			}
+			else{
+				tui->scroll_backlog = 0;
+				tui->scroll_px = 0;
+				tui->in_scroll = 0;
+			}
+			break;
+		}
+		}
+	}
+	else {
+		tui->scroll_backlog++;
+	}
+}
+
+/*
  * called on:
  * update_screensize
  * arcan_tui_refresh
@@ -474,17 +631,7 @@ static void update_screen(struct tui_context* tui, bool ign_inact)
 	if (tui->inactive && !ign_inact)
 		return;
 
-/* only blink cursor if its state has actually changed, since it can
- * grow the invalidation region rather heavily */
-	if (tui->cursor_upd){
-		struct tui_cell* tc = &tui->back[tui->cursor_y * tui->cols + tui->cursor_x];
-		draw_cbt(tui, tc->ch, tui->cursor_y, tui->cursor_x, 0, 0,
-			tui->cell_w, tui->cell_h, &tc->attr, false);
-	}
-	tui->cursor_x = tsm_screen_get_cursor_x(tui->screen);
-	tui->cursor_y = tsm_screen_get_cursor_y(tui->screen);
-
-/* dirty will be set from screen draw */
+/* dirty will be set from screen resize, fix the pad region */
 	if (tui->dirty & DIRTY_PENDING_FULL){
 		tui->acon.dirty.x1 = 0;
 		tui->acon.dirty.x2 = tui->acon.w;
@@ -507,61 +654,43 @@ static void update_screen(struct tui_context* tui, bool ign_inact)
  * say that cursor drawing should be turned off */
 		;
 
-/* now it's time to blit, at an offset + block if we want smooth-scrolling (and
- * not resetting the dirty flag) - shaping, for shaping / ligatures: then we
- * need a stronger heuristic to step */
-	struct tui_cell* fpos = tui->front;
-	struct tui_cell* bpos = tui->back;
-	struct tui_cell* custom = tui->custom;
-
 /* FIXME
  * if shaping/ligatures/non-monospace is enabled, we treat this row by row,
- * though this strategy is somewhat flawed if its word wrapped and we start
- * on a new word. There's surely some harfbuzz- trick to this, but baby-steps */
+ * though this strategy is somewhat flawed if its word wrapped and we start on
+ * a new word. There's surely some harfbuzz- trick to this, but baby-steps */
 
 /* NORMAL drawing
  * draw everything that is different and not marked as custom, track the start
- * of every custom entry and sweep- seek- those separately */
-	size_t drawc = 0;
+ * of every custom entry and sweep- seek- those separately so that they can be
+ * drawn as large, continous regions */
 	tui->got_custom = false;
 
-	if (tui->front){
-		for (size_t y = 0; y < tui->rows; y++)
-			for (size_t x = 0; x < tui->cols; x++){
+/* basic safe-guard */
+	if (!tui->front)
+		return;
 
-/* only update if the source position has changed, treat custom_id separate */
-				if (!(tui->dirty & DIRTY_PENDING_FULL) && cell_match(fpos, bpos)){
-				/* || tui->double_buffered */
-					fpos++, bpos++, custom++;
-					continue;
-				}
-
-/* this ensures the custom- ID buffer is updated, when we step through it
- * in the custom step, the cells will be marked 0ed after use. since the
- * custom cells may be updated whenever, the got_custom state is updated
- * so DIRTY_PENDING doesn't get cleared at synch. */
-				if (fpos->attr.custom_id > 127){
-					*custom = *fpos;
-					fpos++, bpos++, custom++;
-					tui->got_custom = true;
-					continue;
-				}
-
-/* update the cell */
-				draw_cbt(tui, fpos->ch, y, x, 0, 0,
-					tui->cell_w, tui->cell_h, &fpos->attr, false);
-				drawc++;
-				*custom = *bpos = *fpos;
-
-				fpos++, bpos++, custom++;
-			}
+	if (tui->cursor_upd){
+		struct tui_cell* tc = &tui->back[tui->cursor_y * tui->cols + tui->cursor_x];
+		draw_cbt(tui, tc->ch,
+			tui->cursor_x * tui->cell_w,
+			tui->cursor_y * tui->cell_h, &tc->attr, tc->ch == 0
+		);
 	}
 
+	draw_normal(tui, tui->rows, tui->cols,
+		tui->front, tui->back, tui->custom, 0, 0, true);
+
+	tui->cursor_x = tsm_screen_get_cursor_x(tui->screen);
+	tui->cursor_y = tsm_screen_get_cursor_y(tui->screen);
+
+/* draw the new cursor */
 	if (tui->cursor_upd && !(tui->cursor_off | tui->cursor_hard_off) ){
-		cursor_at(tui, tui->cursor_x * tui->cell_w, tui->cursor_y * tui->cell_h,
+		cursor_at(tui,
+			tui->cursor_x * tui->cell_w + 0,
+			tui->cursor_y * tui->cell_h + 0,
 			tui->scroll_lock ? SHMIF_RGBA(tui->clc[0], tui->clc[1], tui->clc[2],0xff):
-				SHMIF_RGBA(tui->cc[0], tui->cc[1], tui->cc[2], 0xff));
-		tui->cursor_upd = false;
+				SHMIF_RGBA(tui->cc[0], tui->cc[1], tui->cc[2], 0xff)
+		);
 	}
 
 	tui->dirty &= ~(DIRTY_PENDING | DIRTY_PENDING_FULL);
@@ -569,18 +698,16 @@ static void update_screen(struct tui_context* tui, bool ign_inact)
 
 static bool page_up(struct tui_context* tui)
 {
-	tsm_screen_sb_up(tui->screen, tui->rows);
+	arcan_tui_scroll_up(tui, tui->rows);
 	tui->sbofs += tui->rows;
-	tui->dirty |= DIRTY_PENDING;
 	return true;
 }
 
 static bool page_down(struct tui_context* tui)
 {
-	tsm_screen_sb_down(tui->screen, tui->rows);
+	arcan_tui_scroll_down(tui, tui->rows);
 	tui->sbofs -= tui->rows;
 	tui->sbofs = tui->sbofs < 0 ? 0 : tui->sbofs;
-	tui->dirty |= DIRTY_PENDING;
 	return true;
 }
 
@@ -601,19 +728,17 @@ static int mod_to_scroll(int mods, int screenh)
 static bool scroll_up(struct tui_context* tui)
 {
 	int nf = mod_to_scroll(tui->modifiers, tui->rows);
-	tsm_screen_sb_up(tui->screen, nf);
+	arcan_tui_scroll_up(tui, nf);
 	tui->sbofs += nf;
-	tui->dirty |= DIRTY_PENDING;
 	return true;
 }
 
 static bool scroll_down(struct tui_context* tui)
 {
 	int nf = mod_to_scroll(tui->modifiers, tui->rows);
-	tsm_screen_sb_down(tui->screen, nf);
+	arcan_tui_scroll_down(tui, nf);
 	tui->sbofs -= nf;
 	tui->sbofs = tui->sbofs < 0 ? 0 : tui->sbofs;
-	tui->dirty |= DIRTY_PENDING;
 	return true;
 }
 
@@ -623,7 +748,7 @@ static bool move_up(struct tui_context* tui)
 		page_up(tui);
 		return true;
 	}
-	else if (tui->modifiers & (TUIK_LMETA | TUIK_RMETA)){
+/*	else if (tui->modifiers & (TUIK_LMETA | TUIK_RMETA)){
 		if (tui->modifiers & (TUIK_LSHIFT | TUIK_RSHIFT))
 			page_up(tui);
 		else{
@@ -633,7 +758,8 @@ static bool move_up(struct tui_context* tui)
 		}
 		return true;
 	}
-	else if (tui->handlers.input_label)
+ else */
+	if (tui->handlers.input_label)
 		return tui->handlers.input_label(tui, "UP", NULL, tui->handlers.tag);
 
 	return false;
@@ -645,7 +771,8 @@ static bool move_down(struct tui_context* tui)
 		page_down(tui);
 		return true;
 	}
-	else if (tui->modifiers & (TUIK_LMETA | TUIK_RMETA)){
+/*
+ * else if (tui->modifiers & (TUIK_LMETA | TUIK_RMETA)){
 		if (tui->modifiers & (TUIK_LSHIFT | TUIK_RSHIFT))
 			page_up(tui);
 		else{
@@ -655,7 +782,9 @@ static bool move_down(struct tui_context* tui)
 		}
 		return true;
 	}
-	else if (tui->handlers.input_label)
+	else
+*/
+	if (tui->handlers.input_label)
 		return tui->handlers.input_label(tui, "DOWN", NULL, tui->handlers.tag);
 
 	return false;
@@ -830,7 +959,7 @@ static const struct lent labels[] = {
 	{"MOUSE_FORWARD", "Toggle mouse forwarding", mouse_forward},
 	{"SCROLL_LOCK", "Arrow- keys to pageup/down", scroll_lock},
 	{"UP", "(scroll-lock) page up, UP keysym", move_up},
-	{"DOWN", "(scroll-lock) page down, DOWN keysym", move_up},
+	{"DOWN", "(scroll-lock) page down, DOWN keysym", move_down},
 	{"INC_FONT_SZ", "Font size +1 pt", inc_fontsz},
 	{"DEC_FONT_SZ", "Font size -1 pt", dec_fontsz},
 	{NULL, NULL}
@@ -1112,7 +1241,8 @@ static void resize_cellbuffer(struct tui_context* tui)
 
 	tui->base = NULL;
 
-	size_t buffer_sz = tui->rows * tui->cols * sizeof(struct tui_cell);
+/* window size with spare lines for scroll-in-scroll-out */
+	size_t buffer_sz = (2 + tui->rows) * tui->cols * sizeof(struct tui_cell);
 	tui->base = malloc(buffer_sz * 3);
 	if (!tui->base){
 		LOG("couldn't allocate screen buffers buffer\n");
@@ -1120,8 +1250,10 @@ static void resize_cellbuffer(struct tui_context* tui)
 	}
 	memset(tui->base, '\0', buffer_sz);
 	tui->front = tui->base;
-	tui->back = &tui->base[tui->rows * tui->cols];
-	tui->custom = &tui->base[tui->rows * tui->cols * 2];
+
+/* for back buffer, spare one above, one below */
+	tui->back = &tui->base[(tui->rows + 1) * tui->cols];
+	tui->custom = &tui->back[(tui->rows + 1) * tui->cols];
 }
 
 static void update_screensize(struct tui_context* tui, bool clear)
@@ -1134,8 +1266,7 @@ static void update_screensize(struct tui_context* tui, bool clear)
 	shmif_pixel col = SHMIF_RGBA(
 		tui->bgc[0],tui->bgc[1],tui->bgc[2],tui->alpha);
 
-	while (atomic_load(&tui->acon.addr->vready))
-		;
+	wait_vready(tui, true);
 
 	if (clear)
 		draw_box(&tui->acon, 0, 0, tui->acon.w, tui->acon.h, col);
@@ -1220,9 +1351,9 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 	case TARGET_COMMAND_SEEKCONTENT:
 		if (ev->ioevs[0].iv){ /* relative */
 			if (ev->ioevs[1].iv < 0)
-				tsm_screen_sb_up(tui->screen, -1 * ev->ioevs[1].iv);
+				arcan_tui_scroll_up(tui, -1 * ev->ioevs[1].iv);
 			else
-				tsm_screen_sb_down(tui->screen, ev->ioevs[1].iv);
+				arcan_tui_scroll_down(tui, ev->ioevs[1].iv);
 			tui->sbofs += ev->ioevs[1].iv;
 			tui->dirty |= DIRTY_PENDING;
 		}
@@ -1273,18 +1404,14 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 			if (ev->ioevs[2].iv & 4){
 				tui->focus = false;
 				tui->modifiers = 0;
-				if (!tui->cursor_off){
-					tui->cursor_off = true;
-					flag_cursor(tui);
-				}
+				tui->cursor_off = true;
+				flag_cursor(tui);
 			}
 			else{
 				tui->focus = true;
 				tui->inact_timer = 0;
-				if (tui->cursor_off){
-					tui->cursor_off = false;
-					flag_cursor(tui);
-				}
+				tui->cursor_off = false;
+				flag_cursor(tui);
 			}
 		}
 
@@ -1293,6 +1420,7 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 			if (!arcan_shmif_resize(&tui->acon, ev->ioevs[0].iv, ev->ioevs[1].iv))
 				LOG("resize to (%d * %d) failed\n", ev->ioevs[0].iv, ev->ioevs[1].iv);
 			update_screensize(tui, true);
+			tui->in_scroll = 0;
 		}
 
 /* currently ignoring field [3], RGB layout as freetype with
@@ -1353,9 +1481,9 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 		}
 		if (tui->in_select && tui->scrollback != 0){
 			if (tui->scrollback < 0)
-				tsm_screen_sb_up(tui->screen, abs(tui->scrollback));
+				arcan_tui_scroll_up(tui, abs(tui->scrollback));
 			else
-				tsm_screen_sb_down(tui->screen, tui->scrollback);
+				arcan_tui_scroll_down(tui, tui->scrollback);
 			tui->dirty |= DIRTY_PENDING;
 		}
 	break;
@@ -1767,15 +1895,30 @@ int arcan_tui_refresh(struct tui_context* tui)
 
 /* synch vscreen -> screen buffer */
 	tui->flags = tsm_screen_get_flags(tui->screen);
-	tui->age = tsm_screen_draw(tui->screen, tsm_draw_callback, tui);
 
-	if (atomic_load(&tui->acon.addr->vready)){
+/* if we're more than a full page behind, just reset it */
+	if (tui->scroll_backlog){
+		if (tui->scroll_backlog < tui->rows){
+			apply_scroll(tui);
+			errno = EAGAIN;
+			return -1;
+		}
+		else{
+			tui->age = tsm_screen_draw(tui->screen, tsm_draw_callback, tui);
+			tui->scroll_backlog = 0;
+		}
+	}
+	else
+		tui->age = tsm_screen_draw(tui->screen, tsm_draw_callback, tui);
+
+	if (!wait_vready(tui, false)){
 		errno = EAGAIN;
 		return -1;
 	}
 
 	if ((tui->dirty & DIRTY_PENDING) || (tui->dirty & DIRTY_PENDING_FULL))
 		update_screen(tui, false);
+
 	if (tui->dirty & DIRTY_UPDATED){
 /* if we are built with GPU offloading support and nothing has happened
  * to our accelerated connection, synch, otherwise fallback and retry */
@@ -1924,6 +2067,9 @@ void arcan_tui_apply_arg(struct tui_settings* cfg,
 		cfg->prefer_accel = true;
 #endif
 
+	if (arg_lookup(args, "scroll", 0, &val))
+		cfg->smooth_scroll = strtoul(val, NULL, 10);
+
 	if (arg_lookup(args, "bgc", 0, &val))
 		if (parse_color(val, ccol) >= 3){
 			cfg->bgc[0] = ccol[0]; cfg->bgc[1] = ccol[1]; cfg->bgc[2] = ccol[2];
@@ -2065,6 +2211,8 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 
 	res->focus = true;
 	res->ppcm = init->density;
+	res->smooth_scroll = set->smooth_scroll;
+	res->smooth_thresh = 4;
 
 	res->font_fd[0] = BADFD;
 	res->font_fd[1] = BADFD;
@@ -2187,10 +2335,14 @@ void arcan_tui_defattr(struct tui_context* c, struct tui_screen_attr* attr)
 void arcan_tui_write(struct tui_context* c, uint32_t ucode,
 	struct tui_screen_attr* attr)
 {
-	if (c){
-		tsm_screen_write(c->screen, ucode, attr);
-		flag_cursor(c);
-	}
+	if (!c)
+		return;
+
+	int ss = tsm_screen_write(c->screen, ucode, attr);
+	if (c->smooth_scroll && ss)
+		c->scroll_backlog += ss;
+
+	flag_cursor(c);
 }
 
 void arcan_tui_ident(struct tui_context* c, const char* ident)
@@ -2378,18 +2530,22 @@ void arcan_tui_tab_left(struct tui_context* c, size_t n)
 
 void arcan_tui_scroll_up(struct tui_context* c, size_t n)
 {
-	if (c){
-		flag_cursor(c);
-		tsm_screen_scroll_up(c->screen, n);
-	}
+	if (!c) return;
+
+	int ss = tsm_screen_sb_up(c->screen, n);
+	if (c->smooth_scroll && ss)
+		c->scroll_backlog += ss;
+
+	flag_cursor(c);
 }
 
 void arcan_tui_scroll_down(struct tui_context* c, size_t n)
 {
-	if (c){
-		flag_cursor(c);
-		tsm_screen_scroll_down(c->screen, n);
-	}
+	if (!c) return;
+	int ss = tsm_screen_sb_down(c->screen, n);
+	if (c->smooth_scroll && ss)
+		c->scroll_backlog += ss;
+	flag_cursor(c);
 }
 
 void arcan_tui_reset_tabstop(struct tui_context* c)
@@ -2422,10 +2578,14 @@ void arcan_tui_move_up(struct tui_context* c, size_t n, bool scroll)
 
 void arcan_tui_move_down(struct tui_context* c, size_t n, bool scroll)
 {
-	if (c){
-		flag_cursor(c);
-		tsm_screen_move_down(c->screen, n, scroll);
-	}
+	if (!c)
+		return;
+
+	flag_cursor(c);
+	int ss = tsm_screen_move_down(c->screen, n, scroll);
+	if (c->smooth_scroll)
+		c->scroll_backlog += ss;
+	flag_cursor(c);
 }
 
 void arcan_tui_move_left(struct tui_context* c, size_t n)
@@ -2462,10 +2622,14 @@ void arcan_tui_move_line_home(struct tui_context* c)
 
 void arcan_tui_newline(struct tui_context* c)
 {
-	if (c){
-		flag_cursor(c);
-		tsm_screen_newline(c->screen);
-	}
+	if (!c)
+		return;
+
+	int ss = tsm_screen_newline(c->screen);
+	if (c->smooth_scroll)
+		c->scroll_backlog += ss;
+
+	flag_cursor(c);
 }
 
 int arcan_tui_set_margins(struct tui_context* c, size_t top, size_t bottom)

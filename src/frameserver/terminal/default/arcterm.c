@@ -42,15 +42,15 @@ static inline void trace(const char* msg, ...)
 /*
  * process one round of PTY input, this is non-blocking
  */
-static bool pump_pty()
+static int pump_pty()
 {
 	int rv = shl_pty_dispatch(term.pty);
 	if (rv == -ENODEV){
 		term.alive = false;
 	}
 	else if (rv == -EAGAIN)
-		return true;
-	return false;
+		return 0;
+	return rv;
 }
 
 static void dump_help()
@@ -71,6 +71,7 @@ static void dump_help()
 		" blink       \t ticks     \t set blink period, 0 to disable (default: 12)\n"
 		" login       \t [user]    \t login (optional: user, only works for root)\n"
 		" min_upd     \t ms        \t wait at least [ms] between refreshes (default: 30)\n"
+		" scroll      \t steps     \t (experimental) smooth scrolling, (default:0=off) steps px/upd\n"
 		" palette     \t name      \t use built-in palette (below)\n"
 		"Built-in palettes:\n"
 		"default, solarized, solarized-black, solarized-white\n"
@@ -259,7 +260,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	}
 
 	int limit_flush = 30;
-	int cap_refresh = 30;
+	int cap_refresh = 60;
 
 	if (arg_lookup(args, "min_upd", 0, &val))
 		cap_refresh = strtol(val, NULL, 10);
@@ -381,24 +382,38 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 				break;
 
 /* if the terminal is being swamped (find / for instance), try to keep at
- * least a 30Hz refresh timer if we have no user input, normal 60Hz otherwise */
-		while(pump_pty() &&
-			arcan_timemillis() - last_frame < limit_flush && !term.uinput){};
+ * least a 30Hz refresh timer if we have no user input */
+		int nr;
+		if ((nr = pump_pty()) > 0){
+			if (arcan_timemillis() - last_frame <
+				(term.uinput ? limit_flush : 2 * limit_flush)){
+				delay = cap_refresh - (arcan_timemillis() - last_frame);
+				if (delay < 0)
+					delay = 0;
+			}
+			continue;
+		}
 
 /* in legacy terminal management, if we update too often, chances are that
- * we'll get cursors jumping around in vim etc. */
+ * we'll get cursors jumping around in vim etc so artificially constrain */
 		if (arcan_timemillis() - last_frame < cap_refresh){
 			delay = cap_refresh - (arcan_timemillis() - last_frame);
 			continue;
 		}
 
+/* and on an actually successful update, reset the user-input flag and timing */
 		int rc = arcan_tui_refresh(term.screen);
 		if (rc >= 0){
 			term.uinput = false;
 			last_frame = arcan_timemillis();
+			delay = -1;
 		}
-		else if (rc == -1 && errno == EINVAL)
-			break;
+		else if (rc == -1){
+			if (errno == EAGAIN)
+				delay = 0;
+			else if (errno == EINVAL)
+				break;
+		}
 	}
 
 /* might have been destroyed already, just in case */

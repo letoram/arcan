@@ -1427,8 +1427,10 @@ unsigned arcan_shmif_signal(struct arcan_shmif_cont* ctx,
 	if (mask & SHMIF_SIGVID){
 		bool lock = step_v(ctx);
 
-		if (lock && !(mask & SHMIF_SIGBLK_NONE))
-			arcan_sem_wait(ctx->vsem);
+		if (lock && !(mask & SHMIF_SIGBLK_NONE)){
+			while (ctx->addr->vready)
+				arcan_sem_wait(ctx->vsem);
+		}
 		else
 			arcan_sem_trywait(ctx->vsem);
 	}

@@ -126,6 +126,9 @@ struct tui_settings {
 
 /* force- disable the use of advanced font rendering */
 	bool force_bitmap;
+
+/* 0 : disabled, >0, cell_h << i (or 1 of 0) steps per cell */
+	unsigned smooth_scroll;
 };
 
 struct tui_context;
@@ -303,6 +306,12 @@ struct tui_cbcfg {
  */
 	void (*subwindow)(struct tui_context*,
 		enum ARCAN_SEGID type, uint32_t id, struct arcan_shmif_cont* cont, void*);
+
+/*
+ * This is used once during setup, and is invoked when the user requests an
+ * enumeration/validation of the command-line arguments that are supported given the
+ * current argument- context.
+ */
 
 /*
  * add new callbacks here as needed, since the setup requires a sizeof of

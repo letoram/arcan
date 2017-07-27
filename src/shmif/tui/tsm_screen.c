@@ -67,9 +67,6 @@
 #include "../arcan_shmif_tui.h"
 #include "libtsm.h"
 #include "libtsm_int.h"
-#include "shl_llog.h"
-
-#define LLOG_SUBSYSTEM "tsm_screen"
 
 struct cell {
 	tsm_symbol_t ch;
@@ -97,8 +94,6 @@ struct selection_pos {
 
 struct tsm_screen {
 	size_t ref;
-	llog_submit_t llog;
-	void *llog_data;
 	unsigned int opts;
 	unsigned int flags;
 	struct tsm_symbol_table *sym_table;
@@ -325,13 +320,13 @@ static void link_to_scrollback(struct tsm_screen *con, struct line *line)
 	++con->sb_count;
 }
 
-static void screen_scroll_up(struct tsm_screen *con, unsigned int num)
+static int screen_scroll_up(struct tsm_screen *con, unsigned int num)
 {
 	unsigned int i, j, max, pos;
 	int ret;
 
 	if (!num)
-		return;
+		return 0;
 
 	con->age = con->age_cnt;
 
@@ -346,7 +341,8 @@ static void screen_scroll_up(struct tsm_screen *con, unsigned int num)
 	 * also be small enough so we do not get stack overflows. */
 	if (num > 128) {
 		screen_scroll_up(con, 128);
-		return screen_scroll_up(con, num - 128);
+		screen_scroll_up(con, num - 128);
+		return num;
 	}
 	struct line *cache[num];
 
@@ -395,14 +391,15 @@ static void screen_scroll_up(struct tsm_screen *con, unsigned int num)
 			}
 		}
 	}
+	return num;
 }
 
-static void screen_scroll_down(struct tsm_screen *con, unsigned int num)
+static int screen_scroll_down(struct tsm_screen *con, unsigned int num)
 {
 	unsigned int i, j, max;
 
 	if (!num)
-		return;
+		return 0;
 
 	con->age = con->age_cnt;
 
@@ -413,7 +410,8 @@ static void screen_scroll_down(struct tsm_screen *con, unsigned int num)
 	/* see screen_scroll_up() for an explanation */
 	if (num > 128) {
 		screen_scroll_down(con, 128);
-		return screen_scroll_down(con, num - 128);
+		screen_scroll_down(con, num - 128);
+		return num;
 	}
 	struct line *cache[num];
 
@@ -438,6 +436,7 @@ static void screen_scroll_down(struct tsm_screen *con, unsigned int num)
 		if (!con->sel_end.line && con->sel_end.y >= 0)
 			con->sel_end.y += num;
 	}
+	return num;
 }
 
 static void screen_write(struct tsm_screen *con, unsigned int x,
@@ -451,7 +450,6 @@ static void screen_write(struct tsm_screen *con, unsigned int x,
 		return;
 
 	if (x >= con->size_x || y >= con->size_y) {
-		llog_warn(con, "writing beyond buffer boundary");
 		return;
 	}
 
@@ -542,8 +540,6 @@ int tsm_screen_new(struct tsm_screen **out, tsm_log_t log, void *log_data)
 
 	memset(con, 0, sizeof(*con));
 	con->ref = 1;
-	con->llog = log;
-	con->llog_data = log_data;
 	con->age_cnt = 1;
 	con->age = con->age_cnt;
 	con->def_attr.fr = 255;
@@ -558,7 +554,6 @@ int tsm_screen_new(struct tsm_screen **out, tsm_log_t log, void *log_data)
 	if (ret)
 		goto err_free;
 
-	llog_debug(con, "new screen");
 	*out = con;
 
 	return 0;
@@ -593,7 +588,6 @@ void tsm_screen_unref(struct tsm_screen *con)
 	if (!con || !con->ref || --con->ref)
 		return;
 
-	llog_debug(con, "destroying screen");
 
 	for (i = 0; i < con->line_num; ++i) {
 		line_free(con->main_lines[i]);
@@ -983,63 +977,67 @@ void tsm_screen_clear_sb(struct tsm_screen *con)
 }
 
 SHL_EXPORT
-void tsm_screen_sb_up(struct tsm_screen *con, unsigned int num)
+int tsm_screen_sb_up(struct tsm_screen *con, unsigned int num)
 {
 	if (!con || !num)
-		return;
+		return 0;
 
+	unsigned num2 = num;
 	inc_age(con);
 	con->age = con->age_cnt;
 
-	while (num--) {
+	while (num2--) {
 		if (con->sb_pos) {
 			if (!con->sb_pos->prev)
-				return;
+				return 0;
 
 			con->sb_pos = con->sb_pos->prev;
 		} else if (!con->sb_last) {
-			return;
+			return -(num - num2);
 		} else {
 			con->sb_pos = con->sb_last;
 		}
 	}
+	return -num;
 }
 
 SHL_EXPORT
-void tsm_screen_sb_down(struct tsm_screen *con, unsigned int num)
+int tsm_screen_sb_down(struct tsm_screen *con, unsigned int num)
 {
 	if (!con || !num)
-		return;
+		return 0;
 
+	unsigned num2 = num;
 	inc_age(con);
 	con->age = con->age_cnt;
 
-	while (num--) {
+	while (num2--) {
 		if (con->sb_pos)
 			con->sb_pos = con->sb_pos->next;
 		else
-			return;
+			return (num - num2);
 	}
+	return num;
 }
 
 SHL_EXPORT
-void tsm_screen_sb_page_up(struct tsm_screen *con, unsigned int num)
+int tsm_screen_sb_page_up(struct tsm_screen *con, unsigned int num)
 {
 	if (!con || !num)
-		return;
+		return 0;
 
 	inc_age(con);
-	tsm_screen_sb_up(con, num * con->size_y);
+	return tsm_screen_sb_up(con, num * con->size_y);
 }
 
 SHL_EXPORT
-void tsm_screen_sb_page_down(struct tsm_screen *con, unsigned int num)
+int tsm_screen_sb_page_down(struct tsm_screen *con, unsigned int num)
 {
 	if (!con || !num)
-		return;
+		return 0;
 
 	inc_age(con);
-	tsm_screen_sb_down(con, num * con->size_y);
+	return tsm_screen_sb_down(con, num * con->size_y);
 }
 
 SHL_EXPORT
@@ -1192,17 +1190,18 @@ void tsm_screen_reset_all_tabstops(struct tsm_screen *con)
 }
 
 SHL_EXPORT
-void tsm_screen_write(struct tsm_screen *con, tsm_symbol_t ch,
+int tsm_screen_write(struct tsm_screen *con, tsm_symbol_t ch,
 			  const struct tui_screen_attr *attr)
 {
 	unsigned int last, len;
+	int rv = 0;
 
 	if (!con)
-		return;
+		return 0;
 
 	len = tsm_symbol_get_width(con->sym_table, ch);
 	if (!len)
-		return;
+		return 0;
 
 	inc_age(con);
 
@@ -1213,54 +1212,58 @@ void tsm_screen_write(struct tsm_screen *con, tsm_symbol_t ch,
 		last = con->size_y - 1;
 
 	if (con->cursor_x >= con->size_x) {
-		if (con->flags & TSM_SCREEN_AUTO_WRAP)
+		if (con->flags & TSM_SCREEN_AUTO_WRAP){
 			move_cursor(con, 0, con->cursor_y + 1);
+			rv = 0;
+		}
 		else
 			move_cursor(con, con->size_x - 1, con->cursor_y);
 	}
 
 	if (con->cursor_y > last) {
 		move_cursor(con, con->cursor_x, last);
-		screen_scroll_up(con, 1);
+		return screen_scroll_up(con, 1);
 	}
 
 	screen_write(con,
 		con->cursor_x, con->cursor_y, ch, len, attr ? attr : &con->def_attr);
 	move_cursor(con, con->cursor_x + len, con->cursor_y);
+	return rv;
 }
 
 SHL_EXPORT
-void tsm_screen_newline(struct tsm_screen *con)
+int tsm_screen_newline(struct tsm_screen *con)
 {
 	if (!con)
-		return;
+		return 0;
 
 	inc_age(con);
 
-	tsm_screen_move_down(con, 1, true);
+	int rv = tsm_screen_move_down(con, 1, true);
 	tsm_screen_move_line_home(con);
+	return rv;
 }
 
 SHL_EXPORT
-void tsm_screen_scroll_up(struct tsm_screen *con, unsigned int num)
+int tsm_screen_scroll_up(struct tsm_screen *con, unsigned int num)
 {
 	if (!con || !num)
-		return;
+		return 0;
 
 	inc_age(con);
 
-	screen_scroll_up(con, num);
+	return screen_scroll_up(con, num);
 }
 
 SHL_EXPORT
-void tsm_screen_scroll_down(struct tsm_screen *con, unsigned int num)
+int tsm_screen_scroll_down(struct tsm_screen *con, unsigned int num)
 {
 	if (!con || !num)
-		return;
+		return 0;
 
 	inc_age(con);
 
-	screen_scroll_down(con, num);
+	return screen_scroll_down(con, num);
 }
 
 SHL_EXPORT
@@ -1291,13 +1294,13 @@ void tsm_screen_move_to(struct tsm_screen *con, unsigned int x,
 }
 
 SHL_EXPORT
-void tsm_screen_move_up(struct tsm_screen *con, unsigned int num,
+int tsm_screen_move_up(struct tsm_screen *con, unsigned int num,
 			    bool scroll)
 {
 	unsigned int diff, size;
 
 	if (!con || !num)
-		return;
+		return 0;
 
 	inc_age(con);
 
@@ -1309,22 +1312,26 @@ void tsm_screen_move_up(struct tsm_screen *con, unsigned int num,
 	diff = con->cursor_y - size;
 	if (num > diff) {
 		num -= diff;
-		if (scroll)
+		if (scroll){
 			screen_scroll_down(con, num);
+			num = 0;
+		}
 		move_cursor(con, con->cursor_x, size);
+		return -num;
 	} else {
 		move_cursor(con, con->cursor_x, con->cursor_y - num);
 	}
+	return 0;
 }
 
 SHL_EXPORT
-void tsm_screen_move_down(struct tsm_screen *con, unsigned int num,
+int tsm_screen_move_down(struct tsm_screen *con, unsigned int num,
 			      bool scroll)
 {
 	unsigned int diff, size;
 
 	if (!con || !num)
-		return;
+		return 0;
 
 	inc_age(con);
 
@@ -1333,15 +1340,21 @@ void tsm_screen_move_down(struct tsm_screen *con, unsigned int num,
 	else
 		size = con->size_y;
 
+	int res = 0;
 	diff = size - con->cursor_y - 1;
 	if (num > diff) {
 		num -= diff;
-		if (scroll)
-			screen_scroll_up(con, num);
+		if (scroll){
+			res = screen_scroll_up(con, num);
+		}
+		else
+			res = 0;
 		move_cursor(con, con->cursor_x, size - 1);
+		return res;
 	} else {
 		move_cursor(con, con->cursor_x, con->cursor_y + num);
 	}
+	return res;
 }
 
 SHL_EXPORT
@@ -2059,7 +2072,6 @@ tsm_age_t tsm_screen_draw(struct tsm_screen *con, tsm_screen_draw_cb draw_cb,
 	struct line *iter, *line = NULL;
 	struct cell *cell, empty;
 	struct tui_screen_attr attr;
-	int ret, warned = 0;
 	const uint32_t *ch;
 	size_t len;
 	bool in_sel = false, sel_start = false, sel_end = false;
@@ -2160,16 +2172,9 @@ tsm_age_t tsm_screen_draw(struct tsm_screen *con, tsm_screen_draw_cb draw_cb,
 			ch = tsm_symbol_get(con->sym_table, &cell->ch, &len);
 			if (cell->ch == ' ' || cell->ch == 0)
 				len = 0;
-			ret = draw_cb(con, cell->ch, ch, len, cell->width,
-				      j, i, &attr, age, data);
-			if (ret && warned++ < 3) {
-				llog_debug(con,
-					   "cannot draw glyph at %ux%u via text-renderer",
-					   j, i);
-				if (warned == 3)
-					llog_debug(con,
-						   "suppressing further warnings during this rendering round");
-			}
+
+			draw_cb(con, cell->ch,
+				ch, len, cell->width, j, i, &attr, age, data);
 		}
 	}
 

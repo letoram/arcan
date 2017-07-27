@@ -53,6 +53,8 @@
  * below for comments on each helper.
  */
 
+struct tui_screen_attr;
+
 #include <errno.h>
 #include <inttypes.h>
 #include <stdlib.h>
