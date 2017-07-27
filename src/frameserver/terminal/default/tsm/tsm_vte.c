@@ -1598,7 +1598,6 @@ static void csi_mode(struct tsm_vte *vte, bool set)
 			continue;
 		case 9: /* X10 mouse compatibility mode */
 			// set_reset_flag(vte, set, FLAG_ */
-			fprintf(stderr, "X10 mouse mode\n");
 			continue;
 		case 1000:
 			vte->mstate = MOUSE_BUTTON;

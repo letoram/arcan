@@ -750,13 +750,13 @@ enum ARCAN_EVENT_EXTERNAL {
 	EVENT_EXTERNAL_BCHUNKSTATE,
 
 	EVENT_EXTERNAL_ULIM = INT_MAX
-	};
+};
 
 	/*
 	 * Skipmode are synchronization hints for how A/V/I synch
 	 * should be compensated for (if possible), uses ioval[0].iv
 	 */
-	enum ARCAN_TARGET_SKIPMODE {
+enum ARCAN_TARGET_SKIPMODE {
 	/* Discard V frames if the period time will be overshot */
 		TARGET_SKIP_AUTO =  0,
 	/* Never discard frames, prefer period to (period*2) time oscillation */
@@ -971,7 +971,9 @@ enum ARCAN_EVENT_EXTERNAL {
 	 * drag, drop, openpinch, closepinch, rotate.
 	 * n- finger variations will fire an event each, subid gives index.
 	 */
-		ARCAN_IOFL_GESTURE = 1
+		ARCAN_IOFL_GESTURE = 1,
+		ARCAN_IOFL_ENTER = 2,
+		ARCAN_IOFL_LEAVE = 4,
 	};
 
 	typedef struct {
@@ -1112,7 +1114,10 @@ enum ARCAN_EVENT_EXTERNAL {
 		} ioevs[6];
 
 		int code;
-		char message[78];
+		union {
+			char message[78];
+			uint8_t bmessage[78];
+		};
 	} arcan_tgtevent;
 
 	typedef struct arcan_extevent {

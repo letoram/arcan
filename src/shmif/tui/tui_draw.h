@@ -25,10 +25,23 @@ struct bitmap_font {
 	struct glyph_ent glyphs[0];
 };
 
-static bool draw_box(struct arcan_shmif_cont* c, uint16_t x, uint16_t y,
-	uint16_t w, uint16_t h, shmif_pixel col)
+static bool draw_box(struct arcan_shmif_cont* c,
+	int x, int y, int w, int h, shmif_pixel col)
 {
 	if (x >= c->addr->w || y >= c->addr->h)
+		return false;
+
+	if (x < 0){
+		w += x;
+		x = 0;
+	}
+
+	if (y < 0){
+		h += y;
+		y = 0;
+	}
+
+	if (w < 0 || h < 0)
 		return false;
 
 	int ux = x + w > c->addr->w ? c->addr->w : x + w;
@@ -296,29 +309,51 @@ static struct tui_font_ctx* tui_draw_init(size_t lim)
 
 static void draw_ch_u32(struct tui_font_ctx* ctx,
 	struct arcan_shmif_cont* c, uint32_t cp,
-	uint16_t x, uint16_t y, shmif_pixel fg, shmif_pixel bg)
+	int x, int y, shmif_pixel fg, shmif_pixel bg,
+	size_t maxx, size_t maxy)
 {
 	struct font_entry* font = ctx->active_font;
 	struct glyph_ent* gent;
 	if (font)
 		HASH_FIND_INT(font->ht, &cp, gent);
 
+	if (x >= maxx || y >= maxy)
+		return;
+
 	if (!font || !gent){
 		draw_box(c, x, y, font->font->w, font->font->h, bg);
 		return;
 	}
 
+/*
+ * handle partial- clipping against screen regions
+ */
 	uint8_t bind = 0;
-	for (int row=0; row < font->font->h && row + y < c->addr->h; row++){
-		shmif_pixel* pos = &c->vidp[c->pitch * (y+row) + x];
-		for (int col = 0; col < font->font->w;){
+	int row = 0;
+	if (y < 0){
+		row -= y;
+		uint8_t bpr = font->font->w / 8;
+		bpr = bpr == 0 ? 1 : bpr;
+		bind += -y * bpr;
+		y = 0;
+	}
+
+	int colst = 0;
+	if (x < 0){
+		colst =-1*x;
+		x = 0;
+	}
+
+	for (; row < font->font->h && y < maxy; row++, y++){
+		shmif_pixel* pos = &c->vidp[c->pitch * y + x];
+		for (int col = colst; col < font->font->w;){
 /* padding bits will just be 0 */
+			int lx = x;
 			for (int bit = 7; bit >= 0 &&
-				col < font->font->w && col + x < c->addr->w; bit--, col++){
+				col < font->font->w && lx < maxx; bit--, col++, lx++){
 				pos[col] = ((1 << bit) & gent->data[bind]) ? fg : bg;
 			}
 			bind++;
 		}
 	}
 }
-

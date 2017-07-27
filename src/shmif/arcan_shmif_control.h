@@ -779,12 +779,11 @@ enum rhint_mask {
 	SHMIF_RHINT_IGNORE_ALPHA = 4,
 
 /*
- * For shmif- vidp transfers, the source color space defaults to linear-RGB
- * and for non-desktop, non-color sensitive applications, that is the more
- * common.
+ * For shmif- vidp transfers, the source color space defaults to linear-RGB.
+ *
  * Setting this flag indicates that the source colorspace is in sRGB format
  * and that the engine should pick shaders and blending algorithms that can
- * take this non-linearyity into account
+ * take this non-linearity into account.
  */
 	SHMIF_RHINT_CSPACE_SRGB = 8,
 
@@ -796,10 +795,13 @@ enum rhint_mask {
 	SHMIF_RHINT_AUTH_TOK = 16,
 
 /*
- * Used for cases where it is not wise to block on the signal- semaphore
- * and instead get a STEPFRAME event when the buffer transfer was finished.
- * This increases the load on the incoming eventqueue, so should be avoided
- * if possible.
+ * Used for cases where it is not wise to block on the signal- semaphore.
+ * When the buffer contents have been consumed and can be modified without
+ * risking tearing or corruption, receive a STEPFRAME event. The STEPFRAME
+ * event will contain .iv[0] == 1, .iv[1] == 0.
+ * This increases the load on the incoming eventqueue, so should be avoided if
+ * possible. If the incoming eventqueue is closing in on becoming saturated,
+ * the STEPFRAME event will not be emitted.
  */
 	SHMIF_RHINT_VSIGNAL_EV = 32
 };
@@ -947,7 +949,7 @@ struct arcan_shmif_page {
 /*
  * [FSRV-OR-ARCAN-SET]
  * Possibly changed during an extended resize
- * Set once during initilization, and will be zero/NULL for most connection.
+ * Set once during initiaization, and will be zero/NULL for most connection.
  * The intended use is to provide a mechanism for further engine segmentation
  * and for more complex data sources. A prime example is the hmdsupport tool.
  */

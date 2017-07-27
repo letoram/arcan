@@ -76,11 +76,12 @@
 -- @note: "segment_request" {kind, width, height, cookie, type} -
 -- frameserver would like an additional segment to work with, see target_alloc
 --
--- @note: "resource_status" {message} - status update in regards to some
--- resource related operation (snapshot save/restore etc.) UI hint only.
---
 -- @note: "alert" {message} - version of "message" that hints a user-interface
--- alert to the segment.
+-- alert to the segment. If "message" is empty, alert is to be interpreted as
+-- a request for focus. If "message" is a URI, alert is to be interpreted as
+-- a request for the URI to be opened by some unspecified means. Otherwise,
+-- message notifies about some user-readable event, i.e. the completion of
+-- some state transfer.
 --
 -- @note: "viewport" {parent, invisible, view, id, border} - indicate view
 -- and visibility

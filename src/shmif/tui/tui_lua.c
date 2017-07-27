@@ -293,7 +293,6 @@ static void apply_table(lua_State* L, int ind, struct tui_screen_attr* attr)
 	attr->blink = intblbool(L, ind, "blink");
 	attr->faint = intblbool(L, ind, "faint");
 	attr->strikethrough = intblbool(L, ind, "strikethrough");
-	attr->custom = intblbool(L, ind, "custom_draw");
 	attr->custom_id = intblint(L, ind, "id");
 }
 
