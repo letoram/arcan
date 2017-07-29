@@ -310,7 +310,7 @@ static struct tui_font_ctx* tui_draw_init(size_t lim)
 static void draw_ch_u32(struct tui_font_ctx* ctx,
 	struct arcan_shmif_cont* c, uint32_t cp,
 	int x, int y, shmif_pixel fg, shmif_pixel bg,
-	size_t maxx, size_t maxy)
+	int maxx, int maxy)
 {
 	struct font_entry* font = ctx->active_font;
 	struct glyph_ent* gent;
