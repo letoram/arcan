@@ -50,6 +50,7 @@ static int pump_pty()
 	}
 	else if (rv == -EAGAIN)
 		return 0;
+
 	return rv;
 }
 
@@ -259,8 +260,8 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		return EXIT_SUCCESS;
 	}
 
-	int limit_flush = 30;
-	int cap_refresh = 60;
+	int limit_flush = 60;
+	int cap_refresh = 16;
 
 	if (arg_lookup(args, "min_upd", 0, &val))
 		cap_refresh = strtol(val, NULL, 10);
@@ -384,14 +385,14 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 /* if the terminal is being swamped (find / for instance), try to keep at
  * least a 30Hz refresh timer if we have no user input */
 		int nr;
-		if ((nr = pump_pty()) > 0){
+		while ((nr = pump_pty()) > 0){
 			if (arcan_timemillis() - last_frame <
 				(term.uinput ? limit_flush : 2 * limit_flush)){
 				delay = cap_refresh - (arcan_timemillis() - last_frame);
 				if (delay < 0)
 					delay = 0;
 			}
-			continue;
+			break;
 		}
 
 /* in legacy terminal management, if we update too often, chances are that

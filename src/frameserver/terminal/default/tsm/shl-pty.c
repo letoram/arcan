@@ -390,6 +390,7 @@ static int pty_read(struct shl_pty *pty)
 {
 	unsigned int i;
 	ssize_t len;
+	size_t nr = 0;
 
 	/*
 	 * We're edge-triggered, means we need to read the whole queue. This,
@@ -405,7 +406,7 @@ static int pty_read(struct shl_pty *pty)
 			if (errno == EAGAIN)
 				return 0;
 			if (errno == EINTR)
-				return -EAGAIN;
+				return 0;
 
 			return -errno;
 		} else if (!len) {
@@ -414,13 +415,12 @@ static int pty_read(struct shl_pty *pty)
 			/* set terminating zero for debugging safety */
 			pty->in_buf[len] = 0;
 			pty->fn_input(pty,
-				      pty->fn_input_data,
-				      pty->in_buf,
-				      len);
+				pty->fn_input_data, pty->in_buf, len);
+			nr += len;
 		}
 	}
 
-	return -EAGAIN;
+	return nr;
 }
 
 int shl_pty_dispatch(struct shl_pty *pty)
