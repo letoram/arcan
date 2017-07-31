@@ -333,7 +333,8 @@ static void draw_ch_u32(struct tui_font_ctx* ctx,
 	if (y < 0){
 		row -= y;
 		uint8_t bpr = font->font->w / 8;
-		bpr = bpr == 0 ? 1 : bpr;
+		if (font->font->w % 8 != 0 || bpr == 0)
+			bpr++;
 		bind += -y * bpr;
 		y = 0;
 	}
