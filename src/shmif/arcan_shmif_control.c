@@ -1342,11 +1342,21 @@ static bool step_v(struct arcan_shmif_cont* ctx)
 	struct shmif_hidden* priv = ctx->priv;
 	bool lock = false;
 
+/* store the current hint flags, could do away with this stage by
+ * only changing hints at resize_ stage */
 	atomic_store(&ctx->addr->hints, ctx->hints);
-	if (ctx->hints & SHMIF_RHINT_SUBREGION)
+
+/* subregion is part of the shared block and not the video buffer
+ * itself. this is a design flaw that should be moved into a
+ * VBI- style post-buffer footer */
+	if (ctx->hints & SHMIF_RHINT_SUBREGION){
 		atomic_store(&ctx->addr->dirty, ctx->dirty);
-	int pending = atomic_fetch_or_explicit(&ctx->addr->vpending,
-		1 << priv->vbuf_ind, memory_order_release);
+	}
+
+/* mark the current buffer as pending, this is used when we have
+ * non-subregion + (double, triple, quadruple buffer) rendering */
+	int pending = atomic_fetch_or_explicit(
+		&ctx->addr->vpending, 1 << priv->vbuf_ind, memory_order_release);
 	atomic_store_explicit(&ctx->addr->vready,
 		priv->vbuf_ind+1, memory_order_release);
 
@@ -1355,9 +1365,12 @@ static bool step_v(struct arcan_shmif_cont* ctx)
 	priv->vbuf_ind++;
 	if (priv->vbuf_ind == priv->vbuf_cnt)
 		priv->vbuf_ind = 0;
+
+/* note if we need to wait for an ack before continuing */
 	lock = priv->vbuf_cnt == 1 || (pending & (1 << priv->vbuf_ind));
 	ctx->vidp = priv->vbuf[priv->vbuf_ind];
 
+/* protect against reordering, like not needed after atomic- switch */
 	FORCE_SYNCH();
 	return lock;
 }
@@ -1428,7 +1441,12 @@ unsigned arcan_shmif_signal(struct arcan_shmif_cont* ctx,
 		else
 			arcan_sem_trywait(ctx->asem);
 	}
+/* for sub-region multi-buffer synch, we currently need to
+ * check before running the step_v */
 	if (mask & SHMIF_SIGVID){
+		while ((ctx->hints & SHMIF_RHINT_SUBREGION) && ctx->addr->vready)
+			arcan_sem_wait(ctx->vsem);
+
 		bool lock = step_v(ctx);
 
 		if (lock && !(mask & SHMIF_SIGBLK_NONE)){

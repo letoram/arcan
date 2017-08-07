@@ -112,6 +112,8 @@ struct tui_context {
 #endif
 	struct tui_font_ctx* font_bitmap;
 	bool force_bitmap;
+	bool dbl_buf;
+
 	float font_sz; /* size in mm */
 	int font_sz_delta; /* user requested step, pt */
 	int hint;
@@ -559,7 +561,6 @@ static void draw_monospace(struct tui_context* tui,
 
 /* only update if the source position has changed, treat custom_id separate */
 			if (synch && !(tui->dirty & DIRTY_PENDING_FULL) && cell_match(fpos,bpos)){
-				/* || tui->double_buffered */
 				fpos++, bpos++, custom++;
 				continue;
 			}
@@ -788,6 +789,11 @@ static void update_screen(struct tui_context* tui, bool ign_inact)
 			tui->cursor_y * tui->cell_h, &tc->attr, tc->ch == 0
 		);
 	}
+
+/* This is the wrong way to n' buffer here, but as a temporary workaround
+ * due to design issues with this part in shmif */
+	if (tui->dbl_buf)
+		tui->dirty |= DIRTY_PENDING_FULL;
 
 	draw_function(tui, tui->rows, tui->cols,
 		tui->front, tui->back, tui->custom, 0, 0, true);
@@ -1390,6 +1396,8 @@ static void update_screensize(struct tui_context* tui, bool clear)
 	LOG("update screensize (%d * %d), (%d * %d)\n",
 		cols, rows, (int)tui->acon.w, (int)tui->acon.h);
 
+/* we respect the displayhint entirely, and pad with background
+ * color of the new dimensions doesn't align with cell-size */
 	shmif_pixel col = SHMIF_RGBA(
 		tui->bgc[0],tui->bgc[1],tui->bgc[2],tui->alpha);
 
@@ -1416,14 +1424,18 @@ static void update_screensize(struct tui_context* tui, bool clear)
 			tui->handlers.resized(tui,
 				tui->acon.w, tui->acon.h, cols, rows, tui->handlers.tag);
 
+/* NOTE/FIXME: this only considers the active screen and not any alternate
+ * screens that are around, which is probably not what we want. The actual
+ * ordering is also suspicious as the event callback can't really draw/
+ * relayout until tsm_screen_resize */
 		tsm_screen_resize(tui->screen, cols, rows);
 	}
 
 /* will enforce full redraw, and full redraw will also update padding */
 	tui->dirty |= DIRTY_PENDING_FULL;
 
-/* if we have TUI- based screen buffering for smooth-scrolling, double-buffered
- * rendering and text shaping, that one needs to be rebuilt */
+/* if we have TUI- based screen buffering for smooth-scrolling,
+ * double-buffered rendering and text shaping, that one needs to be rebuilt */
 	resize_cellbuffer(tui);
 
 	update_screen(tui, true);
@@ -1432,7 +1444,8 @@ static void update_screensize(struct tui_context* tui, bool clear)
 static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 {
 	switch (ev->kind){
-/* control alpha, palette, cursor mode, ... */
+/* FIXME: Drawing options, this is really legacy and should be replaced with
+ * complete palette/alpha, ... controls */
 	case TARGET_COMMAND_GRAPHMODE:
 		if (ev->ioevs[0].iv == 1){
 			tui->alpha = ev->ioevs[1].fv;
@@ -1549,7 +1562,10 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 
 /* switch cursor kind on changes to 4 in ioevs[2] */
 		if (dev){
-			if (!arcan_shmif_resize(&tui->acon, ev->ioevs[0].iv, ev->ioevs[1].iv))
+			if (!arcan_shmif_resize_ext(&tui->acon,
+				ev->ioevs[0].iv, ev->ioevs[1].iv, (struct shmif_resize_ext){
+					.vbuf_cnt = tui->dbl_buf ? 2 : 1
+				}))
 				LOG("resize to (%d * %d) failed\n", ev->ioevs[0].iv, ev->ioevs[1].iv);
 			update_screensize(tui, true);
 			tui->in_scroll = 0;
@@ -2062,8 +2078,8 @@ int arcan_tui_refresh(struct tui_context* tui)
 #ifndef SHMIF_TUI_DISABLE_GPU
 retry:
 	if (tui->is_accel){
-		if (-1 == arcan_shmifext_signal(&tui->acon, 0,
-			SHMIF_SIGVID | SHMIF_SIGBLK_NONE, SHMIFEXT_BUILTIN)){
+		if (-1 == arcan_shmifext_signal(&tui->acon,
+			0, SHMIF_SIGVID, SHMIFEXT_BUILTIN)){
 				arcan_shmifext_drop(&tui->acon);
 				tui->is_accel = false;
 			goto retry;
@@ -2071,7 +2087,8 @@ retry:
 	}
 	else
 #endif
-		arcan_shmif_signal(&tui->acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
+		arcan_shmif_signal(&tui->acon,
+			SHMIF_SIGVID | (tui->dbl_buf ? 0 : SHMIF_SIGBLK_NONE));
 
 /* set invalid synch region until redraw changes that, the dirty
  * buffer gets copied during signal so no problem there */
@@ -2180,10 +2197,9 @@ static void apply_arg(struct tui_settings* cfg,
 			cfg->fgc[0] = ccol[0]; cfg->fgc[1] = ccol[1]; cfg->fgc[2] = ccol[2];
 		}
 
-	if (arg_lookup(args, "vbufc", 0, &val))
-		if (val && (vbufv = strtol(val, NULL, 10)) > 0 && vbufv < 4){
-//			cfg->vbufc = vbufv;
-		}
+	if (arg_lookup(args, "dblbuf", 0, &val)){
+		cfg->render_flags |= TUI_RENDER_DBLBUF;
+	}
 
 #ifdef ENABLE_GPU
 	if (arg_lookup(args, "accel", 0, &val))
@@ -2362,18 +2378,33 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 	TTF_Init();
 #endif
 
-	struct arcan_shmif_initial* init;
-	if (sizeof(struct arcan_shmif_initial) != arcan_shmif_initial(con, &init)){
-		LOG("initial structure size mismatch, out-of-synch header/shmif lib\n");
-		return NULL;
-	}
-
 	struct tui_context* res = malloc(sizeof(struct tui_context));
 	if (!res)
 		return NULL;
-	memset(res, '\0', sizeof(struct tui_context));
+	*res = (struct tui_context){};
+
+/*
+ * if the connection comes from _open_display, free the intermediate
+ * context store here and move it to our tui context
+ */
+	bool managed = (uintptr_t)con->user == 0xfeedface;
+	res->acon = *con;
+	if (managed)
+		free(con);
+
+	struct arcan_shmif_initial* init;
+	if (sizeof(struct arcan_shmif_initial) != arcan_shmif_initial(con, &init)){
+		LOG("initial structure size mismatch, out-of-synch header/shmif lib\n");
+		if (managed)
+			arcan_shmif_drop(&res->acon);
+		free(res);
+		return NULL;
+	}
 
 	if (tsm_screen_new(&res->screen, tsm_log, res) < 0){
+		LOG("failed to build screen structure\n");
+		if (managed)
+			arcan_shmif_drop(&res->acon);
 		free(res);
 		return NULL;
 	}
@@ -2410,10 +2441,10 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 	memcpy(res->fgc, set->fgc, 3);
 	res->hint = set->hint;
 	res->mouse_forward = set->mouse_fwd;
-	res->acon = *con;
 	res->cursor_period = set->cursor_period;
 	res->acon.hints = SHMIF_RHINT_SUBREGION;
 	res->force_bitmap = (set->render_flags & TUI_RENDER_BITMAP) != 0;
+	res->dbl_buf = (set->render_flags & TUI_RENDER_DBLBUF);
 
 	if (init->fonts[0].fd != BADFD){
 		res->hint = init->fonts[0].hinting;
