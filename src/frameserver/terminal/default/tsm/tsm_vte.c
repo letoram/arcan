@@ -46,8 +46,7 @@
  */
 
 #include "arcan_shmif.h"
-#include "arcan_shmif_tui.h"
-#include "arcan_shmif_tuisym.h"
+#include "arcan_tui.h"
 #include <errno.h>
 #include <stdarg.h>
 #include "libtsm.h"

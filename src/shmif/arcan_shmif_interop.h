@@ -1,7 +1,7 @@
 /*
  Arcan Shared Memory Interface, Interoperability definitions
 
- Copyright (c) 2014-2016, Bjorn Stahl
+ Copyright (c) 2014-2017, Bjorn Stahl
  All rights reserved.
 
  Redistribution and use in source and binary forms,
@@ -56,7 +56,8 @@
 /*
  * For porting the shmpage interface, these functions need to be implemented
  * and pulled in, shouldn't be more complicated than mapping to the
- * corresponding platform/ functions.
+ * corresponding platform/ functions. In the longer scope, these should be
+ * factored out and replaced as well.
  */
 #ifndef PLATFORM_HEADER
 
@@ -220,6 +221,11 @@ struct arg_arr* arg_unpack(const char*);
 bool arg_lookup(struct arg_arr* arr, const char* val,
 	unsigned short ind, const char** found);
 
+/*
+ * deallocate/free the resources bound to an arg_arr struct. Don't use this
+ * on an arg_arr that comes from a shmif_open or shmif_args call as the
+ * normal context management functions will clean after that one.
+ */
 void arg_cleanup(struct arg_arr*);
 
 /*

@@ -9,7 +9,7 @@ SET(TERMINAL_SOURCES
 
 SET(TERMINAL_LIBS
 	util
-	arcan_shmif_tui
+	arcan_tui
 	PARENT_SCOPE
 )
 

@@ -12,6 +12,51 @@
 #ifndef TUIK_SYMS
 #define TUIK_SYMS
 
+/*
+ * The rest are just renamed / remapped arcan_tui_ calls from libtsm-
+ * (which hides inside the tui_context) selected based on what the tsm/pty
+ * management required assuming that it is good enough.
+ */
+enum tui_context_flags {
+	TUI_INSERT_MODE = 1,
+	TUI_AUTO_WRAP = 2,
+	TUI_REL_ORIGIN = 4,
+	TUI_INVERSE = 8,
+	TUI_HIDE_CURSOR = 16,
+	TUI_FIXED_POS = 32,
+	TUI_ALTERNATE = 64,
+	TUI_CUSTOM_DRAW = 128
+};
+
+enum tui_color_group {
+	TUI_COL_PRIMARY = 0,
+	TUI_COL_SECONDARY,
+	TUI_COL_BG,
+	TUI_COL_FG,
+	TUI_COL_CURSOR,
+	TUI_COL_ALTCURSOR,
+	TUI_COL_HIGHLIGHT,
+	TUI_COL_LABEL,
+	TUI_COL_WARNING,
+	TUI_COL_ERROR,
+	TUI_COL_INACTIVE
+};
+
+enum tui_cursors {
+	CURSOR_BLOCK = 0,
+	CURSOR_HALFBLOCK,
+	CURSOR_FRAME,
+	CURSOR_VLINE,
+	CURSOR_ULINE,
+	CURSOR_END
+};
+
+enum tui_render_flags {
+	TUI_RENDER_BITMAP = 1,
+	TUI_RENDER_DBLBUF = 2,
+	TUI_RENDER_ACCEL = 4
+};
+
 /* bitmap derived from shmif_event, repeated here for namespace purity */
 enum {
 	TUIM_NONE = 0x0000,

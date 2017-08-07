@@ -47,28 +47,121 @@
  *
  * [PORTABILITY]
  *  In order to allow custom backends that use other IPC and drawing systems to
- *  avoid a lock-in or dependency on Arcan, there is a separate
- *  arcan_shmif_tuitypes.h as an intermediate step in order to be able to move
- *  away from the shmif- dependency entirely. It contains the type mapping of
- *  all opaque- structures provided herein.
+ *  avoid a lock-in or dependency on Arcan, there is a separate arcan_tuidefs.h
+ *  as an intermediate step in order to be able to move away from the shmif-
+ *  dependency entirely. It contains the type mapping of all opaque- structures
+ *  provided herein and should help when writing another backend. The biggest
+ *  caveat is likely custom drawing into cells as it binds the color-space to
+ *  sRGB and the packing format to a macro.
  *
  * [STABILITY]
  *  The majority of the interface exposed here in terms of enumerations and
  *  types is mostly safe against breaking changes. To be extra careful, wait
  *  until a mirror- repo @github.com/letoram/arcan-tui.git has been set up
- *  and all the fields updated. This will likely coincide with the 0.5.3
+ *  and all the fields updated. This will likely coincide with the 0.5.4
  *  release.
  *
  * [THREAD SAFETY]
- *  The main allocation and initial setup routines are not safe for
- *  multithreaded use. Each individual context, however, should work both
- *  in multithreaded- and multiprocess- (though other systems such as libc
- *  memory allocation may not be) use.
+ *  The main allocation, initial setup routines are currently not safe for
+ *  multithreaded use and there might be some state bleed between text
+ *  rendering. Each individual context, however, should ultimately work both in
+ *  multithreaded- and multiprocess- (though other systems such as libc memory
+ *  allocation may not be) use.
  *
  * [LICENSING / ACKNOWLEDGEMENTS]
- *  The default implementation is built on a forked version of libTSM which
- *  pulls in dependencies that make the final output LGPL2.1+. The intent
- *  of the library and API itself is to be BSD licensed.
+ *  The default implementation is built on a forked version of libTSM
+ *  (c) David Herrmann, which pulls in dependencies that make the final
+ *  output LGPL2.1+. The intent of the library and API itself is to be BSD
+ *  licensed.
+ *
+ * [USE]
+ *  Display-server/backend specific connection setup/wrapper that
+ *  provides the opaque arcan_tui_conn structure. All symbols and flag
+ *  values are kept separately in arcan_tuisym.h
+ *
+ *  struct tui_cbcfg cbs {
+ *     SET EVENT-HANDLERS HERE (e.g. input_key, tick, geohint, ...)
+ *  };
+ *
+ *  arcan_tui_conn* conn = arcan_tui_open_display("mytitle", "myident");
+ *  struct tui_settings cfg = arcan_tui_defaults(conn, NULL);
+ *  struct tui_context* ctx = arcan_tui_setup(conn, cfg, cb, sizeof(cb));
+ *
+ *  normal processing loop:
+ *   (use fdset/fdset_sz and timeout for poll-like behavior)
+ *
+ *  while (running){
+ *  	struct tui_process_res res =
+ *  		arcan_tui_process(&ctx, 1, NULL, 0, -1);
+ *  	if (res.errc == 0){
+ *
+ *  	}
+ *
+ *  UPDATED/TIME TO DRAW?
+ *  	if (-1 == arcan_tui_refresh(ctx) && errno == EINVAL)
+ *  		break;
+ * }
+ *
+ * subwindows:
+ * arcan_tui_request_subwnd(conn, segment_id, TUI_POPUP);
+ * (in subwnd handler from cbs)
+ *  arcan_tui_defaults(conn, wnd);
+ *  struct tui_context* con = arcan_tui_setup(conn, cfg, cb, sizeof(cb));
+ *  arcan_tui_wndhint(con, ...);
+ *
+ * Normal use/drawing functions (all prefixed with arcan_tui_):
+ *  erase_screen(ctx, prot)
+ *  erase_region(ctx, x1, y1, x2, y2, prot)
+ *  erase_cursor_to_screen(ctx, prot)
+ *  erase_home_to_cursor(ctx, prot)
+ *  erase_current_line(ctgx)
+ *  erase_chars(ctx, n)
+ *  write(ucs4, attr)
+ *  writeu8(uint8_t* u8, size_t n, attr)
+ *  insert_lines(ctx, n)
+ *  newline(ctx)
+ *  delete_lines(ctx, n)
+ *  insert_chars(ctx, n)
+ *  delete_chars(ctx, n)
+ *  set_tabstop(ctx)
+ *  reset_tabstop(ctx)
+ *  reset_all_tabstops(ctx)
+ *
+ * Virtual Screen management:
+ *  int ind = alloc_screen(ctx)
+ *  switch_screen(ctx, ind)
+ *  delete_screen(ctx, ind)
+ *  scroll_up(ctx, n)
+ *  scroll_down(ctx, n)
+ *  set_margins(ctx, top, bottom)
+ *  dimensions(ctx, size_t* rows, size_t* cols)
+ *  request_subwnd(ctx, id, type)
+ *
+ * Cursor Management:
+ *  cursorpos(ctx, size_t* x, size_t* y)
+ *  tab_right(ctx, n)
+ *  tab_left(ctx, n)
+ *  move_to(ctx, x, y)
+ *  move_up(ctx, num, scroll)
+ *  move_down(ctx, num, scroll)
+ *  move_left(ctx, num)
+ *  move_right(ctx, num)
+ *  move_line_end(ctx)
+ *  move_line_home(ctx)
+ *
+ * Metadata:
+ *  copy(ctx, msg)
+ *  ident(ctx, ident)
+ *
+ * Context Management:
+ *  reset(ctx)
+ *  set_flags(ctx, flags)
+ *  reset_flags(ctx, flags)
+ *  defattr(ctx, attr)
+ *
+ * [SPECIAL USE NOTES]
+ * Most of the above should be fairly straightforward and similar
+ * to other APIs like curses. Where
  *
  * [MISSING/PENDING FEATURES]
  *  [ ] Simple audio
@@ -79,24 +172,9 @@
  *  [ ] External process- to window mapping
  *  [ ] Translation that exposes the NCurses API
  */
-enum tui_cursors {
-	CURSOR_BLOCK = 0,
-	CURSOR_HALFBLOCK,
-	CURSOR_FRAME,
-	CURSOR_VLINE,
-	CURSOR_ULINE,
-	CURSOR_END
-};
 
-enum tui_color_group {
-	TUI_COL_BG,
-	TUI_COL_FG,
-	TUI_COL_CURSOR,
-	TUI_COL_ALTCURSOR
-};
-
-/* grab the default values from arcan_tui_defaults, change if needed
- * (some will also change dynamically) and pass to the _setup routine */
+#include "arcan_tuidefs.h"
+#include "arcan_tuisym.h"
 
 struct tui_settings {
 	uint8_t bgc[3], fgc[3], cc[3], clc[4];
@@ -111,28 +189,31 @@ struct tui_settings {
 	const char* font_fn;
 	const char* font_fb_fn;
 	int font_fds[2];
-	enum tui_cursors cursor;
+
+/* see: enum tui_cursors */
+	int cursor;
 	bool mouse_fwd;
 
 /* simulate refresh-rate to balance
  * throughput, responsiveness, power consumption */
 	int refresh_rate;
 
-/* try and use accelerated rendering / handle passing */
-	bool prefer_accel;
-
 /* number of 25Hz ticks between blink-in/blink-off */
 	unsigned cursor_period;
 
-/* force- disable the use of advanced font rendering */
-	bool force_bitmap;
-
-/* 0 : disabled, >0, cell_h << i (or 1 of 0) steps per cell */
+/* 0 : disabled, 0 < n <= cell_h
+ * - enable vertical smooth scrolling in px. */
 	unsigned smooth_scroll;
+
+/* see syms for possible render flags */
+	unsigned render_flags;
 };
 
 struct tui_context;
 
+/*
+ * used with the 'query_label' callback.
+ */
 struct tui_labelent {
 /* 7-bit ascii reference string */
 	char label[16];
@@ -154,7 +235,7 @@ struct tui_labelent {
 };
 
 /*
- * fill in the events you want to handle, will be dispaced during process
+ * fill in the events you want to handle, will be dispatched during process
  */
 struct tui_cbcfg {
 /*
@@ -163,21 +244,34 @@ struct tui_cbcfg {
 	void* tag;
 
 /*
- * Called when the label-list has been invalidated and during setup.
- * return true if [dstlbl] was successfully set or false if there are no
- * more label-inputs to register.
+ * Called when the label-list has been invalidated and during setup.  [ind]
+ * indicates the requested label index. This will be sweeped from low (0) and
+ * incremented until query_label() returns false.
  *
- * [lang/country] correspond to the last known GEOHINT.
- * if NULL, that information is not used and som variant of english is
- * assumed.
+ * A new sweep may be initiated on a new GEOHINT or a state reset.
+ *
+ * [lang] and [country] are either set to the last known GEOHINT
+ * or [NULL] to indicate some default unspecified english.
+ *
+ * [dstlbl] should be filled out according to the labelent structure and the
+ * function should return TRUE if there is a label at the requested index - or
+ * FALSE if there are no more labels to register.
  */
 	bool (*query_label)(struct tui_context*,
 		size_t ind, const char* country, const char* lang,
 		struct tui_labelent* dstlbl);
 
 /*
- * an explicit label- input has been sent,
- * return true if the label is consumed (no further processing)
+ * An explicit label- input has been sent,
+ * [label] is a string identifier that may correspond to an
+ *         exposed label from previous calls to query_label().
+ * [active] indicates that the unspecified source input device
+ *          has transitioned from an inactive to an active state
+ *          (rasing) or from a previously active to an inactive
+ *          state (falling).
+ *
+ * return TRUE if the label was consumed, FALSE if the label
+ * should be treated by a (possible) internal/masked implementation.
  */
 	bool (*input_label)(struct tui_context*,
 		const char* label, bool active, void*);
@@ -194,13 +288,17 @@ struct tui_cbcfg {
 	);
 
 /*
- * mouse motion/button, may not always be enabled depending on mouse-
- * management flag switch (user-controlled between select/copy/paste and
- * normal)
+ * Mouse motion has occured within the context. [x] and [y] indicate
+ * the current CELL (x -> col, y -> row). Will only happen if mouse
+ * events are set to be forwarded by some TUI implementation specific
+ * means.
  */
 	void (*input_mouse_motion)(struct tui_context*,
 		bool relative, int x, int y, int modifiers, void*);
 
+/*
+ * Mouse button state has changed for some button index.
+ */
 	void (*input_mouse_button)(struct tui_context*,
 		int last_x, int last_y, int button, bool active, int modifiers, void*);
 
@@ -247,12 +345,6 @@ struct tui_cbcfg {
 		shmif_asample*, size_t n_samples, size_t frequency, size_t nch, void*);
 
 /*
- * events that wasn't covered by the TUI internal event loop that might
- * be of interest to the outer connection / management
- */
-	void (*raw_event)(struct tui_context*, arcan_tgtevent*, void*);
-
-/*
  * periodic parent-driven clock
  */
 	void (*tick)(struct tui_context*, void*);
@@ -264,14 +356,14 @@ struct tui_cbcfg {
 		const uint8_t* str, size_t len, bool cont, void*);
 
 /*
- * the underlying size has changed, expressed in both pixels and rows/columns
+ * The underlying size has changed, expressed in both pixels and rows/columns
  */
 	void (*resized)(struct tui_context*,
 		size_t neww, size_t newh, size_t col, size_t row, void*);
 
 /*
  * only reset levels that should require action on behalf of the caller are
- * being forwarded, this currently excludes > 1
+ * being forwarded, this covers levels > 1.
  */
 	void (*reset)(struct tui_context*, int level, void*);
 
@@ -286,67 +378,86 @@ struct tui_cbcfg {
 		const char* a3_country, const char* a3_language, void*);
 
 /*
- * for cells that have been written with the custom_id > 127 attribute.
- * this function will be triggered whenever such a cell should be updated.
+ * This is used to indicate that custom- drawn cells NEEDS to be updated
+ * [invalidated=true], and to query if the specified regions has been updated
+ * (return true). Use type-unique IDs and stick to continous regions as to not
+ * kill efficiency outright.
  *
- * [vidp] will be aligned to the upper-left corner of the cell. The number
- * of horizontal pixels will be [px_w] * [cols] (the possibility of multiple
- * CUSTOM_DRAW cells on a row). cell_w = px_w / cols, cell_h = px_h.
- * Add [pitch] to [vidp] to increment row.
+ * A custom-draw call have the cell- attribute of a custom_id > 127
+ * (0..127 are used for type-/metadata- annotation)
  *
- * Note that [cols] may cover several cells on the same row
+ * This is grouped on continous columns only, and can be invoked by
+ * multiple worker threads in parallel.
+ *
+ * The pixel format is fixed to BGRA in sRGB color space. A convenience
+ * blit pattern is:
+ * vidp[src_cy * ystep + src_cx] = TUI_PACK(R, G, B, 0xff or alpha)
+ *
+ * Note that vidp is aligned to actual start-row (can be at an offset in the
+ * case of soft-scrolling) and cell_h can be less than the current cell height.
+ *
+ * return [true] if the designated region was updated. if invalidated is
+ * set is set, the vidp is assumed to be updated regardless of return value.
  */
-	void (*draw_call)(struct tui_context*, shmif_pixel* vidp,
-		size_t px_w, size_t px_h, size_t cols, size_t pitch, void*);
+	bool (*draw_call)(struct tui_context*, tui_pixel* vidp,
+		uint8_t custom_id, size_t ystep_index, uint8_t cell_yofs,
+		uint8_t cell_w, uint8_t cell_h, size_t cols,
+		bool invalidated, void*);
 
 /*
- * A new subwindow has arrived, map it using arcan_shmif_acquire:
- * arcan_shmif_cont newc = arcan_shmif_acquire(acon, NULL, SEGID_your_type, 0);
- * and then run the normal _tui setup for event management etc.
+ * The color-mapping (palette) has been updated and new attributes
+ * take this into account. If the program is running in the alternate-
+ * screen mode, use this as a trigger to redraw and recolor.
  */
-	void (*subwindow)(struct tui_context*,
-		enum ARCAN_SEGID type, uint32_t id, struct arcan_shmif_cont* cont, void*);
+	void (*recolor)(struct tui_context*);
+
+/*
+ * A new subwindow has arrived. ALWAYS run the normal setup sequence
+ * EVEN if the window is now longer needed. On such occasions, simply
+ * destroy the tui_context immediately after setup.
+ */
+	void (*subwindow)(struct tui_context*, arcan_tui_conn*, uint32_t id, void*);
 
 /*
  * This is used once during setup, and is invoked when the user requests an
- * enumeration/validation of the command-line arguments that are supported given the
- * current argument- context.
+ * enumeration/validation of the command-line arguments that are supported
+ * given the current argument- context.
  */
 
 /*
- * add new callbacks here as needed, since the setup requires a sizeof of
+ * Add new callbacks here as needed, since the setup requires a sizeof of
  * this struct as an argument, we get some light indirect versioning
  */
 };
 
-struct tui_settings arcan_tui_defaults();
-
 /*
- * Use the contents of [arg_arr] and/or [tui_model:may be NULL] to modify the
- * defaults in tui_settings. This might duplicate descriptors into the target
- * settings structures that will be taken control of by the tui_setup call.
- * Manually cleanup if _apply_arg is not forwarded to _tui_setup.
+ * Grab the default settings for a reference connection or a previously
+ * allocated context. If both [conn] and [ref] are NULL, return some safe
+ * build-time defaults. Otherwise bias towards [conn] and fill in any
+ * blanks from [ref].
  */
-void arcan_tui_apply_arg(struct tui_settings*,
-	struct arg_arr*, struct tui_context*);
+struct tui_settings arcan_tui_defaults(
+	arcan_tui_conn* conn, struct tui_context* ref);
 
 /*
- * takes control over an existing connection, it is imperative that no ident-
- * or event processing has been done, so [con] should come straight from a
- * normal arcan_shmif_open call.
+ * Take a reference connection [conn != NULL] and wrap/take over control
+ * over that to implement the TUI abstraction. The actual contents of [con]
+ * is implementation defined and depends on the backend and TUI
+ * implementation used.
  *
- * settings, cfg and con will all be copied to an internal tracker,
- * if (return) !null, the contents of con is undefined
+ * The functions implemented in [cfg] will be used as event- callbacks,
+ * and [cfg_sz] is a simple sizeof(struct tui_cbcfg) as a primitive means
+ * of versioning.
  */
-struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
+struct tui_context* arcan_tui_setup(arcan_tui_conn* con,
 	const struct tui_settings* set, const struct tui_cbcfg* cfg,
 	size_t cfg_sz, ...
 );
 
 /*
- * Destroy the tui context and the managed connection. [statuscode] should
- * be EXIT_SUCCESS or EXIT_FAILURE, and [message] an optional user-readable
- * string.
+ * Destroy the tui context and the managed connection. If the exit state
+ * is successful (EXIT_SUCCESS equivalent), leave [message] as NULL.
+ * Otherwise provide a short user-readable error description.
  */
 void arcan_tui_destroy(struct tui_context*, const char* message);
 
@@ -398,23 +509,7 @@ void arcan_tui_invalidate(struct tui_context*);
  * get temporary access to the current state of the TUI/context,
  * returned pointer is undefined between calls to process/refresh
  */
-struct arcan_shmif_cont* arcan_tui_acon(struct tui_context*);
-
-/*
- * The rest are just renamed / remapped arcan_tui_ calls from libtsm-
- * (which hides inside the tui_context) selected based on what the tsm/pty
- * management required assuming that it is good enough.
- */
-enum tui_flags {
-	TUI_INSERT_MODE = 1,
-	TUI_AUTO_WRAP = 2,
-	TUI_REL_ORIGIN = 4,
-	TUI_INVERSE = 8,
-	TUI_HIDE_CURSOR = 16,
-	TUI_FIXED_POS = 32,
-	TUI_ALTERNATE = 64,
-	TUI_CUSTOM_DRAW = 128,
-};
+arcan_tui_conn* arcan_tui_acon(struct tui_context*);
 
 struct tui_screen_attr {
 	uint8_t fr; /* foreground red */
@@ -458,11 +553,30 @@ void arcan_tui_ident(struct tui_context*, const char* ident);
 
 /*
  * Send a new request for a subwindow with life-span that depends on
- * the main connection. The subwindows don't survive migration, if that
- * is needed for the data that should be contained -- setup a new full
- * connection. May be needed to inherit font settings to subsegments.
+ * the main connection. The subwindows don't survive migration and
+ * will thus be lost on a ->reset.
+ *
+ * A request is asynchronous, and [id] is only used for the caller
+ * to be able to pair the event delivery with a request. See the
+ * (subwindow) tui_cbcfg entry for more details.
  */
 void arcan_tui_request_subwnd(struct tui_context*, uint32_t id);
+
+/*
+ * Signal visibility and position intent for a subwindow [wnd] relative
+ * to a possible parent [par].
+ *
+ * [wnd] must have been allocated via the _request_subwnd -> subwindow
+ * call path. While as [par] must be NULL or refer to the same context
+ * as the subwnd call initiated from.
+ *
+ * By default, [anch_row, anch_col] refer to an anchor-cell in the parent
+ * window, but this behavior can switch to allow relative- positioning or
+ * window-relative anchoring.
+ */
+void arcan_tui_wndhint(struct tui_context* wnd,
+	struct tui_context* par, int anch_row, int anch_col,
+	int wndflags);
 
 /* clear cells to default state, if protect toggle is set,
  * cells marked with a protected attribute will be ignored */
@@ -554,11 +668,7 @@ void arcan_tui_readline(struct tui_context*,
  */
 /* hints, freehints, completion */
 
-void arcan_tui_update_color(struct tui_context* tui,
-	enum tui_color_group group, const uint8_t rgb[3]);
-
-void arcan_tui_get_color(struct tui_context* tui,
-	enum tui_color_group group, uint8_t rgb[3]);
+void arcan_tui_get_color(struct tui_context* tui, int group, uint8_t rgb[3]);
 
 /*
  * reset state-tracking, scrollback buffers, ...
@@ -567,13 +677,14 @@ void arcan_tui_reset(struct tui_context*);
 
 /*
  * modify the current flags/state bitmask with the values of tui_flags ( |= )
+ * see tuisym.h for enum tui_flags
  */
-void arcan_tui_set_flags(struct tui_context*, enum tui_flags);
+void arcan_tui_set_flags(struct tui_context*, int tui_flags);
 
 /*
  * modify the current flags/state bitmask and unset the values of tui (& ~)
  */
-void arcan_tui_reset_flags(struct tui_context*, enum tui_flags);
+void arcan_tui_reset_flags(struct tui_context*, int tui_flags);
 
 /*
  * mark the current cursor position as a tabstop

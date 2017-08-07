@@ -213,6 +213,8 @@ const char* arcan_shmif_eventstr(arcan_event* aev, char* dbuf, size_t dsz)
  * functions will fail.
  */
 struct shmif_hidden {
+	struct arg_arr* args;
+
 	shmif_trigger_hook video_hook;
 	void* video_hook_data;
 	uint8_t vbuf_ind, vbuf_cnt;
@@ -223,9 +225,11 @@ struct shmif_hidden {
 	uint8_t abuf_ind, abuf_cnt;
 	shmif_asample* abuf[ARCAN_SHMIF_ABUFC_LIM];
 
+/* initial contents gets dropped after first valid !initial
+ * call after open */
 	struct arcan_shmif_initial initial;
-
 	bool valid_initial : 1;
+
 	bool output : 1;
 	bool alive : 1;
 	bool paused : 1;
@@ -1438,6 +1442,13 @@ unsigned arcan_shmif_signal(struct arcan_shmif_cont* ctx,
 	return arcan_timemillis() - startt;
 }
 
+struct arg_arr* arcan_shmif_args( struct arcan_shmif_cont* inctx)
+{
+	if (!inctx || !inctx->priv)
+		return NULL;
+	return inctx->priv->args;
+}
+
 void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 {
 	if (!inctx || !inctx->priv)
@@ -1465,6 +1476,10 @@ void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
 	sem_close(inctx->asem);
 	sem_close(inctx->esem);
 	sem_close(inctx->vsem);
+
+	if (gstr->args){
+		arg_cleanup(gstr->args);
+	}
 
 /*
  * recall, as per posix: an implementation is required to allow
@@ -2221,10 +2236,13 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 		}
 	}
 
-	if (outarg){
-		if (resource)
-			*outarg = arg_unpack(resource);
-		else
+	if (resource){
+		ret.priv->args = arg_unpack(resource);
+		if (outarg)
+			*outarg = ret.priv->args;
+	}
+	else{
+		if (outarg)
 			*outarg = NULL;
 	}
 

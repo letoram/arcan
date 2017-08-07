@@ -1,5 +1,5 @@
 #include <arcan_shmif.h>
-#include <arcan_shmif_tui.h>
+#include <arcan_tui.h>
 #include <inttypes.h>
 #include <stdarg.h>
 #include <sys/types.h>
@@ -275,9 +275,8 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		.resized = on_resize
 	};
 
-	struct tui_settings cfg = arcan_tui_defaults();
+	struct tui_settings cfg = arcan_tui_defaults(con, NULL);
 	cfg.mouse_fwd = false;
-	arcan_tui_apply_arg(&cfg, args, NULL);
 	term.screen = arcan_tui_setup(con, &cfg, &cbcfg, sizeof(cbcfg));
 
 	if (!term.screen){

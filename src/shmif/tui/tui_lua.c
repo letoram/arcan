@@ -29,7 +29,7 @@
  */
 
 #include <arcan_shmif.h>
-#include <arcan_shmif_tui.h>
+#include <arcan_tui.h>
 #include <lua.h>
 #include <lualib.h>
 #include <lauxlib.h>
@@ -212,11 +212,6 @@ static void on_apaste(struct tui_context* c,
  */
 }
 
-static void on_raw(struct tui_context* c, arcan_tgtevent* ev, void* t)
-{
-/* not the clean way to do it (new struct, memcpy) but this is for debugging */
-}
-
 static void on_tick(struct tui_context* c, void* t)
 {
 	SETUP_HREF("tick",);
@@ -374,7 +369,6 @@ static int tui_open(lua_State* L)
 		.bchunk = on_bchunk,
 		.vpaste = on_vpaste,
 		.apaste = on_apaste,
-		.raw_event = on_raw,
 		.tick = on_tick,
 		.utf8 = on_utf8_paste,
 		.resized = on_resize,
