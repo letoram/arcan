@@ -6,6 +6,7 @@
 #include <arcan_shmif_tui.h>
 #include <inttypes.h>
 #include <stdarg.h>
+#include <errno.h>
 
 #define TRACE_ENABLE
 static inline void trace(const char* msg, ...)
@@ -92,13 +93,6 @@ static void on_apaste(struct tui_context* c,
 	trace("on_apaste(%zu @ %zu:%zu)", n_samples, frequency, nch);
 }
 
-static void on_raw(struct tui_context* c, arcan_tgtevent* ev, void* t)
-{
-/* not the clean way to do it (new struct, memcpy) but this is for debugging */
-	trace("on-raw(%s)", arcan_shmif_eventstr((arcan_event*)
-		((char*) ev - offsetof(arcan_event, tgt)), NULL, 0));
-}
-
 static void on_tick(struct tui_context* c, void* t)
 {
 /* ignore this, rather noise:	trace("[tick]"); */
@@ -114,14 +108,6 @@ static void on_resize(struct tui_context* c,
 	size_t neww, size_t newh, size_t col, size_t row, void* t)
 {
 	trace("resize(%zu(%zu),%zu(%zu))", neww, col, newh, row);
-}
-
-static void on_subwindow(struct tui_context* c,
-	enum ARCAN_SEGID type, uint32_t id, struct arcan_shmif_cont* cont, void* tag)
-{
-/* this is a fun one, so we run each window in its own process.. */
-
-	fork();
 }
 
 int main(int argc, char** argv)
@@ -150,16 +136,14 @@ int main(int argc, char** argv)
 		.bchunk = on_bchunk,
 		.vpaste = on_vpaste,
 		.apaste = on_apaste,
-		.raw_event = on_raw,
 		.tick = on_tick,
 		.utf8 = on_utf8_paste,
-		.resized = on_resize,
-		.subwindow = on_subwindow
+		.resized = on_resize
 	};
 
 /* even though we handle over management of con to TUI, we can
  * still get access to its internal reference at will */
-	struct tui_settings cfg = arcan_tui_defaults();
+	struct tui_settings cfg = arcan_tui_defaults(&con, NULL);
 	arcan_tui_apply_arg(&cfg, aarr, NULL);
 	struct tui_context* tui = arcan_tui_setup(&con, &cfg, &cbcfg, sizeof(cbcfg));
 
@@ -180,7 +164,9 @@ int main(int argc, char** argv)
 	while (1){
 		struct tui_process_res res = arcan_tui_process(&tui, 1, &inf, 1, -1);
 		if (res.errc == TUI_ERRC_OK){
-			arcan_tui_refresh(&tui, 1);
+			if (-1 == arcan_tui_refresh(tui) && errno == EINVAL)
+				break;
+
 			if (res.ok)
 				fgetc(stdin);
 		}
@@ -188,7 +174,7 @@ int main(int argc, char** argv)
 			break;
 	}
 
-	arcan_tui_destroy(tui);
+	arcan_tui_destroy(tui, NULL);
 
 	return EXIT_SUCCESS;
 }

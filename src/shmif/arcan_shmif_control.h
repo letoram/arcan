@@ -1,7 +1,7 @@
 /*
  Arcan Shared Memory Interface
 
- Copyright (c) 2012-2016, Bjorn Stahl
+ Copyright (c) 2012-2017, Bjorn Stahl
  All rights reserved.
 
  Redistribution and use in source and binary forms,
@@ -227,18 +227,13 @@ enum arcan_shmif_sigmask {
 	SHMIF_SIGVID = 1,
 	SHMIF_SIGAUD = 2,
 
-/* synchronous, wait for parent to acknowledge */
+/* synchronous, wait for parent to acknowledge (assuming there are no more
+ * buffers available) */
 	SHMIF_SIGBLK_FORCE = 0,
 
-/* return immediately, further writes may cause tearing and other
- * visual/aural artifacts */
-	SHMIF_SIGBLK_NONE  = 4,
-
-/* return immediately unless there is already a transfer pending,
- * currently disabled as the option of having multiple A/V buffers
- * might work out better
-	SHMIF_SIGBLK_ONCE = 8
- */
+/* Extra flag, always return immediately, further writes may cause tearing and
+ * other visual/aural artifacts */
+	SHMIF_SIGBLK_NONE  = 4
 };
 
 struct arcan_shmif_cont;
@@ -312,7 +307,8 @@ enum ARCAN_FLAGS {
  *
  * If no arguments could be unpacked, *arg_arr will be set to NULL.
  * If type is set to 0, no REGISTER event will be sent and you will
- * need to send one manually.
+ * need to send one manually. arg_arr livespan is tied to the _cont
+ * so the caller should not free or alias.
  *
  * If the [type] is not set, the connection will not wait for
  * activation and the initial function will not provide anything
@@ -321,6 +317,13 @@ enum ARCAN_FLAGS {
 struct arg_arr;
 struct arcan_shmif_cont arcan_shmif_open(
 	enum ARCAN_SEGID type, enum ARCAN_FLAGS flags, struct arg_arr**);
+
+/*
+ * Retrieve a reference to the argument- array that was built
+ * during shmif_open. May fail (return NULL) on an invalid context
+ * or if no arguments could be unpacked at open time.
+ */
+struct arg_arr* arcan_shmif_args(struct arcan_shmif_cont*);
 
 /*
  * Similar to resize_ext, developed to work around some shortcomings
@@ -462,8 +465,8 @@ void arcan_shmif_setevqs(struct arcan_shmif_page*,
  * done in order to avoid visual artifacts that would stem from having source
  * material in one resolution while metadata refers to another.
  */
-bool arcan_shmif_resize(struct arcan_shmif_cont*,
-	unsigned width, unsigned height);
+bool arcan_shmif_resize(
+	struct arcan_shmif_cont*, unsigned width, unsigned height);
 
 /*
  * Extended version of resize that supports requesting more audio / video

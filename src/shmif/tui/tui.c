@@ -34,8 +34,7 @@
 #endif
 
 #include "../arcan_shmif.h"
-#include "../arcan_shmif_tui.h"
-#include "../arcan_shmif_tuisym.h"
+#include "../arcan_tui.h"
 
 /*
  * Dislike this sort of feature enable/disable, but the dependency and extra
@@ -486,6 +485,51 @@ static bool cell_match(struct tui_cell* ac, struct tui_cell* bc)
 		a->strikethrough == b->strikethrough
 	);
 }
+
+/*
+ * This drawing function takes shaping and kerning into account and thus works
+ * on a line basis. It makes things more complicated as we are no longer tied to
+ * a strict cell-grid structure and need to track line/offset in order for
+ * cursor- drawing etc. to work.
+ */
+#ifndef SIMPLE_RENDERING
+/*
+static void draw_shaped(struct tui_context* tui,
+	size_t n_rows, size_t n_cols,
+	struct tui_cell* front, struct tui_cell* back, struct tui_cell* custom,
+	int start_x, int start_y, bool synch)
+{
+
+	for (size_t row = 0; row < n_rows; row++){
+		bool row_changed = false;
+		struct tui_cell* col;
+*/
+
+/* pre-sweep row and check for
+ * 1. changes,
+ * 2. if there's any shaping applied anywhere
+ * -> if 1 or 2, issue a reraster of the row. To deal with negative-
+ *  start_y or clipping against output, use an intermediate one-line
+ *  prerender+blit buffer. Use display- language into harfbuzz or a
+ *  language-tag in the tui-cell
+ *  as the TTF draw glyph wasn't made with clipping
+		for (size_t col = 0; col < n_cols; col++){
+		}
+		unsigned prev_index = 0;
+
+ * when activated, switch the cursor- resolution function from the normal
+ * x * tui->cell_w, y * tui->cell_h to take the row, traverse the row and
+ * add offsets.
+ */
+
+/* update front- cell with offsets- and so the cursor positioning and lookup
+ * resolve correctly and take the right size */
+
+/* re-use custom drawing function
+	}
+}
+*/
+#endif
 
 /*
  * slightly more complicated to support smooth scrolling, draw n_rows and
@@ -1600,8 +1644,6 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 	break;
 
 	default:
-		if (tui->handlers.raw_event)
-			tui->handlers.raw_event(tui, ev, tui->handlers.tag);
 	break;
 	}
 }
@@ -2082,61 +2124,38 @@ void arcan_tui_destroy(struct tui_context* tui, const char* message)
 	free(tui);
 }
 
-struct tui_settings arcan_tui_defaults()
+void arcan_tui_wndhint(struct tui_context* wnd,
+	struct tui_context* par, int anch_row, int anch_col, int wndflags)
 {
-	return (struct tui_settings){
-		.cell_w = 8,
-		.cell_h = 8,
-		.alpha = 0xff,
-		.bgc = {0x00, 0x00, 0x00},
-		.fgc = {0xff, 0xff, 0xff},
-		.cc = {0x00, 0xaa, 0x00},
-		.clc = {0xaa, 0xaa, 0x00},
-		.ppcm = ARCAN_SHMPAGE_DEFAULT_PPCM,
-		.hint = 0,
-		.mouse_fwd = true,
-		.cursor_period = 12,
-		.font_sz = 0.0416,
-		.force_bitmap = false
-	};
+/* FIXME: translate and apply hints */
 }
 
-static uint8_t* grp_to_cptr(struct tui_context* tui, enum tui_color_group grp)
+arcan_tui_conn* arcan_tui_open_display(const char* title, const char* ident)
 {
-	switch (grp){
-	case TUI_COL_BG:
-		return tui->bgc;
-	break;
-	case TUI_COL_FG:
-		return tui->fgc;
-	break;
-	case TUI_COL_CURSOR:
-		return tui->cc;
-	break;
-	case TUI_COL_ALTCURSOR:
-		return tui->clc;
-	break;
-	default:
-	return NULL;
+	struct arcan_shmif_cont* res = malloc(sizeof(struct arcan_shmif_cont));
+	if (!res)
+		return NULL;
+
+	struct shmif_open_ext args = {.type = SEGID_TUI };
+
+	*res = arcan_shmif_open_ext(
+		SHMIF_ACQUIRE_FATALFAIL, NULL, (struct shmif_open_ext){
+			.type = SEGID_TUI,
+			.title = title,
+			.ident = ident,
+		}, sizeof(struct shmif_open_ext)
+	);
+
+	if (!res->addr){
+		free(res);
+		return NULL;
 	}
-}
 
-void arcan_tui_get_color(struct tui_context* tui,
-	enum tui_color_group group, uint8_t rgb[3])
-{
-	uint8_t* src = grp_to_cptr(tui, group);
-	if (src)
-		memcpy(rgb, src, 3);
-}
-
-void arcan_tui_update_color(struct tui_context* tui,
-	enum tui_color_group group, const uint8_t rgb[3])
-{
-	uint8_t* dst = grp_to_cptr(tui, group);
-	if (dst){
-		tui->dirty |= DIRTY_PENDING_FULL;
-		memcpy(dst, rgb, 3);
-	}
+/* to separate a tui_open_display call from a shmif-context that is
+ * retrieved from another setting, we tag the user field to know it is
+ * safe to free */
+	res->user = (void*) 0xfeedface;
+	return res;
 }
 
 static int parse_color(const char* inv, uint8_t outv[4])
@@ -2145,21 +2164,30 @@ static int parse_color(const char* inv, uint8_t outv[4])
 		&outv[0], &outv[1], &outv[2], &outv[3]);
 }
 
-void arcan_tui_apply_arg(struct tui_settings* cfg,
+static void apply_arg(struct tui_settings* cfg,
 	struct arg_arr* args, struct tui_context* src)
 {
 /* FIXME: if src is set, copy settings from there (and dup descriptors) */
+	if (!args)
+		return;
+
 	const char* val;
 	uint8_t ccol[4] = {0x00, 0x00, 0x00, 0xff};
+	long vbufv = 0;
 
 	if (arg_lookup(args, "fgc", 0, &val))
 		if (parse_color(val, ccol) >= 3){
 			cfg->fgc[0] = ccol[0]; cfg->fgc[1] = ccol[1]; cfg->fgc[2] = ccol[2];
 		}
 
+	if (arg_lookup(args, "vbufc", 0, &val))
+		if (val && (vbufv = strtol(val, NULL, 10)) > 0 && vbufv < 4){
+//			cfg->vbufc = vbufv;
+		}
+
 #ifdef ENABLE_GPU
 	if (arg_lookup(args, "accel", 0, &val))
-		cfg->prefer_accel = true;
+		cfg->render_flags |= TUI_RENDER_ACCEL;
 #endif
 
 	if (arg_lookup(args, "scroll", 0, &val))
@@ -2204,7 +2232,7 @@ void arcan_tui_apply_arg(struct tui_settings* cfg,
 	}
 
 	if (arg_lookup(args, "force_bitmap", 0, &val))
-		cfg->force_bitmap = true;
+		cfg->render_flags |= TUI_RENDER_BITMAP;
 }
 
 int arcan_tui_alloc_screen(struct tui_context* ctx)
@@ -2224,6 +2252,65 @@ int arcan_tui_alloc_screen(struct tui_context* ctx)
 
 	ctx->screen_alloc |= 1 << ind;
 	return ind;
+}
+
+struct tui_settings arcan_tui_defaults(
+	arcan_tui_conn* conn, struct tui_context* ref)
+{
+	struct tui_settings res = {
+		.cell_w = 8,
+		.cell_h = 8,
+		.alpha = 0xff,
+		.bgc = {0x00, 0x00, 0x00},
+		.fgc = {0xff, 0xff, 0xff},
+		.cc = {0x00, 0xaa, 0x00},
+		.clc = {0xaa, 0xaa, 0x00},
+		.ppcm = ARCAN_SHMPAGE_DEFAULT_PPCM,
+		.hint = 0,
+		.mouse_fwd = true,
+		.cursor_period = 12,
+		.font_sz = 0.0416
+	};
+	apply_arg(&res, arcan_shmif_args(conn), ref);
+	return res;
+}
+
+static uint8_t* grp_to_cptr(struct tui_context* tui, enum tui_color_group grp)
+{
+	switch (grp){
+	case TUI_COL_BG:
+		return tui->bgc;
+	break;
+	case TUI_COL_FG:
+		return tui->fgc;
+	break;
+	case TUI_COL_CURSOR:
+		return tui->cc;
+	break;
+	case TUI_COL_ALTCURSOR:
+		return tui->clc;
+	break;
+	default:
+	return NULL;
+	}
+}
+
+void arcan_tui_get_color(
+	struct tui_context* tui, int group, uint8_t rgb[3])
+{
+	uint8_t* src = grp_to_cptr(tui, group);
+	if (src)
+		memcpy(rgb, src, 3);
+}
+
+void arcan_tui_update_color(struct tui_context* tui,
+	enum tui_color_group group, const uint8_t rgb[3])
+{
+	uint8_t* dst = grp_to_cptr(tui, group);
+	if (dst){
+		tui->dirty |= DIRTY_PENDING_FULL;
+		memcpy(dst, rgb, 3);
+	}
 }
 
 bool arcan_tui_switch_screen(struct tui_context* ctx, unsigned ind)
@@ -2299,7 +2386,7 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
  * struct we can expand the interface without breaking old clients
  */
 	if (cbs_sz > sizeof(struct tui_cbcfg) || cbs_sz % sizeof(void*) != 0){
-		LOG("arcan_shmif_tui(), caller provided bad size field\n");
+		LOG("arcan_tui(), caller provided bad size field\n");
 		return NULL;
 	}
 	memcpy(&res->handlers, cbs, cbs_sz);
@@ -2326,14 +2413,14 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 	res->acon = *con;
 	res->cursor_period = set->cursor_period;
 	res->acon.hints = SHMIF_RHINT_SUBREGION;
-	res->force_bitmap = set->force_bitmap;
+	res->force_bitmap = (set->render_flags & TUI_RENDER_BITMAP) != 0;
 
 	if (init->fonts[0].fd != BADFD){
 		res->hint = init->fonts[0].hinting;
 		res->font_sz = init->fonts[0].size_mm;
 		setup_font(res, init->fonts[0].fd, res->font_sz, 0);
 		init->fonts[0].fd = BADFD;
-		LOG("arcan_shmif_tui(), built-in font provided, size: %f\n", res->font_sz);
+		LOG("arcan_tui(), built-in font provided, size: %f\n", res->font_sz);
 
 		if (init->fonts[1].fd != BADFD){
 			setup_font(res, init->fonts[1].fd, res->font_sz, 1);
@@ -2367,12 +2454,12 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 		res->cols, res->rows, res->handlers.tag);
 
 #ifndef SHMIF_TUI_DISABLE_GPU
-	if (set->prefer_accel){
+	if (set->render_flags & TUI_RENDER_ACCEL){
 		struct arcan_shmifext_setup setup = arcan_shmifext_defaults(con);
 		setup.builtin_fbo = false;
 		setup.vidp_pack = true;
 		if (arcan_shmifext_setup(con, setup) == SHMIFEXT_OK){
-			LOG("arcan_shmif_tui(), accelerated connection established");
+			LOG("arcan_tui(), accelerated connection established");
 			res->is_accel = true;
 		}
 	}
@@ -2549,7 +2636,7 @@ void arcan_tui_erase_chars(struct tui_context* c, size_t num)
 	}
 }
 
-void arcan_tui_set_flags(struct tui_context* c, enum tui_flags flags)
+void arcan_tui_set_flags(struct tui_context* c, int flags)
 {
 	if (c){
 		bool oldv = c->cursor_hard_off;
@@ -2561,7 +2648,7 @@ void arcan_tui_set_flags(struct tui_context* c, enum tui_flags flags)
 	}
 }
 
-void arcan_tui_reset_flags(struct tui_context* c, enum tui_flags flags)
+void arcan_tui_reset_flags(struct tui_context* c, int flags)
 {
 	if (c){
 		if (flags & TUI_HIDE_CURSOR){
