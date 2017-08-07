@@ -96,6 +96,8 @@ struct tui_context {
 	struct tui_cell* front;
 	struct tui_cell* back;
 	struct tui_cell* custom;
+	shmif_pixel* blitbuffer;
+	int blitbuffer_dirty;
 
 	unsigned flags;
 	bool focus, inactive;
@@ -189,7 +191,7 @@ static void queue_requests(struct tui_context* tui, bool clipboard, bool ident);
  * main character drawing / blitting function,
  * only called when updating cursor or as part of update_screen
  */
-static int draw_cbt(struct tui_context* tui,
+static void draw_cbt(struct tui_context* tui,
 	uint32_t ch, int x, int y, const struct tui_screen_attr* attr, bool empty);
 
 static void tsm_log(void* data, const char* file, int line,
@@ -270,9 +272,6 @@ static void cursor_at(struct tui_context* tui, int x, int y, shmif_pixel ccol)
 	}
 }
 
-/*
- * this does not accurately consider double- buffered state
- */
 static bool wait_vready(struct tui_context* tui, bool block)
 {
 /* The fastest option here would be to use the previously rastered buffers
@@ -309,6 +308,7 @@ static void apply_attrs(struct tui_context* tui,
 }
 
 #ifndef SIMPLE_RENDERING
+/* DOES NOT SUPPORT OR CONSIDER CLIPPING */
 static void draw_ch(struct tui_context* tui,
 	uint32_t ch, int base_x, int base_y, uint8_t fg[4], uint8_t bg[4],
 	const struct tui_screen_attr* attr)
@@ -318,12 +318,11 @@ static void draw_ch(struct tui_context* tui,
 	prem |= TTF_STYLE_BOLD * attr->bold;
 
 /*
- * Should really maintain a glyph-cache here as well, using
- * ch + selected parts of attr as index and invalidate in the
- * normal font update functions
+ * Should really maintain a glyph-cache here as well, using ch + selected parts
+ * of attr as index and invalidate in the normal font update functions.
  */
-	draw_box(&tui->acon, base_x, base_y, tui->cell_w, tui->cell_h,
-			SHMIF_RGBA(bg[0], bg[1], bg[2], bg[3]));
+	draw_box(&tui->acon, base_x, base_y,
+		tui->cell_w, tui->cell_h, SHMIF_RGBA(bg[0], bg[1], bg[2], bg[3]));
 
 /* This one is incredibly costly as a deviation in style regarding
  * bold/italic can invalidate the glyph-cache. Ideally, this should
@@ -332,12 +331,6 @@ static void draw_ch(struct tui_context* tui,
 	unsigned xs = 0, ind = 0;
 	int adv = 0;
 
-/* FIXME:
- * Special case, if base_y < 0 - we blit into a temporary buffer
- * and do our line copies from there. The reason is that TTF_RenderUNICODEglyph
- * is complicated enough, and the blit-partial case is not needed in Arcan.
- * This gets worse with shaping rules..
- */
 	if (!TTF_RenderUNICODEglyph(
 		&tui->acon.vidp[base_y * tui->acon.pitch + base_x],
 		tui->cell_w, tui->cell_h, tui->acon.pitch,
@@ -364,8 +357,8 @@ static void send_cell_sz(struct tui_context* tui)
 		.ext.kind = ARCAN_EVENT(MESSAGE),
 	};
 
-	sprintf((char*)ev.ext.message.data, "cell_w:%d:cell_h:%d",
-		tui->cell_w, tui->cell_h);
+	sprintf((char*)ev.ext.message.data,
+		"cell_w:%d:cell_h:%d", tui->cell_w, tui->cell_h);
 	arcan_shmif_enqueue(&tui->acon, &ev);
 }
 
@@ -385,7 +378,7 @@ static int tsm_draw_callback(struct tsm_screen* screen, uint32_t id,
 	return 0;
 }
 
-static int draw_cbt(struct tui_context* tui,
+static void draw_cbt(struct tui_context* tui,
 	uint32_t ch,int x1, int y1, const struct tui_screen_attr* attr,	bool empty)
 {
 	uint8_t fgc[4] = {attr->fr, attr->fg, attr->fb, 255};
@@ -419,23 +412,8 @@ static int draw_cbt(struct tui_context* tui,
 
 	tui->dirty |= DIRTY_UPDATED;
 
-/* Quick erase if nothing more is needed. There should really be better palette
+/* There should really be better palette
  * management here to account for an inverse- palette instead */
-	if (empty){
-		if (attr->inverse){
-			draw_box(&tui->acon, x1, y1, tui->cell_w, tui->cell_h,
-				SHMIF_RGBA(fgc[0], fgc[1], fgc[2], tui->alpha));
-			apply_attrs(tui, x1, y1, bgc, attr);
-		}
-		else{
-			draw_box(&tui->acon, x1, y1, tui->cell_w, tui->cell_h,
-				SHMIF_RGBA(bgc[0], bgc[1], bgc[2], tui->alpha));
-			apply_attrs(tui, x1, y1, fgc, attr);
-		}
-
-		ch = 0x00000008;
-	}
-
 	if (
 #ifndef SIMPLE_RENDERING
 			tui->force_bitmap || !tui->font[0]
@@ -443,6 +421,14 @@ static int draw_cbt(struct tui_context* tui,
 			1
 #endif
 		){
+/* Don't go through the font- path if the cell is just whitespace */
+		if (empty){
+			draw_box(&tui->acon, x1, y1, tui->cell_w, tui->cell_h,
+				SHMIF_RGBA(dbg[0], dbg[1], dbg[2], tui->alpha));
+				apply_attrs(tui, x1, y1, bgc, attr);
+			return;
+		}
+
 		draw_ch_u32(tui->font_bitmap,
 			&tui->acon, ch, x1, y1,
 			SHMIF_RGBA(dfg[0], dfg[1], dfg[2], dfg[3]),
@@ -453,11 +439,40 @@ static int draw_cbt(struct tui_context* tui,
 	}
 #ifndef SIMPLE_RENDERING
 	else{
-		draw_ch(tui, ch, x1, y1, dfg, dbg, attr);
+/*
+ * Special case, if base_y < 0 - we blit into a temporary buffer and do our
+ * line copies from there. The reason is that TTF_RenderUNICODEglyph is
+ * complicated enough, and the blit-partial case is not needed in Arcan. This
+ * gets worse with shaping rules and since it's in the scroll-in/scroll-out
+ * areas this gets triggered, just treat those as an edge case.
+ *
+ * This works by having two scratch- rows and a separate clipped blit- stage.
+ * Since it's only used for scrolling, the dirty- region part is easy. We
+ * work on full in- out- rows instead of 'per char' to use the same code
+ * for shaping.
+ */
+		if (y1 < 0){
+			if (tui->blitbuffer){
+				shmif_pixel* vidp = tui->acon.vidp;
+				tui->acon.vidp = tui->blitbuffer;
+				draw_ch(tui, ch, x1, 0, dfg, dbg, attr);
+				tui->acon.vidp = vidp;
+				tui->blitbuffer_dirty |= 1;
+			}
+		}
+		else if (y1 + tui->cell_h > tui->acon.h - tui->pad_h){
+			if (tui->blitbuffer){
+				shmif_pixel* vidp = tui->acon.vidp;
+				tui->acon.vidp = &tui->blitbuffer[tui->acon.pitch * tui->cell_h];
+				draw_ch(tui, ch, x1, 0, dfg, dbg, attr);
+				tui->acon.vidp = vidp;
+				tui->blitbuffer_dirty |= 2;
+			}
+		}
+		else
+			draw_ch(tui, ch, x1, y1, dfg, dbg, attr);
 	}
 #endif
-
-	return 0;
 }
 
 /*
@@ -598,6 +613,36 @@ static void clear_framebuffer(struct tui_context* tui)
 }
 
 /*
+ * blit the scroll-in and scroll-out buffers into the tui->acon vidp
+ */
+static void apply_blitbuffer(struct tui_context* tui, int sign)
+{
+	shmif_pixel* dst, (* src);
+
+/* top row */
+	if (tui->blitbuffer_dirty & 1){
+		int row = sign * -tui->scroll_px;
+		dst = tui->acon.vidp;
+		src = &tui->blitbuffer[tui->acon.pitch * row];
+
+		for (; row < tui->cell_h; row++,
+			dst += tui->acon.pitch, src += tui->acon.pitch)
+			memcpy(dst, src, tui->acon.stride);
+	}
+
+/* bottom row */
+	if (tui->blitbuffer_dirty & 2){
+		int y = tui->cell_h * tui->rows + sign * tui->scroll_px;
+		dst = &tui->acon.vidp[y * tui->acon.pitch];
+		src = &tui->blitbuffer[tui->acon.pitch * tui->cell_h];
+
+		for (; y < tui->acon.h - tui->pad_h;
+			y++, src += tui->acon.pitch, dst += tui->acon.pitch)
+			memcpy(dst, src, tui->acon.stride);
+	}
+}
+
+/*
  * Used when smooth-scrolling, we know that the back buffer now contains our
  * last "stable" view, then we scroll in from the front buffer as often we can.
  * In order to not turn irresponsive, we can only do one- synch at a time here
@@ -638,12 +683,16 @@ static void apply_scroll(struct tui_context* tui)
 		wait_vready(tui, true);
 
 /* while this is running, the rest of the application is unresponsive,
- * can pre-empty and try that if it's better, but should really only
+ * can preempt and try that if it's better, but should really only
  * have an effect on slow- step-sizes */
 		while(1){
 			tui->dirty |= DIRTY_PENDING_FULL;
 			draw_function(tui, tui->rows+1, tui->cols,
 				tui->back, tui->back, tui->custom, 0, tui->scroll_px, false);
+			if (tui->blitbuffer_dirty && tui->scroll_px){
+				apply_blitbuffer(tui, 1);
+				tui->blitbuffer_dirty = 0;
+			}
 			arcan_shmif_signal(&tui->acon, SHMIF_SIGVID);
 
 /* retain correct step-size so we don't get a bias against cell size */
@@ -690,8 +739,8 @@ static void apply_scroll(struct tui_context* tui)
 		struct tui_cell* top = &tui->back[-tui->cols];
 
 		if (!tui->in_scroll){
-			memcpy(top,
-				&tui->front[(-tui->scroll_backlog - 1) * tui->cols], sizeof(struct tui_cell)*tui->cols);
+			memcpy(top, &tui->front[(-tui->scroll_backlog - 1) * tui->cols],
+				sizeof(struct tui_cell)*tui->cols);
 			tui->scroll_px = tui->cell_h - step_sz;
 			tui->in_scroll++;
 		}
@@ -701,14 +750,18 @@ static void apply_scroll(struct tui_context* tui)
 			tui->dirty |= DIRTY_PENDING_FULL;
 			draw_function(tui, tui->rows+1, tui->cols,
 				top, top, tui->custom, 0, -tui->scroll_px, false);
+			if (tui->blitbuffer_dirty && tui->scroll_px){
+				apply_blitbuffer(tui, -1);
+				tui->blitbuffer_dirty = 0;
+			}
 
 			arcan_shmif_signal(&tui->acon, SHMIF_SIGVID);
 			tui->scroll_px -= step_sz;
 			if (tui->scroll_px <= 0){
 				tui->scroll_px += tui->cell_h;
-				tui->in_scroll++;
 /* same 'weird' thing here, we move-scroll but also copy in/over, a few k
  * transfers could be saved, but that was slower than just copying */
+				tui->in_scroll++;
 				if (tui->scroll_backlog + tui->in_scroll <= 0){
 					memmove(tui->back, top,
 						sizeof(struct tui_cell) * tui->rows * tui->cols);
@@ -1372,7 +1425,11 @@ static void resize_cellbuffer(struct tui_context* tui)
 	if (tui->base)
 		free(tui->base);
 
+	if (tui->blitbuffer)
+		free(tui->blitbuffer);
+
 	tui->base = NULL;
+	tui->blitbuffer = malloc(2 * tui->cell_h * tui->acon.stride);
 
 /* window size with spare lines for scroll-in-scroll-out */
 	size_t buffer_sz = (2 + tui->rows) * tui->cols * sizeof(struct tui_cell);
@@ -1381,6 +1438,7 @@ static void resize_cellbuffer(struct tui_context* tui)
 		LOG("couldn't allocate screen buffers buffer\n");
 		return;
 	}
+
 	memset(tui->base, '\0', buffer_sz);
 	tui->front = tui->base;
 
@@ -2055,7 +2113,13 @@ int arcan_tui_refresh(struct tui_context* tui)
 
 /* if we're more than a full page behind, just reset it */
 	if (tui->scroll_backlog){
-		if (abs(tui->scroll_backlog) < tui->rows){
+
+/* alternate- screenmode requires pattern analysis to generate scroll */
+		if (tui->flags & TUI_ALTERNATE){
+			tui->scroll_backlog = 0;
+			tui->age = tsm_screen_draw(tui->screen, tsm_draw_callback, tui);
+		}
+		else if (abs(tui->scroll_backlog) < tui->rows){
 			apply_scroll(tui);
 			errno = EAGAIN;
 			return -1;
