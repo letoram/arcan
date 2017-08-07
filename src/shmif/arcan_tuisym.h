@@ -24,8 +24,7 @@ enum tui_context_flags {
 	TUI_INVERSE = 8,
 	TUI_HIDE_CURSOR = 16,
 	TUI_FIXED_POS = 32,
-	TUI_ALTERNATE = 64,
-	TUI_CUSTOM_DRAW = 128
+	TUI_ALTERNATE = 64
 };
 
 enum tui_color_group {
