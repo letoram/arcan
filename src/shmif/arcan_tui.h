@@ -524,8 +524,8 @@ struct tui_screen_attr {
 	unsigned int inverse : 1; /* inverse colors */
 	unsigned int protect : 1; /* cannot be erased */
 	unsigned int blink : 1; /* blinking character */
-	unsigned int faint : 1;
 	unsigned int strikethrough : 1;
+	unsigned int shape_break; /* reset shaping and align to grid */
 
 /*  > 127: cell is used for a custom draw-call, will be used with -127
  *         subtracted in custom draw callback.
@@ -643,6 +643,13 @@ bool arcan_tui_writeu8(struct tui_context*,
  * retrieve the current cursor position into the [x:col] and [y:row] field
  */
 void arcan_tui_cursorpos(struct tui_context*, size_t* x, size_t* y);
+
+/*
+ * [DEPRECATED, AVOID]
+ * Still used by arcterm, need to be replaced with decent color management
+ */
+void arcan_tui_update_color(struct tui_context* tui,
+	enum tui_color_group group, const uint8_t rgb[3]);
 
 /*
  * lock input handling and switch to a libreadline (actually linenoise)
