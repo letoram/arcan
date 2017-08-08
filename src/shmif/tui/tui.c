@@ -66,7 +66,8 @@ struct tui_cell {
 
 #ifndef SIMPLE_RENDERING
 /* for performing picking when we have shaped rendering etc. */
-	uint16_t cell_ofs;
+	uint32_t real_x;
+	uint8_t cell_w;
 #endif
 };
 
@@ -128,6 +129,12 @@ struct tui_context {
 	struct tui_font_ctx* font_bitmap;
 	bool force_bitmap;
 	bool dbl_buf;
+
+/*
+ * Two different kinds of drawing functions depending on the font-path taken.
+ * One 'normal' mono-space and one 'extended' (expensive) where you also get
+ * non-monospace, kerning and possibly shaping/ligatures
+ */
 	tui_draw_fun draw_function;
 	tui_draw_fun shape_function;
 
@@ -183,12 +190,6 @@ struct tui_context {
 	long cursor_period; /* blink setting */
 	enum tui_cursors cursor; /* visual style */
 
-/*
- * Two different kinds of drawing functions depending on the font-path taken.
- * One 'normal' mono-space and one 'extended' (expensive) where you also get
- * non-monospace, kerning and possibly shaping/ligatures
- */
-
 	uint8_t alpha;
 
 /* track last time counter we did update on to avoid overdraw */
@@ -216,6 +217,16 @@ static void draw_cbt(struct tui_context* tui,
 	uint32_t ch, int x, int y, const struct tui_screen_attr* attr, bool empty,
 	struct shape_state* state);
 
+static void draw_monospace(struct tui_context* tui,
+	size_t n_rows, size_t n_cols,
+	struct tui_cell* front, struct tui_cell* back, struct tui_cell* custom,
+	int start_x, int start_y, bool synch);
+
+static void draw_shaped(struct tui_context* tui,
+	size_t n_rows, size_t n_cols,
+	struct tui_cell* front, struct tui_cell* back, struct tui_cell* custom,
+	int start_x, int start_y, bool synch);
+
 static void tsm_log(void* data, const char* file, int line,
 	const char* func, const char* subs, unsigned int sev,
 	const char* fmt, va_list arg)
@@ -232,6 +243,25 @@ const char* curslbl[] = {
 	"uline",
 	NULL
 };
+
+static void resolve_cursor(
+	struct tui_context* tui, int* x, int* y, int* w, int* h)
+{
+	if (tui->draw_function != draw_monospace){
+		struct tui_cell cell =
+			tui->front[tui->cursor_y * tui->cols + tui->cursor_x];
+		*x = cell.real_x;
+		*y = tui->cursor_y * tui->cell_h;
+		*w = cell.cell_w;
+		*h = tui->cell_h;
+	}
+	else {
+		*x = tui->cursor_x * tui->cell_w;
+		*y = tui->cursor_y * tui->cell_h;
+		*w = tui->cell_w;
+		*h = tui->cell_h;
+	}
+}
 
 static void cursor_at(struct tui_context* tui, int x, int y, shmif_pixel ccol)
 {
@@ -332,9 +362,8 @@ static void draw_ch(struct tui_context* tui,
 
 /* reset the cell regarless of state as the current drawUNICODE,...
  * doesn't actually clear it and the conditional/ write costs more */
-	if (!state)
-		draw_box(&tui->acon, base_x, base_y,
-			tui->cell_w, tui->cell_h, SHMIF_RGBA(bg[0], bg[1], bg[2], bg[3]));
+	draw_box(&tui->acon, base_x, base_y,
+		tui->cell_w, tui->cell_h, SHMIF_RGBA(bg[0], bg[1], bg[2], bg[3]));
 
 /* This one is incredibly costly as a deviation in style regarding
  * bold/italic can invalidate the glyph-cache. Ideally, this should
@@ -437,12 +466,12 @@ static void draw_cbt(struct tui_context* tui,
 	tui->dirty |= DIRTY_UPDATED;
 
 /* Don't go through the font- path if the cell is just whitespace */
-		if (empty){
-			draw_box(&tui->acon, x1, y1, tui->cell_w, tui->cell_h,
-				SHMIF_RGBA(dbg[0], dbg[1], dbg[2], tui->alpha));
-				apply_attrs(tui, x1, y1, bgc, attr);
-			return;
-		}
+	if (empty){
+		draw_box(&tui->acon, x1, y1, tui->cell_w, tui->cell_h,
+			SHMIF_RGBA(dbg[0], dbg[1], dbg[2], tui->alpha));
+			apply_attrs(tui, x1, y1, bgc, attr);
+		return;
+	}
 
 /* There should really be better palette
  * management here to account for an inverse- palette instead */
@@ -569,6 +598,11 @@ static void draw_shaped(struct tui_context* tui,
 		shmif_pixel bgcol = SHMIF_RGBA(
 			tui->bgc[0],tui->bgc[1],tui->bgc[2],tui->alpha);
 		draw_box(&tui->acon, 0, cury, tui->acon.w, cury+tui->cell_h, bgcol);
+		tui->acon.dirty.x2 = tui->acon.w;
+
+/* FIXME: we need a hook-callback here that allows post-processing
+ * of the row to allow for ligatures/shaping and better position reset
+ * controls */
 
 		for (size_t col = 0; col < n_cols; col++){
 /* custom-draw cells always reset the state tracking */
@@ -578,14 +612,17 @@ static void draw_shaped(struct tui_context* tui,
 				continue;
 			}
 
-/* Draw character, apply kerning or, if enabled, full shaping.  We assume
+/* Draw character, apply kerning or, if enabled, full shaping. We assume
  * (which is not correct) that the shaped output will not grow to exceed the
  * cell size limit. This should be fixed alongside proper wcswidth style
  * screen management */
+			int last_ofs = state.xofs;
 			draw_cbt(tui, front_row[col].ch,
 				start_x + state.xofs, cury,
 				&front_row[col].attr, false, &state
 			);
+			front_row[col].real_x = start_x + last_ofs;
+			front_row[col].cell_w = state.xofs - last_ofs;
 
 /* We have a forced reset/realign to expected column X */
 			if (front_row[col].attr.shape_break){
@@ -892,12 +929,11 @@ static void update_screen(struct tui_context* tui, bool ign_inact)
 		return;
 
 	if (tui->cursor_upd){
+/* FIXME: for shaped drawing, we invalidate the entire cursor- row */
+		int x, y, w, h;
+		resolve_cursor(tui, &x, &y, &w, &h);
 		struct tui_cell* tc = &tui->back[tui->cursor_y * tui->cols + tui->cursor_x];
-		draw_cbt(tui, tc->ch,
-			tui->cursor_x * tui->cell_w,
-			tui->cursor_y * tui->cell_h, &tc->attr, tc->ch == 0,
-			NULL
-		);
+		draw_cbt(tui, tc->ch, x, y, &tc->attr, tc->ch == 0, NULL);
 	}
 
 /* This is the wrong way to n' buffer here, but as a temporary workaround
@@ -913,9 +949,9 @@ static void update_screen(struct tui_context* tui, bool ign_inact)
 
 /* draw the new cursor */
 	if (tui->cursor_upd && !(tui->cursor_off | tui->cursor_hard_off) ){
-		cursor_at(tui,
-			tui->cursor_x * tui->cell_w + 0,
-			tui->cursor_y * tui->cell_h + 0,
+		int x, y, w, h;
+		resolve_cursor(tui, &x, &y, &w, &h);
+		cursor_at(tui, x, y,
 			tui->scroll_lock ? SHMIF_RGBA(tui->clc[0], tui->clc[1], tui->clc[2],0xff):
 				SHMIF_RGBA(tui->cc[0], tui->cc[1], tui->cc[2], 0xff)
 		);
@@ -2659,6 +2695,12 @@ void arcan_tui_erase_sb(struct tui_context* c)
 		tsm_screen_inc_age(c->screen);
 		tsm_screen_clear_sb(c->screen);
 	}
+}
+
+void arcan_tui_scrollhint(struct tui_context* c, int steps)
+{
+	c->scroll_backlog = steps;
+	flag_cursor(c);
 }
 
 void arcan_tui_refinc(struct tui_context* c)
