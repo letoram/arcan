@@ -160,12 +160,27 @@ add_sanitizers(arcan_shmif_int arcan_shmif arcan_shmif_ext arcan_shmif_intext
 # use that one and provide a tui to match, but we should also try and provide a
 # dynamic one.
 if (SHMIF_TUI)
+# if there's an accelerated GPU platform built, also build a TUI that can use
+# the shmif_ext libraries for GPU access.
 	if (SHMIF_TUI_ACCEL)
 		set(TUI_LIBRARIES arcan_shmif arcan_shmif_ext)
 	else()
 		set(TUI_LIBRARIES arcan_shmif)
 		set (TUI_DEFINITIONS SHMIF_TUI_DISABLE_GPU)
 	endif()
+
+# we (will) use HarfBuzz for shaping/ligatures
+#	find_package(HarfBuzz)
+	if (HARFBUZZ_FOUND)
+		amsg("${CL_YEL}shmif-tui : Harfbuzz found, enabling shaper")
+		list(APPEND TUI_LIBRARIES ${HARFBUZZ_LIBRARIES})
+		list(APPEND TUI_DEFINITIONS WITH_HARFBUZZ)
+	else()
+		amsg("${CL_YEL}shmif-tui : Harfbuzz not found, shaping disabled")
+	endif()
+
+# STATIC_FREETYPE is inherited from the outer scope, means we have our own build
+# of freetype that we should link to statically
 	if (STATIC_FREETYPE)
 		add_library(arcan_tui STATIC ${SHMIF_TUI_SOURCES})
 		target_link_libraries(arcan_tui PRIVATE ${STDLIB} ${FREETYPE_DEFAULT_LIBRARIES})
@@ -183,9 +198,14 @@ if (SHMIF_TUI)
 			set(TARGET_LIST ${TARGET_LIST} arcan_tuiext)
 			target_include_directories(arcan_tuiext PRIVATE
 				${INCLUDE_DIRS} ${ASD}/frameserver ${ASD}/engine ${ASD}/shmif)
+# Due to the accelerated- GPU flags, we also NEED to build a shared library
+# version as this likely pulls in libraries that we can't deal with statically
 		else()
 			amsg("${CL_YEL}only static freetype found, dynamic/accel shmif_tui disabled ${CL_RST}")
 		endif()
+# This means we already have a find-package for Freetype (parent requires it)
+# and we can inherit/use those flags. For the time being, we need to treat
+# Harfbuzz- style shaping separately though.
 	else()
 		add_library(arcan_tui SHARED ${SHMIF_TUI_SOURCES})
 		target_link_libraries(arcan_tui PRIVATE ${STDLIB} ${TUI_LIBRARIES} ${FREETYPE_LIBRARIES})
@@ -195,7 +215,7 @@ if (SHMIF_TUI)
 	target_compile_definitions(arcan_tui PRIVATE ${TUI_DEFINITIONS})
 	target_include_directories(arcan_tui PRIVATE
 		${INCLUDE_DIRS} ${ASD}/frameserver ${ASD}/shmif ${ASD}/engine)
-endif()
+endif() # _TUI
 
 target_link_libraries(arcan_shmif PRIVATE ${STDLIB})
 target_link_libraries(arcan_shmif_int PRIVATE ${STDLIB})
