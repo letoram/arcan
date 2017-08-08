@@ -728,6 +728,7 @@ void arcan_tui_tab_left(struct tui_context*, size_t);
 
 /*
  * scroll the window [n] lines up or down in the scrollback buffer
+ * this is a no-op in alt-screen.
  */
 void arcan_tui_scroll_up(struct tui_context*, size_t);
 void arcan_tui_scroll_down(struct tui_context*, size_t);
@@ -737,6 +738,14 @@ void arcan_tui_scroll_down(struct tui_context*, size_t);
  */
 void arcan_tui_reset_tabstop(struct tui_context*);
 void arcan_tui_reset_all_tabstops(struct tui_context*);
+
+/*
+ * Indicate that the contents of the draw-output since the last call to refresh
+ * has scrolled up (0 > steps > -max_rows) or down (0 < steps < max_rows). This
+ * is useful for smooth-scrolling support when a client redraws the screen by
+ * moving the cursor or using the alt-screen.
+ */
+void arcan_tui_scrollhint(struct tui_context*, int steps);
 
 /*
  * move the cursor either absolutely or a number of steps,
