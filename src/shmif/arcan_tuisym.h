@@ -53,7 +53,8 @@ enum tui_cursors {
 enum tui_render_flags {
 	TUI_RENDER_BITMAP = 1,
 	TUI_RENDER_DBLBUF = 2,
-	TUI_RENDER_ACCEL = 4
+	TUI_RENDER_ACCEL = 4,
+	TUI_RENDER_SHAPED = 8
 };
 
 /* bitmap derived from shmif_event, repeated here for namespace purity */

@@ -55,6 +55,11 @@ enum dirty_state {
 	DIRTY_PENDING_FULL = 4
 };
 
+struct shape_state {
+	unsigned ind;
+	int xofs;
+};
+
 struct tui_cell {
 	uint32_t ch;
 	struct tui_screen_attr attr;
@@ -64,6 +69,14 @@ struct tui_cell {
 	uint16_t cell_ofs;
 #endif
 };
+
+typedef void (*tui_draw_fun)(
+		struct tui_context* tui,
+		size_t n_rows, size_t n_cols,
+		struct tui_cell* front, struct tui_cell* back,
+		struct tui_cell* custom,
+		int start_x, int start_y, bool synch
+	);
 
 struct tui_context {
 /* cfg->nal / state control */
@@ -115,6 +128,8 @@ struct tui_context {
 	struct tui_font_ctx* font_bitmap;
 	bool force_bitmap;
 	bool dbl_buf;
+	tui_draw_fun draw_function;
+	tui_draw_fun shape_function;
 
 	float font_sz; /* size in mm */
 	int font_sz_delta; /* user requested step, pt */
@@ -168,6 +183,12 @@ struct tui_context {
 	long cursor_period; /* blink setting */
 	enum tui_cursors cursor; /* visual style */
 
+/*
+ * Two different kinds of drawing functions depending on the font-path taken.
+ * One 'normal' mono-space and one 'extended' (expensive) where you also get
+ * non-monospace, kerning and possibly shaping/ligatures
+ */
+
 	uint8_t alpha;
 
 /* track last time counter we did update on to avoid overdraw */
@@ -192,7 +213,8 @@ static void queue_requests(struct tui_context* tui, bool clipboard, bool ident);
  * only called when updating cursor or as part of update_screen
  */
 static void draw_cbt(struct tui_context* tui,
-	uint32_t ch, int x, int y, const struct tui_screen_attr* attr, bool empty);
+	uint32_t ch, int x, int y, const struct tui_screen_attr* attr, bool empty,
+	struct shape_state* state);
 
 static void tsm_log(void* data, const char* file, int line,
 	const char* func, const char* subs, unsigned int sev,
@@ -201,17 +223,6 @@ static void tsm_log(void* data, const char* file, int line,
 	fprintf(stderr, "[%d] %s:%d - %s, %s()\n", sev, file, line, subs, func);
 	vfprintf(stderr, fmt, arg);
 }
-
-/*
- * Two different kinds of drawing functions depending on the font-path taken.
- * One 'normal' mono-space and one 'extended' (expensive) where you also get
- * non-monospace, kerning and possibly shaping/ligatures
- */
-static void (*draw_function)(
-	struct tui_context* tui,
-	size_t n_rows, size_t n_cols,
-	struct tui_cell* front, struct tui_cell* back, struct tui_cell* custom,
-	int start_x, int start_y, bool synch);
 
 const char* curslbl[] = {
 	"block",
@@ -311,35 +322,51 @@ static void apply_attrs(struct tui_context* tui,
 /* DOES NOT SUPPORT OR CONSIDER CLIPPING */
 static void draw_ch(struct tui_context* tui,
 	uint32_t ch, int base_x, int base_y, uint8_t fg[4], uint8_t bg[4],
-	const struct tui_screen_attr* attr)
+	const struct tui_screen_attr* attr, struct shape_state* state)
 {
 	int prem = TTF_STYLE_NORMAL;
 	prem |= TTF_STYLE_ITALIC * attr->italic;
 	prem |= TTF_STYLE_BOLD * attr->bold;
 
-/*
- * Should really maintain a glyph-cache here as well, using ch + selected parts
- * of attr as index and invalidate in the normal font update functions.
- */
-	draw_box(&tui->acon, base_x, base_y,
-		tui->cell_w, tui->cell_h, SHMIF_RGBA(bg[0], bg[1], bg[2], bg[3]));
+/* might be worth it to have yet another caching layer here */
+
+/* reset the cell regarless of state as the current drawUNICODE,...
+ * doesn't actually clear it and the conditional/ write costs more */
+	if (!state)
+		draw_box(&tui->acon, base_x, base_y,
+			tui->cell_w, tui->cell_h, SHMIF_RGBA(bg[0], bg[1], bg[2], bg[3]));
 
 /* This one is incredibly costly as a deviation in style regarding
  * bold/italic can invalidate the glyph-cache. Ideally, this should
  * be sorted in tsm_screen */
 	TTF_SetFontStyle(tui->font[0], prem);
-	unsigned xs = 0, ind = 0;
-	int adv = 0;
 
-	if (!TTF_RenderUNICODEglyph(
-		&tui->acon.vidp[base_y * tui->acon.pitch + base_x],
-		tui->cell_w, tui->cell_h, tui->acon.pitch,
-		tui->font, tui->font[1] ? 2 : 1,
-		ch, &xs, fg, bg, true, false, prem, &adv, &ind
-	)){
+	if (!state){
+		unsigned ind = 0;
+		unsigned xs = 0;
+		int adv = 0;
+
+		TTF_RenderUNICODEglyph(
+			&tui->acon.vidp[base_y * tui->acon.pitch + base_x],
+			tui->cell_w, tui->cell_h, tui->acon.pitch,
+			tui->font, tui->font[1] ? 2 : 1,
+			ch, &xs, fg, bg, true, false, prem, &adv, &ind
+		);
+/* strikethrough / underline should really just be handled in the
+ * TTF_SetFontStyle and this function can be skipped */
+		apply_attrs(tui, base_x, base_y, fg, attr);
 	}
-
-	apply_attrs(tui, base_x, base_y, fg, attr);
+	else {
+		unsigned xs = 0;
+		int adv = 0;
+		TTF_RenderUNICODEglyph(
+			&tui->acon.vidp[base_y * tui->acon.pitch + base_x],
+			tui->cell_w, tui->cell_h, tui->acon.pitch,
+			tui->font, tui->font[1] ? 2 : 1,
+			ch, &xs, fg, bg, true, false, prem, &adv, &state->ind
+		);
+		state->xofs += adv;
+	}
 }
 #endif
 
@@ -379,7 +406,9 @@ static int tsm_draw_callback(struct tsm_screen* screen, uint32_t id,
 }
 
 static void draw_cbt(struct tui_context* tui,
-	uint32_t ch,int x1, int y1, const struct tui_screen_attr* attr,	bool empty)
+	uint32_t ch,int x1, int y1,
+	const struct tui_screen_attr* attr,	bool empty,
+	struct shape_state* state)
 {
 	uint8_t fgc[4] = {attr->fr, attr->fg, attr->fb, 255};
 	uint8_t bgc[4] = {attr->br, attr->bg, attr->bb, tui->alpha};
@@ -391,11 +420,6 @@ static void draw_cbt(struct tui_context* tui,
 		dbg[3] = tui->alpha;
 		dfg[3] = 0xff;
 	};
-
-	if (attr->faint){
-		fgc[0] >>= 1; fgc[1] >>= 1; fgc[2] >>= 1;
-		bgc[0] >>= 1; bgc[1] >>= 1; bgc[2] >>= 1;
-	}
 
 	int x2 = x1 + tui->cell_w;
 	int y2 = y1 + tui->cell_h;
@@ -412,6 +436,14 @@ static void draw_cbt(struct tui_context* tui,
 
 	tui->dirty |= DIRTY_UPDATED;
 
+/* Don't go through the font- path if the cell is just whitespace */
+		if (empty){
+			draw_box(&tui->acon, x1, y1, tui->cell_w, tui->cell_h,
+				SHMIF_RGBA(dbg[0], dbg[1], dbg[2], tui->alpha));
+				apply_attrs(tui, x1, y1, bgc, attr);
+			return;
+		}
+
 /* There should really be better palette
  * management here to account for an inverse- palette instead */
 	if (
@@ -421,14 +453,6 @@ static void draw_cbt(struct tui_context* tui,
 			1
 #endif
 		){
-/* Don't go through the font- path if the cell is just whitespace */
-		if (empty){
-			draw_box(&tui->acon, x1, y1, tui->cell_w, tui->cell_h,
-				SHMIF_RGBA(dbg[0], dbg[1], dbg[2], tui->alpha));
-				apply_attrs(tui, x1, y1, bgc, attr);
-			return;
-		}
-
 		draw_ch_u32(tui->font_bitmap,
 			&tui->acon, ch, x1, y1,
 			SHMIF_RGBA(dfg[0], dfg[1], dfg[2], dfg[3]),
@@ -455,7 +479,7 @@ static void draw_cbt(struct tui_context* tui,
 			if (tui->blitbuffer){
 				shmif_pixel* vidp = tui->acon.vidp;
 				tui->acon.vidp = tui->blitbuffer;
-				draw_ch(tui, ch, x1, 0, dfg, dbg, attr);
+				draw_ch(tui, ch, x1, 0, dfg, dbg, attr, state);
 				tui->acon.vidp = vidp;
 				tui->blitbuffer_dirty |= 1;
 			}
@@ -464,13 +488,13 @@ static void draw_cbt(struct tui_context* tui,
 			if (tui->blitbuffer){
 				shmif_pixel* vidp = tui->acon.vidp;
 				tui->acon.vidp = &tui->blitbuffer[tui->acon.pitch * tui->cell_h];
-				draw_ch(tui, ch, x1, 0, dfg, dbg, attr);
+				draw_ch(tui, ch, x1, 0, dfg, dbg, attr, state);
 				tui->acon.vidp = vidp;
 				tui->blitbuffer_dirty |= 2;
 			}
 		}
 		else
-			draw_ch(tui, ch, x1, y1, dfg, dbg, attr);
+			draw_ch(tui, ch, x1, y1, dfg, dbg, attr, state);
 	}
 #endif
 }
@@ -498,7 +522,6 @@ static bool cell_match(struct tui_cell* ac, struct tui_cell* bc)
 		a->inverse == b->inverse &&
 		a->protect == b->protect &&
 		a->blink == b->blink &&
-		a->faint == b->faint &&
 		a->strikethrough == b->strikethrough
 	);
 }
@@ -510,42 +533,72 @@ static bool cell_match(struct tui_cell* ac, struct tui_cell* bc)
  * cursor- drawing etc. to work.
  */
 #ifndef SIMPLE_RENDERING
-/*
 static void draw_shaped(struct tui_context* tui,
 	size_t n_rows, size_t n_cols,
 	struct tui_cell* front, struct tui_cell* back, struct tui_cell* custom,
 	int start_x, int start_y, bool synch)
 {
+	int cw = tui->cell_w;
+	int ch = tui->cell_h;
 
 	for (size_t row = 0; row < n_rows; row++){
-		bool row_changed = false;
-		struct tui_cell* col;
-*/
 
-/* pre-sweep row and check for
- * 1. changes,
- * 2. if there's any shaping applied anywhere
- * -> if 1 or 2, issue a reraster of the row. To deal with negative-
- *  start_y or clipping against output, use an intermediate one-line
- *  prerender+blit buffer. Use display- language into harfbuzz or a
- *  language-tag in the tui-cell
- *  as the TTF draw glyph wasn't made with clipping
-		for (size_t col = 0; col < n_cols; col++){
+/* scan a full row for changes, since we need to redo the whole row
+ * on an eventual change as the shaping might have changed */
+		if (synch && !(tui->dirty & DIRTY_PENDING_FULL)){
+			bool row_changed = false;
+			struct tui_cell* front_row = &front[tui->cols * row];
+			struct tui_cell* back_row = &back[tui->cols * row];
+			for (size_t col = 0; col < n_cols; col++){
+				if (!cell_match(&front_row[col], &back_row[col])){
+					row_changed = true;
+					break;
+				}
+			}
+			if (!row_changed)
+				continue;
 		}
-		unsigned prev_index = 0;
 
- * when activated, switch the cursor- resolution function from the normal
- * x * tui->cell_w, y * tui->cell_h to take the row, traverse the row and
- * add offsets.
- */
+		struct shape_state state = {.ind = 0};
+		struct tui_cell* front_row = &front[tui->cols * row];
+		struct tui_cell* back_row = &back[tui->cols * row];
+		int xofs = 0;
 
-/* update front- cell with offsets- and so the cursor positioning and lookup
- * resolve correctly and take the right size */
+/* clear the entire row */
+		int cury = row * ch + start_y;
+		shmif_pixel bgcol = SHMIF_RGBA(
+			tui->bgc[0],tui->bgc[1],tui->bgc[2],tui->alpha);
+		draw_box(&tui->acon, 0, cury, tui->acon.w, cury+tui->cell_h, bgcol);
 
-/* re-use custom drawing function
+		for (size_t col = 0; col < n_cols; col++){
+/* custom-draw cells always reset the state tracking */
+			if (front_row[col].attr.custom_id > 127){
+				tui->got_custom = true;
+				state = (struct shape_state){.xofs = col * cw};
+				continue;
+			}
+
+/* Draw character, apply kerning or, if enabled, full shaping.  We assume
+ * (which is not correct) that the shaped output will not grow to exceed the
+ * cell size limit. This should be fixed alongside proper wcswidth style
+ * screen management */
+			draw_cbt(tui, front_row[col].ch,
+				start_x + state.xofs, cury,
+				&front_row[col].attr, false, &state
+			);
+
+/* We have a forced reset/realign to expected column X */
+			if (front_row[col].attr.shape_break){
+				state = (struct shape_state){.xofs = col * cw};
+			}
+
+/* update target buffer */
+			if (synch && front != back){
+				back_row[col] = front_row[col];
+			}
+		}
 	}
 }
-*/
 #endif
 
 /*
@@ -568,9 +621,6 @@ static void draw_monospace(struct tui_context* tui,
 		tui->cursor_upd = true;
 	}
  */
-
-	size_t drawc = 0;
-
 	for (size_t row = 0; row < n_rows; row++)
 		for (size_t col = 0; col < n_cols; col++){
 
@@ -593,8 +643,7 @@ static void draw_monospace(struct tui_context* tui,
 
 /* update the cell */
 			draw_cbt(tui, fpos->ch,
-				col * cw + start_x, row * ch + start_y, &fpos->attr, false);
-			drawc++;
+				col * cw + start_x, row * ch + start_y, &fpos->attr, false, NULL);
 
 			if (synch)
 				*custom = *bpos = *fpos;
@@ -640,6 +689,15 @@ static void apply_blitbuffer(struct tui_context* tui, int sign)
 			y++, src += tui->acon.pitch, dst += tui->acon.pitch)
 			memcpy(dst, src, tui->acon.stride);
 	}
+
+/* reset the smooth-scroll blitbuffer */
+	shmif_pixel col = SHMIF_RGBA(
+		tui->bgc[0],tui->bgc[1],tui->bgc[2],tui->alpha);
+	shmif_pixel* cvp = tui->acon.vidp;
+	tui->acon.vidp = tui->blitbuffer;
+	draw_box(&tui->acon, 0, 0, tui->acon.w, tui->cell_h*2, col);
+	tui->acon.vidp = cvp;
+	tui->blitbuffer_dirty = 0;
 }
 
 /*
@@ -687,11 +745,10 @@ static void apply_scroll(struct tui_context* tui)
  * have an effect on slow- step-sizes */
 		while(1){
 			tui->dirty |= DIRTY_PENDING_FULL;
-			draw_function(tui, tui->rows+1, tui->cols,
+			tui->draw_function(tui, tui->rows+1, tui->cols,
 				tui->back, tui->back, tui->custom, 0, tui->scroll_px, false);
 			if (tui->blitbuffer_dirty && tui->scroll_px){
 				apply_blitbuffer(tui, 1);
-				tui->blitbuffer_dirty = 0;
 			}
 			arcan_shmif_signal(&tui->acon, SHMIF_SIGVID);
 
@@ -718,7 +775,7 @@ static void apply_scroll(struct tui_context* tui)
 					tui->scroll_backlog = 0;
 					tui->scroll_px = 0;
 					tui->in_scroll = 0;
-					draw_function(tui, tui->rows, tui->cols,
+					tui->draw_function(tui, tui->rows, tui->cols,
 						tui->front, tui->back, tui->custom, 0, 0, true);
 					arcan_shmif_signal(&tui->acon, SHMIF_SIGVID);
 					tui->dirty = 0;
@@ -748,11 +805,10 @@ static void apply_scroll(struct tui_context* tui)
 		wait_vready(tui, true);
 		while(1){
 			tui->dirty |= DIRTY_PENDING_FULL;
-			draw_function(tui, tui->rows+1, tui->cols,
+			tui->draw_function(tui, tui->rows+1, tui->cols,
 				top, top, tui->custom, 0, -tui->scroll_px, false);
 			if (tui->blitbuffer_dirty && tui->scroll_px){
 				apply_blitbuffer(tui, -1);
-				tui->blitbuffer_dirty = 0;
 			}
 
 			arcan_shmif_signal(&tui->acon, SHMIF_SIGVID);
@@ -773,7 +829,7 @@ static void apply_scroll(struct tui_context* tui)
 					tui->scroll_backlog = 0;
 					tui->scroll_px = 0;
 					tui->in_scroll = 0;
-					draw_function(tui, tui->rows, tui->cols,
+					tui->draw_function(tui, tui->rows, tui->cols,
 						tui->front, tui->back, tui->custom, 0, 0, true);
 					arcan_shmif_signal(&tui->acon, SHMIF_SIGVID);
 					tui->dirty = 0;
@@ -839,7 +895,8 @@ static void update_screen(struct tui_context* tui, bool ign_inact)
 		struct tui_cell* tc = &tui->back[tui->cursor_y * tui->cols + tui->cursor_x];
 		draw_cbt(tui, tc->ch,
 			tui->cursor_x * tui->cell_w,
-			tui->cursor_y * tui->cell_h, &tc->attr, tc->ch == 0
+			tui->cursor_y * tui->cell_h, &tc->attr, tc->ch == 0,
+			NULL
 		);
 	}
 
@@ -848,7 +905,7 @@ static void update_screen(struct tui_context* tui, bool ign_inact)
 	if (tui->dbl_buf)
 		tui->dirty |= DIRTY_PENDING_FULL;
 
-	draw_function(tui, tui->rows, tui->cols,
+	tui->draw_function(tui, tui->rows, tui->cols,
 		tui->front, tui->back, tui->custom, 0, 0, true);
 
 	tui->cursor_x = tsm_screen_get_cursor_x(tui->screen);
@@ -1429,7 +1486,8 @@ static void resize_cellbuffer(struct tui_context* tui)
 		free(tui->blitbuffer);
 
 	tui->base = NULL;
-	tui->blitbuffer = malloc(2 * tui->cell_h * tui->acon.stride);
+	if (tui->smooth_scroll)
+		tui->blitbuffer = malloc(2 * tui->cell_h * tui->acon.stride);
 
 /* window size with spare lines for scroll-in-scroll-out */
 	size_t buffer_sz = (2 + tui->rows) * tui->cols * sizeof(struct tui_cell);
@@ -1916,7 +1974,7 @@ static bool setup_font(
 	if (BADFD == fd)
 		fd = tui->font_fd[modeind];
 
-	draw_function = draw_monospace;
+	tui->draw_function = draw_monospace;
 
 /* TTF wants in pt, tui-bitmap fonts wants in px. We don't support
  * mixing vector and bitmap fonts though */
@@ -1945,6 +2003,7 @@ static bool setup_font(
 		return false;
 	}
 
+	tui->draw_function = tui->shape_function;
 	TTF_SetFontHinting(font, tui->hint);
 
 	size_t w = 0, h = 0;
@@ -2265,6 +2324,10 @@ static void apply_arg(struct tui_settings* cfg,
 		cfg->render_flags |= TUI_RENDER_DBLBUF;
 	}
 
+	if (arg_lookup(args, "shape", 0, &val)){
+		cfg->render_flags |= TUI_RENDER_SHAPED;
+	}
+
 #ifdef ENABLE_GPU
 	if (arg_lookup(args, "accel", 0, &val))
 		cfg->render_flags |= TUI_RENDER_ACCEL;
@@ -2509,6 +2572,13 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 	res->acon.hints = SHMIF_RHINT_SUBREGION;
 	res->force_bitmap = (set->render_flags & TUI_RENDER_BITMAP) != 0;
 	res->dbl_buf = (set->render_flags & TUI_RENDER_DBLBUF);
+	res->shape_function = (set->render_flags & TUI_RENDER_SHAPED) ?
+#ifndef SIMPLE_RENDERING
+		draw_shaped
+#else
+		draw_monospace
+#endif
+		: draw_monospace;
 
 	if (init->fonts[0].fd != BADFD){
 		res->hint = init->fonts[0].hinting;

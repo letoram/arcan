@@ -149,6 +149,7 @@ struct vte_saved_state {
 	size_t mouse_y;
 	enum mouse_data mouse_state;
 	struct tui_screen_attr cattr;
+	bool faint;
 	int c_fgcode, c_bgcode;
 	int d_fgcode, d_bgcode;
 
@@ -190,6 +191,7 @@ struct tsm_vte {
 	struct tui_screen_attr cattr;
 	int c_fgcode, c_bgcode;
 	int d_fgcode, d_bgcode;
+	bool faint;
 
 	unsigned int flags;
 
@@ -334,6 +336,12 @@ static void to_rgb(struct tsm_vte *vte, bool defattr)
 		attr->fr = vte->palette[fgc][0];
 		attr->fg = vte->palette[fgc][1];
 		attr->fb = vte->palette[fgc][2];
+
+		if (vte->faint){
+			attr->fr = attr->fr >> 1;
+			attr->fg = attr->fg >> 1;
+			attr->fb = attr->fb >> 1;
+		}
 	}
 
 	if (bgc >= 0) {
@@ -621,6 +629,7 @@ static void save_state(struct tsm_vte *vte)
 	arcan_tui_cursorpos(vte->con,
 		&vte->saved_state.cursor_x, &vte->saved_state.cursor_y);
 	vte->saved_state.cattr = vte->cattr;
+	vte->saved_state.faint = vte->faint;
 	vte->saved_state.gl = vte->gl;
 	vte->saved_state.gr = vte->gr;
 	vte->saved_state.mouse_state = vte->mstate;
@@ -638,6 +647,7 @@ static void restore_state(struct tsm_vte *vte)
 		arcan_tui_defattr(vte->con, &vte->cattr);
 	vte->gl = vte->saved_state.gl;
 	vte->gr = vte->saved_state.gr;
+	vte->faint = vte->saved_state.faint;
 	vte->mstate = vte->saved_state.mouse_state;
 
 	if (vte->saved_state.wrap_mode) {
@@ -1213,7 +1223,7 @@ static void csi_attribute(struct tsm_vte *vte)
 			vte->cattr.underline = 0;
 			vte->cattr.inverse = 0;
 			vte->cattr.blink = 0;
-			vte->cattr.faint = 0;
+			vte->faint = false;
 			vte->cattr.italic = 0;
 			vte->cattr.strikethrough = 0;
 			break;
@@ -1221,7 +1231,7 @@ static void csi_attribute(struct tsm_vte *vte)
 			vte->cattr.bold = 1;
 		break;
 		case 2:
-			vte->cattr.faint = 1;
+			vte->faint = true;
 		break;
 		case 3:
 			vte->cattr.italic = 1;
@@ -1237,7 +1247,7 @@ static void csi_attribute(struct tsm_vte *vte)
 			break;
 		case 22:
 			vte->cattr.bold = 0;
-			vte->cattr.faint = 0;
+			vte->faint = false;
 			break;
 		case 23:
 			vte->cattr.italic = 0;
