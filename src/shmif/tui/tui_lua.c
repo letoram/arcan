@@ -242,24 +242,29 @@ static void on_resize(struct tui_context* c,
 }
 
 static void on_subwindow(struct tui_context* c,
-	enum ARCAN_SEGID type, uint32_t id, struct arcan_shmif_cont* cont, void* tag)
+	arcan_tui_conn* new, uint32_t id, void* t)
 {
+	SETUP_HREF("subwindow",);
 /*
  * Lookup tui context and pending request based on ID,
  * if found, bind to a new _tui setup and emit - on failure,
  * emit the same. Need an explicit GC release as well..
  */
+	END_HREF;
 }
 
 static bool query_label(struct tui_context* ctx,
 	size_t ind, const char* country, const char* lang,
-	struct tui_labelent* dstlbl)
+	struct tui_labelent* dstlbl, void* t)
 {
+	SETUP_HREF("label",false);
+
 /*
- * labels are part of an option table that is part of the initial lua
- * setup (options table)
+ * lcall with country/lang, expect multi-return with label, descr
+ * and fill in - if no arguments returned
  */
 	return false;
+	END_HREF;
 }
 
 static bool intblbool(lua_State* ctx, int ind, const char* field)
@@ -390,7 +395,7 @@ static int tui_open(lua_State* L)
 	}
 
 /* display cleanup is now in the hand of _setup */
-	meta->tui = arcan_tui_setup(&conn, &cfg, &cbcfg, sizeof(cbcfg));
+	meta->tui = arcan_tui_setup(conn, &cfg, &cbcfg, sizeof(cbcfg));
 	if (!meta->tui){
 		lua_pop(L, 1);
 		return 0;
