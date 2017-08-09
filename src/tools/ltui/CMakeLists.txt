@@ -1,6 +1,6 @@
 PROJECT( ltui )
 cmake_minimum_required(VERSION 2.8.0 FATAL_ERROR)
-find_package(arcan_shmif REQUIRED WITH_TUI)
+find_package(arcan_shmif REQUIRED)
 
 add_definitions(
 	-Wall
@@ -21,7 +21,7 @@ SET(LIBRARIES
 	pthread
 	m
 	${ARCAN_SHMIF_LIBRARY}
-	${ARCAN_SHMIF_TUI_LIBRARY}
+	${ARCAN_TUI_LIBRARY}
 	lua51
 )
 

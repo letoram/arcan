@@ -35,9 +35,9 @@
 #include <lauxlib.h>
 
 struct tui_lmeta {
-	struct arcan_shmif_cont con;
 	struct tui_context* tui;
 	int href;
+	const char* last_words;
 	lua_State* lua;
 };
 
@@ -286,7 +286,6 @@ static void apply_table(lua_State* L, int ind, struct tui_screen_attr* attr)
 	attr->inverse = intblbool(L, ind, "inverse");
 	attr->protect = intblbool(L, ind, "protect");
 	attr->blink = intblbool(L, ind, "blink");
-	attr->faint = intblbool(L, ind, "faint");
 	attr->strikethrough = intblbool(L, ind, "strikethrough");
 	attr->custom_id = intblint(L, ind, "id");
 }
@@ -325,34 +324,32 @@ static int tui_open(lua_State* L)
 	const char* title = luaL_checkstring(L, 1);
 	const char* ident = luaL_checkstring(L, 2);
 
-	struct shmif_open_ext opts = {
-		.type = SEGID_TUI,
-		.title = title,
-		.ident = ident
-	};
-
 	struct tui_lmeta* meta = lua_newuserdata(L, sizeof(struct tui_lmeta));
-	if (!meta)
+	if (!meta){
 		return 0;
+	}
+
+	arcan_tui_conn* conn = arcan_tui_open_display(title, ident);
+/* will be GCd */
+	if (!conn){
+		lua_pop(L, 1);
+		return 0;
+	}
 
 /* set the TUI api table to our metadata */
 	luaL_getmetatable(L, "tui_main");
 	lua_setmetatable(L, -2);
 
-/* modify connection options with table contents */
-	if (lua_type(L, 3) == LUA_TTABLE){
-	}
-
-/* error 1, couldn't connect - let the collector collect */
-	meta->con = arcan_shmif_open_ext(0, NULL, opts, sizeof(opts));
-	if (!meta->con.addr){
-		lua_pop(L, 1);
-		return 0;
-	}
-
 /* reference the lua context as part of the tag that is tied to the
  * shmif/tui context struct so we can reach lua from callbacks */
 	meta->lua = L;
+	meta->last_words = NULL;
+
+	struct tui_settings cfg = arcan_tui_defaults(conn, NULL);
+
+/* FIXME: modify cfg with custom table */
+	if (lua_type(L, 3) == LUA_TTABLE){
+	}
 
 /* Hook up the tui/callbacks, these forward into a handler table
  * that the user provide a reference to. */
@@ -375,7 +372,6 @@ static int tui_open(lua_State* L)
 		.subwindow = on_subwindow,
 		.tag = meta
 	};
-	struct tui_settings cfg = arcan_tui_defaults();
 	meta->href = LUA_REFNIL;
 
 /*
@@ -393,9 +389,9 @@ static int tui_open(lua_State* L)
 		}
 	}
 
-	meta->tui = arcan_tui_setup(&meta->con, &cfg, &cbcfg, sizeof(cbcfg));
+/* display cleanup is now in the hand of _setup */
+	meta->tui = arcan_tui_setup(&conn, &cfg, &cbcfg, sizeof(cbcfg));
 	if (!meta->tui){
-		arcan_shmif_drop(&meta->con);
 		lua_pop(L, 1);
 		return 0;
 	}
@@ -425,9 +421,10 @@ static int valid_flag(lua_State* L, int ind)
 /* map to the screen attribute bitfield */
 static int tui_index_get(lua_State* L)
 {
-	printf("index get\n");
 	TUI_UDATA;
 	int id;
+
+	printf("index get\n");
 	if (lua_type(L, 1) == LUA_TSTRING && (id = valid_flag(L, 1))){
 
 	}
@@ -437,10 +434,10 @@ static int tui_index_get(lua_State* L)
 
 static int tui_index_set(lua_State* L)
 {
-	printf("index set\n");
 	TUI_UDATA;
 	int id;
 
+	printf("index set\n");
 	if (lua_type(L, 1) == LUA_TSTRING && (id = valid_flag(L, 1)) && (
 		lua_type(L, 2) == LUA_TNUMBER || lua_type(L, 2) == LUA_TBOOLEAN)){
 
@@ -452,7 +449,7 @@ static int collect(lua_State* L)
 {
 	TUI_UDATA;
 	if (ib->tui){
-		arcan_tui_destroy(ib->tui);
+		arcan_tui_destroy(ib->tui, ib->last_words);
 		ib->tui = NULL;
 	}
 	if (ib->href != LUA_REFNIL){

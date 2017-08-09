@@ -49,13 +49,17 @@ add_custom_command(
 	WORKING_DIRECTORY ${ASD}/shmif
 )
 
+set (TUI_HEADERS
+	${ASD}/shmif/arcan_tui.h
+	${ASD}/shmif/arcan_tuidefs.h
+	${ASD}/shmif/arcan_tuisym.h
+)
+
 set (SHMIF_HEADERS
 	${ASD}/shmif/arcan_shmif_control.h
 	${ASD}/shmif/arcan_shmif_interop.h
 	${ASD}/shmif/arcan_shmif_event.h
-	${ASD}/shmif/arcan_tui.h
 	${ASD}/shmif/arcan_shmif_server.h
-	${ASD}/shmif/arcan_tuisym.h
 	${ASD}/shmif/arcan_shmif_sub.h
 	${ASD}/shmif/arcan_shmif_defs.h
 	${ASD}/shmif/arcan_shmif.h
@@ -279,7 +283,7 @@ if (NOT ARCAN_SOURCE_DIR)
 		ARCHIVE DESTINATION ${ASHMIF_INSTPATH}
 	)
 	install(FILES ${SHMIF_HEADERS} DESTINATION include/arcan/shmif)
-
+	install(FILES ${TUI_HEADERS} DESTINATION include/arcan)
 # The config file is more similar to a regular find module,
 # the procedure for doing something this trivial ("install library,
 # provide means for other projects to find library") seems excessively

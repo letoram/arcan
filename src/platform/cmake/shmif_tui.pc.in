@@ -1,12 +1,12 @@
 prefix=@CMAKE_INSTALL_PREFIX@
 exec_prefix=${prefix}
 libdir=${prefix}/lib
-includedir=${prefix}/include/arcan/shmif
+includedir=${prefix}/include/arcan/
 
-Name: arcan-shmif-tui
+Name: arcan-tui
 Description: Arcan Text Interface Library
 URL: http://arcan-fe.com
-Libs: -L${libdir} -larcan_shmif_tui
+Libs: -L${libdir} -larcan_tui
 Cflags: -I${includedir}
 Version:@VERSION@
 Requires: arcan-shmif
