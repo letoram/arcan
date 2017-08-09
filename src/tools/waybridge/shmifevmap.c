@@ -1,3 +1,18 @@
+/*
+ * NOTES:
+ *  Missing/investigate -
+ *   a. Should pointer event coordinates be clamped against surface?
+ *   b. We need to track surface rotate state and transform coordinates
+ *      accordingly, as there's no 'rotate state' in arcan
+ *   c. Also have grabstate to consider (can only become a MESSAGE and
+ *      wl-specific code in the lua layer)
+ *
+ *  Touch - not used at all right now
+ *
+ *  Keyboard -
+ *   a. we need to feed the 'per seat' keymap with inputs and modifiers
+ *      in order to extract and send correct modifiers (seriously...)
+ */
 static void translate_input(struct comp_surf* cl, arcan_ioevent* ev)
 {
 	if (ev->devkind == EVENT_IDEVKIND_TOUCHDISP){
@@ -28,15 +43,25 @@ static void translate_input(struct comp_surf* cl, arcan_ioevent* ev)
 						ev->input.analog.axisval[0], ev->input.analog.axisval[2]);
 				}
 			}
-/* one sample at a time, we need history */
+/* one sample at a time, we need history - either this will introduce
+ * small or variable script defined latencies and require an event lookbehind
+ * or double the sample load, go with the latter */
 			else {
 				if (ev->input.analog.gotrel){
+					if (ev->subid == 0)
+						cl->acc_x += ev->input.analog.axisval[0];
+					else if (ev->subid == 1)
+						cl->acc_y += ev->input.analog.axisval[0];
 				}
 				else {
+					if (ev->subid == 0)
+						cl->acc_x = ev->input.analog.axisval[0];
+					else if (ev->subid == 1)
+						cl->acc_y = ev->input.analog.axisval[0];
 				}
+			wl_pointer_send_motion(
+				cl->client->pointer, ev->pts, cl->acc_x, cl->acc_y);
 			}
-//wl_pointer_send_enter(surf->client->pointer,STEP_SERIAL(),surf->res, 0, 0);
-
 		}
 		else
 			;

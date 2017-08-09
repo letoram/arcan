@@ -40,12 +40,12 @@ static void bind_seat(struct wl_client *client,
 		wl_client_post_no_memory(client);
 	}
 
-	if (version > 2)
-		wl_seat_send_name(res, "seat0");
-
 	wl_resource_set_implementation(res, &seat_if, cl, NULL);
 	wl_seat_send_capabilities(res, WL_SEAT_CAPABILITY_POINTER |
 		WL_SEAT_CAPABILITY_KEYBOARD | WL_SEAT_CAPABILITY_TOUCH);
+
+	if (version > 2)
+		wl_seat_send_name(res, "seat0");
 }
 
 static void bind_shell(struct wl_client* client,
@@ -85,6 +85,23 @@ static void bind_subcomp(struct wl_client* client,
 		return;
 	}
 	wl_resource_set_implementation(res, &subcomp_if, NULL, NULL);
+}
+
+static void bind_ddev(struct wl_client* client,
+	void* data, uint32_t version, uint32_t id)
+{
+	trace("bind_ddev");
+	struct wl_resource* resource = wl_resource_create(client,
+		&wl_data_device_manager_interface, version, id);
+	if (!resource){
+		wl_client_post_no_memory(client);
+		return;
+	}
+	struct bridge_client* cl = find_client(client);
+	if (!cl){
+		wl_client_post_no_memory(client);
+	}
+	wl_resource_set_implementation(resource, &ddevmgr_if, NULL, NULL);
 }
 
 static void bind_output(struct wl_client* client,

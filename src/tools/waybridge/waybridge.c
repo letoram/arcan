@@ -20,7 +20,6 @@
 #include <poll.h>
 #include <assert.h>
 
-
 #include <xkbcommon/xkbcommon.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
 #include <xkbcommon/xkbcommon-compose.h>
@@ -599,7 +598,7 @@ int main(int argc, char* argv[])
  * field here, and then command-line argument passing to disable said protocol.
  */
 	struct {
-		int compositor, shell, shm, seat, output, egl, xdg, subcomp;
+		int compositor, shell, shm, seat, output, egl, xdg, subcomp, ddev;
 	} protocols = {
 		.compositor = 3,
 		.shell = 1,
@@ -608,7 +607,8 @@ int main(int argc, char* argv[])
 		.output = 2,
 		.egl = 1,
 		.xdg = 1,
-		.subcomp = 1
+		.subcomp = 1,
+		.ddev = 1
 	};
 
 	for (size_t i = 1; i < argc; i++){
@@ -649,6 +649,8 @@ int main(int argc, char* argv[])
 			protocols.xdg = 0;
 		else if (strcmp(argv[i], "-no-subcompositor") == 0)
 			protocols.subcomp = 0;
+		else if (strcmp(argv[i], "-no-data-device") == 0)
+			protocols.ddev = 0;
 		else
 			return show_use("unknown argument (%s)\n", argv[i]);
 	}
@@ -763,6 +765,9 @@ int main(int argc, char* argv[])
 	if (protocols.subcomp)
 		wl_global_create(wl.disp, &wl_subcompositor_interface,
 			protocols.subcomp, NULL, &bind_subcomp);
+	if (protocols.ddev)
+		wl_global_create(wl.disp, &wl_data_device_manager_interface,
+			protocols.ddev, NULL, &bind_ddev);
 
 	trace("wl_display() finished");
 
