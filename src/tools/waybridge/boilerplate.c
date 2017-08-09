@@ -182,6 +182,19 @@ static const struct wl_shell_interface shell_if = {
 	.get_shell_surface = shell_getsurf
 };
 
+#include "wlimpl/data_device.c"
+static const struct wl_data_device_interface ddev_if = {
+	.start_drag = ddev_start_drag,
+	.set_selection = ddev_set_selection,
+	.release = ddev_release
+};
+
+#include "wlimpl/data_device_mgr.c"
+static const struct wl_data_device_manager_interface ddevmgr_if = {
+	.create_data_source = ddevmgr_create_data_source,
+	.get_data_device = ddevmgr_get_data_device
+};
+
 #include "wayland-xdg-shell-unstable-v6-server-protocol.h"
 #include "wlimpl/xdg_positioner.c"
 static struct zxdg_positioner_v6_interface xdgpos_if = {
