@@ -13,7 +13,7 @@ add_definitions(
 
 set(ARCAN_SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../)
 
-include_directories(${ARCAN_SHMIF_INCLUDE_DIR}
+include_directories(${ARCAN_SHMIF_INCLUDE_DIR} ${ARCAN_TUI_INCLUDE_DIR}
 	${ARCAN_SOURCE_ROOT}/../external/lua ${ARCAN_SOURCE_ROOT}/shmif/tui)
 add_subdirectory(${ARCAN_SOURCE_ROOT}/../external/lua ${CMAKE_CURRENT_BINARY_DIR}/lua)
 

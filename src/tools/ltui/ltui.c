@@ -160,13 +160,13 @@ static void dump_stack(lua_State* ctx)
 			printf(lua_toboolean(ctx, i) ? "true" : "false");
 		break;
 		case LUA_TSTRING:
-			printf("%d\t'%s'\n", i, lua_tostring(ctx, i));
+			printf("%zu\t'%s'\n", i, lua_tostring(ctx, i));
 			break;
 		case LUA_TNUMBER:
-			printf("%d\t%g\n", i, lua_tonumber(ctx, i));
+			printf("%zu\t%g\n", i, lua_tonumber(ctx, i));
 			break;
 		default:
-			printf("%d\t%s\n", i, lua_typename(ctx, t));
+			printf("%zu\t%s\n", i, lua_typename(ctx, t));
 			break;
 		}
 	}

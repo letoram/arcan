@@ -259,7 +259,7 @@ struct tui_cbcfg {
  */
 	bool (*query_label)(struct tui_context*,
 		size_t ind, const char* country, const char* lang,
-		struct tui_labelent* dstlbl);
+		struct tui_labelent* dstlbl, void*);
 
 /*
  * An explicit label- input has been sent,
@@ -533,6 +533,14 @@ struct tui_screen_attr {
  *         can be queried for in selection buffers etc. */
 	uint8_t custom_id;
 };
+
+/*
+ * Open a new connection to a TUI- capable display and return an opaque
+ * connection reference or NULL if no connection could be established. If a
+ * handle is provided, forward it to arcan_tui_setup which will take over
+ * lifecycle management for the connection.
+ */
+arcan_tui_conn* arcan_tui_open_display(const char* title, const char* ident);
 
 /*
  * try to send the contents of utf8_msg, careful with length of this
