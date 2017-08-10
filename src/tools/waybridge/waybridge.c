@@ -608,7 +608,7 @@ int main(int argc, char* argv[])
 		.egl = 1,
 		.xdg = 1,
 		.subcomp = 1,
-		.ddev = 1
+		.ddev = 3
 	};
 
 	for (size_t i = 1; i < argc; i++){

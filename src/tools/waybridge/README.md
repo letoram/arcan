@@ -80,16 +80,16 @@ TODO
   - [x] 1:1 client to bridge mapping
     - [x] \*:1 client to bridge mapping
   - [ ] Seat
-    - [x] Keyboard
-    - [ ] Mouse
+    - [p] Keyboard
+    - [p] Mouse
     - [ ] Touch
   - [ ] Mouse Cursor
   - [ ] Popup
   - [ ] EGL/drm
 - [ ] Milestone 2
     - [ ] Positioners
-    - [ ] Cut and Paste
-    - [ ] Full XDG-shell (not just boilerplate)
+    - [ ] Cut and Paste (full 'data device manager')
+    - [ ] Full XDG-shell (not just 90% boilerplate)
     - [ ] Application-test suite and automated tests (SDL, QT, GTK, ...)]
     - [ ] XWayland (WLC- level)
     - [ ] Output Rotation / Scaling
