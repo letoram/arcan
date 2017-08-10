@@ -69,84 +69,6 @@
 #endif
 
 /*
- * These should be kept in lock-step with changes to the event structures.
- */
-static const char* tgt_cmd_xlt[] = {
-	"UNDEFINED",
-	"EXIT",
-	"FRAMESKIP",
-	"STEPFRAME",
-	"COREOPT",
-	"STORE",
-	"RESTORE",
-	"BCHUNK_IN",
-	"BCHINK_OUT",
-	"RESET",
-	"PAUSE",
-	"UNPAUSE",
-	"SEEKTIME",
-	"SEEKCONTENT",
-	"DISPLAYHINT",
-	"SETIODEV",
-	"STREAMSET",
-	"ATTENUATE",
-	"AUDDELAY",
-	"NEWSEGMENT",
-	"REQFAIL",
-	"BUFFER_FAIL",
-	"DEVICE_NODE",
-	"GRAPHMODE",
-	"MESSAGE",
-	"FONTHINT",
-	"GEOHINT",
-	"OUTPUTHINT",
-	"ACTIVATE"
-};
-
-static const char* ext_cmd_xlt[] = {
-	"MESSAGE",
-	"COREOPT",
-	"IDENT",
-	"FAILURE",
-	"BUFFERSTREAM",
-	"FRAMESTATUS",
-	"STREAMINFO",
-	"STREAMSTATUS",
-	"STATESIZE",
-	"FLUSHAUDIO",
-	"SEGMENT_REQUEST",
-	"KEYINPUT",
-	"CURSORINPUT",
-	"CURSORHINT",
-	"VIEWPORT",
-	"CONTENT",
-	"LABELHINT",
-	"REGISTER",
-	"ALERT",
-	"CLOCKREQ",
-	"BCHUNKSTATE"
-};
-
-static const char* fsrv_cmd_xlt[] = {
-	"EXTCONN",
-	"RESIZED",
-	"TERMINATED",
-	"DROPPEDFRAME",
-	"DELIVEREDFRAME"
-};
-
-static const char* cat_xlt[] = {
-	"SYSTEM",
-	"IO",
-	"VIDEO",
-	"AUDIO",
-	"TARGET",
-	"FSRV",
-	"EXT",
-	"NET"
-};
-
-/*
  * To avoid having -lm or similar requirements on terrible libc implementations
  */
 static int ilog2(int val)
@@ -155,46 +77,6 @@ static int ilog2(int val)
 	while( val >>= 1)
 		i++;
 	return i;
-}
-
-const char* arcan_shmif_eventstr(arcan_event* aev, char* dbuf, size_t dsz)
-{
-	static char evbuf[256];
-	char* work;
-	if (dbuf){
-		work = dbuf;
-	}
-	else{
-		work = evbuf;
-		dsz = sizeof(evbuf);
-	}
-
-	unsigned cat_ind = ilog2(aev->category);
-
-	if (cat_ind < 1 || cat_ind > COUNT_OF(cat_xlt))
-		return NULL;
-
-	const char* evstr;
-	switch(aev->category){
-	case EVENT_TARGET:
-		evstr = aev->tgt.kind > COUNT_OF(tgt_cmd_xlt)
-			? "overflow/broken" : tgt_cmd_xlt[aev->ext.kind];
-	break;
-	case EVENT_FSRV:
-		evstr = aev->fsrv.kind > COUNT_OF(fsrv_cmd_xlt)
-			? "" : fsrv_cmd_xlt[aev->fsrv.kind];
-	break;
-	case EVENT_EXTERNAL:
-		evstr = aev->ext.kind > COUNT_OF(ext_cmd_xlt)
-			? "overflow/broken" : ext_cmd_xlt[aev->ext.kind];
-	break;
-	default:
-		evstr = "UNKNOWN";
-	}
-
-	snprintf(work, dsz, "%s:%s", cat_xlt[cat_ind], evstr);
-
-	return work;
 }
 
 /*
@@ -233,6 +115,7 @@ struct shmif_hidden {
 	bool output : 1;
 	bool alive : 1;
 	bool paused : 1;
+	bool log_event : 1;
 
 	char* alt_conn;
 
@@ -544,7 +427,7 @@ static int process_events(struct arcan_shmif_cont* c,
 	struct arcan_event* dst, bool blocking, bool upret)
 {
 reset:
-	if (!c || !dst || !c->addr || !c->priv || !c->priv->alive)
+	if (!dst || !c->addr)
 		return -1;
 
 	struct shmif_hidden* priv = c->priv;
@@ -772,30 +655,52 @@ static void drop_initial(struct arcan_shmif_cont* c)
 
 int arcan_shmif_poll(struct arcan_shmif_cont* c, struct arcan_event* dst)
 {
-	if (c && c->priv && c->priv->valid_initial)
+	if (!c || !c->priv || !c->priv->alive)
+		return -1;
+
+	if (c->priv->valid_initial)
 		drop_initial(c);
 
-	return process_events(c, dst, false, false);
+	int rv = process_events(c, dst, false, false);
+	if (rv > 0 && c->priv->log_event){
+		fprintf(stderr, "(@%"PRIxPTR"<-)%s\n",
+			(uintptr_t) c, arcan_shmif_eventstr(dst, NULL, 0));
+	}
+	return rv;
 }
 
 int arcan_shmif_wait(struct arcan_shmif_cont* c, struct arcan_event* dst)
 {
-	if (c && c->priv && c->priv->valid_initial)
+	if (!c || !c->priv || !c->priv->alive)
+		return false;
+
+	if (c->priv->valid_initial)
 		drop_initial(c);
 
-	return process_events(c, dst, true, false) > 0;
+	int rv = process_events(c, dst, true, false);
+	if (rv > 0 && c->priv->log_event){
+		fprintf(stderr, "(@%"PRIxPTR"<-)%s\n",
+			(uintptr_t) c, arcan_shmif_eventstr(dst, NULL, 0));
+	}
+	return rv > 0;
 }
 
 int arcan_shmif_enqueue(struct arcan_shmif_cont* c,
 	const struct arcan_event* const src)
 {
 	assert(c);
-	if (!c || !c->addr)
+	if (!c || !c->addr || !c->priv)
 		return 0;
 
 	if (!c->addr->dms || !c->priv->alive){
 		fallback_migrate(c);
 		return 0;
+	}
+
+	if (c->priv->log_event){
+		struct arcan_event outev = *src;
+		fprintf(stderr, "(@%"PRIxPTR"->)%s\n",
+			(uintptr_t) c, arcan_shmif_eventstr(&outev, NULL, 0));
 	}
 
 	struct arcan_evctx* ctx = &c->priv->outev;
@@ -1165,6 +1070,7 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 
 	*res.priv = gs;
 	res.priv->alive = true;
+	res.priv->log_event = getenv("ARCAN_SHMIF_DEBUG") != NULL;
 
 	if (!(flags & SHMIF_DISABLE_GUARD))
 		spawn_guardthread(&res);
