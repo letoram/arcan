@@ -70,6 +70,7 @@ set (SHMIF_SOURCES
 	${SHMIF_HEADERS}
 	${ASD}/shmif/arcan_shmif_control.c
 	${ASD}/shmif/arcan_shmif_sub.c
+	${ASD}/shmif/arcan_shmif_evpack.c
 )
 
 if (LWA_PLATFORM_STR AND IS_DIRECTORY "${ASD}/shmif/${LWA_PLATFORM_STR}" AND

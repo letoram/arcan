@@ -24,8 +24,13 @@
 #include <xkbcommon/xkbcommon-keysyms.h>
 #include <xkbcommon/xkbcommon-compose.h>
 
+static bool trace_log = false;
+
 static inline void trace(const char* msg, ...)
 {
+	if (!trace_log)
+		return;
+
 	va_list args;
 	va_start( args, msg );
 		vfprintf(stderr,  msg, args );
@@ -593,6 +598,7 @@ int main(int argc, char* argv[])
 {
 	struct arg_arr* aarr;
 	int shm_egl = false;
+	trace_log = getenv("WAYBRIDGE_TRACE") != NULL;
 
 /* for each wayland protocol or subprotocol supported, add a corresponding
  * field here, and then command-line argument passing to disable said protocol.
