@@ -6,6 +6,9 @@
  *      accordingly, as there's no 'rotate state' in arcan
  *   c. Also have grabstate to consider (can only become a MESSAGE and
  *      wl-specific code in the lua layer)
+ *   d. scroll- wheel are in some float- version, so we need to deal
+ *      with subid 3,4 for analog events and subid 4, 5 for digital
+ *      events.
  *
  *  Touch - not used at all right now
  *
@@ -13,35 +16,53 @@
  *   a. we need to feed the 'per seat' keymap with inputs and modifiers
  *      in order to extract and send correct modifiers (seriously...)
  */
+static void update_mxy(struct comp_surf* cl, unsigned long long pts)
+{
+/*	trace("mouse@%d,%d\n", cl->acc_x, cl->acc_y); */
+	if (cl->pointer_pending == 1){
+		cl->pointer_pending = 2;
+		wl_pointer_send_enter(cl->client->pointer,
+			STEP_SERIAL(), cl->res, cl->acc_x, cl->acc_y);
+	}
+	else
+		wl_pointer_send_motion(cl->client->pointer, pts,
+			wl_fixed_from_int(cl->acc_x), wl_fixed_from_int(cl->acc_y));
+}
+
+static void update_mbtn(struct comp_surf* cl,
+	unsigned long long pts, int ind, bool active)
+{
+	trace("mouse-btn(ind: %d:%d, @%d,%d)",ind,(int) active, cl->acc_x, cl->acc_y);
+
+/* 0x110 == BTN_LEFT in evdev parlerance */
+	wl_pointer_send_button(cl->client->pointer, STEP_SERIAL(),
+		pts, 0x110 + ind, active ?
+		WL_POINTER_BUTTON_STATE_PRESSED : WL_POINTER_BUTTON_STATE_RELEASED
+	);
+}
+
 static void translate_input(struct comp_surf* cl, arcan_ioevent* ev)
 {
 	if (ev->devkind == EVENT_IDEVKIND_TOUCHDISP){
 		trace("touch\n");
 	}
+/* motion would/should always come before digital */
 	else if (ev->devkind == EVENT_IDEVKIND_MOUSE && cl->client->pointer){
 		if (ev->datatype == EVENT_IDATATYPE_DIGITAL){
-			wl_pointer_send_button(cl->client->pointer, STEP_SERIAL(),
-				ev->pts, ev->subid, ev->input.digital.active);
+			update_mbtn(cl, ev->pts, ev->subid, ev->input.digital.active);
 		}
 		else if (ev->datatype == EVENT_IDATATYPE_ANALOG){
-/* first sample, now we can send enter */
-
-			if (cl->pointer_pending == 1){
-				cl->pointer_pending = 2;
-				wl_pointer_send_enter(cl->client->pointer, STEP_SERIAL(), cl->res, 0, 0);
-			}
 /* both samples */
 			if (ev->subid == 2){
 				if (ev->input.analog.gotrel){
 					cl->acc_x += ev->input.analog.axisval[0];
 					cl->acc_y += ev->input.analog.axisval[2];
-					wl_pointer_send_motion(
-						cl->client->pointer, ev->pts, cl->acc_x, cl->acc_y);
 				}
 				else{
-					wl_pointer_send_motion(cl->client->pointer, ev->pts,
-						ev->input.analog.axisval[0], ev->input.analog.axisval[2]);
+					cl->acc_x = ev->input.analog.axisval[0];
+					cl->acc_y = ev->input.analog.axisval[2];
 				}
+				update_mxy(cl, ev->pts);
 			}
 /* one sample at a time, we need history - either this will introduce
  * small or variable script defined latencies and require an event lookbehind
@@ -59,13 +80,11 @@ static void translate_input(struct comp_surf* cl, arcan_ioevent* ev)
 					else if (ev->subid == 1)
 						cl->acc_y = ev->input.analog.axisval[0];
 				}
-			wl_pointer_send_motion(
-				cl->client->pointer, ev->pts, cl->acc_x, cl->acc_y);
+				update_mxy(cl, ev->pts);
 			}
 		}
 		else
 			;
-		trace("mouse\n");
 
 /* wl_mouse_ (send_button, send_axis, send_enter, send_leave) */
 	}
