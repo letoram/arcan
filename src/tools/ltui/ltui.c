@@ -15,6 +15,8 @@
 
 #include "lauxlib.h"
 #include "lualib.h"
+#include <arcan_shmif.h>
+#include <arcan_tui.h>
 #include "tui_lua.h"
 
 static lua_State *globalL = NULL;

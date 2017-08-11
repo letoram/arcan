@@ -409,7 +409,7 @@ struct tui_cbcfg {
  * take this into account. If the program is running in the alternate-
  * screen mode, use this as a trigger to redraw and recolor.
  */
-	void (*recolor)(struct tui_context*);
+	void (*recolor)(struct tui_context*, void*);
 
 /*
  * A new subwindow has arrived. ALWAYS run the normal setup sequence
