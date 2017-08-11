@@ -18,7 +18,7 @@
  */
 static void update_mxy(struct comp_surf* cl, unsigned long long pts)
 {
-/*	trace("mouse@%d,%d\n", cl->acc_x, cl->acc_y); */
+	trace(TRACE_ANALOG, "mouse@%d,%d\n", cl->acc_x, cl->acc_y);
 	if (cl->pointer_pending == 1){
 		cl->pointer_pending = 2;
 		wl_pointer_send_enter(cl->client->pointer,
@@ -32,7 +32,8 @@ static void update_mxy(struct comp_surf* cl, unsigned long long pts)
 static void update_mbtn(struct comp_surf* cl,
 	unsigned long long pts, int ind, bool active)
 {
-	trace("mouse-btn(ind: %d:%d, @%d,%d)",ind,(int) active, cl->acc_x, cl->acc_y);
+	trace(TRACE_DIGITAL,
+		"mouse-btn(ind: %d:%d, @%d,%d)",ind,(int) active, cl->acc_x, cl->acc_y);
 
 /* 0x110 == BTN_LEFT in evdev parlerance */
 	wl_pointer_send_button(cl->client->pointer, STEP_SERIAL(),
@@ -44,7 +45,7 @@ static void update_mbtn(struct comp_surf* cl,
 static void translate_input(struct comp_surf* cl, arcan_ioevent* ev)
 {
 	if (ev->devkind == EVENT_IDEVKIND_TOUCHDISP){
-		trace("touch\n");
+		trace(TRACE_ANALOG, "touch\n");
 	}
 /* motion would/should always come before digital */
 	else if (ev->devkind == EVENT_IDEVKIND_MOUSE && cl->client->pointer){
@@ -90,7 +91,8 @@ static void translate_input(struct comp_surf* cl, arcan_ioevent* ev)
 	}
 	else if (ev->datatype ==
 		EVENT_IDATATYPE_TRANSLATED && cl->client && cl->client->keyboard){
-		trace("keyboard (%d:%d)\n", (int)ev->subid,
+		trace(TRACE_DIGITAL,
+			"keyboard (%d:%d)\n", (int)ev->subid,
 			(int)ev->input.translated.scancode);
 		wl_keyboard_send_key(cl->client->keyboard,
 			wl_display_next_serial(wl.disp),
@@ -222,17 +224,16 @@ static void flush_client_events(
 	struct arcan_event ev;
 
 	while (arcan_shmif_poll(&cl->acon, &ev) > 0){
-		trace("(client-event) %s\n", arcan_shmif_eventstr(&ev, NULL, 0));
 		if (ev.category != EVENT_TARGET)
 			continue;
 		switch(ev.tgt.kind){
 		case TARGET_COMMAND_EXIT:
-			trace("shmif-> kill client");
+			trace(TRACE_ALLOC, "shmif-> kill client");
 /*		wl_client_destroy(cl->client);
 			trace("shmif-> kill client"); */
 		break;
 		case TARGET_COMMAND_DISPLAYHINT:
-			trace("shmif-> target update visibility or size");
+			trace(TRACE_ALLOC, "shmif-> target update visibility or size");
 			if (ev.tgt.ioevs[0].iv && ev.tgt.ioevs[1].iv){
 			}
 /* this one isn't very easy - since only the primary segment (i.e.
@@ -248,17 +249,14 @@ static void flush_client_events(
 		case TARGET_COMMAND_RESET:
 		break;
 		case TARGET_COMMAND_REQFAIL:
-			trace("request for surface (%d) was rejected\n", ev.tgt.ioevs[0].iv);
 		break;
 		case TARGET_COMMAND_NEWSEGMENT:
-			trace("new surface, deal with it\n");
 		break;
 
 /* if selection status change, send wl_surface_
  * if type: wl_shell, send _send_configure */
 		break;
 		case TARGET_COMMAND_OUTPUTHINT:
-			trace("shmif-> target update configuration");
 		break;
 		default:
 		break;
@@ -270,7 +268,6 @@ static bool flush_bridge_events(struct arcan_shmif_cont* con)
 {
 	struct arcan_event ev;
 	while (arcan_shmif_poll(con, &ev) > 0){
-		trace("(bridge-event) %s\n", arcan_shmif_eventstr(&ev, NULL, 0));
 		if (ev.category == EVENT_TARGET){
 		switch (ev.tgt.kind){
 		case TARGET_COMMAND_EXIT:

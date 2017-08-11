@@ -24,11 +24,21 @@
 #include <xkbcommon/xkbcommon-keysyms.h>
 #include <xkbcommon/xkbcommon-compose.h>
 
-static bool trace_log = false;
+static int trace_log = 0;
+enum trace_levels {
+	TRACE_ALLOC   = 1,
+	TRACE_DIGITAL = 2,
+	TRACE_ANALOG  = 4,
+	TRACE_SHELL   = 8,
+	TRACE_REGION  = 16,
+	TRACE_DDEV    = 32,
+	TRACE_SEAT    = 64,
+	TRACE_SURF    = 128
+};
 
-static inline void trace(const char* msg, ...)
+static inline void trace(int level, const char* msg, ...)
 {
-	if (!trace_log)
+	if (!trace_log || !(level & trace_log))
 		return;
 
 	va_list args;
@@ -38,6 +48,10 @@ static inline void trace(const char* msg, ...)
 	va_end( args);
 	fflush(stderr);
 }
+
+#define __FILENAME__ (strrchr(__FILE__, '/')?strrchr(__FILE__, '/') + 1 : __FILE__)
+#define trace(X, Y, ...) do { trace(X, "%s:%d:%s(): " \
+	Y, __FILENAME__, __LINE__, __func__,##__VA_ARGS__); } while (0)
 
 /*
  * EGL- details needed for handle translation
@@ -149,7 +163,7 @@ static uint64_t find_set64(uint64_t bmap)
 
 static char* load_keymap()
 {
-	trace("building keymap");
+	trace(TRACE_ALLOC, "building keymap");
 	struct xkb_context* ctx = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
 	if (!ctx)
 		return false;
@@ -177,7 +191,7 @@ static bool waybridge_instance_keymap(int* out_fd, int* out_fmt, size_t* out_sz)
 	if (!keymap || !out_fd || !out_fmt || !out_sz)
 		return false;
 
-	trace("creating temporary keymap copy");
+	trace(TRACE_ALLOC, "creating temporary keymap copy");
 
 	char* chfn = NULL;
 	if (-1 == asprintf(&chfn, "%s/wlbridge-kmap-XXXXXX",
@@ -186,7 +200,7 @@ static bool waybridge_instance_keymap(int* out_fd, int* out_fmt, size_t* out_sz)
 
 	int fd;
 	if (!chfn || (fd = mkstemp(chfn)) == -1){
-		trace("make tempmap failed");
+		trace(TRACE_ALLOC, "make tempmap failed");
 		free(chfn);
 		return false;
 	}
@@ -194,7 +208,7 @@ static bool waybridge_instance_keymap(int* out_fd, int* out_fmt, size_t* out_sz)
 
 	*out_sz = strlen(keymap) + 1;
 	if (*out_sz != write(fd, keymap, *out_sz)){
-		trace("write keymap failed");
+		trace(TRACE_ALLOC, "write keymap failed");
 		close(fd);
 	}
 
@@ -204,7 +218,7 @@ static bool waybridge_instance_keymap(int* out_fd, int* out_fmt, size_t* out_sz)
 	return true;
 }
 
-static bool alloc_group_id(int type, int* groupid, int* slot, int fd)
+static bool alloc_group_id(int type, int* groupid, int* slot, int fd, char d)
 {
 	for (size_t i = 0; i < wl.n_groups; i++){
 	uint64_t ind = find_set64(~wl.groups[i].alloc);
@@ -215,18 +229,24 @@ static bool alloc_group_id(int type, int* groupid, int* slot, int fd)
 		ind--;
 
 /* mark as allocated and store */
-		trace("alloc_to(%d : %d)\n", i, ind);
+		trace(TRACE_ALLOC, "alloc_to(%d : %d)\n", i, ind);
 		wl.groups[i].alloc |= 1 << ind;
 		wl.groups[i].pg[ind].fd = fd;
 		wl.groups[i].slots[ind].type = type;
+		wl.groups[i].slots[ind].idch = d;
 		*groupid = i;
 		*slot = ind;
-#if 1
-	for (size_t j = 0; j < sizeof(wl.groups[i].alloc)*8; j++){
-		fprintf(stderr, "%c", (1 << j) & wl.groups[i].alloc ? 'x' : 'o');
-	}
-	fprintf(stderr, "\n");
-#endif
+
+/* debug output to see slot and source */
+		if (trace_log)
+			fprintf(stderr, "alloc-mask: ");
+		for (size_t j = 0; j < sizeof(wl.groups[i].alloc)*8 && trace_log; j++){
+			fprintf(stderr, "%c", (1 << j) & wl.groups[i].alloc ?
+				wl.groups[i].slots[j].idch : '_');
+		}
+		if (trace_log)
+			fprintf(stderr, "\n");
+
 		return true;
 	}
 	return false;
@@ -239,13 +259,14 @@ static void reset_group_slot(int group, int slot)
 	wl.groups[group].pg[slot].revents = 0;
 	wl.groups[group].slots[slot] = (struct bridge_slot){};
 
-#if 1
-	for (size_t i = 0; i < sizeof(wl.groups[group].alloc)*8; i++){
-		fprintf(stderr, "%c", (1 << i) & wl.groups[group].alloc ? 'x' : 'o');
+	if (trace_log)
+		fprintf(stderr, "alloc-mask: ");
+	for (size_t i = 0; i < sizeof(wl.groups[group].alloc)*8 && trace_log; i++){
+		fprintf(stderr, "%c", (1 << i) & wl.groups[group].alloc ?
+			wl.groups[group].slots[i].idch : '_');
 	}
-	fprintf(stderr, "\n");
-#endif
-
+	if (trace_log)
+		fprintf(stderr, "\n");
 }
 
 /*
@@ -254,9 +275,9 @@ static void reset_group_slot(int group, int slot)
  * deferred or not.
  */
 static bool request_surface(
-	struct bridge_client* cl, struct surface_request* req)
+	struct bridge_client* cl, struct surface_request* req, char idch)
 {
-	trace("requesting-segment");
+	trace(TRACE_ALLOC, "requesting-segment");
 	struct arcan_event acqev = {0};
 	if (!cl || !req || !req->dispatch){
 		fprintf(stderr, "request_surface called with bad request\n");
@@ -268,7 +289,7 @@ static bool request_surface(
  * the request type is a CURSOR or a POPUP (both are possible in XDG).
  */
 	static uint32_t alloc_id = 0xbabe;
-	trace("segment-req source(%s) -> %d\n", req->trace, alloc_id);
+	trace(TRACE_ALLOC, "segment-req source(%s) -> %d\n", req->trace, alloc_id);
 	arcan_shmif_enqueue(&cl->acon, &(struct arcan_event){
 		.ext.kind = ARCAN_EVENT(SEGREQ),
 		.ext.segreq.kind = req->segid,
@@ -301,17 +322,17 @@ static bool request_surface(
 
 /* allocate a pollslot for the new surface, and set its event dispatch
  * to match what the request wanted */
-			if (!alloc_group_id(SLOT_TYPE_SURFACE, &group, &ind, cont.epipe)){
+			if (!alloc_group_id(SLOT_TYPE_SURFACE, &group, &ind, cont.epipe, idch)){
 				req->dispatch(req, NULL);
 				arcan_shmif_drop(&cont);
 				free(cont.user);
 			}
 			else {
-				trace("new surface assigned to (%d:%d)\n", group, ind);
+				trace(TRACE_ALLOC, "new surface assigned to (%d:%d)\n", group, ind);
 				tag->group = group;
 				tag->slot = ind;
 				if(!req->dispatch(req, &cont)){
-					trace("surface request dispatcher rejected surface\n");
+					trace(TRACE_ALLOC, "surface request dispatcher rejected surface\n");
 /* caller doesn't want the surface anymore? */
 					arcan_shmif_drop(&cont);
 					reset_group_slot(group, ind);
@@ -348,11 +369,11 @@ static void destroy_comp_surf(struct comp_surf* surf)
 	if (surf->acon.addr){
 		struct acon_tag* tag = surf->acon.user;
 		if (tag){
-			trace("deregister-surface (%d:%d)\n", tag->group, tag->slot);
+			trace(TRACE_ALLOC, "deregister-surface (%d:%d)\n", tag->group, tag->slot);
 			reset_group_slot(tag->group, tag->slot);
 		}
 		else {
-			trace("dropping unbound shmif-connection\n");
+			trace(TRACE_ALLOC, "dropping unbound shmif-connection\n");
 		}
 		surf->client->refc--;
 		surf->acon.user = NULL;
@@ -365,20 +386,42 @@ static void destroy_comp_surf(struct comp_surf* surf)
 }
 
 /*
- * deallocate the group/slot assigned to a client, and drop its
- * corresponding arcan-shmif connection.
+ * delete all resources/surfaces bound to a specific bridge client,
+ * this is set as an event listener for destruction on a client
  */
 static void destroy_client(struct wl_listener* l, void* data)
 {
-	struct bridge_client* cl;
-	cl = wl_container_of(l, cl, l_destr);
+	struct bridge_client* cl = wl_container_of(l, cl, l_destr);
 
 	if (!cl || !(wl.groups[cl->group].alloc & (1 << cl->slot))){
-		trace("destroy_client(), struct doesn't match bitmap");
+		trace(TRACE_ALLOC, "destroy_client(), struct doesn't match bitmap");
 		return;
 	}
 
-	trace("destroy client(%d:%d)", cl->group, cl->slot);
+/*
+ * There's the chance that we have dangling surfaces for a client that
+ * just exits uncleanly. If these doesn't get cleaned up here, we'll
+ * UAF next cycle
+ */
+	for (size_t i = 0; i < wl.n_groups; i++){
+		uint64_t ind = find_set64(~wl.groups[i].alloc);
+		if (0 == ind)
+			continue;
+
+		ind--;
+		for (size_t j = 0; j < sizeof(wl.groups[i].alloc)*8 && trace_log; j++){
+			if ( !((1 << j) & wl.groups[i].alloc) )
+				continue;
+
+			if (&wl.groups[i].slots[j].client == cl &&
+				wl.groups[i].slots[j].type == SLOT_TYPE_SURFACE){
+				trace(TRACE_ALLOC,"destroy_client->dangling surface(%zu:%zu:%c)",
+					i, j, wl.groups[i].slots[j].idch);
+				destroy_comp_surf(wl.groups[i].slots[j].surface);
+			}
+		}
+	}
+	trace(TRACE_ALLOC, "destroy client(%d:%d)", cl->group, cl->slot);
 
 	arcan_shmif_drop(&cl->acon);
 	assert(!cl->cursor.addr);
@@ -416,7 +459,7 @@ static struct bridge_client* find_client(struct wl_client* cl)
 		}
 	}
 
-	trace("connecting new bridge client");
+	trace(TRACE_ALLOC, "connecting new bridge client");
 /*
  * [POSSIBLE FORK SLOT]
  * if (0 == fork()){
@@ -430,15 +473,16 @@ static struct bridge_client* find_client(struct wl_client* cl)
  * the option to track origin. */
 	struct arcan_shmif_cont con = arcan_shmif_open(SEGID_BRIDGE_WAYLAND, 0, NULL);
 	if (!con.addr){
-		trace("failed to open segid-bridge-wayland connection to arcan server");
+		trace(TRACE_ALLOC,
+			"failed to open segid-bridge-wayland connection to arcan server");
 		free(res);
 		return NULL;
 	}
 
 /* THEN allocate a local resource */
 	int group, ind;
-	if (!alloc_group_id(SLOT_TYPE_CLIENT, &group, &ind, con.epipe)){
-		trace("couldn't allocate bridge client slot");
+	if (!alloc_group_id(SLOT_TYPE_CLIENT, &group, &ind, con.epipe, 'C')){
+		trace(TRACE_ALLOC, "couldn't allocate bridge client slot");
 		arcan_shmif_drop(&con);
 		free(res);
 		return NULL;
@@ -454,7 +498,7 @@ static struct bridge_client* find_client(struct wl_client* cl)
  * mouse cursor. Since these NEED to be allocated through an existing
  * connection, we can't simply ignore connecting at this stage.
  */
-	trace("new client assigned to (%d:%d)", group, ind);
+	trace(TRACE_ALLOC, "new client assigned to (%d:%d)", group, ind);
 	res = &wl.groups[group].slots[ind].client;
 	*res = (struct bridge_client){};
 
@@ -598,7 +642,8 @@ int main(int argc, char* argv[])
 {
 	struct arg_arr* aarr;
 	int shm_egl = false;
-	trace_log = getenv("WAYBRIDGE_TRACE") != NULL;
+	if (getenv("WAYBRIDGE_TRACE"))
+		trace_log = strtoul(getenv("WAYBRIDGE_TRACE"), NULL, 10);
 
 /* for each wayland protocol or subprotocol supported, add a corresponding
  * field here, and then command-line argument passing to disable said protocol.
@@ -679,7 +724,8 @@ int main(int argc, char* argv[])
  * the multiplexing etc. a bit more annoying since we steer away from epoll or
  * kqueue or other OS specific multiplexation mechanisms.
  */
-	wl.control = arcan_shmif_open(SEGID_BRIDGE_WAYLAND, SHMIF_ACQUIRE_FATALFAIL, &aarr);
+	wl.control = arcan_shmif_open(
+		SEGID_BRIDGE_WAYLAND, SHMIF_ACQUIRE_FATALFAIL, &aarr);
 	struct arcan_shmif_initial* init;
 	arcan_shmif_initial(&wl.control, &init);
 	wl.init = *init;
@@ -775,7 +821,7 @@ int main(int argc, char* argv[])
 		wl_global_create(wl.disp, &wl_data_device_manager_interface,
 			protocols.ddev, NULL, &bind_ddev);
 
-	trace("wl_display() finished");
+	trace(TRACE_ALLOC, "wl_display() finished");
 
 	wl.alive = true;
 

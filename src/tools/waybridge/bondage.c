@@ -14,7 +14,7 @@ static void bind_shm(struct wl_client* client,
 static void bind_comp(struct wl_client *client,
 	void *data, uint32_t version, uint32_t id)
 {
-	trace("wl_bind(compositor %d:%d)", version, id);
+	trace(TRACE_ALLOC, "wl_bind(compositor %d:%d)", version, id);
 	struct wl_resource* res = wl_resource_create(client,
 		&wl_compositor_interface, version, id);
 	if (!res){
@@ -27,7 +27,7 @@ static void bind_comp(struct wl_client *client,
 static void bind_seat(struct wl_client *client,
 	void *data, uint32_t version, uint32_t id)
 {
-	trace("wl_bind(seat %d:%d)", version, id);
+	trace(TRACE_ALLOC, "wl_bind(seat %d:%d)", version, id);
 	struct wl_resource* res = wl_resource_create(client,
 		&wl_seat_interface, version, id);
 	if (!res){
@@ -51,7 +51,7 @@ static void bind_seat(struct wl_client *client,
 static void bind_shell(struct wl_client* client,
 	void *data, uint32_t version, uint32_t id)
 {
-	trace("wl_bind(shell %d:%d)", version, id);
+	trace(TRACE_ALLOC, "wl_bind(shell %d:%d)", version, id);
 	struct wl_resource* res = wl_resource_create(client,
 		&wl_shell_interface, version, id);
 	if (!res){
@@ -64,7 +64,7 @@ static void bind_shell(struct wl_client* client,
 static void bind_xdg(struct wl_client* client,
 	void *data, uint32_t version, uint32_t id)
 {
-	trace("wl_bind(xdg %d:%d)", version, id);
+	trace(TRACE_ALLOC, "wl_bind(xdg %d:%d)", version, id);
 	struct wl_resource* res = wl_resource_create(client,
 		&zxdg_shell_v6_interface, version, id);
 	if (!res){
@@ -77,7 +77,7 @@ static void bind_xdg(struct wl_client* client,
 static void bind_subcomp(struct wl_client* client,
 	void* data, uint32_t version, uint32_t id)
 {
-	trace("wl_bind(subcomp %d:%d)", version, id);
+	trace(TRACE_ALLOC, "wl_bind(subcomp %d:%d)", version, id);
 	struct wl_resource* res = wl_resource_create(client,
 		&wl_subcompositor_interface, version, id);
 	if (!res){
@@ -90,7 +90,7 @@ static void bind_subcomp(struct wl_client* client,
 static void bind_ddev(struct wl_client* client,
 	void* data, uint32_t version, uint32_t id)
 {
-	trace("bind_ddev");
+	trace(TRACE_ALLOC, "bind_ddev");
 	struct wl_resource* resource = wl_resource_create(client,
 		&wl_data_device_manager_interface, version, id);
 	if (!resource){
@@ -107,7 +107,7 @@ static void bind_ddev(struct wl_client* client,
 static void bind_output(struct wl_client* client,
 	void* data, uint32_t version, uint32_t id)
 {
-	trace("bind_output");
+	trace(TRACE_ALLOC, "bind_output");
 	struct wl_resource* resource = wl_resource_create(client,
 		&wl_output_interface, version, id);
 	if (!resource){

@@ -49,7 +49,7 @@ struct surface_request {
 	bool (*dispatch)(struct surface_request*, struct arcan_shmif_cont* srf);
 };
 
-static bool request_surface(struct bridge_client* cl, struct surface_request*);
+static bool request_surface(struct bridge_client* cl, struct surface_request*, char);
 
 struct surf_state {
 	bool hidden : 1;
@@ -98,6 +98,7 @@ static void try_frame_callback(struct comp_surf* surf);
 #define SLOT_TYPE_SURFACE 2
 struct bridge_slot {
 	int type;
+	char idch;
 	union {
 		struct arcan_shmif_cont con;
 		struct bridge_client client;

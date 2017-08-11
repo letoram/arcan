@@ -1,7 +1,7 @@
 static void cursor_set(struct wl_client* cl, struct wl_resource* res,
 	uint32_t serial, struct wl_resource* surf_res, int32_t hot_x, int32_t hot_y)
 {
-	trace("cursor_set");
+	trace(TRACE_SEAT, "cursor_set");
 /*
  * struct comp_surf* surf = wl_resource_get_user_data(surf_res);
  */
@@ -9,7 +9,7 @@ static void cursor_set(struct wl_client* cl, struct wl_resource* res,
 
 static void cursor_release(struct wl_client* cl, struct wl_resource* res)
 {
-	trace("cursor_release");
+	trace(TRACE_SEAT, "cursor_release");
 	wl_resource_destroy(res);
 }
 
@@ -34,7 +34,7 @@ static bool pointer_handler(
 		return false;
 	}
 
-	trace("seat pointer paired with SEGID_CURSOR\n");
+	trace(TRACE_SEAT, "seat pointer paired with SEGID_CURSOR\n");
 	req->client->pointer = ptr_res;
 	wl_resource_set_implementation(ptr_res, &pointer_if, req->target, NULL);
 	return true;
@@ -43,7 +43,7 @@ static bool pointer_handler(
 static void seat_pointer(struct wl_client* cl,
 	struct wl_resource* res, uint32_t id)
 {
-	trace("seat_pointer(%"PRIu32")", id);
+	trace(TRACE_SEAT, "seat_pointer(%"PRIu32")", id);
 
 	struct bridge_client* bcl = wl_resource_get_user_data(res);
 	if (!bcl->cursor.addr){
@@ -56,13 +56,13 @@ static void seat_pointer(struct wl_client* cl,
 			.client = bcl
 /* note that we can't set source any since we don't have a surface to
  * attach the connection to */
-		});
+		}, 'm');
 	}
 }
 
 static void kbd_release(struct wl_client* client, struct wl_resource* res)
 {
-	trace("kbd release");
+	trace(TRACE_SEAT, "kbd release");
 	wl_resource_destroy(res);
 }
 
@@ -73,7 +73,7 @@ struct wl_keyboard_interface kbd_if = {
 static void seat_keyboard(struct wl_client* cl,
 	struct wl_resource* res, uint32_t id)
 {
-	trace("seat_keyboard(%"PRIu32")", id);
+	trace(TRACE_SEAT, "seat_keyboard(%"PRIu32")", id);
 	struct bridge_client* bcl = wl_resource_get_user_data(res);
 
 	struct wl_resource* kbd = wl_resource_create(cl,
@@ -105,5 +105,5 @@ static void seat_keyboard(struct wl_client* cl,
 static void seat_touch(struct wl_client* cl,
 	struct wl_resource* res, uint32_t id)
 {
-	trace("seat_touch(%"PRIu32")", id);
+	trace(TRACE_SEAT, "seat_touch(%"PRIu32")", id);
 }
