@@ -5,10 +5,6 @@ static bool shellsurf_shmifev_handler(
 		switch (ev->tgt.kind){
 /* resize? or focus change? */
 		case TARGET_COMMAND_DISPLAYHINT:{
-			trace("displayhint(%d, %d, %d, %d) = (%d*%d)",
-				ev->tgt.ioevs[0].iv, ev->tgt.ioevs[1].iv,
-				ev->tgt.ioevs[2].iv, ev->tgt.ioevs[3].iv, surf->acon.w, surf->acon.h);
-
 			int w = ev->tgt.ioevs[0].iv;
 			int h = ev->tgt.ioevs[1].iv;
 			if (w && h && (w != surf->acon.w || h != surf->acon.h)){
@@ -63,7 +59,7 @@ static bool shell_defer_handler(
 static void shell_getsurf(struct wl_client* client,
 	struct wl_resource* res, uint32_t id, struct wl_resource* surf_res)
 {
-	trace("get shell surface");
+	trace(TRACE_SHELL, "get shell surface");
 	struct comp_surf* surf = wl_resource_get_user_data(surf_res);
 	request_surface(surf->client, &(struct surface_request){
 		.segid = SEGID_APPLICATION,
@@ -73,5 +69,5 @@ static void shell_getsurf(struct wl_client* client,
 		.dispatch = shell_defer_handler,
 		.client = surf->client,
 		.source = surf
-	});
+	}, 's');
 }

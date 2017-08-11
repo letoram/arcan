@@ -1,16 +1,77 @@
+static bool xdgtoplevel_shmifev_handler(
+	struct comp_surf* surf, struct arcan_event* ev)
+{
+	if (!surf->shell_res)
+		return true;
+
+	if (ev->category == EVENT_TARGET)
+		switch (ev->tgt.kind){
+
+		case TARGET_COMMAND_DISPLAYHINT:{
+		/* update state tracking first */
+			trace(TRACE_SHELL, "xdg-toplevel:displayhint(%d, %d, %d, %d) = (%d*%d)",
+				ev->tgt.ioevs[0].iv, ev->tgt.ioevs[1].iv,
+				ev->tgt.ioevs[2].iv, ev->tgt.ioevs[3].iv, surf->acon.w, surf->acon.h);
+
+			bool changed = displayhint_handler(surf, &ev->tgt);
+
+/* and then, if something has changed, send the configure event */
+			int w = ev->tgt.ioevs[0].iv ? ev->tgt.ioevs[0].iv : 0;
+			int h = ev->tgt.ioevs[1].iv ? ev->tgt.ioevs[1].iv : 0;
+			if (changed || (w && h && (w != surf->acon.w || h != surf->acon.h))){
+				struct wl_array states;
+				trace(TRACE_SHELL, "xdg_surface(request resize to %d*%d)", w, h);
+				wl_array_init(&states);
+				uint32_t* sv;
+				if (surf->states.maximized){
+					sv = wl_array_add(&states, sizeof(uint32_t));
+					*sv = ZXDG_TOPLEVEL_V6_STATE_MAXIMIZED;
+				}
+
+				if (surf->states.drag_resize){
+					sv = wl_array_add(&states, sizeof(uint32_t));
+					*sv = ZXDG_TOPLEVEL_V6_STATE_RESIZING;
+				}
+
+				if (!surf->states.unfocused){
+					sv = wl_array_add(&states, sizeof(uint32_t));
+					*sv = ZXDG_TOPLEVEL_V6_STATE_ACTIVATED;
+				}
+
+				zxdg_toplevel_v6_send_configure(surf->shell_res, w, h, &states);
+				wl_array_release(&states);
+				changed = true;
+			}
+
+			if (changed)
+				try_frame_callback(surf);
+		}
+		return true;
+		break;
+		case TARGET_COMMAND_EXIT:
+			zxdg_toplevel_v6_send_close(surf->shell_res);
+			return true;
+		break;
+		default:
+		break;
+		}
+
+	return false;
+}
+
 /*
  * => VIEWPORT
  */
 static void xdgtop_setparent(
 	struct wl_client* cl, struct wl_resource* res, struct wl_resource* parent)
 {
-	trace("xdgtop_setparent");
+	trace(TRACE_SHELL, "xdgtop_setparent");
 }
 
 static void xdgtop_title(
 	struct wl_client* cl, struct wl_resource* res, const char* title)
 {
-	trace("xdgtop_title");
+	trace(TRACE_SHELL, "xdgtop_title");
 	struct comp_surf* surf = wl_resource_get_user_data(res);
 
 	arcan_event ev = {
@@ -24,7 +85,7 @@ static void xdgtop_title(
 static void xdgtop_appid(
 	struct wl_client* cl, struct wl_resource* res, const char* app_id)
 {
-	trace("xdgtop_app_id");
+	trace(TRACE_SHELL, "xdgtop_app_id");
 	/* I wondered how long it would take for D-Bus to rear its ugly
 	 * face along with the .desktop clusterfuck. I wonder no more.
 	 * we can wrap this around some _message call and leave it to
@@ -34,7 +95,7 @@ static void xdgtop_appid(
 static void xdgtop_wndmenu(struct wl_client* cl, struct wl_resource* res,
 	struct wl_resource* seat, uint32_t serial, int32_t x, int32_t y)
 {
-	trace("xdgtop_wndmenu (%"PRId32", %"PRId32")", x, y);
+	trace(TRACE_SHELL, "xdgtop_wndmenu (%"PRId32", %"PRId32")", x, y);
 }
 
 /*
@@ -58,7 +119,7 @@ static void xdgtop_wndmenu(struct wl_client* cl, struct wl_resource* res,
 static void xdgtop_move(struct wl_client* cl,
 	struct wl_resource* res, struct wl_resource* seat, uint32_t serial)
 {
-	trace("xdgtop_move");
+	trace(TRACE_SHELL, "xdgtop_move");
 }
 
 /*
@@ -67,7 +128,7 @@ static void xdgtop_move(struct wl_client* cl,
 static void xdgtop_resize(struct wl_client* cl, struct wl_resource* res,
 	struct wl_resource* seat, uint32_t serial, uint32_t edges)
 {
-	trace("xdgtop_resize");
+	trace(TRACE_SHELL, "xdgtop_resize");
 }
 
 /*
@@ -80,7 +141,7 @@ static void xdgtop_resize(struct wl_client* cl, struct wl_resource* res,
 static void xdgtop_set_max(struct wl_client* cl,
 	struct wl_resource* res, int32_t width, int32_t height)
 {
-	trace("xdgtop_set_max (%"PRIu32", %"PRIu32")");
+	trace(TRACE_SHELL, "xdgtop_set_max (%"PRIu32", %"PRIu32")");
 }
 
 /*
@@ -89,7 +150,7 @@ static void xdgtop_set_max(struct wl_client* cl,
 static void xdgtop_set_min(struct wl_client* cl,
 	struct wl_resource* res, int32_t width, int32_t height)
 {
-	trace("xdgtop_set_min (%"PRId32", %"PRId32")", width, height);
+	trace(TRACE_SHELL, "xdgtop_set_min (%"PRId32", %"PRId32")", width, height);
 }
 
 /*
@@ -98,35 +159,35 @@ static void xdgtop_set_min(struct wl_client* cl,
 static void xdgtop_maximize(
 	struct wl_client* cl, struct wl_resource* res)
 {
-	trace("xdgtop_maximize");
+	trace(TRACE_SHELL, "xdgtop_maximize");
 }
 
 static void xdgtop_demaximize(
 	struct wl_client* cl, struct wl_resource* res)
 {
-	trace("xdgtop_demaximize");
+	trace(TRACE_SHELL, "xdgtop_demaximize");
 }
 
 static void xdgtop_fullscreen(
 	struct wl_client* cl, struct wl_resource* res, struct wl_resource* output)
 {
-	trace("xdgtop_fullscreen");
+	trace(TRACE_SHELL, "xdgtop_fullscreen");
 }
 
 static void xdgtop_unset_fullscreen(
 	struct wl_client* cl, struct wl_resource* res)
 {
-	trace("xdgtop_unset_fullscreen");
+	trace(TRACE_SHELL, "xdgtop_unset_fullscreen");
 }
 
 static void xdgtop_minimize(
 	struct wl_client* cl, struct wl_resource* res)
 {
-	trace("xdgtop_minimize");
+	trace(TRACE_SHELL, "xdgtop_minimize");
 }
 
 static void xdgtop_destroy(
 	struct wl_client* cl, struct wl_resource* res)
 {
-	trace("xdgtop_destroy");
+	trace(TRACE_ALLOC, "xdgtop_destroy");
 }

@@ -1,69 +1,37 @@
-static bool xdgsurf_shmifev_handler(
-	struct comp_surf* surf, struct arcan_event* ev)
+static bool xdgpopup_defer_handler(
+	struct surface_request* req, struct arcan_shmif_cont* con)
 {
-	if (!surf->shell_res)
-		return true;
+	if (!con){
+		trace(TRACE_SHELL, "xdgpopup:reqfail");
+		wl_resource_post_no_memory(req->target);
+		return false;
+	}
+	struct wl_resource* popup = wl_resource_create(req->client->client,
+		&zxdg_popup_v6_interface, wl_resource_get_version(req->target), req->id);
 
-	if (ev->category == EVENT_TARGET)
-		switch (ev->tgt.kind){
+	if (!popup){
+		wl_resource_post_no_memory(req->target);
+		return false;
+	}
 
-		case TARGET_COMMAND_DISPLAYHINT:{
-		/* update state tracking first */
-			trace("displayhint(%d, %d, %d, %d) = (%d*%d)",
-				ev->tgt.ioevs[0].iv, ev->tgt.ioevs[1].iv,
-				ev->tgt.ioevs[2].iv, ev->tgt.ioevs[3].iv, surf->acon.w, surf->acon.h);
-
-			bool changed = displayhint_handler(surf, &ev->tgt);
-
-/* and then, if something has changed, send the configure event */
-			int w = ev->tgt.ioevs[0].iv ? ev->tgt.ioevs[0].iv : 0;
-			int h = ev->tgt.ioevs[1].iv ? ev->tgt.ioevs[1].iv : 0;
-			if (changed || (w && h && (w != surf->acon.w || h != surf->acon.h))){
-				struct wl_array states;
-				trace("xdg_surface(request resize to %d*%d)", w, h);
-				wl_array_init(&states);
-				uint32_t* sv;
-				if (surf->states.maximized){
-					sv = wl_array_add(&states, sizeof(uint32_t));
-					*sv = ZXDG_TOPLEVEL_V6_STATE_MAXIMIZED;
-				}
-
-				if (surf->states.drag_resize){
-					sv = wl_array_add(&states, sizeof(uint32_t));
-					*sv = ZXDG_TOPLEVEL_V6_STATE_RESIZING;
-				}
-
-				if (!surf->states.unfocused){
-					sv = wl_array_add(&states, sizeof(uint32_t));
-					*sv = ZXDG_TOPLEVEL_V6_STATE_ACTIVATED;
-				}
-
-				zxdg_toplevel_v6_send_configure(surf->shell_res, w, h, &states);
-				wl_array_release(&states);
-				changed = true;
-			}
-
-			if (changed)
-				try_frame_callback(surf);
-		}
-		return true;
-		break;
-		case TARGET_COMMAND_EXIT:
-			zxdg_toplevel_v6_send_close(surf->shell_res);
-			return true;
-		break;
-		default:
-		break;
-		}
-
-	return false;
+	struct comp_surf* surf = wl_resource_get_user_data(req->target);
+	wl_resource_set_implementation(popup, &xdgpop_if, surf, NULL);
+	surf->acon = *con;
+	surf->cookie = 0xabbaab;
+	surf->shell_res = popup;
+	surf->dispatch = xdgpopup_shmifev_handler;
+	arcan_shmif_enqueue(&surf->acon, &(struct arcan_event){
+		.ext.kind = ARCAN_EVENT(MESSAGE),
+		.ext.message.data = {"shell:xdg_shell"}
+	});
+	return true;
 }
 
 static bool xdgsurf_defer_handler(
 	struct surface_request* req, struct arcan_shmif_cont* con)
 {
 	if (!con){
-		trace("xdgsurf:reqfail");
+		trace(TRACE_SHELL, "xdgsurf:reqfail");
 		wl_resource_post_no_memory(req->target);
 		return false;
 	}
@@ -81,7 +49,7 @@ static bool xdgsurf_defer_handler(
 	surf->acon = *con;
 	surf->cookie = 0xfeedface;
 	surf->shell_res = toplevel;
-	surf->dispatch = xdgsurf_shmifev_handler;
+	surf->dispatch = xdgtoplevel_shmifev_handler;
 
 /* propagate this so the scripts have a chance of following the restrictions
  * indicated by the protocol */
@@ -100,7 +68,7 @@ static bool xdgsurf_defer_handler(
 static void xdgsurf_toplevel(
 	struct wl_client* cl, struct wl_resource* res, uint32_t id)
 {
-	trace("xdgsurf_toplevel");
+	trace(TRACE_SHELL, "xdgsurf_toplevel");
 	struct comp_surf* surf = wl_resource_get_user_data(res);
 
 /* though it is marked as 'defered' here, chances are that the request
@@ -113,18 +81,23 @@ static void xdgsurf_toplevel(
 		.dispatch = xdgsurf_defer_handler,
 		.client = surf->client,
 		.source = surf
-	});
+	}, 't');
 }
 
 static void xdgsurf_getpopup(struct wl_client* cl, struct wl_resource* res,
 	uint32_t id, struct wl_resource* parent, struct wl_resource* positioner)
 {
-	trace("xdgsurf_getpopup");
-
-/* "theoretically" we could've used the SEGID_POPUP etc. type when
- * requesting the surface, BUT there's nothing stopping the client from
- * taking a toplevel surface and promoting to a popup or menu, so this
- * distinction is pointless. */
+	trace(TRACE_SHELL, "xdgsurf_getpopup");
+	struct comp_surf* surf = wl_resource_get_user_data(res);
+	request_surface(surf->client, &(struct surface_request ){
+		.segid = SEGID_POPUP,
+		.target = res,
+		.id = id,
+		.trace = "xdg popup",
+		.dispatch = xdgpopup_defer_handler,
+		.client = surf->client,
+		.source = surf
+	}, 'p');
 }
 
 /* Hints about the window visible size sans dropshadows and things like that,
@@ -135,7 +108,7 @@ static void xdgsurf_getpopup(struct wl_client* cl, struct wl_resource* res,
 static void xdgsurf_set_geometry(struct wl_client* cl,
 	struct wl_resource* res, int32_t x, int32_t y, int32_t width, int32_t height)
 {
-	trace("xdgsurf_setgeom("
+	trace(TRACE_SHELL, "xdgsurf_setgeom("
 		"%"PRIu32"+%"PRIu32", %"PRIu32"+%"PRIu32")", x, y, width, height);
 
 	struct comp_surf* surf = wl_resource_get_user_data(res);
@@ -154,13 +127,17 @@ static void xdgsurf_set_geometry(struct wl_client* cl,
 static void xdgsurf_ackcfg(
 	struct wl_client* cl, struct wl_resource* res, uint32_t serial)
 {
-	trace("xdgsurf_ackcfg");
+	trace(TRACE_SHELL, "xdgsurf_ackcfg");
+/* reading the spec for this makes it seem like there can be many
+ * 'in flight' cfgs and you need to send ack individually and thus
+ * track pending cfgs that lacks an acq */
 }
 
 static void xdgsurf_destroy(
 	struct wl_client* cl, struct wl_resource* res)
 {
-	trace("xdgsurf_destroy");
+	trace(TRACE_ALLOC, "xdgsurf_destroy");
 	struct comp_surf* surf = wl_resource_get_user_data(res);
 	surf->shell_res = NULL;
+	wl_resource_destroy(res);
 }

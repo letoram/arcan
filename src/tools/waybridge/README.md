@@ -41,6 +41,30 @@ The main paths to follow to get some kind of comprehension of what is going
 on is how surfaces are allocated and how the surface allocation request are
 propagated.
 
+To debug, add WAYBRIDGE\_TRACE=level as env and very verbose call tracing
+will be added.
+
+tracelevels (bitmask so add)
+ 1   - allocations only
+ 2   - digital input events
+ 4   - analog input events
+ 8   - shell (wl\_shell, xdg\_shell, ...) events
+ 16  - region events
+ 32  - data-device events
+ 64  - seat events
+ 128 - surface events
+
+Allocation outputs are encoded as follows:
+'C' - client-bridge connection
+'s' - shell surface
+'m' - pointer surface
+'t' - xdg- toplevel surface
+'p' - xdg- popup surface
+'x' - dead
+'o' - unused
+
+Then the correlated arcan events can be traced with ARCAN\_SHMIF\_DEBUG=1
+
 Notes and Issues
 ====
 1. Mesa picks the wrong render-node

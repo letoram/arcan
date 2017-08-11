@@ -1,32 +1,32 @@
 static void subsurf_destroy(struct wl_client *cl, struct wl_resource* res)
 {
-	trace("subsurf_destroy");
+	trace(TRACE_ALLOC, "destroy:subsurface");
 }
 
 static void subsurf_position(
 	struct wl_client *cl, struct wl_resource* res, int32_t x, int32_t y)
 {
-	trace("subsurf_position");
+	trace(TRACE_SHELL, "subsurf_position");
 }
 
 static void subsurf_placeabove(
 	struct wl_client *cl, struct wl_resource* res, struct wl_resource* sibl)
 {
-	trace("subsurf_placeabove");
+	trace(TRACE_SHELL, "subsurf_placeabove");
 }
 
 static void subsurf_placebelow(
 	struct wl_client *cl, struct wl_resource* res, struct wl_resource* sibl)
 {
-	trace("subsurf_placebelow");
+	trace(TRACE_SHELL, "subsurf_placebelow");
 }
 
 static void subsurf_setsync(struct wl_client *cl, struct wl_resource* res)
 {
-	trace("subsurf_setsync");
+	trace(TRACE_SHELL, "subsurf_setsync");
 }
 
 static void subsurf_setdesync(struct wl_client *cl, struct wl_resource* res)
 {
-	trace("subsurf_setdesync");
+	trace(TRACE_SHELL, "subsurf_setdesync");
 }

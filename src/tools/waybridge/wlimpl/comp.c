@@ -1,6 +1,6 @@
 static void comp_surf_delete(struct wl_resource* res)
 {
-	trace("destroy compositor surface");
+	trace(TRACE_ALLOC, "destroy:compositor surface");
 /*
  * note that this already happens in surface destroy
  * struct comp_surf* surf = wl_resource_get_user_data(res);
@@ -14,7 +14,7 @@ static void comp_surf_delete(struct wl_resource* res)
 static void comp_surf_create(struct wl_client *client,
 	struct wl_resource *res, uint32_t id)
 {
-	trace("create compositor surface(%"PRIu32")", id);
+	trace(TRACE_ALLOC, "create:compositor surface(%"PRIu32")", id);
 
 /* If the client doesn't already exist, now is the time we make the first
  * connection. Then we just accept that the surface is created, and defer
@@ -54,7 +54,7 @@ static void comp_surf_create(struct wl_client *client,
 static void comp_create_reg(struct wl_client *client,
 	struct wl_resource *resource, uint32_t id)
 {
-	trace("create region");
+	trace(TRACE_REGION, "create:region");
 	struct wl_resource* region = wl_resource_create(client,
 		&wl_region_interface, wl_resource_get_version(resource), id);
 	wl_resource_set_implementation(region, &region_if, NULL, NULL);

@@ -1,12 +1,6 @@
-#define NO_TRACE
-
-#ifdef NO_TRACE
-#define trace(...)
-#endif
-
 static void surf_destroy(struct wl_client* cl, struct wl_resource* res)
 {
-	trace("surf_destroy(%"PRIxPTR")", (uintptr_t) res);
+	trace(TRACE_ALLOC, "destroy:surf(%"PRIxPTR")", (uintptr_t) res);
 	struct comp_surf* surf = wl_resource_get_user_data(res);
 
 	if (surf)
@@ -19,7 +13,7 @@ static void surf_destroy(struct wl_client* cl, struct wl_resource* res)
 static void surf_attach(struct wl_client* cl, struct wl_resource* res,
 	struct wl_resource* buf, int32_t x, int32_t y)
 {
-	trace("surf_attach(%d, %d)", (int)x, (int)y);
+	trace(TRACE_SURF, "surf_attach(%d, %d)", (int)x, (int)y);
 	struct comp_surf* surf = wl_resource_get_user_data(res);
 	surf->buf = buf;
 }
@@ -30,7 +24,7 @@ static void surf_attach(struct wl_client* cl, struct wl_resource* res,
 static void surf_damage(struct wl_client* cl, struct wl_resource* res,
 	int32_t x, int32_t y, int32_t w, int32_t h)
 {
-	trace("surf_damage(%d+%d, %d+%d)", (int)x, (int)w, (int)y, (int)h);
+	trace(TRACE_SURF,"surf_damage(%d+%d, %d+%d)", (int)x, (int)w, (int)y, (int)h);
 //	struct bridge_surf* surf = wl_resource_get_user_data(res);
 }
 
@@ -46,7 +40,7 @@ static void surf_damage(struct wl_client* cl, struct wl_resource* res,
 static void surf_frame(
 	struct wl_client* cl, struct wl_resource* res, uint32_t cb)
 {
-	trace("surf_frame()");
+	trace(TRACE_SURF, "surf_frame()");
 	struct comp_surf* surf = wl_resource_get_user_data(res);
 
 /* spec doesn't say how many callbacks we should permit */
@@ -74,33 +68,33 @@ static void surf_frame(
 static void surf_opaque(struct wl_client* cl,
 	struct wl_resource* res, struct wl_resource* reg)
 {
-	trace("surf_opaqaue()");
+	trace(TRACE_REGION, "opaque");
 }
 
 static void surf_inputreg(struct wl_client* cl,
 	struct wl_resource* res, struct wl_resource* reg)
 {
-	trace("surf_inputreg()");
+	trace(TRACE_REGION, "input");
 }
 
 static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 {
-	trace("surf_commit(xxx)");
+	trace(TRACE_SURF, "surf_commit(xxx)");
 	struct comp_surf* surf = wl_resource_get_user_data(res);
 	EGLint dfmt;
 
 	if (surf->cookie != 0xfeedface){
-		trace("surf_commit() UAF on surface in commit");
+		trace(TRACE_SURF, "surf_commit() UAF on surface in commit");
 		return;
 	}
 
 	if (!surf->buf){
-		trace("surf_commit() surface lacks buffer");
+		trace(TRACE_SURF, "surf_commit() surface lacks buffer");
 		return;
 	}
 
 	if (!surf->client || !surf->acon.addr){
-		trace("surf_commit() surface doesn't have an arcan connection");
+		trace(TRACE_SURF, "surf_commit() surface doesn't have an arcan connection");
 		wl_buffer_send_release(surf->buf);
 		return;
 	}
@@ -115,7 +109,7 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 
 	if (query_buffer && query_buffer(wl.display,
 		surf->buf, EGL_TEXTURE_FORMAT, &dfmt)){
-		trace("surf_commit(egl)");
+		trace(TRACE_SURF, "surf_commit(egl)");
 
 /* for this case, we need to defer the release of a buffer, chances are we run
  * into a live-locking problem as the server will keep the buffer and use it as
@@ -135,7 +129,7 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
  */
 	}
 	else {
-		trace("surf_commit(shm)");
+		trace(TRACE_SURF, "surf_commit(shm)");
 		struct wl_shm_buffer* buf = wl_shm_buffer_get(surf->buf);
 		if (buf){
 				uint32_t w = wl_shm_buffer_get_width(buf);
@@ -179,15 +173,11 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 static void surf_transform(struct wl_client* cl,
 	struct wl_resource* res, int32_t transform)
 {
-	trace("surf_transform(%d)", (int) transform);
+	trace(TRACE_SURF, "surf_transform(%d)", (int) transform);
 }
 
 static void surf_scale(struct wl_client* cl,
 	struct wl_resource* res, int32_t scale)
 {
-	trace("surf_scale(%d)", (int) scale);
+	trace(TRACE_SURF, "surf_scale(%d)", (int) scale);
 }
-
-#ifdef NO_TRACE
-#undef trace
-#endif
