@@ -36,6 +36,20 @@
 #define HAVE_ARCAN_SHMIF_TUI_LUA
 
 /*
+ * user-data structures passed as tui-tags
+ */
+struct tui_lmeta {
+	struct tui_context* tui;
+	int href;
+	const char* last_words;
+	lua_State* lua;
+};
+
+struct tui_attr {
+	struct tui_screen_attr attr;
+};
+
+/*
  * apply/add the TUI/Lua bindings to a lua VM context
  */
 void tui_lua_expose(lua_State*);

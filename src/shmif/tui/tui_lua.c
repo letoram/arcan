@@ -2,30 +2,10 @@
  * License: 3-clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  * Description: This adds a naive mapping to the TUI API for Lua scripting.
- * Simply append- the related functions to a Lua contxt, and you should be
+ * Simply append- the related functions to a Lua context, and you should be
  * able to open/connect using tui_open() -> context.
- * For more detailed examples, see shmif/tui
- *
- * Checklist:
- *   Normal drawing API: 5%
- *   Event mapping: 70%:
- *       file mapping / mutiplex missing
- *
- *   Subwindow management / support:
- *       "free" subwindow
- *       embedded subwindow
- *       popup
- *
- *   TUI extensions: 0%
- *       - custom cells:
- *                "putpixel"
- *                "buffer map"
- *                "tile map" (register pixel group as tile and ref.)
- *       - multiple screens (switching)
- *   Handover- protocol for sharing shmif- sessions
- *   TUI cleanup: 0%
- *
- * PoCs:
+ * For more detailed examples, see shmif/tui and a patched version of the
+ * normal Lua CLI in tools/ltui
  */
 
 #include <arcan_shmif.h>
@@ -34,16 +14,57 @@
 #include <lualib.h>
 #include <lauxlib.h>
 
-struct tui_lmeta {
-	struct tui_context* tui;
-	int href;
-	const char* last_words;
-	lua_State* lua;
-};
+#include "tui_lua.h"
 
-struct tui_cattr {
-	struct tui_screen_attr attr;
-};
+/*
+ * convenience macro prolog for all TUI callbacks
+ */
+#define SETUP_HREF(X, B) \
+	struct tui_lmeta* meta = t;\
+	lua_State* L = meta->lua;\
+	if (meta->href == LUA_REFNIL)\
+		return B;\
+	lua_rawgeti(L, LUA_REGISTRYINDEX, meta->href);\
+	lua_getfield(L, -1, X);\
+	if (lua_type(L, -1) != LUA_TFUNCTION){\
+		lua_pop(L, 2);\
+		return B;\
+	}\
+	lua_pushvalue(L, -2);
+
+#define END_HREF lua_pop(L, 1);
+
+/*
+ * convenience macro prolog for all TUI window bound lua->c functions
+ */
+#define TUI_UDATA	\
+	struct tui_lmeta* ib = luaL_checkudata(L, 1, "tui_main"); \
+	if (!ib || !ib->tui) return 0; \
+
+/*
+ * version of luaL_checknumber that accepts true/false as numbers
+ */
+static lua_Number luaL_checkbnumber(lua_State* L, int narg)
+{
+	lua_Number d = lua_tonumber(L, narg);
+	if (d == 0 && !lua_isnumber(L, narg)){
+		if (!lua_isboolean(L, narg))
+			luaL_typerror(L, narg, "number or boolean");
+		else
+			d = lua_toboolean(L, narg);
+	}
+	return d;
+}
+
+static lua_Number luaL_optbnumber(lua_State* L, int narg, lua_Number opt)
+{
+	if (lua_isnumber(L, narg))
+		return lua_tonumber(L, narg);
+	else if (lua_isboolean(L, narg))
+		return lua_toboolean(L, narg);
+	else
+		return opt;
+}
 
 static void dump_stack(lua_State* ctx)
 {
@@ -71,21 +92,6 @@ static void dump_stack(lua_State* ctx)
 
 	printf("\n");
 }
-
-#define SETUP_HREF(X, B) \
-	struct tui_lmeta* meta = t;\
-	lua_State* L = meta->lua;\
-	if (meta->href == LUA_REFNIL)\
-		return B;\
-	lua_rawgeti(L, LUA_REGISTRYINDEX, meta->href);\
-	lua_getfield(L, -1, X);\
-	if (lua_type(L, -1) != LUA_TFUNCTION){\
-		lua_pop(L, 2);\
-		return B;\
-	}\
-	lua_pushvalue(L, -2);
-
-#define END_HREF lua_pop(L, 1);
 
 /* chain: [label] -> x -> [u8] -> x -> [key] where (x) is a
  * return true- early out */
@@ -164,13 +170,20 @@ static void on_misc(struct tui_context* c, const arcan_ioevent* ev, void* t)
 {
 }
 
-/*
- * need file/asynch like behavior from libuv, possibly through lanes
- *
- * need:
- *  - splice behavior
- *  -
- */
+static void on_recolor(struct tui_context* c, void* t)
+{
+	SETUP_HREF("recolor", );
+		lua_call(L, 1, 0);
+	END_HREF;
+}
+
+static void on_reset(struct tui_context* c, int level, void* t)
+{
+	SETUP_HREF("reset", );
+		lua_pushnumber(L, level);
+	lua_call(L, 2, 0);
+}
+
 static void on_state(struct tui_context* c, bool input, int fd, void* t)
 {
 	SETUP_HREF( (input?"state_in":"state_out"), );
@@ -210,6 +223,16 @@ static void on_apaste(struct tui_context* c,
 /*
  * don't have a good way to use this right now..
  */
+}
+
+bool on_draw(struct tui_context* c, tui_pixel* vidp,
+	uint8_t custom_id, size_t ystep_index, uint8_t cell_yofs,
+	uint8_t cell_w, uint8_t cell_h, size_t cols,
+	bool invalidated, void* t)
+{
+/* need special code here to interface with shmif-server instead,
+ * possibly as a support library */
+	return false;
 }
 
 static void on_tick(struct tui_context* c, void* t)
@@ -295,7 +318,7 @@ static void apply_table(lua_State* L, int ind, struct tui_screen_attr* attr)
 	attr->custom_id = intblint(L, ind, "id");
 }
 
-static int tui_cattr(lua_State* L)
+static int tui_attr(lua_State* L)
 {
 	struct tui_screen_attr attr = {
 		.fr = 255,
@@ -306,21 +329,243 @@ static int tui_cattr(lua_State* L)
 	if (lua_type(L, 1) == LUA_TTABLE)
 		apply_table(L, 1, &attr);
 
-	struct tui_cattr* cattr = lua_newuserdata(L, sizeof(struct tui_cattr));
-	if (!cattr)
+	struct tui_attr* uattr = lua_newuserdata(L, sizeof(struct tui_attr));
+	if (!uattr)
 		return 0;
 
-	cattr->attr = attr;
-	luaL_getmetatable(L, "tui_cattr");
+	uattr->attr = attr;
+	luaL_getmetatable(L, "tui_attr");
 	lua_setmetatable(L, -2);
 
 	return 1;
 }
 
-static int setattr(lua_State* L)
+static int defattr(lua_State* L)
 {
 /* 1. if userdata: check metatable for tui cattr
  * 2. if table, run decode on attr and replace current */
+	return 0;
+}
+
+static int set_tabstop(lua_State* L)
+{
+	TUI_UDATA;
+	int col = luaL_optnumber(L, 2, -1);
+	int row = luaL_optnumber(L, 3, -1);
+
+	if (row != -1 || col != -1){
+		size_t x, y;
+		arcan_tui_cursorpos(ib->tui, &x, &y);
+		arcan_tui_move_to(ib->tui, row != -1 ? row : y, col != -1 ? col : x);
+		arcan_tui_set_tabstop(ib->tui);
+		arcan_tui_move_to(ib->tui, x, y);
+	}
+	else
+		arcan_tui_set_tabstop(ib->tui);
+	return 0;
+}
+
+static int insert_lines(lua_State* L)
+{
+	TUI_UDATA;
+	int n_lines = luaL_checknumber(L, 2);
+	if (n_lines > 0)
+		arcan_tui_insert_lines(ib->tui, n_lines);
+	return 0;
+}
+
+static int delete_lines(lua_State* L)
+{
+	TUI_UDATA;
+	int n_lines = luaL_checknumber(L, 2);
+
+	if (n_lines > 0)
+		arcan_tui_delete_lines(ib->tui, n_lines);
+	return 0;
+}
+
+static int insert_chars(lua_State* L)
+{
+	TUI_UDATA;
+	int n_chars = luaL_checknumber(L, 2);
+	if (n_chars > 0)
+		arcan_tui_insert_chars(ib->tui, n_chars);
+	return 0;
+}
+
+static int delete_chars(lua_State* L)
+{
+	TUI_UDATA;
+	int n_chars = luaL_checknumber(L, 2);
+	if (n_chars > 0)
+		arcan_tui_delete_chars(ib->tui, n_chars);
+	return 0;
+}
+
+static int wnd_scroll(lua_State* L)
+{
+	TUI_UDATA;
+	int steps = luaL_checknumber(L, 2);
+	if (steps > 0)
+		arcan_tui_scroll_down(ib->tui, steps);
+	else
+		arcan_tui_scroll_up(ib->tui, -steps);
+	return 0;
+}
+
+static int reset_tabs(lua_State* L)
+{
+	TUI_UDATA;
+	arcan_tui_reset_all_tabstops(ib->tui);
+	return 0;
+}
+
+static int scrollhint(lua_State* L)
+{
+	TUI_UDATA;
+	int steps = luaL_checknumber(L, 2);
+	arcan_tui_scrollhint(ib->tui, steps);
+	return 0;
+}
+
+static int cursor_tab(lua_State* L)
+{
+	TUI_UDATA;
+	int tabs = 1;
+	if (lua_type(L, 2) == LUA_TNUMBER){
+		tabs = lua_tonumber(L, 2);
+	}
+	if (tabs > 0)
+		arcan_tui_tab_right(ib->tui, tabs);
+	else
+		arcan_tui_tab_left(ib->tui, -tabs);
+	return 0;
+}
+
+static int cursor_steprow(lua_State* L)
+{
+	TUI_UDATA;
+	int n = luaL_optnumber(L, 2, 1);
+	bool scroll = luaL_optbnumber(L, 3, 0);
+	size_t rows, cols;
+	arcan_tui_dimensions(ib->tui, &rows, &cols);
+
+	if (n < 0)
+		arcan_tui_move_up(ib->tui, -n, scroll);
+	else
+		arcan_tui_move_down(ib->tui, n, scroll);
+
+	return 0;
+}
+
+static int cursor_stepcol(lua_State* L)
+{
+	TUI_UDATA;
+	int n = luaL_optnumber(L, 2, 1);
+	size_t rows, cols;
+	arcan_tui_dimensions(ib->tui, &rows, &cols);
+
+	if (n < 0)
+		arcan_tui_move_left(ib->tui, -n);
+	else
+		arcan_tui_move_right(ib->tui, n);
+
+	return 0;
+}
+
+static int screen_margins(lua_State* L)
+{
+	TUI_UDATA;
+	int top = luaL_checknumber(L, 2);
+	int bottom = luaL_checknumber(L, 3);
+	arcan_tui_set_margins(ib->tui, top, bottom);
+	return 0;
+}
+
+static int screen_dimensions(lua_State* L)
+{
+	TUI_UDATA;
+	size_t rows, cols;
+	arcan_tui_dimensions(ib->tui, &rows, &cols);
+	lua_pushnumber(L, cols);
+	lua_pushnumber(L, rows);
+	return 2;
+}
+
+static int invalidate(lua_State* L)
+{
+	TUI_UDATA;
+	arcan_tui_invalidate(ib->tui);
+	return 0;
+}
+
+static int erase_region(lua_State* L)
+{
+	TUI_UDATA;
+	size_t x1 = luaL_checknumber(L, 2);
+	size_t y1 = luaL_checknumber(L, 3);
+	size_t x2 = luaL_checknumber(L, 4);
+	size_t y2 = luaL_checknumber(L, 5);
+	bool prot = luaL_optbnumber(L, 6, false);
+	size_t rows, cols;
+	arcan_tui_dimensions(ib->tui, &rows, &cols);
+
+	if (x1 < x2 && y1 < y2 && x1 < cols && y1 < rows)
+		arcan_tui_erase_region(ib->tui, x1, y1, x2,  y2, prot);
+
+	return 0;
+}
+
+static int erase_line(lua_State* L)
+{
+	TUI_UDATA;
+	bool prot = luaL_optbnumber(L, 1, false);
+	arcan_tui_erase_current_line(ib->tui, prot);
+	return 0;
+}
+
+static int erase_screen(lua_State* L)
+{
+	TUI_UDATA;
+	bool prot = luaL_optbnumber(L, 1, false);
+	arcan_tui_erase_screen(ib->tui, prot);
+	return 0;
+}
+
+static int erase_scrollback(lua_State* L)
+{
+	TUI_UDATA;
+	arcan_tui_erase_sb(ib->tui);
+	return 0;
+}
+
+static int erase_home_to_cursor(lua_State* L)
+{
+	TUI_UDATA;
+	bool prot = luaL_optbnumber(L, 1, false);
+	arcan_tui_erase_home_to_cursor(ib->tui, prot);
+	return 0;
+}
+
+static int erase_cursor_screen(lua_State* L)
+{
+	TUI_UDATA;
+	bool prot = luaL_optbnumber(L, 1, false);
+	arcan_tui_erase_cursor_to_screen(ib->tui, prot);
+	return 0;
+}
+
+static int cursor_to(lua_State* L)
+{
+	TUI_UDATA;
+	int x = luaL_checknumber(L, 2);
+	int y = luaL_checknumber(L, 3);
+	size_t rows, cols;
+	arcan_tui_dimensions(ib->tui, &rows, &cols);
+
+	if (x >= 0 && y >= 0 && x < cols && y < rows)
+		arcan_tui_move_to(ib->tui, x, y);
+
 	return 0;
 }
 
@@ -375,6 +620,9 @@ static int tui_open(lua_State* L)
 		.utf8 = on_utf8_paste,
 		.resized = on_resize,
 		.subwindow = on_subwindow,
+		.recolor = on_recolor,
+		.draw_call = on_draw,
+		.reset = on_reset,
 		.tag = meta
 	};
 	meta->href = LUA_REFNIL;
@@ -404,18 +652,12 @@ static int tui_open(lua_State* L)
 	return 1;
 }
 
-/*
- * convenience macro prolog for all TUI window bound lua->c functions
- */
-#define TUI_UDATA	\
-	struct tui_lmeta* ib = luaL_checkudata(L, 1, "tui_main"); \
-	if (!ib || !ib->tui) return 0; \
-
 static int refresh(lua_State* L)
 {
 	TUI_UDATA;
-	arcan_tui_refresh(ib->tui);
-	return 0;
+	int rc = arcan_tui_refresh(ib->tui);
+	lua_pushnumber(L, rc);
+	return 1;
 }
 
 static int valid_flag(lua_State* L, int ind)
@@ -430,7 +672,7 @@ static int tui_index_get(lua_State* L)
 	int id;
 
 	printf("index get\n");
-	if (lua_type(L, 1) == LUA_TSTRING && (id = valid_flag(L, 1))){
+	if (lua_type(L, 2) == LUA_TSTRING && (id = valid_flag(L, 2))){
 
 	}
 
@@ -443,8 +685,8 @@ static int tui_index_set(lua_State* L)
 	int id;
 
 	printf("index set\n");
-	if (lua_type(L, 1) == LUA_TSTRING && (id = valid_flag(L, 1)) && (
-		lua_type(L, 2) == LUA_TNUMBER || lua_type(L, 2) == LUA_TBOOLEAN)){
+	if (lua_type(L, 2) == LUA_TSTRING && (id = valid_flag(L, 2)) && (
+		lua_type(L, 3) == LUA_TNUMBER || lua_type(L, 3) == LUA_TBOOLEAN)){
 
 	}
 	return 0;
@@ -474,6 +716,7 @@ static int settbl(lua_State* L)
 	}
 
 	luaL_checktype(L, 2, LUA_TTABLE);
+	ib->href = luaL_ref(L, LUA_REGISTRYINDEX);
 
 	return 0;
 }
@@ -481,7 +724,7 @@ static int settbl(lua_State* L)
 static int setident(lua_State* L)
 {
 	TUI_UDATA;
-	const char* ident = luaL_optstring(L, 1, "");
+	const char* ident = luaL_optstring(L, 2, "");
 	arcan_tui_ident(ib->tui, ident);
 	return 0;
 }
@@ -489,7 +732,7 @@ static int setident(lua_State* L)
 static int setcopy(lua_State* L)
 {
 	TUI_UDATA;
-	const char* pstr = luaL_optstring(L, 1, "");
+	const char* pstr = luaL_optstring(L, 2, "");
 	lua_pushboolean(L, arcan_tui_copy(ib->tui, pstr));
 	return 1;
 }
@@ -497,7 +740,7 @@ static int setcopy(lua_State* L)
 static int reqwnd(lua_State* L)
 {
 	TUI_UDATA;
-/* const char* type = luaL_optstring(L, 1, "tui");
+/* const char* type = luaL_optstring(L, 2, "tui");
  * 1. check for valid subtypes
  * 2. request REGISTRY entry for function
  * 3. use that entry as ID so we can pair when we come back,
@@ -525,14 +768,29 @@ static int process(lua_State* L)
  * FIXME: use a bitmap to track multiple allocations
  */
 /*	struct tui_process_res res = */
-		arcan_tui_process(&ib->tui, 1, NULL, 0, timeout);
+	arcan_tui_process(&ib->tui, 1, NULL, 0, timeout);
 
 /*
  * FIXME: extract / translate error code and result-sets
  */
-
 	lua_pushboolean(L, true);
 	return 1;
+}
+
+static int getcursor(lua_State* L)
+{
+	TUI_UDATA;
+	size_t x, y;
+	arcan_tui_cursorpos(ib->tui, &x, &y);
+	lua_pushnumber(L, x);
+	lua_pushnumber(L, y);
+	return 2;
+}
+
+static int writeu8(lua_State* L)
+{
+	TUI_UDATA;
+	return 0;
 }
 
 static int reset(lua_State* L)
@@ -560,11 +818,11 @@ void tui_lua_expose(lua_State* L)
 	lua_pushcclosure(L, tui_open, 1);
 	lua_setglobal(L, "tui_open");
 
-	lua_pushstring(L, "tui_cattr");
-	lua_pushcclosure(L, tui_cattr, 1);
-	lua_setglobal(L, "tui_cattr");
+	lua_pushstring(L, "tui_attr");
+	lua_pushcclosure(L, tui_attr, 1);
+	lua_setglobal(L, "tui_attr");
 
-	luaL_newmetatable(L, "tui_cattr");
+	luaL_newmetatable(L, "tui_attr");
 	lua_pop(L, 1);
 
 	luaL_newmetatable(L, "tui_main");
@@ -577,12 +835,47 @@ void tui_lua_expose(lua_State* L)
 
 	REGISTER("refresh", refresh);
 	REGISTER("process", process);
-	REGISTER("set_handlers", settbl);
-	REGISTER("change_ident", setident);
+	REGISTER("switch_handlers", settbl);
+	REGISTER("update_ident", setident);
 	REGISTER("mouse_forward", setmouse);
-	REGISTER("set_attr", setattr);
+	REGISTER("default_attr", defattr);
 	REGISTER("reset", reset);
 	REGISTER("to_clipboard", setcopy);
+	REGISTER("cursor_pos", getcursor);
+	REGISTER("new_window", reqwnd);
+	REGISTER("set_tabstop", set_tabstop);
+	REGISTER("insert_lines", insert_lines);
+	REGISTER("delete_lines", delete_lines);
+	REGISTER("insert_empty", insert_chars);
+	REGISTER("erase_cells", delete_chars);
+	REGISTER("erase_current_line", erase_line);
+	REGISTER("erase_screen", erase_screen);
+	REGISTER("erase_cursor_to_screen", erase_cursor_screen);
+	REGISTER("erase_home_to_cursor", erase_home_to_cursor);
+	REGISTER("erase_scrollback", erase_scrollback);
+	REGISTER("erase_region", erase_region);
+	REGISTER("scroll", wnd_scroll);
+	REGISTER("scrollhint", scrollhint);
+	REGISTER("cursor_tab", cursor_tab);
+	REGISTER("cursor_to", cursor_to);
+	REGISTER("cursor_step_col", cursor_stepcol);
+	REGISTER("cursor_step_row", cursor_steprow);
+	REGISTER("set_margins", screen_margins);
+	REGISTER("dimensions", screen_dimensions);
+	REGISTER("invalidate", invalidate);
+
+/*
+ * alloc_screen, switch_screen, delete_screen, screens
+ * something with the color management
+ * setting render flags (and expose constants)
+ * default_attr(attrtbl)
+ * wndhint(par, row, col, flags)
+ * close
+ * [ map_external(screen_ind, key, pw, id) ]
+ * [ map_exec(argn, argv, id) ]
+ * [ redirect_external, key, conn, fallback) ]
+ * [ route_target(dst) ]
+ */
 
 	lua_pop(L, 1);
 }
