@@ -3,7 +3,7 @@
  * only have to deal with a minimum of boilerplate
  */
 #include <arcan_shmif.h>
-#include <arcan_shmif_tui.h>
+#include <arcan_tui.h>
 #include <inttypes.h>
 #include <stdarg.h>
 #include <errno.h>
@@ -22,7 +22,7 @@ static inline void trace(const char* msg, ...)
 
 static bool query_label(struct tui_context* ctx,
 	size_t ind, const char* country, const char* lang,
-	struct tui_labelent* dstlbl)
+	struct tui_labelent* dstlbl, void* t)
 {
 	trace("query_label(%zu for %s:%s)\n",
 		ind, country ? country : "unknown(country)",
@@ -112,14 +112,7 @@ static void on_resize(struct tui_context* c,
 
 int main(int argc, char** argv)
 {
-	struct arg_arr* aarr;
-	struct arcan_shmif_cont con = arcan_shmif_open_ext(
-		SHMIF_ACQUIRE_FATALFAIL, &aarr, (struct shmif_open_ext){
-			.type = SEGID_TUI,
-			.title = "tui_test",
-			.ident = "tui_ident"
-		}, sizeof(struct shmif_open_ext)
-	);
+	arcan_tui_conn* conn = arcan_tui_open_display("tui-test", "");
 
 /*
  * only the ones that are relevant needs to be filled
@@ -143,9 +136,8 @@ int main(int argc, char** argv)
 
 /* even though we handle over management of con to TUI, we can
  * still get access to its internal reference at will */
-	struct tui_settings cfg = arcan_tui_defaults(&con, NULL);
-	arcan_tui_apply_arg(&cfg, aarr, NULL);
-	struct tui_context* tui = arcan_tui_setup(&con, &cfg, &cbcfg, sizeof(cbcfg));
+	struct tui_settings cfg = arcan_tui_defaults(conn, NULL);
+	struct tui_context* tui = arcan_tui_setup(conn, &cfg, &cbcfg, sizeof(cbcfg));
 
 	if (!tui){
 		fprintf(stderr, "failed to setup TUI connection\n");
