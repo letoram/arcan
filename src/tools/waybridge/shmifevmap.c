@@ -18,7 +18,7 @@
  */
 static void update_mxy(struct comp_surf* cl, unsigned long long pts)
 {
-	trace(TRACE_ANALOG, "mouse@%d,%d\n", cl->acc_x, cl->acc_y);
+	trace(TRACE_ANALOG, "mouse@%d,%d", cl->acc_x, cl->acc_y);
 	if (cl->pointer_pending == 1){
 		cl->pointer_pending = 2;
 		wl_pointer_send_enter(cl->client->pointer,
@@ -37,7 +37,7 @@ static void update_mbtn(struct comp_surf* cl,
 
 /* 0x110 == BTN_LEFT in evdev parlerance */
 	wl_pointer_send_button(cl->client->pointer, STEP_SERIAL(),
-		pts, 0x110 + ind, active ?
+		pts, 0x10f + ind, active ?
 		WL_POINTER_BUTTON_STATE_PRESSED : WL_POINTER_BUTTON_STATE_RELEASED
 	);
 }
@@ -45,7 +45,7 @@ static void update_mbtn(struct comp_surf* cl,
 static void translate_input(struct comp_surf* cl, arcan_ioevent* ev)
 {
 	if (ev->devkind == EVENT_IDEVKIND_TOUCHDISP){
-		trace(TRACE_ANALOG, "touch\n");
+		trace(TRACE_ANALOG, "touch");
 	}
 /* motion would/should always come before digital */
 	else if (ev->devkind == EVENT_IDEVKIND_MOUSE && cl->client->pointer){
@@ -92,7 +92,7 @@ static void translate_input(struct comp_surf* cl, arcan_ioevent* ev)
 	else if (ev->datatype ==
 		EVENT_IDATATYPE_TRANSLATED && cl->client && cl->client->keyboard){
 		trace(TRACE_DIGITAL,
-			"keyboard (%d:%d)\n", (int)ev->subid,
+			"keyboard (%d:%d)", (int)ev->subid,
 			(int)ev->input.translated.scancode);
 		wl_keyboard_send_key(cl->client->keyboard,
 			wl_display_next_serial(wl.disp),

@@ -403,16 +403,18 @@ static void destroy_client(struct wl_listener* l, void* data)
  * just exits uncleanly. If these doesn't get cleaned up here, we'll
  * UAF next cycle
  */
+
+/* each 'group', skip those with no alloc- bits */
 	for (size_t i = 0; i < wl.n_groups; i++){
-		uint64_t ind = find_set64(~wl.groups[i].alloc);
-		if (0 == ind)
+		if (0 == find_set64(~wl.groups[i].alloc))
 			continue;
 
-		ind--;
-		for (size_t j = 0; j < sizeof(wl.groups[i].alloc)*8 && trace_log; j++){
+/* each surface in group */
+		for (size_t j = 0; j < sizeof(wl.groups[i].alloc)*8; j++){
 			if ( !((1 << j) & wl.groups[i].alloc) )
 				continue;
 
+/* check if it belongs to the client we want to destroy */
 			if (&wl.groups[i].slots[j].client == cl &&
 				wl.groups[i].slots[j].type == SLOT_TYPE_SURFACE){
 				trace(TRACE_ALLOC,"destroy_client->dangling surface(%zu:%zu:%c)",
@@ -424,9 +426,14 @@ static void destroy_client(struct wl_listener* l, void* data)
 	trace(TRACE_ALLOC, "destroy client(%d:%d)", cl->group, cl->slot);
 
 	arcan_shmif_drop(&cl->acon);
-	assert(!cl->cursor.addr);
-	assert(!cl->popup.addr);
+	if (cl->acursor.addr){
+		struct acon_tag* tag = cl->acursor.user;
+		trace(TRACE_ALLOC, "destroy client-cursor(%d:%d)", tag->group, tag->slot);
+		arcan_shmif_drop(&cl->acursor);
+		reset_group_slot(tag->group, tag->slot);
+	}
 	reset_group_slot(cl->group, cl->slot);
+	trace(TRACE_ALLOC, "client destroyed\n");
 }
 
 /*

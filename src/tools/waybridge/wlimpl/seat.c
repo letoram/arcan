@@ -1,21 +1,24 @@
 static void cursor_set(struct wl_client* cl, struct wl_resource* res,
 	uint32_t serial, struct wl_resource* surf_res, int32_t hot_x, int32_t hot_y)
 {
-	trace(TRACE_SEAT, "cursor_set");
-/*
- * struct comp_surf* surf = wl_resource_get_user_data(surf_res);
- */
+	trace(TRACE_SEAT, "cursor_set(%"PRIxPTR")", (uintptr_t)surf_res);
+	struct bridge_client* bcl = wl_resource_get_user_data(res);
+	bcl->cursor = surf_res;
+	bcl->hot_x = hot_x;
+	bcl->hot_y = hot_y;
 }
 
-static void cursor_release(struct wl_client* cl, struct wl_resource* res)
+static void pointer_release(struct wl_client* cl, struct wl_resource* res)
 {
 	trace(TRACE_SEAT, "cursor_release");
+	struct bridge_client* bcl = wl_resource_get_user_data(res);
+	bcl->pointer = NULL;
 	wl_resource_destroy(res);
 }
 
 struct wl_pointer_interface pointer_if = {
 	.set_cursor = cursor_set,
-	.release = cursor_release
+	.release = pointer_release
 };
 
 static bool pointer_handler(
@@ -26,17 +29,9 @@ static bool pointer_handler(
 		return false;
 	}
 
-	struct wl_resource* ptr_res =
-		wl_resource_create(req->client->client, &wl_pointer_interface, 1, req->id);
-
-	if (!ptr_res){
-		wl_resource_post_no_memory(req->target);
-		return false;
-	}
-
 	trace(TRACE_SEAT, "seat pointer paired with SEGID_CURSOR\n");
-	req->client->pointer = ptr_res;
-	wl_resource_set_implementation(ptr_res, &pointer_if, req->target, NULL);
+	struct bridge_client* bcl = wl_resource_get_user_data(req->target);
+	bcl->acursor = *con;
 	return true;
 }
 
@@ -44,9 +39,26 @@ static void seat_pointer(struct wl_client* cl,
 	struct wl_resource* res, uint32_t id)
 {
 	trace(TRACE_SEAT, "seat_pointer(%"PRIu32")", id);
-
 	struct bridge_client* bcl = wl_resource_get_user_data(res);
-	if (!bcl->cursor.addr){
+
+/*
+ * there may be many pointer allocations (for some reason..)
+ */
+	struct wl_resource* ptr_res =
+		wl_resource_create(bcl->client, &wl_pointer_interface, 1, id);
+
+	if (!ptr_res){
+		wl_resource_post_no_memory(res);
+		return;
+	}
+	wl_resource_set_implementation(ptr_res, &pointer_if, bcl, NULL);
+	bcl->pointer = ptr_res;
+
+/*
+ * we only allocate the pointer- connection once, and then switch which
+ * active surface that we synch- to it.
+ */
+	if (!bcl->acursor.addr){
 		request_surface(bcl, &(struct surface_request){
 			.segid = SEGID_CURSOR,
 			.target = res,
@@ -54,9 +66,8 @@ static void seat_pointer(struct wl_client* cl,
 			.id = id,
 			.dispatch = pointer_handler,
 			.client = bcl
-/* note that we can't set source any since we don't have a surface to
- * attach the connection to */
-		}, 'm');
+			}, 'm'
+		);
 	}
 }
 

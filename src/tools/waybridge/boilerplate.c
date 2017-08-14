@@ -6,14 +6,15 @@
  * call.
  */
 struct bridge_client {
-	struct arcan_shmif_cont acon;
-	struct arcan_shmif_cont cursor, popup;
-
+	struct arcan_shmif_cont acon, acursor;
 	struct wl_listener l_destr;
 
 	struct wl_client* client;
 	struct wl_resource* keyboard;
 	struct wl_resource* pointer;
+	struct wl_resource* cursor;
+	int32_t hot_x, hot_y;
+
 	struct wl_resource* touch;
 	struct wl_resource* output; /* only 1 atm */
 
@@ -90,9 +91,6 @@ static void try_frame_callback(struct comp_surf* surf);
  * this is to share the tracking / allocation code between both clients and
  * surfaces and possible other wayland resources that results in a 1:1 mapping
  * to an arcan connection that needs to have its event loop flushed.
- *
- * The layout in the structures is so the first member (can't be bad) resolve
- * to the same type of structure.
  */
 #define SLOT_TYPE_CLIENT 1
 #define SLOT_TYPE_SURFACE 2

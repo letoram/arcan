@@ -81,20 +81,36 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 {
 	trace(TRACE_SURF, "surf_commit(xxx)");
 	struct comp_surf* surf = wl_resource_get_user_data(res);
+	struct arcan_shmif_cont* acon = &surf->acon;
 	EGLint dfmt;
 
-	if (surf->cookie != 0xfeedface){
-		trace(TRACE_SURF, "surf_commit() UAF on surface in commit");
-		return;
-	}
-
+/*
+ * special case, if the surface we should synch is the currently set
+ * pointer resource, then draw that to the special segment.
+ */
 	if (!surf->buf){
 		trace(TRACE_SURF, "surf_commit() surface lacks buffer");
 		return;
 	}
 
-	if (!surf->client || !surf->acon.addr){
-		trace(TRACE_SURF, "surf_commit() surface doesn't have an arcan connection");
+	if (!surf->client){
+		trace(TRACE_SURF, "no bridge connection assigned to surface");
+		return;
+	}
+
+	if (surf->cookie != 0xfeedface){
+		if (res == surf->client->cursor){
+			acon = &surf->client->acursor;
+			trace(TRACE_SURF, "cursor updated");
+		}
+		else {
+			trace(TRACE_SURF, "UAF or unknown surface");
+			return;
+		}
+	}
+
+	if (!acon || !acon->addr){
+		trace(TRACE_SURF, "couldn't map to arcan connection");
 		wl_buffer_send_release(surf->buf);
 		return;
 	}
@@ -105,7 +121,7 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
  * processing until we get an unlock event (can be implemented client/lib side
  * through a kqueue- trigger) and then do the corresponding release.
  */
-	while (surf->acon.addr->vready){}
+	while (acon->addr->vready){}
 
 	if (query_buffer && query_buffer(wl.display,
 		surf->buf, EGL_TEXTURE_FORMAT, &dfmt)){
@@ -142,8 +158,8 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
  * EGLDisplay approach seem to break that for us, probably worth a try if
  * the main-thread stalls start to hurt */
 
-			if (surf->acon.w != w || surf->acon.h != h)
-				arcan_shmif_resize(&surf->acon, w, h);
+			if (acon->w != w || acon->h != h)
+				arcan_shmif_resize(acon, w, h);
 
 /*
  * FIXME: For the accelerated handle passing, we offload the cost of
@@ -161,10 +177,10 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
  * call, return the current base / offsets (along with the possible
  * resize_ext dance to get the right number of buffers, offsets etc.)
  */
-			memcpy(surf->acon.vidp, data, w * h * sizeof(shmif_pixel));
+			memcpy(acon->vidp, data, w * h * sizeof(shmif_pixel));
 		}
 
-		arcan_shmif_signal(&surf->acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
+		arcan_shmif_signal(acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
 		wl_buffer_send_release(surf->buf);
 	}
 
