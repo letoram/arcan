@@ -27,6 +27,40 @@ enum tui_context_flags {
 	TUI_ALTERNATE = 64
 };
 
+/*
+ * positioning / drawing hints, BITMASK.
+ */
+enum tui_wndhint_flags {
+	TUI_WND_NORMAL = 0,
+
+/* BITMASK: window should be in focus for the rest of the group */
+	TUI_WND_FOCUS = 1,
+
+/* window is not expected to be visible at all (minimize to tray, ...) */
+	TUI_WND_HIDDEN = 2,
+};
+
+enum tui_subwnd_type {
+/* normal TUI window, because like a normal connection, except the lifespan
+ * is tied to that of it's allocation-parent */
+	TUI_WND_TUI = 0,
+
+/* popup window, short lifespan, can be killed of parent-side as a 'cancel'
+ * operation and no- state or ability should be lost as an effect of doing so */
+	TUI_WND_POPUP = 1,
+
+/* explicitly pushed by parents, when enabled, output application-relevant
+ * debugging data */
+	TUI_WND_DEBUG = 2,
+
+/*
+ * Special case, a connection primitive that can be forwarded to some other
+ * primitive, but with connection origin traced/bound to a preexisting tui
+ * connection. This is used internally for advanced features.
+ */
+	TUI_WND_HANDOVER = 3
+};
+
 enum tui_color_group {
 	TUI_COL_PRIMARY = 0,
 	TUI_COL_SECONDARY,
