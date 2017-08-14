@@ -1,7 +1,7 @@
 static void comp_surf_delete(struct wl_resource* res)
 {
 	trace(TRACE_ALLOC,
-		"destroy:compositor surface(%"PRIu32")", (uintptr_t)res);
+		"destroy:compositor surface(%"PRIxPTR")", (uintptr_t)res);
 /*
  * note that this already happens in surface destroy
  * struct comp_surf* surf = wl_resource_get_user_data(res);

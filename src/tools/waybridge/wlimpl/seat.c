@@ -4,8 +4,11 @@ static void cursor_set(struct wl_client* cl, struct wl_resource* res,
 	trace(TRACE_SEAT, "cursor_set(%"PRIxPTR")", (uintptr_t)surf_res);
 	struct bridge_client* bcl = wl_resource_get_user_data(res);
 	bcl->cursor = surf_res;
-	bcl->hot_x = hot_x;
-	bcl->hot_y = hot_y;
+	if (bcl->hot_x != hot_x || bcl->hot_y != hot_y){
+		bcl->dirty_hot = true;
+		bcl->hot_x = hot_x;
+		bcl->hot_y = hot_y;
+	}
 }
 
 static void pointer_release(struct wl_client* cl, struct wl_resource* res)
@@ -13,6 +16,10 @@ static void pointer_release(struct wl_client* cl, struct wl_resource* res)
 	trace(TRACE_SEAT, "cursor_release");
 	struct bridge_client* bcl = wl_resource_get_user_data(res);
 	bcl->pointer = NULL;
+/*
+ * NOTE: we should probably indicate that the client no-longer uses
+ * a custom cursor (so none at all for that matter)
+ */
 	wl_resource_destroy(res);
 }
 
@@ -45,7 +52,8 @@ static void seat_pointer(struct wl_client* cl,
  * there may be many pointer allocations (for some reason..)
  */
 	struct wl_resource* ptr_res =
-		wl_resource_create(bcl->client, &wl_pointer_interface, 1, id);
+		wl_resource_create(bcl->client,
+			&wl_pointer_interface, wl_resource_get_version(res), id);
 
 	if (!ptr_res){
 		wl_resource_post_no_memory(res);

@@ -50,7 +50,7 @@ static bool shell_defer_handler(
 	surf->dispatch = shellsurf_shmifev_handler;
 	arcan_shmif_enqueue(&surf->acon, &(struct arcan_event){
 		.ext.kind = ARCAN_EVENT(MESSAGE),
-		.ext.message = {"shell:wl_shell"}
+		.ext.message = {.data = "shell:wl_shell"}
 	});
 
 	return true;

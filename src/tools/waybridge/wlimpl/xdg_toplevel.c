@@ -189,5 +189,12 @@ static void xdgtop_minimize(
 static void xdgtop_destroy(
 	struct wl_client* cl, struct wl_resource* res)
 {
+	struct comp_surf* surf = wl_resource_get_user_data(res);
+
+/* so we don't send a _leave to a dangling surface */
+	if (surf && surf->client){
+		if (surf->client->last_cursor == res)
+			surf->client->last_cursor = NULL;
+	}
 	trace(TRACE_ALLOC, "xdgtop_destroy");
 }

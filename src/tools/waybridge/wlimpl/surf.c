@@ -25,7 +25,15 @@ static void surf_damage(struct wl_client* cl, struct wl_resource* res,
 	int32_t x, int32_t y, int32_t w, int32_t h)
 {
 	trace(TRACE_SURF,"surf_damage(%d+%d, %d+%d)", (int)x, (int)w, (int)y, (int)h);
-//	struct bridge_surf* surf = wl_resource_get_user_data(res);
+	struct comp_surf* surf = wl_resource_get_user_data(res);
+	if (x < surf->acon.dirty.x1)
+		surf->acon.dirty.x1 = x;
+	if (x+w > surf->acon.dirty.x2)
+		surf->acon.dirty.x2 = x+w;
+	if (y < surf->acon.dirty.y1)
+		surf->acon.dirty.y1 = y;
+	if (y+h > surf->acon.dirty.y2)
+		surf->acon.dirty.y2 = y+h;
 }
 
 /*
@@ -101,6 +109,16 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 	if (surf->cookie != 0xfeedface){
 		if (res == surf->client->cursor){
 			acon = &surf->client->acursor;
+/* synch hot-spot changes at this stage */
+			if (surf->client->dirty_hot){
+				struct arcan_event ev = {
+					.ext.kind = ARCAN_EVENT(MESSAGE)
+				};
+				snprintf((char*)ev.ext.message.data, COUNT_OF(ev.ext.message.data),
+					"hot:%d:%d", (int)surf->client->hot_x, (int)surf->client->hot_y);
+				arcan_shmif_enqueue(&surf->client->acursor, &ev);
+				surf->client->dirty_hot = false;
+			}
 			trace(TRACE_SURF, "cursor updated");
 		}
 		else {
@@ -121,7 +139,8 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
  * processing until we get an unlock event (can be implemented client/lib side
  * through a kqueue- trigger) and then do the corresponding release.
  */
-	while (acon->addr->vready){}
+	while (acon->addr->vready){
+	}
 
 	if (query_buffer && query_buffer(wl.display,
 		surf->buf, EGL_TEXTURE_FORMAT, &dfmt)){
@@ -158,8 +177,11 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
  * EGLDisplay approach seem to break that for us, probably worth a try if
  * the main-thread stalls start to hurt */
 
-			if (acon->w != w || acon->h != h)
+			if (acon->w != w || acon->h != h){
+				trace(TRACE_SURF,
+					"surf_commit(shm, resize to: %zu, %zu)", (size_t)w, (size_t)h);
 				arcan_shmif_resize(acon, w, h);
+			}
 
 /*
  * FIXME: For the accelerated handle passing, we offload the cost of
@@ -180,7 +202,16 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 			memcpy(acon->vidp, data, w * h * sizeof(shmif_pixel));
 		}
 
+		trace(TRACE_SURF,
+			"surf_commit(%zu,%zu-%zu,%zu)",
+				(size_t)acon->dirty.x1, (size_t)acon->dirty.y1,
+				(size_t)acon->dirty.x2, (size_t)acon->dirty.y2);
+
 		arcan_shmif_signal(acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
+		acon->dirty.x1 = acon->w;
+		acon->dirty.x2 = 0;
+		acon->dirty.y1 = acon->h;
+		acon->dirty.y2 = 0;
 		wl_buffer_send_release(surf->buf);
 	}
 

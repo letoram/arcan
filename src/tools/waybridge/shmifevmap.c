@@ -7,8 +7,10 @@
  *   c. Also have grabstate to consider (can only become a MESSAGE and
  *      wl-specific code in the lua layer)
  *   d. scroll- wheel are in some float- version, so we need to deal
- *      with subid 3,4 for analog events and subid 4, 5 for digital
- *      events.
+ *      with subid 3,4 for analog events and subid 3 for digital
+ *      events (there's also something with AXIS_SOURCE, ...)
+ *   e. it seems like we're supposed to keep a list of all pointer
+ *      resources and iterate them.
  *
  *  Touch - not used at all right now
  *
@@ -19,21 +21,34 @@
 static void update_mxy(struct comp_surf* cl, unsigned long long pts)
 {
 	trace(TRACE_ANALOG, "mouse@%d,%d", cl->acc_x, cl->acc_y);
-	if (cl->pointer_pending == 1){
+	if (cl->pointer_pending != 2 && cl->client->last_cursor != cl->res){
+		trace(TRACE_ANALOG, "mouse(send_enter)");
+		if (cl->client->last_cursor)
+			wl_pointer_send_leave(cl->client->pointer, STEP_SERIAL(), cl->res);
+		cl->client->last_cursor = cl->res;
 		cl->pointer_pending = 2;
 		wl_pointer_send_enter(cl->client->pointer,
-			STEP_SERIAL(), cl->res, cl->acc_x, cl->acc_y);
+			STEP_SERIAL(), cl->res,
+			wl_fixed_from_int(cl->acc_x),
+			wl_fixed_from_int(cl->acc_y)
+		);
 	}
 	else
 		wl_pointer_send_motion(cl->client->pointer, pts,
 			wl_fixed_from_int(cl->acc_x), wl_fixed_from_int(cl->acc_y));
+
+	if (wl_resource_get_version(cl->client->pointer) >=
+		WL_POINTER_FRAME_SINCE_VERSION){
+		wl_pointer_send_frame(cl->client->pointer);
+	}
 }
 
 static void update_mbtn(struct comp_surf* cl,
 	unsigned long long pts, int ind, bool active)
 {
 	trace(TRACE_DIGITAL,
-		"mouse-btn(ind: %d:%d, @%d,%d)",ind,(int) active, cl->acc_x, cl->acc_y);
+		"mouse-btn(pend: %d, ind: %d:%d, @%d,%d)",
+			cl->pointer_pending, ind,(int) active, cl->acc_x, cl->acc_y);
 
 /* 0x110 == BTN_LEFT in evdev parlerance */
 	wl_pointer_send_button(cl->client->pointer, STEP_SERIAL(),
@@ -157,8 +172,7 @@ static bool displayhint_handler(struct comp_surf* surf, struct arcan_tgtevent* e
  * so that we know the local coordinates or at least the relative pos,
  * just track this here and send the enter on the first sample we get.
  * The other option is to add a hack over MESSAGE for wayland clients */
-			if (surf->client->pointer){
-//
+			if (surf->client->pointer && surf->pointer_pending != 2){
       	surf->pointer_pending = 1;
 			}
 		}
@@ -229,8 +243,10 @@ static void flush_client_events(
 		switch(ev.tgt.kind){
 		case TARGET_COMMAND_EXIT:
 			trace(TRACE_ALLOC, "shmif-> kill client");
-/*		wl_client_destroy(cl->client);
-			trace("shmif-> kill client"); */
+/*		this just murders us, hmm...
+ *		wl_client_destroy(cl->client);
+			trace("shmif-> kill client");
+ */
 		break;
 		case TARGET_COMMAND_DISPLAYHINT:
 			trace(TRACE_ALLOC, "shmif-> target update visibility or size");
