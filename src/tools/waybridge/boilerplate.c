@@ -6,14 +6,19 @@
  * call.
  */
 struct bridge_client {
-	struct arcan_shmif_cont acon, acursor;
+	struct arcan_shmif_cont acon;
 	struct wl_listener l_destr;
 
 	struct wl_client* client;
 	struct wl_resource* keyboard;
 	struct wl_resource* pointer;
+
+/* cursor tracking structures so that we can send enter/leave properly */
+	struct arcan_shmif_cont acursor;
 	struct wl_resource* cursor;
 	int32_t hot_x, hot_y;
+	bool dirty_hot;
+	struct wl_resource* last_cursor;
 
 	struct wl_resource* touch;
 	struct wl_resource* output; /* only 1 atm */

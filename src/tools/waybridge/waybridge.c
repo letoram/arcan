@@ -313,7 +313,7 @@ static bool request_surface(
 		}
 		else{
 			struct arcan_shmif_cont cont =
-				arcan_shmif_acquire(&cl->acon, NULL, req->segid, 0);
+				arcan_shmif_acquire(&cl->acon, NULL, req->segid, SHMIF_DISABLE_GUARD);
 			cont.hints = SHMIF_RHINT_SUBREGION | SHMIF_RHINT_VSIGNAL_EV;
 			arcan_shmif_resize(&cont, cont.w, cont.h);
 			struct acon_tag* tag = malloc(sizeof(struct acon_tag));
@@ -602,6 +602,7 @@ static bool process_group(struct conn_group* group)
  * a client connects and break out of the loop somehow. Oh well, good old
  * setjmp.
  */
+
 	if (group->wayland && group->wayland->revents){
 		wl_event_loop_dispatch(
 			wl_display_get_event_loop(wl.disp), 0);
