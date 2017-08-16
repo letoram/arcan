@@ -45,23 +45,24 @@ To debug, add WAYBRIDGE\_TRACE=level as env and very verbose call tracing
 will be added.
 
 tracelevels (bitmask so add)
- 1   - allocations only
- 2   - digital input events
- 4   - analog input events
- 8   - shell (wl\_shell, xdg\_shell, ...) events
- 16  - region events
- 32  - data-device events
- 64  - seat events
- 128 - surface events
+    1   - allocations only
+    2   - digital input events
+    4   - analog input events
+    8   - shell (wl\_shell, xdg\_shell, ...) events
+    16  - region events
+    32  - data-device events
+    64  - seat events
+    128 - surface events
 
 Allocation outputs are encoded as follows:
-'C' - client-bridge connection
-'s' - shell surface
-'m' - pointer surface
-'t' - xdg- toplevel surface
-'p' - xdg- popup surface
-'x' - dead
-'o' - unused
+    'C' - client-bridge connection
+    'S' - shell surface
+		's' - shell subsurface
+    'm' - pointer surface
+    't' - xdg- toplevel surface
+    'p' - xdg- popup surface
+    'x' - dead
+    'o' - unused
 
 Then the correlated arcan events can be traced with ARCAN\_SHMIF\_DEBUG=1
 
@@ -78,6 +79,34 @@ The other option is to tell arcan to start arcan with the
 ARCAN\_VIDEO\_ALLOW\_AUTH environment set and start waybridge with
 ARCAN\_RENDER\_NODE pointing to the card device arcan uses. This will push the
 privilege level of waybridge to be on par with arcan.
+
+2. Focus issues
+There seem to be two or three focus- related issues to investigate that are
+easily triggered by switching selected window in durden and see that gtk3
+clients doesn't redraw the text in the titlebar area to reflect focus state.
+
+Since arcan doesn't alert us about mouse input focus state changes, client
+cursor states aren't always set correctly. The easier test is to take gtk3
+demo, move the cursor to the lower right (see that we get the resize- window
+part) and then 'outside' of client awareness and re-enter at the top - the
+cursor will be wrong.
+
+3. DRM- buffer translation is incomplete - this breaks more and more
+applications as fewer work without GL/EGL available at all. Some of the
+friction comes from a lot of this crap being hidden deep inside the bowels
+of Mesa in a way that doesn't play well with proxying at all.
+
+4. Resize Issues - Maybe related to focus issues, but when we send the
+configure update in response to a DISPLAYHINT, gtk3-demo doesn't respond
+even if it is within the min/max tolerance.
+
+5. Close on dead client - This happens with weston terminal when the close
+button is clicked. We receive a _EXIT event on the shmif- segment (from
+where?) and the already-closed resource gets posted and another UAF. This
+shouldn't have happened due to the while dangling- check, but it doesn't
+seem to get activated in this case.
+
+Both 2. and 4. doesn't seem to apply to weston-terminal, only gtk.
 
 Limitations
 ====
@@ -107,11 +136,11 @@ TODO
     - [p] Keyboard
     - [p] Mouse
     - [ ] Touch
-  - [ ] Mouse Cursor
-  - [ ] Popup
-  - [ ] EGL/drm
+  - [x] Mouse Cursor
+  - [p] Popup
+  - [p] EGL/drm
 - [ ] Milestone 2
-    - [ ] Positioners
+    - [p] Positioners
     - [ ] Cut and Paste (full 'data device manager')
     - [ ] Full XDG-shell (not just 90% boilerplate)
     - [ ] Application-test suite and automated tests (SDL, QT, GTK, ...)]
@@ -125,4 +154,5 @@ TODO
   - [ ] Benchmarking/Inspection tools
   - [ ] Sandboxing
   - [ ] Migration/Reset/Crash-Recover
-  - [ ] Drag and Drop
+  - [ ] Drag and Drop (cursor states)
+	- [ ] XWayland
