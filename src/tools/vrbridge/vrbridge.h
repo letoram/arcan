@@ -7,6 +7,18 @@ enum ctrl_cmd {
 	DISPLAY_ON  = 2
 };
 
+#ifndef DEBUG
+#ifdef _DEBUG
+#define DEBUG 1
+#else
+#define DEBUG 0
+#endif
+#endif
+
+#define debug_print(lvl, fmt, ...) \
+            do { if (lvl < DEBUG) fprintf(stderr, "%s:%d:%s(): " fmt "\n", \
+						"egl-dri:", __LINE__, __func__,##__VA_ARGS__); } while (0)
+
 struct dev_ent;
 
 /*
