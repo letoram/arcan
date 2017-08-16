@@ -48,7 +48,7 @@ static void surf_damage(struct wl_client* cl, struct wl_resource* res,
 static void surf_frame(
 	struct wl_client* cl, struct wl_resource* res, uint32_t cb)
 {
-	trace(TRACE_SURF, "surf_frame()");
+	trace(TRACE_SURF, "frame callback: %"PRIu32, cb);
 	struct comp_surf* surf = wl_resource_get_user_data(res);
 
 /* spec doesn't say how many callbacks we should permit */
@@ -76,13 +76,13 @@ static void surf_frame(
 static void surf_opaque(struct wl_client* cl,
 	struct wl_resource* res, struct wl_resource* reg)
 {
-	trace(TRACE_REGION, "opaque");
+	trace(TRACE_REGION, "opaque_region");
 }
 
 static void surf_inputreg(struct wl_client* cl,
 	struct wl_resource* res, struct wl_resource* reg)
 {
-	trace(TRACE_REGION, "input");
+	trace(TRACE_REGION, "input_region");
 }
 
 static void surf_commit(struct wl_client* cl, struct wl_resource* res)

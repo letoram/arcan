@@ -573,7 +573,7 @@ static struct conn_group* prepare_groups(size_t count)
 static int show_use(const char* msg, const char* arg)
 {
 	fprintf(stdout, "%s%s", msg, arg ? arg : "");
-	fprintf(stdout, "Use: waybridge [arguments]\n"
+	fprintf(stdout, "\nUse: waybridge [arguments]\n"
 "\t-shm-egl          pass shm- buffers as gl textures\n"
 "\t-no-egl           disable the wayland-egl extensions\n"
 "\t-no-compositor    disable the compositor protocol\n"
@@ -585,7 +585,11 @@ static int show_use(const char* msg, const char* arg)
 "\t-no-xdg           disable the xdg protocol\n"
 "\t-no-output        disable the output protocol\n"
 "\t-layout lay       set keyboard layout to <lay>\n"
-"\t-dir dir          override XDG_RUNTIME_DIR with <dir>\n");
+"\t-dir dir          override XDG_RUNTIME_DIR with <dir>\n\n");
+	fprintf(stdout, "Debugging-env: WAYBRIDGE_TRACE=[bitmask]\n"
+	"\t1 - allocations, 2 - digital-input, 4 - analog-input\n"
+	"\t8 - shell, 16 - region-events, 32 - data device\n"
+	"\t64 - seat, 128 - surface\n");
 	return EXIT_FAILURE;
 }
 
@@ -711,7 +715,7 @@ int main(int argc, char* argv[])
 		else if (strcmp(argv[i], "-no-data-device") == 0)
 			protocols.ddev = 0;
 		else
-			return show_use("unknown argument (%s)\n", argv[i]);
+			return show_use("unknown argument: ", argv[i]);
 	}
 
 	wl.disp = wl_display_create();

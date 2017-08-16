@@ -26,16 +26,19 @@ static bool xdgtoplevel_shmifev_handler(
 				if (surf->states.maximized){
 					sv = wl_array_add(&states, sizeof(uint32_t));
 					*sv = ZXDG_TOPLEVEL_V6_STATE_MAXIMIZED;
+					trace(TRACE_SHELL, "maximized");
 				}
 
 				if (surf->states.drag_resize){
 					sv = wl_array_add(&states, sizeof(uint32_t));
 					*sv = ZXDG_TOPLEVEL_V6_STATE_RESIZING;
+					trace(TRACE_SHELL, "resizing");
 				}
 
 				if (!surf->states.unfocused){
 					sv = wl_array_add(&states, sizeof(uint32_t));
 					*sv = ZXDG_TOPLEVEL_V6_STATE_ACTIVATED;
+					trace(TRACE_SHELL, "focused");
 				}
 
 				zxdg_toplevel_v6_send_configure(surf->shell_res, w, h, &states);
@@ -44,7 +47,7 @@ static bool xdgtoplevel_shmifev_handler(
 			}
 
 			if (changed)
-				try_frame_callback(surf);
+				try_frame_callback(surf, &surf->acon);
 		}
 		return true;
 		break;
@@ -71,7 +74,7 @@ static void xdgtop_setparent(
 static void xdgtop_title(
 	struct wl_client* cl, struct wl_resource* res, const char* title)
 {
-	trace(TRACE_SHELL, "xdgtop_title");
+	trace(TRACE_SHELL, "%s", title ? title : "(null)");
 	struct comp_surf* surf = wl_resource_get_user_data(res);
 
 	arcan_event ev = {
@@ -141,7 +144,7 @@ static void xdgtop_resize(struct wl_client* cl, struct wl_resource* res,
 static void xdgtop_set_max(struct wl_client* cl,
 	struct wl_resource* res, int32_t width, int32_t height)
 {
-	trace(TRACE_SHELL, "xdgtop_set_max (%"PRIu32", %"PRIu32")");
+	trace(TRACE_SHELL, "xdgtop_set_max (%"PRId32", %"PRId32")");
 }
 
 /*

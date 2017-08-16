@@ -9,6 +9,18 @@ static void cursor_set(struct wl_client* cl, struct wl_resource* res,
 		bcl->hot_x = hot_x;
 		bcl->hot_y = hot_y;
 	}
+
+/* switch out who is responsible for events on the surface this round, this is
+ * important as it breaks the 0..1 mapping between comp_surf and acon (realloc
+ * on cursor each switch is too expensive) */
+	struct acon_tag* tag = bcl->acursor.user;
+	if (surf_res){
+		struct comp_surf* csurf = wl_resource_get_user_data(surf_res);
+		csurf->rcon = &bcl->acursor;
+		wl.groups[tag->group].slots[tag->slot].surface = csurf;
+	}
+	else
+		wl.groups[tag->group].slots[tag->slot].surface = NULL;
 }
 
 static void pointer_release(struct wl_client* cl, struct wl_resource* res)
