@@ -21,7 +21,7 @@
 static void update_mxy(struct comp_surf* cl, unsigned long long pts)
 {
 	trace(TRACE_ANALOG, "mouse@%d,%d", cl->acc_x, cl->acc_y);
-	if (cl->pointer_pending != 2 && cl->client->last_cursor != cl->res){
+	if (cl->pointer_pending != 2 || cl->client->last_cursor != cl->res){
 		trace(TRACE_ANALOG, "mouse(send_enter)");
 		if (cl->client->last_cursor)
 			wl_pointer_send_leave(cl->client->pointer, STEP_SERIAL(), cl->res);
@@ -122,15 +122,18 @@ static void translate_input(struct comp_surf* cl, arcan_ioevent* ev)
 		;
 }
 
-static void try_frame_callback(struct comp_surf* surf)
+static void try_frame_callback(
+	struct comp_surf* surf, struct arcan_shmif_cont* acon)
 {
 /* non-eligible state */
-	if (surf->states.hidden || !surf->frame_callback)
+	if (surf->states.hidden || !surf->frame_callback){
 		return;
+	}
 
 /* still synching? */
-	if (!surf->acon.addr || surf->acon.addr->vready)
+	if (!acon || acon->addr->vready){
 		return;
+	}
 
 	wl_callback_send_done(surf->frame_callback, surf->cb_id);
 	wl_resource_destroy(surf->frame_callback);
@@ -198,8 +201,10 @@ static bool displayhint_handler(struct comp_surf* surf, struct arcan_tgtevent* e
 static void flush_surface_events(struct comp_surf* surf)
 {
 	struct arcan_event ev;
+/* rcon is set as redirect-con when there's a shared connection or similar */
+	struct arcan_shmif_cont* acon = surf->rcon ? surf->rcon : &surf->acon;
 
-	while (arcan_shmif_poll(&surf->acon, &ev) > 0){
+	while (arcan_shmif_poll(acon, &ev) > 0){
 		if (surf->dispatch && surf->dispatch(surf, &ev))
 			continue;
 
@@ -216,7 +221,7 @@ static void flush_surface_events(struct comp_surf* surf)
 /* have we gotten reconfigured to a different display? */
 		}
 		case TARGET_COMMAND_STEPFRAME:
-			try_frame_callback(surf);
+			try_frame_callback(surf, acon);
 		break;
 
 /* in the 'generic' case, there's litle we can do that match

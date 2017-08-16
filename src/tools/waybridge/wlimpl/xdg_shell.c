@@ -24,7 +24,13 @@ static void xdg_pong(
 static void xdg_createpos(
 	struct wl_client* client, struct wl_resource* res, uint32_t id)
 {
-	trace(TRACE_SHELL, "xdg_createpos");
+	trace(TRACE_SHELL, "%"PRIu32, id);
+	struct wl_resource* pos = wl_resource_get_user_data(res);
+	if (!pos){
+		wl_resource_post_no_memory(pos);
+		return;
+	}
+	wl_resource_set_implementation(pos, &xdgpos_if, pos, NULL);
 }
 
 static void xdg_destroy(

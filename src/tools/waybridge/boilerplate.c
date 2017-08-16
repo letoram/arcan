@@ -69,7 +69,11 @@ struct comp_surf {
 	struct bridge_client* client;
 	struct wl_resource* res;
 	struct wl_resource* shell_res;
+
+/* some comp_surfaces need to reference shared connections that are
+ * managed elsewhere, so if rcon set, that one takes priority */
 	struct arcan_shmif_cont acon;
+	struct arcan_shmif_cont* rcon;
 	struct wl_resource* buf;
 	struct wl_resource* frame_callback;
 
@@ -90,7 +94,8 @@ struct comp_surf {
 static bool displayhint_handler(struct comp_surf* surf,
 	struct arcan_tgtevent* tev);
 
-static void try_frame_callback(struct comp_surf* surf);
+static void try_frame_callback(
+	struct comp_surf* surf, struct arcan_shmif_cont*);
 
 /*
  * this is to share the tracking / allocation code between both clients and
@@ -144,12 +149,6 @@ static struct wl_compositor_interface compositor_if = {
 	.create_region = comp_create_reg,
 };
 
-#include "wlimpl/subcomp.c"
-static struct wl_subcompositor_interface subcomp_if = {
-	.destroy = subcomp_destroy,
-	.get_subsurface = subcomp_subsurf
-};
-
 #include "wlimpl/subsurf.c"
 static struct wl_subsurface_interface subsurf_if = {
 	.destroy = subsurf_destroy,
@@ -158,6 +157,12 @@ static struct wl_subsurface_interface subsurf_if = {
 	.place_below = subsurf_placebelow,
 	.set_sync = subsurf_setsync,
 	.set_desync = subsurf_setdesync
+};
+
+#include "wlimpl/subcomp.c"
+static struct wl_subcompositor_interface subcomp_if = {
+	.destroy = subcomp_destroy,
+	.get_subsurface = subcomp_subsurf
 };
 
 #include "wlimpl/seat.c"
