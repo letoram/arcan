@@ -560,15 +560,20 @@ bool arcan_tui_copy(struct tui_context*, const char* utf8_msg);
 void arcan_tui_ident(struct tui_context*, const char* ident);
 
 /*
- * Send a new request for a subwindow with life-span that depends on
- * the main connection. The subwindows don't survive migration and
- * will thus be lost on a ->reset.
+ * Send a new request for a subwindow with life-span that depends on the main
+ * connection. The subwindows don't survive migration and will thus be lost on
+ * a ->reset.
  *
- * A request is asynchronous, and [id] is only used for the caller
- * to be able to pair the event delivery with a request. See the
- * (subwindow) tui_cbcfg entry for more details.
+ * A request is asynchronous, and [id] is only used for the caller to be able
+ * to pair the event delivery with a request. See the (subwindow) tui_cbcfg
+ * entry for more details. Note that subwindows can be delivered as an explicit
+ * "I want you to deal with this" kind of scenario, typically for the TUI_DEBUG
+ * type as a means of dynamically enabling implementation-defined debug output
+ * on demand.
+ *
+ * The possible types are defined as part of arcan_tuisym.h
  */
-void arcan_tui_request_subwnd(struct tui_context*, uint32_t id);
+void arcan_tui_request_subwnd(struct tui_context*, unsigned type, uint32_t id);
 
 /*
  * Signal visibility and position intent for a subwindow [wnd] relative

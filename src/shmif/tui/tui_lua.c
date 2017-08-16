@@ -692,9 +692,43 @@ static int tui_index_set(lua_State* L)
 	return 0;
 }
 
-static int collect(lua_State* L)
+static int screen_alloc(lua_State* L)
 {
 	TUI_UDATA;
+	lua_pushnumber(L, arcan_tui_alloc_screen(ib->tui));
+	return 0;
+}
+
+static int screen_delete(lua_State* L)
+{
+	TUI_UDATA;
+	unsigned screen = luaL_checknumber(L, 1);
+	arcan_tui_delete_screen(ib->tui, screen);
+	return 0;
+}
+
+static int screen_switch(lua_State* L)
+{
+	TUI_UDATA;
+	unsigned screen = luaL_checknumber(L, 1);
+	arcan_tui_switch_screen(ib->tui, screen);
+	return 0;
+}
+
+static int tuiclose(lua_State* L)
+{
+	TUI_UDATA;
+	arcan_tui_destroy(ib->tui, luaL_optstring(L, 1, NULL));
+	ib->tui = NULL;
+	return 0;
+}
+
+static int collect(lua_State* L)
+{
+	struct tui_lmeta* ib = luaL_checkudata(L, 1, "tui_main");
+	if (!ib)
+		return 0;
+
 	if (ib->tui){
 		arcan_tui_destroy(ib->tui, ib->last_words);
 		ib->tui = NULL;
@@ -740,7 +774,8 @@ static int setcopy(lua_State* L)
 static int reqwnd(lua_State* L)
 {
 	TUI_UDATA;
-/* const char* type = luaL_optstring(L, 2, "tui");
+/* FIXME
+ * const char* type = luaL_optstring(L, 2, "tui");
  * 1. check for valid subtypes
  * 2. request REGISTRY entry for function
  * 3. use that entry as ID so we can pair when we come back,
@@ -752,7 +787,7 @@ static int reqwnd(lua_State* L)
 static int setmouse(lua_State* L)
 {
 	TUI_UDATA;
-/* mouse forward, either grab value or toggle */
+/* FIXME: mouse forward, either grab value or toggle */
 	return 0;
 }
 
@@ -790,6 +825,7 @@ static int getcursor(lua_State* L)
 static int writeu8(lua_State* L)
 {
 	TUI_UDATA;
+/* FIXME */
 	return 0;
 }
 
@@ -863,18 +899,19 @@ void tui_lua_expose(lua_State* L)
 	REGISTER("set_margins", screen_margins);
 	REGISTER("dimensions", screen_dimensions);
 	REGISTER("invalidate", invalidate);
+	REGISTER("close", tuiclose);
+	REGISTER("switch_screen", screen_switch);
+	REGISTER("delete_screen", screen_delete);
+	REGISTER("alloc_screen", screen_alloc)
 
 /*
- * alloc_screen, switch_screen, delete_screen, screens
- * something with the color management
- * setting render flags (and expose constants)
- * default_attr(attrtbl)
- * wndhint(par, row, col, flags)
- * close
- * [ map_external(screen_ind, key, pw, id) ]
- * [ map_exec(argn, argv, id) ]
- * [ redirect_external, key, conn, fallback) ]
- * [ route_target(dst) ]
+ * ADVANCED MISSING
+ * [ map_external (maybe shmif-server only?),
+ *   map_exec ( exceute binary with listening properties bound to an id )
+ *   redirect_external ( forward new connection primitives )
+ *   route_target( set id as event recipient )
+ *   request_subwnd( "type"
+ *   wndalign ( src, tgt, ...)
  */
 
 	lua_pop(L, 1);
