@@ -37,7 +37,6 @@ include_directories(
 SET(LIBRARIES
 	pthread
 	m
-	EGL
 	${ARCAN_SHMIF_LIBRARY}
 )
 
@@ -51,10 +50,13 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 	include_directories(${LIBUSB_1_INCLUDE_DIR})
 
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+	find_library(IOKIT NAMES IOKit)
+	find_library(COREFOUNDATION NAMES CoreFoundation)
 	set(PLATFORM_SOURCES
 		${ARCAN_ROOT_DIR}/external/hidapi/hid_darwin.c
 		${ARCAN_ROOT_DIR}/src/platform/darwin/time.c
 	)
+	set(LIBRARIES ${LIBRARIES} ${IOKIT} ${COREFOUNDATION})
 
 elseif (${CMAKE_SYSTEM_NAME} MATCHES "BSD" OR ${CMAKE_SYSTEM_NAME}} MATCHES "DragonFly")
 	add_definitions(-DLIBUSB_BSD)

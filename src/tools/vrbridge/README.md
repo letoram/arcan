@@ -10,6 +10,16 @@ the many possible instabilities, licensing issues, API variations and so- on
 that comes with an area that is so aggressively 'in flux' and in conflict with
 device manufacturers with an inherently open-source unfriendly bias.
 
+# Testing
+
+Build like normal, e.g.
+
+          cmake -D../ ; make
+
+Set as vrbridge application:
+
+          arcan_db add_appl_kv arcan ext_vr /absolute/path/to/build/vrbridge
+
 # Model
 
 The VR substructure in SHMIF covers a small synchronization/metadata structure
@@ -55,6 +65,7 @@ some restraint is probably best until we see something concrete from OpenXR.
 
 [ ] PSVR bringup (most deployed, reasonably priced HW)
 [ ] Vive (via [libsurvive](https://github.com/cnlohr/libsurvive)
+[ ] OpenHMD support
 [ ] Demo- Appl scripts
 
 # Experiments

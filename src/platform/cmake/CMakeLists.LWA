@@ -58,7 +58,7 @@ ExternalProject_Get_Property(openal_lwa SOURCE_DIR)
 ExternalProject_Get_Property(openal_lwa BINARY_DIR)
 
 set(LWA_LIBRARIES
-	${CMAKE_CURRENT_BINARY_DIR}/openal_lwa_static/libopenal.a
+	${LWA_LIBRARIES} ${CMAKE_CURRENT_BINARY_DIR}/openal_lwa_static/libopenal.a
 )
 
 set(LWA_INCLUDES
