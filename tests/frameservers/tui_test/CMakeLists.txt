@@ -15,14 +15,14 @@ add_definitions(
 	-std=gnu11 # shmif-api requires this
 )
 
-include_directories(${ARCAN_SHMIF_INCLUDE_DIR})
+include_directories(${ARCAN_SHMIF_INCLUDE_DIR} ${ARCAN_TUI_INCLUDE_DIR})
 
 SET(LIBRARIES
 #	rt
 	pthread
 	m
 	${ARCAN_SHMIF_LIBRARY}
-	${ARCAN_SHMIF_TUI_LIBRARY}
+	${ARCAN_TUI_LIBRARY}
 )
 
 SET(SOURCES
