@@ -724,6 +724,11 @@ struct arcan_shmif_cont {
  */
 	struct shmif_hidden* priv;
 	struct shmif_ext_hidden* privext;
+
+/*
+ * Copy of the segment token identifier provided on the shmpage at setup
+ */
+	uint32_t segment_token;
 };
 
 struct arcan_shmif_initial {

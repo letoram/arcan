@@ -969,6 +969,7 @@ static void setup_avbuf(struct arcan_shmif_cont* res)
 
 	res->priv->vbuf_cnt = atomic_load(&res->addr->vpending);
 	res->priv->abuf_cnt = atomic_load(&res->addr->apending);
+	res->segment_token = res->addr->segment_token;
 
 	res->priv->abuf_ind = 0;
 	res->priv->vbuf_ind = 0;
