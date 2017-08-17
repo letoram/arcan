@@ -2,7 +2,7 @@ static void xdg_getsurf(struct wl_client* client,
 	struct wl_resource* res, uint32_t id, struct wl_resource* surf_res)
 {
 	trace(TRACE_SHELL, "get xdg-shell surface");
-	struct bridge_surf* surf = wl_resource_get_user_data(surf_res);
+	struct comp_surf* surf = wl_resource_get_user_data(surf_res);
 	struct wl_resource* xdgsurf_res = wl_resource_create(client,
 		&zxdg_surface_v6_interface, wl_resource_get_version(res), id);
 
@@ -11,6 +11,7 @@ static void xdg_getsurf(struct wl_client* client,
 		return;
 	}
 
+	surf->surf_res = xdgsurf_res;
 	wl_resource_set_implementation(xdgsurf_res, &xdgsurf_if, surf, NULL);
 	zxdg_surface_v6_send_configure(xdgsurf_res, wl_display_next_serial(wl.disp));
 }

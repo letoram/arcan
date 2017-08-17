@@ -73,40 +73,26 @@ At the moment, EGL/drm is stuck on what seems like a bug in Mesa. If we bind
 the bridge to a render-node, a client will get somewhere in the nasty backtrace
 to (drm\_handle\_device) - the reference to /dev/dri/card128 rather than
 /dev/dri/renderD128. A quick hack around this bug is to simply create the
-render-node under the name mesa is looking for.
+render-node under the name mesa is looking for. Another interesting part is
+when we have multiple GPUs. This might be a bug in the shmif, but the
+authentication token goes against the wrong GPU.
 
 The other option is to tell arcan to start arcan with the
 ARCAN\_VIDEO\_ALLOW\_AUTH environment set and start waybridge with
 ARCAN\_RENDER\_NODE pointing to the card device arcan uses. This will push the
 privilege level of waybridge to be on par with arcan.
 
-2. Focus issues
-There seem to be two or three focus- related issues to investigate that are
-easily triggered by switching selected window in durden and see that gtk3
-clients doesn't redraw the text in the titlebar area to reflect focus state.
+2. DRM- buffer translation is incomplete - this breaks more and more
+	 applications as fewer work without GL/EGL available at all. Some of the
+	 friction comes from a lot of this crap being hidden deep inside the bowels
+	 of Mesa in a way that doesn't play well with proxying at all. Seem to have
+	 some mapping problems here with authentication tokens and my installation.
 
-Since arcan doesn't alert us about mouse input focus state changes, client
-cursor states aren't always set correctly. The easier test is to take gtk3
-demo, move the cursor to the lower right (see that we get the resize- window
-part) and then 'outside' of client awareness and re-enter at the top - the
-cursor will be wrong.
+3. Stride - the shm- buffer blit doesn't take stride differences into
+   account. This fails on MPV in SHM depending on source video size.
 
-3. DRM- buffer translation is incomplete - this breaks more and more
-applications as fewer work without GL/EGL available at all. Some of the
-friction comes from a lot of this crap being hidden deep inside the bowels
-of Mesa in a way that doesn't play well with proxying at all.
-
-4. Resize Issues - Maybe related to focus issues, but when we send the
-configure update in response to a DISPLAYHINT, gtk3-demo doesn't respond
-even if it is within the min/max tolerance.
-
-5. Close on dead client - This happens with weston terminal when the close
-button is clicked. We receive a _EXIT event on the shmif- segment (from
-where?) and the already-closed resource gets posted and another UAF. This
-shouldn't have happened due to the while dangling- check, but it doesn't
-seem to get activated in this case.
-
-Both 2. and 4. doesn't seem to apply to weston-terminal, only gtk.
+4. Buffering and recent Qt5 demos, for some reason the pyqt demos queues up
+   a lot of frames and then just dies - unsure what is happening here.
 
 Limitations
 ====
@@ -119,7 +105,7 @@ separately in the [arcan wiki](https://github.com/letoram/arcan/wiki/wayland).
 XWayland
 ====
 XWayland support will be enabled at some point, though it will likely just
-derive from the implementation WLC has. instead, A separate
+derive from the implementation WLC/Weston has. instead, a separate
 [Xarcan](https://github.com/letoram/xarcan) implementation is maintained for a
 number of resons, such as better controls of how/ and which/ features gets
 translated (matters when looking into sharing, display-hw synch, segmentation,
@@ -128,6 +114,9 @@ friction in translation that is not worth paying for).
 
 TODO
 ====
+
+(x - done, p - partial, s - showstopper)
+
 - [ ] Milestone 1, basics
   - [x] Boilerplate-a-plenty
   - [x] 1:1 client to bridge mapping
@@ -138,13 +127,16 @@ TODO
     - [ ] Touch
   - [x] Mouse Cursor
   - [p] Popup
-  - [p] EGL/drm
+  - [s] EGL/drm
 - [ ] Milestone 2
     - [p] Positioners
     - [ ] Cut and Paste (full 'data device manager')
-    - [ ] Full XDG-shell (not just 90% boilerplate)
+    - [ ] XDG-shell
+ 		  - [x] Focus, buffers, cursors, sizing ...
+			- [p] Forward shell events that can't be handled with shmif
+			- [ ] Positioners
     - [ ] Application-test suite and automated tests (SDL, QT, GTK, ...)]
-    - [ ] XWayland (WLC- level)
+    - [ ] XWayland
     - [ ] Output Rotation / Scaling
 - [ ] Milestone 3, funky things
   - [ ] SHM to GL texture mapping
@@ -155,4 +147,4 @@ TODO
   - [ ] Sandboxing
   - [ ] Migration/Reset/Crash-Recover
   - [ ] Drag and Drop (cursor states)
-	- [ ] XWayland
+	- [ ] xdg-output (protocol far from ready, normal output protocol is bad)

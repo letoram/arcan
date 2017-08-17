@@ -68,7 +68,7 @@ static bool xdgsurf_defer_handler(
 static void xdgsurf_toplevel(
 	struct wl_client* cl, struct wl_resource* res, uint32_t id)
 {
-	trace(TRACE_SHELL, "xdgsurf_toplevel");
+	trace(TRACE_SHELL, "%"PRIu32, id);
 	struct comp_surf* surf = wl_resource_get_user_data(res);
 
 /* though it is marked as 'defered' here, chances are that the request
@@ -127,7 +127,7 @@ static void xdgsurf_set_geometry(struct wl_client* cl,
 static void xdgsurf_ackcfg(
 	struct wl_client* cl, struct wl_resource* res, uint32_t serial)
 {
-	trace(TRACE_SHELL, "xdgsurf_ackcfg");
+	trace(TRACE_SHELL, "%"PRIu32, serial);
 /* reading the spec for this makes it seem like there can be many
  * 'in flight' cfgs and you need to send ack individually and thus
  * track pending cfgs that lacks an acq */
@@ -136,7 +136,7 @@ static void xdgsurf_ackcfg(
 static void xdgsurf_destroy(
 	struct wl_client* cl, struct wl_resource* res)
 {
-	trace(TRACE_ALLOC, "xdgsurf_destroy");
+	trace(TRACE_ALLOC, "%"PRIxPTR, res);
 	struct comp_surf* surf = wl_resource_get_user_data(res);
 	surf->shell_res = NULL;
 	wl_resource_destroy(res);

@@ -57,8 +57,8 @@ static void surf_frame(
 		return;
 	}
 
-	struct wl_resource* cbres = wl_resource_create(
-		cl, &wl_callback_interface, 1, cb);
+	struct wl_resource* cbres =
+		wl_resource_create(cl, &wl_callback_interface, 1, cb);
 
 	if (!cbres){
 		wl_resource_post_no_memory(res);

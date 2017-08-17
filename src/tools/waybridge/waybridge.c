@@ -415,8 +415,9 @@ static void destroy_client(struct wl_listener* l, void* data)
 				continue;
 
 /* check if it belongs to the client we want to destroy */
-			if (&wl.groups[i].slots[j].client == cl &&
-				wl.groups[i].slots[j].type == SLOT_TYPE_SURFACE){
+			if (wl.groups[i].slots[j].type == SLOT_TYPE_SURFACE &&
+				wl.groups[i].slots[j].surface &&
+				wl.groups[i].slots[j].surface->client == cl){
 				trace(TRACE_ALLOC,"destroy_client->dangling surface(%zu:%zu:%c)",
 					i, j, wl.groups[i].slots[j].idch);
 				destroy_comp_surf(wl.groups[i].slots[j].surface);
