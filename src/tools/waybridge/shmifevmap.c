@@ -135,6 +135,7 @@ static void try_frame_callback(
 		return;
 	}
 
+	trace(TRACE_SURF, "reply callback: %"PRIu32, surf->cb_id);
 	wl_callback_send_done(surf->frame_callback, surf->cb_id);
 	wl_resource_destroy(surf->frame_callback);
 	surf->frame_callback = NULL;

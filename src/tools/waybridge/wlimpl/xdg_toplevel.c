@@ -42,6 +42,7 @@ static bool xdgtoplevel_shmifev_handler(
 				}
 
 				zxdg_toplevel_v6_send_configure(surf->shell_res, w, h, &states);
+				zxdg_surface_v6_send_configure(surf->surf_res, STEP_SERIAL());
 				wl_array_release(&states);
 				changed = true;
 			}
@@ -68,7 +69,19 @@ static bool xdgtoplevel_shmifev_handler(
 static void xdgtop_setparent(
 	struct wl_client* cl, struct wl_resource* res, struct wl_resource* parent)
 {
-	trace(TRACE_SHELL, "xdgtop_setparent");
+	trace(TRACE_SHELL, "parent: %"PRIxPTR, (uintptr_t) parent);
+	struct comp_surf* surf = wl_resource_get_user_data(res);
+	uint32_t par_token = 0;
+
+	if (parent){
+		struct comp_surf* par = wl_resource_get_user_data(res);
+		par_token = par->acon.segment_token;
+	}
+
+	arcan_shmif_enqueue(&surf->acon, &(struct arcan_event){
+		.ext.kind = ARCAN_EVENT(VIEWPORT),
+		.ext.viewport.parent = par_token
+	});
 }
 
 static void xdgtop_title(
@@ -98,7 +111,7 @@ static void xdgtop_appid(
 static void xdgtop_wndmenu(struct wl_client* cl, struct wl_resource* res,
 	struct wl_resource* seat, uint32_t serial, int32_t x, int32_t y)
 {
-	trace(TRACE_SHELL, "xdgtop_wndmenu (%"PRId32", %"PRId32")", x, y);
+	trace(TRACE_SHELL, "@x,y: %"PRId32", %"PRId32"", x, y);
 }
 
 /*
@@ -122,7 +135,12 @@ static void xdgtop_wndmenu(struct wl_client* cl, struct wl_resource* res,
 static void xdgtop_move(struct wl_client* cl,
 	struct wl_resource* res, struct wl_resource* seat, uint32_t serial)
 {
-	trace(TRACE_SHELL, "xdgtop_move");
+	trace(TRACE_SHELL, "%"PRIxPTR", serial: %"PRIu32, (uintptr_t) seat, serial);
+	struct comp_surf* surf = wl_resource_get_user_data(res);
+	arcan_shmif_enqueue(&surf->acon, &(struct arcan_event){
+		.ext.kind = ARCAN_EVENT(MESSAGE),
+		.ext.message.data = {"shell:xdg_top:move"}
+	});
 }
 
 /*
@@ -131,7 +149,12 @@ static void xdgtop_move(struct wl_client* cl,
 static void xdgtop_resize(struct wl_client* cl, struct wl_resource* res,
 	struct wl_resource* seat, uint32_t serial, uint32_t edges)
 {
-	trace(TRACE_SHELL, "xdgtop_resize");
+	trace(TRACE_SHELL, "serial: %"PRIu32", edges: %"PRIu32, serial, edges);
+	struct comp_surf* surf = wl_resource_get_user_data(res);
+	arcan_shmif_enqueue(&surf->acon, &(struct arcan_event){
+		.ext.kind = ARCAN_EVENT(MESSAGE),
+		.ext.message.data = {"shell:xdg_top:resize"}
+	});
 }
 
 /*
@@ -145,6 +168,9 @@ static void xdgtop_set_max(struct wl_client* cl,
 	struct wl_resource* res, int32_t width, int32_t height)
 {
 	trace(TRACE_SHELL, "xdgtop_set_max (%"PRId32", %"PRId32")");
+	struct comp_surf* surf = wl_resource_get_user_data(res);
+	surf->max_w = width;
+	surf->max_h = height;
 }
 
 /*
@@ -154,6 +180,9 @@ static void xdgtop_set_min(struct wl_client* cl,
 	struct wl_resource* res, int32_t width, int32_t height)
 {
 	trace(TRACE_SHELL, "xdgtop_set_min (%"PRId32", %"PRId32")", width, height);
+	struct comp_surf* surf = wl_resource_get_user_data(res);
+	surf->min_w = width;
+	surf->min_h = height;
 }
 
 /*
@@ -163,35 +192,61 @@ static void xdgtop_maximize(
 	struct wl_client* cl, struct wl_resource* res)
 {
 	trace(TRACE_SHELL, "xdgtop_maximize");
+	struct comp_surf* surf = wl_resource_get_user_data(res);
+	arcan_shmif_enqueue(&surf->acon, &(struct arcan_event){
+		.ext.kind = ARCAN_EVENT(MESSAGE),
+		.ext.message.data = {"shell:xdg_top:maximize"}
+	});
 }
 
 static void xdgtop_demaximize(
 	struct wl_client* cl, struct wl_resource* res)
 {
 	trace(TRACE_SHELL, "xdgtop_demaximize");
+	struct comp_surf* surf = wl_resource_get_user_data(res);
+	arcan_shmif_enqueue(&surf->acon, &(struct arcan_event){
+		.ext.kind = ARCAN_EVENT(MESSAGE),
+		.ext.message.data = {"shell:xdg_top:demaximize"}
+	});
 }
 
 static void xdgtop_fullscreen(
 	struct wl_client* cl, struct wl_resource* res, struct wl_resource* output)
 {
 	trace(TRACE_SHELL, "xdgtop_fullscreen");
+	struct comp_surf* surf = wl_resource_get_user_data(res);
+	arcan_shmif_enqueue(&surf->acon, &(struct arcan_event){
+		.ext.kind = ARCAN_EVENT(MESSAGE),
+		.ext.message.data = {"shell:xdg_top:fullscreen"}
+	});
 }
 
 static void xdgtop_unset_fullscreen(
 	struct wl_client* cl, struct wl_resource* res)
 {
 	trace(TRACE_SHELL, "xdgtop_unset_fullscreen");
+	struct comp_surf* surf = wl_resource_get_user_data(res);
+	arcan_shmif_enqueue(&surf->acon, &(struct arcan_event){
+		.ext.kind = ARCAN_EVENT(MESSAGE),
+		.ext.message.data = {"shell:xdg_top:defullscreen"}
+	});
 }
 
 static void xdgtop_minimize(
 	struct wl_client* cl, struct wl_resource* res)
 {
 	trace(TRACE_SHELL, "xdgtop_minimize");
+	struct comp_surf* surf = wl_resource_get_user_data(res);
+	arcan_shmif_enqueue(&surf->acon, &(struct arcan_event){
+		.ext.kind = ARCAN_EVENT(MESSAGE),
+		.ext.message.data = {"shell:xdg_top:minimize"}
+	});
 }
 
 static void xdgtop_destroy(
 	struct wl_client* cl, struct wl_resource* res)
 {
+	trace(TRACE_ALLOC, "%"PRIxPTR, (uintptr_t)res);
 	struct comp_surf* surf = wl_resource_get_user_data(res);
 
 /* so we don't send a _leave to a dangling surface */
@@ -199,5 +254,4 @@ static void xdgtop_destroy(
 		if (surf->client->last_cursor == res)
 			surf->client->last_cursor = NULL;
 	}
-	trace(TRACE_ALLOC, "xdgtop_destroy");
 }

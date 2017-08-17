@@ -69,6 +69,7 @@ struct comp_surf {
 	struct bridge_client* client;
 	struct wl_resource* res;
 	struct wl_resource* shell_res;
+	struct wl_resource* surf_res;
 
 /* some comp_surfaces need to reference shared connections that are
  * managed elsewhere, so if rcon set, that one takes priority */
@@ -77,7 +78,9 @@ struct comp_surf {
 	struct wl_resource* buf;
 	struct wl_resource* frame_callback;
 
+/* track size and positioning information so we can relay */
 	size_t last_w, last_h;
+	uint32_t max_w, max_h, min_w, min_h;
 
 /* for mouse pointer, we need a surface accumulator */
 	int pointer_pending;
