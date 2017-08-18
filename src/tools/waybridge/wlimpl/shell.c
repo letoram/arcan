@@ -11,6 +11,7 @@ static bool shellsurf_shmifev_handler(
 				wl_shell_surface_send_configure(
 					surf->shell_res, WL_SHELL_SURFACE_RESIZE_NONE, w, h);
 			}
+			return true;
 		}
 /* use the default handler for surface callback */
 		return false;
@@ -44,6 +45,7 @@ static bool shell_defer_handler(
 
 	struct comp_surf* surf = wl_resource_get_user_data(req->target);
 	wl_resource_set_implementation(ssurf, &ssurf_if, surf, NULL);
+	snprintf(surf->tracetag, SURF_TAGLEN, "shell_surface");
 	surf->acon = *con;
 	surf->cookie = 0xfeedface;
 	surf->shell_res = ssurf;

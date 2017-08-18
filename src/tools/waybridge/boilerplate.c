@@ -65,11 +65,16 @@ struct surf_state {
 	bool drag_resize : 1;
 };
 
+#define SURF_TAGLEN 16
 struct comp_surf {
+	char tracetag[SURF_TAGLEN];
+
 	struct bridge_client* client;
 	struct wl_resource* res;
 	struct wl_resource* shell_res;
 	struct wl_resource* surf_res;
+	struct wl_resource* sub_parent_res;
+	struct wl_resource* sub_child_res;
 
 /* some comp_surfaces need to reference shared connections that are
  * managed elsewhere, so if rcon set, that one takes priority */

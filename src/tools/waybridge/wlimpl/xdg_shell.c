@@ -11,6 +11,7 @@ static void xdg_getsurf(struct wl_client* client,
 		return;
 	}
 
+	snprintf(surf->tracetag, 16, "xdg_surf");
 	surf->surf_res = xdgsurf_res;
 	wl_resource_set_implementation(xdgsurf_res, &xdgsurf_if, surf, NULL);
 	zxdg_surface_v6_send_configure(xdgsurf_res, wl_display_next_serial(wl.disp));
@@ -26,7 +27,9 @@ static void xdg_createpos(
 	struct wl_client* client, struct wl_resource* res, uint32_t id)
 {
 	trace(TRACE_SHELL, "%"PRIu32, id);
-	struct wl_resource* pos = wl_resource_get_user_data(res);
+	struct wl_resource* pos = wl_resource_create(client,
+		&zxdg_positioner_v6_interface, wl_resource_get_version(res), id);
+
 	if (!pos){
 		wl_resource_post_no_memory(pos);
 		return;

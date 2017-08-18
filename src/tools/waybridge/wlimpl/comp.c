@@ -37,7 +37,8 @@ static void comp_surf_create(struct wl_client *client,
 		free(new_surf);
 	}
 	*new_surf = (struct comp_surf){
-		.client = cl
+		.client = cl,
+		.tracetag = "compositor"
 	};
 
 	new_surf->res = wl_resource_create(client,

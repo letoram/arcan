@@ -22,9 +22,7 @@ static void subcomp_subsurf(struct wl_client* client, struct wl_resource* res,
 		wl_resource_post_no_memory(res);
 		free(new_surf);
 	}
-	*new_surf = (struct comp_surf){
-		.client = cl
-	};
+	struct comp_surf* parent_surf = wl_resource_get_user_data(parent);
 
 	new_surf->res = wl_resource_create(client,
 		&wl_subsurface_interface, wl_resource_get_version(res), id);
@@ -33,6 +31,14 @@ static void subcomp_subsurf(struct wl_client* client, struct wl_resource* res,
 		wl_resource_post_no_memory(res);
 		free(new_surf);
 	}
+
+	parent_surf->sub_child_res = new_surf->res;
+
+	*new_surf = (struct comp_surf){
+		.client = cl,
+		.sub_parent_res = parent,
+		.tracetag = "subcompositor"
+	};
 
 	wl_resource_set_implementation(new_surf->res, &subsurf_if, new_surf, NULL);
 }

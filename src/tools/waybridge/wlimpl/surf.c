@@ -13,19 +13,36 @@ static void surf_destroy(struct wl_client* cl, struct wl_resource* res)
 static void surf_attach(struct wl_client* cl, struct wl_resource* res,
 	struct wl_resource* buf, int32_t x, int32_t y)
 {
-	trace(TRACE_SURF, "surf_attach(%d, %d)", (int)x, (int)y);
 	struct comp_surf* surf = wl_resource_get_user_data(res);
+	if (!surf){
+		trace(TRACE_SURF, "attempted attach to missing surface\n");
+		return;
+	}
+
+	trace(TRACE_SURF, "to: %s, @x,y: %d, %d - buf: %"
+		PRIxPTR, surf->tracetag, (int)x, (int)y, (uintptr_t)res);
+
+/* this should likely prompt either a destruction of the underlying
+ * connection (possibly not a good idea) or a visibility hint */
+	if (surf->buf && !buf){
+		trace(TRACE_SURF, "detach from: %s\n", surf->tracetag);
+	}
+
 	surf->buf = buf;
 }
 
 /*
  * Similar to the X damage stuff, just grow the synch region for shm repacking
+ * but there's more to this (of course there is) as there's the whole buffer
+ * isn't necessarily 1:1 of surface.
  */
 static void surf_damage(struct wl_client* cl, struct wl_resource* res,
 	int32_t x, int32_t y, int32_t w, int32_t h)
 {
-	trace(TRACE_SURF,"surf_damage(%d+%d, %d+%d)", (int)x, (int)w, (int)y, (int)h);
 	struct comp_surf* surf = wl_resource_get_user_data(res);
+	trace(TRACE_SURF,"%s:(%"PRIxPTR") @x,y+w,h(%d+%d, %d+%d)",
+		surf->tracetag, (uintptr_t)res, (int)x, (int)w, (int)y, (int)h);
+
 	if (x < surf->acon.dirty.x1)
 		surf->acon.dirty.x1 = x;
 	if (x+w > surf->acon.dirty.x2)
@@ -48,11 +65,12 @@ static void surf_damage(struct wl_client* cl, struct wl_resource* res,
 static void surf_frame(
 	struct wl_client* cl, struct wl_resource* res, uint32_t cb)
 {
-	trace(TRACE_SURF, "frame callback: %"PRIu32, cb);
 	struct comp_surf* surf = wl_resource_get_user_data(res);
+	trace(TRACE_SURF, "req-cb, %s(%"PRIu32")", surf->tracetag, cb);
 
 /* spec doesn't say how many callbacks we should permit */
 	if (surf->frame_callback){
+		trace(TRACE_SURF, "already got frame-callback", surf->tracetag);
 		wl_resource_post_no_memory(res);
 		return;
 	}
@@ -87,25 +105,28 @@ static void surf_inputreg(struct wl_client* cl,
 
 static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 {
-	trace(TRACE_SURF, "surf_commit(xxx)");
 	struct comp_surf* surf = wl_resource_get_user_data(res);
+	trace(TRACE_SURF, "%s", surf->tracetag);
 	struct arcan_shmif_cont* acon = &surf->acon;
 	EGLint dfmt;
+
+/*
+ * can happen if we transition to a
+ */
+	if (!surf->buf){
+		trace(TRACE_SURF, "no buffer");
+		return;
+	}
+
+	if (!surf->client){
+		trace(TRACE_SURF, "no bridge");
+		return;
+	}
 
 /*
  * special case, if the surface we should synch is the currently set
  * pointer resource, then draw that to the special segment.
  */
-	if (!surf->buf){
-		trace(TRACE_SURF, "surf_commit() surface lacks buffer");
-		return;
-	}
-
-	if (!surf->client){
-		trace(TRACE_SURF, "no bridge connection assigned to surface");
-		return;
-	}
-
 	if (surf->cookie != 0xfeedface){
 		if (res == surf->client->cursor){
 			acon = &surf->client->acursor;
@@ -200,6 +221,7 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
  * resize_ext dance to get the right number of buffers, offsets etc.)
  */
 			memcpy(acon->vidp, data, w * h * sizeof(shmif_pixel));
+			wl_buffer_send_release(surf->buf);
 		}
 
 		trace(TRACE_SURF,
@@ -212,7 +234,6 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 		acon->dirty.x2 = 0;
 		acon->dirty.y1 = acon->h;
 		acon->dirty.y2 = 0;
-		wl_buffer_send_release(surf->buf);
 	}
 
 }
