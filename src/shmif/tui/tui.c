@@ -750,6 +750,16 @@ static void apply_scroll(struct tui_context* tui)
  * scroll down, +n
  * still update the front buffer, this may force characters to 'swap in'
  */
+
+/*
+ * this work-around / restriction works for problems when fed with the terminal
+ * like constraints, but may fail elsewhere.
+ */
+	if (tui->cursor_y != tui->rows-1){
+		tui->scroll_backlog = 0;
+		return;
+	}
+
 	tui->age = tsm_screen_draw(tui->screen, tsm_draw_callback, tui);
 	int step_sz = abs(tui->scroll_backlog) - tui->in_scroll > tui->smooth_thresh ?
 		tui->cell_h : tui->smooth_scroll;
@@ -1583,7 +1593,9 @@ static void update_screensize(struct tui_context* tui, bool clear)
 		tsm_screen_resize(tui->screen, cols, rows);
 	}
 
-/* will enforce full redraw, and full redraw will also update padding */
+/* will enforce full redraw, and full redraw will also update padding.  the
+ * resized- mark will also force front/back buffer resynch to avoid black or
+ * corrupted smooth scroll areas */
 	tui->dirty |= DIRTY_PENDING_FULL;
 
 /* if we have TUI- based screen buffering for smooth-scrolling,
@@ -2208,7 +2220,6 @@ int arcan_tui_refresh(struct tui_context* tui)
 
 /* if we're more than a full page behind, just reset it */
 	if (tui->scroll_backlog){
-
 /* alternate- screenmode requires pattern analysis to generate scroll */
 		if (tui->flags & TUI_ALTERNATE){
 			tui->scroll_backlog = 0;
@@ -2500,6 +2511,7 @@ bool arcan_tui_switch_screen(struct tui_context* ctx, unsigned ind)
 	if (ctx->screens[ind] == ctx->screen)
 		return true;
 
+	ctx->dirty |= DIRTY_PENDING_FULL;
 	ctx->screen = ctx->screens[ind];
 	ctx->age = 0;
 	ctx->age = tsm_screen_draw(ctx->screen, tsm_draw_callback, ctx);
