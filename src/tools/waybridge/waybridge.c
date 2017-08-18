@@ -749,6 +749,15 @@ int main(int argc, char* argv[])
 		wl.init.display_height_px = wl.control.h;
 	}
 
+/*
+ * We'll need some tricks for this one as well. The expected solution is that
+ * you surrender to MESA and let the extensions for binding etc. hide the fact
+ * that it's pretty much only a tiny wrapper for the opaque native window and
+ * then registering the wl_drm interface. Since we want to specify which
+ * device a client should use on a per-client basis, and just proxy-pass the
+ * descriptors, we'll need a wl_drm implementation and possibly let the
+ * shmif-ext proxy authentication for us.
+ */
 	if (protocols.egl){
 		bind_display = (PFNEGLBINDWAYLANDDISPLAYWL)
 			eglGetProcAddress ("eglBindWaylandDisplayWL");

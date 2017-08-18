@@ -109,7 +109,7 @@ static void translate_input(struct comp_surf* cl, arcan_ioevent* ev)
 		trace(TRACE_DIGITAL,
 			"keyboard (%d:%d)", (int)ev->subid,
 			(int)ev->input.translated.scancode);
-		wl_keyboard_send_key(cl->client->keyboard,
+			wl_keyboard_send_key(cl->client->keyboard,
 			wl_display_next_serial(wl.disp),
 			ev->pts,
 			ev->subid,

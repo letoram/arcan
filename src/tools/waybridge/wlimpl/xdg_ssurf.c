@@ -17,12 +17,13 @@ static bool xdgpopup_defer_handler(
 	struct comp_surf* surf = wl_resource_get_user_data(req->target);
 	wl_resource_set_implementation(popup, &xdgpop_if, surf, NULL);
 	surf->acon = *con;
-	surf->cookie = 0xabbaab;
+	surf->cookie = 0xfeedface;
 	surf->shell_res = popup;
 	surf->dispatch = xdgpopup_shmifev_handler;
+	snprintf(surf->tracetag, SURF_TAGLEN, "xdg_popup");
 	arcan_shmif_enqueue(&surf->acon, &(struct arcan_event){
 		.ext.kind = ARCAN_EVENT(MESSAGE),
-		.ext.message.data = {"shell:xdg_shell"}
+		.ext.message.data = {"shell:xdg_popup"}
 	});
 	return true;
 }
@@ -50,6 +51,7 @@ static bool xdgsurf_defer_handler(
 	surf->cookie = 0xfeedface;
 	surf->shell_res = toplevel;
 	surf->dispatch = xdgtoplevel_shmifev_handler;
+	snprintf(surf->tracetag, SURF_TAGLEN, "xdg_toplevel");
 
 /* propagate this so the scripts have a chance of following the restrictions
  * indicated by the protocol */
