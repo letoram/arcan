@@ -1,24 +1,31 @@
 -- link_image
--- @short: Change some properties to be automatically relative to another object.
--- @inargs: src, newparent, *anchor*
+-- @short: Reassign the property-space to be relative another object
+-- @inargs: vid:id, vid:newparent
+-- @inargs: vid:id, vid:newparent, int:panchor
 -- @longdescr: By default, all objects defines their properties relative to
--- WORLDID, but this association can be reassigned by calling *link_image* for
--- full video objects. A full video object is one that has not been marked
--- as persistant. The default properties that become relative to another
--- object in this way are *opacity*, *position* and *orientation*,
--- though these can be controlled with mask functions such as
--- ref:image_mask_set. *src* refers to the object that should be reassigned and
--- *newparent* refers to the object that the assignment would be changed to.
--- This also applies to life tracking, delete or expire *newparent* and this
--- will cascade to any associated objects. Both *src* and *newparent* must be
--- full video objects.  The optional *anchor* properties can be one of the
--- following values: ANCHOR_UL, ANCHOR_UR, ANCHOR_LL, ANCHOR_LR, ANCHOR_C and
--- refers to the anchor point, meaning that if the *newparent* would change
--- size, the position of *src* will be shifted in to reflect this based on the
--- anchor point. The default anchor point is ANCHOR_UL.
--- @warning: Changing link ownership resets all scheduled transformations
+-- an invisible WORLDID object. By the use of this function, this object can
+-- be switched to another dynamically, allowing you to build complex
+-- hierarchies.
+--
+-- The default properties that are relative to another object in this way
+-- are opacity, position, orientation and lifetime, though this set can be
+-- changed with the use of ref:image_mask_set, ref:image_mask_clear,
+-- ref:image_mask_clearall, ref:image_mask_toggle
+--
+-- The *vid* argument refers to the object that shall be reassigned, and
+-- the *newparent* arguments specified the object that it should be made
+-- relative to.
+--
+-- If the *panchor* argument is specified, it defines the positional
+-- anchoring space based on one of the following values:
+-- ANCHOR_UL : upper-left, ANCHOR-CR : upper-center, ANCHOR_UR : upper-right,
+-- ANCHOR_CL : center-left, ANCHOR-C : center, ANCHOR-CR : center-right,
+-- ANCHOR_LL : lower-left, ANCHOR-LC : lower-center, ANCHOR_LR : lower-right.
+--
+-- @note: Changing link ownership resets all scheduled transformations
 -- except for blending.
--- @note: Rotation/Orientation do not apply to the anchor point.
+-- @note: Rotation transforms do not take the positional anchor point
+-- into account, only its mask.
 -- @note: Link to self is equivalent to linking back to WORLDID.
 -- @group: image
 -- @cfunction: linkimage

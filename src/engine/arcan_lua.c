@@ -1818,6 +1818,20 @@ static int centerimage(lua_State* ctx)
 		ap_x += dprop.scale.x * 0.5;
 		ap_y += dprop.scale.y * 0.5;
 	break;
+	case ANCHORP_UC:
+		ap_x += dprop.scale.x * 0.5;
+	break;
+	case ANCHORP_LC:
+		ap_x += dprop.scale.x * 0.5;
+		ap_y += dprop.scale.y;
+	break;
+	case ANCHORP_CL:
+		ap_y += dprop.scale.y * 0.5;
+	break;
+	case ANCHORP_CR:
+		ap_x += dprop.scale.x;
+		ap_y += dprop.scale.y * 0.5;
+	break;
 	case ANCHORP_UL:
 	break;
 	case ANCHORP_UR:
@@ -10597,6 +10611,10 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"ANCHOR_LL", ANCHORP_LL},
 {"ANCHOR_LR", ANCHORP_LR},
 {"ANCHOR_C", ANCHORP_C},
+{"ANCHOR_UC", ANCHORP_UC},
+{"ANCHOR_LC", ANCHORP_LC},
+{"ANCHOR_CL", ANCHORP_CL},
+{"ANCHOR_CR", ANCHORP_CR},
 {"FRAMESERVER_LOOP", 0},
 {"FRAMESERVER_NOLOOP", 1},
 {"TYPE_FRAMESERVER", ARCAN_TAG_FRAMESERV},
