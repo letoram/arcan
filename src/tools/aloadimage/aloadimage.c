@@ -5,7 +5,7 @@
  * Reference: http://arcan-fe.com, README.MD
  */
 #include <arcan_shmif.h>
-#include <arcan_shmif_tuisym.h>
+#include <arcan_tuisym.h>
 #include <unistd.h>
 #include <inttypes.h>
 #include <getopt.h>
