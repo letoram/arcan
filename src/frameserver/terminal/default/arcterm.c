@@ -324,8 +324,8 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		uint8_t fgc[3], bgc[3];
 		tsm_vte_get_color(term.vte, VTE_COLOR_BACKGROUND, bgc);
 		tsm_vte_get_color(term.vte, VTE_COLOR_FOREGROUND, fgc);
-		arcan_tui_update_color(term.screen, TUI_COL_BG, bgc);
-		arcan_tui_update_color(term.screen, TUI_COL_FG, fgc);
+		arcan_tui_set_color(term.screen, TUI_COL_BG, bgc);
+		arcan_tui_set_color(term.screen, TUI_COL_TEXT, fgc);
 	}
 
 /*

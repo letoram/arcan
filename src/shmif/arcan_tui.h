@@ -159,17 +159,13 @@
  *  reset_flags(ctx, flags)
  *  defattr(ctx, attr)
  *
- * [SPECIAL USE NOTES]
- * Most of the above should be fairly straightforward and similar
- * to other APIs like curses. Where
- *
  * [MISSING/PENDING FEATURES]
  *  [ ] Simple audio
  *  [ ] Announce binary- file input and output- capabilities
  *  [ ] Language bindings, readline like API
  *  [ ] Argument- validation mode
- *  [ ] Ontology for color names and palette definitions
  *  [ ] External process- to window mapping
+ *  [ ] Substitution/shaping pre-render mode
  *  [ ] Translation that exposes the NCurses API
  */
 
@@ -658,13 +654,6 @@ bool arcan_tui_writeu8(struct tui_context*,
 void arcan_tui_cursorpos(struct tui_context*, size_t* x, size_t* y);
 
 /*
- * [DEPRECATED, AVOID]
- * Still used by arcterm, need to be replaced with decent color management
- */
-void arcan_tui_update_color(struct tui_context* tui,
-	enum tui_color_group group, const uint8_t rgb[3]);
-
-/*
  * lock input handling and switch to a libreadline (actually linenoise)
  * style management, will trigger callbacks on completion- and cancel- when
  * the control is returned.
@@ -688,7 +677,12 @@ void arcan_tui_readline(struct tui_context*,
  */
 /* hints, freehints, completion */
 
+/*
+ * fill out rgb[] with the current values of the specified color group.
+ * see the enum tui_color_group for valid values.
+ */
 void arcan_tui_get_color(struct tui_context* tui, int group, uint8_t rgb[3]);
+void arcan_tui_set_color(struct tui_context* tui, int group, uint8_t rgb[3]);
 
 /*
  * reset state-tracking, scrollback buffers, ...
