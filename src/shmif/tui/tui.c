@@ -180,9 +180,10 @@ struct tui_context {
 	int modifiers;
 	bool got_custom; /* track if we have any on-screen dynamic cells */
 
-	uint8_t fgc[3], bgc[3], clc[3];
+	struct {
+		uint8_t rgb[3];
+	} colors[TUI_COL_INACTIVE];
 
-	uint8_t cc[3]; /* cursor color */
 	int cursor_x, cursor_y; /* last cached position */
 	bool cursor_off; /* current blink state */
 	bool cursor_hard_off; /* user / state toggle */
@@ -261,6 +262,15 @@ static void resolve_cursor(
 		*w = tui->cell_w;
 		*h = tui->cell_h;
 	}
+}
+static shmif_pixel get_bg_col(struct tui_context* tui)
+{
+	return SHMIF_RGBA(
+		tui->colors[TUI_COL_BG].rgb[0],
+		tui->colors[TUI_COL_BG].rgb[1],
+		tui->colors[TUI_COL_BG].rgb[2],
+		tui->alpha
+	);
 }
 
 static void cursor_at(struct tui_context* tui, int x, int y, shmif_pixel ccol)
@@ -595,8 +605,7 @@ static void draw_shaped(struct tui_context* tui,
 
 /* clear the entire row */
 		int cury = row * ch + start_y;
-		shmif_pixel bgcol = SHMIF_RGBA(
-			tui->bgc[0],tui->bgc[1],tui->bgc[2],tui->alpha);
+		shmif_pixel bgcol = get_bg_col(tui);
 		draw_box(&tui->acon, 0, cury, tui->acon.w, cury+tui->cell_h, bgcol);
 		tui->acon.dirty.x2 = tui->acon.w;
 
@@ -694,8 +703,15 @@ static void clear_framebuffer(struct tui_context* tui)
 {
 	size_t npx = tui->acon.w * tui->acon.h;
 	shmif_pixel* dst = tui->acon.vidp;
+	shmif_pixel bgc = SHMIF_RGBA(
+		tui->colors[TUI_COL_BG].rgb[0],
+		tui->colors[TUI_COL_BG].rgb[1],
+		tui->colors[TUI_COL_BG].rgb[2],
+		tui->alpha
+	);
+
 	while (npx--)
-		*dst++ = SHMIF_RGBA(tui->bgc[0], tui->bgc[1], tui->bgc[2], tui->alpha);
+		*dst++ = bgc;
 }
 
 /*
@@ -728,8 +744,8 @@ static void apply_blitbuffer(struct tui_context* tui, int sign)
 	}
 
 /* reset the smooth-scroll blitbuffer */
-	shmif_pixel col = SHMIF_RGBA(
-		tui->bgc[0],tui->bgc[1],tui->bgc[2],tui->alpha);
+	shmif_pixel col = get_bg_col(tui);
+
 	shmif_pixel* cvp = tui->acon.vidp;
 	tui->acon.vidp = tui->blitbuffer;
 	draw_box(&tui->acon, 0, 0, tui->acon.w, tui->cell_h*2, col);
@@ -908,8 +924,7 @@ static void update_screen(struct tui_context* tui, bool ign_inact)
 		tui->acon.dirty.y2 = tui->acon.h;
 		tsm_screen_selection_reset(tui->screen);
 
-		shmif_pixel col = SHMIF_RGBA(
-			tui->bgc[0],tui->bgc[1],tui->bgc[2],tui->alpha);
+		shmif_pixel col = get_bg_col(tui);
 
 		if (tui->pad_w)
 			draw_box(&tui->acon,
@@ -959,12 +974,16 @@ static void update_screen(struct tui_context* tui, bool ign_inact)
 
 /* draw the new cursor */
 	if (tui->cursor_upd && !(tui->cursor_off | tui->cursor_hard_off) ){
+		shmif_pixel col = SHMIF_RGBA(
+			tui->colors[tui->scroll_lock ? TUI_COL_ALTCURSOR : TUI_COL_CURSOR].rgb[0],
+			tui->colors[tui->scroll_lock ? TUI_COL_ALTCURSOR : TUI_COL_CURSOR].rgb[1],
+			tui->colors[tui->scroll_lock ? TUI_COL_ALTCURSOR : TUI_COL_CURSOR].rgb[2],
+			0xff
+		);
+
 		int x, y, w, h;
 		resolve_cursor(tui, &x, &y, &w, &h);
-		cursor_at(tui, x, y,
-			tui->scroll_lock ? SHMIF_RGBA(tui->clc[0], tui->clc[1], tui->clc[2],0xff):
-				SHMIF_RGBA(tui->cc[0], tui->cc[1], tui->cc[2], 0xff)
-		);
+		cursor_at(tui, x, y, col);
 	}
 
 	tui->dirty &= ~(DIRTY_PENDING | DIRTY_PENDING_FULL);
@@ -1560,8 +1579,7 @@ static void update_screensize(struct tui_context* tui, bool clear)
 
 /* we respect the displayhint entirely, and pad with background
  * color of the new dimensions doesn't align with cell-size */
-	shmif_pixel col = SHMIF_RGBA(
-		tui->bgc[0],tui->bgc[1],tui->bgc[2],tui->alpha);
+	shmif_pixel col = get_bg_col(tui);
 
 	wait_vready(tui, true);
 
@@ -1611,9 +1629,18 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 /* FIXME: Drawing options, this is really legacy and should be replaced with
  * complete palette/alpha, ... controls */
 	case TARGET_COMMAND_GRAPHMODE:
-		if (ev->ioevs[0].iv == 1){
+		if (ev->ioevs[0].iv == 0){
+			if (tui->handlers.recolor)
+				tui->handlers.recolor(tui, tui->handlers.tag);
+		}
+		else if (ev->ioevs[0].iv == 1){
 			tui->alpha = ev->ioevs[1].fv;
 			tui->dirty = DIRTY_PENDING_FULL;
+		}
+		else if (ev->ioevs[0].iv <= TUI_COL_INACTIVE){
+			tui->colors[ev->ioevs[0].iv].rgb[0] = ev->ioevs[1].iv;
+			tui->colors[ev->ioevs[0].iv].rgb[1] = ev->ioevs[2].iv;
+			tui->colors[ev->ioevs[0].iv].rgb[2] = ev->ioevs[3].iv;
 		}
 	break;
 
@@ -2434,10 +2461,13 @@ int arcan_tui_alloc_screen(struct tui_context* ctx)
 	if (0 != tsm_screen_new(&ctx->screens[ind], tsm_log, ctx))
 		return -1;
 
+	uint8_t* fg = ctx->colors[TUI_COL_TEXT].rgb;
+	uint8_t* bg = ctx->colors[TUI_COL_BG].rgb;
+
 	tsm_screen_set_def_attr(ctx->screens[ind],
 		&(struct tui_screen_attr){
-			.fr = ctx->fgc[0], .fg = ctx->fgc[1], .fb = ctx->fgc[2],
-			.br = ctx->bgc[0], .bg = ctx->bgc[1], .bb = ctx->bgc[2]
+			.fr = fg[0], .fg = fg[1], .fb = fg[2],
+			.br = bg[0], .bg = bg[1], .bb = bg[2]
 	});
 
 	ctx->screen_alloc |= 1 << ind;
@@ -2465,41 +2495,19 @@ struct tui_settings arcan_tui_defaults(
 	return res;
 }
 
-static uint8_t* grp_to_cptr(struct tui_context* tui, enum tui_color_group grp)
-{
-	switch (grp){
-	case TUI_COL_BG:
-		return tui->bgc;
-	break;
-	case TUI_COL_FG:
-		return tui->fgc;
-	break;
-	case TUI_COL_CURSOR:
-		return tui->cc;
-	break;
-	case TUI_COL_ALTCURSOR:
-		return tui->clc;
-	break;
-	default:
-	return NULL;
-	}
-}
-
 void arcan_tui_get_color(
 	struct tui_context* tui, int group, uint8_t rgb[3])
 {
-	uint8_t* src = grp_to_cptr(tui, group);
-	if (src)
-		memcpy(rgb, src, 3);
+	if (group <= TUI_COL_INACTIVE && group >= TUI_COL_PRIMARY){
+		memcpy(rgb, tui->colors[group].rgb, 3);
+	}
 }
 
-void arcan_tui_update_color(struct tui_context* tui,
-	enum tui_color_group group, const uint8_t rgb[3])
+void arcan_tui_set_color(
+	struct tui_context* tui, int group, uint8_t rgb[3])
 {
-	uint8_t* dst = grp_to_cptr(tui, group);
-	if (dst){
-		tui->dirty |= DIRTY_PENDING_FULL;
-		memcpy(dst, rgb, 3);
+	if (group <= TUI_COL_INACTIVE && group >= TUI_COL_PRIMARY){
+		memcpy(tui->colors[group].rgb, rgb, 3);
 	}
 }
 
@@ -2610,10 +2618,10 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 	res->alpha = set->alpha;
 	res->cell_w = set->cell_w;
 	res->cell_h = set->cell_h;
-	memcpy(res->cc, set->cc, 3);
-	memcpy(res->clc, set->clc, 3);
-	memcpy(res->bgc, set->bgc, 3);
-	memcpy(res->fgc, set->fgc, 3);
+	memcpy(res->colors[TUI_COL_CURSOR].rgb, set->cc, 3);
+	memcpy(res->colors[TUI_COL_ALTCURSOR].rgb, set->clc, 3);
+	memcpy(res->colors[TUI_COL_BG].rgb, set->bgc, 3);
+	memcpy(res->colors[TUI_COL_TEXT].rgb, set->fgc, 3);
 	res->hint = set->hint;
 	res->mouse_forward = set->mouse_fwd;
 	res->cursor_period = set->cursor_period;
@@ -2651,9 +2659,14 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 	expose_labels(res);
 	tsm_screen_set_def_attr(res->screen,
 		&(struct tui_screen_attr){
-			.fr = res->fgc[0], .fg = res->fgc[1], .fb = res->fgc[2],
-			.br = res->bgc[0], .bg = res->bgc[1], .bb = res->bgc[2]
-	});
+			.fr = res->colors[TUI_COL_TEXT].rgb[0],
+			.fg = res->colors[TUI_COL_TEXT].rgb[1],
+			.fb = res->colors[TUI_COL_TEXT].rgb[2],
+			.br = res->colors[TUI_COL_BG].rgb[0],
+			.bg = res->colors[TUI_COL_BG].rgb[1],
+			.bb = res->colors[TUI_COL_BG].rgb[2]
+		}
+	);
 	tsm_screen_set_max_sb(res->screen, 1000);
 
 /* clipboard, timer callbacks, no IDENT */

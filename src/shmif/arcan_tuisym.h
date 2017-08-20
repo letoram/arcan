@@ -20,10 +20,20 @@
 enum tui_context_flags {
 	TUI_INSERT_MODE = 1,
 	TUI_AUTO_WRAP = 2,
+/*
+ * Relative origin, row/col are set to take margin values into account
+ */
 	TUI_REL_ORIGIN = 4,
+
+/* Inverse the colors of the entire screen */
 	TUI_INVERSE = 8,
+
+/* Disable drawing the cursor */
 	TUI_HIDE_CURSOR = 16,
+
 	TUI_FIXED_POS = 32,
+
+/* Alternate screen does not have scrolling or scrollback behavior */
 	TUI_ALTERNATE = 64
 };
 
@@ -61,17 +71,25 @@ enum tui_subwnd_type {
 	TUI_WND_HANDOVER = 3
 };
 
+/*
+ * For making lookups against the currently known color table, these are not
+ * strictly forced (outside cursor, bg, fg, ...) but rather intended as hints
+ * so that the client can match colors accordingly, or just work with the
+ * abstract groups.
+ */
 enum tui_color_group {
-	TUI_COL_PRIMARY = 0,
+/* 0 / 1 are reserved */
+	TUI_COL_PRIMARY = 2,
 	TUI_COL_SECONDARY,
 	TUI_COL_BG,
-	TUI_COL_FG,
+	TUI_COL_TEXT,
 	TUI_COL_CURSOR,
 	TUI_COL_ALTCURSOR,
 	TUI_COL_HIGHLIGHT,
 	TUI_COL_LABEL,
 	TUI_COL_WARNING,
 	TUI_COL_ERROR,
+	TUI_COL_ALERT,
 	TUI_COL_INACTIVE
 };
 
@@ -85,9 +103,26 @@ enum tui_cursors {
 };
 
 enum tui_render_flags {
+/*
+ * force the use of bitmapped built-in fonts
+ */
 	TUI_RENDER_BITMAP = 1,
+
+/*
+ * double-buffered rendering, may cut down on latency during shaped and
+ * more advanced / custom rendering
+ */
 	TUI_RENDER_DBLBUF = 2,
+
+/*
+ * attempt GPU supported acceleration
+ */
 	TUI_RENDER_ACCEL = 4,
+
+/*
+ * enable a shaped based rendering approach, this is costly and requires
+ * use of cell attributes for aligning / fitting text output
+ */
 	TUI_RENDER_SHAPED = 8
 };
 
@@ -107,6 +142,11 @@ enum {
 	TUIM_REPEAT = 0x8000,
 } tuim_syms;
 
+/*
+ * Derived from the symtable used by SDL1.2, these should ideally rarely
+ * be used and instead favor the label facility for announcing supported
+ * abstract inputs.
+ */
 enum tuik_syms {
 	TUIK_UNKNOWN = 0,
 	TUIK_FIRST = 0,
