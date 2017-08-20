@@ -83,8 +83,9 @@
 -- message notifies about some user-readable event, i.e. the completion of
 -- some state transfer.
 --
--- @note: "viewport" {parent, invisible, view, id, border} - indicate view
--- and visibility
+-- @note: "viewport" (invisible, focus, anchor_edge, anchor_pos, rel_order,
+-- rel_x, rel_y, anchor_w, anchor_h, edge, border[tldr]), parent) -
+-- indicate relative anchoring, positioning, view and focus metdata
 --
 -- @note: "content_state" {rel_x, rel_y, x_size, y_size} - indicates that
 -- scrollbars could/should be shown

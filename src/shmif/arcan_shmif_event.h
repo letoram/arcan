@@ -690,12 +690,8 @@ enum ARCAN_EVENT_EXTERNAL {
 	EVENT_EXTERNAL_CURSORHINT,
 
 /*
- * Hint that video synchronization should only cover a subarea. It can also
- * indicate if the segment should be hidden, or the range of client-side
- * decorations. This is reset to 0,0,w,h on a completed resize sequence.
- * Values outside the current range (x+w > segw, y+h > segh) will be ignored
- * or cause the connection to be terminated.
- * Uses the viewport substructure.
+ * Indicate spatial relationship and visibility details relative to some
+ * fictive world anchor point or to an explicit relative parent.
  */
 	EVENT_EXTERNAL_VIEWPORT,
 
@@ -1273,31 +1269,54 @@ enum ARCAN_TARGET_SKIPMODE {
 /*
  * The viewport hint is used to provide additional information about
  * different regions of a segment, possible decorations, hierarchical
- * relations, anchoring and ordering.
+ * relations, visibility, anchoring and ordering.
  *
- *  (x+w), (y+h)     - position and cliped against actual surface dimensions
- *  (borderpx)[tlrd] - indicate if there is a border area and its thickness
- *                     so that it can be cropped away if CSDs are undesired
+ *  (borderpx)[tlrd] - indicate a possible border/shadow/decoration area
+ *                     that can be cropped away or ignored in position
+ *                     calculations.
+ *
  *  (parent) (tok)   - can be 0 or the window-id we are relative against,
  *                     useful for popup subsegments etc. tok comes from
  *                     shmif_page segment_token
+ *
  *	(invisible)      - hint that the current content segment backing store
- *	                   contains no information that is visibly helpful
- *	(layhint)        - placeholder for anchoring and sizing information
- *  (relx, rely)     - positioning HINT relative to parent-
- *  relz             - relative parent ordering hint (+- #segments)
+ *	                   contains no information that is visibly helpful,
+ *	                   this is typically flipped back and forth in order
+ *	                   to save connection setup overhead.
+ *
+ *	(focused)        - Hint that for all the hierarchies in the connection,
+ *	                   this is the one that should have focus.
+ *
+ *  (anchor-edge)    - enable anchoring to parent.
+ *
+ *  (anchor-pos)     - enable anchor positioning selection within an area
+ *                     in a surface-relative coordinate space.
+ *
+ *	(edge)           - parent-relative anchoring edge:
+ *	                   0 - doesn't matter
+ *	                   1 - UL        2 - UC      3 - UR
+ *	                   4 - CL        5 - C       6 - CR
+ *	                   7 - LL        8 - LC      9 - LR
+ *
+ *  (x+w, y+h)       - positioning HINT relative to parent UL origo,
+ *                     describing the possible anchor region.
+ *
+ *  (order)          - parent-relative drawing order (+- #segments)
  *
  *  viewports may become invalidated on shrinking resize, though
  *  border- properties for still-valid areas are retained.
  */
 		struct {
-			uint16_t x, y, w, h;
+			int32_t x, y;
+			uint16_t w, h;
 			uint32_t parent;
 			uint8_t border[4];
-			uint8_t invisible;
-			uint8_t layhint;
-			int16_t rel_x, rel_y;
-			int8_t rel_z;
+			uint8_t edge;
+			int8_t order;
+			uint8_t invisible : 1;
+			uint8_t focus : 1;
+			uint8_t anchor_edge : 1;
+			uint8_t anchor_pos : 1;
 		} viewport;
 
 /*

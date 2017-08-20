@@ -98,16 +98,21 @@ const char* arcan_shmif_eventstr(arcan_event* aev, char* dbuf, size_t dsz)
 			snprintf(work, dsz,"EXT:CURSORHINT(%s)", ev.ext.message.data);
 		break;
 		case EVENT_EXTERNAL_VIEWPORT:
-			snprintf(work, dsz,"EXT:VIEWPORT(parent: %"PRIu32"@+%"PRId16",%"PRId16","
-				"border: %d,%d,%d,%d invisible: %d, anchor: %d+%d,%d z: %d)",
+			snprintf(work, dsz,"EXT:VIEWPORT(parent: %"PRIu32
+				"@x,y+w,y: +%"PRId32",%"PRId32"+%"PRIu16",%"PRIu16
+				", border: %d,%d,%d,%d focus: %d, invisible: %d, "
+				"anchor-edge: %d, anchor-pos: %d, edge: %d, z: %d)",
 				ev.ext.viewport.parent,
-				ev.ext.viewport.rel_x, ev.ext.viewport.rel_y,
+				ev.ext.viewport.x, ev.ext.viewport.y,
+				ev.ext.viewport.w, ev.ext.viewport.h,
 				(int)ev.ext.viewport.border[0], (int)ev.ext.viewport.border[1],
 				(int)ev.ext.viewport.border[2], (int)ev.ext.viewport.border[3],
+				(int)ev.ext.viewport.focus,
 				(int)ev.ext.viewport.invisible,
-				(int)ev.ext.viewport.layhint,
-				(int)ev.ext.viewport.rel_x, (int)ev.ext.viewport.rel_y,
-				(int)ev.ext.viewport.rel_z
+				(int)ev.ext.viewport.anchor_edge,
+				(int)ev.ext.viewport.anchor_pos,
+				(int)ev.ext.viewport.edge,
+				(int)ev.ext.viewport.order
 			);
 		break;
 		case EVENT_EXTERNAL_CONTENT:
