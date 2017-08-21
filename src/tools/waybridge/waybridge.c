@@ -33,7 +33,8 @@ enum trace_levels {
 	TRACE_REGION  = 16,
 	TRACE_DDEV    = 32,
 	TRACE_SEAT    = 64,
-	TRACE_SURF    = 128
+	TRACE_SURF    = 128,
+	TRACE_DRM     = 256
 };
 
 static inline void trace(int level, const char* msg, ...)
@@ -57,10 +58,6 @@ static inline void trace(int level, const char* msg, ...)
  * EGL- details needed for handle translation
  */
 struct comp_surf;
-typedef void (*PFNGLEGLIMAGETARGETTEXTURE2DOESPROC) (EGLenum, EGLImage);
-static PFNEGLQUERYWAYLANDBUFFERWL query_buffer;
-static PFNEGLBINDWAYLANDDISPLAYWL bind_display;
-static PFNGLEGLIMAGETARGETTEXTURE2DOESPROC img_tgt_text;
 
 /*
  * shared allocation functions, find_client takes a reference to a
@@ -127,6 +124,7 @@ static struct {
 
 	EGLDisplay display;
 	struct wl_display* disp;
+	struct wl_drm* drm;
 	struct arcan_shmif_initial init;
 	struct arcan_shmif_cont control;
 	bool alive;
@@ -617,7 +615,7 @@ static int show_use(const char* msg, const char* arg)
 	fprintf(stdout, "Debugging-env: WAYBRIDGE_TRACE=[bitmask]\n"
 	"\t1 - allocations, 2 - digital-input, 4 - analog-input\n"
 	"\t8 - shell, 16 - region-events, 32 - data device\n"
-	"\t64 - seat, 128 - surface\n");
+	"\t64 - seat, 128 - surface, 256 - drm \n");
 	return EXIT_FAILURE;
 }
 
@@ -786,19 +784,6 @@ int main(int argc, char* argv[])
  * shmif-ext proxy authentication for us.
  */
 	if (protocols.egl){
-		bind_display = (PFNEGLBINDWAYLANDDISPLAYWL)
-			eglGetProcAddress ("eglBindWaylandDisplayWL");
-		query_buffer = (PFNEGLQUERYWAYLANDBUFFERWL)
-			eglGetProcAddress ("eglQueryWaylandBufferWL");
-		img_tgt_text = (PFNGLEGLIMAGETARGETTEXTURE2DOESPROC)
-			eglGetProcAddress ("glEGLImageTargetTexture2DOES");
-
-		if (!bind_display||!query_buffer||!img_tgt_text){
-			fprintf(stderr, "missing WL-EGL extensions\n");
-			arcan_shmif_drop(&wl.control);
-			return EXIT_FAILURE;
-		}
-
 /*
  * we need an acelerated graphics setup that we can use to tie into mesa/gl
  * in order for the whole WLDisplay integration that goes on (...)
@@ -822,19 +807,16 @@ int main(int argc, char* argv[])
 		uintptr_t devnode;
 		arcan_shmifext_dev(&wl.control, &devnode, false);
 
-/*
- * note: the device node matching is part of the bind_display action and the
- * server, so it might be possible to do the GPU swap for new clients on
- * DEVICEHINT by rebinding or by eglUnbindWaylandDisplayWL
- */
 		uintptr_t display;
 		arcan_shmifext_egl_meta(&wl.control, &display, NULL, NULL);
 		wl.display = eglGetDisplay((EGLDisplay)display);
-		if (!bind_display((EGLDisplay)display, wl.disp)){
+		if (!wl.display){
 			fprintf(stderr, "(eglBindWaylandDisplayWL) failed\n");
 			arcan_shmif_drop(&wl.control);
 			return EXIT_FAILURE;
 		}
+		wl.drm = wayland_drm_init(wl.disp,
+			getenv("ARCAN_RENDER_NODE"), NULL, NULL, 0);
 	}
 
 	wl_display_add_socket_auto(wl.disp);

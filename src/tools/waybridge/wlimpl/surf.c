@@ -163,17 +163,23 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 	while (acon->addr->vready){
 	}
 
-	if (query_buffer && query_buffer(wl.display,
-		surf->buf, EGL_TEXTURE_FORMAT, &dfmt)){
+	struct wl_drm_buffer* drm_buf = wayland_drm_buffer_get(wl.drm, surf->buf);
+	if (drm_buf){
 		trace(TRACE_SURF, "surf_commit(egl)");
 
-/* for this case, we need to defer the release of a buffer, chances are we run
- * into a live-locking problem as the server will keep the buffer and use it as
- * long as the client doesn't send another, but from what I could tell this is
- * supposed to be double buffered
- *
+/*
+ * when vready is released, it means that the last handle we sent is
+ * currently in use, if we provide a new handle, the next time its released
+ * we can unlock the previous one etc.
+ * arcan_shmif_signalhandle(ctx, mask, handle, stride, format, ...)
  */
-		wl_buffer_send_release(surf->buf);
+		static struct wl_resource* last_buf;
+		if (last_buf && last_buf != surf->buf){
+			wl_buffer_send_release(surf->buf);
+		}
+
+		wayland_drm_commit(drm_buf, acon);
+		last_buf = surf->buf;
 
 /* Now we can format the buffer through the normal signal_handle.
  *

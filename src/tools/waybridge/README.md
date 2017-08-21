@@ -68,31 +68,19 @@ Then the correlated arcan events can be traced with ARCAN\_SHMIF\_DEBUG=1
 
 Notes and Issues
 ====
-1. Mesa picks the wrong render-node
-At the moment, EGL/drm is stuck on what seems like a bug in Mesa. If we bind
-the bridge to a render-node, a client will get somewhere in the nasty backtrace
-to (drm\_handle\_device) - the reference to /dev/dri/card128 rather than
-/dev/dri/renderD128. A quick hack around this bug is to simply create the
-render-node under the name mesa is looking for. Another interesting part is
-when we have multiple GPUs. This might be a bug in the shmif, but the
-authentication token goes against the wrong GPU.
+1. DRM- buffer translation is incomplete - though the handles can be
+   forwarded with some rather aggressive DRM tricks, we still don't
+	 track/release correctly.
 
-The other option is to tell arcan to start arcan with the
-ARCAN\_VIDEO\_ALLOW\_AUTH environment set and start waybridge with
-ARCAN\_RENDER\_NODE pointing to the card device arcan uses. This will push the
-privilege level of waybridge to be on par with arcan.
-
-2. DRM- buffer translation is incomplete - this breaks more and more
-	 applications as fewer work without GL/EGL available at all. Some of the
-	 friction comes from a lot of this crap being hidden deep inside the bowels
-	 of Mesa in a way that doesn't play well with proxying at all. Seem to have
-	 some mapping problems here with authentication tokens and my installation.
+2. Mouse input, scroll wheel / scroll locking not really working
 
 3. Stride - the shm- buffer blit doesn't take stride differences into
    account. This fails on MPV in SHM depending on source video size.
 
 4. Buffering and recent Qt5 demos, for some reason the pyqt demos queues up
-   a lot of frames and then just dies - unsure what is happening here.
+   a lot of frames and then just dies - unsure what is happening here though
+	 it seems like it is connected to the part where we need to handle multiple
+	 callbacks for the same surface.
 
 Limitations
 ====
@@ -104,18 +92,15 @@ separately in the [arcan wiki](https://github.com/letoram/arcan/wiki/wayland).
 
 XWayland
 ====
-XWayland support will be enabled at some point, though it will likely just
-derive from the implementation WLC/Weston has. instead, a separate
-[Xarcan](https://github.com/letoram/xarcan) implementation is maintained for a
-number of resons, such as better controls of how/ and which/ features gets
-translated (matters when looking into sharing, display-hw synch, segmentation,
-...), for performance (going xwayland -> arcan-wayland -> arcan has some costly
-friction in translation that is not worth paying for).
+XWayland support will be enabled at some point since there isn't really much
+we need to do other than some minor xcb parsing on a WM socket, and we can
+borrow the setup from wlc - though for non-rootless mode, we prefer Xarcan
+operation as that requires less translation and has access to more features.
 
 TODO
 ====
 
-(x - done, p - partial, s - showstopper)
+(x - done, p - partial/possible-tuning, s - showstopper)
 
 - [ ] Milestone 1, basics
   - [x] Boilerplate-a-plenty
@@ -127,14 +112,13 @@ TODO
     - [ ] Touch
   - [x] Mouse Cursor
   - [p] Popup
-  - [s] EGL/drm
+  - [p] EGL/drm
 - [ ] Milestone 2
-    - [p] Positioners
-    - [ ] Cut and Paste (full 'data device manager')
+    - [p] Cut and Paste (full 'data device manager')
     - [ ] XDG-shell
  		  - [x] Focus, buffers, cursors, sizing ...
 			- [p] Forward shell events that can't be handled with shmif
-			- [ ] Positioners
+			- [p] Positioners
     - [ ] Application-test suite and automated tests (SDL, QT, GTK, ...)]
     - [ ] XWayland
     - [ ] Output Rotation / Scaling
