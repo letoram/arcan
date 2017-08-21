@@ -40,6 +40,7 @@ set(PROTOCOLS
 	"${WAYLANDPROTOCOLS_PATH}/unstable/linux-dmabuf/linux-dmabuf-unstable-v1"
 	"${WAYLANDPROTOCOLS_PATH}/unstable/pointer-constraints/pointer-constraints-unstable-v1"
 	"${WAYLANDPROTOCOLS_PATH}/unstable/idle-inhibit/idle-inhibit-unstable-v1"
+	"${CMAKE_CURRENT_SOURCE_DIR}/wlimpl/wayland-drm"
 )
 foreach(proto ${PROTOCOLS})
    get_filename_component(base ${proto} NAME)

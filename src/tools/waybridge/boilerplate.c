@@ -143,6 +143,13 @@ struct bridge_pool {
 	int fd;
 };
 
+/*
+ * This one is a bit special as it have been plucked from mesa and slightly
+ * patched to retrieve the render node we are supposed to use
+ */
+#include "wayland-wayland-drm-server-protocol.h"
+#include "wlimpl/drm.c"
+
 #include "wlimpl/surf.c"
 static struct wl_surface_interface surf_if = {
 	.destroy = surf_destroy,
