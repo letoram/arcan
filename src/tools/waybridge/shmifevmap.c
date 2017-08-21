@@ -13,20 +13,24 @@
  *      resources and iterate them.
  *
  *  Touch - not used at all right now
- *
- *  Keyboard -
- *   a. we need to feed the 'per seat' keymap with inputs and modifiers
- *      in order to extract and send correct modifiers (seriously...)
  */
 static void update_mxy(struct comp_surf* cl, unsigned long long pts)
 {
+	if (!cl->client->pointer)
+		return;
+
 	trace(TRACE_ANALOG, "mouse@%d,%d", cl->acc_x, cl->acc_y);
-	if (cl->pointer_pending != 2 || cl->client->last_cursor != cl->res){
-		trace(TRACE_ANALOG, "mouse(send_enter)");
-		if (cl->client->last_cursor)
-			wl_pointer_send_leave(cl->client->pointer, STEP_SERIAL(), cl->res);
+	if (cl->client->last_cursor != cl->res){
+		if (cl->client->last_cursor){
+			trace(TRACE_DIGITAL,
+				"leave: %"PRIxPTR, (uintptr_t)cl->client->last_cursor);
+			wl_pointer_send_leave(
+				cl->client->pointer, STEP_SERIAL(), cl->client->last_cursor);
+		}
+
+		trace(TRACE_DIGITAL, "enter: %"PRIxPTR, (uintptr_t)cl->res);
 		cl->client->last_cursor = cl->res;
-		cl->pointer_pending = 2;
+
 		wl_pointer_send_enter(cl->client->pointer,
 			STEP_SERIAL(), cl->res,
 			wl_fixed_from_int(cl->acc_x),
@@ -43,12 +47,17 @@ static void update_mxy(struct comp_surf* cl, unsigned long long pts)
 	}
 }
 
+static void get_keyboard_states(struct wl_array* dst)
+{
+	wl_array_init(dst);
+/* FIXME: track press/release so we can send the right ones */
+}
+
 static void update_mbtn(struct comp_surf* cl,
 	unsigned long long pts, int ind, bool active)
 {
 	trace(TRACE_DIGITAL,
-		"mouse-btn(pend: %d, ind: %d:%d, @%d,%d)",
-			cl->pointer_pending, ind,(int) active, cl->acc_x, cl->acc_y);
+		"mouse-btn(ind: %d:%d, @%d,%d)", ind,(int) active, cl->acc_x, cl->acc_y);
 
 /* 0x110 == BTN_LEFT in evdev parlerance, ignore 0 index as it is used
  * to convey gestures and that's a separate unstable protocol */
@@ -57,6 +66,61 @@ static void update_mbtn(struct comp_surf* cl,
 			pts, 0x10f + ind, active ?
 			WL_POINTER_BUTTON_STATE_PRESSED : WL_POINTER_BUTTON_STATE_RELEASED
 		);
+}
+
+static void update_kbd(struct comp_surf* cl, arcan_ioevent* ev)
+{
+	if (!cl->client->keyboard)
+		return;
+
+	trace(TRACE_DIGITAL,
+		"button (%d:%d)", (int)ev->subid, (int)ev->input.translated.scancode);
+
+/* keyboard not acknowledged on this surface?
+ * send focus and possibly leave on previous one */
+	if (cl->client->last_kbd != cl->res){
+		if (cl->client->last_kbd){
+			trace(TRACE_DIGITAL,
+				"leave: %"PRIxPTR, (uintptr_t) cl->client->last_kbd);
+			wl_keyboard_send_leave(
+				cl->client->keyboard, STEP_SERIAL(), cl->client->last_kbd);
+		}
+
+		trace(TRACE_DIGITAL, "enter: %"PRIxPTR, (uintptr_t) cl->res);
+		cl->client->last_kbd = cl->res;
+		struct wl_array states;
+		get_keyboard_states(&states);
+			wl_keyboard_send_enter(
+				cl->client->keyboard, STEP_SERIAL(), cl->res, &states);
+		wl_array_release(&states);
+	}
+
+/* This is, politely put, batshit insane - every time the modifier mask has
+ * changed from the last time we were here, we either have to allocate and
+ * rebuild a new xkb_state as the structure is opaque, and they provide no
+ * reset function - then rebuild it by converting our modifier mask back to
+ * linux keycodes and reinsert them into the state machine but that may not
+ * work for each little overcomplicated keymap around. The other option,
+ * is that each wayland seat gets its own little state-machine that breaks
+ * every input feature we have server-side.
+ * The other panic option is to fake/guess/estimate the different modifiers
+ * and translate that way.
+ */
+	struct xkb_state* state = cl->client->kbd_state.state;
+	xkb_state_update_key(state,
+		ev->subid + 8, ev->input.translated.active ? XKB_KEY_DOWN : XKB_KEY_UP);
+	uint32_t depressed = xkb_state_serialize_mods(state,XKB_STATE_MODS_DEPRESSED);
+	uint32_t latched = xkb_state_serialize_mods(state, XKB_STATE_MODS_LATCHED);
+	uint32_t locked = xkb_state_serialize_mods(state, XKB_STATE_MODS_LOCKED);
+	uint32_t group = xkb_state_serialize_mods(state, XKB_STATE_MODS_EFFECTIVE);
+	wl_keyboard_send_modifiers(cl->client->keyboard,
+		STEP_SERIAL(), depressed, latched, locked, group);
+	wl_keyboard_send_key(cl->client->keyboard,
+		STEP_SERIAL(),
+		ev->pts,
+		ev->subid,
+		ev->input.translated.active /* WL_KEYBOARD_KEY_STATE_PRESSED == 1*/
+	);
 }
 
 static void translate_input(struct comp_surf* cl, arcan_ioevent* ev)
@@ -106,19 +170,8 @@ static void translate_input(struct comp_surf* cl, arcan_ioevent* ev)
 
 	}
 	else if (ev->datatype ==
-		EVENT_IDATATYPE_TRANSLATED && cl->client && cl->client->keyboard){
-		trace(TRACE_DIGITAL,
-			"keyboard (%d:%d)", (int)ev->subid,
-			(int)ev->input.translated.scancode);
-			wl_keyboard_send_key(cl->client->keyboard,
-			wl_display_next_serial(wl.disp),
-			ev->pts,
-			ev->subid,
-			ev->input.translated.active /* WL_KEYBOARD_KEY_STATE_PRESSED == 1*/
-		);
-
-/* FIXME:decode modifiers field and map to wl_keyboard_send_modifiers */
-	}
+		EVENT_IDATATYPE_TRANSLATED && cl->client && cl->client->keyboard)
+			update_kbd(cl, ev);
 	else
 		;
 }
@@ -142,12 +195,6 @@ static void try_frame_callback(
 	surf->frame_callback = NULL;
 }
 
-static void get_keyboard_states(struct wl_array* dst)
-{
-	wl_array_init(dst);
-/* FIXME: track press/release so we can send the right ones */
-}
-
 /*
  * update the state table for surf and return if it would result in visible
  * state change that should be propagated
@@ -161,39 +208,6 @@ static bool displayhint_handler(struct comp_surf* surf, struct arcan_tgtevent* e
 		.maximized = !!(ev->ioevs[2].iv & 8),
 		.minimized = !!(ev->ioevs[2].iv & 16)
 	};
-
-/* alert the seat */
-	if (surf->states.unfocused != states.unfocused){
-		if (!states.unfocused){
-			if (surf->client->keyboard){
-				struct wl_array states;
-				get_keyboard_states(&states);
-				wl_keyboard_send_enter(
-					surf->client->keyboard, STEP_SERIAL(), surf->res, &states);
-				wl_array_release(&states);
-			}
-
-/* We can't send enter for the pointer before we actually get an event
- * so that we know the local coordinates or at least the relative pos,
- * just track this here and send the enter on the first sample we get.
- * The other option is to add a hack over MESSAGE for wayland clients */
-			if (surf->client->pointer && surf->pointer_pending != 2){
-      	surf->pointer_pending = 1;
-			}
-		}
-		else {
-			if (surf->client->keyboard)
-				wl_keyboard_send_leave(surf->client->keyboard,STEP_SERIAL(),surf->res);
-
-/* tristate pointer pending (not -> pending -> ack), only ack that
- * should result in a leave */
-			if (surf->client->pointer && surf->pointer_pending == 2)
-				wl_pointer_send_leave(surf->client->pointer, STEP_SERIAL(),surf->res);
-
-			surf->pointer_pending = 0;
-/* touch can't actually 'enter or leave' */
-		}
-	}
 
 	bool change = memcmp(&surf->states, &states, sizeof(struct surf_state)) != 0;
 	surf->states = states;

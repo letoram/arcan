@@ -114,6 +114,8 @@ static void xdgsurf_set_geometry(struct wl_client* cl,
 	trace(TRACE_SHELL, "xdgsurf_setgeom("
 		"%"PRIu32"+%"PRIu32", %"PRIu32"+%"PRIu32")", x, y, width, height);
 
+/* the better way is to use the tldr[] from the VIEWPORT hint,
+ * we just need a 'dirty- viewport' and a cache of the properties first */
 	struct arcan_event ev = {
 		.ext.kind = ARCAN_EVENT(MESSAGE)
 	};

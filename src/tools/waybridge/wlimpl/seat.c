@@ -119,7 +119,7 @@ static void seat_keyboard(struct wl_client* cl,
 	size_t sz;
 	int fd;
 	int fmt;
-	if (!waybridge_instance_keymap(&fd, &fmt, &sz)){
+	if (!waybridge_instance_keymap(bcl, &fd, &fmt, &sz)){
 		wl_resource_post_no_memory(res);
 		wl_resource_destroy(res);
 		return;
