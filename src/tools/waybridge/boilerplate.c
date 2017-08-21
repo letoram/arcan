@@ -1,5 +1,12 @@
 #define STEP_SERIAL() ( wl_display_next_serial(wl.disp) )
 
+struct xkb_stateblock {
+	struct xkb_context* context;
+	struct xkb_keymap* map;
+	struct xkb_state* state;
+	const char* map_str;
+};
+
 /*
  * From every wayland subprotocol that needs to allocate a surface,
  * this structure needs to be filled and sent to the request_surface
@@ -9,19 +16,26 @@ struct bridge_client {
 	struct arcan_shmif_cont acon;
 	struct wl_listener l_destr;
 
+/* seat / wl-api mapping references */
 	struct wl_client* client;
 	struct wl_resource* keyboard;
 	struct wl_resource* pointer;
+	struct wl_resource* touch;
+	struct wl_resource* output; /* only 1 atm */
 
-/* cursor tracking structures so that we can send enter/leave properly */
+	struct xkb_stateblock kbd_state;
+
+/* cursor state, we want to share one subseg connection and just
+ * switch surface resource around */
 	struct arcan_shmif_cont acursor;
 	struct wl_resource* cursor;
 	int32_t hot_x, hot_y;
 	bool dirty_hot;
-	struct wl_resource* last_cursor;
 
-	struct wl_resource* touch;
-	struct wl_resource* output; /* only 1 atm */
+/* need to track these so that we can send enter/leave correctly,
+ * watch out for UAFs */
+	struct wl_resource* last_cursor;
+	struct wl_resource* last_kbd;
 
 	bool forked;
 	int group, slot;
@@ -88,7 +102,6 @@ struct comp_surf {
 	uint32_t max_w, max_h, min_w, min_h;
 
 /* for mouse pointer, we need a surface accumulator */
-	int pointer_pending;
 	int acc_x, acc_y;
 
 	struct surf_state states;

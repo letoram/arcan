@@ -89,7 +89,8 @@ static void reset_group_slot(int group, int slot);
  * clients - they can corrupt eachothers maps. To get around this idiocy,
  * we need to repeat this procedure for every client.
  */
-static bool waybridge_instance_keymap(int* fd, int* fmt, size_t* sz);
+static bool waybridge_instance_keymap(
+	struct bridge_client* bcl, int* fd, int* fmt, size_t* sz);
 
 static void destroy_comp_surf(struct comp_surf* surf);
 
@@ -161,34 +162,55 @@ static uint64_t find_set64(uint64_t bmap)
 	return __builtin_ffsll(bmap);
 }
 
-static char* load_keymap()
+static bool load_keymap(struct xkb_stateblock* dst)
 {
 	trace(TRACE_ALLOC, "building keymap");
-	struct xkb_context* ctx = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
-	if (!ctx)
+	dst->context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+	if (!dst->context)
 		return false;
 
 /* load the keymap, XKB_ environments will get the map */
-	struct xkb_keymap* map =
-		xkb_keymap_new_from_names(ctx, NULL, XKB_KEYMAP_COMPILE_NO_FLAGS);
+	dst->map = xkb_keymap_new_from_names(
+		dst->context, NULL, XKB_KEYMAP_COMPILE_NO_FLAGS);
 
-	if (!map){
-		xkb_context_unref(ctx);
+	if (!dst->map){
+		xkb_context_unref(dst->context);
+		dst->context = NULL;
 		return false;
 	}
-	char* keymap_str = xkb_map_get_as_string(map);
-	xkb_keymap_unref(map);
-	xkb_context_unref(ctx);
-	return keymap_str;
+
+	dst->map_str = xkb_map_get_as_string(dst->map);
+	dst->state = xkb_state_new(dst->map);
+	return true;
 }
 
-static bool waybridge_instance_keymap(int* out_fd, int* out_fmt, size_t* out_sz)
+static void free_kbd_state(struct xkb_stateblock* kbd)
 {
-	static char* keymap;
-	if (!keymap)
-		keymap = load_keymap();
+	if (kbd->context){
+		xkb_context_unref(kbd->context);
+		kbd->context = NULL;
+	}
 
-	if (!keymap || !out_fd || !out_fmt || !out_sz)
+	if (kbd->map){
+		xkb_keymap_unref(kbd->map);
+		kbd->map = NULL;
+	}
+
+	if (kbd->state){
+		xkb_state_unref(kbd->state);
+		kbd->state = NULL;
+	}
+
+	kbd->map_str = NULL; /* should live/die with map */
+}
+
+static bool waybridge_instance_keymap(
+	struct bridge_client* cl, int* out_fd, int* out_fmt, size_t* out_sz)
+{
+	if (!out_fd || !out_fmt || !out_sz)
+		return false;
+
+	if (!load_keymap(&cl->kbd_state))
 		return false;
 
 	trace(TRACE_ALLOC, "creating temporary keymap copy");
@@ -202,16 +224,21 @@ static bool waybridge_instance_keymap(int* out_fd, int* out_fmt, size_t* out_sz)
 	if (!chfn || (fd = mkstemp(chfn)) == -1){
 		trace(TRACE_ALLOC, "make tempmap failed");
 		free(chfn);
+		free_kbd_state(&cl->kbd_state);
 		return false;
 	}
 	unlink(chfn);
 
-	*out_sz = strlen(keymap) + 1;
-	if (*out_sz != write(fd, keymap, *out_sz)){
+	*out_sz = strlen(cl->kbd_state.map_str) + 1;
+	if (*out_sz != write(fd, cl->kbd_state.map_str, *out_sz)){
 		trace(TRACE_ALLOC, "write keymap failed");
 		close(fd);
+		free(chfn);
+		free_kbd_state(&cl->kbd_state);
+		return false;
 	}
 
+	free(chfn);
 	*out_fd = fd;
 	*out_fmt = WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1;
 
