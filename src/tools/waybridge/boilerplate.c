@@ -46,6 +46,15 @@ struct acon_tag {
 	int group, slot;
 };
 
+struct positioner {
+	int32_t width, height;
+	int32_t ofs_x, ofs_y;
+	int32_t anchor_x, anchor_y, anchor_width, anchor_height;
+	uint32_t anchor;
+	uint32_t gravity;
+	uint32_t constraints;
+};
+
 struct surface_request {
 /* local identifier, only for personal tracking */
 	uint32_t id;
@@ -58,6 +67,9 @@ struct surface_request {
 	struct comp_surf* source;
 	struct wl_resource* target;
 	struct bridge_client* client;
+
+/* doesn't apply for every request */
+	struct wl_resource* parent, (* positioner);
 
 /* custom 'shove it in here' reference */
 	void* tag;
@@ -89,6 +101,11 @@ struct comp_surf {
 	struct wl_resource* surf_res;
 	struct wl_resource* sub_parent_res;
 	struct wl_resource* sub_child_res;
+
+/*
+ * need to cache/update this one whenever we reparent, etc.
+ */
+	struct arcan_event viewport;
 
 /* some comp_surfaces need to reference shared connections that are
  * managed elsewhere, so if rcon set, that one takes priority */

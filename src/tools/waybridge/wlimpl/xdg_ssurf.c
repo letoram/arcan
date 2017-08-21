@@ -6,6 +6,17 @@ static bool xdgpopup_defer_handler(
 		wl_resource_post_no_memory(req->target);
 		return false;
 	}
+
+/*
+ * PROTOCOL NOTE:
+ * positioner needs to be validated: non-zero size, non-zero anchor is needed,
+ * else send: ZXDG_SHELL_V6_ERROR_INVALID_POSITIONER
+ *
+ * parent needs to be validated,
+ * else send ZXDG_SHELL_V6_ERROR_POPUP_PARENT
+ *
+ * + destroy- rules that are a bit clunky
+ */
 	struct wl_resource* popup = wl_resource_create(req->client->client,
 		&zxdg_popup_v6_interface, wl_resource_get_version(req->target), req->id);
 
@@ -20,11 +31,34 @@ static bool xdgpopup_defer_handler(
 	surf->cookie = 0xfeedface;
 	surf->shell_res = popup;
 	surf->dispatch = xdgpopup_shmifev_handler;
+
 	snprintf(surf->tracetag, SURF_TAGLEN, "xdg_popup");
 	arcan_shmif_enqueue(&surf->acon, &(struct arcan_event){
 		.ext.kind = ARCAN_EVENT(MESSAGE),
 		.ext.message.data = {"shell:xdg_popup"}
 	});
+
+/* update the viewport hint and send that event */
+	bool upd_view = false;
+	if (req->positioner){
+		struct positioner* pos = wl_resource_get_user_data(req->positioner);
+		apply_positioner(pos, &surf->viewport);
+		upd_view = true;
+	}
+
+	if (req->parent){
+		struct comp_surf* surf = wl_resource_get_user_data(req->parent);
+		if (!surf->acon.addr){
+			trace(TRACE_ALLOC, "bad popup, broken parent");
+			return false;
+		}
+		surf->viewport.ext.viewport.parent = surf->acon.segment_token;
+		upd_view = true;
+	}
+
+/* likely that if this is not true, we have a protocol error */
+	if (upd_view)
+		arcan_shmif_enqueue(&surf->acon, &surf->viewport);
 	return true;
 }
 
@@ -98,7 +132,9 @@ static void xdgsurf_getpopup(struct wl_client* cl, struct wl_resource* res,
 		.trace = "xdg popup",
 		.dispatch = xdgpopup_defer_handler,
 		.client = surf->client,
-		.source = surf
+		.source = surf,
+		.parent = parent,
+		.positioner = positioner
 	}, 'p');
 }
 

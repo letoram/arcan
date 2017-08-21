@@ -101,6 +101,7 @@ TODO
 ====
 
 (x - done, p - partial/possible-tuning, s - showstopper)
++ (for-each finished milestone, verify allocation/deallocation/validation)
 
 - [ ] Milestone 1, basics
   - [x] Boilerplate-a-plenty
