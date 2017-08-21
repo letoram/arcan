@@ -1511,6 +1511,12 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 	atomic_store(&arg->addr->abufsize, abufsz);
 	atomic_store_explicit(&arg->addr->apending, audc, memory_order_release);
 	atomic_store_explicit(&arg->addr->vpending, vidc, memory_order_release);
+	if (arg->priv->log_event){
+		fprintf(stderr, "(@%"PRIxPTR" rz-synch): %zu*%zu(fl:%d), %zu Hz\n",
+			(uintptr_t)arg, (size_t)width,(size_t)height,
+			(int)arg->hints,(size_t)arg->samplerate
+		);
+	}
 
 /* all force synch- calls should be removed when atomicity and reordering
  * behavior have been verified properly */

@@ -3896,9 +3896,15 @@ static void push_view(lua_State* ctx, struct arcan_extevent* ev,
 	struct arcan_frameserver* fsrv, int top)
 {
 	tblbool(ctx, "invisible", ev->viewport.invisible != 0, top);
-	tblnum(ctx, "rel_order", ev->viewport.rel_z, top);
-	tblnum(ctx, "rel_x", ev->viewport.rel_x, top);
-	tblnum(ctx, "rel_y", ev->viewport.rel_y, top);
+	tblbool(ctx, "focus", ev->viewport.focus != 0, top);
+	tblbool(ctx, "anchor_edge", ev->viewport.anchor_edge != 0, top);
+	tblbool(ctx, "anchor_pos", ev->viewport.anchor_pos != 0, top);
+	tblnum(ctx, "rel_order", ev->viewport.order, top);
+	tblnum(ctx, "rel_x", ev->viewport.x, top);
+	tblnum(ctx, "rel_y", ev->viewport.y, top);
+	tblnum(ctx, "anchor_w", ev->viewport.w, top);
+	tblnum(ctx, "anchor_h",ev->viewport.h, top);
+	tblnum(ctx, "edge", ev->viewport.edge, top);
 
 	lua_pushstring(ctx, "border");
 	lua_createtable(ctx, 4, 0);
@@ -3911,7 +3917,7 @@ static void push_view(lua_State* ctx, struct arcan_extevent* ev,
 	lua_rawset(ctx, top);
 
 /* translate to vid namespace if it matches a valid frameserver segment,
- * not a sensitive operation as it only affects window positioning */
+ * not a sensitive operation as it only affects window anchoring */
 	uint32_t pid = ev->viewport.parent;
 	if (pid > 0){
 		pid ^= fsrv->cookie;
