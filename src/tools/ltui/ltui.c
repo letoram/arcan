@@ -109,7 +109,7 @@ static int docall (lua_State *L, int narg, int clear) {
 
 
 static void print_version (void) {
-  l_message(NULL, "lua-tui bindings, try tui_open(title, ident)");
+  l_message(NULL, "lua-tui bindings");
 }
 
 static int getargs (lua_State *L, char **argv, int n) {
