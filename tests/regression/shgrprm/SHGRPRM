@@ -1,0 +1,6 @@
+SHGRP tests shader uniform group allocation and deallocation
+for leaks and functionality.
+
+It uses the regression/shgrp test and modifies it so that it
+first creates the maximum amounts of ugroups, then starts
+removing and adding at random.
