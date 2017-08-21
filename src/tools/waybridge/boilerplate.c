@@ -13,7 +13,7 @@ struct xkb_stateblock {
  * call.
  */
 struct bridge_client {
-	struct arcan_shmif_cont acon;
+	struct arcan_shmif_cont acon, clip_in, clip_out;
 	struct wl_listener l_destr;
 
 /* seat / wl-api mapping references */
@@ -210,6 +210,22 @@ static struct wl_shell_surface_interface ssurf_if = {
 #include "wlimpl/shell.c"
 static const struct wl_shell_interface shell_if = {
 	.get_shell_surface = shell_getsurf
+};
+
+#include "wlimpl/data_offer.c"
+static const struct wl_data_offer_interface doffer_if = {
+	.accept = doffer_accept,
+	.receive = doffer_receive,
+	.finish = doffer_finish,
+	.set_actions = doffer_actions,
+	.destroy = doffer_destroy
+};
+
+#include "wlimpl/data_source.c"
+static const struct wl_data_source_interface dsrc_if = {
+	.offer = dsrc_offer,
+	.destroy = dsrc_destroy,
+	.set_actions = dsrc_actions
 };
 
 #include "wlimpl/data_device.c"
