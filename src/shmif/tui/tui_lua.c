@@ -16,6 +16,11 @@
 
 #include "tui_lua.h"
 
+#ifndef COUNT_OF
+#define COUNT_OF(x) \
+	((sizeof(x)/sizeof(0[x])) / ((size_t)(!(sizeof(x) % sizeof(0[x])))))
+#endif
+
 /*
  * convenience macro prolog for all TUI callbacks
  */
@@ -825,8 +830,20 @@ static int getcursor(lua_State* L)
 static int writeu8(lua_State* L)
 {
 	TUI_UDATA;
-/* FIXME */
-	return 0;
+	struct tui_screen_attr* attr = NULL;
+	struct tui_screen_attr mattr = {};
+	size_t len;
+
+	const char* buf =	luaL_checklstring(L, 2, &len);
+
+	if (lua_type(L, 3) == LUA_TTABLE){
+		apply_table(L, 3, &mattr);
+		attr = &mattr;
+	}
+
+	lua_pushboolean(L,
+		arcan_tui_writeu8(ib->tui, (uint8_t*)buf, len, attr));
+	return 1;
 }
 
 static int reset(lua_State* L)
@@ -836,15 +853,34 @@ static int reset(lua_State* L)
 	return 0;
 }
 
+static int color_get(lua_State* L)
+{
+	TUI_UDATA;
+	uint8_t dst[3];
+	arcan_tui_get_color(ib->tui, luaL_checknumber(L, 1), dst);
+	lua_pushnumber(L, dst[0]);
+	lua_pushnumber(L, dst[1]);
+	lua_pushnumber(L, dst[2]);
+	return 3;
+}
+
+static int color_set(lua_State* L)
+{
+	TUI_UDATA;
+	uint8_t dst[3] = {
+		luaL_checknumber(L, 2),
+		luaL_checknumber(L, 3),
+		luaL_checknumber(L, 4)
+	};
+	arcan_tui_set_color(ib->tui, luaL_checknumber(L, 1), dst);
+	return 0;
+}
+
 #undef TUI_UDATA
 
 /*
  * constants needed:
  *  - screen mode
- *  - color groups:
- *    fg, bg, button, light, dark, mid, text, base,
- *    midlight, brigtTxt, buttonTxt, shadow, highlight,
- *    highlight text, link, link visited
  */
 
 #define REGISTER(X, Y) lua_pushcfunction(L, Y); lua_setfield(L, -2, X);
@@ -871,6 +907,7 @@ void tui_lua_expose(lua_State* L)
 
 	REGISTER("refresh", refresh);
 	REGISTER("process", process);
+	REGISTER("write", writeu8);
 	REGISTER("switch_handlers", settbl);
 	REGISTER("update_ident", setident);
 	REGISTER("mouse_forward", setmouse);
@@ -902,7 +939,170 @@ void tui_lua_expose(lua_State* L)
 	REGISTER("close", tuiclose);
 	REGISTER("switch_screen", screen_switch);
 	REGISTER("delete_screen", screen_delete);
-	REGISTER("alloc_screen", screen_alloc)
+	REGISTER("alloc_screen", screen_alloc);
+	REGISTER("get_color", color_get);
+	REGISTER("set_color", color_set);
+
+	struct { const char* key; int val; } consttbl[] = {
+	{"COLOR_PRIMARY", TUI_COL_PRIMARY},
+	{"COLOR_SECONDARY", TUI_COL_SECONDARY},
+	{"COLOR_BG", TUI_COL_BG},
+	{"COLOR_TEXT", TUI_COL_TEXT},
+	{"COLOR_CURSOR", TUI_COL_CURSOR},
+	{"COLOR_ALTCURSOR", TUI_COL_ALTCURSOR},
+	{"COLOR_HIGHLIGHT", TUI_COL_HIGHLIGHT},
+	{"COLOR_LABEL", TUI_COL_LABEL},
+	{"COLOR_WARNING", TUI_COL_WARNING},
+	{"COLOR_ERROR", TUI_COL_ERROR},
+	{"COLOR_ALERT", TUI_COL_ALERT},
+	{"COLOR_INACTIVE", TUI_COL_INACTIVE}
+	};
+
+	for (size_t i = 0; i < COUNT_OF(consttbl); i++){
+		lua_pushnumber(L, consttbl[i].val);
+		lua_setglobal(L, consttbl[i].key);
+	}
+
+	struct { const char* key; int val; } symtbl[] = {
+	{"TUIK_UNKNOWN", TUIK_UNKNOWN},
+	{"TUIK_FIRST", TUIK_FIRST},
+	{"TUIK_BACKSPACE", TUIK_BACKSPACE},
+	{"TUIK_TAB", TUIK_TAB},
+	{"TUIK_CLEAR", TUIK_CLEAR},
+	{"TUIK_RETURN", TUIK_RETURN},
+	{"TUIK_PAUSE", TUIK_PAUSE},
+	{"TUIK_ESCAPE", TUIK_ESCAPE},
+	{"TUIK_SPACE", TUIK_SPACE},
+	{"TUIK_EXCLAIM", TUIK_EXCLAIM},
+	{"TUIK_QUOTEDBL", TUIK_QUOTEDBL},
+	{"TUIK_HASH", TUIK_HASH},
+	{"TUIK_DOLLAR", TUIK_DOLLAR},
+	{"TUIK_0", TUIK_0},
+	{"TUIK_1", TUIK_1},
+	{"TUIK_2", TUIK_2},
+	{"TUIK_3", TUIK_3},
+	{"TUIK_4", TUIK_4},
+	{"TUIK_5", TUIK_5},
+	{"TUIK_6", TUIK_6},
+	{"TUIK_7", TUIK_7},
+	{"TUIK_8", TUIK_8},
+	{"TUIK_9", TUIK_9},
+	{"TUIK_MINUS", TUIK_MINUS},
+	{"TUIK_EQUALS", TUIK_EQUALS},
+	{"TUIK_A", TUIK_A},
+  {"TUIK_B", TUIK_B},
+	{"TUIK_C", TUIK_C},
+	{"TUIK_D", TUIK_D},
+	{"TUIK_E", TUIK_E},
+	{"TUIK_F", TUIK_F},
+	{"TUIK_G", TUIK_G},
+	{"TUIK_H", TUIK_H},
+	{"TUIK_I", TUIK_I},
+	{"TUIK_J", TUIK_J},
+	{"TUIK_K", TUIK_K},
+	{"TUIK_L", TUIK_L},
+	{"TUIK_M", TUIK_M},
+	{"TUIK_N", TUIK_N},
+	{"TUIK_O", TUIK_O},
+	{"TUIK_P", TUIK_P},
+	{"TUIK_Q", TUIK_Q},
+	{"TUIK_R", TUIK_R},
+	{"TUIK_S", TUIK_S},
+	{"TUIK_T", TUIK_T},
+	{"TUIK_U", TUIK_U},
+	{"TUIK_V", TUIK_V},
+	{"TUIK_W", TUIK_W},
+	{"TUIK_X", TUIK_X},
+	{"TUIK_Y", TUIK_Y},
+	{"TUIK_Z", TUIK_Z},
+	{"TUIK_LESS", TUIK_LESS},
+	{"TUIK_KP_LEFTBRACE", TUIK_KP_LEFTBRACE},
+	{"TUIK_KP_RIGHTBRACE", TUIK_KP_RIGHTBRACE},
+	{"TUIK_KP_ENTER", TUIK_KP_ENTER},
+	{"TUIK_LCTRL", TUIK_LCTRL},
+	{"TUIK_SEMICOLON", TUIK_SEMICOLON},
+	{"TUIK_APOSTROPHE", TUIK_APOSTROPHE},
+	{"TUIK_GRAVE", TUIK_GRAVE},
+	{"TUIK_LSHIFT", TUIK_LSHIFT},
+	{"TUIK_BACKSLASH", TUIK_BACKSLASH},
+	{"TUIK_COMMA", TUIK_COMMA},
+	{"TUIK_PERIOD", TUIK_PERIOD},
+	{"TUIK_SLASH", TUIK_SLASH},
+	{"TUIK_RSHIFT", TUIK_RSHIFT},
+	{"TUIK_KP_MULTIPLY", TUIK_KP_MULTIPLY},
+	{"TUIK_LALT", TUIK_LALT},
+	{"TUIK_CAPSLOCK", TUIK_CAPSLOCK},
+	{"TUIK_F1", TUIK_F1},
+	{"TUIK_F2", TUIK_F2},
+	{"TUIK_F3", TUIK_F3},
+	{"TUIK_F4", TUIK_F4},
+	{"TUIK_F5", TUIK_F5},
+	{"TUIK_F6", TUIK_F6},
+	{"TUIK_F7", TUIK_F7},
+	{"TUIK_F8", TUIK_F8},
+	{"TUIK_F9", TUIK_F9},
+	{"TUIK_F10", TUIK_F10},
+	{"TUIK_NUMLOCKCLEAR", TUIK_NUMLOCKCLEAR},
+	{"TUIK_SCROLLLOCK", TUIK_SCROLLLOCK},
+	{"TUIK_KP_0", TUIK_KP_0},
+	{"TUIK_KP_1", TUIK_KP_1},
+	{"TUIK_KP_2", TUIK_KP_2},
+	{"TUIK_KP_3", TUIK_KP_3},
+	{"TUIK_KP_4", TUIK_KP_4},
+	{"TUIK_KP_5", TUIK_KP_5},
+	{"TUIK_KP_6", TUIK_KP_6},
+	{"TUIK_KP_7", TUIK_KP_7},
+	{"TUIK_KP_8", TUIK_KP_8},
+	{"TUIK_KP_9", TUIK_KP_9},
+	{"TUIK_KP_MINUS", TUIK_KP_MINUS},
+	{"TUIK_KP_PLUS", TUIK_KP_PLUS},
+	{"TUIK_KP_PERIOD", TUIK_KP_PERIOD},
+	{"TUIK_INTERNATIONAL1", TUIK_INTERNATIONAL1},
+	{"TUIK_INTERNATIONAL2", TUIK_INTERNATIONAL2},
+	{"TUIK_F11", TUIK_F11},
+	{"TUIK_F12", TUIK_F12},
+	{"TUIK_INTERNATIONAL3", TUIK_INTERNATIONAL3},
+	{"TUIK_INTERNATIONAL4", TUIK_INTERNATIONAL4},
+	{"TUIK_INTERNATIONAL5", TUIK_INTERNATIONAL5},
+	{"TUIK_INTERNATIONAL6", TUIK_INTERNATIONAL6},
+	{"TUIK_INTERNATIONAL7", TUIK_INTERNATIONAL7},
+	{"TUIK_INTERNATIONAL8", TUIK_INTERNATIONAL8},
+	{"TUIK_INTERNATIONAL9", TUIK_INTERNATIONAL9},
+	{"TUIK_RCTRL", TUIK_RCTRL},
+	{"TUIK_KP_DIVIDE", TUIK_KP_DIVIDE},
+	{"TUIK_SYSREQ", TUIK_SYSREQ},
+	{"TUIK_RALT", TUIK_RALT},
+	{"TUIK_HOME", TUIK_HOME},
+	{"TUIK_UP", TUIK_UP},
+	{"TUIK_PAGEUP", TUIK_PAGEUP},
+	{"TUIK_LEFT", TUIK_LEFT},
+	{"TUIK_RIGHT", TUIK_RIGHT},
+	{"TUIK_END", TUIK_END},
+	{"TUIK_DOWN", TUIK_DOWN},
+	{"TUIK_PAGEDOWN", TUIK_PAGEDOWN},
+	{"TUIK_INSERT", TUIK_INSERT},
+	{"TUIK_DELETE", TUIK_DELETE},
+	{"TUIK_LMETA", TUIK_LMETA},
+	{"TUIK_RMETA", TUIK_RMETA},
+	{"TUIK_COMPOSE", TUIK_COMPOSE},
+	{"TUIK_MUTE", TUIK_MUTE},
+	{"TUIK_VOLUMEDOWN", TUIK_VOLUMEDOWN},
+	{"TUIK_VOLUMEUP", TUIK_VOLUMEUP},
+	{"TUIK_POWER", TUIK_POWER},
+	{"TUIK_KP_EQUALS", TUIK_EQUALS},
+	{"TUIK_KP_PLUSMINUS", TUIK_KP_PLUSMINUS},
+	{"TUIK_LANG1", TUIK_LANG1},
+	{"TUIK_LANG2", TUIK_LANG2},
+	{"TUIK_LANG3", TUIK_LANG3},
+	{"TUIK_LGUI", TUIK_LGUI},
+	{"TUIK_RGUI", TUIK_RGUI},
+	{"TUIK_STOP", TUIK_STOP},
+	{"TUIK_AGAIN", TUIK_AGAIN}
+	};
+	for (size_t i = 0; i < COUNT_OF(symtbl); i++){
+		lua_pushnumber(L, symtbl[i].val);
+		lua_setglobal(L, symtbl[i].key);
+	}
 
 /*
  * ADVANCED MISSING

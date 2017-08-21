@@ -1173,6 +1173,17 @@ static void select_copy(struct tui_context* tui)
 	free(sel);
 }
 
+struct tui_screen_attr arcan_tui_query_custom(
+	struct tui_context* tui, size_t row, size_t col, uint32_t* ch)
+{
+	if (row >= tui->rows || col >= tui->cols)
+		return (struct tui_screen_attr){};
+
+	if (ch)
+		*ch = tui->front[row * tui->rows + col].ch;
+	return tui->front[row * tui->rows + col].attr;
+}
+
 static bool select_at(struct tui_context* tui)
 {
 	tsm_screen_selection_reset(tui->screen);
@@ -1626,8 +1637,6 @@ static void update_screensize(struct tui_context* tui, bool clear)
 static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 {
 	switch (ev->kind){
-/* FIXME: Drawing options, this is really legacy and should be replaced with
- * complete palette/alpha, ... controls */
 	case TARGET_COMMAND_GRAPHMODE:
 		if (ev->ioevs[0].iv == 0){
 			if (tui->handlers.recolor)

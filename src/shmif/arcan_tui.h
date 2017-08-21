@@ -165,7 +165,7 @@
  *  [ ] Language bindings, readline like API
  *  [ ] Argument- validation mode
  *  [ ] External process- to window mapping
- *  [ ] Substitution/shaping pre-render mode
+ *  [ ] pack/unpack function to deal with serialization of a line protocol
  *  [ ] Translation that exposes the NCurses API
  */
 
@@ -415,12 +415,6 @@ struct tui_cbcfg {
 	void (*subwindow)(struct tui_context*, arcan_tui_conn*, uint32_t id, void*);
 
 /*
- * This is used once during setup, and is invoked when the user requests an
- * enumeration/validation of the command-line arguments that are supported
- * given the current argument- context.
- */
-
-/*
  * Add new callbacks here as needed, since the setup requires a sizeof of
  * this struct as an argument, we get some light indirect versioning
  */
@@ -521,7 +515,7 @@ struct tui_screen_attr {
 	unsigned int protect : 1; /* cannot be erased */
 	unsigned int blink : 1; /* blinking character */
 	unsigned int strikethrough : 1;
-	unsigned int shape_break; /* reset shaping and align to grid */
+	unsigned int shape_break : 1; /* reset shaping and align to grid */
 
 /*  > 127: cell is used for a custom draw-call, will be used with -127
  *         subtracted in custom draw callback.
@@ -554,6 +548,14 @@ bool arcan_tui_copy(struct tui_context*, const char* utf8_msg);
  * update title or identity
  */
 void arcan_tui_ident(struct tui_context*, const char* ident);
+
+/*
+ * query the active front buffer for the attributes and (optionally)
+ * data at [col, row], will return an empty tui_screen_attr if [col, row]
+ * is out of bounds
+ */
+struct tui_screen_attr arcan_tui_query_custom(
+	struct tui_context*, size_t row, size_t col, uint32_t* ch);
 
 /*
  * Send a new request for a subwindow with life-span that depends on the main
@@ -678,10 +680,14 @@ void arcan_tui_readline(struct tui_context*,
 /* hints, freehints, completion */
 
 /*
- * fill out rgb[] with the current values of the specified color group.
+ * Fill out rgb[] with the current values of the specified color group.
  * see the enum tui_color_group for valid values.
  */
 void arcan_tui_get_color(struct tui_context* tui, int group, uint8_t rgb[3]);
+
+/*
+ * Update the color field for the specified group. This
+ */
 void arcan_tui_set_color(struct tui_context* tui, int group, uint8_t rgb[3]);
 
 /*
