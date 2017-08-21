@@ -110,20 +110,19 @@ static void xdgsurf_getpopup(struct wl_client* cl, struct wl_resource* res,
 static void xdgsurf_set_geometry(struct wl_client* cl,
 	struct wl_resource* res, int32_t x, int32_t y, int32_t width, int32_t height)
 {
+	struct comp_surf* surf = wl_resource_get_user_data(res);
 	trace(TRACE_SHELL, "xdgsurf_setgeom("
 		"%"PRIu32"+%"PRIu32", %"PRIu32"+%"PRIu32")", x, y, width, height);
 
-	struct comp_surf* surf = wl_resource_get_user_data(res);
-	arcan_shmif_enqueue(&surf->acon,
-		&(struct arcan_event){
-			.ext.kind = ARCAN_EVENT(VIEWPORT),
-			.ext.viewport = {
-				.x = x,
-				.y = y,
-				.w = width,
-				.h = height
-			}
-	});
+	struct arcan_event ev = {
+		.ext.kind = ARCAN_EVENT(MESSAGE)
+	};
+	snprintf((char*)ev.ext.message.data,
+		COUNT_OF(ev.ext.message.data),
+		"geom:%"PRIu32":%"PRIu32":%"PRIu32":%"PRIu32,	x, y, width, height
+	);
+
+	arcan_shmif_enqueue(&surf->acon, &ev);
 }
 
 static void xdgsurf_ackcfg(

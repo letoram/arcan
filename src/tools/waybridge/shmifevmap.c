@@ -50,11 +50,13 @@ static void update_mbtn(struct comp_surf* cl,
 		"mouse-btn(pend: %d, ind: %d:%d, @%d,%d)",
 			cl->pointer_pending, ind,(int) active, cl->acc_x, cl->acc_y);
 
-/* 0x110 == BTN_LEFT in evdev parlerance */
-	wl_pointer_send_button(cl->client->pointer, STEP_SERIAL(),
-		pts, 0x10f + ind, active ?
-		WL_POINTER_BUTTON_STATE_PRESSED : WL_POINTER_BUTTON_STATE_RELEASED
-	);
+/* 0x110 == BTN_LEFT in evdev parlerance, ignore 0 index as it is used
+ * to convey gestures and that's a separate unstable protocol */
+	if (ind > 0)
+		wl_pointer_send_button(cl->client->pointer, STEP_SERIAL(),
+			pts, 0x10f + ind, active ?
+			WL_POINTER_BUTTON_STATE_PRESSED : WL_POINTER_BUTTON_STATE_RELEASED
+		);
 }
 
 static void translate_input(struct comp_surf* cl, arcan_ioevent* ev)
@@ -102,7 +104,6 @@ static void translate_input(struct comp_surf* cl, arcan_ioevent* ev)
 		else
 			;
 
-/* wl_mouse_ (send_button, send_axis, send_enter, send_leave) */
 	}
 	else if (ev->datatype ==
 		EVENT_IDATATYPE_TRANSLATED && cl->client && cl->client->keyboard){
