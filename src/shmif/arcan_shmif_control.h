@@ -551,7 +551,7 @@ unsigned arcan_shmif_signal(struct arcan_shmif_cont*, enum arcan_shmif_sigmask);
  * arcan_shmif_ext, abstract support functions for setup and passing are
  * provided (arcan_shmifext_***)
  *
- * mask matches (enum arfcan_shmif_sigmask) but can't enforce the type here
+ * mask matches (enum arcan_shmif_sigmask) but can't enforce the type here
  * because of VA_ARGS + enum with -fshort-enums can yield UB
  */
 unsigned arcan_shmif_signalhandle(struct arcan_shmif_cont* ctx,

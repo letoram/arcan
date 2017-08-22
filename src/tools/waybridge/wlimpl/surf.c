@@ -108,7 +108,6 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 	struct comp_surf* surf = wl_resource_get_user_data(res);
 	trace(TRACE_SURF, "%s", surf->tracetag);
 	struct arcan_shmif_cont* acon = &surf->acon;
-	EGLint dfmt;
 
 /*
  * can happen if we transition to a
