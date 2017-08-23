@@ -1,4 +1,4 @@
-static bool xdgpopup_defer_handler(
+static bool xdgpop_defer_handler(
 	struct surface_request* req, struct arcan_shmif_cont* con)
 {
 	if (!con){
@@ -47,12 +47,12 @@ static bool xdgpopup_defer_handler(
 	}
 
 	if (req->parent){
-		struct comp_surf* surf = wl_resource_get_user_data(req->parent);
-		if (!surf->acon.addr){
+		struct comp_surf* psurf = wl_resource_get_user_data(req->parent);
+		if (!psurf->acon.addr){
 			trace(TRACE_ALLOC, "bad popup, broken parent");
 			return false;
 		}
-		surf->viewport.ext.viewport.parent = surf->acon.segment_token;
+		surf->viewport.ext.viewport.parent = psurf->acon.segment_token;
 		upd_view = true;
 	}
 
@@ -130,7 +130,7 @@ static void xdgsurf_getpopup(struct wl_client* cl, struct wl_resource* res,
 		.target = res,
 		.id = id,
 		.trace = "xdg popup",
-		.dispatch = xdgpopup_defer_handler,
+		.dispatch = xdgpop_defer_handler,
 		.client = surf->client,
 		.source = surf,
 		.parent = parent,

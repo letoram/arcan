@@ -3920,7 +3920,6 @@ static void push_view(lua_State* ctx, struct arcan_extevent* ev,
  * not a sensitive operation as it only affects window anchoring */
 	uint32_t pid = ev->viewport.parent;
 	if (pid > 0){
-		pid ^= fsrv->cookie;
 		arcan_vobject* vobj = arcan_video_getobject(pid);
 		if (vobj && vobj->feed.state.tag == ARCAN_TAG_FRAMESERV)
 			tblnum(ctx, "parent", pid + luactx.lua_vidbase, top);

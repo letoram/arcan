@@ -63,9 +63,6 @@ static bool xdgtoplevel_shmifev_handler(
 	return false;
 }
 
-/*
- * => VIEWPORT
- */
 static void xdgtop_setparent(
 	struct wl_client* cl, struct wl_resource* res, struct wl_resource* parent)
 {
