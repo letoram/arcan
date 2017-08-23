@@ -32,6 +32,7 @@
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_video.h"
+#include "arcan_videoint.h"
 #include "arcan_db.h"
 #include "arcan_audio.h"
 #include "arcan_shmif.h"
@@ -225,7 +226,8 @@ arcan_frameserver* platform_launch_listen_external(
 	const char* key, const char* pw, int fd, mode_t mode, uintptr_t tag)
 {
 	arcan_frameserver* res =
-		platform_fsrv_listen_external(key, pw, fd, mode, tag);
+		platform_fsrv_listen_external(key,
+			pw, fd, mode, tag, arcan_vint_nextfree());
 
 	if (!res)
 		return NULL;
@@ -273,7 +275,9 @@ struct arcan_frameserver* platform_launch_fork(
 	int clsock;
 
 	struct arcan_frameserver* ctx = platform_fsrv_spawn_server(
-		SEGID_UNKNOWN, setup->init_w, setup->init_h, tag, &clsock);
+		SEGID_UNKNOWN, setup->init_w, setup->init_h, tag,
+		&clsock, arcan_vint_nextfree()
+	);
 
 	if (!ctx)
 		return NULL;

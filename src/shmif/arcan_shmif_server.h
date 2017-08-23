@@ -91,10 +91,12 @@ void shmifsrv_leave();
  * Allocate, prepare and transfer a new sub-segment to the frameserver
  * referenced by [dst] (!NULL). [segid] specifies the type of the subsegment
  * (MUST match REQID if it is in response to a SEGREQ event)
+ * [idtok] is used as a reference in a client addressable namespace in order
+ * to set spatial hints.
  */
 struct shmifsrv_client*
 	shmifsrv_send_subsegment(struct shmifsrv_client* dst, int segid,
-	size_t init_w, size_t init_h, int reqid);
+	size_t init_w, size_t init_h, int reqid, uint32_t idtok);
 
 /*
  * Allocate and prepare a frameserver connection point accessible via the name
@@ -120,7 +122,7 @@ struct shmifsrv_client*
  */
 struct shmifsrv_client*
 	shmifsrv_allocate_connpoint(const char* name, const char* key,
-	mode_t permission, int* fd, int* statuscode);
+	mode_t permission, int* fd, int* statuscode, uint32_t idtok);
 
 /*
  * Setup a connection-less frameserver, meaning that all primitives and
@@ -131,7 +133,7 @@ struct shmifsrv_client*
  * code.
  */
 struct shmifsrv_client* shmifsrv_spawn_client(
-	struct shmifsrv_envp env, int* clsocket, int* statuscode);
+	struct shmifsrv_envp env, int* clsocket, int* statuscode, uint32_t idtok);
 
 /*
  * Retrieve an I/O multiplexable handle for mixing into poll() rather

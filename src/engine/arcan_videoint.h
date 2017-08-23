@@ -420,6 +420,14 @@ void arcan_vint_joinasynch(arcan_vobject* img, bool emit, bool force);
 void arcan_vint_reraster(arcan_vobject* img, struct rendertarget*);
 
 /*
+ * Figure out what the vid will be for the next object allocated in this
+ * context. This function is primarily used to avoid an initialization
+ * order problem in frameserver allocation tagging, needed to, in turn,
+ * avoid a linear search on VIEWPORT hints.
+ */
+arcan_vobj_id arcan_vint_nextfree();
+
+/*
  * get the internal structure of the rendertarget that vobj has as
  * its primary attachment (for ordering etc.)
  */

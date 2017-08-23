@@ -597,6 +597,18 @@ void arcan_vint_drawcursor(bool erase)
 	agp_deactivate_vstore();
 }
 
+arcan_vobj_id arcan_video_fsrvbycookie(uint32_t cookie)
+{
+	for (size_t i = 1; i < current_context->vitem_limit; i++){
+		arcan_vobject* vobj = &current_context->vitems_pool[i];
+		if (vobj->feed.state.tag == ARCAN_TAG_FRAMESERV && vobj->feed.state.ptr &&
+			((struct arcan_frameserver*)vobj->feed.state.ptr)->cookie == cookie)
+			return vobj->cellid;
+	}
+
+	return ARCAN_EID;
+}
+
 signed arcan_video_pushcontext()
 {
 	arcan_vobject empty_vobj = {
@@ -893,7 +905,8 @@ static inline surface_properties empty_surface()
 	return res;
 }
 
-arcan_vobj_id arcan_video_allocid(bool* status, struct arcan_video_context* ctx)
+static arcan_vobj_id video_allocid(
+	bool* status, struct arcan_video_context* ctx, bool write)
 {
 	unsigned i = ctx->vitem_ofs, c = ctx->vitem_limit;
 	*status = false;
@@ -904,6 +917,9 @@ arcan_vobj_id arcan_video_allocid(bool* status, struct arcan_video_context* ctx)
 
 		if (!FL_TEST(&ctx->vitems_pool[i], FL_INUSE)){
 			*status = true;
+			if (!write)
+				return i;
+
 			ctx->nalive++;
 			FL_SET(&ctx->vitems_pool[i], FL_INUSE);
 			ctx->vitem_ofs = (ctx->vitem_ofs + 1) >= ctx->vitem_limit ? 1 : i + 1;
@@ -1063,6 +1079,16 @@ static void populate_vstore(struct agp_vstore** vs)
 	(*vs)->refcount   = 1;
 }
 
+arcan_vobj_id arcan_vint_nextfree()
+{
+	bool status;
+	arcan_vobj_id id = video_allocid(&status, current_context, false);
+	if (!status)
+		return ARCAN_EID;
+	else
+		return id;
+}
+
 /*
  * arcan_video_newvobject is used in other parts (3d, renderfun, ...)
  * as well, but they wrap to this one as to not expose more of the
@@ -1074,7 +1100,7 @@ static arcan_vobject* new_vobject(arcan_vobj_id* id,
 	arcan_vobject* rv = NULL;
 
 	bool status;
-	arcan_vobj_id fid = arcan_video_allocid(&status, dctx);
+	arcan_vobj_id fid = video_allocid(&status, dctx, true);
 
 	if (!status)
 		return NULL;

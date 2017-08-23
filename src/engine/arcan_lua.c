@@ -7367,7 +7367,7 @@ static arcan_frameserver* spawn_subsegment(
 	}
 
 	arcan_frameserver* res =
-		platform_fsrv_spawn_subsegment(parent, segid, w, h, reqid);
+		platform_fsrv_spawn_subsegment(parent, segid, w, h, reqid, newvid);
 
 	if (!res){
 		arcan_video_deleteobject(newvid);

@@ -226,6 +226,12 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	bool fullscreen, bool frames, bool conservative, const char* caption);
 
 /*
+ * Try and locate a frameserver-tagged video object with a frameserver
+ * identification cookie that matches 'cookie'.
+ */
+arcan_vobj_id arcan_video_fsrvbycookie(uint32_t cookie);
+
+/*
  * Clear the display, deallocate all resources (fonts, shaders, video objects),
  * chain to platform_video_shutdown etc.  Note that this do not reset any
  * attributes modified by the the _default_ class functions.

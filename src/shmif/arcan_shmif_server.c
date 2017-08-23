@@ -77,7 +77,7 @@ int shmifsrv_client_handle(struct shmifsrv_client* cl)
 
 struct shmifsrv_client*
 	shmifsrv_send_subsegment(struct shmifsrv_client* cl, int segid,
-	size_t init_w, size_t init_h, int reqid)
+	size_t init_w, size_t init_h, int reqid, uint32_t idtok)
 {
 	if (!cl || cl->status < READY)
 		return NULL;
@@ -87,7 +87,7 @@ struct shmifsrv_client*
 		return NULL;
 
 	res->con = platform_fsrv_spawn_subsegment(
-		cl->con, segid, init_w, init_h, reqid);
+		cl->con, segid, init_w, init_h, reqid, idtok);
 	if (!res->con){
 		free(res);
 		return NULL;
@@ -100,7 +100,7 @@ struct shmifsrv_client*
 
 struct shmifsrv_client*
 	shmifsrv_allocate_connpoint(const char* name, const char* key,
-	mode_t permission, int* fd, int* statuscode)
+	mode_t permission, int* fd, int* statuscode, uint32_t idtok)
 {
 	int sc;
 	struct shmifsrv_client* res = alloc_client();
@@ -108,7 +108,7 @@ struct shmifsrv_client*
 		return NULL;
 
 	res->con = platform_fsrv_listen_external(
-		name, key, fd ? *fd : -1, permission, 0);
+		name, key, fd ? *fd : -1, permission, 0, idtok);
 
 	if (!res->con){
 		free(res);
@@ -125,7 +125,7 @@ struct shmifsrv_client*
 }
 
 struct shmifsrv_client* shmifsrv_spawn_client(
-	struct shmifsrv_envp env, int* clsocket, int* statuscode)
+	struct shmifsrv_envp env, int* clsocket, int* statuscode, uint32_t idtok)
 {
 	if (!clsocket){
 		*statuscode = SHMIFSRV_INVALID_ARGUMENT;
@@ -140,7 +140,7 @@ struct shmifsrv_client* shmifsrv_spawn_client(
 	}
 
 	res->con = platform_fsrv_spawn_server(
-		SEGID_UNKNOWN, env.init_w, env.init_h, 0, clsocket);
+		SEGID_UNKNOWN, env.init_w, env.init_h, 0, clsocket, idtok);
 
 	if (statuscode)
 		*statuscode = SHMIFSRV_OK;

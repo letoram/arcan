@@ -765,7 +765,7 @@ static size_t fsrv_protosize(arcan_frameserver* ctx,
  */
 static bool prepare_segment(struct arcan_frameserver* ctx,
 	int segid, size_t hintw, size_t hinth, bool named,
-	const char* optkey, int optdesc, uintptr_t tag)
+	const char* optkey, int optdesc, uintptr_t tag, uint32_t idtok)
 {
 	size_t abufc = 0;
 	size_t abufsz = 0;
@@ -800,7 +800,7 @@ static bool prepare_segment(struct arcan_frameserver* ctx,
 		shmpage->vpending = 1;
 		shmpage->abufsize = abufsz;
 		shmpage->apending = abufc;
-		shmpage->segment_token = (uint32_t) ctx->cookie++;
+		shmpage->segment_token = idtok;
 		shmpage->segment_size = arcan_shmif_mapav(shmpage,
 			ctx->vbufs, 1, hintw * hinth * sizeof(shmif_pixel),
 			ctx->abufs, abufc, abufsz
@@ -846,7 +846,7 @@ static bool prepare_segment(struct arcan_frameserver* ctx,
  */
 struct arcan_frameserver* platform_fsrv_spawn_subsegment(
 	struct arcan_frameserver* ctx,
-	int segid, size_t hintw, size_t hinth, uintptr_t tag)
+	int segid, size_t hintw, size_t hinth, uintptr_t tag, uint32_t idtok)
 {
 	if (!ctx || ctx->flags.alive == false)
 		return NULL;
@@ -858,7 +858,8 @@ struct arcan_frameserver* platform_fsrv_spawn_subsegment(
 	if (!newseg)
 		return NULL;
 
-	if (!prepare_segment(newseg, segid, hintw, hinth, false, NULL, -1, tag)){
+	if (!prepare_segment(newseg,
+		segid, hintw, hinth, false, NULL, -1, tag, idtok)){
 		arcan_mem_free(newseg);
 		return NULL;
 	}
@@ -1354,11 +1355,13 @@ int platform_fsrv_prepare(struct arcan_frameserver* ctx, int* clsock)
 }
 
 struct arcan_frameserver* platform_fsrv_listen_external(
-	const char* key, const char* auth, int fd, mode_t mode, uintptr_t tag)
+	const char* key, const char* auth, int fd, mode_t mode,
+	uintptr_t tag, uint32_t idtok)
 {
 	arcan_frameserver* newseg = platform_fsrv_alloc();
 	newseg->sockmode = mode;
-	if (!prepare_segment(newseg, SEGID_UNKNOWN, 32, 32, true, key, fd, tag)){
+	if (!prepare_segment(newseg,
+		SEGID_UNKNOWN, 32, 32, true, key, fd, tag, idtok)){
 		arcan_mem_free(newseg);
 		return NULL;
 	}
@@ -1369,13 +1372,13 @@ struct arcan_frameserver* platform_fsrv_listen_external(
 }
 
 struct arcan_frameserver* platform_fsrv_spawn_server(
-	int segid, size_t w, size_t h, uintptr_t tag, int* childfd)
+	int segid, size_t w, size_t h, uintptr_t tag, int* childfd, uint32_t idtok)
 {
 	arcan_frameserver* newseg = platform_fsrv_alloc();
 	if (!newseg)
 		return NULL;
 
-	if (!prepare_segment(newseg, segid, w, h, false, NULL, -1, tag)){
+	if (!prepare_segment(newseg, segid, w, h, false, NULL, -1, tag, idtok)){
 		arcan_mem_free(newseg);
 		return NULL;
 	}

@@ -17,6 +17,9 @@
  * prepared socket to use (typically in the case of adoption handover during
  * pending listen).
  *
+ * [idtok] is used as a target-accessible reference handle in order to specify
+ * spatial relationships to other targets within the same connection
+ *
  * To process the resulting arcan_frameserver context, you should first
  * periodically run platform_fsrv_socketpoll() until it returns 0 or
  * -1 with EBADF as errno. On EBADF, the connection point has been consumed
@@ -31,7 +34,8 @@
  */
 struct arcan_event;
 struct arcan_frameserver* platform_fsrv_listen_external(
-	const char* key, const char* auth, int fd, mode_t mode, uintptr_t tag);
+	const char* key, const char* auth,
+	int fd, mode_t mode, uintptr_t tag, uint32_t idtok);
 
 /*
  * Build a frameserver context that can be used either in-process or forwarded
@@ -40,8 +44,8 @@ struct arcan_frameserver* platform_fsrv_listen_external(
  * end of the socket is passed in [clsocket].
  */
 struct arcan_frameserver* platform_fsrv_spawn_server(
-	int segid, size_t w, size_t h, uintptr_t tag, int* clsocket
-);
+	int segid, size_t w, size_t h, uintptr_t tag, int* clsocket,
+	uint32_t idtok);
 
 /*
  * perform a resynchronization (resize) operation where negotiated buffer
@@ -62,7 +66,7 @@ int platform_fsrv_resynch(struct arcan_frameserver* src);
  */
 struct arcan_frameserver* platform_fsrv_spawn_subsegment(
 	struct arcan_frameserver* ctx, int ARCAN_SEGID,
-	size_t hintw, size_t hinth, uintptr_t tag);
+	size_t hintw, size_t hinth, uintptr_t tag, uint32_t idtok);
 
 /*
  * Used with a pending external connection where the socket has been bound

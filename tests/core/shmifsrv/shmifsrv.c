@@ -11,7 +11,7 @@ int main(int argc, char** argv)
 
 /* setup listening point */
 	struct shmifsrv_client* cl =
-		shmifsrv_allocate_connpoint("shmifsrv", NULL, S_IRWXU, &fd, &sc);
+		shmifsrv_allocate_connpoint("shmifsrv", NULL, S_IRWXU, &fd, &sc, 0);
 
 /* setup our clock */
 	shmifsrv_monotonic_rebase();

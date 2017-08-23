@@ -112,7 +112,7 @@ int main(int argc, char** argv)
 	while(true){
 /* setup listening point */
 		struct shmifsrv_client* cl =
-			shmifsrv_allocate_connpoint("proxycon", NULL, S_IRWXU, &fd, &sc);
+			shmifsrv_allocate_connpoint("proxycon", NULL, S_IRWXU, &fd, &sc, 0);
 
 		if (!cl){
 			fprintf(stderr, "couldn't allocate connection point\n");
