@@ -1750,8 +1750,7 @@ arcan_errc arcan_video_framecyclemode(arcan_vobj_id id, int mode)
 	if (!vobj->frameset)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
-	vobj->frameset->mctr = mode;
-	vobj->frameset->ctr = mode;
+	vobj->frameset->ctr = vobj->frameset->mctr = abs(mode);
 
 	return ARCAN_OK;
 }
@@ -2190,11 +2189,10 @@ arcan_errc arcan_video_setasframe(arcan_vobj_id dst,
 		return ARCAN_ERRC_BAD_ARGUMENT;
 
 	struct frameset_store* store = &dstvobj->frameset->frames[fid];
-	if (store->frame == srcvobj->vstore)
-		return ARCAN_OK;
-
-	arcan_vint_drop_vstore(store->frame);
-	store->frame = srcvobj->vstore;
+	if (store->frame != srcvobj->vstore){
+		arcan_vint_drop_vstore(store->frame);
+		store->frame = srcvobj->vstore;
+	}
 
 /* we need texture coordinates to come with in order to support
  * animations using 'sprite-sheet' like features */
