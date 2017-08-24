@@ -1634,6 +1634,29 @@ static void update_screensize(struct tui_context* tui, bool clear)
 	update_screen(tui, true);
 }
 
+void arcan_tui_request_subwnd(
+	struct tui_context* tui, unsigned type, uint16_t id)
+{
+	if (!tui || !tui->acon.addr)
+		return;
+
+	switch (type){
+	case TUI_WND_TUI:
+	case TUI_WND_POPUP:
+	case TUI_WND_DEBUG:
+	case TUI_WND_HANDOVER:
+	break;
+	default:
+		return;
+	}
+
+	arcan_shmif_enqueue(&tui->acon, &(struct arcan_event){
+		.ext.kind = ARCAN_EVENT(SEGREQ),
+		.ext.segreq.kind = type,
+		.ext.segreq.id = (uint32_t) id | (1 << 31)
+	});
+}
+
 static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 {
 	switch (ev->kind){
@@ -1783,25 +1806,46 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 	}
 	break;
 
+	case TARGET_COMMAND_REQFAIL:
+		if ( ((uint32_t)ev->ioevs[0].iv & (1 << 31)) &&
+			tui->handlers.subwindow){
+			tui->handlers.subwindow(tui, NULL,
+				(uint32_t)ev->ioevs[0].iv & 0xffff, tui->handlers.tag);
+		}
+	break;
+
 /*
  * map the two clipboards needed for both cut and for paste operations
  */
 	case TARGET_COMMAND_NEWSEGMENT:
 		if (ev->ioevs[1].iv == 1){
 			if (!tui->clip_in.vidp){
-				tui->clip_in = arcan_shmif_acquire(&tui->acon,
-					NULL, SEGID_CLIPBOARD_PASTE, 0);
+				tui->clip_in = arcan_shmif_acquire(
+					&tui->acon, NULL, SEGID_CLIPBOARD_PASTE, 0);
 			}
 			else
 				LOG("multiple paste- clipboards received, likely appl. error\n");
 		}
 		else if (ev->ioevs[1].iv == 0){
 			if (!tui->clip_out.vidp){
-				tui->clip_out = arcan_shmif_acquire(&tui->acon,
-					NULL, SEGID_CLIPBOARD, 0);
+				tui->clip_out = arcan_shmif_acquire(
+					&tui->acon, NULL, SEGID_CLIPBOARD, 0);
 			}
 			else
 				LOG("multiple clipboards received, likely appl. error\n");
+		}
+/*
+ * new caller requested segment, even though acon is auto- scope allocated
+ * here, the API states that the normal setup procedure should be respected,
+ * which means that there will be an explicit copy of acon rather than an
+ * alias.
+ */
+		else if ( ((uint32_t)ev->ioevs[1].iv & (1 << 31)) &&
+			tui->handlers.subwindow){
+			struct arcan_shmif_cont acon = arcan_shmif_acquire(
+				&tui->acon, NULL, ev->ioevs[2].iv, 0);
+			tui->handlers.subwindow(tui, &acon,
+				(uint32_t)ev->ioevs[0].iv & 0xffff, tui->handlers.tag);
 		}
 	break;
 

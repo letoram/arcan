@@ -103,7 +103,6 @@
  * }
  *
  * subwindows:
- * arcan_tui_request_subwnd(conn, segment_id, TUI_POPUP);
  * (in subwnd handler from cbs)
  *  arcan_tui_defaults(conn, wnd);
  *  struct tui_context* con = arcan_tui_setup(conn, cfg, cb, sizeof(cb));
@@ -408,8 +407,9 @@ struct tui_cbcfg {
 	void (*recolor)(struct tui_context*, void*);
 
 /*
- * A new subwindow has arrived. ALWAYS run the normal setup sequence
- * EVEN if the window is now longer needed. On such occasions, simply
+ * A new subwindow has arrived or the request has failed (=NULL). If there's a
+ * new subwindow, ALWAYS run the normal setup sequence (e.g. _defaults() ->
+ * setup()) EVEN if the window is no longer needed. On such occasions, simply
  * destroy the tui_context immediately after setup.
  */
 	void (*subwindow)(struct tui_context*, arcan_tui_conn*, uint32_t id, void*);
@@ -571,7 +571,7 @@ struct tui_screen_attr arcan_tui_query_custom(
  *
  * The possible types are defined as part of arcan_tuisym.h
  */
-void arcan_tui_request_subwnd(struct tui_context*, unsigned type, uint32_t id);
+void arcan_tui_request_subwnd(struct tui_context*, unsigned type, uint16_t id);
 
 /*
  * Signal visibility and position intent for a subwindow [wnd] relative
