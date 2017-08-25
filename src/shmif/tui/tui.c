@@ -2679,6 +2679,7 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 	res->mouse_forward = set->mouse_fwd;
 	res->cursor_period = set->cursor_period;
 	res->acon.hints = SHMIF_RHINT_SUBREGION;
+	res->cursor = set->cursor;
 	res->force_bitmap = (set->render_flags & TUI_RENDER_BITMAP) != 0;
 	res->dbl_buf = (set->render_flags & TUI_RENDER_DBLBUF);
 	res->shape_function = (set->render_flags & TUI_RENDER_SHAPED) ?
