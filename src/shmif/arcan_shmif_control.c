@@ -1924,14 +1924,13 @@ enum shmif_migrate_status arcan_shmif_migrate(
 		arcan_sem_wait(cont->vsem);
 
 	while(atomic_load(&cont->addr->aready) && cont->addr->dms)
-		arcan_sem_wait(cont->vsem);
+		arcan_sem_wait(cont->asem);
 
 	size_t w = atomic_load(&cont->addr->w);
 	size_t h = atomic_load(&cont->addr->h);
 
 	if (!shmif_resize(&ret, w, h, cont->abufsize, cont->priv->vbuf_cnt,
 		cont->priv->abuf_cnt, cont->samplerate, cont->priv->atype)){
-		arcan_shmif_drop(&ret);
 		return SHMIF_MIGRATE_TRANSFER_FAIL;
 	}
 
