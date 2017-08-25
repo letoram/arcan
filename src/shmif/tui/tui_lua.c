@@ -6,6 +6,37 @@
  * able to open/connect using tui_open() -> context.
  * For more detailed examples, see shmif/tui and a patched version of the
  * normal Lua CLI in tools/ltui
+ *
+ * TODO:
+ * ONGOING: FINISH TUI -> SUBWINDOW MAPPING!
+ *
+ * map display constants and flags:
+ * TUI_INSERT_MODE
+ * TUI_AUTO_WRAP
+ * TUI_REL_ORIGIN
+ * TUI_INVERSE
+ * TUI_HIDE_CURSOR,
+ * TUI_FIXED_POS,
+ * TUI_ALTERNATE
+ *
+ * + viewport (positioning) :
+ *   TUI_NORMAL
+ *   TUI_FOCUS
+ *   TUI_HIDDEN
+ */
+
+/*
+ * ADVANCED MISSING
+ * [ - map_external (maybe shmif-server only?),
+ *   - map_exec ( execute binary with listening properties bound to an id )
+ *   - redirect_external ( forward new connection primitives )
+ *   - route_target( set id as event recipient )
+ *   - request_subwnd( "type" )
+ *   - identity and configuration keys
+ *   - labelhints
+ *   - state and file-types
+ *   wndalign ( src, tgt, ...) (can say something like half-size, quarter-size)
+ *   + clipboard
  */
 
 #include <arcan_shmif.h>
@@ -15,6 +46,9 @@
 #include <lauxlib.h>
 
 #include "tui_lua.h"
+
+static const uint32_t req_cookie = 0xfeedface;
+static struct tui_cbcfg shared_cbcfg = {};
 
 #ifndef COUNT_OF
 #define COUNT_OF(x) \
@@ -269,15 +303,53 @@ static void on_resize(struct tui_context* c,
 	END_HREF;
 }
 
-static void on_subwindow(struct tui_context* c,
-	arcan_tui_conn* new, uint32_t id, void* t)
+static void on_subwindow(
+	struct tui_context* c, arcan_tui_conn* new, uint32_t id, void* t)
 {
 	SETUP_HREF("subwindow",);
-/*
- * Lookup tui context and pending request based on ID,
- * if found, bind to a new _tui setup and emit - on failure,
- * emit the same. Need an explicit GC release as well..
- */
+	id ^= req_cookie;
+
+/* indicates that there's something wrong with the connection */
+	if (id >= 8 || !(meta->pending_mask & (1 << id)))
+		return;
+
+	intptr_t cb = meta->pending[id];
+	meta->pending[id] = 0;
+	meta->pending_mask &= ~(1 << id);
+/* FIXME: get Lua function */
+
+/* pcall and deref */
+	if (!new){
+		lua_call(L, 1, 0);
+		END_HREF;
+		return;
+	}
+
+/* let the caller be responsible for updating the handlers */
+	struct tui_settings cfg = arcan_tui_defaults(new, meta->tui);
+	struct tui_context* ctx =
+		arcan_tui_setup(new, &cfg, &shared_cbcfg, sizeof(shared_cbcfg));
+	if (!ctx){
+		lua_call(L, 1, 0);
+		END_HREF;
+		return;
+	}
+
+	struct tui_lmeta* nud = lua_newuserdata(L, sizeof(struct tui_lmeta));
+	if (!nud){
+		lua_call(L, 1, 0);
+		END_HREF;
+		return;
+	}
+
+	nud->tui = ctx;
+	luaL_getmetatable(L, "tui_main");
+	lua_setmetatable(L, -2);
+	nud->lua = L;
+	nud->last_words = NULL;
+	nud->href = cb;
+
+	lua_call(L, 2, 0);
 	END_HREF;
 }
 
@@ -602,13 +674,9 @@ static int tui_open(lua_State* L)
 
 	struct tui_settings cfg = arcan_tui_defaults(conn, NULL);
 
-/* FIXME: modify cfg with custom table */
-	if (lua_type(L, 3) == LUA_TTABLE){
-	}
-
 /* Hook up the tui/callbacks, these forward into a handler table
  * that the user provide a reference to. */
-	struct tui_cbcfg cbcfg = {
+	shared_cbcfg = (struct tui_cbcfg){
 		.query_label = query_label,
 		.input_label = on_label,
 		.input_alabel = on_alabel,
@@ -648,7 +716,8 @@ static int tui_open(lua_State* L)
 	}
 
 /* display cleanup is now in the hand of _setup */
-	meta->tui = arcan_tui_setup(conn, &cfg, &cbcfg, sizeof(cbcfg));
+	meta->tui = arcan_tui_setup(conn,
+		&cfg, &shared_cbcfg, sizeof(shared_cbcfg));
 	if (!meta->tui){
 		lua_pop(L, 1);
 		return 0;
@@ -779,14 +848,35 @@ static int setcopy(lua_State* L)
 static int reqwnd(lua_State* L)
 {
 	TUI_UDATA;
-/* FIXME
- * const char* type = luaL_optstring(L, 2, "tui");
- * 1. check for valid subtypes
- * 2. request REGISTRY entry for function
- * 3. use that entry as ID so we can pair when we come back,
- * 4. forward to request subwnd, then do the rest in the eventhandler,
- * 5. map the new TUI as the right subtype, and grab the right metatable */
-	return 0;
+
+	const char* type = luaL_optstring(L, 2, "tui");
+	int ind;
+	intptr_t ref = LUA_REFNIL;
+	if ( (ind = 2, lua_isfunction(L, 2)) || (ind = 3, lua_isfunction(L, 3)) ){
+		lua_pushvalue(L, ind);
+		luaL_ref(L, LUA_REGISTRYINDEX);
+	}
+	else
+		lua_error(L);
+
+	int tui_type = TUI_WND_TUI;
+	if (strcmp(type, "popup") == 0)
+		tui_type = TUI_WND_POPUP;
+	else if (strcmp(type, "handover") == 0)
+		tui_type = TUI_WND_HANDOVER;
+
+	if (ib->pending_mask == 255){
+		lua_pushboolean(L, false);
+		return 1;
+	}
+
+	int bitind = ffs(ib->pending_mask) - 1;
+	ib->pending[bitind] = ref;
+	ib->pending_mask |= 1 << bitind;
+	lua_pushboolean(L, true);
+	arcan_tui_request_subwnd(ib->tui, tui_type, (uint32_t) bitind ^ req_cookie);
+
+	return 1;
 }
 
 static int setmouse(lua_State* L)
@@ -908,7 +998,7 @@ void tui_lua_expose(lua_State* L)
 	REGISTER("refresh", refresh);
 	REGISTER("process", process);
 	REGISTER("write", writeu8);
-	REGISTER("switch_handlers", settbl);
+	REGISTER("set_handlers", settbl);
 	REGISTER("update_ident", setident);
 	REGISTER("mouse_forward", setmouse);
 	REGISTER("default_attr", defattr);
@@ -1103,16 +1193,6 @@ void tui_lua_expose(lua_State* L)
 		lua_pushnumber(L, symtbl[i].val);
 		lua_setglobal(L, symtbl[i].key);
 	}
-
-/*
- * ADVANCED MISSING
- * [ map_external (maybe shmif-server only?),
- *   map_exec ( exceute binary with listening properties bound to an id )
- *   redirect_external ( forward new connection primitives )
- *   route_target( set id as event recipient )
- *   request_subwnd( "type"
- *   wndalign ( src, tgt, ...)
- */
 
 	lua_pop(L, 1);
 }

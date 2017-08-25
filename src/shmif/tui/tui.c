@@ -60,17 +60,6 @@ struct shape_state {
 	int xofs;
 };
 
-struct tui_cell {
-	uint32_t ch;
-	struct tui_screen_attr attr;
-
-#ifndef SIMPLE_RENDERING
-/* for performing picking when we have shaped rendering etc. */
-	uint32_t real_x;
-	uint8_t cell_w;
-#endif
-};
-
 typedef void (*tui_draw_fun)(
 		struct tui_context* tui,
 		size_t n_rows, size_t n_cols,
@@ -436,7 +425,7 @@ static int tsm_draw_callback(struct tsm_screen* screen, uint32_t id,
 
 	if (!(age && tui->age && age <= tui->age)){
 		size_t pos = y * tui->cols + x;
-		tui->front[pos].ch = *ch;
+		tui->front[pos].draw_ch = tui->front[pos].ch = *ch;
 		tui->front[pos].attr = *attr;
 		tui->dirty |= DIRTY_PENDING;
 	}
@@ -609,9 +598,10 @@ static void draw_shaped(struct tui_context* tui,
 		draw_box(&tui->acon, 0, cury, tui->acon.w, cury+tui->cell_h, bgcol);
 		tui->acon.dirty.x2 = tui->acon.w;
 
-/* FIXME: we need a hook-callback here that allows post-processing
- * of the row to allow for ligatures/shaping and better position reset
- * controls */
+		bool kern = true;
+		if (tui->handlers.reshape)
+			kern = !tui->handlers.reshape(tui,
+				&front[row * tui->cols], n_cols, row, tui->cell_w, tui->handlers.tag);
 
 		for (size_t col = 0; col < n_cols; col++){
 /* custom-draw cells always reset the state tracking */
@@ -625,17 +615,23 @@ static void draw_shaped(struct tui_context* tui,
  * (which is not correct) that the shaped output will not grow to exceed the
  * cell size limit. This should be fixed alongside proper wcswidth style
  * screen management */
-			int last_ofs = state.xofs;
-			draw_cbt(tui, front_row[col].ch,
-				start_x + state.xofs, cury,
-				&front_row[col].attr, false, &state
-			);
-			front_row[col].real_x = start_x + last_ofs;
-			front_row[col].cell_w = state.xofs - last_ofs;
+			if (kern){
+				int last_ofs = state.xofs;
+				draw_cbt(tui, front_row[col].draw_ch,
+					start_x + state.xofs, cury,
+					&front_row[col].attr, false, &state
+				);
+				front_row[col].real_x = start_x + last_ofs;
+				front_row[col].cell_w = state.xofs - last_ofs;
 
-/* We have a forced reset/realign to expected column X */
-			if (front_row[col].attr.shape_break){
-				state = (struct shape_state){.xofs = col * cw};
+/* Shape-break has us resetting to the intended / non-kerned position */
+				if  (front_row[col].attr.shape_break){
+					state = (struct shape_state){.xofs = col * cw};
+				}
+			}
+			else {
+				draw_cbt(tui, front_row[col].draw_ch,
+					front_row[col].real_x, cury, &front_row[col].attr, false, NULL);
 			}
 
 /* update target buffer */
@@ -667,7 +663,11 @@ static void draw_monospace(struct tui_context* tui,
 		tui->cursor_upd = true;
 	}
  */
-	for (size_t row = 0; row < n_rows; row++)
+	for (size_t row = 0; row < n_rows; row++){
+		if (tui->handlers.reshape)
+			tui->handlers.reshape(tui,
+				&front[row * tui->cols], n_cols, row, 0, tui->handlers.tag);
+
 		for (size_t col = 0; col < n_cols; col++){
 
 /* only update if the source position has changed, treat custom_id separate */
@@ -688,7 +688,7 @@ static void draw_monospace(struct tui_context* tui,
 			}
 
 /* update the cell */
-			draw_cbt(tui, fpos->ch,
+			draw_cbt(tui, fpos->draw_ch,
 				col * cw + start_x, row * ch + start_y, &fpos->attr, false, NULL);
 
 			if (synch)
@@ -696,6 +696,7 @@ static void draw_monospace(struct tui_context* tui,
 
 			fpos++, bpos++, custom++;
 		}
+	}
 /* FIXME: custom draw-call goes here */
 }
 

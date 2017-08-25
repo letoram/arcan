@@ -23,8 +23,6 @@ static lua_State *globalL = NULL;
 
 static const char *progname = LUA_PROGNAME;
 
-
-
 static void lstop (lua_State *L, lua_Debug *ar) {
   (void)ar;  /* unused arg. */
   lua_sethook(L, NULL, 0, 0);
