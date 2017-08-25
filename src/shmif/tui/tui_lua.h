@@ -41,6 +41,11 @@
 struct tui_lmeta {
 	struct tui_context* tui;
 	int href;
+
+/* pending subsegment requests and their respective lua references */
+	uint8_t pending_mask;
+	intptr_t pending[8];
+
 	const char* last_words;
 	lua_State* lua;
 };
