@@ -538,7 +538,6 @@ endif()
 set_property(SOURCE engine/arcan_lua.c engine/arcan_main.c
 	APPEND PROPERTY COMPILE_DEFINITIONS
 	ARCAN_BUILDVERSION=\"${ENGINE_BUILDTAG}\"
-	OS_DYLIB_EXTENSION=\"${OS_DYLIB_EXTENSION}\"
 	${FSRV_DISABLE}
 )
 
