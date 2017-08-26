@@ -47,7 +47,6 @@ add_definitions(
 set(DISABLE_HIJACK ON)
 
 set(PLATFORM_PATH ${PLATFORM_ROOT}/posix)
-set(OS_DYLIB_EXTENSION=\".dylib\")
 
 set_property(SOURCE engine/arcan_ffunc_lut.c APPEND PROPERTY
 	COMPILE_DEFINITIONS MAP_ANONYMOUS=MAP_ANON)
@@ -60,6 +59,9 @@ set(MAN_DEST ${CMAKE_INSTALL_PREFIX}/man/man1)
 # map_file is the default and doesn't need to be set here
 set_property(SOURCE ${PLATFORM_PATH}/map_resource.c
 				PROPERTY COMPILE_FLAGS -DMAP_FILE=0)
+set_property(SOURCE engine/arcan_lua.c
+	APPEND PROPERTY COMPILE_DEFINITIONS
+		OS_DYLIB_EXTENSION=".dylib")
 
 # doing like this as we don't want or
 set(ARCAN_NOLWA_DEFINITIONS MAIN_REDIR=SDL_main)

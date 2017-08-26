@@ -19,7 +19,6 @@
 #
 
 set(PLATFORM_PATH ${PLATFORM_ROOT}/posix)
-set(OS_DYLIB_EXTENSION=\".so\")
 
 add_definitions(
 	-D__UNIX
@@ -59,6 +58,9 @@ set_property(SOURCE ${PLATFORM_PATH}/fdpassing.c
 	APPEND PROPERTY COMPILE_FLAGS -w)
 set_property(SOURCE ${PLATFORM_PATH}/fdpassing.c
 	APPEND PROPERTY COMPILE_DEFINITIONS NONBLOCK_RECV)
+set_property(SOURCE engine/arcan_lua.c
+	APPEND PROPERTY COMPILE_DEFINITIONS
+		OS_DYLIB_EXTENSION=".so")
 
 # not 'required' but enabled support for additional LED controllers,
 # and in the near future, additional device support

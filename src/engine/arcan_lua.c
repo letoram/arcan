@@ -2956,7 +2956,7 @@ static int systemload(lua_State* ctx)
 	bool islua = strcmp(ext, ".lua") == 0;
 	if (!islua
 #ifndef DISABLE_MODULES
-	&& strcmp(ext, ".lib") != 0
+	&& strcmp(ext, OS_DYLIB_EXTENSION) != 0
 #endif
 	){
 		if (dieonfail)
