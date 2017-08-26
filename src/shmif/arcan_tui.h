@@ -416,29 +416,20 @@ struct tui_cbcfg {
 	void (*subwindow)(struct tui_context*, arcan_tui_conn*, uint32_t id, void*);
 
 /*
- * Dynamic glyph substitution callback per-row that is invoked if the context
- * is in a shaped rendering mode. This allows you to hint where text- blocks
- * terminate and if any glyphs should be substituted for any other.
+ * Dynamic glyph substitution callback per updated row. This allows you to
+ * change cell attributes pre-rendering, particularly for the purpose of
+ * indicating/updating shaping-breaks so that, if the renderer is operating
+ * in a shaped mode, can realign appropriately - but also to perform custom/
+ * manual glyph substitutions or disable the default- shaper/substituter.
  *
- * [cells] will be aligned to point at the start of the row indicated by
- * [row], though [n_cells] may be fewer than the number of columns on the
- * row.
+ * return true if the contents of the cells were modified, false otherwise.
  *
- * Shape/substitution relevant fields:
- * draw_ch: actual UCS4 unicode codepoint that will be drawn
- * real_x: x offset from where the start of line should be drawn, this affects
- * cursor drawing, copy/paste selections etc. if you modify this field, you
- * also need to account for attr.shape_break and re-align to have the next
- * cell start at the ideal position (col * ideal_w).
- *
- * If only substitutiton will be considered, ideal_w will be set to 0.
- *
- * return true if shaping was applied (in contrast to only substitution),
- * otherwise the shaping decision will be left up to the implementation defined
- * shaper.
+ * For more advanced shaping that depend on the font and font properties
+ * used, leave the callback to its default callback table state or forward-
+ * chain to the default callback state from here (though check if it is set).
  */
-	bool (*reshape)(struct tui_context*,
-		struct tui_cell* cells, size_t n_cells, size_t row, size_t ideal_w, void* t);
+	bool (*substitute)(struct tui_context*,
+		struct tui_cell* cells, size_t n_cells, size_t row, void* t);
 
 /*
  * Add new callbacks here as needed, since the setup requires a sizeof of
@@ -551,11 +542,18 @@ struct tui_screen_attr {
 };
 
 struct tui_cell {
-	uint32_t ch, draw_ch;
+/* drawing properties */
 	struct tui_screen_attr attr;
 
+/* used for substitutions */
+	uint32_t ch, draw_ch;
+
+/* resolved after shaping has been applied */
 	uint32_t real_x;
 	uint8_t cell_w;
+
+/* cycling counter for when the cell was last updated */
+	uint8_t fstamp;
 };
 
 /*
@@ -584,12 +582,11 @@ bool arcan_tui_copy(struct tui_context*, const char* utf8_msg);
 void arcan_tui_ident(struct tui_context*, const char* ident);
 
 /*
- * query the active front buffer for the attributes and (optionally)
- * data at [col, row], will return an empty tui_screen_attr if [col, row]
- * is out of bounds
+ * get a copy of the contents of the front(f = true) or last(f = false)
+ * cell-level buffer at the x, y coordinates. If x,y is out of bounds,
+ * an empty cell will be returned.
  */
-struct tui_screen_attr arcan_tui_query_custom(
-	struct tui_context*, size_t row, size_t col, uint32_t* ch);
+struct tui_cell arcan_tui_getxy(struct tui_context*, size_t x, size_t y,bool f);
 
 /*
  * Send a new request for a subwindow with life-span that depends on the main
