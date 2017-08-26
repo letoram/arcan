@@ -101,6 +101,7 @@ struct tui_context {
 	struct tui_cell* custom;
 	shmif_pixel* blitbuffer;
 	int blitbuffer_dirty;
+	uint8_t fstamp;
 
 	unsigned flags;
 	bool focus, inactive;
@@ -205,7 +206,7 @@ static void queue_requests(struct tui_context* tui, bool clipboard, bool ident);
  */
 static void draw_cbt(struct tui_context* tui,
 	uint32_t ch, int x, int y, const struct tui_screen_attr* attr, bool empty,
-	struct shape_state* state);
+	struct shape_state* state, bool noclear);
 
 static void draw_monospace(struct tui_context* tui,
 	size_t n_rows, size_t n_cols,
@@ -351,7 +352,8 @@ static void apply_attrs(struct tui_context* tui,
 /* DOES NOT SUPPORT OR CONSIDER CLIPPING */
 static void draw_ch(struct tui_context* tui,
 	uint32_t ch, int base_x, int base_y, uint8_t fg[4], uint8_t bg[4],
-	const struct tui_screen_attr* attr, struct shape_state* state)
+	const struct tui_screen_attr* attr, struct shape_state* state,
+	bool noclear)
 {
 	int prem = TTF_STYLE_NORMAL;
 	prem |= TTF_STYLE_ITALIC * attr->italic;
@@ -361,6 +363,7 @@ static void draw_ch(struct tui_context* tui,
 
 /* reset the cell regarless of state as the current drawUNICODE,...
  * doesn't actually clear it and the conditional/ write costs more */
+	if (!noclear)
 	draw_box(&tui->acon, base_x, base_y,
 		tui->cell_w, tui->cell_h, SHMIF_RGBA(bg[0], bg[1], bg[2], bg[3]));
 
@@ -427,6 +430,7 @@ static int tsm_draw_callback(struct tsm_screen* screen, uint32_t id,
 		size_t pos = y * tui->cols + x;
 		tui->front[pos].draw_ch = tui->front[pos].ch = *ch;
 		tui->front[pos].attr = *attr;
+		tui->front[pos].fstamp = tui->fstamp;
 		tui->dirty |= DIRTY_PENDING;
 	}
 
@@ -436,7 +440,7 @@ static int tsm_draw_callback(struct tsm_screen* screen, uint32_t id,
 static void draw_cbt(struct tui_context* tui,
 	uint32_t ch,int x1, int y1,
 	const struct tui_screen_attr* attr,	bool empty,
-	struct shape_state* state)
+	struct shape_state* state, bool noclear)
 {
 	uint8_t fgc[4] = {attr->fr, attr->fg, attr->fb, 255};
 	uint8_t bgc[4] = {attr->br, attr->bg, attr->bb, tui->alpha};
@@ -466,9 +470,13 @@ static void draw_cbt(struct tui_context* tui,
 
 /* Don't go through the font- path if the cell is just whitespace */
 	if (empty){
-		draw_box(&tui->acon, x1, y1, tui->cell_w, tui->cell_h,
-			SHMIF_RGBA(dbg[0], dbg[1], dbg[2], tui->alpha));
-			apply_attrs(tui, x1, y1, bgc, attr);
+		if (noclear){
+		}
+		else
+			draw_box(&tui->acon, x1, y1, tui->cell_w, tui->cell_h,
+				SHMIF_RGBA(dbg[0], dbg[1], dbg[2], tui->alpha));
+				apply_attrs(tui, x1, y1, bgc, attr
+			);
 		return;
 	}
 
@@ -507,7 +515,7 @@ static void draw_cbt(struct tui_context* tui,
 			if (tui->blitbuffer){
 				shmif_pixel* vidp = tui->acon.vidp;
 				tui->acon.vidp = tui->blitbuffer;
-				draw_ch(tui, ch, x1, 0, dfg, dbg, attr, state);
+				draw_ch(tui, ch, x1, 0, dfg, dbg, attr, state, false);
 				tui->acon.vidp = vidp;
 				tui->blitbuffer_dirty |= 1;
 			}
@@ -516,42 +524,15 @@ static void draw_cbt(struct tui_context* tui,
 			if (tui->blitbuffer){
 				shmif_pixel* vidp = tui->acon.vidp;
 				tui->acon.vidp = &tui->blitbuffer[tui->acon.pitch * tui->cell_h];
-				draw_ch(tui, ch, x1, 0, dfg, dbg, attr, state);
+				draw_ch(tui, ch, x1, 0, dfg, dbg, attr, state, false);
 				tui->acon.vidp = vidp;
 				tui->blitbuffer_dirty |= 2;
 			}
 		}
 		else
-			draw_ch(tui, ch, x1, y1, dfg, dbg, attr, state);
+			draw_ch(tui, ch, x1, y1, dfg, dbg, attr, state, false);
 	}
 #endif
-}
-
-/*
- * return true of [a] and [b] have the same members. custom_id is
- * excluded from this comparison as those should always be treated
- * separately
- */
-static bool cell_match(struct tui_cell* ac, struct tui_cell* bc)
-{
-	struct tui_screen_attr* a = &ac->attr;
-	struct tui_screen_attr* b = &bc->attr;
-	return (
-		ac->ch == bc->ch &&
-		a->fr == b->fr &&
-		a->fg == b->fg &&
-		a->fb == b->fb &&
-		a->br == b->br &&
-		a->bg == b->bg &&
-		a->bb == b->bb &&
-		a->bold == b->bold &&
-		a->underline == b->underline &&
-		a->italic == b->italic &&
-		a->inverse == b->inverse &&
-		a->protect == b->protect &&
-		a->blink == b->blink &&
-		a->strikethrough == b->strikethrough
-	);
 }
 
 /*
@@ -578,7 +559,7 @@ static void draw_shaped(struct tui_context* tui,
 			struct tui_cell* front_row = &front[tui->cols * row];
 			struct tui_cell* back_row = &back[tui->cols * row];
 			for (size_t col = 0; col < n_cols; col++){
-				if (!cell_match(&front_row[col], &back_row[col])){
+				if (front_row[col].fstamp != back_row[col].fstamp ||row==tui->cursor_y){
 					row_changed = true;
 					break;
 				}
@@ -598,10 +579,10 @@ static void draw_shaped(struct tui_context* tui,
 		draw_box(&tui->acon, 0, cury, tui->acon.w, cury+tui->cell_h, bgcol);
 		tui->acon.dirty.x2 = tui->acon.w;
 
-		bool kern = true;
-		if (tui->handlers.reshape)
-			kern = !tui->handlers.reshape(tui,
-				&front[row * tui->cols], n_cols, row, tui->cell_w, tui->handlers.tag);
+/* FIXME: forward to harfbuzz- like shaper / substituter */
+		if (tui->handlers.substitute)
+			!tui->handlers.substitute(tui,
+				&front[row * tui->cols], n_cols, row, tui->handlers.tag);
 
 		for (size_t col = 0; col < n_cols; col++){
 /* custom-draw cells always reset the state tracking */
@@ -615,23 +596,19 @@ static void draw_shaped(struct tui_context* tui,
  * (which is not correct) that the shaped output will not grow to exceed the
  * cell size limit. This should be fixed alongside proper wcswidth style
  * screen management */
-			if (kern){
-				int last_ofs = state.xofs;
-				draw_cbt(tui, front_row[col].draw_ch,
-					start_x + state.xofs, cury,
-					&front_row[col].attr, false, &state
-				);
-				front_row[col].real_x = start_x + last_ofs;
-				front_row[col].cell_w = state.xofs - last_ofs;
+			int last_ofs = state.xofs;
+			draw_cbt(tui, front_row[col].draw_ch,
+				start_x + state.xofs, cury,
+				&front_row[col].attr, false, &state, true
+			);
+			front_row[col].real_x = start_x + last_ofs;
+			front_row[col].cell_w = state.xofs - last_ofs;
 
-/* Shape-break has us resetting to the intended / non-kerned position */
-				if  (front_row[col].attr.shape_break){
-					state = (struct shape_state){.xofs = col * cw};
-				}
-			}
-			else {
-				draw_cbt(tui, front_row[col].draw_ch,
-					front_row[col].real_x, cury, &front_row[col].attr, false, NULL);
+/* Shape-break has us resetting to the intended / non-kerned position,
+ * for the least intrusive effect, this pretty much needs to be set
+ * after every word - with special detail to 'formatted columns' */
+			if (front_row[col].attr.shape_break){
+				state = (struct shape_state){.xofs = col * cw};
 			}
 
 /* update target buffer */
@@ -664,14 +641,15 @@ static void draw_monospace(struct tui_context* tui,
 	}
  */
 	for (size_t row = 0; row < n_rows; row++){
-		if (tui->handlers.reshape)
-			tui->handlers.reshape(tui,
-				&front[row * tui->cols], n_cols, row, 0, tui->handlers.tag);
+		if (tui->handlers.substitute)
+			tui->handlers.substitute(tui,
+				&front[row * tui->cols], n_cols, row, tui->handlers.tag);
 
 		for (size_t col = 0; col < n_cols; col++){
 
 /* only update if the source position has changed, treat custom_id separate */
-			if (synch && !(tui->dirty & DIRTY_PENDING_FULL) && cell_match(fpos,bpos)){
+			if (synch && !(tui->dirty & DIRTY_PENDING_FULL)
+				&& fpos->fstamp == bpos->fstamp){
 				fpos++, bpos++, custom++;
 				continue;
 			}
@@ -689,7 +667,7 @@ static void draw_monospace(struct tui_context* tui,
 
 /* update the cell */
 			draw_cbt(tui, fpos->draw_ch,
-				col * cw + start_x, row * ch + start_y, &fpos->attr, false, NULL);
+				col * cw + start_x, row * ch + start_y, &fpos->attr, false, NULL,false);
 
 			if (synch)
 				*custom = *bpos = *fpos;
@@ -959,7 +937,7 @@ static void update_screen(struct tui_context* tui, bool ign_inact)
 		int x, y, w, h;
 		resolve_cursor(tui, &x, &y, &w, &h);
 		struct tui_cell* tc = &tui->back[tui->cursor_y * tui->cols + tui->cursor_x];
-		draw_cbt(tui, tc->ch, x, y, &tc->attr, tc->ch == 0, NULL);
+		draw_cbt(tui, tc->ch, x, y, &tc->attr, tc->ch == 0, NULL, false);
 	}
 
 /* This is the wrong way to n' buffer here, but as a temporary workaround
@@ -1174,15 +1152,15 @@ static void select_copy(struct tui_context* tui)
 	free(sel);
 }
 
-struct tui_screen_attr arcan_tui_query_custom(
-	struct tui_context* tui, size_t row, size_t col, uint32_t* ch)
+struct tui_cell arcan_tui_getxy(
+	struct tui_context* tui, size_t x, size_t y, bool fl)
 {
-	if (row >= tui->rows || col >= tui->cols)
-		return (struct tui_screen_attr){};
+	if (y >= tui->rows || x >= tui->cols)
+		return (struct tui_cell){};
 
-	if (ch)
-		*ch = tui->front[row * tui->rows + col].ch;
-	return tui->front[row * tui->rows + col].attr;
+	return fl ?
+		tui->front[y * tui->rows + x] :
+		tui->back[y * tui->rows + x];
 }
 
 static bool select_at(struct tui_context* tui)
@@ -2347,6 +2325,7 @@ retry:
 		tui->acon.dirty.x2 = 0;
 		tui->acon.dirty.y1 = tui->acon.h;
 		tui->acon.dirty.y2 = 0;
+		tui->fstamp++;
 		tui->dirty = DIRTY_NONE;
 
 		return 1;

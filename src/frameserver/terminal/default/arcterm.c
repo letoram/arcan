@@ -68,7 +68,7 @@ static void dump_help()
 		" cc          \t r,g,b     \t cursor color\n"
 		" cl          \t r,g,b     \t cursor alternate (locked) state color\n"
 		" cursor      \t name      \t set cursor (block, frame, halfblock,\n"
-		"             \t           \t underline, vertical)\n"
+		"             \t           \t vline, uline)\n"
 		" blink       \t ticks     \t set blink period, 0 to disable (default: 12)\n"
 		" login       \t [user]    \t login (optional: user, only works for root)\n"
 		" min_upd     \t ms        \t wait at least [ms] between refreshes (default: 30)\n"
@@ -238,6 +238,24 @@ static void setup_shell(struct arg_arr* argarr, char* const args[])
 	exit(EXIT_FAILURE);
 }
 
+static bool on_subst(struct tui_context* tui,
+	struct tui_cell* cells, size_t n_cells, size_t row, void* t)
+{
+	bool res = false;
+	for (size_t i = 0; i < n_cells-1; i++){
+/* far from an optimal shaping rule, but check for special forms of continuity,
+ * 3+ of (+_-) like shapes horizontal or vertical, n- runs of whitespace or
+ * vertical similarities in terms of whitespace+character
+ */
+		if ( (isspace(cells[i].ch) && isspace(cells[i+1].ch)) ){
+			cells[i].attr.shape_break = 1;
+			res = true;
+		}
+	}
+
+	return res;
+}
+
 static int parse_color(const char* inv, uint8_t outv[4])
 {
 	return sscanf(inv, "%"SCNu8",%"SCNu8",%"SCNu8",%"SCNu8,
@@ -272,7 +290,8 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		.input_utf8 = on_u8,
 		.input_key = on_key,
 		.utf8 = on_utf8_paste,
-		.resized = on_resize
+		.resized = on_resize,
+		.substitute = on_subst
 	};
 
 	struct tui_settings cfg = arcan_tui_defaults(con, NULL);
