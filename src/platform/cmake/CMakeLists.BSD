@@ -20,6 +20,26 @@
 #
 
 set (PLATFORM_PATH ${PLATFORM_ROOT}/posix)
+
+if (${CMAKE_SYSTEM_NAME} MATCHES "OpenBSD")
+	set(BSD_VARIANT_DEFINITIONS
+		-DCLOCK_MONOTONIC_RAW=CLOCK_MONOTONIC)
+	set(BSD_VARIANT_LIBS)
+	if(${INPUT_PLATFORM} STREQUAL "evdev")
+		SET(INPUT_PLATFORM stub)
+	endif()
+	list(APPEND ARCAN_PLATFORM ${PLATFORM_PATH}/ffsll.c)
+else()
+	set(BSD_VARIANT_DEFINITIONS
+		-DCLOCK_MONOTONIC_RAW=CLOCK_REALTIME_FAST)
+	set(BSD_VARIANT_LIBS
+		rt
+	)
+	if(${INPUT_PLATFORM} STREQUAL "evdev")
+		SET(INPUT_PLATFORM freebsd)
+	endif()
+endif()
+
 set(OS_DYLIB_EXTENSION=\".so\")
 add_definitions(
 	-DPLATFORM_HEADER=\"${PLATFORM_ROOT}/platform.h\"
@@ -27,15 +47,10 @@ add_definitions(
 	-D__UNIX
 	-D__BSD
 	-DLIBUSB_BSD
-	-DCLOCK_MONOTONIC_RAW=CLOCK_REALTIME_FAST
+	${BSD_VARIANT_DEFINITIONS}
 )
 
-message(STATUS " scanning for FreeBSD specific libraries. ")
-
-find_library(ICONV NAMES iconv REQUIRED)
-LIST(APPEND ARCAN_LIBRARIES ${ICONV} usb usbhid)
-
-set (ARCAN_PLATFORM
+list(APPEND ARCAN_PLATFORM
 	${PLATFORM_PATH}/mem.c
 	${PLATFORM_PATH}/fmt_open.c
 	${PLATFORM_PATH}/glob.c
@@ -54,9 +69,9 @@ set (ARCAN_PLATFORM
 	${PLATFORM_PATH}/fdpassing.c
 	${PLATFORM_PATH}/namespace.c
 	${PLATFORM_PATH}/launch.c
-	${EXTERNAL_SRC_DIR}/hidapi/hid.c
-	${EXTERNAL_SRC_DIR}/hidapi/hidapi.h
 )
+find_library(ICONV NAMES iconv REQUIRED)
+LIST(APPEND ARCAN_LIBRARIES ${ICONV})
 
 set_property(SOURCE platform/posix/fdpassing.c
 	APPEND PROPERTY COMPILE_FLAGS -w)
@@ -78,16 +93,6 @@ set (LWA_PLATFORM_SOURCES
 
 set(LWA_PLATFORM ${ARCAN_PLATFORM})
 
-#
-# Input platform is actually a default from the graphics platform.
-# There are only linuxes and BSDs supported by the egl-dri video platform
-# and therefore the default is evdev. For Free, Dragon and OpenBSD we
-# want a different input layer at least.
-#
-if(${INPUT_PLATFORM} STREQUAL "evdev")
-	SET(INPUT_PLATFORM freebsd)
-endif()
-
 LIST(APPEND PLATFORM_SOURCES
 	${VIDEO_PLATFORM_SOURCES}
 	${PLATFORM_ROOT}/${INPUT_PLATFORM}/event.c
@@ -103,7 +108,7 @@ if (NOT BSD_THREAD)
 endif()
 
 LIST(APPEND STDLIB
-	rt
 	m
+	${BSD_VARIANT_LIBS}
 	${BSD_THREAD}
 )
