@@ -77,6 +77,9 @@ set_property(SOURCE platform/posix/fdpassing.c
 	APPEND PROPERTY COMPILE_FLAGS -w)
 set_property(SOURCE platform/posix/fdpassing.c
 	APPEND PROPERTY COMPILE_DEFINITIONS NONBLOCK_RECV)
+set_property(SOURCE engine/arcan_lua.c
+	APPEND PROPERTY COMPILE_DEFINITIONS
+		OS_DYLIB_EXTENSION=".so")
 
 set (SHMIF_PLATFORM
 	${PLATFORM_PATH}/warning.c

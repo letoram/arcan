@@ -1,3 +1,4 @@
+
 /*
  * Copyright 2014-2017, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
@@ -47,6 +48,47 @@
 #include "libtsm.h"
 #include "libtsm_int.h"
 #include "tui_draw.h"
+
+#ifdef WITH_HARFBUZZ
+static bool enable_harfbuzz = false;
+#include <harfbuzz/hb.h>
+#include <harfbuzz/hb-ft.h>
+#include <harfbuzz/hb-icu.h>
+static bool render_glyph(PIXEL* dst,
+	size_t width, size_t height, int stride,
+	TTF_Font **font, size_t n,
+	uint32_t ch,
+	unsigned* xstart, uint8_t fg[4], uint8_t bg[4],
+	bool usebg, bool use_kerning, int style,
+	int* advance, unsigned* prev_index
+)
+{
+	if (enable_harfbuzz)
+		return TTF_RenderUNICODEindex(dst, width, height, stride,
+			font, n, ch, xstart,fg, bg, usebg, use_kerning, style,
+			advance, prev_index
+		);
+	else
+		return TTF_RenderUNICODEglyph(dst, width, height, stride,
+			font, n, ch, xstart,fg, bg, usebg, use_kerning, style,
+			advance, prev_index
+		);
+}
+#else
+static bool render_glyph(PIXEL* dst,
+	size_t width, size_t height, int stride,
+	TTF_Font **font, size_t n,
+	uint32_t ch,
+	unsigned* xstart, uint8_t fg[4], uint8_t bg[4],
+	bool usebg, bool use_kerning, int style,
+	int* advance, unsigned* prev_index
+)
+{
+	return TTF_RenderUNICODEglyph(dst, width, height, stride,
+		font, n, ch, xstart,fg, bg, usebg, use_kerning, style,
+		advance, prev_index);
+}
+#endif
 
 enum dirty_state {
 	DIRTY_NONE = 0,
@@ -101,6 +143,7 @@ struct tui_context {
 	struct tui_cell* custom;
 	shmif_pixel* blitbuffer;
 	int blitbuffer_dirty;
+	uint8_t fstamp;
 
 	unsigned flags;
 	bool focus, inactive;
@@ -114,6 +157,9 @@ struct tui_context {
  * and one secondary that can be used for alternative glyphs */
 #ifndef SIMPLE_RENDERING
 	TTF_Font* font[2];
+#ifdef WITH_HARFBUZZ
+	hb_font_t* hb_font;
+#endif
 #endif
 	struct tui_font_ctx* font_bitmap;
 	bool force_bitmap;
@@ -205,7 +251,7 @@ static void queue_requests(struct tui_context* tui, bool clipboard, bool ident);
  */
 static void draw_cbt(struct tui_context* tui,
 	uint32_t ch, int x, int y, const struct tui_screen_attr* attr, bool empty,
-	struct shape_state* state);
+	struct shape_state* state, bool noclear);
 
 static void draw_monospace(struct tui_context* tui,
 	size_t n_rows, size_t n_cols,
@@ -351,7 +397,8 @@ static void apply_attrs(struct tui_context* tui,
 /* DOES NOT SUPPORT OR CONSIDER CLIPPING */
 static void draw_ch(struct tui_context* tui,
 	uint32_t ch, int base_x, int base_y, uint8_t fg[4], uint8_t bg[4],
-	const struct tui_screen_attr* attr, struct shape_state* state)
+	const struct tui_screen_attr* attr, struct shape_state* state,
+	bool noclear)
 {
 	int prem = TTF_STYLE_NORMAL;
 	prem |= TTF_STYLE_ITALIC * attr->italic;
@@ -361,6 +408,7 @@ static void draw_ch(struct tui_context* tui,
 
 /* reset the cell regarless of state as the current drawUNICODE,...
  * doesn't actually clear it and the conditional/ write costs more */
+	if (!noclear)
 	draw_box(&tui->acon, base_x, base_y,
 		tui->cell_w, tui->cell_h, SHMIF_RGBA(bg[0], bg[1], bg[2], bg[3]));
 
@@ -374,7 +422,7 @@ static void draw_ch(struct tui_context* tui,
 		unsigned xs = 0;
 		int adv = 0;
 
-		TTF_RenderUNICODEglyph(
+		render_glyph(
 			&tui->acon.vidp[base_y * tui->acon.pitch + base_x],
 			tui->cell_w, tui->cell_h, tui->acon.pitch,
 			tui->font, tui->font[1] ? 2 : 1,
@@ -387,7 +435,7 @@ static void draw_ch(struct tui_context* tui,
 	else {
 		unsigned xs = 0;
 		int adv = 0;
-		TTF_RenderUNICODEglyph(
+		render_glyph(
 			&tui->acon.vidp[base_y * tui->acon.pitch + base_x],
 			tui->cell_w, tui->cell_h, tui->acon.pitch,
 			tui->font, tui->font[1] ? 2 : 1,
@@ -427,6 +475,7 @@ static int tsm_draw_callback(struct tsm_screen* screen, uint32_t id,
 		size_t pos = y * tui->cols + x;
 		tui->front[pos].draw_ch = tui->front[pos].ch = *ch;
 		tui->front[pos].attr = *attr;
+		tui->front[pos].fstamp = tui->fstamp;
 		tui->dirty |= DIRTY_PENDING;
 	}
 
@@ -436,7 +485,7 @@ static int tsm_draw_callback(struct tsm_screen* screen, uint32_t id,
 static void draw_cbt(struct tui_context* tui,
 	uint32_t ch,int x1, int y1,
 	const struct tui_screen_attr* attr,	bool empty,
-	struct shape_state* state)
+	struct shape_state* state, bool noclear)
 {
 	uint8_t fgc[4] = {attr->fr, attr->fg, attr->fb, 255};
 	uint8_t bgc[4] = {attr->br, attr->bg, attr->bb, tui->alpha};
@@ -468,7 +517,8 @@ static void draw_cbt(struct tui_context* tui,
 	if (empty){
 		draw_box(&tui->acon, x1, y1, tui->cell_w, tui->cell_h,
 			SHMIF_RGBA(dbg[0], dbg[1], dbg[2], tui->alpha));
-			apply_attrs(tui, x1, y1, bgc, attr);
+			apply_attrs(tui, x1, y1, bgc, attr
+		);
 		return;
 	}
 
@@ -507,7 +557,7 @@ static void draw_cbt(struct tui_context* tui,
 			if (tui->blitbuffer){
 				shmif_pixel* vidp = tui->acon.vidp;
 				tui->acon.vidp = tui->blitbuffer;
-				draw_ch(tui, ch, x1, 0, dfg, dbg, attr, state);
+				draw_ch(tui, ch, x1, 0, dfg, dbg, attr, state, false);
 				tui->acon.vidp = vidp;
 				tui->blitbuffer_dirty |= 1;
 			}
@@ -516,42 +566,15 @@ static void draw_cbt(struct tui_context* tui,
 			if (tui->blitbuffer){
 				shmif_pixel* vidp = tui->acon.vidp;
 				tui->acon.vidp = &tui->blitbuffer[tui->acon.pitch * tui->cell_h];
-				draw_ch(tui, ch, x1, 0, dfg, dbg, attr, state);
+				draw_ch(tui, ch, x1, 0, dfg, dbg, attr, state, false);
 				tui->acon.vidp = vidp;
 				tui->blitbuffer_dirty |= 2;
 			}
 		}
 		else
-			draw_ch(tui, ch, x1, y1, dfg, dbg, attr, state);
+			draw_ch(tui, ch, x1, y1, dfg, dbg, attr, state, false);
 	}
 #endif
-}
-
-/*
- * return true of [a] and [b] have the same members. custom_id is
- * excluded from this comparison as those should always be treated
- * separately
- */
-static bool cell_match(struct tui_cell* ac, struct tui_cell* bc)
-{
-	struct tui_screen_attr* a = &ac->attr;
-	struct tui_screen_attr* b = &bc->attr;
-	return (
-		ac->ch == bc->ch &&
-		a->fr == b->fr &&
-		a->fg == b->fg &&
-		a->fb == b->fb &&
-		a->br == b->br &&
-		a->bg == b->bg &&
-		a->bb == b->bb &&
-		a->bold == b->bold &&
-		a->underline == b->underline &&
-		a->italic == b->italic &&
-		a->inverse == b->inverse &&
-		a->protect == b->protect &&
-		a->blink == b->blink &&
-		a->strikethrough == b->strikethrough
-	);
 }
 
 /*
@@ -578,7 +601,7 @@ static void draw_shaped(struct tui_context* tui,
 			struct tui_cell* front_row = &front[tui->cols * row];
 			struct tui_cell* back_row = &back[tui->cols * row];
 			for (size_t col = 0; col < n_cols; col++){
-				if (!cell_match(&front_row[col], &back_row[col])){
+				if (front_row[col].fstamp != back_row[col].fstamp ||row==tui->cursor_y){
 					row_changed = true;
 					break;
 				}
@@ -598,10 +621,10 @@ static void draw_shaped(struct tui_context* tui,
 		draw_box(&tui->acon, 0, cury, tui->acon.w, cury+tui->cell_h, bgcol);
 		tui->acon.dirty.x2 = tui->acon.w;
 
-		bool kern = true;
-		if (tui->handlers.reshape)
-			kern = !tui->handlers.reshape(tui,
-				&front[row * tui->cols], n_cols, row, tui->cell_w, tui->handlers.tag);
+/* FIXME: forward to harfbuzz- like shaper / substituter */
+		if (tui->handlers.substitute)
+			!tui->handlers.substitute(tui,
+				&front[row * tui->cols], n_cols, row, tui->handlers.tag);
 
 		for (size_t col = 0; col < n_cols; col++){
 /* custom-draw cells always reset the state tracking */
@@ -615,23 +638,19 @@ static void draw_shaped(struct tui_context* tui,
  * (which is not correct) that the shaped output will not grow to exceed the
  * cell size limit. This should be fixed alongside proper wcswidth style
  * screen management */
-			if (kern){
-				int last_ofs = state.xofs;
-				draw_cbt(tui, front_row[col].draw_ch,
-					start_x + state.xofs, cury,
-					&front_row[col].attr, false, &state
-				);
-				front_row[col].real_x = start_x + last_ofs;
-				front_row[col].cell_w = state.xofs - last_ofs;
+			int last_ofs = state.xofs;
+			draw_cbt(tui, front_row[col].draw_ch,
+				start_x + state.xofs, cury,
+				&front_row[col].attr, false, &state, true
+			);
+			front_row[col].real_x = start_x + last_ofs;
+			front_row[col].cell_w = state.xofs - last_ofs;
 
-/* Shape-break has us resetting to the intended / non-kerned position */
-				if  (front_row[col].attr.shape_break){
-					state = (struct shape_state){.xofs = col * cw};
-				}
-			}
-			else {
-				draw_cbt(tui, front_row[col].draw_ch,
-					front_row[col].real_x, cury, &front_row[col].attr, false, NULL);
+/* Shape-break has us resetting to the intended / non-kerned position,
+ * for the least intrusive effect, this pretty much needs to be set
+ * after every word - with special detail to 'formatted columns' */
+			if (front_row[col].attr.shape_break){
+				state = (struct shape_state){.xofs = col * cw};
 			}
 
 /* update target buffer */
@@ -664,14 +683,15 @@ static void draw_monospace(struct tui_context* tui,
 	}
  */
 	for (size_t row = 0; row < n_rows; row++){
-		if (tui->handlers.reshape)
-			tui->handlers.reshape(tui,
-				&front[row * tui->cols], n_cols, row, 0, tui->handlers.tag);
+		if (tui->handlers.substitute)
+			tui->handlers.substitute(tui,
+				&front[row * tui->cols], n_cols, row, tui->handlers.tag);
 
 		for (size_t col = 0; col < n_cols; col++){
 
 /* only update if the source position has changed, treat custom_id separate */
-			if (synch && !(tui->dirty & DIRTY_PENDING_FULL) && cell_match(fpos,bpos)){
+			if (0 && synch && !(tui->dirty & DIRTY_PENDING_FULL)
+				&& fpos->fstamp == bpos->fstamp){
 				fpos++, bpos++, custom++;
 				continue;
 			}
@@ -689,7 +709,7 @@ static void draw_monospace(struct tui_context* tui,
 
 /* update the cell */
 			draw_cbt(tui, fpos->draw_ch,
-				col * cw + start_x, row * ch + start_y, &fpos->attr, false, NULL);
+				col * cw + start_x, row * ch + start_y, &fpos->attr, false, NULL,false);
 
 			if (synch)
 				*custom = *bpos = *fpos;
@@ -959,7 +979,7 @@ static void update_screen(struct tui_context* tui, bool ign_inact)
 		int x, y, w, h;
 		resolve_cursor(tui, &x, &y, &w, &h);
 		struct tui_cell* tc = &tui->back[tui->cursor_y * tui->cols + tui->cursor_x];
-		draw_cbt(tui, tc->ch, x, y, &tc->attr, tc->ch == 0, NULL);
+		draw_cbt(tui, tc->draw_ch, x, y, &tc->attr, tc->ch == 0, NULL, false);
 	}
 
 /* This is the wrong way to n' buffer here, but as a temporary workaround
@@ -1174,15 +1194,15 @@ static void select_copy(struct tui_context* tui)
 	free(sel);
 }
 
-struct tui_screen_attr arcan_tui_query_custom(
-	struct tui_context* tui, size_t row, size_t col, uint32_t* ch)
+struct tui_cell arcan_tui_getxy(
+	struct tui_context* tui, size_t x, size_t y, bool fl)
 {
-	if (row >= tui->rows || col >= tui->cols)
-		return (struct tui_screen_attr){};
+	if (y >= tui->rows || x >= tui->cols)
+		return (struct tui_cell){};
 
-	if (ch)
-		*ch = tui->front[row * tui->rows + col].ch;
-	return tui->front[row * tui->rows + col].attr;
+	return fl ?
+		tui->front[y * tui->rows + x] :
+		tui->back[y * tui->rows + x];
 }
 
 static bool select_at(struct tui_context* tui)
@@ -1423,8 +1443,11 @@ static void ioev_ctxtbl(struct tui_context* tui,
 	}
 	else if (ioev->devkind == EVENT_IDEVKIND_MOUSE){
 		if (ioev->datatype == EVENT_IDATATYPE_ANALOG){
-			if (ioev->subid == 0)
+			if (ioev->subid == 0){
+/*				int x, y, w, h;
+				resolve_cursor(tui->mouse_x, tui->mouse_y, x, y, w, h); */
 				tui->mouse_x = ioev->input.analog.axisval[0] / tui->cell_w;
+			}
 			else if (ioev->subid == 1){
 				int yv = ioev->input.analog.axisval[0];
 				tui->mouse_y = yv / tui->cell_h;
@@ -2035,6 +2058,13 @@ void drop_truetype(struct tui_context* tui)
 		TTF_CloseFont(tui->font[1]);
 		tui->font[1] = NULL;
 	}
+
+#ifdef HAVE_HARFBUZZ
+	if (tui->hb_font){
+		hb_font_destroy(tui->hb_font);
+		tui->hb_font = NULL;
+	}
+#endif
 }
 #endif
 
@@ -2162,6 +2192,16 @@ static bool setup_font(
 	TTF_Font* old_font = tui->font[modeind];
 
 	tui->font[modeind] = font;
+
+#ifdef WITH_HARFBUZZ
+	if (modeind == 0){
+		if (tui->hb_font){
+			hb_font_destroy(tui->hb_font);
+			tui->hb_font = NULL;
+		}
+		tui->hb_font = hb_ft_font_create((FT_Face)TTF_GetFtFace(font), NULL);
+	}
+#endif
 
 /* internally, TTF_Open dup:s the descriptor, we only keep it here
  * to allow size changes without specifying a new font */
@@ -2347,6 +2387,7 @@ retry:
 		tui->acon.dirty.x2 = 0;
 		tui->acon.dirty.y1 = tui->acon.h;
 		tui->acon.dirty.y2 = 0;
+		tui->fstamp++;
 		tui->dirty = DIRTY_NONE;
 
 		return 1;
@@ -2426,6 +2467,61 @@ arcan_tui_conn* arcan_tui_open_display(const char* title, const char* ident)
 	return res;
 }
 
+#ifdef WITH_HARFBUZZ
+static bool harfbuzz_substitute(struct tui_context* tui,
+	struct tui_cell* cells, size_t n_cells, size_t row, void* t)
+{
+	if (!tui->hb_font)
+		return false;
+
+/*
+ * we'll eventually need a more refined version of this, possible
+ * taking the GEOHINTS into account, or tracking it as a property
+ * per row or so.
+ */
+	uint32_t inch[n_cells];
+	uint32_t acc = 0;
+	for (size_t i = 0; i < n_cells; i++){
+		inch[i] = cells[i].ch;
+		acc |= cells[i].ch;
+	}
+
+	if (!acc)
+		return false;
+
+	hb_buffer_t* buf = hb_buffer_create();
+	hb_buffer_set_unicode_funcs(buf, hb_icu_get_unicode_funcs());
+	hb_buffer_set_direction(buf, HB_DIRECTION_LTR);
+	hb_buffer_set_script(buf, HB_SCRIPT_LATIN);
+	hb_buffer_set_language(buf, hb_language_from_string("en", 2));
+	hb_buffer_add_utf32(buf, inch, n_cells, 0, n_cells);
+	hb_buffer_guess_segment_properties(buf);
+	hb_buffer_set_replacement_codepoint(buf, 0);
+
+/* NULL, 0 == features */
+	hb_shape(tui->hb_font, buf, NULL, 0);
+
+	unsigned glyphc;
+	hb_glyph_info_t* ginfo = hb_buffer_get_glyph_infos(buf, &glyphc);
+
+/* Note:
+ * codepoint is in the namespace of the font
+ * if kerning is enabled, also get the glyph_positions and apply
+ * to the xofs/real_w per cell */
+	for (size_t i = 0; i < glyphc && i < n_cells; i++){
+		cells[i].draw_ch = ginfo[i].codepoint;
+	}
+
+/*
+ * Note: there seem to be some drawing issue with -> --> etc. anywhere
+ * whileas <- substitute correctly
+ */
+
+	hb_buffer_destroy(buf);
+	return true;
+}
+#endif
+
 static int parse_color(const char* inv, uint8_t outv[4])
 {
 	return sscanf(inv, "%"SCNu8",%"SCNu8",%"SCNu8",%"SCNu8,
@@ -2443,7 +2539,7 @@ static void apply_arg(struct tui_settings* cfg,
 	uint8_t ccol[4] = {0x00, 0x00, 0x00, 0xff};
 	long vbufv = 0;
 
-	if (arg_lookup(args, "fgc", 0, &val))
+	if (arg_lookup(args, "fgc", 0, &val) && val)
 		if (parse_color(val, ccol) >= 3){
 			cfg->fgc[0] = ccol[0]; cfg->fgc[1] = ccol[1]; cfg->fgc[2] = ccol[2];
 		}
@@ -2452,7 +2548,7 @@ static void apply_arg(struct tui_settings* cfg,
 		cfg->render_flags |= TUI_RENDER_DBLBUF;
 	}
 
-	if (arg_lookup(args, "shape", 0, &val)){
+	if (arg_lookup(args, "shape", 0, &val) && val){
 		cfg->render_flags |= TUI_RENDER_SHAPED;
 	}
 
@@ -2461,29 +2557,35 @@ static void apply_arg(struct tui_settings* cfg,
 		cfg->render_flags |= TUI_RENDER_ACCEL;
 #endif
 
-	if (arg_lookup(args, "scroll", 0, &val))
+	if (arg_lookup(args, "scroll", 0, &val) && val)
 		cfg->smooth_scroll = strtoul(val, NULL, 10);
 
-	if (arg_lookup(args, "bgc", 0, &val))
+#ifdef WITH_HARFBUZZ
+	if (arg_lookup(args, "substitute", 0, &val) && !src){
+		enable_harfbuzz = true;
+	}
+#endif
+
+	if (arg_lookup(args, "bgc", 0, &val) && val)
 		if (parse_color(val, ccol) >= 3){
 			cfg->bgc[0] = ccol[0]; cfg->bgc[1] = ccol[1]; cfg->bgc[2] = ccol[2];
 		}
 
-	if (arg_lookup(args, "cc", 0, &val))
+	if (arg_lookup(args, "cc", 0, &val) && val)
 		if (parse_color(val, ccol) >= 3){
 			cfg->cc[0] = ccol[0]; cfg->cc[1] = ccol[1]; cfg->cc[2] = ccol[2];
 		}
 
-	if (arg_lookup(args, "clc", 0, &val))
+	if (arg_lookup(args, "clc", 0, &val) && val)
 		if (parse_color(val, ccol) >= 3){
 			cfg->clc[0] = ccol[0]; cfg->clc[1] = ccol[1]; cfg->clc[2] = ccol[2];
 		}
 
-	if (arg_lookup(args, "blink", 0, &val)){
+	if (arg_lookup(args, "blink", 0, &val) && val){
 		cfg->cursor_period = strtol(val, NULL, 10);
 	}
 
-	if (arg_lookup(args, "cursor", 0, &val)){
+	if (arg_lookup(args, "cursor", 0, &val) && val){
 		const char** cur = curslbl;
 		while(*cur){
 			if (strcmp(*cur, val) == 0){
@@ -2494,9 +2596,9 @@ static void apply_arg(struct tui_settings* cfg,
 		}
 	}
 
-	if (arg_lookup(args, "bgalpha", 0, &val))
+	if (arg_lookup(args, "bgalpha", 0, &val) && val)
 		cfg->alpha = strtoul(val, NULL, 10);
-	if (arg_lookup(args, "ppcm", 0, &val)){
+	if (arg_lookup(args, "ppcm", 0, &val) && val){
 		float ppcm = strtof(val, NULL);
 		if (isfinite(ppcm) && ppcm > ARCAN_SHMPAGE_DEFAULT_PPCM * 0.5)
 			cfg->ppcm = ppcm;
@@ -2658,6 +2760,10 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 		return NULL;
 	}
 	memcpy(&res->handlers, cbs, cbs_sz);
+#ifdef WITH_HARFBUZZ
+	if (!cbs->substitute && enable_harfbuzz)
+		res->handlers.substitute = harfbuzz_substitute;
+#endif
 
 	res->focus = true;
 	res->ppcm = init->density;

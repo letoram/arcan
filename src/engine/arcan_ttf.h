@@ -69,6 +69,8 @@ TTF_Font* TTF_OpenFontIndexRW(FILE* src, int freesrc, int ptsize,
 /* open font using a preexisting file descriptor, takes ownership of fd */
 TTF_Font* TTF_OpenFontFD(int fd, int ptsize, uint16_t hdpi, uint16_t vdpi);
 
+void* TTF_GetFtFace(TTF_Font*);
+
 /* Set and retrieve the font style */
 #define TTF_STYLE_NORMAL 0x00
 #define TTF_STYLE_BOLD 0x01
@@ -174,6 +176,20 @@ bool TTF_RenderUTF8chain(PIXEL* dst, size_t w, size_t h,
  * [prev_index] state tracker for kerning
  */
 bool TTF_RenderUNICODEglyph(PIXEL* dst,
+	size_t width, size_t height, int stride,
+	TTF_Font **font, size_t n,
+	uint32_t ch,
+	unsigned* xstart, uint8_t fg[4], uint8_t bg[4],
+	bool usebg, bool use_kerning, int style,
+	int* advance, unsigned* prev_index
+);
+
+/*
+ * Same as TTF_RenderUNICODEglyph above, but 'ch' references the glyph index in
+ * the font-chain, not the unicode codepoint.  This is only for special/trusted
+ * contexts, e.g. shaping engines
+ */
+bool TTF_RenderUNICODEindex(PIXEL* dst,
 	size_t width, size_t height, int stride,
 	TTF_Font **font, size_t n,
 	uint32_t ch,
