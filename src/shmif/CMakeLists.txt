@@ -175,8 +175,7 @@ if (SHMIF_TUI)
 		set (TUI_DEFINITIONS SHMIF_TUI_DISABLE_GPU)
 	endif()
 
-# we (will) use HarfBuzz for shaping/ligatures
-#	find_package(HarfBuzz)
+	find_package(HarfBuzz)
 	if (HARFBUZZ_FOUND)
 		amsg("${CL_YEL}shmif-tui : Harfbuzz found, enabling shaper")
 		list(APPEND TUI_LIBRARIES ${HARFBUZZ_LIBRARIES})
@@ -189,7 +188,7 @@ if (SHMIF_TUI)
 # of freetype that we should link to statically
 	if (STATIC_FREETYPE)
 		add_library(arcan_tui STATIC ${SHMIF_TUI_SOURCES})
-		target_link_libraries(arcan_tui PRIVATE ${STDLIB} ${FREETYPE_DEFAULT_LIBRARIES})
+		target_link_libraries(arcan_tui PRIVATE ${STDLIB} ${FREETYPE_DEFAULT_LIBRARIES} ${TUI_LIBRARIES})
 		find_package(Freetype QUIET)
 		if (FREETYPE_FOUND)
 			add_library(arcan_tuiext SHARED ${SHMIF_TUI_SOURCES})

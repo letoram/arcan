@@ -535,7 +535,8 @@ struct tui_screen_attr {
 	unsigned int shape_break : 1; /* reset shaping and align to grid */
 
 /*  > 127: cell is used for a custom draw-call, will be used with -127
- *         subtracted in custom draw callback.
+ *         subtracted in custom draw callback. The actual ch field can
+ *         thus be used for storing additional drawing hints.
  * 0..127: act as a user-supplied type-id, will be drawn as normal but
  *         can be queried for in selection buffers etc. */
 	uint8_t custom_id;
