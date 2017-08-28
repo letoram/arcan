@@ -20,7 +20,7 @@ int fmt_open(int flags, mode_t mode, const char* fmt, ...)
 	char* dbuf;
 	if (cc > 0 && (dbuf = (char*) malloc(cc + 1)) ) {
 		va_start(args, fmt);
-			vsprintf(dbuf, fmt, args);
+			vsnprintf(dbuf, cc+1, fmt, args);
 		va_end(args);
 
 		rv = open(dbuf, flags, mode);

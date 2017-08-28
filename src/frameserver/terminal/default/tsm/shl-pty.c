@@ -12,8 +12,13 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+
 #ifdef __APPLE__
 #include <util.h>
+#elif defined(__OpenBSD__)
+#ifndef IUTF8
+#define IUTF8 0x00004000
+#endif
 #elif defined(__BSD)
 #include <libutil.h>
 #ifndef IUTF8

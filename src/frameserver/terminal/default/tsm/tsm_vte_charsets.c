@@ -66,6 +66,7 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
 
 #include "arcan_shmif.h"
 #include "arcan_tui.h"
