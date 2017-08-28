@@ -151,6 +151,14 @@ int TTF_underline_top_row(TTF_Font *font)
 	return font->ascent - font->underline_offset - 1;
 }
 
+void* TTF_GetFtFace(TTF_Font* font)
+{
+	if (!font)
+		return NULL;
+
+	return (void*)font->face;
+}
+
 /* Gets the bottom row of the underline. The outline
    is taken into account.
 */
@@ -498,8 +506,8 @@ static void Flush_Cache( TTF_Font* font )
 	}
 }
 
-static FT_Error Load_Glyph( TTF_Font* font, uint32_t ch,
-	c_glyph* cached, int want )
+static FT_Error Load_Glyph(
+	TTF_Font* font, uint32_t ch, c_glyph* cached, int want, bool by_ind )
 {
 	FT_Face face;
 	FT_Error error;
@@ -515,7 +523,10 @@ static FT_Error Load_Glyph( TTF_Font* font, uint32_t ch,
 
 	/* Load the glyph */
 	if ( ! cached->index ) {
-		cached->index = FT_Get_Char_Index( face, ch );
+		if (by_ind)
+			cached->index = ch;
+		else
+			cached->index = FT_Get_Char_Index( face, ch );
 		if (0 == cached->index)
 			return -1;
 	}
@@ -823,7 +834,8 @@ static FT_Error Load_Glyph( TTF_Font* font, uint32_t ch,
 	return 0;
 }
 
-static FT_Error Find_Glyph( TTF_Font* font, uint32_t ch, int want )
+static FT_Error Find_Glyph(
+	TTF_Font* font, uint32_t ch, int want, bool by_ind)
 {
 	int retval = 0;
 	int hsize = sizeof( font->cache ) / sizeof( font->cache[0] );
@@ -835,15 +847,16 @@ static FT_Error Find_Glyph( TTF_Font* font, uint32_t ch, int want )
 		Flush_Glyph( font->current );
 
 	if ( (font->current->stored & want) != want ) {
-		retval = Load_Glyph( font, ch, font->current, want );
+		retval = Load_Glyph( font, ch, font->current, want, by_ind );
 	}
 	return retval;
 }
 
-static TTF_Font* Find_Glyph_fb(TTF_Font** fonts, int n, uint32_t ch, int want)
+static TTF_Font* Find_Glyph_fb(
+	TTF_Font** fonts, int n, uint32_t ch, int want, bool by_ind)
 {
 	for (size_t i = 0; i < n; i++){
-		if (Find_Glyph(fonts[i], ch, want) != 0)
+		if (Find_Glyph(fonts[i], ch, want, by_ind) != 0)
 			continue;
 
 		return fonts[i];
@@ -1127,7 +1140,7 @@ int TTF_SizeUNICODEchain(TTF_Font **font, size_t n,
 /* we ignore BOMs here as we've gone from UTF8 to native
  * and stripped away other paths */
 		uint32_t c = *ch;
-		TTF_Font* outf = Find_Glyph_fb(font, n, c, CACHED_METRICS);
+		TTF_Font* outf = Find_Glyph_fb(font, n, c, CACHED_METRICS, false);
 		if (!outf)
 			continue;
 		glyph = outf->current;
@@ -1298,18 +1311,15 @@ static void yfill(PIXEL* dst, PIXEL clr, int yfill, int w, int h, int stride)
 	}
 }
 
-bool TTF_RenderUNICODEglyph(PIXEL* dst,
+static bool render_unicode(
+	PIXEL* dst,
 	size_t width, size_t height,
 	int stride, TTF_Font **font, size_t n,
-	uint32_t ch,
+	TTF_Font* outf,
 	unsigned* xstart, uint8_t fg[4], uint8_t bg[4],
 	bool usebg, bool use_kerning, int style,
 	int* advance, unsigned* prev_index)
 {
-	TTF_Font* outf = Find_Glyph_fb(font, n, ch, CACHED_METRICS|CACHED_PIXMAP);
-	if (!outf)
-		return false;
-
 	PIXEL* ubound = dst + (height * stride) + width;
 	c_glyph* glyph = outf->current;
 	*advance = glyph->advance;
@@ -1491,6 +1501,38 @@ bool TTF_RenderUNICODEglyph(PIXEL* dst,
 
 	*prev_index = glyph->index;
 	return true;
+}
+
+bool TTF_RenderUNICODEindex(PIXEL* dst,
+	size_t width, size_t height,
+	int stride, TTF_Font **font, size_t n,
+	uint32_t ch,
+	unsigned* xstart, uint8_t fg[4], uint8_t bg[4],
+	bool usebg, bool use_kerning, int style,
+	int* advance, unsigned* prev_index)
+{
+	TTF_Font* outf = Find_Glyph_fb(font,
+		n, ch, CACHED_METRICS | CACHED_PIXMAP, true);
+	if (!outf)
+		return false;
+	return render_unicode(dst, width, height, stride, font, n,
+	outf, xstart, fg, bg, usebg, use_kerning, style, advance, prev_index);
+}
+
+bool TTF_RenderUNICODEglyph(PIXEL* dst,
+	size_t width, size_t height,
+	int stride, TTF_Font **font, size_t n,
+	uint32_t ch,
+	unsigned* xstart, uint8_t fg[4], uint8_t bg[4],
+	bool usebg, bool use_kerning, int style,
+	int* advance, unsigned* prev_index)
+{
+	TTF_Font* outf = Find_Glyph_fb(font,
+		n, ch, CACHED_METRICS|CACHED_PIXMAP, false);
+	if (!outf)
+		return false;
+	return render_unicode(dst, width, height, stride, font, n,
+	outf, xstart, fg, bg, usebg, use_kerning, style, advance, prev_index);
 }
 
 bool TTF_RenderUTF8chain(PIXEL* dst, size_t width, size_t height,

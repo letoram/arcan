@@ -1,3 +1,4 @@
+
 /*
  * Copyright 2014-2017, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
@@ -47,6 +48,47 @@
 #include "libtsm.h"
 #include "libtsm_int.h"
 #include "tui_draw.h"
+
+#ifdef WITH_HARFBUZZ
+static bool enable_harfbuzz = false;
+#include <harfbuzz/hb.h>
+#include <harfbuzz/hb-ft.h>
+#include <harfbuzz/hb-icu.h>
+static bool render_glyph(PIXEL* dst,
+	size_t width, size_t height, int stride,
+	TTF_Font **font, size_t n,
+	uint32_t ch,
+	unsigned* xstart, uint8_t fg[4], uint8_t bg[4],
+	bool usebg, bool use_kerning, int style,
+	int* advance, unsigned* prev_index
+)
+{
+	if (enable_harfbuzz)
+		return TTF_RenderUNICODEindex(dst, width, height, stride,
+			font, n, ch, xstart,fg, bg, usebg, use_kerning, style,
+			advance, prev_index
+		);
+	else
+		return TTF_RenderUNICODEglyph(dst, width, height, stride,
+			font, n, ch, xstart,fg, bg, usebg, use_kerning, style,
+			advance, prev_index
+		);
+}
+#else
+static bool render_glyph(PIXEL* dst,
+	size_t width, size_t height, int stride,
+	TTF_Font **font, size_t n,
+	uint32_t ch,
+	unsigned* xstart, uint8_t fg[4], uint8_t bg[4],
+	bool usebg, bool use_kerning, int style,
+	int* advance, unsigned* prev_index
+)
+{
+	return TTF_RenderUNICODEglyph(dst, width, height, stride,
+		font, n, ch, xstart,fg, bg, usebg, use_kerning, style,
+		advance, prev_index);
+}
+#endif
 
 enum dirty_state {
 	DIRTY_NONE = 0,
@@ -115,6 +157,9 @@ struct tui_context {
  * and one secondary that can be used for alternative glyphs */
 #ifndef SIMPLE_RENDERING
 	TTF_Font* font[2];
+#ifdef WITH_HARFBUZZ
+	hb_font_t* hb_font;
+#endif
 #endif
 	struct tui_font_ctx* font_bitmap;
 	bool force_bitmap;
@@ -377,7 +422,7 @@ static void draw_ch(struct tui_context* tui,
 		unsigned xs = 0;
 		int adv = 0;
 
-		TTF_RenderUNICODEglyph(
+		render_glyph(
 			&tui->acon.vidp[base_y * tui->acon.pitch + base_x],
 			tui->cell_w, tui->cell_h, tui->acon.pitch,
 			tui->font, tui->font[1] ? 2 : 1,
@@ -390,7 +435,7 @@ static void draw_ch(struct tui_context* tui,
 	else {
 		unsigned xs = 0;
 		int adv = 0;
-		TTF_RenderUNICODEglyph(
+		render_glyph(
 			&tui->acon.vidp[base_y * tui->acon.pitch + base_x],
 			tui->cell_w, tui->cell_h, tui->acon.pitch,
 			tui->font, tui->font[1] ? 2 : 1,
@@ -470,13 +515,10 @@ static void draw_cbt(struct tui_context* tui,
 
 /* Don't go through the font- path if the cell is just whitespace */
 	if (empty){
-		if (noclear){
-		}
-		else
-			draw_box(&tui->acon, x1, y1, tui->cell_w, tui->cell_h,
-				SHMIF_RGBA(dbg[0], dbg[1], dbg[2], tui->alpha));
-				apply_attrs(tui, x1, y1, bgc, attr
-			);
+		draw_box(&tui->acon, x1, y1, tui->cell_w, tui->cell_h,
+			SHMIF_RGBA(dbg[0], dbg[1], dbg[2], tui->alpha));
+			apply_attrs(tui, x1, y1, bgc, attr
+		);
 		return;
 	}
 
@@ -648,7 +690,7 @@ static void draw_monospace(struct tui_context* tui,
 		for (size_t col = 0; col < n_cols; col++){
 
 /* only update if the source position has changed, treat custom_id separate */
-			if (synch && !(tui->dirty & DIRTY_PENDING_FULL)
+			if (0 && synch && !(tui->dirty & DIRTY_PENDING_FULL)
 				&& fpos->fstamp == bpos->fstamp){
 				fpos++, bpos++, custom++;
 				continue;
@@ -937,7 +979,7 @@ static void update_screen(struct tui_context* tui, bool ign_inact)
 		int x, y, w, h;
 		resolve_cursor(tui, &x, &y, &w, &h);
 		struct tui_cell* tc = &tui->back[tui->cursor_y * tui->cols + tui->cursor_x];
-		draw_cbt(tui, tc->ch, x, y, &tc->attr, tc->ch == 0, NULL, false);
+		draw_cbt(tui, tc->draw_ch, x, y, &tc->attr, tc->ch == 0, NULL, false);
 	}
 
 /* This is the wrong way to n' buffer here, but as a temporary workaround
@@ -1401,8 +1443,11 @@ static void ioev_ctxtbl(struct tui_context* tui,
 	}
 	else if (ioev->devkind == EVENT_IDEVKIND_MOUSE){
 		if (ioev->datatype == EVENT_IDATATYPE_ANALOG){
-			if (ioev->subid == 0)
+			if (ioev->subid == 0){
+/*				int x, y, w, h;
+				resolve_cursor(tui->mouse_x, tui->mouse_y, x, y, w, h); */
 				tui->mouse_x = ioev->input.analog.axisval[0] / tui->cell_w;
+			}
 			else if (ioev->subid == 1){
 				int yv = ioev->input.analog.axisval[0];
 				tui->mouse_y = yv / tui->cell_h;
@@ -2013,6 +2058,13 @@ void drop_truetype(struct tui_context* tui)
 		TTF_CloseFont(tui->font[1]);
 		tui->font[1] = NULL;
 	}
+
+#ifdef HAVE_HARFBUZZ
+	if (tui->hb_font){
+		hb_font_destroy(tui->hb_font);
+		tui->hb_font = NULL;
+	}
+#endif
 }
 #endif
 
@@ -2140,6 +2192,16 @@ static bool setup_font(
 	TTF_Font* old_font = tui->font[modeind];
 
 	tui->font[modeind] = font;
+
+#ifdef WITH_HARFBUZZ
+	if (modeind == 0){
+		if (tui->hb_font){
+			hb_font_destroy(tui->hb_font);
+			tui->hb_font = NULL;
+		}
+		tui->hb_font = hb_ft_font_create((FT_Face)TTF_GetFtFace(font), NULL);
+	}
+#endif
 
 /* internally, TTF_Open dup:s the descriptor, we only keep it here
  * to allow size changes without specifying a new font */
@@ -2405,6 +2467,61 @@ arcan_tui_conn* arcan_tui_open_display(const char* title, const char* ident)
 	return res;
 }
 
+#ifdef WITH_HARFBUZZ
+static bool harfbuzz_substitute(struct tui_context* tui,
+	struct tui_cell* cells, size_t n_cells, size_t row, void* t)
+{
+	if (!tui->hb_font)
+		return false;
+
+/*
+ * we'll eventually need a more refined version of this, possible
+ * taking the GEOHINTS into account, or tracking it as a property
+ * per row or so.
+ */
+	uint32_t inch[n_cells];
+	uint32_t acc = 0;
+	for (size_t i = 0; i < n_cells; i++){
+		inch[i] = cells[i].ch;
+		acc |= cells[i].ch;
+	}
+
+	if (!acc)
+		return false;
+
+	hb_buffer_t* buf = hb_buffer_create();
+	hb_buffer_set_unicode_funcs(buf, hb_icu_get_unicode_funcs());
+	hb_buffer_set_direction(buf, HB_DIRECTION_LTR);
+	hb_buffer_set_script(buf, HB_SCRIPT_LATIN);
+	hb_buffer_set_language(buf, hb_language_from_string("en", 2));
+	hb_buffer_add_utf32(buf, inch, n_cells, 0, n_cells);
+	hb_buffer_guess_segment_properties(buf);
+	hb_buffer_set_replacement_codepoint(buf, 0);
+
+/* NULL, 0 == features */
+	hb_shape(tui->hb_font, buf, NULL, 0);
+
+	unsigned glyphc;
+	hb_glyph_info_t* ginfo = hb_buffer_get_glyph_infos(buf, &glyphc);
+
+/* Note:
+ * codepoint is in the namespace of the font
+ * if kerning is enabled, also get the glyph_positions and apply
+ * to the xofs/real_w per cell */
+	for (size_t i = 0; i < glyphc && i < n_cells; i++){
+		cells[i].draw_ch = ginfo[i].codepoint;
+	}
+
+/*
+ * Note: there seem to be some drawing issue with -> --> etc. anywhere
+ * whileas <- substitute correctly
+ */
+
+	hb_buffer_destroy(buf);
+	return true;
+}
+#endif
+
 static int parse_color(const char* inv, uint8_t outv[4])
 {
 	return sscanf(inv, "%"SCNu8",%"SCNu8",%"SCNu8",%"SCNu8,
@@ -2422,7 +2539,7 @@ static void apply_arg(struct tui_settings* cfg,
 	uint8_t ccol[4] = {0x00, 0x00, 0x00, 0xff};
 	long vbufv = 0;
 
-	if (arg_lookup(args, "fgc", 0, &val))
+	if (arg_lookup(args, "fgc", 0, &val) && val)
 		if (parse_color(val, ccol) >= 3){
 			cfg->fgc[0] = ccol[0]; cfg->fgc[1] = ccol[1]; cfg->fgc[2] = ccol[2];
 		}
@@ -2431,7 +2548,7 @@ static void apply_arg(struct tui_settings* cfg,
 		cfg->render_flags |= TUI_RENDER_DBLBUF;
 	}
 
-	if (arg_lookup(args, "shape", 0, &val)){
+	if (arg_lookup(args, "shape", 0, &val) && val){
 		cfg->render_flags |= TUI_RENDER_SHAPED;
 	}
 
@@ -2440,29 +2557,35 @@ static void apply_arg(struct tui_settings* cfg,
 		cfg->render_flags |= TUI_RENDER_ACCEL;
 #endif
 
-	if (arg_lookup(args, "scroll", 0, &val))
+	if (arg_lookup(args, "scroll", 0, &val) && val)
 		cfg->smooth_scroll = strtoul(val, NULL, 10);
 
-	if (arg_lookup(args, "bgc", 0, &val))
+#ifdef WITH_HARFBUZZ
+	if (arg_lookup(args, "substitute", 0, &val) && !src){
+		enable_harfbuzz = true;
+	}
+#endif
+
+	if (arg_lookup(args, "bgc", 0, &val) && val)
 		if (parse_color(val, ccol) >= 3){
 			cfg->bgc[0] = ccol[0]; cfg->bgc[1] = ccol[1]; cfg->bgc[2] = ccol[2];
 		}
 
-	if (arg_lookup(args, "cc", 0, &val))
+	if (arg_lookup(args, "cc", 0, &val) && val)
 		if (parse_color(val, ccol) >= 3){
 			cfg->cc[0] = ccol[0]; cfg->cc[1] = ccol[1]; cfg->cc[2] = ccol[2];
 		}
 
-	if (arg_lookup(args, "clc", 0, &val))
+	if (arg_lookup(args, "clc", 0, &val) && val)
 		if (parse_color(val, ccol) >= 3){
 			cfg->clc[0] = ccol[0]; cfg->clc[1] = ccol[1]; cfg->clc[2] = ccol[2];
 		}
 
-	if (arg_lookup(args, "blink", 0, &val)){
+	if (arg_lookup(args, "blink", 0, &val) && val){
 		cfg->cursor_period = strtol(val, NULL, 10);
 	}
 
-	if (arg_lookup(args, "cursor", 0, &val)){
+	if (arg_lookup(args, "cursor", 0, &val) && val){
 		const char** cur = curslbl;
 		while(*cur){
 			if (strcmp(*cur, val) == 0){
@@ -2473,9 +2596,9 @@ static void apply_arg(struct tui_settings* cfg,
 		}
 	}
 
-	if (arg_lookup(args, "bgalpha", 0, &val))
+	if (arg_lookup(args, "bgalpha", 0, &val) && val)
 		cfg->alpha = strtoul(val, NULL, 10);
-	if (arg_lookup(args, "ppcm", 0, &val)){
+	if (arg_lookup(args, "ppcm", 0, &val) && val){
 		float ppcm = strtof(val, NULL);
 		if (isfinite(ppcm) && ppcm > ARCAN_SHMPAGE_DEFAULT_PPCM * 0.5)
 			cfg->ppcm = ppcm;
@@ -2637,6 +2760,10 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 		return NULL;
 	}
 	memcpy(&res->handlers, cbs, cbs_sz);
+#ifdef WITH_HARFBUZZ
+	if (!cbs->substitute && enable_harfbuzz)
+		res->handlers.substitute = harfbuzz_substitute;
+#endif
 
 	res->focus = true;
 	res->ppcm = init->density;

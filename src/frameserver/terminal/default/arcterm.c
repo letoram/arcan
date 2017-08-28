@@ -291,7 +291,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		.input_key = on_key,
 		.utf8 = on_utf8_paste,
 		.resized = on_resize,
-		.substitute = on_subst
+//		.substitute = on_subst
 	};
 
 	struct tui_settings cfg = arcan_tui_defaults(con, NULL);
