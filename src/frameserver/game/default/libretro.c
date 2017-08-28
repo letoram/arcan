@@ -638,7 +638,7 @@ static const char* lookup_varset( const char* key )
 {
 	struct core_variable* var = retro.varset;
 	char buf[ strlen(key) + sizeof("core_") + 1];
-	sprintf(buf, "core_%s", key);
+	snprintf(buf, sizeof(buf), "core_%s", key);
 	const char* val = NULL;
 
 /* we have an initial preset, only update if dirty,
