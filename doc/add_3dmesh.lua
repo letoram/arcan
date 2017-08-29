@@ -1,8 +1,8 @@
 -- add_3dmesh
 -- @short: Load/build a mesh and attach to a model.
--- @inargs: vid:dstmodel, string/table:source
--- @inargs: vid:dstmodel, string/table:source, uint:nmaps
--- @outargs: uint:meshindex
+-- @inargs: vid:dstmodel, str/tbl:source
+-- @inargs: vid:dstmodel, str/tbl:source, int:nmaps
+-- @outargs: int:meshindex
 -- @longdescr: This function can be used to setup and attach a mesh to an open
 -- model. If *source* is a string, it is treated as a resource that will be
 -- passed through an internal model loader (CTM format as of now).

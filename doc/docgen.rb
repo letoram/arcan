@@ -108,6 +108,7 @@ class DocReader
 		@longdescr = ""
 		@group = ""
 		@cfunction = ""
+		@error = []
 		@related = []
 		@note = []
 		@examples = [ [], [] ]
@@ -120,6 +121,19 @@ class DocReader
 	end
 
 	def DocReader.Open(fname)
+		typetbl = {
+			"int" => true,
+			"int/tbl" => true,
+			"bool" => true,
+			"float" => true,
+			"float/tbl" => true,
+			"str" => true,
+			"str/tabl" => true,
+			"vid" => true,
+			"vid/tbl" => true,
+			"aid/tbl" => true,
+			"func" => true,
+		}
 		a = File.open(fname)
 		if (a == nil) then
 			return
@@ -150,7 +164,23 @@ class DocReader
 		res.examples[ 0 ] = ok
 		res.examples[ 1 ] = err
 
+# verify the inargs field to make sure that it is typed
+		res.inargs.delete_if{|a| a.length == 0}
+		res.outargs.delete_if{|a| a.length == 0}
+		res.inargs.each{|a|
+			largs = a.split(/,/)
+			largs.each{|b|
+				type = b.split(/:/)
+				if (not type or type.size != 2)
+					res.error << "missing type on #{b}"
+					next
+				end
+				res.error << "unknown type #{type[0]}" unless typetbl[type[0]]
+			}
+		}
+
 		res
+
 	rescue EOFError
 		res
 	rescue => er
@@ -163,9 +193,13 @@ class DocReader
 		@note << v
 	end
 
+	def ok?()
+		return @error.length == 0
+	end
+
 	attr_accessor :short, :inargs, :outargs,
 		:longdescr, :group, :cfunction, :related,
-		:examples, :main_tests, :error_tests, :name
+		:examples, :main_tests, :error_tests, :name, :error
 
 	attr_reader :note
 
@@ -180,6 +214,15 @@ def find_empty()
 	}
 
 	nil
+end
+
+def find_old()
+	Dir["*.lua"].each{|a|
+		doc = DocReader.Open(a)
+		unless (doc.ok? ) then
+			yield a, doc.error
+		end
+	}
 end
 
 def add_function(groupname, symname, cname)
@@ -303,12 +346,10 @@ end
 # .SH SEE ALSO
 #
 
-def funtoman(fname)
+def funtoman(fname, outm)
 	cgroup = nil
-	return unless File.exists?("#{fname}.lua")
 
 	inf = DocReader.Open("#{fname}.lua")
-	outm = File.new("mantmp/#{fname}.3", IO::CREAT | IO::RDWR)
 	outm << ".\\\" groff -man -Tascii #{fname}.3\n"
 	outm << ".TH \"#{fname}\" 3 \"#{Time.now.strftime(
 		"%B %Y")}\" #{inf.group[0]} \"Arcan Lua API\"\n"
@@ -322,27 +363,28 @@ def funtoman(fname)
 		outm << ".I nil \n"
 	end
 
-	outm << ".br\n.B #{fname}\n"
-	outm << "("
+	if (inf.inargs.size == 0)
+		outm << ".br\n.B #{fname}()\n"
+	else
+		inf.inargs.each{|argf|
+			outm << ".br\n.B #{fname}(\n"
+			tbl = argf.split(/\,/)
+			tbl.each_with_index{|a, b|
+				if (a =~ /\*/)
+					outm << "\n.I #{a.gsub(/\*/, "").gsub("  ", " ").strip}"
+				else
+					outm << "#{a.strip}"
+				end
 
-	if (inf.inargs.size > 0)
-		tbl = inf.inargs[0].split(/\,/)
-		tbl.each_with_index{|a, b|
-			if (a =~ /\*/)
-				outm << "\n.I #{a.gsub(/\*/, "").gsub("  ", " ").strip}"
-			else
-				outm << "#{a.strip}"
-			end
-
-			if (b < tbl.size - 1) then
-				outm << ", "
-			else
-				outm << "\n"
-			end
+				if (b < tbl.size - 1) then
+					outm << ", "
+				else
+					outm << "\n"
+				end
+			}
+			outm << ")\n"
 		}
 	end
-
-	outm << ")\n"
 
 	if (inf.longdescr.size > 0)
 		outm << ".SH DESCRIPTION\n"
@@ -515,8 +557,15 @@ Missing Fail:#{missing_fail.join(",")}\n")
 
 when "verify" then
 	find_empty(){|a|
-		STDOUT.print("#{a} is incomplete.\n")
+		STDOUT.print("#{a} is incomplete (missing test/examples).\n")
 	}
+
+	find_old(){|a, b|
+		STDOUT.print("#{a} dated/incorrect formatting: #{b}.\n")
+	}
+
+when "view" then
+	funtoman(ARGV[1], STDOUT)
 
 when "mangen" then
 	inf = File.open("arcan_api_overview_hdr")
@@ -550,7 +599,9 @@ when "mangen" then
 			end
 			outf << "\n"
 
-			funtoman(i)
+			if File.exists?("#{fname}.lua")
+				funtoman(i, File.new("mantmp/#{fname}.3", IO::CREAT | IO::RDWR))
+			end
 		}
 	}
 	inf = File.open("arcan_api_overview_ftr").each_line{|line|
@@ -568,5 +619,8 @@ vim lua syntax file and adds the engine functions as new built-in functions.\n\
 \ntestgen indir outdir:\n extract MAIN, MAIN2, ... and ERROR1, ERROR2 etc. \
 from each lua file in indir\n\ and add as individual tests in the \n\
 outdir/test_ok\ outdir/test_fail\ subdirectories\n\n\
-missing:\n scan all .lua files and list those that are incomplete.\n")
+missing:\n scan all .lua files and list those that are incomplete.\n\n
+view:\n convert a single function to man-format and send to stdout.\n\n\
+verify:\n scan all .lua files and list those that use the old format. or \
+specify wrong/missing argument types.\n")
 end

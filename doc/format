@@ -1,0 +1,22 @@
+. all documentation lines begin with --
+. first line is function name, should match filename
+. groups are set with @group:
+. required groups are: short, inargs
+. optional groups are: related, external, note, longdescr, outargs
+. There may be multiple inargs, one for each set of accepted args
+
+in text blocks, empty line is paragraph break.
+*arg* is a reference to an argument.
+constants are in all caps.
+
+inargs: comma separated list, type:name
+where type is one of:
+int, bool, float, str, vid, vtbl, func, aid, atbl
+
+outargs group: set if function returns anything
+
+external group: yes, no or missing (=no), means that the function
+is part of allowed external invocations or not
+
+related group: comma separated values
+
