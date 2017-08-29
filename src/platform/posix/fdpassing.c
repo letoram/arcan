@@ -22,7 +22,10 @@ bool arcan_pushhandle(file_handle source, int channel)
 
 	struct cmsgbuf {
 		struct cmsghdr hdr;
-		int fd[1];
+		union {
+			int fd[1];
+			char buf[CMSG_SPACE(sizeof(int))];
+		};
 	} msgbuf;
 
 	struct iovec nothing_ptr = {
@@ -41,14 +44,13 @@ bool arcan_pushhandle(file_handle source, int channel)
 	if (-1 == source){
 	}
 	else {
-		msg.msg_control = &msgbuf;
-		msg.msg_controllen = CMSG_LEN(sizeof(int));
+		msg.msg_control = &msgbuf.buf;
+		msg.msg_controllen = sizeof(msgbuf.buf);
 		struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
-		cmsg->cmsg_len = msg.msg_controllen;
+		cmsg->cmsg_len = CMSG_LEN(sizeof(int));
 		cmsg->cmsg_level = SOL_SOCKET;
 		cmsg->cmsg_type  = SCM_RIGHTS;
-		int* dptr = (int*) CMSG_DATA(cmsg);
-		*dptr = source;
+		*(int*)CMSG_DATA(cmsg) = source;
 		fcntl(source, F_SETFD, FD_CLOEXEC);
 	}
 
@@ -65,7 +67,10 @@ file_handle arcan_fetchhandle(int sockin_fd, bool block)
 
 	struct cmsgbuf {
 		struct cmsghdr hdr;
-		int fd[1];
+		union {
+			char buf[CMSG_SPACE(sizeof(int))];
+			int fd[1];
+		};
 	} msgbuf = {.fd[0] = -1};
 
 	struct iovec nothing_ptr = {
@@ -79,8 +84,8 @@ file_handle arcan_fetchhandle(int sockin_fd, bool block)
 		.msg_iov = &nothing_ptr,
 		.msg_iovlen = 1,
 		.msg_flags = 0,
-		.msg_control = &msgbuf,
-		.msg_controllen = sizeof(struct cmsghdr) + sizeof(int)
+		.msg_control = &msgbuf.buf,
+		.msg_controllen = sizeof(msgbuf.buf)
 	};
 
 	struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
