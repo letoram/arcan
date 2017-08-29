@@ -110,9 +110,12 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	if (!first_init)
 		return true;
 
+	uintptr_t config_tag;
+	cfg_lookup_fun in_config = platform_config_lookup(&config_tag);
+
 	for (size_t i = 0; i < MAX_DISPLAYS; i++){
 		disp[i].id = i;
-		disp[i].nopass = getenv("ARCAN_VIDEO_NO_FDPASS") != NULL;
+		disp[i].nopass = in_config("video_no_fdpass", 0, NULL, config_tag);
 	}
 
 /*
