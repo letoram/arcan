@@ -69,6 +69,7 @@ list(APPEND ARCAN_PLATFORM
 	${PLATFORM_PATH}/fdpassing.c
 	${PLATFORM_PATH}/namespace.c
 	${PLATFORM_PATH}/launch.c
+	${PLATFORM_PATH}/config.c
 )
 find_library(ICONV NAMES iconv REQUIRED)
 LIST(APPEND ARCAN_LIBRARIES ${ICONV})

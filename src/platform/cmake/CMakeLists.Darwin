@@ -89,6 +89,7 @@ set(ARCAN_PLATFORM
 	${PLATFORM_PATH}/frameserver.c
 	${PLATFORM_PATH}/fdpassing.c
 	${PLATFORM_PATH}/launch.c
+	${PLATFORM_PATH}/config.c
 )
 
 set(ARCAN_LNK_FLAGS

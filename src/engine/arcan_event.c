@@ -618,7 +618,6 @@ void arcan_bench_register_frame()
 	lastframe = ftime;
 }
 
-extern void platform_event_deinit(arcan_evctx* ctx);
 void arcan_event_deinit(arcan_evctx* ctx)
 {
 	platform_event_deinit(ctx);
@@ -709,7 +708,6 @@ bool arcan_event_feed(struct arcan_evctx* ctx,
 	return (ctx->state_fl & EVSTATE_DEAD) == 0;
 }
 
-extern void platform_event_init(arcan_evctx* ctx);
 void arcan_event_init(arcan_evctx* ctx, arcan_event_handler drain)
 {
 /*
@@ -759,8 +757,8 @@ void arcan_event_init(arcan_evctx* ctx, arcan_event_handler drain)
 	}
 
 	ctx->drain = drain;
-	platform_event_init(ctx);
 	epoch = arcan_timemillis() - ctx->c_ticks * ARCAN_TIMER_TICK;
+	platform_event_init(ctx);
 }
 
 void arcan_led_removed(int devid)

@@ -84,6 +84,30 @@ struct arcan_frameserver* arcan_target_launch_internal(
 );
 
 /*
+ * Used by event and video platforms to query for configuration keys according
+ * to some implementation defined mechanism.
+ *
+ * Returns true if the key was found. If the key carried some associated value,
+ * *res (if provided) will be set to a dynamically allocated string that the
+ * caller assumes responsibility for, otherwise NULL.
+ *
+ * For keys that have multiple set values, [ind] can be walked and is assumed
+ * to be densly packed (first failed index means that there are no more values)
+ *
+ * [tag] must match the value provided by platform_config_lookup.
+ */
+typedef bool (*cfg_lookup_fun)(
+	const char* const key, unsigned short ind, char** val, uintptr_t tag);
+
+/*
+ * Retrieve a pointer to a function that can be used to query for key=val string
+ * packed arguments according with shmif_arg- style packing, along with a token
+ * that the caller is expected to provide when doing lookups. If no [tag] store
+ * is provided, the returned function will be NULL.
+ */
+cfg_lookup_fun platform_config_lookup(uintptr_t* tag);
+
+/*
  * return a string (can be empty) matching the existing and allowed frameserver
  * archetypes (a filtered version of the FRAMSESERVER_MODESTRING buildtime var.
  * and which ones that resolve to valid and existing executables)
@@ -158,6 +182,8 @@ enum PLATFORM_EVENT_CAPABILITIES {
 };
 enum PLATFORM_EVENT_CAPABILITIES platform_input_capabilities();
 
+
+
 /*
  * Update/get the active filter setting for the specific devid / axis (-1 for
  * all) lower_bound / upper_bound sets the [lower < n < upper] where only n
@@ -203,6 +229,21 @@ void platform_event_rescan_idev(struct arcan_evctx* ctx);
  * returns old value in argument
  */
 void platform_event_keyrepeat(struct arcan_evctx*, int* period, int* delay);
+
+/*
+ * Hook where the platform and event queue is in a ready state, and it is
+ * possible to load/lock/discover devices and attach to the event queues of
+ * [ctx].
+ */
+void platform_event_init(struct arcan_evctx* ctx);
+
+/*
+ * Last hook before the contents of [ctx] is to be considered useless, remove
+ * dangling references, release device locks held and so on. Will be called
+ * both on shutdown and when handing over devices/leasing devices to another
+ * process.
+ */
+void platform_event_deinit(struct arcan_evctx* ctx);
 
 /*
  * Some kind of string representation for the device, it may well  be used for
