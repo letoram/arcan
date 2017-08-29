@@ -79,29 +79,27 @@ file_handle arcan_fetchhandle(int sockin_fd, bool block)
 	};
 
 	struct msghdr msg = {
-		.msg_name = NULL,
-		.msg_namelen = 0,
 		.msg_iov = &nothing_ptr,
 		.msg_iovlen = 1,
-		.msg_flags = 0,
 		.msg_control = &msgbuf.buf,
 		.msg_controllen = sizeof(msgbuf.buf)
 	};
 
-	struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
-	cmsg->cmsg_len = msg.msg_controllen;
-	cmsg->cmsg_level = SOL_SOCKET;
-	cmsg->cmsg_type  = SCM_RIGHTS;
-	int* dfd = (int*) CMSG_DATA(cmsg);
-	*dfd = -1;
-
 	if (-1 == recvmsg(sockin_fd, &msg,
-		(!block ? MSG_DONTWAIT : 0)| MSG_NOSIGNAL))
-		;
+		(!block ? MSG_DONTWAIT : 0)| MSG_NOSIGNAL)){
+		return -1;
+	}
 
-	int nd = msgbuf.fd[0];
-	if (-1 != nd)
-		fcntl(nd, F_SETFD, FD_CLOEXEC);
+	int nd = -1;
+	struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
+	if (cmsg &&
+		cmsg->cmsg_len == CMSG_LEN(sizeof(int)) &&
+		cmsg->cmsg_level == SOL_SOCKET &&
+		cmsg->cmsg_type == SCM_RIGHTS){
+		nd = *(int*)CMSG_DATA(cmsg);
+		if (-1 != nd)
+			fcntl(nd, F_SETFD, FD_CLOEXEC);
+	}
 
 	return nd;
 }
