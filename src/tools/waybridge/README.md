@@ -116,12 +116,13 @@ TODO
   - [p] EGL/drm
 - [ ] Milestone 2
     - [p] Cut and Paste (full 'data device manager')
+		- [ ] Subsurfaces
     - [ ] XDG-shell
  		  - [x] Focus, buffers, cursors, sizing ...
 			- [p] Forward shell events that can't be handled with shmif
 			- [p] Positioners
     - [ ] Application-test suite and automated tests (SDL, QT, GTK, ...)]
-    - [ ] XWayland
+    - [ ] XWayland (WM parts)
     - [ ] Output Rotation / Scaling
 - [ ] Milestone 3, funky things
   - [ ] SHM to GL texture mapping
@@ -132,4 +133,15 @@ TODO
   - [ ] Sandboxing
   - [ ] Migration/Reset/Crash-Recover
   - [ ] Drag and Drop (cursor states)
-	- [ ] xdg-output (protocol far from ready, normal output protocol is bad)
+
+- [ ] Misc. protocols:
+  - [ ] Idle Inhibit Unstable
+	- [ ] Pointer Constraints
+  - [ ] Pointer Gestures
+	- [ ] Input Method
+	- [ ] Keyboard Shortcuts
+	- [ ] Tablet
+	- [ ] Presentation Time
+	- [ ] Viewporter
+	- [ ] Xdg-output
+	- [ ] Xdg-foreign
