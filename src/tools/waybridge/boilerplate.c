@@ -7,11 +7,6 @@ struct xkb_stateblock {
 	const char* map_str;
 };
 
-/*
- * From every wayland subprotocol that needs to allocate a surface,
- * this structure needs to be filled and sent to the request_surface
- * call.
- */
 struct bridge_client {
 	struct arcan_shmif_cont acon, clip_in, clip_out;
 	struct wl_listener l_destr;
@@ -91,16 +86,37 @@ struct surf_state {
 	bool drag_resize : 1;
 };
 
+struct frame_cb {
+	struct wl_list link;
+};
+
 #define SURF_TAGLEN 16
 struct comp_surf {
 	char tracetag[SURF_TAGLEN];
 
 	struct bridge_client* client;
+
 	struct wl_resource* res;
 	struct wl_resource* shell_res;
 	struct wl_resource* surf_res;
 	struct wl_resource* sub_parent_res;
 	struct wl_resource* sub_child_res;
+	struct wl_resource* last_drm_buf;
+
+/*
+ * Just keep this fugly thing here as it is on par with wl_list masturbation,
+ * the protocol is just riddled with unbounded allocations because all the bad
+ * ones are. Scratch area is 'needed; for pending frame callbacks and for
+ * pending subsurface allocations (again the whole letting clients allocate
+ * useless resources that may or may not be assigned to something useful
+ * crapola).
+ */
+	struct {
+		int type;
+		struct wl_resource* res;
+		uint32_t id;
+	} scratch[64];
+	size_t frames_pending, subsurf_pending;
 
 /*
  * need to cache/update this one whenever we reparent, etc.
@@ -112,7 +128,6 @@ struct comp_surf {
 	struct arcan_shmif_cont acon;
 	struct arcan_shmif_cont* rcon;
 	struct wl_resource* buf;
-	struct wl_resource* frame_callback;
 
 /* track size and positioning information so we can relay */
 	size_t last_w, last_h;
