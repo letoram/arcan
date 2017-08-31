@@ -323,19 +323,31 @@ bind_drm(struct wl_client *client, void *data, uint32_t version, uint32_t id)
 		wl_resource_post_event(resource, WL_DRM_CAPABILITIES, capabilities);
 }
 
-static void wayland_drm_commit(
+static void wayland_drm_commit(struct comp_surf* surf,
 	struct wl_drm_buffer* buf, struct arcan_shmif_cont* con)
 {
 	if (buf->width != con->w || buf->height != con->h){
 		arcan_shmif_resize(con, buf->width, buf->height);
 	}
 
-	arcan_shmif_signalhandle(con,
-		SHMIF_SIGVID | SHMIF_SIGBLK_NONE,
-			buf->fd, buf->stride[0], buf->format);
-
-/*	close(buf->fd);
-	buf->fd = -1; */
+/*
+ * This works poorly with 'n' buffering - but until the 'higher ups' decide
+ * on what damn buffering- transfer mechanism to actually use (GEM, DRM,
+ * STREAMS, VK-EXT, ...) just wing it. This also don't deal with the whole
+ * 'packing multiple planes' problem.
+ */
+	if (surf->last_drm_buf){
+		arcan_shmif_signalhandle(con,
+			SHMIF_SIGVID, buf->fd, buf->stride[0], buf->format);
+		wl_buffer_send_release(surf->last_drm_buf);
+		surf->last_drm_buf = surf->buf;
+	}
+	else {
+		arcan_shmif_signalhandle(con, SHMIF_SIGVID |
+			SHMIF_SIGBLK_NONE,	buf->fd, buf->stride[0], buf->format);
+		surf->last_drm_buf = surf->buf;
+	}
+/*	close(buf->fd); buf->fd = -1; */
 }
 
 static struct wl_drm_buffer *

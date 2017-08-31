@@ -179,20 +179,22 @@ static void translate_input(struct comp_surf* cl, arcan_ioevent* ev)
 static void try_frame_callback(
 	struct comp_surf* surf, struct arcan_shmif_cont* acon)
 {
-/* non-eligible state */
-	if (surf->states.hidden || !surf->frame_callback){
-		return;
-	}
-
 /* still synching? */
 	if (!acon || acon->addr->vready){
 		return;
 	}
 
+	for (size_t i = 0; i < COUNT_OF(surf->scratch) && surf->frames_pending; i++){
+		if (surf->scratch[i].type == 1){
+			surf->scratch[i].type = 0;
+			wl_callback_send_done(surf->scratch[i].res, surf->scratch[i].id);
+			wl_resource_destroy(surf->scratch[i].res);
+			surf->scratch[i].res = NULL;
+			surf->frames_pending--;
+		}
+	}
+
 	trace(TRACE_SURF, "reply callback: %"PRIu32, surf->cb_id);
-	wl_callback_send_done(surf->frame_callback, surf->cb_id);
-	wl_resource_destroy(surf->frame_callback);
-	surf->frame_callback = NULL;
 }
 
 /*

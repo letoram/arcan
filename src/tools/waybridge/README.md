@@ -57,7 +57,7 @@ tracelevels (bitmask so add)
 Allocation outputs are encoded as follows:
     'C' - client-bridge connection
     'S' - shell surface
-		's' - shell subsurface
+    's' - shell subsurface
     'm' - pointer surface
     't' - xdg- toplevel surface
     'p' - xdg- popup surface
@@ -70,7 +70,7 @@ Notes and Issues
 ====
 1. DRM- buffer translation is incomplete - though the handles can be
    forwarded with some rather aggressive DRM tricks, we still don't
-	 track/release correctly.
+   track/release correctly.
 
 2. Mouse input, scroll wheel / scroll locking not really working
 
@@ -79,8 +79,8 @@ Notes and Issues
 
 4. Buffering and recent Qt5 demos, for some reason the pyqt demos queues up
    a lot of frames and then just dies - unsure what is happening here though
-	 it seems like it is connected to the part where we need to handle multiple
-	 callbacks for the same surface.
+   it seems like it is connected to the part where we need to handle multiple
+   callbacks for the same surface.
 
 Limitations
 ====
@@ -116,11 +116,11 @@ TODO
   - [p] EGL/drm
 - [ ] Milestone 2
     - [p] Cut and Paste (full 'data device manager')
-		- [ ] Subsurfaces
-    - [ ] XDG-shell
- 		  - [x] Focus, buffers, cursors, sizing ...
-			- [p] Forward shell events that can't be handled with shmif
-			- [p] Positioners
+    - [p] Subsurfaces
+    - [p] XDG-shell
+      - [x] Focus, buffers, cursors, sizing ...
+      - [p] Forward shell events that can't be handled with shmif
+      - [p] Positioners
     - [ ] Application-test suite and automated tests (SDL, QT, GTK, ...)]
     - [ ] XWayland (WM parts)
     - [ ] Output Rotation / Scaling
@@ -136,12 +136,12 @@ TODO
 
 - [ ] Misc. protocols:
   - [ ] Idle Inhibit Unstable
-	- [ ] Pointer Constraints
+  - [ ] Pointer Constraints
   - [ ] Pointer Gestures
-	- [ ] Input Method
-	- [ ] Keyboard Shortcuts
-	- [ ] Tablet
-	- [ ] Presentation Time
-	- [ ] Viewporter
-	- [ ] Xdg-output
-	- [ ] Xdg-foreign
+  - [ ] Input Method
+  - [ ] Keyboard Shortcuts
+  - [ ] Tablet
+  - [ ] Presentation Time
+  - [ ] Viewporter
+  - [ ] Xdg-output
+  - [ ] Xdg-foreign

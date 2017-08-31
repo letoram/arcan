@@ -22,10 +22,14 @@ static void surf_attach(struct wl_client* cl, struct wl_resource* res,
 	trace(TRACE_SURF, "to: %s, @x,y: %d, %d - buf: %"
 		PRIxPTR, surf->tracetag, (int)x, (int)y, (uintptr_t)res);
 
-/* this should likely prompt either a destruction of the underlying
- * connection (possibly not a good idea) or a visibility hint */
 	if (surf->buf && !buf){
 		trace(TRACE_SURF, "detach from: %s\n", surf->tracetag);
+		surf->viewport.ext.viewport.invisible = true;
+		arcan_shmif_enqueue(&surf->acon, &surf->viewport);
+	}
+	else if (surf->viewport.ext.viewport.invisible){
+		surf->viewport.ext.viewport.invisible = false;
+		arcan_shmif_enqueue(&surf->acon, &surf->viewport);
 	}
 
 	surf->buf = buf;
@@ -68,9 +72,8 @@ static void surf_frame(
 	struct comp_surf* surf = wl_resource_get_user_data(res);
 	trace(TRACE_SURF, "req-cb, %s(%"PRIu32")", surf->tracetag, cb);
 
-/* spec doesn't say how many callbacks we should permit */
-	if (surf->frame_callback){
-		trace(TRACE_SURF, "already got frame-callback", surf->tracetag);
+	if (surf->frames_pending + surf->subsurf_pending > COUNT_OF(surf->scratch)){
+		trace(TRACE_SURF, "too many pending surface ops");
 		wl_resource_post_no_memory(res);
 		return;
 	}
@@ -83,13 +86,20 @@ static void surf_frame(
 		return;
 	}
 
-	wl_resource_set_implementation(cbres, NULL, NULL, NULL);
-	surf->frame_callback = cbres;
-	surf->cb_id = cb;
+	for (size_t i = 0; i < COUNT_OF(surf->scratch); i++){
+		if (surf->scratch[i].type == 0){
+			surf->frames_pending++;
+			surf->scratch[i].res = cbres;
+			surf->scratch[i].id = cb;
+			surf->scratch[i].type = 1;
+			break;
+		}
+	}
 }
 
 /*
- * IGNORE, shmif doesn't split up into regions like this
+ * IGNORE, shmif doesn't split up into regions like this, though
+ * we can forward it as messages and let the script-side decide.
  */
 static void surf_opaque(struct wl_client* cl,
 	struct wl_resource* res, struct wl_resource* reg)
@@ -109,9 +119,6 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 	trace(TRACE_SURF, "%s", surf->tracetag);
 	struct arcan_shmif_cont* acon = &surf->acon;
 
-/*
- * can happen if we transition to a
- */
 	if (!surf->buf){
 		trace(TRACE_SURF, "no buffer");
 		return;
@@ -157,37 +164,15 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
  * Avoid tearing due to the SIGBLK_NONE, the other option would be to actually
  * block (if we multithread/multiprocess the client) or to schedule/defer this
  * processing until we get an unlock event (can be implemented client/lib side
- * through a kqueue- trigger) and then do the corresponding release.
+ * through a kqueue- trigger or with the delivery-event callback approach that
+ * we use for frame-callbacks
  */
-	while (acon->addr->vready){
-	}
+	while (acon->addr->vready){}
 
 	struct wl_drm_buffer* drm_buf = wayland_drm_buffer_get(wl.drm, surf->buf);
 	if (drm_buf){
 		trace(TRACE_SURF, "surf_commit(egl)");
-
-/*
- * when vready is released, it means that the last handle we sent is
- * currently in use, if we provide a new handle, the next time its released
- * we can unlock the previous one etc.
- * arcan_shmif_signalhandle(ctx, mask, handle, stride, format, ...)
- */
-		static struct wl_resource* last_buf;
-		if (last_buf && last_buf != surf->buf){
-			wl_buffer_send_release(surf->buf);
-		}
-
-		wayland_drm_commit(drm_buf, acon);
-		last_buf = surf->buf;
-
-/* Now we can format the buffer through the normal signal_handle.
- *
- * this is done through repeated calls to query wayland buffer to get
- * the properties, e.g. EGL_WAYLAND_Y_INVERTED_WL, then
- * eglCreateImageKHR(wl.display, EGL_NO_CONTEXT, EGL_WAYLAND_BUFFER_WL,
- * 	(EGLClientBuffer)buffer->resource(), attrs)
- * and if that works we can forward the descriptor as usual..
- */
+		wayland_drm_commit(surf, drm_buf, acon);
 	}
 	else {
 		trace(TRACE_SURF, "surf_commit(shm)");
@@ -202,7 +187,6 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
  * long as you don't double fork) and ran one of those per client but the
  * EGLDisplay approach seem to break that for us, probably worth a try if
  * the main-thread stalls start to hurt */
-
 			if (acon->w != w || acon->h != h){
 				trace(TRACE_SURF,
 					"surf_commit(shm, resize to: %zu, %zu)", (size_t)w, (size_t)h);
