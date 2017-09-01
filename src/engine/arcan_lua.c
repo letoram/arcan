@@ -1064,9 +1064,15 @@ static int opennonblock(lua_State* ctx)
  * provided for RESOURCE_APPL_TEMP is single- user (us) only. Anyhow, this
  * code turned out a lot messier than needed, refactor when time permits. */
 	if (wrmode){
+		struct stat fi;
 		metatable = "nonblockIOw";
 		path = findresource(str, RESOURCE_APPL_TEMP);
-		if (path || !(path = arcan_expand_resource(str, RESOURCE_APPL_TEMP))){
+
+/* we require a zap_resource call if the file already exists, except for in
+ * the case of a fifo dst- that we can open in (w) mode */
+		bool dst_fifo = (path && -1 != stat(path, &fi) && S_ISFIFO(fi.st_mode));
+		if (!dst_fifo && (path || !(path =
+			arcan_expand_resource(str, RESOURCE_APPL_TEMP)))){
 			arcan_warning("open_nonblock(), refusing to open "
 				"existing file for writing\n");
 			arcan_mem_free(path);
@@ -1079,7 +1085,6 @@ static int opennonblock(lua_State* ctx)
 /* this is susceptible to the normal race conditions, but we also expect
  * APPL_TEMP to be mapped to a 'safe' path */
 			if (-1 == mkfifo(path, S_IRWXU)){
-				struct stat fi;
 				if (errno != EEXIST || -1 == stat(path, &fi) || !S_ISFIFO(fi.st_mode)){
 					arcan_warning("open_nonblock(): mkfifo (%s) failed\n", path);
 					LUA_ETRACE("open_nonblock", "mkfifo failed", 0);
@@ -1092,6 +1097,10 @@ static int opennonblock(lua_State* ctx)
 
 /* failure to open fifo can be expected, then opening will be deferred */
 		fd = open(path, fl, S_IRWXU);
+		if (-1 != fd && fifo && (-1 == fstat(fd, &fi) || !S_ISFIFO(fi.st_mode))){
+			close(fd);
+			LUA_ETRACE("open_nonblock", "opened file not fifo", 0);
+		}
 	}
 	else{
 retryopen:
@@ -1389,8 +1398,20 @@ static int nbio_write(lua_State* ctx)
 	off_t of = 0;
 
 /* special case for FIFOs that aren't hooked up on creation */
-	if (-1 == iw->fd && iw->pending)
+	if (-1 == iw->fd && iw->pending){
 		iw->fd = open(iw->pending, O_NONBLOCK | O_WRONLY | O_CLOEXEC);
+
+/* but still make sure that we actually got a FIFO */
+		if (-1 != iw->fd){
+			struct stat fi;
+			if (-1 != fstat(iw->fd, &fi) && !S_ISFIFO(fi.st_mode)){
+				close(iw->fd);
+				iw->fd = -1;
+			}
+			lua_pushnumber(ctx, 0);
+			LUA_ETRACE("open_nonblock:write", NULL, 1);
+		}
+	}
 
 /* non-block, so don't allow too many attempts */
 	int retc = 10;
