@@ -25,6 +25,7 @@
 #include "arcan_video.h"
 #include "arcan_videoint.h"
 #include "arcan_3dbase.h"
+#include "arcan_vr.h"
 
 extern struct arcan_video_display arcan_video_display;
 
@@ -81,6 +82,8 @@ typedef struct {
 		bool orient;
 		vector orientf;
 	} deferred;
+
+	struct arcan_vr_ctx* vrref;
 
 	arcan_vobject* parent;
 } arcan_3dmodel;
@@ -140,6 +143,11 @@ static void freemodel(arcan_3dmodel* src)
 {
 	if (!src)
 		return;
+
+	if (src->vrref){
+		arcan_vr_release(src->vrref, src->parent->cellid);
+		src->vrref = NULL;
+	}
 
 	struct geometry* geom = src->geometry;
 
