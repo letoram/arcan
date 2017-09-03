@@ -92,6 +92,16 @@ elseif (VIDEO_PLATFORM STREQUAL "sdl")
 		list(APPEND INCLUDE_DIRS ${X11_INCLUDE_DIRS})
 	endif()
 
+elseif(VIDEO_PLATFORM STREQUAL "sdl2")
+	if (NOT INPUT_PLATFORM)
+		set(INPUT_PLATFORM "sdl2")
+	endif()
+
+	find_package(SDL2 REQUIRED QUIET)
+	list(APPEND INCLUDE_DIRS ${SDL2_INCLUDE_DIR})
+	list(APPEND VIDEO_LIBRARIES ${SDL2_LIBRARY})
+	set(VIDEO_PLATFORM_SOURCES ${PLATFORM_ROOT}/sdl2/video.c)
+
 else()
 # there are a few things that is just <invective> when it comes
 # to CMake (outside the syntax itself and that it took 10+ years
