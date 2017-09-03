@@ -67,7 +67,7 @@ enum arcan_ffunc_rv {
 	FRV_NOUPLOAD = 64 /* don't synch local storage with GPU buffer     */
 };
 
-typedef struct {
+typedef struct vfunc_state {
 	volatile int tag;
 	void* ptr;
 } vfunc_state;

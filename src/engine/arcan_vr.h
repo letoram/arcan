@@ -41,6 +41,24 @@ arcan_errc arcan_vr_camtag(struct arcan_vr_ctx*,
 	arcan_vobj_id left, arcan_vobj_id right);
 
 /*
+ * Used when breaking the association between a limb in a VR context and
+ * a 3D model as the model has been destroyed. Only reasonable to call from
+ * the destructor of a 3d model.
+ */
+arcan_errc arcan_vr_release(struct arcan_vr_ctx*, arcan_vobj_id ind);
+
+/*
+ * Associate a model-carrying VID with a limb index. The limb must have been
+ * announced in respect to a plug/unplug action. If the limb disappears from
+ * the provider, the mapping will be released. If the model is destroyed, the
+ * limb index will be freed. If there already is a mapping on the limb, the
+ * previous one will be removed first. If model refers to an invalid id, the
+ * association will still be dropped.
+ */
+arcan_errc arcan_vr_maplimb(
+	struct arcan_vr_ctx*, unsigned ind, arcan_vobj_id model);
+
+/*
  * Retrieve (if possible) two distortion meshes to use for texturing
  * the camtagged rendertargets. The output data is formatted planar:
  * plane-1[x, y, z] plane-2[s, t] with n_elems in each plane.
@@ -53,8 +71,8 @@ arcan_errc arcan_vr_distortion(struct arcan_vr_ctx*,
  * lens parameters and store in [dst]
  */
 struct vr_meta;
-arcan_errc arcan_vr_displaydata(struct arcan_vr_ctx*,
-	struct vr_meta* dst);
+arcan_errc arcan_vr_displaydata(
+	struct arcan_vr_ctx*, struct vr_meta* dst);
 
 /*
  * Clean/ free the contents of the vr- context and associated

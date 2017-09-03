@@ -29,6 +29,7 @@
 #include "arcan_videoint.h"
 #include "arcan_audio.h"
 #include "arcan_audioint.h"
+#include "arcan_3dbase.h"
 
 #define FRAMESERVER_PRIVATE
 #include "arcan_frameserver.h"
@@ -37,6 +38,7 @@
 struct arcan_vr_ctx {
 	arcan_evctx* ctx;
 	arcan_frameserver* connection;
+	arcan_vobj_id limb_map[LIMB_LIM];
 };
 
 /*
@@ -51,6 +53,7 @@ struct arcan_vr_ctx {
 
 extern struct arcan_dbh* dbhandle;
 extern const char* ARCAN_TBL;
+
 struct arcan_vr_ctx* arcan_vr_setup(const char* vrbridge,
 	const char* bridge_arg, struct arcan_evctx* evctx, uintptr_t tag)
 {
@@ -62,11 +65,15 @@ struct arcan_vr_ctx* arcan_vr_setup(const char* vrbridge,
  * build a frameserver context and envp with the data for the vrbridge
  * and with the subprotocol permissions enabled
  */
-
 	struct arcan_strarr arr_argv = {0}, arr_env = {0};
 	arcan_mem_growarr(&arr_argv);
 	arr_argv.data[0] = strdup(kv);
 
+/*
+ * There might be some merit to enabling the VOBJ- substructure as well since
+ * some providers might want to come with distortion meshes or reference-
+ * models for tool-limbs
+ */
 	struct frameserver_envp args = {
 		.metamask = SHMIF_META_VR | SHMIF_META_VOBJ,
 		.use_builtin = false,
@@ -76,27 +83,44 @@ struct arcan_vr_ctx* arcan_vr_setup(const char* vrbridge,
 		.args.external.resource = strdup(bridge_arg)
 	};
 
+	struct arcan_vr_ctx* vrctx = arcan_alloc_mem(
+		sizeof(struct arcan_vr_ctx), ARCAN_MEM_VSTRUCT,
+		ARCAN_MEM_BZERO | ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_NATURAL
+	);
+
+	if (!vrctx)
+		return NULL;
+
 	struct arcan_frameserver* mvctx = platform_launch_fork(&args, tag);
 	arcan_mem_freearr(&arr_argv);
 	arcan_mem_freearr(&arr_env);
 	free(args.args.external.resource);
 
 	if (!mvctx){
-		free(kv);
+		arcan_mem_free(vrctx);
+		arcan_mem_free(mvctx);
 		return NULL;
 	}
 
-/*
- * set a custom FFUNC that handles the polling / mapping behavior
- * is it custom_feed?
- */
-	return (struct arcan_vr_ctx*) mvctx;
+	vrctx->ctx = evctx;
+	vrctx->connection = mvctx;
+	arcan_video_alterfeed(mvctx->vid, FFUNC_VR, (struct vfunc_state){
+		.tag = ARCAN_TAG_FRAMESERV,
+		.ptr = vrctx
+	});
+
+	return vrctx;
+}
+
+arcan_errc arcan_vr_release(struct arcan_vr_ctx* ctx, arcan_vobj_id ind)
+{
+	return ARCAN_ERRC_NOT_IMPLEMENTED;
 }
 
 arcan_errc arcan_vr_reset(struct arcan_vr_ctx* ctx)
 {
 /*
- * enqueue a reset event on the ctx
+ * enqueue a reset event on the ctx, drop all mappings etc.
  */
 	return ARCAN_ERRC_NOT_IMPLEMENTED;
 }
@@ -107,12 +131,25 @@ arcan_errc arcan_vr_reset(struct arcan_vr_ctx* ctx)
  */
 enum arcan_ffunc_rv arcan_vr_ffunc FFUNC_HEAD
 {
-	arcan_frameserver* tgt = state.ptr;
+	struct arcan_vr_ctx* ctx = state.ptr;
+	struct arcan_frameserver* tgt = ctx->connection;
+
 	if (!tgt || state.tag != ARCAN_TAG_FRAMESERV)
 		return FRV_NOFRAME;
 
-	return arcan_frameserver_nullfeed(cmd, buf, buf_sz, width,
-		height, mode, state, srcid);
+/* check if allocation mask has changed, if so, a new device has been
+ * detected. */
+
+	if (cmd == FFUNC_POLL){
+	}
+	else if (cmd == FFUNC_TICK){
+
+	}
+/*
+ * Run the null-feed as a default handler
+ */
+	return arcan_frameserver_nullfeed(
+		cmd, buf, buf_sz, width, height, mode, state, srcid);
 }
 
 arcan_errc arcan_vr_camtag(struct arcan_vr_ctx* ctx,

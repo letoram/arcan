@@ -183,7 +183,7 @@ struct arcan_frameserver {
 	enum ARCAN_SEGID segid;
 	uint64_t guid[2];
 
-	/* hack used to match frameserver generated events (from vid->tag
+/* hack used to match frameserver generated events (from vid->tag
  * to fsrv->tag) needed to correlate callback in script engine with event */
 	intptr_t tag;
 
