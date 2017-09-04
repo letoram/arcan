@@ -26,6 +26,7 @@ struct bridge_client {
 	struct wl_resource* cursor;
 	int32_t hot_x, hot_y;
 	bool dirty_hot;
+	struct wl_resource* got_relative;
 
 /* need to track these so that we can send enter/leave correctly,
  * watch out for UAFs */
@@ -331,6 +332,14 @@ static const struct zxdg_shell_v6_interface xdgshell_if = {
 	.create_positioner = xdg_createpos,
 	.pong = xdg_pong,
 	.destroy = xdg_destroy
+};
+
+#include "wayland-relative-pointer-unstable-v1-server-protocol.h"
+#include "wlimpl/relp_mgr.c"
+
+static const struct zwp_relative_pointer_manager_v1_interface relpmgr_if = {
+	.destroy = relpm_destroy,
+	.get_relative_pointer = relpm_get
 };
 
 #include "bondage.c"

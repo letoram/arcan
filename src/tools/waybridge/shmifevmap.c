@@ -123,6 +123,17 @@ static void update_kbd(struct comp_surf* cl, arcan_ioevent* ev)
 	);
 }
 
+static bool relative_sample(struct wl_resource* res, uint64_t ts, int x, int y)
+{
+	if (!res)
+		return false;
+
+	uint32_t lo = (ts * 1000) >> 32;
+	uint32_t hi = ts * 1000;
+	zwp_relative_pointer_v1_send_relative_motion(res, hi, lo, x, y, x, y);
+	return true;
+}
+
 static void translate_input(struct comp_surf* cl, arcan_ioevent* ev)
 {
 	if (ev->devkind == EVENT_IDEVKIND_TOUCHDISP){
@@ -139,6 +150,9 @@ static void translate_input(struct comp_surf* cl, arcan_ioevent* ev)
 				if (ev->input.analog.gotrel){
 					cl->acc_x += ev->input.analog.axisval[0];
 					cl->acc_y += ev->input.analog.axisval[2];
+					if (relative_sample(cl->client->got_relative,
+						ev->pts, ev->input.analog.axisval[0], ev->input.analog.axisval[1]))
+						return;
 				}
 				else{
 					cl->acc_x = ev->input.analog.axisval[0];
@@ -157,17 +171,24 @@ static void translate_input(struct comp_surf* cl, arcan_ioevent* ev)
 						cl->acc_y += ev->input.analog.axisval[0];
 				}
 				else {
-					if (ev->subid == 0)
+					if (ev->subid == 0){
 						cl->acc_x = ev->input.analog.axisval[0];
-					else if (ev->subid == 1)
+						if (relative_sample(cl->client->got_relative, ev->pts,
+							ev->input.analog.axisval[0], 0))
+							return;
+					}
+					else if (ev->subid == 1){
 						cl->acc_y = ev->input.analog.axisval[0];
+						if (relative_sample(cl->client->got_relative, ev->pts,
+							0, ev->input.analog.axisval[0]))
+							return;
+					}
 				}
 				update_mxy(cl, ev->pts);
 			}
 		}
 		else
 			;
-
 	}
 	else if (ev->datatype ==
 		EVENT_IDATATYPE_TRANSLATED && cl->client && cl->client->keyboard)
