@@ -30,7 +30,8 @@
  * [ - map_external (maybe shmif-server only?),
  *   - map_exec ( execute binary with listening properties bound to an id )
  *   - redirect_external ( forward new connection primitives )
- *   - route_target( set id as event recipient )
+ *   - route_target( set id as event recipient, options of possible
+ *     escape symbols or if io, mouse and misc should be mapped or only some)
  *   - request_subwnd( "type" )
  *   - identity and configuration keys
  *   - labelhints
@@ -357,7 +358,7 @@ static bool query_label(struct tui_context* ctx,
 	size_t ind, const char* country, const char* lang,
 	struct tui_labelent* dstlbl, void* t)
 {
-	SETUP_HREF("label",false);
+	SETUP_HREF("query_label",false);
 
 /*
  * lcall with country/lang, expect multi-return with label, descr
@@ -393,34 +394,52 @@ static void apply_table(lua_State* L, int ind, struct tui_screen_attr* attr)
 	attr->blink = intblbool(L, ind, "blink");
 	attr->strikethrough = intblbool(L, ind, "strikethrough");
 	attr->custom_id = intblint(L, ind, "id");
+	attr->fr = intblint(L, ind, "fr");
+	attr->fg = intblint(L, ind, "fg");
+	attr->fb = intblint(L, ind, "fb");
+	attr->br = intblint(L, ind, "br");
+	attr->bg = intblint(L, ind, "bg");
+	attr->bb = intblint(L, ind, "bb");
+	attr->shape_break = intblbool(L, ind, "break");
 }
 
 static int tui_attr(lua_State* L)
 {
-	struct tui_screen_attr attr = {
-		.fr = 255,
-		.fg = 255,
-		.fb = 255
-	};
+	struct tui_screen_attr attr = {};
 
 	if (lua_type(L, 1) == LUA_TTABLE)
 		apply_table(L, 1, &attr);
 
-	struct tui_attr* uattr = lua_newuserdata(L, sizeof(struct tui_attr));
-	if (!uattr)
-		return 0;
+	lua_newtable(L);
 
-	uattr->attr = attr;
-	luaL_getmetatable(L, "tui_attr");
-	lua_setmetatable(L, -2);
+/* key-integer value */
+#define SET_KIV(K, V) do { lua_pushstring(L, K); \
+	lua_pushnumber(L, V); lua_rawset(L, -3); } while (0)
+
+#define SET_BIV(K, V) do { lua_pushstring(L, K); \
+	lua_pushboolean(L, V); lua_rawset(L, -3); } while (0)
+
+	SET_KIV("r", 128); SET_KIV("g", 128); SET_KIV("b", 128);
+	SET_KIV("br", 0); SET_KIV("bg", 0); SET_KIV("bb", 0);
+	SET_BIV("bold", false); SET_BIV("underline", false); SET_BIV("protect", false);
+	SET_BIV("blink", false); SET_BIV("strikethrough", false);
+	SET_BIV("break", false);
+	SET_KIV("id", 0);
 
 	return 1;
 }
 
 static int defattr(lua_State* L)
 {
-/* 1. if userdata: check metatable for tui cattr
- * 2. if table, run decode on attr and replace current */
+	TUI_UDATA;
+	struct tui_screen_attr attr = {};
+	arcan_tui_get_color(ib->tui, TUI_COL_PRIMARY, attr.fc);
+	arcan_tui_get_color(ib->tui, TUI_COL_BG, attr.bc);
+
+	if (lua_istable(L, 2))
+		apply_table(L, 2, &attr);
+
+	arcan_tui_defattr(ib->tui, &attr);
 	return 0;
 }
 
@@ -596,7 +615,7 @@ static int erase_region(lua_State* L)
 static int erase_line(lua_State* L)
 {
 	TUI_UDATA;
-	bool prot = luaL_optbnumber(L, 1, false);
+	bool prot = luaL_optbnumber(L, 2, false);
 	arcan_tui_erase_current_line(ib->tui, prot);
 	return 0;
 }
@@ -604,7 +623,7 @@ static int erase_line(lua_State* L)
 static int erase_screen(lua_State* L)
 {
 	TUI_UDATA;
-	bool prot = luaL_optbnumber(L, 1, false);
+	bool prot = luaL_optbnumber(L, 2, false);
 	arcan_tui_erase_screen(ib->tui, prot);
 	return 0;
 }
@@ -619,7 +638,7 @@ static int erase_scrollback(lua_State* L)
 static int erase_home_to_cursor(lua_State* L)
 {
 	TUI_UDATA;
-	bool prot = luaL_optbnumber(L, 1, false);
+	bool prot = luaL_optbnumber(L, 2, false);
 	arcan_tui_erase_home_to_cursor(ib->tui, prot);
 	return 0;
 }
@@ -627,7 +646,7 @@ static int erase_home_to_cursor(lua_State* L)
 static int erase_cursor_screen(lua_State* L)
 {
 	TUI_UDATA;
-	bool prot = luaL_optbnumber(L, 1, false);
+	bool prot = luaL_optbnumber(L, 2, false);
 	arcan_tui_erase_cursor_to_screen(ib->tui, prot);
 	return 0;
 }
@@ -739,33 +758,6 @@ static int valid_flag(lua_State* L, int ind)
 	return 0;
 }
 
-/* map to the screen attribute bitfield */
-static int tui_index_get(lua_State* L)
-{
-	TUI_UDATA;
-	int id;
-
-	printf("index get\n");
-	if (lua_type(L, 2) == LUA_TSTRING && (id = valid_flag(L, 2))){
-
-	}
-
-	return 0;
-}
-
-static int tui_index_set(lua_State* L)
-{
-	TUI_UDATA;
-	int id;
-
-	printf("index set\n");
-	if (lua_type(L, 2) == LUA_TSTRING && (id = valid_flag(L, 2)) && (
-		lua_type(L, 3) == LUA_TNUMBER || lua_type(L, 3) == LUA_TBOOLEAN)){
-
-	}
-	return 0;
-}
-
 static int screen_alloc(lua_State* L)
 {
 	TUI_UDATA;
@@ -776,7 +768,7 @@ static int screen_alloc(lua_State* L)
 static int screen_delete(lua_State* L)
 {
 	TUI_UDATA;
-	unsigned screen = luaL_checknumber(L, 1);
+	unsigned screen = luaL_checknumber(L, 2);
 	arcan_tui_delete_screen(ib->tui, screen);
 	return 0;
 }
@@ -784,7 +776,7 @@ static int screen_delete(lua_State* L)
 static int screen_switch(lua_State* L)
 {
 	TUI_UDATA;
-	unsigned screen = luaL_checknumber(L, 1);
+	unsigned screen = luaL_checknumber(L, 2);
 	arcan_tui_switch_screen(ib->tui, screen);
 	return 0;
 }
@@ -792,7 +784,7 @@ static int screen_switch(lua_State* L)
 static int tuiclose(lua_State* L)
 {
 	TUI_UDATA;
-	arcan_tui_destroy(ib->tui, luaL_optstring(L, 1, NULL));
+	arcan_tui_destroy(ib->tui, luaL_optstring(L, 2, NULL));
 	ib->tui = NULL;
 	return 0;
 }
@@ -947,7 +939,7 @@ static int color_get(lua_State* L)
 {
 	TUI_UDATA;
 	uint8_t dst[3];
-	arcan_tui_get_color(ib->tui, luaL_checknumber(L, 1), dst);
+	arcan_tui_get_color(ib->tui, luaL_checknumber(L, 2), dst);
 	lua_pushnumber(L, dst[0]);
 	lua_pushnumber(L, dst[1]);
 	lua_pushnumber(L, dst[2]);
@@ -958,11 +950,11 @@ static int color_set(lua_State* L)
 {
 	TUI_UDATA;
 	uint8_t dst[3] = {
-		luaL_checknumber(L, 2),
 		luaL_checknumber(L, 3),
-		luaL_checknumber(L, 4)
+		luaL_checknumber(L, 4),
+		luaL_checknumber(L, 5)
 	};
-	arcan_tui_set_color(ib->tui, luaL_checknumber(L, 1), dst);
+	arcan_tui_set_color(ib->tui, luaL_checknumber(L, 2), dst);
 	return 0;
 }
 
@@ -983,9 +975,6 @@ void tui_lua_expose(lua_State* L)
 	lua_pushstring(L, "tui_attr");
 	lua_pushcclosure(L, tui_attr, 1);
 	lua_setglobal(L, "tui_attr");
-
-	luaL_newmetatable(L, "tui_attr");
-	lua_pop(L, 1);
 
 	luaL_newmetatable(L, "tui_main");
 	lua_pushvalue(L, -1); // tui_index_get);

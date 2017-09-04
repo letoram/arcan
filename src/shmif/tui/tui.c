@@ -1635,15 +1635,15 @@ static void update_screensize(struct tui_context* tui, bool clear)
 		tui->cols = cols;
 		tui->rows = rows;
 
-		if (tui->handlers.resized)
-			tui->handlers.resized(tui,
-				tui->acon.w, tui->acon.h, cols, rows, tui->handlers.tag);
-
 /* NOTE/FIXME: this only considers the active screen and not any alternate
  * screens that are around, which is probably not what we want. The actual
  * ordering is also suspicious as the event callback can't really draw/
  * relayout until tsm_screen_resize */
 		tsm_screen_resize(tui->screen, cols, rows);
+
+		if (tui->handlers.resized)
+			tui->handlers.resized(tui,
+				tui->acon.w, tui->acon.h, cols, rows, tui->handlers.tag);
 	}
 
 /* will enforce full redraw, and full redraw will also update padding.  the
@@ -2698,6 +2698,19 @@ bool arcan_tui_delete_screen(struct tui_context* ctx, unsigned ind)
 	return true;
 }
 
+/*
+ * though we are supposed to be prerolled the colors from our display
+ * server connection, it's best to have something that gets activated
+ * initially regardless..
+ */
+static void set_builtin_palette(struct tui_context* ctx)
+{
+/* index 2+:
+ * PRIMARY, SECONDARY, BG, TEXT, CURSOR, ALTCURSOR, HIGHLIGHT,
+ * LABEL, WARNING, ERROR, ALERT, INACTIVE
+ */
+}
+
 uint32_t arcan_tui_screens(struct tui_context* ctx)
 {
 	return ctx->screen_alloc;
@@ -2774,10 +2787,10 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 	res->font_fd[1] = BADFD;
 	res->font_sz = set->font_sz;
 	res->font_bitmap = tui_draw_init(64);
-
 	res->alpha = set->alpha;
 	res->cell_w = set->cell_w;
 	res->cell_h = set->cell_h;
+	set_builtin_palette(res);
 	memcpy(res->colors[TUI_COL_CURSOR].rgb, set->cc, 3);
 	memcpy(res->colors[TUI_COL_ALTCURSOR].rgb, set->clc, 3);
 	memcpy(res->colors[TUI_COL_BG].rgb, set->bgc, 3);

@@ -519,12 +519,22 @@ void arcan_tui_invalidate(struct tui_context*);
 arcan_tui_conn* arcan_tui_acon(struct tui_context*);
 
 struct tui_screen_attr {
-	uint8_t fr; /* foreground red */
-	uint8_t fg; /* foreground green */
-	uint8_t fb; /* foreground blue */
-	uint8_t br; /* background red */
-	uint8_t bg; /* background green */
-	uint8_t bb; /* background blue */
+	union {
+		uint8_t fc[3];
+		struct {
+			uint8_t fr;
+			uint8_t fg;
+			uint8_t fb;
+		};
+	};
+	union {
+		uint8_t bc[3];
+		struct {
+			uint8_t br; /* background red */
+			uint8_t bg; /* background green */
+			uint8_t bb; /* background blue */
+		};
+	};
 	unsigned int bold : 1; /* bold character */
 	unsigned int underline : 1; /* underlined character */
 	unsigned int italic : 1;
