@@ -39,6 +39,7 @@ set(PROTOCOLS
 	"${WAYLANDPROTOCOLS_PATH}/unstable/xdg-shell/xdg-shell-unstable-v6"
 	"${WAYLANDPROTOCOLS_PATH}/unstable/linux-dmabuf/linux-dmabuf-unstable-v1"
 	"${WAYLANDPROTOCOLS_PATH}/unstable/pointer-constraints/pointer-constraints-unstable-v1"
+	"${WAYLANDPROTOCOLS_PATH}/unstable/relative-pointer/relative-pointer-unstable-v1"
 	"${WAYLANDPROTOCOLS_PATH}/unstable/idle-inhibit/idle-inhibit-unstable-v1"
 	"${CMAKE_CURRENT_SOURCE_DIR}/wlimpl/wayland-drm"
 )
@@ -68,3 +69,5 @@ SET(SOURCES
 add_executable(${PROJECT_NAME} ${SOURCES})
 target_link_libraries(${PROJECT_NAME} ${LIBRARIES})
 add_sanitizers(${PROJECT_NAME})
+install(TARGETS ${PROJECT_NAME} DESTINATION bin)
+#install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/arcan-wayland.1 DESTINATION man)

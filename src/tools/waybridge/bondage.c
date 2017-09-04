@@ -104,6 +104,23 @@ static void bind_ddev(struct wl_client* client,
 	wl_resource_set_implementation(resource, &ddevmgr_if, NULL, NULL);
 }
 
+static void bind_relp(struct wl_client* client,
+	void* data, uint32_t version, uint32_t id)
+{
+	trace(TRACE_ALLOC, "bind_relp");
+	struct wl_resource* resource = wl_resource_create(client,
+		&zwp_relative_pointer_manager_v1_interface, version, id);
+	if (!resource){
+		wl_client_post_no_memory(client);
+		return;
+	}
+	struct bridge_client* cl = find_client(client);
+	if (!cl){
+		wl_client_post_no_memory(client);
+	}
+	wl_resource_set_implementation(resource, &relpmgr_if, cl, NULL);
+}
+
 static void bind_output(struct wl_client* client,
 	void* data, uint32_t version, uint32_t id)
 {

@@ -1,9 +1,8 @@
 Introduction
 ====
 This tool bridges wayland connections with an arcan connection point. It is
-currently in an alpha- state and as such not particularly useful for any other
-purposes than development on the tool itself - though it's mostly feature-
-mapping things that are already in place (see Limitations).
+currently in a late alpha- state and should be useful, but expecting quirks and
+side-effects to exist.
 
 Building/Use
 ====
@@ -22,6 +21,10 @@ connect to the point.
          cmake ../
          make
          XDG_RUNTIME_DIR=/tmp arcan-wayland
+
+The build-scripts will download additional protocol specifications from the
+wayland-protocols repository the first time the build is setup. If there's
+no internet connection at that time, build will fail.
 
 Hacking
 ====
@@ -66,13 +69,13 @@ Allocation outputs are encoded as follows:
 
 Then the correlated arcan events can be traced with ARCAN\_SHMIF\_DEBUG=1
 
+All individual protocols can be disabled by the -no-(protocol alias) switch
+in order to control client behavior as this may vary wildly from client
+to client depending on the set of requested vs. available protocols.
+
 Notes and Issues
 ====
-1. DRM- buffer translation is incomplete - though the handles can be
-   forwarded with some rather aggressive DRM tricks, we still don't
-   track/release correctly.
-
-2. Mouse input, scroll wheel / scroll locking not really working
+1. Mouse input, scroll wheel / scroll locking not really working
 
 3. Stride - the shm- buffer blit doesn't take stride differences into
    account. This fails on MPV in SHM depending on source video size.

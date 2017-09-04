@@ -687,7 +687,7 @@ int main(int argc, char* argv[])
  * field here, and then command-line argument passing to disable said protocol.
  */
 	struct {
-		int compositor, shell, shm, seat, output, egl, xdg, subcomp, ddev;
+		int compositor, shell, shm, seat, output, egl, xdg, subcomp, ddev, relp;
 	} protocols = {
 		.compositor = 3,
 		.shell = 1,
@@ -697,7 +697,8 @@ int main(int argc, char* argv[])
 		.egl = 1,
 		.xdg = 1,
 		.subcomp = 1,
-		.ddev = 3
+		.ddev = 3,
+		.relp = 1
 	};
 
 	for (size_t i = 1; i < argc; i++){
@@ -740,6 +741,8 @@ int main(int argc, char* argv[])
 			protocols.subcomp = 0;
 		else if (strcmp(argv[i], "-no-data-device") == 0)
 			protocols.ddev = 0;
+		else if (strcmp(argv[i], "-no-relative-pointer") == 0)
+			protocols.relp = 0;
 		else
 			return show_use("unknown argument: ", argv[i]);
 	}
@@ -851,6 +854,9 @@ int main(int argc, char* argv[])
 	if (protocols.ddev)
 		wl_global_create(wl.disp, &wl_data_device_manager_interface,
 			protocols.ddev, NULL, &bind_ddev);
+	if (protocols.relp)
+		wl_global_create(wl.disp, &zwp_relative_pointer_manager_v1_interface,
+			protocols.relp, NULL, &bind_relp);
 
 	trace(TRACE_ALLOC, "wl_display() finished");
 
