@@ -46,6 +46,14 @@ static const int BAD_CONFIG = -1;
 struct arcan_dbh* arcan_db_open(const char* fname, const char* applname);
 
 /*
+ * [THREAD UNSAFE]
+ * accessor functions to a shared static database handle
+ * applv- refers to the reserved namespace (e.g. ARCAN_APPL
+ */
+struct arcan_dbh* arcan_db_get_shared(const char** appl);
+void arcan_db_set_shared(struct arcan_dbh*);
+
+/*
  * Synchronize and flush possibly pending queries,
  * then free resources and reset the handle.
  * *dbh will be set to NULL.
@@ -222,7 +230,7 @@ bool arcan_db_appl_kv(struct arcan_dbh* dbh, const char* appl,
  * caller is expected to mem_free string, can return NULL.
  */
 char* arcan_db_appl_val(struct arcan_dbh* dbh,
-	const char* appl, const char* key);
+	const char* const appl, const char* const key);
 
 /*
  * Any function that returns an struct arcan_strarr should be explicitly

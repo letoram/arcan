@@ -43,8 +43,6 @@
 
 #include "arcan_frameserver.h"
 
-extern struct arcan_dbh* dbhandle;
-extern const char* ARCAN_TBL;
 typedef struct queue_cell queue_cell;
 
 static arcan_event eventbuf[ARCAN_EVENT_QUEUE_LIM];
@@ -477,7 +475,9 @@ void arcan_event_blacklist(const char* idstr)
 /* idstr comes from a trusted context, won't exceed stack size */
 	char buf[strlen(idstr) + sizeof("bl_")];
 	snprintf(buf, COUNT_OF(buf), "bl_%s", idstr);
-	arcan_db_appl_kv(dbhandle, ARCAN_TBL, "bl_", "block");
+	const char* appl;
+	struct arcan_dbh* dbh = arcan_db_get_shared(&appl);
+	arcan_db_appl_kv(dbh, appl, "bl_", "block");
 }
 
 bool arcan_event_blacklisted(const char* idstr)
@@ -485,7 +485,9 @@ bool arcan_event_blacklisted(const char* idstr)
 /* idstr comes from a trusted context, won't exceed stack size */
 	char buf[strlen(idstr) + sizeof("bl_")];
 	snprintf(buf, COUNT_OF(buf), "bl_%s", idstr);
-	char* res = arcan_db_appl_val(dbhandle, ARCAN_TBL, "bl_");
+	const char* appl;
+	struct arcan_dbh* dbh = arcan_db_get_shared(&appl);
+	char* res = arcan_db_appl_val(dbh, appl, "bl_");
 	bool rv = res && strcmp(res, "block") == 0;
 	arcan_mem_free(res);
 	return rv;

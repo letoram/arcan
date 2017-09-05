@@ -231,12 +231,14 @@ static char* egl_synchopts[] = {
 };
 
 static char* egl_envopts[] = {
-	"ARCAN_VIDEO_DEVICE=/dev/dri/card0", "specifiy primary device",
-	"ARCAN_VIDEO_EGL_DEVICE", "set to use EGLDevice/EGLStreams",
-	"ARCAN_VIDEO_CONNECTOR=conn_ind", "primary display connector",
-	"ARCAN_VIDEO_DUMP", "set to dump- output connectors and exit",
-	"ARCAN_VIDEO_DRM_MASTER", "fail hard if drmMaster can't be obtained",
-	"ARCAN_VIDEO_WAIT_CONNECTOR", "loop until an active connector is found",
+	"device=/path/to/dev", "graphics device (_0 implicit, "
+		"use _1, _2, suffix for multiple)",
+	"device_egl", "set device (_0)",
+	"device_libs", ", separated list of libs used for device (_0, _1, ..)"
+	"device_connector=ind", "primary display connector index",
+	"device_master", "fail hard if drmMaster can't be obtained",
+	"device_wait", "loop until an active connector is found",
+	"ARCAN_VIDEO_DUMP", "(env only) set to dump- output connectors and exit",
 	NULL
 };
 
