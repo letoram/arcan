@@ -61,8 +61,6 @@ struct {
 	uint64_t tick_count;
 } settings = {0};
 
-struct arcan_dbh* dbhandle;
-
 /*
  * The arcanmain recover state is used either at the volition of the
  * running script (see system_collapse) or in wrapping a failing pcall.
@@ -74,11 +72,6 @@ jmp_buf arcanmain_recover_state;
  * default, probed / replaced on some systems
  */
 extern int system_page_size;
-#ifdef ARCAN_LWA
-const char* ARCAN_TBL = "arcan_lwa";
-#else
-const char* ARCAN_TBL = "arcan";
-#endif
 
 static const struct option longopts[] = {
 	{ "help",         no_argument,       NULL, '?'},
@@ -108,9 +101,12 @@ static const struct option longopts[] = {
 
 static void vplatform_usage()
 {
+	printf("Config can be passed using either environment or database.\n"
+	"Use ARCAN_VIDEO_XXX=val (XXX is upcase of key) for environment.\n"
+	"Use arcan_db add_appl_kv arcan video_xxx val for database.\n\n");
 	const char** cur = platform_video_envopts();
 	if (*cur){
-	printf("Video platform environment variables:\n");
+	printf("video platform configuration options:\n");
 	while(1){
 		const char* a = *cur++;
 		if (!a) break;
@@ -122,8 +118,9 @@ static void vplatform_usage()
 	}
 
 	cur = agp_envopts();
+	printf("graphics platform (AGP) configuration options:\n");
+	printf("(use AGP_xxx=val for env, agp_xxx=val for db)\n");
 	if (*cur){
-	printf("AGP environment variables:\n");
 	while(1){
 		const char* a = *cur++;
 		if (!a) break;
@@ -444,9 +441,11 @@ int MAIN_REDIR(int argc, char* argv[])
 		arcan_warning("\x1b[32m Couldn't verify filesystem namespaces.\x1b[39m\n");
 /* with debuglevel, we have separate reporting. */
 		if (!debuglevel){
-			arcan_warning("\x1b[33m Look through the following list and note the entries marked "
-				"broken, \ncheck the manpage for config and environment variables or "
-				" try the -p <path> and -d <path/to/database> arguments.\x1b[39m\n");
+			arcan_warning("\x1b[33m Look through the following list and note the "
+				"entries marked broken, \ncheck the manpage for config and environment "
+				"variables or try the -p <path> and -d <path/to/database> arguments."
+				"\x1b[39m\n"
+			);
 			arcan_verify_namespaces(true);
 		}
 		goto error;
@@ -516,6 +515,7 @@ int MAIN_REDIR(int argc, char* argv[])
 	sigaction(SIGPIPE, &(struct sigaction){
 		.sa_handler = SIG_IGN, .sa_flags = 0}, 0);
 
+	struct arcan_dbh* dbhandle = NULL;
 /* fallback to whatever is the platform database- storepath */
 	if (dbfname || (dbfname = platform_dbstore_path()))
 		dbhandle = arcan_db_open(dbfname, arcan_appl_id());
@@ -530,11 +530,14 @@ int MAIN_REDIR(int argc, char* argv[])
 		arcan_warning("In memory db fallback failed, giving up\n");
 		goto error;
 	}
+	arcan_db_set_shared(dbhandle);
+	const char* target_appl = NULL;
+	dbhandle = arcan_db_get_shared(&target_appl);
 
 /* either use previous explicit dimensions (if found and cached)
  * or revert to platform default or store last */
 	if (-1 == width){
-		char* dbw = arcan_db_appl_val(dbhandle, ARCAN_TBL, "width");
+		char* dbw = arcan_db_appl_val(dbhandle, target_appl, "width");
 		if (dbw){
 			width = (uint16_t) strtoul(dbw, NULL, 10);
 			arcan_mem_free(dbw);
@@ -545,11 +548,11 @@ int MAIN_REDIR(int argc, char* argv[])
 	else{
 		char buf[6] = {0};
 		snprintf(buf, sizeof(buf), "%d", width);
-		arcan_db_appl_kv(dbhandle, ARCAN_TBL, "width", buf);
+		arcan_db_appl_kv(dbhandle, target_appl, "width", buf);
 	}
 
 	if (-1 == height){
-		char* dbh = arcan_db_appl_val(dbhandle, ARCAN_TBL, "height");
+		char* dbh = arcan_db_appl_val(dbhandle, target_appl, "height");
 		if (dbh){
 			height = (uint16_t) strtoul(dbh, NULL, 10);
 			arcan_mem_free(dbh);
@@ -560,7 +563,7 @@ int MAIN_REDIR(int argc, char* argv[])
 	else{
 		char buf[6] = {0};
 		snprintf(buf, sizeof(buf), "%d", height);
-		arcan_db_appl_kv(dbhandle, ARCAN_TBL, "height", buf);
+		arcan_db_appl_kv(dbhandle, target_appl, "height", buf);
 	}
 
 	arcan_video_default_scalemode(scalemode);
@@ -747,8 +750,10 @@ int MAIN_REDIR(int argc, char* argv[])
 	arcan_audio_shutdown();
 	arcan_video_shutdown(true);
 	arcan_mem_free(dbfname);
-	if (dbhandle)
+	if (dbhandle){
 		arcan_db_close(&dbhandle);
+		arcan_db_set_shared(NULL);
+	}
 
 	return exit_code;
 

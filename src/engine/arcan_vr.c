@@ -51,13 +51,13 @@ struct arcan_vr_ctx {
  * }
  */
 
-extern struct arcan_dbh* dbhandle;
-extern const char* ARCAN_TBL;
-
-struct arcan_vr_ctx* arcan_vr_setup(const char* vrbridge,
+struct arcan_vr_ctx* arcan_vr_setup(
 	const char* bridge_arg, struct arcan_evctx* evctx, uintptr_t tag)
 {
-	char* kv = arcan_db_appl_val(dbhandle, ARCAN_TBL, "ext_vr");
+	const char* appl;
+	struct arcan_dbh* dbh = arcan_db_get_shared(&appl);
+
+	char* kv = arcan_db_appl_val(dbh, appl, "ext_vr");
 	if (!kv)
 		return NULL;
 

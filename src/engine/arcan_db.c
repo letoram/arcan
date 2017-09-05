@@ -21,9 +21,15 @@
 #include "arcan_db.h"
 
 #ifdef ARCAN_DB_STANDALONE
-const char* ARCAN_TBL = "arcan";
+static const char* ARCAN_TBL = "arcan";
 #else
-extern const char* ARCAN_TBL;
+static const char* ARCAN_TBL =
+#ifdef ARCAN_LWA
+"arcan_lwa"
+#else
+ "arcan"
+#endif
+;
 #endif
 
 static bool db_init = false;
@@ -142,6 +148,19 @@ struct arcan_dbh {
 };
 
 static void setup_ddl(struct arcan_dbh* dbh);
+
+static struct arcan_dbh* shared_handle;
+struct arcan_dbh* arcan_db_get_shared(const char** dappl)
+{
+	if (dappl)
+		*dappl = ARCAN_TBL;
+	return shared_handle;
+}
+
+void arcan_db_set_shared(struct arcan_dbh* new)
+{
+	shared_handle = new;
+}
 
 /*
  * any query that just returns a list of strings,
@@ -933,7 +952,7 @@ bool arcan_db_appl_kv(struct arcan_dbh* dbh, const char* applname,
 }
 
 char* arcan_db_appl_val(struct arcan_dbh* dbh,
-	const char* applname, const char* key)
+	const char* const applname, const char* const key)
 {
 	if (!dbh || !key)
 		return NULL;

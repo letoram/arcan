@@ -120,10 +120,6 @@ static struct led_controller controllers[MAX_LED_CONTROLLERS] = {0};
 static uint64_t ctrl_mask;
 static int n_controllers = 0;
 
-#ifndef LED_STANDALONE
-extern struct arcan_dbh* dbhandle;
-#endif
-
 static int find_free_ind()
 {
 	for (size_t i = 0; i < MAX_LED_CONTROLLERS; i++)
@@ -276,7 +272,6 @@ bool arcan_led_known(uint16_t vid, uint16_t pid)
 }
 
 #ifndef LED_STANDALONE
-extern const char* ARCAN_TBL;
 static bool register_fifo(char* path, int ind)
 {
 	if (ind < 0 || ind > 99)
@@ -309,13 +304,16 @@ void arcan_led_init()
 /* register up to 10 custom LED devices that follow our FIFO protocol.
  * leddev- takes control over appl_val dynamic string ownership */
 #ifndef LED_STANDALONE
-	char* kv = arcan_db_appl_val(dbhandle, ARCAN_TBL, "ext_led");
+	const char* appl;
+	struct arcan_dbh* dbh = arcan_db_get_shared(&appl);
+
+	char* kv = arcan_db_appl_val(dbh, appl, "ext_led");
 	if (kv && register_fifo(kv, 1)){
 		char work[sizeof("ext_led_1")];
 
 		for (size_t i = 2; i < 10; i++){
 			snprintf(work, sizeof(work), "ext_led_%zu", i);
-			kv = arcan_db_appl_val(dbhandle, ARCAN_TBL, work);
+			kv = arcan_db_appl_val(dbh, appl, work);
 			if (!kv || !register_fifo(kv, i)){
 				free(kv);
 			}

@@ -5,8 +5,8 @@
  */
 
 /*
- * Launch the binary specified through [vrbridge] with an inherited extended
- * frameserver context using the protocol header defined in
+ * Launch the binary specified through arcan_db_kv(arcan, ext_vr) with an
+ * inherited extended frameserver context using the protocol header defined in
  * shmif/vr_platform.h and the [bridge_arg] being the packed argstr to expose
  * through ARCAN_ARG.
  *
@@ -19,7 +19,7 @@
  * mapping (Lua, ...)
  */
 struct arcan_vr_ctx;
-struct arcan_vr_ctx* arcan_vr_setup(const char* vrbridge,
+struct arcan_vr_ctx* arcan_vr_setup(
 	const char* bridge_arg, struct arcan_evctx* evctx, uintptr_t tag);
 
 enum arcan_ffunc_rv arcan_vr_ffunc FFUNC_HEAD;

@@ -278,8 +278,7 @@ static const int DEVICE_INDIRECT = CONST_DEVICE_INDIRECT;
 static const int DEVICE_DIRECT = CONST_DEVICE_DIRECT;
 static const int DEVICE_LOST = CONST_DEVICE_LOST;
 
-extern struct arcan_dbh* dbhandle;
-extern const char* ARCAN_TBL;
+#define DBHANDLE arcan_db_get_shared(NULL)
 
 enum arcan_cb_source {
 	CB_SOURCE_NONE        = 0,
@@ -3304,21 +3303,11 @@ static int vr_setup(lua_State* ctx)
 		arcan_fatal("vr_setup(), no event callback handler provided\n");
 	}
 
-	char* kv = arcan_db_appl_val(dbhandle, ARCAN_TBL, "ext_vr");
-	if (!kv){
-		arcan_warning("vr_setup(), no vr- provider set. "
-			"Run arcan_db add_appl_kv arcan ext_vr  path/to/vrbridge\n"
-			"A default one can be found in src/tools/vrbridge"
-		);
-		LUA_ETRACE("vr_setup", "no_ext_vr", 0);
-	}
-	free(kv);
-
 /* we can ignore the context- here since we run everything from the
  * callback and use it as a normal frameserver when it exposes new VIDs,
  * and those VIDs can be used for shutdown */
-	lua_pushboolean(ctx, arcan_vr_setup(kv,
-		opts, arcan_event_defaultctx(), ref) != NULL);
+	lua_pushboolean(ctx,
+		arcan_vr_setup(opts, arcan_event_defaultctx(), ref) != NULL);
 
 	LUA_ETRACE("vr_setup", NULL, 1);
 }
@@ -5362,7 +5351,7 @@ static union arcan_dbtrans_id setup_transaction(lua_State* ctx,
 	const char* tgt = luaL_optstring(ctx, ind, NULL);
 	if (tgt){
 		*kvtgt = DVT_TARGET;
-		tid.tid = arcan_db_targetid(dbhandle, tgt, NULL);
+		tid.tid = arcan_db_targetid(DBHANDLE, tgt, NULL);
 		if (tid.tid == BAD_TARGET){
 			*kvtgt = DVT_ENDM;
 			return tid;
@@ -5370,7 +5359,7 @@ static union arcan_dbtrans_id setup_transaction(lua_State* ctx,
 
 		const char* cfg = luaL_optstring(ctx, ind+1, NULL);
 		if (cfg){
-			tid.cid = arcan_db_configid(dbhandle, tid.tid, cfg);
+			tid.cid = arcan_db_configid(DBHANDLE, tid.tid, cfg);
 			*kvtgt = tid.cid == BAD_CONFIG ? DVT_ENDM : DVT_CONFIG;
 		}
 	}
@@ -5392,7 +5381,7 @@ static int storekey(lua_State* ctx)
 
 	if (lua_type(ctx, 1) == LUA_TTABLE){
 		lua_pushnil(ctx);
-		arcan_db_begin_transaction(dbhandle, kvtgt, tid);
+		arcan_db_begin_transaction(DBHANDLE, kvtgt, tid);
 
 		size_t counter = 0;
 		while (lua_next(ctx, 1) != 0){
@@ -5404,13 +5393,13 @@ static int storekey(lua_State* ctx)
 			}
 			else {
 				const char* val = lua_tostring(ctx, -1);
-				arcan_db_add_kvpair(dbhandle, key, strlen(val) > 0 ? val : NULL);
+				arcan_db_add_kvpair(DBHANDLE, key, strlen(val) > 0 ? val : NULL);
 			}
 
 			lua_pop(ctx, 1);
 		}
 
-		arcan_db_end_transaction(dbhandle);
+		arcan_db_end_transaction(DBHANDLE);
 		lua_pushboolean(ctx, true);
 		LUA_ETRACE("store_key", NULL, 1);
 	}
@@ -5424,9 +5413,9 @@ static int storekey(lua_State* ctx)
 		LUA_ETRACE("store_key", "invalid key", 1);
 	}
 
-	arcan_db_begin_transaction(dbhandle, kvtgt, tid);
-	arcan_db_add_kvpair(dbhandle, keystr, valstr);
-	arcan_db_end_transaction(dbhandle);
+	arcan_db_begin_transaction(DBHANDLE, kvtgt, tid);
+	arcan_db_add_kvpair(DBHANDLE, keystr, valstr);
+	arcan_db_end_transaction(DBHANDLE);
 
 	lua_pushboolean(ctx, true);
 	LUA_ETRACE("store_key", NULL, 1);
@@ -5469,9 +5458,9 @@ static int matchkeys(lua_State* ctx)
 
 	struct arcan_strarr res;
 	if (domain == DVT_APPL)
-		res = arcan_db_applkeys(dbhandle, arcan_appl_id(), pattern);
+		res = arcan_db_applkeys(DBHANDLE, arcan_appl_id(), pattern);
 	else
-		res = arcan_db_matchkey(dbhandle, domain, pattern);
+		res = arcan_db_matchkey(DBHANDLE, domain, pattern);
 
 	int rv = push_stringres(ctx, &res);
 	arcan_mem_freearr(&res);
@@ -5485,15 +5474,15 @@ static int getkeys(lua_State* ctx)
 	const char* tgt = luaL_checkstring(ctx, 1);
 	const char* cfg = luaL_optstring(ctx, 2, NULL);
 	union arcan_dbtrans_id tid, cid;
-	tid.tid	= arcan_db_targetid(dbhandle, tgt, NULL);
+	tid.tid	= arcan_db_targetid(DBHANDLE, tgt, NULL);
 
 	struct arcan_strarr res;
 	if (!cfg){
-		res = arcan_db_getkeys(dbhandle, DVT_TARGET, tid);
+		res = arcan_db_getkeys(DBHANDLE, DVT_TARGET, tid);
 	}
 	else {
-		cid.cid = arcan_db_configid(dbhandle, tid.tid, cfg);
-		res = arcan_db_getkeys(dbhandle, DVT_CONFIG, cid);
+		cid.cid = arcan_db_configid(DBHANDLE, tid.tid, cfg);
+		res = arcan_db_getkeys(DBHANDLE, DVT_CONFIG, cid);
 	}
 
 	int rv = push_stringres(ctx, &res);
@@ -5516,12 +5505,12 @@ static int getkey(lua_State* ctx)
 	const char* opt_target = luaL_optstring(ctx, 2, NULL);
 
 	if (opt_target){
-		arcan_targetid tid = arcan_db_targetid(dbhandle, opt_target, NULL);
+		arcan_targetid tid = arcan_db_targetid(DBHANDLE, opt_target, NULL);
 
 		const char* opt_config = luaL_optstring(ctx, 3, NULL);
 		if (opt_config){
-			arcan_configid cid = arcan_db_configid(dbhandle, tid, opt_config);
-			char* val = arcan_db_getvalue(dbhandle, DVT_CONFIG, cid, key);
+			arcan_configid cid = arcan_db_configid(DBHANDLE, tid, opt_config);
+			char* val = arcan_db_getvalue(DBHANDLE, DVT_CONFIG, cid, key);
 			if (val)
 				lua_pushstring(ctx, val);
 			else
@@ -5529,11 +5518,11 @@ static int getkey(lua_State* ctx)
 			free(val);
 		}
 		else{
-			arcan_db_getvalue(dbhandle, DVT_TARGET, tid, key);
+			arcan_db_getvalue(DBHANDLE, DVT_TARGET, tid, key);
 		}
 	}
 	else {
-	char* val = arcan_db_appl_val(dbhandle, arcan_appl_id(), key);
+	char* val = arcan_db_appl_val(DBHANDLE, arcan_appl_id(), key);
 
 	if (val){
 		lua_pushstring(ctx, val);
@@ -5960,7 +5949,7 @@ static int gettargets(lua_State* ctx)
 	int rv = 0;
 
 	struct arcan_strarr res = arcan_db_targets(
-		dbhandle, luaL_optstring(ctx, 1, NULL));
+		DBHANDLE, luaL_optstring(ctx, 1, NULL));
 	rv += push_stringres(ctx, &res);
 	arcan_mem_freearr(&res);
 
@@ -5970,7 +5959,7 @@ static int gettargets(lua_State* ctx)
 static int gettags(lua_State* ctx)
 {
 	LUA_TRACE("list_target_tags");
-	struct arcan_strarr res = arcan_db_target_tags(dbhandle);
+	struct arcan_strarr res = arcan_db_target_tags(DBHANDLE);
 	int rv = push_stringres(ctx, &res);
 	LUA_ETRACE("list_target_tags", NULL, rv);
 }
@@ -5981,11 +5970,11 @@ static int getconfigs(lua_State* ctx)
 	const char* target = luaL_checkstring(ctx, 1);
 	int rv = 0;
 
-	arcan_targetid tid = arcan_db_targetid(dbhandle, target, NULL);
-	struct arcan_strarr res = arcan_db_configs(dbhandle, tid);
+	arcan_targetid tid = arcan_db_targetid(DBHANDLE, target, NULL);
+	struct arcan_strarr res = arcan_db_configs(DBHANDLE, tid);
 
 	rv += push_stringres(ctx, &res);
-	char* tag = arcan_db_targettag(dbhandle, tid);
+	char* tag = arcan_db_targettag(DBHANDLE, tid);
 	if (tag){
 		lua_pushstring(ctx, tag);
 		arcan_mem_free(tag);
@@ -7575,7 +7564,7 @@ static int targetlaunch(lua_State* ctx)
 	}
 
 	if (lua_type(ctx, 1) == LUA_TSTRING){
-		cid = arcan_db_configid(dbhandle, arcan_db_targetid(dbhandle,
+		cid = arcan_db_configid(DBHANDLE, arcan_db_targetid(DBHANDLE,
 			luaL_checkstring(ctx, 1), NULL), luaL_optstring(ctx, 2, "default"));
 		lmode = luaL_optnumber(ctx, 3, LAUNCH_INTERNAL);
 	}
@@ -7592,7 +7581,7 @@ static int targetlaunch(lua_State* ctx)
 	enum DB_BFORMAT bfmt;
 	argv = env = libs;
 
-	char* exec = arcan_db_targetexec(dbhandle, cid,
+	char* exec = arcan_db_targetexec(DBHANDLE, cid,
 		&bfmt, &argv, &env, &libs);
 
 /* means strarrs won't be populated */
@@ -7685,7 +7674,7 @@ static int targetlaunch(lua_State* ctx)
  * update accounting, so that it's possible to know if one exec- target
  * is prone to failure (user- visible signs that it is misconfigured)
  */
-	arcan_db_launch_status(dbhandle, cid, intarget != NULL);
+	arcan_db_launch_status(DBHANDLE, cid, intarget != NULL);
 
 	if (intarget){
 		arcan_video_objectopacity(intarget->vid, 0.0, 0);
