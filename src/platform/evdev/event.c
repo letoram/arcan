@@ -54,7 +54,7 @@ static struct xkb_context* xkb_context;
 #define NOTIFY_SCAN_DIR "/dev/input"
 #endif
 
-static const char* notify_scan_dir = NOTIFY_SCAN_DIR;
+static char* notify_scan_dir = NOTIFY_SCAN_DIR;
 static bool log_verbose = false;
 
 /*
@@ -90,13 +90,15 @@ gstate = {
 };
 
 static const char* envopts[] = {
-	"ARCAN_INPUT_NOMUTETTY", "Don't disable terminal or SIGINT",
-	"ARCAN_INPUT_SCANDIR", "Directory to monitor for device nodes "
+	"no_mutetty", "Don't disable terminal or SIGINT",
+	"scandir=path/to/folder", "Directory to monitor for device node hotplug "
 		"(Default: "NOTIFY_SCAN_DIR")",
-	"ARCAN_INPUT_TTYOVERRIDE", "Force a specific tty- device",
-	"ARCAN_INPUT_DISABLE_TTYPSWAP", "Disable tty- swapping signal handler",
-	"ARCAN_INPUT_VERBOSE", "_warning log() input node events",
+	"tty_override=path/to/dev", "Force a specific tty- device",
+	"disable_ttyswap", "Disable tty- swapping signal handler",
+	"verbose", "_warning log() input node events",
 #ifdef HAVE_XKBCOMMON
+	"", "",
+	"[XKB-ARGUMENTS]", "[these are ENV- only (fwd to libxkbcommon)]",
 	"XKB_DEFAULT_LAYOUT=lang", "enable XKB translation maps for keyboards",
 	"XKB_DEFAULT_VARIANT=variant", "define XKB layout variant",
 	"XKB_DEFAULT_MODEL=pc101", "definine XKB keyboard model",
@@ -1819,6 +1821,10 @@ static void setup_signals()
 	fcntl(gstate.sigpipe[0], F_SETFD, FD_CLOEXEC);
 	fcntl(gstate.sigpipe[1], F_SETFD, FD_CLOEXEC);
 
+	uintptr_t tag;
+	cfg_lookup_fun get_config = platform_config_lookup(&tag);
+	bool nottyswap = get_config("event_disable_ttyswap", 0, NULL, tag);
+
 	struct sigaction er_sh = {.sa_handler = SIG_IGN};
 	sigaction(SIGINT, &er_sh, NULL);
 
@@ -1827,7 +1833,7 @@ static void setup_signals()
 	er_sh.sa_flags = SA_RESTART;
 	sigaction(SIGTERM, &er_sh, NULL);
 
-	if (!getenv("ARCAN_INPUT_DISABLE_TTYPSWAP")){
+	if (!nottyswap){
 		struct vt_mode mode = {
 			.mode = VT_PROCESS,
 			.acqsig = SIGUSR1,
@@ -1942,13 +1948,17 @@ static int find_tty()
 	const char* newtty = NULL;
 	int tty = -1;
 
-	if ((newtty = getenv("ARCAN_INPUT_TTYOVERRIDE"))){
-		int fd = open(newtty, O_RDWR, O_CLOEXEC);
+	uintptr_t tag;
+	cfg_lookup_fun get_config = platform_config_lookup(&tag);
+	char* ttydev;
+	if (get_config("event_tty_override", 0, &ttydev, tag) && ttydev){
+		int fd = open(ttydev, O_RDWR, O_CLOEXEC);
 		if (-1 == fd)
 			arcan_warning("couldn't open TTYOVERRIDE %s, reason: %s\n",
 				newtty, strerror(errno));
 		else
 			tty = fd;
+		free(ttydev);
 	}
 
 /* Failing that, try and find what tty we might be on -- some might redirect
@@ -1973,6 +1983,8 @@ static int find_tty()
 
 void platform_event_init(arcan_evctx* ctx)
 {
+	uintptr_t tag;
+	cfg_lookup_fun get_config = platform_config_lookup(&tag);
 	gstate.notify = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
 	init_keyblut();
 #ifdef HAVE_XKBCOMMON
@@ -1988,7 +2000,7 @@ void platform_event_init(arcan_evctx* ctx)
 		ioctl(gstate.tty, KDGKBMODE, &gstate.kbmode);
 		ioctl(gstate.tty, KDSETLED, 0);
 
-		if (!getenv("ARCAN_INPUT_NOMUTETTY")){
+		if (get_config("event_no_mutetty", 0, NULL, tag)){
 			ioctl(gstate.tty, KDSKBMUTE, 1);
 			ioctl(gstate.tty, KDSKBMODE, K_OFF);
 			ioctl(gstate.tty, KDSETMODE, KD_GRAPHICS);
@@ -1998,20 +2010,26 @@ void platform_event_init(arcan_evctx* ctx)
 
 	if (gstate.sigpipe[0] == -1)
 		setup_signals();
-	log_verbose = getenv("ARCAN_INPUT_VERBOSE");
+	log_verbose = get_config("event_verbose", 0, NULL, tag);
 
-	const char* newsd;
-	if ((newsd = getenv("ARCAN_INPUT_SCANDIR")))
+	char* newsd;
+	if (notify_scan_dir != NOTIFY_SCAN_DIR){
+		arcan_mem_free(notify_scan_dir);
+		notify_scan_dir = NOTIFY_SCAN_DIR;
+	}
+
+	if (get_config("event_scandir", 0, &newsd, tag) && newsd){
 		notify_scan_dir = newsd;
 
-	if (-1 == gstate.notify || inotify_add_watch(
-		gstate.notify, notify_scan_dir, IN_CREATE) == -1){
-		arcan_warning("inotify initialization failure (%s),"
-			"	device discovery disabled.", strerror(errno));
+		if (-1 == gstate.notify || inotify_add_watch(
+			gstate.notify, notify_scan_dir, IN_CREATE) == -1){
+			arcan_warning("inotify initialization failure (%s),"
+				"	device discovery disabled.", strerror(errno));
 
-		if (-1 != gstate.notify){
-			close(gstate.notify);
-			gstate.notify = -1;
+			if (-1 != gstate.notify){
+				close(gstate.notify);
+				gstate.notify = -1;
+			}
 		}
 	}
 

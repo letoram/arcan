@@ -101,12 +101,10 @@ static const struct option longopts[] = {
 
 static void vplatform_usage()
 {
-	printf("Config can be passed using either environment or database.\n"
-	"Use ARCAN_VIDEO_XXX=val (XXX is upcase of key) for environment.\n"
-	"Use arcan_db add_appl_kv arcan video_xxx val for database.\n\n");
 	const char** cur = platform_video_envopts();
 	if (*cur){
-	printf("video platform configuration options:\n");
+	printf("Video platform configuration options:\n");
+	printf("(use VIDEO_XXX=val for env, video_xxx for db)\n");
 	while(1){
 		const char* a = *cur++;
 		if (!a) break;
@@ -118,8 +116,8 @@ static void vplatform_usage()
 	}
 
 	cur = agp_envopts();
-	printf("graphics platform (AGP) configuration options:\n");
-	printf("(use AGP_xxx=val for env, agp_xxx=val for db)\n");
+	printf("Graphics platform configuration options:\n");
+	printf("(use GRAPHICS_XXX=val for env, graphics_xxx=val for db)\n");
 	if (*cur){
 	while(1){
 		const char* a = *cur++;
@@ -128,8 +126,8 @@ static void vplatform_usage()
 		if (!b) break;
 		printf("\t%s - %s\n", a, b);
 	}
-	printf("\n");
 	}
+	printf("\n");
 }
 
 static void usage()
@@ -175,11 +173,11 @@ printf("Usage: arcan [-whfmWMOqspBtHbdgaSV] applname "
 	vplatform_usage();
 
 /* built-in envopts for _event.c, should really be moved there */
-	printf("Input platform environment variables:\n");
-	printf("\tARCAN_EVENT_RECORD=file - record input-layer events to file\n");
-	printf("\tARCAN_EVENT_REPLAY=file - playback previous input recording\n");
-	printf("\tARCAN_EVENT_SHUTDOWN=keysym:modifiers "
-		"- press to inject shutdown event\n");
+	printf("Input platform configuration options:\n");
+	printf("(use ARCAN_EVENT_XXX for env, event_xxx for db)\n");
+	printf("\trecord=file - record input-layer events to file\n");
+	printf("\treplay=file - playback previous input recording\n");
+	printf("\tshutdown=keysym:modifiers - press to inject shutdown event\n");
 	cur = platform_input_envopts();
 	if (*cur){
 	while(1){

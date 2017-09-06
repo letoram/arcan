@@ -591,13 +591,7 @@ when "mangen" then
 		gotc = false
 		outf << ".SH #{key}\n"
 		val.each{|i|
-			if gotc == false
-				outf << "\\&\\fI#{i}\\fR\\|(3)"
-				gotc = true
-			else
-				outf << ",\\&\\fI#{i}\\fR\\|(3)"
-			end
-			outf << "\n"
+			outf << "\\&\\fI#{i}\\fR\\|(3)\n"
 
 			if File.exists?("#{fname}.lua")
 				funtoman(i, File.new("mantmp/#{fname}.3", IO::CREAT | IO::RDWR))
