@@ -22,10 +22,10 @@ For developer contact, check out the IRC channel #arcan on irc.freenode.net.
 # Table of Contents
 1. [Getting Started](#started)
     1. [Compiling](#compiling)
-2. [Compatibility](#compatibility)
-3. [Other Tools](#tools)
-4. [Appls to Try](#appls)
-5. [Database Configuration](#database)
+2. [Database / Configuration](#database)
+3. [Compatibility](#compatibility)
+4. [Other Tools](#tools)
+5. [Appls to Try](#appls)
 6. [Git layout](#gitlayout)
 
 Getting Started <a name="started"></a>
@@ -102,6 +102,106 @@ everything that uses SHMIF. This is one of the reasons why SHMIF- is treated
 as an 'internal API' rather than some protocol or external API for others to
 use. This situation is subject to change, but there are no such plans in that
 direction at the moment.
+
+Database / Configuration
+=====
+Among the output binaries is one called arcan\_db. It is a tool that can be
+used to manipulate the sqlite- database that the engine requires for some
+features, e.g. application specific key/value store for settings, but also for
+whitelisting execution and as a generic configuration mechanism.
+
+The database itself is split into a number of tables with key=value stores,
+and a special set of tables (targets and config) for referencing programs
+that can be launched (also refered to as 'launch targets'). Internally,
+the tables are prefixed appl\_applname, with 'arcan' and 'arcan\_lwa' being
+reservered for engine configuration.
+
+Modifying an appl- kv store is as simple as;
+
+        arcan_db add_appl_kv myappl key value
+
+While the current set of kv pairs can be enumerated via:
+
+        arcan_db show_appl myappl
+
+Refer to the arcan\_db tool and manpage for more detailed explanation.
+
+The various input, graphics and event platforms can be all configured
+either via environment variables or via the database. In case of a conflict,
+the environment variables will take presedence.
+
+The environment variables follow the pattern: ARCAN\_SUBSYS\_XXX where
+SUBSYS can be VIDEO, EVENT, AUDIO, GRAPHICS - or via the database.
+
+Running arcan without any arguments should give you an enumeration of the
+various values for XXX that the current platform setup accepts.
+
+The database- configuration takes a similar pattern, e.g. subsys\_xxx (note
+that the ARCAN prefix is dropped as it is implied in the database context
+and the key is in lower case). Example:
+
+        arcan_db add_appl_kv arcan event_verbose 1
+
+Would set the 'verbose' option to enabled for the event subsystem.
+
+For execution targets, it's slightly more complicated. An early design decision
+was that the Lua VM configuration should be very restrictive -- no arbitrary
+creation / deletion of files, no arbitrary execution etc. The database tool is
+used to specify explicitly permitted execution that should not be modifable
+from the context of the running arcan application.
+
+One target comprise one binary, a binary format and base
+environment/command-line arguments, including a list of libraries to preload.
+It also has one or many different configurations that append additional
+arguments - but both targets and configurations also act as key-value stores in
+order to track per-application configurations in the same place and with the
+same toolset/interface as the rest of the system. Furthermore, arguments are
+subject to namespace expansion.
+
+The following example attempts to illustrate how this works:
+
+        arcan_db db.sqlite add_target example_app /some/binary -some -args
+        arcan_db db.sqlite add_config example_app more_args -yes -why -not
+        arcan_db add_target mycore RETRO [ARCAN_RESOURCEPATH]/.cores/core.so
+				arcan_db add_config mycore myconfig RETRO [ARCAN_RESOURCEPATH]/.assets/somefile
+
+An arcan application should now be able to:
+
+        launch_target("example_app", "more_args", LAUNCH_EXTERNAL);
+
+or
+
+        vid = launch_target("example_app",
+            "more_args", LAUNCH_INTERNAL, callback_function);
+
+The first example would have the engine minimize and release as many
+resources as possible (while still being able to resume at a later point),
+execute the specified program and wake up again when the program finishes.
+This can be used to share the GPU with dedicated fullscreen applications that
+benefit from minimal overhead, or for use as features like explicit suspend
+(where the target- you execute is your 'save to mem and shutdown' utility.
+
+The second example would execute the program in the background, expect it to
+be able to handle the engine shmif- API for audio/video/input cooperatively
+or through an interposition library.
+
+It can be cumbersome to set up database entries to just test something.
+Frameservers is a way of separating sensitive or crash-prone functions from
+the main engine for purposes such as running games or playing back video.
+
+In a default installation, they are prefixed with afsrv\_ [game, encode,
+decode, ...] and while they are best managed from the appl itself, you can
+run them from the terminal as well. Which ones that are available depend on
+the dependencies that were available at build time, but for starting a
+libretro core for instance:
+
+    ARCAN_ARG=core=/path/to/core:resource=/path/to/resourcefile afsrv\_game
+
+or video playback:
+
+    ARCAN_ARG=file=/path/to/moviefile.mkv afsrv_decode
+
+but they are all best managed from the engine and its respective scripts.
 
 Compatibility
 ====
@@ -218,61 +318,6 @@ using -w desiredwidth -h desiredheight as arguments to the engine.
 For details on configuring and using durden or prio, please refer to the
 respective README.md provided in each git. There are also demonstration
 videos on the [youtube-channel](https://www.youtube.com/user/arcanfrontend).
-
-Database
-=====
-Among the output binaries is one called arcan\_db. It is a tool that can be
-used to manipulate the sqlite- database that the engine requires for some
-features, e.g. application specific key/value store for settings, but also for
-whitelisting execution.
-
-An early design decision was that the Lua VM configuration should be very
-restrictive -- no arbitrary creation / deletion of files, no arbitrary
-execution etc. The database tool is used to specify explicitly permitted
-execution that should not be modifable from the context of the running arcan
-application.
-
-The following example attempts to illustrate how this works:
-
-        arcan_db db.sqlite add_target example_app /some/binary -some -args
-        arcan_db db.sqlite add_config example_app more_args -yes -why -not
-        arcan_db add_target mycore RETRO [ARCAN_RESOURCEPATH]/.cores/core.so
-				arcan_db add_config mycore myconfig RETRO [ARCAN_RESOURCEPATH]/.assets/somefile
-
-An arcan application should now be able to:
-
-        launch_target("example_app", "more_args", LAUNCH_EXTERNAL);
-
-or
-
-        vid = launch_target("example_app",
-            "more_args", LAUNCH_INTERNAL, callback_function);
-
-The first example would have the engine minimize and release as much
-resources as possible (while still being able to resume at a later point),
-execute the specified program and wake up again when the program finishes.
-
-The second example would execute the program in the background, expect it to
-be able to handle the engine shmif- API for audio/video/input cooperatively
-or through an interposition library.
-
-It can be cumbersome to set up database entries to just test something.
-Frameservers is a way of separating sensitive or crash-prone functions from
-the main engine for purposes such as running games or playing back video.
-
-In a default installation, they are prefixed with afsrv\_ [game, encode,
-decode, ...] and while they are best managed from the appl itself, you can
-run them from the terminal as well. Which ones that are available depend on
-the dependencies that were available at build time, but for starting a
-libretro core for instance:
-
-    ARCAN_ARG=core=/path/to/core:resource=/path/to/resourcefile afsrv\_game
-
-or video playback:
-
-    ARCAN_ARG=file=/path/to/moviefile.mkv afsrv_decode
-
-but they are all best managed from the engine and its respective scripts.
 
 Filesystem Layout<a name="gitlayout"></a>
 =====

@@ -23,7 +23,7 @@ static bool lookup(const char* const key,
 	}
 
 	char tmpbuf[strlen(key) + sizeof("ARCAN_")];
-	snprintf(tmpbuf, sizeof(tmpbuf), "%s", key);
+	snprintf(tmpbuf, sizeof(tmpbuf), "ARCAN_%s", key);
 	char* tmp = tmpbuf;
 	while(*tmp){
 		*tmp = toupper(*tmp);
@@ -40,6 +40,11 @@ static bool lookup(const char* const key,
 		const char* appl;
 		struct arcan_dbh* dbh = arcan_db_get_shared(&appl);
 		test = arcan_db_appl_val(dbh, appl, key);
+		if (test && val){
+			*val = test;
+		}
+		else
+			arcan_mem_free(test);
 	}
 
 	return test != NULL;

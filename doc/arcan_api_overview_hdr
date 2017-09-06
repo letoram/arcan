@@ -41,12 +41,22 @@ number, keysym, modifiers, devid, subid, utf8, active, device, subdevice
 kind : digital, translated = false
 ource, devid, subid, active
 
-.IP "\fBxxx_preframe_pulse() xxx_frame_pulse()\fr"
+.IP "\fBxxx_preframe_pulse() xxx_postframe_pulse()\fr"
 Invoked right before and after synchronized transfer of a video frame, this may
 occur at rather spurious intervals depending on engine configuration
 and active synchronization strategy. Any computation in this entrypoint
 should be considered costly and it is mainly provided for monitoring
 purpsoes.
+
+.IP "\fBxxx_adopt(vid, segid, title, parent, last)\fr"
+Invoked when an application is set to collapse with transfers or when
+recovering from a scripting error. It is used to allow the new script
+to retrieve externally bound vids. Return true if the VID was adopted
+otherwise it will be automatically deleted.
+
+.IP "\fBxxx_display_state(action, id, state)\fr"
+Invoked when there has been a change in the output display configuration
+state, typically in response to hotplug events.
 
 .IP "\fBxxx_shutdown()\fR"
 This entrypoint will be triggered as a final state before the arcan
