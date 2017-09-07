@@ -892,7 +892,9 @@ enum ARCAN_TARGET_SKIPMODE {
 		EVENT_FSRV_DELIVEREDFRAME,
 		EVENT_FSRV_PREROLL,
 		EVENT_FSRV_APROTO,
-		EVENT_FSRV_GAMMARAMP
+		EVENT_FSRV_GAMMARAMP,
+		EVENT_FSRV_ADDVRLIMB,
+		EVENT_FSRV_LOSTVRLIMB
 	};
 	/* -- end internal -- */
 
@@ -1039,6 +1041,9 @@ enum ARCAN_TARGET_SKIPMODE {
 			};
 			struct {
 				int aproto;
+			};
+			struct {
+				unsigned limb;
 			};
 		};
 

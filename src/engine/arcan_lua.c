@@ -3312,6 +3312,68 @@ static int vr_setup(lua_State* ctx)
 	LUA_ETRACE("vr_setup", NULL, 1);
 }
 
+static int vr_maplimb(lua_State* ctx)
+{
+	LUA_TRACE("vr_maplimb");
+	arcan_vobject* vobj;
+	luaL_checkvid(ctx, 1, &vobj);
+	if (!vobj || vobj->feed.state.tag != ARCAN_TAG_VR)
+		LUA_ETRACE("vr_metadata", "invalid map object type", 0);
+
+	arcan_vobj_id vid = luaL_checkvid(ctx, 2, NULL);
+
+	unsigned limb = luaL_checknumber(ctx, 3);
+	arcan_vr_maplimb(vobj->feed.state.ptr, limb, vid);
+
+	LUA_ETRACE("vr_maplimb", NULL, 0);
+}
+
+static int vr_getmeta(lua_State* ctx)
+{
+	LUA_TRACE("vr_metadata");
+	arcan_vobject* vobj;
+	luaL_checkvid(ctx, 1, &vobj);
+	if (!vobj || vobj->feed.state.tag != ARCAN_TAG_VR)
+		LUA_ETRACE("vr_metadata", "invalid source object type", 0);
+
+	struct vr_meta md;
+	if (ARCAN_OK != arcan_vr_displaydata(vobj->feed.state.ptr, &md))
+		LUA_ETRACE("vr_metadata", "couldn't get metadata", 0);
+
+	lua_newtable(ctx);
+	int top = lua_gettop(ctx);
+	tblnum(ctx, "width", md.hres, top);
+	tblnum(ctx, "height", md.vres, top);
+	tblnum(ctx, "center", md.h_center, top);
+	tblnum(ctx, "horizontal", md.h_size, top);
+	tblnum(ctx, "vertical", md.v_size, top);
+	tblnum(ctx, "lens_distance", md.lens_distance, top);
+	tblnum(ctx, "eye_display", md.eye_display, top);
+	tblnum(ctx, "ipd", md.ipd, top);
+
+	lua_pushstring(ctx, "distortion");
+	lua_createtable(ctx, 0, 4);
+	int ttop = lua_gettop(ctx);
+	for (size_t i = 0; i < 4; i++){
+		lua_pushnumber(ctx, i+1);
+		lua_pushnumber(ctx, md.distortion[i]);
+		lua_rawset(ctx, ttop);
+	}
+	lua_rawset(ctx, top);
+
+	lua_pushstring(ctx, "abberation");
+	lua_createtable(ctx, 0, 4);
+	ttop = lua_gettop(ctx);
+	for (size_t i = 0; i < 4; i++){
+		lua_pushnumber(ctx, i+1);
+		lua_pushnumber(ctx, md.abberation[i]);
+		lua_rawset(ctx, ttop);
+	}
+	lua_rawset(ctx, top);
+
+	LUA_ETRACE("vr_metadata", NULL, 1);
+}
+
 static int n_leds(lua_State* ctx)
 {
 	LUA_TRACE("controller_leds");
@@ -3976,6 +4038,61 @@ static void emit_segreq(lua_State* ctx, struct arcan_extevent* ev)
 	luactx.last_segreq = NULL;
 }
 
+static const char* limb_name(int num)
+{
+	switch(num){
+	case PERSON : return "person";
+	case NECK : return "neck";
+	case L_EYE : return "eye-left";
+	case R_EYE : return "eye-right";
+	case L_SHOULDER : return "shoulder-left";
+	case R_SHOULDER : return "shoulder-right";
+	case L_ELBOW : return "elbow-left";
+	case R_ELBOW : return "elbow-right";
+	case L_WRIST : return "wrist-left";
+	case R_WRIST : return "wrist-right";
+	case L_THUMB_PROXIMAL : return "thumb-proximal-left";
+	case L_THUMB_MIDDLE : return "thumb-middle-left";
+	case L_THUMB_DISTAL : return "thumb-distal-left";
+	case L_POINTER_PROXIMAL : return "pointer-proximal-left";
+	case L_POINTER_MIDDLE : return "pointer-middle-left";
+	case L_POINTER_DISTAL : return "pointer-distal-left";
+	case L_MIDDLE_PROXIMAL : return "middle-proximal-left";
+	case L_MIDDLE_MIDDLE : return "middle-middle-left";
+	case L_MIDDLE_DISTAL : return "middle-distal-left";
+	case L_RING_PROXIMAL : return "ring-proximal-left";
+	case L_RING_MIDDLE : return "ring-middle-left";
+	case L_RING_DISTAL : return "ring-distal-left";
+	case L_PINKY_PROXIMAL : return "pinky-proximal-left";
+	case L_PINKY_MIDDLE : return "pinky-middle-left";
+	case L_PINKY_DISTAL : return "pinky-distal-left";
+	case R_THUMB_PROXIMAL : return "thumb-proximal-right";
+	case R_THUMB_MIDDLE : return "thumb-middle-right";
+	case R_THUMB_DISTAL : return "thumb-distal-right";
+	case R_POINTER_PROXIMAL : return "pointer-proximal-right";
+	case R_POINTER_MIDDLE : return "pointer-middle-right";
+	case R_POINTER_DISTAL : return "pointer-distal-right";
+	case R_MIDDLE_PROXIMAL : return "middle-proximal-right";
+	case R_MIDDLE_MIDDLE : return "middle-middle-right";
+	case R_MIDDLE_DISTAL : return "middle-distal-right";
+	case R_RING_PROXIMAL : return "ring-proximal-right";
+	case R_RING_MIDDLE : return "ring-middle-right";
+	case R_RING_DISTAL : return "ring-distal-right";
+	case R_PINKY_PROXIMAL : return "pinky-proximal-right";
+	case R_PINKY_MIDDLE : return "pinky-middle-right";
+	case R_PINKY_DISTAL : return "pinky-distal-right";
+	case L_HIP : return "hip-left";
+	case R_HIP : return "hip-right";
+	case L_KNEE : return "knee-left";
+	case R_KNEE : return "knee-right";
+	case L_ANKLE : return "ankle-left";
+	case R_ANKLE : return "ankle-right";
+	case L_TOOL : return "tool-left";
+	case R_TOOL : return "tool-right";
+	default: return "broken";
+	}
+}
+
 static const char* kindstr(int num)
 {
 	switch(num){
@@ -4480,6 +4597,15 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			tblbool(ctx, "vobj", (ev->fsrv.aproto & SHMIF_META_VOBJ) > 0, top);
 			tblbool(ctx, "vr", (ev->fsrv.aproto & SHMIF_META_VR) > 0, top);
 		break;
+		case EVENT_FSRV_ADDVRLIMB:
+			tblstr(ctx, "kind", "limb_added", top);
+			tblnum(ctx, "id",  ev->fsrv.limb, top);
+			tblstr(ctx, "name", limb_name(ev->fsrv.limb), top);
+		break;
+		case EVENT_FSRV_LOSTVRLIMB:
+			tblstr(ctx, "kind", "limb_lost", top);
+			tblnum(ctx, "id", ev->fsrv.limb, top);
+			tblstr(ctx, "name", limb_name(ev->fsrv.limb), top);
 		case EVENT_FSRV_GAMMARAMP:
 			tblstr(ctx, "kind", "ramp_update", top);
 			tblnum(ctx, "index", ev->fsrv.counter, top);
@@ -10500,6 +10626,8 @@ static const luaL_Reg iofuns[] = {
 {"set_led_rgb",         led_rgb          },
 {"controller_leds",     n_leds           },
 {"vr_setup",            vr_setup         },
+{"vr_map_limb",         vr_maplimb       },
+{"vr_metadata",         vr_getmeta       },
 {"inputanalog_filter",  inputfilteranalog},
 {"inputanalog_query",   inputanalogquery},
 {"inputanalog_toggle",  inputanalogtoggle},
