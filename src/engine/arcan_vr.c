@@ -35,21 +35,16 @@
 #include "arcan_frameserver.h"
 #include "arcan_vr.h"
 
+/*
+ * left: metadata, samples, ...
+ */
+
 struct arcan_vr_ctx {
 	arcan_evctx* ctx;
 	arcan_frameserver* connection;
+	uint64_t map;
 	arcan_vobj_id limb_map[LIMB_LIM];
 };
-
-/*
- * static void vr_tick(struct arcan_vr_ctx* ctx)
- * {
- *   check for changes in the capability mask, on arrival,
- *   create a new null object and attach to the connection one
- *   on tick/render, test checksum for matrices and copy into
- *   object.
- * }
- */
 
 struct arcan_vr_ctx* arcan_vr_setup(
 	const char* bridge_arg, struct arcan_evctx* evctx, uintptr_t tag)
@@ -68,6 +63,15 @@ struct arcan_vr_ctx* arcan_vr_setup(
 	struct arcan_strarr arr_argv = {0}, arr_env = {0};
 	arcan_mem_growarr(&arr_argv);
 	arr_argv.data[0] = strdup(kv);
+	arr_argv.count = 1;
+
+	char* kvd = arcan_db_appl_val(dbh, appl, "ext_vr_debug");
+	if (kvd){
+		arcan_mem_growarr(&arr_env);
+		arr_env.data[0] = strdup("ARCAN_VR_DEBUGATTACH=1");
+		arr_env.count = 1;
+		free(kvd);
+	}
 
 /*
  * There might be some merit to enabling the VOBJ- substructure as well since
@@ -104,25 +108,13 @@ struct arcan_vr_ctx* arcan_vr_setup(
 
 	vrctx->ctx = evctx;
 	vrctx->connection = mvctx;
-	arcan_video_alterfeed(mvctx->vid, FFUNC_VR, (struct vfunc_state){
-		.tag = ARCAN_TAG_FRAMESERV,
+	arcan_video_alterfeed(mvctx->vid, FFUNC_VR,
+		(struct vfunc_state){
+		.tag = ARCAN_TAG_VR,
 		.ptr = vrctx
 	});
 
 	return vrctx;
-}
-
-arcan_errc arcan_vr_release(struct arcan_vr_ctx* ctx, arcan_vobj_id ind)
-{
-	return ARCAN_ERRC_NOT_IMPLEMENTED;
-}
-
-arcan_errc arcan_vr_reset(struct arcan_vr_ctx* ctx)
-{
-/*
- * enqueue a reset event on the ctx, drop all mappings etc.
- */
-	return ARCAN_ERRC_NOT_IMPLEMENTED;
 }
 
 /*
@@ -134,61 +126,132 @@ enum arcan_ffunc_rv arcan_vr_ffunc FFUNC_HEAD
 	struct arcan_vr_ctx* ctx = state.ptr;
 	struct arcan_frameserver* tgt = ctx->connection;
 
-	if (!tgt || state.tag != ARCAN_TAG_FRAMESERV)
+	if (!tgt || state.tag != ARCAN_TAG_VR)
 		return FRV_NOFRAME;
 
-/* check if allocation mask has changed, if so, a new device has been
- * detected. */
+	struct arcan_shmif_vr* vr = tgt->desc.aext.vr;
+/* poll allocation mask for events */
 
-	if (cmd == FFUNC_POLL){
+	TRAMP_GUARD(FRV_NOFRAME, tgt);
+	if (cmd == FFUNC_POLL && vr){
+		for (size_t i = 0; i < LIMB_LIM; i++){
+			if (!ctx->limb_map[i])
+				continue;
+
+/* naive approach: copy / verify data, update position state for object if they
+ * match */
+		}
 	}
-	else if (cmd == FFUNC_TICK){
+	else if (cmd == FFUNC_TICK && vr){
+/* check allocation masks */
+		uint_least64_t map = atomic_load(&vr->limb_mask);
+		uint64_t new = map & ~ctx->map;
+		uint64_t lost = ctx->map & ~map;
 
+		if (new){
+			for (uint64_t i = 0; i < LIMB_LIM; i++){
+				if ((1 << i) & new){
+					arcan_event_enqueue(arcan_event_defaultctx(),
+					&(struct arcan_event){
+						.category = EVENT_FSRV,
+						.fsrv.kind = EVENT_FSRV_ADDVRLIMB,
+						.fsrv.limb = i
+					});
+				}
+			}
+		}
+
+		if (lost){
+			for (uint64_t i = 0; i < LIMB_LIM; i++){
+				if ((1 << i) & lost){
+					arcan_event_enqueue(arcan_event_defaultctx(),
+					&(struct arcan_event){
+						.category = EVENT_FSRV,
+						.fsrv.kind = EVENT_FSRV_LOSTVRLIMB,
+						.fsrv.limb = i
+					});
+					if (ctx->limb_map[i])
+						arcan_3d_bindvr(ctx->limb_map[i], NULL);
+				}
+			}
+		}
+		ctx->map = map;
 	}
-/*
- * Run the null-feed as a default handler
- */
-	return arcan_frameserver_nullfeed(
-		cmd, buf, buf_sz, width, height, mode, state, srcid);
+	else if (cmd == FFUNC_DESTROY && vr){
+/* dms will deal with shutdown / deallocation */
+		for (size_t i = 0; i < LIMB_LIM; i++){
+			if (ctx->limb_map[i]){
+				arcan_3d_bindvr(ctx->limb_map[i], NULL);
+				ctx->limb_map[i] = 0;
+			}
+		}
+	}
+
+/* Run the null-feed as a default handler */
+	struct vfunc_state inst = {
+		.ptr = tgt,
+		.tag = ARCAN_TAG_FRAMESERV
+	};
+
+/* _feed will reenter, need to use full vdirecct so that we get resize-
+ * behavior, needed for the extra aproto- mapping to work */
+	platform_fsrv_leave();
+	return arcan_frameserver_vdirect(
+		cmd, buf, buf_sz, width, height, mode, inst, srcid);
 }
 
-arcan_errc arcan_vr_camtag(struct arcan_vr_ctx* ctx,
-	arcan_vobj_id left, arcan_vobj_id right)
+arcan_errc arcan_vr_maplimb(
+	struct arcan_vr_ctx* ctx, unsigned ind, arcan_vobj_id vid)
 {
-/*
- * find the leye/reye metadata and behave similar to a camtag
- */
-	return ARCAN_ERRC_NOT_IMPLEMENTED;
+	if (!ctx)
+		return ARCAN_ERRC_UNACCEPTED_STATE;
+
+	if (ind >= LIMB_LIM)
+		return ARCAN_ERRC_OUT_OF_SPACE;
+
+/* only 1:1 allowed */
+	for (size_t i = 0; i < LIMB_LIM; i++)
+		if (ctx->limb_map[i] == vid)
+			return ARCAN_ERRC_UNACCEPTED_STATE;
+
+/* unmap- pre-existing? */
+	if (ctx->limb_map[ind])
+		arcan_3d_bindvr(ctx->limb_map[ind], NULL);
+
+	ctx->limb_map[ind] = vid;
+	return arcan_3d_bindvr(vid, ctx);
 }
 
-/*
- * Retrieve (if possible) two distortion meshes to use for texturing
- * the camtagged rendertargets. The output data is formatted planar:
- * plane-1[x, y, z] plane-2[s, t] with n_elems in each plane.
- */
-arcan_errc arcan_vr_distortion(struct arcan_vr_ctx* ctx,
-	float* out_left, float* l_elems, uint8_t* out_right, size_t* r_elems)
+arcan_errc arcan_vr_release(struct arcan_vr_ctx* ctx, arcan_vobj_id vid)
 {
-/*
- * map to bchunk- events if those have been exposed with the
- * special subextensiuon for distortion mesh format
- */
-	return ARCAN_ERRC_NOT_IMPLEMENTED;
+	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+	for (size_t i = 0; i < LIMB_LIM; i++)
+		if (ctx->limb_map[i] == vid){
+			ctx->limb_map[i] = 0;
+			rv = ARCAN_OK;
+		}
+	return rv;
 }
 
-arcan_errc arcan_vr_displaydata(struct arcan_vr_ctx* ctx,
-	struct vr_meta* dst)
+arcan_errc arcan_vr_displaydata(
+	struct arcan_vr_ctx* ctx, struct vr_meta* dst)
 {
-/*
- * copy out from the vr structure
- */
-	return ARCAN_ERRC_NOT_IMPLEMENTED;
+	struct arcan_frameserver* tgt = ctx->connection;
+
+	if (!tgt || !tgt->desc.aext.vr)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+
+	struct arcan_shmif_vr* vr = tgt->desc.aext.vr;
+	TRAMP_GUARD(ARCAN_ERRC_UNACCEPTED_STATE, tgt);
+	*dst = vr->meta;
+	platform_fsrv_leave();
+	return ARCAN_OK;
 }
 
 arcan_errc arcan_vr_shutdown(struct arcan_vr_ctx* ctx)
 {
 /*
- * enqueue an EXIT_ command on the connection, enqueue on evctx
+ * enqueue an EXIT_ command on the connection (if alive), enqueue on evctx
  * to indicate that we're gone
  */
 	return ARCAN_ERRC_NOT_IMPLEMENTED;

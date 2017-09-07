@@ -337,15 +337,16 @@ static void process_scene_normal(arcan_vobject_litem* cell,
 	}
 }
 
-arcan_errc arcan_3d_projectbb(arcan_vobj_id modelid,
-	arcan_vobj_id camid, vector* dst){
+arcan_errc arcan_3d_bindvr(arcan_vobj_id id, struct arcan_vr_ctx* vrref)
+{
+	arcan_vobject* model = arcan_video_getobject(id);
+	if (!model)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
-	arcan_vobject* cam = arcan_video_getobject(camid);
-	arcan_vobject* model = arcan_video_getobject(modelid);
-
-	if (!cam || !model || cam->feed.state.tag != ARCAN_TAG_3DCAMERA ||
-		model->feed.state.tag != ARCAN_TAG_3DOBJ)
+	if (model->feed.state.tag != ARCAN_TAG_3DOBJ)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
+
+	((arcan_3dmodel*)model->feed.state.ptr)->vrref = vrref;
 
 	return ARCAN_OK;
 }

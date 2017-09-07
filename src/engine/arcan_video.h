@@ -140,7 +140,8 @@ ARCAN_TAG_3DOBJ     = 6,/* got a corresponding entry in arcan_3dbase, ffunc is
 ARCAN_TAG_3DCAMERA  = 7,/* set after using camtag,
 													 only usable on NONE/IMAGE                          */
 ARCAN_TAG_CUSTOMPROC= 8, /* used in Lua specific contexts, calctarget etc.    */
-ARCAN_TAG_LWA       = 9  /* used for LWA- to arcan subsegments                */
+ARCAN_TAG_LWA       = 9, /* used for LWA- to arcan subsegments                */
+ARCAN_TAG_VR        = 10 /* used by arcan_vr_ffunc (arcan_vr.c)               */
 };
 
 /*
