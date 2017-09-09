@@ -1,6 +1,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <inttypes.h>
 #include <stdbool.h>
 #include <unistd.h>
 #include <stdio.h>
@@ -22,8 +23,12 @@ static bool lookup(const char* const key,
 		return false;
 	}
 
-	char tmpbuf[strlen(key) + sizeof("ARCAN_")];
-	snprintf(tmpbuf, sizeof(tmpbuf), "ARCAN_%s", key);
+	char tmpbuf[strlen(key) + sizeof("ARCAN_") + sizeof("65536_")];
+
+	if (ind > 0)
+		snprintf(tmpbuf, sizeof(tmpbuf), "ARCAN_%s_%"PRIu16, key, ind);
+	else
+		snprintf(tmpbuf, sizeof(tmpbuf), "ARCAN_%s", key);
 	char* tmp = tmpbuf;
 	while(*tmp){
 		*tmp = toupper(*tmp);
@@ -39,7 +44,11 @@ static bool lookup(const char* const key,
 	if (!test){
 		const char* appl;
 		struct arcan_dbh* dbh = arcan_db_get_shared(&appl);
-		test = arcan_db_appl_val(dbh, appl, key);
+		if (ind > 0)
+			snprintf(tmpbuf, sizeof(tmpbuf), "%s_%"PRIu16, key, ind);
+		else
+			snprintf(tmpbuf, sizeof(tmpbuf), "%s", key);
+		test = arcan_db_appl_val(dbh, appl, tmpbuf);
 		if (test && val){
 			*val = test;
 		}

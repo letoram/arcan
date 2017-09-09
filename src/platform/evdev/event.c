@@ -11,6 +11,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <errno.h>
 #include <poll.h>
@@ -47,6 +48,19 @@
 static struct xkb_context* xkb_context;
 #endif
 
+#ifdef _DEBUG
+#define DEBUG 1
+#else
+#define DEBUG 0
+#endif
+
+#define debug_print(fmt, ...) \
+            do { if (DEBUG) arcan_warning("%s:%d:%s(): " fmt "\n", \
+						"egl-dri:", __LINE__, __func__,##__VA_ARGS__); } while (0)
+
+/* #define verbose_print */
+#define verbose_print debug_print
+
 /*
  * scan / probe a node- dir (ENVV overridable)
  */
@@ -55,7 +69,6 @@ static struct xkb_context* xkb_context;
 #endif
 
 static char* notify_scan_dir = NOTIFY_SCAN_DIR;
-static bool log_verbose = false;
 
 /*
  * In happy-fun everything is user-space land, we face the policy problem of
@@ -95,7 +108,6 @@ static const char* envopts[] = {
 		"(Default: "NOTIFY_SCAN_DIR")",
 	"tty_override=path/to/dev", "Force a specific tty- device",
 	"disable_ttyswap", "Disable tty- swapping signal handler",
-	"verbose", "_warning log() input node events",
 #ifdef HAVE_XKBCOMMON
 	"", "",
 	"[XKB-ARGUMENTS]", "[these are ENV- only (fwd to libxkbcommon)]",
@@ -244,14 +256,19 @@ static struct devnode* lookup_devnode(int devid)
 	if (devid <= 0)
 		devid = iodev.mouseid;
 
-	if (devid < iodev.sz_nodes)
+	if (devid < iodev.sz_nodes){
+		verbose_print("%d => %"PRIxPTR, devid, &iodev.nodes[devid]);
 		return &iodev.nodes[devid];
-
-	for (size_t i = 0; i < iodev.sz_nodes; i++){
-		if (iodev.nodes[i].devnum == devid)
-			return &iodev.nodes[i];
 	}
 
+	for (size_t i = 0; i < iodev.sz_nodes; i++){
+		if (iodev.nodes[i].devnum == devid){
+			verbose_print("%d:%zu => %"PRIxPTR, devid, i, &iodev.nodes[i]);
+			return &iodev.nodes[i];
+		}
+	}
+
+	verbose_print("%zu => %d", devid, -1);
 	return NULL;
 }
 
@@ -263,19 +280,17 @@ static bool identify(int fd, const char* path,
 	char* label, size_t label_sz, unsigned short* dnum)
 {
 	if (-1 == ioctl(fd, EVIOCGNAME(label_sz), label)){
-		if (log_verbose)
-			arcan_warning("input/identify: bad EVIOCGNAME, setting unknown\n");
+		debug_print("input/identify: bad EVIOCGNAME, setting unknown\n");
 		snprintf(label, label_sz, "unknown");
 	}
 	else
-		if (log_verbose)
-			arcan_warning("input/identify(%d): %s name resolved to %s\n",
-				fd, path, label);
+		verbose_print(
+			"input/identify(%d): %s name resolved to %s", fd, path, label);
 
 	struct input_id nodeid;
 	if (-1 == ioctl(fd, EVIOCGID, &nodeid)){
-		arcan_warning("input/identify(%d): no EVIOCGID, "
-			"reason:%s\n", fd, strerror(errno));
+		debug_print(
+			"input/identify(%d): no EVIOCGID, reason:%s", fd, strerror(errno));
 		return false;
 	}
 
@@ -283,6 +298,8 @@ static bool identify(int fd, const char* path,
  * first, check if any other subsystem knows about this one and ignore if so
  */
 	if (arcan_led_known(nodeid.vendor, nodeid.product)){
+		debug_print(
+			"led subsys know %d, %d\n", (int)nodeid.vendor, (int)nodeid.product);
 		arcan_led_init();
 		return false;
 	}
@@ -522,15 +539,15 @@ static bool discovered(struct arcan_evctx* ctx,
 	int fd = fmt_open(0, O_NONBLOCK | O_RDWR | O_CLOEXEC,
 		"%s/%.*s", notify_scan_dir, name_len, name);
 
-	if (log_verbose)
-		arcan_warning(
-			"input: trying to add %s/%.*s\n", notify_scan_dir, (int)name_len, name);
+	verbose_print("input: trying to add %s/%.*s",
+		notify_scan_dir, (int)name_len, name);
 
 	if (-1 == fd && errno == EACCES){
 		if (gstate.pending >= COUNT_OF(pending)){
-			arcan_warning(
+			debug_print(
 				"input: pending queue limit exceeded, possibly something wrong"
-				" with monitored folder (%s) and permissions.\n", notify_scan_dir);
+				" with monitored folder (%s) and permissions.", notify_scan_dir
+			);
 			return false;
 		}
 
@@ -629,6 +646,8 @@ static void disconnect(struct arcan_evctx* ctx, struct devnode* node)
 				arcan_led_remove(node->led.ctrlid);
 				close(node->led.fds[0]);
 				close(node->led.fds[1]);
+				node->led.fds[0] = -1;
+				node->led.fds[1] = -1;
 			}
 #ifdef HAVE_XKBCOMMON
 			if (node->type == DEVNODE_KEYBOARD && node->keyboard.xkb_state){
@@ -1088,28 +1107,26 @@ static void got_device(struct arcan_evctx* ctx, int fd, const char* path)
 
 	struct stat fdstat;
 	if (-1 == fstat(fd, &fdstat)){
-		if (log_verbose)
-			arcan_warning(
-				"input: couldn't stat node to identify (%s)\n", strerror(errno));
+			verbose_print(
+				"input: couldn't stat node to identify (%s)", strerror(errno));
 		return;
 	}
 
 	if ((fdstat.st_mode & (S_IFCHR | S_IFBLK)) == 0){
-		if (log_verbose)
-			arcan_warning(
-				"input: ignoring %s, not a character or block device\n", path);
+			verbose_print(
+				"input: ignoring %s, not a character or block device", path);
 		return;
 	}
 
 	if (!identify(fd, path, node.label, sizeof(node.label), &node.devnum)){
-		if (log_verbose)
-			arcan_warning("input: identify failed on %s, ignoring unknown.\n", path);
+			verbose_print(
+				"input: identify failed on %s, ignoring unknown.", path);
 		close(fd);
 		return;
 	}
 
 	if (iodev.n_devs >= MAX_DEVICES){
-		arcan_warning("input: device limit reached, ignoring %s.\n", path);
+		arcan_warning("input: device limit reached, ignoring %s.", path);
 		close(fd);
 	}
 
@@ -1137,8 +1154,8 @@ static void got_device(struct arcan_evctx* ctx, int fd, const char* path)
 	long prop[ nbits ];
 
 	if (-1 == ioctl(fd, EVIOCGBIT(0, EV_MAX), &prop)){
-		if (log_verbose)
-			arcan_warning("input: probing %s failed, %s\n", path, strerror(errno));
+		verbose_print(
+			"input: probing %s failed, %s", path, strerror(errno));
 		close(fd);
 		return;
 	}
@@ -1218,8 +1235,8 @@ static void got_device(struct arcan_evctx* ctx, int fd, const char* path)
 /* finally added */
 	int hole = alloc_node_slot(path);
 	if (-1 == hole){
-		if (log_verbose)
-			arcan_warning("input: dropped %s due to errors during scan.\n", path);
+		verbose_print(
+			"input: dropped %s due to errors during scan.", path);
 		close(fd);
 		return;
 	}
@@ -1253,9 +1270,8 @@ static void got_device(struct arcan_evctx* ctx, int fd, const char* path)
 	}
 	iodev.nodes[hole] = node;
 
-	if (log_verbose)
-		arcan_warning("input: (%s:%s) added as type: %s\n",
-			path, node.label, lookup_type(node.type));
+	verbose_print("input: (%s:%s) added as type: %s",
+		path, node.label, lookup_type(node.type));
 
 	return;
 }
@@ -1289,8 +1305,8 @@ void platform_event_rescan_idev(struct arcan_evctx* ctx)
 
 		globfree(&res);
 	}
-	else if (log_verbose)
-		arcan_warning("input: couldn't scan %s\n", notify_scan_dir);
+
+	verbose_print("input: couldn't scan %s", notify_scan_dir);
 }
 
 static void update_state(int code, bool state, unsigned* statev)
@@ -1858,7 +1874,7 @@ void platform_event_deinit(struct arcan_evctx* ctx)
 	if (isatty(gstate.tty) && gstate.mute){
 		ioctl(gstate.tty, KDSKBMUTE, 0);
 		if (-1 == ioctl(gstate.tty, KDSETMODE, KD_TEXT)){
-			arcan_warning("reset failed %s\n", strerror(errno));
+			arcan_warning("reset TTY failed %s\n", strerror(errno));
 		}
 
 		gstate.kbmode = gstate.kbmode == K_OFF ? K_XLATE : gstate.kbmode;
@@ -1883,11 +1899,14 @@ void platform_event_deinit(struct arcan_evctx* ctx)
 /* note, for VT switching this means that the state of devices when it comes
  * to filtering etc. do not persist between external launches, should rework
  * this */
-	for (size_t i = 0; i < iodev.n_devs; i++)
+	for (size_t i = 0; i < iodev.n_devs; i++){
 		if (iodev.nodes[i].handle > 0){
+			verbose_print("closing %zu:%d", i, iodev.nodes[i].handle);
 			close(iodev.nodes[i].handle);
 			memset(&iodev.nodes[i], '\0', sizeof(struct devnode));
+			iodev.nodes[i].handle = -1;
 		}
+	}
 
 	iodev.n_devs = 0;
 	gstate.init = false;
@@ -1995,6 +2014,7 @@ void platform_event_init(arcan_evctx* ctx)
 	gstate.tty = find_tty();
 
 	if (isatty(gstate.tty)){
+		debug_print("found tty, resetting");
 		ioctl(gstate.tty, KDGETMODE, &gstate.mode);
 		ioctl(gstate.tty, KDGETLED, &gstate.leds);
 		ioctl(gstate.tty, KDGKBMODE, &gstate.kbmode);
@@ -2010,7 +2030,6 @@ void platform_event_init(arcan_evctx* ctx)
 
 	if (gstate.sigpipe[0] == -1)
 		setup_signals();
-	log_verbose = get_config("event_verbose", 0, NULL, tag);
 
 	char* newsd;
 	if (notify_scan_dir != NOTIFY_SCAN_DIR){
