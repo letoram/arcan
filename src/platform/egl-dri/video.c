@@ -15,23 +15,21 @@
  *      When a store has been mapped using maphandle, re-use the handle to
  *      also map as scanout directly. Saves a copy.
  *
- *  [3] rework configuration API
- *      remove all environment variables, add a per-GPU path.
+ *  [3] allow all AGP assets to reflect to referenced GPUs
  *
- *  [4] allow multiple GPUs via [3]
- *      make AGP GPU aware by adding an opaque ID that sets the current
- *      AGP target.
+ *  [4] multi-GPU scanout
  *
- *  [5] allow all AGP assets to reflect to referenced GPUs
+ *  [5] per-card node atomic- setup toggle
  *
- *  [6] switch all paths to use atomic-API, requires fresh kernels etc.
- *      so will take a year or two before relevant
+ *  [6] move all AGP transfers to be fence-synched.
  *
- *  [7] move all AGP transfers to be fence-synched.
+ *  [7] zero-copy AGP streaming support on AMD devices with buffer pinning.
  *
- *  [8] zero-copy AGP streaming support on AMD devices with buffer pinning.
+ *  [8] EXL_EXT_platform_device for shmif on nvidia
  *
- *  [9] EXL_EXT_platform_device for shmif on nvidia
+ *  [9] framebuffer- based scanout and agp modifications for software- only
+ *      AGP implementation or framebuffer- AGP output (latter is simple,
+ *      just readback output FBO).
  */
 
 /*
@@ -118,9 +116,7 @@
             do { if (DEBUG) arcan_warning("%s:%d:%s(): " fmt "\n", \
 						"egl-dri:", __LINE__, __func__,##__VA_ARGS__); } while (0)
 
-/*
- * very noisy, enable for specific kinds of debugging
- */
+/* very noisy, enable for specific kinds of debugging */
 #define verbose_print
 /* #define verbose_print debug_print */
 
@@ -220,9 +216,6 @@ static void* lookup_call(void* tag, const char* sym, bool req)
 	return res;
 }
 
-/*
- * real heuristics scheduled for 0.5.3, see .5 at top
- */
 static char* egl_synchopts[] = {
 	"default", "Display controls refresh",
 	"fast", "Clients refresh during display synch",
@@ -231,14 +224,13 @@ static char* egl_synchopts[] = {
 };
 
 static char* egl_envopts[] = {
-	"device=/path/to/dev", "graphics device (_0 implicit, "
-		"use _1, _2, suffix for multiple)",
-	"device_egl", "set device (_0)",
-	"device_libs", ", separated list of libs used for device (_0, _1, ..)"
+	"[ for multiple devices, append _n to key (e.g. device_2=) ]", "",
+	"device=/path/to/dev", "for multiple devices suffix with _n (n = 2,3..)",
+	"device_buffer=method", "set buffer transfer method (gbm, streams)",
+	"device_libs=lib1:lib2", "libs used for device",
 	"device_connector=ind", "primary display connector index",
 	"device_master", "fail hard if drmMaster can't be obtained",
 	"device_wait", "loop until an active connector is found",
-	"ARCAN_VIDEO_DUMP", "(env only) set to dump- output connectors and exit",
 	NULL
 };
 
@@ -274,7 +266,7 @@ struct dev_node {
  * card_id is some unique sequential identifier for this card (not used)
  * crtc is an allocation bitmap for output port<->display allocation
  * atomic is set if the driver kms side supports/needs atomic modesetting */
-	bool master;
+	bool master, force_master, wait_connector;
 	int card_id;
 	uint32_t crtc_alloc;
 	bool atomic;
@@ -310,19 +302,26 @@ enum disp_state {
 };
 
 /*
- * Multiple cards is still a WIP, just incrementing these won't work.
+ * Multiple cards is still a WIP, just incrementing these won't work -
+ * there's still some affinity work needed in AGP backends and TLS- based
+ * 'current card output / agp context' management to be done.
  */
 static const int MAX_NODES = 1;
 static struct dev_node nodes[1];
 
+enum output_format {
+	output_888 = 0,
+	output_10b = 1
+};
+
 /*
  * aggregation struct that represent one triple of display, card, bindings
- *
  */
 struct dispout {
 /* connect drm, gbm and EGLs idea of a device */
 	struct dev_node* device;
 	unsigned long long last_update;
+	int output_format;
 
 /* the output buffers, actual fields use will vary with underlying
  * method, i.e. different for normal gbm, headless gbm and eglstreams */
@@ -484,6 +483,7 @@ static void release_card(size_t i)
 
 	if (IS_GBM_DISPLAY(&nodes[i])){
 		gbm_device_destroy(nodes[i].gbm);
+		nodes[i].gbm = NULL;
 	}
 	else {
 	}
@@ -491,44 +491,42 @@ static void release_card(size_t i)
 	if (nodes[i].master)
 		drmDropMaster(nodes[i].fd);
 	close(nodes[i].fd);
-
 	nodes[i].fd = -1;
+
 	if (nodes[i].display != EGL_NO_DISPLAY){
 		nodes[i].eglenv.terminate(nodes[i].display);
 		nodes[i].display = EGL_NO_DISPLAY;
 	}
 }
 
-/* naive approach, unless env is set, just scan /dev/dri/card* and
- * grab the first one present that also results in a working gbm
- * device, only used during first init */
-static void grab_card(int n, char** card, int* fd)
+void setup_backlight_ledmap()
 {
-	*card = NULL;
-	*fd = -1;
-	const char* override = getenv("ARCAN_VIDEO_DEVICE");
-	if (override){
-		if (isdigit(override[0]))
-			*fd = strtoul(override, NULL, 10);
-		else
-			*card = strdup(override);
+	if (pipe(egl_dri.ledpair) == -1)
 		return;
+
+	egl_dri.ledid = arcan_led_register(egl_dri.ledpair[1], -1,
+		"backlight", (struct led_capabilities){
+		.nleds = MAX_DISPLAYS,
+		.variable_brightness = true,
+		.rgb = false
+	});
+
+/* prepare the pipe-pair to be non-block and close-on-exit */
+	if (-1 == egl_dri.ledid){
+		close(egl_dri.ledpair[0]);
+		close(egl_dri.ledpair[1]);
+		egl_dri.ledpair[0] = egl_dri.ledpair[1] = -1;
 	}
+	else{
+		for (size_t i = 0; i < 2; i++){
+			int flags = fcntl(egl_dri.ledpair[i], F_GETFL);
+			if (-1 != flags)
+				fcntl(egl_dri.ledpair[i], F_SETFL, flags | O_NONBLOCK);
 
-#ifndef VDEV_GLOB
-#define VDEV_GLOB "/dev/dri/card*"
-#endif
-
-	glob_t res;
-
-	if (glob(VDEV_GLOB, 0, NULL, &res) == 0){
-		char** beg = res.gl_pathv;
-		while(n > 0 && *beg++){
-			n--;
+			flags = fcntl(egl_dri.ledpair[i], F_GETFD);
+			if (-1 != flags)
+				fcntl(egl_dri.ledpair[i], F_SETFD, flags | O_CLOEXEC);
 		}
-		char* rstr = *beg ? strdup(*beg) : NULL;
-		globfree(&res);
-		*card = rstr;
 	}
 }
 
@@ -629,7 +627,8 @@ static int setup_buffers_stream(struct dispout* d)
  		EGL_NONE
  	};
 
-	const char *extensionString = eglQueryString(d->device->display, EGL_EXTENSIONS);
+	const char *extensionString =
+		eglQueryString(d->device->display, EGL_EXTENSIONS);
 /*
  * 1. Match output layer to KMS plane
  */
@@ -702,32 +701,34 @@ static int setup_buffers_gbm(struct dispout* d)
 			lookup_call, d->device->eglenv.get_proc_address);
 	}
 
-#ifdef HDEF_10BIT
-	d->buffer.surface = gbm_surface_create(d->device->gbm,
-		d->display.mode->hdisplay, d->display.mode->vdisplay,
-		GBM_FORMAT_XRGB2101010, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING
-	);
+	if (d->output_format == 1){
+		d->buffer.surface = gbm_surface_create(d->device->gbm,
+			d->display.mode->hdisplay, d->display.mode->vdisplay,
+			GBM_FORMAT_XRGB2101010, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING
+		);
 
-	if (!d->buffer.surface && (debug_print("libgbm(), 10-bit output\
-		requested but no suitable scanout, trying 8-bit\n"), 1))
-#else
-	d->buffer.surface = gbm_surface_create(d->device->gbm,
-		d->display.mode->hdisplay, d->display.mode->vdisplay,
-		GBM_FORMAT_XRGB8888, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING
-	);
-#endif
+		if (!d->buffer.surface)
+			debug_print("libgbm(), 10-bit output\
+				requested but no suitable scanout, trying 8-bit\n");
+	}
+
+	if (!d->buffer.surface)
+		d->buffer.surface = gbm_surface_create(d->device->gbm,
+			d->display.mode->hdisplay, d->display.mode->vdisplay,
+			GBM_FORMAT_XRGB8888, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING
+		);
 
 	d->buffer.esurf = d->device->eglenv.create_window_surface(
 		d->device->display, d->device->config, (uintptr_t)d->buffer.surface, NULL);
 
-	if (d->buffer.esurf == EGL_NO_SURFACE) {
+	if (d->buffer.esurf == EGL_NO_SURFACE){
 		debug_print("couldn't create a window surface.");
 		return -1;
 	}
 
 	egl_dri.last_display = d;
-	d->device->eglenv.make_current(d->device->display, d->buffer.esurf,
-		d->buffer.esurf, d->device->context);
+	d->device->eglenv.make_current(d->device->display,
+		d->buffer.esurf, d->buffer.esurf, d->device->context);
 
 	return 0;
 }
@@ -1447,10 +1448,6 @@ static bool setup_node(struct dev_node* node)
  */
 static int setup_node_egl(struct dev_node* node, const char* lib, int fd)
 {
-/* this is 'reserved' in order for future config to specify a custom lookup */
-	if (!node->eglenv.get_proc_address)
-		node->eglenv.get_proc_address = (PFNEGLGETPROCADDRESSPROC)eglGetProcAddress;
-
 	map_functions(&node->eglenv, lookup, NULL);
 	map_ext_functions(&node->eglenv, lookup_call, node->eglenv.get_proc_address);
 
@@ -1459,7 +1456,7 @@ static int setup_node_egl(struct dev_node* node, const char* lib, int fd)
 		return -1;
 	}
 
-	const char* extstr = node->eglenv.query_string(EGL_NO_DISPLAY, EGL_EXTENSIONS);
+	const char* extstr = node->eglenv.query_string(EGL_NO_DISPLAY,EGL_EXTENSIONS);
 	const char* lastext;
 	if (!check_ext(lastext = "EGL_EXT_platform_base", extstr)){
 		debug_print("EGLStreams, missing extension (%s)", lastext);
@@ -1549,29 +1546,26 @@ static void cleanup_node_gbm(struct dev_node* node)
 	node->gbm = NULL;
 }
 
-static int setup_node_gbm(struct dev_node* node,
-	const char* path, const char* lib, int fd)
+static int setup_node_gbm(struct dev_node* node, const char* path, int fd)
 {
 	SET_SEGV_MSG("libdrm(), open device failed (check permissions) "
 		" or use ARCAN_VIDEO_DEVICE environment.\n");
 
-	if (!node->eglenv.get_proc_address)
-		node->eglenv.get_proc_address = (PFNEGLGETPROCADDRESSPROC) eglGetProcAddress;
 	map_functions(&node->eglenv, lookup, NULL);
 	map_ext_functions(&node->eglenv, lookup_call, node->eglenv.get_proc_address);
 	node->rnode = -1;
 	if (!path && fd == -1)
 		return -1;
-	else if (!path)
+	else if (fd != -1)
 		node->fd = fd;
 	else
-		node->fd = open(path, O_RDWR);
+		node->fd = open(path, O_RDWR | O_CLOEXEC);
 
 	if (-1 == node->fd){
 		if (path)
-			debug_print("EGLStreams, open device failed on path(%s)", path);
+			debug_print("gbm, open device failed on path(%s)", path);
 		else
-			debug_print("EGLStreams, open device failed on fd(%d)", fd);
+			debug_print("gbm, open device failed on fd(%d)", fd);
 		return -1;
 	}
 
@@ -1580,7 +1574,7 @@ static int setup_node_gbm(struct dev_node* node,
 	node->gbm = gbm_create_device(node->fd);
 
 	if (!node->gbm){
-		debug_print("EGLStreams, couldn't create gbm device on node");
+		debug_print("gbm, couldn't create gbm device on node");
 		cleanup_node_gbm(node);
 		return -1;
 	}
@@ -1588,11 +1582,7 @@ static int setup_node_gbm(struct dev_node* node,
 	node->method = M_GBM_SWAP;
 	node->display = node->eglenv.get_display((void*)(node->gbm));
 
-/*
- * This is a hack until we find a better way to derive a handle to a matching
- * render node from the gbm connection, and then use TARGET_COMMAND_DEVICE_NODE
- * I recall seeing something in MESA for the device<->render-node matching
- */
+/* there are actual ways of deriving this somewhere in DRM */
 	const char cpath[] = "/dev/dri/card";
 	char pbuf[24] = "/dev/dri/renderD128";
 
@@ -1600,6 +1590,8 @@ static int setup_node_gbm(struct dev_node* node,
 		size_t ind = strtoul(&path[13], NULL, 10);
 		snprintf(pbuf, 24, "/dev/dri/renderD%d", (int)(ind + 128));
 	}
+
+/* and this should only use devicehint for clients going accelerated */
 	setenv("ARCAN_RENDER_NODE", pbuf, 1);
 	node->rnode = open(pbuf, O_RDWR | O_CLOEXEC);
 	return 0;
@@ -1881,7 +1873,7 @@ retry:
 		drmModeFreeResources(res);
 
 /* only wait for the first display */
-		if (d == &displays[0] && getenv("ARCAN_VIDEO_WAIT_CONNECTOR")){
+		if (d == &displays[0] && d->device->wait_connector){
 			debug_print("(%d) setup-kms, no display - retry in 5s", (int)d->id);
 			sleep(5);
 			goto retry;
@@ -2033,8 +2025,9 @@ drop_disp:
 	return -1;
 }
 
-static bool map_handle_gbm(
-	struct agp_vstore* dst, int64_t handle)
+/* NOTE: this does not handle multiple planes correctly,
+ * interface needs to carry both that, strides/offsets and designated-gpu */
+static bool map_handle_gbm(struct agp_vstore* dst, int64_t handle)
 {
 	if (!nodes[0].eglenv.create_image || !nodes[0].eglenv.image_target_texture2D)
 		return false;
@@ -2117,6 +2110,8 @@ static bool map_handle_gbm(
  * GL_TEXTURE_2D as the target for 2D buffers. Of course, there's a 'special'
  * GL_TEXTURE_EXTERNAL_OES target that also requires a different sampler in
  * the shader code. This leaves us with 3-ish options.
+ * This is actually true for GBM- buffers as well, but so far MESA doesn't
+ * really give a duck.
  *
  * 1. Mimic 'CopyTextureCHROMIUM' - explicit render-to-texture pass.
  * 2. The 'Cogl' approach - Make shader management exponentially worse by
@@ -2381,6 +2376,8 @@ static void disable_display(struct dispout* d, bool dealloc)
 
 	if (IS_GBM_DISPLAY(d->device)){
 		if (d->buffer.surface){
+			debug_print("destroy gbm dislay");
+
 			if (d->buffer.cur_bo)
 				gbm_surface_release_buffer(d->buffer.surface, d->buffer.cur_bo);
 			gbm_surface_destroy(d->buffer.surface);
@@ -2390,6 +2387,8 @@ static void disable_display(struct dispout* d, bool dealloc)
 
 		d->buffer.surface = NULL;
 	}
+	else
+		debug_print("EGL- display");
 
 	debug_print("(%d) release crtc id (%d)", (int)d->id,(int)d->display.crtc_ind);
 	d->device->crtc_alloc &= ~(1 << d->display.crtc_ind);
@@ -2405,13 +2404,13 @@ static void disable_display(struct dispout* d, bool dealloc)
 		else if (0 > drmModeSetCrtc(
 			d->device->fd,
 			d->display.old_crtc->crtc_id,
-			0 /* d->display.old_crtc->buffer_id */,
+			d->display.old_crtc->buffer_id,
 			d->display.old_crtc->x,
 			d->display.old_crtc->y,
 			&d->display.con_id, 1,
 			&d->display.old_crtc->mode
 		)){
-			debug_print("Error setting old CRTC on %d\n", d->display.con_id);
+			debug_print("Error setting old CRTC on %d", d->display.con_id);
 		}
 	}
 
@@ -2527,6 +2526,188 @@ static void flush_leds()
 	}
 }
 
+static bool try_node(int fd, const char* pathref,
+	int dst_ind, bool gbm, bool force_master, int connid, int w, int h)
+{
+/* set default lookup function if none has been provided */
+	if (!nodes[dst_ind].eglenv.get_proc_address){
+		nodes[dst_ind].eglenv.get_proc_address =
+			(PFNEGLGETPROCADDRESSPROC)eglGetProcAddress;
+	}
+
+	if (gbm){
+		if (0 != setup_node_gbm(&nodes[dst_ind], pathref, fd)){
+			nodes[dst_ind].eglenv.get_proc_address = NULL;
+			debug_print("couldn't open (%d:%s) in GBM mode\n",
+				fd, pathref ? pathref : "(no path)");
+			return false;
+		}
+	}
+	else {
+		if (0 != setup_node_egl(&nodes[dst_ind], pathref, fd)){
+			debug_print("couldn't open (%d:%s) in EGLStreams mode\n",
+				fd, pathref ? pathref : "(no path)");
+			release_card(dst_ind);
+			return false;
+		}
+	}
+
+	if (!setup_node(&nodes[dst_ind])){
+		debug_print("setup/configure [%d](%d:%s)\n",
+			dst_ind, fd, pathref ? pathref : "(no path)");
+		release_card(dst_ind);
+		return false;
+	}
+
+	if (-1 == drmSetMaster(nodes[dst_ind].fd)){
+		debug_print("set drmMaster on [%d](%d:%s) failed, reason: %s\n",
+			dst_ind, fd, pathref ? pathref : "(no path)", strerror(errno));
+		if (force_master){
+			release_card(dst_ind);
+			return false;
+		}
+	}
+
+	nodes[dst_ind].force_master = force_master;
+	struct dispout* d = allocate_display(&nodes[dst_ind]);
+	d->display.primary = dst_ind == 0;
+	egl_dri.last_display = d;
+
+	if (setup_kms(d, connid, w, h) != 0){
+		disable_display(d, true);
+		debug_print("card found, but no working/connected display");
+		release_card(dst_ind);
+		return false;
+	}
+
+	if (setup_buffers(d) != 0){
+		disable_display(d, true);
+		release_card(dst_ind);
+		return false;
+	}
+
+	d->backlight = backlight_init(NULL, d->device->card_id,
+	d->display.con->connector_type, d->display.con->connector_type_id);
+	if (d->backlight)
+		d->backlight_brightness = backlight_get_brightness(d->backlight);
+	return true;
+}
+
+/*
+		dump_connectors(stdout, &nodes[0], true);
+ */
+
+/*
+ * config/profile matching derived approach, for use when something more
+ * specific and sophisticated is desired
+ */
+static bool setup_cards_db(int w, int h)
+{
+	uintptr_t tag;
+	cfg_lookup_fun get_config = platform_config_lookup(&tag);
+
+/*
+ * NOTE: MultiGPU: increment search index here and populate each node
+ * accordingly.
+ */
+	int dstind = 0;
+	for (size_t devind = 0; devind < 1; devind++){
+		char* cfgstr;
+		int connind = -1;
+		bool gbm = true;
+
+		if (!get_config("video_device", devind, &cfgstr, tag))
+			return dstind > 0;
+
+		if (get_config("video_device_buffer", devind, &cfgstr, tag)){
+			if (strcmp(cfgstr, "streams") == 0)
+				gbm = false;
+			free(cfgstr);
+		}
+
+		if (get_config("video_device_libs", devind, &cfgstr, tag)){
+/* setup lookup function that uses the liblist and resolve that into the
+ * cardnode */
+			free(cfgstr);
+		}
+		if (get_config("video_device_connector", devind, &cfgstr, tag)){
+			connind = strtol(cfgstr, NULL, 10) % INT_MAX;
+			free(cfgstr);
+		}
+
+		bool force_master = get_config("video_device_master", devind, NULL, tag);
+		bool wait_conn = get_config("video_device_wait", devind, NULL, tag);
+
+		int fd = open(cfgstr, O_RDWR | O_CLOEXEC);
+		if (try_node(fd, cfgstr, dstind, gbm, force_master, connind, w, h)){
+			dstind++;
+		}
+		else
+			close(fd);
+	}
+
+	return dstind > 0;
+}
+
+/*
+ * Externally/inheritance based card management, some parent process is
+ * responsible for the device node. This has the drawback of not knowing the
+ * settings to use, so some transfer mechanism would be needed for that as
+ * well. This is primarily for inane garbage like logind.
+ */
+static bool setup_cards_inherit(int w, int h)
+{
+	const char* override = getenv("ARCAN_VIDEO_DEVFD");
+	if (!override)
+		return false;
+
+	int fd = -1;
+	if (isdigit(override[0]))
+		fd = strtoul(override, NULL, 10);
+
+	return try_node(fd, NULL, 0, true, false, -1, w, h);
+}
+
+/*
+ * naive approach - for when there's no explicit configuration set.
+ * This just globs a preset/os-specific path and takes the first
+ * device that appears and can be opened.
+ */
+static bool setup_cards_basic(int w, int h)
+{
+/*
+ * on OpenBSD etc. we have a different path, /dev/drm0
+ */
+#ifndef VDEV_GLOB
+#ifdef __OpenBSD__
+#define DEVICE_PATH "/dev/drm%zu"
+#else
+#define DEVICE_PATH "/dev/dri/card%zu"
+#endif
+#endif
+
+/* sweep as there might be more GPUs but without any connected
+ * display, indicating that it's not a valid target for autodetect. */
+	for (size_t i = 0; i < 4; i++){
+		char buf[sizeof(DEVICE_PATH)];
+		snprintf(buf, sizeof(buf), DEVICE_PATH, i);
+		int fd = open(buf, O_RDWR | O_CLOEXEC);
+		debug_print("trying [basic/auto] setup on %s\n", buf);
+		if (-1 != fd){
+/* possible quick hack, just check modules if we have nouveau or nvidia loaded
+ * and use that to select buffer mode - there's probably better ways but meh. */
+			if (try_node(fd, buf, 0, true, false, -1, w, h) ||
+				try_node(fd, buf, 0, false, false, -1, w, h))
+					return true;
+			else{
+				debug_print("node setup failed\n");
+				close(fd);
+			}
+		}
+	}
+	return false;
+}
+
 bool platform_video_init(uint16_t w, uint16_t h,
 	uint8_t bpp, bool fs, bool frames, const char* title)
 {
@@ -2543,177 +2724,34 @@ bool platform_video_init(uint16_t w, uint16_t h,
  */
 	sigaction(SIGSEGV, &err_sh, &old_sh);
 
-	int n = 0, fd;
-	char* device = NULL;
-	char device_interim[64] = {0};
-	bool forced_node = getenv("ARCAN_RENDER_NODE") != NULL;
+	if (setup_cards_db(w, h) ||
+		setup_cards_inherit(w, h) || setup_cards_basic(w, h)){
+		struct dispout* d = egl_dri.last_display;
+		egl_dri.canvasw = d->display.mode->hdisplay;
+		egl_dri.canvash = d->display.mode->vdisplay;
+		build_orthographic_matrix(d->projection, 0,
+			egl_dri.canvasw, egl_dri.canvash, 0, 0, 1);
+		memcpy(d->txcos, arcan_video_display.mirror_txcos, sizeof(float) * 8);
+		d->vid = ARCAN_VIDEO_WORLDID;
+		d->state = DISP_MAPPED;
+		debug_print("(%d) mapped/default display at %zu*%zu",
+			(int)d->id, (size_t)egl_dri.canvasw, (size_t)egl_dri.canvash);
 
-	while(1){
-retry_card:
-		if (!forced_node)
-			unsetenv("ARCAN_RENDER_NODE");
-
-		grab_card(n++, &device, &fd);
-		if (!device && -1 == fd)
-			goto cleanup;
-		snprintf(device_interim, 64, "%s", device);
-
-/* we don't have a mechanism for specifying/pairing GL/EGL implementation with
- * a device for now, the general idea is that GLVnd should provide this
- * indirection for us, but that only shifts the problem and doesn't really
- * apply in this case where we have knowledge/control. The end- approach is
- * that we'll have config-file templates that just maps the config into the
- * database as the reserved 'arcan' appl_kv store, and use that to specify
- * device, method and lib */
-		int status = -1;
-
-		if (getenv("ARCAN_VIDEO_EGL_DEVICE"))
-			status = setup_node_egl(&nodes[0], NULL, fd);
-		else
-			status = setup_node_gbm(&nodes[0], device, NULL, fd);
-
-		if (-1 == status){
-			debug_print("couldn't find a buffer mechanism for (%s)", device);
-			if (getenv("ARCAN_VIDEO_DEVICE"))
-				goto cleanup;
-		}
-
-		if (!setup_node(&nodes[0])){
-			debug_print("setup-node failed on (%s)", device);
-			if (getenv("ARCAN_VIDEO_DEVICE"))
-				goto cleanup;
-		}
-
-		nodes[0].card_id = n-1;
-		free(device);
-		break;
-	}
-
-	if (-1 == drmSetMaster(nodes[0].fd)){
-		if (getenv("ARCAN_VIDEO_DRM_MASTER")){
-		arcan_fatal("platform/egl-dri(), couldn't get drmMaster (%s) - make sure"
-			" nothing else holds the master lock or try without "
-			"ARCAN_VIDEO_DRM_MASTER env.\n", strerror(errno));
-		}
-		else
-			debug_print("couldn't get drmMaster on (%s): %s, trying to go on",
-				device_interim, strerror(errno));
-	}
-
-/*
- * if w, h are set it acts as a hint to the resolution that we will request.
- * Default drawing hint is stretch to display anyhow.
- */
-	struct dispout* d = allocate_display(&nodes[0]);
-	d->display.primary = true;
-	egl_dri.last_display = d;
-
-	if (getenv("ARCAN_VIDEO_DUMP")){
-		goto cleanup;
-	}
-
-/*
- * force connector is a workaround for dealing with explicitly getting a single
- * monitor being primary synch, as we have no good mechanism for communicating /
- * managing that (dynamic synchronization strategy refactor will change that)
- */
-	int connid = -1;
-	const char* arg = getenv("ARCAN_VIDEO_CONNECTOR");
-	if (arg){
-		char* end;
-		int vl = strtoul(arg, &end, 10);
-		if (end != arg && *end == '\0')
-			connid = vl;
-		else{
-			debug_print("ARCAN_VIDEO_CONNECTOR specified but couldn't "
-				"parse ID from (%s)", arg);
-			goto cleanup;
-		}
-	}
-
-	if (setup_kms(d, connid, w, h) != 0){
-		disable_display(d, true);
-		if (arg)
-			debug_print("ARCAN_VIDEO_CONNECTOR specified, configure display failed");
-		else
-			debug_print("card found but no working/connected display");
-
-/* try grabbing card again at the next index */
-		if (!getenv("ARCAN_VIDEO_DEVICE")){
-			release_card(0);
-			goto retry_card;
-		}
-
-		dump_connectors(stdout, &nodes[0], true);
-		goto cleanup;
-	}
-
-	if (setup_buffers(d) != 0){
-		disable_display(d, true);
-		goto cleanup;
-	}
-
-	d->backlight = backlight_init(NULL,
-		d->device->card_id, d->display.con->connector_type,
-		d->display.con->connector_type_id
-	);
-	if (d->backlight)
-		d->backlight_brightness = backlight_get_brightness(d->backlight);
-
-/*
- * requested canvas does not always match display
- */
-	egl_dri.canvasw = d->display.mode->hdisplay;
-	egl_dri.canvash = d->display.mode->vdisplay;
-	build_orthographic_matrix(d->projection, 0,
-		egl_dri.canvasw, egl_dri.canvash, 0, 0, 1);
-	memcpy(d->txcos, arcan_video_display.mirror_txcos, sizeof(float) * 8);
-	d->vid = ARCAN_VIDEO_WORLDID;
-	d->state = DISP_MAPPED;
-	rv = true;
-	debug_print("(%d) mapped/default display at %zu*%zu",
-		(int)d->id, (size_t)egl_dri.canvasw, (size_t)egl_dri.canvash);
-
-	if (pipe(egl_dri.ledpair) != -1){
-		egl_dri.ledid = arcan_led_register(egl_dri.ledpair[1], -1,
-			"backlight", (struct led_capabilities){
-			.nleds = MAX_DISPLAYS,
-			.variable_brightness = true,
-			.rgb = false
-		});
-
-/* prepare the pipe-pair to be non-block and close-on-exit */
-		if (-1 == egl_dri.ledid){
-			close(egl_dri.ledpair[0]);
-			close(egl_dri.ledpair[1]);
-			egl_dri.ledpair[0] = egl_dri.ledpair[1] = -1;
-		}
-		else{
-			for (size_t i = 0; i < 2; i++){
-				int flags = fcntl(egl_dri.ledpair[i], F_GETFL);
-				if (-1 != flags)
-					fcntl(egl_dri.ledpair[i], F_SETFL, flags | O_NONBLOCK);
-
-				flags = fcntl(egl_dri.ledpair[i], F_GETFD);
-				if (-1 != flags)
-					fcntl(egl_dri.ledpair[i], F_SETFD, flags | O_CLOEXEC);
-			}
-		}
-	}
-
+		setup_backlight_ledmap();
 /*
  * send a first 'added' event for display tracking as the primary / connected
  * display will not show up in the rescan
  */
-	arcan_event ev = {
-		.category = EVENT_VIDEO,
-		.vid.kind = EVENT_VIDEO_DISPLAY_ADDED,
-		.vid.ledctrl = egl_dri.ledid
-	};
-	arcan_event_enqueue(arcan_event_defaultctx(), &ev);
-	platform_video_query_displays();
+		arcan_event ev = {
+			.category = EVENT_VIDEO,
+			.vid.kind = EVENT_VIDEO_DISPLAY_ADDED,
+			.vid.ledctrl = egl_dri.ledid
+		};
+		arcan_event_enqueue(arcan_event_defaultctx(), &ev);
+		platform_video_query_displays();
+		rv = true;
+	}
 
-cleanup:
 	sigaction(SIGSEGV, &old_sh, NULL);
 	return rv;
 }
@@ -3316,17 +3354,13 @@ void platform_video_restore_external()
  * when / if the drmMaster lock is released or not */
 	debug_print("restoring external");
 
-	if (-1 == drmSetMaster(nodes[0].fd)){
-		if (getenv("ARCAN_VIDEO_DRM_MASTER")){
-			while(-1 == drmSetMaster(nodes[0].fd)){
-				debug_print("platform/egl-dri(), couldn't regain drmMaster access, "
-					"retrying in 1 second\n");
-				arcan_timesleep(1000);
-			}
-			nodes[0].master = true;
+	if (-1 == drmSetMaster(nodes[0].fd) && nodes[0].force_master){
+		while(-1 == drmSetMaster(nodes[0].fd)){
+			debug_print("platform/egl-dri(), couldn't regain drmMaster access, "
+				"retrying in 1 second\n");
+			arcan_timesleep(1000);
 		}
-		else
-			nodes[0].master = false;
+		nodes[0].master = true;
 	}
 	else
 		nodes[0].master = true;
