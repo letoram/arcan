@@ -69,7 +69,7 @@ static const uint16_t sym_lut[] = {
 [KS_x] = 120,
 [KS_y] = 121,
 [KS_z] = 122,
-[KS_Delete] = 127,
+[KS_Delete] = 8,
 /* 160 .. 255, generic 'world' */
 [KS_KP_0] = 256,
 [KS_KP_1] = 257,
