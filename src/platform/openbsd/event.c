@@ -40,6 +40,7 @@ static struct
 	struct {
 		struct wscons_keymap mapdata[KS_NUMKEYCODES];
 		struct termios tty;
+		int mod;
 		int fd;
 	} kbd;
 } evctx;
@@ -107,6 +108,47 @@ void platform_event_analogfilter(int devid,
 {
 }
 
+static void update_modifiers(int key, bool active)
+{
+	int xl = evctx.kbd.mapdata[key].group1[0];
+
+	int mod = 0;
+	switch (xl){
+	case KS_Shift_R: mod = ARKMOD_RSHIFT; break;
+	case KS_Shift_L: mod = ARKMOD_LSHIFT; break;
+	case KS_Caps_Lock: mod = ARKMOD_CAPS; break;
+	case KS_Control_L: mod = ARKMOD_LCTRL; break;
+	case KS_Control_R: mod = ARKMOD_RCTRL; break;
+	case KS_Alt_R: mod = ARKMOD_RALT; break;
+	case KS_Alt_L: mod = ARKMOD_LALT; break;
+	case KS_Meta_L: mod = ARKMOD_LMETA; break;
+	case KS_Meta_R: mod = ARKMOD_RMETA; break;
+	default: break;
+	}
+	if (active)
+		evctx.kbd.mod |= mod;
+	else
+		evctx.kbd.mod &= ~mod;	
+}
+
+/*
+ * This is far from correct, but should at least be enough to be able to continue
+ * development work from inside arcan rather than from a terminal
+ */
+static void apply_modifiers(int value, struct arcan_event* ev)
+{
+/* not at all sure how the 'group' is actually selected, or what 'command' stands for,
+ * couldn't find any clear reference in the documentation - and the code is unusually
+ * scattered */
+	uint16_t val = evctx.kbd.mapdata[value].group1[0];
+	if (evctx.kbd.mod & (ARKMOD_LSHIFT | ARKMOD_RSHIFT)){
+		val = evctx.kbd.mapdata[value].group1[1];
+	}
+
+	ev->io.input.translated.keysym = sym_lut[val];
+	to_utf8(val, ev->io.input.translated.utf8);
+}
+
 void platform_event_process(arcan_evctx* ctx)
 {
 	struct wscons_event events[64];
@@ -118,6 +160,7 @@ void platform_event_process(arcan_evctx* ctx)
 		for (i = 0; i < n; i++) {
 			type = events[i].type;
 			if (type == WSCONS_EVENT_KEY_UP || type == WSCONS_EVENT_KEY_DOWN) {
+				update_modifiers(events[i].value, type == WSCONS_EVENT_KEY_DOWN);
 				arcan_event outev = {
 					.category = EVENT_IO,
 						.io.kind = EVENT_IO_BUTTON,
@@ -125,18 +168,13 @@ void platform_event_process(arcan_evctx* ctx)
 						.io.subid = events[i].value,
 						.io.datatype = EVENT_IDATATYPE_TRANSLATED,
 						.io.devkind = EVENT_IDEVKIND_KEYBOARD,
-/* .io.input.translated.modifiers : NEED TO TRACK THIS */
 						.io.input.translated.scancode = events[i].value,
-						.io.input.translated.keysym =
-							sym_lut[evctx.kbd.mapdata[events[i].value].group1[0]],
+						.io.input.translated.modifiers = evctx.kbd.mod,
 						.io.input.translated.active = type == WSCONS_EVENT_KEY_DOWN
 				};
-/* we should be able to get the UTF-16 map out of the keymap, when we know where,
- * get rid of this hack */
-				if (isprint(outev.io.input.translated.keysym))
-					outev.io.input.translated.utf8[0] = outev.io.input.translated.keysym;
+				apply_modifiers(events[i].value, &outev);
 				arcan_event_enqueue(ctx, &outev);
-	  	}
+			}
 		}
 	}
 }
