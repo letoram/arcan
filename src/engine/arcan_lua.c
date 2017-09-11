@@ -1403,17 +1403,20 @@ static int nbio_write(lua_State* ctx)
 /* but still make sure that we actually got a FIFO */
 		if (-1 != iw->fd){
 			struct stat fi;
+
+/* and if not, don't try to write */
 			if (-1 != fstat(iw->fd, &fi) && !S_ISFIFO(fi.st_mode)){
 				close(iw->fd);
 				iw->fd = -1;
+				lua_pushnumber(ctx, 0);
+				LUA_ETRACE("open_nonblock:write", NULL, 1);
 			}
-			lua_pushnumber(ctx, 0);
-			LUA_ETRACE("open_nonblock:write", NULL, 1);
 		}
 	}
 
-/* non-block, so don't allow too many attempts */
-	int retc = 10;
+/* non-block, so don't allow too many attempts, but we push the
+ * responsibility of buffering to the caller */
+	int retc = 5;
 	while (retc && (len - of)){
 		size_t nw = write(iw->fd, buf + of, len - of);
 		if (-1 == nw){
