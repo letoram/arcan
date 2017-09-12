@@ -161,7 +161,7 @@ typedef struct NSVGimage
 } NSVGimage;
 
 // Parses SVG file from a file, returns SVG image as paths.
-NSVGimage* nsvgParseFromFile(FILE* file, const char* units, float dpi);
+NSVGimage* nsvgParseFromFile(FILE* fpek, const char* units, float dpi);
 
 // Parses SVG file from a null terminated string, returns SVG image as paths.
 // Important note: changes the string.
@@ -214,7 +214,7 @@ static int nsvg__isspace(char c)
 
 static int nsvg__isdigit(char c)
 {
-	return strchr("0123456789", c) != 0;
+	return c >= '0' && c <= '9';
 }
 
 static int nsvg__isnum(char c)
@@ -1074,6 +1074,66 @@ error:
 	}
 }
 
+// We roll our own string to float because the std library one uses locale and messes things up.
+static double nsvg__atof(const char* s)
+{
+	char* cur = (char*)s;
+	char* end = NULL;
+	double res = 0.0, sign = 1.0;
+	long long intPart = 0, fracPart = 0;
+	char hasIntPart = 0, hasFracPart = 0;
+
+	// Parse optional sign
+	if (*cur == '+') {
+		cur++;
+	} else if (*cur == '-') {
+		sign = -1;
+		cur++;
+	}
+
+	// Parse integer part
+	if (nsvg__isdigit(*cur)) {
+		// Parse digit sequence
+		intPart = (double)strtoll(cur, &end, 10);
+		if (cur != end) {
+			res = (double)intPart;
+			hasIntPart = 1;
+			cur = end;
+		}
+	}
+
+	// Parse fractional part.
+	if (*cur == '.') {
+		cur++; // Skip '.'
+		if (nsvg__isdigit(*cur)) {
+			// Parse digit sequence
+			fracPart = strtoll(cur, &end, 10);
+			if (cur != end) {
+				res += (double)fracPart / pow(10.0, (double)(end - cur));
+				hasFracPart = 1;
+				cur = end;
+			}
+		}
+	}
+
+	// A valid number should have integer or fractional part.
+	if (!hasIntPart && !hasFracPart)
+		return 0.0;
+
+	// Parse optional exponent
+	if (*cur == 'e' || *cur == 'E') {
+		int expPart = 0;
+		cur++; // skip 'E'
+		expPart = strtol(cur, &end, 10); // Parse digit sequence with sign
+		if (cur != end) {
+			res *= pow(10.0, (double)expPart);
+		}
+	}
+
+	return res * sign;
+}
+
+
 static const char* nsvg__parseNumber(const char* s, char* it, const int size)
 {
 	const int last = size-1;
@@ -1433,7 +1493,7 @@ static int nsvg__parseTransformArgs(const char* str, float* args, int maxNa, int
 		if (*ptr == '-' || *ptr == '+' || *ptr == '.' || nsvg__isdigit(*ptr)) {
 			if (*na >= maxNa) return 0;
 			ptr = nsvg__parseNumber(ptr, it, 64);
-			args[(*na)++] = (float)atof(it);
+			args[(*na)++] = (float)nsvg__atof(it);
 		} else {
 			++ptr;
 		}
@@ -2151,7 +2211,7 @@ static void nsvg__parsePath(NSVGparser* p, const char** attr)
 			if (!*item) break;
 			if (nsvg__isnum(item[0])) {
 				if (nargs < 10)
-					args[nargs++] = (float)atof(item);
+					args[nargs++] = (float)nsvg__atof(item);
 				if (nargs >= rargs) {
 					switch (cmd) {
 						case 'm':
@@ -2408,7 +2468,7 @@ static void nsvg__parsePoly(NSVGparser* p, const char** attr, int closeFlag)
 				nargs = 0;
 				while (*s) {
 					s = nsvg__getNextPathItem(s, item);
-					args[nargs++] = (float)atof(item);
+					args[nargs++] = (float)nsvg__atof(item);
 					if (nargs >= 2) {
 						if (npts == 0)
 							nsvg__moveTo(p, args[0], args[1]);
@@ -2693,12 +2753,12 @@ static float nsvg__viewAlign(float content, float container, int type)
 
 static void nsvg__scaleGradient(NSVGgradient* grad, float tx, float ty, float sx, float sy)
 {
-	grad->xform[0] *= sx;
-	grad->xform[1] *= sx;
-	grad->xform[2] *= sy;
-	grad->xform[3] *= sy;
-	grad->xform[4] += tx*sx;
-	grad->xform[5] += ty*sx;
+	float t[6];
+	nsvg__xformSetTranslation(t, tx, ty);
+	nsvg__xformMultiply (grad->xform, t);
+
+	nsvg__xformSetScale(t, sx, sy);
+	nsvg__xformMultiply (grad->xform, t);
 }
 
 static void nsvg__scaleToViewbox(NSVGparser* p, const char* units)
@@ -2822,20 +2882,22 @@ NSVGimage* nsvgParseFromFile(FILE* fp, const char* units, float dpi)
 	char* data = NULL;
 	NSVGimage* image = NULL;
 
-	off_t ofs = ftell(fp);
+	if (!fp) goto error;
 	fseek(fp, 0, SEEK_END);
 	size = ftell(fp);
-	fseek(fp, ofs, SEEK_SET);
+	fseek(fp, 0, SEEK_SET);
 	data = (char*)malloc(size+1);
 	if (data == NULL) goto error;
 	if (fread(data, 1, size, fp) != size) goto error;
 	data[size] = '\0';	// Must be null terminated.
+	fclose(fp);
 	image = nsvgParse(data, units, dpi);
 	free(data);
 
 	return image;
 
 error:
+	if (fp) fclose(fp);
 	if (data) free(data);
 	if (image) nsvgDelete(image);
 	return NULL;
