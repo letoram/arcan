@@ -182,7 +182,7 @@ bool imgload_spawn(struct arcan_shmif_cont* con, struct img_state* tgt, int p)
 			size_t h = image->height;
 			struct NSVGrasterizer* rast = nsvgCreateRasterizer();
 			nsvgRasterize(rast, image,
-				0, 0, 1, tgt->out->buf, w, h, w * sizeof(shmif_pixel));
+				0, 0, 1, (unsigned char*)tgt->out->buf, w, h, w * sizeof(shmif_pixel));
 			tgt->out->w = w;
 			tgt->out->h = h;
 			tgt->out->buf_sz = w * h * 4;

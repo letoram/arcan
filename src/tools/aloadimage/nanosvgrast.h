@@ -979,7 +979,7 @@ static inline int nsvg__div255(int x)
     return ((x+1) * 257) >> 16;
 }
 
-static void nsvg__scanlineSolid(char* dst, int count, unsigned char* cover, int x, int y,
+static void nsvg__scanlineSolid(unsigned char* dst, int count, unsigned char* cover, int x, int y,
 								float tx, float ty, float scale, NSVGcachedPaint* cache)
 {
 
