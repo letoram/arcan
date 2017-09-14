@@ -2020,7 +2020,7 @@ void platform_event_init(arcan_evctx* ctx)
 		ioctl(gstate.tty, KDGKBMODE, &gstate.kbmode);
 		ioctl(gstate.tty, KDSETLED, 0);
 
-		if (get_config("event_no_mutetty", 0, NULL, tag)){
+		if (!get_config("event_no_mutetty", 0, NULL, tag)){
 			ioctl(gstate.tty, KDSKBMUTE, 1);
 			ioctl(gstate.tty, KDSKBMODE, K_OFF);
 			ioctl(gstate.tty, KDSETMODE, KD_GRAPHICS);
