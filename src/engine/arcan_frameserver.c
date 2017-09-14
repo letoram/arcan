@@ -179,7 +179,7 @@ static void push_buffer(arcan_frameserver* src,
 /* Need to do this check here as-well as in the regular frameserver tick control
  * because the backing store might have changed somehwere else. */
 	if (src->desc.width != store->w || src->desc.height != store->h ||
-		src->desc.hints != src->desc.pending_hints){
+		src->desc.hints != src->desc.pending_hints || src->desc.rz_flag){
 		src->desc.hints = src->desc.pending_hints;
 		store->vinf.text.d_fmt = (src->desc.hints & SHMIF_RHINT_IGNORE_ALPHA) ||
 			src->flags.no_alpha_copy ? GL_NOALPHA_PIXEL_FORMAT : GL_STORE_PIXEL_FORMAT;
@@ -196,6 +196,7 @@ static void push_buffer(arcan_frameserver* src,
 			.fsrv.glsource = src->desc.hints & SHMIF_RHINT_ORIGO_LL
 		};
 
+		src->desc.rz_flag = false;
 		arcan_event_enqueue(arcan_event_defaultctx(), &rezev);
 		explicit = true;
 	}
