@@ -692,6 +692,12 @@ int arcan_shmif_enqueue(struct arcan_shmif_cont* c,
 	if (!c || !c->addr || !c->priv)
 		return 0;
 
+/* this is dangerous territory: many _enqueue calls are done without checking
+ * the return value, so chances are that some event will be dropped. In the
+ * crash- recovery case this means that if the migration goes through, we have
+ * either an event that might not fit in the current context, or an event that
+ * gets lost. Neither is good. The counterargument is that crash recovery is a
+ * 'best effort basis' - we're still dealing with an actual crash. */
 	if (!c->addr->dms || !c->priv->alive){
 		fallback_migrate(c);
 		return 0;
@@ -1351,6 +1357,14 @@ unsigned arcan_shmif_signal(struct arcan_shmif_cont* ctx,
 /* for sub-region multi-buffer synch, we currently need to
  * check before running the step_v */
 	if (mask & SHMIF_SIGVID){
+		if (priv->log_event){
+			fprintf(stderr, "SIGVID (block: %d region: %zu,%zu-%zu,%zu)\n",
+				(mask & SHMIF_SIGBLK_NONE) ? 0 : 1,
+				(size_t)ctx->dirty.x1, (size_t)ctx->dirty.y1,
+				(size_t)ctx->dirty.x2, (size_t)ctx->dirty.y2
+			);
+		}
+
 		while ((ctx->hints & SHMIF_RHINT_SUBREGION) && ctx->addr->vready)
 			arcan_sem_wait(ctx->vsem);
 

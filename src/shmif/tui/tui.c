@@ -690,7 +690,7 @@ static void draw_monospace(struct tui_context* tui,
 		for (size_t col = 0; col < n_cols; col++){
 
 /* only update if the source position has changed, treat custom_id separate */
-			if (0 && synch && !(tui->dirty & DIRTY_PENDING_FULL)
+			if (synch && !(tui->dirty & DIRTY_PENDING_FULL)
 				&& fpos->fstamp == bpos->fstamp){
 				fpos++, bpos++, custom++;
 				continue;
