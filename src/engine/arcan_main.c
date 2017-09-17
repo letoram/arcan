@@ -304,7 +304,7 @@ static void appl_user_warning(const char* name, const char* err_msg)
 static void fatal_shutdown()
 {
 	arcan_audio_shutdown();
-	arcan_video_shutdown(true);
+	arcan_video_shutdown(false);
 }
 
 /*
