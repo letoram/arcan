@@ -386,6 +386,7 @@ static enum shmif_migrate_status fallback_migrate(struct arcan_shmif_cont* c)
 /* sleep - retry connect loop */
 	enum shmif_migrate_status sv;
 	int step = 0;
+	int oldfd = c->epipe;
 
 /* parent can pull dms explicitly */
 	if ((c->priv->flags & SHMIF_NOAUTO_RECONNECT) ||
@@ -415,7 +416,8 @@ static enum shmif_migrate_status fallback_migrate(struct arcan_shmif_cont* c)
 		c->priv->fh = (struct arcan_event){
 			.category = EVENT_TARGET,
 			.tgt.kind = TARGET_COMMAND_RESET,
-			.tgt.ioevs[0].iv = 3
+			.tgt.ioevs[0].iv = 3,
+			.tgt.ioevs[1].iv = oldfd
 		};
 	break;
 	}
@@ -2142,7 +2144,7 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
  * the newer extended version, we add the little quirk that ext_sz is 0 */
 	if (ext_sz > 0){
 /* we want manual control over the REGISTER message */
-		ret = arcan_shmif_acquire(NULL, keyfile, 0, flags);
+		ret = arcan_shmif_acquire(NULL, keyfile, ext.type, flags);
 		if (!ret.priv){
 			close(dpipe);
 			return ret;

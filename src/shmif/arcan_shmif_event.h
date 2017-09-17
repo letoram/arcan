@@ -307,6 +307,10 @@ enum ARCAN_TARGET_COMMAND {
  * ioevs[0].iv == 2, recovery- reset, parent has lost tracking states
  * ioevs[0].iv == 3, recovery- reconnect, connection was broken but has been
  * re-established. This will still cause reset subsegments to terminate.
+ * In this state, a lot of the internals of the shmif- context
+ * has been modified. Most importantly, the epipe is no-longer
+ * the same. The old file-descriptor number (already closed at) this stage is
+ * returned in ioevs[1].iv in order to allow updates to polling structures.
 */
 	TARGET_COMMAND_RESET,
 
