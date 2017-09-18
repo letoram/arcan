@@ -772,7 +772,7 @@ int main(int argc, char* argv[])
 	wl.init = *init;
 	if (!init->display_width_px){
 		fprintf(stderr, "Bridge connection did not receive display information\n"
-			"make sure active appl- sends target_displayhint on preroll\n\n");
+			"make sure appl- sends target_displayhint/outputhint on preroll\n\n");
 		wl.init.display_width_px = wl.control.w;
 		wl.init.display_height_px = wl.control.h;
 	}

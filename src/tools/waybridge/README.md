@@ -80,10 +80,20 @@ Notes and Issues
 3. Stride - the shm- buffer blit doesn't take stride differences into
    account. This fails on MPV in SHM depending on source video size.
 
-4. Buffering and recent Qt5 demos, for some reason the pyqt demos queues up
-   a lot of frames and then just dies - unsure what is happening here though
-   it seems like it is connected to the part where we need to handle multiple
-   callbacks for the same surface.
+Depending on what toolkit is being used, chances are that some magic dance is
+needed in order to get a client to connect using wayland, and similarly for the
+specific shell protocol to use when multiple are available, for the choice of
+buffer passing (shm or egl) and for the GPU device actually being used. With
+other Wayland compositors, chances are that this effect is masked by the client
+in question falling back to XWayland and some clients will fail outright if
+there's no XServer available even though the clients themselves actually only
+use their respective Wayland paths. In short, it's a mess.
+
+a. For SDL, check the environment variable for SDL\_VIDEODRIVER=wayland
+b. For QT, try the -platform wayland argument.
+c. For EFL, it's EVAS\_ENGINE=wayland\_shm or EVAS\_ENGINE=wayland\_egl along
+with ELM\_DISPLAY=wl and optionally ELM\_ACCEL=none if there's issue with
+gl acceleration.
 
 Limitations
 ====
