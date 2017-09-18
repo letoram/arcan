@@ -623,7 +623,7 @@ static void draw_shaped(struct tui_context* tui,
 
 /* FIXME: forward to harfbuzz- like shaper / substituter */
 		if (tui->handlers.substitute)
-			!tui->handlers.substitute(tui,
+			tui->handlers.substitute(tui,
 				&front[row * tui->cols], n_cols, row, tui->handlers.tag);
 
 		for (size_t col = 0; col < n_cols; col++){
@@ -683,9 +683,13 @@ static void draw_monospace(struct tui_context* tui,
 	}
  */
 	for (size_t row = 0; row < n_rows; row++){
-		if (tui->handlers.substitute)
+		if (tui->handlers.substitute &&
 			tui->handlers.substitute(tui,
-				&front[row * tui->cols], n_cols, row, tui->handlers.tag);
+				&front[row * tui->cols], n_cols, row, tui->handlers.tag)){
+/* invalidate the entire row */
+			for (size_t col = 0; col < n_cols; col++)
+				front[row * tui->cols + col].fstamp = tui->fstamp;
+		}
 
 		for (size_t col = 0; col < n_cols; col++){
 
@@ -975,7 +979,8 @@ static void update_screen(struct tui_context* tui, bool ign_inact)
 		return;
 
 	if (tui->cursor_upd){
-/* FIXME: for shaped drawing, we invalidate the entire cursor- row */
+/* FIXME: for shaped drawing, we invalidate the entire cursor- row and the
+ * blitting should be reworked to account for that */
 		int x, y, w, h;
 		resolve_cursor(tui, &x, &y, &w, &h);
 		struct tui_cell* tc = &tui->back[tui->cursor_y * tui->cols + tui->cursor_x];
@@ -2508,8 +2513,12 @@ static bool harfbuzz_substitute(struct tui_context* tui,
  * codepoint is in the namespace of the font
  * if kerning is enabled, also get the glyph_positions and apply
  * to the xofs/real_w per cell */
+	bool changed = false;
 	for (size_t i = 0; i < glyphc && i < n_cells; i++){
-		cells[i].draw_ch = ginfo[i].codepoint;
+		if (cells[i].draw_ch != ginfo[i].codepoint){
+			cells[i].draw_ch = ginfo[i].codepoint;
+			changed = true;
+		}
 	}
 
 /*
@@ -2518,7 +2527,7 @@ static bool harfbuzz_substitute(struct tui_context* tui,
  */
 
 	hb_buffer_destroy(buf);
-	return true;
+	return changed;
 }
 #endif
 
