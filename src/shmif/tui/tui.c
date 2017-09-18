@@ -1623,20 +1623,14 @@ static void update_screensize(struct tui_context* tui, bool clear)
 
 	wait_vready(tui, true);
 
-	if (clear)
-		draw_box(&tui->acon, 0, 0, tui->acon.w, tui->acon.h, col);
-
+/* calculate the rpad/bpad regions based on the desired output size and
+ * the amount consumed by the aligned number of cells */
 	tui->pad_w = tui->acon.w - (cols * tui->cell_w);
 	tui->pad_h = tui->acon.h - (rows * tui->cell_h);
+	LOG("padding: %d, %d\n", tui->pad_w, tui->pad_h);
 
+/* if the number of cells has actually changed, we need to propagate */
 	if (cols != tui->cols || rows != tui->rows){
-		if (cols > tui->cols)
-			tui->pad_w += (cols - tui->cols) * tui->cell_w;
-
-		if (rows > tui->rows)
-			tui->pad_h += (rows - tui->rows) * tui->cell_h;
-
-		int dr = tui->rows - rows;
 		tui->cols = cols;
 		tui->rows = rows;
 
@@ -1659,6 +1653,9 @@ static void update_screensize(struct tui_context* tui, bool clear)
 /* if we have TUI- based screen buffering for smooth-scrolling,
  * double-buffered rendering and text shaping, that one needs to be rebuilt */
 	resize_cellbuffer(tui);
+
+	if (clear)
+		draw_box(&tui->acon, 0, 0, tui->acon.w, tui->acon.h, col);
 
 	update_screen(tui, true);
 }

@@ -28,6 +28,7 @@ static struct {
 	bool alive;
 } term;
 
+#define TRACE_ENABLE
 static inline void trace(const char* msg, ...)
 {
 #ifdef TRACE_ENABLE
