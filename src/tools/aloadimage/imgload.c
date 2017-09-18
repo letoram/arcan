@@ -17,7 +17,7 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 #include <signal.h>
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__OpenBSD__)
 #else
 #include <sys/prctl.h>
 #endif

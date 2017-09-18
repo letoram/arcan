@@ -141,12 +141,16 @@ static void apply_modifiers(int value, struct arcan_event* ev)
  * couldn't find any clear reference in the documentation - and the code is unusually
  * scattered */
 	uint16_t val = evctx.kbd.mapdata[value].group1[0];
+	ev->io.input.translated.keysym = sym_lut[val];
 	if (evctx.kbd.mod & (ARKMOD_LSHIFT | ARKMOD_RSHIFT)){
 		val = evctx.kbd.mapdata[value].group1[1];
+		to_utf8(val, ev->io.input.translated.utf8);
 	}
-
-	ev->io.input.translated.keysym = sym_lut[val];
-	to_utf8(val, ev->io.input.translated.utf8);
+	else if (evctx.kbd.mod & (ARKMOD_LCTRL | ARKMOD_RCTRL)){
+/* quickhack to avoid ctrl+c etc. being assigned a sequence */
+	}
+	else
+		to_utf8(val, ev->io.input.translated.utf8);
 }
 
 void platform_event_process(arcan_evctx* ctx)
