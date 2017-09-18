@@ -72,6 +72,8 @@ static void dump_help()
 		" blink       \t ticks     \t set blink period, 0 to disable (default: 12)\n"
 		" login       \t [user]    \t login (optional: user, only works for root)\n"
 		" min_upd     \t ms        \t wait at least [ms] between refreshes (default: 30)\n"
+		" substitute  \t           \t (experimental) allow ligature substitution\n"
+		" shape       \t           \t (experimental) allow non-monospace font shaping\n"
 		" scroll      \t steps     \t (experimental) smooth scrolling, (default:0=off) steps px/upd\n"
 		" palette     \t name      \t use built-in palette (below)\n"
 		"Built-in palettes:\n"
