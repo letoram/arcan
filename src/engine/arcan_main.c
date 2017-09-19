@@ -104,7 +104,7 @@ static void vplatform_usage()
 	const char** cur = platform_video_envopts();
 	if (*cur){
 	printf("Video platform configuration options:\n");
-	printf("(use VIDEO_XXX=val for env, video_xxx for db)\n");
+	printf("(use ARCAN_VIDEO_XXX=val for env, video_xxx for db)\n");
 	while(1){
 		const char* a = *cur++;
 		if (!a) break;
@@ -117,7 +117,7 @@ static void vplatform_usage()
 
 	cur = agp_envopts();
 	printf("Graphics platform configuration options:\n");
-	printf("(use GRAPHICS_XXX=val for env, graphics_xxx=val for db)\n");
+	printf("(use ARCAN_GRAPHICS_XXX=val for env, graphics_xxx=val for db)\n");
 	if (*cur){
 	while(1){
 		const char* a = *cur++;

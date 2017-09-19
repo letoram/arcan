@@ -49,6 +49,32 @@ bool arcan_isfile(const char* fn)
 	return rv;
 }
 
+static char* pathks[] = {
+	"path_appl",
+	"path_resource",
+	"path_state",
+	"path_applbase",
+	"path_applstore",
+	"path_statebase",
+	"path_font",
+	"path_bin",
+	"path_lib",
+	"path_log"
+};
+
+static char* pinks[] = {
+	"pin_appl",
+	"pin_resource",
+	"pin_state",
+	"pin_applbase",
+	"pin_applstore",
+	"pin_statebase",
+	"pin_font",
+	"pin_bin",
+	"pin_lib",
+	"pin_log"
+};
+
 static char* envvs[] = {
 	"ARCAN_APPLPATH",
 	"ARCAN_RESOURCEPATH",
@@ -224,14 +250,24 @@ static char* unix_find(const char* fname)
 void arcan_set_namespace_defaults()
 {
 	char* tmp = NULL;
+	uintptr_t tag;
+	cfg_lookup_fun get_config = platform_config_lookup(&tag);
 
 /*
  * use environment variables as hard overrides
  */
 	for (int i = 0; i < sizeof( envvs ) / sizeof( envvs[0] ); i++){
-		const char* tmp = getenv(envvs[i]);
-		arcan_override_namespace(tmp, 1 << i);
-		if (getenv(pinvs[i]))
+		char* tmp;
+		if (get_config(pathks[i], 0, &tmp, tag) && tmp){
+			arcan_override_namespace(tmp, 1 << i);
+			free(tmp);
+		}
+
+		tmp = getenv(envvs[i]);
+		if (tmp)
+			arcan_override_namespace(tmp, 1 << i);
+
+		if (getenv(pinvs[i]) || get_config(pinks[i], 0, NULL, tag))
 			arcan_pin_namespace(1 << i);
 	}
 
