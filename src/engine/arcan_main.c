@@ -633,11 +633,13 @@ int MAIN_REDIR(int argc, char* argv[])
 
 	if (jumpcode == 1 || jumpcode == 2){
 		arcan_db_close(&dbhandle);
+		arcan_db_set_shared(NULL);
 
 		dbhandle = arcan_db_open(dbfname, arcan_appl_id());
 		if (!dbhandle)
 			goto error;
 
+		arcan_db_set_shared(dbhandle);
 		arcan_lua_cbdrop();
 		arcan_lua_shutdown(settings.lua);
 
