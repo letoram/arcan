@@ -121,7 +121,7 @@ struct arcan_shmif_vector {
  * the number of maximum crtcs/planes with support for lut- tables
  */
 #define SHMIF_CMRAMP_PLIM 4
-#define SHMIF_CMRAMP_UPLIM 4096
+#define SHMIF_CMRAMP_UPLIM 4095 /* % 3 == 0 */
 
 struct ramp_block {
 	uint8_t format;

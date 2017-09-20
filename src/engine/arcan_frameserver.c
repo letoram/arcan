@@ -896,6 +896,8 @@ bool arcan_frameserver_getramps(arcan_frameserver* src,
 	memcpy(table, block.planes,
 		table_sz < SHMIF_CMRAMP_UPLIM ? table_sz : SHMIF_CMRAMP_UPLIM);
 
+	memcpy(ch_sz, block.plane_sizes, sizeof(size_t)*SHMIF_CMRAMP_PLIM);
+
 	atomic_fetch_and(&hdr->dirty_out, ~(1<<index));
 	return true;
 }
