@@ -1627,7 +1627,6 @@ static void update_screensize(struct tui_context* tui, bool clear)
  * the amount consumed by the aligned number of cells */
 	tui->pad_w = tui->acon.w - (cols * tui->cell_w);
 	tui->pad_h = tui->acon.h - (rows * tui->cell_h);
-	LOG("padding: %d, %d\n", tui->pad_w, tui->pad_h);
 
 /* if the number of cells has actually changed, we need to propagate */
 	if (cols != tui->cols || rows != tui->rows){
@@ -2554,7 +2553,7 @@ static void apply_arg(struct tui_settings* cfg,
 		cfg->render_flags |= TUI_RENDER_DBLBUF;
 	}
 
-	if (arg_lookup(args, "shape", 0, &val) && val){
+	if (arg_lookup(args, "shape", 0, &val)){
 		cfg->render_flags |= TUI_RENDER_SHAPED;
 	}
 
