@@ -1,0 +1,14 @@
+-- vr_map_limb
+-- @short: Create a binding between a 3d object and a vrbridge limb
+-- @inargs: vid:bridge, vid:model, int:limbid
+-- @outargs: nil
+-- @longdescr: This function is used to bind the position and orientation of
+-- a 3D model to the state of a vrbridge derived limb. This means that whenever
+-- a new frame is to be produced, it's properties are sampled from the associated
+-- limb directly. This approach is chosen to minimize latency and sampling overhead,
+-- as many of the underlying sensor techniques have quite high samplerates and
+-- not suitable for processing in a scripting VM/ garbage collected context.
+-- @group: iodev
+-- @cfunction: vr_maplimb
+-- @related:
+-- @example: vrtest

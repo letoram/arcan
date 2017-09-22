@@ -3317,18 +3317,18 @@ static int vr_setup(lua_State* ctx)
 
 static int vr_maplimb(lua_State* ctx)
 {
-	LUA_TRACE("vr_maplimb");
+	LUA_TRACE("vr_map_limb");
 	arcan_vobject* vobj;
 	luaL_checkvid(ctx, 1, &vobj);
 	if (!vobj || vobj->feed.state.tag != ARCAN_TAG_VR)
-		LUA_ETRACE("vr_metadata", "invalid map object type", 0);
+		LUA_ETRACE("vr_map_limb", "invalid map object type", 0);
 
 	arcan_vobj_id vid = luaL_checkvid(ctx, 2, NULL);
 
 	unsigned limb = luaL_checknumber(ctx, 3);
 	arcan_vr_maplimb(vobj->feed.state.ptr, limb, vid);
 
-	LUA_ETRACE("vr_maplimb", NULL, 0);
+	LUA_ETRACE("vr_map_limb", NULL, 0);
 }
 
 static int vr_getmeta(lua_State* ctx)
