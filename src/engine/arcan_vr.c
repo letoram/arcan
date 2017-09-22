@@ -108,10 +108,18 @@ struct arcan_vr_ctx* arcan_vr_setup(
 
 	vrctx->ctx = evctx;
 	vrctx->connection = mvctx;
+	mvctx->segid = SEGID_SENSOR;
 	arcan_video_alterfeed(mvctx->vid, FFUNC_VR,
 		(struct vfunc_state){
 		.tag = ARCAN_TAG_VR,
 		.ptr = vrctx
+	});
+
+/* nothing more we need to preroll so activate immediately */
+	platform_fsrv_pushevent(mvctx,
+		&(arcan_event){
+			.category = EVENT_TARGET,
+			.tgt.kind = TARGET_COMMAND_ACTIVATE
 	});
 
 	return vrctx;

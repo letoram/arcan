@@ -123,15 +123,15 @@ class DocReader
 	def DocReader.Open(fname)
 		typetbl = {
 			"int" => true,
-			"int/tbl" => true,
+			"inttbl" => true,
 			"bool" => true,
 			"float" => true,
-			"float/tbl" => true,
+			"floattbl" => true,
 			"str" => true,
-			"str/tabl" => true,
+			"strtbl" => true,
 			"vid" => true,
-			"vid/tbl" => true,
-			"aid/tbl" => true,
+			"vidtbl" => true,
+			"aidtbl" => true,
 			"func" => true,
 		}
 		a = File.open(fname)
