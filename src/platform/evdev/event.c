@@ -822,6 +822,9 @@ void platform_event_keyrepeat(struct arcan_evctx* ctx, int* period, int* delay)
 	}
 
 	if (*delay < 0){
+		*delay = iodev.delay;
+	}
+	else {
 		int tmp = *delay;
 		*delay = iodev.delay;
 		iodev.delay = tmp;
