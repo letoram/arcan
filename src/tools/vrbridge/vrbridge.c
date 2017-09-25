@@ -10,6 +10,7 @@
 #include <hidapi/hidapi.h>
 #include <pthread.h>
 #include <stdatomic.h>
+#include <inttypes.h>
 
 #include "vrbridge.h"
 
@@ -18,16 +19,6 @@
 #ifdef PSVR
 #include "psvr.h"
 #endif
-
-#ifdef _DEBUG
-#define DEBUG 1
-#else
-#define DEBUG 0
-#endif
-
-#define debug_print(fmt, ...) \
-            do { if (DEBUG) fprintf(stderr, "%s:%d:%s(): " fmt "\n", \
-						"egl-dri:", __LINE__, __func__,##__VA_ARGS__); } while (0)
 
 static volatile bool in_init = true;
 struct limb_runner {
@@ -102,7 +93,7 @@ static size_t device_rescan(struct arcan_shmif_vr* vr, struct arg_arr* arg)
 			continue;
 
 		if (init_device(&dev_tbl[i], vr, arg)){
-			debug_print("vrbridge:rescan() - found %s", dev_tbl[i].label);
+			debug_print(0, "vrbridge:rescan() - found %s", dev_tbl[i].label);
 			ent_alloc_mask |= 1 << i;
 			count++;
 		}
@@ -111,28 +102,34 @@ static size_t device_rescan(struct arcan_shmif_vr* vr, struct arg_arr* arg)
 	return count;
 }
 
-static uint64_t find_set64(uint64_t bmap)
-{
-	return __builtin_ffsll(bmap);
-}
-
 struct vr_limb* vrbridge_alloc_limb(
 	struct dev_ent* dev, enum avatar_limbs limb, unsigned id)
 {
-	static bool limbs[LIMB_LIM];
-	if (limbs[limb])
+	struct arcan_shmif_vr* vr = arcan_shmif_substruct(
+		arcan_shmif_primary(SHMIF_INPUT), SHMIF_META_VR).vr;
+
+	uint64_t lv = (uint64_t)1 << (uint64_t)limb;
+	uint64_t map = atomic_load(&vr->limb_mask);
+	if (map & (1 << lv)){
+		debug_print(0,
+			"device tried to allocate existing limb %d (id: %d)", limb, id);
 		return NULL;
+	}
 
 	struct limb_runner* thctx = malloc(sizeof(struct limb_runner));
 	if (!thctx)
 		return NULL;
 
-	struct arcan_shmif_vr* vr = arcan_shmif_substruct(
-		arcan_shmif_primary(SHMIF_INPUT), SHMIF_META_VR).vr;
-
-	uint64_t ind = find_set64(vr->limb_mask);
-	atomic_fetch_or(&vr->limb_mask, ind);
-	limbs[limb] = true;
+	atomic_fetch_or(&vr->limb_mask, lv);
+	map = atomic_load(&vr->limb_mask);
+	debug_print(0,
+		"allocated limb slot %d, id: %d (mask: %"PRIu64")", limb, id, map);
+	*thctx = (struct limb_runner){
+		.vr = vr,
+		.limb = &vr->limbs[limb],
+		.dev = dev,
+		.limb_ind = limb
+	};
 
 	pthread_attr_t nanny_attr;
 	pthread_attr_init(&nanny_attr);
@@ -141,13 +138,13 @@ struct vr_limb* vrbridge_alloc_limb(
 	pthread_t nanny;
 	if (0 != pthread_create(&nanny, &nanny_attr, limb_runner, thctx)){
 		free(thctx);
-		limbs[limb] = false;
+		atomic_fetch_and(&vr->limb_mask, ~lv);
 		return NULL;
 	}
 
 	pthread_attr_destroy(&nanny_attr);
 
-	return &vr->limbs[ind];
+	return &vr->limbs[limb];
 }
 
 int main(int argc, char** argv)
@@ -160,14 +157,14 @@ int main(int argc, char** argv)
  * to follow (set follow-fork-mode, set follow-exec-mode etc.)
  */
 	if (getenv("ARCAN_VR_DEBUGATTACH")){
-		debug_print("entering debug-attach loop");
+		debug_print(0, "entering debug-attach loop (pid: %d)", getpid());
 		volatile bool flag = 0;
 		while (!flag){};
 	}
 
 	struct arcan_shmif_cont con = arcan_shmif_open(SEGID_SENSOR, 0, &arg);
 	if (!con.vidp){
-		debug_print("couldn't setup arcan connection");
+		debug_print(0, "couldn't setup arcan connection");
 		return EXIT_FAILURE;
 	}
 	arcan_shmif_setprimary(SHMIF_INPUT, &con);
@@ -179,12 +176,12 @@ int main(int argc, char** argv)
 
 	struct arcan_shmif_vr* vr = arcan_shmif_substruct(&con, SHMIF_META_VR).vr;
 	if (!vr){
-		debug_print("couldn't retrieve VR substructure");
+		debug_print(0, "couldn't retrieve VR substructure");
 		return EXIT_FAILURE;
 	}
 
 	if (vr->version != VR_VERSION){
-		debug_print("header/shmif-vr version mismatch "
+		debug_print(0, "header/shmif-vr version mismatch "
 			"(in: %d, want: %d)", vr->version, VR_VERSION);
 		return EXIT_FAILURE;
 	}
@@ -201,7 +198,7 @@ int main(int argc, char** argv)
  * table, it will grab most limbs, fill out metadata etc.
  */
 	if (arg_lookup(arg, "test", 0, NULL)){
-		debug_print("test mode requested");
+		debug_print(0, "test mode requested");
 		in_test_mode = true;
 	}
 
@@ -210,7 +207,7 @@ int main(int argc, char** argv)
  * the entire chain from engine<->vrbridge<->avatar.
  */
 	while(device_rescan(vr, arg) == 0){
-		debug_print("vrbridge:setup() - "
+		debug_print(0, "vrbridge:setup() - "
 				"no controllers found, sleep/rescan");
 		sleep(5);
 	}
@@ -223,7 +220,7 @@ int main(int argc, char** argv)
 	in_init = false;
 	epoch = arcan_timemillis();
 	vr->ready = true;
-	debug_print("vrbridge:setup completed, entering loop\n");
+	debug_print(0, "vrbridge:setup completed, entering loop\n");
 
 	while (arcan_shmif_wait(&con, &ev) > 0){
 		if (ev.category == EVENT_TARGET)
