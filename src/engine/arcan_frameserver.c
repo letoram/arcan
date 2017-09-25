@@ -52,14 +52,6 @@ static inline void emit_deliveredframe(arcan_frameserver* src,
 static inline void emit_droppedframe(arcan_frameserver* src,
 	unsigned long long pts, unsigned long long framecount);
 
-/*
- * Check if the frameserver is still alive, that the shared memory page
- * is intact and look for any state-changes, e.g. resize (which would
- * require a recalculation of shared memory layout. These are used by the
- * various feedfunctions and should not need to be triggered elsewhere.
- */
-static bool tick_control(arcan_frameserver*, bool);
-
 static void autoclock_frame(arcan_frameserver* tgt)
 {
 	if (!tgt->clock.left)
@@ -402,7 +394,8 @@ enum arcan_ffunc_rv arcan_frameserver_emptyframe FFUNC_HEAD
 	switch (cmd){
 		case FFUNC_POLL:
 			if (tgt->shm.ptr->resized){
-				if (tick_control(tgt, false) && tgt->shm.ptr && tgt->shm.ptr->vready){
+				if (arcan_frameserver_tick_control(tgt, false, FFUNC_VFRAME) &&
+					tgt->shm.ptr && tgt->shm.ptr->vready){
 					platform_fsrv_leave();
 					return FRV_GOTFRAME;
 				}
@@ -413,7 +406,7 @@ enum arcan_ffunc_rv arcan_frameserver_emptyframe FFUNC_HEAD
 		break;
 
 		case FFUNC_TICK:
-			tick_control(tgt, true);
+			arcan_frameserver_tick_control(tgt, true, FFUNC_VFRAME);
 		break;
 
 		case FFUNC_DESTROY:
@@ -451,7 +444,7 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 	TRAMP_GUARD(FRV_NOFRAME, tgt);
 
 	if (tgt->segid == SEGID_UNKNOWN){
-		tick_control(tgt, false);
+		arcan_frameserver_tick_control(tgt, false, FFUNC_VFRAME);
 		goto no_out;
 	}
 
@@ -463,7 +456,7 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 
 	case FFUNC_POLL:
 		if (shmpage->resized){
-			tick_control(tgt, false);
+			arcan_frameserver_tick_control(tgt, false, FFUNC_VFRAME);
 			goto no_out;
 		}
 
@@ -484,7 +477,7 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 	break;
 
 	case FFUNC_TICK:
-		if (!tick_control(tgt, true))
+		if (!arcan_frameserver_tick_control(tgt, true, FFUNC_VFRAME))
 			goto no_out;
 	break;
 
@@ -1025,7 +1018,8 @@ arcan_errc arcan_frameserver_audioframe_direct(arcan_aobj* aobj,
 	return ARCAN_OK;
 }
 
-static bool tick_control(arcan_frameserver* src, bool tick)
+bool arcan_frameserver_tick_control(
+	arcan_frameserver* src, bool tick, int dst_ffunc)
 {
 	bool fail = true;
 	if (!arcan_frameserver_control_chld(src) || !src || !src->shm.ptr ||
@@ -1084,7 +1078,7 @@ static bool tick_control(arcan_frameserver* src, bool tick)
  * passive one
  */
 	vfunc_state cstate = *arcan_video_feedstate(src->vid);
-	arcan_video_alterfeed(src->vid, FFUNC_VFRAME, cstate);
+	arcan_video_alterfeed(src->vid, dst_ffunc, cstate);
 
 /*
  * Check if the dirty- mask for the ramp- subproto has changed, enqueue the

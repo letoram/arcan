@@ -270,6 +270,16 @@ arcan_errc arcan_frameserver_pushfd(arcan_frameserver*, arcan_event*, int fd);
 arcan_errc arcan_frameserver_pushevent(arcan_frameserver*, arcan_event*);
 
 /*
+ * Check if the frameserver is still alive, that the shared memory page is
+ * intact and look for any state-changes, e.g. resize (which would require a
+ * recalculation of shared memory layout. These are used by the various
+ * feedfunctions and should not need to be triggered elsewhere.
+ * If a resize/activation occurs, it will switch the active ffunc on the outer
+ * video object to [ff] (value from ffunc_lut.h)
+ */
+bool arcan_frameserver_tick_control(arcan_frameserver* src, bool tick, int ff);
+
+/*
  * Poll the frameserver-out eventqueue and push it unto the evctx,
  * filter events that are outside the accepted category / kind maintained
  * in the frameserver struct

@@ -4565,6 +4565,34 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			return;
 		}
 
+/*
+ * Special case, VR inherits some properties from frameserver,
+ * but masks / shields a lot of the default eventloop
+ */
+		if (vobj->feed.state.tag == ARCAN_TAG_VR){
+			if (ev->fsrv.otag == LUA_NOREF)
+				return;
+
+			lua_rawgeti(ctx, LUA_REGISTRYINDEX, ev->fsrv.otag);
+			lua_pushvid(ctx, ev->fsrv.video);
+			lua_newtable(ctx);
+			int top = lua_gettop(ctx);
+			if (ev->fsrv.kind == EVENT_FSRV_ADDVRLIMB){
+				tblstr(ctx, "kind", "limb_added", top);
+				tblnum(ctx, "id",  ev->fsrv.limb, top);
+				tblstr(ctx, "name", limb_name(ev->fsrv.limb), top);
+			}
+			else{
+				tblstr(ctx, "kind", "limb_lost", top);
+				tblnum(ctx, "id", ev->fsrv.limb, top);
+				tblstr(ctx, "name", limb_name(ev->fsrv.limb), top);
+			}
+			luactx.cb_source_kind = CB_SOURCE_FRAMESERVER;
+			wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "frameserver_event");
+			luactx.cb_source_kind = CB_SOURCE_NONE;
+			return;
+		}
+
 		if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV)
 			return;
 
@@ -4600,15 +4628,6 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			tblbool(ctx, "vobj", (ev->fsrv.aproto & SHMIF_META_VOBJ) > 0, top);
 			tblbool(ctx, "vr", (ev->fsrv.aproto & SHMIF_META_VR) > 0, top);
 		break;
-		case EVENT_FSRV_ADDVRLIMB:
-			tblstr(ctx, "kind", "limb_added", top);
-			tblnum(ctx, "id",  ev->fsrv.limb, top);
-			tblstr(ctx, "name", limb_name(ev->fsrv.limb), top);
-		break;
-		case EVENT_FSRV_LOSTVRLIMB:
-			tblstr(ctx, "kind", "limb_lost", top);
-			tblnum(ctx, "id", ev->fsrv.limb, top);
-			tblstr(ctx, "name", limb_name(ev->fsrv.limb), top);
 		case EVENT_FSRV_GAMMARAMP:
 			tblstr(ctx, "kind", "ramp_update", top);
 			tblnum(ctx, "index", ev->fsrv.counter, top);
@@ -4641,6 +4660,8 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 /* mirrored is incorrect but can't drop it for legacy reasons */
 			tblbool(ctx, "mirrored", ev->fsrv.glsource, top);
 			tblbool(ctx, "origo_ll", ev->fsrv.glsource, top);
+		break;
+		default:
 		break;
 		}
 

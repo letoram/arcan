@@ -35,6 +35,16 @@
 #include "arcan_frameserver.h"
 #include "arcan_vr.h"
 
+#ifdef _DEBUG
+#define DEBUG 1
+#else
+#define DEBUG 0
+#endif
+
+#define debug_print(fmt, ...) \
+            do { if (DEBUG) arcan_warning("%s:%d:%s(): " fmt "\n", \
+						"arcan_vr:", __LINE__, __func__,##__VA_ARGS__); } while (0)
+
 /*
  * left: metadata, samples, ...
  */
@@ -86,7 +96,6 @@ struct arcan_vr_ctx* arcan_vr_setup(
 		.args.external.argv = &arr_argv,
 		.args.external.resource = strdup(bridge_arg)
 	};
-
 	struct arcan_vr_ctx* vrctx = arcan_alloc_mem(
 		sizeof(struct arcan_vr_ctx), ARCAN_MEM_VSTRUCT,
 		ARCAN_MEM_BZERO | ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_NATURAL
@@ -101,13 +110,17 @@ struct arcan_vr_ctx* arcan_vr_setup(
 	free(args.args.external.resource);
 
 	if (!mvctx){
+		debug_print("couldn't spawn vrbridge");
 		arcan_mem_free(vrctx);
 		arcan_mem_free(mvctx);
 		return NULL;
 	}
 
-	vrctx->ctx = evctx;
-	vrctx->connection = mvctx;
+	debug_print("vrbridge launched");
+	*vrctx = (struct arcan_vr_ctx){
+		.ctx = evctx,
+		.connection = mvctx
+	};
 	mvctx->segid = SEGID_SENSOR;
 	arcan_video_alterfeed(mvctx->vid, FFUNC_VR,
 		(struct vfunc_state){
@@ -137,11 +150,32 @@ enum arcan_ffunc_rv arcan_vr_ffunc FFUNC_HEAD
 	if (!tgt || state.tag != ARCAN_TAG_VR)
 		return FRV_NOFRAME;
 
-	struct arcan_shmif_vr* vr = tgt->desc.aext.vr;
 /* poll allocation mask for events */
-
 	TRAMP_GUARD(FRV_NOFRAME, tgt);
-	if (cmd == FFUNC_POLL && vr){
+
+	if (cmd == FFUNC_DESTROY){
+		arcan_frameserver_free(tgt);
+		ctx->connection = NULL;
+
+		for (size_t i = 0; i < LIMB_LIM; i++){
+			if (ctx->limb_map[i]){
+				arcan_3d_bindvr(ctx->limb_map[i], NULL);
+				ctx->limb_map[i] = 0;
+			}
+		}
+		return FRV_NOFRAME;
+	}
+
+/* target has still not requested access to the VR subprotocol */
+	struct arcan_shmif_vr* vr = tgt->desc.aext.vr;
+	if (!vr){
+		if (cmd == FFUNC_TICK || (cmd == FFUNC_POLL && tgt->shm.ptr->resized)){
+			arcan_frameserver_tick_control(tgt, arcan_event_defaultctx(), FFUNC_VR);
+		}
+		return FRV_NOFRAME;
+	}
+
+	if (cmd == FFUNC_POLL){
 		for (size_t i = 0; i < LIMB_LIM; i++){
 			if (!ctx->limb_map[i])
 				continue;
@@ -150,20 +184,24 @@ enum arcan_ffunc_rv arcan_vr_ffunc FFUNC_HEAD
  * match */
 		}
 	}
-	else if (cmd == FFUNC_TICK && vr){
+	else if (cmd == FFUNC_TICK){
 /* check allocation masks */
 		uint_least64_t map = atomic_load(&vr->limb_mask);
 		uint64_t new = map & ~ctx->map;
 		uint64_t lost = ctx->map & ~map;
 
 		if (new){
+			debug_print("new map: %"PRIu64, new);
 			for (uint64_t i = 0; i < LIMB_LIM; i++){
-				if ((1 << i) & new){
+				if (((uint64_t)1 << i) & new){
+					debug_print("added limb (%d)", i);
 					arcan_event_enqueue(arcan_event_defaultctx(),
 					&(struct arcan_event){
 						.category = EVENT_FSRV,
 						.fsrv.kind = EVENT_FSRV_ADDVRLIMB,
-						.fsrv.limb = i
+						.fsrv.limb = i,
+						.fsrv.video = tgt->vid,
+						.fsrv.otag = tgt->tag
 					});
 				}
 			}
@@ -171,12 +209,15 @@ enum arcan_ffunc_rv arcan_vr_ffunc FFUNC_HEAD
 
 		if (lost){
 			for (uint64_t i = 0; i < LIMB_LIM; i++){
-				if ((1 << i) & lost){
+				if (((uint64_t)1 << i) & lost){
+					debug_print("lost limb (%d)", 1 << i);
 					arcan_event_enqueue(arcan_event_defaultctx(),
 					&(struct arcan_event){
 						.category = EVENT_FSRV,
 						.fsrv.kind = EVENT_FSRV_LOSTVRLIMB,
-						.fsrv.limb = i
+						.fsrv.limb = i,
+						.fsrv.video = tgt->vid,
+						.fsrv.otag = tgt->tag
 					});
 					if (ctx->limb_map[i])
 						arcan_3d_bindvr(ctx->limb_map[i], NULL);
@@ -185,15 +226,6 @@ enum arcan_ffunc_rv arcan_vr_ffunc FFUNC_HEAD
 		}
 		ctx->map = map;
 	}
-	else if (cmd == FFUNC_DESTROY && vr){
-/* dms will deal with shutdown / deallocation */
-		for (size_t i = 0; i < LIMB_LIM; i++){
-			if (ctx->limb_map[i]){
-				arcan_3d_bindvr(ctx->limb_map[i], NULL);
-				ctx->limb_map[i] = 0;
-			}
-		}
-	}
 
 /* Run the null-feed as a default handler */
 	struct vfunc_state inst = {
@@ -201,11 +233,8 @@ enum arcan_ffunc_rv arcan_vr_ffunc FFUNC_HEAD
 		.tag = ARCAN_TAG_FRAMESERV
 	};
 
-/* _feed will reenter, need to use full vdirecct so that we get resize-
- * behavior, needed for the extra aproto- mapping to work */
 	platform_fsrv_leave();
-	return arcan_frameserver_vdirect(
-		cmd, buf, buf_sz, width, height, mode, inst, srcid);
+	return FRV_NOFRAME;
 }
 
 arcan_errc arcan_vr_maplimb(
