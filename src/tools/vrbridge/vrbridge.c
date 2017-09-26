@@ -33,7 +33,7 @@ static void* limb_runner(void* arg)
 {
 	struct limb_runner* meta = arg;
 
-	while (in_init);
+	while (in_init){}
 
 	while (meta->dev->alive){
 /* expected to block until limb has been updated, the timestamp is when
@@ -43,7 +43,7 @@ static void* limb_runner(void* arg)
 		uint16_t checksum = subp_checksum(
 			(uint8_t*)meta->limb, sizeof(struct vr_limb)-sizeof(uint16_t));
 		atomic_store(&meta->limb->timestamp, timestamp);
-		atomic_store(&meta->limb->checksum, checksum);
+		atomic_store(&meta->limb->data.checksum, checksum);
 		atomic_fetch_or(&meta->vr->ready, 1 << meta->limb_ind);
 	}
 
@@ -72,7 +72,7 @@ static bool init_device(struct dev_ent* ent,
 	struct arcan_shmif_vr* vr, struct arg_arr* arg)
 {
 	if (ent->init(ent, vr, arg)){
-
+		ent->alive = true;
 		return true;
 	}
 	return false;

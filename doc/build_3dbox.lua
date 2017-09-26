@@ -1,8 +1,13 @@
 -- build_3dbox
--- @short: Generate a mesh matching a cube
--- @inargs: TBD
--- @outargs: TBD
--- @longdescr: Incomplete, Placeholder symbol.
+-- @short: Generate a 3D cube model
+-- @inargs: float:width, float:height, float:depth
+-- @inargs: float:width, float:height, float:depth, int:nmaps
+-- @outargs: vid
+-- @longdescr: This builds a mesh and binds to a new 3d model that
+-- is then finalized. The typical use is for things like skyboxes and
+-- debug geometry. The mesh values will range from -(width/2)..+(width/2),
+-- -(height/2)..+(height/2), -(depth/2)..+(depth/2). Optionally, the model
+-- will have *nmaps* texturing slots allocated to it.
 -- @group: 3d
 -- @cfunction: buildbox
 -- @related: build_3dplane

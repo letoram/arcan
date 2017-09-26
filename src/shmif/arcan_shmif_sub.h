@@ -264,30 +264,32 @@ struct vr_meta {
 	float abberation[4];
 };
 
+union vr_data {
+	uint8_t data[64];
+	struct {
+		vector position;
+		vector forward;
+		quat orientation;
+		_Atomic uint16_t checksum;
+	};
+};
+
 struct vr_limb {
+/* PRODUCER_SET (activation, or 0 if no haptics) */
+	uint8_t haptic_id;
+	uint8_t haptic_capabilities;
+
 /* CONSUMER-SET: don't bother updating, won't be used. */
-	bool ignored;
+	uint8_t ignored;
 
 /* PRODUCER_SET (activation) */
-	enum avatar_limbs limb_type;
-
-/* PRODUCER_SET (activation, or 0 if no haptics) */
-	uint32_t haptic_id;
-	uint32_t haptic_capabilities;
+	uint8_t limb_type;
 
 /* PRODUCER_UPDATE */
 	_Atomic uint_least32_t timestamp;
 
 /* PRODUCER UPDATE */
-	union {
-		uint8_t data[64];
-		struct {
-			vector position;
-			vector forward;
-			quat orientation;
-			_Atomic uint16_t checksum;
-		};
-	};
+	union vr_data data;
 };
 
 /*
