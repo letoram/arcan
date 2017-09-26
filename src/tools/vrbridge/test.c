@@ -25,27 +25,28 @@ void test_sample(struct dev_ent* dev, struct vr_limb* limb, unsigned id)
 	switch(id){
 /* just spin around each axis in sequence */
 	case ID_NECK:
-		arcan_timesleep(4);
+		arcan_timesleep(400);
 		state->axis[state->axis_ind] += 10;
 		if (state->axis[state->axis_ind] > 360.0){
 			state->axis[state->axis_ind] = 0;
 			state->axis_ind = (state->axis_ind + 1) % 3;
 		}
-		limb->orientation = build_quat_taitbryan(
+		limb->data.orientation = build_quat_taitbryan(
 			state->axis[0], state->axis[1], state->axis[2]);
 	break;
 
 	case ID_LTOOL:
+		arcan_timesleep(240);
 	break;
 
 	case ID_RTOOL:
+		arcan_timesleep(240);
 	break;
 	}
 }
 
 void test_control(struct dev_ent* ent, enum ctrl_cmd cmd)
 {
-
 }
 
 extern bool in_test_mode;

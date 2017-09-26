@@ -48,12 +48,16 @@
 /*
  * left: metadata, samples, ...
  */
+struct limb_ent {
+	arcan_vobj_id map;
+	uint_least32_t ts;
+};
 
 struct arcan_vr_ctx {
 	arcan_evctx* ctx;
 	arcan_frameserver* connection;
 	uint64_t map;
-	arcan_vobj_id limb_map[LIMB_LIM];
+	struct limb_ent limb_map[LIMB_LIM];
 };
 
 struct arcan_vr_ctx* arcan_vr_setup(
@@ -158,9 +162,9 @@ enum arcan_ffunc_rv arcan_vr_ffunc FFUNC_HEAD
 		ctx->connection = NULL;
 
 		for (size_t i = 0; i < LIMB_LIM; i++){
-			if (ctx->limb_map[i]){
-				arcan_3d_bindvr(ctx->limb_map[i], NULL);
-				ctx->limb_map[i] = 0;
+			if (ctx->limb_map[i].map){
+				arcan_3d_bindvr(ctx->limb_map[i].map, NULL);
+				ctx->limb_map[i].map = 0;
 			}
 		}
 		return FRV_NOFRAME;
@@ -177,11 +181,34 @@ enum arcan_ffunc_rv arcan_vr_ffunc FFUNC_HEAD
 
 	if (cmd == FFUNC_POLL){
 		for (size_t i = 0; i < LIMB_LIM; i++){
-			if (!ctx->limb_map[i])
+			if (!ctx->limb_map[i].map)
 				continue;
 
-/* naive approach: copy / verify data, update position state for object if they
- * match */
+/* see if there is a new sample */
+			uint32_t ts = atomic_load(&vr->limbs[i].timestamp);
+			if (ts == ctx->limb_map[i].ts)
+				continue;
+
+			debug_print("limb %zu updated - %"PRIu32"\n", i, ts);
+			struct vr_limb vl = vr->limbs[i];
+
+/* there is, and it verified (failure assumes it is being updated) so using the
+ * values is a disservice - the best way is probably to add it to a processing
+ * queue and try/flush that queue before leaving */
+			uint16_t cs = subp_checksum((uint8_t*)&vl, sizeof(struct vr_limb)-2);
+			if (cs != atomic_load(&vr->limbs[i].data.checksum)){
+				debug_print("limb %zu failed to validate\n", i);
+				continue;
+			}
+
+			arcan_vobject* vobj = arcan_video_getobject(ctx->limb_map[i].map);
+			assert(vobj);
+			vector tb = angle_quat(vl.data.orientation);
+			vobj->current.rotation.roll = tb.x;
+			vobj->current.rotation.pitch = tb.y;
+			vobj->current.rotation.yaw = tb.z;
+			vobj->current.rotation.quaternion = vl.data.orientation;
+			vobj->current.position = vl.data.position;
 		}
 	}
 	else if (cmd == FFUNC_TICK){
@@ -203,6 +230,7 @@ enum arcan_ffunc_rv arcan_vr_ffunc FFUNC_HEAD
 						.fsrv.video = tgt->vid,
 						.fsrv.otag = tgt->tag
 					});
+					vr->limbs[i].ignored = true;
 				}
 			}
 		}
@@ -219,8 +247,8 @@ enum arcan_ffunc_rv arcan_vr_ffunc FFUNC_HEAD
 						.fsrv.video = tgt->vid,
 						.fsrv.otag = tgt->tag
 					});
-					if (ctx->limb_map[i])
-						arcan_3d_bindvr(ctx->limb_map[i], NULL);
+					if (ctx->limb_map[i].map)
+						arcan_3d_bindvr(ctx->limb_map[i].map, NULL);
 				}
 			}
 		}
@@ -240,7 +268,7 @@ enum arcan_ffunc_rv arcan_vr_ffunc FFUNC_HEAD
 arcan_errc arcan_vr_maplimb(
 	struct arcan_vr_ctx* ctx, unsigned ind, arcan_vobj_id vid)
 {
-	if (!ctx)
+	if (!ctx || !ctx->connection)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
 	if (ind >= LIMB_LIM)
@@ -248,14 +276,26 @@ arcan_errc arcan_vr_maplimb(
 
 /* only 1:1 allowed */
 	for (size_t i = 0; i < LIMB_LIM; i++)
-		if (ctx->limb_map[i] == vid)
+		if (ctx->limb_map[i].map == vid)
 			return ARCAN_ERRC_UNACCEPTED_STATE;
 
 /* unmap- pre-existing? */
-	if (ctx->limb_map[ind])
-		arcan_3d_bindvr(ctx->limb_map[ind], NULL);
+	if (ctx->limb_map[ind].map)
+		arcan_3d_bindvr(ctx->limb_map[ind].map, NULL);
 
-	ctx->limb_map[ind] = vid;
+	ctx->limb_map[ind].map = vid;
+
+	struct arcan_shmif_vr* vr = ctx->connection->desc.aext.vr;
+	if (!vr){
+		debug_print("trying to limb-map on client without subproto");
+		return ARCAN_ERRC_UNACCEPTED_STATE;
+	}
+
+/* enable sampling */
+	TRAMP_GUARD(ARCAN_ERRC_UNACCEPTED_STATE, ctx->connection);
+		vr->limbs[ind].ignored = false;
+	platform_fsrv_leave();
+
 	return arcan_3d_bindvr(vid, ctx);
 }
 
@@ -263,9 +303,14 @@ arcan_errc arcan_vr_release(struct arcan_vr_ctx* ctx, arcan_vobj_id vid)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	for (size_t i = 0; i < LIMB_LIM; i++)
-		if (ctx->limb_map[i] == vid){
-			ctx->limb_map[i] = 0;
+		if (ctx->limb_map[i].map == vid){
+			ctx->limb_map[i].map = 0;
 			rv = ARCAN_OK;
+			TRAMP_GUARD(ARCAN_ERRC_UNACCEPTED_STATE, ctx->connection);
+				struct arcan_shmif_vr* vr = ctx->connection->desc.aext.vr;
+				vr->limbs[i].ignored = true;
+			platform_fsrv_leave();
+			break;
 		}
 	return rv;
 }
@@ -280,7 +325,7 @@ arcan_errc arcan_vr_displaydata(
 
 	struct arcan_shmif_vr* vr = tgt->desc.aext.vr;
 	TRAMP_GUARD(ARCAN_ERRC_UNACCEPTED_STATE, tgt);
-	*dst = vr->meta;
+		*dst = vr->meta;
 	platform_fsrv_leave();
 	return ARCAN_OK;
 }

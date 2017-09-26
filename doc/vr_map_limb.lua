@@ -8,6 +8,9 @@
 -- limb directly. This approach is chosen to minimize latency and sampling overhead,
 -- as many of the underlying sensor techniques have quite high samplerates and
 -- not suitable for processing in a scripting VM/ garbage collected context.
+-- @note: The targeted model will not behave as a normal object while mapped in
+-- regards to transformation chains and other positional/rotational properties,
+-- menaing that operations e.g. forward3d_model will produce undefined results.
 -- @group: iodev
 -- @cfunction: vr_maplimb
 -- @related:
