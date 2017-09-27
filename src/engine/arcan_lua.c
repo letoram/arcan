@@ -5386,12 +5386,20 @@ static int camtag(lua_State* ctx)
 	ar = luaL_optnumber(ctx, 5, ar);
 	bool front = luaL_optbnumber(ctx, 6, true);
 	bool back  = luaL_optbnumber(ctx, 7, false);
-	float linew = 1.0;
+	float linew = luaL_optnumber(ctx, 8, 0.0);
 
 	enum agp_mesh_flags flags = 0;
-	if (lua_type(ctx, 8) == LUA_TNUMBER){
-		linew = luaL_checknumber(ctx, 8);
+	if (linew > EPSILON)
 		flags |= MESH_FILL_LINE;
+	else
+		linew = 1.0;
+
+	arcan_vobj_id dst = ARCAN_EID;
+	if (lua_type(ctx, 9) == LUA_TNUMBER){
+		arcan_vobject* vobj;
+		dst = luaL_checkvid(ctx, 9, &vobj);
+		if (!arcan_vint_findrt(vobj))
+			arcan_fatal("camtag_model(), referenced dst is not a rendertarget\n");
 	}
 
 	if (front)
@@ -5399,7 +5407,7 @@ static int camtag(lua_State* ctx)
 	if (back)
 		flags |= MESH_FACING_BACK;
 
-	arcan_errc rv = arcan_3d_camtag(id, nv, fv, ar, fov, flags, linew);
+	arcan_errc rv = arcan_3d_camtag(dst, id, nv, fv, ar, fov, flags, linew);
 
 	lua_pushboolean(ctx, rv == ARCAN_OK);
 	LUA_ETRACE("camtag_model", NULL, 1);
@@ -7967,6 +7975,31 @@ static int renderattach(lua_State* ctx)
 	LUA_ETRACE("rendertarget_attach", NULL, 0);
 }
 
+static int linkset(lua_State* ctx)
+{
+	LUA_TRACE("define_linktarget");
+	arcan_vobject* vobj;
+	arcan_vobj_id did = luaL_checkvid(ctx, 1, NULL);
+	arcan_vobj_id rtgt_id = luaL_checkvid(ctx, 2, &vobj);
+	struct rendertarget* rtgt = arcan_vint_findrt(vobj);
+	if (!rtgt)
+		arcan_fatal("define_linktarget() - referenced vid is not a rendertarget\n");
+
+	int scale = luaL_optint(ctx, 3, RENDERTARGET_NOSCALE);
+	int rate = luaL_optint(ctx, 4, -1);
+	int format = luaL_optint(ctx, 5, RENDERFMT_COLOR);
+
+	if (scale != RENDERTARGET_SCALE && scale != RENDERTARGET_NOSCALE){
+		arcan_fatal("renderset(%d) invalid arg 3, expected "
+			"RENDERTARGET_SCALE or RENDERTARGET_NOSCALE\n", scale);
+	}
+
+	bool ok = arcan_video_linkrendertarget(did, rtgt_id, rate, scale, format);
+
+	lua_pushboolean(ctx, ok);
+	LUA_ETRACE("define_linktarget", NULL, 1);
+}
+
 static int renderset(lua_State* ctx)
 {
 	LUA_TRACE("define_rendertarget");
@@ -10443,6 +10476,7 @@ static const luaL_Reg tgtfuns[] = {
 {"target_coreopt",             targetcoreopt            },
 {"target_updatehandler",       targethandler            },
 {"define_rendertarget",        renderset                },
+{"define_linktarget",          linkset                  },
 {"define_recordtarget",        recordset                },
 {"define_calctarget",          procset                  },
 {"define_feedtarget",          feedtarget               },

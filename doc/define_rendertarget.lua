@@ -1,12 +1,12 @@
 -- define_rendertarget
--- @short: Create an intermediate rendering dst
+-- @short: Create an offscreen rendering pipe
 -- @inargs: vid:dst, t_vid:vtbl
 -- @inargs: vid:dst, t_vid:vtbl, int:detach
 -- @inargs: vid:dst, t_vid:vtbl, int:detach, int:scale
 -- @inargs: vid:dst, t_vid:vtbl, int:detach, int:scale, int:rate
--- @inargs: vid:dst, t_vid:vtbl, int:detach, int:scale, int:rate, int:fmt
+-- @inargs: vid:dst, t_vid:vtbl, int:detach, int:scale, int:rate, int:format
 -- @inargs: vid:dst, t_vid:vtbl, int:detach, int:scale,
---                               int:rate, int:fmt, float:hppcm, float:vppcm
+--                               int:rate, int:format, float:hppcm, float:vppcm
 -- @outargs: bool:status
 -- @longdescr: This function creates a separate rendering pipeline
 -- that sends its output to the storage of another vid- connected
@@ -70,7 +70,7 @@
 -- converge to an undefined state from the resulting feedback loop.
 -- @external: yes
 -- @related: define_recordtarget, alloc_surface, define_calctarget,
--- rendertarget_forceupdate, rendertarget_noclear, rendertarget_attach
+-- rendertarget_forceupdate, rendertarget_noclear, rendertarget_attach, define_linktarget
 --
 function main()
 #ifdef MAIN

@@ -1,21 +1,25 @@
 -- camtag_model
--- @short: Set VID as perspective and (possible) recipient of a 3D pipeline.
--- @inargs: dstvid, *near*, *far*, *fov*, *aspect*, *front*, *back*, *linew*
+-- @short: Define a camera for the 3D processing of a rendertarget
+-- @inargs: vid:dst
+-- @inargs: vid:dst, float:near
+-- @inargs: vid:dst, float:near, float:far
+-- @inargs: vid:dst, float:near, float:far, float:aspect
+-- @inargs: vid:dst, float:near, float:far, float:aspect, bool:front
+-- @inargs: vid:dst, float:near, float:far, float:aspect, bool:front, bool:back
+-- @inargs: vid:dst, float:near, float:far, float:aspect, bool:front, bool:back, float:linew
+-- @inargs: vid:dst, float:near, float:far, float:aspect, bool:front, bool:back, float:linew, vid:tgt
 -- @outargs:
--- @longdescr: In order to activate 3D rendering, one or several cameras need to
--- be defined. Any VID can be used for this purpose. The optional arguments
--- (near, far, fov, aspect) are all used to calculate the transformation matrix
--- that represents the camera (defaults are 0.1, 100.0, 45.0, VRESW/VRESH).
--- The optional arguments *front* and *back* define which faces that should be
--- drawn (i.e. triangels facing towards the camera, away from the camera or
--- all triangels).
--- The optional *linew* argument is primarily used for debugging or wireframe
--- rendering where you need control over the wireframe line width. If you set it,
--- the camera pipeline will be processed with wireframe drawing only, though
--- culling settings still apply.
--- @note: It is possible to camtag a rendertarget, which will define the default
--- behavior for that pass, allowing for off-screen 3D rendering for effects
--- such as shadows.
+-- @longdescr: This function is used to provide a rendertarget with a camera,
+-- enabling the 3D processing part of the pipeline. The object that is used as
+-- *dst* will be converted into a camera- type, and it is from the perspective
+-- of this object that the 3D scene will be processed. The destination rendertarget
+-- is either the primary attachment of the object used for *dst*, or, if the long-form
+-- argument is used, a specific rendertarget via *tgt*.
+-- The camera parameters are tuned using *near*, *far*, and *aspect* which are used
+-- to compute the projection matrix that will be activated. The boolean toggles *front* and
+-- *back* determines which sides of the model primitives that will be drawn.
+-- Setting the *linew* argument to something larger than 0 will enable wireframe
+-- drawing mode for the camera and disable normal processing.
 -- @group: 3d
 -- @cfunction: camtag
 -- @related: video_3dorder

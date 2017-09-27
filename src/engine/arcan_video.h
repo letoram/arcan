@@ -635,12 +635,48 @@ arcan_errc arcan_video_defineshape(arcan_vobj_id dst,
  */
 arcan_errc arcan_video_framecyclemode(arcan_vobj_id id, signed mode);
 
-/* Rendertarget- operations */
+/*
+ * Create a rendertarget, which is a separate offscreen 'render-to-texture'
+ * pipeline. The storage owned by the object in [did] will be used for
+ * rendering and is expected to be a valid TEXTURE2D target.
+ *
+ * [readback] indicates at which rate the local-CPU bound backend storage
+ * should be updated with the contents, or 0 if disabled.
+ *
+ * [refresh] indicates the nominal-refresh clock, 0 if disabled, -n for
+ * every n frames on the non-monotonic render clock, and +n for every n ticks
+ * on the monotonic clock.
+ *
+ * if [scale] is set, the coordinate space of the members of the rendertarget
+ * should be scaled in relation to the parent rendertarget (WORLDID).
+ *
+ * [format] determines the output format and which output buffers that should
+ * be stored into [did]. This may modify and mutate the backing store in [did].
+ */
 arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, int readback,
 	int refresh, bool scale, enum rendertarget_mode format);
+
+/*
+ * Immediately process and update the contents of the rendertarget specified
+ * by [vid]. Will return ARCAN_OK if [vid] points to a rendertarget.
+ */
 arcan_errc arcan_video_forceupdate(arcan_vobj_id vid);
+
+/*
+ * Attach [src] to the rendertarget indicated by [did]. If [detach] is set, the
+ * rendertarget will become the new primary attachment for [src] and the object
+ * will be removed from the pipeline of its previous primary attachment.
+ */
 arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did,
 	arcan_vobj_id src, bool detach);
+
+/*
+ * Similarly to setuprendertarget, but will reference the pipeline used by the
+ * rendertarget specified as [src]. If [src] is deleted, this delete operation
+ * will cascade to [did], ignoring any expiration mask.
+ */
+arcan_errc arcan_video_linkrendertarget(arcan_vobj_id did,
+	arcan_vobj_id src, int refresh, bool scale, enum rendertarget_mode format);
 
 /*
  * Change the target density of the rendertarget associates with [src].  If

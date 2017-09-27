@@ -1168,8 +1168,21 @@ static bool detach_fromtarget(struct rendertarget* dst, arcan_vobject* src)
 	arcan_vobject_litem* torem;
 	assert(src);
 
-/* already detached or empty source/target */
-	if (!dst || !dst->first)
+/* already detached? */
+	if (!dst){
+		return false;
+	}
+
+	if (dst->camtag == src->cellid)
+		dst->camtag = ARCAN_EID;
+
+/* chain onwards if dst refers to a link target */
+	if (dst->link){
+		return detach_fromtarget(dst->link, src);
+	}
+
+/* or empty set */
+ 	if (!dst->first)
 		return false;
 
 	if (dst->camtag == src->cellid)
@@ -1268,6 +1281,9 @@ void arcan_vint_reraster(arcan_vobject* src, struct rendertarget* rtgt)
 
 static void attach_object(struct rendertarget* dst, arcan_vobject* src)
 {
+	if (dst->link)
+		return attach_object(dst->link, src);
+
 	arcan_vobject_litem* new_litem =
 		arcan_alloc_mem(sizeof *new_litem,
 			ARCAN_MEM_VSTRUCT, 0, ARCAN_MEMALIGN_NATURAL);
@@ -2125,6 +2141,27 @@ arcan_errc arcan_video_rendertarget_setnoclear(arcan_vobj_id did, bool value)
 	return ARCAN_OK;
 }
 
+arcan_errc arcan_video_linkrendertarget(arcan_vobj_id did,
+	arcan_vobj_id tgt_id, int refresh, bool scale, enum rendertarget_mode format)
+{
+	arcan_vobject* vobj = arcan_video_getobject(tgt_id);
+	if (!vobj)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+
+	struct rendertarget* tgt = arcan_vint_findrt(vobj);
+	if (!tgt)
+		return ARCAN_ERRC_BAD_ARGUMENT;
+
+	arcan_errc rv = arcan_video_setuprendertarget(did, 0, refresh, scale, format);
+	if (rv != ARCAN_OK)
+		return rv;
+
+	vobj = arcan_video_getobject(did);
+	struct rendertarget* newtgt = arcan_vint_findrt(vobj);
+	newtgt->link = tgt;
+	return ARCAN_OK;
+}
+
 arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did,
 	int readback, int refresh, bool scale, enum rendertarget_mode format)
 {
@@ -2147,6 +2184,7 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did,
 
 	int ind = current_context->n_rtargets++;
 	struct rendertarget* dst = &current_context->rtargets[ ind ];
+	*dst = (struct rendertarget){};
 
 	FL_SET(vobj, FL_RTGT);
 	FL_SET(dst, TGTFL_ALIVE);
@@ -2955,7 +2993,8 @@ static void drop_rtarget(arcan_vobject* vobj)
 		agp_drop_rendertarget(dst->art);
 	dst->art = NULL;
 
-/* create a temporary copy of all the elements in the rendertarget */
+/* create a temporary copy of all the elements in the rendertarget,
+ * this will be a noop for a linked rendertarget */
 	arcan_vobject_litem* current = dst->first;
 	size_t pool_sz = (dst->color->extrefc.attachments) * sizeof(arcan_vobject*);
 	pool = arcan_alloc_mem(pool_sz, ARCAN_MEM_VSTRUCT, ARCAN_MEM_TEMPORARY,
@@ -2964,7 +3003,7 @@ static void drop_rtarget(arcan_vobject* vobj)
 /* note the contents of the rendertarget as "detached" from the source vobj */
 	while (current){
 		arcan_vobject* base = current->elem;
-		pool[cascade_c++]  = base;
+		pool[cascade_c++] = base;
 
 /* rtarget has one less attachment, and base is attached to one less */
 		vobj->extrefc.attachments--;
@@ -3014,6 +3053,15 @@ static void drop_rtarget(arcan_vobject* vobj)
 			else
 				attach_object(&current_context->stdoutp, pool[i]);
 		}
+
+/* lastly, remove any dangling references/links, converting those rendertargets
+ * to normal/empty ones */
+	cascade_c = 0;
+	for (dstind = 0; dstind < current_context->n_rtargets; dstind++){
+		if (current_context->rtargets[dstind].link == dst){
+			current_context->rtargets[dstind].link = NULL;
+		}
+	}
 
 	arcan_mem_free(pool);
 }
@@ -4676,10 +4724,17 @@ static inline bool setup_shallow_texclip(arcan_vobject* elem,
 
 static size_t process_rendertarget(struct rendertarget* tgt, float fract)
 {
-	arcan_vobject_litem* current = tgt->first;
+	arcan_vobject_litem* current;
+	if (tgt->link){
+		current = tgt->link->first;
+		tgt->dirtyc += tgt->link->dirtyc;
+		tgt->transfc += tgt->link->transfc;
+	}
+	else
+		current = tgt->first;
 
 	if (arcan_video_display.ignore_dirty == false &&
-			tgt->dirtyc == 0 && tgt->transfc == 0)
+		(!tgt->link && tgt->dirtyc == 0 && tgt->transfc == 0))
 		return 0;
 
 	agp_activate_rendertarget(tgt->art);
