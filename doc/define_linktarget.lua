@@ -31,8 +31,33 @@
 -- @related: define_rendertarget
 function main()
 #ifdef MAIN
-	local a = alloc_surface(640, 480);
+	local halfw = math.floor(VRESW * 0.5);
+	local mt = alloc_surface(halfw, VRESH);
+	local link = alloc_surface(halfw, VRESH);
+	move_image(link, halfw, 0);
+	show_image({mt, link});
 
+-- create example surfaces and bind to rendertarget
+	local a = fill_surface(64, 64, 255, 0, 0);
+	local b = fill_surface(64, 64, 0, 255, 0);
+	local c = fill_surface(64, 64, 0, 0, 255);
+	define_rendertarget(mt, {a,b,c}, RENDERTARGET_DETACH);
+
+-- update the linktarget at a lower rate than the parent
+	define_linktarget(link, mt,  RENDERTARGET_NOSCALE, a, 2);
+
+-- set up some nonsens animation
+	move_image(a, halfw - 64, VRESH - 64, 100);
+	move_image(a, 0, 0, 100);
+	move_image(b, halfw - 64, 0, 100);
+	move_image(b, 0, 0, 100);
+	move_image(c, 0, VRESW - 64, 100);
+	move_image(c, 0, 0, 100);
+	image_transform_cycle(a, true);
+	image_transform_cycle(b, true);
+	image_transform_cycle(c, true);
+
+	show_image({a, b, c});
 #endif
 
 #ifdef ERROR1

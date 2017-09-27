@@ -7994,7 +7994,8 @@ static int linkset(lua_State* ctx)
 			"RENDERTARGET_SCALE or RENDERTARGET_NOSCALE\n", scale);
 	}
 
-	bool ok = arcan_video_linkrendertarget(did, rtgt_id, rate, scale, format);
+	bool ok = arcan_video_linkrendertarget(
+		did, rtgt_id, rate, scale == RENDERTARGET_SCALE, format);
 
 	lua_pushboolean(ctx, ok);
 	LUA_ETRACE("define_linktarget", NULL, 1);
