@@ -16,11 +16,14 @@ struct arcan_vobject_litem;
  * Process the scene according to the perspective defined in [camtag],
  * starting at [cell] with the interpolation factor of [frag](EPSILON..1.0)
  */
-struct arcan_vobject_litem* arcan_3d_refresh(arcan_vobj_id camtag,
-	struct arcan_vobject_litem* cell, float frag);
+struct arcan_vobject_litem* arcan_3d_refresh(
+	arcan_vobj_id camtag, struct arcan_vobject_litem* cell, float frag);
 
 /*
- * Irreversibly convert [parent] to have a camera tag
+ * Update the rendertarget [tgt] to use the 3D model indicated by
+ * [vid] to act as a camtag. This irreversibly converts the type of
+ * [vid] to become a 3D camera.
+ *
  * [front,back] determine the facing of meshes that will be drawn
  * [near,far,AspectRatio and fov] the properties of the camera
  *
@@ -31,8 +34,8 @@ struct arcan_vobject_litem* arcan_3d_refresh(arcan_vobj_id camtag,
  * will be used when the camera is processing the pipeline is treated as
  * the FIRST va_arg.
  */
-arcan_errc arcan_3d_camtag(arcan_vobj_id parent,
-	float near, float far, float ar, float fov, int flags, ...);
+arcan_errc arcan_3d_camtag(arcan_vobj_id tgt,
+	arcan_vobj_id vid, float near, float far, float ar, float fov, int flags, ...);
 
 /*
  * Generate a finalized model within the range [minx..maxx, 0, minz..maxz],

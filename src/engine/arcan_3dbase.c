@@ -1120,17 +1120,26 @@ arcan_errc arcan_3d_baseorient(arcan_vobj_id dst,
 	return ARCAN_OK;
 }
 
-arcan_errc arcan_3d_camtag(arcan_vobj_id vid,
-	float near, float far, float ar, float fov, int flags, ...)
+arcan_errc arcan_3d_camtag(arcan_vobj_id tgtid,
+	arcan_vobj_id vid, float near, float far, float ar, float fov, int flags, ...)
 {
 	arcan_vobject* vobj = arcan_video_getobject(vid);
+	struct rendertarget* tgt = NULL;
+	if (tgtid != ARCAN_EID){
+		arcan_vobject* tgtobj = arcan_video_getobject(tgtid);
+		tgt = arcan_vint_findrt(tgtobj);
+	}
+
 	va_list vl;
 	va_start(vl, flags);
 
 	if (vobj->feed.state.ptr)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
-	vobj->owner->camtag = vobj->cellid;
+	if (tgt)
+		tgt->camtag = vobj->cellid;
+	else
+		vobj->owner->camtag = vobj->cellid;
 
 	struct camtag_data* camobj = arcan_alloc_mem(
 		sizeof(struct camtag_data), ARCAN_MEM_VTAG, 0, ARCAN_MEMALIGN_SIMD);

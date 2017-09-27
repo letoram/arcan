@@ -47,6 +47,11 @@ struct rendertarget {
 	struct arcan_vobject* color;
 	struct arcan_vobject_litem* first;
 
+/* it is possible for one rendertarget to share the pipeline with
+ * another, if so, first is set to NULL and link points to the rtgt vid */
+	struct rendertarget* link;
+
+/* corresponding agp backend store for the rendertarget in question */
 	struct agp_rendertarget* art;
 
 	enum rtgt_flags flags;
@@ -87,9 +92,8 @@ struct rendertarget {
  */
 	float hppcm, vppcm;
 
-/* each rendertarget can have one possible camera attached to it
- * which affects the 3d pipe. This is defaulted to BADID until
- * a vobj is explicitly camtaged */
+/* each rendertarget can have one possible camera attached to it which affects
+ * the 3d pipe. This is defaulted to BADID until a vobj is explicitly camtaged */
 	arcan_vobj_id camtag;
 };
 
