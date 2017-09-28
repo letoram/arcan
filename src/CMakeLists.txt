@@ -448,7 +448,7 @@ list (APPEND SOURCES
 # database tool is sqlite3 + libc so less need to work
 # around with platform layers etc.
 set (ARCANDB_SOURCES
-	tools/arcan_dbtool.c
+	tools/db/dbtool.c
 	engine/arcan_db.c
 	platform/posix/warning.c
 	platform/posix/dbpath.c
