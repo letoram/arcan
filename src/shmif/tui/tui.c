@@ -1,4 +1,3 @@
-
 /*
  * Copyright 2014-2017, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
@@ -54,7 +53,8 @@ static bool enable_harfbuzz = false;
 #include <harfbuzz/hb.h>
 #include <harfbuzz/hb-ft.h>
 #include <harfbuzz/hb-icu.h>
-static bool render_glyph(PIXEL* dst,
+
+static int render_glyph(PIXEL* dst,
 	size_t width, size_t height, int stride,
 	TTF_Font **font, size_t n,
 	uint32_t ch,
@@ -63,6 +63,7 @@ static bool render_glyph(PIXEL* dst,
 	int* advance, unsigned* prev_index
 )
 {
+	if (ch)
 	if (enable_harfbuzz)
 		return TTF_RenderUNICODEindex(dst, width, height, stride,
 			font, n, ch, xstart,fg, bg, usebg, use_kerning, style,
@@ -75,7 +76,7 @@ static bool render_glyph(PIXEL* dst,
 		);
 }
 #else
-static bool render_glyph(PIXEL* dst,
+static int render_glyph(PIXEL* dst,
 	size_t width, size_t height, int stride,
 	TTF_Font **font, size_t n,
 	uint32_t ch,
@@ -416,6 +417,8 @@ static void draw_ch(struct tui_context* tui,
  * bold/italic can invalidate the glyph-cache. Ideally, this should
  * be sorted in tsm_screen */
 	TTF_SetFontStyle(tui->font[0], prem);
+	size_t allow_w = tui->cell_w + tui->cell_w *
+		(base_x + tui->cell_w * 2 <= tui->acon.w - tui->pad_h);
 
 	if (!state){
 		unsigned ind = 0;
@@ -424,7 +427,7 @@ static void draw_ch(struct tui_context* tui,
 
 		render_glyph(
 			&tui->acon.vidp[base_y * tui->acon.pitch + base_x],
-			tui->cell_w, tui->cell_h, tui->acon.pitch,
+			allow_w, tui->cell_h, tui->acon.pitch,
 			tui->font, tui->font[1] ? 2 : 1,
 			ch, &xs, fg, bg, true, false, prem, &adv, &ind
 		);
@@ -437,7 +440,7 @@ static void draw_ch(struct tui_context* tui,
 		int adv = 0;
 		render_glyph(
 			&tui->acon.vidp[base_y * tui->acon.pitch + base_x],
-			tui->cell_w, tui->cell_h, tui->acon.pitch,
+			allow_w, tui->cell_h, tui->acon.pitch,
 			tui->font, tui->font[1] ? 2 : 1,
 			ch, &xs, fg, bg, true, false, prem, &adv, &state->ind
 		);
@@ -491,11 +494,24 @@ static void draw_cbt(struct tui_context* tui,
 	uint8_t bgc[4] = {attr->br, attr->bg, attr->bb, tui->alpha};
 	uint8_t* dfg = fgc, (* dbg) = bgc;
 
+/*
+ * For inverse, we automatically set the foreground color based on the
+ * background color perception. If it's light, make the text black, if
+ * it's dark, make the text white.
+ */
 	if (attr->inverse){
-		dfg = bgc;
 		dbg = fgc;
+		dfg = bgc;
 		dbg[3] = tui->alpha;
 		dfg[3] = 0xff;
+		float intens =
+			(0.299f * dbg[0] + 0.587f * dbg[1] + 0.114f * dbg[2]) / 255.0f;
+		if (intens < 0.5f){
+			dfg[0] = 0xff; dfg[1] = 0xff; dfg[2] = 0xff;
+		}
+		else {
+			dfg[0] = 0x00; dfg[1] = 0x00; dfg[2] = 0x00;
+		}
 	};
 
 	int x2 = x1 + tui->cell_w;
@@ -522,8 +538,6 @@ static void draw_cbt(struct tui_context* tui,
 		return;
 	}
 
-/* There should really be better palette
- * management here to account for an inverse- palette instead */
 	if (
 #ifndef SIMPLE_RENDERING
 			tui->force_bitmap || !tui->font[0]
@@ -621,7 +635,6 @@ static void draw_shaped(struct tui_context* tui,
 		draw_box(&tui->acon, 0, cury, tui->acon.w, cury+tui->cell_h, bgcol);
 		tui->acon.dirty.x2 = tui->acon.w;
 
-/* FIXME: forward to harfbuzz- like shaper / substituter */
 		if (tui->handlers.substitute)
 			tui->handlers.substitute(tui,
 				&front[row * tui->cols], n_cols, row, tui->handlers.tag);
@@ -978,6 +991,10 @@ static void update_screen(struct tui_context* tui, bool ign_inact)
 	if (!tui->front)
 		return;
 
+/*
+ * Redraw where the cursor is in its intended state if the state of the cursor
+ * has been updated
+ */
 	if (tui->cursor_upd){
 /* FIXME: for shaped drawing, we invalidate the entire cursor- row and the
  * blitting should be reworked to account for that */
@@ -1634,9 +1651,7 @@ static void update_screensize(struct tui_context* tui, bool clear)
 		tui->rows = rows;
 
 /* NOTE/FIXME: this only considers the active screen and not any alternate
- * screens that are around, which is probably not what we want. The actual
- * ordering is also suspicious as the event callback can't really draw/
- * relayout until tsm_screen_resize */
+ * screens that are around, which is probably not what we want. */
 		tsm_screen_resize(tui->screen, cols, rows);
 
 		if (tui->handlers.resized)
@@ -1657,6 +1672,20 @@ static void update_screensize(struct tui_context* tui, bool clear)
 		draw_box(&tui->acon, 0, 0, tui->acon.w, tui->acon.h, col);
 
 	update_screen(tui, true);
+}
+
+/*
+ * copy the contents of the active screen in [src] to the active screen in [dst],
+ * preserving the
+ */
+void arcan_tui_screencopy(
+	struct tui_context* src, struct tui_context* dst, bool cur, bool alt, bool sb)
+{
+/*
+ * 1. resize [dst] to match cellcount from src
+ * 2. delegate the copying to tsm_screen
+ * 3. possibly resize "back"
+ */
 }
 
 void arcan_tui_request_subwnd(
@@ -2487,6 +2516,7 @@ static bool harfbuzz_substitute(struct tui_context* tui,
 		acc |= cells[i].ch;
 	}
 
+/* just empty row */
 	if (!acc)
 		return false;
 
@@ -2506,13 +2536,21 @@ static bool harfbuzz_substitute(struct tui_context* tui,
 	hb_glyph_info_t* ginfo = hb_buffer_get_glyph_infos(buf, &glyphc);
 
 /* Note:
- * codepoint is in the namespace of the font
+ * codepoint is in the namespace of the font!
+ * mask can indicate if HB_GLYPH_FLAG_UNSAFE_TO_BREAK
+ *
  * if kerning is enabled, also get the glyph_positions and apply
  * to the xofs/real_w per cell */
 	bool changed = false;
 	for (size_t i = 0; i < glyphc && i < n_cells; i++){
-		if (cells[i].draw_ch != ginfo[i].codepoint){
-			cells[i].draw_ch = ginfo[i].codepoint;
+		if (cells[i].ch && cells[i].draw_ch != ginfo[i].codepoint){
+
+/*
+			printf("code point mutated: ind:%zu orig:%"PRIu32"new:%"PRIu32"\n", i,
+				cells[i].ch, ginfo[i].codepoint);
+				cells[i].draw_ch = ginfo[i].codepoint;
+ */
+
 			changed = true;
 		}
 	}
