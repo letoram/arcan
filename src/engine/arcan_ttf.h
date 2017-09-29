@@ -184,6 +184,8 @@ bool TTF_RenderUNICODEglyph(PIXEL* dst,
 	int* advance, unsigned* prev_index
 );
 
+void TTF_Flush_Cache( TTF_Font* font );
+
 /*
  * Same as TTF_RenderUNICODEglyph above, but 'ch' references the glyph index in
  * the font-chain, not the unicode codepoint.  This is only for special/trusted
