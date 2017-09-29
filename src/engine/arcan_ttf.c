@@ -493,7 +493,7 @@ static void Flush_Glyph( c_glyph* glyph )
 	glyph->cached = 0;
 }
 
-static void Flush_Cache( TTF_Font* font )
+void TTF_Flush_Cache( TTF_Font* font )
 {
 	int i;
 	int size = sizeof( font->cache ) / sizeof( font->cache[0] );
@@ -868,7 +868,7 @@ static TTF_Font* Find_Glyph_fb(
 void TTF_CloseFont( TTF_Font* font )
 {
 	if ( font ) {
-		Flush_Cache( font );
+		TTF_Flush_Cache( font );
 		if ( font->face ) {
 			FT_Done_Face( font->face );
 		}
@@ -1059,7 +1059,7 @@ void TTF_SetFontStyle( TTF_Font* font, int style )
 	* Ignore UNDERLINE which does not impact glyph drawning.
 	* */
 	if ( (font->style | TTF_STYLE_NO_GLYPH_CHANGE ) != ( prev_style | TTF_STYLE_NO_GLYPH_CHANGE )) {
-		Flush_Cache( font );
+		TTF_Flush_Cache( font );
 	}
 }
 
@@ -1583,7 +1583,7 @@ int TTF_GetFontStyle( const TTF_Font* font )
 void TTF_SetFontOutline( TTF_Font* font, int outline )
 {
 	font->outline = outline;
-	Flush_Cache( font );
+	TTF_Flush_Cache( font );
 }
 
 int TTF_GetFontOutline( const TTF_Font* font )
@@ -1606,7 +1606,7 @@ void TTF_SetFontHinting( TTF_Font* font, int hinting )
 	else
 		font->hinting = FT_RENDER_MODE_NORMAL;
 
-	Flush_Cache( font );
+	TTF_Flush_Cache( font );
 }
 
 int TTF_GetFontHinting( const TTF_Font* font )

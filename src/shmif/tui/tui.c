@@ -63,7 +63,9 @@ static int render_glyph(PIXEL* dst,
 	int* advance, unsigned* prev_index
 )
 {
-	if (ch)
+	if (!ch)
+		return 0;
+
 	if (enable_harfbuzz)
 		return TTF_RenderUNICODEindex(dst, width, height, stride,
 			font, n, ch, xstart,fg, bg, usebg, use_kerning, style,
@@ -2060,6 +2062,11 @@ static void probe_font(struct tui_context* tui,
 
 	if (h > *dh)
 		*dh = h;
+
+/*
+ * Flush the  cache so we're not biased or collide with byIndex or byValue
+ */
+	TTF_Flush_Cache(font);
 }
 
 /*
@@ -2548,8 +2555,8 @@ static bool harfbuzz_substitute(struct tui_context* tui,
 /*
 			printf("code point mutated: ind:%zu orig:%"PRIu32"new:%"PRIu32"\n", i,
 				cells[i].ch, ginfo[i].codepoint);
-				cells[i].draw_ch = ginfo[i].codepoint;
  */
+			cells[i].draw_ch = ginfo[i].codepoint;
 
 			changed = true;
 		}
