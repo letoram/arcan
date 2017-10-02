@@ -473,6 +473,7 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 	decctx.shmcont = *cont;
 #ifdef __APPLE__
 	const char* paths[] = {
+		"/opt/local/lib/vlc/plugins",
 		"/usr/local/lib/vlc/plugins",
 		"/usr/lib/vlc/plugins",
 		"/Applications/VLC.app/Contents/MacOS/plugins",
