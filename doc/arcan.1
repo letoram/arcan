@@ -103,6 +103,17 @@ Print a version string to stdout and then terminate. This version string
 can be used to identify the build, including audio, video, input
 platforms and source code repository checkout id.
 
+.IP "\fB-1, --pipe-stdout\fr"
+This is only usable from an arcan_lwa instance. A requested connection point
+is generated and written to stdin. This is supposed to be used with a normal
+arcan instance running piped with -0 and act as a generic mechanism for
+hooking up multiple arcan instances in a pipes-and-filters structure.
+
+.IP "\fB-0, --pipe-stdin\fr"
+See the description for 'pipe-stdin'. Reads a single line from stdin and tries
+to open an external connection point with that name (assuming it passes normal
+connection point validation).
+
 .IP "\fB Unstable Arguments\fR"
 These are slated to be replaced with a more flexible display configuration
 system and will be changed in coming versions. Users should therefore take

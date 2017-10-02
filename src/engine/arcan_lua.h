@@ -72,6 +72,13 @@ void arcan_lua_adopt(struct arcan_luactx* ctx);
  * and only argument to the function pointed out with (dstfun). */
 void arcan_lua_stategrab(struct arcan_luactx* ctx, char* dstfun, int fd);
 
+/*
+ * create a new external listening endpoint and expose via the _adopt handler,
+ * the purpose is to expose a pre-existing connection via _stdin.
+ */
+bool arcan_lua_launch_cp(
+	struct arcan_luactx*, const char* connp, const char* key);
+
 #ifdef LUA_PRIVATE
 enum arcan_ffunc_rv arcan_lua_proctarget FFUNC_HEAD;
 #endif
