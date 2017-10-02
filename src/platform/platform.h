@@ -159,6 +159,10 @@ const char** platform_input_envopts();
 void arcan_warning(const char* msg, ...);
 void arcan_fatal(const char* msg, ...);
 
+/* replace the thread_local logging output destination with outf.
+ * This can be null (and by default is null) in order to disable log output */
+void arcan_log_destination(FILE* outf, int minlevel);
+
 enum ARCAN_ANALOGFILTER_KIND {
 	ARCAN_ANALOGFILTER_NONE = 0,
 	ARCAN_ANALOGFILTER_PASS = 1,

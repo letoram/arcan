@@ -91,8 +91,10 @@ static const struct option longopts[] = {
 	{ "timedump",     required_argument, NULL, 'q'},
 	{ "nosound",      no_argument,       NULL, 'S'},
 	{ "hook",         required_argument, NULL, 'H'},
-	{ "stdout",       required_argument, NULL, '1'},
-	{ "stderr",       required_argument, NULL, '2'},
+#ifdef ARCAN_LWA
+	{ "pipe-stdout",  no_argument,       NULL, '1'},
+#endif
+	{ "pipe-stdin",   no_argument,       NULL, '0'},
 	{ "monitor",      required_argument, NULL, 'M'},
 	{ "monitor-out",  required_argument, NULL, 'O'},
 	{ "version",      no_argument,       NULL, 'V'},
@@ -143,11 +145,17 @@ printf("Usage: arcan [-whfmWMOqspBtHbdgaSV] applname "
 "-O\t--monitor-out \tLOG:fname or applname\n"
 "-q\t--timedump    \twait n ticks, dump snapshot to resources/logs/timedump\n"
 "-s\t--windowed    \ttoggle borderless window mode\n"
+"-0\t--pipe-stdin  \tread connection point from stdin and bind to adopt\n"
+"-1\t--pipe-stdout \twrite connection point to stdout and enter connloop\n"
 #ifdef DISABLE_FRAMESERVERS
 "-B\t--binpath     \tno-op, frameserver support was disabled compile-time\n"
 #else
 "-B\t--binpath     \tchange default searchpath for arcan_frameserver/afsrv*\n"
 #endif
+#ifdef ARCAN_LWA
+"-1\t--pipe-stdout \t(for pipe-mode) negotiate an initial connection\n"
+#endif
+"-0\t--pipe-stdin  \t(for pipe-mode) accept requests for an initial connection\n"
 "-p\t--rpath       \tchange default searchpath for shared resources\n"
 "-t\t--applpath    \tchange default searchpath for applications\n"
 "-H\t--hook        \trun a post-appl() script from (SHARED namespace)\n"
@@ -275,10 +283,6 @@ void amain_clock_pulse(int nticks)
 			arcan_lua_stategrab(settings.lua, "sample", settings.mon_infd);
 }
 
-static void flush_events()
-{
-}
-
 static void appl_user_warning(const char* name, const char* err_msg)
 {
 	arcan_warning("\x1b[1mCouldn't load application (\x1b[33m%s\x1b[39m)\n",
@@ -318,11 +322,14 @@ static void fatal_shutdown()
 
 int MAIN_REDIR(int argc, char* argv[])
 {
+	arcan_log_destination(stderr, 0);
+
 	settings.in_monitor = getenv("ARCAN_MONITOR_FD") != NULL;
 	bool windowed = false;
 	bool fullscreen = false;
 	bool conservative = false;
 	bool nosound = false;
+	bool stdin_connpoint = false;
 
 	unsigned char debuglevel = 0;
 
@@ -348,7 +355,7 @@ int MAIN_REDIR(int argc, char* argv[])
  * only -g will make their base and sequence repeatable */
 
 	while ((ch = getopt_long(argc, argv,
-		"w:h:mx:y:fsW:d:Sq:a:p:b:B:M:O:t:H:g1:2:V", longopts, NULL)) >= 0){
+		"w:h:mx:y:fsW:d:Sq:a:p:b:B:M:O:t:H:g01V", longopts, NULL)) >= 0){
 	switch (ch) {
 	case '?' :
 		usage();
@@ -362,6 +369,24 @@ int MAIN_REDIR(int argc, char* argv[])
 	case 'W' : platform_video_setsynch(optarg); break;
 	case 'd' : dbfname = strdup(optarg); break;
 	case 'S' : nosound = true; break;
+#ifdef ARCAN_LWA
+/* send the connection point we will try to connect through, and update the
+ * env that SHMIF_ uses to get the behavior of connection looping */
+	case '1' :{
+		char cbuf[PP_SHMPAGE_SHMKEYLIM+1];
+		snprintf(cbuf, sizeof(cbuf), "apipe%d", (int) getpid());
+		setenv("ARCAN_CONNFL", "16", 1); /* SHMIF_CONNECT_LOOP */
+		setenv("ARCAN_CONNPATH", strdup(cbuf), 1);
+		puts(cbuf);
+		fflush(stdout);
+		arcan_warning("requesting pipe-connection via %s\n", cbuf);
+	}
+	break;
+#endif
+/* a prealloc:ed connection primitive is needed, defer this to when we have
+ * enough resources and context allocated to be able to do so. This does not
+ * survive appl-switching */
+	case '0' : stdin_connpoint = true; break;
 	case 'q' : settings.timedump = strtol(optarg, NULL, 10); break;
 	case 'p' : override_resspaces(optarg); break;
 	case 'b' : fallback = strdup(optarg); break;
@@ -646,7 +671,7 @@ int MAIN_REDIR(int argc, char* argv[])
 		arcan_event_maskall(evctx);
 
 /* switch and adopt or just switch */
-		if (jumpcode == 3){
+		if (jumpcode == 2){
 			int lastctxc = arcan_video_popcontext();
 			int lastctxa;
 			while( lastctxc != (lastctxa = arcan_video_popcontext()) )
@@ -658,8 +683,8 @@ int MAIN_REDIR(int argc, char* argv[])
 		}
 		arcan_event_clearmask(evctx);
 		platform_video_recovery();
-/* unmap all displays */
 	}
+/* fallback recovery with adoption */
 	else if (jumpcode == 3){
 		if (in_recover){
 			arcan_warning("Double-Failure (main appl + adopt appl), giving up.\n");
@@ -725,6 +750,27 @@ int MAIN_REDIR(int argc, char* argv[])
 		arcan_lua_adopt(settings.lua);
 		platform_video_recovery();
 		in_recover = false;
+	}
+	else if (stdin_connpoint){
+		char cbuf[PP_SHMPAGE_SHMKEYLIM+1];
+/* read desired connection point from stdin, strip trailing \n */
+		if (fgets(cbuf, sizeof(cbuf), stdin)){
+			size_t len = strlen(cbuf);
+			cbuf[len-1] = '\0';
+			for (const char* c = cbuf; *c; c++)
+				if (!isalnum(*c)){
+					arcan_warning("-1, %s failed (only [a->Z0-9] accepted)\n", cbuf);
+					goto error;
+				}
+			if (!arcan_lua_launch_cp(settings.lua, cbuf, NULL)){
+				arcan_fatal("-1, couldn't setup connection point (%s)\n", cbuf);
+				goto error;
+			}
+		}
+		else{
+			arcan_warning("-1, couldn't read a valid connection point from stdin\n");
+			goto error;
+		}
 	}
 
 	bool done = false;

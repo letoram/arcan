@@ -850,6 +850,46 @@ char* arcan_lua_main(lua_State* ctx, const char* inp, bool file)
 	return NULL;
 }
 
+/*
+ * explicitly call for the allocation and use of a connection-point
+ */
+bool arcan_lua_launch_cp(
+	struct arcan_luactx* ctx, const char* cp, const char* key)
+{
+	if (!cp || !ctx)
+		return false;
+
+	if (!grabapplfunction(ctx, "adopt", sizeof("adopt")-1)){
+		arcan_warning("target appl lacks an _adopt handler\n");
+		return false;
+	}
+
+	struct arcan_frameserver* res =
+		platform_launch_listen_external(cp, key, -1, ARCAN_SHM_UMASK, LUA_NOREF);
+	if (!res){
+		arcan_warning("couldn't listen on connection point (%s)\n", cp);
+		return false;
+	}
+
+	lua_pushvid(ctx, res->vid);
+	lua_pushstring(ctx, "_stdin");
+	lua_pushstring(ctx, "");
+	lua_pushvid(ctx, ARCAN_EID);
+	lua_pushboolean(ctx, true);
+
+	wraperr(ctx, lua_pcall(ctx, 5, 1, 0), "adopt");
+	if (lua_type(ctx, -1) == LUA_TBOOLEAN && lua_toboolean(ctx, -1)){
+		lua_pop(ctx, 1);
+		return true;
+	}
+	else {
+		arcan_warning("target appl rejected _stdin on adopt\n");
+		lua_pop(ctx, 1);
+		arcan_video_deleteobject(res->vid);
+		return false;
+	}
+}
+
 void arcan_lua_adopt(struct arcan_luactx* ctx)
 {
 /* works on the idea that the context stack has already been collapsed into
@@ -7744,7 +7784,7 @@ static int targetlaunch(lua_State* ctx)
 
 /* means strarrs won't be populated */
 	if (!exec){
-		arcan_warning("launch_target(), failed -- invalid configuration");
+		arcan_warning("launch_target(), failed -- invalid configuration\n");
 		LUA_ETRACE("launch_target", "invalid configuration", 0);
 	}
 
