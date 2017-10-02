@@ -2112,6 +2112,10 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 	char* resource = getenv("ARCAN_ARG");
 	char* keyfile = NULL;
 	char* conn_src = getenv("ARCAN_CONNPATH");
+	char* conn_fl = getenv("ARCAN_CONNFL");
+	if (conn_fl)
+		flags = (int) strtol(conn_fl, NULL, 10) |
+			(flags & (SHMIF_ACQUIRE_FATALFAIL | SHMIF_NOACTIVATE));
 
 	if (getenv("ARCAN_SHMKEY") && getenv("ARCAN_SOCKIN_FD")){
 		keyfile = strdup(getenv("ARCAN_SHMKEY"));
