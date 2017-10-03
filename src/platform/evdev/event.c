@@ -68,7 +68,7 @@ static struct xkb_context* xkb_context;
 #define NOTIFY_SCAN_DIR "/dev/input"
 #endif
 
-static char* notify_scan_dir = NOTIFY_SCAN_DIR;
+static char* notify_scan_dir;
 
 /*
  * In happy-fun everything is user-space land, we face the policy problem of
@@ -2014,6 +2014,9 @@ void platform_event_init(arcan_evctx* ctx)
 		xkb_context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
 #endif
 
+	if (!notify_scan_dir)
+		notify_scan_dir = strdup(NOTIFY_SCAN_DIR);
+
 	gstate.tty = find_tty();
 
 	if (isatty(gstate.tty)){
@@ -2035,12 +2038,8 @@ void platform_event_init(arcan_evctx* ctx)
 		setup_signals();
 
 	char* newsd;
-	if (notify_scan_dir != NOTIFY_SCAN_DIR){
-		arcan_mem_free(notify_scan_dir);
-		notify_scan_dir = NOTIFY_SCAN_DIR;
-	}
-
 	if (get_config("event_scandir", 0, &newsd, tag) && newsd){
+		free(notify_scan_dir);
 		notify_scan_dir = newsd;
 
 		if (-1 == gstate.notify || inotify_add_watch(

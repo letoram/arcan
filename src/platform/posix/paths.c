@@ -52,6 +52,7 @@ bool arcan_isfile(const char* fn)
 static char* pathks[] = {
 	"path_appl",
 	"path_resource",
+	"path_appltemp",
 	"path_state",
 	"path_applbase",
 	"path_applstore",
@@ -65,6 +66,7 @@ static char* pathks[] = {
 static char* pinks[] = {
 	"pin_appl",
 	"pin_resource",
+	"pin_appltemp",
 	"pin_state",
 	"pin_applbase",
 	"pin_applstore",
