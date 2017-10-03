@@ -9030,8 +9030,11 @@ static int recordset(lua_State* ctx)
 				"(global monitor) allowed.\n");
 			goto cleanup;
 		}
-
-		global_monitor = true;
+		else {
+			arcan_warning("recordset() - global monitor support currently "
+				"disabled pending refactor.\n");
+			naids = 0;
+		}
 	}
 
 	if (detach != RENDERTARGET_DETACH && detach != RENDERTARGET_NODETACH){
@@ -9087,7 +9090,7 @@ static int recordset(lua_State* ctx)
 				free(aidlocks);
 				aidlocks = NULL;
 				naids = 0;
-				char* ol = arcan_alloc_mem(strlen(argl) + strlen(":noaudio=true") + 1,
+				char* ol = arcan_alloc_mem(strlen(argl) + sizeof(":noaudio=true"),
 					ARCAN_MEM_STRINGBUF, 0, ARCAN_MEMALIGN_NATURAL);
 
 				sprintf(ol, "%s%s", argl, ":noaudio=true");
@@ -9098,6 +9101,14 @@ static int recordset(lua_State* ctx)
 
 			aidlocks[i] = setaid;
 		}
+	}
+
+	if (naids == 0 && !strstr(argl, "noaudio=true")){
+		char* ol = arcan_alloc_mem(strlen(argl) + sizeof(":noaudio=true"),
+			ARCAN_MEM_STRINGBUF, 0, ARCAN_MEMALIGN_NATURAL);
+		sprintf(ol, "%s%s", argl, ":noaudio=true");
+		free(argl);
+		argl = ol;
 	}
 
 	rc = dfsrv != ARCAN_EID ?
