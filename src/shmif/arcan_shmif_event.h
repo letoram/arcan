@@ -1116,7 +1116,7 @@ enum ARCAN_TARGET_SKIPMODE {
 			int32_t iv;
 			float fv;
 			uint8_t cv[4];
-		} ioevs[6];
+		} ioevs[8];
 
 		int code;
 		union {
