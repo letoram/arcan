@@ -1086,7 +1086,7 @@ bool arcan_frameserver_tick_control(
  * There's no copy- and mark as read, that has to be done from the next layer.
  */
 leave:
-	if (!fail && src->desc.aproto & SHMIF_META_CM){
+	if (!fail && src->desc.aproto & SHMIF_META_CM && src->desc.aext.gamma){
 		uint8_t in_map = atomic_load(&src->desc.aext.gamma->dirty_out);
 		for (size_t i = 0; i < 8; i++){
 			if ((in_map & (1 << i)) && !(src->desc.aext.gamma_map & (1 << i))){
