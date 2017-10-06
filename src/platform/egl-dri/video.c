@@ -1582,17 +1582,24 @@ static int setup_node_gbm(struct dev_node* node, const char* path, int fd)
 	node->method = M_GBM_SWAP;
 	node->display = node->eglenv.get_display((void*)(node->gbm));
 
-/* there are actual ways of deriving this somewhere in DRM */
-	const char cpath[] = "/dev/dri/card";
+/* Set the render node environment variable here, this is primarily for legacy
+ * clients that gets launched through arcan - the others should get the
+ * descriptor from DEVICEHINT. It also won't work for multiple cards as the
+ * last one would just overwrite */
 	char pbuf[24] = "/dev/dri/renderD128";
 
-	if (!getenv("ARCAN_RENDER_NODE") && path && strncmp(path, cpath, 13) == 0){
+	char* rdev = drmGetRenderDeviceNameFromFd(node->fd);
+	if (rdev){
+		setenv("ARCAN_RENDER_NODE", rdev, 1);
+		free(rdev);
+	}
+/* make a poor guess */
+	else {
 		size_t ind = strtoul(&path[13], NULL, 10);
 		snprintf(pbuf, 24, "/dev/dri/renderD%d", (int)(ind + 128));
+		setenv("ARCAN_RENDER_NODE", pbuf, 1);
 	}
 
-/* and this should only use devicehint for clients going accelerated */
-	setenv("ARCAN_RENDER_NODE", pbuf, 1);
 	node->rnode = open(pbuf, O_RDWR | O_CLOEXEC);
 	return 0;
 }
@@ -1972,7 +1979,7 @@ retry:
 			if (!(enc->possible_crtcs & (1 << j)))
 				continue;
 
-			debug_print("(%d) possible crtc: %d\n", (int)d->id, j);
+			debug_print("(%d) possible crtc: %d", (int)d->id, j);
 			if (!(d->device->crtc_alloc & (1 << j))){
 				d->display.crtc = res->crtcs[j];
 				d->display.crtc_ind = j;
@@ -2538,14 +2545,14 @@ static bool try_node(int fd, const char* pathref,
 	if (gbm){
 		if (0 != setup_node_gbm(&nodes[dst_ind], pathref, fd)){
 			nodes[dst_ind].eglenv.get_proc_address = NULL;
-			debug_print("couldn't open (%d:%s) in GBM mode\n",
+			debug_print("couldn't open (%d:%s) in GBM mode",
 				fd, pathref ? pathref : "(no path)");
 			return false;
 		}
 	}
 	else {
 		if (0 != setup_node_egl(&nodes[dst_ind], pathref, fd)){
-			debug_print("couldn't open (%d:%s) in EGLStreams mode\n",
+			debug_print("couldn't open (%d:%s) in EGLStreams mode",
 				fd, pathref ? pathref : "(no path)");
 			release_card(dst_ind);
 			return false;
@@ -2553,14 +2560,14 @@ static bool try_node(int fd, const char* pathref,
 	}
 
 	if (!setup_node(&nodes[dst_ind])){
-		debug_print("setup/configure [%d](%d:%s)\n",
+		debug_print("setup/configure [%d](%d:%s)",
 			dst_ind, fd, pathref ? pathref : "(no path)");
 		release_card(dst_ind);
 		return false;
 	}
 
 	if (-1 == drmSetMaster(nodes[dst_ind].fd)){
-		debug_print("set drmMaster on [%d](%d:%s) failed, reason: %s\n",
+		debug_print("set drmMaster on [%d](%d:%s) failed, reason: %s",
 			dst_ind, fd, pathref ? pathref : "(no path)", strerror(errno));
 		if (force_master){
 			release_card(dst_ind);
