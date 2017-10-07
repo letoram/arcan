@@ -41,6 +41,14 @@ number, keysym, modifiers, devid, subid, utf8, active, device, subdevice
 kind : digital, translated = false
 ource, devid, subid, active
 
+.IP "\fBxxx_adopt(vid, kind, title, parent, last)\fr"
+Invoked as part of system_collapse, script crash recovery fallback or on
+--pipe-stdin. Implies that there already exists a frameserver connection
+that can be adopted. Last indicates whethere there are more to
+come, and parent if there's a subsegment-parent relation. Return true if the
+connection can be imported into the current script, otherwise it will be
+destroyed automatically.
+
 .IP "\fBxxx_preframe_pulse() xxx_postframe_pulse()\fr"
 Invoked right before and after synchronized transfer of a video frame, this may
 occur at rather spurious intervals depending on engine configuration

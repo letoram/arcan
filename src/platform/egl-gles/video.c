@@ -173,6 +173,10 @@ bool PLATFORM_SYMBOL(_video_map_display)(
 	return false;
 }
 
+void PLATFORM_SYMBOL(_video_reset)(int id, int swap)
+{
+}
+
 bool PLATFORM_SYMBOL(_video_specify_mode)(platform_display_id id,
 	struct monitor_mode mode)
 {

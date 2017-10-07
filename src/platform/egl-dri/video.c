@@ -2763,6 +2763,10 @@ bool platform_video_init(uint16_t w, uint16_t h,
 	return rv;
 }
 
+void platform_video_reset(int id, int swap)
+{
+}
+
 /*
  * for recovery, first emit a display added for the default 0 display, then
  * interate all already known displays and do the same. Lastly, do a rescan for

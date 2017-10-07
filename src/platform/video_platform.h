@@ -324,6 +324,13 @@ void platform_video_setsynch(const char* strat);
 bool platform_video_map_handle(struct agp_vstore*, int64_t inh);
 
 /*
+ * Reset and rebuild the graphics context(s) associated with a specific card
+ * (or -1, default for all). If multiple cards are assigned to one cardid, the
+ * swap_primary switches out the contents of one card for another index.
+ */
+void platform_video_reset(int cardid, int swap_primary);
+
+/*
  * retrieve a descriptor for a client- render resource connected to the
  * specified card-index, or -1 if no such handle exists. */
 int platform_video_cardhandle(int cardn);

@@ -102,6 +102,14 @@ static struct {
 	.magic = 0xfeedface
 };
 
+void platform_video_reset(int id, int swap)
+{
+/*
+ * no-op on this platform as the DEVICEHINT argument is responsible
+ * for swapping out the accelerated device target
+ */
+}
+
 bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	bool fs, bool frames, const char* title)
 {
