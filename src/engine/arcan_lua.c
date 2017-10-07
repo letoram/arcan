@@ -2936,6 +2936,21 @@ static int systemcontextsize(lua_State* ctx)
 	LUA_ETRACE("system_context_size", NULL, 0);
 }
 
+static int subsys_reset(lua_State* ctx)
+{
+	LUA_TRACE("subsystem_reset");
+	const char* subsys = luaL_checkstring(ctx, 1);
+	if (strcmp(subsys, "video") == 0){
+		int card = luaL_optnumber(ctx, 1, -1);
+		int swap = luaL_optnumber(ctx, 1, 0);
+		platform_video_reset(card, swap);
+	}
+	else
+		arcan_fatal("unaccepted subsystem (%s), acceptable: video\n", subsys);
+
+	LUA_ETRACE("subsystem_reset", NULL, 0);
+}
+
 static int syscollapse(lua_State* ctx)
 {
 	LUA_TRACE("system_collapse");
@@ -10706,6 +10721,7 @@ static const luaL_Reg sysfuns[] = {
 {"system_context_size", systemcontextsize},
 {"system_snapshot",     syssnap          },
 {"system_collapse",     syscollapse      },
+{"subsystem_reset",     subsys_reset     },
 {"utf8kind",            utf8kind         },
 {"decode_modifiers",    decodemod        },
 {"benchmark_enable",    togglebench      },

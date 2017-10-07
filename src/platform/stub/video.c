@@ -48,6 +48,10 @@ void platform_video_minimize()
 {
 }
 
+void platform_video_reset(int id, int swap)
+{
+}
+
 void platform_video_synch(uint64_t tick_count, float fract,
 	video_synchevent pre, video_synchevent post)
 {

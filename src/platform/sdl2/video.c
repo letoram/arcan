@@ -126,6 +126,10 @@ static bool rebuild_screen()
 	return true;
 }
 
+void platform_video_reset(int id, int swap)
+{
+}
+
 void platform_video_restore_external()
 {
 	if (arcan_video_display.fullscreen)

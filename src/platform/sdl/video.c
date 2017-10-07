@@ -85,6 +85,10 @@ int platform_video_cardhandle(int cardn)
 	return -1;
 }
 
+void platform_video_reset(int id, int swap)
+{
+}
+
 void* platform_video_gfxsym(const char* sym)
 {
 	return SDL_GL_GetProcAddress(sym);
