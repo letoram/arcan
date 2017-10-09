@@ -1614,7 +1614,7 @@ static bool load_resource(const char* resname)
 			snprintf(retro.shmcont.addr->last_words, 32,
 				"couldn't open/mmap resource");
 			LOG("couldn't map (%s)\n", resname ? resname : "");
-			return false;
+//			return false;
 		}
 		retro.gameinfo.data = map.ptr;
 		retro.gameinfo.size = map.sz;
