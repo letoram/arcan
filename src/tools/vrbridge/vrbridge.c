@@ -138,7 +138,7 @@ struct vr_limb* vrbridge_alloc_limb(
 		.vr = vr,
 		.limb = &vr->limbs[limb],
 		.dev = dev,
-		.limb_ind = limb
+		.limb_ind = id
 	};
 
 	pthread_attr_t nanny_attr;
