@@ -1017,6 +1017,7 @@ enum ARCAN_TARGET_SKIPMODE {
 				int displayid;
 				int ledctrl;
 				int ledid;
+				int cardid;
 			};
 			int slot;
 		};

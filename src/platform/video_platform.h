@@ -327,6 +327,9 @@ bool platform_video_map_handle(struct agp_vstore*, int64_t inh);
  * Reset and rebuild the graphics context(s) associated with a specific card
  * (or -1, default for all). If multiple cards are assigned to one cardid, the
  * swap_primary switches out the contents of one card for another index.
+ *
+ * This is only valid to call while the platform is in an external state,
+ * i.e. _prepare_external _reset _restore_external
  */
 void platform_video_reset(int cardid, int swap_primary);
 

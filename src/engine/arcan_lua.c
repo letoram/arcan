@@ -3934,13 +3934,16 @@ static void display_added(lua_State* ctx, arcan_event* ev)
 	lua_pushstring(ctx, "added");
 	lua_pushnumber(ctx, ev->vid.displayid);
 
-	lua_createtable(ctx, 0, 2);
+	lua_createtable(ctx, 0, 3);
 	int top = lua_gettop(ctx);
 	lua_pushstring(ctx, "ledctrl");
 	lua_pushnumber(ctx, ev->vid.ledctrl);
 	lua_rawset(ctx, top);
 	lua_pushstring(ctx, "ledind");
 	lua_pushnumber(ctx, ev->vid.ledid);
+	lua_rawset(ctx, top);
+	lua_pushstring(ctx, "card");
+	lua_pushnumber(ctx, ev->vid.cardid);
 	lua_rawset(ctx, top);
 
 	wraperr(ctx, lua_pcall(ctx, 3, 0, 0), "event loop: display state");
@@ -3954,7 +3957,6 @@ static void display_removed(lua_State* ctx, arcan_event* ev)
 
 	LUA_TRACE("_display_state (remove)");
 	lua_pushstring(ctx, "removed");
-
 	lua_pushnumber(ctx, ev->vid.displayid);
 	wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: display state");
 	LUA_TRACE("");
