@@ -1,5 +1,5 @@
 /*
- * Copyright 2016, Björn Ståhl
+ * Copyright 2016-2017, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -41,8 +41,8 @@
 #define DEBUG 0
 #endif
 
-#define debug_print(fmt, ...) \
-            do { if (DEBUG) arcan_warning("%s:%d:%s(): " fmt "\n", \
+#define debug_print(lvl, fmt, ...) \
+            do { if (DEBUG >= lvl) arcan_warning("%s:%d:%s(): " fmt "\n", \
 						"arcan_vr:", __LINE__, __func__,##__VA_ARGS__); } while (0)
 
 /*
@@ -114,13 +114,13 @@ struct arcan_vr_ctx* arcan_vr_setup(
 	free(args.args.external.resource);
 
 	if (!mvctx){
-		debug_print("couldn't spawn vrbridge");
+		debug_print(1, "couldn't spawn vrbridge");
 		arcan_mem_free(vrctx);
 		arcan_mem_free(mvctx);
 		return NULL;
 	}
 
-	debug_print("vrbridge launched");
+	debug_print(1, "vrbridge launched");
 	*vrctx = (struct arcan_vr_ctx){
 		.ctx = evctx,
 		.connection = mvctx
@@ -189,7 +189,7 @@ enum arcan_ffunc_rv arcan_vr_ffunc FFUNC_HEAD
 			if (ts == ctx->limb_map[i].ts)
 				continue;
 
-			debug_print("limb %zu updated - %"PRIu32"\n", i, ts);
+			debug_print(2, "limb %zu updated - %"PRIu32, i, ts);
 			struct vr_limb vl = vr->limbs[i];
 
 /* there is, and it verified (failure assumes it is being updated) so using the
@@ -197,13 +197,19 @@ enum arcan_ffunc_rv arcan_vr_ffunc FFUNC_HEAD
  * queue and try/flush that queue before leaving */
 			uint16_t cs = subp_checksum((uint8_t*)&vl, sizeof(struct vr_limb)-2);
 			if (cs != atomic_load(&vr->limbs[i].data.checksum)){
-				debug_print("limb %zu failed to validate\n", i);
+				debug_print(1, "limb %zu failed to validate\n", i);
 				continue;
 			}
+			vector tb = angle_quat(vl.data.orientation);
 
+			debug_print(2, "o:%.3f,%.3f,%.3f,%.3f, v: %.3f,%.3f,%.3f p:%f,%f,%f",
+				vl.data.orientation.x, vl.data.orientation.y, vl.data.orientation.z,
+				vl.data.orientation.w, tb.x, tb.y, tb.z, vl.data.position.x,
+				vl.data.position.y, vl.data.position.z
+			);
 			arcan_vobject* vobj = arcan_video_getobject(ctx->limb_map[i].map);
 			assert(vobj);
-			vector tb = angle_quat(vl.data.orientation);
+			FLAG_DIRTY(vobj);
 			vobj->current.rotation.roll = tb.x;
 			vobj->current.rotation.pitch = tb.y;
 			vobj->current.rotation.yaw = tb.z;
@@ -218,10 +224,10 @@ enum arcan_ffunc_rv arcan_vr_ffunc FFUNC_HEAD
 		uint64_t lost = ctx->map & ~map;
 
 		if (new){
-			debug_print("new map: %"PRIu64, new);
+			debug_print(1, "new map: %"PRIu64, new);
 			for (uint64_t i = 0; i < LIMB_LIM; i++){
 				if (((uint64_t)1 << i) & new){
-					debug_print("added limb (%d)", i);
+					debug_print(1, "added limb (%d)", i);
 					arcan_event_enqueue(arcan_event_defaultctx(),
 					&(struct arcan_event){
 						.category = EVENT_FSRV,
@@ -238,7 +244,7 @@ enum arcan_ffunc_rv arcan_vr_ffunc FFUNC_HEAD
 		if (lost){
 			for (uint64_t i = 0; i < LIMB_LIM; i++){
 				if (((uint64_t)1 << i) & lost){
-					debug_print("lost limb (%d)", 1 << i);
+					debug_print(1, "lost limb (%d)", 1 << i);
 					arcan_event_enqueue(arcan_event_defaultctx(),
 					&(struct arcan_event){
 						.category = EVENT_FSRV,
@@ -287,7 +293,7 @@ arcan_errc arcan_vr_maplimb(
 
 	struct arcan_shmif_vr* vr = ctx->connection->desc.aext.vr;
 	if (!vr){
-		debug_print("trying to limb-map on client without subproto");
+		debug_print(1, "trying to limb-map on client without subproto");
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 	}
 

@@ -1,12 +1,13 @@
 -- vr_setup
 -- @short: Launch the VR bridge for VR device support
--- @inargs: *optargs*, callback
+-- @inargs: string:args, func:callback
+-- @inargs: func:callback
 -- @outargs:
 -- @longdescr: VR support is managed through an external service
 -- launched through this function. In principle, it works like a
 -- normal frameserver with some special semantics and a different
 -- engine code path for event interpretation and so on.
--- VR, as used here, covers are large assortment of devices.
+-- VR, as used here, covers ae large assortment of devices.
 -- These devices include, but are not limited to:
 -- Haptic Gloves, Haptic Suites, Eye/Gaze Trackers, Positional Devices,
 -- Inside/Out trackers, and Motion Capture Systems. They may expose
@@ -23,7 +24,9 @@
 --
 -- The *optargs* is a normal arcan_arg packed string (key=value:key2)
 -- with bridge- specific arguments (for now). The 'test' argument
--- provides a virtual object and a test 'limb' to work with.
+-- provides a virtual object and a test 'limb' to work with. Note that
+-- the user arcan is running as will need to be able to access USB
+-- devices for most real hardware backends to work.
 --
 -- The system is built around limbs appearing and disappearing, where
 -- a limb will be a mapped and tracked 3d model bound to a vid that can
@@ -33,38 +36,29 @@
 --
 -- The possible status.kind field values are as follows:
 -- limb_added - a new limb was discovered
--- limb_removed
--- head_parameters - display data for setting up the stereoscoping
--- render passes and compositing the final output
--- distortion_left, distortion_right - a distortion mesh was loaded
--- and added as a model
--- display_enabled
+-- limb_removed - a previously added limb was lost (device failure)
 --
--- for limb_added, the following subfields will be present:
--- id, haptics (subtable), type and the source argument will refer
--- to a newly created fully qualified 3d model possibly linked together
--- into an vr_setup instance specific avatar. The abstract avatar
--- root object will also be sent as a limb_added event.
+-- for limb_added and limb_removed, the following subfields are present:
+-- id, name. id is a value to be used with ref:vr_map_limb while name
+-- is a textual representation of the limb slot that was consumed.
+-- The possible values for 'name' are: (person, neck, eye-[left,right],
+-- shoulder-[left,right], elbow-[left,right], wrist-[left,right],
+-- [thumb,pointer,middle,ring,pinky]-[proximal,middle,distal]-[left,right],
+-- hip-[left,right], knee-[left,right], ankle-[left,right], tool-[left,right]
 --
--- distortion_left, distortion_right will also be sent as 3d models
--- linked to the vid passed as source argument. This will only be
--- provided if the underlying device supports it, thus a fallback to
--- shader lens based distortion will be needed. The parameters for
--- that are packed into the head_parameters event.
+-- the limb for the neck actually represents the head mounted device
+-- itself. When this limb has appeared, it is safe to query display
+-- properties via ref:hmd_metadata.
+--
+-- the limb for the abstract 'person' defines the coordinate system
+-- that the others will reference, and is typically important when there
+-- is a positional tracking system. The reason this isn't bound to the
+-- limb- skeleton as such is to keep the cost down for resolving hierarchies.
 --
 -- This system do not actually control the displays themselves, they
 -- are expected to appear/ be managed with the same system as normal
 -- dynamic display hotplugging, thus the display_enabled event should
 -- act as a trigger to rescan for new monitors.
---
--- @note: The allocated objects passed as source must be managed
--- manually, i.e. delete_image when no longer needed or useful.
--- Deleting the abstract avatar limb will close the connection.
---
--- @note: Other interesting expansion to this model would be fusing
--- the different limbs together into a kalman filter with an IK- model
--- as a state estimator to counter sensors that intermittently become
--- unreliable.
 --
 -- @group: iodev
 -- @cfunction: vr_setup
