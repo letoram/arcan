@@ -145,7 +145,8 @@ static void freemodel(arcan_3dmodel* src)
 		return;
 
 	if (src->vrref){
-		arcan_vr_release(src->vrref, src->parent->cellid);
+		arcan_vr_release(src->vrref,
+			src->parent ? src->parent->cellid : ARCAN_EID);
 		src->vrref = NULL;
 	}
 
@@ -328,10 +329,12 @@ static void process_scene_normal(arcan_vobject_litem* cell,
 			break;
 
 		surface_properties dprops;
-
-		arcan_resolve_vidprop(cvo, lerp, &dprops);
-		rendermodel(cvo, cvo->feed.state.ptr, cvo->program,
-			dprops, modelview, flags);
+		arcan_3dmodel* model = cvo->feed.state.ptr;
+		if (model->vrref)
+			dprops = cvo->current;
+		else
+			arcan_resolve_vidprop(cvo, lerp, &dprops);
+		rendermodel(cvo, model, cvo->program, dprops, modelview, flags);
 
 		current = current->next;
 	}
