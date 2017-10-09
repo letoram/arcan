@@ -81,5 +81,13 @@ set(SOURCES
 	${PLATFORM_SOURCES}
 )
 
+find_package(OpenHMD)
+if (OPENHMD_FOUND)
+	include_directories(${OPENHMD_INCLUDE_DIRS})
+	list(APPEND LIBRARIES ${OPENHMD_LIBRARIES})
+	list(APPEND SOURCES openhmd.c)
+	add_definitions(-DOPENHMD)
+endif()
+
 add_executable(${PROJECT_NAME} ${SOURCES})
 target_link_libraries(${PROJECT_NAME} ${LIBRARIES})

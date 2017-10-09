@@ -13,11 +13,14 @@
 #include <inttypes.h>
 
 #include "vrbridge.h"
+#include "avr_test.h"
 
-#include "test.h"
+#ifdef OPENHMD
+#include "avr_openhmd.h"
+#endif
 
 #ifdef PSVR
-#include "psvr.h"
+#include "avr_psvr.h"
 #endif
 
 static volatile bool in_init = true;
@@ -64,7 +67,14 @@ static struct dev_ent dev_tbl[] =
 		.init = psvr_init,
 		.sample = psvr_sample,
 		.control = psvr_control
-	}
+	},
+#endif
+#ifdef OPENHMD
+	{
+		.init = openhmd_init,
+		.sample = openhmd_sample,
+		.control = openhmd_control
+	},
 #endif
 };
 
@@ -151,23 +161,23 @@ int main(int argc, char** argv)
 {
 	struct arg_arr* arg;
 
-/*
- * Need these shenanigans to get time enough to attach. since this is typically
- * spawned from the arcan process which makes it annoying and often gdb-broken
- * to follow (set follow-fork-mode, set follow-exec-mode etc.)
- */
-	if (getenv("ARCAN_VR_DEBUGATTACH")){
-		debug_print(0, "entering debug-attach loop (pid: %d)", getpid());
-		volatile bool flag = 0;
-		while (!flag){};
-	}
-
 	struct arcan_shmif_cont con = arcan_shmif_open(SEGID_SENSOR, 0, &arg);
 	if (!con.vidp){
 		debug_print(0, "couldn't setup arcan connection");
 		return EXIT_FAILURE;
 	}
 	arcan_shmif_setprimary(SHMIF_INPUT, &con);
+
+/*
+ * Need these shenanigans to get time enough to attach. since this is typically
+ * spawned from the arcan process which makes it annoying and often gdb-broken
+ * to follow (set follow-fork-mode, set follow-exec-mode etc.)
+ */
+	if (getenv("ARCAN_VR_DEBUGATTACH") || arg_lookup(arg, "debug", 0, NULL)){
+		debug_print(0, "entering debug-attach loop (pid: %d)", getpid());
+		volatile bool flag = 0;
+		while (!flag){};
+	}
 
 /* still need to explicitly say that we want this protocol */
 	arcan_shmif_resize_ext(&con, con.w, con.h, (struct shmif_resize_ext){

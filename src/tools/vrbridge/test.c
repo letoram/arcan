@@ -6,7 +6,7 @@
 #include <hidapi/hidapi.h>
 #include <pthread.h>
 #include "vrbridge.h"
-#include "psvr.h"
+#include "avr_test.h"
 #include "ahrs.h"
 
 #define ID_NECK 0

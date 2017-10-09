@@ -17,7 +17,7 @@ enum ctrl_cmd {
 
 #define debug_print(lvl, fmt, ...) \
             do { if (lvl < DEBUG) fprintf(stderr, "%s:%d:%s(): " fmt "\n", \
-						"egl-dri:", __LINE__, __func__,##__VA_ARGS__); } while (0)
+						"vrbridge:", __LINE__, __func__,##__VA_ARGS__); } while (0)
 
 struct dev_ent;
 
