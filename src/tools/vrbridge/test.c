@@ -42,6 +42,9 @@ void test_sample(struct dev_ent* dev, struct vr_limb* limb, unsigned id)
 	case ID_RTOOL:
 		arcan_timesleep(240);
 	break;
+	default:
+		printf("vrbridge: unknown id (%d) in test_sample\n", id);
+	break;
 	}
 }
 

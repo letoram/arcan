@@ -29,6 +29,7 @@ struct limb_runner {
 	struct vr_limb* limb;
 	struct dev_ent* dev;
 	uint8_t limb_ind;
+	unsigned limb_id;
 };
 unsigned long long epoch;
 
@@ -42,7 +43,7 @@ static void* limb_runner(void* arg)
 /* expected to block until limb has been updated, the timestamp is when
  * sampling was requested, not when the sample was retrieved */
 		unsigned long long timestamp = arcan_timemillis() - epoch;
-		meta->dev->sample(meta->dev, meta->limb, meta->limb_ind);
+		meta->dev->sample(meta->dev, meta->limb, meta->limb_id);
 		uint16_t checksum = subp_checksum(
 			(uint8_t*)meta->limb, sizeof(struct vr_limb)-sizeof(uint16_t));
 		atomic_store(&meta->limb->timestamp, timestamp);
@@ -138,7 +139,8 @@ struct vr_limb* vrbridge_alloc_limb(
 		.vr = vr,
 		.limb = &vr->limbs[limb],
 		.dev = dev,
-		.limb_ind = id
+		.limb_ind = limb,
+		.limb_id = id
 	};
 
 	pthread_attr_t nanny_attr;
