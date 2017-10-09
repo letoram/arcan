@@ -32,8 +32,12 @@ void openhmd_sample(struct dev_ent* dev, struct vr_limb* limb, unsigned id)
 
 	while(1){
 		switch(id){
-		case ID_NECK:
+		case 0:
+			ohmd_ctx_update(ohmd);
 			ohmd_device_getf(state->hmd, OHMD_ROTATION_QUAT, quat.xyzw);
+			debug_print(1, "orientation: %f, %f, %f, %f\n",
+				quat.x, quat.y, quat.z, quat.w);
+
 			if (memcmp(state->last_quat.xyzw, quat.xyzw, sizeof(float)*4) != 0){
 				limb->data.orientation = state->last_quat = quat;
 				return;
@@ -69,7 +73,7 @@ bool openhmd_init(struct dev_ent* ent,
 	}
 
 	int nd = ohmd_ctx_probe(ohmd);
-	debug_print(1, "%d devices found", nd);
+	debug_print(0, "%d devices found", nd);
 	if (nd <= 0)
 		return false;
 
@@ -78,6 +82,7 @@ bool openhmd_init(struct dev_ent* ent,
 		debug_print(0, "couldn't allocate state");
 		return false;
 	}
+	ent->state = state;
 
 /* should likely just sweep unless we explicitly get index set */
 	int devind = 0;
@@ -91,6 +96,10 @@ bool openhmd_init(struct dev_ent* ent,
 		free(state);
 		return false;
 	}
+
+	debug_print(0, "vendor:  %s\n", ohmd_list_gets(ohmd, 0, OHMD_VENDOR));
+	debug_print(0, "product: %s\n", ohmd_list_gets(ohmd, 0, OHMD_PRODUCT));
+	debug_print(0, "path:    %s\n\n", ohmd_list_gets(ohmd, 0, OHMD_PATH));
 
 #define geti(X, Y) ohmd_device_geti(state->hmd, X, Y)
 #define getf(X, Y) ohmd_device_getf(state->hmd, X, Y)
@@ -117,7 +126,7 @@ bool openhmd_init(struct dev_ent* ent,
  * we can _enqueue IO_EVENT for each button, the engine doesn't
  * really care about count
  */
-	vrbridge_alloc_limb(ent, NECK, ID_NECK);
+	vrbridge_alloc_limb(ent, NECK, 0);
 
 	return true;
 }
