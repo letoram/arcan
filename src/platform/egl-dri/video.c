@@ -258,8 +258,14 @@ enum vsynch_method {
  * Each open output device, can be shared between displays
  */
 struct dev_node {
+	int active; /*tristate, 0 = not used, 1 = active, 2 = displayless, 3 = inactive */
 	int fd, rnode;
 	int refc;
+
+/* dev_node to use instead of this when performing reset */
+	int gpu_index;
+	bool have_altgpu;
+
 	enum vsynch_method vsynch_method;
 
 /* kms/drm triggers, master is if we've achieved the drmMaster lock or not.
@@ -473,7 +479,7 @@ static void update_display(struct dispout*);
 
 static void release_card(size_t i)
 {
-	if (0 >= nodes[i].fd)
+	if (!nodes[i].active)
 		return;
 
 	if (nodes[i].context != EGL_NO_CONTEXT){
@@ -482,7 +488,8 @@ static void release_card(size_t i)
 	}
 
 	if (IS_GBM_DISPLAY(&nodes[i])){
-		gbm_device_destroy(nodes[i].gbm);
+		if (nodes[i].gbm)
+			gbm_device_destroy(nodes[i].gbm);
 		nodes[i].gbm = NULL;
 	}
 	else {
@@ -497,6 +504,8 @@ static void release_card(size_t i)
 		nodes[i].eglenv.terminate(nodes[i].display);
 		nodes[i].display = EGL_NO_DISPLAY;
 	}
+
+	nodes[i].active = false;
 }
 
 void setup_backlight_ledmap()
@@ -1448,9 +1457,6 @@ static bool setup_node(struct dev_node* node)
  */
 static int setup_node_egl(struct dev_node* node, const char* lib, int fd)
 {
-	map_functions(&node->eglenv, lookup, NULL);
-	map_ext_functions(&node->eglenv, lookup_call, node->eglenv.get_proc_address);
-
 	if (!node->eglenv.query_string){
 		debug_print("EGLStreams, couldn't get EGL extension string");
 		return -1;
@@ -1551,8 +1557,6 @@ static int setup_node_gbm(struct dev_node* node, const char* path, int fd)
 	SET_SEGV_MSG("libdrm(), open device failed (check permissions) "
 		" or use ARCAN_VIDEO_DEVICE environment.\n");
 
-	map_functions(&node->eglenv, lookup, NULL);
-	map_ext_functions(&node->eglenv, lookup_call, node->eglenv.get_proc_address);
 	node->rnode = -1;
 	if (!path && fd == -1)
 		return -1;
@@ -2397,6 +2401,19 @@ static void disable_display(struct dispout* d, bool dealloc)
 	else
 		debug_print("EGL- display");
 
+/* restore the color LUTs, not 100% certain that this is the best approach here
+ * since an external- launch then needs to figure out / manipulate them on its
+ * own, losing color calibration and so on in the process */
+	if (d->display.orig_gamma){
+		drmModeCrtcSetGamma(d->device->fd, d->display.crtc,
+			d->display.gamma_size, d->display.orig_gamma,
+			&d->display.orig_gamma[1*d->display.gamma_size],
+			&d->display.orig_gamma[2*d->display.gamma_size]
+		);
+	}
+
+/* in extended suspend, we have no idea which displays we are returning to so
+ * the only real option is to fully deallocate even in EXTSUSP */
 	debug_print("(%d) release crtc id (%d)", (int)d->id,(int)d->display.crtc_ind);
 	d->device->crtc_alloc &= ~(1 << d->display.crtc_ind);
 	if (d->display.old_crtc){
@@ -2421,38 +2438,36 @@ static void disable_display(struct dispout* d, bool dealloc)
 		}
 	}
 
-	if (dealloc){
-		debug_print("(%d) full deallocation requested", (int)d->id);
-		if (d->display.orig_gamma){
-			drmModeCrtcSetGamma(d->device->fd, d->display.crtc,
-				d->display.gamma_size, d->display.orig_gamma,
-				&d->display.orig_gamma[1*d->display.gamma_size],
-				&d->display.orig_gamma[2*d->display.gamma_size]
-			);
-			free(d->display.orig_gamma);
-			d->display.orig_gamma = NULL;
-		}
-
-		drmModeFreeConnector(d->display.con);
-		d->display.con = NULL;
-		d->display.con_id = 0;
-
-		drmModeFreeCrtc(d->display.old_crtc);
-		d->display.old_crtc = NULL;
-		d->display.mode = NULL;
-
-		d->device = NULL;
-		d->state = DISP_UNUSED;
-
-		if (d->backlight){
-			backlight_set_brightness(d->backlight, d->backlight_brightness);
-			backlight_destroy(d->backlight);
-			d->backlight = NULL;
-		}
-	}
-	else{
+/* in the no-dealloc state we still want to remember which CRTCs etc were
+ * set as those might have been changed as part of a modeset request */
+	if (!dealloc){
 		debug_print("(%d) switched state to EXTSUSP", (int)d->id);
 		d->state = DISP_EXTSUSP;
+		return;
+	}
+
+/* gamma has already been restored above, but we need to free the resources */
+	debug_print("(%d) full deallocation requested", (int)d->id);
+	if (d->display.orig_gamma){
+		free(d->display.orig_gamma);
+		d->display.orig_gamma = NULL;
+	}
+
+	drmModeFreeConnector(d->display.con);
+	d->display.con = NULL;
+	d->display.con_id = 0;
+
+	drmModeFreeCrtc(d->display.old_crtc);
+	d->display.old_crtc = NULL;
+	d->display.mode = NULL;
+
+	d->device = NULL;
+	d->state = DISP_UNUSED;
+
+	if (d->backlight){
+		backlight_set_brightness(d->backlight, d->backlight_brightness);
+		backlight_destroy(d->backlight);
+		d->backlight = NULL;
 	}
 }
 
@@ -2541,17 +2556,22 @@ static bool try_node(int fd, const char* pathref,
 		nodes[dst_ind].eglenv.get_proc_address =
 			(PFNEGLGETPROCADDRESSPROC)eglGetProcAddress;
 	}
+	struct dev_node* node = &nodes[dst_ind];
+	node->active = true;
+	map_functions(&node->eglenv, lookup, NULL);
+	map_ext_functions(&node->eglenv, lookup_call, node->eglenv.get_proc_address);
 
 	if (gbm){
-		if (0 != setup_node_gbm(&nodes[dst_ind], pathref, fd)){
-			nodes[dst_ind].eglenv.get_proc_address = NULL;
+		if (0 != setup_node_gbm(node, pathref, fd)){
+			node->eglenv.get_proc_address = NULL;
 			debug_print("couldn't open (%d:%s) in GBM mode",
 				fd, pathref ? pathref : "(no path)");
+				release_card(dst_ind);
 			return false;
 		}
 	}
 	else {
-		if (0 != setup_node_egl(&nodes[dst_ind], pathref, fd)){
+		if (0 != setup_node_egl(node, pathref, fd)){
 			debug_print("couldn't open (%d:%s) in EGLStreams mode",
 				fd, pathref ? pathref : "(no path)");
 			release_card(dst_ind);
@@ -2559,14 +2579,14 @@ static bool try_node(int fd, const char* pathref,
 		}
 	}
 
-	if (!setup_node(&nodes[dst_ind])){
+	if (!setup_node(node)){
 		debug_print("setup/configure [%d](%d:%s)",
 			dst_ind, fd, pathref ? pathref : "(no path)");
 		release_card(dst_ind);
 		return false;
 	}
 
-	if (-1 == drmSetMaster(nodes[dst_ind].fd)){
+	if (-1 == drmSetMaster(node->fd)){
 		debug_print("set drmMaster on [%d](%d:%s) failed, reason: %s",
 			dst_ind, fd, pathref ? pathref : "(no path)", strerror(errno));
 		if (force_master){
@@ -2575,8 +2595,8 @@ static bool try_node(int fd, const char* pathref,
 		}
 	}
 
-	nodes[dst_ind].force_master = force_master;
-	struct dispout* d = allocate_display(&nodes[dst_ind]);
+	nodes->force_master = force_master;
+	struct dispout* d = allocate_display(node);
 	d->display.primary = dst_ind == 0;
 	egl_dri.last_display = d;
 
@@ -2712,6 +2732,9 @@ static bool setup_cards_basic(int w, int h)
 			}
 		}
 	}
+
+	/* in the no-dealloc state we still want to remember which CRTCs etc were
+	 * set as those might have been changed as part of a modeset request */
 	return false;
 }
 
@@ -2763,8 +2786,14 @@ bool platform_video_init(uint16_t w, uint16_t h,
 	return rv;
 }
 
+static bool in_external;
 void platform_video_reset(int id, int swap)
 {
+	if (!in_external)
+		return;
+
+/* only swap has any real behavior here and only if there are fallback- card
+ * nodes set for a specific GPU */
 }
 
 /*
@@ -3345,6 +3374,9 @@ static void update_display(struct dispout* d)
 
 void platform_video_prepare_external()
 {
+	if (!in_external)
+		return;
+
 	int rc = 10;
 	debug_print("preparing external");
 	do{
@@ -3357,6 +3389,8 @@ void platform_video_prepare_external()
 	if (nodes[0].master)
 		drmDropMaster(nodes[0].fd);
 	debug_print("external prepared");
+
+	in_external = true;
 }
 
 void platform_video_restore_external()
@@ -3364,6 +3398,8 @@ void platform_video_restore_external()
 /* uncertain if it is possible to poll on the device node to determine
  * when / if the drmMaster lock is released or not */
 	debug_print("restoring external");
+	if (!in_external)
+		return;
 
 	if (-1 == drmSetMaster(nodes[0].fd) && nodes[0].force_master){
 		while(-1 == drmSetMaster(nodes[0].fd)){
@@ -3399,5 +3435,6 @@ void platform_video_restore_external()
 		}
 	}
 
+	in_external = false;
 /* defer the video_rescan to arcan_video.c as the event queue may not be ready */
 }
