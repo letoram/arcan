@@ -6,7 +6,7 @@
 #include <hidapi/hidapi.h>
 #include <pthread.h>
 #include "vrbridge.h"
-#include "psvr.h"
+#include "avr_psvr.h"
 #include "ahrs.h"
 
 static const uint16_t psvr_vid = 0x54c;

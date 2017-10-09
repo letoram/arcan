@@ -258,6 +258,12 @@ struct vr_meta {
 	float eye_display;
 	float lens_distance;
 	float ipd;
+	float left_fov;
+	float right_fov;
+	float left_ar;
+	float right_ar;
+	float hsep;
+	float vpos;
 
 /* correction constants */
 	float distortion[4];
