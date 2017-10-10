@@ -3405,6 +3405,12 @@ static int vr_getmeta(lua_State* ctx)
 	tblnum(ctx, "center", md.h_center, top);
 	tblnum(ctx, "horizontal", md.h_size, top);
 	tblnum(ctx, "vertical", md.v_size, top);
+	tblnum(ctx, "left_fov", md.left_fov, top);
+	tblnum(ctx, "right_fov", md.right_fov, top);
+	tblnum(ctx, "left_ar", md.left_ar, top);
+	tblnum(ctx, "right_ar", md.right_ar, top);
+	tblnum(ctx, "hsep", md.hsep, top);
+	tblnum(ctx, "vpos", md.vpos, top);
 	tblnum(ctx, "lens_distance", md.lens_distance, top);
 	tblnum(ctx, "eye_display", md.eye_display, top);
 	tblnum(ctx, "ipd", md.ipd, top);
