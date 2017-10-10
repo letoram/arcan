@@ -311,12 +311,12 @@ static shmif_pixel get_bg_col(struct tui_context* tui)
 	);
 }
 
-static void cursor_at(struct tui_context* tui, int x, int y, shmif_pixel ccol)
+static bool cursor_at(struct tui_context* tui, int x, int y, shmif_pixel ccol)
 {
 	shmif_pixel* dst = tui->acon.vidp;
 
 	if (tui->cursor_off || tui->cursor_hard_off)
-		return;
+		return false;
 
 	switch (tui->cursor){
 /* other cursors gets their dirty state due to draw_cbt */
@@ -333,10 +333,12 @@ static void cursor_at(struct tui_context* tui, int x, int y, shmif_pixel ccol)
 			tui->acon.dirty.y2 = y2;
 		tui->dirty |= DIRTY_UPDATED;
 		draw_box(&tui->acon, x, y, tui->cell_w, tui->cell_h, ccol);
+		return true;
 	}
 	break;
 	case CURSOR_HALFBLOCK:
 		draw_box(&tui->acon, x, y, tui->cell_w >> 1, tui->cell_h, ccol);
+		return true;
 	break;
 	case CURSOR_FRAME:
 		for (int col = x; col < x + tui->cell_w; col++){
@@ -359,6 +361,7 @@ static void cursor_at(struct tui_context* tui, int x, int y, shmif_pixel ccol)
 	default:
 	break;
 	}
+	return false;
 }
 
 static bool wait_vready(struct tui_context* tui, bool block)
@@ -1002,7 +1005,7 @@ static void update_screen(struct tui_context* tui, bool ign_inact)
  * blitting should be reworked to account for that */
 		int x, y, w, h;
 		resolve_cursor(tui, &x, &y, &w, &h);
-		struct tui_cell* tc = &tui->back[tui->cursor_y * tui->cols + tui->cursor_x];
+		struct tui_cell* tc = &tui->front[tui->cursor_y * tui->cols + tui->cursor_x];
 		draw_cbt(tui, tc->draw_ch, x, y, &tc->attr, tc->ch == 0, NULL, false);
 	}
 
@@ -1028,7 +1031,17 @@ static void update_screen(struct tui_context* tui, bool ign_inact)
 
 		int x, y, w, h;
 		resolve_cursor(tui, &x, &y, &w, &h);
-		cursor_at(tui, x, y, col);
+		if (cursor_at(tui, x, y, col)){
+			struct tui_cell* tc =
+				&tui->front[tui->cursor_y * tui->cols + tui->cursor_x];
+			struct tui_screen_attr attr = tc->attr;
+			int group = tui->scroll_lock ? TUI_COL_ALTCURSOR : TUI_COL_CURSOR;
+			attr.inverse = true;
+			attr.fr = tui->colors[group].rgb[0];
+			attr.fg = tui->colors[group].rgb[1];
+			attr.fb = tui->colors[group].rgb[2];
+			draw_cbt(tui, tc->draw_ch, x, y, &attr, tc->ch == 0, NULL, true);
+		}
 	}
 
 	tui->dirty &= ~(DIRTY_PENDING | DIRTY_PENDING_FULL);
