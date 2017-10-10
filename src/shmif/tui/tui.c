@@ -2615,7 +2615,7 @@ static void apply_arg(struct tui_settings* cfg,
 		cfg->render_flags |= TUI_RENDER_SHAPED;
 	}
 
-#ifdef ENABLE_GPU
+#ifndef SHMIF_TUI_DISABLE_GPU
 	if (arg_lookup(args, "accel", 0, &val))
 		cfg->render_flags |= TUI_RENDER_ACCEL;
 #endif
