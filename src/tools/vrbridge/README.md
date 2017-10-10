@@ -63,10 +63,17 @@ problematic when we have inside- out tracking, AR- like spaces and so on.
 There are a number of VR SDKs that we should map and add support for, though
 some restraint is probably best until we see something concrete from OpenXR.
 
-[ ] PSVR bringup (most deployed, reasonably priced HW)
-[ ] Vive (via [libsurvive](https://github.com/cnlohr/libsurvive)
-[ ] OpenHMD support
-[ ] Demo- Appl scripts
+- [p] OpenHMD support
+  - [x] metadata
+  - [x] head tracking
+	- [ ] misc. events (buttons, ...)
+- [ ] PSVR bringup (most deployed, reasonably priced HW)
+- [ ] Vive (via [libsurvive](https://github.com/cnlohr/libsurvive)
+- [p] Demo- Appl scripts
+  - [x] interactive/vrtest ( map model to hmd )
+	- [ ] interactive/vrtest2 ( shader distortion pipeline )
+	- [ ] interactive/vrtest3 ( distortion mesh pipeline )
+	- [ ] distill vrtest3 pipeline into a support script
 
 # Experiments
 
