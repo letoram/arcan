@@ -143,7 +143,7 @@ enum agp_shader_envts{
 /* object storage / rendering properties */
 	SIZE_INPUT  = 7,
 	SIZE_OUTPUT = 8,
-  SIZE_STORAGE= 9,
+	SIZE_STORAGE= 9,
 
 	FRACT_TIMESTAMP_F = 10,
 	TIMESTAMP_D       = 11,
@@ -371,7 +371,7 @@ struct monitor_mode {
 	size_t phy_width;
 	size_t phy_height;
 
-/* esetimated output color depth */
+/* estimated output color depth */
 	uint8_t depth;
 
 /* estimated display vertical refresh, can be 0 to indicate a dynamic or

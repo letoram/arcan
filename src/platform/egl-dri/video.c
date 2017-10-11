@@ -5,34 +5,6 @@
  */
 
 /*
- * Possible enhancement path:
- *  [1] rendertarget/texture to scanout
- *      When a rendertarget is mapped to a display without shaders or
- *      specialized texture coordinates, extract a dma-buf from the texture
- *      and map that.
- *
- *  [2] external-source to scanout
- *      When a store has been mapped using maphandle, re-use the handle to
- *      also map as scanout directly. Saves a copy.
- *
- *  [3] allow all AGP assets to reflect to referenced GPUs
- *
- *  [4] multi-GPU scanout
- *
- *  [5] per-card node atomic- setup toggle
- *
- *  [6] move all AGP transfers to be fence-synched.
- *
- *  [7] zero-copy AGP streaming support on AMD devices with buffer pinning.
- *
- *  [8] EXL_EXT_platform_device for shmif on nvidia
- *
- *  [9] framebuffer- based scanout and agp modifications for software- only
- *      AGP implementation or framebuffer- AGP output (latter is simple,
- *      just readback output FBO).
- */
-
-/*
  * Notes on hotplug / hotremoval: We are quite adamant in staying away from
  * pulling in a nasty dependency like udev into the platform build, but it
  * seems like the libdrm interface fails to provide a polling mechanism for
@@ -269,7 +241,7 @@ struct dev_node {
 	enum vsynch_method vsynch_method;
 
 /* kms/drm triggers, master is if we've achieved the drmMaster lock or not.
- * card_id is some unique sequential identifier for this card (not used)
+ * card_id is some unique sequential identifier for this card
  * crtc is an allocation bitmap for output port<->display allocation
  * atomic is set if the driver kms side supports/needs atomic modesetting */
 	bool master, force_master, wait_connector;
@@ -295,6 +267,8 @@ struct dev_node {
  * to deal with multiple GPUs and multiple vendor libraries, these contexts are
  * managed per display and explicitly referenced / switched when we need to.
  */
+	char* egllib;
+	char* agplib;
 	struct egl_env eglenv;
 	struct agp_fenv* agpenv;
 };
@@ -308,12 +282,12 @@ enum disp_state {
 };
 
 /*
- * Multiple cards is still a WIP, just incrementing these won't work -
- * there's still some affinity work needed in AGP backends and TLS- based
- * 'current card output / agp context' management to be done.
+ * only the setup_cards_db() initialization path can handle more than one
+ * device node, and it is incomplete still until we can maintain affinity
+ * for all resources.
  */
-static const int MAX_NODES = 1;
-static struct dev_node nodes[1];
+static const int MAX_NODES = 4;
+static struct dev_node nodes[MAX_NODES];
 
 enum output_format {
 	output_888 = 0,
@@ -451,6 +425,7 @@ static bool check_ext(const char* needle, const char* haystack)
 static void dpms_set(struct dispout* d, int level)
 {
 	drmModePropertyPtr prop;
+	debug_print("dpms_set(%d) to %d", d->device->fd, level);
 	for (size_t i = 0; i < d->display.con->count_props; i++){
 		prop = drmModeGetProperty(d->device->fd, d->display.con->props[i]);
 		if (!prop)
@@ -809,9 +784,10 @@ bool platform_video_set_mode(platform_display_id disp, platform_mode_id mode)
 		d->buffer.next_bo = NULL;
 	}
 */
+/* the BOs should die with the surface */
 	d->state = DISP_CLEANUP;
 	d->device->eglenv.destroy_surface(d->device->display, d->buffer.esurf);
-
+	d->buffer.esurf = EGL_NO_SURFACE;
 /*
  * drop current framebuffers
  	if (d->buffer.cur_fb){
@@ -2037,7 +2013,8 @@ drop_disp:
 }
 
 /* NOTE: this does not handle multiple planes correctly,
- * interface needs to carry both that, strides/offsets and designated-gpu */
+ * interface needs to carry both that, strides/offsets and designated-gpu +
+ * modifiers */
 static bool map_handle_gbm(struct agp_vstore* dst, int64_t handle)
 {
 	if (!nodes[0].eglenv.create_image || !nodes[0].eglenv.image_target_texture2D)
@@ -2247,72 +2224,22 @@ static struct dispout* match_connector(int fd, drmModeConnector* con)
  * The cost for this function is rather unsavory, nouveau testing has shown
  * somewhere around ~110+ ms stalls for one re-scan
  */
-void platform_video_query_displays()
+static void query_card(struct dev_node* node)
 {
-/* MULTIGPU: we need to do this for all active nodes */
-	debug_print("issuing display requery");
-
-	drmModeRes* res = drmModeGetResources(nodes[0].fd);
+	drmModeRes* res = drmModeGetResources(node->fd);
 	if (!res){
-		debug_print("couldn't get resources for rescan");
+		debug_print("couldn't get resources for rescan on %i", node->fd);
 		return;
 	}
 
-/*
- * each device node, each connector, check against each display
- */
-
-/*
- * ugly scan complexity, but low values of n.
- */
 	for (size_t i = 0; i < res->count_connectors; i++){
-		drmModeConnector* con = drmModeGetConnector(nodes[0].fd,
-			res->connectors[i]);
+		drmModeConnector* con = drmModeGetConnector(node->fd, res->connectors[i]);
+		struct dispout* d = match_connector(node->fd, con);
 
-		int id;
-		struct dispout* d = match_connector(nodes[0].fd, con);
-
-		if (con->connection == DRM_MODE_CONNECTED){
-/* do we already now about the connector? then do nothing */
-			if (d){
-				drmModeFreeConnector(con);
-				continue;
-			}
-
-/* allocate display and mark as known but not mapped, give up
- * if we're out of display slots */
-			debug_print("unknown display detected");
-			d = allocate_display(&nodes[0]);
-			if (!d){
-				drmModeFreeConnector(con);
-				continue;
-			}
-
-/* save the ID for later so that we can match in match_connector */
-			d->display.con = con;
-			d->display.con_id = con->connector_id;
-			d->backlight = backlight_init(NULL,
-				d->device->card_id, d->display.con->connector_type,
-				d->display.con->connector_type_id
-			);
-			debug_print(
-				"(%d) assigned connector id (%d)", (int)d->id, (int)con->connector_id);
-			if (d->backlight){
-				debug_print("(%d) display backlight assigned", (int)d->id);
-				d->backlight_brightness = backlight_get_brightness(d->backlight);
-			}
-			arcan_event ev = {
-				.category = EVENT_VIDEO,
-				.vid.kind = EVENT_VIDEO_DISPLAY_ADDED,
-				.vid.displayid = d->id,
-				.vid.ledctrl = egl_dri.ledid,
-				.vid.ledid = d->id
-			};
-			arcan_event_enqueue(arcan_event_defaultctx(), &ev);
-			continue; /* don't want to free con */
-		}
-		else {
-/* only event-notify known displays */
+/* no display on connector */
+		if (con->connection != DRM_MODE_CONNECTED){
+/* if there was one known, remove it and notify */
+			debug_print("(%zu) lost, disabled", (int)i);
 			if (d){
 				debug_print("(%d) display lost, disabling", (int)d->id);
 				platform_display_id id = d->id;
@@ -2326,12 +2253,66 @@ void platform_video_query_displays()
 				};
 				arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 			}
+			drmModeFreeConnector(con);
+			continue;
 		}
 
-		drmModeFreeConnector(con);
-	}
+/* do we already know about the connector? then do nothing */
+		if (d){
+			debug_print("(%d) already known", (int)d->id);
+			drmModeFreeConnector(con);
+			continue;
+		}
 
+/* allocate display and mark as known but not mapped, give up
+ * if we're out of display slots */
+		debug_print("unknown display detected");
+		d = allocate_display(&nodes[0]);
+		if (!d){
+			debug_print("failed  to allocate new display");
+			drmModeFreeConnector(con);
+			continue;
+		}
+
+/* save the ID for later so that we can match in match_connector */
+		d->display.con = con;
+		d->display.con_id = con->connector_id;
+		d->backlight = backlight_init(NULL,
+			d->device->card_id, d->display.con->connector_type,
+			d->display.con->connector_type_id
+		);
+		debug_print(
+			"(%d) assigned connector id (%d)",(int)d->id,(int)con->connector_id);
+		if (d->backlight){
+			debug_print("(%d) display backlight assigned", (int)d->id);
+			d->backlight_brightness = backlight_get_brightness(d->backlight);
+		}
+		arcan_event ev = {
+			.category = EVENT_VIDEO,
+			.vid.kind = EVENT_VIDEO_DISPLAY_ADDED,
+			.vid.displayid = d->id,
+			.vid.ledctrl = egl_dri.ledid,
+			.vid.ledid = d->id,
+			.vid.cardid = d->device->card_id
+		};
+		arcan_event_enqueue(arcan_event_defaultctx(), &ev);
+		continue; /* don't want to free con */
+	}
 	drmModeFreeResources(res);
+}
+
+void platform_video_query_displays()
+{
+	debug_print("issuing display requery");
+
+/*
+ * each device node, each connector, check against each display
+ * ugly scan complexity, but low values of n.
+ */
+	for (size_t j = 0; j < MAX_NODES; j++){
+		debug_print("query_card: %zu", j);
+		query_card(&nodes[j]);
+	}
 }
 
 static void disable_display(struct dispout* d, bool dealloc)
@@ -2461,7 +2442,7 @@ static void disable_display(struct dispout* d, bool dealloc)
 	d->display.old_crtc = NULL;
 	d->display.mode = NULL;
 
-	d->device = NULL;
+/*	d->device = NULL; */
 	d->state = DISP_UNUSED;
 
 	if (d->backlight){
@@ -2628,49 +2609,78 @@ static bool try_node(int fd, const char* pathref,
  * config/profile matching derived approach, for use when something more
  * specific and sophisticated is desired
  */
-static bool setup_cards_db(int w, int h)
+static bool try_card(size_t devind, int w, int h, size_t* dstind)
 {
 	uintptr_t tag;
 	cfg_lookup_fun get_config = platform_config_lookup(&tag);
+	char* devstr, (* cfgstr), (* altstr);
+	int connind = -1;
+	bool gbm = true;
 
-/*
- * NOTE: MultiGPU: increment search index here and populate each node
- * accordingly.
- */
-	int dstind = 0;
-	for (size_t devind = 0; devind < 1; devind++){
-		char* cfgstr;
-		int connind = -1;
-		bool gbm = true;
+/* basic device, device_1, device_2 etc. search path */
+	if (!get_config("video_device", devind, &devstr, tag))
+		return false;
 
-		if (!get_config("video_device", devind, &cfgstr, tag))
+/* reference to another card_id, only one is active at any one moment
+ * and card_1 should reference card_2 and vice versa. */
+	if (get_config("video_device_alternate", devind, &cfgstr, tag)){
+/* sweep from devind down to 0 and see if there is a card with the
+ * specified path, if so, open but don't activate this one */
+	}
+
+	if (get_config("video_device_buffer", devind, &cfgstr, tag)){
+		if (strcmp(cfgstr, "streams") == 0)
+			gbm = false;
+		free(cfgstr);
+	}
+
+/* reload any possible library references */
+	if (nodes[devind].agplib){
+		free(nodes[devind].agplib);
+		nodes[devind].agplib = NULL;
+	}
+	if (nodes[devind].egllib){
+		free(nodes[devind].egllib);
+		nodes[devind].egllib = NULL;
+	}
+	get_config("video_device_egllib", devind, &nodes[devind].egllib, tag);
+	get_config("video_device_agplib", devind, &nodes[devind].agplib, tag);
+
+/* hard- connector index set */
+	if (get_config("video_device_connector", devind, &cfgstr, tag)){
+		connind = strtol(cfgstr, NULL, 10) % INT_MAX;
+		free(cfgstr);
+	}
+
+	bool force_master = get_config("video_device_master", devind, NULL, tag);
+	nodes[devind].wait_connector =
+		get_config("video_device_wait", devind, NULL, tag);
+
+	int fd = open(devstr, O_RDWR | O_CLOEXEC);
+	if (try_node(fd, devstr, *dstind, gbm, force_master, connind, w, h)){
+		debug_print("card at %d added", *dstind);
+		nodes[*dstind].card_id = *dstind;
+		nodes[*dstind].fd = fd;
+		*dstind++;
+		return true;
+	}
+	else{
+		free(nodes[devind].egllib);
+		free(nodes[devind].agplib);
+		nodes[devind].egllib = nodes[devind].agplib = NULL;
+		close(fd);
+		free(devstr);
+		return false;
+	}
+}
+
+static bool setup_cards_db(int w, int h)
+{
+	size_t dstind = 0;
+	for (size_t devind = 0; devind < MAX_NODES; devind++){
+		if (!try_card(devind, w, h, &dstind))
 			return dstind > 0;
-
-		if (get_config("video_device_buffer", devind, &cfgstr, tag)){
-			if (strcmp(cfgstr, "streams") == 0)
-				gbm = false;
-			free(cfgstr);
-		}
-
-		if (get_config("video_device_libs", devind, &cfgstr, tag)){
-/* setup lookup function that uses the liblist and resolve that into the
- * cardnode */
-			free(cfgstr);
-		}
-		if (get_config("video_device_connector", devind, &cfgstr, tag)){
-			connind = strtol(cfgstr, NULL, 10) % INT_MAX;
-			free(cfgstr);
-		}
-
-		bool force_master = get_config("video_device_master", devind, NULL, tag);
-		bool wait_conn = get_config("video_device_wait", devind, NULL, tag);
-
-		int fd = open(cfgstr, O_RDWR | O_CLOEXEC);
-		if (try_node(fd, cfgstr, dstind, gbm, force_master, connind, w, h)){
-			dstind++;
-		}
-		else
-			close(fd);
+		dstind++;
 	}
 
 	return dstind > 0;
@@ -2775,7 +2785,8 @@ bool platform_video_init(uint16_t w, uint16_t h,
 		arcan_event ev = {
 			.category = EVENT_VIDEO,
 			.vid.kind = EVENT_VIDEO_DISPLAY_ADDED,
-			.vid.ledctrl = egl_dri.ledid
+			.vid.ledctrl = egl_dri.ledid,
+			.vid.cardid = d->device->card_id
 		};
 		arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 		platform_video_query_displays();
@@ -2816,6 +2827,7 @@ void platform_video_recovery()
 			platform_video_map_display(
 				ARCAN_VIDEO_WORLDID, displays[i].id, HINT_NONE);
 			ev.vid.displayid = displays[i].id;
+			ev.vid.cardid = displays[i].device->card_id;
 			arcan_event_enqueue(evctx, &ev);
 		}
 	}
