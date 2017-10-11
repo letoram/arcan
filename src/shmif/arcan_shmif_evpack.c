@@ -11,6 +11,7 @@
 #include <inttypes.h>
 
 #include "arcan_shmif.h"
+#include "arcan_shmif_sub.h"
 
 static const char* msub_to_lbl(int ind)
 {
@@ -23,6 +24,48 @@ static const char* msub_to_lbl(int ind)
 	default:
 		return "unknown";
 	}
+}
+
+/*
+ * Tempoary 'bad idea' implementions, placeholders until a real packing format
+ * is implemented, until then this is - of course - not at all portable. Right
+ * now just prepend a checksum.
+ */
+ssize_t arcan_shmif_eventpack(
+	const struct arcan_event* const aev, uint8_t* dbuf, size_t dbuf_sz)
+{
+	if (dbuf_sz < sizeof(struct arcan_event) + 2)
+		return -1;
+
+	uint16_t checksum = subp_checksum(
+		(const uint8_t* const)aev, sizeof(struct arcan_event)) ^
+		(uint16_t)((ASHMIF_VERSION_MAJOR << 2) | ASHMIF_VERSION_MINOR);
+
+	memcpy(dbuf, &checksum, sizeof(uint16_t));
+	memcpy(&dbuf[2], aev, sizeof(struct arcan_event));
+
+	return sizeof(struct arcan_event) + 2;
+}
+
+ssize_t arcan_shmif_eventunpack(
+	const uint8_t* const buf, size_t buf_sz, struct arcan_event* out)
+{
+	if (buf_sz < sizeof(struct arcan_event) + 2)
+		return -1;
+
+	uint16_t chksum_in;
+	memcpy(&chksum_in, buf, sizeof(uint16_t));
+	memcpy(out, &buf[2], sizeof(struct arcan_event));
+
+	uint16_t chksum = subp_checksum((const uint8_t*)out,
+		sizeof(struct arcan_event)) ^
+		(uint16_t)((ASHMIF_VERSION_MAJOR << 2) | ASHMIF_VERSION_MINOR
+	);
+
+	if (chksum_in != chksum)
+		return -1;
+
+	return sizeof(struct arcan_event) + 2;
 }
 
 const char* arcan_shmif_eventstr(arcan_event* aev, char* dbuf, size_t dsz)
