@@ -187,6 +187,21 @@ const char* arcan_shmif_eventstr(
 	struct arcan_event* aev, char* dbuf, size_t dsz);
 
 /*
+ * Pack the contents of the event into an implementation specifized byte
+ * buffer. Returns the amount of bytes consumed or -1 if the supplied buffer
+ * is too small.
+ */
+ssize_t arcan_shmif_eventpack(
+	const struct arcan_event* const aev, uint8_t* dbuf, size_t dbuf_sz);
+
+/*
+ * Unpack an event from a bytebuffer, returns the number of byted consumed
+ * or -1 if the buffer did not contain a valid event.
+ */
+ssize_t arcan_shmif_eventunpack(
+	const uint8_t* const buf, size_t buf_sz, struct arcan_event* out);
+
+/*
  * Resolve implementation- defined connection connection path based on a
  * suggested key. Returns -num if the resolved path couldn't fit in dsz (with
  * abs(num) indicating the number of truncated bytes) and number of characters

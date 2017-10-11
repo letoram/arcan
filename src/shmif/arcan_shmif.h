@@ -53,8 +53,9 @@
 #endif
 
 /*
- * Hide the memory layout details for C++ sources due to the _Atomic
- * qualifier incompatibility f-up
+ * Hide the memory page automatically for C++, this should be set for C
+ * as well when we ween all programs away from accessing the structure
+ * directly.
  */
 #ifdef __cplusplus
 #define ARCAN_SHMIF_HIDEPAGE
