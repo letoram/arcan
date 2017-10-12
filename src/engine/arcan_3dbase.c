@@ -13,6 +13,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <stdarg.h>
+#include <inttypes.h>
 
 #include <assert.h>
 
@@ -37,6 +38,7 @@ struct camtag_data {
 	float far;
 	float line_width;
 	enum agp_mesh_flags flags;
+	struct arcan_vr_ctx* vrref;
 };
 
 struct geometry {
@@ -346,12 +348,17 @@ arcan_errc arcan_3d_bindvr(arcan_vobj_id id, struct arcan_vr_ctx* vrref)
 	if (!model)
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
-	if (model->feed.state.tag != ARCAN_TAG_3DOBJ)
+	if (model->feed.state.tag == ARCAN_TAG_3DOBJ){
+		((arcan_3dmodel*)model->feed.state.ptr)->vrref = vrref;
+		return ARCAN_OK;
+	}
+	else if (model->feed.state.tag == ARCAN_TAG_3DCAMERA){
+		struct camtag_data* camera = model->feed.state.ptr;
+		camera->vrref = vrref;
+		return ARCAN_OK;
+	}
+	else
 		return ARCAN_ERRC_UNACCEPTED_STATE;
-
-	((arcan_3dmodel*)model->feed.state.ptr)->vrref = vrref;
-
-	return ARCAN_OK;
 }
 
 void arcan_3d_viewray(arcan_vobj_id camtag,
@@ -421,6 +428,9 @@ arcan_vobject_litem* arcan_3d_refresh(arcan_vobj_id camtag,
 
 	surface_properties dprop;
 	arcan_resolve_vidprop(camobj, fract, &dprop);
+	if (camera->vrref){
+		dprop.rotation = camobj->current.rotation;
+	}
 
 	agp_shader_activate(agp_default_shader(BASIC_3D));
 	agp_shader_envv(PROJECTION_MATR, camera->projection, sizeof(float) * 16);
