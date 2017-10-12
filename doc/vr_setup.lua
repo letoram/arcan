@@ -48,7 +48,10 @@
 --
 -- the limb for the neck actually represents the head mounted device
 -- itself. When this limb has appeared, it is safe to query display
--- properties via ref:hmd_metadata.
+-- properties via ref:hmd_metadata. In contrast to other limbs, this
+-- slot can be mapped twice in order to account for both viewpoints
+-- needed when seting up the pipe. Unmapping the limb by setting it
+-- to BADID will drop both slots.
 --
 -- the limb for the abstract 'person' defines the coordinate system
 -- that the others will reference, and is typically important when there

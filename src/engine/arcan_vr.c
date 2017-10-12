@@ -57,7 +57,7 @@ struct arcan_vr_ctx {
 	arcan_evctx* ctx;
 	arcan_frameserver* connection;
 	uint64_t map;
-	struct limb_ent limb_map[LIMB_LIM];
+	struct limb_ent limb_map[LIMB_LIM+1];
 };
 
 struct arcan_vr_ctx* arcan_vr_setup(
@@ -143,6 +143,28 @@ struct arcan_vr_ctx* arcan_vr_setup(
 }
 
 /*
+ * there might be better ways of applying this to an object that
+ * would match better in the resolve path, but it's far away on the
+ * experiment table
+ */
+static void apply_limb(struct vr_limb* limb, arcan_vobj_id id)
+{
+	vector tb = angle_quat(limb->data.orientation);
+	arcan_vobject* vobj = arcan_video_getobject(id);
+	assert(vobj);
+	FLAG_DIRTY(vobj);
+	if ((vobj->mask & MASK_ORIENTATION) > 0){
+		vobj->current.rotation.roll = tb.x;
+		vobj->current.rotation.pitch = tb.y;
+		vobj->current.rotation.yaw = tb.z;
+		vobj->current.rotation.quaternion = limb->data.orientation;
+	}
+	if ((vobj->mask & MASK_POSITION) > 0){
+		vobj->current.position = limb->data.position;
+	}
+}
+
+/*
  * This ffunc is a simplified version of the arcan_frameserver_emptyframe
  * where we also check limb updates and synch position / head tracking
  */
@@ -161,7 +183,7 @@ enum arcan_ffunc_rv arcan_vr_ffunc FFUNC_HEAD
 		arcan_frameserver_free(tgt);
 		ctx->connection = NULL;
 
-		for (size_t i = 0; i < LIMB_LIM; i++){
+		for (size_t i = 0; i < LIMB_LIM+1; i++){
 			if (ctx->limb_map[i].map){
 				arcan_3d_bindvr(ctx->limb_map[i].map, NULL);
 				ctx->limb_map[i].map = 0;
@@ -200,21 +222,10 @@ enum arcan_ffunc_rv arcan_vr_ffunc FFUNC_HEAD
 				debug_print(1, "limb %zu failed to validate\n", i);
 				continue;
 			}
-			vector tb = angle_quat(vl.data.orientation);
-
-			debug_print(2, "o:%.3f,%.3f,%.3f,%.3f, v: %.3f,%.3f,%.3f p:%f,%f,%f",
-				vl.data.orientation.x, vl.data.orientation.y, vl.data.orientation.z,
-				vl.data.orientation.w, tb.x, tb.y, tb.z, vl.data.position.x,
-				vl.data.position.y, vl.data.position.z
-			);
-			arcan_vobject* vobj = arcan_video_getobject(ctx->limb_map[i].map);
-			assert(vobj);
-			FLAG_DIRTY(vobj);
-			vobj->current.rotation.roll = tb.x;
-			vobj->current.rotation.pitch = tb.y;
-			vobj->current.rotation.yaw = tb.z;
-			vobj->current.rotation.quaternion = vl.data.orientation;
-			vobj->current.position = vl.data.position;
+			apply_limb(&vl, ctx->limb_map[i].map);
+			if (i == NECK && ctx->limb_map[LIMB_LIM].map){
+				apply_limb(&vl, ctx->limb_map[LIMB_LIM].map);
+			}
 		}
 	}
 	else if (cmd == FFUNC_TICK){
@@ -285,6 +296,19 @@ arcan_errc arcan_vr_maplimb(
 		if (ctx->limb_map[i].map == vid)
 			return ARCAN_ERRC_UNACCEPTED_STATE;
 
+/* neck special case, first reset */
+	if (ind == NECK){
+		if (ctx->limb_map[NECK].map && ctx->limb_map[LIMB_LIM].map){
+			arcan_3d_bindvr(ctx->limb_map[LIMB_LIM].map, NULL);
+		}
+/* then 'alloc last' */
+		else if (ctx->limb_map[NECK].map){
+			platform_fsrv_leave();
+			ctx->limb_map[LIMB_LIM].map = vid;
+			return arcan_3d_bindvr(vid, ctx);
+		}
+	}
+
 /* unmap- pre-existing? */
 	if (ctx->limb_map[ind].map)
 		arcan_3d_bindvr(ctx->limb_map[ind].map, NULL);
@@ -305,17 +329,22 @@ arcan_errc arcan_vr_maplimb(
 	return arcan_3d_bindvr(vid, ctx);
 }
 
+/* 3dbase wants to tell us that vid is dead */
 arcan_errc arcan_vr_release(struct arcan_vr_ctx* ctx, arcan_vobj_id vid)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
-	for (size_t i = 0; i < LIMB_LIM; i++)
+	for (size_t i = 0; i < LIMB_LIM+1; i++)
 		if (ctx->limb_map[i].map == vid){
 			ctx->limb_map[i].map = 0;
 			rv = ARCAN_OK;
-			TRAMP_GUARD(ARCAN_ERRC_UNACCEPTED_STATE, ctx->connection);
+
+/* reset sampling */
+			if (i < LIMB_LIM){
+				TRAMP_GUARD(ARCAN_ERRC_UNACCEPTED_STATE, ctx->connection);
 				struct arcan_shmif_vr* vr = ctx->connection->desc.aext.vr;
 				vr->limbs[i].ignored = true;
-			platform_fsrv_leave();
+				platform_fsrv_leave();
+			}
 			break;
 		}
 	return rv;
