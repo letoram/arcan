@@ -1,7 +1,7 @@
 --
 -- work-in-progress simple model /scene viewer using distortion shader
 --
-local frag = [[
+local dist_frag = [[
 #version 120
 uniform sampler2D map_tu0;
 uniform vec2 center_xy;
@@ -34,13 +34,59 @@ void main()
 		gl_FragColor = vec4(cr, cg, cb, 1.0);
 }
 ]];
+local dir_light_v =
+-- vertex
+[[
+uniform mat4 modelview;
+uniform mat4 projection;
+uniform vec3 wlightdir;
+
+attribute vec4 vertex;
+attribute vec3 normal;
+attribute vec2 texcoord;
+
+varying vec3 lightdir;
+varying vec2 txco;
+varying vec3 fnormal;
+
+void main(){
+	fnormal = vec3(modelview * vec4(normal, 0.0));
+	lightdir = normalize(wlightdir);
+
+	txco = texcoord;
+	gl_Position = (projection * modelview) * vertex;
+}
+]];
+
+-- fragment
+local dir_light_f = [[
+uniform vec3 wdiffuse;
+uniform vec3 wambient;
+uniform sampler2D map_diffuse;
+
+varying vec3 lightdir;
+varying vec3 fnormal;
+varying vec2 txco;
+
+void main() {
+	vec4 color = vec4(wambient,1.0);
+	vec4 txcol = texture2D(map_diffuse, txco);
+
+	float ndl = max( dot(fnormal, lightdir), 0.0);
+	if (ndl > 0.0){
+		txcol += vec4(wdiffuse * ndl, 0.0);
+	}
+
+	gl_FragColor = txcol * color;
+}
+]];
 
 local hmd_state = {
 	px = 0,
 	py = 0,
 	pz = -5,
 	ss = 0.05,
-	separation = 0.1
+	separation = 0.01
 };
 
 local function update_hmd_state(md, s)
@@ -51,6 +97,19 @@ local function update_hmd_state(md, s)
 	local cr_x = md.hsep / 2.0;
 
 	local warp_scale = cl_x > cr_x and cl_x or cr_x;
+	local dist_override = {
+		1, 0.22, 0.120, 0
+	};
+	local abb_override = {
+		1, 1, 1, 0
+	};
+
+-- abb: 0.99, -0.004, 1.014, 0
+-- scale: 0.81, aspect: 0.89
+-- warp: 1, 0.22, 0.120, 0,
+-- factor: 1.1
+--	md.distortion = dist_override;
+--	md.abberation = abb_override;
 
 	shader_uniform(s.l_shid, "viewport_scale", "ff", scale_x, scale_y);
 	shader_uniform(s.l_shid, "warp_scale", "f", warp_scale);
@@ -71,19 +130,33 @@ local function update_hmd_state(md, s)
 	print("h/vsize:", md.horizontal, md.vertical);
 	print("ar:", md.left_ar, md.right_ar);
 	print("fov:", md.left_fov, md.right_fov);
+	print("warp_scale:", warp_scale);
+	print("viewport_scale:", scale_x, scale_y);
+	print("distortion:",
+		md.distortion[1], md.distortion[2], md.distortion[3], md.distortion[4]);
+	print("abberation:",
+		md.abberation[1], md.abberation[2], md.abberation[3], md.abberation[4]);
+
 -- set the individual cameras as responsible for a rendertarget each
 	camtag_model(hmd_state.l_cam, 0.1, 1000.0,
-			md.left_fov * 180 / 3.1416, md.left_ar, true, false, 0, s.l_eye);
+			md.left_fov * 180 / 3.1416, md.left_ar, false, true, 0, s.l_eye);
 	camtag_model(hmd_state.r_cam, 0.1, 1000.0,
-			md.right_fov * 180 / 3.1416, md.right_ar, true, false, 0, s.r_eye);
+			md.right_fov * 180 / 3.1416, md.right_ar, false, true, 0, s.r_eye);
 end
 
 -- build a pipeline and return as a table of vids
 local function setup_3d_scene()
+	local dir_light = build_shader(dir_light_v, dir_light_f, "dirlight");
+	shader_uniform(dir_light, "map_diffuse", "i", PERSIST, 0);
+	shader_uniform(dir_light, "wlightdir", "fff", PERSIST, 1, 0, 0);
+	shader_uniform(dir_light, "wambient",  "fff", PERSIST, 0.3, 0.3, 0.3);
+	shader_uniform(dir_light, "wdiffuse",  "fff", PERSIST, 0.6, 0.6, 0.6);
+
 	local tex = fill_surface(32, 32, 255, 255, 255);
 	cube = build_3dbox(1, 1, 1);
-	blend_image(cube, 0.5, 10);
+	show_image(cube);
 	image_sharestorage(tex, cube);
+	image_shader(cube, dir_light);
 	delete_image(tex);
 	return {cube};
 end
@@ -116,7 +189,7 @@ function vrtest2(args)
 	local l_eye_res_h = VRESH;
 	local r_eye_res_w = VRESW;
 	local r_eye_res_h = VRESH;
-	local l_eye_shader = build_shader(nil, frag, "distortion");
+	local l_eye_shader = build_shader(nil, dist_frag, "distortion");
 	local r_eye_shader = shader_ugroup(l_eye_shader);
 
 -- FIXME: these really should use MSAA and MSAA- aware sampling in l/r shader

@@ -163,7 +163,8 @@ int main(int argc, char** argv)
 {
 	struct arg_arr* arg;
 
-	struct arcan_shmif_cont con = arcan_shmif_open(SEGID_SENSOR, 0, &arg);
+	struct arcan_shmif_cont con = arcan_shmif_open(
+		SEGID_SENSOR, SHMIF_ACQUIRE_FATALFAIL | SHMIF_NOAUTO_RECONNECT, &arg);
 	if (!con.vidp){
 		debug_print(0, "couldn't setup arcan connection");
 		return EXIT_FAILURE;

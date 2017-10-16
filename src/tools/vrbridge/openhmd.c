@@ -28,22 +28,25 @@ struct driver_state {
 void openhmd_sample(struct dev_ent* dev, struct vr_limb* limb, unsigned id)
 {
 	struct driver_state* state = dev->state;
-	quat quat;
+	quat orient;
+	quat norm = {.w = 1};
 
 	while(1){
 		switch(id){
 		case 0:
 			ohmd_ctx_update(ohmd);
-			ohmd_device_getf(state->hmd, OHMD_ROTATION_QUAT, quat.xyzw);
+			ohmd_device_getf(state->hmd, OHMD_ROTATION_QUAT, orient.xyzw);
+			orient.y = -orient.y;
+//			orient = mul_quat(orient, norm);
 			debug_print(1, "orientation: %f, %f, %f, %f\n",
-				quat.x, quat.y, quat.z, quat.w);
+				orient.x, orient.y, orient.z, orient.w);
 
-			if (memcmp(state->last_quat.xyzw, quat.xyzw, sizeof(float)*4) != 0){
-				limb->data.orientation = state->last_quat = quat;
+			if (memcmp(state->last_quat.xyzw, orient .xyzw, sizeof(float)*4) != 0){
+				limb->data.orientation = state->last_quat = orient;
 				return;
 			}
 			else{
-				arcan_timesleep(4);
+				arcan_timesleep(1);
 			}
 		break;
 		}

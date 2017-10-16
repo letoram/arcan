@@ -279,7 +279,18 @@ enum arcan_ffunc_rv arcan_ffunc_3dobj FFUNC_HEAD
 		break;
 
 		case FFUNC_DESTROY:
-			freemodel( (arcan_3dmodel*) state.ptr );
+			if (state.tag == ARCAN_TAG_3DOBJ)
+				freemodel( (arcan_3dmodel*) state.ptr );
+			else {
+				arcan_vobject* camobj = arcan_video_getobject(srcid);
+				struct camtag_data* camera = state.ptr;
+				if (camera->vrref){
+					arcan_vr_release(camera->vrref, camobj->cellid);
+					camera->vrref = NULL;
+				}
+				arcan_mem_free(camera);
+				camobj->feed.state.ptr = NULL;
+			}
 		break;
 
 		default:
