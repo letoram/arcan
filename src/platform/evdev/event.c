@@ -56,7 +56,7 @@ static struct xkb_context* xkb_context;
 
 #define debug_print(fmt, ...) \
             do { if (DEBUG) arcan_warning("%s:%d:%s(): " fmt "\n", \
-						"egl-dri:", __LINE__, __func__,##__VA_ARGS__); } while (0)
+						"evdev:", __LINE__, __func__,##__VA_ARGS__); } while (0)
 
 /* #define verbose_print */
 #define verbose_print debug_print
