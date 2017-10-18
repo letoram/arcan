@@ -495,16 +495,35 @@ static struct bridge_client* find_client(struct wl_client* cl)
 	trace(TRACE_ALLOC, "connecting new bridge client");
 /*
  * [POSSIBLE FORK SLOT]
- * if (0 == fork()){
-		cl->forked = true;
-		wl.alive = false;
-	}
+ * - for this tactic to work, we need to:
+ * if (wl.fork_mode){
+ *  int fd = get_descriptor_for_client(cl);
+ *  clfd = dup(fd);
+ *  dup2(/dev/null -> fd);
+ *  if (0 == fork()){
+ *  	arcan_shmif_open();
+ *  	enter_simple_loop(clfd, shmcont.fd); (just wl_connection_flush
+ *  }
+ *
+ *  free descriptor resources from display (but don't close)
+ *  set IGN on SIGCHLD and just let the thing die after its finished
+ *  if (0 == fork()){
+ *  	enter_simple_loop(allocators, wl_connection_flush(fd));
+ *  	exit();
+ *  }
+ *  else {
+ *    wl_client_destroy()
+ *  }
+ * }
  */
 
-/* FIRST connect a new bridge to arcan, this could be circumvented and
- * simply treat each 'surface' as a bridge- connection, but it would break
- * the option to track origin. */
-	struct arcan_shmif_cont con = arcan_shmif_open(SEGID_BRIDGE_WAYLAND, 0, NULL);
+/* FIRST connect a new bridge to arcan, this could be circumvented and simply
+ * treat each 'surface' as a bridge- connection, but it would break the option
+ * to track origin. There's also the problem of creating the abstract display
+ * as we don't have the display properties until the first connection has been
+ * made */
+	struct arcan_shmif_cont con = arcan_shmif_open(SEGID_BRIDGE_WAYLAND, 0,
+	NULL);
 	if (!con.addr){
 		trace(TRACE_ALLOC,
 			"failed to open segid-bridge-wayland connection to arcan server");
@@ -611,27 +630,18 @@ static int show_use(const char* msg, const char* arg)
 "\t-no-xdg           disable the xdg protocol\n"
 "\t-no-output        disable the output protocol\n"
 "\t-layout lay       set keyboard layout to <lay>\n"
-"\t-dir dir          override XDG_RUNTIME_DIR with <dir>\n\n");
-	fprintf(stdout, "Debugging-env: WAYBRIDGE_TRACE=[bitmask]\n"
-	"\t1 - allocations, 2 - digital-input, 4 - analog-input\n"
-	"\t8 - shell, 16 - region-events, 32 - data device\n"
-	"\t64 - seat, 128 - surface, 256 - drm \n");
+/* "\t-exec ...         single-client / display mode\n" */
+"\t-dir dir          override XDG_RUNTIME_DIR with <dir>\n\n"
+"\t-trace level      set trace output to (bitmask):\n"
+"\t1 - allocations, 2 - digital-input, 4 - analog-input\n"
+"\t8 - shell, 16 - region-events, 32 - data device\n"
+"\t64 - seat, 128 - surface, 256 - drm \n");
 	return EXIT_FAILURE;
 }
 
 static bool process_group(struct conn_group* group)
 {
 	int sv = poll(group->pgroup, N_GROUP_SLOTS+2, -1);
-
-/*
- * If a client is created here, we can retrieve the actual connection here (and
- * not the epoll fd) with wl_client_get_fd and we can then add / remove the
- * client from the event loop with wl_event_loop_get_fd and that's just an
- * epoll-fd. We can remove the client from the epoll-fd with epoll_ctl(fd,
- * EPOLL_CTL_DEL, clfd, NULL) All that is left is to find a way to notice when
- * a client connects and break out of the loop somehow. Oh well, good old
- * setjmp.
- */
 
 	if (group->wayland && group->wayland->revents){
 		wl_event_loop_dispatch(
@@ -659,19 +669,6 @@ static bool process_group(struct conn_group* group)
 		}
 	}
 
-/*
- * When we have clients with pending segment requests, we can't use the normal
- * flush mechanism for clients with requests pending.
- *
- * Instead, we can iterate this ourselves and simply go:
- * list = wl_display_get_client_list;
- * wl_client* client, *next;
- * wl_list_for_each_safe(client, next, &list, link){
- *  lookup-client
- *  check if pending, then wait
- * 	ret = wl_conenection_flush(client->connection);
- * }
- */
 	wl_display_flush_clients(wl.disp);
 	return true;
 }
@@ -680,8 +677,6 @@ int main(int argc, char* argv[])
 {
 	struct arg_arr* aarr;
 	int shm_egl = false;
-	if (getenv("WAYBRIDGE_TRACE"))
-		trace_log = strtoul(getenv("WAYBRIDGE_TRACE"), NULL, 10);
 
 /* for each wayland protocol or subprotocol supported, add a corresponding
  * field here, and then command-line argument passing to disable said protocol.
@@ -707,6 +702,13 @@ int main(int argc, char* argv[])
 		}
 		else if (strcmp(argv[i], "-layout") == 0){
 /* missing */
+		}
+		else if (strcmp(argv[i], "-trace") == 0){
+			if (i == argc-1){
+				return show_use("missing trace argument", "");
+			}
+			i++;
+			trace_log = strtoul(argv[i], NULL, 10);
 		}
 		else if (strcmp(argv[i], "-dir") == 0){
 			if (i == argc-1){
