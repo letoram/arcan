@@ -205,6 +205,13 @@ bool arcan_shmifext_make_current(struct arcan_shmif_cont* con)
 	return true;
 }
 
+int arcan_shmifext_isext(struct arcan_shmif_cont* con)
+{
+	if (con && con->privext && con->privext->internal)
+		return 2; /* we don't support handle passing via IOSurfaces yet */
+	return 0;
+}
+
 bool arcan_shmifext_vk(struct arcan_shmif_cont* con,
 	void** display, void*(*lookupfun)(void*, const char*), void* tag)
 {

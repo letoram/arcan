@@ -34,6 +34,13 @@ static void* lookup_fenv(void* tag, const char* sym, bool req)
 	return arcan_shmifext_lookup(NULL, sym);
 }
 
+int arcan_shmifext_isext(struct arcan_shmif_cont* con)
+{
+	if (con && con->privext && con->privext->internal)
+		return 2; /* we don't support handle passing via IOSurfaces yet */
+	return 0;
+}
+
 bool arcan_shmifext_drop(struct arcan_shmif_cont* con)
 {
 	if (!con || !con->privext || !con->privext->internal)
