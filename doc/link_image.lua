@@ -19,9 +19,9 @@
 -- If the *panchor* argument is specified, it defines the positional
 -- anchoring space based on one of the following values:
 --
--- ANCHOR_UL : upper-left, ANCHOR-CR : upper-center, ANCHOR_UR : upper-right,
--- ANCHOR_CL : center-left, ANCHOR-C : center, ANCHOR-CR : center-right,
--- ANCHOR_LL : lower-left, ANCHOR-LC : lower-center, ANCHOR_LR : lower-right.
+-- ANCHOR_UL : upper-left, ANCHOR_CR : upper-center, ANCHOR_UR : upper-right,
+-- ANCHOR_CL : center-left, ANCHOR_C : center, ANCHOR_CR : center-right,
+-- ANCHOR_LL : lower-left, ANCHOR_LC : lower-center, ANCHOR_LR : lower-right.
 --
 -- @note: Changing link ownership resets all scheduled transformations
 -- except for blending.

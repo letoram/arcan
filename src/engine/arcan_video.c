@@ -4301,6 +4301,9 @@ void arcan_resolve_vidprop(arcan_vobject* vobj, float lerp,
 			if (vobj->p_anchor == ANCHORP_CR ||
 				vobj->p_anchor == ANCHORP_CL || vobj->p_anchor == ANCHORP_C)
 				props->position.y += mid_y;
+
+			if (vobj->p_anchor == ANCHORP_LC)
+				props->position.y += vobj->parent->origh * vobj->parent->current.scale.y;
 		}
 		case ANCHORP_UL:
 		default:
