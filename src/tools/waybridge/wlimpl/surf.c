@@ -169,7 +169,9 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
  */
 	while (acon->addr->vready){}
 
-	struct wl_drm_buffer* drm_buf = wayland_drm_buffer_get(wl.drm, surf->buf);
+	struct wl_drm_buffer* drm_buf =
+		wl.drm ? wayland_drm_buffer_get(wl.drm, surf->buf) : NULL;
+
 	if (drm_buf){
 		trace(TRACE_SURF, "surf_commit(egl)");
 		wayland_drm_commit(surf, drm_buf, acon);
@@ -182,32 +184,33 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 				uint32_t h = wl_shm_buffer_get_height(buf);
 				void* data = wl_shm_buffer_get_data(buf);
 
-/* The server API is way too unfinished to dare doing a 1-thread-1-client
- * thing. We could've just forked out (shmif has no problems with that as
- * long as you don't double fork) and ran one of those per client but the
- * EGLDisplay approach seem to break that for us, probably worth a try if
- * the main-thread stalls start to hurt */
 			if (acon->w != w || acon->h != h){
 				trace(TRACE_SURF,
 					"surf_commit(shm, resize to: %zu, %zu)", (size_t)w, (size_t)h);
 				arcan_shmif_resize(acon, w, h);
 			}
 
-/*
- * FIXME: For the accelerated handle passing, we offload the cost of
- * translating to GL textures here. Enable by doing a shmifext_setup on
- * the client->acon with the _fbo attribute disabled and the format
- * changed to whatever the buffer pool is set to. Use the primary segment
- * to get the context to use and setup shmifext on the cl->acon with
- * shared context. This might not work 100% for shmpools with
- * multiple buffer formats though (if that is possible)
- *
- * Then trick the shmifext_signal by modifying vidp temporarily to
- * pointing to the buffer properties extracted from wl_shm_buffer*
- *
- * The other option is to implement the shm.c fully, and on the create_buffer
- * call, return the current base / offsets (along with the possible
- * resize_ext dance to get the right number of buffers, offsets etc.)
+/* if gl-transfers are enabled and the surface is not trivial ( (popup, cursor,
+ * ...), try >once< to flip on extended mode with vidp packing, we 'fake' the
+ * address of vidp into the source buffer, use that to upload into a texture
+ * pair that gets rotated when we signal.
+	struct arcan_shmifext_setup setup = arcan_shmifext_defaults(&retro.shmcont);
+	setup.builtin_fbo = false;
+	setup.vidp_pack = true;
+	vidp_infmt = buffer_get_format:
+	SHM_FORMAT_XRGB8888/ARGB8888: GL_BGRA_EXT
+	SHM_FORMAT_RGB565: GL_RGB, UNSIGNED_SHORT_5_6_5
+
+	if ((status = arcan_shmifext_setup(acon, setup)) != SHMIFEXT_OK)
+	*/
+
+/* if stride mismatch, copy row by row:
+ * switch(wl_shm_buffer_get_format(buffer)){
+ * case WL_SHM_FORMAT_XRGB8888:
+ * case WL_SHM_FORMAT_ARGB8888:
+ * case WL_SHM_FORMAT_RGB565:
+ * wl_shm_buffer_get_stride(buffer)
+ * }
  */
 			memcpy(acon->vidp, data, w * h * sizeof(shmif_pixel));
 			wl_buffer_send_release(surf->buf);

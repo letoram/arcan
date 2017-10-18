@@ -120,6 +120,8 @@ BUGS
 1. gnome-apps, mouse motion registers but not button presses.
 2. SDL2, buffer- size and mouse cursor alignment is off in ex. 0ad
 3. gnome-apps, popups spawn at the wrong location -might be in durden-
+4. gnome-apps, visible with calculator - desynch subsurface doesn't
+   get assigned/mapped correctly
 
 TODO
 ====
