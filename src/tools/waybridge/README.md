@@ -44,10 +44,9 @@ The main paths to follow to get some kind of comprehension of what is going
 on is how surfaces are allocated and how the surface allocation request are
 propagated.
 
-To debug, add WAYBRIDGE\_TRACE=level as env and very verbose call tracing
-will be added.
+To debug, add the -trace level argument and a call trace to stderr will be
+added that cover (based on level argument bitmask, so add the values):
 
-tracelevels (bitmask so add)
     1   - allocations only
     2   - digital input events
     4   - analog input events
@@ -58,6 +57,7 @@ tracelevels (bitmask so add)
     128 - surface events
 
 Allocation outputs are encoded as follows:
+
     'C' - client-bridge connection
     'S' - shell surface
     's' - shell subsurface
@@ -105,16 +105,41 @@ separately in the [arcan wiki](https://github.com/letoram/arcan/wiki/wayland).
 
 XWayland
 ====
-XWayland support will be enabled at some point since there isn't really much
-we need to do other than some minor xcb parsing on a WM socket, and we can
-borrow the setup from wlc - though for non-rootless mode, we prefer Xarcan
-operation as that requires less translation and has access to more features.
+
+XWayland support is currently omitted for two reasons. One is that the Xarcan
+approach is more efficient and blends better with the current arcan WMs
+(durden/prio) due to the whole 'self contained' thing. The other is that for
+XWayland support, one must write an entire window manager (or import the one
+from weston or wlc, neither work flawlessly). Based on the 'Why isn't Xwayland
+just a Wayland Client' post (wayland-devel, 2017-sept.) it seems like there's a
+chance we get patches that makes the special xwayland path unecessary and thus
+it is better to wait and see.
+
+BUGS
+===
+1. gnome-apps, mouse motion registers but not button presses.
+2. SDL2, buffer- size and mouse cursor alignment is off in ex. 0ad
+3. gnome-apps, popups spawn at the wrong location -might be in durden-
 
 TODO
 ====
 
-(x - done, p - partial/possible-tuning, s - showstopper)
+Rough estimate of planned changes and order:
+
+1. shm-copy respect stride
+2. shm-copy to texture- upload
+3. wl\_shell fixes / event propagation
+4. single- client exec mode
+5. mouse wheel actions
+6. seccmp- sandboxing
+7. fork() mode
+8. data-device to clipboard
+
+(x - done, p - partial/possible-tuning, s - showstopper, i - ignored for now)
 + (for-each finished milestone, verify allocation/deallocation/validation)
+
+The many 'p's are simply that we lack a decent conformance suite to actually
+determine if we are compliant or not, because Wayland.
 
 - [ ] Milestone 1, basics
   - [x] Boilerplate-a-plenty
@@ -135,7 +160,7 @@ TODO
       - [p] Forward shell events that can't be handled with shmif
       - [p] Positioners
     - [ ] Application-test suite and automated tests (SDL, QT, GTK, ...)]
-    - [ ] XWayland (WM parts)
+    - [i] XWayland (WM parts)
     - [ ] Output Rotation / Scaling
 - [ ] Milestone 3, funky things
   - [ ] SHM to GL texture mapping
