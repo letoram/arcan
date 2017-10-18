@@ -340,6 +340,15 @@ enum shmifext_setup_status arcan_shmifext_setup(
 	struct arcan_shmifext_setup arg);
 
 /*
+ * Check if the connection is in an extended state or not.
+ * return values:
+ * 0 - not extended
+ * 1 - extended, handle passing
+ * 2 - extended, readback fallback
+ */
+int arcan_shmifext_isext(struct arcan_shmif_cont* con);
+
+/*
  * for use with the shmifext_setup approach, try and find the
  * requested symbol within the context of the accelerated graphics backend
  */

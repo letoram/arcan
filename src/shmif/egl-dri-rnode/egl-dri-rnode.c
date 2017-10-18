@@ -698,6 +698,13 @@ bool arcan_shmifext_gltex_handle(struct arcan_shmif_cont* con,
 	return true;
 }
 
+int arcan_shmifext_isext(struct arcan_shmif_cont* con)
+{
+	if (con && con->privext && con->privext->internal)
+		return con->privext->internal->nopass ? 2 : 1;
+	return 0;
+}
+
 int arcan_shmifext_signal(struct arcan_shmif_cont* con,
 	uintptr_t display, int mask, uintptr_t tex_id, ...)
 {
