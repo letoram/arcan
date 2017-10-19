@@ -153,8 +153,8 @@ static bool arcan_frameserver_control_chld(arcan_frameserver* src){
 	}
 
 	if (!alive){
-		arcan_event_queuetransfer(arcan_event_defaultctx(), &src->inqueue,
-			src->queue_mask, 0.5, src->vid);
+		arcan_event_queuetransfer(
+			arcan_event_defaultctx(), &src->inqueue, src->queue_mask, 0.5, src);
 
 		arcan_frameserver_free(src);
 		return false;
@@ -266,8 +266,8 @@ enum arcan_ffunc_rv arcan_frameserver_nullfeed FFUNC_HEAD
 		if (!arcan_frameserver_control_chld(tgt))
 			goto no_out;
 
-		arcan_event_queuetransfer(arcan_event_defaultctx(),
-			&tgt->inqueue, tgt->queue_mask, 0.5, tgt->vid);
+		arcan_event_queuetransfer(
+			arcan_event_defaultctx(), &tgt->inqueue, tgt->queue_mask, 0.5, tgt);
 	}
 	else if (cmd == FFUNC_DESTROY)
 		arcan_frameserver_free(tgt);
@@ -486,8 +486,8 @@ enum arcan_ffunc_rv arcan_frameserver_vdirect FFUNC_HEAD
 	break;
 
 	case FFUNC_RENDER:
-		arcan_event_queuetransfer(arcan_event_defaultctx(),
-			&tgt->inqueue, tgt->queue_mask, 0.5, tgt->vid);
+		arcan_event_queuetransfer(
+			arcan_event_defaultctx(), &tgt->inqueue, tgt->queue_mask, 0.5, tgt);
 
 		struct arcan_vobject* vobj = arcan_video_getobject(tgt->vid);
 		struct agp_vstore* dst_store = vobj->frameset ?
@@ -592,8 +592,8 @@ enum arcan_ffunc_rv arcan_frameserver_feedcopy FFUNC_HEAD
 		if (src->flags.autoclock && src->clock.frame)
 			autoclock_frame(src);
 
-		arcan_event_queuetransfer(arcan_event_defaultctx(), &src->inqueue,
-			src->queue_mask, 0.5, src->vid);
+		arcan_event_queuetransfer(
+			arcan_event_defaultctx(), &src->inqueue, src->queue_mask, 0.5, src);
 	}
 
 leave:
@@ -621,8 +621,8 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe FFUNC_HEAD
 		if (!arcan_frameserver_control_chld(src))
 			goto no_out;
 
-		arcan_event_queuetransfer(arcan_event_defaultctx(), &src->inqueue,
-			src->queue_mask, 0.5, src->vid);
+		arcan_event_queuetransfer(
+			arcan_event_defaultctx(), &src->inqueue, src->queue_mask, 0.5, src);
 	}
 
 /*
@@ -1031,8 +1031,8 @@ bool arcan_frameserver_tick_control(
  * be filled to half in order to not have a crazy frameserver starve the main
  * process.
  */
-	arcan_event_queuetransfer(arcan_event_defaultctx(),
-		&src->inqueue, src->queue_mask, 0.5, src->vid);
+	arcan_event_queuetransfer(
+		arcan_event_defaultctx(), &src->inqueue, src->queue_mask, 0.5, src);
 
 	if (!src->shm.ptr->resized){
 		fail = false;

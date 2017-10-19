@@ -60,9 +60,10 @@ bool arcan_event_feed(struct arcan_evctx*, arcan_event_handler hnd, int* ec);
  * Some events will need rewriting, specify source- vobj id (can be EID but
  * should typically be a valid VID).
  */
+struct arcan_frameserver;
 void arcan_event_queuetransfer(
 	struct arcan_evctx* dstqueue, struct arcan_evctx* srcqueue,
-	enum ARCAN_EVENT_CATEGORY allowed, float saturation, arcan_vobj_id source
+	enum ARCAN_EVENT_CATEGORY allowed, float saturation, struct arcan_frameserver*
 );
 
 /*

@@ -238,7 +238,7 @@ static inline int queue_used(arcan_evctx* dq)
 }
 
 void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
-	enum ARCAN_EVENT_CATEGORY allowed, float saturation, arcan_vobj_id source)
+	enum ARCAN_EVENT_CATEGORY allowed, float sat, struct arcan_frameserver* tgt)
 {
 	if (!srcqueue || !dstqueue || (srcqueue && !srcqueue->front)
 		|| (srcqueue && !srcqueue->back))
@@ -246,13 +246,10 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 
 	bool wake = false;
 
-	arcan_frameserver* tgt = arcan_video_feedstate(source) ?
-		arcan_video_feedstate(source)->ptr : NULL;
-
-	saturation = (saturation > 1.0 ? 1.0 : saturation < 0.5 ? 0.5 : saturation);
+	sat = (sat > 1.0 ? 1.0 : sat < 0.5 ? 0.5 : sat);
 
 	while ( srcqueue->front && *srcqueue->front != *srcqueue->back &&
-			floor((float)dstqueue->eventbuf_sz * saturation) > queue_used(dstqueue)) {
+			floor((float)dstqueue->eventbuf_sz * sat) > queue_used(dstqueue)) {
 
 		arcan_event inev;
 		if (arcan_event_poll(srcqueue, &inev) == 0)
@@ -266,7 +263,7 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 		if ((inev.category & allowed) == 0 )
 			continue;
 
-		if (inev.category == EVENT_EXTERNAL){
+		if (inev.category == EVENT_EXTERNAL && tgt){
 			switch(inev.ext.kind){
 
 /* to protect against scripts that would happily try to just allocate/respond
@@ -317,19 +314,18 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 /* client may need more fine grained control for audio transfers when it
  * comes to synchronized A/V playback */
 				case EVENT_EXTERNAL_FLUSHAUD:
-					if (tgt)
-						arcan_frameserver_flush(tgt);
+					arcan_frameserver_flush(tgt);
 					continue;
 				break;
 
 				default:
 				break;
 			}
-			inev.ext.source = source;
+			inev.ext.source = tgt->vid;
 		}
 
-		else if (inev.category == EVENT_NET){
-			inev.net.source = source;
+		else if (inev.category == EVENT_NET && tgt){
+			inev.net.source = tgt->vid;
 		}
 
 		wake = true;
