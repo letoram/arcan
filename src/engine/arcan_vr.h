@@ -47,7 +47,8 @@ arcan_errc arcan_vr_camtag(struct arcan_vr_ctx*,
 arcan_errc arcan_3d_bindvr(arcan_vobj_id id, struct arcan_vr_ctx* vrref);
 
 arcan_errc arcan_vr_maplimb(
-	struct arcan_vr_ctx*, unsigned ind, arcan_vobj_id vid);
+	struct arcan_vr_ctx*, unsigned ind, arcan_vobj_id vid,
+	bool use_position, bool use_orientation);
 
 /*
  * Used when breaking the association between a limb in a VR context and
@@ -65,7 +66,8 @@ arcan_errc arcan_vr_release(struct arcan_vr_ctx*, arcan_vobj_id ind);
  * association will still be dropped.
  */
 arcan_errc arcan_vr_maplimb(
-	struct arcan_vr_ctx*, unsigned ind, arcan_vobj_id model);
+	struct arcan_vr_ctx*, unsigned ind, arcan_vobj_id model,
+	bool use_position, bool use_orientation);
 
 /*
  * Retrieve the values used for representing the display and
