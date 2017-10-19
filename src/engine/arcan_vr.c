@@ -50,6 +50,7 @@
  */
 struct limb_ent {
 	arcan_vobj_id map;
+	bool position, orientation;
 	uint_least32_t ts;
 };
 
@@ -147,20 +148,29 @@ struct arcan_vr_ctx* arcan_vr_setup(
  * would match better in the resolve path, but it's far away on the
  * experiment table
  */
-static void apply_limb(struct vr_limb* limb, arcan_vobj_id id)
+static void apply_limb(struct vr_limb* limb, struct limb_ent* lent)
 {
 	vector tb = angle_quat(limb->data.orientation);
-	arcan_vobject* vobj = arcan_video_getobject(id);
+	arcan_vobject* vobj = arcan_video_getobject(lent->map);
 	assert(vobj);
 	FLAG_DIRTY(vobj);
-	if ((vobj->mask & MASK_ORIENTATION) > 0){
+
+	if (lent->orientation){
 		vobj->current.rotation.roll = tb.x;
 		vobj->current.rotation.pitch = tb.y;
 		vobj->current.rotation.yaw = tb.z;
 		vobj->current.rotation.quaternion = limb->data.orientation;
 	}
-	if ((vobj->mask & MASK_POSITION) > 0){
+/* since 3dbase disables resolving entirely if there's a limb-map,
+ * when we have the opportunity to test tools, we likely need to
+ * resolve and translate ourselves */
+	if (lent->position){
+		surface_properties dprop;
+		arcan_resolve_vidprop(vobj, 0.0, &dprop);
 		vobj->current.position = limb->data.position;
+		vobj->current.position.x += dprop.position.x;
+		vobj->current.position.y += dprop.position.y;
+		vobj->current.position.z += dprop.position.z;
 	}
 }
 
@@ -222,9 +232,9 @@ enum arcan_ffunc_rv arcan_vr_ffunc FFUNC_HEAD
 				debug_print(1, "limb %zu failed to validate\n", i);
 				continue;
 			}
-			apply_limb(&vl, ctx->limb_map[i].map);
+			apply_limb(&vl, &ctx->limb_map[i]);
 			if (i == NECK && ctx->limb_map[LIMB_LIM].map){
-				apply_limb(&vl, ctx->limb_map[LIMB_LIM].map);
+				apply_limb(&vl, &ctx->limb_map[LIMB_LIM]);
 			}
 		}
 	}
@@ -283,13 +293,19 @@ enum arcan_ffunc_rv arcan_vr_ffunc FFUNC_HEAD
 }
 
 arcan_errc arcan_vr_maplimb(
-	struct arcan_vr_ctx* ctx, unsigned ind, arcan_vobj_id vid)
+	struct arcan_vr_ctx* ctx, unsigned ind, arcan_vobj_id vid,
+	bool use_pos, bool use_orient)
 {
 	if (!ctx || !ctx->connection)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
 	if (ind >= LIMB_LIM)
 		return ARCAN_ERRC_OUT_OF_SPACE;
+
+	struct limb_ent ent = {
+		.map = vid,
+		.position = use_pos, .orientation = use_orient
+	};
 
 /* only 1:1 allowed */
 	for (size_t i = 0; i < LIMB_LIM; i++)
@@ -304,7 +320,7 @@ arcan_errc arcan_vr_maplimb(
 /* then 'alloc last' */
 		else if (ctx->limb_map[NECK].map){
 			platform_fsrv_leave();
-			ctx->limb_map[LIMB_LIM].map = vid;
+			ctx->limb_map[LIMB_LIM] = ent;
 			return arcan_3d_bindvr(vid, ctx);
 		}
 	}
@@ -313,7 +329,7 @@ arcan_errc arcan_vr_maplimb(
 	if (ctx->limb_map[ind].map)
 		arcan_3d_bindvr(ctx->limb_map[ind].map, NULL);
 
-	ctx->limb_map[ind].map = vid;
+	ctx->limb_map[ind] = ent;
 
 	struct arcan_shmif_vr* vr = ctx->connection->desc.aext.vr;
 	if (!vr){

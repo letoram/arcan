@@ -36,8 +36,7 @@ void openhmd_sample(struct dev_ent* dev, struct vr_limb* limb, unsigned id)
 		case 0:
 			ohmd_ctx_update(ohmd);
 			ohmd_device_getf(state->hmd, OHMD_ROTATION_QUAT, orient.xyzw);
-			orient.y = -orient.y;
-//			orient = mul_quat(orient, norm);
+			orient = inv_quat(orient);
 			debug_print(1, "orientation: %f, %f, %f, %f\n",
 				orient.x, orient.y, orient.z, orient.w);
 

@@ -82,6 +82,9 @@ void main() {
 ]];
 
 local hmd_state = {
+	use_distortion = false,
+	use_ar = true,
+	fov_delta = 0,
 	px = 0,
 	py = 0,
 	pz = -5,
@@ -89,7 +92,12 @@ local hmd_state = {
 	separation = 0.01
 };
 
-local function update_hmd_state(md, s)
+local function update_hmd_state(s)
+	local md = s.metadata;
+	if (not md) then
+		return;
+	end
+
 	local scale_x = md.horizontal / 2.0;
 	local scale_y = md.vertical;
 
@@ -97,19 +105,6 @@ local function update_hmd_state(md, s)
 	local cr_x = md.hsep / 2.0;
 
 	local warp_scale = cl_x > cr_x and cl_x or cr_x;
-	local dist_override = {
-		1, 0.22, 0.120, 0
-	};
-	local abb_override = {
-		1, 1, 1, 0
-	};
-
--- abb: 0.99, -0.004, 1.014, 0
--- scale: 0.81, aspect: 0.89
--- warp: 1, 0.22, 0.120, 0,
--- factor: 1.1
---	md.distortion = dist_override;
---	md.abberation = abb_override;
 
 	shader_uniform(s.l_shid, "viewport_scale", "ff", scale_x, scale_y);
 	shader_uniform(s.l_shid, "warp_scale", "f", warp_scale);
@@ -119,17 +114,28 @@ local function update_hmd_state(md, s)
 		md.abberation[1], md.abberation[2], md.abberation[3]);
 
 -- relative the pos anchor
-	move3d_model(hmd_state.l_cam, -s.separation, 0, 0);
-	move3d_model(hmd_state.r_cam,  s.separation, 0, 0);
+	move3d_model(s.l_cam, -s.separation, 0, 0);
+	move3d_model(s.r_cam,  s.separation, 0, 0);
 
 -- per eye
 	shader_uniform(s.l_shid, "center_xy", "ff", md.vpos, cl_x);
 	shader_uniform(s.r_shid, "center_xy", "ff", md.vpos, cr_x);
 
-	print("HMD properties:")
+	local l_fov_deg = (md.left_fov * 180 / 3.1416) + s.fov_delta;
+	local r_fov_deg = (md.right_fov * 180 / 3.1416) + s.fov_delta;
+
+	local ar_l = md.left_ar;
+	local ar_r = md.right_ar;
+	if (hmd_state.use_ar == false) then
+		ar_l = VRESW * 0.5 / VRESH;
+		ar_r = VRESW * 0.5 / VRESH;
+	end
+
+	print("Current HMD properties:")
+	print("distortion shader:", s.use_distortion);
 	print("h/vsize:", md.horizontal, md.vertical);
-	print("ar:", md.left_ar, md.right_ar);
-	print("fov:", md.left_fov, md.right_fov);
+	print("ar:", ar_l, ar_r);
+	print("fov:", l_fov_deg, r_fov_deg);
 	print("warp_scale:", warp_scale);
 	print("viewport_scale:", scale_x, scale_y);
 	print("distortion:",
@@ -137,11 +143,19 @@ local function update_hmd_state(md, s)
 	print("abberation:",
 		md.abberation[1], md.abberation[2], md.abberation[3], md.abberation[4]);
 
+	if (s.use_distortion) then
+		image_shader(s.l_eye, s.l_shid);
+		image_shader(s.r_eye, s.r_shid);
+	else
+		image_shader(s.l_eye, "DEFAULT");
+		image_shader(s.r_eye, "DEFAULT");
+	end
+
 -- set the individual cameras as responsible for a rendertarget each
-	camtag_model(hmd_state.l_cam, 0.1, 1000.0,
-			md.left_fov * 180 / 3.1416, md.left_ar, false, true, 0, s.l_eye);
-	camtag_model(hmd_state.r_cam, 0.1, 1000.0,
-			md.right_fov * 180 / 3.1416, md.right_ar, false, true, 0, s.r_eye);
+	camtag_model(s.l_cam, s.near, s.far,
+			l_fov_deg, ar_l, true, false, 0, s.l_eye);
+	camtag_model(s.r_cam, s.near, s.far,
+			r_fov_deg, ar_r, true, false, 0, s.r_eye);
 end
 
 -- build a pipeline and return as a table of vids
@@ -153,12 +167,20 @@ local function setup_3d_scene()
 	shader_uniform(dir_light, "wdiffuse",  "fff", PERSIST, 0.6, 0.6, 0.6);
 
 	local tex = fill_surface(32, 32, 255, 255, 255);
+	local tex2 = fill_surface(32, 32, 0, 255, 0);
+
 	cube = build_3dbox(1, 1, 1);
+	floor = build_3dplane(-10, -10, 10, 10, 0, 1, 1, 1);
+	move3d_model(floor, 0, -1, 0);
 	show_image(cube);
+	show_image(floor);
 	image_sharestorage(tex, cube);
+	image_sharestorage(tex2, floor);
 	image_shader(cube, dir_light);
+	image_shader(floor, dir_light);
 	delete_image(tex);
-	return {cube};
+	delete_image(tex2);
+	return {cube, floor};
 end
 
 local function vr_event_handler(source, status)
@@ -166,12 +188,12 @@ local function vr_event_handler(source, status)
 -- got our eyes [special case], map both cameras to the same limb-id
 -- it is first now that we have access to our hmd as well
 		if (status.name == "neck") then
-			vr_map_limb(source, hmd_state.l_cam, status.id);
-			vr_map_limb(source, hmd_state.r_cam, status.id);
+			vr_map_limb(source, hmd_state.l_cam, status.id, false, true);
+			vr_map_limb(source, hmd_state.r_cam, status.id, false, true);
 			local md = vr_metadata(source);
 			hmd_state.alive = true;
 			hmd_state.metadata = md;
-			update_hmd_state(md, hmd_state);
+			update_hmd_state(hmd_state);
 		end
 	elseif (status.kind == "limb_removed") then
 		if (status.name == "neck") then
@@ -195,8 +217,6 @@ function vrtest2(args)
 -- FIXME: these really should use MSAA and MSAA- aware sampling in l/r shader
 	local l_eye = alloc_surface(l_eye_res_w, l_eye_res_h);
 	local r_eye = alloc_surface(r_eye_res_w, r_eye_res_h);
-	image_shader(l_eye, l_eye_shader);
-	image_shader(r_eye, r_eye_shader);
 
 	define_rendertarget(l_eye, setup_3d_scene(),
 		RENDERTARGET_DETACH, RENDERTARGET_NOSCALE, -1, RENDERTARGET_FULL);
@@ -214,6 +234,8 @@ function vrtest2(args)
 	local pos = null_surface(1, 1);
 	local camera_l = null_surface(1, 1);
 	local camera_r = null_surface(1, 1);
+	scale3d_model(camera_l, 1.0, -1.0, 1.0);
+	scale3d_model(camera_r, 1.0, -1.0, 1.0);
 	link_image(camera_l, pos);
 	link_image(camera_r, pos);
 
@@ -271,6 +293,32 @@ function vrtest2_input(iotbl)
 		hmd_state.sy = iotbl.active and hmd_state.ss or nil;
 	elseif (sym == "PAGEDOWN") then
 		hmd_state.sy = iotbl.active and -hmd_state.ss or nil;
+	end
+
+	if (not iotbl.active) then
+		return;
+	end
+
+	if (sym == "1") then
+		hmd_state.fov_delta = hmd_state.fov_delta + 1;
+		update_hmd_state(hmd_state);
+	elseif (sym == "2") then
+		hmd_state.fov_delta = hmd_state.fov_delta - 1;
+		update_hmd_state(hmd_state);
+	elseif (sym == "3") then
+		hmd_state.separation = hmd_state.separation + 0.02;
+		move3d_model(hmd_state.l_cam, -hmd_state.separation, 0, 0);
+		move3d_model(hmd_state.r_cam,  hmd_state.separation, 0, 0);
+	elseif (sym == "4") then
+		hmd_state.separation = hmd_state.separation - 0.02;
+		move3d_model(hmd_state.l_cam, -hmd_state.separation, 0, 0);
+		move3d_model(hmd_state.r_cam,  hmd_state.separation, 0, 0);
+	elseif (sym == "TAB") then
+		hmd_state.use_distortion = not hmd_state.use_distortion;
+		update_hmd_state(hmd_state);
+	elseif (sym == "F1") then
+		hmd_state.use_ar = not hmd_state.use_ar;
+		update_hmd_state(hmd_state);
 	elseif (sym == "ESCAPE") then
 		return shutdown();
 	end

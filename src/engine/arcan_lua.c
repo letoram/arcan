@@ -3381,7 +3381,11 @@ static int vr_maplimb(lua_State* ctx)
 	arcan_vobj_id vid = luaL_checkvid(ctx, 2, NULL);
 
 	unsigned limb = luaL_checknumber(ctx, 3);
-	arcan_vr_maplimb(vobj->feed.state.ptr, limb, vid);
+
+	bool pos = luaL_optbnumber(ctx, 4, true);
+	bool or = luaL_optbnumber(ctx, 5, true);
+
+	arcan_vr_maplimb(vobj->feed.state.ptr, limb, vid, pos, or);
 
 	LUA_ETRACE("vr_map_limb", NULL, 0);
 }

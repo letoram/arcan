@@ -3,11 +3,12 @@
 -- @inargs: vid:dst
 -- @inargs: vid:dst, float:near
 -- @inargs: vid:dst, float:near, float:far
--- @inargs: vid:dst, float:near, float:far, float:aspect
--- @inargs: vid:dst, float:near, float:far, float:aspect, bool:front
--- @inargs: vid:dst, float:near, float:far, float:aspect, bool:front, bool:back
--- @inargs: vid:dst, float:near, float:far, float:aspect, bool:front, bool:back, float:linew
--- @inargs: vid:dst, float:near, float:far, float:aspect, bool:front, bool:back, float:linew, vid:tgt
+-- @inargs: vid:dst, float:near, float:far, float:fov
+-- @inargs: vid:dst, float:near, float:far, float:fov, float:aspect
+-- @inargs: vid:dst, float:near, float:far, float:fov, float:aspect, bool:front
+-- @inargs: vid:dst, float:near, float:far, float:fov, float:aspect, bool:front, bool:back
+-- @inargs: vid:dst, float:near, float:far, float:fov, float:aspect, bool:front, bool:back, float:linew
+-- @inargs: vid:dst, float:near, float:far, float:fov, float:aspect, bool:front, bool:back, float:linew, vid:tgt
 -- @outargs:
 -- @longdescr: This function is used to provide a rendertarget with a camera,
 -- enabling the 3D processing part of the pipeline. The object that is used as
