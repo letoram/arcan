@@ -1969,12 +1969,14 @@ static int find_tty()
 /* first, check if the env. defines a specific TTY device to use and try that */
 	const char* newtty = NULL;
 	int tty = -1;
+	bool scantty = true;
 
 	uintptr_t tag;
 	cfg_lookup_fun get_config = platform_config_lookup(&tag);
 	char* ttydev;
 	if (get_config("event_tty_override", 0, &ttydev, tag) && ttydev){
 		int fd = open(ttydev, O_RDWR, O_CLOEXEC);
+		scantty = false;
 		if (-1 == fd)
 			arcan_warning("couldn't open TTYOVERRIDE %s, reason: %s\n",
 				newtty, strerror(errno));
@@ -1986,7 +1988,7 @@ static int find_tty()
 /* Failing that, try and find what tty we might be on -- some might redirect
  * stdin to something else and then it is not a valid tty to work on. Which,
  * of course, brings us back to the special kid in the class, sysfs. */
-	if (!isatty(tty)){
+	if (!isatty(tty) && scantty){
 		FILE* fpek = fopen("/sys/class/tty/tty0/active", "r");
 		if (fpek){
 			char line[32] = "/dev/";
