@@ -36,7 +36,6 @@ static void laction (int i) {
   lua_sethook(globalL, lstop, LUA_MASKCALL | LUA_MASKRET | LUA_MASKCOUNT, 1);
 }
 
-
 static void print_usage (void) {
   fprintf(stderr,
   "usage: %s [options] [script [args]].\n"
