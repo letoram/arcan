@@ -40,7 +40,7 @@
  */
 struct tui_lmeta {
 	struct tui_context* tui;
-	int href;
+	intptr_t href;
 
 /* pending subsegment requests and their respective lua references */
 	uint8_t pending_mask;

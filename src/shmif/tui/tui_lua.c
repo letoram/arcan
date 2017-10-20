@@ -19,6 +19,8 @@
  * TUI_FIXED_POS,
  * TUI_ALTERNATE
  *
+ * + modifiers
+ *
  * + viewport (positioning) :
  *   TUI_NORMAL
  *   TUI_FOCUS
@@ -33,6 +35,7 @@
  *   - route_target( set id as event recipient, options of possible
  *     escape symbols or if io, mouse and misc should be mapped or only some)
  *   - request_subwnd( "type" )
+ *   - shaping / language related attr ( format break option with new format- code)
  *   - identity and configuration keys
  *   - labelhints
  *   - state and file-types
@@ -70,7 +73,7 @@ static struct tui_cbcfg shared_cbcfg = {};
 		lua_pop(L, 2);\
 		return B;\
 	}\
-	lua_pushvalue(L, -2);
+	lua_pushvalue(L, -3);
 
 #define END_HREF lua_pop(L, 1);
 
@@ -391,9 +394,12 @@ static void apply_table(lua_State* L, int ind, struct tui_screen_attr* attr)
 	attr->italic = intblbool(L, ind, "italic");
 	attr->inverse = intblbool(L, ind, "inverse");
 	attr->protect = intblbool(L, ind, "protect");
-	attr->blink = intblbool(L, ind, "blink");
 	attr->strikethrough = intblbool(L, ind, "strikethrough");
 	attr->custom_id = intblint(L, ind, "id");
+
+/* shape break should really cover more, i.e. language, ... */
+	attr->shape_break = intblint(L, ind, "shape_break");
+
 	attr->fr = intblint(L, ind, "fr");
 	attr->fg = intblint(L, ind, "fg");
 	attr->fb = intblint(L, ind, "fb");
@@ -406,9 +412,17 @@ static void apply_table(lua_State* L, int ind, struct tui_screen_attr* attr)
 static int tui_attr(lua_State* L)
 {
 	struct tui_screen_attr attr = {};
+	int ci = 1;
 
-	if (lua_type(L, 1) == LUA_TTABLE)
-		apply_table(L, 1, &attr);
+/* use context as base for color lookup */
+	if (lua_type(L, ci) == LUA_TUSERDATA){
+		struct tui_lmeta* ib = luaL_checkudata(L, ci++, "tui_main");
+		arcan_tui_get_color(ib->tui, TUI_COL_PRIMARY, attr.fc);
+		arcan_tui_get_color(ib->tui, TUI_COL_BG, attr.bc);
+	}
+
+	if (lua_type(L, ci) == LUA_TTABLE)
+		apply_table(L, ci, &attr);
 
 	lua_newtable(L);
 
@@ -419,7 +433,7 @@ static int tui_attr(lua_State* L)
 #define SET_BIV(K, V) do { lua_pushstring(L, K); \
 	lua_pushboolean(L, V); lua_rawset(L, -3); } while (0)
 
-	SET_KIV("r", 128); SET_KIV("g", 128); SET_KIV("b", 128);
+	SET_KIV("fr", 128); SET_KIV("fg", 128); SET_KIV("fb", 128);
 	SET_KIV("br", 0); SET_KIV("bg", 0); SET_KIV("bb", 0);
 	SET_BIV("bold", false); SET_BIV("underline", false); SET_BIV("protect", false);
 	SET_BIV("blink", false); SET_BIV("strikethrough", false);
@@ -433,8 +447,6 @@ static int defattr(lua_State* L)
 {
 	TUI_UDATA;
 	struct tui_screen_attr attr = {};
-	arcan_tui_get_color(ib->tui, TUI_COL_PRIMARY, attr.fc);
-	arcan_tui_get_color(ib->tui, TUI_COL_BG, attr.bc);
 
 	if (lua_istable(L, 2))
 		apply_table(L, 2, &attr);
@@ -990,7 +1002,7 @@ void tui_lua_expose(lua_State* L)
 	REGISTER("set_handlers", settbl);
 	REGISTER("update_ident", setident);
 	REGISTER("mouse_forward", setmouse);
-	REGISTER("default_attr", defattr);
+	REGISTER("set_default_attr", defattr);
 	REGISTER("reset", reset);
 	REGISTER("to_clipboard", setcopy);
 	REGISTER("cursor_pos", getcursor);
@@ -1036,6 +1048,15 @@ void tui_lua_expose(lua_State* L)
 	{"COLOR_ALERT", TUI_COL_ALERT},
 	{"COLOR_INACTIVE", TUI_COL_INACTIVE}
 	};
+
+	lua_newtable(L);
+	for (size_t i = 0; i < COUNT_OF(consttbl); i++){
+		lua_pushstring(L, &consttbl[i].key[6]);
+		lua_pushnumber(L, consttbl[i].val);
+		lua_rawset(L, -3);
+	}
+	lua_setglobal(L, "tuicolor");
+	lua_pop(L, 1);
 
 	for (size_t i = 0; i < COUNT_OF(consttbl); i++){
 		lua_pushnumber(L, consttbl[i].val);
@@ -1178,10 +1199,16 @@ void tui_lua_expose(lua_State* L)
 	{"TUIK_STOP", TUIK_STOP},
 	{"TUIK_AGAIN", TUIK_AGAIN}
 	};
-	for (size_t i = 0; i < COUNT_OF(symtbl); i++){
-		lua_pushnumber(L, symtbl[i].val);
-		lua_setglobal(L, symtbl[i].key);
-	}
 
+
+/* key-integer value */
+
+	lua_newtable(L);
+	for (size_t i = 0; i < COUNT_OF(symtbl); i++){
+		lua_pushstring(L, &symtbl[i].key[5]);
+		lua_pushnumber(L, symtbl[i].val);
+		lua_rawset(L, -3);
+	}
+	lua_setglobal(L, "tuik");
 	lua_pop(L, 1);
 }
