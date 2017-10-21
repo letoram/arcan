@@ -165,7 +165,8 @@ determine if we are compliant or not, because Wayland.
     - [i] XWayland (WM parts)
     - [ ] Output Rotation / Scaling
 - [ ] Milestone 3, funky things
-  - [ ] SHM to GL texture mapping
+  - [x] SHM to GL texture mapping
+	- [ ] Single-exec launch mode (./arcan-wayland gnome-terminal)
   - [ ] Transforms (Rotations/Scaling)
   - [ ] Multithread/multiprocess client processing
   - [ ] Dynamic Keyboard Translation table generation

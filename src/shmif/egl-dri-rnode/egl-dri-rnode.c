@@ -438,7 +438,6 @@ bool arcan_shmifext_drop(struct arcan_shmif_cont* con)
 	}
 
 	ctx->context = NULL;
-	active_context = NULL;
 	gbm_drop(con);
 	return true;
 }

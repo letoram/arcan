@@ -15,6 +15,7 @@
 #include <wayland-server.h>
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
+#include <GL/gl.h>
 #include <sys/mman.h>
 #include <errno.h>
 #include <poll.h>
@@ -23,6 +24,12 @@
 #include <xkbcommon/xkbcommon.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
 #include <xkbcommon/xkbcommon-compose.h>
+
+/*
+ * all surfaces start with accel-transfer disabled, only sourced
+ * dma-buffers will actully be passed on as-is
+ */
+static int default_accel_surface = -1;
 
 static int trace_log = 0;
 enum trace_levels {
@@ -676,7 +683,6 @@ static bool process_group(struct conn_group* group)
 int main(int argc, char* argv[])
 {
 	struct arg_arr* aarr;
-	int shm_egl = false;
 
 /* for each wayland protocol or subprotocol supported, add a corresponding
  * field here, and then command-line argument passing to disable said protocol.
@@ -698,7 +704,7 @@ int main(int argc, char* argv[])
 
 	for (size_t i = 1; i < argc; i++){
 		if (strcmp(argv[i], "-shm-egl") == 0){
-			shm_egl = true;
+			default_accel_surface = 0;
 		}
 		else if (strcmp(argv[i], "-layout") == 0){
 /* missing */
