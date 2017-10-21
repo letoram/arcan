@@ -111,7 +111,8 @@ struct comp_surf {
  * to the GPU without risking a stall due to the main process being busy
  * with VSYNCH.
  */
-	bool fail_accel;
+	int fail_accel;
+	int accel_fmt;
 
 /*
  * Just keep this fugly thing here as it is on par with wl_list masturbation,

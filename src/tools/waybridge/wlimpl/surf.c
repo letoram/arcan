@@ -97,6 +97,34 @@ static void surf_frame(
 	}
 }
 
+static void setup_shmifext(
+	struct arcan_shmif_cont* acon, struct comp_surf* surf, int fmt)
+{
+	struct arcan_shmifext_setup setup = arcan_shmifext_defaults(acon);
+	setup.vidp_pack = true;
+	setup.builtin_fbo = false;
+	surf->accel_fmt = fmt;
+
+	switch(fmt){
+		case WL_SHM_FORMAT_RGB565:
+/* should set UNSIGNED_SHORT_5_6_5 as well */
+			setup.vidp_infmt = GL_RGB;
+		break;
+		case WL_SHM_FORMAT_XRGB8888:
+		case WL_SHM_FORMAT_ARGB8888:
+			setup.vidp_infmt = GL_BGRA_EXT;
+		break;
+		default:
+			surf->fail_accel = -1;
+			return;
+		break;
+	}
+	if (arcan_shmifext_setup(acon, setup) != SHMIFEXT_OK)
+		surf->fail_accel = -1;
+	else
+		surf->fail_accel = 1;
+}
+
 /*
  * IGNORE, shmif doesn't split up into regions like this, though
  * we can forward it as messages and let the script-side decide.
@@ -177,11 +205,12 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 		wayland_drm_commit(surf, drm_buf, acon);
 	}
 	else {
-		trace(TRACE_SURF, "surf_commit(shm :%s)", surf->tracetag);
+		trace(TRACE_SURF, "surf_commit(shm:%s)", surf->tracetag);
 		struct wl_shm_buffer* buf = wl_shm_buffer_get(surf->buf);
 		if (buf){
 				uint32_t w = wl_shm_buffer_get_width(buf);
 				uint32_t h = wl_shm_buffer_get_height(buf);
+				int fmt = wl_shm_buffer_get_format(buf);
 				void* data = wl_shm_buffer_get_data(buf);
 
 			if (acon->w != w || acon->h != h){
@@ -190,19 +219,42 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 				arcan_shmif_resize(acon, w, h);
 			}
 
-/* if gl-transfers are enabled and the surface is not trivial ( (popup, cursor,
- * ...), try >once< to flip on extended mode with vidp packing, we 'fake' the
- * address of vidp into the source buffer, use that to upload into a texture
- * pair that gets rotated when we signal.
-	struct arcan_shmifext_setup setup = arcan_shmifext_defaults(&retro.shmcont);
-	setup.builtin_fbo = false;
-	setup.vidp_pack = true;
-	vidp_infmt = buffer_get_format:
-	SHM_FORMAT_XRGB8888/ARGB8888: GL_BGRA_EXT
-	SHM_FORMAT_RGB565: GL_RGB, UNSIGNED_SHORT_5_6_5
+			if (0 == surf->fail_accel || fmt != surf->accel_fmt){
+				arcan_shmifext_drop(acon);
+				setup_shmifext(acon, surf, fmt);
+			}
 
-	if ((status = arcan_shmifext_setup(acon, setup)) != SHMIFEXT_OK)
-	*/
+			if (1 == surf->fail_accel){
+				int ext_state = arcan_shmifext_isext(acon);
+
+/* no acceleration if that means fallback, as that would be slower, this can
+ * happen by upstream event if the buffer is rejected or some other activity
+ * (GPU swapping etc) make the context invalid */
+				if (ext_state == 2){
+					surf->fail_accel = -1;
+					arcan_shmifext_drop(acon);
+				}
+/* though it would be possible to share context between surfaces on the
+ * same client, at this stage it turns out to be more work than the overhead */
+				else {
+					trace(TRACE_SURF,"surf_commit(shm-gl-repack)");
+					arcan_shmifext_make_current(acon);
+
+/* the context is setup so that vidp will be uploaded into two textures, acting
+ * as our dma-buf intermediates. we then signalext which pass the underlying
+ * handles. the other option would be to work with the arcan-abc libraries to
+ * get access to agp for texture uploads etc. but since it's already wrapped in
+ * shmifext, use that. */
+					void* old_vidp = acon->vidp;
+/* note: copy pitch and stride as well */
+					acon->vidp = data;
+					arcan_shmifext_signal(acon,
+						0, SHMIF_SIGVID | SHMIF_SIGBLK_NONE, SHMIFEXT_BUILTIN);
+					acon->vidp = old_vidp;
+					wl_buffer_send_release(surf->buf);
+					return;
+				}
+			}
 
 /* if stride mismatch, copy row by row:
  * switch(wl_shm_buffer_get_format(buffer)){
@@ -213,15 +265,16 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
  * }
  */
 			memcpy(acon->vidp, data, w * h * sizeof(shmif_pixel));
-			wl_buffer_send_release(surf->buf);
+			arcan_shmif_signal(acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
 		}
 
 		trace(TRACE_SURF,
-			"surf_commit(%zu,%zu-%zu,%zu)",
+			"surf_commit(%zu,%zu-%zu,%zu):accel=%d",
 				(size_t)acon->dirty.x1, (size_t)acon->dirty.y1,
-				(size_t)acon->dirty.x2, (size_t)acon->dirty.y2);
+				(size_t)acon->dirty.x2, (size_t)acon->dirty.y2,
+				surf->fail_accel);
 
-		arcan_shmif_signal(acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
+		wl_buffer_send_release(surf->buf);
 		acon->dirty.x1 = acon->w;
 		acon->dirty.x2 = 0;
 		acon->dirty.y1 = acon->h;
