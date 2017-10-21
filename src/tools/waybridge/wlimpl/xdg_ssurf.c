@@ -2,7 +2,7 @@ static bool xdgpop_defer_handler(
 	struct surface_request* req, struct arcan_shmif_cont* con)
 {
 	if (!con){
-		trace(TRACE_SHELL, "xdgpopup:reqfail");
+		trace(TRACE_SHELL, "reqfail");
 		wl_resource_post_no_memory(req->target);
 		return false;
 	}

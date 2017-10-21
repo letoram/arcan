@@ -1,3 +1,9 @@
+static bool subsurf_shmifev_handler(
+	struct comp_surf* surf, struct arcan_event* ev)
+{
+	return false;
+}
+
 static void subsurf_destroy(struct wl_client *cl, struct wl_resource* res)
 {
 	trace(TRACE_ALLOC, "");
