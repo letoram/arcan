@@ -105,6 +105,15 @@ struct comp_surf {
 	struct wl_resource* last_drm_buf;
 
 /*
+ * surfaces that are passed as shm- buffers might be better to bind to a
+ * GPU from the waybridge process as we both save a copy (no good way to
+ * map the buffer- pool to shmif- vidp), and can safely upload a texture
+ * to the GPU without risking a stall due to the main process being busy
+ * with VSYNCH.
+ */
+	bool fail_accel;
+
+/*
  * Just keep this fugly thing here as it is on par with wl_list masturbation,
  * the protocol is just riddled with unbounded allocations because all the bad
  * ones are. Scratch area is 'needed; for pending frame callbacks and for

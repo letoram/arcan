@@ -790,7 +790,7 @@ int main(int argc, char* argv[])
  */
 	if (protocols.egl){
 /*
- * we need an acelerated graphics setup that we can use to tie into mesa/gl
+ * we need an accelerated graphics setup that we can use to tie into mesa/gl
  * in order for the whole WLDisplay integration that goes on (...)
  * the 'upload texture here, pass handle onwards' option to accelerate _shm
  * and get rid of the extra copy is setup per client, not here. It is thus

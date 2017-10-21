@@ -149,7 +149,7 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 			trace(TRACE_SURF, "cursor updated");
 		}
 		else {
-			trace(TRACE_SURF, "UAF or unknown surface");
+			trace(TRACE_SURF, "UAF or unknown surface (tag: %s)", surf->tracetag);
 			return;
 		}
 	}
@@ -173,11 +173,11 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 		wl.drm ? wayland_drm_buffer_get(wl.drm, surf->buf) : NULL;
 
 	if (drm_buf){
-		trace(TRACE_SURF, "surf_commit(egl)");
+		trace(TRACE_SURF, "surf_commit(egl:%s)", surf->tracetag);
 		wayland_drm_commit(surf, drm_buf, acon);
 	}
 	else {
-		trace(TRACE_SURF, "surf_commit(shm)");
+		trace(TRACE_SURF, "surf_commit(shm :%s)", surf->tracetag);
 		struct wl_shm_buffer* buf = wl_shm_buffer_get(surf->buf);
 		if (buf){
 				uint32_t w = wl_shm_buffer_get_width(buf);
