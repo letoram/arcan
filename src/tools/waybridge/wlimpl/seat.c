@@ -16,6 +16,7 @@ static void cursor_set(struct wl_client* cl, struct wl_resource* res,
 	struct acon_tag* tag = bcl->acursor.user;
 	if (surf_res){
 		struct comp_surf* csurf = wl_resource_get_user_data(surf_res);
+		snprintf(csurf->tracetag, SURF_TAGLEN, "cursor");
 		csurf->rcon = &bcl->acursor;
 		wl.groups[tag->group].slots[tag->slot].surface = csurf;
 	}

@@ -93,6 +93,7 @@ struct frame_cb {
 
 #define SURF_TAGLEN 16
 struct comp_surf {
+	struct wl_listener l_bufrem;
 	char tracetag[SURF_TAGLEN];
 
 	struct bridge_client* client;
@@ -102,7 +103,7 @@ struct comp_surf {
 	struct wl_resource* surf_res;
 	struct wl_resource* sub_parent_res;
 	struct wl_resource* sub_child_res;
-	struct wl_resource* last_drm_buf;
+	struct wl_resource* last_buf;
 
 /*
  * surfaces that are passed as shm- buffers might be better to bind to a
@@ -139,6 +140,7 @@ struct comp_surf {
 	struct arcan_shmif_cont acon;
 	struct arcan_shmif_cont* rcon;
 	struct wl_resource* buf;
+	uintptr_t cbuf;
 
 /* track size and positioning information so we can relay */
 	size_t last_w, last_h;

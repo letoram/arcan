@@ -2,9 +2,31 @@ static void surf_destroy(struct wl_client* cl, struct wl_resource* res)
 {
 	trace(TRACE_ALLOC, "destroy:surf(%"PRIxPTR")", (uintptr_t) res);
 	struct comp_surf* surf = wl_resource_get_user_data(res);
+	if (!surf){
+		trace(TRACE_ALLOC, "destroy:lost-surface");
+		return;
+	}
 
-	if (surf)
-		destroy_comp_surf(surf);
+/* check pending subsurfaces? */
+	destroy_comp_surf(surf);
+}
+
+static void buffer_destroy(struct wl_listener* list, void* data)
+{
+	struct comp_surf* surf = NULL;
+	surf = wl_container_of(list, surf, l_bufrem);
+	if (!surf)
+		return;
+
+	trace(TRACE_SURF, "(event) destroy:buffer(%"PRIxPTR")", (uintptr_t) data);
+
+/* what happens to last_buf if those actually change in flight? */
+	if (surf->buf){
+		surf->cbuf = (uintptr_t) NULL;
+		surf->buf = NULL;
+	}
+
+	wl_list_remove(&surf->l_bufrem.link);
 }
 
 /*
@@ -19,20 +41,32 @@ static void surf_attach(struct wl_client* cl, struct wl_resource* res,
 		return;
 	}
 
-	trace(TRACE_SURF, "to: %s, @x,y: %d, %d - buf: %"
-		PRIxPTR, surf->tracetag, (int)x, (int)y, (uintptr_t)res);
+/* remove old listener (always) */
+	if (surf->buf)
+		wl_list_remove(&surf->l_bufrem.link);
+
+	trace(TRACE_SURF, "attach to: %s, @x,y: %d, %d - buf: %"
+		PRIxPTR, surf->tracetag, (int)x, (int)y, (uintptr_t)buf);
 
 	if (surf->buf && !buf){
-		trace(TRACE_SURF, "detach from: %s\n", surf->tracetag);
+		trace(TRACE_SURF, "mark visible: %s", surf->tracetag);
 		surf->viewport.ext.viewport.invisible = true;
 		arcan_shmif_enqueue(&surf->acon, &surf->viewport);
 	}
 	else if (surf->viewport.ext.viewport.invisible){
+		trace(TRACE_SURF, "mark visible: %s", surf->tracetag);
 		surf->viewport.ext.viewport.invisible = false;
 		arcan_shmif_enqueue(&surf->acon, &surf->viewport);
 	}
 
-	surf->buf = buf;
+	if (buf){
+		surf->l_bufrem.notify = buffer_destroy;
+		wl_resource_add_destroy_listener(buf, &surf->l_bufrem);
+	}
+
+/* buf XOR cookie == cbuf in commit */
+	surf->cbuf = (uintptr_t) buf;
+	surf->buf = (void*) ((uintptr_t) buf ^ ((uintptr_t) 0xfeedface));
 }
 
 /*
@@ -139,21 +173,49 @@ static void surf_inputreg(struct wl_client* cl,
 	struct wl_resource* res, struct wl_resource* reg)
 {
 	trace(TRACE_REGION, "input_region");
+/*
+ * Should either send this onward for the wm scripts to mask/forward
+ * events that fall outside the region, or annotate the surface resource
+ * and route the input in the bridge. This becomes important with complex
+ * hierarchies (from popups and subsurfaces).
+ */
 }
 
 static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 {
 	struct comp_surf* surf = wl_resource_get_user_data(res);
-	trace(TRACE_SURF, "%s", surf->tracetag);
+	trace(TRACE_SURF, "%s (@%"PRIxPTR, surf->tracetag, (uintptr_t)surf->cbuf);
 	struct arcan_shmif_cont* acon = &surf->acon;
 
-	if (!surf->buf){
+	if (!surf){
+		trace(TRACE_SURF, "no surface in resource (severe)");
+		return;
+	}
+
+	if (!surf->cbuf){
 		trace(TRACE_SURF, "no buffer");
 		return;
 	}
 
 	if (!surf->client){
 		trace(TRACE_SURF, "no bridge");
+		return;
+	}
+
+/*
+ * if we don't defer the release, we seem to provoke some kind of race
+ * condition in the client or support libs that end very SIGSEGVy
+ */
+	if (surf->last_buf){
+		wl_buffer_send_release(surf->last_buf);
+		surf->last_buf = NULL;
+	}
+
+	struct wl_resource* buf = (struct wl_resource*)(
+		(uintptr_t) surf->buf ^ ((uintptr_t) 0xfeedface));
+	if ((uintptr_t) buf != surf->cbuf){
+		trace(TRACE_SURF, "corrupted or unknown buf "
+			"(%"PRIxPTR" vs %"PRIxPTR") (severe)", (uintptr_t) buf, surf->cbuf);
 		return;
 	}
 
@@ -184,7 +246,7 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 
 	if (!acon || !acon->addr){
 		trace(TRACE_SURF, "couldn't map to arcan connection");
-		wl_buffer_send_release(surf->buf);
+		wl_buffer_send_release(buf);
 		return;
 	}
 
@@ -193,94 +255,104 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
  * block (if we multithread/multiprocess the client) or to schedule/defer this
  * processing until we get an unlock event (can be implemented client/lib side
  * through a kqueue- trigger or with the delivery-event callback approach that
- * we use for frame-callbacks
+ * we use for frame-callbacks. At least verify the compilers generate spinlock
+ * style instructions.
  */
 	while (acon->addr->vready){}
 
-	struct wl_drm_buffer* drm_buf =
-		wl.drm ? wayland_drm_buffer_get(wl.drm, surf->buf) : NULL;
-
-	if (drm_buf){
-		trace(TRACE_SURF, "surf_commit(egl:%s)", surf->tracetag);
-		wayland_drm_commit(surf, drm_buf, acon);
+	struct wl_shm_buffer* shm_buf = wl_shm_buffer_get(buf);
+	if (!shm_buf){
+		struct wl_drm_buffer* drm_buf = wayland_drm_buffer_get(wl.drm, buf);
+		if (drm_buf){
+			trace(TRACE_SURF, "surf_commit(egl:%s)", surf->tracetag);
+			wayland_drm_commit(surf, drm_buf, acon);
+			surf->last_buf = buf;
+		}
+		else
+			trace(TRACE_SURF, "surf_commit(unknown:%s)", surf->tracetag);
 	}
-	else {
+	else if (shm_buf){
 		trace(TRACE_SURF, "surf_commit(shm:%s)", surf->tracetag);
-		struct wl_shm_buffer* buf = wl_shm_buffer_get(surf->buf);
-		if (buf){
-				uint32_t w = wl_shm_buffer_get_width(buf);
-				uint32_t h = wl_shm_buffer_get_height(buf);
-				int fmt = wl_shm_buffer_get_format(buf);
-				void* data = wl_shm_buffer_get_data(buf);
+		uint32_t w = wl_shm_buffer_get_width(shm_buf);
+		uint32_t h = wl_shm_buffer_get_height(shm_buf);
+		int fmt = wl_shm_buffer_get_format(shm_buf);
+		void* data = wl_shm_buffer_get_data(shm_buf);
+		size_t stride = wl_shm_buffer_get_stride(shm_buf);
 
-			if (acon->w != w || acon->h != h){
-				trace(TRACE_SURF,
-					"surf_commit(shm, resize to: %zu, %zu)", (size_t)w, (size_t)h);
-				arcan_shmif_resize(acon, w, h);
-			}
+		if (acon->w != w || acon->h != h){
+			trace(TRACE_SURF,
+				"surf_commit(shm, resize to: %zu, %zu)", (size_t)w, (size_t)h);
+			arcan_shmif_resize(acon, w, h);
+		}
 
-			if (0 == surf->fail_accel || fmt != surf->accel_fmt){
-				arcan_shmifext_drop(acon);
-				setup_shmifext(acon, surf, fmt);
-			}
+		if (0 == surf->fail_accel ||
+			(surf->fail_accel > 0 && fmt != surf->accel_fmt)){
+			arcan_shmifext_drop(acon);
+			setup_shmifext(acon, surf, fmt);
+		}
 
-			if (1 == surf->fail_accel){
-				int ext_state = arcan_shmifext_isext(acon);
+		if (1 == surf->fail_accel){
+			int ext_state = arcan_shmifext_isext(acon);
 
 /* no acceleration if that means fallback, as that would be slower, this can
  * happen by upstream event if the buffer is rejected or some other activity
  * (GPU swapping etc) make the context invalid */
-				if (ext_state == 2){
-					surf->fail_accel = -1;
-					arcan_shmifext_drop(acon);
-				}
+			if (ext_state == 2){
+				surf->fail_accel = -1;
+				arcan_shmifext_drop(acon);
+			}
 /* though it would be possible to share context between surfaces on the
  * same client, at this stage it turns out to be more work than the overhead */
-				else {
-					trace(TRACE_SURF,"surf_commit(shm-gl-repack)");
-					arcan_shmifext_make_current(acon);
+			else {
+				trace(TRACE_SURF,"surf_commit(shm-gl-repack)");
+				arcan_shmifext_make_current(acon);
 
 /* the context is setup so that vidp will be uploaded into two textures, acting
  * as our dma-buf intermediates. we then signalext which pass the underlying
  * handles. the other option would be to work with the arcan-abc libraries to
  * get access to agp for texture uploads etc. but since it's already wrapped in
  * shmifext, use that. */
-					void* old_vidp = acon->vidp;
-/* note: copy pitch and stride as well */
-					acon->vidp = data;
-					arcan_shmifext_signal(acon,
-						0, SHMIF_SIGVID | SHMIF_SIGBLK_NONE, SHMIFEXT_BUILTIN);
-					acon->vidp = old_vidp;
-					wl_buffer_send_release(surf->buf);
-					return;
-				}
+				void* old_vidp = acon->vidp;
+				size_t old_stride = acon->stride;
+				acon->vidp = data;
+				acon->stride = stride;
+				arcan_shmifext_signal(acon,
+					0, SHMIF_SIGVID | SHMIF_SIGBLK_NONE, SHMIFEXT_BUILTIN);
+				acon->vidp = old_vidp;
+				acon->stride = old_stride;
+				wl_buffer_send_release(buf);
+				return;
 			}
-
-/* if stride mismatch, copy row by row:
- * switch(wl_shm_buffer_get_format(buffer)){
- * case WL_SHM_FORMAT_XRGB8888:
- * case WL_SHM_FORMAT_ARGB8888:
- * case WL_SHM_FORMAT_RGB565:
- * wl_shm_buffer_get_stride(buffer)
- * }
- */
-			memcpy(acon->vidp, data, w * h * sizeof(shmif_pixel));
-			arcan_shmif_signal(acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
 		}
 
-		trace(TRACE_SURF,
-			"surf_commit(%zu,%zu-%zu,%zu):accel=%d",
-				(size_t)acon->dirty.x1, (size_t)acon->dirty.y1,
-				(size_t)acon->dirty.x2, (size_t)acon->dirty.y2,
-				surf->fail_accel);
+/* if stride mismatch, copy row by row - this do NOT handle format conversion /
+ * swizzling yet, copy code from fsrv_game for that */
+		if (stride != acon->stride){
+			trace(TRACE_SURF,"surf_commit(stride-mismatch)");
+			for (size_t row = 0; row < h; row++){
+				memcpy(&acon->vidp[row * acon->pitch],
+					&((uint8_t*)data)[row * stride],
+					w * sizeof(shmif_pixel)
+				);
+			}
+		}
+		else
+			memcpy(acon->vidp, data, w * h * sizeof(shmif_pixel));
 
-		wl_buffer_send_release(surf->buf);
-		acon->dirty.x1 = acon->w;
-		acon->dirty.x2 = 0;
-		acon->dirty.y1 = acon->h;
-		acon->dirty.y2 = 0;
+		arcan_shmif_signal(acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
+		wl_buffer_send_release(buf);
 	}
 
+	trace(TRACE_SURF,
+		"surf_commit(%zu,%zu-%zu,%zu):accel=%d",
+			(size_t)acon->dirty.x1, (size_t)acon->dirty.y1,
+			(size_t)acon->dirty.x2, (size_t)acon->dirty.y2,
+			surf->fail_accel);
+
+	acon->dirty.x1 = acon->w;
+	acon->dirty.x2 = 0;
+	acon->dirty.y1 = acon->h;
+	acon->dirty.y2 = 0;
 }
 
 static void surf_transform(struct wl_client* cl,

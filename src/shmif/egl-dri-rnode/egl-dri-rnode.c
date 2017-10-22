@@ -738,6 +738,7 @@ int arcan_shmifext_signal(struct arcan_shmif_cont* con,
 			ctx->buf_cur->w = con->w;
 			ctx->buf_cur->h = con->h;
 			ctx->buf_cur->vinf.text.raw = con->vidp;
+			ctx->buf_cur->vinf.text.stride = con->stride;
 			ctx->buf_cur->vinf.text.s_raw = con->w * con->h * sizeof(shmif_pixel);
 
 /* we ignore the dirty- updates here due to the double buffering */

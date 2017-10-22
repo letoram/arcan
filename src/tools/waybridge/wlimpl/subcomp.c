@@ -60,8 +60,8 @@ static void subcomp_subsurf(struct wl_client* client, struct wl_resource* res,
 	struct comp_surf* parent_surf = wl_resource_get_user_data(parent);
 
 	request_surface(parent_surf->client, &(struct surface_request){
-		.segid = SEGID_APPLICATION,
-		.target = res,
+		.segid = SEGID_MEDIA,
+		.target = surf,
 		.id = id,
 		.trace = "subsurface",
 		.dispatch = subcomp_defer_handler,
