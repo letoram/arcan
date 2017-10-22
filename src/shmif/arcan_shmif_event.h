@@ -106,7 +106,7 @@ enum ARCAN_SEGID {
  * External Connection, 1:1 */
 	SEGID_NETWORK_CLIENT,
 
-/* External Connection, non-interactive data source */
+/* External Connection, non-interactive data source. */
 	SEGID_MEDIA,
 
 /* Specifically used to indicate a terminal- emulator connection */
@@ -147,11 +147,14 @@ enum ARCAN_SEGID {
 /*
  * [LOCKSTEP] Popup-window, use with viewport hints to specify
  * parent-relative positioning. Labelhints on this message can be used
- * to send a textual representation for server-side rendering with a
- * descr used to carry a subprotocol:
- * '-' to indicate a separate group
+ * to send a textual representation for server-side rendering or
+ * accessibility (text-to-speak friendly) data. Prefix message with:
+ * '-' to indicate a group separator.
  * '*' prefix to indicate the presence of a sublevel
  * '_' prefix to indicate inactive entry.
+ * '|' terminates / resets the message position.
+ * These can subsequently be activated as a DIGITAL input event with
+ * the subid matching the 0-based index of the item.
  */
 	SEGID_POPUP,
 
@@ -173,7 +176,8 @@ enum ARCAN_SEGID {
 /*
  * [UNIQUE]
  * Indicates that this segment is used to propagate accessibility related data;
- * High-contrast, simplified text, screen-reader friendly.
+ * High-contrast, simplified text, screen-reader friendly. Messages on this
+ * segment should be text-to-speech friendly.
  *
  * A reject on such a segment request indicates that no accessibility options
  * have been enabled and can thus be used as an initial probe.
@@ -181,7 +185,7 @@ enum ARCAN_SEGID {
 	SEGID_ACCESSIBILITY,
 
 /*
- * [UNIQUE] Clipboard style data transfors, for image, text or audio sharing.
+ * [UNIQUE] Clipboard style data transfers, for image, text or audio sharing.
  * Can also have streaming transfers using the bchunk mechanism.  Distinction
  * between Drag'n'Drop and Clipboard state uses the CURSORHINT mechanism.
  */
@@ -214,10 +218,23 @@ enum ARCAN_SEGID {
 	SEGID_SERVICE,
 
 /*
- * Used to indicate a protocol bridge and root windows (where applicable and no
- * other segtype or subsegtype- can be spawned).
+ * Used to indicate a protocol bridge and root windows
+ * (where applicable and no other segtype or subsegtype- can be spawned).
  */
 	SEGID_BRIDGE_X11,
+
+/*
+ * The current semantics for wayland (subject to change):
+ * note that all subsegment allocations are made relative to the primary
+ * wayland subsegment and not as hierarchical subreq on a subseg.
+ * [ primary segment: SEGID_BRIDGE_WAYLAND ] ->
+ *        subsegment: APPLICATION (message to indicate shell)
+ *        subsegment: MEDIA (act as a subsurface)
+ *        subsegment: POPUP (VIEWPORT hint to show relationships)
+ *        subsegment: CURSOR (bound to a "seat", we always have 1:1)
+ *        subsegment: CLIPBOARD (container for DnD, ...)
+ *        subsegment: ICON (can reparent to application or clipboard for DnD)
+ */
 	SEGID_BRIDGE_WAYLAND,
 
 /*
