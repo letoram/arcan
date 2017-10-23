@@ -44,6 +44,7 @@ static bool subcomp_defer_handler(
 		}
 
 		surf->viewport.ext.viewport.parent = psurf->acon.segment_token;
+		arcan_shmif_enqueue(&surf->acon, &surf->viewport);
 	}
 
 	return true;

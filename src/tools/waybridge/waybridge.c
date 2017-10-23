@@ -13,6 +13,7 @@
 #define WANT_ARCAN_SHMIF_HELPER
 #include <arcan_shmif.h>
 #include <wayland-server.h>
+#include <signal.h>
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include <GL/gl.h>
@@ -24,53 +25,6 @@
 #include <xkbcommon/xkbcommon.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
 #include <xkbcommon/xkbcommon-compose.h>
-
-static struct {
-	int trace_log;
-	bool exec_mode;
-/*
- * fork out new clients and only use this process as a display
- * discovery mechanism
- */
-	bool fork_mode;
-/*
- * all surfaces start with accel-transfer disabled, only sourced
- * dma-buffers will actully be passed on as-is
- */
-	int default_accel_surface;
-} global = {
-	.default_accel_surface = -1,
-	.trace_log = 0
-};
-
-enum trace_levels {
-	TRACE_ALLOC   = 1,
-	TRACE_DIGITAL = 2,
-	TRACE_ANALOG  = 4,
-	TRACE_SHELL   = 8,
-	TRACE_REGION  = 16,
-	TRACE_DDEV    = 32,
-	TRACE_SEAT    = 64,
-	TRACE_SURF    = 128,
-	TRACE_DRM     = 256
-};
-
-static inline void trace(int level, const char* msg, ...)
-{
-	if (!global.trace_log || !(level & global.trace_log))
-		return;
-
-	va_list args;
-	va_start( args, msg );
-		vfprintf(stderr,  msg, args );
-		fprintf(stderr, "\n");
-	va_end( args);
-	fflush(stderr);
-}
-
-#define __FILENAME__ (strrchr(__FILE__, '/')?strrchr(__FILE__, '/') + 1 : __FILE__)
-#define trace(X, Y, ...) do { trace(X, "%s:%d:%s(): " \
-	Y, __FILENAME__, __LINE__, __func__,##__VA_ARGS__); } while (0)
 
 /*
  * EGL- details needed for handle translation
@@ -137,16 +91,75 @@ struct conn_group {
 };
 
 static struct {
+/* allocation bitmaps to partition into poll and alloc- groups */
 	size_t n_groups;
 	struct conn_group* groups;
 
 	EGLDisplay display;
 	struct wl_display* disp;
+/* set to false after initialization to terminate */
+	bool alive;
+
+/* metadata on accelerated graphics */
 	struct wl_drm* drm;
+
+/* initial display parameters retrieved from the control connection */
 	struct arcan_shmif_initial init;
 	struct arcan_shmif_cont control;
-	bool alive;
-} wl;
+
+/*
+ * fork out new clients and only use this process as a display
+ * discovery mechanism
+ */
+	bool fork_mode;
+
+/*
+ * all surfaces start with accel-transfer disabled, only sourced
+ * dma-buffers will actully be passed on as-is
+ */
+	int default_accel_surface;
+
+/*
+ * accepted trace level
+ */
+	int trace_log;
+
+/*
+ * single- client exit- on terminate mode
+ */
+	bool exec_mode;
+} wl = {
+	.default_accel_surface = -1
+};
+
+enum trace_levels {
+	TRACE_ALLOC   = 1,
+	TRACE_DIGITAL = 2,
+	TRACE_ANALOG  = 4,
+	TRACE_SHELL   = 8,
+	TRACE_REGION  = 16,
+	TRACE_DDEV    = 32,
+	TRACE_SEAT    = 64,
+	TRACE_SURF    = 128,
+	TRACE_DRM     = 256
+};
+
+static inline void trace(int level, const char* msg, ...)
+{
+	if (!wl.trace_log || !(level & wl.trace_log))
+		return;
+
+	va_list args;
+	va_start( args, msg );
+		vfprintf(stderr,  msg, args );
+		fprintf(stderr, "\n");
+	va_end( args);
+	fflush(stderr);
+}
+
+#define __FILENAME__ (strrchr(__FILE__, '/')?strrchr(__FILE__, '/') + 1 : __FILE__)
+#define trace(X, Y, ...) do { trace(X, "%s:%d:%s(): " \
+	Y, __FILENAME__, __LINE__, __func__,##__VA_ARGS__); } while (0)
 
 /*
  * Welcome to callback hell where it is allowed to #include code sin because
@@ -281,7 +294,7 @@ static bool alloc_group_id(int type, int* groupid, int* slot, int fd, char d)
 		*slot = ind;
 
 /* debug output to see slot and source */
-		if (global.trace_log & TRACE_ALLOC){
+		if (wl.trace_log & TRACE_ALLOC){
 			char alloc_buf[sizeof(wl.groups[i].alloc) * 8 + 1] = {0};
 			for (size_t j = 0; j < sizeof(wl.groups[i].alloc)*8;j++){
 				alloc_buf[j] =
@@ -303,7 +316,7 @@ static void reset_group_slot(int group, int slot)
 	wl.groups[group].pg[slot].revents = 0;
 	wl.groups[group].slots[slot] = (struct bridge_slot){};
 
-	if (global.trace_log & TRACE_ALLOC){
+	if (wl.trace_log & TRACE_ALLOC){
 		char alloc_buf[sizeof(wl.groups[group].alloc) * 8 + 1] = {0};
 		for (size_t i = 0; i<sizeof(wl.groups[group].alloc)*8;i++){
 			alloc_buf[i] =
@@ -484,6 +497,11 @@ static void destroy_client(struct wl_listener* l, void* data)
 	}
 	reset_group_slot(cl->group, cl->slot);
 	trace(TRACE_ALLOC, "client destroyed");
+
+/* the connection has been dealt with, give up */
+	if (wl.exec_mode){
+		wl.alive = false;
+	}
 }
 
 /*
@@ -643,6 +661,7 @@ static int show_use(const char* msg, const char* arg)
 {
 	fprintf(stdout, "%s%s", msg, arg ? arg : "");
 	fprintf(stdout, "\nUse: waybridge [arguments]\n"
+"     waybridge [arguments] -exec /path/to/bin arg1 arg2 ...\n"
 "\t-shm-egl          pass shm- buffers as gl textures\n"
 "\t-no-egl           disable the wayland-egl extensions\n"
 "\t-no-compositor    disable the compositor protocol\n"
@@ -653,7 +672,6 @@ static int show_use(const char* msg, const char* arg)
 "\t-no-xdg           disable the xdg protocol\n"
 "\t-no-output        disable the output protocol\n"
 "\t-layout lay       set keyboard layout to <lay>\n"
-"\t(last) -exec ...  single-client / display mode\n"
 "\t-prefix prefix    use with -exec, override /tmp/awl_XXXXXX prefix\n"
 "\t-fork             fork- off new clients as separate processes\n"
 "\t-dir dir          override XDG_RUNTIME_DIR with <dir>\n"
@@ -666,7 +684,7 @@ static int show_use(const char* msg, const char* arg)
 
 static bool process_group(struct conn_group* group)
 {
-	int sv = poll(group->pgroup, N_GROUP_SLOTS+2, -1);
+	int sv = poll(group->pgroup, N_GROUP_SLOTS+2, 1000);
 
 	if (group->wayland && group->wayland->revents){
 		wl_event_loop_dispatch(
@@ -698,11 +716,19 @@ static bool process_group(struct conn_group* group)
 	return true;
 }
 
+/*
+ * only happens in exec_mode
+ */
+static void sigchld_handler()
+{
+	wl.alive = false;
+}
+
 int main(int argc, char* argv[])
 {
 	struct arg_arr* aarr;
-	bool exec_mode = false;
 	char dtemp_prefix[] = "/tmp/awl_XXXXXX";
+	int exit_code = EXIT_SUCCESS;
 
 /* for each wayland protocol or subprotocol supported, add a corresponding
  * field here, and then command-line argument passing to disable said protocol.
@@ -722,68 +748,70 @@ int main(int argc, char* argv[])
 		.relp = 1
 	};
 
-	for (size_t i = 1; i < argc; i++){
-		if (strcmp(argv[i], "-shm-egl") == 0){
-			global.default_accel_surface = 0;
+	size_t arg_i = 1;
+	for (; arg_i < argc; arg_i++){
+		if (strcmp(argv[arg_i], "-shm-egl") == 0){
+			wl.default_accel_surface = 0;
 		}
-		else if (strcmp(argv[i], "-layout") == 0){
+		else if (strcmp(argv[arg_i], "-layout") == 0){
 /* missing */
 		}
-		else if (strcmp(argv[i], "-trace") == 0){
-			if (i == argc-1){
+		else if (strcmp(argv[arg_i], "-trace") == 0){
+			if (arg_i == argc-1){
 				return show_use("missing trace argument", "");
 			}
-			i++;
-			global.trace_log = strtoul(argv[i], NULL, 10);
+			arg_i++;
+			wl.trace_log = strtoul(argv[arg_i], NULL, 10);
 		}
-		else if (strcmp(argv[i], "-dir") == 0){
-			if (i == argc-1){
+		else if (strcmp(argv[arg_i], "-dir") == 0){
+			if (arg_i == argc-1){
 				return show_use("missing path to runtime dir", "");
 			}
-			i++;
-			setenv("XDG_RUNTIME_DIR", argv[i], 1);
+			arg_i++;
+			setenv("XDG_RUNTIME_DIR", argv[arg_i], 1);
 		}
-		else if (strcmp(argv[i], "-egl-device") == 0){
-			if (i == argc-1){
+		else if (strcmp(argv[arg_i], "-egl-device") == 0){
+			if (arg_i == argc-1){
 				fprintf(stderr, "missing egl device argument\n");
 				return EXIT_FAILURE;
 			}
-			i++;
-			setenv("ARCAN_RENDER_NODE", argv[i], 1);
+			arg_i++;
+			setenv("ARCAN_RENDER_NODE", argv[arg_i], 1);
 		}
-		else if (strcmp(argv[i], "-no-egl") == 0)
+		else if (strcmp(argv[arg_i], "-no-egl") == 0)
 			protocols.egl = 0;
-		else if (strcmp(argv[i], "-no-compositor") == 0)
+		else if (strcmp(argv[arg_i], "-no-compositor") == 0)
 			protocols.compositor = 0;
-		else if (strcmp(argv[i], "-no-shell") == 0)
+		else if (strcmp(argv[arg_i], "-no-shell") == 0)
 			protocols.shell = 0;
-		else if (strcmp(argv[i], "-no-shm") == 0)
+		else if (strcmp(argv[arg_i], "-no-shm") == 0)
 			protocols.shm = 0;
-		else if (strcmp(argv[i], "-no-seat") == 0)
+		else if (strcmp(argv[arg_i], "-no-seat") == 0)
 			protocols.seat = 0;
-		else if (strcmp(argv[i], "-no-output") == 0)
+		else if (strcmp(argv[arg_i], "-no-output") == 0)
 			protocols.output = 0;
-		else if (strcmp(argv[i], "-no-xdg") == 0)
+		else if (strcmp(argv[arg_i], "-no-xdg") == 0)
 			protocols.xdg = 0;
-		else if (strcmp(argv[i], "-no-subcompositor") == 0)
+		else if (strcmp(argv[arg_i], "-no-subcompositor") == 0)
 			protocols.subcomp = 0;
-		else if (strcmp(argv[i], "-no-data-device") == 0)
+		else if (strcmp(argv[arg_i], "-no-data-device") == 0)
 			protocols.ddev = 0;
-		else if (strcmp(argv[i], "-no-relative-pointer") == 0)
+		else if (strcmp(argv[arg_i], "-no-relative-pointer") == 0)
 			protocols.relp = 0;
-		else if (strcmp(argv[i], "-exec") == 0){
-			if (global.fork_mode){
+		else if (strcmp(argv[arg_i], "-exec") == 0){
+			if (wl.fork_mode){
 				fprintf(stderr, "Can't use -exec with -fork\n");
 				return EXIT_FAILURE;
 			}
-			global.exec_mode = true;
+			wl.exec_mode = true;
+			arg_i++;
 			break;
 		}
-		else if (strcmp(argv[i], "-fork") == 0){
-			global.fork_mode = true;
+		else if (strcmp(argv[arg_i], "-fork") == 0){
+			wl.fork_mode = true;
 		}
 		else
-			return show_use("unknown argument: ", argv[i]);
+			return show_use("unknown argument: ", argv[arg_i]);
 	}
 
 	wl.disp = wl_display_create();
@@ -792,15 +820,18 @@ int main(int argc, char* argv[])
 		return EXIT_FAILURE;
 	}
 
-/* generate temporary XDG_RUNTIME_DIR so we don't get any interference */
+/* Generate temporary XDG_RUNTIME_DIR so we don't get any interference from
+ * other clients looking in RUNTIME_DIR for the display and grabbing the same
+ * one. Actual exec comes later */
 	char* newdir = NULL;
-	if (exec_mode){
+	if (wl.exec_mode){
 		newdir = mkdtemp(dtemp_prefix);
 		if (!newdir){
 			fprintf(stderr,"-exec, couldn't create temporary in (%s)\n",dtemp_prefix);
 			return EXIT_FAILURE;
 		}
 
+		setenv("XDG_RUNTIME_DIR", newdir, 1);
 	}
 
 	if (!getenv("XDG_RUNTIME_DIR")){
@@ -848,8 +879,8 @@ int main(int argc, char* argv[])
 		cfg.builtin_fbo = false;
 		if (SHMIFEXT_OK != arcan_shmifext_setup(&wl.control, cfg)){
 			fprintf(stderr, "Couldn't setup EGL context/display\n");
-			arcan_shmif_drop(&wl.control);
-			return EXIT_FAILURE;
+			exit_code = EXIT_FAILURE;
+			goto cleanup;
 		}
 
 /*
@@ -865,8 +896,8 @@ int main(int argc, char* argv[])
 		wl.display = eglGetDisplay((EGLDisplay)display);
 		if (!wl.display){
 			fprintf(stderr, "(eglBindWaylandDisplayWL) failed\n");
-			arcan_shmif_drop(&wl.control);
-			return EXIT_FAILURE;
+			exit_code = EXIT_FAILURE;
+			goto cleanup;
 		}
 		wl.drm = wayland_drm_init(wl.disp,
 			getenv("ARCAN_RENDER_NODE"), NULL, NULL, 0);
@@ -924,9 +955,38 @@ int main(int argc, char* argv[])
 		wl_event_loop_get_fd(wl_display_get_event_loop(wl.disp));
 	wl.groups[0].arcan->fd = wl.control.epipe;
 
+/*
+ * chain-execute the single client that we want to handle
+ */
+	if (wl.exec_mode){
+		struct sigaction act = {
+			.sa_handler = &sigchld_handler
+		};
+		if (sigaction(SIGCHLD, &act, NULL) < 0){
+			wl.alive = false;
+		}
+		else {
+			int rc = fork();
+			if (rc == 0){
+				size_t nargs = argc - arg_i;
+				char* args[nargs];
+				for (size_t i = 1; arg_i + i < argc; i++)
+					args[i] = argv[arg_i+i];
+				args[nargs-1] = NULL;
+				if (-1 == execvp(argv[arg_i], args))
+					exit(EXIT_FAILURE);
+			}
+			else if (rc == -1){
+				wl.alive = false;
+			}
+		}
+	}
+
 	while(wl.alive && process_group(&wl.groups[0])){}
 
-	wl_display_destroy(wl.disp);
+cleanup:
+	if (wl.disp)
+		wl_display_destroy(wl.disp);
 	arcan_shmif_drop(&wl.control);
 
 /*
@@ -934,8 +994,7 @@ int main(int argc, char* argv[])
  */
 	if (newdir){
 		rmdir(newdir);
-		free(newdir);
 	}
 
-	return EXIT_SUCCESS;
+	return exit_code;
 }
