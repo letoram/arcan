@@ -71,5 +71,5 @@ static void shell_getsurf(struct wl_client* client,
 		.dispatch = shell_defer_handler,
 		.client = surf->client,
 		.source = surf
-	}, 's');
+	}, 'S');
 }

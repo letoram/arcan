@@ -25,13 +25,24 @@
 #include <xkbcommon/xkbcommon-keysyms.h>
 #include <xkbcommon/xkbcommon-compose.h>
 
+static struct {
+	int trace_log;
+	bool exec_mode;
+/*
+ * fork out new clients and only use this process as a display
+ * discovery mechanism
+ */
+	bool fork_mode;
 /*
  * all surfaces start with accel-transfer disabled, only sourced
  * dma-buffers will actully be passed on as-is
  */
-static int default_accel_surface = -1;
+	int default_accel_surface;
+} global = {
+	.default_accel_surface = -1,
+	.trace_log = 0
+};
 
-static int trace_log = 0;
 enum trace_levels {
 	TRACE_ALLOC   = 1,
 	TRACE_DIGITAL = 2,
@@ -46,7 +57,7 @@ enum trace_levels {
 
 static inline void trace(int level, const char* msg, ...)
 {
-	if (!trace_log || !(level & trace_log))
+	if (!global.trace_log || !(level & global.trace_log))
 		return;
 
 	va_list args;
@@ -261,7 +272,7 @@ static bool alloc_group_id(int type, int* groupid, int* slot, int fd, char d)
 		ind--;
 
 /* mark as allocated and store */
-		trace(TRACE_ALLOC, "alloc_to(%d : %d)\n", i, ind);
+		trace(TRACE_ALLOC, "alloc_to(%d : %d)", i, ind);
 		wl.groups[i].alloc |= 1 << ind;
 		wl.groups[i].pg[ind].fd = fd;
 		wl.groups[i].slots[ind].type = type;
@@ -270,14 +281,15 @@ static bool alloc_group_id(int type, int* groupid, int* slot, int fd, char d)
 		*slot = ind;
 
 /* debug output to see slot and source */
-		if (trace_log)
-			fprintf(stderr, "alloc-mask: ");
-		for (size_t j = 0; j < sizeof(wl.groups[i].alloc)*8 && trace_log; j++){
-			fprintf(stderr, "%c", (1 << j) & wl.groups[i].alloc ?
-				wl.groups[i].slots[j].idch : '_');
+		if (global.trace_log & TRACE_ALLOC){
+			char alloc_buf[sizeof(wl.groups[i].alloc) * 8 + 1] = {0};
+			for (size_t j = 0; j < sizeof(wl.groups[i].alloc)*8;j++){
+				alloc_buf[j] =
+					(1 << j) & wl.groups[i].alloc ?
+					wl.groups[i].slots[j].idch : '_';
+			}
+			trace(TRACE_ALLOC, "alloc,slotmap:%s", alloc_buf);
 		}
-		if (trace_log)
-			fprintf(stderr, "\n");
 
 		return true;
 	}
@@ -291,14 +303,15 @@ static void reset_group_slot(int group, int slot)
 	wl.groups[group].pg[slot].revents = 0;
 	wl.groups[group].slots[slot] = (struct bridge_slot){};
 
-	if (trace_log)
-		fprintf(stderr, "alloc-mask: ");
-	for (size_t i = 0; i < sizeof(wl.groups[group].alloc)*8 && trace_log; i++){
-		fprintf(stderr, "%c", (1 << i) & wl.groups[group].alloc ?
-			wl.groups[group].slots[i].idch : '_');
+	if (global.trace_log & TRACE_ALLOC){
+		char alloc_buf[sizeof(wl.groups[group].alloc) * 8 + 1] = {0};
+		for (size_t i = 0; i<sizeof(wl.groups[group].alloc)*8;i++){
+			alloc_buf[i] =
+				(1 << i) & wl.groups[group].alloc ?
+				wl.groups[group].slots[i].idch : '_';
+		}
+		trace(TRACE_ALLOC, "reset,slotmap:%s", alloc_buf);
 	}
-	if (trace_log)
-		fprintf(stderr, "\n");
 }
 
 /*
@@ -321,7 +334,7 @@ static bool request_surface(
  * the request type is a CURSOR or a POPUP (both are possible in XDG).
  */
 	static uint32_t alloc_id = 0xbabe;
-	trace(TRACE_ALLOC, "segment-req source(%s) -> %d\n", req->trace, alloc_id);
+	trace(TRACE_ALLOC, "segment-req source(%s) -> %d", req->trace, alloc_id);
 	arcan_shmif_enqueue(&cl->acon, &(struct arcan_event){
 		.ext.kind = ARCAN_EVENT(SEGREQ),
 		.ext.segreq.kind = req->segid,
@@ -360,11 +373,11 @@ static bool request_surface(
 				free(cont.user);
 			}
 			else {
-				trace(TRACE_ALLOC, "new surface assigned to (%d:%d)\n", group, ind);
+				trace(TRACE_ALLOC, "new surface assigned to (%d:%d)", group, ind);
 				tag->group = group;
 				tag->slot = ind;
 				if(!req->dispatch(req, &cont)){
-					trace(TRACE_ALLOC, "surface request dispatcher rejected surface\n");
+					trace(TRACE_ALLOC, "surface request dispatcher rejected surface");
 /* caller doesn't want the surface anymore? */
 					arcan_shmif_drop(&cont);
 					reset_group_slot(group, ind);
@@ -398,14 +411,18 @@ static void destroy_comp_surf(struct comp_surf* surf)
 	if (!surf)
 		return;
 
+	if (surf->cbuf){
+		wl_list_remove(&surf->l_bufrem.link);
+	}
+
 	if (surf->acon.addr){
 		struct acon_tag* tag = surf->acon.user;
 		if (tag){
-			trace(TRACE_ALLOC, "deregister-surface (%d:%d)\n", tag->group, tag->slot);
+			trace(TRACE_ALLOC, "deregister-surface (%d:%d)", tag->group, tag->slot);
 			reset_group_slot(tag->group, tag->slot);
 		}
 		else {
-			trace(TRACE_ALLOC, "dropping unbound shmif-connection\n");
+			trace(TRACE_ALLOC, "dropping unbound shmif-connection");
 		}
 		surf->client->refc--;
 		surf->acon.user = NULL;
@@ -466,7 +483,7 @@ static void destroy_client(struct wl_listener* l, void* data)
 		reset_group_slot(tag->group, tag->slot);
 	}
 	reset_group_slot(cl->group, cl->slot);
-	trace(TRACE_ALLOC, "client destroyed\n");
+	trace(TRACE_ALLOC, "client destroyed");
 }
 
 /*
@@ -629,16 +646,17 @@ static int show_use(const char* msg, const char* arg)
 "\t-shm-egl          pass shm- buffers as gl textures\n"
 "\t-no-egl           disable the wayland-egl extensions\n"
 "\t-no-compositor    disable the compositor protocol\n"
-"\t-no-subcompositor disable the sub-compositor protocol\n"
-"\t-no-subsurface    disable the sub-surface protocol\n"
+"\t-no-subcompositor disable the sub-compositor/surface protocol\n"
 "\t-no-shell         disable the shell protocol\n"
 "\t-no-shm           disable the shm protocol\n"
 "\t-no-seat          disable the seat protocol\n"
 "\t-no-xdg           disable the xdg protocol\n"
 "\t-no-output        disable the output protocol\n"
 "\t-layout lay       set keyboard layout to <lay>\n"
-/* "\t-exec ...         single-client / display mode\n" */
-"\t-dir dir          override XDG_RUNTIME_DIR with <dir>\n\n"
+"\t(last) -exec ...  single-client / display mode\n"
+"\t-prefix prefix    use with -exec, override /tmp/awl_XXXXXX prefix\n"
+"\t-fork             fork- off new clients as separate processes\n"
+"\t-dir dir          override XDG_RUNTIME_DIR with <dir>\n"
 "\t-trace level      set trace output to (bitmask):\n"
 "\t1 - allocations, 2 - digital-input, 4 - analog-input\n"
 "\t8 - shell, 16 - region-events, 32 - data device\n"
@@ -683,6 +701,8 @@ static bool process_group(struct conn_group* group)
 int main(int argc, char* argv[])
 {
 	struct arg_arr* aarr;
+	bool exec_mode = false;
+	char dtemp_prefix[] = "/tmp/awl_XXXXXX";
 
 /* for each wayland protocol or subprotocol supported, add a corresponding
  * field here, and then command-line argument passing to disable said protocol.
@@ -704,7 +724,7 @@ int main(int argc, char* argv[])
 
 	for (size_t i = 1; i < argc; i++){
 		if (strcmp(argv[i], "-shm-egl") == 0){
-			default_accel_surface = 0;
+			global.default_accel_surface = 0;
 		}
 		else if (strcmp(argv[i], "-layout") == 0){
 /* missing */
@@ -714,7 +734,7 @@ int main(int argc, char* argv[])
 				return show_use("missing trace argument", "");
 			}
 			i++;
-			trace_log = strtoul(argv[i], NULL, 10);
+			global.trace_log = strtoul(argv[i], NULL, 10);
 		}
 		else if (strcmp(argv[i], "-dir") == 0){
 			if (i == argc-1){
@@ -751,6 +771,17 @@ int main(int argc, char* argv[])
 			protocols.ddev = 0;
 		else if (strcmp(argv[i], "-no-relative-pointer") == 0)
 			protocols.relp = 0;
+		else if (strcmp(argv[i], "-exec") == 0){
+			if (global.fork_mode){
+				fprintf(stderr, "Can't use -exec with -fork\n");
+				return EXIT_FAILURE;
+			}
+			global.exec_mode = true;
+			break;
+		}
+		else if (strcmp(argv[i], "-fork") == 0){
+			global.fork_mode = true;
+		}
 		else
 			return show_use("unknown argument: ", argv[i]);
 	}
@@ -759,6 +790,17 @@ int main(int argc, char* argv[])
 	if (!wl.disp){
 		fprintf(stderr, "Couldn't create wayland display\n");
 		return EXIT_FAILURE;
+	}
+
+/* generate temporary XDG_RUNTIME_DIR so we don't get any interference */
+	char* newdir = NULL;
+	if (exec_mode){
+		newdir = mkdtemp(dtemp_prefix);
+		if (!newdir){
+			fprintf(stderr,"-exec, couldn't create temporary in (%s)\n",dtemp_prefix);
+			return EXIT_FAILURE;
+		}
+
 	}
 
 	if (!getenv("XDG_RUNTIME_DIR")){
@@ -878,13 +920,22 @@ int main(int argc, char* argv[])
  */
 	wl.groups = prepare_groups(1);
 	wl.n_groups = 1;
-	wl.groups[0].wayland->fd = wl_event_loop_get_fd(wl_display_get_event_loop(wl.disp));
+	wl.groups[0].wayland->fd =
+		wl_event_loop_get_fd(wl_display_get_event_loop(wl.disp));
 	wl.groups[0].arcan->fd = wl.control.epipe;
 
 	while(wl.alive && process_group(&wl.groups[0])){}
 
 	wl_display_destroy(wl.disp);
 	arcan_shmif_drop(&wl.control);
+
+/*
+ * can at least try, don't be aggressive and opendir/glob/rm until it works
+ */
+	if (newdir){
+		rmdir(newdir);
+		free(newdir);
+	}
 
 	return EXIT_SUCCESS;
 }

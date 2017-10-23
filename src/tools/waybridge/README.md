@@ -117,25 +117,25 @@ it is better to wait and see.
 
 BUGS
 ===
-1. gnome-apps, mouse motion registers but not button presses.
+1. gnome-apps, mouse motion registers but not button presses on some
+   popups
 2. SDL2, buffer- size and mouse cursor alignment is off in ex. 0ad
 3. gnome-apps, popups spawn at the wrong location -might be in durden-
-4. gnome-apps, visible with calculator - desynch subsurface doesn't
-   get assigned/mapped correctly
+   likely that geometry/offsets affect positioning
+4. gnome-apps, visible with calculator - some interaction between durden
+   and the reset remaining,
 
 TODO
 ====
 
 Rough estimate of planned changes and order:
 
-1. shm-copy respect stride
-2. shm-copy to texture- upload
-3. wl\_shell fixes / event propagation
-4. single- client exec mode
-5. mouse wheel actions
-6. seccmp- sandboxing
-7. fork() mode
-8. data-device to clipboard
+1. wl\_shell fixes / event propagation
+2. single- client exec mode
+3. mouse wheel actions
+4. seccmp- sandboxing
+5. fork() mode
+6. data-device to clipboard
 
 (x - done, p - partial/possible-tuning, s - showstopper, i - ignored for now)
 + (for-each finished milestone, verify allocation/deallocation/validation)

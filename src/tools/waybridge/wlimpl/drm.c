@@ -138,7 +138,7 @@ destroy_buffer(struct wl_resource *resource)
 }
 
 static void
-buffer_destroy(struct wl_client *client, struct wl_resource *resource)
+drm_buffer_destroy(struct wl_client *client, struct wl_resource *resource)
 {
 	trace(TRACE_DRM, "");
 /*
@@ -336,17 +336,9 @@ static void wayland_drm_commit(struct comp_surf* surf,
  * STREAMS, VK-EXT, ...) just wing it. This also don't deal with the whole
  * 'packing multiple planes' problem.
  */
-	if (surf->last_drm_buf){
-		arcan_shmif_signalhandle(con,
-			SHMIF_SIGVID, buf->fd, buf->stride[0], buf->format);
-		wl_buffer_send_release(surf->last_drm_buf);
-		surf->last_drm_buf = surf->buf;
-	}
-	else {
-		arcan_shmif_signalhandle(con, SHMIF_SIGVID |
-			SHMIF_SIGBLK_NONE,	buf->fd, buf->stride[0], buf->format);
-		surf->last_drm_buf = surf->buf;
-	}
+	arcan_shmif_signalhandle(con,
+		SHMIF_SIGVID, buf->fd, buf->stride[0], buf->format);
+
 /*	close(buf->fd); buf->fd = -1; */
 }
 
@@ -380,7 +372,7 @@ static struct wl_drm* wayland_drm_init(struct wl_display *display,
 	drm->user_data = user_data;
 	drm->flags = flags;
 
-	drm->buffer_interface.destroy = buffer_destroy;
+	drm->buffer_interface.destroy = drm_buffer_destroy;
 
 	drm->wl_drm_global =
 		wl_global_create(display, &wl_drm_interface, 2, drm, bind_drm);
