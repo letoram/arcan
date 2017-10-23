@@ -131,11 +131,10 @@ TODO
 Rough estimate of planned changes and order:
 
 1. wl\_shell fixes / event propagation
-2. single- client exec mode
-3. mouse wheel actions
-4. seccmp- sandboxing
-5. fork() mode
-6. data-device to clipboard
+2. mouse wheel actions
+3. seccmp- sandboxing
+4. fork() mode
+5. data-device to clipboard
 
 (x - done, p - partial/possible-tuning, s - showstopper, i - ignored for now)
 + (for-each finished milestone, verify allocation/deallocation/validation)
@@ -166,7 +165,7 @@ determine if we are compliant or not, because Wayland.
     - [ ] Output Rotation / Scaling
 - [ ] Milestone 3, funky things
   - [x] SHM to GL texture mapping
-	- [ ] Single-exec launch mode (./arcan-wayland gnome-terminal)
+	- [x] Single-exec launch mode (./arcan-wayland -exec gtk3-demo)
   - [ ] Transforms (Rotations/Scaling)
   - [ ] Multithread/multiprocess client processing
   - [ ] Dynamic Keyboard Translation table generation

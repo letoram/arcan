@@ -17,7 +17,11 @@ static bool shellsurf_shmifev_handler(
 		return false;
 		break;
 		case TARGET_COMMAND_EXIT:
-/* do we send destroy on the surface instead? */
+/*
+ * protocol-wtf: there doesn't seem to exist a way for the server
+ * to indicate that a shell-surface isn't wanted? do we block/ignore on
+ * the surface or kill the client outright?
+ */
 			return true;
 		break;
 		default:

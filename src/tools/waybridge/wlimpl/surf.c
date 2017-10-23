@@ -42,8 +42,9 @@ static void surf_attach(struct wl_client* cl, struct wl_resource* res,
 	}
 
 /* remove old listener (always) */
-	if (surf->buf)
+	if (surf->buf){
 		wl_list_remove(&surf->l_bufrem.link);
+	}
 
 	trace(TRACE_SURF, "attach to: %s, @x,y: %d, %d - buf: %"
 		PRIxPTR, surf->tracetag, (int)x, (int)y, (uintptr_t)buf);
