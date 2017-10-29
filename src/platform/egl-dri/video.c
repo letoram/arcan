@@ -286,8 +286,10 @@ enum disp_state {
  * device node, and it is incomplete still until we can maintain affinity
  * for all resources.
  */
-#define MAX_NODES
-static struct dev_node nodes[MAX_NODES];
+#ifndef VIDEO_MAX_NODES
+#define VIDEO_MAX_NODES 4
+#endif
+static struct dev_node nodes[VIDEO_MAX_NODES];
 
 enum output_format {
 	output_888 = 0,
@@ -746,7 +748,7 @@ size_t platform_video_displays(platform_display_id* dids, size_t* lim)
 
 int platform_video_cardhandle(int cardn)
 {
-	if (cardn < 0 || cardn > MAX_NODES)
+	if (cardn < 0 || cardn > COUNT_OF(nodes))
 		return -1;
 
 	return nodes[cardn].rnode;
@@ -2309,7 +2311,7 @@ void platform_video_query_displays()
  * each device node, each connector, check against each display
  * ugly scan complexity, but low values of n.
  */
-	for (size_t j = 0; j < MAX_NODES; j++){
+	for (size_t j = 0; j < COUNT_OF(nodes); j++){
 		debug_print("query_card: %zu", j);
 		query_card(&nodes[j]);
 	}
@@ -2677,7 +2679,7 @@ static bool try_card(size_t devind, int w, int h, size_t* dstind)
 static bool setup_cards_db(int w, int h)
 {
 	size_t dstind = 0;
-	for (size_t devind = 0; devind < MAX_NODES; devind++){
+	for (size_t devind = 0; devind < COUNT_OF(nodes); devind++){
 		if (!try_card(devind, w, h, &dstind))
 			return dstind > 0;
 		dstind++;
