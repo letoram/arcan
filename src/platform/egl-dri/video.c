@@ -286,7 +286,7 @@ enum disp_state {
  * device node, and it is incomplete still until we can maintain affinity
  * for all resources.
  */
-static const int MAX_NODES = 4;
+#define MAX_NODES
 static struct dev_node nodes[MAX_NODES];
 
 enum output_format {
