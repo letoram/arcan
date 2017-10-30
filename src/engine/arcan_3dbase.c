@@ -1166,7 +1166,9 @@ arcan_errc arcan_3d_camtag(arcan_vobj_id tgtid,
 		vobj->owner->camtag = vobj->cellid;
 
 	struct camtag_data* camobj = arcan_alloc_mem(
-		sizeof(struct camtag_data), ARCAN_MEM_VTAG, 0, ARCAN_MEMALIGN_SIMD);
+		sizeof(struct camtag_data),
+		ARCAN_MEM_VTAG, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_SIMD
+	);
 
 	camobj->near = near;
 	camobj->far = far;
