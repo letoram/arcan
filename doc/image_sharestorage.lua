@@ -11,6 +11,11 @@
 -- to the texture store and not to any- single object.
 -- @note: non-textured objects (null, color, instances and persistant) cannot
 -- bu used as src.
+-- @note: There is no ordering imposed in rendertarget updates, which means
+-- that a store that is used as the destination for a rendertarget will need
+-- to have all dependent rendertargets manually updated in the preframe
+-- stage or the result of using vid that shares backing store with a
+-- rendertarget will be undefined.
 -- @note: persistent objects and instances cannot be used as dst.
 -- @group: image
 -- @cfunction: sharestorage
