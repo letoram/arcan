@@ -80,12 +80,18 @@ void platform_video_prepare_external()
 		SDL_QuitSubSystem(SDL_INIT_VIDEO);
 }
 
+SDL_Window* sdl2_platform_activewnd()
+{
+	return sdl.screen;
+}
+
 static bool rebuild_screen()
 {
 	char caption[64] = {0};
 
 /* some GL attributes have to be set before creating the video-surface */
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+	SDL_ShowCursor(SDL_DISABLE);
 
 /* SDL2 FIXME: swap control, compare synchopt
  * SDL_GL_SstSwapInterval() - can be used dynamically
