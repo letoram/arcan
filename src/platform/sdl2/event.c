@@ -18,10 +18,14 @@
 #include <arcan_general.h>
 #include <arcan_event.h>
 
+#include "sdl2_12_lut.h"
+
 static const char* envopts[] =
 {
 	NULL
 };
+
+static bool mouse_relative = false;
 
 const char** platform_input_envopts()
 {
@@ -196,33 +200,30 @@ void platform_event_samplebase(int devid, float xyz[3])
 static inline void process_mousemotion(arcan_evctx* ctx,
 	const SDL_MouseMotionEvent* const ev)
 {
-	int16_t dstv, dstv_r;
 	arcan_event nev = {
 		.category = EVENT_IO,
 		.io.label = "MOUSE\0",
 		.io.kind = EVENT_IO_AXIS_MOVE,
 		.io.datatype = EVENT_IDATATYPE_ANALOG,
-		.io.devkind  = EVENT_IDEVKIND_MOUSE,
-		.io.devid  = 0,
-		.io.input.analog.gotrel = true,
+		.io.devkind = EVENT_IDEVKIND_MOUSE,
+		.io.devid = 0,
 		.io.input.analog.nvalues = 2
 	};
 
-	snprintf(nev.io.label, sizeof(nev.io.label) - 1, "mouse");
-
-	if (process_axis(ctx, &iodev.mx, ev->x, &dstv) &&
-		process_axis(ctx, &iodev.mx_r, ev->xrel, &dstv_r)){
-		nev.io.subid = 0;
-		nev.io.input.analog.axisval[0] = dstv;
-		nev.io.input.analog.axisval[1] = dstv_r;
+	int16_t dstv, dstv_r;
+	if (mouse_relative){
+		nev.io.input.analog.gotrel = true;
+		nev.io.input.analog.axisval[0] = ev->xrel;
+		arcan_event_enqueue(ctx, &nev);
+		nev.io.subid = 1;
+		nev.io.input.analog.axisval[0] = ev->yrel;
 		arcan_event_enqueue(ctx, &nev);
 	}
-
-	if (process_axis(ctx, &iodev.my, ev->y, &dstv) &&
-		process_axis(ctx, &iodev.my_r, ev->yrel, &dstv_r)){
+	else {
+		nev.io.input.analog.axisval[0] = ev->x;
 		nev.io.subid = 1;
-		nev.io.input.analog.axisval[0] = dstv;
-		nev.io.input.analog.axisval[1] = dstv_r;
+		arcan_event_enqueue(ctx, &nev);
+		nev.io.input.analog.axisval[0] = ev->y;
 		arcan_event_enqueue(ctx, &nev);
 	}
 }
@@ -379,38 +380,6 @@ static unsigned long djb_hash(const char* str, size_t n)
 
 	return hash;
 }
-static char* to_utf8(uint16_t utf16, uint8_t out[4])
-{
-	int count = 1, ofs = 0;
-	uint32_t mask = 0x800;
-
-	if (utf16 >= 0x80)
-		count++;
-
-	for(size_t i=0; i < 5; i++){
-		if ( (uint32_t) utf16 >= mask )
-			count++;
-
-		mask <<= 5;
-	}
-
-	if (count == 1){
-		out[0] = (char) utf16;
-		out[1] = 0x00;
-	}
-	else {
-		for (int i = (count-1 > 4 ? 4 : count - 1); i >= 0; i--){
-			unsigned char ch = ( utf16 >> (6 * i)) & 0x3f;
-			ch |= 0x80;
-			if (i == count-1)
-				ch |= 0xff << (8-count);
-			out[ofs++] = ch;
-		}
-		out[ofs++] = 0x00;
-	}
-
-	return (char*) out;
-}
 
 static inline void process_hatmotion(arcan_evctx* ctx, unsigned devid,
 	unsigned hatid, unsigned value)
@@ -450,6 +419,39 @@ static inline void process_hatmotion(arcan_evctx* ctx, unsigned devid,
 	}
 }
 
+static void ucs4_to_utf8(uint32_t g, char *txt)
+{
+	if (g >= 0xd800 && g <= 0xdfff)
+		return;
+	if (g > 0x10ffff || (g & 0xffff) == 0xffff || (g & 0xffff) == 0xfffe)
+		return;
+	if (g >= 0xfdd0 && g <= 0xfdef)
+		return;
+
+	if (g < (1 << 7)) {
+		txt[0] = g & 0x7f;
+		return;
+	} else if (g < (1 << (5 + 6))) {
+		txt[0] = 0xc0 | ((g >> 6) & 0x1f);
+		txt[1] = 0x80 | ((g     ) & 0x3f);
+		return;
+	} else if (g < (1 << (4 + 6 + 6))) {
+		txt[0] = 0xe0 | ((g >> 12) & 0x0f);
+		txt[1] = 0x80 | ((g >>  6) & 0x3f);
+		txt[2] = 0x80 | ((g      ) & 0x3f);
+		return;
+	} else if (g < (1 << (3 + 6 + 6 + 6))) {
+		txt[0] = 0xf0 | ((g >> 18) & 0x07);
+		txt[1] = 0x80 | ((g >> 12) & 0x3f);
+		txt[2] = 0x80 | ((g >>  6) & 0x3f);
+		txt[3] = 0x80 | ((g      ) & 0x3f);
+		return;
+	} else {
+		return;
+	}
+}
+
+
 const char* platform_event_devlabel(int devid)
 {
 	if (devid == -1)
@@ -464,13 +466,22 @@ const char* platform_event_devlabel(int devid)
 		"no identifier" : iodev.joys[devid].label;
 }
 
+uint16_t sdl2_sym_to_12sym(uint32_t insym)
+{
+	if (insym < COUNT_OF(lut))
+		return lut[insym];
+	return 0;
+}
+
 void platform_event_process(arcan_evctx* ctx)
 {
 	int canary = 0xf00f;
 	SDL_Event event;
+	SDL_StopTextInput();
+
 /* other fields will be set upon enqueue */
-	arcan_event newevent = {.category = EVENT_IO};
 	while (SDL_PollEvent(&event)) {
+		arcan_event newevent = {.category = EVENT_IO};
 		switch (event.type) {
 		case SDL_MOUSEBUTTONDOWN:
 			newevent.io.kind = EVENT_IO_BUTTON;
@@ -507,6 +518,10 @@ void platform_event_process(arcan_evctx* ctx)
 			process_mousemotion(ctx, &event.motion);
 		break;
 
+/* need support for converting both to buttons and to analog */
+		case SDL_MOUSEWHEEL:
+		break;
+
 		case SDL_JOYAXISMOTION:
 			process_axismotion(ctx, &event.jaxis);
 		break;
@@ -516,10 +531,29 @@ void platform_event_process(arcan_evctx* ctx)
 			newevent.io.devkind  = EVENT_IDEVKIND_KEYBOARD;
 			newevent.io.pts = event.key.timestamp;
 			newevent.io.input.translated.active = true;
-			newevent.io.input.translated.keysym = event.key.keysym.sym;
+
+/* keysym / keycodes have changed since the SDL1.2 days, but a lot of scripts
+ * rely on the old format, so convert back and keep the code as sub */
+			newevent.io.input.translated.keysym =
+				sdl2_sym_to_12sym(event.key.keysym.scancode);
 			newevent.io.input.translated.modifiers = event.key.keysym.mod;
 			newevent.io.input.translated.scancode = event.key.keysym.scancode;
-			newevent.io.subid = event.key.keysym.scancode;
+			newevent.io.subid = event.key.keysym.sym;
+
+/* there's no having old .unicode behavior back unfortunately, so the SDL2
+ * users will need a keymap on the scripting level */
+			if (!(event.key.keysym.scancode & 0x8000000)){
+				ucs4_to_utf8(event.key.keysym.sym,
+					(char*)newevent.io.input.translated.utf8);
+
+				if (event.key.keysym.mod)
+					newevent.io.input.translated.utf8[0] = '\0';
+/* some hacks to make more of the translated table work, use special modifier
+ * rules */
+			}
+
+			newevent.io.input.translated.modifiers |=
+				ARKMOD_REPEAT * event.key.repeat != 0;
 			arcan_event_enqueue(ctx, &newevent);
 		break;
 
@@ -528,10 +562,11 @@ void platform_event_process(arcan_evctx* ctx)
 			newevent.io.devkind  = EVENT_IDEVKIND_KEYBOARD;
 			newevent.io.pts = event.key.timestamp;
 			newevent.io.input.translated.active = false;
-			newevent.io.input.translated.keysym = event.key.keysym.sym;
+			newevent.io.input.translated.keysym =
+				sdl2_sym_to_12sym(event.key.keysym.scancode);
 			newevent.io.input.translated.modifiers = event.key.keysym.mod;
 			newevent.io.input.translated.scancode = event.key.keysym.scancode;
-			newevent.io.subid = event.key.keysym.scancode;
+			newevent.io.subid = event.key.keysym.sym;
 			arcan_event_enqueue(ctx, &newevent);
 		break;
 
@@ -808,12 +843,12 @@ void platform_event_reset(arcan_evctx* ctx)
 	platform_event_deinit(ctx);
 }
 
+SDL_Window* sdl2_platform_activewnd();
 void platform_device_lock(int devind, bool state)
 {
-/*
-	SDL2 fixme
-	SDL_WM_GrabInput( state ? SDL_GRAB_ON : SDL_GRAB_OFF );
- */
+	SDL_SetWindowGrab(sdl2_platform_activewnd(), state);
+	SDL_SetRelativeMouseMode(state);
+	mouse_relative = state;
 }
 
 void platform_event_init(arcan_evctx* ctx)
@@ -821,10 +856,11 @@ void platform_event_init(arcan_evctx* ctx)
 	static bool first_init;
 
 	if (!first_init){
+		init_lut();
 		platform_event_analogfilter(-1, 0,
-			-32768, 32767, 0, 1, ARCAN_ANALOGFILTER_AVG);
+			-32768, 32767, 0, 1, ARCAN_ANALOGFILTER_PASS);
 		platform_event_analogfilter(-1, 1,
-			-32768, 32767, 0, 1, ARCAN_ANALOGFILTER_AVG);
+			-32768, 32767, 0, 1, ARCAN_ANALOGFILTER_PASS);
 		first_init = true;
 		int r = 0, d = 0;
 		platform_event_keyrepeat(ctx, &r, &d);
