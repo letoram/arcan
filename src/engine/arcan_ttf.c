@@ -135,8 +135,8 @@ struct _TTF_Font {
 #define TTF_STYLE_NO_GLYPH_CHANGE	(TTF_STYLE_UNDERLINE | TTF_STYLE_STRIKETHROUGH)
 
 /* The FreeType font engine/library */
-static FT_Library library;
-static int TTF_initialized = 0;
+static _Thread_local FT_Library library;
+static _Thread_local int TTF_initialized = 0;
 
 void TTF_SetError(const char* msg){
 }
@@ -293,9 +293,7 @@ TTF_Font* TTF_OpenFontIndexRW( FILE* src, int freesrc, int ptsize,
 		return NULL;
 
 	if ( ! TTF_initialized ) {
-		TTF_SetError( "Library not initialized" );
-		fclose(src);
-		return NULL;
+		TTF_Init();
 	}
 
 	/* Check to make sure we can seek in this stream */
