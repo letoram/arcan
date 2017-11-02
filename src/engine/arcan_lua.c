@@ -7601,7 +7601,7 @@ static arcan_frameserver* spawn_subsegment(
 	}
 
 	arcan_frameserver* res =
-		platform_fsrv_spawn_subsegment(parent, segid, w, h, reqid, newvid);
+		platform_fsrv_spawn_subsegment(parent, segid, w, h, newvid, reqid);
 
 	if (!res){
 		arcan_video_deleteobject(newvid);
@@ -7641,8 +7641,10 @@ static int targetaccept(lua_State* ctx)
 
 	enum ARCAN_SEGID segid = luactx.last_segreq->segreq.kind;
 	vfunc_state* prev_state = arcan_video_feedstate(luactx.last_segreq->source);
-	arcan_frameserver* newref = spawn_subsegment((arcan_frameserver*)
-		prev_state->ptr, segid, luactx.last_segreq->segreq.id, w, h);
+	arcan_frameserver* newref = spawn_subsegment(
+		(arcan_frameserver*) prev_state->ptr,
+		segid, luactx.last_segreq->segreq.id, w, h
+	);
 
 	if (!newref){
 		lua_pushvid(ctx, ARCAN_EID);

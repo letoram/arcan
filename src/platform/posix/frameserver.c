@@ -869,6 +869,8 @@ struct arcan_frameserver* platform_fsrv_spawn_subsegment(
 		newseg->source = strdup(ctx->source);
 	newseg->parent.vid = ctx->vid;
 	newseg->parent.ptr = (void*) ctx;
+	newseg->vid = tag;
+
 /*
  * We monitor the same PID as parent, but for cases where we don't monitor
  * parent (non-auth) we switch to using the socket as indicator.
@@ -901,9 +903,9 @@ struct arcan_frameserver* platform_fsrv_spawn_subsegment(
 		.category = EVENT_TARGET, .tgt.kind = TARGET_COMMAND_NEWSEGMENT
 	};
 
-	keyev.tgt.ioevs[0].iv = tag;
 	keyev.tgt.ioevs[1].iv = segid == SEGID_ENCODER ? 1 : 0;
 	keyev.tgt.ioevs[2].iv = segid;
+	keyev.tgt.ioevs[3].iv = idtok;
 
 	snprintf(keyev.tgt.message,
 		sizeof(keyev.tgt.message) / sizeof(keyev.tgt.message[1]),
