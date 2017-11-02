@@ -69,15 +69,20 @@ static void xdgtop_setparent(
 	trace(TRACE_SHELL, "parent: %"PRIxPTR, (uintptr_t) parent);
 	struct comp_surf* surf = wl_resource_get_user_data(res);
 	uint32_t par_token = 0;
+	int8_t order = 0;
 
 	if (parent){
 		struct comp_surf* par = wl_resource_get_user_data(res);
 		par_token = par->acon.segment_token;
+		order = par->viewport.ext.viewport.order + 1;
 	}
 
+/* Likely that we need more order tracking for subsurfaces, or shift
+ * the relative assignment to the scripting layer again */
 	arcan_shmif_enqueue(&surf->acon, &(struct arcan_event){
 		.ext.kind = ARCAN_EVENT(VIEWPORT),
-		.ext.viewport.parent = par_token
+		.ext.viewport.parent = par_token,
+		.ext.viewport.order = order
 	});
 }
 
