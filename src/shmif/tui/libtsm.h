@@ -161,6 +161,21 @@ typedef int (*tsm_screen_customline_cb) (struct tsm_screen *con,
 	void* data
 );
 
+/* blocks are individually allocated, including the save_buf */
+struct tsm_save_buf {
+	size_t metadata_sz;
+	uint8_t* metadata;
+
+	size_t scrollback_sz;
+	uint8_t* scrollback;
+
+	size_t screen_sz;
+	uint8_t* screen;
+
+	size_t altscreen_sz;
+	uint8_t* alt_screen;
+};
+
 int tsm_screen_new(struct tsm_screen **out, tsm_log_t log, void *log_data);
 void tsm_screen_ref(struct tsm_screen *con);
 void tsm_screen_unref(struct tsm_screen *con);
@@ -244,6 +259,31 @@ void tsm_screen_selection_target(struct tsm_screen *con,
 	 unsigned int posx,
 	 unsigned int posy);
 int tsm_screen_selection_copy(struct tsm_screen *con, char **out);
+
+/* dynamically allocate a buffer into *dst (caller assumes ownership)
+ * and fill with enough state from [src] to be restorable via _load.
+ * the struct and the individual members are all separate allocations.
+ * returns [true] if the destination structure pointer was populated.
+ * setting [sb] to true will include the scrollback buffer */
+bool tsm_screen_save(struct tsm_screen* src, bool sb, struct tsm_save_buf**);
+
+/*
+ * subset of _save, only take the screen and alt-screen at the specified
+ * locations and populate into the save buffer
+ */
+bool tsm_screen_save_sub(struct tsm_screen* src,
+	struct tsm_save_buf** out, size_t x, size_t y, size_t w, size_t h);
+
+/* rebuild [dst] from the contents in [buf, buf_sz]. If the [dst] screen
+ * size does not fit, contents will be cropped rather than wrapped. This
+ * is safe to run multiple times with the same [dst] screen as a way of
+ * retaining (some) screen contents in the event of a resize */
+enum load_flags {
+	TSM_LOAD_RESIZE = 1,
+	TSM_LOAD_APPEND = 2,
+	TSM_LOAD_REPLACE = 4
+};
+bool tsm_screen_load(struct tsm_screen* dst, struct tsm_save_buf*, int fl);
 
 /* returns: 0 on success, or -einval
  * starting from the character at x,y find the first and last

@@ -79,7 +79,7 @@
  *  provides the opaque arcan_tui_conn structure. All symbols and flag
  *  values are kept separately in arcan_tuisym.h
  *
- *  struct tui_cbcfg cbs {
+ *  struct tui_cbcfg cb {
  *     SET EVENT-HANDLERS HERE (e.g. input_key, tick, geohint, ...)
  *  };
  *

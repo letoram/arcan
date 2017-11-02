@@ -2,6 +2,7 @@
  * libtsm - Screen Management
  *
  * Copyright (c) 2011-2013 David Herrmann <dh.herrmann@gmail.com>
+ * Copyright (c) 2016-2017 Bjorn Stahl <contact@arcan-fe.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining
  * a copy of this software and associated documentation files
@@ -54,6 +55,17 @@
  * incorrectly skip cells.
  * Furthermore, if a cell has age "0", it means it _has_ to be drawn. No ageing
  * information is available.
+ *
+ * Simplifications:
+ * Design mismatches between tui and screen features exist in some places, and
+ * as a result, parts of this could be simplified somewhat.
+ *
+ * 1. Drop age:ing (cell front-back buffers removes that need)
+ * 2. Drop selection (the code here is murky anyhow)
+ * 3. Drop alt-screen/alt-lines, there is already support for multiple screens
+ *    on the tui side
+ * 4. Drop the hash table / combiner glyph tracking, glyph transformations are
+ *    made as part of shaping
  */
 
 #include <errno.h>
@@ -643,8 +655,8 @@ unsigned int tsm_screen_get_height(struct tsm_screen *con)
 }
 
 SHL_EXPORT
-int tsm_screen_resize(struct tsm_screen *con, unsigned int x,
-		      unsigned int y)
+int tsm_screen_resize(
+	struct tsm_screen *con, unsigned int x, unsigned int y)
 {
 	struct line **cache;
 	unsigned int i, j, width, diff, start;
@@ -1229,6 +1241,117 @@ int tsm_screen_write(struct tsm_screen *con, tsm_symbol_t ch,
 		con->cursor_x, con->cursor_y, ch, len, attr ? attr : &con->def_attr);
 	move_cursor(con, con->cursor_x + len, con->cursor_y);
 	return rv;
+}
+
+struct export_metadata {
+	uint8_t magic[4];
+	uint32_t sb_count;
+	uint16_t columns, rows;
+	uint16_t margin_top;
+	uint16_t margin_bottom;
+	uint32_t flags;
+};
+
+SHL_EXPORT
+bool tsm_screen_save(struct tsm_screen* src, bool sb, struct tsm_save_buf** out)
+{
+	if (!src || !out)
+		return false;
+
+	if (!tsm_screen_save_sub(src, out, 0, 0, src->size_x, src->size_y))
+		return false;
+
+/* _sub guarantees alignment */
+	struct export_metadata* md = (struct export_metadata*)((*out)->metadata);
+
+/* take the buffer, complement with scrollback and more metadata */
+	md->margin_top = src->margin_top;
+	md->margin_bottom = src->margin_bottom;
+	md->flags = src->flags;
+
+/* missing:
+ * tab-ruler, selection state (likely uninteresting)
+ */
+
+	if (sb){
+/* sb_count, sb_first, sb_last, sb_max, sb_pos, sb_last_id */
+		fprintf(stderr, "scrollback save/restore missing\n");
+	}
+
+	return true;
+}
+
+SHL_EXPORT
+bool tsm_screen_save_sub(struct tsm_screen* src,
+	struct tsm_save_buf** out, size_t x, size_t y, size_t w, size_t h)
+{
+	if (x > src->size_x || +w >= src->size_x)
+		return false;
+
+	if (y > src->size_y || y+h >= src->size_y)
+		return false;
+
+	struct tsm_save_buf* buf = malloc(sizeof(struct tsm_save_buf));
+	*buf = (struct tsm_save_buf){0};
+	buf->metadata_sz = sizeof(struct export_metadata);
+
+	struct export_metadata* md = malloc(buf->metadata_sz);
+	buf->metadata = (uint8_t*) md;
+	*md = (struct export_metadata){
+		.magic = {'a', 't', 'u', 'i'},
+		.columns = w,
+		.rows = h
+	};
+
+	buf->screen_sz = sizeof(struct tui_screen_attr) * w * h;
+	buf->screen = malloc(buf->screen_sz);
+	buf->altscreen_sz = buf->screen_sz;
+	buf->alt_screen = malloc(buf->altscreen_sz);
+	size_t ofs = 0;
+
+/* theoretically lines and alt_lines may vary, but the _resize calls retains
+ * the rectangular shape by padding with default cell values, so it is only
+ * the scrollback buffer that is complicated */
+	for (size_t row = y; row < h; row++)
+		for (size_t col = x; col < w; col++, ofs++){
+			memcpy(
+				&buf->screen[ofs * sizeof(struct tui_screen_attr)],
+				&src->lines[row]->cells[col],
+				sizeof(struct tui_screen_attr)
+			);
+			memcpy(
+				&buf->alt_screen[ofs * sizeof(struct tui_screen_attr)],
+				&src->alt_lines[row]->cells[col],
+				sizeof(struct tui_screen_attr)
+			);
+		}
+
+	*out = buf;
+	return true;
+}
+
+SHL_EXPORT
+bool tsm_screen_load(struct tsm_screen* dst, struct tsm_save_buf* in, int mode)
+{
+	struct export_metadata md;
+	if (in->metadata_sz != sizeof(struct export_metadata))
+		return false;
+
+	memcpy(&md, in->metadata, sizeof(struct export_metadata));
+
+	if (!in->screen ||
+		md.magic[0] != 'a' || md.magic[1] != 't' ||
+		md.magic[2] != 'u' || md.magic[3] != 'i')
+		return false;
+
+	if (mode & TSM_LOAD_RESIZE){
+		tsm_screen_resize(dst, md.columns, md.rows);
+	}
+
+/* if mode == replace it's easy, row by row, crop or pad and fill with
+ * the default attribute */
+
+	return false;
 }
 
 SHL_EXPORT
@@ -2148,9 +2271,7 @@ tsm_age_t tsm_screen_draw(struct tsm_screen *con, tsm_screen_draw_cb draw_cb,
 				}
 			}
 
-/* TODO: do some more sophisticated inverse here. When INVERSE mode is
- * set, we should instead just select inverse colors instead of switching
- * background and foreground */
+/* actual inverse logic is handled in the renderer */
 			if (con->flags & TSM_SCREEN_INVERSE)
 				attr.inverse = !attr.inverse;
 

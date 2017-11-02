@@ -7,6 +7,15 @@
  * one from defining SIMPLE_RENDERING, and the other with SHMIF_TUI_DISABLE_GPU
  * off along with the option of doing gpu- buffer transfers on.
  */
+
+/*
+ * copy/clipboard window -
+ * 1. add a slot of asynch queue
+ * 2. on accept/reject, spawn a dispatch thread (tui_dispatch.c)
+ * 3. on paste-mode, spawn a dispatch thread with a pipe-pair
+ * 4. implement the dispatch thread to handle load
+ */
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -21,6 +30,7 @@
 #include <signal.h>
 #include <poll.h>
 #include <math.h>
+#include <pthread.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -35,6 +45,8 @@
 
 #include "../arcan_shmif.h"
 #include "../arcan_tui.h"
+
+#define REQID_COPYWINDOW 0xbaab
 
 /*
  * Dislike this sort of feature enable/disable, but the dependency and extra
@@ -113,6 +125,7 @@ typedef void (*tui_draw_fun)(
 		int start_x, int start_y, bool synch
 	);
 
+struct tui_context;
 struct tui_context {
 /* cfg->nal / state control */
 	struct tsm_screen* screen;
@@ -239,6 +252,8 @@ struct tui_context {
 	struct arcan_shmif_cont clip_in;
 	struct arcan_shmif_cont clip_out;
 	struct arcan_event last_ident;
+
+	bool pending_copy_window;
 
 /* caller- event handlers */
 	struct tui_cbcfg handlers;
@@ -1082,6 +1097,29 @@ static int mod_to_scroll(int mods, int screenh)
 	return rv;
 }
 
+static bool copy_window(struct tui_context* tui)
+{
+/* if no pending copy-window request, make a copy of the active screen
+ * and spawn a dispatch thread for it */
+	if (tui->pending_copy_window)
+		return true;
+
+	arcan_shmif_enqueue(&tui->acon, &(struct arcan_event){
+		.ext.kind = ARCAN_EVENT(SEGREQ),
+		.ext.segreq.kind = SEGID_TUI,
+		.ext.segreq.id = REQID_COPYWINDOW
+	});
+
+	return true;
+}
+
+static bool sel_append(struct tui_context* tui)
+{
+/* same as copy window (but an empty recipient), and a write- pipe to
+ * update it with new contents */
+	return true;
+}
+
 static bool scroll_up(struct tui_context* tui)
 {
 	int nf = mod_to_scroll(tui->modifiers, tui->rows);
@@ -1334,6 +1372,8 @@ static const struct lent labels[] = {
 	{"SCROLL_LOCK", "Arrow- keys to pageup/down", scroll_lock},
 	{"UP", "(scroll-lock) page up, UP keysym", move_up},
 	{"DOWN", "(scroll-lock) page down, DOWN keysym", move_down},
+	{"COPY_WINDOW", "Copy to new passive window", copy_window},
+	{"MOUSE_APPEND", "Select-append to copy window", sel_append},
 	{"INC_FONT_SZ", "Font size +1 pt", inc_fontsz},
 	{"DEC_FONT_SZ", "Font size -1 pt", dec_fontsz},
 	{NULL, NULL}
@@ -1689,10 +1729,69 @@ static void update_screensize(struct tui_context* tui, bool clear)
 	update_screen(tui, true);
 }
 
-/*
- * copy the contents of the active screen in [src] to the active screen in [dst],
- * preserving the
+struct bgthread_context {
+	struct tui_context* ctx;
+	int iopipes[2];
+};
+
+static void* bgscreen_thread_proc(void* ctxptr)
+{
+	struct bgthread_context* ctx = ctxptr;
+
+/* details:
+ * 1. hide cursor,
+ * 2. poll iopipe and read nonblock from it and add as lines to the
+ *    current screen
  */
+
+	while (true){
+		arcan_tui_process(&ctx->ctx, 1, NULL, 0, -1);
+		if (-1 == arcan_tui_refresh(ctx->ctx) && errno == EINVAL)
+			break;
+	}
+
+	arcan_tui_destroy(ctx->ctx, NULL);
+	return NULL;
+}
+
+/*
+ * copy [src] into a background managed context that only handles clipboard,
+ * scrollback etc. assume ownership over [con] and will spawn a new thread or
+ * process.
+ */
+static void bgscreen_thread(
+	struct tui_context* src, struct arcan_shmif_cont* con)
+{
+	struct bgthread_context* ctxptr = malloc(sizeof(struct bgthread_context));
+	*ctxptr = (struct bgthread_context){};
+	if (!ctxptr){
+		arcan_shmif_drop(con);
+		return;
+	}
+
+/* bind the context to a new tui session */
+	struct tui_cbcfg cbs = {};
+	struct tui_settings cfg = arcan_tui_defaults(con, src);
+	ctxptr->ctx = arcan_tui_setup(con, &cfg, &cbs, sizeof(cbs));
+	if (!ctxptr->ctx){
+		arcan_shmif_drop(con);
+		free(ctxptr);
+		return;
+	}
+
+/* send the session to a new background thread that we detach and ignore */
+	pthread_attr_t bgattr;
+	pthread_attr_init(&bgattr);
+	pthread_attr_setdetachstate(&bgattr, PTHREAD_CREATE_DETACHED);
+
+	pthread_t bgthr;
+	if (0 != pthread_create(&bgthr, &bgattr, bgscreen_thread_proc, ctxptr)){
+		free(ctxptr);
+		arcan_shmif_drop(con);
+		return;
+	}
+}
+
 void arcan_tui_screencopy(
 	struct tui_context* src, struct tui_context* dst, bool cur, bool alt, bool sb)
 {
@@ -1709,6 +1808,8 @@ void arcan_tui_request_subwnd(
 	if (!tui || !tui->acon.addr)
 		return;
 
+/* only allow a certain subset so shmif- doesn't bleed into this library more
+ * than it already does */
 	switch (type){
 	case TUI_WND_TUI:
 	case TUI_WND_POPUP:
@@ -1875,11 +1976,17 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 	}
 	break;
 
+/* if the highest bit is set in the request, it's an external request
+ * and it should be forwarded to the event handler */
 	case TARGET_COMMAND_REQFAIL:
-		if ( ((uint32_t)ev->ioevs[0].iv & (1 << 31)) &&
-			tui->handlers.subwindow){
+		if ( ((uint32_t)ev->ioevs[0].iv & (1 << 31)) ){
+			if (tui->handlers.subwindow){
 			tui->handlers.subwindow(tui, NULL,
 				(uint32_t)ev->ioevs[0].iv & 0xffff, tui->handlers.tag);
+			}
+		}
+		else if ((uint32_t)ev->ioevs[0].iv == REQID_COPYWINDOW){
+			tui->pending_copy_window = false;
 		}
 	break;
 
@@ -1887,6 +1994,7 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
  * map the two clipboards needed for both cut and for paste operations
  */
 	case TARGET_COMMAND_NEWSEGMENT:
+/* input segment, assumed clipboard */
 		if (ev->ioevs[1].iv == 1){
 			if (!tui->clip_in.vidp){
 				tui->clip_in = arcan_shmif_acquire(
@@ -1895,7 +2003,8 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 			else
 				LOG("multiple paste- clipboards received, likely appl. error\n");
 		}
-		else if (ev->ioevs[1].iv == 0){
+/* output segment */
+		else if (ev->ioevs[1].iv == 0 && ev->ioevs[3].iv == 0xfeedface){
 			if (!tui->clip_out.vidp){
 				tui->clip_out = arcan_shmif_acquire(
 					&tui->acon, NULL, SEGID_CLIPBOARD, 0);
@@ -1903,18 +2012,24 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 			else
 				LOG("multiple clipboards received, likely appl. error\n");
 		}
+		else if (ev->ioevs[3].iv == REQID_COPYWINDOW){
+			tui->pending_copy_window = false;
+			struct arcan_shmif_cont acon =
+				arcan_shmif_acquire(&tui->acon, NULL, ev->ioevs[2].iv, 0);
+			bgscreen_thread(tui, &acon);
+		}
 /*
  * new caller requested segment, even though acon is auto- scope allocated
  * here, the API states that the normal setup procedure should be respected,
  * which means that there will be an explicit copy of acon rather than an
  * alias.
  */
-		else if ( ((uint32_t)ev->ioevs[1].iv & (1 << 31)) &&
+		else if ( ((uint32_t)ev->ioevs[3].iv & (1 << 31)) &&
 			tui->handlers.subwindow){
 			struct arcan_shmif_cont acon = arcan_shmif_acquire(
 				&tui->acon, NULL, ev->ioevs[2].iv, 0);
 			tui->handlers.subwindow(tui, &acon,
-				(uint32_t)ev->ioevs[0].iv & 0xffff, tui->handlers.tag);
+				(uint32_t)ev->ioevs[3].iv & 0xffff, tui->handlers.tag);
 		}
 	break;
 
@@ -2785,13 +2900,6 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 {
 	if (!set || !con || !cbs)
 		return NULL;
-
-/*
- * Threading notice - doesn't belong here
- */
-#ifndef SIMPLE_RENDERING
-	TTF_Init();
-#endif
 
 	struct tui_context* res = malloc(sizeof(struct tui_context));
 	if (!res)
