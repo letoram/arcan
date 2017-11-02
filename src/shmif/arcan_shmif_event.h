@@ -431,14 +431,23 @@ enum ARCAN_TARGET_COMMAND {
 	TARGET_COMMAND_AUDDELAY,
 
 /*
- * Comes either as a positive response to a EXTERNAL_SEQREQ, and then
- * ioev[0].iv carries the client- provided request cookie -- or as an explicit
- * request from the parent that a new window of a certain type should be
- * created (used for image- transfers, debug windows, ...)
+ * Signals that a new subsegment has arrived, either as the reply to a previous
+ * user request, or as an explicit feature announce when there is no matching
+ * request cookie.
+ *
+ * ioev[0].iv carries the file descriptor used to build the new segment
+ * connection. This can safely be ignored as the cleanup or handover is
+ * managed by the next event command or by the acquire call.
+ *
  * ioev[1].iv is set to !0 if the segment is used to receive rather than send
  * data.
+ *
  * ioev[2].iv carries the current segment type, which should pair the request
  * (or if the request is unknown, hint what it should be used for).
+ *
+ * ioev[3].iv carries the client- provided request cookie -- or as an explicit
+ * request from the parent that a new window of a certain type should be
+ * created (used for image- transfers, debug windows, ...)
  *
  * To access this segment, call arcan_shmif_acquire with a NULL key. This can
  * only be called once for each NEWSEGMENT event and the user accepts

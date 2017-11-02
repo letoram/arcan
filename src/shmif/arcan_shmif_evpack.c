@@ -288,7 +288,7 @@ const char* arcan_shmif_eventstr(arcan_event* aev, char* dbuf, size_t dsz)
 		break;
 		case TARGET_COMMAND_NEWSEGMENT:
 			snprintf(work, dsz,"TGT:NEWSEGMENT(cookie:%d, direction: %s, type: %d)",
-				ev.tgt.ioevs[0].iv, ev.tgt.ioevs[1].iv ? "read" : "write",
+				ev.tgt.ioevs[3].iv, ev.tgt.ioevs[1].iv ? "read" : "write",
 				ev.tgt.ioevs[2].iv);
 		break;
 		case TARGET_COMMAND_REQFAIL:
