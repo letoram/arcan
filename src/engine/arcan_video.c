@@ -1566,7 +1566,6 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	arcan_video_display.in_video = true;
 	arcan_video_display.conservative = conservative;
 
-	TTF_Init();
 	current_context->world.current.scale.x = 1.0;
 	current_context->world.current.scale.y = 1.0;
 	current_context->vitem_limit = arcan_video_display.default_vitemlim;
