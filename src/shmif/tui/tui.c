@@ -10,8 +10,6 @@
 
 /*
  * copy/clipboard window -
- * 1. add a slot of asynch queue
- * 2. on accept/reject, spawn a dispatch thread (tui_dispatch.c)
  * 3. on paste-mode, spawn a dispatch thread with a pipe-pair
  * 4. implement the dispatch thread to handle load
  */
@@ -192,6 +190,7 @@ struct tui_context {
 	float font_sz; /* size in mm */
 	int font_sz_delta; /* user requested step, pt */
 	int hint;
+	int render_flags;
 	int font_fd[2];
 	float ppcm;
 	enum dirty_state dirty;
@@ -253,7 +252,7 @@ struct tui_context {
 	struct arcan_shmif_cont clip_out;
 	struct arcan_event last_ident;
 
-	bool pending_copy_window;
+	struct tsm_save_buf* pending_copy_window;
 
 /* caller- event handlers */
 	struct tui_cbcfg handlers;
@@ -1104,11 +1103,14 @@ static bool copy_window(struct tui_context* tui)
 	if (tui->pending_copy_window)
 		return true;
 
-	arcan_shmif_enqueue(&tui->acon, &(struct arcan_event){
-		.ext.kind = ARCAN_EVENT(SEGREQ),
-		.ext.segreq.kind = SEGID_TUI,
-		.ext.segreq.id = REQID_COPYWINDOW
-	});
+	if (tsm_screen_save(
+		tui->screen, true, &tui->pending_copy_window)){
+		arcan_shmif_enqueue(&tui->acon, &(struct arcan_event){
+			.ext.kind = ARCAN_EVENT(SEGREQ),
+			.ext.segreq.kind = SEGID_TUI,
+			.ext.segreq.id = REQID_COPYWINDOW
+		});
+	}
 
 	return true;
 }
@@ -1730,27 +1732,54 @@ static void update_screensize(struct tui_context* tui, bool clear)
 }
 
 struct bgthread_context {
-	struct tui_context* ctx;
+	struct tui_context* tui;
+	struct tsm_save_buf* buf;
 	int iopipes[2];
 };
+
+static void drop_pending(struct tsm_save_buf** tui)
+{
+	free((*tui)->metadata);
+	free((*tui)->scrollback);
+	free((*tui)->screen);
+	free(*tui);
+	*tui = NULL;
+}
+
+static void bgscreen_resize(struct tui_context* c,
+	size_t neww, size_t newh, size_t col, size_t row, void* t)
+{
+	struct bgthread_context* ctx = t;
+	if (!ctx->tui)
+		return;
+
+	tsm_screen_erase_screen(ctx->tui->screen, false);
+	tsm_screen_load(ctx->tui->screen, ctx->buf, 0, 0, 0);
+}
 
 static void* bgscreen_thread_proc(void* ctxptr)
 {
 	struct bgthread_context* ctx = ctxptr;
-
 /* details:
  * 1. hide cursor,
- * 2. poll iopipe and read nonblock from it and add as lines to the
- *    current screen
+ * 2. on resize: clear screen then reload
+ * 3. right-drag: paste back into parent
+ * 4. poll input pipe and paste back
  */
 
+	tsm_screen_load(ctx->tui->screen, ctx->buf, 0, 0, TSM_LOAD_RESIZE);
+	ctx->tui->cursor_hard_off = true;
+
 	while (true){
-		arcan_tui_process(&ctx->ctx, 1, NULL, 0, -1);
-		if (-1 == arcan_tui_refresh(ctx->ctx) && errno == EINVAL)
+		arcan_tui_process(&ctx->tui, 1, NULL, 0, -1);
+		if (-1 == arcan_tui_refresh(ctx->tui) && errno == EINVAL)
 			break;
 	}
 
-	arcan_tui_destroy(ctx->ctx, NULL);
+	arcan_tui_destroy(ctx->tui, NULL);
+	drop_pending(&ctx->buf);
+	free(ctx);
+
 	return NULL;
 }
 
@@ -1763,21 +1792,28 @@ static void bgscreen_thread(
 	struct tui_context* src, struct arcan_shmif_cont* con)
 {
 	struct bgthread_context* ctxptr = malloc(sizeof(struct bgthread_context));
-	*ctxptr = (struct bgthread_context){};
+	*ctxptr = (struct bgthread_context){
+		.buf = src->pending_copy_window,
+		.iopipes = {-1, -1}
+	};
 	if (!ctxptr){
 		arcan_shmif_drop(con);
+		drop_pending(&src->pending_copy_window);
 		return;
 	}
 
 /* bind the context to a new tui session */
-	struct tui_cbcfg cbs = {};
+	struct tui_cbcfg cbs = {.tag = ctxptr, .resized = bgscreen_resize};
 	struct tui_settings cfg = arcan_tui_defaults(con, src);
-	ctxptr->ctx = arcan_tui_setup(con, &cfg, &cbs, sizeof(cbs));
-	if (!ctxptr->ctx){
+	ctxptr->tui = arcan_tui_setup(con, &cfg, &cbs, sizeof(cbs));
+	if (!ctxptr->tui){
 		arcan_shmif_drop(con);
 		free(ctxptr);
+		drop_pending(&src->pending_copy_window);
 		return;
 	}
+
+	ctxptr->tui->force_bitmap = src->force_bitmap;
 
 /* send the session to a new background thread that we detach and ignore */
 	pthread_attr_t bgattr;
@@ -1786,10 +1822,14 @@ static void bgscreen_thread(
 
 	pthread_t bgthr;
 	if (0 != pthread_create(&bgthr, &bgattr, bgscreen_thread_proc, ctxptr)){
-		free(ctxptr);
 		arcan_shmif_drop(con);
+		drop_pending(&src->pending_copy_window);
+		free(ctxptr);
 		return;
 	}
+
+/* responsibility handed over to thread */
+	src->pending_copy_window = NULL;
 }
 
 void arcan_tui_screencopy(
@@ -1981,12 +2021,12 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 	case TARGET_COMMAND_REQFAIL:
 		if ( ((uint32_t)ev->ioevs[0].iv & (1 << 31)) ){
 			if (tui->handlers.subwindow){
-			tui->handlers.subwindow(tui, NULL,
-				(uint32_t)ev->ioevs[0].iv & 0xffff, tui->handlers.tag);
+				tui->handlers.subwindow(tui, NULL,
+					(uint32_t)ev->ioevs[0].iv & 0xffff, tui->handlers.tag);
 			}
 		}
 		else if ((uint32_t)ev->ioevs[0].iv == REQID_COPYWINDOW){
-			tui->pending_copy_window = false;
+			drop_pending(&tui->pending_copy_window);
 		}
 	break;
 
@@ -2012,8 +2052,7 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 			else
 				LOG("multiple clipboards received, likely appl. error\n");
 		}
-		else if (ev->ioevs[3].iv == REQID_COPYWINDOW){
-			tui->pending_copy_window = false;
+		else if (ev->ioevs[3].iv == REQID_COPYWINDOW && tui->pending_copy_window){
 			struct arcan_shmif_cont acon =
 				arcan_shmif_acquire(&tui->acon, NULL, ev->ioevs[2].iv, 0);
 			bgscreen_thread(tui, &acon);
@@ -2050,7 +2089,7 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 					tui->dirty |= DIRTY_PENDING;
 				}
 				if (tui->handlers.tick)
-						tui->handlers.tick(tui, tui->handlers.tag);
+					tui->handlers.tick(tui, tui->handlers.tag);
 			}
 			else{
 				if (!tui->cursor_off && tui->focus){
@@ -2826,6 +2865,15 @@ struct tui_settings arcan_tui_defaults(
 		.font_sz = 0.0416
 	};
 	apply_arg(&res, arcan_shmif_args(conn), ref);
+	if (ref){
+		res.cell_w = ref->cell_w;
+		res.cell_h = ref->cell_h;
+		res.alpha = ref->alpha;
+		res.font_sz = ref->font_sz;
+		res.hint = ref->hint;
+		res.cursor_period = ref->cursor_period;
+	}
+
 	return res;
 }
 
@@ -2915,11 +2963,15 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 	if (managed)
 		free(con);
 
-	struct arcan_shmif_initial* init;
-	if (sizeof(struct arcan_shmif_initial) != arcan_shmif_initial(con, &init)){
+/*
+ * only in a managed context can we retrieve the initial state truthfully,
+ * for subsegments the values are derived from parent via the defaults stage.
+ */
+	struct arcan_shmif_initial* init = NULL;
+	if (managed &&
+		sizeof(struct arcan_shmif_initial) != arcan_shmif_initial(con, &init)){
 		LOG("initial structure size mismatch, out-of-synch header/shmif lib\n");
-		if (managed)
-			arcan_shmif_drop(&res->acon);
+		arcan_shmif_drop(&res->acon);
 		free(res);
 		return NULL;
 	}
@@ -2949,8 +3001,10 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 		res->handlers.substitute = harfbuzz_substitute;
 #endif
 
+	if (init){
+		res->ppcm = init->density;
+	}
 	res->focus = true;
-	res->ppcm = init->density;
 	res->smooth_scroll = set->smooth_scroll;
 	res->smooth_thresh = 4;
 
@@ -2971,6 +3025,7 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 	res->cursor_period = set->cursor_period;
 	res->acon.hints = SHMIF_RHINT_SUBREGION;
 	res->cursor = set->cursor;
+	res->render_flags = set->render_flags;
 	res->force_bitmap = (set->render_flags & TUI_RENDER_BITMAP) != 0;
 	res->dbl_buf = (set->render_flags & TUI_RENDER_DBLBUF);
 	res->shape_function = (set->render_flags & TUI_RENDER_SHAPED) ?
@@ -2981,7 +3036,7 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 #endif
 		: draw_monospace;
 
-	if (init->fonts[0].fd != BADFD){
+	if (init && init->fonts[0].fd != BADFD){
 		res->hint = init->fonts[0].hinting;
 		res->font_sz = init->fonts[0].size_mm;
 		setup_font(res, init->fonts[0].fd, res->font_sz, 0);
@@ -3021,8 +3076,9 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 	send_cell_sz(res);
 
 	update_screensize(res, true);
-	res->handlers.resized(res, res->acon.w, res->acon.h,
-		res->cols, res->rows, res->handlers.tag);
+	if (res->handlers.resized)
+		res->handlers.resized(res, res->acon.w, res->acon.h,
+			res->cols, res->rows, res->handlers.tag);
 
 #ifndef SHMIF_TUI_DISABLE_GPU
 	if (set->render_flags & TUI_RENDER_ACCEL){
