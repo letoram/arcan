@@ -26,6 +26,7 @@ static void buffer_destroy(struct wl_listener* list, void* data)
 		surf->buf = NULL;
 	}
 
+	wl_list_init(&surf->l_bufrem.link);
 	wl_list_remove(&surf->l_bufrem.link);
 }
 
@@ -42,9 +43,8 @@ static void surf_attach(struct wl_client* cl, struct wl_resource* res,
 	}
 
 /* remove old listener (always) */
-	if (surf->buf){
-		wl_list_remove(&surf->l_bufrem.link);
-	}
+	wl_list_init(&surf->l_bufrem.link);
+	wl_list_remove(&surf->l_bufrem.link);
 
 	trace(TRACE_SURF, "attach to: %s, @x,y: %d, %d - buf: %"
 		PRIxPTR, surf->tracetag, (int)x, (int)y, (uintptr_t)buf);
