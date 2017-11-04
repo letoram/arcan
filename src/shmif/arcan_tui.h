@@ -259,6 +259,7 @@ struct tui_cbcfg {
 
 /*
  * An explicit label- input has been sent,
+ *
  * [label] is a string identifier that may correspond to an
  *         exposed label from previous calls to query_label().
  * [active] indicates that the unspecified source input device
@@ -352,13 +353,6 @@ struct tui_cbcfg {
 		const uint8_t* str, size_t len, bool cont, void*);
 
 /*
- * The underlying size is about to change, expressed in both pixels and
- * rows/columns
- */
-	void (*resize)(struct tui_context*,
-		size_t neww, size_t newh, size_t col, size_t row, void*);
-
-/*
  * The underlying size has changed, expressed in both pixels and rows/columns
  */
 	void (*resized)(struct tui_context*,
@@ -437,6 +431,18 @@ struct tui_cbcfg {
  */
 	bool (*substitute)(struct tui_context*,
 		struct tui_cell* cells, size_t n_cells, size_t row, void* t);
+
+/*
+ * The underlying size is about to change, expressed in both pixels and
+ * rows/columns
+ */
+	void (*resize)(struct tui_context*,
+		size_t neww, size_t newh, size_t col, size_t row, void*);
+
+/*
+ * Window visibility and input focus state has changed
+ */
+	void (*visibility)(struct tui_context*, bool visible, bool focus, void*);
 
 /*
  * Add new callbacks here as needed, since the setup requires a sizeof of

@@ -1361,19 +1361,22 @@ bool tsm_screen_load(struct tsm_screen* dst,
 			memcpy(&unp, &in->screen[pos], csz);
 			tsm_screen_write(dst, unp.ch, &unp.attr);
 		}
+		tsm_screen_move_to(dst, start_x, start_y+md.rows+1);
 	}
-	else
+	else{
 /* replace screen contents with as much as possible */
-	for (size_t y = start_y; y < dst->size_y && y - start_y < md.rows; y++)
-		for (size_t x = start_x; x < dst->size_x && x - start_x < md.columns; x++){
-			struct export_cell unp;
-			memcpy(&unp, &in->screen[ csz *
-				((y-start_y) * md.columns + (x-start_x))], csz);
-			dst->lines[y]->cells[x] = (struct cell){
-				.ch = unp.ch,
-				.width = 1,
-				.attr = unp.attr
-			};
+		for (size_t y = start_y; y < dst->size_y && y - start_y < md.rows; y++)
+			for (size_t x = start_x; x < dst->size_x && x - start_x < md.columns;x++){
+				struct export_cell unp;
+				memcpy(&unp, &in->screen[ csz *
+					((y-start_y) * md.columns + (x-start_x))], csz);
+				dst->lines[y]->cells[x] = (struct cell){
+					.ch = unp.ch,
+					.width = 1,
+					.attr = unp.attr
+				};
+		}
+		tsm_screen_move_to(dst, start_x, start_y+md.rows+1);
 	}
 
 	return true;
@@ -1982,21 +1985,31 @@ void tsm_screen_selection_target(struct tsm_screen *con,
 	selection_set(con, &con->sel_end, posx, posy);
 }
 
-/* TODO: tsm_ucs4_to_utf8 expects UCS4 characters, but a cell contains a
- * tsm-symbol (which can contain multiple UCS4 chars). Fix this when introducing
- * support for combining characters. */
 static unsigned int copy_line(struct line *line, char *buf,
-			      unsigned int start, unsigned int len)
+			      unsigned int start, unsigned int len, bool conv)
 {
 	unsigned int i, end;
 	char *pos = buf;
 
 	end = start + len;
 	for (i = start; i < line->size && i < end; ++i) {
-		if (i < line->size || !line->cells[i].ch)
-			pos += tsm_ucs4_to_utf8(line->cells[i].ch, pos);
-		else
-			pos += tsm_ucs4_to_utf8(' ', pos);
+		if (i < line->size || !line->cells[i].ch){
+			if (!conv){
+				memcpy(pos, &line->cells[i].ch, 4);
+				pos += 4;
+			}
+			else
+				pos += tsm_ucs4_to_utf8(line->cells[i].ch, pos);
+		}
+		else{
+			if (!conv){
+				uint32_t ch = ' ';
+				memcpy(pos, &ch, 4);
+				pos += 4;
+			}
+			else
+				pos += tsm_ucs4_to_utf8(' ', pos);
+		}
 	}
 
 	return pos - buf;
@@ -2005,7 +2018,7 @@ static unsigned int copy_line(struct line *line, char *buf,
 /* TODO: This beast definitely needs some "beautification", however, it's meant
  * as a "proof-of-concept" so its enough for now. */
 SHL_EXPORT
-int tsm_screen_selection_copy(struct tsm_screen *con, char **out)
+int tsm_screen_selection_copy(struct tsm_screen *con, char **out, bool conv)
 {
 	unsigned int len, i;
 	struct selection_pos *start, *end;
@@ -2149,25 +2162,32 @@ int tsm_screen_selection_copy(struct tsm_screen *con, char **out)
 					len = end->x - start->x + 1;
 				else
 					len = iter->size - start->x;
-				pos += copy_line(iter, pos, start->x, len);
+				pos += copy_line(iter, pos, start->x, len, conv);
 			}
 			break;
 		} else if (iter == start->line) {
 			if (iter->size > start->x)
 				pos += copy_line(iter, pos, start->x,
-						 iter->size - start->x);
+						 iter->size - start->x, conv);
 		} else if (iter == end->line) {
 			if (iter->size > end->x)
 				len = end->x + 1;
 			else
 				len = iter->size;
-			pos += copy_line(iter, pos, 0, len);
+			pos += copy_line(iter, pos, 0, len, conv);
 			break;
 		} else {
-			pos += copy_line(iter, pos, 0, iter->size);
+			pos += copy_line(iter, pos, 0, iter->size, conv);
 		}
 
-		*pos++ = '\n';
+		if (conv){
+			*pos++ = '\n';
+		}
+		else {
+			uint32_t ch = '\n';
+			memcpy(pos, &ch, 4);
+			pos += 4;
+		}
 		iter = iter->next;
 	}
 
@@ -2184,25 +2204,32 @@ int tsm_screen_selection_copy(struct tsm_screen *con, char **out)
 						len = end->x - start->x + 1;
 					else
 						len = con->size_x - start->x;
-					pos += copy_line(iter, pos, start->x, len);
+					pos += copy_line(iter, pos, start->x, len, conv);
 				}
 				break;
 			} else if (!start->line && start->y == i) {
 				if (con->size_x > start->x)
 					pos += copy_line(iter, pos, start->x,
-							 con->size_x - start->x);
+							 con->size_x - start->x, conv);
 			} else if (end->y == i) {
 				if (con->size_x > end->x)
 					len = end->x + 1;
 				else
 					len = con->size_x;
-				pos += copy_line(iter, pos, 0, len);
+				pos += copy_line(iter, pos, 0, len, conv);
 				break;
 			} else {
-				pos += copy_line(iter, pos, 0, con->size_x);
+				pos += copy_line(iter, pos, 0, con->size_x, conv);
 			}
 
-			*pos++ = '\n';
+			if (conv){
+				*pos++ = '\n';
+			}
+			else {
+				uint32_t ch = '\n';
+				memcpy(pos, &ch, 4);
+				pos += 4;
+			}
 		}
 	}
 
