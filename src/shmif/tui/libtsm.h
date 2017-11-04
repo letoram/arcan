@@ -276,7 +276,8 @@ bool tsm_screen_save_sub(struct tsm_screen* src,
  * is safe to run multiple times with the same [dst] screen as a way of
  * retaining (some) screen contents in the event of a resize */
 enum load_flags {
-	TSM_LOAD_RESIZE = 1
+	TSM_LOAD_RESIZE = 1,
+	TSM_LOAD_APPEND = 2
 };
 
 bool tsm_screen_load(struct tsm_screen* dst,

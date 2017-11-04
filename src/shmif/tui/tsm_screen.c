@@ -1308,7 +1308,7 @@ bool tsm_screen_save_sub(struct tsm_screen* src,
 		.rows = h
 	};
 
-	buf->screen_sz = sizeof(struct tui_screen_attr) * w * h;
+	buf->screen_sz = sizeof(struct export_cell) * w * h;
 	buf->screen = malloc(buf->screen_sz);
 	size_t ofs = 0;
 
@@ -1321,7 +1321,7 @@ bool tsm_screen_save_sub(struct tsm_screen* src,
 			};
 
 			memcpy(
-				&buf->screen[ofs * sizeof(struct export_cell)],
+			&buf->screen[ofs * sizeof(struct export_cell)],
 				&cell,
 				sizeof(struct export_cell)
 			);
@@ -1347,18 +1347,28 @@ bool tsm_screen_load(struct tsm_screen* dst,
 		return false;
 
 	if (mode & TSM_LOAD_RESIZE){
-		if (md.columns > dst->size_y || md.rows > dst->size_x){
+		if (md.columns > dst->size_x || md.rows > dst->size_y){
 			tsm_screen_resize(dst, md.columns, md.rows);
 		}
 		tsm_screen_erase_screen(dst, false);
 	}
 
+	size_t csz = sizeof(struct export_cell);
+	if (mode & TSM_LOAD_APPEND){
+		tsm_screen_move_to(dst, start_x, start_y);
+		for (size_t pos = 0; pos < md.rows * md.columns * csz; pos += csz){
+			struct export_cell unp;
+			memcpy(&unp, &in->screen[pos], csz);
+			tsm_screen_write(dst, unp.ch, &unp.attr);
+		}
+	}
+	else
 /* replace screen contents with as much as possible */
 	for (size_t y = start_y; y < dst->size_y && y - start_y < md.rows; y++)
 		for (size_t x = start_x; x < dst->size_x && x - start_x < md.columns; x++){
 			struct export_cell unp;
-			memcpy(&unp, &in->screen[ sizeof(struct export_cell) *
-				((y-start_y) * md.columns + (x-start_x))], sizeof(struct export_cell));
+			memcpy(&unp, &in->screen[ csz *
+				((y-start_y) * md.columns + (x-start_x))], csz);
 			dst->lines[y]->cells[x] = (struct cell){
 				.ch = unp.ch,
 				.width = 1,
