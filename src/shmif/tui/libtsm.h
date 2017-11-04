@@ -255,7 +255,7 @@ void tsm_screen_selection_start(struct tsm_screen *con,
 void tsm_screen_selection_target(struct tsm_screen *con,
 	 unsigned int posx,
 	 unsigned int posy);
-int tsm_screen_selection_copy(struct tsm_screen *con, char **out);
+int tsm_screen_selection_copy(struct tsm_screen *con, char **out, bool conv);
 
 /* dynamically allocate a buffer into *dst (caller assumes ownership)
  * and fill with enough state from [src] to be restorable via _load.

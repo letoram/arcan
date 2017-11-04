@@ -8,12 +8,6 @@
  * off along with the option of doing gpu- buffer transfers on.
  */
 
-/*
- * copy/clipboard window -
- * 3. on paste-mode, spawn a dispatch thread with a pipe-pair
- * 4. implement the dispatch thread to handle load
- */
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -29,6 +23,9 @@
 #include <poll.h>
 #include <math.h>
 #include <pthread.h>
+#include <limits.h>
+#include <assert.h>
+_Static_assert(PIPE_BUF >= 4, "pipe atomic write should be >= 4");
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -123,6 +120,10 @@ typedef void (*tui_draw_fun)(
 		int start_x, int start_y, bool synch
 	);
 
+/* globally shared 'local copy/paste' target where tsm- screen
+ * data gets copy/pasted */
+static volatile _Atomic int paste_destination = -1;
+
 struct tui_context;
 struct tui_context {
 /* cfg->nal / state control */
@@ -160,7 +161,7 @@ struct tui_context {
 	uint8_t fstamp;
 
 	unsigned flags;
-	bool focus, inactive;
+	bool focus, inactive, subseg;
 	int inact_timer;
 
 #ifndef SHMIF_TUI_DISABLE_GPU
@@ -205,6 +206,7 @@ struct tui_context {
 	int scrollback;
 	bool mouse_forward;
 	bool scroll_lock;
+	bool select_townd;
 
 /* if we receive a label set in mouse events, we switch to a different
  * interpreteation where drag, click, dblclick, wheelup, wheeldown work */
@@ -1115,13 +1117,6 @@ static bool copy_window(struct tui_context* tui)
 	return true;
 }
 
-static bool sel_append(struct tui_context* tui)
-{
-/* same as copy window (but an empty recipient), and a write- pipe to
- * update it with new contents */
-	return true;
-}
-
 static bool scroll_up(struct tui_context* tui)
 {
 	int nf = mod_to_scroll(tui->modifiers, tui->rows);
@@ -1252,10 +1247,38 @@ bool arcan_tui_copy(struct tui_context* tui, const char* utf8_msg)
 static void select_copy(struct tui_context* tui)
 {
 	char* sel = NULL;
+	ssize_t len;
+/*
+ * The tsm_screen selection code is really icky and well-deserving of a
+ * rewrite. The 'select_townd' toggle here is that the selection function
+ * originally converted to utf8, while we work with UCS4 locally
+ */
+	int dst = atomic_load(&paste_destination);
+	if (tui->select_townd && -1 != dst){
+		len = tsm_screen_selection_copy(tui->screen, &sel, false);
+		if (!len || len <= 1)
+			return;
 
-/* the selection routine here seems very wonky, assume the complexity comes
- * from char.conv and having to consider scrollback */
-	ssize_t len = tsm_screen_selection_copy(tui->screen, &sel);
+/* spinlock on block, we have already _Static_assert on PIPE_BUF */
+		while (len >= 4){
+			int rv = write(dst, sel, 4);
+			if (-1 == rv){
+				if (errno == EINVAL)
+					break;
+				else
+					continue;
+			}
+			len -= 4;
+			sel += 4;
+		}
+
+/* always send a new line (even if it doesn't go through) */
+		uint32_t ch = '\n';
+		write(dst, &ch, 4);
+		return;
+	}
+
+	len = tsm_screen_selection_copy(tui->screen, &sel, true);
 	if (!sel || len <= 1)
 		return;
 
@@ -1313,6 +1336,7 @@ static bool select_row(struct tui_context* tui)
 }
 
 struct lent {
+	int ctx;
 	const char* lbl;
 	const char* descr;
 	bool(*ptr)(struct tui_context*);
@@ -1356,6 +1380,12 @@ static bool mouse_forward(struct tui_context* tui)
 	return true;
 }
 
+static bool sel_sw(struct tui_context* tui)
+{
+	tui->select_townd = !tui->select_townd;
+	return true;
+}
+
 /*
  * Some things missing in labelhint that we'll keep to later
  * 1. descriptions does not match geohint language
@@ -1364,21 +1394,21 @@ static bool mouse_forward(struct tui_context* tui)
  * 3. we do not use subid indexing
  */
 static const struct lent labels[] = {
-	{"LINE_UP", "Scroll 1 row up", scroll_up},
-	{"LINE_DOWN", "Scroll 1 row down", scroll_down},
-	{"PAGE_UP", "Scroll one page up", page_up},
-	{"PAGE_DOWN", "Scroll one page down", page_down},
-	{"COPY_AT", "Copy word at cursor", select_at},
-	{"COPY_ROW", "Copy cursor row", select_row},
-	{"MOUSE_FORWARD", "Toggle mouse forwarding", mouse_forward},
-	{"SCROLL_LOCK", "Arrow- keys to pageup/down", scroll_lock},
-	{"UP", "(scroll-lock) page up, UP keysym", move_up},
-	{"DOWN", "(scroll-lock) page down, DOWN keysym", move_down},
-	{"COPY_WINDOW", "Copy to new passive window", copy_window},
-	{"MOUSE_APPEND", "Select-append to copy window", sel_append},
-	{"INC_FONT_SZ", "Font size +1 pt", inc_fontsz},
-	{"DEC_FONT_SZ", "Font size -1 pt", dec_fontsz},
-	{NULL, NULL}
+	{1 | 2, "LINE_UP", "Scroll 1 row up", scroll_up},
+	{1 | 2, "LINE_DOWN", "Scroll 1 row down", scroll_down},
+	{1 | 2, "PAGE_UP", "Scroll one page up", page_up},
+	{1 | 2, "PAGE_DOWN", "Scroll one page down", page_down},
+	{1 | 2, "COPY_AT", "Copy word at cursor", select_at},
+	{1 | 2, "COPY_ROW", "Copy cursor row", select_row},
+	{1, "MOUSE_FORWARD", "Toggle mouse forwarding", mouse_forward},
+	{1 | 2, "SCROLL_LOCK", "Arrow- keys to pageup/down", scroll_lock},
+	{1 | 2, "UP", "(scroll-lock) page up, UP keysym", move_up},
+	{1 | 2, "DOWN", "(scroll-lock) page down, DOWN keysym", move_down},
+	{1, "COPY_WINDOW", "Copy to new passive window", copy_window},
+	{1 | 2, "INC_FONT_SZ", "Font size +1 pt", inc_fontsz},
+	{1 | 2, "DEC_FONT_SZ", "Font size -1 pt", dec_fontsz},
+	{1, "SELECT_TOGGLE", "Switch select destination (wnd, clipboard)", sel_sw},
+	{0, NULL, NULL}
 };
 
 static void expose_labels(struct tui_context* tui)
@@ -1389,6 +1419,11 @@ static void expose_labels(struct tui_context* tui)
  * NOTE: We do not currently expose a suggested default
  */
 	while(cur->lbl){
+		if (tui->subseg && (cur->ctx & 2) == 0)
+			continue;
+		if (!tui->subseg && (cur->ctx & 1) == 0)
+			continue;
+
 		arcan_event ev = {
 			.category = EVENT_EXTERNAL,
 			.ext.kind = ARCAN_EVENT(LABELHINT),
@@ -1738,11 +1773,15 @@ static void update_screensize(struct tui_context* tui, bool clear)
 struct bgthread_context {
 	struct tui_context* tui;
 	struct tsm_save_buf* buf;
+	bool invalidated;
 	int iopipes[2];
 };
 
 static void drop_pending(struct tsm_save_buf** tui)
 {
+	if (!*tui)
+		return;
+
 	free((*tui)->metadata);
 	free((*tui)->scrollback);
 	free((*tui)->screen);
@@ -1750,7 +1789,40 @@ static void drop_pending(struct tsm_save_buf** tui)
 	*tui = NULL;
 }
 
+static bool bgscreen_label(struct tui_context* c,
+	const char* label, bool active, void* t)
+{
+	struct bgthread_context* ctx = t;
+	if (!ctx->tui)
+		return false;
+
+/* atomically grab the only 'paste' target slot */
+	if (strcmp(label, "PASTE_SELECT") == 0){
+		if (active){
+			atomic_store(&paste_destination, ctx->iopipes[1]);
+		}
+		return true;
+	}
+	return false;
+}
+
+/* synch the buffer copy before so we don't lose pasted contents */
 static void bgscreen_resize(struct tui_context* c,
+	size_t neww, size_t newh, size_t col, size_t row, void* t)
+{
+	struct bgthread_context* ctx = t;
+	if (!ctx->tui)
+		return;
+
+	struct tsm_save_buf* newbuf;
+	if (ctx->invalidated && tsm_screen_save(ctx->tui->screen, true, &newbuf)){
+		drop_pending(&ctx->buf);
+		ctx->invalidated = false;
+		ctx->buf = newbuf;
+	}
+}
+
+static void bgscreen_resized(struct tui_context* c,
 	size_t neww, size_t newh, size_t col, size_t row, void* t)
 {
 	struct bgthread_context* ctx = t;
@@ -1765,13 +1837,50 @@ static void* bgscreen_thread_proc(void* ctxptr)
 {
 	struct bgthread_context* ctx = ctxptr;
 
+	arcan_shmif_enqueue(&ctx->tui->acon, &(struct arcan_event){
+		.category = EVENT_EXTERNAL,
+		.ext.kind = ARCAN_EVENT(LABELHINT),
+		.ext.labelhint.idatatype = EVENT_IDATATYPE_DIGITAL,
+		.ext.labelhint.label = "PASTE_SELECT",
+		.ext.labelhint.descr = "Mark window as copy recipient",
+		.ext.labelhint.initial = TUIK_RETURN
+	});
+
 	tsm_screen_load(ctx->tui->screen, ctx->buf, 0, 0, TSM_LOAD_RESIZE);
 	ctx->tui->cursor_hard_off = true;
+	int exp = -1;
 
 	while (true){
-		arcan_tui_process(&ctx->tui, 1, NULL, 0, -1);
+/* take the paste-slot if no-one has it */
+		while(!atomic_compare_exchange_weak(
+			&paste_destination, &exp, ctx->iopipes[1]));
+
+		struct tui_process_res res =
+			arcan_tui_process(&ctx->tui, 1, &ctx->iopipes[0], 1, -1);
+
+		if (res.errc < TUI_ERRC_OK || res.bad)
+			break;
+
+/* paste into */
+		uint32_t ch;
+		while (4 == read(ctx->iopipes[0], &ch, 4)){
+			if (ch == '\n')
+				tsm_screen_newline(ctx->tui->screen);
+			else
+				arcan_tui_write(ctx->tui, ch, NULL);
+			ctx->invalidated = true;
+		}
+
 		if (-1 == arcan_tui_refresh(ctx->tui) && errno == EINVAL)
 			break;
+	}
+
+/* remove the paste destination if it happens to be us */
+	if (-1 != ctx->iopipes[0]){
+		while(!atomic_compare_exchange_weak(
+			&paste_destination, &ctx->iopipes[1], -1));
+		close(ctx->iopipes[0]);
+		close(ctx->iopipes[1]);
 	}
 
 	arcan_tui_destroy(ctx->tui, NULL);
@@ -1794,18 +1903,32 @@ static void bgscreen_thread(
 		.buf = src->pending_copy_window,
 		.iopipes = {-1, -1}
 	};
-	if (!ctxptr){
+	if (!ctxptr || -1 == pipe(ctxptr->iopipes)){
+		free(ctxptr);
 		arcan_shmif_drop(con);
 		drop_pending(&src->pending_copy_window);
 		return;
 	}
 
+/* pipes used to communicate local clipboard data */
+	fcntl(ctxptr->iopipes[0], F_SETFD, O_CLOEXEC);
+	fcntl(ctxptr->iopipes[0], F_SETFL, O_NONBLOCK);
+	fcntl(ctxptr->iopipes[1], F_SETFD, O_CLOEXEC);
+	fcntl(ctxptr->iopipes[1], F_SETFL, O_NONBLOCK);
+
 /* bind the context to a new tui session */
-	struct tui_cbcfg cbs = {.tag = ctxptr, .resized = bgscreen_resize};
+	struct tui_cbcfg cbs = {
+		.tag = ctxptr,
+		.resize = bgscreen_resize,
+		.resized = bgscreen_resized,
+		.input_label = bgscreen_label
+	};
 	struct tui_settings cfg = arcan_tui_defaults(con, src);
 	ctxptr->tui = arcan_tui_setup(con, &cfg, &cbs, sizeof(cbs));
 	if (!ctxptr->tui){
 		arcan_shmif_drop(con);
+		close(ctxptr->iopipes[0]);
+		close(ctxptr->iopipes[1]);
 		free(ctxptr);
 		drop_pending(&src->pending_copy_window);
 		return;
@@ -1822,6 +1945,8 @@ static void bgscreen_thread(
 	if (0 != pthread_create(&bgthr, &bgattr, bgscreen_thread_proc, ctxptr)){
 		arcan_shmif_drop(con);
 		drop_pending(&src->pending_copy_window);
+		close(ctxptr->iopipes[0]);
+		close(ctxptr->iopipes[1]);
 		free(ctxptr);
 		return;
 	}
@@ -1991,6 +2116,9 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 				tui->cursor_off = tui->sbofs != 0 ? true : false;
 				flag_cursor(tui);
 			}
+			if (tui->handlers.visibility)
+				tui->handlers.visibility(tui,
+					!tui->inactive, tui->focus, tui->handlers.tag);
 		}
 
 /* switch cursor kind on changes to 4 in ioevs[2] */
