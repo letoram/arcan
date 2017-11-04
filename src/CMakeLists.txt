@@ -58,6 +58,7 @@ endif()
 # generate an identifiable buildtag for tracking purposes
 if (NOT DEFINED ENGINE_BUILDTAG)
 	find_package(Git)
+	set(GIT_VERSION)
 	if (GIT_FOUND)
 		execute_process(COMMAND ${GIT_EXECUTABLE} describe --always --tags
 			WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
@@ -65,11 +66,9 @@ if (NOT DEFINED ENGINE_BUILDTAG)
 			OUTPUT_VARIABLE GIT_VERSION
 		)
 		if (NOT ${EXIT_CODE} EQUAL 0)
-			message(FATAL_ERROR
-				"${CLB_RED}Extracting build tag using git failed, -DENGINE_BUILDTAG=mytag manually${CL_RST}")
+		else()
+			string(STRIP ${GIT_VERSION} GIT_VERSION)
 		endif()
-
-		string(STRIP ${GIT_VERSION} GIT_VERSION)
 
 		execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --abbrev-ref HEAD
 			WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
@@ -77,23 +76,19 @@ if (NOT DEFINED ENGINE_BUILDTAG)
 			OUTPUT_VARIABLE GIT_BRANCH
 		)
 		if (NOT ${EXIT_CODE} EQUAL 0)
-			message(FATAL_ERROR
-				"${CLB_RED}Extracting build tag using git failed, -DENGINE_BUILDTAG=mytag manually${CL_RST}")
+		else()
+			string(STRIP ${GIT_BRANCH} GIT_BRANCH)
 		endif()
 
-		string(STRIP ${GIT_BRANCH} GIT_BRANCH)
-
-		set(ENGINE_BUILDTAG arcan-git-${GIT_BRANCH}-${GIT_VERSION})
+		if (${GIT_VERSION} STREQUAL "")
+			amsg("${CLB_RED}missing git_version, using 'relukn' for build tag${CL_RST}")
+			set(ENGINE_BUILDTAG arcan-relukn-${VERSION})
+		else()
+			set(ENGINE_BUILDTAG arcan-git-${GIT_BRANCH}-${GIT_VERSION})
+		endif()
 	else()
-		message(FATAL_ERROR
-			"${CLB_RED}ENGINE_BUILDTAG not found and no git checkout detected, -DENGINE_BUILDTAG=mytag manually${CL_RST}")
-	endif()
-endif()
-
-if (NOT DEFINED ENGINE_BUILDTAG)
-	include(GetGitRevisionDescription)
-	git_describe(ENGINE_BUILDTAG)
-	if (${ENGINE_BUILDTAG} MATCHES "NOTFOUND")
+		amsg("${CLB_RED}git not found, using 'relukn' for build tag${CL_RST}")
+		set(ENGINE_BUILDTAG arcan-relukn-${VERSION})
 	endif()
 endif()
 
@@ -148,6 +143,9 @@ amsg("${CL_YEL}\t-DENABLE_LWA=${CL_GRN}[Off|On]${CL_RST} - Build LWA Arcan clien
 amsg("${CL_YEL}\t-DDISABLE_JIT=${CL_GRN}[Off|On]${CL_RST} - Don't Link with luajit51 (even if found)")
 amsg("${CL_YEL}\t-DNO_FSRV=${CL_GRN}[Off|On]${CL_RST} - Build Arcan without support for frameservers")
 amsg("${CL_YEL}\t-DSHMIF_TUI_ACCEL=${CL_GRN}[Off|On]${CL_RST} - Build Tui with GPU support (ARCAN_ARG=accel=1)")
+amsg("")
+amsg("${CL_WHT}Install Overrides:${CL_RST}")
+amsg("${CL_YEL}\t-D(APPL_DEST, RES_DEST, APIMAN_DEST, MAN_DEST)${CL_RST}")
 amsg("")
 
 # no other audio platforms supported currently
