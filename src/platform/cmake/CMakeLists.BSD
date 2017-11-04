@@ -102,10 +102,21 @@ LIST(APPEND PLATFORM_SOURCES
 	${PLATFORM_ROOT}/${INPUT_PLATFORM}/event.c
 )
 
-set(APPL_DEST ${CMAKE_INSTALL_PREFIX}/share/arcan)
-set(RES_DEST ${CMAKE_INSTALL_PREFIX}/share/arcan)
-set(APIMAN_DEST ${CMAKE_INSTALL_PREFIX}/man/man3)
-set(MAN_DEST ${CMAKE_INSTALL_PERFIX}/man/man1)
+if (NOT APPL_DEST)
+	set(APPL_DEST ${CMAKE_INSTALL_PREFIX}/share/arcan)
+endif()
+
+if (NOT RES_DEST)
+	set(RES_DEST ${CMAKE_INSTALL_PREFIX}/share/arcan)
+endif()
+
+if (NOT APIMAN_DEST)
+	set(APIMAN_DEST ${CMAKE_INSTALL_PREFIX}/man/man3)
+endif()
+
+if (NOT MAN_DEST)
+	set(MAN_DEST ${CMAKE_INSTALL_PERFIX}/man/man1)
+endif()
 
 if (NOT BSD_THREAD)
 	set(BSD_THREAD pthread)
