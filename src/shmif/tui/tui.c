@@ -1707,6 +1707,10 @@ static void update_screensize(struct tui_context* tui, bool clear)
 		tui->cols = cols;
 		tui->rows = rows;
 
+		if (tui->handlers.resize)
+			tui->handlers.resize(tui,
+			tui->acon.w, tui->acon.h, cols, rows, tui->handlers.tag);
+
 /* NOTE/FIXME: this only considers the active screen and not any alternate
  * screens that are around, which is probably not what we want. */
 		tsm_screen_resize(tui->screen, cols, rows);
@@ -2864,7 +2868,7 @@ struct tui_settings arcan_tui_defaults(
 		.cursor_period = 12,
 		.font_sz = 0.0416
 	};
-	apply_arg(&res, arcan_shmif_args(conn), ref);
+
 	if (ref){
 		res.cell_w = ref->cell_w;
 		res.cell_h = ref->cell_h;
@@ -2873,6 +2877,8 @@ struct tui_settings arcan_tui_defaults(
 		res.hint = ref->hint;
 		res.cursor_period = ref->cursor_period;
 	}
+
+	apply_arg(&res, arcan_shmif_args(conn), ref);
 
 	return res;
 }
@@ -2968,8 +2974,8 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
  * for subsegments the values are derived from parent via the defaults stage.
  */
 	struct arcan_shmif_initial* init = NULL;
-	if (managed &&
-		sizeof(struct arcan_shmif_initial) != arcan_shmif_initial(con, &init)){
+	if (sizeof(struct arcan_shmif_initial) != arcan_shmif_initial(con, &init)
+		&& managed){
 		LOG("initial structure size mismatch, out-of-synch header/shmif lib\n");
 		arcan_shmif_drop(&res->acon);
 		free(res);
