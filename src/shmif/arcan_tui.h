@@ -352,6 +352,13 @@ struct tui_cbcfg {
 		const uint8_t* str, size_t len, bool cont, void*);
 
 /*
+ * The underlying size is about to change, expressed in both pixels and
+ * rows/columns
+ */
+	void (*resize)(struct tui_context*,
+		size_t neww, size_t newh, size_t col, size_t row, void*);
+
+/*
  * The underlying size has changed, expressed in both pixels and rows/columns
  */
 	void (*resized)(struct tui_context*,
