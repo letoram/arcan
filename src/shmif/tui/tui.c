@@ -1764,12 +1764,6 @@ static void bgscreen_resize(struct tui_context* c,
 static void* bgscreen_thread_proc(void* ctxptr)
 {
 	struct bgthread_context* ctx = ctxptr;
-/* details:
- * 1. hide cursor,
- * 2. on resize: clear screen then reload
- * 3. right-drag: paste back into parent
- * 4. poll input pipe and paste back
- */
 
 	tsm_screen_load(ctx->tui->screen, ctx->buf, 0, 0, TSM_LOAD_RESIZE);
 	ctx->tui->cursor_hard_off = true;
@@ -1867,7 +1861,9 @@ void arcan_tui_request_subwnd(
 	arcan_shmif_enqueue(&tui->acon, &(struct arcan_event){
 		.ext.kind = ARCAN_EVENT(SEGREQ),
 		.ext.segreq.kind = type,
-		.ext.segreq.id = (uint32_t) id | (1 << 31)
+		.ext.segreq.id = (uint32_t) id | (1 << 31),
+		.ext.segreq.width = tui->acon.w,
+		.ext.segreq.height = tui->acon.h
 	});
 }
 
@@ -2869,6 +2865,8 @@ struct tui_settings arcan_tui_defaults(
 		.font_sz = 0.0416
 	};
 
+	apply_arg(&res, arcan_shmif_args(conn), ref);
+
 	if (ref){
 		res.cell_w = ref->cell_w;
 		res.cell_h = ref->cell_h;
@@ -2876,10 +2874,9 @@ struct tui_settings arcan_tui_defaults(
 		res.font_sz = ref->font_sz;
 		res.hint = ref->hint;
 		res.cursor_period = ref->cursor_period;
+		res.render_flags = ref->render_flags;
+		res.ppcm = ref->ppcm;
 	}
-
-	apply_arg(&res, arcan_shmif_args(conn), ref);
-
 	return res;
 }
 
@@ -3010,6 +3007,8 @@ struct tui_context* arcan_tui_setup(struct arcan_shmif_cont* con,
 	if (init){
 		res->ppcm = init->density;
 	}
+	else
+		res->ppcm = set->ppcm;
 	res->focus = true;
 	res->smooth_scroll = set->smooth_scroll;
 	res->smooth_thresh = 4;
