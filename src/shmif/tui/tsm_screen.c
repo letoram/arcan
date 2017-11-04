@@ -1252,6 +1252,11 @@ struct export_metadata {
 	uint32_t flags;
 };
 
+struct export_cell {
+	struct tui_screen_attr attr;
+	uint32_t ch;
+};
+
 SHL_EXPORT
 bool tsm_screen_save(struct tsm_screen* src, bool sb, struct tsm_save_buf** out)
 {
@@ -1285,10 +1290,10 @@ SHL_EXPORT
 bool tsm_screen_save_sub(struct tsm_screen* src,
 	struct tsm_save_buf** out, size_t x, size_t y, size_t w, size_t h)
 {
-	if (x > src->size_x || +w >= src->size_x)
+	if (x > src->size_x || x+w > src->size_x)
 		return false;
 
-	if (y > src->size_y || y+h >= src->size_y)
+	if (y > src->size_y || y+h > src->size_y)
 		return false;
 
 	struct tsm_save_buf* buf = malloc(sizeof(struct tsm_save_buf));
@@ -1305,24 +1310,20 @@ bool tsm_screen_save_sub(struct tsm_screen* src,
 
 	buf->screen_sz = sizeof(struct tui_screen_attr) * w * h;
 	buf->screen = malloc(buf->screen_sz);
-	buf->altscreen_sz = buf->screen_sz;
-	buf->alt_screen = malloc(buf->altscreen_sz);
 	size_t ofs = 0;
 
-/* theoretically lines and alt_lines may vary, but the _resize calls retains
- * the rectangular shape by padding with default cell values, so it is only
- * the scrollback buffer that is complicated */
+/* the _resize call makes sure that lines actually fit the current size */
 	for (size_t row = y; row < h; row++)
 		for (size_t col = x; col < w; col++, ofs++){
+			struct export_cell cell = {
+				.attr = src->lines[row]->cells[col].attr,
+				.ch = src->lines[row]->cells[col].ch
+			};
+
 			memcpy(
-				&buf->screen[ofs * sizeof(struct tui_screen_attr)],
-				&src->lines[row]->cells[col],
-				sizeof(struct tui_screen_attr)
-			);
-			memcpy(
-				&buf->alt_screen[ofs * sizeof(struct tui_screen_attr)],
-				&src->alt_lines[row]->cells[col],
-				sizeof(struct tui_screen_attr)
+				&buf->screen[ofs * sizeof(struct export_cell)],
+				&cell,
+				sizeof(struct export_cell)
 			);
 		}
 
@@ -1331,7 +1332,8 @@ bool tsm_screen_save_sub(struct tsm_screen* src,
 }
 
 SHL_EXPORT
-bool tsm_screen_load(struct tsm_screen* dst, struct tsm_save_buf* in, int mode)
+bool tsm_screen_load(struct tsm_screen* dst,
+	struct tsm_save_buf* in, size_t start_x, size_t start_y, int mode)
 {
 	struct export_metadata md;
 	if (in->metadata_sz != sizeof(struct export_metadata))
@@ -1345,13 +1347,26 @@ bool tsm_screen_load(struct tsm_screen* dst, struct tsm_save_buf* in, int mode)
 		return false;
 
 	if (mode & TSM_LOAD_RESIZE){
-		tsm_screen_resize(dst, md.columns, md.rows);
+		if (md.columns > dst->size_y || md.rows > dst->size_x){
+			tsm_screen_resize(dst, md.columns, md.rows);
+		}
+		tsm_screen_erase_screen(dst, false);
 	}
 
-/* if mode == replace it's easy, row by row, crop or pad and fill with
- * the default attribute */
+/* replace screen contents with as much as possible */
+	for (size_t y = start_y; y < dst->size_y && y - start_y < md.rows; y++)
+		for (size_t x = start_x; x < dst->size_x && x - start_x < md.columns; x++){
+			struct export_cell unp;
+			memcpy(&unp, &in->screen[ sizeof(struct export_cell) *
+				((y-start_y) * md.columns + (x-start_x))], sizeof(struct export_cell));
+			dst->lines[y]->cells[x] = (struct cell){
+				.ch = unp.ch,
+				.width = 1,
+				.attr = unp.attr
+			};
+	}
 
-	return false;
+	return true;
 }
 
 SHL_EXPORT
@@ -2206,7 +2221,7 @@ tsm_age_t tsm_screen_draw(struct tsm_screen *con, tsm_screen_draw_cb draw_cb,
 
 	cell_init(con, &empty);
 
-	/* push each character into rendering pipeline */
+	/* push ech character into rendering pipeline */
 
 	iter = con->sb_pos;
 	k = 0;

@@ -171,9 +171,6 @@ struct tsm_save_buf {
 
 	size_t screen_sz;
 	uint8_t* screen;
-
-	size_t altscreen_sz;
-	uint8_t* alt_screen;
 };
 
 int tsm_screen_new(struct tsm_screen **out, tsm_log_t log, void *log_data);
@@ -279,11 +276,11 @@ bool tsm_screen_save_sub(struct tsm_screen* src,
  * is safe to run multiple times with the same [dst] screen as a way of
  * retaining (some) screen contents in the event of a resize */
 enum load_flags {
-	TSM_LOAD_RESIZE = 1,
-	TSM_LOAD_APPEND = 2,
-	TSM_LOAD_REPLACE = 4
+	TSM_LOAD_RESIZE = 1
 };
-bool tsm_screen_load(struct tsm_screen* dst, struct tsm_save_buf*, int fl);
+
+bool tsm_screen_load(struct tsm_screen* dst,
+	struct tsm_save_buf* in, size_t start_x, size_t start_y, int fl);
 
 /* returns: 0 on success, or -einval
  * starting from the character at x,y find the first and last
