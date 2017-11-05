@@ -451,6 +451,53 @@ static void ucs4_to_utf8(uint32_t g, char *txt)
 	}
 }
 
+/*
+ * ugly hack to emulate normal uskeyboard behavior to reduce the need for
+ * remapping everything at higher levels
+ */
+static void apply_mod(uint8_t ch[5], int mod)
+{
+	char oldch = ch[0];
+	if (mod)
+		ch[0] = '\0';
+
+	if (oldch > 127 || ch[1] != 0)
+		return;
+
+	if (mod == ARKMOD_LSHIFT || mod == ARKMOD_RSHIFT
+		|| mod == (ARKMOD_LSHIFT | ARKMOD_RSHIFT)){
+		if (isalpha(oldch)){
+			ch[0] = toupper(oldch);
+			return;
+		}
+		switch(oldch){
+		case '1': ch[0] = '!'; break;
+		case '2': ch[0] = '"'; break;
+		case '3': ch[0] = '#'; break;
+		case '4': ch[0] = '$'; break;
+		case '5': ch[0] = '%'; break;
+		case '6': ch[0] = '^'; break;
+		case '7': ch[0] = '&'; break;
+		case '8': ch[0] = '*'; break;
+		case '9': ch[0] = '('; break;
+		case '0': ch[0] = ')'; break;
+		case '-': ch[0] = '_'; break;
+		case '=': ch[0] = '+'; break;
+		case '[': ch[0] = '{'; break;
+		case ']': ch[0] = '}'; break;
+		case ';': ch[0] = ':'; break;
+		case '\'': ch[0] = '"'; break;
+		case '\\': ch[0] = '|'; break;
+		case ',': ch[0] = '<'; break;
+		case '.': ch[0] = '>'; break;
+		case '/': ch[0] = '?'; break;
+		case '~': ch[0] = '`'; break;
+		}
+	}
+	else if (mod == ARKMOD_RALT){
+/* US international? */
+	}
+}
 
 const char* platform_event_devlabel(int devid)
 {
@@ -546,8 +593,9 @@ void platform_event_process(arcan_evctx* ctx)
 				ucs4_to_utf8(event.key.keysym.sym,
 					(char*)newevent.io.input.translated.utf8);
 
-				if (event.key.keysym.mod)
-					newevent.io.input.translated.utf8[0] = '\0';
+				if (event.key.keysym.mod){
+					apply_mod(newevent.io.input.translated.utf8, event.key.keysym.mod);
+				}
 /* some hacks to make more of the translated table work, use special modifier
  * rules */
 			}
@@ -868,4 +916,3 @@ void platform_event_init(arcan_evctx* ctx)
 
 	platform_event_rescan_idev(ctx);
 }
-
