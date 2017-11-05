@@ -463,6 +463,10 @@ static bool findshmkey(arcan_frameserver* ctx, int* dfd, mode_t mode){
 	if (retrycount)
 		return true;
 
+/* edge condition: if we run out of attempts, chances are that there will
+ * be a valid value in *dfd, though this shouldn't propagate - there's no
+ * reason not to clean it */
+	*dfd = -1;
 	arcan_warning("findshmkey() -- namespace reservation failed: %s\n", errmsg);
 	return false;
 }
@@ -508,8 +512,8 @@ static bool sockpair_alloc(int* dst, size_t n, bool cloexec)
  * even if we have a preset listening socket, we run through the routine to
  * generate unlink- target etc.
  */
-static bool setup_socket(arcan_frameserver* ctx, int shmfd,
-	const char* optkey, int optdesc)
+static bool setup_socket(
+	arcan_frameserver* ctx, int shmfd, const char* optkey, int optdesc)
 {
 	struct sockaddr_un addr = {
 		.sun_family = AF_UNIX
@@ -623,6 +627,15 @@ static bool shmalloc(arcan_frameserver* ctx,
 		arcan_warning("platform_fsrv_spawn_server(unix) -- couldn't "
 			"allocate shmpage\n");
 fail:
+/* subtle edge case, dropshared_keyed only unlinks, it doesn't
+ * close the memory descriptor or the semaphores, so those will
+ * leak even if we unlink */
+		if (shmfd != -1){
+			close(shmfd);
+			sem_close(ctx->vsync);
+			sem_close(ctx->async);
+			sem_close(ctx->esync);
+		}
 		dropshared_keyed(&ctx->shm.key);
 		return false;
 	}
