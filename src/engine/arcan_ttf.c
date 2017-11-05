@@ -1061,13 +1061,8 @@ void TTF_SetFontStyle( TTF_Font* font, int style )
 	}
 }
 
-/*
- * notably not thread-safe, but we run this renderer single threaded,
- * VLAs may run too large with user supplied data and malloc abuse is
- * not much fun.
- */
-static size_t pool_cnt;
-static uint32_t* unicode_buf;
+_Thread_local static size_t pool_cnt;
+_Thread_local static uint32_t* unicode_buf;
 
 static void size_upool(int len)
 {
