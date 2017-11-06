@@ -26,8 +26,10 @@ static void buffer_destroy(struct wl_listener* list, void* data)
 		surf->buf = NULL;
 	}
 
-	wl_list_init(&surf->l_bufrem.link);
-	wl_list_remove(&surf->l_bufrem.link);
+	if (surf->l_bufrem_a){
+		surf->l_bufrem_a = false;
+		wl_list_remove(&surf->l_bufrem.link);
+	}
 }
 
 /*
@@ -42,9 +44,10 @@ static void surf_attach(struct wl_client* cl, struct wl_resource* res,
 		return;
 	}
 
-/* remove old listener (always) */
-	wl_list_init(&surf->l_bufrem.link);
-	wl_list_remove(&surf->l_bufrem.link);
+	if (surf->l_bufrem_a){
+		surf->l_bufrem_a = false;
+		wl_list_remove(&surf->l_bufrem.link);
+	}
 
 	trace(TRACE_SURF, "attach to: %s, @x,y: %d, %d - buf: %"
 		PRIxPTR, surf->tracetag, (int)x, (int)y, (uintptr_t)buf);
@@ -61,6 +64,7 @@ static void surf_attach(struct wl_client* cl, struct wl_resource* res,
 	}
 
 	if (buf){
+		surf->l_bufrem_a = true;
 		surf->l_bufrem.notify = buffer_destroy;
 		wl_resource_add_destroy_listener(buf, &surf->l_bufrem);
 	}
@@ -175,6 +179,7 @@ static void surf_inputreg(struct wl_client* cl,
 {
 	trace(TRACE_REGION, "input_region");
 /*
+ * INCOMPLETE:
  * Should either send this onward for the wm scripts to mask/forward
  * events that fall outside the region, or annotate the surface resource
  * and route the input in the bridge. This becomes important with complex

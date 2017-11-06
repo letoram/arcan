@@ -259,6 +259,15 @@ static void flush_surface_events(struct comp_surf* surf)
 		case TARGET_COMMAND_OUTPUTHINT:{
 /* have we gotten reconfigured to a different display? */
 		}
+/* we might get a migrate reset induced by the client-bridge connection,
+ * if so, update viewporting hints at least, and possibly active input-
+ * etc. regions as well */
+		case TARGET_COMMAND_RESET:{
+			if (ev.tgt.ioevs[0].iv == 0){
+				trace(TRACE_ALLOC, "surface-reset client rebuild test");
+				rebuild_client(surf->client);
+			}
+		}
 		case TARGET_COMMAND_STEPFRAME:
 			try_frame_callback(surf, acon);
 		break;
@@ -287,7 +296,7 @@ static void flush_client_events(
 		switch(ev.tgt.kind){
 		case TARGET_COMMAND_EXIT:
 			trace(TRACE_ALLOC, "shmif-> kill client");
-/*		this just murders us, hmm...
+/*		this just murders us, should possibly send some 'die' event
  *		wl_client_destroy(cl->client);
 			trace("shmif-> kill client");
  */
@@ -296,17 +305,19 @@ static void flush_client_events(
 			trace(TRACE_ALLOC, "shmif-> target update visibility or size");
 			if (ev.tgt.ioevs[0].iv && ev.tgt.ioevs[1].iv){
 			}
-/* this one isn't very easy - since only the primary segment (i.e.
- * client here) survives, all the existing subsurfaces need to be
- * re-requested and remapped.
- *
- * reset-state:
- *  for all surfaces from this client:
- *     resubmit-request, fail: simulate _COMMAND_EXIT
- *     accept: update the resource reference
- */
 		break;
+
+/*
+ * destroy / re-request all surfaces tied to this client as the underlying
+ * connection primitive might have been changed, when stable, this should only
+ * need to be done for reset state 3 though, but it helps testing.
+ */
 		case TARGET_COMMAND_RESET:
+			trace(TRACE_ALLOC, "reset-rebuild client");
+			rebuild_client(cl);
+
+/* in state 3, we also need to extract the descriptor and swap it out in the
+ * pollset or we'll spin 100% */
 		break;
 		case TARGET_COMMAND_REQFAIL:
 		break;

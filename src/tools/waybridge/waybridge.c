@@ -39,6 +39,13 @@ struct comp_surf;
 static struct bridge_client* find_client(struct wl_client* cl);
 
 /*
+ * Used as a reaction to _RESET[HARD] when a client is forcibly migrated or
+ * recovers from a crash. Enumerate all related surfaces, re-request and then
+ * re-viewport.
+ */
+static void rebuild_client(struct bridge_client*);
+
+/*
  * we use a slightly weird system of allocation groups and slots,
  * where each group act as a "up to 64-" bitmap of bridged surfaces
  * with the hope of using that as a structure to multiprocess and/or
@@ -411,7 +418,9 @@ static bool request_surface(
 		req->dispatch(req, NULL);
 
 /* FIXME: we also need to flush the accumulated events, this should
- * just be to flush_client_events with each entry of the event-queue */
+ * just be to flush_client_events with each entry of the event-queue -
+ * since we don't use the control connection for anything, this only
+ * mask trivial events though */
 	if (pqueue_sz > 0){
 		printf("flush / free events\n");
 	}
@@ -424,7 +433,9 @@ static void destroy_comp_surf(struct comp_surf* surf)
 	if (!surf)
 		return;
 
-	if (surf->cbuf){
+/* remove old listener (always) */
+	if (surf->l_bufrem_a){
+		surf->l_bufrem_a = false;
 		wl_list_remove(&surf->l_bufrem.link);
 	}
 
@@ -534,38 +545,20 @@ static struct bridge_client* find_client(struct wl_client* cl)
 		}
 	}
 
-	trace(TRACE_ALLOC, "connecting new bridge client");
 /*
- * [POSSIBLE FORK SLOT]
- * - for this tactic to work, we need to:
- * if (wl.fork_mode){
- *  int fd = get_descriptor_for_client(cl);
- *  clfd = dup(fd);
- *  dup2(/dev/null -> fd);
- *  if (0 == fork()){
- *  	arcan_shmif_open();
- *  	enter_simple_loop(clfd, shmcont.fd); (just wl_connection_flush
- *  }
- *
- *  free descriptor resources from display (but don't close)
- *  set IGN on SIGCHLD and just let the thing die after its finished
- *  if (0 == fork()){
- *  	enter_simple_loop(allocators, wl_connection_flush(fd));
- *  	exit();
- *  }
- *  else {
- *    wl_client_destroy()
- *  }
- * }
+ * we can get away with this since we are comprised of asynch signal safe
+ * calls, no mallocs or threads that would be in a pending state - the
+ * dangerous parts - mostly EGL aren't used or allocated in the main process
  */
+	trace(TRACE_ALLOC, "connecting new bridge client");
 
 /* FIRST connect a new bridge to arcan, this could be circumvented and simply
  * treat each 'surface' as a bridge- connection, but it would break the option
  * to track origin. There's also the problem of creating the abstract display
  * as we don't have the display properties until the first connection has been
  * made */
-	struct arcan_shmif_cont con = arcan_shmif_open(SEGID_BRIDGE_WAYLAND, 0,
-	NULL);
+	struct arcan_shmif_cont con =
+		arcan_shmif_open(SEGID_BRIDGE_WAYLAND, 0, NULL);
 	if (!con.addr){
 		trace(TRACE_ALLOC,
 			"failed to open segid-bridge-wayland connection to arcan server");
@@ -583,8 +576,9 @@ static struct bridge_client* find_client(struct wl_client* cl)
 	}
 
 /* There's an ugly little mismatch here in that a client connection in arcan
- * forcibly implies a surface, while-as in wayland, a client can connect and
- * just sit there - or create one surface, destroy it and create a new one.
+ * forcibly implies a surface-buffer-role bond at the same time, while-as in
+ * wayland, a client can connect and just sit there - or create one surface,
+ * destroy it and create a new one.
  *
  * This leaves us the problem of what to do with this wasted connection, either
  * we treat it as a local 'cache' and re-use this when a new surface is
@@ -607,6 +601,127 @@ static struct bridge_client* find_client(struct wl_client* cl)
 	wl_client_add_destroy_listener(cl, &res->l_destr);
 
 	return res;
+}
+
+static void rebuild_client(struct bridge_client* bcl)
+{
+/* enumerate all surfaces, find those that are tied to the bridge,
+ * rerequest the underlying segment and apply it to that slot. */
+	struct {
+		struct comp_surf* surf;
+		struct arcan_shmif_cont new;
+		int ind;
+		int group;
+	} surfaces[wl.n_groups * 64];
+	size_t surf_count = 0;
+	memset(surfaces, '\0', sizeof(surfaces[0]) * wl.n_groups * 64);
+
+/* update the pollset with the new descriptor */
+	wl.groups[bcl->group].pg[bcl->slot].fd = bcl->acon.epipe;
+
+	for (size_t i = 0; i < wl.n_groups; i++){
+		uint64_t mask = wl.groups[i].alloc;
+		while (mask){
+			uint64_t ind = find_set64(mask);
+			if (!ind)
+				continue;
+			ind--;
+			mask &= ~(1 << ind);
+
+/* if it's not a surface, or if it is a proxy-surface, ignore */
+			if (wl.groups[i].slots[ind].type != SLOT_TYPE_SURFACE ||
+				!wl.groups[i].slots[ind].surface)
+				continue;
+
+			if (wl.groups[i].slots[ind].surface->client == bcl){
+				surfaces[surf_count].group = i;
+				surfaces[surf_count].ind = ind;
+				surfaces[surf_count].surf = wl.groups[i].slots[ind].surface;
+				surf_count++;
+			}
+		}
+	}
+
+/* [Pass 1]
+ * Enumerate all the client-bound surfaces and re-request them, if one fails
+ * though - we're SOL, might need a panic- hook in the comp_surf in order to
+ * forward deletion to the client so it knows that some surface died, though
+ * this will likely just make the thing crash. */
+	for (size_t i = 0; i < surf_count; i++){
+		struct comp_surf* surf = surfaces[i].surf;
+		static uint32_t ralloc_id = 0xbeba;
+		arcan_shmif_enqueue(&bcl->acon, &(struct arcan_event){
+			.ext.kind = ARCAN_EVENT(SEGREQ),
+			.ext.segreq.kind = arcan_shmif_segkind(&surf->acon),
+			.ext.segreq.id = ralloc_id++
+		});
+
+/* The pqueue should really not have any interesting events as we only use
+ * the bridge for allocation (except exits and then we'll fail anyhow) */
+		struct arcan_event* pqueue;
+		ssize_t pqueue_sz;
+		struct arcan_event acqev;
+		if (arcan_shmif_acquireloop(&bcl->acon, &acqev, &pqueue, &pqueue_sz)){
+/* unrecoverable */
+			if (acqev.tgt.kind != TARGET_COMMAND_NEWSEGMENT){
+				trace(TRACE_ALLOC, "failed to re-acquire subsegment, broken client");
+				wl_client_post_no_memory(bcl->client);
+				for (size_t j = 0; j < i; j++)
+					arcan_shmif_drop(&surfaces[i].new);
+				return;
+			}
+			surfaces[i].new =
+				arcan_shmif_acquire(&bcl->acon,
+					NULL, arcan_shmif_segkind(&surf->acon), SHMIF_DISABLE_GUARD);
+			free(pqueue);
+		}
+	}
+
+/* [Pass 2]
+ * Now we have all new shiny surfaces, rebuild buffer hierarchy tracking
+ */
+	for (size_t i = 0; i < surf_count; i++){
+		struct comp_surf* surf = surfaces[i].surf;
+
+/* if there's a hierarchy relation, first find the original index */
+		if (surf->viewport.ext.viewport.parent){
+			for (size_t j = 0; j < surf_count; j++){
+				if (surfaces[j].surf->acon.segment_token){
+					surf->viewport.ext.viewport.parent = surfaces[j].new.segment_token;
+					break;
+				}
+			}
+		}
+	}
+
+/* [Pass 3]
+ * synch sizes, copy contents and return buffers
+ */
+	for (size_t i = 0; i < surf_count; i++){
+		struct comp_surf* surf = surfaces[i].surf;
+		surfaces[i].new.hints = surf->acon.hints;
+
+/* there's no expressed guarantee that the new buffer will have the same
+ * stride/pitch, but that's practically the case */
+		if (arcan_shmif_resize(&surfaces[i].new, surf->acon.w, surf->acon.h)){
+			memcpy(
+				surfaces[i].new.vidp,
+				surf->acon.vidp,
+				surf->acon.h * surf->acon.stride
+			);
+		}
+
+/* free the old relation and resynch the hierarchy/coordinates */
+		arcan_shmif_drop(&surf->acon);
+		surf->acon = surfaces[i].new;
+		arcan_shmif_enqueue(&surf->acon, &surf->viewport);
+		arcan_shmif_signal(&surf->acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
+		wl.groups[surfaces[i].group].pg[surfaces[i].ind].fd = surf->acon.epipe;
+	}
+
+/* clipboards can be allocated dynamically so no need to care there */
+	arcan_shmif_drop(&bcl->clip_in);
+	arcan_shmif_drop(&bcl->clip_out);
 }
 
 /*
@@ -981,7 +1096,6 @@ int main(int argc, char* argv[])
 			}
 		}
 	}
-
 	while(wl.alive && process_group(&wl.groups[0])){}
 
 cleanup:

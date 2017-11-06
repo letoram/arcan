@@ -94,6 +94,8 @@ struct frame_cb {
 #define SURF_TAGLEN 16
 struct comp_surf {
 	struct wl_listener l_bufrem;
+	bool l_bufrem_a;
+
 	char tracetag[SURF_TAGLEN];
 
 	struct bridge_client* client;

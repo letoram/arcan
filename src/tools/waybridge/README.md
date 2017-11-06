@@ -130,11 +130,12 @@ TODO
 
 Rough estimate of planned changes and order:
 
-1. wl\_shell fixes / event propagation
-2. mouse wheel actions
-3. seccmp- sandboxing
-4. fork() mode
-5. data-device to clipboard
+1. fork- mode
+2. recovery- rebuild
+3. seccmp- filtering
+4. wl\_shell fixes / event propagation
+5. mouse wheel actions
+6. data-device to clipboard
 
 (x - done, p - partial/possible-tuning, s - showstopper, i - ignored for now)
 + (for-each finished milestone, verify allocation/deallocation/validation)
