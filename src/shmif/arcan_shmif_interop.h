@@ -211,6 +211,11 @@ int arcan_shmif_resolve_connpath(
 	const char* key, char* dst, size_t dsz);
 
 /*
+ * get the segment kind identifier from an existing connection
+ */
+enum ARCAN_SEGID arcan_shmif_segkind(struct arcan_shmif_cont* con);
+
+/*
  * calculates a hash of the layout of the shmpage in order to detect subtle
  * compiler mismatches etc.
  */
