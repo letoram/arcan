@@ -495,7 +495,7 @@ static int tsm_draw_callback(struct tsm_screen* screen, uint32_t id,
 {
 	struct tui_context* tui = data;
 
-	if (!(age && tui->age && age <= tui->age)){
+	if (!(age && tui->age && age <= tui->age) && x < tui->cols && y < tui->rows){
 		size_t pos = y * tui->cols + x;
 		tui->front[pos].draw_ch = tui->front[pos].ch = *ch;
 		tui->front[pos].attr = *attr;
@@ -1019,6 +1019,10 @@ static void update_screen(struct tui_context* tui, bool ign_inact)
 	if (tui->cursor_upd){
 /* FIXME: for shaped drawing, we invalidate the entire cursor- row and the
  * blitting should be reworked to account for that */
+		if (tui->cursor_y >= tui->rows)
+			tui->cursor_y = tui->rows-1;
+		if (tui->cursor_x >= tui->cols)
+			tui->cursor_x = tui->cols-1;
 		int x, y, w, h;
 		resolve_cursor(tui, &x, &y, &w, &h);
 		struct tui_cell* tc = &tui->front[tui->cursor_y * tui->cols + tui->cursor_x];

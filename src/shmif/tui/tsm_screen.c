@@ -1370,13 +1370,9 @@ bool tsm_screen_load(struct tsm_screen* dst,
 				struct export_cell unp;
 				memcpy(&unp, &in->screen[ csz *
 					((y-start_y) * md.columns + (x-start_x))], csz);
-				dst->lines[y]->cells[x] = (struct cell){
-					.ch = unp.ch,
-					.width = 1,
-					.attr = unp.attr
-				};
+				tsm_screen_move_to(dst, x, y);
+				tsm_screen_write(dst, unp.ch, &unp.attr);
 		}
-		tsm_screen_move_to(dst, start_x, start_y+md.rows+1);
 	}
 
 	return true;
