@@ -453,6 +453,8 @@ static void destroy_comp_surf(struct comp_surf* surf)
 		arcan_shmif_drop(&surf->acon);
 		free(tag);
 	}
+	else
+		trace(TRACE_ALLOC, "destroy comp on non-acon surface\n");
 
 	memset(surf, '\0', sizeof(struct comp_surf));
 	free(surf);
@@ -490,7 +492,7 @@ static void destroy_client(struct wl_listener* l, void* data)
 /* check if it belongs to the client we want to destroy */
 			if (wl.groups[i].slots[j].type == SLOT_TYPE_SURFACE &&
 				wl.groups[i].slots[j].surface &&
-				wl.groups[i].slots[j].surface->client == cl){
+				(wl.groups[i].slots[j].surface->client == cl)){
 				trace(TRACE_ALLOC,"destroy_client->dangling surface(%zu:%zu:%c)",
 					i, j, wl.groups[i].slots[j].idch);
 				destroy_comp_surf(wl.groups[i].slots[j].surface);
@@ -650,6 +652,8 @@ static void rebuild_client(struct bridge_client* bcl)
 	for (size_t i = 0; i < surf_count; i++){
 		struct comp_surf* surf = surfaces[i].surf;
 		static uint32_t ralloc_id = 0xbeba;
+		trace(TRACE_ALLOC, "rebuild, request %d => %d\n",
+			surf->tracetag, arcan_shmif_segkind(&surf->acon));
 		arcan_shmif_enqueue(&bcl->acon, &(struct arcan_event){
 			.ext.kind = ARCAN_EVENT(SEGREQ),
 			.ext.segreq.kind = arcan_shmif_segkind(&surf->acon),
@@ -712,6 +716,8 @@ static void rebuild_client(struct bridge_client* bcl)
 		}
 
 /* free the old relation and resynch the hierarchy/coordinates */
+		surfaces[i].new.user = surf->acon.user;
+		surf->acon.user = NULL;
 		arcan_shmif_drop(&surf->acon);
 		surf->acon = surfaces[i].new;
 		arcan_shmif_enqueue(&surf->acon, &surf->viewport);
