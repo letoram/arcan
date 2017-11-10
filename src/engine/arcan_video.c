@@ -3713,8 +3713,11 @@ static struct agp_mesh_store tesselate_2d(size_t n_s, size_t n_t)
 
 /* use same buffer for both vertices and txcos, can't reuse the same values
  * though initially similar, the user might want to modify */
-	float* vertices = arcan_alloc_mem(sizeof(float)*n_s*n_t*4,
+	res.shared_buffer_sz = sizeof(float) * n_s * n_t * 4;
+	void* sbuf = arcan_alloc_mem(res.shared_buffer_sz,
 		ARCAN_MEM_MODELDATA, ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE);
+	res.shared_buffer = (uint8_t*) sbuf;
+	float* vertices = sbuf;
 	float* txcos = &vertices[n_s*n_t*2];
 
 	if (!vertices)
@@ -3776,8 +3779,7 @@ arcan_errc arcan_video_defineshape(arcan_vobj_id dst,
 	}
 
 	if (vobj->shape || n_s == 1 || n_t == 1){
-		arcan_mem_free(vobj->shape->verts);
-		arcan_mem_free(vobj->shape->indices);
+		agp_drop_mesh(vobj->shape);
 		if (n_s == 1 || n_t == 1){
 			vobj->shape = NULL;
 			return ARCAN_OK;
@@ -4457,9 +4459,6 @@ static inline void setup_surf(struct rendertarget* dst,
 	update_shenv(src, prop);
 }
 
-/*
- * this little workaround is mostly
- */
 static inline void setup_shape_surf(struct rendertarget* dst,
 	surface_properties* prop, arcan_vobject* src, float** mv)
 {
