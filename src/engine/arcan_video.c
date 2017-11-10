@@ -3735,8 +3735,10 @@ static struct agp_mesh_store tesselate_2d(size_t n_s, size_t n_t)
 	for (size_t y = 0; y < n_t; y++){
 		for (size_t x = 0; x < n_s; x++){
 			size_t ofs = (y * n_s + x) * 2;
-			txcos[ofs + 0] = vertices[ofs + 0] = (float)x * step_s - 1.0;
-			txcos[ofs + 1] = vertices[ofs + 1] = (float)y * step_t - 1.0;
+			vertices[ofs + 0] = (float)x * step_s - 1.0;
+			vertices[ofs + 1] = (float)y * step_t - 1.0;
+			txcos[ofs + 0] = (float)x / (float)n_s;
+			txcos[ofs + 1] = (float)y / (float)n_t;
 		}
 	}
 
