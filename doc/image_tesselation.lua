@@ -6,7 +6,7 @@
 -- @inargs: vid:id, float:s, float:t, func:callback
 -- @outargs:
 -- @longdescr: This function is used to convert a normal vid to a pseudo-3D
--- object in the sense that it becomes a tesselated quad with *s* steps in one
+-- object in the sense that it becomes a tesselated plane with *s* steps in one
 -- dimension, and *t* steps in the other.
 --
 -- This is intended for very specific effects, either by itself or when
@@ -38,14 +38,22 @@
 --
 --  :texcos(ind, set_ind) => s, t
 --  :texcos(ind, set_ind, new_s, new_t)
+--  aliased as :texture_coordinates
 --  for fetching and updating texture coordinates, set_ind should be 0 or 1
---  also aliased as texture_coordinates
+--  as there are two possible set of texture coordinates per vertex.
 --
 --  :primitive_type(0 or 1) for switching between triangle soup (0)
 --  and point-cloud (1) when rendering.
 --
 -- If any of these storage blocks doesn't exist, an attempt to set an index
 -- will force it to be allocated.
+--
+-- The plane is indexed, and the individual indices can be manipulated in order
+-- to create degenerate triangles that will be discarded. This is useful to
+-- 'slice out' parts  of the plane. These can be accessed via:
+--  :indices(ind) => p1x, p1y, p2x, p2y, p2z, p3x, p3y, p3z
+--  :indices(ind, p1x, p1y, p2x, p2y, p2z, p3x, p3y, p3z)
+-- For a vertex size of 3. If the vertex size of 2, omitt the z arguments.
 --
 -- @note: Picking operations like image_hit does not take tesselation into
 -- account. This may be subject to change.

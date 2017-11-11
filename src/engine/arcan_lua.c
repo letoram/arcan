@@ -8336,6 +8336,56 @@ static int procimage_get(lua_State* ctx)
 	LUA_ETRACE("procimage:get", NULL, nch);
 }
 
+static int meshaccess_indices(lua_State* ctx)
+{
+	LUA_TRACE("meshAccess:indices");
+	struct mesh_ud* ud = luaL_checkudata(ctx, 1, "meshAccess");
+	size_t ind = luaL_checkint(ctx, 2);
+
+	if (!ud->mesh || !ud->mesh->indices)
+		arcan_fatal("meshAccess:indices called outside of valid scope");
+	if (ind > ud->mesh->n_indices-1)
+		arcan_fatal("meshAccess:indices called with OOB index %zu", ind);
+
+	int nargs = lua_gettop(ctx);
+	if (nargs == 2){
+		if (ud->mesh->vertex_size == 2){
+			lua_pushnumber(ctx, ud->mesh->indices[ind * 6 + 0]);
+			lua_pushnumber(ctx, ud->mesh->indices[ind * 6 + 1]);
+
+			lua_pushnumber(ctx, ud->mesh->indices[ind * 6 + 2]);
+			lua_pushnumber(ctx, ud->mesh->indices[ind * 6 + 3]);
+
+			lua_pushnumber(ctx, ud->mesh->indices[ind * 6 + 4]);
+			lua_pushnumber(ctx, ud->mesh->indices[ind * 6 + 5]);
+
+			LUA_ETRACE("meshAccess:indices", NULL, 6);
+		}
+		else if (ud->mesh->vertex_size == 3){
+			lua_pushnumber(ctx, ud->mesh->indices[ind * 9 + 0]);
+			lua_pushnumber(ctx, ud->mesh->indices[ind * 9 + 1]);
+			lua_pushnumber(ctx, ud->mesh->indices[ind * 9 + 2]);
+
+			lua_pushnumber(ctx, ud->mesh->indices[ind * 9 + 3]);
+			lua_pushnumber(ctx, ud->mesh->indices[ind * 9 + 4]);
+			lua_pushnumber(ctx, ud->mesh->indices[ind * 9 + 5]);
+
+			lua_pushnumber(ctx, ud->mesh->indices[ind * 9 + 6]);
+			lua_pushnumber(ctx, ud->mesh->indices[ind * 9 + 7]);
+			lua_pushnumber(ctx, ud->mesh->indices[ind * 9 + 8]);
+
+			LUA_ETRACE("meshAcess:indices", NULL, 6);
+		}
+	}
+	for (size_t i = 0; i < ud->mesh->vertex_size*3; i++){
+		ud->mesh->indices[
+			ind * ud->mesh->vertex_size * 3  + i] = luaL_checknumber(ctx, 3+i);
+	}
+	ud->mesh->dirty = true;
+	FLAG_DIRTY(ud->vobj);
+	LUA_ETRACE("meshAccess:indices", NULL, 0);
+}
+
 static int meshaccess_verts(lua_State* ctx)
 {
 	LUA_TRACE("meshAccess:vertices");
@@ -8349,7 +8399,6 @@ static int meshaccess_verts(lua_State* ctx)
 
 	int nargs = lua_gettop(ctx);
 	if (nargs == 2){
-		size_t retc = 0;
 		if (ud->mesh->vertex_size == 2){
 			lua_pushnumber(ctx, ud->mesh->verts[ind * 2 + 0]);
 			lua_pushnumber(ctx, ud->mesh->verts[ind * 2 + 1]);
@@ -10842,7 +10891,9 @@ static const luaL_Reg netfuns[] = {
 	lua_setfield(ctx, -2, "__index");
 	lua_pushcfunction(ctx, meshaccess_verts);
 	lua_setfield(ctx, -2, "vertices");
-	lua_pushcfunction(ctx, meshaccess_texcos);
+	lua_pushcfunction(ctx, meshaccess_indices);
+	lua_setfield(ctx, -2, "indices");
+		lua_pushcfunction(ctx, meshaccess_texcos);
 	lua_setfield(ctx, -2, "texcos");
 	lua_pushcfunction(ctx, meshaccess_texcos);
 	lua_setfield(ctx, -2, "texture_coordinates");
