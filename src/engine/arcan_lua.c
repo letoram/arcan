@@ -5011,13 +5011,13 @@ static int imagetess(lua_State* ctx)
 	struct agp_mesh_store* ms;
 	if (LUA_NOREF == ref){
 		arcan_video_defineshape(sid, s, t, &ms);
-		lua_pushboolean(ctx, ms->verts != NULL || s == 1 || t == 1);
+		lua_pushboolean(ctx, (ms && ms->verts != NULL) || s == 1 || t == 1);
 	}
 	else {
 		arcan_video_defineshape(sid, s, t, &ms);
-		lua_pushboolean(ctx, ms->verts != NULL || s == 1 || t == 1);
+		lua_pushboolean(ctx, (ms && ms->verts != NULL) || s == 1 || t == 1);
 /* invoke callback for ms, when finished, empty the userdata store */
-		if (ms->verts){
+		if (ms && ms->verts){
 			lua_rawgeti(ctx, LUA_REGISTRYINDEX, ref);
 			struct mesh_ud* ud = lua_newuserdata(ctx, sizeof(struct mesh_ud));
 			memset(ud, '\0', sizeof(struct mesh_ud));
