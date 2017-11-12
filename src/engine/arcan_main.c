@@ -688,11 +688,13 @@ int MAIN_REDIR(int argc, char* argv[])
 	else if (jumpcode == 3){
 		if (in_recover){
 			arcan_warning("Double-Failure (main appl + adopt appl), giving up.\n");
+			close(STDERR_FILENO);
 			goto error;
 		}
 
 		if (!fallback){
 			arcan_warning("Lua VM failed with no fallback defined, (see -b arg).\n");
+			close(STDERR_FILENO);
 			goto error;
 		}
 
