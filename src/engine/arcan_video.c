@@ -3771,8 +3771,11 @@ arcan_errc arcan_video_defineshape(arcan_vobj_id dst,
 {
 	arcan_vobject* vobj = arcan_video_getobject(dst);
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
-	if (!vobj)
+	if (!vobj){
+		if (store)
+			*store = NULL;
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
+	}
 
 	if (n_s == 0 || n_t == 0){
 		if (store)
@@ -3784,6 +3787,8 @@ arcan_errc arcan_video_defineshape(arcan_vobj_id dst,
 		agp_drop_mesh(vobj->shape);
 		if (n_s == 1 || n_t == 1){
 			vobj->shape = NULL;
+			if (store)
+				*store = vobj->shape;
 			return ARCAN_OK;
 		}
 	}
@@ -4511,7 +4516,7 @@ static inline void draw_texsurf(struct rendertarget* dst,
 		agp_pipeline_hint(PIPELINE_3D);
 		setup_shape_surf(dst, &prop, src, &mvm);
 		agp_shader_envv(MODELVIEW_MATR, mvm, sizeof(float) * 16);
-		agp_submit_mesh(src->shape, MESH_FACING_FRONT);
+		agp_submit_mesh(src->shape, MESH_FACING_BOTH);
 		agp_pipeline_hint(PIPELINE_2D);
 	}
 	else {
