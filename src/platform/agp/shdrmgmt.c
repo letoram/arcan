@@ -78,9 +78,10 @@ static enum shdrutype typetbl[TBLSIZE] = {
 	shdrmat4x4, /* texturem */
 
 	shdrfloat, /* obj_opacity */
-	shdrfloat, /* obj_move */
-	shdrfloat, /* obj_rotate */
-	shdrfloat, /* obj_scale */
+	shdrfloat, /* trans_blend */
+	shdrfloat, /* trans_move */
+	shdrfloat, /* trans_scale */
+	shdrfloat, /* trans_rotate */
 
 	shdrvec2, /* obj_input_sz */
 	shdrvec2, /* obj_output_sz */
@@ -99,6 +100,7 @@ static char* symtbl[TBLSIZE] = {
 	"projection",
 	"texturem",
 	"obj_opacity",
+	"trans_blend",
 	"trans_move",
 	"trans_scale",
 	"trans_rotate",

@@ -136,17 +136,18 @@ enum agp_shader_envts{
 	OBJ_OPACITY     = 3,
 
 /* transformation completion */
-	TRANS_MOVE      = 4,
-	TRANS_ROTATE    = 5,
-	TRANS_SCALE     = 6,
+	TRANS_BLEND     = 4,
+	TRANS_MOVE      = 5,
+	TRANS_ROTATE    = 6,
+	TRANS_SCALE     = 7,
 
 /* object storage / rendering properties */
-	SIZE_INPUT  = 7,
-	SIZE_OUTPUT = 8,
-	SIZE_STORAGE= 9,
+	SIZE_INPUT  = 8,
+	SIZE_OUTPUT = 9,
+	SIZE_STORAGE= 10,
 
-	FRACT_TIMESTAMP_F = 10,
-	TIMESTAMP_D       = 11,
+	FRACT_TIMESTAMP_F = 11,
+	TIMESTAMP_D       = 12,
 };
 
 /*
