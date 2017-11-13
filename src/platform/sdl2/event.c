@@ -207,7 +207,7 @@ static inline void process_mousemotion(arcan_evctx* ctx,
 		.io.datatype = EVENT_IDATATYPE_ANALOG,
 		.io.devkind = EVENT_IDEVKIND_MOUSE,
 		.io.devid = 0,
-		.io.input.analog.nvalues = 2
+		.io.input.analog.nvalues = 1
 	};
 
 	int16_t dstv, dstv_r;
@@ -221,8 +221,8 @@ static inline void process_mousemotion(arcan_evctx* ctx,
 	}
 	else {
 		nev.io.input.analog.axisval[0] = ev->x;
-		nev.io.subid = 1;
 		arcan_event_enqueue(ctx, &nev);
+		nev.io.subid = 1;
 		nev.io.input.analog.axisval[0] = ev->y;
 		arcan_event_enqueue(ctx, &nev);
 	}
