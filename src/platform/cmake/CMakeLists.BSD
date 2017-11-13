@@ -115,7 +115,7 @@ if (NOT APIMAN_DEST)
 endif()
 
 if (NOT MAN_DEST)
-	set(MAN_DEST ${CMAKE_INSTALL_PERFIX}/man/man1)
+	set(MAN_DEST ${CMAKE_INSTALL_PREFIX}/man/man1)
 endif()
 
 if (NOT BSD_THREAD)
