@@ -4433,12 +4433,16 @@ static void update_shenv(arcan_vobject* src, surface_properties* prop)
 
 		ev = time_ratio(trans->scale.startt, trans->scale.endt);
 		agp_shader_envv(TRANS_SCALE, &ev, sizeof(float));
+
+		ev = time_ratio(trans->blend.startt, trans->blend.endt);
+		agp_shader_envv(TRANS_BLEND, &ev, sizeof(float));
 	}
 	else {
 		float ev = 1.0;
 		agp_shader_envv(TRANS_MOVE, &ev, sizeof(float));
 		agp_shader_envv(TRANS_ROTATE, &ev, sizeof(float));
 		agp_shader_envv(TRANS_SCALE, &ev, sizeof(float));
+		agp_shader_envv(TRANS_BLEND, &ev, sizeof(float));
 	}
 }
 
