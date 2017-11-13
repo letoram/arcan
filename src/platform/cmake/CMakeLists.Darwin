@@ -158,11 +158,6 @@ set (
 	frameserver/frameserver.c
 )
 
-set(APPL_DEST ${CMAKE_INSTALL_PREFIX}/share/arcan)
-set(RES_DEST ${CMAKE_INSTALL_PREFIX}/share/arcan)
-set(APIMAN_DEST ${CMAKE_INSTALL_PREFIX}/man/man3)
-set(MAN_DEST ${CMAKE_INSTALL_PREFIX}/man/man1)
-
 # kept as a 'note' on setting up cpack for darwin
 #set(CPACK_BUNDLE_NAME Arcan)
 #set(CPACK_BUNDLE_PLIST ${PLATFORM_PATH}/../darwin/Info.plist)
