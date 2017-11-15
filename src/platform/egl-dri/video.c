@@ -1562,7 +1562,16 @@ static int setup_node_gbm(struct dev_node* node, const char* path, int fd)
 	}
 
 	node->method = M_GBM_SWAP;
-	node->display = node->eglenv.get_display((void*)(node->gbm));
+
+	if (node->eglenv.get_platform_display){
+		debug_print("gbm, using eglGetPlatformDisplayEXT");
+		node->display = node->eglenv.get_platform_display(
+			EGL_PLATFORM_GBM_MESA, (void*)(node->gbm), NULL);
+	}
+	else{
+		debug_print("gbm, building display using native handle only");
+		node->display = node->eglenv.get_display((void*)(node->gbm));
+	}
 
 /* Set the render node environment variable here, this is primarily for legacy
  * clients that gets launched through arcan - the others should get the
@@ -1572,6 +1581,7 @@ static int setup_node_gbm(struct dev_node* node, const char* path, int fd)
 
 	char* rdev = drmGetRenderDeviceNameFromFd(node->fd);
 	if (rdev){
+		debug_print("derived render-node: %s", rdev);
 		setenv("ARCAN_RENDER_NODE", rdev, 1);
 		free(rdev);
 	}
@@ -1579,6 +1589,7 @@ static int setup_node_gbm(struct dev_node* node, const char* path, int fd)
 	else {
 		size_t ind = strtoul(&path[13], NULL, 10);
 		snprintf(pbuf, 24, "/dev/dri/renderD%d", (int)(ind + 128));
+		debug_print("guessing render-node to %s", pbuf);
 		setenv("ARCAN_RENDER_NODE", pbuf, 1);
 	}
 
@@ -2731,7 +2742,7 @@ static bool setup_cards_basic(int w, int h)
 		char buf[sizeof(DEVICE_PATH)];
 		snprintf(buf, sizeof(buf), DEVICE_PATH, i);
 		int fd = open(buf, O_RDWR | O_CLOEXEC);
-		debug_print("trying [basic/auto] setup on %s\n", buf);
+		debug_print("trying [basic/auto] setup on %s", buf);
 		if (-1 != fd){
 /* possible quick hack, just check modules if we have nouveau or nvidia loaded
  * and use that to select buffer mode - there's probably better ways but meh. */
@@ -2739,7 +2750,7 @@ static bool setup_cards_basic(int w, int h)
 				try_node(fd, buf, 0, false, false, -1, w, h))
 					return true;
 			else{
-				debug_print("node setup failed\n");
+				debug_print("node setup failed");
 				close(fd);
 			}
 		}
