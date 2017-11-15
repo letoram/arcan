@@ -657,6 +657,7 @@ fail:
 		shmpage->major = ASHMIF_VERSION_MAJOR;
 		shmpage->minor = ASHMIF_VERSION_MINOR;
 		shmpage->segment_size = ctx->shm.shmsize;
+		shmpage->segment_token = ctx->cookie;
 		shmpage->cookie = arcan_shmif_cookie();
 		shmpage->vpending = 1;
 		shmpage->apending = 1;
@@ -689,15 +690,17 @@ struct arcan_frameserver* platform_fsrv_alloc()
  * etc. */
 	res->desc.channels = ARCAN_SHMIF_ACHANNELS;
 
-/* not used for any serious identification purpose, just to prevent / help
- * detect developer errors */
+/*
+ * used to provide reference value that a client can use in VIEWPORT as a
+ * way of reparenting. Exposed to the scripts in the SEGREQ- handler and
+ * then affirmed in the VIEWPORT handler.
+ */
 	res->cookie = (uint32_t) random();
 
 /* shm- related settings are deferred as this is called previous to mapping
  * (spawn_subsegment / spawn_server) so setting up the eventqueues with
  * killswitches have to be done elsewhere
  */
-
 	return res;
 }
 
@@ -778,7 +781,7 @@ static size_t fsrv_protosize(arcan_frameserver* ctx,
  */
 static bool prepare_segment(struct arcan_frameserver* ctx,
 	int segid, size_t hintw, size_t hinth, bool named,
-	const char* optkey, int optdesc, uintptr_t tag, uint32_t idtok)
+	const char* optkey, int optdesc, uintptr_t tag)
 {
 	size_t abufc = 0;
 	size_t abufsz = 0;
@@ -813,7 +816,6 @@ static bool prepare_segment(struct arcan_frameserver* ctx,
 		shmpage->vpending = 1;
 		shmpage->abufsize = abufsz;
 		shmpage->apending = abufc;
-		shmpage->segment_token = idtok;
 		shmpage->segment_size = arcan_shmif_mapav(shmpage,
 			ctx->vbufs, 1, hintw * hinth * sizeof(shmif_pixel),
 			ctx->abufs, abufc, abufsz
@@ -859,7 +861,7 @@ static bool prepare_segment(struct arcan_frameserver* ctx,
  */
 struct arcan_frameserver* platform_fsrv_spawn_subsegment(
 	struct arcan_frameserver* ctx,
-	int segid, size_t hintw, size_t hinth, uintptr_t tag, uint32_t idtok)
+	int segid, size_t hintw, size_t hinth, uintptr_t tag, uint32_t reqid)
 {
 	if (!ctx || ctx->flags.alive == false)
 		return NULL;
@@ -871,8 +873,7 @@ struct arcan_frameserver* platform_fsrv_spawn_subsegment(
 	if (!newseg)
 		return NULL;
 
-	if (!prepare_segment(newseg,
-		segid, hintw, hinth, false, NULL, -1, tag, idtok)){
+	if (!prepare_segment(newseg, segid, hintw, hinth, false, NULL, -1, tag)){
 		arcan_mem_free(newseg);
 		return NULL;
 	}
@@ -889,6 +890,11 @@ struct arcan_frameserver* platform_fsrv_spawn_subsegment(
  * parent (non-auth) we switch to using the socket as indicator.
  */
 	newseg->child = ctx->child;
+
+/* Set this to make sure that the 'resized' event goes through even when the
+ * client subsegment can submit without renegotiating.
+ */
+	newseg->desc.rz_flag = true;
 
 /*
  * Transfer the new event socket along with the base-key that will be used to
@@ -918,7 +924,7 @@ struct arcan_frameserver* platform_fsrv_spawn_subsegment(
 
 	keyev.tgt.ioevs[1].iv = segid == SEGID_ENCODER ? 1 : 0;
 	keyev.tgt.ioevs[2].iv = segid;
-	keyev.tgt.ioevs[3].iv = idtok;
+	keyev.tgt.ioevs[3].iv = reqid;
 
 	snprintf(keyev.tgt.message,
 		sizeof(keyev.tgt.message) / sizeof(keyev.tgt.message[1]),
@@ -1370,13 +1376,11 @@ int platform_fsrv_prepare(struct arcan_frameserver* ctx, int* clsock)
 }
 
 struct arcan_frameserver* platform_fsrv_listen_external(
-	const char* key, const char* auth, int fd, mode_t mode,
-	uintptr_t tag, uint32_t idtok)
+	const char* key, const char* auth, int fd, mode_t mode, uintptr_t tag)
 {
 	arcan_frameserver* newseg = platform_fsrv_alloc();
 	newseg->sockmode = mode;
-	if (!prepare_segment(newseg,
-		SEGID_UNKNOWN, 32, 32, true, key, fd, tag, idtok)){
+	if (!prepare_segment(newseg, SEGID_UNKNOWN, 32, 32, true, key, fd, tag)){
 		arcan_mem_free(newseg);
 		return NULL;
 	}
@@ -1387,13 +1391,13 @@ struct arcan_frameserver* platform_fsrv_listen_external(
 }
 
 struct arcan_frameserver* platform_fsrv_spawn_server(
-	int segid, size_t w, size_t h, uintptr_t tag, int* childfd, uint32_t idtok)
+	int segid, size_t w, size_t h, uintptr_t tag, int* childfd)
 {
 	arcan_frameserver* newseg = platform_fsrv_alloc();
 	if (!newseg)
 		return NULL;
 
-	if (!prepare_segment(newseg, segid, w, h, false, NULL, -1, tag, idtok)){
+	if (!prepare_segment(newseg, segid, w, h, false, NULL, -1, tag)){
 		arcan_mem_free(newseg);
 		return NULL;
 	}

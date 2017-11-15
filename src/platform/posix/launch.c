@@ -226,8 +226,7 @@ arcan_frameserver* platform_launch_listen_external(
 	const char* key, const char* pw, int fd, mode_t mode, uintptr_t tag)
 {
 	arcan_frameserver* res =
-		platform_fsrv_listen_external(key,
-			pw, fd, mode, tag, arcan_vint_nextfree());
+		platform_fsrv_listen_external(key, pw, fd, mode, tag);
 
 	if (!res)
 		return NULL;
@@ -274,10 +273,9 @@ struct arcan_frameserver* platform_launch_fork(
 	bool add_audio = true;
 	int clsock;
 
-	struct arcan_frameserver* ctx = platform_fsrv_spawn_server(
-		SEGID_UNKNOWN, setup->init_w, setup->init_h, tag,
-		&clsock, arcan_vint_nextfree()
-	);
+	struct arcan_frameserver* ctx =
+		platform_fsrv_spawn_server(
+			SEGID_UNKNOWN, setup->init_w, setup->init_h, tag, &clsock);
 
 	if (!ctx)
 		return NULL;

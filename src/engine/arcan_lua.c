@@ -4058,21 +4058,16 @@ static void push_view(lua_State* ctx, struct arcan_extevent* ev,
 	}
 	lua_rawset(ctx, top);
 
-/* translate to vid namespace if it matches a valid frameserver segment,
- * not a sensitive operation as it only affects window anchoring */
 	uint32_t pid = ev->viewport.parent;
-	if (pid > 0){
-		arcan_vobject* vobj = arcan_video_getobject(pid);
-		if (vobj && vobj->feed.state.tag == ARCAN_TAG_FRAMESERV)
-			tblnum(ctx, "parent", pid + luactx.lua_vidbase, top);
-	}
+	tblnum(ctx, "parent", pid, top);
 }
 
 /*
  * the segment request is treated a little different,
  * we maintain a global state
  */
-static void emit_segreq(lua_State* ctx, struct arcan_extevent* ev)
+static void emit_segreq(
+	lua_State* ctx, struct arcan_frameserver* parent, struct arcan_extevent* ev)
 {
 	luactx.last_segreq = ev;
 	int top = lua_gettop(ctx);
@@ -4086,6 +4081,7 @@ static void emit_segreq(lua_State* ctx, struct arcan_extevent* ev)
 	tblnum(ctx, "reqid", ev->segreq.id, top);
 	tblnum(ctx, "xofs", ev->segreq.xofs, top);
 	tblnum(ctx, "yofs", ev->segreq.yofs, top);
+	tblnum(ctx, "parent", parent->cookie, top);
 	tblstr(ctx, "segkind", fsrvtos(ev->segreq.kind), top);
 
 	luactx.cb_source_tag = ev->source;
@@ -4497,7 +4493,6 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			tblnum(ctx,"streaming",
 				ev->ext.streamstat.streaming!=0,top);
 		break;
-
 		case EVENT_EXTERNAL_CURSORINPUT:
 			tblstr(ctx, "kind", "cursor_input", top);
 			tblnum(ctx, "id", ev->ext.cursor.id, top);
@@ -4519,7 +4514,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 
 /* special semantics for segreq */
 		case EVENT_EXTERNAL_SEGREQ:
-			return emit_segreq(ctx, &ev->ext);
+			return emit_segreq(ctx, fsrv, &ev->ext);
 		break;
 		case EVENT_EXTERNAL_LABELHINT:{
 			const char* idt = lookup_idatatype(ev->ext.labelhint.idatatype);
@@ -7649,7 +7644,8 @@ static int targetaccept(lua_State* ctx)
 	if (!newref){
 		lua_pushvid(ctx, ARCAN_EID);
 		lua_pushaid(ctx, ARCAN_EID);
-		LUA_ETRACE("accept_target", "couldn't allocate frameserver", 2);
+		lua_pushnumber(ctx, 0);
+		LUA_ETRACE("accept_target", "couldn't allocate frameserver", 3);
 	}
 	newref->tag = find_lua_callback(ctx);
 
@@ -7665,10 +7661,11 @@ static int targetaccept(lua_State* ctx)
 
 	lua_pushvid(ctx, newref->vid);
 	lua_pushaid(ctx, newref->aid);
+	lua_pushnumber(ctx, newref->cookie);
 	luactx.last_segreq = NULL;
 	trace_allocation(ctx, "subseg", newref->vid);
 
-	LUA_ETRACE("accept_target", NULL, 2);
+	LUA_ETRACE("accept_target", NULL, 3);
 }
 
 static int targetalloc(lua_State* ctx)
