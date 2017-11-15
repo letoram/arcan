@@ -83,6 +83,14 @@ function welcome()
 	show_image(argwindow);
 end
 
+local tick_counter = 500;
+function welcome_clock_pulse()
+	tick_counter = tick_counter - 1;
+	if (tick_counter == 0) then
+		return shutdown("timeout");
+	end
+end
+
 function welcome_input( inputtbl )
 	if (inputtbl.kind == "digital" and
 		inputtbl.translated and inputtbl.active) then
