@@ -108,7 +108,7 @@ struct shmifsrv_client*
 		return NULL;
 
 	res->con = platform_fsrv_listen_external(
-		name, key, fd ? *fd : -1, permission, 0, idtok);
+		name, key, fd ? *fd : -1, permission, 0);
 
 	if (!res->con){
 		free(res);
@@ -140,7 +140,7 @@ struct shmifsrv_client* shmifsrv_spawn_client(
 	}
 
 	res->con = platform_fsrv_spawn_server(
-		SEGID_UNKNOWN, env.init_w, env.init_h, 0, clsocket, idtok);
+		SEGID_UNKNOWN, env.init_w, env.init_h, 0, clsocket);
 
 	if (statuscode)
 		*statuscode = SHMIFSRV_OK;
