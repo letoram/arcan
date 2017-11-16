@@ -41,7 +41,7 @@ There are a lot of build options for fine-grained control over your Arcan
 build. In this section we will just provide the bare essentials for a build
 on Linux, BSD or OSX. and you can check out the relevant sections in the wiki
 for more detailed documentation on specialized build environments, e.g. an
-X.org-free KMS/DRM. (https://github.com/letoram/arcan/wiki/linux-egl)
+X.org-free KMS/DRM. (https://github.com/letoram/arcan/wiki/egl-dri)
 
 For starters, the easiest approach is to do the following:
 
