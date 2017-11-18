@@ -1,4 +1,4 @@
-PROJECT( netproxy )
+PROJECT( arcan-net )
 cmake_minimum_required(VERSION 2.8.0 FATAL_ERROR)
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -57,6 +57,8 @@ SET(LIBRARIES
 
 set(SOURCES
 	netproxy.cpp
+	blake2bp-ref.c
+	blake2b-ref.c
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES})
