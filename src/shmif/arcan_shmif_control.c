@@ -2222,7 +2222,7 @@ struct arcan_shmif_cont arcan_shmif_open(
 		(struct shmif_open_ext){.type = type}, 0);
 }
 
-enum ARCAN_SEGID arcan_shmif_segkind(struct arcan_shmif_cont* con)
+int arcan_shmif_segkind(struct arcan_shmif_cont* con)
 {
 	return (!con || !con->priv) ? SEGID_UNKNOWN : con->priv->type;
 }

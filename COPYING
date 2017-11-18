@@ -47,6 +47,8 @@ shmif/tui 3-Clause BSD, MIT, LGPLv2+(shl_hash)
 hijack/ 3-Clause BSD, Public Domain
 doc/* and media files in data/resources CC-BY-30
 
+tools/netproxy/ See individual README.md
+
 examples/ Public Domain
 tests/ Public Domain
 distr/scripts/ Public Domain
