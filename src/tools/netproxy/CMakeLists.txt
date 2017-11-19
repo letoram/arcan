@@ -1,5 +1,5 @@
 PROJECT( arcan-net )
-cmake_minimum_required(VERSION 2.8.0 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.0.4 FATAL_ERROR)
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
 	add_definitions(-D_DEBUG)
@@ -17,7 +17,6 @@ add_definitions(
 	-DPOSIX_C_SOURCE
 	-DGNU_SOURCE
 	-Wno-unused-function
-	-std=c++11
 )
 
 include(ExternalProject)
@@ -48,19 +47,27 @@ include_directories(
 )
 
 SET(LIBRARIES
-	pthread
 	m
 	${ARCAN_SHMIF_LIBRARY}
 	${ARCAN_SHMIF_SERVER_LIBRARY}
-	${CMAKE_CURRENT_BINARY_DIR}/udt-prefix/src/udt-build/libudt.a
 )
 
 set(SOURCES
-	netproxy.cpp
 	blake2bp-ref.c
 	blake2b-ref.c
+	a12.c
 )
 
-add_executable(${PROJECT_NAME} ${SOURCES})
-target_link_libraries(${PROJECT_NAME} ${LIBRARIES})
-install(TARGETS ${PROJECT_NAME} DESTINATION bin)
+add_executable( arcan-netpipe ${SOURCES} netpipe.c)
+add_executable( arcan-net ${SOURCES} netproxy.cpp)
+
+set_property(TARGET arcan-net PROPERTY CXX_STANDARD 11)
+set_property(TARGET arcan-netpipe PROPERTY C_STANDARD 11)
+
+target_link_libraries(arcan-net ${LIBRARIES}
+	pthread
+	${CMAKE_CURRENT_BINARY_DIR}/udt-prefix/src/udt-build/libudt.a
+)
+target_link_libraries(arcan-netpipe ${LIBRARIES})
+
+install(TARGETS arcan-net arcan-netpipe DESTINATION bin)

@@ -1,5 +1,6 @@
 /*
  * Network proxy for bridging multiple arcan-shmif connections
+ * nothing to see here for the time being
  */
 #include <cstdlib>
 #include <cstdint>
@@ -15,86 +16,9 @@
 
 extern "C" {
 #include <arcan_shmif_server.h>
-#include "blake2.h"
+#include "a12.h"
 };
 
-enum package_types {
-/* used to setup new channels, authenticate the current or
- * rekey, fixed length 128 bytes */
-	MSG_CNTRL = 0,
-
-/* a normal arcan event packaged, length is in number of
- * packed events */
-	MSG_EVENT = 1,
-
-/* beginning of a new video block, carries encoding and
- * dirty- rectangles fixed size, 128 bytes */
-	MSG_VINIT = 2,
-
-/* continuation of the last block, variable size, length
- * provided in vinit */
-	MSG_VCONT = 3,
-
-/* initiation of a new audio block, carries encoding,
- * packet sizes, fixed size, 128 bytes ... */
-	MSG_AINIT = 4,
-
-/* continuation of an audio block, length provided in
- * ainit */
-	MSG_ACONT = 5
-};
-
-/*
- * [authentication]
- * first message, H1m = BLAKE2(Ks | msg1)
- * second message is BLAKE2(H1m | msg2) and so on.
- *
- * [public key cryptography]
- */
-struct msg_header {
-	uint8_t mac[16];
-	uint8_t kind;
-	uint8_t blob[];
-};
-
-/*
- * abstract access to connection (subclass CChannel?)
- * i.e. CC
- * [local -> remote]
- * 1. pack events and add to main channel
- * 2. video-frame [raw]
- * 3. video-frame [raw-delta]
- * 4. audio-frame [raw]
- *
- * [remote -> local]
- * 1. unpack events and add to main channel
- * 2. video-frame [raw]
- * 3. video-frame [raw-delta]
- * 4. audio-frame [raw]
- *
- * [misc]
- * 1. fd-data channel
- * 2. subwindow mapping ( should just be repeating the same thing )
- * 3. local timer implementation
- * 4. hpassing- reject
- *
- * [qual]
- * 1. audio-frame -> lossy/lowlatency/...
- * 2. h264-frame (video setting based on type)
- *
- * [extended]
- * 1. local audio buffer controls
- * 2. auto migrate on shutdown
- * 3. privsep
- * 4. alternative buffer formats (obj, tui, aobj)
- * 5. symmetric crypto (chacha)
- * 6. optional asymmetric crypto (25519)
- * 7. map into _net and add service discovery
- * 8. add event model learning and fake IO event output
- *    to hinder side channel analysis
- * 9. TUI status window
- *10. support for renderzvous connections and NAT hole punching
- */
 static void handle_outcon(
 	struct shmifsrv_client* cl, std::string host, uint16_t port)
 {
@@ -116,8 +40,8 @@ static void handle_outcon(
 		}
 	}
 
-/* note that SOCK_STREAM actually maps to DGRAM underneath */
-		UDTSOCKET out = UDT::socket(AF_INET, SOCK_STREAM, 0);
+/* note that SOCK_STREAM actually maps to DGRAM underneath
+		UDTSOCKET out = UDT::socket(AF_INET, SOCK_STREAM, 0); */
 
 /* Each event, check if we should handle locally or serialize, if it's a
  * descriptor- outgoing event, setup a new transfer channel in a thread of its
@@ -230,13 +154,14 @@ int main(int argc, char* argv[])
 	if (argc < 4)
 		return show_use(argv[0]);
 
+/*
 	if (strcmp(argv[1], "-s") == 0 && argc == 6){
 		listen_ext(std::string(argv[2]), std::stoi(argv[3]), std::string(argv[4]));
 	}
 	else if (strcmp(argv[1], "-c") == 0 && argc == 4){
 		spawn_conn(std::string(argv[2]), std::string(argv[3]), std::stoi(argv[4]));
 	}
-	else
+	else */
 		return show_use(argv[0]);
 
 	return EXIT_SUCCESS;
