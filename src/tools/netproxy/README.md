@@ -25,7 +25,8 @@ instance.
 
 Arcan netpipe version (testing example):
 
-     arcan-netpipe -c test | arcan-netpipe -s
+     mkfifo fifo
+     cat fifo | arcan-netpipe -c test | arcan-netpipe -s > fifo
      ARCAN_CONNPATH=test afsrv_terminal
 
 On the host local to the arcan instance where the client should originate
@@ -41,15 +42,50 @@ destination is, run arcan-net in server-mode like this:
 This requires a pre-existing ARCAN\_CONNPATH to the local connection point
 that connections should be bridged over.
 
+# Todo
+
+This subproject will stretch until the end of the 0.6 series topic, with
+some sharing likely to be done with the afsrv\_net (i.e. the underlying
+protocol, a12, used along with some service discovery feature and better
+scripting API integration).
+
+Milestone 1 - basic features (0.5.x)
+
+- [ ] Basic API
+- [ ] Control
+- [ ] Uncompressed Video / Video delta
+- [ ] Uncompressed Audio / Audio delta
+- [ ] Raw binary descriptor transfers
+- [ ] Netpipe working
+
+Milestone 2 - closer to useful (0.6.x)
+
+- [ ] basic h264 lowlatency
+- [ ] TUI- text channel
+- [ ] subchannel multiplexing
+- [ ] UDT based carrier (full- proxy client)
+- [ ] dealing with zero-copy buffer handles
+
+Milestone 3 - big stretch (0.6.x)
+
+- [ ] curve25519 key exchange
+- [ ] stream-ciper
+- [ ] rekeying
+- [ ] 'ALT' arcan-lwa interfacing
+- [ ] HEVC
+- [ ] ZSTD
+- [ ] Open3DGC
+- [ ] congestion control / dynamic encoding parameters
+
 # Security/Safety
 
 Right now, there's barely any (there will be though) - a lot of the other
 quality problems should be solved first, i.e. audio / video format encoding,
 event packing format and so on.
 
-The only required part right now is that there is a shared authentication
-key file (0..64 bytes) that has been preshared over some secure channel,
-ssh is a good choice.
+The only required part right now is that there is a shared authentication key
+file (0..64 bytes) that has been preshared over some secure channel, ssh is a
+good choice. This key is used for building individual packet MACs.
 
 ALL DATA IS BEING SENT IN PLAINTEXT,
 ANYONE ON THE NETWORK CAN SEE WHAT YOU DO.
@@ -59,35 +95,36 @@ ANYONE ON THE NETWORK CAN SEE WHAT YOU DO.
 UDT is used to build the basic channel, and segments/subsegments correlate
 1:1 to communication channels - each working on their own thread.
 
-Encryption is built on Curve25519 + blake2-aes128
+Encryption is built on Curve25519 + blake2-aes128-ctr
+
+Everything is LE, because even though that makes IETF cry and it is the lesser
+of the two options - it still won out.
 
 Each message begins with a 16 byte MAC, keyed with the input auth-key for
-the first message, then with the MAC from the last message.
+the first message, then payload prefixed with the MAC from the last message.
 
-The server starts at CTR [0], the client at CTR[1 << 32]
+The payload is encrypt-then=MAC (if there has been a session key negotiated)
+The stream-cipher server-to-client starts at [8bIV,8bCTR(0)] and the
+client-to-server starts at [8bIV,8bCTR(1<<32)].
 
-Then there's a 1 byte type selector (plain text) and a blob that depends
-on type and encryption status of the channel.
+After the MAC comes a 1-byte unsigned type selector, then a number of bytes
+that depends on the specified type. The contents, including the type, is
+encrypted when/if such a negotiation has occured (see control messages).
 
 The different message types are:
 
 1. control (128b fixed)
 2. event (match 1 or many arcan-event samples packed, fixed to the packing
    size of the version of shmif on the running server, versions must match)
-3. bstream-begin (used for file descriptor transfers)
-4. bstream-cont (builds on the data from a previous begin block)
-5. vframe-begin
-6. vframe-cont
-7. aframe-begin
-8. aframe-cont
+3. vstream-data
+4. astream-data
+5. bstream-data
 
 Event frames are likely to be interleaved between vframes/aframes/bstreams
 to avoid input- bubbles, and there is only one a/v/b type of transfer going
 on at any one time. The rest are expected to block- the source or queue up.
 
-All data is little-endian.
-
-If the most siginificant bit of the sequence number is set, it is a discard-
+If the most significant bit of the sequence number is set, it is a discard-
 message used to mess with side-channel analysis for cases where bandwidth is a
 lesser concern than security.
 
@@ -109,22 +146,18 @@ control messages always contain some entropy (random bytes) that can be
 mixed in locally to assist rekeying etc. but also to provide replay
 protection.
 
-### command = 1, shutdown
-- sequence number : uint64
-- channel-id : uint8
+### command = 0, hello
+First message sent of the channel, it's rude not to say hi.
 
+### command = 1, shutdown
 The nice way of saying that everything is about to be shut down.
 
 ### command = 2, encryption negotiation
-- sequence number : uint64
-- channel-id : uint8
 - K(auth) : uint8[16]
 - K(pub) : uint8[32]
 - IV : uint8[8]
 
 ### command = 3, channel rekey
-- sequence number : uint64
-- channel-id : uint8
 - K(auth) : uint8[16]
 - K(sym) : uint8[32]
 - IV : uint8[8]
@@ -136,8 +169,6 @@ by the server side, authoritative and infrequent; typically early and then
 after a certain number of bytes.
 
 ### command = 4, stream-cancel
-- sequence number : uint64
-- channel-id : uint8
 - stream-id : uint32
 
 This command carries a 4 byte stream ID, which is the counter shared by all
@@ -156,25 +187,46 @@ needed to initiate a new channel as part of a subsegment setup.
 - channel-id : uint8
 - segkind : uint8
 
-##  Event (2)
-- sequence number : uint64
-- len : uint8
-- pkg : uint8[len]
+### command - 7, define vstream
+- stream-id: uint32
+- format: uint8
+- surfacew: uint16
+- surfaceh: uint16
+- startx: uint16 (0..outw-1)
+- starty: uint16 (0..outh-1)
+- framew: uint16 (outw-startx + framew < outw)
+- frameh: uint16 (outh-starty + frameh < outh)
+- dataflags: uint8
+- length: uint32
 
-This follows the packing format provided by the shmif- libraries themselves,
-which have their own pack/unpack/versioning routines.
+This defines a new video stream frame. The length- field covers how many bytes
+that need to be buffered for the data to be decoded. This can be chunked up
+into 1..length packages, depending on interleaving and so on. The vstream
+counter increases incrementally and is shared between the v/a/b streams.
 
-## Bstream-begin (3) incomplete
-## Bstream-cont (4) incomplete
-## Vstream-begin (5)
+Outw/Outh can change frequently (corresponds to window resize).
+
+If there is already an active frame, it will be cancelled out and replaced
+with this one - similar to if a stream-cancel command had been issued.
+
+### command - 8, define astream
+incomplete
+
+### command - 9, define bstream
+incomplete
+
+##  Event (2), fixed length
 - sequence number : uint64
 - channel-id : uint8
-- format: uint8
-- nonce: uint32
 
-## Vstream-cont (6) incomplete
-## Astream-begin (7) incomplete
-## Astream-cont (8) incomplete
+This follows the packing format provided by the SHMIF- libraries themselves,
+which have their own pack/unpack/versioning routines. When the SHMIF event
+model itself is finalized, it will be added to the documentation here.
+
+## Vstream-data (3), Astream-data (4), Bstream-data (5) (variable length)
+- sequence number : uint64
+- channel-id : uint8
+- stream-id : uint32
 
 # Notes
 

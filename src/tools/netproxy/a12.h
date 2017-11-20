@@ -59,8 +59,8 @@ a12_channel_close(struct a12_state*);
  * Take an incoming byte buffer and append to the current state of
  * the channel.
  */
-int
-a12_channel_unpack(struct a12_state*, uint8_t**, size_t*);
+void
+a12_channel_unpack(struct a12_state*, const uint8_t*, size_t);
 
 /*
  * Returns the number of bytes that are pending for output on the channel,
@@ -85,7 +85,8 @@ a12_channel_flush(struct a12_state*, uint8_t**);
  * Get a status code indicating the state of the channel.
  *
  * <0 = dead/erroneous state
- *  0 = inactive
+ *  0 = inactive (waiting for data)
+ *  1 = processing (more data needed)
  */
 int
 a12_channel_poll(struct a12_state*);
@@ -97,22 +98,5 @@ a12_channel_poll(struct a12_state*);
  */
 void
 a12_channel_enqueue(struct a12_state*, struct arcan_event*);
-
-/*
- * Used on an input segment to signal the availability of audio and/or video
- * data to be transferred. Will return false if the channel is blocked due to
- * more ancilliary data being needed.
- */
-bool
-a12_channel_signal(struct a12_state*, struct arcan_shmif_cont*);
-
-/*
- * Synch the state of the channel to the destination context. This will
- * possibly resize, forward-signal etc. update all alises to dst if
- * modified. The user- field of [dst] will be claimed by the channel
- * until destruction.
- */
-bool
-a12_channel_synch(struct a12_state* S, struct arcan_shmif_cont* dst);
 
 #endif
