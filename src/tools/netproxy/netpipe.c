@@ -48,6 +48,11 @@ static void server_mode(struct shmifsrv_client* a, struct a12_state* ast)
 
 /* STDIN - update a12 state machine */
 		if (sv && fds[1].revents){
+			uint8_t inbuf[9000];
+			ssize_t nr = 0;
+			while ((nr = read(fds[1].fd, inbuf, 9000)) > 0){
+				a12_channel_unpack(ast, inbuf, nr);
+			}
 		}
 
 /* SHMIF-client - poll event queue, check/dispatch buffers */
