@@ -145,6 +145,38 @@ static void xdgtop_move(struct wl_client* cl,
 	});
 }
 
+void edge_to_mask(uint32_t edges, int* dx, int* dy)
+{
+	switch (edges){
+	case ZXDG_TOPLEVEL_V6_RESIZE_EDGE_TOP:
+		*dx = 0; *dy = -1;
+	break;
+	case ZXDG_TOPLEVEL_V6_RESIZE_EDGE_BOTTOM:
+		*dx = 0; *dy = 1;
+	break;
+	case ZXDG_TOPLEVEL_V6_RESIZE_EDGE_LEFT:
+		*dx = -1; *dy = 0;
+	break;
+	case ZXDG_TOPLEVEL_V6_RESIZE_EDGE_TOP_LEFT:
+		*dx = -1; *dy = -1;
+	break;
+	case ZXDG_TOPLEVEL_V6_RESIZE_EDGE_BOTTOM_LEFT:
+		*dx = -1; *dy = 1;
+	break;
+	case ZXDG_TOPLEVEL_V6_RESIZE_EDGE_RIGHT:
+		*dx = 1; *dy = 0;
+	break;
+	case ZXDG_TOPLEVEL_V6_RESIZE_EDGE_TOP_RIGHT:
+		*dx = 1; *dy = -1;
+	break;
+	case ZXDG_TOPLEVEL_V6_RESIZE_EDGE_BOTTOM_RIGHT:
+		*dx = 1; *dy = 1;
+	break;
+	default:
+		*dx = *dy = 0;
+	}
+}
+
 /*
  * => _CURSORHINT
  */
@@ -153,10 +185,15 @@ static void xdgtop_resize(struct wl_client* cl, struct wl_resource* res,
 {
 	trace(TRACE_SHELL, "serial: %"PRIu32", edges: %"PRIu32, serial, edges);
 	struct comp_surf* surf = wl_resource_get_user_data(res);
-	arcan_shmif_enqueue(&surf->acon, &(struct arcan_event){
-		.ext.kind = ARCAN_EVENT(MESSAGE),
-		.ext.message.data = {"shell:xdg_top:resize"}
-	});
+	struct arcan_event ev = {
+		.ext.kind = ARCAN_EVENT(MESSAGE)
+	};
+
+	int dx, dy;
+	edge_to_mask(edges, &dx, &dy);
+	size_t lim = sizeof(ev.ext.message.data)/sizeof(ev.ext.message.data[1]);
+	snprintf((char*)ev.ext.message.data, lim, "shell:xdg_top:resize:%d:%d", dx, dy);
+	arcan_shmif_enqueue(&surf->acon, &ev);
 }
 
 /*
