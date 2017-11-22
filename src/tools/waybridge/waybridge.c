@@ -652,8 +652,9 @@ static void rebuild_client(struct bridge_client* bcl)
 	for (size_t i = 0; i < surf_count; i++){
 		struct comp_surf* surf = surfaces[i].surf;
 		static uint32_t ralloc_id = 0xbeba;
-		trace(TRACE_ALLOC, "rebuild, request %d => %d\n",
-			surf->tracetag, arcan_shmif_segkind(&surf->acon));
+		trace(TRACE_ALLOC, "rebuild, request %s => %d (%"PRIxPTR",%"PRIxPTR"\n",
+			surf->tracetag, arcan_shmif_segkind(&surf->acon),
+			(uintptr_t) surf->acon.addr, (uintptr_t) surf->acon.priv);
 		arcan_shmif_enqueue(&bcl->acon, &(struct arcan_event){
 			.ext.kind = ARCAN_EVENT(SEGREQ),
 			.ext.segreq.kind = arcan_shmif_segkind(&surf->acon),
@@ -672,6 +673,7 @@ static void rebuild_client(struct bridge_client* bcl)
 				wl_client_post_no_memory(bcl->client);
 				for (size_t j = 0; j < i; j++)
 					arcan_shmif_drop(&surfaces[i].new);
+				wl.alive = false;
 				return;
 			}
 			surfaces[i].new =
