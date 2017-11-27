@@ -1434,8 +1434,12 @@ static void expose_labels(struct tui_context* tui)
 			.ext.labelhint.idatatype = EVENT_IDATATYPE_DIGITAL
 		};
 		snprintf(ev.ext.labelhint.label,
-			sizeof(ev.ext.labelhint.label)/sizeof(ev.ext.labelhint.label[0]),
+			COUNT_OF(ev.ext.labelhint.label),
 			"%s", cur->lbl
+		);
+		snprintf(ev.ext.labelhint.descr,
+			COUNT_OF(ev.ext.labelhint.descr),
+			"%s", cur->descr
 		);
 		cur++;
 		arcan_shmif_enqueue(&tui->acon, &ev);
