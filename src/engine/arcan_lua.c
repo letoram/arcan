@@ -4523,7 +4523,6 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				return;
 			}
 			MSGBUF_UTF8(ev->ext.labelhint.descr);
-			snprintf(fsrv->title, COUNT_OF(fsrv->title), "%s", msgbuf);
 			tblstr(ctx, "description", msgbuf, top);
 			tblstr(ctx, "kind", "input_label", top);
 			FLTPUSH(ev->ext.labelhint.label, flt_Alphanum, '?');
