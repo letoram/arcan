@@ -749,6 +749,7 @@ int MAIN_REDIR(int argc, char* argv[])
 		arcan_lua_dostring(settings.lua, hookscript);
 
 	if (adopt){
+		arcan_lua_setglobalint(settings.lua, "CLOCK", evctx->c_ticks);
 		arcan_lua_adopt(settings.lua);
 		platform_video_recovery();
 		in_recover = false;
