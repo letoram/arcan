@@ -7,6 +7,8 @@ static bool subsurf_shmifev_handler(
 static void subsurf_destroy(struct wl_client *cl, struct wl_resource* res)
 {
 	trace(TRACE_ALLOC, "");
+	struct comp_surf* surf = wl_resource_get_user_data(res);
+	destroy_comp_surf(surf);
 }
 
 static void subsurf_position(

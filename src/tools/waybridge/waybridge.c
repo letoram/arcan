@@ -198,6 +198,25 @@ static uint64_t find_set64(uint64_t bmap)
 	return __builtin_ffsll(bmap);
 }
 
+static void dump_alloc(int i, char* domain, bool wmode)
+{
+/* debug output to see slot and source */
+	if (wmode || (wl.trace_log & TRACE_ALLOC)){
+		char alloc_buf[sizeof(wl.groups[i].alloc) * 8 + 1] = {0};
+		for (size_t j = 0; j < sizeof(wl.groups[i].alloc)*8;j++){
+			alloc_buf[j] =
+				(1 << j) & wl.groups[i].alloc ?
+				wl.groups[i].slots[j].idch : '_';
+		}
+		if (wmode){
+			write(STDERR_FILENO, alloc_buf, sizeof(alloc_buf));
+			write(STDERR_FILENO, "\n", 1);
+		}
+		else
+			trace(TRACE_ALLOC, "%s,slotmap:%s", domain?domain:"", alloc_buf);
+	}
+}
+
 static bool load_keymap(struct xkb_stateblock* dst)
 {
 	trace(TRACE_ALLOC, "building keymap");
@@ -300,16 +319,7 @@ static bool alloc_group_id(int type, int* groupid, int* slot, int fd, char d)
 		*groupid = i;
 		*slot = ind;
 
-/* debug output to see slot and source */
-		if (wl.trace_log & TRACE_ALLOC){
-			char alloc_buf[sizeof(wl.groups[i].alloc) * 8 + 1] = {0};
-			for (size_t j = 0; j < sizeof(wl.groups[i].alloc)*8;j++){
-				alloc_buf[j] =
-					(1 << j) & wl.groups[i].alloc ?
-					wl.groups[i].slots[j].idch : '_';
-			}
-			trace(TRACE_ALLOC, "alloc,slotmap:%s", alloc_buf);
-		}
+		dump_alloc(i, "alloc", false);
 
 		return true;
 	}
@@ -323,15 +333,7 @@ static void reset_group_slot(int group, int slot)
 	wl.groups[group].pg[slot].revents = 0;
 	wl.groups[group].slots[slot] = (struct bridge_slot){};
 
-	if (wl.trace_log & TRACE_ALLOC){
-		char alloc_buf[sizeof(wl.groups[group].alloc) * 8 + 1] = {0};
-		for (size_t i = 0; i<sizeof(wl.groups[group].alloc)*8;i++){
-			alloc_buf[i] =
-				(1 << i) & wl.groups[group].alloc ?
-				wl.groups[group].slots[i].idch : '_';
-		}
-		trace(TRACE_ALLOC, "reset,slotmap:%s", alloc_buf);
-	}
+	dump_alloc(group, "reset", false);
 }
 
 /*
@@ -783,8 +785,8 @@ static struct conn_group* prepare_groups(size_t count)
 static int show_use(const char* msg, const char* arg)
 {
 	fprintf(stdout, "%s%s", msg, arg ? arg : "");
-	fprintf(stdout, "\nUse: waybridge [arguments]\n"
-"     waybridge [arguments] -exec /path/to/bin arg1 arg2 ...\n"
+	fprintf(stdout, "\nUse: arcan-wayland [arguments]\n"
+"     arcan-wayland [arguments] -exec /path/to/bin arg1 arg2 ...\n"
 "\t-shm-egl          pass shm- buffers as gl textures\n"
 "\t-no-egl           disable the wayland-egl extensions\n"
 "\t-no-compositor    disable the compositor protocol\n"
@@ -795,6 +797,7 @@ static int show_use(const char* msg, const char* arg)
 "\t-no-xdg           disable the xdg protocol\n"
 "\t-no-output        disable the output protocol\n"
 "\t-layout lay       set keyboard layout to <lay>\n"
+"\t-debugusr1        use SIGUSR1 to dump debug information\n"
 "\t-prefix prefix    use with -exec, override /tmp/awl_XXXXXX prefix\n"
 "\t-fork             fork- off new clients as separate processes\n"
 "\t-dir dir          override XDG_RUNTIME_DIR with <dir>\n"
@@ -837,6 +840,11 @@ static bool process_group(struct conn_group* group)
 
 	wl_display_flush_clients(wl.disp);
 	return true;
+}
+
+static void debugusr1()
+{
+	dump_alloc(0, "sigusr1", true);
 }
 
 /*
@@ -900,6 +908,9 @@ int main(int argc, char* argv[])
 			}
 			arg_i++;
 			setenv("ARCAN_RENDER_NODE", argv[arg_i], 1);
+		}
+		else if (strcmp(argv[arg_i], "-debugusr1") == 0){
+			sigaction(SIGUSR1, &(struct sigaction){.sa_handler = debugusr1}, NULL);
 		}
 		else if (strcmp(argv[arg_i], "-no-egl") == 0)
 			protocols.egl = 0;

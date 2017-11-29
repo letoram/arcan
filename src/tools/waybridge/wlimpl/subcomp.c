@@ -42,11 +42,12 @@ static bool subcomp_defer_handler(
 			trace(TRACE_ALLOC, "bad subsurface, broken parent");
 			return false;
 		}
-
+		surf->viewport.ext.kind = ARCAN_EVENT(VIEWPORT);
 		surf->viewport.ext.viewport.parent = psurf->acon.segment_token;
 		arcan_shmif_enqueue(&surf->acon, &surf->viewport);
 	}
 
+	trace(TRACE_ALLOC, "subsurface");
 	return true;
 }
 

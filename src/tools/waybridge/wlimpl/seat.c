@@ -126,9 +126,6 @@ static void seat_keyboard(struct wl_client* cl,
 		return;
 	}
 
-/* we might also need to send repeat rate, that information isn't
- * exported by arcan in any way, so might need to either add a side-channel
- * or user setting */
 	bcl->keyboard = kbd;
 	wl_resource_set_implementation(kbd, &kbd_if, bcl, NULL);
 	wl_keyboard_send_keymap(kbd, fmt, fd, sz);
