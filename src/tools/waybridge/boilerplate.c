@@ -148,6 +148,9 @@ struct comp_surf {
 	size_t last_w, last_h;
 	uint32_t max_w, max_h, min_w, min_h;
 
+/* need to track these so that we can subtract from displayhints..*/
+	uint32_t geom_w, geom_h, geom_x, geom_y;
+
 /* for mouse pointer, we need a surface accumulator */
 	int acc_x, acc_y;
 

@@ -160,6 +160,10 @@ static void xdgsurf_set_geometry(struct wl_client* cl,
 		"geom:%"PRIu32":%"PRIu32":%"PRIu32":%"PRIu32,	x, y, width, height
 	);
 
+	surf->geom_x = x;
+	surf->geom_y = y;
+	surf->geom_w = width;
+	surf->geom_h = height;
 	arcan_shmif_enqueue(&surf->acon, &ev);
 }
 
