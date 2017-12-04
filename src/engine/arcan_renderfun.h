@@ -39,8 +39,9 @@
  * \i or \!i (switch italic on or off, state persists between calls)
  * \u or \!u (switch underline on or off, state persists between calls)
  * \pfname (load and embedd image from fname into string, dimensions limited)
- * \Pfname,w,h (load and stretch image from fname into string)
- *
+ * \Pfname,w,h (load and stretch image from fname)
+ * \evid,w,h (load and stretch image from vid into buffer)
+ * \Evid,w,h,x1,y1,x2,y2 (load and stretch subimage from vid into buffer)
  * Underneath it all are two levels of caches, one for typefaces+size+density
  * in each cached font there is one for glyphs.
  * Density is treated as a global state and used has a hidden prefix for
@@ -79,6 +80,13 @@ av_pixel* arcan_renderfun_renderfmtstr_extended(const char** message,
 	size_t* dw, size_t* dh, uint32_t* d_sz,
 	size_t* maxw, size_t* maxh, bool norender
 );
+
+/*
+ * set the video offset used for embedded rendering of vstores, this is
+ * primarily used when there's a scripting- or similar context that remaps
+ * vid numbers to a different linear namespace (e.g. arcan_lua)
+ */
+void arcan_renderfun_vidoffset(int64_t ofs);
 
 /*
  * Set the default font that will be used for format strings that do not
