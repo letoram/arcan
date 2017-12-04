@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2016, Björn Ståhl
+ * Copyright 2014-2017, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -838,8 +838,8 @@ char* arcan_db_getvalue(struct arcan_dbh* dbh,
 	return res;
 }
 
-void arcan_db_add_kvpair(struct arcan_dbh* dbh,
-	const char* key, const char* val)
+void arcan_db_add_kvpair(
+	struct arcan_dbh* dbh, const char* key, const char* val)
 {
 	if (!dbh->transaction)
 		arcan_fatal("arcan_db_add_kvpair() "
@@ -849,6 +849,9 @@ void arcan_db_add_kvpair(struct arcan_dbh* dbh,
 		dbh->trclean = true;
 		return;
 	}
+
+	if (val[0] == 0)
+		dbh->trclean = true;
 
 	sqlite3_bind_text(dbh->transaction, 1, key, -1, SQLITE_TRANSIENT);
 	sqlite3_bind_text(dbh->transaction, 2, val, -1, SQLITE_TRANSIENT);
@@ -912,8 +915,8 @@ void arcan_db_end_transaction(struct arcan_dbh* dbh)
 	dbh->transaction = NULL;
 }
 
-bool arcan_db_appl_kv(struct arcan_dbh* dbh, const char* applname,
-	const char* key, const char* value)
+bool arcan_db_appl_kv(struct arcan_dbh* dbh,
+	const char* applname, const char* key, const char* value)
 {
 	bool rv = false;
 
