@@ -5612,7 +5612,7 @@ static int storekey(lua_State* ctx)
 			}
 			else {
 				const char* val = lua_tostring(ctx, -1);
-				arcan_db_add_kvpair(DBHANDLE, key, strlen(val) > 0 ? val : NULL);
+				arcan_db_add_kvpair(DBHANDLE, key, val);
 			}
 
 			lua_pop(ctx, 1);
@@ -10526,6 +10526,7 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 
 #ifdef _DEBUG
 	luactx.lua_vidbase = rand() % 32768;
+	arcan_renderfun_vidoffset(luactx.lua_vidbase);
 	arcan_warning("lua_exposefuncs() -- videobase is set to %u\n",
 		luactx.lua_vidbase);
 #endif
