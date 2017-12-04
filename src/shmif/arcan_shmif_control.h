@@ -295,7 +295,10 @@ enum ARCAN_FLAGS {
 /*
  * Setting this flag disables the internal management preroll stage entirely
  */
-	SHMIF_NOACTIVATE = 512
+	SHMIF_NOACTIVATE = 512,
+
+/* Setting this flag will avoid sending the register event on acquire */
+	SHMIF_NOREGISTER = 1024,
 };
 
 /*

@@ -123,6 +123,7 @@ struct shmif_hidden {
 	int type;
 
 	enum shmif_ext_meta atype;
+	uint64_t guid[2];
 
 	struct arcan_evctx inev;
 	struct arcan_evctx outev;
@@ -1007,11 +1008,11 @@ static void setup_avbuf(struct arcan_shmif_cont* res)
 /* using a base address where the meta structure will reside, allocate n- audio
  * and n- video slots and populate vbuf/abuf with matching / aligned pointers
  * and return the total size */
-struct arcan_shmif_cont arcan_shmif_acquire(
+struct arcan_shmif_cont shmif_acquire_int(
 	struct arcan_shmif_cont* parent,
 	const char* shmkey,
 	int type,
-	int flags, ...)
+	int flags, va_list vargs)
 {
 	struct arcan_shmif_cont res = {
 		.vidp = NULL
@@ -1047,11 +1048,7 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 
 	void (*exitf)(int) = shmif_exit;
 	if (flags & SHMIF_FATALFAIL_FUNC){
-		va_list funarg;
-
-		va_start(funarg, flags);
-			exitf = va_arg(funarg, void(*)(int));
-		va_end(funarg);
+			exitf = va_arg(vargs, void(*)(int));
 	}
 
 	struct shmif_hidden gs = {
@@ -1104,7 +1101,7 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 	arcan_shmif_setevqs(res.addr, res.esem,
 		&res.priv->inev, &res.priv->outev, false);
 
-	if (0 != type) {
+	if (0 != type && !(flags & SHMIF_NOREGISTER)) {
 		struct arcan_event ev = {
 			.category = EVENT_EXTERNAL,
 			.ext.kind = ARCAN_EVENT(REGISTER),
@@ -1126,6 +1123,19 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 		((struct shmif_hidden*)res.priv)->output = true;
 	}
 
+	return res;
+}
+
+struct arcan_shmif_cont arcan_shmif_acquire(struct arcan_shmif_cont* parent,
+	const char* shmkey,
+	int type,
+	int flags, ...)
+{
+	va_list argp;
+	va_start(argp, flags);
+	struct arcan_shmif_cont res =
+		shmif_acquire_int(parent, shmkey, type, flags, argp);
+	va_end(argp);
 	return res;
 }
 
@@ -1934,6 +1944,19 @@ enum shmif_migrate_status arcan_shmif_migrate(
 		return SHMIF_MIGRATE_NOCON;
 	}
 
+/* REGISTER is special, as GUID can be internally generated but should persist */
+	if (cont->priv->flags & SHMIF_NOREGISTER){
+		struct arcan_event ev = {
+			.category = EVENT_EXTERNAL,
+			.ext.kind = ARCAN_EVENT(REGISTER),
+			.ext.registr.kind = cont->priv->type,
+			.ext.registr.guid = {
+				cont->priv->guid[0], cont->priv->guid[1]
+			}
+		};
+		arcan_shmif_enqueue(&ret, &ev);
+	}
+
 /* got a valid connection, first synch source segment so we don't have
  * anything pending */
 	while(atomic_load(&cont->addr->vready) && cont->addr->dms)
@@ -2108,6 +2131,7 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 {
 	struct arcan_shmif_cont ret = {0};
 	file_handle dpipe;
+	uint64_t ts = arcan_timemillis();
 
 	char* resource = getenv("ARCAN_ARG");
 	char* keyfile = NULL;
@@ -2148,20 +2172,34 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
  * the newer extended version, we add the little quirk that ext_sz is 0 */
 	if (ext_sz > 0){
 /* we want manual control over the REGISTER message */
-		ret = arcan_shmif_acquire(NULL, keyfile, ext.type, flags);
+		ret = arcan_shmif_acquire(NULL, keyfile, ext.type, flags | SHMIF_NOREGISTER);
 		if (!ret.priv){
 			close(dpipe);
 			return ret;
 		}
+
+/* remember guid used so we resend on crash recovery or migrate, otherwise
+ * set the guid to some trackable nonsense - don't really need the whole
+ * trouble with seeding for entropy here, that should be done server-side */
+		struct shmif_hidden* priv = ret.priv;
+		if (ext.guid[0] || ext.guid[1]){
+			priv->guid[0] = ext.guid[0];
+			priv->guid[1] = ext.guid[1];
+		}
+		else {
+			priv->guid[0] = arcan_timemillis();
+			priv->guid[1] = ts ^ ret.segment_token;
+		};
 
 		struct arcan_event ev = {
 			.category = EVENT_EXTERNAL,
 			.ext.kind = ARCAN_EVENT(REGISTER),
 			.ext.registr = {
 				.kind = ext.type,
-				.guid = {ext.guid[0], ext.guid[1]}
+				.guid = {priv->guid[0], priv->guid[1]}
 			}
 		};
+
 		if (ext.title)
 			snprintf(ev.ext.registr.title,
 				COUNT_OF(ev.ext.registr.title), "%s", ext.title);
