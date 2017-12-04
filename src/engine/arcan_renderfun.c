@@ -76,6 +76,7 @@ struct text_format {
 	int height;
 	int skip;
 	int ascent;
+	int descent;
 
 /* metric- overrides */
 	size_t halign;
@@ -89,6 +90,9 @@ struct text_format {
 static int default_hint = TTF_HINTING_NORMAL;
 static float default_vdpi = 72.0;
 static float default_hdpi = 72.0;
+
+/* for embedded blit */
+static int64_t vid_ofs;
 
 #define PT_TO_HPX(PT)((float)(PT) * (1.0f / 72.0f) * default_hdpi)
 #define PT_TO_VPX(PT)((float)(PT) * (1.0f / 72.0f) * default_vdpi)
@@ -127,6 +131,7 @@ struct rcell {
 	unsigned int height;
 	int skipv;
 	int ascent;
+	int descent;
 
 	union {
 		struct {
@@ -162,6 +167,11 @@ void arcan_renderfun_outputdensity(float vppcm, float hppcm)
 	default_vdpi = hppcm > EPSILON ? 2.54 * hppcm : 72.0;
 }
 
+void arcan_renderfun_vidoffset(int64_t ofs)
+{
+	vid_ofs = ofs;
+}
+
 static void update_style(struct text_format* dst, struct font_entry* font)
 {
 	if (!font || !font->chain.data[0]){
@@ -170,6 +180,7 @@ static void update_style(struct text_format* dst, struct font_entry* font)
 	}
 
 	dst->ascent = TTF_FontAscent(font->chain.data[0]);
+	dst->descent = -1 * TTF_FontDescent(font->chain.data[0]);
 	dst->height = TTF_FontHeight(font->chain.data[0]);
 	dst->skip = dst->height - TTF_FontLineSkip(font->chain.data[0]);
 	dst->font = font;
