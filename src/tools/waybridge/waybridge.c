@@ -148,7 +148,8 @@ enum trace_levels {
 	TRACE_DDEV    = 32,
 	TRACE_SEAT    = 64,
 	TRACE_SURF    = 128,
-	TRACE_DRM     = 256
+	TRACE_DRM     = 256,
+	TRACE_ALERT   = 512
 };
 
 static inline void trace(int level, const char* msg, ...)
@@ -422,9 +423,9 @@ static bool request_surface(
 /* FIXME: we also need to flush the accumulated events, this should
  * just be to flush_client_events with each entry of the event-queue -
  * since we don't use the control connection for anything, this only
- * mask trivial events though */
+ * mask trivial events though. There is the offchance that we'd get
+ * something more serious, like a migrate that would trigger a rebuild */
 	if (pqueue_sz > 0){
-		printf("flush / free events\n");
 	}
 
 	return true;
@@ -620,8 +621,13 @@ static void rebuild_client(struct bridge_client* bcl)
 	size_t surf_count = 0;
 	memset(surfaces, '\0', sizeof(surfaces[0]) * wl.n_groups * 64);
 
+	trace(TRACE_ALERT, "rebuild_client");
+
 /* update the pollset with the new descriptor */
 	wl.groups[bcl->group].pg[bcl->slot].fd = bcl->acon.epipe;
+	struct comp_surf* cursor_surface = NULL;
+	size_t cs_group = 0;
+	size_t cs_ind = 0;
 
 	for (size_t i = 0; i < wl.n_groups; i++){
 		uint64_t mask = wl.groups[i].alloc;
@@ -632,17 +638,31 @@ static void rebuild_client(struct bridge_client* bcl)
 			ind--;
 			mask &= ~(1 << ind);
 
-/* if it's not a surface, or if it is a proxy-surface, ignore */
+/* if it is not marked as a normal surface, or not actually in-use, skip */
 			if (wl.groups[i].slots[ind].type != SLOT_TYPE_SURFACE ||
 				!wl.groups[i].slots[ind].surface)
 				continue;
 
-			if (wl.groups[i].slots[ind].surface->client == bcl){
-				surfaces[surf_count].group = i;
-				surfaces[surf_count].ind = ind;
-				surfaces[surf_count].surf = wl.groups[i].slots[ind].surface;
-				surf_count++;
+/* if it is not tied to the requested client, ignore */
+			if (wl.groups[i].slots[ind].surface->client != bcl)
+				continue;
+
+/* rcons (mouse cursor), just disassociate, the next time the cursor
+ * is set, we'll reassociate */
+			if (wl.groups[i].slots[ind].surface->rcon){
+				wl.groups[i].slots[ind].surface->rcon = NULL;
+				cursor_surface = wl.groups[i].slots[ind].surface;
+				cs_group = i;
+				cs_ind = ind;
+				continue;
 			}
+
+			surfaces[surf_count].group = i;
+			surfaces[surf_count].ind = ind;
+			surfaces[surf_count].surf = wl.groups[i].slots[ind].surface;
+			trace(TRACE_ALERT, "queue surface for rebuild: %c\n",
+				wl.groups[i].slots[ind].idch);
+			surf_count++;
 		}
 	}
 
@@ -651,12 +671,13 @@ static void rebuild_client(struct bridge_client* bcl)
  * though - we're SOL, might need a panic- hook in the comp_surf in order to
  * forward deletion to the client so it knows that some surface died, though
  * this will likely just make the thing crash. */
+	static uint32_t ralloc_id = 0xbeba;
 	for (size_t i = 0; i < surf_count; i++){
 		struct comp_surf* surf = surfaces[i].surf;
-		static uint32_t ralloc_id = 0xbeba;
-		trace(TRACE_ALLOC, "rebuild, request %s => %d (%"PRIxPTR",%"PRIxPTR"\n",
+		trace(TRACE_ALERT, "rebuild, request %s => %d (%"PRIxPTR",%"PRIxPTR")",
 			surf->tracetag, arcan_shmif_segkind(&surf->acon),
 			(uintptr_t) surf->acon.addr, (uintptr_t) surf->acon.priv);
+
 		arcan_shmif_enqueue(&bcl->acon, &(struct arcan_event){
 			.ext.kind = ARCAN_EVENT(SEGREQ),
 			.ext.segreq.kind = arcan_shmif_segkind(&surf->acon),
@@ -668,16 +689,18 @@ static void rebuild_client(struct bridge_client* bcl)
 		struct arcan_event* pqueue;
 		ssize_t pqueue_sz;
 		struct arcan_event acqev;
+
 		if (arcan_shmif_acquireloop(&bcl->acon, &acqev, &pqueue, &pqueue_sz)){
 /* unrecoverable */
 			if (acqev.tgt.kind != TARGET_COMMAND_NEWSEGMENT){
-				trace(TRACE_ALLOC, "failed to re-acquire subsegment, broken client");
+				trace(TRACE_ALERT, "failed to re-acquire subsegment, broken client");
 				wl_client_post_no_memory(bcl->client);
 				for (size_t j = 0; j < i; j++)
 					arcan_shmif_drop(&surfaces[i].new);
 				wl.alive = false;
 				return;
 			}
+			trace(TRACE_ALERT, "retrieved new connection");
 			surfaces[i].new =
 				arcan_shmif_acquire(&bcl->acon,
 					NULL, arcan_shmif_segkind(&surf->acon), SHMIF_DISABLE_GUARD);
@@ -718,6 +741,10 @@ static void rebuild_client(struct bridge_client* bcl)
 				surf->acon.h * surf->acon.stride
 			);
 		}
+		else {
+			trace(TRACE_ALERT, "rebuild %zu:%s - size failed: %zu, %zu",
+				i, surf->tracetag, surf->acon.w, surf->acon.h);
+		}
 
 /* free the old relation and resynch the hierarchy/coordinates */
 		surfaces[i].new.user = surf->acon.user;
@@ -727,11 +754,48 @@ static void rebuild_client(struct bridge_client* bcl)
 		arcan_shmif_enqueue(&surf->acon, &surf->viewport);
 		arcan_shmif_signal(&surf->acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
 		wl.groups[surfaces[i].group].pg[surfaces[i].ind].fd = surf->acon.epipe;
+		trace(TRACE_ALERT, "rebuild %zu:%s - fd set to %d",
+			i, surf->tracetag, surf->acon.epipe);
 	}
 
 /* clipboards can be allocated dynamically so no need to care there */
 	arcan_shmif_drop(&bcl->clip_in);
 	arcan_shmif_drop(&bcl->clip_out);
+
+/* need to treat the mouse cursor as something special,
+ * rerequest it, assign to the last known surface that held it and update
+ * the corresponding slot group and index */
+	void* cursor_user = bcl->acursor.user;
+	arcan_shmif_drop(&bcl->acursor);
+	struct arcan_event* pqueue;
+	ssize_t pqueue_sz;
+	struct arcan_event acqev;
+
+	arcan_shmif_enqueue(&bcl->acon, &(struct arcan_event){
+		.ext.kind = ARCAN_EVENT(SEGREQ),
+		.ext.segreq.kind = SEGID_CURSOR,
+		.ext.segreq.id = ralloc_id++
+	});
+
+	if (arcan_shmif_acquireloop(&bcl->acon, &acqev, &pqueue, &pqueue_sz)){
+		if (acqev.tgt.kind != TARGET_COMMAND_NEWSEGMENT){
+			trace(TRACE_ALERT, "failed to re-acquire cursor subsegment");
+			wl_client_post_no_memory(bcl->client);
+			wl.alive = false;
+			return;
+		}
+		bcl->acursor = arcan_shmif_acquire(
+			&bcl->acon, NULL, SEGID_CURSOR, SHMIF_DISABLE_GUARD);
+		bcl->acursor.user = cursor_user;
+
+		if (cursor_surface){
+			trace(TRACE_ALERT, "reassigned cursor subsegment");
+			cursor_surface->rcon = &bcl->acursor;
+			wl.groups[cs_group].pg[cs_ind].fd = bcl->acursor.epipe;
+			dump_alloc(cs_group, "rebuild_client", false);
+		}
+
+	}
 }
 
 /*
@@ -804,7 +868,7 @@ static int show_use(const char* msg, const char* arg)
 "\t-trace level      set trace output to (bitmask):\n"
 "\t1 - allocations, 2 - digital-input, 4 - analog-input\n"
 "\t8 - shell, 16 - region-events, 32 - data device\n"
-"\t64 - seat, 128 - surface, 256 - drm \n");
+"\t64 - seat, 128 - surface, 256 - drm, 512 - alert\n");
 	return EXIT_FAILURE;
 }
 

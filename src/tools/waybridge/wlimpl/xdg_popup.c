@@ -19,9 +19,9 @@ static bool xdgpopup_shmifev_handler(
 			bool changed = displayhint_handler(surf, &ev->tgt);
 
 /* and then, if something has changed, send the configure event */
-			int w = ev->tgt.ioevs[0].iv ? ev->tgt.ioevs[0].iv : 0;
-			int h = ev->tgt.ioevs[1].iv ? ev->tgt.ioevs[1].iv : 0;
-			if ((w && h && (w != surf->acon.w || h != surf->acon.h))){
+			int w = ev->tgt.ioevs[0].iv ? ev->tgt.ioevs[0].iv : surf->geom_w;
+			int h = ev->tgt.ioevs[1].iv ? ev->tgt.ioevs[1].iv : surf->geom_h;
+			if ((w && h && (w != surf->geom_w || h != surf->geom_h))){
 				zxdg_popup_v6_send_configure(surf->shell_res, 0, 0, w, h);
 				changed = true;
 			}
