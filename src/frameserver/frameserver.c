@@ -171,7 +171,8 @@ int launch_mode(const char* modestr,
 		toggle_logdev(modestr);
 
 	struct arg_arr* arg;
-	struct arcan_shmif_cont con = arcan_shmif_open(id, flags, &arg);
+	struct arcan_shmif_cont con = arcan_shmif_open_ext(flags,
+		&arg, (struct shmif_open_ext){.type = id}, sizeof(struct shmif_open_ext));
 
 	if (!arg && altarg)
 		arg = arg_unpack(altarg);
