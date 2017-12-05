@@ -208,7 +208,7 @@ static void set_style(struct text_format* dst, struct font_entry* font)
 	if (font)
 		update_style(dst, font);
 	else {
-		dst->ascent = dst->height = dst->skip = 0;
+		dst->ascent = dst->height = dst->skip = dst->descent = 0;
 	}
 }
 
@@ -379,7 +379,6 @@ void arcan_video_reset_fontcache()
 #define TEXT_EMBEDDEDICON_MAXH 256
 #endif
 
-#ifndef RENDERFUN_NOSUBIMAGE
 static void text_loadimage(struct text_format* dst,
 	const char* const infn, img_cons cons)
 {
@@ -408,15 +407,13 @@ static void text_loadimage(struct text_format* dst,
 	arcan_release_map(inmem);
 	arcan_release_resource(&inres);
 
-/* repace if the system format doesn't match */
+/* repack if the system format doesn't match */
 	if (imgbuf)
 		imgbuf = arcan_img_repack(imgbuf, inw, inh);
 
 	if (!imgbuf || rv != ARCAN_OK)
 		return;
 
-/* stretchblit is assumed to deal with the edgecase of w ^ h being 0 and
- * chosing the correct value based on aspect ratio. */
 	if (cons.w > TEXT_EMBEDDEDICON_MAXW ||
 		(cons.w == 0 && inw > TEXT_EMBEDDEDICON_MAXW))
 		cons.w = TEXT_EMBEDDEDICON_MAXW;
@@ -442,7 +439,6 @@ static void text_loadimage(struct text_format* dst,
 		dst->surf.buf = imgbuf;
 	}
 }
-#endif
 
 static char* extract_color(struct text_format* prev, char* base){
 	char cbuf[3];
@@ -546,7 +542,131 @@ static char* extract_font(struct text_format* prev, char* base){
 	return base;
 }
 
-#ifndef RENDERFUN_NOSUBIMAGE
+static bool getnum(char** base, unsigned long* dst)
+{
+	char* wbase = *base;
+
+	while(**base && isdigit(**base))
+		(*base)++;
+
+	if (strlen(wbase) == 0)
+		return false;
+
+	char ch = **base;
+	**base = '\0';
+	*dst = strtoul(wbase, NULL, 10);
+	**base = ch;
+	(*base)++;
+	return true;
+}
+
+static char* extract_vidref(struct text_format* prev, char* base, bool ext)
+{
+	unsigned long vid;
+	if (!getnum(&base, &vid)){
+		arcan_warning("arcan_video_renderstring(\\evid), missing vid-ref\n");
+		return NULL;
+	}
+
+	arcan_vobject* vobj = arcan_video_getobject(vid - vid_ofs);
+	if (!vobj){
+		arcan_warning(
+			"arcan_video_renderstring(\\evid), missing or bad vid-ref (%lu)\n", vid);
+		return NULL;
+	}
+
+	if (vobj->vstore->txmapped != TXSTATE_TEX2D){
+		arcan_warning(
+			"arcan_video_renderstring(\\evid), invalid backing store for vid-ref\n");
+		return NULL;
+	}
+
+/* get w, h */
+	unsigned long w, h;
+	if (!getnum(&base, &w) || !getnum(&base, &h)){
+		arcan_warning("arcan_video_renderstring(\\evid,w,h) couldn't get dimension\n");
+		return NULL;
+	}
+
+/* if ext, also get x1, y1, x2, y2 */
+	img_cons cons = {.w = w, .h = h};
+	unsigned long x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+	if (ext){
+		if (
+			!getnum(&base, &x1) || !getnum(&base, &y1) ||
+			!getnum(&base, &x2) || !getnum(&base, &y2)){
+			arcan_warning("arcan_video_renderstring("
+				"\\E,w,h,x1,y1,x2,y2 - couldn't get dimensions\n");
+			return NULL;
+		}
+	}
+
+/* no local copy? readback - the 'nice' thing here for memory conservative use
+ * would be to drop the cpu- local copy as well, but for something like an icon
+ * blit-copy-cache, it might not be worthwhile */
+	if (!vobj->vstore->vinf.text.raw){
+		agp_readback_synchronous(vobj->vstore);
+		if (!vobj->vstore->vinf.text.raw){
+			arcan_warning("arcan_video_renderstring(), couldn't synch vid-ref store\n");
+			return NULL;
+		}
+	}
+
+	struct agp_vstore* store = vobj->vstore;
+	if (cons.w > TEXT_EMBEDDEDICON_MAXW ||
+		(cons.w == 0 && store->w > TEXT_EMBEDDEDICON_MAXW))
+		cons.w = TEXT_EMBEDDEDICON_MAXW;
+
+	if (cons.h > TEXT_EMBEDDEDICON_MAXH ||
+		(cons.h == 0 && store->h > TEXT_EMBEDDEDICON_MAXH))
+		cons.h = TEXT_EMBEDDEDICON_MAXH;
+
+	unsigned char* inbuf = (unsigned char*) store->vinf.text.raw;
+
+/* stretch + copy or just copy */
+	if (ext || (
+		(cons.w != 0 && cons.h != 0) && (store->w != cons.w || store->h != cons.h))){
+		prev->surf.buf = arcan_alloc_mem(cons.w * cons.h * sizeof(av_pixel),
+			ARCAN_MEM_VBUFFER, ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE);
+
+/* adjust offsets to match x1/y1/x2/y2 */
+		size_t dw = cons.w;
+		size_t dh = cons.h;
+		size_t stride = 0;
+
+		if (ext && x1 < x2 && y1 < y2 && x2 - x1 < dw && y2 - y1 < dh){
+			dw = x2 - x1;
+			dh = y2 - y1;
+			stride = cons.w * sizeof(av_pixel);
+			inbuf += stride * y1 + x1 * sizeof(av_pixel);
+		}
+
+/* and blit */
+		stbir_resize_uint8(inbuf, dw, dh, stride,
+			(unsigned char*) prev->surf.buf, cons.w, cons.h, 0, sizeof(av_pixel));
+
+		prev->surf.w = cons.w;
+		prev->surf.h = cons.h;
+	}
+/* otherwise just keep the entire buffer */
+	else {
+		prev->surf.buf = arcan_alloc_mem(store->vinf.text.s_raw,
+			ARCAN_MEM_VBUFFER, ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE);
+		if (prev->surf.buf){
+			prev->surf.w = store->w;
+			prev->surf.h = store->h;
+			memcpy(prev->surf.buf, store->vinf.text.raw, store->vinf.text.s_raw);
+		}
+	}
+
+	if (prev->surf.buf){
+		prev->imgcons.w = prev->surf.w;
+		prev->imgcons.h = prev->surf.h;
+	}
+
+	return base;
+}
+
 static char* extract_image_simple(struct text_format* prev, char* base){
 	char* wbase = base;
 
@@ -554,26 +674,25 @@ static char* extract_image_simple(struct text_format* prev, char* base){
 	if (*base)
 		*base++ = 0;
 
-	if (strlen(wbase) > 0){
-		prev->imgcons.w = prev->imgcons.h = 0;
-		prev->surf.buf = NULL;
-
-		text_loadimage(prev, wbase, prev->imgcons);
-
-		if (prev->surf.buf){
-			prev->imgcons.w = prev->surf.w;
-			prev->imgcons.h = prev->surf.h;
-		}
-		else
-			arcan_warning(
-				"arcan_video_renderstring(), couldn't load icon (%s)\n", wbase);
-
-		return base;
-	}
-	else{
+	if (!strlen(wbase)){
 		arcan_warning("arcan_video_renderstring(), missing resource name.\n");
 		return NULL;
 	}
+
+	prev->imgcons.w = prev->imgcons.h = 0;
+	prev->surf.buf = NULL;
+
+	text_loadimage(prev, wbase, prev->imgcons);
+
+	if (prev->surf.buf){
+		prev->imgcons.w = prev->surf.w;
+		prev->imgcons.h = prev->surf.h;
+	}
+	else
+		arcan_warning(
+			"arcan_video_renderstring(), couldn't load icon (%s)\n", wbase);
+
+	return base;
 }
 
 static char* extract_image(struct text_format* prev, char* base)
@@ -638,7 +757,6 @@ static char* extract_image(struct text_format* prev, char* base)
 		return NULL;
 	}
 }
-#endif
 
 static struct text_format formatend(char* base, struct text_format prev,
 	char* orig, bool* ok) {
@@ -694,6 +812,12 @@ retry:
 		case 'i': prev.style = (inv ?
 			prev.style & !TTF_STYLE_ITALIC : prev.style | TTF_STYLE_ITALIC);
 		break;
+		case 'e':
+			base = extract_vidref(&prev, base, false);
+		break;
+		case 'E':
+			base = extract_vidref(&prev, base, true);
+		break;
 		case 'v':
 		break;
 		case 'T':
@@ -702,14 +826,12 @@ retry:
 		break;
 		case 'V':
 		break;
-#ifndef RENDERFUN_NOSUBIMAGE
 		case 'p':
 			base = extract_image_simple(&prev, base);
 		break;
 		case 'P':
 			base = extract_image(&prev, base);
 		break;
-#endif
 		case '#':
 			base = extract_color(&prev, base);
 		break;
@@ -790,6 +912,7 @@ static bool render_alloc(struct rcell* cnode,
 	cnode->data.surf.h = h;
 	cnode->ascent = style->ascent;
 	cnode->height = style->height;
+	cnode->descent = style->descent;
 	cnode->skipv = style->skip;
 
 	return true;
@@ -805,6 +928,7 @@ static inline void currstyle_cnode(struct text_format* curr_style,
 				curr_style->font->chain.count, base, &dw, &dh, curr_style->style);
 			cnode->ascent = TTF_FontAscent(curr_style->font->chain.data[0]);
 			cnode->width = dw;
+			cnode->descent = TTF_FontDescent(curr_style->font->chain.data[0]);
 			cnode->height = TTF_FontHeight(curr_style->font->chain.data[0]);
 		}
 		else{
@@ -1011,7 +1135,7 @@ static av_pixel* process_chain(struct rcell* root, arcan_vobject* dst,
 	unsigned int linecount = 0;
 	*maxw = 0;
 	*maxh = 0;
-	int lineh = 0, fonth = 0, ascenth = 0;
+	int lineh = 0, fonth = 0, ascenth = 0, descenth = 0;
 	int curw = 0;
 
 	int line_spacing = 0;
@@ -1040,6 +1164,10 @@ static av_pixel* process_chain(struct rcell* root, arcan_vobject* dst,
 
 			if (cnode->ascent > ascenth){
 				ascenth = cnode->ascent;
+			}
+
+			if (cnode->descent > descenth){
+				descenth = cnode->descent;
 			}
 
 			if (cnode->height > fonth){
@@ -1253,23 +1381,24 @@ int arcan_renderfun_stretchblit(char* src, int inw, int inh,
 	const int pack_tight = 0;
 	const int rgba_ch = 4;
 
-	if (1 == stbir_resize_uint8((unsigned char*)src, inw, inh, pack_tight,
-		(unsigned char*)dst, dstw, dsth, pack_tight, rgba_ch)){
+	if (1 != stbir_resize_uint8((unsigned char*)src,
+		inw, inh, pack_tight, (unsigned char*)dst, dstw, dsth, pack_tight, rgba_ch))
+		return -1;
 
-		if (flipv){
-			uint32_t row[dstw];
-			size_t stride = dstw * 4;
-			for (size_t y = 0; y < dsth >> 1; y++){
-				if (y == (dsth - 1 - y))
-					continue;
 
-				memcpy(row, &dst[y*dstw], stride);
-				memcpy(&dst[y*dstw], &dst[(dsth-1-y)*dstw], stride);
-				memcpy(&dst[(dsth-1-y)*dstw], row, stride);
-			}
-		}
-
+	if (!flipv)
 		return 1;
+
+	uint32_t row[dstw];
+	size_t stride = dstw * 4;
+	for (size_t y = 0; y < dsth >> 1; y++){
+		if (y == (dsth - 1 - y))
+			continue;
+
+		memcpy(row, &dst[y*dstw], stride);
+		memcpy(&dst[y*dstw], &dst[(dsth-1-y)*dstw], stride);
+		memcpy(&dst[(dsth-1-y)*dstw], row, stride);
 	}
-	return -1;
+
+	return 1;
 }
