@@ -1824,8 +1824,9 @@ bool arcan_shmif_acquireloop(struct arcan_shmif_cont* c,
 	}
 
 /* broken pool */
+	DLOG("pool broken: %zu / %zu\n", *evpool_sz, ul);
 	*evpool_sz = -1;
-	free(evpool);
+	free(*evpool);
 	*evpool = NULL;
 	return false;
 }
