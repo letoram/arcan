@@ -36,6 +36,8 @@
 -- @tblent: #rrggbb switch font color
 -- @tblent: pfname embed image
 -- @tblent: Pfname,w,h embed image, scale to w*h
+-- @tblent: evid,w,h embed vid, scale to w*h
+-- @tblent: Evid,w,h,x1,y1,x2,y2 embed vid, scale subregion (x1,y1,x2,y2) to w*h
 -- @group: image
 -- @cfunction: buildstr
 -- @note: Some format string states carry over between render_text calls, such
