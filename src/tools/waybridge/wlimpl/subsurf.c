@@ -1,6 +1,8 @@
 static bool subsurf_shmifev_handler(
 	struct comp_surf* surf, struct arcan_event* ev)
 {
+	trace(TRACE_SHELL, "subsurface - shmif: %s\n",
+		arcan_shmif_eventstr(ev, NULL, 0));
 	return false;
 }
 
@@ -8,7 +10,7 @@ static void subsurf_destroy(struct wl_client *cl, struct wl_resource* res)
 {
 	trace(TRACE_ALLOC, "");
 	struct comp_surf* surf = wl_resource_get_user_data(res);
-	destroy_comp_surf(surf);
+	destroy_comp_surf(surf, false);
 }
 
 static void subsurf_position(

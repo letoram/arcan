@@ -145,7 +145,7 @@ static void xdgtop_move(struct wl_client* cl,
 	});
 }
 
-void edge_to_mask(uint32_t edges, int* dx, int* dy)
+static void edge_to_mask(uint32_t edges, int* dx, int* dy)
 {
 	switch (edges){
 	case ZXDG_TOPLEVEL_V6_RESIZE_EDGE_TOP:
@@ -177,9 +177,6 @@ void edge_to_mask(uint32_t edges, int* dx, int* dy)
 	}
 }
 
-/*
- * => _CURSORHINT
- */
 static void xdgtop_resize(struct wl_client* cl, struct wl_resource* res,
 	struct wl_resource* seat, uint32_t serial, uint32_t edges)
 {
