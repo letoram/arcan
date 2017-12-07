@@ -118,12 +118,11 @@ it is better to wait and see.
 BUGS
 ===
 1. gnome-apps, mouse motion registers but not button presses on some
-   popups
+   popups, likely related to input regions and grabbing and the WM
+	 script-side being guilty.
 2. SDL2, buffer- size and mouse cursor alignment is off in ex. 0ad
-3. gnome-apps, popups spawn at the wrong location -might be in durden-
-   likely that geometry/offsets affect positioning
-4. gnome-apps, visible with calculator - some interaction between durden
-   and the reset remaining,
+3. gnome-apps, visible with calculator - some interaction between durden
+   and subsurfaces etc. still seem to misbehave.
 
 TODO
 ====
@@ -131,11 +130,12 @@ TODO
 Rough estimate of planned changes and order:
 
 1. fork- mode
-2. recovery- rebuild
-3. seccmp- filtering
-4. wl\_shell fixes / event propagation
-5. mouse wheel actions
-6. data-device to clipboard
+2. seccmp- filtering
+3. wl\_shell fixes / event propagation
+4. mouse wheel actions
+5. data-device to clipboard
+6. enforce stronger error handling (not allow surfaces to switch roles etc.)
+7. move more 'decisions' that is part of the durden atype handling
 
 (x - done, p - partial/possible-tuning, s - showstopper, i - ignored for now)
 + (for-each finished milestone, verify allocation/deallocation/validation)
@@ -161,14 +161,14 @@ determine if we are compliant or not, because Wayland.
       - [x] Focus, buffers, cursors, sizing ...
       - [p] Forward shell events that can't be handled with shmif
       - [p] Positioners
-    - [ ] Application-test suite and automated tests (SDL, QT, GTK, ...)]
+    - [i] Application-test suite and automated tests (SDL, QT, GTK, ...),
+		      seems that canonical attempts to tackle this
     - [i] XWayland (WM parts)
-    - [ ] Output Rotation / Scaling
 - [ ] Milestone 3, funky things
   - [x] SHM to GL texture mapping
 	- [x] Single-exec launch mode (./arcan-wayland -exec gtk3-demo)
-  - [ ] Transforms (Rotations/Scaling)
-  - [ ] Multithread/multiprocess client processing
+  - [ ] Transforms (Rotations/Scaling - most is done server side already)
+  - [p] Multithread/multiprocess client processing
   - [ ] Dynamic Keyboard Translation table generation
   - [ ] Benchmarking/Inspection tools
   - [ ] Sandboxing
@@ -186,3 +186,4 @@ determine if we are compliant or not, because Wayland.
   - [ ] Viewporter
   - [ ] Xdg-output
   - [ ] Xdg-foreign
+	- [ ] Xdg-shell-v6 -> the stable replacement

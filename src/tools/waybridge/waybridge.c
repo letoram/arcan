@@ -68,7 +68,7 @@ static void reset_group_slot(int group, int slot);
 static bool waybridge_instance_keymap(
 	struct bridge_client* bcl, int* fd, int* fmt, size_t* sz);
 
-static void destroy_comp_surf(struct comp_surf* surf);
+static void destroy_comp_surf(struct comp_surf* surf, bool clean);
 
 /* static PFNEGLGETPLATFORMDISPLAYEXTPROC get_platform_display; */
 
@@ -431,7 +431,7 @@ static bool request_surface(
 	return true;
 }
 
-static void destroy_comp_surf(struct comp_surf* surf)
+static void destroy_comp_surf(struct comp_surf* surf, bool clean)
 {
 	if (!surf)
 		return;
@@ -459,8 +459,10 @@ static void destroy_comp_surf(struct comp_surf* surf)
 	else
 		trace(TRACE_ALLOC, "destroy comp on non-acon surface\n");
 
-	memset(surf, '\0', sizeof(struct comp_surf));
-	free(surf);
+	if (clean){
+		memset(surf, '\0', sizeof(struct comp_surf));
+		free(surf);
+	}
 }
 
 /*
@@ -498,7 +500,7 @@ static void destroy_client(struct wl_listener* l, void* data)
 				(wl.groups[i].slots[j].surface->client == cl)){
 				trace(TRACE_ALLOC,"destroy_client->dangling surface(%zu:%zu:%c)",
 					i, j, wl.groups[i].slots[j].idch);
-				destroy_comp_surf(wl.groups[i].slots[j].surface);
+				destroy_comp_surf(wl.groups[i].slots[j].surface, true);
 			}
 		}
 	}

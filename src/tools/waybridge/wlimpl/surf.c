@@ -8,7 +8,7 @@ static void surf_destroy(struct wl_client* cl, struct wl_resource* res)
 	}
 
 /* check pending subsurfaces? */
-	destroy_comp_surf(surf);
+	destroy_comp_surf(surf, true);
 }
 
 static void buffer_destroy(struct wl_listener* list, void* data)
