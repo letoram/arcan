@@ -43,7 +43,7 @@
 -- The optional *format* defines additional flags for the backing store of
 -- *dst*. Possible values are RENDERTARGET_COLOR (default),
 -- RENDERTARGET_DEPTH, RENDERTARGET_FULL and the additional bitfields
--- RENDERTARGET_MULTISAMPLE and RENDERTARGET_RETAIN_ALPHA.
+-- RENDERTARGET_MULTISAMPLE and RENDERTARGET_ALPHA.
 -- The difference between COLOR and FULL is that a stencil buffer (for certain
 -- clipping operations) is not always present in COLOR. DEPTH is a special case
 -- primarily used when only the contents of the depth buffer is to be used.
