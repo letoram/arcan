@@ -120,7 +120,8 @@ static void drop_msaa(struct agp_rendertarget* dst)
 static bool alloc_fbo(struct agp_rendertarget* dst, bool retry)
 {
 	struct agp_fenv* env = agp_env();
-	int mode = dst->mode & (~RENDERTARGET_DOUBLEBUFFER);
+	int mode = dst->mode & (
+		~(RENDERTARGET_DOUBLEBUFFER | RENDERTARGET_RETAIN_ALPHA));
 
 /* recall this is actually OpenGL 3.0, so it's not at all certain
  * that we will actually get it. Then we fallback 'gracefully' */
