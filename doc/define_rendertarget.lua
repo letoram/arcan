@@ -42,7 +42,8 @@
 --
 -- The optional *format* defines additional flags for the backing store of
 -- *dst*. Possible values are RENDERTARGET_COLOR (default),
--- RENDERTARGET_DEPTH, RENDERTARGET_FULL and RENDERTARGET_MULTISAMPLE.
+-- RENDERTARGET_DEPTH, RENDERTARGET_FULL and the additional bitfields
+-- RENDERTARGET_MULTISAMPLE and RENDERTARGET_RETAIN_ALPHA.
 -- The difference between COLOR and FULL is that a stencil buffer (for certain
 -- clipping operations) is not always present in COLOR. DEPTH is a special case
 -- primarily used when only the contents of the depth buffer is to be used.
@@ -51,12 +52,15 @@
 -- is depth-buffer based 3D effects (e.g. shadow mapping). Note that you can
 -- control the format of the output through ref:alloc_surface.
 --
--- MULTISAMPLE is used for when you need higher quality rendering/anti-aliasing
--- and comes at a high cost when the rendertarget is updated both from the
--- process itself and from an additional internal sampling of the multisample
--- buffer into the datastore pointed to by *dst*. It is also likely to
--- break if you are running on weak/old hardware on a GLES2 level of
--- acceleration.
+-- MULTISAMPLE is a bitflag that can be set (bit.bor) for when you need higher
+-- quality rendering/anti-aliasing and comes at a high cost when the
+-- rendertarget is updated both from the process itself and from an additional
+-- internal sampling of the multisample buffer into the datastore pointed to
+-- by *dst*. It is also likely to break if you are running on weak/old hardware
+-- on a GLES2 level of acceleration.
+--
+-- ALPHA is another bitflag that can be set in order for the alpha channel
+-- contents to be kept rather than resolved.
 --
 -- @note: Using the same object or backing store for *dst* and as
 -- a member of *vtbl* results in undefined contents in *dst*.
