@@ -2761,6 +2761,16 @@ static bool setup_cards_basic(int w, int h)
 	return false;
 }
 
+void platform_video_preinit()
+{
+/*
+ * stub for now,
+ * if suid - populate device descriptor pool so that we can try to get drmMaster
+ * on them. This pool will then be used to resolve devices rather than the
+ * normal one.
+ */
+}
+
 bool platform_video_init(uint16_t w, uint16_t h,
 	uint8_t bpp, bool fs, bool frames, const char* title)
 {

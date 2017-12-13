@@ -102,6 +102,10 @@ static struct {
 	.magic = 0xfeedface
 };
 
+void platform_video_preinit()
+{
+}
+
 void platform_video_reset(int id, int swap)
 {
 /*
@@ -667,6 +671,10 @@ pollout:
 
 	if (post)
 		post();
+}
+
+void platform_event_preinit()
+{
 }
 
 /*

@@ -18,6 +18,7 @@
 #include <sys/kbio.h>
 #include <sys/select.h>
 #include <sys/time.h>
+#include <sys/types.h>
 
 #include <termios.h>
 #include <ctype.h>
@@ -662,6 +663,18 @@ void platform_event_deinit(arcan_evctx* ctx)
 
 void platform_device_lock(int devind, bool state)
 {
+}
+
+void platform_event_preinit()
+{
+/* drop privileges dance that might be needed on some video platforms */
+	if (setgid(getgid()) == -1){
+		fprintf(stderr, "event_preinit() - couldn't setgid(drop on suid)\n");
+		exit(EXIT_FAILURE);
+	}
+	if (setuid(getuid()) == -1){
+		fprintf(stderr, "event_preinit() - couldn't setuid(drop on suid)\n");
+	}
 }
 
 void platform_event_init(arcan_evctx* ctx)

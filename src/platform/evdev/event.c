@@ -2005,6 +2005,18 @@ static int find_tty()
 	return tty == -1 ? STDIN_FILENO : tty;
 }
 
+void platform_event_preinit()
+{
+/* drop privileges dance that might be needed on some video platforms */
+	if (setgid(getgid()) == -1){
+		fprintf(stderr, "event_preinit() - couldn't setgid(drop on suid)\n");
+		exit(EXIT_FAILURE);
+	}
+	if (setuid(getuid()) == -1){
+		fprintf(stderr, "event_preinit() - couldn't setuid(drop on suid)\n");
+	}
+}
+
 void platform_event_init(arcan_evctx* ctx)
 {
 	uintptr_t tag;

@@ -418,6 +418,10 @@ const char* platform_video_capstr()
 	return capstr;
 }
 
+void platform_video_preinit()
+{
+}
+
 bool platform_video_init(uint16_t width, uint16_t height,
 	uint8_t bpp, bool fs, bool frames, const char* capt)
 {
