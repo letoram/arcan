@@ -899,6 +899,10 @@ void platform_device_lock(int devind, bool state)
 	mouse_relative = state;
 }
 
+void platform_event_preinit()
+{
+}
+
 void platform_event_init(arcan_evctx* ctx)
 {
 	static bool first_init;

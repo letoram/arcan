@@ -799,6 +799,10 @@ void platform_device_lock(int devind, bool state)
 	SDL_WM_GrabInput( state ? SDL_GRAB_ON : SDL_GRAB_OFF );
 }
 
+void platform_event_preinit()
+{
+}
+
 void platform_event_init(arcan_evctx* ctx)
 {
 	static bool first_init;

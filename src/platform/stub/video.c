@@ -151,6 +151,10 @@ const char* platform_video_capstr()
 	return "skeleton driver, no capabilities";
 }
 
+void platform_video_preinit()
+{
+}
+
 bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	bool fs, bool frames, const char* capt)
 {

@@ -322,6 +322,9 @@ static void fatal_shutdown()
 
 int MAIN_REDIR(int argc, char* argv[])
 {
+	platform_video_preinit();
+	platform_event_preinit();
+
 	arcan_log_destination(stderr, 0);
 
 	settings.in_monitor = getenv("ARCAN_MONITOR_FD") != NULL;

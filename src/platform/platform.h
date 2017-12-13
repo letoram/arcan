@@ -235,6 +235,18 @@ void platform_event_rescan_idev(struct arcan_evctx* ctx);
 void platform_event_keyrepeat(struct arcan_evctx*, int* period, int* delay);
 
 /*
+ * run once before any other setup in order to provide for platforms that need
+ * to do one-time things like opening privileged resources and then dropping
+ * them. Unlike video_init, this will only be called once and before
+ * environmental variables etc. are applied, so other platform features might
+ * be missing.
+ *
+ * platform_video_preinit will be called prior to this, so it is the job of
+ * event_ preinit to actually drop privileges.
+ */
+void platform_event_preinit();
+
+/*
  * Hook where the platform and event queue is in a ready state, and it is
  * possible to load/lock/discover devices and attach to the event queues of
  * [ctx].

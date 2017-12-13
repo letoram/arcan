@@ -238,6 +238,15 @@ enum shader_vertex_attributes {
 typedef long long arcan_vobj_id;
 
 /*
+ * run once before any other setup in order to provide for platforms that need
+ * to do one-time things like opening privileged resources and then dropping
+ * them. Unlike video_init, this will only be called once and before
+ * environmental variables etc. are applied, so other platform features might
+ * be missing.
+ */
+void platform_video_preinit();
+
+/*
  * Allocate resources, devices and set up a safe initial default.
  * [w, h, bpp, fs, frames, caption] arguments are used for legacy reasons,
  * and new platform implementations should accept 0- values and rather

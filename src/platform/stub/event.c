@@ -79,6 +79,10 @@ void platform_device_lock(int devind, bool state)
 {
 }
 
+void platform_event_preinit()
+{
+}
+
 void platform_event_init(arcan_evctx* ctx)
 {
 }

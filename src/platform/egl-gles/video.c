@@ -183,6 +183,10 @@ bool PLATFORM_SYMBOL(_video_specify_mode)(platform_display_id id,
 	return false;
 }
 
+void PLATFORM_SYMBOL(_video_preinit)()
+{
+}
+
 bool PLATFORM_SYMBOL(_video_init) (uint16_t w, uint16_t h,
 	uint8_t bpp, bool fs, bool frames, const char* caption)
 {
