@@ -808,6 +808,7 @@ bool platform_video_set_mode(platform_display_id disp, platform_mode_id mode)
  */
 	if (IS_GBM_DISPLAY(d->device)){
 		gbm_surface_destroy(d->buffer.surface);
+		d->buffer.surface = NULL;
 		if (setup_buffers_gbm(d) != 0)
 			return false;
 	}
