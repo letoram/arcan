@@ -61,11 +61,17 @@ static void update_mbtn(struct comp_surf* cl,
 
 /* 0x110 == BTN_LEFT in evdev parlerance, ignore 0 index as it is used
  * to convey gestures and that's a separate unstable protocol */
-	if (ind > 0)
+	if (ind > 0){
 		wl_pointer_send_button(cl->client->pointer, STEP_SERIAL(),
 			pts, 0x10f + ind, active ?
 			WL_POINTER_BUTTON_STATE_PRESSED : WL_POINTER_BUTTON_STATE_RELEASED
 		);
+
+		if (wl_resource_get_version(cl->client->pointer) >=
+			WL_POINTER_FRAME_SINCE_VERSION){
+			wl_pointer_send_frame(cl->client->pointer);
+		}
+	}
 }
 
 static void update_kbd(struct comp_surf* cl, arcan_ioevent* ev)
