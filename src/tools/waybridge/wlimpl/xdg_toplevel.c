@@ -72,7 +72,7 @@ static void xdgtop_setparent(
 	int8_t order = 0;
 
 	if (parent){
-		struct comp_surf* par = wl_resource_get_user_data(res);
+		struct comp_surf* par = wl_resource_get_user_data(parent);
 		par_token = par->acon.segment_token;
 		order = par->viewport.ext.viewport.order + 1;
 	}
