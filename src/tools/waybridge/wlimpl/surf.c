@@ -326,7 +326,10 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 					0, SHMIF_SIGVID | SHMIF_SIGBLK_NONE, SHMIFEXT_BUILTIN);
 				acon->vidp = old_vidp;
 				acon->stride = old_stride;
-				wl_buffer_send_release(buf);
+				if (wl.defer_release)
+					surf->last_buf = buf;
+				else
+					wl_buffer_send_release(buf);
 				return;
 			}
 		}
@@ -346,7 +349,10 @@ static void surf_commit(struct wl_client* cl, struct wl_resource* res)
 			memcpy(acon->vidp, data, w * h * sizeof(shmif_pixel));
 
 		arcan_shmif_signal(acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
-		wl_buffer_send_release(buf);
+		if (wl.defer_release)
+			surf->last_buf = buf;
+		else
+			wl_buffer_send_release(buf);
 	}
 
 	trace(TRACE_SURF,
@@ -365,10 +371,31 @@ static void surf_transform(struct wl_client* cl,
 	struct wl_resource* res, int32_t transform)
 {
 	trace(TRACE_SURF, "surf_transform(%d)", (int) transform);
+	struct comp_surf* surf = wl_resource_get_user_data(res);
+	if (!surf || !surf->acon.addr)
+		return;
+
+	struct arcan_event ev = {
+		.ext.kind = ARCAN_EVENT(MESSAGE),
+	};
+	snprintf((char*)ev.ext.message.data,
+		COUNT_OF(ev.ext.message.data), "transform:%"PRId32, transform);
+
+	arcan_shmif_enqueue(&surf->acon, &ev);
 }
 
 static void surf_scale(struct wl_client* cl,
 	struct wl_resource* res, int32_t scale)
 {
 	trace(TRACE_SURF, "surf_scale(%d)", (int) scale);
+	struct comp_surf* surf = wl_resource_get_user_data(res);
+	if (!surf || !surf->acon.addr)
+		return;
+
+	struct arcan_event ev = {
+		.ext.kind = ARCAN_EVENT(MESSAGE)
+	};
+	snprintf((char*)ev.ext.message.data,
+		COUNT_OF(ev.ext.message.data), "scale:%"PRId32, scale);
+	arcan_shmif_enqueue(&surf->acon, &ev);
 }

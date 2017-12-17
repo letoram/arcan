@@ -34,6 +34,19 @@ add_definitions(
 	-std=gnu11 # shmif-api requires this
 )
 
+if (PKG_CONFIG_FOUND)
+	pkg_search_module(SECCOMP libseccomp)
+	if (SECCOMP_FOUND)
+		message("secomp found, enabling syscall filtering")
+		add_definitions(-DENABLE_SECCOMP)
+		list(APPEND WAYLAND_SERVER_LIBRARIES seccomp)
+	else()
+		message("No seccomp found, syscall filtering disabled")
+	endif()
+else()
+	message("No pkg-config found, disabling seccomp")
+endif()
+
 # copied from Cloudef/wlc/protos
 set(PROTOCOLS
 	"${WAYLANDPROTOCOLS_PATH}/unstable/xdg-shell/xdg-shell-unstable-v6"
