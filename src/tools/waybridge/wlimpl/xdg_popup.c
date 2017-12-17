@@ -11,9 +11,6 @@ static bool xdgpopup_shmifev_handler(
 
 	if (ev->category == EVENT_TARGET)
 		switch (ev->tgt.kind){
-
-/* we need a MESSAGE for conveying the actual popup placement */
-
 		case TARGET_COMMAND_DISPLAYHINT:{
 		/* update state tracking first */
 			bool changed = displayhint_handler(surf, &ev->tgt);
@@ -47,6 +44,8 @@ static void xdgpop_grab(struct wl_client *cl,
 {
 	trace(TRACE_SHELL, "xdgpop_grab");
 	struct comp_surf* surf = wl_resource_get_user_data(res);
+
+/* forward to WM scripts so the window gets raised */
 	if (!surf->acon.addr)
 		return;
 	surf->viewport.ext.viewport.focus = true;

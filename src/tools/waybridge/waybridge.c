@@ -27,6 +27,14 @@
 #include <xkbcommon/xkbcommon-compose.h>
 
 /*
+ * only linux
+ */
+#ifdef ENABLE_SECCOMP
+	#include <sys/prctl.h>
+	#include <seccomp.h>
+#endif
+
+/*
  * EGL- details needed for handle translation
  */
 struct comp_surf;
@@ -125,6 +133,13 @@ static struct {
  * dma-buffers will actully be passed on as-is
  */
 	int default_accel_surface;
+
+/*
+ * this is a workaround for shm- buffers and relates to clients that just push
+ * a new buffer as soon as the old is released, causing excessive double-
+ * buffering as we already have a copy in one way or another.
+ */
+	bool defer_release;
 
 /*
  * accepted trace level
@@ -396,7 +411,8 @@ static bool request_surface(
 				free(cont.user);
 			}
 			else {
-				trace(TRACE_ALLOC, "new surface assigned to (%d:%d)", group, ind);
+				trace(TRACE_ALLOC, "new surface assigned to (%d:%d) token: %"PRIu32,
+					group, ind, cont.segment_token);
 				tag->group = group;
 				tag->slot = ind;
 				if(!req->dispatch(req, &cont)){
@@ -758,6 +774,14 @@ static void rebuild_client(struct bridge_client* bcl)
 		wl.groups[surfaces[i].group].pg[surfaces[i].ind].fd = surf->acon.epipe;
 		trace(TRACE_ALERT, "rebuild %zu:%s - fd set to %d",
 			i, surf->tracetag, surf->acon.epipe);
+
+/* release the old buffer regardless, as drm- handles etc. are likely
+ * dead and defunct. same goes with framecallbacks */
+		if (surf->last_buf){
+			wl_buffer_send_release(surf->last_buf);
+			surf->last_buf = NULL;
+		}
+
 	}
 
 /* clipboards can be allocated dynamically so no need to care there */
@@ -853,6 +877,9 @@ static int show_use(const char* msg, const char* arg)
 	fprintf(stdout, "%s%s", msg, arg ? arg : "");
 	fprintf(stdout, "\nUse: arcan-wayland [arguments]\n"
 "     arcan-wayland [arguments] -exec /path/to/bin arg1 arg2 ...\n"
+#ifdef ENABLE_SECCOMP
+"\t-sandbox          filter syscalls, ...\n"
+#endif
 "\t-shm-egl          pass shm- buffers as gl textures\n"
 "\t-no-egl           disable the wayland-egl extensions\n"
 "\t-no-compositor    disable the compositor protocol\n"
@@ -862,7 +889,7 @@ static int show_use(const char* msg, const char* arg)
 "\t-no-seat          disable the seat protocol\n"
 "\t-no-xdg           disable the xdg protocol\n"
 "\t-no-output        disable the output protocol\n"
-"\t-layout lay       set keyboard layout to <lay>\n"
+"\t-defer-release    defer buffer releases, aggressive client workaround\n"
 "\t-debugusr1        use SIGUSR1 to dump debug information\n"
 "\t-prefix prefix    use with -exec, override /tmp/awl_XXXXXX prefix\n"
 "\t-fork             fork- off new clients as separate processes\n"
@@ -944,15 +971,20 @@ int main(int argc, char* argv[])
 		.ddev = 3,
 		.relp = 1
 	};
+#ifdef ENABLE_SECCOMP
+	bool sandbox = false;
+#endif
 
 	size_t arg_i = 1;
 	for (; arg_i < argc; arg_i++){
 		if (strcmp(argv[arg_i], "-shm-egl") == 0){
 			wl.default_accel_surface = 0;
 		}
-		else if (strcmp(argv[arg_i], "-layout") == 0){
-/* missing */
+#ifdef ENABLE_SECCOMP
+		else if (strcmp(argv[arg_i], "-sandbox") == 0){
+			sandbox = true;
 		}
+#endif
 		else if (strcmp(argv[arg_i], "-trace") == 0){
 			if (arg_i == argc-1){
 				return show_use("missing trace argument", "");
@@ -996,6 +1028,8 @@ int main(int argc, char* argv[])
 			protocols.subcomp = 0;
 		else if (strcmp(argv[arg_i], "-no-data-device") == 0)
 			protocols.ddev = 0;
+		else if (strcmp(argv[arg_i], "-defer-release") == 0)
+			wl.defer_release = true;
 		else if (strcmp(argv[arg_i], "-no-relative-pointer") == 0)
 			protocols.relp = 0;
 		else if (strcmp(argv[arg_i], "-exec") == 0){
@@ -1032,6 +1066,13 @@ int main(int argc, char* argv[])
 		}
 
 		setenv("XDG_RUNTIME_DIR", newdir, 1);
+/*
+ * Enable the other 'select wayland backend' environment variables we know of
+ */
+		setenv("SDL_VIDEODRIVER", "wayland", 1);
+		setenv("QT_QPA_PLATFORM", "wayland", 1);
+		setenv("ECORE_EVAS_ENGINE",
+			protocols.egl ? "wayland_egl" : "wayland_shm", 1);
 	}
 
 	if (!getenv("XDG_RUNTIME_DIR")){
@@ -1181,6 +1222,19 @@ int main(int argc, char* argv[])
 			}
 		}
 	}
+
+#ifdef ENABLE_SECCOMP
+/* Unfortunately a rather obese list, part of it is our lack of control
+ * over the whole FFI nonsense and the keylayout creation/transfer. You
+ * need to be a rather shitty attacker not to manage with this set, but
+ * we have our targets for reduction at least */
+	if (sandbox){
+		prctl(PR_SET_NO_NEW_PRIVS, 1);
+		scmp_filter_ctx flt = seccomp_init(SCMP_ACT_KILL);
+#include "syscalls.c"
+		seccomp_load(flt);
+	}
+#endif
 	while(wl.alive && process_group(&wl.groups[0])){}
 
 cleanup:

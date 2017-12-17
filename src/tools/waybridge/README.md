@@ -55,6 +55,8 @@ added that cover (based on level argument bitmask, so add the values):
     32  - data-device events
     64  - seat events
     128 - surface events
+		256 - drm (accelerated buffers)
+		512 - alerts
 
 Allocation outputs are encoded as follows:
 
@@ -75,9 +77,7 @@ to client depending on the set of requested vs. available protocols.
 
 Notes and Issues
 ====
-1. Mouse input, scroll wheel / scroll locking not really working
-
-3. Stride - the shm- buffer blit doesn't take stride differences into
+1. Stride - the shm- buffer blit doesn't take stride differences into
    account. This fails on MPV in SHM depending on source video size.
 
 Depending on what toolkit is being used, chances are that some magic dance is
@@ -171,8 +171,8 @@ determine if we are compliant or not, because Wayland.
   - [p] Multithread/multiprocess client processing
   - [ ] Dynamic Keyboard Translation table generation
   - [ ] Benchmarking/Inspection tools
-  - [ ] Sandboxing
-  - [ ] Migration/Reset/Crash-Recover
+  - [p] Sandboxing
+  - [x] Migration/Reset/Crash-Recover
   - [ ] Drag and Drop (cursor states)
 
 - [ ] Misc. protocols:
