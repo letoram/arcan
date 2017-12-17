@@ -386,7 +386,6 @@ static enum shmif_migrate_status fallback_migrate(struct arcan_shmif_cont* c)
 {
 /* sleep - retry connect loop */
 	enum shmif_migrate_status sv;
-	int step = 0;
 	int oldfd = c->epipe;
 
 /* parent can pull dms explicitly */
@@ -396,11 +395,8 @@ static enum shmif_migrate_status fallback_migrate(struct arcan_shmif_cont* c)
 
 /* we force CONNECT_LOOP style behavior here */
 	while ((sv = arcan_shmif_migrate(
-		c, c->priv->alt_conn, NULL)) == SHMIF_MIGRATE_NOCON){
-		sleep(1 << step);
-		if (step < 4)
-			step++;
-	}
+		c, c->priv->alt_conn, NULL)) == SHMIF_MIGRATE_NOCON)
+		sleep(1);
 
 	switch (sv){
 	case SHMIF_MIGRATE_NOCON: break;
