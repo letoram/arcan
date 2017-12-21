@@ -695,7 +695,7 @@ struct arcan_frameserver* platform_fsrv_alloc()
  * way of reparenting. Exposed to the scripts in the SEGREQ- handler and
  * then affirmed in the VIEWPORT handler.
  */
-	res->cookie = (uint32_t) random();
+	arcan_random((uint8_t*) &res->cookie, sizeof(res->cookie));
 
 /* shm- related settings are deferred as this is called previous to mapping
  * (spawn_subsegment / spawn_server) so setting up the eventqueues with

@@ -300,8 +300,13 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 				case EVENT_EXTERNAL_REGISTER:
 					if (tgt->segid == SEGID_UNKNOWN){
 /* 0.6/CRYPTO - need actual signature authentication here */
-						tgt->guid[0] = inev.ext.registr.guid[0];
-						tgt->guid[1] = inev.ext.registr.guid[1];
+						if (!inev.ext.registr.guid[0] && !inev.ext.registr.guid[1]){
+							arcan_random((uint8_t*)tgt->guid, 16);
+						}
+						else {
+							tgt->guid[0] = inev.ext.registr.guid[0];
+							tgt->guid[1] = inev.ext.registr.guid[1];
+						}
 					}
 					snprintf(tgt->title,
 						COUNT_OF(tgt->title), "%s", inev.ext.registr.title);

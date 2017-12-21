@@ -64,6 +64,7 @@ set(ARCAN_PLATFORM
 	${PLATFORM_PATH}/namespace.c
 	${PLATFORM_PATH}/launch.c
 	${PLATFORM_PATH}/config.c
+	${PLATFORM_PATH}/random.c
 )
 
 set_property(SOURCE ${PLATFORM_PATH}/fdpassing.c

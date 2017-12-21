@@ -118,6 +118,12 @@ const char* arcan_frameserver_atypes();
  * to be exact, but undershooting rather than overshooting is important */
 void arcan_timesleep(unsigned long);
 
+/* [BLOCKING, THREAD_SAFE]
+ * Generate [sz] cryptographically secure pseudo-random bytes and store
+ * into [dst].
+ */
+void arcan_random(uint8_t* dst, size_t sz);
+
 /*
  * A lot of frameserver/client communication is on the notion that we can
  * push and fetch some kind of context handle between processes. The exact
@@ -185,8 +191,6 @@ enum PLATFORM_EVENT_CAPABILITIES {
 	ACAP_ORIENTATION = 32
 };
 enum PLATFORM_EVENT_CAPABILITIES platform_input_capabilities();
-
-
 
 /*
  * Update/get the active filter setting for the specific devid / axis (-1 for

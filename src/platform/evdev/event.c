@@ -350,7 +350,9 @@ static bool identify(int fd, const char* path,
  * repeatability but don't risk collision-disconnect spam */
 	for (ssize_t i = 0; i < iodev.sz_nodes; i++)
 		if (hash == iodev.nodes[i].devnum){
-			hash = rand() % 65535;
+			uint16_t rv;
+			arcan_random((uint8_t*)&rv, 2);
+			hash = rv;
 			i = -1;
 			continue;
 		}

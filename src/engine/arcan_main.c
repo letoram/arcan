@@ -353,10 +353,6 @@ int MAIN_REDIR(int argc, char* argv[])
 	char* dbfname = NULL;
 	int ch;
 
-	srand( time(0) );
-/* VIDs all have a randomized base to provoke crashes in poorly written scripts,
- * only -g will make their base and sequence repeatable */
-
 	while ((ch = getopt_long(argc, argv,
 		"w:h:mx:y:fsW:d:Sq:a:p:b:B:M:O:t:H:g01V", longopts, NULL)) >= 0){
 	switch (ch) {
@@ -412,16 +408,6 @@ int MAIN_REDIR(int argc, char* argv[])
 	break;
 	case 'g' :
 		debuglevel++;
-/* There's no guarantee this will have any actual effect on randomness, due to
- * the vague definition in the standard. It's merely a 'ok did we accidentally
- * get a dependency to a lib that actually uses rand for something serious, and
- * can we murder it?'. The only deterministic seed- random we 'need' is to
- * shake the vid/aid base between restarts to discourage script writers from
- * assuming a relationship between *id values. If this flag affects
- * 'invalid-vid' called style terminal state transitions, it's time to bring
- * out the axe. */
-		srand(0xdeadbeef);
-		break;
 	break;
 	default:
 		break;
