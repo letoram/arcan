@@ -3250,7 +3250,11 @@ static int launchavfeed(lua_State* ctx)
 	if (strcmp(modearg, "terminal") == 0)
 		args.preserve_env = true;
 
+/* generate some kind of guid as the frameservers don't/shouldn't have
+ * that idea themselves, it's just for tracking individual instances in
+ * this case */
 	struct arcan_frameserver* mvctx = platform_launch_fork(&args, ref);
+	arcan_random((uint8_t*)mvctx->guid, 16);
 /* internal so no need to free memarr */
 	free(expbuf[1]);
 
@@ -3265,7 +3269,15 @@ static int launchavfeed(lua_State* ctx)
 	lua_pushvid(ctx, mvctx->vid);
 	lua_pushaid(ctx, mvctx->aid);
 
-	LUA_ETRACE("launch_avfeed", NULL, 2);
+/* need to provide the locally generated guid so we have something to associate
+ * the recovery with since the avfeed won't trigger a registered, ... event */
+	size_t dsz;
+	char* b64 = (char*) arcan_base64_encode(
+		(uint8_t*)&mvctx->guid[0], 16, &dsz, 0);
+		lua_pushstring(ctx, b64);
+	arcan_mem_free(b64);
+
+	LUA_ETRACE("launch_avfeed", NULL, 3);
 }
 
 static int loadmovie(lua_State* ctx)
@@ -6487,10 +6499,13 @@ static int randomsurface(lua_State* ctx)
 
 	av_pixel* buf = (av_pixel*) cptr;
 
+/* use of rand() here is "pointless", entire function will / shall
+ * be replaced with controllable low-frequency (perlin) noise */
 	for (size_t y = 0; y < cons.h; y++)
 		for (size_t x = 0; x < cons.w; x++){
-			unsigned char val = 20 + rand() % 235;
-			*cptr++ = RGBA(val, val, val, 0xff);
+			uint8_t rv;
+			arcan_random(&rv, 1);
+			unsigned char val = 20 + rv % 235;
 		}
 
 	arcan_vobj_id id = arcan_video_rawobject(buf, cons, desw, desh, 0);
@@ -7010,7 +7025,11 @@ static int targetdevhint(lua_State* ctx)
 		struct arcan_event outev = {
 			.category = EVENT_TARGET, .tgt.kind = TARGET_COMMAND_DEVICE_NODE,
 			.tgt.ioevs[0].iv = BADFD,
-			.tgt.ioevs[1].iv = force ? 2 : 4
+			.tgt.ioevs[1].iv = force ? 2 : 4,
+			.tgt.ioevs[2].uiv = (fsrv->guid[0] & 0xffffffff),
+			.tgt.ioevs[3].uiv = (fsrv->guid[0] >> 32),
+			.tgt.ioevs[4].uiv = (fsrv->guid[1] & 0xffffffff),
+			.tgt.ioevs[5].uiv = (fsrv->guid[1] >> 32)
 		};
 		if (force && strlen(cpath) == 0)
 			arcan_fatal("target_devicehint(), forced migration connpath len == 0\n");
@@ -10526,7 +10545,9 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 	lua_atpanic(ctx, (lua_CFunction) panic);
 
 #ifdef _DEBUG
-	luactx.lua_vidbase = rand() % 32768;
+	uint32_t rv;
+	arcan_random((uint8_t*)&rv, 4);
+	luactx.lua_vidbase = rv % 32768; /* modulo-bias is OK here */
 	arcan_renderfun_vidoffset(luactx.lua_vidbase);
 	arcan_warning("lua_exposefuncs() -- videobase is set to %u\n",
 		luactx.lua_vidbase);

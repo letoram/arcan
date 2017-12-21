@@ -501,6 +501,10 @@ enum ARCAN_TARGET_COMMAND {
  *                 as display scanout type (e.g. GBM_BO_USE_SCANOUT),
  *              2; disabled, hardware acceleration is entirely lost
  *
+ * for [1].iv == 2..4:
+ * 128-bit guid is packed in [2..5] as 64bit little-endian,
+ * (low-32, high-32), (low-32, high-32)
+ *
  * for [1].iv == 5:
  *
  * ioev[2].iv = 0: (unsigned) corresponds to a drm authentication token

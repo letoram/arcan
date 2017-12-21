@@ -581,6 +581,20 @@ checkfd:
 /* replace slot with message, never forward */
 					if (priv->alt_conn)
 						free(priv->alt_conn);
+
+/* if we're provided with a guid, keep it to be used on a possible migrate */
+					uint64_t guid[2] = {
+						((uint64_t)dst->tgt.ioevs[2].uiv)|
+						((uint64_t)dst->tgt.ioevs[3].uiv << 32),
+						((uint64_t)dst->tgt.ioevs[4].uiv)|
+						((uint64_t)dst->tgt.ioevs[5].uiv << 32)
+					};
+
+					if (guid[0] || guid[1]){
+						priv->guid[0] = guid[0];
+						priv->guid[1] = guid[1];
+					}
+
 					priv->alt_conn = strdup(dst->tgt.message);
 					goto reset;
 				}
@@ -1552,10 +1566,12 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
  * code overhead from needing to buffer, manage descriptors, etc. as there
  * might be other events 'in flight'.
  */
-	while(arg->addr->resized == 1 && arg->addr->dms)
+	bool alive = true;
+	while(arg->addr->resized == 1 && arg->addr->dms && alive)
+		alive = parent_alive(arg->priv);
 		;
 
-	if (!arg->addr->dms){
+	if (!arg->addr->dms || !alive){
 		DLOG("dead man switch pulled during resize, giving up.\n");
 		return false;
 	}
@@ -2175,18 +2191,12 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 			return ret;
 		}
 
-/* remember guid used so we resend on crash recovery or migrate, otherwise
- * set the guid to some trackable nonsense - don't really need the whole
- * trouble with seeding for entropy here, that should be done server-side */
+/* remember guid used so we resend on crash recovery or migrate */
 		struct shmif_hidden* priv = ret.priv;
 		if (ext.guid[0] || ext.guid[1]){
 			priv->guid[0] = ext.guid[0];
 			priv->guid[1] = ext.guid[1];
 		}
-		else {
-			priv->guid[0] = arcan_timemillis();
-			priv->guid[1] = ts ^ ret.segment_token;
-		};
 
 		struct arcan_event ev = {
 			.category = EVENT_EXTERNAL,
