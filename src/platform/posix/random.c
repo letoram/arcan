@@ -8,6 +8,8 @@
 #include <stdio.h>
 #include <errno.h>
 
+void arcan_fatal(const char* msg, ...);
+
 static _Thread_local struct chacha20_ctx streamcipher;
 
 /* just lifted from the getrandom manpage, on others
