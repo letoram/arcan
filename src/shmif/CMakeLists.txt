@@ -139,6 +139,7 @@ set(SHMIF_SERVER_SOURCES
 	${ASD}/shmif/arcan_shmif_control.c
 	${ASD}/platform/posix/fsrv_guard.c
 	${ASD}/platform/posix/mem.c
+	${ASD}/platform/posix/random.c
 	${ASD}/shmif/arcan_shmif_evpack.c
 )
 
