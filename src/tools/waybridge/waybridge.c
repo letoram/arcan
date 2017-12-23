@@ -397,6 +397,7 @@ static bool request_surface(
 		else{
 			struct arcan_shmif_cont cont =
 				arcan_shmif_acquire(&cl->acon, NULL, req->segid, SHMIF_DISABLE_GUARD);
+
 			cont.hints = SHMIF_RHINT_SUBREGION | SHMIF_RHINT_VSIGNAL_EV;
 			arcan_shmif_resize(&cont, cont.w, cont.h);
 			struct acon_tag* tag = malloc(sizeof(struct acon_tag));
@@ -442,6 +443,7 @@ static bool request_surface(
  * mask trivial events though. There is the offchance that we'd get
  * something more serious, like a migrate that would trigger a rebuild */
 	if (pqueue_sz > 0){
+		trace(TRACE_ALERT, "pqueue size of %zu ignored", pqueue_sz);
 	}
 
 	return true;
@@ -720,38 +722,44 @@ static void rebuild_client(struct bridge_client* bcl)
 			}
 			trace(TRACE_ALERT, "retrieved new connection");
 			surfaces[i].new =
-				arcan_shmif_acquire(&bcl->acon,
-					NULL, arcan_shmif_segkind(&surf->acon), SHMIF_DISABLE_GUARD);
+				arcan_shmif_acquire(&bcl->acon, NULL,
+				arcan_shmif_segkind(&surf->acon), SHMIF_DISABLE_GUARD|SHMIF_NOREGISTER);
 			free(pqueue);
 		}
 	}
 
 /* [Pass 2]
- * Now we have all new shiny surfaces, rebuild buffer hierarchy tracking
- */
+ * Now we have all new shiny surfaces, rebuild buffer hierarchy tracking */
 	for (size_t i = 0; i < surf_count; i++){
 		struct comp_surf* surf = surfaces[i].surf;
 
-/* if there's a hierarchy relation, first find the original index */
-		if (surf->viewport.ext.viewport.parent){
-			for (size_t j = 0; j < surf_count; j++){
-				if (surfaces[j].surf->acon.segment_token){
+/* skip those where there is no documented relationship */
+		if (!surf->viewport.ext.viewport.parent)
+			continue;
+
+/* linear-search for the matching segment */
+		for (size_t j = 0; j < surf_count; j++){
+
+/* and for the one where the OLD token MATCH the known PARENT, SET to new */
+			if (surf->viewport.ext.viewport.parent ==
+				surfaces[j].surf->acon.segment_token){
 					surf->viewport.ext.viewport.parent = surfaces[j].new.segment_token;
 					break;
 				}
-			}
 		}
 	}
 
 /* [Pass 3]
- * synch sizes, copy contents and return buffers
- */
+ * synch sizes, copy contents and return buffers */
 	for (size_t i = 0; i < surf_count; i++){
 		struct comp_surf* surf = surfaces[i].surf;
 		surfaces[i].new.hints = surf->acon.hints;
 
-/* there's no expressed guarantee that the new buffer will have the same
- * stride/pitch, but that's practically the case */
+/* There's no expressed guarantee that the new buffer will have the same
+ * stride/pitch, but that's practically the case, more worrying is that the
+ * buffer is likely to not match the new initial size. It might be better to
+ * extract initial and pre-emit a configure and so on, but for now, just run
+ * with the old values */
 		if (arcan_shmif_resize(&surfaces[i].new, surf->acon.w, surf->acon.h)){
 			memcpy(
 				surfaces[i].new.vidp,
@@ -764,12 +772,20 @@ static void rebuild_client(struct bridge_client* bcl)
 				i, surf->tracetag, surf->acon.w, surf->acon.h);
 		}
 
+/* retain the old GUID */
+		struct arcan_event ev = {
+			.category = EVENT_EXTERNAL,
+			.ext.kind = ARCAN_EVENT(REGISTER),
+			.ext.registr.kind = arcan_shmif_segkind(&surf->acon)
+		};
+		arcan_shmif_guid(&surf->acon, ev.ext.registr.guid);
+		arcan_shmif_enqueue(&surfaces[i].new, &ev);
+
 /* free the old relation and resynch the hierarchy/coordinates */
 		surfaces[i].new.user = surf->acon.user;
 		surf->acon.user = NULL;
 		arcan_shmif_drop(&surf->acon);
 		surf->acon = surfaces[i].new;
-		arcan_shmif_enqueue(&surf->acon, &surf->viewport);
 		arcan_shmif_signal(&surf->acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
 		wl.groups[surfaces[i].group].pg[surfaces[i].ind].fd = surf->acon.epipe;
 		trace(TRACE_ALERT, "rebuild %zu:%s - fd set to %d",
@@ -781,16 +797,25 @@ static void rebuild_client(struct bridge_client* bcl)
 			wl_buffer_send_release(surf->last_buf);
 			surf->last_buf = NULL;
 		}
+	}
 
+/* [Pass 4], now the hierarchy should be 'alive' on the parent side,
+ * resubmit viewports */
+	for (size_t i = 0; i < surf_count; i++){
+		struct comp_surf* surf = surfaces[i].surf;
+		arcan_shmif_enqueue(&surf->acon, &surf->viewport);
 	}
 
 /* clipboards can be allocated dynamically so no need to care there */
 	arcan_shmif_drop(&bcl->clip_in);
 	arcan_shmif_drop(&bcl->clip_out);
 
-/* need to treat the mouse cursor as something special,
+/* need to treat the mouse cursor as something special, (if it is used),
  * rerequest it, assign to the last known surface that held it and update
  * the corresponding slot group and index */
+	if (!bcl->acursor.addr)
+		return;
+
 	void* cursor_user = bcl->acursor.user;
 	arcan_shmif_drop(&bcl->acursor);
 	struct arcan_event* pqueue;
@@ -811,7 +836,7 @@ static void rebuild_client(struct bridge_client* bcl)
 			return;
 		}
 		bcl->acursor = arcan_shmif_acquire(
-			&bcl->acon, NULL, SEGID_CURSOR, SHMIF_DISABLE_GUARD);
+			&bcl->acon, NULL, SEGID_CURSOR, SHMIF_DISABLE_GUARD | SHMIF_NOREGISTER);
 		bcl->acursor.user = cursor_user;
 
 		if (cursor_surface){
@@ -1209,11 +1234,13 @@ int main(int argc, char* argv[])
 		else {
 			int rc = fork();
 			if (rc == 0){
+				setpgid(0,0);
+
 				size_t nargs = argc - arg_i;
-				char* args[nargs];
-				for (size_t i = 1; arg_i + i < argc; i++)
+				char* args[nargs+1];
+				for (size_t i = 0; arg_i + i < argc; i++)
 					args[i] = argv[arg_i+i];
-				args[nargs-1] = NULL;
+				args[nargs] = NULL;
 				if (-1 == execvp(argv[arg_i], args))
 					exit(EXIT_FAILURE);
 			}

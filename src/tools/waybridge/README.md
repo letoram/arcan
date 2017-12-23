@@ -95,6 +95,8 @@ c. For EFL, it's EVAS\_ENGINE=wayland\_shm or EVAS\_ENGINE=wayland\_egl along
 with ELM\_DISPLAY=wl and optionally ELM\_ACCEL=none if there's issue with
 gl acceleration.
 
+The -exec mode sets these automatically.
+
 Limitations
 ====
 There are a number of arcan features that do not have a corresponding
@@ -108,12 +110,15 @@ XWayland
 
 XWayland support is currently omitted for two reasons. One is that the Xarcan
 approach is more efficient and blends better with the current arcan WMs
-(durden/prio) due to the whole 'self contained' thing. The other is that for
-XWayland support, one must write an entire window manager (or import the one
-from weston or wlc, neither work flawlessly). Based on the 'Why isn't Xwayland
-just a Wayland Client' post (wayland-devel, 2017-sept.) it seems like there's a
-chance we get patches that makes the special xwayland path unecessary and thus
-it is better to wait and see.
+(durden/prio) due to the whole 'self contained' thing, along with the need to
+have sharing-interception and not be explicitly dependent on wayland for X
+support.
+
+The other is that for XWayland support, one must write an entire window manager
+(or import the one from weston or wlc, neither work flawlessly). Based on the
+'Why isn't Xwayland just a Wayland Client' post (wayland-devel, 2017-sept.) it
+seems like there's a chance we get patches that makes the special xwayland path
+unecessary and thus it is better to wait and see.
 
 BUGS
 ===
@@ -130,12 +135,10 @@ TODO
 Rough estimate of planned changes and order:
 
 1. fork- mode
-2. seccmp- filtering
-3. wl\_shell fixes / event propagation
-4. mouse wheel actions
-5. data-device to clipboard
-6. enforce stronger error handling (not allow surfaces to switch roles etc.)
-7. move more 'decisions' that is part of the durden atype handling
+2. input fixes (regions, D to A mouse wheel, ...)
+3. data-device to clipboard
+4. enforce stronger error handling (not allow surfaces to switch roles etc.)
+5. move more 'decisions' that is part of the durden atype handling
 
 (x - done, p - partial/possible-tuning, s - showstopper, i - ignored for now)
 + (for-each finished milestone, verify allocation/deallocation/validation)
@@ -167,7 +170,7 @@ determine if we are compliant or not, because Wayland.
 - [ ] Milestone 3, funky things
   - [x] SHM to GL texture mapping
 	- [x] Single-exec launch mode (./arcan-wayland -exec gtk3-demo)
-  - [ ] Transforms (Rotations/Scaling - most is done server side already)
+  - [p] Transforms (Rotations/Scaling - most is done server side already)
   - [p] Multithread/multiprocess client processing
   - [ ] Dynamic Keyboard Translation table generation
   - [ ] Benchmarking/Inspection tools
@@ -187,3 +190,4 @@ determine if we are compliant or not, because Wayland.
   - [ ] Xdg-output
   - [ ] Xdg-foreign
 	- [ ] Xdg-shell-v6 -> the stable replacement
+	- [ ] Dma- buf

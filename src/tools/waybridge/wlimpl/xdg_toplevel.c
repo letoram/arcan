@@ -76,6 +76,8 @@ static void xdgtop_setparent(
 		par_token = par->acon.segment_token;
 		order = par->viewport.ext.viewport.order + 1;
 	}
+	surf->viewport.ext.viewport.order = order;
+	surf->viewport.ext.viewport.parent = par_token;
 
 /* Likely that we need more order tracking for subsurfaces, or shift
  * the relative assignment to the scripting layer again */

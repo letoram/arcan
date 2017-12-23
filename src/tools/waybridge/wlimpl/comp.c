@@ -41,6 +41,10 @@ static void comp_surf_create(struct wl_client *client,
 		.tracetag = "compositor",
 		.fail_accel = wl.default_accel_surface
 	};
+	new_surf->viewport = (struct arcan_event){
+		.category = EVENT_EXTERNAL,
+		.ext.kind = ARCAN_EVENT(VIEWPORT)
+	};
 
 	new_surf->res = wl_resource_create(client,
 		&wl_surface_interface, wl_resource_get_version(res), id);
