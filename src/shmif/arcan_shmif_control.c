@@ -79,6 +79,8 @@ static int ilog2(int val)
 	return i;
 }
 
+void arcan_random(uint8_t*, size_t);
+
 /*
  * The guard-thread thing tries to get around all the insane edge conditions
  * that exist when you have a partial parent<->child circular dependency with
@@ -590,7 +592,10 @@ checkfd:
 						((uint64_t)dst->tgt.ioevs[5].uiv << 32)
 					};
 
-					if (guid[0] || guid[1]){
+					if ( (guid[0] || guid[1]) &&
+						(priv->guid[0] != guid[0] && priv->guid[1] != guid[1] )){
+						if (priv->log_event)
+							fprintf(stderr, "->(%"PRIx64", %"PRIx64")\n", guid[0], guid[1]);
 						priv->guid[0] = guid[0];
 						priv->guid[1] = guid[1];
 					}
@@ -740,9 +745,20 @@ int arcan_shmif_enqueue(struct arcan_shmif_cont* c,
 		arcan_sem_wait(ctx->synch.handle);
 	}
 
+	int category = src->category;
 	ctx->eventbuf[*ctx->back] = *src;
-	if (!src->category)
-		ctx->eventbuf[*ctx->back].category = EVENT_EXTERNAL;
+	if (!category)
+		ctx->eventbuf[*ctx->back].category = category = EVENT_EXTERNAL;
+
+/* some events affect internal state tracking, synch those here -
+ * not particularly expensive as the frequency and max-rate of events
+ * client->server is really low */
+	if (category == EVENT_EXTERNAL &&
+		src->ext.kind == ARCAN_EVENT(REGISTER) &&
+		(src->ext.registr.guid[0] || src->ext.registr.guid[1])){
+		c->priv->guid[0] = src->ext.registr.guid[0];
+		c->priv->guid[1] = src->ext.registr.guid[1];
+	}
 
 	FORCE_SYNCH();
 	*ctx->back = (*ctx->back + 1) % ctx->eventbuf_sz;
@@ -1112,10 +1128,12 @@ struct arcan_shmif_cont shmif_acquire_int(
 		&res.priv->inev, &res.priv->outev, false);
 
 	if (0 != type && !(flags & SHMIF_NOREGISTER)) {
+		arcan_random((uint8_t*) res.priv->guid, 16);
 		struct arcan_event ev = {
 			.category = EVENT_EXTERNAL,
 			.ext.kind = ARCAN_EVENT(REGISTER),
-			.ext.registr.kind = type
+			.ext.registr.kind = type,
+			.ext.registr.guid = {res.priv->guid[0], res.priv->guid[1]}
 		};
 		arcan_shmif_enqueue(&res, &ev);
 	}
@@ -1687,6 +1705,20 @@ static char* strrep(char* dst, char key, char repl)
 	return src;
 }
 
+void arcan_shmif_guid(struct arcan_shmif_cont* cont, uint64_t guid[2])
+{
+	if (!guid)
+		return;
+
+	if (!cont || !cont->priv){
+		guid[0] = guid[1] = 0;
+		return;
+	}
+
+	guid[0] = cont->priv->guid[0];
+	guid[1] = cont->priv->guid[1];
+}
+
 struct arg_arr* arg_unpack(const char* resource)
 {
 	int argc = 1;
@@ -2196,6 +2228,10 @@ struct arcan_shmif_cont arcan_shmif_open_ext(enum ARCAN_FLAGS flags,
 		if (ext.guid[0] || ext.guid[1]){
 			priv->guid[0] = ext.guid[0];
 			priv->guid[1] = ext.guid[1];
+		}
+/* or use our own CSPRNG */
+		else {
+			arcan_random((uint8_t*)priv->guid, 16);
 		}
 
 		struct arcan_event ev = {

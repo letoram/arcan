@@ -161,6 +161,11 @@ bool arcan_shmif_acquireloop(struct arcan_shmif_cont*,
 bool arcan_shmif_descrevent(struct arcan_event*);
 
 /*
+ * retrieve the currently saved- context GUID
+ */
+void arcan_shmif_guid(struct arcan_shmif_cont*, uint64_t[2]);
+
+/*
  * Try and enqueue the element to the queue. If the context is set to lossless,
  * enqueue may block, sleep (or spinlock).
  *
