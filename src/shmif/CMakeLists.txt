@@ -91,6 +91,7 @@ if (BSD_BUILD)
 		${ASD}/platform/posix/time.c
 		${ASD}/platform/posix/sem.c
 		${ASD}/platform/posix/fdpassing.c
+		${ASD}/platform/posix/random.c
 	)
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 	set(SHMIF_PLATFORM
@@ -99,6 +100,7 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 		${ASD}/platform/posix/time.c
 		${ASD}/platform/posix/sem.c
 		${ASD}/platform/posix/fdpassing.c
+		${ASD}/platform/posix/random.c
 	)
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 	set(SHMIF_PLATFORM
@@ -107,6 +109,7 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 		${ASD}/platform/darwin/time.c
 		${ASD}/platform/darwin/sem.c
 		${ASD}/platform/posix/fdpassing.c
+		${ASD}/platform/posix/random.c
 	)
 else()
 	message(FATAL_ERROR "attempted to build arcan-shmif on an unsupported OS/platform")
@@ -139,7 +142,6 @@ set(SHMIF_SERVER_SOURCES
 	${ASD}/shmif/arcan_shmif_control.c
 	${ASD}/platform/posix/fsrv_guard.c
 	${ASD}/platform/posix/mem.c
-	${ASD}/platform/posix/random.c
 	${ASD}/shmif/arcan_shmif_evpack.c
 )
 
