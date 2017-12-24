@@ -384,21 +384,26 @@ static bool pause_evh(struct arcan_shmif_cont* c,
 	return rv;
 }
 
-static enum shmif_migrate_status fallback_migrate(struct arcan_shmif_cont* c)
+static enum shmif_migrate_status fallback_migrate(
+	struct arcan_shmif_cont* c, const char* cpoint, bool force)
 {
 /* sleep - retry connect loop */
 	enum shmif_migrate_status sv;
 	int oldfd = c->epipe;
 
 /* parent can pull dms explicitly */
-	if ((c->priv->flags & SHMIF_NOAUTO_RECONNECT) ||
-		parent_alive(c->priv) || c->priv->output)
-		return SHMIF_MIGRATE_NOCON;
+	if (force){
+		if ((c->priv->flags & SHMIF_NOAUTO_RECONNECT)
+			||	parent_alive(c->priv) || c->priv->output)
+			return SHMIF_MIGRATE_NOCON;
+	}
 
-/* we force CONNECT_LOOP style behavior here */
-	while ((sv = arcan_shmif_migrate(
-		c, c->priv->alt_conn, NULL)) == SHMIF_MIGRATE_NOCON)
+/* CONNECT_LOOP style behavior on force */
+	while ((sv = arcan_shmif_migrate(c, cpoint, NULL)) == SHMIF_MIGRATE_NOCON){
+		if (!force)
+			break;
 		sleep(1);
+	}
 
 	switch (sv){
 	case SHMIF_MIGRATE_NOCON: break;
@@ -608,6 +613,16 @@ checkfd:
 						priv->pev.gotev = true;
 						goto checkfd;
 					}
+/* try to migrate automatically, but ignore on failure */
+					else {
+						if (fallback_migrate(
+							c, dst->tgt.message, false) != SHMIF_MIGRATE_OK){
+							rv = 1;
+						}
+						else
+							goto reset;
+					}
+/* other ones are ignored for now, require cooperation with shmifext */
 				}
 				else
 					goto reset;
@@ -633,7 +648,7 @@ checkfd:
 		rv = 1;
 	}
 	else if (c->addr->dms == 0){
-		rv = fallback_migrate(c) == SHMIF_MIGRATE_OK ? 0 : -1;
+		rv = fallback_migrate(c, priv->alt_conn, true) == SHMIF_MIGRATE_OK?0:-1;
 		goto done;
 	}
 
@@ -717,7 +732,7 @@ int arcan_shmif_enqueue(struct arcan_shmif_cont* c,
  * gets lost. Neither is good. The counterargument is that crash recovery is a
  * 'best effort basis' - we're still dealing with an actual crash. */
 	if (!c->addr->dms || !c->priv->alive){
-		fallback_migrate(c);
+		fallback_migrate(c, c->priv->alt_conn, true);
 		return 0;
 	}
 
@@ -1374,7 +1389,7 @@ unsigned arcan_shmif_signal(struct arcan_shmif_cont* ctx,
  * as a means of draining buffers' */
 	if (!ctx->addr->dms){
 		ctx->abufused = ctx->abufpos = 0;
-		fallback_migrate(ctx);
+		fallback_migrate(ctx, ctx->priv->alt_conn, true);
 		return 0;
 	}
 
@@ -1514,11 +1529,11 @@ static bool shmif_resize(struct arcan_shmif_cont* arg,
 	int adata)
 {
 	if (!arg->addr || !arcan_shmif_integrity_check(arg) ||
-	width > PP_SHMPAGE_MAXW || height > PP_SHMPAGE_MAXH)
+	!arg->priv || width > PP_SHMPAGE_MAXW || height > PP_SHMPAGE_MAXH)
 		return false;
 
 	if (!arg->addr->dms){
-		if (SHMIF_MIGRATE_OK != fallback_migrate(arg))
+		if (SHMIF_MIGRATE_OK != fallback_migrate(arg, arg->priv->alt_conn, true))
 			return false;
 	}
 
