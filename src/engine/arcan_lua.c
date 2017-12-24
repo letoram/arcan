@@ -7021,7 +7021,7 @@ static int targetdevhint(lua_State* ctx)
 	else if (type == LUA_TSTRING){
 /* empty string is allowed for !force (disable alt-conn) */
 		const char* cpath = luaL_checkstring(ctx, 2);
-		bool force = luaL_optbnumber(ctx, 2, false);
+		bool force = luaL_optbnumber(ctx, 3, false);
 		struct arcan_event outev = {
 			.category = EVENT_TARGET, .tgt.kind = TARGET_COMMAND_DEVICE_NODE,
 			.tgt.ioevs[0].iv = BADFD,
