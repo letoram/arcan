@@ -322,6 +322,13 @@ static void fatal_shutdown()
 
 int MAIN_REDIR(int argc, char* argv[])
 {
+/*
+ * these are, in contrast to normal video_init/event_init, only set once
+ * and not rerun on appl- switch etc. typically no-ops but may be used to
+ * setup priv- sep style scenarios at a point where fork()/suid() shouldn't
+ * be much of an issue
+ */
+	platform_device_init();
 	platform_video_preinit();
 	platform_event_preinit();
 

@@ -222,6 +222,18 @@ char* platform_dbstore_path();
 void platform_event_process(struct arcan_evctx* ctx);
 
 /*
+ * on some platforms, this is simply a wrapper around open() - and for others
+ * there might be an intermediate process that act as a device proxy.
+ */
+int platform_device_open(const char* identifier, int flags, mode_t mode);
+
+/*
+ * run before any other platform function, make sure that we are in a state
+ * where we can negotiate access to device nodes for the event and video layers
+ */
+void platform_device_init();
+
+/*
  * Some platforms have a costly and intrusive detection process for new devices
  * and in such cases, this should be invoked explicitly in safe situations when
  * the render-loop is permitted to stall.

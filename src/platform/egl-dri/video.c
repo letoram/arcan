@@ -169,6 +169,11 @@ struct egl_env {
 static void map_ext_functions(struct egl_env* denv,
 	void*(lookup)(void* tag, const char* sym, bool req), void* tag);
 
+/*
+ * wrapper around open that might take a suid- privileged pool into account
+ */
+static int device_open_pool(const char* path, int mode);
+
 static void* lookup(void* tag, const char* sym, bool req)
 {
 	dlerror();
@@ -1480,7 +1485,7 @@ static int setup_node_egl(struct dev_node* node, const char* lib, int fd)
 		const char* fn =
 			node->eglenv.query_device_string(devs[i], EGL_DRM_DEVICE_FILE_EXT);
 		if (fn){
-			int lfd = open(fn, O_RDWR, 0);
+			int lfd = device_open_pool(fn, O_RDWR);
 			if (-1 == fd){
 				fd = lfd;
 				found = true;
@@ -1542,7 +1547,7 @@ static int setup_node_gbm(struct dev_node* node, const char* path, int fd)
 	else if (fd != -1)
 		node->fd = fd;
 	else
-		node->fd = open(path, O_RDWR | O_CLOEXEC);
+		node->fd = device_open_pool(path, O_RDWR | O_CLOEXEC);
 
 	if (-1 == node->fd){
 		if (path)
@@ -2581,7 +2586,7 @@ static bool try_node(int fd, const char* pathref,
 		return false;
 	}
 
-	if (-1 == drmSetMaster(node->fd)){
+	if (0 != drmSetMaster(node->fd)){
 		debug_print("set drmMaster on [%d](%d:%s) failed, reason: %s",
 			dst_ind, fd, pathref ? pathref : "(no path)", strerror(errno));
 		if (force_master){
@@ -2670,7 +2675,7 @@ static bool try_card(size_t devind, int w, int h, size_t* dstind)
 	nodes[devind].wait_connector =
 		get_config("video_device_wait", devind, NULL, tag);
 
-	int fd = open(devstr, O_RDWR | O_CLOEXEC);
+	int fd = device_open_pool(devstr, O_RDWR | O_CLOEXEC);
 	if (try_node(fd, devstr, *dstind, gbm, force_master, connind, w, h)){
 		debug_print("card at %d added", *dstind);
 		nodes[*dstind].card_id = *dstind;
@@ -2742,7 +2747,7 @@ static bool setup_cards_basic(int w, int h)
 	for (size_t i = 0; i < 4; i++){
 		char buf[sizeof(DEVICE_PATH)];
 		snprintf(buf, sizeof(buf), DEVICE_PATH, i);
-		int fd = open(buf, O_RDWR | O_CLOEXEC);
+		int fd = device_open_pool(buf, O_RDWR | O_CLOEXEC);
 		debug_print("trying [basic/auto] setup on %s", buf);
 		if (-1 != fd){
 /* possible quick hack, just check modules if we have nouveau or nvidia loaded
@@ -2762,14 +2767,91 @@ static bool setup_cards_basic(int w, int h)
 	return false;
 }
 
+/* these are kept for the life of the process, and dup:ed into the part of
+ * the platform that requires them, though cards that don't get used in the
+ * initial setup will be ignored. */
+static bool use_device_pool;
+static struct {
+	int fd;
+	const char* name;
+} device_pool[MAX_DISPLAYS];
+
+static int device_open_pool(const char* path, int mode)
+{
+/*
+ * forward to the platform specific device opener
+ */
+	if (!use_device_pool)
+		return platform_device_open(path, mode, 0);
+
+	for (size_t i = 0; i < MAX_DISPLAYS; i++){
+		if (!device_pool[i].name || strcmp(path, device_pool[i].name) != 0)
+			continue;
+
+/*
+ * provide a copy so the original doesn't get closed
+ */
+		int newfd = dup(device_pool[i].fd);
+		if (-1 == newfd)
+			return newfd;
+
+		fcntl(newfd, F_SETFD, FD_CLOEXEC);
+		return newfd;
+	}
+
+	return -1;
+}
+
 void platform_video_preinit()
 {
 /*
- * stub for now,
- * if suid - populate device descriptor pool so that we can try to get drmMaster
- * on them. This pool will then be used to resolve devices rather than the
- * normal one.
+ * volatile bool attach = false;
+	while(!attach){};
  */
+
+/*
+ * this code MAY run privileged and that's ok, we don't pass judgement
+ * on run-as-root users
+ */
+	uid_t uid = getuid();
+	uid_t euid = geteuid();
+
+	if (uid == euid)
+		return;
+
+/*
+ * this mode works on system where there isn't any launcher or other
+ * supplier of file descriptors (and VT switching likely won't work),
+ * for those cases, the device_open_init will drop as the init order
+ * is:
+ * device_open_init -> platform_video_preinit -> platform_event_preinit
+ * where _open_init (might also fork) and _event_preinit both check
+ * euid/uid and switch.
+ */
+
+/* we're running as some form of suid, grab some nodes, assume they're drm
+ * and try and set master - write into a pool and re-use this pool later */
+	size_t pool_ind = 0;
+	_Static_assert(4 <= MAX_DISPLAYS, "Max displays defined too low");
+	for (size_t i = 0; i < 4; i++){
+		char buf[sizeof(DEVICE_PATH)];
+		snprintf(buf, sizeof(buf), DEVICE_PATH, i);
+		int fd = open(buf, O_RDWR | O_CLOEXEC);
+		if (-1 == fd)
+			continue;
+
+/* acquire master priviliges on all the devices in pool, even if we don't
+ * use them, we can drop once init:ed if we don't support dynamic GPU plug
+ * without some session manager nonsense */
+		if (0 != drmSetMaster(fd)){
+			continue;
+			close(fd);
+		}
+
+		use_device_pool = true;
+		device_pool[pool_ind].name = strdup(buf);
+		device_pool[pool_ind].fd = fd;
+	}
 }
 
 bool platform_video_init(uint16_t w, uint16_t h,
@@ -2803,8 +2885,8 @@ bool platform_video_init(uint16_t w, uint16_t h,
 
 		setup_backlight_ledmap();
 /*
- * send a first 'added' event for display tracking as the primary / connected
- * display will not show up in the rescan
+ * send a first 'added' event for display tracking as the
+ * primary / connected display will not show up in the rescan
  */
 		arcan_event ev = {
 			.category = EVENT_VIDEO,
@@ -3437,8 +3519,8 @@ void platform_video_restore_external()
 	if (!in_external)
 		return;
 
-	if (-1 == drmSetMaster(nodes[0].fd) && nodes[0].force_master){
-		while(-1 == drmSetMaster(nodes[0].fd)){
+	if (0 != drmSetMaster(nodes[0].fd) && nodes[0].force_master){
+		while(0 != drmSetMaster(nodes[0].fd)){
 			debug_print("platform/egl-dri(), couldn't regain drmMaster access, "
 				"retrying in 1 second\n");
 			arcan_timesleep(1000);
