@@ -7,6 +7,7 @@
 #include "chacha20.c"
 #include <stdio.h>
 #include <errno.h>
+#include <sys/param.h>
 
 void arcan_fatal(const char* msg, ...);
 
@@ -34,6 +35,32 @@ failure:
 	errno = EIO;
 	return -1;
 }
+#elif __FreeBSD__
+#include <sys/sysctl.h>
+extern int __sysctl(int*, u_int, void*, size_t*, void*, size_t);
+static int getentropy(void* buf, size_t buflen)
+{
+	int mib[2] = {CTL_KERN, KERN_ARND};
+	size_t size = buflen, len;
+	uint8_t* db = (uint8_t*) buf;
+
+	while(size){
+		len = size;
+		if (__sysctl(mib, 2, db, &len, NULL, 0) == -1){
+			goto out;
+		}
+		db += len;
+		size -= len;
+	}
+
+out:
+	if (size != 0){
+		errno = EIO;
+		return -1;
+	}
+	return 0;
+}
+
 #else
 #include <sys/random.h>
 #endif
