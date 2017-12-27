@@ -5,6 +5,7 @@
  */
 
 #include "chacha20.c"
+#include <unistd.h>
 #include <stdio.h>
 #include <errno.h>
 #include <sys/param.h>
@@ -60,6 +61,8 @@ out:
 	}
 	return 0;
 }
+
+#elif __OpenBSD__
 
 #else
 #include <sys/random.h>
