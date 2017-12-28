@@ -5,7 +5,6 @@
  */
 
 #include "chacha20.c"
-#include <unistd.h>
 #include <stdio.h>
 #include <errno.h>
 #include <sys/param.h>
@@ -17,7 +16,10 @@ static _Thread_local struct chacha20_ctx streamcipher;
 /* just lifted from the getrandom manpage, on others
  * (osx, fbsd, openbsd) we assume that we have this one */
 #ifdef __LINUX
-#include <unistd.h>
+
+/* normally defined in unistd.h, but that one also pulls in
+ * getentropy of its own, though not always available..., */
+long syscall(long number, ...);
 #include <sys/syscall.h>
 static int getentropy(void* buf, size_t buflen)
 {
@@ -63,7 +65,7 @@ out:
 }
 
 #elif __OpenBSD__
-
+#include <unistd.h>
 #else
 #include <sys/random.h>
 #endif

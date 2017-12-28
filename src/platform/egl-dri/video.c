@@ -1484,20 +1484,28 @@ static int setup_node_egl(struct dev_node* node, const char* lib, int fd)
 
 		const char* fn =
 			node->eglenv.query_device_string(devs[i], EGL_DRM_DEVICE_FILE_EXT);
-		if (fn){
-			int lfd = device_open_pool(fn, O_RDWR);
-			if (-1 == fd){
-				fd = lfd;
+
+		if (!fn)
+			continue;
+
+		int lfd = device_open_pool(fn, O_RDWR);
+
+/* no caller provided device, go with the one we found */
+		if (-1 == fd){
+			fd = lfd;
+			found = true;
+			node->egldev = devs[i];
+		}
+/* we we want to pair the incoming descriptor with the suggested one */
+		else {
+			struct stat s1, s2;
+			if (-1 == fstat(lfd, &s2) || -1 == fstat(fd, &s1) ||
+				s1.st_ino != s2.st_ino || s1.st_dev != s2.st_dev){
+					close(lfd);
+			}
+			else{
 				found = true;
 				node->egldev = devs[i];
-			}
-			else {
-				struct stat s1, s2;
-				if (-1 == fstat(lfd, &s2) || -1 == fstat(fd, &s1) ||
-					s1.st_ino != s2.st_ino || s1.st_dev != s2.st_dev){
-						close(lfd);
-					}
-					continue;
 			}
 		}
 	}
