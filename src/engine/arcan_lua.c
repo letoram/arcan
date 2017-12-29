@@ -6481,11 +6481,8 @@ static int rawsurface(lua_State* ctx)
 	LUA_ETRACE("raw_surface", NULL, 1);
 }
 
-/*
- * not intendend to be used as a low-frequency noise function
- * will be fixed/refactored when the 3d-pipeline gets improved
- * (perlin with controlled number of octaves etc.)
- */
+#define STB_PERLIN_IMPLEMENTATION
+#include "external/stb_perlin.h"
 static int randomsurface(lua_State* ctx)
 {
 	LUA_TRACE("random_surface");
@@ -6494,25 +6491,61 @@ static int randomsurface(lua_State* ctx)
 	size_t desh = abs((int)luaL_checknumber(ctx, 2));
 	img_cons cons = {.w = desw, .h = desh, .bpp = sizeof(av_pixel)};
 
+	const char* method = luaL_optstring(ctx, 3, "normal");
+
 	av_pixel* cptr = arcan_alloc_mem(desw * desh * sizeof(av_pixel),
 		ARCAN_MEM_VBUFFER, 0, ARCAN_MEMALIGN_PAGE);
 
-	av_pixel* buf = (av_pixel*) cptr;
-
-/* use of rand() here is "pointless", entire function will / shall
- * be replaced with controllable low-frequency (perlin) noise */
-	for (size_t y = 0; y < cons.h; y++)
-		for (size_t x = 0; x < cons.w; x++){
-			uint8_t rv;
-			arcan_random(&rv, 1);
-			unsigned char val = 20 + rv % 235;
+	if (strcmp(method, "uniform-3") == 0){
+		for (size_t y = 0; y < desh; y++)
+			for (size_t x = 0; x < desw; x++){
+				uint8_t rgb[3];
+				arcan_random(rgb, 3);
+				cptr[y * desw + x] = RGBA(rgb[0], rgb[1], rgb[2], 255);
 		}
+	}
+	else if (strcmp(method, "uniform-4") == 0){
+		for (size_t y = 0; y < desh; y++)
+			for (size_t x = 0; x < desw; x++){
+				arcan_random((uint8_t*)cptr, desw * desh * sizeof(av_pixel));
+		}
+	}
+	else if (strcmp(method, "fbm") == 0){
+		float lacunarity = luaL_checknumber(ctx, 4);
+		float gain = luaL_checknumber(ctx, 5);
+		float octaves = luaL_checknumber(ctx, 6);
+		float xstart = luaL_checknumber(ctx, 7);
+		float ystart = luaL_checknumber(ctx, 8);
+		float zv = luaL_checknumber(ctx, 9);
 
-	arcan_vobj_id id = arcan_video_rawobject(buf, cons, desw, desh, 0);
+		float sx = 1.0f / (float) desw;
+		float sy = 1.0f / (float) desh;
+
+		for (size_t y = 0; y < desh; y++)
+			for (size_t x = 0; x < desw; x++){
+	/* [-1, 1 -> 0, 1] -> 0..255 */
+				float xv = (float)x * sx;
+				float yv = (float)y * sy;
+				float rv = 1.0 + stb_perlin_fbm_noise3(
+					xv, yv, zv, lacunarity, gain, octaves, 0, 0, 0);
+				uint8_t iv = rv / 2.0f * 255.0f;
+				cptr[y * desw + x] = RGBA(iv, iv, iv, 255);
+		}
+	}
+	else {
+		for (size_t y = 0; y < desh; y++)
+			for (size_t x = 0; x < desw; x++){
+				uint8_t rv;
+				arcan_random(&rv, 1);
+				cptr[y * desw + x] = RGBA(rv, rv, rv, 255);
+		}
+	}
+
+	arcan_vobj_id id = arcan_video_rawobject(cptr, cons, desw, desh, 0);
 	arcan_video_objectfilter(id, ARCAN_VFILTER_NONE);
 	lua_pushvid(ctx, id);
-	trace_allocation(ctx, "random", id);
 
+	trace_allocation(ctx, "random", id);
 	LUA_ETRACE("random_surface", NULL, 1);
 }
 
