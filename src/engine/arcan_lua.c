@@ -10544,14 +10544,12 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 	luactx.debug = debugfuncs;
 	lua_atpanic(ctx, (lua_CFunction) panic);
 
-#ifdef _DEBUG
+/* this is merely a "don't be dump" protection against someone storing
+ * static vid values, getting away with it and causing bugs later on */
 	uint32_t rv;
 	arcan_random((uint8_t*)&rv, 4);
-	luactx.lua_vidbase = rv % 32768; /* modulo-bias is OK here */
+	luactx.lua_vidbase = 256 + (rv % 32768);
 	arcan_renderfun_vidoffset(luactx.lua_vidbase);
-	arcan_warning("lua_exposefuncs() -- videobase is set to %u\n",
-		luactx.lua_vidbase);
-#endif
 
 /* these defines / tables are also scriptably extracted and
  * mapped to build / documentation / static verification to ensure
