@@ -27,12 +27,14 @@ static int getentropy(void* buf, size_t buflen)
 	if (buflen > 256)
 		goto failure;
 
-
+#ifndef SYS_getrandom
+#else
 	ret = syscall(SYS_getrandom, buf, buflen, 0);
 	if (ret < 0)
 		return ret;
 	if (ret == buflen)
 		return 0;
+#endif
 
 failure:
 	errno = EIO;
