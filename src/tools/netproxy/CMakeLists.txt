@@ -5,6 +5,7 @@ if (CMAKE_BUILD_TYPE STREQUAL "Debug")
 	add_definitions(-D_DEBUG)
 endif()
 
+set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../../platform/cmake/modules)
 if (ARCAN_SOURCE_DIR)
 	add_subdirectory(${ARCAN_SOURCE_DIR}/shmif ashmif)
 else()

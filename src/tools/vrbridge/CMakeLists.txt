@@ -7,6 +7,9 @@ if (CMAKE_BUILD_TYPE STREQUAL "Debug")
 	add_definitions(-D_DEBUG)
 endif()
 
+set(ARCAN_ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../)
+set(CMAKE_MODULE_PATH ${ARCAN_ROOT_DIR}/src/platform/cmake/modules)
+
 if (ARCAN_SOURCE_DIR)
 	add_subdirectory(${ARCAN_SOURCE_DIR}/shmif ashmif)
 else()
@@ -23,9 +26,6 @@ add_definitions(
 	-Wno-unused-function
 	-std=gnu11 # shmif-api requires this
 )
-
-set(ARCAN_ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../)
-set(CMAKE_MODULE_PATH ${ARCAN_ROOT_DIR}/src/platform/cmake/modules)
 
 include_directories(
 	${ARCAN_SHMIF_INCLUDE_DIR}
