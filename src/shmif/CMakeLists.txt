@@ -289,10 +289,4 @@ if (NOT ARCAN_SOURCE_DIR)
 	)
 	install(FILES ${SHMIF_HEADERS} DESTINATION include/arcan/shmif)
 	install(FILES ${TUI_HEADERS} DESTINATION include/arcan)
-# The config file is more similar to a regular find module,
-# the procedure for doing something this trivial ("install library,
-# provide means for other projects to find library") seems excessively
-# verbose and 'cmake:y'.
-	install(FILES ${PLATFORM_ROOT}/cmake/arcan_shmif-config.cmake
-		DESTINATION CMake COMPONENT dev)
 endif()
