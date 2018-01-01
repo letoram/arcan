@@ -1,5 +1,5 @@
 /*
- * Copyright 2009-2017, Björn Ståhl
+ * Copyright 2009-2018, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -622,9 +622,10 @@ arcan_vobj_id arcan_3d_buildbox(float w, float h, float d, size_t nmaps)
 
 	float verts[] = {
 		 w, h, d,  -w,  h,  d,  -w, -h,  d,   w, -h,  d,
-		 w, h, d,   w, -h,  d,   w, -h, -d,   w,  h, -d,
 		 w, h, d,   w,  h, -d,  -w,  h, -d,  -w,  h,  d,
 		-w, h, d,  -w,  h, -d,  -w, -h, -d,  -w, -h,  d,
+		 w, h, d,   w, -h,  d,   w, -h, -d,   w,  h, -d,
+
 		-w,-h,-d,   w, -h, -d,   w, -h,  d,  -w, -h,  d,
 		 w,-h,-d,  -w, -h, -d,  -w,  h, -d,   w,  h, -d
 	};
@@ -637,7 +638,7 @@ arcan_vobj_id arcan_3d_buildbox(float w, float h, float d, size_t nmaps)
 		 0, 0, 1,  0, 0, 1,  0, 0, 1,  0, 0, 1,
 		 1, 0, 0,  1, 0, 0,  1, 0, 0,  1, 0, 0,
 		 0, 1, 0,  0, 1, 0,  0, 1, 0,  0, 1, 0,
-		-1, 0, 0,-1, 0, 0, -1, 0, 0, -1, 0, 0,
+		-1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0,
 		 0,-1, 0,  0,-1, 0,  0,-1, 0,  0,-1, 0,
 		 0, 0,-1,  0, 0,-1,  0, 0,-1,  0, 0,-1
 	};
@@ -645,26 +646,23 @@ arcan_vobj_id arcan_3d_buildbox(float w, float h, float d, size_t nmaps)
 		normals, sizeof(normals), ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_SIMD);
 
 	unsigned int indices[] = {
-	 0, 1, 2,  2, 3, 0,
-	 4, 5, 6,  6, 7, 4,
-	 8, 9,10, 10,11, 8,
-	 12,13,14,14,15,12,
-	 16,17,18,18,19,16,
-	 20,21,22,22,23,20
+		2,1,0,0,3,2,
+		10,9,8,8, 11, 10,
+		14,13,12,12,15,14,
+		18,17,16,16,19,18,
+		22,21,20,20,23,22
 	};
 	newmodel->geometry->store.indices = arcan_alloc_fillmem(
 		indices, sizeof(indices), ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_SIMD);
-	newmodel->geometry->store.n_vertices = sizeof(verts) / sizeof(verts[0]) / 3;
-	newmodel->geometry->store.vertex_size = 3;
 	newmodel->geometry->store.n_indices = 36;
 
 	float txcos[] = {
-		0, 0, 1, 0, 1, 1, 0, 1,
-		0, 0, 1, 0, 1, 0, 0, 1,
-		0, 0, 1, 0, 1, 1, 0, 1,
-		0, 0, 1, 0, 1, 1, 0, 0,
-		0, 0, 1, 0, 1, 1, 0, 1,
-		0, 0, 1, 0, 1, 1, 0, 1
+		1, 0, 0, 0, 0, 1, 1, 1,
+		1, 1, 1, 0, 0, 0, 0, 1,
+		1, 0, 0, 0, 0, 1, 1, 1,
+		0, 0, 0, 1, 1, 1, 1, 0,
+		0, 1, 1, 1, 1, 0, 0, 0,
+		1, 0, 0, 0, 0, 1, 1, 1
 	};
 	newmodel->geometry->store.txcos = arcan_alloc_fillmem(txcos, sizeof(txcos),
 		ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_SIMD);
