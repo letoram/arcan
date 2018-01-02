@@ -56,4 +56,9 @@ SET(SOURCES
 add_executable(${PROJECT_NAME} ${SOURCES})
 target_link_libraries(${PROJECT_NAME} ${LIBRARIES})
 install(TARGETS ${PROJECT_NAME} DESTINATION bin)
+
+if (CMAKE_SYSTEM_NAME MATCHES "(FreeBSD|NetBSD|OpenBSD)")
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/aloadimage.1 DESTINATION man/man1)
+else()
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/aloadimage.1 DESTINATION share/man/man1)
+endif()
