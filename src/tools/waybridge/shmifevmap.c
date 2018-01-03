@@ -19,6 +19,9 @@ static void update_mxy(struct comp_surf* cl, unsigned long long pts)
 	if (!cl->client->pointer)
 		return;
 
+	if (!pts)
+		pts = arcan_timemillis();
+
 	trace(TRACE_ANALOG, "mouse@%d,%d", cl->acc_x, cl->acc_y);
 	if (cl->client->last_cursor != cl->res){
 		if (cl->client->last_cursor){
@@ -58,6 +61,9 @@ static void update_mbtn(struct comp_surf* cl,
 {
 	trace(TRACE_DIGITAL,
 		"mouse-btn(ind: %d:%d, @%d,%d)", ind,(int) active, cl->acc_x, cl->acc_y);
+
+	if (!pts)
+		pts = arcan_timemillis();
 
 /* 0x110 == BTN_LEFT in evdev parlerance, ignore 0 index as it is used
  * to convey gestures and that's a separate unstable protocol */
@@ -119,6 +125,9 @@ static void update_kbd(struct comp_surf* cl, arcan_ioevent* ev)
 	uint32_t latched = xkb_state_serialize_mods(state, XKB_STATE_MODS_LATCHED);
 	uint32_t locked = xkb_state_serialize_mods(state, XKB_STATE_MODS_LOCKED);
 	uint32_t group = xkb_state_serialize_mods(state, XKB_STATE_MODS_EFFECTIVE);
+	if (!ev->pts)
+		ev->pts = arcan_timemillis();
+
 	wl_keyboard_send_modifiers(cl->client->keyboard,
 		STEP_SERIAL(), depressed, latched, locked, group);
 	wl_keyboard_send_key(cl->client->keyboard,
