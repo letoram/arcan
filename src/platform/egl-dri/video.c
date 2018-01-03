@@ -2792,6 +2792,7 @@ static int device_open_pool(const char* path, int mode)
 	if (!use_device_pool)
 		return platform_device_open(path, mode, 0);
 
+	debug_print("open device %s from pool", path);
 	for (size_t i = 0; i < MAX_DISPLAYS; i++){
 		if (!device_pool[i].name || strcmp(path, device_pool[i].name) != 0)
 			continue;
@@ -2799,10 +2800,12 @@ static int device_open_pool(const char* path, int mode)
 /*
  * provide a copy so the original doesn't get closed
  */
+		debug_print("match device %s to pool index %zu", path, i);
 		int newfd = dup(device_pool[i].fd);
 		if (-1 == newfd)
 			return newfd;
 
+		debug_print("open device from pool, ok : %d", newfd);
 		fcntl(newfd, F_SETFD, FD_CLOEXEC);
 		return newfd;
 	}
@@ -2848,17 +2851,18 @@ void platform_video_preinit()
 		if (-1 == fd)
 			continue;
 
-/* acquire master priviliges on all the devices in pool, even if we don't
+/* acquire master privileges on all the devices in pool, even if we don't
  * use them, we can drop once init:ed if we don't support dynamic GPU plug
  * without some session manager nonsense */
 		if (0 != drmSetMaster(fd)){
-			continue;
 			close(fd);
+			continue;
 		}
 
 		use_device_pool = true;
 		device_pool[pool_ind].name = strdup(buf);
 		device_pool[pool_ind].fd = fd;
+		pool_ind++;
 	}
 }
 
