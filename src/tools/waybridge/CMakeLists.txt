@@ -66,6 +66,7 @@ add_library(wlprot STATIC ${sources})
 
 SET(LIBRARIES
 	pthread
+	rt
 	m
 	EGL
 	${ARCAN_SHMIF_LIBRARY}
