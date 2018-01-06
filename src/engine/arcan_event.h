@@ -37,7 +37,8 @@ typedef void (*arcan_tick_cb)(int count);
  * to more enqueue calls) break ordering.
  */
 typedef void (*arcan_event_handler)(arcan_event*, int);
-void arcan_event_init(struct arcan_evctx*, arcan_event_handler drain);
+void arcan_event_init(struct arcan_evctx*);
+void arcan_event_set_drain(arcan_event_handler);
 
 /*
  * Time- keeping function, need to be pumped regularly (will take care of

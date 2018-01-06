@@ -8,7 +8,9 @@
 #define _HAVE_ARCAN_GENERAL
 
 #define PRIxVOBJ "lld"
-
+#ifndef PLATFORM_HEADER
+#define PLATFORM_HEADER "../platform/platform.h"
+#endif
 #include PLATFORM_HEADER
 
 /*
