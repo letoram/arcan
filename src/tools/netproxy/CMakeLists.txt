@@ -61,14 +61,17 @@ set(SOURCES
 
 add_executable( arcan-netpipe ${SOURCES} netpipe.c)
 add_executable( arcan-net ${SOURCES} netproxy.cpp)
+add_dependencies( arcan-net udt )
 
 set_property(TARGET arcan-net PROPERTY CXX_STANDARD 11)
 set_property(TARGET arcan-netpipe PROPERTY C_STANDARD 11)
 
-target_link_libraries(arcan-net ${LIBRARIES}
+ target_link_libraries(arcan-net ${LIBRARIES}
 	pthread
 	${CMAKE_CURRENT_BINARY_DIR}/udt-prefix/src/udt-build/libudt.a
 )
 target_link_libraries(arcan-netpipe ${LIBRARIES})
 
-install(TARGETS arcan-net arcan-netpipe DESTINATION bin)
+install(TARGETS
+	#arcan-net
+	arcan-netpipe DESTINATION bin)
