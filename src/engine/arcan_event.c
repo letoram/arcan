@@ -711,7 +711,14 @@ bool arcan_event_feed(struct arcan_evctx* ctx,
 	return (ctx->state_fl & EVSTATE_DEAD) == 0;
 }
 
-void arcan_event_init(arcan_evctx* ctx, arcan_event_handler drain)
+void arcan_event_setdrain(arcan_evctx* ctx, arcan_event_handler drain)
+{
+	if (!ctx->local)
+		return;
+	ctx->drain = drain;
+}
+
+void arcan_event_init(arcan_evctx* ctx)
 {
 /*
  * non-local (i.e. shmpage resident) event queues has a different
@@ -759,7 +766,6 @@ void arcan_event_init(arcan_evctx* ctx, arcan_event_handler drain)
 		arcan_release_resource(&source);
 	}
 
-	ctx->drain = drain;
 	epoch = arcan_timemillis() - ctx->c_ticks * ARCAN_TIMER_TICK;
 	platform_event_init(ctx);
 }

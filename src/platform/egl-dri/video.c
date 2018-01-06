@@ -3044,17 +3044,6 @@ static void flush_display_events(int timeout)
 				if (naud)
 					naud = arcan_audio_refresh();
 
-/* for FAST we burn cycles by keeping the event processing, the scripting layer
- * and client transfers while we are synchronizing outputs - we just don't send
- * to display */
-				if (synchopt == FAST){
-					arcan_video_pollfeed();
-					arcan_event_process(arcan_event_defaultctx(), amain_clock_pulse);
-					if (!arcan_event_feed(
-						arcan_event_defaultctx(), amain_process_event, NULL))
-						return;
-				}
-
 /* clamp the period so we don't exceed the timeout */
 				now = arcan_timemillis();
 				if (now - start < period)

@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2016, Björn Ståhl
+ * Copyright 2003-2018, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -44,22 +44,11 @@
 #include "arcan_img.h"
 #include "arcan_frameserver.h"
 #include "arcan_lua.h"
-#include "video_platform.h"
+#include "../platform/video_platform.h"
 #include "arcan_led.h"
 #include "arcan_db.h"
 #include "arcan_videoint.h"
-
-struct {
-	bool in_monitor;
-	int monitor, monitor_counter;
-	int mon_infd;
-	FILE* mon_outf;
-
-	int timedump;
-
-	struct arcan_luactx* lua;
-	uint64_t tick_count;
-} settings = {0};
+#include "arcan_conductor.h"
 
 /*
  * The arcanmain recover state is used either at the volition of the
@@ -72,6 +61,7 @@ jmp_buf arcanmain_recover_state;
  * default, probed / replaced on some systems
  */
 extern int system_page_size;
+struct arcan_luactx* main_lua_context;
 
 static const struct option longopts[] = {
 	{ "help",         no_argument,       NULL, '?'},
@@ -227,63 +217,7 @@ static void override_resspaces(const char* respath)
 	arcan_override_namespace(font_dir, RESOURCE_SYS_FONT);
 }
 
-static void preframe()
-{
-	arcan_lua_callvoidfun(settings.lua, "preframe_pulse", false, NULL);
-}
-
-static void postframe()
-{
-	arcan_lua_callvoidfun(settings.lua, "postframe_pulse", false, NULL);
-	arcan_bench_register_frame();
-}
-
-/*
- * HACK: this is not marked as static right now, it is used by the egl-dri
- * platform pending a refactor of the whole main-loop / synch work
- */
-void amain_process_event(arcan_event* ev, int drain)
-{
-	arcan_lua_pushevent(settings.lua, ev);
-}
-
-void amain_clock_pulse(int nticks)
-{
-	settings.tick_count += nticks;
-/* priority is always in maintaining logical clock and event processing */
-	unsigned njobs;
-
-/* start with lua as it is likely to incur changes
- * to what is supposed to be drawn */
-	arcan_lua_tick(settings.lua, nticks, settings.tick_count);
-
-	arcan_video_tick(nticks, &njobs);
-	arcan_audio_tick(nticks);
-	arcan_mem_tick();
-
-	if (settings.monitor && !settings.in_monitor){
-		if (--settings.monitor_counter == 0){
-			static int mc;
-			char buf[8];
-			snprintf(buf, 8, "%d", mc++);
-			settings.monitor_counter = settings.monitor;
-			arcan_lua_statesnap(settings.mon_outf, buf, true);
-		}
-	}
-
-/* debugging functionality to generate a dump and abort after n ticks */
-	if (settings.timedump){
-		settings.timedump--;
-
-	if (!settings.timedump)
-		arcan_state_dump("timedump", "user requested a dump", __func__);
-	}
-
-		if (settings.in_monitor)
-			arcan_lua_stategrab(settings.lua, "sample", settings.mon_infd);
-}
-
-static void appl_user_warning(const char* name, const char* err_msg)
+ void appl_user_warning(const char* name, const char* err_msg)
 {
 	arcan_warning("\x1b[1mCouldn't load application (\x1b[33m%s\x1b[39m)\n",
 		name, err_msg);
@@ -309,6 +243,39 @@ static void fatal_shutdown()
 {
 	arcan_audio_shutdown();
 	arcan_video_shutdown(false);
+}
+
+/* invoked from the conductor when it has processed a monotonic tick */
+static struct {
+	bool in_monitor;
+	int monitor, monitor_counter;
+	int mon_infd;
+	FILE* mon_outf;
+	int timedump;
+} settings = {0};
+
+static void main_cycle()
+{
+	if (settings.monitor && !settings.in_monitor){
+		if (--settings.monitor_counter == 0){
+			static int mc;
+			char buf[8];
+			snprintf(buf, 8, "%d", mc++);
+			settings.monitor_counter = settings.monitor;
+			arcan_lua_statesnap(settings.mon_outf, buf, true);
+		}
+	}
+
+/* debugging functionality to generate a dump and abort after n ticks */
+	if (settings.timedump){
+		settings.timedump--;
+
+	if (!settings.timedump)
+		arcan_state_dump("timedump", "user requested a dump", __func__);
+	}
+
+	if (settings.in_monitor)
+		arcan_lua_stategrab(main_lua_context, "sample", settings.mon_infd);
 }
 
 /*
@@ -389,6 +356,11 @@ int MAIN_REDIR(int argc, char* argv[])
 	}
 	break;
 #endif
+
+#ifndef ARCAN_BUILDVERSION
+#define ARCAN_BUILDVERSION "build-less"
+#endif
+
 /* a prealloc:ed connection primitive is needed, defer this to when we have
  * enough resources and context allocated to be able to do so. This does not
  * survive appl-switching */
@@ -617,7 +589,7 @@ int MAIN_REDIR(int argc, char* argv[])
 /* setup device polling, cleanup, ... */
 	arcan_evctx* evctx = arcan_event_defaultctx();
 	arcan_led_init();
-	arcan_event_init(evctx, amain_process_event);
+	arcan_event_init(evctx);
 
 	if (hookscript){
 		char* tmphook = arcan_expand_resource(hookscript, RESOURCE_APPL_SHARED);
@@ -662,7 +634,7 @@ int MAIN_REDIR(int argc, char* argv[])
 
 		arcan_db_set_shared(dbhandle);
 		arcan_lua_cbdrop();
-		arcan_lua_shutdown(settings.lua);
+		arcan_lua_shutdown(main_lua_context);
 
 		arcan_event_maskall(evctx);
 
@@ -701,7 +673,7 @@ int MAIN_REDIR(int argc, char* argv[])
 
 		const char* errmsg;
 		arcan_lua_cbdrop();
-		arcan_lua_shutdown(settings.lua);
+		arcan_lua_shutdown(main_lua_context);
 		if (!arcan_verifyload_appl(fallback, &errmsg)){
 			arcan_warning("Lua VM error fallback, failure loading (%s), reason: %s\n",
 				fallback, errmsg);
@@ -718,8 +690,8 @@ int MAIN_REDIR(int argc, char* argv[])
 	}
 
 /* setup VM, map arguments and possible overrides */
-	settings.lua = arcan_lua_alloc();
-	arcan_lua_mapfunctions(settings.lua, debuglevel);
+	main_lua_context = arcan_lua_alloc();
+	arcan_lua_mapfunctions(main_lua_context, debuglevel);
 
 	bool inp_file;
 	const char* inp = arcan_appl_basesource(&inp_file);
@@ -728,7 +700,7 @@ int MAIN_REDIR(int argc, char* argv[])
 		goto error;
 	}
 
-	char* msg = arcan_lua_main(settings.lua, inp, inp_file);
+	char* msg = arcan_lua_main(main_lua_context, inp, inp_file);
 	if (msg != NULL){
 		arcan_warning("\n\x1b[1mParsing error in (\x1b[33m%s\x1b[39m):\n"
 			"\x1b[35m%s\x1b[22m\x1b[39m\n\n", arcan_appl_id(), msg);
@@ -736,17 +708,17 @@ int MAIN_REDIR(int argc, char* argv[])
 	}
 	free(msg);
 
-	if (!arcan_lua_callvoidfun(settings.lua, "", false, (const char**)
+	if (!arcan_lua_callvoidfun(main_lua_context, "", false, (const char**)
 		(argc > optind ? (argv + optind + 1) : NULL)))
 		arcan_fatal("couldn't load appl, missing %s function\n", arcan_appl_id() ?
 		arcan_appl_id() : "");
 
 	if (hookscript)
-		arcan_lua_dostring(settings.lua, hookscript);
+		arcan_lua_dostring(main_lua_context, hookscript);
 
 	if (adopt){
-		arcan_lua_setglobalint(settings.lua, "CLOCK", evctx->c_ticks);
-		arcan_lua_adopt(settings.lua);
+		arcan_lua_setglobalint(main_lua_context, "CLOCK", evctx->c_ticks);
+		arcan_lua_adopt(main_lua_context);
 		platform_video_recovery();
 		in_recover = false;
 	}
@@ -761,7 +733,7 @@ int MAIN_REDIR(int argc, char* argv[])
 					arcan_warning("-1, %s failed (only [a->Z0-9] accepted)\n", cbuf);
 					goto error;
 				}
-			if (!arcan_lua_launch_cp(settings.lua, cbuf, NULL)){
+			if (!arcan_lua_launch_cp(main_lua_context, cbuf, NULL)){
 				arcan_fatal("-1, couldn't setup connection point (%s)\n", cbuf);
 				goto error;
 			}
@@ -773,23 +745,10 @@ int MAIN_REDIR(int argc, char* argv[])
 	}
 
 	bool done = false;
-	int exit_code = EXIT_FAILURE;
-
-/* Main loop, this is slated for restructuring so that scheduling and
- * synchronization happens in a more thought out manner, that can prioritize
- * certain objects and run some tasks when the displays and rendering is
- * blocked */
-	for(;;){
-		arcan_video_pollfeed();
-		arcan_audio_refresh();
-		float frag = arcan_event_process(evctx, amain_clock_pulse);
-		if (!arcan_event_feed(evctx, amain_process_event, &exit_code))
-			break;
-		platform_video_synch(settings.tick_count, frag, preframe, postframe);
-	}
+	int exit_code = arcan_conductor_run(main_cycle);
 
 	free(hookscript);
-	arcan_lua_callvoidfun(settings.lua, "shutdown", false, NULL);
+	arcan_lua_callvoidfun(main_lua_context, "shutdown", false, NULL);
 	arcan_led_shutdown();
 	arcan_event_deinit(evctx);
 	arcan_audio_shutdown();

@@ -414,6 +414,7 @@ list (APPEND SOURCES
 	engine/arcan_event.c
 	engine/arcan_lua.c
 	engine/arcan_main.c
+	engine/arcan_conductor.c
 	engine/arcan_db.c
 	engine/arcan_video.c
 	engine/arcan_renderfun.c
