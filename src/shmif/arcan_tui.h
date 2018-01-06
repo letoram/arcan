@@ -808,12 +808,23 @@ void arcan_tui_reset_tabstop(struct tui_context*);
 void arcan_tui_reset_all_tabstops(struct tui_context*);
 
 /*
- * Indicate that the contents of the draw-output since the last call to refresh
- * has scrolled up (0 > steps > -max_rows) or down (0 < steps < max_rows). This
- * is useful for smooth-scrolling support when a client redraws the screen by
- * moving the cursor or using the alt-screen.
+ * Hint that certain regions have scrolled:
+ * (-1, -1) = (up, left), (1, 1 = down, right)
+ * so that the render may smooth-scroll between the contents of the
+ * last update and the new one.
+ *
+ * [ALLOCATION NOTES]
+ * This allocation is not tracked and will be used/referenced until
+ * the next screen refresh call. After it has been used, the dx and dy
+ * fields will be set to 0.
  */
-void arcan_tui_scrollhint(struct tui_context*, int steps);
+struct tui_region {
+	int dx, dy;
+	size_t x, y;
+	size_t w, h;
+};
+void arcan_tui_scrollhint(
+	struct tui_context*, size_t n_regions, struct tui_region*);
 
 /*
  * move the cursor either absolutely or a number of steps,

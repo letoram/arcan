@@ -186,7 +186,6 @@ static void on_mouse_button(struct tui_context* c,
 {
 	SETUP_HREF("mouse_button",);
 		lua_pushnumber(L, subid);
-		lua_pushboolean(L, active);
 		lua_pushnumber(L, x);
 		lua_pushnumber(L, y);
 		lua_pushnumber(L, modifiers);
@@ -406,12 +405,13 @@ static void apply_table(lua_State* L, int ind, struct tui_screen_attr* attr)
 	attr->br = intblint(L, ind, "br");
 	attr->bg = intblint(L, ind, "bg");
 	attr->bb = intblint(L, ind, "bb");
-	attr->shape_break = intblbool(L, ind, "break");
 }
 
 static int tui_attr(lua_State* L)
 {
-	struct tui_screen_attr attr = {};
+	struct tui_screen_attr attr = {
+		.fr = 128, .fg = 128, .fb = 128
+	};
 	int ci = 1;
 
 /* use context as base for color lookup */
@@ -433,12 +433,12 @@ static int tui_attr(lua_State* L)
 #define SET_BIV(K, V) do { lua_pushstring(L, K); \
 	lua_pushboolean(L, V); lua_rawset(L, -3); } while (0)
 
-	SET_KIV("fr", 128); SET_KIV("fg", 128); SET_KIV("fb", 128);
-	SET_KIV("br", 0); SET_KIV("bg", 0); SET_KIV("bb", 0);
-	SET_BIV("bold", false); SET_BIV("underline", false); SET_BIV("protect", false);
-	SET_BIV("blink", false); SET_BIV("strikethrough", false);
-	SET_BIV("break", false);
-	SET_KIV("id", 0);
+	SET_KIV("fr", attr.fr); SET_KIV("fg", attr.fg); SET_KIV("fb", attr.fb);
+	SET_KIV("br", attr.br); SET_KIV("bg", attr.bg); SET_KIV("bb", attr.bb);
+	SET_BIV("bold", attr.bold); SET_BIV("underline", attr.underline);
+	SET_BIV("protect", attr.protect); SET_BIV("blink", attr.blink);
+	SET_BIV("strikethrough", attr.strikethrough);
+	SET_BIV("break", attr.shape_break); SET_KIV("id", attr.custom_id);
 
 	return 1;
 }
@@ -532,7 +532,7 @@ static int scrollhint(lua_State* L)
 {
 	TUI_UDATA;
 	int steps = luaL_checknumber(L, 2);
-	arcan_tui_scrollhint(ib->tui, steps);
+/*	arcan_tui_scrollhint(ib->tui, steps); */
 	return 0;
 }
 
@@ -950,7 +950,7 @@ static int reset(lua_State* L)
 static int color_get(lua_State* L)
 {
 	TUI_UDATA;
-	uint8_t dst[3];
+	uint8_t dst[3] = {128, 128, 128};
 	arcan_tui_get_color(ib->tui, luaL_checknumber(L, 2), dst);
 	lua_pushnumber(L, dst[0]);
 	lua_pushnumber(L, dst[1]);
@@ -1035,27 +1035,27 @@ void tui_lua_expose(lua_State* L)
 	REGISTER("set_color", color_set);
 
 	struct { const char* key; int val; } consttbl[] = {
-	{"COLOR_PRIMARY", TUI_COL_PRIMARY},
-	{"COLOR_SECONDARY", TUI_COL_SECONDARY},
-	{"COLOR_BG", TUI_COL_BG},
-	{"COLOR_TEXT", TUI_COL_TEXT},
-	{"COLOR_CURSOR", TUI_COL_CURSOR},
-	{"COLOR_ALTCURSOR", TUI_COL_ALTCURSOR},
-	{"COLOR_HIGHLIGHT", TUI_COL_HIGHLIGHT},
-	{"COLOR_LABEL", TUI_COL_LABEL},
-	{"COLOR_WARNING", TUI_COL_WARNING},
-	{"COLOR_ERROR", TUI_COL_ERROR},
-	{"COLOR_ALERT", TUI_COL_ALERT},
-	{"COLOR_INACTIVE", TUI_COL_INACTIVE}
+	{"primary", TUI_COL_PRIMARY},
+	{"secondary", TUI_COL_SECONDARY},
+	{"background", TUI_COL_BG},
+	{"text", TUI_COL_TEXT},
+	{"cursor", TUI_COL_CURSOR},
+	{"altcursor", TUI_COL_ALTCURSOR},
+	{"highlight", TUI_COL_HIGHLIGHT},
+	{"label", TUI_COL_LABEL},
+	{"warning", TUI_COL_WARNING},
+	{"error", TUI_COL_ERROR},
+	{"alert", TUI_COL_ALERT},
+	{"inactive", TUI_COL_INACTIVE}
 	};
 
 	lua_newtable(L);
 	for (size_t i = 0; i < COUNT_OF(consttbl); i++){
-		lua_pushstring(L, &consttbl[i].key[6]);
+		lua_pushstring(L, consttbl[i].key);
 		lua_pushnumber(L, consttbl[i].val);
 		lua_rawset(L, -3);
 	}
-	lua_setglobal(L, "tuicolor");
+	lua_setglobal(L, "tui_color");
 	lua_pop(L, 1);
 
 	for (size_t i = 0; i < COUNT_OF(consttbl); i++){
@@ -1200,15 +1200,17 @@ void tui_lua_expose(lua_State* L)
 	{"TUIK_AGAIN", TUIK_AGAIN}
 	};
 
-
-/* key-integer value */
-
+/* make the table bidirectional */
 	lua_newtable(L);
 	for (size_t i = 0; i < COUNT_OF(symtbl); i++){
 		lua_pushstring(L, &symtbl[i].key[5]);
 		lua_pushnumber(L, symtbl[i].val);
 		lua_rawset(L, -3);
+		lua_pushnumber(L, symtbl[i].val);
+		lua_pushstring(L, &symtbl[i].key[5]);
+		lua_rawset(L, -3);
 	}
+
 	lua_setglobal(L, "tuik");
 	lua_pop(L, 1);
 }
