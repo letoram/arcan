@@ -59,16 +59,20 @@ enum tui_subwnd_type {
  * operation and no- state or ability should be lost as an effect of doing so */
 	TUI_WND_POPUP = 1,
 
+/* explicitly pushed by parents, when enabled, output a simplified, screen-
+ * reader friendly version of the active contents to render / consider */
+	TUI_WND_ACCESSIBILITY = 2,
+
 /* explicitly pushed by parents, when enabled, output application-relevant
  * debugging data */
-	TUI_WND_DEBUG = 2,
+	TUI_WND_DEBUG = 3,
 
 /*
  * Special case, a connection primitive that can be forwarded to some other
  * primitive, but with connection origin traced/bound to a preexisting tui
  * connection. This is used internally for advanced features.
  */
-	TUI_WND_HANDOVER = 3
+	TUI_WND_HANDOVER = 4
 };
 
 /*

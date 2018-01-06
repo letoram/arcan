@@ -2335,8 +2335,7 @@ static void queue_requests(struct tui_context* tui, bool clipboard, bool ident)
 		.ext.segreq.id = 0xfeedface
 	});
 
-/* and a 1s. timer for blinking cursor */
-	if (tui->cursor_period > 0)
+/* always request a timer as the _tick callback may need it */
 	arcan_shmif_enqueue(&tui->acon, &(struct arcan_event){
 		.category = EVENT_EXTERNAL,
 		.ext.kind = ARCAN_EVENT(CLOCKREQ),
@@ -3264,10 +3263,14 @@ void arcan_tui_erase_sb(struct tui_context* c)
 	}
 }
 
-void arcan_tui_scrollhint(struct tui_context* c, int steps)
+void arcan_tui_scrollhint(
+	struct tui_context* c, size_t n_regions, struct tui_region* regions)
 {
+/*
+ * FIXME: immature / incorrect
 	c->scroll_backlog = steps;
 	flag_cursor(c);
+ */
 }
 
 void arcan_tui_refinc(struct tui_context* c)

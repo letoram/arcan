@@ -234,6 +234,7 @@ enum ARCAN_SEGID {
  *        subsegment: CURSOR (bound to a "seat", we always have 1:1)
  *        subsegment: CLIPBOARD (container for DnD, ...)
  *        subsegment: ICON (can reparent to application or clipboard for DnD)
+ *        subsegment: SEGID_BRIDGE_X11 (Xwayland surfaces)
  */
 	SEGID_BRIDGE_WAYLAND,
 
