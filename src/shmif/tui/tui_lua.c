@@ -531,8 +531,9 @@ static int reset_tabs(lua_State* L)
 static int scrollhint(lua_State* L)
 {
 	TUI_UDATA;
-	int steps = luaL_checknumber(L, 2);
-/*	arcan_tui_scrollhint(ib->tui, steps); */
+/*	int steps = luaL_checknumber(L, 2);
+ *	arcan_tui_scrollhint(ib->tui, steps);
+ */
 	return 0;
 }
 
@@ -921,6 +922,34 @@ static int getcursor(lua_State* L)
 	return 2;
 }
 
+static int write_tou8(lua_State* L)
+{
+	TUI_UDATA;
+	struct tui_screen_attr* attr = NULL;
+	struct tui_screen_attr mattr = {};
+	size_t len;
+
+	size_t x = luaL_checknumber(L, 2);
+	size_t y = luaL_checknumber(L, 3);
+	size_t ox, oy;
+	arcan_tui_cursorpos(ib->tui, &ox, &oy);
+	const char* buf =	luaL_checklstring(L, 4, &len);
+
+	if (lua_type(L, 5) == LUA_TTABLE){
+		apply_table(L, 5, &mattr);
+		attr = &mattr;
+	}
+
+	arcan_tui_move_to(ib->tui, x, y);
+
+	lua_pushboolean(L,
+		arcan_tui_writeu8(ib->tui, (uint8_t*)buf, len, attr));
+
+	arcan_tui_move_to(ib->tui, ox, oy);
+
+	return 1;
+}
+
 static int writeu8(lua_State* L)
 {
 	TUI_UDATA;
@@ -956,6 +985,13 @@ static int color_get(lua_State* L)
 	lua_pushnumber(L, dst[1]);
 	lua_pushnumber(L, dst[2]);
 	return 3;
+}
+
+static int set_flags(lua_State* L)
+{
+	TUI_UDATA;
+	arcan_tui_set_flags(ib->tui, luaL_checknumber(L, 2));
+	return 0;
 }
 
 static int color_set(lua_State* L)
@@ -999,6 +1035,7 @@ void tui_lua_expose(lua_State* L)
 	REGISTER("refresh", refresh);
 	REGISTER("process", process);
 	REGISTER("write", writeu8);
+	REGISTER("write_to", write_tou8);
 	REGISTER("set_handlers", settbl);
 	REGISTER("update_ident", setident);
 	REGISTER("mouse_forward", setmouse);
@@ -1033,8 +1070,30 @@ void tui_lua_expose(lua_State* L)
 	REGISTER("alloc_screen", screen_alloc);
 	REGISTER("get_color", color_get);
 	REGISTER("set_color", color_set);
+	REGISTER("set_flags", set_flags);
 
-	struct { const char* key; int val; } consttbl[] = {
+/*
+	{"", TUI_INSERT_MODE},
+	{"", TUI_REL_ORIGIN},
+	{"", TUI_INVERSE},
+	{"", TUI_FIXED_POS},
+*/
+	struct { const char* key; int val; } flagtbl[] = {
+		{"auto_wrap", TUI_AUTO_WRAP},
+		{"hide_cursor", TUI_HIDE_CURSOR},
+		{"alternate", TUI_ALTERNATE}
+	};
+
+	lua_newtable(L);
+	for (size_t i = 0; i < COUNT_OF(flagtbl); i++){
+		lua_pushstring(L, flagtbl[i].key);
+		lua_pushnumber(L, flagtbl[i].val);
+		printf("%zu, %s, %d\n", i, flagtbl[i].key, flagtbl[i].val);
+		lua_rawset(L, -3);
+	}
+	lua_setglobal(L, "tui_flags");
+
+	struct { const char* key; int val; } coltbl[] = {
 	{"primary", TUI_COL_PRIMARY},
 	{"secondary", TUI_COL_SECONDARY},
 	{"background", TUI_COL_BG},
@@ -1050,18 +1109,12 @@ void tui_lua_expose(lua_State* L)
 	};
 
 	lua_newtable(L);
-	for (size_t i = 0; i < COUNT_OF(consttbl); i++){
-		lua_pushstring(L, consttbl[i].key);
-		lua_pushnumber(L, consttbl[i].val);
+	for (size_t i = 0; i < COUNT_OF(coltbl); i++){
+		lua_pushstring(L, coltbl[i].key);
+		lua_pushnumber(L, coltbl[i].val);
 		lua_rawset(L, -3);
 	}
 	lua_setglobal(L, "tui_color");
-	lua_pop(L, 1);
-
-	for (size_t i = 0; i < COUNT_OF(consttbl); i++){
-		lua_pushnumber(L, consttbl[i].val);
-		lua_setglobal(L, consttbl[i].key);
-	}
 
 	struct { const char* key; int val; } symtbl[] = {
 	{"TUIK_UNKNOWN", TUIK_UNKNOWN},

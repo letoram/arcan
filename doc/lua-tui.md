@@ -66,6 +66,10 @@ calling _refresh_. This function may well return immediately, or, if you are
 being too frisky (multiple refress and not interleaving with process), it may
 block for an indefinite time.
 
+The current size of this grid can be extracted via:
+
+    mycontext:dimensions() => w, h
+
 Drawing is targetting a currently active output abstract screen. The abstract
 screen is a grid of cells that carry a character and optional formatting
 attributes. The screen has a cursor, which is the current position output will
@@ -76,6 +80,7 @@ externally controlled, you are expected to handle any positive non-zero number
 of rows and columns.
 
     write
+    write_to
     insert_lines
     delete_lines
     insert_empty
