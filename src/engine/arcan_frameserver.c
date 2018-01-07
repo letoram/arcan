@@ -87,6 +87,8 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 	if (!src)
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
+	arcan_conductor_deregister_frameserver(src);
+
 	arcan_aobj_id aid = src->aid;
 	uintptr_t tag = src->tag;
 	arcan_vobj_id vid = src->vid;
