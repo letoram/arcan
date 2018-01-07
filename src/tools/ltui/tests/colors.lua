@@ -1,32 +1,40 @@
-lines = {
-COLOR_PRIMARY, "primary",
-COLOR_SECONDARY, "secondary",
-COLOR_BG, "background",
-COLOR_TEXT, "text",
-COLOR_CURSOR, "cursor",
-COLOR_ALTCURSOR, "altcursor",
-COLOR_HIGHLIGHT, "highlight",
-COLOR_LABEL, "label",
-COLOR_WARNING, "warning",
-COLOR_ERROR, "error",
-COLOR_INACTIVE, "inactive"
-};
+local function draw(ctx)
+	local fg_r, fg_g, fg_b = ctx:get_color(tui_color.primary);
+	local bg_r, bg_g, bg_b = ctx:get_color(tui_color.background);
+	local iattr = tui_attr(
+		{fr = bg_r, fg = bg_g, fb = bg_b, br = fg_r, bg = fg_g, bb = fg_b}
+	);
+	iattr = tui_attr(
+		{br = 255, bg = 255, bb = 255}
+	);
+
+-- if we don't do this, we get interesting visual glitches
+-- if we DO do this, we get interesting black frames
+--	ctx:erase_screen();
+	local w, h = ctx:dimensions()
+	for x=0,w-1 do
+		ctx:write_to(x, 0, " ", iattr)
+		ctx:write_to(x, h-1, " ", iattr)
+	end
+	for y=0,h-1 do
+		ctx:write_to(0, y, " ", iattr)
+		ctx:write_to(w-1, y, " ", iattr)
+	end
+	ctx:refresh()
+end
 
 local ht = {
 	resize = function(tui, w, h)
-		conn:cursor_to(0, 0);
-
-		for i=0,#lines-1,2 do
-			local attr = tui_attr();
-			local r,g,b = conn:get_color(lines[i+1]);
-			attr.fr = r; attr.fg = g; attr.fb = b;
-			conn:write(lines[i+2], attr);
-		end
+		draw(tui);
+	end,
+	recolor = function(tui)
+		draw(tui);
 	end
 };
 
-conn = tui_open("color_test", "") or error("couldn't connect");
+conn = tui_open("draw_test", "") or error("couldn't connect");
 conn:set_handlers(ht);
+conn:set_flags(tui_flags.hide_cursor);
 ht.resize(conn);
 
 while(conn:process()) do
