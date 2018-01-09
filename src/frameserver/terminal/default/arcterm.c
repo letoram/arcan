@@ -145,12 +145,15 @@ static void on_utf8_paste(struct tui_context* c,
 	term.uinput = true;
 }
 
+static unsigned long long last_frame;
+
 static void on_resize(struct tui_context* c,
 	size_t neww, size_t newh, size_t col, size_t row, void* t)
 {
 	trace("resize(%zu(%zu),%zu(%zu))", neww, col, newh, row);
 	if (term.pty)
 		shl_pty_resize(term.pty, col, row);
+	last_frame = 0;
 }
 
 static void read_callback(struct shl_pty* pty,
@@ -163,7 +166,6 @@ static void write_callback(struct tsm_vte* vte,
 	const char* u8, size_t len, void* data)
 {
 	shl_pty_write(term.pty, u8, len);
-	shl_pty_dispatch(term.pty);
 }
 
 /* for future integration with more specific shmif- features when it
@@ -281,7 +283,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	}
 
 	int limit_flush = 60;
-	int cap_refresh = 16;
+	int cap_refresh = 32;
 
 	if (arg_lookup(args, "min_upd", 0, &val))
 		cap_refresh = strtol(val, NULL, 10);
@@ -395,7 +397,6 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
  *  we're being swamped with data (find /)
  */
 	int delay = -1;
-	unsigned long long last_frame = arcan_timemillis();
 
 	while (term.alive){
 		struct tui_process_res res = arcan_tui_process(&term.screen,1,&inf,1,delay);
@@ -406,35 +407,26 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
  * least a 30Hz refresh timer if we have no user input */
 		int nr;
 		while ((nr = pump_pty()) > 0){
-			if (arcan_timemillis() - last_frame <
-				(term.uinput ? limit_flush : 2 * limit_flush)){
-				delay = cap_refresh - (arcan_timemillis() - last_frame);
-				if (delay < 0)
-					delay = 0;
-			}
-			break;
-		}
+			if (!last_frame)
+				continue;
 
-/* in legacy terminal management, if we update too often, chances are that
- * we'll get cursors jumping around in vim etc so artificially constrain */
-		if (arcan_timemillis() - last_frame < cap_refresh){
-			delay = cap_refresh - (arcan_timemillis() - last_frame);
-			continue;
+			long long dt = arcan_timemillis() - last_frame;
+			if (dt < limit_flush * (term.uinput ? 2 : 1)){
+				delay = 0;
+				break;
+			}
 		}
 
 /* and on an actually successful update, reset the user-input flag and timing */
-		int rc = arcan_tui_refresh(term.screen);
+		int rc;
+		while((rc = arcan_tui_refresh(term.screen) == -1 && errno == EAGAIN)){}
 		if (rc >= 0){
 			term.uinput = false;
 			last_frame = arcan_timemillis();
 			delay = -1;
 		}
-		else if (rc == -1){
-			if (errno == EAGAIN)
-				delay = 0;
-			else if (errno == EINVAL)
-				break;
-		}
+		else if (rc == -1 && (errno == EINVAL))
+			break;
 	}
 
 /* might have been destroyed already, just in case */
