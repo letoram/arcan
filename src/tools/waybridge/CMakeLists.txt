@@ -31,6 +31,8 @@ add_definitions(
 	-DGNU_SOURCE
   -Wno-unused-but-set-variable
 	-Wno-unused-function
+	-Wno-unused-const-variable
+	-Wno-unknown-warning-option
 	-std=gnu11 # shmif-api requires this
 )
 
@@ -56,11 +58,24 @@ set(PROTOCOLS
 	"${WAYLANDPROTOCOLS_PATH}/unstable/idle-inhibit/idle-inhibit-unstable-v1"
 	"${CMAKE_CURRENT_SOURCE_DIR}/wlimpl/wayland-drm"
 )
+
+if (EXISTS "${WAYLANDPROTOCOLS_PATH}/stable/xdg-shell/xdg-shell.xml")
+	wayland_add_protocol_server(src
+		"${WAYLANDPROTOCOLS_PATH}/stable/xdg-shell/xdg-shell.xml"
+		"xdg-shell"
+	)
+	add_definitions(-DHAVE_XDG_SHELL)
+	list(APPEND sources ${src})
+else()
+	message("xdg-shell-stable protocol not found, diasabled")
+endif()
+
 foreach(proto ${PROTOCOLS})
    get_filename_component(base ${proto} NAME)
    wayland_add_protocol_server(src "${proto}.xml" ${base})
    list(APPEND sources ${src})
 endforeach()
+
 set_source_files_properties(${sources} PROPERTIES GENERATED ON)
 add_library(wlprot STATIC ${sources})
 

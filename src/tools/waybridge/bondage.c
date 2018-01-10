@@ -61,18 +61,48 @@ static void bind_shell(struct wl_client* client,
 	wl_resource_set_implementation(res, &shell_if, NULL, NULL);
 }
 
-static void bind_xdg(struct wl_client* client,
+static void bind_zxdg(struct wl_client* client,
 	void *data, uint32_t version, uint32_t id)
 {
-	trace(TRACE_ALLOC, "wl_bind(xdg %d:%d)", version, id);
+	trace(TRACE_ALLOC, "wl_bind(zxdg %d:%d)", version, id);
 	struct wl_resource* res = wl_resource_create(client,
 		&zxdg_shell_v6_interface, version, id);
 	if (!res){
 		wl_client_post_no_memory(client);
 		return;
 	}
+	wl_resource_set_implementation(res, &zxdgshell_if, NULL, NULL);
+}
+
+#ifdef HAVE_XDG_SHELL
+static void bind_xdg(struct wl_client* client,
+	void *data, uint32_t version, uint32_t id)
+{
+	trace(TRACE_ALLOC, "wl_bind(xdg %d:%d)", version, id);
+	struct wl_resource* res = wl_resource_create(
+		client, &xdg_wm_base_interface, version, id);
+	if (!res){
+		wl_client_post_no_memory(client);
+		return;
+	}
 	wl_resource_set_implementation(res, &xdgshell_if, NULL, NULL);
 }
+#endif
+
+#ifdef HAVE_DMA_BUF
+static void bind_zwp_dma_buf(struct wl_client* client,
+	void *data, uint32_t version, uint32_t id)
+{
+	trace(TRACE_ALLOC, "wl_bind(zwp-dma-buf %d:%d)", version, id);
+	struct wl_resource* res = wl_resource_create(
+		client, &zwp_linux_dmabuf_v1_interface, version, id);
+	if (!res){
+		wl_client_post_no_memory(client);
+		return;
+	}
+	wl_resource_set_implementation(res, &zdmabuf_if, NULL, NULL);
+}
+#endif
 
 static void bind_subcomp(struct wl_client* client,
 	void* data, uint32_t version, uint32_t id)

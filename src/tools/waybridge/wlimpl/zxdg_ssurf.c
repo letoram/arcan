@@ -1,4 +1,4 @@
-static bool xdgpop_defer_handler(
+static bool zxdgpop_defer_handler(
 	struct surface_request* req, struct arcan_shmif_cont* con)
 {
 	if (!con){
@@ -18,7 +18,7 @@ static bool xdgpop_defer_handler(
  * + destroy- rules that are a bit clunky
  */
 	struct wl_resource* popup = wl_resource_create(req->client->client,
-		&xdg_popup_interface, wl_resource_get_version(req->target), req->id);
+		&zxdg_popup_v6_interface, wl_resource_get_version(req->target), req->id);
 
 	if (!popup){
 		wl_resource_post_no_memory(req->target);
@@ -26,11 +26,11 @@ static bool xdgpop_defer_handler(
 	}
 
 	struct comp_surf* surf = wl_resource_get_user_data(req->target);
-	wl_resource_set_implementation(popup, &xdgpop_if, surf, NULL);
+	wl_resource_set_implementation(popup, &zxdgpop_if, surf, NULL);
 	surf->acon = *con;
 	surf->cookie = 0xfeedface;
 	surf->shell_res = popup;
-	surf->dispatch = xdgpopup_shmifev_handler;
+	surf->dispatch = zxdgpopup_shmifev_handler;
 
 	snprintf(surf->tracetag, SURF_TAGLEN, "xdg_popup");
 	arcan_shmif_enqueue(&surf->acon, &(struct arcan_event){
@@ -42,7 +42,7 @@ static bool xdgpop_defer_handler(
 	bool upd_view = false;
 	if (req->positioner){
 		struct positioner* pos = wl_resource_get_user_data(req->positioner);
-		apply_positioner(pos, &surf->viewport);
+		zxdg_apply_positioner(pos, &surf->viewport);
 		upd_view = true;
 	}
 
@@ -62,17 +62,17 @@ static bool xdgpop_defer_handler(
 	return true;
 }
 
-static bool xdgsurf_defer_handler(
+static bool zxdgsurf_defer_handler(
 	struct surface_request* req, struct arcan_shmif_cont* con)
 {
 	if (!con){
-		trace(TRACE_SHELL, "xdgsurf:reqfail");
+		trace(TRACE_SHELL, "zxdgsurf:reqfail");
 		wl_resource_post_no_memory(req->target);
 		return false;
 	}
 
 	struct wl_resource* toplevel = wl_resource_create(req->client->client,
-		&xdg_toplevel_interface, wl_resource_get_version(req->target), req->id);
+		&zxdg_toplevel_v6_interface, wl_resource_get_version(req->target), req->id);
 
 	if (!toplevel){
 		wl_resource_post_no_memory(req->target);
@@ -80,12 +80,12 @@ static bool xdgsurf_defer_handler(
 	}
 
 	struct comp_surf* surf = wl_resource_get_user_data(req->target);
-	wl_resource_set_implementation(toplevel, &xdgtop_if, surf, NULL);
+	wl_resource_set_implementation(toplevel, &zxdgtop_if, surf, NULL);
 	surf->acon = *con;
 	surf->cookie = 0xfeedface;
 	surf->shell_res = toplevel;
-	surf->dispatch = xdgtoplevel_shmifev_handler;
-	snprintf(surf->tracetag, SURF_TAGLEN, "xdg_toplevel");
+	surf->dispatch = zxdgtoplevel_shmifev_handler;
+	snprintf(surf->tracetag, SURF_TAGLEN, "zxdg_toplevel");
 
 /* propagate this so the scripts have a chance of following the restrictions
  * indicated by the protocol */
@@ -96,12 +96,12 @@ static bool xdgsurf_defer_handler(
 
 	struct wl_array states;
 	wl_array_init(&states);
-	xdg_toplevel_send_configure(toplevel, surf->acon.w, surf->acon.h, &states);
+	zxdg_toplevel_v6_send_configure(toplevel, surf->acon.w, surf->acon.h, &states);
 	wl_array_release(&states);
 	return true;
 }
 
-static void xdgsurf_toplevel(
+static void zxdgsurf_toplevel(
 	struct wl_client* cl, struct wl_resource* res, uint32_t id)
 {
 	trace(TRACE_SHELL, "%"PRIu32, id);
@@ -113,24 +113,24 @@ static void xdgsurf_toplevel(
 		.segid = SEGID_APPLICATION,
 		.target = res,
 		.id = id,
-		.trace = "xdg toplevel",
-		.dispatch = xdgsurf_defer_handler,
+		.trace = "zxdg toplevel",
+		.dispatch = zxdgsurf_defer_handler,
 		.client = surf->client,
 		.source = surf
 	}, 't');
 }
 
-static void xdgsurf_getpopup(struct wl_client* cl, struct wl_resource* res,
+static void zxdgsurf_getpopup(struct wl_client* cl, struct wl_resource* res,
 	uint32_t id, struct wl_resource* parent, struct wl_resource* positioner)
 {
-	trace(TRACE_SHELL, "xdgsurf_getpopup");
+	trace(TRACE_SHELL, "zxdgsurf_getpopup");
 	struct comp_surf* surf = wl_resource_get_user_data(res);
 	request_surface(surf->client, &(struct surface_request ){
 		.segid = SEGID_POPUP,
 		.target = res,
 		.id = id,
-		.trace = "xdg popup",
-		.dispatch = xdgpop_defer_handler,
+		.trace = "zxdg popup",
+		.dispatch = zxdgpop_defer_handler,
 		.client = surf->client,
 		.source = surf,
 		.parent = parent,
@@ -143,11 +143,11 @@ static void xdgsurf_getpopup(struct wl_client* cl, struct wl_resource* res,
  * we can't actually use this for a full viewport hint. Still better than
  * nothing and since we WM script need to take 'special ed' considerations
  * for xdg- clients anyhow, go with that. */
-static void xdgsurf_set_geometry(struct wl_client* cl,
+static void zxdgsurf_set_geometry(struct wl_client* cl,
 	struct wl_resource* res, int32_t x, int32_t y, int32_t width, int32_t height)
 {
 	struct comp_surf* surf = wl_resource_get_user_data(res);
-	trace(TRACE_SHELL, "xdgsurf_setgeom("
+	trace(TRACE_SHELL, "zxdgsurf_setgeom("
 		"%"PRIu32"+%"PRIu32", %"PRIu32"+%"PRIu32")", x, y, width, height);
 
 /* the better way is to use the tldr[] from the VIEWPORT hint,
@@ -167,7 +167,7 @@ static void xdgsurf_set_geometry(struct wl_client* cl,
 	arcan_shmif_enqueue(&surf->acon, &ev);
 }
 
-static void xdgsurf_ackcfg(
+static void zxdgsurf_ackcfg(
 	struct wl_client* cl, struct wl_resource* res, uint32_t serial)
 {
 	trace(TRACE_SHELL, "%"PRIu32, serial);
@@ -176,7 +176,7 @@ static void xdgsurf_ackcfg(
  * track pending cfgs that lacks an acq */
 }
 
-static void xdgsurf_destroy(
+static void zxdgsurf_destroy(
 	struct wl_client* cl, struct wl_resource* res)
 {
 	trace(TRACE_ALLOC, "%"PRIxPTR, res);
