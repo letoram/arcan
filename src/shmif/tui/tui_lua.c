@@ -294,6 +294,18 @@ static void on_utf8_paste(struct tui_context* c,
 	END_HREF;
 }
 
+static void on_resized(struct tui_context* c,
+	size_t neww, size_t newh, size_t col, size_t row, void* t)
+{
+	SETUP_HREF("resized",);
+		lua_pushnumber(L, col);
+		lua_pushnumber(L, row);
+		lua_pushnumber(L, neww);
+		lua_pushnumber(L, newh);
+		lua_call(L, 5, 0);
+	END_HREF;
+}
+
 static void on_resize(struct tui_context* c,
 	size_t neww, size_t newh, size_t col, size_t row, void* t)
 {
@@ -636,6 +648,7 @@ static int erase_line(lua_State* L)
 static int erase_screen(lua_State* L)
 {
 	TUI_UDATA;
+	printf("ease screen\n");
 	bool prot = luaL_optbnumber(L, 2, false);
 	arcan_tui_erase_screen(ib->tui, prot);
 	return 0;
@@ -723,7 +736,8 @@ static int tui_open(lua_State* L)
 		.apaste = on_apaste,
 		.tick = on_tick,
 		.utf8 = on_utf8_paste,
-		.resized = on_resize,
+		.resize = on_resize,
+		.resized = on_resized,
 		.subwindow = on_subwindow,
 		.recolor = on_recolor,
 		.draw_call = on_draw,
@@ -758,10 +772,13 @@ static int tui_open(lua_State* L)
 	return 1;
 }
 
+bool write_reset = false;
 static int refresh(lua_State* L)
 {
 	TUI_UDATA;
 	int rc = arcan_tui_refresh(ib->tui);
+	printf("refresh: %d\n", rc);
+	write_reset = false;
 	lua_pushnumber(L, rc);
 	return 1;
 }
@@ -925,6 +942,10 @@ static int getcursor(lua_State* L)
 static int write_tou8(lua_State* L)
 {
 	TUI_UDATA;
+	if (!write_reset){
+	printf("begin write\n");
+		write_reset = true;
+	}
 	struct tui_screen_attr* attr = NULL;
 	struct tui_screen_attr mattr = {};
 	size_t len;

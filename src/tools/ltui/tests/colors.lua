@@ -13,18 +13,18 @@ local function draw(ctx)
 --	ctx:erase_screen();
 	local w, h = ctx:dimensions()
 	for x=0,w-1 do
-		ctx:write_to(x, 0, " ", iattr)
-		ctx:write_to(x, h-1, " ", iattr)
+		ctx:write_to(x, 0, "S", iattr)
+		ctx:write_to(x, h-1, "S", iattr)
 	end
 	for y=0,h-1 do
-		ctx:write_to(0, y, " ", iattr)
-		ctx:write_to(w-1, y, " ", iattr)
+		ctx:write_to(0, y, "S", iattr)
+		ctx:write_to(w-1, y, "S", iattr)
 	end
 	ctx:refresh()
 end
 
 local ht = {
-	resize = function(tui, w, h)
+	resized = function(tui, w, h)
 		draw(tui);
 	end,
 	recolor = function(tui)
@@ -35,7 +35,7 @@ local ht = {
 conn = tui_open("draw_test", "") or error("couldn't connect");
 conn:set_handlers(ht);
 conn:set_flags(tui_flags.hide_cursor);
-ht.resize(conn);
+draw(conn);
 
 while(conn:process()) do
 	conn:refresh();
