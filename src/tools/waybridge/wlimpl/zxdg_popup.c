@@ -1,9 +1,9 @@
 /**
  * tried to grab after being mapped
-   XDG_POPUP_V6_ERROR_INVALID_GRAB = 0,
+   ZXDG_POPUP_V6_ERROR_INVALID_GRAB = 0,
  */
 
-static bool xdgpopup_shmifev_handler(
+static bool zxdgpopup_shmifev_handler(
 	struct comp_surf* surf, struct arcan_event* ev)
 {
 	if (!surf->shell_res)
@@ -19,7 +19,7 @@ static bool xdgpopup_shmifev_handler(
 			int w = ev->tgt.ioevs[0].iv ? ev->tgt.ioevs[0].iv : surf->geom_w;
 			int h = ev->tgt.ioevs[1].iv ? ev->tgt.ioevs[1].iv : surf->geom_h;
 			if ((w && h && (w != surf->geom_w || h != surf->geom_h))){
-				xdg_popup_send_configure(surf->shell_res, 0, 0, w, h);
+				zxdg_popup_v6_send_configure(surf->shell_res, 0, 0, w, h);
 				changed = true;
 			}
 
@@ -29,7 +29,7 @@ static bool xdgpopup_shmifev_handler(
 		return true;
 		break;
 		case TARGET_COMMAND_EXIT:
-			xdg_popup_send_popup_done(surf->shell_res);
+			zxdg_popup_v6_send_popup_done(surf->shell_res);
 			return true;
 		break;
 		default:
@@ -39,7 +39,7 @@ static bool xdgpopup_shmifev_handler(
 	return false;
 }
 
-static void xdgpop_grab(struct wl_client *cl,
+static void zxdgpop_grab(struct wl_client *cl,
 	struct wl_resource *res, struct wl_resource* seat, uint32_t serial)
 {
 	trace(TRACE_SHELL, "xdgpop_grab");
@@ -52,7 +52,7 @@ static void xdgpop_grab(struct wl_client *cl,
 	arcan_shmif_enqueue(&surf->acon, &surf->viewport);
 }
 
-static void xdgpop_destroy(struct wl_client* cl, struct wl_resource* res)
+static void zxdgpop_destroy(struct wl_client* cl, struct wl_resource* res)
 {
 	trace(TRACE_SHELL, "xdgpop_destroy");
 }

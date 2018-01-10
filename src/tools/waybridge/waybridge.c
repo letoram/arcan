@@ -913,6 +913,7 @@ static int show_use(const char* msg, const char* arg)
 "\t-no-shm           disable the shm protocol\n"
 "\t-no-seat          disable the seat protocol\n"
 "\t-no-xdg           disable the xdg protocol\n"
+"\t-no-zxdg          disable the zxdg protocol\n"
 "\t-no-output        disable the output protocol\n"
 "\t-defer-release    defer buffer releases, aggressive client workaround\n"
 "\t-debugusr1        use SIGUSR1 to dump debug information\n"
@@ -983,7 +984,7 @@ int main(int argc, char* argv[])
  * field here, and then command-line argument passing to disable said protocol.
  */
 	struct {
-		int compositor, shell, shm, seat, output, egl, xdg, subcomp, ddev, relp;
+		int compositor, shell, shm, seat, output, egl, zxdg, xdg, subcomp, ddev, relp, dma;
 	} protocols = {
 		.compositor = 3,
 		.shell = 1,
@@ -991,10 +992,17 @@ int main(int argc, char* argv[])
 		.seat = 5,
 		.output = 2,
 		.egl = 1,
+		.zxdg = 1,
+#ifdef HAVE_XDG_SHELL
 		.xdg = 1,
+#endif
+#ifdef HAVE_DMA_BUF
+		.dma = 1,
+#endif
 		.subcomp = 1,
 		.ddev = 3,
-		.relp = 1
+		.relp = 1,
+		.dma = 1
 	};
 #ifdef ENABLE_SECCOMP
 	bool sandbox = false;
@@ -1047,8 +1055,16 @@ int main(int argc, char* argv[])
 			protocols.seat = 0;
 		else if (strcmp(argv[arg_i], "-no-output") == 0)
 			protocols.output = 0;
+		else if (strcmp(argv[arg_i], "-no-zxdg") == 0)
+			protocols.zxdg = 0;
+#ifdef HAVE_DMA_BUF
+		else if (strcmp(argv[arg_i], "-no-dma") == 0)
+			protocols.dma = 0;
+#endif
+#ifdef HAVE_XDG_SHELL
 		else if (strcmp(argv[arg_i], "-no-xdg") == 0)
 			protocols.xdg = 0;
+#endif
 		else if (strcmp(argv[arg_i], "-no-subcompositor") == 0)
 			protocols.subcomp = 0;
 		else if (strcmp(argv[arg_i], "-no-data-device") == 0)
@@ -1192,9 +1208,19 @@ int main(int argc, char* argv[])
 	if (protocols.output)
 		wl_global_create(wl.disp, &wl_output_interface,
 			protocols.output, NULL, &bind_output);
-	if (protocols.xdg)
+	if (protocols.zxdg)
 		wl_global_create(wl.disp, &zxdg_shell_v6_interface,
+			protocols.zxdg, NULL, &bind_zxdg);
+#ifdef HAVE_XDG_SHELL
+	if (protocols.xdg)
+		wl_global_create(wl.disp, &xdg_wm_base_interface,
 			protocols.xdg, NULL, &bind_xdg);
+#endif
+#ifdef HAVE_DMA_BUF
+	if (protocols.dma)
+		wl_global_create(wl.disp, &zwp_linux_dmabuf_v1_interface,
+			protocols.dma, NULL, &bind_zwp_dmabuf);
+#endif
 	if (protocols.subcomp)
 		wl_global_create(wl.disp, &wl_subcompositor_interface,
 			protocols.subcomp, NULL, &bind_subcomp);

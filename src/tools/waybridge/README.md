@@ -80,6 +80,10 @@ Notes and Issues
 1. Stride - the shm- buffer blit doesn't take stride differences into
    account. This fails on MPV in SHM depending on source video size.
 
+2. Initial Control connection - this one should be deprecated and removed
+   in favor of getting it from the client connection when it is created, the
+	 current form is a remnant from before the -exec refactor.
+
 Depending on what toolkit is being used, chances are that some magic dance is
 needed in order to get a client to connect using wayland, and similarly for the
 specific shell protocol to use when multiple are available, for the choice of
@@ -139,6 +143,7 @@ Rough estimate of planned changes and order:
 3. data-device to clipboard
 4. enforce stronger error handling (not allow surfaces to switch roles etc.)
 5. move more 'decisions' that is part of the durden atype handling
+6. make a simple automatable wayland-only WM appl
 
 (x - done, p - partial/possible-tuning, s - showstopper, i - ignored for now)
 + (for-each finished milestone, verify allocation/deallocation/validation)
@@ -164,6 +169,7 @@ determine if we are compliant or not, because Wayland.
       - [x] Focus, buffers, cursors, sizing ...
       - [p] Forward shell events that can't be handled with shmif
       - [p] Positioners
+			- [p] zxdg-v6 to xdg-shell mapping
     - [i] Application-test suite and automated tests (SDL, QT, GTK, ...),
 		      seems that canonical attempts to tackle this
     - [i] XWayland (WM parts)
@@ -189,5 +195,4 @@ determine if we are compliant or not, because Wayland.
   - [ ] Viewporter
   - [ ] Xdg-output
   - [ ] Xdg-foreign
-	- [ ] Xdg-shell-v6 -> the stable replacement
 	- [ ] Dma- buf
