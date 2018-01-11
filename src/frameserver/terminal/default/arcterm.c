@@ -282,7 +282,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		return EXIT_SUCCESS;
 	}
 
-	int limit_flush = 60;
+	int limit_flush = 240;
 	int cap_refresh = 32;
 
 	if (arg_lookup(args, "min_upd", 0, &val))
@@ -405,15 +405,14 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 
 /* if the terminal is being swamped (find / for instance), try to keep at
  * least a 30Hz refresh timer if we have no user input */
-		int nr;
-		while ((nr = pump_pty()) > 0){
+		while (pump_pty()){
 			if (!last_frame)
 				continue;
 
 			long long dt = arcan_timemillis() - last_frame;
 			if (dt < limit_flush * (term.uinput ? 2 : 1)){
 				delay = 0;
-				break;
+				continue;
 			}
 		}
 
