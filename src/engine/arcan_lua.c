@@ -7809,7 +7809,6 @@ static int targetalloc(lua_State* ctx)
 	else {
 		arcan_vobj_id srcfsrv = luaL_checkvid(ctx, 1, NULL);
 		vfunc_state* state = arcan_video_feedstate(srcfsrv);
-
 		if (state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr){
 			newref = spawn_subsegment(
 				(arcan_frameserver*) state->ptr, segid, tag, 0, 0);
@@ -7817,6 +7816,7 @@ static int targetalloc(lua_State* ctx)
 		else
 			arcan_fatal("target_alloc() specified source ID doesn't "
 				"contain a frameserver\n.");
+		newref->tag = ref;
 	}
 
 	if (!newref){
