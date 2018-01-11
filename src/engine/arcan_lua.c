@@ -86,6 +86,7 @@
 #include "arcan_frameserver.h"
 #include "arcan_led.h"
 #include "arcan_vr.h"
+#include "arcan_conductor.h"
 
 #define arcan_luactx lua_State
 #include "arcan_lua.h"
@@ -7665,6 +7666,8 @@ static arcan_frameserver* spawn_subsegment(
 	if (segid != SEGID_ENCODER)
 		res->aid = arcan_audio_feed((arcan_afunc_cb)
 			arcan_frameserver_audioframe_direct, res, &errc);
+
+	arcan_conductor_register_frameserver(res);
 
 	return res;
 }
