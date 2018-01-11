@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2016, Björn Ståhl
+ * Copyright 2014-2018, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -38,6 +38,7 @@
 #include "arcan_shmif.h"
 #include "arcan_event.h"
 #include "arcan_frameserver.h"
+#include "arcan_conductor.h"
 
 static char* add_interpose(struct arcan_strarr* libs, struct arcan_strarr* envv)
 {
@@ -419,6 +420,8 @@ struct arcan_frameserver* platform_launch_fork(
 			.fsrv.video = ctx->vid
 		});
 	}
+
+	arcan_conductor_register_frameserver(ctx);
 
 	return ctx;
 }

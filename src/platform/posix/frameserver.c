@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2017, Björn Ståhl
+ * Copyright 2014-2018, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -37,7 +37,6 @@
 #include <arcan_video.h>
 #include <arcan_audio.h>
 #include <arcan_frameserver.h>
-#include <arcan_conductor.h>
 
 #define INCR(X, C) ( ( (X) = ( (X) + 1) % (C)) )
 
@@ -1411,8 +1410,6 @@ struct arcan_frameserver* platform_fsrv_spawn_server(
 
 	newseg->dpipe = sockp[0];
 	*childfd = sockp[1];
-
-	arcan_conductor_register_frameserver(newseg);
 
 	return newseg;
 }
