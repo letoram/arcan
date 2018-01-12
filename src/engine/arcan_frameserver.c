@@ -32,6 +32,7 @@
 
 #define FRAMESERVER_PRIVATE
 #include "arcan_frameserver.h"
+#include "arcan_conductor.h"
 
 #include "arcan_event.h"
 #include "arcan_img.h"
