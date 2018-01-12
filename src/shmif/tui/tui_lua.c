@@ -648,7 +648,6 @@ static int erase_line(lua_State* L)
 static int erase_screen(lua_State* L)
 {
 	TUI_UDATA;
-	printf("ease screen\n");
 	bool prot = luaL_optbnumber(L, 2, false);
 	arcan_tui_erase_screen(ib->tui, prot);
 	return 0;
@@ -777,7 +776,6 @@ static int refresh(lua_State* L)
 {
 	TUI_UDATA;
 	int rc = arcan_tui_refresh(ib->tui);
-	printf("refresh: %d\n", rc);
 	write_reset = false;
 	lua_pushnumber(L, rc);
 	return 1;
@@ -943,7 +941,6 @@ static int write_tou8(lua_State* L)
 {
 	TUI_UDATA;
 	if (!write_reset){
-	printf("begin write\n");
 		write_reset = true;
 	}
 	struct tui_screen_attr* attr = NULL;
