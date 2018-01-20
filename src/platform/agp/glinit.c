@@ -197,6 +197,9 @@ void agp_glinit_fenv(struct agp_fenv* dst,
 	dst->tex_image_2d =	(void (*)(GLenum,
 		GLint, GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, const GLvoid*))
 			lookup(tag, "glTexImage2D");
+	dst->tex_image_3d = (void (*)(
+		GLenum, GLint, GLint, GLsizei, GLsizei, GLsizei, GLint, GLenum, GLenum, const void*))
+			lookup(tag, "glTexImage3D");
 	dst->tex_param_i =
 		(void (*)(GLenum, GLenum, GLint))
 			lookup(tag, "glTexParameteri");

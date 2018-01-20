@@ -431,6 +431,9 @@ static bool check_ext(const char* needle, const char* haystack)
 
 static void dpms_set(struct dispout* d, int level)
 {
+/*
+ * FIXME: this needs to be deferred in the same way as disable / etc.
+ */
 	drmModePropertyPtr prop;
 	debug_print("dpms_set(%d) to %d", d->device->fd, level);
 	for (size_t i = 0; i < d->display.con->count_props; i++){

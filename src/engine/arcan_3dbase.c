@@ -165,17 +165,43 @@ static void freemodel(arcan_3dmodel* src)
 
 	geom = src->geometry;
 
+/*
+ * special case is where we share buffer between main and sub-geom,
+ * as the agp mesh store has its own concept of a shared buffer, we
+ * also need re-use between stores for various animation/modelling
+ * options.
+ * This means that the base geometry (first slot) can have a store
+ * and subgeometry can alias at offsets for everything except the
+ * shared pointer or vertex pointer
+ **/
+	uintptr_t base;
+	if (geom->store.shared_buffer)
+		base = (uintptr_t) geom->store.shared_buffer;
+	else
+		base = (uintptr_t) geom->store.verts;
+
+/* save the base geometry slot for last */
+	geom = geom->next;
 	while(geom){
-		arcan_mem_free(geom->store.indices);
-		arcan_mem_free(geom->store.verts);
-		arcan_mem_free(geom->store.normals);
-		arcan_mem_free(geom->store.txcos);
+		uintptr_t base2;
+		if (geom->store.shared_buffer)
+			base2 = (uintptr_t) geom->store.shared_buffer;
+		else
+			base2 = (uintptr_t) geom->store.verts;
+
+/* subgeom is its own geometry */
+		if (base2 != base)
+			agp_drop_mesh(&geom->store);
+
+/* delink from list and free */
 		struct geometry* last = geom;
 		geom = geom->next;
-		last->next = (struct geometry*) 0xdead;
+		last->next = NULL;
 		arcan_mem_free(last);
 	}
 
+	agp_drop_mesh(&src->geometry->store);
+	arcan_mem_free(src->geometry);
 	pthread_mutex_destroy(&src->lock);
 	arcan_mem_free(src);
 }
@@ -597,7 +623,7 @@ arcan_vobj_id arcan_3d_pointcloud(size_t count, size_t nmaps)
 	return rv;
 }
 
-arcan_vobj_id arcan_3d_buildbox(float w, float h, float d, size_t nmaps)
+arcan_vobj_id arcan_3d_buildbox(float w, float h, float d, size_t nmaps, bool s)
 {
 	vfunc_state state = {.tag = ARCAN_TAG_3DOBJ};
 	img_cons empty = {0};
@@ -613,67 +639,173 @@ arcan_vobj_id arcan_3d_buildbox(float w, float h, float d, size_t nmaps)
 	arcan_video_alterfeed(rv, FFUNC_3DOBJ, state);
 	pthread_mutex_init(&newmodel->lock, NULL);
 	arcan_video_allocframes(rv, 1, ARCAN_FRAMESET_SPLIT);
-	newmodel->geometry = arcan_alloc_mem(sizeof(struct geometry), ARCAN_MEM_VTAG,
-		ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 
-	newmodel->geometry->store.type = AGP_MESH_TRISOUP;
-	newmodel->geometry->nmaps = nmaps;
-	newmodel->geometry->complete = true;
-
+/* winding order: clockwise */
 	float verts[] = {
-		 w, h, d,  -w,  h,  d,  -w, -h,  d,   w, -h,  d,
-		 w, h, d,   w,  h, -d,  -w,  h, -d,  -w,  h,  d,
-		-w, h, d,  -w,  h, -d,  -w, -h, -d,  -w, -h,  d,
-		 w, h, d,   w, -h,  d,   w, -h, -d,   w,  h, -d,
+/* TOP */
+		-w, h, -d,
+		-w, h,  d,
+		 w, h,  d,
+		 w, h, -d,
 
-		-w,-h,-d,   w, -h, -d,   w, -h,  d,  -w, -h,  d,
-		 w,-h,-d,  -w, -h, -d,  -w,  h, -d,   w,  h, -d
-	};
-	newmodel->geometry->store.verts = arcan_alloc_fillmem(verts, sizeof(verts),
-		ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_SIMD);
-	newmodel->geometry->store.n_vertices = sizeof(verts) / sizeof(verts[0]) / 3;
-	newmodel->geometry->store.vertex_size = 3;
+/* LEFT */
+		-w, h,  d,
+		-w,-h,  d,
+		-w,-h, -d,
+		-w, h, -d,
 
-	float normals[] = {
-		 0, 0, 1,  0, 0, 1,  0, 0, 1,  0, 0, 1,
-		 1, 0, 0,  1, 0, 0,  1, 0, 0,  1, 0, 0,
-		 0, 1, 0,  0, 1, 0,  0, 1, 0,  0, 1, 0,
-		-1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0,
-		 0,-1, 0,  0,-1, 0,  0,-1, 0,  0,-1, 0,
-		 0, 0,-1,  0, 0,-1,  0, 0,-1,  0, 0,-1
-	};
-	newmodel->geometry->store.normals = arcan_alloc_fillmem(
-		normals, sizeof(normals), ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_SIMD);
+/* RIGHT */
+		 w,  h,  d,
+		 w, -h,  d,
+		 w, -h, -d,
+		 w,  h, -d,
 
-	unsigned int indices[] = {
-		2,1,0,0,3,2,
-		10,9,8,8, 11, 10,
-		14,13,12,12,15,14,
-		18,17,16,16,19,18,
-		22,21,20,20,23,22
+/* FRONT */
+		 w,  h,  d,
+		 w, -h,  d,
+		-w, -h,  d,
+		-w,  h,  d,
+
+/* BACK */
+		 w,  h, -d,
+		 w, -h, -d,
+		-w, -h, -d,
+		-w,  h, -d,
+
+/* BOTTOM */
+		-w, -h, -d,
+		-w, -h,  d,
+		 w, -h,  d,
+		 w, -h, -d
 	};
-	newmodel->geometry->store.indices = arcan_alloc_fillmem(
-		indices, sizeof(indices), ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_SIMD);
-	newmodel->geometry->store.n_indices = 36;
 
 	float txcos[] = {
-		1, 0, 0, 0, 0, 1, 1, 1,
-		1, 1, 1, 0, 0, 0, 0, 1,
-		1, 0, 0, 0, 0, 1, 1, 1,
 		0, 0, 0, 1, 1, 1, 1, 0,
-		0, 1, 1, 1, 1, 0, 0, 0,
-		1, 0, 0, 0, 0, 1, 1, 1
+		0, 0, 1, 0, 1, 1, 0, 1,
+		1, 1, 0, 1, 0, 0, 1, 0,
+		1, 1, 1, 0, 0, 0, 0, 1,
+		0, 0, 0, 1, 1, 1, 1, 0
 	};
-	newmodel->geometry->store.txcos = arcan_alloc_fillmem(txcos, sizeof(txcos),
-		ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_SIMD);
+
+	float normals[] = {
+		 0,  1,  0,
+		 0,  1,  0,
+		 0,  1,  0,
+		 0,  1,  0,
+		-1,  0,  0,
+		-1,  0,  0,
+		-1,  0,  0,
+		-1,  0,  0,
+		 1,  0,  0,
+		 1,  0,  0,
+		 1,  0,  0,
+		 1,  0,  0,
+		 0,  0, -1,
+		 0,  0, -1,
+		 0,  0, -1,
+		 0,  0, -1,
+		 0,  0,  1,
+		 0,  0,  1,
+		 0,  0,  1,
+		 0,  0,  1,
+		 0, -1,  0,
+		 0, -1,  0,
+		 0, -1,  0,
+		 0, -1,  0
+	};
+
+/* we index and slice based on the cubemap order,
+ * PX, NX, PY, NY, PZ, NZ */
+	unsigned rindices[] = {
+		10, 9, 8, /* right */
+		11, 10, 8,
+		6, 4, 5, /* left */
+		7, 4, 6,
+		2, 1, 0, /* top */
+		3, 2, 0,
+		22, 20, 21, /* bottom */
+		23, 20, 22,
+		14, 12, 13, /* front */
+		12, 14, 15,
+		18, 17, 16, /* back */
+		19, 18, 16,
+	};
+
+	unsigned indices[] = {
+		0, 1, 2, /* top */
+		0, 2, 3,
+		5, 4, 6, /* left */
+		6, 4, 7,
+		8, 9, 10, /* right */
+		8, 10, 11,
+		13, 12, 14, /* front */
+		15, 14, 12,
+		16, 17, 18, /* back */
+		16, 18, 19,
+		21, 20, 22, /* bottom */
+		22, 20, 23
+	};
 
 	vector bbmin = {.x = -w, .y = -h, .z = -d};
 	vector bbmax = {.x =  w, .y =  h, .z =  d};
 
+/* one big allocation for everything */
+	size_t buf_sz =
+		sizeof(verts) + sizeof(txcos) + sizeof(indices) + sizeof(normals);
+
+	float* dbuf = arcan_alloc_mem(buf_sz, ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_SIMD);
+	size_t nofs = COUNT_OF(verts);
+	size_t tofs = nofs + COUNT_OF(normals);
+	size_t iofs = tofs + COUNT_OF(txcos);
+
+	memcpy(dbuf, verts, sizeof(verts));
+	memcpy(&dbuf[nofs], normals, sizeof(normals));
+	memcpy(&dbuf[tofs], txcos, sizeof(txcos));
+	memcpy(&dbuf[iofs], rindices, sizeof(indices));
+
+	if (s){
+		struct geometry** geom = &newmodel->geometry;
+		struct geometry* last = NULL;
+
+		unsigned* indices = (unsigned*) &dbuf[iofs];
+
+		for (size_t i = 0; i < 6; i++){
+			*geom = arcan_alloc_mem(
+				sizeof(struct geometry), ARCAN_MEM_MODELDATA, ARCAN_MEM_BZERO, 0);
+			(*geom)->store.shared_buffer = (uint8_t*) dbuf;
+			(*geom)->store.shared_buffer_sz = buf_sz;
+			(*geom)->store.verts = dbuf;
+			(*geom)->store.txcos = &dbuf[tofs];
+			(*geom)->store.normals = &dbuf[nofs];
+			(*geom)->store.indices = &indices[i*6];
+			(*geom)->store.n_indices = 6;
+			(*geom)->store.vertex_size = 3;
+			(*geom)->nmaps = nmaps;
+			(*geom)->complete = true;
+			geom = &(*geom)->next;
+		}
+	}
+	else{
+		newmodel->geometry = arcan_alloc_mem(
+			sizeof(struct geometry), ARCAN_MEM_VTAG, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
+		newmodel->geometry->nmaps = nmaps;
+		newmodel->geometry->complete = true;
+		newmodel->geometry->store.vertex_size = 3;
+		newmodel->geometry->store.type = AGP_MESH_TRISOUP;
+		newmodel->geometry->store.shared_buffer_sz = buf_sz;
+		newmodel->geometry->store.verts = dbuf;
+		newmodel->geometry->store.txcos = &dbuf[tofs];
+		newmodel->geometry->store.normals = &dbuf[nofs];
+		newmodel->geometry->store.indices = (unsigned*) &dbuf[iofs];
+		newmodel->geometry->store.n_indices = COUNT_OF(indices);
+		newmodel->geometry->store.n_vertices = COUNT_OF(verts) / 3;
+		newmodel->geometry->store.shared_buffer = (uint8_t*) dbuf;
+		newmodel->geometry->complete = true;
+	}
+
 	newmodel->radius = d;
 	newmodel->bbmin = bbmin;
 	newmodel->bbmax = bbmax;
-	newmodel->geometry->complete = true;
 	newmodel->flags.complete = true;
 
 	return rv;

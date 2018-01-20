@@ -108,6 +108,8 @@ struct agp_fenv {
 		GLint, GLint, GLsizei, GLsizei, GLint, GLenum, GLenum, const GLvoid*);
 	void (*tex_image_2d_multisample) (
 		GLenum, GLsizei, GLint, GLsizei, GLsizei, GLboolean);
+	void (*tex_image_3d)(
+		GLenum, GLint, GLint, GLsizei, GLsizei, GLsizei, GLint, GLenum, GLenum, const void*);
 	void (*tex_param_i) (GLenum, GLenum, GLint);
 	void (*generate_mipmap) (GLenum);
 
@@ -145,6 +147,7 @@ struct agp_fenv {
 /* state tracking */
 	int model_flags;
 	GLenum blend_src_alpha, blend_dst_alpha;
+	GLint last_store_mode;
 };
 
 void agp_glinit_fenv(struct agp_fenv* dst,

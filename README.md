@@ -205,21 +205,30 @@ but they are all best managed from the engine and its respective scripts.
 
 Compatibility
 ====
-The set of applications that can connect to arcan and use it as a display
-server is rather limited. There are specialized back-end patches for some
-projects, like SDL2, QEmu and Xorg that you can build and use. Please see
-external/compat.README for more information.
+The follow options exist for running 3rd party software that use arcan as
+a display server:
 
-There is also an alpha- quality Wayland implementation that is enabled as
-a separate protocol bridge tool. This can be found in tools/waybridge but
-first, checkout the tools/waybridge/README.md file.
+1. Arcan-LWA - this allows for nested execution of different scripts, if
+   the dependencies were fulfilled during compile time, you should already
+	 have this binary.
 
-Lastly, there is also the option of using hijack (LD\_PRELOAD and similar
-mechanisms) for hacky ways to access legacy software. You can enable this
-with the build-time -DDISABLE\_HIJACK=OFF and get access to an SDL1.2 lib
-and an Xlib (extremely incomplete, only really useful when there's a dep-
-endency that is accidental rather than actually necessary). These will be
-built as libahijack\_sdl12.so and libahijack\_x11.so.
+2. Wayland - use the separate tool found in src/tools/waybridge to enable
+   on a per- client or as a translation service.
+
+3. XArcan - there is a patched Xorg server at
+   https://github.com/letoram/xarcan
+
+4. QEmu - there is a patched QEmu backend at
+   https://github.com/letoram/qemu
+
+5. SDL2 - there is a patched SDL2 backend at
+   https://github.com/letoram/SDL2
+	 but it is better to run SDL2 applications through wayland.
+
+There is also the option of using hijack (LD\_PRELOAD and similar) for
+hacky ways to access legacy software, should XArcan/Wayland not work.
+You can enable this with the build-time -DDISABLE\_HIJACK=OFF and get
+access to a SDL1.2 lib (libahijack\_sdl12.so).
 
 Other Tools<a name="tools"></a>
 ====

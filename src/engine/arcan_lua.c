@@ -1595,7 +1595,8 @@ static int loadimage(lua_State* ctx)
 	unsigned desh = luaL_optint(ctx, 4, 0);
 
 	if (path){
-		id = arcan_video_loadimage(path, arcan_video_dimensions(desw, desh), prio);
+		id = arcan_video_loadimage(
+			path, (img_cons){.w = desw, .h = desh}, prio);
 		arcan_mem_free(path);
 	}
 
@@ -1619,7 +1620,7 @@ static int loadimageasynch(lua_State* ctx)
 	}
 
 	if (path && strlen(path) > 0){
-		id = arcan_video_loadimageasynch(path, arcan_video_dimensions(0, 0), ref);
+		id = arcan_video_loadimageasynch(path, (img_cons){}, ref);
 	}
 	arcan_mem_free(path);
 
@@ -5340,7 +5341,7 @@ static int attrtag(lua_State* ctx)
 
 	arcan_vobj_id did = luaL_checkvid(ctx, 1, NULL);
 	const char* attr = luaL_checkstring(ctx, 2);
-	int state = luaL_checknumber(ctx, 3);
+	int state = luaL_checkbnumber(ctx, 3);
 
 	if (strcmp(attr, "infinite") == 0)
 		lua_pushboolean(ctx,
@@ -5410,8 +5411,9 @@ static int buildbox(lua_State* ctx)
 	float height = luaL_checknumber(ctx, 2);
 	float depth = luaL_checknumber(ctx, 3);
 	int nmaps = abs((int)luaL_optnumber(ctx, 4, 1));
+	bool split = luaL_optbnumber(ctx, 5, false);
 
-	arcan_vobj_id id = arcan_3d_buildbox(width, height, depth, nmaps);
+	arcan_vobj_id id = arcan_3d_buildbox(width, height, depth, nmaps, split);
 	lua_pushvid(ctx, id);
 	trace_allocation(ctx, "build_3dbox", id);
 
@@ -5547,6 +5549,42 @@ static int getimagestorageprop(lua_State* ctx)
 	lua_rawset(ctx, -3);
 
 	LUA_ETRACE("image_storage_properties", NULL, 1);
+}
+
+static int slicestore(lua_State* ctx)
+{
+	LUA_TRACE("image_storage_slice");
+	arcan_vobject* vobj;
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, &vobj);
+	int type = luaL_checknumber(ctx, 2);
+
+	if (type != ARCAN_CUBEMAP && type != ARCAN_3DTEXTURE)
+		arcan_fatal("image_storage_slice(), unknown slice type");
+
+	luaL_checktype(ctx, 3, LUA_TTABLE);
+	int values = lua_rawlen(ctx, 2);
+
+	if (vobj->vstore->txmapped != TXSTATE_TEX2D)
+		arcan_fatal("image_storage_slice(), destination store is not textured");
+
+	arcan_vobj_id slices[values];
+	for (size_t i = 0; i < values; i++){
+		lua_rawgeti(ctx, 3, i+1);
+		arcan_vobj_id setvid = luavid_tovid( lua_tonumber(ctx, -1) );
+		arcan_vobject* vobj = arcan_video_getobject(setvid);
+		if (!vobj || !vobj->vstore || vobj->vstore->txmapped != TXSTATE_TEX2D)
+			arcan_fatal("image_storage_slice(), invalid slice source at index %zu", i+1);
+		slices[i] = setvid;
+	}
+
+	if (
+		ARCAN_OK == arcan_video_sliceobject(id, type, vobj->vstore->w, values) &&
+		ARCAN_OK == arcan_video_updateslices(id, values, slices) )
+		lua_pushboolean(ctx, true);
+	else
+		lua_pushboolean(ctx, false);
+
+	LUA_ETRACE("image_storage_slice", NULL, 1);
 }
 
 static int copyimageprop(lua_State* ctx)
@@ -10789,6 +10827,7 @@ static const luaL_Reg imgfuns[] = {
 {"null_surface",             nullsurface        },
 {"image_surface_properties", getimageprop       },
 {"image_storage_properties", getimagestorageprop},
+{"image_storage_slice",      slicestore         },
 {"render_text",              rendertext         },
 {"text_dimensions",          textdimensions     },
 {"random_surface",           randomsurface      },

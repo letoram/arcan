@@ -49,10 +49,10 @@ arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx,
 /*
  * Generate a finalized model centered at 0,0 with [-width..+width,
  * -height..+height, -depth..+depth] consuming [nmaps] from frameset
- * in returned object.
+ * in returned object, set split to divide inte submeshes.
  */
 arcan_vobj_id arcan_3d_buildbox(float width, float height,
-	float depth, size_t nmaps);
+	float depth, size_t nmaps, bool split);
 
 /*
  * Generate a finalized model with [count] vertices and a frameset that

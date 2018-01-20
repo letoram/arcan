@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2017, Björn Ståhl
+ * Copyright 2014-2018, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  * Description:
@@ -156,7 +156,9 @@ enum agp_shader_envts{
 enum txstate {
 	TXSTATE_OFF   = 0,
 	TXSTATE_TEX2D = 1,
-	TXSTATE_DEPTH = 2
+	TXSTATE_DEPTH = 2,
+	TXSTATE_TEX3D = 3,
+	TXSTATE_CUBE  = 4
 };
 
 enum storage_source {
@@ -614,6 +616,24 @@ void agp_null_vstore(struct agp_vstore* backing);
  * Setup an empty vstore backing with the specified dimensions
  */
 void agp_empty_vstore(struct agp_vstore* backing, size_t w, size_t h);
+
+/*
+ * Setup a sliced vstore (cubemap, 3d- texture, ....),
+ * the slices are updated individually and it is not considered 'complete'
+ * until it has been updated with agp_slice_synch with a matching number of
+ * slices.
+ * If [txstate] is set to TXSTATE_CUBEMAP, only valid [n_slices] value is 6.
+ */
+bool agp_slice_vstore(
+	struct agp_vstore* backing, size_t n_slices, size_t base_size, enum txstate);
+
+/*
+ * Make sure the backing store is synched acording to its mode and from the set
+ * of conformant slices. A conformant slice has the same base_size and is of a
+ * texture_2D based source type.
+ */
+bool agp_slice_synch(
+	struct agp_vstore* backing, size_t n_slices, struct agp_vstore** slices);
 
 /*
  * Extended form to allow internal platform choice in format used,

@@ -1,10 +1,22 @@
 -- target_graphmode
 -- @short: Switch graphing mode for target frameserver.
--- @inargs: vid, modeid, *v1*, *v2*, *v3*
--- @longdescr: Hint that graphing state for a specific mode-ID should
--- be changed. This is a frameserver or specialized application
--- dedicated command. There is no path for querying accepted modes or
--- a model for how modeids and optional values are used.
+-- @inargs: vid:dst, int:modeid
+-- @inargs: vid:dst, int:modeid, float:mval
+-- @inargs: vid:dst, int:modeid, float:mval, float:mval2
+-- @inargs: vid:dst, int:modeid, float:mval, float:mval2, float:mval3
+-- @inargs: vid:dst, int:modeid, float:mval, float:mval2, float:mval3, float:mval4
+-- @longdescr: Hint that rendering state for a specific mode-ID should be changed.
+-- This is segment type dependent with the most prominent use being for sending
+-- color mapping information to TUI segments.
+--
+-- For TUI, the arguments are interpreted as follow:
+-- modeid - commit (0) or buffer (1)
+-- mode is set to buffer, the mval argument is interpreted as color label index,
+-- matching the enumeration constants present in the tui symbol tables. Currently,
+-- these are:
+-- primary (2), secondary (3), background (4), text (5), cursor (6), altcursor (7),
+-- hilight (8), label (9), warning (10), error (11), alert (12), inactive (13).
+--
 -- @group: targetcontrol
 -- @cfunction: targetgraph
-
+--
