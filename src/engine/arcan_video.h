@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2017, Björn Ståhl
+ * Copyright 2003-2018, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  */
@@ -29,14 +29,17 @@
 
 /*
  * These define how members of a frameset are supposed to be managed
- * when rendering the parent object. For SPLIT, only the currently
- * active frame will actually be drawn. For MULTITEXTURE, as many
- * as supported natively (minimum, 8) will be mapped to different
- * texture units as map_tu0 (primary), (1+ first member of frameset)
+ * when rendering the parent object.
+ *
+ * For SPLIT, only the currently active frame will actually be drawn.
+ *
+ * For MULTITEXTURE, as many as supported natively (minimum, 8) will
+ * be mapped to different texture units as map_tu0 (primary), (1+ first
+ * member of frameset).
  */
 enum arcan_framemode {
 	ARCAN_FRAMESET_SPLIT,
-	ARCAN_FRAMESET_MULTITEXTURE
+	ARCAN_FRAMESET_MULTITEXTURE,
 };
 
 /*
@@ -62,6 +65,17 @@ enum arcan_clipmode {
 	ARCAN_CLIP_OFF = 0,
 	ARCAN_CLIP_ON  = 1,
 	ARCAN_CLIP_SHALLOW = 2
+};
+
+/*
+ * These enumerations are used when creating a slice object, i.e.
+ * associate a set of vstores to an advanced vstore/vobj that gets a
+ * special texture type.
+ * See arcan_video_sliceobject.
+ */
+enum arcan_slicetype {
+	ARCAN_CUBEMAP = 0,
+	ARCAN_3DTEXTURE = 1
 };
 
 /*
@@ -134,7 +148,6 @@ ARCAN_TAG_ASYNCIMGLD= 4,/* intermediate state, means that getimage is still
 													 loading, don't touch objects in this state         */
 ARCAN_TAG_ASYNCIMGRD= 5,/* when asynch loader is finished, ready to collect   */
 
-/* Only 3D - related tags after this, order dependent! */
 ARCAN_TAG_3DOBJ     = 6,/* got a corresponding entry in arcan_3dbase, ffunc is
 													 used to control the behavior of the 3d part        */
 ARCAN_TAG_3DCAMERA  = 7,/* set after using camtag,
@@ -774,82 +787,316 @@ arcan_errc arcan_video_mipmapset(arcan_vobj_id id, bool state);
  */
 arcan_errc arcan_video_tesselation(arcan_vobj_id, uint8_t subdivisions);
 
-arcan_errc arcan_video_setclip(arcan_vobj_id id, enum arcan_clipmode toggleon);
+/*
+ * Change the clipping behavior for the referenced video object. For advanced
+ * or hierarchical objects, this can become expensive, using extra drawpasses
+ * and stencil buffer operations. Whenever possible, the cheaper CLIP_SHALLOW
+ * should be used as it merely modifiers geometry drawing and texture coords.
+ */
+arcan_errc arcan_video_setclip(arcan_vobj_id id, enum arcan_clipmode);
+
+/*
+ * Attach an identification or metadata string to the video object. This can
+ * be useful both for debugging purposes and for higher level scripting
+ * engine data serialisation across scripting VM executions.
+ */
 arcan_errc arcan_video_tracetag(arcan_vobj_id id, const char* const message);
+
+/*
+ * Force a specific blending operation, regardless of object state. Normally,
+ * blending is toggled on/off based on the current opacity state of the object
+ * which may be undesired for certain effects that use the opacity value as
+ * an interpolated- value to pass to shaders.
+ */
 arcan_errc arcan_video_forceblend(arcan_vobj_id id, enum arcan_blendfunc);
+
+/*
+ * Switch the texturing mode for the object in S and T axis respecively,
+ * these are typically limited to the platform- common denominator, that
+ * is wrapping on coordinates that go outside the 0..1 range, or clamping.
+ */
 arcan_errc arcan_video_objecttexmode(arcan_vobj_id id,
 	enum arcan_vtex_mode modes, enum arcan_vtex_mode modet);
+
+/*
+ * Set the filter mode on the vstore. The [filter] argument is a partial
+ * bitmap in that the linear/bilinear/trilinear options can be combined
+ * with the mipmap flag.
+ */
 arcan_errc arcan_video_objectfilter(arcan_vobj_id id,
 	enum arcan_vfilter_mode filter);
+
+/*
+ * Reorder the processing order for the [id] in its primary rendertarget
+ * attachment to be [newzv]. This is forced to abs and clamped within
+ * a 0..65536 range, but negative values may be applicable if the object
+ * has been set to inherit order from its linked parent.
+ */
 arcan_errc arcan_video_setzv(arcan_vobj_id id, int newzv);
 
-/* Object state retrieval */
+/* resolve the current absolute draw order value. */
 unsigned short arcan_video_getzv(arcan_vobj_id id);
+
+/* get a reference to the current video object tag, the allocation still
+ * belongs to the object and should not be aliased or used across _video
+ * calls. */
 const char* const arcan_video_readtag(arcan_vobj_id id);
+
+/* resolve an estimate of the current storage properties for the vobj,
+ * this should rarely be used and is mostly relevant with vobjs that
+ * has a dynamic store tied to some external producer. */
 img_cons arcan_video_storage_properties(arcan_vobj_id id);
+
+/* resolve the current drawing properties into rendertarget world space */
 surface_properties arcan_video_resolve_properties(arcan_vobj_id id);
+
+/* retrieve the object space drawing properties as they were on object reset
+ * or creation state, not applying any transformation chains */
 surface_properties arcan_video_initial_properties(arcan_vobj_id id);
+
+/* retrieve the object space drawing properties as they are at the time of
+ * invocation, this may change between invocations as interpolation in
+ * transformation chains are global time dependent */
 surface_properties arcan_video_current_properties(arcan_vobj_id id);
-arcan_errc arcan_video_screencoords(arcan_vobj_id, vector*);
+
+/*
+ * retrieve the screen-space coordinates of the 2d- object and store
+ * the four oriented vertices in the x,y components of [dst].
+ */
+arcan_errc arcan_video_screencoords(arcan_vobj_id, vector dst[4]);
+
+/*
+ * retrieve the object- space properties of [id] [ticks] into the future
+ * without destroying or modifying transformation chains
+ */
 surface_properties arcan_video_properties_at(
 	arcan_vobj_id id, uint32_t ticks);
-img_cons arcan_video_dimensions(uint16_t w, uint16_t h);
+
+/*
+ * Force a copy of the textured video backing store, converted into the
+ * engine native pixel format and stored as a dynamic allocated buffer
+ * into [dptr] with the size of [dstsz]. Caller takes ownership of
+ * the [dptr] buffer.
+ */
 arcan_errc arcan_video_forceread(arcan_vobj_id sid,
 	bool local, av_pixel** dptr, size_t* dstsz);
 
-/* Transformation chain actions */
-arcan_errc arcan_video_objectmove(arcan_vobj_id id, float newx, float newy,
-	float newz, unsigned int time);
+/*
+ * Append a move transformation to the current move transformation chain.
+ * This will reposition the object to new object-space [x,y,z] coordinates
+ * in [time] amount of ticks relative to the current time.
+ */
+arcan_errc arcan_video_objectmove(arcan_vobj_id id,
+	float newx, float newy, float newz, unsigned int time);
+
+/*
+ * Switch interpolation function of the last entry of the current move
+ * transformation chain.
+ */
 arcan_errc arcan_video_moveinterp(arcan_vobj_id id, enum arcan_vinterp);
+
+/*
+ * Append a scale transformation to the current scale transformation chain
+ * where wf, hf and df, are relative to the initial size of the object in
+ * [time] amount of ticks relative to the current time.
+ */
 arcan_errc arcan_video_objectscale(arcan_vobj_id id, float wf, float hf,
 	float df, unsigned int time);
-arcan_errc arcan_video_scaleinterp(arcan_vobj_id id, enum arcan_vinterp);
-arcan_errc arcan_video_objectrotate(arcan_vobj_id id, float ang, arcan_tickv time);
-arcan_errc arcan_video_objectrotate3d(arcan_vobj_id id,
-	float roll, float pitch, float yaw, arcan_tickv time);
 
-arcan_errc arcan_video_objectopacity(arcan_vobj_id id, float opa,
-	unsigned int time);
+/*
+ * Switch interpolation function of the last entry of the current scale
+ * transformation chain
+ */
+arcan_errc arcan_video_scaleinterp(arcan_vobj_id id, enum arcan_vinterp);
+
+/*
+ * Append a 1D rotate transformation in [ang] degrees to the end of the
+ * current rotation transformation chain that should complete in [time]
+ * amount of ticks relative to the current time.
+ */
+arcan_errc arcan_video_objectrotate(
+	arcan_vobj_id id, float ang, arcan_tickv time);
+
+/*
+ * Append a 3D rotate transformation in tait-bryan [roll,pitch,yaw]
+ * degrees to the end of the current rotation transform chain that should
+ * complete in [time] amount of ticks relative to the current time.
+ */
+arcan_errc arcan_video_objectrotate3d(
+	arcan_vobj_id id, float roll, float pitch, float yaw, arcan_tickv time);
+
+/*
+ * Append a blend transformation to the current blend transformation chain
+ * that should complete in [time] amount of ticks relative to the current
+ * time.
+ */
+arcan_errc arcan_video_objectopacity(
+	arcan_vobj_id id, float opa, unsigned int time);
+
+/*
+ * Switch interpolation function of the last entry of the current blend
+ * transformation chain
+ */
 arcan_errc arcan_video_blendinterp(arcan_vobj_id id, enum arcan_vinterp);
-arcan_errc arcan_video_origoshift(arcan_vobj_id id, float sx,
-	float sy, float sz);
+
+/*
+ * Offset the origo that is used for rotation operations [sx,sy,sz] pixels
+ * relative to the center of the object
+ */
+arcan_errc arcan_video_origoshift(
+	arcan_vobj_id id, float sx, float sy, float sz);
+
+/*
+ * Set relative- reordering order-val interpretation on/off, this relates
+ * to [ref:arcan_video_setzv].
+ */
 arcan_errc arcan_video_inheritorder(arcan_vobj_id id, bool val);
-arcan_errc arcan_video_override_mapping(arcan_vobj_id id, float* dst);
+
+/*
+ * Replace the default 0,0 - 1.0
+ *                     0,1 - 1.1 texture mapping set with a custom set
+ * of coordinates. This must be 8 float values, going clockwise from UL.
+ */
+arcan_errc arcan_video_override_mapping(arcan_vobj_id id, float* src);
+
+/*
+ * Populate [dst] with the current texture mapping coordinates used for
+ * drawing the object. This only applies to 2D objects.
+ */
 arcan_errc arcan_video_retrieve_mapping(arcan_vobj_id id, float* dst);
+
+/*
+ * Change the GPU processing stage for a specific vobj.
+ */
 arcan_errc arcan_video_setprogram(arcan_vobj_id id, agp_shader_id shid);
+
+/*
+ * Apply all transformation chains instantly.
+ */
 arcan_errc arcan_video_instanttransform(arcan_vobj_id id);
-arcan_errc arcan_video_transfertransform(arcan_vobj_id sid,
-	arcan_vobj_id did);
+
+/*
+ * Reassign the transformation chain being applied to [sid] so that it,
+ * instead, is being applied to [did]. The current state on [sid] will
+ * be kept as is.
+ */
+arcan_errc arcan_video_transfertransform(
+	arcan_vobj_id sid, arcan_vobj_id did);
+
+/*
+ * Copy the transformation chain being applied to [sid] to also exist
+ * independently for [did].
+ */
 arcan_errc arcan_video_copytransform(arcan_vobj_id sid, arcan_vobj_id did);
+
+/*
+ * Copy the currently active properties being applied to [sid] to also
+ * be valid for [did].
+ */
 arcan_errc arcan_video_copyprops(arcan_vobj_id sid, arcan_vobj_id did);
+
+/*
+ * This will dereference and possibly deallocate the texture data backing
+ * store in [did] and reference the one preset in [sid].
+ */
 arcan_errc arcan_video_shareglstore(arcan_vobj_id sid, arcan_vobj_id did);
-arcan_errc arcan_video_transformcycle(arcan_vobj_id, bool);
-arcan_errc arcan_video_zaptransform(arcan_vobj_id id, float*);
+
+/*
+ * Convert an object to have a sliced-type backing store, where the individual
+ * slices are populated from other objects. If successful, this will
+ * dereference/deallocate the old backing store in [sid].
+ *
+ * The new backing store will be fixed to [base]*[base] dimensions for each
+ * slice, and the number of necessary and allowed slices are dependent on the
+ * type of the sliced store being created, e.g. cubemaps always having 6.
+ *
+ * [n_slices] must also be a power-of-two.
+ */
+arcan_errc arcan_video_sliceobject(
+	arcan_vobj_id sid, enum arcan_slicetype, size_t base, size_t n_slices);
+
+/*
+ * Update a sliced backing store with a set of slice sources. For dynamically
+ * updated backing stores, only the ones that have been updated/invalidates
+ * since the last time the object was resliced will actually be synched to
+ * any device-bound resources, e.g. GPU memory.
+ */
+arcan_errc arcan_video_updateslices(
+	arcan_vobj_id sid, size_t n_slices, arcan_vobj_id* slices);
+
+/*
+ * Set transform cycling on [active=true] or off. Transform cycling means
+ * that when an item is supposed to be removed from the transform chains,
+ * it will instead be rescheduled last. This is useful to create animation
+ * loops.
+ */
+arcan_errc arcan_video_transformcycle(arcan_vobj_id, bool active);
+
+/*
+ * Immediately remove all pending transform chains, storing the number
+ * of individual transforms that are dropped in the output [drop] argument.
+ */
+arcan_errc arcan_video_zaptransform(arcan_vobj_id id, float* drop);
 
 /*
  * Associate a tag with the specified transform, and a mask of
  * valid transforms (only BLEND, ROTATE, SCALE, POSITION allowed).
  *
  * The tag will be associated with the last element of each specified
- * slot, and the event will fire wehn that transform is dropped from
+ * slot, and the event will fire when that transform is dropped from
  * the front.
  */
-arcan_errc arcan_video_tagtransform(arcan_vobj_id id,
-	intptr_t tag, enum arcan_transform_mask mask);
+arcan_errc arcan_video_tagtransform(
+	arcan_vobj_id id, intptr_t tag, enum arcan_transform_mask mask);
 
+/*
+ * Set the accelerated cursor pos to [newx, newy] either applied as a
+ * delta to the current position [absolute=false] or replacing the current
+ * entirely.
+ */
 void arcan_video_cursorpos(int newx, int newy, bool absolute);
+
+/*
+ * Set the accelerated cursor size to [w*h] pixels
+ */
 void arcan_video_cursorsize(size_t w, size_t h);
+
+/*
+ * Set the textured backing store that should be used for mapping the
+ * accelerated cursor.
+ */
 void arcan_video_cursorstore(arcan_vobj_id src);
 
-
-/* picking, collision detection */
-unsigned arcan_video_tick(unsigned steps, unsigned* njobs);
+/*
+ * Test if the coordinate pair [x, y] will match [id] in the currently active
+ * rendertarget projection.
+ */
 bool arcan_video_hittest(arcan_vobj_id id, int x, int y);
 
+/*
+ * Perform a back to front prioritized picking operation of maximum [count]
+ * objects being stored into the array at [dst] for objects with a bounding
+ * box or volume matching the rendertarget screen projection [x,y] coordinates.
+ * Returns t he number of hits.
+ */
 size_t arcan_video_pick(arcan_vobj_id rt,
 	arcan_vobj_id* dst, size_t count, int x, int y);
 
+/*
+ * Perform a front to back picking operation of maximum [count] objects
+ * being stored into the array at [dst] for objects with a bounding box
+ * or volume matching the rendertarget screen projection [x,y] coordinates.
+ * Returns the number of hits.
+ */
 size_t arcan_video_rpick(arcan_vobj_id rt,
 	arcan_vobj_id* dst, size_t count, int x, int y);
+
+/*
+ * Perform [steps] global monotonic timer updates, returning the number of
+ * Returns the amount of miliseconds elapsed processing all objects.  If
+ * provided, the [njobs] output will be updated with the amount of updates that
+ * have not been synchronised to the graphics layer.
+ */
+unsigned arcan_video_tick(unsigned steps, unsigned* njobs);
 #endif
 

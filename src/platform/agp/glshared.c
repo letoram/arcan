@@ -17,7 +17,7 @@
 #include "glfun.h"
 
 #include "../video_platform.h"
-#include PLATFORM_HEADER
+#include "../platform.h"
 
 #include "arcan_math.h"
 #include "arcan_general.h"
@@ -272,9 +272,6 @@ static bool alloc_fbo(struct agp_rendertarget* dst, bool retry)
  */
 void agp_empty_vstore(struct agp_vstore* vs, size_t w, size_t h)
 {
-/*
- * though the d_fmt may differ from s_fmt here, we treat s_fmt and
- */
 	size_t sz = w * h * sizeof(av_pixel);
 	if (!vs->vinf.text.s_raw){
 		vs->vinf.text.s_raw = sz;
@@ -301,6 +298,127 @@ void agp_empty_vstore(struct agp_vstore* vs, size_t w, size_t h)
 	arcan_mem_free(vs->vinf.text.raw);
 	vs->vinf.text.raw = 0;
 	vs->vinf.text.s_raw = 0;
+}
+
+bool agp_slice_vstore(struct agp_vstore* backing,
+	size_t n_slices, size_t base, enum txstate txstate)
+{
+	if (txstate != TXSTATE_CUBE && txstate != TXSTATE_TEX3D)
+		return false;
+
+/* not all platforms actually support it */
+	if (txstate == TXSTATE_TEX3D && !agp_env()->tex_image_3d)
+		return false;
+
+/* dimensions must be power of two */
+	if (!base || (base & (base - 1)) != 0 ||
+		!n_slices || (n_slices & (n_slices - 1)) != 0)
+		return false;
+
+/* and cubemap can only have 6 faces */
+	if (txstate == TXSTATE_CUBE && n_slices != 6)
+		return false;
+
+	if (backing->vinf.text.s_fmt == 0){
+		backing->vinf.text.s_fmt = GL_PIXEL_FORMAT;
+	if (backing->vinf.text.d_fmt == 0)
+		backing->vinf.text.d_fmt = GL_STORE_PIXEL_FORMAT;
+	}
+
+	backing->bpp = sizeof(av_pixel);
+	backing->w = base;
+	backing->h = base;
+	backing->txmapped = txstate;
+
+/* allocation / upload is deferred to slice stage */
+	return true;
+}
+
+static bool update_3dtex(
+	struct agp_vstore* backing, size_t n_slices, struct agp_vstore** slices)
+{
+	struct agp_fenv* env = agp_env();
+	env->bind_texture(GL_TEXTURE_3D, backing->vinf.text.glid);
+	return true;
+}
+
+static bool update_cube(
+	struct agp_vstore* backing, size_t n_slices, struct agp_vstore** slices)
+{
+	if (n_slices != 6)
+		return false;
+
+/* the options for this one depends on [slices] -ideally we'd just want to
+ * copy subdata, but that is 4.x.
+ * a. most stable / expensive: readback + upload
+ * b. glCopyTexImage2D
+ * c. take a scratch FBO, set READ to source, DRAW to cubemap side
+ * d. build a PBO and do GPU-GPU transfer that way
+ * and if the GPU affinity doesn't match slice vs dst, we're back to a.
+ *
+ * since the primary motivation here is to use for static data, (a) is ok,
+ * the dynamic cases should have 6xFBO passes or hoping for geometry- shaders
+ * and setting the output layers to behave accordingly - won't happen.
+ */
+	struct agp_fenv* env = agp_env();
+	env->bind_texture(GL_TEXTURE_CUBE_MAP, backing->vinf.text.glid);
+	env->tex_param_i(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	env->tex_param_i(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	env->tex_param_i(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	env->tex_param_i(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	env->tex_param_i(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
+	for (size_t i = 0; i < n_slices; i++){
+		struct agp_vstore* s = slices[i];
+/* only update qualified slices - same size and updated after last synch */
+		if (backing->update_ts > s->update_ts ||
+			s->w != backing->w || s->h != backing->h ||
+			s->txmapped != TXSTATE_TEX2D)
+			continue;
+
+		bool drop_slice = false;
+		if (!s->vinf.text.raw){
+			agp_readback_synchronous(s);
+			drop_slice = true;
+			if (!s->vinf.text.raw)
+				continue;
+		}
+
+		env->tex_image_2d(
+			GL_TEXTURE_CUBE_MAP_POSITIVE_X+i, 0,
+			s->vinf.text.d_fmt ? s->vinf.text.d_fmt : GL_STORE_PIXEL_FORMAT,
+			s->w, s->h, 0,
+			s->vinf.text.s_fmt ? s->vinf.text.s_fmt : GL_PIXEL_FORMAT,
+			s->vinf.text.s_type ? s->vinf.text.s_type : GL_UNSIGNED_BYTE,
+			s->vinf.text.raw
+		);
+
+		if (drop_slice){
+			arcan_mem_free(s->vinf.text.raw);
+			s->vinf.text.raw = NULL;
+			s->vinf.text.s_raw = 0;
+		}
+	}
+
+	backing->update_ts = arcan_timemillis();
+	env->bind_texture(GL_TEXTURE_CUBE_MAP, 0);
+	return true;
+}
+
+bool agp_slice_synch(
+	struct agp_vstore* backing, size_t n_slices, struct agp_vstore** slices)
+{
+/* each slice, if backing store match, update based on backing type */
+	if (backing->txmapped != TXSTATE_TEX3D && backing->txmapped != TXSTATE_CUBE)
+		return false;
+
+	if (backing->txmapped == TXSTATE_CUBE)
+		return update_cube(backing, n_slices, slices);
+
+	if (backing->txmapped == TXSTATE_TEX3D)
+		return update_3dtex(backing, n_slices, slices);
+
+	return false;
 }
 
 #ifndef GL_RGB16F
@@ -392,6 +510,9 @@ void agp_empty_vstoreext(struct agp_vstore* vs,
 struct agp_rendertarget* agp_setup_rendertarget(
 	struct agp_vstore* vstore, enum rendertarget_mode m)
 {
+	if (vstore->txmapped == TXSTATE_TEX3D)
+		return NULL;
+
 	struct agp_rendertarget* r = arcan_alloc_mem(sizeof(struct agp_rendertarget),
 		ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 
@@ -407,7 +528,10 @@ struct agp_rendertarget* agp_setup_rendertarget(
 			ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 		r->store_back->vinf.text.s_fmt = vstore->vinf.text.s_fmt;
 		r->store_back->vinf.text.d_fmt = vstore->vinf.text.d_fmt;
-		agp_empty_vstore(r->store_back, vstore->w, vstore->h);
+		if (vstore->txmapped == TXSTATE_CUBE)
+			agp_slice_vstore(r->store_back, 6, vstore->w, TXSTATE_CUBE);
+		else
+			agp_empty_vstore(r->store_back, vstore->w, vstore->h);
 	}
 
 	alloc_fbo(r, false);
@@ -468,6 +592,11 @@ void agp_init()
 	env->blend_func_separate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE,GL_ONE);
 	env->front_face(GL_CW);
 	env->cull_face(GL_BACK);
+
+/* possibly not available in our context due to the low version, but try */
+#ifdef GL_TEXTURE_CUBE_MAP_SEAMLESS
+	env->enable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
+#endif
 
 #if defined(GL_MULTISAMPLE) && !defined(HEADLESS_NOARCAN)
 	if (arcan_video_display.msasamples)
@@ -1111,7 +1240,18 @@ void agp_invalidate_mesh(struct agp_mesh_store* bs)
 
 void agp_activate_vstore(struct agp_vstore* s)
 {
-	agp_env()->bind_texture(GL_TEXTURE_2D, s->vinf.text.glid);
+	struct agp_fenv* env = agp_env();
+	if (s->txmapped == TXSTATE_CUBE){
+		env->last_store_mode = GL_TEXTURE_CUBE_MAP;
+	}
+	else if (s->txmapped == TXSTATE_TEX3D){
+		env->last_store_mode = GL_TEXTURE_3D;
+	}
+	else if (s->txmapped == TXSTATE_TEX2D){
+		env->last_store_mode = GL_TEXTURE_2D;
+	}
+
+	agp_env()->bind_texture(env->last_store_mode, s->vinf.text.glid);
 }
 
 void agp_deactivate_vstore()

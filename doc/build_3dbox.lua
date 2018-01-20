@@ -2,12 +2,19 @@
 -- @short: Generate a 3D cube model
 -- @inargs: float:width, float:height, float:depth
 -- @inargs: float:width, float:height, float:depth, int:nmaps
+-- @inargs: float:width, float:height, float:depth, int:nmaps, bool:split
 -- @outargs: vid
 -- @longdescr: This builds a mesh and binds to a new 3d model that
 -- is then finalized. The typical use is for things like skyboxes and
 -- debug geometry. The mesh values will range from -(width/2)..+(width/2),
 -- -(height/2)..+(height/2), -(depth/2)..+(depth/2). Optionally, the model
 -- will have *nmaps* texturing slots allocated to it.
+-- If the *split* argument is provided and set to true, the model will
+-- be split into one submesh for each side, with each submesh consuming
+-- *nmaps* textures.
+-- @note: If the split option is set, the number of actual textures needed
+-- in the frameset defined on the output vid should be *nmaps* multiplied
+-- by 6, as each face will consume *nmaps* textures.
 -- @group: 3d
 -- @cfunction: buildbox
 -- @related: build_3dplane

@@ -364,8 +364,8 @@ static void reallocate_gl_context(struct arcan_video_context* context)
 				(char)current->feed.state.tag == ARCAN_TAG_IMAGE){
 					char* fname = strdup( current->vstore->vinf.text.source );
 					arcan_mem_free(current->vstore->vinf.text.source);
-				arcan_vint_getimage(fname, current,
-					arcan_video_dimensions(current->origw, current->origh), false);
+				arcan_vint_getimage(fname,
+					current, (img_cons){.w = current->origw, .h = current->origh}, false);
 				arcan_mem_free(fname);
 			}
 			else
@@ -3363,8 +3363,8 @@ arcan_errc arcan_video_objectrotate3d(arcan_vobj_id id,
 	return ARCAN_OK;
 }
 
-arcan_errc arcan_video_allocframes(arcan_vobj_id id, unsigned char capacity,
-	enum arcan_framemode mode)
+arcan_errc arcan_video_allocframes(arcan_vobj_id id,
+	unsigned char capacity, enum arcan_framemode mode)
 {
 	arcan_vobject* target = arcan_video_getobject(id);
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
@@ -4152,6 +4152,9 @@ unsigned arcan_video_tick(unsigned steps, unsigned* njobs)
 
 		steps = steps - 1;
 	} while (steps);
+
+	if (njobs)
+		*njobs = arcan_video_display.dirty;
 
 	return arcan_frametime() - now;
 }
@@ -5170,6 +5173,39 @@ bool arcan_video_hittest(arcan_vobj_id id, int x, int y)
 			(x <= projv[2].x && y <= projv[2].y);
 }
 
+arcan_errc arcan_video_sliceobject(arcan_vobj_id sid,
+	enum arcan_slicetype type, size_t base, size_t n_slices)
+{
+	arcan_vobject* src = arcan_video_getobject(sid);
+	if (!src)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+
+	return (agp_slice_vstore(src->vstore, n_slices, base,
+		type == ARCAN_CUBEMAP ? TXSTATE_CUBE : TXSTATE_TEX3D))
+		? ARCAN_OK : ARCAN_ERRC_UNACCEPTED_STATE;
+}
+
+arcan_errc arcan_video_updateslices(
+	arcan_vobj_id sid, size_t n_slices, arcan_vobj_id* slices)
+{
+	arcan_vobject* src = arcan_video_getobject(sid);
+	if (!src || n_slices > 4096)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+
+	struct agp_vstore* vstores[n_slices];
+	for (size_t i = 0; i < sid; i++){
+		arcan_vobject* slot = arcan_video_getobject(slices[i]);
+		if (!slot){
+			vstores[i] = NULL;
+			continue;
+		}
+		vstores[i] = slot->vstore;
+	}
+
+	return (agp_slice_synch(src->vstore, n_slices, vstores)) ?
+			ARCAN_OK : ARCAN_ERRC_UNACCEPTED_STATE;
+}
+
 static inline bool obj_visible(arcan_vobject* vobj)
 {
 	bool visible = vobj->current.opa > EPSILON;
@@ -5233,12 +5269,6 @@ size_t arcan_video_pick(arcan_vobj_id rt,
 	}
 
 	return count;
-}
-
-img_cons arcan_video_dimensions(uint16_t w, uint16_t h)
-{
-	img_cons res = {w, h};
-	return res;
 }
 
 img_cons arcan_video_storage_properties(arcan_vobj_id id)
