@@ -946,6 +946,10 @@ struct agp_mesh_store
 
 /* set if the underlying buffers have changed and force a resynch (VBOs) */
 	bool dirty;
+
+/* applied the first time the buffer is used in a draw command if the object
+ * is indexed, makes sure that all the indices points to valid vertices */
+	bool validated;
 };
 
 /*

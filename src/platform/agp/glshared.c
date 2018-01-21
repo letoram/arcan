@@ -1106,9 +1106,24 @@ static void setup_transfer(struct agp_mesh_store* base, enum agp_mesh_flags fl)
 		attribs[8] = -1;
 
 	if (base->type == AGP_MESH_TRISOUP){
-		if (base->indices)
-			env->draw_elements(GL_TRIANGLES, base->n_indices,
-				GL_UNSIGNED_INT, base->indices);
+		if (base->indices){
+			if (!base->validated){
+				static bool warned;
+				for (size_t i = 0; i < base->n_indices; i++){
+					if (base->indices[i] > base->n_vertices){
+						if (!warned){
+							arcan_warning("agp_submit_mesh(), " "refusing mesh with OOB indices "
+								"(%zu=>%zu/%zu\n", i, base->indices[i], base->n_vertices);
+							warned = true;
+						}
+						return;
+					}
+				}
+				base->validated = true;
+			}
+			env->draw_elements(GL_TRIANGLES,
+				base->n_indices, GL_UNSIGNED_INT, base->indices);
+		}
 		else
 			env->draw_arrays(GL_TRIANGLES, 0, base->n_vertices);
 	}
