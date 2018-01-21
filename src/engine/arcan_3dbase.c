@@ -127,14 +127,14 @@ static void build_hplane(point min, point max, point step,
 
 	for (size_t x = 0; x < nx-1; x++)
 		for (size_t z = 0; z < nz-1; z++){
-			(*indices)[vofs++] = GETVERT(x, z);
-			(*indices)[vofs++] = GETVERT(x, z+1);
 			(*indices)[vofs++] = GETVERT(x+1, z+1);
+			(*indices)[vofs++] = GETVERT(x, z+1);
+			(*indices)[vofs++] = GETVERT(x, z);
 			tofs++;
 
-			(*indices)[vofs++] = GETVERT(x, z);
-			(*indices)[vofs++] = GETVERT(x+1, z+1);
 			(*indices)[vofs++] = GETVERT(x+1, z);
+			(*indices)[vofs++] = GETVERT(x+1, z+1);
+			(*indices)[vofs++] = GETVERT(x, z);
 			tofs++;
 		}
 
@@ -530,7 +530,7 @@ arcan_errc arcan_3d_swizzlemodel(arcan_vobj_id dst)
 	while (curr) {
 		if (curr->store.indices){
 			unsigned* indices = curr->store.indices;
-			for (size_t i = 0; i <curr->store.n_indices * 3; i+= 3){
+			for (size_t i = 0; i <curr->store.n_indices; i+= 3){
 				unsigned iv = indices[i];
 				indices[i] = indices[i+2];
 				indices[i+2] = iv;
@@ -769,6 +769,7 @@ arcan_vobj_id arcan_3d_buildbox(float w, float h, float d, size_t nmaps, bool s)
 			(*geom)->store.indices = &indices[i*6];
 			(*geom)->store.n_indices = 6;
 			(*geom)->store.vertex_size = 3;
+			(*geom)->store.n_vertices = COUNT_OF(verts);
 			(*geom)->nmaps = nmaps;
 			(*geom)->complete = true;
 			geom = &(*geom)->next;
@@ -787,7 +788,7 @@ arcan_vobj_id arcan_3d_buildbox(float w, float h, float d, size_t nmaps, bool s)
 		newmodel->geometry->store.normals = &dbuf[nofs];
 		newmodel->geometry->store.indices = (unsigned*) &dbuf[iofs];
 		newmodel->geometry->store.n_indices = COUNT_OF(indices);
-		newmodel->geometry->store.n_vertices = COUNT_OF(verts) / 3;
+		newmodel->geometry->store.n_vertices = COUNT_OF(verts);
 		newmodel->geometry->store.shared_buffer = (uint8_t*) dbuf;
 		newmodel->geometry->complete = true;
 	}
