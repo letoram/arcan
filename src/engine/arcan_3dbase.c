@@ -288,8 +288,6 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
 				;
 		}
 
-/* NOTE: we do not currently manage multiple texture coordinate sets for
- * meshes with multiple maps, slated for 0.7 */
 		agp_submit_mesh(&base->store, flags);
 		base = base->next;
 	}
@@ -347,7 +345,7 @@ static arcan_vobject_litem* process_scene_infinite(
 
 		arcan_resolve_vidprop(cvo, lerp, &dprops);
 		rendermodel(cvo, obj3d, cvo->program,
-				dprops, modelview, flags & MESH_FACING_NODEPTH);
+				dprops, modelview, flags | MESH_FACING_NODEPTH);
 
 		current = current->next;
 	}
@@ -533,9 +531,9 @@ arcan_errc arcan_3d_swizzlemodel(arcan_vobj_id dst)
 		if (curr->store.indices){
 			unsigned* indices = curr->store.indices;
 			for (size_t i = 0; i <curr->store.n_indices * 3; i+= 3){
-				unsigned t1[3] = { indices[i], indices[i+1], indices[i+2] };
-				unsigned tmp = t1[0];
-				t1[0] = t1[2]; t1[2] = tmp;
+				unsigned iv = indices[i];
+				indices[i] = indices[i+2];
+				indices[i+2] = iv;
 			}
 		} else {
 			float* verts = curr->store.verts;
@@ -642,81 +640,87 @@ arcan_vobj_id arcan_3d_buildbox(float w, float h, float d, size_t nmaps, bool s)
 
 /* winding order: clockwise */
 	float verts[] = {
-/* TOP */
-		-w, h, -d,
-		-w, h,  d,
-		 w, h,  d,
-		 w, h, -d,
-
-/* LEFT */
-		-w, h,  d,
-		-w,-h,  d,
-		-w,-h, -d,
-		-w, h, -d,
-
-/* RIGHT */
-		 w,  h,  d,
-		 w, -h,  d,
-		 w, -h, -d,
-		 w,  h, -d,
-
-/* FRONT */
-		 w,  h,  d,
-		 w, -h,  d,
-		-w, -h,  d,
-		-w,  h,  d,
-
-/* BACK */
-		 w,  h, -d,
-		 w, -h, -d,
-		-w, -h, -d,
-		-w,  h, -d,
-
-/* BOTTOM */
-		-w, -h, -d,
-		-w, -h,  d,
-		 w, -h,  d,
-		 w, -h, -d
+		-w, h,-d, /* TOP */
+		-w, h, d,
+		 w, h, d,
+		 w, h,-d,
+		-w, h, d, /* LEFT */
+		-w,-h, d,
+		-w,-h,-d,
+		-w, h,-d,
+		 w, h, d, /* RIGHT */
+		 w,-h, d,
+		 w,-h,-d,
+		 w, h,-d,
+		 w, h, d, /* FRONT */
+		 w,-h, d,
+		-w,-h, d,
+		-w, h, d,
+		 w, h,-d, /* BACK */
+		 w,-h,-d,
+		-w,-h,-d,
+		-w, h,-d,
+		-w,-h,-d, /* BOTTOM */
+		-w,-h, d,
+		 w,-h, d,
+		 w,-h,-d
 	};
 
 	float txcos[] = {
-		0, 0, 0, 1, 1, 1, 1, 0,
-		0, 0, 1, 0, 1, 1, 0, 1,
-		1, 1, 0, 1, 0, 0, 1, 0,
-		1, 1, 1, 0, 0, 0, 0, 1,
-		0, 0, 0, 1, 1, 1, 1, 0
+		0, 1, /* TOP */
+		0, 0,
+		1, 0,
+		1, 1,
+		0, 0, /* LEFT */
+		0, 1,
+		1, 1,
+		1, 0,
+		1, 0, /* RIGHT */
+		1, 1,
+		0, 1,
+		0, 0,
+		0, 0, /* FRONT */
+		0, 1,
+		1, 1,
+		1, 0,
+		1, 0, /* BACK */
+		1, 1,
+		0, 1,
+		0, 0,
+		0, 0, /* BOTTOM */
+		0, 1,
+		1, 1,
+		1, 0
 	};
 
 	float normals[] = {
+		 0,  1,  0, /* TOP */
 		 0,  1,  0,
 		 0,  1,  0,
 		 0,  1,  0,
-		 0,  1,  0,
+		-1,  0,  0, /* LEFT */
 		-1,  0,  0,
 		-1,  0,  0,
 		-1,  0,  0,
-		-1,  0,  0,
+		 1,  0,  0, /* RIGHT */
 		 1,  0,  0,
 		 1,  0,  0,
 		 1,  0,  0,
-		 1,  0,  0,
+		 0,  0, -1, /* FRONT */
 		 0,  0, -1,
 		 0,  0, -1,
 		 0,  0, -1,
-		 0,  0, -1,
+		 0,  0,  1, /* FRONT */
 		 0,  0,  1,
 		 0,  0,  1,
 		 0,  0,  1,
-		 0,  0,  1,
-		 0, -1,  0,
+		 0, -1,  0, /* BOTTOM */
 		 0, -1,  0,
 		 0, -1,  0,
 		 0, -1,  0
 	};
 
-/* we index and slice based on the cubemap order,
- * PX, NX, PY, NY, PZ, NZ */
-	unsigned rindices[] = {
+	unsigned indices[] = {
 		10, 9, 8, /* right */
 		11, 10, 8,
 		6, 4, 5, /* left */
@@ -725,25 +729,10 @@ arcan_vobj_id arcan_3d_buildbox(float w, float h, float d, size_t nmaps, bool s)
 		3, 2, 0,
 		22, 20, 21, /* bottom */
 		23, 20, 22,
-		14, 12, 13, /* front */
-		12, 14, 15,
 		18, 17, 16, /* back */
 		19, 18, 16,
-	};
-
-	unsigned indices[] = {
-		0, 1, 2, /* top */
-		0, 2, 3,
-		5, 4, 6, /* left */
-		6, 4, 7,
-		8, 9, 10, /* right */
-		8, 10, 11,
-		13, 12, 14, /* front */
-		15, 14, 12,
-		16, 17, 18, /* back */
-		16, 18, 19,
-		21, 20, 22, /* bottom */
-		22, 20, 23
+		14, 12, 13, /* front */
+		12, 14, 15,
 	};
 
 	vector bbmin = {.x = -w, .y = -h, .z = -d};
@@ -761,7 +750,7 @@ arcan_vobj_id arcan_3d_buildbox(float w, float h, float d, size_t nmaps, bool s)
 	memcpy(dbuf, verts, sizeof(verts));
 	memcpy(&dbuf[nofs], normals, sizeof(normals));
 	memcpy(&dbuf[tofs], txcos, sizeof(txcos));
-	memcpy(&dbuf[iofs], rindices, sizeof(indices));
+	memcpy(&dbuf[iofs], indices, sizeof(indices));
 
 	if (s){
 		struct geometry** geom = &newmodel->geometry;

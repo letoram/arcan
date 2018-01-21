@@ -896,6 +896,17 @@ enum agp_mesh_type {
 	AGP_MESH_POINTCLOUD
 };
 
+enum agp_depth_func {
+	AGP_DEPTH_LESS = 0,
+	AGP_DEPTH_LESSEQUAL = 1,
+	AGP_DEPTH_GREATER = 2,
+	AGP_DEPTH_GREATEREQUAL = 3,
+	AGP_DEPTH_EQUAL = 4,
+	AGP_DEPTH_NOTEQUAL = 5,
+	AGP_DEPTH_ALWAYS = 6,
+	AGP_DETPH_NEVER = 7
+};
+
 struct agp_mesh_store
 {
 /*
@@ -927,6 +938,7 @@ struct agp_mesh_store
 	size_t n_indices;
 
 	enum agp_mesh_type type;
+	enum agp_depth_func depth_func;
 
 /* opaque field used to store additional implementation defined tags,
  * such as VBO backing index etc. */
