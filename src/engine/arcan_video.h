@@ -670,6 +670,15 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, int readback,
 	int refresh, bool scale, enum rendertarget_mode format);
 
 /*
+ * Retrieve or update the rendertarget identifier that is used to forward
+ * current rendertarget to the active shader when processing.
+ * If [inid] is set, the value is updated.
+ * If [outid] is set, the active value of the rendertarget will be returned.
+ * returns ARCAN_OK if the object was found and is used as a rendertarget.
+ */
+arcan_errc arcan_video_rendertargetid(arcan_vobj_id did, int* inid, int* outid);
+
+/*
  * Immediately process and update the contents of the rendertarget specified
  * by [vid]. Will return ARCAN_OK if [vid] points to a rendertarget.
  */

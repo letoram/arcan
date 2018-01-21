@@ -8095,6 +8095,26 @@ static int renderreconf(lua_State* ctx)
 	LUA_ETRACE("rendertarget_reconfigure", NULL, 0);
 }
 
+static int rendertargetid(lua_State* ctx)
+{
+	LUA_TRACE("rendertarget_id");
+	arcan_vobj_id did = luaL_checkvid(ctx, 1, NULL);
+	int id;
+
+/* set or only get? */
+	if (lua_type(ctx, 2) == LUA_TNUMBER){
+		id = luaL_checknumber(ctx, 2);
+		arcan_video_rendertargetid(did, &id, NULL);
+	}
+
+	if (ARCAN_OK != arcan_video_rendertargetid(did, NULL, &id))
+		lua_pushnil(ctx);
+	else
+		lua_pushnumber(ctx, id);
+
+	LUA_ETRACE("rendertarget_id", NULL, 1);
+}
+
 static int renderdetach(lua_State* ctx)
 {
 	LUA_TRACE("rendertarget_detach");
@@ -10709,6 +10729,7 @@ static const luaL_Reg tgtfuns[] = {
 {"rendertarget_attach",        renderattach             },
 {"rendertarget_noclear",       rendernoclear            },
 {"rendertarget_reconfigure",   renderreconf             },
+{"rendertarget_id",            rendertargetid           },
 {"load_movie",                 loadmovie                },
 {"launch_decode",              loadmovie                },
 {"launch_avfeed",              launchavfeed             },

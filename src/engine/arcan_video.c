@@ -2197,6 +2197,10 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did,
 	dst->order3d = arcan_video_display.order3d;
 	dst->vppcm = dst->hppcm = 28.346456692913385;
 
+	static int rendertarget_id;
+	rendertarget_id = (rendertarget_id + 1) % (INT_MAX-1);
+	dst->id = rendertarget_id;
+
 	vobj->extrefc.attachments++;
 	trace("(setuprendertarget), (%d:%s) defined as rendertarget."
 		"attachments: %d\n", vobj->cellid, video_tracetag(vobj),
@@ -4641,6 +4645,25 @@ static inline void populate_stencil(struct rendertarget* tgt,
 	agp_activate_stencil();
 }
 
+arcan_errc arcan_video_rendertargetid(arcan_vobj_id did, int* inid, int* outid)
+{
+	arcan_vobject* vobj = arcan_video_getobject(did);
+	if (!vobj)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+
+	struct rendertarget* tgt = arcan_vint_findrt(vobj);
+	if (!tgt)
+		return ARCAN_ERRC_UNACCEPTED_STATE;
+
+	if (inid)
+		tgt->id = *inid;
+
+	if (outid)
+		*outid = tgt->id;
+
+	return ARCAN_OK;
+}
+
 void arcan_vint_bindmulti(arcan_vobject* elem, size_t ind)
 {
 	struct vobject_frameset* set = elem->frameset;
@@ -4777,6 +4800,7 @@ static size_t process_rendertarget(struct rendertarget* tgt, float fract)
 
 	agp_shader_activate(agp_default_shader(BASIC_2D));
 	agp_shader_envv(PROJECTION_MATR, tgt->projection, sizeof(float)*16);
+	agp_shader_envv(RTGT_ID, &tgt->id, sizeof(int));
 
 	while (current && current->elem->order >= 0){
 		arcan_vobject* elem = current->elem;

@@ -47,6 +47,8 @@ struct shader_envts {
 	float sz_output[2];
 	float sz_storage[2];
 
+	int rtgt_id;
+
 /* system values, don't change this order */
 	float fract_timestamp;
 	arcan_tickv timestamp;
@@ -66,6 +68,7 @@ static int ofstbl[TBLSIZE] = {
 	offsetof(struct shader_envts, sz_input),
 	offsetof(struct shader_envts, sz_output),
 	offsetof(struct shader_envts, sz_storage),
+	offsetof(struct shader_envts, rtgt_id),
 
 /* system values, don't change this order */
 	offsetof(struct shader_envts, fract_timestamp),
@@ -87,12 +90,14 @@ static enum shdrutype typetbl[TBLSIZE] = {
 	shdrvec2, /* obj_output_sz */
 	shdrvec2, /* obj_storage_sz */
 
+	shdrint, /* rtgt_id */
+
 	shdrfloat, /* fract_timestamp */
 	shdrint /* timestamp */
 };
 
 static int counttbl[TBLSIZE] = {
-	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
 
 static char* symtbl[TBLSIZE] = {
@@ -107,6 +112,7 @@ static char* symtbl[TBLSIZE] = {
 	"obj_input_sz",
 	"obj_output_sz",
 	"obj_storage_sz",
+	"rtgt_id",
 	"fract_timestamp",
 	"timestamp"
 };
