@@ -1163,9 +1163,17 @@ void agp_drop_vstore(struct agp_vstore* s)
 	memset(s, '\0', sizeof(struct agp_vstore));
 }
 
-static void setup_culling(enum agp_mesh_flags fl)
+static void setup_culling(struct agp_mesh_store* base, enum agp_mesh_flags fl)
 {
 	struct agp_fenv* env = agp_env();
+
+	if (fl & MESH_FACING_NODEPTH){
+		env->disable(GL_DEPTH_TEST);
+	}
+	else{
+		env->enable(GL_DEPTH_TEST);
+		env->depth_func(base->depth_func);
+	}
 
 	if (fl & MESH_FACING_BOTH){
 		if ((fl & MESH_FACING_BACK) == 0){
@@ -1200,7 +1208,7 @@ void agp_submit_mesh(struct agp_mesh_store* base, enum agp_mesh_flags fl)
 			else {
 /* proper wireframe with culling requires higher level GL, barycentric coords
  * or Z prepass and then depth testing */
-				setup_culling(fl);
+				setup_culling(base, fl);
 #if !defined(GLES2) && !defined(GLES3)
 				env->polygon_mode(GL_FRONT_AND_BACK, GL_FILL);
 				env->color_mask(false, false, false, false);
@@ -1208,7 +1216,6 @@ void agp_submit_mesh(struct agp_mesh_store* base, enum agp_mesh_flags fl)
 
 				env->polygon_mode(GL_FRONT_AND_BACK, GL_LINE);
 				env->color_mask(true, true, true, true);
-				env->depth_func(GL_LESS);
 				setup_transfer(base, fl);
 				env->polygon_mode(GL_FRONT_AND_BACK, GL_FILL);
 #else
@@ -1221,7 +1228,7 @@ void agp_submit_mesh(struct agp_mesh_store* base, enum agp_mesh_flags fl)
 #if !defined(GLES2) && !defined(GLES3)
 			env->polygon_mode(GL_FRONT_AND_BACK, GL_FILL);
 #endif
-			setup_culling(fl);
+			setup_culling(base, fl);
 		}
 
 		env->model_flags = fl;
