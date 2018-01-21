@@ -42,6 +42,9 @@ struct rendertarget {
 	_Alignas(16) float base[16];
 	_Alignas(16) float projection[16];
 
+/* identifier for matching against shader */
+	int id;
+
 /* color representes the attached vid,
  * first is the pipeline (subset of context vid pool) */
 	struct arcan_vobject* color;

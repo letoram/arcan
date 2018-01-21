@@ -145,9 +145,10 @@ enum agp_shader_envts{
 	SIZE_INPUT  = 8,
 	SIZE_OUTPUT = 9,
 	SIZE_STORAGE= 10,
+	RTGT_ID = 11,
 
-	FRACT_TIMESTAMP_F = 11,
-	TIMESTAMP_D       = 12,
+	FRACT_TIMESTAMP_F = 12,
+	TIMESTAMP_D       = 13,
 };
 
 /*
