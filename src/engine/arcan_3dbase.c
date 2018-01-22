@@ -621,6 +621,93 @@ arcan_vobj_id arcan_3d_pointcloud(size_t count, size_t nmaps)
 	return rv;
 }
 
+arcan_vobj_id arcan_3d_buildsphere(float r,
+	unsigned l, unsigned m, bool hemi, size_t nmaps)
+{
+	vfunc_state state = {.tag = ARCAN_TAG_3DOBJ};
+	img_cons empty = {0};
+
+	if (l <= 1 || m <= 1)
+		return ARCAN_EID;
+
+	arcan_vobj_id rv = arcan_video_addfobject(FFUNC_3DOBJ, state, empty, 1);
+	if (rv == ARCAN_EID)
+		return rv;
+
+	arcan_3dmodel* newmodel = arcan_alloc_mem(sizeof(arcan_3dmodel),
+		ARCAN_MEM_VTAG, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
+	state.ptr = (void*) newmodel;
+	arcan_video_alterfeed(rv, FFUNC_3DOBJ, state);
+	pthread_mutex_init(&newmodel->lock, NULL);
+	arcan_video_allocframes(rv, 1, ARCAN_FRAMESET_SPLIT);
+
+/* total number of verts, normals, textures and indices */
+	size_t nv = l * m * 3;
+	size_t nn = l * m * 3;
+	size_t nt = l * m * 2;
+	size_t ni = (l-1) * (m-1) * 6;
+	size_t buf_sz = (nv + nn + nt) * sizeof(float) + ni * sizeof(unsigned);
+
+/* build our storage buffers */
+	float* dbuf = arcan_alloc_mem(buf_sz, ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_SIMD);
+	float* vp = dbuf;
+	float* np = &dbuf[nv];
+	float* tp = &dbuf[nv + nn];
+	unsigned* ip = (unsigned*) (&dbuf[nv + nn + nt]);
+
+/* map it all into our model */
+	newmodel->geometry = arcan_alloc_mem(
+		sizeof(struct geometry), ARCAN_MEM_VTAG, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
+	newmodel->geometry->store.vertex_size = 3;
+	newmodel->geometry->store.type = AGP_MESH_TRISOUP;
+	newmodel->geometry->store.shared_buffer_sz = buf_sz;
+	newmodel->geometry->store.shared_buffer = (uint8_t*) dbuf;
+	newmodel->geometry->store.verts = vp;
+	newmodel->geometry->store.txcos = tp;
+	newmodel->geometry->store.normals = np;
+	newmodel->geometry->store.indices = ip;
+	newmodel->geometry->store.n_indices = ni;
+	newmodel->geometry->store.n_vertices = nv / 3;
+	newmodel->geometry->complete = true;
+	newmodel->radius = r;
+	newmodel->flags.complete = true;
+/* bbmin, bbmax */
+
+/* pass one, base data */
+	float step_l = 1.0f / (float)(l - 1);
+	float step_m = 1.0f / (float)(m - 1);
+
+	for (int L = 0; L < l; L++){
+		for (int M = 0; M < m; M++){
+			float y = sinf( -M_PI_2 + M_PI * (float) L * step_l );
+			float x = cosf(2.0f*M_PI*(float)M*step_m) * sinf(M_PI*(float)L*step_l);
+			float z = sinf(2.0f*M_PI*(float)M*step_m) * sinf(M_PI*(float)L*step_l);
+			*tp++ = (float)M * step_m;
+			*tp++ = (float)L * step_l;
+			*vp++ = x * r;
+			*vp++ = y * r;
+			*vp++ = z * r;
+			*np++ = x;
+			*np++ = y;
+			*np++ = z;
+		}
+	}
+
+/* pass two, indexing primitives, take out 4 points on the quad and split */
+	for (int L = 0; L < l - 1; L++){
+		for (int M = 0; M < m - 1; M++){
+			unsigned i1 = L * m + M;
+			unsigned i2 = L * m + M + 1;
+			unsigned i3 = (L+1) * m + M + 1;
+			unsigned i4 = (L+1) * m + M;
+			*ip++ = i1; *ip++ = i2; *ip++ = i3;
+			*ip++ = i1; *ip++ = i3; *ip++ = i4;
+		}
+	}
+
+	return rv;
+}
+
 arcan_vobj_id arcan_3d_buildbox(float w, float h, float d, size_t nmaps, bool s)
 {
 	vfunc_state state = {.tag = ARCAN_TAG_3DOBJ};
@@ -779,7 +866,6 @@ arcan_vobj_id arcan_3d_buildbox(float w, float h, float d, size_t nmaps, bool s)
 		newmodel->geometry = arcan_alloc_mem(
 			sizeof(struct geometry), ARCAN_MEM_VTAG, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 		newmodel->geometry->nmaps = nmaps;
-		newmodel->geometry->complete = true;
 		newmodel->geometry->store.vertex_size = 3;
 		newmodel->geometry->store.type = AGP_MESH_TRISOUP;
 		newmodel->geometry->store.shared_buffer_sz = buf_sz;

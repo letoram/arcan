@@ -1,10 +1,15 @@
 -- strafe3d_model
--- @short: Move the specified model in relation to its current viewing angle.
--- @inargs: modelvid, amount, *time*
+-- @short: Move the specified model sideways in relation to its current viewing angle.
+-- @inargs: vid:modelvid, float:amount
+-- @inargs: vid:modelvid, float:amount, int:time=0
+-- @inargs: vid:modelvid, float:amount, int:time, bool:mask_x=false
+-- @inargs: vid:modelvid, float:amount, int:time, bool:mask_x, bool:mask_y=false
+-- @inargs: vid:modelvid, float:amount, int:time, bool:mask_x, bool:mask_y, bool:mask_z=false
 -- @longdescr: This function will move the model relative to it's current orientation,
 -- negative amounts corresponds to "the left" from the perspective of the object,
 -- and positive amounts corresponds to the right" from the perspective of the object.
+-- The optional mask arguments will block the specified axes from being updated.
 -- @group: 3d
 -- @cfunction: strafemodel
--- @related: move3d_model
+-- @related: move3d_model, forward3d_model, step3d_model
 

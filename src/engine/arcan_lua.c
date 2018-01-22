@@ -5433,6 +5433,20 @@ static int pointcloud(lua_State* ctx)
 	LUA_ETRACE("build_pointcloud", NULL, 1);
 }
 
+static int buildsphere(lua_State* ctx)
+{
+	LUA_TRACE("build_sphere");
+	float radius = luaL_checknumber(ctx, 1);
+	float lng = luaL_checknumber(ctx, 2);
+	float lat = luaL_checknumber(ctx, 3);
+	int nmaps = abs((int)luaL_optnumber(ctx, 4, 1));
+	bool hemi = luaL_optbnumber(ctx, 5, false);
+	arcan_vobj_id id = arcan_3d_buildsphere(radius, lng, lat, hemi, nmaps);
+	lua_pushvid(ctx, id);
+	trace_allocation(ctx, "build_sphere", id);
+	LUA_ETRACE("build_sphere", NULL, 1);
+}
+
 static int swizzlemodel(lua_State* ctx)
 {
 	LUA_TRACE("swizzle_model");
@@ -9526,6 +9540,52 @@ static int forwardmodel(lua_State* ctx)
 	LUA_ETRACE("forward3d_model", NULL, 0);
 }
 
+static int stepmodel(lua_State* ctx)
+{
+	LUA_TRACE("step3d_model");
+	arcan_vobj_id vid = luaL_checkvid(ctx, 1, NULL);
+
+	float mag_fwd = luaL_checknumber(ctx, 2);
+	float mag_side = luaL_checknumber(ctx, 3);
+	unsigned dt = luaL_optint(ctx, 4, 0);
+	bool apply = luaL_optbnumber(ctx, 5, true);
+	bool axismask_x = luaL_optbnumber(ctx, 6, 0);
+	bool axismask_y = luaL_optbnumber(ctx, 7, 0);
+	bool axismask_z = luaL_optbnumber(ctx, 8, 0);
+
+	surface_properties prop = arcan_video_current_properties(vid);
+	vector view = taitbryan_forwardv(
+		prop.rotation.roll, prop.rotation.pitch, prop.rotation.yaw);
+	vector up = build_vect(0.0, 1.0, 0.0);
+
+/* first strafe strafe */
+	if (prop.rotation.pitch > 180 || prop.rotation.pitch < -180)
+		mag_side *= -1.0f;
+	view = norm_vector(crossp_vector(view, up));
+
+	prop.position.x += view.x * mag_side;
+	prop.position.z += view.z * mag_side;
+
+/* then forward */
+	view = mul_vectorf(view, mag_fwd);
+	vector newpos = add_vector(prop.position, view);
+
+/* only apply if requested, this is different from other move, ... */
+	if (apply){
+		arcan_video_objectmove(vid,
+			axismask_x ? prop.position.x : newpos.x,
+			axismask_y ? prop.position.y : newpos.y,
+			axismask_z ? prop.position.z : newpos.y, dt);
+	}
+
+/* and actually return the possible new position */
+	lua_pushnumber(ctx, newpos.x);
+	lua_pushnumber(ctx, newpos.y);
+	lua_pushnumber(ctx, newpos.z);
+
+	LUA_ETRACE("step3d_model", NULL, 3);
+}
+
 static int strafemodel(lua_State* ctx)
 {
 	LUA_TRACE("strafe3d_model");
@@ -10876,9 +10936,11 @@ static const luaL_Reg threedfuns[] = {
 {"scale3d_model",    scalemodel   },
 {"forward3d_model",  forwardmodel },
 {"strafe3d_model",   strafemodel  },
+{"step3d_model",     stepmodel    },
 {"camtag_model",     camtag       },
 {"build_3dplane",    buildplane   },
 {"build_3dbox",      buildbox     },
+{"build_sphere",     buildsphere  },
 {"build_pointcloud", pointcloud   },
 {"scale_3dvertices", scale3dverts },
 {"swizzle_model",    swizzlemodel },
