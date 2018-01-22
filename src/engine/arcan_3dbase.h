@@ -47,6 +47,15 @@ arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx,
 	float maxz, float y, float wdens, float ddens, size_t nmaps);
 
 /*
+ * Generate a finalized model with a specified radius at l divisions along
+ * the latitude, and m divisions along the longitude. If [hemi] is set to
+ * true, only the upper hemisphere will be generated. The texture coords
+ * used will be mercator projection.
+ */
+arcan_vobj_id arcan_3d_buildsphere(float r,
+	unsigned l, unsigned m, bool hemi, size_t nmaps);
+
+/*
  * Generate a finalized model centered at 0,0 with [-width..+width,
  * -height..+height, -depth..+depth] consuming [nmaps] from frameset
  * in returned object, set split to divide inte submeshes.
