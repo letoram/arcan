@@ -3564,65 +3564,64 @@ arcan_errc arcan_video_moveinterp(arcan_vobj_id id, enum arcan_vinterp inter)
 arcan_errc arcan_video_objectmove(arcan_vobj_id id, float newx,
 	float newy, float newz, unsigned int tv)
 {
-	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
-	if (vobj){
-		rv = ARCAN_OK;
-		invalidate_cache(vobj);
+	if (!vobj)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+
+	invalidate_cache(vobj);
 
 /* clear chains for rotate attribute
  * if time is set to ovverride and be immediate */
-		if (tv == 0){
-			swipe_chain(vobj->transform, offsetof(surface_transform, move),
-				sizeof(struct transf_move));
-			vobj->current.position.x = newx;
-			vobj->current.position.y = newy;
-			vobj->current.position.z = newz;
-		}
-/* find endpoint to attach at */
-		else {
-			surface_transform* base = vobj->transform;
-			surface_transform* last = base;
-
-/* figure out the coordinates which the transformation is chained to */
-			point bwp = vobj->current.position;
-
-			while (base && base->move.startt){
-				bwp = base->move.endp;
-
-				last = base;
-				base = base->next;
-			}
-
-			if (!base){
-				if (last)
-					base = last->next =
-						arcan_alloc_mem(sizeof(surface_transform), ARCAN_MEM_VSTRUCT,
-							ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
-				else
-					base = last =
-						arcan_alloc_mem(sizeof(surface_transform), ARCAN_MEM_VSTRUCT,
-							ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
-			}
-
-			point newp = {newx, newy, newz};
-
-			if (!vobj->transform)
-				vobj->transform = base;
-
-			base->move.startt = last->move.endt < arcan_video_display.c_ticks ?
-				arcan_video_display.c_ticks : last->move.endt;
-			base->move.endt   = base->move.startt + tv;
-			base->move.interp = ARCAN_VINTER_LINEAR;
-			base->move.startp = bwp;
-			base->move.endp   = newp;
-			if (vobj->owner)
-				vobj->owner->transfc++;
-		}
+	if (tv == 0){
+		swipe_chain(vobj->transform, offsetof(surface_transform, move),
+			sizeof(struct transf_move));
+		vobj->current.position.x = newx;
+		vobj->current.position.y = newy;
+		vobj->current.position.z = newz;
+		return ARCAN_OK;
 	}
 
-	return rv;
+/* find endpoint to attach at */
+	surface_transform* base = vobj->transform;
+	surface_transform* last = base;
+
+/* figure out the coordinates which the transformation is chained to */
+	point bwp = vobj->current.position;
+
+	while (base && base->move.startt){
+		bwp = base->move.endp;
+
+		last = base;
+		base = base->next;
+	}
+
+	if (!base){
+		if (last)
+			base = last->next =
+				arcan_alloc_mem(sizeof(surface_transform), ARCAN_MEM_VSTRUCT,
+					ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
+		else
+			base = last =
+				arcan_alloc_mem(sizeof(surface_transform), ARCAN_MEM_VSTRUCT,
+					ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
+	}
+
+	point newp = {newx, newy, newz};
+
+	if (!vobj->transform)
+		vobj->transform = base;
+
+	base->move.startt = last->move.endt < arcan_video_display.c_ticks ?
+		arcan_video_display.c_ticks : last->move.endt;
+	base->move.endt   = base->move.startt + tv;
+	base->move.interp = ARCAN_VINTER_LINEAR;
+	base->move.startp = bwp;
+	base->move.endp   = newp;
+	if (vobj->owner)
+		vobj->owner->transfc++;
+
+	return ARCAN_OK;
 }
 
 /* scale the video object to match neww and newh, with stepx or
@@ -3930,6 +3929,7 @@ static int update_object(arcan_vobject* ci, unsigned long long stamp)
 		upd++;
 		float fract = lerp_fract(ci->transform->move.startt,
 			ci->transform->move.endt, stamp);
+
 		ci->current.position = lut_interp_3d[ci->transform->move.interp](
 				ci->transform->move.startp,
 				ci->transform->move.endp, fract

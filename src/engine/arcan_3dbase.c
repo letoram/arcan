@@ -683,7 +683,7 @@ arcan_vobj_id arcan_3d_buildsphere(float r,
 			float x = cosf(2.0f*M_PI*(float)M*step_m) * sinf(M_PI*(float)L*step_l);
 			float z = sinf(2.0f*M_PI*(float)M*step_m) * sinf(M_PI*(float)L*step_l);
 			*tp++ = (float)M * step_m;
-			*tp++ = (float)L * step_l;
+			*tp++ = 1.0 - (float)L * step_l;
 			*vp++ = x * r;
 			*vp++ = y * r;
 			*vp++ = z * r;
