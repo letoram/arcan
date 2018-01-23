@@ -146,16 +146,19 @@ void conductor_cycle(int nticks)
 /* priority is always in maintaining logical clock and event processing */
 	unsigned njobs;
 
-/* start with lua as it is likely to incur changes
- * to what is supposed to be drawn */
-	arcan_lua_tick(main_lua_context, nticks, tick_count);
-
 	arcan_video_tick(nticks, &njobs);
 	arcan_audio_tick(nticks);
+
+/* the lua VM last after a/v pipe is to allow 1- tick schedulers, otherwise
+ * you'd get the problem of:
+ *
+ * function clock_pulse() nudge_image(a, 10, 10, 1); end
+ *
+ * and tag transforms handlers being one tick off
+ */
+	arcan_lua_tick(main_lua_context, nticks, tick_count);
 	outcb(nticks);
 
 	while(nticks--)
 		arcan_mem_tick();
 }
-
-
