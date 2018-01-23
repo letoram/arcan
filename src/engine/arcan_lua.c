@@ -9508,8 +9508,11 @@ static int movemodel(lua_State* ctx)
 	float y = luaL_checknumber(ctx, 3);
 	float z = luaL_checknumber(ctx, 4);
 	unsigned int dt = luaL_optint(ctx, 5, 0);
+	int interp = luaL_optint(ctx, 6, ARCAN_VINTER_LINEAR);
 
 	arcan_video_objectmove(vid, x, y, z, dt);
+	if (dt && interp < ARCAN_VINTER_ENDMARKER)
+		arcan_video_moveinterp(vid, interp);
 
 	LUA_ETRACE("move3d_model", NULL, 0);
 }
@@ -9524,6 +9527,7 @@ static int forwardmodel(lua_State* ctx)
 	bool axismask_x = luaL_optbnumber(ctx, 4, 0);
 	bool axismask_y = luaL_optbnumber(ctx, 5, 0);
 	bool axismask_z = luaL_optbnumber(ctx, 6, 0);
+	int interp = luaL_optint(ctx, 7, ARCAN_VINTER_LINEAR);
 
 	surface_properties prop = arcan_video_current_properties(vid);
 
@@ -9536,6 +9540,9 @@ static int forwardmodel(lua_State* ctx)
 		axismask_x ? prop.position.x : newpos.x,
 		axismask_y ? prop.position.y : newpos.y,
 		axismask_z ? prop.position.z : newpos.z, dt);
+
+	if (dt && interp < ARCAN_VINTER_ENDMARKER && interp != ARCAN_VINTER_LINEAR)
+		arcan_video_moveinterp(vid, interp);
 
 	LUA_ETRACE("forward3d_model", NULL, 0);
 }
@@ -9552,30 +9559,37 @@ static int stepmodel(lua_State* ctx)
 	bool axismask_x = luaL_optbnumber(ctx, 6, 0);
 	bool axismask_y = luaL_optbnumber(ctx, 7, 0);
 	bool axismask_z = luaL_optbnumber(ctx, 8, 0);
+	unsigned interp = luaL_optint(ctx, 9, ARCAN_VINTER_LINEAR);
 
 	surface_properties prop = arcan_video_current_properties(vid);
 	vector view = taitbryan_forwardv(
 		prop.rotation.roll, prop.rotation.pitch, prop.rotation.yaw);
 	vector up = build_vect(0.0, 1.0, 0.0);
 
-/* first strafe strafe */
+/* first strafe */
 	if (prop.rotation.pitch > 180 || prop.rotation.pitch < -180)
 		mag_side *= -1.0f;
-	view = norm_vector(crossp_vector(view, up));
+	vector strafeview = norm_vector(crossp_vector(view, up));
 
-	prop.position.x += view.x * mag_side;
-	prop.position.z += view.z * mag_side;
+	vector newpos = {
+		.x = prop.position.x + strafeview.x * mag_side,
+		.y = prop.position.y + strafeview.y * mag_side,
+		.z = prop.position.z + strafeview.z * mag_side
+	};
 
 /* then forward */
 	view = mul_vectorf(view, mag_fwd);
-	vector newpos = add_vector(prop.position, view);
+	newpos = add_vector(newpos, view);
 
 /* only apply if requested, this is different from other move, ... */
 	if (apply){
 		arcan_video_objectmove(vid,
 			axismask_x ? prop.position.x : newpos.x,
 			axismask_y ? prop.position.y : newpos.y,
-			axismask_z ? prop.position.z : newpos.y, dt);
+			axismask_z ? prop.position.z : newpos.z, dt);
+
+		if (dt && interp < ARCAN_VINTER_ENDMARKER && interp != ARCAN_VINTER_LINEAR)
+			arcan_video_moveinterp(vid, interp);
 	}
 
 /* and actually return the possible new position */
@@ -9593,6 +9607,10 @@ static int strafemodel(lua_State* ctx)
 	arcan_vobj_id vid = luaL_checkvid(ctx, 1, NULL);
 	float mag = luaL_checknumber(ctx, 2);
 	unsigned int dt = luaL_optint(ctx, 3, 0);
+	bool axismask_x = luaL_optbnumber(ctx, 4, 0);
+	bool axismask_y = luaL_optbnumber(ctx, 5, 0);
+	bool axismask_z = luaL_optbnumber(ctx, 6, 0);
+	unsigned interp = luaL_optint(ctx, 7, ARCAN_VINTER_LINEAR);
 
 	surface_properties prop = arcan_video_current_properties(vid);
 	vector view = taitbryan_forwardv(prop.rotation.roll,
@@ -9610,6 +9628,9 @@ static int strafemodel(lua_State* ctx)
 	arcan_video_objectmove(vid,
 		prop.position.x, prop.position.y, prop.position.z, dt);
 
+	if (dt && interp < ARCAN_VINTER_ENDMARKER && interp != ARCAN_VINTER_LINEAR)
+		arcan_video_moveinterp(vid, interp);
+
 	LUA_ETRACE("strafe3d_model", NULL, 0);
 }
 
@@ -9622,8 +9643,12 @@ static int scalemodel(lua_State* ctx)
 	float sy = luaL_checknumber(ctx, 3);
 	float sz = luaL_checknumber(ctx, 4);
 	unsigned int dt = luaL_optint(ctx, 5, 0);
+	unsigned interp = luaL_optint(ctx, 6, ARCAN_VINTER_LINEAR);
 
 	arcan_video_objectscale(vid, sx, sy, sz, dt);
+
+	if (dt && interp < ARCAN_VINTER_ENDMARKER && interp != ARCAN_VINTER_LINEAR)
+		arcan_video_scaleinterp(vid, interp);
 
 	LUA_ETRACE("scale3d_model", NULL, 0);
 }
