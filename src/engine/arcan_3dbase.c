@@ -621,6 +621,146 @@ arcan_vobj_id arcan_3d_pointcloud(size_t count, size_t nmaps)
 	return rv;
 }
 
+arcan_vobj_id arcan_3d_buildcylinder(float r,
+	float hh, size_t steps, size_t nmaps, int fill_mode)
+{
+	vfunc_state state = {.tag = ARCAN_TAG_3DOBJ};
+	img_cons empty = {0};
+
+	if (hh < EPSILON || steps < 1)
+		return ARCAN_EID;
+
+	arcan_vobj_id rv = arcan_video_addfobject(FFUNC_3DOBJ, state, empty, 1);
+	if (rv == ARCAN_EID)
+		return rv;
+
+/* control structure */
+	arcan_3dmodel* newmodel = arcan_alloc_mem(sizeof(arcan_3dmodel),
+		ARCAN_MEM_VTAG, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
+	state.ptr = (void*) newmodel;
+	arcan_video_alterfeed(rv, FFUNC_3DOBJ, state);
+	pthread_mutex_init(&newmodel->lock, NULL);
+	arcan_video_allocframes(rv, 1, ARCAN_FRAMESET_SPLIT);
+
+/* metadata / geometry source */
+	newmodel->geometry = arcan_alloc_mem(
+		sizeof(struct geometry), ARCAN_MEM_VTAG, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
+
+/* total number of verts, normals, textures and indices */
+	int caps = fill_mode > CYLINDER_FILL_HALF;
+	size_t n_verts = 3 * (steps * 2 + caps * steps * 2);
+	size_t n_txcos = 3 * (steps * 2 + caps * steps * 2);
+	size_t n_normals = 3 * (steps * 2 + caps * steps * 2);
+	size_t n_indices = 1 * (steps * 6 + caps * steps * 6);
+	size_t buf_sz =
+		sizeof(float) * (n_verts + n_normals + n_txcos) + n_indices * sizeof(unsigned);
+
+/* build our storage buffers */
+	float* dbuf = arcan_alloc_mem(buf_sz, ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_SIMD);
+	float* vp = dbuf;
+	float* np = &dbuf[n_verts];
+	float* tp = &dbuf[n_txcos + n_verts];
+	float* nn = &dbuf[n_normals + n_txcos + n_verts];
+	unsigned* ip = (unsigned*) (&dbuf[n_verts + n_txcos + n_normals]);
+
+/* map it all into our model */
+	newmodel->geometry->store.vertex_size = 3;
+	newmodel->geometry->store.type = AGP_MESH_TRISOUP;
+	newmodel->geometry->store.shared_buffer_sz = buf_sz;
+	newmodel->geometry->store.shared_buffer = (uint8_t*) dbuf;
+	newmodel->geometry->store.verts = vp;
+	newmodel->geometry->store.txcos = tp;
+	newmodel->geometry->store.normals = np;
+	newmodel->geometry->store.indices = ip;
+	newmodel->geometry->store.n_indices = n_indices;
+	newmodel->geometry->store.n_vertices = n_verts / 3;
+	newmodel->geometry->nmaps = nmaps;
+	newmodel->geometry->complete = true;
+	newmodel->radius = r > (2.0 * hh) ? r : 2.0 * hh;
+	newmodel->bbmin = (vector){.x = -r, .y = -hh, .z = -r};
+	newmodel->bbmax = (vector){.x =  r, .y =  hh, .z =  r};
+	newmodel->flags.complete = true;
+
+/* pass one, base data */
+	size_t vc = 0;
+	float step_sz = 2 * M_PI / (float) steps;
+
+	if (fill_mode == CYLINDER_FILL_HALF)
+		step_sz *= 0.5;
+
+	for (size_t i = 0; i <= steps; i++){
+		float p = (float) i * step_sz;
+		float x = cosf(p);
+		float z = sinf(p);
+
+/* top */
+		*vp++ = r * x; *vp++ = hh; *vp++ = r * z;
+		*tp++ = p / (2 * M_PI); *tp++ = 0;
+		*np++ = x; *np++ = 0; *np++ = z;
+
+/* bottom */
+		*vp++ = r * x; *vp++ = -hh; *vp++ = r * z;
+		*tp++ = p / (2 * M_PI); *tp++ = 1;
+		*np++ = x; *np++ = 0; *np++ = z;
+		vc += 2;
+	}
+
+/* pass two, index buffer */
+	size_t ic = 0;
+	int ofs = 0;
+
+	if (fill_mode == CYLINDER_FILL_HALF || fill_mode == CYLINDER_FILL_HALF_CAPS)
+		ofs = -1;
+
+	for (size_t i = 0; i < steps + ofs; i++){
+		unsigned i1 = (i * 2 + 0);
+		unsigned i2 = (i * 2 + 1);
+		unsigned i3 = (i * 2 + 2);
+		unsigned i4 = (i * 2 + 3);
+		ic += 6;
+		*ip++ = i2;
+		*ip++ = i3;
+		*ip++ = i1;
+		*ip++ = i4;
+		*ip++ = i3;
+		*ip++ = i2;
+	}
+
+/*
+	*ip++ = (steps-1)*2+2;
+	*ip++ = (steps-1)*2+1;
+	*ip++ = (steps-1)*2+0;
+	*ip++ = 2;
+	*ip++ = 3;
+	*ip++ = 1;
+	ic += 6;
+*/
+
+	newmodel->geometry->store.n_indices = ic;
+
+/* pass three, endcaps - only weird bit is that we don't really texture */
+	if (caps){
+		*vp++ = 0;
+		*vp++ = hh;
+		*vp++ = 0;
+		*tp++ = 0;
+		*tp++ = 0;
+		*np++ = 0;
+		*np++ = 1;
+		*np++ = 0;
+		*vp++ = 0;
+		*vp++ = -hh;
+		*vp++ = 0;
+		*tp++ = 0;
+		*tp++ = 0;
+		*np++ = 0;
+		*np++ = 1;
+		*np++ = 0;
+	}
+
+	return rv;
+}
+
 arcan_vobj_id arcan_3d_buildsphere(float r,
 	unsigned l, unsigned m, bool hemi, size_t nmaps)
 {
@@ -1245,6 +1385,7 @@ arcan_errc arcan_3d_scalevertices(arcan_vobj_id vid)
 	pthread_mutex_unlock(&dst->lock);
 	return ARCAN_OK;
 }
+
 
 arcan_errc arcan_3d_infinitemodel(arcan_vobj_id id, bool state)
 {

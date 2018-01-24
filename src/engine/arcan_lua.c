@@ -5433,6 +5433,29 @@ static int pointcloud(lua_State* ctx)
 	LUA_ETRACE("build_pointcloud", NULL, 1);
 }
 
+static int buildcylinder(lua_State* ctx)
+{
+	LUA_TRACE("build_cylinder");
+	float radius = luaL_checknumber(ctx, 1);
+	float halfh = luaL_checknumber(ctx, 2);
+	size_t steps = luaL_checknumber(ctx, 3);
+	int nmaps = abs((int)luaL_optnumber(ctx, 4, 1));
+	const char* caps = luaL_optstring(ctx, 5, NULL);
+
+	int capv = CYLINDER_FILL_FULL;
+	if (caps && strcmp(caps, "caps") == 0)
+		capv = CYLINDER_FILL_FULL_CAPS;
+	else if (caps && strcmp(caps, "half") == 0)
+		capv = CYLINDER_FILL_HALF;
+	else if (caps && strcmp(caps, "halfcaps") == 0)
+		capv = CYLINDER_FILL_HALF_CAPS;
+
+	arcan_vobj_id id = arcan_3d_buildcylinder(radius, halfh, steps, nmaps, capv);
+	lua_pushvid(ctx, id);
+	trace_allocation(ctx, "build_cylinder", id);
+	LUA_ETRACE("build_cylinder", NULL, 1);
+}
+
 static int buildsphere(lua_State* ctx)
 {
 	LUA_TRACE("build_sphere");
@@ -10966,6 +10989,7 @@ static const luaL_Reg threedfuns[] = {
 {"build_3dplane",    buildplane   },
 {"build_3dbox",      buildbox     },
 {"build_sphere",     buildsphere  },
+{"build_cylinder",   buildcylinder},
 {"build_pointcloud", pointcloud   },
 {"scale_3dvertices", scale3dverts },
 {"swizzle_model",    swizzlemodel },
