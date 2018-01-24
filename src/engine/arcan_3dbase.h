@@ -56,6 +56,23 @@ arcan_vobj_id arcan_3d_buildsphere(float r,
 	unsigned l, unsigned m, bool hemi, size_t nmaps);
 
 /*
+ * Generate a finalized model centered at 0, 0 with y range from [halfheight]
+ * .. [-halfheight], a radius of [radius] divided into [steps] slices,
+ * consuming [nmaps] textures from the frameset. [fill_mode] determins how
+ * complete the final geometry should be.
+ *
+ *
+ */
+enum a3d_cylinder {
+	CYLINDER_FILL_FULL,
+	CYLINDER_FILL_HALF,
+	CYLINDER_FILL_FULL_CAPS,
+	CYLINDER_FILL_HALF_CAPS
+};
+arcan_vobj_id arcan_3d_buildcylinder(float r,
+	float halfh, size_t steps, size_t nmaps, int fill_mode);
+
+/*
  * Generate a finalized model centered at 0,0 with [-width..+width,
  * -height..+height, -depth..+depth] consuming [nmaps] from frameset
  * in returned object, set split to divide inte submeshes.
