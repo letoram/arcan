@@ -621,6 +621,8 @@ void arcan_state_dump(const char* key, const char* msg, const char* src)
 	snprintf(state_fn, sizeof(state_fn), "%s_%s.lua", key, date_str);
 
 	char* fname = arcan_expand_resource(state_fn, RESOURCE_SYS_DEBUG);
+	if (!fname)
+		return;
 
 	FILE* tmpout = fopen(fname, "w+");
 	if (tmpout){
@@ -1148,8 +1150,7 @@ retryopen:
 		metatable = "nonblockIOr";
 
 		if (!path){
-			if (fifo){
-				path = arcan_expand_resource(str, RESOURCE_APPL_TEMP);
+			if (fifo && (path = arcan_expand_resource(str, RESOURCE_APPL_TEMP))){
 				if (-1 == mkfifo(path, S_IRWXU)){
 					arcan_warning("open_nonblock(): mkfifo (%s) failed\n", path);
 					LUA_ETRACE("open_nonblock", "mkfifo failed", 0);
@@ -3004,9 +3005,9 @@ static int syssnap(lua_State* ctx)
 	}
 
 	fname = arcan_expand_resource(luaL_checkstring(ctx, 1), RESOURCE_APPL_TEMP);
-	FILE* outf = fopen(fname, "w+");
+	FILE* outf;
 
-	if (outf){
+	if (fname && (outf = fopen(fname, "w+"))){
 		arcan_lua_statesnap(outf, "", false);
 		fclose(outf);
 		LUA_ETRACE("system_snapshot", NULL, 0);
@@ -6537,8 +6538,7 @@ static int rawsurface(lua_State* ctx)
 			arcan_warning("rawsurface() -- refusing to "
 				"overwrite existing file (%s)\n", fname);
 		}
-		else{
-			fname = arcan_expand_resource(dumpstr, RESOURCE_APPL_TEMP);
+		else if ((fname = arcan_expand_resource(dumpstr, RESOURCE_APPL_TEMP))){
 			FILE* fpek = fopen(fname, "wb");
 			if (!fpek)
 				arcan_warning("rawsurface() - - couldn't open (%s).\n", fname);
@@ -6792,6 +6792,8 @@ static void wraperr(lua_State* ctx, int errc, const char* src)
  * int severity = luaL_optnumber(ctx, 2, 0);
  */
 
+	arcan_state_dump("crash", mesg, src);
+
 	if (luactx.debug){
 		arcan_warning("Warning: wraperr((), %s, from %s\n", mesg, src);
 
@@ -6800,8 +6802,6 @@ static void wraperr(lua_State* ctx, int errc, const char* src)
 
 		if (luactx.debug > 0)
 			dump_stack(ctx);
-
-		arcan_state_dump("crash", mesg, src);
 
 		if (luactx.debug > 2){
 			arcan_warning("Fatal error ignored(%s, %s) through high debuglevel,"
@@ -7047,8 +7047,8 @@ static int targetfonthint(lua_State* ctx)
 		}
 		else{
 			char* fname = arcan_expand_resource(instr, RESOURCE_SYS_FONT);
-			if (arcan_isfile(fname))
-			fd = open(fname, O_RDONLY | O_CLOEXEC);
+			if (fname && arcan_isfile(fname))
+				fd = open(fname, O_RDONLY | O_CLOEXEC);
 			arcan_mem_free(fname);
 			if (BADFD == fd){
 				lua_pushboolean(ctx, false);
@@ -8926,8 +8926,7 @@ static int spawn_recfsrv(lua_State* ctx,
 
 /* it is currently allowed to "record over" an existing file without forcing
  * the caller to use zap_resource first, this should possibly be reconsidered*/
-		fd = open(fn, O_CREAT | O_RDWR, S_IRWXU);
-		if (-1 == fd){
+		if (fn && -1 == (fd = open(fn, O_CREAT | O_RDWR, S_IRWXU))){
 			arcan_warning("couldn't create output (%s), "
 				"recorded data will be lost\n", fn);
 			fd = open(NULFILE, O_WRONLY | O_CLOEXEC);
@@ -10235,6 +10234,9 @@ static int screenshot(lua_State* ctx)
 		goto cleanup;
 	}
 	fname = arcan_expand_resource(resstr, RESOURCE_APPL_TEMP);
+	if (!fname)
+		goto cleanup;
+
 	int infd = open(fname, O_WRONLY | O_CLOEXEC | O_CREAT, S_IRUSR | S_IWUSR);
 	if (-1 == infd){
 		arcan_warning("save_screenshot(%s) failed, %s.\n", fname, strerror(errno));
