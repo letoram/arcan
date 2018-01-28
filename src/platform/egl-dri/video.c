@@ -3496,7 +3496,7 @@ static void update_display(struct dispout* d)
 
 void platform_video_prepare_external()
 {
-	if (!in_external)
+	if (in_external)
 		return;
 
 	int rc = 10;
