@@ -1,0 +1,97 @@
+.\" groff -man -Tascii aclip.1
+.TH arcan 1 "January 2018" arcan-wayland "User manual"
+.SH NAME
+arcan-wayland \- protocol bridge for Wayland support in Arcan
+.SH SYNOPSIS
+.B arcan-wayland [OPTIONS]
+
+.SH DESCRIPTION
+This tool is used to provide a protocol bridge for Wayland clients, either
+as a single active process or as a per-client wrapper.
+
+.SH OPTIONS
+.IP "\fB\-exec \fIbinary [args]\fR"
+This argument sets the bridge to work in single client mode, and it is the
+execution mode with the strongest separation between clients. All argument
+processing after exec will be forwarded to the specified binary.
+
+.IP "\fB\-dir \fI/prefix/path\fR"
+Setting this argument changes the scratch directory that is used to set up
+the compartments for each individual client (XDG_RUNTIME_DIR). This defaults
+to the /tmp directory. It is very important that the backing store for this
+path is a temporary (memory mapped) filesystem, as the client may use it to
+allocate and transfer graphics buffers.
+
+.IP "\fB\-sandbox\fR"
+Enable syscall filtering and possibly other sandboxing mechanisms. This is not
+enabled by default as there is a possibility that changes to the wayland
+implementation libraries might require features that are blocked, and the user
+should be actively aware of it.
+
+.IP "\fB\-defer-release\fR"
+This option is used as an option for certain clients that produce frames
+very aggressively. Many clients are written with double buffering in mind,
+one frame committed and locked while another is being processed. Since
+arcan-wayland essentially double-buffers internally, client submitted
+buffers will be released almost immediately. This breaks some clients,
+making them consume high CPU rates. With this argument, the release of
+one buffer will only be performed when another is submitted to replace it.
+
+.IP "\fB\-shm-egl\fR"
+Normally, shared memory source buffers gets copied and forwarded to the
+main arcan instance as is. This costs an extra copy, but allows the bridge
+to run without GPU access. By setting this flag, the cost of uploading a
+shared memory buffer to the GPU will be absorbed by the bridge, forwarding
+an accelerated handle onwards. This might affect system stability depending
+on the quality of your GPU drivers.
+
+.SH PROTOCOL CONTROL
+Wayland is not a single protocol as much as it is a suite of possible protocols.
+Each client may have different sets of required protocols and may refuse to work
+or change behavior based on which ones that are available.
+
+To help with this behavior, there are a number of arguments that are used to
+disable certain subprotocols. These arguments all follow the pattern -no-XXX
+where XXX is substituted with egl,compositor,shell,shm,seat,output,zxdg,dma,
+xdg,subcompositor,data-device.
+
+.SH DEBUGGING / TROUBLESHOOTING
+Wayland client support and conformance vary wildly, as does the conformance of
+the bridge interpretation in itself, as the options for testing and verifying
+protocol behaviors are very limited and the documentation fragmented and
+incomplete. To assist with debugging wayland client behaviors, we have a number
+of tools.
+
+One option is setting the WAYLAND_DEBUG=1 environment variable which enables
+debug output from the low level protocol behavior. Another is using
+ARCAN_SHMIF_DEBUG=1 to enable debug output from the corresponding arcan event
+queues.
+
+If you invoke the arcan-wayland bridge with -trace, you can tune which
+subprotocol implementations that gets debug output added. Running the bridge
+without any arguments will show a list of the available values, these act as
+a bitmask so you bitwise OR the values together in order to support multiple
+trace outputs.
+
+If the bridge is started with the -debugusr1 argument, you can send the USR1
+signal to the process in order to get a snapshot of the allocation mask. This
+is often useful as the allocation and deallocation rules and behaviors in
+Wayland are much too complicated.
+
+If you have access to the arcan source repository, there is also a tool that
+can be built (shmmon) which allows inspection of data on the various surfaces.
+
+.SH EXAMPLES
+
+.PP
+This example launches a single gtk3-demo session.
+
+.B arcan-wayland -sandbox -shm-egl -exec gtk3-demo
+
+.SH COPYRIGHT
+Copyright  ©  2018 Bjorn Stahl. 3-clause BSD licensed. This is free software:
+you are free  to  change and redistribute it. There is NO WARRANTY,
+to the extent permitted by law.
+
+.SH AUTHOR
+Bjorn Stahl <contact at arcan-fe dot com>
