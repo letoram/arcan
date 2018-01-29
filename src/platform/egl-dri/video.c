@@ -1,5 +1,5 @@
 /*
- * copyright 2014-2017, björn ståhl
+ * copyright 2014-2018, björn ståhl
  * license: 3-clause bsd, see copying file in arcan source repository.
  * reference: http://arcan-fe.com
  */
@@ -16,7 +16,41 @@
  * _cmd fifo mapped to rescan for that purpose. This can further be mapped
  * to evdev- style nodes which some drivers seem to map hotplug.
  *
+ * it might also be possible to have the pool- poller dig around in sysfs on
+ * a regular timer, not like it has anything else to do. inotify- with timer
+ * + sysfs scraper saves us from udev.
+ *
+ * the second part is that the migration towards the device pool indirection
+ * for open should also convey hotplug status so that this is performed external
+ * to this platform layer.
  */
+
+/*
+ * Notes on further dma-buf improvements / things we are missing right now:
+ *
+ * [X] Add support for retrieving and sending modifier information to clients
+ *     The client will then be responsible for picking a format that match the
+ *     set of modifiers - likely done by the platform side of mesa-egl impl.
+ *
+ * [ ] Rework platform functions to accept sets of multiple descriptors and
+ *     aggregate them in the frameserver- stage. Restrict the number of planes
+ *     in this way to 4-5 or something equally low. (a wayland client can
+ *     really gnaw file descriptors, think multiplanar subsurfaces for border..
+ *
+ * [ ] Rework frameserver data aggregation to support multi-planar input format
+ *     and tracking
+ *
+ * [ ] Modify Shader Manager to support format variants or conversion blitters
+ *     where the individual planes all gets a texture unit and then the proper
+ *     shader for each of the relevant formats (ext with #extension
+ *     GL_OES_EGL_image_external with samplerExternalOES) (2p: y_uv, y_xuxv)
+ *     (3p: y_u_v)
+ *
+ * [ ]
+ *
+ * [ ] Add the corresponding work to the zwp_... dma_buf
+ */
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -58,11 +92,6 @@
 #define EGL_DRM_FLIP_EVENT_DATA_NV 0x33E
 #endif
 
-/*
- * Other refactoring project -- see if we can extract out what we need from
- * libdrm etc. without pulling in xlib, xcb and everything else that world
- * has to offer.
- */
 #include <xf86drm.h>
 #include <xf86drmMode.h>
 #include <gbm.h>
@@ -134,6 +163,10 @@ struct egl_env {
 	PFNEGLCREATEIMAGEKHRPROC create_image;
 	PFNEGLDESTROYIMAGEKHRPROC destroy_image;
 	PFNGLEGLIMAGETARGETTEXTURE2DOESPROC image_target_texture2D;
+
+/* DMA-Buf */
+	PFNEGLQUERYDMABUFFORMATSEXTPROC query_dmabuf_formats;
+	PFNEGLQUERYDMABUFMODIFIERSEXTPROC query_dmabuf_modifiers;
 
 /* EGLStreams */
 	PFNEGLQUERYDEVICESEXTPROC query_devices;
@@ -236,7 +269,14 @@ enum vsynch_method {
  */
 struct dev_node {
 	int active; /*tristate, 0 = not used, 1 = active, 2 = displayless, 3 = inactive */
-	int fd, rnode;
+	int fd;
+
+/* things we need to track to be able to forward devices to a client */
+	struct {
+		int fd;
+		uint8_t* metadata;
+		size_t metadata_sz;
+	} client_meta;
 	int refc;
 
 /* dev_node to use instead of this when performing reset */
@@ -621,7 +661,7 @@ static int setup_buffers_stream(struct dispout* d)
  		EGL_NONE
  	};
 
-	const char *extensionString =
+	const char* extension_string =
 		eglQueryString(d->device->display, EGL_EXTENSIONS);
 /*
  * 1. Match output layer to KMS plane
@@ -754,12 +794,28 @@ size_t platform_video_displays(platform_display_id* dids, size_t* lim)
 	return rv;
 }
 
-int platform_video_cardhandle(int cardn)
+int platform_video_cardhandle(int cardn,
+		int* buffer_method, size_t* metadata_sz, uint8_t** metadata)
 {
 	if (cardn < 0 || cardn > COUNT_OF(nodes))
 		return -1;
 
-	return nodes[cardn].rnode;
+	if (metadata_sz && metadata &&
+			nodes[cardn].eglenv.query_dmabuf_formats &&
+			nodes[cardn].eglenv.query_dmabuf_modifiers){
+		*metadata_sz = 0;
+		*metadata = NULL;
+	}
+	else if (metadata_sz && metadata){
+		debug_print("no format/modifiers query support, sending simple card\n");
+		*metadata_sz = 0;
+		*metadata = NULL;
+	}
+
+	if (buffer_method)
+		*buffer_method = nodes[cardn].method;
+
+	return nodes[cardn].client_meta.fd;
 }
 
 bool platform_video_set_mode(platform_display_id disp, platform_mode_id mode)
@@ -948,6 +1004,12 @@ static void map_ext_functions(struct egl_env* denv,
 /* XXX: */
 	denv->image_target_texture2D = (PFNGLEGLIMAGETARGETTEXTURE2DOESPROC)
 		lookup(tag, "glEGLImageTargetTexture2DOES", false);
+
+/* EGL_EXT_image_dma_buf_import_modifiers */
+	denv->query_dmabuf_modifiers = (PFNEGLQUERYDMABUFMODIFIERSEXTPROC)
+		lookup(tag, "eglQueryDmaBufModifiersEXT", false);
+	denv->query_dmabuf_formats = (PFNEGLQUERYDMABUFFORMATSEXTPROC)
+		lookup(tag, "eglQueryDmaBufFormatsEXT", false);
 
 /* EGLStreams */
 /* "EGL_EXT_device_query"
@@ -1538,9 +1600,9 @@ static void cleanup_node_gbm(struct dev_node* node)
 {
 	if (node->fd >= 0)
 		close(node->fd);
-	if (node->rnode >= 0)
-		close(node->rnode);
-	node->rnode = -1;
+	if (node->client_meta.fd >= 0)
+		close(node->client_meta.fd);
+	node->client_meta.fd = -1;
 	node->fd = -1;
 	if (node->gbm)
 		gbm_device_destroy(node->gbm);
@@ -1552,7 +1614,10 @@ static int setup_node_gbm(struct dev_node* node, const char* path, int fd)
 	SET_SEGV_MSG("libdrm(), open device failed (check permissions) "
 		" or use ARCAN_VIDEO_DEVICE environment.\n");
 
-	node->rnode = -1;
+	node->client_meta.fd = -1;
+	node->client_meta.metadata = NULL;
+	node->client_meta.metadata_sz = 0;
+
 	if (!path && fd == -1)
 		return -1;
 	else if (fd != -1)
@@ -1610,7 +1675,7 @@ static int setup_node_gbm(struct dev_node* node, const char* path, int fd)
 		setenv("ARCAN_RENDER_NODE", pbuf, 1);
 	}
 
-	node->rnode = open(pbuf, O_RDWR | O_CLOEXEC);
+	node->client_meta.fd = open(pbuf, O_RDWR | O_CLOEXEC);
 	return 0;
 }
 
@@ -3155,7 +3220,7 @@ void platform_video_synch(uint64_t tick_count, float fract,
 
 bool platform_video_auth(int cardn, unsigned token)
 {
-	int fd = platform_video_cardhandle(cardn);
+	int fd = platform_video_cardhandle(cardn, NULL, NULL, NULL);
 	if (fd != -1){
 		bool auth_ok = drmAuthMagic(fd, token);
 		debug_print("requested auth of (%u) on card (%d)", token, cardn);

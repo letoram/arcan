@@ -34,12 +34,34 @@ _Thread_local static struct arcan_shmif_cont* active_context;
 static struct agp_fenv agp_fenv;
 
 /*
- * note: should be moved into the agp_fenv
+ * note: should be moved into the agp_fenv,
+ * for EGLStreams, we need:
+ *  1. egl->eglGetPlatformDisplayEXT : EGL_EXT_platform_base
+ *  2. egl->eglQueryDevicesEXT : EGL_EXT_device_base
+ *     OR get the device enumeration
+ *  THEN
+ *     when we get buffer method to streams
+ *
+ * we ALSO have:
+ *  GL_EXT_memory_object : glCreateMemoryObjectsEXT,
+ *  glMemoryObjectParameterivEXT, glTextStorageMem2DEXT,
+ *  GL_NVX_unix_allocator_import. 2glImportMemoryFdEXT, glTexParametervNVX
+ *  GL_EXT_memory_object_fd,
+ *  ARB_texture_storage,
+ *
  */
 static PFNEGLCREATEIMAGEKHRPROC create_image;
 static PFNEGLEXPORTDMABUFIMAGEQUERYMESAPROC query_image_format;
 static PFNEGLEXPORTDMABUFIMAGEMESAPROC export_dmabuf;
 static PFNEGLDESTROYIMAGEKHRPROC destroy_image;
+
+/* note: should also get:
+ * eglCreateSyncKHR,
+ * eglDestroySyncKHR,
+ * eglWaitSyncKHR,
+ * eglClientWaitSyncKHR,
+ * eglDupNativeFenceFDANDROID
+ */
 
 struct shmif_ext_hidden_int {
 	struct gbm_device* dev;
@@ -546,7 +568,9 @@ bool arcan_shmifext_egl(struct arcan_shmif_cont* con,
 	else if (-1 != con->privext->active_fd){
 		dfd = con->privext->active_fd;
 	}
-/* or first setup without a pending_fd */
+/* or first setup without a pending_fd, with the preroll state added it is
+ * likely that we no longer need this - if we don't get a handle in the preroll
+ * state we don't have extended graphics */
 	else if (!con->privext->internal){
 		const char* nodestr = getenv("ARCAN_RENDER_NODE") ?
 			getenv("ARCAN_RENDER_NODE") : "/dev/dri/renderD128";

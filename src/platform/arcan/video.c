@@ -322,8 +322,10 @@ void platform_video_setsynch(const char* arg)
 	}
 }
 
-int platform_video_cardhandle(int cardn)
+int platform_video_cardhandle(int cardn, int* method, size_t* msz, uint8_t** dbuf)
 {
+/* this should be retrievable from the shmifext- connection so that we can
+ * forward to any client we set up */
 	return -1;
 }
 

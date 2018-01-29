@@ -493,8 +493,7 @@ enum ARCAN_TARGET_COMMAND {
  *                 this is special magic used for bridging DRI2 and will
  *                 weaken security.
  *
- * for [1].iv == 1:
- *
+ * [for [1].iv == 1]
  * ioev[2].iv = 0: indirect-, output handles for buffer passing will be used
  *                 for internal processing and do not need scanout capable
  *                 memory
@@ -502,12 +501,17 @@ enum ARCAN_TARGET_COMMAND {
  *                 as display scanout type (e.g. GBM_BO_USE_SCANOUT),
  *              2; disabled, hardware acceleration is entirely lost
  *
- * for [1].iv == 2..4:
+ * ioev[3].iv = 0: buffer synchronisation method is GBM
+ *              1: buffer synchronisation method is Alloc/Streams
+ *
+ * ioev[4].iv = n bytes of MESSAGE used for modifier description
+ * MESSAGE contains modifier metadata
+ *
+ * [for [1].iv == 2..4]
  * 128-bit guid is packed in [2..5] as 64bit little-endian,
  * (low-32, high-32), (low-32, high-32)
  *
- * for [1].iv == 5:
- *
+ * [for [1].iv == 5]
  * ioev[2].iv = 0: (unsigned) corresponds to a drm authentication token
  */
 	TARGET_COMMAND_DEVICE_NODE,
