@@ -347,9 +347,15 @@ bool platform_video_map_handle(struct agp_vstore*, int64_t inh);
 void platform_video_reset(int cardid, int swap_primary);
 
 /*
- * retrieve a descriptor for a client- render resource connected to the
- * specified card-index, or -1 if no such handle exists. */
-int platform_video_cardhandle(int cardn);
+ * retrieve descriptor and possible access metadata necessary for allowing
+ * external client access into the card specified by the cardid.
+ *
+ * out:metadata_sz
+ * out:metadata, dynamically allocated, caller takes ownership
+ * out:buffer_method, see shmif event handler
+ */
+int platform_video_cardhandle(int cardn,
+		int* buffer_method, size_t* metadata_sz, uint8_t** metadata);
 
 /*
  * triggers the actual rendering and is responsible for applying whatever

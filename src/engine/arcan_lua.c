@@ -7114,16 +7114,32 @@ static int targetdevhint(lua_State* ctx)
 			});
 		}
 		else {
-			int fd = platform_video_cardhandle(num);
+			struct arcan_event ev;
+			int method;
+			size_t buf_sz;
+			uint8_t* buf;
+			int fd = platform_video_cardhandle(num, &method, &buf_sz, &buf);
 			if (-1 == fd){
 				arcan_warning("target_devicehint(), invalid card index specified\n");
 				LUA_ETRACE("target_device", "invalid card index", 0);
 			}
-			platform_fsrv_pushfd(fsrv, &(struct arcan_event){
-				.category = EVENT_TARGET, .tgt.kind = TARGET_COMMAND_DEVICE_NODE,
-				.tgt.ioevs[0].iv = 0, .tgt.ioevs[1].iv = 1,
-				.tgt.ioevs[2].iv = xlt_dev(luaL_optnumber(ctx, 2, DEVICE_INDIRECT))
-			}, fd);
+
+			if (buf_sz > sizeof(ev.tgt.message)){
+				arcan_warning("target_devicehint(). clamping modifier size (%zu)\n");
+				buf_sz = sizeof(ev.tgt.message);
+			}
+
+			ev = (struct arcan_event){
+				.category = EVENT_TARGET,
+				.tgt.kind = TARGET_COMMAND_DEVICE_NODE,
+				.tgt.ioevs[1].iv = 1,
+				.tgt.ioevs[2].iv = xlt_dev(luaL_optnumber(ctx, 2, DEVICE_INDIRECT)),
+				.tgt.ioevs[3].iv = method,
+				.tgt.ioevs[4].iv = buf_sz
+			};
+			memcpy(ev.tgt.message, buf, buf_sz);
+			arcan_mem_free(buf);
+			platform_fsrv_pushfd(fsrv, &ev, fd);
 		}
 	}
 	else if (type == LUA_TSTRING){

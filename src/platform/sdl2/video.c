@@ -156,7 +156,8 @@ bool platform_video_auth(int cardn, unsigned token)
 	return false;
 }
 
-int platform_video_cardhandle(int cardn)
+int platform_video_cardhandle(int cardn,
+		int* buffer_method, size_t* metadata_sz, uint8_t** metadata)
 {
 	return -1;
 }
