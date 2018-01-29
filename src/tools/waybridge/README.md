@@ -132,6 +132,10 @@ BUGS
 2. SDL2, buffer- size and mouse cursor alignment is off in ex. 0ad
 3. gnome-apps, visible with calculator - some interaction between durden
    and subsurfaces etc. still seem to misbehave.
+4. The defunct wl- shell protocol is still in use in places like SDL2,
+   except the protocol lacks options for communicating when a shutdown
+	 is initiated server-side, or it goes into a spinlock EXCEPT if some
+	 Qt specific protocols are present
 
 TODO
 ====
@@ -178,6 +182,9 @@ determine if we are compliant or not, because Wayland.
 	- [x] Single-exec launch mode (./arcan-wayland -exec gtk3-demo)
   - [p] Transforms (Rotations/Scaling - most is done server side already)
   - [p] Multithread/multiprocess client processing
+	- [ ] Live icon discovery / mapping
+  - [ ] Pulseaudio stripping
+	- [ ] Dbus stripping
   - [ ] Dynamic Keyboard Translation table generation
   - [ ] Benchmarking/Inspection tools
   - [p] Sandboxing
@@ -196,3 +203,4 @@ determine if we are compliant or not, because Wayland.
   - [ ] Xdg-output
   - [ ] Xdg-foreign
 	- [ ] Dma- buf
+	- [ ] Qt- specific protocols for SDL shutdown issue
