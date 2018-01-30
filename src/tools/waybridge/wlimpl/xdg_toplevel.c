@@ -53,7 +53,12 @@ static bool xdgtoplevel_shmifev_handler(
 		return true;
 		break;
 		case TARGET_COMMAND_EXIT:
+			if (surf->last_buf){
+				wl_buffer_send_release(surf->last_buf);
+				surf->last_buf = NULL;
+			}
 			xdg_toplevel_send_close(surf->shell_res);
+			try_frame_callback(surf, &surf->acon);
 			return true;
 		break;
 		default:
