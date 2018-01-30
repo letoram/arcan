@@ -20,10 +20,13 @@ static void buffer_destroy(struct wl_listener* list, void* data)
 
 	trace(TRACE_SURF, "(event) destroy:buffer(%"PRIxPTR")", (uintptr_t) data);
 
-/* what happens to last_buf if those actually change in flight? */
 	if (surf->buf){
 		surf->cbuf = (uintptr_t) NULL;
 		surf->buf = NULL;
+	}
+
+	if (surf->last_buf){
+		surf->last_buf = NULL;
 	}
 
 	if (surf->l_bufrem_a){

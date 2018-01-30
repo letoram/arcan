@@ -131,9 +131,6 @@ destroy_buffer(struct wl_resource *resource)
 {
 	trace(TRACE_DRM, "");
 	struct wl_drm_buffer *buffer = resource->data;
-/*
-	drm->callbacks->release_buffer(drm->user_data, buffer);
- */
 	free(buffer);
 }
 
@@ -177,6 +174,8 @@ static void create_buffer(struct wl_client *client,
 	buffer->stride[2] = stride2;
 
 /*
+ * these are just for hooking into the 'next' drm buffer layer
+ * and thus not needed here
 	drm->callbacks->reference_buffer(drm->user_data, name, fd, buffer);
 	if (buffer->driver_buffer == NULL){
 		wl_resource_post_error(
@@ -270,6 +269,9 @@ drm_authenticate(struct wl_client *client,
 	struct wl_resource *resource, uint32_t id)
 {
 /*
+ * there is the full- GPU sharing to support authenticating
+ * like this, uncertain if we actually need to do more though
+ *
 	struct wl_drm *drm = resource->data;
 	if (drm->callbacks->authenticate(drm->user_data, id) < 0)
 		wl_resource_post_error(resource,
@@ -331,15 +333,17 @@ static void wayland_drm_commit(struct comp_surf* surf,
 	}
 
 /*
- * This works poorly with 'n' buffering - but until the 'higher ups' decide
- * on what damn buffering- transfer mechanism to actually use (GEM, DRM,
- * STREAMS, VK-EXT, ...) just wing it. This also don't deal with the whole
- * 'packing multiple planes' problem.
+ * The patches for the multi- buffer formats are coming in, but are not yet
+ * here - basically in this layer it should only be setting a flag on the
+ * SHMIF_SIGNAL to indicate a continuation, and repeat for all buffers
  */
 	arcan_shmif_signalhandle(con,
 		SHMIF_SIGVID, buf->fd, buf->stride[0], buf->format);
 
-/*	close(buf->fd); buf->fd = -1; */
+/*
+ * [ actually happens inside signalhandle ]
+ * close(buf->fd); buf->fd = -1;
+ */
 }
 
 static struct wl_drm_buffer *
@@ -368,7 +372,7 @@ static struct wl_drm* wayland_drm_init(struct wl_display *display,
 
 	drm->display = display;
 	drm->device_name = getenv("ARCAN_RENDER_NODE");
-	drm->callbacks = callbacks;
+	drm->callbacks = NULL;
 	drm->user_data = user_data;
 	drm->flags = flags;
 
