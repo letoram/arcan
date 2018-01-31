@@ -39,6 +39,7 @@ struct shader_envts {
 	float texturemat[16];
 
 	float opacity;
+	float blend;
 	float move;
 	float rotate;
 	float scale;
@@ -59,8 +60,9 @@ static int ofstbl[TBLSIZE] = {
 	offsetof(struct shader_envts, modelview),
 	offsetof(struct shader_envts, projection),
 	offsetof(struct shader_envts, texturemat),
-
 	offsetof(struct shader_envts, opacity),
+
+	offsetof(struct shader_envts, blend),
 	offsetof(struct shader_envts, move),
 	offsetof(struct shader_envts, rotate),
 	offsetof(struct shader_envts, scale),
@@ -68,6 +70,7 @@ static int ofstbl[TBLSIZE] = {
 	offsetof(struct shader_envts, sz_input),
 	offsetof(struct shader_envts, sz_output),
 	offsetof(struct shader_envts, sz_storage),
+
 	offsetof(struct shader_envts, rtgt_id),
 
 /* system values, don't change this order */
@@ -505,10 +508,6 @@ int agp_shader_envv(enum agp_shader_envts slot, void* value, size_t size)
 	int glloc = shdr_global.slots[
 		SHADER_INDEX(shdr_global.active_prg)].locations[slot];
 
-#ifdef SHADER_TRACE
-	arcan_warning("[shader] global envv global update.\n");
-#endif
-
 /*
  * reflect change in current active shader, the others will be changed on
  * activation
@@ -560,7 +559,6 @@ agp_shader_id agp_shader_addgroup(agp_shader_id shid)
 
 /* shouldn't happen, count will hit 65535 and stay there */
 	if (-1 == dsti){
-		printf("wtf broken\n");
 		return BROKEN_SHADER;
 	}
 

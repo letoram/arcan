@@ -4655,8 +4655,10 @@ arcan_errc arcan_video_rendertargetid(arcan_vobj_id did, int* inid, int* outid)
 	if (!tgt)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
-	if (inid)
+	if (inid){
 		tgt->id = *inid;
+		FLAG_DIRTY(vobj);
+	}
 
 	if (outid)
 		*outid = tgt->id;
@@ -4776,6 +4778,7 @@ static size_t process_rendertarget(struct rendertarget* tgt, float fract)
 		return 0;
 
 	agp_activate_rendertarget(tgt->art);
+	agp_shader_envv(RTGT_ID, &tgt->id, sizeof(int));
 
 	if (!FL_TEST(tgt, TGTFL_NOCLEAR))
 		agp_rendertarget_clear();
@@ -4800,7 +4803,6 @@ static size_t process_rendertarget(struct rendertarget* tgt, float fract)
 
 	agp_shader_activate(agp_default_shader(BASIC_2D));
 	agp_shader_envv(PROJECTION_MATR, tgt->projection, sizeof(float)*16);
-	agp_shader_envv(RTGT_ID, &tgt->id, sizeof(int));
 
 	while (current && current->elem->order >= 0){
 		arcan_vobject* elem = current->elem;
