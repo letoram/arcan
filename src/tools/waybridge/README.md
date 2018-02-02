@@ -1,8 +1,12 @@
 Introduction
 ====
 This tool bridges wayland connections with an arcan connection point. It is
-currently in a late alpha- state and should be useful, but expecting quirks and
+currently in a beta- state and should be useful, but expecting quirks and
 side-effects to exist.
+
+Principal Articles
+====
+[Crash Resilient Wayland Compositing](https://arcan-fe.com/2017/12/24/crash-resilient-wayland-compositing/)
 
 Building/Use
 ====
@@ -77,12 +81,17 @@ to client depending on the set of requested vs. available protocols.
 
 Notes and Issues
 ====
-1. Stride - the shm- buffer blit doesn't take stride differences into
-   account. This fails on MPV in SHM depending on source video size.
+1. Stride - The shm- buffer blit doesn't take stride differences into
+   account. This fails on MPV in SHM depending on source video size, though
+   the other buffer transfer modes and the shm-to-gl approach works.
 
 2. Initial Control connection - this one should be deprecated and removed
    in favor of getting it from the client connection when it is created, the
-	 current form is a remnant from before the -exec refactor.
+   current form is a remnant from before the -exec refactor.
+   
+3. Dynamic resizes are a bit edgy due to how differently this stage is handled
+   in arcan and the 'idea' in Wayland. This will be fixed when the 'conductor'
+   refactoring in arcan finishes.
 
 Depending on what toolkit is being used, chances are that some magic dance is
 needed in order to get a client to connect using wayland, and similarly for the
@@ -134,8 +143,8 @@ BUGS
    and subsurfaces etc. still seem to misbehave.
 4. The defunct wl- shell protocol is still in use in places like SDL2,
    except the protocol lacks options for communicating when a shutdown
-	 is initiated server-side, or it goes into a spinlock EXCEPT if some
-	 Qt specific protocols are present
+   is initiated server-side, or it goes into a spinlock EXCEPT if some
+   Qt specific protocols are present
 
 TODO
 ====
@@ -173,9 +182,9 @@ determine if we are compliant or not, because Wayland.
       - [x] Focus, buffers, cursors, sizing ...
       - [p] Forward shell events that can't be handled with shmif
       - [p] Positioners
-			- [p] zxdg-v6 to xdg-shell mapping
+      - [p] zxdg-v6 to xdg-shell mapping
     - [i] Application-test suite and automated tests (SDL, QT, GTK, ...),
-		      seems that canonical attempts to tackle this
+          seems that canonical attempts to tackle this
     - [i] XWayland (WM parts)
 - [ ] Milestone 3, funky things
   - [x] SHM to GL texture mapping
