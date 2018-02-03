@@ -5394,9 +5394,10 @@ static int buildplane(lua_State* ctx)
 	float hdens = luaL_checknumber(ctx, 6);
 	float ddens = luaL_checknumber(ctx, 7);
 	int nmaps = abs((int)luaL_optnumber(ctx, 8, 1));
+	bool vert = luaL_optbnumber(ctx, 9, false);
 
-	arcan_vobj_id id = arcan_3d_buildplane(minx, mind,
-		endx, endd, starty, hdens, ddens, nmaps);
+	arcan_vobj_id id = arcan_3d_buildplane(
+		minx, mind, endx, endd, starty, hdens, ddens, nmaps, vert);
 
 	lua_pushvid(ctx, id);
 	trace_allocation(ctx, "build_3dplane", id);

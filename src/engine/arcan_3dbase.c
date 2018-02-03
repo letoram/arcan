@@ -90,9 +90,9 @@ typedef struct {
 	arcan_vobject* parent;
 } arcan_3dmodel;
 
-static void build_hplane(point min, point max, point step,
+static void build_plane(point min, point max, point step,
 	float** verts, unsigned** indices, float** txcos,
-	size_t* nverts, size_t* nindices)
+	size_t* nverts, size_t* nindices, bool vertical)
 {
 	point delta = {
 		.x = max.x - min.x,
@@ -113,9 +113,15 @@ static void build_hplane(point min, point max, point step,
 	size_t vofs = 0, tofs = 0;
 	for (size_t x = 0; x < nx; x++)
 		for (size_t z = 0; z < nz; z++){
-			(*verts)[vofs++] = min.x + (float)x*step.x;
-			(*verts)[vofs++] = min.y;
-			(*verts)[vofs++] = min.z + (float)z*step.z;
+				(*verts)[vofs++] = min.x + (float)x*step.x;
+			if (vertical){
+				(*verts)[vofs++] = min.z + (float)z*step.z;
+				(*verts)[vofs++] = min.y;
+			}
+			else {
+				(*verts)[vofs++] = min.y;
+				(*verts)[vofs++] = min.z + (float)z*step.z;
+			}
 			(*txcos)[tofs++] = (float)x / (float)nx;
 			(*txcos)[tofs++] = (float)z / (float)nz;
 		}
@@ -1027,16 +1033,17 @@ arcan_vobj_id arcan_3d_buildbox(float w, float h, float d, size_t nmaps, bool s)
 	return rv;
 }
 
-arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx,float maxz,
-	float y, float wdens, float ddens, size_t nmaps)
+arcan_vobj_id arcan_3d_buildplane(
+	float mins, float mint, float maxs, float maxt,
+	float base, float wdens, float ddens, size_t nmaps, bool vert)
 {
 	vfunc_state state = {.tag = ARCAN_TAG_3DOBJ};
 	arcan_vobj_id rv = ARCAN_EID;
 	img_cons empty = {0};
 
 /* fail on unsolvable dimension constraints */
-	if ( (maxx < minx || wdens <= 0 || wdens >= maxx - minx) ||
-		(maxz < minz || ddens <= 0 || ddens >= maxz - minz) )
+	if ( (maxs < mins || wdens <= 0 || wdens >= maxs - mins) ||
+		(maxt < mint || ddens <= 0 || ddens >= maxt - mint) )
 		return ARCAN_ERRC_BAD_ARGUMENT;
 
 	rv = arcan_video_addfobject(FFUNC_3DOBJ, state, empty, 1);
@@ -1045,12 +1052,13 @@ arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx,float maxz,
 	if (rv == ARCAN_EID)
 		return rv;
 
-	point minp = {.x = minx,  .y = y, .z = minz};
-	point maxp = {.x = maxx,  .y = y, .z = maxz};
-	point step = {.x = wdens, .y = 0, .z = ddens};
+/* if [vert] we flip y and z axis when setting vertices */
+	point minp = {.x = mins,  .y = base, .z = mint};
+	point maxp = {.x = maxs,  .y = base, .z = maxt};
+	point step = {.x = wdens, .y = 0,    .z = ddens};
 
-	newmodel = arcan_alloc_mem(sizeof(arcan_3dmodel), ARCAN_MEM_VTAG,
-		ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
+	newmodel = arcan_alloc_mem(sizeof(arcan_3dmodel),
+		ARCAN_MEM_VTAG, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
 
 	pthread_mutex_init(&newmodel->lock, NULL);
 
@@ -1061,8 +1069,8 @@ arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx,float maxz,
 	while (*nextslot)
 		nextslot = &((*nextslot)->next);
 
-	*nextslot = arcan_alloc_mem(sizeof(struct geometry), ARCAN_MEM_VTAG,
-		ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
+	*nextslot = arcan_alloc_mem(sizeof(struct geometry),
+		ARCAN_MEM_VTAG, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
 
 	(*nextslot)->nmaps = nmaps;
 	newmodel->geometry = *nextslot;
@@ -1071,8 +1079,8 @@ arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx,float maxz,
 
 	struct geometry* dst = newmodel->geometry;
 
-	build_hplane(minp, maxp, step, &dst->store.verts, &dst->store.indices,
-		&dst->store.txcos, &dst->store.n_vertices, &dst->store.n_indices);
+	build_plane(minp, maxp, step, &dst->store.verts, &dst->store.indices,
+		&dst->store.txcos, &dst->store.n_vertices, &dst->store.n_indices, vert);
 
 	arcan_video_allocframes(rv, 1, ARCAN_FRAMESET_SPLIT);
 
