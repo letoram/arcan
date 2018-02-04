@@ -38,13 +38,14 @@ arcan_errc arcan_3d_camtag(arcan_vobj_id tgt,
 	arcan_vobj_id vid, float near, float far, float ar, float fov, int flags, ...);
 
 /*
- * Generate a finalized model within the range [minx..maxx, 0, minz..maxz],
- * consuming nmaps- when drawing and a [wdense] (x) and [ddens] (z) that
- * control the number of vertices and triangels that will be used in
- * accordance with (max-min)/dens
+ * Generate a finalized model where the vertices range between [mins,mint]
+ * with s mapped to x axis and t mapped to y or z depending on if [vert] is
+ * set to [true,t=y] or [false,t=x] while the remaining axis will be set
+ * to [base].
+ * [wdens] and [ddens] corresponds to the number of subdivisions.
  */
-arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx,
-	float maxz, float y, float wdens, float ddens, size_t nmaps);
+arcan_vobj_id arcan_3d_buildplane(float mins, float mint, float maxs,
+	float maxt, float base, float sdens, float tdens, size_t nmaps, bool vert);
 
 /*
  * Generate a finalized model with a specified radius at l divisions along

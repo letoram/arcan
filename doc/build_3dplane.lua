@@ -1,10 +1,16 @@
 -- build_3dplane
--- @short: Allocate a new 3d model, generate a flat plane mesh and attach it to the model.
--- @inargs: min_width, min_depth, max_width, max_depth, yvalue, width_density, depth_density, *nmaps
+-- @short: Build a model comprised of a tesselated plane.
+-- @inargs: float:min_s, float:min_t, float:max_s, float:max_t, float:base, float:step_s, float:step_t
+-- @inargs: float:min_s, float:min_t, float:max_s, float:max_t, float:base, float:step_s, float:step_t, int:nmaps=1
+-- @inargs: float:min_s, float:min_t, float:max_s, float:max_t, float:base, float:step_s, float:step_t, int:nmaps, bool:vert=false
 -- @outargs: VID or BADID
--- @longdescr: Several 3D effects, e.g. clouds from a ground perspective, terrain or a water surface can be built using a simple plane, with optional curvature or displacement added at another stage. This function serves as such a basis, but will only yield a tesselated mesh, with normals and textures to be filled out in the vertex shader stage.
--- @note: As the case with the other functions in the 3D group, refer to 'modeldemo' for a more comprehensive example.
--- @note: Members of the 3D group are not as tightly governed as other groups are and should be disabled in a security- and resource- conscious build.
+-- @longdescr: This function builds a tesselated plane mesh and attaches to a 3D
+-- model that gets marked as completed and consumes *nmaps* texture slots from
+-- the frameset of the model. Depending on if *vert* is set or not, the
+-- plane will either be horizontal or vertical. If the plane is horizontal,
+-- the vertices will range from (xyz) min_s,base,min_t to max_s,base,max_t with
+-- step_s and step_t controlling the step size (must be smaller than the max-min for each axis).
+-- If *vert* is set, the vertices will range from (xyz) min_s,min_t,base to max_s,max_t,base.
 -- @group: 3d
 -- @cfunction: buildplane
 -- @flags:
