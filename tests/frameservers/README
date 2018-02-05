@@ -58,3 +58,6 @@ used to test the shmif- support function for tracking cursor state and
 for debugging coordinate translation issues
 
 glcube/ a quick port of robclark/kmscube
+
+bgtbar/ draw client-side decorated window for testing with autocrop
+        inputs and resize
