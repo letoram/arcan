@@ -354,7 +354,7 @@ struct arcan_frameserver* platform_launch_fork(
 
 /* split out into a new process group */
 		if (setsid() == -1)
-			exit(EXIT_FAILURE);
+			_exit(EXIT_FAILURE);
 
 /*
  * we need to mask this signal as when debugging parent process, GDB pushes
@@ -389,13 +389,13 @@ struct arcan_frameserver* platform_launch_fork(
 			arcan_warning("platform_fsrv_spawn_server() failed: %s, %s\n",
 				strerror(errno), argv[0]);
 				;
-			exit(EXIT_FAILURE);
+			_exit(EXIT_FAILURE);
 		}
 /* non-frameserver executions (hijack libs, ...) */
 		else {
 			execve(setup->args.external.fname,
 				setup->args.external.argv->data, setup->args.external.envv->data);
-			exit(EXIT_FAILURE);
+			_exit(EXIT_FAILURE);
 		}
 	}
 /* out of alloted limit of subprocesses */
