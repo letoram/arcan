@@ -4795,6 +4795,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			if (0)
 		case EVENT_VIDEO_ASYNCHIMAGE_FAILED:
 			{
+				luactx.cb_source_kind = CB_SOURCE_IMAGE;
 				evmsg = "video_event(asynchimg_load_fail), callback";
 				tblstr(ctx, "kind", "load_failed", top);
 			}
