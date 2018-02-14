@@ -24,7 +24,7 @@
  * than this size.
  */
 #ifndef MAX_RESMAP_SIZE
-#define MAX_RESMAP_SIZE (1024 * 1024 * 10)
+#define MAX_RESMAP_SIZE (1024 * 1024 * 40)
 #endif
 
 static inline bool read_safe(int fd, size_t ntr, int bs, char* dofs)
