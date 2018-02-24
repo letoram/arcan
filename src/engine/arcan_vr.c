@@ -99,7 +99,7 @@ struct arcan_vr_ctx* arcan_vr_setup(
 		.args.external.fname = kv,
 		.args.external.envv = &arr_env,
 		.args.external.argv = &arr_argv,
-		.args.external.resource = strdup(bridge_arg)
+		.args.external.resource = strdup(bridge_arg ? bridge_arg : "")
 	};
 	struct arcan_vr_ctx* vrctx = arcan_alloc_mem(
 		sizeof(struct arcan_vr_ctx), ARCAN_MEM_VSTRUCT,
