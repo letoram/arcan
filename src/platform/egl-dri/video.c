@@ -3356,7 +3356,9 @@ bool platform_video_map_display(
 
 	arcan_vobject* vobj = arcan_video_getobject(id);
 	if (!vobj){
-		d->state = DISP_KNOWN;
+		debug_print("setting display(%d) to unmapped", (int) disp);
+		d->display.dpms = ADPMS_OFF;
+		d->vid = id;
 		return true;
 	}
 
@@ -3368,7 +3370,7 @@ bool platform_video_map_display(
 
 /* normal object may have origo in UL, WORLDID FBO in LL */
 	float txcos[8];
-		memcpy(txcos, vobj && vobj->txcos ? vobj->txcos :
+		memcpy(txcos, vobj->txcos ? vobj->txcos :
 			(vobj->vstore == arcan_vint_world() ?
 				arcan_video_display.mirror_txcos :
 				arcan_video_display.default_txcos), sizeof(float) * 8
@@ -3384,14 +3386,14 @@ bool platform_video_map_display(
 		&d->display.blackframes
 	);
 
-	d->hint = hint;
+	if (d->display.dpms == ADPMS_OFF){
+		dpms_set(d, DRM_MODE_DPMS_ON);
+		d->display.dpms = ADPMS_ON;
+	}
 
-/*
- * BADID displays won't be rendered but remain allocated, question is should we
- * power-save the display or return the original Crtc until we need it again?
- * Both have valid points..
- */
+	d->hint = hint;
 	d->vid = id;
+
 	return true;
 }
 
