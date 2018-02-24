@@ -3355,7 +3355,12 @@ bool platform_video_map_display(
 	}
 
 	arcan_vobject* vobj = arcan_video_getobject(id);
-	if (vobj && vobj->vstore->txmapped != TXSTATE_TEX2D){
+	if (!vobj){
+		d->state = DISP_KNOWN;
+		return true;
+	}
+
+	if (vobj->vstore->txmapped != TXSTATE_TEX2D){
 		debug_print("map_display(%d->%d) rejected, source not a valid texture",
 			(int) id, (int) disp);
 		return false;
