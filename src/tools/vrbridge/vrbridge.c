@@ -239,6 +239,7 @@ int main(int argc, char** argv)
 		if (ev.category == EVENT_TARGET)
 		switch (ev.tgt.kind){
 		case TARGET_COMMAND_EXIT:
+			arcan_shmif_drop(&con);
 /* FIXME: sweep driver list and send shutdown command */
 		break;
 		default:
