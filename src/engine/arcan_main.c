@@ -135,8 +135,6 @@ printf("Usage: arcan [-whfmWMOqspBtHbdgaSV] applname "
 "-O\t--monitor-out \tLOG:fname or applname\n"
 "-q\t--timedump    \twait n ticks, dump snapshot to resources/logs/timedump\n"
 "-s\t--windowed    \ttoggle borderless window mode\n"
-"-0\t--pipe-stdin  \tread connection point from stdin and bind to adopt\n"
-"-1\t--pipe-stdout \twrite connection point to stdout and enter connloop\n"
 #ifdef DISABLE_FRAMESERVERS
 "-B\t--binpath     \tno-op, frameserver support was disabled compile-time\n"
 #else
