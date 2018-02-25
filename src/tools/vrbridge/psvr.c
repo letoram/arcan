@@ -9,10 +9,12 @@
 #include "avr_psvr.h"
 #include "ahrs.h"
 
+/*
 static const uint16_t psvr_vid = 0x54c;
 static const uint16_t psvr_pid = 0x9af;
 
 static hid_device* dev;
+ */
 
 /*
  * The basics for this device isn't too bad, some reports for switching

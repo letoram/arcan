@@ -17,8 +17,11 @@
 static ohmd_context* ohmd;
 
 struct driver_state {
+	pthread_mutex_t lock;
 	ohmd_device* hmd;
-	quat last_quat;
+	volatile quat last_quat;
+	volatile bool got_ref;
+	volatile quat ref_quat;
 };
 
 /*
@@ -40,10 +43,21 @@ void openhmd_sample(struct dev_ent* dev, struct vr_limb* limb, unsigned id)
 			debug_print(1, "orientation: %f, %f, %f, %f\n",
 				orient.x, orient.y, orient.z, orient.w);
 
-			if (memcmp(state->last_quat.xyzw, orient .xyzw, sizeof(float)*4) != 0){
-				limb->data.orientation = state->last_quat = orient;
+			quat lq = state->last_quat;
+			if (memcmp(lq.xyzw, orient.xyzw, sizeof(float)*4) != 0){
+				state->last_quat = orient;
+
+/* account for a set base orientation */
+				pthread_mutex_lock(&state->lock);
+				if (state->got_ref)
+					orient = mul_quat(orient, state->ref_quat);
+				pthread_mutex_unlock(&state->lock);
+
+/* apply and forward */
+				limb->data.orientation = orient;
 				return;
 			}
+/* would be nice to get something else to wait on here .. */
 			else{
 				arcan_timesleep(1);
 			}
@@ -54,6 +68,13 @@ void openhmd_sample(struct dev_ent* dev, struct vr_limb* limb, unsigned id)
 
 void openhmd_control(struct dev_ent* ent, enum ctrl_cmd cmd)
 {
+	struct driver_state* state = ent->state;
+	if (cmd == RESET_REFERENCE){
+		pthread_mutex_lock(&state->lock);
+		state->got_ref = true;
+		state->ref_quat = inv_quat(state->last_quat);
+		pthread_mutex_unlock(&state->lock);
+	}
 }
 
 extern bool in_openhmd_mode;
@@ -84,7 +105,10 @@ bool openhmd_init(struct dev_ent* ent,
 		debug_print(0, "couldn't allocate state");
 		return false;
 	}
+
+	*state = (struct driver_state){};
 	ent->state = state;
+	pthread_mutex_init(&state->lock, NULL);
 
 /* should likely just sweep unless we explicitly get index set */
 	int devind = 0;

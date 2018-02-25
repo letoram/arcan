@@ -4,7 +4,10 @@
 enum ctrl_cmd {
 	SHUTDOWN = 0,
 	DISPLAY_OFF = 1,
-	DISPLAY_ON  = 2
+	DISPLAY_ON  = 2,
+
+/* set reference orientation / position to the current state */
+	RESET_REFERENCE = 3,
 };
 
 #ifndef DEBUG

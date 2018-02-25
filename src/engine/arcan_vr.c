@@ -292,6 +292,20 @@ enum arcan_ffunc_rv arcan_vr_ffunc FFUNC_HEAD
 	return FRV_NOFRAME;
 }
 
+arcan_errc arcan_vr_setref(struct arcan_vr_ctx* ctx)
+{
+	if (!ctx || !ctx->connection)
+		return ARCAN_ERRC_UNACCEPTED_STATE;
+
+	platform_fsrv_pushevent(ctx->connection,
+		&(arcan_event){
+			.category = EVENT_TARGET,
+			.tgt.kind = TARGET_COMMAND_RESET
+	});
+
+	return ARCAN_OK;
+}
+
 arcan_errc arcan_vr_maplimb(
 	struct arcan_vr_ctx* ctx, unsigned ind, arcan_vobj_id vid,
 	bool use_pos, bool use_orient)

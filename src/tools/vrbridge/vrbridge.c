@@ -159,6 +159,16 @@ struct vr_limb* vrbridge_alloc_limb(
 	return &vr->limbs[limb];
 }
 
+static void control_cmd(int cmd)
+{
+	for (size_t i = 0; i < sizeof(dev_tbl)/sizeof(dev_tbl[0]); i++){
+		if (!(ent_alloc_mask & (1 << i)))
+			continue;
+
+		dev_tbl[i].control(&dev_tbl[i], RESET_REFERENCE);
+	}
+}
+
 int main(int argc, char** argv)
 {
 	struct arg_arr* arg;
@@ -238,7 +248,12 @@ int main(int argc, char** argv)
 	while (arcan_shmif_wait(&con, &ev) > 0){
 		if (ev.category == EVENT_TARGET)
 		switch (ev.tgt.kind){
+/* soft-reset defines new reference orientations */
+		case TARGET_COMMAND_RESET:
+			control_cmd(RESET_REFERENCE);
+		break;
 		case TARGET_COMMAND_EXIT:
+			control_cmd(SHUTDOWN);
 			arcan_shmif_drop(&con);
 /* FIXME: sweep driver list and send shutdown command */
 		break;
