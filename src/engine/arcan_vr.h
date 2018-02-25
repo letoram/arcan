@@ -77,6 +77,11 @@ struct vr_meta;
 arcan_errc arcan_vr_displaydata(struct arcan_vr_ctx*, struct vr_meta* dst);
 
 /*
+ * mark the current position / orientation as the reference frame
+ */
+arcan_errc arcan_vr_setref(struct arcan_vr_ctx* ctx);
+
+/*
  * Clean/ free the contents of the vr- context and associated
  * processes. This will not explicitly delete the null_surfaces,
  * these will continue to live in vid- space.

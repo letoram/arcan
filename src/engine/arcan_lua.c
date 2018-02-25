@@ -7707,13 +7707,18 @@ static int targetreset(lua_State* ctx)
 {
 	LUA_TRACE("reset_target");
 
-	arcan_vobj_id vid = luaL_checkvid(ctx, 1, NULL);
+	arcan_vobject* vobj;
+	arcan_vobj_id vid = luaL_checkvid(ctx, 1, &vobj);
 	arcan_event ev = {
 		.tgt.kind = TARGET_COMMAND_RESET,
 		.category = EVENT_TARGET
 	};
 
-	tgtevent(vid, ev);
+	if (vobj && vobj->feed.state.tag == ARCAN_TAG_VR){
+		arcan_vr_setref(vobj->feed.state.ptr);
+	}
+	else
+		tgtevent(vid, ev);
 
 	LUA_ETRACE("reset_target", NULL, 0);
 }
