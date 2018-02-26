@@ -122,26 +122,26 @@ static void build_plane(point min, point max, point step,
 				(*verts)[vofs++] = min.y;
 				(*verts)[vofs++] = min.z + (float)z*step.z;
 			}
-			(*txcos)[tofs++] = (float)x / (float)nx;
-			(*txcos)[tofs++] = (float)z / (float)nz;
+			(*txcos)[tofs++] = (float)x / (float)(nx-1);
+			(*txcos)[tofs++] = (float)z / (float)(nz-1);
 		}
 
-	vofs = 0; tofs = 0;
-#define GETVERT(X,Z)( ( (X) * nz) + Z)
-	*indices = arcan_alloc_mem(sizeof(unsigned) * (*nverts) * 3 * 2,
-			ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_PAGE);
+	vofs = 0;
+#define GETVERT(X,Z)( ( (X) * nz) + (Z))
+	*indices = arcan_alloc_mem(
+		sizeof(unsigned) * (nx-1) * (nz-1) * 6,
+		ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_PAGE
+	);
 
 	for (size_t x = 0; x < nx-1; x++)
 		for (size_t z = 0; z < nz-1; z++){
 			(*indices)[vofs++] = GETVERT(x+1, z+1);
 			(*indices)[vofs++] = GETVERT(x, z+1);
 			(*indices)[vofs++] = GETVERT(x, z);
-			tofs++;
 
 			(*indices)[vofs++] = GETVERT(x+1, z);
 			(*indices)[vofs++] = GETVERT(x+1, z+1);
 			(*indices)[vofs++] = GETVERT(x, z);
-			tofs++;
 		}
 
 	*nindices = vofs;
