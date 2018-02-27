@@ -6932,16 +6932,20 @@ static int targethandler(lua_State* ctx)
 	arcan_vobj_id id = luaL_checkvid(ctx, 1, &vobj);
 
 /* unreference the old one so we don't leak */
+	if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV)
+		arcan_fatal("target_updatehandler(), specified vid (arg 1) not "
+			"associated with a frameserver.");
+
 	arcan_frameserver* fsrv = vobj->feed.state.ptr;
+	if (!fsrv)
+		arcan_fatal("target_updatehandler(), specified vid (arg 1) is not"
+			" associated with a frameserver.");
+
 	if (fsrv->tag != (intptr_t)LUA_NOREF){
 		luaL_unref(ctx, LUA_REGISTRYINDEX, fsrv->tag);
 	}
 
 	intptr_t ref = find_lua_callback(ctx);
-
-	if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV || !vobj->feed.state.ptr)
-		arcan_fatal("target_updatehandler(), specified vid (arg 1) not "
-			"associated with a frameserver.");
 
 	fsrv->tag = ref;
 
