@@ -260,6 +260,7 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
 
 /* reposition the current modelview, set it as the current shader data,
  * enable vertex attributes and issue drawcalls */
+	scale_matrix(wmvm, props.scale.x, props.scale.y, props.scale.z);
 	translate_matrix(wmvm, props.position.x, props.position.y, props.position.z);
 	matr_quatf(props.rotation.quaternion, omatr);
 
