@@ -94,9 +94,15 @@ static bool zxdgsurf_defer_handler(
 		.ext.message.data = {"shell:xdg_shell"}
 	});
 
+	size_t w = surf->acon.w;
+	size_t h = surf->acon.h;
+	if (wl.force_sz){
+		w = wl.init.display_width_px;
+		h = wl.init.display_height_px;
+	}
 	struct wl_array states;
 	wl_array_init(&states);
-	zxdg_toplevel_v6_send_configure(toplevel, surf->acon.w, surf->acon.h, &states);
+	zxdg_toplevel_v6_send_configure(toplevel, w, h, &states);
 	wl_array_release(&states);
 	return true;
 }

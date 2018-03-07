@@ -62,7 +62,7 @@ static void xdgpos_anchor_rect(struct wl_client* cl,
 		x, y, width, height);
 	struct positioner* pos = wl_resource_get_user_data(res);
 
-	if (width < 1 || height < 1)
+	if (width < 0 || height < 0)
 		return xdg_invalid_input(res);
 
 	pos->anchor_x = x;

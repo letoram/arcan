@@ -35,6 +35,10 @@ static bool shellsurf_shmifev_handler(
 		case TARGET_COMMAND_DISPLAYHINT:{
 			int w = ev->tgt.ioevs[0].iv;
 			int h = ev->tgt.ioevs[1].iv;
+			if (wl.force_sz){
+				w = wl.init.display_width_px;
+				h = wl.init.display_height_px;
+			}
 			if (w && h && (w != surf->acon.w || h != surf->acon.h)){
 				wl_shell_surface_send_configure(
 					surf->shell_res, WL_SHELL_SURFACE_RESIZE_NONE, w, h);

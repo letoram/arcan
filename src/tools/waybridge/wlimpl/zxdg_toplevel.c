@@ -41,6 +41,11 @@ static bool zxdgtoplevel_shmifev_handler(
 					trace(TRACE_SHELL, "focused");
 				}
 
+				if (wl.force_sz){
+					w = wl.init.display_width_px;
+					h = wl.init.display_height_px;
+				}
+
 				zxdg_toplevel_v6_send_configure(surf->shell_res, w, h, &states);
 				zxdg_surface_v6_send_configure(surf->surf_res, STEP_SERIAL());
 				wl_array_release(&states);
