@@ -380,20 +380,23 @@ static bool cursor_at(struct tui_context* tui, int x, int y, shmif_pixel ccol)
 	return false;
 }
 
-static bool wait_vready(struct tui_context* tui, bool block)
+/*
+ * -1 fail, 0 not ready, 1 ready
+ */
+static int wait_vready(struct tui_context* tui, bool block)
 {
-/* The fastest option here would be to use the previously rastered buffers
- * and just memmove or copy in the case of double buffering. The problem
- * with that is that if there's custom- cells, these will 'lag behind'. */
-	if (!block){
-		if (atomic_load(&tui->acon.addr->vready))
-			return false;
-		return true;
-	}
+	int rc;
+	do
+	{
+		if (!tui->acon.addr->dms)
+			return -1;
 
-	while (atomic_load(&tui->acon.addr->vready))
-		;
-	return true;
+		if (!atomic_load(&tui->acon.addr->vready))
+			return 1;
+
+	} while (block);
+
+	return 0;
 }
 
 static void apply_attrs(struct tui_context* tui,
@@ -860,7 +863,8 @@ static void apply_scroll(struct tui_context* tui)
 
 /* if we (in order to not go too slow on half / full page) need to jump
  * larger steps, just do many small steps but without drawing / synching */
-		wait_vready(tui, true);
+		if (-1 == wait_vready(tui, true))
+			return;
 
 /* while this is running, the rest of the application is unresponsive,
  * can preempt and try that if it's better, but should really only
@@ -924,7 +928,9 @@ static void apply_scroll(struct tui_context* tui)
 			tui->in_scroll++;
 		}
 
-		wait_vready(tui, true);
+		if (-1 == wait_vready(tui, true))
+			return;
+
 		while(1){
 			tui->dirty |= DIRTY_PENDING_FULL;
 			tui->draw_function(tui, tui->rows+1, tui->cols,
@@ -1738,7 +1744,8 @@ static void update_screensize(struct tui_context* tui, bool clear)
  * color of the new dimensions doesn't align with cell-size */
 	shmif_pixel col = get_bg_col(tui);
 
-	wait_vready(tui, true);
+	if (-1 == wait_vready(tui, true))
+		return;
 
 /* calculate the rpad/bpad regions based on the desired output size and
  * the amount consumed by the aligned number of cells */
@@ -2101,6 +2108,7 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 
 /* visibility change */
 		bool update = false;
+		LOG("displayhint");
 		if (!(ev->ioevs[2].iv & 128)){
 			if (ev->ioevs[2].iv & 2){
 				tui->inactive = true;
@@ -2113,12 +2121,14 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 
 	/* selection change */
 			if (ev->ioevs[2].iv & 4){
+				LOG("cursor enabled");
 				tui->focus = false;
 				tui->modifiers = 0;
 				tui->cursor_off = true;
 				flag_cursor(tui);
 			}
 			else{
+				LOG("cursor disabled");
 				tui->focus = true;
 				tui->inact_timer = 0;
 				tui->cursor_off = tui->sbofs != 0 ? true : false;
@@ -2665,12 +2675,13 @@ struct tui_process_res arcan_tui_process(
 
 int arcan_tui_refresh(struct tui_context* tui)
 {
-	if (!tui || !tui->acon.addr){
+	int rc;
+	if (!tui || !tui->acon.addr || (rc = wait_vready(tui, false)) == -1){
 		errno = EINVAL;
 		return -1;
 	}
 
-	if (!wait_vready(tui, false)){
+	if (0 == rc){
 		errno = EAGAIN;
 		return -1;
 	}
