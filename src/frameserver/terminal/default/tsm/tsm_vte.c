@@ -816,7 +816,7 @@ void tsm_vte_mouse_button(struct tsm_vte *vte, int index, bool press, int mods)
 
 static void send_primary_da(struct tsm_vte *vte)
 {
-	vte_write(vte, "\e[?60;1;6;9;15c", 16);
+	vte_write(vte, "\e[?60;1;6;9;15c", 15);
 }
 
 /* execute control character (C0 or C1) */
@@ -1749,7 +1749,7 @@ static void csi_dsr(struct tsm_vte *vte)
 		vte_write(vte, "\e[0n", 4);
 	} else if (vte->csi_argv[0] == 6) {
 		arcan_tui_cursorpos(vte->con, &x, &y);
-		len = snprintf(buf, sizeof(buf), "\e[%zu;%zuR", x+1, y+1);
+		len = snprintf(buf, sizeof(buf), "\e[%zu;%zuR", y+1, x+1);
 		if (len >= sizeof(buf))
 			vte_write(vte, "\e[0;0R", 6);
 		else
