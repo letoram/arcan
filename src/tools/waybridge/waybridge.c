@@ -123,6 +123,13 @@ static struct {
 	struct arcan_shmif_cont control;
 
 /*
+ * this is a workaround for clients that starts scaling or padding
+ * when receiving a configure event that doesn't fit what they can
+ * support
+ */
+	bool force_sz;
+
+/*
  * fork out new clients and only use this process as a display
  * discovery mechanism
  */
@@ -920,6 +927,9 @@ static int show_use(const char* msg, const char* arg)
 "\t-prefix prefix    use with -exec, override /tmp/awl_XXXXXX prefix\n"
 "\t-fork             fork- off new clients as separate processes\n"
 "\t-dir dir          override XDG_RUNTIME_DIR with <dir>\n"
+"\t-width px         override display 'fullscreen' width\n"
+"\t-height px        override display 'fullscreen' height\n"
+"\t-force-fs         ignore displayhints and always configure to display size\n"
 "\t-trace level      set trace output to (bitmask):\n"
 "\t1 - allocations, 2 - digital-input, 4 - analog-input\n"
 "\t8 - shell, 16 - region-events, 32 - data device\n"
@@ -979,6 +989,8 @@ int main(int argc, char* argv[])
 	struct arg_arr* aarr;
 	char dtemp_prefix[] = "/tmp/awl_XXXXXX";
 	int exit_code = EXIT_SUCCESS;
+	int force_width = 0;
+	int force_height = 0;
 
 /* for each wayland protocol or subprotocol supported, add a corresponding
  * field here, and then command-line argument passing to disable said protocol.
@@ -1039,6 +1051,25 @@ int main(int argc, char* argv[])
 			}
 			arg_i++;
 			setenv("ARCAN_RENDER_NODE", argv[arg_i], 1);
+		}
+		else if (strcmp(argv[arg_i], "-width") == 0){
+			if (arg_i == argc-1){
+				fprintf(stderr, "missing width px argument\n");
+				return EXIT_FAILURE;
+			}
+			arg_i++;
+			force_width = strtoul(argv[arg_i], NULL, 10);
+		}
+		else if (strcmp(argv[arg_i], "-height") == 0){
+			if (arg_i == argc-1){
+				fprintf(stderr, "missing width px argument\n");
+				return EXIT_FAILURE;
+			}
+			arg_i++;
+			force_height = strtoul(argv[arg_i], NULL, 10);
+		}
+		else if (strcmp(argv[arg_i], "-force-fs") == 0){
+			wl.force_sz = true;
 		}
 		else if (strcmp(argv[arg_i], "-debugusr1") == 0){
 			sigaction(SIGUSR1, &(struct sigaction){.sa_handler = debugusr1}, NULL);
@@ -1139,6 +1170,12 @@ int main(int argc, char* argv[])
 		wl.init.display_width_px = wl.control.w;
 		wl.init.display_height_px = wl.control.h;
 	}
+
+	if (force_width > 0)
+		wl.init.display_width_px = force_width;
+
+	if (force_height > 0)
+		wl.init.display_height_px = force_height;
 
 /*
  * We'll need some tricks for this one as well. The expected solution is that

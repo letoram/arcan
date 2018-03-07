@@ -96,7 +96,14 @@ static bool xdgsurf_defer_handler(
 
 	struct wl_array states;
 	wl_array_init(&states);
-	xdg_toplevel_send_configure(toplevel, surf->acon.w, surf->acon.h, &states);
+
+	size_t w = surf->acon.w;
+	size_t h = surf->acon.h;
+	if (wl.force_sz){
+		w = wl.init.display_width_px;
+		h = wl.init.display_height_px;
+	}
+	xdg_toplevel_send_configure(toplevel, w, h, &states);
 	wl_array_release(&states);
 	return true;
 }

@@ -45,6 +45,18 @@ shared memory buffer to the GPU will be absorbed by the bridge, forwarding
 an accelerated handle onwards. This might affect system stability depending
 on the quality of your GPU drivers.
 
+.IP "\fB\-width px -height px\fR"
+Normally, the default output provided to wayland clients will get its values
+from the initial values presented by the display/outputhints from the server
+side. These two arguments can be used to force-override those values. This
+might help work around problems with legacy wl_shell applications that respond
+poorly to configure events.
+
+.IP "\fB\-force-fs\fR"
+This extends the -width and -height arguments with the option to make sure
+that all configure events from the server are reset to the set initial width/
+height.
+
 .SH PROTOCOL CONTROL
 Wayland is not a single protocol as much as it is a suite of possible protocols.
 Each client may have different sets of required protocols and may refuse to work
