@@ -16,14 +16,6 @@ static struct {
 	struct shl_pty* pty;
 	pid_t child;
 
-/* timestamp of last provided user input, reset each visible frame.
- * useful for heuristics about the source of update, i.e. if we have a
- * running command that keeps feeding the state machine, or we happen
- * to have:
- * user-input -> client_action -> state machine update
- * as that is a strong synch indicator to have low input latency. */
-	bool uinput;
-
 /* graceful shutdown */
 	bool alive;
 } term;
@@ -104,7 +96,6 @@ static void on_mouse_motion(struct tui_context* c,
 
 	if (!relative){
 		tsm_vte_mouse_motion(term.vte, x, y, modifiers);
-		term.uinput = true;
 	}
 }
 
@@ -114,7 +105,6 @@ static void on_mouse_button(struct tui_context* c,
 	trace("mouse button(%d:%d - @%d,%d (mods: %d)\n",
 		button, (int)active, last_x, last_y, modifiers);
 	tsm_vte_mouse_button(term.vte, button, active, modifiers);
-	term.uinput = true;
 }
 
 static void on_key(struct tui_context* c, uint32_t keysym,
@@ -123,7 +113,6 @@ static void on_key(struct tui_context* c, uint32_t keysym,
 	trace("on_key(%"PRIu32",%"PRIu8",%"PRIu16")", keysym, scancode, subid);
 	tsm_vte_handle_keyboard(term.vte,
 		keysym, isascii(keysym) ? keysym : 0, mods, subid);
-	term.uinput = true;
 }
 
 static bool on_u8(struct tui_context* c, const char* u8, size_t len, void* t)
@@ -133,7 +122,6 @@ static bool on_u8(struct tui_context* c, const char* u8, size_t len, void* t)
 	memcpy(buf, u8, len >= 5 ? 4 : len);
 	if (shl_pty_write(term.pty, (char*) buf, len) < 0)
 		term.alive = false;
-	term.uinput = true;
 	return true;
 }
 
@@ -142,7 +130,6 @@ static void on_utf8_paste(struct tui_context* c,
 {
 	trace("utf8-paste(%s):%d", str, (int) cont);
 	tsm_vte_paste(term.vte, (char*)str, len);
-	term.uinput = true;
 }
 
 static unsigned long long last_frame;
@@ -282,8 +269,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		return EXIT_SUCCESS;
 	}
 
-	int limit_flush = 240;
-	int cap_refresh = 32;
+	int cap_refresh = 4;
 
 	if (arg_lookup(args, "min_upd", 0, &val))
 		cap_refresh = strtol(val, NULL, 10);
@@ -391,44 +377,43 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	while(pump_pty()){};
 	arcan_tui_refresh(term.screen);
 
-/*
- * timekeeping:
- *  attempt refresh @60Hz, tick callback will drive _process forward - 30Hz if
- *  we're being swamped with data (find /)
- */
+/* Another strategy here is to skew the delay by the known 'worst cost for a
+ * frame unless it is larger than cap_refresh', but we need that info from tui
+ * and we need to reset that counter on resize. Recall that there is a tick
+ * timer going on in _tui anyway due to blink */
 	int delay = -1;
 
 	while (term.alive){
-		struct tui_process_res res = arcan_tui_process(&term.screen,1,&inf,1,delay);
-		if (res.errc < TUI_ERRC_OK || res.bad)
-				break;
+		do {
+			int delta = arcan_timemillis() - last_frame;
+			if (delta < cap_refresh)
+				delta = cap_refresh;
+			else
+				delta = 0;
 
-/* if the terminal is being swamped (find / for instance), try to keep at
- * least a 30Hz refresh timer if we have no user input */
-		while (pump_pty()){
-			if (!last_frame)
-				continue;
-
-			long long dt = arcan_timemillis() - last_frame;
-			if (dt < limit_flush * (term.uinput ? 2 : 1)){
-				delay = 0;
-				continue;
+			struct tui_process_res res = arcan_tui_process(&term.screen,1,&inf,1,delay);
+			if (res.errc < TUI_ERRC_OK || res.bad){
+				goto out;
 			}
+
 		}
+		while (arcan_timemillis() - last_frame < cap_refresh);
+
+		while(pump_pty()){};
 
 /* and on an actually successful update, reset the user-input flag and timing */
 		int rc;
 		while((rc = arcan_tui_refresh(term.screen) == -1 && errno == EAGAIN)){}
-		if (rc >= 0){
-			term.uinput = false;
+		if (rc >= 0)
 			last_frame = arcan_timemillis();
-			delay = -1;
-		}
 		else if (rc == -1 && (errno == EINVAL))
 			break;
+		else
+			;
 	}
 
 /* might have been destroyed already, just in case */
+	out:
 	if (term.pty)
 		term.pty = (shl_pty_close(term.pty), NULL);
 	arcan_tui_destroy(term.screen, NULL);
