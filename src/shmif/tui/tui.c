@@ -2108,7 +2108,6 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 
 /* visibility change */
 		bool update = false;
-		LOG("displayhint");
 		if (!(ev->ioevs[2].iv & 128)){
 			if (ev->ioevs[2].iv & 2){
 				tui->inactive = true;
@@ -2121,14 +2120,12 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 
 	/* selection change */
 			if (ev->ioevs[2].iv & 4){
-				LOG("cursor enabled");
 				tui->focus = false;
 				tui->modifiers = 0;
 				tui->cursor_off = true;
 				flag_cursor(tui);
 			}
 			else{
-				LOG("cursor disabled");
 				tui->focus = true;
 				tui->inact_timer = 0;
 				tui->cursor_off = tui->sbofs != 0 ? true : false;
@@ -2728,8 +2725,7 @@ retry:
 	}
 	else
 #endif
-		arcan_shmif_signal(&tui->acon,
-			SHMIF_SIGVID | (tui->dbl_buf ? 0 : SHMIF_SIGBLK_NONE));
+		arcan_shmif_signal(&tui->acon, SHMIF_SIGVID);
 
 /* set invalid synch region until redraw changes that, the dirty
  * buffer gets copied during signal so no problem there */
