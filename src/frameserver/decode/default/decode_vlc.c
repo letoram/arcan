@@ -34,6 +34,7 @@
 #include <pthread.h>
 #include <kiss_fftr.h>
 #include <arcan_shmif.h>
+#include <arcan_tuisym.h>
 #include "frameserver.h"
 
 static struct {
@@ -394,7 +395,33 @@ static void seek_relative(int seconds)
  */
 static bool dispatch(arcan_event* ev)
 {
-	if (ev->category == EVENT_TARGET)
+/* quick default keybindings */
+	if (ev->category == EVENT_IO){
+		if (ev->io.datatype == EVENT_IDATATYPE_TRANSLATED &&
+			ev->io.input.translated.active){
+			switch(ev->io.input.translated.keysym){
+				case TUIK_LEFT:
+					seek_relative(-10);
+				break;
+				case TUIK_RIGHT:
+					seek_relative(10);
+				break;
+				case TUIK_UP:
+					seek_relative(60);
+				break;
+				case TUIK_DOWN:
+					seek_relative(-60);
+				break;
+				case TUIK_PAGEUP:
+					seek_relative(600);
+				break;
+				case TUIK_PAGEDOWN:
+					seek_relative(-600);
+				break;
+			}
+		}
+	}
+	else if (ev->category == EVENT_TARGET)
 	switch(ev->tgt.kind){
 	case TARGET_COMMAND_GRAPHMODE:
 /* switch audio /video visualization, RGBA-pack YUV420 hinting,
