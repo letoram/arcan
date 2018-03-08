@@ -65,6 +65,27 @@ static void update_mbtn(struct comp_surf* cl,
 	if (!pts)
 		pts = arcan_timemillis();
 
+/* special case, we map the vertical scroll wheel buttons to wheel events,
+ * the upper layers can chose to provide this as subid 4/5 analog as well
+ * though */
+	if (ind == 4 || ind == 5){
+		if (active){
+			pts = pts ? pts : arcan_timemillis();
+			wl_pointer_send_axis(cl->client->pointer,
+				pts, WL_POINTER_AXIS_VERTICAL_SCROLL,
+				wl_fixed_from_int(ind == 4 ? -10 : 10)
+			)
+
+			if (wl_resource_get_version(cl->client->pointer) >
+				WL_POINTER_AXIS_STOP_SINCE_VERSION){
+				wl_pointer_send_axis_stop(cl->client->pointer,
+					pts, WL_POINTER_AXIS_VERTICAL_SCROLL);
+			}
+		}
+		wl_pointer_send_frame(cl->client->pointer);
+		return;
+	}
+
 /* 0x110 == BTN_LEFT in evdev parlerance, ignore 0 index as it is used
  * to convey gestures and that's a separate unstable protocol */
 	if (ind > 0){
@@ -145,8 +166,16 @@ static bool relative_sample(struct wl_resource* res, uint64_t ts, int x, int y)
 
 	uint32_t lo = (ts * 1000) >> 32;
 	uint32_t hi = ts * 1000;
-	zwp_relative_pointer_v1_send_relative_motion(res, hi, lo, x, y, x, y);
-	return true;
+	zwp_relative_pointer_v1_send_relative_motion(
+		res, hi, lo,
+		wl_fixed_from_int(x), wl_fixed_from_int(y),
+		wl_fixed_from_int(x), wl_fixed_from_int(y)
+	);
+
+/* test, some clients do not seem to like that we send only relative motion
+ * and not absolute and relative - early out behavior is respected if we
+ * return true */
+	return false;
 }
 
 static void translate_input(struct comp_surf* cl, arcan_ioevent* ev)
