@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2017, Björn Ståhl
+ * Copyright 2016-2018, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: https://github.com/letoram/arcan/wiki/wayland.md
  */
@@ -908,11 +908,21 @@ static int show_use(const char* msg, const char* arg)
 {
 	fprintf(stdout, "%s%s", msg, arg ? arg : "");
 	fprintf(stdout, "\nUse: arcan-wayland [arguments]\n"
-"     arcan-wayland [arguments] -exec /path/to/bin arg1 arg2 ...\n"
+"     arcan-wayland [arguments] -exec /path/to/bin arg1 arg2 ...\n\n"
+"Security/Performance:\n"
+"\t-exec bin arg1 .. end of arg parsing, single-client mode (recommended)\n"
+"\t-shm-egl          pass shm- buffers as gl textures (recommended)\n"
 #ifdef ENABLE_SECCOMP
 "\t-sandbox          filter syscalls, ...\n"
 #endif
-"\t-shm-egl          pass shm- buffers as gl textures\n"
+"\nWorkarounds:\n"
+"\t-defer-release    defer buffer releases, aggressive client workaround\n"
+"\t-prefix prefix    use with -exec, override /tmp/awl_XXXXXX prefix\n"
+"\t-dir dir          override XDG_RUNTIME_DIR with <dir>\n"
+"\t-width px         override display 'fullscreen' width\n"
+"\t-height px        override display 'fullscreen' height\n"
+"\t-force-fs         ignore displayhints and always configure to display size\n"
+"\nProtocol Filters:\n"
 "\t-no-egl           disable the wayland-egl extensions\n"
 "\t-no-compositor    disable the compositor protocol\n"
 "\t-no-subcompositor disable the sub-compositor/surface protocol\n"
@@ -922,18 +932,13 @@ static int show_use(const char* msg, const char* arg)
 "\t-no-xdg           disable the xdg protocol\n"
 "\t-no-zxdg          disable the zxdg protocol\n"
 "\t-no-output        disable the output protocol\n"
-"\t-defer-release    defer buffer releases, aggressive client workaround\n"
+"\nDebugging Tools:\n"
 "\t-debugusr1        use SIGUSR1 to dump debug information\n"
-"\t-prefix prefix    use with -exec, override /tmp/awl_XXXXXX prefix\n"
-"\t-fork             fork- off new clients as separate processes\n"
-"\t-dir dir          override XDG_RUNTIME_DIR with <dir>\n"
-"\t-width px         override display 'fullscreen' width\n"
-"\t-height px        override display 'fullscreen' height\n"
-"\t-force-fs         ignore displayhints and always configure to display size\n"
 "\t-trace level      set trace output to (bitmask):\n"
-"\t1 - allocations, 2 - digital-input, 4 - analog-input\n"
-"\t8 - shell, 16 - region-events, 32 - data device\n"
-"\t64 - seat, 128 - surface, 256 - drm, 512 - alert\n");
+"\t\t1   - allocations   2 - digital-input    4 - analog-input\n"
+"\t\t8   - shell        16 - region-events   32 - data device\n"
+"\t\t64  - seat        128 - surface        256 - drm\n"
+"\t\t512 - alert\n");
 	return EXIT_FAILURE;
 }
 
@@ -1116,6 +1121,10 @@ int main(int argc, char* argv[])
 		else if (strcmp(argv[arg_i], "-fork") == 0){
 			wl.fork_mode = true;
 		}
+		else if (strcmp(argv[arg_i], "-h") == 0 ||
+			strcmp(argv[arg_i], "--help") == 0 || strcmp(argv[arg_i], "-help")){
+			return show_use("", "");
+		}
 		else
 			return show_use("unknown argument: ", argv[arg_i]);
 	}
@@ -1148,7 +1157,7 @@ int main(int argc, char* argv[])
 	}
 
 	if (!getenv("XDG_RUNTIME_DIR")){
-		fprintf(stderr, "Missing environment: XDG_RUNTIME_DIR\n");
+		fprintf(stderr, "Missing environment variable: XDG_RUNTIME_DIR\n");
 		return EXIT_FAILURE;
 	}
 
