@@ -73,8 +73,7 @@ static void update_mbtn(struct comp_surf* cl,
 			pts = pts ? pts : arcan_timemillis();
 			wl_pointer_send_axis(cl->client->pointer,
 				pts, WL_POINTER_AXIS_VERTICAL_SCROLL,
-				wl_fixed_from_int(ind == 4 ? -10 : 10)
-			)
+				wl_fixed_from_int(ind == 4 ? -10 : 10));
 
 			if (wl_resource_get_version(cl->client->pointer) >
 				WL_POINTER_AXIS_STOP_SINCE_VERSION){
