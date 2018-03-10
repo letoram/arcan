@@ -655,9 +655,9 @@ arcan_vobj_id arcan_3d_buildcylinder(float r,
 
 /* total number of verts, normals, textures and indices */
 	int caps = fill_mode > CYLINDER_FILL_HALF;
-	size_t n_verts = 3 * (steps * 2 + caps * steps * 2);
+	size_t n_verts = 3 * (steps * 3 + caps * steps * 2);
 	size_t n_txcos = 3 * (steps * 2 + caps * steps * 2);
-	size_t n_normals = 3 * (steps * 2 + caps * steps * 2);
+	size_t n_normals = 3 * (steps * 3 + caps * steps * 2);
 	size_t n_indices = 1 * (steps * 6 + caps * steps * 6);
 	size_t buf_sz =
 		sizeof(float) * (n_verts + n_normals + n_txcos) + n_indices * sizeof(unsigned);
@@ -693,7 +693,7 @@ arcan_vobj_id arcan_3d_buildcylinder(float r,
 	float step_sz = 2 * M_PI / (float) steps;
 
 	if (fill_mode == CYLINDER_FILL_HALF)
-		step_sz *= 0.5;
+		step_sz = M_PI / (float) steps;
 
 	for (size_t i = 0; i <= steps; i++){
 		float p = (float) i * step_sz;
@@ -768,8 +768,8 @@ arcan_vobj_id arcan_3d_buildcylinder(float r,
 	return rv;
 }
 
-arcan_vobj_id arcan_3d_buildsphere(float r,
-	unsigned l, unsigned m, bool hemi, size_t nmaps)
+arcan_vobj_id arcan_3d_buildsphere(
+	float r, unsigned l, unsigned m, bool hemi, size_t nmaps)
 {
 	vfunc_state state = {.tag = ARCAN_TAG_3DOBJ};
 	img_cons empty = {0};
@@ -823,10 +823,20 @@ arcan_vobj_id arcan_3d_buildsphere(float r,
 /* pass one, base data */
 	float step_l = 1.0f / (float)(l - 1);
 	float step_m = 1.0f / (float)(m - 1);
+	float hcons;
+	float yofs;
+	if (hemi){
+		hcons = 0;
+		yofs = -0.5*r;
+	}
+	else{
+		hcons = -M_PI_2;
+		yofs = 0.0;
+	}
 
 	for (int L = 0; L < l; L++){
 		for (int M = 0; M < m; M++){
-			float y = sinf( -M_PI_2 + M_PI * (float) L * step_l );
+			float y = sinf( hcons + M_PI * L * step_l ) + yofs;
 			float x = cosf(2.0f*M_PI*(float)M*step_m) * sinf(M_PI*(float)L*step_l);
 			float z = sinf(2.0f*M_PI*(float)M*step_m) * sinf(M_PI*(float)L*step_l);
 			*tp++ = (float)M * step_m;
