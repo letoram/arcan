@@ -388,8 +388,13 @@ static int wait_vready(struct tui_context* tui, bool block)
 	int rc;
 	do
 	{
-		if (!tui->acon.addr->dms)
+/* special case, on the DMS, fake-signal so the fallback migrate path gets
+ * activated - normal clients should not bother with this, but we're not
+ * really 'normal' */
+		if (!tui->acon.addr->dms){
+			arcan_shmif_signal(&tui->acon, 0);
 			return -1;
+		}
 
 		if (!atomic_load(&tui->acon.addr->vready))
 			return 1;
