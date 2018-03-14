@@ -265,22 +265,29 @@ int arcan_shmif_dupfd(int fd, int dstnum, bool blocking);
 
 /*
  * Used as helper to avoid dealing with all of the permutations of
- * devkind == EVENT_IDEVKIND_MOUSE for subid (0). If >true< the status of
- * out_x and out_y have changed since last time (these are also used for
- * state tracking so be consistent with both out_x and out_y).
+ * devkind == EVENT_IDEVKIND_MOUSE for datatype == EVENT_IDATATYPE_ANALOG.
+ * If >true< the status of have changed since last time.
  *
- * static int mx, my;
- * ...
- * if (arcan_shmif_mousestate(con, &mx, &my, true, event_if_applicable)){
- *  new mouse motion detected
+ * uint8_t mstate[ASHMIF_MSTATE_SZ];
+ * arcan_shmif_mousestate_setup(acon, false, mstate);
+ * ... in event loop ...
+ * if (arcan_shmif_mousestate(mstate, &inev, &out_x, &out_y)){
+ *  react on mouse event
  * }
  *
- * This function takes care of tracking multiple kinds of packing formats,
- * converting absolute-relative and negotiating relative- input if that is
- * desired, along with switching to MMIO- cursor forwarding, if possible.
+ * if [inev] isn't provided and the state is set to absolute, the last known
+ * values will be returned.
+ *
+ * Mouse button tracking, gestures, and splitting on .devid are not included
+ * in this helper function.
  */
-bool arcan_shmif_mousestate(struct arcan_shmif_cont* con,
-	int* out_x, int* out_y, bool relative, struct arcan_event* feed);
+#define ASHMIF_MSTATE_SZ 32
+void arcan_shmif_mousestate_setup(
+	struct arcan_shmif_cont* con, bool relative, uint8_t* state);
+
+bool arcan_shmif_mousestate(
+	struct arcan_shmif_cont*, uint8_t* state,
+	struct arcan_event* inev, int* out_x, int* out_y);
 
 /*
  * Part of auxiliary library, pulls in more dependencies and boiler-plate
