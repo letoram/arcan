@@ -276,6 +276,17 @@ static void consume(struct arcan_shmif_cont* c)
 		return;
 
 	if (BADFD != c->priv->pev.fd){
+
+/*
+ * Special case, the parent explicitly pushed a debug segment that was not
+ * mapped / accepted by the client. Then we take it upon ourselves to add
+ * another debugging interface that redirects STDERR to TUI, eventually also
+ * setting up support for attaching gdb or lldb, or providing sense_mem style
+ * sampling
+ */
+#ifdef SHMIF_DEBUG_IF
+#endif
+
 		close(c->priv->pev.fd);
 		LOG("(shmif) closing unhandled/ignored/dup:ed state descriptor (%d)\n",
 			c->priv->pev.fd);
@@ -2321,4 +2332,177 @@ struct arcan_shmif_cont arcan_shmif_open(
 int arcan_shmif_segkind(struct arcan_shmif_cont* con)
 {
 	return (!con || !con->priv) ? SEGID_UNKNOWN : con->priv->type;
+}
+
+struct mstate {
+	union {
+		struct {
+			int32_t ax, ay, lx, ly;
+			uint8_t rel : 1;
+			uint8_t inrel : 1;
+		};
+		uint8_t state[ASHMIF_MSTATE_SZ];
+	};
+};
+
+_Static_assert(sizeof(struct mstate) == ASHMIF_MSTATE_SZ, "invalid mstate sz");
+
+void arcan_shmif_mousestate_setup(
+	struct arcan_shmif_cont* con, bool relative, uint8_t* state)
+{
+	struct mstate* ms = (struct mstate*) state;
+	*ms = (struct mstate){
+		.rel = relative
+	};
+}
+
+static bool absclamp(
+	struct mstate* ms, struct arcan_shmif_cont* con,
+	int* out_x, int* out_y)
+{
+	if (ms->ax < 0)
+		ms->ax = 0;
+	else
+		ms->ax = ms->ax > con->w ? con->w : ms->ax;
+
+	if (ms->ay < 0)
+		ms->ay = 0;
+	else
+		ms->ay = ms->ay > con->h ? con->h : ms->ay;
+
+/* with clamping, we can get relative samples that shouldn't
+ * propagate, so test that before updating history */
+	bool res = ms->ly != ms->ay || ms->lx != ms->ax;
+	*out_y = ms->ly = ms->ay;
+	*out_x = ms->lx = ms->ax;
+
+	return res;
+}
+
+/*
+ * Weak attempt of trying to bring some order in the accumulated mouse
+ * event handling chaos - definitely one of the bigger design fails that
+ * can't be fixed easily due to legacy.
+ */
+bool arcan_shmif_mousestate(
+	struct arcan_shmif_cont* con, uint8_t* state,
+	struct arcan_event* inev, int* out_x, int* out_y)
+{
+	struct mstate* ms = (struct mstate*) state;
+
+	if (!state || !out_x || !out_y || !con)
+		return false;
+
+	if (!inev){
+		if (!ms->inrel)
+			return absclamp(ms, con, out_x, out_y);
+		else
+			*out_x = *out_y = 0;
+		return true;
+	}
+
+	if (!state ||
+		inev->io.datatype != EVENT_IDATATYPE_ANALOG ||
+		inev->io.devkind != EVENT_IDEVKIND_MOUSE
+	)
+		return false;
+
+
+/* state switched between samples, reset tracking */
+	bool gotrel = inev->io.input.analog.gotrel;
+	if (gotrel != ms->inrel){
+		ms->inrel = gotrel;
+		ms->ax = ms->ay = ms->lx = ms->ly = 0;
+	}
+
+/* packed, both axes in one sample */
+	if (inev->io.subid == 2){
+/* relative input sample, are we in relative state? */
+		if (gotrel){
+/* good case, the sample is already what we want */
+			if (ms->rel){
+				*out_x = ms->lx = inev->io.input.analog.axisval[0];
+				*out_y = ms->ly = inev->io.input.analog.axisval[2];
+				return *out_x || *out_y;
+			}
+/* bad case, the sample is relative and we want absolute,
+ * accumulate and clamp */
+			ms->ax += inev->io.input.analog.axisval[0];
+			ms->ay += inev->io.input.analog.axisval[2];
+
+			return absclamp(ms, con, out_x, out_y);
+		}
+/* good case, the sample is absolute and we want absolute, clamp */
+    else {
+			if (!ms->rel){
+				ms->ax = inev->io.input.analog.axisval[0];
+				ms->ay = inev->io.input.analog.axisval[2];
+				return absclamp(ms, con, out_x, out_y);
+			}
+/* worst case, the sample is absolute and we want relative,
+ * need history AND discard large jumps */
+			int dx = inev->io.input.analog.axisval[0] - ms->lx;
+			int dy = inev->io.input.analog.axisval[2] - ms->ly;
+			ms->lx = inev->io.input.analog.axisval[0];
+			ms->ly = inev->io.input.analog.axisval[2];
+			if (abs(dx) > 20 | abs(dy) > 20 || (!dx && !dy)){
+				return false;
+			}
+			*out_x = dx;
+			*out_y = dy;
+			return true;
+		}
+	}
+
+/* one sample, X axis */
+	else if (inev->io.subid == 0){
+		if (gotrel){
+			if (ms->rel){
+				*out_x = ms->lx = inev->io.input.analog.axisval[0];
+				return *out_x;
+			}
+			ms->ax += inev->io.input.analog.axisval[0];
+			return absclamp(ms, con, out_x, out_y);
+		}
+		else {
+			if (!ms->rel){
+				ms->ax = inev->io.input.analog.axisval[0];
+				return absclamp(ms, con, out_x, out_y);
+			}
+			int dx = inev->io.input.analog.axisval[0] - ms->lx;
+			ms->lx = inev->io.input.analog.axisval[0];
+			if (abs(dx) > 20 || !dx)
+				return false;
+			*out_x = dx;
+			*out_y = 0;
+			return true;
+		}
+	}
+
+/* one sample, Y axis */
+	else if (inev->io.subid == 1){
+		if (gotrel){
+			if (ms->rel){
+				*out_y = ms->ly = inev->io.input.analog.axisval[0];
+				return *out_y;
+			}
+			ms->ay += inev->io.input.analog.axisval[0];
+			return absclamp(ms, con, out_x, out_y);
+		}
+		else {
+			if (!ms->rel){
+				ms->ay = inev->io.input.analog.axisval[0];
+				return absclamp(ms, con, out_x, out_y);
+			}
+			int dy = inev->io.input.analog.axisval[0] - ms->ly;
+			ms->ly = inev->io.input.analog.axisval[0];
+			if (abs(dy) > 20 || !dy)
+				return false;
+			*out_x = 0;
+			*out_y = dy;
+			return true;
+		}
+	}
+	else
+		return false;
 }
