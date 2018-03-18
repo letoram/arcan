@@ -691,9 +691,12 @@ arcan_vobj_id arcan_3d_buildcylinder(float r,
 /* pass one, base data */
 	size_t vc = 0;
 	float step_sz = 2 * M_PI / (float) steps;
+	float txf = 2 * M_PI;
 
-	if (fill_mode == CYLINDER_FILL_HALF)
+	if (fill_mode == CYLINDER_FILL_HALF || fill_mode == CYLINDER_FILL_HALF_CAPS){
 		step_sz = M_PI / (float) steps;
+		txf = M_PI;
+	}
 
 	for (size_t i = 0; i <= steps; i++){
 		float p = (float) i * step_sz;
@@ -702,12 +705,12 @@ arcan_vobj_id arcan_3d_buildcylinder(float r,
 
 /* top */
 		*vp++ = r * x; *vp++ = hh; *vp++ = r * z;
-		*tp++ = p / (2 * M_PI); *tp++ = 0;
+		*tp++ = p / txf; *tp++ = 0;
 		*np++ = x; *np++ = 0; *np++ = z;
 
 /* bottom */
 		*vp++ = r * x; *vp++ = -hh; *vp++ = r * z;
-		*tp++ = p / (2 * M_PI); *tp++ = 1;
+		*tp++ = p / txf; *tp++ = 1;
 		*np++ = x; *np++ = 0; *np++ = z;
 		vc += 2;
 	}
