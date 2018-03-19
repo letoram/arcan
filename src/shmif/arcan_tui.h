@@ -445,6 +445,15 @@ struct tui_cbcfg {
 	void (*visibility)(struct tui_context*, bool visible, bool focus, void*);
 
 /*
+ * Context has changed liveness state
+ * 0 : normal operation
+ * 1 : suspend state, execution should be suspended, next event will
+ *     exec_state into normal or terminal state
+ * 2 : terminal state, context is dead
+ */
+	void (*exec_state)(struct tui_context*, int state);
+
+/*
  * Add new callbacks here as needed, since the setup requires a sizeof of
  * this struct as an argument, we get some light indirect versioning
  */

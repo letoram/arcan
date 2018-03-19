@@ -7,6 +7,8 @@
 #include <pwd.h>
 #include <ctype.h>
 #include <signal.h>
+#include <pthread.h>
+#include <poll.h>
 #include "tsm/libtsm.h"
 #include "tsm/shl-pty.h"
 
@@ -16,8 +18,8 @@ static struct {
 	struct shl_pty* pty;
 	pid_t child;
 
-/* graceful shutdown */
 	bool alive;
+	int cap_refresh;
 } term;
 
 static inline void trace(const char* msg, ...)
@@ -34,16 +36,19 @@ static inline void trace(const char* msg, ...)
 /*
  * process one round of PTY input, this is non-blocking
  */
-static int pump_pty()
+void pump_pty()
 {
-	int rv = shl_pty_dispatch(term.pty);
-	if (rv == -ENODEV){
-		term.alive = false;
+	int count = 10;
+	while (term.alive && count--){
+		int rv = shl_pty_dispatch(term.pty);
+		if (rv == -ENODEV){
+			term.alive = false;
+		}
+		else if (rv == -EAGAIN){
+			continue;
+		}
+		else break;
 	}
-	else if (rv == -EAGAIN)
-		return 0;
-
-	return rv;
 }
 
 static void dump_help()
@@ -122,6 +127,8 @@ static bool on_u8(struct tui_context* c, const char* u8, size_t len, void* t)
 	memcpy(buf, u8, len >= 5 ? 4 : len);
 	if (shl_pty_write(term.pty, (char*) buf, len) < 0)
 		term.alive = false;
+
+	term.cap_refresh = 8;
 	return true;
 }
 
@@ -130,6 +137,7 @@ static void on_utf8_paste(struct tui_context* c,
 {
 	trace("utf8-paste(%s):%d", str, (int) cont);
 	tsm_vte_paste(term.vte, (char*)str, len);
+	term.cap_refresh = 8;
 }
 
 static unsigned long long last_frame;
@@ -247,6 +255,16 @@ static bool on_subst(struct tui_context* tui,
 	return res;
 }
 
+static void on_exec_state(struct tui_context* tui, int state)
+{
+	if (state == 0)
+		shl_pty_signal(term.pty, SIGCONT);
+	else if (state == 1)
+		shl_pty_signal(term.pty, SIGSTOP);
+	else if (state == 2)
+		shl_pty_signal(term.pty, SIGHUP);
+}
+
 static int parse_color(const char* inv, uint8_t outv[4])
 {
 	return sscanf(inv, "%"SCNu8",%"SCNu8",%"SCNu8",%"SCNu8,
@@ -269,10 +287,12 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		return EXIT_SUCCESS;
 	}
 
-	int cap_refresh = 4;
+/* 24 ms + font rendering time should put us at a passive refresh rate of
+ * about 30Hz, then we short this if we get keyboard input */
+	int def_refresh = 24;
 
 	if (arg_lookup(args, "min_upd", 0, &val))
-		cap_refresh = strtol(val, NULL, 10);
+		def_refresh = strtol(val, NULL, 10);
 
 	struct tui_cbcfg cbcfg = {
 		.input_mouse_motion = on_mouse_motion,
@@ -281,6 +301,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		.input_key = on_key,
 		.utf8 = on_utf8_paste,
 		.resized = on_resize,
+		.exec_state = on_exec_state
 //		.substitute = on_subst
 	};
 
@@ -371,45 +392,35 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	}
 
 	term.alive = true;
-	int inf = shl_pty_get_fd(term.pty);
 
-/* first frame */
-	while(pump_pty()){};
-	arcan_tui_refresh(term.screen);
-
-/* Another strategy here is to skew the delay by the known 'worst cost for a
- * frame unless it is larger than cap_refresh', but we need that info from tui
- * and we need to reset that counter on resize. Recall that there is a tick
- * timer going on in _tui anyway due to blink */
-	int delay = -1;
-
+/* the better latency tactic would be to align against the falling edge, but
+ * with a pending render refactor to move it upstream, any synch will be much
+ * more deterministic so better to wait for that */
 	while (term.alive){
 		do {
 			int delta = arcan_timemillis() - last_frame;
-			if (delta < cap_refresh)
-				delta = cap_refresh;
+			if (delta < term.cap_refresh)
+				delta = term.cap_refresh - delta;
 			else
 				delta = 0;
 
-			struct tui_process_res res = arcan_tui_process(&term.screen,1,&inf,1,delay);
+			pump_pty();
+			struct tui_process_res res = arcan_tui_process(&term.screen, 1, NULL, 0, delta);
 			if (res.errc < TUI_ERRC_OK || res.bad){
 				goto out;
 			}
-
 		}
-		while (arcan_timemillis() - last_frame < cap_refresh);
-
-		while(pump_pty()){};
+		while (arcan_timemillis() - last_frame < term.cap_refresh);
 
 /* and on an actually successful update, reset the user-input flag and timing */
-		int rc;
-		while((rc = arcan_tui_refresh(term.screen) == -1 && errno == EAGAIN)){}
+		pump_pty();
+		int rc = arcan_tui_refresh(term.screen);
 		if (rc >= 0)
 			last_frame = arcan_timemillis();
 		else if (rc == -1 && (errno == EINVAL))
 			break;
-		else
-			;
+
+		term.cap_refresh = def_refresh;
 	}
 
 /* might have been destroyed already, just in case */

@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2017, Björn Ståhl
+ * Copyright 2014-2018, Björn Ståhl
  * License: 3-Clause BSD, see COPYING file in arcan source repository.
  * Reference: http://arcan-fe.com
  * Description: text-user interface support library derived from the work on
@@ -2033,10 +2033,14 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 
 /* sigsuspend to group */
 	case TARGET_COMMAND_PAUSE:
+		if (tui->handlers.exec_state)
+			tui->handlers.exec_state(tui, 1);
 	break;
 
 /* sigresume to session */
 	case TARGET_COMMAND_UNPAUSE:
+		if (tui->handlers.exec_state)
+			tui->handlers.exec_state(tui, 0);
 	break;
 
 	case TARGET_COMMAND_RESET:
@@ -2271,6 +2275,8 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 	break;
 
 	case TARGET_COMMAND_EXIT:
+		if (tui->handlers.exec_state)
+			tui->handlers.exec_state(tui, 2);
 		arcan_shmif_drop(&tui->acon);
 	break;
 
@@ -2730,7 +2736,7 @@ retry:
 	}
 	else
 #endif
-		arcan_shmif_signal(&tui->acon, SHMIF_SIGVID);
+		arcan_shmif_signal(&tui->acon, SHMIF_SIGVID | SHMIF_SIGBLK_NONE);
 
 /* set invalid synch region until redraw changes that, the dirty
  * buffer gets copied during signal so no problem there */
