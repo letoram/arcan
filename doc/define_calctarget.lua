@@ -10,8 +10,8 @@
 -- where *image* is a table with the following functions:
 --
 -- . get (x, y, [nchannels=1]) => r, [g, b, a]
--- . histogram_impose (destination, *mode*)
--- . frequency (bin, *mode*, *normalize*) => r,g,b,a
+-- . histogram_impose (destination, *int:mode*, *bool:norm*, *int:dst_row*)
+-- . frequency (bin, *int:mode*, *bool:normalize*) => r,g,b,a
 --
 -- The *get* function can be used to sample the value at the specified
 -- coordinates (x,y) that must be 0 <= x < width, 0 <= y < height. Other
@@ -20,8 +20,9 @@
 -- of returned channels.
 --
 -- The *histogram_impose* function will generate a histogram and store
--- in the first row of *destination*, which subsequently must have at
--- least a width of 256 pixels.
+-- in the first row (or, if provided, *dst_row*) of *destination*,
+-- which subsequently must have at least a width of 256 pixels and at
+-- least *dst_row* number of rows, 0-indexed.
 --
 -- The *frequency* function will return the number of occurences from
 -- a specific histogram bin and *bin* should be 0 <= n < 256. The optional
