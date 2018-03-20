@@ -2445,7 +2445,7 @@ bool arcan_shmif_mousestate(
 			int dy = inev->io.input.analog.axisval[2] - ms->ly;
 			ms->lx = inev->io.input.analog.axisval[0];
 			ms->ly = inev->io.input.analog.axisval[2];
-			if (abs(dx) > 20 | abs(dy) > 20 || (!dx && !dy)){
+			if (abs(dx) > 20 || abs(dy) > 20 || (!dx && !dy)){
 				return false;
 			}
 			*out_x = dx;
