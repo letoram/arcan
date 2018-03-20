@@ -8425,7 +8425,16 @@ static int procimage_histo(lua_State* ctx)
 
 /* generate frequency tables, pack, normalize and impose */
 	int packing = luaL_optnumber(ctx, 3, HIST_MERGE);
+	size_t dst_row = luaL_optnumber(ctx, 4, 0);
+
 	av_pixel* base = (av_pixel*) vobj->vstore->vinf.text.raw;
+	if (dst_row > vobj->vstore->h){
+		arcan_fatal("calcImage:histogram_impose, "
+			"destination vstore row (%zu) need to fit in current height (%zu)\n",
+			dst_row, vobj->vstore->h);
+	}
+	base += dst_row * vobj->vstore->w;
+
 	int lut[4];
 	packing_lut(packing, lut);
 
