@@ -244,7 +244,7 @@ static void push_deferred(arcan_3dmodel* model)
  * Render-loops, Pass control, Initialization
  */
 static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
-	agp_shader_id baseprog, surface_properties props, float* modelview,
+	agp_shader_id baseprog, surface_properties props, float* view,
 	enum agp_mesh_flags flags)
 {
 	assert(vobj);
@@ -252,20 +252,24 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
 	if (props.opa < EPSILON || !src->flags.complete || src->work_count > 0)
 		return;
 
-	float _Alignas(16) wmvm[16];
-	float _Alignas(16) dmatr[16];
-	float _Alignas(16) omatr[16];
+/* build model matrix */
+	float _Alignas(16) scale[16] = {
+		props.scale.x, 0.0, 0.0, 0.0,
+		0.0, props.scale.y, 0.0, 0.0,
+		0.0, 0.0, props.scale.z, 0.0,
+		0.0, 0.0, 0.0,           1.0
+	};
 
-	memcpy(wmvm, modelview, sizeof(float) * 16);
+	float _Alignas(16) orient[16];
+	matr_quatf(props.rotation.quaternion, orient);
 
-/* reposition the current modelview, set it as the current shader data,
- * enable vertex attributes and issue drawcalls */
-	scale_matrix(wmvm, props.scale.x, props.scale.y, props.scale.z);
-	translate_matrix(wmvm, props.position.x, props.position.y, props.position.z);
-	matr_quatf(props.rotation.quaternion, omatr);
+	float _Alignas(16) model[16];
+	multiply_matrix(model, orient, scale);
+	translate_matrix(model, props.position.x, props.position.y, props.position.z);
+	float _Alignas(16) out[16];
+	multiply_matrix(out, view, model);
 
-	multiply_matrix(dmatr, wmvm, omatr);
-	agp_shader_envv(MODELVIEW_MATR, dmatr, sizeof(float) * 16);
+	agp_shader_envv(MODELVIEW_MATR, out, sizeof(float) * 16);
 	agp_shader_envv(OBJ_OPACITY, &props.opa, sizeof(float));
 
 	struct geometry* base = src->geometry;
@@ -295,6 +299,7 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
 				;
 		}
 
+		agp_shader_envv(MODELVIEW_MATR, out, sizeof(float) * 16);
 		agp_submit_mesh(&base->store, flags);
 		base = base->next;
 	}
@@ -481,7 +486,6 @@ arcan_vobject_litem* arcan_3d_refresh(arcan_vobj_id camtag,
 	scale_matrix(matr, dprop.scale.x, dprop.scale.y, dprop.scale.z);
 	matr_quatf(norm_quat(dprop.rotation.quaternion), omatr);
 	multiply_matrix(dmatr, matr, omatr);
-
 	arcan_3dmodel* obj3d = cell->elem->feed.state.ptr;
 
 	if (obj3d->flags.infinite)
