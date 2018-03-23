@@ -262,10 +262,10 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
 
 	float _Alignas(16) orient[16];
 	matr_quatf(props.rotation.quaternion, orient);
-
 	float _Alignas(16) model[16];
-	multiply_matrix(model, orient, scale);
-	translate_matrix(model, props.position.x, props.position.y, props.position.z);
+	translate_matrix(scale, props.position.x, props.position.y, props.position.z);
+	multiply_matrix(model, scale, orient);
+
 	float _Alignas(16) out[16];
 	multiply_matrix(out, view, model);
 
