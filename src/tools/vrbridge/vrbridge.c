@@ -233,6 +233,11 @@ int main(int argc, char** argv)
 		debug_print(0, "vrbridge:setup() - "
 				"no controllers found, sleep/rescan");
 		sleep(5);
+		if (!con.addr->dms){
+			debug_print(0, "vrbridge:setup() - server died while waiting for device");
+			arcan_shmif_drop(&con);
+			return EXIT_FAILURE;
+		}
 	}
 
 /*
