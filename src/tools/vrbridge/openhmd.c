@@ -32,7 +32,6 @@ void openhmd_sample(struct dev_ent* dev, struct vr_limb* limb, unsigned id)
 {
 	struct driver_state* state = dev->state;
 	quat orient;
-	quat norm = {.w = 1};
 
 	while(1){
 		switch(id){
@@ -40,7 +39,7 @@ void openhmd_sample(struct dev_ent* dev, struct vr_limb* limb, unsigned id)
 			ohmd_ctx_update(ohmd);
 			ohmd_device_getf(state->hmd, OHMD_ROTATION_QUAT, orient.xyzw);
 			orient = inv_quat(orient);
-			debug_print(1, "orientation: %f, %f, %f, %f\n",
+			debug_print(1, "orientation: %f, %f, %f, %f",
 				orient.x, orient.y, orient.z, orient.w);
 
 			quat lq = state->last_quat;
@@ -111,21 +110,39 @@ bool openhmd_init(struct dev_ent* ent,
 	pthread_mutex_init(&state->lock, NULL);
 
 /* should likely just sweep unless we explicitly get index set */
-	int devind = 0;
+	long devind = 0;
 	const char(* str);
 	if (arg_lookup(arg, "ohmd_index", 0, &str)){
-		devind = strtoul(str, NULL, 10) % INT_MAX;
+		devind = strtol(str, NULL, 10) % INT_MAX;
 	}
 
-	state->hmd = ohmd_list_open_device(ohmd, devind);
-	if (!state->hmd){
-		free(state);
-		return false;
+	if (devind == -1){
+		debug_print(0, "device sweep requested");
+		for (size_t i = 0; i < nd; i++){
+			state->hmd = ohmd_list_open_device(ohmd, i);
+			if (state->hmd){
+				debug_print(0, "found device at index: %zu", i);
+				break;
+			}
+		}
+		if (!state->hmd){
+			debug_print(0, "sweep over, no device worked");
+			free(state);
+			return false;
+		}
+	}
+	else{
+		state->hmd = ohmd_list_open_device(ohmd, devind);
+		if (!state->hmd){
+			debug_print(0, "failed to open device at index: %d/%d", devind, nd);
+			free(state);
+			return false;
+		}
 	}
 
-	debug_print(0, "vendor:  %s\n", ohmd_list_gets(ohmd, 0, OHMD_VENDOR));
-	debug_print(0, "product: %s\n", ohmd_list_gets(ohmd, 0, OHMD_PRODUCT));
-	debug_print(0, "path:    %s\n\n", ohmd_list_gets(ohmd, 0, OHMD_PATH));
+	debug_print(0, "vendor:  %s", ohmd_list_gets(ohmd, 0, OHMD_VENDOR));
+	debug_print(0, "product: %s", ohmd_list_gets(ohmd, 0, OHMD_PRODUCT));
+	debug_print(0, "path:    %s", ohmd_list_gets(ohmd, 0, OHMD_PATH));
 
 #define geti(X, Y) ohmd_device_geti(state->hmd, X, Y)
 #define getf(X, Y) ohmd_device_getf(state->hmd, X, Y)
