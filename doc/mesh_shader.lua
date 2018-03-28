@@ -1,10 +1,10 @@
 -- mesh_shader
--- @short: Change the active shader for an individual mesh.
--- @inargs: mesh, shaderslot, *shadergroup*
--- @longdescr: Each 3D-model can have a number of meshes associated with it.
--- Each individual mesh may also have a specific shader attached, although the
--- more common case is to use one shader globally for the entire model due to
--- the cost involved in switching shaders too often.
+-- @short: Change the active shader for a submesh of a model
+-- @inargs: mesh, shid, slot
+-- @longdescr: Each 3D-model can have a number of meshes (grouped primitives)
+-- associated with it. Each such mesh can also have a custom set of processing
+-- instructions ("shader"). This function is used to associate a prebuilt
+-- shader with an individual mesh slot of a 3D model.
 -- @group: 3d
 -- @related: build_shader, image_shader, shader_ugroup, shader_uniform
 -- @cfunction: setmeshshader
