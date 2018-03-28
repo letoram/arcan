@@ -384,7 +384,7 @@ enum ARCAN_TARGET_COMMAND {
  * ioevs[0].iv = width,
  * ioevs[1].iv = height,
  * ioevs[2].iv = bitmask hintflags: 0: normal, 1: drag resize,
- *               2: invisible, 4: unfocused, 8: maximized, 16: minimized
+ *               2: invisible, 4: unfocused, 8: maximized, 16: fullscreen
  * ioevs[3].iv = RGB layout (0 RGB, 1 BGR, 2 VRGB, 3 VBGR)
  * ioevs[4].fv = ppcm (pixels per centimeter, square assumed), < 0 ignored.
  *

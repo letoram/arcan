@@ -6,10 +6,16 @@
 -- dimensions. This can be used to notify about current drawing dimensions for
 -- the associated video object, or for special cases where one might want
 -- an explicitly over- or under-sized input buffer.
--- Possible optional *flag* values:
--- TD_HINT_INVISIBLE - invisible, TD_HINT_UNFOCUSED). Hence the default is
--- visible and focused. These can be combined with bit.band(fl1, fl2) or
--- set to no change with TD_HINT_IGNORE.
+-- The possible values for the optional *flag* field are (combine with bit.bor):
+-- TD_HINT_IGNORE - no change to the flag state from last time.
+-- TD_HINT_CONTINUED - resize events are likely to be followed with more,
+-- TD_HINT_UNFOCUSED - no input focus, input events can still arrive but
+-- no visibile indication (e.g. cursor) needs to be shown
+-- TD_HINT_INVISIBLE - not currently visible/used, no need to update/draw
+-- TD_HINT_MAXIMIZED - window is in a 'maximized' state, some UI toolkits
+-- will change their visible behavior if they know that they are in this state.
+-- TD_HINT_FULLSCREEN - window is in a 'fullscreen' state, similar to the
+-- maximized state, some UI toolkits may want this.
 -- If the optional *displaytbl* is set and is a table, the fields 'ppcm' and
 -- 'subpixel_layout' are expected to be present.
 -- If the optional *displaytbl* is set to WORLDID, the display information for
