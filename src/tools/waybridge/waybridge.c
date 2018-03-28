@@ -1170,6 +1170,11 @@ int main(int argc, char* argv[])
  */
 	wl.control = arcan_shmif_open(
 		SEGID_BRIDGE_WAYLAND, SHMIF_ACQUIRE_FATALFAIL, &aarr);
+	if (!wl.control.addr){
+		fprintf(stderr, "Couldn't setup a bridge metadata connection\n");
+		return EXIT_FAILURE;
+	}
+
 	struct arcan_shmif_initial* init;
 	arcan_shmif_initial(&wl.control, &init);
 	wl.init = *init;
