@@ -2489,9 +2489,10 @@ static int setmeshshader(lua_State* ctx)
 	LUA_TRACE("mesh_shader");
 
 	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
-	agp_shader_id shid = luaL_checknumber(ctx, 2);
-	int slot = abs ((int)luaL_checknumber(ctx, 3) );
-	id |= (uint32_t) luaL_optnumber(ctx, 4, 0);
+	agp_shader_id shid = lua_type(ctx, 2) == LUA_TSTRING ?
+		agp_shader_lookup(luaL_checkstring(ctx, 2)) : luaL_checknumber(ctx, 2);
+
+	unsigned slot = abs ((int)luaL_checknumber(ctx, 3) );
 
 	arcan_3d_meshshader(id, shid, slot);
 
