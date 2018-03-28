@@ -130,19 +130,10 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 		disp[i].nopass = in_config("video_no_fdpass", 0, NULL, config_tag);
 	}
 
-/*
- * temporary measure for generating the guid, just based on title as
- * we have an initial order problem with _applname not necessarily accesible
- */
-	unsigned long h = 5381;
-	const char* str = title;
-	for (; *str; str++)
-		h = (h << 5) + h + *str;
-
 	struct arg_arr* shmarg;
 	disp[0].conn = arcan_shmif_open_ext(0, &shmarg, (struct shmif_open_ext){
-		.type = SEGID_LWA, .title = title, .guid = {h, 0}
-	}, sizeof(struct shmif_open_ext));
+		.type = SEGID_LWA, .title = title,}, sizeof(struct shmif_open_ext)
+	);
 
 	if (!disp[0].conn.addr){
 		arcan_warning("lwa_video_init(), couldn't connect. Check ARCAN_CONNPATH and"
