@@ -172,6 +172,7 @@ add_sanitizers(arcan_shmif_int arcan_shmif arcan_shmif_ext arcan_shmif_intext
 if (SHMIF_TUI)
 # if there's an accelerated GPU platform built, also build a TUI that can use
 # the shmif_ext libraries for GPU access.
+	set(TUI_INCLUDE_DIRS /opt/local/include)
 	if (SHMIF_TUI_ACCEL)
 		set(TUI_LIBRARIES arcan_shmif arcan_shmif_ext)
 	else()
@@ -184,6 +185,7 @@ if (SHMIF_TUI)
 		if (HARFBUZZ_FOUND)
 			amsg("${CL_YEL}shmif-tui : Harfbuzz found, enabling shaper")
 			list(APPEND TUI_LIBRARIES ${HARFBUZZ_LIBRARIES})
+			list(APPEND TUI_INCLUDE_DIRS ${HARFBUZZ_INCLUDE_DIRS})
 			list(APPEND TUI_DEFINITIONS WITH_HARFBUZZ)
 		else()
 			amsg("${CL_YEL}shmif-tui : Harfbuzz not found, shaping disabled")
@@ -208,7 +210,7 @@ if (SHMIF_TUI)
 			target_compile_definitions(arcan_tuiext PRIVATE ${TUI_DEFINITIONS})
 			set(TARGET_LIST ${TARGET_LIST} arcan_tuiext)
 			target_include_directories(arcan_tuiext PRIVATE
-				${INCLUDE_DIRS} ${ASD}/frameserver ${ASD}/engine ${ASD}/shmif)
+				${INCLUDE_DIRS} ${TUI_INCLUDE_DIRS} ${ASD}/frameserver ${ASD}/engine ${ASD}/shmif)
 # Due to the accelerated- GPU flags, we also NEED to build a shared library
 # version as this likely pulls in libraries that we can't deal with statically
 		else()
@@ -225,7 +227,7 @@ if (SHMIF_TUI)
 
 	target_compile_definitions(arcan_tui PRIVATE ${TUI_DEFINITIONS})
 	target_include_directories(arcan_tui PRIVATE
-		${INCLUDE_DIRS} ${ASD}/frameserver ${ASD}/shmif ${ASD}/engine)
+		${INCLUDE_DIRS} ${TUI_INCLUDE_DIRS} ${ASD}/frameserver ${ASD}/shmif ${ASD}/engine)
 endif() # _TUI
 
 target_link_libraries(arcan_shmif PRIVATE ${STDLIB})
