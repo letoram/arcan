@@ -16,6 +16,11 @@ endfunction()
 PROJECT(arcan)
 cmake_minimum_required(VERSION 3.0 FATAL_ERROR)
 
+SET(CMAKE_SKIP_BUILD_RPATH  FALSE)
+SET(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
+SET(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
+SET(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+
 set(EXTERNAL_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../external)
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake/modules)
 
@@ -142,8 +147,9 @@ amsg("${CL_YEL}\t-DDISABLE_JIT=${CL_GRN}[Off|On]${CL_RST} - Don't Link with luaj
 amsg("${CL_YEL}\t-DNO_FSRV=${CL_GRN}[Off|On]${CL_RST} - Build Arcan without support for frameservers")
 amsg("${CL_YEL}\t-DSHMIF_TUI_ACCEL=${CL_GRN}[Off|On]${CL_RST} - Build Tui with GPU support (ARCAN_ARG=accel=1)")
 amsg("")
-amsg("${CL_WHT}Install Overrides:${CL_RST}")
-amsg("${CL_YEL}\t-D(APPL_DEST, RES_DEST, APIMAN_DEST, MAN_DEST)${CL_RST}")
+amsg("${CL_WHT}Install / Autodetection Overrides:${CL_RST}")
+amsg("${CL_YEL}\t-D(DISABLE_FSRV_ (encode, decode, net, remoting, terminal, game)=ON ${CL_RST}")
+amsg("${CL_YEL}\t-D(APPL_DEST, RES_DEST, APIMAN_DEST, MAN_DEST)=/some/path ${CL_RST}")
 amsg("")
 
 # no other audio platforms supported currently

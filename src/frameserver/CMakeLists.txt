@@ -23,18 +23,36 @@ endif()
 
 set(FSRV_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 set(FSRV_ROOT ${FSRV_ROOT} PARENT_SCOPE)
-
 set(FRAMESERVER_MODESTRING " ")
+set(ARCHETYPES)
 
-set(ARCHETYPES
-	terminal
-	net
-	game
-	decode
-	encode
-	remoting
-	avfeed
-)
+if (NOT DISABLE_FSRV_TERMINAL)
+	list(APPEND ARCHETYPES terminal)
+endif()
+
+if (NOT DISABLE_FSRV_GAME)
+	list(APPEND ARCHETYPES game)
+endif()
+
+if (NOT DISABLE_FSRV_NET)
+	list(APPEND ARCHETYPES net)
+endif()
+
+if (NOT DISABLE_FSRV_DECODE)
+	list(APPEND ARCHETYPES decode)
+endif()
+
+if (NOT DISABLE_FSRV_ENCODE)
+	list(APPEND ARCHETYPES encode)
+endif()
+
+if (NOT DISABLE_FSRV_REMOTING)
+	list(APPEND ARCHETYPES remoting)
+endif()
+
+if (NOT DISABLE_FSRV_AVFEED)
+	list(APPEND ARCHETYPES avfeed)
+endif()
 
 foreach(archetype ${ARCHETYPES})
 	add_subdirectory(${archetype})
