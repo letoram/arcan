@@ -32,8 +32,8 @@
  THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef HAVE_ARCAN_SHMIF_TUI
-#define HAVE_ARCAN_SHMIF_TUI
+#ifndef HAVE_ARCAN_TUI
+#define HAVE_ARCAN_TUI
 
 /*
  * [ABOUT]
@@ -158,6 +158,15 @@
  *  reset_flags(ctx, flags)
  *  defattr(ctx, attr)
  *
+ * Dynamic Loading:
+ *
+ * For the cases where you want dynamic loading of the TUI functions,
+ * define ARCAN_TUI_DYNAMIC before including the header file and the
+ * normal external function entry points will be replaced with same-
+ * name static scoped function pointers. In order to initialize them,
+ * run the arcan_tui_dynload in the same compilation unit with a
+ * loader function provided as a function pointer argument.
+ *
  * [MISSING/PENDING FEATURES]
  *  [ ] Simple audio
  *  [ ] Announce binary- file input and output- capabilities
@@ -205,7 +214,55 @@ struct tui_settings {
 };
 
 struct tui_context;
-struct tui_cell;
+
+struct tui_screen_attr {
+	union {
+		uint8_t fc[3];
+		struct {
+			uint8_t fr;
+			uint8_t fg;
+			uint8_t fb;
+		};
+	};
+	union {
+		uint8_t bc[3];
+		struct {
+			uint8_t br; /* background red */
+			uint8_t bg; /* background green */
+			uint8_t bb; /* background blue */
+		};
+	};
+	unsigned int bold : 1; /* bold character */
+	unsigned int underline : 1; /* underlined character */
+	unsigned int italic : 1;
+	unsigned int inverse : 1; /* inverse colors */
+	unsigned int protect : 1; /* cannot be erased */
+	unsigned int blink : 1; /* blinking character */
+	unsigned int strikethrough : 1;
+	unsigned int shape_break : 1; /* reset shaping and align to grid */
+
+/*  > 127: cell is used for a custom draw-call, will be used with -127
+ *         subtracted in custom draw callback. The actual ch field can
+ *         thus be used for storing additional drawing hints.
+ * 0..127: act as a user-supplied type-id, will be drawn as normal but
+ *         can be queried for in selection buffers etc. */
+	uint8_t custom_id;
+};
+
+struct tui_cell {
+/* drawing properties */
+	struct tui_screen_attr attr;
+
+/* used for substitutions */
+	uint32_t ch, draw_ch;
+
+/* resolved after shaping has been applied */
+	uint32_t real_x;
+	uint8_t cell_w;
+
+/* cycling counter for when the cell was last updated */
+	uint8_t fstamp;
+};
 
 /*
  * used with the 'query_label' callback.
@@ -459,6 +516,26 @@ struct tui_cbcfg {
  */
 };
 
+enum tui_process_errc {
+	TUI_ERRC_OK = 0,
+	TUI_ERRC_BAD_ARG = -1,
+	TUI_ERRC_BAD_FD = -2,
+	TUI_ERRC_BAD_CTX = -3,
+};
+
+struct tui_region {
+	int dx, dy;
+	size_t x, y;
+	size_t w, h;
+};
+
+struct tui_process_res {
+	uint32_t ok;
+	uint32_t bad;
+	int errc;
+};
+#ifndef ARCAN_TUI_DYNAMIC
+
 /*
  * Grab the default settings for a reference connection or a previously
  * allocated context. If both [conn] and [ref] are NULL, return some safe
@@ -490,12 +567,6 @@ struct tui_context* arcan_tui_setup(arcan_tui_conn* con,
  */
 void arcan_tui_destroy(struct tui_context*, const char* message);
 
-enum tui_process_errc {
-	TUI_ERRC_OK = 0,
-	TUI_ERRC_BAD_ARG = -1,
-	TUI_ERRC_BAD_FD = -2,
-	TUI_ERRC_BAD_CTX = -3,
-};
 /*
  * callback driven approach with custom I/O multiplexation
  *
@@ -509,11 +580,6 @@ enum tui_process_errc {
  *  TUI_ERRC_BAD_FD - then the .bad field will show bad descriptors
  *  TUI_ERRC_BAD_CTX - then the .ok field will show bad contexts
  */
-struct tui_process_res {
-	uint32_t ok;
-	uint32_t bad;
-	int errc;
-};
 struct tui_process_res arcan_tui_process(
 	struct tui_context** contexts, size_t n_contexts,
 	int* fdset, size_t fdset_sz, int timeout);
@@ -539,55 +605,6 @@ void arcan_tui_invalidate(struct tui_context*);
  * returned pointer is undefined between calls to process/refresh
  */
 arcan_tui_conn* arcan_tui_acon(struct tui_context*);
-
-struct tui_screen_attr {
-	union {
-		uint8_t fc[3];
-		struct {
-			uint8_t fr;
-			uint8_t fg;
-			uint8_t fb;
-		};
-	};
-	union {
-		uint8_t bc[3];
-		struct {
-			uint8_t br; /* background red */
-			uint8_t bg; /* background green */
-			uint8_t bb; /* background blue */
-		};
-	};
-	unsigned int bold : 1; /* bold character */
-	unsigned int underline : 1; /* underlined character */
-	unsigned int italic : 1;
-	unsigned int inverse : 1; /* inverse colors */
-	unsigned int protect : 1; /* cannot be erased */
-	unsigned int blink : 1; /* blinking character */
-	unsigned int strikethrough : 1;
-	unsigned int shape_break : 1; /* reset shaping and align to grid */
-
-/*  > 127: cell is used for a custom draw-call, will be used with -127
- *         subtracted in custom draw callback. The actual ch field can
- *         thus be used for storing additional drawing hints.
- * 0..127: act as a user-supplied type-id, will be drawn as normal but
- *         can be queried for in selection buffers etc. */
-	uint8_t custom_id;
-};
-
-struct tui_cell {
-/* drawing properties */
-	struct tui_screen_attr attr;
-
-/* used for substitutions */
-	uint32_t ch, draw_ch;
-
-/* resolved after shaping has been applied */
-	uint32_t real_x;
-	uint8_t cell_w;
-
-/* cycling counter for when the cell was last updated */
-	uint8_t fstamp;
-};
 
 /*
  * Open a new connection to a TUI- capable display and return an opaque
@@ -726,22 +743,18 @@ void arcan_tui_cursorpos(struct tui_context*, size_t* x, size_t* y);
  *
  * completion is called (line == NULL if error or user cancelled, otherwise
  * callee assumes responsibility of heap-allocated line).
- *
- * hints is
- */
+
 struct tui_completions {
 	size_t len;
 	char** cvec;
 };
 
-/*
 void arcan_tui_readline(struct tui_context*,
 	void(*completion)(struct tui_context*, const char* line),
 	size_t n_lines,
 	size_t max
 );
- */
-/* hints, freehints, completion */
+*/
 
 /*
  * Fill out rgb[] with the current values of the specified color group.
@@ -827,11 +840,6 @@ void arcan_tui_reset_all_tabstops(struct tui_context*);
  * the next screen refresh call. After it has been used, the dx and dy
  * fields will be set to 0.
  */
-struct tui_region {
-	int dx, dy;
-	size_t x, y;
-	size_t w, h;
-};
 void arcan_tui_scrollhint(
 	struct tui_context*, size_t n_regions, struct tui_region*);
 
@@ -859,4 +867,199 @@ void arcan_tui_dimensions(struct tui_context*, size_t* rows, size_t* cols);
 void arcan_tui_defattr(struct tui_context*, struct tui_screen_attr*);
 void arcan_tui_refinc(struct tui_context*);
 void arcan_tui_refdec(struct tui_context*);
+
+#else
+typedef struct tui_settings(* PTUIDEFAULTS)(arcan_tui_conn*, struct tui_context*);
+typedef struct tui_context*(* PTUISETUP)(
+	arcan_tui_conn*, const struct tui_settings*, const struct tui_cbcfg*, size_t, ...);
+typedef void (* PTUIDESTROY)(struct tui_context*, const char* message);
+typedef struct tui_process_res (* PTUIPROCESS)(
+struct tui_context**, size_t, int*, size_t, int);
+typedef int (* PTUIREFRESH)(struct tui_context*);
+typedef void (* PTUIINVALIDATE)(struct tui_context*);
+typedef arcan_tui_conn* (* PTUIACON)(struct tui_context*);
+typedef arcan_tui_conn* (* PTUIOPENDISPLAY)(const char*, const char*);
+typedef bool (* PTUICOPY)(struct tui_context*, const char*);
+typedef void (* PTUIIDENT)(struct tui_context*, const char*);
+typedef struct tui_cell (* PTUIGETXY)(struct tui_context*, size_t, size_t, bool);
+typedef void (* PTUIREQSUB)(struct tui_context*, unsigned, uint16_t);
+typedef void (* PTUIWNDHINT)(struct tui_context*, struct tui_context*, int, int, int);
+typedef int (* PTUIALLOCSCR)(struct tui_context*);
+typedef bool (* PTUISWSCR)(struct tui_context*, unsigned);
+typedef bool (* PTUIDELSCR)(struct tui_context*, unsigned);
+typedef uint32_t (* PTUISCREENS)(struct tui_context*);
+typedef void (* PTUIWRITE)(struct tui_context*, uint32_t, struct tui_screen_attr*);
+typedef bool (* PTUIWRITEU8)(struct tui_context*, uint8_t*, size_t, struct tui_screen_attr*);
+typedef void (* PTUICURSORPOS)(struct tui_context*, size_t*, size_t*);
+typedef void (* PTUIGETCOLOR)(struct tui_context* tui, int, uint8_t*);
+typedef void (* PTUISETCOLOR)(struct tui_context* tui, int, uint8_t*);
+typedef void (* PTUIRESET)(struct tui_context*);
+typedef void (* PTUISETFLAGS)(struct tui_context*, int);
+typedef void (* PTUIRESETFLAGS)(struct tui_context*, int);
+typedef void (* PTUISETTABSTOP)(struct tui_context*);
+typedef void (* PTUIINSERTLINES)(struct tui_context*, size_t);
+typedef void (* PTUINEWLINE)(struct tui_context*);
+typedef void (* PTUIDELETELINES)(struct tui_context*, size_t);
+typedef void (* PTUIINSERTCHARS)(struct tui_context*, size_t);
+typedef void (* PTUIDELETECHARS)(struct tui_context*, size_t);
+typedef void (* PTUITABRIGHT)(struct tui_context*, size_t);
+typedef void (* PTUITABLEFT)(struct tui_context*, size_t);
+typedef void (* PTUISCROLLUP)(struct tui_context*, size_t);
+typedef void (* PTUISCROLLDOWN)(struct tui_context*, size_t);
+typedef void (* PTUIRESETTABSTOP)(struct tui_context*);
+typedef void (* PTUIRESETALLTABSTOPS)(struct tui_context*);
+typedef void (* PTUISCROLLHINT)(struct tui_context*, size_t, struct tui_region*);
+typedef void (* PTUIMOVETO)(struct tui_context*, size_t, size_t);
+typedef void (* PTUIMOVEUP)(struct tui_context*, size_t, bool);
+typedef void (* PTUIMOVEDOWN)(struct tui_context*, size_t, bool);
+typedef void (* PTUIMOVELEFT)(struct tui_context*, size_t);
+typedef void (* PTUIMOVERIGHT)(struct tui_context*, size_t);
+typedef void (* PTUIMOVELINEEND)(struct tui_context*);
+typedef void (* PTUIMOVELINEHOME)(struct tui_context*);
+typedef void (* PTUIDIMENSIONS)(struct tui_context*, size_t*, size_t*);
+typedef void (* PTUIDEFATTR)(struct tui_context*, struct tui_screen_attr*);
+typedef void (* PTUIREFINC)(struct tui_context*);
+typedef void (* PTUIREFDEC)(struct tui_context*);
+typedef int (* PTUISETMARGINS)(struct tui_context*, size_t, size_t);
+typedef void (* PTUIERASESCREEN)(struct tui_context*, bool);
+typedef void (* PTUIREGION)(struct tui_context*, size_t, size_t, size_t, size_t, bool);
+typedef void (* PTUIERASESB)(struct tui_context*);
+typedef void (* PTUIERASECURSORTOSCR)(struct tui_context*, bool);
+typedef void (* PTUIERASESCRTOCURSOR)(struct tui_context*, bool);
+typedef void (* PTUIERASETOCURSOR)(struct tui_context*, bool);
+typedef void (* PTUIERASECURSORTOEND)(struct tui_context*, bool);
+typedef void (* PTUIERASEHOMETOCURSOR)(struct tui_context*, bool);
+typedef void (* PTUIERASECURRENTLINE)(struct tui_context*, bool);
+typedef void (* PTUIERASECHARS)(struct tui_context*, size_t);
+typedef void (* PTUIERASEREGION)(struct tui_context*, size_t, size_t, size_t, size_t, bool);
+
+static PTUIDEFAULTS arcan_tui_defaults;
+static PTUISETUP arcan_tui_setup;
+static PTUIDESTROY arcan_tui_destroy;
+static PTUIPROCESS arcan_tui_process;
+static PTUIREFRESH arcan_tui_refresh;
+static PTUIINVALIDATE arcan_tui_invalidate;
+static PTUIACON arcan_tui_acon;
+static PTUIOPENDISPLAY arcan_tui_open_display;
+static PTUICOPY arcan_tui_copy;
+static PTUIIDENT arcan_tui_ident;
+static PTUIGETXY arcan_tui_getxy;
+static PTUIREQSUB arcan_tui_request_subwnd;
+static PTUIWNDHINT arcan_tui_wndhint;
+static PTUIALLOCSCR arcan_tui_alloc_screen;
+static PTUISWSCR arcan_tui_switch_screen;
+static PTUIDELSCR arcan_tui_delete_screen;
+static PTUISCREENS arcan_tui_screens;
+static PTUIWRITE arcan_tui_write;
+static PTUIWRITEU8 arcan_tui_writeu8;
+static PTUICURSORPOS arcan_tui_cursorpos;
+static PTUIGETCOLOR arcan_tui_get_color;
+static PTUISETCOLOR arcan_tui_set_color;
+static PTUIRESET arcan_tui_reset;
+static PTUISETFLAGS arcan_tui_set_flags;
+static PTUIRESETFLAGS arcan_tui_reset_flags;
+static PTUISETTABSTOP arcan_tui_set_tabstop;
+static PTUIINSERTLINES arcan_tui_insert_lines;
+static PTUINEWLINE arcan_tui_newline;
+static PTUIDELETELINES arcan_tui_delete_lines;
+static PTUIINSERTCHARS arcan_tui_insert_chars;
+static PTUIDELETECHARS arcan_tui_delete_chars;
+static PTUITABRIGHT arcan_tui_tab_right;
+static PTUITABLEFT arcan_tui_tab_left;
+static PTUISCROLLUP arcan_tui_scroll_up;
+static PTUISCROLLDOWN arcan_tui_scroll_down;
+static PTUIRESETTABSTOP arcan_tui_reset_tabstop;
+static PTUIRESETALLTABSTOPS arcan_tui_reset_all_tabstops;
+static PTUISCROLLHINT arcan_tui_scrollhint;
+static PTUIMOVETO arcan_tui_move_to;
+static PTUIMOVEUP arcan_tui_move_up;
+static PTUIMOVEDOWN arcan_tui_move_down;
+static PTUIMOVELEFT arcan_tui_move_left;
+static PTUIMOVERIGHT arcan_tui_move_right;
+static PTUIMOVELINEEND arcan_tui_move_line_end;
+static PTUIMOVELINEHOME arcan_tui_move_line_home;
+static PTUIDIMENSIONS arcan_tui_dimensions;
+static PTUIDEFATTR arcan_tui_defattr;
+static PTUIREFINC arcan_tui_refinc;
+static PTUIREFDEC arcan_tui_refdec;
+static PTUISETMARGINS arcan_tui_set_margins;
+static PTUIERASESCREEN arcan_tui_erase_screen;
+static PTUIERASEREGION arcan_tui_erase_region;
+static PTUIERASESB arcan_tui_erase_sb;
+static PTUIERASECURSORTOSCR arcan_tui_erase_cursor_to_screen;
+static PTUIERASESCRTOCURSOR arcan_tui_erase_screen_to_cursor;
+static PTUIERASECURSORTOEND arcan_tui_erase_cursor_to_end;
+static PTUIERASEHOMETOCURSOR arcan_tui_erase_home_to_cursor;
+static PTUIERASECURRENTLINE arcan_tui_erase_current_line;
+static PTUIERASECHARS arcan_tui_erase_chars;
+
+/* dynamic loading function */
+static bool arcan_tui_dynload(void*(*lookup)(void*, const char*), void* tag)
+{
+#define M(TYPE, SYM) if (! (SYM = (TYPE) lookup(tag, #SYM)) ) return false
+M(PTUIDEFAULTS,arcan_tui_defaults);
+M(PTUIDESTROY,arcan_tui_destroy);
+M(PTUISETUP,arcan_tui_setup);
+M(PTUIDESTROY,arcan_tui_destroy);
+M(PTUIPROCESS,arcan_tui_process);
+M(PTUIREFRESH,arcan_tui_refresh);
+M(PTUIINVALIDATE,arcan_tui_invalidate);
+M(PTUIACON,arcan_tui_acon);
+M(PTUIOPENDISPLAY,arcan_tui_open_display);
+M(PTUICOPY,arcan_tui_copy);
+M(PTUIIDENT,arcan_tui_ident);
+M(PTUIGETXY,arcan_tui_getxy);
+M(PTUIREQSUB,arcan_tui_request_subwnd);
+M(PTUIWNDHINT,arcan_tui_wndhint);
+M(PTUIALLOCSCR,arcan_tui_alloc_screen);
+M(PTUISWSCR,arcan_tui_switch_screen);
+M(PTUIDELSCR,arcan_tui_delete_screen);
+M(PTUISCREENS,arcan_tui_screens);
+M(PTUIWRITE,arcan_tui_write);
+M(PTUIWRITEU8,arcan_tui_writeu8);
+M(PTUICURSORPOS,arcan_tui_cursorpos);
+M(PTUIGETCOLOR,arcan_tui_get_color);
+M(PTUISETCOLOR,arcan_tui_set_color);
+M(PTUIRESET,arcan_tui_reset);
+M(PTUISETFLAGS,arcan_tui_set_flags);
+M(PTUIRESETFLAGS,arcan_tui_reset_flags);
+M(PTUISETTABSTOP,arcan_tui_set_tabstop);
+M(PTUIINSERTLINES,arcan_tui_insert_lines);
+M(PTUINEWLINE,arcan_tui_newline);
+M(PTUIDELETELINES,arcan_tui_delete_lines);
+M(PTUIINSERTCHARS,arcan_tui_insert_chars);
+M(PTUIDELETECHARS,arcan_tui_delete_chars);
+M(PTUITABRIGHT,arcan_tui_tab_right);
+M(PTUITABLEFT,arcan_tui_tab_left);
+M(PTUISCROLLUP,arcan_tui_scroll_up);
+M(PTUISCROLLDOWN,arcan_tui_scroll_down);
+M(PTUIRESETTABSTOP,arcan_tui_reset_tabstop);
+M(PTUIRESETALLTABSTOPS,arcan_tui_reset_all_tabstops);
+M(PTUISCROLLHINT,arcan_tui_scrollhint);
+M(PTUIMOVETO,arcan_tui_move_to);
+M(PTUIMOVEUP,arcan_tui_move_up);
+M(PTUIMOVEDOWN,arcan_tui_move_down);
+M(PTUIMOVELEFT,arcan_tui_move_left);
+M(PTUIMOVERIGHT,arcan_tui_move_right);
+M(PTUIMOVELINEEND,arcan_tui_move_line_end);
+M(PTUIMOVELINEHOME,arcan_tui_move_line_home);
+M(PTUIDIMENSIONS,arcan_tui_dimensions);
+M(PTUIDEFATTR,arcan_tui_defattr);
+M(PTUIREFINC,arcan_tui_refinc);
+M(PTUIREFDEC,arcan_tui_refdec);
+M(PTUISETMARGINS,arcan_tui_set_margins);
+M(PTUIERASESCREEN,arcan_tui_erase_screen);
+M(PTUIERASEREGION,arcan_tui_erase_region);
+M(PTUIERASESB,arcan_tui_erase_sb);
+M(PTUIERASECURSORTOSCR,arcan_tui_erase_cursor_to_screen);
+M(PTUIERASESCRTOCURSOR,arcan_tui_erase_screen_to_cursor);
+M(PTUIERASECURSORTOEND,arcan_tui_erase_cursor_to_end);
+M(PTUIERASEHOMETOCURSOR,arcan_tui_erase_home_to_cursor);
+M(PTUIERASECURRENTLINE,arcan_tui_erase_current_line);
+M(PTUIERASECHARS,arcan_tui_erase_chars);
+#undef M
+
+	return true;
+}
+#endif
 #endif
