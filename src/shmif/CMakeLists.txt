@@ -157,6 +157,10 @@ set(TARGET_LIST
 	arcan_shmif_server
 )
 
+if (NOT SHMIF_DISABLE_DEBUGIF)
+	list(APPEND SHMIF_SOURCES ${ASD}/shmif/arcan_shmif_debugif.c)
+endif()
+
 add_library(arcan_shmif_int STATIC ${SHMIF_SOURCES} ${SHMIF_PLATFORM})
 add_library(arcan_shmif SHARED ${SHMIF_SOURCES} ${SHMIF_PLATFORM})
 add_library(arcan_shmif_ext SHARED ${SHMIF_EXT_SOURCES})
@@ -165,6 +169,11 @@ add_library(arcan_shmif_server SHARED ${SHMIF_SERVER_SOURCES} ${SHMIF_PLATFORM})
 
 add_sanitizers(arcan_shmif_int arcan_shmif arcan_shmif_ext arcan_shmif_intext
 	arcan_shmif_server)
+
+if (NOT SHMIF_DISABLE_DEBUGIF)
+	target_compile_definitions(arcan_shmif PRIVATE SHMIF_DEBUG_IF)
+	target_compile_definitions(arcan_shmif_int PRIVATE SHMIF_DEBUG_IF)
+endif()
 
 # somewhat messy, if the engine is building a static freetype version we should
 # use that one and provide a tui to match, but we should also try and provide a

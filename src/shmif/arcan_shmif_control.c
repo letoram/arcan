@@ -267,6 +267,10 @@ static void fd_event(struct arcan_shmif_cont* c, struct arcan_event* dst)
 	c->priv->pev.consumed = true;
 }
 
+#ifdef SHMIF_DEBUG_IF
+#include "arcan_shmif_debugif.h"
+#endif
+
 /*
  * reset pending- state tracking
  */
@@ -285,6 +289,18 @@ static void consume(struct arcan_shmif_cont* c)
  * sampling
  */
 #ifdef SHMIF_DEBUG_IF
+		if (c->priv->pev.gotev &&
+			c->priv->pev.ev.category == EVENT_TARGET &&
+			c->priv->pev.ev.tgt.kind == TARGET_COMMAND_NEWSEGMENT &&
+			c->priv->pev.ev.tgt.ioevs[2].iv == SEGID_DEBUG){
+			struct arcan_shmif_cont pcont = arcan_shmif_acquire(c,NULL,SEGID_DEBUG,0);
+			if (pcont.addr){
+				if (!arcan_shmif_debugint_spawn(&pcont)){
+					arcan_shmif_drop(&pcont);
+				}
+				return;
+			}
+		}
 #endif
 
 		close(c->priv->pev.fd);
