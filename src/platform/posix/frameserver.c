@@ -8,6 +8,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stddef.h>
 #include <inttypes.h>
 #include <stdio.h>
 #include <time.h>
@@ -715,8 +716,8 @@ static size_t fsrv_protosize(arcan_frameserver* ctx,
 	}
 
 	tot += sizeof(struct arcan_shmif_ofstbl);
-	if (tot % sizeof(struct arcan_shmif_ofstbl) != 0)
-		tot += tot - (tot % sizeof(uintptr_t));
+	if (tot % sizeof(max_align_t) != 0)
+		tot += tot - (tot % sizeof(max_align_t));
 
 /*
  * Complicated, as there might be a number of different displays with
@@ -748,8 +749,9 @@ static size_t fsrv_protosize(arcan_frameserver* ctx,
 		dofs->ofs_ramp = dofs->sz_ramp = 0;
 	};
 
-	if (tot % sizeof(uintptr_t) != 0)
-		tot += tot - (tot % sizeof(uintptr_t));
+	if (tot % sizeof(max_align_t) != 0)
+		tot += tot - (tot % sizeof(max_align_t));
+
 	if (proto & SHMIF_META_HDRF16){
 /* nothing now, possibly reserved for tone-mapping */
 	}
@@ -770,8 +772,9 @@ static size_t fsrv_protosize(arcan_frameserver* ctx,
 	else
 		dofs->sz_vr = dofs->ofs_vr = 0;
 
-	if (tot % sizeof(uintptr_t) != 0)
-		tot += tot - (tot % sizeof(uintptr_t));
+	if (tot % sizeof(max_align_t) != 0)
+		tot += tot - (tot % sizeof(max_align_t));
+
 	return tot;
 }
 

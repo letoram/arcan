@@ -1,7 +1,7 @@
 /*
  Arcan Shared Memory Interface
 
- Copyright (c) 2012-2017, Bjorn Stahl
+ Copyright (c) 2012-2018, Bjorn Stahl
  All rights reserved.
 
  Redistribution and use in source and binary forms,
@@ -978,7 +978,7 @@ struct arcan_shmif_page {
  * look inside engine/arcan_frameserver.c for setproto, and in platform for
  * the shmemop.c implementation.
  */
-	uintptr_t adata[];
+	_Alignas(16) uintptr_t adata[];
 };
 #endif
 #endif
