@@ -217,7 +217,10 @@ static void spawn_guardthread(struct arcan_shmif_cont* d)
 	pthread_mutex_init(&hgs->guard.synch, NULL);
 
 	hgs->guard.active = true;
-	pthread_create(&pth, &pthattr, guard_thread, hgs);
+	if (-1 == pthread_create(&pth, &pthattr, guard_thread, hgs)){
+		hgs->guard.active = false;
+	}
+
 	pthread_detach(pth);
 }
 
@@ -279,8 +282,20 @@ static void consume(struct arcan_shmif_cont* c)
 	if (!c->priv->pev.consumed)
 		return;
 
-	if (BADFD != c->priv->pev.fd){
+		LOG("acquire: %d, %d, %d, %d\n",
+			c->priv->pev.fd,
+			c->priv->pev.ev.category,
+			c->priv->pev.ev.tgt.kind,
+			c->priv->pev.ev.tgt.ioevs[2].iv
+		);
 
+	if (BADFD != c->priv->pev.fd){
+		close(c->priv->pev.fd);
+		LOG("(shmif) closing unhandled/ignored/dup:ed state descriptor (%d)\n",
+			c->priv->pev.fd);
+	}
+
+	if (BADFD != c->priv->pseg.epipe){
 /*
  * Special case, the parent explicitly pushed a debug segment that was not
  * mapped / accepted by the client. Then we take it upon ourselves to add
@@ -293,6 +308,7 @@ static void consume(struct arcan_shmif_cont* c)
 			c->priv->pev.ev.category == EVENT_TARGET &&
 			c->priv->pev.ev.tgt.kind == TARGET_COMMAND_NEWSEGMENT &&
 			c->priv->pev.ev.tgt.ioevs[2].iv == SEGID_DEBUG){
+			LOG("debug subsegment received\n");
 			struct arcan_shmif_cont pcont = arcan_shmif_acquire(c,NULL,SEGID_DEBUG,0);
 			if (pcont.addr){
 				if (!arcan_shmif_debugint_spawn(&pcont)){
@@ -303,12 +319,6 @@ static void consume(struct arcan_shmif_cont* c)
 		}
 #endif
 
-		close(c->priv->pev.fd);
-		LOG("(shmif) closing unhandled/ignored/dup:ed state descriptor (%d)\n",
-			c->priv->pev.fd);
-	}
-
-	if (BADFD != c->priv->pseg.epipe){
 		close(c->priv->pseg.epipe);
 		c->priv->pseg.epipe = BADFD;
 		LOG("(shmif) closing unhandled / ignored subsegment descriptor\n");
@@ -667,6 +677,7 @@ checkfd:
 			case TARGET_COMMAND_NEWSEGMENT:
 				LOG("(shmif) got descriptor transfer related event\n");
 				priv->pev.gotev = true;
+				priv->pev.ev = *dst;
 				goto checkfd;
 			default:
 			break;
