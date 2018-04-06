@@ -363,6 +363,8 @@ static void dump_help()
 		"   key   \t   value   \t   description\n"
 		"---------\t-----------\t-----------------\n"
 		" file    \t path      \t try to open file path for playback \n"
+		" pos     \t 0..1      \t set the relative starting position \n"
+		" noaudio \t           \t disable the audio output entirely \n"
 		" stream  \t url       \t attempt to open URL for streaming input \n"
 		" capture \t           \t try to open a capture device\n"
 		" device  \t number    \t find capture device with specific index\n"
@@ -386,7 +388,6 @@ static void seek_relative(int seconds)
 	time_v += seconds;
 	time_v = time_v > 0 ? time_v : 0;
 
-//	libvlc_media_player_set_position(decctx.player, 0.5);
 	libvlc_media_player_set_time(decctx.player, time_v);
 }
 
@@ -484,6 +485,7 @@ static bool dispatch(arcan_event* ev)
 int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 {
 	libvlc_media_t* media = NULL;
+	float position = 0.0;
 
 	if (!cont || !args){
 		dump_help();
@@ -524,15 +526,27 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 
 /* decode external arguments, map the necessary ones to VLC */
 	const char* val;
+	int pad = 1;
 	char const* vargs[] = {
 		"--no-xlib",
 		"--verbose", "3",
 		"--loop",
 		"--vout", "vmem,none",
 		"--intf", "dummy",
-		"--aout", "amem,none"
+		"--aout", "amem,none",
+		NULL
 	};
-	decctx.vlc = libvlc_new(sizeof(vargs)/sizeof(vargs[0]), vargs);
+
+	if (arg_lookup(args, "noaudio", 0, &val)){
+		for (size_t i = 0; i < COUNT_OF(vargs); i++)
+			if (!vargs[i]){
+				pad--;
+				vargs[i] = "--no-audio";
+				break;
+			}
+	}
+
+	decctx.vlc = libvlc_new(COUNT_OF(vargs)-pad, vargs);
   if (decctx.vlc == NULL){
   	LOG("Couldn't initialize VLC session, giving up.\n");
     return EXIT_FAILURE;
@@ -581,6 +595,12 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		 return EXIT_FAILURE;
 	}
 
+	if (arg_lookup(args, "pos", 0, &val)){
+		float pcand = strtof(val, NULL);
+		if (isnormal(pcand) && pcand > 0.0 && pcand < 1.0)
+			position = pcand;
+	}
+
 /* register media with vlc, hook up local input mapping */
   decctx.player = libvlc_media_player_new_from_media(media);
 /*  libvlc_media_release(media); */
@@ -602,6 +622,9 @@ int afsrv_decode(struct arcan_shmif_cont* cont, struct arg_arr* args)
 		audio_play, /*pause*/ NULL, /*resume*/ NULL, audio_flush, audio_drain,NULL);
 
 	libvlc_media_player_play(decctx.player);
+
+	if (position > 0.0)
+		libvlc_media_player_set_position(decctx.player, position);
 
 /* video playback finish will pull this or seek back to beginning on loop */
 	arcan_event ev;
