@@ -372,7 +372,8 @@ void platform_event_preinit()
 
 void platform_event_init(arcan_evctx* ctx)
 {
-	evctx.kbd.fd = open("/dev/wskbd", O_RDONLY | O_NONBLOCK | O_EXCL);
+	evctx.kbd.fd =
+		platform_device_open("/dev/wskbd", O_RDONLY | O_NONBLOCK | O_EXCL);
 	if (-1 == evctx.kbd.fd){
 		arcan_warning("couldn't open wskbd\n");
 		return;
@@ -405,7 +406,8 @@ void platform_event_init(arcan_evctx* ctx)
 	}
 */
 
-	evctx.mouse.fd = open("/dev/wsmouse", O_RDONLY | O_NONBLOCK);
+	evctx.mouse.fd =
+		platform_device_open("/dev/wsmouse", O_RDONLY | O_NONBLOCK);
 	if (-1 == evctx.mouse.fd){
 		arcan_warning("couldn't open mouse device, %s\n", strerror(errno));
 	}
