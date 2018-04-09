@@ -225,7 +225,25 @@ void platform_event_process(struct arcan_evctx* ctx);
  * on some platforms, this is simply a wrapper around open() - and for others
  * there might be an intermediate process that act as a device proxy.
  */
-int platform_device_open(const char* identifier, int flags, mode_t mode);
+int platform_device_open(const char* identifier, int flags);
+
+/*
+ * detects if any new devices have appeared, and stores a copy into identifier
+ * (caller assumes ownership) that can then be used in conjunction with _open
+ * in order to get a handle to the device.
+ *
+ * -1 : discovery not possible, connection severed
+ *  0 : no new device events
+ *  1 : new input device provided in identifier
+ *  2 : display device event pending (monitor hotplug)
+ */
+int platform_device_poll(char** identifier);
+
+/*
+ * retrieve a handle that can be used to I/O multiplex device discovery
+ * instead of periodically calling _poll and checking the return state.
+ */
+int platform_device_pollfd();
 
 /*
  * run before any other platform function, make sure that we are in a state

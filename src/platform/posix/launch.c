@@ -352,9 +352,15 @@ struct arcan_frameserver* platform_launch_fork(
 		dup2(clsock, STDERR_FILENO+1);
 		arcan_closefrom(STDERR_FILENO+2);
 
-/* split out into a new process group */
+/* split out into a new session */
 		if (setsid() == -1)
 			_exit(EXIT_FAILURE);
+
+		int nfd = open("/dev/null", O_RDONLY);
+		if (-1 != nfd){
+			dup2(nfd, STDIN_FILENO);
+			close(nfd);
+		}
 
 /*
  * we need to mask this signal as when debugging parent process, GDB pushes

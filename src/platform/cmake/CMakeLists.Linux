@@ -47,7 +47,7 @@ endif()
 set(ARCAN_PLATFORM
 	${PLATFORM_PATH}/mem.c
 	${PLATFORM_PATH}/fmt_open.c
-	${PLATFORM_PATH}/open.c
+	${PLATFORM_PATH}/../linux/open.c
 	${PLATFORM_PATH}/glob.c
 	${PLATFORM_PATH}/map_resource.c
 	${PLATFORM_PATH}/resource_io.c

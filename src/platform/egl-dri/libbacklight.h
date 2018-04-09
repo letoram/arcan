@@ -3,7 +3,7 @@
 
 #ifdef __cplusplus
 extern "C" {
-#endif 
+#endif
 
 enum backlight_type {
 	BACKLIGHT_RAW,
@@ -18,14 +18,10 @@ struct backlight {
 	enum backlight_type type;
 };
 
-struct pci_device;
-
-/* 
- * Find and set up a backlight for the given PCI device or card/connector
- * combination. It is valid (and preferred) to provide both sets of information
+/*
+ * Find and set up a backlight for the given card/connector combination.
  */
-struct backlight *backlight_init(struct pci_device *dev, int card,
-				 int connector_type, int connector_type_id);
+struct backlight *backlight_init(int card, int connector_type, int connector_type_id);
 
 /* Free backlight resources */
 void backlight_destroy(struct backlight *backlight);

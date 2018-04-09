@@ -3976,6 +3976,17 @@ static void display_added(lua_State* ctx, arcan_event* ev)
 	LUA_TRACE("");
 }
 
+static void display_changed(lua_State* ctx, arcan_event* ev)
+{
+	if (!grabapplfunction(ctx, "display_state", sizeof("display_state")-1))
+		return;
+
+	LUA_TRACE("_display_state (changed)");
+	lua_pushstring(ctx, "changed");
+	wraperr(ctx, lua_pcall(ctx, 1, 0, 0), "event loop: display state");
+	LUA_TRACE("");
+}
+
 static void display_removed(lua_State* ctx, arcan_event* ev)
 {
 	if (!grabapplfunction(ctx, "display_state", sizeof("display_state")-1))
@@ -4760,6 +4771,10 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		}
 		else if (ev->vid.kind == EVENT_VIDEO_DISPLAY_REMOVED){
 			display_removed(ctx, ev);
+			return;
+		}
+		else if (ev->vid.kind == EVENT_VIDEO_DISPLAY_CHANGED){
+			display_changed(ctx, ev);
 			return;
 		}
 

@@ -5,52 +5,34 @@
  */
 
 /*
- * Notes on hotplug / hotremoval: We are quite adamant in staying away from
- * pulling in a nasty dependency like udev into the platform build, but it
- * seems like the libdrm interface fails to provide a polling mechanism for
- * display changes, and that CRTC scanning is very costly (hundreds of
- * miliseconds)
- *
- * the current concession is that this is something that is up to the appl to
- * decide if it should be exposed or not. As an example, 'durden' has its
- * _cmd fifo mapped to rescan for that purpose. This can further be mapped
- * to evdev- style nodes which some drivers seem to map hotplug.
- *
- * it might also be possible to have the pool- poller dig around in sysfs on
- * a regular timer, not like it has anything else to do. inotify- with timer
- * + sysfs scraper saves us from udev.
- *
- * the second part is that the migration towards the device pool indirection
- * for open should also convey hotplug status so that this is performed external
- * to this platform layer.
- */
-
-/*
  * Notes on further dma-buf improvements / things we are missing right now:
  *
  * [X] Add support for retrieving and sending modifier information to clients
  *     The client will then be responsible for picking a format that match the
  *     set of modifiers - likely done by the platform side of mesa-egl impl.
  *
+ * [ ] Add the corresponding work to the zwp_... dma_buf
+ *
+ * [ ] Implement multi-buffer repack reblit support function, add both here
+ *     and in waybridge so that we can work around the problem with the lack
+ *     of shader 'variants' to deal with all the different ugly sampler fmts.
+ *
  * [ ] Rework platform functions to accept sets of multiple descriptors and
  *     aggregate them in the frameserver- stage. Restrict the number of planes
  *     in this way to 4-5 or something equally low. (a wayland client can
  *     really gnaw file descriptors, think multiplanar subsurfaces for border..
  *
- * [ ] Rework frameserver data aggregation to support multi-planar input format
- *     and tracking
+ * [d] Rework frameserver data aggregation to support multi-planar input format
+ *     and tracking as direct scanout
  *
- * [ ] Modify Shader Manager to support format variants or conversion blitters
- *     where the individual planes all gets a texture unit and then the proper
- *     shader for each of the relevant formats (ext with #extension
- *     GL_OES_EGL_image_external with samplerExternalOES) (2p: y_uv, y_xuxv)
- *     (3p: y_u_v)
+ * [d] Modify Shader Manager to support format variants for all the different
+ *     kinds of samplers we need to be able to handle (y_uv, y_xuxv, y_u_v)
  *
- * [ ]
- *
- * [ ] Add the corresponding work to the zwp_... dma_buf
+ * [ ] Add an extended version of the map_... function that allows a plane
+ *     index as part of the mapping function for layered compositing,
+ *     bonus points for mimicking the heuristics used by surface flinger for
+ *     switching between GL composited and MDP composition
  */
-
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -202,11 +184,6 @@ struct egl_env {
 static void map_ext_functions(struct egl_env* denv,
 	void*(lookup)(void* tag, const char* sym, bool req), void* tag);
 
-/*
- * wrapper around open that might take a suid- privileged pool into account
- */
-static int device_open_pool(const char* path, int mode);
-
 static void* lookup(void* tag, const char* sym, bool req)
 {
 	dlerror();
@@ -239,7 +216,6 @@ static char* egl_envopts[] = {
 	"device_buffer=method", "set buffer transfer method (gbm, streams)",
 	"device_libs=lib1:lib2", "libs used for device",
 	"device_connector=ind", "primary display connector index",
-	"device_master", "fail hard if drmMaster can't be obtained",
 	"device_wait", "loop until an active connector is found",
 	NULL
 };
@@ -1553,7 +1529,7 @@ static int setup_node_egl(struct dev_node* node, const char* lib, int fd)
 		if (!fn)
 			continue;
 
-		int lfd = device_open_pool(fn, O_RDWR);
+		int lfd = platform_device_open(fn, O_RDWR);
 
 /* no caller provided device, go with the one we found */
 		if (-1 == fd){
@@ -1623,7 +1599,7 @@ static int setup_node_gbm(struct dev_node* node, const char* path, int fd)
 	else if (fd != -1)
 		node->fd = fd;
 	else
-		node->fd = device_open_pool(path, O_RDWR | O_CLOEXEC);
+		node->fd = platform_device_open(path, O_RDWR | O_CLOEXEC);
 
 	if (-1 == node->fd){
 		if (path)
@@ -2372,7 +2348,7 @@ static void query_card(struct dev_node* node)
 /* save the ID for later so that we can match in match_connector */
 		d->display.con = con;
 		d->display.con_id = con->connector_id;
-		d->backlight = backlight_init(NULL,
+		d->backlight = backlight_init(
 			d->device->card_id, d->display.con->connector_type,
 			d->display.con->connector_type_id
 		);
@@ -2662,6 +2638,7 @@ static bool try_node(int fd, const char* pathref,
 		return false;
 	}
 
+	drmDropMaster(node->fd);
 	if (0 != drmSetMaster(node->fd)){
 		debug_print("set drmMaster on [%d](%d:%s) failed, reason: %s",
 			dst_ind, fd, pathref ? pathref : "(no path)", strerror(errno));
@@ -2689,8 +2666,9 @@ static bool try_node(int fd, const char* pathref,
 		return false;
 	}
 
-	d->backlight = backlight_init(NULL, d->device->card_id,
-	d->display.con->connector_type, d->display.con->connector_type_id);
+	d->backlight = backlight_init(d->device->card_id,
+		d->display.con->connector_type, d->display.con->connector_type_id);
+
 	if (d->backlight)
 		d->backlight_brightness = backlight_get_brightness(d->backlight);
 	return true;
@@ -2751,7 +2729,7 @@ static bool try_card(size_t devind, int w, int h, size_t* dstind)
 	nodes[devind].wait_connector =
 		get_config("video_device_wait", devind, NULL, tag);
 
-	int fd = device_open_pool(devstr, O_RDWR | O_CLOEXEC);
+	int fd = platform_device_open(devstr, O_RDWR | O_CLOEXEC);
 	if (try_node(fd, devstr, *dstind, gbm, force_master, connind, w, h)){
 		debug_print("card at %d added", *dstind);
 		nodes[*dstind].card_id = *dstind;
@@ -2823,7 +2801,7 @@ static bool setup_cards_basic(int w, int h)
 	for (size_t i = 0; i < 4; i++){
 		char buf[sizeof(DEVICE_PATH)];
 		snprintf(buf, sizeof(buf), DEVICE_PATH, i);
-		int fd = device_open_pool(buf, O_RDWR | O_CLOEXEC);
+		int fd = platform_device_open(buf, O_RDWR | O_CLOEXEC);
 		debug_print("trying [basic/auto] setup on %s", buf);
 		if (-1 != fd){
 /* possible quick hack, just check modules if we have nouveau or nvidia loaded
@@ -2843,95 +2821,8 @@ static bool setup_cards_basic(int w, int h)
 	return false;
 }
 
-/* these are kept for the life of the process, and dup:ed into the part of
- * the platform that requires them, though cards that don't get used in the
- * initial setup will be ignored. */
-static bool use_device_pool;
-static struct {
-	int fd;
-	const char* name;
-} device_pool[MAX_DISPLAYS];
-
-static int device_open_pool(const char* path, int mode)
-{
-/*
- * forward to the platform specific device opener
- */
-	if (!use_device_pool)
-		return platform_device_open(path, mode, 0);
-
-	debug_print("open device %s from pool", path);
-	for (size_t i = 0; i < MAX_DISPLAYS; i++){
-		if (!device_pool[i].name || strcmp(path, device_pool[i].name) != 0)
-			continue;
-
-/*
- * provide a copy so the original doesn't get closed
- */
-		debug_print("match device %s to pool index %zu", path, i);
-		int newfd = dup(device_pool[i].fd);
-		if (-1 == newfd)
-			return newfd;
-
-		debug_print("open device from pool, ok : %d", newfd);
-		fcntl(newfd, F_SETFD, FD_CLOEXEC);
-		return newfd;
-	}
-
-	return -1;
-}
-
 void platform_video_preinit()
 {
-/*
- * volatile bool attach = false;
-	while(!attach){};
- */
-
-/*
- * this code MAY run privileged and that's ok, we don't pass judgement
- * on run-as-root users
- */
-	uid_t uid = getuid();
-	uid_t euid = geteuid();
-
-	if (uid == euid)
-		return;
-
-/*
- * this mode works on system where there isn't any launcher or other
- * supplier of file descriptors (and VT switching likely won't work),
- * for those cases, the device_open_init will drop as the init order
- * is:
- * device_open_init -> platform_video_preinit -> platform_event_preinit
- * where _open_init (might also fork) and _event_preinit both check
- * euid/uid and switch.
- */
-
-/* we're running as some form of suid, grab some nodes, assume they're drm
- * and try and set master - write into a pool and re-use this pool later */
-	size_t pool_ind = 0;
-	_Static_assert(4 <= MAX_DISPLAYS, "Max displays defined too low");
-	for (size_t i = 0; i < 4; i++){
-		char buf[sizeof(DEVICE_PATH)];
-		snprintf(buf, sizeof(buf), DEVICE_PATH, i);
-		int fd = open(buf, O_RDWR | O_CLOEXEC);
-		if (-1 == fd)
-			continue;
-
-/* acquire master privileges on all the devices in pool, even if we don't
- * use them, we can drop once init:ed if we don't support dynamic GPU plug
- * without some session manager nonsense */
-		if (0 != drmSetMaster(fd)){
-			close(fd);
-			continue;
-		}
-
-		use_device_pool = true;
-		device_pool[pool_ind].name = strdup(buf);
-		device_pool[pool_ind].fd = fd;
-		pool_ind++;
-	}
 }
 
 bool platform_video_init(uint16_t w, uint16_t h,
@@ -3214,6 +3105,26 @@ void platform_video_synch(uint64_t tick_count, float fract,
 	flush_display_events(lim);
 
 	last_synch = arcan_timemillis();
+
+/* Changed but not enough information to actually specify which card we need
+ * to rescan in order for the changes to be detected. This needs cooperation
+ * with the scripts anyhow as they need to rate-limit / invoke rescan. This
+ * only takes care of an invalid or severed connection, moving device disc.
+ * to a supervisory process would also require something in event.c */
+	int pv = platform_device_poll(NULL);
+	if (2 == pv){
+		arcan_event_enqueue(arcan_event_defaultctx(), &(struct arcan_event){
+			.category = EVENT_VIDEO,
+			.vid.kind = EVENT_VIDEO_DISPLAY_CHANGED,
+		});
+	}
+	else if (-1 == pv){
+		arcan_event_enqueue(arcan_event_defaultctx(), &(struct arcan_event){
+			.category = EVENT_SYSTEM,
+			.sys.kind = EVENT_SYSTEM_EXIT,
+			.sys.errcode = EXIT_FAILURE
+		});
+	}
 	if (post)
 		post();
 }
@@ -3596,15 +3507,9 @@ void platform_video_restore_external()
 		return;
 
 	if (0 != drmSetMaster(nodes[0].fd) && nodes[0].force_master){
-		while(0 != drmSetMaster(nodes[0].fd)){
-			debug_print("platform/egl-dri(), couldn't regain drmMaster access, "
-				"retrying in 1 second\n");
-			arcan_timesleep(1000);
-		}
-		nodes[0].master = true;
+		debug_print("platform/egl-dri(), couldn't regain drmMaster access, "
+			"retrying in 1 second\n");
 	}
-	else
-		nodes[0].master = true;
 
 /* rebuild the mapped and known displays, extsusp is a marker that indicate
  * that the state of the engine is that the display is still alive, and should
