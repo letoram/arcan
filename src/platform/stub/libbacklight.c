@@ -26,8 +26,7 @@ void backlight_destroy(struct backlight *backlight)
 {
 }
 
-struct backlight *backlight_init(struct pci_device *dev, int card,
-				 int connector_type, int connector_type_id)
+struct backlight *backlight_init(int card, int connector_type, int connector_type_id)
 {
 	return NULL;
 }

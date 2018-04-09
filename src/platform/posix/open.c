@@ -10,6 +10,16 @@ void platform_device_init()
 {
 }
 
+int platform_device_poll(char** identifier)
+{
+	return 0;
+}
+
+int platform_device_pollfd()
+{
+	return -1;
+}
+
 int platform_device_open(const char* const identifier, int flags, mode_t mode)
 {
 	return open(identifier, flags, mode);

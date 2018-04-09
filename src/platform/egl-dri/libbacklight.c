@@ -28,7 +28,6 @@
  */
 
 #include "libbacklight.h"
-#include <pciaccess.h>
 #include <stdio.h>
 #include <sys/types.h>
 #include <linux/types.h>
@@ -41,6 +40,9 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include "platform.h"
 
 static const char *output_names[] = { "Unknown",
                                       "VGA",
@@ -72,7 +74,7 @@ static long backlight_get(struct backlight *backlight, char *node)
 	if (asprintf(&path, "%s/%s", backlight->path, node) < 0)
 		return -ENOMEM;
 
-	fd = open(path, O_RDONLY);
+	fd = platform_device_open(path, O_RDONLY);
 	if (fd < 0) {
 		ret = -1;
 		goto out;
@@ -118,7 +120,7 @@ long backlight_set_brightness(struct backlight *backlight, long brightness)
 	if (asprintf(&path, "%s/%s", backlight->path, "brightness") < 0)
 		return -ENOMEM;
 
-	fd = open(path, O_RDWR);
+	fd = platform_device_open(path, O_RDWR);
 	if (fd < 0) {
 		ret = -1;
 		goto out;
@@ -164,10 +166,9 @@ void backlight_destroy(struct backlight *backlight)
 	free(backlight);
 }
 
-struct backlight *backlight_init(struct pci_device *dev, int card,
-				 int connector_type, int connector_type_id)
+struct backlight *backlight_init(
+	int card, int connector_type, int connector_type_id)
 {
-	char *pci_name = NULL;
 	char *drm_name = NULL;
 	char *chosen_path = NULL;
 	DIR *backlights;
@@ -176,13 +177,6 @@ struct backlight *backlight_init(struct pci_device *dev, int card,
 	char buffer[100];
 	struct backlight *backlight;
 	int err;
-
-	if (dev) {
-		err = asprintf(&pci_name, "%04x:%02x:%02x.%d", dev->domain,
-			       dev->bus, dev->dev, dev->func);
-		if (err < 0)
-			return NULL;
-	}
 
 	if (card >= 0) {
 		err = asprintf(&drm_name, "card%d-%s-%d", card,
@@ -195,22 +189,6 @@ struct backlight *backlight_init(struct pci_device *dev, int card,
 
 	if (!backlights)
 		return NULL;
-
-	/* Find the "best" backlight for the device. Firmware
-	   interfaces are preferred over platform interfaces are
-	   preferred over raw interfaces. For raw interfaces we'll
-	   match if either the pci ID or the output ID match, while
-	   for firmware interfaces we require the pci ID to
-	   match. It's assumed that platform interfaces always match,
-	   since we can't actually associate them with IDs.
-
-	   A further awkwardness is that, while it's theoretically
-	   possible for an ACPI interface to include support for
-	   changing the backlight of external devices, it's unlikely
-	   to ever be done. It's effectively impossible for a platform
-	   interface to do so. So if we get asked about anything that
-	   isn't LVDS or eDP, we pretty much have to require that the
-	   control be supplied via a raw interface */
 
 	while ((entry = readdir(backlights))) {
 		char *backlight_path;
@@ -229,7 +207,7 @@ struct backlight *backlight_init(struct pci_device *dev, int card,
 		if (asprintf(&path, "%s/%s", backlight_path, "type") < 0)
 			return NULL;
 
-		fd = open(path, O_RDONLY);
+		fd = platform_device_open(path, O_RDONLY);
 
 		if (fd < 0)
 			goto out;
@@ -277,8 +255,7 @@ struct backlight *backlight_init(struct pci_device *dev, int card,
 		   platform backlights have to be assumed to match */
 		if (entry_type == BACKLIGHT_RAW ||
 		    entry_type == BACKLIGHT_FIRMWARE) {
-			if (!((drm_name && !strcmp(drm_name, parent)) ||
-			      (pci_name && !strcmp(pci_name, parent))))
+			if (!((drm_name && !strcmp(drm_name, parent))))
 				goto out;
 		}
 
@@ -315,16 +292,11 @@ struct backlight *backlight_init(struct pci_device *dev, int card,
 	if (backlight->brightness < 0)
 		goto err;
 
-	if (pci_name)
-		free(pci_name);
-
 	if (drm_name)
 		free(drm_name);
 
 	return backlight;
 err:
-	if (pci_name)
-		free(pci_name);
 	if (drm_name)
 		free(drm_name);
 	if (chosen_path)

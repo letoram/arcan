@@ -18,6 +18,7 @@
 #include <glob.h>
 
 #include <sys/types.h>
+#include <sys/param.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 
@@ -538,8 +539,15 @@ void platform_event_analogfilter(int devid,
 static bool discovered(struct arcan_evctx* ctx,
 	const char* name, size_t name_len, bool nopending)
 {
-	int fd = fmt_open(0, O_NONBLOCK | O_RDWR | O_CLOEXEC,
-		"%s/%.*s", notify_scan_dir, name_len, name);
+	char buffer[name_len+sizeof(notify_scan_dir)];
+	char outbuffer[MAXPATHLEN];
+
+/* need to resolve a symlink if there is one as the platform_device_open
+ * has a whitelist that is rather picky about which devices it will open */
+	snprintf(buffer, sizeof(buffer), "%s/%.*s", notify_scan_dir, (int)name_len, name);
+	int fd = platform_device_open(
+		readlink(buffer, outbuffer, sizeof(outbuffer)) > 0 ?
+			outbuffer : buffer, O_NONBLOCK| O_RDWR);
 
 	verbose_print("input: trying to add %s/%.*s",
 		notify_scan_dir, (int)name_len, name);
@@ -1288,12 +1296,6 @@ static void got_device(struct arcan_evctx* ctx, int fd, const char* path)
 
 void platform_event_rescan_idev(struct arcan_evctx* ctx)
 {
-/* rescan is not needed here as we check inotify while polling */
-	if (!gstate.init)
-		gstate.init = true;
-	else
-		return;
-
 	char ibuf [strlen(notify_scan_dir) + sizeof("/*")];
 	glob_t res = {0};
 	snprintf(ibuf, sizeof(ibuf), "%s/*", notify_scan_dir);
@@ -1302,7 +1304,7 @@ void platform_event_rescan_idev(struct arcan_evctx* ctx)
 		char** beg = res.gl_pathv;
 
 		while(*beg){
-			int fd = open(*beg, O_NONBLOCK | O_RDWR | O_CLOEXEC);
+			int fd = platform_device_open(*beg, O_NONBLOCK | O_RDWR);
 			if (-1 != fd)
 				got_device(ctx, fd, *beg);
 			beg++;
@@ -1977,7 +1979,7 @@ static int find_tty()
 	cfg_lookup_fun get_config = platform_config_lookup(&tag);
 	char* ttydev;
 	if (get_config("event_tty_override", 0, &ttydev, tag) && ttydev){
-		int fd = open(ttydev, O_RDWR, O_CLOEXEC);
+		int fd = platform_device_open(ttydev, O_RDWR);
 		scantty = false;
 		if (-1 == fd)
 			arcan_warning("couldn't open TTYOVERRIDE %s, reason: %s\n",
@@ -1998,7 +2000,7 @@ static int find_tty()
 				char* endl = strrchr(line, '\n');
 				if (endl)
 					*endl = '\0';
-				tty = open(line, O_RDWR);
+				tty = platform_device_open(line, O_RDWR);
 			}
 			fclose(fpek);
 		}
@@ -2009,19 +2011,12 @@ static int find_tty()
 
 void platform_event_preinit()
 {
-/* drop privileges dance that might be needed on some video platforms */
-	if (setgid(getgid()) == -1){
-		fprintf(stderr, "event_preinit() - couldn't setgid(drop on suid)\n");
-		exit(EXIT_FAILURE);
-	}
-	if (setuid(getuid()) == -1){
-		fprintf(stderr, "event_preinit() - couldn't setuid(drop on suid)\n");
-	}
 }
 
 void platform_event_init(arcan_evctx* ctx)
 {
 	uintptr_t tag;
+
 	cfg_lookup_fun get_config = platform_config_lookup(&tag);
 	gstate.notify = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
 	init_keyblut();
@@ -2057,16 +2052,19 @@ void platform_event_init(arcan_evctx* ctx)
 	if (get_config("event_scandir", 0, &newsd, tag) && newsd){
 		free(notify_scan_dir);
 		notify_scan_dir = newsd;
+	}
 
-		if (-1 == gstate.notify || inotify_add_watch(
-			gstate.notify, notify_scan_dir, IN_CREATE) == -1){
-			arcan_warning("inotify initialization failure (%s),"
-				"	device discovery disabled.", strerror(errno));
+/* chances are the CREATE events are actually racey, but with the
+ * _device_open refactor this won't really matter as the suid part
+ * allows us access anyway */
+	if (-1 == gstate.notify || inotify_add_watch(
+		gstate.notify, notify_scan_dir, IN_CREATE) == -1){
+		arcan_warning("inotify initialization failure (%s),"
+			"	device discovery disabled.", strerror(errno));
 
-			if (-1 != gstate.notify){
-				close(gstate.notify);
-				gstate.notify = -1;
-			}
+		if (-1 != gstate.notify){
+			close(gstate.notify);
+			gstate.notify = -1;
 		}
 	}
 
