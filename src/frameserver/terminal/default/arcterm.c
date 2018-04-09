@@ -220,7 +220,11 @@ static void setup_shell(struct arg_arr* argarr, char* const args[])
  * DATEMSK, LINES, LOGNAME(portable set), MSGVERB, PATH */
 
 /* might get overridden with putenv below, or if we are exec:ing /bin/login */
+#ifdef __OpenBSD__
+	setenv("TERM", "wsvt25", 1);
+#else
 	setenv("TERM", "xterm-256color", 1);
+#endif
 
 	while (arg_lookup(argarr, "env", ind++, &val))
 		putenv(strdup(val));
