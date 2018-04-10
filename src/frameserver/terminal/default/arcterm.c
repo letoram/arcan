@@ -93,6 +93,24 @@ static void sighuph(int num)
 		term.pty = (shl_pty_close(term.pty), NULL);
 }
 
+static void on_subwindow(struct tui_context* c,
+	arcan_tui_conn* newconn, uint32_t id, uint8_t type, void* tag)
+{
+	struct tui_cbcfg cbcfg = {};
+
+/* only bind the debug type and bind it to the terminal emulator state machine */
+	if (type == TUI_WND_DEBUG){
+		tsm_vte_debug(term.vte, newconn);
+	}
+	else{
+		struct tui_settings cfg = arcan_tui_defaults(newconn, c);
+		struct tui_context* newctx = arcan_tui_setup(
+			newconn, &cfg, &cbcfg, sizeof(cbcfg));
+		if (newctx)
+			arcan_tui_destroy(newctx, NULL);
+	}
+}
+
 static void on_mouse_motion(struct tui_context* c,
 	bool relative, int x, int y, int modifiers, void* t)
 {
@@ -128,7 +146,7 @@ static bool on_u8(struct tui_context* c, const char* u8, size_t len, void* t)
 	if (shl_pty_write(term.pty, (char*) buf, len) < 0)
 		term.alive = false;
 
-	term.cap_refresh = 8;
+	//term.cap_refresh = 8;
 	return true;
 }
 
@@ -137,7 +155,7 @@ static void on_utf8_paste(struct tui_context* c,
 {
 	trace("utf8-paste(%s):%d", str, (int) cont);
 	tsm_vte_paste(term.vte, (char*)str, len);
-	term.cap_refresh = 8;
+	//term.cap_refresh = 8;
 }
 
 static unsigned long long last_frame;
@@ -148,6 +166,7 @@ static void on_resize(struct tui_context* c,
 	trace("resize(%zu(%zu),%zu(%zu))", neww, col, newh, row);
 	if (term.pty)
 		shl_pty_resize(term.pty, col, row);
+
 	last_frame = 0;
 }
 
@@ -171,13 +190,23 @@ static void str_callback(struct tsm_vte* vte, enum tsm_vte_group group,
 	const char* msg, size_t len, bool crop, void* data)
 {
 /* parse and see if we should set title */
-	if (!msg || len < 3 || crop)
+	if (!msg || len < 3 || crop){
+		debug_log(vte,
+			"bad OSC sequence, len = %zu (%s)\n", len, msg ? msg : "");
 		return;
+	}
 
-	if ((msg[0] == '0' || msg[0] == '1' || msg[0] == '2') && msg[1] == ';')
+/* 0, 1, 2 : set title */
+	if ((msg[0] == '0' || msg[0] == '1' || msg[0] == '2') && msg[1] == ';'){
 		arcan_tui_ident(term.screen, &msg[2]);
-	else
-		LOG("ignoring unknown OSC sequence (%s)\n", msg);
+		return;
+	}
+
+	debug_log(vte,
+		"unhandled OSC command (PS: %d), len: %zu\n", (int)msg[0], len);
+/* 4 : change color */
+/* 5 : special color */
+/* 52 : clipboard contents */
 }
 
 static char* get_shellenv()
@@ -305,6 +334,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 		.input_key = on_key,
 		.utf8 = on_utf8_paste,
 		.resized = on_resize,
+		.subwindow = on_subwindow,
 		.exec_state = on_exec_state
 //		.substitute = on_subst
 	};
@@ -323,8 +353,7 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
  * now we have the display server connection and the abstract screen,
  * configure the terminal state machine
  */
-	if (tsm_vte_new(&term.vte, term.screen, write_callback,
-		NULL /* write_cb_data */, tsm_log, NULL /* tsm_log_data */) < 0){
+	if (tsm_vte_new(&term.vte, term.screen, write_callback, NULL) < 0){
 		LOG("failed to setup terminal emulator, giving up\n");
 		return EXIT_FAILURE;
 	}
@@ -419,6 +448,8 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 /* and on an actually successful update, reset the user-input flag and timing */
 		pump_pty();
 		int rc = arcan_tui_refresh(term.screen);
+		tsm_vte_update_debug(term.vte);
+
 		if (rc >= 0)
 			last_frame = arcan_timemillis();
 		else if (rc == -1 && (errno == EINVAL))

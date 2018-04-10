@@ -318,8 +318,8 @@ static void on_resize(struct tui_context* c,
 	END_HREF;
 }
 
-static void on_subwindow(
-	struct tui_context* c, arcan_tui_conn* new, uint32_t id, void* t)
+static void on_subwindow(struct tui_context* c,
+	arcan_tui_conn* new, uint32_t id, uint8_t type, void* t)
 {
 	SETUP_HREF("subwindow",);
 	id ^= req_cookie;
@@ -372,7 +372,7 @@ static bool query_label(struct tui_context* ctx,
 	size_t ind, const char* country, const char* lang,
 	struct tui_labelent* dstlbl, void* t)
 {
-	SETUP_HREF("query_label",false);
+	SETUP_HREF("query_label", false);
 
 /*
  * lcall with country/lang, expect multi-return with label, descr

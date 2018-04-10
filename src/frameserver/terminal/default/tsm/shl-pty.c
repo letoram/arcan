@@ -460,14 +460,13 @@ int shl_pty_resize(struct shl_pty *pty,
 		   unsigned short term_width,
 		   unsigned short term_height)
 {
-	struct winsize ws;
+	struct winsize ws = {
+		.ws_col = term_width,
+		.ws_row = term_height
+	};
 
 	if (!shl_pty_is_open(pty))
 		return -ENODEV;
-
-	memset(&ws, 0, sizeof(ws));
-	ws.ws_col = term_width;
-	ws.ws_row = term_height;
 
 	/*
 	 * This will send SIGWINCH to the pty slave foreground process group.

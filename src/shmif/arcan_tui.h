@@ -471,7 +471,8 @@ struct tui_cbcfg {
  * setup()) EVEN if the window is no longer needed. On such occasions, simply
  * destroy the tui_context immediately after setup.
  */
-	void (*subwindow)(struct tui_context*, arcan_tui_conn*, uint32_t id, void*);
+	void (*subwindow)(
+		struct tui_context*, arcan_tui_conn*, uint32_t id, uint8_t type, void*);
 
 /*
  * Dynamic glyph substitution callback per updated row. This allows you to

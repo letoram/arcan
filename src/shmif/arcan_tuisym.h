@@ -50,29 +50,34 @@ enum tui_wndhint_flags {
 	TUI_WND_HIDDEN = 2,
 };
 
+/*
+ * These are only relevant when requesting a subwindow or when receiving one,
+ * the values of the different types are picked as to match the corresponding
+ * types in arcan_shmif.
+ */
 enum tui_subwnd_type {
 /* normal TUI window, because like a normal connection, except the lifespan
  * is tied to that of it's allocation-parent */
-	TUI_WND_TUI = 0,
+	TUI_WND_TUI = 23,
 
 /* popup window, short lifespan, can be killed of parent-side as a 'cancel'
  * operation and no- state or ability should be lost as an effect of doing so */
-	TUI_WND_POPUP = 1,
+	TUI_WND_POPUP = 16,
 
 /* explicitly pushed by parents, when enabled, output a simplified, screen-
  * reader friendly version of the active contents to render / consider */
-	TUI_WND_ACCESSIBILITY = 2,
+	TUI_WND_ACCESSIBILITY = 19,
 
 /* explicitly pushed by parents, when enabled, output application-relevant
  * debugging data */
-	TUI_WND_DEBUG = 3,
+	TUI_WND_DEBUG = 255,
 
 /*
  * Special case, a connection primitive that can be forwarded to some other
  * primitive, but with connection origin traced/bound to a preexisting tui
  * connection. This is used internally for advanced features.
  */
-	TUI_WND_HANDOVER = 4
+	TUI_WND_HANDOVER = 26
 };
 
 /*

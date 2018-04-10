@@ -96,53 +96,53 @@ enum ARCAN_SEGID {
 	SEGID_UNKNOWN = 0,
 
 /* LIGHTWEIGHT ARCAN (nested execution) */
-	SEGID_LWA,
+	SEGID_LWA = 1,
 
 /* Server->Client exclusive --
  * External Connection, 1:many */
-	SEGID_NETWORK_SERVER,
+	SEGID_NETWORK_SERVER = 2,
 
 /* Server->Client exclusive -- cannot be requested
  * External Connection, 1:1 */
-	SEGID_NETWORK_CLIENT,
+	SEGID_NETWORK_CLIENT = 3,
 
 /* External Connection, non-interactive data source. */
-	SEGID_MEDIA,
+	SEGID_MEDIA = 4,
 
 /* Specifically used to indicate a terminal- emulator connection */
-	SEGID_TERMINAL,
+	SEGID_TERMINAL = 5,
 
 /* External client connection, A/V/latency sensitive */
-	SEGID_REMOTING,
+	SEGID_REMOTING = 6,
 
 /* [INPUT] High-CPU, Low Latency, data exfiltration risk */
-	SEGID_ENCODER,
+	SEGID_ENCODER = 7,
 
 /* High-frequency event input, little if any A/V use */
-	SEGID_SENSOR,
+	SEGID_SENSOR = 8,
 
 /* High-interactivity, CPU load, A/V cost, latency requirements */
-	SEGID_GAME,
+	SEGID_GAME = 9,
 
 /* Input reactive, user- sensitive data */
-	SEGID_APPLICATION,
+	SEGID_APPLICATION = 10,
 
 /* Networking, high-risk for malicious data, aggressive resource consumption */
-	SEGID_BROWSER,
+	SEGID_BROWSER = 11,
 
 /* Virtual Machine, high-risk for malicious data,
  * CPU load etc. guarantees support for state- management */
-	SEGID_VM,
+	SEGID_VM = 12,
 
 /* Head-Mounted display, buffer is split evenly left / right but updated
  * synchronously */
-	SEGID_HMD_SBS,
+	SEGID_HMD_SBS = 13,
 
 /* Head-Mounted display, should be mapped as LEFT view */
-	SEGID_HMD_L,
+	SEGID_HMD_L = 14,
 
 /* Head-Mounted display, should be mapped as RIGHT view */
-	SEGID_HMD_R,
+	SEGID_HMD_R = 15,
 
 /*
  * [LOCKSTEP] Popup-window, use with viewport hints to specify
@@ -156,22 +156,22 @@ enum ARCAN_SEGID {
  * These can subsequently be activated as a DIGITAL input event with
  * the subid matching the 0-based index of the item.
  */
-	SEGID_POPUP,
+	SEGID_POPUP = 16,
 
 /*
  * [UNIQUE] Used for statusbar style visual alert / identification
  */
-	SEGID_ICON,
+	SEGID_ICON = 17,
 
 /* [UNIQUE] Visual titlebar style for CSD, actual text contents is still
  * server-side rendered and provided as message on this segment or through
  * IDENT messages. Server-side rendering of global menus can also be
  * enabled here by indicating labelhints (and then attaching popups when
  * the label input arrives) */
-	SEGID_TITLEBAR,
+	SEGID_TITLEBAR = 18,
 
 /* [UNIQUE] User- provided cursor, competes with CURSORHINT event. */
-	SEGID_CURSOR,
+	SEGID_CURSOR = 19,
 
 /*
  * [UNIQUE]
@@ -182,46 +182,46 @@ enum ARCAN_SEGID {
  * A reject on such a segment request indicates that no accessibility options
  * have been enabled and can thus be used as an initial probe.
  */
-	SEGID_ACCESSIBILITY,
+	SEGID_ACCESSIBILITY = 20,
 
 /*
  * [UNIQUE] Clipboard style data transfers, for image, text or audio sharing.
  * Can also have streaming transfers using the bchunk mechanism.  Distinction
  * between Drag'n'Drop and Clipboard state uses the CURSORHINT mechanism.
  */
-	SEGID_CLIPBOARD,
+	SEGID_CLIPBOARD = 21,
 
 /*
  * [INPUT] Incoming clipboard data
  */
-	SEGID_CLIPBOARD_PASTE,
+	SEGID_CLIPBOARD_PASTE = 22,
 
 /*
  * [UNIQUE] Not expected to have subwindows, no advanced input, no clipboards
  * but rather a semi-interactive data source that can be rendered and managed
  * outside the normal window flow.
  */
-	SEGID_WIDGET,
+	SEGID_WIDGET = 23,
 
 /*
  * Used by the shmif_tui support library to indicate a monospaced text user
  * interface, with known behavior for cut/paste (drag/drop), state transfers,
  * resize response, font switching, ...
  */
-	SEGID_TUI,
+	SEGID_TUI = 24,
 
 /*
  * Used in order to indicate system service integration, exposed as a control
  * panel, tray or desktop style icon that expose abstract/simplified information
  * and a control interface to the respective service.
  */
-	SEGID_SERVICE,
+	SEGID_SERVICE = 25,
 
 /*
  * Used to indicate a protocol bridge and root windows
  * (where applicable and no other segtype or subsegtype- can be spawned).
  */
-	SEGID_BRIDGE_X11,
+	SEGID_BRIDGE_X11 = 26,
 
 /*
  * The current semantics for wayland (subject to change):
@@ -236,7 +236,7 @@ enum ARCAN_SEGID {
  *        subsegment: ICON (can reparent to application or clipboard for DnD)
  *        subsegment: SEGID_BRIDGE_X11 (Xwayland surfaces)
  */
-	SEGID_BRIDGE_WAYLAND,
+	SEGID_BRIDGE_WAYLAND = 27,
 
 /*
  * Used as a forwarding primitive, meaning that the current connection will act
@@ -246,7 +246,7 @@ enum ARCAN_SEGID {
  * suspended until the new segment terminates. Other behavior should simply
  * create a normal connection point and forward connection data there.
  */
-	SEGID_HANDOVER,
+	SEGID_HANDOVER = 28,
 
 /* Can always be terminated without risk, may be stored as part of debug format
  * in terms of unexpected termination etc. */

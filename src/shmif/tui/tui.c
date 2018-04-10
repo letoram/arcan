@@ -2174,7 +2174,7 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
 		if ( ((uint32_t)ev->ioevs[0].iv & (1 << 31)) ){
 			if (tui->handlers.subwindow){
 				tui->handlers.subwindow(tui, NULL,
-					(uint32_t)ev->ioevs[0].iv & 0xffff, tui->handlers.tag);
+					(uint32_t)ev->ioevs[0].iv & 0xffff, TUI_WND_TUI, tui->handlers.tag);
 			}
 		}
 		else if ((uint32_t)ev->ioevs[0].iv == REQID_COPYWINDOW){
@@ -2186,6 +2186,11 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
  * map the two clipboards needed for both cut and for paste operations
  */
 	case TARGET_COMMAND_NEWSEGMENT:
+		if (ev->ioevs[2].iv != SEGID_TUI && ev->ioevs[2].iv != SEGID_POPUP &&
+			ev->ioevs[2].iv != SEGID_HANDOVER && ev->ioevs[2].iv != SEGID_DEBUG &&
+			ev->ioevs[2].iv != SEGID_ACCESSIBILITY)
+			return;
+
 /* input segment, assumed clipboard */
 		if (ev->ioevs[1].iv == 1){
 			if (!tui->clip_in.vidp){
@@ -2215,12 +2220,19 @@ static void targetev(struct tui_context* tui, arcan_tgtevent* ev)
  * which means that there will be an explicit copy of acon rather than an
  * alias.
  */
-		else if ( ((uint32_t)ev->ioevs[3].iv & (1 << 31)) &&
-			tui->handlers.subwindow){
-			struct arcan_shmif_cont acon = arcan_shmif_acquire(
-				&tui->acon, NULL, ev->ioevs[2].iv, 0);
-			tui->handlers.subwindow(tui, &acon,
-				(uint32_t)ev->ioevs[3].iv & 0xffff, tui->handlers.tag);
+		else{
+			bool can_push = ev->ioevs[2].iv == SEGID_DEBUG;
+			can_push |= ev->ioevs[2].iv == SEGID_ACCESSIBILITY;
+			bool user_defined = (uint32_t)ev->ioevs[3].iv & (1 << 31);
+
+			if ((can_push || user_defined) && tui->handlers.subwindow){
+				struct arcan_shmif_cont acon = arcan_shmif_acquire(
+					&tui->acon, NULL, ev->ioevs[2].iv, 0);
+				tui->handlers.subwindow(tui, &acon,
+					(uint32_t)ev->ioevs[3].iv & 0xffff,
+					ev->ioevs[2].iv, tui->handlers.tag
+				);
+			}
 		}
 	break;
 
