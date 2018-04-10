@@ -2,6 +2,7 @@
  * libtsm - VT Emulator
  *
  * Copyright (c) 2011-2013 David Herrmann <dh.herrmann@gmail.com>
+ * Copyright (c) 2015-2018 Bjorn Stahl <contact@arcan-fe.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining
  * a copy of this software and associated documentation files
@@ -51,8 +52,6 @@
 #include <stdarg.h>
 #include "libtsm.h"
 #include "libtsm_int.h"
-#include "shl_llog.h"
-#define LLOG_SUBSYSTEM "tsm_vte"
 
 /* Input parser states */
 enum parser_state {
@@ -161,7 +160,6 @@ struct vte_saved_state {
 
 struct tsm_vte {
 	unsigned long ref;
-	tsm_log_t llog;
 
 	tsm_str_cb strcb;
 	void *strcb_data;
@@ -169,8 +167,12 @@ struct tsm_vte {
 	size_t colbuf_pos;
 	char *colbuf;
 
-	void *llog_data;
 	struct tui_context *con;
+
+	struct tui_context* debug;
+	char** debug_lines;
+	size_t debug_history;
+
 	tsm_vte_write_cb write_cb;
 	void *data;
 	char *palette_name;
@@ -312,6 +314,56 @@ static uint8_t (*get_palette(struct tsm_vte *vte))[3]
 	return color_palette;
 }
 
+void debug_log(struct tsm_vte* vte, const char* msg, ...)
+{
+	if (!vte || !vte->debug)
+		return;
+
+	char* out;
+	ssize_t len;
+
+	va_list args;
+	va_start(args, msg);
+		if ( (len = vasprintf(&out, msg, args)) == -1)
+			out = NULL;
+	va_end(args);
+
+	if (!out)
+		return;
+
+/* temporary, the real one should use a history buffer to handle resize */
+	arcan_tui_writeu8(vte->debug, (uint8_t*) out, len, NULL);
+	arcan_tui_newline(vte->debug);
+}
+
+void tsm_vte_update_debug(struct tsm_vte* vte)
+{
+	if (!vte->debug)
+		return;
+
+	struct tui_process_res res = arcan_tui_process(&vte->debug, 1, NULL, 0, 0);
+	if (res.errc < TUI_ERRC_OK || res.bad){
+		arcan_tui_destroy(vte->debug, NULL);
+		vte->debug = NULL;
+		return;
+	}
+
+	arcan_tui_refresh(vte->debug);
+
+
+/* last n warnings depending on how many rows we have
+ * inputs before last synch
+ * outputs before last synch
+ * main tui settings (w, h, mode)
+ * current foreground
+ * current background
+ * mouse state
+ * wrap mode
+ * origin mode
+ * decode flags
+ */
+}
+
 /* Several effects may occur when non-RGB colors are used. For instance, if bold
  * is enabled, then a dark color code is always converted to a light color to
  * simulate bold (even though bold may actually be supported!). To support this,
@@ -393,8 +445,7 @@ static void set_rgb(struct tsm_vte* vte,
 
 SHL_EXPORT
 int tsm_vte_new(struct tsm_vte **out, struct tui_context *con,
-		tsm_vte_write_cb write_cb, void *data,
-		tsm_log_t log, void *log_data)
+		tsm_vte_write_cb write_cb, void *data)
 {
 	struct tsm_vte *vte;
 	int ret;
@@ -408,8 +459,6 @@ int tsm_vte_new(struct tsm_vte **out, struct tui_context *con,
 
 	memset(vte, 0, sizeof(*vte));
 	vte->ref = 1;
-	vte->llog = log;
-	vte->llog_data = log_data;
 	vte->con = con;
 	vte->write_cb = write_cb;
 	vte->data = data;
@@ -426,7 +475,7 @@ int tsm_vte_new(struct tsm_vte **out, struct tui_context *con,
 	tsm_vte_reset(vte);
 	arcan_tui_erase_screen(vte->con, false);
 
-	llog_debug(vte, "new vte object");
+	debug_log(vte, "new vte object");
 	arcan_tui_refinc(vte->con);
 	*out = vte;
 	return 0;
@@ -454,7 +503,7 @@ void tsm_vte_unref(struct tsm_vte *vte)
 	if (--vte->ref)
 		return;
 
-	llog_debug(vte, "destroying vte object");
+	debug_log(vte, "destroying vte object");
 	arcan_tui_refdec(vte->con);
 	tsm_utf8_mach_free(vte->mach);
 	free(vte);
@@ -561,8 +610,8 @@ static void vte_write_debug(struct tsm_vte *vte, const char *u8, size_t len,
 	if (!raw) {
 		for (i = 0; i < len; ++i) {
 			if (u8[i] & 0x80)
-				llog_warning(vte, "sending 8bit character inline to client in %s:%d",
-					     file, line);
+				debug_log(vte,
+					"sending 8bit character inline to client in %s:%d", file, line);
 		}
 	}
 #endif
@@ -923,7 +972,7 @@ static void do_execute(struct tsm_vte *vte, uint32_t ctrl)
 		/* nothing to do here */
 		break;
 	default:
-		llog_debug(vte, "unhandled control char %u", ctrl);
+		debug_log(vte, "unhandled control char %u", ctrl);
 	}
 }
 
@@ -1112,7 +1161,7 @@ static void do_esc(struct tsm_vte *vte, uint32_t data)
 
 	/* everything below is only valid without CSI flags */
 	if (vte->csi_flags) {
-		llog_debug(vte, "unhandled escape seq %u", data);
+		debug_log(vte, "unhandled escape seq %u", data);
 		return;
 	}
 
@@ -1190,7 +1239,7 @@ static void do_esc(struct tsm_vte *vte, uint32_t data)
 		restore_state(vte);
 		break;
 	default:
-		llog_debug(vte, "unhandled escape seq %u", data);
+		debug_log(vte, "unhandled escape seq %u", data);
 	}
 }
 
@@ -1376,7 +1425,7 @@ static void csi_attribute(struct tsm_vte *vte)
 			if (vte->csi_argv[i + 1] == 5) { // 256color mode
 				if (i + 2 >= vte->csi_argc ||
 					vte->csi_argv[i + 2] < 0) {
-					llog_debug(vte, "invalid 256color SGR");
+					debug_log(vte, "invalid 256color SGR");
 					break;
 				}
 				code = vte->csi_argv[i + 2];
@@ -1403,7 +1452,7 @@ static void csi_attribute(struct tsm_vte *vte)
 					vte->csi_argv[i + 2] < 0 ||
 					vte->csi_argv[i + 3] < 0 ||
 					vte->csi_argv[i + 4] < 0) {
-						llog_debug(vte, "invalid true color SGR");
+						debug_log(vte, "invalid true color SGR");
 						break;
 					}
 				cr = vte->csi_argv[i + 2];
@@ -1412,7 +1461,7 @@ static void csi_attribute(struct tsm_vte *vte)
 				code = -1;
 				i += 4;
 			} else {
-				llog_debug(vte, "invalid SGR");
+				debug_log(vte, "invalid SGR");
 				break;
 			}
 			if (val == 38) {
@@ -1438,7 +1487,7 @@ static void csi_attribute(struct tsm_vte *vte)
 			}
 			break;
 		default:
-			llog_debug(vte, "unhandled SGR attr %i",
+			debug_log(vte, "unhandled SGR attr %i",
 				   vte->csi_argv[i]);
 		}
 	}
@@ -1489,7 +1538,7 @@ static void csi_compat_mode(struct tsm_vte *vte)
 		vte->g0 = &tsm_vte_unicode_lower;
 		vte->g1 = &tsm_vte_dec_supplemental_graphics;
 	} else {
-		llog_debug(vte, "unhandled DECSCL 'p' CSI %i, switching to utf-8 mode again",
+		debug_log(vte, "unhandled DECSCL 'p' CSI %i, switching to utf-8 mode again",
 			   vte->csi_argv[0]);
 	}
 }
@@ -1535,7 +1584,7 @@ static void csi_mode(struct tsm_vte *vte, bool set)
 					       FLAG_LINE_FEED_NEW_LINE_MODE);
 				continue;
 			default:
-				llog_debug(vte, "unknown non-DEC (Re)Set-Mode %d",
+				debug_log(vte, "unknown non-DEC (Re)Set-Mode %d",
 					   vte->csi_argv[i]);
 				continue;
 			}
@@ -1717,7 +1766,7 @@ static void csi_mode(struct tsm_vte *vte, bool set)
 			set_reset_flag(vte, set, FLAG_PASTE_BRACKET);
 			continue;
 		default:
-			llog_debug(vte, "unknown DEC %set-Mode %d",
+			debug_log(vte, "unknown DEC %set-Mode %d",
 				   set?"S":"Res", vte->csi_argv[i]);
 			continue;
 		}
@@ -1736,7 +1785,7 @@ static void csi_dev_attr(struct tsm_vte *vte)
 		}
 	}
 
-	llog_debug(vte, "unhandled DA: %x %d %d %d...", vte->csi_flags,
+	debug_log(vte, "unhandled DA: %x %d %d %d...", vte->csi_flags,
 		   vte->csi_argv[0], vte->csi_argv[1], vte->csi_argv[2]);
 }
 
@@ -1854,7 +1903,7 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 		else if (vte->csi_argv[0] == 2)
 			arcan_tui_erase_screen(vte->con, protect);
 		else
-			llog_debug(vte, "unknown parameter to CSI-J: %d",
+			debug_log(vte, "unknown parameter to CSI-J: %d",
 				   vte->csi_argv[0]);
 		break;
 	case 'K':
@@ -1873,7 +1922,7 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 /* CL: 0, y, size_x - 1, y, protect */
 			arcan_tui_erase_current_line(vte->con, protect);
 		else
-			llog_debug(vte, "unknown parameter to CSI-K: %d",
+			debug_log(vte, "unknown parameter to CSI-K: %d",
 				   vte->csi_argv[0]);
 		break;
 	case 'X': /* ECH */
@@ -1946,7 +1995,7 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 		else if (num == 3)
 			arcan_tui_reset_all_tabstops(vte->con);
 		else
-			llog_debug(vte, "invalid parameter %d to TBC CSI", num);
+			debug_log(vte, "invalid parameter %d to TBC CSI", num);
 		break;
 	case '@': /* ICH */
 		/* insert characters */
@@ -1995,7 +2044,7 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 		arcan_tui_scroll_down(vte->con, num);
 		break;
 	default:
-		llog_debug(vte, "unhandled CSI sequence %c", data);
+		debug_log(vte, "unhandled CSI sequence %c", data);
 	}
 }
 
@@ -2082,7 +2131,7 @@ static void do_action(struct tsm_vte *vte, uint32_t data, int action)
 			}
 			break;
 		default:
-			llog_warn(vte, "invalid action %d", action);
+			debug_log(vte, "invalid action %d", action);
 	}
 }
 
@@ -2465,7 +2514,7 @@ static void parse_data(struct tsm_vte *vte, uint32_t raw)
 		return;
 	}
 
-	llog_warn(vte, "unhandled input %u in state %d", raw, vte->state);
+	debug_log(vte, "unhandled input %u in state %d", raw, vte->state);
 }
 
 SHL_EXPORT
@@ -2482,7 +2531,7 @@ void tsm_vte_input(struct tsm_vte *vte, const char *u8, size_t len)
 	for (i = 0; i < len; ++i) {
 		if (vte->flags & FLAG_7BIT_MODE) {
 			if (u8[i] & 0x80)
-				llog_debug(vte, "receiving 8bit character U+%d from pty while in 7bit mode",
+				debug_log(vte, "receiving 8bit character U+%d from pty while in 7bit mode",
 					   (int)u8[i]);
 			parse_data(vte, u8[i] & 0x7f);
 		} else if (vte->flags & FLAG_8BIT_MODE) {
@@ -2496,6 +2545,28 @@ void tsm_vte_input(struct tsm_vte *vte, const char *u8, size_t len)
 			}
 		}
 	}
+}
+
+SHL_EXPORT void tsm_vte_debug(struct tsm_vte* in, arcan_tui_conn* conn)
+{
+	struct tui_cbcfg cbcfg = {};
+	struct tui_settings cfg = arcan_tui_defaults(conn, in->con);
+	struct tui_context* newctx =
+		arcan_tui_setup(conn, &cfg, &cbcfg, sizeof(cbcfg));
+
+	if (!newctx)
+		return;
+
+/* already have one, release the old */
+	if (in->debug){
+		arcan_tui_destroy(newctx, NULL);
+		return;
+	}
+
+/* no cursor, no scrollback, synch resize */
+	in->debug = newctx;
+
+	tsm_vte_update_debug(in);
 }
 
 SHL_EXPORT
@@ -2912,7 +2983,7 @@ bool tsm_vte_handle_keyboard(struct tsm_vte *vte, uint32_t keysym,
 		if (vte->flags & FLAG_7BIT_MODE) {
 			val = unicode;
 			if (unicode & 0x80) {
-				llog_debug(vte, "invalid keyboard input in 7bit mode U+%x; mapping to '?'",
+				debug_log(vte, "invalid keyboard input in 7bit mode U+%x; mapping to '?'",
 					   unicode);
 				val = '?';
 			}
@@ -2920,7 +2991,7 @@ bool tsm_vte_handle_keyboard(struct tsm_vte *vte, uint32_t keysym,
 		} else if (vte->flags & FLAG_8BIT_MODE) {
 			val = unicode;
 			if (unicode > 0xff) {
-				llog_debug(vte, "invalid keyboard input in 8bit mode U+%x; mapping to '?'",
+				debug_log(vte, "invalid keyboard input in 8bit mode U+%x; mapping to '?'",
 					   unicode);
 				val = '?';
 			}

@@ -47,32 +47,7 @@
  * advanced users of terminal escape-sequences.
  */
 
-/**
- * Logging Callback
- *
- * @data: user-provided data
- * @file: Source code file where the log message originated or NULL
- * @line: Line number in source code or 0
- * @func: C function name or NULL
- * @subs: Subsystem where the message came from or NULL
- * @sev: Kernel-style severity between 0=FATAL and 7=DEBUG
- * @format: printf-formatted message
- * @args: arguments for printf-style @format
- *
- * This is the type of a logging callback function. You can always pass NULL
- * instead of such a function to disable logging.
- */
-typedef void (*tsm_log_t) (void *data,
-			   const char *file,
-			   int line,
-			   const char *func,
-			   const char *subs,
-			   unsigned int sev,
-			   const char *format,
-			   va_list args);
-
 typedef uint32_t tsm_symbol_t;
-
 typedef uint_fast32_t tsm_age_t;
 
 /**
@@ -144,11 +119,16 @@ typedef void (*tsm_str_cb) (struct tsm_vte *vte, enum tsm_vte_group group,
 void tsm_set_strhandler(struct tsm_vte *vte,
 	tsm_str_cb cb, size_t limit, void* data);
 
-int tsm_vte_new(struct tsm_vte **out, struct tui_context *con,
-		tsm_vte_write_cb write_cb, void *data,
-		tsm_log_t log, void *log_data);
+int tsm_vte_new(struct tsm_vte **out,
+		struct tui_context *con, tsm_vte_write_cb write_cb, void *data);
+
+void debug_log(struct tsm_vte* vte, const char* msg, ...);
 void tsm_vte_ref(struct tsm_vte *vte);
 void tsm_vte_unref(struct tsm_vte *vte);
+
+/* will be updated / synched OOB, used for displaying debug data */
+void tsm_vte_debug(struct tsm_vte* in, arcan_tui_conn* conn);
+void tsm_vte_update_debug(struct tsm_vte*);
 
 int tsm_vte_set_palette(struct tsm_vte *vte, const char *palette);
 void tsm_vte_set_color(struct tsm_vte *vte,
