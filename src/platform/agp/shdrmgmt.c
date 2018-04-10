@@ -150,12 +150,14 @@ struct shaderv {
  */
 
 struct shader_cont {
+	uint8_t shmask;
 	char* label;
 	char (* vertex), (* fragment);
 	GLuint prg_container, obj_vertex, obj_fragment;
 	GLint locations[sizeof(ofstbl) / sizeof(ofstbl[0])];
 /* match attrsymtbl */
 	GLint attributes[9];
+
 	struct arcan_strarr ugroups;
 };
 
@@ -385,12 +387,29 @@ bool agp_shader_valid(agp_shader_id id)
 	);
 }
 
-agp_shader_id agp_shader_build(const char* tag, const char* geom,
-	const char* vert, const char* frag)
+agp_shader_id agp_shader_build(const char* tag,
+	const char* geom, const char* vert, const char* frag)
 {
 	int slot_lim = sizeof(shdr_global.slots) / sizeof(shdr_global.slots[0]);
 	bool overwrite = false;
 	int dstind = -1;
+	uint8_t shmask = 0;
+
+/* track which ones get default slots so we can know if we have a
+ * 2D pipeline with on-GPU vertex displacement or not, this affects
+ * damage tracking */
+	if (!vert || !frag){
+		const char* defvprg, (* deffprg);
+		agp_shader_source(BASIC_2D, &defvprg, &deffprg);
+		if (!vert){
+			vert = defvprg;
+			shmask |= 1;
+		}
+		if (!frag){
+			frag = deffprg;
+			shmask |= 2;
+		}
+	}
 
 /* first, look for a preexisting tag */
 	for (size_t i = 0; i < slot_lim; i++)
@@ -440,7 +459,7 @@ agp_shader_id agp_shader_build(const char* tag, const char* geom,
 /* reset everything to NULL */
 		}
 		arcan_mem_free(cur->ugroups.data);
-		memset(cur, 0, sizeof(struct shader_cont));
+		*cur = (struct shader_cont){};
 	}
 
 /* always reset locations tbl */
@@ -452,8 +471,9 @@ agp_shader_id agp_shader_build(const char* tag, const char* geom,
 		&cur->obj_fragment, vert, frag) == false)
 		return ARCAN_EID;
 
-	cur->label    = strdup(tag);
-	cur->vertex   = strdup(vert);
+	cur->shmask = shmask;
+	cur->label = strdup(tag);
+	cur->vertex = strdup(vert);
 	cur->fragment = strdup(frag);
 
 #ifdef SHADER_DEBUG

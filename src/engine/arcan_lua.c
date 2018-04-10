@@ -2283,10 +2283,9 @@ static int buildshader(lua_State* ctx)
 	LUA_TRACE("build_shader");
 
 	const char* defvprg, (* deffprg);
-	agp_shader_source(BASIC_2D, &defvprg, &deffprg);
 
-	const char* vprog = luaL_optstring(ctx, 1, defvprg);
-	const char* fprog = luaL_optstring(ctx, 2, deffprg);
+	const char* vprog = luaL_optstring(ctx, 1, NULL);
+	const char* fprog = luaL_optstring(ctx, 2, NULL);
 	const char* label = luaL_checkstring(ctx, 3);
 
 	agp_shader_id rv = agp_shader_build(label, NULL, vprog, fprog);
