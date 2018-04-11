@@ -462,6 +462,8 @@ int afsrv_terminal(struct arcan_shmif_cont* con, struct arg_arr* args)
 	out:
 	if (term.pty)
 		term.pty = (shl_pty_close(term.pty), NULL);
+
+/* don't care about cleaning up vte really */
 	arcan_tui_destroy(term.screen, NULL);
 
 	return EXIT_SUCCESS;

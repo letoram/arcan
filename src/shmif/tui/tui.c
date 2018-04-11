@@ -2637,6 +2637,7 @@ struct tui_process_res arcan_tui_process(
  * value in caching it somewhere between runs */
 	short pollev = POLLIN | POLLERR | POLLNVAL | POLLHUP;
 	struct pollfd fds[fdset_sz + (n_contexts * 2)];
+	memset(fds, '\0', sizeof(fds));
 
 /* need to distinguish between types in results and poll doesn't carry tag */
 	uint64_t clip_mask = 0;
