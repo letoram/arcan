@@ -411,6 +411,10 @@ struct tui_cbcfg {
 
 /*
  * The underlying size has changed, expressed in both pixels and rows/columns
+ * WARNING:
+ *  Be careful not to process, refresh or other similar actions from the
+ *  context of this or the 'resize' callback. Only modifications to the
+ *  normals cells should be considered.
  */
 	void (*resized)(struct tui_context*,
 		size_t neww, size_t newh, size_t col, size_t row, void*);

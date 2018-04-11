@@ -158,6 +158,7 @@ struct vte_saved_state {
 	bool origin_mode;
 };
 
+#define DEBUG_HISTORY 10
 struct tsm_vte {
 	unsigned long ref;
 
@@ -170,8 +171,8 @@ struct tsm_vte {
 	struct tui_context *con;
 
 	struct tui_context* debug;
-	char** debug_lines;
-	size_t debug_history;
+	char* debug_lines[DEBUG_HISTORY];
+	size_t debug_pos;
 
 	tsm_vte_write_cb write_cb;
 	void *data;
@@ -331,9 +332,13 @@ void debug_log(struct tsm_vte* vte, const char* msg, ...)
 	if (!out)
 		return;
 
-/* temporary, the real one should use a history buffer to handle resize */
-	arcan_tui_writeu8(vte->debug, (uint8_t*) out, len, NULL);
-	arcan_tui_newline(vte->debug);
+	if (vte->debug_lines[vte->debug_pos] != NULL){
+		free(vte->debug_lines[vte->debug_pos]);
+	}
+
+	vte->debug_lines[vte->debug_pos] = out;
+	vte->debug_pos = (vte->debug_pos + 1) % DEBUG_HISTORY;
+	tsm_vte_update_debug(vte);
 }
 
 void tsm_vte_update_debug(struct tsm_vte* vte)
@@ -349,7 +354,7 @@ void tsm_vte_update_debug(struct tsm_vte* vte)
 	}
 
 	arcan_tui_erase_screen(vte->debug, false);
-	size_t rows, cols, crow = 0;
+	size_t rows = 0, cols = 0, crow = 0;
 	arcan_tui_dimensions(vte->debug, &rows, &cols);
 	arcan_tui_move_to(vte->debug, 0, 0);
 
@@ -437,7 +442,14 @@ void tsm_vte_update_debug(struct tsm_vte* vte)
 	arcan_tui_writeu8(vte->debug, (uint8_t*) linebuf, strlen(linebuf), NULL);
 	STEP_ROW();
 
-/* and pad with history logents */
+/* fill out with history logent */
+	size_t pos = vte->debug_pos > 0 ? vte->debug_pos - 1 : DEBUG_HISTORY - 1;
+	char* ent;
+	while ( (ent = vte->debug_lines[pos]) && pos != vte->debug_pos){
+		arcan_tui_writeu8(vte->debug, (uint8_t*)ent, strlen(ent), NULL);
+		STEP_ROW();
+		pos = pos > 0 ? pos - 1 : DEBUG_HISTORY - 1;
+	}
 
 #undef STEP_ROW
 out:
@@ -595,9 +607,17 @@ void tsm_vte_unref(struct tsm_vte *vte)
 	if (--vte->ref)
 		return;
 
-	debug_log(vte, "destroying vte object");
 	arcan_tui_refdec(vte->con);
 	tsm_utf8_mach_free(vte->mach);
+
+	for (size_t i = 0; i < DEBUG_HISTORY; i++){
+		if (vte->debug_lines[i])
+			free(vte->debug_lines[i]);
+	}
+
+	if (vte->debug)
+		arcan_tui_destroy(vte->debug, NULL);
+
 	free(vte);
 }
 
@@ -2639,29 +2659,11 @@ void tsm_vte_input(struct tsm_vte *vte, const char *u8, size_t len)
 	}
 }
 
-static void debug_resize(struct tui_context* c,
-	size_t neww, size_t newh, size_t col, size_t row, void* tag)
-{
-	tsm_vte_update_debug((struct tsm_vte*) tag);
-}
-
-static void debug_reset(struct tui_context* c, int level, void* tag)
-{
-	tsm_vte_update_debug((struct tsm_vte*) tag);
-}
-
-static void debug_recolor(struct tui_context* c, void* tag)
-{
-	tsm_vte_update_debug((struct tsm_vte*) tag);
-}
-
 SHL_EXPORT void tsm_vte_debug(struct tsm_vte* in, arcan_tui_conn* conn)
 {
+/* don't need any callbacks as the always do a full reprocess in update_debug,
+ * where the processing etc. takes place */
 	struct tui_cbcfg cbcfg = {
-		.tag = in,
-		.resized = debug_resize,
-		.reset = debug_reset,
-		.recolor = debug_recolor
 	};
 	struct tui_settings cfg = arcan_tui_defaults(conn, in->con);
 	struct tui_context* newctx =

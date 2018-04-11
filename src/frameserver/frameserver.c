@@ -170,7 +170,7 @@ int launch_mode(const char* modestr,
 	if (!getenv("ARCAN_FRAMESERVER_DEBUGSTALL"))
 		toggle_logdev(modestr);
 
-	struct arg_arr* arg;
+	struct arg_arr* arg = NULL;
 	struct arcan_shmif_cont con = arcan_shmif_open_ext(flags,
 		&arg, (struct shmif_open_ext){.type = id}, sizeof(struct shmif_open_ext));
 
