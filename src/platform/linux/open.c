@@ -432,7 +432,7 @@ int platform_device_poll(char** identifier)
 	if (poll(&pfd, 1, 0) <= 0)
 		return 0;
 
-	if (~(pfd.revents & POLLIN)){
+	if (!(pfd.revents & POLLIN)){
 		return -1;
 	}
 
